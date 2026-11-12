@@ -32,7 +32,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      # No build cache: a release is built from scratch. (A cache saved by CI
+      # on a newer Ubuntu image does not link on ubuntu-22.04.)
       - name: Test
         run: cargo test -p agent
       - name: Build
