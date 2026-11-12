@@ -27,7 +27,7 @@ jobs:
         include:
           - { os: windows-latest, name: windows-x64, exe: agent.exe }
           - { os: macos-latest, name: macos-arm64, exe: agent }
-          - { os: macos-13, name: macos-x64, exe: agent }
+          - { os: macos-15-intel, name: macos-x64, exe: agent }
           - { os: ubuntu-22.04, name: linux-x64, exe: agent }
     steps:
       - uses: actions/checkout@v4
@@ -93,14 +93,23 @@ jobs:
           name: phone-module
           path: android/magisk/dist/*.zip
 
+  # Publishes whatever was built, as long as there is the phone module and at
+  # least one desktop download. When a system did not get a build machine,
+  # re-run the failed jobs: this job then runs again and adds the missing
+  # files to the same Release.
   publish:
     needs: [agent, android]
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+      - name: Check what was built
+        run: |
+          ls -l dist
+          ls dist/pixelcallai_uplink-*.zip dist/myna-call-* > /dev/null
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS.txt
       - uses: softprops/action-gh-release@v2
