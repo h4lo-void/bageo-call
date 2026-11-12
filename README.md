@@ -86,9 +86,9 @@ flowchart LR
    (`pixelcallai_uplink-<version>.zip`) in Magisk / KernelSU, reboot, open the
    **Myna** app and work through its checklist. Turn on USB debugging,
    plug the phone into the computer and accept the "Allow USB debugging?"
-   prompt. → [Phone setup](docs/en/PHONE.md)
-   Version 0.2.0 of the phone app has not been tested on a real phone yet; read
-   *Project status* below before you flash it.
+   prompt. → [Phone setup](docs/en/PHONE.md) (Version 0.2.0 of the phone app
+   has not been tested on a real phone yet; read *Project status* below before
+   you flash it.)
 5. **Check and call.** The *System* page of the web console shows the phone as
    connected. Call the phone's number from another phone: it rings once, the AI
    answers, and the call shows up in the console with its recording and summary.
@@ -147,8 +147,9 @@ Be aware of what has and has not been proven:
   nobody has installed it and taken a call with it. Flash it on a spare phone
   and read the [rollback steps](docs/en/PHONE.md#rollback) first.
 - **The module in the release is signed with a temporary key.** That is fine
-  for a first install. If a later release is signed with a different key,
-  remove the module and reboot before you install the new one.
+  for a first install. Until the project has a fixed key, expect each release
+  to be signed with a different one: remove the module and reboot before you
+  install a newer release.
 
 Bug reports with the agent's log and what you expected are very welcome. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
