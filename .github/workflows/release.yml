@@ -13,6 +13,10 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Run by hand (Actions → Release → Run workflow) to build only the phone
+  # module, signed like a release, without publishing anything: for trying a
+  # build on a phone before tagging. Download it from the run's artifacts.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -20,6 +24,7 @@ permissions:
 jobs:
   agent:
     name: agent ${{ matrix.name }}
+    if: github.event_name == 'push'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -100,7 +105,7 @@ jobs:
   # files to the same Release.
   publish:
     needs: [agent, android]
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
