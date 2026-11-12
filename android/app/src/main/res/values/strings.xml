@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Myna</string>
+
+    <!-- Notifications -->
+    <string name="notification_title">Myna</string>
+    <string name="notification_text_armed">Ready. Waiting for calls; the phone stays silent.</string>
+    <string name="notification_text_in_call">The AI is handling a call.</string>
+    <string name="notification_text_disabled">AI answering is paused.</string>
+    <string name="uplink_missing_title">The caller cannot hear the AI</string>
+    <string name="uplink_missing_text">The call audio path is not available. Make sure the Myna module is installed and enabled, then reboot.</string>
+
+    <!-- Header -->
+    <string name="header_version">Version %1$s (%2$d)</string>
+    <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
+    <string name="header_compat">Tested on Pixel 7, 7a, 8 and 9. Other rooted phones may work; try at your own risk.</string>
+
+    <!-- Master switch and service -->
+    <string name="ai_switch_title">AI answering</string>
+    <string name="ai_switch_desc">When on, incoming calls are answered silently and handled by the AI running on your PC.</string>
+    <string name="service_running">Service: running</string>
+    <string name="service_stopped">Service: stopped</string>
+    <string name="btn_start_service">Start service</string>
+    <string name="btn_stop_service">Stop service</string>
+    <string name="msg_service_started">Service started.</string>
+    <string name="msg_service_stopped">Service stopped.</string>
+    <string name="grant_perms">Allow the requested permissions, then tap Start service again.</string>
+
+    <!-- Checklist -->
+    <string name="section_checklist">Setup checklist</string>
+    <string name="status_ok">OK</string>
+    <string name="status_missing">Missing</string>
+    <string name="status_check">Check</string>
+
+    <string name="check_priv_title">Installed as a privileged system app</string>
+    <string name="check_priv_ok">Installed at %1$s</string>
+    <string name="check_priv_missing">Installed as a normal app (%1$s). Flash the Myna module in Magisk or KernelSU and reboot. If you also installed the APK by hand, uninstall that copy.</string>
+
+    <string name="check_privperm_title">Privileged permissions</string>
+    <string name="check_privperm_desc">Granted by the module at boot. They cannot be granted from this screen.</string>
+    <string name="perm_capture_audio_output">Capture the call audio</string>
+    <string name="perm_modify_phone_state">Send the AI voice into the call</string>
+    <string name="perm_control_incall">Replace the in-call screen</string>
+
+    <string name="section_runtime_perms">App permissions</string>
+    <string name="perm_record_audio">Microphone: record the call audio</string>
+    <string name="perm_read_phone_state">Phone: know when a call starts and ends</string>
+    <string name="perm_read_call_log">Call log: read the caller\'s number</string>
+    <string name="perm_answer_calls">Answer calls: pick up and hang up automatically</string>
+    <string name="perm_call_phone">Make calls: call-back feature</string>
+    <string name="perm_post_notifications">Notifications: show the service notification</string>
+    <string name="btn_grant">Grant</string>
+    <string name="msg_perm_settings">Some permissions can no longer be requested here. Allow them on the app\'s system settings page.</string>
+
+    <string name="section_system_settings">System settings</string>
+    <string name="check_dialer_title">Default phone app</string>
+    <string name="check_dialer_desc">Lets the app answer calls without showing a call screen.</string>
+    <string name="check_screening_title">Call screening app</string>
+    <string name="check_screening_desc">Silences the ringtone for incoming calls.</string>
+    <string name="btn_set">Set</string>
+    <string name="check_dnd_title">Do Not Disturb access</string>
+    <string name="check_dnd_desc">Keeps the phone quiet while it works as an answering machine.</string>
+    <string name="btn_open_settings">Open settings</string>
+    <string name="check_battery_title">Battery optimization exemption</string>
+    <string name="check_battery_desc">Stops Android from putting the service to sleep.</string>
+    <string name="btn_allow">Allow</string>
+    <string name="check_uplink_title">AI voice injection into the call</string>
+    <string name="check_uplink_ok">Telephony audio output found.</string>
+    <string name="check_uplink_idle">Not visible right now. On some phones it only appears during a call; the app notifies you if injection fails.</string>
+    <string name="check_uplink_missing">Needs the module: the MODIFY_PHONE_STATE permission is missing.</string>
+
+    <!-- Connection -->
+    <string name="section_connection">Connection</string>
+    <string name="agent_url_label">Agent address</string>
+    <string name="connection_hint_usb">USB (default, recommended): keep ws://127.0.0.1:8765. The PC program forwards this port over the USB cable with adb reverse automatically.</string>
+    <string name="connection_hint_wifi">Wi-Fi: enter the address shown by the PC program, for example ws://192.0.2.10:8787/ws?token=… The phone and the PC must be on the same network.</string>
+    <string name="btn_save">Save</string>
+    <string name="btn_reset_usb">Reset to USB default</string>
+    <string name="btn_test">Test connection</string>
+    <string name="msg_url_invalid">The address must start with ws:// or wss:// and include a host.</string>
+    <string name="msg_url_saved">Saved.</string>
+    <string name="msg_url_saved_restarted">Saved. The service was restarted to use the new address.</string>
+    <string name="msg_url_saved_pending">Saved. To use the new address, tap Stop service and then Start service when no call is in progress.</string>
+    <string name="test_running">Connecting…</string>
+    <string name="test_ok">Connected</string>
+    <string name="test_failed">Failed: %1$s</string>
+    <string name="test_timeout">no response within 5 seconds</string>
+    <string name="test_closed">connection closed (code %1$d)</string>
+
+    <!-- About and safety -->
+    <string name="section_about">About and safety</string>
+    <string name="about_dedicated">Use a dedicated phone. The module takes over the phone app, silences the ringer and turns on Do Not Disturb, so the phone no longer works as a normal handset.</string>
+    <string name="about_rollback">To go back to a normal phone, disable or remove the module in Magisk or KernelSU and reboot. If the Google Phone app or the ringer is still off afterwards, follow the rollback steps in the README.</string>
+    <string name="about_legal">Laws on recording calls and on telling callers that they are talking to an AI differ from place to place. Following them is your responsibility.</string>
+</resources>

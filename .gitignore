@@ -1,0 +1,43 @@
+# Secrets and local settings
+.env
+**/.env
+*.env.local
+
+# Runtime data: call records, recordings, settings (contains API keys)
+/data/
+**/data/calls/
+
+# Build output
+/target/
+**/target/
+/bin/
+/agent
+/agent.exe
+/dist/
+
+# Tools downloaded by the start scripts
+/platform-tools/
+
+# Android
+android/.gradle/
+android/local.properties
+android/**/build/
+android/magisk/dist/
+android/magisk/pixelcallai_uplink/system/priv-app/com.pixelcallai.streamer/base.apk
+*.apk
+*.jks
+*.keystore
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/.venv/
+**/venv/
+
+# Editors / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+*.log

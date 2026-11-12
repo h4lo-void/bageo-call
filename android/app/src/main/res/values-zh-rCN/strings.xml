@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Myna</string>
+
+    <!-- Notifications -->
+    <string name="notification_title">Myna</string>
+    <string name="notification_text_armed">待命中，等待来电；手机保持静音。</string>
+    <string name="notification_text_in_call">AI 正在接听电话。</string>
+    <string name="notification_text_disabled">AI 接听已暂停。</string>
+    <string name="uplink_missing_title">对方听不到 AI 的声音</string>
+    <string name="uplink_missing_text">通话音频通道不可用。请确认 Myna 模块已安装并启用，然后重启手机。</string>
+
+    <!-- Header -->
+    <string name="header_version">版本 %1$s（%2$d）</string>
+    <string name="header_device">%1$s · Android %2$s（API %3$d）</string>
+    <string name="header_compat">已在 Pixel 7、7a、8、9 上实测。其他已 root 的手机也许可用，风险自负。</string>
+
+    <!-- Master switch and service -->
+    <string name="ai_switch_title">AI 接听</string>
+    <string name="ai_switch_desc">开启后，来电会被静音接起，并交给电脑上的 AI 处理。</string>
+    <string name="service_running">服务：运行中</string>
+    <string name="service_stopped">服务：已停止</string>
+    <string name="btn_start_service">启动服务</string>
+    <string name="btn_stop_service">停止服务</string>
+    <string name="msg_service_started">服务已启动。</string>
+    <string name="msg_service_stopped">服务已停止。</string>
+    <string name="grant_perms">请允许所请求的权限，然后再点一次“启动服务”。</string>
+
+    <!-- Checklist -->
+    <string name="section_checklist">设置检查清单</string>
+    <string name="status_ok">正常</string>
+    <string name="status_missing">未完成</string>
+    <string name="status_check">请确认</string>
+
+    <string name="check_priv_title">已安装为特权系统应用</string>
+    <string name="check_priv_ok">安装位置：%1$s</string>
+    <string name="check_priv_missing">当前是普通应用（%1$s）。请在 Magisk 或 KernelSU 中刷入 Myna 模块并重启。如果还手动安装过 APK，请卸载那一份。</string>
+
+    <string name="check_privperm_title">特权权限</string>
+    <string name="check_privperm_desc">由模块在开机时授予，无法在此页面授权。</string>
+    <string name="perm_capture_audio_output">采集通话音频</string>
+    <string name="perm_modify_phone_state">把 AI 的声音送入通话</string>
+    <string name="perm_control_incall">接管通话界面</string>
+
+    <string name="section_runtime_perms">应用权限</string>
+    <string name="perm_record_audio">麦克风：录制通话音频</string>
+    <string name="perm_read_phone_state">电话：获知通话何时开始和结束</string>
+    <string name="perm_read_call_log">通话记录：读取来电号码</string>
+    <string name="perm_answer_calls">接听电话：自动接听和挂断</string>
+    <string name="perm_call_phone">拨打电话：回拨功能</string>
+    <string name="perm_post_notifications">通知：显示服务通知</string>
+    <string name="btn_grant">授予权限</string>
+    <string name="msg_perm_settings">部分权限已无法在此请求，请到本应用的系统设置页面中允许。</string>
+
+    <string name="section_system_settings">系统设置</string>
+    <string name="check_dialer_title">默认电话应用</string>
+    <string name="check_dialer_desc">让应用无需显示通话界面即可接听。</string>
+    <string name="check_screening_title">来电过滤应用</string>
+    <string name="check_screening_desc">让来电不响铃。</string>
+    <string name="btn_set">设置</string>
+    <string name="check_dnd_title">“勿扰模式”权限</string>
+    <string name="check_dnd_desc">让手机在代接电话时保持安静。</string>
+    <string name="btn_open_settings">打开设置</string>
+    <string name="check_battery_title">忽略电池优化</string>
+    <string name="check_battery_desc">防止 Android 让服务休眠。</string>
+    <string name="btn_allow">允许</string>
+    <string name="check_uplink_title">把 AI 语音送入通话</string>
+    <string name="check_uplink_ok">已找到电话音频输出设备。</string>
+    <string name="check_uplink_idle">当前不可见。部分手机只在通话中才会出现；如果注入失败，应用会通知你。</string>
+    <string name="check_uplink_missing">需要模块：缺少 MODIFY_PHONE_STATE 权限。</string>
+
+    <!-- Connection -->
+    <string name="section_connection">连接</string>
+    <string name="agent_url_label">电脑端程序地址</string>
+    <string name="connection_hint_usb">USB（默认，推荐）：保持 ws://127.0.0.1:8765 即可。电脑端程序会自动通过 adb reverse 经 USB 线转发此端口。</string>
+    <string name="connection_hint_wifi">Wi-Fi：输入电脑端程序显示的地址，例如 ws://192.0.2.10:8787/ws?token=… 手机和电脑必须在同一网络。</string>
+    <string name="btn_save">保存</string>
+    <string name="btn_reset_usb">恢复 USB 默认值</string>
+    <string name="btn_test">测试连接</string>
+    <string name="msg_url_invalid">地址必须以 ws:// 或 wss:// 开头，并包含主机名。</string>
+    <string name="msg_url_saved">已保存。</string>
+    <string name="msg_url_saved_restarted">已保存。服务已重启并改用新地址。</string>
+    <string name="msg_url_saved_pending">已保存。要使用新地址，请在没有通话时先点“停止服务”，再点“启动服务”。</string>
+    <string name="test_running">正在连接…</string>
+    <string name="test_ok">已连接</string>
+    <string name="test_failed">失败：%1$s</string>
+    <string name="test_timeout">5 秒内没有响应</string>
+    <string name="test_closed">连接已关闭（代码 %1$d）</string>
+
+    <!-- About and safety -->
+    <string name="section_about">关于与安全须知</string>
+    <string name="about_dedicated">请使用专用手机。模块会接管电话应用、关闭铃声并开启勿扰模式，这部手机将无法再作为普通手机使用。</string>
+    <string name="about_rollback">要恢复为普通手机，请在 Magisk 或 KernelSU 中停用或移除模块，然后重启。之后如果 Google 电话应用或铃声仍处于关闭状态，请按 README 中的还原步骤操作。</string>
+    <string name="about_legal">各地关于通话录音以及是否须告知对方正在与 AI 通话的法律规定不同，遵守当地法规是你的责任。</string>
+</resources>

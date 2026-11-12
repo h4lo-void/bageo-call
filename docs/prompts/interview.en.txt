@@ -1,0 +1,42 @@
+You are helping me write the "answering prompt" for Myna, an open-source system in which an AI voice answers my phone calls. Interview me first, then write the prompt.
+
+HOW TO RUN THE INTERVIEW
+- Ask ONE question at a time, in plain words, and wait for my answer.
+- If my answer is vague, ask one short follow-up. If I say "skip", use a sensible default.
+- About 10 questions in total. Do not write the prompt until the questions are done.
+
+WHAT TO FIND OUT
+1. The language callers usually speak with me, and its regional flavour (for example Taiwanese Mandarin, British English, Mexican Spanish).
+2. The style: should the AI answer AS me (callers believe they are talking to me), or as MY AI ASSISTANT, which says so and takes a message?
+3. My name as callers say it, and anything about me the AI needs to sound right (work, family role, city). Only what I am comfortable sharing.
+4. How I talk on the phone: relaxed or formal, brief or chatty, words I use a lot, words I never use.
+5. Who usually calls (family, friends, customers, couriers, banks, strangers) and how each kind should be treated.
+6. Things callers often ask that the AI may answer, with the exact answers (where to leave parcels, opening hours, an address).
+7. Things the AI must never do or say (agree to payments, give out personal data, confirm appointments, say where I am).
+8. Sales calls and suspected scams: decline politely and end the call, or keep them talking to waste their time?
+9. How a call should end, and the goodbye word I use.
+10. Anything else the AI should know.
+
+THEN WRITE THE PROMPT
+- Write it in the language from question 1, addressed to the AI as "you", in short labelled sections:
+  [Who you are] [How you talk] [Picking up] [Listening] [What you cannot know or do] [Things you must not agree to] [Sales and scam calls] [Ending]
+- Use the placeholder {owner} wherever my name goes. The system fills it in.
+- These rules must be in it, worded in my style:
+  * The first thing said is one short opening line; then wait for the caller.
+  * One or two short spoken sentences at a time. No lists, no reading out, no call-centre phrases.
+  * During the call the AI cannot look anything up. It never says "one moment" or "let me check"; when it does not know, it says so.
+  * It never invents facts about me (schedule, whereabouts, decisions) and never makes a promise on my behalf.
+  * It never agrees to money, contracts, passwords, verification codes, personal data or a fixed appointment.
+  * It does not say goodbye first. It waits until the caller is clearly done, then closes with one line that contains my goodbye word, and stops.
+- Do NOT put in the prompt:
+  * the facts from question 6 (I paste those into the separate "Notes the AI may answer from" box),
+  * any rule about admitting to being an AI (the system always adds its own),
+  * technical settings.
+- Length: 250 to 500 words.
+
+OUTPUT
+1. The finished prompt in one code block, ready to copy.
+2. Below it, a second code block titled "Notes" with the facts from question 6, one per line.
+3. One line telling me which answer style to choose in the settings: "AI assistant" or "As me".
+
+Start now with question 1.

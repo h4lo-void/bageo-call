@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Myna</string>
+
+    <!-- Notifications -->
+    <string name="notification_title">Myna</string>
+    <string name="notification_text_armed">待機中です。着信を待っています（端末は無音のままです）。</string>
+    <string name="notification_text_in_call">AI が通話に応対しています。</string>
+    <string name="notification_text_disabled">AI 応答は一時停止中です。</string>
+    <string name="uplink_missing_title">相手に AI の声が届いていません</string>
+    <string name="uplink_missing_text">通話音声の経路を使用できません。Myna モジュールがインストールされ、有効になっていることを確認してから再起動してください。</string>
+
+    <!-- Header -->
+    <string name="header_version">バージョン %1$s (%2$d)</string>
+    <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
+    <string name="header_compat">Pixel 7、7a、8、9 で動作確認済みです。root 化した他の機種でも動く可能性がありますが、自己責任でお試しください。</string>
+
+    <!-- Master switch and service -->
+    <string name="ai_switch_title">AI 応答</string>
+    <string name="ai_switch_desc">オンにすると、着信に無音で応答し、PC 上の AI が対応します。</string>
+    <string name="service_running">サービス: 実行中</string>
+    <string name="service_stopped">サービス: 停止中</string>
+    <string name="btn_start_service">サービスを開始</string>
+    <string name="btn_stop_service">サービスを停止</string>
+    <string name="msg_service_started">サービスを開始しました。</string>
+    <string name="msg_service_stopped">サービスを停止しました。</string>
+    <string name="grant_perms">要求された権限を許可してから、もう一度「サービスを開始」をタップしてください。</string>
+
+    <!-- Checklist -->
+    <string name="section_checklist">セットアップ チェックリスト</string>
+    <string name="status_ok">OK</string>
+    <string name="status_missing">未完了</string>
+    <string name="status_check">要確認</string>
+
+    <string name="check_priv_title">特権システムアプリとしてインストール済み</string>
+    <string name="check_priv_ok">インストール先: %1$s</string>
+    <string name="check_priv_missing">通常のアプリとしてインストールされています（%1$s）。Magisk または KernelSU で Myna モジュールをインストールし、再起動してください。APK を手動でもインストールした場合は、そちらをアンインストールしてください。</string>
+
+    <string name="check_privperm_title">特権権限</string>
+    <string name="check_privperm_desc">起動時にモジュールが付与します。この画面からは付与できません。</string>
+    <string name="perm_capture_audio_output">通話音声を取得する</string>
+    <string name="perm_modify_phone_state">AI の音声を通話に送り込む</string>
+    <string name="perm_control_incall">通話画面を置き換える</string>
+
+    <string name="section_runtime_perms">アプリの権限</string>
+    <string name="perm_record_audio">マイク: 通話音声を録音する</string>
+    <string name="perm_read_phone_state">電話: 通話の開始と終了を検知する</string>
+    <string name="perm_read_call_log">通話履歴: 発信者の番号を読み取る</string>
+    <string name="perm_answer_calls">通話への応答: 自動で応答・切断する</string>
+    <string name="perm_call_phone">電話の発信: 折り返し発信機能</string>
+    <string name="perm_post_notifications">通知: サービスの通知を表示する</string>
+    <string name="btn_grant">許可する</string>
+    <string name="msg_perm_settings">一部の権限はここからリクエストできなくなっています。このアプリのシステム設定画面で許可してください。</string>
+
+    <string name="section_system_settings">システム設定</string>
+    <string name="check_dialer_title">デフォルトの電話アプリ</string>
+    <string name="check_dialer_desc">通話画面を表示せずに応答できるようにします。</string>
+    <string name="check_screening_title">通話スクリーニング アプリ</string>
+    <string name="check_screening_desc">着信音を鳴らさないようにします。</string>
+    <string name="btn_set">設定する</string>
+    <string name="check_dnd_title">サイレント モードへのアクセス</string>
+    <string name="check_dnd_desc">留守番として動作している間、端末を静かに保ちます。</string>
+    <string name="btn_open_settings">設定を開く</string>
+    <string name="check_battery_title">電池の最適化の対象外</string>
+    <string name="check_battery_desc">Android がサービスをスリープさせないようにします。</string>
+    <string name="btn_allow">許可</string>
+    <string name="check_uplink_title">AI 音声の通話への注入</string>
+    <string name="check_uplink_ok">電話用の音声出力が見つかりました。</string>
+    <string name="check_uplink_idle">現在は見つかりません。機種によっては通話中にのみ現れます。注入に失敗した場合はアプリが通知します。</string>
+    <string name="check_uplink_missing">モジュールが必要です: MODIFY_PHONE_STATE 権限がありません。</string>
+
+    <!-- Connection -->
+    <string name="section_connection">接続</string>
+    <string name="agent_url_label">エージェントのアドレス</string>
+    <string name="connection_hint_usb">USB（既定・推奨）: ws://127.0.0.1:8765 のままにしてください。PC 側のプログラムが adb reverse を使い、USB ケーブル経由でこのポートを自動的に転送します。</string>
+    <string name="connection_hint_wifi">Wi-Fi: PC 側のプログラムに表示されるアドレス（例: ws://192.0.2.10:8787/ws?token=…）を入力してください。端末と PC は同じネットワーク上にある必要があります。</string>
+    <string name="btn_save">保存</string>
+    <string name="btn_reset_usb">USB の既定値に戻す</string>
+    <string name="btn_test">接続テスト</string>
+    <string name="msg_url_invalid">アドレスは ws:// または wss:// で始まり、ホスト名を含む必要があります。</string>
+    <string name="msg_url_saved">保存しました。</string>
+    <string name="msg_url_saved_restarted">保存しました。新しいアドレスを使うため、サービスを再起動しました。</string>
+    <string name="msg_url_saved_pending">保存しました。新しいアドレスを使うには、通話中でないときに「サービスを停止」、「サービスを開始」の順にタップしてください。</string>
+    <string name="test_running">接続中…</string>
+    <string name="test_ok">接続しました</string>
+    <string name="test_failed">失敗: %1$s</string>
+    <string name="test_timeout">5 秒以内に応答がありません</string>
+    <string name="test_closed">接続が閉じられました（コード %1$d）</string>
+
+    <!-- About and safety -->
+    <string name="section_about">このアプリについて・安全上の注意</string>
+    <string name="about_dedicated">専用の端末でお使いください。モジュールは電話アプリを引き継ぎ、着信音を消してサイレント モードをオンにするため、通常の電話としては使えなくなります。</string>
+    <string name="about_rollback">通常の電話に戻すには、Magisk または KernelSU でモジュールを無効化または削除し、再起動してください。その後も Google の電話アプリや着信音がオフのままの場合は、README の復元手順に従ってください。</string>
+    <string name="about_legal">通話の録音や、相手が AI と話していることを知らせる義務に関する法律は、国や地域によって異なります。法令の遵守は利用者ご自身の責任です。</string>
+</resources>

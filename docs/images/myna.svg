@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="t">
+  <title id="t">Myna: a crested myna perched on a phone handset</title>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="#FFCF4A"/>
+  <!-- handset -->
+  <g fill="#0E8F8F">
+    <rect x="52" y="204" width="136" height="16" rx="8"/>
+    <rect x="44" y="204" width="34" height="30" rx="11"/>
+    <rect x="162" y="204" width="34" height="30" rx="11"/>
+  </g>
+  <!-- legs -->
+  <g stroke="#E08A00" stroke-width="7" stroke-linecap="round">
+    <line x1="104" y1="186" x2="104" y2="203"/>
+    <line x1="128" y1="186" x2="128" y2="203"/>
+  </g>
+  <!-- tail -->
+  <polygon points="70,150 22,176 30,192 84,176" fill="#1B1B1F"/>
+  <!-- body and head -->
+  <ellipse cx="112" cy="142" rx="56" ry="50" fill="#1B1B1F"/>
+  <circle cx="146" cy="88" r="38" fill="#1B1B1F"/>
+  <!-- crest tuft above the bill -->
+  <polygon points="158,60 166,30 172,56 184,36 184,64 198,50 190,76" fill="#1B1B1F"/>
+  <!-- wing with white patch -->
+  <g transform="rotate(-24 100 150)">
+    <ellipse cx="100" cy="150" rx="42" ry="25" fill="#34343B"/>
+    <ellipse cx="88" cy="160" rx="18" ry="7" fill="#FFFFFF"/>
+  </g>
+  <!-- open bill -->
+  <g fill="#FFF4D8" stroke="#1B1B1F" stroke-width="3" stroke-linejoin="round">
+    <polygon points="178,74 216,84 180,92"/>
+    <polygon points="180,94 208,102 176,106"/>
+  </g>
+  <!-- eye -->
+  <circle cx="158" cy="80" r="8" fill="#FF8A1F"/>
+  <circle cx="159" cy="80" r="3.5" fill="#1B1B1F"/>
+  <!-- hello -->
+  <g fill="none" stroke="#1B1B1F" stroke-width="5" stroke-linecap="round">
+    <path d="M222 80 q7 13 0 26"/>
+    <path d="M233 71 q13 22 0 44"/>
+  </g>
+</svg>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<permissions>
+    <privapp-permissions package="com.pixelcallai.streamer">
+        <permission name="android.permission.CAPTURE_AUDIO_OUTPUT" />
+        <permission name="android.permission.MODIFY_PHONE_STATE" />
+        <permission name="android.permission.ANSWER_PHONE_CALLS" />
+        <permission name="android.permission.READ_PHONE_STATE" />
+        <permission name="android.permission.READ_CALL_LOG" />
+        <permission name="android.permission.WRITE_SECURE_SETTINGS" />
+        <permission name="android.permission.MODIFY_AUDIO_SETTINGS" />
+        <permission name="android.permission.RECORD_AUDIO" />
+        <permission name="android.permission.CONTROL_INCALL_EXPERIENCE" />
+        <permission name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+        <permission name="android.permission.INTERACT_ACROSS_USERS" />
+        <permission name="android.permission.MANAGE_USERS" />
+    </privapp-permissions>
+</permissions>

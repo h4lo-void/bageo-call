@@ -1,0 +1,15 @@
+# Build outputs
+build/
+.gradle/
+.kotlin/
+
+# Machine-specific SDK location
+local.properties
+
+# Packaged module zips and the APK copied into the module tree
+magisk/dist/
+magisk/pixelcallai_uplink/system/priv-app/com.pixelcallai.streamer/base.apk
+
+# IDE
+*.iml
+.idea/

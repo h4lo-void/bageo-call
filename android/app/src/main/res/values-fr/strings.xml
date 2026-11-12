@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Myna</string>
+
+    <!-- Notifications -->
+    <string name="notification_title">Myna</string>
+    <string name="notification_text_armed">Prêt. En attente d\'appels ; le téléphone reste silencieux.</string>
+    <string name="notification_text_in_call">L\'IA traite un appel.</string>
+    <string name="notification_text_disabled">La réponse par IA est en pause.</string>
+    <string name="uplink_missing_title">Le correspondant n\'entend pas l\'IA</string>
+    <string name="uplink_missing_text">Le canal audio de l\'appel n\'est pas disponible. Vérifiez que le module Myna est installé et activé, puis redémarrez.</string>
+
+    <!-- Header -->
+    <string name="header_version">Version %1$s (%2$d)</string>
+    <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
+    <string name="header_compat">Testé sur Pixel 7, 7a, 8 et 9. D\'autres téléphones rootés peuvent fonctionner ; essayez à vos risques et périls.</string>
+
+    <!-- Master switch and service -->
+    <string name="ai_switch_title">Réponse par IA</string>
+    <string name="ai_switch_desc">Lorsque cette option est activée, les appels entrants sont pris en silence et traités par l\'IA qui tourne sur votre PC.</string>
+    <string name="service_running">Service : en cours d\'exécution</string>
+    <string name="service_stopped">Service : arrêté</string>
+    <string name="btn_start_service">Démarrer le service</string>
+    <string name="btn_stop_service">Arrêter le service</string>
+    <string name="msg_service_started">Service démarré.</string>
+    <string name="msg_service_stopped">Service arrêté.</string>
+    <string name="grant_perms">Accordez les autorisations demandées, puis appuyez de nouveau sur Démarrer le service.</string>
+
+    <!-- Checklist -->
+    <string name="section_checklist">Liste de vérification</string>
+    <string name="status_ok">OK</string>
+    <string name="status_missing">Manquant</string>
+    <string name="status_check">À vérifier</string>
+
+    <string name="check_priv_title">Installée comme application système privilégiée</string>
+    <string name="check_priv_ok">Installée dans %1$s</string>
+    <string name="check_priv_missing">Installée comme application normale (%1$s). Installez le module Myna dans Magisk ou KernelSU, puis redémarrez. Si vous avez aussi installé l\'APK à la main, désinstallez cette copie.</string>
+
+    <string name="check_privperm_title">Autorisations privilégiées</string>
+    <string name="check_privperm_desc">Accordées par le module au démarrage. Elles ne peuvent pas être accordées depuis cet écran.</string>
+    <string name="perm_capture_audio_output">Capturer l\'audio de l\'appel</string>
+    <string name="perm_modify_phone_state">Envoyer la voix de l\'IA dans l\'appel</string>
+    <string name="perm_control_incall">Remplacer l\'écran d\'appel</string>
+
+    <string name="section_runtime_perms">Autorisations de l\'application</string>
+    <string name="perm_record_audio">Micro : enregistrer l\'audio de l\'appel</string>
+    <string name="perm_read_phone_state">Téléphone : savoir quand un appel commence et se termine</string>
+    <string name="perm_read_call_log">Journal d\'appels : lire le numéro de l\'appelant</string>
+    <string name="perm_answer_calls">Répondre aux appels : décrocher et raccrocher automatiquement</string>
+    <string name="perm_call_phone">Passer des appels : fonction de rappel</string>
+    <string name="perm_post_notifications">Notifications : afficher la notification du service</string>
+    <string name="btn_grant">Accorder</string>
+    <string name="msg_perm_settings">Certaines autorisations ne peuvent plus être demandées ici. Accordez-les dans les paramètres système de l\'application.</string>
+
+    <string name="section_system_settings">Paramètres système</string>
+    <string name="check_dialer_title">Application Téléphone par défaut</string>
+    <string name="check_dialer_desc">Permet de répondre aux appels sans afficher d\'écran d\'appel.</string>
+    <string name="check_screening_title">Application de filtrage d\'appels</string>
+    <string name="check_screening_desc">Coupe la sonnerie des appels entrants.</string>
+    <string name="btn_set">Définir</string>
+    <string name="check_dnd_title">Accès à Ne pas déranger</string>
+    <string name="check_dnd_desc">Garde le téléphone silencieux pendant qu\'il sert de répondeur.</string>
+    <string name="btn_open_settings">Ouvrir les paramètres</string>
+    <string name="check_battery_title">Exemption d\'optimisation de la batterie</string>
+    <string name="check_battery_desc">Empêche Android de mettre le service en veille.</string>
+    <string name="btn_allow">Autoriser</string>
+    <string name="check_uplink_title">Injection de la voix de l\'IA dans l\'appel</string>
+    <string name="check_uplink_ok">Sortie audio de téléphonie détectée.</string>
+    <string name="check_uplink_idle">Non visible pour le moment. Sur certains téléphones, elle n\'apparaît que pendant un appel ; l\'application vous avertit si l\'injection échoue.</string>
+    <string name="check_uplink_missing">Nécessite le module : l\'autorisation MODIFY_PHONE_STATE est absente.</string>
+
+    <!-- Connection -->
+    <string name="section_connection">Connexion</string>
+    <string name="agent_url_label">Adresse de l\'agent</string>
+    <string name="connection_hint_usb">USB (par défaut, recommandé) : gardez ws://127.0.0.1:8765. Le programme du PC redirige automatiquement ce port via le câble USB avec adb reverse.</string>
+    <string name="connection_hint_wifi">Wi-Fi : saisissez l\'adresse affichée par le programme du PC, par exemple ws://192.0.2.10:8787/ws?token=… Le téléphone et le PC doivent être sur le même réseau.</string>
+    <string name="btn_save">Enregistrer</string>
+    <string name="btn_reset_usb">Rétablir le réglage USB</string>
+    <string name="btn_test">Tester la connexion</string>
+    <string name="msg_url_invalid">L\'adresse doit commencer par ws:// ou wss:// et contenir un hôte.</string>
+    <string name="msg_url_saved">Enregistré.</string>
+    <string name="msg_url_saved_restarted">Enregistré. Le service a été redémarré pour utiliser la nouvelle adresse.</string>
+    <string name="msg_url_saved_pending">Enregistré. Pour utiliser la nouvelle adresse, appuyez sur Arrêter le service puis sur Démarrer le service lorsqu\'aucun appel n\'est en cours.</string>
+    <string name="test_running">Connexion…</string>
+    <string name="test_ok">Connecté</string>
+    <string name="test_failed">Échec : %1$s</string>
+    <string name="test_timeout">aucune réponse en 5 secondes</string>
+    <string name="test_closed">connexion fermée (code %1$d)</string>
+
+    <!-- About and safety -->
+    <string name="section_about">À propos et sécurité</string>
+    <string name="about_dedicated">Utilisez un téléphone dédié. Le module remplace l\'application Téléphone, coupe la sonnerie et active Ne pas déranger : le téléphone ne peut plus servir de téléphone normal.</string>
+    <string name="about_rollback">Pour retrouver un téléphone normal, désactivez ou supprimez le module dans Magisk ou KernelSU, puis redémarrez. Si l\'application Téléphone de Google ou la sonnerie restent ensuite désactivées, suivez les étapes de restauration du README.</string>
+    <string name="about_legal">Les lois sur l\'enregistrement des appels et sur l\'obligation d\'informer l\'interlocuteur qu\'il parle à une IA varient selon les pays. Leur respect relève de votre responsabilité.</string>
+</resources>

@@ -1,0 +1,8 @@
+# The module scripts run on the phone: they must keep LF line endings on every OS.
+* text=auto eol=lf
+*.bat text eol=crlf
+
+*.jar binary
+*.wav binary
+*.apk binary
+*.zip binary

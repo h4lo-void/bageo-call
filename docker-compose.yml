@@ -1,0 +1,30 @@
+# Optional: run the agent in Docker (see the comments in Dockerfile).
+#
+#   cp .env.example .env      # set CALLS_UI_TOKEN and DEVICE_TOKEN
+#   docker compose up -d --build
+#
+# The web console is then at http://<this-host>:8787/?token=<CALLS_UI_TOKEN>
+# and phones connect to ws://<this-host>:8787/ws?token=<DEVICE_TOKEN>.
+services:
+  agent:
+    build: .
+    image: myna-call-agent
+    container_name: myna-call
+    restart: unless-stopped
+    ports:
+      # Bind to one address of the host (e.g. "192.168.1.20:8787:8787") to keep
+      # it off other networks.
+      - "8787:8787"
+    environment:
+      # Inside a container the agent is reachable from the network: both
+      # tokens are required here.
+      CALLS_UI_TOKEN: ${CALLS_UI_TOKEN:?set CALLS_UI_TOKEN in .env}
+      DEVICE_TOKEN: ${DEVICE_TOKEN:?set DEVICE_TOKEN in .env}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      CALLS_RETENTION_DAYS: ${CALLS_RETENTION_DAYS:-7}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - calls_data:/data/calls
+
+volumes:
+  calls_data:

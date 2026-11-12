@@ -1,0 +1,23 @@
+* text=auto
+
+# Scripts that run on macOS / Linux / Android must keep LF line endings.
+*.sh text eol=lf
+*.command text eol=lf
+gradlew text eol=lf
+android/magisk/** text eol=lf
+*.rs text eol=lf
+*.md text eol=lf
+*.html text eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+
+# Windows launchers.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary
+*.wav binary
+*.jar binary
+*.apk binary
+*.png binary

@@ -1,0 +1,8 @@
+-keep class com.pixelcallai.streamer.** { *; }
+-keepclassmembers class com.pixelcallai.streamer.** { *; }
+-keep class kotlin.** { *; }
+-keep class kotlin.Metadata { *; }
+-dontwarn kotlin.**
+-dontwarn org.java_websocket.**
+-dontwarn de.robv.android.xposed.**
+-keepattributes *Annotation*,InnerClasses,Signature,EnclosingMethod

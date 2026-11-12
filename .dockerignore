@@ -1,0 +1,10 @@
+target
+data
+android
+docs
+tools
+platform-tools
+.git
+.github
+.env
+*.md

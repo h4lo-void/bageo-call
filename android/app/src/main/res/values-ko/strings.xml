@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Myna</string>
+
+    <!-- Notifications -->
+    <string name="notification_title">Myna</string>
+    <string name="notification_text_armed">대기 중입니다. 전화를 기다리고 있으며 휴대전화는 무음 상태를 유지합니다.</string>
+    <string name="notification_text_in_call">AI가 통화를 처리하고 있습니다.</string>
+    <string name="notification_text_disabled">AI 응답이 일시중지되었습니다.</string>
+    <string name="uplink_missing_title">상대방이 AI 음성을 들을 수 없습니다</string>
+    <string name="uplink_missing_text">통화 오디오 경로를 사용할 수 없습니다. Myna 모듈이 설치되고 사용 설정되어 있는지 확인한 후 다시 시작하세요.</string>
+
+    <!-- Header -->
+    <string name="header_version">버전 %1$s(%2$d)</string>
+    <string name="header_device">%1$s · Android %2$s(API %3$d)</string>
+    <string name="header_compat">Pixel 7, 7a, 8, 9에서 테스트했습니다. 루팅된 다른 휴대전화에서도 동작할 수 있지만, 위험은 본인이 부담해야 합니다.</string>
+
+    <!-- Master switch and service -->
+    <string name="ai_switch_title">AI 응답</string>
+    <string name="ai_switch_desc">켜면 걸려 오는 전화를 소리 없이 받아 PC에서 실행 중인 AI가 처리합니다.</string>
+    <string name="service_running">서비스: 실행 중</string>
+    <string name="service_stopped">서비스: 중지됨</string>
+    <string name="btn_start_service">서비스 시작</string>
+    <string name="btn_stop_service">서비스 중지</string>
+    <string name="msg_service_started">서비스를 시작했습니다.</string>
+    <string name="msg_service_stopped">서비스를 중지했습니다.</string>
+    <string name="grant_perms">요청된 권한을 허용한 다음 \'서비스 시작\'을 다시 탭하세요.</string>
+
+    <!-- Checklist -->
+    <string name="section_checklist">설정 체크리스트</string>
+    <string name="status_ok">정상</string>
+    <string name="status_missing">미완료</string>
+    <string name="status_check">확인 필요</string>
+
+    <string name="check_priv_title">권한 있는 시스템 앱으로 설치됨</string>
+    <string name="check_priv_ok">설치 위치: %1$s</string>
+    <string name="check_priv_missing">일반 앱으로 설치되어 있습니다(%1$s). Magisk 또는 KernelSU에서 Myna 모듈을 설치하고 다시 시작하세요. APK를 직접 설치한 적이 있다면 그 앱은 제거하세요.</string>
+
+    <string name="check_privperm_title">시스템 전용 권한</string>
+    <string name="check_privperm_desc">부팅할 때 모듈이 부여합니다. 이 화면에서는 부여할 수 없습니다.</string>
+    <string name="perm_capture_audio_output">통화 오디오 캡처</string>
+    <string name="perm_modify_phone_state">AI 음성을 통화에 전달</string>
+    <string name="perm_control_incall">통화 화면 대체</string>
+
+    <string name="section_runtime_perms">앱 권한</string>
+    <string name="perm_record_audio">마이크: 통화 오디오 녹음</string>
+    <string name="perm_read_phone_state">전화: 통화 시작과 종료 감지</string>
+    <string name="perm_read_call_log">통화 기록: 발신자 번호 읽기</string>
+    <string name="perm_answer_calls">전화 받기: 자동으로 받고 끊기</string>
+    <string name="perm_call_phone">전화 걸기: 콜백 기능</string>
+    <string name="perm_post_notifications">알림: 서비스 알림 표시</string>
+    <string name="btn_grant">권한 허용</string>
+    <string name="msg_perm_settings">일부 권한은 더 이상 여기에서 요청할 수 없습니다. 앱의 시스템 설정 화면에서 허용해 주세요.</string>
+
+    <string name="section_system_settings">시스템 설정</string>
+    <string name="check_dialer_title">기본 전화 앱</string>
+    <string name="check_dialer_desc">통화 화면을 표시하지 않고 전화를 받을 수 있게 합니다.</string>
+    <string name="check_screening_title">통화 선별 앱</string>
+    <string name="check_screening_desc">걸려 오는 전화의 벨소리를 울리지 않게 합니다.</string>
+    <string name="btn_set">설정</string>
+    <string name="check_dnd_title">방해 금지 모드 액세스</string>
+    <string name="check_dnd_desc">자동 응답기로 동작하는 동안 휴대전화를 조용하게 유지합니다.</string>
+    <string name="btn_open_settings">설정 열기</string>
+    <string name="check_battery_title">배터리 최적화 제외</string>
+    <string name="check_battery_desc">Android가 서비스를 절전 상태로 전환하지 않도록 합니다.</string>
+    <string name="btn_allow">허용</string>
+    <string name="check_uplink_title">통화에 AI 음성 주입</string>
+    <string name="check_uplink_ok">전화 오디오 출력을 찾았습니다.</string>
+    <string name="check_uplink_idle">지금은 보이지 않습니다. 일부 기기에서는 통화 중에만 나타납니다. 주입에 실패하면 앱이 알려 줍니다.</string>
+    <string name="check_uplink_missing">모듈이 필요합니다. MODIFY_PHONE_STATE 권한이 없습니다.</string>
+
+    <!-- Connection -->
+    <string name="section_connection">연결</string>
+    <string name="agent_url_label">에이전트 주소</string>
+    <string name="connection_hint_usb">USB(기본값, 권장): ws://127.0.0.1:8765를 그대로 두세요. PC 프로그램이 adb reverse로 이 포트를 USB 케이블을 통해 자동으로 전달합니다.</string>
+    <string name="connection_hint_wifi">Wi-Fi: PC 프로그램에 표시된 주소를 입력하세요(예: ws://192.0.2.10:8787/ws?token=…). 휴대전화와 PC가 같은 네트워크에 있어야 합니다.</string>
+    <string name="btn_save">저장</string>
+    <string name="btn_reset_usb">USB 기본값으로 재설정</string>
+    <string name="btn_test">연결 테스트</string>
+    <string name="msg_url_invalid">주소는 ws:// 또는 wss://로 시작하고 호스트를 포함해야 합니다.</string>
+    <string name="msg_url_saved">저장했습니다.</string>
+    <string name="msg_url_saved_restarted">저장했습니다. 새 주소를 사용하도록 서비스를 다시 시작했습니다.</string>
+    <string name="msg_url_saved_pending">저장했습니다. 새 주소를 사용하려면 통화 중이 아닐 때 \'서비스 중지\'를 탭한 다음 \'서비스 시작\'을 탭하세요.</string>
+    <string name="test_running">연결 중…</string>
+    <string name="test_ok">연결됨</string>
+    <string name="test_failed">실패: %1$s</string>
+    <string name="test_timeout">5초 안에 응답이 없습니다</string>
+    <string name="test_closed">연결이 종료되었습니다(코드 %1$d)</string>
+
+    <!-- About and safety -->
+    <string name="section_about">정보 및 안전</string>
+    <string name="about_dedicated">전용 휴대전화를 사용하세요. 모듈이 전화 앱을 대신하고 벨소리를 끄며 방해 금지 모드를 켜므로, 일반 휴대전화로는 더 이상 사용할 수 없습니다.</string>
+    <string name="about_rollback">일반 휴대전화로 되돌리려면 Magisk 또는 KernelSU에서 모듈을 사용 중지하거나 삭제한 다음 다시 시작하세요. 그 후에도 Google 전화 앱이나 벨소리가 꺼져 있으면 README의 복구 절차를 따르세요.</string>
+    <string name="about_legal">통화 녹음과, 상대방에게 AI와 통화 중임을 알려야 하는지에 관한 법률은 국가와 지역마다 다릅니다. 법규 준수는 사용자의 책임입니다.</string>
+</resources>

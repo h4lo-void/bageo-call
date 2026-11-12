@@ -1,0 +1,6 @@
+#!/system/bin/sh
+# Marker + helper for RootFifoUplinkInjector / probes.
+# Real-time path is TelephonyUplinkInjector inside the priv-app APK.
+# This script can stage PCM for debugging: cat >> /data/local/tmp/pixelcallai_uplink.pcm
+echo "pixelcallai_uplink inject helper present"
+exit 0

@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Setup / status dashboard. Framework widgets only (no AppCompat / Material). -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingTop="20dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="32dp">
+
+        <!-- Header -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/app_name"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textSize="26sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/headerVersion"
+            style="@style/PcaBody" />
+
+        <TextView
+            android:id="@+id/headerDevice"
+            style="@style/PcaBody"
+            android:layout_marginTop="0dp" />
+
+        <TextView
+            style="@style/PcaBody"
+            android:text="@string/header_compat" />
+
+        <View style="@style/PcaDivider" />
+
+        <!-- Master switch + service -->
+        <Switch
+            android:id="@+id/switchAi"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:minHeight="48dp"
+            android:text="@string/ai_switch_title"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            style="@style/PcaBody"
+            android:layout_marginTop="0dp"
+            android:text="@string/ai_switch_desc" />
+
+        <TextView
+            android:id="@+id/serviceStatus"
+            style="@style/PcaBody"
+            android:layout_marginTop="10dp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnStart"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/btn_start_service" />
+
+            <Button
+                android:id="@+id/btnStop"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/btn_stop_service" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/status"
+            style="@style/PcaBody"
+            android:textIsSelectable="true"
+            android:visibility="gone" />
+
+        <View style="@style/PcaDivider" />
+
+        <!-- Checklist -->
+        <TextView
+            style="@style/PcaSectionTitle"
+            android:text="@string/section_checklist" />
+
+        <include
+            android:id="@+id/rowPriv"
+            layout="@layout/item_check" />
+
+        <TextView
+            style="@style/PcaSubTitle"
+            android:text="@string/check_privperm_title" />
+
+        <TextView
+            style="@style/PcaBody"
+            android:text="@string/check_privperm_desc" />
+
+        <include
+            android:id="@+id/rowPermCapture"
+            layout="@layout/item_check" />
+
+        <include
+            android:id="@+id/rowPermModifyPhone"
+            layout="@layout/item_check" />
+
+        <include
+            android:id="@+id/rowPermInCall"
+            layout="@layout/item_check" />
+
+        <TextView
+            style="@style/PcaSubTitle"
+            android:text="@string/section_runtime_perms" />
+
+        <include
+            android:id="@+id/rowPermRecordAudio"
+            layout="@layout/item_check" />
+
+        <include
+            android:id="@+id/rowPermPhoneState"
+            layout="@layout/item_check" />
+
+        <include
+            android:id="@+id/rowPermCallLog"
+            layout="@layout/item_check" />
+
+        <include
+            android:id="@+id/rowPermAnswerCalls"
+            layout="@layout/item_check" />
+
+        <include
+            android:id="@+id/rowPermCallPhone"
+            layout="@layout/item_check" />
+
+        <include
+            android:id="@+id/rowPermNotifications"
+            layout="@layout/item_check" />
+
+        <Button
+            android:id="@+id/btnGrant"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="28dp"
+            android:text="@string/btn_grant" />
+
+        <TextView
+            style="@style/PcaSubTitle"
+            android:text="@string/section_system_settings" />
+
+        <include
+            android:id="@+id/rowDialer"
+            layout="@layout/item_check" />
+
+        <include
+            android:id="@+id/rowScreening"
+            layout="@layout/item_check" />
+
+        <include
+            android:id="@+id/rowDnd"
+            layout="@layout/item_check" />
+
+        <include
+            android:id="@+id/rowBattery"
+            layout="@layout/item_check" />
+
+        <include
+            android:id="@+id/rowUplink"
+            layout="@layout/item_check" />
+
+        <View style="@style/PcaDivider" />
+
+        <!-- Connection -->
+        <TextView
+            style="@style/PcaSectionTitle"
+            android:text="@string/section_connection" />
+
+        <TextView
+            style="@style/PcaSubTitle"
+            android:labelFor="@+id/agentUrl"
+            android:text="@string/agent_url_label" />
+
+        <EditText
+            android:id="@+id/agentUrl"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:importantForAutofill="no"
+            android:inputType="textUri|textNoSuggestions"
+            android:maxLines="1"
+            android:minHeight="48dp"
+            android:textSize="15sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnSaveUrl"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/btn_save" />
+
+            <Button
+                android:id="@+id/btnResetUrl"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/btn_reset_usb" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/urlMessage"
+            style="@style/PcaBody"
+            android:visibility="gone" />
+
+        <TextView
+            style="@style/PcaBody"
+            android:layout_marginTop="10dp"
+            android:text="@string/connection_hint_usb" />
+
+        <TextView
+            style="@style/PcaBody"
+            android:layout_marginTop="6dp"
+            android:text="@string/connection_hint_wifi" />
+
+        <Button
+            android:id="@+id/btnTest"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/btn_test" />
+
+        <TextView
+            android:id="@+id/testResult"
+            style="@style/PcaBody"
+            android:textIsSelectable="true"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <View style="@style/PcaDivider" />
+
+        <!-- About / safety -->
+        <TextView
+            style="@style/PcaSectionTitle"
+            android:text="@string/section_about" />
+
+        <TextView
+            style="@style/PcaBody"
+            android:layout_marginTop="8dp"
+            android:text="@string/about_dedicated" />
+
+        <TextView
+            style="@style/PcaBody"
+            android:layout_marginTop="8dp"
+            android:text="@string/about_rollback" />
+
+        <TextView
+            style="@style/PcaBody"
+            android:layout_marginTop="8dp"
+            android:text="@string/about_legal" />
+    </LinearLayout>
+</ScrollView>
