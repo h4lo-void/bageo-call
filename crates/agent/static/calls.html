@@ -831,6 +831,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
               <button type="button" class="btn sm" id="btnCopyUrl"><svg class="i sm"><use href="#i-copy"/></svg><span data-i18n="cu_copy"></span></button>
             </div>
             <p class="help" id="sysUrlHelp"></p>
+            <p class="help" id="sysUrlIp" hidden><span data-i18n="cu_ip"></span> <a id="sysUrlIpLink" class="mono" target="_blank" rel="noopener"></a></p>
             <div class="a2hs" id="a2hs">
               <b data-i18n="a2hs_title"></b>
               <button type="button" class="btn sm primary" id="btnInstall" hidden><svg class="i sm"><use href="#i-download"/></svg><span data-i18n="a2hs_install"></span></button>
@@ -1238,7 +1239,7 @@ I18N["en"] = {
   hint_apprise: "The notify URL of your Apprise API server, e.g. http://host:8000/notify/KEY. A tag limits which of its services get the message.",
   hint_webhook: "Any URL that accepts a JSON POST with event, title, body and data. Handy for n8n, Home Assistant or your own scripts.",
   f_public_url: "Address of this console",
-  f_public_url_h: "Used for the links in notifications, e.g. http://192.168.1.20:8787. Empty = automatic: the network name below (or this computer's network address) when the console is open to your network, no links otherwise.",
+  f_public_url_h: "Used for the links in notifications, e.g. http://192.168.1.20:8787. Empty = automatic: the network name below (or this computer's network address) when the console is open to your network, no links otherwise. In Docker nothing is filled in automatically: set it yourself.",
   use_this_url: "Use the address of this page: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "After each call the AI writes a short summary. It uses your Gemini key, so there is normally nothing to set up here.",
@@ -1331,6 +1332,7 @@ I18N["en"] = {
   a2hs_ios: "iPhone and iPad: Share → Add to Home Screen (Safari).",
   a2hs_android: "Android: Chrome menu ⋮ → Add to Home screen.",
   a2hs_desktop: "Computer: the install icon at the right of the address bar (Chrome, Edge).",
+  cu_ip: "Phones that cannot open .local addresses (some older Android phones) use:",
 };
 
 I18N["zh-TW"] = {
@@ -1672,7 +1674,7 @@ I18N["zh-TW"] = {
   hint_apprise: "你的 Apprise API 伺服器的通知網址，例如 http://host:8000/notify/KEY。標籤可以限定只傳給其中某些服務。",
   hint_webhook: "任何能接收 JSON POST 的網址，內容有 event、title、body 和 data。適合接 n8n、Home Assistant 或自己的程式。",
   f_public_url: "這個控制台的網址",
-  f_public_url_h: "通知裡的連結會用到，例如 http://192.168.1.20:8787。留空 = 自動：控制台對區網開放時，用下面的區網名稱（或這台電腦的區網 IP）；只有這台電腦能開時，通知不附連結。",
+  f_public_url_h: "通知裡的連結會用到，例如 http://192.168.1.20:8787。留空 = 自動：控制台對區網開放時，用下面的區網名稱（或這台電腦的區網 IP）；只有這台電腦能開時，通知不附連結。在 Docker 裡不會自動填，請自己設定。",
   use_this_url: "使用目前這個頁面的網址：{url}",
   // ---- settings: summary & calendar
   g_summary_d: "每通電話結束後，AI 會寫一段簡短的摘要。預設使用你的 Gemini 金鑰，通常不需要另外設定。",
@@ -1765,6 +1767,7 @@ I18N["zh-TW"] = {
   a2hs_ios: "iPhone、iPad：Safari 的「分享」→「加入主畫面」。",
   a2hs_android: "Android：Chrome 選單 ⋮ →「加到主畫面」。",
   a2hs_desktop: "電腦：Chrome、Edge 網址列右邊的安裝圖示。",
+  cu_ip: "打不開 .local 網址的手機（有些舊的 Android）請用：",
 };
 
 I18N["zh-CN"] = {
@@ -2106,7 +2109,7 @@ I18N["zh-CN"] = {
   hint_apprise: "你的 Apprise API 服务器的通知地址，例如 http://host:8000/notify/KEY。标签可以限定只发给其中某些服务。",
   hint_webhook: "任何能接收 JSON POST 的地址，内容包含 event、title、body 和 data。适合对接 n8n、Home Assistant 或自己的脚本。",
   f_public_url: "这个控制台的地址",
-  f_public_url_h: "通知里的链接会用到，例如 http://192.168.1.20:8787。留空 = 自动：控制台对局域网开放时，用下面的局域网名称（或这台电脑的局域网 IP）；只有这台电脑能打开时，通知不带链接。",
+  f_public_url_h: "通知里的链接会用到，例如 http://192.168.1.20:8787。留空 = 自动：控制台对局域网开放时，用下面的局域网名称（或这台电脑的局域网 IP）；只有这台电脑能打开时，通知不带链接。在 Docker 里不会自动填写，请自己设置。",
   use_this_url: "使用当前页面的地址：{url}",
   // ---- settings: summary & calendar
   g_summary_d: "每通电话结束后，AI 会写一段简短的摘要。默认使用你的 Gemini 密钥，通常不需要另外设置。",
@@ -2199,6 +2202,7 @@ I18N["zh-CN"] = {
   a2hs_ios: "iPhone、iPad：Safari 的“分享”→“添加到主屏幕”。",
   a2hs_android: "Android：Chrome 菜单 ⋮ →“添加到主屏幕”。",
   a2hs_desktop: "电脑：Chrome、Edge 地址栏右侧的安装图标。",
+  cu_ip: "打不开 .local 地址的手机（有些旧的 Android）请用：",
 };
 
 I18N["ja"] = {
@@ -2540,7 +2544,7 @@ I18N["ja"] = {
   hint_apprise: "Apprise API サーバーの通知 URL です（例：http://host:8000/notify/KEY）。タグを指定すると、送信先のサービスを絞り込めます。",
   hint_webhook: "event、title、body、data を含む JSON の POST を受け取れる URL なら何でも使えます。n8n、Home Assistant、自作スクリプトなどに便利です。",
   f_public_url: "このコンソールのアドレス",
-  f_public_url_h: "通知に入れるリンクに使います（例：http://192.168.1.20:8787）。空欄 = 自動：コンソールをネットワークに公開しているときは下のネットワーク名（またはこのPCのIPアドレス）、このPCでしか開けないときはリンクなし。",
+  f_public_url_h: "通知に入れるリンクに使います（例：http://192.168.1.20:8787）。空欄 = 自動：コンソールをネットワークに公開しているときは下のネットワーク名（またはこのPCのIPアドレス）、このPCでしか開けないときはリンクなし。Docker では自動で入らないので、自分で設定してください。",
   use_this_url: "このページのアドレスを使う：{url}",
   // ---- settings: summary & calendar
   g_summary_d: "通話が終わるたびに、AI が短い要約を書きます。Gemini のキーを使うので、通常ここで設定することはありません。",
@@ -2633,6 +2637,7 @@ I18N["ja"] = {
   a2hs_ios: "iPhone・iPad：Safari の「共有」→「ホーム画面に追加」。",
   a2hs_android: "Android：Chrome のメニュー ⋮ →「ホーム画面に追加」。",
   a2hs_desktop: "パソコン：Chrome・Edge のアドレスバー右側にあるインストールのアイコン。",
+  cu_ip: ".local のアドレスを開けないスマホ（古い Android など）はこちら：",
 };
 
 I18N["ko"] = {
@@ -2974,7 +2979,7 @@ I18N["ko"] = {
   hint_apprise: "Apprise API 서버의 알림 URL입니다(예: http://host:8000/notify/KEY). 태그를 지정하면 일부 서비스로만 보낼 수 있습니다.",
   hint_webhook: "event, title, body, data가 담긴 JSON POST를 받을 수 있는 URL이면 됩니다. n8n, Home Assistant, 직접 만든 스크립트에 연결할 때 편리합니다.",
   f_public_url: "이 콘솔의 주소",
-  f_public_url_h: "알림에 넣는 링크에 사용합니다(예: http://192.168.1.20:8787). 비워 두면 자동: 콘솔이 네트워크에 열려 있으면 아래 네트워크 이름(또는 이 컴퓨터의 네트워크 주소), 이 컴퓨터에서만 열 수 있으면 링크를 넣지 않습니다.",
+  f_public_url_h: "알림에 넣는 링크에 사용합니다(예: http://192.168.1.20:8787). 비워 두면 자동: 콘솔이 네트워크에 열려 있으면 아래 네트워크 이름(또는 이 컴퓨터의 네트워크 주소), 이 컴퓨터에서만 열 수 있으면 링크를 넣지 않습니다. Docker에서는 자동으로 채워지지 않으니 직접 설정하세요.",
   use_this_url: "지금 이 페이지의 주소 사용: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "통화가 끝날 때마다 AI가 짧은 요약을 씁니다. Gemini 키를 사용하므로 보통은 따로 설정할 것이 없습니다.",
@@ -3067,6 +3072,7 @@ I18N["ko"] = {
   a2hs_ios: "iPhone·iPad: Safari의 공유 → 홈 화면에 추가.",
   a2hs_android: "Android: Chrome 메뉴 ⋮ → 홈 화면에 추가.",
   a2hs_desktop: "컴퓨터: Chrome·Edge 주소창 오른쪽의 설치 아이콘.",
+  cu_ip: ".local 주소를 열 수 없는 휴대폰(일부 오래된 Android)은 이 주소를 쓰세요:",
 };
 
 I18N["es"] = {
@@ -3408,7 +3414,7 @@ I18N["es"] = {
   hint_apprise: "La URL de notificación de tu servidor Apprise API, p. ej. http://host:8000/notify/KEY. Una etiqueta limita qué servicios reciben el mensaje.",
   hint_webhook: "Cualquier URL que acepte un POST en JSON con event, title, body y data. Útil para n8n, Home Assistant o tus propios scripts.",
   f_public_url: "Dirección de esta consola",
-  f_public_url_h: "Se usa para los enlaces de las notificaciones, p. ej. http://192.168.1.20:8787. Vacío = automático: el nombre en la red de abajo (o la dirección de este equipo en la red) cuando la consola está abierta a tu red; si solo este equipo puede abrirla, sin enlaces.",
+  f_public_url_h: "Se usa para los enlaces de las notificaciones, p. ej. http://192.168.1.20:8787. Vacío = automático: el nombre en la red de abajo (o la dirección de este equipo en la red) cuando la consola está abierta a tu red; si solo este equipo puede abrirla, sin enlaces. En Docker no se rellena solo: configúrala tú.",
   use_this_url: "Usar la dirección de esta página: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Después de cada llamada, la IA escribe un breve resumen. Usa tu clave de Gemini, así que normalmente no hay nada que configurar aquí.",
@@ -3501,6 +3507,7 @@ I18N["es"] = {
   a2hs_ios: "iPhone y iPad: Compartir → Añadir a pantalla de inicio (Safari).",
   a2hs_android: "Android: menú ⋮ de Chrome → Añadir a pantalla de inicio.",
   a2hs_desktop: "Ordenador: el icono de instalar a la derecha de la barra de direcciones (Chrome, Edge).",
+  cu_ip: "Teléfonos que no abren direcciones .local (algunos Android antiguos):",
 };
 
 I18N["fr"] = {
@@ -3842,7 +3849,7 @@ I18N["fr"] = {
   hint_apprise: "L'URL de notification de votre serveur Apprise API, ex. http://host:8000/notify/KEY. Une étiquette limite les services qui reçoivent le message.",
   hint_webhook: "N'importe quelle URL qui accepte un POST JSON contenant event, title, body et data. Pratique pour n8n, Home Assistant ou vos propres scripts.",
   f_public_url: "Adresse de cette console",
-  f_public_url_h: "Sert aux liens dans les notifications, ex. http://192.168.1.20:8787. Vide = automatique : le nom sur le réseau ci-dessous (ou l'adresse de cet ordinateur sur le réseau) quand la console est ouverte à votre réseau ; sinon pas de liens.",
+  f_public_url_h: "Sert aux liens dans les notifications, ex. http://192.168.1.20:8787. Vide = automatique : le nom sur le réseau ci-dessous (ou l'adresse de cet ordinateur sur le réseau) quand la console est ouverte à votre réseau ; sinon pas de liens. Dans Docker, rien n'est rempli automatiquement : indiquez-la vous-même.",
   use_this_url: "Utiliser l'adresse de cette page : {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Après chaque appel, l'IA rédige un court résumé. Elle utilise votre clé Gemini : en général, il n'y a rien à configurer ici.",
@@ -3935,6 +3942,7 @@ I18N["fr"] = {
   a2hs_ios: "iPhone et iPad : Partager → Sur l'écran d'accueil (Safari).",
   a2hs_android: "Android : menu ⋮ de Chrome → Ajouter à l'écran d'accueil.",
   a2hs_desktop: "Ordinateur : l'icône d'installation à droite de la barre d'adresse (Chrome, Edge).",
+  cu_ip: "Téléphones qui n'ouvrent pas les adresses .local (certains anciens Android) :",
 };
 
 I18N["de"] = {
@@ -4276,7 +4284,7 @@ I18N["de"] = {
   hint_apprise: "Die Notify-URL deines Apprise-API-Servers, z. B. http://host:8000/notify/KEY. Ein Tag begrenzt, welche Dienste die Nachricht bekommen.",
   hint_webhook: "Jede URL, die einen JSON-POST mit event, title, body und data annimmt. Praktisch für n8n, Home Assistant oder eigene Skripte.",
   f_public_url: "Adresse dieser Konsole",
-  f_public_url_h: "Wird für die Links in Benachrichtigungen verwendet, z. B. http://192.168.1.20:8787. Leer = automatisch: der Netzwerkname unten (oder die Netzwerkadresse dieses Computers), wenn die Konsole im Netzwerk erreichbar ist; sonst keine Links.",
+  f_public_url_h: "Wird für die Links in Benachrichtigungen verwendet, z. B. http://192.168.1.20:8787. Leer = automatisch: der Netzwerkname unten (oder die Netzwerkadresse dieses Computers), wenn die Konsole im Netzwerk erreichbar ist; sonst keine Links. In Docker wird nichts automatisch eingetragen: bitte selbst setzen.",
   use_this_url: "Adresse dieser Seite verwenden: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Nach jedem Anruf schreibt die KI eine kurze Zusammenfassung. Dafür wird dein Gemini-Schlüssel verwendet – normalerweise musst du hier nichts einrichten.",
@@ -4369,6 +4377,7 @@ I18N["de"] = {
   a2hs_ios: "iPhone und iPad: Teilen → Zum Home-Bildschirm (Safari).",
   a2hs_android: "Android: Chrome-Menü ⋮ → Zum Startbildschirm hinzufügen.",
   a2hs_desktop: "Computer: das Installationssymbol rechts in der Adressleiste (Chrome, Edge).",
+  cu_ip: "Handys, die keine .local-Adressen öffnen (manche ältere Android-Geräte):",
 };
 
 I18N["pt"] = {
@@ -4710,7 +4719,7 @@ I18N["pt"] = {
   hint_apprise: "A URL de notificação do seu servidor Apprise API, ex.: http://host:8000/notify/KEY. Uma tag limita quais serviços recebem a mensagem.",
   hint_webhook: "Qualquer URL que aceite um POST em JSON com event, title, body e data. Útil para n8n, Home Assistant ou seus próprios scripts.",
   f_public_url: "Endereço deste console",
-  f_public_url_h: "Usado nos links das notificações, ex.: http://192.168.1.20:8787. Em branco = automático: o nome na rede abaixo (ou o endereço deste computador na rede) quando o console está aberto à sua rede; sem links quando só este computador consegue abri-lo.",
+  f_public_url_h: "Usado nos links das notificações, ex.: http://192.168.1.20:8787. Em branco = automático: o nome na rede abaixo (ou o endereço deste computador na rede) quando o console está aberto à sua rede; sem links quando só este computador consegue abri-lo. No Docker nada é preenchido automaticamente: defina você mesmo.",
   use_this_url: "Usar o endereço desta página: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Depois de cada chamada, a IA escreve um resumo curto. Ela usa a sua chave do Gemini, então normalmente não há nada para configurar aqui.",
@@ -4803,6 +4812,7 @@ I18N["pt"] = {
   a2hs_ios: "iPhone e iPad: Compartilhar → Adicionar à Tela de Início (Safari).",
   a2hs_android: "Android: menu ⋮ do Chrome → Adicionar à tela inicial.",
   a2hs_desktop: "Computador: o ícone de instalar à direita da barra de endereços (Chrome, Edge).",
+  cu_ip: "Celulares que não abrem endereços .local (alguns Android antigos):",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word
@@ -5708,6 +5718,7 @@ $("btnBlock").addEventListener("click", async () => {
 let S = null;            // settings as the agent last sent them
 let storagePath = "";
 let consoleUrl = "";     // the console's address for other devices ("" = this computer only)
+let consoleIpUrl = "";   // the same at the LAN IP, for phones that cannot open .local names
 const form = $("setForm");
 const fieldEls = () => Array.from(form.querySelectorAll("[data-k]"));
 
@@ -5719,6 +5730,7 @@ async function loadSettings() {
     S = d.settings || {};
     storagePath = d.storage_path || "";
     consoleUrl = d.console_url || "";
+    consoleIpUrl = d.console_ip_url || "";
     $("setLoading").hidden = true;
     $("setGrid").hidden = false;
     populate();
@@ -6065,6 +6077,7 @@ async function saveSettings() {
     S = d.settings || S;
     storagePath = d.storage_path || storagePath;
     if ("console_url" in d) consoleUrl = d.console_url || "";
+    if ("console_ip_url" in d) consoleIpUrl = d.console_ip_url || "";
     populate();
     const srv = matchLang(S.language);
     if (srv) store.set("pca.srvlang", srv);
@@ -6384,6 +6397,11 @@ function renderConsoleUrl() {
   help.dataset.i18n = localOnly ? "cu_local" : "cu_qr_h";
   help.textContent = t(help.dataset.i18n);
   help.hidden = !localOnly && canvas.hidden;
+  // Under a .local address, the LAN IP too (some older Android phones cannot open .local names).
+  const viaName = /^https?:\/\/[^/:]+\.local(:\d+)?\//i.test(shown);
+  $("sysUrlIp").hidden = !(viaName && consoleIpUrl && consoleIpUrl !== shown);
+  $("sysUrlIpLink").textContent = consoleIpUrl;
+  $("sysUrlIpLink").href = consoleIpUrl || "#";
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
   $("a2hs").hidden = standalone;
   $("btnInstall").hidden = !installEvt;

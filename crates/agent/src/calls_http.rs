@@ -832,6 +832,7 @@ async fn settings_get(
         "settings": state.settings_store.masked_json(),
         "storage_path": state.settings_store.storage_path().display().to_string(),
         "console_url": console_url(&state),
+        "console_ip_url": console_ip_url(&state),
     }))
     .into_response()
 }
@@ -839,6 +840,11 @@ async fn settings_get(
 /// The console's address as other devices open it (empty: this computer only).
 fn console_url(state: &CallsState) -> String {
     crate::settings_store::effective_console_url(&state.settings_store.snapshot().effective(&state.settings))
+}
+
+/// The same at the LAN IP, for phones that cannot open `.local` names.
+fn console_ip_url(state: &CallsState) -> String {
+    crate::settings_store::lan_console_url(&state.settings_store.snapshot().effective(&state.settings))
 }
 
 /// JSON patch of runtime settings. Secret fields: absent/"" keeps the stored
@@ -890,6 +896,7 @@ async fn settings_put(
                 "settings": state.settings_store.masked_json(),
                 "storage_path": state.settings_store.storage_path().display().to_string(),
                 "console_url": console_url(&state),
+                "console_ip_url": console_ip_url(&state),
             }))
             .into_response()
         }

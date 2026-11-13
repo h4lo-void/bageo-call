@@ -143,9 +143,10 @@ every message goes to all of them. Per-service instructions:
 For the links in notifications to open the call, open the console to your
 network — see
 [Using it from other devices](SETTINGS.md#using-the-console-from-other-devices).
-The links then point to `http://myna.local:8787/` (or the computer's network
-address) by themselves; set **Address of this console** only when you reach
-the computer some other way (a VPN name, a reverse proxy, Docker).
+The links then point to `http://myna.local:8787/` when the agent can answer
+that name, otherwise to the computer's network address; *System → About*
+shows which one, with a QR code. Set **Address of this console** only when you
+reach the computer some other way (a VPN name, a reverse proxy, Docker).
 
 On your phone, open *System* in the console on the computer: *About* shows the
 console's address with a QR code. Scan it, then add the page to the home

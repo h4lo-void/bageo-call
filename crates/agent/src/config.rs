@@ -325,7 +325,8 @@ pub struct Settings {
     /// Address of the web console for links in notifications (`PUBLIC_URL`).
     pub public_url: String,
     /// Name this computer answers to on the LAN, `<name>.local` (`MDNS_NAME`,
-    /// default `myna`; empty = off). Only while the agent is open to the LAN.
+    /// default `myna`; empty, `off`, `0`, `none` or `false` = off). Only while the
+    /// agent is open to the LAN.
     pub mdns_name: String,
     /// OpenAI-compatible endpoint for the post-call summary (`SUMMARY_API_BASE`).
     pub summary_api_base: String,
@@ -481,7 +482,7 @@ impl Settings {
             },
             notify_channels: Vec::new(),
             public_url: env_or("PUBLIC_URL", ""),
-            mdns_name: crate::mdns::sanitize_name(&env_or("MDNS_NAME", "myna")),
+            mdns_name: crate::mdns::parse_name_setting(&env_or("MDNS_NAME", "myna")),
             summary_api_base: env_or("SUMMARY_API_BASE", ""),
             summary_model: env_or("SUMMARY_MODEL", ""),
             gemini_api_key: env_or("GEMINI_API_KEY", "").into(),

@@ -183,15 +183,21 @@ EOF
   fi
 }
 if [ "$no_shortcut" -eq 0 ]; then
+  # Ask the agent where it listens: 127.0.0.1 unless AGENT_HOST names one address.
+  case "${AGENT_HOST:-}" in
+    ''|0.0.0.0|::) probe_host=127.0.0.1 ;;
+    *:*) probe_host="[${AGENT_HOST}]" ;;
+    *) probe_host=$AGENT_HOST ;;
+  esac
   (
     i=0
     while [ "$i" -lt 60 ]; do
       sleep 2
       i=$((i + 1))
       if command -v curl >/dev/null 2>&1; then
-        curl -fsS -o /dev/null --max-time 2 "http://127.0.0.1:$port/health" 2>/dev/null || continue
+        curl -fsS -o /dev/null --max-time 2 "http://$probe_host:$port/health" 2>/dev/null || continue
       elif command -v wget >/dev/null 2>&1; then
-        wget -q -O /dev/null -T 2 "http://127.0.0.1:$port/health" 2>/dev/null || continue
+        wget -q -O /dev/null -T 2 "http://$probe_host:$port/health" 2>/dev/null || continue
       fi
       make_shortcut || true
       break

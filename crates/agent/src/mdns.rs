@@ -3,10 +3,11 @@
 //! this machine's IP address.
 //!
 //! Deliberately tiny: one IPv4 address record, no service discovery, no name
-//! conflict probing, only `std::net::UdpSocket`. When UDP port 5353 is
-//! already taken (Bonjour on macOS, avahi on Linux, the DNS client on
-//! Windows) it logs one line and stays off; the console address then falls
-//! back to the LAN IP (see `settings_store::effective_console_url`).
+//! conflict probing. It shares UDP port 5353 with the system's own responder
+//! (Bonjour on macOS, avahi on Linux, the DNS client on Windows) through
+//! SO_REUSEADDR / SO_REUSEPORT. When the port still cannot be had it logs one
+//! line and stays off; the console address then falls back to the LAN IP (see
+//! `settings_store::effective_console_url`).
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -30,6 +31,8 @@ const TTL_SECS: u32 = 120;
 const LEGACY_TTL_SECS: u32 = 10;
 /// A query names at most this many questions / known answers we look at.
 const MAX_ENTRIES: u16 = 64;
+/// Wait between tries when the network is not ready yet.
+const RETRY: Duration = Duration::from_secs(30);
 
 /// True while the responder holds UDP 5353 and answers.
 static ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -51,6 +54,17 @@ pub fn sanitize_name(raw: &str) -> String {
         .take(63)
         .collect();
     cleaned.trim_matches('-').to_string()
+}
+
+/// The network name setting as written (environment, `.env`, web console):
+/// `off`, `0`, `none` and `false` (any case) turn it off like an empty value (on
+/// Windows an empty variable counts as not set, which would mean the
+/// default); anything else goes through [`sanitize_name`].
+pub fn parse_name_setting(raw: &str) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "off" | "0" | "none" | "false" => String::new(),
+        _ => sanitize_name(raw),
+    }
 }
 
 /// This machine's address on the LAN: the source address the system would use
@@ -102,8 +116,9 @@ fn run<F: Fn() -> String>(listen: IpAddr, name: F) {
     let mut sock: Option<UdpSocket> = None;
     let mut buf = vec![0u8; 9000];
     let group = SocketAddr::V4(SocketAddrV4::new(GROUP, PORT));
+    let mut failed_before = false;
     loop {
-        let host = sanitize_name(&name());
+        let host = parse_name_setting(&name());
         if host.is_empty() {
             if sock.take().is_some() {
                 ACTIVE.store(false, Ordering::Relaxed);
@@ -116,6 +131,7 @@ fn run<F: Fn() -> String>(listen: IpAddr, name: F) {
             match open(listen) {
                 Ok(s) => {
                     ACTIVE.store(true, Ordering::Relaxed);
+                    failed_before = false;
                     info!("mDNS: this computer answers as {host}.local");
                     // Announce once so caches that saw an older address update.
                     if let Some(ip) = answer_ip(listen) {
@@ -123,11 +139,22 @@ fn run<F: Fn() -> String>(listen: IpAddr, name: F) {
                     }
                     sock = Some(s);
                 }
-                Err(e) => {
+                Err((_, e)) if e.kind() == std::io::ErrorKind::AddrInUse => {
                     warn!(
-                        "mDNS: UDP port 5353 is not available ({e}); {host}.local will not work, open the console by its IP address"
+                        "mDNS: UDP port 5353 is held by a program that does not share it ({e}); {host}.local will not work, open the console by its IP address"
                     );
                     return;
+                }
+                Err((step, e)) => {
+                    // Typically the network is not up yet (started at boot).
+                    if failed_before {
+                        debug!("mDNS: could not {step} ({e}); trying again in 30 s");
+                    } else {
+                        warn!("mDNS: could not {step} ({e}); trying again every 30 s");
+                    }
+                    failed_before = true;
+                    std::thread::sleep(RETRY);
+                    continue;
                 }
             }
         }
@@ -156,7 +183,13 @@ fn run<F: Fn() -> String>(listen: IpAddr, name: F) {
         let Some(ask) = match_query(&buf[..n], &host, from.port()) else {
             continue;
         };
-        let Some(ip) = answer_ip(listen) else {
+        let ours = answer_ip(listen);
+        // RFC 6762 §11: answer only this network, never anyone further away.
+        if !on_link(from.ip(), ours) {
+            debug!("mDNS: ignored a query from {from}, not on this network");
+            continue;
+        }
+        let Some(ip) = ours else {
             continue;
         };
         let reply = build_response(&host, ip, ask.legacy_id);
@@ -167,15 +200,61 @@ fn run<F: Fn() -> String>(listen: IpAddr, name: F) {
     }
 }
 
-fn open(listen: IpAddr) -> std::io::Result<UdpSocket> {
-    let sock = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, PORT))?;
+/// Whether a query comes from this network (RFC 6762 §11). std cannot list
+/// the interfaces and their netmasks, so this is an approximation: private
+/// (10/8, 172.16/12, 192.168/16), link-local and loopback addresses, plus the
+/// /24 of our own address (for LANs numbered from public ranges). Everything
+/// else, e.g. a query arriving from the internet through a forwarded port,
+/// is dropped.
+fn on_link(src: IpAddr, ours: Option<Ipv4Addr>) -> bool {
+    let IpAddr::V4(src) = src else {
+        return false;
+    };
+    src.is_private()
+        || src.is_link_local()
+        || src.is_loopback()
+        || ours.is_some_and(|o| o.octets()[..3] == src.octets()[..3])
+}
+
+/// The socket on UDP 5353, shared with the system's responder. The error
+/// says which step failed.
+fn open(listen: IpAddr) -> Result<UdpSocket, (&'static str, std::io::Error)> {
+    use socket2::{Domain, Protocol, Socket, Type};
+    let sock = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))
+        .map_err(|e| ("open a UDP socket", e))?;
+    sock.set_reuse_address(true)
+        .map_err(|e| ("share UDP port 5353 (SO_REUSEADDR)", e))?;
+    // Bonjour on macOS holds the port with SO_REUSEPORT: needed to share it.
+    // Same platforms as socket2's own condition for set_reuse_port.
+    #[cfg(all(
+        unix,
+        not(any(
+            target_os = "solaris",
+            target_os = "illumos",
+            target_os = "cygwin",
+            target_os = "nuttx",
+            target_os = "wasi"
+        ))
+    ))]
+    {
+        sock.set_reuse_port(true)
+            .map_err(|e| ("share UDP port 5353 (SO_REUSEPORT)", e))?;
+    }
+    let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, PORT));
+    sock.bind(&addr.into()).map_err(|e| ("bind UDP port 5353", e))?;
+    let sock = UdpSocket::from(sock);
     let iface = answer_ip(listen).unwrap_or(Ipv4Addr::UNSPECIFIED);
     if sock.join_multicast_v4(&GROUP, &iface).is_err() {
-        sock.join_multicast_v4(&GROUP, &Ipv4Addr::UNSPECIFIED)?;
+        sock.join_multicast_v4(&GROUP, &Ipv4Addr::UNSPECIFIED)
+            .map_err(|e| ("join the mDNS group 224.0.0.251", e))?;
     }
-    sock.set_multicast_ttl_v4(255)?;
+    // RFC 6762 §11: everything we send carries IP TTL 255.
+    sock.set_multicast_ttl_v4(255)
+        .map_err(|e| ("set the multicast TTL", e))?;
+    sock.set_ttl(255).map_err(|e| ("set the TTL", e))?;
     // Wake up now and then to notice a changed name.
-    sock.set_read_timeout(Some(Duration::from_secs(2)))?;
+    sock.set_read_timeout(Some(Duration::from_secs(2)))
+        .map_err(|e| ("set the read timeout", e))?;
     Ok(sock)
 }
 
@@ -481,6 +560,30 @@ mod tests {
         assert_eq!(sanitize_name(""), "");
         assert_eq!(sanitize_name("八哥"), "");
         assert_eq!(sanitize_name(&"a".repeat(80)).len(), 63);
+    }
+
+    #[test]
+    fn off_words_turn_the_name_off() {
+        for off in ["off", "OFF", " None ", "0", "false", "False", ""] {
+            assert_eq!(parse_name_setting(off), "", "{off:?}");
+        }
+        assert_eq!(parse_name_setting("Myna"), "myna");
+        assert_eq!(parse_name_setting("office"), "office");
+    }
+
+    #[test]
+    fn only_queries_from_this_network_are_answered() {
+        let ours = Some(Ipv4Addr::new(203, 0, 113, 20));
+        let v4 = |a, b, c, d| IpAddr::V4(Ipv4Addr::new(a, b, c, d));
+        assert!(on_link(v4(192, 168, 1, 7), ours));
+        assert!(on_link(v4(10, 1, 2, 3), None));
+        assert!(on_link(v4(169, 254, 9, 9), None));
+        // A LAN numbered from a public range: same /24 as us.
+        assert!(on_link(v4(203, 0, 113, 99), ours));
+        // Anyone else on the internet.
+        assert!(!on_link(v4(8, 8, 8, 8), ours));
+        assert!(!on_link(v4(203, 0, 114, 1), ours));
+        assert!(!on_link(IpAddr::V6(std::net::Ipv6Addr::LOCALHOST), ours));
     }
 }
 

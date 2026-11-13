@@ -1158,9 +1158,14 @@ async fn main() -> Result<()> {
             warn!("listening on {addr} without DEVICE_TOKEN: anyone on this network can connect as a phone");
         }
         // `http://myna.local:8787/`: answer the console's network name (setting
-        // `mdns_name`, re-read while running; empty = off).
-        let store = settings_store.clone();
-        mdns::spawn(addr.ip(), move || store.snapshot().mdns_name.clone());
+        // `mdns_name`, re-read while running; empty = off). Not in a container:
+        // Docker's bridge network keeps the answers inside Docker.
+        if settings_store::in_container() {
+            info!("mDNS: not started inside a container (see docker-compose.yml)");
+        } else {
+            let store = settings_store.clone();
+            mdns::spawn(addr.ip(), move || store.snapshot().mdns_name.clone());
+        }
     }
 
     let app = Router::new()

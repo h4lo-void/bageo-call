@@ -702,7 +702,7 @@ impl RuntimeSettings {
         self.answer_style = sanitize_answer_style(&self.answer_style);
         self.intl_carrier_prompt = sanitize_tristate(&self.intl_carrier_prompt);
         self.country_code = digits_only(&self.country_code);
-        self.mdns_name = crate::mdns::sanitize_name(&self.mdns_name);
+        self.mdns_name = crate::mdns::parse_name_setting(&self.mdns_name);
     }
 
     /// Overlay runtime-editable values onto the env base so existing call
@@ -815,9 +815,20 @@ pub fn effective_console_url(s: &Settings) -> String {
 }
 
 /// Running inside Docker or Podman.
-fn in_container() -> bool {
+pub(crate) fn in_container() -> bool {
     static IN: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *IN.get_or_init(|| Path::new("/.dockerenv").exists() || Path::new("/run/.containerenv").exists())
+}
+
+/// The console at this computer's LAN IP (`http://192.168.1.20:8787/`), for
+/// devices that cannot open `.local` names (some older Android phones). Empty
+/// when only this computer can open the console, or inside a container.
+pub fn lan_console_url(s: &Settings) -> String {
+    if in_container() {
+        return String::new();
+    }
+    let listen = s.host.trim().parse::<std::net::IpAddr>().ok();
+    console_url("", listen, s.port, "", false, crate::mdns::answer_ip)
 }
 
 fn console_url(
@@ -1488,7 +1499,7 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     p_string(patch, "public_url", &mut ov.public_url);
     p_string(patch, "mdns_name", &mut ov.mdns_name);
     if let Some(v) = ov.mdns_name.take() {
-        ov.mdns_name = Some(crate::mdns::sanitize_name(&v));
+        ov.mdns_name = Some(crate::mdns::parse_name_setting(&v));
     }
     p_bool(patch, "calendar_suggest", &mut ov.calendar_suggest);
     p_bool(patch, "calendar_auto_add", &mut ov.calendar_auto_add);

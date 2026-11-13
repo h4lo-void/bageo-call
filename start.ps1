@@ -107,6 +107,12 @@ if (-not $NoShortcut -and -not $noShortcutEnv) {
     if ($desktop) {
         $shortcut = Join-Path $desktop "$label.url"
         if (-not (Test-Path -LiteralPath $shortcut)) {
+            # Ask the agent where it listens: 127.0.0.1 unless AGENT_HOST names one address.
+            $probeHost = "127.0.0.1"
+            $listenHost = "$env:AGENT_HOST".Trim()
+            if ($listenHost -and $listenHost -ne "0.0.0.0" -and $listenHost -ne "::") {
+                $probeHost = if ($listenHost.Contains(":")) { "[$listenHost]" } else { $listenHost }
+            }
             Start-Job -ScriptBlock {
                 param($probe, $file, $target)
                 for ($i = 0; $i -lt 60; $i++) {
@@ -115,7 +121,7 @@ if (-not $NoShortcut -and -not $noShortcutEnv) {
                     Set-Content -LiteralPath $file -Value "[InternetShortcut]`r`nURL=$target" -Encoding ASCII
                     break
                 }
-            } -ArgumentList "http://127.0.0.1:$port/health", $shortcut, $url | Out-Null
+            } -ArgumentList "http://${probeHost}:$port/health", $shortcut, $url | Out-Null
         }
     }
 }
