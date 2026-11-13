@@ -28,7 +28,7 @@
 
 你不需要懂怎麼寫提示詞。
 
-1. 在網頁控制台打開「設定 → 提示詞」，找到「不想自己寫？」那張卡片，選好語言，按「**複製訪談提示詞**」。（同樣的文字也放在 [`docs/prompts/`](../prompts/)：[English](../prompts/interview.en.txt)、[繁體中文](../prompts/interview.zh-TW.txt)、[简体中文](../prompts/interview.zh-CN.txt)、[日本語](../prompts/interview.ja.txt)。）
+1. 在網頁控制台打開「設定 → 提示詞」，找到「不想自己寫？」那張卡片，選好語言，按「**複製訪談提示詞**」。（同樣的文字也放在 [`docs/prompts/`](../prompts/)：[English](../prompts/interview.en.txt)、[繁體中文](../prompts/interview.zh-TW.txt)、[简体中文](../prompts/interview.zh-CN.txt)、[日本語](../prompts/interview.ja.txt)、[한국어](../prompts/interview.ko.txt)、[Español](../prompts/interview.es.txt)、[Français](../prompts/interview.fr.txt)、[Deutsch](../prompts/interview.de.txt)、[Português](../prompts/interview.pt.txt)。）
 2. 打開任何一個聊天 AI——ChatGPT、Claude、Gemini…——開一個新對話，貼上。
 3. 它會一次一題，問你大約十個問題：來電的人講什麼語言、接聽方式、你怎麼講話、誰會打給你、對方會問什麼、哪些事絕對不能答應、推銷電話怎麼處理、你怎麼說再見。用你自己的話回答；說「跳過」就採用預設。
 4. 它會給你三樣東西：

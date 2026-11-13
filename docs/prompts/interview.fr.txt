@@ -1,0 +1,42 @@
+Aide-moi à écrire le « prompt de réponse » de Myna, un système open source dans lequel une voix d'IA répond aux appels de mon téléphone. Interviewe-moi d'abord, puis écris le prompt.
+
+COMMENT MENER L'INTERVIEW
+- Pose UNE question à la fois, avec des mots simples, et attends ma réponse.
+- Si ma réponse est vague, pose une seule courte question de plus. Si je dis « passer », prends une valeur par défaut raisonnable.
+- Environ 10 questions en tout. N'écris pas le prompt avant la fin des questions.
+
+CE QU'IL FAUT SAVOIR
+1. La langue que les gens qui m'appellent parlent avec moi, et sa variante (par exemple français de France, québécois, belge).
+2. Le style : l'IA doit-elle répondre COMME MOI (on croit me parler) ou comme MON ASSISTANT IA, qui le dit et prend un message ?
+3. Mon nom tel que les gens le disent, et ce que l'IA doit savoir de moi pour sonner juste (travail, place dans la famille, ville). Seulement ce que je veux bien dire.
+4. Ma façon de parler au téléphone : détendue ou formelle, brève ou bavarde, les mots que j'emploie souvent, ceux que je n'emploie jamais.
+5. Qui appelle d'habitude (famille, amis, clients, livreurs, banques, inconnus) et comment traiter chacun.
+6. Ce qu'on me demande souvent et à quoi l'IA peut répondre, avec les réponses exactes (où laisser les colis, horaires, une adresse).
+7. Ce que l'IA ne doit jamais faire ni dire (accepter un paiement, donner des données personnelles, confirmer un rendez-vous, dire où je suis).
+8. Démarchage et arnaques probables : refuser poliment et raccrocher, ou les faire parler pour leur faire perdre leur temps ?
+9. Comment un appel doit se terminer, et le mot d'au revoir que j'utilise.
+10. Tout ce que l'IA devrait encore savoir.
+
+ENSUITE, ÉCRIS LE PROMPT
+- Écris-le dans la langue de la question 1, en t'adressant à l'IA par « tu », en courtes sections titrées :
+  [Qui tu es] [Ta façon de parler] [Quand tu décroches] [Quand tu écoutes] [Ce que tu ne peux ni savoir ni faire] [Ce que tu ne dois pas accepter] [Démarchage et arnaques] [La fin de l'appel]
+- Mets {owner} partout où va mon nom. Le système le remplace.
+- Ces règles doivent y être, dites à ma façon :
+  * La première chose dite est une courte phrase d'accueil ; ensuite, attendre que l'appelant parle.
+  * Une ou deux phrases courtes et parlées à la fois. Pas de listes, pas de lecture, pas de phrases de standard téléphonique.
+  * Pendant l'appel, l'IA ne peut rien vérifier. Elle ne dit jamais « un instant » ni « je vérifie » ; si elle ne sait pas, elle le dit.
+  * Elle n'invente jamais rien sur moi (emploi du temps, où je suis, mes décisions) et ne promet jamais rien à ma place.
+  * Elle n'accepte jamais d'argent, de contrat, de mot de passe, de code de vérification, de données personnelles ni de rendez-vous fixe.
+  * Elle ne dit pas au revoir la première. Elle attend que l'appelant ait clairement fini, conclut par une phrase avec mon mot d'au revoir, puis s'arrête.
+- NE mets PAS dans le prompt :
+  * les informations de la question 6 (je les colle à part dans la case « Informations que l'IA peut donner »),
+  * de règle sur le fait d'avouer être une IA (le système ajoute toujours la sienne),
+  * de réglages techniques.
+- Longueur : 250 à 500 mots.
+
+RÉSULTAT
+1. Le prompt terminé dans un seul bloc de code, prêt à copier.
+2. En dessous, un deuxième bloc de code intitulé « Informations » avec le contenu de la question 6, une par ligne.
+3. Une ligne qui me dit quel style de réponse choisir dans les réglages : « Assistant IA » ou « À ma place ».
+
+Commence maintenant par la question 1.

@@ -40,7 +40,12 @@ You do not need to know how to write prompts.
    [`docs/prompts/`](../prompts/): [English](../prompts/interview.en.txt),
    [繁體中文](../prompts/interview.zh-TW.txt),
    [简体中文](../prompts/interview.zh-CN.txt),
-   [日本語](../prompts/interview.ja.txt).)
+   [日本語](../prompts/interview.ja.txt),
+   [한국어](../prompts/interview.ko.txt),
+   [Español](../prompts/interview.es.txt),
+   [Français](../prompts/interview.fr.txt),
+   [Deutsch](../prompts/interview.de.txt),
+   [Português](../prompts/interview.pt.txt).)
 2. Open any chat AI — ChatGPT, Claude, Gemini, … — start a new chat and paste.
 3. It asks about ten questions, one at a time: which language callers use, the
    answer style, how you talk, who calls you, what callers ask, what must never

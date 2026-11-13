@@ -14,6 +14,8 @@ X-Calls-Token: <token>
 
 令牌错误或缺失，会得到 `401`。
 
+出错时返回 `{ok: false, code, error}`：`code` 是固定的英文代码，可以用来判断（`not_found`、`invalid_id`、`no_audio`、`preview_failed`、`save_failed`、`missing_field`、`auth_failed`…；网页控制台会用你的语言显示），`error` 是详细说明（大多是英文）。
+
 ## 通话
 
 | 方法和路径 | 内容 |
@@ -57,7 +59,7 @@ PUT /calls/api/settings
 
 | 方法和路径 | 内容 |
 |---|---|
-| `POST /calls/api/notify/test` | Body `{"channel": {kind, url, token, target, id?}}`。把测试消息发到那一个渠道（已保存的机密会按 `id` 补上）。返回 `200 {ok: true}`，或者 `502 {ok: false, error}` 并附上该服务的返回内容。 |
+| `POST /calls/api/notify/test` | Body `{"channel": {kind, url, token, target, id?}}`。把测试消息发到那一个渠道（已保存的机密会按 `id` 补上）。返回 `200 {ok: true}`，或者 `502 {ok: false, code, field, kind, error}`：`code` 是出错原因（`missing_field`、`bad_url`、`bad_value`、`auth_failed`、`service_not_found`、`http_error`、`service_error`、`network_error`、`send_failed`），`field` 是 `url` / `token` / `target` 中的哪一项（或为空），`error` 是该服务的返回内容。 |
 | `POST /calls/api/notify/send` | Body `{"title": "...", "body": "..."}`。把你的消息发到每一个已启用的渠道。只要有一个渠道接受，就返回 `{ok: true}`。 |
 
 你自己的 webhook 会收到的 JSON，在[通知](NOTIFICATIONS.md#webhook-json)里有说明。

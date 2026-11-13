@@ -14,6 +14,8 @@ X-Calls-Token: <token>
 
 權杖錯誤或沒帶，會得到 `401`。
 
+錯誤的回應是 `{ok: false, code, error}`：`code` 是固定的英文代碼，可以拿來判斷（`not_found`、`invalid_id`、`no_audio`、`preview_failed`、`save_failed`、`missing_field`、`auth_failed`…；網頁控制台會用你的語言顯示），`error` 是詳細說明（大多是英文）。
+
 ## 通話
 
 | 方法與路徑 | 內容 |
@@ -57,7 +59,7 @@ PUT /calls/api/settings
 
 | 方法與路徑 | 內容 |
 |---|---|
-| `POST /calls/api/notify/test` | Body `{"channel": {kind, url, token, target, id?}}`。把測試訊息傳到那一個管道（已儲存的機密會依 `id` 補上）。回 `200 {ok: true}`，或 `502 {ok: false, error}` 並附上該服務的回應。 |
+| `POST /calls/api/notify/test` | Body `{"channel": {kind, url, token, target, id?}}`。把測試訊息傳到那一個管道（已儲存的機密會依 `id` 補上）。回 `200 {ok: true}`，或 `502 {ok: false, code, field, kind, error}`：`code` 是出錯的原因（`missing_field`、`bad_url`、`bad_value`、`auth_failed`、`service_not_found`、`http_error`、`service_error`、`network_error`、`send_failed`），`field` 是 `url` / `token` / `target` 哪一欄（或空白），`error` 是該服務的回應。 |
 | `POST /calls/api/notify/send` | Body `{"title": "...", "body": "..."}`。把你的訊息傳到每一個啟用的管道。只要有一個管道接受，就回 `{ok: true}`。 |
 
 你自己的 webhook 會收到的 JSON，在[通知](NOTIFICATIONS.md#webhook-json)裡有說明。

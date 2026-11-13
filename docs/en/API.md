@@ -18,6 +18,11 @@ X-Calls-Token: <token>
 
 A wrong or missing token gets `401`.
 
+Errors answer `{ok: false, code, error}`: `code` is a stable word to act on
+(`not_found`, `invalid_id`, `no_audio`, `preview_failed`, `save_failed`,
+`missing_field`, `auth_failed`, …; the web console shows it in your language),
+`error` the details (mostly in English).
+
 ## Calls
 
 | Method and path | What |
@@ -74,7 +79,7 @@ where each is documented.
 
 | Method and path | What |
 |---|---|
-| `POST /calls/api/notify/test` | Body `{"channel": {kind, url, token, target, id?}}`. Sends the test message to that one channel (stored secrets are filled in by `id`). `200 {ok: true}` or `502 {ok: false, error}` with the service's answer. |
+| `POST /calls/api/notify/test` | Body `{"channel": {kind, url, token, target, id?}}`. Sends the test message to that one channel (stored secrets are filled in by `id`). `200 {ok: true}` or `502 {ok: false, code, field, kind, error}`: `code` says what went wrong (`missing_field`, `bad_url`, `bad_value`, `auth_failed`, `service_not_found`, `http_error`, `service_error`, `network_error`, `send_failed`), `field` which of `url` / `token` / `target` (or empty), `error` the service's answer. |
 | `POST /calls/api/notify/send` | Body `{"title": "...", "body": "..."}`. Sends your message to every enabled channel. `{ok: true}` when at least one accepted it. |
 
 The JSON your own webhook receives is described in

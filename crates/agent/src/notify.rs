@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use base64::Engine;
 use chrono::Local;
 use hmac::{Hmac, Mac};
@@ -229,18 +229,52 @@ fn pct(s: &str) -> String {
     out
 }
 
-fn need<'a>(what: &str, value: &'a str) -> Result<&'a str> {
+/// Why a channel could not be used: a stable `code` the settings page
+/// translates, the channel field at fault (`url` / `token` / `target`, empty
+/// when none) and the details for the log and the page's tooltip.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelError {
+    pub code: &'static str,
+    pub field: &'static str,
+    pub detail: String,
+}
+
+impl ChannelError {
+    pub fn new(code: &'static str, field: &'static str, detail: impl Into<String>) -> Self {
+        Self { code, field, detail: detail.into() }
+    }
+}
+
+impl std::fmt::Display for ChannelError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.detail)
+    }
+}
+
+impl std::error::Error for ChannelError {}
+
+/// The [`ChannelError`] behind an error, if there is one.
+pub fn channel_error(e: &anyhow::Error) -> Option<&ChannelError> {
+    e.chain().find_map(|c| c.downcast_ref::<ChannelError>())
+}
+
+fn need<'a>(field: &'static str, what: &str, value: &'a str) -> Result<&'a str> {
     let v = value.trim();
     if v.is_empty() {
-        bail!("{what} is empty");
+        return Err(ChannelError::new("missing_field", field, format!("{what} is empty")).into());
     }
     Ok(v)
 }
 
-fn need_http(what: &str, value: &str) -> Result<String> {
-    let v = need(what, value)?;
+fn need_http(field: &'static str, what: &str, value: &str) -> Result<String> {
+    let v = need(field, what, value)?;
     if !(v.starts_with("https://") || v.starts_with("http://")) {
-        bail!("{what} must start with http:// or https://");
+        return Err(ChannelError::new(
+            "bad_url",
+            field,
+            format!("{what} must start with http:// or https://"),
+        )
+        .into());
     }
     Ok(v.to_string())
 }
@@ -252,14 +286,16 @@ fn post_json(url: String, body: Value) -> Prepared {
 /// The request a channel needs for `msg`. `now_ms` only matters to DingTalk's
 /// signature and Matrix's transaction id.
 pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
-    let k = kind(&ch.kind).with_context(|| format!("unknown channel kind {:?}", ch.kind))?;
+    let k = kind(&ch.kind).ok_or_else(|| {
+        ChannelError::new("unknown_channel", "", format!("unknown channel kind {:?}", ch.kind))
+    })?;
     let base = ch.url_or_default();
     let title = msg.title.as_str();
     let body = msg.body.as_str();
     Ok(match k.kind {
         "telegram" => {
-            let token = need("bot token", &ch.token)?;
-            let chat = need("chat ID", &ch.target)?;
+            let token = need("token", "bot token", &ch.token)?;
+            let chat = need("target", "chat ID", &ch.target)?;
             let mut payload = json!({
                 "chat_id": chat,
                 "text": clip(msg.html.as_deref().unwrap_or(body), 4000),
@@ -271,19 +307,19 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
             post_json(format!("https://api.telegram.org/bot{token}/sendMessage"), payload)
         }
         "discord" => post_json(
-            need_http("webhook URL", &base)?,
+            need_http("url", "webhook URL", &base)?,
             json!({ "content": clip(body, 1900) }),
         ),
-        "slack" => post_json(need_http("webhook URL", &base)?, json!({ "text": clip(body, 3500) })),
+        "slack" => post_json(need_http("url", "webhook URL", &base)?, json!({ "text": clip(body, 3500) })),
         "line" => Prepared {
             put: false,
             url: "https://api.line.me/v2/bot/message/push".to_string(),
             headers: vec![(
                 "Authorization".into(),
-                format!("Bearer {}", need("channel access token", &ch.token)?),
+                format!("Bearer {}", need("token", "channel access token", &ch.token)?),
             )],
             body: Body::Json(json!({
-                "to": need("user / group ID", &ch.target)?,
+                "to": need("target", "user / group ID", &ch.target)?,
                 "messages": [{ "type": "text", "text": clip(body, 4500) }],
             })),
         },
@@ -294,10 +330,10 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
             }
             Prepared {
                 put: false,
-                url: need_http("server", &base)?,
+                url: need_http("url", "server", &base)?,
                 headers,
                 body: Body::Json(json!({
-                    "topic": need("topic", &ch.target)?,
+                    "topic": need("target", "topic", &ch.target)?,
                     "title": clip(title, 200),
                     "message": clip(body, 3500),
                 })),
@@ -306,15 +342,15 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
         "gotify" => post_json(
             format!(
                 "{}/message?token={}",
-                need_http("server URL", &base)?,
-                pct(need("app token", &ch.token)?)
+                need_http("url", "server URL", &base)?,
+                pct(need("token", "app token", &ch.token)?)
             ),
             json!({ "title": clip(title, 200), "message": clip(body, 3500), "priority": 5 }),
         ),
         "bark" => post_json(
-            format!("{}/push", need_http("server", &base)?),
+            format!("{}/push", need_http("url", "server", &base)?),
             json!({
-                "device_key": need("device key", &ch.token)?,
+                "device_key": need("token", "device key", &ch.token)?,
                 "title": clip(title, 200),
                 "body": clip(body, 3500),
             }),
@@ -324,22 +360,22 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
             url: "https://api.pushover.net/1/messages.json".to_string(),
             headers: Vec::new(),
             body: Body::Form(vec![
-                ("token".into(), need("API token", &ch.token)?.to_string()),
-                ("user".into(), need("user key", &ch.target)?.to_string()),
+                ("token".into(), need("token", "API token", &ch.token)?.to_string()),
+                ("user".into(), need("target", "user key", &ch.target)?.to_string()),
                 ("title".into(), clip(title, 200)),
                 ("message".into(), clip(body, 1000)),
             ]),
         },
         "wecom" => post_json(
-            need_http("webhook URL", &base)?,
+            need_http("url", "webhook URL", &base)?,
             json!({ "msgtype": "text", "text": { "content": clip(body, 1900) } }),
         ),
         "dingtalk" => {
-            let mut url = need_http("webhook URL", &base)?;
+            let mut url = need_http("url", "webhook URL", &base)?;
             let secret = ch.token.trim();
             if !secret.is_empty() {
                 let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
-                    .map_err(|e| anyhow::anyhow!("signing secret: {e}"))?;
+                    .map_err(|e| ChannelError::new("bad_value", "token", format!("signing secret: {e}")))?;
                 mac.update(format!("{now_ms}\n{secret}").as_bytes());
                 let sign = base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes());
                 let sep = if url.contains('?') { '&' } else { '?' };
@@ -348,11 +384,11 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
             post_json(url, json!({ "msgtype": "text", "text": { "content": clip(body, 3500) } }))
         }
         "feishu" => post_json(
-            need_http("webhook URL", &base)?,
+            need_http("url", "webhook URL", &base)?,
             json!({ "msg_type": "text", "content": { "text": clip(body, 3500) } }),
         ),
         "serverchan" => {
-            let key = need("SendKey", &ch.token)?;
+            let key = need("token", "SendKey", &ch.token)?;
             // SC3 keys (`sctp<uid>t…`) have their own host; Turbo keys the shared one.
             let uid: String = key
                 .strip_prefix("sctp")
@@ -377,12 +413,12 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
             put: true,
             url: format!(
                 "{}/_matrix/client/v3/rooms/{}/send/m.room.message/pca{now_ms}",
-                need_http("homeserver URL", &base)?,
-                pct(need("room ID", &ch.target)?)
+                need_http("url", "homeserver URL", &base)?,
+                pct(need("target", "room ID", &ch.target)?)
             ),
             headers: vec![(
                 "Authorization".into(),
-                format!("Bearer {}", need("access token", &ch.token)?),
+                format!("Bearer {}", need("token", "access token", &ch.token)?),
             )],
             body: Body::Json(json!({ "msgtype": "m.text", "body": clip(body, 3500) })),
         },
@@ -396,7 +432,7 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
             }
             Prepared {
                 put: false,
-                url: need_http("notify URL", &base)?,
+                url: need_http("url", "notify URL", &base)?,
                 headers: Vec::new(),
                 body: Body::Form(form),
             }
@@ -408,7 +444,7 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
             }
             Prepared {
                 put: false,
-                url: need_http("URL", &base)?,
+                url: need_http("url", "URL", &base)?,
                 headers,
                 body: Body::Json(json!({
                     "event": msg.event,
@@ -420,7 +456,9 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
             }
         }
         "gmail" => bail!("gmail is sent over SMTP"),
-        other => bail!("unknown channel kind {other:?}"),
+        other => {
+            return Err(ChannelError::new("unknown_channel", "", format!("unknown channel kind {other:?}")).into())
+        }
     })
 }
 
@@ -437,11 +475,17 @@ async fn send_prepared(http: &Client, p: &Prepared) -> Result<()> {
         .timeout(std::time::Duration::from_secs(15))
         .send()
         .await
-        .map_err(|e| anyhow::anyhow!("request failed: {}", e.without_url()))?;
+        .map_err(|e| ChannelError::new("network_error", "", format!("request failed: {}", e.without_url())))?;
     let status = resp.status();
     let text = resp.text().await.unwrap_or_default();
     if !status.is_success() {
-        bail!("HTTP {}: {}", status.as_u16(), clip(text.trim(), 200));
+        let code = match status.as_u16() {
+            401 | 403 => "auth_failed",
+            404 => "service_not_found",
+            _ => "http_error",
+        };
+        let detail = format!("HTTP {}: {}", status.as_u16(), clip(text.trim(), 200));
+        return Err(ChannelError::new(code, "", detail).into());
     }
     // Several services answer 200 with an error inside the body.
     if let Ok(v) = serde_json::from_str::<Value>(&text) {
@@ -449,11 +493,9 @@ async fn send_prepared(http: &Client, p: &Prepared) -> Result<()> {
             .get("errcode")
             .or_else(|| v.get("code"))
             .and_then(|c| c.as_i64());
-        if code.is_some_and(|c| c != 0 && c != 200) {
-            bail!("service answered: {}", clip(text.trim(), 200));
-        }
-        if v.get("ok").and_then(|o| o.as_bool()) == Some(false) {
-            bail!("service answered: {}", clip(text.trim(), 200));
+        if code.is_some_and(|c| c != 0 && c != 200) || v.get("ok").and_then(|o| o.as_bool()) == Some(false) {
+            let detail = format!("service answered: {}", clip(text.trim(), 200));
+            return Err(ChannelError::new("service_error", "", detail).into());
         }
     }
     Ok(())
@@ -462,12 +504,12 @@ async fn send_prepared(http: &Client, p: &Prepared) -> Result<()> {
 /// Send `msg` to one channel.
 pub async fn send_channel(http: &Client, ch: &Channel, msg: &Message) -> Result<()> {
     if ch.kind == "gmail" {
-        let user = need("Gmail address", &ch.url)?;
+        let user = need("url", "Gmail address", &ch.url)?;
         let to = if ch.target.trim().is_empty() { user } else { ch.target.trim() };
         return crate::gmail::send_mail(
             http,
             user,
-            need("app password", &ch.token)?,
+            need("token", "app password", &ch.token)?,
             "Myna",
             to,
             &clip(&msg.title, 150),
@@ -597,13 +639,9 @@ pub fn call_detail_line(settings: &Settings, call_id: &str) -> String {
     format!("{}{}{url}", locale::phrases(locale::current()).n_details, kv_sep())
 }
 
-/// Between a label and its value: a full-width colon in Chinese.
+/// Between a label and its value, as the agent's language writes it.
 fn kv_sep() -> &'static str {
-    if locale::current().is_zh() {
-        "："
-    } else {
-        ": "
-    }
+    locale::kv_sep()
 }
 
 fn display_or_hidden(s: &str) -> String {
@@ -615,9 +653,10 @@ fn display_or_hidden(s: &str) -> String {
     }
 }
 
-/// The machine's local time, e.g. "10/07 21:35".
+/// The machine's local time as the agent's language writes it, e.g.
+/// "Nov 13, 08:09" or "11月13日 08:09" ([`locale::date_time`]).
 fn now_stamp() -> String {
-    Local::now().format("%m/%d %H:%M").to_string()
+    locale::date_time(locale::current(), &Local::now().naive_local())
 }
 
 fn esc_html(s: &str) -> String {
@@ -1011,7 +1050,11 @@ mod tests {
                 continue;
             }
             let empty = prepare(&ch(k.kind, "", "", ""), &msg(), 1);
-            assert!(empty.is_err(), "{} accepted an empty channel", k.kind);
+            let err = empty.err().unwrap_or_else(|| panic!("{} accepted an empty channel", k.kind));
+            // The settings page names the empty field.
+            let ce = channel_error(&err).unwrap_or_else(|| panic!("{}: {err:#}", k.kind));
+            assert_eq!(ce.code, "missing_field", "{}", k.kind);
+            assert!(["url", "token", "target"].contains(&ce.field), "{}: {}", k.kind, ce.field);
             let full = prepare(
                 &ch(k.kind, "https://example.org/hook/abc", "tok_1234567890", "target1"),
                 &msg(),
@@ -1020,6 +1063,10 @@ mod tests {
             .unwrap_or_else(|e| panic!("{}: {e:#}", k.kind));
             assert!(full.url.starts_with("https://"), "{}: {}", k.kind, full.url);
         }
+        let bad = prepare(&ch("discord", "discord.com/hook", "", ""), &msg(), 0).unwrap_err();
+        assert_eq!(channel_error(&bad).map(|c| (c.code, c.field)), Some(("bad_url", "url")));
+        let unknown = prepare(&ch("carrier-pigeon", "", "", ""), &msg(), 0).unwrap_err();
+        assert_eq!(channel_error(&unknown).map(|c| c.code), Some("unknown_channel"));
     }
 
     #[test]

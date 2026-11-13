@@ -1,0 +1,42 @@
+Ayúdame a escribir el "prompt de respuesta" de Myna, un sistema de código abierto en el que una voz de IA contesta las llamadas de mi teléfono. Primero entrevístame y después escribe el prompt.
+
+CÓMO HACER LA ENTREVISTA
+- Haz UNA pregunta cada vez, con palabras sencillas, y espera mi respuesta.
+- Si mi respuesta es vaga, haz una sola pregunta corta más. Si digo "saltar", usa un valor razonable.
+- Unas 10 preguntas en total. No escribas el prompt hasta terminar las preguntas.
+
+QUÉ AVERIGUAR
+1. El idioma en que suele hablarme quien llama y su variante (por ejemplo, español de España, mexicano, rioplatense).
+2. El estilo: ¿la IA contesta COMO YO (quien llama cree que habla conmigo) o como MI ASISTENTE DE IA, que lo dice y toma el recado?
+3. Mi nombre tal como lo dice quien llama, y lo que la IA necesita saber de mí para sonar natural (trabajo, papel en la familia, ciudad). Solo lo que yo quiera contar.
+4. Cómo hablo por teléfono: relajado o formal, breve o hablador, palabras que uso mucho, palabras que nunca uso.
+5. Quién suele llamar (familia, amigos, clientes, mensajeros, bancos, desconocidos) y cómo tratar a cada uno.
+6. Lo que suelen preguntar y la IA puede responder, con las respuestas exactas (dónde dejar paquetes, horario, una dirección).
+7. Lo que la IA nunca debe hacer ni decir (aceptar pagos, dar datos personales, confirmar citas, decir dónde estoy).
+8. Llamadas comerciales y posibles estafas: ¿rechazarlas con educación y colgar, o entretenerlos para hacerles perder el tiempo?
+9. Cómo debe terminar una llamada y la palabra de despedida que uso.
+10. Cualquier otra cosa que la IA deba saber.
+
+DESPUÉS, ESCRIBE EL PROMPT
+- Escríbelo en el idioma de la pregunta 1, hablándole a la IA de "tú", en secciones cortas con título:
+  [Quién eres] [Cómo hablas] [Al contestar] [Al escuchar] [Lo que no puedes saber ni hacer] [Lo que no debes aceptar] [Llamadas comerciales y estafas] [Despedida]
+- Usa el marcador {owner} donde vaya mi nombre. El sistema lo rellena.
+- Estas reglas tienen que estar, dichas a mi manera:
+  * Lo primero es una frase corta para contestar; luego espera a que hable quien llama.
+  * Una o dos frases cortas y habladas cada vez. Nada de listas, de leer en voz alta ni de frases de centralita.
+  * Durante la llamada la IA no puede consultar nada. Nunca dice "un momento" ni "déjame comprobarlo"; si no lo sabe, lo dice.
+  * Nunca inventa datos sobre mí (agenda, dónde estoy, decisiones) ni promete nada en mi nombre.
+  * Nunca acepta dinero, contratos, contraseñas, códigos de verificación, datos personales ni una cita concreta.
+  * No se despide primero. Espera a que quien llama haya terminado claramente, cierra con una frase que contenga mi palabra de despedida y se calla.
+- NO pongas en el prompt:
+  * los datos de la pregunta 6 (los pego aparte en el cuadro "Datos con los que la IA puede responder"),
+  * ninguna regla sobre admitir que es una IA (el sistema siempre añade la suya),
+  * ajustes técnicos.
+- Extensión: de 250 a 500 palabras.
+
+RESULTADO
+1. El prompt terminado en un solo bloque de código, listo para copiar.
+2. Debajo, un segundo bloque de código titulado "Datos" con lo de la pregunta 6, uno por línea.
+3. Una línea que me diga qué estilo de respuesta elegir en los ajustes: "Asistente de IA" o "Como yo".
+
+Empieza ya con la pregunta 1.

@@ -29,7 +29,7 @@ There are two kinds of settings:
 |---|---|
 | Ring before answering | How long the caller hears ringing (default 3 s, up to 8 s). The AI gets ready during this time. |
 | Get the AI ready while the phone rings | Connects to Gemini and has the first words ready before pick-up, so the AI speaks at once. Costs one short Gemini session even when the caller hangs up while it rings. |
-| Answer hidden numbers | On: callers without caller ID are answered like anyone else. Off: they are hung up on. |
+| Answer hidden numbers | On: callers without caller ID are answered like anyone else. Off: they hear the same short "not available" announcement as blocked numbers (in your language and the *Announcement voice*), and the call ends. The announcement comes recorded with the program, so no Gemini key is needed. |
 | Let the caller interrupt | On phones where it is possible (see [Phone setup](PHONE.md#which-phones)), the AI stops talking when the caller cuts in. |
 | Let Gemini decide when the caller has finished | On (recommended): Gemini's own voice detection decides when it is the AI's turn. Off: a simpler detector in the agent does. |
 | Longest normal call | The AI starts wrapping up about 25 seconds before this (3–30 minutes, default 5). |
@@ -127,6 +127,19 @@ forward the port.
 | `CALLS_DATA_DIR` | `data/calls` | Call records, recordings, settings. |
 | `CALLS_RETENTION_DAYS` | `7` | Calls older than this are deleted, records and audio (1–3650). |
 | `ASSETS_DIR` | `assets` next to the program | Folder with the bundled sounds. |
+
+### Time zone
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `TZ` | *(the computer's own)* | Time zone of the times in notifications (`Nov 13, 08:09`, written the way your language writes dates), of "today" in the call list and of calendar suggestions. A zone name such as `Asia/Taipei`, `Europe/Berlin` or `America/New_York`. Set it only when the computer the agent runs on is not in your zone. The current value is in `/health` as `local_time`. |
+
+In Docker, `docker-compose.yml` passes the host's zone into the container by
+mounting `/etc/localtime` (Linux hosts) and leaves `TZ` unset; put
+`TZ=Asia/Taipei` in `.env` to use another zone. On Docker Desktop for Windows
+or macOS, remove the `/etc/localtime` line from `docker-compose.yml` and set
+`TZ` in `.env`; with neither, the container runs on UTC. Leave `TZ` out
+rather than empty: an empty `TZ` means UTC.
 
 ### Phones on USB
 

@@ -49,9 +49,9 @@ Device: Pixel 7 (TESTSERIAL0001)
 
 `To` is the number or carrier of the receiving SIM and is left out when the phone
 does not tell. A `Received` line is added when a message is forwarded more than five
-minutes late. The agent removes control characters, cuts a notification at 3500
-characters and, when its language is `zh-TW`, converts Simplified Chinese to
-Traditional.
+minutes late, in the agent's time zone (the `local_time` of its `/health`). The agent
+removes control characters, cuts a notification at 3500 characters and, when its
+language is `zh-TW`, converts Simplified Chinese to Traditional.
 
 ## Requirements
 
@@ -97,7 +97,7 @@ file. All are optional.
 |---|---|---|
 | `AGENT_URL` | `http://127.0.0.1:8787` | Where the agent listens. |
 | `AGENT_TOKEN` | *(none)* | The agent's `CALLS_UI_TOKEN`, sent as `Authorization: Bearer <token>`. |
-| `SMS_LANG` | the agent's language, else `en` | Language of the labels: `en`, `zh-TW`, `zh-CN`, `ja`, `ko`, `es`, `fr`, `de`, `pt`. |
+| `SMS_LANG` | the agent's language | Language of the labels: `en`, `zh-TW`, `zh-CN`, `ja`, `ko`, `es`, `fr`, `de`, `pt`. Without it the agent's language is used and asked again every minute; while the agent has not told it yet, messages wait (at most three minutes, then English). |
 | `ADB_BIN` | found automatically | Full path of `adb`. Without it: the adb an agent on this computer reports, then `adb` on the `PATH`, then the Android SDK (`ANDROID_HOME`, `ANDROID_SDK_ROOT`, the usual SDK folders), then a `platform-tools` folder in the repository root or the current folder. |
 | `SMS_SERIALS` | every phone | Only these serials (as in `adb devices`), comma separated. |
 | `SMS_SIM_NUMBERS` | *(none)* | `ICCID=label` pairs, comma separated, for SIM cards that do not report their own number. The label is shown as `To`. |
@@ -216,4 +216,4 @@ Look at `sms_forward.log` and `health.json` in `SMS_HOME` first.
 | The same SMS arrives twice | The phone is listed twice by `adb devices` (USB and wireless debugging). Name one of them in `SMS_SERIALS`. |
 | Phones drop their connection to the agent when this script starts | Two different adb versions are installed and each restarts the adb server. Set `ADB_BIN` to the adb the agent uses. The script itself never runs `adb kill-server`. |
 | `another sms_forward.py holds the lock` | It is already running, for example from the login task. |
-| Labels are in the wrong language | Set `SMS_LANG`. Without it the agent's language is used once the agent answers, English until then. |
+| Labels are in the wrong language | Set `SMS_LANG`. Without it the agent's language is used; messages wait up to three minutes for the agent to answer, then go out in English. |

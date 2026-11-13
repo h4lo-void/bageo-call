@@ -1,0 +1,42 @@
+Hilf mir, den „Annahme-Prompt“ für Myna zu schreiben, ein Open-Source-System, in dem eine KI-Stimme die Anrufe auf meinem Handy annimmt. Interviewe mich zuerst und schreib danach den Prompt.
+
+SO LÄUFT DAS INTERVIEW
+- Stell immer nur EINE Frage, in einfachen Worten, und warte auf meine Antwort.
+- Wenn meine Antwort vage ist, frag einmal kurz nach. Wenn ich „überspringen“ sage, nimm einen sinnvollen Standard.
+- Insgesamt etwa 10 Fragen. Schreib den Prompt erst, wenn die Fragen fertig sind.
+
+WAS DU HERAUSFINDEN SOLLST
+1. Die Sprache, in der Anrufer meist mit mir sprechen, und ihre regionale Färbung (zum Beispiel Hochdeutsch, Schweizerdeutsch, österreichisches Deutsch).
+2. Die Art: Soll die KI ALS ICH annehmen (Anrufer glauben, mit mir zu sprechen) oder als MEIN KI-ASSISTENT, der das sagt und eine Nachricht aufnimmt?
+3. Mein Name, wie Anrufer ihn sagen, und was die KI über mich wissen muss, damit es echt klingt (Beruf, Rolle in der Familie, Stadt). Nur, was ich teilen möchte.
+4. Wie ich am Telefon rede: locker oder förmlich, knapp oder gesprächig, Wörter, die ich oft sage, Wörter, die ich nie sage.
+5. Wer meistens anruft (Familie, Freunde, Kunden, Paketdienste, Banken, Fremde) und wie jeder behandelt werden soll.
+6. Was Anrufer oft fragen und die KI beantworten darf, mit den genauen Antworten (wohin mit Paketen, Öffnungszeiten, eine Adresse).
+7. Was die KI nie tun oder sagen darf (Zahlungen zustimmen, persönliche Daten herausgeben, Termine bestätigen, sagen, wo ich bin).
+8. Werbeanrufe und mutmaßlicher Betrug: höflich ablehnen und auflegen oder sie hinhalten, um ihre Zeit zu verschwenden?
+9. Wie ein Anruf enden soll und welches Abschiedswort ich benutze.
+10. Alles andere, was die KI wissen sollte.
+
+DANN SCHREIB DEN PROMPT
+- Schreib ihn in der Sprache aus Frage 1, sprich die KI mit „du“ an, in kurzen Abschnitten mit Überschriften:
+  [Wer du bist] [Wie du sprichst] [Beim Annehmen] [Beim Zuhören] [Was du nicht wissen oder tun kannst] [Was du nicht zusagen darfst] [Werbe- und Betrugsanrufe] [Zum Schluss]
+- Schreib überall dort {owner}, wo mein Name steht. Das System setzt ihn ein.
+- Diese Regeln müssen drin sein, in meinem Ton:
+  * Zuerst kommt ein kurzer Satz zur Begrüßung; dann auf den Anrufer warten.
+  * Ein oder zwei kurze, gesprochene Sätze auf einmal. Keine Listen, kein Vorlesen, keine Callcenter-Floskeln.
+  * Während des Anrufs kann die KI nichts nachschauen. Sie sagt nie „einen Moment“ oder „ich schau mal nach“; wenn sie etwas nicht weiß, sagt sie das.
+  * Sie erfindet nie etwas über mich (Termine, wo ich bin, Entscheidungen) und verspricht nie etwas in meinem Namen.
+  * Sie stimmt nie Geld, Verträgen, Passwörtern, Bestätigungscodes, persönlichen Daten oder einem festen Termin zu.
+  * Sie verabschiedet sich nicht zuerst. Sie wartet, bis der Anrufer klar fertig ist, schließt mit einem Satz, der mein Abschiedswort enthält, und hört dann auf.
+- NICHT in den Prompt gehören:
+  * die Angaben aus Frage 6 (die füge ich getrennt in das Feld „Infos, mit denen die KI antworten darf“ ein),
+  * Regeln dazu, zuzugeben, dass sie eine KI ist (das System fügt immer seine eigene hinzu),
+  * technische Einstellungen.
+- Länge: 250 bis 500 Wörter.
+
+AUSGABE
+1. Den fertigen Prompt in einem einzigen Codeblock, bereit zum Kopieren.
+2. Darunter einen zweiten Codeblock mit der Überschrift „Infos“ mit den Angaben aus Frage 6, eine pro Zeile.
+3. Eine Zeile, die mir sagt, welche Art der Annahme ich in den Einstellungen wählen soll: „KI-Assistent“ oder „Als ich selbst“.
+
+Fang jetzt mit Frage 1 an.

@@ -232,6 +232,7 @@ class Base(unittest.TestCase):
 
         kw.setdefault("in_call", lambda: False)
         kw.setdefault("lang", lambda: "en")
+        kw.setdefault("zone", lambda: None)
         return sf.Forwarder(adb=adb, deliver_fn=deliver, **kw), sent, up
 
 
@@ -324,6 +325,15 @@ class ParserTests(Base):
         self.assertEqual(parsed.utcoffset(), dt.datetime.fromtimestamp(ts).astimezone().utcoffset())
         _, late = sf.format_sms("en", "a", "", "b", P1, "", ts * 1000, ts + 3600)
         self.assertIn(time.strftime("%Y-%m-%d %H:%M", time.localtime(ts)), late)
+
+    def test_late_messages_use_the_agents_time_zone(self) -> None:
+        ts = 1700000000  # 2023-11-14 22:13:20 UTC
+        _, late = sf.format_sms("en", "a", "", "b", P1, "", ts * 1000, ts + 3600,
+                                dt.timezone(dt.timedelta(hours=8)))
+        self.assertIn("Received: 2023-11-15 06:13 (forwarded late)", late)
+        _, late = sf.format_sms("en", "a", "", "b", P1, "", ts * 1000, ts + 3600,
+                                dt.timezone(dt.timedelta(hours=-5)))
+        self.assertIn("Received: 2023-11-14 17:13 (forwarded late)", late)
 
     def test_errors_are_logged_without_their_message(self) -> None:
         try:
@@ -800,10 +810,19 @@ class LanguageTests(Base):
         self.assertEqual(asked, [])
         self.assertEqual(sf.Language("klingon", lambda: "ja").code(), "en")
 
-    def test_agent_language_with_english_fallback(self) -> None:
+    def test_agent_language_waits_then_falls_back_to_english(self) -> None:
         answer = {"v": None}
-        lang = sf.Language("", lambda: answer["v"])
-        self.assertEqual(lang.code(), "en")  # agent not running
+        asked = []
+
+        def fetch():
+            asked.append(1)
+            return answer["v"]
+
+        lang = sf.Language("", fetch)
+        self.assertIsNone(lang.code())  # agent not answering yet: messages wait
+        self.assertEqual(len(asked), sf.LANG_TRIES)  # asked again at once before waiting
+        lang.waiting_since -= sf.LANG_WAIT_SEC  # still nothing after the whole wait
+        self.assertEqual(lang.code(), "en")
         answer["v"] = "pt-BR"
         self.assertEqual(lang.code(), "en")  # asked again only after a pause
         lang.next_check = 0
@@ -819,7 +838,29 @@ class LanguageTests(Base):
         def broken():
             raise OSError("down")
 
-        self.assertEqual(sf.Language("", broken).code(), "en")
+        self.assertIsNone(sf.Language("", broken).code())
+
+    def test_messages_wait_for_the_agents_language(self) -> None:
+        phone = FakePhone("Pixel 7")
+        adb = FakeAdb({P1: phone})
+        answer = {"v": None}
+        lang = sf.Language("", lambda: answer["v"])
+        fw, sent, _ = self.forwarder(adb, lang=lang.code)
+        tick(fw)
+        phone.queue[qname("a")] = (int(time.time()), hook_json("+15555550123", "Waits for the language 1"))
+        phone.inbox.append({"id": 1, "addr": "+15555550124", "date": int(time.time() * 1000), "sub": 10,
+                            "body": "Waits for the language 2"})
+        tick(fw)
+        # Not sent in a guessed language: both stay where they are.
+        self.assertEqual(sent, [])
+        self.assertEqual(len(phone.queue), 1)
+        self.assertEqual(fw.state["phones"][P1]["inbox_id"], 0)
+        self.assertIn("language is not known yet", self.log_text())
+        answer["v"] = "de"
+        lang.next_check = 0
+        tick(fw)
+        self.assertEqual([title for title, _ in sent], ["Neue SMS", "Neue SMS"])
+        self.assertEqual((phone.queue, fw.state["phones"][P1]["inbox_id"]), ({}, 1))
 
     def test_forwarded_message_uses_the_chosen_language(self) -> None:
         phone = FakePhone("Pixel 7")
@@ -903,6 +944,16 @@ class AgentTests(Base):
                     (200, "not json"), (200, [1]), (500, {"active_call_count": 3})):
             self.agent.health = odd
             self.assertFalse(sf.agent_in_call(), odd)
+
+    def test_agent_time_zone_from_health(self) -> None:
+        self.agent.health = (200, {"active_call_count": 0, "local_time": "2026-11-13T07:52:22+08:00"})
+        self.assertEqual(sf.agent_utc_offset().utcoffset(None), dt.timedelta(hours=8))
+        zone = sf.AgentZone(sf.agent_utc_offset)
+        self.agent.health = (200, {"local_time": "2026-11-13T07:52:22-03:00"})
+        self.assertEqual(zone.get().utcoffset(None), dt.timedelta(hours=-3))
+        for odd in ({"local_time": "yesterday"}, {"local_time": "2026-11-13T07:52:22"}, {}, {"local_time": 5}):
+            self.agent.health = (200, odd)
+            self.assertIsNone(sf.agent_utc_offset(), odd)
 
     def test_forwarder_against_the_agent(self) -> None:
         """The real delivery, call check and language lookup, end to end with the fake agent."""
