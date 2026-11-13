@@ -1249,9 +1249,18 @@ fn stt_caller_config(langs: Option<&[&'static str]>) -> Value {
     cfg
 }
 
-/// Speech-to-text hint for the AI's own voice: the agent's language.
-fn stt_ai_config() -> Value {
-    json!({ "languageCodes": [crate::locale::phrases(crate::locale::current()).stt] })
+/// Speech-to-text hint for the AI's own voice. It speaks the caller's language
+/// when that comes first in `caller_langs` ([`CallLangPlan::caller_stt`]), so it
+/// gets the same hints (none = detect): with only the owner's language, its English
+/// or Thai replies were written down as Chinese. Otherwise the owner's language,
+/// as always.
+fn stt_ai_config(caller_langs: Option<&[&'static str]>) -> Value {
+    let own = crate::locale::phrases(crate::locale::current()).stt;
+    match caller_langs {
+        Some(l) if l.first().is_some_and(|f| *f != own) => json!({ "languageCodes": l }),
+        None => json!({}),
+        _ => json!({ "languageCodes": [own] }),
+    }
 }
 
 /// Per-call sales / scam stalling config (None = feature off or not persona mode).
@@ -2990,7 +2999,7 @@ pub async fn run_session(
                 // and stall / carrier-prompt / bye detection all read this STT; a caller
                 // from abroad gets their own language first (or auto-detect).
                 "inputAudioTranscription": stt_caller_config(lang_plan.caller_stt.as_deref()),
-                "outputAudioTranscription": stt_ai_config(),
+                "outputAudioTranscription": stt_ai_config(lang_plan.caller_stt.as_deref()),
                 "realtimeInputConfig": realtime_input_config(server_vad)
             }
         });
@@ -6440,6 +6449,11 @@ mod tests {
 
     #[test]
     fn caller_stt_hints_or_auto_detect() {
+        // The AI's own voice: the caller's hints when their language leads (it replies
+        // in it), none when the caller's language is detected.
+        let foreign: &[&'static str] = &["th-TH"];
+        assert_eq!(stt_ai_config(Some(foreign))["languageCodes"], json!(["th-TH"]));
+        assert!(stt_ai_config(None).get("languageCodes").is_none());
         let codes: &[&'static str] = &["en-US", "zh-TW"];
         let hinted = stt_caller_config(Some(codes));
         assert_eq!(hinted["languageCodes"], json!(["en-US", "zh-TW"]));
