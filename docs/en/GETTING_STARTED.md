@@ -107,7 +107,8 @@ Details and rollback: [Phone setup](PHONE.md). In short:
    install it as a module in the Magisk or KernelSU app. Reboot.
 2. Open the **Myna** app and tap through its **Setup steps** until every
    step says OK (permissions, default phone app, call screening, Do Not
-   Disturb access, battery exemption). Allow root when asked.
+   Disturb access, battery exemption). The app itself does not need root
+   access: the module does that work.
 3. Turn on **USB debugging** (*Settings → About phone →* tap *Build number*
    seven times, then *System → Developer options → USB debugging*).
 4. Plug the phone into the computer. On the phone, accept **"Allow USB
