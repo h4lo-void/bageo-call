@@ -35,7 +35,7 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&…
 Transcript / recording: http://192.168.1.20:8787/calls/#call=…
 ```
 
-The last line appears only when *Address of this console* is set. The calendar
+The last line appears when the agent has a console address: *Address of this console*, or the automatic one when the console is open to your network (not inside Docker). The calendar
 lines appear only when the call fixed a date
 ([Settings reference](SETTINGS.md#summary--calendar)).
 

@@ -1883,11 +1883,17 @@ async fn sync_normal_mode(state: &AppState, serial: &str) {
 }
 
 /// Tell a phone's app where the web console is, for its "Open the web console"
-/// button: the same address the notifications link to (`public_url`, or the
-/// automatic one). Nothing is sent while it is unknown; older apps ignore the message.
+/// button: the address typed in the settings (`public_url`) or, when that is empty,
+/// the LAN IP address (some Android phones cannot open `.local` names, so the
+/// automatic `myna.local` address is not used here). Nothing is sent while it is
+/// unknown; older apps ignore the message.
 async fn send_agent_info(state: &AppState, sink: &WsSink) {
     let eff = state.settings_store.snapshot().effective(&state.settings);
-    let base = settings_store::effective_console_url(&eff);
+    let base = if eff.public_url.trim().is_empty() {
+        settings_store::lan_console_url(&eff)
+    } else {
+        settings_store::effective_console_url(&eff)
+    };
     if let Some(url) = calls_http::phone_console_url(&base) {
         let _ = send_json(sink, json!({"type": "agent_info", "console_url": url})).await;
     }

@@ -6150,7 +6150,8 @@ const withTok = (url) => (token ? url + (url.includes("?") ? "&" : "?") + "token
 
 class ApiError extends Error {
   // `detail`: the agent's own words, for a tooltip.
-  constructor(msg, status, detail) { super(msg); this.status = status; this.detail = detail || ""; }
+  // `data`: the parsed answer, for routes with their own error field.
+  constructor(msg, status, detail, data) { super(msg); this.status = status; this.detail = detail || ""; this.data = data || null; }
 }
 let tokenAsk = null, tokenDeclined = false;
 function askToken(wrong) {
@@ -6179,7 +6180,7 @@ async function request(url, opts) {
 async function api(path, opts) {
   const res = await request(apiBase + path, opts);
   const data = (await res.json().catch(() => null)) || {};
-  if (!res.ok) throw new ApiError(apiErrorText(data, res.status), res.status, data.error || data.detail || "");
+  if (!res.ok) throw new ApiError(apiErrorText(data, res.status), res.status, data.error || data.detail || "", data);
   return data;
 }
 // An error the agent answered with, in the language of this page: its `code`
@@ -7708,7 +7709,7 @@ async function switchPhoneMode(serial, target) {
     if (r.ok) toast(t(r.mode === "normal" ? "ph_now_normal" : "ph_now_ai"));
     else modeErr[serial] = r.error_code || "failed";
   } catch (e) {
-    if (e.status !== 401) modeErr[serial] = e.status === 0 ? "network" : "failed";
+    if (e.status !== 401) modeErr[serial] = e.status === 0 ? "network" : ((e.data && e.data.error_code) || "failed");
   }
   // No answer within 15 s: the switch may still finish (the phone app can be restarted
   // by it). Say so instead of "failed"; the list shows the mode the phone reports.

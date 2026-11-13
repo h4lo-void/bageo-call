@@ -107,8 +107,9 @@ USB.
   switch off *AI answers calls* in the web console (calls are then picked up
   and hung up).
 - A call you dial yourself on the phone is left alone.
-- The **Open the web console** button in the app appears once the agent knows
-  the console's address (*Address of this console* in the settings).
+- The **Open the web console** button in the app appears once the agent has a
+  console address: *Address of this console* in the settings, or, when that is
+  empty and the console is open to your network, the computer's LAN address.
 
 ## Normal phone mode
 

@@ -14,7 +14,7 @@ X-Calls-Token: <token>
 
 權杖錯誤或沒帶，會得到 `401`。
 
-錯誤的回應是 `{ok: false, code, error}`：`code` 是固定的英文代碼，可以拿來判斷（`not_found`、`invalid_id`、`no_audio`、`preview_failed`、`save_failed`、`missing_field`、`auth_failed`…；網頁控制台會用你的語言顯示），`error` 是詳細說明（大多是英文）。
+錯誤的回應是 `{ok: false, code, error}`：`code` 是固定的英文代碼，可以拿來判斷（`not_found`、`invalid_id`、`no_audio`、`preview_failed`、`save_failed`、`missing_field`、`auth_failed`…；網頁控制台會用你的語言顯示），`error` 是詳細說明（大多是英文）。例外：`POST /calls/api/devices/{serial}/mode` 一律回 `{ok, mode, error_code}`（見下方）。
 
 ## 通話
 
@@ -37,7 +37,7 @@ X-Calls-Token: <token>
 
 | 方法與路徑 | 內容 |
 |---|---|
-| `GET /calls/api/settings` | `{ok, settings, storage_path}`。機密欄位會以遮罩形式回傳（`"abc…wxyz"`），並附一個 `<name>_set` 旗標；通知管道回傳時 `url` / `token` 是空的，另外附上 `url_hint`、`token_hint`、`url_set`、`token_set`。還有幾個唯讀的輔助欄位：`default_prompt`、`voices`、`ambience_kinds`、`languages`、`notify_kinds`、`sample_lines`、`summary_ready`。 |
+| `GET /calls/api/settings` | `{ok, settings, storage_path, console_url, console_ip_url}`：`console_url` 是目前用的控制台網址（你填的，或自動帶入的；只有這台電腦能開時是空的），`console_ip_url` 是把 `.local` 名稱換成區網 IP 的同一個網址。機密欄位會以遮罩形式回傳（`"abc…wxyz"`），並附一個 `<name>_set` 旗標；通知管道回傳時 `url` / `token` 是空的，另外附上 `url_hint`、`token_hint`、`url_set`、`token_set`。還有幾個唯讀的輔助欄位：`default_prompt`、`voices`、`ambience_kinds`、`languages`、`notify_kinds`、`sample_lines`、`summary_ready`。 |
 | `PUT /calls/api/settings` | 一個 JSON 物件，只放要修改的欄位。回應同 `GET`。 |
 
 `PUT` 的規則：
@@ -90,4 +90,4 @@ PUT /calls/api/settings
 | 手機 → 主程式 | `{"type": "status", "mode": "ai" \| "normal", "in_call": bool}` | 模式或通話狀態變了。 |
 | 主程式 → 手機 | `{"type": "set_mode", "mode": "ai" \| "normal", "id": "<uuid>"}` | 切換（由上面的路由送出）。 |
 | 手機 → 主程式 | `{"type": "set_mode_result", "id": "<同一個>", "ok": bool, "mode": "...", "error": "<代碼>"}` | 結果；成功時 `error` 是空字串，代碼同上。 |
-| 主程式 → 手機 | `{"type": "agent_info", "console_url": "http://…/calls/"}` | 緊接在 hello 之後，只有知道控制台網址（`public_url`）時才送。App 會因此顯示「打開網頁控制台」按鈕。 |
+| 主程式 → 手機 | `{"type": "agent_info", "console_url": "http://…/calls/"}` | 緊接在 hello 之後，主程式有控制台網址時才送：你填的網址（`public_url`）；沒填而控制台對區網開放時，用區網 IP 的網址（有些手機打不開 `.local` 名稱）。App 會因此顯示「打開網頁控制台」按鈕。 |
