@@ -147,7 +147,7 @@ Be aware of what has and has not been proven:
   not against live accounts), the calendar suggestion, version 0.2 of the phone
   app's setup screen, the Docker image, and the desktop downloads from the
   Releases page.
-- **Phone app 0.2.3 answers real calls** on the Pixel 7, 7a and 9 in daily use
+- **Phone app 0.2.4 answers real calls** on the Pixel 7, 7a and 9 in daily use
   (Android 16, KernelSU-Next), and SMS forwarding works with it. Those phones
   were updated from earlier versions, so setting up a phone from scratch has
   not been done yet.
@@ -158,6 +158,13 @@ Be aware of what has and has not been proven:
   access in Magisk or KernelSU. Tried on a Pixel 7a: in normal mode a real
   call rang and was answered, the mode stayed after a reboot, and after
   switching back the AI answered.
+- **Appointments (new in 0.2.4, off by default).** When a caller asks for a
+  time, the AI can check your Google Calendar and either book it or say it will
+  confirm; you decide in the web console (and on a Telegram card if a bot is
+  set up). Tried with a simulated caller in nine languages, not yet with a
+  Google Calendar connected. Texting the caller back: the phone hands the text
+  to the network, but on our two test SIMs the carriers refused it, so a
+  delivered reply has not been seen yet.
 - **The phone module is signed with the project's own key**, so later releases
   install over it. If you installed the module from the first v0.2.0 download,
   which was signed with a temporary key, you can install the current one over
