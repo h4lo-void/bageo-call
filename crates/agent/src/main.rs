@@ -7896,14 +7896,14 @@ fn spawn_ai_talk_tg_summary(
             }
             None => (recorded_appointment, Vec::new()),
         };
-        let appointment = match agreed {
+        let mut appointment = match agreed {
             Some(a) if stalled || ai_failed => {
                 voided.extend(appointments::all_events(&a));
                 None
             }
             other => other,
         };
-        let void_failed = appointments::delete_voided(&http, &rt, &voided).await;
+        let mut void_failed = appointments::delete_voided(&http, &rt, &voided).await;
         if !voided.is_empty() {
             info!(
                 "voided appointment events serial={serial} call_id={call_id} count={} not_deleted={}",
@@ -8045,6 +8045,28 @@ fn spawn_ai_talk_tg_summary(
             body.insert_str(0, &format!("{}\n", locale::phrases(locale::current()).s_ai_fail_prefix));
         }
 
+        // A sales / scam call the check during the call missed: the summary
+        // says so (or, when no summary model answered, the caller's words
+        // score as one — the model's judgement beats keywords: a bank booking
+        // a visit about the owner's own loan is no pitch). Like a call judged
+        // during the call: no appointment, no card, and what it put in the
+        // calendar is deleted.
+        let late_sales = !stalled
+            && (deepseek::summary_says_sales(locale::current(), &body)
+                || (note_source != "deepseek" && gemini_live::dialogue_is_sales(&live_full)));
+        if late_sales {
+            if let Some(a) = appointment.take() {
+                let events = appointments::all_events(&a);
+                let failed = appointments::delete_voided(&http, &rt, &events).await;
+                info!(
+                    "appointment voided after the call (sales / scam) serial={serial} call_id={call_id} events={} not_deleted={}",
+                    events.len(),
+                    failed.len()
+                );
+                void_failed.extend(failed);
+            }
+        }
+
         // A date the call fixed (delivery, appointment, callback time) becomes a
         // calendar suggestion; sales calls and failed calls are not asked about.
         // An appointment the AI took is that date already (no second suggestion).
@@ -8053,6 +8075,7 @@ fn spawn_ai_talk_tg_summary(
             && appointment.is_none()
             && note_source == "deepseek"
             && !stalled
+            && !late_sales
             && !ai_failed
         {
             if let Some(mut ev) = calendar::suggest(&http, &eff, &transcript).await {
@@ -8087,7 +8110,8 @@ fn spawn_ai_talk_tg_summary(
         // The web console keeps the details; the notification stays short.
         let notes = calls::CallNotes {
             summary: body.clone(),
-            dialogue: live_full,
+            // Speaker labels in the agent's language ("Caller: …").
+            dialogue: gemini_live::localize_dialogue(&live_full, locale::current()),
             recording_text: remote_tx.clone(),
             end_hint: end_hint.clone(),
             source: note_source.to_string(),

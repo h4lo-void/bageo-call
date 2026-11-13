@@ -192,16 +192,7 @@ pub async fn chat_at(
     user: &str,
     max_tokens: u32,
 ) -> Result<String> {
-    let payload = json!({
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        "stream": false,
-        "temperature": 0.2,
-        "max_tokens": max_tokens,
-    });
+    let payload = chat_payload(endpoint, model, system, user, max_tokens);
     let mut req = http.post(&endpoint.url).json(&payload);
     if !endpoint.key.is_empty() {
         req = req.bearer_auth(&endpoint.key);
@@ -219,6 +210,42 @@ pub async fn chat_at(
         .unwrap_or("")
         .trim()
         .to_string())
+}
+
+/// Gemini's OpenAI-compatible endpoint (only a Gemini key is set).
+fn is_gemini(endpoint: &Endpoint) -> bool {
+    endpoint.url == GEMINI_OPENAI_URL
+}
+
+/// The request body. Gemini thinks before it answers and the thinking counts
+/// against `max_tokens`: with 400 a summary came back cut off mid-line
+/// ("Anliegen: Einladung zum Abendessen heute um"). It is asked to think
+/// little (`reasoning_effort` low, which every Gemini model takes).
+fn chat_payload(endpoint: &Endpoint, model: &str, system: &str, user: &str, max_tokens: u32) -> Value {
+    let mut payload = json!({
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "stream": false,
+        "temperature": 0.2,
+        "max_tokens": max_tokens,
+    });
+    if is_gemini(endpoint) {
+        payload["reasoning_effort"] = json!("low");
+    }
+    payload
+}
+
+/// Room for the four summary lines: 400 tokens, and on Gemini (whose
+/// thinking takes from the same budget) 1500.
+fn summary_max_tokens(endpoint: &Endpoint) -> u32 {
+    if is_gemini(endpoint) {
+        1_500
+    } else {
+        400
+    }
 }
 
 /// The call as short lines for the notification, in the agent's language.
@@ -243,7 +270,7 @@ pub async fn summarize(http: &Client, settings: &Settings, caller_id: &str, tran
             info!("call summary retry caller={caller}");
         }
         for model in &endpoint.models {
-            match chat_at(http, &endpoint, model, &system, &trimmed, 400).await {
+            match chat_at(http, &endpoint, model, &system, &trimmed, summary_max_tokens(&endpoint)).await {
                 Ok(text) if !text.trim().is_empty() => {
                     let text = if lang.is_zh() {
                         crate::zh_tw::to_tw(&overlay_summary_matter(text.trim(), &trimmed))
@@ -313,6 +340,30 @@ pub fn is_fallback_summary(text: &str) -> bool {
     text.contains("（摘要服務暫時沒回應）")
         || text.contains("（摘要服务暂时没回应）")
         || text.contains(locale::phrases(locale::current()).s_no_summary)
+}
+
+/// The summary's "what they wanted" line calls the call a sales pitch or a
+/// scam (the summary prompt asks it to say so) — one the keyword check during
+/// the call missed. Only that line counts; "not a sales call" does not.
+pub fn summary_says_sales(lang: Lang, summary: &str) -> bool {
+    let marks: &[&str] = match lang {
+        Lang::ZhTw | Lang::ZhCn => &["推銷", "推销", "詐騙", "诈骗", "電銷", "电销"],
+        Lang::En => &["sales call", "sales pitch", "telemarket", "marketing call", "cold call", "robocall", "scam", "fraud"],
+        Lang::Ja => &["営業電話", "セールス", "勧誘", "詐欺"],
+        Lang::Ko => &["영업 전화", "판매 전화", "광고 전화", "텔레마케팅", "보이스피싱", "사기"],
+        Lang::Es => &["llamada comercial", "llamada de ventas", "venta telefónica", "telemarketing", "estafa", "fraude"],
+        Lang::Fr => &["démarchage", "appel commercial", "prospection", "arnaque", "escroquerie", "fraude"],
+        Lang::De => &["werbeanruf", "verkaufsanruf", "kaltakquise", "telefonwerbung", "betrug"],
+        Lang::Pt => &["ligação de vendas", "ligação comercial", "telemarketing", "golpe", "fraude"],
+    };
+    let negated = ["不是推銷", "不是推销", "不是詐騙", "不是诈骗", "not a sales", "not sales", "not a scam", "kein betrug", "pas une arnaque", "no es una estafa", "não é golpe"];
+    let label = locale::phrases(lang).s_matter;
+    summary
+        .lines()
+        .map(str::trim)
+        .filter_map(|l| l.strip_prefix(label).or_else(|| l.strip_prefix("事情")))
+        .map(str::to_lowercase)
+        .any(|line| !negated.iter().any(|n| line.contains(n)) && marks.iter().any(|m| line.contains(m)))
 }
 
 /// Pull `APIKey` from opaque `TRTC_LLM_CONFIG` JSON (never log the value).
@@ -947,5 +998,31 @@ mod tests {
         let summary = "来电：0900\n需求：缴水费\n回电：无\n状态：需要联系";
         let out = overlay_summary_matter(summary, "請轉達繳水費");
         assert_eq!(out, summary);
+    }
+
+    #[test]
+    fn gemini_summaries_think_little_and_get_room_deepseek_is_unchanged() {
+        let gemini = Endpoint { url: GEMINI_OPENAI_URL.into(), key: "k".into(), models: vec![GEMINI_SUMMARY_MODEL.into()] };
+        let deepseek = Endpoint { url: DEEPSEEK_API_URL.into(), key: "k".into(), models: vec![DEEPSEEK_MODEL.into()] };
+        let g = chat_payload(&gemini, GEMINI_SUMMARY_MODEL, "sys", "call", summary_max_tokens(&gemini));
+        assert_eq!(g["reasoning_effort"], "low");
+        assert_eq!(g["max_tokens"], 1500);
+        let d = chat_payload(&deepseek, DEEPSEEK_MODEL, "sys", "call", summary_max_tokens(&deepseek));
+        assert!(d.get("reasoning_effort").is_none());
+        assert_eq!(d["max_tokens"], 400);
+        assert_eq!(d["messages"][1]["content"], "call");
+    }
+
+    #[test]
+    fn a_summary_that_calls_it_sales_or_a_scam_is_recognised() {
+        assert!(summary_says_sales(Lang::En, "Caller: Mia from Brightdesk\nAbout: Sales call pitching CRM software, wants a 15-minute demo\nAI said: listened\nTo do: nothing"));
+        assert!(summary_says_sales(Lang::ZhTw, "對方：保險業務\n事情：推銷電話：醫療險\nAI 回覆：陪他聊\n要處理：不用"));
+        assert!(summary_says_sales(Lang::De, "Anrufer: unbekannt\nAnliegen: Verdacht auf Betrug (Gewinnspiel)"));
+        assert!(summary_says_sales(Lang::Ja, "相手：不明\n用件：光回線の勧誘"));
+        // A friend inviting the owner to dinner; "not a sales call"; the word elsewhere.
+        assert!(!summary_says_sales(Lang::En, "Caller: Jonas\nAbout: dinner tonight at 8\nAI said: will check\nTo do: confirm with Jonas"));
+        assert!(!summary_says_sales(Lang::En, "About: the bank calling back, not a sales call"));
+        assert!(!summary_says_sales(Lang::En, "Caller: a scam-prevention officer\nAbout: your report from Monday"));
+        assert!(!summary_says_sales(Lang::ZhTw, "對方：小明\n事情：約明天中午吃飯"));
     }
 }

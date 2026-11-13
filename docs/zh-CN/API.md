@@ -29,9 +29,9 @@ X-Calls-Token: <token>
 | `GET /calls/api/stats` | `{ok, stats: {total, today, voicemails, blocked}}`。 |
 | `GET /calls/api/export.csv` | 筛选后的列表，CSV 格式（查询参数同 `list`，最多 2000 行）。 |
 
-通话记录（`call`，以及 `calls` 里的每一条）包含的字段有：`id`、`serial`（手机）、`caller_id`、`started_at` / `ended_at`（RFC 3339，UTC）、`duration_ms`、`status`（`ringing`、`active`、`ended`）、`events`（按顺序发生的事——例如 `active`、`persona_stall_spam`、`reject_list`、`persona_ai_fail_hangup`、`ended`）、`summary`、有哪些音频文件，对方跟 AI 约了时间时还有 `appointment`（通话结束时的样子，见[日程预约](#日程预约)；之后的变化看 `notes.appointment`）。
+通话记录（`call`，以及 `calls` 里的每一条）包含的字段有：`id`、`serial`（手机）、`caller_id`、`started_at` / `ended_at`（RFC 3339，UTC）、`duration_ms`、`status`（`ringing`、`active`、`ended`）、`events`（按顺序发生的事——例如 `active`、`persona_stall_spam`、`reject_list`、`persona_ai_fail_hangup`、`ended`）、`summary`、有哪些音频文件，对方跟 AI 约了时间时还有 `appointment`（通话结束时的样子，见[日程预约](#日程预约)）；通话后的变化（你的决定、短信结果）会更新在 `notes.appointment`。
 
-在 `notes.dialogue` 里，每一行是一次发言，前面带有保存时使用的说话人标签 `對方：`（来电者）或 `接聽：`（AI）。无论语言是什么，这两个标签都是固定的；显示时请自行翻译。
+在 `notes.dialogue` 里，每一行是一次发言，前面带有主程序语言的说话人标签和分隔符：简体中文是 `对方：`／`接听：`，繁体中文 `對方：`／`接聽：`，英文 `Caller: `／`AI: `，日文 `相手：`／`AI：`，韩文 `상대: `／`AI: `，西班牙文 `Llamante: `／`IA: `，法文 `Appelant : `／`IA : `，德文 `Anrufer: `／`KI: `，葡萄牙文 `Chamador: `／`IA: `。旧版本保存的记录无论语言都是 `對方：`／`接聽：`。
 
 ## 设置
 
@@ -77,16 +77,16 @@ PUT /calls/api/settings
   "start": "2026-11-14T15:00", "end": "2026-11-14T16:00",
   "title": "看房", "caller_name": "陈先生",
   "mode": "confirm", "status": "pending",
-  "event_id": "", "auto_error": "", "replaced": [], "sms": ""
+  "tag": "6f1c2a9e-3b7d-4e0a-9c55-2d8f1b7e4a10"
 }
 ```
 
-时间是本地时间（`TZ`）。`status`：`pending`（等你决定）、`booked`（通话中已写进日历）、`confirmed`、`declined`。`event_id`：写进 Google 日历后的日程 ID。`auto_error`：“有空直接答应”没能排入的原因。`replaced`：同一通电话里先前已写进日历、后来改掉的时间。`sms`：`sent`，或短信没发出的原因（`offline`、`old_app`、`timeout`、`busy`、`no_number`，或手机返回的错误代码）。空的字段不会出现。主程序写进日历的日程都带私有扩展属性 `myna_call=<appointment.tag>`，写入时没收到响应的那条之后能找回来，不会写两次。
+时间是本地时间（`TZ`）。`status`：`pending`（等你决定）、`booked`（通话中已写进日历）、`confirmed`、`declined`。`event_id`：写进 Google 日历后的日程 ID。`auto_error`：“有空直接答应”没能排入的原因。`replaced`：同一通电话里先前已写进日历、后来改掉的时间。`sms`：`sent`，或短信没发出的原因（`offline`、`old_app`、`timeout`、`busy`、`no_number`，或手机返回的错误代码）。`tag`：这通电话在它写进日历的日程上留的标记（见下句）。空的字段不会出现。主程序写进日历的日程都带私有扩展属性 `myna_call=<appointment.tag>`，写入时没收到响应的那条之后能找回来，不会写两次。
 
 | 方法和路径 | 内容 |
 |---|---|
 | `GET /calls/api/tasks` | 任务，最新的在前（最多 200 条）：`{ok, tasks}`。 |
-| `POST /calls/api/tasks/{id}/confirm` | 对预约来说等于在卡片上按 **✅ 确定**——写进 Google 日历，接着（开启 `appointment_sms` 时）给对方发短信，可能要等最多 90 秒。响应 `{ok, task, message}`；`message` 是 Telegram Bot 会回复的那段文字。只有第一次决定会执行：之后再确定或婉拒——包括第一次还在处理时发来的，或在 Telegram 卡片上按的——都只回复“已经处理过了”，不会有任何变化。请求要带 `Content-Type: application/json`（不用 body），否则返回 HTTP 400 `bad_request`，这样别的网页无法通过你局域网里的浏览器替你决定。 |
+| `POST /calls/api/tasks/{id}/confirm` | 对预约来说等于在卡片上按 **✅ 确定**——写进 Google 日历，接着（开启 `appointment_sms` 时）给对方发短信，可能要等最多 90 秒。响应 `{ok, task, message}`；`message` 是 Telegram Bot 会回复的那段文字。只有第一次决定才算：之后再确定或婉拒——包括第一次还在处理时发来的，或在 Telegram 卡片上按的——都只回复“已经处理过了”，不会有任何变化。请求要带 `Content-Type: application/json`（不用 body），否则返回 HTTP 400 `bad_request`，这样别的网页无法通过你局域网里的浏览器替你决定。 |
 | `POST /calls/api/tasks/{id}/ignore` | 对预约来说等于 **❌ 婉拒**（通话中已经写进日历的那条会删掉；开启 `appointment_sms` 时发短信）。响应与规则同上。 |
 
 ## 手机与健康状态
