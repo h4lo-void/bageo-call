@@ -4,16 +4,21 @@
 //! Fulfillment (`ReplyMethod::Phone`) pushes `callback_requested`, then dispatches
 //! `place_call` only when: user confirmed + number on `callback_whitelist` + idle
 //! control client connected (never auto-dials; empty whitelist = fail-closed).
+//!
+//! The same connection carries text messages to callers (appointments):
+//! `send_sms` out, `send_sms_result` back, only to apps whose hello says
+//! `supports_sms` ([`ControlRegistry::send_sms`]).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::stream::SplitSink;
 use futures_util::SinkExt;
 use serde_json::{json, Value};
-use tokio::sync::Mutex;
+use tokio::sync::{oneshot, Mutex};
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -116,6 +121,81 @@ pub fn on_call_end(session: &mut CallbackSession, failed: bool) {
     });
 }
 
+/// What became of a text message the agent asked a phone to send.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SmsOutcome {
+    Sent,
+    /// No control connection from that phone (or it dropped before answering).
+    Offline,
+    /// The app's hello did not say `supports_sms` (an older app).
+    Unsupported,
+    /// No `send_sms_result` in time.
+    Timeout,
+    /// A message with this id is already waiting for its result (not sent twice).
+    Busy,
+    /// The phone's error code (one of [`SMS_ERROR_CODES`]).
+    Failed(String),
+}
+
+/// Error codes a phone may answer `send_sms` with; anything else reads as `generic_failure`.
+pub const SMS_ERROR_CODES: [&str; 7] = [
+    "no_permission",
+    "bad_request",
+    "no_service",
+    "radio_off",
+    "generic_failure",
+    "timeout",
+    "exception",
+];
+/// How long the agent waits for `send_sms_result` (the phone gives up after 60 s).
+pub const SMS_RESULT_WAIT: Duration = Duration::from_secs(90);
+const SMS_TEXT_MAX: usize = 500;
+const SMS_ID_MAX: usize = 64;
+
+/// `{"type":"send_sms","id":…,"to":…,"text":…}` for the phone.
+pub fn send_sms_payload(id: &str, to: &str, text: &str) -> Value {
+    json!({ "type": "send_sms", "id": id, "to": to, "text": text })
+}
+
+/// Digits only, with an optional leading `+`.
+fn sms_to_ok(to: &str) -> bool {
+    let digits = to.strip_prefix('+').unwrap_or(to);
+    (3..=20).contains(&digits.len()) && digits.chars().all(|c| c.is_ascii_digit())
+}
+
+/// A phone's `send_sms_result`: the message id and what happened.
+pub fn parse_sms_result(msg: &Value) -> Option<(String, SmsOutcome)> {
+    if msg.get("type")?.as_str()? != "send_sms_result" {
+        return None;
+    }
+    let id = msg.get("id")?.as_str()?.to_string();
+    if msg.get("ok").and_then(Value::as_bool) == Some(true) {
+        return Some((id, SmsOutcome::Sent));
+    }
+    let code = msg.get("error").and_then(Value::as_str).map(str::trim).unwrap_or("");
+    let code = if SMS_ERROR_CODES.contains(&code) {
+        code
+    } else {
+        "generic_failure"
+    };
+    Some((id, SmsOutcome::Failed(code.to_string())))
+}
+
+/// The control serials a call's phone may be registered under: its own, and the
+/// main app's for a work-profile twin copy (`pixel-101NNNN` → `pixel-1NNNN`).
+fn control_serials(serial: &str) -> Vec<String> {
+    let s = serial.trim();
+    let mut out = vec![s.to_string()];
+    if crate::calls::is_twin_serial(s) {
+        if let Some(app) = s.strip_prefix("pixel-").and_then(|r| r.get(2..)) {
+            out.push(format!("pixel-{app}"));
+        }
+    }
+    out
+}
+
+type SmsWaiters = HashMap<String, (String, oneshot::Sender<SmsOutcome>)>;
+
 /// Connected idle-control WebSocket clients and in-flight callback sessions.
 #[derive(Clone, Default)]
 pub struct ControlRegistry {
@@ -124,6 +204,10 @@ pub struct ControlRegistry {
     call_index: Arc<Mutex<HashMap<String, String>>>,
     /// Phones switched to "normal phone" (their owner answers): call-backs skip them.
     normal_mode: Arc<Mutex<HashSet<String>>>,
+    /// Phones whose app sends text messages (`supports_sms` in the control hello).
+    sms_capable: Arc<Mutex<HashSet<String>>>,
+    /// `send_sms` sent, waiting for its result: message id → (serial, answer).
+    sms_waiters: Arc<Mutex<SmsWaiters>>,
 }
 
 impl ControlRegistry {
@@ -162,6 +246,8 @@ impl ControlRegistry {
             count = clients.len(),
             "control_idle client unregistered"
         );
+        drop(clients);
+        self.forget_sms_phone(serial).await;
     }
 
     /// Remove `serial` only if it still maps to `sink` (reconnect-safe).
@@ -174,6 +260,8 @@ impl ControlRegistry {
         if ours {
             clients.remove(serial);
             info!(serial, count = clients.len(), "control_idle client unregistered");
+            drop(clients);
+            self.forget_sms_phone(serial).await;
         } else {
             info!(
                 serial,
@@ -181,6 +269,97 @@ impl ControlRegistry {
                 "control_idle stale socket closed (newer client kept)"
             );
         }
+    }
+
+    /// Record whether the phone's app sends text messages (from its control hello).
+    pub async fn set_supports_sms(&self, serial: &str, on: bool) {
+        let mut set = self.sms_capable.lock().await;
+        if on {
+            set.insert(serial.to_string());
+        } else {
+            set.remove(serial);
+        }
+    }
+
+    /// A phone went away: it sends no more texts, and messages still waiting
+    /// for its answer end as [`SmsOutcome::Offline`].
+    async fn forget_sms_phone(&self, serial: &str) {
+        self.sms_capable.lock().await.remove(serial);
+        // Dropping the senders wakes the waiters.
+        self.sms_waiters.lock().await.retain(|_, (s, _)| s != serial);
+    }
+
+    /// Have the phone that took a call (`serial`) text `to` and wait up to
+    /// `wait` for its `send_sms_result`. `id`: up to 64 characters (a task id);
+    /// `text` is cut at 500 characters. A message whose id is already waiting
+    /// is not sent again ([`SmsOutcome::Busy`]); the waiting one is left alone.
+    pub async fn send_sms(&self, serial: &str, id: &str, to: &str, text: &str, wait: Duration) -> SmsOutcome {
+        let id: String = id.chars().take(SMS_ID_MAX).collect();
+        if self.sms_waiters.lock().await.contains_key(&id) {
+            warn!(serial, id, "send_sms: a message with this id is already waiting");
+            return SmsOutcome::Busy;
+        }
+        let picked = {
+            let clients = self.clients.lock().await;
+            control_serials(serial)
+                .into_iter()
+                .find_map(|s| clients.get(&s).map(|sink| (s, sink.clone())))
+        };
+        let Some((serial, sink)) = picked else {
+            info!(serial, "send_sms: phone not connected");
+            return SmsOutcome::Offline;
+        };
+        if !self.sms_capable.lock().await.contains(&serial) {
+            info!(serial, "send_sms: the phone's app does not send texts");
+            return SmsOutcome::Unsupported;
+        }
+        let text: String = text.chars().take(SMS_TEXT_MAX).collect();
+        if id.is_empty() || text.trim().is_empty() || !sms_to_ok(to) {
+            return SmsOutcome::Failed("bad_request".to_string());
+        }
+        let (tx, rx) = oneshot::channel();
+        {
+            let mut waiters = self.sms_waiters.lock().await;
+            if waiters.contains_key(&id) {
+                return SmsOutcome::Busy;
+            }
+            waiters.insert(id.clone(), (serial.clone(), tx));
+        }
+        if let Err(e) = send_ws_json(&sink, send_sms_payload(&id, to, &text)).await {
+            self.sms_waiters.lock().await.remove(&id);
+            warn!(serial, "send_sms write failed: {e:#}");
+            return SmsOutcome::Offline;
+        }
+        info!(
+            serial,
+            id,
+            to_len = to.len(),
+            text_chars = text.chars().count(),
+            "send_sms dispatched"
+        );
+        match tokio::time::timeout(wait, rx).await {
+            Ok(Ok(out)) => out,
+            Ok(Err(_)) => SmsOutcome::Offline,
+            Err(_) => {
+                self.sms_waiters.lock().await.remove(&id);
+                warn!(serial, id, "send_sms: no result in {}s", wait.as_secs());
+                SmsOutcome::Timeout
+            }
+        }
+    }
+
+    /// A phone's `send_sms_result`; false when nothing was waiting for it.
+    pub async fn handle_sms_result(&self, msg: &Value) -> bool {
+        let Some((id, out)) = parse_sms_result(msg) else {
+            return false;
+        };
+        let Some((serial, tx)) = self.sms_waiters.lock().await.remove(&id) else {
+            info!(id, "send_sms_result for a message nobody waits for");
+            return false;
+        };
+        info!(serial, id, outcome = ?out, "send_sms_result");
+        let _ = tx.send(out);
+        true
     }
 
     /// Idle phones the owner actually has (work-profile twin copies excluded), sorted.
@@ -584,5 +763,60 @@ mod tests {
         let list = vec!["+8869*".to_string()];
         assert!(callback_whitelist_allows("0911222333", &list));
         assert!(!callback_whitelist_allows("0212345678", &list));
+    }
+
+    #[test]
+    fn send_sms_message_and_its_result() {
+        assert_eq!(
+            send_sms_payload("task-1", "+886912345678", "你好"),
+            json!({"type": "send_sms", "id": "task-1", "to": "+886912345678", "text": "你好"})
+        );
+        let ok = json!({"type": "send_sms_result", "id": "task-1", "ok": true});
+        assert_eq!(parse_sms_result(&ok), Some(("task-1".to_string(), SmsOutcome::Sent)));
+        let failed = json!({"type": "send_sms_result", "id": "task-1", "ok": false, "error": "no_service"});
+        assert_eq!(
+            parse_sms_result(&failed),
+            Some(("task-1".to_string(), SmsOutcome::Failed("no_service".into())))
+        );
+        let odd = json!({"type": "send_sms_result", "id": "x", "ok": false, "error": "<script>"});
+        assert_eq!(parse_sms_result(&odd).unwrap().1, SmsOutcome::Failed("generic_failure".into()));
+        assert_eq!(parse_sms_result(&json!({"type": "place_call_ack", "id": "x"})), None);
+        assert_eq!(parse_sms_result(&json!({"type": "send_sms_result", "ok": true})), None);
+        assert!(sms_to_ok("+886912345678") && sms_to_ok("0912345678"));
+        assert!(!sms_to_ok("09-12") && !sms_to_ok("++886") && !sms_to_ok("") && !sms_to_ok("abc"));
+        assert_eq!(control_serials("pixel-1010341"), vec!["pixel-1010341", "pixel-10341"]);
+        assert_eq!(control_serials("pixel-10341"), vec!["pixel-10341"]);
+    }
+
+    #[tokio::test]
+    async fn send_sms_needs_a_connected_phone_and_results_reach_their_waiter() {
+        let reg = ControlRegistry::default();
+        let out = reg
+            .send_sms("pixel-1", "t1", "+886912345678", "hi", Duration::from_millis(50))
+            .await;
+        assert_eq!(out, SmsOutcome::Offline);
+        // A result arrives for a message that is waiting.
+        let (tx, rx) = oneshot::channel();
+        reg.sms_waiters.lock().await.insert("t2".into(), ("pixel-1".into(), tx));
+        let msg = json!({"type": "send_sms_result", "id": "t2", "ok": false, "error": "radio_off"});
+        assert!(reg.handle_sms_result(&msg).await);
+        assert_eq!(rx.await.unwrap(), SmsOutcome::Failed("radio_off".into()));
+        assert!(!reg.handle_sms_result(&msg).await);
+        // The same id while one waits: refused, and the waiting one still gets its answer.
+        let (tx, rx) = oneshot::channel();
+        reg.sms_waiters.lock().await.insert("t4".into(), ("pixel-1".into(), tx));
+        let again = reg
+            .send_sms("pixel-1", "t4", "+886912345678", "hi", Duration::from_millis(50))
+            .await;
+        assert_eq!(again, SmsOutcome::Busy);
+        assert!(reg.handle_sms_result(&json!({"type": "send_sms_result", "id": "t4", "ok": true})).await);
+        assert_eq!(rx.await.unwrap(), SmsOutcome::Sent);
+        // The phone drops: its waiting messages end, its texting flag goes.
+        let (tx, rx) = oneshot::channel();
+        reg.sms_waiters.lock().await.insert("t3".into(), ("pixel-1".into(), tx));
+        reg.set_supports_sms("pixel-1", true).await;
+        reg.unregister_client("pixel-1").await;
+        assert!(rx.await.is_err());
+        assert!(!reg.sms_capable.lock().await.contains("pixel-1"));
     }
 }

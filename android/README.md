@@ -150,8 +150,8 @@ below, exactly as before the mode switch existed.
 
 1. Creates `/data/local/tmp/pixelcallai_uplink.pcm` (mode 666). This is a debugging
    aid; the normal call path does not use it.
-2. Grants the app `RECORD_AUDIO`, `READ_PHONE_STATE`, `ANSWER_PHONE_CALLS` and
-   `ACCESS_NOTIFICATION_POLICY`, and allows the `ACCESS_NOTIFICATION_POLICY` app-op.
+2. Grants the app `RECORD_AUDIO`, `READ_PHONE_STATE`, `ANSWER_PHONE_CALLS`, `SEND_SMS`
+   and `ACCESS_NOTIFICATION_POLICY`, and allows the `ACCESS_NOTIFICATION_POLICY` app-op.
 3. Gives the app the **Dialer** and **Call screening** roles and makes it the default
    dialer (`telecom set-default-dialer`).
 4. Only if the app really is the default dialer: disables Google Dialer's in-call
@@ -191,8 +191,8 @@ In AI mode:
   volume, which stays at minimum.
 
 In normal phone mode the service only keeps the control connection to the agent
-(status and the remote mode switch). It does not repeat the role commands, mute
-anything, silence or answer calls.
+(status, the remote mode switch, and `send_sms`, which still sends in this mode).
+It does not repeat the role commands, mute anything, silence or answer calls.
 
 ### Status bar
 
@@ -376,6 +376,7 @@ Other declared permissions:
 | `RECEIVE_BOOT_COMPLETED` | Start again after a reboot. |
 | `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Ask for the battery optimization exemption. |
 | `MANAGE_OWN_CALLS` | Declared; not used by the current code. |
+| `SEND_SMS` | Send a text message when the agent asks (`send_sms`, for example to reply to an appointment request). The module grants it at boot and when the phone switches to AI mode; the setup screen does not ask for it. |
 
 The manifest also sets `usesCleartextTraffic="true"`, because `ws://` to localhost or
 to a PC on your own network is not encrypted.
@@ -417,7 +418,7 @@ App to agent:
 
 | `type` | Fields | When |
 |---|---|---|
-| `hello` | `serial`, `mode` = `"CONTROL_IDLE"`, `play_tts_locally` = `false`, `model`, `app_version`, `phone_mode` (`"ai"` / `"normal"`), `in_call` | Right after connecting. `phone_mode` is not called `mode` because `mode` names the connection. Apps before the mode switch send neither. |
+| `hello` | `serial`, `mode` = `"CONTROL_IDLE"`, `play_tts_locally` = `false`, `model`, `app_version`, `phone_mode` (`"ai"` / `"normal"`), `in_call`, `supports_sms` = `true` | Right after connecting. `phone_mode` is not called `mode` because `mode` names the connection. Apps before the mode switch send neither. Apps before 0.2.4 do not send `supports_sms` and cannot send text messages. |
 | `ping` | `t` (milliseconds since epoch) | Every 15 s. |
 | `status` | `mode` (`"ai"` / `"normal"`), `in_call` | The phone mode or the call state (ringing or active vs idle) changed. |
 | `set_mode_result` | `id`, `ok`, `mode`, `error` | Answer to `set_mode`. `mode` is the mode afterwards; `error` is empty on success, otherwise a code from [Normal phone mode](#normal-phone-mode). |
@@ -427,6 +428,7 @@ App to agent:
 | `place_call_failed` | `call_id`, `task_id`, `number`, `reason` | A requested call could not be dialed. |
 | `outbound_ready` | `call_id`, `task_id`, `number` | A requested call connected. |
 | `call_end` | `call_id`, `task_id`, `serial`, `reason` = `"normal"` | A requested call ended. |
+| `send_sms_result` | `id`, `ok`, `error` (only when `ok` is `false`) | Answer to `send_sms`, sent once every part of the message was reported sent, one part failed, or 60 seconds passed. `error` is one of `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception`. Lost if the control connection is not open when the result is ready. |
 
 Agent to app:
 
@@ -435,6 +437,7 @@ Agent to app:
 | `answer_plan` | `delay_ms`, `prewarm` | How long to let the call ring before answering. `prewarm` is only logged. |
 | `place_call` | `number`, `call_id`, `task_id` | Dial `number`. |
 | `set_mode` | `mode` (`"ai"` / `"normal"`), `id` | Switch the phone mode; answered with `set_mode_result`. |
+| `send_sms` | `id` (1–64 characters), `to` (3–20 digits, optional leading `+`), `text` (1–500 characters) | Send `text` as a text message from the phone's own number (default SMS SIM), for example to reply to an appointment request. Answered with `send_sms_result`. A `send_sms` with the id of a message still being sent is ignored. |
 | `agent_info` | `console_url` | The web console's address, for the app's **Open the web console** button. Sent after `hello` only when the agent knows it; the app forgets the old one on every new connection. |
 | `blocklist_sync` | `numbers` (array) | Stored, but not used: the app never rejects callers. |
 | `hello_ack`, `hello_ok`, `ack`, `pong` | | Logged only. |

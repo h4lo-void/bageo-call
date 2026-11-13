@@ -1,4 +1,11 @@
-//! Google Calendar insert via OAuth2 refresh-token flow.
+//! Google Calendar via the OAuth2 refresh-token flow: insert, move and delete
+//! events, list what is in a time window, and ask whether a time is free
+//! (`freeBusy`, appointments). The refresh token needs `calendar.events` to
+//! write and `calendar.freebusy` (or `calendar.readonly` / `calendar`) to ask.
+//!
+//! Events an appointment puts in the calendar carry a private extended property
+//! `myna_call=<tag>` ([`EVENT_TAG_KEY`]) so they can be found again when the
+//! answer to an insert was lost (timeout).
 //!
 //! Settings (see [`crate::settings_store::RuntimeSettings`]):
 //! `gcal_client_id`, `gcal_client_secret`, `gcal_refresh_token`, `gcal_calendar_id`.
@@ -14,6 +21,9 @@ use serde_json::{json, Value};
 
 const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const CALENDAR_API: &str = "https://www.googleapis.com/calendar/v3/calendars";
+const FREEBUSY_URL: &str = "https://www.googleapis.com/calendar/v3/freeBusy";
+/// Private extended property that marks the events of one call's appointment.
+pub const EVENT_TAG_KEY: &str = "myna_call";
 
 /// Google Calendar OAuth fields not set, in the agent's language (also what a
 /// task follow-up shows). Never include credential values in an error.
@@ -78,6 +88,35 @@ pub async fn insert_event(
     start_rfc3339: &str,
     end_rfc3339_or_plus1h: &str,
 ) -> Result<String> {
+    insert_event_tagged(
+        http,
+        client_id,
+        client_secret,
+        refresh_token,
+        calendar_id,
+        summary,
+        description,
+        start_rfc3339,
+        end_rfc3339_or_plus1h,
+        "",
+    )
+    .await
+}
+
+/// [`insert_event`] with a [`EVENT_TAG_KEY`] tag (empty = none).
+#[allow(clippy::too_many_arguments)]
+pub async fn insert_event_tagged(
+    http: &Client,
+    client_id: &str,
+    client_secret: &str,
+    refresh_token: &str,
+    calendar_id: &str,
+    summary: &str,
+    description: &str,
+    start_rfc3339: &str,
+    end_rfc3339_or_plus1h: &str,
+    tag: &str,
+) -> Result<String> {
     let summary = validate_summary(summary)?;
     let access_token = refresh_access_token(http, client_id, client_secret, refresh_token).await?;
     let cal_id = resolve_calendar_id(calendar_id);
@@ -91,22 +130,7 @@ pub async fn insert_event(
         &mut desc,
     )?;
 
-    let tz = taipei_offset();
-    let start_local = start_dt.with_timezone(&tz);
-    let end_local = end_dt.with_timezone(&tz);
-
-    let payload = json!({
-        "summary": summary,
-        "description": desc,
-        "start": {
-            "dateTime": start_local.to_rfc3339(),
-            "timeZone": "Asia/Taipei",
-        },
-        "end": {
-            "dateTime": end_local.to_rfc3339(),
-            "timeZone": "Asia/Taipei",
-        },
-    });
+    let payload = event_payload(summary, &desc, start_dt, end_dt, tag);
 
     let url = format!("{CALENDAR_API}/{}/events", urlencoding_path(cal_id));
     let resp = http
@@ -134,12 +158,344 @@ pub async fn insert_event(
         .ok_or_else(|| anyhow::anyhow!("Google 日曆建立行程回應缺少事件 id"))
 }
 
+/// The body of a new event; a non-empty `tag` goes in as a private extended property.
+fn event_payload(summary: &str, description: &str, start: DateTime<Utc>, end: DateTime<Utc>, tag: &str) -> Value {
+    let tz = taipei_offset();
+    let mut payload = json!({
+        "summary": summary,
+        "description": description,
+        "start": {
+            "dateTime": start.with_timezone(&tz).to_rfc3339(),
+            "timeZone": "Asia/Taipei",
+        },
+        "end": {
+            "dateTime": end.with_timezone(&tz).to_rfc3339(),
+            "timeZone": "Asia/Taipei",
+        },
+    });
+    let tag = tag.trim();
+    if !tag.is_empty() {
+        payload["extendedProperties"] = json!({ "private": { EVENT_TAG_KEY: tag } });
+    }
+    payload
+}
+
+/// One event in a time window, as far as a clash goes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EventBrief {
+    pub id: String,
+    /// Takes up the time: not cancelled, not "free" (transparent), not declined by you.
+    pub blocks_time: bool,
+}
+
+/// The events of an `events.list` answer.
+pub fn parse_event_list(body: &Value) -> Result<Vec<EventBrief>> {
+    let items = body
+        .get("items")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow::anyhow!("Google 日曆行程列表回應格式錯誤"))?;
+    Ok(items
+        .iter()
+        .filter_map(|e| {
+            let id = e.get("id")?.as_str()?.to_string();
+            let cancelled = e.get("status").and_then(Value::as_str) == Some("cancelled");
+            let free = e.get("transparency").and_then(Value::as_str) == Some("transparent");
+            let declined = e
+                .get("attendees")
+                .and_then(Value::as_array)
+                .is_some_and(|a| {
+                    a.iter().any(|p| {
+                        p.get("self").and_then(Value::as_bool) == Some(true)
+                            && p.get("responseStatus").and_then(Value::as_str) == Some("declined")
+                    })
+                });
+            Some(EventBrief {
+                id,
+                blocks_time: !cancelled && !free && !declined,
+            })
+        })
+        .collect())
+}
+
+fn events_url(calendar_id: &str) -> String {
+    format!("{CALENDAR_API}/{}/events", urlencoding_path(resolve_calendar_id(calendar_id)))
+}
+
+fn event_url(calendar_id: &str, event_id: &str) -> String {
+    format!("{}/{}", events_url(calendar_id), urlencoding_path(event_id.trim()))
+}
+
+/// What is in the calendar between `time_min` and `time_max` (RFC 3339 with offset).
+#[allow(clippy::too_many_arguments)]
+pub async fn list_events(
+    http: &Client,
+    client_id: &str,
+    client_secret: &str,
+    refresh_token: &str,
+    calendar_id: &str,
+    time_min: &str,
+    time_max: &str,
+) -> Result<Vec<EventBrief>> {
+    let access_token = refresh_access_token(http, client_id, client_secret, refresh_token).await?;
+    let url = url::Url::parse_with_params(
+        &events_url(calendar_id),
+        &[
+            ("timeMin", time_min.trim()),
+            ("timeMax", time_max.trim()),
+            ("singleEvents", "true"),
+            ("maxResults", "50"),
+        ],
+    )
+    .context("Google 日曆行程列表網址錯誤")?;
+    let resp = http
+        .get(url)
+        .bearer_auth(&access_token)
+        .send()
+        .await
+        .context("Google 日曆行程列表連線失敗")?;
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        let _ = resp.text().await;
+        bail!("{}", read_http_error_zh(status));
+    }
+    let body: Value = resp.json().await.context("Google 日曆行程列表回應格式錯誤")?;
+    parse_event_list(&body)
+}
+
+/// Ids of the events carrying this appointment tag ([`EVENT_TAG_KEY`]).
+pub async fn find_tagged(
+    http: &Client,
+    client_id: &str,
+    client_secret: &str,
+    refresh_token: &str,
+    calendar_id: &str,
+    tag: &str,
+) -> Result<Vec<String>> {
+    let tag = tag.trim();
+    if tag.is_empty() {
+        return Ok(Vec::new());
+    }
+    let access_token = refresh_access_token(http, client_id, client_secret, refresh_token).await?;
+    let url = url::Url::parse_with_params(
+        &events_url(calendar_id),
+        &[
+            ("privateExtendedProperty", format!("{EVENT_TAG_KEY}={tag}").as_str()),
+            ("maxResults", "10"),
+        ],
+    )
+    .context("Google 日曆行程列表網址錯誤")?;
+    let resp = http
+        .get(url)
+        .bearer_auth(&access_token)
+        .send()
+        .await
+        .context("Google 日曆行程列表連線失敗")?;
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        let _ = resp.text().await;
+        bail!("{}", read_http_error_zh(status));
+    }
+    let body: Value = resp.json().await.context("Google 日曆行程列表回應格式錯誤")?;
+    Ok(parse_event_list(&body)?
+        .into_iter()
+        .filter(|e| e.blocks_time)
+        .map(|e| e.id)
+        .collect())
+}
+
+/// The `events.patch` body moving an event to another time.
+fn move_payload(start: DateTime<Utc>, end: DateTime<Utc>) -> Value {
+    let tz = taipei_offset();
+    json!({
+        "start": { "dateTime": start.with_timezone(&tz).to_rfc3339(), "timeZone": "Asia/Taipei" },
+        "end": { "dateTime": end.with_timezone(&tz).to_rfc3339(), "timeZone": "Asia/Taipei" },
+    })
+}
+
+/// Move an event to another time (same event, same id).
+#[allow(clippy::too_many_arguments)]
+pub async fn move_event(
+    http: &Client,
+    client_id: &str,
+    client_secret: &str,
+    refresh_token: &str,
+    calendar_id: &str,
+    event_id: &str,
+    start_rfc3339: &str,
+    end_rfc3339: &str,
+) -> Result<()> {
+    let mut ignored = String::new();
+    let (start, end) = resolve_event_window(start_rfc3339.trim(), end_rfc3339.trim(), Utc::now(), &mut ignored)?;
+    if event_id.trim().is_empty() {
+        bail!("Google 日曆行程 id 是空的");
+    }
+    let access_token = refresh_access_token(http, client_id, client_secret, refresh_token).await?;
+    let resp = http
+        .patch(event_url(calendar_id, event_id))
+        .bearer_auth(&access_token)
+        .json(&move_payload(start, end))
+        .send()
+        .await
+        .context("Google 日曆更改行程連線失敗")?;
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        let _ = resp.text().await;
+        bail!("{}", write_http_error_zh(status, "更改"));
+    }
+    Ok(())
+}
+
+/// Delete an event; one that is already gone counts as deleted.
+pub async fn delete_event(
+    http: &Client,
+    client_id: &str,
+    client_secret: &str,
+    refresh_token: &str,
+    calendar_id: &str,
+    event_id: &str,
+) -> Result<()> {
+    if event_id.trim().is_empty() {
+        bail!("Google 日曆行程 id 是空的");
+    }
+    let access_token = refresh_access_token(http, client_id, client_secret, refresh_token).await?;
+    let resp = http
+        .delete(event_url(calendar_id, event_id))
+        .bearer_auth(&access_token)
+        .send()
+        .await
+        .context("Google 日曆刪除行程連線失敗")?;
+    let status = resp.status().as_u16();
+    let _ = resp.text().await;
+    if delete_status_ok(status) {
+        Ok(())
+    } else {
+        bail!("{}", write_http_error_zh(status, "刪除"))
+    }
+}
+
+/// 2xx, or 404 / 410 (already deleted).
+fn delete_status_ok(status: u16) -> bool {
+    (200..300).contains(&status) || status == 404 || status == 410
+}
+
+fn read_http_error_zh(status: u16) -> String {
+    match status {
+        401 | 403 => "Google 日曆讀取行程被拒絕：授權範圍不足，需含日曆讀取（calendar 或 calendar.readonly）— 請重新取得 Refresh Token".to_string(),
+        404 => "Google 日曆找不到指定日曆 — 請至「設定」分頁檢查 Calendar ID".to_string(),
+        _ => format!("Google 日曆讀取行程失敗（HTTP {status}）"),
+    }
+}
+
+fn write_http_error_zh(status: u16, what: &str) -> String {
+    match status {
+        401 | 403 => format!("Google 日曆{what}行程被拒絕 — 請至「設定」分頁檢查權杖與日曆權限"),
+        404 => format!("Google 日曆{what}行程失敗：找不到這筆行程或日曆"),
+        _ => format!("Google 日曆{what}行程失敗（HTTP {status}）"),
+    }
+}
+
 fn resolve_calendar_id(calendar_id: &str) -> &str {
     let t = calendar_id.trim();
     if t.is_empty() {
         "primary"
     } else {
         t
+    }
+}
+
+/// The `freeBusy` request for one calendar between two RFC 3339 times
+/// (local offset, e.g. `2026-11-14T15:00:00+08:00`).
+pub fn freebusy_request(calendar_id: &str, time_min: &str, time_max: &str) -> Value {
+    json!({
+        "timeMin": time_min,
+        "timeMax": time_max,
+        "items": [{ "id": resolve_calendar_id(calendar_id) }],
+    })
+}
+
+/// True when the calendar has nothing in the asked window, from a `freeBusy` answer.
+pub fn parse_freebusy(body: &Value, calendar_id: &str) -> Result<bool> {
+    let calendars = body
+        .get("calendars")
+        .and_then(Value::as_object)
+        .ok_or_else(|| anyhow::anyhow!("Google 日曆空閒查詢回應格式錯誤"))?;
+    let id = resolve_calendar_id(calendar_id);
+    // Keyed by the id asked for; one calendar asked → its one entry.
+    let cal = calendars
+        .get(id)
+        .or_else(|| {
+            if calendars.len() == 1 {
+                calendars.values().next()
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!("Google 日曆空閒查詢沒有這個日曆的結果 — 請至「設定」分頁檢查 Calendar ID")
+        })?;
+    if let Some(err) = cal
+        .get("errors")
+        .and_then(Value::as_array)
+        .and_then(|e| e.first())
+    {
+        // A short code such as notFound / internalError, never a secret.
+        let reason: String = err
+            .get("reason")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .take(40)
+            .collect();
+        bail!("Google 日曆空閒查詢失敗（{reason}）— 請至「設定」分頁檢查 Calendar ID 與授權範圍");
+    }
+    Ok(cal
+        .get("busy")
+        .and_then(Value::as_array)
+        .map_or(true, |b| b.is_empty()))
+}
+
+/// Whether the calendar is free between `time_min` and `time_max` (RFC 3339 with offset).
+pub async fn query_free(
+    http: &Client,
+    client_id: &str,
+    client_secret: &str,
+    refresh_token: &str,
+    calendar_id: &str,
+    time_min: &str,
+    time_max: &str,
+) -> Result<bool> {
+    let start = DateTime::parse_from_rfc3339(time_min.trim())
+        .map_err(|_| anyhow::anyhow!("無法解析開始時間"))?;
+    let end = DateTime::parse_from_rfc3339(time_max.trim())
+        .map_err(|_| anyhow::anyhow!("無法解析結束時間"))?;
+    if end <= start {
+        bail!("行程結束時間必須晚於開始時間");
+    }
+    let access_token = refresh_access_token(http, client_id, client_secret, refresh_token).await?;
+    let resp = http
+        .post(FREEBUSY_URL)
+        .bearer_auth(&access_token)
+        .json(&freebusy_request(calendar_id, time_min.trim(), time_max.trim()))
+        .send()
+        .await
+        .context("Google 日曆空閒查詢連線失敗")?;
+    if !resp.status().is_success() {
+        // Never dump the response body.
+        let status = resp.status().as_u16();
+        let _ = resp.text().await;
+        bail!("{}", freebusy_http_error_zh(status));
+    }
+    let body: Value = resp.json().await.context("Google 日曆空閒查詢回應格式錯誤")?;
+    parse_freebusy(&body, calendar_id)
+}
+
+fn freebusy_http_error_zh(status: u16) -> String {
+    match status {
+        403 => "Google 日曆空閒查詢被拒絕：授權範圍不足，需含日曆讀取（calendar 或 calendar.freebusy）— 請重新取得 Refresh Token".to_string(),
+        401 => "Google 日曆空閒查詢被拒絕 — 請至「設定」分頁檢查權杖".to_string(),
+        404 => "Google 日曆找不到指定日曆 — 請至「設定」分頁檢查 Calendar ID".to_string(),
+        _ => format!("Google 日曆空閒查詢失敗（HTTP {status}）"),
     }
 }
 
@@ -592,5 +948,62 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("結束時間必須晚於"));
+    }
+
+    #[test]
+    fn freebusy_request_and_answers() {
+        let req = freebusy_request("", "2026-11-14T15:00:00+08:00", "2026-11-14T16:00:00+08:00");
+        assert_eq!(
+            req,
+            json!({"timeMin": "2026-11-14T15:00:00+08:00", "timeMax": "2026-11-14T16:00:00+08:00", "items": [{"id": "primary"}]})
+        );
+        assert_eq!(freebusy_request("work@group.calendar.google.com", "a", "b")["items"][0]["id"], "work@group.calendar.google.com");
+        let free = json!({"kind": "calendar#freeBusy", "calendars": {"primary": {"busy": []}}});
+        assert!(parse_freebusy(&free, "").unwrap());
+        let busy = json!({"calendars": {"primary": {"busy": [{"start": "2026-11-14T07:00:00Z", "end": "2026-11-14T08:00:00Z"}]}}});
+        assert!(!parse_freebusy(&busy, " ").unwrap());
+        // The answer may key the calendar by its address instead of "primary".
+        let keyed = json!({"calendars": {"me@example.com": {"busy": []}}});
+        assert!(parse_freebusy(&keyed, "").unwrap());
+        let missing = json!({"calendars": {"notFound@x": {"errors": [{"domain": "global", "reason": "notFound"}]}}});
+        let err = parse_freebusy(&missing, "notFound@x").unwrap_err().to_string();
+        assert!(err.contains("notFound") && err.contains("Calendar ID"), "{err}");
+        assert!(parse_freebusy(&json!({"error": {"code": 400}}), "").is_err());
+        let scope = freebusy_http_error_zh(403);
+        assert!(scope.contains("授權範圍不足") && scope.contains("calendar.freebusy"), "{scope}");
+        assert!(freebusy_http_error_zh(500).contains("HTTP 500"));
+    }
+
+    #[test]
+    fn tagged_events_lists_moves_and_deletes() {
+        let s = utc(2026, 11, 14, 7, 0);
+        let e = utc(2026, 11, 14, 8, 0);
+        let p = event_payload("看房", "desc", s, e, " tag-1 ");
+        assert_eq!(p["extendedProperties"]["private"][EVENT_TAG_KEY], "tag-1");
+        assert_eq!(p["start"]["dateTime"], "2026-11-14T15:00:00+08:00");
+        assert!(event_payload("看房", "", s, e, "").get("extendedProperties").is_none());
+        let m = move_payload(s, e);
+        assert_eq!((m["start"]["dateTime"].as_str(), m["end"]["dateTime"].as_str()), (Some("2026-11-14T15:00:00+08:00"), Some("2026-11-14T16:00:00+08:00")));
+        assert!(m.get("summary").is_none());
+        let list = json!({"items": [
+            {"id": "own", "status": "confirmed"},
+            {"id": "free", "transparency": "transparent"},
+            {"id": "gone", "status": "cancelled"},
+            {"id": "no", "attendees": [{"self": true, "responseStatus": "declined"}]},
+            {"id": "meet", "attendees": [{"self": true, "responseStatus": "accepted"}]},
+            {"status": "confirmed"}
+        ]});
+        let got = parse_event_list(&list).unwrap();
+        let blocking: Vec<&str> = got.iter().filter(|e| e.blocks_time).map(|e| e.id.as_str()).collect();
+        assert_eq!(blocking, vec!["own", "meet"]);
+        assert_eq!(got.len(), 5);
+        assert!(parse_event_list(&json!({"kind": "x"})).is_err());
+        assert!(event_url("", "abc_123").ends_with("/calendars/primary/events/abc_123"));
+        assert!(event_url("a b@x", "id").contains("/calendars/a%20b%40x/events/id"));
+        assert!(delete_status_ok(204) && delete_status_ok(404) && delete_status_ok(410));
+        assert!(!delete_status_ok(403) && !delete_status_ok(500));
+        let err = write_http_error_zh(403, "刪除");
+        assert!(err.contains("刪除") && !err.contains("token="), "{err}");
+        assert!(read_http_error_zh(403).contains("授權範圍不足"));
     }
 }

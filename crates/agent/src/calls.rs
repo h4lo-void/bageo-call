@@ -77,6 +77,10 @@ pub struct CallRecord {
     /// and the listen mix is not ducked under the AI. None = older recordings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub echo_free: Option<bool>,
+    /// The appointment the caller agreed to on this call, as the call left it
+    /// (later decisions are in [`CallNotes::appointment`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub appointment: Option<crate::appointments::Appointment>,
 }
 
 /// Detailed post-call record for the web UI (the notification only gets `summary`).
@@ -100,6 +104,10 @@ pub struct CallNotes {
     /// A date the call fixed, as a calendar suggestion.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub calendar: Option<crate::calendar::Event>,
+    /// The appointment the AI took on this call and where it stands
+    /// (`pending` / `booked` / `confirmed` / `declined`, text message).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub appointment: Option<crate::appointments::Appointment>,
 }
 
 /// `YYYY-MM-DD` directory holding a record's files.
@@ -232,11 +240,24 @@ pub struct ActiveCall {
     reply_method: Option<String>,
     reply_contact: Option<String>,
     contact_verified: bool,
+    /// What the caller agreed to on this call (appointments), shared with the Live session.
+    appointments: Option<Arc<crate::appointments::CallAppointments>>,
 }
 
 impl ActiveCall {
     pub fn push_event(&mut self, ev: &str) {
         self.events.push(ev.to_string());
+    }
+
+    /// The call's appointment book (its Live session writes, the record reads at the end).
+    pub fn set_appointments(&mut self, book: Arc<crate::appointments::CallAppointments>) {
+        self.appointments = Some(book);
+    }
+
+    /// The call's appointment book, read again after the call (a proposal may
+    /// still have been writing to the calendar when the record was sealed).
+    pub fn appointment_book(&self) -> Option<Arc<crate::appointments::CallAppointments>> {
+        self.appointments.clone()
     }
 
     pub fn set_caller_id(&mut self, caller_id: &str) {
@@ -1375,6 +1396,7 @@ impl CallStore {
             reply_method: None,
             reply_contact: None,
             contact_verified: false,
+            appointments: None,
         };
         let draft = call.to_record(None, None, 0);
         let snap = {
@@ -1835,6 +1857,7 @@ impl ActiveCall {
             contact_verified: self.contact_verified,
             summary: None,
             echo_free: self.echo_free,
+            appointment: self.appointments.as_ref().and_then(|b| b.outcome()),
         }
     }
 }
@@ -2108,6 +2131,7 @@ mod tests {
             reply_method: None,
             reply_contact: None,
             contact_verified: false,
+            appointments: None,
         }
     }
 
@@ -2570,6 +2594,32 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[tokio::test]
+    async fn the_record_carries_what_the_caller_agreed_to() {
+        let dir = std::env::temp_dir().join(format!("myna-calls-appt-{}", Uuid::new_v4()));
+        let store = CallStore::new(dir.clone(), true, false, 7);
+        let mut call = store.start("pixel-1", "0911111111", 16000, "active").await.unwrap();
+        let book = crate::appointments::CallAppointments::new();
+        call.set_appointments(book.clone());
+        book.record(crate::appointments::Appointment {
+            start: "2026-11-14T15:00".into(),
+            end: "2026-11-14T16:00".into(),
+            title: "看房".into(),
+            mode: "confirm".into(),
+            status: crate::appointments::PENDING.into(),
+            ..Default::default()
+        });
+        let rec = store.finalize(call, "ended").await;
+        assert_eq!(rec.appointment.as_ref().map(|a| a.title.as_str()), Some("看房"));
+        let json = serde_json::to_value(&rec).unwrap();
+        assert_eq!(json["appointment"]["status"], "pending");
+        // A call without one has no key at all.
+        let plain = store.start("pixel-1", "0922222222", 16000, "active").await.unwrap();
+        let rec = store.finalize(plain, "ended").await;
+        assert!(serde_json::to_value(&rec).unwrap().get("appointment").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn call_matches_status_caller_and_transcript() {
         let rec = CallRecord {
@@ -2595,6 +2645,7 @@ mod tests {
             contact_verified: false,
             summary: None,
             echo_free: None,
+            appointment: None,
         };
         let mut transcripts = std::collections::HashMap::new();
         transcripts.insert("abc".into(), "請回撥明天開會".into());

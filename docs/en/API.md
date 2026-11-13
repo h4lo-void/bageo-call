@@ -40,11 +40,17 @@ A call record (`call`, and each entry of `calls`) carries among others: `id`,
 `serial` (the phone), `caller_id`, `started_at` / `ended_at` (RFC 3339, UTC),
 `duration_ms`, `status` (`ringing`, `active`, `ended`), `events` (what happened,
 in order — e.g. `active`, `persona_stall_spam`, `reject_list`,
-`persona_ai_fail_hangup`, `ended`), `summary`, and which audio files exist.
+`persona_ai_fail_hangup`, `ended`), `summary`, which audio files exist and,
+when the caller set a time with the AI, `appointment` as the call left it
+(see [Appointments](#appointments)); `notes.appointment` is kept up to date
+after the call (your decision, the text result).
 
-In `notes.dialogue` every line is one turn, prefixed with the stored speaker
-label `對方：` (the caller) or `接聽：` (the AI). The labels are fixed whatever
-the language; translate them for display.
+In `notes.dialogue` every line is one turn, prefixed with the speaker label in
+the agent's language and its separator: `Caller: ` / `AI: ` in English,
+`對方：` / `接聽：` in Traditional Chinese, `对方：` / `接听：` in Simplified
+Chinese, `相手：` / `AI：`, `상대: ` / `AI: `, `Llamante: ` / `IA: `,
+`Appelant : ` / `IA : `, `Anrufer: ` / `KI: `, `Chamador: ` / `IA: `.
+Records saved by earlier versions use `對方：` / `接聽：` in every language.
 
 ## Settings
 
@@ -95,6 +101,41 @@ for the background alone), `ambience` (`off` or a kind), `level` (1–3),
 voice comes recorded in every language (`assets/voices/`), so a preview needs no
 Gemini session; only `regen=true` or a voice without a recording opens one.
 
+## Appointments
+
+With `appointment_mode` `confirm` or `auto` (see
+[Settings](SETTINGS.md#summary--calendar)), a call where the caller set a time
+with the AI leaves a task (`intent` `appointment`) and an `appointment` object
+on the call record, in its notes and on the task:
+
+```json
+{
+  "start": "2026-11-14T15:00", "end": "2026-11-14T16:00",
+  "title": "House viewing", "caller_name": "Mr Chen",
+  "mode": "confirm", "status": "pending",
+  "tag": "6f1c2a9e-3b7d-4e0a-9c55-2d8f1b7e4a10"
+}
+```
+
+Times are local (`TZ`). `status`: `pending` (waiting for you), `booked` (put
+in the calendar on the call), `confirmed`, `declined`. `event_id`: the Google
+Calendar event once it is there. `auto_error`: why *Book it if I'm free* could
+not book it. `replaced`: earlier times of the same call that were already put
+in the calendar. `sms`: `sent`, or why the text did not go (`offline`,
+`old_app`, `timeout`, `busy`, `no_number`, or the phone's error code). `tag`:
+the call's own mark on the events it writes (below). `tg_card`: `{chat_id,
+message_id}` of the Telegram card sent for it, whose buttons are taken off when
+you decide elsewhere. Empty fields are left out.
+Events the agent writes carry the private extended property
+`myna_call=<appointment.tag>`, so an event whose insert answer was lost is found
+again instead of written twice.
+
+| Method and path | What |
+|---|---|
+| `GET /calls/api/tasks` | Tasks, newest first (up to 200): `{ok, tasks}`. The console's *Appointments to confirm* list is the tasks whose `appointment.status` is `pending`. |
+| `POST /calls/api/tasks/{id}/confirm` | For an appointment: the same as **✅ Confirm** in the web console or on its Telegram card — Google Calendar, then (with `appointment_sms`) the text to the caller, which may take up to 90 seconds. `{ok, task, message}`; `message` is what happened, as the console shows it and the Telegram bot replies it. When a Telegram card went out for the appointment, its buttons are taken off and `message` is posted in that chat (best effort; the decision stands either way). Only the first decision counts: a second confirm or decline — also one sent while the first is still running, or a press on the Telegram card — answers "already handled" and changes nothing. Needs `Content-Type: application/json` (no body), otherwise HTTP 400 `bad_request`, so other web pages cannot decide from a browser on your network. |
+| `POST /calls/api/tasks/{id}/ignore` | For an appointment: **❌ Decline** (an event the call already put in the calendar is removed; the text when `appointment_sms` is on). Same answer and rules. |
+
 ## Phones and health
 
 | Method and path | What |
@@ -126,3 +167,11 @@ ignore what they do not know, so old apps and old agents keep working):
 | agent → phone | `{"type": "set_mode", "mode": "ai" \| "normal", "id": "<uuid>"}` | Switch (sent by the route above). |
 | phone → agent | `{"type": "set_mode_result", "id": "<same>", "ok": bool, "mode": "...", "error": "<code>"}` | Result; `error` is empty on success and uses the codes above. |
 | agent → phone | `{"type": "agent_info", "console_url": "http://…/calls/"}` | Right after the hello, when the agent has a console address: the one you typed (`public_url`) or, when that is empty and the console is open to your network, the LAN IP address (some phones cannot open `.local` names). The app shows an "Open the web console" button for it. |
+
+Text messages to callers (appointments) use the same connection:
+
+| Direction | Message | Meaning |
+|---|---|---|
+| phone → agent | `hello` with `"supports_sms": true` | The app can send texts for the agent. No field = an older app: no texts are asked of it. |
+| agent → phone | `{"type": "send_sms", "id": "<≤ 64 characters>", "to": "+886912345678", "text": "<UTF-8, ≤ 500 characters>"}` | Sent only to the phone that took the call. `to` is digits with an optional leading `+`. |
+| phone → agent | `{"type": "send_sms_result", "id": "<same>", "ok": true}` or `{"type": "send_sms_result", "id": "<same>", "ok": false, "error": "<code>"}` | Sent once every part of the message has reported back (the phone gives up after 60 seconds: `timeout`). `error` is one of `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception`. The agent waits up to 90 seconds; no answer counts as failed. |

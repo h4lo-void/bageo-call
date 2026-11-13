@@ -29,9 +29,9 @@ X-Calls-Token: <token>
 | `GET /calls/api/stats` | `{ok, stats: {total, today, voicemails, blocked}}`。 |
 | `GET /calls/api/export.csv` | 篩選後的清單，CSV 格式（查詢參數同 `list`，最多 2000 列）。 |
 
-通話紀錄（`call`，以及 `calls` 裡的每一筆）帶有的欄位包括：`id`、`serial`（手機）、`caller_id`、`started_at` / `ended_at`（RFC 3339，UTC）、`duration_ms`、`status`（`ringing`、`active`、`ended`）、`events`（依序發生的事——例如 `active`、`persona_stall_spam`、`reject_list`、`persona_ai_fail_hangup`、`ended`）、`summary`，以及有哪些音訊檔。
+通話紀錄（`call`，以及 `calls` 裡的每一筆）帶有的欄位包括：`id`、`serial`（手機）、`caller_id`、`started_at` / `ended_at`（RFC 3339，UTC）、`duration_ms`、`status`（`ringing`、`active`、`ended`）、`events`（依序發生的事——例如 `active`、`persona_stall_spam`、`reject_list`、`persona_ai_fail_hangup`、`ended`）、`summary`、有哪些音訊檔，對方跟 AI 約了時間時還有 `appointment`（通話結束當下的樣子，見[行程預約](#行程預約)）；通話後的變化（你的決定、簡訊結果）會更新在 `notes.appointment`。
 
-在 `notes.dialogue` 裡，每一行是一次發言，前面加上儲存時用的說話者標籤 `對方：`（來電者）或 `接聽：`（AI）。不論語言是什麼，這兩個標籤都是固定的；顯示時請自行翻譯。
+在 `notes.dialogue` 裡，每一行是一次發言，前面加上主程式語言的說話者標籤和分隔符號：繁體中文是 `對方：`／`接聽：`，簡體中文 `对方：`／`接听：`，英文 `Caller: `／`AI: `，日文 `相手：`／`AI：`，韓文 `상대: `／`AI: `，西班牙文 `Llamante: `／`IA: `，法文 `Appelant : `／`IA : `，德文 `Anrufer: `／`KI: `，葡萄牙文 `Chamador: `／`IA: `。舊版存的紀錄不論語言都是 `對方：`／`接聽：`。
 
 ## 設定
 
@@ -68,6 +68,27 @@ PUT /calls/api/settings
 
 `GET /calls/api/preview` 會回傳一個 WAV。查詢參數：`voice`（聲音名稱，或用 `none` 表示只要背景音）、`ambience`（`off` 或某一種背景音）、`level`（1–3）、`regen=true`（重新產生，不用快取的範例）、`clip=reject`（用該聲音念的拒接號碼語音）、`lang`（`ja`、`zh-TW`…；留空 = 存著的語言）。內建的每個聲音在每種語言都已預先錄好（`assets/voices/`），試聽不用連 Gemini；只有 `regen=true` 或沒有預錄的聲音才會開一次短暫的連線。
 
+## 行程預約
+
+`appointment_mode` 設成 `confirm` 或 `auto` 時（見[設定](SETTINGS.md#摘要與行事曆)），對方跟 AI 約好時間的那通電話會留下一筆任務（`intent` 為 `appointment`），通話紀錄、它的 notes 和任務上都有一個 `appointment` 物件：
+
+```json
+{
+  "start": "2026-11-14T15:00", "end": "2026-11-14T16:00",
+  "title": "看房", "caller_name": "陳先生",
+  "mode": "confirm", "status": "pending",
+  "tag": "6f1c2a9e-3b7d-4e0a-9c55-2d8f1b7e4a10"
+}
+```
+
+時間是當地時間（`TZ`）。`status`：`pending`（等你決定）、`booked`（通話中已寫進日曆）、`confirmed`、`declined`。`event_id`：寫進 Google 日曆後的活動 ID。`auto_error`：「有空直接答應」沒能排入的原因。`replaced`：同一通電話裡先前已寫進日曆、後來改掉的時間。`sms`：`sent`，或簡訊沒傳出的原因（`offline`、`old_app`、`timeout`、`busy`、`no_number`，或手機回的錯誤代碼）。`tag`：這通電話在它寫進日曆的活動上留的記號（見下句）。`tg_card`：發給這筆預約的 Telegram 卡片 `{chat_id, message_id}`，在別處決定後用來拿掉卡片上的按鈕。空的欄位不會出現。主程式寫進日曆的活動都帶私有擴充屬性 `myna_call=<appointment.tag>`，寫入時沒收到回應的那筆之後找得回來，不會寫兩次。
+
+| 方法與路徑 | 內容 |
+|---|---|
+| `GET /calls/api/tasks` | 任務，最新的在前（最多 200 筆）：`{ok, tasks}`。網頁的「待確認的預約」就是 `appointment.status` 為 `pending` 的任務。 |
+| `POST /calls/api/tasks/{id}/confirm` | 對預約來說等於在網頁或 Telegram 卡片上按 **✅ 確定**——寫進 Google 日曆，接著（開了 `appointment_sms` 時）傳簡訊給對方，可能要等最多 90 秒。回應 `{ok, task, message}`；`message` 是結果，網頁顯示的和 Telegram Bot 回的是同一段。這筆預約有發過 Telegram 卡片時，卡片上的按鈕會拿掉，並把 `message` 回到那個聊天（盡力而為，Telegram 失敗不影響決定）。只有第一次決定算數：之後再確定或婉拒——包括第一次還在處理時送來的，或在 Telegram 卡片上按的——都只回「已經處理過了」，不會有任何變化。請求要帶 `Content-Type: application/json`（不用 body），否則回 HTTP 400 `bad_request`，這樣別的網頁沒辦法透過你區網裡的瀏覽器替你決定。 |
+| `POST /calls/api/tasks/{id}/ignore` | 對預約來說等於 **❌ 婉拒**（通話中已經寫進日曆的那筆會刪掉；開了 `appointment_sms` 時傳簡訊）。回應與規則同上。 |
+
 ## 手機與健康狀態
 
 | 方法與路徑 | 內容 |
@@ -91,3 +112,11 @@ PUT /calls/api/settings
 | 主程式 → 手機 | `{"type": "set_mode", "mode": "ai" \| "normal", "id": "<uuid>"}` | 切換（由上面的路由送出）。 |
 | 手機 → 主程式 | `{"type": "set_mode_result", "id": "<同一個>", "ok": bool, "mode": "...", "error": "<代碼>"}` | 結果；成功時 `error` 是空字串，代碼同上。 |
 | 主程式 → 手機 | `{"type": "agent_info", "console_url": "http://…/calls/"}` | 緊接在 hello 之後，主程式有控制台網址時才送：你填的網址（`public_url`）；沒填而控制台對區網開放時，用區網 IP 的網址（有些手機打不開 `.local` 名稱）。App 會因此顯示「打開網頁控制台」按鈕。 |
+
+傳給來電者的簡訊（行程預約）也走同一條連線：
+
+| 方向 | 訊息 | 意思 |
+|---|---|---|
+| 手機 → 主程式 | `hello` 加上 `"supports_sms": true` | App 能替主程式傳簡訊。沒有這個欄位 = 舊 App：不會要它傳簡訊。 |
+| 主程式 → 手機 | `{"type": "send_sms", "id": "<最多 64 字元>", "to": "+886912345678", "text": "<UTF-8，最多 500 字元>"}` | 只送給接那通電話的手機。`to` 只有數字，開頭可以有 `+`。 |
+| 手機 → 主程式 | `{"type": "send_sms_result", "id": "<同一個>", "ok": true}` 或 `{"type": "send_sms_result", "id": "<同一個>", "ok": false, "error": "<代碼>"}` | 簡訊每一段都回報送出後才回（手機最多等 60 秒，逾時回 `timeout`）。`error` 是 `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception` 其中之一。主程式最多等 90 秒，沒回應就當作失敗。 |

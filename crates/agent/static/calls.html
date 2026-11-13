@@ -205,6 +205,19 @@ pre.block.prose{font:inherit;font-size:.9rem}
 .cal .ci{color:var(--accent-ink);margin-top:2px}
 .cal b{display:block}
 .cal .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+/* Appointments waiting for the owner, top of the Calls page */
+.appts{padding:14px 16px;margin-bottom:16px;border-left:4px solid var(--warn)}
+.appts-head{display:flex;gap:10px;align-items:center;color:var(--warn)}
+.appts-head h2{font-size:1rem;margin:0;color:var(--text)}
+.appts-result{margin:10px 0 0;white-space:pre-wrap}
+.appt{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--line)}
+.appt:first-child{border-top:0}
+.appt>.grow{min-width:0;flex:1 1 220px}
+.appt-when{font-weight:700}
+.appt-sub{color:var(--muted);font-size:.85rem;margin-top:2px}
+.appt .btns{display:flex;gap:8px;flex-wrap:wrap}
+.appt-wait{flex-basis:100%;font-size:.85rem;color:var(--muted)}
+.appt-msg{white-space:pre-wrap}
 .seg{display:inline-flex;background:var(--surface2);border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}
 .seg button{border:0;background:transparent;padding:6px 14px;border-radius:8px;cursor:pointer;font-weight:600;color:var(--muted);min-height:34px}
 .seg button[aria-selected=true]{background:var(--surface);color:var(--text);box-shadow:0 0 0 1px var(--line)}
@@ -429,6 +442,16 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
 
   <!-- ======================= Calls ======================= -->
   <section id="view-calls" data-view="calls">
+    <!-- Appointments the AI took that wait for the owner's ✅ / ❌ (hidden when none) -->
+    <div class="card appts" id="apptBox" hidden>
+      <div class="appts-head"><svg class="i"><use href="#i-calendar"/></svg><h2 class="grow" id="apptTitle"></h2></div>
+      <div class="banner info appts-result" id="apptResult" hidden role="status">
+        <span class="grow" id="apptResultText"></span>
+        <button type="button" class="icon-btn" id="apptResultClose" data-i18n-aria="close" data-i18n-title="close"><svg class="i"><use href="#i-x"/></svg></button>
+      </div>
+      <div id="apptList"></div>
+    </div>
+
     <div class="card pad setup" id="setupCard" hidden>
       <h2 data-i18n="setup_title"></h2>
       <div class="steps">
@@ -497,14 +520,22 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <div class="cal">
               <svg class="i ci"><use href="#i-calendar"/></svg>
               <div class="grow">
-                <span class="small muted" data-i18n="d_cal"></span>
+                <span class="small muted" id="dCalLabel" data-i18n="d_cal"></span>
                 <b id="dCalTitle"></b>
                 <span id="dCalWhen"></span>
                 <div class="btns">
                   <a class="btn sm primary" id="dCalGoogle" target="_blank" rel="noopener noreferrer"><svg class="i sm"><use href="#i-external"/></svg><span data-i18n="d_cal_add"></span></a>
                   <a class="btn sm" id="dCalIcs" download="call-event.ics"><svg class="i sm"><use href="#i-download"/></svg><span data-i18n="d_cal_ics"></span></a>
                   <span class="tag ok" id="dCalAdded" hidden><svg class="i sm"><use href="#i-check"/></svg><span data-i18n="d_cal_added"></span></span>
+                  <span class="tag" id="dApptStatus" hidden></span>
+                  <span class="tag warn" id="dApptCal" hidden></span>
+                  <span class="tag bad" id="dApptSms" hidden></span>
                 </div>
+                <div class="btns" id="dApptActs" hidden>
+                  <button type="button" class="btn sm primary" id="dApptOk" data-i18n="ap_confirm"></button>
+                  <button type="button" class="btn sm" id="dApptNo" data-i18n="ap_decline"></button>
+                </div>
+                <p class="help appt-msg" id="dApptMsg" hidden role="status"></p>
               </div>
             </div>
           </div>
@@ -773,6 +804,14 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
                 <div class="help" data-i18n="f_gcal_cal_h"></div></div>
             </div>
           </details>
+          <div class="hr"></div>
+          <div class="field"><label for="f-appointment_mode" data-i18n="f_appt_mode"></label>
+            <select id="f-appointment_mode" data-k="appointment_mode" data-t="text" style="max-width:20rem">
+              <option value="off" data-i18n="appt_off"></option><option value="confirm" data-i18n="appt_confirm"></option><option value="auto" data-i18n="appt_auto"></option>
+            </select>
+            <div class="help" data-i18n="f_appt_mode_h"></div>
+            <p class="note" id="apptNoCal" hidden><svg class="i sm"><use href="#i-info"/></svg><span data-i18n="appt_nocal"></span></p></div>
+          <label class="sw"><input type="checkbox" data-k="appointment_sms" data-t="bool" /><span><b data-i18n="f_appt_sms"></b><small data-i18n="f_appt_sms_h"></small></span></label>
         </div></div>
 
         <!-- Region & advanced -->
@@ -1000,6 +1039,31 @@ I18N["en"] = {
   d_cal_add: "Add to Google Calendar",
   d_cal_ics: "Download .ics",
   d_cal_added: "Added to Google Calendar",
+  d_appt: "Appointment",
+  d_appt_pending: "Waiting for you",
+  d_appt_booked: "Booked during the call",
+  d_appt_confirmed: "Confirmed",
+  d_appt_declined: "Declined",
+  d_appt_sms_sent: "text sent",
+  ap_panel: "Appointments to confirm",
+  ap_confirm: "✅ Confirm",
+  ap_decline: "❌ Decline",
+  ap_open_call: "Open the call",
+  ap_working: "Working… (up to about 90 seconds when a text is sent)",
+  ap_already: "Already handled",
+  d_appt_sms_failed: "text not sent ({code})",
+  d_appt_sms_none: "number can't take texts",
+  d_appt_cal_none: "not in the calendar",
+  sms_c_offline: "the phone is not connected",
+  sms_c_old_app: "the phone app is too old",
+  sms_c_timeout: "the phone did not respond",
+  sms_c_busy: "the same text is already being sent",
+  sms_c_no_permission: "the phone app may not send texts",
+  sms_c_no_service: "no mobile signal",
+  sms_c_radio_off: "the phone's radio is off (airplane mode)",
+  sms_c_generic_failure: "the carrier did not take the text",
+  sms_c_exception: "the phone app ran into an error",
+  sms_c_bad_request: "the number or the text was not accepted",
   d_cal_allday: "All day",
   d_rec: "Recording",
   d_norec: "No recording for this call.",
@@ -1266,6 +1330,14 @@ I18N["en"] = {
   f_gcal_refresh: "Refresh token",
   f_gcal_cal: "Calendar ID",
   f_gcal_cal_h: "Empty = your main calendar.",
+  f_appt_mode: "Appointments",
+  f_appt_mode_h: "When a caller wants to set up a time with you, the AI checks your Google Calendar (only whether you're free, never what's on it). “Ask me first”: the AI says it'll confirm, and you decide with ✅ / ❌ under “Appointments to confirm” at the top of the Calls page. With a Telegram bot set up you also get a card you can tap; other notification channels get a reminder with a link; without notifications it only shows here. “Book it if I'm free”: if the time is free, the AI agrees on the call and adds it to your calendar. Never for sales or scam calls.",
+  appt_off: "Off",
+  appt_confirm: "Ask me first",
+  appt_auto: "Book it if I'm free",
+  appt_nocal: "Checking free times and adding to the calendar need the Google Calendar credentials above. Without them the AI cannot see your calendar: it always says it will confirm and get back to the caller, and “Book it if I'm free” works like “Ask me first”.",
+  f_appt_sms: "Text the caller",
+  f_appt_sms_h: "Once you confirm or decline (or the AI books it), the phone that took the call texts the caller a short message in your name. Taiwan mobile numbers only; the phone app must support sending texts.",
   // ---- settings: region & advanced
   f_cc: "Country calling code",
   f_cc_h: "Digits only, e.g. 1, 44, 886. Lets blocked numbers written with + match the way your phone reports callers.",
@@ -1557,6 +1629,31 @@ I18N["zh-TW"] = {
   d_cal_add: "加入 Google 日曆",
   d_cal_ics: "下載 .ics",
   d_cal_added: "已加入 Google 日曆",
+  d_appt: "行程預約",
+  d_appt_pending: "待你確認",
+  d_appt_booked: "通話中已排入",
+  d_appt_confirmed: "已確定",
+  d_appt_declined: "已婉拒",
+  d_appt_sms_sent: "已傳簡訊",
+  ap_panel: "待確認的預約",
+  ap_confirm: "✅ 確定",
+  ap_decline: "❌ 婉拒",
+  ap_open_call: "看這通電話",
+  ap_working: "處理中…（要傳簡訊時最多約 90 秒）",
+  ap_already: "已經處理過了",
+  d_appt_sms_failed: "簡訊沒傳出（{code}）",
+  d_appt_sms_none: "對方號碼收不到簡訊",
+  d_appt_cal_none: "沒寫進日曆",
+  sms_c_offline: "手機沒連線",
+  sms_c_old_app: "手機 App 太舊",
+  sms_c_timeout: "手機沒有回應（逾時）",
+  sms_c_busy: "同一則簡訊正在傳送中",
+  sms_c_no_permission: "手機 App 沒有傳簡訊的權限",
+  sms_c_no_service: "手機沒有訊號",
+  sms_c_radio_off: "手機的行動網路關閉（飛航模式）",
+  sms_c_generic_failure: "電信端沒有收下這則簡訊",
+  sms_c_exception: "手機 App 發生錯誤",
+  sms_c_bad_request: "號碼或內容不被接受",
   d_cal_allday: "整天",
   d_rec: "錄音",
   d_norec: "這通電話沒有錄音。",
@@ -1823,6 +1920,14 @@ I18N["zh-TW"] = {
   f_gcal_refresh: "Refresh token",
   f_gcal_cal: "日曆 ID",
   f_gcal_cal_h: "留空 = 你的主要日曆。",
+  f_appt_mode: "行程預約",
+  f_appt_mode_h: "對方想跟你約時間時，AI 會看你的 Google 日曆（只看有沒有空，不看內容）。「先問我」：AI 說會確認再回覆，你在網頁「通話」頁最上方的「待確認的預約」按 ✅／❌ 決定；有設定 Telegram Bot 也會收到可以直接按的卡片，其他通知管道會收到附網頁連結的提醒，沒設定通知就只在網頁顯示。「有空直接答應」：有空就當場答應並寫入日曆。推銷或詐騙電話一律不約。",
+  appt_off: "關閉",
+  appt_confirm: "先問我",
+  appt_auto: "有空直接答應",
+  appt_nocal: "查空檔和寫入日曆需要先填好上面的 Google 日曆憑證。沒填時 AI 看不到你的日曆，一律說會確認再回覆，「有空直接答應」也會改成「先問我」。",
+  f_appt_sms: "傳簡訊告訴對方",
+  f_appt_sms_h: "你按確定或婉拒後（或 AI 已直接排入），由接這通電話的手機以你的名義傳一則簡訊給對方。只限台灣手機號碼，手機 App 要支援傳簡訊。",
   // ---- settings: region & advanced
   f_cc: "國際電話國碼",
   f_cc_h: "只填數字，例如 1、44、886。這樣用 + 開頭寫的拒接號碼，才能對上手機回報的來電號碼。",
@@ -2114,6 +2219,31 @@ I18N["zh-CN"] = {
   d_cal_add: "添加到 Google 日历",
   d_cal_ics: "下载 .ics",
   d_cal_added: "已添加到 Google 日历",
+  d_appt: "日程预约",
+  d_appt_pending: "待你确认",
+  d_appt_booked: "通话中已排入",
+  d_appt_confirmed: "已确定",
+  d_appt_declined: "已婉拒",
+  d_appt_sms_sent: "已发短信",
+  ap_panel: "待确认的预约",
+  ap_confirm: "✅ 确定",
+  ap_decline: "❌ 婉拒",
+  ap_open_call: "查看这通电话",
+  ap_working: "处理中…（要发短信时最多约 90 秒）",
+  ap_already: "已经处理过了",
+  d_appt_sms_failed: "短信没发出（{code}）",
+  d_appt_sms_none: "对方号码收不到短信",
+  d_appt_cal_none: "没写进日历",
+  sms_c_offline: "手机没连线",
+  sms_c_old_app: "手机 App 太旧",
+  sms_c_timeout: "手机没有回应（超时）",
+  sms_c_busy: "同一条短信正在发送中",
+  sms_c_no_permission: "手机 App 没有发短信的权限",
+  sms_c_no_service: "手机没有信号",
+  sms_c_radio_off: "手机的移动网络关闭（飞行模式）",
+  sms_c_generic_failure: "运营商没有接收这条短信",
+  sms_c_exception: "手机 App 出错了",
+  sms_c_bad_request: "号码或内容不被接受",
   d_cal_allday: "全天",
   d_rec: "录音",
   d_norec: "这通电话没有录音。",
@@ -2380,6 +2510,14 @@ I18N["zh-CN"] = {
   f_gcal_refresh: "Refresh token",
   f_gcal_cal: "日历 ID",
   f_gcal_cal_h: "留空 = 你的主日历。",
+  f_appt_mode: "日程预约",
+  f_appt_mode_h: "对方想跟你约时间时，AI 会看你的 Google 日历（只看有没有空，不看内容）。“先问我”：AI 说会确认再回复，你在网页“通话”页最上方的“待确认的预约”按 ✅／❌ 决定；设置了 Telegram Bot 也会收到可以直接按的卡片，其他通知渠道会收到附网页链接的提醒，没设置通知就只在网页显示。“有空直接答应”：有空就当场答应并写入日历。推销或诈骗电话一律不约。",
+  appt_off: "关闭",
+  appt_confirm: "先问我",
+  appt_auto: "有空直接答应",
+  appt_nocal: "查空闲时间和写入日历需要先填好上面的 Google 日历凭据。没填时 AI 看不到你的日历，一律说会确认再回复，“有空直接答应”也会改成“先问我”。",
+  f_appt_sms: "发短信告诉对方",
+  f_appt_sms_h: "你按确定或婉拒后（或 AI 已直接排入），由接这通电话的手机以你的名义给对方发一条短信。仅限台湾手机号码，手机 App 要支持发短信。",
   // ---- settings: region & advanced
   f_cc: "国际电话区号",
   f_cc_h: "只填数字，例如 1、44、86。这样用 + 开头写的拦截号码，才能和手机上报的来电号码对上。",
@@ -2671,6 +2809,31 @@ I18N["ja"] = {
   d_cal_add: "Google カレンダーに追加",
   d_cal_ics: ".ics をダウンロード",
   d_cal_added: "Google カレンダーに追加済み",
+  d_appt: "予約",
+  d_appt_pending: "確認待ち",
+  d_appt_booked: "通話中に登録済み",
+  d_appt_confirmed: "確定",
+  d_appt_declined: "お断り",
+  d_appt_sms_sent: "SMS 送信済み",
+  ap_panel: "確認待ちの予約",
+  ap_confirm: "✅ 確定",
+  ap_decline: "❌ お断り",
+  ap_open_call: "通話を開く",
+  ap_working: "処理中…（SMS を送るときは最大約 90 秒）",
+  ap_already: "すでに処理済みです",
+  d_appt_sms_failed: "SMS 未送信（{code}）",
+  d_appt_sms_none: "相手の番号は SMS 不可",
+  d_appt_cal_none: "カレンダー未登録",
+  sms_c_offline: "スマホが接続されていません",
+  sms_c_old_app: "スマホのアプリが古い",
+  sms_c_timeout: "スマホから応答がありません",
+  sms_c_busy: "同じ SMS を送信中です",
+  sms_c_no_permission: "アプリに SMS 送信の権限がありません",
+  sms_c_no_service: "圏外です",
+  sms_c_radio_off: "機内モードなどで電波がオフです",
+  sms_c_generic_failure: "通信事業者が SMS を受け付けませんでした",
+  sms_c_exception: "スマホのアプリでエラーが起きました",
+  sms_c_bad_request: "番号か本文が受け付けられませんでした",
   d_cal_allday: "終日",
   d_rec: "録音",
   d_norec: "この通話の録音はありません。",
@@ -2937,6 +3100,14 @@ I18N["ja"] = {
   f_gcal_refresh: "リフレッシュトークン",
   f_gcal_cal: "カレンダー ID",
   f_gcal_cal_h: "空欄 = メインのカレンダー。",
+  f_appt_mode: "予約の受付",
+  f_appt_mode_h: "相手が日時を決めたいとき、AI があなたの Google カレンダーを確認します（空いているかだけで、予定の内容は見ません）。「先に確認」：AI は確認してから連絡すると伝え、あなたは「通話」ページ上部の「確認待ちの予約」で ✅／❌ を押して決めます。Telegram Bot を設定していれば押せるカードも届き、ほかの通知先にはリンク付きのお知らせが届きます。通知を設定していなければこの画面にだけ表示されます。「空いていれば確定」：空いていればその場で受けてカレンダーに登録します。営業や詐欺の電話では予約しません。",
+  appt_off: "オフ",
+  appt_confirm: "先に確認",
+  appt_auto: "空いていれば確定",
+  appt_nocal: "空き時間の確認とカレンダー登録には、上の Google カレンダーの認証情報が必要です。未入力のときは AI がカレンダーを見られないため、いつも確認してから連絡すると伝え、「空いていれば確定」も「先に確認」と同じ動きになります。",
+  f_appt_sms: "相手に SMS で伝える",
+  f_appt_sms_h: "確定またはお断りの後（または AI がその場で登録した後）、電話を受けたスマホからあなたの名前で相手に短い SMS を送ります。台湾の携帯番号のみ。SMS を送れるアプリが必要です。",
   // ---- settings: region & advanced
   f_cc: "国番号",
   f_cc_h: "数字のみ（例：1、44、81）。+ から書いた着信拒否の番号を、スマホが通知する番号の形式と照合できるようにします。",
@@ -3228,6 +3399,31 @@ I18N["ko"] = {
   d_cal_add: "Google 캘린더에 추가",
   d_cal_ics: ".ics 내려받기",
   d_cal_added: "Google 캘린더에 추가됨",
+  d_appt: "일정 예약",
+  d_appt_pending: "확인 대기",
+  d_appt_booked: "통화 중 등록됨",
+  d_appt_confirmed: "확정됨",
+  d_appt_declined: "거절함",
+  d_appt_sms_sent: "문자 보냄",
+  ap_panel: "확인 대기 중인 예약",
+  ap_confirm: "✅ 확정",
+  ap_decline: "❌ 거절",
+  ap_open_call: "통화 보기",
+  ap_working: "처리 중…(문자를 보낼 때는 최대 약 90초)",
+  ap_already: "이미 처리되었습니다",
+  d_appt_sms_failed: "문자 못 보냄({code})",
+  d_appt_sms_none: "문자를 받을 수 없는 번호",
+  d_appt_cal_none: "캘린더에 없음",
+  sms_c_offline: "휴대폰이 연결되어 있지 않음",
+  sms_c_old_app: "휴대폰 앱이 오래됨",
+  sms_c_timeout: "휴대폰이 응답하지 않음",
+  sms_c_busy: "같은 문자를 보내는 중",
+  sms_c_no_permission: "앱에 문자 전송 권한이 없음",
+  sms_c_no_service: "휴대폰 신호 없음",
+  sms_c_radio_off: "비행기 모드 등으로 전파가 꺼짐",
+  sms_c_generic_failure: "통신사가 문자를 받지 않음",
+  sms_c_exception: "휴대폰 앱에서 오류 발생",
+  sms_c_bad_request: "번호나 내용이 받아들여지지 않음",
   d_cal_allday: "종일",
   d_rec: "녹음",
   d_norec: "이 통화에는 녹음이 없습니다.",
@@ -3494,6 +3690,14 @@ I18N["ko"] = {
   f_gcal_refresh: "리프레시 토큰",
   f_gcal_cal: "캘린더 ID",
   f_gcal_cal_h: "비워 두면 기본 캘린더를 사용합니다.",
+  f_appt_mode: "일정 예약",
+  f_appt_mode_h: "상대가 시간을 잡고 싶어 하면 AI가 Google 캘린더를 확인합니다(비어 있는지만 보고 내용은 보지 않음). \"먼저 물어보기\": AI가 확인 후 연락하겠다고 말하고, \"통화\" 페이지 맨 위의 \"확인 대기 중인 예약\"에서 ✅/❌로 결정합니다. 텔레그램 봇을 설정했다면 바로 누를 수 있는 카드도 받고, 다른 알림 채널에는 링크가 담긴 알림이 갑니다. 알림을 설정하지 않았다면 이 화면에만 표시됩니다. \"비어 있으면 바로 확정\": 비어 있으면 통화 중에 수락하고 캘린더에 넣습니다. 판촉·사기 전화와는 약속하지 않습니다.",
+  appt_off: "끄기",
+  appt_confirm: "먼저 물어보기",
+  appt_auto: "비어 있으면 바로 확정",
+  appt_nocal: "빈 시간 확인과 캘린더 등록에는 위 Google 캘린더 인증 정보가 필요합니다. 없으면 AI가 캘린더를 볼 수 없어 항상 확인 후 연락하겠다고 말하며, \"비어 있으면 바로 확정\"도 \"먼저 물어보기\"처럼 동작합니다.",
+  f_appt_sms: "상대에게 문자로 알리기",
+  f_appt_sms_h: "확정하거나 거절한 뒤(또는 AI가 바로 등록한 뒤) 전화를 받은 휴대폰이 내 이름으로 상대에게 짧은 문자를 보냅니다. 대만 휴대폰 번호만 가능하며 문자를 보낼 수 있는 앱이 필요합니다.",
   // ---- settings: region & advanced
   f_cc: "국가 번호",
   f_cc_h: "숫자만 입력하세요(예: 1, 44, 82). +로 시작하게 적은 차단 번호가 휴대폰이 알려 주는 번호 형식과 맞도록 해 줍니다.",
@@ -3785,6 +3989,31 @@ I18N["es"] = {
   d_cal_add: "Añadir a Google Calendar",
   d_cal_ics: "Descargar .ics",
   d_cal_added: "Añadido a Google Calendar",
+  d_appt: "Cita",
+  d_appt_pending: "Esperando tu respuesta",
+  d_appt_booked: "Reservada en la llamada",
+  d_appt_confirmed: "Confirmada",
+  d_appt_declined: "Rechazada",
+  d_appt_sms_sent: "SMS enviado",
+  ap_panel: "Citas por confirmar",
+  ap_confirm: "✅ Confirmar",
+  ap_decline: "❌ Rechazar",
+  ap_open_call: "Ver la llamada",
+  ap_working: "Procesando… (hasta unos 90 segundos si se envía un SMS)",
+  ap_already: "Ya se gestionó",
+  d_appt_sms_failed: "SMS no enviado ({code})",
+  d_appt_sms_none: "el número no recibe SMS",
+  d_appt_cal_none: "no está en el calendario",
+  sms_c_offline: "el teléfono no está conectado",
+  sms_c_old_app: "la app del teléfono es demasiado antigua",
+  sms_c_timeout: "el teléfono no respondió",
+  sms_c_busy: "ese SMS ya se está enviando",
+  sms_c_no_permission: "la app no tiene permiso para enviar SMS",
+  sms_c_no_service: "sin cobertura",
+  sms_c_radio_off: "la radio del teléfono está apagada (modo avión)",
+  sms_c_generic_failure: "el operador no aceptó el SMS",
+  sms_c_exception: "la app del teléfono tuvo un error",
+  sms_c_bad_request: "no se aceptó el número o el texto",
   d_cal_allday: "Todo el día",
   d_rec: "Grabación",
   d_norec: "Esta llamada no tiene grabación.",
@@ -4051,6 +4280,14 @@ I18N["es"] = {
   f_gcal_refresh: "Token de actualización",
   f_gcal_cal: "ID del calendario",
   f_gcal_cal_h: "Vacío = tu calendario principal.",
+  f_appt_mode: "Citas",
+  f_appt_mode_h: "Cuando quien llama quiere quedar contigo, la IA mira tu Google Calendar (solo si estás libre, nunca lo que hay). «Preguntarme antes»: la IA dice que lo confirmará y tú decides con ✅ / ❌ en «Citas por confirmar», arriba de la página Llamadas. Con un bot de Telegram configurado también recibes una tarjeta con botones; los demás canales de aviso reciben un recordatorio con enlace; sin avisos solo aparece aquí. «Aceptar si estoy libre»: si la hora está libre, la acepta en la llamada y la pone en tu calendario. Nunca con llamadas comerciales ni estafas.",
+  appt_off: "Desactivado",
+  appt_confirm: "Preguntarme antes",
+  appt_auto: "Aceptar si estoy libre",
+  appt_nocal: "Para ver huecos libres y añadir al calendario hacen falta las credenciales de Google Calendar de arriba. Sin ellas la IA no ve tu calendario: siempre dice que lo confirmará, y «Aceptar si estoy libre» funciona como «Preguntarme antes».",
+  f_appt_sms: "Avisar por SMS",
+  f_appt_sms_h: "Cuando confirmas o rechazas (o la IA ya la reservó), el teléfono que atendió la llamada envía en tu nombre un SMS corto a quien llamó. Solo móviles de Taiwán; la app del teléfono debe poder enviar SMS.",
   // ---- settings: region & advanced
   f_cc: "Prefijo telefónico del país",
   f_cc_h: "Solo cifras, p. ej. 1, 34, 52. Permite que los números bloqueados escritos con + coincidan con la forma en que tu teléfono indica quién llama.",
@@ -4342,6 +4579,31 @@ I18N["fr"] = {
   d_cal_add: "Ajouter à Google Agenda",
   d_cal_ics: "Télécharger le .ics",
   d_cal_added: "Ajouté à Google Agenda",
+  d_appt: "Rendez-vous",
+  d_appt_pending: "En attente de votre réponse",
+  d_appt_booked: "Pris pendant l'appel",
+  d_appt_confirmed: "Confirmé",
+  d_appt_declined: "Refusé",
+  d_appt_sms_sent: "SMS envoyé",
+  ap_panel: "Rendez-vous à confirmer",
+  ap_confirm: "✅ Confirmer",
+  ap_decline: "❌ Refuser",
+  ap_open_call: "Voir l'appel",
+  ap_working: "Traitement en cours… (jusqu'à environ 90 secondes si un SMS est envoyé)",
+  ap_already: "Déjà traité",
+  d_appt_sms_failed: "SMS non envoyé ({code})",
+  d_appt_sms_none: "numéro sans SMS",
+  d_appt_cal_none: "pas dans l'agenda",
+  sms_c_offline: "le téléphone n'est pas connecté",
+  sms_c_old_app: "l'application du téléphone est trop ancienne",
+  sms_c_timeout: "le téléphone n'a pas répondu",
+  sms_c_busy: "ce SMS est déjà en cours d'envoi",
+  sms_c_no_permission: "l'application n'a pas le droit d'envoyer des SMS",
+  sms_c_no_service: "pas de réseau mobile",
+  sms_c_radio_off: "la radio du téléphone est coupée (mode avion)",
+  sms_c_generic_failure: "l'opérateur n'a pas accepté le SMS",
+  sms_c_exception: "l'application du téléphone a rencontré une erreur",
+  sms_c_bad_request: "le numéro ou le texte n'a pas été accepté",
   d_cal_allday: "Toute la journée",
   d_rec: "Enregistrement",
   d_norec: "Pas d'enregistrement pour cet appel.",
@@ -4608,6 +4870,14 @@ I18N["fr"] = {
   f_gcal_refresh: "Jeton d'actualisation",
   f_gcal_cal: "ID de l'agenda",
   f_gcal_cal_h: "Vide = votre agenda principal.",
+  f_appt_mode: "Rendez-vous",
+  f_appt_mode_h: "Quand l'appelant veut fixer un moment avec vous, l'IA regarde votre Google Agenda (seulement si vous êtes libre, jamais le contenu). « Me demander d'abord » : l'IA dit qu'elle confirmera, et vous décidez avec ✅ / ❌ dans « Rendez-vous à confirmer », en haut de la page Appels. Avec un bot Telegram configuré, vous recevez aussi une carte avec des boutons ; les autres canaux de notification reçoivent un rappel avec un lien ; sans notifications, il n'apparaît qu'ici. « Accepter si je suis libre » : un créneau libre est accepté pendant l'appel et ajouté à votre agenda. Jamais avec du démarchage ou une arnaque.",
+  appt_off: "Désactivé",
+  appt_confirm: "Me demander d'abord",
+  appt_auto: "Accepter si je suis libre",
+  appt_nocal: "Vérifier les créneaux et ajouter à l'agenda demande les identifiants Google Agenda ci-dessus. Sans eux, l'IA ne voit pas votre agenda : elle dit toujours qu'elle confirmera, et « Accepter si je suis libre » fonctionne comme « Me demander d'abord ».",
+  f_appt_sms: "Prévenir par SMS",
+  f_appt_sms_h: "Quand vous confirmez ou refusez (ou que l'IA l'a déjà ajouté), le téléphone qui a pris l'appel envoie en votre nom un court SMS à l'appelant. Numéros mobiles de Taïwan uniquement ; l'application du téléphone doit pouvoir envoyer des SMS.",
   // ---- settings: region & advanced
   f_cc: "Indicatif du pays",
   f_cc_h: "Chiffres uniquement, ex. 1, 33, 44. Permet aux numéros bloqués écrits avec + de correspondre à la façon dont votre téléphone indique les appelants.",
@@ -4899,6 +5169,31 @@ I18N["de"] = {
   d_cal_add: "Zu Google Kalender hinzufügen",
   d_cal_ics: ".ics herunterladen",
   d_cal_added: "Zu Google Kalender hinzugefügt",
+  d_appt: "Termin",
+  d_appt_pending: "Wartet auf dich",
+  d_appt_booked: "Im Gespräch eingetragen",
+  d_appt_confirmed: "Bestätigt",
+  d_appt_declined: "Abgesagt",
+  d_appt_sms_sent: "SMS gesendet",
+  ap_panel: "Termine zu bestätigen",
+  ap_confirm: "✅ Bestätigen",
+  ap_decline: "❌ Absagen",
+  ap_open_call: "Anruf öffnen",
+  ap_working: "Wird bearbeitet … (bis etwa 90 Sekunden, wenn eine SMS rausgeht)",
+  ap_already: "Bereits bearbeitet",
+  d_appt_sms_failed: "SMS nicht gesendet ({code})",
+  d_appt_sms_none: "Nummer ohne SMS",
+  d_appt_cal_none: "nicht im Kalender",
+  sms_c_offline: "das Telefon ist nicht verbunden",
+  sms_c_old_app: "die App auf dem Telefon ist zu alt",
+  sms_c_timeout: "das Telefon hat nicht geantwortet",
+  sms_c_busy: "dieselbe SMS wird schon gesendet",
+  sms_c_no_permission: "die App darf keine SMS senden",
+  sms_c_no_service: "kein Mobilfunknetz",
+  sms_c_radio_off: "Funk am Telefon aus (Flugmodus)",
+  sms_c_generic_failure: "der Netzbetreiber hat die SMS nicht angenommen",
+  sms_c_exception: "in der App auf dem Telefon ist ein Fehler aufgetreten",
+  sms_c_bad_request: "Nummer oder Text wurde nicht angenommen",
   d_cal_allday: "Ganztägig",
   d_rec: "Aufnahme",
   d_norec: "Für diesen Anruf gibt es keine Aufnahme.",
@@ -5165,6 +5460,14 @@ I18N["de"] = {
   f_gcal_refresh: "Refresh-Token",
   f_gcal_cal: "Kalender-ID",
   f_gcal_cal_h: "Leer = dein Hauptkalender.",
+  f_appt_mode: "Termine",
+  f_appt_mode_h: "Will der Anrufer einen Termin mit dir ausmachen, schaut die KI in deinen Google Kalender (nur ob du frei bist, nie was drinsteht). „Erst mich fragen“: Die KI sagt, dass sie es bestätigt, und du entscheidest mit ✅ / ❌ unter „Termine zu bestätigen“ oben auf der Seite Anrufe. Mit einem Telegram-Bot bekommst du zusätzlich eine Karte mit Knöpfen; andere Benachrichtigungswege bekommen einen Hinweis mit Link; ohne Benachrichtigungen erscheint es nur hier. „Zusagen, wenn frei“: Eine freie Zeit wird im Gespräch zugesagt und in deinen Kalender eingetragen. Nie bei Werbe- oder Betrugsanrufen.",
+  appt_off: "Aus",
+  appt_confirm: "Erst mich fragen",
+  appt_auto: "Zusagen, wenn frei",
+  appt_nocal: "Freie Zeiten prüfen und in den Kalender eintragen geht nur mit den Google-Kalender-Zugangsdaten weiter oben. Ohne sie sieht die KI deinen Kalender nicht: Sie sagt immer, dass sie es bestätigt, und „Zusagen, wenn frei“ verhält sich wie „Erst mich fragen“.",
+  f_appt_sms: "Per SMS Bescheid geben",
+  f_appt_sms_h: "Sobald du bestätigst oder absagst (oder die KI schon eingetragen hat), schickt das Telefon, das den Anruf angenommen hat, dem Anrufer in deinem Namen eine kurze SMS. Nur taiwanische Handynummern; die App auf dem Telefon muss SMS senden können.",
   // ---- settings: region & advanced
   f_cc: "Ländervorwahl",
   f_cc_h: "Nur Ziffern, z. B. 1, 44, 49. Damit passen blockierte Nummern, die mit + geschrieben sind, zu der Form, in der dein Telefon Anrufer meldet.",
@@ -5456,6 +5759,31 @@ I18N["pt"] = {
   d_cal_add: "Adicionar ao Google Agenda",
   d_cal_ics: "Baixar .ics",
   d_cal_added: "Adicionado ao Google Agenda",
+  d_appt: "Compromisso",
+  d_appt_pending: "Aguardando você",
+  d_appt_booked: "Marcado na ligação",
+  d_appt_confirmed: "Confirmado",
+  d_appt_declined: "Recusado",
+  d_appt_sms_sent: "SMS enviado",
+  ap_panel: "Compromissos a confirmar",
+  ap_confirm: "✅ Confirmar",
+  ap_decline: "❌ Recusar",
+  ap_open_call: "Ver a ligação",
+  ap_working: "Processando… (até cerca de 90 segundos quando um SMS é enviado)",
+  ap_already: "Já foi resolvido",
+  d_appt_sms_failed: "SMS não enviado ({code})",
+  d_appt_sms_none: "número não recebe SMS",
+  d_appt_cal_none: "fora da agenda",
+  sms_c_offline: "o telefone não está conectado",
+  sms_c_old_app: "o app do telefone é antigo demais",
+  sms_c_timeout: "o telefone não respondeu",
+  sms_c_busy: "esse SMS já está sendo enviado",
+  sms_c_no_permission: "o app não tem permissão para enviar SMS",
+  sms_c_no_service: "sem sinal de celular",
+  sms_c_radio_off: "o rádio do telefone está desligado (modo avião)",
+  sms_c_generic_failure: "a operadora não aceitou o SMS",
+  sms_c_exception: "o app do telefone teve um erro",
+  sms_c_bad_request: "o número ou o texto não foi aceito",
   d_cal_allday: "Dia inteiro",
   d_rec: "Gravação",
   d_norec: "Esta chamada não tem gravação.",
@@ -5722,6 +6050,14 @@ I18N["pt"] = {
   f_gcal_refresh: "Token de atualização",
   f_gcal_cal: "ID da agenda",
   f_gcal_cal_h: "Em branco = sua agenda principal.",
+  f_appt_mode: "Compromissos",
+  f_appt_mode_h: "Quando quem liga quer marcar um horário com você, a IA olha o seu Google Agenda (só se você está livre, nunca o conteúdo). \"Perguntar antes\": a IA diz que vai confirmar, e você decide com ✅ / ❌ em \"Compromissos a confirmar\", no topo da página Chamadas. Com um bot do Telegram configurado você também recebe um cartão com botões; os outros canais de notificação recebem um lembrete com link; sem notificações, aparece só aqui. \"Aceitar se estiver livre\": um horário livre é aceito na ligação e posto na sua agenda. Nunca com ligações de vendas ou golpes.",
+  appt_off: "Desligado",
+  appt_confirm: "Perguntar antes",
+  appt_auto: "Aceitar se estiver livre",
+  appt_nocal: "Ver horários livres e pôr na agenda exige as credenciais do Google Agenda acima. Sem elas a IA não vê sua agenda: sempre diz que vai confirmar, e \"Aceitar se estiver livre\" funciona como \"Perguntar antes\".",
+  f_appt_sms: "Avisar por SMS",
+  f_appt_sms_h: "Quando você confirma ou recusa (ou a IA já marcou), o telefone que atendeu envia em seu nome um SMS curto para quem ligou. Só celulares de Taiwan; o app do telefone precisa conseguir enviar SMS.",
   // ---- settings: region & advanced
   f_cc: "Código do país",
   f_cc_h: "Só números, ex.: 1, 55, 351. Faz com que os números bloqueados escritos com + correspondam ao formato em que o telefone informa quem ligou.",
@@ -6236,6 +6572,7 @@ function setLang(l) {
   renderStatsExtras();
   renderCalls();
   if (detail.call) renderDetail();
+  renderAppts();
   relabelSettings();
   if (view === "system") renderSystem();
 }
@@ -6527,6 +6864,7 @@ async function refreshCalls(o) {
     const c = calls.find((x) => x.id === detail.id);
     if (c) updateDetailCall(c);
   }
+  loadAppts();
 }
 function callRow(c) {
   const k = callKind(c);
@@ -6696,16 +7034,23 @@ function isCarrierPrompt(text) {
   for (const w of CARRIER_WORDS) rest = rest.split(w).join("");
   return (rest.match(/[\u4e00-\u9fff]/g) || []).length <= 5;
 }
-const CJK = /[\u2e80-\u9fff\uac00-\ud7af\uff00-\uffef]/;
+// Scripts written without spaces between words (Korean spaces its words).
+const CJK = /[\u2e80-\u9fff\uff00-\uffef]/;
+// Speaker labels of the saved dialogue, in every language the agent writes
+// it in (locale.rs d_caller / d_ai); older records use 對方／接聽.
+const DIALOGUE_LABELS = {
+  caller: ["對方", "对方", "Caller", "相手", "상대", "Llamante", "Appelant", "Anrufer", "Chamador"],
+  ai: ["接聽", "接听", "AI", "KI", "IA"],
+};
 function dialogueTurns(text) {
   const out = [];
   let ended = true;
   for (const raw of String(text || "").split("\n")) {
-    const m = raw.trim().match(/^(對方|接聽)\s*[：:]\s*(.*)$/);
-    if (!m) continue;
+    const m = raw.trim().match(/^([^:：]{1,12}?)\s*[：:]\s*(.*)$/);
+    if (!m || (!DIALOGUE_LABELS.caller.includes(m[1]) && !DIALOGUE_LABELS.ai.includes(m[1]))) continue;
     const body = m[2].replace(/<[^<>]*>/g, "").trim(); // STT placeholders such as <noise>
     if (!body) continue;
-    let who = m[1] === "對方" ? "caller" : "ai";
+    let who = DIALOGUE_LABELS.caller.includes(m[1]) ? "caller" : "ai";
     if (who === "caller" && isCarrierPrompt(body)) who = "carrier";
     const last = out[out.length - 1];
     if (last && last.who === who && (!ended || who === "carrier")) {
@@ -6764,6 +7109,40 @@ function renderDetail() {
     if (link) $("dCalGoogle").href = link;
     $("dCalAdded").hidden = !added;
     $("dCalIcs").href = withTok(`${apiBase}/call/${encodeURIComponent(c.id)}/event.ics`);
+  }
+  // An appointment the AI took on the call: where it stands. While it waits for
+  // the owner's ✅ (or was declined) there is no second way to add it.
+  const ap = n && n.appointment;
+  $("dCalLabel").dataset.i18n = ap ? "d_appt" : "d_cal";
+  $("dCalLabel").textContent = t(ap ? "d_appt" : "d_cal");
+  $("dApptStatus").hidden = !ap;
+  // The task of this call's appointment (fresher than the notes): its buttons
+  // while it waits, then what came of the decision.
+  const apTask = ap ? apptTaskFor(c.id) : null;
+  const cur = apTask ? apTask.appointment : ap;
+  $("dApptCal").hidden = $("dApptSms").hidden = $("dApptActs").hidden = $("dApptMsg").hidden = true;
+  if (ap) {
+    const st = ["pending", "booked", "confirmed", "declined"].includes(cur.status) ? cur.status : "pending";
+    $("dApptStatus").className = "tag " + (st === "declined" ? "bad" : st === "pending" ? "warn" : "ok");
+    $("dApptStatus").textContent = t("d_appt_" + st) + (cur.sms === "sent" ? " · " + t("d_appt_sms_sent") : "");
+    if (st === "pending" || st === "declined") $("dCalGoogle").hidden = true;
+    if (st === "confirmed" && !cur.event_id) {
+      $("dApptCal").hidden = false;
+      $("dApptCal").textContent = t("d_appt_cal_none");
+    }
+    if (cur.sms && cur.sms !== "sent") {
+      $("dApptSms").hidden = false;
+      // Why, in words (the phone's codes too); an unknown code as it came.
+      $("dApptSms").textContent = cur.sms === "no_number" ? t("d_appt_sms_none") : t("d_appt_sms_failed", { code: tCode("sms_c_", cur.sms) });
+    }
+    const busy = !!apTask && apptBusy.has(apTask.id);
+    if (st === "pending" && apTask) {
+      $("dApptActs").hidden = false;
+      $("dApptOk").disabled = $("dApptNo").disabled = busy;
+    }
+    const said = busy ? t("ap_working") : apTask && apptResult && apptResult.id === apTask.id ? apptResult.text : "";
+    $("dApptMsg").hidden = !said;
+    $("dApptMsg").textContent = said;
   }
 
   // Recording: keep the player where it is when only the text around it changed.
@@ -7178,11 +7557,19 @@ function relabelSettings(skipRows) {
   $("sumReady").textContent = t(S.summary_ready ? "sum_ready" : "sum_notready");
   $("gcalReady").className = "tag " + (S.gcal_configured ? "ok" : "");
   $("gcalReady").textContent = t(S.gcal_configured ? "cal_ready" : "cal_notready");
+  apptNote();
   $("btnUseThisUrl").textContent = t("use_this_url", { url: location.origin });
   $("f-public_url").placeholder = consoleUrl || "http://192.168.1.20:8787";
   renderHelper();
   updateDirty();
 }
+// Appointments without the Google Calendar credentials: the AI cannot check free
+// times, every appointment waits for the owner.
+function apptNote() {
+  const sel = $("f-appointment_mode");
+  $("apptNoCal").hidden = !S || !!S.gcal_configured || !sel || sel.value === "off";
+}
+$("f-appointment_mode").addEventListener("change", apptNote);
 function fieldLabel(el) {
   const l = form.querySelector(`label[for="${el.id}"]`);
   return l ? l.textContent.trim() : el.dataset.k;
@@ -7720,6 +8107,133 @@ async function switchPhoneMode(serial, target) {
 }
 
 // ---------------------------------------------------------------- keyboard + timers
+// ---------------------------------------------------------------- appointments to confirm
+// Appointment tasks (GET /tasks, newest first) for the panel on top of the Calls
+// page and the buttons in a call's detail. The decision is made here; Telegram
+// cards (if any) follow it on the agent's side.
+let apptTasks = [];
+const apptBusy = new Set();
+// The last decision's answer from the agent: { id, text, bad }.
+let apptResult = null;
+// Times as the agent's notifications and cards write them (locale.rs ap_dt_fmt /
+// ap_end_fmt / ap_weekdays), in this page's language.
+const APPT_FMT = {
+  en: { wd: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], dt: "{wd}, %b %-d, %-I:%M %p", end: "%-I:%M %p" },
+  "zh-TW": { wd: ["週一", "週二", "週三", "週四", "週五", "週六", "週日"], dt: "%-m/%-d（{wd}）%H:%M", end: "%H:%M" },
+  "zh-CN": { wd: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"], dt: "%-m月%-d日（{wd}）%H:%M", end: "%H:%M" },
+  ja: { wd: ["月", "火", "水", "木", "金", "土", "日"], dt: "%-m/%-d（{wd}）%H:%M", end: "%H:%M" },
+  ko: { wd: ["월", "화", "수", "목", "금", "토", "일"], dt: "%-m/%-d({wd}) %H:%M", end: "%H:%M" },
+  es: { wd: ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"], dt: "{wd} %-d/%-m, %H:%M", end: "%H:%M" },
+  fr: { wd: ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."], dt: "{wd} %d/%m à %Hh%M", end: "%Hh%M" },
+  de: { wd: ["Mo.", "Di.", "Mi.", "Do.", "Fr.", "Sa.", "So."], dt: "{wd}, %d.%m., %H:%M", end: "%H:%M" },
+  pt: { wd: ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"], dt: "{wd}, %d/%m %H:%M", end: "%H:%M" },
+};
+const MON3 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// "2026-11-14T15:00" (the agent's local time) as a Date in this browser.
+function parseStamp(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(String(s || ""));
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
+}
+function strf(fmt, d, wd) {
+  const p2 = (x) => String(x).padStart(2, "0");
+  const h12 = d.getHours() % 12 || 12;
+  return fmt.replace("{wd}", wd).replace(/%(-?)([mdHMIpb])/g, (_, dash, c) => {
+    switch (c) {
+      case "m": return dash ? String(d.getMonth() + 1) : p2(d.getMonth() + 1);
+      case "d": return dash ? String(d.getDate()) : p2(d.getDate());
+      case "H": return p2(d.getHours());
+      case "M": return p2(d.getMinutes());
+      case "I": return dash ? String(h12) : p2(h12);
+      case "p": return d.getHours() < 12 ? "AM" : "PM";
+      default: return MON3[d.getMonth()];
+    }
+  });
+}
+function apptWhen(a) {
+  const f = APPT_FMT[lang] || APPT_FMT.en;
+  const full = (d) => strf(f.dt, d, f.wd[(d.getDay() + 6) % 7]);
+  const s = parseStamp(a.start);
+  if (!s) return String(a.start || "");
+  const e = parseStamp(a.end);
+  if (!e || e <= s) return full(s);
+  return full(s) + (s.toDateString() === e.toDateString() ? "–" + strf(f.end, e, "") : " – " + full(e));
+}
+const apptPending = () => apptTasks.filter((tk) => tk.appointment.status === "pending");
+const apptTaskFor = (callId) => apptTasks.find((tk) => tk.call_id === callId) || null;
+function apptWho(tk) {
+  const num = tk.caller_id || t("hidden_number");
+  return tk.appointment.caller_name ? tk.appointment.caller_name + " · " + num : num;
+}
+// Requests overlap (list refresh, timer, after a decision): only the answer to
+// the latest one is used, so an older list never brings a decided one back.
+let apptSeq = 0;
+async function loadAppts() {
+  const seq = ++apptSeq;
+  let d;
+  try {
+    d = await api("/tasks");
+  } catch (_) { return; } // keep what is shown
+  if (seq !== apptSeq) return;
+  apptTasks = (d.tasks || []).filter((tk) => tk && tk.appointment);
+  renderAppts();
+  if (detail.call && detail.notes && detail.notes.appointment) renderDetail();
+}
+function renderAppts() {
+  const list = apptPending();
+  $("apptBox").hidden = !list.length && !apptResult;
+  $("apptTitle").textContent = t("ap_panel") + (list.length ? " (" + list.length + ")" : "");
+  $("apptResult").hidden = !apptResult;
+  if (apptResult) {
+    $("apptResult").className = "banner appts-result " + (apptResult.bad ? "bad" : "info");
+    $("apptResultText").textContent = apptResult.text;
+  }
+  const box = clear($("apptList"));
+  for (const tk of list) {
+    const a = tk.appointment;
+    const busy = apptBusy.has(tk.id);
+    box.append(h("div", { class: "appt" },
+      h("div", { class: "grow" },
+        h("div", { class: "appt-when", text: apptWhen(a) + (a.title ? " " + a.title : "") }),
+        h("div", { class: "appt-sub" },
+          h("span", { text: apptWho(tk) }), " · ",
+          h("a", { href: "#call=" + encodeURIComponent(tk.call_id), text: t("ap_open_call") }))),
+      h("span", { class: "btns" },
+        h("button", { type: "button", class: "btn sm primary", disabled: busy, onclick: () => decideAppt(tk.id, true), text: t("ap_confirm") }),
+        h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => decideAppt(tk.id, false), text: t("ap_decline") })),
+      busy ? h("div", { class: "appt-wait row" }, h("span", { class: "spin" }), h("span", { text: t("ap_working") })) : null));
+  }
+}
+// ✅ / ❌: the agent writes the calendar, texts the caller (up to ~90 s) and
+// closes the Telegram card; its answer is shown, then everything is reloaded.
+async function decideAppt(id, confirm) {
+  if (apptBusy.has(id)) return;
+  const tk = apptTasks.find((x) => x.id === id);
+  if (tk && tk.appointment.status !== "pending") {
+    apptResult = { id, text: t("ap_already"), bad: false };
+  } else {
+    apptBusy.add(id);
+    apptResult = null;
+    renderAppts();
+    if (detail.call) renderDetail();
+    try {
+      const d = await api("/tasks/" + encodeURIComponent(id) + (confirm ? "/confirm" : "/ignore"), jsonBody("POST", {}));
+      apptResult = { id, text: String(d.message || t("ap_already")), bad: false };
+    } catch (e) {
+      apptResult = { id, text: e.message, bad: true };
+    } finally {
+      apptBusy.delete(id);
+    }
+  }
+  await loadAppts();
+  renderAppts();
+  if (detail.call) renderDetail();
+  refreshCalls({ keep: true });
+  if (detail.id) loadDetail(detail.id);
+}
+$("apptResultClose").addEventListener("click", () => { apptResult = null; renderAppts(); if (detail.call) renderDetail(); });
+$("dApptOk").addEventListener("click", () => { const tk = detail.id && apptTaskFor(detail.id); if (tk) decideAppt(tk.id, true); });
+$("dApptNo").addEventListener("click", () => { const tk = detail.id && apptTaskFor(detail.id); if (tk) decideAppt(tk.id, false); });
+
 document.addEventListener("keydown", (e) => {
   const tag = (e.target && e.target.tagName) || "";
   if (e.key === "Escape" && !$("dlg").open && detail.id && view === "calls") { setHash("calls"); return; }
@@ -7733,6 +8247,8 @@ setInterval(() => {
   ticks++;
   if (live.count) tickLiveClock();
   if (ticks % 4 === 0) pollLive();
+  // Decided on Telegram or elsewhere: the panel follows within half a minute.
+  if (ticks % 30 === 0 && view === "calls") loadAppts();
   if (ticks % 8 === 0 && view === "system") loadSystem();
 }, 1000);
 document.addEventListener("visibilitychange", () => {

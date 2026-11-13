@@ -17,7 +17,8 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * Handles agent → phone commands such as `{"type":"place_call",...}` and the
  * `answer_plan` reply to a ringing call's `incoming`, `set_mode` (AI phone / normal
- * phone) and `agent_info` (the web console's address).
+ * phone), `agent_info` (the web console's address) and `send_sms` (the hello says
+ * `supports_sms`).
  * Sends a periodic `ping` so the idle registration stays alive; reconnects quickly on drop.
  *
  * [describe] adds the phone's current state to the `hello` (`phone_mode`, `in_call`).
@@ -54,6 +55,7 @@ class AgentControlClient(
                     .put("play_tts_locally", false)
                     .put("model", android.os.Build.MODEL)
                     .put("app_version", BuildConfig.VERSION_NAME)
+                    .put("supports_sms", true)
                 try {
                     describe(hello)
                 } catch (e: Exception) {
@@ -77,7 +79,7 @@ class AgentControlClient(
                         "hello_ack", "hello_ok", "ack", "pong" -> {
                             Log.i(TAG, "control TEXT ${obj.optString("type")}")
                         }
-                        "place_call", "blocklist_sync", "answer_plan", "set_mode", "agent_info" -> onCommand(obj)
+                        "place_call", "blocklist_sync", "answer_plan", "set_mode", "agent_info", "send_sms" -> onCommand(obj)
                         else -> Log.i(TAG, "control TEXT type=${obj.optString("type")} len=${message.length}")
                     }
                 } catch (e: Exception) {

@@ -1114,6 +1114,8 @@ fn stall_session_setup(setup: &Value, prompt: &str, model: &str, thinking_level:
     } else {
         setup_with_system_prompt(setup, prompt)
     };
+    // The stalling session takes no appointments.
+    with_appointment_tools(&mut s, false, false);
     let model = model.trim().trim_start_matches("models/");
     if model.is_empty() {
         return s;
@@ -1139,6 +1141,45 @@ fn stall_session_setup(setup: &Value, prompt: &str, model: &str, thinking_level:
 
 /// Stall just engaged: switch to the stall prompt at the next pause, or by this.
 const STALL_PROMPT_SWITCH_FORCE_SECS: u64 = 8;
+
+/// A normal call with appointments on declares their two functions
+/// ([`crate::appointments::tool_declarations`]); every other session has none.
+/// `non_blocking`: propose_appointment as `NON_BLOCKING`.
+fn with_appointment_tools(setup: &mut Value, on: bool, non_blocking: bool) {
+    if let Some(s) = setup.get_mut("setup").and_then(|x| x.as_object_mut()) {
+        if on {
+            s.insert("tools".into(), crate::appointments::tool_declarations(non_blocking));
+        } else {
+            s.remove("tools");
+        }
+    }
+}
+
+/// Set once a setup with a `NON_BLOCKING` function was refused for that reason:
+/// later calls declare propose_appointment blocking (its answer stays silent).
+static NON_BLOCKING_REFUSED: AtomicBool = AtomicBool::new(false);
+
+/// The setup failure names the function declaration (not a network hiccup):
+/// stop asking for `NON_BLOCKING` until the agent restarts.
+fn non_blocking_refused(why: &str) -> bool {
+    let w = why.to_ascii_lowercase();
+    ["behavior", "non_blocking", "function_declarations", "functiondeclarations", "invalid argument", "invalid json", "unknown name"]
+        .iter()
+        .any(|k| w.contains(k))
+}
+
+/// The call's system instruction: the stored prompt, then — appointments on —
+/// their part with the current local time (the stored prompt is not changed).
+fn call_system_prompt(
+    base: &str,
+    appt: Option<&crate::appointments::ApptSession>,
+    now: chrono::DateTime<chrono::Local>,
+) -> String {
+    match appt {
+        Some(a) => format!("{base}{}", a.prompt_block(now)),
+        None => base.to_string(),
+    }
+}
 
 /// Distinct caller keywords → score; ≥ this marks the call as sales/scam…
 const STALL_SCORE_THRESHOLD: u32 = 3;
@@ -1191,6 +1232,8 @@ const STALL_KEYWORDS: &[(&str, u32)] = &[
     ("淨水器", 2), ("理專", 2), ("優惠", 1), ("專案", 1), ("方案", 1), ("免費", 1),
     ("折扣", 1), ("升級", 1), ("續約", 1), ("門號", 1), ("電信", 1), ("課程", 1),
     ("問卷", 1), ("民調", 1),
+    // software / service pitches
+    ("免費試用", 2), ("試用", 1), ("軟體", 1),
     // who is calling / telemarketer openers
     ("銀行", 1), ("客服", 1), ("帳戶", 1), ("會員", 1), ("專員", 1), ("業務", 1),
     ("老師", 1), ("群組", 1), ("line", 1), ("介紹", 1), ("推薦", 1), ("耽誤", 1),
@@ -1206,25 +1249,45 @@ pub(crate) fn stall_keyword_hits(caller_text: &str) -> Vec<&'static str> {
 }
 
 /// Add new distinct sales/scam keywords found in the caller's words; returns
-/// the score they add. `hits` accumulates across the whole call.
+/// the score they add. `hits` accumulates across the whole call. A word inside
+/// a longer one that also hit counts once, as the longer one: 免費 and 試用 in
+/// 免費試用, "insurance" in "life insurance", 無料 in 無料体験.
 fn stall_score_add(caller_text: &str, hits: &mut Vec<&'static str>) -> u32 {
     // Live STT writes 帳戶 as 賬戶 too.
     let t = crate::zh_tw::norm(caller_text).to_ascii_lowercase().replace('賬', "帳");
-    let mut add = 0;
-    for &(kw, w) in STALL_KEYWORDS {
-        if !hits.contains(&kw) && t.contains(kw) {
-            hits.push(kw);
-            add += w;
-        }
-    }
+    let mut found: Vec<(&'static str, u32)> =
+        STALL_KEYWORDS.iter().filter(|(kw, _)| has_keyword(&t, kw)).copied().collect();
     // Other languages' lists (whole words; see `locale`).
     for (kw, w) in crate::locale::stall_hits(caller_text) {
-        if !hits.contains(&kw) {
-            hits.push(kw);
-            add += w;
+        if !found.iter().any(|(k, _)| *k == kw) {
+            found.push((kw, w));
         }
     }
+    let longer = |kw: &str, k: &str| k.len() > kw.len() && k.contains(kw);
+    let mut add = 0;
+    for &(kw, w) in &found {
+        if hits.contains(&kw)
+            || found.iter().any(|&(k, _)| longer(kw, k))
+            || hits.iter().any(|&h| longer(kw, h))
+        {
+            continue;
+        }
+        hits.push(kw);
+        add += w;
+    }
     add
+}
+
+/// Chinese keywords match anywhere; Latin ones (`line`) only as whole words, so
+/// "streamline", "online" or "deadline" do not count as 加 LINE.
+fn has_keyword(text: &str, kw: &str) -> bool {
+    if !kw.is_ascii() {
+        return text.contains(kw);
+    }
+    let word = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric());
+    text.match_indices(kw).any(|(i, _)| {
+        !word(text[..i].chars().next_back()) && !word(text[i + kw.len()..].chars().next())
+    })
 }
 
 /// Weight of a sales / scam keyword, whichever list it is from.
@@ -1248,12 +1311,40 @@ fn stall_engages(score: u32, hits: &[&'static str]) -> bool {
 /// made at a branch, where 信用卡／轉帳 would otherwise score as a pitch.
 const OWN_MATTER_MARKS: &[&str] = &[
     "您反應", "你反應", "您有反應", "你有反應", "您的反應", "您反映", "你反映", "您有反映",
-    "你有反映", "您的反映", "申訴", "客訴", "調查結果", "調查的結果",
+    "你有反映", "您的反映", "申訴", "客訴", "調查結果", "調查的結果", "您申請的", "你申請的",
 ];
 
-fn looks_like_own_matter(caller_text: &str) -> bool {
+pub(crate) fn looks_like_own_matter(caller_text: &str) -> bool {
     let t = crate::zh_tw::norm(caller_text);
     OWN_MATTER_MARKS.iter().any(|m| t.contains(m)) || crate::locale::own_matter(caller_text)
+}
+
+/// The caller's side of the merged dialogue (its 對方 lines).
+fn caller_lines(dialogue: &str) -> String {
+    dialogue
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("對方："))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// After the call: the caller was following up on the owner's own matter
+/// (never a pitch, whatever the summary says).
+pub(crate) fn dialogue_own_matter(dialogue: &str) -> bool {
+    looks_like_own_matter(&caller_lines(dialogue))
+}
+
+/// After the call: the caller's words (the merged dialogue's 對方 lines) score
+/// as a sales / scam call by the same rule as during the call. Catches a pitch
+/// the live check missed or judged too late to matter.
+pub(crate) fn dialogue_is_sales(dialogue: &str) -> bool {
+    let caller = caller_lines(dialogue);
+    if caller.trim().is_empty() || looks_like_own_matter(&caller) {
+        return false;
+    }
+    let mut hits = Vec::new();
+    let score = stall_score_add(&caller, &mut hits);
+    stall_engages(score, &hits)
 }
 
 /// The model's words so far end on a farewell (「…好，掰掰。」「再見喔」) — the
@@ -1369,9 +1460,16 @@ fn strip_stt_markers(s: &str) -> String {
 
 /// Append an STT fragment: Chinese joins directly, Latin words keep a space.
 fn join_fragment(acc: &mut String, next: &str) {
-    if acc.chars().last().is_some_and(|c| c.is_ascii_alphanumeric())
-        && next.chars().next().is_some_and(|c| c.is_ascii_alphanumeric())
-    {
+    // A fragment the STT began with a space starts a new word (Korean, accented
+    // Latin); Chinese and Japanese join directly; two ASCII words always get one.
+    let spaced = next.starts_with(char::is_whitespace);
+    let next = next.trim_start();
+    let (Some(a), Some(b)) = (acc.chars().last(), next.chars().next()) else {
+        acc.push_str(next);
+        return;
+    };
+    let word = |c: char| !c.is_whitespace() && !is_cjk(c);
+    if (spaced && word(a) && word(b)) || (a.is_ascii_alphanumeric() && b.is_ascii_alphanumeric()) {
         acc.push(' ');
     }
     acc.push_str(next);
@@ -1389,16 +1487,36 @@ pub(crate) fn merge_dialogue_fragments(transcript: &str) -> String {
         if label != "對方" && label != "接聽" {
             continue;
         }
-        let text = text.trim();
+        let text = text.trim_end();
         match runs.last_mut() {
             Some((l, acc)) if *l == label => join_fragment(acc, text),
-            _ => runs.push((label, text.to_string())),
+            _ => runs.push((label, text.trim_start().to_string())),
         }
     }
     runs.into_iter()
         .map(|(l, t)| (l, strip_stt_markers(&t)))
         .filter(|(_, t)| !t.is_empty())
         .map(|(l, t)| format!("{l}：{t}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The merged dialogue with the speaker labels of the agent's language
+/// ("Caller: …", "AI: …") for the web record. Everything else reads the
+/// labels used inside the agent (對方／接聽).
+pub(crate) fn localize_dialogue(dialogue: &str, lang: crate::locale::Lang) -> String {
+    let p = crate::locale::phrases(lang);
+    dialogue
+        .lines()
+        .map(|l| {
+            if let Some(t) = l.strip_prefix("對方：") {
+                format!("{}{}{t}", p.d_caller, p.sep)
+            } else if let Some(t) = l.strip_prefix("接聽：") {
+                format!("{}{}{t}", p.d_ai, p.sep)
+            } else {
+                l.to_string()
+            }
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -1626,6 +1744,162 @@ fn is_transcript_only_turn(
     out_tx_window: &str,
 ) -> bool {
     turn_done && audio_chunks_out == 0 && delivered_bytes == 0 && !out_tx_window.trim().is_empty()
+}
+
+/// After a function answer went up, a `turnComplete` this soon with no audio
+/// since ends the turn that made the call, not the reply to it.
+const TOOL_TURN_GRACE: Duration = Duration::from_millis(1_500);
+
+/// A model turn that ends while a function call (appointments) is open — or right
+/// after its answer went up, before any audio — has said nothing yet: the reply
+/// is still owed. The text-only opening re-kick, the post-rotation check, the
+/// closing / stalling checks and the "model owes a reply" flag must not read it
+/// as a silent or finished turn.
+fn tool_turn_quiet(calls_open: usize, since_answer: Option<Duration>, audio_since_answer: bool) -> bool {
+    calls_open > 0 || since_answer.is_some_and(|d| d < TOOL_TURN_GRACE && !audio_since_answer)
+}
+
+/// The first-audio watchdog waits while the caller (or the carrier's prompt)
+/// talks, and while a function call is open: the model speaks after its answer.
+fn first_delivery_paused(activity_open: bool, caller_spoke_recently: bool, calls_open: usize) -> bool {
+    activity_open || caller_spoke_recently || calls_open > 0
+}
+
+/// How long after the answer a model turn nobody asked for still counts as the
+/// repeat (it came ~4 s later on the probe; the quiet-line nudge is 15 s away).
+const REPEAT_GUARD_WINDOW: Duration = Duration::from_secs(12);
+
+/// Had the model already begun its reply to the caller's last words when it
+/// called a function? Audio of this turn is not enough: the opening 「喂？」 (or
+/// any earlier line) was sent before the caller spoke, and a function call
+/// often ends a turn of its own before the reply's audio starts. So the model
+/// must also have sent audio since the caller's last end of turn.
+fn spoke_since_caller(
+    chunks_out: u64,
+    chunks_at_turn_start: u64,
+    downlink_bytes: u64,
+    bytes_at_last_caller_eou: u64,
+) -> bool {
+    chunks_out > chunks_at_turn_start && downlink_bytes > bytes_at_last_caller_eou
+}
+
+/// Where the call stood when the model called propose_appointment after it
+/// had already started speaking its reply.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct CallTurn {
+    /// Model turns completed so far (the calling turn is the next one).
+    turns_done: u64,
+    /// Caller turns ended so far.
+    caller_eous: u64,
+}
+
+/// propose_appointment called after the model had already said its line ("I'll
+/// check and text you"): once that turn ends, Gemini often opens a turn of its
+/// own and says the line again — SILENT or not. That turn — the first one after
+/// the calling turn, asked for by nobody (no caller words since the call, no
+/// kick of ours) — is not played and not written down, and its end is no turn
+/// for the watchdogs. Calls made before the model spoke never arm it.
+#[derive(Debug, Default)]
+struct RepeatGuard {
+    armed: Option<(CallTurn, tokio::time::Instant)>,
+    /// A turn is being dropped (until its turnComplete).
+    dropping: bool,
+    /// The caller's words came in while a turn was being dropped: that turn
+    /// may have been the answer to them, so it is asked for again.
+    reply_owed: bool,
+}
+
+impl RepeatGuard {
+    /// The silent answer to a call made at `call` went up.
+    fn arm(&mut self, call: CallTurn, turns_done: u64, turn_started: bool, now: tokio::time::Instant) {
+        // A later turn is already playing: what comes next was asked for.
+        if turns_done > call.turns_done && turn_started {
+            return;
+        }
+        self.armed = Some((call, now));
+    }
+
+    /// A kick of ours, a rotation, a sales verdict, caller words: the next turn is owed.
+    fn clear(&mut self) {
+        self.armed = None;
+    }
+
+    /// Model output (audio or its transcript) arrives: drop it?
+    fn drops(
+        &mut self,
+        turns_done: u64,
+        turn_started: bool,
+        caller_eous: u64,
+        caller_talking: bool,
+        now: tokio::time::Instant,
+    ) -> bool {
+        if self.dropping {
+            return true;
+        }
+        let Some((call, at)) = self.armed else {
+            return false;
+        };
+        if caller_talking || caller_eous != call.caller_eous || now.duration_since(at) >= REPEAT_GUARD_WINDOW {
+            self.armed = None;
+            return false;
+        }
+        // Still the turn that made the call, or a turn already under way.
+        if turns_done <= call.turns_done || turn_started {
+            return false;
+        }
+        self.armed = None;
+        self.dropping = true;
+        true
+    }
+
+    fn is_dropping(&self) -> bool {
+        self.dropping
+    }
+
+    /// The caller's words arrived: the model's next turn answers them. A turn
+    /// being dropped may have been that answer (a short 「嗯」 the local VAD
+    /// missed and whose transcript came late): it is owed again.
+    fn caller_words(&mut self) {
+        self.armed = None;
+        if self.dropping {
+            self.reply_owed = true;
+        }
+    }
+
+    /// The dropped turn may have answered the caller (see [`Self::caller_words`]).
+    fn reply_owed(&self) -> bool {
+        self.reply_owed
+    }
+
+    /// turnComplete: true when it ends the dropped turn.
+    fn turn_complete(&mut self) -> bool {
+        self.reply_owed = false;
+        std::mem::take(&mut self.dropping)
+    }
+
+    /// The caller cut in: whatever comes next answers them.
+    fn interrupted(&mut self) {
+        self.armed = None;
+        self.dropping = false;
+        self.reply_owed = false;
+    }
+}
+
+/// A function call's answer, back from its task.
+struct ToolDone {
+    /// Live socket generation it was asked on (a rotation drops older ones).
+    gen: u32,
+    /// Tracking key (the call id, or a stand-in when the server sent none).
+    key: String,
+    id: String,
+    name: String,
+    response: Value,
+    /// The model waits for it (the watchdogs hold meanwhile); a non-blocking
+    /// one is answered silently and changes nothing in the turn bookkeeping.
+    blocking: bool,
+    /// propose_appointment called after the model had started speaking its
+    /// reply: where the call stood ([`RepeatGuard`]).
+    after_speech: Option<CallTurn>,
 }
 
 async fn send_text_before_deadline<S>(
@@ -2203,11 +2477,12 @@ fn tick_goodbye_play_clock(
     now.saturating_duration_since(t0) >= hangup_delay
 }
 
-/// CJK/fullwidth character (Han, kana, Hangul, CJK punctuation, fullwidth forms).
+/// CJK/fullwidth character written without spaces between words (Han, kana,
+/// CJK punctuation, fullwidth forms). Not Hangul: Korean spaces its words.
 fn is_cjk(c: char) -> bool {
     matches!(c as u32,
         0x3000..=0x303F | 0x3040..=0x30FF | 0x3400..=0x4DBF | 0x4E00..=0x9FFF
-        | 0xAC00..=0xD7AF | 0xF900..=0xFAFF | 0xFF00..=0xFFEF)
+        | 0xF900..=0xFAFF | 0xFF00..=0xFFEF)
 }
 
 /// With `languageCodes` zh-TW the STT sometimes spaces every character
@@ -2456,8 +2731,11 @@ pub async fn run_session(
     barge_in: Arc<AtomicBool>,
     thinking_level: &str,
     intl_caller: bool,
+    appointments: Option<crate::appointments::ApptSession>,
 ) -> Result<SessionEndReason> {
     let stall = stall.filter(|_| persona);
+    // Appointments: persona calls only (setting `appointment_mode`).
+    let appt = appointments.filter(|_| persona);
     let key = api_key.trim();
     if key.is_empty() {
         bail!("empty Gemini API key");
@@ -2485,22 +2763,6 @@ pub async fn run_session(
         return Ok(SessionEndReason::Cancelled);
     }
 
-    let connect_fut = tokio_tungstenite::connect_async(&url);
-    let (ws, resp) = match tokio::time::timeout(CONNECT_TIMEOUT, connect_fut).await {
-        Ok(Ok(x)) => x,
-        Ok(Err(e)) => bail!("gemini live ws connect: {e:#}"),
-        Err(_) => bail!(
-            "gemini live ws connect timeout after {}s",
-            CONNECT_TIMEOUT.as_secs()
-        ),
-    };
-    info!(
-        "Gemini Live ws open serial={serial} status={:?} (ConnectAtAnswer / cold)",
-        resp.status()
-    );
-    let (mut sink, mut stream) = ws.split();
-    let mut debug_raw_left = debug_raw_budget();
-
     let voice = {
         let v = voice_name.trim();
         if v.is_empty() {
@@ -2510,97 +2772,151 @@ pub async fn run_session(
         }
     };
     let hangup_delay_ms = goodbye_hangup_delay_ms.clamp(200, 15_000);
-    let system_prompt = system_prompt.to_string();
+    // The stored prompt stays as it is; appointments add their part after it
+    // (with the current local time), and the tools.
+    let base_prompt = system_prompt.to_string();
+    let system_prompt = call_system_prompt(&base_prompt, appt.as_ref(), chrono::Local::now());
+    let thinking = live_thinking_level(model, thinking_level);
     // Low-latency turn-taking: high EOU sensitivity + short silence.
-    let mut setup = json!({
-        "setup": {
-            "model": model_path,
-            "generationConfig": {
-                "responseModalities": ["AUDIO"],
-                "speechConfig": {
-                    "voiceConfig": {
-                        "prebuiltVoiceConfig": {
-                            "voiceName": voice
+    let build_setup = |non_blocking: bool| -> Value {
+        let mut setup = json!({
+            "setup": {
+                "model": model_path,
+                "generationConfig": {
+                    "responseModalities": ["AUDIO"],
+                    "speechConfig": {
+                        "voiceConfig": {
+                            "prebuiltVoiceConfig": {
+                                "voiceName": voice
+                            }
                         }
                     }
-                }
-            },
-            "systemInstruction": {
-                "parts": [{ "text": system_prompt.as_str() }]
-            },
-            // Capture speech-to-text for the post-call summary. Language hints:
-            // auto-detect read a short Chinese "hello?" as German / Hindi / Korean,
-            // and stall / carrier-prompt / bye detection all read this STT.
-            "inputAudioTranscription": stt_caller_config(),
-            "outputAudioTranscription": stt_ai_config(),
-            "realtimeInputConfig": realtime_input_config(server_vad)
+                },
+                "systemInstruction": {
+                    "parts": [{ "text": system_prompt.as_str() }]
+                },
+                // Capture speech-to-text for the post-call summary. Language hints:
+                // auto-detect read a short Chinese "hello?" as German / Hindi / Korean,
+                // and stall / carrier-prompt / bye detection all read this STT.
+                "inputAudioTranscription": stt_caller_config(),
+                "outputAudioTranscription": stt_ai_config(),
+                "realtimeInputConfig": realtime_input_config(server_vad)
+            }
+        });
+        if let Some(level) = thinking {
+            if let Some(gc) = setup
+                .pointer_mut("/setup/generationConfig")
+                .and_then(|x| x.as_object_mut())
+            {
+                gc.insert("thinkingConfig".into(), json!({ "thinkingLevel": level }));
+            }
         }
-    });
-    let thinking = live_thinking_level(model, thinking_level);
-    if let Some(level) = thinking {
-        if let Some(gc) = setup
-            .pointer_mut("/setup/generationConfig")
-            .and_then(|x| x.as_object_mut())
-        {
-            gc.insert("thinkingConfig".into(), json!({ "thinkingLevel": level }));
-        }
-    }
-    // Same setup for every call (stalling included): long calls rotate to a fresh
-    // session every ~8 min instead (rotation setups add `historyConfig`).
-    send_text_before_deadline(
-        &mut sink,
-        setup.to_string(),
-        tokio::time::Instant::now() + SETUP_SEND_TIMEOUT,
-        "gemini setup send",
-    )
-    .await?;
-    info!(
-        "Gemini Live setup sent serial={serial} voice={voice} stall={} max_s={} server_vad={server_vad} thinking={} intl={intl_caller}",
-        stall.is_some(),
-        if persona { persona_max_secs } else { LIVE_MAX_SECS },
-        thinking.unwrap_or("-")
-    );
-    let mut conn_opened_at = tokio::time::Instant::now();
+        with_appointment_tools(&mut setup, appt.is_some(), non_blocking);
+        setup
+    };
+    // Appointments: propose_appointment goes NON_BLOCKING unless the API refused
+    // that before; a setup that fails with it is sent once more without it.
+    let mut non_blocking = appt.is_some() && !NON_BLOCKING_REFUSED.load(Ordering::Relaxed);
+    let mut debug_raw_left = debug_raw_budget();
+    let (mut sink, mut stream, setup, mut conn_opened_at, setup_ok) = 'connect: loop {
+        let connect_fut = tokio_tungstenite::connect_async(&url);
+        let (ws, resp) = match tokio::time::timeout(CONNECT_TIMEOUT, connect_fut).await {
+            Ok(Ok(x)) => x,
+            Ok(Err(e)) => bail!("gemini live ws connect: {e:#}"),
+            Err(_) => bail!(
+                "gemini live ws connect timeout after {}s",
+                CONNECT_TIMEOUT.as_secs()
+            ),
+        };
+        info!(
+            "Gemini Live ws open serial={serial} status={:?} (ConnectAtAnswer / cold)",
+            resp.status()
+        );
+        let (mut sink, mut stream) = ws.split();
+        let setup = build_setup(non_blocking);
+        // Same setup for every call (stalling included): long calls rotate to a fresh
+        // session every ~8 min instead (rotation setups add `historyConfig`).
+        send_text_before_deadline(
+            &mut sink,
+            setup.to_string(),
+            tokio::time::Instant::now() + SETUP_SEND_TIMEOUT,
+            "gemini setup send",
+        )
+        .await?;
+        info!(
+            "Gemini Live setup sent serial={serial} voice={voice} stall={} max_s={} server_vad={server_vad} thinking={} intl={intl_caller} appointments={} non_blocking={non_blocking}",
+            stall.is_some(),
+            if persona { persona_max_secs } else { LIVE_MAX_SECS },
+            thinking.unwrap_or("-"),
+            appt.as_ref().map_or("off", |a| a.mode.as_str())
+        );
+        let conn_opened_at = tokio::time::Instant::now();
 
-    let setup_deadline = tokio::time::Instant::now() + SETUP_TIMEOUT;
-    let mut setup_ok = false;
-    while tokio::time::Instant::now() < setup_deadline {
-        if cancel.load(Ordering::Relaxed) {
-            info!("Gemini Live setup aborted (hangup) serial={serial}");
-            let _ = sink.close().await;
-            return Ok(SessionEndReason::Cancelled);
-        }
-        match tokio::time::timeout(Duration::from_millis(100), stream.next()).await {
-            Ok(Some(Ok(msg))) => {
-                if let WsMessage::Close(frame) = &msg {
-                    bail!("gemini ws closed before setup: {frame:?}");
-                }
-                if let Some(t) = text_from_ws(msg) {
-                    if t.contains("setupComplete") || t.contains("setup_complete") {
-                        setup_ok = true;
-                        info!("Gemini Live setupComplete serial={serial}");
+        let setup_deadline = tokio::time::Instant::now() + SETUP_TIMEOUT;
+        let mut setup_ok = false;
+        let mut failed: Option<String> = None;
+        while tokio::time::Instant::now() < setup_deadline {
+            if cancel.load(Ordering::Relaxed) {
+                info!("Gemini Live setup aborted (hangup) serial={serial}");
+                let _ = sink.close().await;
+                return Ok(SessionEndReason::Cancelled);
+            }
+            match tokio::time::timeout(Duration::from_millis(100), stream.next()).await {
+                Ok(Some(Ok(msg))) => {
+                    if let WsMessage::Close(frame) = &msg {
+                        failed = Some(format!("gemini ws closed before setup: {frame:?}"));
                         break;
                     }
-                    if let Ok(v) = serde_json::from_str::<Value>(&t) {
-                        if let Some(err) = v.get("error") {
-                            bail!("gemini setup error: {err}");
-                        }
-                        append_transcriptions(&v, &transcript_out);
-                        // Never forward model audio during setup / pre-unmute warm.
-                        let mut discard = |_: Vec<u8>| {};
-                        if handle_server_msg(&v, phone_sr, &mut discard) > 0 {
+                    if let Some(t) = text_from_ws(msg) {
+                        if t.contains("setupComplete") || t.contains("setup_complete") {
                             setup_ok = true;
-                            info!("Gemini Live setup voice marker serial={serial} (discarded; mute until UnmuteAfterGreet)");
+                            info!("Gemini Live setupComplete serial={serial}");
                             break;
+                        }
+                        if let Ok(v) = serde_json::from_str::<Value>(&t) {
+                            if let Some(err) = v.get("error") {
+                                failed = Some(format!("gemini setup error: {err}"));
+                                break;
+                            }
+                            append_transcriptions(&v, &transcript_out);
+                            // Never forward model audio during setup / pre-unmute warm.
+                            let mut discard = |_: Vec<u8>| {};
+                            if handle_server_msg(&v, phone_sr, &mut discard) > 0 {
+                                setup_ok = true;
+                                info!("Gemini Live setup voice marker serial={serial} (discarded; mute until UnmuteAfterGreet)");
+                                break;
+                            }
                         }
                     }
                 }
+                Ok(Some(Err(e))) => {
+                    failed = Some(format!("gemini ws error during setup: {e}"));
+                    break;
+                }
+                Ok(None) => {
+                    failed = Some("gemini ws closed (none) before setup".to_string());
+                    break;
+                }
+                Err(_) => continue,
             }
-            Ok(Some(Err(e))) => bail!("gemini ws error during setup: {e}"),
-            Ok(None) => bail!("gemini ws closed (none) before setup"),
-            Err(_) => continue,
         }
-    }
+        if let Some(why) = failed {
+            if non_blocking {
+                // Maybe the model / API does not take NON_BLOCKING: the old way once
+                // more (propose_appointment blocking, its answer still silent).
+                if non_blocking_refused(&why) {
+                    NON_BLOCKING_REFUSED.store(true, Ordering::Relaxed);
+                }
+                warn!(
+                    "Gemini Live setup with a NON_BLOCKING function failed serial={serial} ({why}) — sending it again without"
+                );
+                non_blocking = false;
+                continue 'connect;
+            }
+            bail!("{why}");
+        }
+        break 'connect (sink, stream, setup, conn_opened_at, setup_ok);
+    };
     if !setup_ok {
         warn!("Gemini Live no setupComplete yet serial={serial} — warm hold still; setup_ready left false until later msg");
     } else {
@@ -2967,6 +3283,24 @@ pub async fn run_session(
     let test_rotate_after: Option<u64> = std::env::var("GEMINI_TEST_ROTATE_AFTER_SECS")
         .ok()
         .and_then(|v| v.trim().parse().ok());
+    // Appointments: function calls being answered (each on its own task so the
+    // audio loop never waits), the Live socket generation they belong to, and
+    // when the last answer went up (see tool_turn_quiet).
+    let (tool_tx, mut tool_rx) = mpsc::unbounded_channel::<ToolDone>();
+    let mut tool_open: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // Non-blocking calls being answered (the model goes on talking meanwhile).
+    let mut tool_bg: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut tool_tasks: Vec<tokio::task::JoinHandle<()>> = Vec::new();
+    let mut tool_seq: u64 = 0;
+    let mut live_gen: u32 = 0;
+    let mut tool_answer_at: Option<tokio::time::Instant> = None;
+    let mut tool_answer_chunks: u64 = 0;
+    // Model turns completed, and the audio count when the current one began
+    // (what the repeat guard and propose_appointment's caller compare against).
+    let mut turns_done: u64 = 0;
+    let mut chunks_at_turn_start: u64 = 0;
+    let mut repeat_guard = RepeatGuard::default();
+    let mut repeat_drops: u32 = 0;
 
     let signal_force_hangup = |hangup_signaled: &mut bool| {
         if *hangup_signaled {
@@ -3022,6 +3356,7 @@ pub async fn run_session(
             let pause = !activity_open
                 && !model_turn_pending
                 && !goodbye_pending
+                && tool_open.is_empty()
                 && play_head.drained_for(Duration::from_millis(300), PLAYER_DRAIN_SLACK_BYTES);
             let backoff = !ws_dead && rotate_retry_at.map_or(false, |t| now < t);
             if wanted && (pause || forced) && !backoff {
@@ -3031,9 +3366,22 @@ pub async fn run_session(
                     .and_then(|b| b.lock().ok().map(|g| g.clone()))
                     .map(|t| history_turns_with_note(&t, LIVE_HISTORY_MAX_CHARS, stall_on))
                     .unwrap_or_default();
+                // Appointments: the new session gets the current time.
+                let fresh_setup;
+                let next_setup = match (rotate_setup.as_ref(), &appt) {
+                    (Some(s), _) => s,
+                    (None, Some(a)) => {
+                        fresh_setup = setup_with_system_prompt(
+                            &setup,
+                            &call_system_prompt(&base_prompt, Some(a), chrono::Local::now()),
+                        );
+                        &fresh_setup
+                    }
+                    (None, None) => &setup,
+                };
                 let opened = match tokio::time::timeout(
                     Duration::from_secs(10),
-                    open_live_with_history(&url, rotate_setup.as_ref().unwrap_or(&setup), &history, serial),
+                    open_live_with_history(&url, next_setup, &history, serial),
                 )
                 .await
                 {
@@ -3053,6 +3401,18 @@ pub async fn run_session(
                         post_rotate_chunks = Some(audio_chunks_out);
                         post_rotate_rekicked = false;
                         turn_out_text.clear();
+                        // Calls asked on the old socket cannot be answered on this one.
+                        live_gen += 1;
+                        repeat_guard.interrupted();
+                        if !tool_open.is_empty() || !tool_bg.is_empty() {
+                            info!(
+                                "Gemini Live rotated with {} function call(s) open serial={serial} — their answers are dropped",
+                                tool_open.len() + tool_bg.len()
+                            );
+                            tool_open.clear();
+                            tool_bg.clear();
+                        }
+                        tool_answer_at = None;
                         if activity_open {
                             // The caller is mid-sentence: reopen the turn on the new socket
                             // (server VAD hears the rest of the sentence on its own).
@@ -3150,9 +3510,11 @@ pub async fn run_session(
         // first heard at 8.6 s).
         let fd_now = tokio::time::Instant::now();
         if delivered_bytes.load(Ordering::Relaxed) == 0 {
-            let caller_busy = activity_open
-                || last_caller_voice_at
-                    .map_or(false, |t| t.elapsed() < FIRST_DELIVERY_CALLER_HOLD);
+            let caller_busy = first_delivery_paused(
+                activity_open,
+                last_caller_voice_at.map_or(false, |t| t.elapsed() < FIRST_DELIVERY_CALLER_HOLD),
+                tool_open.len(),
+            );
             if caller_busy && fd_grace < FIRST_DELIVERY_CALLER_GRACE_MAX {
                 fd_grace = (fd_grace + fd_now.saturating_duration_since(fd_tick))
                     .min(FIRST_DELIVERY_CALLER_GRACE_MAX);
@@ -3232,7 +3594,8 @@ pub async fn run_session(
                 PLAYER_DRAIN_SLACK_BYTES,
             ),
             activity_open,
-            waiting_model_reply || awaiting_caller_bye,
+            // A function call open: the model still has something to say.
+            waiting_model_reply || awaiting_caller_bye || !tool_open.is_empty(),
         );
         let now = tokio::time::Instant::now();
         let clock_was = output_goodbye_at.is_some();
@@ -3332,6 +3695,7 @@ pub async fn run_session(
                 || (talk >= Duration::from_secs(wrap_secs) && gap)
             {
                 wrap_up_sent = true;
+                repeat_guard.clear();
                 let nudge = if stall_on {
                     persona_stall_wrap_up_client_content()
                 } else {
@@ -3426,9 +3790,17 @@ pub async fn run_session(
         let plain_quiet = !stall_on
             && idle_nudges < PERSONA_IDLE_NUDGES_MAX
             && idle >= Duration::from_secs(PERSONA_IDLE_NUDGE_SECS);
-        if persona && first_downlink_at.is_some() && !goodbye_pending && (stall_quiet || plain_quiet) {
+        // A function call open (appointments) is not a quiet line.
+        if persona
+            && first_downlink_at.is_some()
+            && !goodbye_pending
+            && tool_open.is_empty()
+            && (stall_quiet || plain_quiet)
+        {
             idle_nudges += 1;
             model_turn_pending = true;
+            // The nudge asks for a turn: it is no repeat.
+            repeat_guard.clear();
             stall_tx.clear();
             let nudge = if stall_quiet {
                 stall_nudge_chunks = Some(audio_chunks_out);
@@ -3457,6 +3829,7 @@ pub async fn run_session(
 
         // Idle after last real activity (caller voice or model audio).
         if first_downlink_at.is_some()
+            && tool_open.is_empty()
             && last_activity_at.elapsed() >= Duration::from_secs(idle_end_secs)
         {
             end_reason = if caller_had_voice {
@@ -3572,6 +3945,110 @@ pub async fn run_session(
                                     }
                                     break;
                                 }
+                                // Appointments: the model calls a function and waits for
+                                // its answer (no audio meanwhile); each runs on its own task.
+                                let tool_calls = crate::appointments::parse_tool_calls(&v);
+                                if !tool_calls.is_empty() {
+                                    let now = tokio::time::Instant::now();
+                                    last_activity_at = now;
+                                    for call in tool_calls {
+                                        tool_seq += 1;
+                                        let key = if call.id.is_empty() {
+                                            format!("#{tool_seq}")
+                                        } else {
+                                            call.id.clone()
+                                        };
+                                        let Some(a) = appt.clone() else {
+                                            // No functions were declared: answer so it does not wait.
+                                            warn!(
+                                                "Gemini Live toolCall without appointments serial={serial} name={}",
+                                                call.name
+                                            );
+                                            let msg = crate::appointments::tool_response(
+                                                &call.id,
+                                                &call.name,
+                                                json!({ "error": "unavailable" }),
+                                            );
+                                            let _ = send_text_before_deadline(
+                                                &mut sink,
+                                                msg.to_string(),
+                                                now + API_SEND_TIMEOUT,
+                                                "gemini toolResponse send",
+                                            )
+                                            .await;
+                                            continue;
+                                        };
+                                        let blocking = crate::appointments::is_blocking(&call.name, non_blocking);
+                                        // Called after the model began its reply (see RepeatGuard).
+                                        let after_speech = (call.name == crate::appointments::PROPOSE
+                                            && spoke_since_caller(
+                                                audio_chunks_out,
+                                                chunks_at_turn_start,
+                                                downlink_pcm_bytes,
+                                                bytes_at_last_caller_eou,
+                                            ))
+                                            .then_some(CallTurn { turns_done, caller_eous: local_eou_sent });
+                                        info!(
+                                            "Gemini Live toolCall serial={serial} name={} id={key} blocking={blocking} after_speech={} stall={stall_on} talk_s={}",
+                                            call.name,
+                                            after_speech.is_some(),
+                                            session_start.elapsed().as_secs()
+                                        );
+                                        if blocking {
+                                            // The model waits for the answer: it owes a reply.
+                                            model_turn_pending = true;
+                                            tool_open.insert(key.clone());
+                                        } else {
+                                            tool_bg.insert(key.clone());
+                                        }
+                                        let tx = tool_tx.clone();
+                                        let gen = live_gen;
+                                        tool_tasks.retain(|h| !h.is_finished());
+                                        tool_tasks.push(tokio::spawn(async move {
+                                            let response = a.run_tool(&call).await;
+                                            let _ = tx.send(ToolDone {
+                                                gen,
+                                                key,
+                                                id: call.id,
+                                                name: call.name,
+                                                response,
+                                                blocking,
+                                                after_speech,
+                                            });
+                                        }));
+                                    }
+                                }
+                                for id in crate::appointments::parse_tool_cancellation(&v) {
+                                    if tool_open.remove(&id) || tool_bg.remove(&id) {
+                                        info!(
+                                            "Gemini Live toolCallCancellation serial={serial} id={id} — its answer will not be sent"
+                                        );
+                                    }
+                                }
+                                // Caller words in this message: what the model says next
+                                // answers them — checked before the repeat guard, so a
+                                // short 「嗯」 is not taken for nobody asking.
+                                if !extract_transcription_snippets(&v).0.is_empty() {
+                                    repeat_guard.caller_words();
+                                }
+                                // A turn the model opened on its own to say again what it said
+                                // before propose_appointment: not played, not written down.
+                                let model_output = server_msg_has_audio(&v) || output_transcription_text(&v).is_some();
+                                let was_dropping = repeat_guard.is_dropping();
+                                let repeat_drop = model_output
+                                    && repeat_guard.drops(
+                                        turns_done,
+                                        audio_chunks_out > chunks_at_turn_start,
+                                        local_eou_sent,
+                                        activity_open,
+                                        tokio::time::Instant::now(),
+                                    );
+                                if repeat_drop && !was_dropping {
+                                    repeat_drops += 1;
+                                    info!(
+                                        "Gemini Live unasked turn after propose_appointment serial={serial} n={repeat_drops} — repeat dropped (not played, not transcribed)"
+                                    );
+                                }
                                 if !out_leak_turn
                                     && output_transcription_text(&v).is_some_and(looks_like_leaked_internals)
                                 {
@@ -3581,7 +4058,7 @@ pub async fn run_session(
                                     );
                                 }
                                 let v_clean;
-                                let v_tx = if out_leak_turn && output_transcription_text(&v).is_some() {
+                                let v_tx = if (out_leak_turn || repeat_drop) && output_transcription_text(&v).is_some() {
                                     v_clean = without_output_transcription(&v);
                                     &v_clean
                                 } else {
@@ -3727,6 +4204,11 @@ pub async fn run_session(
                                         if stall_engages(stall_score, &stall_hits) {
                                             stall_on = true;
                                             c.engaged.store(true, Ordering::Relaxed);
+                                            repeat_guard.clear();
+                                            // No appointments with a sales / scam caller.
+                                            if let Some(a) = &appt {
+                                                a.book.discard();
+                                            }
                                             // A closing armed before the verdict no longer counts.
                                             if goodbye_pending && !wrap_up_sent {
                                                 goodbye_pending = false;
@@ -3811,6 +4293,7 @@ pub async fn run_session(
                                     model_generating = false;
                                     play_head.set_generating(false);
                                     mute_model_audio = false;
+                                    repeat_guard.interrupted();
                                     // The caller is talking: the model answers them instead.
                                     stall_keep_after_turn = false;
                                     // Gemini heard the caller start over a reply we had not
@@ -3831,10 +4314,10 @@ pub async fn run_session(
                                 let has_audio = server_msg_has_audio(&v);
                                 if has_audio {
                                     model_generating = true;
-                                    play_head.set_generating(!mute_model_audio);
+                                    play_head.set_generating(!mute_model_audio && !repeat_drop);
                                 }
                                 // After a barge-in, the rest of the cut reply is not played.
-                                let n = if mute_model_audio && has_audio {
+                                let n = if (mute_model_audio || repeat_drop) && has_audio {
                                     0
                                 } else {
                                     handle_server_msg(&v, phone_sr, &mut on_downlink)
@@ -3900,7 +4383,52 @@ pub async fn run_session(
                                     .pointer("/serverContent/turnComplete")
                                     .and_then(|x| x.as_bool())
                                     == Some(true);
+                                // A dropped repeat said nothing: no turn for the checks below.
+                                let dropped_turn = repeat_guard.is_dropping();
+                                let tool_quiet = dropped_turn || tool_turn_quiet(
+                                    tool_open.len(),
+                                    tool_answer_at.map(|t| t.elapsed()),
+                                    audio_chunks_out > tool_answer_chunks,
+                                );
                                 if turn_complete {
+                                    turns_done += 1;
+                                    chunks_at_turn_start = audio_chunks_out;
+                                }
+                                if turn_complete && dropped_turn {
+                                    let owed = repeat_guard.reply_owed();
+                                    repeat_guard.turn_complete();
+                                    model_turn_pending = owed;
+                                    turn_out_text.clear();
+                                    out_leak_turn = false;
+                                    if owed {
+                                        // The caller spoke during it: it may have been their
+                                        // answer — ask for the reply again, as after a switch.
+                                        match send_text_before_deadline(
+                                            &mut sink,
+                                            persona_resume_reply_client_content(),
+                                            tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
+                                            "gemini dropped-turn reply kick send",
+                                        )
+                                        .await
+                                        {
+                                            Ok(()) => info!(
+                                                "Gemini Live dropped turn may have answered the caller serial={serial} — reply asked for again"
+                                            ),
+                                            Err(e) => warn!(
+                                                "Gemini Live dropped-turn reply kick failed serial={serial}: {e:#}"
+                                            ),
+                                        }
+                                    } else {
+                                        info!(
+                                            "Gemini Live dropped repeat turn complete serial={serial} — turn checks skipped"
+                                        );
+                                    }
+                                } else if turn_complete && tool_quiet {
+                                    info!(
+                                        "Gemini Live turnComplete with a function call open serial={serial} open={} — reply still owed, turn checks skipped",
+                                        tool_open.len()
+                                    );
+                                } else if turn_complete {
                                     model_turn_pending = false;
                                     if let Some(c0) = post_rotate_chunks {
                                         match post_rotate_turn(
@@ -4012,7 +4540,7 @@ pub async fn run_session(
                                     out_leak_turn = false;
                                 }
                                 if is_transcript_only_turn(
-                                    turn_complete,
+                                    turn_complete && !tool_quiet,
                                     audio_chunks_out,
                                     delivered_bytes.load(Ordering::Relaxed),
                                     &out_tx_window,
@@ -4037,7 +4565,7 @@ pub async fn run_session(
                                         "Gemini Live opening turn text-only (0 audio) serial={serial} out_stt={stt_preview} -- re-kick now (fresh session if it repeats)"
                                     );
                                 }
-                                if turn_done && !opening_turn_complete {
+                                if turn_done && !tool_quiet && !opening_turn_complete {
                                     let covered =
                                         output_covers_owner_status(&out_tx_window, &owner_status);
                                     let stt_empty = out_tx_window.trim().is_empty();
@@ -4086,7 +4614,7 @@ pub async fn run_session(
                                         );
                                     }
                                 }
-                                if turn_done {
+                                if turn_done && !tool_quiet {
                                     let model_spoke_after_caller = caller_had_voice
                                         && audio_chunks_out > chunks_at_last_caller_eou;
                                     let post_ms = pcm16_ms(
@@ -4184,6 +4712,57 @@ pub async fn run_session(
                         }
                         break;
                     }
+                }
+            }
+            done = tool_rx.recv() => {
+                let Some(done) = done else { continue };
+                let open = if done.blocking {
+                    tool_open.remove(&done.key)
+                } else {
+                    tool_bg.remove(&done.key)
+                };
+                if done.gen != live_gen || !open {
+                    info!(
+                        "Gemini Live function answer dropped serial={serial} name={} id={} (cancelled or older session)",
+                        done.name, done.key
+                    );
+                    continue;
+                }
+                let now = tokio::time::Instant::now();
+                let msg = crate::appointments::tool_response(&done.id, &done.name, done.response.clone());
+                match send_text_before_deadline(
+                    &mut sink,
+                    msg.to_string(),
+                    now + API_SEND_TIMEOUT,
+                    "gemini toolResponse send",
+                )
+                .await
+                {
+                    Ok(()) => info!(
+                        "Gemini Live toolResponse serial={serial} name={} id={} blocking={} response={}",
+                        done.name, done.key, done.blocking, done.response
+                    ),
+                    Err(e) => warn!("Gemini Live toolResponse send failed serial={serial}: {e:#}"),
+                }
+                last_activity_at = now;
+                // Said before the call and answered silently: a turn of its own
+                // right after would be the same line again. Not once the call is
+                // judged sales / scam: the stalling kicks own every turn then.
+                if let Some(call) = done
+                    .after_speech
+                    .filter(|_| !stall_on && crate::appointments::answer_is_silent(&done.name, &done.response))
+                {
+                    repeat_guard.arm(call, turns_done, audio_chunks_out > chunks_at_turn_start, now);
+                    info!(
+                        "Gemini Live repeat guard armed serial={serial} id={} turns_done={turns_done}",
+                        done.key
+                    );
+                }
+                if done.blocking {
+                    // The model speaks after a blocking answer.
+                    model_turn_pending = true;
+                    tool_answer_at = Some(now);
+                    tool_answer_chunks = audio_chunks_out;
                 }
             }
             up = uplink_rx.recv() => {
@@ -4586,6 +5165,19 @@ pub async fn run_session(
     // Immediate close on hangup — stops Gemini Live token burn.
     let _ = sink.send(WsMessage::Close(None)).await;
     let _ = sink.close().await;
+    // A function call may still be writing to the calendar: let it finish (at
+    // most TOOL_WAIT) so the end of the call sees the event it wrote.
+    tool_tasks.retain(|h| !h.is_finished());
+    if !tool_tasks.is_empty() {
+        let n = tool_tasks.len();
+        let done = tokio::time::timeout(
+            crate::appointments::TOOL_WAIT,
+            futures_util::future::join_all(tool_tasks),
+        )
+        .await
+        .is_ok();
+        info!("Gemini Live waited for {n} function call(s) at session end serial={serial} finished={done}");
+    }
     info!(
         "Gemini Live session end serial={serial} reason={} out={audio_chunks_out} in={audio_chunks_in} eou={local_eou_sent} uplink_frames={uplink_frames} gated_frames={gated_frames} floor={:.0} stall={stall_on} stall_hits={stall_hits:?} own_matter={own_matter} idle_nudges={idle_nudges} rotations={rotations} server_vad={server_vad} barge_in={} barge_ins={barge_ins} backchannels={backchannels} tokens_in={usage_prompt_tokens} tokens_out={usage_response_tokens} talk_s={} (API closed)",
         end_reason.as_str(),
@@ -4628,11 +5220,15 @@ fn append_transcriptions(v: &Value, transcript_out: &Option<Arc<std::sync::Mutex
         if let Some(t) = v
             .pointer(path)
             .and_then(|x| x.as_str())
-            .map(tidy_cjk_spaces)
-            .filter(|s| !s.is_empty())
+            .map(|raw| (raw.starts_with(char::is_whitespace), tidy_cjk_spaces(raw)))
+            .filter(|(_, s)| !s.is_empty())
         {
+            let (lead, t) = t;
+            // The STT starts a new word with a space; it is kept so the merged
+            // line keeps word spaces (Korean, accented Latin): see join_fragment.
+            let gap = if lead && t.chars().next().is_some_and(|c| !is_cjk(c)) { " " } else { "" };
             pieces.push(format!(
-                "{label}：{}",
+                "{label}：{gap}{}",
                 crate::zh_tw::to_tw(&t)
             ));
         }
@@ -5140,6 +5736,209 @@ mod tests {
     }
 
     #[test]
+    fn software_demo_pitches_count_and_are_you_free_does_not() {
+        // The probe's CRM pitch only scored "free" + "offer" (2) before.
+        for t in [
+            "Hi, this is Mia from Brightdesk. We have a special CRM platform for small teams, could I book a quick 15-minute demo on Thursday? It's free, no strings attached, and there's an offer this month.",
+            "Hi, I'm calling from Brightdesk, our platform helps teams with scheduling software, can I show you a demo?",
+            "我們這套軟體現在有免費試用，可以幫您安排一個展示",
+        ] {
+            let mut hits = Vec::new();
+            let s = stall_score_add(t, &mut hits);
+            assert!(stall_engages(s, &hits), "{t} {s} {hits:?}");
+        }
+        // Friends asking whether the owner is free (E1/E3/E8 on the probe).
+        for t in [
+            "Hey, it's Jonas! Are you free tonight? Dinner at eight?",
+            "Hi, it's Sam, are you free on Wednesday evening around 7 for a drink?",
+            "Feel free to call me back whenever you're free.",
+        ] {
+            let mut hits = Vec::new();
+            assert_eq!(stall_score_add(t, &mut hits), 0, "{t} {hits:?}");
+        }
+        // After the call: the whole caller side, the same rule.
+        let pitch = "接聽：Hello?\n對方：Hi, this is Mia from Brightdesk, our platform is CRM software.\n接聽：Oh?\n對方：Could I book a quick 15-minute demo on Thursday? It's free.";
+        assert!(dialogue_is_sales(pitch));
+        assert!(!dialogue_is_sales("接聽：Hello?\n對方：Hey, it's Jonas, are you free tonight?\n接聽：Should be, I'll text you."));
+        // The AI's own words do not count.
+        assert!(!dialogue_is_sales("接聽：我們有免費試用的軟體 demo\n對方：嗯，明天下午三點可以嗎"));
+    }
+
+    #[test]
+    fn the_first_reply_after_the_greeting_is_never_taken_for_a_repeat() {
+        // 「喂？」 went out (12 chunks, 9600 bytes), no turnComplete counted for it;
+        // the caller spoke and ended their turn; the model calls
+        // propose_appointment before any audio of its reply.
+        assert!(!spoke_since_caller(12, 0, 9_600, 9_600));
+        // It had begun the reply (audio after the caller's end of turn).
+        assert!(spoke_since_caller(20, 0, 16_000, 9_600));
+        // Audio since the caller, but none in this turn (an earlier turn's).
+        assert!(!spoke_since_caller(20, 20, 16_000, 9_600));
+    }
+
+    #[test]
+    fn a_repeat_after_propose_is_dropped_only_when_nobody_asked_for_it() {
+        let now = tokio::time::Instant::now();
+        // propose_appointment called while turn 4 was playing (3 turns done, 2 caller turns).
+        let call = CallTurn { turns_done: 3, caller_eous: 2 };
+        let mut g = RepeatGuard::default();
+        g.arm(call, 3, true, now);
+        // The rest of the calling turn plays.
+        assert!(!g.drops(3, true, 2, false, now));
+        // Its turnComplete; then the model opens a turn on its own: dropped to its end.
+        assert!(g.drops(4, false, 2, false, now));
+        assert!(g.drops(4, false, 2, false, now) && g.is_dropping());
+        assert!(g.turn_complete());
+        // Only that one turn.
+        assert!(!g.drops(5, false, 2, false, now) && !g.turn_complete());
+        // The caller spoke (a caller turn ended, or they are talking): the reply is theirs.
+        g.arm(call, 4, false, now);
+        assert!(!g.drops(4, false, 3, false, now));
+        assert!(!g.drops(4, false, 2, false, now), "disarmed for good");
+        g.arm(call, 4, false, now);
+        assert!(!g.drops(4, false, 2, true, now));
+        // A kick of ours (idle nudge, wrap-up, rotation, sales verdict) or caller words clear it.
+        g.arm(call, 4, false, now);
+        g.clear();
+        assert!(!g.drops(4, false, 2, false, now));
+        // Long after the answer it is no repeat.
+        g.arm(call, 4, false, now);
+        assert!(!g.drops(4, false, 2, false, now + REPEAT_GUARD_WINDOW));
+        // The answer came late, while a later turn was already playing: nothing armed.
+        g.arm(call, 4, true, now);
+        assert!(!g.drops(5, false, 2, false, now));
+        // The caller cuts into the dropped turn: what follows answers them.
+        g.arm(call, 4, false, now);
+        assert!(g.drops(4, false, 2, false, now));
+        g.interrupted();
+        assert!(!g.is_dropping() && !g.drops(4, false, 2, false, now));
+        // Only a silent propose answer arms it (an error or "not booked" is meant to be said).
+        use crate::appointments::{answer_is_silent, CHECK, PROPOSE};
+        assert!(answer_is_silent(PROPOSE, &json!({"status": "pending_owner_confirmation"})));
+        assert!(answer_is_silent(PROPOSE, &json!({"status": "booked"})));
+        assert!(!answer_is_silent(PROPOSE, &json!({"status": "pending_owner_confirmation", "not_booked": true})));
+        assert!(!answer_is_silent(PROPOSE, &json!({"error": "weekday_mismatch", "date_is": "Thursday"})));
+        assert!(!answer_is_silent(CHECK, &json!({"free": true})));
+    }
+
+    #[test]
+    fn a_short_caller_word_is_never_taken_for_nobody_asking() {
+        let now = tokio::time::Instant::now();
+        let call = CallTurn { turns_done: 3, caller_eous: 2 };
+        let mut g = RepeatGuard::default();
+        // 「嗯」 opened no local turn, but its transcript came before the reply: nothing dropped.
+        g.arm(call, 4, false, now);
+        g.caller_words();
+        assert!(!g.drops(4, false, 2, false, now));
+        assert!(!g.reply_owed());
+        // Its transcript came only once the reply was being dropped: the reply is owed again.
+        g.arm(call, 4, false, now);
+        assert!(g.drops(4, false, 2, false, now));
+        g.caller_words();
+        assert!(g.is_dropping() && g.reply_owed());
+        assert!(g.turn_complete());
+        assert!(!g.reply_owed() && !g.is_dropping());
+        // A cut-in ends it all.
+        g.arm(call, 4, false, now);
+        assert!(g.drops(4, false, 2, false, now));
+        g.caller_words();
+        g.interrupted();
+        assert!(!g.reply_owed() && !g.is_dropping());
+    }
+
+    #[test]
+    fn latin_keywords_count_only_as_whole_words() {
+        let mut hits = Vec::new();
+        stall_score_add("we help teams streamline things online before the deadline", &mut hits);
+        assert!(!hits.contains(&"line"), "{hits:?}");
+        let mut hits = Vec::new();
+        stall_score_add("你加我的LINE，我拉你進群組", &mut hits);
+        assert!(hits.contains(&"line"), "{hits:?}");
+        assert!(has_keyword("add my line id", "line"));
+        assert!(!has_keyword("lines", "line"));
+    }
+
+    #[test]
+    fn a_word_inside_a_longer_hit_counts_once() {
+        // 免費 1 + 試用 1 + 免費試用 2 made 「免費試用」 alone a sales call.
+        let mut hits = Vec::new();
+        let s = stall_score_add("我們現在有免費試用喔", &mut hits);
+        assert_eq!((s, hits.clone()), (2, vec!["免費試用"]));
+        assert!(!stall_engages(s, &hits));
+        // Later, the short word alone adds nothing either.
+        assert_eq!(stall_score_add("真的免費嗎", &mut hits), 0);
+        let mut hits = Vec::new();
+        assert_eq!(stall_score_add("I'm calling about life insurance", &mut hits), 2, "{hits:?}");
+        let mut hits = Vec::new();
+        assert_eq!(stall_score_add("無料体験はいかがですか", &mut hits), 2, "{hits:?}");
+        // Separate words still add up.
+        let mut hits = Vec::new();
+        assert!(stall_engages(stall_score_add("這套軟體有免費試用", &mut hits), &hits), "{hits:?}");
+    }
+
+    #[test]
+    fn replies_about_the_owners_own_matter_are_no_pitch() {
+        for t in [
+            "您好，這邊是中信銀行，您申請的信用卡已經核卡了，想跟您確認寄送地址",
+            "Hi, it's Dana from Acme support, following up on the issue you had with our router",
+        ] {
+            assert!(looks_like_own_matter(t), "{t}");
+        }
+        // "Your order" / "your account" open many scams: they do not count.
+        assert!(!looks_like_own_matter("There is a problem with your order, we need to refund you"));
+        assert!(dialogue_own_matter("接聽：喂？\n對方：您申請的信用卡額度調整好了，分期的部分也可以跟您說明"));
+        assert!(!dialogue_is_sales("接聽：喂？\n對方：您申請的信用卡額度調整好了，分期的部分也可以跟您說明"));
+        assert!(!dialogue_own_matter("接聽：您申請的那個我晚點看\n對方：我們有免費試用的軟體"));
+    }
+
+    #[test]
+    fn a_dropped_repeat_is_no_turn_for_the_watchdogs_and_leaves_no_transcript() {
+        // The dropped turn: audio not played (0 chunks), transcript stripped.
+        let said = json!({"serverContent": {"outputTranscription": {"text": "我晚點看一下行程再跟你確認。"}}});
+        let t = Some(Arc::new(std::sync::Mutex::new(String::new())));
+        append_transcriptions(&without_output_transcription(&said), &t);
+        assert!(t.as_ref().unwrap().lock().unwrap().is_empty());
+        // Its turnComplete counts as quiet: no transcript-only re-kick, no closing check.
+        let dropped_turn = true;
+        let quiet = dropped_turn || tool_turn_quiet(0, None, false);
+        assert!(!is_transcript_only_turn(true && !quiet, 0, 0, "我晚點看一下行程再跟你確認。"));
+        // Without the guard the same turn would be read as a text-only opening.
+        assert!(is_transcript_only_turn(true, 0, 0, "我晚點看一下行程再跟你確認。"));
+    }
+
+    #[test]
+    fn korean_and_accented_words_keep_their_spaces() {
+        assert_eq!(tidy_cjk_spaces("민준아, 나 지훈인데."), "민준아, 나 지훈인데.");
+        assert_eq!(tidy_cjk_spaces("這 是 國 際 電 話"), "這是國際電話");
+        let t = Some(Arc::new(std::sync::Mutex::new(String::new())));
+        for piece in ["민준아, 나", " 지훈인데.", " 오늘 저녁 8시쯤에", "괜찮아?"] {
+            append_transcriptions(&json!({"serverContent": {"inputTranscription": {"text": piece}}}), &t);
+        }
+        for piece in ["Sí, está", " bien.", " 喂？", "好"] {
+            append_transcriptions(&json!({"serverContent": {"outputTranscription": {"text": piece}}}), &t);
+        }
+        let merged = merge_dialogue_fragments(&t.as_ref().unwrap().lock().unwrap());
+        assert_eq!(merged, "對方：민준아, 나 지훈인데. 오늘 저녁 8시쯤에괜찮아?\n接聽：Sí, está bien.喂？好");
+        // Chinese still joins directly; ASCII words still get their space.
+        assert_eq!(merge_dialogue_fragments("對方：我想\n對方：預約\n接聽：Hallo, ist\n接聽：jemand"), "對方：我想預約\n接聽：Hallo, ist jemand");
+    }
+
+    #[test]
+    fn the_web_record_labels_speakers_in_the_agents_language() {
+        use crate::locale::Lang;
+        let d = "接聽：Hello?\n對方：Hi, it's Jonas.";
+        assert_eq!(localize_dialogue(d, Lang::En), "AI: Hello?\nCaller: Hi, it's Jonas.");
+        assert_eq!(localize_dialogue(d, Lang::ZhTw), d);
+        assert_eq!(localize_dialogue(d, Lang::De), "KI: Hello?\nAnrufer: Hi, it's Jonas.");
+        assert_eq!(localize_dialogue(d, Lang::Fr), "IA : Hello?\nAppelant : Hi, it's Jonas.");
+        assert_eq!(localize_dialogue("接聽：喂？", Lang::ZhCn), "接听：喂？");
+        for l in crate::locale::ALL {
+            let p = crate::locale::phrases(l);
+            assert!(!p.d_caller.is_empty() && !p.d_ai.is_empty() && p.d_caller != p.d_ai, "{l:?}");
+        }
+    }
+
+    #[test]
     fn transcript_only_turn_after_rotation_is_asked_again_once() {
         use PostRotateTurn::*;
         assert_eq!(post_rotate_turn(true, "喂？還在嗎？", false, false), Spoke);
@@ -5347,6 +6146,100 @@ mod tests {
         // Same prompt and model: nothing to switch.
         let same = stall_session_setup(&plain, "", "gemini-3.8-live", "low");
         assert_eq!(same, plain);
+    }
+
+    #[test]
+    fn appointment_tools_only_on_normal_calls_with_the_setting_on() {
+        let base = json!({"setup": {
+            "model": "models/gemini-3.8-live",
+            "generationConfig": {"responseModalities": ["AUDIO"]},
+            "systemInstruction": {"parts": [{"text": "一般"}]}
+        }});
+        let mut off = base.clone();
+        with_appointment_tools(&mut off, false, true);
+        assert_eq!(off, base);
+        let mut on = base.clone();
+        with_appointment_tools(&mut on, true, false);
+        let names: Vec<&str> = on
+            .pointer("/setup/tools/0/functionDeclarations")
+            .and_then(|f| f.as_array())
+            .unwrap()
+            .iter()
+            .filter_map(|f| f["name"].as_str())
+            .collect();
+        assert_eq!(names, vec!["check_availability", "propose_appointment"]);
+        // Blocking (the fallback): no "behavior" anywhere.
+        assert!(!on.to_string().contains("NON_BLOCKING"));
+        let mut nb = base.clone();
+        with_appointment_tools(&mut nb, true, true);
+        assert_eq!(nb.pointer("/setup/tools/0/functionDeclarations/1/behavior"), Some(&json!("NON_BLOCKING")));
+        assert!(nb.pointer("/setup/tools/0/functionDeclarations/0/behavior").is_none());
+        assert!(stall_session_setup(&nb, "陪聊", "gemini-3.8-live", "low").pointer("/setup/tools").is_none());
+        // The stalling session never has them, whichever way it is built…
+        let s = stall_session_setup(&on, "陪聊", "gemini-3.8-live", "low");
+        assert!(s.pointer("/setup/tools").is_none());
+        assert!(stall_session_setup(&on, "", " ", "low").pointer("/setup/tools").is_none());
+        // …while a rotation of the normal call keeps them (only the prompt changes).
+        let r = setup_with_system_prompt(&on, "一般+時間");
+        assert!(r.pointer("/setup/tools/0/functionDeclarations").is_some());
+        // The prompt: unchanged when off, the appointment part after it when on.
+        let now = chrono::Local::now();
+        assert_eq!(call_system_prompt("你是我。", None, now), "你是我。");
+        let mut rt = crate::settings_store::RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        rt.appointment_mode = "off".into();
+        let http = reqwest::Client::new();
+        assert!(crate::appointments::ApptSession::for_call(&rt, &http, "0912345678").is_none());
+        rt.appointment_mode = "confirm".into();
+        let a = crate::appointments::ApptSession::for_call(&rt, &http, "0912345678").unwrap();
+        let p = call_system_prompt("你是我。", Some(&a), now);
+        assert!(p.starts_with("你是我。\n\n[Appointments") && p.contains(&now.format("%Y-%m-%d").to_string()), "{p}");
+        assert!(p.contains("do not repeat what you have just told the caller"), "{p}");
+    }
+
+    #[test]
+    fn a_refused_non_blocking_setup_falls_back_for_good_only_when_it_names_the_declaration() {
+        for why in [
+            "gemini setup error: {\"code\":400,\"message\":\"Invalid JSON payload received. Unknown name \\\"behavior\\\"\"}",
+            "gemini ws closed before setup: Some(CloseFrame { code: Invalid, reason: \"Request contains an invalid argument.\" })",
+            "gemini setup error: NON_BLOCKING is not supported for this model",
+        ] {
+            assert!(non_blocking_refused(why), "{why}");
+        }
+        for why in ["gemini ws closed (none) before setup", "gemini ws error during setup: Connection reset by peer"] {
+            assert!(!non_blocking_refused(why), "{why}");
+        }
+    }
+
+    #[test]
+    fn function_call_turns_are_not_silent_or_text_only_turns() {
+        // A call open, or its answer just sent and nothing said since: not a finished turn.
+        assert!(tool_turn_quiet(1, None, false));
+        assert!(tool_turn_quiet(2, Some(Duration::from_secs(5)), true));
+        assert!(tool_turn_quiet(0, Some(Duration::from_millis(300)), false));
+        // The reply to it has started, or the answer is long gone: the usual turn checks.
+        assert!(!tool_turn_quiet(0, Some(Duration::from_millis(300)), true));
+        assert!(!tool_turn_quiet(0, Some(TOOL_TURN_GRACE), false));
+        assert!(!tool_turn_quiet(0, None, false));
+        // The text-only opening re-kick gets turn_complete && !quiet from the loop.
+        let turn_complete = true;
+        let quiet = tool_turn_quiet(1, None, false);
+        assert!(!is_transcript_only_turn(turn_complete && !quiet, 0, 0, "好，我看一下"));
+        assert!(is_transcript_only_turn(turn_complete, 0, 0, "喂？"));
+        // The first-audio watchdog waits while a call is open.
+        assert!(first_delivery_paused(false, false, 1));
+        assert!(!first_delivery_paused(false, false, 0));
+        assert!(first_delivery_paused(true, false, 0) && first_delivery_paused(false, true, 0));
+        // A toolCall message has no audio, no transcript and ends no turn.
+        let call = json!({"toolCall": {"functionCalls": [
+            {"id": "fc-1", "name": "check_availability", "args": {"start": "2026-11-14T15:00"}}
+        ]}});
+        assert!(!server_msg_has_audio(&call));
+        let mut no_audio = |_: Vec<u8>| panic!("a toolCall carries no audio");
+        assert_eq!(handle_server_msg(&call, 16_000, &mut no_audio), 0);
+        let (heard, said) = extract_transcription_snippets(&call);
+        assert!(heard.is_empty() && said.is_empty());
+        assert!(call.pointer("/serverContent/turnComplete").is_none());
+        assert_eq!(crate::appointments::parse_tool_calls(&call).len(), 1);
     }
 
     #[test]

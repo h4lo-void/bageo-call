@@ -39,6 +39,78 @@ The last line appears when the agent has a console address: *Address of this con
 lines appear only when the call fixed a date
 ([Settings reference](SETTINGS.md#summary--calendar)).
 
+## Appointments
+
+With *Appointments* on ([Settings reference](SETTINGS.md#summary--calendar)),
+a call where the caller set a time with the AI gets one line under the
+summary instead of the calendar lines, on every notification channel you set
+up (Telegram, Apprise, a webhook, …):
+
+```text
+📅 Appointment to confirm: Sat, Nov 14, 3:00 PM–4:00 PM House viewing — confirm in the web console: http://bageo.local/calls/#call=…
+📅 Added to your calendar: Sat, Nov 14, 3:00 PM–4:00 PM House viewing
+```
+
+The first is *Ask me first* (or *Book it if I'm free* when the calendar could
+not take it). You decide it in the web console: under **Appointments to
+confirm** at the top of the Calls page, or in the call's details, with **✅
+Confirm** / **❌ Decline**. The link opens the call; when the console has no
+address other devices can open (*Address of this console* in Settings), the
+line ends with "confirm in the web console" instead. The second line is *Book
+it if I'm free*. With no notification channel set up nothing is sent, and the
+appointment simply waits in the console.
+
+With a Telegram bot set up (bot token and chat ID) and *Send notifications* on,
+an appointment waiting for you also comes as a card you can tap:
+
+```text
+📅 Appointment to confirm
+
+Number: 0912345678
+Time: Sat, Nov 14, 3:00 PM–4:00 PM
+What: House viewing
+Name: Mr Chen
+Phone: Pixel 8
+Text to caller: sent when you tap Confirm or Decline
+Confirm on the web: http://bageo.local/calls/#call=…
+[✅ Confirm] [❌ Decline]
+```
+
+**✅ Confirm** puts it in Google Calendar; **❌ Decline** removes an event the
+call already put there and leaves the rest of the calendar alone. With *Text
+the caller* on, the phone that took the call then texts the caller in your
+name — only the time, never what the appointment is about. Only the first
+decision counts, wherever it is made (console, card or
+[API](API.md#appointments)); a second one, also at the same moment, gets "This
+appointment has already been handled". The answer says what happened — in the
+console, and from the bot after a press on the card: "Added to Google Calendar"
+(or why not), "Text sent to 0912345678", or "Text not sent: the phone is not
+connected" / "the phone app is too old to send texts" / "error code
+no_service". For landlines, hidden numbers and foreign numbers, the card says
+to call them back yourself. After *Book it if I'm free* the text goes out right
+after the call and the bot reports it the same way.
+
+When you decide in the console or through the API, the card's buttons are taken
+off and the bot posts the same answer in the chat, so the card never offers a
+decision that was already made (a card that arrives after you already decided comes without buttons). If Telegram cannot be reached, the decision
+still stands.
+
+When a call that already put an event in your calendar turns out to be a sales
+or scam call (during the call, or afterwards when its summary marks it "Sales
+call" or "Suspected scam" — a bank's fraud desk or the police calling about
+fraud does not count), the event is deleted after the call and no card comes.
+When the summary made that call, it says so:
+
+```text
+📅 Judged a sales call, so the appointment booked during the call was canceled: Sat, Nov 14, 3:00 PM–4:00 PM House viewing
+```
+
+If Google refuses to delete it, the summary says that instead:
+
+```text
+📅 "Sat, Nov 14, 3:00 PM–4:00 PM House viewing" from the call was canceled but couldn't be removed from your calendar. Please delete it yourself.
+```
+
 ## Services
 
 For each service: what to create, and which field it goes into.

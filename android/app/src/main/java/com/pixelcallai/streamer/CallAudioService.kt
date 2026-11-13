@@ -58,6 +58,8 @@ class CallAudioService : Service() {
     private var sessionJob: Job? = null
     private var bridge: BridgeClient? = null
     private var controlClient: AgentControlClient? = null
+    /** Agent `send_sms`; answers on the control connection. */
+    private var smsSender: SmsSender? = null
     private var injector: UplinkInjector? = null
     private var audioGuard: LocalAudioGuard? = null
     /**
@@ -119,6 +121,7 @@ class CallAudioService : Service() {
     override fun onCreate() {
         super.onCreate()
         audioGuard = LocalAudioGuard(this)
+        smsSender = SmsSender(this) { msg -> controlClient?.sendJson(msg) }
         telephonyManager = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
         PhoneModeManager.addListener(modeListener)
         if (Prefs.legacyAiSwitchOff(this) && !Prefs.hasPhoneModeFile(this)) {
@@ -1026,6 +1029,7 @@ class CallAudioService : Service() {
                 pendingAnswerPlan?.complete(ms)
             }
             "set_mode" -> handleSetMode(obj)
+            "send_sms" -> smsSender?.handle(obj)
             "agent_info" -> {
                 Prefs.setConsoleUrl(this, obj.optString("console_url"))
                 Log.i(TAG, "agent_info console_url_set=${Prefs.consoleUrl(this) != null}")
@@ -1559,6 +1563,8 @@ class CallAudioService : Service() {
 
     override fun onDestroy() {
         PhoneModeManager.removeListener(modeListener)
+        smsSender?.close()
+        smsSender = null
         cancelPendingServiceStop("service destroyed")
         endCallSession()
         callStateWatchdogJob?.cancel()

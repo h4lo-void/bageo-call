@@ -29,9 +29,9 @@ X-Calls-Token: <token>
 | `GET /calls/api/stats` | `{ok, stats: {total, today, voicemails, blocked}}`。 |
 | `GET /calls/api/export.csv` | 筛选后的列表，CSV 格式（查询参数同 `list`，最多 2000 行）。 |
 
-通话记录（`call`，以及 `calls` 里的每一条）包含的字段有：`id`、`serial`（手机）、`caller_id`、`started_at` / `ended_at`（RFC 3339，UTC）、`duration_ms`、`status`（`ringing`、`active`、`ended`）、`events`（按顺序发生的事——例如 `active`、`persona_stall_spam`、`reject_list`、`persona_ai_fail_hangup`、`ended`）、`summary`，以及有哪些音频文件。
+通话记录（`call`，以及 `calls` 里的每一条）包含的字段有：`id`、`serial`（手机）、`caller_id`、`started_at` / `ended_at`（RFC 3339，UTC）、`duration_ms`、`status`（`ringing`、`active`、`ended`）、`events`（按顺序发生的事——例如 `active`、`persona_stall_spam`、`reject_list`、`persona_ai_fail_hangup`、`ended`）、`summary`、有哪些音频文件，对方跟 AI 约了时间时还有 `appointment`（通话结束时的样子，见[日程预约](#日程预约)）；通话后的变化（你的决定、短信结果）会更新在 `notes.appointment`。
 
-在 `notes.dialogue` 里，每一行是一次发言，前面带有保存时使用的说话人标签 `對方：`（来电者）或 `接聽：`（AI）。无论语言是什么，这两个标签都是固定的；显示时请自行翻译。
+在 `notes.dialogue` 里，每一行是一次发言，前面带有主程序语言的说话人标签和分隔符：简体中文是 `对方：`／`接听：`，繁体中文 `對方：`／`接聽：`，英文 `Caller: `／`AI: `，日文 `相手：`／`AI：`，韩文 `상대: `／`AI: `，西班牙文 `Llamante: `／`IA: `，法文 `Appelant : `／`IA : `，德文 `Anrufer: `／`KI: `，葡萄牙文 `Chamador: `／`IA: `。旧版本保存的记录无论语言都是 `對方：`／`接聽：`。
 
 ## 设置
 
@@ -68,6 +68,27 @@ PUT /calls/api/settings
 
 `GET /calls/api/preview` 会返回一个 WAV。查询参数：`voice`（声音名称，或者用 `none` 表示只要背景音）、`ambience`（`off` 或某一种背景音）、`level`（1–3）、`regen=true`（重新生成，不用缓存的示例）、`clip=reject`（用该声音播报的拦截号码语音）、`lang`（`ja`、`zh-TW`…；留空 = 已保存的语言）。内置的每个声音在每种语言都已预先录好（`assets/voices/`），试听不用连 Gemini；只有 `regen=true` 或没有预录的声音才会开一次短暂的会话。
 
+## 日程预约
+
+`appointment_mode` 设为 `confirm` 或 `auto` 时（见[设置](SETTINGS.md#摘要与日历)），对方跟 AI 约好时间的那通电话会留下一条任务（`intent` 为 `appointment`），通话记录、它的 notes 和任务上都有一个 `appointment` 对象：
+
+```json
+{
+  "start": "2026-11-14T15:00", "end": "2026-11-14T16:00",
+  "title": "看房", "caller_name": "陈先生",
+  "mode": "confirm", "status": "pending",
+  "tag": "6f1c2a9e-3b7d-4e0a-9c55-2d8f1b7e4a10"
+}
+```
+
+时间是本地时间（`TZ`）。`status`：`pending`（等你决定）、`booked`（通话中已写进日历）、`confirmed`、`declined`。`event_id`：写进 Google 日历后的日程 ID。`auto_error`：“有空直接答应”没能排入的原因。`replaced`：同一通电话里先前已写进日历、后来改掉的时间。`sms`：`sent`，或短信没发出的原因（`offline`、`old_app`、`timeout`、`busy`、`no_number`，或手机返回的错误代码）。`tag`：这通电话在它写进日历的日程上留的标记（见下句）。`tg_card`：发给这条预约的 Telegram 卡片 `{chat_id, message_id}`，在别处决定后用来去掉卡片上的按钮。空的字段不会出现。主程序写进日历的日程都带私有扩展属性 `myna_call=<appointment.tag>`，写入时没收到响应的那条之后能找回来，不会写两次。
+
+| 方法和路径 | 内容 |
+|---|---|
+| `GET /calls/api/tasks` | 任务，最新的在前（最多 200 条）：`{ok, tasks}`。网页的“待确认的预约”就是 `appointment.status` 为 `pending` 的任务。 |
+| `POST /calls/api/tasks/{id}/confirm` | 对预约来说等于在网页或 Telegram 卡片上按 **✅ 确定**——写进 Google 日历，接着（开启 `appointment_sms` 时）给对方发短信，可能要等最多 90 秒。响应 `{ok, task, message}`；`message` 是结果，网页显示的和 Telegram Bot 回复的是同一段。这条预约发过 Telegram 卡片时，卡片上的按钮会去掉，并把 `message` 回复到那个聊天（尽力而为，Telegram 失败不影响决定）。只有第一次决定才算：之后再确定或婉拒——包括第一次还在处理时发来的，或在 Telegram 卡片上按的——都只回复“已经处理过了”，不会有任何变化。请求要带 `Content-Type: application/json`（不用 body），否则返回 HTTP 400 `bad_request`，这样别的网页无法通过你局域网里的浏览器替你决定。 |
+| `POST /calls/api/tasks/{id}/ignore` | 对预约来说等于 **❌ 婉拒**（通话中已经写进日历的那条会删掉；开启 `appointment_sms` 时发短信）。响应与规则同上。 |
+
 ## 手机与健康状态
 
 | 方法和路径 | 内容 |
@@ -91,3 +112,11 @@ PUT /calls/api/settings
 | 主程序 → 手机 | `{"type": "set_mode", "mode": "ai" \| "normal", "id": "<uuid>"}` | 切换（由上面的路由发出）。 |
 | 手机 → 主程序 | `{"type": "set_mode_result", "id": "<同一个>", "ok": bool, "mode": "...", "error": "<代码>"}` | 结果；成功时 `error` 为空字符串，代码同上。 |
 | 主程序 → 手机 | `{"type": "agent_info", "console_url": "http://…/calls/"}` | 紧跟在 hello 之后，主程序有控制台地址时才发：你填的地址（`public_url`）；没填而控制台对局域网开放时，用局域网 IP 的地址（有些手机打不开 `.local` 名称）。应用会因此显示“打开网页控制台”按钮。 |
+
+发给来电者的短信（日程预约）也走同一条连接：
+
+| 方向 | 消息 | 含义 |
+|---|---|---|
+| 手机 → 主程序 | `hello` 加上 `"supports_sms": true` | 应用能替主程序发短信。没有这个字段 = 旧应用：不会让它发短信。 |
+| 主程序 → 手机 | `{"type": "send_sms", "id": "<最多 64 个字符>", "to": "+886912345678", "text": "<UTF-8，最多 500 个字符>"}` | 只发给接那通电话的手机。`to` 只有数字，开头可以有 `+`。 |
+| 手机 → 主程序 | `{"type": "send_sms_result", "id": "<同一个>", "ok": true}` 或 `{"type": "send_sms_result", "id": "<同一个>", "ok": false, "error": "<代码>"}` | 短信每一段都回报发出后才回复（手机最多等 60 秒，超时回复 `timeout`）。`error` 是 `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception` 之一。主程序最多等 90 秒，没有回复就算失败。 |

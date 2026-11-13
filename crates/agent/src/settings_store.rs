@@ -244,6 +244,17 @@ pub struct RuntimeSettings {
     /// `gcal_*` credentials).
     #[serde(default)]
     pub calendar_auto_add: bool,
+    /// Appointments on a call ([`crate::appointments`]): `off` (default),
+    /// `confirm` (the AI says it will confirm; the owner decides from a Telegram
+    /// card) or `auto` (a free time is taken and put in Google Calendar). Without
+    /// the Google Calendar credentials the AI cannot check the calendar and
+    /// `auto` works like `confirm`.
+    #[serde(default = "default_appointment_mode")]
+    pub appointment_mode: String,
+    /// After the owner confirms or declines (or `auto` books it), text the caller
+    /// through the phone that took the call (Taiwan mobile numbers only).
+    #[serde(default)]
+    pub appointment_sms: bool,
     /// Names speech-to-text keeps getting wrong, one `wrong=right` per entry
     /// (`黃先生=王先生`): applied to transcripts and summaries.
     #[serde(default)]
@@ -314,6 +325,15 @@ fn default_auto() -> String {
 
 fn default_mdns_name() -> String {
     "myna".to_string()
+}
+
+fn default_appointment_mode() -> String {
+    "off".to_string()
+}
+
+/// `off` / `confirm` / `auto`; anything else is off.
+fn sanitize_appointment_mode(s: &str) -> String {
+    crate::appointments::Mode::parse(s).as_str().to_string()
 }
 
 fn sanitize_language(s: &str) -> String {
@@ -461,6 +481,8 @@ impl RuntimeSettings {
             mdns_name: base.mdns_name.clone(),
             calendar_suggest: env_bool("CALENDAR_SUGGEST", true),
             calendar_auto_add: env_bool("CALENDAR_AUTO_ADD", false),
+            appointment_mode: sanitize_appointment_mode(&env_or("APPOINTMENT_MODE", "off")),
+            appointment_sms: env_bool("APPOINTMENT_SMS", false),
             name_corrections: split_list(&env_or("NAME_CORRECTIONS", "")),
             device_labels: std::collections::BTreeMap::new(),
         }
@@ -648,6 +670,7 @@ impl RuntimeSettings {
             mdns_name,
             name_corrections,
             device_labels,
+            appointment_mode,
         );
         macro_rules! set_copy {
             ($($f:ident),+ $(,)?) => {$(
@@ -690,6 +713,7 @@ impl RuntimeSettings {
             reply_in_caller_language,
             calendar_suggest,
             calendar_auto_add,
+            appointment_sms,
         );
         self.ivr_start_delay_ms = self
             .ivr_start_delay_ms
@@ -703,6 +727,7 @@ impl RuntimeSettings {
         self.intl_carrier_prompt = sanitize_tristate(&self.intl_carrier_prompt);
         self.country_code = digits_only(&self.country_code);
         self.mdns_name = crate::mdns::parse_name_setting(&self.mdns_name);
+        self.appointment_mode = sanitize_appointment_mode(&self.appointment_mode);
     }
 
     /// Overlay runtime-editable values onto the env base so existing call
@@ -1039,6 +1064,10 @@ struct Overrides {
     calendar_suggest: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     calendar_auto_add: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    appointment_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    appointment_sms: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     name_corrections: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1503,6 +1532,11 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     }
     p_bool(patch, "calendar_suggest", &mut ov.calendar_suggest);
     p_bool(patch, "calendar_auto_add", &mut ov.calendar_auto_add);
+    p_string(patch, "appointment_mode", &mut ov.appointment_mode);
+    if let Some(v) = ov.appointment_mode.take() {
+        ov.appointment_mode = Some(sanitize_appointment_mode(&v));
+    }
+    p_bool(patch, "appointment_sms", &mut ov.appointment_sms);
     p_list(patch, "name_corrections", &mut ov.name_corrections);
     if let Some(map) = patch.get("device_labels").and_then(|v| v.as_object()) {
         ov.device_labels = Some(
@@ -2122,6 +2156,40 @@ mod tests {
         let again = SettingsStore::load(base.clone());
         assert_eq!(again.snapshot().mdns_name, "");
         assert_eq!(again.snapshot().effective(&base).mdns_name, "");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn appointments_default_off_and_persist() {
+        let dir = std::env::temp_dir().join(format!(
+            "myna-call-appointments-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp settings dir");
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        let rt = store.snapshot();
+        assert_eq!((rt.appointment_mode.as_str(), rt.appointment_sms), ("off", false));
+        let shown = store.masked_json();
+        assert_eq!(shown["appointment_mode"], "off");
+        assert_eq!(shown["appointment_sms"], false);
+        let rt = store
+            .apply_patch(&json!({ "appointment_mode": " Confirm ", "appointment_sms": true }))
+            .unwrap();
+        assert_eq!((rt.appointment_mode.as_str(), rt.appointment_sms), ("confirm", true));
+        // Survives a restart (settings.json override).
+        let again = SettingsStore::load(base.clone());
+        assert_eq!(again.snapshot().appointment_mode, "confirm");
+        assert!(again.snapshot().appointment_sms);
+        // Anything unknown is off; another key leaves both alone.
+        let rt = again.apply_patch(&json!({ "appointment_mode": "always" })).unwrap();
+        assert_eq!(rt.appointment_mode, "off");
+        let rt = again.apply_patch(&json!({ "appointment_mode": "auto" })).unwrap();
+        let rt2 = again.apply_patch(&json!({ "calendar_suggest": false })).unwrap();
+        assert_eq!((rt.appointment_mode.as_str(), rt2.appointment_mode.as_str()), ("auto", "auto"));
+        assert!(rt2.appointment_sms);
+        assert_eq!(SettingsStore::load(base).snapshot().appointment_mode, "auto");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
