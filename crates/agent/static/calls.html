@@ -812,6 +812,9 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <div class="help" data-i18n="f_appt_mode_h"></div>
             <p class="note" id="apptNoCal" hidden><svg class="i sm"><use href="#i-info"/></svg><span data-i18n="appt_nocal"></span></p></div>
           <label class="sw"><input type="checkbox" data-k="appointment_sms" data-t="bool" /><span><b data-i18n="f_appt_sms"></b><small data-i18n="f_appt_sms_h"></small></span></label>
+          <div class="field"><label for="f-appointment_test_numbers" data-i18n="f_appt_test"></label>
+            <textarea id="f-appointment_test_numbers" data-k="appointment_test_numbers" data-t="lines" rows="3" spellcheck="false" placeholder="+1 650 555 0100"></textarea>
+            <div class="help" data-i18n="f_appt_test_h"></div></div>
         </div></div>
 
         <!-- Region & advanced -->
@@ -1338,6 +1341,8 @@ I18N["en"] = {
   appt_nocal: "Checking free times and adding to the calendar need the Google Calendar credentials above. Without them the AI cannot see your calendar: it always says it will confirm and get back to the caller, and “Book it if I'm free” works like “Ask me first”.",
   f_appt_sms: "Text the caller",
   f_appt_sms_h: "Once you confirm or decline (or the AI books it), the phone that took the call texts the caller a short message in your name. Taiwan mobile numbers only; the phone app must support sending texts.",
+  f_appt_test: "Test numbers (demo calendar)",
+  f_appt_test_h: "One number per line. Calls from these numbers try out appointments without Google Calendar: whatever is chosen above, the AI uses a demo calendar and books a free time right away, never touching Google Calendar. The demo calendar is demo_calendar.json in the data folder; until it exists, lunch (12:00–13:00) and the evening (19:00–21:00) of the next 14 days are busy. Other calls are not affected.",
   // ---- settings: region & advanced
   f_cc: "Country calling code",
   f_cc_h: "Digits only, e.g. 1, 44, 886. Lets blocked numbers written with + match the way your phone reports callers.",
@@ -1928,6 +1933,8 @@ I18N["zh-TW"] = {
   appt_nocal: "查空檔和寫入日曆需要先填好上面的 Google 日曆憑證。沒填時 AI 看不到你的日曆，一律說會確認再回覆，「有空直接答應」也會改成「先問我」。",
   f_appt_sms: "傳簡訊告訴對方",
   f_appt_sms_h: "你按確定或婉拒後（或 AI 已直接排入），由接這通電話的手機以你的名義傳一則簡訊給對方。只限台灣手機號碼，手機 App 要支援傳簡訊。",
+  f_appt_test: "測試號碼（模擬日曆）",
+  f_appt_test_h: "一行一個號碼。這些號碼打來時，不接 Google 日曆也能試行程預約：不管上面選什麼，AI 都用模擬日曆、有空直接答應，不會碰 Google 日曆。模擬日曆存在資料夾裡的 demo_calendar.json；還沒有這個檔案時，從今天起 14 天每天中午（12:00–13:00）和晚上（19:00–21:00）有事。其他來電不受影響。",
   // ---- settings: region & advanced
   f_cc: "國際電話國碼",
   f_cc_h: "只填數字，例如 1、44、886。這樣用 + 開頭寫的拒接號碼，才能對上手機回報的來電號碼。",
@@ -2518,6 +2525,8 @@ I18N["zh-CN"] = {
   appt_nocal: "查空闲时间和写入日历需要先填好上面的 Google 日历凭据。没填时 AI 看不到你的日历，一律说会确认再回复，“有空直接答应”也会改成“先问我”。",
   f_appt_sms: "发短信告诉对方",
   f_appt_sms_h: "你按确定或婉拒后（或 AI 已直接排入），由接这通电话的手机以你的名义给对方发一条短信。仅限台湾手机号码，手机 App 要支持发短信。",
+  f_appt_test: "测试号码（模拟日历）",
+  f_appt_test_h: "一行一个号码。这些号码打来时，不接 Google 日历也能试日程预约：不管上面选什么，AI 都用模拟日历、有空直接答应，不会碰 Google 日历。模拟日历存在数据文件夹里的 demo_calendar.json；还没有这个文件时，从今天起 14 天每天中午（12:00–13:00）和晚上（19:00–21:00）有事。其他来电不受影响。",
   // ---- settings: region & advanced
   f_cc: "国际电话区号",
   f_cc_h: "只填数字，例如 1、44、86。这样用 + 开头写的拦截号码，才能和手机上报的来电号码对上。",
@@ -3108,6 +3117,8 @@ I18N["ja"] = {
   appt_nocal: "空き時間の確認とカレンダー登録には、上の Google カレンダーの認証情報が必要です。未入力のときは AI がカレンダーを見られないため、いつも確認してから連絡すると伝え、「空いていれば確定」も「先に確認」と同じ動きになります。",
   f_appt_sms: "相手に SMS で伝える",
   f_appt_sms_h: "確定またはお断りの後（または AI がその場で登録した後）、電話を受けたスマホからあなたの名前で相手に短い SMS を送ります。台湾の携帯番号のみ。SMS を送れるアプリが必要です。",
+  f_appt_test: "テスト用番号（模擬カレンダー）",
+  f_appt_test_h: "1 行に 1 つの番号。これらの番号からの電話では、Google カレンダーなしで予約の受付を試せます。上の設定に関係なく、AI は模擬カレンダーを使い、空いていればその場で確定します。Google カレンダーには触れません。模擬カレンダーはデータフォルダの demo_calendar.json に保存されます。ファイルがないうちは、今日から 14 日間、毎日昼（12:00–13:00）と夜（19:00–21:00）が埋まっています。ほかの電話には影響しません。",
   // ---- settings: region & advanced
   f_cc: "国番号",
   f_cc_h: "数字のみ（例：1、44、81）。+ から書いた着信拒否の番号を、スマホが通知する番号の形式と照合できるようにします。",
@@ -3698,6 +3709,8 @@ I18N["ko"] = {
   appt_nocal: "빈 시간 확인과 캘린더 등록에는 위 Google 캘린더 인증 정보가 필요합니다. 없으면 AI가 캘린더를 볼 수 없어 항상 확인 후 연락하겠다고 말하며, \"비어 있으면 바로 확정\"도 \"먼저 물어보기\"처럼 동작합니다.",
   f_appt_sms: "상대에게 문자로 알리기",
   f_appt_sms_h: "확정하거나 거절한 뒤(또는 AI가 바로 등록한 뒤) 전화를 받은 휴대폰이 내 이름으로 상대에게 짧은 문자를 보냅니다. 대만 휴대폰 번호만 가능하며 문자를 보낼 수 있는 앱이 필요합니다.",
+  f_appt_test: "테스트 번호(모의 캘린더)",
+  f_appt_test_h: "한 줄에 번호 하나. 이 번호로 걸려 온 전화는 Google 캘린더 없이 일정 예약을 시험해 볼 수 있습니다. 위 설정과 상관없이 AI가 모의 캘린더를 쓰고 비어 있으면 바로 확정하며, Google 캘린더는 건드리지 않습니다. 모의 캘린더는 데이터 폴더의 demo_calendar.json에 저장됩니다. 파일이 없으면 오늘부터 14일 동안 매일 점심(12:00–13:00)과 저녁(19:00–21:00)이 바쁜 것으로 봅니다. 다른 전화에는 영향이 없습니다.",
   // ---- settings: region & advanced
   f_cc: "국가 번호",
   f_cc_h: "숫자만 입력하세요(예: 1, 44, 82). +로 시작하게 적은 차단 번호가 휴대폰이 알려 주는 번호 형식과 맞도록 해 줍니다.",
@@ -4288,6 +4301,8 @@ I18N["es"] = {
   appt_nocal: "Para ver huecos libres y añadir al calendario hacen falta las credenciales de Google Calendar de arriba. Sin ellas la IA no ve tu calendario: siempre dice que lo confirmará, y «Aceptar si estoy libre» funciona como «Preguntarme antes».",
   f_appt_sms: "Avisar por SMS",
   f_appt_sms_h: "Cuando confirmas o rechazas (o la IA ya la reservó), el teléfono que atendió la llamada envía en tu nombre un SMS corto a quien llamó. Solo móviles de Taiwán; la app del teléfono debe poder enviar SMS.",
+  f_appt_test: "Números de prueba (calendario de demostración)",
+  f_appt_test_h: "Un número por línea. Las llamadas de estos números permiten probar las citas sin Google Calendar: elijas lo que elijas arriba, la IA usa un calendario de demostración y acepta en la llamada si la hora está libre, sin tocar Google Calendar. El calendario de demostración es demo_calendar.json en la carpeta de datos; mientras no exista, el almuerzo (12:00–13:00) y la noche (19:00–21:00) de los próximos 14 días están ocupados. Las demás llamadas no cambian.",
   // ---- settings: region & advanced
   f_cc: "Prefijo telefónico del país",
   f_cc_h: "Solo cifras, p. ej. 1, 34, 52. Permite que los números bloqueados escritos con + coincidan con la forma en que tu teléfono indica quién llama.",
@@ -4878,6 +4893,8 @@ I18N["fr"] = {
   appt_nocal: "Vérifier les créneaux et ajouter à l'agenda demande les identifiants Google Agenda ci-dessus. Sans eux, l'IA ne voit pas votre agenda : elle dit toujours qu'elle confirmera, et « Accepter si je suis libre » fonctionne comme « Me demander d'abord ».",
   f_appt_sms: "Prévenir par SMS",
   f_appt_sms_h: "Quand vous confirmez ou refusez (ou que l'IA l'a déjà ajouté), le téléphone qui a pris l'appel envoie en votre nom un court SMS à l'appelant. Numéros mobiles de Taïwan uniquement ; l'application du téléphone doit pouvoir envoyer des SMS.",
+  f_appt_test: "Numéros de test (agenda de démonstration)",
+  f_appt_test_h: "Un numéro par ligne. Les appels de ces numéros permettent d'essayer les rendez-vous sans Google Agenda : quel que soit le choix ci-dessus, l'IA utilise un agenda de démonstration et accepte pendant l'appel si le créneau est libre, sans toucher à Google Agenda. L'agenda de démonstration est demo_calendar.json dans le dossier de données ; tant qu'il n'existe pas, le déjeuner (12:00–13:00) et la soirée (19:00–21:00) des 14 prochains jours sont pris. Les autres appels ne changent pas.",
   // ---- settings: region & advanced
   f_cc: "Indicatif du pays",
   f_cc_h: "Chiffres uniquement, ex. 1, 33, 44. Permet aux numéros bloqués écrits avec + de correspondre à la façon dont votre téléphone indique les appelants.",
@@ -5468,6 +5485,8 @@ I18N["de"] = {
   appt_nocal: "Freie Zeiten prüfen und in den Kalender eintragen geht nur mit den Google-Kalender-Zugangsdaten weiter oben. Ohne sie sieht die KI deinen Kalender nicht: Sie sagt immer, dass sie es bestätigt, und „Zusagen, wenn frei“ verhält sich wie „Erst mich fragen“.",
   f_appt_sms: "Per SMS Bescheid geben",
   f_appt_sms_h: "Sobald du bestätigst oder absagst (oder die KI schon eingetragen hat), schickt das Telefon, das den Anruf angenommen hat, dem Anrufer in deinem Namen eine kurze SMS. Nur taiwanische Handynummern; die App auf dem Telefon muss SMS senden können.",
+  f_appt_test: "Testnummern (Demo-Kalender)",
+  f_appt_test_h: "Eine Nummer pro Zeile. Anrufe von diesen Nummern probieren Termine ohne Google Kalender aus: Egal was oben gewählt ist, nutzt die KI einen Demo-Kalender und sagt eine freie Zeit gleich im Gespräch zu; Google Kalender wird nicht angefasst. Der Demo-Kalender liegt als demo_calendar.json im Datenordner; solange es die Datei nicht gibt, sind in den nächsten 14 Tagen Mittag (12:00–13:00) und Abend (19:00–21:00) belegt. Andere Anrufe ändern sich nicht.",
   // ---- settings: region & advanced
   f_cc: "Ländervorwahl",
   f_cc_h: "Nur Ziffern, z. B. 1, 44, 49. Damit passen blockierte Nummern, die mit + geschrieben sind, zu der Form, in der dein Telefon Anrufer meldet.",
@@ -6058,6 +6077,8 @@ I18N["pt"] = {
   appt_nocal: "Ver horários livres e pôr na agenda exige as credenciais do Google Agenda acima. Sem elas a IA não vê sua agenda: sempre diz que vai confirmar, e \"Aceitar se estiver livre\" funciona como \"Perguntar antes\".",
   f_appt_sms: "Avisar por SMS",
   f_appt_sms_h: "Quando você confirma ou recusa (ou a IA já marcou), o telefone que atendeu envia em seu nome um SMS curto para quem ligou. Só celulares de Taiwan; o app do telefone precisa conseguir enviar SMS.",
+  f_appt_test: "Números de teste (agenda de demonstração)",
+  f_appt_test_h: "Um número por linha. Ligações desses números permitem testar compromissos sem o Google Agenda: seja qual for a opção acima, a IA usa uma agenda de demonstração e aceita na ligação se o horário estiver livre, sem mexer no Google Agenda. A agenda de demonstração fica em demo_calendar.json na pasta de dados; enquanto ele não existir, o almoço (12:00–13:00) e a noite (19:00–21:00) dos próximos 14 dias estão ocupados. As outras ligações não mudam.",
   // ---- settings: region & advanced
   f_cc: "Código do país",
   f_cc_h: "Só números, ex.: 1, 55, 351. Faz com que os números bloqueados escritos com + correspondam ao formato em que o telefone informa quem ligou.",
@@ -7479,6 +7500,7 @@ function curValue(el) {
     case "radio": { const r = el.querySelector("input:checked"); return r ? r.value : ""; }
     case "rejects": return rejectValue();
     case "channels": return chanValue();
+    case "lines": return el.value.split("\n").map((s) => s.trim()).filter(Boolean);
     default: return el.value.trim();
   }
 }
@@ -7489,6 +7511,7 @@ function origValue(el) {
     case "int": case "sec2ms": return v == null ? null : Number(v);
     case "rejects": return rejectNorm(v);
     case "channels": return chanOrig(v);
+    case "lines": return Array.isArray(v) ? v.map((s) => String(s).trim()).filter(Boolean) : [];
     case "secret": return "";
     default: return v == null ? "" : String(v).trim();
   }
@@ -7531,6 +7554,7 @@ function populate() {
       case "radio": el.querySelectorAll("input").forEach((r) => { r.checked = r.value === String(v); }); break;
       case "rejects": renderRejectRows(); break;
       case "channels": chansFromSettings(); renderChannels(); break;
+      case "lines": el.value = Array.isArray(v) ? v.join("\n") : ""; break;
       case "secret": el.value = ""; delete el.dataset.clear; refreshSecret(k); break;
       default: el.value = v == null ? "" : String(v);
     }
