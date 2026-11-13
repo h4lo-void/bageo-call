@@ -510,7 +510,7 @@ pub async fn send_channel(http: &Client, ch: &Channel, msg: &Message) -> Result<
             http,
             user,
             need("token", "app password", &ch.token)?,
-            "Myna",
+            "Bageo",
             to,
             &clip(&msg.title, 150),
             &msg.body,

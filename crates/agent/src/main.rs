@@ -1,4 +1,4 @@
-//! Myna agent.
+//! Bageo agent.
 //!
 //! Phones connect by WebSocket (`/` or `/ws`): JSON text frames and raw s16le
 //! mono PCM in both directions (the messages are listed in `android/README.md`).
@@ -1225,7 +1225,7 @@ async fn main() -> Result<()> {
         if settings.device_token.trim().is_empty() {
             warn!("listening on {addr} without DEVICE_TOKEN: anyone on this network can connect as a phone");
         }
-        // `http://myna.local:8787/`: answer the console's network name (setting
+        // `http://bageo.local:8787/`: answer the console's network name (setting
         // `mdns_name`, re-read while running; empty = off). Not in a container:
         // Docker's bridge network keeps the answers inside Docker.
         if settings_store::in_container() {
@@ -1943,7 +1943,7 @@ async fn sync_normal_mode(state: &AppState, serial: &str) {
 /// Tell a phone's app where the web console is, for its "Open the web console"
 /// button: the address typed in the settings (`public_url`) or, when that is empty,
 /// the LAN IP address (some Android phones cannot open `.local` names, so the
-/// automatic `myna.local` address is not used here). Nothing is sent while it is
+/// automatic `bageo.local` address is not used here). Nothing is sent while it is
 /// unknown; older apps ignore the message.
 async fn send_agent_info(state: &AppState, sink: &WsSink) {
     let eff = state.settings_store.snapshot().effective(&state.settings);

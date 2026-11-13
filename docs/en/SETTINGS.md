@@ -73,8 +73,8 @@ the computer's network address. With the console on this computer only,
 notifications carry no links; inside Docker nothing is filled in, set it
 yourself. *System → About* shows the address in use.
 
-*Network name* (default `myna`) is the name phones and computers on your
-network can use instead of the IP: `http://myna.local:8787/`. Letters, digits
+*Network name* (default `bageo`) is the name phones and computers on your
+network can use instead of the IP: `http://bageo.local:8787/`. Letters, digits
 and hyphens; empty, `off`, `0`, `none` or `false` turns it off. The agent
 answers the name itself (multicast DNS, UDP port 5353) while the console is
 open to your network, sharing the port with the system's own responder
@@ -83,7 +83,9 @@ still keep the port to themselves: the agent then logs a line starting with
 `mDNS:` and the links use the IP address. It does not start inside a
 container. Some older Android phones do not open `.local` names at all; under
 a `.local` address *System → About* also shows the IP address, and the QR
-code works as well.
+code works as well. Before the project was renamed the default was `myna`: a
+name saved in the console stays as it is; otherwise the address becomes
+`bageo.local`, and to keep `http://myna.local:8787/` set the name to `myna`.
 
 ### Summary & calendar
 
@@ -128,7 +130,7 @@ Set as environment variables or in `.env`. All are optional.
 | `CALLS_UI_TOKEN` | *(empty)* | Password for the web console and API. Send as `?token=…`, `Authorization: Bearer …` or `X-Calls-Token`. **Set it whenever `AGENT_HOST` is not `127.0.0.1`.** |
 | `DEVICE_TOKEN` | *(empty)* | Phones that do not come through USB must connect with `…/ws?token=<this>`. **Set it whenever `AGENT_HOST` is not `127.0.0.1`.** Phones on USB are exempt (the USB tunnel ends on the computer itself). |
 | `PUBLIC_URL` | *(empty)* | Same as *Address of this console*; the web console's value wins. Empty = automatic (see [Notifications](#notifications)). |
-| `MDNS_NAME` | `myna` | Same as *Network name*: the console answers at `http://<this>.local:8787/` on your network. Empty, `off`, `0`, `none` or `false` = off; on Windows an empty value counts as not set, so write `MDNS_NAME=off`. The web console's value wins. |
+| `MDNS_NAME` | `bageo` | Same as *Network name*: the console answers at `http://<this>.local:8787/` on your network. Empty, `off`, `0`, `none` or `false` = off; on Windows an empty value counts as not set, so write `MDNS_NAME=off`. The web console's value wins. |
 
 ### Using the console from other devices
 
@@ -141,7 +143,7 @@ CALLS_UI_TOKEN=choose-a-long-random-string
 DEVICE_TOKEN=another-long-random-string
 ```
 
-Open `http://myna.local:8787/?token=choose-a-long-random-string` (or the
+Open `http://bageo.local:8787/?token=choose-a-long-random-string` (or the
 computer's IP, e.g. `http://192.168.1.20:8787/?token=…`) once; the page
 remembers the token. *System → About* shows the address with a QR code to scan
 with your phone, and how to add the console to the home screen: iPhone *Share →

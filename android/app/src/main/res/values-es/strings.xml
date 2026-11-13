@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Myna</string>
+    <string name="app_name">Bageo</string>
 
     <!-- Notifications -->
-    <string name="notification_title">Myna</string>
+    <string name="notification_title">Bageo</string>
     <string name="notification_text_armed">Listo. Esperando llamadas; el teléfono permanece en silencio.</string>
     <string name="notification_text_in_call">La IA está atendiendo una llamada.</string>
     <string name="notification_text_normal">Teléfono normal: las llamadas suenan y las contestas tú.</string>
-    <string name="channel_service">Servicio de Myna</string>
-    <string name="channel_info">Avisos de Myna</string>
+    <string name="channel_service">Servicio de Bageo</string>
+    <string name="channel_info">Avisos de Bageo</string>
     <string name="uplink_missing_title">La otra persona no puede oír a la IA</string>
-    <string name="uplink_missing_text">La ruta de audio de la llamada no está disponible. Comprueba que el módulo Myna esté instalado y activado, y reinicia el teléfono.</string>
+    <string name="uplink_missing_text">La ruta de audio de la llamada no está disponible. Comprueba que el módulo Bageo esté instalado y activado, y reinicia el teléfono.</string>
 
     <!-- Header -->
     <string name="header_version">Versión %1$s (%2$d)</string>
@@ -23,7 +23,7 @@
     <string name="st_normal">Teléfono normal: las llamadas suenan como siempre</string>
     <string name="st_normal_d">La IA no contesta. Contestas tú, como en cualquier teléfono. Activa el interruptor de abajo para que la IA vuelva a contestar.</string>
     <string name="st_offline">Todavía no está conectado al ordenador</string>
-    <string name="st_offline_d">Comprueba que Myna está abierto en el ordenador y que el teléfono está conectado por USB (o pon una dirección Wi-Fi en Avanzado). Hasta entonces, la IA no puede hablar con quien llama.</string>
+    <string name="st_offline_d">Comprueba que Bageo está abierto en el ordenador y que el teléfono está conectado por USB (o pon una dirección Wi-Fi en Avanzado). Hasta entonces, la IA no puede hablar con quien llama.</string>
     <string name="st_steps">Pasos de configuración pendientes: %1$d</string>
     <string name="st_steps_d">Completa los pasos de abajo para que la IA pueda contestar.</string>
     <string name="st_service_off">El servicio de respuesta no está en marcha</string>
@@ -41,7 +41,7 @@
     <string name="mode_failed">El cambio no terminó. %1$s Puedes intentarlo de nuevo.</string>
     <string name="mode_err_in_call">Hay una llamada en curso; cuelga primero.</string>
     <string name="mode_err_busy">El cambio anterior todavía no ha terminado.</string>
-    <string name="mode_err_no_root">El módulo de Myna no está en funcionamiento. Comprueba en Magisk o KernelSU que el módulo Myna Uplink esté activado y reinicia el teléfono.</string>
+    <string name="mode_err_no_root">El módulo de Bageo no está en funcionamiento. Comprueba en Magisk o KernelSU que el módulo Bageo Uplink esté activado y reinicia el teléfono.</string>
     <string name="mode_err_save">No se pudo guardar el modo.</string>
     <string name="mode_err_dialer">No se pudo cambiar la app de teléfono predeterminada.</string>
     <string name="mode_err_screening">No se pudo cambiar el filtro de llamadas.</string>
@@ -57,19 +57,19 @@
     <string name="status_ok">Correcto</string>
     <string name="status_missing">Falta</string>
     <string name="status_check">Revisar</string>
-    <string name="step_module_title">Instalar el módulo de Myna</string>
+    <string name="step_module_title">Instalar el módulo de Bageo</string>
     <string name="step_module_ok">El módulo está activo.</string>
-    <string name="step_module_missing">Instala el módulo de Myna en Magisk o KernelSU y reinicia el teléfono.</string>
-    <string name="step_perms_title">Permitir que Myna use el teléfono y el micrófono</string>
+    <string name="step_module_missing">Instala el módulo de Bageo en Magisk o KernelSU y reinicia el teléfono.</string>
+    <string name="step_perms_title">Permitir que Bageo use el teléfono y el micrófono</string>
     <string name="step_perms_desc">Sirve para notar las llamadas, contestarlas y enviar el audio al ordenador.</string>
-    <string name="step_dialer_title">Hacer de Myna la app de teléfono predeterminada</string>
+    <string name="step_dialer_title">Hacer de Bageo la app de teléfono predeterminada</string>
     <string name="step_dialer_desc">Así el teléfono no muestra la pantalla de llamada mientras habla la IA.</string>
-    <string name="step_screening_title">Hacer de Myna la app de filtro de llamadas</string>
+    <string name="step_screening_title">Hacer de Bageo la app de filtro de llamadas</string>
     <string name="step_screening_desc">Así las llamadas entrantes no suenan.</string>
-    <string name="step_dnd_title">Permitir que Myna controle No molestar</string>
+    <string name="step_dnd_title">Permitir que Bageo controle No molestar</string>
     <string name="step_dnd_desc">Mantiene el teléfono en silencio mientras contesta la IA.</string>
-    <string name="step_battery_title">Que Android no duerma a Myna</string>
-    <string name="step_battery_desc">Evita que Android cierre Myna para ahorrar batería y se pierdan llamadas.</string>
+    <string name="step_battery_title">Que Android no duerma a Bageo</string>
+    <string name="step_battery_desc">Evita que Android cierre Bageo para ahorrar batería y se pierdan llamadas.</string>
     <string name="btn_allow">Permitir</string>
     <string name="btn_set">Establecer</string>
     <string name="btn_open_settings">Abrir ajustes</string>
@@ -90,7 +90,7 @@
     <string name="section_details">Comprobaciones detalladas</string>
     <string name="check_priv_title">Instalada como app privilegiada del sistema</string>
     <string name="check_priv_ok">Instalada en %1$s</string>
-    <string name="check_priv_missing">Instalada como app normal (%1$s). Instala el módulo Myna desde Magisk o KernelSU y reinicia. Si además instalaste el APK a mano, desinstala esa copia.</string>
+    <string name="check_priv_missing">Instalada como app normal (%1$s). Instala el módulo Bageo desde Magisk o KernelSU y reinicia. Si además instalaste el APK a mano, desinstala esa copia.</string>
     <string name="check_privperm_title">Permisos privilegiados</string>
     <string name="check_privperm_desc">Los concede el módulo al arrancar. No se pueden conceder desde esta pantalla.</string>
     <string name="perm_capture_audio_output">Capturar el audio de la llamada</string>
@@ -124,18 +124,18 @@
     <string name="test_ok">Conectado</string>
     <string name="test_failed">Error: %1$s</string>
     <string name="test_fail_timeout">sin respuesta en 5 segundos</string>
-    <string name="test_fail_refused">el ordenador rechazó la conexión. ¿Está Myna abierto y el enlace USB listo?</string>
+    <string name="test_fail_refused">el ordenador rechazó la conexión. ¿Está Bageo abierto y el enlace USB listo?</string>
     <string name="test_fail_host">no se encontró esta dirección</string>
     <string name="test_fail_network">no se llega a esta dirección. ¿Están el teléfono y el ordenador en la misma red?</string>
     <string name="test_fail_auth">rechazado: falta el token de la dirección o es incorrecto</string>
     <string name="test_fail_tls">falló la conexión segura (wss)</string>
-    <string name="test_fail_rejected">algo respondió, pero no es Myna o rechazó la conexión</string>
+    <string name="test_fail_rejected">algo respondió, pero no es Bageo o rechazó la conexión</string>
     <string name="test_fail_other">no se pudo conectar</string>
     <string name="test_details">Detalles</string>
 
     <!-- About and safety -->
     <string name="section_about">Información y seguridad</string>
     <string name="about_dedicated">En modo IA, el módulo toma el control de la app de teléfono, silencia el tono y activa No molestar, así que conviene un teléfono de repuesto. Para usarlo con normalidad un tiempo, desactiva el interruptor de arriba.</string>
-    <string name="about_rollback">Para quitar Myna del todo, primero desactiva el interruptor de arriba (vuelve a ser un teléfono normal), luego desactiva o quita el módulo en Magisk o KernelSU y reinicia.</string>
+    <string name="about_rollback">Para quitar Bageo del todo, primero desactiva el interruptor de arriba (vuelve a ser un teléfono normal), luego desactiva o quita el módulo en Magisk o KernelSU y reinicia.</string>
     <string name="about_legal">Las leyes sobre la grabación de llamadas y sobre el deber de avisar de que se está hablando con una IA varían según el lugar. Cumplirlas es responsabilidad tuya.</string>
 </resources>

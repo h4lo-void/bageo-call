@@ -1,6 +1,6 @@
-# Myna: Android app and root module
+# Bageo: Android app and root module
 
-This folder contains the phone side of Myna:
+This folder contains the phone side of Bageo:
 
 - **`app/`**: the Android app `com.pixelcallai.streamer`. It answers incoming calls
   silently, streams the caller's voice to the agent program on your PC over a
@@ -33,7 +33,7 @@ updated in place.
   (`VOICE_DOWNLINK` / `VOICE_CALL` audio source) and to play into the call through an
   output device of type `TYPE_TELEPHONY`. A phone that lacks either one will not
   work. Try at your own risk.
-- A PC running the Myna agent, connected by USB (recommended) or on the same
+- A PC running the Bageo agent, connected by USB (recommended) or on the same
   network.
 
 ## Build
@@ -95,14 +95,14 @@ Notes:
 2. Copy `pixelcallai_uplink-<version>.zip` to the phone.
 3. In the Magisk or KernelSU app, install the zip as a module.
 4. Reboot.
-5. Open **Myna**. The card at the top says in one sentence what the phone does right
+5. Open **Bageo**. The card at the top says in one sentence what the phone does right
    now. Work through **Setup steps** until every step shows OK:
-   - *Install the Myna module*: confirms the module is active (privileged app and
+   - *Install the Bageo module*: confirms the module is active (privileged app and
      privileged permissions).
-   - *Allow Myna to use the phone and microphone*: tap **Allow**.
-   - *Make Myna the default phone app*, *Make Myna the call screening app*: tap
+   - *Allow Bageo to use the phone and microphone*: tap **Allow**.
+   - *Make Bageo the default phone app*, *Make Bageo the call screening app*: tap
      **Set**.
-   - *Let Myna control Do Not Disturb*, *Do not let Android put Myna to sleep*: tap
+   - *Let Bageo control Do Not Disturb*, *Do not let Android put Bageo to sleep*: tap
      the button and allow it.
 
    The individual permissions and the call-audio check (*AI voice injection into
@@ -209,13 +209,14 @@ no root permission for it. It can simply be repeated: every step runs again and 
 checked, and the first one that does not take effect is reported as a code
 (`dialer_failed`, `screening_failed`, `dnd_failed`, `volume_failed`, `save_failed`,
 `no_root`, `in_call`, `busy`). `no_root` means the module's helper did not take the
-request: the module is not running (enable **Myna Uplink** in Magisk or KernelSU and
+request: the module is not running (enable **Bageo Uplink**, shown as **Myna Uplink** when installed before the
+rename, in Magisk or KernelSU and
 reboot).
 
 | | AI mode (`ai`, default) | Normal phone (`normal`) |
 |---|---|---|
-| Default phone app | Myna; Google Dialer disabled | Google Dialer, enabled again (on phones without it, Android's own) |
-| Call screening role | Myna (silences the ringer) | removed from Myna |
+| Default phone app | Bageo; Google Dialer disabled | Google Dialer, enabled again (on phones without it, Android's own) |
+| Call screening role | Bageo (silences the ringer) | removed from Bageo |
 | Do Not Disturb | on | off |
 | Ringer and volumes | silent and zero; earpiece at minimum | ringer normal; ring, notification, earpiece, media, alarm and system volume restored |
 | Microphone | muted during calls | left alone |
@@ -238,7 +239,7 @@ order is call screening, Do Not Disturb, ringer and volumes, microphone, and **t
 phone app last**. That last step
 only counts as done when `telecom get-default-dialer` reports Google Dialer, Google
 Dialer is not in `pm list packages -d` and both in-call components were enabled
-(or, without Google Dialer, when the default phone app is no longer Myna). If
+(or, without Google Dialer, when the default phone app is no longer Bageo). If
 `pm list packages` itself fails, the step fails (`dialer_failed`); it never
 assumes there is no Google Dialer. Every root command runs under `toybox timeout`.
 
@@ -273,7 +274,7 @@ Where it is stored:
 
 When the service starts it waits for a state the helper wrote since this boot (at
 boot the helper starts after the app), then asks for the switch again if `pending`
-exists, if the mode is `normal` but Myna is still the default phone app (an
+exists, if the mode is `normal` but Bageo is still the default phone app (an
 interrupted switch, or an older version that took the phone over), or if its own
 copy differs from the file. If the
 agent asked for the switch and the app was stopped before it could answer, it sends
@@ -312,7 +313,7 @@ answering without anyone asking for it.
 0. Switch the phone to a [normal phone](#normal-phone-mode) first. That re-enables
    Google Dialer, turns Do Not Disturb off and restores the volumes, so steps 2 and
    3 below are then already done.
-1. In the Magisk or KernelSU app, disable or remove the **Myna Uplink**
+1. In the Magisk or KernelSU app, disable or remove the **Bageo Uplink**
    module, then reboot. If the phone does not boot far enough to do that, use the root
    manager's safe mode, or from `adb shell` / recovery with root:
 

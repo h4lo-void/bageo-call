@@ -24,7 +24,7 @@ piece that is missing. The agent's terminal window shows what it is doing;
 | No phone listed | Cable or port (try another; some cables only charge). USB debugging off. On Windows the phone may need Google's USB driver. |
 | `unauthorized` | Unlock the phone and accept "Allow USB debugging?". If the prompt does not appear: Developer options → *Revoke USB debugging authorisations*, replug. |
 | App not installed | The module is not installed or not active — see [Phone setup](PHONE.md). |
-| Plugged in, link set, but not connected | Open the Myna app: what does the card at the top say, and is every setup step OK? Tap **Advanced → Test connection**. The agent retries starting the service every 90 seconds. |
+| Plugged in, link set, but not connected | Open the Bageo app: what does the card at the top say, and is every setup step OK? Tap **Advanced → Test connection**. The agent retries starting the service every 90 seconds. |
 | Connects and drops again and again | Two different `adb` versions on the computer (Android Studio, a phone-mirroring tool, …) keep restarting each other. Set `ADB_BIN` to one of them and close the other tool. |
 
 ## Calls are not answered, or sound wrong

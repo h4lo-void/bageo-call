@@ -1,8 +1,8 @@
-"""Forward SMS received by Android phones to your Myna notification channels.
+"""Forward SMS received by Android phones to your Bageo notification channels.
 
 Optional add-on. For every phone that `adb devices` reports, two sources are read:
 
-  * hook queue (optional, needs root): the Myna app's LSPosed hook drops one
+  * hook queue (optional, needs root): the Bageo app's LSPosed hook drops one
     JSON file per incoming SMS into QUEUE_DIR on the phone, even while the phone is
     still locked after a reboot. Checked every SMS_PUSH_SEC; a file is deleted only
     after its message was delivered.
@@ -49,7 +49,22 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
-HOME = Path(os.environ.get("SMS_HOME") or Path.home() / ".myna-call" / "sms").expanduser()
+
+def default_home(user_home: Path) -> tuple[Path, bool]:
+    """The state folder when SMS_HOME is not set: ~/.bageo-call/sms. Installs from
+    before the rename to Bageo used ~/.myna-call/sms; while only that one exists it
+    stays in use, so state, log and settings carry over. Returns (folder, is_old)."""
+    new = user_home / ".bageo-call" / "sms"
+    old = user_home / ".myna-call" / "sms"
+    if not new.exists() and old.is_dir():
+        return old, True
+    return new, False
+
+
+if os.environ.get("SMS_HOME"):
+    HOME, HOME_IS_OLD = Path(os.environ["SMS_HOME"]).expanduser(), False
+else:
+    HOME, HOME_IS_OLD = default_home(Path.home().expanduser())
 
 
 def _load_env(path: Path) -> None:
@@ -1027,7 +1042,7 @@ def acquire_lock():
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
-        description="Forward SMS from USB-connected Android phones to the Myna "
+        description="Forward SMS from USB-connected Android phones to the Bageo "
                     "notification channels. Settings are environment variables; see README.md.")
     parser.add_argument("--once", action="store_true", help="run one cycle and exit")
     parser.add_argument("--dry-run", action="store_true",
@@ -1046,6 +1061,9 @@ def main(argv: list[str]) -> int:
         f"agent={agent} token={'yes' if AGENT_TOKEN else 'no'} "
         f"lang={SMS_LANG or 'agent'} serials={','.join(SERIALS) or 'all'} su={'on' if USE_SU else 'off'} "
         f"home={HOME}")
+    if HOME_IS_OLD:
+        log(f"using the folder from before the rename to Bageo ({HOME}); "
+            "move it to ~/.bageo-call/sms to use the new name")
     fw.write_health()
     try:
         while True:

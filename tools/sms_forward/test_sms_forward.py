@@ -130,7 +130,7 @@ class FakeAdb:
 
 
 class FakeAgent:
-    """Stands in for the Myna agent: GET /health and POST /calls/api/notify/send."""
+    """Stands in for the Bageo agent: GET /health and POST /calls/api/notify/send."""
 
     def __init__(self) -> None:
         self.requests: list[dict] = []
@@ -370,6 +370,15 @@ class ParserTests(Base):
             self.assertEqual(os.environ["SMS_TEST_NEW"], "from file")
             self.assertEqual(os.environ["SMS_TEST_SET"], "from environment")
         sf._load_env(self.home / "missing.env")  # no file is fine
+
+    def test_default_home_keeps_the_folder_from_before_the_rename(self) -> None:
+        user = self.home / "user"
+        new, old = user / ".bageo-call" / "sms", user / ".myna-call" / "sms"
+        self.assertEqual(sf.default_home(user), (new, False))
+        old.mkdir(parents=True)
+        self.assertEqual(sf.default_home(user), (old, True))
+        new.mkdir(parents=True)
+        self.assertEqual(sf.default_home(user), (new, False))
 
 
 class DeviceTests(Base):

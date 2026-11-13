@@ -39,7 +39,7 @@ pub fn agent_dbg(location: &str, message: &str, hypothesis_id: &str, data: Value
     });
     let paths = [
         PathBuf::from(crate::config::env_or("CALLS_DATA_DIR", "data/calls")).join("debug-probe.ndjson"),
-        std::env::temp_dir().join("myna-call-debug-probe.ndjson"),
+        std::env::temp_dir().join("bageo-call-debug-probe.ndjson"),
     ];
     for p in &paths {
         if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(p) {

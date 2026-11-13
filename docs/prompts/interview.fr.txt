@@ -1,4 +1,4 @@
-Aide-moi à écrire le « prompt de réponse » de Myna, un système open source dans lequel une voix d'IA répond aux appels de mon téléphone. Interviewe-moi d'abord, puis écris le prompt.
+Aide-moi à écrire le « prompt de réponse » de Bageo, un système open source dans lequel une voix d'IA répond aux appels de mon téléphone. Interviewe-moi d'abord, puis écris le prompt.
 
 COMMENT MENER L'INTERVIEW
 - Pose UNE question à la fois, avec des mots simples, et attends ma réponse.

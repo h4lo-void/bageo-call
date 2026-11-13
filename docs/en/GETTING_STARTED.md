@@ -31,7 +31,7 @@ Gemini, and serves the web console.
 ### The easy way: a release
 
 1. Download the package for your system from the Releases page and unpack it
-   anywhere (for example `Documents/myna-call`).
+   anywhere (for example `Documents/bageo-call`).
 2. Start it:
    - **Windows:** double-click `start.cmd`. If Windows SmartScreen warns about
      an unknown publisher, choose *More info → Run anyway*.
@@ -46,18 +46,19 @@ Gemini, and serves the web console.
    a `platform-tools` folder next to the program.
 4. Your browser opens the web console at <http://localhost:8787/>. Leave the
    terminal window open: closing it stops the agent.
-5. The first time the agent answers, the script puts a **Myna Console**
+5. The first time the agent answers, the script puts a **Bageo Console**
    shortcut on the desktop (macOS: a `.webloc` file; Linux: an app menu
    entry, also copied to the desktop folder). Use it to open the console next
    time. It is not made again while it exists; to skip it, start with
-   `-NoShortcut` (Windows) / `--no-shortcut`, or set `MYNA_NO_SHORTCUT=1`
-   in `.env`.
+   `-NoShortcut` (Windows) / `--no-shortcut`, or set `BAGEO_NO_SHORTCUT=1`
+   in `.env`. A *Myna Console* shortcut from before the project was renamed
+   counts as well, and `MYNA_NO_SHORTCUT=1` still works.
 
 ### From source
 
 ```text
 git clone <this repository>
-cd myna-call
+cd bageo-call
 ./start.sh            # Windows: .\start.cmd
 ```
 
@@ -105,7 +106,7 @@ Details and rollback: [Phone setup](PHONE.md). In short:
 
 1. Copy `pixelcallai_uplink-<version>.zip` (from the release) to the phone and
    install it as a module in the Magisk or KernelSU app. Reboot.
-2. Open the **Myna** app and tap through its **Setup steps** until every
+2. Open the **Bageo** app and tap through its **Setup steps** until every
    step says OK (permissions, default phone app, call screening, Do Not
    Disturb access, battery exemption). The app itself does not need root
    access: the module does that work.
@@ -144,7 +145,7 @@ every message goes to all of them. Per-service instructions:
 For the links in notifications to open the call, open the console to your
 network — see
 [Using it from other devices](SETTINGS.md#using-the-console-from-other-devices).
-The links then point to `http://myna.local:8787/` when the agent can answer
+The links then point to `http://bageo.local:8787/` when the agent can answer
 that name, otherwise to the computer's network address; *System → About*
 shows which one, with a QR code. Set **Address of this console** only when you
 reach the computer some other way (a VPN name, a reverse proxy, Docker).
@@ -152,7 +153,7 @@ reach the computer some other way (a VPN name, a reverse proxy, Docker).
 On your phone, open *System* in the console on the computer: *About* shows the
 console's address with a QR code. Scan it, then add the page to the home
 screen (iPhone: *Share → Add to Home Screen*; Android: Chrome menu ⋮ → *Add to
-Home screen*). Next time, tap the Myna icon.
+Home screen*). Next time, tap the Bageo icon.
 
 ## 7. Keep it running
 
@@ -166,21 +167,21 @@ The agent has to be running for calls to be answered.
 - **Linux:** a systemd user unit:
 
   ```ini
-  # ~/.config/systemd/user/myna-call.service
+  # ~/.config/systemd/user/bageo-call.service
   [Unit]
-  Description=Myna agent
+  Description=Bageo agent
   After=network-online.target
 
   [Service]
-  WorkingDirectory=%h/myna-call
-  ExecStart=%h/myna-call/start.sh --no-browser --yes
+  WorkingDirectory=%h/bageo-call
+  ExecStart=%h/bageo-call/start.sh --no-browser --yes
   Restart=on-failure
 
   [Install]
   WantedBy=default.target
   ```
 
-  `systemctl --user enable --now myna-call` and `loginctl enable-linger $USER`
+  `systemctl --user enable --now bageo-call` and `loginctl enable-linger $USER`
   so it runs without a login session.
 
 Keep the phone on a charger. If the phone or the computer restarts, both sides

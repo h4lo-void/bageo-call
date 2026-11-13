@@ -1,4 +1,4 @@
-Me ajude a escrever o "prompt de atendimento" do Myna, um sistema de código aberto em que uma voz de IA atende as ligações do meu celular. Primeiro me entreviste, depois escreva o prompt.
+Me ajude a escrever o "prompt de atendimento" do Bageo, um sistema de código aberto em que uma voz de IA atende as ligações do meu celular. Primeiro me entreviste, depois escreva o prompt.
 
 COMO FAZER A ENTREVISTA
 - Faça UMA pergunta de cada vez, com palavras simples, e espere a minha resposta.

@@ -1,4 +1,4 @@
-You are helping me write the "answering prompt" for Myna, an open-source system in which an AI voice answers my phone calls. Interview me first, then write the prompt.
+You are helping me write the "answering prompt" for Bageo, an open-source system in which an AI voice answers my phone calls. Interview me first, then write the prompt.
 
 HOW TO RUN THE INTERVIEW
 - Ask ONE question at a time, in plain words, and wait for my answer.

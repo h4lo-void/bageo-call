@@ -23,7 +23,7 @@ use crate::notify::ChannelError;
 
 const SMTP_HOST: &str = "smtp.gmail.com";
 const SMTP_PORT: u16 = 587;
-const EHLO_NAME: &str = "myna-call";
+const EHLO_NAME: &str = "bageo-call";
 
 /// Send a plain-text reply through Gmail SMTP.
 ///

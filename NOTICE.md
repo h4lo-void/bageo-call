@@ -1,6 +1,6 @@
 # Notices
 
-Myna is released under the MIT License (see `LICENSE`), except for the
+Bageo is released under the MIT License (see `LICENSE`), except for the
 parts listed here.
 
 ## Files under other terms

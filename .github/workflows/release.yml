@@ -2,9 +2,9 @@ name: Release
 
 # Push a tag like v0.2.0 to build the downloads and attach them to a GitHub
 # Release:
-#   myna-call-<version>-windows-x64.zip
-#   myna-call-<version>-macos-arm64.tar.gz / -macos-x64.tar.gz
-#   myna-call-<version>-linux-x64.tar.gz
+#   bageo-call-<version>-windows-x64.zip
+#   bageo-call-<version>-macos-arm64.tar.gz / -macos-x64.tar.gz
+#   bageo-call-<version>-linux-x64.tar.gz
 #   pixelcallai_uplink-<version>.zip          (phone module, flash in Magisk / KernelSU)
 #
 # Each desktop download holds the agent program, the bundled sounds, the start
@@ -47,7 +47,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          dir="myna-call-${GITHUB_REF_NAME#v}-${{ matrix.name }}"
+          dir="bageo-call-${GITHUB_REF_NAME#v}-${{ matrix.name }}"
           mkdir -p "dist/$dir"
           cp "target/release/${{ matrix.exe }}" "dist/$dir/"
           cp -R assets docs "dist/$dir/"
@@ -115,7 +115,7 @@ jobs:
       - name: Check what was built
         run: |
           ls -l dist
-          ls dist/pixelcallai_uplink-*.zip dist/myna-call-* > /dev/null
+          ls dist/pixelcallai_uplink-*.zip dist/bageo-call-* > /dev/null
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS.txt
       - uses: softprops/action-gh-release@v2

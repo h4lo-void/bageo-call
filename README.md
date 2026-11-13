@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="docs/images/myna.svg" width="128" alt="Myna: a crested myna perched on a phone handset">
+  <img src="docs/images/bageo.svg" width="128" alt="Bageo: a crested bāgē (八哥) perched on a phone handset">
 </p>
 
-# Myna
+# Bageo
 
-[![CI](https://github.com/h4lo-void/myna-call/actions/workflows/ci.yml/badge.svg)](https://github.com/h4lo-void/myna-call/actions/workflows/ci.yml)
+[![CI](https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg)](https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **An AI voice that answers your real phone number, built for Google Pixel
@@ -16,8 +16,9 @@ and sends it to you (Telegram, Discord, LINE, ntfy and more).
 No SIP trunk, no phone-number rental, no monthly platform fee: it is your own
 SIM, your own computer and your own API key.
 
-A myna (八哥) is a bird that learns to talk like the people it lives with. This
-one sits on your phone line and answers the way you would.
+The name comes from bāgē (八哥), the Chinese name of a bird that learns to talk
+like the people it lives with. This one sits on your phone line and answers
+the way you would. Earlier versions were called Myna.
 
 **English** · [繁體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md)
 
@@ -74,22 +75,22 @@ flowchart LR
 ## Quick start
 
 1. **Get the program.** Download the package for your system from the
-   [Releases](https://github.com/h4lo-void/myna-call/releases) page and unpack it — or clone this repository
+   [Releases](https://github.com/h4lo-void/bageo-call/releases) page and unpack it — or clone this repository
    (you then need [Rust](https://rustup.rs); the start script builds it).
 2. **Start it.** Windows: double-click `start.cmd`. macOS: double-click
    `start.command`. Linux: `./start.sh`. The script offers to download `adb`
    (Google's Android platform-tools) if it is missing, then opens the web
    console at <http://localhost:8787/>. Next time, open it with the
-   *Myna Console* shortcut the script puts on your desktop. Once the console
+   *Bageo Console* shortcut the script puts on your desktop. Once the console
    is open to your network, phones and other computers reach it at
-   <http://myna.local:8787/> when the agent can answer that name; otherwise
+   <http://bageo.local:8787/> when the agent can answer that name; otherwise
    use the address or the QR code under *System → About*, where you can also
    add it to a phone's home screen. → [Settings](docs/en/SETTINGS.md#using-the-console-from-other-devices)
 3. **Fill in the basics** in the web console: your Gemini API key, your name,
    the language, the answer style. Press ▶ to hear the voices and pick one.
 4. **Prepare the phone** (once): install the module from the release
    (`pixelcallai_uplink-<version>.zip`) in Magisk / KernelSU, reboot, open the
-   **Myna** app and work through its checklist. Turn on USB debugging,
+   **Bageo** app and work through its checklist. Turn on USB debugging,
    plug the phone into the computer and accept the "Allow USB debugging?"
    prompt. → [Phone setup](docs/en/PHONE.md)
 5. **Check and call.** The *System* page of the web console shows the phone as
@@ -153,7 +154,7 @@ Be aware of what has and has not been proven:
 - **AI phone or normal phone (new in 0.2.3).** In the web console (*System*)
   or in the app you can turn a phone back into an ordinary phone: calls ring
   and you answer them yourself. Switch back and the AI answers again. The
-  module does this as root, so you do not have to give the Myna app root
+  module does this as root, so you do not have to give the Bageo app root
   access in Magisk or KernelSU. Tried on a Pixel 7a: in normal mode a real
   call rang and was answered, the mode stayed after a reboot, and after
   switching back the AI answered.

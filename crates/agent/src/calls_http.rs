@@ -37,7 +37,7 @@ pub struct CallsState {
 }
 
 const UI_HTML: &str = include_str!("../static/calls.html");
-// "Add to home screen": the app manifest and its icons (the myna of docs/images/myna.svg).
+// "Add to home screen": the app manifest and its icons (the bird of docs/images/bageo.svg).
 const MANIFEST: &[u8] = include_bytes!("../static/manifest.webmanifest");
 const ICON_192: &[u8] = include_bytes!("../static/icon-192.png");
 const ICON_512: &[u8] = include_bytes!("../static/icon-512.png");
@@ -969,7 +969,7 @@ async fn notify_send(
         return api_error(StatusCode::BAD_REQUEST, "empty_body", "body is empty");
     }
     let eff = state.settings_store.snapshot().effective(&state.settings);
-    let title = if body.title.trim().is_empty() { "Myna" } else { body.title.trim() };
+    let title = if body.title.trim().is_empty() { "Bageo" } else { body.title.trim() };
     let ok = crate::notify::notify_event(&state.http, &eff, title, &body.body).await;
     Json(json!({"ok": ok})).into_response()
 }
@@ -1761,7 +1761,7 @@ mod tests {
             phone_console_url(" http://192.168.1.20:8787/calls/ ").as_deref(),
             Some("http://192.168.1.20:8787/calls/")
         );
-        assert_eq!(phone_console_url("https://myna.example/").as_deref(), Some("https://myna.example/calls/"));
+        assert_eq!(phone_console_url("https://bageo.example/").as_deref(), Some("https://bageo.example/calls/"));
     }
 
     #[test]

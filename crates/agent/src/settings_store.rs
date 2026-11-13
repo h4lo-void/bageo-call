@@ -324,7 +324,7 @@ fn default_auto() -> String {
 }
 
 fn default_mdns_name() -> String {
-    "myna".to_string()
+    "bageo".to_string()
 }
 
 fn default_appointment_mode() -> String {
@@ -1814,7 +1814,7 @@ mod tests {
     #[test]
     fn reject_numbers_persist_through_a_patch() {
         let dir = std::env::temp_dir().join(format!(
-            "myna-call-settings-test-{}",
+            "bageo-call-settings-test-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&dir).expect("temp settings dir");
@@ -1850,7 +1850,7 @@ mod tests {
     #[test]
     fn append_blocklist_number_dedupes() {
         let dir = std::env::temp_dir().join(format!(
-            "myna-call-settings-test-{}",
+            "bageo-call-settings-test-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&dir).expect("temp settings dir");
@@ -1918,7 +1918,7 @@ mod tests {
     #[test]
     fn owner_status_patch_hot_swaps() {
         let dir = std::env::temp_dir().join(format!(
-            "myna-call-owner-status-{}",
+            "bageo-call-owner-status-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&dir).expect("temp settings dir");
@@ -1956,7 +1956,7 @@ mod tests {
     #[test]
     fn stall_spam_defaults_on_and_clamps_cap() {
         let dir = std::env::temp_dir().join(format!(
-            "myna-call-stall-{}",
+            "bageo-call-stall-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&dir).expect("temp settings dir");
@@ -2012,7 +2012,7 @@ mod tests {
     #[test]
     fn server_vad_defaults_on_and_persists_off() {
         let dir = std::env::temp_dir().join(format!(
-            "myna-call-vad-{}",
+            "bageo-call-vad-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&dir).expect("temp settings dir");
@@ -2034,7 +2034,7 @@ mod tests {
     #[test]
     fn answer_ring_defaults_to_one_ring_and_clamps() {
         let dir = std::env::temp_dir().join(format!(
-            "myna-call-ring-{}",
+            "bageo-call-ring-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&dir).expect("temp settings dir");
@@ -2056,7 +2056,7 @@ mod tests {
     #[test]
     fn thinking_level_defaults_low_and_sanitizes() {
         let dir = std::env::temp_dir().join(format!(
-            "myna-call-thinking-{}",
+            "bageo-call-thinking-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&dir).expect("temp settings dir");
@@ -2084,7 +2084,7 @@ mod tests {
     #[test]
     fn ambience_defaults_off_and_sanitizes() {
         let dir = std::env::temp_dir().join(format!(
-            "myna-call-ambience-{}",
+            "bageo-call-ambience-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&dir).expect("temp settings dir");
@@ -2121,37 +2121,37 @@ mod tests {
         let no_lan = |_: IpAddr| -> Option<Ipv4Addr> { None };
         // Typed by the owner: used as typed, whatever else is true.
         assert_eq!(
-            console_url(" https://calls.example.com ", any, 8787, "myna", true, lan),
+            console_url(" https://calls.example.com ", any, 8787, "bageo", true, lan),
             "https://calls.example.com"
         );
         assert_eq!(
-            console_url("http://10.0.0.5:8787", local, 8787, "myna", false, lan),
+            console_url("http://10.0.0.5:8787", local, 8787, "bageo", false, lan),
             "http://10.0.0.5:8787"
         );
         // Open to the LAN: the network name while it answers, else the IP.
-        assert_eq!(console_url("", any, 8787, "myna", true, lan), "http://myna.local:8787/");
-        assert_eq!(console_url("", any, 9000, "myna", false, lan), "http://192.168.1.20:9000/");
-        assert_eq!(console_url("", any, 8787, "myna", false, no_lan), "");
+        assert_eq!(console_url("", any, 8787, "bageo", true, lan), "http://bageo.local:8787/");
+        assert_eq!(console_url("", any, 9000, "bageo", false, lan), "http://192.168.1.20:9000/");
+        assert_eq!(console_url("", any, 8787, "bageo", false, no_lan), "");
         // This computer only: no link a phone could open.
-        assert_eq!(console_url("", local, 8787, "myna", true, lan), "");
-        assert_eq!(console_url("", None, 8787, "myna", true, lan), "");
+        assert_eq!(console_url("", local, 8787, "bageo", true, lan), "");
+        assert_eq!(console_url("", None, 8787, "bageo", true, lan), "");
     }
 
     #[test]
     fn network_name_is_cleaned_and_empty_stays_off() {
         let dir = std::env::temp_dir().join(format!(
-            "myna-call-mdns-{}",
+            "bageo-call-mdns-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&dir).expect("temp settings dir");
         let mut base = Settings::from_env();
         base.calls_data_dir = dir.to_string_lossy().to_string();
-        base.mdns_name = "myna".to_string();
+        base.mdns_name = "bageo".to_string();
         let store = SettingsStore::load(base.clone());
         let rt = store.apply_patch(&json!({ "mdns_name": " Front-Desk.local " })).unwrap();
         assert_eq!(rt.mdns_name, "front-desk");
         assert_eq!(rt.effective(&base).mdns_name, "front-desk");
-        // Cleared in the console: off, also after a restart (not back to "myna").
+        // Cleared in the console: off, also after a restart (not back to "bageo").
         store.apply_patch(&json!({ "mdns_name": "" })).unwrap();
         let again = SettingsStore::load(base.clone());
         assert_eq!(again.snapshot().mdns_name, "");
@@ -2162,7 +2162,7 @@ mod tests {
     #[test]
     fn appointments_default_off_and_persist() {
         let dir = std::env::temp_dir().join(format!(
-            "myna-call-appointments-{}",
+            "bageo-call-appointments-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&dir).expect("temp settings dir");

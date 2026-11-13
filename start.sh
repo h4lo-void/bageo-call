@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Myna - start the agent on macOS / Linux.
+# Bageo - start the agent on macOS / Linux.
 #
 #   ./start.sh            (macOS: or double-click start.command)
 #
@@ -8,14 +8,15 @@
 #   2. finds the agent program (a downloaded release, or builds it with Rust)
 #   3. makes sure adb (Android platform-tools) is there, offering to download it
 #   4. starts the agent and opens the web console
-#   5. the first time the agent answers, puts a "Myna Console" shortcut to the
+#   5. the first time the agent answers, puts a "Bageo Console" shortcut to the
 #      web console on the desktop (macOS: .webloc; Linux: an app menu entry,
 #      copied to the desktop folder when there is one)
 #
 # Options: --no-browser   do not open the web console
 #          --yes          answer "yes" to the platform-tools download
 #          --build        build from source even when a program is already there
-#          --no-shortcut  no desktop shortcut (or MYNA_NO_SHORTCUT=1)
+#          --no-shortcut  no desktop shortcut (or BAGEO_NO_SHORTCUT=1; the name
+#                         from before the rename, MYNA_NO_SHORTCUT, still works)
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -32,7 +33,7 @@ for arg in "$@"; do
   esac
 done
 
-say() { printf '[myna] %s\n' "$*"; }
+say() { printf '[bageo] %s\n' "$*"; }
 
 # 1. .env -> environment (real environment variables win)
 if [ -f .env ]; then
@@ -46,7 +47,7 @@ if [ -f .env ]; then
     if eval "[ -z \"\${$key+x}\" ]"; then export "$key=$val"; fi
   done < .env
 fi
-case "$(printf '%s' "${MYNA_NO_SHORTCUT:-}" | tr '[:upper:]' '[:lower:]')" in
+case "$(printf '%s' "${BAGEO_NO_SHORTCUT:-${MYNA_NO_SHORTCUT:-}}" | tr '[:upper:]' '[:lower:]')" in
   1|true|yes|on) no_shortcut=1 ;;
 esac
 
@@ -131,21 +132,24 @@ shortcut_label() {
   if [ "$(uname -s)" = Darwin ]; then loc=$(defaults read -g AppleLocale 2>/dev/null || true); fi
   [ -n "$loc" ] || loc=${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}
   case "$loc" in
-    zh*) echo "Myna 控制台" ;;
-    ja*) echo "Myna コンソール" ;;
-    ko*) echo "Myna 콘솔" ;;
-    es*) echo "Consola de Myna" ;;
-    fr*) echo "Console Myna" ;;
-    de*) echo "Myna-Konsole" ;;
-    pt*) echo "Console do Myna" ;;
-    *) echo "Myna Console" ;;
+    zh*) echo "Bageo 控制台" ;;
+    ja*) echo "Bageo コンソール" ;;
+    ko*) echo "Bageo 콘솔" ;;
+    es*) echo "Consola de Bageo" ;;
+    fr*) echo "Console Bageo" ;;
+    de*) echo "Bageo-Konsole" ;;
+    pt*) echo "Console do Bageo" ;;
+    *) echo "Bageo Console" ;;
   esac
 }
 make_shortcut() {
   label=$(shortcut_label)
+  # A shortcut from before the rename to Bageo ("Myna Console") opens the same
+  # address: keep it and add no second one.
+  old_label=$(printf '%s' "$label" | sed 's/Bageo/Myna/')
   if [ "$(uname -s)" = Darwin ]; then
     file="$HOME/Desktop/$label.webloc"
-    if [ ! -d "$HOME/Desktop" ] || [ -e "$file" ]; then return 0; fi
+    if [ ! -d "$HOME/Desktop" ] || [ -e "$file" ] || [ -e "$HOME/Desktop/$old_label.webloc" ]; then return 0; fi
     cat > "$file" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -159,8 +163,8 @@ EOF
     return 0
   fi
   apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
-  file="$apps/myna-console.desktop"
-  if [ -e "$file" ]; then return 0; fi
+  file="$apps/bageo-console.desktop"
+  if [ -e "$file" ] || [ -e "$apps/myna-console.desktop" ]; then return 0; fi
   mkdir -p "$apps"
   cat > "$file" <<EOF
 [Desktop Entry]
@@ -175,11 +179,12 @@ EOF
   chmod +x "$file"
   desk=$(xdg-user-dir DESKTOP 2>/dev/null || true)
   [ -n "$desk" ] || desk="$HOME/Desktop"
-  if [ -d "$desk" ] && [ "$desk" != "$HOME" ] && [ ! -e "$desk/myna-console.desktop" ]; then
-    cp "$file" "$desk/myna-console.desktop"
-    chmod +x "$desk/myna-console.desktop"
+  if [ -d "$desk" ] && [ "$desk" != "$HOME" ] && [ ! -e "$desk/bageo-console.desktop" ] \
+    && [ ! -e "$desk/myna-console.desktop" ]; then
+    cp "$file" "$desk/bageo-console.desktop"
+    chmod +x "$desk/bageo-console.desktop"
     # GNOME only starts desktop files marked as trusted.
-    gio set "$desk/myna-console.desktop" metadata::trusted true >/dev/null 2>&1 || true
+    gio set "$desk/bageo-console.desktop" metadata::trusted true >/dev/null 2>&1 || true
   fi
 }
 if [ "$no_shortcut" -eq 0 ]; then

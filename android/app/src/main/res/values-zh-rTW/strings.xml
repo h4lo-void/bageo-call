@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Myna</string>
+    <string name="app_name">Bageo</string>
 
     <!-- Notifications -->
-    <string name="notification_title">Myna</string>
+    <string name="notification_title">Bageo</string>
     <string name="notification_text_armed">待命中，等候來電；手機保持靜音。</string>
     <string name="notification_text_in_call">AI 正在接聽電話。</string>
     <string name="notification_text_normal">一般手機：來電會正常響，由你自己接。</string>
-    <string name="channel_service">Myna 背景服務</string>
-    <string name="channel_info">Myna 提醒</string>
+    <string name="channel_service">Bageo 背景服務</string>
+    <string name="channel_info">Bageo 提醒</string>
     <string name="uplink_missing_title">對方聽不到 AI 的聲音</string>
-    <string name="uplink_missing_text">無法使用通話音訊通道。請確認 Myna 模組已安裝並啟用，然後重新開機。</string>
+    <string name="uplink_missing_text">無法使用通話音訊通道。請確認 Bageo 模組已安裝並啟用，然後重新開機。</string>
 
     <!-- Header -->
     <string name="header_version">版本 %1$s（%2$d）</string>
@@ -23,7 +23,7 @@
     <string name="st_normal">一般手機：來電會正常響</string>
     <string name="st_normal_d">AI 不會接電話，你可以像一般手機一樣自己接。打開下面的開關，就換回 AI 接聽。</string>
     <string name="st_offline">還沒連上電腦</string>
-    <string name="st_offline_d">請確認電腦上的 Myna 開著，手機用 USB 線接著電腦（或在「進階」設定 Wi-Fi 位址）。連上之前，AI 沒辦法跟來電的人講話。</string>
+    <string name="st_offline_d">請確認電腦上的 Bageo 開著，手機用 USB 線接著電腦（或在「進階」設定 Wi-Fi 位址）。連上之前，AI 沒辦法跟來電的人講話。</string>
     <string name="st_steps">還有 %1$d 個設定步驟沒完成</string>
     <string name="st_steps_d">完成下面的設定步驟，AI 才能接電話。</string>
     <string name="st_service_off">接聽服務沒有在執行</string>
@@ -41,7 +41,7 @@
     <string name="mode_failed">切換沒有完成。%1$s可以再試一次。</string>
     <string name="mode_err_in_call">通話中不能切換，請先掛斷。</string>
     <string name="mode_err_busy">上一次切換還沒做完。</string>
-    <string name="mode_err_no_root">Myna 模組沒有在執行。請在 Magisk 或 KernelSU 確認 Myna Uplink 模組已啟用，然後重新開機。</string>
+    <string name="mode_err_no_root">Bageo 模組沒有在執行。請在 Magisk 或 KernelSU 確認 Bageo Uplink 模組已啟用，然後重新開機。</string>
     <string name="mode_err_save">無法儲存模式設定。</string>
     <string name="mode_err_dialer">無法更換預設電話 App。</string>
     <string name="mode_err_screening">無法更換來電過濾設定。</string>
@@ -57,19 +57,19 @@
     <string name="status_ok">正常</string>
     <string name="status_missing">尚未完成</string>
     <string name="status_check">請確認</string>
-    <string name="step_module_title">安裝 Myna 模組</string>
+    <string name="step_module_title">安裝 Bageo 模組</string>
     <string name="step_module_ok">模組已啟用。</string>
-    <string name="step_module_missing">請在 Magisk 或 KernelSU 刷入 Myna 模組，然後重新開機。</string>
-    <string name="step_perms_title">允許 Myna 使用電話和麥克風</string>
+    <string name="step_module_missing">請在 Magisk 或 KernelSU 刷入 Bageo 模組，然後重新開機。</string>
+    <string name="step_perms_title">允許 Bageo 使用電話和麥克風</string>
     <string name="step_perms_desc">用來知道有來電、接起電話，並把通話聲音送到電腦。</string>
-    <string name="step_dialer_title">把 Myna 設成預設電話 App</string>
+    <string name="step_dialer_title">把 Bageo 設成預設電話 App</string>
     <string name="step_dialer_desc">這樣 AI 接電話時，手機不會跳出通話畫面。</string>
-    <string name="step_screening_title">把 Myna 設成來電過濾 App</string>
+    <string name="step_screening_title">把 Bageo 設成來電過濾 App</string>
     <string name="step_screening_desc">這樣來電時手機不會響。</string>
-    <string name="step_dnd_title">允許 Myna 控制勿擾模式</string>
+    <string name="step_dnd_title">允許 Bageo 控制勿擾模式</string>
     <string name="step_dnd_desc">讓手機在 AI 接電話時保持安靜。</string>
-    <string name="step_battery_title">不要讓 Myna 進入休眠</string>
-    <string name="step_battery_desc">避免 Android 為了省電把 Myna 停掉而漏接電話。</string>
+    <string name="step_battery_title">不要讓 Bageo 進入休眠</string>
+    <string name="step_battery_desc">避免 Android 為了省電把 Bageo 停掉而漏接電話。</string>
     <string name="btn_allow">允許</string>
     <string name="btn_set">設定</string>
     <string name="btn_open_settings">開啟設定</string>
@@ -90,7 +90,7 @@
     <string name="section_details">詳細檢查</string>
     <string name="check_priv_title">已安裝為特權系統應用程式</string>
     <string name="check_priv_ok">安裝位置：%1$s</string>
-    <string name="check_priv_missing">目前是一般應用程式（%1$s）。請在 Magisk 或 KernelSU 刷入 Myna 模組後重新開機。如果另外手動安裝過 APK，請解除安裝那一份。</string>
+    <string name="check_priv_missing">目前是一般應用程式（%1$s）。請在 Magisk 或 KernelSU 刷入 Bageo 模組後重新開機。如果另外手動安裝過 APK，請解除安裝那一份。</string>
     <string name="check_privperm_title">特權權限</string>
     <string name="check_privperm_desc">由模組在開機時授予，無法在這個畫面授權。</string>
     <string name="perm_capture_audio_output">擷取通話音訊</string>
@@ -124,18 +124,18 @@
     <string name="test_ok">已連線</string>
     <string name="test_failed">失敗：%1$s</string>
     <string name="test_fail_timeout">5 秒內沒有回應</string>
-    <string name="test_fail_refused">電腦拒絕連線。電腦上的 Myna 有開著嗎？USB 轉接設好了嗎？</string>
+    <string name="test_fail_refused">電腦拒絕連線。電腦上的 Bageo 有開著嗎？USB 轉接設好了嗎？</string>
     <string name="test_fail_host">找不到這個位址</string>
     <string name="test_fail_network">連不到這個位址。手機和電腦在同一個網路嗎？</string>
     <string name="test_fail_auth">被拒絕：位址裡的 token 沒填或不對</string>
     <string name="test_fail_tls">安全連線（wss）失敗</string>
-    <string name="test_fail_rejected">有回應，但不是 Myna，或拒絕了連線</string>
+    <string name="test_fail_rejected">有回應，但不是 Bageo，或拒絕了連線</string>
     <string name="test_fail_other">連不上</string>
     <string name="test_details">詳細資訊</string>
 
     <!-- About and safety -->
     <string name="section_about">關於與安全須知</string>
     <string name="about_dedicated">AI 模式下，模組會接管電話 App、關掉鈴聲並開啟勿擾，所以最好用一支備用手機。要暫時當一般手機用，關掉最上面的開關就好。</string>
-    <string name="about_rollback">要完全移除 Myna：先關掉最上面的開關（變回一般手機），再到 Magisk 或 KernelSU 停用或移除模組，然後重新開機。</string>
+    <string name="about_rollback">要完全移除 Bageo：先關掉最上面的開關（變回一般手機），再到 Magisk 或 KernelSU 停用或移除模組，然後重新開機。</string>
     <string name="about_legal">各地對通話錄音、以及是否須告知對方正在與 AI 對話的法律規定不同，遵守當地法規是你的責任。</string>
 </resources>

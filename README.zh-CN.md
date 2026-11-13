@@ -1,17 +1,17 @@
 <p align="center">
-  <img src="docs/images/myna.svg" width="128" alt="Myna：站在电话听筒上的八哥">
+  <img src="docs/images/bageo.svg" width="128" alt="Bageo：站在电话听筒上的八哥">
 </p>
 
-# Myna
+# Bageo
 
-[![CI](https://github.com/h4lo-void/myna-call/actions/workflows/ci.yml/badge.svg)](https://github.com/h4lo-void/myna-call/actions/workflows/ci.yml)
+[![CI](https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg)](https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **让 AI 语音接听你真实的手机号码，专为 Google Pixel 手机开发。** 一部插着你 SIM 卡的备用 Android 手机负责接起来电；电脑上的一个小程序让 Gemini Live 的语音和对方通话、把通话录下来、写一段简短的摘要，再发给你（Telegram、Discord、LINE、ntfy 等）。
 
 不需要 SIP 中继，不用租号码，也没有平台月费：用的是你自己的 SIM 卡、你自己的电脑和你自己的 API 密钥。
 
-Myna 就是八哥，一种会学主人说话的鸟。这一只住在你的电话线上，用你的方式替你接电话。
+Bageo 取自“八哥”（bāgē）的拼音。八哥是一种会学主人说话的鸟。这一只住在你的电话线上，用你的方式替你接电话。旧版叫 Myna。
 
 [English](README.md) · [繁體中文](README.zh-TW.md) · **简体中文**
 
@@ -49,10 +49,10 @@ flowchart LR
 
 ## 快速开始
 
-1. **获取程序。** 从 [Releases](https://github.com/h4lo-void/myna-call/releases) 页面下载适合你系统的安装包并解压——或者克隆这个仓库（这样需要安装 [Rust](https://rustup.rs)；启动脚本会自动构建）。
-2. **启动。** Windows：双击 `start.cmd`。macOS：双击 `start.command`。Linux：`./start.sh`。如果没有 `adb`（Google 的 Android platform-tools），脚本会询问是否下载，然后打开网页控制台 <http://localhost:8787/>。以后用脚本放在桌面的“Myna 控制台”快捷方式打开就行。控制台对局域网开放后，主程序能响应局域网名称时，手机和其他电脑可以用 <http://myna.local:8787/> 打开；不行的话，请用“系统 → 关于”里的地址或二维码，也可以从那里把控制台添加到手机主屏幕。→ [设置参考](docs/zh-CN/SETTINGS.md#从其他设备使用控制台)
+1. **获取程序。** 从 [Releases](https://github.com/h4lo-void/bageo-call/releases) 页面下载适合你系统的安装包并解压——或者克隆这个仓库（这样需要安装 [Rust](https://rustup.rs)；启动脚本会自动构建）。
+2. **启动。** Windows：双击 `start.cmd`。macOS：双击 `start.command`。Linux：`./start.sh`。如果没有 `adb`（Google 的 Android platform-tools），脚本会询问是否下载，然后打开网页控制台 <http://localhost:8787/>。以后用脚本放在桌面的“Bageo 控制台”快捷方式打开就行。控制台对局域网开放后，主程序能响应局域网名称时，手机和其他电脑可以用 <http://bageo.local:8787/> 打开；不行的话，请用“系统 → 关于”里的地址或二维码，也可以从那里把控制台添加到手机主屏幕。→ [设置参考](docs/zh-CN/SETTINGS.md#从其他设备使用控制台)
 3. **填写基本设置**：在网页控制台里填上你的 Gemini API 密钥、你的名字、语言和接听身份（AI 助理或本人）。按 ▶ 试听各个声音，选一个。
-4. **准备手机**（只需一次）：在 Magisk / KernelSU 里安装发行版附带的模块（`pixelcallai_uplink-<version>.zip`），重启，打开 **Myna** 应用，把检查清单逐项完成。开启 USB 调试，把手机插到电脑上，并在“允许 USB 调试吗？”的弹窗里点允许。→ [手机设置](docs/zh-CN/PHONE.md)
+4. **准备手机**（只需一次）：在 Magisk / KernelSU 里安装发行版附带的模块（`pixelcallai_uplink-<version>.zip`），重启，打开 **Bageo** 应用，把检查清单逐项完成。开启 USB 调试，把手机插到电脑上，并在“允许 USB 调试吗？”的弹窗里点允许。→ [手机设置](docs/zh-CN/PHONE.md)
 5. **检查，然后打一通。** 网页控制台的“系统”页会显示手机“已连接主程序”。用另一部手机拨打这部手机的号码：响一声后 AI 接听，通话会连同录音和摘要出现在控制台里。
 6. **添加通知**（“设置 → 通知”），按“发送测试”。
 
@@ -92,7 +92,7 @@ flowchart LR
 - **每天在真实通话中使用：** 繁体中文（台湾）、“本人”接听方式、Pixel 7 / 7a / 8 / 9、对推销／诈骗电话陪聊拖时间、拦截号码、录音与摘要、Telegram 通知。
 - **开源版新增、尚未在真实通话中试过：** 其他所有语言、“AI 助理”接听方式、主程序在 macOS 和 Linux 上自行管理 USB、Telegram 以外的通知服务（它们的请求只按各服务文档记载的格式做过单元测试，没有用真实账号测过）、日历建议、手机应用 0.2 版的设置界面、Docker 镜像，以及 Releases 页面上的桌面版下载包。
 - **手机应用 0.2.3 已经在接真实来电**：每天在用的 Pixel 7、7a、9（Android 16、KernelSU-Next）装的都是它，短信转发也正常。这几部是从前几版升级上来的，所以“从头设置一部新手机”还没有人做过。
-- **AI 接听／普通手机（0.2.3 新增）**：在网页控制台的“系统”或手机应用里，可以把手机切回普通手机：来电会响，由你自己接；切回来就又由 AI 接听。切换由模块以 root 身份执行，**不用在 Magisk 或 KernelSU 里另外给 Myna 应用 root 权限**。在 Pixel 7a 上实测过：普通模式下真实来电会响、接得起来，重启后模式不变，切回后 AI 照常接听。
+- **AI 接听／普通手机（0.2.3 新增）**：在网页控制台的“系统”或手机应用里，可以把手机切回普通手机：来电会响，由你自己接；切回来就又由 AI 接听。切换由模块以 root 身份执行，**不用在 Magisk 或 KernelSU 里另外给 Bageo 应用 root 权限**。在 Pixel 7a 上实测过：普通模式下真实来电会响、接得起来，重启后模式不变，切回后 AI 照常接听。
 - **手机模块用项目自己的固定密钥签名**，之后的发布版可以直接覆盖安装。如果你装过最早那份 v0.2.0 下载包（当时用临时密钥签名），也可以直接把现在这份装上去：在我们的手机上，Android 接受了新密钥并保留了应用的数据。
 
 非常欢迎反馈问题，请附上主程序的日志，并说明你原本预期的结果。详见 [CONTRIBUTING.md](CONTRIBUTING.md)（英文）。

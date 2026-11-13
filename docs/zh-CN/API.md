@@ -81,7 +81,7 @@ PUT /calls/api/settings
 }
 ```
 
-时间是本地时间（`TZ`）。`status`：`pending`（等你决定）、`booked`（通话中已写进日历）、`confirmed`、`declined`。`event_id`：写进 Google 日历后的日程 ID。`auto_error`：“有空直接答应”没能排入的原因。`replaced`：同一通电话里先前已写进日历、后来改掉的时间。`sms`：`sent`，或短信没发出的原因（`offline`、`old_app`、`timeout`、`busy`、`no_number`，或手机返回的错误代码）。空的字段不会出现。主程序写进日历的日程都带私有扩展属性 `myna_call=<appointment.tag>`，写入时没收到响应的那条之后能找回来，不会写两次。
+时间是本地时间（`TZ`）。`status`：`pending`（等你决定）、`booked`（通话中已写进日历）、`confirmed`、`declined`。`event_id`：写进 Google 日历后的日程 ID。`auto_error`：“有空直接答应”没能排入的原因。`replaced`：同一通电话里先前已写进日历、后来改掉的时间。`sms`：`sent`，或短信没发出的原因（`offline`、`old_app`、`timeout`、`busy`、`no_number`，或手机返回的错误代码）。空的字段不会出现。主程序写进日历的日程都带私有扩展属性 `bageo_call=<appointment.tag>`，写入时没收到响应的那条之后能找回来，不会写两次。
 
 | 方法和路径 | 内容 |
 |---|---|
@@ -94,7 +94,7 @@ PUT /calls/api/settings
 | 方法和路径 | 内容 |
 |---|---|
 | `GET /calls/api/devices` | `{ok, usb: {enabled, adb_found, adb_path, error, phones: [{serial, state, model, reverse, app_installed}]}, connected: [...], labels: {<phone id>: <model>}, calls_in_progress, phones: [...]}`。最外层的 `phones` 是主程序启动后在 control 连接上见过的每部手机：`{serial, connected, mode, supports_mode, model, app_version, in_call, last_seen_ms}`。`mode` 是 `ai`（AI 接听）或 `normal`（普通手机，见[手机设置](PHONE.md#普通手机模式)）；早于这个功能的应用，`supports_mode` 为 false，始终是 `ai`。 |
-| `POST /calls/api/devices/{serial}/mode` | Body `{"mode": "ai" \| "normal"}`。让手机切换，最多等 15 秒等它回复。总是返回 `{ok, mode, error_code}`：`mode` 是切换后手机的模式（未知时为 `null`），成功时 `error_code` 为 `null`，否则是这些代码之一：`offline`（没连接）、`unsupported`（应用太旧）、`in_call`、`busy`（上一次切换还在进行）、`no_root`（手机上的 Myna 模块没有在运行）、`save_failed`、`dialer_failed`、`screening_failed`、`dnd_failed`、`volume_failed`、`failed`，或 `timeout`。`timeout` 的意思是“还没确认”，不是失败：切换本身可能让手机应用重新启动，它重新连上后才报告结果，所以稍后再读一次模式（`GET /calls/api/devices`）。Body 由主程序自己解析：不是 JSON、没有字符串 `mode`、或 serial 不是字母、数字、`-`、`_` 组成时，返回 HTTP 400、同样格式的 JSON，`error_code` 为 `bad_request`；`mode` 无法识别时返回 400 和 `invalid_mode`。请求必须带 `Content-Type: application/json`（没有也返回 400 `bad_request`），这样别的网页没法通过你局域网里的浏览器偷偷切换手机。 |
+| `POST /calls/api/devices/{serial}/mode` | Body `{"mode": "ai" \| "normal"}`。让手机切换，最多等 15 秒等它回复。总是返回 `{ok, mode, error_code}`：`mode` 是切换后手机的模式（未知时为 `null`），成功时 `error_code` 为 `null`，否则是这些代码之一：`offline`（没连接）、`unsupported`（应用太旧）、`in_call`、`busy`（上一次切换还在进行）、`no_root`（手机上的 Bageo 模块没有在运行）、`save_failed`、`dialer_failed`、`screening_failed`、`dnd_failed`、`volume_failed`、`failed`，或 `timeout`。`timeout` 的意思是“还没确认”，不是失败：切换本身可能让手机应用重新启动，它重新连上后才报告结果，所以稍后再读一次模式（`GET /calls/api/devices`）。Body 由主程序自己解析：不是 JSON、没有字符串 `mode`、或 serial 不是字母、数字、`-`、`_` 组成时，返回 HTTP 400、同样格式的 JSON，`error_code` 为 `bad_request`；`mode` 无法识别时返回 400 和 `invalid_mode`。请求必须带 `Content-Type: application/json`（没有也返回 400 `bad_request`），这样别的网页没法通过你局域网里的浏览器偷偷切换手机。 |
 | `GET /health` | 一个很大的扁平 JSON 对象，用于排查问题：版本、语言、哪些东西已配置、已连接的手机、进行中的通话；不含密钥或 token。`control_idle_clients`／`control_idle_serials` 统计的是所有已连接的手机；`normal_mode_serials` 列出切成普通手机、AI 不接它们电话的那几部。设置了控制台令牌而请求没有带上时，只会返回 `ok`、`version`、`language`、`active_call_count` 和 `control_idle_clients`（用于监控已经足够）。 |
 
 ## 手机这一端

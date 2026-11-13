@@ -3,12 +3,12 @@
 //! # Endpoint convention
 //!
 //! We POST to **`{openclaw_url}/hooks/agent`** (trailing slashes on the base URL are
-//! stripped). This webhook-style path is used instead of `/v1/tasks` because myna-call
+//! stripped). This webhook-style path is used instead of `/v1/tasks` because bageo-call
 //! hands off work to an external agent hook rather than managing task CRUD locally.
 //!
 //! Request body:
 //! ```json
-//! { "source": "myna-call", "task": <task_json> }
+//! { "source": "bageo-call", "task": <task_json> }
 //! ```
 //!
 //! When `openclaw_token` is non-empty, sends `Authorization: Bearer <token>`.
@@ -66,7 +66,7 @@ pub async fn handoff_task(
 ) -> Result<OpenClawHandoff> {
     let endpoint = hook_url(url);
     let body = json!({
-        "source": "myna-call",
+        "source": "bageo-call",
         "task": task_json,
     });
 
