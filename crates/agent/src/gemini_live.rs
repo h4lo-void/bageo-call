@@ -1256,7 +1256,7 @@ fn stall_score_add(caller_text: &str, hits: &mut Vec<&'static str>) -> u32 {
     // Live STT writes 帳戶 as 賬戶 too.
     let t = crate::zh_tw::norm(caller_text).to_ascii_lowercase().replace('賬', "帳");
     let mut found: Vec<(&'static str, u32)> =
-        STALL_KEYWORDS.iter().filter(|(kw, _)| t.contains(kw)).copied().collect();
+        STALL_KEYWORDS.iter().filter(|(kw, _)| has_keyword(&t, kw)).copied().collect();
     // Other languages' lists (whole words; see `locale`).
     for (kw, w) in crate::locale::stall_hits(caller_text) {
         if !found.iter().any(|(k, _)| *k == kw) {
@@ -1276,6 +1276,18 @@ fn stall_score_add(caller_text: &str, hits: &mut Vec<&'static str>) -> u32 {
         add += w;
     }
     add
+}
+
+/// Chinese keywords match anywhere; Latin ones (`line`) only as whole words, so
+/// "streamline", "online" or "deadline" do not count as 加 LINE.
+fn has_keyword(text: &str, kw: &str) -> bool {
+    if !kw.is_ascii() {
+        return text.contains(kw);
+    }
+    let word = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric());
+    text.match_indices(kw).any(|(i, _)| {
+        !word(text[..i].chars().next_back()) && !word(text[i + kw.len()..].chars().next())
+    })
 }
 
 /// Weight of a sales / scam keyword, whichever list it is from.
@@ -1756,6 +1768,20 @@ fn first_delivery_paused(activity_open: bool, caller_spoke_recently: bool, calls
 /// How long after the answer a model turn nobody asked for still counts as the
 /// repeat (it came ~4 s later on the probe; the quiet-line nudge is 15 s away).
 const REPEAT_GUARD_WINDOW: Duration = Duration::from_secs(12);
+
+/// Had the model already begun its reply to the caller's last words when it
+/// called a function? Audio of this turn is not enough: the opening 「喂？」 (or
+/// any earlier line) was sent before the caller spoke, and a function call
+/// often ends a turn of its own before the reply's audio starts. So the model
+/// must also have sent audio since the caller's last end of turn.
+fn spoke_since_caller(
+    chunks_out: u64,
+    chunks_at_turn_start: u64,
+    downlink_bytes: u64,
+    bytes_at_last_caller_eou: u64,
+) -> bool {
+    chunks_out > chunks_at_turn_start && downlink_bytes > bytes_at_last_caller_eou
+}
 
 /// Where the call stood when the model called propose_appointment after it
 /// had already started speaking its reply.
@@ -3955,7 +3981,12 @@ pub async fn run_session(
                                         let blocking = crate::appointments::is_blocking(&call.name, non_blocking);
                                         // Called after the model began its reply (see RepeatGuard).
                                         let after_speech = (call.name == crate::appointments::PROPOSE
-                                            && audio_chunks_out > chunks_at_turn_start)
+                                            && spoke_since_caller(
+                                                audio_chunks_out,
+                                                chunks_at_turn_start,
+                                                downlink_pcm_bytes,
+                                                bytes_at_last_caller_eou,
+                                            ))
                                             .then_some(CallTurn { turns_done, caller_eous: local_eou_sent });
                                         info!(
                                             "Gemini Live toolCall serial={serial} name={} id={key} blocking={blocking} after_speech={} stall={stall_on} talk_s={}",
@@ -5734,6 +5765,18 @@ mod tests {
     }
 
     #[test]
+    fn the_first_reply_after_the_greeting_is_never_taken_for_a_repeat() {
+        // 「喂？」 went out (12 chunks, 9600 bytes), no turnComplete counted for it;
+        // the caller spoke and ended their turn; the model calls
+        // propose_appointment before any audio of its reply.
+        assert!(!spoke_since_caller(12, 0, 9_600, 9_600));
+        // It had begun the reply (audio after the caller's end of turn).
+        assert!(spoke_since_caller(20, 0, 16_000, 9_600));
+        // Audio since the caller, but none in this turn (an earlier turn's).
+        assert!(!spoke_since_caller(20, 20, 16_000, 9_600));
+    }
+
+    #[test]
     fn a_repeat_after_propose_is_dropped_only_when_nobody_asked_for_it() {
         let now = tokio::time::Instant::now();
         // propose_appointment called while turn 4 was playing (3 turns done, 2 caller turns).
@@ -5801,6 +5844,18 @@ mod tests {
         g.caller_words();
         g.interrupted();
         assert!(!g.reply_owed() && !g.is_dropping());
+    }
+
+    #[test]
+    fn latin_keywords_count_only_as_whole_words() {
+        let mut hits = Vec::new();
+        stall_score_add("we help teams streamline things online before the deadline", &mut hits);
+        assert!(!hits.contains(&"line"), "{hits:?}");
+        let mut hits = Vec::new();
+        stall_score_add("你加我的LINE，我拉你進群組", &mut hits);
+        assert!(hits.contains(&"line"), "{hits:?}");
+        assert!(has_keyword("add my line id", "line"));
+        assert!(!has_keyword("lines", "line"));
     }
 
     #[test]

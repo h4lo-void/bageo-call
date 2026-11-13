@@ -1090,7 +1090,7 @@ static KO: Phrases = Phrases {
     no_thanks: "아, 괜찮습니다",
     think_about_it: "그건 좀 생각해 볼게요",
     wait_one_more: "아 잠깐만요, 하나만 더 물어볼게요",
-    no_wait: "\"잠깐만요\", \"확인해 볼게요\", \"잠시만 기다려 주세요\"",
+    no_wait: "\"잠깐만요\", \"확인해 볼게요\", \"잠시만 기다려 주세요\", \"조금만 기다려 주세요\", \"기다려 줄래?\"",
     d_caller: "상대",
     d_ai: "AI",
     owner_fallback: "주인",
