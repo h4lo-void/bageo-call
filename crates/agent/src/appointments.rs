@@ -1641,6 +1641,13 @@ pub fn void_failed_line(e: &Earlier) -> String {
     format!("📅 {}", locale::fill(locale::phrases(lang).ap_void_failed, &e.when(lang)))
 }
 
+/// The summary line for an event deleted because the summary judged the call
+/// a sales call afterwards.
+pub fn sales_void_line(e: &Earlier) -> String {
+    let lang = locale::current();
+    format!("📅 {}", locale::fill(locale::phrases(lang).ap_sales_voided, &e.when(lang)))
+}
+
 /// Everything an appointment put in the calendar (the event and earlier ones),
 /// for when the whole appointment no longer stands.
 pub fn all_events(appt: &Appointment) -> Vec<Earlier> {
@@ -1827,7 +1834,7 @@ mod tests {
         let t = at(2026, 11, 16, 9, 5); // a Monday
         for l in locale::ALL {
             let p = locale::phrases(l);
-            for s in [p.ap_sms_hi_owner, p.ap_sms_ok, p.ap_sms_no, p.ap_auto_failed, p.ap_replaced, p.ap_cal_failed, p.ap_sms_sent, p.ap_sms_not_sent, p.ap_sms_code, p.ap_void_failed] {
+            for s in [p.ap_sms_hi_owner, p.ap_sms_ok, p.ap_sms_no, p.ap_auto_failed, p.ap_replaced, p.ap_cal_failed, p.ap_sms_sent, p.ap_sms_not_sent, p.ap_sms_code, p.ap_void_failed, p.ap_sales_voided] {
                 assert_eq!(s.matches("{}").count(), 1, "{l:?}: {s}");
             }
             for s in [p.ap_sms_hi, p.ap_confirm, p.ap_decline, p.ap_card_title, p.ap_what, p.ap_name, p.ap_sms, p.ap_sms_will, p.ap_sms_off, p.ap_sms_cannot, p.ap_pending, p.ap_booked, p.ap_busy, p.ap_confirmed, p.ap_declined, p.ap_cal_added, p.ap_cal_none, p.ap_sms_old_app, p.ap_sms_offline, p.ap_sms_timeout, p.ap_already, p.ap_sms_busy, p.ap_cal_removed] {
@@ -1995,6 +2002,9 @@ mod tests {
 
     #[test]
     fn replaced_booked_times_are_listed() {
+        // The summary judged it a sales call after the call: the deleted event is named.
+        let gone = Earlier::of(&appt("2026-11-14T15:00", "2026-11-14T16:00", "看房"));
+        assert_eq!(sales_void_line(&gone), "📅 判定是推銷電話，已取消通話中排入的預約：11/14（週六）15:00–16:00 看房");
         let book = CallAppointments::new();
         let mut first = appt("2026-11-14T15:00", "2026-11-14T16:00", "看房");
         first.event_id = "ev1".into();

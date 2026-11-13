@@ -1249,23 +1249,31 @@ pub(crate) fn stall_keyword_hits(caller_text: &str) -> Vec<&'static str> {
 }
 
 /// Add new distinct sales/scam keywords found in the caller's words; returns
-/// the score they add. `hits` accumulates across the whole call.
+/// the score they add. `hits` accumulates across the whole call. A word inside
+/// a longer one that also hit counts once, as the longer one: 免費 and 試用 in
+/// 免費試用, "insurance" in "life insurance", 無料 in 無料体験.
 fn stall_score_add(caller_text: &str, hits: &mut Vec<&'static str>) -> u32 {
     // Live STT writes 帳戶 as 賬戶 too.
     let t = crate::zh_tw::norm(caller_text).to_ascii_lowercase().replace('賬', "帳");
-    let mut add = 0;
-    for &(kw, w) in STALL_KEYWORDS {
-        if !hits.contains(&kw) && t.contains(kw) {
-            hits.push(kw);
-            add += w;
-        }
-    }
+    let mut found: Vec<(&'static str, u32)> =
+        STALL_KEYWORDS.iter().filter(|(kw, _)| t.contains(kw)).copied().collect();
     // Other languages' lists (whole words; see `locale`).
     for (kw, w) in crate::locale::stall_hits(caller_text) {
-        if !hits.contains(&kw) {
-            hits.push(kw);
-            add += w;
+        if !found.iter().any(|(k, _)| *k == kw) {
+            found.push((kw, w));
         }
+    }
+    let longer = |kw: &str, k: &str| k.len() > kw.len() && k.contains(kw);
+    let mut add = 0;
+    for &(kw, w) in &found {
+        if hits.contains(&kw)
+            || found.iter().any(|&(k, _)| longer(kw, k))
+            || hits.iter().any(|&h| longer(kw, h))
+        {
+            continue;
+        }
+        hits.push(kw);
+        add += w;
     }
     add
 }
@@ -1291,23 +1299,34 @@ fn stall_engages(score: u32, hits: &[&'static str]) -> bool {
 /// made at a branch, where 信用卡／轉帳 would otherwise score as a pitch.
 const OWN_MATTER_MARKS: &[&str] = &[
     "您反應", "你反應", "您有反應", "你有反應", "您的反應", "您反映", "你反映", "您有反映",
-    "你有反映", "您的反映", "申訴", "客訴", "調查結果", "調查的結果",
+    "你有反映", "您的反映", "申訴", "客訴", "調查結果", "調查的結果", "您申請的", "你申請的",
 ];
 
-fn looks_like_own_matter(caller_text: &str) -> bool {
+pub(crate) fn looks_like_own_matter(caller_text: &str) -> bool {
     let t = crate::zh_tw::norm(caller_text);
     OWN_MATTER_MARKS.iter().any(|m| t.contains(m)) || crate::locale::own_matter(caller_text)
+}
+
+/// The caller's side of the merged dialogue (its 對方 lines).
+fn caller_lines(dialogue: &str) -> String {
+    dialogue
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("對方："))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// After the call: the caller was following up on the owner's own matter
+/// (never a pitch, whatever the summary says).
+pub(crate) fn dialogue_own_matter(dialogue: &str) -> bool {
+    looks_like_own_matter(&caller_lines(dialogue))
 }
 
 /// After the call: the caller's words (the merged dialogue's 對方 lines) score
 /// as a sales / scam call by the same rule as during the call. Catches a pitch
 /// the live check missed or judged too late to matter.
 pub(crate) fn dialogue_is_sales(dialogue: &str) -> bool {
-    let caller = dialogue
-        .lines()
-        .filter_map(|l| l.trim().strip_prefix("對方："))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let caller = caller_lines(dialogue);
     if caller.trim().is_empty() || looks_like_own_matter(&caller) {
         return false;
     }
@@ -1759,6 +1778,9 @@ struct RepeatGuard {
     armed: Option<(CallTurn, tokio::time::Instant)>,
     /// A turn is being dropped (until its turnComplete).
     dropping: bool,
+    /// The caller's words came in while a turn was being dropped: that turn
+    /// may have been the answer to them, so it is asked for again.
+    reply_owed: bool,
 }
 
 impl RepeatGuard {
@@ -1808,8 +1830,24 @@ impl RepeatGuard {
         self.dropping
     }
 
+    /// The caller's words arrived: the model's next turn answers them. A turn
+    /// being dropped may have been that answer (a short 「嗯」 the local VAD
+    /// missed and whose transcript came late): it is owed again.
+    fn caller_words(&mut self) {
+        self.armed = None;
+        if self.dropping {
+            self.reply_owed = true;
+        }
+    }
+
+    /// The dropped turn may have answered the caller (see [`Self::caller_words`]).
+    fn reply_owed(&self) -> bool {
+        self.reply_owed
+    }
+
     /// turnComplete: true when it ends the dropped turn.
     fn turn_complete(&mut self) -> bool {
+        self.reply_owed = false;
         std::mem::take(&mut self.dropping)
     }
 
@@ -1817,6 +1855,7 @@ impl RepeatGuard {
     fn interrupted(&mut self) {
         self.armed = None;
         self.dropping = false;
+        self.reply_owed = false;
     }
 }
 
@@ -3734,6 +3773,8 @@ pub async fn run_session(
         {
             idle_nudges += 1;
             model_turn_pending = true;
+            // The nudge asks for a turn: it is no repeat.
+            repeat_guard.clear();
             stall_tx.clear();
             let nudge = if stall_quiet {
                 stall_nudge_chunks = Some(audio_chunks_out);
@@ -3953,6 +3994,12 @@ pub async fn run_session(
                                         );
                                     }
                                 }
+                                // Caller words in this message: what the model says next
+                                // answers them — checked before the repeat guard, so a
+                                // short 「嗯」 is not taken for nobody asking.
+                                if !extract_transcription_snippets(&v).0.is_empty() {
+                                    repeat_guard.caller_words();
+                                }
                                 // A turn the model opened on its own to say again what it said
                                 // before propose_appointment: not played, not written down.
                                 let model_output = server_msg_has_audio(&v) || output_transcription_text(&v).is_some();
@@ -4111,8 +4158,6 @@ pub async fn run_session(
                                 }
                                 // Caller farewell also arms hangup (after model turn / idle).
                                 for s in &in_tx {
-                                    // The caller said something: the model's next turn answers them.
-                                    repeat_guard.clear();
                                     push_tx_window(&mut in_tx_window, s, 800);
                                     push_tx_window(&mut caller_text_all, s, 400);
                                     if !own_matter && looks_like_own_matter(&in_tx_window) {
@@ -4319,13 +4364,34 @@ pub async fn run_session(
                                     chunks_at_turn_start = audio_chunks_out;
                                 }
                                 if turn_complete && dropped_turn {
+                                    let owed = repeat_guard.reply_owed();
                                     repeat_guard.turn_complete();
-                                    model_turn_pending = false;
+                                    model_turn_pending = owed;
                                     turn_out_text.clear();
                                     out_leak_turn = false;
-                                    info!(
-                                        "Gemini Live dropped repeat turn complete serial={serial} — turn checks skipped"
-                                    );
+                                    if owed {
+                                        // The caller spoke during it: it may have been their
+                                        // answer — ask for the reply again, as after a switch.
+                                        match send_text_before_deadline(
+                                            &mut sink,
+                                            persona_resume_reply_client_content(),
+                                            tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
+                                            "gemini dropped-turn reply kick send",
+                                        )
+                                        .await
+                                        {
+                                            Ok(()) => info!(
+                                                "Gemini Live dropped turn may have answered the caller serial={serial} — reply asked for again"
+                                            ),
+                                            Err(e) => warn!(
+                                                "Gemini Live dropped-turn reply kick failed serial={serial}: {e:#}"
+                                            ),
+                                        }
+                                    } else {
+                                        info!(
+                                            "Gemini Live dropped repeat turn complete serial={serial} — turn checks skipped"
+                                        );
+                                    }
                                 } else if turn_complete && tool_quiet {
                                     info!(
                                         "Gemini Live turnComplete with a function call open serial={serial} open={} — reply still owed, turn checks skipped",
@@ -4649,10 +4715,11 @@ pub async fn run_session(
                 }
                 last_activity_at = now;
                 // Said before the call and answered silently: a turn of its own
-                // right after would be the same line again.
+                // right after would be the same line again. Not once the call is
+                // judged sales / scam: the stalling kicks own every turn then.
                 if let Some(call) = done
                     .after_speech
-                    .filter(|_| crate::appointments::answer_is_silent(&done.name, &done.response))
+                    .filter(|_| !stall_on && crate::appointments::answer_is_silent(&done.name, &done.response))
                 {
                     repeat_guard.arm(call, turns_done, audio_chunks_out > chunks_at_turn_start, now);
                     info!(
@@ -5709,6 +5776,64 @@ mod tests {
         assert!(!answer_is_silent(PROPOSE, &json!({"status": "pending_owner_confirmation", "not_booked": true})));
         assert!(!answer_is_silent(PROPOSE, &json!({"error": "weekday_mismatch", "date_is": "Thursday"})));
         assert!(!answer_is_silent(CHECK, &json!({"free": true})));
+    }
+
+    #[test]
+    fn a_short_caller_word_is_never_taken_for_nobody_asking() {
+        let now = tokio::time::Instant::now();
+        let call = CallTurn { turns_done: 3, caller_eous: 2 };
+        let mut g = RepeatGuard::default();
+        // 「嗯」 opened no local turn, but its transcript came before the reply: nothing dropped.
+        g.arm(call, 4, false, now);
+        g.caller_words();
+        assert!(!g.drops(4, false, 2, false, now));
+        assert!(!g.reply_owed());
+        // Its transcript came only once the reply was being dropped: the reply is owed again.
+        g.arm(call, 4, false, now);
+        assert!(g.drops(4, false, 2, false, now));
+        g.caller_words();
+        assert!(g.is_dropping() && g.reply_owed());
+        assert!(g.turn_complete());
+        assert!(!g.reply_owed() && !g.is_dropping());
+        // A cut-in ends it all.
+        g.arm(call, 4, false, now);
+        assert!(g.drops(4, false, 2, false, now));
+        g.caller_words();
+        g.interrupted();
+        assert!(!g.reply_owed() && !g.is_dropping());
+    }
+
+    #[test]
+    fn a_word_inside_a_longer_hit_counts_once() {
+        // 免費 1 + 試用 1 + 免費試用 2 made 「免費試用」 alone a sales call.
+        let mut hits = Vec::new();
+        let s = stall_score_add("我們現在有免費試用喔", &mut hits);
+        assert_eq!((s, hits.clone()), (2, vec!["免費試用"]));
+        assert!(!stall_engages(s, &hits));
+        // Later, the short word alone adds nothing either.
+        assert_eq!(stall_score_add("真的免費嗎", &mut hits), 0);
+        let mut hits = Vec::new();
+        assert_eq!(stall_score_add("I'm calling about life insurance", &mut hits), 2, "{hits:?}");
+        let mut hits = Vec::new();
+        assert_eq!(stall_score_add("無料体験はいかがですか", &mut hits), 2, "{hits:?}");
+        // Separate words still add up.
+        let mut hits = Vec::new();
+        assert!(stall_engages(stall_score_add("這套軟體有免費試用", &mut hits), &hits), "{hits:?}");
+    }
+
+    #[test]
+    fn replies_about_the_owners_own_matter_are_no_pitch() {
+        for t in [
+            "您好，這邊是中信銀行，您申請的信用卡已經核卡了，想跟您確認寄送地址",
+            "Hi, it's Dana from Acme support, following up on the issue you had with our router",
+        ] {
+            assert!(looks_like_own_matter(t), "{t}");
+        }
+        // "Your order" / "your account" open many scams: they do not count.
+        assert!(!looks_like_own_matter("There is a problem with your order, we need to refund you"));
+        assert!(dialogue_own_matter("接聽：喂？\n對方：您申請的信用卡額度調整好了，分期的部分也可以跟您說明"));
+        assert!(!dialogue_is_sales("接聽：喂？\n對方：您申請的信用卡額度調整好了，分期的部分也可以跟您說明"));
+        assert!(!dialogue_own_matter("接聽：您申請的那個我晚點看\n對方：我們有免費試用的軟體"));
     }
 
     #[test]

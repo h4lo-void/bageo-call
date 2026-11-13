@@ -8045,15 +8045,20 @@ fn spawn_ai_talk_tg_summary(
             body.insert_str(0, &format!("{}\n", locale::phrases(locale::current()).s_ai_fail_prefix));
         }
 
-        // A sales / scam call the check during the call missed: the summary
-        // says so (or, when no summary model answered, the caller's words
+        // An appointment from a sales / scam call the check during the call
+        // missed: the summary marks the call so, in the words its prompt
+        // prescribes (or, when no summary model answered, the caller's words
         // score as one — the model's judgement beats keywords: a bank booking
-        // a visit about the owner's own loan is no pitch). Like a call judged
-        // during the call: no appointment, no card, and what it put in the
-        // calendar is deleted.
+        // a visit about the owner's own loan is no pitch). A caller following
+        // up on the owner's own matter never is. Like a call judged during the
+        // call: no card, what it put in the calendar is deleted, and the
+        // summary says so. Calls without an appointment are left as they were.
         let late_sales = !stalled
+            && appointment.is_some()
+            && !gemini_live::dialogue_own_matter(&live_full)
             && (deepseek::summary_says_sales(locale::current(), &body)
                 || (note_source != "deepseek" && gemini_live::dialogue_is_sales(&live_full)));
+        let mut sales_voided: Vec<appointments::Earlier> = Vec::new();
         if late_sales {
             if let Some(a) = appointment.take() {
                 let events = appointments::all_events(&a);
@@ -8063,6 +8068,10 @@ fn spawn_ai_talk_tg_summary(
                     events.len(),
                     failed.len()
                 );
+                sales_voided = events
+                    .into_iter()
+                    .filter(|e| !e.event_id.is_empty() && !failed.contains(e))
+                    .collect();
                 void_failed.extend(failed);
             }
         }
@@ -8153,6 +8162,10 @@ fn spawn_ai_talk_tg_summary(
             for e in &void_failed {
                 body.push('\n');
                 body.push_str(&appointments::void_failed_line(e));
+            }
+            for e in &sales_voided {
+                body.push('\n');
+                body.push_str(&appointments::sales_void_line(e));
             }
             let link = call_detail_line(&eff, &call_id);
             if !link.is_empty() {

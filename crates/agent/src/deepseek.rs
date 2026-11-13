@@ -65,7 +65,7 @@ You are given:\n\
 \n\
 Output exactly four lines with these labels:\n\
 {s_caller}: who it was, in the caller's own words (a name, a company, a courier); if they did not say, write that they did not say. Turn obvious speech-recognition errors into a sensible name.\n\
-{s_matter}: what they wanted, in one or two short concrete phrases. A sales call, scam or recorded advertisement: say so, and what was being sold. If they said nothing: that they hung up without saying anything.\n\
+{s_matter}: what they wanted, in one or two short concrete phrases. A sales call or recorded advertisement: start this line with \"{s_sales}:\" and what was being sold. A call that looks like a scam: start it with \"{s_scam}\". Use these two only for calls that are themselves selling or scamming, not for a bank, the police or anyone else calling about fraud. If they said nothing: that they hung up without saying anything.\n\
 {s_reply}: how the AI answered, in one phrase; if it only said hello, say so.\n\
 {s_todo}: whether {owner} has to do anything, as a clear action (call someone back about something, be home for a delivery tomorrow afternoon); otherwise that there is nothing to do. Sales and scam calls: nothing to do.\n\
 \n\
@@ -90,11 +90,14 @@ pub fn summary_system_prompt(lang: Lang, owner: &str) -> String {
         ),
         other => {
             let p = locale::phrases(other);
+            let (sales, scam) = sales_labels(other);
             SUMMARY_SYSTEM_PROMPT_EN
                 .replace("{owner}", &owner)
                 .replace("{language}", p.name_en)
                 .replace("{s_caller}", p.s_caller)
                 .replace("{s_matter}", p.s_matter)
+                .replace("{s_sales}", sales)
+                .replace("{s_scam}", scam)
                 .replace("{s_reply}", p.s_reply)
                 .replace("{s_todo}", p.s_todo)
                 .replace("{s_ai_failed}", p.s_ai_failed)
@@ -342,28 +345,76 @@ pub fn is_fallback_summary(text: &str) -> bool {
         || text.contains(locale::phrases(locale::current()).s_no_summary)
 }
 
-/// The summary's "what they wanted" line calls the call a sales pitch or a
-/// scam (the summary prompt asks it to say so) — one the keyword check during
-/// the call missed. Only that line counts; "not a sales call" does not.
+/// How the summary prompt tells the model to mark a sales call and a likely
+/// scam on its "what they wanted" line (the Chinese prompt has its own:
+/// 「推銷電話：…」「疑似詐騙」).
+fn sales_labels(lang: Lang) -> (&'static str, &'static str) {
+    match lang {
+        Lang::ZhTw => ("推銷電話", "疑似詐騙"),
+        Lang::ZhCn => ("推销电话", "疑似诈骗"),
+        Lang::En => ("Sales call", "Suspected scam"),
+        Lang::Ja => ("営業電話", "詐欺の疑い"),
+        Lang::Ko => ("영업 전화", "사기 의심"),
+        Lang::Es => ("Llamada comercial", "Posible estafa"),
+        Lang::Fr => ("Démarchage", "Arnaque présumée"),
+        Lang::De => ("Werbeanruf", "Betrugsverdacht"),
+        Lang::Pt => ("Ligação de vendas", "Suspeita de golpe"),
+    }
+}
+
+/// Words of a matter line about fraud that is not itself a pitch or a scam: a
+/// bank's fraud desk, the police, a report the owner made.
+const NOT_A_PITCH: &[&str] = &[
+    "防詐", "防诈", "反詐", "反诈", "報案", "报案", "165", "筆錄", "笔录", "警察", "派出所",
+    "被詐騙", "被诈骗", "不是推銷", "不是推销", "不是詐騙", "不是诈骗",
+    "fraud department", "fraud alert", "fraud team", "fraud prevention", "anti-fraud", "antifraud",
+    "police", "not a sales", "not sales", "not a scam",
+    "詐欺対策", "被害届", "不正利用",
+    "사기 예방", "경찰", "피해 신고", "부정 사용",
+    "departamento de fraude", "policía", "denuncia", "no es una estafa",
+    "anti-fraude", "service fraude", "gendarmerie", "plainte", "pas une arnaque",
+    "betrugsabteilung", "betrugsprävention", "polizei", "anzeige", "kein betrug",
+    "departamento de fraudes", "polícia", "boletim de ocorrência", "não é golpe",
+];
+
+/// The summary's "what they wanted" line marks the call as a sales call or a
+/// likely scam in the words the summary prompt prescribes — a call the keyword
+/// check during the call missed. Only those words count: "fraud" or 詐騙 alone
+/// also stand in a line about the bank's fraud desk or a police report; such
+/// lines, and lines about the owner's own matter, are never a pitch.
 pub fn summary_says_sales(lang: Lang, summary: &str) -> bool {
-    let marks: &[&str] = match lang {
-        Lang::ZhTw | Lang::ZhCn => &["推銷", "推销", "詐騙", "诈骗", "電銷", "电销"],
-        Lang::En => &["sales call", "sales pitch", "telemarket", "marketing call", "cold call", "robocall", "scam", "fraud"],
-        Lang::Ja => &["営業電話", "セールス", "勧誘", "詐欺"],
-        Lang::Ko => &["영업 전화", "판매 전화", "광고 전화", "텔레마케팅", "보이스피싱", "사기"],
-        Lang::Es => &["llamada comercial", "llamada de ventas", "venta telefónica", "telemarketing", "estafa", "fraude"],
-        Lang::Fr => &["démarchage", "appel commercial", "prospection", "arnaque", "escroquerie", "fraude"],
-        Lang::De => &["werbeanruf", "verkaufsanruf", "kaltakquise", "telefonwerbung", "betrug"],
-        Lang::Pt => &["ligação de vendas", "ligação comercial", "telemarketing", "golpe", "fraude"],
+    let (sales, scam) = sales_labels(lang);
+    let extra: &[&str] = match lang {
+        Lang::ZhTw | Lang::ZhCn => &["語音廣告", "语音广告"],
+        Lang::En => &["sales pitch", "likely scam", "probable scam", "sales call"],
+        Lang::Ja => &["セールス電話", "詐欺電話"],
+        Lang::Ko => &["판매 전화", "광고 전화"],
+        Lang::Es => &["llamada de ventas", "presunta estafa", "intento de estafa"],
+        Lang::Fr => &["appel commercial", "arnaque probable", "tentative d'arnaque"],
+        Lang::De => &["verkaufsanruf", "betrugsversuch"],
+        Lang::Pt => &["ligação comercial", "tentativa de golpe"],
     };
-    let negated = ["不是推銷", "不是推销", "不是詐騙", "不是诈骗", "not a sales", "not sales", "not a scam", "kein betrug", "pas une arnaque", "no es una estafa", "não é golpe"];
     let label = locale::phrases(lang).s_matter;
     summary
         .lines()
         .map(str::trim)
         .filter_map(|l| l.strip_prefix(label).or_else(|| l.strip_prefix("事情")))
-        .map(str::to_lowercase)
-        .any(|line| !negated.iter().any(|n| line.contains(n)) && marks.iter().any(|m| line.contains(m)))
+        .map(|l| l.trim_start_matches(|c: char| c.is_whitespace() || c == ':' || c == '：').to_lowercase())
+        .any(|line| {
+            let marked = if lang.is_zh() {
+                // 「推銷電話：…」 opens the line; 「疑似詐騙」 may stand anywhere
+                // (either script: the summary is put into Traditional first).
+                ["推銷電話", "推销电话"].iter().chain(extra).any(|m| line.starts_with(m))
+                    || ["疑似詐騙", "疑似诈骗"].iter().any(|m| line.contains(m))
+            } else {
+                line.starts_with(&sales.to_lowercase())
+                    || line.contains(&scam.to_lowercase())
+                    || extra.iter().any(|m| line.contains(m))
+            };
+            marked
+                && !NOT_A_PITCH.iter().any(|n| line.contains(n))
+                && !crate::gemini_live::looks_like_own_matter(&line)
+        })
 }
 
 /// Pull `APIKey` from opaque `TRTC_LLM_CONFIG` JSON (never log the value).
@@ -1017,12 +1068,43 @@ mod tests {
     fn a_summary_that_calls_it_sales_or_a_scam_is_recognised() {
         assert!(summary_says_sales(Lang::En, "Caller: Mia from Brightdesk\nAbout: Sales call pitching CRM software, wants a 15-minute demo\nAI said: listened\nTo do: nothing"));
         assert!(summary_says_sales(Lang::ZhTw, "對方：保險業務\n事情：推銷電話：醫療險\nAI 回覆：陪他聊\n要處理：不用"));
-        assert!(summary_says_sales(Lang::De, "Anrufer: unbekannt\nAnliegen: Verdacht auf Betrug (Gewinnspiel)"));
-        assert!(summary_says_sales(Lang::Ja, "相手：不明\n用件：光回線の勧誘"));
+        assert!(summary_says_sales(Lang::ZhTw, "事情：疑似詐騙，自稱檢察官要求轉帳"));
+        assert!(summary_says_sales(Lang::En, "About: Suspected scam: a parcel held at customs, asked for a card number"));
+        assert!(summary_says_sales(Lang::De, "Anrufer: unbekannt\nAnliegen: Betrugsverdacht (Gewinnspiel)"));
+        assert!(summary_says_sales(Lang::Ja, "相手：不明\n用件：営業電話：光回線の案内"));
         // A friend inviting the owner to dinner; "not a sales call"; the word elsewhere.
         assert!(!summary_says_sales(Lang::En, "Caller: Jonas\nAbout: dinner tonight at 8\nAI said: will check\nTo do: confirm with Jonas"));
         assert!(!summary_says_sales(Lang::En, "About: the bank calling back, not a sales call"));
         assert!(!summary_says_sales(Lang::En, "Caller: a scam-prevention officer\nAbout: your report from Monday"));
         assert!(!summary_says_sales(Lang::ZhTw, "對方：小明\n事情：約明天中午吃飯"));
+    }
+
+    #[test]
+    fn calls_about_fraud_are_not_called_a_pitch() {
+        // Real calls about fraud: the bank's fraud desk, the police, the owner's own report.
+        for (lang, s) in [
+            (Lang::ZhTw, "對方：中國信託\n事情：銀行防詐騙中心確認一筆可疑刷卡，請明天上午回電"),
+            (Lang::ZhTw, "對方：派出所\n事情：派出所通知你被詐騙的案子，約明天去做筆錄"),
+            (Lang::ZhTw, "事情：165 反詐騙專線回覆你的報案"),
+            (Lang::ZhTw, "事情：說他們在推銷的方案你上次有問過"),
+            (Lang::En, "Caller: First Bank\nAbout: bank fraud department about a suspicious charge, call back at 3 pm"),
+            (Lang::En, "About: fraud alert on your card, they want you to confirm a purchase"),
+            (Lang::En, "About: scam warning from the police about fake parcel texts"),
+            (Lang::En, "About: following up on your complaint about a sales call they made"),
+            (Lang::De, "Anliegen: Polizei wegen Ihrer Anzeige zum Betrugsverdacht"),
+            (Lang::Es, "Asunto: departamento de fraude del banco por un cargo sospechoso"),
+        ] {
+            assert!(!summary_says_sales(lang, s), "{lang:?}: {s}");
+        }
+        // Only the prescribed words, not "fraud" / "scam" / 詐騙 / 推銷 on their own.
+        assert!(!summary_says_sales(Lang::En, "About: fraud on the account, wants a call back"));
+        assert!(!summary_says_sales(Lang::En, "About: talked about a scam on the news"));
+        assert!(!summary_says_sales(Lang::ZhTw, "事情：問你上次說的詐騙新聞"));
+        // Every language's prompt names its two marks.
+        for l in locale::ALL {
+            let (sales, scam) = sales_labels(l);
+            let p = summary_system_prompt(l, "Alex");
+            assert!(l.is_zh() || (p.contains(sales) && p.contains(scam) && !p.contains("{s_sales}")), "{l:?}");
+        }
     }
 }

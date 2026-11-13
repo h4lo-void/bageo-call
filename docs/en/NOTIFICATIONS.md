@@ -82,8 +82,16 @@ ID); other channels only get the line under the summary. Without Telegram,
 decide through the [API](API.md#appointments).
 
 When a call that already put an event in your calendar turns out to be a sales
-or scam call (during the call, or by its summary afterwards), the event is
-deleted after the call and no card comes. If Google refuses, the summary says so:
+or scam call (during the call, or afterwards when its summary marks it "Sales
+call" or "Suspected scam" — a bank's fraud desk or the police calling about
+fraud does not count), the event is deleted after the call and no card comes.
+When the summary made that call, it says so:
+
+```text
+📅 Judged a sales call, so the appointment booked during the call was canceled: Sat, Nov 14, 3:00 PM–4:00 PM House viewing
+```
+
+If Google refuses to delete it, the summary says that instead:
 
 ```text
 📅 "Sat, Nov 14, 3:00 PM–4:00 PM House viewing" from the call was canceled but couldn't be removed from your calendar. Please delete it yourself.
