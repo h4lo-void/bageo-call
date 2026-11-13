@@ -86,9 +86,7 @@ flowchart LR
    (`pixelcallai_uplink-<version>.zip`) in Magisk / KernelSU, reboot, open the
    **Myna** app and work through its checklist. Turn on USB debugging,
    plug the phone into the computer and accept the "Allow USB debugging?"
-   prompt. → [Phone setup](docs/en/PHONE.md) (Version 0.2.0 of the phone app
-   has not been tested on a real phone yet; read *Project status* below before
-   you flash it.)
+   prompt. → [Phone setup](docs/en/PHONE.md)
 5. **Check and call.** The *System* page of the web console shows the phone as
    connected. Call the phone's number from another phone: it rings once, the AI
    answers, and the call shows up in the console with its recording and summary.
@@ -141,15 +139,16 @@ Be aware of what has and has not been proven:
   itself on macOS and Linux, the notification services other than Telegram
   (their requests are unit-tested against each service's documented format,
   not against live accounts), the calendar suggestion, version 0.2 of the phone
-  app's setup screen, the Docker image, and the release workflow.
-- **Phone app 0.2.0 has not been run on a real phone yet.** The phones in daily
-  use still run the previous version of the app. Version 0.2.0 builds, but
-  nobody has installed it and taken a call with it. Flash it on a spare phone
-  and read the [rollback steps](docs/en/PHONE.md#rollback) first.
-- **The module in the release is signed with a temporary key.** That is fine
-  for a first install. Until the project has a fixed key, expect each release
-  to be signed with a different one: remove the module and reboot before you
-  install a newer release.
+  app's setup screen, the Docker image, and the desktop downloads from the
+  Releases page.
+- **Phone app 0.2.0 answers real calls** on the Pixel 7, 7a and 9 in daily use
+  (Android 16, KernelSU-Next), and SMS forwarding works with it. Those phones
+  were updated from the previous version, so setting up a phone from scratch
+  with 0.2.0 has not been done yet.
+- **The phone module is signed with the project's own key**, so later releases
+  install over it. If you installed the module from the first v0.2.0 download,
+  which was signed with a temporary key, you can install the current one over
+  it: on our phones Android accepted the new key and kept the app's data.
 
 Bug reports with the agent's log and what you expected are very welcome. See
 [CONTRIBUTING.md](CONTRIBUTING.md).

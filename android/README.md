@@ -80,6 +80,12 @@ Notes:
   you move between builds signed by different keys (another machine, a release vs. your
   own build), remove the module and reboot before installing the other one — not doing
   so has not been tested.
+- Releases on GitHub are signed with the project's own key, kept as repository secrets
+  (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
+  `ANDROID_KEY_PASSWORD`), so one release installs over the previous one. Moving the
+  phones in daily use from a debug-key build to the release key by installing the new
+  module over the old one worked: Android logged *signature changed; retaining data*
+  and kept the app's data and permissions.
 
 ## Install
 
