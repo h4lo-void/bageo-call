@@ -66,18 +66,28 @@ Text message: sent to the caller once you confirm or decline
 [✅ Confirm] [❌ Decline]
 ```
 
-**✅ Confirm** puts it in Google Calendar; **❌ Decline** leaves the calendar
+**✅ Confirm** puts it in Google Calendar; **❌ Decline** removes an event the call already put there and leaves the rest of the calendar
 alone. With *Text the caller* on, the phone that took the call then texts the
-caller in your name. The bot answers with what happened: "Added to Google
+caller in your name — only the time, never what the appointment is about. Only
+the first press counts; a second one (also at the same moment) gets "This
+appointment was already handled". The bot answers with what happened: "Added to Google
 Calendar" (or why not), "Text sent to 0912345678", or "Text not sent: the phone
 is not connected" / "the phone app is too old to send texts" / "error code
 no_service". For a landline, a hidden or a foreign number the card says to call
 back yourself. After *Book it if I'm free* the text goes out right after the
 call and the bot reports it the same way.
 
-Cards need the Telegram channel (bot token and chat ID); other channels only
-get the line under the summary. Without Telegram, decide through the
-[API](API.md#appointments).
+Cards need *Send notifications* on and the Telegram channel (bot token and chat
+ID); other channels only get the line under the summary. Without Telegram,
+decide through the [API](API.md#appointments).
+
+When a call that already put an event in your calendar turns out to be a sales
+or scam call, the event is deleted after the call. If Google refuses, the
+summary says so:
+
+```text
+📅 "Sat Nov 14, 15:00–16:00 House viewing" from the call no longer stands but could not be removed from your calendar; delete it yourself
+```
 
 ## Services
 

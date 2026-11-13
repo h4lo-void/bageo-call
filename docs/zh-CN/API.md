@@ -81,13 +81,13 @@ PUT /calls/api/settings
 }
 ```
 
-时间是本地时间（`TZ`）。`status`：`pending`（等你决定）、`booked`（通话中已写进日历）、`confirmed`、`declined`。`event_id`：写进 Google 日历后的日程 ID。`auto_error`：“有空直接答应”没能排入的原因。`replaced`：同一通电话里先前已写进日历、后来改掉的时间。`sms`：`sent`，或短信没发出的原因（`offline`、`old_app`、`timeout`、`no_number`，或手机返回的错误代码）。空的字段不会出现。
+时间是本地时间（`TZ`）。`status`：`pending`（等你决定）、`booked`（通话中已写进日历）、`confirmed`、`declined`。`event_id`：写进 Google 日历后的日程 ID。`auto_error`：“有空直接答应”没能排入的原因。`replaced`：同一通电话里先前已写进日历、后来改掉的时间。`sms`：`sent`，或短信没发出的原因（`offline`、`old_app`、`timeout`、`busy`、`no_number`，或手机返回的错误代码）。空的字段不会出现。主程序写进日历的日程都带私有扩展属性 `myna_call=<appointment.tag>`，写入时没收到响应的那条之后能找回来，不会写两次。
 
 | 方法和路径 | 内容 |
 |---|---|
 | `GET /calls/api/tasks` | 任务，最新的在前（最多 200 条）：`{ok, tasks}`。 |
-| `POST /calls/api/tasks/{id}/confirm` | 对预约来说等于在卡片上按 **✅ 确定**——写进 Google 日历，接着（开启 `appointment_sms` 时）给对方发短信，可能要等最多 90 秒。响应 `{ok, task, message}`；`message` 是 Telegram Bot 会回复的那段文字。已经确定或婉拒过的，再按一次不会有任何变化。 |
-| `POST /calls/api/tasks/{id}/ignore` | 对预约来说等于 **❌ 婉拒**（日历不动；开启 `appointment_sms` 时发短信）。响应同上。 |
+| `POST /calls/api/tasks/{id}/confirm` | 对预约来说等于在卡片上按 **✅ 确定**——写进 Google 日历，接着（开启 `appointment_sms` 时）给对方发短信，可能要等最多 90 秒。响应 `{ok, task, message}`；`message` 是 Telegram Bot 会回复的那段文字。只有第一次决定会执行：之后再确定或婉拒——包括第一次还在处理时发来的，或在 Telegram 卡片上按的——都只回复“已经处理过了”，不会有任何变化。请求要带 `Content-Type: application/json`（不用 body），否则返回 HTTP 400 `bad_request`，这样别的网页无法通过你局域网里的浏览器替你决定。 |
+| `POST /calls/api/tasks/{id}/ignore` | 对预约来说等于 **❌ 婉拒**（通话中已经写进日历的那条会删掉；开启 `appointment_sms` 时发短信）。响应与规则同上。 |
 
 ## 手机与健康状态
 

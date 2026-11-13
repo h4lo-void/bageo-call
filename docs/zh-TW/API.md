@@ -81,13 +81,13 @@ PUT /calls/api/settings
 }
 ```
 
-時間是當地時間（`TZ`）。`status`：`pending`（等你決定）、`booked`（通話中已寫進日曆）、`confirmed`、`declined`。`event_id`：寫進 Google 日曆後的活動 ID。`auto_error`：「有空直接答應」沒能排入的原因。`replaced`：同一通電話裡先前已寫進日曆、後來改掉的時間。`sms`：`sent`，或簡訊沒傳出的原因（`offline`、`old_app`、`timeout`、`no_number`，或手機回的錯誤代碼）。空的欄位不會出現。
+時間是當地時間（`TZ`）。`status`：`pending`（等你決定）、`booked`（通話中已寫進日曆）、`confirmed`、`declined`。`event_id`：寫進 Google 日曆後的活動 ID。`auto_error`：「有空直接答應」沒能排入的原因。`replaced`：同一通電話裡先前已寫進日曆、後來改掉的時間。`sms`：`sent`，或簡訊沒傳出的原因（`offline`、`old_app`、`timeout`、`busy`、`no_number`，或手機回的錯誤代碼）。空的欄位不會出現。主程式寫進日曆的活動都帶私有擴充屬性 `myna_call=<appointment.tag>`，寫入時沒收到回應的那筆之後找得回來，不會寫兩次。
 
 | 方法與路徑 | 內容 |
 |---|---|
 | `GET /calls/api/tasks` | 任務，最新的在前（最多 200 筆）：`{ok, tasks}`。 |
-| `POST /calls/api/tasks/{id}/confirm` | 對預約來說等於在卡片上按 **✅ 確定**——寫進 Google 日曆，接著（開了 `appointment_sms` 時）傳簡訊給對方，可能要等最多 90 秒。回應 `{ok, task, message}`；`message` 是 Telegram Bot 會回的那段文字。已經確定或婉拒過的，再按一次不會有任何變化。 |
-| `POST /calls/api/tasks/{id}/ignore` | 對預約來說等於 **❌ 婉拒**（日曆不動；開了 `appointment_sms` 時傳簡訊）。回應同上。 |
+| `POST /calls/api/tasks/{id}/confirm` | 對預約來說等於在卡片上按 **✅ 確定**——寫進 Google 日曆，接著（開了 `appointment_sms` 時）傳簡訊給對方，可能要等最多 90 秒。回應 `{ok, task, message}`；`message` 是 Telegram Bot 會回的那段文字。只有第一次決定會執行：之後再確定或婉拒——包括第一次還在處理時送來的，或在 Telegram 卡片上按的——都只回「已經處理過了」，不會有任何變化。請求要帶 `Content-Type: application/json`（不用 body），否則回 HTTP 400 `bad_request`，這樣別的網頁沒辦法透過你區網裡的瀏覽器替你決定。 |
+| `POST /calls/api/tasks/{id}/ignore` | 對預約來說等於 **❌ 婉拒**（通話中已經寫進日曆的那筆會刪掉；開了 `appointment_sms` 時傳簡訊）。回應與規則同上。 |
 
 ## 手機與健康狀態
 

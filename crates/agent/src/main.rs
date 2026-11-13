@@ -2877,6 +2877,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         }
                                     }
                                     maybe_notify_voicemail(&state, &call, &vm_notified);
+                                    let appointment_book = call.appointment_book();
                                     let record = state.calls.finalize(call, "ended").await;
                                     save_reject_list_notes(&state, &record);
                                     // Press-1 Gemini/TRTC: notification with full transcript (brief delay for last STT).
@@ -2887,6 +2888,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                             &state,
                                             &record,
                                             gemini_transcript.clone(),
+                                            appointment_book,
                                         );
                                     }
                                 }
@@ -3672,10 +3674,11 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                 info!(
                     "call reattach window expired id={call_id} serial={ser} — finalize"
                 );
+                let appointment_book = call.appointment_book();
                 let record = store.finalize(call, "ended").await;
                 save_reject_list_notes(&notify_state, &record);
                 if trtc_ai_ended || record_had_ai_fail_hangup(&record.events) {
-                    spawn_ai_talk_tg_summary(&notify_state, &record, transcript);
+                    spawn_ai_talk_tg_summary(&notify_state, &record, transcript, appointment_book);
                 }
             }
         });
@@ -7854,6 +7857,7 @@ fn spawn_ai_talk_tg_summary(
     state: &AppState,
     record: &CallRecord,
     live_transcript: Arc<std::sync::Mutex<String>>,
+    appointment_book: Option<Arc<appointments::CallAppointments>>,
 ) {
     let http = state.http.clone();
     let settings = state.settings.clone();
@@ -7872,8 +7876,8 @@ fn spawn_ai_talk_tg_summary(
     // Nothing from the AI reached the caller: Gemini's own transcript is text it
     // generated but never played (e.g. 「喂？你好。」 with 0 audio) — drop it.
     let ai_silent = record.tts_bytes == 0;
-    // The appointment the caller agreed to — never one from a sales / scam call.
-    let appointment = record.appointment.clone().filter(|_| !stalled && !ai_failed);
+    // What the call's record says it agreed to (read again from the call's book below).
+    let recorded_appointment = record.appointment.clone();
     let task_store = state.task_store.clone();
     let control = state.control.clone();
     let call_record = record.clone();
@@ -7881,6 +7885,32 @@ fn spawn_ai_talk_tg_summary(
     tokio::spawn(async move {
         let rt = settings_store.snapshot();
         let eff = rt.effective(&settings);
+        // The appointment the caller agreed to. A proposal may still be writing
+        // to the calendar: wait for it. Never one from a sales / scam call or a
+        // call the AI did not answer — what such a call put in the calendar
+        // (and what was voided during the call) is deleted.
+        let (agreed, mut voided) = match &appointment_book {
+            Some(book) => {
+                book.settled(appointments::TOOL_WAIT).await;
+                (book.outcome(), book.voided())
+            }
+            None => (recorded_appointment, Vec::new()),
+        };
+        let appointment = match agreed {
+            Some(a) if stalled || ai_failed => {
+                voided.extend(appointments::all_events(&a));
+                None
+            }
+            other => other,
+        };
+        let void_failed = appointments::delete_voided(&http, &rt, &voided).await;
+        if !voided.is_empty() {
+            info!(
+                "voided appointment events serial={serial} call_id={call_id} count={} not_deleted={}",
+                voided.len(),
+                void_failed.len()
+            );
+        }
         // The web record (summary + full dialogue) is kept even with notifications off.
         let notify_on = notify_configured(&eff);
         let backend = notify_primary_backend(&eff).unwrap_or("none");
@@ -8095,6 +8125,10 @@ fn spawn_ai_talk_tg_summary(
             if let Some(a) = &appointment {
                 body.push('\n');
                 body.push_str(&appointments::summary_line(a));
+            }
+            for e in &void_failed {
+                body.push('\n');
+                body.push_str(&appointments::void_failed_line(e));
             }
             let link = call_detail_line(&eff, &call_id);
             if !link.is_empty() {

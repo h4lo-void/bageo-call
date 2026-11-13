@@ -254,6 +254,12 @@ impl ActiveCall {
         self.appointments = Some(book);
     }
 
+    /// The call's appointment book, read again after the call (a proposal may
+    /// still have been writing to the calendar when the record was sealed).
+    pub fn appointment_book(&self) -> Option<Arc<crate::appointments::CallAppointments>> {
+        self.appointments.clone()
+    }
+
     pub fn set_caller_id(&mut self, caller_id: &str) {
         if !caller_id.is_empty() {
             self.caller_id = caller_id.to_string();

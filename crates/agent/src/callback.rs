@@ -131,6 +131,8 @@ pub enum SmsOutcome {
     Unsupported,
     /// No `send_sms_result` in time.
     Timeout,
+    /// A message with this id is already waiting for its result (not sent twice).
+    Busy,
     /// The phone's error code (one of [`SMS_ERROR_CODES`]).
     Failed(String),
 }
@@ -289,8 +291,14 @@ impl ControlRegistry {
 
     /// Have the phone that took a call (`serial`) text `to` and wait up to
     /// `wait` for its `send_sms_result`. `id`: up to 64 characters (a task id);
-    /// `text` is cut at 500 characters.
+    /// `text` is cut at 500 characters. A message whose id is already waiting
+    /// is not sent again ([`SmsOutcome::Busy`]); the waiting one is left alone.
     pub async fn send_sms(&self, serial: &str, id: &str, to: &str, text: &str, wait: Duration) -> SmsOutcome {
+        let id: String = id.chars().take(SMS_ID_MAX).collect();
+        if self.sms_waiters.lock().await.contains_key(&id) {
+            warn!(serial, id, "send_sms: a message with this id is already waiting");
+            return SmsOutcome::Busy;
+        }
         let picked = {
             let clients = self.clients.lock().await;
             control_serials(serial)
@@ -305,16 +313,18 @@ impl ControlRegistry {
             info!(serial, "send_sms: the phone's app does not send texts");
             return SmsOutcome::Unsupported;
         }
-        let id: String = id.chars().take(SMS_ID_MAX).collect();
         let text: String = text.chars().take(SMS_TEXT_MAX).collect();
         if id.is_empty() || text.trim().is_empty() || !sms_to_ok(to) {
             return SmsOutcome::Failed("bad_request".to_string());
         }
         let (tx, rx) = oneshot::channel();
-        self.sms_waiters
-            .lock()
-            .await
-            .insert(id.clone(), (serial.clone(), tx));
+        {
+            let mut waiters = self.sms_waiters.lock().await;
+            if waiters.contains_key(&id) {
+                return SmsOutcome::Busy;
+            }
+            waiters.insert(id.clone(), (serial.clone(), tx));
+        }
         if let Err(e) = send_ws_json(&sink, send_sms_payload(&id, to, &text)).await {
             self.sms_waiters.lock().await.remove(&id);
             warn!(serial, "send_sms write failed: {e:#}");
@@ -792,6 +802,15 @@ mod tests {
         assert!(reg.handle_sms_result(&msg).await);
         assert_eq!(rx.await.unwrap(), SmsOutcome::Failed("radio_off".into()));
         assert!(!reg.handle_sms_result(&msg).await);
+        // The same id while one waits: refused, and the waiting one still gets its answer.
+        let (tx, rx) = oneshot::channel();
+        reg.sms_waiters.lock().await.insert("t4".into(), ("pixel-1".into(), tx));
+        let again = reg
+            .send_sms("pixel-1", "t4", "+886912345678", "hi", Duration::from_millis(50))
+            .await;
+        assert_eq!(again, SmsOutcome::Busy);
+        assert!(reg.handle_sms_result(&json!({"type": "send_sms_result", "id": "t4", "ok": true})).await);
+        assert_eq!(rx.await.unwrap(), SmsOutcome::Sent);
         // The phone drops: its waiting messages end, its texting flag goes.
         let (tx, rx) = oneshot::channel();
         reg.sms_waiters.lock().await.insert("t3".into(), ("pixel-1".into(), tx));

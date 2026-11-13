@@ -1115,7 +1115,7 @@ fn stall_session_setup(setup: &Value, prompt: &str, model: &str, thinking_level:
         setup_with_system_prompt(setup, prompt)
     };
     // The stalling session takes no appointments.
-    with_appointment_tools(&mut s, false);
+    with_appointment_tools(&mut s, false, false);
     let model = model.trim().trim_start_matches("models/");
     if model.is_empty() {
         return s;
@@ -1144,14 +1144,28 @@ const STALL_PROMPT_SWITCH_FORCE_SECS: u64 = 8;
 
 /// A normal call with appointments on declares their two functions
 /// ([`crate::appointments::tool_declarations`]); every other session has none.
-fn with_appointment_tools(setup: &mut Value, on: bool) {
+/// `non_blocking`: propose_appointment as `NON_BLOCKING`.
+fn with_appointment_tools(setup: &mut Value, on: bool, non_blocking: bool) {
     if let Some(s) = setup.get_mut("setup").and_then(|x| x.as_object_mut()) {
         if on {
-            s.insert("tools".into(), crate::appointments::tool_declarations());
+            s.insert("tools".into(), crate::appointments::tool_declarations(non_blocking));
         } else {
             s.remove("tools");
         }
     }
+}
+
+/// Set once a setup with a `NON_BLOCKING` function was refused for that reason:
+/// later calls declare propose_appointment blocking (its answer stays silent).
+static NON_BLOCKING_REFUSED: AtomicBool = AtomicBool::new(false);
+
+/// The setup failure names the function declaration (not a network hiccup):
+/// stop asking for `NON_BLOCKING` until the agent restarts.
+fn non_blocking_refused(why: &str) -> bool {
+    let w = why.to_ascii_lowercase();
+    ["behavior", "non_blocking", "function_declarations", "functiondeclarations", "invalid argument", "invalid json", "unknown name"]
+        .iter()
+        .any(|k| w.contains(k))
 }
 
 /// The call's system instruction: the stored prompt, then — appointments on —
@@ -1683,6 +1697,9 @@ struct ToolDone {
     id: String,
     name: String,
     response: Value,
+    /// The model waits for it (the watchdogs hold meanwhile); a non-blocking
+    /// one is answered silently and changes nothing in the turn bookkeeping.
+    blocking: bool,
 }
 
 async fn send_text_before_deadline<S>(
@@ -2545,22 +2562,6 @@ pub async fn run_session(
         return Ok(SessionEndReason::Cancelled);
     }
 
-    let connect_fut = tokio_tungstenite::connect_async(&url);
-    let (ws, resp) = match tokio::time::timeout(CONNECT_TIMEOUT, connect_fut).await {
-        Ok(Ok(x)) => x,
-        Ok(Err(e)) => bail!("gemini live ws connect: {e:#}"),
-        Err(_) => bail!(
-            "gemini live ws connect timeout after {}s",
-            CONNECT_TIMEOUT.as_secs()
-        ),
-    };
-    info!(
-        "Gemini Live ws open serial={serial} status={:?} (ConnectAtAnswer / cold)",
-        resp.status()
-    );
-    let (mut sink, mut stream) = ws.split();
-    let mut debug_raw_left = debug_raw_budget();
-
     let voice = {
         let v = voice_name.trim();
         if v.is_empty() {
@@ -2574,98 +2575,147 @@ pub async fn run_session(
     // (with the current local time), and the tools.
     let base_prompt = system_prompt.to_string();
     let system_prompt = call_system_prompt(&base_prompt, appt.as_ref(), chrono::Local::now());
+    let thinking = live_thinking_level(model, thinking_level);
     // Low-latency turn-taking: high EOU sensitivity + short silence.
-    let mut setup = json!({
-        "setup": {
-            "model": model_path,
-            "generationConfig": {
-                "responseModalities": ["AUDIO"],
-                "speechConfig": {
-                    "voiceConfig": {
-                        "prebuiltVoiceConfig": {
-                            "voiceName": voice
+    let build_setup = |non_blocking: bool| -> Value {
+        let mut setup = json!({
+            "setup": {
+                "model": model_path,
+                "generationConfig": {
+                    "responseModalities": ["AUDIO"],
+                    "speechConfig": {
+                        "voiceConfig": {
+                            "prebuiltVoiceConfig": {
+                                "voiceName": voice
+                            }
                         }
                     }
-                }
-            },
-            "systemInstruction": {
-                "parts": [{ "text": system_prompt.as_str() }]
-            },
-            // Capture speech-to-text for the post-call summary. Language hints:
-            // auto-detect read a short Chinese "hello?" as German / Hindi / Korean,
-            // and stall / carrier-prompt / bye detection all read this STT.
-            "inputAudioTranscription": stt_caller_config(),
-            "outputAudioTranscription": stt_ai_config(),
-            "realtimeInputConfig": realtime_input_config(server_vad)
+                },
+                "systemInstruction": {
+                    "parts": [{ "text": system_prompt.as_str() }]
+                },
+                // Capture speech-to-text for the post-call summary. Language hints:
+                // auto-detect read a short Chinese "hello?" as German / Hindi / Korean,
+                // and stall / carrier-prompt / bye detection all read this STT.
+                "inputAudioTranscription": stt_caller_config(),
+                "outputAudioTranscription": stt_ai_config(),
+                "realtimeInputConfig": realtime_input_config(server_vad)
+            }
+        });
+        if let Some(level) = thinking {
+            if let Some(gc) = setup
+                .pointer_mut("/setup/generationConfig")
+                .and_then(|x| x.as_object_mut())
+            {
+                gc.insert("thinkingConfig".into(), json!({ "thinkingLevel": level }));
+            }
         }
-    });
-    let thinking = live_thinking_level(model, thinking_level);
-    if let Some(level) = thinking {
-        if let Some(gc) = setup
-            .pointer_mut("/setup/generationConfig")
-            .and_then(|x| x.as_object_mut())
-        {
-            gc.insert("thinkingConfig".into(), json!({ "thinkingLevel": level }));
-        }
-    }
-    with_appointment_tools(&mut setup, appt.is_some());
-    // Same setup for every call (stalling included): long calls rotate to a fresh
-    // session every ~8 min instead (rotation setups add `historyConfig`).
-    send_text_before_deadline(
-        &mut sink,
-        setup.to_string(),
-        tokio::time::Instant::now() + SETUP_SEND_TIMEOUT,
-        "gemini setup send",
-    )
-    .await?;
-    info!(
-        "Gemini Live setup sent serial={serial} voice={voice} stall={} max_s={} server_vad={server_vad} thinking={} intl={intl_caller} appointments={}",
-        stall.is_some(),
-        if persona { persona_max_secs } else { LIVE_MAX_SECS },
-        thinking.unwrap_or("-"),
-        appt.as_ref().map_or("off", |a| a.mode.as_str())
-    );
-    let mut conn_opened_at = tokio::time::Instant::now();
+        with_appointment_tools(&mut setup, appt.is_some(), non_blocking);
+        setup
+    };
+    // Appointments: propose_appointment goes NON_BLOCKING unless the API refused
+    // that before; a setup that fails with it is sent once more without it.
+    let mut non_blocking = appt.is_some() && !NON_BLOCKING_REFUSED.load(Ordering::Relaxed);
+    let mut debug_raw_left = debug_raw_budget();
+    let (mut sink, mut stream, setup, mut conn_opened_at, setup_ok) = 'connect: loop {
+        let connect_fut = tokio_tungstenite::connect_async(&url);
+        let (ws, resp) = match tokio::time::timeout(CONNECT_TIMEOUT, connect_fut).await {
+            Ok(Ok(x)) => x,
+            Ok(Err(e)) => bail!("gemini live ws connect: {e:#}"),
+            Err(_) => bail!(
+                "gemini live ws connect timeout after {}s",
+                CONNECT_TIMEOUT.as_secs()
+            ),
+        };
+        info!(
+            "Gemini Live ws open serial={serial} status={:?} (ConnectAtAnswer / cold)",
+            resp.status()
+        );
+        let (mut sink, mut stream) = ws.split();
+        let setup = build_setup(non_blocking);
+        // Same setup for every call (stalling included): long calls rotate to a fresh
+        // session every ~8 min instead (rotation setups add `historyConfig`).
+        send_text_before_deadline(
+            &mut sink,
+            setup.to_string(),
+            tokio::time::Instant::now() + SETUP_SEND_TIMEOUT,
+            "gemini setup send",
+        )
+        .await?;
+        info!(
+            "Gemini Live setup sent serial={serial} voice={voice} stall={} max_s={} server_vad={server_vad} thinking={} intl={intl_caller} appointments={} non_blocking={non_blocking}",
+            stall.is_some(),
+            if persona { persona_max_secs } else { LIVE_MAX_SECS },
+            thinking.unwrap_or("-"),
+            appt.as_ref().map_or("off", |a| a.mode.as_str())
+        );
+        let conn_opened_at = tokio::time::Instant::now();
 
-    let setup_deadline = tokio::time::Instant::now() + SETUP_TIMEOUT;
-    let mut setup_ok = false;
-    while tokio::time::Instant::now() < setup_deadline {
-        if cancel.load(Ordering::Relaxed) {
-            info!("Gemini Live setup aborted (hangup) serial={serial}");
-            let _ = sink.close().await;
-            return Ok(SessionEndReason::Cancelled);
-        }
-        match tokio::time::timeout(Duration::from_millis(100), stream.next()).await {
-            Ok(Some(Ok(msg))) => {
-                if let WsMessage::Close(frame) = &msg {
-                    bail!("gemini ws closed before setup: {frame:?}");
-                }
-                if let Some(t) = text_from_ws(msg) {
-                    if t.contains("setupComplete") || t.contains("setup_complete") {
-                        setup_ok = true;
-                        info!("Gemini Live setupComplete serial={serial}");
+        let setup_deadline = tokio::time::Instant::now() + SETUP_TIMEOUT;
+        let mut setup_ok = false;
+        let mut failed: Option<String> = None;
+        while tokio::time::Instant::now() < setup_deadline {
+            if cancel.load(Ordering::Relaxed) {
+                info!("Gemini Live setup aborted (hangup) serial={serial}");
+                let _ = sink.close().await;
+                return Ok(SessionEndReason::Cancelled);
+            }
+            match tokio::time::timeout(Duration::from_millis(100), stream.next()).await {
+                Ok(Some(Ok(msg))) => {
+                    if let WsMessage::Close(frame) = &msg {
+                        failed = Some(format!("gemini ws closed before setup: {frame:?}"));
                         break;
                     }
-                    if let Ok(v) = serde_json::from_str::<Value>(&t) {
-                        if let Some(err) = v.get("error") {
-                            bail!("gemini setup error: {err}");
-                        }
-                        append_transcriptions(&v, &transcript_out);
-                        // Never forward model audio during setup / pre-unmute warm.
-                        let mut discard = |_: Vec<u8>| {};
-                        if handle_server_msg(&v, phone_sr, &mut discard) > 0 {
+                    if let Some(t) = text_from_ws(msg) {
+                        if t.contains("setupComplete") || t.contains("setup_complete") {
                             setup_ok = true;
-                            info!("Gemini Live setup voice marker serial={serial} (discarded; mute until UnmuteAfterGreet)");
+                            info!("Gemini Live setupComplete serial={serial}");
                             break;
+                        }
+                        if let Ok(v) = serde_json::from_str::<Value>(&t) {
+                            if let Some(err) = v.get("error") {
+                                failed = Some(format!("gemini setup error: {err}"));
+                                break;
+                            }
+                            append_transcriptions(&v, &transcript_out);
+                            // Never forward model audio during setup / pre-unmute warm.
+                            let mut discard = |_: Vec<u8>| {};
+                            if handle_server_msg(&v, phone_sr, &mut discard) > 0 {
+                                setup_ok = true;
+                                info!("Gemini Live setup voice marker serial={serial} (discarded; mute until UnmuteAfterGreet)");
+                                break;
+                            }
                         }
                     }
                 }
+                Ok(Some(Err(e))) => {
+                    failed = Some(format!("gemini ws error during setup: {e}"));
+                    break;
+                }
+                Ok(None) => {
+                    failed = Some("gemini ws closed (none) before setup".to_string());
+                    break;
+                }
+                Err(_) => continue,
             }
-            Ok(Some(Err(e))) => bail!("gemini ws error during setup: {e}"),
-            Ok(None) => bail!("gemini ws closed (none) before setup"),
-            Err(_) => continue,
         }
-    }
+        if let Some(why) = failed {
+            if non_blocking {
+                // Maybe the model / API does not take NON_BLOCKING: the old way once
+                // more (propose_appointment blocking, its answer still silent).
+                if non_blocking_refused(&why) {
+                    NON_BLOCKING_REFUSED.store(true, Ordering::Relaxed);
+                }
+                warn!(
+                    "Gemini Live setup with a NON_BLOCKING function failed serial={serial} ({why}) — sending it again without"
+                );
+                non_blocking = false;
+                continue 'connect;
+            }
+            bail!("{why}");
+        }
+        break 'connect (sink, stream, setup, conn_opened_at, setup_ok);
+    };
     if !setup_ok {
         warn!("Gemini Live no setupComplete yet serial={serial} — warm hold still; setup_ready left false until later msg");
     } else {
@@ -3037,6 +3087,9 @@ pub async fn run_session(
     // when the last answer went up (see tool_turn_quiet).
     let (tool_tx, mut tool_rx) = mpsc::unbounded_channel::<ToolDone>();
     let mut tool_open: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // Non-blocking calls being answered (the model goes on talking meanwhile).
+    let mut tool_bg: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut tool_tasks: Vec<tokio::task::JoinHandle<()>> = Vec::new();
     let mut tool_seq: u64 = 0;
     let mut live_gen: u32 = 0;
     let mut tool_answer_at: Option<tokio::time::Instant> = None;
@@ -3143,12 +3196,13 @@ pub async fn run_session(
                         turn_out_text.clear();
                         // Calls asked on the old socket cannot be answered on this one.
                         live_gen += 1;
-                        if !tool_open.is_empty() {
+                        if !tool_open.is_empty() || !tool_bg.is_empty() {
                             info!(
                                 "Gemini Live rotated with {} function call(s) open serial={serial} — their answers are dropped",
-                                tool_open.len()
+                                tool_open.len() + tool_bg.len()
                             );
                             tool_open.clear();
+                            tool_bg.clear();
                         }
                         tool_answer_at = None;
                         if activity_open {
@@ -3686,7 +3740,6 @@ pub async fn run_session(
                                 if !tool_calls.is_empty() {
                                     let now = tokio::time::Instant::now();
                                     last_activity_at = now;
-                                    model_turn_pending = true;
                                     for call in tool_calls {
                                         tool_seq += 1;
                                         let key = if call.id.is_empty() {
@@ -3714,15 +3767,23 @@ pub async fn run_session(
                                             .await;
                                             continue;
                                         };
+                                        let blocking = crate::appointments::is_blocking(&call.name, non_blocking);
                                         info!(
-                                            "Gemini Live toolCall serial={serial} name={} id={key} stall={stall_on} talk_s={}",
+                                            "Gemini Live toolCall serial={serial} name={} id={key} blocking={blocking} stall={stall_on} talk_s={}",
                                             call.name,
                                             session_start.elapsed().as_secs()
                                         );
-                                        tool_open.insert(key.clone());
+                                        if blocking {
+                                            // The model waits for the answer: it owes a reply.
+                                            model_turn_pending = true;
+                                            tool_open.insert(key.clone());
+                                        } else {
+                                            tool_bg.insert(key.clone());
+                                        }
                                         let tx = tool_tx.clone();
                                         let gen = live_gen;
-                                        tokio::spawn(async move {
+                                        tool_tasks.retain(|h| !h.is_finished());
+                                        tool_tasks.push(tokio::spawn(async move {
                                             let response = a.run_tool(&call).await;
                                             let _ = tx.send(ToolDone {
                                                 gen,
@@ -3730,12 +3791,13 @@ pub async fn run_session(
                                                 id: call.id,
                                                 name: call.name,
                                                 response,
+                                                blocking,
                                             });
-                                        });
+                                        }));
                                     }
                                 }
                                 for id in crate::appointments::parse_tool_cancellation(&v) {
-                                    if tool_open.remove(&id) {
+                                    if tool_open.remove(&id) || tool_bg.remove(&id) {
                                         info!(
                                             "Gemini Live toolCallCancellation serial={serial} id={id} — its answer will not be sent"
                                         );
@@ -4371,7 +4433,12 @@ pub async fn run_session(
             }
             done = tool_rx.recv() => {
                 let Some(done) = done else { continue };
-                if done.gen != live_gen || !tool_open.remove(&done.key) {
+                let open = if done.blocking {
+                    tool_open.remove(&done.key)
+                } else {
+                    tool_bg.remove(&done.key)
+                };
+                if done.gen != live_gen || !open {
                     info!(
                         "Gemini Live function answer dropped serial={serial} name={} id={} (cancelled or older session)",
                         done.name, done.key
@@ -4389,15 +4456,18 @@ pub async fn run_session(
                 .await
                 {
                     Ok(()) => info!(
-                        "Gemini Live toolResponse serial={serial} name={} id={} response={}",
-                        done.name, done.key, done.response
+                        "Gemini Live toolResponse serial={serial} name={} id={} blocking={} response={}",
+                        done.name, done.key, done.blocking, done.response
                     ),
                     Err(e) => warn!("Gemini Live toolResponse send failed serial={serial}: {e:#}"),
                 }
                 last_activity_at = now;
-                model_turn_pending = true;
-                tool_answer_at = Some(now);
-                tool_answer_chunks = audio_chunks_out;
+                if done.blocking {
+                    // The model speaks after a blocking answer.
+                    model_turn_pending = true;
+                    tool_answer_at = Some(now);
+                    tool_answer_chunks = audio_chunks_out;
+                }
             }
             up = uplink_rx.recv() => {
                 if cancel.load(Ordering::Relaxed) {
@@ -4799,6 +4869,19 @@ pub async fn run_session(
     // Immediate close on hangup — stops Gemini Live token burn.
     let _ = sink.send(WsMessage::Close(None)).await;
     let _ = sink.close().await;
+    // A function call may still be writing to the calendar: let it finish (at
+    // most TOOL_WAIT) so the end of the call sees the event it wrote.
+    tool_tasks.retain(|h| !h.is_finished());
+    if !tool_tasks.is_empty() {
+        let n = tool_tasks.len();
+        let done = tokio::time::timeout(
+            crate::appointments::TOOL_WAIT,
+            futures_util::future::join_all(tool_tasks),
+        )
+        .await
+        .is_ok();
+        info!("Gemini Live waited for {n} function call(s) at session end serial={serial} finished={done}");
+    }
     info!(
         "Gemini Live session end serial={serial} reason={} out={audio_chunks_out} in={audio_chunks_in} eou={local_eou_sent} uplink_frames={uplink_frames} gated_frames={gated_frames} floor={:.0} stall={stall_on} stall_hits={stall_hits:?} own_matter={own_matter} idle_nudges={idle_nudges} rotations={rotations} server_vad={server_vad} barge_in={} barge_ins={barge_ins} backchannels={backchannels} tokens_in={usage_prompt_tokens} tokens_out={usage_response_tokens} talk_s={} (API closed)",
         end_reason.as_str(),
@@ -5570,10 +5653,10 @@ mod tests {
             "systemInstruction": {"parts": [{"text": "一般"}]}
         }});
         let mut off = base.clone();
-        with_appointment_tools(&mut off, false);
+        with_appointment_tools(&mut off, false, true);
         assert_eq!(off, base);
         let mut on = base.clone();
-        with_appointment_tools(&mut on, true);
+        with_appointment_tools(&mut on, true, false);
         let names: Vec<&str> = on
             .pointer("/setup/tools/0/functionDeclarations")
             .and_then(|f| f.as_array())
@@ -5582,6 +5665,13 @@ mod tests {
             .filter_map(|f| f["name"].as_str())
             .collect();
         assert_eq!(names, vec!["check_availability", "propose_appointment"]);
+        // Blocking (the fallback): no "behavior" anywhere.
+        assert!(!on.to_string().contains("NON_BLOCKING"));
+        let mut nb = base.clone();
+        with_appointment_tools(&mut nb, true, true);
+        assert_eq!(nb.pointer("/setup/tools/0/functionDeclarations/1/behavior"), Some(&json!("NON_BLOCKING")));
+        assert!(nb.pointer("/setup/tools/0/functionDeclarations/0/behavior").is_none());
+        assert!(stall_session_setup(&nb, "陪聊", "gemini-3.8-live", "low").pointer("/setup/tools").is_none());
         // The stalling session never has them, whichever way it is built…
         let s = stall_session_setup(&on, "陪聊", "gemini-3.8-live", "low");
         assert!(s.pointer("/setup/tools").is_none());
@@ -5600,6 +5690,21 @@ mod tests {
         let a = crate::appointments::ApptSession::for_call(&rt, &http, "0912345678").unwrap();
         let p = call_system_prompt("你是我。", Some(&a), now);
         assert!(p.starts_with("你是我。\n\n[Appointments") && p.contains(&now.format("%Y-%m-%d").to_string()), "{p}");
+        assert!(p.contains("do not repeat what you have just told the caller"), "{p}");
+    }
+
+    #[test]
+    fn a_refused_non_blocking_setup_falls_back_for_good_only_when_it_names_the_declaration() {
+        for why in [
+            "gemini setup error: {\"code\":400,\"message\":\"Invalid JSON payload received. Unknown name \\\"behavior\\\"\"}",
+            "gemini ws closed before setup: Some(CloseFrame { code: Invalid, reason: \"Request contains an invalid argument.\" })",
+            "gemini setup error: NON_BLOCKING is not supported for this model",
+        ] {
+            assert!(non_blocking_refused(why), "{why}");
+        }
+        for why in ["gemini ws closed (none) before setup", "gemini ws error during setup: Connection reset by peer"] {
+            assert!(!non_blocking_refused(why), "{why}");
+        }
     }
 
     #[test]

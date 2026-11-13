@@ -1480,6 +1480,11 @@ async fn tasks_confirm(
     if !token_ok(&state.settings, &headers, &query) {
         return unauthorized();
     }
+    // JSON only, like the phone mode switch: other web pages cannot confirm a
+    // task (write the calendar, text a caller) from a browser on the network.
+    if !is_json_request(&headers) {
+        return json_required();
+    }
     if !task_id_safe(&id) {
         return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid task id");
     }
@@ -1510,6 +1515,9 @@ async fn tasks_ignore(
     if !token_ok(&state.settings, &headers, &query) {
         return unauthorized();
     }
+    if !is_json_request(&headers) {
+        return json_required();
+    }
     if !task_id_safe(&id) {
         return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid task id");
     }
@@ -1521,6 +1529,11 @@ async fn tasks_ignore(
         Ok(task) => Json(json!({"ok": true, "task": task})).into_response(),
         Err(e) => fulfill_err_response(e),
     }
+}
+
+/// HTTP 400 for a task decision without `Content-Type: application/json`.
+fn json_required() -> Response {
+    api_error(StatusCode::BAD_REQUEST, "bad_request", "Content-Type must be application/json")
 }
 
 /// An appointment task (the AI took it on a call) is confirmed or declined by

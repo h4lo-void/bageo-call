@@ -76,8 +76,14 @@ pub const DECLINED: &str = "declined";
 pub const CHECK: &str = "check_availability";
 pub const PROPOSE: &str = "propose_appointment";
 
-/// How long one function call may take: the caller is waiting on the line.
-const TOOL_TIMEOUT: Duration = Duration::from_secs(8);
+/// How long a calendar check may take: the caller is waiting on the line.
+const CHECK_TIMEOUT: Duration = Duration::from_secs(8);
+/// How long writing to the calendar may take. Its own limit (not the check's)
+/// so a slow insert is not cut short and taken for a failure; when it is cut
+/// anyway, the event is found again by its tag ([`Appointment::tag`]).
+const WRITE_TIMEOUT: Duration = Duration::from_secs(15);
+/// The longest one function call can run (check, then write), plus a margin.
+pub const TOOL_WAIT: Duration = Duration::from_secs(24);
 const STAMP: &str = "%Y-%m-%dT%H:%M";
 const TITLE_MAX: usize = 80;
 const NAME_MAX: usize = 40;
@@ -108,9 +114,16 @@ pub struct Appointment {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub replaced: Vec<Earlier>,
     /// The text message to the caller: `sent`, or why not (`offline`,
-    /// `old_app`, `timeout`, `no_number`, the phone's error code). Empty = none.
+    /// `old_app`, `timeout`, `busy`, `no_number`, the phone's error code). Empty = none.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub sms: String,
+    /// This call's mark on the events it writes (Google Calendar private
+    /// property `myna_call`): finds them again when an answer was lost.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub tag: String,
+    /// A write to the calendar timed out: it may or may not be there (look it up by `tag`).
+    #[serde(skip)]
+    pub write_unsure: bool,
 }
 
 /// An earlier time of the same call that is in the calendar.
@@ -122,6 +135,21 @@ pub struct Earlier {
     pub title: String,
     #[serde(default)]
     pub event_id: String,
+    /// The call's tag, for an event whose id never came back.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub tag: String,
+}
+
+impl Earlier {
+    fn of(a: &Appointment) -> Self {
+        Self {
+            start: a.start.clone(),
+            end: a.end.clone(),
+            title: a.title.clone(),
+            event_id: a.event_id.clone(),
+            tag: a.tag.clone(),
+        }
+    }
 }
 
 fn parse_local(s: &str) -> Option<NaiveDateTime> {
@@ -188,7 +216,8 @@ impl Appointment {
         }
     }
 
-    /// As a calendar entry for the web console (`.ics`, "added to Google Calendar").
+    /// As a calendar entry for the web console (`.ics`, "added to Google
+    /// Calendar" — only once it stands there at this time).
     pub fn calendar_event(&self) -> crate::calendar::Event {
         let title = if self.title.trim().is_empty() {
             locale::fill(texts().e_appointment, "")
@@ -202,7 +231,11 @@ impl Appointment {
             start: self.start.clone(),
             end: self.end.clone(),
             all_day: false,
-            google_event_id: self.event_id.clone(),
+            google_event_id: if self.status == BOOKED || self.status == CONFIRMED {
+                self.event_id.clone()
+            } else {
+                String::new()
+            },
         }
     }
 }
@@ -237,6 +270,8 @@ fn display_caller(caller_id: &str) -> &str {
 #[derive(Debug, Default)]
 pub struct CallAppointments {
     inner: std::sync::Mutex<Book>,
+    /// Proposals still running (a calendar write may be under way).
+    in_flight: std::sync::atomic::AtomicUsize,
 }
 
 #[derive(Debug, Default)]
@@ -245,6 +280,18 @@ struct Book {
     earlier: Vec<Earlier>,
     /// Judged a sales / scam call: nothing of this call is kept.
     discarded: bool,
+    /// Calendar events this call wrote that no longer stand (the call was
+    /// judged sales / scam): deleted after the call.
+    voided: Vec<Earlier>,
+}
+
+/// Counts a running proposal while it lives.
+struct InFlight<'a>(&'a std::sync::atomic::AtomicUsize);
+
+impl Drop for InFlight<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 impl CallAppointments {
@@ -257,35 +304,68 @@ impl CallAppointments {
     }
 
     /// The caller agreed to this; a later one replaces it. False: the call was
-    /// judged sales / scam, nothing is kept.
+    /// judged sales / scam, nothing is kept (an event it already wrote goes on
+    /// the voided list, to be deleted after the call).
     pub fn record(&self, appt: Appointment) -> bool {
         let mut b = self.book();
         if b.discarded {
+            if !appt.event_id.is_empty() || appt.write_unsure {
+                b.voided.push(Earlier::of(&appt));
+            }
             return false;
         }
         if let Some(prev) = b.current.take() {
-            if !prev.event_id.is_empty() {
-                b.earlier.push(Earlier {
-                    start: prev.start,
-                    end: prev.end,
-                    title: prev.title,
-                    event_id: prev.event_id,
-                });
+            // A moved event keeps its id: it is not an earlier one.
+            if !prev.event_id.is_empty() && prev.event_id != appt.event_id {
+                b.earlier.push(Earlier::of(&prev));
             }
         }
         b.current = Some(appt);
         true
     }
 
-    /// The call turned out to be sales / scam: drop what it agreed to.
+    /// The call turned out to be sales / scam: drop what it agreed to. Events
+    /// it already put in the calendar move to the voided list.
     pub fn discard(&self) {
         let mut b = self.book();
         b.discarded = true;
-        b.current = None;
+        if let Some(cur) = b.current.take() {
+            if !cur.event_id.is_empty() || cur.write_unsure {
+                b.voided.push(Earlier::of(&cur));
+            }
+        }
+        let earlier = std::mem::take(&mut b.earlier);
+        b.voided.extend(earlier);
     }
 
     pub fn is_discarded(&self) -> bool {
         self.book().discarded
+    }
+
+    /// The event this call has in the calendar right now (empty = none).
+    pub fn booked_event(&self) -> Option<Appointment> {
+        self.book().current.clone().filter(|a| !a.event_id.is_empty())
+    }
+
+    /// Calendar events of this call that no longer stand (to delete).
+    pub fn voided(&self) -> Vec<Earlier> {
+        self.book().voided.clone()
+    }
+
+    fn start_proposal(&self) -> InFlight<'_> {
+        self.in_flight.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        InFlight(&self.in_flight)
+    }
+
+    /// Wait (up to `max`) until no proposal is running, so the end of a call
+    /// does not miss an event that is being written.
+    pub async fn settled(&self, max: Duration) {
+        let until = tokio::time::Instant::now() + max;
+        while self.in_flight.load(std::sync::atomic::Ordering::SeqCst) > 0
+            && tokio::time::Instant::now() < until
+        {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
     }
 
     /// The call's appointment (the last one agreed), with the earlier times
@@ -306,8 +386,14 @@ impl CallAppointments {
 // ---------------------------------------------------------------------------
 
 /// The setup's `tools` value: the two functions the model may call.
-pub fn tool_declarations() -> Value {
-    json!([{
+///
+/// `non_blocking`: [`PROPOSE`] is declared `NON_BLOCKING`. The model has already
+/// told the caller what happens next when it records the time, so it goes on
+/// talking and the answer comes back silent ([`tool_response`]); blocking, it
+/// said the same sentence a second time after the answer (seen on a real call).
+/// [`CHECK`] always blocks: the reply depends on its answer.
+pub fn tool_declarations(non_blocking: bool) -> Value {
+    let mut decl = json!([{
         "functionDeclarations": [
             {
                 "name": CHECK,
@@ -336,7 +422,16 @@ pub fn tool_declarations() -> Value {
                 }
             }
         ]
-    }])
+    }]);
+    if non_blocking {
+        decl[0]["functionDeclarations"][1]["behavior"] = json!("NON_BLOCKING");
+    }
+    decl
+}
+
+/// The model waits for this function's answer ([`tool_declarations`]).
+pub fn is_blocking(name: &str, non_blocking: bool) -> bool {
+    !(non_blocking && name == PROPOSE)
 }
 
 /// One function call from the model (`toolCall.functionCalls[]`).
@@ -374,8 +469,16 @@ pub fn parse_tool_cancellation(msg: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The client message answering one function call.
+/// The client message answering one function call. [`PROPOSE`]'s answer says
+/// `"scheduling": "SILENT"`: the model already said what it had to (blocking
+/// or not, it is not to speak about it again).
 pub fn tool_response(id: &str, name: &str, response: Value) -> Value {
+    let mut response = response;
+    if name == PROPOSE {
+        if let Some(o) = response.as_object_mut() {
+            o.insert("scheduling".into(), json!("SILENT"));
+        }
+    }
     json!({
         "toolResponse": {
             "functionResponses": [{ "id": id, "name": name, "response": response }]
@@ -416,10 +519,23 @@ impl CalendarAccess {
         ))
     }
 
-    /// Nothing in the calendar between `start` and `end` (local stamps).
-    pub async fn is_free(&self, http: &Client, start: &str, end: &str) -> Result<bool> {
+    /// Nothing in the calendar between `start` and `end` (local stamps) apart
+    /// from this call's own event `own_id` (empty: none; then freeBusy is asked).
+    pub async fn is_free_except(&self, http: &Client, start: &str, end: &str, own_id: &str) -> Result<bool> {
         let (a, b) = Self::window(start, end)?;
-        crate::gcal::query_free(
+        if own_id.is_empty() {
+            return crate::gcal::query_free(
+                http,
+                &self.client_id,
+                &self.client_secret,
+                &self.refresh_token,
+                &self.calendar_id,
+                &a,
+                &b,
+            )
+            .await;
+        }
+        let events = crate::gcal::list_events(
             http,
             &self.client_id,
             &self.client_secret,
@@ -428,13 +544,14 @@ impl CalendarAccess {
             &a,
             &b,
         )
-        .await
+        .await?;
+        Ok(!events.iter().any(|e| e.blocks_time && e.id != own_id))
     }
 
-    /// Put it in the calendar; the new event's id.
+    /// Put it in the calendar, tagged with the call's tag; the new event's id.
     pub async fn insert(&self, http: &Client, appt: &Appointment, caller_id: &str) -> Result<String> {
         let (a, b) = Self::window(&appt.start, &appt.end)?;
-        crate::gcal::insert_event(
+        crate::gcal::insert_event_tagged(
             http,
             &self.client_id,
             &self.client_secret,
@@ -444,8 +561,210 @@ impl CalendarAccess {
             &event_description(caller_id, appt),
             &a,
             &b,
+            &appt.tag,
         )
         .await
+    }
+
+    /// Move an event to the appointment's time (same event, same id).
+    pub async fn move_to(&self, http: &Client, event_id: &str, appt: &Appointment) -> Result<()> {
+        let (a, b) = Self::window(&appt.start, &appt.end)?;
+        crate::gcal::move_event(
+            http,
+            &self.client_id,
+            &self.client_secret,
+            &self.refresh_token,
+            &self.calendar_id,
+            event_id,
+            &a,
+            &b,
+        )
+        .await
+    }
+
+    pub async fn delete(&self, http: &Client, event_id: &str) -> Result<()> {
+        crate::gcal::delete_event(
+            http,
+            &self.client_id,
+            &self.client_secret,
+            &self.refresh_token,
+            &self.calendar_id,
+            event_id,
+        )
+        .await
+    }
+
+    /// Events carrying a call's tag.
+    pub async fn find_tagged(&self, http: &Client, tag: &str) -> Result<Vec<String>> {
+        crate::gcal::find_tagged(
+            http,
+            &self.client_id,
+            &self.client_secret,
+            &self.refresh_token,
+            &self.calendar_id,
+            tag,
+        )
+        .await
+    }
+}
+
+/// Where appointments are checked and written: Google Calendar, or (tests) a
+/// stand-in that counts what was written.
+#[derive(Clone, Debug)]
+enum Cal {
+    Google(CalendarAccess),
+    #[cfg(test)]
+    Fake(Arc<FakeCal>),
+}
+
+impl Cal {
+    fn from_settings(rt: &RuntimeSettings) -> Option<Self> {
+        CalendarAccess::from_settings(rt).map(Cal::Google)
+    }
+
+    async fn is_free_except(&self, http: &Client, start: &str, end: &str, own_id: &str) -> Result<bool> {
+        match self {
+            Cal::Google(c) => c.is_free_except(http, start, end, own_id).await,
+            #[cfg(test)]
+            Cal::Fake(f) => f.is_free_except(start, end, own_id),
+        }
+    }
+
+    async fn insert(&self, http: &Client, appt: &Appointment, caller_id: &str) -> Result<String> {
+        match self {
+            Cal::Google(c) => c.insert(http, appt, caller_id).await,
+            #[cfg(test)]
+            Cal::Fake(f) => f.insert(appt).await,
+        }
+    }
+
+    async fn move_to(&self, http: &Client, event_id: &str, appt: &Appointment) -> Result<()> {
+        match self {
+            Cal::Google(c) => c.move_to(http, event_id, appt).await,
+            #[cfg(test)]
+            Cal::Fake(f) => f.move_to(event_id, appt).await,
+        }
+    }
+
+    async fn delete(&self, http: &Client, event_id: &str) -> Result<()> {
+        match self {
+            Cal::Google(c) => c.delete(http, event_id).await,
+            #[cfg(test)]
+            Cal::Fake(f) => f.delete(event_id),
+        }
+    }
+
+    async fn find_tagged(&self, http: &Client, tag: &str) -> Result<Vec<String>> {
+        match self {
+            Cal::Google(c) => c.find_tagged(http, tag).await,
+            #[cfg(test)]
+            Cal::Fake(f) => Ok(f.find_tagged(tag)),
+        }
+    }
+
+    /// Put the appointment in the calendar at its time: move the event it
+    /// already has (or that carries its tag after a lost answer), else insert
+    /// one. The event's id.
+    async fn write(&self, http: &Client, appt: &Appointment, caller_id: &str) -> Result<String> {
+        let mut id = appt.event_id.clone();
+        if id.is_empty() && appt.mode == Mode::Auto.as_str() && !appt.tag.is_empty() {
+            match self.find_tagged(http, &appt.tag).await {
+                Ok(found) => id = found.into_iter().next().unwrap_or_default(),
+                Err(e) => warn!("appointment tagged lookup failed: {e:#}"),
+            }
+        }
+        if id.is_empty() {
+            self.insert(http, appt, caller_id).await
+        } else {
+            self.move_to(http, &id, appt).await?;
+            Ok(id)
+        }
+    }
+}
+
+/// A calendar for the tests: busy times of others, the events written, and
+/// how many inserts / moves / deletes happened.
+#[cfg(test)]
+#[derive(Debug, Default)]
+pub(crate) struct FakeCal {
+    /// (id, start, end, tag)
+    events: std::sync::Mutex<Vec<(String, String, String, String)>>,
+    /// Other people's appointments: (start, end).
+    busy: std::sync::Mutex<Vec<(String, String)>>,
+    inserts: std::sync::atomic::AtomicUsize,
+    moves: std::sync::atomic::AtomicUsize,
+    deletes: std::sync::atomic::AtomicUsize,
+    /// Writes take this long (to overlap two decisions).
+    write_delay_ms: std::sync::atomic::AtomicU64,
+    fail_delete: std::sync::atomic::AtomicBool,
+}
+
+#[cfg(test)]
+impl FakeCal {
+    fn count(n: &std::sync::atomic::AtomicUsize) -> usize {
+        n.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    async fn delay(&self) {
+        let ms = self.write_delay_ms.load(std::sync::atomic::Ordering::SeqCst);
+        if ms > 0 {
+            tokio::time::sleep(Duration::from_millis(ms)).await;
+        }
+    }
+
+    fn is_free_except(&self, start: &str, end: &str, own_id: &str) -> Result<bool> {
+        let clash = |s: &str, e: &str| s < end && start < e;
+        let others = self.busy.lock().unwrap().iter().any(|(s, e)| clash(s, e));
+        let written = self
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(id, s, e, _)| id != own_id && clash(s, e));
+        Ok(!others && !written)
+    }
+
+    async fn insert(&self, appt: &Appointment) -> Result<String> {
+        self.delay().await;
+        let n = self.inserts.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        let id = format!("ev{n}");
+        self.events
+            .lock()
+            .unwrap()
+            .push((id.clone(), appt.start.clone(), appt.end.clone(), appt.tag.clone()));
+        Ok(id)
+    }
+
+    async fn move_to(&self, event_id: &str, appt: &Appointment) -> Result<()> {
+        self.delay().await;
+        self.moves.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let mut ev = self.events.lock().unwrap();
+        let e = ev
+            .iter_mut()
+            .find(|e| e.0 == event_id)
+            .context("no such event")?;
+        e.1 = appt.start.clone();
+        e.2 = appt.end.clone();
+        Ok(())
+    }
+
+    fn delete(&self, event_id: &str) -> Result<()> {
+        if self.fail_delete.load(std::sync::atomic::Ordering::SeqCst) {
+            anyhow::bail!("Google 日曆刪除行程失敗（HTTP 500）");
+        }
+        self.deletes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.events.lock().unwrap().retain(|e| e.0 != event_id);
+        Ok(())
+    }
+
+    fn find_tagged(&self, tag: &str) -> Vec<String> {
+        self.events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| !tag.is_empty() && e.3 == tag)
+            .map(|e| e.0.clone())
+            .collect()
     }
 }
 
@@ -469,11 +788,13 @@ pub struct ApptSession {
     /// [`Mode::Confirm`] or [`Mode::Auto`] (never off; `auto` without calendar
     /// access is confirm).
     pub mode: Mode,
-    calendar: Option<CalendarAccess>,
+    calendar: Option<Cal>,
     /// The caller can get a text message back (setting on, a mobile number).
     pub reply_by_text: bool,
     caller_id: String,
     http: Client,
+    /// This call's mark on the events it writes ([`Appointment::tag`]).
+    tag: String,
     /// What the caller agreed to.
     pub book: Arc<CallAppointments>,
 }
@@ -485,7 +806,7 @@ impl ApptSession {
         if mode == Mode::Off {
             return None;
         }
-        let calendar = CalendarAccess::from_settings(rt);
+        let calendar = Cal::from_settings(rt);
         // Without calendar access nothing can be checked or booked: the owner decides.
         let mode = if calendar.is_none() { Mode::Confirm } else { mode };
         Some(Self {
@@ -494,6 +815,7 @@ impl ApptSession {
             reply_by_text: rt.appointment_sms && sms_number(caller_id).is_some(),
             caller_id: caller_id.trim().to_string(),
             http: http.clone(),
+            tag: uuid::Uuid::new_v4().to_string(),
             book: CallAppointments::new(),
         })
     }
@@ -514,7 +836,7 @@ impl ApptSession {
         )
     }
 
-    /// Answer one function call (runs on its own task; bounded by [`TOOL_TIMEOUT`]).
+    /// Answer one function call (runs on its own task; at most [`TOOL_WAIT`]).
     pub async fn run_tool(&self, call: &ToolCall) -> Value {
         let now = chrono::Local::now().naive_local();
         match call.name.as_str() {
@@ -527,6 +849,11 @@ impl ApptSession {
         }
     }
 
+    /// This call's own event in the calendar (it does not clash with itself).
+    fn own_event_id(&self) -> String {
+        self.book.booked_event().map(|a| a.event_id).unwrap_or_default()
+    }
+
     async fn check(&self, args: &Value, now: NaiveDateTime) -> Value {
         let (start, end) = match window(args, now) {
             Ok(w) => w,
@@ -535,7 +862,13 @@ impl ApptSession {
         let Some(cal) = &self.calendar else {
             return unavailable();
         };
-        match tokio::time::timeout(TOOL_TIMEOUT, cal.is_free(&self.http, &stamp(start), &stamp(end))).await {
+        let own = self.own_event_id();
+        match tokio::time::timeout(
+            CHECK_TIMEOUT,
+            cal.is_free_except(&self.http, &stamp(start), &stamp(end), &own),
+        )
+        .await
+        {
             Ok(Ok(free)) => {
                 info!("appointment check start={} end={} free={free}", stamp(start), stamp(end));
                 json!({ "free": free })
@@ -545,7 +878,7 @@ impl ApptSession {
                 unavailable()
             }
             Err(_) => {
-                warn!("appointment check timed out after {}s", TOOL_TIMEOUT.as_secs());
+                warn!("appointment check timed out after {}s", CHECK_TIMEOUT.as_secs());
                 unavailable()
             }
         }
@@ -560,6 +893,7 @@ impl ApptSession {
         if self.book.is_discarded() {
             return pending;
         }
+        let _running = self.book.start_proposal();
         let mut appt = Appointment {
             start: stamp(start),
             end: stamp(end),
@@ -567,20 +901,11 @@ impl ApptSession {
             caller_name: clean_text(args.get("caller_name"), NAME_MAX),
             mode: self.mode.as_str().to_string(),
             status: PENDING.to_string(),
+            tag: self.tag.clone(),
             ..Default::default()
         };
         if let (Mode::Auto, Some(cal)) = (self.mode, &self.calendar) {
-            match tokio::time::timeout(TOOL_TIMEOUT, self.book_now(cal, &appt)).await {
-                Ok(Ok(id)) => {
-                    appt.event_id = id;
-                    appt.status = BOOKED.to_string();
-                }
-                Ok(Err(e)) => appt.auto_error = format!("{e:#}"),
-                Err(_) => {
-                    appt.auto_error =
-                        format!("Google Calendar: timeout ({}s)", TOOL_TIMEOUT.as_secs())
-                }
-            }
+            self.book_auto(cal, &mut appt).await;
         }
         let booked = appt.status == BOOKED;
         info!(
@@ -597,11 +922,66 @@ impl ApptSession {
         }
     }
 
-    async fn book_now(&self, cal: &CalendarAccess, appt: &Appointment) -> Result<String> {
-        if !cal.is_free(&self.http, &appt.start, &appt.end).await? {
-            anyhow::bail!("{}", texts().ap_busy);
+    /// `auto`: check for a clash (this call's own event does not count), then
+    /// move that event to the new time — or insert one when there is none yet.
+    /// The same time as the event already booked writes nothing. When it cannot
+    /// be booked the call's event stays where it is and the appointment keeps its
+    /// id, so the owner's ✅ moves it instead of adding a second one.
+    async fn book_auto(&self, cal: &Cal, appt: &mut Appointment) {
+        let own = self.book.booked_event();
+        if let Some(o) = own.as_ref().filter(|o| o.start == appt.start && o.end == appt.end) {
+            appt.event_id = o.event_id.clone();
+            appt.status = BOOKED.to_string();
+            return;
         }
-        cal.insert(&self.http, appt, &self.caller_id).await
+        let own_id = own.map(|o| o.event_id).unwrap_or_default();
+        let fail = |appt: &mut Appointment, why: String| {
+            appt.auto_error = why;
+            if !own_id.is_empty() {
+                appt.event_id = own_id.clone();
+            }
+        };
+        match tokio::time::timeout(
+            CHECK_TIMEOUT,
+            cal.is_free_except(&self.http, &appt.start, &appt.end, &own_id),
+        )
+        .await
+        {
+            Ok(Ok(true)) => {}
+            Ok(Ok(false)) => {
+                fail(appt, texts().ap_busy.to_string());
+                return;
+            }
+            Ok(Err(e)) => {
+                fail(appt, format!("{e:#}"));
+                return;
+            }
+            Err(_) => {
+                fail(appt, format!("Google Calendar: timeout ({}s)", CHECK_TIMEOUT.as_secs()));
+                return;
+            }
+        }
+        let draft = appt.clone();
+        let write = async {
+            if own_id.is_empty() {
+                cal.insert(&self.http, &draft, &self.caller_id).await
+            } else {
+                cal.move_to(&self.http, &own_id, &draft).await.map(|()| own_id.clone())
+            }
+        };
+        match tokio::time::timeout(WRITE_TIMEOUT, write).await {
+            Ok(Ok(id)) => {
+                appt.event_id = id;
+                appt.status = BOOKED.to_string();
+            }
+            Ok(Err(e)) => fail(appt, format!("{e:#}")),
+            Err(_) => {
+                fail(appt, format!("Google Calendar: timeout ({}s)", WRITE_TIMEOUT.as_secs()));
+                // Maybe written after all: a moved event keeps its id; a new one
+                // is found by its tag when the owner confirms or it is voided.
+                appt.write_unsure = own_id.is_empty();
+            }
+        }
     }
 }
 
@@ -721,6 +1101,7 @@ pub fn prompt_block(
     s.push_str(&format!(
         "- Its answer \"pending_owner_confirmation\" means it is not settled yet: {will_check}, never say it is booked. \"booked\" means it is settled and you may say so.\n"
     ));
+    s.push_str("- After calling propose_appointment do not repeat what you have just told the caller: if you already said it, simply go on with the conversation.\n");
     s.push_str("- Never make an appointment with a sales, insurance, loan, investment or scam caller.");
     s
 }
@@ -756,7 +1137,9 @@ pub fn sms_number(caller_id: &str) -> Option<String> {
 }
 
 /// The text message to the caller, in the owner's own words: the time is fine
-/// (`confirmed`) or not. No owner name set: the greeting goes without it.
+/// (`confirmed`) or not. Only the time (with its weekday): the title came from
+/// the caller's own words and is never sent back from the owner's number (it
+/// could carry a link or a chat ID). No owner name set: the greeting goes without it.
 pub fn sms_text(lang: Lang, owner: &str, appt: &Appointment, confirmed: bool) -> String {
     let p = locale::phrases(lang);
     let owner: String = owner
@@ -772,12 +1155,7 @@ pub fn sms_text(lang: Lang, owner: &str, appt: &Appointment, confirmed: bool) ->
     };
     let when = appt.start_text(lang);
     let body = if confirmed {
-        let what = if appt.title.trim().is_empty() {
-            when
-        } else {
-            format!("{when} {}", appt.title.trim())
-        };
-        locale::fill(p.ap_sms_ok, &what)
+        locale::fill(p.ap_sms_ok, &when)
     } else {
         locale::fill(p.ap_sms_no, &when)
     };
@@ -797,6 +1175,7 @@ fn sms_report(out: &SmsOutcome, shown_number: &str) -> (String, String) {
         SmsOutcome::Offline => ("offline".to_string(), not_sent(p.ap_sms_offline)),
         SmsOutcome::Unsupported => ("old_app".to_string(), not_sent(p.ap_sms_old_app)),
         SmsOutcome::Timeout => ("timeout".to_string(), not_sent(p.ap_sms_timeout)),
+        SmsOutcome::Busy => ("busy".to_string(), not_sent(p.ap_sms_busy)),
         SmsOutcome::Failed(code) => (code.clone(), not_sent(&locale::fill(p.ap_sms_code, code))),
     }
 }
@@ -977,8 +1356,38 @@ pub async fn after_summary(
     }
 }
 
+/// Appointment tasks being decided right now: one decision per task at a time
+/// (two Telegram presses in one batch, Telegram and the API together, ✅ then ❌).
+static DECIDING: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// Holds a task while it is being decided; let go when dropped.
+struct Deciding(String);
+
+impl Deciding {
+    /// None: another decision on this task is under way.
+    fn claim(task_id: &str) -> Option<Self> {
+        let mut busy = DECIDING.lock().unwrap_or_else(|e| e.into_inner());
+        if busy.iter().any(|t| t == task_id) {
+            return None;
+        }
+        busy.push(task_id.to_string());
+        Some(Self(task_id.to_string()))
+    }
+}
+
+impl Drop for Deciding {
+    fn drop(&mut self) {
+        DECIDING
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|t| t != &self.0);
+    }
+}
+
 /// The owner's ✅ (`confirm`) or ❌ on an appointment: calendar, text
 /// message, task and call notes. Returns the task and the reply for Telegram.
+/// Only the first decision acts; one made while it runs, or after, is answered
+/// "already handled" and changes nothing.
 pub async fn decide(
     http: &Client,
     rt: &RuntimeSettings,
@@ -988,6 +1397,36 @@ pub async fn decide(
     task_id: &str,
     confirm: bool,
 ) -> Result<(TaskRecord, String)> {
+    decide_with(Cal::from_settings(rt), http, rt, store, calls, control, task_id, confirm).await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn decide_with(
+    cal: Option<Cal>,
+    http: &Client,
+    rt: &RuntimeSettings,
+    store: &TaskStore,
+    calls: &CallStore,
+    control: Option<&ControlRegistry>,
+    task_id: &str,
+    confirm: bool,
+) -> Result<(TaskRecord, String)> {
+    let lang = locale::current();
+    let p = locale::phrases(lang);
+    let already = |task: TaskRecord| {
+        let headline = task.appointment.as_ref().map(|a| a.headline(lang)).unwrap_or_default();
+        (task, format!("{}\n{headline}", p.ap_already).trim_end().to_string())
+    };
+    let task = store
+        .get(task_id)
+        .await
+        .with_context(|| format!("task not found: {task_id}"))?;
+    task.appointment.as_ref().context("not an appointment task")?;
+    let Some(_claim) = Deciding::claim(task_id) else {
+        info!("appointment decision ignored task_id={task_id} confirm={confirm}: another one is under way");
+        return Ok(already(task));
+    };
+    // Read again under the claim: an earlier decision may have just finished.
     let task = store
         .get(task_id)
         .await
@@ -996,37 +1435,50 @@ pub async fn decide(
         .appointment
         .clone()
         .context("not an appointment task")?;
-    let lang = locale::current();
-    let p = locale::phrases(lang);
-    let headline = appt.headline(lang);
     if appt.status != PENDING {
-        return Ok((task, format!("{}\n{headline}", p.ap_already)));
+        return Ok(already(task));
     }
+    let headline = appt.headline(lang);
     let mut lines: Vec<String> = Vec::new();
     let mut error: Option<String> = None;
     if confirm {
         store.push_event(task_id, "appointment_confirmed").await?;
-        if appt.event_id.is_empty() {
-            match CalendarAccess::from_settings(rt) {
-                None => lines.push(p.ap_cal_none.to_string()),
-                Some(cal) => match cal.insert(http, &appt, &task.caller_id).await {
-                    Ok(id) => {
-                        appt.event_id = id;
-                        lines.push(p.ap_cal_added.to_string());
-                        store.push_event(task_id, "gcal_event_created").await?;
-                    }
-                    Err(e) => {
-                        let msg = locale::fill(p.ap_cal_failed, &format!("{e:#}"));
-                        warn!("appointment calendar insert failed task_id={task_id}: {e:#}");
-                        lines.push(msg.clone());
-                        error = Some(msg);
-                    }
-                },
-            }
+        match &cal {
+            None => lines.push(p.ap_cal_none.to_string()),
+            Some(cal) => match cal.write(http, &appt, &task.caller_id).await {
+                Ok(id) => {
+                    appt.replaced.retain(|e| e.event_id != id);
+                    appt.event_id = id;
+                    lines.push(p.ap_cal_added.to_string());
+                    store.push_event(task_id, "gcal_event_created").await?;
+                }
+                Err(e) => {
+                    let msg = locale::fill(p.ap_cal_failed, &format!("{e:#}"));
+                    warn!("appointment calendar write failed task_id={task_id}: {e:#}");
+                    lines.push(msg.clone());
+                    error = Some(msg);
+                }
+            },
         }
         appt.status = CONFIRMED.to_string();
     } else {
         store.push_event(task_id, "appointment_declined").await?;
+        // The call's own event (auto mode, a time it could not move to): not kept.
+        if !appt.event_id.is_empty() {
+            if let Some(cal) = &cal {
+                match cal.delete(http, &appt.event_id).await {
+                    Ok(()) => {
+                        lines.push(p.ap_cal_removed.to_string());
+                        appt.event_id.clear();
+                        store.push_event(task_id, "gcal_event_deleted").await?;
+                    }
+                    Err(e) => {
+                        warn!("appointment calendar delete failed task_id={task_id}: {e:#}");
+                        lines.push(locale::fill(p.ap_void_failed, &appt.headline(lang)));
+                    }
+                }
+            }
+        }
         appt.status = DECLINED.to_string();
     }
     if rt.appointment_sms {
@@ -1069,6 +1521,72 @@ pub async fn decide(
     Ok((updated, text))
 }
 
+/// The events a voided appointment left in the calendar, also one whose id was
+/// lost (found by the call's tag).
+async fn voided_ids(cal: &Cal, http: &Client, e: &Earlier) -> Result<Vec<String>> {
+    if !e.event_id.is_empty() {
+        return Ok(vec![e.event_id.clone()]);
+    }
+    if e.tag.is_empty() {
+        return Ok(Vec::new());
+    }
+    cal.find_tagged(http, &e.tag).await
+}
+
+/// After the call: delete the events of appointments that no longer stand (a
+/// sales / scam call, or the AI never really answered). Returns those that
+/// could not be deleted, for a line in the summary ([`void_failed_line`]).
+pub async fn delete_voided(http: &Client, rt: &RuntimeSettings, voided: &[Earlier]) -> Vec<Earlier> {
+    delete_voided_with(Cal::from_settings(rt), http, voided).await
+}
+
+async fn delete_voided_with(cal: Option<Cal>, http: &Client, voided: &[Earlier]) -> Vec<Earlier> {
+    if voided.is_empty() {
+        return Vec::new();
+    }
+    let Some(cal) = cal else {
+        // Nothing can be deleted without access (nothing was written without it either).
+        return voided.iter().filter(|e| !e.event_id.is_empty()).cloned().collect();
+    };
+    let mut failed = Vec::new();
+    for e in voided {
+        let ids = match voided_ids(&cal, http, e).await {
+            Ok(ids) => ids,
+            Err(err) => {
+                warn!("voided appointment lookup failed: {err:#}");
+                failed.push(e.clone());
+                continue;
+            }
+        };
+        for id in ids {
+            match cal.delete(http, &id).await {
+                Ok(()) => info!("voided appointment deleted from the calendar start={}", e.start),
+                Err(err) => {
+                    warn!("voided appointment delete failed start={}: {err:#}", e.start);
+                    failed.push(Earlier { event_id: id, ..e.clone() });
+                }
+            }
+        }
+    }
+    failed
+}
+
+/// The summary's line for an event that is void but still in the calendar.
+pub fn void_failed_line(e: &Earlier) -> String {
+    let lang = locale::current();
+    format!("📅 {}", locale::fill(locale::phrases(lang).ap_void_failed, &e.when(lang)))
+}
+
+/// Everything an appointment put in the calendar (the event and earlier ones),
+/// for when the whole appointment no longer stands.
+pub fn all_events(appt: &Appointment) -> Vec<Earlier> {
+    let mut out: Vec<Earlier> = appt.replaced.clone();
+    if !appt.event_id.is_empty() || appt.write_unsure {
+        out.push(Earlier::of(appt));
+    }
+    out
+}
+
 /// The web console's call notes follow the appointment's state.
 async fn update_call_notes(calls: &CallStore, call_id: &str, appt: &Appointment) {
     let Some(mut notes) = calls.load_notes(call_id).await else {
@@ -1108,8 +1626,35 @@ mod tests {
             reply_by_text: false,
             caller_id: "0912345678".into(),
             http: Client::new(),
+            tag: "tag-test".into(),
             book: CallAppointments::new(),
         }
+    }
+
+    /// An `auto` session on a stand-in calendar.
+    fn auto_session(cal: &Arc<FakeCal>) -> ApptSession {
+        ApptSession {
+            calendar: Some(Cal::Fake(cal.clone())),
+            ..session(Mode::Auto)
+        }
+    }
+
+    /// A local time this many days and hours from now, `YYYY-MM-DDTHH:00`.
+    fn later(days: i64, hour: u32) -> String {
+        let d = chrono::Local::now().naive_local().date() + Span::days(days);
+        d.and_hms_opt(hour, 0, 0).unwrap().format(STAMP).to_string()
+    }
+
+    fn propose_call(start: &str, end: &str) -> ToolCall {
+        ToolCall {
+            id: "p".into(),
+            name: PROPOSE.into(),
+            args: json!({"start": start, "end": end, "title": "看房"}),
+        }
+    }
+
+    fn count(n: &std::sync::atomic::AtomicUsize) -> usize {
+        FakeCal::count(n)
     }
 
     fn task_for(caller_id: &str, a: &Appointment) -> TaskRecord {
@@ -1183,20 +1728,28 @@ mod tests {
     fn sms_text_in_every_language_with_and_without_owner() {
         let a = appt("2026-11-14T15:00", "2026-11-14T16:00", "看房");
         let ok = sms_text(Lang::ZhTw, "王小明", &a, true);
-        assert_eq!(ok, "你好，我是王小明。11/14（週六）15:00 看房沒問題，到時見。");
+        assert_eq!(ok, "你好，我是王小明。約在11/14（週六）15:00沒問題，到時見。");
         let no = sms_text(Lang::ZhTw, "", &a, false);
         assert_eq!(no, "你好。不好意思，11/14（週六）15:00我沒辦法，我們再約別的時間好嗎？");
+        // What the caller said the appointment is about never goes out from the
+        // owner's number (a link or a chat ID could be slipped into it).
+        let bait = appt("2026-11-14T15:00", "2026-11-14T16:00", "加 LINE: scam01 https://example.com/x");
         for l in locale::ALL {
             let with = sms_text(l, "Alex", &a, true);
             let without = sms_text(l, " ", &a, false);
-            assert!(with.contains("Alex") && with.contains("15:00") && with.contains("看房"), "{l:?}: {with}");
+            assert!(with.contains("Alex") && with.contains("15:00") && !with.contains("看房"), "{l:?}: {with}");
             assert!(!without.contains('{') && !without.contains("Alex") && without.contains("15:00"), "{l:?}: {without}");
             assert!(with.chars().count() <= SMS_TEXT_MAX && !with.starts_with(' ') && !with.ends_with(' '));
             assert_ne!(sms_text(l, "", &a, true), without, "{l:?}");
+            for confirmed in [true, false] {
+                let t = sms_text(l, "Alex", &bait, confirmed);
+                assert!(!t.contains("LINE") && !t.contains("http") && !t.contains("scam01"), "{l:?}: {t}");
+                assert!(t.contains(locale::phrases(l).ap_weekdays[5]), "{l:?}: {t}");
+            }
         }
         assert_eq!(
             sms_text(Lang::En, "Sam", &a, true),
-            "Hi, this is Sam. Sat Nov 14, 15:00 看房 — that works for me, see you then."
+            "Hi, this is Sam. Sat Nov 14, 15:00 works for me, see you then."
         );
     }
 
@@ -1205,10 +1758,10 @@ mod tests {
         let t = at(2026, 11, 16, 9, 5); // a Monday
         for l in locale::ALL {
             let p = locale::phrases(l);
-            for s in [p.ap_sms_hi_owner, p.ap_sms_ok, p.ap_sms_no, p.ap_auto_failed, p.ap_replaced, p.ap_cal_failed, p.ap_sms_sent, p.ap_sms_not_sent, p.ap_sms_code] {
+            for s in [p.ap_sms_hi_owner, p.ap_sms_ok, p.ap_sms_no, p.ap_auto_failed, p.ap_replaced, p.ap_cal_failed, p.ap_sms_sent, p.ap_sms_not_sent, p.ap_sms_code, p.ap_void_failed] {
                 assert_eq!(s.matches("{}").count(), 1, "{l:?}: {s}");
             }
-            for s in [p.ap_sms_hi, p.ap_confirm, p.ap_decline, p.ap_card_title, p.ap_what, p.ap_name, p.ap_sms, p.ap_sms_will, p.ap_sms_off, p.ap_sms_cannot, p.ap_pending, p.ap_booked, p.ap_busy, p.ap_confirmed, p.ap_declined, p.ap_cal_added, p.ap_cal_none, p.ap_sms_old_app, p.ap_sms_offline, p.ap_sms_timeout, p.ap_already] {
+            for s in [p.ap_sms_hi, p.ap_confirm, p.ap_decline, p.ap_card_title, p.ap_what, p.ap_name, p.ap_sms, p.ap_sms_will, p.ap_sms_off, p.ap_sms_cannot, p.ap_pending, p.ap_booked, p.ap_busy, p.ap_confirmed, p.ap_declined, p.ap_cal_added, p.ap_cal_none, p.ap_sms_old_app, p.ap_sms_offline, p.ap_sms_timeout, p.ap_already, p.ap_sms_busy, p.ap_cal_removed] {
                 assert!(!s.trim().is_empty() && !s.contains('{'), "{l:?}: {s}");
             }
             assert!(p.ap_confirm.starts_with('✅') && p.ap_decline.starts_with('❌'), "{l:?}");
@@ -1248,7 +1801,21 @@ mod tests {
             r,
             json!({"toolResponse": {"functionResponses": [{"id": "fc-1", "name": "check_availability", "response": {"free": true}}]}})
         );
-        let decl = tool_declarations();
+        // propose_appointment's answer is silent (the model already said it).
+        let silent = tool_response("fc-2", PROPOSE, json!({"status": "pending_owner_confirmation"}));
+        assert_eq!(
+            silent,
+            json!({"toolResponse": {"functionResponses": [{"id": "fc-2", "name": "propose_appointment",
+                "response": {"status": "pending_owner_confirmation", "scheduling": "SILENT"}}]}})
+        );
+        assert!(r["toolResponse"]["functionResponses"][0]["response"].get("scheduling").is_none());
+        // NON_BLOCKING only on propose_appointment, and only when asked for.
+        let nb = tool_declarations(true);
+        assert_eq!(nb[0]["functionDeclarations"][1]["behavior"], "NON_BLOCKING");
+        assert!(nb[0]["functionDeclarations"][0].get("behavior").is_none());
+        assert!(!is_blocking(PROPOSE, true) && is_blocking(PROPOSE, false) && is_blocking(CHECK, true));
+        let decl = tool_declarations(false);
+        assert!(!decl.to_string().contains("behavior"));
         let names: Vec<&str> = decl[0]["functionDeclarations"]
             .as_array()
             .unwrap()
@@ -1374,10 +1941,176 @@ mod tests {
         assert_eq!(sms_report(&SmsOutcome::Unsupported, "x").1, "簡訊沒傳出：手機 App 太舊，不支援傳簡訊");
         assert_eq!(sms_report(&SmsOutcome::Offline, "x"), ("offline".into(), "簡訊沒傳出：手機沒連線".into()));
         assert_eq!(sms_report(&SmsOutcome::Timeout, "x").0, "timeout");
+        assert_eq!(sms_report(&SmsOutcome::Busy, "x"), ("busy".into(), "簡訊沒傳出：同一則簡訊正在傳送中".into()));
         assert_eq!(
             sms_report(&SmsOutcome::Failed("no_service".into()), "x"),
             ("no_service".into(), "簡訊沒傳出：失敗代碼 no_service".into())
         );
+    }
+
+    fn stores() -> (std::path::PathBuf, Arc<TaskStore>, Arc<CallStore>) {
+        let root = std::env::temp_dir().join(format!("myna-appt-{}", uuid::Uuid::new_v4()));
+        let tasks = TaskStore::new(root.join("tasks"));
+        let calls = CallStore::new(root.join("calls"), false, false, 30);
+        (root, tasks, calls)
+    }
+
+    fn plain_settings() -> RuntimeSettings {
+        let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        rt.appointment_sms = false;
+        rt
+    }
+
+    #[tokio::test]
+    async fn two_decisions_at_once_act_only_once() {
+        let (root, store, calls) = stores();
+        let rt = plain_settings();
+        let http = Client::new();
+        let cal = Arc::new(FakeCal::default());
+        cal.write_delay_ms.store(150, std::sync::atomic::Ordering::SeqCst);
+        let a = appt(&later(2, 15), &later(2, 16), "看房");
+        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
+        // ✅ and ❌ pressed together (or Telegram and the API): the first one acts.
+        let (first, second) = tokio::join!(
+            decide_with(Some(Cal::Fake(cal.clone())), &http, &rt, &store, &calls, None, &t.id, true),
+            decide_with(Some(Cal::Fake(cal.clone())), &http, &rt, &store, &calls, None, &t.id, false),
+        );
+        let (first, second) = (first.unwrap(), second.unwrap());
+        assert!(first.1.starts_with("✅ 已確定預約"), "{}", first.1);
+        assert!(second.1.starts_with("這個預約已經處理過了"), "{}", second.1);
+        assert_eq!(count(&cal.inserts), 1);
+        let done = store.get(&t.id).await.unwrap();
+        assert_eq!(done.status, TaskStatus::Fulfilled);
+        assert_eq!(done.appointment.as_ref().map(|a| (a.status.as_str(), a.event_id.as_str())), Some((CONFIRMED, "ev1")));
+        assert_eq!(done.events.iter().filter(|e| e.starts_with("appointment_")).count(), 1, "{:?}", done.events);
+        // Asked while another decision holds the task: nothing happens.
+        let t2 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
+        let held = Deciding::claim(&t2.id).unwrap();
+        assert!(Deciding::claim(&t2.id).is_none());
+        let (_, text) = decide_with(Some(Cal::Fake(cal.clone())), &http, &rt, &store, &calls, None, &t2.id, true).await.unwrap();
+        assert!(text.starts_with("這個預約已經處理過了"), "{text}");
+        assert_eq!(store.get(&t2.id).await.unwrap().status, TaskStatus::Pending);
+        drop(held);
+        let (_, text) = decide_with(Some(Cal::Fake(cal.clone())), &http, &rt, &store, &calls, None, &t2.id, true).await.unwrap();
+        assert!(text.starts_with("✅ 已確定預約"), "{text}");
+        assert_eq!(count(&cal.inserts), 2);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn auto_moves_its_own_event_instead_of_booking_twice() {
+        let cal = Arc::new(FakeCal::default());
+        let s = auto_session(&cal);
+        let booked = json!({"status": "booked"});
+        let (a, b) = (later(2, 15), later(2, 16));
+        assert_eq!(s.run_tool(&propose_call(&a, &b)).await, booked);
+        assert_eq!(count(&cal.inserts), 1);
+        // Its own event does not make that time look busy.
+        let check = ToolCall { id: "c".into(), name: CHECK.into(), args: json!({"start": a}) };
+        assert_eq!(s.run_tool(&check).await, json!({"free": true}));
+        // Longer now (overlaps only its own event): moved, not added.
+        assert_eq!(s.run_tool(&propose_call(&a, &later(2, 17))).await, booked);
+        assert_eq!((count(&cal.inserts), count(&cal.moves)), (1, 1));
+        let out = s.book.outcome().unwrap();
+        assert_eq!((out.event_id.as_str(), out.end.as_str()), ("ev1", later(2, 17).as_str()));
+        assert!(out.replaced.is_empty());
+        // The same time again: booked, nothing written.
+        assert_eq!(s.run_tool(&propose_call(&a, &later(2, 17))).await, booked);
+        assert_eq!((count(&cal.inserts), count(&cal.moves)), (1, 1));
+        // Someone else has that time: not booked; the call's event keeps its id…
+        cal.busy.lock().unwrap().push((later(3, 9), later(3, 12)));
+        assert_eq!(
+            s.run_tool(&propose_call(&later(3, 10), &later(3, 11))).await,
+            json!({"status": "pending_owner_confirmation"})
+        );
+        let out = s.book.outcome().unwrap();
+        assert_eq!((out.status.as_str(), out.event_id.as_str()), (PENDING, "ev1"));
+        assert_eq!(out.auto_error, texts().ap_busy);
+        assert!(out.replaced.is_empty() && out.calendar_event().google_event_id.is_empty());
+        // …so the owner's ✅ moves it there instead of adding a second one.
+        let (root, store, calls) = stores();
+        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &out) }).await.unwrap();
+        let (done, _) = decide_with(Some(Cal::Fake(cal.clone())), &Client::new(), &plain_settings(), &store, &calls, None, &t.id, true)
+            .await
+            .unwrap();
+        assert_eq!((count(&cal.inserts), count(&cal.moves)), (1, 2));
+        assert_eq!(done.appointment.unwrap().event_id, "ev1");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn lost_answers_and_declines_do_not_leave_extra_events() {
+        let (root, store, calls) = stores();
+        let http = Client::new();
+        let cal = Arc::new(FakeCal::default());
+        // An insert whose answer was lost (timeout) is found by the call's tag.
+        cal.events.lock().unwrap().push(("ev7".into(), later(2, 9), later(2, 10), "tag-test".into()));
+        let mut a = appt(&later(2, 9), &later(2, 10), "看房");
+        a.mode = "auto".into();
+        a.tag = "tag-test".into();
+        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
+        let (done, _) = decide_with(Some(Cal::Fake(cal.clone())), &http, &plain_settings(), &store, &calls, None, &t.id, true)
+            .await
+            .unwrap();
+        assert_eq!((count(&cal.inserts), count(&cal.moves)), (0, 1));
+        assert_eq!(done.appointment.unwrap().event_id, "ev7");
+        // Declining an appointment whose event is in the calendar takes it out.
+        let mut b = a.clone();
+        b.event_id = "ev7".into();
+        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &b) }).await.unwrap();
+        let (done, text) = decide_with(Some(Cal::Fake(cal.clone())), &http, &plain_settings(), &store, &calls, None, &t.id, false)
+            .await
+            .unwrap();
+        assert!(text.contains("已從 Google 日曆刪除"), "{text}");
+        assert_eq!(count(&cal.deletes), 1);
+        assert!(done.appointment.unwrap().event_id.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_scam_verdict_voids_what_the_call_booked_and_it_is_deleted() {
+        let http = Client::new();
+        let cal = Arc::new(FakeCal::default());
+        let s = auto_session(&cal);
+        s.run_tool(&propose_call(&later(2, 15), &later(2, 16))).await;
+        s.book.discard();
+        assert_eq!(s.book.outcome(), None);
+        let voided = s.book.voided();
+        assert_eq!(voided.iter().map(|e| e.event_id.as_str()).collect::<Vec<_>>(), vec!["ev1"]);
+        assert!(delete_voided_with(Some(Cal::Fake(cal.clone())), &http, &voided).await.is_empty());
+        assert_eq!(count(&cal.deletes), 1);
+        // The verdict lands while the event is being written: it is voided as well,
+        // and the model is only told it waits.
+        let cal2 = Arc::new(FakeCal::default());
+        cal2.write_delay_ms.store(200, std::sync::atomic::Ordering::SeqCst);
+        let s2 = auto_session(&cal2);
+        let runner = s2.clone();
+        let call = propose_call(&later(4, 9), &later(4, 10));
+        let running = tokio::spawn(async move { runner.run_tool(&call).await });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        s2.book.discard();
+        assert_eq!(running.await.unwrap(), json!({"status": "pending_owner_confirmation"}));
+        let voided = s2.book.voided();
+        assert_eq!(voided.iter().map(|e| e.event_id.as_str()).collect::<Vec<_>>(), vec!["ev1"]);
+        s2.book.settled(Duration::from_millis(10)).await;
+        // Could not be deleted: a line for the summary says so.
+        cal2.fail_delete.store(true, std::sync::atomic::Ordering::SeqCst);
+        let failed = delete_voided_with(Some(Cal::Fake(cal2.clone())), &http, &voided).await;
+        assert_eq!(failed.len(), 1);
+        let line = void_failed_line(&failed[0]);
+        assert!(line.starts_with("📅 通話中排入的「") && line.contains("請自己刪"), "{line}");
+        // An event whose id was never answered is found by the call's tag.
+        cal2.fail_delete.store(false, std::sync::atomic::Ordering::SeqCst);
+        let lost = Earlier { start: later(4, 9), tag: "tag-test".into(), ..Default::default() };
+        assert!(delete_voided_with(Some(Cal::Fake(cal2.clone())), &http, &[lost]).await.is_empty());
+        assert_eq!(count(&cal2.deletes), 1);
+        // A booked appointment of a call that turned out bad: everything it wrote.
+        let mut booked = appt(&later(2, 15), &later(2, 16), "看房");
+        booked.event_id = "ev9".into();
+        booked.replaced = vec![Earlier { event_id: "ev8".into(), ..Default::default() }];
+        let ids: Vec<String> = all_events(&booked).into_iter().map(|e| e.event_id).collect();
+        assert_eq!(ids, vec!["ev8", "ev9"]);
+        assert!(all_events(&appt(&later(2, 15), &later(2, 16), "看房")).is_empty());
     }
 
     #[tokio::test]
