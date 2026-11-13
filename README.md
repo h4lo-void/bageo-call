@@ -146,10 +146,17 @@ Be aware of what has and has not been proven:
   not against live accounts), the calendar suggestion, version 0.2 of the phone
   app's setup screen, the Docker image, and the desktop downloads from the
   Releases page.
-- **Phone app 0.2.0 answers real calls** on the Pixel 7, 7a and 9 in daily use
+- **Phone app 0.2.3 answers real calls** on the Pixel 7, 7a and 9 in daily use
   (Android 16, KernelSU-Next), and SMS forwarding works with it. Those phones
-  were updated from the previous version, so setting up a phone from scratch
-  with 0.2.0 has not been done yet.
+  were updated from earlier versions, so setting up a phone from scratch has
+  not been done yet.
+- **AI phone or normal phone (new in 0.2.3).** In the web console (*System*)
+  or in the app you can turn a phone back into an ordinary phone: calls ring
+  and you answer them yourself. Switch back and the AI answers again. The
+  module does this as root, so you do not have to give the Myna app root
+  access in Magisk or KernelSU. Tried on a Pixel 7a: in normal mode a real
+  call rang and was answered, the mode stayed after a reboot, and after
+  switching back the AI answered.
 - **The phone module is signed with the project's own key**, so later releases
   install over it. If you installed the module from the first v0.2.0 download,
   which was signed with a temporary key, you can install the current one over

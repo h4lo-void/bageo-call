@@ -59,7 +59,8 @@ console (see [Normal phone mode](#normal-phone-mode)) and undone for good (see
    | Let Myna control Do Not Disturb | **Open settings** and allow it. |
    | Do not let Android put Myna to sleep | **Allow**, so Android does not stop the service. |
 
-   Allow root when the root manager asks. When every step is done the list
+   The Myna app itself does not need root access (the module does the root
+   work), so if the root manager asks, either answer is fine. When every step is done the list
    folds away, and once the phone is connected to the computer the card says
    *The AI is answering your calls*. The connection address, the connection
    test and the detailed checks are under **Advanced**.
