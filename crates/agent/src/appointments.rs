@@ -1412,18 +1412,18 @@ pub async fn after_summary(
         )
         .await
         {
-            // Kept on the task: a decision on the web takes the buttons off.
             Ok(message_id) if message_id != 0 => {
-                appt.tg_card = Some(TgCard { chat_id: chat.to_string(), message_id });
-                let _ = store
-                    .patch(
-                        &task.id,
-                        TaskPatch {
-                            appointment: Some(appt.clone()),
-                            ..Default::default()
-                        },
-                    )
-                    .await;
+                let card = TgCard { chat_id: chat.to_string(), message_id };
+                if keep_card(store, &task.id, &card, CARD_SETTLE_WAIT).await == CardFate::Close {
+                    // Decided on the web while the card was on its way: no buttons
+                    // for a decision already made.
+                    crate::tg_inbound::remove_inline_keyboard(http, token, &card.chat_id, card.message_id).await;
+                    let text = format!("{}\n{}", p.ap_already, appt.headline(locale::current()));
+                    if let Err(e) = crate::tg_inbound::send_plain_message(http, token, &card.chat_id, &text).await {
+                        warn!("appointment card close note failed task_id={}: {e:#}", task.id);
+                    }
+                    info!("appointment card closed at once (decided while it was sent) task_id={}", task.id);
+                }
             }
             Ok(_) => {}
             Err(e) => warn!("appointment card failed task_id={}: {e:#}", task.id),
@@ -1459,6 +1459,59 @@ pub async fn after_summary(
 /// (two Telegram presses in one batch, Telegram and the API together, ✅ then ❌).
 static DECIDING: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
+/// How long a card just sent waits for a decision under way (calendar, then a
+/// text message that may wait 90 s for the phone) before it is settled.
+const CARD_SETTLE_WAIT: Duration = Duration::from_secs(150);
+
+/// What becomes of a Telegram card that was just sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CardFate {
+    /// Still waiting for the owner: the card is kept on the task (a decision on
+    /// the web takes its buttons off).
+    Keep,
+    /// Decided meanwhile (on the web, through the API) or not to be found: its
+    /// buttons come off now.
+    Close,
+}
+
+/// The card's message is known: put it on the task — but only on the task as it
+/// stands now, under the decision lock, and only while it still waits. The task
+/// is on the web console from the moment it is made, so the owner may have
+/// decided while the card was on its way; writing back the copy taken before
+/// would undo that decision (pending again, the event forgotten, the buttons
+/// live for a second decision). A decision under way is waited for (up to
+/// `wait`), so its outcome is what is read.
+async fn keep_card(store: &TaskStore, task_id: &str, card: &TgCard, wait: Duration) -> CardFate {
+    let Some(_claim) = Deciding::claim_within(task_id, wait).await else {
+        warn!("appointment card: a decision still holds task_id={task_id}; card closed");
+        return CardFate::Close;
+    };
+    let Some(mut appt) = store.get(task_id).await.and_then(|t| t.appointment) else {
+        return CardFate::Close;
+    };
+    if appt.status != PENDING {
+        return CardFate::Close;
+    }
+    appt.tg_card = Some(card.clone());
+    match store
+        .patch(
+            task_id,
+            TaskPatch {
+                appointment: Some(appt),
+                ..Default::default()
+            },
+        )
+        .await
+    {
+        Ok(_) => CardFate::Keep,
+        Err(e) => {
+            // Not on the task: nothing could take its buttons off later.
+            warn!("appointment card not kept task_id={task_id}: {e:#}");
+            CardFate::Close
+        }
+    }
+}
+
 /// Holds a task while it is being decided; let go when dropped.
 struct Deciding(String);
 
@@ -1471,6 +1524,20 @@ impl Deciding {
         }
         busy.push(task_id.to_string());
         Some(Self(task_id.to_string()))
+    }
+
+    /// [`Self::claim`], waiting up to `wait` for a decision under way to finish.
+    async fn claim_within(task_id: &str, wait: Duration) -> Option<Self> {
+        let until = tokio::time::Instant::now() + wait;
+        loop {
+            if let Some(c) = Self::claim(task_id) {
+                return Some(c);
+            }
+            if tokio::time::Instant::now() >= until {
+                return None;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
     }
 }
 
@@ -2196,6 +2263,59 @@ mod tests {
         assert_eq!(card_to_clear("123:abc", again.appointment.as_ref(), acted), None);
         // The card stays out of JSON when none went out.
         assert!(serde_json::to_value(appt("2026-11-14T15:00", "", "x")).unwrap().get("tg_card").is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_card_that_lands_after_a_web_decision_never_undoes_it() {
+        let (root, store, calls) = stores();
+        let cal = Arc::new(FakeCal::default());
+        let http = Client::new();
+        let card = TgCard { chat_id: "42".into(), message_id: 7 };
+        // Decided on the web while the card was on its way…
+        let a = appt(&later(2, 15), &later(2, 16), "看房");
+        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
+        let (_, _, acted1) = decide_inner(Some(Cal::Fake(cal.clone())), &http, &plain_settings(), &store, &calls, None, &t.id, true)
+            .await
+            .unwrap();
+        assert!(acted1);
+        // …then its message id comes back: the decision stands, the buttons come off.
+        assert_eq!(keep_card(&store, &t.id, &card, Duration::from_secs(1)).await, CardFate::Close);
+        let after = store.get(&t.id).await.unwrap().appointment.unwrap();
+        assert_eq!((after.status.as_str(), after.event_id.as_str(), after.tg_card.as_ref()), (CONFIRMED, "ev1", None));
+        // A press on the card (or the web again) does nothing: one calendar write.
+        let (_, text, acted2) = decide_inner(Some(Cal::Fake(cal.clone())), &http, &plain_settings(), &store, &calls, None, &t.id, true)
+            .await
+            .unwrap();
+        assert!(!acted2 && text.starts_with("這個預約已經處理過了"), "{text}");
+        assert_eq!(count(&cal.inserts), 1);
+
+        // Still waiting: the card goes onto the task as it stands now.
+        let t2 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
+        assert_eq!(keep_card(&store, &t2.id, &card, Duration::from_secs(1)).await, CardFate::Keep);
+        let kept = store.get(&t2.id).await.unwrap().appointment.unwrap();
+        assert_eq!((kept.status.as_str(), kept.tg_card), (PENDING, Some(card.clone())));
+
+        // A decision under way: waited for, then its outcome is what counts.
+        let t3 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
+        let held = Deciding::claim(&t3.id).unwrap();
+        let waiting = {
+            let (store, id, card) = (store.clone(), t3.id.clone(), card.clone());
+            tokio::spawn(async move { keep_card(&store, &id, &card, Duration::from_secs(5)).await })
+        };
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        assert!(!waiting.is_finished(), "the card waits for the decision");
+        let mut decided = store.get(&t3.id).await.unwrap().appointment.unwrap();
+        decided.status = DECLINED.into();
+        store.patch(&t3.id, TaskPatch { appointment: Some(decided), ..Default::default() }).await.unwrap();
+        drop(held);
+        assert_eq!(waiting.await.unwrap(), CardFate::Close);
+        assert_eq!(store.get(&t3.id).await.unwrap().appointment.unwrap().status, DECLINED);
+        // One that never lets go: the card is closed, nothing written.
+        let t4 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
+        let _stuck = Deciding::claim(&t4.id).unwrap();
+        assert_eq!(keep_card(&store, &t4.id, &card, Duration::from_millis(200)).await, CardFate::Close);
+        assert_eq!(store.get(&t4.id).await.unwrap().appointment.unwrap().tg_card, None);
         let _ = std::fs::remove_dir_all(&root);
     }
 

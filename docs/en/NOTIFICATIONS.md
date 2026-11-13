@@ -92,7 +92,7 @@ after the call and the bot reports it the same way.
 
 When you decide in the console or through the API, the card's buttons are taken
 off and the bot posts the same answer in the chat, so the card never offers a
-decision that was already made. If Telegram cannot be reached, the decision
+decision that was already made (a card that arrives after you already decided comes without buttons). If Telegram cannot be reached, the decision
 still stands.
 
 When a call that already put an event in your calendar turns out to be a sales
