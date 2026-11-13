@@ -169,7 +169,7 @@ impl TgPoller {
             }
         }
 
-        let p = crate::locale::phrases(crate::locale::current());
+        let p = crate::locale::notify_phrases();
         let ack = if confirm { p.tc_confirm_ack } else { p.tc_ignore_ack };
         answer_callback_query(http, bot_token, callback_id, Some(ack)).await;
 
@@ -211,7 +211,7 @@ pub async fn send_task_card(
     task_id: &str,
     body_text: &str,
 ) -> Result<()> {
-    let p = crate::locale::phrases(crate::locale::current());
+    let p = crate::locale::notify_phrases();
     send_task_card_labeled(
         http,
         bot_token,
@@ -256,7 +256,7 @@ pub async fn send_task_card_labeled(
     } else {
         format!("{title}\n\n{body}")
     };
-    let text = crate::zh_tw::to_tw(&text);
+    let text = crate::locale::for_owner(&text);
 
     let url = bot_method_url(token, "sendMessage");
     let resp = http
@@ -325,7 +325,7 @@ pub async fn send_plain_message(
 ) -> Result<()> {
     let token = bot_token.trim();
     let chat = chat_id.trim();
-    let mut body = crate::zh_tw::to_tw(text.trim());
+    let mut body = crate::locale::for_owner(text.trim());
     if token.is_empty() || chat.is_empty() {
         anyhow::bail!("telegram bot token and chat id are required");
     }

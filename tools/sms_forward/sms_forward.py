@@ -286,7 +286,8 @@ def normalize_lang(code: str) -> str:
 
 
 class Language:
-    """Language of the message labels: SMS_LANG, else the agent's, else English.
+    """Language of the message labels: SMS_LANG, else the language the agent's
+    notifications are in, else English.
 
     Until the agent has told its language once, code() answers None: messages wait
     (they stay queued or unread and are tried again) for up to LANG_WAIT_SEC, and only
@@ -416,8 +417,14 @@ def agent_in_call() -> bool:
 
 
 def agent_language() -> str | None:
-    lang = (agent_health() or {}).get("language")
-    return lang if isinstance(lang, str) and lang.strip() else None
+    """The language of the agent's notifications: its notify_language, or on an agent
+    that does not report one, the language it speaks."""
+    health = agent_health() or {}
+    for key in ("notify_language", "language"):
+        lang = health.get(key)
+        if isinstance(lang, str) and lang.strip():
+            return lang
+    return None
 
 
 def agent_utc_offset() -> dt.tzinfo | None:

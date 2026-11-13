@@ -15,7 +15,8 @@ There are two kinds of settings:
 
 | Setting | What it does |
 |---|---|
-| Language | The language the AI speaks and the language of notifications and summaries. English, 繁體中文 (Taiwan), 简体中文, 日本語, 한국어, Español, Français, Deutsch, Português. |
+| Language | The language the AI speaks with callers: what it says, its first words, the blocked-number announcement and the texts it sends callers. English, 繁體中文 (Taiwan), 简体中文, 日本語, 한국어, Español, Français, Deutsch, Português. |
+| Language of notifications and summaries | The language of what you read: notifications, call summaries (also in the call list), appointment cards and their results, messages from the SMS forwarder. Default *Same as the AI's language*. Set it when callers should hear another language than the one you read — say you are abroad and the AI answers in English, while your notifications stay in 繁體中文. The summary is written in this language whatever language the call was in. |
 | Your name | How callers refer to you. Used wherever a prompt says `{owner}`. |
 | Answer style | **AI assistant** — says it is an AI answering for you and takes a message. **As me** — answers as you. |
 | AI answers calls | Master switch. Off: calls are picked up and hung up at once, nothing is said. (To have one phone ring normally so you can answer it yourself, switch it to a [normal phone](PHONE.md#normal-phone-mode) instead.) |
@@ -91,7 +92,8 @@ name saved in the console stays as it is; otherwise the address becomes
 
 | Setting | What it does |
 |---|---|
-| Summary service | By default the summary is written with your Gemini key (model `gemini-flash-latest`). To use another service give its OpenAI-compatible **base URL** (e.g. `https://api.openai.com/v1`, `https://api.deepseek.com/v1`, `https://openrouter.ai/api/v1`, or a local Ollama: `http://127.0.0.1:11434/v1`), a **model** name, and the **API key** (not needed for a local server). A DeepSeek key alone (no base URL) uses DeepSeek. |
+| Summary service | **Automatic** (default): the service under *Use another service for summaries* when one is set, else DeepSeek when its key is entered, else Gemini with your Gemini key (model `gemini-flash-latest`). **Gemini (cheap)**: always Gemini with your Gemini key, on its lowest-cost model `gemini-flash-lite-latest` (a *Model* typed below is tried first; `gemini-flash-latest` is the fallback). **DeepSeek**: always DeepSeek. A choice without its key works like *Automatic*. Calendar suggestions use the same service. |
+| Use another service for summaries | Give the service's OpenAI-compatible **base URL** (e.g. `https://api.openai.com/v1`, `https://api.deepseek.com/v1`, `https://openrouter.ai/api/v1`, or a local Ollama: `http://127.0.0.1:11434/v1`), a **model** name, and the **API key** (not needed for a local server). A DeepSeek key alone (no base URL) uses DeepSeek. The base URL is used when *Summary service* is *Automatic*. |
 | Suggest calendar events | When a call fixes a date — a delivery window, an appointment, a time someone will call back — the summary gets an "add to calendar" link (Google Calendar form, plus an `.ics` download in the console). One extra request to the summary model per call. Nothing is added to any calendar by itself. |
 | Add to Google Calendar automatically | Inserts the event right away. Needs Google OAuth credentials (client ID, client secret, refresh token with the `calendar.events` scope, calendar ID or `primary`) — for people who already have a Google Cloud project; everyone else is better served by the link. |
 | Appointments | Off by default. When a caller wants to set a time with you (a meeting, a visit, a call at a set time), the AI looks at your Google Calendar — only whether you are free, never what is in it — without saying it is checking or asking the caller to wait. Busy: it says you already have something then, and suggests another time only if asked. Free: **Ask me first** — it says it should be fine and that you will confirm; after the call you decide with **✅ Confirm** / **❌ Decline** under *Appointments to confirm* at the top of the web console's Calls page, or in the call's details (✅ puts it in your calendar). With a Telegram bot set up and *Send notifications* on you also get a card you can tap; other notification channels get a reminder line with a link to the call; with no notifications set up it only shows in the console. Only the first decision counts: a second one — even at the same moment, on the card, or through the API — changes nothing, and a card whose appointment was decided elsewhere loses its buttons. **Book it if I'm free** — it agrees and the event goes into your calendar during the call (if that fails, it waits for your decision instead). When the two of you change the time later in the call, that event is moved — there is never a second one; a back-up time the caller only mentions ("if not, the afternoon works too") does not replace the agreed one. Never with sales or scam callers: when a call is judged one — during the call, or afterwards because the summary marks it "Sales call" or "Suspected scam" (a bank's fraud desk or the police calling about fraud does not count; when no summary model answered: because the caller's words add up to one) — or when the AI could not connect and the call was hung up, what it agreed to no longer counts, no card comes, and an event it already put in your calendar is deleted after the call (the summary says so); if that fails, the summary gets a line asking you to delete it yourself. Works with both answer styles (as you, or as your assistant). The appointment replaces the calendar suggestion for that call. |
@@ -195,9 +197,11 @@ rather than empty: an empty `TZ` means UTC.
 ### First-run defaults
 
 These only set the starting value; the web console overrides them:
-`GEMINI_API_KEY`, `APP_LANGUAGE` (`en`, `zh-TW`, …), `OWNER_NAME`,
+`GEMINI_API_KEY`, `APP_LANGUAGE` (`en`, `zh-TW`, …), `NOTIFY_LANGUAGE` (empty =
+the same as `APP_LANGUAGE`), `OWNER_NAME`,
 `ANSWER_STYLE` (`assistant` / `persona`), `GEMINI_LIVE_MODEL`,
-`GEMINI_VOICE_NAME`, `COUNTRY_CODE`, `SUMMARY_API_BASE`, `SUMMARY_MODEL`,
+`GEMINI_VOICE_NAME`, `COUNTRY_CODE`, `SUMMARY_PROVIDER` (`auto` / `gemini` /
+`deepseek`), `SUMMARY_API_BASE`, `SUMMARY_MODEL`,
 `DEEPSEEK_API_KEY` (the summary API key), `TELEGRAM_BOT_TOKEN`,
 `TELEGRAM_CHAT_ID`, `NOTIFY_WEBHOOK_URL`, `APPOINTMENT_MODE` (`off` /
 `confirm` / `auto`), `APPOINTMENT_SMS` (`true` / `false`).

@@ -1131,13 +1131,13 @@ async fn main() -> Result<()> {
                                         "tg appointment decision failed task_id={}: {e:#}",
                                         action.task_id
                                     );
-                                    let p = locale::phrases(locale::current());
+                                    let p = locale::notify_phrases();
                                     let head = if action.confirm {
                                         p.tc_confirm_failed
                                     } else {
                                         p.tc_ignore_failed
                                     };
-                                    format!("{head}{}{e:#}", locale::kv_sep())
+                                    format!("{head}{}{e:#}", locale::notify_kv_sep())
                                 }
                             };
                             if let Err(e) =
@@ -1169,8 +1169,8 @@ async fn main() -> Result<()> {
                                 );
                                 format!(
                                     "{}{}{e:#}",
-                                    locale::phrases(locale::current()).tc_confirm_failed,
-                                    locale::kv_sep()
+                                    locale::notify_phrases().tc_confirm_failed,
+                                    locale::notify_kv_sep()
                                 )
                             }
                         }
@@ -1181,8 +1181,8 @@ async fn main() -> Result<()> {
                                 warn!("tg ignore fulfill failed task_id={}: {e:#}", action.task_id);
                                 format!(
                                     "{}{}{e:#}",
-                                    locale::phrases(locale::current()).tc_ignore_failed,
-                                    locale::kv_sep()
+                                    locale::notify_phrases().tc_ignore_failed,
+                                    locale::notify_kv_sep()
                                 )
                             }
                         }
@@ -1312,6 +1312,8 @@ async fn health(
             "ok": true,
             "version": env!("CARGO_PKG_VERSION"),
             "language": rt.language,
+            // What the owner reads (the SMS forwarder labels its messages with it).
+            "notify_language": rt.notify_lang().code(),
             "active_call_count": state.calls.live_calls().await.len(),
             "control_idle_clients": state.control.connected_serials().await.len(),
         }));
@@ -1551,6 +1553,7 @@ async fn health(
         json!(chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false)),
     );
     body.insert("language".into(), json!(rt.language));
+    body.insert("notify_language".into(), json!(rt.notify_lang().code()));
     body.insert("usb_bridge".into(), usb_bridge::status_json());
     body.insert("calls_data_dir".into(), json!(s.calls_data_dir));
     body.insert("calls_record".into(), json!(s.calls_record));
@@ -4150,11 +4153,14 @@ fn save_reject_list_notes(state: &AppState, record: &CallRecord) {
     let number = display_caller_id(&record.caller_id).to_string();
     // Number and reason on lines of their own.
     let reason = settings_store::reject_reason(&rt.reject_numbers, &record.caller_id);
-    let p = locale::phrases(locale::current());
+    // The record is the owner's; the announcement quoted is what the caller heard.
+    let lang = locale::notify_lang();
+    let p = locale::phrases(lang);
     let announce = voice_preview::reject_announce_text();
-    let summary = if locale::current().is_zh() {
+    let summary = if lang.is_zh() {
         let reason = reason.map(|r| format!("\n原因：{r}")).unwrap_or_default();
-        locale::zh_or(
+        locale::zh_or_in(
+            lang,
             &format!(
                 "對方：{number}{reason}\n事情：拒接號碼來電，播「{announce}」後掛斷\nAI 回覆：沒有接（沒用 AI）\n要處理：要聯絡的話自己回電"
             ),
@@ -4178,7 +4184,7 @@ fn save_reject_list_notes(state: &AppState, record: &CallRecord) {
         summary,
         dialogue: String::new(),
         recording_text: String::new(),
-        end_hint: locale::zh_or(
+        end_hint: locale::notify_zh_or(
             "拒接號碼：播無法接通語音後掛斷（沒有用 AI）",
             "blocked number: the announcement was played, then hung up (no AI)",
         ),
@@ -7641,7 +7647,7 @@ fn maybe_notify_voicemail(state: &AppState, call: &ActiveCall, notified: &Arc<At
         return;
     }
     let contact = call.reply_contact().unwrap_or("").to_string();
-    let p = locale::phrases(locale::current());
+    let p = locale::notify_phrases();
     let reply_line = match (call.reply_method(), call.contact_verified()) {
         (Some("phone"), true) => {
             if contact.is_empty() {
@@ -7678,7 +7684,7 @@ fn maybe_notify_voicemail(state: &AppState, call: &ActiveCall, notified: &Arc<At
             warn!("voicemail TG skipped (notify not configured) serial={serial} call_id={call_id}");
             return;
         }
-        let lang = locale::current();
+        let lang = locale::notify_lang();
         let p = locale::phrases(lang);
         let sep = p.sep;
         let mut deepseek_block = String::new();
@@ -7847,7 +7853,7 @@ fn spawn_voicemail_task(state: &AppState, call: &ActiveCall) {
                     .patch(
                         &task_id,
                         TaskPatch {
-                            summary: Some(locale::phrases(locale::current()).vm_task_failed.to_string()),
+                            summary: Some(locale::notify_phrases().vm_task_failed.to_string()),
                             fulfill_error: Some(Some(format!("extract: {e:#}"))),
                             ..Default::default()
                         },
@@ -7867,7 +7873,7 @@ fn spawn_voicemail_task(state: &AppState, call: &ActiveCall) {
         let token = rt.telegram_bot_token.trim();
         let chat = rt.telegram_chat_id.trim();
         if tg_inbound::task_card_ready(rt.call_notify, token, chat) {
-            let p = locale::phrases(locale::current());
+            let p = locale::notify_phrases();
             let sep = p.sep;
             let title = if task.summary.trim().is_empty() {
                 format!("{} — {}", p.n_voicemail, display_caller_id(&caller_id))
@@ -8094,7 +8100,7 @@ fn spawn_ai_talk_tg_summary(
                 warn!("ai talk summary skipped serial={serial}: no summary service (set a Gemini, DeepSeek or OpenAI-compatible key)");
                 let _ = caller_disp;
                 note_source = "no_key";
-                let p = locale::phrases(locale::current());
+                let p = locale::notify_phrases();
                 let sep = p.sep;
                 format!(
                     "{}{sep}{}\n{}{sep}{}",
@@ -8106,7 +8112,7 @@ fn spawn_ai_talk_tg_summary(
             ai_fail_summary_body(secs)
         } else {
             note_source = "none";
-            let lang = locale::current();
+            let lang = locale::notify_lang();
             let p = locale::phrases(lang);
             let sep = p.sep;
             format!(
@@ -8124,10 +8130,10 @@ fn spawn_ai_talk_tg_summary(
                 body = stall_fallback_summary(&live_full, secs);
             }
         }
-        let ai_failed_line = locale::phrases(locale::current()).s_ai_failed;
+        let ai_failed_line = locale::notify_phrases().s_ai_failed;
         if ai_failed && !body.contains("AI 沒接上") && !body.contains(ai_failed_line) {
             // The summary model usually writes it (prompt rule); make sure the owner sees it.
-            body.insert_str(0, &format!("{}\n", locale::phrases(locale::current()).s_ai_fail_prefix));
+            body.insert_str(0, &format!("{}\n", locale::notify_phrases().s_ai_fail_prefix));
         }
 
         // An appointment from a sales / scam call the check during the call
@@ -8141,7 +8147,7 @@ fn spawn_ai_talk_tg_summary(
         let late_sales = !stalled
             && appointment.is_some()
             && !gemini_live::dialogue_own_matter(&live_full)
-            && (deepseek::summary_says_sales(locale::current(), &body)
+            && (deepseek::summary_says_sales(locale::notify_lang(), &body)
                 || (note_source != "deepseek" && gemini_live::dialogue_is_sales(&live_full)));
         let mut sales_voided: Vec<appointments::Earlier> = Vec::new();
         if late_sales {
@@ -8204,8 +8210,8 @@ fn spawn_ai_talk_tg_summary(
         // The web console keeps the details; the notification stays short.
         let notes = calls::CallNotes {
             summary: body.clone(),
-            // Speaker labels in the agent's language ("Caller: …").
-            dialogue: gemini_live::localize_dialogue(&live_full, locale::current()),
+            // Speaker labels in the owner's language ("Caller: …").
+            dialogue: gemini_live::localize_dialogue(&live_full, locale::notify_lang()),
             recording_text: remote_tx.clone(),
             end_hint: end_hint.clone(),
             source: note_source.to_string(),
@@ -8233,8 +8239,8 @@ fn spawn_ai_talk_tg_summary(
         let detail_url = notify::call_detail_url(&eff, &call_id);
         if notify_on {
             if let Some(ev) = &calendar_event {
-                let label = locale::phrases(locale::current()).n_calendar;
-                body.push_str(&format!("\n📅 {label}{}{} ({})", locale::kv_sep(), ev.title, ev.when()));
+                let label = locale::notify_phrases().n_calendar;
+                body.push_str(&format!("\n📅 {label}{}{} ({})", locale::notify_kv_sep(), ev.title, ev.when()));
                 if ev.google_event_id.is_empty() {
                     // Not inserted for the owner: one tap opens the filled-in form.
                     body.push_str(&format!("\n{}", ev.google_link("")));
@@ -8282,7 +8288,7 @@ fn record_had_ai_fail_hangup(events: &[String]) -> bool {
 
 /// Notification body when the AI never spoke and nothing usable was transcribed.
 fn ai_fail_summary_body(secs: f64) -> String {
-    let lang = locale::current();
+    let lang = locale::notify_lang();
     let p = locale::phrases(lang);
     let sep = p.sep;
     format!(
@@ -8307,7 +8313,7 @@ fn stall_fallback_summary(dialogue: &str, secs: f64) -> String {
         .collect::<Vec<_>>()
         .join("");
     let hits = gemini_live::stall_keyword_hits(&caller);
-    let lang = locale::current();
+    let lang = locale::notify_lang();
     let p = locale::phrases(lang);
     let sep = p.sep;
     let named: String = hits.iter().take(4).copied().collect::<Vec<_>>().join(p.list_sep);
@@ -8338,25 +8344,26 @@ fn clip_dialogue_for_summary(dialogue: &str) -> String {
     let tail: String = dialogue.chars().skip(n - TAIL).collect();
     format!(
         "{head}\n{}\n{tail}",
-        locale::zh_or("…（中間省略）…", "… (middle left out) …")
+        locale::notify_zh_or("…（中間省略）…", "… (middle left out) …")
     )
 }
 
-/// One short line for the summary model about how the call ended, from the record events.
+/// One short line for the summary model about how the call ended, from the
+/// record events (in the owner's language, like the summary).
 fn summary_end_hint(events: &[String]) -> String {
     let has = |e: &str| events.iter().any(|x| x == e);
     if has("persona_ai_fail_hangup") {
-        locale::zh_or("AI 連不上，系統直接掛斷，對方沒聽到任何回應", "the AI could not connect; the system hung up and the caller heard nothing")
+        locale::notify_zh_or("AI 連不上，系統直接掛斷，對方沒聽到任何回應", "the AI could not connect; the system hung up and the caller heard nothing")
     } else if has("gemini_fail_to_voicemail") || has("gemini_zero_delivery_to_voicemail") {
-        locale::zh_or("AI 失敗，改走語音留言", "the AI failed; the call went to voicemail")
+        locale::notify_zh_or("AI 失敗，改走語音留言", "the AI failed; the call went to voicemail")
     } else if has("reject_unknown_caller") {
-        locale::zh_or("未顯示號碼，播拒接語音後掛斷（AI 沒有接）", "hidden number: the refusal announcement was played, then hung up (the AI did not answer)")
+        locale::notify_zh_or("未顯示號碼，播拒接語音後掛斷（AI 沒有接）", "hidden number: the refusal announcement was played, then hung up (the AI did not answer)")
     } else if has("reject_list") {
-        locale::zh_or("拒接號碼：播無法接通語音後掛斷（AI 沒有接）", "blocked number: the unavailable announcement was played, then hung up (the AI did not answer)")
+        locale::notify_zh_or("拒接號碼：播無法接通語音後掛斷（AI 沒有接）", "blocked number: the unavailable announcement was played, then hung up (the AI did not answer)")
     } else if has("persona_stall_spam") {
-        locale::zh_or("系統判斷像推銷／詐騙，AI 改成故意陪他聊、拖時間", "the system judged it a sales / scam call, so the AI deliberately kept the caller talking to waste their time")
+        locale::notify_zh_or("系統判斷像推銷／詐騙，AI 改成故意陪他聊、拖時間", "the system judged it a sales / scam call, so the AI deliberately kept the caller talking to waste their time")
     } else if has("ai_segment_end") || has("gemini_unmute_after_greet") {
-        locale::zh_or("AI 接聽並對話後結束（AI 說掰掰掛斷，或對方先掛）", "the AI answered and talked; the call ended normally (the AI said goodbye and hung up, or the caller hung up first)")
+        locale::notify_zh_or("AI 接聽並對話後結束（AI 說掰掰掛斷，或對方先掛）", "the AI answered and talked; the call ended normally (the AI said goodbye and hung up, or the caller hung up first)")
     } else {
         String::new()
     }
@@ -8385,7 +8392,7 @@ fn map_extracted_reply_method(raw: Option<&str>) -> Option<ReplyMethod> {
 fn display_caller_id(caller_id: &str) -> &str {
     let t = caller_id.trim();
     if t.is_empty() {
-        locale::phrases(locale::current()).n_hidden
+        locale::notify_phrases().n_hidden
     } else {
         t
     }

@@ -606,6 +606,9 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
               <input type="text" id="f-owner_name" data-k="owner_name" data-t="text" maxlength="40" data-i18n-ph="f_owner_ph" />
               <div class="help" data-i18n="f_owner_h"></div></div>
           </div>
+          <div class="field"><label for="f-notify_language" data-i18n="f_notify_lang"></label>
+            <select id="f-notify_language" data-k="notify_language" data-t="text" style="max-width:20rem"></select>
+            <div class="help" data-i18n="f_notify_lang_h"></div></div>
           <div class="field" id="styleField"><div class="lbl" id="lbl-style" data-i18n="f_style"></div>
             <div class="choice" role="radiogroup" aria-labelledby="lbl-style" data-k="answer_style" data-t="radio">
               <label><input type="radio" name="answer_style" value="assistant" /><span><b data-i18n="style_assistant"></b><small data-i18n="style_assistant_d"></small></span></label>
@@ -773,6 +776,11 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
         <div class="card group" id="g-summary"><div class="pad">
           <h2><span data-i18n="g_summary"></span><span class="tag" id="sumReady"></span></h2>
           <p class="desc" data-i18n="g_summary_d"></p>
+          <div class="field"><label for="f-summary_provider" data-i18n="f_sum_provider"></label>
+            <select id="f-summary_provider" data-k="summary_provider" data-t="text" style="max-width:20rem">
+              <option value="auto" data-i18n="sp_auto"></option><option value="gemini" data-i18n="sp_gemini"></option><option value="deepseek" data-i18n="sp_deepseek"></option>
+            </select>
+            <div class="help" data-i18n="f_sum_provider_h"></div></div>
           <details class="fold" id="sumOwn">
             <summary data-i18n="sum_own"></summary>
             <div class="field"><label for="f-summary_api_base" data-i18n="f_sum_base"></label>
@@ -1142,7 +1150,10 @@ I18N["en"] = {
   // ---- settings: basics
   g_basics_d: "The few things the AI needs before it can answer your phone.",
   f_language: "Language",
-  f_language_h: "The language the AI speaks, and the language of notifications and summaries.",
+  f_language_h: "The language the AI speaks with callers.",
+  f_notify_lang: "Language of notifications and summaries",
+  f_notify_lang_h: "What you read: notifications, call summaries (also in the call list), appointment cards, forwarded texts. Callers still hear the language above.",
+  nl_same: "Same as the AI's language",
   f_owner: "Your name",
   f_owner_ph: "e.g. Alex",
   f_owner_h: "The name callers use for you. The AI uses it when it talks about you.",
@@ -1320,6 +1331,11 @@ I18N["en"] = {
   f_sum_model: "Model",
   f_sum_model_h: "Empty = the default of that service.",
   f_sum_key: "Summary API key (DeepSeek, OpenAI, …)",
+  f_sum_provider: "Summary service",
+  f_sum_provider_h: "Automatic: the service set below, if any; else DeepSeek when its key is entered; else Gemini. Gemini (cheap): Gemini's lowest-cost model with your Gemini key. A choice without its key works like Automatic.",
+  sp_auto: "Automatic",
+  sp_gemini: "Gemini (cheap)",
+  sp_deepseek: "DeepSeek",
   f_cal_suggest: "Suggest calendar events",
   f_cal_suggest_h: "When a call fixes a date (a delivery, an appointment), the summary gets an “add to calendar” link.",
   f_cal_auto: "Add to Google Calendar automatically",
@@ -1734,7 +1750,10 @@ I18N["zh-TW"] = {
   // ---- settings: basics
   g_basics_d: "AI 開始幫你接電話之前，需要知道的幾件事。",
   f_language: "語言",
-  f_language_h: "AI 講話用的語言，通知和摘要也用這個語言。",
+  f_language_h: "AI 跟來電者講話用的語言。",
+  f_notify_lang: "通知和摘要的語言",
+  f_notify_lang_h: "給你看的文字：通知、通話摘要（通話紀錄裡也是）、預約確認卡片、簡訊轉發。來電者聽到的還是上面的語言。",
+  nl_same: "跟 AI 講話的語言相同",
   f_owner: "你的名字",
   f_owner_ph: "例如：小安",
   f_owner_h: "來電的人怎麼稱呼你。AI 提到你的時候會用這個名字。",
@@ -1912,6 +1931,11 @@ I18N["zh-TW"] = {
   f_sum_model: "模型",
   f_sum_model_h: "留空 = 使用該服務的預設模型。",
   f_sum_key: "摘要用的 API 金鑰（DeepSeek、OpenAI…）",
+  f_sum_provider: "摘要服務",
+  f_sum_provider_h: "自動：下面有設定其他服務就用它，否則有 DeepSeek 金鑰就用 DeepSeek，再不然用 Gemini。Gemini（便宜）：用你的 Gemini 金鑰和 Gemini 最便宜的模型。選的服務沒有金鑰時，跟自動一樣。",
+  sp_auto: "自動",
+  sp_gemini: "Gemini（便宜）",
+  sp_deepseek: "DeepSeek",
   f_cal_suggest: "建議行事曆活動",
   f_cal_suggest_h: "通話中講定了日期（送貨、預約），摘要就會附上「加入行事曆」的連結。",
   f_cal_auto: "自動加入 Google 日曆",
@@ -2326,7 +2350,10 @@ I18N["zh-CN"] = {
   // ---- settings: basics
   g_basics_d: "AI 开始帮你接电话之前，需要知道的几件事。",
   f_language: "语言",
-  f_language_h: "AI 说话用的语言，通知和摘要也用这种语言。",
+  f_language_h: "AI 跟来电者说话用的语言。",
+  f_notify_lang: "通知和摘要的语言",
+  f_notify_lang_h: "给你看的文字：通知、通话摘要（通话记录里也是）、预约确认卡片、短信转发。来电者听到的还是上面的语言。",
+  nl_same: "与 AI 说话的语言相同",
   f_owner: "你的名字",
   f_owner_ph: "例如：小安",
   f_owner_h: "来电的人怎么称呼你。AI 提到你的时候会用这个名字。",
@@ -2504,6 +2531,11 @@ I18N["zh-CN"] = {
   f_sum_model: "模型",
   f_sum_model_h: "留空 = 使用该服务的默认模型。",
   f_sum_key: "摘要用的 API 密钥（DeepSeek、OpenAI…）",
+  f_sum_provider: "摘要服务",
+  f_sum_provider_h: "自动：下面设置了其他服务就用它，否则有 DeepSeek 密钥就用 DeepSeek，再不然用 Gemini。Gemini（便宜）：用你的 Gemini 密钥和 Gemini 最便宜的模型。选的服务没有密钥时，与自动相同。",
+  sp_auto: "自动",
+  sp_gemini: "Gemini（便宜）",
+  sp_deepseek: "DeepSeek",
   f_cal_suggest: "建议日历日程",
   f_cal_suggest_h: "通话中约定了日期（送货、预约），摘要就会附上“添加到日历”的链接。",
   f_cal_auto: "自动添加到 Google 日历",
@@ -2918,7 +2950,10 @@ I18N["ja"] = {
   // ---- settings: basics
   g_basics_d: "AI が電話に出る前に必要な、最低限の設定です。",
   f_language: "言語",
-  f_language_h: "AI が話す言語です。通知と要約もこの言語になります。",
+  f_language_h: "AI が電話の相手と話す言語です。",
+  f_notify_lang: "通知と要約の言語",
+  f_notify_lang_h: "あなたが読むもの：通知、通話の要約（通話一覧でも）、予約の確認カード、転送された SMS。相手が聞くのは上の言語のままです。",
+  nl_same: "AI が話す言語と同じ",
   f_owner: "あなたの名前",
   f_owner_ph: "例：田中",
   f_owner_h: "相手があなたを呼ぶときの名前です。AI があなたのことを話すときに使います。",
@@ -3096,6 +3131,11 @@ I18N["ja"] = {
   f_sum_model: "モデル",
   f_sum_model_h: "空欄 = そのサービスの既定のモデル。",
   f_sum_key: "要約用の API キー（DeepSeek、OpenAI など）",
+  f_sum_provider: "要約サービス",
+  f_sum_provider_h: "自動：下で別のサービスを設定していればそれ、なければ DeepSeek のキーがあれば DeepSeek、それ以外は Gemini。Gemini（安価）：Gemini のキーで Gemini の最も安いモデルを使います。選んだサービスのキーがないときは自動と同じです。",
+  sp_auto: "自動",
+  sp_gemini: "Gemini（安価）",
+  sp_deepseek: "DeepSeek",
   f_cal_suggest: "カレンダーの予定を提案する",
   f_cal_suggest_h: "通話で日時が決まったとき（配達、予約など）、要約に「カレンダーに追加」のリンクが付きます。",
   f_cal_auto: "Google カレンダーに自動で追加する",
@@ -3510,7 +3550,10 @@ I18N["ko"] = {
   // ---- settings: basics
   g_basics_d: "AI가 전화를 받기 전에 꼭 필요한 몇 가지입니다.",
   f_language: "언어",
-  f_language_h: "AI가 말하는 언어입니다. 알림과 요약도 이 언어로 작성됩니다.",
+  f_language_h: "AI가 전화한 사람과 말하는 언어입니다.",
+  f_notify_lang: "알림과 요약 언어",
+  f_notify_lang_h: "내가 읽는 것: 알림, 통화 요약(통화 목록 포함), 예약 확인 카드, 전달된 문자. 전화한 사람은 계속 위의 언어로 듣습니다.",
+  nl_same: "AI가 말하는 언어와 같음",
   f_owner: "내 이름",
   f_owner_ph: "예: 민수",
   f_owner_h: "상대방이 나를 부르는 이름입니다. AI가 나에 대해 말할 때 사용합니다.",
@@ -3688,6 +3731,11 @@ I18N["ko"] = {
   f_sum_model: "모델",
   f_sum_model_h: "비워 두면 해당 서비스의 기본 모델을 사용합니다.",
   f_sum_key: "요약용 API 키(DeepSeek, OpenAI 등)",
+  f_sum_provider: "요약 서비스",
+  f_sum_provider_h: "자동: 아래에 다른 서비스를 설정했으면 그것을, 아니면 DeepSeek 키가 있으면 DeepSeek, 그 외에는 Gemini를 사용합니다. Gemini(저렴): Gemini 키로 Gemini의 가장 저렴한 모델을 사용합니다. 선택한 서비스의 키가 없으면 자동과 같습니다.",
+  sp_auto: "자동",
+  sp_gemini: "Gemini(저렴)",
+  sp_deepseek: "DeepSeek",
   f_cal_suggest: "캘린더 일정 제안",
   f_cal_suggest_h: "통화에서 날짜가 정해지면(배송, 예약 등) 요약에 “캘린더에 추가” 링크가 붙습니다.",
   f_cal_auto: "Google 캘린더에 자동으로 추가",
@@ -4102,7 +4150,10 @@ I18N["es"] = {
   // ---- settings: basics
   g_basics_d: "Lo poco que la IA necesita para poder contestar tu teléfono.",
   f_language: "Idioma",
-  f_language_h: "El idioma en el que habla la IA y en el que se escriben las notificaciones y los resúmenes.",
+  f_language_h: "El idioma en el que la IA habla con quien llama.",
+  f_notify_lang: "Idioma de notificaciones y resúmenes",
+  f_notify_lang_h: "Lo que lees tú: notificaciones, resúmenes de llamadas (también en la lista de llamadas), tarjetas de citas y SMS reenviados. Quien llama sigue oyendo el idioma de arriba.",
+  nl_same: "El mismo idioma que habla la IA",
   f_owner: "Tu nombre",
   f_owner_ph: "p. ej. Álex",
   f_owner_h: "El nombre con el que te llaman. La IA lo usa cuando habla de ti.",
@@ -4280,6 +4331,11 @@ I18N["es"] = {
   f_sum_model: "Modelo",
   f_sum_model_h: "Vacío = el modelo predeterminado de ese servicio.",
   f_sum_key: "Clave de API para resúmenes (DeepSeek, OpenAI, …)",
+  f_sum_provider: "Servicio de resúmenes",
+  f_sum_provider_h: "Automático: el servicio configurado abajo, si lo hay; si no, DeepSeek si hay una clave; si no, Gemini. Gemini (económico): el modelo más barato de Gemini con tu clave de Gemini. Si el servicio elegido no tiene clave, funciona como Automático.",
+  sp_auto: "Automático",
+  sp_gemini: "Gemini (económico)",
+  sp_deepseek: "DeepSeek",
   f_cal_suggest: "Sugerir eventos para el calendario",
   f_cal_suggest_h: "Cuando en una llamada se acuerda una fecha (una entrega, una cita), el resumen incluye un enlace para añadirla al calendario.",
   f_cal_auto: "Añadir a Google Calendar automáticamente",
@@ -4694,7 +4750,10 @@ I18N["fr"] = {
   // ---- settings: basics
   g_basics_d: "Le peu dont l'IA a besoin avant de pouvoir répondre à votre téléphone.",
   f_language: "Langue",
-  f_language_h: "La langue parlée par l'IA, et celle des notifications et des résumés.",
+  f_language_h: "La langue dans laquelle l'IA parle avec vos correspondants.",
+  f_notify_lang: "Langue des notifications et des résumés",
+  f_notify_lang_h: "Ce que vous lisez : notifications, résumés d'appel (aussi dans la liste des appels), cartes de rendez-vous, SMS transférés. Vos correspondants entendent toujours la langue ci-dessus.",
+  nl_same: "Comme la langue de l'IA",
   f_owner: "Votre nom",
   f_owner_ph: "ex. Alex",
   f_owner_h: "Le nom que vos correspondants utilisent pour vous. L'IA s'en sert quand elle parle de vous.",
@@ -4872,6 +4931,11 @@ I18N["fr"] = {
   f_sum_model: "Modèle",
   f_sum_model_h: "Vide = le modèle par défaut de ce service.",
   f_sum_key: "Clé API pour les résumés (DeepSeek, OpenAI, …)",
+  f_sum_provider: "Service de résumé",
+  f_sum_provider_h: "Automatique : le service réglé ci-dessous s'il y en a un, sinon DeepSeek si sa clé est saisie, sinon Gemini. Gemini (économique) : le modèle le moins cher de Gemini, avec votre clé Gemini. Sans la clé du service choisi, c'est comme Automatique.",
+  sp_auto: "Automatique",
+  sp_gemini: "Gemini (économique)",
+  sp_deepseek: "DeepSeek",
   f_cal_suggest: "Suggérer des événements d'agenda",
   f_cal_suggest_h: "Quand un appel fixe une date (une livraison, un rendez-vous), le résumé contient un lien « ajouter à l'agenda ».",
   f_cal_auto: "Ajouter automatiquement à Google Agenda",
@@ -5286,7 +5350,10 @@ I18N["de"] = {
   // ---- settings: basics
   g_basics_d: "Das Wenige, das die KI braucht, bevor sie an dein Telefon gehen kann.",
   f_language: "Sprache",
-  f_language_h: "Die Sprache, in der die KI spricht – und die Sprache der Benachrichtigungen und Zusammenfassungen.",
+  f_language_h: "Die Sprache, in der die KI mit Anrufern spricht.",
+  f_notify_lang: "Sprache der Benachrichtigungen und Zusammenfassungen",
+  f_notify_lang_h: "Was du liest: Benachrichtigungen, Anrufzusammenfassungen (auch in der Anrufliste), Terminkarten, weitergeleitete SMS. Anrufer hören weiterhin die Sprache oben.",
+  nl_same: "Wie die Sprache der KI",
   f_owner: "Dein Name",
   f_owner_ph: "z. B. Alex",
   f_owner_h: "Der Name, mit dem Anrufer dich ansprechen. Die KI verwendet ihn, wenn sie über dich spricht.",
@@ -5464,6 +5531,11 @@ I18N["de"] = {
   f_sum_model: "Modell",
   f_sum_model_h: "Leer = das Standardmodell dieses Dienstes.",
   f_sum_key: "API-Schlüssel für Zusammenfassungen (DeepSeek, OpenAI, …)",
+  f_sum_provider: "Dienst für Zusammenfassungen",
+  f_sum_provider_h: "Automatisch: der unten eingerichtete Dienst, falls vorhanden; sonst DeepSeek, wenn ein Schlüssel eingetragen ist; sonst Gemini. Gemini (günstig): das günstigste Gemini-Modell mit deinem Gemini-Schlüssel. Ohne Schlüssel für den gewählten Dienst wie Automatisch.",
+  sp_auto: "Automatisch",
+  sp_gemini: "Gemini (günstig)",
+  sp_deepseek: "DeepSeek",
   f_cal_suggest: "Kalendereinträge vorschlagen",
   f_cal_suggest_h: "Wird in einem Anruf ein Datum festgelegt (eine Lieferung, ein Termin), enthält die Zusammenfassung einen Link „Zum Kalender hinzufügen“.",
   f_cal_auto: "Automatisch zu Google Kalender hinzufügen",
@@ -5878,7 +5950,10 @@ I18N["pt"] = {
   // ---- settings: basics
   g_basics_d: "O pouco que a IA precisa para poder atender seu telefone.",
   f_language: "Idioma",
-  f_language_h: "O idioma que a IA fala, e também o das notificações e dos resumos.",
+  f_language_h: "O idioma em que a IA fala com quem liga.",
+  f_notify_lang: "Idioma das notificações e resumos",
+  f_notify_lang_h: "O que você lê: notificações, resumos das chamadas (também na lista de chamadas), cartões de agendamento e SMS encaminhados. Quem liga continua ouvindo o idioma acima.",
+  nl_same: "O mesmo idioma da IA",
   f_owner: "Seu nome",
   f_owner_ph: "ex.: Alex",
   f_owner_h: "O nome que as pessoas usam para falar com você. A IA usa esse nome quando fala de você.",
@@ -6056,6 +6131,11 @@ I18N["pt"] = {
   f_sum_model: "Modelo",
   f_sum_model_h: "Em branco = o modelo padrão desse serviço.",
   f_sum_key: "Chave de API para resumos (DeepSeek, OpenAI, …)",
+  f_sum_provider: "Serviço de resumos",
+  f_sum_provider_h: "Automático: o serviço configurado abaixo, se houver; senão o DeepSeek, se houver uma chave; senão o Gemini. Gemini (econômico): o modelo mais barato do Gemini com a sua chave do Gemini. Sem a chave do serviço escolhido, funciona como Automático.",
+  sp_auto: "Automático",
+  sp_gemini: "Gemini (econômico)",
+  sp_deepseek: "DeepSeek",
   f_cal_suggest: "Sugerir eventos para a agenda",
   f_cal_suggest_h: "Quando uma chamada combina uma data (uma entrega, uma consulta), o resumo ganha um link para adicionar à agenda.",
   f_cal_auto: "Adicionar ao Google Agenda automaticamente",
@@ -7261,8 +7341,8 @@ async function loadSettings() {
     $("setLoading").hidden = true;
     $("setGrid").hidden = false;
     populate();
-    // No language chosen in this browser: follow the agent's language.
-    const srv = matchLang(S.language);
+    // No language chosen in this browser: follow the language the owner reads.
+    const srv = matchLang(S.notify_language || S.language);
     if (srv) store.set("pca.srvlang", srv);
     if (!qs.get("lang") && !store.get("pca.lang") && srv && srv !== lang) setLang(srv);
     if (pendingJump) jumpGroup(pendingJump);
@@ -7322,6 +7402,11 @@ function fillSelect(sel, build) {
 }
 function buildMenus() {
   fillSelect($("f-language"), (sel) => {
+    for (const code of S.languages || LANGS) sel.append(h("option", { value: code, text: LANG_NAMES[code] || code }));
+  });
+  // What the owner reads: "" = the same as the AI's language.
+  fillSelect($("f-notify_language"), (sel) => {
+    sel.append(h("option", { value: "", text: t("nl_same") }));
     for (const code of S.languages || LANGS) sel.append(h("option", { value: code, text: LANG_NAMES[code] || code }));
   });
   fillSelect($("f-gemini_voice_name"), (sel) => {
@@ -7630,7 +7715,7 @@ async function saveSettings() {
     if ("console_url" in d) consoleUrl = d.console_url || "";
     if ("console_ip_url" in d) consoleIpUrl = d.console_ip_url || "";
     populate();
-    const srv = matchLang(S.language);
+    const srv = matchLang(S.notify_language || S.language);
     if (srv) store.set("pca.srvlang", srv);
     toast(t("saved"));
     if (view === "system") renderSystem();

@@ -4,6 +4,11 @@
 //! Which service: the settings' own endpoint (`summary_api_base`, e.g. OpenAI,
 //! OpenRouter or a local Ollama), else DeepSeek when its key is set, else
 //! Gemini with the Live API key — so one Gemini key is enough to get going.
+//! The setting `summary_provider` can pin Gemini (on its lowest-cost model) or
+//! DeepSeek instead ([`Provider`]).
+//!
+//! The summary is written in the language the owner reads
+//! ([`locale::notify_lang`]), whatever language the call was in.
 //!
 //! The module keeps its first name: DeepSeek was the only service it knew, and
 //! the older voicemail / TRTC paths still call it directly.
@@ -29,7 +34,7 @@ pub const DEEPSEEK_API_URL: &str = "https://api.deepseek.com/v1/chat/completions
 /// `{owner}` = the owner's name ([`summary_system_prompt`]).
 pub const TG_SUMMARY_SYSTEM_PROMPT: &str = "\
 你是{owner}的電話秘書。{owner}的手機由 AI 語音接電話；通話結束後，你把這通電話整理成幾行短訊息給{owner}看。\
-一律繁體中文、台灣用語，不要 markdown、不要表情符號、不要客套。\n\
+一律繁體中文、台灣用語（通話是別的語言也一樣，翻成中文寫），不要 markdown、不要表情符號、不要客套。\n\
 \n\
 你會拿到：\n\
 1. 【對話】逐行對話。「對方：」= 打電話來的人講的話；「接聽：」= AI（代表{owner}）講的話。這是最可靠的來源，以它為主。\n\
@@ -56,7 +61,7 @@ AI 回覆：AI 怎麼回的，一句（例如「說放管理室就好」「說�
 /// instructions, the four labels in the language the owner reads.
 const SUMMARY_SYSTEM_PROMPT_EN: &str = "\
 You write the short after-call note for {owner}. {owner}'s phone is answered by an AI voice; when a call ends you turn it into a few short lines that {owner} can read at a glance.\n\
-Write in {language}. No markdown, no emoji, no pleasantries.\n\
+Write in {language}, whatever language the call was in (translate what was said). No markdown, no emoji, no pleasantries.\n\
 \n\
 You are given:\n\
 1. [Dialogue] the call line by line. \"Caller:\" is what the person who called said; \"AI:\" is what the AI said on {owner}'s behalf. This is the most reliable source.\n\
@@ -77,7 +82,7 @@ Rules:\n\
 - Do not invent anything you are not sure of; write that it was unclear.\n\
 - Do not repeat the number, the time or the phone model; the message already shows them.";
 
-/// The summary model's instructions in the agent's language.
+/// The summary model's instructions in the language the owner reads.
 pub fn summary_system_prompt(lang: Lang, owner: &str) -> String {
     let owner = crate::prompts::owner_label(lang, owner);
     match lang {
@@ -119,6 +124,53 @@ pub struct Endpoint {
 pub const GEMINI_OPENAI_URL: &str =
     "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 pub const GEMINI_SUMMARY_MODEL: &str = "gemini-flash-latest";
+/// Gemini's lowest-cost model: the first choice of [`Provider::Gemini`].
+pub const GEMINI_SUMMARY_LITE_MODEL: &str = "gemini-flash-lite-latest";
+
+/// Which service writes the summary (settings `summary_provider`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Provider {
+    /// The settings' own endpoint, else DeepSeek, else Gemini, else OpenRouter.
+    Auto,
+    /// Gemini with the Live API key, on its lowest-cost model.
+    Gemini,
+    /// DeepSeek.
+    DeepSeek,
+}
+
+impl Provider {
+    /// The settings value: `auto` / `gemini` / `deepseek`; anything else is auto.
+    pub fn parse(s: &str) -> Provider {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "gemini" => Provider::Gemini,
+            "deepseek" => Provider::DeepSeek,
+            _ => Provider::Auto,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Provider::Auto => "auto",
+            Provider::Gemini => "gemini",
+            Provider::DeepSeek => "deepseek",
+        }
+    }
+}
+
+/// The running agent's choice. A process-wide slot like the language
+/// ([`locale::set_active`]): the summary's callers only hold the env-shaped
+/// [`Settings`].
+static PROVIDER: std::sync::RwLock<Provider> = std::sync::RwLock::new(Provider::Auto);
+
+/// Set at startup and on every settings save.
+pub fn set_provider(p: Provider) {
+    *PROVIDER.write().unwrap_or_else(|e| e.into_inner()) = p;
+}
+
+/// The running agent's [`Provider`]; unset (unit tests) = auto.
+pub fn provider() -> Provider {
+    *PROVIDER.read().unwrap_or_else(|e| e.into_inner())
+}
 
 fn chat_url(base: &str) -> String {
     let b = base.trim().trim_end_matches('/');
@@ -129,8 +181,17 @@ fn chat_url(base: &str) -> String {
     }
 }
 
-/// The service that writes the summary, or `None` when no key is set at all.
+/// The service that writes the summary, or `None` when no key is set at all
+/// ([`summary_endpoint_for`] with the running agent's [`provider`]).
 pub fn summary_endpoint(settings: &Settings) -> Option<Endpoint> {
+    summary_endpoint_for(settings, provider())
+}
+
+/// The service for a given [`Provider`]. `Gemini` and `DeepSeek` without
+/// their key work like `Auto`. `Gemini` tries the settings' `summary_model`
+/// first when one is set, then [`GEMINI_SUMMARY_LITE_MODEL`], then
+/// [`GEMINI_SUMMARY_MODEL`].
+pub fn summary_endpoint_for(settings: &Settings, provider: Provider) -> Option<Endpoint> {
     let model = settings.summary_model.trim();
     let own_models = |fallback: &[&str]| -> Vec<String> {
         let mut m: Vec<String> = Vec::new();
@@ -144,6 +205,47 @@ pub fn summary_endpoint(settings: &Settings) -> Option<Endpoint> {
         }
         m
     };
+    let deepseek_endpoint = || -> Option<Endpoint> {
+        let deepseek = settings.deepseek_api_key.trim();
+        let key = if deepseek.is_empty() {
+            api_key_from_llm_config(settings.trtc_llm_config.as_ref())?
+        } else {
+            deepseek.to_string()
+        };
+        Some(Endpoint {
+            url: DEEPSEEK_API_URL.to_string(),
+            key,
+            models: own_models(&[DEEPSEEK_MODEL, "deepseek-reasoner"]),
+        })
+    };
+    let gemini = settings.gemini_api_key.trim();
+    match provider {
+        Provider::Gemini if !gemini.is_empty() => {
+            // A model name left over from another service (e.g. deepseek-chat) would
+            // fail on every summary before the lite model is tried: skip it.
+            let mut models: Vec<String> = Vec::new();
+            let own = settings.summary_model.trim();
+            if own.starts_with("gemini") {
+                models.push(own.to_string());
+            }
+            for m in [GEMINI_SUMMARY_LITE_MODEL, GEMINI_SUMMARY_MODEL] {
+                if !models.iter().any(|x| x == m) {
+                    models.push(m.to_string());
+                }
+            }
+            return Some(Endpoint {
+                url: GEMINI_OPENAI_URL.to_string(),
+                key: gemini.to_string(),
+                models,
+            });
+        }
+        Provider::DeepSeek => {
+            if let Some(e) = deepseek_endpoint() {
+                return Some(e);
+            }
+        }
+        _ => {}
+    }
     let base = settings.summary_api_base.trim();
     if !base.is_empty() {
         return Some(Endpoint {
@@ -153,21 +255,9 @@ pub fn summary_endpoint(settings: &Settings) -> Option<Endpoint> {
         })
         .filter(|e| !e.models.is_empty());
     }
-    let deepseek = settings.deepseek_api_key.trim();
-    let from_llm_config = api_key_from_llm_config(settings.trtc_llm_config.as_ref());
-    if !deepseek.is_empty() || from_llm_config.is_some() {
-        let key = if deepseek.is_empty() {
-            from_llm_config.unwrap_or_default()
-        } else {
-            deepseek.to_string()
-        };
-        return Some(Endpoint {
-            url: DEEPSEEK_API_URL.to_string(),
-            key,
-            models: own_models(&[DEEPSEEK_MODEL, "deepseek-reasoner"]),
-        });
+    if let Some(e) = deepseek_endpoint() {
+        return Some(e);
     }
-    let gemini = settings.gemini_api_key.trim();
     if !gemini.is_empty() {
         return Some(Endpoint {
             url: GEMINI_OPENAI_URL.to_string(),
@@ -251,12 +341,12 @@ fn summary_max_tokens(endpoint: &Endpoint) -> u32 {
     }
 }
 
-/// The call as short lines for the notification, in the agent's language.
-/// `transcript` = [`build_summary_input`]. Falls back to the caller's first
-/// words when no service is set or none answers.
+/// The call as short lines for the notification, in the language the owner
+/// reads ([`locale::notify_lang`]). `transcript` = [`build_summary_input`].
+/// Falls back to the caller's first words when no service is set or none answers.
 pub async fn summarize(http: &Client, settings: &Settings, caller_id: &str, transcript: &str) -> String {
     let active = locale::active();
-    let lang = active.lang;
+    let lang = active.notify_lang;
     let trimmed = transcript.trim().to_string();
     let caller = caller_id.trim();
     if trimmed.is_empty() {
@@ -275,12 +365,7 @@ pub async fn summarize(http: &Client, settings: &Settings, caller_id: &str, tran
         for model in &endpoint.models {
             match chat_at(http, &endpoint, model, &system, &trimmed, summary_max_tokens(&endpoint)).await {
                 Ok(text) if !text.trim().is_empty() => {
-                    let text = if lang.is_zh() {
-                        crate::zh_tw::to_tw(&overlay_summary_matter(text.trim(), &trimmed))
-                    } else {
-                        text.trim().to_string()
-                    };
-                    let text = locale::fix_names(&text);
+                    let text = locale::fix_names(&polish_summary(lang, &text, &trimmed));
                     info!(
                         "call summary ok caller={caller} model={model} chars={}",
                         text.chars().count()
@@ -294,6 +379,17 @@ pub async fn summarize(http: &Client, settings: &Settings, caller_id: &str, tran
     }
     warn!("call summary: no model answered; using the caller's first words");
     fallback_summary_in(lang, caller, &trimmed)
+}
+
+/// A model's summary as the owner reads it: in Chinese a matter the model
+/// dropped is put back ([`overlay_summary_matter`]) and zh-TW gets
+/// Traditional characters ([`locale::for_owner_in`]); other languages as written.
+fn polish_summary(lang: Lang, text: &str, transcript: &str) -> String {
+    if lang.is_zh() {
+        locale::for_owner_in(lang, &overlay_summary_matter(text.trim(), transcript))
+    } else {
+        text.trim().to_string()
+    }
 }
 
 fn empty_transcript_summary(lang: Lang) -> String {
@@ -338,11 +434,11 @@ fn fallback_summary_in(lang: Lang, caller: &str, transcript: &str) -> String {
 }
 
 /// The summary is one of the stand-ins [`summarize`] writes when no model
-/// answered (no Chinese gist line, or the "no summary" note of the agent's language).
+/// answered (no Chinese gist line, or the "no summary" note of the owner's language).
 pub fn is_fallback_summary(text: &str) -> bool {
     text.contains("（摘要服務暫時沒回應）")
         || text.contains("（摘要服务暂时没回应）")
-        || text.contains(locale::phrases(locale::current()).s_no_summary)
+        || text.contains(locale::notify_phrases().s_no_summary)
 }
 
 /// How the summary prompt tells the model to mark a sales call and a likely
@@ -534,7 +630,8 @@ pub async fn chat_completions_model(
     Ok(text)
 }
 
-/// Organize caller needs into short Chinese text for the notification.
+/// Organize caller needs into short lines for the notification, in the
+/// language the owner reads (DeepSeek only).
 pub async fn summarize_for_telegram(
     http: &Client,
     api_key: &str,
@@ -552,23 +649,24 @@ pub async fn summarize_for_telegram_with_llm_config(
     caller_id: &str,
     transcript: &str,
 ) -> String {
-    let caller = {
-        let t = caller_id.trim();
-        if t.is_empty() {
-            "未知"
-        } else {
-            t
-        }
-    };
+    let lang = locale::notify_lang();
+    let caller = caller_id.trim();
     let trimmed = transcript.trim().to_string();
     if trimmed.is_empty() {
-        return "對方：沒說是誰\n事情：（沒有逐字稿，請聽錄音）\nAI 回覆：不明\n要處理：請聽錄音確認".to_string();
+        return empty_transcript_summary(lang);
     }
-    // Caller already carries the 【…】 sections (main.rs `build_summary_input`).
-    let user = if trimmed.contains("【對話】") || trimmed.contains("【通話資訊】") {
+    // Caller already carries the 【…】 / […] sections ([`build_summary_input`]).
+    let sectioned = ["【對話】", "【通話資訊】", "[Dialogue]", "[Call facts]"]
+        .iter()
+        .any(|m| trimmed.contains(m));
+    let user = if sectioned {
         trimmed.clone()
+    } else if lang.is_zh() {
+        let number = if caller.is_empty() { "未知" } else { caller };
+        format!("【通話資訊】\n號碼：{number}\n\n【錄音轉寫】\n{trimmed}")
     } else {
-        format!("【通話資訊】\n號碼：{caller}\n\n【錄音轉寫】\n{trimmed}")
+        let number = if caller.is_empty() { "unknown" } else { caller };
+        format!("[Call facts]\nNumber: {number}\n\n[Recording transcript]\n{trimmed}")
     };
 
     let mut models: Vec<String> = Vec::new();
@@ -593,10 +691,10 @@ pub async fn summarize_for_telegram_with_llm_config(
             info!("deepseek tg summary retry caller={caller}");
         }
         for model in &models {
-            let system = summary_system_prompt(Lang::ZhTw, &locale::active().owner);
+            let system = summary_system_prompt(lang, &locale::active().owner);
             match chat_completions_model(http, api_key, model, &system, &user, 320).await {
                 Ok(text) if !text.trim().is_empty() => {
-                    let text = crate::zh_tw::to_tw(&overlay_summary_matter(text.trim(), &trimmed));
+                    let text = polish_summary(lang, &text, &trimmed);
                     info!(
                         "deepseek tg summary ok caller={caller} model={model} chars={}",
                         text.chars().count()
@@ -609,7 +707,7 @@ pub async fn summarize_for_telegram_with_llm_config(
         }
     }
     warn!("deepseek tg summary all models failed; using transcript excerpt");
-    fallback_summary(caller, &trimmed)
+    fallback_summary_in(lang, caller, &trimmed)
 }
 
 /// The notification stays short: without the summary model, one gist line —
@@ -636,7 +734,7 @@ fn fallback_summary(caller: &str, transcript: &str) -> String {
         None => clip_chars(transcript.trim(), 60),
     };
     let _ = caller;
-    crate::zh_tw::to_tw(&overlay_summary_matter(
+    locale::for_owner(&overlay_summary_matter(
         &format!("事情：{gist}\n要處理：請看網頁逐字稿"),
         transcript,
     ))
@@ -738,7 +836,8 @@ pub fn overlay_summary_matter(summary: &str, transcript: &str) -> String {
 
 /// Build the summary model's user message: labelled Gemini dialogue first (most
 /// reliable), Whisper transcripts as backup, then call facts the model may
-/// need (hidden number, length, who hung up). Sections the model can cite.
+/// need (hidden number, length, who hung up). Sections the model can cite, in
+/// the language of the summary prompt ([`locale::notify_lang`]).
 pub fn build_summary_input(
     caller_id: &str,
     duration_ms: u64,
@@ -747,7 +846,28 @@ pub fn build_summary_input(
     whisper_ai_segment: &str,
     whisper_remote: &str,
 ) -> String {
-    let lang = locale::current();
+    build_summary_input_in(
+        locale::notify_lang(),
+        caller_id,
+        duration_ms,
+        end_hint,
+        gemini_dialogue,
+        whisper_ai_segment,
+        whisper_remote,
+    )
+}
+
+/// [`build_summary_input`] for a summary in `lang`: the Chinese prompt reads
+/// 【…】 sections, every other language's prompt reads […] ones.
+fn build_summary_input_in(
+    lang: Lang,
+    caller_id: &str,
+    duration_ms: u64,
+    end_hint: &str,
+    gemini_dialogue: &str,
+    whisper_ai_segment: &str,
+    whisper_remote: &str,
+) -> String {
     if !lang.is_zh() {
         return build_summary_input_en(
             caller_id,
@@ -892,6 +1012,90 @@ mod tests {
         assert_eq!(e.models, vec!["qwen2.5:7b".to_string()]);
         assert_eq!(e.key, "sk-ds");
         assert_eq!(chat_url("https://api.openai.com/v1/chat/completions"), "https://api.openai.com/v1/chat/completions");
+    }
+
+    #[test]
+    fn summary_provider_pins_gemini_lite_or_deepseek() {
+        fn models(e: &Endpoint) -> Vec<&str> {
+            e.models.iter().map(String::as_str).collect()
+        }
+        let mut s = settings();
+        s.gemini_api_key = "AIzaTEST".into();
+        s.deepseek_api_key = "sk-ds".into();
+        s.summary_api_base = "http://127.0.0.1:11434/v1".into();
+        // Gemini: its lowest-cost model, then the regular one; the own endpoint
+        // and the DeepSeek key are passed over.
+        let e = summary_endpoint_for(&s, Provider::Gemini).unwrap();
+        assert_eq!((e.url.as_str(), e.key.as_str()), (GEMINI_OPENAI_URL, "AIzaTEST"));
+        assert_eq!(models(&e), vec![GEMINI_SUMMARY_LITE_MODEL, GEMINI_SUMMARY_MODEL]);
+        assert_eq!(summary_max_tokens(&e), 1_500);
+        // A model typed in the settings goes first.
+        s.summary_model = "gemini-2.5-flash".into();
+        let e = summary_endpoint_for(&s, Provider::Gemini).unwrap();
+        assert_eq!(models(&e), vec!["gemini-2.5-flash", GEMINI_SUMMARY_LITE_MODEL, GEMINI_SUMMARY_MODEL]);
+        // A model from another service is not sent to Gemini.
+        s.summary_model = "deepseek-chat".into();
+        let e = summary_endpoint_for(&s, Provider::Gemini).unwrap();
+        assert_eq!(models(&e), vec![GEMINI_SUMMARY_LITE_MODEL, GEMINI_SUMMARY_MODEL]);
+        s.summary_model = "gemini-2.5-flash".into();
+        // DeepSeek: passes over the own endpoint too.
+        let e = summary_endpoint_for(&s, Provider::DeepSeek).unwrap();
+        assert_eq!((e.url.as_str(), e.key.as_str()), (DEEPSEEK_API_URL, "sk-ds"));
+        // Auto is the order it always was: the own endpoint first.
+        let e = summary_endpoint_for(&s, Provider::Auto).unwrap();
+        assert_eq!(e.url, "http://127.0.0.1:11434/v1/chat/completions");
+        assert_eq!(models(&e), vec!["gemini-2.5-flash"]);
+        // A choice without its key works like auto.
+        s.gemini_api_key = "".into();
+        assert_eq!(summary_endpoint_for(&s, Provider::Gemini), summary_endpoint_for(&s, Provider::Auto));
+        s.summary_api_base = String::new();
+        s.deepseek_api_key = String::new();
+        s.summary_model = String::new();
+        s.gemini_api_key = "AIzaTEST".into();
+        let e = summary_endpoint_for(&s, Provider::DeepSeek).unwrap();
+        assert_eq!((e.url.as_str(), models(&e)), (GEMINI_OPENAI_URL, vec![GEMINI_SUMMARY_MODEL]));
+        // The DeepSeek key may come from the older TRTC LLM config.
+        s.trtc_llm_config = r#"{"APIKey":"sk-cfg"}"#.into();
+        let e = summary_endpoint_for(&s, Provider::DeepSeek).unwrap();
+        assert_eq!((e.url.as_str(), e.key.as_str()), (DEEPSEEK_API_URL, "sk-cfg"));
+        // Nothing set: nothing to call, whatever the choice.
+        let empty = settings();
+        for p in [Provider::Auto, Provider::Gemini, Provider::DeepSeek] {
+            assert_eq!(summary_endpoint_for(&empty, p), None, "{p:?}");
+        }
+    }
+
+    #[test]
+    fn summary_provider_setting_values() {
+        assert_eq!(Provider::parse(" Gemini "), Provider::Gemini);
+        assert_eq!(Provider::parse("deepseek"), Provider::DeepSeek);
+        for other in ["", "auto", "openai", "gemini-flash-lite-latest"] {
+            assert_eq!(Provider::parse(other), Provider::Auto, "{other}");
+        }
+        for p in [Provider::Auto, Provider::Gemini, Provider::DeepSeek] {
+            assert_eq!(Provider::parse(p.as_str()), p);
+        }
+    }
+
+    #[test]
+    fn summary_is_written_for_the_owner_whatever_the_call_language() {
+        // The prompt asks for the owner's language even when the call was in another.
+        assert!(summary_system_prompt(Lang::ZhTw, "").contains("通話是別的語言也一樣"));
+        assert!(summary_system_prompt(Lang::ZhCn, "").contains("通话是别的语言也一样"));
+        assert!(summary_system_prompt(Lang::Ja, "").contains("Write in Japanese, whatever language the call was in"));
+        // The input's sections follow the summary's language, not the call's.
+        let dialogue = "接聽：Hello?\n對方：Hi, it's the dentist. Your appointment is tomorrow at 3.";
+        let zh = build_summary_input_in(Lang::ZhTw, "", 30_000, "", dialogue, "", "");
+        assert!(zh.starts_with("【對話】") && zh.contains("對方：Hi, it's the dentist."), "{zh}");
+        let en = build_summary_input_in(Lang::En, "", 30_000, "", dialogue, "", "");
+        assert!(en.starts_with("[Dialogue]") && en.contains("Caller: Hi, it's the dentist."), "{en}");
+        // Traditional characters only when the owner reads zh-TW.
+        assert_eq!(polish_summary(Lang::ZhTw, " 事情：听录音 ", ""), "事情：聽錄音");
+        assert_eq!(polish_summary(Lang::ZhCn, "事情：听录音", ""), "事情：听录音");
+        assert_eq!(polish_summary(Lang::Ja, " 用件：会議の件 ", "記得繳水費"), "用件：会議の件");
+        // A matter the model dropped is put back in Chinese only.
+        assert!(polish_summary(Lang::ZhTw, "事情：聽不清楚", "對方：記得繳水費").contains("事情：繳水費"));
+        assert_eq!(polish_summary(Lang::En, "About: unclear", "對方：記得繳水費"), "About: unclear");
     }
 
     #[test]

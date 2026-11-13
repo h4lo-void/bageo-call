@@ -73,11 +73,16 @@ impl Lang {
 
 }
 
-/// What the running agent is set to (settings `language`, `answer_style`,
-/// `owner_name`, `country_code`), for the Live session's free functions.
+/// What the running agent is set to (settings `language`, `notify_language`,
+/// `answer_style`, `owner_name`, `country_code`), for the Live session's free functions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Active {
+    /// The language the AI speaks with callers.
     pub lang: Lang,
+    /// The language of what the owner reads: notifications, call summaries,
+    /// the notes in the web console's call list, appointment cards (settings
+    /// `notify_language`; empty there = `lang`).
+    pub notify_lang: Lang,
     /// Answer as the owner's AI assistant instead of as the owner.
     pub assistant: bool,
     pub owner: String,
@@ -94,6 +99,7 @@ impl Default for Active {
     fn default() -> Self {
         Self {
             lang: Lang::ZhTw,
+            notify_lang: Lang::ZhTw,
             assistant: false,
             owner: String::new(),
             country_code: "886".to_string(),
@@ -119,6 +125,54 @@ pub fn active() -> Active {
 
 pub fn current() -> Lang {
     active().lang
+}
+
+/// The language of what the owner reads ([`Active::notify_lang`]).
+pub fn notify_lang() -> Lang {
+    active().notify_lang
+}
+
+/// The phrases of what the owner reads (notifications, summaries, cards).
+pub fn notify_phrases() -> &'static Phrases {
+    phrases(notify_lang())
+}
+
+/// [`kv_sep`] for what the owner reads.
+pub fn notify_kv_sep() -> &'static str {
+    notify_phrases().sep
+}
+
+/// [`zh_or`] for what the owner reads (fallback summaries, notes for the
+/// summary model).
+pub fn notify_zh_or(zh_tw: &str, en: &str) -> String {
+    zh_or_in(notify_lang(), zh_tw, en)
+}
+
+/// [`zh_or`] in a given language: Chinese for the two Chinese languages,
+/// English for every other one.
+pub fn zh_or_in(lang: Lang, zh_tw: &str, en: &str) -> String {
+    match lang {
+        Lang::ZhTw => zh_tw.to_string(),
+        Lang::ZhCn => zhconv::zhconv(zh_tw, zhconv::Variant::ZhCN),
+        _ => en.to_string(),
+    }
+}
+
+/// Text the owner reads (summaries, notifications, Telegram replies): put into
+/// Traditional Chinese (Taiwan) when that is the notification language — the
+/// summary model and speech-to-text often write Simplified — and left as it is
+/// otherwise (the conversion would rewrite Japanese kanji and Simplified Chinese).
+pub fn for_owner(text: &str) -> String {
+    for_owner_in(notify_lang(), text)
+}
+
+/// [`for_owner`] for a given notification language.
+pub fn for_owner_in(lang: Lang, text: &str) -> String {
+    if lang == Lang::ZhTw {
+        crate::zh_tw::norm(text)
+    } else {
+        text.to_string()
+    }
 }
 
 /// `wrong=right` lines of the setting `name_corrections` as pairs; lines
@@ -2400,6 +2454,21 @@ mod tests {
         assert_eq!(Lang::parse("pt-BR"), Lang::Pt);
         assert_eq!(Lang::parse("xx"), Lang::En);
         assert_eq!(Lang::parse(""), Lang::En);
+    }
+
+    #[test]
+    fn owner_text_follows_the_notification_language() {
+        // Unset (unit tests): the AI and the owner both on zh-TW.
+        let a = Active::default();
+        assert_eq!((a.lang, a.notify_lang), (Lang::ZhTw, Lang::ZhTw));
+        // Traditional Chinese only when the owner reads zh-TW, whatever the AI speaks.
+        assert_eq!(for_owner_in(Lang::ZhTw, "听录音"), "聽錄音");
+        assert_eq!(for_owner_in(Lang::ZhCn, "听录音"), "听录音");
+        assert_eq!(for_owner_in(Lang::Ja, "会議の件"), "会議の件");
+        assert_eq!(for_owner_in(Lang::En, "Call back"), "Call back");
+        assert_eq!(zh_or_in(Lang::ZhTw, "中間省略", "left out"), "中間省略");
+        assert_eq!(zh_or_in(Lang::ZhCn, "中間省略", "left out"), "中间省略");
+        assert_eq!(zh_or_in(Lang::De, "中間省略", "left out"), "left out");
     }
 
     #[test]

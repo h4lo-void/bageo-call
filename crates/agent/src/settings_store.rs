@@ -187,10 +187,17 @@ pub struct RuntimeSettings {
     /// (`gemini-3.8-live-extended-thinking`); ignored by the others.
     #[serde(default = "default_thinking_level")]
     pub gemini_thinking_level: String,
-    /// Language of the AI's speech, the notifications and the post-call summary
+    /// The language the AI speaks with callers: its prompt, its first words, the
+    /// blocked-number announcement, the texts it sends callers
     /// (`en`, `zh-TW`, `zh-CN`, `ja`, `ko`, `es`, `fr`, `de`, `pt`).
     #[serde(default = "default_language")]
     pub language: String,
+    /// The language of what the owner reads: notifications, the post-call
+    /// summary (also in the web console's call list), appointment cards and
+    /// their results, the SMS forwarder's messages. Empty = `language`;
+    /// otherwise one of its codes.
+    #[serde(default)]
+    pub notify_language: String,
     /// The owner's name as callers say it (`{owner}` in prompts).
     #[serde(default)]
     pub owner_name: String,
@@ -223,6 +230,12 @@ pub struct RuntimeSettings {
     /// Model for the post-call summary; empty = the endpoint's default.
     #[serde(default)]
     pub summary_model: String,
+    /// Which service writes the post-call summary: `auto` (the endpoint above,
+    /// else DeepSeek, else Gemini, else OpenRouter), `gemini` (Gemini's
+    /// lowest-cost model with the Live API key) or `deepseek`. A choice without
+    /// its key works like `auto` ([`crate::deepseek::summary_endpoint_for`]).
+    #[serde(default = "default_auto")]
+    pub summary_provider: String,
     /// Where notifications go (Telegram, Discord, ntfy, …), all of them at once.
     #[serde(default)]
     pub notify_channels: Vec<crate::notify::Channel>,
@@ -349,6 +362,22 @@ fn sanitize_appointment_mode(s: &str) -> String {
 
 fn sanitize_language(s: &str) -> String {
     crate::locale::Lang::parse(s).code().to_string()
+}
+
+/// One of the language codes (any case, `_` for `-`); anything else is empty
+/// (= the AI's language).
+fn sanitize_notify_language(s: &str) -> String {
+    let t = s.trim().replace('_', "-");
+    crate::locale::ALL
+        .iter()
+        .find(|l| l.code().eq_ignore_ascii_case(&t))
+        .map(|l| l.code().to_string())
+        .unwrap_or_default()
+}
+
+/// `auto` / `gemini` / `deepseek`; anything else is auto.
+fn sanitize_summary_provider(s: &str) -> String {
+    crate::deepseek::Provider::parse(s).as_str().to_string()
 }
 
 fn sanitize_answer_style(s: &str) -> String {
@@ -479,6 +508,7 @@ impl RuntimeSettings {
             ambience_level: env_parse("AMBIENCE_LEVEL", 2u32).clamp(1, 3),
             gemini_thinking_level: sanitize_thinking_level(&env_or("GEMINI_THINKING_LEVEL", "low")),
             language: sanitize_language(&env_or("APP_LANGUAGE", "en")),
+            notify_language: sanitize_notify_language(&env_or("NOTIFY_LANGUAGE", "")),
             owner_name: env_or("OWNER_NAME", ""),
             answer_style: sanitize_answer_style(&env_or("ANSWER_STYLE", "assistant")),
             knowledge_notes: env_or("KNOWLEDGE_NOTES", ""),
@@ -487,6 +517,7 @@ impl RuntimeSettings {
             intl_carrier_prompt: sanitize_tristate(&env_or("INTL_CARRIER_PROMPT", "auto")),
             summary_api_base: env_or("SUMMARY_API_BASE", ""),
             summary_model: env_or("SUMMARY_MODEL", ""),
+            summary_provider: sanitize_summary_provider(&env_or("SUMMARY_PROVIDER", "auto")),
             notify_channels: Vec::new(),
             public_url: env_or("PUBLIC_URL", ""),
             mdns_name: base.mdns_name.clone(),
@@ -505,11 +536,25 @@ impl RuntimeSettings {
     /// (start-up and every save).
     pub fn apply_globals(&self) {
         crate::locale::set_active(self.locale_active());
+        crate::deepseek::set_provider(self.summary_provider());
         crate::notify::set_device_labels(&self.device_labels);
     }
 
     pub fn lang(&self) -> crate::locale::Lang {
         crate::locale::Lang::parse(&self.language)
+    }
+
+    /// The language of what the owner reads: `notify_language`, else `language`.
+    pub fn notify_lang(&self) -> crate::locale::Lang {
+        match sanitize_notify_language(&self.notify_language).as_str() {
+            "" => self.lang(),
+            code => crate::locale::Lang::parse(code),
+        }
+    }
+
+    /// Which service writes the post-call summary.
+    pub fn summary_provider(&self) -> crate::deepseek::Provider {
+        crate::deepseek::Provider::parse(&self.summary_provider)
     }
 
     /// The caller is one of the appointment test numbers
@@ -547,6 +592,7 @@ impl RuntimeSettings {
     pub fn locale_active(&self) -> crate::locale::Active {
         crate::locale::Active {
             lang: self.lang(),
+            notify_lang: self.notify_lang(),
             assistant: self.is_assistant_style(),
             owner: self.owner_name.trim().to_string(),
             country_code: self.effective_country_code(),
@@ -677,6 +723,7 @@ impl RuntimeSettings {
             gemini_thinking_level,
             gemini_stall_model,
             language,
+            notify_language,
             owner_name,
             answer_style,
             knowledge_notes,
@@ -684,6 +731,7 @@ impl RuntimeSettings {
             intl_carrier_prompt,
             summary_api_base,
             summary_model,
+            summary_provider,
             notify_channels,
             public_url,
             mdns_name,
@@ -743,6 +791,8 @@ impl RuntimeSettings {
             sanitize_ambience(&self.ambience_kind, self.ambience_level);
         self.gemini_thinking_level = sanitize_thinking_level(&self.gemini_thinking_level);
         self.language = sanitize_language(&self.language);
+        self.notify_language = sanitize_notify_language(&self.notify_language);
+        self.summary_provider = sanitize_summary_provider(&self.summary_provider);
         self.answer_style = sanitize_answer_style(&self.answer_style);
         self.intl_carrier_prompt = sanitize_tristate(&self.intl_carrier_prompt);
         self.country_code = digits_only(&self.country_code);
@@ -1059,6 +1109,8 @@ struct Overrides {
     #[serde(skip_serializing_if = "Option::is_none")]
     language: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    notify_language: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     owner_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     answer_style: Option<String>,
@@ -1074,6 +1126,8 @@ struct Overrides {
     summary_api_base: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     summary_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    summary_provider: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     notify_channels: Option<Vec<crate::notify::Channel>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1521,6 +1575,10 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     if let Some(v) = ov.language.take() {
         ov.language = Some(sanitize_language(&v));
     }
+    p_string(patch, "notify_language", &mut ov.notify_language);
+    if let Some(v) = ov.notify_language.take() {
+        ov.notify_language = Some(sanitize_notify_language(&v));
+    }
     p_string(patch, "owner_name", &mut ov.owner_name);
     if let Some(v) = ov.owner_name.take() {
         ov.owner_name = Some(v.chars().filter(|c| !c.is_control()).take(40).collect());
@@ -1547,6 +1605,10 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     }
     p_string(patch, "summary_api_base", &mut ov.summary_api_base);
     p_string(patch, "summary_model", &mut ov.summary_model);
+    p_string(patch, "summary_provider", &mut ov.summary_provider);
+    if let Some(v) = ov.summary_provider.take() {
+        ov.summary_provider = Some(sanitize_summary_provider(&v));
+    }
     p_string(patch, "public_url", &mut ov.public_url);
     p_string(patch, "mdns_name", &mut ov.mdns_name);
     if let Some(v) = ov.mdns_name.take() {
@@ -2243,6 +2305,90 @@ mod tests {
         assert_eq!((rt.appointment_mode.as_str(), rt2.appointment_mode.as_str()), ("auto", "auto"));
         assert!(rt2.appointment_sms);
         assert_eq!(SettingsStore::load(base).snapshot().appointment_mode, "auto");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn notify_language_follows_the_ai_unless_set() {
+        use crate::locale::Lang;
+        let dir = std::env::temp_dir().join(format!(
+            "bageo-call-notify-lang-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp settings dir");
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        // Default: empty = the AI's language (what it always was).
+        let rt = store.apply_patch(&json!({ "language": "en" })).unwrap();
+        assert_eq!(rt.notify_language, "");
+        assert_eq!((rt.lang(), rt.notify_lang()), (Lang::En, Lang::En));
+        assert_eq!(store.masked_json()["notify_language"], "");
+        // The AI speaks English with callers, the owner reads Traditional Chinese.
+        let rt = store.apply_patch(&json!({ "notify_language": " zh_tw " })).unwrap();
+        assert_eq!(rt.notify_language, "zh-TW");
+        let a = rt.locale_active();
+        assert_eq!((a.lang, a.notify_lang), (Lang::En, Lang::ZhTw));
+        assert_eq!(store.masked_json()["notify_language"], "zh-TW");
+        // Survives a restart (settings.json override); another key leaves it alone.
+        assert_eq!(SettingsStore::load(base.clone()).snapshot().notify_language, "zh-TW");
+        let rt = store.apply_patch(&json!({ "language": "de" })).unwrap();
+        assert_eq!((rt.lang(), rt.notify_lang()), (Lang::De, Lang::ZhTw));
+        // Not one of the codes: empty again, so the AI's language.
+        for bad in ["klingon", "pt-BR", "same"] {
+            let rt = store.apply_patch(&json!({ "notify_language": bad })).unwrap();
+            assert_eq!(rt.notify_language, "", "{bad}");
+            assert_eq!(rt.notify_lang(), Lang::De, "{bad}");
+        }
+        let rt = store.apply_patch(&json!({ "notify_language": "JA" })).unwrap();
+        assert_eq!((rt.notify_language.as_str(), rt.notify_lang()), ("ja", Lang::Ja));
+        let rt = store.apply_patch(&json!({ "notify_language": "" })).unwrap();
+        assert_eq!((rt.notify_language.as_str(), rt.locale_active().notify_lang), ("", Lang::De));
+        assert_eq!(SettingsStore::load(base).snapshot().notify_language, "");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn summary_provider_defaults_auto_and_sanitizes() {
+        use crate::deepseek::Provider;
+        let dir = std::env::temp_dir().join(format!(
+            "bageo-call-summary-provider-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp settings dir");
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        assert_eq!(store.snapshot().summary_provider, "auto");
+        assert_eq!(store.snapshot().summary_provider(), Provider::Auto);
+        assert_eq!(store.masked_json()["summary_provider"], "auto");
+        let rt = store.apply_patch(&json!({ "summary_provider": " Gemini " })).unwrap();
+        assert_eq!((rt.summary_provider.as_str(), rt.summary_provider()), ("gemini", Provider::Gemini));
+        // Survives a restart (settings.json override); another key leaves it alone.
+        let again = SettingsStore::load(base.clone());
+        assert_eq!(again.snapshot().summary_provider, "gemini");
+        let rt = again.apply_patch(&json!({ "summary_model": "gemini-2.5-flash" })).unwrap();
+        assert_eq!(rt.summary_provider, "gemini");
+        let rt = again.apply_patch(&json!({ "summary_provider": "deepseek" })).unwrap();
+        assert_eq!(rt.summary_provider(), Provider::DeepSeek);
+        let rt = again.apply_patch(&json!({ "summary_provider": "openai" })).unwrap();
+        assert_eq!(rt.summary_provider, "auto");
+        assert_eq!(SettingsStore::load(base).snapshot().summary_provider, "auto");
+        // A settings file written before either key existed: auto, and the
+        // notifications in the AI's language.
+        let old_dir = dir.join("old");
+        std::fs::create_dir_all(old_dir.join("config")).expect("old settings dir");
+        std::fs::write(
+            old_dir.join("config").join("settings.json"),
+            r#"{"language":"fr","summary_model":"deepseek-chat"}"#,
+        )
+        .expect("old settings.json");
+        let mut old_base = Settings::from_env();
+        old_base.calls_data_dir = old_dir.to_string_lossy().to_string();
+        let old = SettingsStore::load(old_base).snapshot();
+        assert_eq!(old.summary_model, "deepseek-chat");
+        assert_eq!((old.summary_provider.as_str(), old.notify_language.as_str()), ("auto", ""));
+        assert_eq!(old.notify_lang(), crate::locale::Lang::Fr);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
