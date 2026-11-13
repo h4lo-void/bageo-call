@@ -41,7 +41,7 @@
     <string name="mode_failed">Le changement n\'a pas abouti. %1$s Vous pouvez réessayer.</string>
     <string name="mode_err_in_call">Un appel est en cours ; raccrochez d\'abord.</string>
     <string name="mode_err_busy">Le changement précédent n\'est pas encore terminé.</string>
-    <string name="mode_err_no_root">Myna n\'a pas l\'accès root. Autorisez-le dans Magisk ou KernelSU.</string>
+    <string name="mode_err_no_root">Le module Myna ne fonctionne pas. Vérifiez dans Magisk ou KernelSU que le module Myna Uplink est activé, puis redémarrez le téléphone.</string>
     <string name="mode_err_save">Impossible d\'enregistrer le mode.</string>
     <string name="mode_err_dialer">Impossible de changer l\'application Téléphone par défaut.</string>
     <string name="mode_err_screening">Impossible de modifier le filtrage des appels.</string>

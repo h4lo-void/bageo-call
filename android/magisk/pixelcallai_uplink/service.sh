@@ -6,7 +6,8 @@
 #     permissions and start its service; leave the phone app, Google Phone,
 #     Do Not Disturb and the volumes alone.
 #   No file, or anything else: AI mode, the takeover below (how every phone ran
-#     before the switch existed). The app writes the file (Myna > "AI answers my calls").
+#     before the switch existed). apply_mode.sh writes the file when the app switches
+#     (Myna > "AI answers my calls"); mode_daemon.sh runs it as root for the app.
 MODDIR=${0%/*}
 PKG=com.pixelcallai.streamer
 GDIALER=com.google.android.dialer
@@ -19,8 +20,10 @@ chmod 755 "$MODDIR/inject" 2>/dev/null || true
 mkdir -p /data/local/tmp
 touch /data/local/tmp/pixelcallai_uplink.pcm
 chmod 666 /data/local/tmp/pixelcallai_uplink.pcm 2>/dev/null || true
-# No mode switch can be running this early: drop a lock left by a reboot mid-switch.
+# No mode switch can be running this early: drop a lock left by a reboot mid-switch,
+# and the pid of the last boot's mode helper.
 rm -rf /data/adb/pixelcallai/apply.lock 2>/dev/null || true
+rm -f /data/adb/pixelcallai/daemon.pid 2>/dev/null || true
 
 (
   i=0
@@ -43,6 +46,15 @@ rm -rf /data/adb/pixelcallai/apply.lock 2>/dev/null || true
   if ! pm path "$PKG" >/dev/null 2>&1; then
     log -t pixelcallai_uplink "service.sh: $PKG not installed — skip dialer takeover (safe)"
     exit 0
+  fi
+
+  # The app cannot use su itself (KernelSU only offers it to apps on its allow list):
+  # this root helper runs its mode switches, in both modes. The system shell, not the
+  # root manager's BusyBox, as for a root shell from adb.
+  if command -v setsid >/dev/null 2>&1; then
+    setsid /system/bin/sh "$MODDIR/mode_daemon.sh" </dev/null >/dev/null 2>&1 &
+  else
+    /system/bin/sh "$MODDIR/mode_daemon.sh" </dev/null >/dev/null 2>&1 &
   fi
 
   MODE=ai

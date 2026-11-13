@@ -146,9 +146,11 @@ Switching to a **normal phone** changes these system settings, in this order:
    up and Android uses its own phone app. The switch only counts as done when
    Google Phone really is the default phone app and is not disabled.
 
-A root script makes these changes. It keeps running even when Android stops
-the Myna app on the way (taking the phone-app role away from an app can do
-that), which is why the phone app changes last.
+The Myna module makes these changes as root: a small helper it starts at
+every boot carries out the switch when the app asks, so the app needs no
+root permission for it. The changes go on even when Android stops the Myna
+app on the way (taking the phone-app role away from an app can do that),
+which is why the phone app changes last.
 
 Myna's service keeps running and stays connected to the agent, so you can
 switch back from the web console, but it does not answer, silence or mute any
@@ -163,10 +165,11 @@ the volumes go to zero.
 If a switch stops halfway, the app and the web console say which step did not
 work (for example, the default phone app could not be changed). Switching
 again repeats every step, and so does the next start of the app (after a
-reboot, for example) while a switch is unfinished. Switching needs root;
-allow it when the root manager asks. When the web console gets no answer
-within 15 seconds it says the result is not confirmed yet: refresh a little
-later to see the mode the phone reports.
+reboot, for example) while a switch is unfinished. If the app says the Myna
+module is not running, check in Magisk or KernelSU that **Myna Uplink** is
+enabled, then reboot the phone. When the web console gets no answer within
+15 seconds it says the result is not confirmed yet: refresh a little later
+to see the mode the phone reports.
 
 If you used an app version before 0.2.2 and its **AI answering** switch was
 off, that setting no longer counts: after the update the phone answers with
@@ -175,10 +178,10 @@ the phone should stay a normal phone.
 
 The mode is stored in `/data/adb/pixelcallai/mode` (`ai` or `normal`),
 outside the module's folder, so it survives reboots and module updates. The
-module reads it at every boot; no file means AI mode. The volumes saved for
-the normal phone are in `/data/adb/pixelcallai/normal_audio`, the result of
-the last switch in `last_apply`, and `pending` exists while a switch is
-unfinished.
+module reads it at every boot; no file means AI mode. The result of the last
+switch is in `last_apply` in the same folder, and `pending` exists while a
+switch is unfinished. The volumes saved for the normal phone are kept in the
+app's own storage.
 
 To switch without the app's screen, from a computer with `adb`:
 

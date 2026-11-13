@@ -204,10 +204,13 @@ status bar; that belongs to the system and the app does not hide it.
 
 The app's main switch, **AI answers my calls**, moves the phone between two modes;
 the web console does the same remotely (`set_mode`, see below). A switch is refused
-while a call rings or is active and needs root. It can simply be repeated: every
-step runs again and is checked, and the first one that does not take effect is
-reported as a code (`dialer_failed`, `screening_failed`, `dnd_failed`,
-`volume_failed`, `save_failed`, `no_root`, `in_call`, `busy`).
+while a call rings or is active. The module carries it out as root, so the app needs
+no root permission for it. It can simply be repeated: every step runs again and is
+checked, and the first one that does not take effect is reported as a code
+(`dialer_failed`, `screening_failed`, `dnd_failed`, `volume_failed`, `save_failed`,
+`no_root`, `in_call`, `busy`). `no_root` means the module's helper did not take the
+request: the module is not running (enable **Myna Uplink** in Magisk or KernelSU and
+reboot).
 
 | | AI mode (`ai`, default) | Normal phone (`normal`) |
 |---|---|---|
@@ -219,12 +222,20 @@ reported as a code (`dialer_failed`, `screening_failed`, `dnd_failed`,
 | Incoming calls | answered by the AI | ring; you answer |
 | App service | full call handling | control connection only |
 
-The system settings are changed by a root script, `app/src/main/assets/apply_mode.sh`.
-The app copies it to `/data/adb/pixelcallai/apply_mode.sh` and starts it with
-`toybox setsid` (`sh apply_mode.sh <ai|normal> <id> [six volumes]`), so it runs
-to the end even when Android stops the app: removing an app from the phone-app role
-can do that. For the same reason the normal-phone order is call screening, Do Not
-Disturb, ringer and volumes, microphone, and **the phone app last**. That last step
+The system settings are changed by the module's root script,
+`magisk/pixelcallai_uplink/apply_mode.sh`. The app cannot count on `su` (KernelSU
+only offers it to apps on its allow list), so at every boot `service.sh` starts
+`mode_daemon.sh`, a small root helper in the same folder, in its own session. The
+app writes a request to `files/mode/request` in its device-protected storage
+(`/data/user_de/0/com.pixelcallai.streamer/`), one line:
+`<ai|normal> <id> [six volumes]`. The helper looks every 2 seconds, takes it, checks
+it (a malformed request is not run and is reported as `error=invalid_request`), runs
+`sh apply_mode.sh` with it and writes its answer to `files/mode/state`. A request
+nobody takes within 10 seconds is withdrawn and reported as `no_root`. The script
+runs outside the app, so it runs to the end even when Android stops the app: removing
+an app from the phone-app role can do that. For the same reason the normal-phone
+order is call screening, Do Not Disturb, ringer and volumes, microphone, and **the
+phone app last**. That last step
 only counts as done when `telecom get-default-dialer` reports Google Dialer, Google
 Dialer is not in `pm list packages -d` and both in-call components were enabled
 (or, without Google Dialer, when the default phone app is no longer Myna). If
@@ -233,8 +244,8 @@ assumes there is no Google Dialer. Every root command runs under `toybox timeout
 
 Where it is stored:
 
-- `/data/adb/pixelcallai/mode`: `ai` or `normal`, written by the app through
-  the script. It is outside the module folder, so module updates keep it.
+- `/data/adb/pixelcallai/mode`: `ai` or `normal`, written by the script when the
+  app switches. It is outside the module folder, so module updates keep it.
   `service.sh` reads it at every boot; **no file means `ai`**, so a phone that was
   never switched behaves exactly as before. Before comparing, `service.sh`, the
   script and the app all drop blanks (space, tab, CR, LF, VT, FF) and a UTF-8 BOM.
@@ -243,17 +254,28 @@ Where it is stored:
 - `/data/adb/pixelcallai/last_apply`: the last run, `key=value` lines (`id`,
   `mode`, `step_<name>=ok|fail`, then `error=<code>` or `result=ok`, and `done=1`).
 - `/data/adb/pixelcallai/apply.lock`: held while a run is going (its pid inside).
-- `/data/adb/pixelcallai/normal_audio`: the volumes saved when the phone last went
-  from normal to AI (`ring=…`, `notification=…`, `voice_call=…`, `music=…`,
-  `alarm=…`, `system=…`). Switching to normal restores them; a missing or zero
-  value becomes half of that volume's maximum.
+- `/data/adb/pixelcallai/daemon.pid`: the helper's pid; `service.sh` removes it at
+  boot.
+- `files/mode/state` in the app's device-protected storage: the helper's answer,
+  owned by the app and readable only by it. `key=value` lines: `daemon=1`, `mode`,
+  `pending`, `running`, `updated` and `uptime` (the app ignores a state written
+  before the last reboot), `request` and `exit` (the last request and the script's
+  exit code once it ended), `error=invalid_request`, and every `last_apply` line as
+  `log.<key>`. Written when the helper starts, before and after every run, and
+  whenever the file is missing.
+- `files/mode/normal_audio` in the same folder: the volumes saved when the phone
+  last went from normal to AI (`ring=…`, `notification=…`, `voice_call=…`,
+  `music=…`, `alarm=…`, `system=…`). Switching to normal restores them; a missing
+  or zero value becomes half of that volume's maximum.
 - The app keeps a copy of the mode in its device-protected storage
   (`files/phone_mode`), cached in memory per process; the `:screening` process
   reads it again for every incoming call.
 
-When the service starts it runs the script again if `pending` exists, if the mode is
-`normal` but Myna is still the default phone app (an interrupted switch, or an older
-version that took the phone over), or if its own copy differs from the file. If the
+When the service starts it waits for a state the helper wrote since this boot (at
+boot the helper starts after the app), then asks for the switch again if `pending`
+exists, if the mode is `normal` but Myna is still the default phone app (an
+interrupted switch, or an older version that took the phone over), or if its own
+copy differs from the file. If the
 agent asked for the switch and the app was stopped before it could answer, it sends
 that `set_mode_result` after its next `hello`; the agent keeps waiting through the
 reconnect (up to 15 seconds), and the web console calls a timeout "not confirmed yet".

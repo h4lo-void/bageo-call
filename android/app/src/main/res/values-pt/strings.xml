@@ -41,7 +41,7 @@
     <string name="mode_failed">A troca não terminou. %1$s Você pode tentar de novo.</string>
     <string name="mode_err_in_call">Há uma chamada em andamento; desligue primeiro.</string>
     <string name="mode_err_busy">A troca anterior ainda não terminou.</string>
-    <string name="mode_err_no_root">O Myna não tem acesso root. Permita no Magisk ou no KernelSU.</string>
+    <string name="mode_err_no_root">O módulo do Myna não está em execução. Confira no Magisk ou no KernelSU se o módulo Myna Uplink está ativado e reinicie o telefone.</string>
     <string name="mode_err_save">Não foi possível salvar o modo.</string>
     <string name="mode_err_dialer">Não foi possível trocar o app de telefone padrão.</string>
     <string name="mode_err_screening">Não foi possível alterar a triagem de chamadas.</string>

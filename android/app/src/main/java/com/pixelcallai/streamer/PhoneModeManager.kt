@@ -3,6 +3,7 @@ package com.pixelcallai.streamer
 import android.content.Context
 import android.media.AudioManager
 import android.os.SystemClock
+import android.telecom.TelecomManager
 import android.telephony.TelephonyManager
 import android.util.Log
 import java.io.File
@@ -10,6 +11,7 @@ import java.util.UUID
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.abs
 
 /**
  * The phone's two modes.
@@ -23,19 +25,24 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * The mode is stored in `/data/adb/pixelcallai/mode`, outside the module folder so it
  * survives module updates, and `service.sh` reads it at boot. No file = `ai`: that is
- * how every phone ran before this switch existed. [Prefs.phoneMode] mirrors it for code
- * that cannot use root.
+ * how every phone ran before this switch existed. [Prefs.phoneMode] mirrors it.
  *
- * The system settings are changed by a root script (`assets/apply_mode.sh`, copied to
- * `/data/adb/pixelcallai/`) that runs in its own session: Android may stop this app when
- * it loses the phone-app role, and the script still finishes. It records every step in
- * `last_apply` and keeps `pending` until all of them worked; the next start of the
- * service runs it again ([syncFromRoot]). A switch is refused during a call.
+ * The app needs no root for a switch. The module starts `mode_daemon.sh` as root at boot,
+ * and it watches `files/mode/` in this app's device-protected storage: the app writes
+ * `request` (one line, `<ai|normal> <id> [volumes]`), the helper takes it within two
+ * seconds, runs the module's `apply_mode.sh` and writes `state` (key=value lines: the
+ * mode, `pending`, `running`, the last request and its exit code, and the script's
+ * `last_apply` as `log.*`). The script runs outside this app, so it finishes even when
+ * Android stops the app on the way (losing the phone-app role can do that). It keeps
+ * `pending` until every step worked; the next start of the service asks for the switch
+ * again ([syncFromRoot]). A switch is refused during a call, and fails with
+ * [ERR_NO_ROOT] when nobody takes the request (the module is not running).
  */
 object PhoneModeManager {
     const val ERR_IN_CALL = "in_call"
     const val ERR_BUSY = "busy"
     const val ERR_INVALID_MODE = "invalid_mode"
+    /** The module's helper did not take the request: the module is not running. */
     const val ERR_NO_ROOT = "no_root"
     const val ERR_SAVE = "save_failed"
     const val ERR_DIALER = "dialer_failed"
@@ -61,21 +68,28 @@ object PhoneModeManager {
     }
 
     private const val TAG = "PhoneMode"
-    private const val STATE_DIR = "/data/adb/pixelcallai"
-    private const val MODE_FILE = "$STATE_DIR/mode"
-    private const val PENDING_FILE = "$STATE_DIR/pending"
-    private const val LOG_FILE = "$STATE_DIR/last_apply"
-    private const val LOCK_DIR = "$STATE_DIR/apply.lock"
-    private const val SCRIPT = "$STATE_DIR/apply_mode.sh"
+    /** Folder in device-protected storage that the module's mode_daemon.sh watches. */
+    private const val DIR_NAME = "mode"
+    private const val REQUEST_FILE = "request"
+    private const val STATE_FILE = "state"
     /** Ring / notification / … volumes the phone had before it last became an AI phone. */
-    private const val AUDIO_FILE = "$STATE_DIR/normal_audio"
-    private const val SCRIPT_ASSET = "apply_mode.sh"
-    /** The same characters service.sh and the script drop before comparing the mode. */
-    private const val STRIP = "' \\t\\r\\n\\v\\f\\357\\273\\277'"
-    /** No `last_apply` line from the script by then: it did not start. */
+    private const val AUDIO_FILE = "normal_audio"
+    /** apply_mode.sh's exit code when another run holds its lock. */
+    private const val EXIT_LOCKED = 4
+    /** The helper looks every 2 seconds: a request still there by then means it is not running. */
     private const val SCRIPT_START_MS = 10_000L
     private const val SCRIPT_MAX_MS = 90_000L
+    /** The module's helper starts about this long after boot at the latest. */
+    private const val BOOT_GRACE_MS = 180_000L
     private const val POLL_MS = 400L
+    /**
+     * Service start: how long to wait for a state written since this boot. At boot the
+     * module starts its helper after this service (once the boot is complete).
+     */
+    private const val SYNC_WAIT_MS = 300_000L
+    private const val SYNC_POLL_MS = 2_000L
+    /** The state's boot time and this app's may differ this much and still be one boot. */
+    private const val SAME_BOOT_SLACK_SEC = 30L
 
     private class Volume(val stream: Int, val key: String)
 
@@ -111,7 +125,7 @@ object PhoneModeManager {
 
     fun newLocalId(): String = LOCAL_ID_PREFIX + UUID.randomUUID()
 
-    /** The id goes on the script's command line: letters, digits and dashes only. */
+    /** The id goes into the request line: letters, digits and dashes only. */
     fun safeId(id: String): String =
         id.filter { (it.isLetterOrDigit() && it.code < 128) || it == '-' }.take(64)
 
@@ -161,40 +175,57 @@ object PhoneModeManager {
 
     /**
      * Service start: bring the phone in line with the module's mode file. Runs the
-     * script again when the last switch did not finish (`pending`), when the mode is
+     * switch again when the last one did not finish (`pending`), when the mode is
      * normal but Myna is still the phone app (an interrupted switch, or an older
      * version that took the phone over again), or when the app's copy of the mode is
      * different. [onUnreported] gets the result of a switch the agent asked for whose
      * answer was never sent (the app was stopped while it ran).
+     *
+     * At boot this service starts before the module's helper, and the state file can
+     * still be the one from before the reboot, so this first waits (on its own thread)
+     * for a state written since this boot.
      */
     fun syncFromRoot(context: Context, onUnreported: (ApplyLog) -> Unit) {
         val ctx = context.applicationContext
-        if (!busy.compareAndSet(false, true)) return
-        executor.execute {
-            try {
-                syncBlocking(ctx, onUnreported)
-            } catch (t: Throwable) {
-                Log.e(TAG, "start-up check failed", t)
-            } finally {
-                busy.set(false)
+        appDir(ctx)
+        Thread({
+            if (!waitForCurrentState(ctx)) {
+                Log.w(TAG, "start-up check skipped: no state from the Myna module since boot")
+            } else if (busy.compareAndSet(false, true)) {
+                executor.execute {
+                    try {
+                        syncBlocking(ctx, onUnreported)
+                    } catch (t: Throwable) {
+                        Log.e(TAG, "start-up check failed", t)
+                    } finally {
+                        busy.set(false)
+                    }
+                }
             }
-        }
+        }, "phone-mode-sync").apply { isDaemon = true }.start()
     }
 
+    /** What the module's helper last reported (`state`). */
     private class RootState(
         val mode: String,
         val pending: Boolean,
+        /** A run is going; never true for a state written before this boot. */
         val running: Boolean,
-        val dialer: String,
+        /** Written since this boot. */
+        val current: Boolean,
+        /** The last request the helper took, and the script's exit code once that run ended. */
+        val request: String,
+        val exit: Int?,
+        val error: String,
         val log: ApplyLog?,
     )
 
     private fun syncBlocking(ctx: Context, onUnreported: (ApplyLog) -> Unit) {
-        var state = readRootState() ?: return
+        var state = readRootState(ctx) ?: return
         if (state.running) {
             // A run started before the app was stopped: let it finish.
-            state.log?.let { waitForScript(it.id) }
-            state = readRootState() ?: return
+            if (state.request.isNotEmpty()) waitForRun(ctx, state.request)
+            state = readRootState(ctx) ?: return
         }
         val unreported = state.log?.takeIf {
             it.done && !it.id.startsWith(LOCAL_ID_PREFIX) && it.id != "invalid" &&
@@ -203,7 +234,7 @@ object PhoneModeManager {
         val mirror = Prefs.phoneMode(ctx)
         val why = when {
             state.pending -> "the last switch did not finish"
-            state.mode == Prefs.PHONE_MODE_NORMAL && state.dialer == ctx.packageName ->
+            state.mode == Prefs.PHONE_MODE_NORMAL && defaultDialer(ctx) == ctx.packageName ->
                 "normal mode, but Myna is still the phone app"
             state.mode != mirror -> "the module file says ${state.mode}, the app had $mirror"
             else -> null
@@ -237,33 +268,47 @@ object PhoneModeManager {
         return audioMode != AudioManager.MODE_IN_CALL && audioMode != AudioManager.MODE_RINGTONE
     }
 
-    /** The module's mode file (no file = ai), or null when root is not available. */
-    fun readRootMode(): String? {
-        val out = RootShell.run("[ -f $MODE_FILE ] && tr -d $STRIP < $MODE_FILE; true", 5)
-        if (!out.ok) return null
-        return Prefs.normalizeMode(out.text)
+    /** The default phone app's package; empty when unknown. */
+    private fun defaultDialer(ctx: Context): String = try {
+        ctx.getSystemService(TelecomManager::class.java)?.defaultDialerPackage.orEmpty()
+    } catch (_: Exception) {
+        ""
     }
+
+    /** The module's mode file (no file = ai) as the helper last reported it; null without a state. */
+    private fun readRootMode(ctx: Context): String? = readRootState(ctx)?.mode
 
     private fun switchBlocking(ctx: Context, target: String, id: String): Result {
         val before = Prefs.phoneMode(ctx)
-        if (!RootShell.available()) return Result(false, before, ERR_NO_ROOT)
         if (!isPhoneIdle(ctx)) return Result(false, before, ERR_IN_CALL)
-        if (scriptRunning()) return Result(false, before, ERR_BUSY)
+        if (scriptRunning(ctx)) return Result(false, before, ERR_BUSY)
         if (target == Prefs.PHONE_MODE_AI && before == Prefs.PHONE_MODE_NORMAL) saveNormalVolumes(ctx)
+        val volumes = if (target == Prefs.PHONE_MODE_NORMAL) normalVolumes(ctx) else emptyList()
+        val request = File(appDir(ctx), REQUEST_FILE)
+        val line = (listOf(target, id) + volumes.map { it.toString() }).joinToString(" ")
+        if (!writeRequest(request, line)) return Result(false, before, ERR_FAILED)
+        if (!waitForPickup(request)) {
+            // Right after a boot the module's helper starts late (boot completed + ~10 s):
+            // "busy, try again" then, not "the module is not running".
+            val early = SystemClock.elapsedRealtime() < BOOT_GRACE_MS
+            Log.e(TAG, "nobody took the mode request (id=$id, early=$early)")
+            return Result(false, before, if (early) ERR_BUSY else ERR_NO_ROOT)
+        }
         if (target == Prefs.PHONE_MODE_NORMAL) {
-            // Stop muting at once; the script changes the system settings.
+            // Stop muting at once; the module's script changes the system settings.
             Prefs.setPhoneMode(ctx, Prefs.PHONE_MODE_NORMAL)
             LocalAudioGuard(ctx).release()
             unmuteMicrophone(ctx)
             notifyListeners(Prefs.PHONE_MODE_NORMAL)
         }
-        val volumes = if (target == Prefs.PHONE_MODE_NORMAL) normalVolumes(ctx) else emptyList()
-        val log = if (installScript(ctx) && launchScript(target, id, volumes)) waitForScript(id) else null
+        val log = waitForRun(ctx, id)
+        // No result in time: the script may still be running, so the state file still has
+        // the old mode. Keep the app's copy; the next service start brings it in line.
+        if (log == null) return Result(false, Prefs.phoneMode(ctx), ERR_FAILED)
         // The mode file is the truth (a failed "save" step leaves the old mode).
-        val mode = readRootMode() ?: Prefs.phoneMode(ctx)
+        val mode = readRootMode(ctx) ?: Prefs.phoneMode(ctx)
         Prefs.setPhoneMode(ctx, mode)
         notifyListeners(mode)
-        if (log == null) return Result(false, mode, ERR_FAILED)
         if (!log.ok) return Result(false, mode, log.error.ifEmpty { ERR_FAILED })
         Prefs.clearLegacyAiSwitch(ctx)
         return Result(true, mode, "")
@@ -279,93 +324,111 @@ object PhoneModeManager {
         }
     }
 
-    // ------------------------------------------------------------- the root script
+    // ------------------------------------------------------------- the module's helper
 
-    /** Copy the script from the APK to the root-only state folder. */
-    private fun installScript(ctx: Context): Boolean {
-        val src = File(ctx.createDeviceProtectedStorageContext().filesDir, SCRIPT_ASSET)
-        try {
-            src.parentFile?.mkdirs()
-            ctx.assets.open(SCRIPT_ASSET).use { input -> src.outputStream().use { input.copyTo(it) } }
+    /** `files/mode/` in device-protected storage (usable before the first unlock); made when missing. */
+    private fun appDir(ctx: Context): File {
+        val dir = File(ctx.createDeviceProtectedStorageContext().filesDir, DIR_NAME)
+        if (!dir.isDirectory && !dir.mkdirs()) Log.w(TAG, "cannot create $dir")
+        return dir
+    }
+
+    /** Written to a temporary file and renamed, so the helper never reads half a request. */
+    private fun writeRequest(request: File, line: String): Boolean {
+        val tmp = File(request.parentFile, "$REQUEST_FILE.tmp")
+        return try {
+            tmp.writeText(line + "\n")
+            if (tmp.renameTo(request)) {
+                true
+            } else {
+                Log.e(TAG, "cannot hand the mode request over")
+                tmp.delete()
+                false
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "cannot unpack $SCRIPT_ASSET", e)
-            return false
+            Log.e(TAG, "cannot write the mode request", e)
+            tmp.delete()
+            false
         }
-        val out = RootShell.run(
-            "mkdir -p $STATE_DIR && cat ${RootShell.quote(src.absolutePath)} > $SCRIPT.new && " +
-                "mv -f $SCRIPT.new $SCRIPT && chmod 700 $SCRIPT",
-            10,
-        )
-        return out.ok
     }
 
-    /** Start the script in its own session: it keeps running if this app is stopped. */
-    private fun launchScript(target: String, id: String, volumes: List<Int>): Boolean {
-        val args = (listOf(target, id) + volumes.map { it.toString() }).joinToString(" ")
-        val out = RootShell.run("toybox setsid sh $SCRIPT $args </dev/null >/dev/null 2>&1 &", 10)
-        return out.ok
-    }
-
-    /** The script's log for [id] once it is done; null when it never started or hangs. */
-    private fun waitForScript(id: String): ApplyLog? {
+    /**
+     * True once the helper took [request] (it renames the file). Still there after
+     * [SCRIPT_START_MS]: withdrawn, false. A failed delete means it was taken just then.
+     */
+    private fun waitForPickup(request: File): Boolean {
         val start = SystemClock.elapsedRealtime()
-        var started = false
+        while (request.exists()) {
+            if (SystemClock.elapsedRealtime() - start > SCRIPT_START_MS || !pause(POLL_MS)) {
+                return !request.delete()
+            }
+        }
+        return true
+    }
+
+    /**
+     * The script's log for request [id] once the helper is done with it. A run that ended
+     * without one stopped before its first step ([EXIT_LOCKED]: another run held the lock).
+     * Null when nothing came back in time.
+     */
+    private fun waitForRun(ctx: Context, id: String): ApplyLog? {
+        val start = SystemClock.elapsedRealtime()
         while (true) {
-            val log = readLog()
-            if (log != null && log.id == id) {
-                if (log.done) return log
-                started = true
+            val state = readRootState(ctx)
+            val log = state?.log
+            if (log != null && log.id == id && log.done) return log
+            if (state != null && state.request == id && state.exit != null) {
+                Log.e(TAG, "the mode script ended without a result (id=$id exit=${state.exit} ${state.error})")
+                return ApplyLog(id, "", true, if (state.exit == EXIT_LOCKED) ERR_BUSY else ERR_FAILED)
             }
-            val elapsed = SystemClock.elapsedRealtime() - start
-            if (!started && elapsed > SCRIPT_START_MS && !scriptRunning()) {
-                Log.e(TAG, "the mode script did not start (id=$id)")
-                return null
-            }
-            if (elapsed > SCRIPT_MAX_MS) {
+            if (SystemClock.elapsedRealtime() - start > SCRIPT_MAX_MS) {
                 Log.e(TAG, "the mode script did not finish in time (id=$id)")
                 return null
             }
-            try {
-                Thread.sleep(POLL_MS)
-            } catch (_: InterruptedException) {
-                return null
-            }
+            if (!pause(POLL_MS)) return null
         }
     }
 
-    private fun scriptRunning(): Boolean {
-        val out = RootShell.run(
-            "p=\$(cat $LOCK_DIR/pid 2>/dev/null); [ -n \"\$p\" ] && kill -0 \"\$p\" 2>/dev/null && " +
-                "grep -q apply_mode /proc/\$p/cmdline 2>/dev/null && echo yes; true",
-            5,
-        )
-        return out.text.trim() == "yes"
+    /** Poll until the helper has written a state since this boot; false after [SYNC_WAIT_MS]. */
+    private fun waitForCurrentState(ctx: Context): Boolean {
+        val start = SystemClock.elapsedRealtime()
+        while (true) {
+            if (readRootState(ctx)?.current == true) return true
+            if (SystemClock.elapsedRealtime() - start > SYNC_WAIT_MS || !pause(SYNC_POLL_MS)) return false
+        }
     }
 
-    private fun readLog(): ApplyLog? {
-        val out = RootShell.run("cat $LOG_FILE 2>/dev/null; true", 5)
-        return if (out.ok) parseLog(keyValues(out.text)) else null
-    }
+    private fun scriptRunning(ctx: Context): Boolean = readRootState(ctx)?.running == true
 
-    private fun readRootState(): RootState? {
-        val out = RootShell.run(
-            "echo \"mode=\$([ -f $MODE_FILE ] && tr -d $STRIP < $MODE_FILE)\"; " +
-                "[ -f $PENDING_FILE ] && echo pending=1; " +
-                "p=\$(cat $LOCK_DIR/pid 2>/dev/null); [ -n \"\$p\" ] && kill -0 \"\$p\" 2>/dev/null && echo running=1; " +
-                "echo \"dialer=\$(telecom get-default-dialer 2>/dev/null)\"; " +
-                "sed 's/^/log./' $LOG_FILE 2>/dev/null; true",
-            15,
-        )
-        if (!out.ok) return null
-        val kv = keyValues(out.text)
+    /** The helper's `state` file; null when there is none (the module has not run yet). */
+    private fun readRootState(ctx: Context): RootState? {
+        val text = try {
+            val file = File(appDir(ctx), STATE_FILE)
+            if (!file.isFile) return null
+            file.readText()
+        } catch (e: Exception) {
+            Log.w(TAG, "cannot read the mode state: ${e.message}")
+            return null
+        }
+        val kv = keyValues(text)
+        if (kv["daemon"] != "1") return null
         val log = parseLog(
             kv.filterKeys { it.startsWith("log.") }.mapKeys { it.key.removePrefix("log.") },
         )
+        // Same boot: the boot time the state implies matches this app's.
+        val updated = kv["updated"]?.toLongOrNull()
+        val uptime = kv["uptime"]?.toLongOrNull()
+        val bootSec = (System.currentTimeMillis() - SystemClock.elapsedRealtime()) / 1000
+        val current = updated != null && uptime != null &&
+            abs(updated - uptime - bootSec) <= SAME_BOOT_SLACK_SEC
         return RootState(
             mode = Prefs.normalizeMode(kv["mode"].orEmpty()),
             pending = kv["pending"] == "1",
-            running = kv["running"] == "1",
-            dialer = kv["dialer"].orEmpty().trim(),
+            running = current && kv["running"] == "1",
+            current = current,
+            request = kv["request"].orEmpty(),
+            exit = kv["exit"]?.toIntOrNull(),
+            error = kv["error"].orEmpty(),
             log = log,
         )
     }
@@ -390,12 +453,20 @@ object PhoneModeManager {
         return ApplyLog(id, kv["mode"].orEmpty(), done, error)
     }
 
+    /** False when the thread was interrupted. */
+    private fun pause(ms: Long): Boolean = try {
+        Thread.sleep(ms)
+        true
+    } catch (_: InterruptedException) {
+        false
+    }
+
     // ------------------------------------------------------------- volumes
 
     /** Normal-mode volumes for the script: saved value, or half of the maximum (0 = skip). */
     private fun normalVolumes(ctx: Context): List<Int> {
         val am = ctx.getSystemService(AudioManager::class.java) ?: return emptyList()
-        val saved = readSavedVolumes()
+        val saved = readSavedVolumes(ctx)
         return VOLUMES.map { v ->
             val max = try {
                 am.getStreamMaxVolume(v.stream)
@@ -410,6 +481,7 @@ object PhoneModeManager {
     /** Half of the maximum, when nothing was saved. */
     fun defaultVolume(max: Int): Int = ((max + 1) / 2).coerceAtLeast(1)
 
+    /** `files/mode/normal_audio`: one `key=value` line per stream. */
     private fun saveNormalVolumes(ctx: Context) {
         val am = ctx.getSystemService(AudioManager::class.java) ?: return
         val lines = VOLUMES.mapNotNull { v ->
@@ -420,14 +492,25 @@ object PhoneModeManager {
             }
         }
         if (lines.isEmpty()) return
-        // Only digits and fixed keys: safe inside the single-quoted printf format.
-        val body = lines.joinToString("\\n")
-        RootShell.run("mkdir -p $STATE_DIR && printf '$body\\n' > $AUDIO_FILE")
+        val file = File(appDir(ctx), AUDIO_FILE)
+        val tmp = File(file.parentFile, "$AUDIO_FILE.tmp")
+        try {
+            tmp.writeText(lines.joinToString("\n", postfix = "\n"))
+            if (!tmp.renameTo(file)) {
+                tmp.delete()
+                Log.w(TAG, "cannot save the normal-phone volumes")
+            }
+        } catch (e: Exception) {
+            tmp.delete()
+            Log.w(TAG, "cannot save the normal-phone volumes: ${e.message}")
+        }
     }
 
-    private fun readSavedVolumes(): Map<String, Int> {
-        val out = RootShell.run("cat $AUDIO_FILE 2>/dev/null; true", 5)
-        return if (out.ok) parseSavedVolumes(out.text) else emptyMap()
+    private fun readSavedVolumes(ctx: Context): Map<String, Int> = try {
+        val file = File(appDir(ctx), AUDIO_FILE)
+        if (file.isFile) parseSavedVolumes(file.readText()) else emptyMap()
+    } catch (_: Exception) {
+        emptyMap()
     }
 
     /** `key=value` lines; anything else is skipped. */

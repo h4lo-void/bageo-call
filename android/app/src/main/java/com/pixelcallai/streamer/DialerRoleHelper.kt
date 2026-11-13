@@ -98,8 +98,8 @@ object DialerRoleHelper {
     }
 
     /**
-     * Manual recovery only; the normal-phone switch uses the root script
-     * (assets/apply_mode.sh). True when every command succeeded.
+     * Manual recovery only; the normal-phone switch uses the module's root script
+     * (apply_mode.sh). True when every command succeeded.
      */
     fun restoreCompetingDialerUi(): Boolean {
         var ok = true
