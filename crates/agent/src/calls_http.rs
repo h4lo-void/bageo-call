@@ -718,6 +718,8 @@ pub struct PreviewQuery {
     pub regen: Option<bool>,
     /// `reject`: the blocked-number announcement in `voice` (made once, then cached).
     pub clip: Option<String>,
+    /// Language of the lines (`ja`, `zh-TW`, …). Empty = the saved setting.
+    pub lang: Option<String>,
 }
 
 /// Preview for the settings page: a few phone lines in `voice` with `ambience` at
@@ -736,27 +738,33 @@ async fn preview(
         let v = v.as_deref().unwrap_or("").trim();
         if v.is_empty() { saved.trim().to_string() } else { v.to_string() }
     };
-    let mut voice = pick(&q.voice, &rt.gemini_voice_name);
+    let is_reject = q.clip.as_deref() == Some("reject");
+    let saved_voice = if is_reject { crate::voice_preview::reject_voice(&rt) } else { rt.gemini_voice_name.as_str() };
+    let mut voice = pick(&q.voice, saved_voice);
     if voice.is_empty() {
         voice = crate::gemini_live::default_voice_name().to_string();
     }
+    let lang = match q.lang.as_deref().map(str::trim) {
+        Some(l) if !l.is_empty() => crate::locale::Lang::parse(l),
+        _ => rt.lang(),
+    };
     let kind = pick(&q.ambience, &rt.ambience_kind);
     let level = q.level.unwrap_or(rt.ambience_level).clamp(1, 3);
     if voice != "none" && !crate::voice_preview::valid_voice(&voice) {
         return (StatusCode::BAD_REQUEST, Json(json!({"error": format!("unknown voice {voice}")}))).into_response();
     }
-    if q.clip.as_deref() == Some("reject") && voice != "none" {
+    if is_reject && voice != "none" {
         // What a blocked caller hears: the line alone, no room under it.
         let sr = state.settings.sample_rate.max(8000);
         if let Err(e) = state
             .previews
-            .ensure_reject_clip(&rt.gemini_api_key, &rt.gemini_live_model, &rt.gemini_thinking_level, &voice, sr)
+            .ensure_reject_clip(&rt.gemini_api_key, &rt.gemini_live_model, &rt.gemini_thinking_level, &voice, lang, sr)
             .await
         {
             tracing::warn!("reject announcement preview failed voice={voice}: {e:#}");
             return (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("{e:#}")}))).into_response();
         }
-        let Some(pcm) = state.previews.cached_reject_clip(&rt.gemini_live_model, &voice) else {
+        let Some(pcm) = state.previews.cached_reject_clip(&rt.gemini_live_model, &voice, lang, sr) else {
             return (StatusCode::BAD_GATEWAY, Json(json!({"error": "the announcement could not be made"}))).into_response();
         };
         let mut padded = vec![0u8; (sr as usize / 2) * 2];
@@ -778,6 +786,7 @@ async fn preview(
                 &rt.gemini_live_model,
                 &rt.gemini_thinking_level,
                 &voice,
+                lang,
                 sr,
                 q.regen.unwrap_or(false),
             )
@@ -856,7 +865,7 @@ async fn settings_put(
             rt.apply_globals();
             // Blocked numbers / voice / model changed: have the "cannot be reached" announcement
             // ready before the next such call (cached: free when it exists).
-            if ["reject_numbers", "gemini_voice_name", "gemini_live_model", "gemini_api_key", "language"]
+            if ["reject_numbers", "reject_voice_name", "gemini_voice_name", "gemini_live_model", "gemini_api_key", "language"]
                 .iter()
                 .any(|k| patch.get(*k).is_some())
             {

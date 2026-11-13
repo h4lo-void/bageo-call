@@ -53,8 +53,10 @@ the AI may answer from, the interview prompt.
 ### Blocked numbers
 
 A list of numbers with an optional reason. Such a caller hears a short "the
-number you have dialed is not available" announcement in the AI's voice and is
-hung up on; the AI and Gemini are not used. `*` at the end matches a prefix of
+number you have dialed is not available" announcement and is hung up on; the AI
+and Gemini are not used. The announcement is in the language you chose, in the
+AI's voice unless you pick another under *Announcement voice*; every voice comes
+recorded in every language, so it costs no Gemini quota. `*` at the end matches a prefix of
 at least four digits (`0800*`). Write numbers the way they show up in the call
 list; `+…` forms match when *Country calling code* is set.
 

@@ -136,6 +136,9 @@ pub struct RuntimeSettings {
     /// ([`reject_number_hit`]).
     #[serde(default)]
     pub reject_numbers: Vec<RejectEntry>,
+    /// Voice of the blocked-number announcement; empty = the AI's voice.
+    #[serde(default)]
+    pub reject_voice_name: String,
     /// Sales / scam stalling: in persona mode, once the caller is
     /// clearly selling (insurance / loans / investment / promos) or scamming, the
     /// AI keeps them talking about every term of the offer — never giving data
@@ -431,6 +434,7 @@ impl RuntimeSettings {
                     .map(|line| RejectEntry::from(RejectEntryRepr::Line(line)))
                     .collect(),
             ),
+            reject_voice_name: env_or("REJECT_VOICE_NAME", ""),
             persona_stall_spam: env_bool("PERSONA_STALL_SPAM", true),
             persona_stall_max_min: env_parse("PERSONA_STALL_MAX_MIN", STALL_MAX_MIN_DEFAULT),
             persona_normal_max_min: env_parse("PERSONA_NORMAL_MAX_MIN", NORMAL_MAX_MIN_DEFAULT),
@@ -607,6 +611,7 @@ impl RuntimeSettings {
             spam_keywords,
             callback_whitelist,
             reject_numbers,
+            reject_voice_name,
             ivr_goodbye_text,
             ivr_vm_intro_text,
             ivr_vm_confirm_text,
@@ -893,6 +898,8 @@ struct Overrides {
     callback_whitelist: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reject_numbers: Option<Vec<RejectEntry>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reject_voice_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     vm_max_ms: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1407,6 +1414,7 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     p_string(patch, "gemini_live_model", &mut ov.gemini_live_model);
     p_string(patch, "gemini_system_prompt", &mut ov.gemini_system_prompt);
     p_string(patch, "gemini_voice_name", &mut ov.gemini_voice_name);
+    p_string(patch, "reject_voice_name", &mut ov.reject_voice_name);
     p_secret(patch, "deepseek_api_key", &mut ov.deepseek_api_key);
     p_bool(patch, "owner_status_enabled", &mut ov.owner_status_enabled);
     p_bool(patch, "gemini_persona_mode", &mut ov.gemini_persona_mode);

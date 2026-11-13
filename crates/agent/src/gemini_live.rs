@@ -280,6 +280,7 @@ const PREVIEW_LINE_TIMEOUT: Duration = Duration::from_secs(15);
 /// Speak `lines` in `voice` on one short Live session (a turn per line), at
 /// `phone_sr` and with a call's downlink processing — the settings page's preview.
 pub async fn speak_lines(
+    lang: crate::locale::Lang,
     api_key: &str,
     model: &str,
     thinking_level: &str,
@@ -287,11 +288,13 @@ pub async fn speak_lines(
     lines: &[&str],
     phone_sr: u32,
 ) -> Result<Vec<Vec<u8>>> {
-    speak_lines_as(&crate::prompts::current().preview_system, api_key, model, thinking_level, voice, lines, phone_sr).await
+    speak_lines_as(lang, &crate::prompts::pack(lang).preview_system, api_key, model, thinking_level, voice, lines, phone_sr).await
 }
 
 /// [`speak_lines`] with another speaker (`system`), e.g. the announcement voice.
+#[allow(clippy::too_many_arguments)]
 pub async fn speak_lines_as(
+    lang: crate::locale::Lang,
     system: &str,
     api_key: &str,
     model: &str,
@@ -300,6 +303,27 @@ pub async fn speak_lines_as(
     lines: &[&str],
     phone_sr: u32,
 ) -> Result<Vec<Vec<u8>>> {
+    Ok(speak_lines_heard(lang, system, api_key, model, thinking_level, voice, lines, phone_sr, false)
+        .await?
+        .into_iter()
+        .map(|(pcm, _)| pcm)
+        .collect())
+}
+
+/// [`speak_lines_as`], each line with what Gemini says it spoke (its output
+/// transcription) when `transcribe` — to check a recording says the line.
+#[allow(clippy::too_many_arguments)]
+pub async fn speak_lines_heard(
+    lang: crate::locale::Lang,
+    system: &str,
+    api_key: &str,
+    model: &str,
+    thinking_level: &str,
+    voice: &str,
+    lines: &[&str],
+    phone_sr: u32,
+    transcribe: bool,
+) -> Result<Vec<(Vec<u8>, String)>> {
     let key = api_key.trim();
     if key.is_empty() {
         bail!("Gemini API key is not set");
@@ -347,6 +371,14 @@ pub async fn speak_lines_as(
             gc.insert("thinkingConfig".into(), json!({ "thinkingLevel": level }));
         }
     }
+    if transcribe {
+        if let Some(s) = setup.pointer_mut("/setup").and_then(|x| x.as_object_mut()) {
+            s.insert(
+                "outputAudioTranscription".into(),
+                json!({ "languageCodes": [crate::locale::phrases(lang).stt] }),
+            );
+        }
+    }
     send_text_before_deadline(
         &mut sink,
         setup.to_string(),
@@ -378,11 +410,13 @@ pub async fn speak_lines_as(
     let mut out = Vec::with_capacity(lines.len());
     for line in lines {
         let mut pcm: Vec<u8> = Vec::new();
+        let mut heard = String::new();
         // A turn sometimes comes back as a transcript only (no audio): ask again.
         for _ in 0..2 {
+            heard.clear();
             let turn = json!({
                 "clientContent": {
-                    "turns": [{ "role": "user", "parts": [{ "text": crate::prompts::current().read_line.replace("{line}", line) }] }],
+                    "turns": [{ "role": "user", "parts": [{ "text": crate::prompts::pack(lang).read_line.replace("{line}", line) }] }],
                     "turnComplete": true
                 }
             });
@@ -393,7 +427,8 @@ pub async fn speak_lines_as(
                 "gemini preview line send",
             )
             .await?;
-            let deadline = tokio::time::Instant::now() + PREVIEW_LINE_TIMEOUT;
+            let mut deadline = tokio::time::Instant::now() + PREVIEW_LINE_TIMEOUT;
+            let mut spoken = false;
             loop {
                 let left = deadline.saturating_duration_since(tokio::time::Instant::now());
                 match tokio::time::timeout(left, stream.next()).await {
@@ -402,9 +437,19 @@ pub async fn speak_lines_as(
                         else {
                             continue;
                         };
+                        if let Some(t) = output_transcription_text(&v) {
+                            heard.push_str(t);
+                        }
                         handle_server_msg(&v, phone_sr, &mut |c: Vec<u8>| pcm.extend_from_slice(&c));
                         if v.pointer("/serverContent/turnComplete").and_then(|x| x.as_bool()) == Some(true) {
-                            break;
+                            if !transcribe {
+                                break;
+                            }
+                            // The transcript of a short line can come after the turn ends.
+                            if !spoken {
+                                spoken = true;
+                                deadline = tokio::time::Instant::now() + Duration::from_millis(1_500);
+                            }
                         }
                     }
                     Ok(Some(Err(e))) => bail!("Gemini connection error: {e}"),
@@ -419,7 +464,7 @@ pub async fn speak_lines_as(
         if pcm.is_empty() {
             bail!("Gemini produced no audio with voice {voice}");
         }
-        out.push(pcm);
+        out.push((pcm, heard));
     }
     let _ = sink.send(WsMessage::Close(None)).await;
     Ok(out)
