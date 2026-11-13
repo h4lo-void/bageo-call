@@ -50,7 +50,7 @@ flowchart LR
 ## 快速开始
 
 1. **获取程序。** 从 [Releases](https://github.com/h4lo-void/myna-call/releases) 页面下载适合你系统的安装包并解压——或者克隆这个仓库（这样需要安装 [Rust](https://rustup.rs)；启动脚本会自动构建）。
-2. **启动。** Windows：双击 `start.cmd`。macOS：双击 `start.command`。Linux：`./start.sh`。如果没有 `adb`（Google 的 Android platform-tools），脚本会询问是否下载，然后打开网页控制台 <http://localhost:8787/>。
+2. **启动。** Windows：双击 `start.cmd`。macOS：双击 `start.command`。Linux：`./start.sh`。如果没有 `adb`（Google 的 Android platform-tools），脚本会询问是否下载，然后打开网页控制台 <http://localhost:8787/>。以后用脚本放在桌面的“Myna 控制台”快捷方式打开就行。控制台对局域网开放后，手机和其他电脑可以用 <http://myna.local:8787/> 打开，也可以把它添加到手机主屏幕（“系统 → 关于”）。→ [设置参考](docs/zh-CN/SETTINGS.md#从其他设备使用控制台)
 3. **填写基本设置**：在网页控制台里填上你的 Gemini API 密钥、你的名字、语言和接听身份（AI 助理或本人）。按 ▶ 试听各个声音，选一个。
 4. **准备手机**（只需一次）：在 Magisk / KernelSU 里安装发行版附带的模块（`pixelcallai_uplink-<version>.zip`），重启，打开 **Myna** 应用，把检查清单逐项完成。开启 USB 调试，把手机插到电脑上，并在“允许 USB 调试吗？”的弹窗里点允许。→ [手机设置](docs/zh-CN/PHONE.md)
 5. **检查，然后打一通。** 网页控制台的“系统”页会显示手机“已连接主程序”。用另一部手机拨打这部手机的号码：响一声后 AI 接听，通话会连同录音和摘要出现在控制台里。

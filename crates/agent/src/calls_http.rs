@@ -34,6 +34,27 @@ pub struct CallsState {
 }
 
 const UI_HTML: &str = include_str!("../static/calls.html");
+// "Add to home screen": the app manifest and its icons (the myna of docs/images/myna.svg).
+const MANIFEST: &[u8] = include_bytes!("../static/manifest.webmanifest");
+const ICON_192: &[u8] = include_bytes!("../static/icon-192.png");
+const ICON_512: &[u8] = include_bytes!("../static/icon-512.png");
+const APPLE_TOUCH_ICON: &[u8] = include_bytes!("../static/apple-touch-icon.png");
+const FAVICON: &[u8] = include_bytes!("../static/favicon.ico");
+
+/// One embedded file. Public like the page itself: nothing private in them.
+fn static_file(bytes: &'static [u8], content_type: &'static str) -> Response {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CACHE_CONTROL, "public, max-age=86400")
+        .body(Body::from(bytes))
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+/// `/favicon.ico` (also at the site root, where browsers look for it).
+pub async fn favicon() -> Response {
+    static_file(FAVICON, "image/x-icon")
+}
 
 /// Embedded UI: raw bytes, gzip bytes and a strong ETag, computed once.
 struct UiAsset {
@@ -801,8 +822,14 @@ async fn settings_get(
         "ok": true,
         "settings": state.settings_store.masked_json(),
         "storage_path": state.settings_store.storage_path().display().to_string(),
+        "console_url": console_url(&state),
     }))
     .into_response()
+}
+
+/// The console's address as other devices open it (empty: this computer only).
+fn console_url(state: &CallsState) -> String {
+    crate::settings_store::effective_console_url(&state.settings_store.snapshot().effective(&state.settings))
 }
 
 /// JSON patch of runtime settings. Secret fields: absent/"" keeps the stored
@@ -853,6 +880,7 @@ async fn settings_put(
                 "ok": true,
                 "settings": state.settings_store.masked_json(),
                 "storage_path": state.settings_store.storage_path().display().to_string(),
+                "console_url": console_url(&state),
             }))
             .into_response()
         }
@@ -1112,6 +1140,11 @@ mod tests {
 pub fn router(state: CallsState) -> Router {
     Router::new()
         .route("/", get(ui))
+        .route("/manifest.webmanifest", get(|| async { static_file(MANIFEST, "application/manifest+json") }))
+        .route("/icon-192.png", get(|| async { static_file(ICON_192, "image/png") }))
+        .route("/icon-512.png", get(|| async { static_file(ICON_512, "image/png") }))
+        .route("/apple-touch-icon.png", get(|| async { static_file(APPLE_TOUCH_ICON, "image/png") }))
+        .route("/favicon.ico", get(favicon))
         .route("/api/list", get(list))
         .route("/api/stats", get(stats))
         .route("/api/live", get(live))

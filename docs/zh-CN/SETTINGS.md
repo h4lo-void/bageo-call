@@ -53,7 +53,9 @@
 
 ### 通知
 
-见[通知](NOTIFICATIONS.md)。“这个控制台的地址”是放进通知链接里的地址（例如 `http://192.168.1.20:8787`）；留空就不带链接。
+见[通知](NOTIFICATIONS.md)。“这个控制台的地址”是放进通知链接里的地址（例如 `http://192.168.1.20:8787`）。留空的话，控制台对局域网开放时（`AGENT_HOST=0.0.0.0`）会自动填写：主程序在响应局域网名称时用 `http://<局域网名称>.local:8787/`，否则用这台电脑的局域网 IP。控制台只有这台电脑能打开时，通知不带链接；在 Docker 里不会自动填写，请自己设置。“系统 → 关于”会显示当前用的地址。
+
+“局域网名称”（默认 `myna`）是同一网络里的手机、电脑可以用来代替 IP 的名字：`http://myna.local:8787/`。只能用英文字母、数字和连字符；留空 = 关闭。控制台对局域网开放时，主程序自己响应这个名字（多播 DNS，UDP 5353 端口）。如果这个端口已经被别的程序占用（macOS 的 Bonjour、很多 Linux 的 avahi、Windows 的 DNS 客户端），主程序会在日志里写 `mDNS: UDP port 5353 is not available`，通知链接改用 IP。有些旧的 Android 手机完全打不开 `.local` 名称，请改用二维码或 IP。
 
 ### 摘要与日历
 
@@ -85,7 +87,8 @@
 | `AGENT_PORT` | `8787` | 网页控制台和手机连接用的端口。 |
 | `CALLS_UI_TOKEN` | *（空）* | 网页控制台和 API 的密码。通过 `?token=…`、`Authorization: Bearer …` 或 `X-Calls-Token` 发送。**只要 `AGENT_HOST` 不是 `127.0.0.1`，就一定要设置。** |
 | `DEVICE_TOKEN` | *（空）* | 不是通过 USB 连进来的手机，必须用 `…/ws?token=<this>` 连接（this 换成这个值）。**只要 `AGENT_HOST` 不是 `127.0.0.1`，就一定要设置。** 走 USB 的手机不受此限（USB 隧道的终点就是这台电脑本身）。 |
-| `PUBLIC_URL` | *（空）* | 等同于“这个控制台的地址”；以网页控制台里的值为准。 |
+| `PUBLIC_URL` | *（空）* | 等同于“这个控制台的地址”；以网页控制台里的值为准。留空 = 自动（见[通知](#通知)）。 |
+| `MDNS_NAME` | `myna` | 等同于“局域网名称”：在你的网络上用 `http://<这个值>.local:8787/` 打开控制台。留空 = 关闭。以网页控制台里的值为准。 |
 
 ### 从其他设备使用控制台
 
@@ -95,10 +98,11 @@
 AGENT_HOST=0.0.0.0
 CALLS_UI_TOKEN=choose-a-long-random-string
 DEVICE_TOKEN=another-long-random-string
-PUBLIC_URL=http://192.168.1.20:8787
 ```
 
-先打开一次 `http://192.168.1.20:8787/?token=choose-a-long-random-string`；页面会记住令牌。这个连接是未加密的 HTTP——在你信任的家庭网络里没问题，但不适合开放的互联网。要从外面访问，请用 VPN（WireGuard、Tailscale），或者带 HTTPS 且有自己登录机制的反向代理；不要做端口转发。
+先打开一次 `http://myna.local:8787/?token=choose-a-long-random-string`（或用这台电脑的 IP，例如 `http://192.168.1.20:8787/?token=…`）；页面会记住令牌。“系统 → 关于”会显示地址和二维码，用手机扫就能打开，也写了怎么把控制台添加到主屏幕：iPhone“分享 → 添加到主屏幕”；Android Chrome 菜单 ⋮ →“添加到主屏幕”；电脑上的 Chrome、Edge 点地址栏的安装图标。
+
+这个连接是未加密的 HTTP——在你信任的家庭网络里没问题，但不适合开放的互联网。要从外面访问，请用 VPN（WireGuard、Tailscale），或者带 HTTPS 且有自己登录机制的反向代理；不要做端口转发。
 
 ### 数据
 

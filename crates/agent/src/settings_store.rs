@@ -224,9 +224,14 @@ pub struct RuntimeSettings {
     #[serde(default)]
     pub notify_channels: Vec<crate::notify::Channel>,
     /// Address of this web console as the owner reaches it, for the links in
-    /// notifications (`http://192.168.1.20:8787`). Empty = no links.
+    /// notifications (`http://192.168.1.20:8787`). Empty = automatic, see
+    /// [`effective_console_url`].
     #[serde(default)]
     pub public_url: String,
+    /// Name this computer answers to on the LAN: `<name>.local` (mDNS).
+    /// Empty = off.
+    #[serde(default = "default_mdns_name")]
+    pub mdns_name: String,
     /// When a call fixes a date (delivery, appointment, callback time), add an
     /// "add to calendar" link to the summary. One more request to the summary
     /// model per call.
@@ -302,6 +307,10 @@ fn default_country_code() -> String {
 
 fn default_auto() -> String {
     "auto".to_string()
+}
+
+fn default_mdns_name() -> String {
+    "myna".to_string()
 }
 
 fn sanitize_language(s: &str) -> String {
@@ -445,6 +454,7 @@ impl RuntimeSettings {
             summary_model: env_or("SUMMARY_MODEL", ""),
             notify_channels: Vec::new(),
             public_url: env_or("PUBLIC_URL", ""),
+            mdns_name: base.mdns_name.clone(),
             calendar_suggest: env_bool("CALENDAR_SUGGEST", true),
             calendar_auto_add: env_bool("CALENDAR_AUTO_ADD", false),
             name_corrections: split_list(&env_or("NAME_CORRECTIONS", "")),
@@ -630,6 +640,7 @@ impl RuntimeSettings {
             summary_model,
             notify_channels,
             public_url,
+            mdns_name,
             name_corrections,
             device_labels,
         );
@@ -686,6 +697,7 @@ impl RuntimeSettings {
         self.answer_style = sanitize_answer_style(&self.answer_style);
         self.intl_carrier_prompt = sanitize_tristate(&self.intl_carrier_prompt);
         self.country_code = digits_only(&self.country_code);
+        self.mdns_name = crate::mdns::sanitize_name(&self.mdns_name);
     }
 
     /// Overlay runtime-editable values onto the env base so existing call
@@ -747,6 +759,8 @@ impl RuntimeSettings {
         if !self.public_url.trim().is_empty() {
             s.public_url = self.public_url.clone();
         }
+        // Empty is a choice here (mDNS off), so it always applies.
+        s.mdns_name = self.mdns_name.clone();
         s
     }
 
@@ -773,6 +787,55 @@ impl RuntimeSettings {
             && !self.trtc_cloud_secret_key.trim().is_empty()
             && !self.trtc_llm_config.trim().is_empty()
             && !self.trtc_tts_config.trim().is_empty()
+    }
+}
+
+/// The address of this web console as other devices reach it, for links in
+/// notifications, `/health` and the console's own "Console address":
+/// what the owner typed in "Address of this console"; else, when the agent is
+/// open to the LAN, `http://<mdns_name>.local:<port>/` while the mDNS
+/// responder answers, or `http://<LAN IP>:<port>/`. Empty when the agent
+/// listens on this computer only and nothing was typed (a link to localhost
+/// would not open on a phone), and in a container: there the name and the
+/// address are Docker's own network, which other devices cannot reach.
+pub fn effective_console_url(s: &Settings) -> String {
+    let listen = if in_container() {
+        None
+    } else {
+        s.host.trim().parse::<std::net::IpAddr>().ok()
+    };
+    let host = crate::mdns::sanitize_name(&s.mdns_name);
+    let mdns_on = !host.is_empty() && crate::mdns::is_active();
+    console_url(&s.public_url, listen, s.port, &host, mdns_on, crate::mdns::answer_ip)
+}
+
+/// Running inside Docker or Podman.
+fn in_container() -> bool {
+    static IN: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *IN.get_or_init(|| Path::new("/.dockerenv").exists() || Path::new("/run/.containerenv").exists())
+}
+
+fn console_url(
+    public_url: &str,
+    listen: Option<std::net::IpAddr>,
+    port: u16,
+    mdns_host: &str,
+    mdns_on: bool,
+    lan_ip: impl FnOnce(std::net::IpAddr) -> Option<std::net::Ipv4Addr>,
+) -> String {
+    let own = public_url.trim();
+    if !own.is_empty() {
+        return own.to_string();
+    }
+    let Some(listen) = listen.filter(|ip| !ip.is_loopback()) else {
+        return String::new();
+    };
+    if mdns_on {
+        return format!("http://{mdns_host}.local:{port}/");
+    }
+    match lan_ip(listen) {
+        Some(ip) => format!("http://{ip}:{port}/"),
+        None => String::new(),
     }
 }
 
@@ -952,6 +1015,8 @@ struct Overrides {
     notify_channels: Option<Vec<crate::notify::Channel>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     public_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mdns_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     calendar_suggest: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1413,6 +1478,10 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     p_string(patch, "summary_api_base", &mut ov.summary_api_base);
     p_string(patch, "summary_model", &mut ov.summary_model);
     p_string(patch, "public_url", &mut ov.public_url);
+    p_string(patch, "mdns_name", &mut ov.mdns_name);
+    if let Some(v) = ov.mdns_name.take() {
+        ov.mdns_name = Some(crate::mdns::sanitize_name(&v));
+    }
     p_bool(patch, "calendar_suggest", &mut ov.calendar_suggest);
     p_bool(patch, "calendar_auto_add", &mut ov.calendar_auto_add);
     p_list(patch, "name_corrections", &mut ov.name_corrections);
@@ -1987,6 +2056,53 @@ mod tests {
             SettingsStore::load(base).snapshot().ambience_kind,
             "street"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn console_url_prefers_the_typed_address_then_the_network_name() {
+        use std::net::{IpAddr, Ipv4Addr};
+        let any = Some(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+        let local = Some(IpAddr::V4(Ipv4Addr::LOCALHOST));
+        let lan = |_: IpAddr| Some(Ipv4Addr::new(192, 168, 1, 20));
+        let no_lan = |_: IpAddr| -> Option<Ipv4Addr> { None };
+        // Typed by the owner: used as typed, whatever else is true.
+        assert_eq!(
+            console_url(" https://calls.example.com ", any, 8787, "myna", true, lan),
+            "https://calls.example.com"
+        );
+        assert_eq!(
+            console_url("http://10.0.0.5:8787", local, 8787, "myna", false, lan),
+            "http://10.0.0.5:8787"
+        );
+        // Open to the LAN: the network name while it answers, else the IP.
+        assert_eq!(console_url("", any, 8787, "myna", true, lan), "http://myna.local:8787/");
+        assert_eq!(console_url("", any, 9000, "myna", false, lan), "http://192.168.1.20:9000/");
+        assert_eq!(console_url("", any, 8787, "myna", false, no_lan), "");
+        // This computer only: no link a phone could open.
+        assert_eq!(console_url("", local, 8787, "myna", true, lan), "");
+        assert_eq!(console_url("", None, 8787, "myna", true, lan), "");
+    }
+
+    #[test]
+    fn network_name_is_cleaned_and_empty_stays_off() {
+        let dir = std::env::temp_dir().join(format!(
+            "myna-call-mdns-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp settings dir");
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        base.mdns_name = "myna".to_string();
+        let store = SettingsStore::load(base.clone());
+        let rt = store.apply_patch(&json!({ "mdns_name": " Front-Desk.local " })).unwrap();
+        assert_eq!(rt.mdns_name, "front-desk");
+        assert_eq!(rt.effective(&base).mdns_name, "front-desk");
+        // Cleared in the console: off, also after a restart (not back to "myna").
+        store.apply_patch(&json!({ "mdns_name": "" })).unwrap();
+        let again = SettingsStore::load(base.clone());
+        assert_eq!(again.snapshot().mdns_name, "");
+        assert_eq!(again.snapshot().effective(&base).mdns_name, "");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

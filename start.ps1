@@ -8,10 +8,13 @@
 #   2. finds the agent program (a downloaded release, or builds it with Rust)
 #   3. makes sure adb (Android platform-tools) is there, offering to download it
 #   4. starts the agent and opens the web console
+#   5. the first time the agent answers, puts a "Myna Console" shortcut to the
+#      web console on the desktop (-NoShortcut or MYNA_NO_SHORTCUT=1: don't)
 param(
     [switch]$NoBrowser,      # do not open the web console
     [switch]$Yes,            # answer "yes" to the platform-tools download
-    [switch]$Build           # build from source even when a program is already there
+    [switch]$Build,          # build from source even when a program is already there
+    [switch]$NoShortcut      # do not put a shortcut to the web console on the desktop
 )
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
@@ -84,6 +87,37 @@ Say "starting $agent"
 Say "web console: $url   (Ctrl+C here stops the agent)"
 if (-not $NoBrowser) {
     Start-Job -ScriptBlock { param($u) Start-Sleep -Seconds 2; Start-Process $u } -ArgumentList $url | Out-Null
+}
+
+# 5. desktop shortcut to the web console, once the agent answers; kept when it exists
+$noShortcutEnv = @("1", "true", "yes", "on") -contains ("$env:MYNA_NO_SHORTCUT").ToLower()
+if (-not $NoShortcut -and -not $noShortcutEnv) {
+    # The name in the system's language (written as escapes: this file is read as ANSI).
+    $label = switch -Regex ((Get-UICulture).Name) {
+        "^zh" { [regex]::Unescape("Myna \u63a7\u5236\u53f0"); break }
+        "^ja" { [regex]::Unescape("Myna \u30b3\u30f3\u30bd\u30fc\u30eb"); break }
+        "^ko" { [regex]::Unescape("Myna \ucf58\uc194"); break }
+        "^es" { "Consola de Myna"; break }
+        "^fr" { "Console Myna"; break }
+        "^de" { "Myna-Konsole"; break }
+        "^pt" { "Console do Myna"; break }
+        default { "Myna Console" }
+    }
+    $desktop = [Environment]::GetFolderPath("Desktop")
+    if ($desktop) {
+        $shortcut = Join-Path $desktop "$label.url"
+        if (-not (Test-Path -LiteralPath $shortcut)) {
+            Start-Job -ScriptBlock {
+                param($probe, $file, $target)
+                for ($i = 0; $i -lt 60; $i++) {
+                    Start-Sleep -Seconds 2
+                    try { Invoke-WebRequest -Uri $probe -UseBasicParsing -TimeoutSec 2 | Out-Null } catch { continue }
+                    Set-Content -LiteralPath $file -Value "[InternetShortcut]`r`nURL=$target" -Encoding ASCII
+                    break
+                }
+            } -ArgumentList "http://127.0.0.1:$port/health", $shortcut, $url | Out-Null
+        }
+    }
 }
 & $agent
 exit $LASTEXITCODE

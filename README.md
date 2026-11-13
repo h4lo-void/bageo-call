@@ -79,7 +79,11 @@ flowchart LR
 2. **Start it.** Windows: double-click `start.cmd`. macOS: double-click
    `start.command`. Linux: `./start.sh`. The script offers to download `adb`
    (Google's Android platform-tools) if it is missing, then opens the web
-   console at <http://localhost:8787/>.
+   console at <http://localhost:8787/>. Next time, open it with the
+   *Myna Console* shortcut the script puts on your desktop. Once the console
+   is open to your network, phones and other computers reach it at
+   <http://myna.local:8787/>, and you can add it to a phone's home screen
+   (*System → About*). → [Settings](docs/en/SETTINGS.md#using-the-console-from-other-devices)
 3. **Fill in the basics** in the web console: your Gemini API key, your name,
    the language, the answer style. Press ▶ to hear the voices and pick one.
 4. **Prepare the phone** (once): install the module from the release

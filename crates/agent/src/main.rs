@@ -37,6 +37,7 @@ mod gemini_live;
 mod gmail;
 mod hold_music;
 mod locale;
+mod mdns;
 mod notify;
 mod openclaw;
 mod prompts;
@@ -1145,11 +1146,16 @@ async fn main() -> Result<()> {
         if settings.device_token.trim().is_empty() {
             warn!("listening on {addr} without DEVICE_TOKEN: anyone on this network can connect as a phone");
         }
+        // `http://myna.local:8787/`: answer the console's network name (setting
+        // `mdns_name`, re-read while running; empty = off).
+        let store = settings_store.clone();
+        mdns::spawn(addr.ip(), move || store.snapshot().mdns_name.clone());
     }
 
     let app = Router::new()
         .route("/", get(root))
         .route("/index", get(redirect_to_calls))
+        .route("/favicon.ico", get(calls_http::favicon))
         .route("/health", get(health))
         .route("/v1/turn", post(turn))
         .route("/v1/transfer", get(transfer_smoke).post(transfer_smoke))
@@ -1450,7 +1456,10 @@ async fn health(
     body.insert("whisper_model".into(), json!(s.whisper_model));
     body.insert("sample_rate".into(), json!(s.sample_rate));
     body.insert("calls_ui".into(), json!("/calls/"));
-    body.insert("calls_ui_url".into(), json!(s.public_url));
+    body.insert(
+        "calls_ui_url".into(),
+        json!(settings_store::effective_console_url(s)),
+    );
     body.insert("version".into(), json!(env!("CARGO_PKG_VERSION")));
     // The clock notifications and "today" use (set TZ when it is not yours).
     body.insert(
