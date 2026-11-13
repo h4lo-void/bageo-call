@@ -521,6 +521,7 @@ mod tests {
             fulfill_error: Some(gmail_missing_cred_msg().to_string()),
             openclaw_ref: None,
             events: vec![],
+            appointment: None,
         };
         let text = tg_result_text(&task, true);
         assert!(text.contains("履行失敗"));

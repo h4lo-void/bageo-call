@@ -1,6 +1,6 @@
 id=pixelcallai_uplink
 name=Myna Uplink
-version=v0.2.3
-versionCode=18
+version=v0.2.4
+versionCode=19
 author=myna-call
 description=Installs Myna (com.pixelcallai.streamer) as a privileged system app so it can capture call audio and inject AI speech into the call uplink (TYPE_TELEPHONY). In AI mode (default) it makes the app the default dialer and call screening app at boot, disables Google Dialer, turns on Do Not Disturb and sets ring/notification volume to 0; calls are answered silently (mic muted, speaker off). The app's switch turns the phone back into a normal phone (kept in /data/adb/pixelcallai/mode); the module carries the switch out as root. Rollback: switch to a normal phone in the app, then disable or remove this module and reboot (see README). Do not also install the APK as a normal user app.

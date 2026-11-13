@@ -1114,6 +1114,8 @@ fn stall_session_setup(setup: &Value, prompt: &str, model: &str, thinking_level:
     } else {
         setup_with_system_prompt(setup, prompt)
     };
+    // The stalling session takes no appointments.
+    with_appointment_tools(&mut s, false);
     let model = model.trim().trim_start_matches("models/");
     if model.is_empty() {
         return s;
@@ -1139,6 +1141,31 @@ fn stall_session_setup(setup: &Value, prompt: &str, model: &str, thinking_level:
 
 /// Stall just engaged: switch to the stall prompt at the next pause, or by this.
 const STALL_PROMPT_SWITCH_FORCE_SECS: u64 = 8;
+
+/// A normal call with appointments on declares their two functions
+/// ([`crate::appointments::tool_declarations`]); every other session has none.
+fn with_appointment_tools(setup: &mut Value, on: bool) {
+    if let Some(s) = setup.get_mut("setup").and_then(|x| x.as_object_mut()) {
+        if on {
+            s.insert("tools".into(), crate::appointments::tool_declarations());
+        } else {
+            s.remove("tools");
+        }
+    }
+}
+
+/// The call's system instruction: the stored prompt, then — appointments on —
+/// their part with the current local time (the stored prompt is not changed).
+fn call_system_prompt(
+    base: &str,
+    appt: Option<&crate::appointments::ApptSession>,
+    now: chrono::DateTime<chrono::Local>,
+) -> String {
+    match appt {
+        Some(a) => format!("{base}{}", a.prompt_block(now)),
+        None => base.to_string(),
+    }
+}
 
 /// Distinct caller keywords → score; ≥ this marks the call as sales/scam…
 const STALL_SCORE_THRESHOLD: u32 = 3;
@@ -1626,6 +1653,36 @@ fn is_transcript_only_turn(
     out_tx_window: &str,
 ) -> bool {
     turn_done && audio_chunks_out == 0 && delivered_bytes == 0 && !out_tx_window.trim().is_empty()
+}
+
+/// After a function answer went up, a `turnComplete` this soon with no audio
+/// since ends the turn that made the call, not the reply to it.
+const TOOL_TURN_GRACE: Duration = Duration::from_millis(1_500);
+
+/// A model turn that ends while a function call (appointments) is open — or right
+/// after its answer went up, before any audio — has said nothing yet: the reply
+/// is still owed. The text-only opening re-kick, the post-rotation check, the
+/// closing / stalling checks and the "model owes a reply" flag must not read it
+/// as a silent or finished turn.
+fn tool_turn_quiet(calls_open: usize, since_answer: Option<Duration>, audio_since_answer: bool) -> bool {
+    calls_open > 0 || since_answer.is_some_and(|d| d < TOOL_TURN_GRACE && !audio_since_answer)
+}
+
+/// The first-audio watchdog waits while the caller (or the carrier's prompt)
+/// talks, and while a function call is open: the model speaks after its answer.
+fn first_delivery_paused(activity_open: bool, caller_spoke_recently: bool, calls_open: usize) -> bool {
+    activity_open || caller_spoke_recently || calls_open > 0
+}
+
+/// A function call's answer, back from its task.
+struct ToolDone {
+    /// Live socket generation it was asked on (a rotation drops older ones).
+    gen: u32,
+    /// Tracking key (the call id, or a stand-in when the server sent none).
+    key: String,
+    id: String,
+    name: String,
+    response: Value,
 }
 
 async fn send_text_before_deadline<S>(
@@ -2456,8 +2513,11 @@ pub async fn run_session(
     barge_in: Arc<AtomicBool>,
     thinking_level: &str,
     intl_caller: bool,
+    appointments: Option<crate::appointments::ApptSession>,
 ) -> Result<SessionEndReason> {
     let stall = stall.filter(|_| persona);
+    // Appointments: persona calls only (setting `appointment_mode`).
+    let appt = appointments.filter(|_| persona);
     let key = api_key.trim();
     if key.is_empty() {
         bail!("empty Gemini API key");
@@ -2510,7 +2570,10 @@ pub async fn run_session(
         }
     };
     let hangup_delay_ms = goodbye_hangup_delay_ms.clamp(200, 15_000);
-    let system_prompt = system_prompt.to_string();
+    // The stored prompt stays as it is; appointments add their part after it
+    // (with the current local time), and the tools.
+    let base_prompt = system_prompt.to_string();
+    let system_prompt = call_system_prompt(&base_prompt, appt.as_ref(), chrono::Local::now());
     // Low-latency turn-taking: high EOU sensitivity + short silence.
     let mut setup = json!({
         "setup": {
@@ -2545,6 +2608,7 @@ pub async fn run_session(
             gc.insert("thinkingConfig".into(), json!({ "thinkingLevel": level }));
         }
     }
+    with_appointment_tools(&mut setup, appt.is_some());
     // Same setup for every call (stalling included): long calls rotate to a fresh
     // session every ~8 min instead (rotation setups add `historyConfig`).
     send_text_before_deadline(
@@ -2555,10 +2619,11 @@ pub async fn run_session(
     )
     .await?;
     info!(
-        "Gemini Live setup sent serial={serial} voice={voice} stall={} max_s={} server_vad={server_vad} thinking={} intl={intl_caller}",
+        "Gemini Live setup sent serial={serial} voice={voice} stall={} max_s={} server_vad={server_vad} thinking={} intl={intl_caller} appointments={}",
         stall.is_some(),
         if persona { persona_max_secs } else { LIVE_MAX_SECS },
-        thinking.unwrap_or("-")
+        thinking.unwrap_or("-"),
+        appt.as_ref().map_or("off", |a| a.mode.as_str())
     );
     let mut conn_opened_at = tokio::time::Instant::now();
 
@@ -2967,6 +3032,15 @@ pub async fn run_session(
     let test_rotate_after: Option<u64> = std::env::var("GEMINI_TEST_ROTATE_AFTER_SECS")
         .ok()
         .and_then(|v| v.trim().parse().ok());
+    // Appointments: function calls being answered (each on its own task so the
+    // audio loop never waits), the Live socket generation they belong to, and
+    // when the last answer went up (see tool_turn_quiet).
+    let (tool_tx, mut tool_rx) = mpsc::unbounded_channel::<ToolDone>();
+    let mut tool_open: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut tool_seq: u64 = 0;
+    let mut live_gen: u32 = 0;
+    let mut tool_answer_at: Option<tokio::time::Instant> = None;
+    let mut tool_answer_chunks: u64 = 0;
 
     let signal_force_hangup = |hangup_signaled: &mut bool| {
         if *hangup_signaled {
@@ -3022,6 +3096,7 @@ pub async fn run_session(
             let pause = !activity_open
                 && !model_turn_pending
                 && !goodbye_pending
+                && tool_open.is_empty()
                 && play_head.drained_for(Duration::from_millis(300), PLAYER_DRAIN_SLACK_BYTES);
             let backoff = !ws_dead && rotate_retry_at.map_or(false, |t| now < t);
             if wanted && (pause || forced) && !backoff {
@@ -3031,9 +3106,22 @@ pub async fn run_session(
                     .and_then(|b| b.lock().ok().map(|g| g.clone()))
                     .map(|t| history_turns_with_note(&t, LIVE_HISTORY_MAX_CHARS, stall_on))
                     .unwrap_or_default();
+                // Appointments: the new session gets the current time.
+                let fresh_setup;
+                let next_setup = match (rotate_setup.as_ref(), &appt) {
+                    (Some(s), _) => s,
+                    (None, Some(a)) => {
+                        fresh_setup = setup_with_system_prompt(
+                            &setup,
+                            &call_system_prompt(&base_prompt, Some(a), chrono::Local::now()),
+                        );
+                        &fresh_setup
+                    }
+                    (None, None) => &setup,
+                };
                 let opened = match tokio::time::timeout(
                     Duration::from_secs(10),
-                    open_live_with_history(&url, rotate_setup.as_ref().unwrap_or(&setup), &history, serial),
+                    open_live_with_history(&url, next_setup, &history, serial),
                 )
                 .await
                 {
@@ -3053,6 +3141,16 @@ pub async fn run_session(
                         post_rotate_chunks = Some(audio_chunks_out);
                         post_rotate_rekicked = false;
                         turn_out_text.clear();
+                        // Calls asked on the old socket cannot be answered on this one.
+                        live_gen += 1;
+                        if !tool_open.is_empty() {
+                            info!(
+                                "Gemini Live rotated with {} function call(s) open serial={serial} — their answers are dropped",
+                                tool_open.len()
+                            );
+                            tool_open.clear();
+                        }
+                        tool_answer_at = None;
                         if activity_open {
                             // The caller is mid-sentence: reopen the turn on the new socket
                             // (server VAD hears the rest of the sentence on its own).
@@ -3150,9 +3248,11 @@ pub async fn run_session(
         // first heard at 8.6 s).
         let fd_now = tokio::time::Instant::now();
         if delivered_bytes.load(Ordering::Relaxed) == 0 {
-            let caller_busy = activity_open
-                || last_caller_voice_at
-                    .map_or(false, |t| t.elapsed() < FIRST_DELIVERY_CALLER_HOLD);
+            let caller_busy = first_delivery_paused(
+                activity_open,
+                last_caller_voice_at.map_or(false, |t| t.elapsed() < FIRST_DELIVERY_CALLER_HOLD),
+                tool_open.len(),
+            );
             if caller_busy && fd_grace < FIRST_DELIVERY_CALLER_GRACE_MAX {
                 fd_grace = (fd_grace + fd_now.saturating_duration_since(fd_tick))
                     .min(FIRST_DELIVERY_CALLER_GRACE_MAX);
@@ -3232,7 +3332,8 @@ pub async fn run_session(
                 PLAYER_DRAIN_SLACK_BYTES,
             ),
             activity_open,
-            waiting_model_reply || awaiting_caller_bye,
+            // A function call open: the model still has something to say.
+            waiting_model_reply || awaiting_caller_bye || !tool_open.is_empty(),
         );
         let now = tokio::time::Instant::now();
         let clock_was = output_goodbye_at.is_some();
@@ -3426,7 +3527,13 @@ pub async fn run_session(
         let plain_quiet = !stall_on
             && idle_nudges < PERSONA_IDLE_NUDGES_MAX
             && idle >= Duration::from_secs(PERSONA_IDLE_NUDGE_SECS);
-        if persona && first_downlink_at.is_some() && !goodbye_pending && (stall_quiet || plain_quiet) {
+        // A function call open (appointments) is not a quiet line.
+        if persona
+            && first_downlink_at.is_some()
+            && !goodbye_pending
+            && tool_open.is_empty()
+            && (stall_quiet || plain_quiet)
+        {
             idle_nudges += 1;
             model_turn_pending = true;
             stall_tx.clear();
@@ -3457,6 +3564,7 @@ pub async fn run_session(
 
         // Idle after last real activity (caller voice or model audio).
         if first_downlink_at.is_some()
+            && tool_open.is_empty()
             && last_activity_at.elapsed() >= Duration::from_secs(idle_end_secs)
         {
             end_reason = if caller_had_voice {
@@ -3571,6 +3679,67 @@ pub async fn run_session(
                                         );
                                     }
                                     break;
+                                }
+                                // Appointments: the model calls a function and waits for
+                                // its answer (no audio meanwhile); each runs on its own task.
+                                let tool_calls = crate::appointments::parse_tool_calls(&v);
+                                if !tool_calls.is_empty() {
+                                    let now = tokio::time::Instant::now();
+                                    last_activity_at = now;
+                                    model_turn_pending = true;
+                                    for call in tool_calls {
+                                        tool_seq += 1;
+                                        let key = if call.id.is_empty() {
+                                            format!("#{tool_seq}")
+                                        } else {
+                                            call.id.clone()
+                                        };
+                                        let Some(a) = appt.clone() else {
+                                            // No functions were declared: answer so it does not wait.
+                                            warn!(
+                                                "Gemini Live toolCall without appointments serial={serial} name={}",
+                                                call.name
+                                            );
+                                            let msg = crate::appointments::tool_response(
+                                                &call.id,
+                                                &call.name,
+                                                json!({ "error": "unavailable" }),
+                                            );
+                                            let _ = send_text_before_deadline(
+                                                &mut sink,
+                                                msg.to_string(),
+                                                now + API_SEND_TIMEOUT,
+                                                "gemini toolResponse send",
+                                            )
+                                            .await;
+                                            continue;
+                                        };
+                                        info!(
+                                            "Gemini Live toolCall serial={serial} name={} id={key} stall={stall_on} talk_s={}",
+                                            call.name,
+                                            session_start.elapsed().as_secs()
+                                        );
+                                        tool_open.insert(key.clone());
+                                        let tx = tool_tx.clone();
+                                        let gen = live_gen;
+                                        tokio::spawn(async move {
+                                            let response = a.run_tool(&call).await;
+                                            let _ = tx.send(ToolDone {
+                                                gen,
+                                                key,
+                                                id: call.id,
+                                                name: call.name,
+                                                response,
+                                            });
+                                        });
+                                    }
+                                }
+                                for id in crate::appointments::parse_tool_cancellation(&v) {
+                                    if tool_open.remove(&id) {
+                                        info!(
+                                            "Gemini Live toolCallCancellation serial={serial} id={id} — its answer will not be sent"
+                                        );
+                                    }
                                 }
                                 if !out_leak_turn
                                     && output_transcription_text(&v).is_some_and(looks_like_leaked_internals)
@@ -3727,6 +3896,10 @@ pub async fn run_session(
                                         if stall_engages(stall_score, &stall_hits) {
                                             stall_on = true;
                                             c.engaged.store(true, Ordering::Relaxed);
+                                            // No appointments with a sales / scam caller.
+                                            if let Some(a) = &appt {
+                                                a.book.discard();
+                                            }
                                             // A closing armed before the verdict no longer counts.
                                             if goodbye_pending && !wrap_up_sent {
                                                 goodbye_pending = false;
@@ -3900,7 +4073,17 @@ pub async fn run_session(
                                     .pointer("/serverContent/turnComplete")
                                     .and_then(|x| x.as_bool())
                                     == Some(true);
-                                if turn_complete {
+                                let tool_quiet = tool_turn_quiet(
+                                    tool_open.len(),
+                                    tool_answer_at.map(|t| t.elapsed()),
+                                    audio_chunks_out > tool_answer_chunks,
+                                );
+                                if turn_complete && tool_quiet {
+                                    info!(
+                                        "Gemini Live turnComplete with a function call open serial={serial} open={} — reply still owed, turn checks skipped",
+                                        tool_open.len()
+                                    );
+                                } else if turn_complete {
                                     model_turn_pending = false;
                                     if let Some(c0) = post_rotate_chunks {
                                         match post_rotate_turn(
@@ -4012,7 +4195,7 @@ pub async fn run_session(
                                     out_leak_turn = false;
                                 }
                                 if is_transcript_only_turn(
-                                    turn_complete,
+                                    turn_complete && !tool_quiet,
                                     audio_chunks_out,
                                     delivered_bytes.load(Ordering::Relaxed),
                                     &out_tx_window,
@@ -4037,7 +4220,7 @@ pub async fn run_session(
                                         "Gemini Live opening turn text-only (0 audio) serial={serial} out_stt={stt_preview} -- re-kick now (fresh session if it repeats)"
                                     );
                                 }
-                                if turn_done && !opening_turn_complete {
+                                if turn_done && !tool_quiet && !opening_turn_complete {
                                     let covered =
                                         output_covers_owner_status(&out_tx_window, &owner_status);
                                     let stt_empty = out_tx_window.trim().is_empty();
@@ -4086,7 +4269,7 @@ pub async fn run_session(
                                         );
                                     }
                                 }
-                                if turn_done {
+                                if turn_done && !tool_quiet {
                                     let model_spoke_after_caller = caller_had_voice
                                         && audio_chunks_out > chunks_at_last_caller_eou;
                                     let post_ms = pcm16_ms(
@@ -4185,6 +4368,36 @@ pub async fn run_session(
                         break;
                     }
                 }
+            }
+            done = tool_rx.recv() => {
+                let Some(done) = done else { continue };
+                if done.gen != live_gen || !tool_open.remove(&done.key) {
+                    info!(
+                        "Gemini Live function answer dropped serial={serial} name={} id={} (cancelled or older session)",
+                        done.name, done.key
+                    );
+                    continue;
+                }
+                let now = tokio::time::Instant::now();
+                let msg = crate::appointments::tool_response(&done.id, &done.name, done.response.clone());
+                match send_text_before_deadline(
+                    &mut sink,
+                    msg.to_string(),
+                    now + API_SEND_TIMEOUT,
+                    "gemini toolResponse send",
+                )
+                .await
+                {
+                    Ok(()) => info!(
+                        "Gemini Live toolResponse serial={serial} name={} id={} response={}",
+                        done.name, done.key, done.response
+                    ),
+                    Err(e) => warn!("Gemini Live toolResponse send failed serial={serial}: {e:#}"),
+                }
+                last_activity_at = now;
+                model_turn_pending = true;
+                tool_answer_at = Some(now);
+                tool_answer_chunks = audio_chunks_out;
             }
             up = uplink_rx.recv() => {
                 if cancel.load(Ordering::Relaxed) {
@@ -5347,6 +5560,78 @@ mod tests {
         // Same prompt and model: nothing to switch.
         let same = stall_session_setup(&plain, "", "gemini-3.8-live", "low");
         assert_eq!(same, plain);
+    }
+
+    #[test]
+    fn appointment_tools_only_on_normal_calls_with_the_setting_on() {
+        let base = json!({"setup": {
+            "model": "models/gemini-3.8-live",
+            "generationConfig": {"responseModalities": ["AUDIO"]},
+            "systemInstruction": {"parts": [{"text": "一般"}]}
+        }});
+        let mut off = base.clone();
+        with_appointment_tools(&mut off, false);
+        assert_eq!(off, base);
+        let mut on = base.clone();
+        with_appointment_tools(&mut on, true);
+        let names: Vec<&str> = on
+            .pointer("/setup/tools/0/functionDeclarations")
+            .and_then(|f| f.as_array())
+            .unwrap()
+            .iter()
+            .filter_map(|f| f["name"].as_str())
+            .collect();
+        assert_eq!(names, vec!["check_availability", "propose_appointment"]);
+        // The stalling session never has them, whichever way it is built…
+        let s = stall_session_setup(&on, "陪聊", "gemini-3.8-live", "low");
+        assert!(s.pointer("/setup/tools").is_none());
+        assert!(stall_session_setup(&on, "", " ", "low").pointer("/setup/tools").is_none());
+        // …while a rotation of the normal call keeps them (only the prompt changes).
+        let r = setup_with_system_prompt(&on, "一般+時間");
+        assert!(r.pointer("/setup/tools/0/functionDeclarations").is_some());
+        // The prompt: unchanged when off, the appointment part after it when on.
+        let now = chrono::Local::now();
+        assert_eq!(call_system_prompt("你是我。", None, now), "你是我。");
+        let mut rt = crate::settings_store::RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        rt.appointment_mode = "off".into();
+        let http = reqwest::Client::new();
+        assert!(crate::appointments::ApptSession::for_call(&rt, &http, "0912345678").is_none());
+        rt.appointment_mode = "confirm".into();
+        let a = crate::appointments::ApptSession::for_call(&rt, &http, "0912345678").unwrap();
+        let p = call_system_prompt("你是我。", Some(&a), now);
+        assert!(p.starts_with("你是我。\n\n[Appointments") && p.contains(&now.format("%Y-%m-%d").to_string()), "{p}");
+    }
+
+    #[test]
+    fn function_call_turns_are_not_silent_or_text_only_turns() {
+        // A call open, or its answer just sent and nothing said since: not a finished turn.
+        assert!(tool_turn_quiet(1, None, false));
+        assert!(tool_turn_quiet(2, Some(Duration::from_secs(5)), true));
+        assert!(tool_turn_quiet(0, Some(Duration::from_millis(300)), false));
+        // The reply to it has started, or the answer is long gone: the usual turn checks.
+        assert!(!tool_turn_quiet(0, Some(Duration::from_millis(300)), true));
+        assert!(!tool_turn_quiet(0, Some(TOOL_TURN_GRACE), false));
+        assert!(!tool_turn_quiet(0, None, false));
+        // The text-only opening re-kick gets turn_complete && !quiet from the loop.
+        let turn_complete = true;
+        let quiet = tool_turn_quiet(1, None, false);
+        assert!(!is_transcript_only_turn(turn_complete && !quiet, 0, 0, "好，我看一下"));
+        assert!(is_transcript_only_turn(turn_complete, 0, 0, "喂？"));
+        // The first-audio watchdog waits while a call is open.
+        assert!(first_delivery_paused(false, false, 1));
+        assert!(!first_delivery_paused(false, false, 0));
+        assert!(first_delivery_paused(true, false, 0) && first_delivery_paused(false, true, 0));
+        // A toolCall message has no audio, no transcript and ends no turn.
+        let call = json!({"toolCall": {"functionCalls": [
+            {"id": "fc-1", "name": "check_availability", "args": {"start": "2026-11-14T15:00"}}
+        ]}});
+        assert!(!server_msg_has_audio(&call));
+        let mut no_audio = |_: Vec<u8>| panic!("a toolCall carries no audio");
+        assert_eq!(handle_server_msg(&call, 16_000, &mut no_audio), 0);
+        let (heard, said) = extract_transcription_snippets(&call);
+        assert!(heard.is_empty() && said.is_empty());
+        assert!(call.pointer("/serverContent/turnComplete").is_none());
+        assert_eq!(crate::appointments::parse_tool_calls(&call).len(), 1);
     }
 
     #[test]

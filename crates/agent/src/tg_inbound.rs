@@ -211,6 +211,33 @@ pub async fn send_task_card(
     task_id: &str,
     body_text: &str,
 ) -> Result<()> {
+    let p = crate::locale::phrases(crate::locale::current());
+    send_task_card_labeled(
+        http,
+        bot_token,
+        chat_id,
+        task_summary_title,
+        task_id,
+        body_text,
+        p.tc_confirm,
+        p.tc_ignore,
+    )
+    .await
+}
+
+/// [`send_task_card`] with its own button texts (appointments: "✅ 確定" / "❌ 婉拒").
+/// The buttons carry the same confirm / ignore data.
+#[allow(clippy::too_many_arguments)]
+pub async fn send_task_card_labeled(
+    http: &Client,
+    bot_token: &str,
+    chat_id: &str,
+    task_summary_title: &str,
+    task_id: &str,
+    body_text: &str,
+    confirm_label: &str,
+    ignore_label: &str,
+) -> Result<()> {
     let token = bot_token.trim();
     let chat = chat_id.trim();
     if token.is_empty() || chat.is_empty() {
@@ -228,24 +255,10 @@ pub async fn send_task_card(
     };
     let text = crate::zh_tw::to_tw(&text);
 
-    let confirm_data = encode_callback_data(task_id, true);
-    let ignore_data = encode_callback_data(task_id, false);
-    let p = crate::locale::phrases(crate::locale::current());
-
     let url = bot_method_url(token, "sendMessage");
     let resp = http
         .post(&url)
-        .json(&json!({
-            "chat_id": chat,
-            "text": text,
-            "disable_web_page_preview": true,
-            "reply_markup": {
-                "inline_keyboard": [[
-                    { "text": p.tc_confirm, "callback_data": confirm_data },
-                    { "text": p.tc_ignore, "callback_data": ignore_data },
-                ]],
-            },
-        }))
+        .json(&task_card_payload(chat, &text, task_id, confirm_label, ignore_label))
         .send()
         .await
         .context("telegram sendMessage task card")?;
@@ -271,6 +284,21 @@ pub async fn send_task_card(
 
     info!("telegram task card sent task_id={task_id} chat_id={chat}");
     Ok(())
+}
+
+/// The `sendMessage` body of a task card: the text and the two buttons.
+fn task_card_payload(chat: &str, text: &str, task_id: &str, confirm_label: &str, ignore_label: &str) -> Value {
+    json!({
+        "chat_id": chat,
+        "text": text,
+        "disable_web_page_preview": true,
+        "reply_markup": {
+            "inline_keyboard": [[
+                { "text": confirm_label, "callback_data": encode_callback_data(task_id, true) },
+                { "text": ignore_label, "callback_data": encode_callback_data(task_id, false) },
+            ]],
+        },
+    })
 }
 
 /// Telegram Bot API hard limit for `sendMessage.text`.
@@ -495,5 +523,16 @@ mod tests {
         assert!(!task_card_ready(true, "", "1"));
         assert!(!task_card_ready(true, "tok", ""));
         assert!(!task_card_ready(true, "  ", "  "));
+    }
+
+    #[test]
+    fn appointment_card_buttons_carry_confirm_and_ignore() {
+        let id = "550e8400-e29b-41d4-a716-446655440000";
+        let v = task_card_payload("42", "📅 預約待確認", id, "✅ 確定", "❌ 婉拒");
+        let row = &v["reply_markup"]["inline_keyboard"][0];
+        assert_eq!(row[0]["text"], "✅ 確定");
+        assert_eq!(row[1]["text"], "❌ 婉拒");
+        assert_eq!(decode_callback_data(row[0]["callback_data"].as_str().unwrap()), Some((id.to_string(), true)));
+        assert_eq!(decode_callback_data(row[1]["callback_data"].as_str().unwrap()), Some((id.to_string(), false)));
     }
 }

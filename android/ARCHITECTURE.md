@@ -21,7 +21,7 @@ Setup, permissions and the message list are in [README.md](README.md).
                          agent on the PC (speech AI)
 
  AgentControlClient (control WebSocket, open while the service runs)
-     app -> agent: hello, ping, incoming, ...     agent -> app: answer_plan, place_call
+     app -> agent: hello, ping, incoming, ...     agent -> app: answer_plan, place_call, send_sms
 ```
 
 Audio is raw PCM in both directions: signed 16-bit little-endian, mono, 16 kHz.
@@ -44,6 +44,7 @@ agent over USB. The address can be changed on the setup screen (`Prefs.agentUrl`
 | `TransparentDialerActivity` | The activity a default dialer must have. Invisible; finishes immediately. |
 | `DialerRoleHelper` | Takes the dialer and call screening roles and disables Google Dialer's call UI, through `su`. |
 | `OutboundCallHelper` | Dials a number when the agent sends `place_call`. |
+| `SmsSender` | Sends a text message from the phone's number when the agent sends `send_sms` (replies to appointment requests) and answers with `send_sms_result`. Needs `SEND_SMS`, which the module grants at boot. |
 | `BootReceiver` | Starts the service after boot and after the app is replaced. |
 | `MainActivity` | Setup and status screen. Not involved in calls. |
 | `Prefs` | Settings in device-protected storage, readable before the first unlock. |

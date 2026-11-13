@@ -40,7 +40,9 @@ A call record (`call`, and each entry of `calls`) carries among others: `id`,
 `serial` (the phone), `caller_id`, `started_at` / `ended_at` (RFC 3339, UTC),
 `duration_ms`, `status` (`ringing`, `active`, `ended`), `events` (what happened,
 in order — e.g. `active`, `persona_stall_spam`, `reject_list`,
-`persona_ai_fail_hangup`, `ended`), `summary`, and which audio files exist.
+`persona_ai_fail_hangup`, `ended`), `summary`, which audio files exist and,
+when the caller set a time with the AI, `appointment` as the call left it
+(see [Appointments](#appointments)); `notes.appointment` follows it afterwards.
 
 In `notes.dialogue` every line is one turn, prefixed with the stored speaker
 label `對方：` (the caller) or `接聽：` (the AI). The labels are fixed whatever
@@ -95,6 +97,36 @@ for the background alone), `ambience` (`off` or a kind), `level` (1–3),
 voice comes recorded in every language (`assets/voices/`), so a preview needs no
 Gemini session; only `regen=true` or a voice without a recording opens one.
 
+## Appointments
+
+With `appointment_mode` `confirm` or `auto` (see
+[Settings](SETTINGS.md#summary--calendar)), a call where the caller set a time
+with the AI leaves a task (`intent` `appointment`) and an `appointment` object
+on the call record, in its notes and on the task:
+
+```json
+{
+  "start": "2026-11-14T15:00", "end": "2026-11-14T16:00",
+  "title": "House viewing", "caller_name": "Mr Chen",
+  "mode": "confirm", "status": "pending",
+  "event_id": "", "auto_error": "", "replaced": [], "sms": ""
+}
+```
+
+Times are local (`TZ`). `status`: `pending` (waiting for you), `booked` (put
+in the calendar on the call), `confirmed`, `declined`. `event_id`: the Google
+Calendar event once it is there. `auto_error`: why *Book it if I'm free* could
+not book it. `replaced`: earlier times of the same call that were already put
+in the calendar. `sms`: `sent`, or why the text did not go (`offline`,
+`old_app`, `timeout`, `no_number`, or the phone's error code). Empty fields
+are left out.
+
+| Method and path | What |
+|---|---|
+| `GET /calls/api/tasks` | Tasks, newest first (up to 200): `{ok, tasks}`. |
+| `POST /calls/api/tasks/{id}/confirm` | For an appointment: the same as **✅ Confirm** on its card — Google Calendar, then (with `appointment_sms`) the text to the caller, which may take up to 90 seconds. `{ok, task, message}`; `message` is the text the Telegram bot would reply. A second confirm or decline changes nothing. |
+| `POST /calls/api/tasks/{id}/ignore` | For an appointment: **❌ Decline** (no calendar; the text when `appointment_sms` is on). Same answer. |
+
 ## Phones and health
 
 | Method and path | What |
@@ -126,3 +158,11 @@ ignore what they do not know, so old apps and old agents keep working):
 | agent → phone | `{"type": "set_mode", "mode": "ai" \| "normal", "id": "<uuid>"}` | Switch (sent by the route above). |
 | phone → agent | `{"type": "set_mode_result", "id": "<same>", "ok": bool, "mode": "...", "error": "<code>"}` | Result; `error` is empty on success and uses the codes above. |
 | agent → phone | `{"type": "agent_info", "console_url": "http://…/calls/"}` | Right after the hello, when the agent has a console address: the one you typed (`public_url`) or, when that is empty and the console is open to your network, the LAN IP address (some phones cannot open `.local` names). The app shows an "Open the web console" button for it. |
+
+Text messages to callers (appointments) use the same connection:
+
+| Direction | Message | Meaning |
+|---|---|---|
+| phone → agent | `hello` with `"supports_sms": true` | The app can send texts for the agent. No field = an older app: no texts are asked of it. |
+| agent → phone | `{"type": "send_sms", "id": "<≤ 64 characters>", "to": "+886912345678", "text": "<UTF-8, ≤ 500 characters>"}` | Sent only to the phone that took the call. `to` is digits with an optional leading `+`. |
+| phone → agent | `{"type": "send_sms_result", "id": "<same>", "ok": true}` or `{"type": "send_sms_result", "id": "<same>", "ok": false, "error": "<code>"}` | Sent once every part of the message has reported back (the phone gives up after 60 seconds: `timeout`). `error` is one of `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception`. The agent waits up to 90 seconds; no answer counts as failed. |

@@ -1484,6 +1484,9 @@ async fn tasks_confirm(
         return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid task id");
     }
     let rt = state.settings_store.snapshot();
+    if let Some(r) = appointment_decision(&state, &rt, &id, true).await {
+        return r;
+    }
     match on_confirm(
         &state.http,
         &rt,
@@ -1510,10 +1513,42 @@ async fn tasks_ignore(
     if !task_id_safe(&id) {
         return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid task id");
     }
+    let rt = state.settings_store.snapshot();
+    if let Some(r) = appointment_decision(&state, &rt, &id, false).await {
+        return r;
+    }
     match on_ignore(&state.task_store, &id).await {
         Ok(task) => Json(json!({"ok": true, "task": task})).into_response(),
         Err(e) => fulfill_err_response(e),
     }
+}
+
+/// An appointment task (the AI took it on a call) is confirmed or declined by
+/// [`crate::appointments::decide`] (calendar, text to the caller); None for any other task.
+async fn appointment_decision(
+    state: &CallsState,
+    rt: &crate::settings_store::RuntimeSettings,
+    id: &str,
+    confirm: bool,
+) -> Option<Response> {
+    let task = state.task_store.get(id).await?;
+    task.appointment.as_ref()?;
+    Some(
+        match crate::appointments::decide(
+            &state.http,
+            rt,
+            &state.task_store,
+            &state.store,
+            Some(state.control.as_ref()),
+            id,
+            confirm,
+        )
+        .await
+        {
+            Ok((task, message)) => Json(json!({"ok": true, "task": task, "message": message})).into_response(),
+            Err(e) => fulfill_err_response(e),
+        },
+    )
 }
 
 async fn stream_wav(store: &CallStore, rel: &str, headers: &HeaderMap) -> Response {

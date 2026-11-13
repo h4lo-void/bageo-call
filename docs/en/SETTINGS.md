@@ -92,6 +92,17 @@ code works as well.
 | Summary service | By default the summary is written with your Gemini key (model `gemini-flash-latest`). To use another service give its OpenAI-compatible **base URL** (e.g. `https://api.openai.com/v1`, `https://api.deepseek.com/v1`, `https://openrouter.ai/api/v1`, or a local Ollama: `http://127.0.0.1:11434/v1`), a **model** name, and the **API key** (not needed for a local server). A DeepSeek key alone (no base URL) uses DeepSeek. |
 | Suggest calendar events | When a call fixes a date — a delivery window, an appointment, a time someone will call back — the summary gets an "add to calendar" link (Google Calendar form, plus an `.ics` download in the console). One extra request to the summary model per call. Nothing is added to any calendar by itself. |
 | Add to Google Calendar automatically | Inserts the event right away. Needs Google OAuth credentials (client ID, client secret, refresh token with the `calendar.events` scope, calendar ID or `primary`) — for people who already have a Google Cloud project; everyone else is better served by the link. |
+| Appointments | Off by default. When a caller wants to set a time with you (a meeting, a visit, a call at a set time), the AI looks at your Google Calendar — only whether you are free, never what is in it — without saying it is checking. Busy: it says you already have something then, and suggests another time only if asked. Free: **Ask me first** — it says it should be fine and that you will confirm; after the call a Telegram card with **✅ Confirm** / **❌ Decline** decides (✅ puts it in your calendar). **Book it if I'm free** — it agrees and the event goes into your calendar during the call (if that fails, you get the card instead). Never with sales or scam callers: once a call is judged one, whatever it agreed to is dropped. Works with both answer styles (as you, or as your assistant). The appointment replaces the calendar suggestion for that call. |
+| Text the caller | Off by default. After you confirm or decline (or the AI booked it), the phone that took the call sends the caller a short text in your name, e.g. "Hi, this is Alex. Sat Nov 14, 15:00 House viewing — that works for me, see you then." Only Taiwan mobile numbers (`09…` / `+8869…`); for landlines, hidden and foreign numbers the card says to call back yourself. Needs a phone app that sends texts (its control hello says `supports_sms`); the Telegram reply tells you when a text did not go out and why. |
+
+Checking free times and writing to the calendar need the Google Calendar
+credentials above. Without them the AI cannot see your calendar: it always
+says it will confirm and get back to the caller, and *Book it if I'm free*
+works like *Ask me first*. The refresh token then also needs a read scope for
+free/busy: `calendar.freebusy` (or `calendar.readonly`, or the full
+`calendar` scope) next to `calendar.events`. A token made with
+`calendar.events` alone is refused ("insufficient scope"); create it again
+with both scopes. Times are the computer's local time (`TZ` below).
 
 Without any key for the summary, the notification carries the caller's first
 words instead, and the transcript is always in the console.
@@ -185,7 +196,8 @@ These only set the starting value; the web console overrides them:
 `ANSWER_STYLE` (`assistant` / `persona`), `GEMINI_LIVE_MODEL`,
 `GEMINI_VOICE_NAME`, `COUNTRY_CODE`, `SUMMARY_API_BASE`, `SUMMARY_MODEL`,
 `DEEPSEEK_API_KEY` (the summary API key), `TELEGRAM_BOT_TOKEN`,
-`TELEGRAM_CHAT_ID`, `NOTIFY_WEBHOOK_URL`.
+`TELEGRAM_CHAT_ID`, `NOTIFY_WEBHOOK_URL`, `APPOINTMENT_MODE` (`off` /
+`confirm` / `auto`), `APPOINTMENT_SMS` (`true` / `false`).
 
 ### Logging and development
 

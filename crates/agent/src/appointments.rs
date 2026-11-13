@@ -1,0 +1,1412 @@
+//! Appointments: while a call is on, the AI can look at the owner's Google
+//! Calendar (free or busy, never what is in it) and take the time a caller
+//! asks for. After the call the owner confirms it with a Telegram button — or,
+//! in `auto` mode, it is already in the calendar — and the caller can get a
+//! text message back through the phone that took the call.
+//!
+//! Off by default (setting `appointment_mode`). How the pieces fit:
+//! - [`ApptSession::for_call`] is made per call. The Live session
+//!   ([`crate::gemini_live::run_session`]) adds [`tool_declarations`] and
+//!   [`ApptSession::prompt_block`] to a normal call's setup (never to the
+//!   sales / scam stalling session) and answers each `toolCall` with
+//!   [`ApptSession::run_tool`] on a task of its own, so the audio loop never waits.
+//! - What the caller agreed to is kept in the call's [`CallAppointments`] and
+//!   goes with the call record ([`crate::calls::CallRecord::appointment`]).
+//! - After the call [`create_task`] and [`after_summary`] write the task and
+//!   send the card, the text message or both; [`decide`] carries out the
+//!   owner's ✅ / ❌ (Telegram button or `POST /calls/api/tasks/{id}/…`).
+//!
+//! Times are the machine's local time (`TZ`), written `YYYY-MM-DDTHH:MM`.
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use anyhow::{Context, Result};
+use chrono::{Datelike, Duration as Span, NaiveDateTime};
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use tracing::{info, warn};
+
+use crate::callback::{ControlRegistry, SmsOutcome, SMS_RESULT_WAIT};
+use crate::calls::{CallRecord, CallStore};
+use crate::locale::{self, Lang, Phrases};
+use crate::settings_store::RuntimeSettings;
+use crate::tasks::{ReplyMethod, TaskIntent, TaskPatch, TaskRecord, TaskStatus, TaskStore};
+
+/// Setting `appointment_mode`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// The AI takes no appointments (default).
+    Off,
+    /// The AI says it will confirm; the owner decides from a Telegram card.
+    Confirm,
+    /// A free time is taken on the call and put in Google Calendar.
+    Auto,
+}
+
+impl Mode {
+    /// Anything that is not `confirm` or `auto` is off.
+    pub fn parse(s: &str) -> Mode {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "confirm" => Mode::Confirm,
+            "auto" => Mode::Auto,
+            _ => Mode::Off,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Mode::Off => "off",
+            Mode::Confirm => "confirm",
+            Mode::Auto => "auto",
+        }
+    }
+}
+
+/// Waiting for the owner.
+pub const PENDING: &str = "pending";
+/// Put in the calendar on the call (`auto`).
+pub const BOOKED: &str = "booked";
+/// The owner said yes.
+pub const CONFIRMED: &str = "confirmed";
+/// The owner said no.
+pub const DECLINED: &str = "declined";
+
+pub const CHECK: &str = "check_availability";
+pub const PROPOSE: &str = "propose_appointment";
+
+/// How long one function call may take: the caller is waiting on the line.
+const TOOL_TIMEOUT: Duration = Duration::from_secs(8);
+const STAMP: &str = "%Y-%m-%dT%H:%M";
+const TITLE_MAX: usize = 80;
+const NAME_MAX: usize = 40;
+const SMS_TEXT_MAX: usize = 500;
+
+/// A time agreed with a caller.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Appointment {
+    /// Local time, `YYYY-MM-DDTHH:MM`.
+    pub start: String,
+    pub end: String,
+    /// What it is about, a few words.
+    #[serde(default)]
+    pub title: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub caller_name: String,
+    /// `confirm` or `auto`: how the call took it.
+    pub mode: String,
+    /// [`PENDING`], [`BOOKED`], [`CONFIRMED`] or [`DECLINED`].
+    pub status: String,
+    /// Google Calendar event id once it is in the calendar.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub event_id: String,
+    /// `auto` could not book it (the owner decides instead): why.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub auto_error: String,
+    /// Times this call had already put in the calendar before the caller changed it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub replaced: Vec<Earlier>,
+    /// The text message to the caller: `sent`, or why not (`offline`,
+    /// `old_app`, `timeout`, `no_number`, the phone's error code). Empty = none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub sms: String,
+}
+
+/// An earlier time of the same call that is in the calendar.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Earlier {
+    pub start: String,
+    pub end: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub event_id: String,
+}
+
+fn parse_local(s: &str) -> Option<NaiveDateTime> {
+    let t = s.trim();
+    for fmt in [STAMP, "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"] {
+        if let Ok(dt) = NaiveDateTime::parse_from_str(t, fmt) {
+            return Some(dt);
+        }
+    }
+    // With a zone (`…+08:00`): the wall-clock part is what was meant.
+    chrono::DateTime::parse_from_rfc3339(t).ok().map(|dt| dt.naive_local())
+}
+
+fn stamp(t: NaiveDateTime) -> String {
+    t.format(STAMP).to_string()
+}
+
+/// "11/14（週六）15:00", "Sat Nov 14, 15:00": a time with its weekday, the way
+/// the agent's language writes it.
+pub fn when_text(lang: Lang, t: &NaiveDateTime) -> String {
+    let p = locale::phrases(lang);
+    let wd = p.ap_weekdays[t.weekday().num_days_from_monday() as usize];
+    t.format(p.ap_dt_fmt).to_string().replacen("{}", wd, 1)
+}
+
+fn when_range(lang: Lang, start: &str, end: &str) -> String {
+    let Some(s) = parse_local(start) else {
+        return start.to_string();
+    };
+    let mut out = when_text(lang, &s);
+    if let Some(e) = parse_local(end).filter(|e| *e > s) {
+        if e.date() == s.date() {
+            out.push_str(&format!("–{}", e.format("%H:%M")));
+        } else {
+            out.push_str(&format!(" – {}", when_text(lang, &e)));
+        }
+    }
+    out
+}
+
+impl Appointment {
+    /// "11/14（週六）15:00–16:00".
+    pub fn when(&self, lang: Lang) -> String {
+        when_range(lang, &self.start, &self.end)
+    }
+
+    /// The start alone, for the text message.
+    pub fn start_text(&self, lang: Lang) -> String {
+        parse_local(&self.start).map_or_else(|| self.start.clone(), |s| when_text(lang, &s))
+    }
+
+    /// Its time and what it is ("11/14（週六）15:00–16:00 看房").
+    pub fn headline(&self, lang: Lang) -> String {
+        format!("{} {}", self.when(lang), self.title.trim()).trim().to_string()
+    }
+
+    /// The calendar event's title: what it is, else "Appointment — caller".
+    fn calendar_title(&self, caller_id: &str) -> String {
+        let t = self.title.trim();
+        if t.is_empty() {
+            locale::fill(texts().e_appointment, display_caller(caller_id))
+        } else {
+            t.to_string()
+        }
+    }
+
+    /// As a calendar entry for the web console (`.ics`, "added to Google Calendar").
+    pub fn calendar_event(&self) -> crate::calendar::Event {
+        let title = if self.title.trim().is_empty() {
+            locale::fill(texts().e_appointment, "")
+                .trim_end_matches([' ', '—', '-'])
+                .to_string()
+        } else {
+            self.title.trim().to_string()
+        };
+        crate::calendar::Event {
+            title,
+            start: self.start.clone(),
+            end: self.end.clone(),
+            all_day: false,
+            google_event_id: self.event_id.clone(),
+        }
+    }
+}
+
+impl Earlier {
+    fn when(&self, lang: Lang) -> String {
+        format!("{} {}", when_range(lang, &self.start, &self.end), self.title.trim())
+            .trim()
+            .to_string()
+    }
+}
+
+fn texts() -> &'static Phrases {
+    locale::phrases(locale::current())
+}
+
+fn display_caller(caller_id: &str) -> &str {
+    let t = caller_id.trim();
+    if t.is_empty() {
+        texts().n_hidden
+    } else {
+        t
+    }
+}
+
+// ---------------------------------------------------------------------------
+// One call's appointment
+// ---------------------------------------------------------------------------
+
+/// What the caller has agreed to on this call, shared by the Live session (it
+/// writes) and the call record (it reads at the end of the call).
+#[derive(Debug, Default)]
+pub struct CallAppointments {
+    inner: std::sync::Mutex<Book>,
+}
+
+#[derive(Debug, Default)]
+struct Book {
+    current: Option<Appointment>,
+    earlier: Vec<Earlier>,
+    /// Judged a sales / scam call: nothing of this call is kept.
+    discarded: bool,
+}
+
+impl CallAppointments {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+
+    fn book(&self) -> std::sync::MutexGuard<'_, Book> {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The caller agreed to this; a later one replaces it. False: the call was
+    /// judged sales / scam, nothing is kept.
+    pub fn record(&self, appt: Appointment) -> bool {
+        let mut b = self.book();
+        if b.discarded {
+            return false;
+        }
+        if let Some(prev) = b.current.take() {
+            if !prev.event_id.is_empty() {
+                b.earlier.push(Earlier {
+                    start: prev.start,
+                    end: prev.end,
+                    title: prev.title,
+                    event_id: prev.event_id,
+                });
+            }
+        }
+        b.current = Some(appt);
+        true
+    }
+
+    /// The call turned out to be sales / scam: drop what it agreed to.
+    pub fn discard(&self) {
+        let mut b = self.book();
+        b.discarded = true;
+        b.current = None;
+    }
+
+    pub fn is_discarded(&self) -> bool {
+        self.book().discarded
+    }
+
+    /// The call's appointment (the last one agreed), with the earlier times
+    /// that are already in the calendar.
+    pub fn outcome(&self) -> Option<Appointment> {
+        let b = self.book();
+        if b.discarded {
+            return None;
+        }
+        let mut a = b.current.clone()?;
+        a.replaced = b.earlier.clone();
+        Some(a)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Gemini Live functions
+// ---------------------------------------------------------------------------
+
+/// The setup's `tools` value: the two functions the model may call.
+pub fn tool_declarations() -> Value {
+    json!([{
+        "functionDeclarations": [
+            {
+                "name": CHECK,
+                "description": "Whether the person you speak for is free at a local date and time. Answers {\"free\": true}, {\"free\": false} (busy; what it is stays private) or {\"free\": null} (the calendar could not be read).",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "start": { "type": "STRING", "description": "Local start time, YYYY-MM-DDTHH:MM." },
+                        "end": { "type": "STRING", "description": "Local end time, YYYY-MM-DDTHH:MM. Leave out for one hour." }
+                    },
+                    "required": ["start"]
+                }
+            },
+            {
+                "name": PROPOSE,
+                "description": "Record the time agreed with the caller. Answers {\"status\": \"booked\"} (it is in the calendar) or {\"status\": \"pending_owner_confirmation\"} (not settled yet). Call it again when the time changes; the last call counts.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "start": { "type": "STRING", "description": "Local start time, YYYY-MM-DDTHH:MM." },
+                        "end": { "type": "STRING", "description": "Local end time, YYYY-MM-DDTHH:MM. Leave out for one hour." },
+                        "title": { "type": "STRING", "description": "What it is about, a few words." },
+                        "caller_name": { "type": "STRING", "description": "The caller's name, when they gave it." }
+                    },
+                    "required": ["start", "title"]
+                }
+            }
+        ]
+    }])
+}
+
+/// One function call from the model (`toolCall.functionCalls[]`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub args: Value,
+}
+
+/// The function calls in a server message (none for every other message).
+pub fn parse_tool_calls(msg: &Value) -> Vec<ToolCall> {
+    msg.pointer("/toolCall/functionCalls")
+        .and_then(Value::as_array)
+        .map(|calls| {
+            calls
+                .iter()
+                .filter_map(|c| {
+                    Some(ToolCall {
+                        id: c.get("id").and_then(Value::as_str).unwrap_or("").to_string(),
+                        name: c.get("name")?.as_str()?.to_string(),
+                        args: c.get("args").cloned().unwrap_or_else(|| json!({})),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Ids of calls the server no longer wants answered (`toolCallCancellation`).
+pub fn parse_tool_cancellation(msg: &Value) -> Vec<String> {
+    msg.pointer("/toolCallCancellation/ids")
+        .and_then(Value::as_array)
+        .map(|ids| ids.iter().filter_map(|i| i.as_str().map(str::to_string)).collect())
+        .unwrap_or_default()
+}
+
+/// The client message answering one function call.
+pub fn tool_response(id: &str, name: &str, response: Value) -> Value {
+    json!({
+        "toolResponse": {
+            "functionResponses": [{ "id": id, "name": name, "response": response }]
+        }
+    })
+}
+
+/// Google Calendar access from the settings (`gcal_*`). Never printed.
+#[derive(Clone)]
+pub struct CalendarAccess {
+    client_id: String,
+    client_secret: String,
+    refresh_token: String,
+    calendar_id: String,
+}
+
+impl std::fmt::Debug for CalendarAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CalendarAccess(..)")
+    }
+}
+
+impl CalendarAccess {
+    /// None until the Google Calendar credentials are filled in.
+    pub fn from_settings(rt: &RuntimeSettings) -> Option<Self> {
+        rt.gcal_configured().then(|| Self {
+            client_id: rt.gcal_client_id.clone(),
+            client_secret: rt.gcal_client_secret.clone(),
+            refresh_token: rt.gcal_refresh_token.clone(),
+            calendar_id: rt.gcal_calendar_id.clone(),
+        })
+    }
+
+    fn window(start: &str, end: &str) -> Result<(String, String)> {
+        Ok((
+            crate::calendar::local_rfc3339(start).context("bad start time")?,
+            crate::calendar::local_rfc3339(end).context("bad end time")?,
+        ))
+    }
+
+    /// Nothing in the calendar between `start` and `end` (local stamps).
+    pub async fn is_free(&self, http: &Client, start: &str, end: &str) -> Result<bool> {
+        let (a, b) = Self::window(start, end)?;
+        crate::gcal::query_free(
+            http,
+            &self.client_id,
+            &self.client_secret,
+            &self.refresh_token,
+            &self.calendar_id,
+            &a,
+            &b,
+        )
+        .await
+    }
+
+    /// Put it in the calendar; the new event's id.
+    pub async fn insert(&self, http: &Client, appt: &Appointment, caller_id: &str) -> Result<String> {
+        let (a, b) = Self::window(&appt.start, &appt.end)?;
+        crate::gcal::insert_event(
+            http,
+            &self.client_id,
+            &self.client_secret,
+            &self.refresh_token,
+            &self.calendar_id,
+            &appt.calendar_title(caller_id),
+            &event_description(caller_id, appt),
+            &a,
+            &b,
+        )
+        .await
+    }
+}
+
+fn event_description(caller_id: &str, appt: &Appointment) -> String {
+    let p = texts();
+    let sep = p.sep;
+    let mut parts = vec![format!("{}{sep}{}", p.n_number, display_caller(caller_id))];
+    if !appt.caller_name.trim().is_empty() {
+        parts.push(format!("{}{sep}{}", p.ap_name, appt.caller_name.trim()));
+    }
+    if !appt.title.trim().is_empty() {
+        parts.push(format!("{}{sep}{}", p.ap_what, appt.title.trim()));
+    }
+    parts.push("Myna".to_string());
+    parts.join("\n")
+}
+
+/// What one call's Live session needs for appointments.
+#[derive(Clone)]
+pub struct ApptSession {
+    /// [`Mode::Confirm`] or [`Mode::Auto`] (never off; `auto` without calendar
+    /// access is confirm).
+    pub mode: Mode,
+    calendar: Option<CalendarAccess>,
+    /// The caller can get a text message back (setting on, a mobile number).
+    pub reply_by_text: bool,
+    caller_id: String,
+    http: Client,
+    /// What the caller agreed to.
+    pub book: Arc<CallAppointments>,
+}
+
+impl ApptSession {
+    /// None when appointments are off.
+    pub fn for_call(rt: &RuntimeSettings, http: &Client, caller_id: &str) -> Option<Self> {
+        let mode = Mode::parse(&rt.appointment_mode);
+        if mode == Mode::Off {
+            return None;
+        }
+        let calendar = CalendarAccess::from_settings(rt);
+        // Without calendar access nothing can be checked or booked: the owner decides.
+        let mode = if calendar.is_none() { Mode::Confirm } else { mode };
+        Some(Self {
+            mode,
+            calendar,
+            reply_by_text: rt.appointment_sms && sms_number(caller_id).is_some(),
+            caller_id: caller_id.trim().to_string(),
+            http: http.clone(),
+            book: CallAppointments::new(),
+        })
+    }
+
+    pub fn can_check(&self) -> bool {
+        self.calendar.is_some()
+    }
+
+    /// Added after the call's system instruction (the stored prompt is not touched).
+    pub fn prompt_block(&self, now: chrono::DateTime<chrono::Local>) -> String {
+        prompt_block(
+            self.mode,
+            self.can_check(),
+            self.reply_by_text,
+            &locale::active(),
+            now.naive_local(),
+            &now.format("%:z").to_string(),
+        )
+    }
+
+    /// Answer one function call (runs on its own task; bounded by [`TOOL_TIMEOUT`]).
+    pub async fn run_tool(&self, call: &ToolCall) -> Value {
+        let now = chrono::Local::now().naive_local();
+        match call.name.as_str() {
+            CHECK => self.check(&call.args, now).await,
+            PROPOSE => self.propose(&call.args, now).await,
+            other => {
+                warn!("appointment tool: unknown function {other}");
+                json!({ "error": "unknown_function" })
+            }
+        }
+    }
+
+    async fn check(&self, args: &Value, now: NaiveDateTime) -> Value {
+        let (start, end) = match window(args, now) {
+            Ok(w) => w,
+            Err(why) => return bad_time(why),
+        };
+        let Some(cal) = &self.calendar else {
+            return unavailable();
+        };
+        match tokio::time::timeout(TOOL_TIMEOUT, cal.is_free(&self.http, &stamp(start), &stamp(end))).await {
+            Ok(Ok(free)) => {
+                info!("appointment check start={} end={} free={free}", stamp(start), stamp(end));
+                json!({ "free": free })
+            }
+            Ok(Err(e)) => {
+                warn!("appointment check failed: {e:#}");
+                unavailable()
+            }
+            Err(_) => {
+                warn!("appointment check timed out after {}s", TOOL_TIMEOUT.as_secs());
+                unavailable()
+            }
+        }
+    }
+
+    async fn propose(&self, args: &Value, now: NaiveDateTime) -> Value {
+        let pending = json!({ "status": "pending_owner_confirmation" });
+        let (start, end) = match window(args, now) {
+            Ok(w) => w,
+            Err(why) => return bad_time(why),
+        };
+        if self.book.is_discarded() {
+            return pending;
+        }
+        let mut appt = Appointment {
+            start: stamp(start),
+            end: stamp(end),
+            title: clean_text(args.get("title"), TITLE_MAX),
+            caller_name: clean_text(args.get("caller_name"), NAME_MAX),
+            mode: self.mode.as_str().to_string(),
+            status: PENDING.to_string(),
+            ..Default::default()
+        };
+        if let (Mode::Auto, Some(cal)) = (self.mode, &self.calendar) {
+            match tokio::time::timeout(TOOL_TIMEOUT, self.book_now(cal, &appt)).await {
+                Ok(Ok(id)) => {
+                    appt.event_id = id;
+                    appt.status = BOOKED.to_string();
+                }
+                Ok(Err(e)) => appt.auto_error = format!("{e:#}"),
+                Err(_) => {
+                    appt.auto_error =
+                        format!("Google Calendar: timeout ({}s)", TOOL_TIMEOUT.as_secs())
+                }
+            }
+        }
+        let booked = appt.status == BOOKED;
+        info!(
+            "appointment proposed start={} end={} mode={} booked={booked} auto_error={:?}",
+            appt.start, appt.end, appt.mode, appt.auto_error
+        );
+        if !self.book.record(appt) {
+            return pending;
+        }
+        if booked {
+            json!({ "status": "booked" })
+        } else {
+            pending
+        }
+    }
+
+    async fn book_now(&self, cal: &CalendarAccess, appt: &Appointment) -> Result<String> {
+        if !cal.is_free(&self.http, &appt.start, &appt.end).await? {
+            anyhow::bail!("{}", texts().ap_busy);
+        }
+        cal.insert(&self.http, appt, &self.caller_id).await
+    }
+}
+
+fn unavailable() -> Value {
+    json!({ "free": null, "reason": "calendar_unavailable" })
+}
+
+fn bad_time(why: &str) -> Value {
+    json!({ "error": why, "expected": "start as a future local time, YYYY-MM-DDTHH:MM" })
+}
+
+fn clean_text(v: Option<&Value>, max: usize) -> String {
+    v.and_then(Value::as_str)
+        .unwrap_or("")
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(max)
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
+/// The time a function call names: a start that is neither in the past nor more
+/// than 400 days ahead; a missing or odd end is one hour after the start.
+fn window(
+    args: &Value,
+    now: NaiveDateTime,
+) -> std::result::Result<(NaiveDateTime, NaiveDateTime), &'static str> {
+    let start = args
+        .get("start")
+        .and_then(Value::as_str)
+        .and_then(parse_local)
+        .ok_or("bad_start")?;
+    if start < now - Span::minutes(30) {
+        return Err("start_in_past");
+    }
+    if start > now + Span::days(400) {
+        return Err("start_too_far");
+    }
+    let end = args
+        .get("end")
+        .and_then(Value::as_str)
+        .and_then(parse_local)
+        .filter(|e| *e > start && *e <= start + Span::hours(24))
+        .unwrap_or(start + Span::hours(1));
+    Ok((start, end))
+}
+
+/// The instructions added after a call's system prompt (English; the model
+/// answers in the call's language). Coming last, they win over a prompt line
+/// such as "do not agree to plans for the owner".
+pub fn prompt_block(
+    mode: Mode,
+    can_check: bool,
+    reply_by_text: bool,
+    active: &locale::Active,
+    now: NaiveDateTime,
+    utc_offset: &str,
+) -> String {
+    let owner = crate::prompts::owner_label(active.lang, &active.owner);
+    let language = locale::phrases(active.lang).name_en;
+    let me = !active.assistant;
+    let back = if reply_by_text {
+        "text them to confirm"
+    } else {
+        "get back to them"
+    };
+    let has_plans = if me {
+        "you already have something on then".to_string()
+    } else {
+        format!("{owner} already has something on then")
+    };
+    let will_check = if me {
+        format!("you'll check your schedule and {back}")
+    } else {
+        format!("you'll check with {owner} and {back}")
+    };
+    let tentative = if me {
+        format!("\"that should be fine, I'll double-check and {back}\"")
+    } else {
+        format!("\"that should be fine, I'll confirm with {owner} and {back}\"")
+    };
+    let mut s = format!(
+        "\n\n[Appointments — this part overrides anything above about not agreeing to plans or invitations for {owner}]\n"
+    );
+    s.push_str(&format!(
+        "It is now {} ({}), local time (UTC{utc_offset}). Work out \"tomorrow\", \"next Wednesday\" or \"the 20th\" from this; every time you pass to a function is local, YYYY-MM-DDTHH:MM.\n",
+        now.format("%Y-%m-%d %H:%M"),
+        now.format("%A"),
+    ));
+    s.push_str(&format!(
+        "When the caller asks whether {owner} is free at some time, or wants to set a time (a meeting, a visit, coming by, a call at a set time):\n"
+    ));
+    if can_check {
+        s.push_str("- As soon as there is a day and a time, call check_availability (start, and end if they said how long). Do not say you are checking, looking it up or that they should wait: call it and carry on. Only a vague time (\"next week\", \"some afternoon\")? Ask which day and what time first.\n");
+        s.push_str(&format!(
+            "- {{\"free\": false}}: say {has_plans}, never what it is. Only if they ask, suggest another time (you may check that one too).\n"
+        ));
+        if mode == Mode::Auto {
+            s.push_str("- {\"free\": true}: agree naturally, then call propose_appointment.\n");
+        } else {
+            s.push_str(&format!(
+                "- {{\"free\": true}}: say something like {tentative} — not that it is settled — then call propose_appointment.\n"
+            ));
+        }
+        s.push_str(&format!(
+            "- {{\"free\": null}} (the calendar could not be read): say {will_check}, then call propose_appointment.\n"
+        ));
+    } else {
+        s.push_str(&format!(
+            "- The calendar cannot be read on this call, so do not call check_availability. Once there is a day and a time, say {will_check}, then call propose_appointment. Only a vague time? Ask which day and what time first.\n"
+        ));
+    }
+    s.push_str(&format!(
+        "- propose_appointment: start (and end) as agreed, title = what it is about in a few words in {language}, caller_name when they gave their name. If the time changes later in the call, call it again with the new time; the last one counts.\n"
+    ));
+    s.push_str(&format!(
+        "- Its answer \"pending_owner_confirmation\" means it is not settled yet: {will_check}, never say it is booked. \"booked\" means it is settled and you may say so.\n"
+    ));
+    s.push_str("- Never make an appointment with a sales, insurance, loan, investment or scam caller.");
+    s
+}
+
+// ---------------------------------------------------------------------------
+// Text messages to the caller
+// ---------------------------------------------------------------------------
+
+/// A number that takes text messages: a Taiwan mobile number (`09xxxxxxxx`,
+/// `+8869xxxxxxxx`), always as `+8869xxxxxxxx`. Landlines, hidden and
+/// foreign numbers: None (the owner calls them back).
+pub fn sms_number(caller_id: &str) -> Option<String> {
+    let t = caller_id.trim();
+    if t.is_empty()
+        || !t
+            .chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, '+' | ' ' | '-' | '(' | ')'))
+    {
+        return None;
+    }
+    let d: String = t.chars().filter(|c| c.is_ascii_digit()).collect();
+    let national = if t.starts_with('+') {
+        d.strip_prefix("886")?.to_string()
+    } else if let Some(r) = d.strip_prefix("00886") {
+        r.to_string()
+    } else if d.len() == 12 && d.starts_with("886") {
+        d[3..].to_string()
+    } else {
+        d.strip_prefix('0')?.to_string()
+    };
+    let national = national.trim_start_matches('0');
+    (national.len() == 9 && national.starts_with('9')).then(|| format!("+886{national}"))
+}
+
+/// The text message to the caller, in the owner's own words: the time is fine
+/// (`confirmed`) or not. No owner name set: the greeting goes without it.
+pub fn sms_text(lang: Lang, owner: &str, appt: &Appointment, confirmed: bool) -> String {
+    let p = locale::phrases(lang);
+    let owner: String = owner
+        .chars()
+        .filter(|c| !c.is_control() && *c != '{' && *c != '}')
+        .take(NAME_MAX)
+        .collect();
+    let owner = owner.trim();
+    let hi = if owner.is_empty() {
+        p.ap_sms_hi.to_string()
+    } else {
+        locale::fill(p.ap_sms_hi_owner, owner)
+    };
+    let when = appt.start_text(lang);
+    let body = if confirmed {
+        let what = if appt.title.trim().is_empty() {
+            when
+        } else {
+            format!("{when} {}", appt.title.trim())
+        };
+        locale::fill(p.ap_sms_ok, &what)
+    } else {
+        locale::fill(p.ap_sms_no, &when)
+    };
+    format!("{hi}{body}")
+        .trim()
+        .chars()
+        .take(SMS_TEXT_MAX)
+        .collect()
+}
+
+/// [`Appointment::sms`] code and the line the owner reads.
+fn sms_report(out: &SmsOutcome, shown_number: &str) -> (String, String) {
+    let p = texts();
+    let not_sent = |why: &str| locale::fill(p.ap_sms_not_sent, why);
+    match out {
+        SmsOutcome::Sent => ("sent".to_string(), locale::fill(p.ap_sms_sent, shown_number)),
+        SmsOutcome::Offline => ("offline".to_string(), not_sent(p.ap_sms_offline)),
+        SmsOutcome::Unsupported => ("old_app".to_string(), not_sent(p.ap_sms_old_app)),
+        SmsOutcome::Timeout => ("timeout".to_string(), not_sent(p.ap_sms_timeout)),
+        SmsOutcome::Failed(code) => (code.clone(), not_sent(&locale::fill(p.ap_sms_code, code))),
+    }
+}
+
+/// Send the caller the text for this decision through the phone that took the
+/// call. Returns the [`Appointment::sms`] code and the owner's line.
+async fn text_caller(
+    rt: &RuntimeSettings,
+    control: Option<&ControlRegistry>,
+    task: &TaskRecord,
+    appt: &Appointment,
+    confirmed: bool,
+) -> (String, String) {
+    let p = texts();
+    let Some(to) = sms_number(&task.caller_id) else {
+        return ("no_number".to_string(), p.ap_sms_cannot.to_string());
+    };
+    let Some(control) = control else {
+        return sms_report(&SmsOutcome::Offline, &to);
+    };
+    let text = sms_text(locale::current(), &rt.owner_name, appt, confirmed);
+    let out = control
+        .send_sms(&task.serial, &task.id, &to, &text, SMS_RESULT_WAIT)
+        .await;
+    info!("appointment sms task_id={} serial={} outcome={out:?}", task.id, task.serial);
+    sms_report(&out, task.caller_id.trim())
+}
+
+// ---------------------------------------------------------------------------
+// After the call
+// ---------------------------------------------------------------------------
+
+/// The line under the post-call summary: "📅 已排入行事曆：…" or "📅 預約待你確認：…".
+pub fn summary_line(appt: &Appointment) -> String {
+    let lang = locale::current();
+    let p = locale::phrases(lang);
+    let label = if appt.status == BOOKED { p.ap_booked } else { p.ap_pending };
+    let mut s = format!("📅 {label}{}{}", p.sep, appt.headline(lang));
+    for e in &appt.replaced {
+        s.push('\n');
+        s.push_str(&locale::fill(p.ap_replaced, &e.when(lang)));
+    }
+    s
+}
+
+/// The task for the appointment a call took (`call` = its record).
+pub async fn create_task(store: &TaskStore, call: &CallRecord, appt: &Appointment) -> Option<TaskRecord> {
+    let lang = locale::current();
+    let booked = appt.status == BOOKED;
+    let mut events = vec!["appointment_from_call".to_string()];
+    if booked {
+        events.push("gcal_event_created".to_string());
+    }
+    let task = TaskRecord {
+        id: String::new(),
+        created_at: String::new(),
+        updated_at: String::new(),
+        call_id: call.id.clone(),
+        serial: call.serial.clone(),
+        caller_id: call.caller_id.clone(),
+        status: if booked { TaskStatus::Fulfilled } else { TaskStatus::Pending },
+        intent: TaskIntent::Appointment,
+        summary: appt.headline(lang),
+        transcript: String::new(),
+        datetime_hint: Some(appt.start.clone()),
+        reply_method: ReplyMethod::None,
+        reply_contact: sms_number(&call.caller_id),
+        contact_verified: false,
+        voicemail_path: None,
+        calendar_event_id: (!appt.event_id.is_empty()).then(|| appt.event_id.clone()),
+        fulfill_error: (!appt.auto_error.is_empty()).then(|| appt.auto_error.clone()),
+        openclaw_ref: None,
+        events,
+        appointment: Some(appt.clone()),
+    };
+    match store.create(task).await {
+        Ok(t) => {
+            info!(
+                "appointment task id={} call_id={} status={} mode={}",
+                t.id, t.call_id, appt.status, appt.mode
+            );
+            Some(t)
+        }
+        Err(e) => {
+            warn!("appointment task create failed call_id={}: {e:#}", call.id);
+            None
+        }
+    }
+}
+
+/// The Telegram card of an appointment waiting for the owner: (title, body).
+pub fn card_text(rt: &RuntimeSettings, task: &TaskRecord, appt: &Appointment) -> (String, String) {
+    let lang = locale::current();
+    let p = locale::phrases(lang);
+    let sep = p.sep;
+    let mut lines = vec![
+        format!("{}{sep}{}", p.n_number, display_caller(&task.caller_id)),
+        format!("{}{sep}{}", p.n_time, appt.when(lang)),
+    ];
+    if !appt.title.trim().is_empty() {
+        lines.push(format!("{}{sep}{}", p.ap_what, appt.title.trim()));
+    }
+    if !appt.caller_name.trim().is_empty() {
+        lines.push(format!("{}{sep}{}", p.ap_name, appt.caller_name.trim()));
+    }
+    lines.push(format!("{}{sep}{}", p.n_phone, crate::notify::device_label(&task.serial)));
+    let sms = if !rt.appointment_sms {
+        p.ap_sms_off
+    } else if sms_number(&task.caller_id).is_some() {
+        p.ap_sms_will
+    } else {
+        p.ap_sms_cannot
+    };
+    lines.push(format!("{}{sep}{sms}", p.ap_sms));
+    if !appt.auto_error.is_empty() {
+        lines.push(locale::fill(p.ap_auto_failed, &appt.auto_error));
+    }
+    for e in &appt.replaced {
+        lines.push(locale::fill(p.ap_replaced, &e.when(lang)));
+    }
+    (p.ap_card_title.to_string(), lines.join("\n"))
+}
+
+/// After the summary went out: the card for an appointment that waits for
+/// the owner, or — booked on the call — the text message to the caller.
+pub async fn after_summary(
+    http: &Client,
+    rt: &RuntimeSettings,
+    store: &TaskStore,
+    calls: &CallStore,
+    control: &ControlRegistry,
+    task: &TaskRecord,
+) {
+    let Some(mut appt) = task.appointment.clone() else {
+        return;
+    };
+    let token = rt.telegram_bot_token.trim();
+    let chat = rt.telegram_chat_id.trim();
+    let tg = crate::tg_inbound::task_card_ready(rt.call_notify, token, chat);
+    if appt.status == PENDING {
+        if !tg {
+            info!("appointment card not sent (Telegram not set up) task_id={}", task.id);
+            return;
+        }
+        let p = texts();
+        let (title, body) = card_text(rt, task, &appt);
+        if let Err(e) = crate::tg_inbound::send_task_card_labeled(
+            http, token, chat, &title, &task.id, &body, p.ap_confirm, p.ap_decline,
+        )
+        .await
+        {
+            warn!("appointment card failed task_id={}: {e:#}", task.id);
+        }
+        return;
+    }
+    if appt.status != BOOKED || !rt.appointment_sms {
+        return;
+    }
+    let (code, line) = text_caller(rt, Some(control), task, &appt, true).await;
+    appt.sms = code;
+    let _ = store.push_event(&task.id, &format!("sms_{}", appt.sms)).await;
+    let _ = store
+        .patch(
+            &task.id,
+            TaskPatch {
+                appointment: Some(appt.clone()),
+                ..Default::default()
+            },
+        )
+        .await;
+    update_call_notes(calls, &task.call_id, &appt).await;
+    if tg {
+        let lang = locale::current();
+        let text = format!("📅 {}\n{line}", appt.headline(lang));
+        if let Err(e) = crate::tg_inbound::send_plain_message(http, token, chat, &text).await {
+            warn!("appointment sms report failed task_id={}: {e:#}", task.id);
+        }
+    }
+}
+
+/// The owner's ✅ (`confirm`) or ❌ on an appointment: calendar, text
+/// message, task and call notes. Returns the task and the reply for Telegram.
+pub async fn decide(
+    http: &Client,
+    rt: &RuntimeSettings,
+    store: &TaskStore,
+    calls: &CallStore,
+    control: Option<&ControlRegistry>,
+    task_id: &str,
+    confirm: bool,
+) -> Result<(TaskRecord, String)> {
+    let task = store
+        .get(task_id)
+        .await
+        .with_context(|| format!("task not found: {task_id}"))?;
+    let mut appt = task
+        .appointment
+        .clone()
+        .context("not an appointment task")?;
+    let lang = locale::current();
+    let p = locale::phrases(lang);
+    let headline = appt.headline(lang);
+    if appt.status != PENDING {
+        return Ok((task, format!("{}\n{headline}", p.ap_already)));
+    }
+    let mut lines: Vec<String> = Vec::new();
+    let mut error: Option<String> = None;
+    if confirm {
+        store.push_event(task_id, "appointment_confirmed").await?;
+        if appt.event_id.is_empty() {
+            match CalendarAccess::from_settings(rt) {
+                None => lines.push(p.ap_cal_none.to_string()),
+                Some(cal) => match cal.insert(http, &appt, &task.caller_id).await {
+                    Ok(id) => {
+                        appt.event_id = id;
+                        lines.push(p.ap_cal_added.to_string());
+                        store.push_event(task_id, "gcal_event_created").await?;
+                    }
+                    Err(e) => {
+                        let msg = locale::fill(p.ap_cal_failed, &format!("{e:#}"));
+                        warn!("appointment calendar insert failed task_id={task_id}: {e:#}");
+                        lines.push(msg.clone());
+                        error = Some(msg);
+                    }
+                },
+            }
+        }
+        appt.status = CONFIRMED.to_string();
+    } else {
+        store.push_event(task_id, "appointment_declined").await?;
+        appt.status = DECLINED.to_string();
+    }
+    if rt.appointment_sms {
+        let (code, line) = text_caller(rt, control, &task, &appt, confirm).await;
+        appt.sms = code;
+        lines.push(line);
+        store.push_event(task_id, &format!("sms_{}", appt.sms)).await?;
+    }
+    store
+        .patch(
+            task_id,
+            TaskPatch {
+                appointment: Some(appt.clone()),
+                calendar_event_id: (!appt.event_id.is_empty()).then(|| appt.event_id.clone()),
+                fulfill_error: Some(error.clone()),
+                ..Default::default()
+            },
+        )
+        .await?;
+    let status = if !confirm {
+        TaskStatus::Ignored
+    } else if error.is_some() {
+        TaskStatus::Failed
+    } else {
+        TaskStatus::Fulfilled
+    };
+    let updated = store.update_status(task_id, status).await?;
+    update_call_notes(calls, &task.call_id, &appt).await;
+    info!(
+        "appointment decided task_id={task_id} confirm={confirm} event={} sms={:?}",
+        !appt.event_id.is_empty(),
+        appt.sms
+    );
+    let head = if confirm { p.ap_confirmed } else { p.ap_declined };
+    let mut text = format!("{head}\n{headline}");
+    for l in lines {
+        text.push('\n');
+        text.push_str(&l);
+    }
+    Ok((updated, text))
+}
+
+/// The web console's call notes follow the appointment's state.
+async fn update_call_notes(calls: &CallStore, call_id: &str, appt: &Appointment) {
+    let Some(mut notes) = calls.load_notes(call_id).await else {
+        return;
+    };
+    notes.appointment = Some(appt.clone());
+    notes.calendar = Some(appt.calendar_event());
+    if let Err(e) = calls.save_notes(call_id, &notes).await {
+        warn!("appointment notes update failed call_id={call_id}: {e:#}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDate;
+
+    fn at(y: i32, m: u32, d: u32, h: u32, min: u32) -> NaiveDateTime {
+        NaiveDate::from_ymd_opt(y, m, d).unwrap().and_hms_opt(h, min, 0).unwrap()
+    }
+
+    fn appt(start: &str, end: &str, title: &str) -> Appointment {
+        Appointment {
+            start: start.into(),
+            end: end.into(),
+            title: title.into(),
+            mode: "confirm".into(),
+            status: PENDING.into(),
+            ..Default::default()
+        }
+    }
+
+    fn session(mode: Mode) -> ApptSession {
+        ApptSession {
+            mode,
+            calendar: None,
+            reply_by_text: false,
+            caller_id: "0912345678".into(),
+            http: Client::new(),
+            book: CallAppointments::new(),
+        }
+    }
+
+    fn task_for(caller_id: &str, a: &Appointment) -> TaskRecord {
+        TaskRecord {
+            id: "t".into(),
+            created_at: String::new(),
+            updated_at: String::new(),
+            call_id: "c".into(),
+            serial: "pixel-1".into(),
+            caller_id: caller_id.into(),
+            status: TaskStatus::Pending,
+            intent: TaskIntent::Appointment,
+            summary: String::new(),
+            transcript: String::new(),
+            datetime_hint: None,
+            reply_method: ReplyMethod::None,
+            reply_contact: None,
+            contact_verified: false,
+            voicemail_path: None,
+            calendar_event_id: None,
+            fulfill_error: None,
+            openclaw_ref: None,
+            events: vec![],
+            appointment: Some(a.clone()),
+        }
+    }
+
+    #[test]
+    fn mode_parses_and_unknown_is_off() {
+        assert_eq!(Mode::parse(" Confirm "), Mode::Confirm);
+        assert_eq!(Mode::parse("AUTO"), Mode::Auto);
+        for s in ["", "off", "yes", "on", "automatic"] {
+            assert_eq!(Mode::parse(s), Mode::Off, "{s}");
+        }
+        assert_eq!(Mode::parse(Mode::Auto.as_str()), Mode::Auto);
+    }
+
+    #[test]
+    fn appointments_follow_the_setting_and_need_the_calendar_for_auto() {
+        let http = Client::new();
+        let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        rt.gcal_client_id = String::new();
+        rt.gcal_client_secret = String::new();
+        rt.gcal_refresh_token = String::new();
+        assert!(ApptSession::for_call(&rt, &http, "0912345678").is_none());
+        rt.appointment_mode = "auto".into();
+        rt.appointment_sms = true;
+        let s = ApptSession::for_call(&rt, &http, "0912345678").unwrap();
+        // No calendar access: the owner decides, nothing is checked.
+        assert_eq!((s.mode, s.can_check(), s.reply_by_text), (Mode::Confirm, false, true));
+        assert!(!ApptSession::for_call(&rt, &http, "0225550123").unwrap().reply_by_text);
+        rt.gcal_client_id = "id.apps.example".into();
+        rt.gcal_client_secret = "secret-123456".into();
+        rt.gcal_refresh_token = "refresh-123456".into();
+        let s = ApptSession::for_call(&rt, &http, "").unwrap();
+        assert_eq!((s.mode, s.can_check(), s.reply_by_text), (Mode::Auto, true, false));
+        assert!(!format!("{:?}", s.calendar).contains("secret"));
+    }
+
+    #[test]
+    fn mobile_numbers_take_texts_and_others_do_not() {
+        for n in ["0912345678", "0912-345-678", "+886912345678", "+886 912 345 678", "886912345678", "00886912345678", "+8860912345678"] {
+            assert_eq!(sms_number(n).as_deref(), Some("+886912345678"), "{n}");
+        }
+        for n in ["", "  ", "0225550123", "+886225550123", "+12025550143", "anonymous", "private", "091234567", "09123456789", "912345678", "+81 90-1234-5678"] {
+            assert_eq!(sms_number(n), None, "{n}");
+        }
+    }
+
+    #[test]
+    fn sms_text_in_every_language_with_and_without_owner() {
+        let a = appt("2026-11-14T15:00", "2026-11-14T16:00", "看房");
+        let ok = sms_text(Lang::ZhTw, "王小明", &a, true);
+        assert_eq!(ok, "你好，我是王小明。11/14（週六）15:00 看房沒問題，到時見。");
+        let no = sms_text(Lang::ZhTw, "", &a, false);
+        assert_eq!(no, "你好。不好意思，11/14（週六）15:00我沒辦法，我們再約別的時間好嗎？");
+        for l in locale::ALL {
+            let with = sms_text(l, "Alex", &a, true);
+            let without = sms_text(l, " ", &a, false);
+            assert!(with.contains("Alex") && with.contains("15:00") && with.contains("看房"), "{l:?}: {with}");
+            assert!(!without.contains('{') && !without.contains("Alex") && without.contains("15:00"), "{l:?}: {without}");
+            assert!(with.chars().count() <= SMS_TEXT_MAX && !with.starts_with(' ') && !with.ends_with(' '));
+            assert_ne!(sms_text(l, "", &a, true), without, "{l:?}");
+        }
+        assert_eq!(
+            sms_text(Lang::En, "Sam", &a, true),
+            "Hi, this is Sam. Sat Nov 14, 15:00 看房 — that works for me, see you then."
+        );
+    }
+
+    #[test]
+    fn appointment_phrases_exist_in_every_language() {
+        let t = at(2026, 11, 16, 9, 5); // a Monday
+        for l in locale::ALL {
+            let p = locale::phrases(l);
+            for s in [p.ap_sms_hi_owner, p.ap_sms_ok, p.ap_sms_no, p.ap_auto_failed, p.ap_replaced, p.ap_cal_failed, p.ap_sms_sent, p.ap_sms_not_sent, p.ap_sms_code] {
+                assert_eq!(s.matches("{}").count(), 1, "{l:?}: {s}");
+            }
+            for s in [p.ap_sms_hi, p.ap_confirm, p.ap_decline, p.ap_card_title, p.ap_what, p.ap_name, p.ap_sms, p.ap_sms_will, p.ap_sms_off, p.ap_sms_cannot, p.ap_pending, p.ap_booked, p.ap_busy, p.ap_confirmed, p.ap_declined, p.ap_cal_added, p.ap_cal_none, p.ap_sms_old_app, p.ap_sms_offline, p.ap_sms_timeout, p.ap_already] {
+                assert!(!s.trim().is_empty() && !s.contains('{'), "{l:?}: {s}");
+            }
+            assert!(p.ap_confirm.starts_with('✅') && p.ap_decline.starts_with('❌'), "{l:?}");
+            assert_eq!(p.ap_dt_fmt.matches("{}").count(), 1, "{l:?}");
+            let w = when_text(l, &t);
+            assert!(w.contains("09:05") && w.contains(p.ap_weekdays[0]) && !w.contains('%'), "{l:?}: {w}");
+        }
+        assert_eq!(when_text(Lang::ZhTw, &t), "11/16（週一）09:05");
+        assert_eq!(when_text(Lang::En, &t), "Mon Nov 16, 09:05");
+        let a = appt("2026-11-14T15:00", "2026-11-14T16:30", "看房");
+        assert_eq!(a.when(Lang::ZhTw), "11/14（週六）15:00–16:30");
+        assert_eq!(a.headline(Lang::ZhTw), "11/14（週六）15:00–16:30 看房");
+    }
+
+    #[test]
+    fn tool_calls_parse_and_answers_are_shaped_for_live() {
+        let msg = json!({"toolCall": {"functionCalls": [
+            {"id": "fc-1", "name": "check_availability", "args": {"start": "2026-11-14T15:00"}},
+            {"id": "fc-2", "name": "propose_appointment"},
+            {"id": "fc-3"}
+        ]}});
+        let calls = parse_tool_calls(&msg);
+        assert_eq!(calls.len(), 2);
+        assert_eq!(
+            calls[0],
+            ToolCall { id: "fc-1".into(), name: CHECK.into(), args: json!({"start": "2026-11-14T15:00"}) }
+        );
+        assert_eq!(calls[1].args, json!({}));
+        assert!(parse_tool_calls(&json!({"serverContent": {"turnComplete": true}})).is_empty());
+        assert_eq!(
+            parse_tool_cancellation(&json!({"toolCallCancellation": {"ids": ["fc-1", "fc-2"]}})),
+            vec!["fc-1", "fc-2"]
+        );
+        assert!(parse_tool_cancellation(&msg).is_empty());
+        let r = tool_response("fc-1", CHECK, json!({"free": true}));
+        assert_eq!(
+            r,
+            json!({"toolResponse": {"functionResponses": [{"id": "fc-1", "name": "check_availability", "response": {"free": true}}]}})
+        );
+        let decl = tool_declarations();
+        let names: Vec<&str> = decl[0]["functionDeclarations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, vec![CHECK, PROPOSE]);
+        assert_eq!(decl[0]["functionDeclarations"][1]["parameters"]["required"], json!(["start", "title"]));
+    }
+
+    #[test]
+    fn function_times_are_checked() {
+        let now = at(2026, 11, 13, 14, 0);
+        let (s, e) = window(&json!({"start": "2026-11-14T15:00"}), now).unwrap();
+        assert_eq!((stamp(s), stamp(e)), ("2026-11-14T15:00".to_string(), "2026-11-14T16:00".to_string()));
+        let (_, e) = window(&json!({"start": "2026-11-14 15:00", "end": "2026-11-14T15:30"}), now).unwrap();
+        assert_eq!(stamp(e), "2026-11-14T15:30");
+        // An end before the start or days later is one hour instead.
+        let (_, e) = window(&json!({"start": "2026-11-14T15:00", "end": "2026-11-14T14:00"}), now).unwrap();
+        assert_eq!(stamp(e), "2026-11-14T16:00");
+        assert_eq!(window(&json!({"start": "2026-11-12T15:00"}), now), Err("start_in_past"));
+        assert_eq!(window(&json!({"start": "2028-11-12T15:00"}), now), Err("start_too_far"));
+        assert_eq!(window(&json!({"start": "tomorrow 3pm"}), now), Err("bad_start"));
+        assert_eq!(window(&json!({}), now), Err("bad_start"));
+    }
+
+    #[tokio::test]
+    async fn without_calendar_check_is_unknown_and_proposals_wait_for_the_owner() {
+        let s = session(Mode::Confirm);
+        let start = (chrono::Local::now().naive_local() + Span::days(2)).format(STAMP).to_string();
+        let check = ToolCall { id: "1".into(), name: CHECK.into(), args: json!({"start": start}) };
+        assert_eq!(s.run_tool(&check).await, json!({"free": null, "reason": "calendar_unavailable"}));
+        let bad = ToolCall { id: "2".into(), name: CHECK.into(), args: json!({"start": "soon"}) };
+        assert_eq!(s.run_tool(&bad).await["error"], "bad_start");
+        let propose = ToolCall {
+            id: "3".into(),
+            name: PROPOSE.into(),
+            args: json!({"start": start, "title": " 看房\n", "caller_name": "陳先生"}),
+        };
+        assert_eq!(s.run_tool(&propose).await, json!({"status": "pending_owner_confirmation"}));
+        let got = s.book.outcome().unwrap();
+        assert_eq!(
+            (got.title.as_str(), got.caller_name.as_str(), got.status.as_str(), got.mode.as_str()),
+            ("看房", "陳先生", PENDING, "confirm")
+        );
+        // The last proposal counts.
+        let later = (chrono::Local::now().naive_local() + Span::days(3)).format(STAMP).to_string();
+        let again = ToolCall { id: "4".into(), name: PROPOSE.into(), args: json!({"start": later, "title": "看房"}) };
+        s.run_tool(&again).await;
+        assert_eq!(s.book.outcome().unwrap().start, later);
+        let other = ToolCall { id: "5".into(), name: "other".into(), args: json!({}) };
+        assert_eq!(s.run_tool(&other).await["error"], "unknown_function");
+        // Judged sales / scam: nothing is kept, the model still gets an answer.
+        s.book.discard();
+        assert_eq!(s.run_tool(&propose).await, json!({"status": "pending_owner_confirmation"}));
+        assert_eq!(s.book.outcome(), None);
+    }
+
+    #[test]
+    fn replaced_booked_times_are_listed() {
+        let book = CallAppointments::new();
+        let mut first = appt("2026-11-14T15:00", "2026-11-14T16:00", "看房");
+        first.event_id = "ev1".into();
+        first.status = BOOKED.into();
+        assert!(book.record(first));
+        assert!(book.record(appt("2026-11-15T10:00", "2026-11-15T11:00", "看房")));
+        let out = book.outcome().unwrap();
+        assert_eq!(out.start, "2026-11-15T10:00");
+        assert_eq!(out.replaced.len(), 1);
+        assert_eq!(out.replaced[0].event_id, "ev1");
+        let line = summary_line(&out);
+        assert!(line.starts_with("📅 預約待你確認：11/15（週日）10:00–11:00 看房"), "{line}");
+        assert!(line.contains("11/14（週六）15:00–16:00 看房"), "{line}");
+        let mut booked = out.clone();
+        booked.status = BOOKED.into();
+        booked.replaced.clear();
+        assert_eq!(summary_line(&booked), "📅 已排入行事曆：11/15（週日）10:00–11:00 看房");
+    }
+
+    #[test]
+    fn prompt_tells_the_time_and_follows_mode_and_style() {
+        let now = at(2026, 11, 13, 14, 5);
+        let me = locale::Active { owner: "王先生".into(), ..Default::default() };
+        let p = prompt_block(Mode::Confirm, true, true, &me, now, "+08:00");
+        assert!(p.contains("2026-11-13 14:05 (Friday)") && p.contains("UTC+08:00"), "{p}");
+        assert!(p.contains("check_availability") && p.contains("propose_appointment"));
+        assert!(p.contains("text them to confirm") && p.contains("I'll double-check"));
+        assert!(p.contains("overrides anything above") && p.contains("王先生"));
+        assert!(p.contains("Do not say you are checking") && p.contains("never what it is"));
+        assert!(p.contains("scam caller"));
+        let auto = prompt_block(Mode::Auto, true, false, &me, now, "+08:00");
+        assert!(auto.contains("agree naturally") && !auto.contains("text them"));
+        let blind = prompt_block(Mode::Confirm, false, false, &me, now, "+08:00");
+        assert!(blind.contains("do not call check_availability"));
+        let assistant = locale::Active { assistant: true, ..me };
+        let a = prompt_block(Mode::Confirm, true, false, &assistant, now, "+08:00");
+        assert!(a.contains("王先生 already has something on") && a.contains("check with 王先生"));
+    }
+
+    #[test]
+    fn card_lists_time_reason_and_whether_a_text_can_go() {
+        let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        rt.appointment_sms = true;
+        let mut a = appt("2026-11-14T15:00", "2026-11-14T16:00", "看房");
+        a.caller_name = "陳先生".into();
+        let task = task_for("0912345678", &a);
+        let (title, body) = card_text(&rt, &task, &a);
+        assert_eq!(title, "📅 預約待確認");
+        assert!(body.contains("號碼：0912345678") && body.contains("時間：11/14（週六）15:00–16:00"), "{body}");
+        assert!(body.contains("事由：看房") && body.contains("陳先生"), "{body}");
+        assert!(body.contains("簡訊：按確定或婉拒後會傳簡訊告訴對方"), "{body}");
+        let landline = task_for("0225550123", &a);
+        assert!(card_text(&rt, &landline, &a).1.contains("對方號碼收不到簡訊，請自己回電"));
+        let hidden = task_for("", &a);
+        assert!(card_text(&rt, &hidden, &a).1.contains("號碼：未顯示號碼"));
+        rt.appointment_sms = false;
+        assert!(card_text(&rt, &task, &a).1.contains("簡訊：不會傳"));
+    }
+
+    #[test]
+    fn sms_reports_say_what_happened() {
+        assert_eq!(sms_report(&SmsOutcome::Sent, "0912345678"), ("sent".into(), "已傳簡訊給 0912345678".into()));
+        assert_eq!(sms_report(&SmsOutcome::Unsupported, "x").1, "簡訊沒傳出：手機 App 太舊，不支援傳簡訊");
+        assert_eq!(sms_report(&SmsOutcome::Offline, "x"), ("offline".into(), "簡訊沒傳出：手機沒連線".into()));
+        assert_eq!(sms_report(&SmsOutcome::Timeout, "x").0, "timeout");
+        assert_eq!(
+            sms_report(&SmsOutcome::Failed("no_service".into()), "x"),
+            ("no_service".into(), "簡訊沒傳出：失敗代碼 no_service".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn owner_decision_without_calendar_or_texts_updates_the_task() {
+        let root = std::env::temp_dir().join(format!("myna-appt-{}", uuid::Uuid::new_v4()));
+        let store = TaskStore::new(root.join("tasks"));
+        let calls = CallStore::new(root.join("calls"), false, false, 30);
+        let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        rt.gcal_client_id = String::new();
+        rt.appointment_sms = false;
+        let a = appt("2026-11-14T15:00", "2026-11-14T16:00", "看房");
+        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
+        let (done, text) = decide(&Client::new(), &rt, &store, &calls, None, &t.id, true).await.unwrap();
+        assert_eq!(done.status, TaskStatus::Fulfilled);
+        assert_eq!(done.appointment.as_ref().unwrap().status, CONFIRMED);
+        assert!(text.starts_with("✅ 已確定預約\n11/14（週六）15:00–16:00 看房"), "{text}");
+        assert!(text.contains("沒有 Google 日曆授權"), "{text}");
+        assert!(done.events.contains(&"appointment_confirmed".to_string()));
+        // Pressed again: nothing happens twice.
+        let (_, again) = decide(&Client::new(), &rt, &store, &calls, None, &t.id, false).await.unwrap();
+        assert!(again.starts_with("這個預約已經處理過了"), "{again}");
+        // Declined, texts on, the phone is not connected: said so.
+        rt.appointment_sms = true;
+        let t2 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
+        let control = ControlRegistry::default();
+        let (done, text) = decide(&Client::new(), &rt, &store, &calls, Some(&control), &t2.id, false).await.unwrap();
+        assert_eq!(done.status, TaskStatus::Ignored);
+        assert_eq!(done.appointment.as_ref().unwrap().sms, "offline");
+        assert!(text.starts_with("❌ 已婉拒預約") && text.contains("簡訊沒傳出：手機沒連線"), "{text}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}

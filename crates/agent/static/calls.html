@@ -497,13 +497,14 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <div class="cal">
               <svg class="i ci"><use href="#i-calendar"/></svg>
               <div class="grow">
-                <span class="small muted" data-i18n="d_cal"></span>
+                <span class="small muted" id="dCalLabel" data-i18n="d_cal"></span>
                 <b id="dCalTitle"></b>
                 <span id="dCalWhen"></span>
                 <div class="btns">
                   <a class="btn sm primary" id="dCalGoogle" target="_blank" rel="noopener noreferrer"><svg class="i sm"><use href="#i-external"/></svg><span data-i18n="d_cal_add"></span></a>
                   <a class="btn sm" id="dCalIcs" download="call-event.ics"><svg class="i sm"><use href="#i-download"/></svg><span data-i18n="d_cal_ics"></span></a>
                   <span class="tag ok" id="dCalAdded" hidden><svg class="i sm"><use href="#i-check"/></svg><span data-i18n="d_cal_added"></span></span>
+                  <span class="tag" id="dApptStatus" hidden></span>
                 </div>
               </div>
             </div>
@@ -773,6 +774,14 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
                 <div class="help" data-i18n="f_gcal_cal_h"></div></div>
             </div>
           </details>
+          <div class="hr"></div>
+          <div class="field"><label for="f-appointment_mode" data-i18n="f_appt_mode"></label>
+            <select id="f-appointment_mode" data-k="appointment_mode" data-t="text" style="max-width:20rem">
+              <option value="off" data-i18n="appt_off"></option><option value="confirm" data-i18n="appt_confirm"></option><option value="auto" data-i18n="appt_auto"></option>
+            </select>
+            <div class="help" data-i18n="f_appt_mode_h"></div>
+            <p class="note" id="apptNoCal" hidden><svg class="i sm"><use href="#i-info"/></svg><span data-i18n="appt_nocal"></span></p></div>
+          <label class="sw"><input type="checkbox" data-k="appointment_sms" data-t="bool" /><span><b data-i18n="f_appt_sms"></b><small data-i18n="f_appt_sms_h"></small></span></label>
         </div></div>
 
         <!-- Region & advanced -->
@@ -1000,6 +1009,12 @@ I18N["en"] = {
   d_cal_add: "Add to Google Calendar",
   d_cal_ics: "Download .ics",
   d_cal_added: "Added to Google Calendar",
+  d_appt: "Appointment",
+  d_appt_pending: "Waiting for you",
+  d_appt_booked: "Booked on the call",
+  d_appt_confirmed: "Confirmed",
+  d_appt_declined: "Declined",
+  d_appt_sms_sent: "text sent",
   d_cal_allday: "All day",
   d_rec: "Recording",
   d_norec: "No recording for this call.",
@@ -1266,6 +1281,14 @@ I18N["en"] = {
   f_gcal_refresh: "Refresh token",
   f_gcal_cal: "Calendar ID",
   f_gcal_cal_h: "Empty = your main calendar.",
+  f_appt_mode: "Appointments",
+  f_appt_mode_h: "When a caller wants to set a time with you, the AI looks at your Google Calendar (only whether you are free, never what is in it). “Ask me first”: the AI says it will confirm, and you decide with ✅ / ❌ on a Telegram card. “Book it if I'm free”: a free time is taken on the call and put in your calendar. Never with sales or scam callers.",
+  appt_off: "Off",
+  appt_confirm: "Ask me first",
+  appt_auto: "Book it if I'm free",
+  appt_nocal: "Checking free times and adding to the calendar need the Google Calendar credentials below. Without them the AI cannot see your calendar: it always says it will confirm and get back to the caller, and “Book it if I'm free” works like “Ask me first”.",
+  f_appt_sms: "Text the caller",
+  f_appt_sms_h: "Once you confirm or decline (or the AI booked it), the phone that took the call sends the caller a short text in your name. Taiwan mobile numbers only; the phone app must be able to send texts.",
   // ---- settings: region & advanced
   f_cc: "Country calling code",
   f_cc_h: "Digits only, e.g. 1, 44, 886. Lets blocked numbers written with + match the way your phone reports callers.",
@@ -1557,6 +1580,12 @@ I18N["zh-TW"] = {
   d_cal_add: "加入 Google 日曆",
   d_cal_ics: "下載 .ics",
   d_cal_added: "已加入 Google 日曆",
+  d_appt: "行程預約",
+  d_appt_pending: "待你確認",
+  d_appt_booked: "通話中已排入",
+  d_appt_confirmed: "已確定",
+  d_appt_declined: "已婉拒",
+  d_appt_sms_sent: "已傳簡訊",
   d_cal_allday: "整天",
   d_rec: "錄音",
   d_norec: "這通電話沒有錄音。",
@@ -1823,6 +1852,14 @@ I18N["zh-TW"] = {
   f_gcal_refresh: "Refresh token",
   f_gcal_cal: "日曆 ID",
   f_gcal_cal_h: "留空 = 你的主要日曆。",
+  f_appt_mode: "行程預約",
+  f_appt_mode_h: "對方想跟你約時間時，AI 會看你的 Google 日曆（只看有沒有空，不看內容）。「先問我」：AI 說會確認再回覆，你在 Telegram 卡片按 ✅／❌ 決定。「有空直接答應」：有空就當場答應並寫入日曆。推銷或詐騙電話一律不約。",
+  appt_off: "關閉",
+  appt_confirm: "先問我",
+  appt_auto: "有空直接答應",
+  appt_nocal: "查空檔和寫入日曆需要先填好下面的 Google 日曆憑證。沒填時 AI 看不到你的日曆，一律說會確認再回覆，「有空直接答應」也會改成「先問我」。",
+  f_appt_sms: "傳簡訊告訴對方",
+  f_appt_sms_h: "你按確定或婉拒後（或 AI 已直接排入），由接這通電話的手機以你的名義傳一則簡訊給對方。只限台灣手機號碼，手機 App 要支援傳簡訊。",
   // ---- settings: region & advanced
   f_cc: "國際電話國碼",
   f_cc_h: "只填數字，例如 1、44、886。這樣用 + 開頭寫的拒接號碼，才能對上手機回報的來電號碼。",
@@ -2114,6 +2151,12 @@ I18N["zh-CN"] = {
   d_cal_add: "添加到 Google 日历",
   d_cal_ics: "下载 .ics",
   d_cal_added: "已添加到 Google 日历",
+  d_appt: "日程预约",
+  d_appt_pending: "待你确认",
+  d_appt_booked: "通话中已排入",
+  d_appt_confirmed: "已确定",
+  d_appt_declined: "已婉拒",
+  d_appt_sms_sent: "已发短信",
   d_cal_allday: "全天",
   d_rec: "录音",
   d_norec: "这通电话没有录音。",
@@ -2380,6 +2423,14 @@ I18N["zh-CN"] = {
   f_gcal_refresh: "Refresh token",
   f_gcal_cal: "日历 ID",
   f_gcal_cal_h: "留空 = 你的主日历。",
+  f_appt_mode: "日程预约",
+  f_appt_mode_h: "对方想跟你约时间时，AI 会看你的 Google 日历（只看有没有空，不看内容）。“先问我”：AI 说会确认再回复，你在 Telegram 卡片按 ✅／❌ 决定。“有空直接答应”：有空就当场答应并写入日历。推销或诈骗电话一律不约。",
+  appt_off: "关闭",
+  appt_confirm: "先问我",
+  appt_auto: "有空直接答应",
+  appt_nocal: "查空闲时间和写入日历需要先填好下面的 Google 日历凭据。没填时 AI 看不到你的日历，一律说会确认再回复，“有空直接答应”也会改成“先问我”。",
+  f_appt_sms: "发短信告诉对方",
+  f_appt_sms_h: "你按确定或婉拒后（或 AI 已直接排入），由接这通电话的手机以你的名义给对方发一条短信。仅限台湾手机号码，手机 App 要支持发短信。",
   // ---- settings: region & advanced
   f_cc: "国际电话区号",
   f_cc_h: "只填数字，例如 1、44、86。这样用 + 开头写的拦截号码，才能和手机上报的来电号码对上。",
@@ -2671,6 +2722,12 @@ I18N["ja"] = {
   d_cal_add: "Google カレンダーに追加",
   d_cal_ics: ".ics をダウンロード",
   d_cal_added: "Google カレンダーに追加済み",
+  d_appt: "予約",
+  d_appt_pending: "確認待ち",
+  d_appt_booked: "通話中に登録済み",
+  d_appt_confirmed: "確定",
+  d_appt_declined: "お断り",
+  d_appt_sms_sent: "SMS 送信済み",
   d_cal_allday: "終日",
   d_rec: "録音",
   d_norec: "この通話の録音はありません。",
@@ -2937,6 +2994,14 @@ I18N["ja"] = {
   f_gcal_refresh: "リフレッシュトークン",
   f_gcal_cal: "カレンダー ID",
   f_gcal_cal_h: "空欄 = メインのカレンダー。",
+  f_appt_mode: "予約の受付",
+  f_appt_mode_h: "相手が日時を決めたいとき、AI があなたの Google カレンダーを確認します（空いているかだけで、予定の内容は見ません）。「先に確認」：AI は確認してから連絡すると伝え、あなたが Telegram のカードの ✅／❌ で決めます。「空いていれば確定」：空いていればその場で受けてカレンダーに登録します。営業や詐欺の電話では予約しません。",
+  appt_off: "オフ",
+  appt_confirm: "先に確認",
+  appt_auto: "空いていれば確定",
+  appt_nocal: "空き時間の確認とカレンダー登録には、下の Google カレンダーの認証情報が必要です。未入力のときは AI がカレンダーを見られないため、いつも確認してから連絡すると伝え、「空いていれば確定」も「先に確認」と同じ動きになります。",
+  f_appt_sms: "相手に SMS で伝える",
+  f_appt_sms_h: "確定またはお断りの後（または AI がその場で登録した後）、電話を受けたスマホからあなたの名前で相手に短い SMS を送ります。台湾の携帯番号のみ。SMS を送れるアプリが必要です。",
   // ---- settings: region & advanced
   f_cc: "国番号",
   f_cc_h: "数字のみ（例：1、44、81）。+ から書いた着信拒否の番号を、スマホが通知する番号の形式と照合できるようにします。",
@@ -3228,6 +3293,12 @@ I18N["ko"] = {
   d_cal_add: "Google 캘린더에 추가",
   d_cal_ics: ".ics 내려받기",
   d_cal_added: "Google 캘린더에 추가됨",
+  d_appt: "일정 예약",
+  d_appt_pending: "확인 대기",
+  d_appt_booked: "통화 중 등록됨",
+  d_appt_confirmed: "확정됨",
+  d_appt_declined: "거절함",
+  d_appt_sms_sent: "문자 보냄",
   d_cal_allday: "종일",
   d_rec: "녹음",
   d_norec: "이 통화에는 녹음이 없습니다.",
@@ -3494,6 +3565,14 @@ I18N["ko"] = {
   f_gcal_refresh: "리프레시 토큰",
   f_gcal_cal: "캘린더 ID",
   f_gcal_cal_h: "비워 두면 기본 캘린더를 사용합니다.",
+  f_appt_mode: "일정 예약",
+  f_appt_mode_h: "상대가 시간을 잡고 싶어 하면 AI가 Google 캘린더를 확인합니다(비어 있는지만 보고 내용은 보지 않음). \"먼저 물어보기\": AI가 확인 후 연락하겠다고 말하고, 텔레그램 카드의 ✅/❌로 결정합니다. \"비어 있으면 바로 확정\": 비어 있으면 통화 중에 수락하고 캘린더에 넣습니다. 판촉·사기 전화와는 약속하지 않습니다.",
+  appt_off: "끄기",
+  appt_confirm: "먼저 물어보기",
+  appt_auto: "비어 있으면 바로 확정",
+  appt_nocal: "빈 시간 확인과 캘린더 등록에는 아래 Google 캘린더 인증 정보가 필요합니다. 없으면 AI가 캘린더를 볼 수 없어 항상 확인 후 연락하겠다고 말하며, \"비어 있으면 바로 확정\"도 \"먼저 물어보기\"처럼 동작합니다.",
+  f_appt_sms: "상대에게 문자로 알리기",
+  f_appt_sms_h: "확정하거나 거절한 뒤(또는 AI가 바로 등록한 뒤) 전화를 받은 휴대폰이 내 이름으로 상대에게 짧은 문자를 보냅니다. 대만 휴대폰 번호만 가능하며 문자를 보낼 수 있는 앱이 필요합니다.",
   // ---- settings: region & advanced
   f_cc: "국가 번호",
   f_cc_h: "숫자만 입력하세요(예: 1, 44, 82). +로 시작하게 적은 차단 번호가 휴대폰이 알려 주는 번호 형식과 맞도록 해 줍니다.",
@@ -3785,6 +3864,12 @@ I18N["es"] = {
   d_cal_add: "Añadir a Google Calendar",
   d_cal_ics: "Descargar .ics",
   d_cal_added: "Añadido a Google Calendar",
+  d_appt: "Cita",
+  d_appt_pending: "Esperando tu respuesta",
+  d_appt_booked: "Reservada en la llamada",
+  d_appt_confirmed: "Confirmada",
+  d_appt_declined: "Rechazada",
+  d_appt_sms_sent: "SMS enviado",
   d_cal_allday: "Todo el día",
   d_rec: "Grabación",
   d_norec: "Esta llamada no tiene grabación.",
@@ -4051,6 +4136,14 @@ I18N["es"] = {
   f_gcal_refresh: "Token de actualización",
   f_gcal_cal: "ID del calendario",
   f_gcal_cal_h: "Vacío = tu calendario principal.",
+  f_appt_mode: "Citas",
+  f_appt_mode_h: "Cuando quien llama quiere quedar contigo, la IA mira tu Google Calendar (solo si estás libre, nunca lo que hay). «Preguntarme antes»: la IA dice que lo confirmará y tú decides con ✅ / ❌ en una tarjeta de Telegram. «Aceptar si estoy libre»: si la hora está libre, la acepta en la llamada y la pone en tu calendario. Nunca con llamadas comerciales ni estafas.",
+  appt_off: "Desactivado",
+  appt_confirm: "Preguntarme antes",
+  appt_auto: "Aceptar si estoy libre",
+  appt_nocal: "Para ver huecos libres y añadir al calendario hacen falta las credenciales de Google Calendar de abajo. Sin ellas la IA no ve tu calendario: siempre dice que lo confirmará, y «Aceptar si estoy libre» funciona como «Preguntarme antes».",
+  f_appt_sms: "Avisar por SMS",
+  f_appt_sms_h: "Cuando confirmas o rechazas (o la IA ya la reservó), el teléfono que atendió la llamada envía en tu nombre un SMS corto a quien llamó. Solo móviles de Taiwán; la app del teléfono debe poder enviar SMS.",
   // ---- settings: region & advanced
   f_cc: "Prefijo telefónico del país",
   f_cc_h: "Solo cifras, p. ej. 1, 34, 52. Permite que los números bloqueados escritos con + coincidan con la forma en que tu teléfono indica quién llama.",
@@ -4342,6 +4435,12 @@ I18N["fr"] = {
   d_cal_add: "Ajouter à Google Agenda",
   d_cal_ics: "Télécharger le .ics",
   d_cal_added: "Ajouté à Google Agenda",
+  d_appt: "Rendez-vous",
+  d_appt_pending: "En attente de votre réponse",
+  d_appt_booked: "Pris pendant l'appel",
+  d_appt_confirmed: "Confirmé",
+  d_appt_declined: "Refusé",
+  d_appt_sms_sent: "SMS envoyé",
   d_cal_allday: "Toute la journée",
   d_rec: "Enregistrement",
   d_norec: "Pas d'enregistrement pour cet appel.",
@@ -4608,6 +4707,14 @@ I18N["fr"] = {
   f_gcal_refresh: "Jeton d'actualisation",
   f_gcal_cal: "ID de l'agenda",
   f_gcal_cal_h: "Vide = votre agenda principal.",
+  f_appt_mode: "Rendez-vous",
+  f_appt_mode_h: "Quand l'appelant veut fixer un moment avec vous, l'IA regarde votre Google Agenda (seulement si vous êtes libre, jamais le contenu). « Me demander d'abord » : l'IA dit qu'elle confirmera, et vous décidez avec ✅ / ❌ sur une carte Telegram. « Accepter si je suis libre » : un créneau libre est accepté pendant l'appel et ajouté à votre agenda. Jamais avec du démarchage ou une arnaque.",
+  appt_off: "Désactivé",
+  appt_confirm: "Me demander d'abord",
+  appt_auto: "Accepter si je suis libre",
+  appt_nocal: "Vérifier les créneaux et ajouter à l'agenda demande les identifiants Google Agenda ci-dessous. Sans eux, l'IA ne voit pas votre agenda : elle dit toujours qu'elle confirmera, et « Accepter si je suis libre » fonctionne comme « Me demander d'abord ».",
+  f_appt_sms: "Prévenir par SMS",
+  f_appt_sms_h: "Quand vous confirmez ou refusez (ou que l'IA l'a déjà ajouté), le téléphone qui a pris l'appel envoie en votre nom un court SMS à l'appelant. Numéros mobiles de Taïwan uniquement ; l'application du téléphone doit pouvoir envoyer des SMS.",
   // ---- settings: region & advanced
   f_cc: "Indicatif du pays",
   f_cc_h: "Chiffres uniquement, ex. 1, 33, 44. Permet aux numéros bloqués écrits avec + de correspondre à la façon dont votre téléphone indique les appelants.",
@@ -4899,6 +5006,12 @@ I18N["de"] = {
   d_cal_add: "Zu Google Kalender hinzufügen",
   d_cal_ics: ".ics herunterladen",
   d_cal_added: "Zu Google Kalender hinzugefügt",
+  d_appt: "Termin",
+  d_appt_pending: "Wartet auf dich",
+  d_appt_booked: "Im Gespräch eingetragen",
+  d_appt_confirmed: "Bestätigt",
+  d_appt_declined: "Abgesagt",
+  d_appt_sms_sent: "SMS gesendet",
   d_cal_allday: "Ganztägig",
   d_rec: "Aufnahme",
   d_norec: "Für diesen Anruf gibt es keine Aufnahme.",
@@ -5165,6 +5278,14 @@ I18N["de"] = {
   f_gcal_refresh: "Refresh-Token",
   f_gcal_cal: "Kalender-ID",
   f_gcal_cal_h: "Leer = dein Hauptkalender.",
+  f_appt_mode: "Termine",
+  f_appt_mode_h: "Will der Anrufer einen Termin mit dir ausmachen, schaut die KI in deinen Google Kalender (nur ob du frei bist, nie was drinsteht). „Erst mich fragen“: Die KI sagt, dass sie es bestätigt, und du entscheidest mit ✅ / ❌ auf einer Telegram-Karte. „Zusagen, wenn frei“: Eine freie Zeit wird im Gespräch zugesagt und in deinen Kalender eingetragen. Nie bei Werbe- oder Betrugsanrufen.",
+  appt_off: "Aus",
+  appt_confirm: "Erst mich fragen",
+  appt_auto: "Zusagen, wenn frei",
+  appt_nocal: "Freie Zeiten prüfen und in den Kalender eintragen geht nur mit den Google-Kalender-Zugangsdaten weiter unten. Ohne sie sieht die KI deinen Kalender nicht: Sie sagt immer, dass sie es bestätigt, und „Zusagen, wenn frei“ verhält sich wie „Erst mich fragen“.",
+  f_appt_sms: "Per SMS Bescheid geben",
+  f_appt_sms_h: "Sobald du bestätigst oder absagst (oder die KI schon eingetragen hat), schickt das Telefon, das den Anruf angenommen hat, dem Anrufer in deinem Namen eine kurze SMS. Nur taiwanische Handynummern; die App auf dem Telefon muss SMS senden können.",
   // ---- settings: region & advanced
   f_cc: "Ländervorwahl",
   f_cc_h: "Nur Ziffern, z. B. 1, 44, 49. Damit passen blockierte Nummern, die mit + geschrieben sind, zu der Form, in der dein Telefon Anrufer meldet.",
@@ -5456,6 +5577,12 @@ I18N["pt"] = {
   d_cal_add: "Adicionar ao Google Agenda",
   d_cal_ics: "Baixar .ics",
   d_cal_added: "Adicionado ao Google Agenda",
+  d_appt: "Compromisso",
+  d_appt_pending: "Aguardando você",
+  d_appt_booked: "Marcado na ligação",
+  d_appt_confirmed: "Confirmado",
+  d_appt_declined: "Recusado",
+  d_appt_sms_sent: "SMS enviado",
   d_cal_allday: "Dia inteiro",
   d_rec: "Gravação",
   d_norec: "Esta chamada não tem gravação.",
@@ -5722,6 +5849,14 @@ I18N["pt"] = {
   f_gcal_refresh: "Token de atualização",
   f_gcal_cal: "ID da agenda",
   f_gcal_cal_h: "Em branco = sua agenda principal.",
+  f_appt_mode: "Compromissos",
+  f_appt_mode_h: "Quando quem liga quer marcar um horário com você, a IA olha o seu Google Agenda (só se você está livre, nunca o conteúdo). \"Perguntar antes\": a IA diz que vai confirmar, e você decide com ✅ / ❌ num cartão do Telegram. \"Aceitar se estiver livre\": um horário livre é aceito na ligação e posto na sua agenda. Nunca com ligações de vendas ou golpes.",
+  appt_off: "Desligado",
+  appt_confirm: "Perguntar antes",
+  appt_auto: "Aceitar se estiver livre",
+  appt_nocal: "Ver horários livres e pôr na agenda exige as credenciais do Google Agenda abaixo. Sem elas a IA não vê sua agenda: sempre diz que vai confirmar, e \"Aceitar se estiver livre\" funciona como \"Perguntar antes\".",
+  f_appt_sms: "Avisar por SMS",
+  f_appt_sms_h: "Quando você confirma ou recusa (ou a IA já marcou), o telefone que atendeu envia em seu nome um SMS curto para quem ligou. Só celulares de Taiwan; o app do telefone precisa conseguir enviar SMS.",
   // ---- settings: region & advanced
   f_cc: "Código do país",
   f_cc_h: "Só números, ex.: 1, 55, 351. Faz com que os números bloqueados escritos com + correspondam ao formato em que o telefone informa quem ligou.",
@@ -6765,6 +6900,18 @@ function renderDetail() {
     $("dCalAdded").hidden = !added;
     $("dCalIcs").href = withTok(`${apiBase}/call/${encodeURIComponent(c.id)}/event.ics`);
   }
+  // An appointment the AI took on the call: where it stands. While it waits for
+  // the owner's ✅ (or was declined) there is no second way to add it.
+  const ap = n && n.appointment;
+  $("dCalLabel").dataset.i18n = ap ? "d_appt" : "d_cal";
+  $("dCalLabel").textContent = t(ap ? "d_appt" : "d_cal");
+  $("dApptStatus").hidden = !ap;
+  if (ap) {
+    const st = ["pending", "booked", "confirmed", "declined"].includes(ap.status) ? ap.status : "pending";
+    $("dApptStatus").className = "tag " + (st === "declined" ? "bad" : st === "pending" ? "warn" : "ok");
+    $("dApptStatus").textContent = t("d_appt_" + st) + (ap.sms === "sent" ? " · " + t("d_appt_sms_sent") : "");
+    if (st === "pending" || st === "declined") $("dCalGoogle").hidden = true;
+  }
 
   // Recording: keep the player where it is when only the text around it changed.
   const tracks = tracksFor(c);
@@ -7178,11 +7325,19 @@ function relabelSettings(skipRows) {
   $("sumReady").textContent = t(S.summary_ready ? "sum_ready" : "sum_notready");
   $("gcalReady").className = "tag " + (S.gcal_configured ? "ok" : "");
   $("gcalReady").textContent = t(S.gcal_configured ? "cal_ready" : "cal_notready");
+  apptNote();
   $("btnUseThisUrl").textContent = t("use_this_url", { url: location.origin });
   $("f-public_url").placeholder = consoleUrl || "http://192.168.1.20:8787";
   renderHelper();
   updateDirty();
 }
+// Appointments without the Google Calendar credentials: the AI cannot check free
+// times, every appointment waits for the owner.
+function apptNote() {
+  const sel = $("f-appointment_mode");
+  $("apptNoCal").hidden = !S || !!S.gcal_configured || !sel || sel.value === "off";
+}
+$("f-appointment_mode").addEventListener("change", apptNote);
 function fieldLabel(el) {
   const l = form.querySelector(`label[for="${el.id}"]`);
   return l ? l.textContent.trim() : el.dataset.k;

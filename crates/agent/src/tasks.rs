@@ -118,6 +118,10 @@ pub struct TaskRecord {
     pub openclaw_ref: Option<String>,
     #[serde(default)]
     pub events: Vec<String>,
+    /// An appointment the AI took on a call (intent `appointment`): its time,
+    /// what it is and how far it got. Decided by [`crate::appointments::decide`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub appointment: Option<crate::appointments::Appointment>,
 }
 
 /// Partial update for extract / fulfill stages.
@@ -134,6 +138,7 @@ pub struct TaskPatch {
     pub reply_method: Option<ReplyMethod>,
     pub reply_contact: Option<Option<String>>,
     pub contact_verified: Option<bool>,
+    pub appointment: Option<crate::appointments::Appointment>,
 }
 
 // ---------------------------------------------------------------------------
@@ -295,6 +300,9 @@ impl TaskStore {
         if let Some(v) = patch.contact_verified {
             task.contact_verified = v;
         }
+        if let Some(v) = patch.appointment {
+            task.appointment = Some(v);
+        }
         task.updated_at = now_rfc3339();
         self.persist(&task).await?;
         Ok(task)
@@ -362,6 +370,7 @@ pub fn draft_from_voicemail(
         fulfill_error: None,
         openclaw_ref: None,
         events: vec!["draft_from_voicemail".to_string()],
+        appointment: None,
     }
 }
 

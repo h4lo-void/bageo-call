@@ -23,6 +23,7 @@
 
 mod adpcm;
 mod ambience;
+mod appointments;
 mod calendar;
 mod callback;
 mod calls;
@@ -1076,6 +1077,7 @@ async fn main() -> Result<()> {
         let task_store = task_store.clone();
         let http = http.clone();
         let control = control.clone();
+        let calls = state.calls.clone();
         tokio::spawn(async move {
             let mut poller = TgPoller::new();
             loop {
@@ -1097,6 +1099,58 @@ async fn main() -> Result<()> {
                 };
                 for action in actions {
                     let rt = settings_store.snapshot();
+                    // Appointments: ✅ / ❌ on their card. On its own task — a text
+                    // message to the caller may wait up to a minute and a half for the phone.
+                    let is_appointment = task_store
+                        .get(&action.task_id)
+                        .await
+                        .is_some_and(|t| t.appointment.is_some());
+                    if is_appointment {
+                        let (http, task_store, calls, control, token) = (
+                            http.clone(),
+                            task_store.clone(),
+                            calls.clone(),
+                            control.clone(),
+                            token.clone(),
+                        );
+                        tokio::spawn(async move {
+                            let text = match appointments::decide(
+                                &http,
+                                &rt,
+                                &task_store,
+                                &calls,
+                                Some(control.as_ref()),
+                                &action.task_id,
+                                action.confirm,
+                            )
+                            .await
+                            {
+                                Ok((_, text)) => text,
+                                Err(e) => {
+                                    warn!(
+                                        "tg appointment decision failed task_id={}: {e:#}",
+                                        action.task_id
+                                    );
+                                    let p = locale::phrases(locale::current());
+                                    let head = if action.confirm {
+                                        p.tc_confirm_failed
+                                    } else {
+                                        p.tc_ignore_failed
+                                    };
+                                    format!("{head}{}{e:#}", locale::kv_sep())
+                                }
+                            };
+                            if let Err(e) =
+                                tg_inbound::send_plain_message(&http, &token, &action.chat_id, &text).await
+                            {
+                                warn!(
+                                    "tg appointment result notify failed task_id={}: {e:#}",
+                                    action.task_id
+                                );
+                            }
+                        });
+                        continue;
+                    }
                     let result_text = if action.confirm {
                         match fulfill::on_confirm(
                             &http,
@@ -1805,6 +1859,10 @@ async fn handle_control_idle_ws(
                             .handle_phone_event(&parsed, &state.task_store)
                             .await;
                     }
+                    // Answer to `send_sms` (appointments: a text to the caller).
+                    "send_sms_result" => {
+                        state.control.handle_sms_result(&parsed).await;
+                    }
                     "ping" => {
                         let _ = send_json(&sink, json!({"type":"pong"})).await;
                     }
@@ -2132,6 +2190,15 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         .await;
                                     state.phones.connected(&serial, sink.clone(), &parsed);
                                     sync_normal_mode(&state, &serial).await;
+                                    // Newer apps send texts for the agent (appointments).
+                                    state
+                                        .control
+                                        .set_supports_sms(
+                                            &serial,
+                                            parsed.get("supports_sms").and_then(Value::as_bool)
+                                                == Some(true),
+                                        )
+                                        .await;
                                     let _ = send_json(
                                         &sink,
                                         json!({
@@ -4070,6 +4137,7 @@ fn save_reject_list_notes(state: &AppState, record: &CallRecord) {
         source: "reject_list".to_string(),
         updated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         calendar: None,
+        appointment: None,
     };
     let calls = state.calls.clone();
     let id = record.id.clone();
@@ -5126,6 +5194,7 @@ fn start_ring_prewarm(
         goodbye_hangup_delay_ms,
         Arc::new(AtomicBool::new(false)),
         None,
+        &state.http,
     );
     let id = state.ring_prewarm.insert(
         serial,
@@ -5444,6 +5513,7 @@ async fn spawn_gemini_session_tasks(
         goodbye_hangup_delay_ms,
         barge_in,
         Some(media_call_guard.clone()),
+        &state.http,
     );
     // Kept for one fresh-socket retry if this session never delivers audio.
     let retry_cfg = fresh_retry_left.then_some(cfg);
@@ -5483,6 +5553,8 @@ struct GeminiSessionCore {
     play_head: Arc<gemini_live::DownlinkPlayHead>,
     stall_engaged: Arc<AtomicBool>,
     barge_in: Arc<AtomicBool>,
+    /// What the caller agrees to on this call (appointments on), for the call record.
+    appointments: Option<Arc<appointments::CallAppointments>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -5501,6 +5573,7 @@ fn start_gemini_session_core(
     goodbye_hangup_delay_ms: u64,
     barge_in: Arc<AtomicBool>,
     media_guard: Option<MediaCallGuard>,
+    http: &reqwest::Client,
 ) -> GeminiSessionCore {
     // Persona mode has no fixed clock, only the call-length safety cap; sales / scam stalling
     // swaps in its prompt once the caller scores as sales/scam.
@@ -5516,6 +5589,13 @@ fn start_gemini_session_core(
     let thinking_level = rt.gemini_thinking_level.clone();
     let intl_caller =
         persona && rt.intl_carrier_prompt_on() && gemini_live::is_intl_caller(&cfg.caller_id);
+    // Appointments (setting `appointment_mode`): normal persona calls only.
+    let appointments = if persona {
+        appointments::ApptSession::for_call(rt, http, &cfg.caller_id)
+    } else {
+        None
+    };
+    let appointment_book = appointments.as_ref().map(|a| a.book.clone());
     let force_hangup = Arc::new(AtomicBool::new(false));
     let delivered_bytes = Arc::new(AtomicU64::new(0));
     let play_head = gemini_live::DownlinkPlayHead::new();
@@ -5583,6 +5663,7 @@ fn start_gemini_session_core(
                 barge_in,
                 &thinking_level,
                 intl_caller,
+                appointments,
             )
             .await
         })
@@ -5596,6 +5677,7 @@ fn start_gemini_session_core(
         play_head,
         stall_engaged,
         barge_in,
+        appointments: appointment_book,
     }
 }
 
@@ -5630,8 +5712,17 @@ async fn run_gemini_session_to_end(
         delivered_bytes,
         play_head,
         stall_engaged,
+        appointments,
         ..
     } = core;
+    // What the caller agrees to goes with this call's record.
+    if let Some(book) = appointments {
+        if let Some(_lease) = media_call_guard.lease_current().await {
+            if let Some(c) = active_call.lock().await.as_mut() {
+                c.set_appointments(book);
+            }
+        }
+    }
     // Persona mode: the model's own closing is the goodbye — no clone goodbye WAV.
     let play_goodbye_wav = !persona;
     let hangup_sent = Arc::new(AtomicBool::new(false));
@@ -7781,6 +7872,11 @@ fn spawn_ai_talk_tg_summary(
     // Nothing from the AI reached the caller: Gemini's own transcript is text it
     // generated but never played (e.g. 「喂？你好。」 with 0 audio) — drop it.
     let ai_silent = record.tts_bytes == 0;
+    // The appointment the caller agreed to — never one from a sales / scam call.
+    let appointment = record.appointment.clone().filter(|_| !stalled && !ai_failed);
+    let task_store = state.task_store.clone();
+    let control = state.control.clone();
+    let call_record = record.clone();
 
     tokio::spawn(async move {
         let rt = settings_store.snapshot();
@@ -7921,8 +8017,14 @@ fn spawn_ai_talk_tg_summary(
 
         // A date the call fixed (delivery, appointment, callback time) becomes a
         // calendar suggestion; sales calls and failed calls are not asked about.
+        // An appointment the AI took is that date already (no second suggestion).
         let mut calendar_event: Option<calendar::Event> = None;
-        if rt.calendar_suggest && note_source == "deepseek" && !stalled && !ai_failed {
+        if rt.calendar_suggest
+            && appointment.is_none()
+            && note_source == "deepseek"
+            && !stalled
+            && !ai_failed
+        {
             if let Some(mut ev) = calendar::suggest(&http, &eff, &transcript).await {
                 info!("calendar suggestion serial={serial} start={} all_day={}", ev.start, ev.all_day);
                 if rt.calendar_auto_add && rt.gcal_configured() {
@@ -7960,7 +8062,10 @@ fn spawn_ai_talk_tg_summary(
             end_hint: end_hint.clone(),
             source: note_source.to_string(),
             updated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-            calendar: calendar_event.clone(),
+            calendar: calendar_event
+                .clone()
+                .or_else(|| appointment.as_ref().map(|a| a.calendar_event())),
+            appointment: appointment.clone(),
         };
         match calls.save_notes(&call_id, &notes).await {
             Ok(()) => info!(
@@ -7970,32 +8075,45 @@ fn spawn_ai_talk_tg_summary(
             ),
             Err(e) => warn!("call notes save failed id={call_id}: {e:#}"),
         }
-        if !notify_on {
-            info!("ai talk tg summary skipped (notify not configured) serial={serial} — notes on web only");
-            return;
-        }
-
-        if let Some(ev) = &calendar_event {
-            let label = locale::phrases(locale::current()).n_calendar;
-            body.push_str(&format!("\n📅 {label}{}{} ({})", locale::kv_sep(), ev.title, ev.when()));
-            if ev.google_event_id.is_empty() {
-                // Not inserted for the owner: one tap opens the filled-in form.
-                body.push_str(&format!("\n{}", ev.google_link("")));
-            } else {
-                body.push_str(" ✓");
+        // Appointment: its task now (the owner's buttons act on it), the card or
+        // the text message after the summary.
+        let appointment_task = match &appointment {
+            Some(a) => appointments::create_task(&task_store, &call_record, a).await,
+            None => None,
+        };
+        if notify_on {
+            if let Some(ev) = &calendar_event {
+                let label = locale::phrases(locale::current()).n_calendar;
+                body.push_str(&format!("\n📅 {label}{}{} ({})", locale::kv_sep(), ev.title, ev.when()));
+                if ev.google_event_id.is_empty() {
+                    // Not inserted for the owner: one tap opens the filled-in form.
+                    body.push_str(&format!("\n{}", ev.google_link("")));
+                } else {
+                    body.push_str(" ✓");
+                }
             }
+            if let Some(a) = &appointment {
+                body.push('\n');
+                body.push_str(&appointments::summary_line(a));
+            }
+            let link = call_detail_line(&eff, &call_id);
+            if !link.is_empty() {
+                body.push('\n');
+                body.push_str(&link);
+            }
+            let ok = notify_ai_request(&http, &eff, &caller, &serial, &body).await;
+            info!(
+                "ai talk tg summary notify serial={serial} backend={backend} ok={ok} source={source} body_chars={} tx_chars={}",
+                body.chars().count(),
+                transcript.chars().count()
+            );
+        } else {
+            info!("ai talk tg summary skipped (notify not configured) serial={serial} — notes on web only");
         }
-        let link = call_detail_line(&eff, &call_id);
-        if !link.is_empty() {
-            body.push('\n');
-            body.push_str(&link);
+        if let Some(task) = appointment_task {
+            let rt = settings_store.snapshot();
+            appointments::after_summary(&http, &rt, &task_store, &calls, &control, &task).await;
         }
-        let ok = notify_ai_request(&http, &eff, &caller, &serial, &body).await;
-        info!(
-            "ai talk tg summary notify serial={serial} backend={backend} ok={ok} source={source} body_chars={} tx_chars={}",
-            body.chars().count(),
-            transcript.chars().count()
-        );
     });
 }
 
@@ -9557,6 +9675,7 @@ mod ring_prewarm_tests {
                 play_head: gemini_live::DownlinkPlayHead::new(),
                 stall_engaged: Arc::new(AtomicBool::new(false)),
                 barge_in: Arc::new(AtomicBool::new(false)),
+                appointments: None,
             },
             up_tx,
             cancel: cancel.clone(),

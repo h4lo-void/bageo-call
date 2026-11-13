@@ -64,6 +64,10 @@
 | 摘要服務 | 預設用你的 Gemini 金鑰寫摘要（模型 `gemini-flash-latest`）。要改用其他服務，請填它相容 OpenAI 的 **API 網址**（例如 `https://api.openai.com/v1`、`https://api.deepseek.com/v1`、`https://openrouter.ai/api/v1`，或本機的 Ollama：`http://127.0.0.1:11434/v1`）、**模型**名稱，以及 **API 金鑰**（本機伺服器不需要）。只填 DeepSeek 的金鑰（不填 API 網址）就會使用 DeepSeek。 |
 | 建議行事曆活動 | 通話中講定了日期時——送貨時段、預約、對方說好幾點回電——摘要會附上「加入行事曆」連結（Google 日曆的表單，另外在控制台可以下載 `.ics`）。每通電話會多向摘要模型發一次請求。不會自動把任何東西加進任何行事曆。 |
 | 自動加入 Google 日曆 | 直接把活動加進去。需要 Google OAuth 憑證（用戶端 ID、用戶端密鑰、具有 `calendar.events` 範圍的 refresh token、日曆 ID 或 `primary`）——適合已經有 Google Cloud 專案的人；其他人用連結會比較合適。 |
+| 行程預約 | 預設關閉。對方想跟你約時間（見面、來訪、約好時間通電話）時，AI 會看你的 Google 日曆——只看有沒有空，不看內容——而且不會說自己在查。有事：說那時候有事了，對方問才建議別的時間。有空：選「**先問我**」時，AI 說應該可以、會確認再回覆，通話後 Telegram 卡片用 **✅ 確定**／**❌ 婉拒** 決定（按確定會寫進日曆）；選「**有空直接答應**」時，AI 當場答應，通話中就寫進日曆（寫不進去就改發卡片給你決定）。推銷、詐騙電話一律不約：一通電話被判定是這類電話，之前談好的都作廢。「以本人身分」和「AI 助理」兩種接聽風格都能用。有預約的那通電話不再另外產生行事曆建議。 |
+| 傳簡訊告訴對方 | 預設關閉。你按確定或婉拒後（或 AI 已直接排入），由接這通電話的手機以你的名義傳一則短簡訊給對方，例如「你好，我是小明。11/14（週六）15:00 看房沒問題，到時見。」只限台灣手機號碼（`09…`／`+8869…`）；市話、未顯示號碼、國外號碼，卡片會寫「對方號碼收不到簡訊，請自己回電」。手機 App 要能傳簡訊（control 連線的 hello 帶 `supports_sms`）；簡訊沒傳出時，Telegram 回覆會寫原因。 |
+
+查空檔和寫入日曆都需要上面的 Google 日曆憑證。沒填時 AI 看不到你的日曆，一律說會確認再回覆，「有空直接答應」也會改成「先問我」。查空檔還需要 refresh token 有讀取空閒時段的範圍：除了 `calendar.events`，再加 `calendar.freebusy`（或 `calendar.readonly`，或完整的 `calendar`）。只有 `calendar.events` 的 token 會被拒絕（「授權範圍不足」），請用兩個範圍重新取得。時間一律是這台電腦的當地時間（見下面的 `TZ`）。
 
 如果完全沒有可用來寫摘要的金鑰，通知裡會改放對方開頭說的幾句話；逐字稿則一定可以在控制台看到。
 
@@ -134,7 +138,7 @@ DEVICE_TOKEN=another-long-random-string
 
 ### 第一次啟動的預設值
 
-這些只決定初始值；網頁控制台的設定會蓋過它們：`GEMINI_API_KEY`、`APP_LANGUAGE`（`en`、`zh-TW`…）、`OWNER_NAME`、`ANSWER_STYLE`（`assistant` / `persona`）、`GEMINI_LIVE_MODEL`、`GEMINI_VOICE_NAME`、`COUNTRY_CODE`、`SUMMARY_API_BASE`、`SUMMARY_MODEL`、`DEEPSEEK_API_KEY`（摘要用的 API 金鑰）、`TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`、`NOTIFY_WEBHOOK_URL`。
+這些只決定初始值；網頁控制台的設定會蓋過它們：`GEMINI_API_KEY`、`APP_LANGUAGE`（`en`、`zh-TW`…）、`OWNER_NAME`、`ANSWER_STYLE`（`assistant` / `persona`）、`GEMINI_LIVE_MODEL`、`GEMINI_VOICE_NAME`、`COUNTRY_CODE`、`SUMMARY_API_BASE`、`SUMMARY_MODEL`、`DEEPSEEK_API_KEY`（摘要用的 API 金鑰）、`TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`、`NOTIFY_WEBHOOK_URL`、`APPOINTMENT_MODE`（`off` / `confirm` / `auto`）、`APPOINTMENT_SMS`（`true` / `false`）。
 
 ### 日誌與開發
 

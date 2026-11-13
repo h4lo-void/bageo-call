@@ -39,6 +39,46 @@ The last line appears when the agent has a console address: *Address of this con
 lines appear only when the call fixed a date
 ([Settings reference](SETTINGS.md#summary--calendar)).
 
+## Appointments
+
+With *Appointments* on ([Settings reference](SETTINGS.md#summary--calendar)),
+a call where the caller set a time with the AI gets one line under the
+summary instead of the calendar lines:
+
+```text
+📅 Appointment to confirm: Sat Nov 14, 15:00–16:00 House viewing
+📅 In your calendar: Sat Nov 14, 15:00–16:00 House viewing
+```
+
+The first is *Ask me first* (or *Book it if I'm free* when the calendar could
+not take it); the second is *Book it if I'm free*. An appointment waiting for
+you also comes as a Telegram card with two buttons:
+
+```text
+📅 Appointment to confirm
+
+Number: 0912345678
+Time: Sat Nov 14, 15:00–16:00
+What: House viewing
+Name: Mr Chen
+Phone: Pixel 8
+Text message: sent to the caller once you confirm or decline
+[✅ Confirm] [❌ Decline]
+```
+
+**✅ Confirm** puts it in Google Calendar; **❌ Decline** leaves the calendar
+alone. With *Text the caller* on, the phone that took the call then texts the
+caller in your name. The bot answers with what happened: "Added to Google
+Calendar" (or why not), "Text sent to 0912345678", or "Text not sent: the phone
+is not connected" / "the phone app is too old to send texts" / "error code
+no_service". For a landline, a hidden or a foreign number the card says to call
+back yourself. After *Book it if I'm free* the text goes out right after the
+call and the bot reports it the same way.
+
+Cards need the Telegram channel (bot token and chat ID); other channels only
+get the line under the summary. Without Telegram, decide through the
+[API](API.md#appointments).
+
 ## Services
 
 For each service: what to create, and which field it goes into.
