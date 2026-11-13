@@ -1537,7 +1537,8 @@ fn json_required() -> Response {
 }
 
 /// An appointment task (the AI took it on a call) is confirmed or declined by
-/// [`crate::appointments::decide`] (calendar, text to the caller); None for any other task.
+/// [`crate::appointments::decide_from_web`] (calendar, text to the caller, and
+/// the Telegram card's buttons taken off); None for any other task.
 async fn appointment_decision(
     state: &CallsState,
     rt: &crate::settings_store::RuntimeSettings,
@@ -1547,7 +1548,7 @@ async fn appointment_decision(
     let task = state.task_store.get(id).await?;
     task.appointment.as_ref()?;
     Some(
-        match crate::appointments::decide(
+        match crate::appointments::decide_from_web(
             &state.http,
             rt,
             &state.task_store,

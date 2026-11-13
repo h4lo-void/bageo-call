@@ -223,10 +223,13 @@ pub async fn send_task_card(
         p.tc_ignore,
     )
     .await
+    .map(|_| ())
 }
 
 /// [`send_task_card`] with its own button texts (appointments: "✅ 確定" / "❌ 婉拒").
-/// The buttons carry the same confirm / ignore data.
+/// The buttons carry the same confirm / ignore data. Returns the card's
+/// `message_id` (0 when Telegram did not say), so its buttons can be taken off
+/// when the owner decides somewhere else.
 #[allow(clippy::too_many_arguments)]
 pub async fn send_task_card_labeled(
     http: &Client,
@@ -237,7 +240,7 @@ pub async fn send_task_card_labeled(
     body_text: &str,
     confirm_label: &str,
     ignore_label: &str,
-) -> Result<()> {
+) -> Result<i64> {
     let token = bot_token.trim();
     let chat = chat_id.trim();
     if token.is_empty() || chat.is_empty() {
@@ -282,8 +285,17 @@ pub async fn send_task_card_labeled(
         anyhow::bail!("telegram sendMessage not ok: {desc}");
     }
 
-    info!("telegram task card sent task_id={task_id} chat_id={chat}");
-    Ok(())
+    let message_id = sent_message_id(&body_json);
+    info!("telegram task card sent task_id={task_id} chat_id={chat} message_id={message_id}");
+    Ok(message_id)
+}
+
+/// The `message_id` of a `sendMessage` answer (`{"ok": true, "result": {"message_id": …}}`); 0 when missing.
+fn sent_message_id(answer: &Value) -> i64 {
+    answer
+        .pointer("/result/message_id")
+        .and_then(Value::as_i64)
+        .unwrap_or(0)
 }
 
 /// The `sendMessage` body of a task card: the text and the two buttons.
@@ -438,8 +450,9 @@ async fn answer_callback_query(
     }
 }
 
-/// Best-effort: remove inline keyboard after the user clicks a button.
-async fn remove_inline_keyboard(http: &Client, bot_token: &str, chat_id: &str, message_id: i64) {
+/// Best-effort: remove a card's inline keyboard (after a button press, or when
+/// the owner decided on the web).
+pub async fn remove_inline_keyboard(http: &Client, bot_token: &str, chat_id: &str, message_id: i64) {
     let url = bot_method_url(bot_token, "editMessageReplyMarkup");
     let payload = json!({
         "chat_id": chat_id,
@@ -462,6 +475,12 @@ async fn remove_inline_keyboard(http: &Client, bot_token: &str, chat_id: &str, m
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_sent_card_reports_its_message_id() {
+        assert_eq!(sent_message_id(&json!({"ok": true, "result": {"message_id": 4711, "chat": {"id": 1}}})), 4711);
+        assert_eq!(sent_message_id(&json!({"ok": true})), 0);
+    }
 
     #[test]
     fn encode_full_uuid_fits_short_form() {

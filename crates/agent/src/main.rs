@@ -8144,6 +8144,8 @@ fn spawn_ai_talk_tg_summary(
             Some(a) => appointments::create_task(&task_store, &call_record, a).await,
             None => None,
         };
+        // The call's page in the web console, where a pending appointment is decided.
+        let detail_url = notify::call_detail_url(&eff, &call_id);
         if notify_on {
             if let Some(ev) = &calendar_event {
                 let label = locale::phrases(locale::current()).n_calendar;
@@ -8157,7 +8159,7 @@ fn spawn_ai_talk_tg_summary(
             }
             if let Some(a) = &appointment {
                 body.push('\n');
-                body.push_str(&appointments::summary_line(a));
+                body.push_str(&appointments::summary_line(a, &detail_url));
             }
             for e in &void_failed {
                 body.push('\n');
@@ -8183,7 +8185,7 @@ fn spawn_ai_talk_tg_summary(
         }
         if let Some(task) = appointment_task {
             let rt = settings_store.snapshot();
-            appointments::after_summary(&http, &rt, &task_store, &calls, &control, &task).await;
+            appointments::after_summary(&http, &rt, &task_store, &calls, &control, &task, &detail_url).await;
         }
     });
 }
