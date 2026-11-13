@@ -167,7 +167,7 @@ fn stamp(t: NaiveDateTime) -> String {
     t.format(STAMP).to_string()
 }
 
-/// "11/14（週六）15:00", "Sat Nov 14, 15:00": a time with its weekday, the way
+/// "11/14（週六）15:00", "Sat, Nov 14, 3:00 PM": a time with its weekday, the way
 /// the agent's language writes it.
 pub fn when_text(lang: Lang, t: &NaiveDateTime) -> String {
     let p = locale::phrases(lang);
@@ -182,7 +182,7 @@ fn when_range(lang: Lang, start: &str, end: &str) -> String {
     let mut out = when_text(lang, &s);
     if let Some(e) = parse_local(end).filter(|e| *e > s) {
         if e.date() == s.date() {
-            out.push_str(&format!("–{}", e.format("%H:%M")));
+            out.push_str(&format!("–{}", e.format(locale::phrases(lang).ap_end_fmt)));
         } else {
             out.push_str(&format!(" – {}", when_text(lang, &e)));
         }
@@ -402,6 +402,7 @@ pub fn tool_declarations(non_blocking: bool) -> Value {
                     "type": "OBJECT",
                     "properties": {
                         "start": { "type": "STRING", "description": "Local start time, YYYY-MM-DDTHH:MM." },
+                        "weekday": { "type": "STRING", "description": "The weekday of start in English (Monday … Sunday), the day the caller means." },
                         "end": { "type": "STRING", "description": "Local end time, YYYY-MM-DDTHH:MM. Leave out for one hour." }
                     },
                     "required": ["start"]
@@ -409,11 +410,12 @@ pub fn tool_declarations(non_blocking: bool) -> Value {
             },
             {
                 "name": PROPOSE,
-                "description": "Record the time agreed with the caller. Answers {\"status\": \"booked\"} (it is in the calendar) or {\"status\": \"pending_owner_confirmation\"} (not settled yet). Call it again when the time changes; the last call counts.",
+                "description": "Record the time agreed with the caller. Answers {\"status\": \"booked\"} (it is in the calendar) or {\"status\": \"pending_owner_confirmation\"} (not settled yet). Call it again only when the two of you change the agreed time; the last call counts. A back-up time the caller mentions is not a change.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
                         "start": { "type": "STRING", "description": "Local start time, YYYY-MM-DDTHH:MM." },
+                        "weekday": { "type": "STRING", "description": "The weekday of start in English (Monday … Sunday), the day the caller means." },
                         "end": { "type": "STRING", "description": "Local end time, YYYY-MM-DDTHH:MM. Leave out for one hour." },
                         "title": { "type": "STRING", "description": "What it is about, a few words." },
                         "caller_name": { "type": "STRING", "description": "The caller's name, when they gave it." }
@@ -473,13 +475,14 @@ pub fn parse_tool_cancellation(msg: &Value) -> Vec<String> {
 /// `"scheduling": "SILENT"`: the model already said what it had to (blocking
 /// or not, it is not to speak about it again) — except when `auto` could not
 /// book the time it already agreed to (`"not_booked": true`): then
-/// `"WHEN_IDLE"`, so it tells the caller it has to confirm after all.
+/// `"WHEN_IDLE"`, so it tells the caller it has to confirm after all — or
+/// when the call was refused (`"error"`, e.g. a wrong weekday), so it calls again.
 pub fn tool_response(id: &str, name: &str, response: Value) -> Value {
     let mut response = response;
     if name == PROPOSE {
+        let silent = answer_is_silent(name, &response);
         if let Some(o) = response.as_object_mut() {
-            let speak = o.get("not_booked").and_then(Value::as_bool) == Some(true);
-            o.insert("scheduling".into(), json!(if speak { "WHEN_IDLE" } else { "SILENT" }));
+            o.insert("scheduling".into(), json!(if silent { "SILENT" } else { "WHEN_IDLE" }));
         }
     }
     json!({
@@ -487,6 +490,13 @@ pub fn tool_response(id: &str, name: &str, response: Value) -> Value {
             "functionResponses": [{ "id": id, "name": name, "response": response }]
         }
     })
+}
+
+/// A [`PROPOSE`] answer the model is not to speak about ([`tool_response`]).
+pub fn answer_is_silent(name: &str, response: &Value) -> bool {
+    name == PROPOSE
+        && response.get("not_booked").and_then(Value::as_bool) != Some(true)
+        && response.get("error").is_none()
 }
 
 /// Google Calendar access from the settings (`gcal_*`). Never printed.
@@ -862,6 +872,9 @@ impl ApptSession {
             Ok(w) => w,
             Err(why) => return bad_time(why),
         };
+        if let Some(e) = weekday_mismatch(args, start) {
+            return e;
+        }
         let Some(cal) = &self.calendar else {
             return unavailable();
         };
@@ -893,6 +906,9 @@ impl ApptSession {
             Ok(w) => w,
             Err(why) => return bad_time(why),
         };
+        if let Some(e) = weekday_mismatch(args, start) {
+            return e;
+        }
         if self.book.is_discarded() {
             return pending;
         }
@@ -999,6 +1015,26 @@ fn bad_time(why: &str) -> Value {
     json!({ "error": why, "expected": "start as a future local time, YYYY-MM-DDTHH:MM" })
 }
 
+/// The weekday the model gave (`weekday`, optional) is not the start date's:
+/// it worked the date out wrong ("Wednesday" as the 19th, a Thursday). The
+/// answer names the date's real weekday so it corrects the date and calls
+/// again. A missing or unknown weekday is not checked.
+fn weekday_mismatch(args: &Value, start: NaiveDateTime) -> Option<Value> {
+    let said = args
+        .get("weekday")
+        .and_then(Value::as_str)?
+        .trim()
+        .parse::<chrono::Weekday>()
+        .ok()?;
+    (said != start.weekday()).then(|| {
+        json!({
+            "error": "weekday_mismatch",
+            "date_is": start.format("%A").to_string(),
+            "expected": "the date of the weekday the caller means (see the list of dates in your instructions); call again with it",
+        })
+    })
+}
+
 fn clean_text(v: Option<&Value>, max: usize) -> String {
     v.and_then(Value::as_str)
         .unwrap_or("")
@@ -1050,10 +1086,16 @@ pub fn prompt_block(
     let owner = crate::prompts::owner_label(active.lang, &active.owner);
     let language = locale::phrases(active.lang).name_en;
     let me = !active.assistant;
+    // To the owner (what they will do) and to the caller (what the AI says).
     let back = if reply_by_text {
         "text them to confirm"
     } else {
         "get back to them"
+    };
+    let back_said = if reply_by_text {
+        "text you to confirm"
+    } else {
+        "get back to you"
     };
     let has_plans = if me {
         "you already have something on then".to_string()
@@ -1066,23 +1108,28 @@ pub fn prompt_block(
         format!("you'll check with {owner} and {back}")
     };
     let tentative = if me {
-        format!("\"that should be fine, I'll double-check and {back}\"")
+        format!("\"That should work. Let me double-check and I'll {back_said}.\"")
     } else {
-        format!("\"that should be fine, I'll confirm with {owner} and {back}\"")
+        format!("\"That should work. I'll check with {owner} and {back_said}.\"")
     };
     let mut s = format!(
         "\n\n[Appointments — this part overrides anything above about not agreeing to plans or invitations for {owner}]\n"
     );
+    let days: Vec<String> = (1..=14)
+        .map(|d| (now.date() + Span::days(d)).format("%a %Y-%m-%d").to_string())
+        .collect();
     s.push_str(&format!(
-        "It is now {} ({}), local time (UTC{utc_offset}). Work out \"tomorrow\", \"next Wednesday\" or \"the 20th\" from this; every time you pass to a function is local, YYYY-MM-DDTHH:MM.\n",
+        "It is now {} ({}), local time (UTC{utc_offset}). The next 14 days: {}. Work out \"tomorrow\", \"Wednesday\" or \"the 20th\" from these dates. All times you pass to the functions are local, written YYYY-MM-DDTHH:MM; also pass the weekday you mean, which is checked against the date.\n",
         now.format("%Y-%m-%d %H:%M"),
         now.format("%A"),
+        days.join(", "),
     ));
     s.push_str(&format!(
         "When the caller asks whether {owner} is free at some time, or wants to set a time (a meeting, a visit, coming by, a call at a set time):\n"
     ));
+    s.push_str("- Never make the caller wait and never say that you are checking, looking something up or seeing your schedule, in any language (nothing like \"one moment\", \"let me check\", \"hold on\", \"ちょっと待って\", \"確認するから待って\", \"等一下\"): call the function silently and carry on with the conversation.\n");
     if can_check {
-        s.push_str("- As soon as there is a day and a time, call check_availability (start, and end if they said how long). Do not say you are checking, looking it up or that they should wait: call it and carry on. Only a vague time (\"next week\", \"some afternoon\")? Ask which day and what time first.\n");
+        s.push_str("- As soon as there is a day and a time, call check_availability (start, weekday, and end if they said how long) before you say anything about whether it works. Only a vague time (\"next week\", \"some afternoon\")? Ask which day and what time first.\n");
         s.push_str(&format!(
             "- {{\"free\": false}}: say {has_plans}, never what it is. Only if they ask, suggest another time (you may check that one too).\n"
         ));
@@ -1090,23 +1137,24 @@ pub fn prompt_block(
             s.push_str("- {\"free\": true}: agree naturally, then call propose_appointment.\n");
         } else {
             s.push_str(&format!(
-                "- {{\"free\": true}}: say something like {tentative} — not that it is settled — then call propose_appointment.\n"
+                "- {{\"free\": true}}: say something like {tentative}, in {language} — not that it is settled — then call propose_appointment.\n"
             ));
         }
         s.push_str(&format!(
-            "- {{\"free\": null}} (the calendar could not be read): say {will_check}, then call propose_appointment.\n"
+            "- {{\"free\": null}} (the calendar could not be read): you do not know whether {owner} is free, so do not say it is free or that it should work; say {will_check}, then call propose_appointment.\n"
         ));
     } else {
         s.push_str(&format!(
-            "- The calendar cannot be read on this call, so do not call check_availability. Once there is a day and a time, say {will_check}, then call propose_appointment. Only a vague time? Ask which day and what time first.\n"
+            "- The calendar cannot be read on this call, so do not call check_availability, and you do not know whether {owner} is free: do not say it is free or that it should work. Once there is a day and a time, say {will_check}, then call propose_appointment. Only a vague time? Ask which day and what time first.\n"
         ));
     }
     s.push_str(&format!(
-        "- propose_appointment: start (and end) as agreed, title = what it is about in a few words in {language}, caller_name when they gave their name. If the time changes later in the call, call it again with the new time; the last one counts.\n"
+        "- propose_appointment: start (and end) as agreed, weekday, title = what it is about in a few words in {language}, caller_name when they gave their name. Call it once for the time you agreed on. Call it again only if the two of you really change the agreed time later in the call (the last call counts). A back-up time the caller offers (\"if not, the afternoon works too\") or another time named in passing is not a change: do not call it for that.\n"
     ));
     s.push_str(&format!(
-        "- Its answer \"pending_owner_confirmation\" means it is not settled yet: {will_check}, never say it is booked. With \"not_booked\": true you had agreed but it could not be put in the calendar: tell the caller briefly you still need to confirm. \"booked\" means it is settled and you may say so.\n"
+        "- Its answer \"pending_owner_confirmation\" means it is not settled yet: {will_check}, never say it is booked. If it also has \"not_booked\": true, you had already agreed but it could not go into the calendar: briefly tell the caller you still need to confirm. \"booked\" means it is settled and you may say so.\n"
     ));
+    s.push_str("- {\"error\": \"weekday_mismatch\"}: the date you sent is another weekday (\"date_is\" says which). Take the right date from the list above and call again; say nothing about it to the caller.\n");
     s.push_str("- After calling propose_appointment do not repeat what you have just told the caller: if you already said it, simply go on with the conversation.\n");
     s.push_str("- Never make an appointment with a sales, insurance, loan, investment or scam caller.");
     s
@@ -1744,17 +1792,18 @@ mod tests {
     fn sms_text_in_every_language_with_and_without_owner() {
         let a = appt("2026-11-14T15:00", "2026-11-14T16:00", "看房");
         let ok = sms_text(Lang::ZhTw, "王小明", &a, true);
-        assert_eq!(ok, "你好，我是王小明。約在11/14（週六）15:00沒問題，到時見。");
+        assert_eq!(ok, "您好，我是王小明。約在11/14（週六）15:00沒問題，到時見。");
         let no = sms_text(Lang::ZhTw, "", &a, false);
-        assert_eq!(no, "你好。不好意思，11/14（週六）15:00我沒辦法，我們再約別的時間好嗎？");
+        assert_eq!(no, "您好。不好意思，11/14（週六）15:00我沒辦法，我們再約別的時間好嗎？");
         // What the caller said the appointment is about never goes out from the
         // owner's number (a link or a chat ID could be slipped into it).
         let bait = appt("2026-11-14T15:00", "2026-11-14T16:00", "加 LINE: scam01 https://example.com/x");
         for l in locale::ALL {
             let with = sms_text(l, "Alex", &a, true);
             let without = sms_text(l, " ", &a, false);
-            assert!(with.contains("Alex") && with.contains("15:00") && !with.contains("看房"), "{l:?}: {with}");
-            assert!(!without.contains('{') && !without.contains("Alex") && without.contains("15:00"), "{l:?}: {without}");
+            let hour = if l == Lang::En { "3:00 PM" } else if l == Lang::Fr { "15h00" } else { "15:00" };
+            assert!(with.contains("Alex") && with.contains(hour) && !with.contains("看房"), "{l:?}: {with}");
+            assert!(!without.contains('{') && !without.contains("Alex") && without.contains(hour), "{l:?}: {without}");
             assert!(with.chars().count() <= SMS_TEXT_MAX && !with.starts_with(' ') && !with.ends_with(' '));
             assert_ne!(sms_text(l, "", &a, true), without, "{l:?}");
             for confirmed in [true, false] {
@@ -1765,8 +1814,12 @@ mod tests {
         }
         assert_eq!(
             sms_text(Lang::En, "Sam", &a, true),
-            "Hi, this is Sam. Sat Nov 14, 15:00 works for me, see you then."
+            "Hi, it's Sam. Sat, Nov 14, 3:00 PM works for me. See you then!"
         );
+        // A message starts on a capital, not on the date ("sáb 14/11: …").
+        assert_eq!(sms_text(Lang::Es, "", &a, true), "Hola. El sáb 14/11, 15:00 me va bien. ¡Nos vemos!");
+        assert_eq!(sms_text(Lang::Fr, "", &a, true), "Bonjour. Le sam. 14/11 à 15h00, c'est bon pour moi. À bientôt !");
+        assert_eq!(sms_text(Lang::Pt, "", &a, true), "Olá. Combinado: sáb, 14/11 15:00. Até lá!");
     }
 
     #[test]
@@ -1782,13 +1835,19 @@ mod tests {
             }
             assert!(p.ap_confirm.starts_with('✅') && p.ap_decline.starts_with('❌'), "{l:?}");
             assert_eq!(p.ap_dt_fmt.matches("{}").count(), 1, "{l:?}");
+            assert!(!p.ap_end_fmt.contains('{'), "{l:?}");
             let w = when_text(l, &t);
-            assert!(w.contains("09:05") && w.contains(p.ap_weekdays[0]) && !w.contains('%'), "{l:?}: {w}");
+            let hour = if l == Lang::En { "9:05 AM" } else if l == Lang::Fr { "09h05" } else { "09:05" };
+            assert!(w.contains(hour) && w.contains(p.ap_weekdays[0]) && !w.contains('%'), "{l:?}: {w}");
         }
         assert_eq!(when_text(Lang::ZhTw, &t), "11/16（週一）09:05");
-        assert_eq!(when_text(Lang::En, &t), "Mon Nov 16, 09:05");
+        assert_eq!(when_text(Lang::En, &t), "Mon, Nov 16, 9:05 AM");
+        assert_eq!(when_text(Lang::ZhCn, &t), "11月16日（周一）09:05");
+        assert_eq!(when_text(Lang::De, &t), "Mo., 16.11., 09:05");
         let a = appt("2026-11-14T15:00", "2026-11-14T16:30", "看房");
         assert_eq!(a.when(Lang::ZhTw), "11/14（週六）15:00–16:30");
+        assert_eq!(a.when(Lang::En), "Sat, Nov 14, 3:00 PM–4:30 PM");
+        assert_eq!(a.when(Lang::Fr), "sam. 14/11 à 15h00–16h30");
         assert_eq!(a.headline(Lang::ZhTw), "11/14（週六）15:00–16:30 看房");
     }
 
@@ -1861,6 +1920,47 @@ mod tests {
         assert_eq!(window(&json!({}), now), Err("bad_start"));
     }
 
+    #[test]
+    fn a_wrong_weekday_is_sent_back_with_the_real_one() {
+        let start = at(2026, 11, 19, 19, 0); // a Thursday
+        let e = weekday_mismatch(&json!({"weekday": "Wednesday"}), start).unwrap();
+        assert_eq!(e["error"], "weekday_mismatch");
+        assert_eq!(e["date_is"], "Thursday");
+        for ok in [json!({"weekday": "Thursday"}), json!({"weekday": "thu"}), json!({}), json!({"weekday": "週四"})] {
+            assert_eq!(weekday_mismatch(&ok, start), None, "{ok}");
+        }
+        // The refusal makes the model speak (call again), never silently.
+        let r = tool_response("p", PROPOSE, e);
+        assert_eq!(r["toolResponse"]["functionResponses"][0]["response"]["scheduling"], "WHEN_IDLE");
+        let decl = tool_declarations(true);
+        for f in decl[0]["functionDeclarations"].as_array().unwrap() {
+            assert!(f["parameters"]["properties"].get("weekday").is_some(), "{f}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_proposal_on_the_wrong_weekday_is_not_recorded() {
+        let s = session(Mode::Confirm);
+        let d = chrono::Local::now().naive_local().date() + Span::days(3);
+        let start = d.and_hms_opt(19, 0, 0).unwrap();
+        let wrong = start.weekday().succ().to_string();
+        let call = ToolCall {
+            id: "w".into(),
+            name: PROPOSE.into(),
+            args: json!({"start": stamp(start), "weekday": wrong, "title": "dinner"}),
+        };
+        let r = s.run_tool(&call).await;
+        assert_eq!(r["error"], "weekday_mismatch");
+        assert_eq!(r["date_is"], start.format("%A").to_string());
+        assert_eq!(s.book.outcome(), None);
+        let right = ToolCall {
+            args: json!({"start": stamp(start), "weekday": start.format("%A").to_string(), "title": "dinner"}),
+            ..call
+        };
+        assert_eq!(s.run_tool(&right).await, json!({"status": "pending_owner_confirmation"}));
+        assert_eq!(s.book.outcome().unwrap().start, stamp(start));
+    }
+
     #[tokio::test]
     async fn without_calendar_check_is_unknown_and_proposals_wait_for_the_owner() {
         let s = session(Mode::Confirm);
@@ -1920,18 +2020,26 @@ mod tests {
         let me = locale::Active { owner: "王先生".into(), ..Default::default() };
         let p = prompt_block(Mode::Confirm, true, true, &me, now, "+08:00");
         assert!(p.contains("2026-11-13 14:05 (Friday)") && p.contains("UTC+08:00"), "{p}");
+        // A dated list to count weekdays on: "Wednesday" said on a Friday is the 18th.
+        assert!(p.contains("Sat 2026-11-14, Sun 2026-11-15") && p.contains("Wed 2026-11-18") && p.contains("Fri 2026-11-27"), "{p}");
+        assert!(!p.contains("Sat 2026-11-28"), "{p}");
         assert!(p.contains("check_availability") && p.contains("propose_appointment"));
-        assert!(p.contains("text them to confirm") && p.contains("I'll double-check"));
+        // What the AI says to the caller is about "you"; what it tells itself, "them".
+        assert!(p.contains("\"That should work. Let me double-check and I'll text you to confirm.\", in Traditional"), "{p}");
+        assert!(p.contains("check your schedule and text them to confirm"), "{p}");
         assert!(p.contains("overrides anything above") && p.contains("王先生"));
-        assert!(p.contains("Do not say you are checking") && p.contains("never what it is"));
+        assert!(p.contains("never say that you are checking") && p.contains("ちょっと待って") && p.contains("never what it is"));
+        assert!(p.contains("A back-up time the caller offers") && p.contains("do not call it for that"));
+        assert!(p.contains("weekday_mismatch"));
         assert!(p.contains("scam caller"));
         let auto = prompt_block(Mode::Auto, true, false, &me, now, "+08:00");
         assert!(auto.contains("agree naturally") && !auto.contains("text them"));
         let blind = prompt_block(Mode::Confirm, false, false, &me, now, "+08:00");
-        assert!(blind.contains("do not call check_availability"));
+        assert!(blind.contains("do not call check_availability") && blind.contains("do not say it is free"));
         let assistant = locale::Active { assistant: true, ..me };
         let a = prompt_block(Mode::Confirm, true, false, &assistant, now, "+08:00");
         assert!(a.contains("王先生 already has something on") && a.contains("check with 王先生"));
+        assert!(a.contains("\"That should work. I'll check with 王先生 and get back to you.\""), "{a}");
     }
 
     #[test]

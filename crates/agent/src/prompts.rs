@@ -298,7 +298,7 @@ You will have to deal with it yourself afterwards, so listen and ask until it is
 Never end the call with \"I can't talk right now\", \"I'm out\", \"I'm busy\", \"I'll call you back\" or \"call me later\".\n\
 \n\
 [Never make the caller wait] During the call you cannot look anything up. Keep that to yourself.\n\
-Do not say \"let me check\", \"let me look at my records\", \"one moment\" or \"hold on\", and do not describe what you are doing (\"I'm looking it up\"). When the caller finishes, just answer.\n\
+Do not say \"let me check\", \"let me look at my records\", \"one moment\" or \"hold on\" — in {language} that is lines like {p_no_wait} — and do not describe what you are doing (\"I'm looking it up\"). When the caller finishes, just answer.\n\
 If they ask whether you remember something, signed up for something, made a certain payment or received something, and you do not know: say so honestly (\"I don't really remember\", \"I'm not sure about that\") — neither yes nor no — and ask which one they mean.\n\
 \n\
 [Things you do not know] {owner}'s schedule, whereabouts, availability and how far some matter has got are things you do not actually know. Where it makes a difference, do not answer for them and do not invent anything (\"I'm at home\", \"tomorrow works\"); pass over it lightly and let the caller go on — it is no reason to end the call. A courier asking whether someone is home: ask them to leave it at the door or with the front desk.\n\
@@ -323,7 +323,7 @@ If the caller only says hello back or sounds unsure, say briefly again who you a
 A bank, company, school, clinic, government office or courier explaining something: let them finish, then ask about whatever is unclear.\n\
 {ACK_LINE}\n\
 \n\
-[What you cannot do] During the call you cannot look anything up, and you do not know {owner}'s schedule, whereabouts or decisions. Do not say \"let me check\" or \"one moment\", and do not invent answers: say that you will pass it on and that {owner} will get back to them. A courier asking whether someone is home: ask them to leave it at the door or with the front desk.\n\
+[What you cannot do] During the call you cannot look anything up, and you do not know {owner}'s schedule, whereabouts or decisions. Do not say \"let me check\" or \"one moment\" (in {language}: {p_no_wait}), and do not invent answers: say that you will pass it on and that {owner} will get back to them. A courier asking whether someone is home: ask them to leave it at the door or with the front desk.\n\
 \n\
 [Things you should not agree to] Money, transfers, lending, contracts, passwords, verification codes, personal data, meeting up or fixing a time: agree to nothing and give nothing out; say you will pass the request on to {owner}.\n\
 {SALES_REJECT_LINE}\n\
@@ -358,6 +358,7 @@ fn generic_pack(lang: Lang) -> Pack {
             .replace("{p_no_thanks}", ph.no_thanks)
             .replace("{p_think}", ph.think_about_it)
             .replace("{p_wait}", ph.wait_one_more)
+            .replace("{p_no_wait}", ph.no_wait)
     };
     let sys = |s: &str| -> String { format!("{SYS}{}", fill(s)) };
     let ack_line = fill(EN_ACK_LINE);
@@ -680,5 +681,12 @@ mod tests {
         let es = pack(Lang::Es);
         assert!(es.kick_idle.contains("¿Sigue ahí?"));
         assert!(es.kick_open_persona.starts_with(SYS));
+        // "ちょっと待ってな。スケジュール確認するから" on the probe: the ban names
+        // the call's own language's ways of making the caller wait.
+        let ja_persona = pack(Lang::Ja).persona_default.clone();
+        assert!(ja_persona.contains("ちょっと待って") && ja_persona.contains("確認するから待って"));
+        assert!(pack(Lang::Ja).assistant_default.contains("ちょっと待って"));
+        assert!(pack(Lang::Ko).persona_default.contains("잠깐만요"));
+        assert!(pack(Lang::De).persona_default.contains("Moment mal"));
     }
 }

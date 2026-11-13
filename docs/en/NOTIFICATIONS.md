@@ -46,8 +46,8 @@ a call where the caller set a time with the AI gets one line under the
 summary instead of the calendar lines:
 
 ```text
-📅 Appointment to confirm: Sat Nov 14, 15:00–16:00 House viewing
-📅 In your calendar: Sat Nov 14, 15:00–16:00 House viewing
+📅 Appointment to confirm: Sat, Nov 14, 3:00 PM–4:00 PM House viewing
+📅 Added to your calendar: Sat, Nov 14, 3:00 PM–4:00 PM House viewing
 ```
 
 The first is *Ask me first* (or *Book it if I'm free* when the calendar could
@@ -58,11 +58,11 @@ you also comes as a Telegram card with two buttons:
 📅 Appointment to confirm
 
 Number: 0912345678
-Time: Sat Nov 14, 15:00–16:00
+Time: Sat, Nov 14, 3:00 PM–4:00 PM
 What: House viewing
 Name: Mr Chen
 Phone: Pixel 8
-Text message: sent to the caller once you confirm or decline
+Text to caller: sent when you tap Confirm or Decline
 [✅ Confirm] [❌ Decline]
 ```
 
@@ -70,11 +70,11 @@ Text message: sent to the caller once you confirm or decline
 alone. With *Text the caller* on, the phone that took the call then texts the
 caller in your name — only the time, never what the appointment is about. Only
 the first press counts; a second one (also at the same moment) gets "This
-appointment was already handled". The bot answers with what happened: "Added to Google
+appointment has already been handled". The bot answers with what happened: "Added to Google
 Calendar" (or why not), "Text sent to 0912345678", or "Text not sent: the phone
 is not connected" / "the phone app is too old to send texts" / "error code
-no_service". For a landline, a hidden or a foreign number the card says to call
-back yourself. After *Book it if I'm free* the text goes out right after the
+no_service". For landlines, hidden numbers and foreign numbers, the card says to
+call them back yourself. After *Book it if I'm free* the text goes out right after the
 call and the bot reports it the same way.
 
 Cards need *Send notifications* on and the Telegram channel (bot token and chat
@@ -82,11 +82,11 @@ ID); other channels only get the line under the summary. Without Telegram,
 decide through the [API](API.md#appointments).
 
 When a call that already put an event in your calendar turns out to be a sales
-or scam call, the event is deleted after the call. If Google refuses, the
-summary says so:
+or scam call (during the call, or by its summary afterwards), the event is
+deleted after the call and no card comes. If Google refuses, the summary says so:
 
 ```text
-📅 "Sat Nov 14, 15:00–16:00 House viewing" from the call no longer stands but could not be removed from your calendar; delete it yourself
+📅 "Sat, Nov 14, 3:00 PM–4:00 PM House viewing" from the call was canceled but couldn't be removed from your calendar. Please delete it yourself.
 ```
 
 ## Services

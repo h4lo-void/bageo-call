@@ -1232,6 +1232,8 @@ const STALL_KEYWORDS: &[(&str, u32)] = &[
     ("淨水器", 2), ("理專", 2), ("優惠", 1), ("專案", 1), ("方案", 1), ("免費", 1),
     ("折扣", 1), ("升級", 1), ("續約", 1), ("門號", 1), ("電信", 1), ("課程", 1),
     ("問卷", 1), ("民調", 1),
+    // software / service pitches
+    ("免費試用", 2), ("試用", 1), ("軟體", 1),
     // who is calling / telemarketer openers
     ("銀行", 1), ("客服", 1), ("帳戶", 1), ("會員", 1), ("專員", 1), ("業務", 1),
     ("老師", 1), ("群組", 1), ("line", 1), ("介紹", 1), ("推薦", 1), ("耽誤", 1),
@@ -1295,6 +1297,23 @@ const OWN_MATTER_MARKS: &[&str] = &[
 fn looks_like_own_matter(caller_text: &str) -> bool {
     let t = crate::zh_tw::norm(caller_text);
     OWN_MATTER_MARKS.iter().any(|m| t.contains(m)) || crate::locale::own_matter(caller_text)
+}
+
+/// After the call: the caller's words (the merged dialogue's 對方 lines) score
+/// as a sales / scam call by the same rule as during the call. Catches a pitch
+/// the live check missed or judged too late to matter.
+pub(crate) fn dialogue_is_sales(dialogue: &str) -> bool {
+    let caller = dialogue
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("對方："))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if caller.trim().is_empty() || looks_like_own_matter(&caller) {
+        return false;
+    }
+    let mut hits = Vec::new();
+    let score = stall_score_add(&caller, &mut hits);
+    stall_engages(score, &hits)
 }
 
 /// The model's words so far end on a farewell (「…好，掰掰。」「再見喔」) — the
@@ -1410,9 +1429,16 @@ fn strip_stt_markers(s: &str) -> String {
 
 /// Append an STT fragment: Chinese joins directly, Latin words keep a space.
 fn join_fragment(acc: &mut String, next: &str) {
-    if acc.chars().last().is_some_and(|c| c.is_ascii_alphanumeric())
-        && next.chars().next().is_some_and(|c| c.is_ascii_alphanumeric())
-    {
+    // A fragment the STT began with a space starts a new word (Korean, accented
+    // Latin); Chinese and Japanese join directly; two ASCII words always get one.
+    let spaced = next.starts_with(char::is_whitespace);
+    let next = next.trim_start();
+    let (Some(a), Some(b)) = (acc.chars().last(), next.chars().next()) else {
+        acc.push_str(next);
+        return;
+    };
+    let word = |c: char| !c.is_whitespace() && !is_cjk(c);
+    if (spaced && word(a) && word(b)) || (a.is_ascii_alphanumeric() && b.is_ascii_alphanumeric()) {
         acc.push(' ');
     }
     acc.push_str(next);
@@ -1430,16 +1456,36 @@ pub(crate) fn merge_dialogue_fragments(transcript: &str) -> String {
         if label != "對方" && label != "接聽" {
             continue;
         }
-        let text = text.trim();
+        let text = text.trim_end();
         match runs.last_mut() {
             Some((l, acc)) if *l == label => join_fragment(acc, text),
-            _ => runs.push((label, text.to_string())),
+            _ => runs.push((label, text.trim_start().to_string())),
         }
     }
     runs.into_iter()
         .map(|(l, t)| (l, strip_stt_markers(&t)))
         .filter(|(_, t)| !t.is_empty())
         .map(|(l, t)| format!("{l}：{t}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The merged dialogue with the speaker labels of the agent's language
+/// ("Caller: …", "AI: …") for the web record. Everything else reads the
+/// labels used inside the agent (對方／接聽).
+pub(crate) fn localize_dialogue(dialogue: &str, lang: crate::locale::Lang) -> String {
+    let p = crate::locale::phrases(lang);
+    dialogue
+        .lines()
+        .map(|l| {
+            if let Some(t) = l.strip_prefix("對方：") {
+                format!("{}{}{t}", p.d_caller, p.sep)
+            } else if let Some(t) = l.strip_prefix("接聽：") {
+                format!("{}{}{t}", p.d_ai, p.sep)
+            } else {
+                l.to_string()
+            }
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -1688,6 +1734,92 @@ fn first_delivery_paused(activity_open: bool, caller_spoke_recently: bool, calls
     activity_open || caller_spoke_recently || calls_open > 0
 }
 
+/// How long after the answer a model turn nobody asked for still counts as the
+/// repeat (it came ~4 s later on the probe; the quiet-line nudge is 15 s away).
+const REPEAT_GUARD_WINDOW: Duration = Duration::from_secs(12);
+
+/// Where the call stood when the model called propose_appointment after it
+/// had already started speaking its reply.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct CallTurn {
+    /// Model turns completed so far (the calling turn is the next one).
+    turns_done: u64,
+    /// Caller turns ended so far.
+    caller_eous: u64,
+}
+
+/// propose_appointment called after the model had already said its line ("I'll
+/// check and text you"): once that turn ends, Gemini often opens a turn of its
+/// own and says the line again — SILENT or not. That turn — the first one after
+/// the calling turn, asked for by nobody (no caller words since the call, no
+/// kick of ours) — is not played and not written down, and its end is no turn
+/// for the watchdogs. Calls made before the model spoke never arm it.
+#[derive(Debug, Default)]
+struct RepeatGuard {
+    armed: Option<(CallTurn, tokio::time::Instant)>,
+    /// A turn is being dropped (until its turnComplete).
+    dropping: bool,
+}
+
+impl RepeatGuard {
+    /// The silent answer to a call made at `call` went up.
+    fn arm(&mut self, call: CallTurn, turns_done: u64, turn_started: bool, now: tokio::time::Instant) {
+        // A later turn is already playing: what comes next was asked for.
+        if turns_done > call.turns_done && turn_started {
+            return;
+        }
+        self.armed = Some((call, now));
+    }
+
+    /// A kick of ours, a rotation, a sales verdict, caller words: the next turn is owed.
+    fn clear(&mut self) {
+        self.armed = None;
+    }
+
+    /// Model output (audio or its transcript) arrives: drop it?
+    fn drops(
+        &mut self,
+        turns_done: u64,
+        turn_started: bool,
+        caller_eous: u64,
+        caller_talking: bool,
+        now: tokio::time::Instant,
+    ) -> bool {
+        if self.dropping {
+            return true;
+        }
+        let Some((call, at)) = self.armed else {
+            return false;
+        };
+        if caller_talking || caller_eous != call.caller_eous || now.duration_since(at) >= REPEAT_GUARD_WINDOW {
+            self.armed = None;
+            return false;
+        }
+        // Still the turn that made the call, or a turn already under way.
+        if turns_done <= call.turns_done || turn_started {
+            return false;
+        }
+        self.armed = None;
+        self.dropping = true;
+        true
+    }
+
+    fn is_dropping(&self) -> bool {
+        self.dropping
+    }
+
+    /// turnComplete: true when it ends the dropped turn.
+    fn turn_complete(&mut self) -> bool {
+        std::mem::take(&mut self.dropping)
+    }
+
+    /// The caller cut in: whatever comes next answers them.
+    fn interrupted(&mut self) {
+        self.armed = None;
+        self.dropping = false;
+    }
+}
+
 /// A function call's answer, back from its task.
 struct ToolDone {
     /// Live socket generation it was asked on (a rotation drops older ones).
@@ -1700,6 +1832,9 @@ struct ToolDone {
     /// The model waits for it (the watchdogs hold meanwhile); a non-blocking
     /// one is answered silently and changes nothing in the turn bookkeeping.
     blocking: bool,
+    /// propose_appointment called after the model had started speaking its
+    /// reply: where the call stood ([`RepeatGuard`]).
+    after_speech: Option<CallTurn>,
 }
 
 async fn send_text_before_deadline<S>(
@@ -2277,11 +2412,12 @@ fn tick_goodbye_play_clock(
     now.saturating_duration_since(t0) >= hangup_delay
 }
 
-/// CJK/fullwidth character (Han, kana, Hangul, CJK punctuation, fullwidth forms).
+/// CJK/fullwidth character written without spaces between words (Han, kana,
+/// CJK punctuation, fullwidth forms). Not Hangul: Korean spaces its words.
 fn is_cjk(c: char) -> bool {
     matches!(c as u32,
         0x3000..=0x303F | 0x3040..=0x30FF | 0x3400..=0x4DBF | 0x4E00..=0x9FFF
-        | 0xAC00..=0xD7AF | 0xF900..=0xFAFF | 0xFF00..=0xFFEF)
+        | 0xF900..=0xFAFF | 0xFF00..=0xFFEF)
 }
 
 /// With `languageCodes` zh-TW the STT sometimes spaces every character
@@ -3094,6 +3230,12 @@ pub async fn run_session(
     let mut live_gen: u32 = 0;
     let mut tool_answer_at: Option<tokio::time::Instant> = None;
     let mut tool_answer_chunks: u64 = 0;
+    // Model turns completed, and the audio count when the current one began
+    // (what the repeat guard and propose_appointment's caller compare against).
+    let mut turns_done: u64 = 0;
+    let mut chunks_at_turn_start: u64 = 0;
+    let mut repeat_guard = RepeatGuard::default();
+    let mut repeat_drops: u32 = 0;
 
     let signal_force_hangup = |hangup_signaled: &mut bool| {
         if *hangup_signaled {
@@ -3196,6 +3338,7 @@ pub async fn run_session(
                         turn_out_text.clear();
                         // Calls asked on the old socket cannot be answered on this one.
                         live_gen += 1;
+                        repeat_guard.interrupted();
                         if !tool_open.is_empty() || !tool_bg.is_empty() {
                             info!(
                                 "Gemini Live rotated with {} function call(s) open serial={serial} — their answers are dropped",
@@ -3487,6 +3630,7 @@ pub async fn run_session(
                 || (talk >= Duration::from_secs(wrap_secs) && gap)
             {
                 wrap_up_sent = true;
+                repeat_guard.clear();
                 let nudge = if stall_on {
                     persona_stall_wrap_up_client_content()
                 } else {
@@ -3768,9 +3912,14 @@ pub async fn run_session(
                                             continue;
                                         };
                                         let blocking = crate::appointments::is_blocking(&call.name, non_blocking);
+                                        // Called after the model began its reply (see RepeatGuard).
+                                        let after_speech = (call.name == crate::appointments::PROPOSE
+                                            && audio_chunks_out > chunks_at_turn_start)
+                                            .then_some(CallTurn { turns_done, caller_eous: local_eou_sent });
                                         info!(
-                                            "Gemini Live toolCall serial={serial} name={} id={key} blocking={blocking} stall={stall_on} talk_s={}",
+                                            "Gemini Live toolCall serial={serial} name={} id={key} blocking={blocking} after_speech={} stall={stall_on} talk_s={}",
                                             call.name,
+                                            after_speech.is_some(),
                                             session_start.elapsed().as_secs()
                                         );
                                         if blocking {
@@ -3792,6 +3941,7 @@ pub async fn run_session(
                                                 name: call.name,
                                                 response,
                                                 blocking,
+                                                after_speech,
                                             });
                                         }));
                                     }
@@ -3803,6 +3953,24 @@ pub async fn run_session(
                                         );
                                     }
                                 }
+                                // A turn the model opened on its own to say again what it said
+                                // before propose_appointment: not played, not written down.
+                                let model_output = server_msg_has_audio(&v) || output_transcription_text(&v).is_some();
+                                let was_dropping = repeat_guard.is_dropping();
+                                let repeat_drop = model_output
+                                    && repeat_guard.drops(
+                                        turns_done,
+                                        audio_chunks_out > chunks_at_turn_start,
+                                        local_eou_sent,
+                                        activity_open,
+                                        tokio::time::Instant::now(),
+                                    );
+                                if repeat_drop && !was_dropping {
+                                    repeat_drops += 1;
+                                    info!(
+                                        "Gemini Live unasked turn after propose_appointment serial={serial} n={repeat_drops} — repeat dropped (not played, not transcribed)"
+                                    );
+                                }
                                 if !out_leak_turn
                                     && output_transcription_text(&v).is_some_and(looks_like_leaked_internals)
                                 {
@@ -3812,7 +3980,7 @@ pub async fn run_session(
                                     );
                                 }
                                 let v_clean;
-                                let v_tx = if out_leak_turn && output_transcription_text(&v).is_some() {
+                                let v_tx = if (out_leak_turn || repeat_drop) && output_transcription_text(&v).is_some() {
                                     v_clean = without_output_transcription(&v);
                                     &v_clean
                                 } else {
@@ -3943,6 +4111,8 @@ pub async fn run_session(
                                 }
                                 // Caller farewell also arms hangup (after model turn / idle).
                                 for s in &in_tx {
+                                    // The caller said something: the model's next turn answers them.
+                                    repeat_guard.clear();
                                     push_tx_window(&mut in_tx_window, s, 800);
                                     push_tx_window(&mut caller_text_all, s, 400);
                                     if !own_matter && looks_like_own_matter(&in_tx_window) {
@@ -3958,6 +4128,7 @@ pub async fn run_session(
                                         if stall_engages(stall_score, &stall_hits) {
                                             stall_on = true;
                                             c.engaged.store(true, Ordering::Relaxed);
+                                            repeat_guard.clear();
                                             // No appointments with a sales / scam caller.
                                             if let Some(a) = &appt {
                                                 a.book.discard();
@@ -4046,6 +4217,7 @@ pub async fn run_session(
                                     model_generating = false;
                                     play_head.set_generating(false);
                                     mute_model_audio = false;
+                                    repeat_guard.interrupted();
                                     // The caller is talking: the model answers them instead.
                                     stall_keep_after_turn = false;
                                     // Gemini heard the caller start over a reply we had not
@@ -4066,10 +4238,10 @@ pub async fn run_session(
                                 let has_audio = server_msg_has_audio(&v);
                                 if has_audio {
                                     model_generating = true;
-                                    play_head.set_generating(!mute_model_audio);
+                                    play_head.set_generating(!mute_model_audio && !repeat_drop);
                                 }
                                 // After a barge-in, the rest of the cut reply is not played.
-                                let n = if mute_model_audio && has_audio {
+                                let n = if (mute_model_audio || repeat_drop) && has_audio {
                                     0
                                 } else {
                                     handle_server_msg(&v, phone_sr, &mut on_downlink)
@@ -4135,12 +4307,26 @@ pub async fn run_session(
                                     .pointer("/serverContent/turnComplete")
                                     .and_then(|x| x.as_bool())
                                     == Some(true);
-                                let tool_quiet = tool_turn_quiet(
+                                // A dropped repeat said nothing: no turn for the checks below.
+                                let dropped_turn = repeat_guard.is_dropping();
+                                let tool_quiet = dropped_turn || tool_turn_quiet(
                                     tool_open.len(),
                                     tool_answer_at.map(|t| t.elapsed()),
                                     audio_chunks_out > tool_answer_chunks,
                                 );
-                                if turn_complete && tool_quiet {
+                                if turn_complete {
+                                    turns_done += 1;
+                                    chunks_at_turn_start = audio_chunks_out;
+                                }
+                                if turn_complete && dropped_turn {
+                                    repeat_guard.turn_complete();
+                                    model_turn_pending = false;
+                                    turn_out_text.clear();
+                                    out_leak_turn = false;
+                                    info!(
+                                        "Gemini Live dropped repeat turn complete serial={serial} — turn checks skipped"
+                                    );
+                                } else if turn_complete && tool_quiet {
                                     info!(
                                         "Gemini Live turnComplete with a function call open serial={serial} open={} — reply still owed, turn checks skipped",
                                         tool_open.len()
@@ -4462,6 +4648,18 @@ pub async fn run_session(
                     Err(e) => warn!("Gemini Live toolResponse send failed serial={serial}: {e:#}"),
                 }
                 last_activity_at = now;
+                // Said before the call and answered silently: a turn of its own
+                // right after would be the same line again.
+                if let Some(call) = done
+                    .after_speech
+                    .filter(|_| crate::appointments::answer_is_silent(&done.name, &done.response))
+                {
+                    repeat_guard.arm(call, turns_done, audio_chunks_out > chunks_at_turn_start, now);
+                    info!(
+                        "Gemini Live repeat guard armed serial={serial} id={} turns_done={turns_done}",
+                        done.key
+                    );
+                }
                 if done.blocking {
                     // The model speaks after a blocking answer.
                     model_turn_pending = true;
@@ -4924,11 +5122,15 @@ fn append_transcriptions(v: &Value, transcript_out: &Option<Arc<std::sync::Mutex
         if let Some(t) = v
             .pointer(path)
             .and_then(|x| x.as_str())
-            .map(tidy_cjk_spaces)
-            .filter(|s| !s.is_empty())
+            .map(|raw| (raw.starts_with(char::is_whitespace), tidy_cjk_spaces(raw)))
+            .filter(|(_, s)| !s.is_empty())
         {
+            let (lead, t) = t;
+            // The STT starts a new word with a space; it is kept so the merged
+            // line keeps word spaces (Korean, accented Latin): see join_fragment.
+            let gap = if lead && t.chars().next().is_some_and(|c| !is_cjk(c)) { " " } else { "" };
             pieces.push(format!(
-                "{label}：{}",
+                "{label}：{gap}{}",
                 crate::zh_tw::to_tw(&t)
             ));
         }
@@ -5432,6 +5634,127 @@ mod tests {
             "他反應很快",
         ] {
             assert!(!looks_like_own_matter(t), "{t}");
+        }
+    }
+
+    #[test]
+    fn software_demo_pitches_count_and_are_you_free_does_not() {
+        // The probe's CRM pitch only scored "free" + "offer" (2) before.
+        for t in [
+            "Hi, this is Mia from Brightdesk. We have a special CRM platform for small teams, could I book a quick 15-minute demo on Thursday? It's free, no strings attached, and there's an offer this month.",
+            "Hi, I'm calling from Brightdesk, our platform helps teams with scheduling software, can I show you a demo?",
+            "我們這套軟體現在有免費試用，可以幫您安排一個展示",
+        ] {
+            let mut hits = Vec::new();
+            let s = stall_score_add(t, &mut hits);
+            assert!(stall_engages(s, &hits), "{t} {s} {hits:?}");
+        }
+        // Friends asking whether the owner is free (E1/E3/E8 on the probe).
+        for t in [
+            "Hey, it's Jonas! Are you free tonight? Dinner at eight?",
+            "Hi, it's Sam, are you free on Wednesday evening around 7 for a drink?",
+            "Feel free to call me back whenever you're free.",
+        ] {
+            let mut hits = Vec::new();
+            assert_eq!(stall_score_add(t, &mut hits), 0, "{t} {hits:?}");
+        }
+        // After the call: the whole caller side, the same rule.
+        let pitch = "接聽：Hello?\n對方：Hi, this is Mia from Brightdesk, our platform is CRM software.\n接聽：Oh?\n對方：Could I book a quick 15-minute demo on Thursday? It's free.";
+        assert!(dialogue_is_sales(pitch));
+        assert!(!dialogue_is_sales("接聽：Hello?\n對方：Hey, it's Jonas, are you free tonight?\n接聽：Should be, I'll text you."));
+        // The AI's own words do not count.
+        assert!(!dialogue_is_sales("接聽：我們有免費試用的軟體 demo\n對方：嗯，明天下午三點可以嗎"));
+    }
+
+    #[test]
+    fn a_repeat_after_propose_is_dropped_only_when_nobody_asked_for_it() {
+        let now = tokio::time::Instant::now();
+        // propose_appointment called while turn 4 was playing (3 turns done, 2 caller turns).
+        let call = CallTurn { turns_done: 3, caller_eous: 2 };
+        let mut g = RepeatGuard::default();
+        g.arm(call, 3, true, now);
+        // The rest of the calling turn plays.
+        assert!(!g.drops(3, true, 2, false, now));
+        // Its turnComplete; then the model opens a turn on its own: dropped to its end.
+        assert!(g.drops(4, false, 2, false, now));
+        assert!(g.drops(4, false, 2, false, now) && g.is_dropping());
+        assert!(g.turn_complete());
+        // Only that one turn.
+        assert!(!g.drops(5, false, 2, false, now) && !g.turn_complete());
+        // The caller spoke (a caller turn ended, or they are talking): the reply is theirs.
+        g.arm(call, 4, false, now);
+        assert!(!g.drops(4, false, 3, false, now));
+        assert!(!g.drops(4, false, 2, false, now), "disarmed for good");
+        g.arm(call, 4, false, now);
+        assert!(!g.drops(4, false, 2, true, now));
+        // A kick of ours (idle nudge, wrap-up, rotation, sales verdict) or caller words clear it.
+        g.arm(call, 4, false, now);
+        g.clear();
+        assert!(!g.drops(4, false, 2, false, now));
+        // Long after the answer it is no repeat.
+        g.arm(call, 4, false, now);
+        assert!(!g.drops(4, false, 2, false, now + REPEAT_GUARD_WINDOW));
+        // The answer came late, while a later turn was already playing: nothing armed.
+        g.arm(call, 4, true, now);
+        assert!(!g.drops(5, false, 2, false, now));
+        // The caller cuts into the dropped turn: what follows answers them.
+        g.arm(call, 4, false, now);
+        assert!(g.drops(4, false, 2, false, now));
+        g.interrupted();
+        assert!(!g.is_dropping() && !g.drops(4, false, 2, false, now));
+        // Only a silent propose answer arms it (an error or "not booked" is meant to be said).
+        use crate::appointments::{answer_is_silent, CHECK, PROPOSE};
+        assert!(answer_is_silent(PROPOSE, &json!({"status": "pending_owner_confirmation"})));
+        assert!(answer_is_silent(PROPOSE, &json!({"status": "booked"})));
+        assert!(!answer_is_silent(PROPOSE, &json!({"status": "pending_owner_confirmation", "not_booked": true})));
+        assert!(!answer_is_silent(PROPOSE, &json!({"error": "weekday_mismatch", "date_is": "Thursday"})));
+        assert!(!answer_is_silent(CHECK, &json!({"free": true})));
+    }
+
+    #[test]
+    fn a_dropped_repeat_is_no_turn_for_the_watchdogs_and_leaves_no_transcript() {
+        // The dropped turn: audio not played (0 chunks), transcript stripped.
+        let said = json!({"serverContent": {"outputTranscription": {"text": "我晚點看一下行程再跟你確認。"}}});
+        let t = Some(Arc::new(std::sync::Mutex::new(String::new())));
+        append_transcriptions(&without_output_transcription(&said), &t);
+        assert!(t.as_ref().unwrap().lock().unwrap().is_empty());
+        // Its turnComplete counts as quiet: no transcript-only re-kick, no closing check.
+        let dropped_turn = true;
+        let quiet = dropped_turn || tool_turn_quiet(0, None, false);
+        assert!(!is_transcript_only_turn(true && !quiet, 0, 0, "我晚點看一下行程再跟你確認。"));
+        // Without the guard the same turn would be read as a text-only opening.
+        assert!(is_transcript_only_turn(true, 0, 0, "我晚點看一下行程再跟你確認。"));
+    }
+
+    #[test]
+    fn korean_and_accented_words_keep_their_spaces() {
+        assert_eq!(tidy_cjk_spaces("민준아, 나 지훈인데."), "민준아, 나 지훈인데.");
+        assert_eq!(tidy_cjk_spaces("這 是 國 際 電 話"), "這是國際電話");
+        let t = Some(Arc::new(std::sync::Mutex::new(String::new())));
+        for piece in ["민준아, 나", " 지훈인데.", " 오늘 저녁 8시쯤에", "괜찮아?"] {
+            append_transcriptions(&json!({"serverContent": {"inputTranscription": {"text": piece}}}), &t);
+        }
+        for piece in ["Sí, está", " bien.", " 喂？", "好"] {
+            append_transcriptions(&json!({"serverContent": {"outputTranscription": {"text": piece}}}), &t);
+        }
+        let merged = merge_dialogue_fragments(&t.as_ref().unwrap().lock().unwrap());
+        assert_eq!(merged, "對方：민준아, 나 지훈인데. 오늘 저녁 8시쯤에괜찮아?\n接聽：Sí, está bien.喂？好");
+        // Chinese still joins directly; ASCII words still get their space.
+        assert_eq!(merge_dialogue_fragments("對方：我想\n對方：預約\n接聽：Hallo, ist\n接聽：jemand"), "對方：我想預約\n接聽：Hallo, ist jemand");
+    }
+
+    #[test]
+    fn the_web_record_labels_speakers_in_the_agents_language() {
+        use crate::locale::Lang;
+        let d = "接聽：Hello?\n對方：Hi, it's Jonas.";
+        assert_eq!(localize_dialogue(d, Lang::En), "AI: Hello?\nCaller: Hi, it's Jonas.");
+        assert_eq!(localize_dialogue(d, Lang::ZhTw), d);
+        assert_eq!(localize_dialogue(d, Lang::De), "KI: Hello?\nAnrufer: Hi, it's Jonas.");
+        assert_eq!(localize_dialogue(d, Lang::Fr), "IA : Hello?\nAppelant : Hi, it's Jonas.");
+        assert_eq!(localize_dialogue("接聽：喂？", Lang::ZhCn), "接听：喂？");
+        for l in crate::locale::ALL {
+            let p = crate::locale::phrases(l);
+            assert!(!p.d_caller.is_empty() && !p.d_ai.is_empty() && p.d_caller != p.d_ai, "{l:?}");
         }
     }
 

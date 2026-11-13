@@ -1011,7 +1011,7 @@ I18N["en"] = {
   d_cal_added: "Added to Google Calendar",
   d_appt: "Appointment",
   d_appt_pending: "Waiting for you",
-  d_appt_booked: "Booked on the call",
+  d_appt_booked: "Booked during the call",
   d_appt_confirmed: "Confirmed",
   d_appt_declined: "Declined",
   d_appt_sms_sent: "text sent",
@@ -1282,13 +1282,13 @@ I18N["en"] = {
   f_gcal_cal: "Calendar ID",
   f_gcal_cal_h: "Empty = your main calendar.",
   f_appt_mode: "Appointments",
-  f_appt_mode_h: "When a caller wants to set a time with you, the AI looks at your Google Calendar (only whether you are free, never what is in it). “Ask me first”: the AI says it will confirm, and you decide with ✅ / ❌ on a Telegram card. “Book it if I'm free”: a free time is taken on the call and put in your calendar. Never with sales or scam callers.",
+  f_appt_mode_h: "When a caller wants to set up a time with you, the AI checks your Google Calendar (only whether you're free, never what's on it). “Ask me first”: the AI says it'll confirm, and you decide with ✅ / ❌ on a Telegram card. “Book it if I'm free”: if the time is free, the AI agrees on the call and adds it to your calendar. Never for sales or scam calls.",
   appt_off: "Off",
   appt_confirm: "Ask me first",
   appt_auto: "Book it if I'm free",
-  appt_nocal: "Checking free times and adding to the calendar need the Google Calendar credentials below. Without them the AI cannot see your calendar: it always says it will confirm and get back to the caller, and “Book it if I'm free” works like “Ask me first”.",
+  appt_nocal: "Checking free times and adding to the calendar need the Google Calendar credentials above. Without them the AI cannot see your calendar: it always says it will confirm and get back to the caller, and “Book it if I'm free” works like “Ask me first”.",
   f_appt_sms: "Text the caller",
-  f_appt_sms_h: "Once you confirm or decline (or the AI booked it), the phone that took the call sends the caller a short text in your name. Taiwan mobile numbers only; the phone app must be able to send texts.",
+  f_appt_sms_h: "Once you confirm or decline (or the AI books it), the phone that took the call texts the caller a short message in your name. Taiwan mobile numbers only; the phone app must support sending texts.",
   // ---- settings: region & advanced
   f_cc: "Country calling code",
   f_cc_h: "Digits only, e.g. 1, 44, 886. Lets blocked numbers written with + match the way your phone reports callers.",
@@ -1857,7 +1857,7 @@ I18N["zh-TW"] = {
   appt_off: "關閉",
   appt_confirm: "先問我",
   appt_auto: "有空直接答應",
-  appt_nocal: "查空檔和寫入日曆需要先填好下面的 Google 日曆憑證。沒填時 AI 看不到你的日曆，一律說會確認再回覆，「有空直接答應」也會改成「先問我」。",
+  appt_nocal: "查空檔和寫入日曆需要先填好上面的 Google 日曆憑證。沒填時 AI 看不到你的日曆，一律說會確認再回覆，「有空直接答應」也會改成「先問我」。",
   f_appt_sms: "傳簡訊告訴對方",
   f_appt_sms_h: "你按確定或婉拒後（或 AI 已直接排入），由接這通電話的手機以你的名義傳一則簡訊給對方。只限台灣手機號碼，手機 App 要支援傳簡訊。",
   // ---- settings: region & advanced
@@ -2428,7 +2428,7 @@ I18N["zh-CN"] = {
   appt_off: "关闭",
   appt_confirm: "先问我",
   appt_auto: "有空直接答应",
-  appt_nocal: "查空闲时间和写入日历需要先填好下面的 Google 日历凭据。没填时 AI 看不到你的日历，一律说会确认再回复，“有空直接答应”也会改成“先问我”。",
+  appt_nocal: "查空闲时间和写入日历需要先填好上面的 Google 日历凭据。没填时 AI 看不到你的日历，一律说会确认再回复，“有空直接答应”也会改成“先问我”。",
   f_appt_sms: "发短信告诉对方",
   f_appt_sms_h: "你按确定或婉拒后（或 AI 已直接排入），由接这通电话的手机以你的名义给对方发一条短信。仅限台湾手机号码，手机 App 要支持发短信。",
   // ---- settings: region & advanced
@@ -2999,7 +2999,7 @@ I18N["ja"] = {
   appt_off: "オフ",
   appt_confirm: "先に確認",
   appt_auto: "空いていれば確定",
-  appt_nocal: "空き時間の確認とカレンダー登録には、下の Google カレンダーの認証情報が必要です。未入力のときは AI がカレンダーを見られないため、いつも確認してから連絡すると伝え、「空いていれば確定」も「先に確認」と同じ動きになります。",
+  appt_nocal: "空き時間の確認とカレンダー登録には、上の Google カレンダーの認証情報が必要です。未入力のときは AI がカレンダーを見られないため、いつも確認してから連絡すると伝え、「空いていれば確定」も「先に確認」と同じ動きになります。",
   f_appt_sms: "相手に SMS で伝える",
   f_appt_sms_h: "確定またはお断りの後（または AI がその場で登録した後）、電話を受けたスマホからあなたの名前で相手に短い SMS を送ります。台湾の携帯番号のみ。SMS を送れるアプリが必要です。",
   // ---- settings: region & advanced
@@ -3570,7 +3570,7 @@ I18N["ko"] = {
   appt_off: "끄기",
   appt_confirm: "먼저 물어보기",
   appt_auto: "비어 있으면 바로 확정",
-  appt_nocal: "빈 시간 확인과 캘린더 등록에는 아래 Google 캘린더 인증 정보가 필요합니다. 없으면 AI가 캘린더를 볼 수 없어 항상 확인 후 연락하겠다고 말하며, \"비어 있으면 바로 확정\"도 \"먼저 물어보기\"처럼 동작합니다.",
+  appt_nocal: "빈 시간 확인과 캘린더 등록에는 위 Google 캘린더 인증 정보가 필요합니다. 없으면 AI가 캘린더를 볼 수 없어 항상 확인 후 연락하겠다고 말하며, \"비어 있으면 바로 확정\"도 \"먼저 물어보기\"처럼 동작합니다.",
   f_appt_sms: "상대에게 문자로 알리기",
   f_appt_sms_h: "확정하거나 거절한 뒤(또는 AI가 바로 등록한 뒤) 전화를 받은 휴대폰이 내 이름으로 상대에게 짧은 문자를 보냅니다. 대만 휴대폰 번호만 가능하며 문자를 보낼 수 있는 앱이 필요합니다.",
   // ---- settings: region & advanced
@@ -4141,7 +4141,7 @@ I18N["es"] = {
   appt_off: "Desactivado",
   appt_confirm: "Preguntarme antes",
   appt_auto: "Aceptar si estoy libre",
-  appt_nocal: "Para ver huecos libres y añadir al calendario hacen falta las credenciales de Google Calendar de abajo. Sin ellas la IA no ve tu calendario: siempre dice que lo confirmará, y «Aceptar si estoy libre» funciona como «Preguntarme antes».",
+  appt_nocal: "Para ver huecos libres y añadir al calendario hacen falta las credenciales de Google Calendar de arriba. Sin ellas la IA no ve tu calendario: siempre dice que lo confirmará, y «Aceptar si estoy libre» funciona como «Preguntarme antes».",
   f_appt_sms: "Avisar por SMS",
   f_appt_sms_h: "Cuando confirmas o rechazas (o la IA ya la reservó), el teléfono que atendió la llamada envía en tu nombre un SMS corto a quien llamó. Solo móviles de Taiwán; la app del teléfono debe poder enviar SMS.",
   // ---- settings: region & advanced
@@ -4712,7 +4712,7 @@ I18N["fr"] = {
   appt_off: "Désactivé",
   appt_confirm: "Me demander d'abord",
   appt_auto: "Accepter si je suis libre",
-  appt_nocal: "Vérifier les créneaux et ajouter à l'agenda demande les identifiants Google Agenda ci-dessous. Sans eux, l'IA ne voit pas votre agenda : elle dit toujours qu'elle confirmera, et « Accepter si je suis libre » fonctionne comme « Me demander d'abord ».",
+  appt_nocal: "Vérifier les créneaux et ajouter à l'agenda demande les identifiants Google Agenda ci-dessus. Sans eux, l'IA ne voit pas votre agenda : elle dit toujours qu'elle confirmera, et « Accepter si je suis libre » fonctionne comme « Me demander d'abord ».",
   f_appt_sms: "Prévenir par SMS",
   f_appt_sms_h: "Quand vous confirmez ou refusez (ou que l'IA l'a déjà ajouté), le téléphone qui a pris l'appel envoie en votre nom un court SMS à l'appelant. Numéros mobiles de Taïwan uniquement ; l'application du téléphone doit pouvoir envoyer des SMS.",
   // ---- settings: region & advanced
@@ -5283,7 +5283,7 @@ I18N["de"] = {
   appt_off: "Aus",
   appt_confirm: "Erst mich fragen",
   appt_auto: "Zusagen, wenn frei",
-  appt_nocal: "Freie Zeiten prüfen und in den Kalender eintragen geht nur mit den Google-Kalender-Zugangsdaten weiter unten. Ohne sie sieht die KI deinen Kalender nicht: Sie sagt immer, dass sie es bestätigt, und „Zusagen, wenn frei“ verhält sich wie „Erst mich fragen“.",
+  appt_nocal: "Freie Zeiten prüfen und in den Kalender eintragen geht nur mit den Google-Kalender-Zugangsdaten weiter oben. Ohne sie sieht die KI deinen Kalender nicht: Sie sagt immer, dass sie es bestätigt, und „Zusagen, wenn frei“ verhält sich wie „Erst mich fragen“.",
   f_appt_sms: "Per SMS Bescheid geben",
   f_appt_sms_h: "Sobald du bestätigst oder absagst (oder die KI schon eingetragen hat), schickt das Telefon, das den Anruf angenommen hat, dem Anrufer in deinem Namen eine kurze SMS. Nur taiwanische Handynummern; die App auf dem Telefon muss SMS senden können.",
   // ---- settings: region & advanced
@@ -5854,7 +5854,7 @@ I18N["pt"] = {
   appt_off: "Desligado",
   appt_confirm: "Perguntar antes",
   appt_auto: "Aceitar se estiver livre",
-  appt_nocal: "Ver horários livres e pôr na agenda exige as credenciais do Google Agenda abaixo. Sem elas a IA não vê sua agenda: sempre diz que vai confirmar, e \"Aceitar se estiver livre\" funciona como \"Perguntar antes\".",
+  appt_nocal: "Ver horários livres e pôr na agenda exige as credenciais do Google Agenda acima. Sem elas a IA não vê sua agenda: sempre diz que vai confirmar, e \"Aceitar se estiver livre\" funciona como \"Perguntar antes\".",
   f_appt_sms: "Avisar por SMS",
   f_appt_sms_h: "Quando você confirma ou recusa (ou a IA já marcou), o telefone que atendeu envia em seu nome um SMS curto para quem ligou. Só celulares de Taiwan; o app do telefone precisa conseguir enviar SMS.",
   // ---- settings: region & advanced
@@ -6831,16 +6831,23 @@ function isCarrierPrompt(text) {
   for (const w of CARRIER_WORDS) rest = rest.split(w).join("");
   return (rest.match(/[\u4e00-\u9fff]/g) || []).length <= 5;
 }
-const CJK = /[\u2e80-\u9fff\uac00-\ud7af\uff00-\uffef]/;
+// Scripts written without spaces between words (Korean spaces its words).
+const CJK = /[\u2e80-\u9fff\uff00-\uffef]/;
+// Speaker labels of the saved dialogue, in every language the agent writes
+// it in (locale.rs d_caller / d_ai); older records use 對方／接聽.
+const DIALOGUE_LABELS = {
+  caller: ["對方", "对方", "Caller", "相手", "상대", "Llamante", "Appelant", "Anrufer", "Chamador"],
+  ai: ["接聽", "接听", "AI", "KI", "IA"],
+};
 function dialogueTurns(text) {
   const out = [];
   let ended = true;
   for (const raw of String(text || "").split("\n")) {
-    const m = raw.trim().match(/^(對方|接聽)\s*[：:]\s*(.*)$/);
-    if (!m) continue;
+    const m = raw.trim().match(/^([^:：]{1,12}?)\s*[：:]\s*(.*)$/);
+    if (!m || (!DIALOGUE_LABELS.caller.includes(m[1]) && !DIALOGUE_LABELS.ai.includes(m[1]))) continue;
     const body = m[2].replace(/<[^<>]*>/g, "").trim(); // STT placeholders such as <noise>
     if (!body) continue;
-    let who = m[1] === "對方" ? "caller" : "ai";
+    let who = DIALOGUE_LABELS.caller.includes(m[1]) ? "caller" : "ai";
     if (who === "caller" && isCarrierPrompt(body)) who = "carrier";
     const last = out[out.length - 1];
     if (last && last.who === who && (!ended || who === "carrier")) {
