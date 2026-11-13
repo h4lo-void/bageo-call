@@ -103,6 +103,8 @@ class SilentInCallService : InCallService() {
     }
 
     private fun forceMuteCall(call: Call) {
+        // Normal phone mode: the owner talks on this call; never mute it.
+        if (!Prefs.isAiCallEnabled(this)) return
         try {
             setMuted(true)
             Log.i(TAG, "InCallService.setMuted(true) state=${call.state}")

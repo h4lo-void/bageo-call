@@ -3,6 +3,7 @@ package com.pixelcallai.streamer
 import android.Manifest
 import android.app.Activity
 import android.app.ActivityManager
+import android.app.AlertDialog
 import android.app.NotificationManager
 import android.app.role.RoleManager
 import android.content.Intent
@@ -30,29 +31,58 @@ import androidx.core.view.WindowInsetsCompat
 import org.java_websocket.client.WebSocketClient
 import org.java_websocket.drafts.Draft_6455
 import org.java_websocket.handshake.ServerHandshake
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.SocketTimeoutException
 import java.net.URI
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import javax.net.ssl.SSLException
 
 /**
- * Setup / status dashboard. Framework Activity and plain views (no AppCompat) so the
+ * Setup / status screen. Framework Activity and plain views (no AppCompat) so the
  * app stays single-dex and loads reliably as a privileged system app.
  *
- * Nothing here is on the call path: it only shows what is missing, opens the matching
- * system dialogs, and sends the same START / STOP / SET_ENABLED intents as before.
+ * At the top, one plain sentence about what the phone does right now and the switch
+ * between "the AI answers my calls" and "normal phone" ([PhoneModeManager]). Below it
+ * the setup steps the AI mode needs, and under "Advanced" the connection settings and
+ * the technical checks. Nothing here is on the call path.
  */
 class MainActivity : Activity() {
-    private lateinit var status: TextView
-    private lateinit var serviceStatus: TextView
+    private lateinit var statusHeadline: TextView
+    private lateinit var statusDetail: TextView
+    private lateinit var btnStatusAction: Button
     private lateinit var switchAi: Switch
-    private lateinit var btnGrant: Button
+    private lateinit var switchProgress: View
+    private lateinit var modeError: TextView
+    private lateinit var btnConsole: Button
+    private lateinit var status: TextView
+    private lateinit var stepsSection: View
+    private lateinit var stepsHeader: TextView
+    private lateinit var stepsBody: View
+    private lateinit var advancedHeader: TextView
+    private lateinit var advancedBody: View
+    private lateinit var serviceStatus: TextView
     private lateinit var agentUrlField: EditText
     private lateinit var urlMessage: TextView
     private lateinit var btnTest: Button
     private lateinit var testResult: TextView
+    private lateinit var testDetailToggle: TextView
+    private lateinit var testDetail: TextView
 
     private val handler = Handler(Looper.getMainLooper())
     private val delayedRefresh = Runnable { refresh() }
+
+    /** Re-reads the state every few seconds while the screen is visible (connection, switch). */
+    private val ticker = object : Runnable {
+        override fun run() {
+            refresh()
+            handler.postDelayed(this, TICK_MS)
+        }
+    }
+
+    private val modeListener = PhoneModeManager.Listener { runOnUiThread { refresh() } }
 
     /** True while [refresh] updates the switch, so the listener ignores it. */
     private var bindingSwitch = false
@@ -63,7 +93,21 @@ class MainActivity : Activity() {
     private var grantRequestedAt = 0L
     private var grantRationaleBefore: Map<String, Boolean> = emptyMap()
 
+    /** Null = open while a step is missing, closed when all are done. Tapping the title decides. */
+    private var stepsOpen: Boolean? = null
+    private var advancedOpen = false
+
+    /** Error code of the last switch made on this screen, shown until the next one. */
+    private var modeErrorCode: String? = null
+
     private enum class CheckState { OK, MISSING, CHECK }
+
+    private class StatusLine(
+        val state: CheckState,
+        val headline: String,
+        val detail: String,
+        val action: Int = 0,
+    )
 
     private class CheckRow(root: View) {
         val root: View = root
@@ -107,14 +151,26 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
         applySystemBarInsets(findViewById(R.id.root))
 
-        status = findViewById(R.id.status)
-        serviceStatus = findViewById(R.id.serviceStatus)
+        statusHeadline = findViewById(R.id.statusHeadline)
+        statusDetail = findViewById(R.id.statusDetail)
+        btnStatusAction = findViewById(R.id.btnStatusAction)
         switchAi = findViewById(R.id.switchAi)
-        btnGrant = findViewById(R.id.btnGrant)
+        switchProgress = findViewById(R.id.switchProgress)
+        modeError = findViewById(R.id.modeError)
+        btnConsole = findViewById(R.id.btnConsole)
+        status = findViewById(R.id.status)
+        stepsSection = findViewById(R.id.stepsSection)
+        stepsHeader = findViewById(R.id.stepsHeader)
+        stepsBody = findViewById(R.id.stepsBody)
+        advancedHeader = findViewById(R.id.advancedHeader)
+        advancedBody = findViewById(R.id.advancedBody)
+        serviceStatus = findViewById(R.id.serviceStatus)
         agentUrlField = findViewById(R.id.agentUrl)
         urlMessage = findViewById(R.id.urlMessage)
         btnTest = findViewById(R.id.btnTest)
         testResult = findViewById(R.id.testResult)
+        testDetailToggle = findViewById(R.id.testDetailToggle)
+        testDetail = findViewById(R.id.testDetail)
 
         findViewById<TextView>(R.id.headerVersion).text =
             getString(R.string.header_version, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)
@@ -128,10 +184,34 @@ class MainActivity : Activity() {
             findViewById<View>(R.id.rowPermNotifications).visibility = View.GONE
         }
 
+        switchAi.setOnCheckedChangeListener { _, isChecked ->
+            if (bindingSwitch) return@setOnCheckedChangeListener
+            // The switch always shows the phone's real mode: put it back until the
+            // switch is confirmed and done.
+            bindingSwitch = true
+            switchAi.isChecked = !isChecked
+            bindingSwitch = false
+            confirmModeSwitch(if (isChecked) Prefs.PHONE_MODE_AI else Prefs.PHONE_MODE_NORMAL)
+        }
+        btnStatusAction.setOnClickListener {
+            if (ensurePerms()) armService(CallAudioService.ACTION_START)
+        }
+        btnConsole.setOnClickListener { openConsole() }
+        stepsHeader.setOnClickListener {
+            stepsOpen = stepsBody.visibility != View.VISIBLE
+            refresh()
+        }
+        advancedHeader.setOnClickListener {
+            advancedOpen = !advancedOpen
+            refresh()
+        }
+
         findViewById<Button>(R.id.btnStart).setOnClickListener {
             if (!ensurePerms()) return@setOnClickListener
-            DialerRoleHelper.ensureRoles(this)
-            DialerRoleHelper.requestDialerRole(this)
+            if (Prefs.isAiCallEnabled(this)) {
+                DialerRoleHelper.ensureRoles(this)
+                DialerRoleHelper.requestDialerRole(this)
+            }
             armService(CallAudioService.ACTION_START)
         }
         findViewById<Button>(R.id.btnStop).setOnClickListener {
@@ -140,10 +220,6 @@ class MainActivity : Activity() {
             refresh()
             refreshSoon()
         }
-        switchAi.setOnCheckedChangeListener { _, isChecked ->
-            if (!bindingSwitch) onAiSwitchChanged(isChecked)
-        }
-        btnGrant.setOnClickListener { requestMissingRuntimePermissions() }
 
         agentUrlField.hint = BuildConfig.BRIDGE_WS_URL
         agentUrlField.setText(Prefs.agentUrl(this))
@@ -154,11 +230,21 @@ class MainActivity : Activity() {
             saveAgentUrl(BuildConfig.BRIDGE_WS_URL)
         }
         btnTest.setOnClickListener { testConnection() }
+        testDetailToggle.setOnClickListener {
+            val show = testDetail.visibility != View.VISIBLE
+            testDetail.visibility = if (show) View.VISIBLE else View.GONE
+            testDetailToggle.text = foldTitle(getString(R.string.test_details), show)
+        }
 
         handleLaunchIntent(intent)
-        if (Prefs.isAiCallEnabled(this) && ensurePerms()) {
-            DialerRoleHelper.ensureRoles(this)
-            armService(CallAudioService.ACTION_START)
+        // The service runs in both modes (in normal mode it only keeps the agent connection).
+        if (Prefs.isAiCallEnabled(this)) {
+            if (ensurePerms()) {
+                DialerRoleHelper.ensureRoles(this)
+                startCallService(CallAudioService.ACTION_START)
+            }
+        } else if (hasRequiredPerms()) {
+            startCallService(CallAudioService.ACTION_START)
         }
         refresh()
     }
@@ -183,21 +269,39 @@ class MainActivity : Activity() {
     }
 
     private fun armService(action: String) {
-        Prefs.setAiCallEnabled(this, true)
-        val i = Intent(this, CallAudioService::class.java).setAction(action)
-        ContextCompat.startForegroundService(this, i)
+        startCallService(action)
         showStatus(getString(R.string.msg_service_started))
         refresh()
         refreshSoon()
     }
 
+    private fun startCallService(action: String) {
+        try {
+            ContextCompat.startForegroundService(
+                this,
+                Intent(this, CallAudioService::class.java).setAction(action),
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "start service $action failed: ${e.message}")
+        }
+    }
+
     override fun onResume() {
         super.onResume()
-        refresh()
+        PhoneModeManager.addListener(modeListener)
+        handler.removeCallbacks(ticker)
+        handler.post(ticker)
+    }
+
+    override fun onPause() {
+        PhoneModeManager.removeListener(modeListener)
+        handler.removeCallbacks(ticker)
+        super.onPause()
     }
 
     override fun onDestroy() {
         handler.removeCallbacks(delayedRefresh)
+        handler.removeCallbacks(ticker)
         testSequence++
         super.onDestroy()
     }
@@ -231,24 +335,72 @@ class MainActivity : Activity() {
         refresh()
     }
 
-    // ---------------------------------------------------------------- actions
+    // ---------------------------------------------------------------- mode switch
 
-    private fun onAiSwitchChanged(enabled: Boolean) {
-        Prefs.setAiCallEnabled(this, enabled)
-        val i = Intent(this, CallAudioService::class.java)
-            .setAction(CallAudioService.ACTION_SET_ENABLED)
-            .putExtra(CallAudioService.EXTRA_ENABLED, enabled)
-        startService(i)
-        if (enabled && ensurePerms()) {
-            DialerRoleHelper.ensureRoles(this)
-            armService(CallAudioService.ACTION_START)
-        }
-        refresh()
-        refreshSoon()
+    private fun confirmModeSwitch(target: String) {
+        val toAi = target == Prefs.PHONE_MODE_AI
+        AlertDialog.Builder(this)
+            .setTitle(if (toAi) R.string.confirm_ai_title else R.string.confirm_normal_title)
+            .setMessage(if (toAi) R.string.confirm_ai_body else R.string.confirm_normal_body)
+            .setPositiveButton(R.string.btn_switch) { _, _ -> startModeSwitch(target) }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
-    /** The permissions the service cannot start without (same set as before). */
+    private fun startModeSwitch(target: String) {
+        modeErrorCode = null
+        PhoneModeManager.requestSwitch(this, target, callBusy = false) { result ->
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                modeErrorCode = if (result.ok) null else result.error
+                // Same service in both modes: (re)start it so it runs the new one.
+                if (result.mode == target && hasRequiredPerms()) {
+                    startCallService(CallAudioService.ACTION_START)
+                }
+                refresh()
+                refreshSoon()
+            }
+        }
+        refresh()
+    }
+
+    private fun modeErrorText(code: String): String = getString(
+        when (code) {
+            PhoneModeManager.ERR_IN_CALL -> R.string.mode_err_in_call
+            PhoneModeManager.ERR_BUSY -> R.string.mode_err_busy
+            PhoneModeManager.ERR_NO_ROOT -> R.string.mode_err_no_root
+            PhoneModeManager.ERR_SAVE -> R.string.mode_err_save
+            PhoneModeManager.ERR_DIALER -> R.string.mode_err_dialer
+            PhoneModeManager.ERR_SCREENING -> R.string.mode_err_screening
+            PhoneModeManager.ERR_DND -> R.string.mode_err_dnd
+            PhoneModeManager.ERR_VOLUME -> R.string.mode_err_volume
+            else -> R.string.mode_err_other
+        },
+    )
+
+    private fun openConsole() {
+        val url = Prefs.consoleUrl(this) ?: return
+        if (!launch(Intent(Intent.ACTION_VIEW, Uri.parse(url)))) {
+            showStatus(getString(R.string.msg_no_browser))
+        }
+    }
+
+    // ---------------------------------------------------------------- actions
+
+    /** The permissions the service cannot start without. Asks for the missing ones. */
     private fun ensurePerms(): Boolean {
+        val missing = requiredPermissions().filter { !isGranted(it) }
+        if (missing.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, missing.toTypedArray(), REQ_REQUIRED_PERMS)
+            showStatus(getString(R.string.grant_perms))
+            return false
+        }
+        return true
+    }
+
+    private fun hasRequiredPerms(): Boolean = requiredPermissions().all { isGranted(it) }
+
+    private fun requiredPermissions(): List<String> {
         val need = mutableListOf(
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.READ_PHONE_STATE,
@@ -257,13 +409,7 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33) {
             need += Manifest.permission.POST_NOTIFICATIONS
         }
-        val missing = need.filter { !isGranted(it) }
-        if (missing.isNotEmpty()) {
-            ActivityCompat.requestPermissions(this, missing.toTypedArray(), REQ_REQUIRED_PERMS)
-            showStatus(getString(R.string.grant_perms))
-            return false
-        }
-        return true
+        return need
     }
 
     private fun requestMissingRuntimePermissions() {
@@ -334,19 +480,13 @@ class MainActivity : Activity() {
             !isPhoneIdle() -> R.string.msg_url_saved_pending
             else -> {
                 // The service reads the address when it connects: restart it with the same
-                // STOP / START intents as the buttons (START only while AI answering is on).
-                val enabled = Prefs.isAiCallEnabled(this)
+                // STOP / START intents as the buttons (it runs in both modes).
                 startService(
                     Intent(this, CallAudioService::class.java).setAction(CallAudioService.ACTION_STOP),
                 )
-                if (enabled) {
-                    ContextCompat.startForegroundService(
-                        this,
-                        Intent(this, CallAudioService::class.java).setAction(CallAudioService.ACTION_START),
-                    )
-                }
+                startCallService(CallAudioService.ACTION_START)
                 refreshSoon()
-                if (enabled) R.string.msg_url_saved_restarted else R.string.msg_url_saved
+                R.string.msg_url_saved_restarted
             }
         }
         showUrlMessage(getString(message), CheckState.OK)
@@ -356,14 +496,15 @@ class MainActivity : Activity() {
     private fun testConnection() {
         val url = agentUrlField.text.toString().trim()
         if (!Prefs.isValidAgentUrl(url)) {
-            showTestResult(getString(R.string.msg_url_invalid), CheckState.MISSING)
+            showTestResult(getString(R.string.msg_url_invalid), CheckState.MISSING, null)
             return
         }
         val sequence = ++testSequence
         btnTest.isEnabled = false
-        showTestResult(getString(R.string.test_running), null)
+        showTestResult(getString(R.string.test_running), null, null)
         Thread({
-            val reason = AtomicReference<String?>(null)
+            val error = AtomicReference<Throwable?>(null)
+            val closed = AtomicReference<String?>(null)
             var connected = false
             var client: WebSocketClient? = null
             try {
@@ -373,52 +514,198 @@ class MainActivity : Activity() {
                     override fun onMessage(message: String?) {}
 
                     override fun onClose(code: Int, closeReason: String?, remote: Boolean) {
-                        reason.compareAndSet(
-                            null,
-                            closeReason?.takeIf { it.isNotBlank() }
-                                ?: getString(R.string.test_closed, code),
-                        )
+                        val reason = closeReason?.trim().orEmpty()
+                        closed.compareAndSet(null, if (reason.isEmpty()) "close $code" else "close $code: $reason")
                     }
 
                     override fun onError(ex: Exception?) {
-                        reason.compareAndSet(null, ex?.let { it.message ?: it.javaClass.simpleName })
+                        if (ex != null) error.compareAndSet(null, ex)
                     }
                 }
                 client = ws
                 connected = ws.connectBlocking(TEST_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
             } catch (e: Exception) {
-                reason.compareAndSet(null, e.message ?: e.javaClass.simpleName)
-            } finally {
-                try {
-                    client?.close()
-                } catch (_: Exception) {
-                }
+                error.compareAndSet(null, e)
             }
-            val failure = reason.get() ?: getString(R.string.test_timeout)
+            // Read before closing: our own close below reports a close code too.
+            val errorSeen = error.get()
+            val closedSeen = closed.get()
+            try {
+                client?.close()
+            } catch (_: Exception) {
+            }
+            val failure = if (connected) 0 else classifyFailure(errorSeen, closedSeen)
+            val detail = listOfNotNull(
+                errorSeen?.let { "${it.javaClass.simpleName}: ${it.message.orEmpty()}" },
+                closedSeen,
+            ).joinToString("\n")
             runOnUiThread {
                 if (isDestroyed || sequence != testSequence) return@runOnUiThread
                 btnTest.isEnabled = true
                 if (connected) {
-                    showTestResult(getString(R.string.test_ok), CheckState.OK)
+                    showTestResult(getString(R.string.test_ok), CheckState.OK, null)
                 } else {
-                    showTestResult(getString(R.string.test_failed, failure), CheckState.MISSING)
+                    showTestResult(
+                        getString(R.string.test_failed, getString(failure)),
+                        CheckState.MISSING,
+                        detail.ifBlank { null },
+                    )
                 }
             }
         }, "agent-connection-test").apply { isDaemon = true }.start()
     }
 
+    /** A plain reason for a failed test; the raw error text goes to "Details". */
+    private fun classifyFailure(error: Throwable?, closed: String?): Int {
+        val chain = generateSequence(error) { it.cause }.take(6).toList()
+        val text = (chain.joinToString(" ") { "${it.javaClass.name} ${it.message.orEmpty()}" } +
+            " " + closed.orEmpty()).lowercase()
+        return when {
+            chain.any { it is UnknownHostException } -> R.string.test_fail_host
+            chain.any { it is SSLException } -> R.string.test_fail_tls
+            chain.any { it is SocketTimeoutException } -> R.string.test_fail_timeout
+            chain.any { it is ConnectException } || "refused" in text -> R.string.test_fail_refused
+            chain.any { it is NoRouteToHostException } || "unreachable" in text -> R.string.test_fail_network
+            " 401" in text || " 403" in text -> R.string.test_fail_auth
+            "invalid status code" in text || "handshake" in text -> R.string.test_fail_rejected
+            error == null && closed == null -> R.string.test_fail_timeout
+            else -> R.string.test_fail_other
+        }
+    }
+
     // ----------------------------------------------------------------- status
 
     private fun refresh() {
-        val enabled = Prefs.isAiCallEnabled(this)
+        val ai = Prefs.isAiCallEnabled(this)
+        val missing = bindSteps(ai)
+        bindStatus(ai, PhoneModeManager.isSwitching(), missing)
+        bindAdvanced()
+    }
+
+    private fun bindStatus(ai: Boolean, switching: Boolean, missingSteps: Int) {
         bindingSwitch = true
-        switchAi.isChecked = enabled
+        switchAi.isChecked = ai
         bindingSwitch = false
+        switchAi.isEnabled = !switching
+        switchProgress.visibility = if (switching) View.VISIBLE else View.GONE
+
+        val line = when {
+            switching -> StatusLine(
+                CheckState.CHECK,
+                getString(R.string.st_switching),
+                getString(R.string.st_switching_d),
+            )
+            !ai -> StatusLine(CheckState.OK, getString(R.string.st_normal), getString(R.string.st_normal_d))
+            missingSteps > 0 -> StatusLine(
+                CheckState.MISSING,
+                getString(R.string.st_steps, missingSteps),
+                getString(R.string.st_steps_d),
+            )
+            !isServiceRunning() -> StatusLine(
+                CheckState.MISSING,
+                getString(R.string.st_service_off),
+                getString(R.string.st_service_off_d),
+                R.string.btn_start,
+            )
+            !AgentControlClient.isAgentConnected() -> StatusLine(
+                CheckState.MISSING,
+                getString(R.string.st_offline),
+                getString(R.string.st_offline_d),
+            )
+            else -> StatusLine(CheckState.OK, getString(R.string.st_ai_on), getString(R.string.st_ai_on_d))
+        }
+        statusHeadline.text = line.headline
+        statusHeadline.setTextColor(stateColor(line.state))
+        statusDetail.text = line.detail
+        if (line.action != 0) {
+            btnStatusAction.setText(line.action)
+            btnStatusAction.visibility = View.VISIBLE
+        } else {
+            btnStatusAction.visibility = View.GONE
+        }
+
+        val code = modeErrorCode
+        if (code != null && !switching) {
+            modeError.text = getString(R.string.mode_failed, modeErrorText(code))
+            modeError.visibility = View.VISIBLE
+        } else {
+            modeError.visibility = View.GONE
+        }
+        btnConsole.visibility = if (Prefs.consoleUrl(this) != null) View.VISIBLE else View.GONE
+    }
+
+    /** The setup steps the AI mode needs. Returns how many are not done (0 in normal mode). */
+    private fun bindSteps(ai: Boolean): Int {
+        stepsSection.visibility = if (ai) View.VISIBLE else View.GONE
+        if (!ai) return 0
+
+        val roleManager = getSystemService(RoleManager::class.java)
+        val module = isPrivilegedSystemApp() && privilegedPermissions.all { isGranted(it.permission) }
+        val perms = runtimePermissions.all { isGranted(it.permission) }
+        val dialer = DialerRoleHelper.isDefaultDialer(this) ||
+            roleManager?.isRoleHeld(RoleManager.ROLE_DIALER) == true
+        val screening = roleManager?.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) == true
+        val dnd = getSystemService(NotificationManager::class.java)
+            ?.isNotificationPolicyAccessGranted == true
+        val battery = getSystemService(PowerManager::class.java)
+            ?.isIgnoringBatteryOptimizations(packageName) == true
+
+        row(R.id.stepModule).bind(
+            state = stepState(module),
+            title = getString(R.string.step_module_title),
+            detail = getString(if (module) R.string.step_module_ok else R.string.step_module_missing),
+        )
+        row(R.id.stepPerms).bind(
+            state = stepState(perms),
+            title = getString(R.string.step_perms_title),
+            detail = getString(R.string.step_perms_desc),
+            actionLabel = if (perms) 0 else R.string.btn_allow,
+        ) { requestMissingRuntimePermissions() }
+        row(R.id.stepDialer).bind(
+            state = stepState(dialer),
+            title = getString(R.string.step_dialer_title),
+            detail = getString(R.string.step_dialer_desc),
+            actionLabel = if (dialer) 0 else R.string.btn_set,
+        ) {
+            DialerRoleHelper.requestDialerRole(this)
+            refresh()
+        }
+        row(R.id.stepScreening).bind(
+            state = stepState(screening),
+            title = getString(R.string.step_screening_title),
+            detail = getString(R.string.step_screening_desc),
+            actionLabel = if (screening) 0 else R.string.btn_set,
+        ) { requestScreeningRole() }
+        row(R.id.stepDnd).bind(
+            state = stepState(dnd),
+            title = getString(R.string.step_dnd_title),
+            detail = getString(R.string.step_dnd_desc),
+            actionLabel = if (dnd) 0 else R.string.btn_open_settings,
+        ) { launch(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)) }
+        row(R.id.stepBattery).bind(
+            state = stepState(battery),
+            title = getString(R.string.step_battery_title),
+            detail = getString(R.string.step_battery_desc),
+            actionLabel = if (battery) 0 else R.string.btn_allow,
+        ) { requestBatteryExemption() }
+
+        val steps = listOf(module, perms, dialer, screening, dnd, battery)
+        val done = steps.count { it }
+        val open = stepsOpen ?: (done < steps.size)
+        stepsHeader.text = foldTitle(getString(R.string.steps_header, done, steps.size), open)
+        stepsBody.visibility = if (open) View.VISIBLE else View.GONE
+        return steps.size - done
+    }
+
+    private fun bindAdvanced() {
+        advancedHeader.text = foldTitle(getString(R.string.advanced), advancedOpen)
+        advancedBody.visibility = if (advancedOpen) View.VISIBLE else View.GONE
+        if (!advancedOpen) return
         serviceStatus.setText(
             if (isServiceRunning()) R.string.service_running else R.string.service_stopped,
         )
 
-        // 1. Privileged system app (installed by the Magisk / KernelSU module).
+        // Installed by the Magisk / KernelSU module as a privileged system app.
         val sourceDir = applicationInfo.sourceDir.orEmpty()
         val privileged = isPrivilegedSystemApp()
         row(R.id.rowPriv).bind(
@@ -429,8 +716,6 @@ class MainActivity : Activity() {
                 sourceDir,
             ),
         )
-
-        // 2. Privileged permissions (informational).
         for (item in privilegedPermissions) {
             row(item.rowId).bind(
                 state = if (isGranted(item.permission)) CheckState.OK else CheckState.MISSING,
@@ -438,62 +723,15 @@ class MainActivity : Activity() {
                 detail = item.permission.substringAfterLast('.'),
             )
         }
-
-        // 3. Runtime permissions, one row each, one button for all missing ones.
-        var runtimeMissing = false
         for (item in runtimePermissions) {
-            val granted = isGranted(item.permission)
-            if (!granted) runtimeMissing = true
             row(item.rowId).bind(
-                state = if (granted) CheckState.OK else CheckState.MISSING,
+                state = if (isGranted(item.permission)) CheckState.OK else CheckState.MISSING,
                 title = getString(item.labelRes),
                 detail = item.permission.substringAfterLast('.'),
             )
         }
-        btnGrant.visibility = if (runtimeMissing) View.VISIBLE else View.GONE
 
-        // 4. Roles.
-        val roleManager = getSystemService(RoleManager::class.java)
-        val dialer = DialerRoleHelper.isDefaultDialer(this) ||
-            roleManager?.isRoleHeld(RoleManager.ROLE_DIALER) == true
-        row(R.id.rowDialer).bind(
-            state = if (dialer) CheckState.OK else CheckState.MISSING,
-            title = getString(R.string.check_dialer_title),
-            detail = getString(R.string.check_dialer_desc),
-            actionLabel = if (dialer) 0 else R.string.btn_set,
-        ) {
-            DialerRoleHelper.requestDialerRole(this)
-            refresh()
-        }
-        val screening = roleManager?.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) == true
-        row(R.id.rowScreening).bind(
-            state = if (screening) CheckState.OK else CheckState.MISSING,
-            title = getString(R.string.check_screening_title),
-            detail = getString(R.string.check_screening_desc),
-            actionLabel = if (screening) 0 else R.string.btn_set,
-        ) { requestScreeningRole() }
-
-        // 5. Do Not Disturb access.
-        val dnd = getSystemService(NotificationManager::class.java)
-            ?.isNotificationPolicyAccessGranted == true
-        row(R.id.rowDnd).bind(
-            state = if (dnd) CheckState.OK else CheckState.MISSING,
-            title = getString(R.string.check_dnd_title),
-            detail = getString(R.string.check_dnd_desc),
-            actionLabel = if (dnd) 0 else R.string.btn_open_settings,
-        ) { launch(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)) }
-
-        // 6. Battery optimization exemption.
-        val battery = getSystemService(PowerManager::class.java)
-            ?.isIgnoringBatteryOptimizations(packageName) == true
-        row(R.id.rowBattery).bind(
-            state = if (battery) CheckState.OK else CheckState.MISSING,
-            title = getString(R.string.check_battery_title),
-            detail = getString(R.string.check_battery_desc),
-            actionLabel = if (battery) 0 else R.string.btn_allow,
-        ) { requestBatteryExemption() }
-
-        // 7. Uplink injection: the same TYPE_TELEPHONY device check the call path uses.
+        // Uplink injection: the same TYPE_TELEPHONY device check the call path uses.
         val canInject = isGranted("android.permission.MODIFY_PHONE_STATE")
         val telephonyOutput = try {
             TelephonyUplinkInjector(this).isAvailable()
@@ -516,6 +754,14 @@ class MainActivity : Activity() {
                 },
             ),
         )
+    }
+
+    private fun stepState(done: Boolean): CheckState = if (done) CheckState.OK else CheckState.MISSING
+
+    /** Title of a section that opens and closes, with an arrow. */
+    private fun foldTitle(title: String, open: Boolean): String {
+        val arrow = if (open) "\u25BE" else "\u25B8"
+        return "$title  $arrow"
     }
 
     private fun row(id: Int): CheckRow {
@@ -576,13 +822,18 @@ class MainActivity : Activity() {
         urlMessage.visibility = View.VISIBLE
     }
 
-    private fun showTestResult(message: String, state: CheckState?) {
+    /** [detail]: the raw error text, shown only after tapping "Details". */
+    private fun showTestResult(message: String, state: CheckState?, detail: String?) {
         testResult.text = message
         // No state yet (still connecting): use the same neutral colour as the other body text.
         testResult.setTextColor(
             if (state != null) stateColor(state) else serviceStatus.currentTextColor,
         )
         testResult.visibility = View.VISIBLE
+        testDetail.text = detail.orEmpty()
+        testDetail.visibility = View.GONE
+        testDetailToggle.text = foldTitle(getString(R.string.test_details), false)
+        testDetailToggle.visibility = if (detail.isNullOrBlank()) View.GONE else View.VISIBLE
     }
 
     /** The service starts / stops asynchronously; look again shortly afterwards. */
@@ -650,6 +901,7 @@ class MainActivity : Activity() {
         private const val REQ_SCREENING_ROLE = 7102
         private const val TEST_TIMEOUT_MS = 5_000
         private const val REFRESH_DELAY_MS = 700L
+        private const val TICK_MS = 3_000L
         private const val INSTANT_DENIAL_MS = 350L
     }
 }

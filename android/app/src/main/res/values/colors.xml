@@ -4,4 +4,6 @@
     <color name="pca_status_ok">#1B7F3B</color>
     <color name="pca_status_missing">#C62828</color>
     <color name="pca_status_check">#A15C00</color>
+    <color name="pca_card_bg">#F2F5F7</color>
+    <color name="pca_card_line">#DCE2E7</color>
 </resources>

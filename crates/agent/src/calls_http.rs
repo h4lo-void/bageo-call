@@ -11,9 +11,10 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::Write as _;
 use std::sync::{Arc, OnceLock};
+use tokio::sync::oneshot;
 use tracing::info;
 
-use crate::callback::ControlRegistry;
+use crate::callback::{ControlRegistry, WsSink};
 use crate::calls::{CallListFilter, CallStore};
 use crate::config::Settings;
 use crate::fulfill::{on_confirm, on_ignore};
@@ -31,6 +32,8 @@ pub struct CallsState {
     /// Background sound beds (same ones calls use) for the settings page's preview.
     pub ambience: Arc<crate::ambience::AmbienceLibrary>,
     pub previews: Arc<crate::voice_preview::VoicePreviews>,
+    /// Phones on the control connection: mode, app version, `set_mode` round trips.
+    pub phones: Arc<PhoneDevices>,
 }
 
 const UI_HTML: &str = include_str!("../static/calls.html");
@@ -940,14 +943,452 @@ async fn devices(
         .into_iter()
         .map(|(id, label)| (id, json!(label)))
         .collect();
+    let live = state.store.live_calls().await;
+    let agent_calls: Vec<String> = live.iter().map(|c| c.serial.clone()).collect();
     Json(json!({
         "ok": true,
         "usb": crate::usb_bridge::status_json(),
         "connected": connected,
         "labels": labels,
-        "calls_in_progress": state.store.live_calls().await.len(),
+        "calls_in_progress": live.len(),
+        // One object per phone: mode, model, app_version, in_call, supports_mode.
+        "phones": state.phones.list_json(&agent_calls),
     }))
     .into_response()
+}
++
+// ---------------------------------------------------------------- phone mode
+
+/// How a phone handles calls: the AI answers them (`ai`), or it rings like any
+/// phone and its owner answers (`normal`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PhoneMode {
+    Ai,
+    Normal,
+}
+
+impl PhoneMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ai => "ai",
+            Self::Normal => "normal",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim() {
+            "ai" => Some(Self::Ai),
+            "normal" => Some(Self::Normal),
+            _ => None,
+        }
+    }
+}
+
+/// How long `POST /api/devices/{serial}/mode` waits for the phone's answer.
+const SET_MODE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// What a phone says about itself on its control connection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PhoneHello {
+    pub mode: PhoneMode,
+    /// The app understands `set_mode` (it reported its mode). Older apps do not.
+    pub supports_mode: bool,
+    pub model: String,
+    pub app_version: String,
+    pub in_call: bool,
+}
+
+/// Read the control `hello`. The phone mode is in `phone_mode` (`mode` already says
+/// which connection this is, `CONTROL_IDLE`). An app without it answers every call
+/// with the AI and cannot be switched from here.
+pub fn parse_phone_hello(hello: &Value) -> PhoneHello {
+    let text = |key: &str| -> String {
+        hello
+            .get(key)
+            .and_then(Value::as_str)
+            .map(|s| s.trim().chars().filter(|c| !c.is_control()).take(40).collect())
+            .unwrap_or_default()
+    };
+    let mode = hello
+        .get("phone_mode")
+        .and_then(Value::as_str)
+        .and_then(PhoneMode::parse);
+    PhoneHello {
+        mode: mode.unwrap_or(PhoneMode::Ai),
+        supports_mode: mode.is_some(),
+        model: text("model"),
+        app_version: text("app_version"),
+        in_call: hello.get("in_call").and_then(Value::as_bool).unwrap_or(false),
+    }
+}
+
+/// The outcome of a mode switch: the phone's `set_mode_result`, or why it was not sent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModeReply {
+    pub ok: bool,
+    /// The phone's mode afterwards, when known.
+    pub mode: Option<PhoneMode>,
+    /// Empty when `ok`.
+    pub error: String,
+}
+
+impl ModeReply {
+    fn failed(mode: Option<PhoneMode>, error: &str) -> Self {
+        Self {
+            ok: false,
+            mode,
+            error: error.to_string(),
+        }
+    }
+}
+
+/// An error code from the phone, kept short and plain (the page looks it up).
+fn error_code(s: &str) -> String {
+    s.trim()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .take(40)
+        .collect()
+}
+
+pub fn parse_mode_reply(msg: &Value) -> ModeReply {
+    let ok = msg.get("ok").and_then(Value::as_bool).unwrap_or(false);
+    let error = msg
+        .get("error")
+        .and_then(Value::as_str)
+        .map(error_code)
+        .unwrap_or_default();
+    ModeReply {
+        ok,
+        mode: msg
+            .get("mode")
+            .and_then(Value::as_str)
+            .and_then(PhoneMode::parse),
+        error: if ok {
+            String::new()
+        } else if error.is_empty() {
+            "failed".to_string()
+        } else {
+            error
+        },
+    }
+}
+
+/// Why a phone cannot be switched right now, if it cannot.
+fn switch_blocker(connected: bool, supports_mode: bool, in_call: bool) -> Option<&'static str> {
+    if !connected {
+        Some("offline")
+    } else if !supports_mode {
+        Some("unsupported")
+    } else if in_call {
+        Some("in_call")
+    } else {
+        None
+    }
+}
+
+/// `{ok, mode, error_code}` for the web console.
+pub fn mode_reply_json(r: &ModeReply) -> Value {
+    let error_code = if r.ok { Value::Null } else { json!(r.error) };
+    json!({
+        "ok": r.ok,
+        "mode": r.mode.map(PhoneMode::as_str),
+        "error_code": error_code,
+    })
+}
+
+/// The web console's address for the phone app's "Open the web console" button,
+/// from the `public_url` setting. None when that is empty or not a web address.
+pub fn console_url(public_url: &str) -> Option<String> {
+    let base = public_url.trim().trim_end_matches('/');
+    let lower = base.to_ascii_lowercase();
+    if !(lower.starts_with("http://") || lower.starts_with("https://")) {
+        return None;
+    }
+    let host = base.split_once("://").map(|(_, rest)| rest).unwrap_or("");
+    if host.is_empty() || host.starts_with('/') || host.chars().any(char::is_whitespace) {
+        return None;
+    }
+    let base = base.strip_suffix("/calls").unwrap_or(base);
+    Some(format!("{base}/calls/"))
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+struct PhoneEntry {
+    /// The open control connection; None after it closed.
+    sink: Option<WsSink>,
+    hello: PhoneHello,
+    /// Last message on the control connection (ms since epoch).
+    last_seen_ms: u64,
+}
+
+fn phone_json(serial: &str, p: &PhoneEntry, agent_call: bool) -> Value {
+    let connected = p.sink.is_some();
+    json!({
+        "serial": serial,
+        "connected": connected,
+        "mode": p.hello.mode.as_str(),
+        "supports_mode": p.hello.supports_mode,
+        "model": p.hello.model,
+        "app_version": p.hello.app_version,
+        "in_call": connected && (p.hello.in_call || agent_call),
+        "last_seen_ms": p.last_seen_ms,
+    })
+}
+
+/// Phones on the idle control connection: what they reported, their socket, and
+/// the `set_mode` requests waiting for an answer.
+#[derive(Default)]
+pub struct PhoneDevices {
+    phones: std::sync::Mutex<HashMap<String, PhoneEntry>>,
+    /// `set_mode` id → (serial, the waiting request).
+    waiting: std::sync::Mutex<HashMap<String, (String, oneshot::Sender<ModeReply>)>>,
+}
+
+impl PhoneDevices {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+
+    fn phones(&self) -> std::sync::MutexGuard<'_, HashMap<String, PhoneEntry>> {
+        self.phones.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn waiting(
+        &self,
+    ) -> std::sync::MutexGuard<'_, HashMap<String, (String, oneshot::Sender<ModeReply>)>> {
+        self.waiting.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// A phone said hello on its control connection.
+    pub fn connected(&self, serial: &str, sink: WsSink, hello: &Value) {
+        let info = parse_phone_hello(hello);
+        info!(
+            serial,
+            mode = info.mode.as_str(),
+            supports_mode = info.supports_mode,
+            app_version = info.app_version.as_str(),
+            "phone control hello"
+        );
+        self.phones().insert(
+            serial.to_string(),
+            PhoneEntry {
+                sink: Some(sink),
+                hello: info,
+                last_seen_ms: now_ms(),
+            },
+        );
+    }
+
+    /// The control connection closed. Ignored when the phone already reconnected.
+    pub fn disconnected(&self, serial: &str, sink: &WsSink) {
+        {
+            let mut phones = self.phones();
+            let Some(p) = phones.get_mut(serial) else {
+                return;
+            };
+            if !p.sink.as_ref().is_some_and(|s| Arc::ptr_eq(s, sink)) {
+                return;
+            }
+            p.sink = None;
+            p.hello.in_call = false;
+            p.last_seen_ms = now_ms();
+        }
+        // A request still waiting for this phone gets "offline" (its sender is dropped).
+        self.waiting().retain(|_, entry| entry.0 != serial);
+    }
+
+    /// Any message on the control connection.
+    pub fn touch(&self, serial: &str) {
+        if let Some(p) = self.phones().get_mut(serial) {
+            p.last_seen_ms = now_ms();
+        }
+    }
+
+    /// `status`: the phone's mode or call state changed.
+    pub fn on_status(&self, serial: &str, msg: &Value) {
+        let mut phones = self.phones();
+        let Some(p) = phones.get_mut(serial) else {
+            return;
+        };
+        if let Some(mode) = msg
+            .get("mode")
+            .and_then(Value::as_str)
+            .and_then(PhoneMode::parse)
+        {
+            p.hello.mode = mode;
+            p.hello.supports_mode = true;
+        }
+        if let Some(in_call) = msg.get("in_call").and_then(Value::as_bool) {
+            p.hello.in_call = in_call;
+        }
+        p.last_seen_ms = now_ms();
+    }
+
+    /// `set_mode_result`: hand it to the request waiting for it.
+    pub fn on_mode_reply(&self, serial: &str, msg: &Value) {
+        let reply = parse_mode_reply(msg);
+        if let Some(mode) = reply.mode {
+            if let Some(p) = self.phones().get_mut(serial) {
+                p.hello.mode = mode;
+                p.hello.supports_mode = true;
+            }
+        }
+        let id = msg.get("id").and_then(Value::as_str).unwrap_or("");
+        let waiter = {
+            let mut waiting = self.waiting();
+            let ours = waiting.get(id).is_some_and(|entry| entry.0 == serial);
+            if ours {
+                waiting.remove(id)
+            } else {
+                None
+            }
+        };
+        match waiter {
+            Some((_, tx)) => {
+                let _ = tx.send(reply);
+            }
+            None => info!(serial, id, "set_mode_result without a waiting request"),
+        }
+    }
+
+    /// The phone's mode while it is connected.
+    pub fn mode_of(&self, serial: &str) -> Option<PhoneMode> {
+        self.phones()
+            .get(serial)
+            .filter(|p| p.sink.is_some())
+            .map(|p| p.hello.mode)
+    }
+
+    /// Connected phones in normal-phone mode: the AI does not answer their calls.
+    pub fn normal_mode_serials(&self) -> Vec<String> {
+        let mut v: Vec<String> = self
+            .phones()
+            .iter()
+            .filter(|(serial, p)| {
+                p.sink.is_some()
+                    && p.hello.mode == PhoneMode::Normal
+                    && !crate::calls::is_twin_serial(serial)
+            })
+            .map(|(serial, _)| serial.clone())
+            .collect();
+        v.sort();
+        v
+    }
+
+    /// Every phone seen since the agent started (System view), sorted by serial.
+    /// `agent_calls`: serials with a call the agent is handling now.
+    pub fn list_json(&self, agent_calls: &[String]) -> Vec<Value> {
+        let phones = self.phones();
+        let mut serials: Vec<&String> = phones
+            .keys()
+            .filter(|serial| !crate::calls::is_twin_serial(serial))
+            .collect();
+        serials.sort();
+        serials
+            .into_iter()
+            .filter_map(|serial| {
+                phones.get(serial).map(|p| {
+                    phone_json(serial, p, agent_calls.iter().any(|s| s == serial))
+                })
+            })
+            .collect()
+    }
+
+    /// Ask the phone to switch and wait for its answer (at most [`SET_MODE_TIMEOUT`]).
+    /// `agent_call`: the agent is handling a call on this phone right now.
+    pub async fn set_mode(&self, serial: &str, mode: PhoneMode, agent_call: bool) -> ModeReply {
+        let (sink, current) = {
+            let phones = self.phones();
+            let Some(p) = phones.get(serial) else {
+                return ModeReply::failed(None, "offline");
+            };
+            let current = Some(p.hello.mode);
+            if let Some(code) = switch_blocker(
+                p.sink.is_some(),
+                p.hello.supports_mode,
+                p.hello.in_call || agent_call,
+            ) {
+                return ModeReply::failed(current, code);
+            }
+            match p.sink.clone() {
+                Some(sink) => (sink, current),
+                None => return ModeReply::failed(current, "offline"),
+            }
+        };
+        let id = uuid::Uuid::new_v4().to_string();
+        let (tx, rx) = oneshot::channel();
+        self.waiting().insert(id.clone(), (serial.to_string(), tx));
+        let payload = json!({"type": "set_mode", "mode": mode.as_str(), "id": id});
+        if let Err(e) = crate::callback::send_ws_json(&sink, payload).await {
+            self.waiting().remove(&id);
+            tracing::warn!("set_mode send failed serial={serial}: {e:#}");
+            return ModeReply::failed(current, "offline");
+        }
+        info!(serial, mode = mode.as_str(), id = id.as_str(), "set_mode sent");
+        match tokio::time::timeout(SET_MODE_TIMEOUT, rx).await {
+            Ok(Ok(reply)) => reply,
+            Ok(Err(_)) => ModeReply::failed(current, "offline"),
+            Err(_) => {
+                self.waiting().remove(&id);
+                ModeReply::failed(current, "timeout")
+            }
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ModeBody {
+    #[serde(default)]
+    pub mode: String,
+}
+
+/// Switch one phone between "the AI answers" and "normal phone".
+async fn device_mode(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+    Path(serial): Path<String>,
+    Json(body): Json<ModeBody>,
+) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    let Some(mode) = PhoneMode::parse(&body.mode) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"ok": false, "mode": null, "error_code": "invalid_mode", "error": "mode must be \"ai\" or \"normal\""})),
+        )
+            .into_response();
+    };
+    if !task_id_safe(&serial) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"ok": false, "mode": null, "error_code": "offline", "error": "invalid serial"})),
+        )
+            .into_response();
+    }
+    let agent_call = state
+        .store
+        .live_calls()
+        .await
+        .iter()
+        .any(|c| c.serial == serial);
+    let reply = state.phones.set_mode(&serial, mode, agent_call).await;
+    info!(
+        serial = serial.as_str(),
+        target = mode.as_str(),
+        ok = reply.ok,
+        error = reply.error.as_str(),
+        "phone mode switch"
+    );
+    Json(mode_reply_json(&reply)).into_response()
 }
 
 /// Tasks tab: prefer TaskStore (canonical); snake_case status.
@@ -1107,6 +1548,92 @@ mod tests {
         assert_eq!(out, UI_HTML);
         assert!(a.gzip.len() < UI_HTML.len() / 2);
     }
+
+    #[test]
+    fn phone_hello_old_and_new_apps() {
+        // An app from before the mode switch: AI mode, cannot be switched from the page.
+        let old = parse_phone_hello(&json!({
+            "type": "hello", "serial": "pixel-10341", "mode": "CONTROL_IDLE",
+            "model": "Pixel 7", "app_version": "0.2.0"
+        }));
+        assert_eq!(old.mode, PhoneMode::Ai);
+        assert!(!old.supports_mode);
+        assert_eq!((old.model.as_str(), old.app_version.as_str()), ("Pixel 7", "0.2.0"));
+        let new = parse_phone_hello(&json!({
+            "type": "hello", "mode": "CONTROL_IDLE", "phone_mode": "normal", "in_call": true
+        }));
+        assert_eq!(new.mode, PhoneMode::Normal);
+        assert!(new.supports_mode && new.in_call);
+        // The connection kind is never taken for the phone mode.
+        let odd = parse_phone_hello(&json!({"phone_mode": "CONTROL_IDLE"}));
+        assert_eq!((odd.mode, odd.supports_mode), (PhoneMode::Ai, false));
+    }
+
+    #[test]
+    fn mode_reply_parsing() {
+        let ok = parse_mode_reply(&json!({"type": "set_mode_result", "id": "x", "ok": true, "mode": "normal", "error": ""}));
+        assert_eq!(ok, ModeReply { ok: true, mode: Some(PhoneMode::Normal), error: String::new() });
+        let fail = parse_mode_reply(&json!({"ok": false, "mode": "ai", "error": "dialer_failed"}));
+        assert_eq!((fail.mode, fail.error.as_str()), (Some(PhoneMode::Ai), "dialer_failed"));
+        // Whatever the phone sends ends up as a plain code.
+        assert_eq!(parse_mode_reply(&json!({"ok": false, "error": "<b>x</b> y"})).error, "bxby");
+        assert_eq!(parse_mode_reply(&json!({})).error, "failed");
+    }
+
+    #[test]
+    fn mode_reply_json_shape() {
+        let ok = ModeReply { ok: true, mode: Some(PhoneMode::Ai), error: String::new() };
+        assert_eq!(mode_reply_json(&ok), json!({"ok": true, "mode": "ai", "error_code": null}));
+        assert_eq!(
+            mode_reply_json(&ModeReply::failed(None, "timeout")),
+            json!({"ok": false, "mode": null, "error_code": "timeout"})
+        );
+    }
+
+    #[test]
+    fn switch_blockers() {
+        assert_eq!(switch_blocker(false, true, false), Some("offline"));
+        assert_eq!(switch_blocker(true, false, false), Some("unsupported"));
+        assert_eq!(switch_blocker(true, true, true), Some("in_call"));
+        assert_eq!(switch_blocker(true, true, false), None);
+    }
+
+    #[test]
+    fn mode_reply_goes_only_to_its_phone() {
+        let devices = PhoneDevices::default();
+        let (tx, mut rx) = oneshot::channel();
+        devices.waiting().insert("id1".into(), ("pixel-1".into(), tx));
+        devices.on_mode_reply("pixel-2", &json!({"id": "id1", "ok": true, "mode": "normal"}));
+        assert!(rx.try_recv().is_err());
+        devices.on_mode_reply("pixel-1", &json!({"id": "id1", "ok": true, "mode": "normal"}));
+        assert_eq!(rx.try_recv().unwrap().mode, Some(PhoneMode::Normal));
+    }
+
+    #[test]
+    fn disconnected_phone_is_never_in_call() {
+        let hello = parse_phone_hello(&json!({"phone_mode": "normal", "in_call": true}));
+        let p = PhoneEntry { sink: None, hello, last_seen_ms: 5 };
+        let v = phone_json("pixel-1", &p, true);
+        assert_eq!((v["connected"].clone(), v["in_call"].clone()), (json!(false), json!(false)));
+        assert_eq!(v["mode"], json!("normal"));
+    }
+
+    #[test]
+    fn console_url_from_public_url() {
+        assert_eq!(console_url(""), None);
+        assert_eq!(console_url("192.168.1.20:8787"), None);
+        assert_eq!(console_url("ftp://192.168.1.20"), None);
+        assert_eq!(console_url("http://"), None);
+        assert_eq!(
+            console_url("http://192.168.1.20:8787").as_deref(),
+            Some("http://192.168.1.20:8787/calls/")
+        );
+        assert_eq!(
+            console_url(" http://192.168.1.20:8787/calls/ ").as_deref(),
+            Some("http://192.168.1.20:8787/calls/")
+        );
+        assert_eq!(console_url("https://myna.example/").as_deref(), Some("https://myna.example/calls/"));
+    }
 }
 
 pub fn router(state: CallsState) -> Router {
@@ -1128,6 +1655,7 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/notify/test", post(notify_test))
         .route("/api/notify/send", post(notify_send))
         .route("/api/devices", get(devices))
+        .route("/api/devices/{serial}/mode", post(device_mode))
         .route("/api/tasks", get(tasks_list))
         .route("/api/tasks/{id}/confirm", post(tasks_confirm))
         .route("/api/tasks/{id}/ignore", post(tasks_ignore))

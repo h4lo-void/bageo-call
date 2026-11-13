@@ -11,6 +11,8 @@ import android.util.Log
 /**
  * Hard takeover: become default dialer + call-screening holder, and suspend
  * Google Dialer in-call UI so Telecom cannot show their full-screen CUI.
+ * Only in AI mode: in normal phone mode ([Prefs.isAiCallEnabled] false) these do nothing,
+ * and [PhoneModeManager] gives the phone app back to Google Phone.
  *
  * Restore Google Dialer later (documented in android/README.md):
  *   pm enable com.google.android.dialer
@@ -40,6 +42,10 @@ object DialerRoleHelper {
     }
 
     fun ensureRoles(context: Context) {
+        if (!Prefs.isAiCallEnabled(context)) {
+            Log.i(TAG, "normal phone mode: leave the phone app alone")
+            return
+        }
         tryRootRoles(context)
         suspendCompetingDialerUi()
         if (isDefaultDialer(context)) {
@@ -50,6 +56,7 @@ object DialerRoleHelper {
     }
 
     fun requestDialerRole(activity: Activity) {
+        if (!Prefs.isAiCallEnabled(activity)) return
         ensureRoles(activity)
         if (isDefaultDialer(activity)) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

@@ -99,8 +99,8 @@ Details and rollback: [Phone setup](PHONE.md). In short:
 
 1. Copy `pixelcallai_uplink-<version>.zip` (from the release) to the phone and
    install it as a module in the Magisk or KernelSU app. Reboot.
-2. Open the **Myna** app and tap through its checklist until every
-   line says OK (permissions, default phone app, call screening, Do Not
+2. Open the **Myna** app and tap through its **Setup steps** until every
+   step says OK (permissions, default phone app, call screening, Do Not
    Disturb access, battery exemption). Allow root when asked.
 3. Turn on **USB debugging** (*Settings → About phone →* tap *Build number*
    seven times, then *System → Developer options → USB debugging*).

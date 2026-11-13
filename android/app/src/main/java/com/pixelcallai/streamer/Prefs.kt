@@ -2,20 +2,34 @@ package com.pixelcallai.streamer
 
 import android.content.Context
 import android.content.SharedPreferences
+import java.io.File
 import java.net.URI
 
 object Prefs {
     private const val NAME = "pixel_call_ai"
-    const val KEY_AI_CALL_ENABLED = "AI_CALL_ENABLED"
     const val KEY_MODE = "AUDIO_MODE"
     const val KEY_LAST_CALLER_ID = "LAST_CALLER_ID"
     const val KEY_AGENT_URL = "AGENT_URL"
+    /** Web console address the agent sent (`agent_info`); cleared on every new connection. */
+    const val KEY_CONSOLE_URL = "CONSOLE_URL"
     /**
      * Legacy agent-synced spam blocklist key. Reject gating is **disabled**;
      * [setBlocklist] may still store unused values from `blocklist_sync`.
      */
     const val KEY_BLOCKLIST = "SPAM_BLOCKLIST"
     const val MODE_SILENT_LOCAL = "SILENT_LOCAL"
+
+    /** The AI answers every call (the module's takeover). */
+    const val PHONE_MODE_AI = "ai"
+    /** An ordinary phone: calls ring and the owner answers them. */
+    const val PHONE_MODE_NORMAL = "normal"
+
+    /**
+     * Mirror of the module's `/data/adb/pixelcallai/mode` (see [PhoneModeManager]).
+     * A plain file, not SharedPreferences: the `:screening` process reads it too, and
+     * SharedPreferences would serve it a stale cached copy.
+     */
+    private const val PHONE_MODE_FILE = "phone_mode"
 
     /**
      * Device-protected prefs so BootReceiver / direct-boot arming works before the
@@ -26,11 +40,61 @@ object Prefs {
         return de.getSharedPreferences(NAME, Context.MODE_PRIVATE)
     }
 
-    fun isAiCallEnabled(ctx: Context): Boolean =
-        sp(ctx).getBoolean(KEY_AI_CALL_ENABLED, true)
+    private fun phoneModeFile(ctx: Context): File =
+        File(ctx.createDeviceProtectedStorageContext().filesDir, PHONE_MODE_FILE)
 
-    fun setAiCallEnabled(ctx: Context, enabled: Boolean) {
-        sp(ctx).edit().putBoolean(KEY_AI_CALL_ENABLED, enabled).apply()
+    /**
+     * [PHONE_MODE_AI] unless the phone was switched to a normal phone. No file = AI,
+     * which is how every phone ran before the switch existed. (The old
+     * `AI_CALL_ENABLED` preference is no longer read.)
+     */
+    fun phoneMode(ctx: Context): String {
+        val text = try {
+            val f = phoneModeFile(ctx)
+            if (f.isFile) f.readText().trim() else ""
+        } catch (_: Exception) {
+            ""
+        }
+        return if (text == PHONE_MODE_NORMAL) PHONE_MODE_NORMAL else PHONE_MODE_AI
+    }
+
+    /** Only [PhoneModeManager] calls this, after the module's file says the same. */
+    fun setPhoneMode(ctx: Context, mode: String): Boolean {
+        val file = phoneModeFile(ctx)
+        return try {
+            file.parentFile?.mkdirs()
+            val tmp = File(file.parentFile, "$PHONE_MODE_FILE.tmp")
+            tmp.writeText(mode)
+            if (!tmp.renameTo(file)) file.writeText(mode)
+            phoneMode(ctx) == mode
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** True in AI mode: the app answers calls, mutes the phone and holds the phone-app roles. */
+    fun isAiCallEnabled(ctx: Context): Boolean = phoneMode(ctx) == PHONE_MODE_AI
+
+    /** The web console's address, when the connected agent sent one. */
+    fun consoleUrl(ctx: Context): String? =
+        sp(ctx).getString(KEY_CONSOLE_URL, null)?.trim()?.takeIf { isWebUrl(it) }
+
+    /** Blank or not an http(s) address removes it (the button is hidden). */
+    fun setConsoleUrl(ctx: Context, url: String?) {
+        val cleaned = url?.trim().orEmpty()
+        val editor = sp(ctx).edit()
+        if (isWebUrl(cleaned)) editor.putString(KEY_CONSOLE_URL, cleaned) else editor.remove(KEY_CONSOLE_URL)
+        editor.apply()
+    }
+
+    fun isWebUrl(url: String): Boolean {
+        val u = url.trim()
+        if (!u.startsWith("http://") && !u.startsWith("https://")) return false
+        return try {
+            !URI(u).host.isNullOrBlank()
+        } catch (_: Exception) {
+            false
+        }
     }
 
     /**

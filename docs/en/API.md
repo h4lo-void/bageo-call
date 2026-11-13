@@ -92,8 +92,9 @@ request for a voice opens a short Gemini session.
 
 | Method and path | What |
 |---|---|
-| `GET /calls/api/devices` | `{ok, usb: {enabled, adb_found, adb_path, error, phones: [{serial, state, model, reverse, app_installed}]}, connected: [...], labels: {<phone id>: <model>}, calls_in_progress}`. |
-| `GET /health` | A large flat JSON object for troubleshooting: version, language, what is configured, connected phones, calls in progress; no keys or tokens. When a console token is set and the request does not carry it, only `ok`, `version`, `language`, `active_call_count` and `control_idle_clients` are returned (enough for monitoring). |
+| `GET /calls/api/devices` | `{ok, usb: {enabled, adb_found, adb_path, error, phones: [{serial, state, model, reverse, app_installed}]}, connected: [...], labels: {<phone id>: <model>}, calls_in_progress, phones: [...]}`. Each entry of the top-level `phones` is a phone seen on its control connection since the agent started: `{serial, connected, mode, supports_mode, model, app_version, in_call, last_seen_ms}`. `mode` is `ai` (the AI answers) or `normal` (an ordinary phone, see [Phone setup](PHONE.md#normal-phone-mode)); `supports_mode` is false for apps older than the switch, which always run as `ai`. |
+| `POST /calls/api/devices/{serial}/mode` | Body `{"mode": "ai" \| "normal"}`. Asks the phone to switch and waits up to 15 seconds for its answer. Always `{ok, mode, error_code}`: `mode` is the phone's mode afterwards (`null` when unknown), `error_code` is `null` on success, otherwise one of `offline` (not connected), `unsupported` (app too old), `in_call`, `timeout`, `busy` (a switch is already running), `no_root`, `save_failed`, `dialer_failed`, `screening_failed`, `dnd_failed`, `volume_failed`, `invalid_mode`, `failed`. An unknown `mode` in the body is answered with 400 and `invalid_mode`. |
+| `GET /health` | A large flat JSON object for troubleshooting: version, language, what is configured, connected phones, calls in progress; no keys or tokens. `control_idle_clients` / `control_idle_serials` count every connected phone; `normal_mode_serials` lists those switched to a normal phone, whose calls the AI does not answer. When a console token is set and the request does not carry it, only `ok`, `version`, `language`, `active_call_count` and `control_idle_clients` are returned (enough for monitoring). |
 
 ## The phones' side
 
@@ -107,3 +108,14 @@ The messages are listed in
 [`android/README.md`](../../android/README.md#websocket-protocol). Anything
 that speaks this protocol can stand in for the phone — which is how a SIP or
 softphone front end could be added without touching the call logic.
+
+For the phone mode, the control connection carries these messages (both sides
+ignore what they do not know, so old apps and old agents keep working):
+
+| Direction | Message | Meaning |
+|---|---|---|
+| phone → agent | `hello` with `phone_mode` (`ai` / `normal`) and `in_call` | The phone's mode when it connects. `mode` stays `CONTROL_IDLE` (the connection kind). No `phone_mode` = an older app: `ai`, cannot be switched. |
+| phone → agent | `{"type": "status", "mode": "ai" \| "normal", "in_call": bool}` | The mode or the call state changed. |
+| agent → phone | `{"type": "set_mode", "mode": "ai" \| "normal", "id": "<uuid>"}` | Switch (sent by the route above). |
+| phone → agent | `{"type": "set_mode_result", "id": "<same>", "ok": bool, "mode": "...", "error": "<code>"}` | Result; `error` is empty on success and uses the codes above. |
+| agent → phone | `{"type": "agent_info", "console_url": "http://…/calls/"}` | Right after the hello, only when the console's address (`public_url`) is known. The app shows an "Open the web console" button for it. |

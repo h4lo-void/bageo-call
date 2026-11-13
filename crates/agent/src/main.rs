@@ -220,6 +220,9 @@ struct AppState {
     task_store: Arc<TaskStore>,
     /// Idle control WS clients (`mode=CONTROL_IDLE`) for outbound callbacks.
     control: Arc<ControlRegistry>,
+    /// What each phone reported on its control connection (AI / normal phone mode,
+    /// app version) and the web console's mode switch.
+    phones: Arc<calls_http::PhoneDevices>,
     /// Rolling TRTC AI talk metrics (caller finished → AI audio back).
     trtc_talk: Arc<TrtcTalkMetrics>,
     /// Process-wide short-window dedup for incoming-call notifications. A bridge
@@ -900,6 +903,7 @@ async fn main() -> Result<()> {
         });
     }
     let control = ControlRegistry::new();
+    let phones = calls_http::PhoneDevices::new();
     let state = AppState {
         settings: settings.clone(),
         settings_store: settings_store.clone(),
@@ -920,6 +924,7 @@ async fn main() -> Result<()> {
         calls: calls.clone(),
         task_store: task_store.clone(),
         control: control.clone(),
+        phones: phones.clone(),
         trtc_talk: Arc::new(TrtcTalkMetrics::default()),
         incoming_notify_dedup: Arc::new(IncomingNotifyDedup::default()),
         call_reattach: Arc::new(CallReattachRegistry::default()),
@@ -991,6 +996,7 @@ async fn main() -> Result<()> {
         http: http.clone(),
         control: control.clone(),
         ambience: state.ambience.clone(),
+        phones: phones.clone(),
     };
     let addr: SocketAddr = format!("{}:{}", settings.host, settings.port).parse()?;
     let mode = settings.agent_mode.as_str();
@@ -1495,6 +1501,12 @@ async fn health(
     let control_serials = state.control.connected_serials().await;
     body.insert("control_idle_clients".into(), json!(control_serials.len()));
     body.insert("control_idle_serials".into(), json!(control_serials));
+    // Connected phones switched to "normal phone": still in control_idle_*, but the AI
+    // does not answer their calls.
+    body.insert(
+        "normal_mode_serials".into(),
+        json!(state.phones.normal_mode_serials()),
+    );
     // TRTC AI: caller finished speaking → first AI audio (ms). 0 = no sample yet.
     let n = state.trtc_talk.reply_count.load(Ordering::Relaxed);
     body.insert(
@@ -1746,6 +1758,7 @@ async fn handle_control_idle_ws(
                     Err(_) => continue,
                 };
                 let mtype = parsed.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                state.phones.touch(&serial);
                 match mtype {
                     "place_call_ack" | "place_call_failed" | "outbound_ready" | "call_end" => {
                         state
@@ -1756,6 +1769,10 @@ async fn handle_control_idle_ws(
                     "ping" => {
                         let _ = send_json(&sink, json!({"type":"pong"})).await;
                     }
+                    // The phone's mode (AI / normal phone) or call state changed.
+                    "status" => state.phones.on_status(&serial, &parsed),
+                    // Answer to a web console mode switch (`set_mode`).
+                    "set_mode_result" => state.phones.on_mode_reply(&serial, &parsed),
                     // Phone rings (not answered yet): how long to ring, and the AI gets
                     // ready meanwhile (ring once before answering).
                     "incoming" => {
@@ -1811,6 +1828,21 @@ async fn handle_control_idle_ws(
     // Only drop our own sink: if the phone already reconnected, the registry holds
     // the new socket and removing by serial alone would hide a live idle phone.
     state.control.unregister_client_sink(&serial, &sink).await;
+    state.phones.disconnected(&serial, &sink);
+}
+
+/// Tell a phone's app where the web console is, for its "Open the web console"
+/// button. Nothing is sent while the console's address (`public_url`) is unknown;
+/// older apps ignore the message.
+async fn send_agent_info(state: &AppState, sink: &WsSink) {
+    let public_url = state
+        .settings_store
+        .snapshot()
+        .effective(&state.settings)
+        .public_url;
+    if let Some(url) = calls_http::console_url(&public_url) {
+        let _ = send_json(sink, json!({"type": "agent_info", "console_url": url})).await;
+    }
 }
 
 async fn ws_upgrade(
@@ -2044,6 +2076,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         .control
                                         .register_client(serial.clone(), sink.clone())
                                         .await;
+                                    state.phones.connected(&serial, sink.clone(), &parsed);
                                     let _ = send_json(
                                         &sink,
                                         json!({
@@ -2063,6 +2096,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                             "control_idle blocklist clear failed serial={serial}: {e:#}"
                                         );
                                     }
+                                    send_agent_info(&state, &sink).await;
                                     handle_control_idle_ws(state, serial, sink, stream).await;
                                     return;
                                 }

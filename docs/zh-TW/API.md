@@ -70,11 +70,22 @@ PUT /calls/api/settings
 
 | 方法與路徑 | 內容 |
 |---|---|
-| `GET /calls/api/devices` | `{ok, usb: {enabled, adb_found, adb_path, error, phones: [{serial, state, model, reverse, app_installed}]}, connected: [...], labels: {<phone id>: <model>}, calls_in_progress}`。 |
-| `GET /health` | 一個很大的扁平 JSON 物件，用於排查問題：版本、語言、哪些東西已設定、已連線的手機、進行中的通話；不含金鑰或 token。有設定控制台權杖而請求沒帶時，只會回傳 `ok`、`version`、`language`、`active_call_count` 和 `control_idle_clients`（監控用已經足夠）。 |
+| `GET /calls/api/devices` | `{ok, usb: {enabled, adb_found, adb_path, error, phones: [{serial, state, model, reverse, app_installed}]}, connected: [...], labels: {<phone id>: <model>}, calls_in_progress, phones: [...]}`。最外層的 `phones` 是主程式啟動後在 control 連線上見過的每支手機：`{serial, connected, mode, supports_mode, model, app_version, in_call, last_seen_ms}`。`mode` 是 `ai`（AI 接聽）或 `normal`（一般手機，見[手機設定](PHONE.md#一般手機模式)）；比這個功能舊的 App，`supports_mode` 是 false，永遠是 `ai`。 |
+| `POST /calls/api/devices/{serial}/mode` | Body `{"mode": "ai" \| "normal"}`。叫手機切換，最多等 15 秒等它回覆。一律回 `{ok, mode, error_code}`：`mode` 是切換後手機的模式（不知道時為 `null`），成功時 `error_code` 是 `null`，否則是這些代碼之一：`offline`（沒連上）、`unsupported`（App 太舊）、`in_call`、`timeout`、`busy`（上一次切換還在做）、`no_root`、`save_failed`、`dialer_failed`、`screening_failed`、`dnd_failed`、`volume_failed`、`invalid_mode`、`failed`。Body 的 `mode` 不認得時回 400 與 `invalid_mode`。 |
+| `GET /health` | 一個很大的扁平 JSON 物件，用於排查問題：版本、語言、哪些東西已設定、已連線的手機、進行中的通話；不含金鑰或 token。`control_idle_clients`／`control_idle_serials` 算的是所有連上的手機；`normal_mode_serials` 列出切成一般手機、AI 不接它們電話的那幾支。有設定控制台權杖而請求沒帶時，只會回傳 `ok`、`version`、`language`、`active_call_count` 和 `control_idle_clients`（監控用已經足夠）。 |
 
 ## 手機這一端
 
 手機透過 WebSocket 連到 `/` 或 `/ws`（兩者相同）：每支手機一條長期維持的「control」連線，每通接聽的電話一條「media」連線，雙向傳送 JSON 文字訊框和原始的 16 kHz 單聲道 16 位元 PCM 二進位訊框。從這台電腦本身來的連線（USB 通道）一律接受；其他連線在有設定該權杖時，必須帶上 `?token=<DEVICE_TOKEN>`。
 
 訊息列表在 [`android/README.md`](../../android/README.md#websocket-protocol)（英文）。任何會講這個通訊協定的東西都可以代替手機——所以要加上 SIP 或軟體電話前端，可以完全不動通話邏輯。
+
+手機模式用到 control 連線上的這些訊息（雙方都會忽略不認得的東西，所以舊 App、舊主程式照樣能用）：
+
+| 方向 | 訊息 | 意思 |
+|---|---|---|
+| 手機 → 主程式 | `hello` 加上 `phone_mode`（`ai`／`normal`）和 `in_call` | 連上時手機的模式。`mode` 仍然是 `CONTROL_IDLE`（連線種類）。沒有 `phone_mode` = 舊 App：`ai`，不能從這裡切換。 |
+| 手機 → 主程式 | `{"type": "status", "mode": "ai" \| "normal", "in_call": bool}` | 模式或通話狀態變了。 |
+| 主程式 → 手機 | `{"type": "set_mode", "mode": "ai" \| "normal", "id": "<uuid>"}` | 切換（由上面的路由送出）。 |
+| 手機 → 主程式 | `{"type": "set_mode_result", "id": "<同一個>", "ok": bool, "mode": "...", "error": "<代碼>"}` | 結果；成功時 `error` 是空字串，代碼同上。 |
+| 主程式 → 手機 | `{"type": "agent_info", "console_url": "http://…/calls/"}` | 緊接在 hello 之後，只有知道控制台網址（`public_url`）時才送。App 會因此顯示「打開網頁控制台」按鈕。 |

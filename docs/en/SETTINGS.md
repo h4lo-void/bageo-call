@@ -18,7 +18,7 @@ There are two kinds of settings:
 | Language | The language the AI speaks and the language of notifications and summaries. English, 繁體中文 (Taiwan), 简体中文, 日本語, 한국어, Español, Français, Deutsch, Português. |
 | Your name | How callers refer to you. Used wherever a prompt says `{owner}`. |
 | Answer style | **AI assistant** — says it is an AI answering for you and takes a message. **As me** — answers as you. |
-| AI answers calls | Master switch. Off: calls are picked up and hung up at once, nothing is said. (To let calls ring unanswered instead, switch off *AI answering* in the phone app.) |
+| AI answers calls | Master switch. Off: calls are picked up and hung up at once, nothing is said. (To have one phone ring normally so you can answer it yourself, switch it to a [normal phone](PHONE.md#normal-phone-mode) instead.) |
 | Gemini API key | Your key from Google AI Studio. Stored on your computer only. |
 | Live model | The Gemini Live model. Default `gemini-3.8-live`. Models with "thinking" in the name answer more carefully and a little slower. |
 | Voice | One of Gemini's built-in voices; ▶ plays a sample in your language. |

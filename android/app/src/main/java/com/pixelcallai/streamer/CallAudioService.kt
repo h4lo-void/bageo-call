@@ -43,6 +43,8 @@ import java.util.concurrent.Future
 
 /**
  * Background watcher + silent AI call handler.
+ * - Normal phone mode ([Prefs.phoneMode] = normal): only the CONTROL_IDLE connection
+ *   (status + remote mode switch). No muting, no roles, no answering.
  * - Idle/armed: CONTROL_IDLE WebSocket to the agent; hard-mute local mic/speaker.
  * - RINGING: wait until the agent control path is up, report `incoming`, ring for the
  *   agent's `answer_plan` (~one ring; the agent warms up the AI session meanwhile),
@@ -101,6 +103,11 @@ class CallAudioService : Service() {
     @Volatile private var answerScheduled = false
     /** Ringing call waiting for the agent's `answer_plan` (ring time, ms). */
     @Volatile private var pendingAnswerPlan: CompletableDeferred<Long>? = null
+    /** Last call state (ringing/active vs idle) reported to the agent in `status`. */
+    @Volatile private var reportedInCall: Boolean? = null
+    private val modeListener = PhoneModeManager.Listener { mode ->
+        mainHandler.post { onPhoneModeChanged(mode) }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -108,6 +115,9 @@ class CallAudioService : Service() {
         super.onCreate()
         audioGuard = LocalAudioGuard(this)
         telephonyManager = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
+        PhoneModeManager.addListener(modeListener)
+        // The module's mode file wins over the app's copy (changed by hand, data cleared).
+        PhoneModeManager.syncFromRoot(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -148,10 +158,13 @@ class CallAudioService : Service() {
                 handleExplicitCallEnded(intent.getLongExtra(EXTRA_CALL_INSTANCE_ID, NO_CALL_INSTANCE))
             }
             ACTION_SET_ENABLED -> {
+                // Older entry point (adb): on = the AI answers, off = normal phone.
                 val en = intent.getBooleanExtra(EXTRA_ENABLED, true)
-                Prefs.setAiCallEnabled(this, en)
-                updateNotification()
-                if (!en && callActive) endCallSession()
+                armWatcher()
+                val target = if (en) Prefs.PHONE_MODE_AI else Prefs.PHONE_MODE_NORMAL
+                PhoneModeManager.requestSwitch(this, target, callBusy = isCallBusy()) { result ->
+                    Log.i(TAG, "SET_ENABLED=$en → ok=${result.ok} mode=${result.mode} error=${result.error}")
+                }
             }
             else -> armWatcher()
         }
@@ -171,6 +184,14 @@ class CallAudioService : Service() {
             )
         } else {
             startForeground(NOTIF_ID, buildNotification(getString(R.string.notification_text_armed)))
+        }
+        if (!Prefs.isAiCallEnabled(this)) {
+            // Normal phone mode: keep the agent connection (status, remote switch) and
+            // the call-state callback (in_call for the agent); touch nothing else.
+            registerPhoneCallbacks()
+            startControlClient()
+            Log.i(TAG, "normal phone mode: service connected, calls left alone")
+            return
         }
         audioGuard?.applyHardMute()
         DialerRoleHelper.ensureRoles(this)
@@ -439,8 +460,9 @@ class CallAudioService : Service() {
     }
 
     private fun handleCallState(state: Int) {
+        reportCallState(state != TelephonyManager.CALL_STATE_IDLE)
         if (!Prefs.isAiCallEnabled(this)) {
-            Log.i(TAG, "AI_CALL_ENABLED=false; ignore state=$state")
+            Log.i(TAG, "normal phone mode; leave call state=$state alone")
             return
         }
         when (state) {
@@ -931,6 +953,14 @@ class CallAudioService : Service() {
         val client = AgentControlClient(
             url = agentUrl,
             onCommand = { obj -> handleControlCommand(obj) },
+            describe = { hello ->
+                val busy = isCallBusy()
+                reportedInCall = busy
+                hello.put("phone_mode", Prefs.phoneMode(this))
+                hello.put("in_call", busy)
+                // The agent sends the console address again after this hello (if it has one).
+                Prefs.setConsoleUrl(this, null)
+            },
         )
         controlClient = client
         client.connect(deviceSerial())
@@ -952,8 +982,70 @@ class CallAudioService : Service() {
                 Log.i(TAG, "answer_plan delay_ms=$ms prewarm=${obj.optBoolean("prewarm")}")
                 pendingAnswerPlan?.complete(ms)
             }
+            "set_mode" -> handleSetMode(obj)
+            "agent_info" -> {
+                Prefs.setConsoleUrl(this, obj.optString("console_url"))
+                Log.i(TAG, "agent_info console_url_set=${Prefs.consoleUrl(this) != null}")
+            }
             else -> Log.i(TAG, "control cmd type=${obj.optString("type")}")
         }
+    }
+
+    /** Agent `set_mode` (web console): switch, then answer with `set_mode_result`. */
+    private fun handleSetMode(obj: org.json.JSONObject) {
+        val id = obj.optString("id")
+        val mode = obj.optString("mode").trim()
+        Log.i(TAG, "set_mode from agent mode=$mode id=$id")
+        PhoneModeManager.requestSwitch(this, mode, callBusy = isCallBusy()) { result ->
+            controlClient?.sendJson(
+                org.json.JSONObject()
+                    .put("type", "set_mode_result")
+                    .put("id", id)
+                    .put("ok", result.ok)
+                    .put("mode", result.mode)
+                    .put("error", result.error),
+            )
+        }
+    }
+
+    /** Main thread: the phone mode was (re)applied by [PhoneModeManager]. */
+    private fun onPhoneModeChanged(mode: String) {
+        Log.i(TAG, "phone mode now $mode")
+        if (mode == Prefs.PHONE_MODE_AI) {
+            armWatcher()
+        } else {
+            callStateWatchdogJob?.cancel()
+            callStateWatchdogJob = null
+            answerJob?.cancel()
+            answerJob = null
+            answerScheduled = false
+            audioGuard?.stopHoldLoop()
+            updateNotification()
+        }
+        sendStatus()
+    }
+
+    /** A call rings or is active on this phone (in either mode). */
+    private fun isCallBusy(): Boolean {
+        if (callActive || answerScheduled) return true
+        val state = currentTelephonyCallState()
+        return state != null && state != TelephonyManager.CALL_STATE_IDLE
+    }
+
+    private fun reportCallState(inCall: Boolean) {
+        if (reportedInCall == inCall) return
+        reportedInCall = inCall
+        sendStatus(inCall)
+    }
+
+    /** `status` on the control connection: the phone mode and whether a call is on. */
+    private fun sendStatus(inCall: Boolean = isCallBusy()) {
+        controlClient?.sendJson(
+            org.json.JSONObject()
+                .put("type", "status")
+                .put("mode", Prefs.phoneMode(this))
+                .put("in_call", inCall),
+        )
     }
 
     /**
@@ -1168,7 +1260,7 @@ class CallAudioService : Service() {
             nm.createNotificationChannel(
                 NotificationChannel(
                     channelId,
-                    "Call AI info",
+                    getString(R.string.channel_info),
                     NotificationManager.IMPORTANCE_LOW,
                 ),
             )
@@ -1400,6 +1492,7 @@ class CallAudioService : Service() {
     }
 
     override fun onDestroy() {
+        PhoneModeManager.removeListener(modeListener)
         cancelPendingServiceStop("service destroyed")
         endCallSession()
         callStateWatchdogJob?.cancel()
@@ -1425,7 +1518,7 @@ class CallAudioService : Service() {
             nm.createNotificationChannel(
                 NotificationChannel(
                     channelId,
-                    "Silent call AI",
+                    getString(R.string.channel_service),
                     NotificationManager.IMPORTANCE_MIN,
                 ),
             )
@@ -1439,7 +1532,7 @@ class CallAudioService : Service() {
         val enabled = Prefs.isAiCallEnabled(this)
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle(getString(R.string.notification_title))
-            .setContentText(if (enabled) text else getString(R.string.notification_text_disabled))
+            .setContentText(if (enabled) text else getString(R.string.notification_text_normal))
             .setSmallIcon(android.R.drawable.ic_lock_silent_mode)
             .setContentIntent(pi)
             .setOngoing(true)

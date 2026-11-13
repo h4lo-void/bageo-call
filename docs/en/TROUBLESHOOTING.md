@@ -24,14 +24,14 @@ piece that is missing. The agent's terminal window shows what it is doing;
 | No phone listed | Cable or port (try another; some cables only charge). USB debugging off. On Windows the phone may need Google's USB driver. |
 | `unauthorized` | Unlock the phone and accept "Allow USB debugging?". If the prompt does not appear: Developer options → *Revoke USB debugging authorisations*, replug. |
 | App not installed | The module is not installed or not active — see [Phone setup](PHONE.md). |
-| Plugged in, link set, but not connected | Open the Myna app: is *AI answering* on, is every checklist line OK? Tap **Test connection**. The agent retries starting the service every 90 seconds. |
+| Plugged in, link set, but not connected | Open the Myna app: what does the card at the top say, and is every setup step OK? Tap **Advanced → Test connection**. The agent retries starting the service every 90 seconds. |
 | Connects and drops again and again | Two different `adb` versions on the computer (Android Studio, a phone-mirroring tool, …) keep restarting each other. Set `ADB_BIN` to one of them and close the other tool. |
 
 ## Calls are not answered, or sound wrong
 
 | Symptom | Likely cause |
 |---|---|
-| The phone rings on and on | The app's service is not running or *AI answering* is off in the app. Without a connection to the agent the app still picks up after about 12 seconds — and the agent then hangs up. |
+| The phone rings on and on | The phone is in [normal phone mode](PHONE.md#normal-phone-mode) (the app's card says *Normal phone*), or the app's service is not running. Without a connection to the agent the app still picks up after about 12 seconds — and the agent then hangs up. |
 | Picked up, then hung up at once, nothing said | The AI could not start: no Gemini key, a wrong key, an unknown model name, no internet, or *AI answers calls* off in the console. The call record's summary says "the AI did not connect"; the terminal shows Gemini's error. |
 | The caller hears nothing, the AI seems to answer (transcript has AI lines) | The phone cannot play into the call (unsupported phone, or the app is not a privileged app). See the table in [`android/README.md`](../../android/README.md#troubleshooting). |
 | The AI never reacts to the caller (transcript has no caller lines) | The phone delivers no call audio to the app — again a phone-support question. |

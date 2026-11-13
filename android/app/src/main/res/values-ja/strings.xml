@@ -6,7 +6,9 @@
     <string name="notification_title">Myna</string>
     <string name="notification_text_armed">待機中です。着信を待っています（端末は無音のままです）。</string>
     <string name="notification_text_in_call">AI が通話に応対しています。</string>
-    <string name="notification_text_disabled">AI 応答は一時停止中です。</string>
+    <string name="notification_text_normal">通常のスマホ：着信音が鳴り、自分で電話に出ます。</string>
+    <string name="channel_service">Myna サービス</string>
+    <string name="channel_info">Myna のお知らせ</string>
     <string name="uplink_missing_title">相手に AI の声が届いていません</string>
     <string name="uplink_missing_text">通話音声の経路を使用できません。Myna モジュールがインストールされ、有効になっていることを確認してから再起動してください。</string>
 
@@ -15,33 +17,84 @@
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_compat">Pixel 7、7a、8、9 で動作確認済みです。root 化した他の機種でも動く可能性がありますが、自己責任でお試しください。</string>
 
-    <!-- Master switch and service -->
-    <string name="ai_switch_title">AI 応答</string>
-    <string name="ai_switch_desc">オンにすると、着信に無音で応答し、PC 上の AI が対応します。</string>
+    <!-- Status card and the switch between AI mode and normal phone -->
+    <string name="st_ai_on">AI が電話に出ています</string>
+    <string name="st_ai_on_d">着信には AI が出ます。スマホは鳴りません。</string>
+    <string name="st_normal">通常のスマホ：着信音が普通に鳴ります</string>
+    <string name="st_normal_d">AI は電話に出ません。普通のスマホと同じように自分で出られます。下のスイッチをオンにすると、また AI が出るようになります。</string>
+    <string name="st_offline">まだパソコンにつながっていません</string>
+    <string name="st_offline_d">パソコンで Myna が動いていて、スマホが USB でつながっているか確認してください（Wi-Fi の場合は「詳細設定」でアドレスを設定）。つながるまで、AI は相手と話せません。</string>
+    <string name="st_steps">未完了の設定ステップ：%1$d</string>
+    <string name="st_steps_d">AI が電話に出られるように、下の設定ステップを済ませてください。</string>
+    <string name="st_service_off">応答サービスが動いていません</string>
+    <string name="st_service_off_d">「開始」をタップすると再開します。</string>
+    <string name="btn_start">開始</string>
+    <string name="st_switching">切り替え中…</string>
+    <string name="st_switching_d">ふつうは数秒で終わります。</string>
+    <string name="mode_switch_label">AI が電話に出る</string>
+    <string name="mode_switch_hint">オフにすると通常のスマホに戻ります。着信音が鳴り、自分で出られます。</string>
+    <string name="confirm_ai_title">AI が電話に出るようにしますか？</string>
+    <string name="confirm_ai_body">このスマホは AI 専用になります。着信音は鳴らず、AI が電話に出ます。Google の電話アプリは無効になり、サイレント モードがオンになります。</string>
+    <string name="confirm_normal_title">通常のスマホに戻しますか？</string>
+    <string name="confirm_normal_body">着信音が鳴り、自分で電話に出ます。このスマホの電話に AI は出なくなります。</string>
+    <string name="btn_switch">切り替える</string>
+    <string name="mode_failed">切り替えが終わりませんでした。%1$sもう一度試せます。</string>
+    <string name="mode_err_in_call">通話中は切り替えられません。先に電話を切ってください。</string>
+    <string name="mode_err_busy">前の切り替えがまだ終わっていません。</string>
+    <string name="mode_err_no_root">Myna に root 権限がありません。Magisk か KernelSU で許可してください。</string>
+    <string name="mode_err_save">モードを保存できませんでした。</string>
+    <string name="mode_err_dialer">デフォルトの電話アプリを変更できませんでした。</string>
+    <string name="mode_err_screening">着信フィルタの設定を変更できませんでした。</string>
+    <string name="mode_err_dnd">サイレント モードを変更できませんでした。</string>
+    <string name="mode_err_volume">着信音の音量を設定できませんでした。</string>
+    <string name="mode_err_other">予期しないエラーが起きました。</string>
+    <string name="btn_console">Web コンソールを開く</string>
+    <string name="msg_no_browser">このスマホには Web ページを開けるアプリがありません。</string>
+
+    <!-- Setup steps (AI mode) -->
+    <string name="steps_header">設定ステップ（%2$d 件中 %1$d 件完了）</string>
+    <string name="status_ok">OK</string>
+    <string name="status_missing">未完了</string>
+    <string name="status_check">要確認</string>
+    <string name="step_module_title">Myna モジュールをインストール</string>
+    <string name="step_module_ok">モジュールは有効です。</string>
+    <string name="step_module_missing">Magisk か KernelSU で Myna モジュールを入れて、スマホを再起動してください。</string>
+    <string name="step_perms_title">Myna に電話とマイクの使用を許可</string>
+    <string name="step_perms_desc">着信に気づき、電話に出て、通話の音声をパソコンに送るために使います。</string>
+    <string name="step_dialer_title">Myna をデフォルトの電話アプリにする</string>
+    <string name="step_dialer_desc">AI が話している間、通話画面が出ないようにします。</string>
+    <string name="step_screening_title">Myna を着信フィルタ アプリにする</string>
+    <string name="step_screening_desc">着信音が鳴らないようにします。</string>
+    <string name="step_dnd_title">Myna にサイレント モードの操作を許可</string>
+    <string name="step_dnd_desc">AI が電話に出ている間、スマホを静かに保ちます。</string>
+    <string name="step_battery_title">Myna をスリープさせない</string>
+    <string name="step_battery_desc">省電力のために Myna が止められて電話を逃すのを防ぎます。</string>
+    <string name="btn_allow">許可</string>
+    <string name="btn_set">設定する</string>
+    <string name="btn_open_settings">設定を開く</string>
+    <string name="grant_perms">要求された権限を許可してから、もう一度「サービスを開始」をタップしてください。</string>
+    <string name="msg_perm_settings">一部の権限はここからリクエストできなくなっています。このアプリのシステム設定画面で許可してください。</string>
+
+    <!-- Advanced: service -->
+    <string name="advanced">詳細設定</string>
+    <string name="section_service">サービス</string>
     <string name="service_running">サービス: 実行中</string>
     <string name="service_stopped">サービス: 停止中</string>
     <string name="btn_start_service">サービスを開始</string>
     <string name="btn_stop_service">サービスを停止</string>
     <string name="msg_service_started">サービスを開始しました。</string>
     <string name="msg_service_stopped">サービスを停止しました。</string>
-    <string name="grant_perms">要求された権限を許可してから、もう一度「サービスを開始」をタップしてください。</string>
 
-    <!-- Checklist -->
-    <string name="section_checklist">セットアップ チェックリスト</string>
-    <string name="status_ok">OK</string>
-    <string name="status_missing">未完了</string>
-    <string name="status_check">要確認</string>
-
+    <!-- Advanced: detailed checks -->
+    <string name="section_details">詳しいチェック</string>
     <string name="check_priv_title">特権システムアプリとしてインストール済み</string>
     <string name="check_priv_ok">インストール先: %1$s</string>
     <string name="check_priv_missing">通常のアプリとしてインストールされています（%1$s）。Magisk または KernelSU で Myna モジュールをインストールし、再起動してください。APK を手動でもインストールした場合は、そちらをアンインストールしてください。</string>
-
     <string name="check_privperm_title">特権権限</string>
     <string name="check_privperm_desc">起動時にモジュールが付与します。この画面からは付与できません。</string>
     <string name="perm_capture_audio_output">通話音声を取得する</string>
     <string name="perm_modify_phone_state">AI の音声を通話に送り込む</string>
     <string name="perm_control_incall">通話画面を置き換える</string>
-
     <string name="section_runtime_perms">アプリの権限</string>
     <string name="perm_record_audio">マイク: 通話音声を録音する</string>
     <string name="perm_read_phone_state">電話: 通話の開始と終了を検知する</string>
@@ -49,27 +102,12 @@
     <string name="perm_answer_calls">通話への応答: 自動で応答・切断する</string>
     <string name="perm_call_phone">電話の発信: 折り返し発信機能</string>
     <string name="perm_post_notifications">通知: サービスの通知を表示する</string>
-    <string name="btn_grant">許可する</string>
-    <string name="msg_perm_settings">一部の権限はここからリクエストできなくなっています。このアプリのシステム設定画面で許可してください。</string>
-
-    <string name="section_system_settings">システム設定</string>
-    <string name="check_dialer_title">デフォルトの電話アプリ</string>
-    <string name="check_dialer_desc">通話画面を表示せずに応答できるようにします。</string>
-    <string name="check_screening_title">通話スクリーニング アプリ</string>
-    <string name="check_screening_desc">着信音を鳴らさないようにします。</string>
-    <string name="btn_set">設定する</string>
-    <string name="check_dnd_title">サイレント モードへのアクセス</string>
-    <string name="check_dnd_desc">留守番として動作している間、端末を静かに保ちます。</string>
-    <string name="btn_open_settings">設定を開く</string>
-    <string name="check_battery_title">電池の最適化の対象外</string>
-    <string name="check_battery_desc">Android がサービスをスリープさせないようにします。</string>
-    <string name="btn_allow">許可</string>
     <string name="check_uplink_title">AI 音声の通話への注入</string>
     <string name="check_uplink_ok">電話用の音声出力が見つかりました。</string>
     <string name="check_uplink_idle">現在は見つかりません。機種によっては通話中にのみ現れます。注入に失敗した場合はアプリが通知します。</string>
     <string name="check_uplink_missing">モジュールが必要です: MODIFY_PHONE_STATE 権限がありません。</string>
 
-    <!-- Connection -->
+    <!-- Advanced: connection -->
     <string name="section_connection">接続</string>
     <string name="agent_url_label">エージェントのアドレス</string>
     <string name="connection_hint_usb">USB（既定・推奨）: ws://127.0.0.1:8765 のままにしてください。PC 側のプログラムが adb reverse を使い、USB ケーブル経由でこのポートを自動的に転送します。</string>
@@ -84,12 +122,19 @@
     <string name="test_running">接続中…</string>
     <string name="test_ok">接続しました</string>
     <string name="test_failed">失敗: %1$s</string>
-    <string name="test_timeout">5 秒以内に応答がありません</string>
-    <string name="test_closed">接続が閉じられました（コード %1$d）</string>
+    <string name="test_fail_timeout">5 秒以内に応答がありません</string>
+    <string name="test_fail_refused">パソコンが接続を拒否しました。Myna は動いていますか？USB の転送は設定済みですか？</string>
+    <string name="test_fail_host">このアドレスが見つかりません</string>
+    <string name="test_fail_network">このアドレスに届きません。スマホとパソコンは同じネットワークにありますか？</string>
+    <string name="test_fail_auth">拒否されました：アドレスの token がないか、間違っています</string>
+    <string name="test_fail_tls">暗号化接続（wss）に失敗しました</string>
+    <string name="test_fail_rejected">応答はありましたが、Myna ではないか、接続を拒否しました</string>
+    <string name="test_fail_other">接続できませんでした</string>
+    <string name="test_details">詳細</string>
 
     <!-- About and safety -->
     <string name="section_about">このアプリについて・安全上の注意</string>
-    <string name="about_dedicated">専用の端末でお使いください。モジュールは電話アプリを引き継ぎ、着信音を消してサイレント モードをオンにするため、通常の電話としては使えなくなります。</string>
-    <string name="about_rollback">通常の電話に戻すには、Magisk または KernelSU でモジュールを無効化または削除し、再起動してください。その後も Google の電話アプリや着信音がオフのままの場合は、README の復元手順に従ってください。</string>
+    <string name="about_dedicated">AI モードでは、モジュールが電話アプリを引き継ぎ、着信音を消してサイレント モードをオンにします。予備のスマホでの利用をおすすめします。しばらく普通に使いたいときは、一番上のスイッチをオフにしてください。</string>
+    <string name="about_rollback">Myna を完全に外すには、まず一番上のスイッチをオフにして（通常のスマホに戻す）、Magisk か KernelSU でモジュールを無効化または削除し、再起動してください。</string>
     <string name="about_legal">通話の録音や、相手が AI と話していることを知らせる義務に関する法律は、国や地域によって異なります。法令の遵守は利用者ご自身の責任です。</string>
 </resources>
