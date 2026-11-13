@@ -135,11 +135,13 @@ impl Event {
         Some((s.format(fmt).to_string(), e.format(fmt).to_string()))
     }
 
-    /// "11/14 14:30" (or "11/14") for the notification line.
+    /// When it is, for the notification line, as the agent's language writes it:
+    /// "Nov 14, 14:30" / "11月14日 14:30" (the date alone for whole days).
     pub fn when(&self) -> String {
+        let lang = crate::locale::current();
         match self.times() {
-            Some((s, _)) if self.all_day => s.format("%m/%d").to_string(),
-            Some((s, _)) => s.format("%m/%d %H:%M").to_string(),
+            Some((s, _)) if self.all_day => crate::locale::date_only(lang, &s.date()),
+            Some((s, _)) => crate::locale::date_time(lang, &s),
             None => self.start.clone(),
         }
     }
@@ -278,7 +280,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!((ev.start.as_str(), ev.end.as_str()), ("2026-11-20T10:30", "2026-11-20T11:15"));
-        assert_eq!(ev.when(), "11/20 10:30");
+        assert_eq!(ev.when(), "11月20日 10:30");
     }
 
     #[test]
@@ -290,7 +292,7 @@ mod tests {
         .unwrap();
         assert!(ev.all_day);
         assert_eq!((ev.start.as_str(), ev.end.as_str()), ("2026-11-30T00:00", "2026-12-01T00:00"));
-        assert_eq!(ev.when(), "11/30");
+        assert_eq!(ev.when(), "11月30日");
         // Today as a whole day is still fine at 15:00.
         assert!(parse_event(r#"{"event":{"title":"x","start":"2026-11-12","all_day":true}}"#, now()).is_some());
     }

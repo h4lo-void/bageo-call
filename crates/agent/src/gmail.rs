@@ -18,6 +18,9 @@ use tokio_rustls::TlsConnector;
 use tracing::info;
 use uuid::Uuid;
 
+use crate::locale;
+use crate::notify::ChannelError;
+
 const SMTP_HOST: &str = "smtp.gmail.com";
 const SMTP_PORT: u16 = 587;
 const EHLO_NAME: &str = "myna-call";
@@ -150,7 +153,8 @@ where
         235,
     )
     .await
-    .context("gmail smtp auth password")?;
+    // Gmail refused the address / app password: the settings page says so.
+    .map_err(|e| ChannelError::new("auth_failed", "token", format!("gmail smtp auth password: {e:#}")))?;
 
     smtp_cmd_expect(
         &mut reader,
@@ -192,7 +196,7 @@ async fn smtp_connect_starttls() -> Result<TcpStream> {
     let addr = format!("{SMTP_HOST}:{SMTP_PORT}");
     let stream = TcpStream::connect(&addr)
         .await
-        .with_context(|| format!("gmail tcp connect {addr}"))?;
+        .map_err(|e| ChannelError::new("network_error", "", format!("gmail tcp connect {addr}: {e}")))?;
     let (reader, mut writer) = stream.into_split();
     let mut reader = BufReader::new(reader);
 
@@ -228,19 +232,24 @@ async fn tls_upgrade(stream: TcpStream) -> Result<tokio_rustls::client::TlsStrea
         .context("gmail tls handshake")
 }
 
-/// Safe ZH when Gmail user/password empty — keep in sync with `fulfill::GMAIL_MISSING_MSG`.
-/// Never include credential values in any bail string.
-pub const GMAIL_MISSING_CRED_MSG: &str =
-    "Gmail 憑證未設定 — 請至「設定」分頁填寫 Gmail 帳號與應用程式密碼後再確認";
+/// Gmail address or app password not set, in the agent's language (also what a
+/// task follow-up shows). Never include credential values in an error.
+pub fn gmail_missing_cred_msg() -> &'static str {
+    locale::phrases(locale::current()).f_gmail_missing
+}
+
+fn texts() -> &'static locale::Phrases {
+    locale::phrases(locale::current())
+}
 
 fn validate_gmail_user(user: &str) -> Result<&str> {
     let user = user.trim();
     if user.is_empty() {
-        // Defense in depth: fulfill should bail first; keep safe ZH (no EN opaque).
-        bail!("{GMAIL_MISSING_CRED_MSG}");
+        // Defense in depth: fulfill and the notification channel check first.
+        return Err(ChannelError::new("missing_field", "url", gmail_missing_cred_msg()).into());
     }
     if !user.contains('@') || user.starts_with('@') || user.ends_with('@') {
-        bail!("Gmail 帳號格式不正確 — 請至「設定」分頁檢查 Gmail 帳號");
+        return Err(ChannelError::new("bad_value", "url", texts().g_bad_address).into());
     }
     Ok(user)
 }
@@ -248,10 +257,10 @@ fn validate_gmail_user(user: &str) -> Result<&str> {
 fn validate_recipient(to: &str) -> Result<&str> {
     let to = to.trim();
     if to.is_empty() {
-        bail!("寄件失敗：收件信箱為空");
+        return Err(ChannelError::new("missing_field", "target", texts().g_no_recipient).into());
     }
     if !to.contains('@') {
-        bail!("寄件失敗：收件信箱格式不正確");
+        return Err(ChannelError::new("bad_value", "target", texts().g_bad_recipient).into());
     }
     Ok(to)
 }
@@ -259,11 +268,11 @@ fn validate_recipient(to: &str) -> Result<&str> {
 fn validate_app_password(app_password: &str) -> Result<&str> {
     let app_password = app_password.trim();
     if app_password.is_empty() {
-        // Never echo the password field; same ZH as fulfill missing-cred.
-        bail!("{GMAIL_MISSING_CRED_MSG}");
+        // Never echo the password field.
+        return Err(ChannelError::new("missing_field", "token", gmail_missing_cred_msg()).into());
     }
     if app_password.len() < 8 {
-        bail!("Gmail 應用程式密碼過短 — 請至「設定」分頁重新填寫（不會顯示密碼內容）");
+        return Err(ChannelError::new("bad_value", "token", texts().g_short_password).into());
     }
     Ok(app_password)
 }
@@ -435,9 +444,15 @@ mod tests {
     fn validation_rejects_empty_password_zh() {
         let err = validate_app_password("").unwrap_err();
         let msg = err.to_string();
-        assert_eq!(msg, GMAIL_MISSING_CRED_MSG);
+        assert_eq!(msg, gmail_missing_cred_msg());
         // Never leak a password-looking value into the error text.
         assert!(!msg.contains("abcdefgh"));
+        // The settings page learns which field is empty.
+        let ce = crate::notify::channel_error(&err).unwrap();
+        assert_eq!((ce.code, ce.field), ("missing_field", "token"));
+        let bad = validate_recipient("not-an-address").unwrap_err();
+        let ce = crate::notify::channel_error(&bad).unwrap();
+        assert_eq!((ce.code, ce.field), ("bad_value", "target"));
     }
 
     #[test]

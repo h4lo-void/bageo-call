@@ -237,14 +237,16 @@ pub fn reject_voice(rt: &crate::settings_store::RuntimeSettings) -> &str {
     }
 }
 
-/// Have the announcement ready for the current voice and model while there are
-/// blocked numbers (one Gemini call the first time only). `true` = nothing left to do.
+/// Have the announcement ready for the current voice and model while it can be
+/// needed: there are blocked numbers, or hidden numbers are not answered (one
+/// Gemini call the first time only). `true` = nothing left to do.
 pub async fn prepare_reject_clip(
     previews: &VoicePreviews,
     rt: &crate::settings_store::RuntimeSettings,
     sample_rate: u32,
 ) -> bool {
-    if rt.reject_numbers.is_empty() || rt.gemini_api_key.trim().is_empty() {
+    let needed = !rt.reject_numbers.is_empty() || !rt.answer_unknown_callers;
+    if !needed || rt.gemini_api_key.trim().is_empty() {
         return true;
     }
     let voice = reject_voice(rt);

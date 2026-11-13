@@ -192,9 +192,30 @@ pub fn token_ok_parts(settings: &Settings, headers: &HeaderMap, query_token: Opt
 fn unauthorized() -> Response {
     (
         StatusCode::UNAUTHORIZED,
-        Json(json!({"error": "unauthorized", "hint": "pass ?token= or Authorization: Bearer"})),
+        Json(json!({"error": "unauthorized", "code": "unauthorized", "hint": "pass ?token= or Authorization: Bearer"})),
     )
         .into_response()
+}
+
+/// An error for the web console: `code` is what the page translates
+/// (`err_<code>` in its dictionary); `error` keeps the agent's own words for
+/// the tooltip and for scripts.
+fn api_error(status: StatusCode, code: &str, error: impl Into<String>) -> Response {
+    let error: String = error.into();
+    (status, Json(json!({"ok": false, "code": code, "error": error}))).into_response()
+}
+
+/// A notification channel that failed: the code and the field at fault
+/// ([`crate::notify::ChannelError`]), `send_failed` when it is not known.
+fn channel_error_body(kind: &str, e: &anyhow::Error) -> Value {
+    let (code, field) = crate::notify::channel_error(e)
+        .map(|c| (c.code, c.field))
+        .unwrap_or(("send_failed", ""));
+    json!({"ok": false, "code": code, "field": field, "kind": kind, "error": format!("{e:#}")})
+}
+
+fn channel_error_response(status: StatusCode, kind: &str, e: &anyhow::Error) -> Response {
+    (status, Json(channel_error_body(kind, e))).into_response()
 }
 
 fn task_id_safe(id: &str) -> bool {
@@ -211,15 +232,11 @@ fn fulfill_err_response(e: anyhow::Error) -> Response {
     if lower.contains("not found") {
         return (
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "task not found", "detail": msg})),
+            Json(json!({"error": "task not found", "code": "task_not_found", "detail": msg})),
         )
             .into_response();
     }
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({"error": format!("fulfill failed: {msg}")})),
-    )
-        .into_response()
+    api_error(StatusCode::INTERNAL_SERVER_ERROR, "fulfill_failed", format!("fulfill failed: {msg}"))
 }
 
 async fn ui(headers: HeaderMap) -> Response {
@@ -380,14 +397,10 @@ async fn call_get(
         return unauthorized();
     }
     if !task_id_safe(&id) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "invalid call id"})),
-        )
-            .into_response();
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid call id");
     }
     let Some(rec) = state.store.get(&id).await else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response();
+        return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
     };
     // Post-call summary + full dialogue (null until the summary task wrote it).
     let notes = state.store.load_notes(&id).await;
@@ -415,13 +428,13 @@ async fn call_event_ics(
         return unauthorized();
     }
     if !task_id_safe(&id) {
-        return (StatusCode::BAD_REQUEST, Json(json!({"error": "invalid call id"}))).into_response();
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid call id");
     }
     let Some(notes) = state.store.load_notes(&id).await else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response();
+        return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
     };
     let Some(event) = notes.calendar else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "this call has no calendar suggestion"}))).into_response();
+        return api_error(StatusCode::NOT_FOUND, "no_calendar", "this call has no calendar suggestion");
     };
     let ics = event.ics(&id, &notes.summary, chrono::Utc::now().naive_utc());
     Response::builder()
@@ -525,10 +538,10 @@ async fn audio(
         return unauthorized();
     }
     let Some(rec) = state.store.get(&id).await else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response();
+        return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
     };
     let Some(rel) = rec.audio_path.as_deref() else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "no audio"}))).into_response();
+        return api_error(StatusCode::NOT_FOUND, "no_audio", "no audio");
     };
     stream_wav(&state.store, rel, &headers).await
 }
@@ -544,7 +557,7 @@ async fn audio_listen(
         return unauthorized();
     }
     let Some(rec) = state.store.get(&id).await else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response();
+        return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
     };
     let store = state.store.clone();
     let built = tokio::task::spawn_blocking(move || store.listen_wav_cached(&rec))
@@ -553,11 +566,7 @@ async fn audio_listen(
         .flatten();
     match built {
         Some(bytes) => ranged_response(&headers, bytes),
-        None => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "no listen audio"})),
-        )
-            .into_response(),
+        None => api_error(StatusCode::NOT_FOUND, "no_audio", "no listen audio"),
     }
 }
 
@@ -617,14 +626,10 @@ async fn audio_tts(
         return unauthorized();
     }
     let Some(rec) = state.store.get(&id).await else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response();
+        return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
     };
     let Some(rel) = rec.tts_audio_path.as_deref() else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "no tts audio"})),
-        )
-            .into_response();
+        return api_error(StatusCode::NOT_FOUND, "no_audio", "no tts audio");
     };
     stream_wav(&state.store, rel, &headers).await
 }
@@ -640,14 +645,10 @@ async fn audio_vm(
         return unauthorized();
     }
     let Some(rec) = state.store.get(&id).await else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response();
+        return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
     };
     let Some(rel) = rec.voicemail_path.as_deref() else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "no voicemail"})),
-        )
-            .into_response();
+        return api_error(StatusCode::NOT_FOUND, "no_audio", "no voicemail");
     };
     stream_wav(&state.store, rel, &headers).await
 }
@@ -663,14 +664,10 @@ async fn audio_remote(
         return unauthorized();
     }
     let Some(rec) = state.store.get(&id).await else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response();
+        return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
     };
     if rec.remote_audio_path.is_none() {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "no remote audio"})),
-        )
-            .into_response();
+        return api_error(StatusCode::NOT_FOUND, "no_audio", "no remote audio");
     }
     // Echo-cleaned (old recordings still hold raw inject echo on disk).
     let store = state.store.clone();
@@ -680,7 +677,7 @@ async fn audio_remote(
         .flatten()
     {
         Some(bytes) => ranged_response(&headers, bytes),
-        None => (StatusCode::NOT_FOUND, Json(json!({"error": "open failed"}))).into_response(),
+        None => api_error(StatusCode::NOT_FOUND, "open_failed", "open failed"),
     }
 }
 
@@ -722,7 +719,7 @@ async fn preview(
     let kind = pick(&q.ambience, &rt.ambience_kind);
     let level = q.level.unwrap_or(rt.ambience_level).clamp(1, 3);
     if voice != "none" && !crate::voice_preview::valid_voice(&voice) {
-        return (StatusCode::BAD_REQUEST, Json(json!({"error": format!("unknown voice {voice}")}))).into_response();
+        return api_error(StatusCode::BAD_REQUEST, "unknown_voice", format!("unknown voice {voice}"));
     }
     if q.clip.as_deref() == Some("reject") && voice != "none" {
         // What a blocked caller hears: the line alone, no room under it.
@@ -733,10 +730,10 @@ async fn preview(
             .await
         {
             tracing::warn!("reject announcement preview failed voice={voice}: {e:#}");
-            return (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("{e:#}")}))).into_response();
+            return api_error(StatusCode::BAD_GATEWAY, "preview_failed", format!("{e:#}"));
         }
         let Some(pcm) = state.previews.cached_reject_clip(&rt.gemini_live_model, &voice) else {
-            return (StatusCode::BAD_GATEWAY, Json(json!({"error": "the announcement could not be made"}))).into_response();
+            return api_error(StatusCode::BAD_GATEWAY, "preview_failed", "the announcement could not be made");
         };
         let mut padded = vec![0u8; (sr as usize / 2) * 2];
         padded.extend_from_slice(&pcm);
@@ -744,7 +741,7 @@ async fn preview(
         return ranged_response(&headers, bytes::Bytes::from(crate::calls::wav_from_pcm(&padded, sr, 1)));
     }
     if kind != "off" && !crate::ambience::valid_kind(&kind) {
-        return (StatusCode::BAD_REQUEST, Json(json!({"error": format!("unknown background sound {kind}")}))).into_response();
+        return api_error(StatusCode::BAD_REQUEST, "unknown_background", format!("unknown background sound {kind}"));
     }
     let sr = state.settings.sample_rate.max(8000);
     let lines = if voice == "none" {
@@ -765,7 +762,7 @@ async fn preview(
             Ok(lines) => lines,
             Err(e) => {
                 tracing::warn!("voice preview failed voice={voice}: {e:#}");
-                return (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("{e:#}")}))).into_response();
+                return api_error(StatusCode::BAD_GATEWAY, "preview_failed", format!("{e:#}"));
             }
         }
     };
@@ -775,8 +772,11 @@ async fn preview(
         match state.ambience.get(&kind) {
             Some(b) => Some((b, crate::ambience::level_gain(level), crate::ambience::preview_start_s(&kind))),
             None => {
-                return (StatusCode::NOT_FOUND, Json(json!({"error": format!("the sound file for background {kind} is not loaded")})))
-                    .into_response()
+                return api_error(
+                    StatusCode::NOT_FOUND,
+                    "background_missing",
+                    format!("the sound file for background {kind} is not loaded"),
+                )
             }
         }
     };
@@ -817,21 +817,24 @@ async fn settings_put(
         return unauthorized();
     }
     if !patch.is_object() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "JSON object body required"})),
-        )
-            .into_response();
+        return api_error(StatusCode::BAD_REQUEST, "bad_request", "JSON object body required");
     }
     match state.settings_store.apply_patch(&patch) {
         Ok(rt) => {
             // Language, answer style, owner name: what the next call's helpers read.
             rt.apply_globals();
-            // Blocked numbers / voice / model changed: have the "cannot be reached" announcement
-            // ready before the next such call (cached: free when it exists).
-            if ["reject_numbers", "gemini_voice_name", "gemini_live_model", "gemini_api_key", "language"]
-                .iter()
-                .any(|k| patch.get(*k).is_some())
+            // Blocked numbers / hidden numbers / voice / model changed: have the "cannot be
+            // reached" announcement ready before the next such call (cached: free when it exists).
+            if [
+                "reject_numbers",
+                "answer_unknown_callers",
+                "gemini_voice_name",
+                "gemini_live_model",
+                "gemini_api_key",
+                "language",
+            ]
+            .iter()
+            .any(|k| patch.get(*k).is_some())
             {
                 let previews = state.previews.clone();
                 let sr = state.settings.sample_rate;
@@ -856,11 +859,7 @@ async fn settings_put(
             }))
             .into_response()
         }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": format!("save failed: {e:#}")})),
-        )
-            .into_response(),
+        Err(e) => api_error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", format!("save failed: {e:#}")),
     }
 }
 
@@ -886,14 +885,13 @@ async fn notify_test(
         .into_iter()
         .next()
     else {
-        return (StatusCode::BAD_REQUEST, Json(json!({"ok": false, "error": "unknown channel kind"})))
-            .into_response();
+        return api_error(StatusCode::BAD_REQUEST, "unknown_channel", "unknown channel kind");
     };
     match crate::notify::send_channel(&state.http, &channel, &crate::notify::test_message()).await {
         Ok(()) => Json(json!({"ok": true})).into_response(),
         Err(e) => {
             tracing::warn!("notify test failed kind={}: {e:#}", channel.kind);
-            (StatusCode::BAD_GATEWAY, Json(json!({"ok": false, "error": format!("{e:#}")}))).into_response()
+            channel_error_response(StatusCode::BAD_GATEWAY, &channel.kind, &e)
         }
     }
 }
@@ -917,7 +915,7 @@ async fn notify_send(
         return unauthorized();
     }
     if body.body.trim().is_empty() {
-        return (StatusCode::BAD_REQUEST, Json(json!({"ok": false, "error": "body is empty"}))).into_response();
+        return api_error(StatusCode::BAD_REQUEST, "empty_body", "body is empty");
     }
     let eff = state.settings_store.snapshot().effective(&state.settings);
     let title = if body.title.trim().is_empty() { "Myna" } else { body.title.trim() };
@@ -973,11 +971,7 @@ async fn tasks_confirm(
         return unauthorized();
     }
     if !task_id_safe(&id) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "invalid task id"})),
-        )
-            .into_response();
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid task id");
     }
     let rt = state.settings_store.snapshot();
     match on_confirm(
@@ -1004,11 +998,7 @@ async fn tasks_ignore(
         return unauthorized();
     }
     if !task_id_safe(&id) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "invalid task id"})),
-        )
-            .into_response();
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid task id");
     }
     match on_ignore(&state.task_store, &id).await {
         Ok(task) => Json(json!({"ok": true, "task": task})).into_response(),
@@ -1019,14 +1009,9 @@ async fn tasks_ignore(
 async fn stream_wav(store: &CallStore, rel: &str, headers: &HeaderMap) -> Response {
     use tokio::io::{AsyncReadExt, AsyncSeekExt};
     let Some(path) = store.audio_abs(rel) else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "file missing"})),
-        )
-            .into_response();
+        return api_error(StatusCode::NOT_FOUND, "no_audio", "file missing");
     };
-    let open_failed =
-        || (StatusCode::NOT_FOUND, Json(json!({"error": "open failed"}))).into_response();
+    let open_failed = || api_error(StatusCode::NOT_FOUND, "open_failed", "open failed");
     let Ok(meta) = tokio::fs::metadata(&path).await else {
         return open_failed();
     };
@@ -1106,6 +1091,21 @@ mod tests {
             .unwrap();
         assert_eq!(out, UI_HTML);
         assert!(a.gzip.len() < UI_HTML.len() / 2);
+    }
+
+    #[test]
+    fn channel_errors_carry_a_code_and_the_field() {
+        let e: anyhow::Error = crate::notify::ChannelError::new("missing_field", "token", "bot token is empty").into();
+        let body = channel_error_body("telegram", &e);
+        assert_eq!((body["code"].as_str(), body["field"].as_str()), (Some("missing_field"), Some("token")));
+        assert_eq!(body["kind"], "telegram");
+        assert_eq!(body["error"], "bot token is empty");
+        // Behind a context it is still found.
+        let wrapped = e.context("sending the test message");
+        assert_eq!(channel_error_body("telegram", &wrapped)["code"], "missing_field");
+        // Errors without a code fall back to a generic one.
+        let plain = anyhow::anyhow!("boom");
+        assert_eq!(channel_error_body("ntfy", &plain)["code"], "send_failed");
     }
 }
 

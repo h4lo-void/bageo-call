@@ -169,11 +169,8 @@ impl TgPoller {
             }
         }
 
-        let ack = if confirm {
-            "已確認，執行中…"
-        } else {
-            "已忽略"
-        };
+        let p = crate::locale::phrases(crate::locale::current());
+        let ack = if confirm { p.tc_confirm_ack } else { p.tc_ignore_ack };
         answer_callback_query(http, bot_token, callback_id, Some(ack)).await;
 
         if let Some(mid) = message_id {
@@ -233,6 +230,7 @@ pub async fn send_task_card(
 
     let confirm_data = encode_callback_data(task_id, true);
     let ignore_data = encode_callback_data(task_id, false);
+    let p = crate::locale::phrases(crate::locale::current());
 
     let url = bot_method_url(token, "sendMessage");
     let resp = http
@@ -243,8 +241,8 @@ pub async fn send_task_card(
             "disable_web_page_preview": true,
             "reply_markup": {
                 "inline_keyboard": [[
-                    { "text": "確認", "callback_data": confirm_data },
-                    { "text": "忽略", "callback_data": ignore_data },
+                    { "text": p.tc_confirm, "callback_data": confirm_data },
+                    { "text": p.tc_ignore, "callback_data": ignore_data },
                 ]],
             },
         }))

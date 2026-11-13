@@ -22,9 +22,16 @@ services:
       DEVICE_TOKEN: ${DEVICE_TOKEN:?set DEVICE_TOKEN in .env}
       PUBLIC_URL: ${PUBLIC_URL:-}
       CALLS_RETENTION_DAYS: ${CALLS_RETENTION_DAYS:-7}
-      TZ: ${TZ:-UTC}
+      # Time zone of the times in notifications and of "today", e.g. Asia/Taipei.
+      # Taken from .env or the shell; not set = the host's zone, read from the
+      # /etc/localtime mounted below. (Left without a value on purpose: an empty
+      # TZ would mean UTC.)
+      TZ:
     volumes:
       - calls_data:/data/calls
+      # The host's time zone (Linux hosts). On Docker Desktop for Windows or
+      # macOS remove this line and set TZ in .env instead.
+      - /etc/localtime:/etc/localtime:ro
 
 volumes:
   calls_data:

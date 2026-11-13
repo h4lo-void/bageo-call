@@ -28,7 +28,7 @@
 
 你不需要懂怎么写提示词。
 
-1. 在网页控制台里打开“设置 → 提示词”，找到“不想自己写？”那张卡片，选好语言，按“**复制访谈提示词**”。（同样的文本也放在 [`docs/prompts/`](../prompts/) 里：[English](../prompts/interview.en.txt)、[繁體中文](../prompts/interview.zh-TW.txt)、[简体中文](../prompts/interview.zh-CN.txt)、[日本語](../prompts/interview.ja.txt)。）
+1. 在网页控制台里打开“设置 → 提示词”，找到“不想自己写？”那张卡片，选好语言，按“**复制访谈提示词**”。（同样的文本也放在 [`docs/prompts/`](../prompts/) 里：[English](../prompts/interview.en.txt)、[繁體中文](../prompts/interview.zh-TW.txt)、[简体中文](../prompts/interview.zh-CN.txt)、[日本語](../prompts/interview.ja.txt)、[한국어](../prompts/interview.ko.txt)、[Español](../prompts/interview.es.txt)、[Français](../prompts/interview.fr.txt)、[Deutsch](../prompts/interview.de.txt)、[Português](../prompts/interview.pt.txt)。）
 2. 打开任意一个聊天 AI——ChatGPT、Claude、Gemini…——新建一个对话，粘贴进去。
 3. 它会一次一题，问你大约十个问题：来电的人说什么语言、接听方式、你怎么说话、谁会给你打电话、对方会问什么、哪些事绝对不能答应、推销电话怎么处理、你怎么说再见。用你自己的话回答；说“跳过”就采用默认值。
 4. 它会给你三样东西：

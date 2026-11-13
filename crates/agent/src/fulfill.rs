@@ -13,24 +13,18 @@ use serde_json::to_value;
 use tracing::{info, warn};
 
 use crate::callback::{callback_number, callback_whitelist_allows, ControlRegistry};
-use crate::gcal::{insert_event, parse_datetime_hint, GCAL_MISSING_CRED_MSG};
-use crate::gmail::{send_mail, GMAIL_MISSING_CRED_MSG};
+use crate::gcal::{gcal_missing_cred_msg, insert_event, parse_datetime_hint};
+use crate::gmail::{gmail_missing_cred_msg, send_mail};
+use crate::locale::{self, Lang, Phrases};
 use crate::openclaw::{configured as openclaw_configured, handoff_task};
 use crate::settings_store::RuntimeSettings;
 use crate::tasks::{ReplyMethod, TaskIntent, TaskPatch, TaskRecord, TaskStatus, TaskStore};
 
-const CALLBACK_WAITING_MSG: &str =
-    "回撥已排程，但手機控制通道離線 — 請確保 Pixel 已連上 bridge（CONTROL_IDLE）後再按一次確認";
-
-const CALLBACK_WHITELIST_MSG: &str =
-    "回撥號碼不在白名單 — 請至「設定」加入允許回撥的號碼（或前綴*）後再確認";
-
-const GMAIL_MISSING_MSG: &str = GMAIL_MISSING_CRED_MSG;
-
-const GCAL_MISSING_MSG: &str = GCAL_MISSING_CRED_MSG;
-
-const EMAIL_CONTACT_MISSING_MSG: &str =
-    "此任務要寄信，但沒有回覆信箱（reply_contact）— 請從通話逐字稿補齊聯絡方式，或改忽略";
+/// What the owner reads (task errors, the e-mail, the follow-up message), in
+/// the agent's language.
+fn texts() -> &'static Phrases {
+    locale::phrases(locale::current())
+}
 
 /// User confirmed the task (Telegram button or web UI). Runs fulfillment once.
 pub async fn on_confirm(
@@ -132,7 +126,7 @@ async fn fulfill_via_openclaw(
             store.update_status(task_id, TaskStatus::Fulfilled).await
         }
         Err(e) => {
-            let msg = format!("OpenClaw 轉派失敗：{e:#}（請檢查設定中的 OpenClaw URL / Token）");
+            let msg = locale::fill(texts().f_openclaw_failed, &format!("{e:#}"));
             warn!(task_id, error = %msg, "fulfill: openclaw handoff failed");
             store
                 .patch(
@@ -189,7 +183,7 @@ async fn fulfill_builtin(
             let number = callback_number(task.reply_contact.as_deref(), &task.caller_id);
             if number.is_empty() {
                 warn!(task_id, "fulfill: callback number missing");
-                errors.push("回撥號碼缺失 — 任務沒有 reply_contact 且來電號碼為空".to_string());
+                errors.push(texts().f_callback_no_number.to_string());
                 phone_callback_pending = false;
             } else if !callback_whitelist_allows(&number, &rt.callback_whitelist) {
                 warn!(
@@ -197,7 +191,7 @@ async fn fulfill_builtin(
                     whitelist_len = rt.callback_whitelist.len(),
                     "fulfill: callback number not on whitelist"
                 );
-                errors.push(CALLBACK_WHITELIST_MSG.to_string());
+                errors.push(texts().f_callback_whitelist.to_string());
                 phone_callback_pending = false;
             } else {
                 match ctrl
@@ -234,7 +228,7 @@ async fn fulfill_builtin(
                     }
                     Err(e) => {
                         warn!(task_id, error = %e, "fulfill: callback dispatch failed");
-                        errors.push(format!("回撥發送失敗：{e:#}"));
+                        errors.push(format!("{}{}{e:#}", texts().f_callback_send_failed, locale::kv_sep()));
                         phone_callback_pending = false;
                     }
                 }
@@ -249,7 +243,7 @@ async fn fulfill_builtin(
                 .patch(
                     task_id,
                     TaskPatch {
-                        fulfill_error: Some(Some(CALLBACK_WAITING_MSG.to_string())),
+                        fulfill_error: Some(Some(texts().f_callback_waiting.to_string())),
                         ..Default::default()
                     },
                 )
@@ -275,7 +269,11 @@ async fn fulfill_builtin(
         store.push_event(task_id, "fulfilled").await?;
         store.update_status(task_id, TaskStatus::Fulfilled).await
     } else {
-        let msg = errors.join("；");
+        let joiner = match locale::current() {
+            Lang::ZhTw | Lang::ZhCn | Lang::Ja => "；",
+            _ => "; ",
+        };
+        let msg = errors.join(joiner);
         warn!(task_id, error = %msg, "fulfill: built-in failed");
         store
             .patch(
@@ -297,11 +295,11 @@ async fn try_send_email(http: &Client, rt: &RuntimeSettings, task: &TaskRecord) 
         .map(str::trim)
         .filter(|s| !s.is_empty());
     let Some(to) = to else {
-        anyhow::bail!("{EMAIL_CONTACT_MISSING_MSG}");
+        anyhow::bail!("{}", texts().f_email_no_address);
     };
 
     if !rt.gmail_configured() {
-        anyhow::bail!("{GMAIL_MISSING_MSG}");
+        anyhow::bail!("{}", gmail_missing_cred_msg());
     }
 
     let subject = email_subject(task);
@@ -327,7 +325,7 @@ async fn try_insert_calendar(
     task: &TaskRecord,
 ) -> Result<()> {
     if !rt.gcal_configured() {
-        anyhow::bail!("{GCAL_MISSING_MSG}");
+        anyhow::bail!("{}", gcal_missing_cred_msg());
     }
 
     let summary = calendar_summary(task);
@@ -341,7 +339,7 @@ async fn try_insert_calendar(
     {
         let now = Utc::now();
         let (start, end) = parse_datetime_hint(hint, now)
-            .with_context(|| format!("無法解析時間提示「{hint}」"))?;
+            .with_context(|| locale::fill(texts().f_bad_time, hint))?;
         (start.to_rfc3339(), end.to_rfc3339())
     } else {
         (String::new(), String::new())
@@ -359,7 +357,7 @@ async fn try_insert_calendar(
         &end_rfc3339,
     )
     .await
-    .with_context(|| "Google 日曆建立行程失敗".to_string())?;
+    .with_context(|| texts().f_gcal_failed.to_string())?;
 
     store
         .patch(
@@ -385,28 +383,32 @@ fn should_schedule_calendar(task: &TaskRecord) -> bool {
 fn email_subject(task: &TaskRecord) -> String {
     let summary = task.summary.trim();
     if summary.is_empty() {
-        format!("Pixel {} — 語音留言回覆", task.serial.trim())
+        format!("Myna — {}", texts().e_subject)
     } else {
         format!("Re: {summary}")
     }
 }
 
 fn email_body(task: &TaskRecord) -> String {
+    let p = texts();
+    // "Summary:" heading over its own paragraph ("摘要：", "Résumé :").
+    let heading = |label: &str| format!("{label}{}\n", locale::kv_sep().trim_end());
     let mut body = String::new();
     let summary = task.summary.trim();
     if !summary.is_empty() {
-        body.push_str("摘要：\n");
+        body.push_str(&heading(p.e_summary));
         body.push_str(summary);
         body.push_str("\n\n");
     }
     let transcript = task.transcript.trim();
     if !transcript.is_empty() {
-        body.push_str("逐字稿：\n");
+        body.push_str(&heading(p.tc_transcript));
         body.push_str(transcript);
         body.push('\n');
     }
     if body.is_empty() {
-        body.push_str("(無摘要或逐字稿)\n");
+        body.push_str(p.e_empty);
+        body.push('\n');
     }
     body
 }
@@ -416,19 +418,21 @@ fn calendar_summary(task: &TaskRecord) -> String {
     if !summary.is_empty() {
         summary.to_string()
     } else {
-        format!("預約 — {}", display_caller(&task.caller_id))
+        locale::fill(texts().e_appointment, display_caller(&task.caller_id))
     }
 }
 
 fn calendar_description(task: &TaskRecord) -> String {
+    let p = texts();
+    let sep = locale::kv_sep();
     let mut parts = Vec::new();
-    parts.push(format!("來電：{}", display_caller(&task.caller_id)));
-    parts.push(format!("Pixel：{}", task.serial.trim()));
+    parts.push(format!("{}{sep}{}", p.s_caller, display_caller(&task.caller_id)));
+    parts.push(format!("{}{sep}{}", p.n_phone, crate::notify::device_label(&task.serial)));
     if !task.summary.trim().is_empty() {
-        parts.push(format!("摘要：{}", task.summary.trim()));
+        parts.push(format!("{}{sep}{}", p.e_summary, task.summary.trim()));
     }
     if !task.transcript.trim().is_empty() {
-        parts.push(format!("逐字稿：{}", task.transcript.trim()));
+        parts.push(format!("{}{sep}{}", p.tc_transcript, task.transcript.trim()));
     }
     parts.join("\n")
 }
@@ -436,7 +440,7 @@ fn calendar_description(task: &TaskRecord) -> String {
 fn display_caller(caller_id: &str) -> &str {
     let t = caller_id.trim();
     if t.is_empty() {
-        "unknown"
+        texts().n_hidden
     } else {
         t
     }
@@ -444,25 +448,27 @@ fn display_caller(caller_id: &str) -> &str {
 
 /// Short status line for Telegram follow-up after confirm/ignore.
 pub fn tg_result_text(task: &TaskRecord, confirmed: bool) -> String {
+    let p = texts();
+    let sep = locale::kv_sep();
     if !confirmed {
-        return format!("已忽略任務\n{}", task.summary.trim());
+        return format!("{}\n{}", p.tc_ignored_task, task.summary.trim());
     }
     let status = match task.status {
-        TaskStatus::Fulfilled => "已完成",
-        TaskStatus::Confirmed => "已確認（進行中）",
-        TaskStatus::Failed => "履行失敗",
-        TaskStatus::Pending => "待確認",
-        TaskStatus::Ignored => "已忽略",
+        TaskStatus::Fulfilled => p.tc_done,
+        TaskStatus::Confirmed => p.tc_in_progress,
+        TaskStatus::Failed => p.tc_failed,
+        TaskStatus::Pending => p.tc_pending,
+        TaskStatus::Ignored => p.tc_ignore_ack,
     };
-    let mut lines = vec![format!("任務：{status}"), task.summary.trim().to_string()];
+    let mut lines = vec![format!("{}{sep}{status}", p.tc_task), task.summary.trim().to_string()];
     if let Some(err) = task.fulfill_error.as_deref().filter(|s| !s.is_empty()) {
-        lines.push(format!("原因：{err}"));
+        lines.push(format!("{}{sep}{err}", p.n_reason));
     }
     if let Some(r) = task.openclaw_ref.as_deref().filter(|s| !s.is_empty()) {
-        lines.push(format!("OpenClaw：{r}"));
+        lines.push(format!("OpenClaw{sep}{r}"));
     }
     if let Some(c) = task.calendar_event_id.as_deref().filter(|s| !s.is_empty()) {
-        lines.push(format!("日曆事件：{c}"));
+        lines.push(format!("{}{sep}{c}", p.n_calendar));
     }
     lines.retain(|l| !l.is_empty());
     lines.join("\n")
@@ -483,11 +489,14 @@ mod tests {
 
     #[test]
     fn missing_cred_messages_are_clear() {
-        assert!(GMAIL_MISSING_MSG.contains("設定"));
-        assert!(GCAL_MISSING_MSG.contains("設定"));
-        assert!(
-            CALLBACK_WAITING_MSG.contains("CONTROL_IDLE") || CALLBACK_WAITING_MSG.contains("控制")
-        );
+        assert!(gmail_missing_cred_msg().contains("設定"));
+        assert!(gcal_missing_cred_msg().contains("設定"));
+        assert!(texts().f_callback_waiting.contains("控制"));
+        // Every language says where to fix it.
+        for l in locale::ALL {
+            let p = locale::phrases(l);
+            assert!(p.f_gmail_missing.contains("Gmail") && p.f_gcal_missing.contains("Google"), "{l:?}");
+        }
     }
 
     #[test]
@@ -509,7 +518,7 @@ mod tests {
             contact_verified: false,
             voicemail_path: None,
             calendar_event_id: None,
-            fulfill_error: Some(GMAIL_MISSING_MSG.to_string()),
+            fulfill_error: Some(gmail_missing_cred_msg().to_string()),
             openclaw_ref: None,
             events: vec![],
         };
@@ -517,6 +526,7 @@ mod tests {
         assert!(text.contains("履行失敗"));
         assert!(text.contains("測試摘要"));
         assert!(text.contains("Gmail"));
+        assert!(text.contains("原因：Gmail"), "{text}");
         let ignored = tg_result_text(&task, false);
         assert!(ignored.starts_with("已忽略任務"));
     }
