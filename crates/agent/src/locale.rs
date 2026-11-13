@@ -1940,8 +1940,14 @@ fn phrase_near_end(words: &[String], phrase: &str, slack: usize) -> bool {
     }
     let last_start = words.len() - p.len();
     let first_start = last_start.saturating_sub(slack);
-    (first_start..=last_start).any(|i| words[i..i + p.len()] == p[..])
+    // "Hace tiempo que no nos vemos" (we haven't seen each other in ages) is
+    // no goodbye: a negation right before the phrase rules it out.
+    let negated = |i: usize| i > 0 && NEGATIONS.contains(&words[i - 1].as_str());
+    (first_start..=last_start).any(|i| words[i..i + p.len()] == p[..] && !negated(i))
 }
+
+/// Words that turn a following goodbye phrase into something else.
+const NEGATIONS: &[&str] = &["no", "not", "never", "nunca", "pas", "nicht", "nie", "não", "nao"];
 
 /// `marker` sits within `slack` characters of the end of a text without spaces.
 fn run_near_end(compact: &str, marker: &str, slack: usize) -> bool {
@@ -2028,6 +2034,13 @@ pub fn own_matter(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_negated_goodbye_phrase_does_not_end_the_call() {
+        assert!(!caller_wraps_up("¡Hola! ¿Qué tal? Hace tiempo que no nos vemos."));
+        assert!(caller_wraps_up("Vale, perfecto. Nos vemos."));
+        assert!(caller_wraps_up("Bueno, adiós."));
+    }
 
     #[test]
     fn name_corrections_rewrite_what_stt_mishears() {
