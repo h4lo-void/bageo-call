@@ -5,7 +5,7 @@
 //! `place_call` only when: user confirmed + number on `callback_whitelist` + idle
 //! control client connected (never auto-dials; empty whitelist = fail-closed).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -122,11 +122,23 @@ pub struct ControlRegistry {
     clients: Arc<Mutex<HashMap<String, WsSink>>>,
     sessions: Arc<Mutex<HashMap<String, CallbackSession>>>,
     call_index: Arc<Mutex<HashMap<String, String>>>,
+    /// Phones switched to "normal phone" (their owner answers): call-backs skip them.
+    normal_mode: Arc<Mutex<HashSet<String>>>,
 }
 
 impl ControlRegistry {
     pub fn new() -> Arc<Self> {
         Arc::new(Self::default())
+    }
+
+    /// Record whether `serial` is a normal phone (from its control hello and status).
+    pub async fn set_normal_mode(&self, serial: &str, normal: bool) {
+        let mut set = self.normal_mode.lock().await;
+        if normal {
+            set.insert(serial.to_string());
+        } else {
+            set.remove(serial);
+        }
     }
 
     pub async fn register_client(&self, serial: String, sink: WsSink) {
@@ -271,12 +283,12 @@ impl ControlRegistry {
         if clients.is_empty() {
             return Ok(false);
         }
-
-        let (serial, sink) = if let Some(s) = clients.get(prefer_serial) {
-            (prefer_serial.to_string(), s.clone())
-        } else {
-            let (serial, sink) = clients.iter().next().expect("non-empty");
-            (serial.clone(), sink.clone())
+        let normal = self.normal_mode.lock().await.clone();
+        let picked = pick_callback_phone(clients.keys(), prefer_serial, &normal)
+            .and_then(|serial| clients.get(&serial).map(|sink| (serial, sink.clone())));
+        let Some((serial, sink)) = picked else {
+            info!(task_id, "callback: every connected phone is a normal phone");
+            return Ok(false);
         };
         drop(clients);
 
@@ -400,6 +412,21 @@ impl ControlRegistry {
     }
 }
 
+/// The phone for a call-back: `prefer` when it is connected and not a normal phone,
+/// else the first such phone by serial (a stable choice). None: no phone can call.
+fn pick_callback_phone<'a>(
+    connected: impl Iterator<Item = &'a String>,
+    prefer: &str,
+    normal: &HashSet<String>,
+) -> Option<String> {
+    let mut usable: Vec<&String> = connected.filter(|s| !normal.contains(s.as_str())).collect();
+    if usable.iter().any(|s| s.as_str() == prefer) {
+        return Some(prefer.to_string());
+    }
+    usable.sort();
+    usable.first().map(|s| (*s).clone())
+}
+
 pub async fn send_ws_json(sink: &WsSink, payload: Value) -> Result<()> {
     let text = serde_json::to_string(&payload)?;
     sink.lock()
@@ -507,6 +534,18 @@ pub fn callback_whitelist_allows(number: &str, whitelist: &[String]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn callback_skips_normal_phones() {
+        let phones = vec!["pixel-1".to_string(), "pixel-2".to_string(), "pixel-3".to_string()];
+        let normal: HashSet<String> = ["pixel-2".to_string()].into_iter().collect();
+        assert_eq!(pick_callback_phone(phones.iter(), "pixel-3", &normal).as_deref(), Some("pixel-3"));
+        // The preferred phone is a normal phone: another one calls.
+        assert_eq!(pick_callback_phone(phones.iter(), "pixel-2", &normal).as_deref(), Some("pixel-1"));
+        let all: HashSet<String> = phones.iter().cloned().collect();
+        assert_eq!(pick_callback_phone(phones.iter(), "pixel-1", &all), None);
+        assert_eq!(pick_callback_phone(std::iter::empty::<&String>(), "", &normal), None);
+    }
 
     #[test]
     fn start_callback_request_payload() {

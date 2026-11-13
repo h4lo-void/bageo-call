@@ -38,6 +38,13 @@ class LocalAudioGuard(context: Context) {
     /** Queue restore behind any active audio Binder call. */
     fun restore(onFinished: (() -> Unit)? = null) = coordinator.requestRestore(onFinished)
 
+    /**
+     * Normal phone mode: stop muting and forget the state saved when muting began, so
+     * a later [restore] cannot put the AI-mode values back. [PhoneModeManager] sets the
+     * normal volumes itself.
+     */
+    fun release() = coordinator.requestRelease()
+
     companion object {
         const val HOLD_INTERVAL_MS = 500L
 
@@ -75,6 +82,7 @@ private class LocalAudioGuardCoordinator(context: Context) {
     private val fullPassPending = AtomicBoolean(false)
     private val rootPassPending = AtomicBoolean(false)
     private val restorePending = AtomicBoolean(false)
+    private val releasePending = AtomicBoolean(false)
     private val drainScheduled = AtomicBoolean(false)
     private val restoreCallbacks = ConcurrentLinkedQueue<() -> Unit>()
 
@@ -105,6 +113,8 @@ private class LocalAudioGuardCoordinator(context: Context) {
     }
 
     fun requestHardMute(fromHold: Boolean, rootPass: Boolean) {
+        // An ordinary phone (normal mode) is never muted.
+        if (!Prefs.isAiCallEnabled(appContext)) return
         desiredMuted.set(true)
         if (!fromHold) fullPassPending.set(true)
         if (rootPass) rootPassPending.set(true)
@@ -140,6 +150,17 @@ private class LocalAudioGuardCoordinator(context: Context) {
         scheduleDrain()
     }
 
+    fun requestRelease() {
+        stopHoldLoop()
+        desiredMuted.set(false)
+        mutePending.set(false)
+        fullPassPending.set(false)
+        rootPassPending.set(false)
+        restorePending.set(false)
+        releasePending.set(true)
+        scheduleDrain()
+    }
+
     private fun scheduleDrain() {
         if (!drainScheduled.compareAndSet(false, true)) return
         if (!workerHandler.post(drainRunnable)) {
@@ -153,6 +174,12 @@ private class LocalAudioGuardCoordinator(context: Context) {
     private fun drainRequests() {
         try {
             while (true) {
+                if (releasePending.getAndSet(false)) {
+                    runTrackedOperation("release") { forgetSavedState() }
+                    // A service stop waiting for a restore may finish now.
+                    completeRestoreCallbacks()
+                    continue
+                }
                 if (restorePending.getAndSet(false)) {
                     runTrackedOperation("restore") { restoreBlocking() }
                     completeRestoreCallbacks()
@@ -179,6 +206,7 @@ private class LocalAudioGuardCoordinator(context: Context) {
         } finally {
             drainScheduled.set(false)
             if (
+                releasePending.get() ||
                 restorePending.get() ||
                 (desiredMuted.get() && mutePending.get())
             ) {
@@ -232,6 +260,8 @@ private class LocalAudioGuardCoordinator(context: Context) {
     }
 
     private fun applyHardMuteBlocking(fromHold: Boolean, rootPass: Boolean) {
+        // Queued before the phone switched to normal mode: drop it.
+        if (!Prefs.isAiCallEnabled(appContext)) return
         var firstArm = false
         if (!armed) {
             try {
@@ -472,6 +502,17 @@ private class LocalAudioGuardCoordinator(context: Context) {
         savedVolumes.clear()
         armed = false
         Log.i(TAG, "audio state restored")
+    }
+
+    private fun forgetSavedState() {
+        savedMicMute = null
+        savedSpeaker = null
+        savedMode = null
+        savedRinger = null
+        savedInterruption = null
+        savedVolumes.clear()
+        armed = false
+        Log.i(TAG, "audio guard released (normal phone mode)")
     }
 
     companion object {

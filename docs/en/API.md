@@ -32,7 +32,7 @@ Errors answer `{ok: false, code, error}`: `code` is a stable word to act on
 | `GET /calls/api/call/{id}/event.ics` | The calendar suggestion as an iCalendar file. `404` when the call has none. |
 | `GET /calls/api/audio/{id}/listen` | The call as you would have heard it (caller and AI mixed), WAV, range requests supported. |
 | `GET /calls/api/audio/{id}/remote` · `/tts` · `/audio/{id}` | Caller only · AI only · the raw mixed recording. |
-| `GET /calls/api/live` | Calls in progress and the phones connected: `{ok, count, calls, control_idle_clients, control_idle_serials}`. |
+| `GET /calls/api/live` | Calls in progress and the phones connected: `{ok, count, calls, control_idle_clients, control_idle_serials, normal_mode_serials}`. `normal_mode_serials` are connected phones switched to a normal phone; the page does not count them as ready. |
 | `GET /calls/api/stats` | `{ok, stats: {total, today, voicemails, blocked}}`. |
 | `GET /calls/api/export.csv` | The filtered list as CSV (same query as `list`, up to 2000 rows). |
 
@@ -99,8 +99,9 @@ Gemini session; only `regen=true` or a voice without a recording opens one.
 
 | Method and path | What |
 |---|---|
-| `GET /calls/api/devices` | `{ok, usb: {enabled, adb_found, adb_path, error, phones: [{serial, state, model, reverse, app_installed}]}, connected: [...], labels: {<phone id>: <model>}, calls_in_progress}`. |
-| `GET /health` | A large flat JSON object for troubleshooting: version, language, what is configured, connected phones, calls in progress; no keys or tokens. When a console token is set and the request does not carry it, only `ok`, `version`, `language`, `active_call_count` and `control_idle_clients` are returned (enough for monitoring). |
+| `GET /calls/api/devices` | `{ok, usb: {enabled, adb_found, adb_path, error, phones: [{serial, state, model, reverse, app_installed}]}, connected: [...], labels: {<phone id>: <model>}, calls_in_progress, phones: [...]}`. Each entry of the top-level `phones` is a phone seen on its control connection since the agent started: `{serial, connected, mode, supports_mode, model, app_version, in_call, last_seen_ms}`. `mode` is `ai` (the AI answers) or `normal` (an ordinary phone, see [Phone setup](PHONE.md#normal-phone-mode)); `supports_mode` is false for apps older than the switch, which always run as `ai`. |
+| `POST /calls/api/devices/{serial}/mode` | Body `{"mode": "ai" \| "normal"}`. Asks the phone to switch and waits up to 15 seconds for its answer. Always `{ok, mode, error_code}`: `mode` is the phone's mode afterwards (`null` when unknown), `error_code` is `null` on success, otherwise one of `offline` (not connected), `unsupported` (app too old), `in_call`, `busy` (a switch is already running), `no_root`, `save_failed`, `dialer_failed`, `screening_failed`, `dnd_failed`, `volume_failed`, `failed`, or `timeout`. `timeout` means "not confirmed yet", not "failed": the phone app can be restarted by the switch itself and reports the result after it reconnects, so read the mode again a little later (`GET /calls/api/devices`). The body is parsed by the agent: anything that is not JSON, has no string `mode`, or a serial that is not letters, digits, `-` and `_` gets HTTP 400 with the same JSON and `error_code` `bad_request`; an unknown `mode` gets 400 and `invalid_mode`. The request must have `Content-Type: application/json` (also 400 `bad_request` otherwise), so that other web pages cannot switch a phone from a browser on your network. |
+| `GET /health` | A large flat JSON object for troubleshooting: version, language, what is configured, connected phones, calls in progress; no keys or tokens. `control_idle_clients` / `control_idle_serials` count every connected phone; `normal_mode_serials` lists those switched to a normal phone, whose calls the AI does not answer. When a console token is set and the request does not carry it, only `ok`, `version`, `language`, `active_call_count` and `control_idle_clients` are returned (enough for monitoring). |
 
 ## The phones' side
 
@@ -114,3 +115,14 @@ The messages are listed in
 [`android/README.md`](../../android/README.md#websocket-protocol). Anything
 that speaks this protocol can stand in for the phone — which is how a SIP or
 softphone front end could be added without touching the call logic.
+
+For the phone mode, the control connection carries these messages (both sides
+ignore what they do not know, so old apps and old agents keep working):
+
+| Direction | Message | Meaning |
+|---|---|---|
+| phone → agent | `hello` with `phone_mode` (`ai` / `normal`) and `in_call` | The phone's mode when it connects. `mode` stays `CONTROL_IDLE` (the connection kind). No `phone_mode` = an older app: `ai`, cannot be switched. |
+| phone → agent | `{"type": "status", "mode": "ai" \| "normal", "in_call": bool}` | The mode or the call state changed. |
+| agent → phone | `{"type": "set_mode", "mode": "ai" \| "normal", "id": "<uuid>"}` | Switch (sent by the route above). |
+| phone → agent | `{"type": "set_mode_result", "id": "<same>", "ok": bool, "mode": "...", "error": "<code>"}` | Result; `error` is empty on success and uses the codes above. |
+| agent → phone | `{"type": "agent_info", "console_url": "http://…/calls/"}` | Right after the hello, only when the console's address (`public_url`) is known. The app shows an "Open the web console" button for it. |

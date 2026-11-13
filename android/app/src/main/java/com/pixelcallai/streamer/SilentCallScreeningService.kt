@@ -55,6 +55,16 @@ class SilentCallScreeningService : CallScreeningService() {
             return
         }
 
+        // This runs in its own process: read the mode file once per call (the switch is
+        // made in the main process, so this process's cached copy may be old).
+        if (Prefs.refreshPhoneMode(this) != Prefs.PHONE_MODE_AI) {
+            // Normal phone mode: the call rings like on any phone. (This app normally
+            // no longer holds the screening role then; this covers the moment between.)
+            respondAllowSilent(callDetails, silence = false)
+            Log.i(TAG, "normal phone mode: let the call ring")
+            return
+        }
+
         // Allow + silence ring. Never skipCallLog / skipNotification on allow
         // (AOSP throws IllegalStateException → process death).
         respondAllowSilent(callDetails, silence = true)
@@ -68,21 +78,19 @@ class SilentCallScreeningService : CallScreeningService() {
 
         // Arm streamer early with EXTRA so the agent's hello sees the caller before OFFHOOK.
         // Intent targets default process CallAudioService (screening is :screening).
-        if (Prefs.isAiCallEnabled(this)) {
-            try {
-                val i = Intent(this, CallAudioService::class.java)
-                    .setAction(CallAudioService.ACTION_START)
-                if (caller.isNotBlank()) {
-                    i.putExtra(CallAudioService.EXTRA_CALLER_ID, caller)
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(i)
-                } else {
-                    startService(i)
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "arm CallAudioService failed: ${e.message}")
+        try {
+            val i = Intent(this, CallAudioService::class.java)
+                .setAction(CallAudioService.ACTION_START)
+            if (caller.isNotBlank()) {
+                i.putExtra(CallAudioService.EXTRA_CALLER_ID, caller)
             }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(i)
+            } else {
+                startService(i)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "arm CallAudioService failed: ${e.message}")
         }
     }
 

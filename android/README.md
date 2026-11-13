@@ -18,7 +18,8 @@ updated in place.
 
 > **Use a dedicated phone.** The module takes over the phone app, disables Google
 > Dialer, turns on Do Not Disturb and sets the ringer volume to zero. The phone stops
-> being usable as a normal handset until you roll back (see [Rollback](#rollback)).
+> being usable as a normal handset until you switch it to a
+> [normal phone](#normal-phone-mode) or roll back (see [Rollback](#rollback)).
 
 ## Requirements
 
@@ -94,18 +95,25 @@ Notes:
 2. Copy `pixelcallai_uplink-<version>.zip` to the phone.
 3. In the Magisk or KernelSU app, install the zip as a module.
 4. Reboot.
-5. Open **Myna** and work through the checklist until every item shows OK:
-   - *Installed as a privileged system app*: confirms the module is active.
-   - *Privileged permissions*: granted by the module; nothing to tap.
-   - *App permissions*: tap **Grant**.
-   - *Default phone app*, *Call screening app*: tap **Set**.
-   - *Do Not Disturb access*, *Battery optimization exemption*: tap the button and
-     allow it.
-   - *AI voice injection into the call*: informational.
-6. In **Connection**, keep the USB default or enter the Wi-Fi address (see below), then
-   tap **Test connection** while the agent is running on the PC.
-7. Leave **AI answering** on. The app shows a permanent low-priority notification
-   while the service runs, and starts again by itself after a reboot.
+5. Open **Myna**. The card at the top says in one sentence what the phone does right
+   now. Work through **Setup steps** until every step shows OK:
+   - *Install the Myna module*: confirms the module is active (privileged app and
+     privileged permissions).
+   - *Allow Myna to use the phone and microphone*: tap **Allow**.
+   - *Make Myna the default phone app*, *Make Myna the call screening app*: tap
+     **Set**.
+   - *Let Myna control Do Not Disturb*, *Do not let Android put Myna to sleep*: tap
+     the button and allow it.
+
+   The individual permissions and the call-audio check (*AI voice injection into
+   the call*) are under **Advanced → Detailed checks**.
+6. In **Advanced → Connection**, keep the USB default or enter the Wi-Fi address
+   (see below), then tap **Test connection** while the agent is running on the PC.
+   A failure is shown as a plain reason (refused, timed out, address not found…);
+   the raw error is under **Details**.
+7. Leave **AI answers my calls** on. The app shows a permanent low-priority
+   notification while the service runs, and starts again by itself after a reboot.
+   Once the agent has sent the console's address, **Open the web console** opens it.
 
 When the root manager asks whether the app may use root, allow it. The app uses `su`
 for the role and mute commands listed below.
@@ -135,6 +143,11 @@ The script waits for the system to finish booting (up to about 3 minutes), then
 about a minute and does nothing). All commands are best effort and none of them
 stop the boot.
 
+It reads the phone mode from `/data/adb/pixelcallai/mode` first (see
+[Normal phone mode](#normal-phone-mode)). When the file says `normal` it only does
+steps 1, 2, 6 and 7. With no file, or anything else in it, it does all the steps
+below, exactly as before the mode switch existed.
+
 1. Creates `/data/local/tmp/pixelcallai_uplink.pcm` (mode 666). This is a debugging
    aid; the normal call path does not use it.
 2. Grants the app `RECORD_AUDIO`, `READ_PHONE_STATE`, `ANSWER_PHONE_CALLS` and
@@ -161,6 +174,8 @@ allow-list that lets Android grant the privileged permissions.
 
 ### The app, while its service runs
 
+In AI mode:
+
 - Repeats the role commands from step 3 and the Google Dialer disabling from step 4
   through `su` each time the service starts. Unlike `service.sh`, the app does this
   without first checking that it is the default dialer.
@@ -175,14 +190,106 @@ allow-list that lets Android grant the privileged permissions.
   Do Not Disturb filter and volumes it saved when it armed, except the earpiece
   volume, which stays at minimum.
 
+In normal phone mode the service only keeps the control connection to the agent
+(status and the remote mode switch). It does not repeat the role commands, mute
+anything, silence or answer calls.
+
 ### Status bar
 
 With the app as the default dialer and Google Dialer disabled, no full-screen call
 screen appears. Android may still show its own small "ongoing call" indicator in the
 status bar; that belongs to the system and the app does not hide it.
 
+## Normal phone mode
+
+The app's main switch, **AI answers my calls**, moves the phone between two modes;
+the web console does the same remotely (`set_mode`, see below). A switch is refused
+while a call rings or is active and needs root. It can simply be repeated: every
+step runs again and is checked, and the first one that does not take effect is
+reported as a code (`dialer_failed`, `screening_failed`, `dnd_failed`,
+`volume_failed`, `save_failed`, `no_root`, `in_call`, `busy`).
+
+| | AI mode (`ai`, default) | Normal phone (`normal`) |
+|---|---|---|
+| Default phone app | Myna; Google Dialer disabled | Google Dialer, enabled again (on phones without it, Android's own) |
+| Call screening role | Myna (silences the ringer) | removed from Myna |
+| Do Not Disturb | on | off |
+| Ringer and volumes | silent and zero; earpiece at minimum | ringer normal; ring, notification, earpiece, media, alarm and system volume restored |
+| Microphone | muted during calls | left alone |
+| Incoming calls | answered by the AI | ring; you answer |
+| App service | full call handling | control connection only |
+
+The system settings are changed by a root script, `app/src/main/assets/apply_mode.sh`.
+The app copies it to `/data/adb/pixelcallai/apply_mode.sh` and starts it with
+`toybox setsid` (`sh apply_mode.sh <ai|normal> <id> [six volumes]`), so it runs
+to the end even when Android stops the app: removing an app from the phone-app role
+can do that. For the same reason the normal-phone order is call screening, Do Not
+Disturb, ringer and volumes, microphone, and **the phone app last**. That last step
+only counts as done when `telecom get-default-dialer` reports Google Dialer, Google
+Dialer is not in `pm list packages -d` and both in-call components were enabled
+(or, without Google Dialer, when the default phone app is no longer Myna). If
+`pm list packages` itself fails, the step fails (`dialer_failed`); it never
+assumes there is no Google Dialer. Every root command runs under `toybox timeout`.
+
+Where it is stored:
+
+- `/data/adb/pixelcallai/mode`: `ai` or `normal`, written by the app through
+  the script. It is outside the module folder, so module updates keep it.
+  `service.sh` reads it at every boot; **no file means `ai`**, so a phone that was
+  never switched behaves exactly as before. Before comparing, `service.sh`, the
+  script and the app all drop blanks (space, tab, CR, LF, VT, FF) and a UTF-8 BOM.
+- `/data/adb/pixelcallai/pending`: exists from the start of a switch until every
+  step worked.
+- `/data/adb/pixelcallai/last_apply`: the last run, `key=value` lines (`id`,
+  `mode`, `step_<name>=ok|fail`, then `error=<code>` or `result=ok`, and `done=1`).
+- `/data/adb/pixelcallai/apply.lock`: held while a run is going (its pid inside).
+- `/data/adb/pixelcallai/normal_audio`: the volumes saved when the phone last went
+  from normal to AI (`ring=…`, `notification=…`, `voice_call=…`, `music=…`,
+  `alarm=…`, `system=…`). Switching to normal restores them; a missing or zero
+  value becomes half of that volume's maximum.
+- The app keeps a copy of the mode in its device-protected storage
+  (`files/phone_mode`), cached in memory per process; the `:screening` process
+  reads it again for every incoming call.
+
+When the service starts it runs the script again if `pending` exists, if the mode is
+`normal` but Myna is still the default phone app (an interrupted switch, or an older
+version that took the phone over), or if its own copy differs from the file. If the
+agent asked for the switch and the app was stopped before it could answer, it sends
+that `set_mode_result` after its next `hello`; the agent keeps waiting through the
+reconnect (up to 15 seconds), and the web console calls a timeout "not confirmed yet".
+
+In normal mode the service runs as a foreground service of type `phoneCall` only
+(not `microphone`); if Android refuses the foreground start, the app logs it and
+still opens the control connection.
+
+Upgrading from a version before 0.2.2 whose **AI answering** switch was off: that old
+setting (`AI_CALL_ENABLED`) no longer counts. The phone answers with the AI (no mode
+file means `ai`), the app logs it and its status card shows a hint until the new
+switch is used once.
+
+The older `com.pixelcallai.streamer.SET_ENABLED` service intent performs the same
+switch, without a reboot:
+
+```text
+adb shell am start-foreground-service -n com.pixelcallai.streamer/.CallAudioService -a com.pixelcallai.streamer.SET_ENABLED --ez enabled false
+```
+
+(`--ez enabled true` = AI mode.) Or write the file and reboot:
+`adb shell "su -c 'mkdir -p /data/adb/pixelcallai && echo normal > /data/adb/pixelcallai/mode'"`
+(`echo ai`, or `rm -f` the file, for AI mode).
+
 ## Rollback
 
+**Before installing an older version** (anything before 0.2.2), switch back to AI
+mode, or run `adb shell "su -c 'rm -rf /data/adb/pixelcallai'"`. Older versions do
+not read the mode file: their `service.sh` takes the phone over at every boot even
+when the file says `normal`. When this version is installed again later, it finds
+`normal` and turns the phone into a normal phone by itself, so the AI stops
+answering without anyone asking for it.
+
+0. Switch the phone to a [normal phone](#normal-phone-mode) first. That re-enables
+   Google Dialer, turns Do Not Disturb off and restores the volumes, so steps 2 and
+   3 below are then already done.
 1. In the Magisk or KernelSU app, disable or remove the **Myna Uplink**
    module, then reboot. If the phone does not boot far enough to do that, use the root
    manager's safe mode, or from `adb shell` / recovery with root:
@@ -191,6 +298,9 @@ status bar; that belongs to the system and the app does not hide it.
    touch /data/adb/modules/pixelcallai_uplink/disable
    reboot
    ```
+
+   `/data/adb/pixelcallai/` (the mode file) stays; delete it too for a clean
+   removal.
 
 2. Google Dialer and Do Not Disturb are **not** restored by removing the module,
    because those settings are stored by Android. Re-enable the dialer:
@@ -285,8 +395,10 @@ App to agent:
 
 | `type` | Fields | When |
 |---|---|---|
-| `hello` | `serial`, `mode` = `"CONTROL_IDLE"`, `play_tts_locally` = `false`, `model`, `app_version` | Right after connecting. |
+| `hello` | `serial`, `mode` = `"CONTROL_IDLE"`, `play_tts_locally` = `false`, `model`, `app_version`, `phone_mode` (`"ai"` / `"normal"`), `in_call` | Right after connecting. `phone_mode` is not called `mode` because `mode` names the connection. Apps before the mode switch send neither. |
 | `ping` | `t` (milliseconds since epoch) | Every 15 s. |
+| `status` | `mode` (`"ai"` / `"normal"`), `in_call` | The phone mode or the call state (ringing or active vs idle) changed. |
+| `set_mode_result` | `id`, `ok`, `mode`, `error` | Answer to `set_mode`. `mode` is the mode afterwards; `error` is empty on success, otherwise a code from [Normal phone mode](#normal-phone-mode). |
 | `incoming` | `serial`, `caller_id`, `sample_rate` | A call is ringing. |
 | `incoming_cancel` | `serial` | The call ended before it was answered. |
 | `place_call_ack` | `call_id`, `task_id`, `number`, `reason` = `""` | A requested call was dialed. |
@@ -300,6 +412,8 @@ Agent to app:
 |---|---|---|
 | `answer_plan` | `delay_ms`, `prewarm` | How long to let the call ring before answering. `prewarm` is only logged. |
 | `place_call` | `number`, `call_id`, `task_id` | Dial `number`. |
+| `set_mode` | `mode` (`"ai"` / `"normal"`), `id` | Switch the phone mode; answered with `set_mode_result`. |
+| `agent_info` | `console_url` | The web console's address, for the app's **Open the web console** button. Sent after `hello` only when the agent knows it; the app forgets the old one on every new connection. |
 | `blocklist_sync` | `numbers` (array) | Stored, but not used: the app never rejects callers. |
 | `hello_ack`, `hello_ok`, `ack`, `pong` | | Logged only. |
 
@@ -374,10 +488,10 @@ adb logcat -s CallAudioService BridgeClient AgentControlClient TelephonyUplink V
 | **Test connection** fails on Wi-Fi | Wrong address, the PC firewall blocks the port, or the phone and PC are on different networks. |
 | **Test connection** reports an invalid status code | Something answered, but not as a WebSocket at that path. Check the path and token in the address. |
 | The phone still rings out loud | Do Not Disturb access is missing, or the app is not the default phone app and call screening app. |
-| A call screen from Google Dialer appears | The app is not the default phone app, so Google Dialer was not disabled. Fix the role in the checklist and reboot. |
+| A call screen from Google Dialer appears | The phone is in normal phone mode, or the app is not the default phone app, so Google Dialer was not disabled. Switch **AI answers my calls** on, or fix the role in **Setup steps**, and reboot. |
 | The call is answered but the caller hears nothing | Look for `TelephonyUplink` in the log. `TYPE_TELEPHONY unavailable` or `setPreferredDevice(TYPE_TELEPHONY) failed` means the phone does not offer the telephony output to the app (unsupported device, or the privileged permission is missing). The app also posts a notification in this case. |
 | The agent receives only silence | Look for `VoiceCallCapture` in the log. The `maxRms` value stays near zero if the device does not deliver call audio to the `VOICE_DOWNLINK` / `VOICE_CALL` sources. On Pixels the level is low by design (the earpiece volume is at minimum) and the agent is expected to amplify it. |
-| The phone does not answer at all | **AI answering** is off, the service is stopped, or the app lacks `ANSWER_PHONE_CALLS`. Without a control connection the app still answers after about 12 seconds. |
+| The phone does not answer at all | The phone is in normal phone mode (**AI answers my calls** is off), the service is stopped, or the app lacks `ANSWER_PHONE_CALLS`. Without a control connection the app still answers after about 12 seconds. |
 | The module made the phone fail to boot | Use the root manager's safe mode, or create `/data/adb/modules/pixelcallai_uplink/disable` from recovery, then reboot. |
 
 ## Legal
