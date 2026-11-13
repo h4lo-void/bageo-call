@@ -1897,7 +1897,9 @@ async fn decide_inner(
                 Ok(id) => {
                     appt.replaced.retain(|e| e.event_id != id);
                     appt.event_id = id;
-                    lines.push(p.ap_cal_added.to_string());
+                    // The demo calendar is not Google Calendar: say only that it is booked.
+                    let added = if cal.name() == DEMO_CALENDAR { p.ap_booked } else { p.ap_cal_added };
+                    lines.push(added.to_string());
                     store.push_event(task_id, "gcal_event_created").await?;
                 }
                 Err(e) => {
