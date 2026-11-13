@@ -48,6 +48,10 @@ pub struct Pack {
     // Instruction turns
     pub kick_open_persona: String,
     pub kick_open_assistant: String,
+    /// Opening of a call from abroad, in the language of the caller's country
+    /// (`{caller_language}`, `{caller_hello}`, `{caller_hello_again}`; see [`kick_open`]).
+    pub kick_open_persona_in: String,
+    pub kick_open_assistant_in: String,
     pub kick_wrap_up: String,
     pub kick_stall_wrap_up: String,
     /// `{lead}` = one of the two leads below.
@@ -68,6 +72,15 @@ const ZH_KICK_OPEN_PERSONA: &str = "【系統指令·不是對方說的話】電
 例如「喂？」或「喂，你好。」，說完就停，等對方開口。不要自我介紹，不要問有什麼事，不要說再見。";
 const ZH_KICK_OPEN_ASSISTANT: &str = "【系統指令·不是對方說的話】電話剛接起來。照【接起來】說的，用一句很短的話說明你是 AI 助理、本人現在不方便接電話，\
 問對方有什麼事要轉達（每次自己換說法），說完就停，等對方開口。不要說再見。";
+const ZH_KICK_OPEN_PERSONA_IN: &str = "【系統指令·不是對方說的話】電話剛接起來，這通是國外號碼打來的：開場這一句改用{caller_language}，不照【接起來】寫的開頭。\
+像平常接電話一樣只說一句很短的開頭，例如「{caller_hello}」，說完就停，等對方開口。對方只回喂或聽起來不確定，就用{caller_language}再說一次，例如「{caller_hello_again}」。\
+之後對方講什麼語言，你就用什麼語言回。不要自我介紹，不要問有什麼事，不要說再見。";
+const ZH_KICK_OPEN_ASSISTANT_IN: &str = "【系統指令·不是對方說的話】電話剛接起來，這通是國外號碼打來的。照【接起來】說的，用一句很短的話說明你是 AI 助理、本人現在不方便接電話，\
+問對方有什麼事要轉達（每次自己換說法），但這一句改用{caller_language}講，說完就停，等對方開口。之後對方講什麼語言，你就用什麼語言回。不要說再見。";
+/// Ends every mid-call nudge: the model otherwise answers in the language of
+/// the instruction (a Vietnamese call's quiet line got 「喂？請問還在嗎？」).
+const ZH_IN_CALLER_LANGUAGE: &str = "用這通電話到目前為止對方講的語言說：他講中文就講中文，講別的語言（英文、越南文、泰文……）就用那種語言，\
+不要因為這段指令是中文就改回中文；他還沒開口，就用你開場用的語言。";
 const ZH_KICK_WRAP_UP: &str = "【系統指令·不是對方說的話】這通電話已經講很久、快到時間上限了，你要收尾。\
 先用半句回應對方剛剛說的，然後一定要講到「我等一下還有其他事情要忙」這個意思（可以換說法），\
 請他有事再傳訊息給你或晚點再打，最後說掰掰。總共一兩句，講完就停。";
@@ -83,7 +96,7 @@ const ZH_KICK_RESUME: &str = "【系統指令·不是對方說的話】連線剛
 const ZH_KICK_REPEAT: &str = "【系統指令·不是對方說的話】連線剛切換，你剛剛那句沒有發出聲音，對方沒聽到。把剛剛那句話再自然地講一次（意思一樣就好），講完就停。";
 const ZH_KICK_STALL_IDLE: &str = "【系統指令·不是對方說的話】對方安靜了幾秒。不要乾等，主動接話，怎麼接隨你：\
 問他還在不在、碎念一下剛剛那件事、或丟一個新問題讓他講，一兩句，不要說掰掰。";
-const ZH_KICK_IDLE: &str = "【系統指令·不是對方說的話】對方安靜好一陣子了。像真人一樣只問一句很短的「喂？還在嗎？」（可以換說法），講完就停，不要說掰掰。";
+const ZH_KICK_IDLE: &str = "【系統指令·不是對方說的話】對方安靜好一陣子了。像真人一樣只用一句很短的話問他還在不在（自己換說法；對方講中文就像「喂？還在嗎？」），講完就停，不要說掰掰。";
 const ZH_READ_LINE: &str = "照念這一句：「{line}」";
 const ZH_PREVIEW_SYSTEM: &str = "你正在用自己的手機講電話。使用者每次給你一句台詞，\
 你就用平常講電話的自然語氣（台灣口音、放鬆、不要像在念稿）把那一句講出來，一個字都不要改，不要加別的話，講完就停。";
@@ -146,6 +159,7 @@ fn to_cn(text: &str) -> String {
 }
 
 fn zh_tw_pack() -> Pack {
+    let in_caller_language = |kick: &str| format!("{kick}{ZH_IN_CALLER_LANGUAGE}");
     let assistant_default = format!(
         "{ZH_ASSISTANT_DEFAULT_HEAD}{}{ZH_ASSISTANT_DEFAULT_MID}{}\n\n{}",
         gl::PERSONA_ACK_LINE,
@@ -175,15 +189,17 @@ fn zh_tw_pack() -> Pack {
         auto_language_note: ZH_AUTO_LANGUAGE_NOTE.to_string(),
         kick_open_persona: ZH_KICK_OPEN_PERSONA.to_string(),
         kick_open_assistant: ZH_KICK_OPEN_ASSISTANT.to_string(),
-        kick_wrap_up: ZH_KICK_WRAP_UP.to_string(),
-        kick_stall_wrap_up: ZH_KICK_STALL_WRAP_UP.to_string(),
-        kick_stall_keep: ZH_KICK_STALL_KEEP.to_string(),
+        kick_open_persona_in: ZH_KICK_OPEN_PERSONA_IN.to_string(),
+        kick_open_assistant_in: ZH_KICK_OPEN_ASSISTANT_IN.to_string(),
+        kick_wrap_up: in_caller_language(ZH_KICK_WRAP_UP),
+        kick_stall_wrap_up: in_caller_language(ZH_KICK_STALL_WRAP_UP),
+        kick_stall_keep: in_caller_language(ZH_KICK_STALL_KEEP),
         kick_stall_keep_lead_bye: ZH_KICK_STALL_KEEP_LEAD_BYE.to_string(),
         kick_stall_keep_lead: ZH_KICK_STALL_KEEP_LEAD.to_string(),
-        kick_resume: ZH_KICK_RESUME.to_string(),
+        kick_resume: in_caller_language(ZH_KICK_RESUME),
         kick_repeat: ZH_KICK_REPEAT.to_string(),
-        kick_stall_idle: ZH_KICK_STALL_IDLE.to_string(),
-        kick_idle: ZH_KICK_IDLE.to_string(),
+        kick_stall_idle: in_caller_language(ZH_KICK_STALL_IDLE),
+        kick_idle: in_caller_language(ZH_KICK_IDLE),
         read_line: ZH_READ_LINE.to_string(),
         preview_system: ZH_PREVIEW_SYSTEM.to_string(),
         announce_system: ZH_ANNOUNCE_SYSTEM.to_string(),
@@ -216,6 +232,8 @@ fn zh_cn_pack() -> Pack {
         auto_language_note: to_cn(&p.auto_language_note),
         kick_open_persona: to_cn(&p.kick_open_persona),
         kick_open_assistant: to_cn(&p.kick_open_assistant),
+        kick_open_persona_in: to_cn(&p.kick_open_persona_in),
+        kick_open_assistant_in: to_cn(&p.kick_open_assistant_in),
         kick_wrap_up: to_cn(&p.kick_wrap_up),
         kick_stall_wrap_up: to_cn(&p.kick_stall_wrap_up),
         kick_stall_keep: to_cn(&p.kick_stall_keep),
@@ -332,6 +350,10 @@ A bank, company, school, clinic, government office or courier explaining somethi
 
 const EN_KICK_OPEN_PERSONA: &str = "The call has just been picked up. Say one very short opening the way people answer the phone, such as \"{p_hello}\", then stop and wait for the caller. Do not introduce yourself, do not ask what the call is about, do not say goodbye.";
 const EN_KICK_OPEN_ASSISTANT: &str = "The call has just been picked up. As [Picking up] says, in one short line say that you are the AI assistant and that the person they are calling cannot take the call right now, and ask what you can pass on (your own words each time). Then stop and wait for the caller. Do not say goodbye.";
+const EN_KICK_OPEN_PERSONA_IN: &str = "The call has just been picked up, from a number abroad: open in {caller_language} this time, not with the [Picking up] line in {language}. Say one very short opening in {caller_language} the way people answer the phone, such as \"{caller_hello}\", then stop and wait for the caller. If they only say hello back or sound unsure, say \"{caller_hello_again}\" once more. From then on, answer in whatever language the caller speaks. Do not introduce yourself, do not ask what the call is about, do not say goodbye.";
+const EN_KICK_OPEN_ASSISTANT_IN: &str = "The call has just been picked up, from a number abroad. As [Picking up] says, in one short line say that you are the AI assistant and that the person they are calling cannot take the call right now, and ask what you can pass on (your own words each time) — but say it in {caller_language} this time, not in {language}. Then stop and wait for the caller. From then on, answer in whatever language the caller speaks. Do not say goodbye.";
+/// Ends every mid-call nudge (see [`ZH_IN_CALLER_LANGUAGE`]).
+const EN_IN_CALLER_LANGUAGE: &str = "Say it in the language the caller has been speaking on this call so far, even if that is not {language}; if they have not said anything yet, in the language you opened the call in.";
 const EN_KICK_WRAP_UP: &str = "This call has gone on for a long time and is close to its time limit: you need to wrap up. Respond in half a sentence to what the caller just said, then get across that you have something else to take care of now (in your own words), ask them to send a message or call again later if there is more, and finish with \"{p_bye}\". One or two sentences in all, then stop.";
 const EN_KICK_STALL_WRAP_UP: &str = "You have kept this sales / scam caller talking for a long time; now wrap up. Respond in half a sentence to what they just said, then give an everyday reason why you have to go (someone at the door, you need to head out, the battery is dying — pick one), tell them to call another day, and finish with \"{p_bye}\". One or two sentences in all, then stop.";
 const EN_KICK_STALL_KEEP: &str = "This is a sales / scam call: keep them on the line, the call must not end yet. {lead} Then hold them in your own way, a different move each time: you are actually quite interested, you just thought of a question, you did not follow one part, you want to know what the next step is — so that they have to answer. Do not doubt them, do not say goodbye. One or two sentences.";
@@ -340,7 +362,7 @@ const EN_KICK_STALL_KEEP_LEAD: &str = "The caller wants to hang up; do not let t
 const EN_KICK_RESUME: &str = "The connection switched over for a moment. Carry on by answering the last thing the caller said, in one or two sentences; do not say hello and do not greet them again.";
 const EN_KICK_REPEAT: &str = "The connection just switched and your last line made no sound; the caller did not hear it. Say that line again naturally (same meaning is enough), then stop.";
 const EN_KICK_STALL_IDLE: &str = "The caller has been quiet for a few seconds. Do not just wait; speak up, any way you like: ask whether they are still there, mutter about what was just said, or bring a new question for them to talk about. One or two sentences, no goodbye.";
-const EN_KICK_IDLE: &str = "The caller has been quiet for a good while. Like a real person, ask just one very short question such as \"{p_still_there}\" (your own wording is fine), then stop. Do not say goodbye.";
+const EN_KICK_IDLE: &str = "The caller has been quiet for a good while. Like a real person, ask in one very short line whether they are still there (your own wording), then stop. Do not say goodbye.";
 const EN_READ_LINE: &str = "Say exactly this line: \"{line}\"";
 const EN_PREVIEW_SYSTEM: &str = "You are a person talking on your own mobile phone. Each time the user gives you a line, say exactly that line in {language}, in a natural, relaxed phone voice (not like reading aloud). Do not change a word, do not add anything, then stop.";
 const EN_ANNOUNCE_SYSTEM: &str = "You are a telephone system announcement. Each time the user gives you a line, say exactly that line in {language}, clearly and evenly, the way a phone company's recorded message sounds. Do not change a word, do not add anything, then stop.";
@@ -361,6 +383,7 @@ fn generic_pack(lang: Lang) -> Pack {
             .replace("{p_no_wait}", ph.no_wait)
     };
     let sys = |s: &str| -> String { format!("{SYS}{}", fill(s)) };
+    let in_caller_language = |kick: &str| -> String { sys(format!("{kick} {EN_IN_CALLER_LANGUAGE}").as_str()) };
     let ack_line = fill(EN_ACK_LINE);
     let hold_off_line = fill(EN_HOLD_OFF_LINE);
     let sales_reject_line = fill(EN_SALES_REJECT_LINE);
@@ -392,15 +415,17 @@ fn generic_pack(lang: Lang) -> Pack {
         auto_language_note: fill(EN_AUTO_LANGUAGE_NOTE),
         kick_open_persona: sys(EN_KICK_OPEN_PERSONA),
         kick_open_assistant: sys(EN_KICK_OPEN_ASSISTANT),
-        kick_wrap_up: sys(EN_KICK_WRAP_UP),
-        kick_stall_wrap_up: sys(EN_KICK_STALL_WRAP_UP),
-        kick_stall_keep: sys(EN_KICK_STALL_KEEP),
+        kick_open_persona_in: sys(EN_KICK_OPEN_PERSONA_IN),
+        kick_open_assistant_in: sys(EN_KICK_OPEN_ASSISTANT_IN),
+        kick_wrap_up: in_caller_language(EN_KICK_WRAP_UP),
+        kick_stall_wrap_up: in_caller_language(EN_KICK_STALL_WRAP_UP),
+        kick_stall_keep: in_caller_language(EN_KICK_STALL_KEEP),
         kick_stall_keep_lead_bye: fill(EN_KICK_STALL_KEEP_LEAD_BYE),
         kick_stall_keep_lead: fill(EN_KICK_STALL_KEEP_LEAD),
-        kick_resume: sys(EN_KICK_RESUME),
+        kick_resume: in_caller_language(EN_KICK_RESUME),
         kick_repeat: sys(EN_KICK_REPEAT),
-        kick_stall_idle: sys(EN_KICK_STALL_IDLE),
-        kick_idle: sys(EN_KICK_IDLE),
+        kick_stall_idle: in_caller_language(EN_KICK_STALL_IDLE),
+        kick_idle: in_caller_language(EN_KICK_IDLE),
         read_line: fill(EN_READ_LINE),
         preview_system: fill(EN_PREVIEW_SYSTEM),
         announce_system: fill(EN_ANNOUNCE_SYSTEM),
@@ -432,6 +457,65 @@ pub fn pack(lang: Lang) -> &'static Pack {
 /// The pack of the running agent's language.
 pub fn current() -> &'static Pack {
     pack(locale::current())
+}
+
+/// What the instructions of `pack_lang` call `lang`.
+fn language_label(pack_lang: Lang, lang: Lang) -> &'static str {
+    let (tw, cn) = match lang {
+        Lang::ZhTw => ("台灣國語", "台湾国语"),
+        Lang::ZhCn => ("普通話", "普通话"),
+        Lang::En => ("英文", "英语"),
+        Lang::Ja => ("日文", "日语"),
+        Lang::Ko => ("韓文", "韩语"),
+        Lang::Es => ("西班牙文", "西班牙语"),
+        Lang::Fr => ("法文", "法语"),
+        Lang::De => ("德文", "德语"),
+        Lang::Pt => ("葡萄牙文", "葡萄牙语"),
+    };
+    match pack_lang {
+        Lang::ZhTw => tw,
+        Lang::ZhCn => cn,
+        _ => locale::phrases(lang).name_en,
+    }
+}
+
+/// The instruction that opens a call, in the instructions of `lang`. `opening`:
+/// the language of a caller from abroad (`gemini_live::caller_opening_lang`) —
+/// the first line is said in it; the system prompt stays `lang`'s.
+pub fn kick_open(lang: Lang, assistant: bool, opening: Option<Lang>) -> String {
+    let p = pack(lang);
+    match opening.filter(|o| *o != lang) {
+        None if assistant => p.kick_open_assistant.clone(),
+        None => p.kick_open_persona.clone(),
+        Some(o) => {
+            let ph = locale::phrases(o);
+            let template = if assistant {
+                &p.kick_open_assistant_in
+            } else {
+                &p.kick_open_persona_in
+            };
+            template
+                .replace("{caller_language}", language_label(lang, o))
+                .replace("{caller_hello_again}", ph.hello_again)
+                .replace("{caller_hello}", ph.hello)
+        }
+    }
+}
+
+/// A call's system prompt ([`build`] with `lang`) plus the note to answer in the
+/// caller's language, where [`build`] puts it: for a call that opens in the
+/// caller's language. Unchanged when the note is there already (setting
+/// `reply_in_caller_language`) or the prompt is empty.
+pub fn with_caller_language_note(prompt: &str, lang: Lang) -> String {
+    let p = pack(lang);
+    let note = p.auto_language_note.as_str();
+    if prompt.trim().is_empty() || prompt.contains(note.trim()) {
+        return prompt.to_string();
+    }
+    match prompt.rfind(p.injection_guard.as_str()) {
+        Some(i) => format!("{}{note}{}", &prompt[..i], &prompt[i..]),
+        None => format!("{prompt}{note}"),
+    }
 }
 
 /// What a call's system prompt is built from.
@@ -679,7 +763,7 @@ mod tests {
         let ja = build(&ctx(Lang::Ja, false, StallPrompt::Off));
         assert!(ja.contains("Speak Japanese") && ja.contains("もしもし？") && ja.contains("失礼します"));
         let es = pack(Lang::Es);
-        assert!(es.kick_idle.contains("¿Sigue ahí?"));
+        assert!(es.kick_wrap_up.contains("\"Adiós\""));
         assert!(es.kick_open_persona.starts_with(SYS));
         // "ちょっと待ってな。スケジュール確認するから" on the probe: the ban names
         // the call's own language's ways of making the caller wait.
@@ -688,5 +772,92 @@ mod tests {
         assert!(pack(Lang::Ja).assistant_default.contains("ちょっと待って"));
         assert!(pack(Lang::Ko).persona_default.contains("잠깐만요"));
         assert!(pack(Lang::De).persona_default.contains("Moment mal"));
+    }
+
+    #[test]
+    fn a_call_from_abroad_opens_in_the_callers_language() {
+        for lang in locale::ALL {
+            let p = pack(lang);
+            for assistant in [false, true] {
+                let own = if assistant { &p.kick_open_assistant } else { &p.kick_open_persona };
+                assert_eq!(&kick_open(lang, assistant, None), own, "{lang:?}");
+                assert_eq!(&kick_open(lang, assistant, Some(lang)), own, "{lang:?}");
+                for other in locale::ALL {
+                    if other == lang {
+                        continue;
+                    }
+                    let k = kick_open(lang, assistant, Some(other));
+                    assert!(!k.contains('{') && !k.contains('}'), "{lang:?} {other:?}: {k}");
+                    assert!(k.contains(language_label(lang, other)) && k != *own, "{lang:?} {other:?}: {k}");
+                    if !assistant {
+                        assert!(k.contains(locale::phrases(other).hello), "{lang:?} {other:?}: {k}");
+                    }
+                }
+            }
+        }
+        let k = kick_open(Lang::ZhTw, false, Some(Lang::En));
+        assert!(k.starts_with("【系統指令") && k.contains("改用英文") && k.contains("「Hello?」"), "{k}");
+        let k = kick_open(Lang::En, false, Some(Lang::Ja));
+        assert!(k.starts_with(SYS) && k.contains("open in Japanese") && k.contains("もしもし？"), "{k}");
+        assert!(k.contains("not with the [Picking up] line in English"), "{k}");
+        let k = kick_open(Lang::ZhCn, true, Some(Lang::En));
+        assert!(k.contains("改用英语讲") && k.contains("国外号码"), "{k}");
+    }
+
+    #[test]
+    fn the_caller_language_note_goes_where_build_puts_it() {
+        for lang in locale::ALL {
+            for assistant in [false, true] {
+                for stall in [StallPrompt::Off, StallPrompt::ListenFirst, StallPrompt::Full] {
+                    let mut c = ctx(lang, assistant, stall);
+                    c.status = "waiting for a parcel";
+                    let without = build(&c);
+                    c.auto_language = true;
+                    let with = build(&c);
+                    assert_eq!(with_caller_language_note(&without, lang), with, "{lang:?} {assistant} {stall:?}");
+                    // Already there (setting `reply_in_caller_language`): not twice.
+                    assert_eq!(with_caller_language_note(&with, lang), with, "{lang:?} {assistant} {stall:?}");
+                }
+            }
+        }
+        // An empty stall prompt stays empty (the session keeps its own prompt then).
+        assert_eq!(with_caller_language_note("", Lang::En), "");
+        let bare = with_caller_language_note("You answer for Alex.", Lang::En);
+        assert!(bare.starts_with("You answer for Alex.") && bare.contains(pack(Lang::En).auto_language_note.trim()));
+    }
+
+    #[test]
+    fn nudges_follow_the_language_the_caller_speaks() {
+        for lang in locale::ALL {
+            let p = pack(lang);
+            let mark = match lang {
+                Lang::ZhTw => "對方講的語言",
+                Lang::ZhCn => "对方讲的语言",
+                _ => "the language the caller has been speaking",
+            };
+            for kick in [
+                &p.kick_idle,
+                &p.kick_stall_idle,
+                &p.kick_wrap_up,
+                &p.kick_stall_wrap_up,
+                &p.kick_stall_keep,
+                &p.kick_resume,
+            ] {
+                assert!(kick.contains(mark), "{lang:?}: {kick}");
+            }
+            // The quiet-line nudge no longer hands the model a line in the setting's
+            // language (a Vietnamese call got 「喂？請問還在嗎？」); Chinese keeps its
+            // example, marked as the one for a caller who speaks Chinese.
+            if lang.is_zh() {
+                let still_there = locale::phrases(lang).still_there;
+                assert!(
+                    p.kick_idle.contains("中文就像") && p.kick_idle.contains(still_there),
+                    "{lang:?}: {}",
+                    p.kick_idle
+                );
+            } else {
+                assert!(!p.kick_idle.contains(locale::phrases(lang).still_there), "{lang:?}");
+            }
+        }
     }
 }
