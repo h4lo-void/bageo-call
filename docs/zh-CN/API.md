@@ -64,7 +64,7 @@ PUT /calls/api/settings
 
 ## 语音和背景音试听
 
-`GET /calls/api/preview` 会返回一个 WAV。查询参数：`voice`（声音名称，或者用 `none` 表示只要背景音）、`ambience`（`off` 或某一种背景音）、`level`（1–3）、`regen=true`（重新生成，不用缓存的示例）、`clip=reject`（用该声音播报的拦截号码语音）。某个声音的第一次请求会开启一次短暂的 Gemini 会话。
+`GET /calls/api/preview` 会返回一个 WAV。查询参数：`voice`（声音名称，或者用 `none` 表示只要背景音）、`ambience`（`off` 或某一种背景音）、`level`（1–3）、`regen=true`（重新生成，不用缓存的示例）、`clip=reject`（用该声音播报的拦截号码语音）、`lang`（`ja`、`zh-TW`…；留空 = 已保存的语言）。内置的每个声音在每种语言都已预先录好（`assets/voices/`），试听不用连 Gemini；只有 `regen=true` 或没有预录的声音才会开一次短暂的会话。
 
 ## 手机与健康状态
 
