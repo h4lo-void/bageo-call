@@ -86,6 +86,8 @@ class SilentInCallService : InCallService() {
     override fun onCallRemoved(call: Call) {
         super.onCallRemoved(call)
         liveCalls.remove(call)
+        // Every mode (normal phone mode never reaches CallAudioService's cleanup).
+        if (liveCalls.isEmpty()) Prefs.setLastSimCountry(this, "")
         val instanceId = callInstances.remove(call) ?: NO_CALL_INSTANCE
         val removedActiveCall = activeCallInstance.compareAndSet(instanceId, NO_CALL_INSTANCE)
         if (removedActiveCall) {
@@ -189,13 +191,11 @@ class SilentInCallService : InCallService() {
     }
 
     private fun simCountryOf(call: Call): String {
+        // Before Android 11 there is no PhoneAccountHandle → subscription lookup: unknown.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return ""
         val handle = call.details?.accountHandle ?: return ""
         val tm = getSystemService(TelephonyManager::class.java) ?: return ""
-        val subId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            tm.getSubscriptionId(handle)
-        } else {
-            handle.id.toIntOrNull() ?: SubscriptionManager.INVALID_SUBSCRIPTION_ID
-        }
+        val subId = tm.getSubscriptionId(handle)
         if (!SubscriptionManager.isValidSubscriptionId(subId)) return ""
         return tm.createForSubscriptionId(subId).simCountryIso.orEmpty()
     }

@@ -958,6 +958,10 @@ pub fn expects_carrier_intl_prompt(
     }
 }
 
+/// [`run_session`]'s pickup-time question: does this call open with the carrier's
+/// international-call warning?
+pub type IntlPromptCheck = Box<dyn Fn() -> bool + Send + Sync>;
+
 /// `generationConfig.thinkingConfig.thinkingLevel` for Live models that refuse a
 /// setup without it (`gemini-3.8-live-extended-thinking`: "Thinking level must be
 /// specified for this model"); `gemini-3.8-live` refuses the field, and the
@@ -2741,8 +2745,10 @@ fn boost_downlink_for_phone(pcm: &[u8]) -> Vec<u8> {
 ///   stops our playback.
 /// - `thinking_level`: setting `gemini_thinking_level`, sent only to models that
 ///   need it (see [`live_thinking_level`]).
-/// - `intl_caller`: the call is from abroad — persona mode holds the opening for the
-///   carrier's prompt (see [`INTL_OPENING_HOLD`]).
+/// - `intl_caller`: asked at pickup whether this call opens with the carrier's
+///   international-call warning — persona mode then holds the opening for it (see
+///   [`INTL_OPENING_HOLD`]). Asked at pickup, not at setup: a ring prewarm starts
+///   before the phone knows which SIM the call came in on.
 ///
 /// On success, returns why the session ended so the agent can play goodbye WAV.
 pub async fn run_session(
@@ -2769,7 +2775,7 @@ pub async fn run_session(
     server_vad: bool,
     barge_in: Arc<AtomicBool>,
     thinking_level: &str,
-    intl_caller: bool,
+    intl_caller: IntlPromptCheck,
     appointments: Option<crate::appointments::ApptSession>,
 ) -> Result<SessionEndReason> {
     let stall = stall.filter(|_| persona);
@@ -2883,7 +2889,7 @@ pub async fn run_session(
         )
         .await?;
         info!(
-            "Gemini Live setup sent serial={serial} voice={voice} stall={} max_s={} server_vad={server_vad} thinking={} intl={intl_caller} appointments={} non_blocking={non_blocking}",
+            "Gemini Live setup sent serial={serial} voice={voice} stall={} max_s={} server_vad={server_vad} thinking={} appointments={} non_blocking={non_blocking}",
             stall.is_some(),
             if persona { persona_max_secs } else { LIVE_MAX_SECS },
             thinking.unwrap_or("-"),
@@ -3153,7 +3159,7 @@ pub async fn run_session(
             // live loop then re-kicks / opens a fresh session if it repeats).
             greets_kicked = false;
         }
-        if !prebuf.is_empty() && persona && intl_caller {
+        if !prebuf.is_empty() && persona && intl_caller() {
             intl_hold_until = Some(tokio::time::Instant::now() + INTL_OPENING_HOLD);
             info!(
                 "Gemini Live intl caller serial={serial} — opening held up to {}ms for the carrier's international-call prompt (prebuf_bytes={})",
@@ -6159,6 +6165,8 @@ mod tests {
         assert!(!expects_carrier_intl_prompt("auto", false, "+12025550143", Some(" ")));
         // `off` wins over everything.
         assert!(!expects_carrier_intl_prompt("off", true, "+12025550143", Some("tw")));
+        // `on` waits whatever the SIM.
+        assert!(expects_carrier_intl_prompt("on", false, "+12025550143", Some("us")) == is_intl_caller("+12025550143"));
     }
 
     #[test]

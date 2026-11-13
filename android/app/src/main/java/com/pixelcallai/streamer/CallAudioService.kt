@@ -1445,7 +1445,6 @@ class CallAudioService : Service() {
             }
         }
         Prefs.clearLastCallerId(this)
-        Prefs.setLastSimCountry(this, "")
         updateNotification(getString(R.string.notification_text_armed))
     }
 

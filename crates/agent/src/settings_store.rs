@@ -524,18 +524,6 @@ impl RuntimeSettings {
         }
     }
 
-    /// This call opens with the carrier's international-call warning (see
-    /// [`crate::gemini_live::expects_carrier_intl_prompt`]): `sim_country` is the SIM
-    /// the call came in on, `None` when the phone app does not say.
-    pub fn intl_carrier_prompt_for(&self, caller_id: &str, sim_country: Option<&str>) -> bool {
-        crate::gemini_live::expects_carrier_intl_prompt(
-            &self.intl_carrier_prompt,
-            self.lang() == crate::locale::Lang::ZhTw,
-            caller_id,
-            sim_country,
-        )
-    }
-
     /// What the Live session's helpers read (`locale::set_active`).
     pub fn locale_active(&self) -> crate::locale::Active {
         crate::locale::Active {
