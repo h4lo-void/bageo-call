@@ -926,7 +926,8 @@ fn is_foreign_number(caller_id: &str, home: &str) -> bool {
 /// The language the AI opens this call in when it is not the setting's: a caller
 /// from abroad (`+…`, not the SIM's country code — see [`is_intl_caller`]) whose
 /// country's main language is one the AI speaks ([`crate::locale::calling_code_lang`]).
-/// Local, hidden and other countries' numbers: `None` (the setting `language`).
+/// Local, hidden and other countries' numbers: `None` (the setting `language`);
+/// so are Traditional and Simplified Chinese for each other (both answer 「喂？」).
 pub fn caller_opening_lang(caller_id: &str) -> Option<crate::locale::Lang> {
     opening_lang_for(caller_id, &crate::locale::country_code(), crate::locale::current())
 }
@@ -939,7 +940,7 @@ fn opening_lang_for(
     if !is_foreign_number(caller_id, home) {
         return None;
     }
-    crate::locale::calling_code_lang(caller_id).filter(|l| *l != lang)
+    crate::locale::calling_code_lang(caller_id).filter(|l| *l != lang && !(l.is_zh() && lang.is_zh()))
 }
 
 /// SIM countries (ISO 3166 alpha-2, lowercase) whose carriers play a recorded
@@ -6188,7 +6189,11 @@ mod tests {
         assert_eq!(opening_lang_for(" +1 202-555-0143 ", "886", Lang::ZhTw), Some(Lang::En));
         assert_eq!(opening_lang_for("+81312345678", "886", Lang::ZhTw), Some(Lang::Ja));
         assert_eq!(opening_lang_for("+5215512345678", "886", Lang::ZhTw), Some(Lang::Es));
-        assert_eq!(opening_lang_for("+8613800138000", "886", Lang::ZhTw), Some(Lang::ZhCn));
+        // Chinese either way: the setting's own variant.
+        assert_eq!(opening_lang_for("+8613800138000", "886", Lang::ZhTw), None);
+        assert_eq!(opening_lang_for("+886912345678", "86", Lang::ZhCn), None);
+        assert_eq!(opening_lang_for("+85291234567", "86", Lang::ZhCn), None);
+        assert_eq!(opening_lang_for("+12025550143", "86", Lang::ZhCn), Some(Lang::En));
         // Hong Kong speaks the setting's language; a local, hidden or unlisted number.
         assert_eq!(opening_lang_for("+85291234567", "886", Lang::ZhTw), None);
         assert_eq!(opening_lang_for("+886912345678", "886", Lang::ZhTw), None);
@@ -6439,7 +6444,8 @@ mod tests {
         let t = n.pointer("/clientContent/turns/0/parts/0/text").unwrap().as_str().unwrap();
         assert!(t.contains("還在不在") && t.contains("不要說掰掰"));
         // In the language the caller speaks: a Vietnamese call got 「喂？請問還在嗎？」.
-        assert!(t.contains("對方講的語言") && !t.contains("還在嗎"));
+        // The Chinese example is only for a caller who speaks Chinese.
+        assert!(t.contains("對方講的語言") && t.contains("對方講中文就像「喂？還在嗎？」"));
         let r: Value = serde_json::from_str(&persona_resume_reply_client_content()).unwrap();
         let t = r.pointer("/clientContent/turns/0/parts/0/text").unwrap().as_str().unwrap();
         assert!(t.contains("不要重新打招呼"));
@@ -6482,6 +6488,15 @@ mod tests {
         for t in ["Alo, chào anh.", "ฮัลโหล สวัสดีค่ะ", "Halo, selamat pagi."] {
             assert!(!caller_wraps_up(t), "{t}");
             assert!(!looks_like_goodbye(t), "{t}");
+        }
+        // The caller's window since the AI last spoke: an earlier "ok" / thanks, then the
+        // phone is handed over and the next person greets.
+        for t in [
+            "Dạ ok anh, để em đưa máy cho chị em nhé. Alo, em chào anh ạ.",
+            "Oke Pak, sebentar ya, saya kasih ke ibu saya. Halo, selamat siang.",
+            "ขอบคุณค่ะ เดี๋ยวส่งให้แม่คุยนะคะ ฮัลโหล สวัสดีค่ะ",
+        ] {
+            assert!(!caller_wraps_up(t), "{t}");
         }
     }
 

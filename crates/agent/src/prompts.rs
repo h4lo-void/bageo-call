@@ -96,7 +96,7 @@ const ZH_KICK_RESUME: &str = "【系統指令·不是對方說的話】連線剛
 const ZH_KICK_REPEAT: &str = "【系統指令·不是對方說的話】連線剛切換，你剛剛那句沒有發出聲音，對方沒聽到。把剛剛那句話再自然地講一次（意思一樣就好），講完就停。";
 const ZH_KICK_STALL_IDLE: &str = "【系統指令·不是對方說的話】對方安靜了幾秒。不要乾等，主動接話，怎麼接隨你：\
 問他還在不在、碎念一下剛剛那件事、或丟一個新問題讓他講，一兩句，不要說掰掰。";
-const ZH_KICK_IDLE: &str = "【系統指令·不是對方說的話】對方安靜好一陣子了。像真人一樣只用一句很短的話問他還在不在（自己換說法），講完就停，不要說掰掰。";
+const ZH_KICK_IDLE: &str = "【系統指令·不是對方說的話】對方安靜好一陣子了。像真人一樣只用一句很短的話問他還在不在（自己換說法；對方講中文就像「喂？還在嗎？」），講完就停，不要說掰掰。";
 const ZH_READ_LINE: &str = "照念這一句：「{line}」";
 const ZH_PREVIEW_SYSTEM: &str = "你正在用自己的手機講電話。使用者每次給你一句台詞，\
 你就用平常講電話的自然語氣（台灣口音、放鬆、不要像在念稿）把那一句講出來，一個字都不要改，不要加別的話，講完就停。";
@@ -846,8 +846,18 @@ mod tests {
                 assert!(kick.contains(mark), "{lang:?}: {kick}");
             }
             // The quiet-line nudge no longer hands the model a line in the setting's
-            // language (a Vietnamese call got 「喂？請問還在嗎？」).
-            assert!(!p.kick_idle.contains(locale::phrases(lang).still_there), "{lang:?}");
+            // language (a Vietnamese call got 「喂？請問還在嗎？」); Chinese keeps its
+            // example, marked as the one for a caller who speaks Chinese.
+            if lang.is_zh() {
+                let still_there = locale::phrases(lang).still_there;
+                assert!(
+                    p.kick_idle.contains("中文就像") && p.kick_idle.contains(still_there),
+                    "{lang:?}: {}",
+                    p.kick_idle
+                );
+            } else {
+                assert!(!p.kick_idle.contains(locale::phrases(lang).still_there), "{lang:?}");
+            }
         }
     }
 }

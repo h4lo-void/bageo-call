@@ -2083,9 +2083,9 @@ const EXTRA_WORD_FAREWELLS: &[&str] = &[
 ];
 
 /// A goodbye that also opens calls: "chào anh", "selamat pagi", "sawasdee ka".
-/// It counts only as the very last words, and only after a closing cue earlier in
-/// the same text ("Cảm ơn anh, chào anh.") or with a word after it that only a
-/// goodbye has ("chào anh nhé") — so a caller's "Alo, chào anh." at the start of
+/// It counts only as the very last words, and only right after a closing cue
+/// ("Cảm ơn anh, chào anh.", see [`cue_window`]) or with a word after it that only
+/// a goodbye has ("chào anh nhé") — so a caller's "Alo, chào anh." at the start of
 /// a call is no goodbye.
 struct GreetingBye {
     heads: &'static [&'static str],
@@ -2094,11 +2094,18 @@ struct GreetingBye {
     tail: &'static [&'static str],
     /// Words after it that make it a goodbye by themselves.
     closing_tail: &'static [&'static str],
-    /// Words earlier in the text that mark the end of a call.
+    /// Words just before it that mark the end of a call.
     cues: &'static [&'static str],
 }
 
 const GREETING_BYE_TAIL: usize = 3;
+/// A closing cue counts within this many words before the goodbye: the caller's
+/// text is the whole window since the AI last spoke, and an "ok" from earlier on
+/// belongs to something else.
+const GREETING_BYE_CUE_WORDS: usize = 6;
+/// How a call is answered: a closing cue before one of these belongs to an
+/// earlier talk ("…nhé. Alo, em chào anh ạ." — the phone was handed over).
+const HELLOS: &[&str] = &["alo", "a lô", "a lo", "allo", "halo", "hallo", "hello", "helo", "喂"];
 
 const GREETING_BYES: &[GreetingBye] = &[
     // Vietnamese: "Cảm ơn anh, chào anh." "Thôi chào em nhé." "Cảm ơn, chào."
@@ -2110,10 +2117,7 @@ const GREETING_BYES: &[GreetingBye] = &[
             "nhé", "nhe", "nhá", "nha",
         ],
         closing_tail: &["nhé", "nhe", "nhá", "nha"],
-        cues: &[
-            "cảm ơn", "cám ơn", "cam on", "thôi", "thoi", "nhé", "nhá", "ok", "oke", "okay", "thanks",
-            "thank you",
-        ],
+        cues: &["cảm ơn", "cám ơn", "cam on", "thôi", "thoi", "ok", "oke", "okay", "thanks", "thank you"],
     },
     // Indonesian: "Baik, terima kasih, selamat siang."
     GreetingBye {
@@ -2151,10 +2155,29 @@ impl GreetingBye {
                     && !(i > 0 && NEGATIONS.contains(&ws[i - 1].as_str()))
                     && after.iter().all(|w| self.tail.contains(&w.as_str()))
                     && (after.iter().any(|w| self.closing_tail.contains(&w.as_str()))
-                        || self.cues.iter().any(|c| has_phrase(&ws[..i], c)))
+                        || self.cues.iter().any(|c| has_phrase(cue_window(&ws[..i]), c)))
             })
         })
     }
+}
+
+/// Where a closing cue for a goodbye after `before` may be: its last
+/// [`GREETING_BYE_CUE_WORDS`] words, and only after the last of [`HELLOS`].
+fn cue_window(before: &[String]) -> &[String] {
+    let mut start = before.len().saturating_sub(GREETING_BYE_CUE_WORDS);
+    for h in HELLOS {
+        let p = words(h);
+        if p.is_empty() || before.len() < p.len() {
+            continue;
+        }
+        if let Some(j) = (0..=before.len() - p.len())
+            .rev()
+            .find(|&j| before[j..j + p.len()] == p[..])
+        {
+            start = start.max(j + p.len());
+        }
+    }
+    &before[start..]
 }
 
 /// `phrase` (space-separated words) appears anywhere in `ws`.
@@ -2166,9 +2189,13 @@ fn has_phrase(ws: &[String], phrase: &str) -> bool {
 /// Thai goodbyes (Thai is written without spaces: matched in the squeezed text).
 const TH_FAREWELLS: &[&str] = &["ลาก่อน", "บ๊ายบาย", "บายบาย", "บ๊ายบ๊าย"];
 /// Thai "hello / goodbye" (สวัสดีค่ะ), also as Chinese speech-to-text writes it:
-/// a goodbye only after one of [`TH_CUES`] earlier in the text.
+/// a goodbye only right after one of [`TH_CUES`] (see [`thai_cue_window`]).
 const TH_GREETING_BYES: &[&str] = &["สวัสดี", "沙瓦迪卡", "薩瓦迪卡", "萨瓦迪卡"];
 const TH_CUES: &[&str] = &["ขอบคุณ", "แค่นี้", "ไปก่อน", "วางสาย", "โอเค", "ok", "thank", "謝謝", "谢谢"];
+/// A Thai closing cue counts within this many letters before the goodbye (about
+/// [`GREETING_BYE_CUE_WORDS`] words).
+const TH_CUE_CHARS: usize = 18;
+const TH_HELLOS: &[&str] = &["ฮัลโหล", "ฮัลโล", "ฮาโหล", "hello", "halo", "喂"];
 /// Polite particles that end a Thai sentence; they do not count against the slack.
 const TH_PARTICLES: &[&str] = &["ครับ", "คับ", "ค่ะ", "คะ", "นะ", "จ้า", "จ้ะ", "ฮะ"];
 /// What may come right before a Thai goodbye inside one run of letters
@@ -2210,6 +2237,27 @@ fn ends_with_any(text: &str, list: &[&str]) -> bool {
     })
 }
 
+/// [`cue_window`] for squeezed Thai: the last [`TH_CUE_CHARS`] letters of
+/// `before`, and only after the last of [`TH_HELLOS`].
+fn thai_cue_window(before: &str) -> &str {
+    let mut start = 0;
+    for h in TH_HELLOS {
+        let h = squeeze(h);
+        if h.is_empty() {
+            continue;
+        }
+        if let Some(j) = before.rfind(h.as_str()) {
+            start = start.max(j + h.len());
+        }
+    }
+    let seg = &before[start..];
+    let n = seg.chars().count();
+    match seg.char_indices().nth(n.saturating_sub(TH_CUE_CHARS)) {
+        Some((k, _)) => &seg[k..],
+        None => seg,
+    }
+}
+
 /// A Thai goodbye within `slack_chars` letters of the end (particles aside).
 fn thai_farewell(text: &str, slack_chars: usize) -> bool {
     let (all, starts) = squeeze_runs(text);
@@ -2245,7 +2293,9 @@ fn thai_farewell(text: &str, slack_chars: usize) -> bool {
         near_end(m).is_some_and(|i| {
             let before = &t[..i];
             !ends_with_any(before, TH_NEGATIONS)
-                && TH_CUES.iter().any(|c| before.contains(squeeze(c).as_str()))
+                && TH_CUES
+                    .iter()
+                    .any(|c| thai_cue_window(before).contains(squeeze(c).as_str()))
         })
     })
 }
@@ -2409,6 +2459,10 @@ mod tests {
             "Hôm qua em đã nói tạm biệt với anh ấy rồi mà anh ấy vẫn gọi lại hỏi về khoản vay.",
             "Khoan đã, đừng tạm biệt vội.",
             "Cảm ơn anh, chào anh?",
+            // An "ok" / "nhé" from earlier in the window, then the phone is handed
+            // over and the next person greets.
+            "Dạ ok anh, để em đưa máy cho chị em nhé. Alo, em chào anh ạ.",
+            "Dạ vâng, em để ở quầy lễ tân nhé. Em chào anh ạ.",
         ] {
             assert!(!caller_wraps_up(t), "{t}");
         }
@@ -2439,6 +2493,8 @@ mod tests {
             // "Don't say goodbye yet."
             "อย่าเพิ่งลาก่อนนะ",
             "อย่าเพิ่ง ลาก่อนนะ",
+            // Thanks from earlier, then the phone is handed over and the next person greets.
+            "ขอบคุณค่ะ เดี๋ยวส่งให้แม่คุยนะคะ ฮัลโหล สวัสดีค่ะ",
         ] {
             assert!(!caller_wraps_up(t), "{t}");
         }
@@ -2465,6 +2521,8 @@ mod tests {
             "Kemarin saya sudah bilang sampai jumpa ke dia tapi dia telepon lagi soal pinjaman.",
             "Jangan dadah dulu.",
             "Terima kasih, selamat sore?",
+            // "Ok" from earlier, then the phone is handed over and the next person greets.
+            "Oke Pak, sebentar ya, saya kasih ke ibu saya. Halo, selamat siang.",
         ] {
             assert!(!caller_wraps_up(t), "{t}");
         }
