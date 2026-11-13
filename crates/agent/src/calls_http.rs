@@ -956,7 +956,6 @@ async fn devices(
     }))
     .into_response()
 }
-+
 // ---------------------------------------------------------------- phone mode
 
 /// How a phone handles calls: the AI answers them (`ai`), or it rings like any
