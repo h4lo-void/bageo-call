@@ -1,4 +1,4 @@
-Ayúdame a escribir el "prompt de respuesta" de Myna, un sistema de código abierto en el que una voz de IA contesta las llamadas de mi teléfono. Primero entrevístame y después escribe el prompt.
+Ayúdame a escribir el "prompt de respuesta" de Bageo, un sistema de código abierto en el que una voz de IA contesta las llamadas de mi teléfono. Primero entrevístame y después escribe el prompt.
 
 CÓMO HACER LA ENTREVISTA
 - Haz UNA pregunta cada vez, con palabras sencillas, y espera mi respuesta.

@@ -3,7 +3,7 @@
 ```mermaid
 flowchart LR
     subgraph phone["Android 手机（已 root）"]
-        app["Myna 应用<br/>特权系统应用"]
+        app["Bageo 应用<br/>特权系统应用"]
     end
     subgraph pc["你的电脑"]
         agent["主程序 agent（Rust）"]

@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# Myna: switches the phone between "ai" and "normal" for the app, as root.
+# Bageo: switches the phone between "ai" and "normal" for the app, as root.
 #
 # The app cannot use su itself (KernelSU only offers it to apps on its allow list),
 # so service.sh starts this helper once per boot, in its own session. Every 2

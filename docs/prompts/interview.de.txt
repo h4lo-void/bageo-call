@@ -1,4 +1,4 @@
-Hilf mir, den „Annahme-Prompt“ für Myna zu schreiben, ein Open-Source-System, in dem eine KI-Stimme die Anrufe auf meinem Handy annimmt. Interviewe mich zuerst und schreib danach den Prompt.
+Hilf mir, den „Annahme-Prompt“ für Bageo zu schreiben, ein Open-Source-System, in dem eine KI-Stimme die Anrufe auf meinem Handy annimmt. Interviewe mich zuerst und schreib danach den Prompt.
 
 SO LÄUFT DAS INTERVIEW
 - Stell immer nur EINE Frage, in einfachen Worten, und warte auf meine Antwort.

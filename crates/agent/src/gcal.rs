@@ -4,7 +4,7 @@
 //! write and `calendar.freebusy` (or `calendar.readonly` / `calendar`) to ask.
 //!
 //! Events an appointment puts in the calendar carry a private extended property
-//! `myna_call=<tag>` ([`EVENT_TAG_KEY`]) so they can be found again when the
+//! `bageo_call=<tag>` ([`EVENT_TAG_KEY`]) so they can be found again when the
 //! answer to an insert was lost (timeout).
 //!
 //! Settings (see [`crate::settings_store::RuntimeSettings`]):
@@ -23,7 +23,7 @@ const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const CALENDAR_API: &str = "https://www.googleapis.com/calendar/v3/calendars";
 const FREEBUSY_URL: &str = "https://www.googleapis.com/calendar/v3/freeBusy";
 /// Private extended property that marks the events of one call's appointment.
-pub const EVENT_TAG_KEY: &str = "myna_call";
+pub const EVENT_TAG_KEY: &str = "bageo_call";
 
 /// Google Calendar OAuth fields not set, in the agent's language (also what a
 /// task follow-up shows). Never include credential values in an error.
@@ -568,7 +568,7 @@ fn resolve_event_window(
 ) -> Result<(DateTime<Utc>, DateTime<Utc>)> {
     let start = if start_rfc3339.is_empty() {
         let tentative = now + Duration::hours(24);
-        let note = "[Pixel agent] 未指定開始時間，暫定為 24 小時後；請在 Google Calendar 調整。";
+        let note = "[Bageo] 未指定開始時間，暫定為 24 小時後；請在 Google Calendar 調整。";
         if description.is_empty() {
             description.push_str(note);
         } else {

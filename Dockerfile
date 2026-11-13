@@ -1,4 +1,4 @@
-# Myna agent in a container (optional; the start scripts run it
+# Bageo agent in a container (optional; the start scripts run it
 # without Docker). Build from the repository root:
 #
 #   docker compose up -d --build

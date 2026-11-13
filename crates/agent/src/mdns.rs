@@ -1,5 +1,5 @@
 //! Answers "<name>.local" on the local network (multicast DNS, RFC 6762), so
-//! the web console opens at `http://myna.local:8787/` without knowing
+//! the web console opens at `http://bageo.local:8787/` without knowing
 //! this machine's IP address.
 //!
 //! Deliberately tiny: one IPv4 address record, no service discovery, no name
@@ -260,7 +260,7 @@ fn open(listen: IpAddr) -> Result<UdpSocket, (&'static str, std::io::Error)> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Question {
-    /// Lower-case dotted name, e.g. "myna.local".
+    /// Lower-case dotted name, e.g. "bageo.local".
     name: String,
     qtype: u16,
     qclass: u16,
@@ -453,95 +453,95 @@ mod tests {
 
     #[test]
     fn answers_a_standard_query_for_its_name() {
-        let q = query(0, 0, &[("myna.local", TYPE_A, CLASS_IN)]);
+        let q = query(0, 0, &[("bageo.local", TYPE_A, CLASS_IN)]);
         assert_eq!(
-            match_query(&q, "myna", PORT),
+            match_query(&q, "bageo", PORT),
             Some(Ask { unicast: false, legacy_id: None })
         );
         // ANY also asks for the address.
-        let q = query(0, 0, &[("myna.local", TYPE_ANY, CLASS_IN)]);
-        assert!(match_query(&q, "myna", PORT).is_some());
+        let q = query(0, 0, &[("bageo.local", TYPE_ANY, CLASS_IN)]);
+        assert!(match_query(&q, "bageo", PORT).is_some());
     }
 
     #[test]
     fn names_match_in_any_case() {
-        let q = query(0, 0, &[("MyNa.LOCAL", TYPE_A, CLASS_IN)]);
-        assert!(match_query(&q, "myna", PORT).is_some());
+        let q = query(0, 0, &[("BaGeO.LOCAL", TYPE_A, CLASS_IN)]);
+        assert!(match_query(&q, "bageo", PORT).is_some());
     }
 
     #[test]
     fn other_names_types_and_responses_get_no_answer() {
         // IPv6 address, service browsing, another host.
-        assert_eq!(match_query(&query(0, 0, &[("myna.local", 28, CLASS_IN)]), "myna", PORT), None);
-        assert_eq!(match_query(&query(0, 0, &[("myna.local", 12, CLASS_IN)]), "myna", PORT), None);
-        assert_eq!(match_query(&query(0, 0, &[("other.local", TYPE_A, CLASS_IN)]), "myna", PORT), None);
-        assert_eq!(match_query(&query(0, 0, &[("myna.local.example", TYPE_A, CLASS_IN)]), "myna", PORT), None);
+        assert_eq!(match_query(&query(0, 0, &[("bageo.local", 28, CLASS_IN)]), "bageo", PORT), None);
+        assert_eq!(match_query(&query(0, 0, &[("bageo.local", 12, CLASS_IN)]), "bageo", PORT), None);
+        assert_eq!(match_query(&query(0, 0, &[("other.local", TYPE_A, CLASS_IN)]), "bageo", PORT), None);
+        assert_eq!(match_query(&query(0, 0, &[("bageo.local.example", TYPE_A, CLASS_IN)]), "bageo", PORT), None);
         // Someone else's answer (QR bit set) is not a question.
-        assert_eq!(match_query(&query(0, 0x8400, &[("myna.local", TYPE_A, CLASS_IN)]), "myna", PORT), None);
+        assert_eq!(match_query(&query(0, 0x8400, &[("bageo.local", TYPE_A, CLASS_IN)]), "bageo", PORT), None);
     }
 
     #[test]
     fn unicast_and_one_shot_queries_are_answered_directly() {
-        let q = query(0, 0, &[("myna.local", TYPE_A, CLASS_IN | UNICAST_BIT)]);
+        let q = query(0, 0, &[("bageo.local", TYPE_A, CLASS_IN | UNICAST_BIT)]);
         assert_eq!(
-            match_query(&q, "myna", PORT),
+            match_query(&q, "bageo", PORT),
             Some(Ask { unicast: true, legacy_id: None })
         );
-        let q = query(0x1234, 0x0100, &[("myna.local", TYPE_A, CLASS_IN)]);
+        let q = query(0x1234, 0x0100, &[("bageo.local", TYPE_A, CLASS_IN)]);
         assert_eq!(
-            match_query(&q, "myna", 50000),
+            match_query(&q, "bageo", 50000),
             Some(Ask { unicast: true, legacy_id: Some(0x1234) })
         );
     }
 
     #[test]
     fn compressed_names_in_later_questions_are_followed() {
-        // Second question: "myna" + pointer to the "local" label of the first.
+        // Second question: "bageo" + pointer to the "local" label of the first.
         let mut q = query(0, 0, &[("other.local", TYPE_A, CLASS_IN)]);
         q[5] = 2;
-        q.extend_from_slice(&[4, b'm', b'y', b'n', b'a', 0xC0, 12 + 6]);
+        q.extend_from_slice(&[5, b'b', b'a', b'g', b'e', b'o', 0xC0, 12 + 6]);
         q.extend_from_slice(&TYPE_A.to_be_bytes());
         q.extend_from_slice(&CLASS_IN.to_be_bytes());
-        assert!(match_query(&q, "myna", PORT).is_some());
+        assert!(match_query(&q, "bageo", PORT).is_some());
     }
 
     #[test]
     fn broken_packets_are_ignored() {
-        let q = query(0, 0, &[("myna.local", TYPE_A, CLASS_IN)]);
+        let q = query(0, 0, &[("bageo.local", TYPE_A, CLASS_IN)]);
         for cut in 0..q.len() {
-            assert_eq!(match_query(&q[..cut], "myna", PORT), None, "cut at {cut}");
+            assert_eq!(match_query(&q[..cut], "bageo", PORT), None, "cut at {cut}");
         }
         // A pointer loop.
         let mut looped = query(0, 0, &[]);
         looped[5] = 1;
         looped.extend_from_slice(&[0xC0, 12, 0, 1, 0, 1]);
-        assert_eq!(match_query(&looped, "myna", PORT), None);
+        assert_eq!(match_query(&looped, "bageo", PORT), None);
     }
 
     #[test]
     fn the_answer_reads_back() {
         let ip = Ipv4Addr::new(192, 168, 1, 20);
-        let r = build_response("myna", ip, None);
+        let r = build_response("bageo", ip, None);
         let (id, flags, questions, _) = parse_questions(&r).unwrap();
         assert_eq!((id, flags), (0, 0x8400));
         assert!(questions.is_empty());
         assert_eq!(
             parse_answers(&r),
-            vec![("myna.local".to_string(), TYPE_A, CLASS_IN | CACHE_FLUSH_BIT, TTL_SECS, ip.octets().to_vec())]
+            vec![("bageo.local".to_string(), TYPE_A, CLASS_IN | CACHE_FLUSH_BIT, TTL_SECS, ip.octets().to_vec())]
         );
         // Our own multicast answer comes back to us: it must not look like a question.
-        assert_eq!(match_query(&r, "myna", PORT), None);
+        assert_eq!(match_query(&r, "bageo", PORT), None);
     }
 
     #[test]
     fn a_one_shot_answer_echoes_id_and_question() {
         let ip = Ipv4Addr::new(10, 0, 0, 7);
-        let r = build_response("myna", ip, Some(0xBEEF));
+        let r = build_response("bageo", ip, Some(0xBEEF));
         let (id, _, questions, _) = parse_questions(&r).unwrap();
         assert_eq!(id, 0xBEEF);
         assert_eq!(
             questions,
-            vec![Question { name: "myna.local".into(), qtype: TYPE_A, qclass: CLASS_IN }]
+            vec![Question { name: "bageo.local".into(), qtype: TYPE_A, qclass: CLASS_IN }]
         );
         let answers = parse_answers(&r);
         assert_eq!(answers.len(), 1);
@@ -552,9 +552,9 @@ mod tests {
 
     #[test]
     fn names_are_cleaned_for_the_network() {
-        assert_eq!(sanitize_name("myna"), "myna");
-        assert_eq!(sanitize_name(" Myna "), "myna");
-        assert_eq!(sanitize_name("Myna.local."), "myna");
+        assert_eq!(sanitize_name("bageo"), "bageo");
+        assert_eq!(sanitize_name(" Bageo "), "bageo");
+        assert_eq!(sanitize_name("Bageo.local."), "bageo");
         assert_eq!(sanitize_name("office pc_2"), "officepc2");
         assert_eq!(sanitize_name("-front-desk-"), "front-desk");
         assert_eq!(sanitize_name(""), "");
@@ -567,7 +567,7 @@ mod tests {
         for off in ["off", "OFF", " None ", "0", "false", "False", ""] {
             assert_eq!(parse_name_setting(off), "", "{off:?}");
         }
-        assert_eq!(parse_name_setting("Myna"), "myna");
+        assert_eq!(parse_name_setting("Bageo"), "bageo");
         assert_eq!(parse_name_setting("office"), "office");
     }
 

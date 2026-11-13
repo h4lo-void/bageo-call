@@ -1,7 +1,7 @@
 # SMS forwarder (optional, experimental)
 
 `sms_forward.py` reads the text messages (SMS) that arrive on your Android phones
-and sends each one to the notification channels you set up in the Myna web
+and sends each one to the notification channels you set up in the Bageo web
 console (*Settings → Notifications*). It is a separate script: the agent works
 without it, and nothing starts it for you.
 
@@ -21,7 +21,7 @@ For every phone `adb devices` lists as `device`, it reads two sources:
 | Source | How | Needs |
 |---|---|---|
 | **Inbox** | `adb shell content query --uri content://sms/inbox`, every 60 s, rows newer than a saved position | USB debugging. No app on the phone. |
-| **Hook queue** (optional) | one small file per incoming SMS, written on the phone by the Myna app's SMS hook, checked every 4 s | The app, an LSPosed-compatible framework, root. See below. |
+| **Hook queue** (optional) | one small file per incoming SMS, written on the phone by the Bageo app's SMS hook, checked every 4 s | The app, an LSPosed-compatible framework, root. See below. |
 
 - A message seen by both sources is sent once.
 - **No backlog.** What is already on a phone when the script first sees it is never
@@ -55,7 +55,7 @@ language is `zh-TW`, converts Simplified Chinese to Traditional.
 
 ## Requirements
 
-- The Myna agent, running, with at least one notification channel
+- The Bageo agent, running, with at least one notification channel
   ([Notifications](../../docs/en/NOTIFICATIONS.md)).
 - `adb` (Android platform-tools). The agent's start scripts offer to download it.
 - Each phone connected by USB with **USB debugging** on and this computer allowed.
@@ -64,7 +64,7 @@ language is `zh-TW`, converts Simplified Chinese to Traditional.
   devices and Android versions refuse it to adb. If the phone is rooted, the script
   then retries through `su`; if not, that phone cannot be read.
 - For the hook queue (optional, faster, also works before the first unlock): the
-  Myna app on the phone, an LSPosed-compatible framework with the app
+  Bageo app on the phone, an LSPosed-compatible framework with the app
   enabled as a module for `com.android.phone`
   ([Optional SMS hook](../../android/README.md#optional-sms-hook)), and root for
   adb's shell (`su`). The phone may ask once whether *Shell* may have root access.
@@ -106,7 +106,7 @@ file. All are optional.
 | `SMS_INBOX_SEC` | `60` | Seconds between inbox polls. |
 | `SMS_DEDUP_SEC` | `86400` | The same text from the same sender on the same phone is sent once within this time. |
 | `SMS_FLOOD_CAP` | `20` | More new inbox messages than this at once are skipped. |
-| `SMS_HOME` | `~/.myna-call/sms` | Folder for the state, log, lock and settings file. Environment only. |
+| `SMS_HOME` | `~/.bageo-call/sms` | Folder for the state, log, lock and settings file. Environment only. Not set and only `~/.myna-call/sms` (the folder from before the rename to Bageo) exists: that one is used, and the log says so. |
 | `SMS_ENV_FILE` | `<SMS_HOME>/sms_forward.env` | Another settings file. Environment only. |
 
 Files in `SMS_HOME`: `state.json`, `health.json` (what the last cycle saw; handy for
@@ -124,28 +124,28 @@ runs it without a console window:
 ```powershell
 $python = (Get-Command pythonw.exe).Source
 $script = (Resolve-Path .\tools\sms_forward\sms_forward.py).Path
-Register-ScheduledTask -TaskName "Myna SMS forwarder" `
+Register-ScheduledTask -TaskName "Bageo SMS forwarder" `
   -Action (New-ScheduledTaskAction -Execute $python -Argument "`"$script`"") `
   -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME) `
   -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries)
 ```
 
-Remove it with `Unregister-ScheduledTask -TaskName "Myna SMS forwarder"`.
+Remove it with `Unregister-ScheduledTask -TaskName "Bageo SMS forwarder"`.
 
-**macOS (launchd)**, as `~/Library/LaunchAgents/com.mynacall.sms-forward.plist`,
-then `launchctl load ~/Library/LaunchAgents/com.mynacall.sms-forward.plist`:
+**macOS (launchd)**, as `~/Library/LaunchAgents/com.bageocall.sms-forward.plist`,
+then `launchctl load ~/Library/LaunchAgents/com.bageocall.sms-forward.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.mynacall.sms-forward</string>
+  <key>Label</key><string>com.bageocall.sms-forward</string>
   <key>ProgramArguments</key>
   <array>
     <string>/usr/local/bin/python3</string>
-    <string>/Users/you/myna-call/tools/sms_forward/sms_forward.py</string>
+    <string>/Users/you/bageo-call/tools/sms_forward/sms_forward.py</string>
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
@@ -160,10 +160,10 @@ launchd starts programs with a short `PATH`, so set `ADB_BIN` in the settings fi
 
 ```ini
 [Unit]
-Description=Myna SMS forwarder
+Description=Bageo SMS forwarder
 
 [Service]
-ExecStart=/usr/bin/python3 %h/myna-call/tools/sms_forward/sms_forward.py
+ExecStart=/usr/bin/python3 %h/bageo-call/tools/sms_forward/sms_forward.py
 Restart=on-failure
 RestartSec=30
 

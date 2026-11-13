@@ -1,11 +1,11 @@
 #!/system/bin/sh
-# Myna: make the phone an AI answering phone ("ai") or an ordinary phone ("normal").
+# Bageo: make the phone an AI answering phone ("ai") or an ordinary phone ("normal").
 #
 #   sh apply_mode.sh <ai|normal> <id> [ring notification voice_call music alarm system]
 #
 # Called as root by mode_daemon.sh (in this module folder) when the app asks for a
 # switch. It runs outside the app, so it finishes even when Android stops the app on
-# the way: taking the phone-app role away from Myna can do that, which is why that
+# the way: taking the phone-app role away from Bageo can do that, which is why that
 # step comes last. The numbers are the volumes to set in normal mode (worked out by
 # the app; 0 = leave that one alone).
 #
@@ -114,7 +114,7 @@ other_ready() {
   [ -n "$d" ] && [ "$d" != "$PKG" ] && [ "$d" != "null" ]
 }
 # The phone app step failed: never leave the phone without a phone app. Go back to AI
-# mode (Myna is the phone app again and answers), then report the failure.
+# mode (Bageo is the phone app again and answers), then report the failure.
 dialer_fail() {
   step dialer fail
   note "revert=ai"
@@ -128,7 +128,7 @@ dialer_fail() {
 }
 
 apply_normal() {
-  # 1. Myna no longer screens (silences) incoming calls.
+  # 1. Bageo no longer screens (silences) incoming calls.
   remove_holder android.app.role.CALL_SCREENING "$PKG"
   holds android.app.role.CALL_SCREENING "$PKG"
   [ $? -eq 0 ] && fail screening screening_failed
@@ -159,9 +159,9 @@ apply_normal() {
   done
   step mic ok
 
-  # 5. Last, because Android may stop Myna when it loses the role: the phone app.
-  #    The new phone app takes the role over before Myna lets go, so the phone is
-  #    never without one; on any failure dialer_fail puts Myna back.
+  # 5. Last, because Android may stop Bageo when it loses the role: the phone app.
+  #    The new phone app takes the role over before Bageo lets go, so the phone is
+  #    never without one; on any failure dialer_fail puts Bageo back.
   pkgs=$(o pm list packages)
   [ -n "$pkgs" ] || dialer_fail
   if echo "$pkgs" | grep -qx "package:$GD"; then
@@ -173,7 +173,7 @@ apply_normal() {
     q pm enable "$GD/com.android.incallui.LegacyInCallActivity"
     [ "$ok" = 1 ] || dialer_fail
     o pm list packages -d | grep -qx "package:$GD" && dialer_fail
-    # The DIALER role has one holder: adding Google Phone replaces Myna.
+    # The DIALER role has one holder: adding Google Phone replaces Bageo.
     add_holder android.app.role.DIALER "$GD"
     q telecom set-default-dialer "$GD"
     until_ok google_ready || dialer_fail
@@ -186,7 +186,7 @@ apply_normal() {
 }
 
 # ---------------------------------------------------------------- AI phone
-myna_dialer() { [ "$(dialer)" = "$PKG" ]; }
+bageo_dialer() { [ "$(dialer)" = "$PKG" ]; }
 dnd_on() { z=$(zen); [ -n "$z" ] && [ "$z" != "0" ]; }
 
 apply_ai() {
@@ -196,17 +196,17 @@ apply_ai() {
   done
   q cmd appops set "$PKG" ACCESS_NOTIFICATION_POLICY allow
 
-  # 1. Myna is the phone app and the call screener (as service.sh does at boot).
+  # 1. Bageo is the phone app and the call screener (as service.sh does at boot).
   q cmd role add-role-holder android.app.role.DIALER "$PKG"
   q cmd role add-role-holder android.app.role.CALL_SCREENING "$PKG"
   q telecom set-default-dialer "$PKG"
-  until_ok myna_dialer || fail dialer dialer_failed
+  until_ok bageo_dialer || fail dialer dialer_failed
   step dialer ok
   holds android.app.role.CALL_SCREENING "$PKG"
   [ $? -eq 1 ] && fail screening screening_failed
   step screening ok
 
-  # 2. Only now that Myna answers calls: Google Phone off.
+  # 2. Only now that Bageo answers calls: Google Phone off.
   q pm disable "$GD/com.android.incallui.InCallServiceImpl"
   q pm disable "$GD/com.android.incallui.InCallActivity"
   q pm disable-user --user 0 "$GD"

@@ -2596,7 +2596,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_record_carries_what_the_caller_agreed_to() {
-        let dir = std::env::temp_dir().join(format!("myna-calls-appt-{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("bageo-calls-appt-{}", Uuid::new_v4()));
         let store = CallStore::new(dir.clone(), true, false, 7);
         let mut call = store.start("pixel-1", "0911111111", 16000, "active").await.unwrap();
         let book = crate::appointments::CallAppointments::new();

@@ -118,7 +118,7 @@ pub struct Appointment {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub sms: String,
     /// This call's mark on the events it writes (Google Calendar private
-    /// property `myna_call`): finds them again when an answer was lost.
+    /// property `bageo_call`): finds them again when an answer was lost.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub tag: String,
     /// A write to the calendar timed out: it may or may not be there (look it up by `tag`).
@@ -802,7 +802,7 @@ fn event_description(caller_id: &str, appt: &Appointment) -> String {
     if !appt.title.trim().is_empty() {
         parts.push(format!("{}{sep}{}", p.ap_what, appt.title.trim()));
     }
-    parts.push("Myna".to_string());
+    parts.push("Bageo".to_string());
     parts.join("\n")
 }
 
@@ -2383,7 +2383,7 @@ mod tests {
     }
 
     fn stores() -> (std::path::PathBuf, Arc<TaskStore>, Arc<CallStore>) {
-        let root = std::env::temp_dir().join(format!("myna-appt-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("bageo-appt-{}", uuid::Uuid::new_v4()));
         let tasks = TaskStore::new(root.join("tasks"));
         let calls = CallStore::new(root.join("calls"), false, false, 30);
         (root, tasks, calls)
@@ -2561,7 +2561,7 @@ mod tests {
 
     #[tokio::test]
     async fn owner_decision_without_calendar_or_texts_updates_the_task() {
-        let root = std::env::temp_dir().join(format!("myna-appt-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("bageo-appt-{}", uuid::Uuid::new_v4()));
         let store = TaskStore::new(root.join("tasks"));
         let calls = CallStore::new(root.join("calls"), false, false, 30);
         let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());

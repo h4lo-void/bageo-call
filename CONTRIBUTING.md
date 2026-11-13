@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for looking into Myna. The most valuable contributions right
+Thank you for looking into Bageo. The most valuable contributions right
 now are **reports**: which phone, which language, what happened.
 
 ## Reporting what works and what does not

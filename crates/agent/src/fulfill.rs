@@ -383,7 +383,7 @@ fn should_schedule_calendar(task: &TaskRecord) -> bool {
 fn email_subject(task: &TaskRecord) -> String {
     let summary = task.summary.trim();
     if summary.is_empty() {
-        format!("Myna — {}", texts().e_subject)
+        format!("Bageo — {}", texts().e_subject)
     } else {
         format!("Re: {summary}")
     }

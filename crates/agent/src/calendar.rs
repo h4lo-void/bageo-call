@@ -169,7 +169,9 @@ impl Event {
             return String::new();
         };
         let value = if self.all_day { ";VALUE=DATE" } else { "" };
-        let mut out = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//myna-call//EN\r\nBEGIN:VEVENT\r\n");
+        let mut out = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//bageo-call//EN\r\nBEGIN:VEVENT\r\n");
+        // The UID domain stays the one from before the rename to Bageo, so an
+        // event downloaded again updates the one already imported.
         out.push_str(&format!("UID:{}@myna-call\r\n", ics_text(uid)));
         out.push_str(&format!("DTSTAMP:{}Z\r\n", stamp_utc.format("%Y%m%dT%H%M%S")));
         out.push_str(&format!("DTSTART{value}:{s}\r\n"));

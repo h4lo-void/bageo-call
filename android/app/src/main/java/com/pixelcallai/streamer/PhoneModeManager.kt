@@ -176,7 +176,7 @@ object PhoneModeManager {
     /**
      * Service start: bring the phone in line with the module's mode file. Runs the
      * switch again when the last one did not finish (`pending`), when the mode is
-     * normal but Myna is still the phone app (an interrupted switch, or an older
+     * normal but Bageo is still the phone app (an interrupted switch, or an older
      * version that took the phone over again), or when the app's copy of the mode is
      * different. [onUnreported] gets the result of a switch the agent asked for whose
      * answer was never sent (the app was stopped while it ran).
@@ -190,7 +190,7 @@ object PhoneModeManager {
         appDir(ctx)
         Thread({
             if (!waitForCurrentState(ctx)) {
-                Log.w(TAG, "start-up check skipped: no state from the Myna module since boot")
+                Log.w(TAG, "start-up check skipped: no state from the Bageo module since boot")
             } else if (busy.compareAndSet(false, true)) {
                 executor.execute {
                     try {
@@ -235,7 +235,7 @@ object PhoneModeManager {
         val why = when {
             state.pending -> "the last switch did not finish"
             state.mode == Prefs.PHONE_MODE_NORMAL && defaultDialer(ctx) == ctx.packageName ->
-                "normal mode, but Myna is still the phone app"
+                "normal mode, but Bageo is still the phone app"
             state.mode != mirror -> "the module file says ${state.mode}, the app had $mirror"
             else -> null
         }

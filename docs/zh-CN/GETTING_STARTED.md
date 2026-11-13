@@ -22,20 +22,20 @@
 
 ### 简单的办法：下载发行版
 
-1. 从 Releases 页面下载适合你系统的安装包，解压到任意位置（例如 `Documents/myna-call`）。
+1. 从 Releases 页面下载适合你系统的安装包，解压到任意位置（例如 `Documents/bageo-call`）。
 2. 启动：
    - **Windows：** 双击 `start.cmd`。如果 Windows SmartScreen 提示发布者未知，请选择“更多信息 → 仍要运行”（More info → Run anyway）。
    - **macOS：** 双击 `start.command`。第一次运行时，macOS 可能会因为程序没有经过公证（notarize）而拒绝打开：请右键点击 `start.command` →“打开”；如果被拦下的是主程序本身，请到“系统设置 → 隐私与安全性”里允许它。也可以在终端里进入该文件夹运行一次 `xattr -dr com.apple.quarantine .`。
    - **Linux：** 在终端里运行 `./start.sh`。
 3. 脚本会查找 `adb`（Google 的 Android platform-tools，USB 连接需要它）。如果没有安装，脚本会询问是否从 Google 下载，放到程序旁边的 `platform-tools` 文件夹里。
 4. 浏览器会打开网页控制台 <http://localhost:8787/>。终端窗口请保持打开：关掉它，主程序就停了。
-5. 主程序第一次启动成功时，脚本会在桌面放一个“**Myna 控制台**”快捷方式（macOS 是 `.webloc` 文件；Linux 是应用菜单里的项目，也会复制到桌面文件夹）。下次用它打开控制台就行。快捷方式还在就不会重建；不想要的话，启动时加 `-NoShortcut`（Windows）／`--no-shortcut`，或在 `.env` 里设 `MYNA_NO_SHORTCUT=1`。
+5. 主程序第一次启动成功时，脚本会在桌面放一个“**Bageo 控制台**”快捷方式（macOS 是 `.webloc` 文件；Linux 是应用菜单里的项目，也会复制到桌面文件夹）。下次用它打开控制台就行。快捷方式还在就不会重建；不想要的话，启动时加 `-NoShortcut`（Windows）／`--no-shortcut`，或在 `.env` 里设 `BAGEO_NO_SHORTCUT=1`。改名前留下的“Myna 控制台”快捷方式也算，旧的 `MYNA_NO_SHORTCUT=1` 照样有效。
 
 ### 从源码运行
 
 ```text
 git clone <this repository>
-cd myna-call
+cd bageo-call
 ./start.sh            # Windows: .\start.cmd
 ```
 
@@ -72,7 +72,7 @@ cd myna-call
 细节和还原方法：[手机设置](PHONE.md)。简单来说：
 
 1. 把（发行版里的）`pixelcallai_uplink-<version>.zip` 复制到手机上，在 Magisk 或 KernelSU 应用里作为模块安装。重启。
-2. 打开 **Myna** 应用，按“设置步骤”逐步点下去，直到每一步都显示“正常”（权限、默认电话应用、来电过滤、勿扰模式、不要进入休眠）。应用本身不需要 root 权限，root 的工作由模块做。
+2. 打开 **Bageo** 应用，按“设置步骤”逐步点下去，直到每一步都显示“正常”（权限、默认电话应用、来电过滤、勿扰模式、不要进入休眠）。应用本身不需要 root 权限，root 的工作由模块做。
 3. 开启 **USB 调试**（“设置 → 关于手机 →”连点“版本号”七次，然后“系统 → 开发者选项 → USB 调试”）。
 4. 把手机插到电脑上。在手机上的“**允许 USB 调试吗？**”弹窗里点允许，并勾选“一律允许使用这台计算机进行调试”。
 
@@ -94,9 +94,9 @@ cd myna-call
 
 到“设置 → 通知 → 添加渠道”，选一个服务，填好各个字段（每个字段都有提示告诉你怎么获取），然后按“**发送测试**”。可以添加好几个；每条消息都会发到所有渠道。各服务的配置说明：[通知](NOTIFICATIONS.md)。
 
-要让通知里的链接能打开那通电话，请把控制台开放给你的网络——见[从其他设备使用](SETTINGS.md#从其他设备使用控制台)。这样链接会自动指向 `http://myna.local:8787/`（主程序能响应局域网名称时），否则指向这台电脑的局域网 IP；用的是哪一个，“系统 → 关于”会显示，还附二维码。只有你用别的方式访问这台电脑（VPN 名称、反向代理、Docker）时，才需要填“**这个控制台的地址**”。
+要让通知里的链接能打开那通电话，请把控制台开放给你的网络——见[从其他设备使用](SETTINGS.md#从其他设备使用控制台)。这样链接会自动指向 `http://bageo.local:8787/`（主程序能响应局域网名称时），否则指向这台电脑的局域网 IP；用的是哪一个，“系统 → 关于”会显示，还附二维码。只有你用别的方式访问这台电脑（VPN 名称、反向代理、Docker）时，才需要填“**这个控制台的地址**”。
 
-要在手机上用：在电脑上打开控制台的“系统”页，“关于”会显示控制台地址和二维码。用手机扫描，再把这个网页添加到主屏幕（iPhone：“分享 → 添加到主屏幕”；Android：Chrome 菜单 ⋮ →“添加到主屏幕”）。下次点 Myna 图标就能打开。
+要在手机上用：在电脑上打开控制台的“系统”页，“关于”会显示控制台地址和二维码。用手机扫描，再把这个网页添加到主屏幕（iPhone：“分享 → 添加到主屏幕”；Android：Chrome 菜单 ⋮ →“添加到主屏幕”）。下次点 Bageo 图标就能打开。
 
 ## 7. 让它一直运行
 
@@ -107,21 +107,21 @@ cd myna-call
 - **Linux：** 用 systemd 的用户单元：
 
   ```ini
-  # ~/.config/systemd/user/myna-call.service
+  # ~/.config/systemd/user/bageo-call.service
   [Unit]
-  Description=Myna agent
+  Description=Bageo agent
   After=network-online.target
 
   [Service]
-  WorkingDirectory=%h/myna-call
-  ExecStart=%h/myna-call/start.sh --no-browser --yes
+  WorkingDirectory=%h/bageo-call
+  ExecStart=%h/bageo-call/start.sh --no-browser --yes
   Restart=on-failure
 
   [Install]
   WantedBy=default.target
   ```
 
-  运行 `systemctl --user enable --now myna-call` 和 `loginctl enable-linger $USER`，这样不登录也会运行。
+  运行 `systemctl --user enable --now bageo-call` 和 `loginctl enable-linger $USER`，这样不登录也会运行。
 
 手机请一直插着充电器。手机或电脑重启后，两边会自动重新连接。
 

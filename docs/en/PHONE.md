@@ -47,19 +47,19 @@ console (see [Normal phone mode](#normal-phone-mode)) and undone for good (see
 2. If you ever installed the app as a normal APK, uninstall it. Never have both.
 3. Copy `pixelcallai_uplink-<version>.zip` to the phone, open the Magisk or
    KernelSU app → *Modules* → *Install from storage* → pick the zip → reboot.
-4. Open **Myna**. The card at the top says in one sentence what the phone does
+4. Open **Bageo**. The card at the top says in one sentence what the phone does
    right now. Below it, **Setup steps** lists what is still missing, each step
    with a button:
 
    | Step | What to do |
    |---|---|
-   | Install the Myna module | Done after the reboot. If not, the module is not active. |
-   | Allow Myna to use the phone and microphone | **Allow** (microphone, phone, call log, notifications). |
-   | Make Myna the default phone app / the call screening app | **Set**. |
-   | Let Myna control Do Not Disturb | **Open settings** and allow it. |
-   | Do not let Android put Myna to sleep | **Allow**, so Android does not stop the service. |
+   | Install the Bageo module | Done after the reboot. If not, the module is not active. |
+   | Allow Bageo to use the phone and microphone | **Allow** (microphone, phone, call log, notifications). |
+   | Make Bageo the default phone app / the call screening app | **Set**. |
+   | Let Bageo control Do Not Disturb | **Open settings** and allow it. |
+   | Do not let Android put Bageo to sleep | **Allow**, so Android does not stop the service. |
 
-   The Myna app itself does not need root access (the module does the root
+   The Bageo app itself does not need root access (the module does the root
    work), so if the root manager asks, either answer is fine. When every step is done the list
    folds away, and once the phone is connected to the computer the card says
    *The AI is answering your calls*. The connection address, the connection
@@ -122,19 +122,19 @@ The phone has two modes. You can switch at any time except during a call:
 - **Normal phone**: calls ring and you answer them yourself. The AI does not
   pick up, nothing is muted, and Google's phone app is back.
 
-**On the phone:** open Myna and turn the big switch at the top,
+**On the phone:** open Bageo and turn the big switch at the top,
 **AI answers my calls**, off or on. Confirm, and after a few seconds the card
 says *Normal phone: calls ring as usual* (or that the AI answers again).
 
 **From the web console:** *System → Phones*. Each connected phone shows its
 name, app version, mode and a button, **Switch to normal phone** or
 **Let the AI answer again**. Switching to a normal phone asks for confirmation
-first. A phone whose app is older than this feature shows *Update the Myna
+first. A phone whose app is older than this feature shows *Update the Bageo
 app…* instead of the button.
 
 Switching to a **normal phone** changes these system settings, in this order:
 
-1. Myna is no longer the call-screening app, so calls are not silenced.
+1. Bageo is no longer the call-screening app, so calls are not silenced.
 2. Do Not Disturb is turned off.
 3. The ringer is set to normal, and the ring, notification, earpiece, media,
    alarm and system volumes go back to what they were before the phone last
@@ -143,32 +143,33 @@ Switching to a **normal phone** changes these system settings, in this order:
 4. The microphone is no longer muted and the earpiece is no longer held at its
    lowest level.
 5. Last, Google Phone (`com.google.android.dialer`) is enabled again and
-   becomes the default phone app. On a phone without it, Myna gives the role
+   becomes the default phone app. On a phone without it, Bageo gives the role
    up and Android uses its own phone app. The switch only counts as done when
    Google Phone really is the default phone app and is not disabled.
 
-The Myna module makes these changes as root: a small helper it starts at
+The Bageo module makes these changes as root: a small helper it starts at
 every boot carries out the switch when the app asks, so the app needs no
-root permission for it. The changes go on even when Android stops the Myna
+root permission for it. The changes go on even when Android stops the Bageo
 app on the way (taking the phone-app role away from an app can do that),
 which is why the phone app changes last.
 
-Myna's service keeps running and stays connected to the agent, so you can
+Bageo's service keeps running and stays connected to the agent, so you can
 switch back from the web console, but it does not answer, silence or mute any
 call. The web console shows the phone as a normal phone, and `/health` lists
 it in `normal_mode_serials`.
 
 Switching back to **AI answers my calls** first saves the current volumes,
-then repeats the module's takeover: Myna becomes the phone app and the call
+then repeats the module's takeover: Bageo becomes the phone app and the call
 screener, the Google Phone app is disabled, Do Not Disturb goes on and
 the volumes go to zero.
 
 If a switch stops halfway, the app and the web console say which step did not
 work (for example, the default phone app could not be changed). Switching
 again repeats every step, and so does the next start of the app (after a
-reboot, for example) while a switch is unfinished. If the app says the Myna
-module is not running, check in Magisk or KernelSU that **Myna Uplink** is
-enabled, then reboot the phone. When the web console gets no answer within
+reboot, for example) while a switch is unfinished. If the app says the Bageo
+module is not running, check in Magisk or KernelSU that **Bageo Uplink** is
+enabled (a module installed before the rename shows as **Myna Uplink**), then
+reboot the phone. When the web console gets no answer within
 15 seconds it says the result is not confirmed yet: refresh a little later
 to see the mode the phone reports.
 
@@ -206,7 +207,7 @@ To switch without the app's screen, from a computer with `adb`:
 
 ## Rollback
 
-**Before installing an older Myna version** (any version before 0.2.2), switch
+**Before installing an older Bageo version** (any version before 0.2.2), switch
 the phone back to **AI answers my calls**, or delete the state folder:
 `adb shell "su -c 'rm -rf /data/adb/pixelcallai'"`. Older versions do not
 know the mode file: their module takes the phone over again at every boot,
@@ -217,12 +218,12 @@ by itself, so the AI stops answering without anyone asking for it.
 1. Switch the phone to a [normal phone](#normal-phone-mode) first. That
    brings back Google's phone app, the ringer and the volumes, and turns off
    Do Not Disturb, so steps 3 and 4 are then already done.
-2. Disable or remove the **Myna Uplink** module in Magisk / KernelSU
+2. Disable or remove the **Bageo Uplink** module in Magisk / KernelSU
    and reboot. If the phone does not boot far enough, use the root manager's
    safe mode, or with root from recovery:
    `touch /data/adb/modules/pixelcallai_uplink/disable`.
    The mode file `/data/adb/pixelcallai/` stays; delete that folder too if
-   you do not plan to install Myna again.
+   you do not plan to install Bageo again.
 3. If you removed the module without switching first: removing it does
    **not** bring back Google's phone app or turn off Do Not Disturb — Android
    remembers those. Re-enable the phone app:

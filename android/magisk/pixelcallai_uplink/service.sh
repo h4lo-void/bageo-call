@@ -7,7 +7,7 @@
 #     Do Not Disturb and the volumes alone.
 #   No file, or anything else: AI mode, the takeover below (how every phone ran
 #     before the switch existed). apply_mode.sh writes the file when the app switches
-#     (Myna > "AI answers my calls"); mode_daemon.sh runs it as root for the app.
+#     (Bageo > "AI answers my calls"); mode_daemon.sh runs it as root for the app.
 MODDIR=${0%/*}
 PKG=com.pixelcallai.streamer
 GDIALER=com.google.android.dialer

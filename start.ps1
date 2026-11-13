@@ -1,4 +1,4 @@
-# Myna - start the agent on Windows.
+# Bageo - start the agent on Windows.
 #
 #   Right-click > "Run with PowerShell", or double-click start.cmd, or:
 #   powershell -ExecutionPolicy Bypass -File .\start.ps1
@@ -8,8 +8,9 @@
 #   2. finds the agent program (a downloaded release, or builds it with Rust)
 #   3. makes sure adb (Android platform-tools) is there, offering to download it
 #   4. starts the agent and opens the web console
-#   5. the first time the agent answers, puts a "Myna Console" shortcut to the
-#      web console on the desktop (-NoShortcut or MYNA_NO_SHORTCUT=1: don't)
+#   5. the first time the agent answers, puts a "Bageo Console" shortcut to the
+#      web console on the desktop (-NoShortcut or BAGEO_NO_SHORTCUT=1: don't;
+#      MYNA_NO_SHORTCUT, the name from before the rename, still works)
 param(
     [switch]$NoBrowser,      # do not open the web console
     [switch]$Yes,            # answer "yes" to the platform-tools download
@@ -20,7 +21,7 @@ $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 Set-Location $root
 
-function Say($msg) { Write-Host "[myna] $msg" }
+function Say($msg) { Write-Host "[bageo] $msg" }
 
 # 1. .env -> environment (real environment variables win)
 $envFile = Join-Path $root ".env"
@@ -90,23 +91,26 @@ if (-not $NoBrowser) {
 }
 
 # 5. desktop shortcut to the web console, once the agent answers; kept when it exists
-$noShortcutEnv = @("1", "true", "yes", "on") -contains ("$env:MYNA_NO_SHORTCUT").ToLower()
+$noShortcutEnv = @("1", "true", "yes", "on") -contains ("$(if ($env:BAGEO_NO_SHORTCUT) { $env:BAGEO_NO_SHORTCUT } else { $env:MYNA_NO_SHORTCUT })").ToLower()
 if (-not $NoShortcut -and -not $noShortcutEnv) {
     # The name in the system's language (written as escapes: this file is read as ANSI).
     $label = switch -Regex ((Get-UICulture).Name) {
-        "^zh" { [regex]::Unescape("Myna \u63a7\u5236\u53f0"); break }
-        "^ja" { [regex]::Unescape("Myna \u30b3\u30f3\u30bd\u30fc\u30eb"); break }
-        "^ko" { [regex]::Unescape("Myna \ucf58\uc194"); break }
-        "^es" { "Consola de Myna"; break }
-        "^fr" { "Console Myna"; break }
-        "^de" { "Myna-Konsole"; break }
-        "^pt" { "Console do Myna"; break }
-        default { "Myna Console" }
+        "^zh" { [regex]::Unescape("Bageo \u63a7\u5236\u53f0"); break }
+        "^ja" { [regex]::Unescape("Bageo \u30b3\u30f3\u30bd\u30fc\u30eb"); break }
+        "^ko" { [regex]::Unescape("Bageo \ucf58\uc194"); break }
+        "^es" { "Consola de Bageo"; break }
+        "^fr" { "Console Bageo"; break }
+        "^de" { "Bageo-Konsole"; break }
+        "^pt" { "Console do Bageo"; break }
+        default { "Bageo Console" }
     }
     $desktop = [Environment]::GetFolderPath("Desktop")
     if ($desktop) {
         $shortcut = Join-Path $desktop "$label.url"
-        if (-not (Test-Path -LiteralPath $shortcut)) {
+        # A shortcut from before the rename to Bageo ("Myna Console") opens the same
+        # address: keep it and add no second one.
+        $oldShortcut = Join-Path $desktop ($label.Replace("Bageo", "Myna") + ".url")
+        if (-not (Test-Path -LiteralPath $shortcut) -and -not (Test-Path -LiteralPath $oldShortcut)) {
             # Ask the agent where it listens: 127.0.0.1 unless AGENT_HOST names one address.
             $probeHost = "127.0.0.1"
             $listenHost = "$env:AGENT_HOST".Trim()

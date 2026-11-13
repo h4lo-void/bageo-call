@@ -1,7 +1,7 @@
 # Writing the prompt
 
 The *prompt* is the text that tells the AI who it is and how to behave on the
-phone. Myna ships a built-in prompt for every language and both answer
+phone. Bageo ships a built-in prompt for every language and both answer
 styles, so you can start without writing anything. This page explains how to
 make it yours.
 

@@ -3,7 +3,7 @@ name = "agent"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Myna agent: answers the phone's calls with a Gemini Live voice, web console, notifications"
+description = "Bageo agent: answers the phone's calls with a Gemini Live voice, web console, notifications"
 
 [[bin]]
 name = "agent"

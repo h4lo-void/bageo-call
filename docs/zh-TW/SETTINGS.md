@@ -55,7 +55,7 @@
 
 見[通知](NOTIFICATIONS.md)。「這個控制台的網址」是放進通知連結裡的網址（例如 `http://192.168.1.20:8787`）。留空的話，控制台對區網開放時（`AGENT_HOST=0.0.0.0`）會自動填：主程式有回應區網名稱時用 `http://<區網名稱>.local:8787/`，否則用這台電腦的區網 IP。控制台只有這台電腦能開時，通知不附連結；在 Docker 裡不會自動填，請自己設定。「系統 → 關於」會顯示目前用的網址。
 
-「區網名稱」（預設 `myna`）是同一個網路裡的手機、電腦可以用來代替 IP 的名字：`http://myna.local:8787/`。只能用英文字母、數字和連字號；留空、`off`、`0`、`none` 或 `false` = 關閉。控制台對區網開放時，主程式自己回應這個名字（多播 DNS，UDP 5353 埠），並跟系統自己的回應程式共用這個埠（macOS 的 Bonjour、Linux 的 avahi、Windows 的 DNS 用戶端）。有些系統還是不讓它用：主程式會在記錄裡寫一行 `mDNS:` 開頭的訊息，通知連結改用 IP。在容器裡不會啟動。有些舊的 Android 手機完全打不開 `.local` 名稱；網址是 `.local` 時，「系統 → 關於」會多顯示一行區網 IP 的網址，掃 QR code 也可以。
+「區網名稱」（預設 `bageo`）是同一個網路裡的手機、電腦可以用來代替 IP 的名字：`http://bageo.local:8787/`。只能用英文字母、數字和連字號；留空、`off`、`0`、`none` 或 `false` = 關閉。控制台對區網開放時，主程式自己回應這個名字（多播 DNS，UDP 5353 埠），並跟系統自己的回應程式共用這個埠（macOS 的 Bonjour、Linux 的 avahi、Windows 的 DNS 用戶端）。有些系統還是不讓它用：主程式會在記錄裡寫一行 `mDNS:` 開頭的訊息，通知連結改用 IP。在容器裡不會啟動。有些舊的 Android 手機完全打不開 `.local` 名稱；網址是 `.local` 時，「系統 → 關於」會多顯示一行區網 IP 的網址，掃 QR code 也可以。改名前的預設是 `myna`：在控制台存過的名稱照用；沒改過的會變成 `bageo.local`，想沿用 `http://myna.local:8787/` 就把名稱設成 `myna`。
 
 ### 摘要與行事曆
 
@@ -92,7 +92,7 @@
 | `CALLS_UI_TOKEN` | *（空）* | 網頁控制台和 API 的密碼。用 `?token=…`、`Authorization: Bearer …` 或 `X-Calls-Token` 傳送。**只要 `AGENT_HOST` 不是 `127.0.0.1`，就一定要設定。** |
 | `DEVICE_TOKEN` | *（空）* | 不是透過 USB 連進來的手機，必須用 `…/ws?token=<this>` 連線（this 換成這個值）。**只要 `AGENT_HOST` 不是 `127.0.0.1`，就一定要設定。** 走 USB 的手機不受此限（USB 通道的終點就是這台電腦本身）。 |
 | `PUBLIC_URL` | *（空）* | 等同「這個控制台的網址」；以網頁控制台裡的值為準。留空 = 自動（見[通知](#通知)）。 |
-| `MDNS_NAME` | `myna` | 等同「區網名稱」：在你的網路上用 `http://<這個值>.local:8787/` 打開控制台。留空、`off`、`0`、`none` 或 `false` = 關閉；Windows 上空值會被當成沒設定，請寫 `MDNS_NAME=off`。以網頁控制台裡的值為準。 |
+| `MDNS_NAME` | `bageo` | 等同「區網名稱」：在你的網路上用 `http://<這個值>.local:8787/` 打開控制台。留空、`off`、`0`、`none` 或 `false` = 關閉；Windows 上空值會被當成沒設定，請寫 `MDNS_NAME=off`。以網頁控制台裡的值為準。 |
 
 ### 從其他裝置使用控制台
 
@@ -104,7 +104,7 @@ CALLS_UI_TOKEN=choose-a-long-random-string
 DEVICE_TOKEN=another-long-random-string
 ```
 
-先打開一次 `http://myna.local:8787/?token=choose-a-long-random-string`（或用這台電腦的 IP，例如 `http://192.168.1.20:8787/?token=…`）；頁面會記住權杖。「系統 → 關於」會顯示網址和 QR code，用手機掃就能打開，也寫了怎麼把控制台加到主畫面：iPhone「分享 → 加入主畫面」；Android Chrome 選單 ⋮ →「加到主畫面」；電腦上的 Chrome、Edge 按網址列的安裝圖示。
+先打開一次 `http://bageo.local:8787/?token=choose-a-long-random-string`（或用這台電腦的 IP，例如 `http://192.168.1.20:8787/?token=…`）；頁面會記住權杖。「系統 → 關於」會顯示網址和 QR code，用手機掃就能打開，也寫了怎麼把控制台加到主畫面：iPhone「分享 → 加入主畫面」；Android Chrome 選單 ⋮ →「加到主畫面」；電腦上的 Chrome、Edge 按網址列的安裝圖示。
 
 如果這台電腦連著「所有流量都走 VPN」的 VPN，主程式可能會把 VPN 的位址拿去當區網名稱和連結的位址。請把 `AGENT_HOST` 設成這台電腦的區網 IP（例如 `AGENT_HOST=192.168.1.20`），區網名稱和連結就會用這個位址。
 
