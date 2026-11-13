@@ -480,8 +480,8 @@ fn language_label(pack_lang: Lang, lang: Lang) -> &'static str {
 }
 
 /// The instruction that opens a call, in the instructions of `lang`. `opening`:
-/// the language of a caller from abroad (`gemini_live::caller_opening_lang`) —
-/// the first line is said in it; the system prompt stays `lang`'s.
+/// the call's opening language when it is not `lang` (`gemini_live::call_lang_plan`)
+/// — the first line is said in it; the system prompt stays `lang`'s.
 pub fn kick_open(lang: Lang, assistant: bool, opening: Option<Lang>) -> String {
     let p = pack(lang);
     match opening.filter(|o| *o != lang) {

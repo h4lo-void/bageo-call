@@ -107,13 +107,19 @@ cover:
 
 - **One short opening line, then wait.** The opening is generated while the
   phone still rings, so it must not depend on anything the caller said.
-  A call from abroad (a `+…` number whose country code is not *Country calling
-  code*) opens in the language of the caller's country when the AI speaks it —
-  "Hello?" for `+1` or `+44`, 「もしもし？」 for `+81` — and that call's prompt
-  gets one extra line telling the AI to answer in the caller's language. The
-  rest of your prompt is used as written. Traditional and Simplified Chinese do
-  not switch to each other: a `+86` caller to a 繁體中文 setup still hears your
-  setting's 「喂？」.
+  Its language follows the caller's number and the SIM the call came in on. A
+  number from another country than the SIM's opens in that country's language
+  when the AI speaks it — "Hello?" for `+1` or `+44`, 「もしもし？」 for `+81`.
+  Any other call opens in the SIM's language (*Main language for each SIM*),
+  else in *Language*. When the opening is not in *Language*, that call's
+  prompt gets one extra line telling the AI to answer in the caller's
+  language; the rest of your prompt is used as written. Traditional and
+  Simplified Chinese do not switch to each other: a `+86` caller to a 繁體中文
+  setup still hears your setting's 「喂？」. With a phone app older than 0.2.5,
+  which does not report the SIM, a call from abroad is a `+…` number whose
+  country code is not *Country calling code*. Some phones report the SIM only
+  at pickup; when that changes the opening, the line prepared while it rang is
+  dropped and the AI answers a moment later in the right language.
 - **Short spoken turns.** One or two sentences. Long turns feel slow on a phone
   line and are hard to interrupt.
 - **Never make the caller wait.** There are no tools behind the voice. An AI

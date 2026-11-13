@@ -37,7 +37,7 @@ X-Calls-Token: <token>
 
 | 方法與路徑 | 內容 |
 |---|---|
-| `GET /calls/api/settings` | `{ok, settings, storage_path, console_url, console_ip_url}`：`console_url` 是目前用的控制台網址（你填的，或自動帶入的；只有這台電腦能開時是空的），`console_ip_url` 是把 `.local` 名稱換成區網 IP 的同一個網址。機密欄位會以遮罩形式回傳（`"abc…wxyz"`），並附一個 `<name>_set` 旗標；通知管道回傳時 `url` / `token` 是空的，另外附上 `url_hint`、`token_hint`、`url_set`、`token_set`。還有幾個唯讀的輔助欄位：`default_prompt`、`voices`、`ambience_kinds`、`languages`、`notify_kinds`、`sample_lines`、`summary_ready`。 |
+| `GET /calls/api/settings` | `{ok, settings, storage_path, console_url, console_ip_url}`：`console_url` 是目前用的控制台網址（你填的，或自動帶入的；只有這台電腦能開時是空的），`console_ip_url` 是把 `.local` 名稱換成區網 IP 的同一個網址。機密欄位會以遮罩形式回傳（`"abc…wxyz"`），並附一個 `<name>_set` 旗標；通知管道回傳時 `url` / `token` 是空的，另外附上 `url_hint`、`token_hint`、`url_set`、`token_set`。還有幾個唯讀的輔助欄位：`default_prompt`、`voices`、`ambience_kinds`、`languages`、`countries`（「各 SIM 卡的主要語言」可選的國家代碼）、`seen_sim_countries`（主程式啟動後手機回報過的 SIM 卡國家）、`notify_kinds`、`sample_lines`、`summary_ready`。 |
 | `PUT /calls/api/settings` | 一個 JSON 物件，只放要修改的欄位。回應同 `GET`。 |
 
 `PUT` 的規則：

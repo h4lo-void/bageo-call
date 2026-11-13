@@ -219,8 +219,8 @@ pub fn country_code() -> String {
 }
 
 /// Main language of a country, by calling code, for the countries whose
-/// language the AI speaks: a call from there opens in it (see
-/// `gemini_live::caller_opening_lang`).
+/// language the AI speaks: a call from there opens in it when the phone app
+/// does not say which SIM took the call (see `gemini_live::call_lang_plan`).
 const CALLING_CODE_LANGS: &[(&str, Lang)] = &[
     // US / Canada, UK, Australia, New Zealand, Ireland
     ("1", Lang::En),
@@ -272,6 +272,101 @@ fn longest_code_match(digits: &str, table: &[(&str, Lang)]) -> Option<Lang> {
         .iter()
         .filter(|&&(code, _)| !code.is_empty() && digits.starts_with(code))
         .max_by_key(|&&(code, _)| code.len())
+        .map(|&(_, lang)| lang)
+}
+
+/// Main language of a country (ISO 3166 alpha-2), for the countries whose
+/// language the AI speaks: what a caller from there most likely speaks (see
+/// `gemini_live::call_lang_plan`). Other countries are left out, so their
+/// callers are not taken for speakers of a language they may not know.
+const COUNTRY_LANGS: &[(&str, Lang)] = &[
+    ("us", Lang::En),
+    ("ca", Lang::En),
+    ("gb", Lang::En),
+    ("ie", Lang::En),
+    ("au", Lang::En),
+    ("nz", Lang::En),
+    ("gg", Lang::En),
+    ("im", Lang::En),
+    ("je", Lang::En),
+    // English-speaking members of the North American plan (+1).
+    ("ag", Lang::En),
+    ("ai", Lang::En),
+    ("as", Lang::En),
+    ("bb", Lang::En),
+    ("bm", Lang::En),
+    ("bs", Lang::En),
+    ("dm", Lang::En),
+    ("gd", Lang::En),
+    ("gu", Lang::En),
+    ("jm", Lang::En),
+    ("kn", Lang::En),
+    ("ky", Lang::En),
+    ("lc", Lang::En),
+    ("mp", Lang::En),
+    ("ms", Lang::En),
+    ("sx", Lang::En),
+    ("tc", Lang::En),
+    ("tt", Lang::En),
+    ("vc", Lang::En),
+    ("vg", Lang::En),
+    ("vi", Lang::En),
+    ("jp", Lang::Ja),
+    ("kr", Lang::Ko),
+    ("es", Lang::Es),
+    ("mx", Lang::Es),
+    ("ar", Lang::Es),
+    ("co", Lang::Es),
+    ("cl", Lang::Es),
+    ("pe", Lang::Es),
+    ("ve", Lang::Es),
+    ("ec", Lang::Es),
+    ("bo", Lang::Es),
+    ("py", Lang::Es),
+    ("uy", Lang::Es),
+    ("gt", Lang::Es),
+    ("hn", Lang::Es),
+    ("sv", Lang::Es),
+    ("ni", Lang::Es),
+    ("cr", Lang::Es),
+    ("pa", Lang::Es),
+    ("cu", Lang::Es),
+    ("do", Lang::Es),
+    ("pr", Lang::Es),
+    // France with its overseas departments and territories, Belgium, Monaco.
+    ("fr", Lang::Fr),
+    ("re", Lang::Fr),
+    ("yt", Lang::Fr),
+    ("gp", Lang::Fr),
+    ("bl", Lang::Fr),
+    ("mf", Lang::Fr),
+    ("mq", Lang::Fr),
+    ("gf", Lang::Fr),
+    ("pm", Lang::Fr),
+    ("nc", Lang::Fr),
+    ("pf", Lang::Fr),
+    ("wf", Lang::Fr),
+    ("be", Lang::Fr),
+    ("mc", Lang::Fr),
+    ("de", Lang::De),
+    ("at", Lang::De),
+    ("ch", Lang::De),
+    ("li", Lang::De),
+    ("br", Lang::Pt),
+    ("pt", Lang::Pt),
+    ("cn", Lang::ZhCn),
+    ("tw", Lang::ZhTw),
+    ("hk", Lang::ZhTw),
+    ("mo", Lang::ZhTw),
+];
+
+/// The main language of a country (ISO 3166 alpha-2, any case) when the AI
+/// speaks it ([`COUNTRY_LANGS`]); other countries: `None`.
+pub fn country_lang(iso: &str) -> Option<Lang> {
+    let iso = iso.trim();
+    COUNTRY_LANGS
+        .iter()
+        .find(|&&(c, _)| c.eq_ignore_ascii_case(iso))
         .map(|&(_, lang)| lang)
 }
 
@@ -2174,13 +2269,14 @@ const GREETING_BYES: &[GreetingBye] = &[
         cues: &["cảm ơn", "cám ơn", "cam on", "thôi", "thoi", "ok", "oke", "okay", "thanks", "thank you"],
     },
     // Indonesian: "Baik, terima kasih, selamat siang."
+    // Speech-to-text set to Chinese writes "terima kasih" as 「謝謝」.
     GreetingBye {
         heads: &["selamat pagi", "selamat siang", "selamat sore", "selamat malam"],
         tail: &["ya", "pak", "bu", "bapak", "ibu", "mas", "mbak", "kak", "semua"],
         closing_tail: &[],
         cues: &[
             "terima kasih", "trima kasih", "makasih", "trims", "itu saja", "sudah dulu", "ya sudah",
-            "segitu dulu", "ok", "oke", "okay", "thanks", "thank you",
+            "segitu dulu", "ok", "oke", "okay", "thanks", "thank you", "謝謝", "谢谢",
         ],
     },
     // Thai as speech-to-text sometimes writes it, in Latin letters.
@@ -2209,7 +2305,7 @@ impl GreetingBye {
                     && !(i > 0 && NEGATIONS.contains(&ws[i - 1].as_str()))
                     && after.iter().all(|w| self.tail.contains(&w.as_str()))
                     && (after.iter().any(|w| self.closing_tail.contains(&w.as_str()))
-                        || self.cues.iter().any(|c| has_phrase(cue_window(&ws[..i]), c)))
+                        || self.cues.iter().any(|c| has_cue(cue_window(&ws[..i]), c)))
             })
         })
     }
@@ -2238,6 +2334,13 @@ fn cue_window(before: &[String]) -> &[String] {
 fn has_phrase(ws: &[String], phrase: &str) -> bool {
     let p = words(phrase);
     !p.is_empty() && ws.windows(p.len()).any(|w| w == &p[..])
+}
+
+/// A closing cue among `ws`: as whole words, or, for a cue in Chinese
+/// characters, inside a word (Chinese is written without spaces: 「那謝謝」).
+fn has_cue(ws: &[String], cue: &str) -> bool {
+    let han = !cue.is_empty() && cue.chars().all(|c| ('\u{4E00}'..='\u{9FFF}').contains(&c));
+    has_phrase(ws, cue) || (han && ws.iter().any(|w| w.contains(cue)))
 }
 
 /// Thai goodbyes (Thai is written without spaces: matched in the squeezed text).
@@ -2578,6 +2681,11 @@ mod tests {
             "Ya sudah, sampai ketemu lagi ya.",
             "Dadah!",
             "Daah.",
+            // "Terima kasih" written in Chinese by speech-to-text, alone or run into
+            // other Chinese characters.
+            "謝謝，selamat siang.",
+            "那謝謝 selamat sore ya",
+            "谢谢。Selamat malam, Bu.",
         ] {
             assert!(ends_with_farewell(t, 2), "{t}");
             assert!(caller_wraps_up(t), "{t}");
@@ -2592,8 +2700,41 @@ mod tests {
             "Terima kasih, selamat sore?",
             // "Ok" from earlier, then the phone is handed over and the next person greets.
             "Oke Pak, sebentar ya, saya kasih ke ibu saya. Halo, selamat siang.",
+            "謝謝。Halo, selamat siang.",
+            "謝謝，selamat siang?",
         ] {
             assert!(!caller_wraps_up(t), "{t}");
+        }
+    }
+
+    #[test]
+    fn countries_name_the_callers_language() {
+        assert_eq!(country_lang("us"), Some(Lang::En));
+        assert_eq!(country_lang(" CA "), Some(Lang::En));
+        assert_eq!(country_lang("jm"), Some(Lang::En));
+        assert_eq!(country_lang("pr"), Some(Lang::Es));
+        assert_eq!(country_lang("mx"), Some(Lang::Es));
+        assert_eq!(country_lang("jp"), Some(Lang::Ja));
+        assert_eq!(country_lang("kr"), Some(Lang::Ko));
+        assert_eq!(country_lang("br"), Some(Lang::Pt));
+        assert_eq!(country_lang("ch"), Some(Lang::De));
+        assert_eq!(country_lang("be"), Some(Lang::Fr));
+        assert_eq!(country_lang("cn"), Some(Lang::ZhCn));
+        assert_eq!(country_lang("hk"), Some(Lang::ZhTw));
+        assert_eq!(country_lang("tw"), Some(Lang::ZhTw));
+        // Not one of the languages (Vietnam, Thailand, Indonesia, Luxembourg), or no country.
+        for iso in ["vn", "th", "id", "lu", "", "zz"] {
+            assert_eq!(country_lang(iso), None, "{iso}");
+        }
+        // Every country listed is one the number reader knows.
+        for &(iso, _) in COUNTRY_LANGS {
+            assert!(crate::phone_region::calling_code(iso).is_some(), "{iso}");
+        }
+        // The calling-code table (phone app that does not report its SIM) agrees
+        // for each code's main country.
+        for &(code, lang) in CALLING_CODE_LANGS {
+            let iso = crate::phone_region::country_of_code(code).expect(code);
+            assert_eq!(country_lang(iso), Some(lang), "{code} {iso}");
         }
     }
 

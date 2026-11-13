@@ -198,6 +198,13 @@ pub struct RuntimeSettings {
     /// otherwise one of its codes.
     #[serde(default)]
     pub notify_language: String,
+    /// The main language of each SIM's country: SIM country (ISO 3166 alpha-2,
+    /// lowercase, as the phone reports it) → language code (`{"us": "en"}`). A call
+    /// that comes in on that SIM opens in it, unless the caller's number is from
+    /// another country whose language the AI speaks
+    /// ([`crate::gemini_live::call_lang_plan`]). Empty = `language` for every SIM.
+    #[serde(default)]
+    pub sim_languages: std::collections::BTreeMap<String, String>,
     /// The owner's name as callers say it (`{owner}` in prompts).
     #[serde(default)]
     pub owner_name: String,
@@ -375,6 +382,26 @@ fn sanitize_notify_language(s: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Most SIM countries kept in `sim_languages`.
+const SIM_LANGUAGES_MAX: usize = 50;
+
+/// `sim_languages` as stored: keys two letters (lowercased), values one of the
+/// language codes ([`sanitize_notify_language`]); anything else is dropped.
+fn sanitize_sim_languages<'a>(
+    entries: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> std::collections::BTreeMap<String, String> {
+    entries
+        .into_iter()
+        .filter_map(|(country, lang)| {
+            let country = country.trim().to_ascii_lowercase();
+            let lang = sanitize_notify_language(lang);
+            (country.len() == 2 && country.bytes().all(|b| b.is_ascii_lowercase()) && !lang.is_empty())
+                .then_some((country, lang))
+        })
+        .take(SIM_LANGUAGES_MAX)
+        .collect()
+}
+
 /// `auto` / `gemini` / `deepseek`; anything else is auto.
 fn sanitize_summary_provider(s: &str) -> String {
     crate::deepseek::Provider::parse(s).as_str().to_string()
@@ -509,6 +536,7 @@ impl RuntimeSettings {
             gemini_thinking_level: sanitize_thinking_level(&env_or("GEMINI_THINKING_LEVEL", "low")),
             language: sanitize_language(&env_or("APP_LANGUAGE", "en")),
             notify_language: sanitize_notify_language(&env_or("NOTIFY_LANGUAGE", "")),
+            sim_languages: std::collections::BTreeMap::new(),
             owner_name: env_or("OWNER_NAME", ""),
             answer_style: sanitize_answer_style(&env_or("ANSWER_STYLE", "assistant")),
             knowledge_notes: env_or("KNOWLEDGE_NOTES", ""),
@@ -724,6 +752,7 @@ impl RuntimeSettings {
             gemini_stall_model,
             language,
             notify_language,
+            sim_languages,
             owner_name,
             answer_style,
             knowledge_notes,
@@ -792,6 +821,11 @@ impl RuntimeSettings {
         self.gemini_thinking_level = sanitize_thinking_level(&self.gemini_thinking_level);
         self.language = sanitize_language(&self.language);
         self.notify_language = sanitize_notify_language(&self.notify_language);
+        self.sim_languages = sanitize_sim_languages(
+            self.sim_languages
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_str())),
+        );
         self.summary_provider = sanitize_summary_provider(&self.summary_provider);
         self.answer_style = sanitize_answer_style(&self.answer_style);
         self.intl_carrier_prompt = sanitize_tristate(&self.intl_carrier_prompt);
@@ -1111,6 +1145,8 @@ struct Overrides {
     #[serde(skip_serializing_if = "Option::is_none")]
     notify_language: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    sim_languages: Option<std::collections::BTreeMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     owner_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     answer_style: Option<String>,
@@ -1358,6 +1394,13 @@ fn masked(rt: &RuntimeSettings) -> Value {
         "languages".into(),
         json!(crate::locale::ALL.iter().map(|l| l.code()).collect::<Vec<_>>()),
     );
+    // "Main language of each SIM": every country the menu offers, and the SIM
+    // countries the phones have reported since the agent started.
+    m.insert(
+        "countries".into(),
+        json!(crate::phone_region::countries().collect::<Vec<_>>()),
+    );
+    m.insert("seen_sim_countries".into(), json!(crate::phone_region::seen_sims()));
     m.insert(
         "summary_ready".into(),
         json!(
@@ -1578,6 +1621,12 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     p_string(patch, "notify_language", &mut ov.notify_language);
     if let Some(v) = ov.notify_language.take() {
         ov.notify_language = Some(sanitize_notify_language(&v));
+    }
+    if let Some(map) = patch.get("sim_languages").and_then(|v| v.as_object()) {
+        ov.sim_languages = Some(sanitize_sim_languages(
+            map.iter()
+                .filter_map(|(k, v)| Some((k.as_str(), v.as_str()?))),
+        ));
     }
     p_string(patch, "owner_name", &mut ov.owner_name);
     if let Some(v) = ov.owner_name.take() {
@@ -2345,6 +2394,49 @@ mod tests {
         let rt = store.apply_patch(&json!({ "notify_language": "" })).unwrap();
         assert_eq!((rt.notify_language.as_str(), rt.locale_active().notify_lang), ("", Lang::De));
         assert_eq!(SettingsStore::load(base).snapshot().notify_language, "");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sim_languages_keep_countries_and_languages_only() {
+        let dir = std::env::temp_dir().join(format!(
+            "bageo-call-sim-languages-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp settings dir");
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        // Default: none, every SIM uses the AI's language.
+        assert!(store.snapshot().sim_languages.is_empty());
+        assert_eq!(store.masked_json()["sim_languages"], json!({}));
+        let rt = store
+            .apply_patch(&json!({ "sim_languages": {
+                "US": "en", " jp ": "JA", "tw": "zh_tw",
+                "usa": "en", "x1": "en", "": "en", "fr": "klingon", "de": "", "ca": 7
+            } }))
+            .unwrap();
+        let want: std::collections::BTreeMap<String, String> = [("jp", "ja"), ("tw", "zh-TW"), ("us", "en")]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        assert_eq!(rt.sim_languages, want);
+        assert_eq!(store.masked_json()["sim_languages"], json!({"jp": "ja", "tw": "zh-TW", "us": "en"}));
+        // Survives a restart; another key leaves it alone.
+        assert_eq!(SettingsStore::load(base.clone()).snapshot().sim_languages, want);
+        let rt = store.apply_patch(&json!({ "language": "de" })).unwrap();
+        assert_eq!(rt.sim_languages, want);
+        // Not an object: ignored. An empty object clears it.
+        let rt = store.apply_patch(&json!({ "sim_languages": ["us"] })).unwrap();
+        assert_eq!(rt.sim_languages, want);
+        let rt = store.apply_patch(&json!({ "sim_languages": {} })).unwrap();
+        assert!(rt.sim_languages.is_empty());
+        assert!(SettingsStore::load(base).snapshot().sim_languages.is_empty());
+        // The settings page gets the countries to choose from.
+        let shown = store.masked_json();
+        let countries = shown["countries"].as_array().expect("countries");
+        assert!(countries.iter().any(|c| c == "tw") && countries.iter().any(|c| c == "us"));
+        assert!(shown["seen_sim_countries"].is_array());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -37,7 +37,7 @@ X-Calls-Token: <token>
 
 | 方法和路径 | 内容 |
 |---|---|
-| `GET /calls/api/settings` | `{ok, settings, storage_path, console_url, console_ip_url}`：`console_url` 是当前使用的控制台地址（你填的，或自动带入的；只有这台电脑能打开时为空），`console_ip_url` 是把 `.local` 名称换成局域网 IP 的同一个地址。机密字段会以掩码形式返回（`"abc…wxyz"`），并带一个 `<name>_set` 标志；通知渠道返回时 `url` / `token` 是空的，另外附带 `url_hint`、`token_hint`、`url_set`、`token_set`。还有几个只读的辅助字段：`default_prompt`、`voices`、`ambience_kinds`、`languages`、`notify_kinds`、`sample_lines`、`summary_ready`。 |
+| `GET /calls/api/settings` | `{ok, settings, storage_path, console_url, console_ip_url}`：`console_url` 是当前使用的控制台地址（你填的，或自动带入的；只有这台电脑能打开时为空），`console_ip_url` 是把 `.local` 名称换成局域网 IP 的同一个地址。机密字段会以掩码形式返回（`"abc…wxyz"`），并带一个 `<name>_set` 标志；通知渠道返回时 `url` / `token` 是空的，另外附带 `url_hint`、`token_hint`、`url_set`、`token_set`。还有几个只读的辅助字段：`default_prompt`、`voices`、`ambience_kinds`、`languages`、`countries`（“各 SIM 卡的主要语言”可选的国家代码）、`seen_sim_countries`（主程序启动后手机上报过的 SIM 卡国家）、`notify_kinds`、`sample_lines`、`summary_ready`。 |
 | `PUT /calls/api/settings` | 一个 JSON 对象，只放要修改的字段。响应同 `GET`。 |
 
 `PUT` 的规则：

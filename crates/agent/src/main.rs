@@ -42,6 +42,7 @@ mod locale;
 mod mdns;
 mod notify;
 mod openclaw;
+mod phone_region;
 mod prompts;
 mod services;
 mod settings_store;
@@ -344,7 +345,16 @@ impl RingPrewarmRegistry {
     }
 
     /// Media hello after pickup: the ringing call's session, if still usable.
-    fn take(&self, serial: &str, caller_id: &str, sample_rate: u32) -> Option<RingPrewarm> {
+    /// `lang`: the call's languages decided now, with the SIM the hello reported
+    /// — a session set up for other ones (the SIM was guessed while it rang) is not
+    /// handed over, so the pickup starts a fresh one.
+    fn take(
+        &self,
+        serial: &str,
+        caller_id: &str,
+        sample_rate: u32,
+        lang: &gemini_live::CallLangPlan,
+    ) -> Option<RingPrewarm> {
         let e = self.entries().remove(serial)?;
         let why = if e.cancel.load(Ordering::Relaxed) {
             "cancelled"
@@ -352,6 +362,12 @@ impl RingPrewarmRegistry {
             "session already ended"
         } else if e.sample_rate != sample_rate {
             "sample rate differs"
+        } else if e.cfg.lang != *lang {
+            info!(
+                "Ring prewarm languages serial={serial} id={} rang={:?} pickup={lang:?}",
+                e.id, e.cfg.lang
+            );
+            "languages differ at pickup"
         } else {
             // The number sent while ringing can be stale (call-log fallback before
             // Telecom publishes the CID); the session holds nothing caller-specific.
@@ -391,7 +407,9 @@ fn take_ring_prewarm(
         state.ring_prewarm.cancel(serial, None, "persona mode off at pickup");
         return None;
     }
-    state.ring_prewarm.take(serial, caller_id, sample_rate)
+    // The SIM is known now (media hello); the ring may have had to guess it.
+    let lang = call_lang_plan(rt, caller_id, call_sim_country(serial).as_deref());
+    state.ring_prewarm.take(serial, caller_id, sample_rate, &lang)
 }
 
 /// Ring and hello report the same call (CID may still be empty on one side, or
@@ -3752,10 +3770,14 @@ fn sim_country_from_msg(parsed: &Value) -> Option<String> {
 
 /// Every `incoming` / `hello` replaces what is known about the phone's SIM, so a
 /// value never outlives its call (nor a downgrade to an app that does not send it).
+/// The last SIM a phone reported is also kept apart ([`phone_region::last_sim`]).
 fn note_call_sim_country(serial: &str, parsed: &Value) {
     let sim = sim_country_from_msg(parsed);
-    let mut m = call_sim_countries().lock().unwrap_or_else(|e| e.into_inner());
     let key = canonical_device_serial(serial);
+    if let Some(iso) = sim.as_deref() {
+        phone_region::note_sim(&key, iso);
+    }
+    let mut m = call_sim_countries().lock().unwrap_or_else(|e| e.into_inner());
     match sim {
         Some(iso) => {
             m.insert(key, iso);
@@ -3772,6 +3794,23 @@ fn call_sim_country(serial: &str) -> Option<String> {
         .unwrap_or_else(|e| e.into_inner())
         .get(&canonical_device_serial(serial))
         .cloned()
+}
+
+/// The call's languages ([`gemini_live::call_lang_plan`]): `caller_id` on the SIM
+/// of country `sim` (`None` = unknown), with the settings `language`,
+/// `country_code` and `sim_languages`.
+fn call_lang_plan(
+    rt: &RuntimeSettings,
+    caller_id: &str,
+    sim: Option<&str>,
+) -> gemini_live::CallLangPlan {
+    gemini_live::call_lang_plan(
+        caller_id,
+        sim,
+        rt.lang(),
+        &rt.effective_country_code(),
+        &rt.sim_languages,
+    )
 }
 
 /// Prefer `caller_id`, then `from` (Android may send either). Empty omitted.
@@ -5206,6 +5245,11 @@ fn start_ring_prewarm(
     {
         return false;
     }
+    // `incoming` often comes before the phone has looked up the SIM: the SIM of the
+    // phone's last call stands in, and the pickup checks the guess
+    // (`RingPrewarmRegistry::take`).
+    let sim = call_sim_country(serial)
+        .or_else(|| phone_region::last_sim(&canonical_device_serial(serial)));
     let cfg = GeminiRetryCfg {
         api_key: rt.gemini_api_key.clone(),
         model: rt.gemini_live_model.clone(),
@@ -5215,6 +5259,7 @@ fn start_ring_prewarm(
         } else {
             rt.gemini_voice_name.clone()
         },
+        lang: call_lang_plan(rt, caller_id, sim.as_deref()),
         caller_id: caller_id.to_string(),
     };
     let cancel = Arc::new(AtomicBool::new(false));
@@ -5540,11 +5585,15 @@ async fn spawn_gemini_session_tasks(
         info!("Gemini session spawn skipped for stale media call serial={serial}");
         return;
     }
+    let rt = state.settings_store.snapshot();
+    // Started at pickup: the media hello has reported the SIM (when the app does).
+    let lang = call_lang_plan(&rt, &caller_id, call_sim_country(&serial).as_deref());
     let cfg = GeminiRetryCfg {
         api_key,
         model,
         system,
         voice_name,
+        lang,
         caller_id,
     };
     // Set by the call's echo check once the caller may talk over the AI.
@@ -5554,7 +5603,7 @@ async fn spawn_gemini_session_tasks(
     };
     let core = start_gemini_session_core(
         &serial,
-        &state.settings_store.snapshot(),
+        &rt,
         &cfg,
         sample_rate,
         persona,
@@ -5660,8 +5709,13 @@ fn start_gemini_session_core(
                 sim.as_deref(),
             );
             if gemini_live::is_intl_caller(&caller) || hold {
+                // How the check read the number on this SIM.
+                let number = sim
+                    .as_deref()
+                    .and_then(|s| phone_region::normalize(&caller, Some(s)))
+                    .map_or_else(|| "?".to_string(), |n| format!("{} ({})", n.e164, n.country));
                 info!(
-                    "intl caller serial={serial} caller={caller} sim_country={} setting={setting} → hold opening for carrier prompt={hold}",
+                    "intl caller serial={serial} caller={caller} number={number} sim_country={} setting={setting} → hold opening for carrier prompt={hold}",
                     sim.as_deref().unwrap_or("?")
                 );
             }
@@ -5674,18 +5728,18 @@ fn start_gemini_session_core(
     } else {
         None
     };
-    // A caller from abroad hears the opening in their country's language (the ring
-    // prewarm generates it now, so it is decided from the caller ID alone).
-    let opening_lang = if persona {
-        gemini_live::caller_opening_lang(&cfg.caller_id)
-    } else {
-        None
-    };
-    if let Some(l) = opening_lang {
+    // The opening language and the caller's speech-to-text hints, decided with the
+    // call's config (a ring prewarm's is checked again at pickup).
+    let lang_plan = cfg.lang.clone();
+    if (persona && lang_plan.opening.is_some()) || lang_plan.caller_stt.is_none() {
         info!(
-            "caller from abroad serial={serial} caller={} → opening in {}",
+            "caller languages serial={serial} caller={} opening={} caller_stt={}",
             cfg.caller_id,
-            l.code()
+            lang_plan.opening.filter(|_| persona).map_or("-", |l| l.code()),
+            lang_plan
+                .caller_stt
+                .as_ref()
+                .map_or_else(|| "auto".to_string(), |c| c.join(","))
         );
     }
     let appointment_book = appointments.as_ref().map(|a| a.book.clone());
@@ -5757,7 +5811,7 @@ fn start_gemini_session_core(
                 &thinking_level,
                 intl_caller,
                 appointments,
-                opening_lang,
+                lang_plan,
             )
             .await
         })
@@ -6114,6 +6168,9 @@ struct GeminiRetryCfg {
     /// Caller ID of the call (empty when unknown): calls from abroad hold the
     /// opening for the carrier's international-call prompt.
     caller_id: String,
+    /// The call's languages: opening line and the caller's speech-to-text hints
+    /// ([`gemini_live::call_lang_plan`]).
+    lang: gemini_live::CallLangPlan,
 }
 
 /// One fresh Live socket after a session that never delivered audio.
@@ -9855,11 +9912,20 @@ mod ring_prewarm_tests {
                 system: String::new(),
                 voice_name: String::new(),
                 caller_id: String::new(),
+                lang: usual(),
             },
             persona: true,
             goodbye_hangup_delay_ms: 1_000,
         };
         (pw, cancel)
+    }
+
+    /// A Taiwanese call's languages: the setting's opening, the usual hints.
+    fn usual() -> gemini_live::CallLangPlan {
+        gemini_live::CallLangPlan {
+            opening: None,
+            caller_stt: Some(vec!["zh-TW", "en-US"]),
+        }
     }
 
     fn live() -> tokio::task::JoinHandle<anyhow::Result<gemini_live::SessionEndReason>> {
@@ -9882,7 +9948,7 @@ mod ring_prewarm_tests {
         let (pw, cancel) = entry("+886900111222", live());
         reg.insert("pixel-1", pw);
         assert_eq!(reg.pending(), 1);
-        let got = reg.take("pixel-1", "0900111222", 16_000).expect("same call");
+        let got = reg.take("pixel-1", "0900111222", 16_000, &usual()).expect("same call");
         assert!(!cancel.load(Ordering::Relaxed));
         assert_eq!(reg.pending(), 0);
         drop(got);
@@ -9891,11 +9957,11 @@ mod ring_prewarm_tests {
         // ringing call; another sample rate is not usable.
         let (pw, cancel) = entry("0912345678", live());
         reg.insert("pixel-1", pw);
-        assert!(reg.take("pixel-1", "0900111222", 16_000).is_some());
+        assert!(reg.take("pixel-1", "0900111222", 16_000, &usual()).is_some());
         assert!(!cancel.load(Ordering::Relaxed));
         let (pw, cancel) = entry("0912345678", live());
         reg.insert("pixel-1", pw);
-        assert!(reg.take("pixel-1", "0912345678", 8_000).is_none());
+        assert!(reg.take("pixel-1", "0912345678", 8_000, &usual()).is_none());
         assert!(cancel.load(Ordering::Relaxed));
 
         // A session that already ended is never handed over.
@@ -9905,7 +9971,29 @@ mod ring_prewarm_tests {
         }
         let (pw, _) = entry("0912345678", done);
         reg.insert("pixel-1", pw);
-        assert!(reg.take("pixel-1", "0912345678", 16_000).is_none());
+        assert!(reg.take("pixel-1", "0912345678", 16_000, &usual()).is_none());
+    }
+
+    #[tokio::test]
+    async fn pickup_drops_a_session_set_up_for_other_languages() {
+        // Rang without the SIM (guessed Taiwanese); the hello says a US SIM set to
+        // English: the held 「喂？」 and its speech-to-text hints are the wrong ones.
+        let reg = RingPrewarmRegistry::default();
+        let (pw, cancel) = entry("2025550143", live());
+        reg.insert("pixel-1", pw);
+        let us = gemini_live::CallLangPlan {
+            opening: Some(locale::Lang::En),
+            caller_stt: Some(vec!["en-US", "zh-TW"]),
+        };
+        assert!(reg.take("pixel-1", "2025550143", 16_000, &us).is_none());
+        assert!(cancel.load(Ordering::Relaxed));
+        assert_eq!(reg.pending(), 0);
+        // Same opening, other hints: not handed over either.
+        let (pw, cancel) = entry("+12025550143", live());
+        reg.insert("pixel-1", pw);
+        let auto = gemini_live::CallLangPlan { opening: None, caller_stt: None };
+        assert!(reg.take("pixel-1", "+12025550143", 16_000, &auto).is_none());
+        assert!(cancel.load(Ordering::Relaxed));
     }
 
     #[tokio::test]
@@ -10190,6 +10278,8 @@ mod unknown_caller_tests {
         // The next call from an app that does not send the field: unknown again.
         note_call_sim_country(serial, &json!({"type":"incoming"}));
         assert_eq!(call_sim_country(serial), None);
+        // The phone's last reported SIM stays known apart (the ring prewarm's guess).
+        assert_eq!(crate::phone_region::last_sim(serial).as_deref(), Some("tw"));
     }
 }
 
