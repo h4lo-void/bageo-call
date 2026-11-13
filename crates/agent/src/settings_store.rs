@@ -255,6 +255,13 @@ pub struct RuntimeSettings {
     /// through the phone that took the call (Taiwan mobile numbers only).
     #[serde(default)]
     pub appointment_sms: bool,
+    /// Numbers that try out appointments: a call from one of them takes
+    /// appointments in `auto` mode on the demo calendar (`demo_calendar.json` in
+    /// the data folder, [`crate::appointments`]) whatever `appointment_mode` says,
+    /// and never touches Google Calendar. Stored as national digits
+    /// ([`clean_test_numbers`]); empty by default.
+    #[serde(default)]
+    pub appointment_test_numbers: Vec<String>,
     /// Names speech-to-text keeps getting wrong, one `wrong=right` per entry
     /// (`黃先生=王先生`): applied to transcripts and summaries.
     #[serde(default)]
@@ -264,6 +271,10 @@ pub struct RuntimeSettings {
     /// the phone reports itself.
     #[serde(default)]
     pub device_labels: std::collections::BTreeMap<String, String>,
+    /// Where calls, recordings and settings are kept (`CALLS_DATA_DIR`, from the
+    /// env base). Not a setting: never shown or saved.
+    #[serde(skip)]
+    pub calls_data_dir: String,
 }
 
 pub const STALL_MAX_MIN_DEFAULT: u32 = 30;
@@ -483,8 +494,10 @@ impl RuntimeSettings {
             calendar_auto_add: env_bool("CALENDAR_AUTO_ADD", false),
             appointment_mode: sanitize_appointment_mode(&env_or("APPOINTMENT_MODE", "off")),
             appointment_sms: env_bool("APPOINTMENT_SMS", false),
+            appointment_test_numbers: Vec::new(),
             name_corrections: split_list(&env_or("NAME_CORRECTIONS", "")),
             device_labels: std::collections::BTreeMap::new(),
+            calls_data_dir: base.calls_data_dir.clone(),
         }
     }
 
@@ -497,6 +510,12 @@ impl RuntimeSettings {
 
     pub fn lang(&self) -> crate::locale::Lang {
         crate::locale::Lang::parse(&self.language)
+    }
+
+    /// The caller is one of the appointment test numbers
+    /// ([`Self::appointment_test_numbers`]).
+    pub fn is_appointment_test_number(&self, caller_id: &str) -> bool {
+        appointment_test_number_hit(&self.appointment_test_numbers, caller_id)
     }
 
     pub fn is_assistant_style(&self) -> bool {
@@ -671,6 +690,7 @@ impl RuntimeSettings {
             name_corrections,
             device_labels,
             appointment_mode,
+            appointment_test_numbers,
         );
         macro_rules! set_copy {
             ($($f:ident),+ $(,)?) => {$(
@@ -1068,6 +1088,8 @@ struct Overrides {
     appointment_mode: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     appointment_sms: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    appointment_test_numbers: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     name_corrections: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1537,6 +1559,10 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
         ov.appointment_mode = Some(sanitize_appointment_mode(&v));
     }
     p_bool(patch, "appointment_sms", &mut ov.appointment_sms);
+    p_list(patch, "appointment_test_numbers", &mut ov.appointment_test_numbers);
+    if let Some(v) = ov.appointment_test_numbers.take() {
+        ov.appointment_test_numbers = Some(clean_test_numbers(v));
+    }
     p_list(patch, "name_corrections", &mut ov.name_corrections);
     if let Some(map) = patch.get("device_labels").and_then(|v| v.as_object()) {
         ov.device_labels = Some(
@@ -1613,6 +1639,33 @@ fn without_leading_zeros(d: &str) -> &str {
 /// Two national numbers are the same line (a leading trunk `0` or not).
 fn same_number(a: &str, b: &str) -> bool {
     a == b || without_leading_zeros(a) == without_leading_zeros(b)
+}
+
+/// Stored form of the appointment test numbers: national digits
+/// (`+886 912-345-678` → `0912345678`), entries without digits dropped, the
+/// same number kept once.
+fn clean_test_numbers(list: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for n in list {
+        let d = national_digits(n.trim());
+        if !d.is_empty() && !out.iter().any(|o| same_number(o, &d)) {
+            out.push(d);
+        }
+    }
+    out
+}
+
+/// The caller is on the appointment test numbers: the same national number
+/// however it is written. Hidden / garbled numbers never match.
+pub fn appointment_test_number_hit(list: &[String], caller: &str) -> bool {
+    let c = national_digits(caller);
+    if c.len() < 5 {
+        return false;
+    }
+    list.iter().any(|n| {
+        let n = national_digits(n);
+        n.len() >= 5 && same_number(&n, &c)
+    })
 }
 
 /// One blocked number: the number and why, as separate fields. Settings saved
@@ -2190,6 +2243,49 @@ mod tests {
         assert_eq!((rt.appointment_mode.as_str(), rt2.appointment_mode.as_str()), ("auto", "auto"));
         assert!(rt2.appointment_sms);
         assert_eq!(SettingsStore::load(base).snapshot().appointment_mode, "auto");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn appointment_test_numbers_default_empty_and_persist() {
+        let dir = std::env::temp_dir().join(format!(
+            "bageo-call-appointment-test-numbers-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp settings dir");
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        let rt = store.snapshot();
+        assert!(rt.appointment_test_numbers.is_empty());
+        assert!(!rt.is_appointment_test_number("0912345678"));
+        // The data folder comes from the env base and is never shown.
+        assert_eq!(rt.calls_data_dir, base.calls_data_dir);
+        let shown = store.masked_json();
+        assert_eq!(shown["appointment_test_numbers"], json!([]));
+        assert!(shown.get("calls_data_dir").is_none());
+        let rt = store
+            .apply_patch(&json!({ "appointment_test_numbers": [
+                " +886 912-345-678 ", "0912345678", "", "  ", "+1 650-555-0100"
+            ] }))
+            .unwrap();
+        // National digits, blanks dropped, the same number kept once.
+        assert_eq!(rt.appointment_test_numbers, vec!["0912345678".to_string(), "16505550100".to_string()]);
+        for caller in ["0912345678", "+886912345678", "0912 345 678", "+1 650 555 0100"] {
+            assert!(rt.is_appointment_test_number(caller), "{caller}");
+        }
+        for caller in ["0912345679", "", "anonymous", "private"] {
+            assert!(!rt.is_appointment_test_number(caller), "{caller}");
+        }
+        // Survives a restart; another key leaves it alone.
+        let again = SettingsStore::load(base.clone());
+        assert_eq!(again.snapshot().appointment_test_numbers, rt.appointment_test_numbers);
+        let rt2 = again.apply_patch(&json!({ "appointment_mode": "confirm" })).unwrap();
+        assert_eq!(rt2.appointment_test_numbers, rt.appointment_test_numbers);
+        // An empty list clears it.
+        let rt3 = again.apply_patch(&json!({ "appointment_test_numbers": [] })).unwrap();
+        assert!(rt3.appointment_test_numbers.is_empty());
+        assert!(SettingsStore::load(base).snapshot().appointment_test_numbers.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
