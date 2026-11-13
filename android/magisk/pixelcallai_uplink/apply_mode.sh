@@ -3,15 +3,16 @@
 #
 #   sh apply_mode.sh <ai|normal> <id> [ring notification voice_call music alarm system]
 #
-# The app copies this file to /data/adb/pixelcallai/ and starts it as root in its own
-# session (toybox setsid), so it runs to the end even when Android kills the app on the
-# way: taking the phone-app role away from Myna can do that, which is why that step
-# comes last. The numbers are the volumes to set in normal mode (worked out by the app;
-# 0 = leave that one alone).
+# Called as root by mode_daemon.sh (in this module folder) when the app asks for a
+# switch. It runs outside the app, so it finishes even when Android stops the app on
+# the way: taking the phone-app role away from Myna can do that, which is why that
+# step comes last. The numbers are the volumes to set in normal mode (worked out by
+# the app; 0 = leave that one alone).
 #
 #   /data/adb/pixelcallai/mode        the mode, written first; service.sh reads it at boot
-#   /data/adb/pixelcallai/pending     exists until every step has worked; the app runs
-#                                     the script again when its service starts and finds it
+#   /data/adb/pixelcallai/pending     exists until every step has worked; the app asks
+#                                     for the switch again when its service starts and
+#                                     finds it
 #   /data/adb/pixelcallai/last_apply  key=value lines: id, mode, step_<name>=ok|fail,
 #                                     then error=<code> or result=ok, and done=1 last
 #   /data/adb/pixelcallai/apply.lock  held while a run is going (its pid inside)
@@ -45,8 +46,8 @@ fi
 echo $$ > "$LOCK/pid"
 trap 'rm -rf "$LOCK"' EXIT
 
-# Leave the app's cgroup: with KernelSU the root shell stays in it, and Android kills
-# the whole cgroup when it stops the app. Best effort; ignored where not allowed.
+# Stay out of any app's cgroup: Android kills the whole cgroup when it stops an app.
+# Started by mode_daemon.sh this changes nothing. Best effort; ignored where not allowed.
 for cg in /sys/fs/cgroup/cgroup.procs /dev/cpuctl/cgroup.procs /dev/cpuset/cgroup.procs; do
   [ -w "$cg" ] && echo $$ > "$cg" 2>/dev/null
 done

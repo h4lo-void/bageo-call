@@ -41,7 +41,7 @@
     <string name="mode_failed">Die Umstellung wurde nicht abgeschlossen. %1$s Du kannst es noch einmal versuchen.</string>
     <string name="mode_err_in_call">Es läuft ein Anruf; leg zuerst auf.</string>
     <string name="mode_err_busy">Die vorige Umstellung läuft noch.</string>
-    <string name="mode_err_no_root">Myna hat keinen Root-Zugriff. Erlaube ihn in Magisk oder KernelSU.</string>
+    <string name="mode_err_no_root">Das Myna-Modul läuft nicht. Prüfe in Magisk oder KernelSU, ob das Modul Myna Uplink aktiviert ist, und starte das Telefon neu.</string>
     <string name="mode_err_save">Der Modus konnte nicht gespeichert werden.</string>
     <string name="mode_err_dialer">Die Standard-Telefon-App konnte nicht geändert werden.</string>
     <string name="mode_err_screening">Die Anruffilterung konnte nicht geändert werden.</string>

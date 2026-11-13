@@ -41,7 +41,7 @@
     <string name="mode_failed">切換沒有完成。%1$s可以再試一次。</string>
     <string name="mode_err_in_call">通話中不能切換，請先掛斷。</string>
     <string name="mode_err_busy">上一次切換還沒做完。</string>
-    <string name="mode_err_no_root">Myna 沒有 root 權限，請在 Magisk 或 KernelSU 允許。</string>
+    <string name="mode_err_no_root">Myna 模組沒有在執行。請在 Magisk 或 KernelSU 確認 Myna Uplink 模組已啟用，然後重新開機。</string>
     <string name="mode_err_save">無法儲存模式設定。</string>
     <string name="mode_err_dialer">無法更換預設電話 App。</string>
     <string name="mode_err_screening">無法更換來電過濾設定。</string>

@@ -41,7 +41,7 @@
     <string name="mode_failed">The switch did not finish. %1$s You can try again.</string>
     <string name="mode_err_in_call">A call is in progress; hang up first.</string>
     <string name="mode_err_busy">The previous switch has not finished yet.</string>
-    <string name="mode_err_no_root">Myna has no root access. Allow it in Magisk or KernelSU.</string>
+    <string name="mode_err_no_root">The Myna module is not running. In Magisk or KernelSU, check that the Myna Uplink module is enabled, then restart the phone.</string>
     <string name="mode_err_save">The mode could not be saved.</string>
     <string name="mode_err_dialer">The default phone app could not be changed.</string>
     <string name="mode_err_screening">The call screening setting could not be changed.</string>

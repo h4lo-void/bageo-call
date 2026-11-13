@@ -41,7 +41,7 @@
     <string name="mode_failed">切り替えが終わりませんでした。%1$sもう一度試せます。</string>
     <string name="mode_err_in_call">通話中は切り替えられません。先に電話を切ってください。</string>
     <string name="mode_err_busy">前の切り替えがまだ終わっていません。</string>
-    <string name="mode_err_no_root">Myna に root 権限がありません。Magisk か KernelSU で許可してください。</string>
+    <string name="mode_err_no_root">Myna モジュールが動いていません。Magisk か KernelSU で Myna Uplink モジュールが有効になっているか確認してから、スマホを再起動してください。</string>
     <string name="mode_err_save">モードを保存できませんでした。</string>
     <string name="mode_err_dialer">デフォルトの電話アプリを変更できませんでした。</string>
     <string name="mode_err_screening">着信フィルタの設定を変更できませんでした。</string>
