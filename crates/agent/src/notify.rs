@@ -599,7 +599,7 @@ pub fn device_label(serial: &str) -> String {
         return label;
     }
     if s.is_empty() {
-        locale::phrases(locale::current()).n_unknown.to_string()
+        locale::notify_phrases().n_unknown.to_string()
     } else {
         s.to_string()
     }
@@ -623,7 +623,7 @@ pub fn listen_recording_line(settings: &Settings, call_id: &str, note: &str) -> 
     if url.is_empty() {
         return String::new();
     }
-    let label = locale::phrases(locale::current()).n_recording;
+    let label = locale::notify_phrases().n_recording;
     let sep = kv_sep();
     match note.trim() {
         "" => format!("{label}{sep}{url}"),
@@ -637,27 +637,27 @@ pub fn call_detail_line(settings: &Settings, call_id: &str) -> String {
     if url.is_empty() {
         return String::new();
     }
-    format!("{}{}{url}", locale::phrases(locale::current()).n_details, kv_sep())
+    format!("{}{}{url}", locale::notify_phrases().n_details, kv_sep())
 }
 
-/// Between a label and its value, as the agent's language writes it.
+/// Between a label and its value, as the owner's language writes it.
 fn kv_sep() -> &'static str {
-    locale::kv_sep()
+    locale::notify_kv_sep()
 }
 
 fn display_or_hidden(s: &str) -> String {
     let t = s.trim();
     if t.is_empty() {
-        locale::phrases(locale::current()).n_hidden.to_string()
+        locale::notify_phrases().n_hidden.to_string()
     } else {
         t.to_string()
     }
 }
 
-/// The machine's local time as the agent's language writes it, e.g.
+/// The machine's local time as the owner's language writes it, e.g.
 /// "Nov 13, 08:09" or "11月13日 08:09" ([`locale::date_time`]).
 fn now_stamp() -> String {
-    locale::date_time(locale::current(), &Local::now().naive_local())
+    locale::date_time(locale::notify_lang(), &Local::now().naive_local())
 }
 
 fn esc_html(s: &str) -> String {
@@ -744,7 +744,7 @@ pub async fn notify_incoming_call(
     if !settings.call_notify {
         return false;
     }
-    let p = locale::phrases(locale::current());
+    let p = locale::notify_phrases();
     let caller = display_or_hidden(caller_id);
     let device = device_label(serial);
     let when = now_stamp();
@@ -772,7 +772,7 @@ pub async fn notify_rejected_call(
     if !settings.call_notify {
         return false;
     }
-    let p = locale::phrases(locale::current());
+    let p = locale::notify_phrases();
     let caller = display_or_hidden(caller_id);
     let device = device_label(serial);
     let when = now_stamp();
@@ -804,7 +804,7 @@ pub async fn notify_ai_request(
     if !settings.call_notify {
         return false;
     }
-    let p = locale::phrases(locale::current());
+    let p = locale::notify_phrases();
     let caller = display_or_hidden(caller_id);
     let device = device_label(serial);
     let when = now_stamp();
@@ -838,7 +838,7 @@ pub async fn notify_voicemail(
     if !settings.call_notify {
         return false;
     }
-    let p = locale::phrases(locale::current());
+    let p = locale::notify_phrases();
     let caller = display_or_hidden(caller_id);
     let device = device_label(serial);
     let when = now_stamp();
@@ -870,7 +870,7 @@ pub async fn notify_event(http: &Client, settings: &Settings, title: &str, body:
 
 /// The test message of the settings page.
 pub fn test_message() -> Message {
-    let p = locale::phrases(locale::current());
+    let p = locale::notify_phrases();
     Card::new("✅", p.n_test_title)
         .row(p.n_time, &now_stamp())
         .tail(p.n_test_body)
@@ -943,14 +943,15 @@ fn destinations(settings: &Settings) -> Vec<Channel> {
 
 /// Send to every destination at once; true when at least one took it.
 async fn deliver(http: &Client, settings: &Settings, msg: &Message) -> bool {
-    // Drop control characters; Chinese goes out in the owner's script.
+    // Drop control characters; Chinese goes out in the owner's script
+    // (Traditional when the owner reads zh-TW, see `locale::for_owner`).
     let msg = Message {
-        title: crate::zh_tw::to_tw(&sanitize_notify_text(&msg.title, 200)),
-        body: crate::zh_tw::to_tw(&sanitize_notify_text(&msg.body, 3500)),
+        title: locale::for_owner(&sanitize_notify_text(&msg.title, 200)),
+        body: locale::for_owner(&sanitize_notify_text(&msg.body, 3500)),
         html: msg
             .html
             .as_deref()
-            .map(|h| crate::zh_tw::to_tw(&sanitize_notify_text(h, 3500))),
+            .map(|h| locale::for_owner(&sanitize_notify_text(h, 3500))),
         ..msg.clone()
     };
     let channels = destinations(settings);

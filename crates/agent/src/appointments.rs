@@ -259,8 +259,10 @@ impl Earlier {
     }
 }
 
+/// What the owner reads (cards, results, calendar entries): the notification
+/// language. Texts to the caller use the AI's ([`sms_text`]).
 fn texts() -> &'static Phrases {
-    locale::phrases(locale::current())
+    locale::notify_phrases()
 }
 
 fn display_caller(caller_id: &str) -> &str {
@@ -1261,6 +1263,7 @@ async fn text_caller(
     let Some(control) = control else {
         return sms_report(&SmsOutcome::Offline, &to);
     };
+    // To the caller: in the language the AI spoke with them.
     let text = sms_text(locale::current(), &rt.owner_name, appt, confirmed);
     let out = control
         .send_sms(&task.serial, &task.id, &to, &text, SMS_RESULT_WAIT)
@@ -1278,7 +1281,7 @@ async fn text_caller(
 /// in the web console; without one, where to go). Every notification channel
 /// gets it, so the owner learns of it whatever they use.
 pub fn summary_line(appt: &Appointment, link: &str) -> String {
-    let lang = locale::current();
+    let lang = locale::notify_lang();
     let p = locale::phrases(lang);
     let label = if appt.status == BOOKED { p.ap_booked } else { p.ap_pending };
     let mut s = format!("📅 {label}{}{}", p.sep, appt.headline(lang));
@@ -1301,7 +1304,7 @@ pub fn summary_line(appt: &Appointment, link: &str) -> String {
 
 /// The task for the appointment a call took (`call` = its record).
 pub async fn create_task(store: &TaskStore, call: &CallRecord, appt: &Appointment) -> Option<TaskRecord> {
-    let lang = locale::current();
+    let lang = locale::notify_lang();
     let booked = appt.status == BOOKED;
     let mut events = vec!["appointment_from_call".to_string()];
     if booked {
@@ -1347,7 +1350,7 @@ pub async fn create_task(store: &TaskStore, call: &CallRecord, appt: &Appointmen
 /// The Telegram card of an appointment waiting for the owner: (title, body).
 /// `link`: the call's page in the web console (a line of its own when known).
 pub fn card_text(rt: &RuntimeSettings, task: &TaskRecord, appt: &Appointment, link: &str) -> (String, String) {
-    let lang = locale::current();
+    let lang = locale::notify_lang();
     let p = locale::phrases(lang);
     let sep = p.sep;
     let mut lines = vec![
@@ -1418,7 +1421,7 @@ pub async fn after_summary(
                     // Decided on the web while the card was on its way: no buttons
                     // for a decision already made.
                     crate::tg_inbound::remove_inline_keyboard(http, token, &card.chat_id, card.message_id).await;
-                    let text = format!("{}\n{}", p.ap_already, appt.headline(locale::current()));
+                    let text = format!("{}\n{}", p.ap_already, appt.headline(locale::notify_lang()));
                     if let Err(e) = crate::tg_inbound::send_plain_message(http, token, &card.chat_id, &text).await {
                         warn!("appointment card close note failed task_id={}: {e:#}", task.id);
                     }
@@ -1447,7 +1450,7 @@ pub async fn after_summary(
         .await;
     update_call_notes(calls, &task.call_id, &appt).await;
     if tg {
-        let lang = locale::current();
+        let lang = locale::notify_lang();
         let text = format!("📅 {}\n{line}", appt.headline(lang));
         if let Err(e) = crate::tg_inbound::send_plain_message(http, token, chat, &text).await {
             warn!("appointment sms report failed task_id={}: {e:#}", task.id);
@@ -1633,7 +1636,7 @@ async fn decide_inner(
     task_id: &str,
     confirm: bool,
 ) -> Result<(TaskRecord, String, bool)> {
-    let lang = locale::current();
+    let lang = locale::notify_lang();
     let p = locale::phrases(lang);
     let already = |task: TaskRecord| {
         let headline = task.appointment.as_ref().map(|a| a.headline(lang)).unwrap_or_default();
@@ -1807,14 +1810,14 @@ async fn delete_voided_with(cal: Option<Cal>, http: &Client, voided: &[Earlier])
 
 /// The summary's line for an event that is void but still in the calendar.
 pub fn void_failed_line(e: &Earlier) -> String {
-    let lang = locale::current();
+    let lang = locale::notify_lang();
     format!("📅 {}", locale::fill(locale::phrases(lang).ap_void_failed, &e.when(lang)))
 }
 
 /// The summary line for an event deleted because the summary judged the call
 /// a sales call afterwards.
 pub fn sales_void_line(e: &Earlier) -> String {
-    let lang = locale::current();
+    let lang = locale::notify_lang();
     format!("📅 {}", locale::fill(locale::phrases(lang).ap_sales_voided, &e.when(lang)))
 }
 
