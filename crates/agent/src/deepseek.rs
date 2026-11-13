@@ -221,10 +221,22 @@ pub fn summary_endpoint_for(settings: &Settings, provider: Provider) -> Option<E
     let gemini = settings.gemini_api_key.trim();
     match provider {
         Provider::Gemini if !gemini.is_empty() => {
+            // A model name left over from another service (e.g. deepseek-chat) would
+            // fail on every summary before the lite model is tried: skip it.
+            let mut models: Vec<String> = Vec::new();
+            let own = settings.summary_model.trim();
+            if own.starts_with("gemini") {
+                models.push(own.to_string());
+            }
+            for m in [GEMINI_SUMMARY_LITE_MODEL, GEMINI_SUMMARY_MODEL] {
+                if !models.iter().any(|x| x == m) {
+                    models.push(m.to_string());
+                }
+            }
             return Some(Endpoint {
                 url: GEMINI_OPENAI_URL.to_string(),
                 key: gemini.to_string(),
-                models: own_models(&[GEMINI_SUMMARY_LITE_MODEL, GEMINI_SUMMARY_MODEL]),
+                models,
             });
         }
         Provider::DeepSeek => {
@@ -1021,6 +1033,11 @@ mod tests {
         s.summary_model = "gemini-2.5-flash".into();
         let e = summary_endpoint_for(&s, Provider::Gemini).unwrap();
         assert_eq!(models(&e), vec!["gemini-2.5-flash", GEMINI_SUMMARY_LITE_MODEL, GEMINI_SUMMARY_MODEL]);
+        // A model from another service is not sent to Gemini.
+        s.summary_model = "deepseek-chat".into();
+        let e = summary_endpoint_for(&s, Provider::Gemini).unwrap();
+        assert_eq!(models(&e), vec![GEMINI_SUMMARY_LITE_MODEL, GEMINI_SUMMARY_MODEL]);
+        s.summary_model = "gemini-2.5-flash".into();
         // DeepSeek: passes over the own endpoint too.
         let e = summary_endpoint_for(&s, Provider::DeepSeek).unwrap();
         assert_eq!((e.url.as_str(), e.key.as_str()), (DEEPSEEK_API_URL, "sk-ds"));
