@@ -153,6 +153,11 @@ fn split_code(digits: &str) -> Option<(&'static str, &str)> {
 fn country_in_code(code: &str, national: &str) -> Option<&'static str> {
     match code {
         "1" => {
+            // A North American number is 10 digits with an area code 2-9xx
+            // (0912345678 read on a US SIM is no US number).
+            if national.len() != 10 || !national.starts_with(|c: char| ('2'..='9').contains(&c)) {
+                return None;
+            }
             let area = national.get(..3).unwrap_or("");
             Some(
                 NANP_AREAS
@@ -314,6 +319,9 @@ mod tests {
         assert_eq!(country("+12025550143", None), Some("us"));
         assert_eq!(country("+14165550123", None), Some("ca"));
         assert_eq!(country("5145550123", Some("us")), Some("ca"));
+        // Not a North American number: no area code 2-9xx, or not 10 digits.
+        assert_eq!(country("0912345678", Some("us")), None);
+        assert_eq!(country("+1091234567", None), None);
         assert_eq!(country("+18765551234", None), Some("jm"));
         assert_eq!(country("+17875551234", None), Some("pr"));
         assert_eq!(country("+18095551234", None), Some("do"));

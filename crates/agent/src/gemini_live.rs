@@ -89,6 +89,22 @@ const WARM_TEXT_ONLY_REKICKS: u32 = 3;
 /// prompt is the only one; quiet → the opening plays. (A greeting, then the
 /// prompt, then 「喂？」 again sounds odd.)
 const INTL_OPENING_HOLD: Duration = Duration::from_millis(2_500);
+/// How long the line voice that ends an international hold counts as the carrier's
+/// prompt (~6 s long), whatever its transcript says: a foreign caller's speech
+/// hints (en first, or none) can turn the Chinese prompt into other words, and the
+/// prompt must never count as the caller (no hang-up on it).
+const CARRIER_PROMPT_SPAN: Duration = Duration::from_millis(7_500);
+
+/// The caller has only played the carrier's prompt so far: its words are in the
+/// transcript, or all line voice so far came within the prompt's span.
+fn only_carrier_prompt_so_far(
+    caller_text_all: &str,
+    prompt_until: Option<tokio::time::Instant>,
+    last_caller_voice_at: Option<tokio::time::Instant>,
+) -> bool {
+    looks_like_carrier_intl_prompt(caller_text_all)
+        || prompt_until.is_some_and(|until| last_caller_voice_at.map_or(true, |t| t <= until))
+}
 /// Before activityStart, do not zero voiced_ms on every sub-threshold frame.
 /// Only a run of this much continuous silence resets the accumulator (quiet
 /// PSTN dips). Instant reset never reached LOCAL_MIN_VOICE_MS → no
@@ -3129,6 +3145,8 @@ pub async fn run_session(
     let mut opening_mark: Option<usize> = None;
     // International call: the held opening waits for the carrier's prompt until then.
     let mut intl_hold_until: Option<tokio::time::Instant> = None;
+    // Set when an international hold ends on line voice (the carrier's prompt).
+    let mut carrier_prompt_until: Option<tokio::time::Instant> = None;
 
     // ConnectAtAnswer warmhold: generate first AI turn *silently* while period WAV plays.
     // Buffer model audio here; flush to telephony only when audio_open (UnmuteAfterGreet).
@@ -3650,6 +3668,7 @@ pub async fn run_session(
             if caller_had_voice || now >= until {
                 intl_hold_until = None;
                 if caller_had_voice {
+                    carrier_prompt_until = Some(now + CARRIER_PROMPT_SPAN);
                     let dropped_ms = pcm16_ms(prebuf.len() as u64, phone_sr);
                     prebuf.clear();
                     let dropped = opening_mark
@@ -3795,7 +3814,7 @@ pub async fn run_session(
             && persona
             && !wrap_up_sent
             && !bye_from_caller
-            && looks_like_carrier_intl_prompt(&caller_text_all)
+            && only_carrier_prompt_so_far(&caller_text_all, carrier_prompt_until, last_caller_voice_at)
         {
             // Input STT of the carrier prompt landed after the closing was armed.
             goodbye_pending = false;
@@ -4256,7 +4275,11 @@ pub async fn run_session(
                                             || looks_like_persona_closing(&out_tx_window);
                                         if closing
                                             && !wrap_up_sent
-                                            && looks_like_carrier_intl_prompt(&caller_text_all)
+                                            && only_carrier_prompt_so_far(
+                                                &caller_text_all,
+                                                carrier_prompt_until,
+                                                last_caller_voice_at,
+                                            )
                                         {
                                             if !goodbye_pending {
                                                 info!(
@@ -6623,6 +6646,15 @@ mod tests {
 
     #[test]
     fn carrier_intl_prompt_is_not_the_caller() {
+        // Line voice inside the prompt's span counts as the prompt even when its
+        // transcript is not Chinese (foreign-caller speech hints); later voice does not.
+        let t0 = tokio::time::Instant::now();
+        let until = Some(t0 + CARRIER_PROMPT_SPAN);
+        assert!(only_carrier_prompt_so_far("This is an international call", until, Some(t0 + Duration::from_secs(5))));
+        assert!(only_carrier_prompt_so_far("", until, None));
+        assert!(!only_carrier_prompt_so_far("Hi, this is Mike", until, Some(t0 + Duration::from_secs(9))));
+        assert!(!only_carrier_prompt_so_far("Hi, this is Mike", None, Some(t0)));
+        assert!(only_carrier_prompt_so_far("這是國際電話，請注意小心詐騙。", None, Some(t0)));
         // Gemini input STT of the carrier prompt.
         assert!(looks_like_carrier_intl_prompt("小心詐騙, 接通國際電話愛注意。"));
         assert!(looks_like_carrier_intl_prompt("這是國際電話，請注意小心詐騙。"));
