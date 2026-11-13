@@ -398,6 +398,13 @@ pub struct Phrases {
     /// The summary judged the call a sales call afterwards: the event the call
     /// put in the calendar was deleted; `{}` = when and what.
     pub ap_sales_voided: &'static str,
+    /// After the pending line of the summary: where to confirm; `{}` = the
+    /// call's page in the web console.
+    pub ap_web_confirm: &'static str,
+    /// The same without a known console address.
+    pub ap_web_console: &'static str,
+    /// Label of the web link on the Telegram card.
+    pub ap_web_label: &'static str,
     /// A goodbye when it ends what was said.
     pub farewells: &'static [&'static str],
     /// The caller is done ("that's all") when it ends what they said.
@@ -569,6 +576,9 @@ static ZH_TW: Phrases = Phrases {
     ap_cal_removed: "已從 Google 日曆刪除",
     ap_void_failed: "通話中排入的「{}」已作廢，但沒能從行事曆刪掉，請自己刪",
     ap_sales_voided: "判定是推銷電話，已取消通話中排入的預約：{}",
+    ap_web_confirm: "到網頁確認：{}",
+    ap_web_console: "到網頁控制台確認",
+    ap_web_label: "網頁確認",
     farewells: &[],
     wrapups: &[],
     stall: &[],
@@ -720,6 +730,9 @@ static ZH_CN: Phrases = Phrases {
     ap_cal_removed: "已从 Google 日历删除",
     ap_void_failed: "通话中排入的“{}”已作废，但没能从日历删掉，请自己删",
     ap_sales_voided: "判定是推销电话，已取消通话中排入的预约：{}",
+    ap_web_confirm: "到网页确认：{}",
+    ap_web_console: "到网页控制台确认",
+    ap_web_label: "网页确认",
     farewells: &[],
     wrapups: &[],
     stall: &[],
@@ -871,6 +884,9 @@ static EN: Phrases = Phrases {
     ap_cal_removed: "Removed from Google Calendar",
     ap_void_failed: "\"{}\" from the call was canceled but couldn't be removed from your calendar. Please delete it yourself.",
     ap_sales_voided: "Judged a sales call, so the appointment booked during the call was canceled: {}",
+    ap_web_confirm: "confirm in the web console: {}",
+    ap_web_console: "confirm in the web console",
+    ap_web_label: "Confirm on the web",
     farewells: &[
         "bye", "bye bye", "bye now", "goodbye", "good bye", "see you", "see ya", "see you later",
         "talk to you later", "talk later", "talk soon", "speak soon", "take care",
@@ -1055,6 +1071,9 @@ static JA: Phrases = Phrases {
     ap_cal_removed: "Google カレンダーから削除しました",
     ap_void_failed: "通話中に登録した「{}」は取り消しになりましたが、カレンダーから削除できませんでした。ご自身で削除してください",
     ap_sales_voided: "営業電話と判断したため、通話中に登録した予約を取り消しました：{}",
+    ap_web_confirm: "Web 画面で確認：{}",
+    ap_web_console: "Web コンソールで確認してください",
+    ap_web_label: "Web で確認",
     farewells: &[
         "さようなら", "失礼します", "失礼いたします", "失礼致します", "じゃあね", "じゃあまた",
         "ではまた", "またね", "バイバイ", "ばいばい", "切りますね", "お疲れ様でした",
@@ -1223,6 +1242,9 @@ static KO: Phrases = Phrases {
     ap_cal_removed: "Google 캘린더에서 삭제했습니다",
     ap_void_failed: "통화 중에 등록한 \"{}\" 일정은 취소됐지만 캘린더에서 지우지 못했습니다. 직접 지워 주세요",
     ap_sales_voided: "영업 전화로 판단해 통화 중에 등록한 예약을 취소했습니다: {}",
+    ap_web_confirm: "웹에서 확인: {}",
+    ap_web_console: "웹 콘솔에서 확인하세요",
+    ap_web_label: "웹에서 확인",
     farewells: &[
         "안녕히 계세요", "안녕히계세요", "안녕히 가세요", "들어가세요", "끊을게요", "끊겠습니다",
         "수고하세요", "바이바이", "다음에 봬요", "다음에 뵙겠습니다",
@@ -1388,6 +1410,9 @@ static ES: Phrases = Phrases {
     ap_cal_removed: "Eliminada de Google Calendar",
     ap_void_failed: "\"{}\" de la llamada quedó anulada, pero no se pudo quitar del calendario; bórrala tú",
     ap_sales_voided: "Se consideró una llamada comercial, así que se canceló la cita reservada durante la llamada: {}",
+    ap_web_confirm: "confírmala en la consola web: {}",
+    ap_web_console: "confírmala en la consola web",
+    ap_web_label: "Confirmar en la web",
     farewells: &[
         "adiós", "adios", "hasta luego", "hasta pronto", "hasta mañana", "nos vemos", "chao",
         "chau", "que tenga buen día", "que tenga un buen día", "que tengas buen día", "cuídese",
@@ -1556,6 +1581,9 @@ static FR: Phrases = Phrases {
     ap_cal_removed: "Supprimé de Google Agenda",
     ap_void_failed: "« {} » de l'appel n'est plus valable mais n'a pas pu être retiré de l'agenda ; supprimez-le vous-même",
     ap_sales_voided: "Appel jugé commercial : le rendez-vous ajouté pendant l'appel a été annulé : {}",
+    ap_web_confirm: "à confirmer dans la console web : {}",
+    ap_web_console: "à confirmer dans la console web",
+    ap_web_label: "Confirmer sur le web",
     farewells: &[
         "au revoir", "à bientôt", "a bientot", "à plus", "à plus tard", "à tout à l'heure",
         "à demain", "bonne journée", "bonne soirée", "bonne fin de journée", "ciao",
@@ -1725,6 +1753,9 @@ static DE: Phrases = Phrases {
     ap_cal_removed: "Aus Google Kalender gelöscht",
     ap_void_failed: "„{}“ aus dem Gespräch gilt nicht mehr, konnte aber nicht aus dem Kalender gelöscht werden; lösch es selbst",
     ap_sales_voided: "Als Werbeanruf eingestuft, daher wurde der im Gespräch eingetragene Termin gelöscht: {}",
+    ap_web_confirm: "im Web bestätigen: {}",
+    ap_web_console: "in der Web-Konsole bestätigen",
+    ap_web_label: "Im Web bestätigen",
     farewells: &[
         "tschüss", "tschüs", "tschuess", "auf wiederhören", "auf wiedersehen", "wiederhören",
         "bis bald", "bis später", "bis dann", "schönen tag noch", "schönen abend noch",
@@ -1894,6 +1925,9 @@ static PT: Phrases = Phrases {
     ap_cal_removed: "Removido do Google Agenda",
     ap_void_failed: "\"{}\" da ligação não vale mais, mas não foi possível tirar da agenda; apague você mesmo",
     ap_sales_voided: "Considerada uma ligação de vendas, o compromisso marcado durante a ligação foi cancelado: {}",
+    ap_web_confirm: "confirme no console web: {}",
+    ap_web_console: "confirme no console web",
+    ap_web_label: "Confirmar na web",
     farewells: &[
         "tchau", "adeus", "até logo", "até mais", "até breve", "até amanhã", "tenha um bom dia",
         "tenha uma boa tarde", "um abraço", "falou",

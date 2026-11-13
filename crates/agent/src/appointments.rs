@@ -124,6 +124,17 @@ pub struct Appointment {
     /// A write to the calendar timed out: it may or may not be there (look it up by `tag`).
     #[serde(skip)]
     pub write_unsure: bool,
+    /// The Telegram card sent for it, to take its buttons off when the owner
+    /// decides on the web or through the API.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tg_card: Option<TgCard>,
+}
+
+/// Where a Telegram card went: its chat and message.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TgCard {
+    pub chat_id: String,
+    pub message_id: i64,
 }
 
 /// An earlier time of the same call that is in the calendar.
@@ -1262,12 +1273,25 @@ async fn text_caller(
 // After the call
 // ---------------------------------------------------------------------------
 
-/// The line under the post-call summary: "📅 已排入行事曆：…" or "📅 預約待你確認：…".
-pub fn summary_line(appt: &Appointment) -> String {
+/// The line under the post-call summary: "📅 已排入行事曆：…", or — waiting for
+/// the owner — "📅 預約待你確認：… — 到網頁確認：<link>" (`link` = the call's page
+/// in the web console; without one, where to go). Every notification channel
+/// gets it, so the owner learns of it whatever they use.
+pub fn summary_line(appt: &Appointment, link: &str) -> String {
     let lang = locale::current();
     let p = locale::phrases(lang);
     let label = if appt.status == BOOKED { p.ap_booked } else { p.ap_pending };
     let mut s = format!("📅 {label}{}{}", p.sep, appt.headline(lang));
+    if appt.status == PENDING {
+        let link = link.trim();
+        let web = if link.is_empty() {
+            p.ap_web_console.to_string()
+        } else {
+            locale::fill(p.ap_web_confirm, link)
+        };
+        s.push_str(" — ");
+        s.push_str(&web);
+    }
     for e in &appt.replaced {
         s.push('\n');
         s.push_str(&locale::fill(p.ap_replaced, &e.when(lang)));
@@ -1321,7 +1345,8 @@ pub async fn create_task(store: &TaskStore, call: &CallRecord, appt: &Appointmen
 }
 
 /// The Telegram card of an appointment waiting for the owner: (title, body).
-pub fn card_text(rt: &RuntimeSettings, task: &TaskRecord, appt: &Appointment) -> (String, String) {
+/// `link`: the call's page in the web console (a line of its own when known).
+pub fn card_text(rt: &RuntimeSettings, task: &TaskRecord, appt: &Appointment, link: &str) -> (String, String) {
     let lang = locale::current();
     let p = locale::phrases(lang);
     let sep = p.sep;
@@ -1350,11 +1375,16 @@ pub fn card_text(rt: &RuntimeSettings, task: &TaskRecord, appt: &Appointment) ->
     for e in &appt.replaced {
         lines.push(locale::fill(p.ap_replaced, &e.when(lang)));
     }
+    if !link.trim().is_empty() {
+        lines.push(format!("{}{sep}{}", p.ap_web_label, link.trim()));
+    }
     (p.ap_card_title.to_string(), lines.join("\n"))
 }
 
 /// After the summary went out: the card for an appointment that waits for
-/// the owner, or — booked on the call — the text message to the caller.
+/// the owner (Telegram set up and `call_notify` on; the web console shows it
+/// either way), or — booked on the call — the text message to the caller.
+/// `link`: the call's page in the web console.
 pub async fn after_summary(
     http: &Client,
     rt: &RuntimeSettings,
@@ -1362,6 +1392,7 @@ pub async fn after_summary(
     calls: &CallStore,
     control: &ControlRegistry,
     task: &TaskRecord,
+    link: &str,
 ) {
     let Some(mut appt) = task.appointment.clone() else {
         return;
@@ -1371,17 +1402,31 @@ pub async fn after_summary(
     let tg = crate::tg_inbound::task_card_ready(rt.call_notify, token, chat);
     if appt.status == PENDING {
         if !tg {
-            info!("appointment card not sent (Telegram not set up) task_id={}", task.id);
+            info!("appointment card not sent (Telegram not set up; decided on the web) task_id={}", task.id);
             return;
         }
         let p = texts();
-        let (title, body) = card_text(rt, task, &appt);
-        if let Err(e) = crate::tg_inbound::send_task_card_labeled(
+        let (title, body) = card_text(rt, task, &appt, link);
+        match crate::tg_inbound::send_task_card_labeled(
             http, token, chat, &title, &task.id, &body, p.ap_confirm, p.ap_decline,
         )
         .await
         {
-            warn!("appointment card failed task_id={}: {e:#}", task.id);
+            // Kept on the task: a decision on the web takes the buttons off.
+            Ok(message_id) if message_id != 0 => {
+                appt.tg_card = Some(TgCard { chat_id: chat.to_string(), message_id });
+                let _ = store
+                    .patch(
+                        &task.id,
+                        TaskPatch {
+                            appointment: Some(appt.clone()),
+                            ..Default::default()
+                        },
+                    )
+                    .await;
+            }
+            Ok(_) => {}
+            Err(e) => warn!("appointment card failed task_id={}: {e:#}", task.id),
         }
         return;
     }
@@ -1454,6 +1499,45 @@ pub async fn decide(
     decide_with(Cal::from_settings(rt), http, rt, store, calls, control, task_id, confirm).await
 }
 
+/// [`decide`] for a decision made on the web console or through the API. When
+/// it acted and a Telegram card went out for the appointment, the card's
+/// buttons are taken off and the result is posted in that chat, as after a
+/// press on the card (best effort, in the background: Telegram failing changes
+/// nothing about the decision).
+pub async fn decide_from_web(
+    http: &Client,
+    rt: &RuntimeSettings,
+    store: &TaskStore,
+    calls: &CallStore,
+    control: Option<&ControlRegistry>,
+    task_id: &str,
+    confirm: bool,
+) -> Result<(TaskRecord, String)> {
+    let (task, text, acted) =
+        decide_inner(Cal::from_settings(rt), http, rt, store, calls, control, task_id, confirm).await?;
+    if let Some(card) = card_to_clear(&rt.telegram_bot_token, task.appointment.as_ref(), acted) {
+        let (http, token, reply, id) = (http.clone(), rt.telegram_bot_token.trim().to_string(), text.clone(), task.id.clone());
+        tokio::spawn(async move {
+            crate::tg_inbound::remove_inline_keyboard(&http, &token, &card.chat_id, card.message_id).await;
+            match crate::tg_inbound::send_plain_message(&http, &token, &card.chat_id, &reply).await {
+                Ok(()) => info!("appointment card closed after a web decision task_id={id}"),
+                Err(e) => warn!("appointment card follow-up failed task_id={id}: {e:#}"),
+            }
+        });
+    }
+    Ok((task, text))
+}
+
+/// The Telegram card to close after a decision made elsewhere: only when this
+/// decision acted (not "already handled"), a card went out and the bot is
+/// still set up.
+pub fn card_to_clear(bot_token: &str, appt: Option<&Appointment>, acted: bool) -> Option<TgCard> {
+    if !acted || bot_token.trim().is_empty() {
+        return None;
+    }
+    appt?.tg_card.clone().filter(|c| !c.chat_id.trim().is_empty() && c.message_id != 0)
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn decide_with(
     cal: Option<Cal>,
@@ -1465,11 +1549,28 @@ async fn decide_with(
     task_id: &str,
     confirm: bool,
 ) -> Result<(TaskRecord, String)> {
+    decide_inner(cal, http, rt, store, calls, control, task_id, confirm)
+        .await
+        .map(|(task, text, _)| (task, text))
+}
+
+/// [`decide_with`], also saying whether this decision acted (false: "already handled").
+#[allow(clippy::too_many_arguments)]
+async fn decide_inner(
+    cal: Option<Cal>,
+    http: &Client,
+    rt: &RuntimeSettings,
+    store: &TaskStore,
+    calls: &CallStore,
+    control: Option<&ControlRegistry>,
+    task_id: &str,
+    confirm: bool,
+) -> Result<(TaskRecord, String, bool)> {
     let lang = locale::current();
     let p = locale::phrases(lang);
     let already = |task: TaskRecord| {
         let headline = task.appointment.as_ref().map(|a| a.headline(lang)).unwrap_or_default();
-        (task, format!("{}\n{headline}", p.ap_already).trim_end().to_string())
+        (task, format!("{}\n{headline}", p.ap_already).trim_end().to_string(), false)
     };
     let task = store
         .get(task_id)
@@ -1582,7 +1683,7 @@ async fn decide_with(
         text.push('\n');
         text.push_str(&l);
     }
-    Ok((updated, text))
+    Ok((updated, text, true))
 }
 
 /// The events a voided appointment left in the calendar, also one whose id was
@@ -2015,13 +2116,87 @@ mod tests {
         assert_eq!(out.start, "2026-11-15T10:00");
         assert_eq!(out.replaced.len(), 1);
         assert_eq!(out.replaced[0].event_id, "ev1");
-        let line = summary_line(&out);
+        let line = summary_line(&out, "");
         assert!(line.starts_with("📅 預約待你確認：11/15（週日）10:00–11:00 看房"), "{line}");
         assert!(line.contains("11/14（週六）15:00–16:00 看房"), "{line}");
         let mut booked = out.clone();
         booked.status = BOOKED.into();
         booked.replaced.clear();
-        assert_eq!(summary_line(&booked), "📅 已排入行事曆：11/15（週日）10:00–11:00 看房");
+        assert_eq!(summary_line(&booked, "http://bageo.local/calls/#call=c1"), "📅 已排入行事曆：11/15（週日）10:00–11:00 看房");
+    }
+
+    #[test]
+    fn the_pending_line_sends_the_owner_to_the_web_console() {
+        let a = appt("2026-11-14T15:00", "2026-11-14T16:00", "看房");
+        assert_eq!(
+            summary_line(&a, "http://bageo.local/calls/#call=c1"),
+            "📅 預約待你確認：11/14（週六）15:00–16:00 看房 — 到網頁確認：http://bageo.local/calls/#call=c1"
+        );
+        // No address other devices can open: where to go instead.
+        assert_eq!(summary_line(&a, " "), "📅 預約待你確認：11/14（週六）15:00–16:00 看房 — 到網頁控制台確認");
+        for l in locale::ALL {
+            let p = locale::phrases(l);
+            assert_eq!(p.ap_web_confirm.matches("{}").count(), 1, "{l:?}");
+            assert!(!p.ap_web_console.trim().is_empty() && !p.ap_web_console.contains('{'), "{l:?}");
+            assert!(!p.ap_web_label.trim().is_empty() && !p.ap_web_label.contains('{'), "{l:?}");
+            assert!(locale::fill(p.ap_web_confirm, "http://x/").ends_with("http://x/"), "{l:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn cards_go_out_only_with_telegram_and_carry_the_web_link() {
+        let mut rt = plain_settings();
+        rt.telegram_bot_token = String::new();
+        rt.telegram_chat_id = String::new();
+        assert!(!crate::tg_inbound::task_card_ready(rt.call_notify, &rt.telegram_bot_token, &rt.telegram_chat_id));
+        assert!(!crate::tg_inbound::task_card_ready(false, "123:abc", "42"));
+        assert!(crate::tg_inbound::task_card_ready(true, "123:abc", "42"));
+        // Without Telegram nothing is sent: the task waits on the web, no card kept.
+        let (root, store, calls) = stores();
+        let a = appt(&later(2, 15), &later(2, 16), "看房");
+        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
+        after_summary(&Client::new(), &rt, &store, &calls, &ControlRegistry::default(), &t, "http://x/calls/#call=c").await;
+        let kept = store.get(&t.id).await.unwrap();
+        assert_eq!(kept.status, TaskStatus::Pending);
+        assert_eq!(kept.appointment.and_then(|a| a.tg_card), None);
+        // The card names the call's page.
+        let (_, body) = card_text(&rt, &t, &a, "http://x/calls/#call=c");
+        assert!(body.ends_with("網頁確認：http://x/calls/#call=c"), "{body}");
+        assert!(!card_text(&rt, &t, &a, "").1.contains("網頁確認"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_decision_on_the_web_closes_the_telegram_card() {
+        let card = TgCard { chat_id: "42".into(), message_id: 7 };
+        let mut a = appt("2026-11-14T15:00", "2026-11-14T16:00", "看房");
+        a.tg_card = Some(card.clone());
+        assert_eq!(card_to_clear("123:abc", Some(&a), true), Some(card.clone()));
+        // "Already handled", no bot any more, no card sent, not an appointment: nothing to do.
+        assert_eq!(card_to_clear("123:abc", Some(&a), false), None);
+        assert_eq!(card_to_clear(" ", Some(&a), true), None);
+        assert_eq!(card_to_clear("123:abc", Some(&appt("2026-11-14T15:00", "", "看房")), true), None);
+        assert_eq!(card_to_clear("123:abc", None, true), None);
+        // The card is kept through the decision; only the first one acts.
+        let (root, store, calls) = stores();
+        let cal = Arc::new(FakeCal::default());
+        let mut b = appt(&later(2, 15), &later(2, 16), "看房");
+        b.tg_card = Some(card.clone());
+        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &b) }).await.unwrap();
+        let http = Client::new();
+        let (done, _, acted) = decide_inner(Some(Cal::Fake(cal.clone())), &http, &plain_settings(), &store, &calls, None, &t.id, true)
+            .await
+            .unwrap();
+        assert!(acted);
+        assert_eq!(card_to_clear("123:abc", done.appointment.as_ref(), acted), Some(card));
+        let (again, text, acted) = decide_inner(Some(Cal::Fake(cal.clone())), &http, &plain_settings(), &store, &calls, None, &t.id, false)
+            .await
+            .unwrap();
+        assert!(!acted && text.starts_with("這個預約已經處理過了"), "{text}");
+        assert_eq!(card_to_clear("123:abc", again.appointment.as_ref(), acted), None);
+        // The card stays out of JSON when none went out.
+        assert!(serde_json::to_value(appt("2026-11-14T15:00", "", "x")).unwrap().get("tg_card").is_none());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -2059,17 +2234,17 @@ mod tests {
         let mut a = appt("2026-11-14T15:00", "2026-11-14T16:00", "看房");
         a.caller_name = "陳先生".into();
         let task = task_for("0912345678", &a);
-        let (title, body) = card_text(&rt, &task, &a);
+        let (title, body) = card_text(&rt, &task, &a, "");
         assert_eq!(title, "📅 預約待確認");
         assert!(body.contains("號碼：0912345678") && body.contains("時間：11/14（週六）15:00–16:00"), "{body}");
         assert!(body.contains("事由：看房") && body.contains("陳先生"), "{body}");
         assert!(body.contains("簡訊：按確定或婉拒後會傳簡訊告訴對方"), "{body}");
         let landline = task_for("0225550123", &a);
-        assert!(card_text(&rt, &landline, &a).1.contains("對方號碼收不到簡訊，請自己回電"));
+        assert!(card_text(&rt, &landline, &a, "").1.contains("對方號碼收不到簡訊，請自己回電"));
         let hidden = task_for("", &a);
-        assert!(card_text(&rt, &hidden, &a).1.contains("號碼：未顯示號碼"));
+        assert!(card_text(&rt, &hidden, &a, "").1.contains("號碼：未顯示號碼"));
         rt.appointment_sms = false;
-        assert!(card_text(&rt, &task, &a).1.contains("簡訊：不會傳"));
+        assert!(card_text(&rt, &task, &a, "").1.contains("簡訊：不會傳"));
     }
 
     #[test]

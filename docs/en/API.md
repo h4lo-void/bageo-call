@@ -123,16 +123,17 @@ Calendar event once it is there. `auto_error`: why *Book it if I'm free* could
 not book it. `replaced`: earlier times of the same call that were already put
 in the calendar. `sms`: `sent`, or why the text did not go (`offline`,
 `old_app`, `timeout`, `busy`, `no_number`, or the phone's error code). `tag`:
-the call's own mark on the events it writes (below). Empty fields are left
-out.
+the call's own mark on the events it writes (below). `tg_card`: `{chat_id,
+message_id}` of the Telegram card sent for it, whose buttons are taken off when
+you decide elsewhere. Empty fields are left out.
 Events the agent writes carry the private extended property
 `bageo_call=<appointment.tag>`, so an event whose insert answer was lost is found
 again instead of written twice.
 
 | Method and path | What |
 |---|---|
-| `GET /calls/api/tasks` | Tasks, newest first (up to 200): `{ok, tasks}`. |
-| `POST /calls/api/tasks/{id}/confirm` | For an appointment: the same as **✅ Confirm** on its card — Google Calendar, then (with `appointment_sms`) the text to the caller, which may take up to 90 seconds. `{ok, task, message}`; `message` is the text the Telegram bot would reply. Only the first decision counts: a second confirm or decline — also one sent while the first is still running, or a press on the Telegram card — answers "already handled" and changes nothing. Needs `Content-Type: application/json` (no body), otherwise HTTP 400 `bad_request`, so other web pages cannot decide from a browser on your network. |
+| `GET /calls/api/tasks` | Tasks, newest first (up to 200): `{ok, tasks}`. The console's *Appointments to confirm* list is the tasks whose `appointment.status` is `pending`. |
+| `POST /calls/api/tasks/{id}/confirm` | For an appointment: the same as **✅ Confirm** in the web console or on its Telegram card — Google Calendar, then (with `appointment_sms`) the text to the caller, which may take up to 90 seconds. `{ok, task, message}`; `message` is what happened, as the console shows it and the Telegram bot replies it. When a Telegram card went out for the appointment, its buttons are taken off and `message` is posted in that chat (best effort; the decision stands either way). Only the first decision counts: a second confirm or decline — also one sent while the first is still running, or a press on the Telegram card — answers "already handled" and changes nothing. Needs `Content-Type: application/json` (no body), otherwise HTTP 400 `bad_request`, so other web pages cannot decide from a browser on your network. |
 | `POST /calls/api/tasks/{id}/ignore` | For an appointment: **❌ Decline** (an event the call already put in the calendar is removed; the text when `appointment_sms` is on). Same answer and rules. |
 
 ## Phones and health
