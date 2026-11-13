@@ -50,6 +50,7 @@
     <string name="mode_err_other">Algo deu errado.</string>
     <string name="btn_console">Abrir o console web</string>
     <string name="msg_no_browser">Nenhum app deste telefone abre páginas web.</string>
+    <string name="st_legacy_off">Neste telefone, o antigo botão “Atendimento por IA” estava desligado. Desde esta atualização, quem decide é o botão acima: agora a IA atende. Desative-o para usar como telefone normal.</string>
 
     <!-- Setup steps (AI mode) -->
     <string name="steps_header">Etapas de configuração (%1$d de %2$d concluídas)</string>

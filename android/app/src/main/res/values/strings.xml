@@ -50,6 +50,7 @@
     <string name="mode_err_other">Something unexpected went wrong.</string>
     <string name="btn_console">Open the web console</string>
     <string name="msg_no_browser">No app on this phone can open web pages.</string>
+    <string name="st_legacy_off">The old “AI answering” switch was off on this phone. Since this update the switch above decides: the AI now answers calls here. Turn it off to keep this a normal phone.</string>
 
     <!-- Setup steps (AI mode) -->
     <string name="steps_header">Setup steps (%1$d of %2$d done)</string>

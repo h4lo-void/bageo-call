@@ -11,6 +11,9 @@ MODDIR=${0%/*}
 PKG=com.pixelcallai.streamer
 GDIALER=com.google.android.dialer
 MODE_FILE=/data/adb/pixelcallai/mode
+# Before comparing, drop every blank character and a UTF-8 BOM (the app and the
+# mode script use the same rule).
+STRIP=' \t\r\n\v\f\357\273\277'
 
 chmod 755 "$MODDIR/inject" 2>/dev/null || true
 mkdir -p /data/local/tmp
@@ -41,7 +44,7 @@ chmod 666 /data/local/tmp/pixelcallai_uplink.pcm 2>/dev/null || true
   fi
 
   MODE=ai
-  if [ -f "$MODE_FILE" ] && [ "$(tr -d ' \r\n' < "$MODE_FILE" 2>/dev/null)" = "normal" ]; then
+  if [ -f "$MODE_FILE" ] && [ "$(tr -d "$STRIP" < "$MODE_FILE" 2>/dev/null)" = "normal" ]; then
     MODE=normal
   fi
 

@@ -50,6 +50,7 @@
     <string name="mode_err_other">Algo salió mal.</string>
     <string name="btn_console">Abrir la consola web</string>
     <string name="msg_no_browser">Ninguna app de este teléfono puede abrir páginas web.</string>
+    <string name="st_legacy_off">En este teléfono el antiguo interruptor «Respuesta con IA» estaba desactivado. Desde esta actualización manda el interruptor de arriba: ahora contesta la IA. Desactívalo para usarlo como teléfono normal.</string>
 
     <!-- Setup steps (AI mode) -->
     <string name="steps_header">Pasos de configuración (%1$d de %2$d hechos)</string>

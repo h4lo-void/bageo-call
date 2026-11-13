@@ -50,6 +50,7 @@
     <string name="mode_err_other">發生沒預期到的錯誤。</string>
     <string name="btn_console">打開網頁控制台</string>
     <string name="msg_no_browser">這支手機沒有能開網頁的 App。</string>
+    <string name="st_legacy_off">這支手機舊版的「AI 接聽」開關原本是關的。這次更新後改由上面的開關決定，現在由 AI 接這支手機的電話。要當一般手機用，請把上面的開關關掉。</string>
 
     <!-- Setup steps (AI mode) -->
     <string name="steps_header">設定步驟（%1$d/%2$d 完成）</string>

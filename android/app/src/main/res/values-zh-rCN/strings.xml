@@ -50,6 +50,7 @@
     <string name="mode_err_other">发生了意外错误。</string>
     <string name="btn_console">打开网页控制台</string>
     <string name="msg_no_browser">这部手机没有能打开网页的应用。</string>
+    <string name="st_legacy_off">这部手机旧版的“AI 接听”开关原本是关着的。这次更新后改由上面的开关决定，现在由 AI 接这部手机的电话。要当普通手机用，请把上面的开关关掉。</string>
 
     <!-- Setup steps (AI mode) -->
     <string name="steps_header">设置步骤（%1$d/%2$d 完成）</string>

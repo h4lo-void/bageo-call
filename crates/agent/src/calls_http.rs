@@ -368,6 +368,9 @@ async fn live(
         "calls": calls,
         "control_idle_clients": control_serials.len(),
         "control_idle_serials": control_serials,
+        // Connected phones switched to "normal phone": the page does not count them as
+        // ready for calls.
+        "normal_mode_serials": state.phones.normal_mode_serials(),
     }))
     .into_response()
 }
@@ -1208,8 +1211,8 @@ impl PhoneDevices {
             p.hello.in_call = false;
             p.last_seen_ms = now_ms();
         }
-        // A request still waiting for this phone gets "offline" (its sender is dropped).
-        self.waiting().retain(|_, entry| entry.0 != serial);
+        // A request still waiting for this phone keeps waiting: the phone app may be
+        // stopped by the switch itself and send the result after it reconnects.
     }
 
     /// Any message on the control connection.
@@ -1345,16 +1348,30 @@ impl PhoneDevices {
             Ok(Err(_)) => ModeReply::failed(current, "offline"),
             Err(_) => {
                 self.waiting().remove(&id);
-                ModeReply::failed(current, "timeout")
+                // No answer yet: the switch may still finish (the page says the result is
+                // not confirmed). Report the mode the phone last told us.
+                let last = self.phones().get(serial).map(|p| p.hello.mode).or(current);
+                ModeReply::failed(last, "timeout")
             }
         }
     }
 }
 
-#[derive(Deserialize)]
-pub struct ModeBody {
-    #[serde(default)]
-    pub mode: String,
+/// The body of `POST /api/devices/{serial}/mode`, `{"mode": "ai" | "normal"}`.
+/// Err is the error code of the 400 answer: `bad_request` (not JSON, no `mode`) or
+/// `invalid_mode`. Parsed here so every error is the same JSON shape.
+pub fn parse_mode_body(body: &[u8]) -> Result<PhoneMode, &'static str> {
+    let v: Value = serde_json::from_slice(body).map_err(|_| "bad_request")?;
+    let mode = v.get("mode").and_then(Value::as_str).ok_or("bad_request")?;
+    PhoneMode::parse(mode).ok_or("invalid_mode")
+}
+
+fn mode_bad_request(code: &str, message: &str) -> Response {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(json!({"ok": false, "mode": null, "error_code": code, "error": message})),
+    )
+        .into_response()
 }
 
 /// Switch one phone between "the AI answers" and "normal phone".
@@ -1363,25 +1380,18 @@ async fn device_mode(
     headers: HeaderMap,
     Query(query): Query<TokenQuery>,
     Path(serial): Path<String>,
-    Json(body): Json<ModeBody>,
+    body: axum::body::Bytes,
 ) -> Response {
     if !token_ok(&state.settings, &headers, &query) {
         return unauthorized();
     }
-    let Some(mode) = PhoneMode::parse(&body.mode) else {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"ok": false, "mode": null, "error_code": "invalid_mode", "error": "mode must be \"ai\" or \"normal\""})),
-        )
-            .into_response();
-    };
     if !task_id_safe(&serial) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"ok": false, "mode": null, "error_code": "offline", "error": "invalid serial"})),
-        )
-            .into_response();
+        return mode_bad_request("bad_request", "invalid phone serial");
     }
+    let mode = match parse_mode_body(&body) {
+        Ok(mode) => mode,
+        Err(code) => return mode_bad_request(code, "the body must be {\"mode\": \"ai\"} or {\"mode\": \"normal\"}"),
+    };
     let agent_call = state
         .store
         .live_calls()
@@ -1641,6 +1651,17 @@ mod tests {
             Some("http://192.168.1.20:8787/calls/")
         );
         assert_eq!(console_url("https://myna.example/").as_deref(), Some("https://myna.example/calls/"));
+    }
+
+    #[test]
+    fn mode_body_parsing() {
+        assert_eq!(parse_mode_body(br#"{"mode":"normal"}"#), Ok(PhoneMode::Normal));
+        assert_eq!(parse_mode_body(br#"{"mode":" ai "}"#), Ok(PhoneMode::Ai));
+        assert_eq!(parse_mode_body(br#"{"mode":"off"}"#), Err("invalid_mode"));
+        assert_eq!(parse_mode_body(br#"{"mode":1}"#), Err("bad_request"));
+        assert_eq!(parse_mode_body(br#"{}"#), Err("bad_request"));
+        assert_eq!(parse_mode_body(b"mode=normal"), Err("bad_request"));
+        assert_eq!(parse_mode_body(b""), Err("bad_request"));
     }
 }
 

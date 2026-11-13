@@ -50,6 +50,7 @@
     <string name="mode_err_other">予期しないエラーが起きました。</string>
     <string name="btn_console">Web コンソールを開く</string>
     <string name="msg_no_browser">このスマホには Web ページを開けるアプリがありません。</string>
+    <string name="st_legacy_off">このスマホでは以前の「AI 応答」スイッチがオフでした。今回の更新から上のスイッチで決まり、今は AI が電話に出ます。通常のスマホとして使うには、上のスイッチをオフにしてください。</string>
 
     <!-- Setup steps (AI mode) -->
     <string name="steps_header">設定ステップ（%2$d 件中 %1$d 件完了）</string>

@@ -219,25 +219,73 @@ reported as a code (`dialer_failed`, `screening_failed`, `dnd_failed`,
 | Incoming calls | answered by the AI | ring; you answer |
 | App service | full call handling | control connection only |
 
+The system settings are changed by a root script, `app/src/main/assets/apply_mode.sh`.
+The app copies it to `/data/adb/pixelcallai/apply_mode.sh` and starts it with
+`toybox setsid` (`sh apply_mode.sh <ai|normal> <id> [six volumes]`), so it runs
+to the end even when Android stops the app: removing an app from the phone-app role
+can do that. For the same reason the normal-phone order is call screening, Do Not
+Disturb, ringer and volumes, microphone, and **the phone app last**. That last step
+only counts as done when `telecom get-default-dialer` reports Google Dialer, Google
+Dialer is not in `pm list packages -d` and both in-call components were enabled
+(or, without Google Dialer, when the default phone app is no longer Myna). If
+`pm list packages` itself fails, the step fails (`dialer_failed`); it never
+assumes there is no Google Dialer. Every root command runs under `toybox timeout`.
+
 Where it is stored:
 
 - `/data/adb/pixelcallai/mode`: `ai` or `normal`, written by the app through
-  `su`. It is outside the module folder, so module updates keep it. `service.sh`
-  reads it at every boot; **no file means `ai`**, so a phone that was never switched
-  behaves exactly as before.
+  the script. It is outside the module folder, so module updates keep it.
+  `service.sh` reads it at every boot; **no file means `ai`**, so a phone that was
+  never switched behaves exactly as before. Before comparing, `service.sh`, the
+  script and the app all drop blanks (space, tab, CR, LF, VT, FF) and a UTF-8 BOM.
+- `/data/adb/pixelcallai/pending`: exists from the start of a switch until every
+  step worked.
+- `/data/adb/pixelcallai/last_apply`: the last run, `key=value` lines (`id`,
+  `mode`, `step_<name>=ok|fail`, then `error=<code>` or `result=ok`, and `done=1`).
+- `/data/adb/pixelcallai/apply.lock`: held while a run is going (its pid inside).
 - `/data/adb/pixelcallai/normal_audio`: the volumes saved when the phone last went
   from normal to AI (`ring=…`, `notification=…`, `voice_call=…`, `music=…`,
   `alarm=…`, `system=…`). Switching to normal restores them; a missing or zero
   value becomes half of that volume's maximum.
 - The app keeps a copy of the mode in its device-protected storage
-  (`files/phone_mode`). When the service starts and the module's file says
-  something else (changed by hand, app data cleared), the app applies the file's
-  mode.
+  (`files/phone_mode`), cached in memory per process; the `:screening` process
+  reads it again for every incoming call.
 
-The older `com.pixelcallai.streamer.SET_ENABLED` service intent
-(`--ez enabled false` / `true`) now performs the same switch.
+When the service starts it runs the script again if `pending` exists, if the mode is
+`normal` but Myna is still the default phone app (an interrupted switch, or an older
+version that took the phone over), or if its own copy differs from the file. If the
+agent asked for the switch and the app was stopped before it could answer, it sends
+that `set_mode_result` after its next `hello`; the agent keeps waiting through the
+reconnect (up to 15 seconds), and the web console calls a timeout "not confirmed yet".
+
+In normal mode the service runs as a foreground service of type `phoneCall` only
+(not `microphone`); if Android refuses the foreground start, the app logs it and
+still opens the control connection.
+
+Upgrading from a version before 0.2.2 whose **AI answering** switch was off: that old
+setting (`AI_CALL_ENABLED`) no longer counts. The phone answers with the AI (no mode
+file means `ai`), the app logs it and its status card shows a hint until the new
+switch is used once.
+
+The older `com.pixelcallai.streamer.SET_ENABLED` service intent performs the same
+switch, without a reboot:
+
+```text
+adb shell am start-foreground-service -n com.pixelcallai.streamer/.CallAudioService -a com.pixelcallai.streamer.SET_ENABLED --ez enabled false
+```
+
+(`--ez enabled true` = AI mode.) Or write the file and reboot:
+`adb shell "su -c 'mkdir -p /data/adb/pixelcallai && echo normal > /data/adb/pixelcallai/mode'"`
+(`echo ai`, or `rm -f` the file, for AI mode).
 
 ## Rollback
+
+**Before installing an older version** (anything before 0.2.2), switch back to AI
+mode, or run `adb shell "su -c 'rm -rf /data/adb/pixelcallai'"`. Older versions do
+not read the mode file: their `service.sh` takes the phone over at every boot even
+when the file says `normal`. When this version is installed again later, it finds
+`normal` and turns the phone into a normal phone by itself, so the AI stops
+answering without anyone asking for it.
 
 0. Switch the phone to a [normal phone](#normal-phone-mode) first. That re-enables
    Google Dialer, turns Do Not Disturb off and restores the volumes, so steps 2 and

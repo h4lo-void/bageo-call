@@ -50,6 +50,7 @@
     <string name="mode_err_other">예상하지 못한 오류가 발생했습니다.</string>
     <string name="btn_console">웹 콘솔 열기</string>
     <string name="msg_no_browser">이 휴대전화에는 웹 페이지를 열 수 있는 앱이 없습니다.</string>
+    <string name="st_legacy_off">이 휴대전화는 예전 \'AI 응답\' 스위치가 꺼져 있었습니다. 이번 업데이트부터는 위의 스위치로 정하며, 지금은 AI가 전화를 받습니다. 일반 휴대전화로 쓰려면 위의 스위치를 끄세요.</string>
 
     <!-- Setup steps (AI mode) -->
     <string name="steps_header">설정 단계(%2$d개 중 %1$d개 완료)</string>

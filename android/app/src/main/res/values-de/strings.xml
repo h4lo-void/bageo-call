@@ -50,6 +50,7 @@
     <string name="mode_err_other">Ein unerwarteter Fehler ist aufgetreten.</string>
     <string name="btn_console">Webkonsole öffnen</string>
     <string name="msg_no_browser">Keine App auf diesem Telefon kann Webseiten öffnen.</string>
+    <string name="st_legacy_off">Auf diesem Telefon war der alte Schalter „KI-Annahme“ aus. Seit diesem Update entscheidet der Schalter oben: Jetzt nimmt die KI Anrufe an. Schalte ihn aus, um es als normales Telefon zu nutzen.</string>
 
     <!-- Setup steps (AI mode) -->
     <string name="steps_header">Einrichtungsschritte (%1$d von %2$d erledigt)</string>

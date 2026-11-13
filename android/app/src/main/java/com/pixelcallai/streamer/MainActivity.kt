@@ -52,6 +52,7 @@ import javax.net.ssl.SSLException
 class MainActivity : Activity() {
     private lateinit var statusHeadline: TextView
     private lateinit var statusDetail: TextView
+    private lateinit var legacyHint: TextView
     private lateinit var btnStatusAction: Button
     private lateinit var switchAi: Switch
     private lateinit var switchProgress: View
@@ -153,6 +154,7 @@ class MainActivity : Activity() {
 
         statusHeadline = findViewById(R.id.statusHeadline)
         statusDetail = findViewById(R.id.statusDetail)
+        legacyHint = findViewById(R.id.legacyHint)
         btnStatusAction = findViewById(R.id.btnStatusAction)
         switchAi = findViewById(R.id.switchAi)
         switchProgress = findViewById(R.id.switchProgress)
@@ -617,6 +619,8 @@ class MainActivity : Activity() {
         statusHeadline.text = line.headline
         statusHeadline.setTextColor(stateColor(line.state))
         statusDetail.text = line.detail
+        // Upgraded from a version whose "AI answering" switch was off: it now answers.
+        legacyHint.visibility = if (ai && !switching && Prefs.legacyAiSwitchOff(this)) View.VISIBLE else View.GONE
         if (line.action != 0) {
             btnStatusAction.setText(line.action)
             btnStatusAction.visibility = View.VISIBLE

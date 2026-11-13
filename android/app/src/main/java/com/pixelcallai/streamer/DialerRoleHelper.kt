@@ -97,16 +97,24 @@ object DialerRoleHelper {
         Log.i(TAG, "suspended competing dialer UI packages/components")
     }
 
-    fun restoreCompetingDialerUi() {
+    /**
+     * Manual recovery only; the normal-phone switch uses the root script
+     * (assets/apply_mode.sh). True when every command succeeded.
+     */
+    fun restoreCompetingDialerUi(): Boolean {
+        var ok = true
         for (pkg in SUSPEND_PACKAGES) {
-            rootPm("pm enable $pkg")
+            ok = rootPm("pm enable $pkg") && ok
         }
         for (c in SUSPEND_COMPONENTS) {
-            rootPm("pm enable $c")
+            // LegacyInCallActivity only exists in older Google Phone versions.
+            val done = rootPm("pm enable $c")
+            if (!c.endsWith("LegacyInCallActivity")) ok = done && ok
         }
-        rootPm("cmd role add-role-holder android.app.role.DIALER com.google.android.dialer")
-        rootPm("telecom set-default-dialer com.google.android.dialer")
-        Log.i(TAG, "restored Google Dialer as default (manual recovery)")
+        ok = rootPm("cmd role add-role-holder android.app.role.DIALER com.google.android.dialer") && ok
+        ok = rootPm("telecom set-default-dialer com.google.android.dialer") && ok
+        Log.i(TAG, "restored Google Dialer as default (manual recovery) ok=$ok")
+        return ok
     }
 
     private fun tryRootRoles(context: Context) {
@@ -122,19 +130,11 @@ object DialerRoleHelper {
         }
     }
 
-    private fun rootPm(cmd: String) {
-        try {
-            val p = Runtime.getRuntime().exec(arrayOf("su", "-c", cmd))
-            val finished = p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
-            if (!finished) {
-                p.destroyForcibly()
-                Log.w(TAG, "root cmd timeout: $cmd")
-                return
-            }
-            Log.i(TAG, "root: $cmd exit=${p.exitValue()}")
-        } catch (e: Exception) {
-            Log.w(TAG, "root cmd failed ($cmd): ${e.message}")
-        }
+    /** Runs under `toybox timeout` (see [RootShell]); true when the command exited 0. */
+    private fun rootPm(cmd: String): Boolean {
+        val out = RootShell.run(cmd, 5)
+        if (!out.ok) Log.w(TAG, "root cmd failed exit=${out.exit}: $cmd")
+        return out.ok
     }
 
     private const val TAG = "DialerRoleHelper"

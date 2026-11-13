@@ -23,7 +23,7 @@ X-Calls-Token: <token>
 | `GET /calls/api/call/{id}/event.ics` | 日历建议，iCalendar 文件格式。该通话没有建议时返回 `404`。 |
 | `GET /calls/api/audio/{id}/listen` | 你当时会听到的整通电话（对方和 AI 混在一起），WAV，支持 range 请求。 |
 | `GET /calls/api/audio/{id}/remote` · `/tts` · `/audio/{id}` | 只有对方 · 只有 AI · 原始的混音录音。 |
-| `GET /calls/api/live` | 进行中的通话和已连接的手机：`{ok, count, calls, control_idle_clients, control_idle_serials}`。 |
+| `GET /calls/api/live` | 进行中的通话和已连接的手机：`{ok, count, calls, control_idle_clients, control_idle_serials, normal_mode_serials}`。`normal_mode_serials` 是已连接、但切成普通手机的手机；网页不把它们算进待命手机。 |
 | `GET /calls/api/stats` | `{ok, stats: {total, today, voicemails, blocked}}`。 |
 | `GET /calls/api/export.csv` | 筛选后的列表，CSV 格式（查询参数同 `list`，最多 2000 行）。 |
 
@@ -71,7 +71,7 @@ PUT /calls/api/settings
 | 方法和路径 | 内容 |
 |---|---|
 | `GET /calls/api/devices` | `{ok, usb: {enabled, adb_found, adb_path, error, phones: [{serial, state, model, reverse, app_installed}]}, connected: [...], labels: {<phone id>: <model>}, calls_in_progress, phones: [...]}`。最外层的 `phones` 是主程序启动后在 control 连接上见过的每部手机：`{serial, connected, mode, supports_mode, model, app_version, in_call, last_seen_ms}`。`mode` 是 `ai`（AI 接听）或 `normal`（普通手机，见[手机设置](PHONE.md#普通手机模式)）；早于这个功能的应用，`supports_mode` 为 false，始终是 `ai`。 |
-| `POST /calls/api/devices/{serial}/mode` | Body `{"mode": "ai" \| "normal"}`。让手机切换，最多等 15 秒等它回复。总是返回 `{ok, mode, error_code}`：`mode` 是切换后手机的模式（未知时为 `null`），成功时 `error_code` 为 `null`，否则是这些代码之一：`offline`（没连接）、`unsupported`（应用太旧）、`in_call`、`timeout`、`busy`（上一次切换还在进行）、`no_root`、`save_failed`、`dialer_failed`、`screening_failed`、`dnd_failed`、`volume_failed`、`invalid_mode`、`failed`。Body 里的 `mode` 无法识别时返回 400 和 `invalid_mode`。 |
+| `POST /calls/api/devices/{serial}/mode` | Body `{"mode": "ai" \| "normal"}`。让手机切换，最多等 15 秒等它回复。总是返回 `{ok, mode, error_code}`：`mode` 是切换后手机的模式（未知时为 `null`），成功时 `error_code` 为 `null`，否则是这些代码之一：`offline`（没连接）、`unsupported`（应用太旧）、`in_call`、`busy`（上一次切换还在进行）、`no_root`、`save_failed`、`dialer_failed`、`screening_failed`、`dnd_failed`、`volume_failed`、`failed`，或 `timeout`。`timeout` 的意思是“还没确认”，不是失败：切换本身可能让手机应用重新启动，它重新连上后才报告结果，所以稍后再读一次模式（`GET /calls/api/devices`）。Body 由主程序自己解析：不是 JSON、没有字符串 `mode`、或 serial 不是字母、数字、`-`、`_` 组成时，返回 HTTP 400、同样格式的 JSON，`error_code` 为 `bad_request`；`mode` 无法识别时返回 400 和 `invalid_mode`。 |
 | `GET /health` | 一个很大的扁平 JSON 对象，用于排查问题：版本、语言、哪些东西已配置、已连接的手机、进行中的通话；不含密钥或 token。`control_idle_clients`／`control_idle_serials` 统计的是所有已连接的手机；`normal_mode_serials` 列出切成普通手机、AI 不接它们电话的那几部。设置了控制台令牌而请求没有带上时，只会返回 `ok`、`version`、`language`、`active_call_count` 和 `control_idle_clients`（用于监控已经足够）。 |
 
 ## 手机这一端

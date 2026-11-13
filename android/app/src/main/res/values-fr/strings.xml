@@ -50,6 +50,7 @@
     <string name="mode_err_other">Une erreur inattendue s\'est produite.</string>
     <string name="btn_console">Ouvrir la console web</string>
     <string name="msg_no_browser">Aucune application de ce téléphone ne peut ouvrir de pages web.</string>
+    <string name="st_legacy_off">Sur ce téléphone, l\'ancien interrupteur « Réponse par l\'IA » était désactivé. Depuis cette mise à jour, c\'est l\'interrupteur ci-dessus qui décide : l\'IA répond maintenant. Désactivez-le pour garder un téléphone normal.</string>
 
     <!-- Setup steps (AI mode) -->
     <string name="steps_header">Étapes de configuration (%1$d sur %2$d faites)</string>

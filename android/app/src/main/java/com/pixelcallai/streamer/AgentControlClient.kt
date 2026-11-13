@@ -22,11 +22,13 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * [describe] adds the phone's current state to the `hello` (`phone_mode`, `in_call`).
  * The phone mode is not called `mode`: that field says which connection this is.
+ * [onOpened] runs right after the hello was sent (on the socket's thread).
  */
 class AgentControlClient(
     private val url: String,
     private val onCommand: (JSONObject) -> Unit,
     private val describe: (JSONObject) -> Unit = {},
+    private val onOpened: () -> Unit = {},
 ) {
     private var client: WebSocketClient? = null
     private val open = AtomicBoolean(false)
@@ -59,6 +61,11 @@ class AgentControlClient(
                 }
                 send(hello.toString())
                 Log.i(TAG, "control WS open ${Prefs.redactUrl(url)} serial=$serial mode=CONTROL_IDLE")
+                try {
+                    onOpened()
+                } catch (e: Exception) {
+                    Log.w(TAG, "after-hello step failed: ${e.message}")
+                }
                 ensurePingLoop()
             }
 

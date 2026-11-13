@@ -1787,9 +1787,15 @@ async fn handle_control_idle_ws(
                         let _ = send_json(&sink, json!({"type":"pong"})).await;
                     }
                     // The phone's mode (AI / normal phone) or call state changed.
-                    "status" => state.phones.on_status(&serial, &parsed),
+                    "status" => {
+                        state.phones.on_status(&serial, &parsed);
+                        sync_normal_mode(&state, &serial).await;
+                    }
                     // Answer to a web console mode switch (`set_mode`).
-                    "set_mode_result" => state.phones.on_mode_reply(&serial, &parsed),
+                    "set_mode_result" => {
+                        state.phones.on_mode_reply(&serial, &parsed);
+                        sync_normal_mode(&state, &serial).await;
+                    }
                     // Phone rings (not answered yet): how long to ring, and the AI gets
                     // ready meanwhile (ring once before answering).
                     "incoming" => {
@@ -1846,6 +1852,12 @@ async fn handle_control_idle_ws(
     // the new socket and removing by serial alone would hide a live idle phone.
     state.control.unregister_client_sink(&serial, &sink).await;
     state.phones.disconnected(&serial, &sink);
+}
+
+/// Call-backs skip phones in normal-phone mode: keep the dispatcher's list in line.
+async fn sync_normal_mode(state: &AppState, serial: &str) {
+    let normal = state.phones.mode_of(serial) == Some(calls_http::PhoneMode::Normal);
+    state.control.set_normal_mode(serial, normal).await;
 }
 
 /// Tell a phone's app where the web console is, for its "Open the web console"
@@ -2094,6 +2106,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         .register_client(serial.clone(), sink.clone())
                                         .await;
                                     state.phones.connected(&serial, sink.clone(), &parsed);
+                                    sync_normal_mode(&state, &serial).await;
                                     let _ = send_json(
                                         &sink,
                                         json!({

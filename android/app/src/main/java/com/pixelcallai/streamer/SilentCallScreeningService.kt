@@ -55,7 +55,9 @@ class SilentCallScreeningService : CallScreeningService() {
             return
         }
 
-        if (!Prefs.isAiCallEnabled(this)) {
+        // This runs in its own process: read the mode file once per call (the switch is
+        // made in the main process, so this process's cached copy may be old).
+        if (Prefs.refreshPhoneMode(this) != Prefs.PHONE_MODE_AI) {
             // Normal phone mode: the call rings like on any phone. (This app normally
             // no longer holds the screening role then; this covers the moment between.)
             respondAllowSilent(callDetails, silence = false)

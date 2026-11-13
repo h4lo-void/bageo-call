@@ -79,28 +79,47 @@
 
 **在网页控制台切换：** “系统 → 手机”。每部已连接的手机会显示名称、应用版本、当前模式和一个按钮：“**改成普通手机**”或“**改回 AI 接听**”。改成普通手机前会先弹出确认框。应用版本早于这个功能的手机，会显示“这部手机的 Myna 应用需要更新，才能从这里切换”，没有按钮。
 
-切成**普通手机**会改这些系统设置：
+切成**普通手机**会依次改这些系统设置：
 
-1. 重新启用 Google 电话（`com.google.android.dialer`），并设为默认电话应用。没有 Google 电话的手机，Myna 会把这个角色让出来，由 Android 使用手机自带的电话应用。
-2. Myna 不再是来电过滤应用，来电不会再被静音。
-3. 关掉勿扰模式。
-4. 铃声模式改回正常；铃声、通知、听筒、媒体、闹钟、系统音量恢复成这部手机上次切到 AI 模式前的数值。没保存过、或保存的是 0 的，就用最大值的一半。
-5. 麦克风不再被静音，听筒音量也不再被固定在最小。
+1. Myna 不再是来电过滤应用，来电不会再被静音。
+2. 关掉勿扰模式。
+3. 铃声模式改回正常；铃声、通知、听筒、媒体、闹钟、系统音量恢复成这部手机上次切到 AI 模式前的数值。没保存过、或保存的是 0 的，就用最大值的一半。
+4. 麦克风不再被静音，听筒音量也不再被固定在最小。
+5. 最后才重新启用 Google 电话（`com.google.android.dialer`），并设为默认电话应用。没有 Google 电话的手机，Myna 会把这个角色让出来，由 Android 使用手机自带的电话应用。要确认 Google 电话真的成了默认电话应用、而且没有被停用，这次切换才算完成。
+
+这些设置由一个 root 脚本来改。Android 在拿走电话应用角色时可能会把 Myna 关掉，脚本照样会跑完，所以换电话应用放在最后一步。
 
 Myna 的服务会继续运行、保持连接，方便你从网页控制台切回来，但它不会接、不会静音、也不会碰任何一通电话。网页控制台会把这部手机显示为普通手机，`/health` 的 `normal_mode_serials` 也会列出它。
 
-切回“**AI 帮我接电话**”时，会先把当前音量保存起来，再重做一次模块的接管：Myna 成为电话应用和来电过滤应用、停用 Google 电话的通话界面、打开勿扰、音量归零。
+切回“**AI 帮我接电话**”时，会先把当前音量保存起来，再重做一次模块的接管：Myna 成为电话应用和来电过滤应用、停用 Google 电话应用、打开勿扰、音量归零。
 
-切换做到一半失败时，应用和网页控制台都会说明是哪一步没成功（例如“无法更换默认电话应用”）。再切一次会把每一步重做一遍。切换需要 root，Root 管理器询问时请允许。
+切换做到一半失败时，应用和网页控制台都会说明是哪一步没成功（例如“无法更换默认电话应用”）。再切一次会把每一步重做一遍；切换还没完成时，应用下次启动（例如重启后）也会自己重做。切换需要 root，Root 管理器询问时请允许。网页控制台 15 秒内没收到手机回复时，会显示“结果未确认，请稍后刷新”，稍后刷新就能看到手机报告的模式。
 
-模式保存在 `/data/adb/pixelcallai/mode`（内容是 `ai` 或 `normal`），在模块文件夹外面，所以重启、更新模块都不会丢。模块每次开机都会读取它；文件不存在就是 AI 模式。普通手机要恢复的音量保存在 `/data/adb/pixelcallai/normal_audio`。不通过应用界面切换的话，写入模式后重启，应用的服务启动时会把其余设置补上：
+如果你用过 0.2.2 以前的版本、而且当时把“AI 接听”开关关掉了：那个设置已经不算数，更新后这部手机会由 AI 接电话，状态卡上也会有一行提示。要继续当普通手机，请把“**AI 帮我接电话**”关掉。
 
-```text
-adb shell su -c "mkdir -p /data/adb/pixelcallai && echo normal > /data/adb/pixelcallai/mode"
-adb reboot
-```
+模式保存在 `/data/adb/pixelcallai/mode`（内容是 `ai` 或 `normal`），在模块文件夹外面，所以重启、更新模块都不会丢。模块每次开机都会读取它；文件不存在就是 AI 模式。普通手机要恢复的音量保存在 `/data/adb/pixelcallai/normal_audio`，上一次切换的结果在 `last_apply`，切换还没完成时会有 `pending` 这个文件。
+
+不通过应用界面、用电脑的 `adb` 切换：
+
+- 不用重启（应用会一次把整个切换做完）：
+
+  ```text
+  adb shell am start-foreground-service -n com.pixelcallai.streamer/.CallAudioService -a com.pixelcallai.streamer.SET_ENABLED --ez enabled false
+  ```
+
+  改成 `--ez enabled true` 就切回“**AI 帮我接电话**”。
+- 写入模式文件再重启（应用的服务启动时会把其余设置补上）：
+
+  ```text
+  adb shell "su -c 'mkdir -p /data/adb/pixelcallai && echo normal > /data/adb/pixelcallai/mode'"
+  adb reboot
+  ```
+
+  切回 AI 模式：改写成 `ai`（`echo ai > …`），或用 `adb shell "su -c 'rm -f /data/adb/pixelcallai/mode'"` 删掉这个文件，再重启。
 
 ## 还原
+
+**要装回旧版 Myna（0.2.2 以前的任何版本）之前**，先把手机切回“**AI 帮我接电话**”，或删掉状态文件夹：`adb shell "su -c 'rm -rf /data/adb/pixelcallai'"`。旧版不认识模式文件：它的模块每次开机都会重新接管手机，模式文件写着 `normal` 也一样。等你以后再装回这个版本，它会在模式文件里看到 `normal`，自己把手机切成普通手机，AI 就在没人要求的情况下停止接电话。
 
 1. 先把手机切成[普通手机](#普通手机模式)。这会恢复 Google 的电话应用、铃声和音量，并关掉勿扰，第 3、4 步就不用做了。
 2. 在 Magisk / KernelSU 里停用或移除 **Myna Uplink** 模块，然后重启。如果手机启动不到那一步，请使用 root 管理器的安全模式，或者在 recovery 里以 root 身份运行：`touch /data/adb/modules/pixelcallai_uplink/disable`。模式文件所在的 `/data/adb/pixelcallai/` 会保留；以后不打算再装 Myna 的话，把这个文件夹也删掉。

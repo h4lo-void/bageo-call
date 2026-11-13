@@ -105,6 +105,11 @@ class CallAudioService : Service() {
     @Volatile private var pendingAnswerPlan: CompletableDeferred<Long>? = null
     /** Last call state (ringing/active vs idle) reported to the agent in `status`. */
     @Volatile private var reportedInCall: Boolean? = null
+    /**
+     * Result of a switch the agent asked for, found at start-up because the app was
+     * stopped while the root script ran; sent as `set_mode_result` once connected.
+     */
+    private val unreportedResult = java.util.concurrent.atomic.AtomicReference<PhoneModeManager.ApplyLog?>(null)
     private val modeListener = PhoneModeManager.Listener { mode ->
         mainHandler.post { onPhoneModeChanged(mode) }
     }
@@ -116,8 +121,19 @@ class CallAudioService : Service() {
         audioGuard = LocalAudioGuard(this)
         telephonyManager = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
         PhoneModeManager.addListener(modeListener)
-        // The module's mode file wins over the app's copy (changed by hand, data cleared).
-        PhoneModeManager.syncFromRoot(this)
+        if (Prefs.legacyAiSwitchOff(this) && !Prefs.hasPhoneModeFile(this)) {
+            Log.w(
+                TAG,
+                "the old 'AI answering' switch was off; this version answers with the AI " +
+                    "until 'AI answers my calls' is turned off",
+            )
+        }
+        // Finish an interrupted switch, follow the module's mode file, and pick up the
+        // result of a switch whose answer was lost when the app was stopped.
+        PhoneModeManager.syncFromRoot(this) { log ->
+            unreportedResult.set(log)
+            flushUnreportedResult()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -171,23 +187,45 @@ class CallAudioService : Service() {
         return START_STICKY
     }
 
-    private fun armWatcher() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            var fgsType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                fgsType = fgsType or ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
-            }
-            startForeground(
-                NOTIF_ID,
-                buildNotification(getString(R.string.notification_text_armed)),
-                fgsType,
-            )
-        } else {
-            startForeground(NOTIF_ID, buildNotification(getString(R.string.notification_text_armed)))
+    /**
+     * Foreground with the types the mode needs: microphone (and phone call on 14+) in
+     * AI mode, phone call only in normal mode (the app holds no phone role then, and a
+     * microphone service started in the background can be refused). A refusal must
+     * not crash the app: it falls back to the plain call, and failing that only logs,
+     * so the control connection still comes up.
+     */
+    private fun enterForeground() {
+        val notification = buildNotification(getString(R.string.notification_text_armed))
+        val type = when {
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q -> null
+            !Prefs.isAiCallEnabled(this) -> ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE ->
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
+            else -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         }
+        try {
+            if (type != null) startForeground(NOTIF_ID, notification, type) else startForeground(NOTIF_ID, notification)
+            return
+        } catch (e: Exception) {
+            Log.e(TAG, "startForeground type=$type refused", e)
+        }
+        try {
+            startForeground(NOTIF_ID, notification)
+        } catch (e: Exception) {
+            Log.e(TAG, "startForeground refused; the service keeps going without it", e)
+        }
+    }
+
+    private fun armWatcher() {
+        enterForeground()
         if (!Prefs.isAiCallEnabled(this)) {
             // Normal phone mode: keep the agent connection (status, remote switch) and
             // the call-state callback (in_call for the agent); touch nothing else.
+            try {
+                (getSystemService(AUDIO_SERVICE) as android.media.AudioManager).isMicrophoneMute = false
+            } catch (e: Exception) {
+                Log.w(TAG, "microphone unmute: ${e.message}")
+            }
             registerPhoneCallbacks()
             startControlClient()
             Log.i(TAG, "normal phone mode: service connected, calls left alone")
@@ -961,6 +999,11 @@ class CallAudioService : Service() {
                 // The agent sends the console address again after this hello (if it has one).
                 Prefs.setConsoleUrl(this, null)
             },
+            onOpened = {
+                // The mode the phone really ended up in, and a result lost with a restart.
+                sendStatus()
+                flushUnreportedResult()
+            },
         )
         controlClient = client
         client.connect(deviceSerial())
@@ -993,19 +1036,42 @@ class CallAudioService : Service() {
 
     /** Agent `set_mode` (web console): switch, then answer with `set_mode_result`. */
     private fun handleSetMode(obj: org.json.JSONObject) {
-        val id = obj.optString("id")
+        // The id also names the root script's run, so a result lost with an app
+        // restart can still be sent later (see flushUnreportedResult).
+        val id = PhoneModeManager.safeId(obj.optString("id"))
         val mode = obj.optString("mode").trim()
         Log.i(TAG, "set_mode from agent mode=$mode id=$id")
-        PhoneModeManager.requestSwitch(this, mode, callBusy = isCallBusy()) { result ->
-            controlClient?.sendJson(
-                org.json.JSONObject()
-                    .put("type", "set_mode_result")
-                    .put("id", id)
-                    .put("ok", result.ok)
-                    .put("mode", result.mode)
-                    .put("error", result.error),
-            )
+        val runId = id.ifEmpty { PhoneModeManager.newLocalId() }
+        PhoneModeManager.requestSwitch(this, mode, callBusy = isCallBusy(), id = runId) { result ->
+            sendModeResult(id, result.ok, result.mode, result.error)
         }
+    }
+
+    private fun sendModeResult(id: String, ok: Boolean, mode: String, error: String) {
+        if (id.isEmpty()) return
+        val client = controlClient
+        if (client == null || !client.isOpen()) {
+            // Not connected right now: send it after the next hello.
+            unreportedResult.set(PhoneModeManager.ApplyLog(id, mode, true, if (ok) "" else error.ifEmpty { "failed" }))
+            return
+        }
+        client.sendJson(
+            org.json.JSONObject()
+                .put("type", "set_mode_result")
+                .put("id", id)
+                .put("ok", ok)
+                .put("mode", mode)
+                .put("error", error),
+        )
+        Prefs.setReportedApplyId(this, id)
+    }
+
+    /** Send the result found at start-up once the control connection is open. */
+    private fun flushUnreportedResult() {
+        if (controlClient?.isOpen() != true) return
+        val log = unreportedResult.getAndSet(null) ?: return
+        Log.i(TAG, "sending the result of switch id=${log.id} found at start-up ok=${log.ok}")
+        sendModeResult(log.id, log.ok, Prefs.phoneMode(this), log.error)
     }
 
     /** Main thread: the phone mode was (re)applied by [PhoneModeManager]. */

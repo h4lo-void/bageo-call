@@ -130,19 +130,24 @@ name, app version, mode and a button, **Switch to normal phone** or
 first. A phone whose app is older than this feature shows *Update the Myna
 app…* instead of the button.
 
-Switching to a **normal phone** changes these system settings:
+Switching to a **normal phone** changes these system settings, in this order:
 
-1. Google Phone (`com.google.android.dialer`) is enabled again and becomes the
-   default phone app. On a phone without it, Myna gives the role up and
-   Android uses its own phone app.
-2. Myna is no longer the call-screening app, so calls are not silenced.
-3. Do Not Disturb is turned off.
-4. The ringer is set to normal, and the ring, notification, earpiece, media,
+1. Myna is no longer the call-screening app, so calls are not silenced.
+2. Do Not Disturb is turned off.
+3. The ringer is set to normal, and the ring, notification, earpiece, media,
    alarm and system volumes go back to what they were before the phone last
    became an AI phone. Where nothing was saved, or the saved value was zero,
    half of the maximum is used.
-5. The microphone is no longer muted and the earpiece is no longer held at its
+4. The microphone is no longer muted and the earpiece is no longer held at its
    lowest level.
+5. Last, Google Phone (`com.google.android.dialer`) is enabled again and
+   becomes the default phone app. On a phone without it, Myna gives the role
+   up and Android uses its own phone app. The switch only counts as done when
+   Google Phone really is the default phone app and is not disabled.
+
+A root script makes these changes. It keeps running even when Android stops
+the Myna app on the way (taking the phone-app role away from an app can do
+that), which is why the phone app changes last.
 
 Myna's service keeps running and stays connected to the agent, so you can
 switch back from the web console, but it does not answer, silence or mute any
@@ -151,27 +156,58 @@ it in `normal_mode_serials`.
 
 Switching back to **AI answers my calls** first saves the current volumes,
 then repeats the module's takeover: Myna becomes the phone app and the call
-screener, Google Phone's call screen is disabled, Do Not Disturb goes on and
+screener, the Google Phone app is disabled, Do Not Disturb goes on and
 the volumes go to zero.
 
 If a switch stops halfway, the app and the web console say which step did not
 work (for example, the default phone app could not be changed). Switching
-again repeats every step. Switching needs root; allow it when the root
-manager asks.
+again repeats every step, and so does the next start of the app (after a
+reboot, for example) while a switch is unfinished. Switching needs root;
+allow it when the root manager asks. When the web console gets no answer
+within 15 seconds it says the result is not confirmed yet: refresh a little
+later to see the mode the phone reports.
+
+If you used an app version before 0.2.2 and its **AI answering** switch was
+off, that setting no longer counts: after the update the phone answers with
+the AI, and the card at the top says so. Turn **AI answers my calls** off if
+the phone should stay a normal phone.
 
 The mode is stored in `/data/adb/pixelcallai/mode` (`ai` or `normal`),
 outside the module's folder, so it survives reboots and module updates. The
 module reads it at every boot; no file means AI mode. The volumes saved for
-the normal phone are in `/data/adb/pixelcallai/normal_audio`. To switch
-without the app's screen, write the mode and reboot; the app applies the rest
-when its service starts:
+the normal phone are in `/data/adb/pixelcallai/normal_audio`, the result of
+the last switch in `last_apply`, and `pending` exists while a switch is
+unfinished.
 
-```text
-adb shell su -c "mkdir -p /data/adb/pixelcallai && echo normal > /data/adb/pixelcallai/mode"
-adb reboot
-```
+To switch without the app's screen, from a computer with `adb`:
+
+- Without a reboot (the app does the whole switch at once):
+
+  ```text
+  adb shell am start-foreground-service -n com.pixelcallai.streamer/.CallAudioService -a com.pixelcallai.streamer.SET_ENABLED --ez enabled false
+  ```
+
+  `--ez enabled true` switches back to **AI answers my calls**.
+- By writing the file and rebooting (the app applies the rest when its service
+  starts):
+
+  ```text
+  adb shell "su -c 'mkdir -p /data/adb/pixelcallai && echo normal > /data/adb/pixelcallai/mode'"
+  adb reboot
+  ```
+
+  Back to AI mode: write `ai` instead (`echo ai > …`), or remove the file
+  with `adb shell "su -c 'rm -f /data/adb/pixelcallai/mode'"`, then reboot.
 
 ## Rollback
+
+**Before installing an older Myna version** (any version before 0.2.2), switch
+the phone back to **AI answers my calls**, or delete the state folder:
+`adb shell "su -c 'rm -rf /data/adb/pixelcallai'"`. Older versions do not
+know the mode file: their module takes the phone over again at every boot,
+even when the file says `normal`. When you later install this version
+again, it finds `normal` in the file and turns the phone into a normal phone
+by itself, so the AI stops answering without anyone asking for it.
 
 1. Switch the phone to a [normal phone](#normal-phone-mode) first. That
    brings back Google's phone app, the ringer and the volumes, and turns off

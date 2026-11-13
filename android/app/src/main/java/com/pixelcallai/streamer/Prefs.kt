@@ -12,6 +12,14 @@ object Prefs {
     const val KEY_AGENT_URL = "AGENT_URL"
     /** Web console address the agent sent (`agent_info`); cleared on every new connection. */
     const val KEY_CONSOLE_URL = "CONSOLE_URL"
+    /** Id of the last mode switch whose `set_mode_result` went to the agent. */
+    const val KEY_REPORTED_APPLY_ID = "REPORTED_APPLY_ID"
+    /**
+     * The switch of app versions before 0.2.2 ("AI answering", default on). It is not
+     * used any more; when an upgraded phone still has it off, the setup screen says that
+     * the phone now answers with the AI until the new switch is turned off.
+     */
+    private const val KEY_LEGACY_AI_CALL_ENABLED = "AI_CALL_ENABLED"
     /**
      * Legacy agent-synced spam blocklist key. Reject gating is **disabled**;
      * [setBlocklist] may still store unused values from `blocklist_sync`.
@@ -32,6 +40,20 @@ object Prefs {
     private const val PHONE_MODE_FILE = "phone_mode"
 
     /**
+     * Characters dropped before the mode is compared, the same as service.sh and the
+     * root script: blanks (space, tab, CR, LF, VT, FF) and a UTF-8 byte order mark.
+     */
+    private const val MODE_JUNK = " \t\r\n\u000B\u000C\uFEFF"
+
+    /**
+     * This process's copy of the mode, so the call path does not read a file every
+     * 500 ms. Set by [setPhoneMode] (the main process makes every switch); the
+     * `:screening` process reloads it with [refreshPhoneMode] once per call.
+     */
+    @Volatile
+    private var cachedPhoneMode: String? = null
+
+    /**
      * Device-protected prefs so BootReceiver / direct-boot arming works before the
      * lockscreen is dismissed (a dedicated phone usually sits locked on a USB cable).
      */
@@ -46,16 +68,29 @@ object Prefs {
     /**
      * [PHONE_MODE_AI] unless the phone was switched to a normal phone. No file = AI,
      * which is how every phone ran before the switch existed. (The old
-     * `AI_CALL_ENABLED` preference is no longer read.)
+     * `AI_CALL_ENABLED` preference does not change it; see [legacyAiSwitchOff].)
      */
-    fun phoneMode(ctx: Context): String {
+    fun phoneMode(ctx: Context): String = cachedPhoneMode ?: refreshPhoneMode(ctx)
+
+    /** Read the mode file again (the `:screening` process, once per incoming call). */
+    fun refreshPhoneMode(ctx: Context): String {
         val text = try {
             val f = phoneModeFile(ctx)
-            if (f.isFile) f.readText().trim() else ""
+            if (f.isFile) f.readText() else ""
         } catch (_: Exception) {
             ""
         }
-        return if (text == PHONE_MODE_NORMAL) PHONE_MODE_NORMAL else PHONE_MODE_AI
+        return normalizeMode(text).also { cachedPhoneMode = it }
+    }
+
+    /** "normal" after dropping blanks and a BOM; anything else is AI. */
+    fun normalizeMode(raw: String): String =
+        if (raw.filterNot { it in MODE_JUNK } == PHONE_MODE_NORMAL) PHONE_MODE_NORMAL else PHONE_MODE_AI
+
+    fun hasPhoneModeFile(ctx: Context): Boolean = try {
+        phoneModeFile(ctx).isFile
+    } catch (_: Exception) {
+        false
     }
 
     /** Only [PhoneModeManager] calls this, after the module's file says the same. */
@@ -66,7 +101,7 @@ object Prefs {
             val tmp = File(file.parentFile, "$PHONE_MODE_FILE.tmp")
             tmp.writeText(mode)
             if (!tmp.renameTo(file)) file.writeText(mode)
-            phoneMode(ctx) == mode
+            refreshPhoneMode(ctx) == mode
         } catch (_: Exception) {
             false
         }
@@ -74,6 +109,22 @@ object Prefs {
 
     /** True in AI mode: the app answers calls, mutes the phone and holds the phone-app roles. */
     fun isAiCallEnabled(ctx: Context): Boolean = phoneMode(ctx) == PHONE_MODE_AI
+
+    /** The old "AI answering" switch was off on this phone (before the upgrade). */
+    fun legacyAiSwitchOff(ctx: Context): Boolean =
+        !sp(ctx).getBoolean(KEY_LEGACY_AI_CALL_ENABLED, true)
+
+    /** After the first switch with the new control the old setting means nothing. */
+    fun clearLegacyAiSwitch(ctx: Context) {
+        sp(ctx).edit().remove(KEY_LEGACY_AI_CALL_ENABLED).apply()
+    }
+
+    fun reportedApplyId(ctx: Context): String =
+        sp(ctx).getString(KEY_REPORTED_APPLY_ID, "").orEmpty()
+
+    fun setReportedApplyId(ctx: Context, id: String) {
+        sp(ctx).edit().putString(KEY_REPORTED_APPLY_ID, id).apply()
+    }
 
     /** The web console's address, when the connected agent sent one. */
     fun consoleUrl(ctx: Context): String? =
