@@ -665,6 +665,7 @@ class CallAudioService : Service() {
                 .put("type", "incoming")
                 .put("serial", deviceSerial())
                 .put("caller_id", caller)
+                .put("sim_country", Prefs.lastSimCountry(this))
                 .put("sample_rate", BuildConfig.SAMPLE_RATE),
         )
         val ms = withTimeoutOrNull(ANSWER_PLAN_WAIT_MS) { plan.await() }
@@ -838,6 +839,7 @@ class CallAudioService : Service() {
                         serial = serial,
                         callerId = caller,
                         sampleRate = BuildConfig.SAMPLE_RATE,
+                        simCountry = Prefs.lastSimCountry(this@CallAudioService),
                     )
                 }
             ) {
@@ -1443,6 +1445,7 @@ class CallAudioService : Service() {
             }
         }
         Prefs.clearLastCallerId(this)
+        Prefs.setLastSimCountry(this, "")
         updateNotification(getString(R.string.notification_text_armed))
     }
 

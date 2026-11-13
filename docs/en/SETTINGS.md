@@ -114,7 +114,7 @@ words instead, and the transcript is always in the console.
 | Setting | What it does |
 |---|---|
 | Country calling code | Your SIM's country calling code without `+` (`886`, `1`, `44`, `81`). Lets blocked numbers written as `+44 20…` match the national form the phone reports. With the language set to 繁體中文 and this left empty, `886` is assumed. |
-| Wait for the carrier's warning on international calls | Taiwan's carriers play a recorded warning at the start of every call from abroad. *Auto* (on for 繁體中文) makes the AI wait for it instead of answering it. Elsewhere leave it on *auto* or *off*. |
+| Wait for the carrier's warning on international calls | Taiwan's carriers play a recorded warning at the start of every call from abroad. On *auto* the AI waits for it only when a Taiwanese SIM takes a call from abroad; calls on any other SIM (say, a US SIM in a dual-SIM phone) have no warning, so the AI answers at once. Phone app 0.2.5+ reports which SIM took the call; with an older app, *auto* goes by the language (繁體中文 = a Taiwanese SIM). *On* waits on every call from abroad, *off* never. |
 | Thinking level | For "thinking" Live models only: low / medium / high. |
 
 ## Start-up options

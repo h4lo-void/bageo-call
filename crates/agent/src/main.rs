@@ -1880,6 +1880,7 @@ async fn handle_control_idle_ws(
                     // ready meanwhile (ring once before answering).
                     "incoming" => {
                         let caller = extract_caller_id_from_msg(&parsed).unwrap_or_default();
+                        note_call_sim_country(&serial, &parsed);
                         let sample_rate = parsed
                             .get("sample_rate")
                             .and_then(|v| v.as_u64())
@@ -2255,6 +2256,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                 if let Some(c) = extract_caller_id_from_msg(&parsed) {
                                     caller_id = c;
                                 }
+                                note_call_sim_country(&serial, &parsed);
                                 if let Some(sr) = parsed.get("sample_rate").and_then(|v| v.as_u64()) {
                                     sample_rate = sr as u32;
                                     vad = EnergyVad::new(
@@ -3724,6 +3726,50 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
             "hold_started": hold_started,
         }),
     );
+}
+
+/// Country of the SIM each phone's current call came in on (`sim_country` on
+/// `incoming` / `hello`, phone app 0.2.5+; ISO 3166 alpha-2, lowercase). Decides
+/// whether the AI waits for the carrier's international-call warning.
+fn call_sim_countries() -> &'static std::sync::Mutex<HashMap<String, String>> {
+    static M: std::sync::OnceLock<std::sync::Mutex<HashMap<String, String>>> =
+        std::sync::OnceLock::new();
+    M.get_or_init(Default::default)
+}
+
+/// The `sim_country` field: `None` = not sent (older app), `Some(None)` = sent but
+/// not two letters (the phone could not tell), `Some(Some(iso))` = lowercase ISO code.
+fn sim_country_from_msg(parsed: &Value) -> Option<Option<String>> {
+    let v = parsed.get("sim_country")?;
+    Some(
+        v.as_str()
+            .map(|s| s.trim().to_ascii_lowercase())
+            .filter(|s| s.len() == 2 && s.bytes().all(|b| b.is_ascii_lowercase())),
+    )
+}
+
+fn note_call_sim_country(serial: &str, parsed: &Value) {
+    let Some(sim) = sim_country_from_msg(parsed) else {
+        return;
+    };
+    let mut m = call_sim_countries().lock().unwrap_or_else(|e| e.into_inner());
+    let key = canonical_device_serial(serial);
+    match sim {
+        Some(iso) => {
+            m.insert(key, iso);
+        }
+        None => {
+            m.remove(&key);
+        }
+    }
+}
+
+fn call_sim_country(serial: &str) -> Option<String> {
+    call_sim_countries()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&canonical_device_serial(serial))
+        .cloned()
 }
 
 /// Prefer `caller_id`, then `from` (Android may send either). Empty omitted.
@@ -5590,8 +5636,17 @@ fn start_gemini_session_core(
     let persona_max_secs = rt.persona_max_secs();
     let server_vad = rt.gemini_server_vad;
     let thinking_level = rt.gemini_thinking_level.clone();
+    let sim_country = call_sim_country(serial);
     let intl_caller =
-        persona && rt.intl_carrier_prompt_on() && gemini_live::is_intl_caller(&cfg.caller_id);
+        persona && rt.intl_carrier_prompt_for(&cfg.caller_id, sim_country.as_deref());
+    if persona && gemini_live::is_intl_caller(&cfg.caller_id) {
+        info!(
+            "intl caller serial={serial} caller={} sim_country={} setting={} → hold opening for carrier prompt={intl_caller}",
+            cfg.caller_id,
+            sim_country.as_deref().unwrap_or("?"),
+            rt.intl_carrier_prompt
+        );
+    }
     // Appointments (setting `appointment_mode`): normal persona calls only.
     let appointments = if persona {
         appointments::ApptSession::for_call(rt, http, &cfg.caller_id)
@@ -9841,9 +9896,9 @@ mod unknown_caller_tests {
     use super::{
         canonical_device_serial, cid_route_after_wait, cid_route_on_hello,
         extract_caller_id_from_msg, is_immediate_hidden_caller, is_isolated_screening_serial,
-        is_unknown_or_hidden_caller, summary_end_hint, CidRoute, MediaCallGuard, MediaPlayGate,
-        MediaPlayKind, RejectPending, EMPTY_CID_WAIT, GEMINI_MEDIA_SEND_TIMEOUT,
-        REJECT_PENDING_TTL,
+        is_unknown_or_hidden_caller, sim_country_from_msg, summary_end_hint, CidRoute,
+        MediaCallGuard, MediaPlayGate, MediaPlayKind, RejectPending, EMPTY_CID_WAIT,
+        GEMINI_MEDIA_SEND_TIMEOUT, REJECT_PENDING_TTL,
     };
     use serde_json::json;
     use std::time::Duration;
@@ -10071,6 +10126,20 @@ mod unknown_caller_tests {
         );
         let v3 = json!({"type":"hello"});
         assert!(extract_caller_id_from_msg(&v3).is_none());
+    }
+
+    #[test]
+    fn sim_country_field() {
+        // Older phone app: no field, nothing known.
+        assert_eq!(sim_country_from_msg(&json!({"type":"incoming"})), None);
+        assert_eq!(
+            sim_country_from_msg(&json!({"type":"incoming","sim_country":" US "})),
+            Some(Some("us".to_string()))
+        );
+        // Sent but unreadable: the SIM is unknown for this call.
+        assert_eq!(sim_country_from_msg(&json!({"type":"hello","sim_country":""})), Some(None));
+        assert_eq!(sim_country_from_msg(&json!({"type":"hello","sim_country":"usa"})), Some(None));
+        assert_eq!(sim_country_from_msg(&json!({"type":"hello","sim_country":7})), Some(None));
     }
 }
 

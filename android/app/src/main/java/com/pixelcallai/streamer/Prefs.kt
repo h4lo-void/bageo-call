@@ -9,6 +9,7 @@ object Prefs {
     private const val NAME = "pixel_call_ai"
     const val KEY_MODE = "AUDIO_MODE"
     const val KEY_LAST_CALLER_ID = "LAST_CALLER_ID"
+    const val KEY_LAST_SIM_COUNTRY = "LAST_SIM_COUNTRY"
     const val KEY_AGENT_URL = "AGENT_URL"
     /** Web console address the agent sent (`agent_info`); cleared on every new connection. */
     const val KEY_CONSOLE_URL = "CONSOLE_URL"
@@ -200,6 +201,18 @@ object Prefs {
 
     fun clearLastCallerId(ctx: Context) {
         sp(ctx).edit().remove(KEY_LAST_CALLER_ID).apply()
+    }
+
+    /**
+     * Country of the SIM the current call came in on (ISO 3166 alpha-2, lowercase;
+     * "" = unknown). The agent waits for a carrier's international-call warning only
+     * on SIMs whose carrier plays one.
+     */
+    fun lastSimCountry(ctx: Context): String =
+        sp(ctx).getString(KEY_LAST_SIM_COUNTRY, "") ?: ""
+
+    fun setLastSimCountry(ctx: Context, iso: String) {
+        sp(ctx).edit().putString(KEY_LAST_SIM_COUNTRY, iso.trim().lowercase()).apply()
     }
 
     fun blocklist(ctx: Context): Set<String> =

@@ -5,6 +5,8 @@ import android.os.Build
 import android.telecom.Call
 import android.telecom.InCallService
 import android.telecom.VideoProfile
+import android.telephony.SubscriptionManager
+import android.telephony.TelephonyManager
 import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -41,6 +43,7 @@ class SilentInCallService : InCallService() {
         }
         val state = call.state
         val caller = stashCallerId(call)
+        stashSimCountry(call)
         Log.i(TAG, "onCallAdded state=$state caller_len=${caller.length}")
         ensureArmed(caller)
         LocalAudioGuard(this).applyHardMute()
@@ -171,6 +174,30 @@ class SilentInCallService : InCallService() {
             Log.w(TAG, "stashCallerId failed: ${e.message}")
             ""
         }
+    }
+
+    /** Which SIM the call came in on, by country: see [Prefs.lastSimCountry]. */
+    private fun stashSimCountry(call: Call) {
+        val iso = try {
+            simCountryOf(call)
+        } catch (e: Exception) {
+            Log.w(TAG, "sim country lookup failed: ${e.message}")
+            ""
+        }
+        Prefs.setLastSimCountry(this, iso)
+        Log.i(TAG, "call sim_country=${iso.ifEmpty { "?" }}")
+    }
+
+    private fun simCountryOf(call: Call): String {
+        val handle = call.details?.accountHandle ?: return ""
+        val tm = getSystemService(TelephonyManager::class.java) ?: return ""
+        val subId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            tm.getSubscriptionId(handle)
+        } else {
+            handle.id.toIntOrNull() ?: SubscriptionManager.INVALID_SUBSCRIPTION_ID
+        }
+        if (!SubscriptionManager.isValidSubscriptionId(subId)) return ""
+        return tm.createForSubscriptionId(subId).simCountryIso.orEmpty()
     }
 
     companion object {
