@@ -168,8 +168,8 @@ apply_normal() {
     ok=1
     q pm enable "$GD" || ok=0
     q pm enable "$GD/com.android.incallui.InCallServiceImpl" || ok=0
-    q pm enable "$GD/com.android.incallui.InCallActivity" || ok=0
-    # Only in older Google Phone versions.
+    # Only in some Google Phone versions (current ones have neither): best effort.
+    q pm enable "$GD/com.android.incallui.InCallActivity"
     q pm enable "$GD/com.android.incallui.LegacyInCallActivity"
     [ "$ok" = 1 ] || dialer_fail
     o pm list packages -d | grep -qx "package:$GD" && dialer_fail

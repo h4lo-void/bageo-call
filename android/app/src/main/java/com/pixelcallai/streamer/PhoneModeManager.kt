@@ -79,6 +79,8 @@ object PhoneModeManager {
     /** The helper looks every 2 seconds: a request still there by then means it is not running. */
     private const val SCRIPT_START_MS = 10_000L
     private const val SCRIPT_MAX_MS = 90_000L
+    /** The module's helper starts about this long after boot at the latest. */
+    private const val BOOT_GRACE_MS = 180_000L
     private const val POLL_MS = 400L
     /**
      * Service start: how long to wait for a state written since this boot. At boot the
@@ -286,8 +288,11 @@ object PhoneModeManager {
         val line = (listOf(target, id) + volumes.map { it.toString() }).joinToString(" ")
         if (!writeRequest(request, line)) return Result(false, before, ERR_FAILED)
         if (!waitForPickup(request)) {
-            Log.e(TAG, "nobody took the mode request (id=$id): the Myna module is not running")
-            return Result(false, before, ERR_NO_ROOT)
+            // Right after a boot the module's helper starts late (boot completed + ~10 s):
+            // "busy, try again" then, not "the module is not running".
+            val early = SystemClock.elapsedRealtime() < BOOT_GRACE_MS
+            Log.e(TAG, "nobody took the mode request (id=$id, early=$early)")
+            return Result(false, before, if (early) ERR_BUSY else ERR_NO_ROOT)
         }
         if (target == Prefs.PHONE_MODE_NORMAL) {
             // Stop muting at once; the module's script changes the system settings.
@@ -297,11 +302,13 @@ object PhoneModeManager {
             notifyListeners(Prefs.PHONE_MODE_NORMAL)
         }
         val log = waitForRun(ctx, id)
+        // No result in time: the script may still be running, so the state file still has
+        // the old mode. Keep the app's copy; the next service start brings it in line.
+        if (log == null) return Result(false, Prefs.phoneMode(ctx), ERR_FAILED)
         // The mode file is the truth (a failed "save" step leaves the old mode).
         val mode = readRootMode(ctx) ?: Prefs.phoneMode(ctx)
         Prefs.setPhoneMode(ctx, mode)
         notifyListeners(mode)
-        if (log == null) return Result(false, mode, ERR_FAILED)
         if (!log.ok) return Result(false, mode, log.error.ifEmpty { ERR_FAILED })
         Prefs.clearLegacyAiSwitch(ctx)
         return Result(true, mode, "")

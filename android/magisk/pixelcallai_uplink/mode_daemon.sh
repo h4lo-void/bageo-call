@@ -92,21 +92,30 @@ state_lines() {
   return 0
 }
 
-# Write the state: a temporary file, given to the app (owner, mode 600, the folder's
-# SELinux label), then renamed over the old one. Skipped while the folder is missing.
+# The app owns files/ and files/mode/ and could put links there to send root's file
+# operations elsewhere. So every file is made or taken inside root's own $DIR, and
+# moved in or out with "mv -T" (a link at the target is replaced, never followed).
+app_dir_ok() {
+  [ -d "$APPDIR" ] && [ ! -L "$APPHOME/files" ] && [ ! -L "$APPDIR" ]
+}
+
+# Write the state: a temporary file in $DIR, given to the app (owner, mode 600, the
+# app folder's SELinux label), then moved over the old one. Skipped while the folder
+# is missing.
 publish() {
-  [ -d "$APPDIR" ] || return 1
+  app_dir_ok || return 1
   own=$(stat -c %u:%g "$APPHOME" 2>/dev/null)
   case "$own" in ''|:*|*:|*[!0-9:]*) return 1 ;; esac
-  tmp=$APPDIR/state.tmp
+  tmp=$DIR/state.tmp
+  rm -rf "$tmp"
   state_lines "$1" > "$tmp" 2>/dev/null
   if [ ! -s "$tmp" ] || ! chown "$own" "$tmp" 2>/dev/null || ! chmod 600 "$tmp" 2>/dev/null; then
     rm -f "$tmp"
     return 1
   fi
-  label=$(stat -c %C "$APPDIR" 2>/dev/null)
+  label=$(stat -c %C "$APPHOME" 2>/dev/null)
   case "$label" in u:object_r:*) chcon "$label" "$tmp" 2>/dev/null ;; esac
-  if ! mv -f "$tmp" "$APPDIR/state" 2>/dev/null; then
+  if ! app_dir_ok || ! mv -fT "$tmp" "$APPDIR/state" 2>/dev/null; then
     rm -f "$tmp"
     return 1
   fi
@@ -116,9 +125,14 @@ publish() {
 # Take one request, check it and run it.
 handle_request() {
   # A rename: the app deletes a request nobody took in time, and that one must not run.
-  mv -f "$APPDIR/request" "$APPDIR/request.taken" 2>/dev/null || return 0
-  req=$(head -c 200 "$APPDIR/request.taken" 2>/dev/null)
-  rm -f "$APPDIR/request.taken"
+  # Only a plain file is read (a link or a pipe is dropped unread).
+  taken=$DIR/request.taken
+  rm -rf "$taken"
+  app_dir_ok || return 0
+  mv -fT "$APPDIR/request" "$taken" 2>/dev/null || return 0
+  req=
+  [ -f "$taken" ] && [ ! -L "$taken" ] && req=$(head -c 200 "$taken" 2>/dev/null)
+  rm -rf "$taken"
 
   ok=1
   case "$req" in *"$NL"*) ok=0 ;; esac
