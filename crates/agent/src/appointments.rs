@@ -471,12 +471,15 @@ pub fn parse_tool_cancellation(msg: &Value) -> Vec<String> {
 
 /// The client message answering one function call. [`PROPOSE`]'s answer says
 /// `"scheduling": "SILENT"`: the model already said what it had to (blocking
-/// or not, it is not to speak about it again).
+/// or not, it is not to speak about it again) — except when `auto` could not
+/// book the time it already agreed to (`"not_booked": true`): then
+/// `"WHEN_IDLE"`, so it tells the caller it has to confirm after all.
 pub fn tool_response(id: &str, name: &str, response: Value) -> Value {
     let mut response = response;
     if name == PROPOSE {
         if let Some(o) = response.as_object_mut() {
-            o.insert("scheduling".into(), json!("SILENT"));
+            let speak = o.get("not_booked").and_then(Value::as_bool) == Some(true);
+            o.insert("scheduling".into(), json!(if speak { "WHEN_IDLE" } else { "SILENT" }));
         }
     }
     json!({
@@ -917,6 +920,9 @@ impl ApptSession {
         }
         if booked {
             json!({ "status": "booked" })
+        } else if self.mode == Mode::Auto && self.calendar.is_some() {
+            // It agreed already (auto) but the time could not be booked.
+            json!({ "status": "pending_owner_confirmation", "not_booked": true })
         } else {
             pending
         }
@@ -1099,7 +1105,7 @@ pub fn prompt_block(
         "- propose_appointment: start (and end) as agreed, title = what it is about in a few words in {language}, caller_name when they gave their name. If the time changes later in the call, call it again with the new time; the last one counts.\n"
     ));
     s.push_str(&format!(
-        "- Its answer \"pending_owner_confirmation\" means it is not settled yet: {will_check}, never say it is booked. \"booked\" means it is settled and you may say so.\n"
+        "- Its answer \"pending_owner_confirmation\" means it is not settled yet: {will_check}, never say it is booked. With \"not_booked\": true you had agreed but it could not be put in the calendar: tell the caller briefly you still need to confirm. \"booked\" means it is settled and you may say so.\n"
     ));
     s.push_str("- After calling propose_appointment do not repeat what you have just told the caller: if you already said it, simply go on with the conversation.\n");
     s.push_str("- Never make an appointment with a sales, insurance, loan, investment or scam caller.");
@@ -1463,10 +1469,20 @@ async fn decide_with(
         appt.status = CONFIRMED.to_string();
     } else {
         store.push_event(task_id, "appointment_declined").await?;
-        // The call's own event (auto mode, a time it could not move to): not kept.
-        if !appt.event_id.is_empty() {
-            if let Some(cal) = &cal {
-                match cal.delete(http, &appt.event_id).await {
+        // The call's own event (auto mode, a time it could not move to, or one
+        // whose write answer was lost and is found by the call's tag): not kept.
+        if let Some(cal) = &cal {
+            let mut ids: Vec<String> = Vec::new();
+            if !appt.event_id.is_empty() {
+                ids.push(appt.event_id.clone());
+            } else if appt.mode == Mode::Auto.as_str() && !appt.tag.is_empty() {
+                match cal.find_tagged(http, &appt.tag).await {
+                    Ok(found) => ids = found,
+                    Err(e) => warn!("appointment tagged lookup failed task_id={task_id}: {e:#}"),
+                }
+            }
+            for id in ids {
+                match cal.delete(http, &id).await {
                     Ok(()) => {
                         lines.push(p.ap_cal_removed.to_string());
                         appt.event_id.clear();
@@ -1809,6 +1825,9 @@ mod tests {
                 "response": {"status": "pending_owner_confirmation", "scheduling": "SILENT"}}]}})
         );
         assert!(r["toolResponse"]["functionResponses"][0]["response"].get("scheduling").is_none());
+        // auto could not book what it agreed to: the model gets to say so.
+        let speak = tool_response("fc-3", PROPOSE, json!({"status": "pending_owner_confirmation", "not_booked": true}));
+        assert_eq!(speak["toolResponse"]["functionResponses"][0]["response"]["scheduling"], "WHEN_IDLE");
         // NON_BLOCKING only on propose_appointment, and only when asked for.
         let nb = tool_declarations(true);
         assert_eq!(nb[0]["functionDeclarations"][1]["behavior"], "NON_BLOCKING");
@@ -2021,7 +2040,7 @@ mod tests {
         cal.busy.lock().unwrap().push((later(3, 9), later(3, 12)));
         assert_eq!(
             s.run_tool(&propose_call(&later(3, 10), &later(3, 11))).await,
-            json!({"status": "pending_owner_confirmation"})
+            json!({"status": "pending_owner_confirmation", "not_booked": true})
         );
         let out = s.book.outcome().unwrap();
         assert_eq!((out.status.as_str(), out.event_id.as_str()), (PENDING, "ev1"));
@@ -2064,6 +2083,18 @@ mod tests {
         assert!(text.contains("已從 Google 日曆刪除"), "{text}");
         assert_eq!(count(&cal.deletes), 1);
         assert!(done.appointment.unwrap().event_id.is_empty());
+        // Declining one whose write answer was lost (no id kept): found by its tag
+        // and taken out as well.
+        cal.events.lock().unwrap().push(("ev8".into(), later(3, 9), later(3, 10), "tag-lost".into()));
+        let mut c = appt(&later(3, 9), &later(3, 10), "看房");
+        c.mode = "auto".into();
+        c.tag = "tag-lost".into();
+        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &c) }).await.unwrap();
+        let (_, text) = decide_with(Some(Cal::Fake(cal.clone())), &http, &plain_settings(), &store, &calls, None, &t.id, false)
+            .await
+            .unwrap();
+        assert!(text.contains("已從 Google 日曆刪除"), "{text}");
+        assert_eq!(count(&cal.deletes), 2);
         let _ = std::fs::remove_dir_all(&root);
     }
 
