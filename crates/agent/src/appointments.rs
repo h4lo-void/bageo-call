@@ -1644,7 +1644,9 @@ async fn decide_inner(
         .await
         .with_context(|| format!("task not found: {task_id}"))?;
     task.appointment.as_ref().context("not an appointment task")?;
-    let Some(_claim) = Deciding::claim(task_id) else {
+    // The card bookkeeping holds the claim for a few milliseconds: wait that out
+    // instead of calling a decision nobody made "already handled".
+    let Some(_claim) = Deciding::claim_within(task_id, Duration::from_secs(2)).await else {
         info!("appointment decision ignored task_id={task_id} confirm={confirm}: another one is under way");
         return Ok(already(task));
     };
