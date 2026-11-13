@@ -1339,11 +1339,21 @@ pub fn prompt_block(
     let mut s = format!(
         "\n\n[Appointments — this part overrides anything above about not agreeing to plans or invitations for {owner}]\n"
     );
-    let days: Vec<String> = (1..=14)
-        .map(|d| (now.date() + Span::days(d)).format("%a %Y-%m-%d").to_string())
+    // Today, tomorrow and the day after are named: the model got "tomorrow" a day
+    // early when it had to count from "now" itself (real calls at 07:00).
+    let days: Vec<String> = (0..=14)
+        .map(|d| {
+            let day = (now.date() + Span::days(d)).format("%a %Y-%m-%d").to_string();
+            match d {
+                0 => format!("today = {day}"),
+                1 => format!("tomorrow = {day}"),
+                2 => format!("the day after tomorrow = {day}"),
+                _ => day,
+            }
+        })
         .collect();
     s.push_str(&format!(
-        "It is now {} ({}), local time (UTC{utc_offset}). The next 14 days: {}. Work out \"tomorrow\", \"Wednesday\" or \"the 20th\" from these dates. All times you pass to the functions are local, written YYYY-MM-DDTHH:MM; also pass the weekday you mean, which is checked against the date.\n",
+        "It is now {} ({}), local time (UTC{utc_offset}). Dates: {}. Take \"today\", \"tomorrow\", \"the day after tomorrow\" (in any language: 今天／明天／後天, 明日／明後日, 내일／모레, mañana / pasado mañana…), \"Wednesday\" or \"the 20th\" from this list; never count days yourself. All times you pass to the functions are local, written YYYY-MM-DDTHH:MM; also pass the weekday you mean, which is checked against the date.\n",
         now.format("%Y-%m-%d %H:%M"),
         now.format("%A"),
         days.join(", "),
@@ -2699,7 +2709,9 @@ mod tests {
         let p = prompt_block(Mode::Confirm, true, true, &me, now, "+08:00");
         assert!(p.contains("2026-11-13 14:05 (Friday)") && p.contains("UTC+08:00"), "{p}");
         // A dated list to count weekdays on: "Wednesday" said on a Friday is the 18th.
-        assert!(p.contains("Sat 2026-11-14, Sun 2026-11-15") && p.contains("Wed 2026-11-18") && p.contains("Fri 2026-11-27"), "{p}");
+        // Today, tomorrow and the day after are named (the model counted a day short).
+        assert!(p.contains("today = Fri 2026-11-13, tomorrow = Sat 2026-11-14, the day after tomorrow = Sun 2026-11-15"), "{p}");
+        assert!(p.contains("Wed 2026-11-18") && p.contains("Fri 2026-11-27") && p.contains("never count days yourself"), "{p}");
         assert!(!p.contains("Sat 2026-11-28"), "{p}");
         assert!(p.contains("check_availability") && p.contains("propose_appointment"));
         // What the AI says to the caller is about "you"; what it tells itself, "them".
