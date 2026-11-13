@@ -21,6 +21,7 @@
 // "Older code paths"); much of what only they use is unreachable by default.
 #![allow(dead_code)]
 
+mod adpcm;
 mod ambience;
 mod calendar;
 mod callback;
@@ -785,6 +786,13 @@ async fn main() -> Result<()> {
         )
         .init();
 
+    // `agent make-voice-samples [dir]`: record the bundled voice samples and exit.
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("make-voice-samples") {
+        let out = args.get(2).map(PathBuf::from).unwrap_or_else(|| config::assets_dir().join("voices"));
+        return voice_preview::make_bundle(&out).await;
+    }
+
     let settings = Settings::from_env();
     // Runtime overrides (web console) persisted inside the calls_data volume.
     let settings_store = SettingsStore::load(settings.clone());
@@ -926,7 +934,10 @@ async fn main() -> Result<()> {
         media_play: Arc::new(MediaPlayGate::default()),
         ring_prewarm: Arc::new(RingPrewarmRegistry::default()),
         reject_pending: Arc::new(RejectPending::default()),
-        previews: Arc::new(voice_preview::VoicePreviews::new(calls.root().join("voice_preview"))),
+        previews: Arc::new(voice_preview::VoicePreviews::new(
+            calls.root().join("voice_preview"),
+            config::assets_dir().join("voices"),
+        )),
         ambience: Arc::new(ambience::AmbienceLibrary::load(
             &std::env::var("AMBIENCE_DIR")
                 .ok()
@@ -1566,11 +1577,17 @@ async fn health(
     body.insert("ambience_kind".into(), json!(rt.ambience_kind));
     body.insert("ambience_level".into(), json!(rt.ambience_level));
     body.insert("reject_numbers_len".into(), json!(rt.reject_numbers.len()));
+    body.insert("reject_voice".into(), json!(voice_preview::reject_voice(&rt)));
     body.insert(
         "reject_clip_ready".into(),
         json!(state
             .previews
-            .cached_reject_clip(&rt.gemini_live_model, voice_preview::reject_voice(&rt))
+            .cached_reject_clip(
+                &rt.gemini_live_model,
+                voice_preview::reject_voice(&rt),
+                rt.lang(),
+                state.settings.sample_rate,
+            )
             .is_some()),
     );
     body.insert("ambience_beds".into(), json!(state.ambience.loaded()));
@@ -3887,7 +3904,10 @@ async fn start_reject_list_announce(
         }
         let rt = state.settings_store.snapshot();
         let voice = voice_preview::reject_voice(&rt).to_string();
-        match state.previews.cached_reject_clip(&rt.gemini_live_model, &voice) {
+        match state
+            .previews
+            .cached_reject_clip(&rt.gemini_live_model, &voice, rt.lang(), state.settings.sample_rate)
+        {
             Some(pcm) => {
                 info!(
                     "拒接號碼 serial={serial} caller={caller} → 「{}」 voice={voice} audio_ms={} (no AI)",

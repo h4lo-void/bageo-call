@@ -40,6 +40,22 @@ names in the web console's translations; replacing the file of an existing kind
 needs no code change. Use material you have the right to distribute, without
 recognisable voices.
 
+## Voice samples (`voices/<language>/<Voice>_<n>.wav`)
+
+Every Gemini Live voice the settings page offers, in every language: the three
+preview lines (`_0`, `_1`, `_2`) and the blocked-number announcement
+(`_reject`), so a preview or a blocked call never spends anyone's Gemini quota.
+16 kHz mono IMA ADPCM WAV. Spoken by Gemini Live (model `gemini-3.8-live`) and
+recorded with
+
+    GEMINI_API_KEY=… agent make-voice-samples assets/voices
+
+which only records what is missing (delete a file to record it again) and
+checks every recording against Gemini's transcript of it. After changing a
+line in `locale.rs` (`preview`, `unavailable`), delete that language's files and run it
+again. The agent uses a sample only when it runs at the same sample rate
+(`SAMPLE_RATE`, default 16000); otherwise it records its own on first use.
+
 ## Optional sounds of the older menu flows
 
 The agent also looks here for `ivr_*.wav` and `hold_transfer.wav` (greeting,
