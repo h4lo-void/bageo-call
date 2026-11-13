@@ -418,7 +418,7 @@ pub fn tool_declarations(non_blocking: bool) -> Value {
                         "weekday": { "type": "STRING", "description": "The weekday of start in English (Monday … Sunday), the day the caller means." },
                         "end": { "type": "STRING", "description": "Local end time, YYYY-MM-DDTHH:MM. Leave out for one hour." },
                         "title": { "type": "STRING", "description": "What it is about, a few words." },
-                        "caller_name": { "type": "STRING", "description": "The caller's name, when they gave it." }
+                        "caller_name": { "type": "STRING", "description": "The caller's name, only when they said it. Leave it out otherwise: never a word like \"friend\" or \"caller\"." }
                     },
                     "required": ["start", "title"]
                 }
@@ -1149,7 +1149,7 @@ pub fn prompt_block(
         ));
     }
     s.push_str(&format!(
-        "- propose_appointment: start (and end) as agreed, weekday, title = what it is about in a few words in {language}, caller_name when they gave their name. Call it once for the time you agreed on. Call it again only if the two of you really change the agreed time later in the call (the last call counts). A back-up time the caller offers (\"if not, the afternoon works too\") or another time named in passing is not a change: do not call it for that.\n"
+        "- propose_appointment: start (and end) as agreed, weekday, title = what it is about in a few words in {language}, caller_name only if they said their name (otherwise leave it out). Call it once for the time you agreed on. Call it again only if the two of you really change the agreed time later in the call (the last call counts). A back-up time the caller offers (\"if not, the afternoon works too\") or another time named in passing is not a change: do not call it for that.\n"
     ));
     s.push_str(&format!(
         "- Its answer \"pending_owner_confirmation\" means it is not settled yet: {will_check}, never say it is booked. If it also has \"not_booked\": true, you had already agreed but it could not go into the calendar: briefly tell the caller you still need to confirm. \"booked\" means it is settled and you may say so.\n"
