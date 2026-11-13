@@ -29,7 +29,7 @@ There are two kinds of settings:
 |---|---|
 | Ring before answering | How long the caller hears ringing (default 3 s, up to 8 s). The AI gets ready during this time. |
 | Get the AI ready while the phone rings | Connects to Gemini and has the first words ready before pick-up, so the AI speaks at once. Costs one short Gemini session even when the caller hangs up while it rings. |
-| Answer hidden numbers | On: callers without caller ID are answered like anyone else. Off: they hear the same short "not available" announcement as blocked numbers (in the AI's voice and your language), and the call ends. Until that announcement has been made once — it needs the Gemini key — they are hung up on without it. |
+| Answer hidden numbers | On: callers without caller ID are answered like anyone else. Off: they hear the same short "not available" announcement as blocked numbers (in your language and the *Announcement voice*), and the call ends. The announcement comes recorded with the program, so no Gemini key is needed. |
 | Let the caller interrupt | On phones where it is possible (see [Phone setup](PHONE.md#which-phones)), the AI stops talking when the caller cuts in. |
 | Let Gemini decide when the caller has finished | On (recommended): Gemini's own voice detection decides when it is the AI's turn. Off: a simpler detector in the agent does. |
 | Longest normal call | The AI starts wrapping up about 25 seconds before this (3–30 minutes, default 5). |
@@ -53,8 +53,10 @@ the AI may answer from, the interview prompt.
 ### Blocked numbers
 
 A list of numbers with an optional reason. Such a caller hears a short "the
-number you have dialed is not available" announcement in the AI's voice and is
-hung up on; the AI and Gemini are not used. `*` at the end matches a prefix of
+number you have dialed is not available" announcement and is hung up on; the AI
+and Gemini are not used. The announcement is in the language you chose, in the
+AI's voice unless you pick another under *Announcement voice*; every voice comes
+recorded in every language, so it costs no Gemini quota. `*` at the end matches a prefix of
 at least four digits (`0800*`). Write numbers the way they show up in the call
 list; `+…` forms match when *Country calling code* is set.
 

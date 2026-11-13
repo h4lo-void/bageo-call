@@ -146,15 +146,16 @@ where
     )
     .await
     .context("gmail smtp auth user")?;
-    smtp_cmd_expect(
+    let reply = smtp_cmd(
         &mut reader,
         &mut writer,
         &format!("{}\r\n", base64_encode(app_password.as_bytes())),
-        235,
     )
     .await
-    // Gmail refused the address / app password: the settings page says so.
-    .map_err(|e| ChannelError::new("auth_failed", "token", format!("gmail smtp auth password: {e:#}")))?;
+    .context("gmail smtp auth password")?;
+    if let Some(e) = auth_reply_error(&reply) {
+        return Err(e);
+    }
 
     smtp_cmd_expect(
         &mut reader,
@@ -391,6 +392,18 @@ fn smtp_check_code(reply: &str, expected: u16) -> Result<()> {
     Ok(())
 }
 
+/// The reply to the app password when it is not 235: a 5xx (535 = wrong address
+/// or app password) is a refusal the settings page names as such; anything else
+/// stays a plain failure.
+fn auth_reply_error(reply: &str) -> Option<anyhow::Error> {
+    let e = smtp_check_code(reply, 235).err()?;
+    Some(if reply.trim_start().starts_with('5') {
+        ChannelError::new("auth_failed", "token", format!("gmail smtp auth password: {e:#}")).into()
+    } else {
+        e.context("gmail smtp auth password")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -461,5 +474,15 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("過短") || msg.contains("設定"));
         assert!(!msg.contains("shortpw"));
+    }
+
+    #[test]
+    fn only_a_refusal_counts_as_a_wrong_password() {
+        let e = auth_reply_error("535-5.7.8 Username and Password not accepted.\r\n").unwrap();
+        assert_eq!(crate::notify::channel_error(&e).map(|c| c.code), Some("auth_failed"));
+        // A busy server is not a wrong password.
+        let e = auth_reply_error("454 4.7.0 Too many login attempts, please try again later\r\n").unwrap();
+        assert!(crate::notify::channel_error(&e).is_none(), "{e:#}");
+        assert!(auth_reply_error("235 2.7.0 Accepted\r\n").is_none());
     }
 }

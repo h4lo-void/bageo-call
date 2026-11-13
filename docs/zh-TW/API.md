@@ -66,7 +66,7 @@ PUT /calls/api/settings
 
 ## 語音與背景音試聽
 
-`GET /calls/api/preview` 會回傳一個 WAV。查詢參數：`voice`（聲音名稱，或用 `none` 表示只要背景音）、`ambience`（`off` 或某一種背景音）、`level`（1–3）、`regen=true`（重新產生，不用快取的範例）、`clip=reject`（用該聲音念的拒接號碼語音）。某個聲音的第一次請求會開啟一次短暫的 Gemini 連線。
+`GET /calls/api/preview` 會回傳一個 WAV。查詢參數：`voice`（聲音名稱，或用 `none` 表示只要背景音）、`ambience`（`off` 或某一種背景音）、`level`（1–3）、`regen=true`（重新產生，不用快取的範例）、`clip=reject`（用該聲音念的拒接號碼語音）、`lang`（`ja`、`zh-TW`…；留空 = 存著的語言）。內建的每個聲音在每種語言都已預先錄好（`assets/voices/`），試聽不用連 Gemini；只有 `regen=true` 或沒有預錄的聲音才會開一次短暫的連線。
 
 ## 手機與健康狀態
 

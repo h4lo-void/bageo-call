@@ -90,8 +90,10 @@ The JSON your own webhook receives is described in
 `GET /calls/api/preview` returns a WAV. Query: `voice` (a voice name, or `none`
 for the background alone), `ambience` (`off` or a kind), `level` (1–3),
 `regen=true` (generate again instead of the cached sample),
-`clip=reject` (the blocked-number announcement in that voice). The first
-request for a voice opens a short Gemini session.
+`clip=reject` (the blocked-number announcement in that voice),
+`lang` (`ja`, `zh-TW`, …; empty = the saved language). Every built-in
+voice comes recorded in every language (`assets/voices/`), so a preview needs no
+Gemini session; only `regen=true` or a voice without a recording opens one.
 
 ## Phones and health
 
