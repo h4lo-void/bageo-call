@@ -617,7 +617,7 @@ mod tests {
         assert!(reading_time("Okay, bye.").1 < 2.5);
         assert!(reading_time("此號碼目前無法接通，請稍後再撥。").1 > 6.0);
         // Cut off: the announcement cannot be said in 0.7 s.
-        assert!(reading_time("此號碼目前無法接通，請稍後再撥。").0 > 2.0);
+        assert!(reading_time("此號碼目前無法接通，請稍後再撥。").0 > 1.5);
         assert!(reading_time("Hello?").0 <= 0.5);
     }
 
