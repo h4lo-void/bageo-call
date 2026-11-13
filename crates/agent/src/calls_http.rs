@@ -11,9 +11,10 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::Write as _;
 use std::sync::{Arc, OnceLock};
+use tokio::sync::oneshot;
 use tracing::info;
 
-use crate::callback::ControlRegistry;
+use crate::callback::{ControlRegistry, WsSink};
 use crate::calls::{CallListFilter, CallStore};
 use crate::config::Settings;
 use crate::fulfill::{on_confirm, on_ignore};
@@ -31,9 +32,32 @@ pub struct CallsState {
     /// Background sound beds (same ones calls use) for the settings page's preview.
     pub ambience: Arc<crate::ambience::AmbienceLibrary>,
     pub previews: Arc<crate::voice_preview::VoicePreviews>,
+    /// Phones on the control connection: mode, app version, `set_mode` round trips.
+    pub phones: Arc<PhoneDevices>,
 }
 
 const UI_HTML: &str = include_str!("../static/calls.html");
+// "Add to home screen": the app manifest and its icons (the myna of docs/images/myna.svg).
+const MANIFEST: &[u8] = include_bytes!("../static/manifest.webmanifest");
+const ICON_192: &[u8] = include_bytes!("../static/icon-192.png");
+const ICON_512: &[u8] = include_bytes!("../static/icon-512.png");
+const APPLE_TOUCH_ICON: &[u8] = include_bytes!("../static/apple-touch-icon.png");
+const FAVICON: &[u8] = include_bytes!("../static/favicon.ico");
+
+/// One embedded file. Public like the page itself: nothing private in them.
+fn static_file(bytes: &'static [u8], content_type: &'static str) -> Response {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CACHE_CONTROL, "public, max-age=86400")
+        .body(Body::from(bytes))
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+/// `/favicon.ico` (also at the site root, where browsers look for it).
+pub async fn favicon() -> Response {
+    static_file(FAVICON, "image/x-icon")
+}
 
 /// Embedded UI: raw bytes, gzip bytes and a strong ETag, computed once.
 struct UiAsset {
@@ -192,9 +216,30 @@ pub fn token_ok_parts(settings: &Settings, headers: &HeaderMap, query_token: Opt
 fn unauthorized() -> Response {
     (
         StatusCode::UNAUTHORIZED,
-        Json(json!({"error": "unauthorized", "hint": "pass ?token= or Authorization: Bearer"})),
+        Json(json!({"error": "unauthorized", "code": "unauthorized", "hint": "pass ?token= or Authorization: Bearer"})),
     )
         .into_response()
+}
+
+/// An error for the web console: `code` is what the page translates
+/// (`err_<code>` in its dictionary); `error` keeps the agent's own words for
+/// the tooltip and for scripts.
+fn api_error(status: StatusCode, code: &str, error: impl Into<String>) -> Response {
+    let error: String = error.into();
+    (status, Json(json!({"ok": false, "code": code, "error": error}))).into_response()
+}
+
+/// A notification channel that failed: the code and the field at fault
+/// ([`crate::notify::ChannelError`]), `send_failed` when it is not known.
+fn channel_error_body(kind: &str, e: &anyhow::Error) -> Value {
+    let (code, field) = crate::notify::channel_error(e)
+        .map(|c| (c.code, c.field))
+        .unwrap_or(("send_failed", ""));
+    json!({"ok": false, "code": code, "field": field, "kind": kind, "error": format!("{e:#}")})
+}
+
+fn channel_error_response(status: StatusCode, kind: &str, e: &anyhow::Error) -> Response {
+    (status, Json(channel_error_body(kind, e))).into_response()
 }
 
 fn task_id_safe(id: &str) -> bool {
@@ -211,15 +256,11 @@ fn fulfill_err_response(e: anyhow::Error) -> Response {
     if lower.contains("not found") {
         return (
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "task not found", "detail": msg})),
+            Json(json!({"error": "task not found", "code": "task_not_found", "detail": msg})),
         )
             .into_response();
     }
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({"error": format!("fulfill failed: {msg}")})),
-    )
-        .into_response()
+    api_error(StatusCode::INTERNAL_SERVER_ERROR, "fulfill_failed", format!("fulfill failed: {msg}"))
 }
 
 async fn ui(headers: HeaderMap) -> Response {
@@ -365,6 +406,9 @@ async fn live(
         "calls": calls,
         "control_idle_clients": control_serials.len(),
         "control_idle_serials": control_serials,
+        // Connected phones switched to "normal phone": the page does not count them as
+        // ready for calls.
+        "normal_mode_serials": state.phones.normal_mode_serials(),
     }))
     .into_response()
 }
@@ -380,14 +424,10 @@ async fn call_get(
         return unauthorized();
     }
     if !task_id_safe(&id) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "invalid call id"})),
-        )
-            .into_response();
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid call id");
     }
     let Some(rec) = state.store.get(&id).await else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response();
+        return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
     };
     // Post-call summary + full dialogue (null until the summary task wrote it).
     let notes = state.store.load_notes(&id).await;
@@ -415,13 +455,13 @@ async fn call_event_ics(
         return unauthorized();
     }
     if !task_id_safe(&id) {
-        return (StatusCode::BAD_REQUEST, Json(json!({"error": "invalid call id"}))).into_response();
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid call id");
     }
     let Some(notes) = state.store.load_notes(&id).await else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response();
+        return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
     };
     let Some(event) = notes.calendar else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "this call has no calendar suggestion"}))).into_response();
+        return api_error(StatusCode::NOT_FOUND, "no_calendar", "this call has no calendar suggestion");
     };
     let ics = event.ics(&id, &notes.summary, chrono::Utc::now().naive_utc());
     Response::builder()
@@ -525,10 +565,10 @@ async fn audio(
         return unauthorized();
     }
     let Some(rec) = state.store.get(&id).await else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response();
+        return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
     };
     let Some(rel) = rec.audio_path.as_deref() else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "no audio"}))).into_response();
+        return api_error(StatusCode::NOT_FOUND, "no_audio", "no audio");
     };
     stream_wav(&state.store, rel, &headers).await
 }
@@ -544,7 +584,7 @@ async fn audio_listen(
         return unauthorized();
     }
     let Some(rec) = state.store.get(&id).await else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response();
+        return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
     };
     let store = state.store.clone();
     let built = tokio::task::spawn_blocking(move || store.listen_wav_cached(&rec))
@@ -553,11 +593,7 @@ async fn audio_listen(
         .flatten();
     match built {
         Some(bytes) => ranged_response(&headers, bytes),
-        None => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "no listen audio"})),
-        )
-            .into_response(),
+        None => api_error(StatusCode::NOT_FOUND, "no_audio", "no listen audio"),
     }
 }
 
@@ -617,14 +653,10 @@ async fn audio_tts(
         return unauthorized();
     }
     let Some(rec) = state.store.get(&id).await else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response();
+        return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
     };
     let Some(rel) = rec.tts_audio_path.as_deref() else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "no tts audio"})),
-        )
-            .into_response();
+        return api_error(StatusCode::NOT_FOUND, "no_audio", "no tts audio");
     };
     stream_wav(&state.store, rel, &headers).await
 }
@@ -640,14 +672,10 @@ async fn audio_vm(
         return unauthorized();
     }
     let Some(rec) = state.store.get(&id).await else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response();
+        return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
     };
     let Some(rel) = rec.voicemail_path.as_deref() else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "no voicemail"})),
-        )
-            .into_response();
+        return api_error(StatusCode::NOT_FOUND, "no_audio", "no voicemail");
     };
     stream_wav(&state.store, rel, &headers).await
 }
@@ -663,14 +691,10 @@ async fn audio_remote(
         return unauthorized();
     }
     let Some(rec) = state.store.get(&id).await else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response();
+        return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
     };
     if rec.remote_audio_path.is_none() {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "no remote audio"})),
-        )
-            .into_response();
+        return api_error(StatusCode::NOT_FOUND, "no_audio", "no remote audio");
     }
     // Echo-cleaned (old recordings still hold raw inject echo on disk).
     let store = state.store.clone();
@@ -680,7 +704,7 @@ async fn audio_remote(
         .flatten()
     {
         Some(bytes) => ranged_response(&headers, bytes),
-        None => (StatusCode::NOT_FOUND, Json(json!({"error": "open failed"}))).into_response(),
+        None => api_error(StatusCode::NOT_FOUND, "open_failed", "open failed"),
     }
 }
 
@@ -730,7 +754,7 @@ async fn preview(
     let kind = pick(&q.ambience, &rt.ambience_kind);
     let level = q.level.unwrap_or(rt.ambience_level).clamp(1, 3);
     if voice != "none" && !crate::voice_preview::valid_voice(&voice) {
-        return (StatusCode::BAD_REQUEST, Json(json!({"error": format!("unknown voice {voice}")}))).into_response();
+        return api_error(StatusCode::BAD_REQUEST, "unknown_voice", format!("unknown voice {voice}"));
     }
     if is_reject && voice != "none" {
         // What a blocked caller hears: the line alone, no room under it.
@@ -741,10 +765,10 @@ async fn preview(
             .await
         {
             tracing::warn!("reject announcement preview failed voice={voice}: {e:#}");
-            return (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("{e:#}")}))).into_response();
+            return api_error(StatusCode::BAD_GATEWAY, "preview_failed", format!("{e:#}"));
         }
         let Some(pcm) = state.previews.cached_reject_clip(&rt.gemini_live_model, &voice, lang, sr) else {
-            return (StatusCode::BAD_GATEWAY, Json(json!({"error": "the announcement could not be made"}))).into_response();
+            return api_error(StatusCode::BAD_GATEWAY, "preview_failed", "the announcement could not be made");
         };
         let mut padded = vec![0u8; (sr as usize / 2) * 2];
         padded.extend_from_slice(&pcm);
@@ -752,7 +776,7 @@ async fn preview(
         return ranged_response(&headers, bytes::Bytes::from(crate::calls::wav_from_pcm(&padded, sr, 1)));
     }
     if kind != "off" && !crate::ambience::valid_kind(&kind) {
-        return (StatusCode::BAD_REQUEST, Json(json!({"error": format!("unknown background sound {kind}")}))).into_response();
+        return api_error(StatusCode::BAD_REQUEST, "unknown_background", format!("unknown background sound {kind}"));
     }
     let sr = state.settings.sample_rate.max(8000);
     let lines = if voice == "none" {
@@ -774,7 +798,7 @@ async fn preview(
             Ok(lines) => lines,
             Err(e) => {
                 tracing::warn!("voice preview failed voice={voice}: {e:#}");
-                return (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("{e:#}")}))).into_response();
+                return api_error(StatusCode::BAD_GATEWAY, "preview_failed", format!("{e:#}"));
             }
         }
     };
@@ -784,8 +808,11 @@ async fn preview(
         match state.ambience.get(&kind) {
             Some(b) => Some((b, crate::ambience::level_gain(level), crate::ambience::preview_start_s(&kind))),
             None => {
-                return (StatusCode::NOT_FOUND, Json(json!({"error": format!("the sound file for background {kind} is not loaded")})))
-                    .into_response()
+                return api_error(
+                    StatusCode::NOT_FOUND,
+                    "background_missing",
+                    format!("the sound file for background {kind} is not loaded"),
+                )
             }
         }
     };
@@ -810,8 +837,20 @@ async fn settings_get(
         "ok": true,
         "settings": state.settings_store.masked_json(),
         "storage_path": state.settings_store.storage_path().display().to_string(),
+        "console_url": console_url(&state),
+        "console_ip_url": console_ip_url(&state),
     }))
     .into_response()
+}
+
+/// The console's address as other devices open it (empty: this computer only).
+fn console_url(state: &CallsState) -> String {
+    crate::settings_store::effective_console_url(&state.settings_store.snapshot().effective(&state.settings))
+}
+
+/// The same at the LAN IP, for phones that cannot open `.local` names.
+fn console_ip_url(state: &CallsState) -> String {
+    crate::settings_store::lan_console_url(&state.settings_store.snapshot().effective(&state.settings))
 }
 
 /// JSON patch of runtime settings. Secret fields: absent/"" keeps the stored
@@ -826,21 +865,25 @@ async fn settings_put(
         return unauthorized();
     }
     if !patch.is_object() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "JSON object body required"})),
-        )
-            .into_response();
+        return api_error(StatusCode::BAD_REQUEST, "bad_request", "JSON object body required");
     }
     match state.settings_store.apply_patch(&patch) {
         Ok(rt) => {
             // Language, answer style, owner name: what the next call's helpers read.
             rt.apply_globals();
-            // Blocked numbers / voice / model changed: have the "cannot be reached" announcement
-            // ready before the next such call (cached: free when it exists).
-            if ["reject_numbers", "reject_voice_name", "gemini_voice_name", "gemini_live_model", "gemini_api_key", "language"]
-                .iter()
-                .any(|k| patch.get(*k).is_some())
+            // Blocked numbers / hidden numbers / voice / model changed: have the "cannot be
+            // reached" announcement ready before the next such call (cached: free when it exists).
+            if [
+                "reject_numbers",
+                "answer_unknown_callers",
+                "reject_voice_name",
+                "gemini_voice_name",
+                "gemini_live_model",
+                "gemini_api_key",
+                "language",
+            ]
+            .iter()
+            .any(|k| patch.get(*k).is_some())
             {
                 let previews = state.previews.clone();
                 let sr = state.settings.sample_rate;
@@ -862,14 +905,12 @@ async fn settings_put(
                 "ok": true,
                 "settings": state.settings_store.masked_json(),
                 "storage_path": state.settings_store.storage_path().display().to_string(),
+                "console_url": console_url(&state),
+                "console_ip_url": console_ip_url(&state),
             }))
             .into_response()
         }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": format!("save failed: {e:#}")})),
-        )
-            .into_response(),
+        Err(e) => api_error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", format!("save failed: {e:#}")),
     }
 }
 
@@ -895,14 +936,13 @@ async fn notify_test(
         .into_iter()
         .next()
     else {
-        return (StatusCode::BAD_REQUEST, Json(json!({"ok": false, "error": "unknown channel kind"})))
-            .into_response();
+        return api_error(StatusCode::BAD_REQUEST, "unknown_channel", "unknown channel kind");
     };
     match crate::notify::send_channel(&state.http, &channel, &crate::notify::test_message()).await {
         Ok(()) => Json(json!({"ok": true})).into_response(),
         Err(e) => {
             tracing::warn!("notify test failed kind={}: {e:#}", channel.kind);
-            (StatusCode::BAD_GATEWAY, Json(json!({"ok": false, "error": format!("{e:#}")}))).into_response()
+            channel_error_response(StatusCode::BAD_GATEWAY, &channel.kind, &e)
         }
     }
 }
@@ -926,7 +966,7 @@ async fn notify_send(
         return unauthorized();
     }
     if body.body.trim().is_empty() {
-        return (StatusCode::BAD_REQUEST, Json(json!({"ok": false, "error": "body is empty"}))).into_response();
+        return api_error(StatusCode::BAD_REQUEST, "empty_body", "body is empty");
     }
     let eff = state.settings_store.snapshot().effective(&state.settings);
     let title = if body.title.trim().is_empty() { "Myna" } else { body.title.trim() };
@@ -949,14 +989,473 @@ async fn devices(
         .into_iter()
         .map(|(id, label)| (id, json!(label)))
         .collect();
+    let live = state.store.live_calls().await;
+    let agent_calls: Vec<String> = live.iter().map(|c| c.serial.clone()).collect();
     Json(json!({
         "ok": true,
         "usb": crate::usb_bridge::status_json(),
         "connected": connected,
         "labels": labels,
-        "calls_in_progress": state.store.live_calls().await.len(),
+        "calls_in_progress": live.len(),
+        // One object per phone: mode, model, app_version, in_call, supports_mode.
+        "phones": state.phones.list_json(&agent_calls),
     }))
     .into_response()
+}
+// ---------------------------------------------------------------- phone mode
+
+/// How a phone handles calls: the AI answers them (`ai`), or it rings like any
+/// phone and its owner answers (`normal`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PhoneMode {
+    Ai,
+    Normal,
+}
+
+impl PhoneMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ai => "ai",
+            Self::Normal => "normal",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim() {
+            "ai" => Some(Self::Ai),
+            "normal" => Some(Self::Normal),
+            _ => None,
+        }
+    }
+}
+
+/// How long `POST /api/devices/{serial}/mode` waits for the phone's answer.
+const SET_MODE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// What a phone says about itself on its control connection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PhoneHello {
+    pub mode: PhoneMode,
+    /// The app understands `set_mode` (it reported its mode). Older apps do not.
+    pub supports_mode: bool,
+    pub model: String,
+    pub app_version: String,
+    pub in_call: bool,
+}
+
+/// Read the control `hello`. The phone mode is in `phone_mode` (`mode` already says
+/// which connection this is, `CONTROL_IDLE`). An app without it answers every call
+/// with the AI and cannot be switched from here.
+pub fn parse_phone_hello(hello: &Value) -> PhoneHello {
+    let text = |key: &str| -> String {
+        hello
+            .get(key)
+            .and_then(Value::as_str)
+            .map(|s| s.trim().chars().filter(|c| !c.is_control()).take(40).collect())
+            .unwrap_or_default()
+    };
+    let mode = hello
+        .get("phone_mode")
+        .and_then(Value::as_str)
+        .and_then(PhoneMode::parse);
+    PhoneHello {
+        mode: mode.unwrap_or(PhoneMode::Ai),
+        supports_mode: mode.is_some(),
+        model: text("model"),
+        app_version: text("app_version"),
+        in_call: hello.get("in_call").and_then(Value::as_bool).unwrap_or(false),
+    }
+}
+
+/// The outcome of a mode switch: the phone's `set_mode_result`, or why it was not sent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModeReply {
+    pub ok: bool,
+    /// The phone's mode afterwards, when known.
+    pub mode: Option<PhoneMode>,
+    /// Empty when `ok`.
+    pub error: String,
+}
+
+impl ModeReply {
+    fn failed(mode: Option<PhoneMode>, error: &str) -> Self {
+        Self {
+            ok: false,
+            mode,
+            error: error.to_string(),
+        }
+    }
+}
+
+/// An error code from the phone, kept short and plain (the page looks it up).
+fn error_code(s: &str) -> String {
+    s.trim()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .take(40)
+        .collect()
+}
+
+pub fn parse_mode_reply(msg: &Value) -> ModeReply {
+    let ok = msg.get("ok").and_then(Value::as_bool).unwrap_or(false);
+    let error = msg
+        .get("error")
+        .and_then(Value::as_str)
+        .map(error_code)
+        .unwrap_or_default();
+    ModeReply {
+        ok,
+        mode: msg
+            .get("mode")
+            .and_then(Value::as_str)
+            .and_then(PhoneMode::parse),
+        error: if ok {
+            String::new()
+        } else if error.is_empty() {
+            "failed".to_string()
+        } else {
+            error
+        },
+    }
+}
+
+/// Why a phone cannot be switched right now, if it cannot.
+fn switch_blocker(connected: bool, supports_mode: bool, in_call: bool) -> Option<&'static str> {
+    if !connected {
+        Some("offline")
+    } else if !supports_mode {
+        Some("unsupported")
+    } else if in_call {
+        Some("in_call")
+    } else {
+        None
+    }
+}
+
+/// `{ok, mode, error_code}` for the web console.
+pub fn mode_reply_json(r: &ModeReply) -> Value {
+    let error_code = if r.ok { Value::Null } else { json!(r.error) };
+    json!({
+        "ok": r.ok,
+        "mode": r.mode.map(PhoneMode::as_str),
+        "error_code": error_code,
+    })
+}
+
+/// The web console's address for the phone app's "Open the web console" button,
+/// from the console's address (`settings_store::effective_console_url`). None when
+/// that is empty or not a web address.
+pub fn phone_console_url(public_url: &str) -> Option<String> {
+    let base = public_url.trim().trim_end_matches('/');
+    let lower = base.to_ascii_lowercase();
+    if !(lower.starts_with("http://") || lower.starts_with("https://")) {
+        return None;
+    }
+    let host = base.split_once("://").map(|(_, rest)| rest).unwrap_or("");
+    if host.is_empty() || host.starts_with('/') || host.chars().any(char::is_whitespace) {
+        return None;
+    }
+    let base = base.strip_suffix("/calls").unwrap_or(base);
+    Some(format!("{base}/calls/"))
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+struct PhoneEntry {
+    /// The open control connection; None after it closed.
+    sink: Option<WsSink>,
+    hello: PhoneHello,
+    /// Last message on the control connection (ms since epoch).
+    last_seen_ms: u64,
+}
+
+fn phone_json(serial: &str, p: &PhoneEntry, agent_call: bool) -> Value {
+    let connected = p.sink.is_some();
+    json!({
+        "serial": serial,
+        "connected": connected,
+        "mode": p.hello.mode.as_str(),
+        "supports_mode": p.hello.supports_mode,
+        "model": p.hello.model,
+        "app_version": p.hello.app_version,
+        "in_call": connected && (p.hello.in_call || agent_call),
+        "last_seen_ms": p.last_seen_ms,
+    })
+}
+
+/// Phones on the idle control connection: what they reported, their socket, and
+/// the `set_mode` requests waiting for an answer.
+#[derive(Default)]
+pub struct PhoneDevices {
+    phones: std::sync::Mutex<HashMap<String, PhoneEntry>>,
+    /// `set_mode` id → (serial, the waiting request).
+    waiting: std::sync::Mutex<HashMap<String, (String, oneshot::Sender<ModeReply>)>>,
+}
+
+impl PhoneDevices {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+
+    fn phones(&self) -> std::sync::MutexGuard<'_, HashMap<String, PhoneEntry>> {
+        self.phones.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn waiting(
+        &self,
+    ) -> std::sync::MutexGuard<'_, HashMap<String, (String, oneshot::Sender<ModeReply>)>> {
+        self.waiting.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// A phone said hello on its control connection.
+    pub fn connected(&self, serial: &str, sink: WsSink, hello: &Value) {
+        let info = parse_phone_hello(hello);
+        info!(
+            serial,
+            mode = info.mode.as_str(),
+            supports_mode = info.supports_mode,
+            app_version = info.app_version.as_str(),
+            "phone control hello"
+        );
+        self.phones().insert(
+            serial.to_string(),
+            PhoneEntry {
+                sink: Some(sink),
+                hello: info,
+                last_seen_ms: now_ms(),
+            },
+        );
+    }
+
+    /// The control connection closed. Ignored when the phone already reconnected.
+    pub fn disconnected(&self, serial: &str, sink: &WsSink) {
+        {
+            let mut phones = self.phones();
+            let Some(p) = phones.get_mut(serial) else {
+                return;
+            };
+            if !p.sink.as_ref().is_some_and(|s| Arc::ptr_eq(s, sink)) {
+                return;
+            }
+            p.sink = None;
+            p.hello.in_call = false;
+            p.last_seen_ms = now_ms();
+        }
+        // A request still waiting for this phone keeps waiting: the phone app may be
+        // stopped by the switch itself and send the result after it reconnects.
+    }
+
+    /// Any message on the control connection.
+    pub fn touch(&self, serial: &str) {
+        if let Some(p) = self.phones().get_mut(serial) {
+            p.last_seen_ms = now_ms();
+        }
+    }
+
+    /// `status`: the phone's mode or call state changed.
+    pub fn on_status(&self, serial: &str, msg: &Value) {
+        let mut phones = self.phones();
+        let Some(p) = phones.get_mut(serial) else {
+            return;
+        };
+        if let Some(mode) = msg
+            .get("mode")
+            .and_then(Value::as_str)
+            .and_then(PhoneMode::parse)
+        {
+            p.hello.mode = mode;
+            p.hello.supports_mode = true;
+        }
+        if let Some(in_call) = msg.get("in_call").and_then(Value::as_bool) {
+            p.hello.in_call = in_call;
+        }
+        p.last_seen_ms = now_ms();
+    }
+
+    /// `set_mode_result`: hand it to the request waiting for it.
+    pub fn on_mode_reply(&self, serial: &str, msg: &Value) {
+        let reply = parse_mode_reply(msg);
+        if let Some(mode) = reply.mode {
+            if let Some(p) = self.phones().get_mut(serial) {
+                p.hello.mode = mode;
+                p.hello.supports_mode = true;
+            }
+        }
+        let id = msg.get("id").and_then(Value::as_str).unwrap_or("");
+        let waiter = {
+            let mut waiting = self.waiting();
+            let ours = waiting.get(id).is_some_and(|entry| entry.0 == serial);
+            if ours {
+                waiting.remove(id)
+            } else {
+                None
+            }
+        };
+        match waiter {
+            Some((_, tx)) => {
+                let _ = tx.send(reply);
+            }
+            None => info!(serial, id, "set_mode_result without a waiting request"),
+        }
+    }
+
+    /// The phone's mode while it is connected.
+    pub fn mode_of(&self, serial: &str) -> Option<PhoneMode> {
+        self.phones()
+            .get(serial)
+            .filter(|p| p.sink.is_some())
+            .map(|p| p.hello.mode)
+    }
+
+    /// Connected phones in normal-phone mode: the AI does not answer their calls.
+    pub fn normal_mode_serials(&self) -> Vec<String> {
+        let mut v: Vec<String> = self
+            .phones()
+            .iter()
+            .filter(|(serial, p)| {
+                p.sink.is_some()
+                    && p.hello.mode == PhoneMode::Normal
+                    && !crate::calls::is_twin_serial(serial)
+            })
+            .map(|(serial, _)| serial.clone())
+            .collect();
+        v.sort();
+        v
+    }
+
+    /// Every phone seen since the agent started (System view), sorted by serial.
+    /// `agent_calls`: serials with a call the agent is handling now.
+    pub fn list_json(&self, agent_calls: &[String]) -> Vec<Value> {
+        let phones = self.phones();
+        let mut serials: Vec<&String> = phones
+            .keys()
+            .filter(|serial| !crate::calls::is_twin_serial(serial))
+            .collect();
+        serials.sort();
+        serials
+            .into_iter()
+            .filter_map(|serial| {
+                phones.get(serial).map(|p| {
+                    phone_json(serial, p, agent_calls.iter().any(|s| s == serial))
+                })
+            })
+            .collect()
+    }
+
+    /// Ask the phone to switch and wait for its answer (at most [`SET_MODE_TIMEOUT`]).
+    /// `agent_call`: the agent is handling a call on this phone right now.
+    pub async fn set_mode(&self, serial: &str, mode: PhoneMode, agent_call: bool) -> ModeReply {
+        let (sink, current) = {
+            let phones = self.phones();
+            let Some(p) = phones.get(serial) else {
+                return ModeReply::failed(None, "offline");
+            };
+            let current = Some(p.hello.mode);
+            if let Some(code) = switch_blocker(
+                p.sink.is_some(),
+                p.hello.supports_mode,
+                p.hello.in_call || agent_call,
+            ) {
+                return ModeReply::failed(current, code);
+            }
+            match p.sink.clone() {
+                Some(sink) => (sink, current),
+                None => return ModeReply::failed(current, "offline"),
+            }
+        };
+        let id = uuid::Uuid::new_v4().to_string();
+        let (tx, rx) = oneshot::channel();
+        self.waiting().insert(id.clone(), (serial.to_string(), tx));
+        let payload = json!({"type": "set_mode", "mode": mode.as_str(), "id": id});
+        if let Err(e) = crate::callback::send_ws_json(&sink, payload).await {
+            self.waiting().remove(&id);
+            tracing::warn!("set_mode send failed serial={serial}: {e:#}");
+            return ModeReply::failed(current, "offline");
+        }
+        info!(serial, mode = mode.as_str(), id = id.as_str(), "set_mode sent");
+        match tokio::time::timeout(SET_MODE_TIMEOUT, rx).await {
+            Ok(Ok(reply)) => reply,
+            Ok(Err(_)) => ModeReply::failed(current, "offline"),
+            Err(_) => {
+                self.waiting().remove(&id);
+                // No answer yet: the switch may still finish (the page says the result is
+                // not confirmed). Report the mode the phone last told us.
+                let last = self.phones().get(serial).map(|p| p.hello.mode).or(current);
+                ModeReply::failed(last, "timeout")
+            }
+        }
+    }
+}
+
+/// The body of `POST /api/devices/{serial}/mode`, `{"mode": "ai" | "normal"}`.
+/// Err is the error code of the 400 answer: `bad_request` (not JSON, no `mode`) or
+/// `invalid_mode`. Parsed here so every error is the same JSON shape.
+pub fn parse_mode_body(body: &[u8]) -> Result<PhoneMode, &'static str> {
+    let v: Value = serde_json::from_slice(body).map_err(|_| "bad_request")?;
+    let mode = v.get("mode").and_then(Value::as_str).ok_or("bad_request")?;
+    PhoneMode::parse(mode).ok_or("invalid_mode")
+}
+
+fn mode_bad_request(code: &str, message: &str) -> Response {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(json!({"ok": false, "mode": null, "error_code": code, "error": message})),
+    )
+        .into_response()
+}
+
+fn is_json_request(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.split(';').next().unwrap_or("").trim().eq_ignore_ascii_case("application/json"))
+        .unwrap_or(false)
+}
+
+/// Switch one phone between "the AI answers" and "normal phone".
+async fn device_mode(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+    Path(serial): Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    if !task_id_safe(&serial) {
+        return mode_bad_request("bad_request", "invalid phone serial");
+    }
+    // Only JSON: a cross-site form or no-cors fetch cannot send that without a CORS
+    // preflight, which this server never answers, so other web pages cannot switch
+    // phones from a browser on the same network.
+    if !is_json_request(&headers) {
+        return mode_bad_request("bad_request", "Content-Type must be application/json");
+    }
+    let mode = match parse_mode_body(&body) {
+        Ok(mode) => mode,
+        Err(code) => return mode_bad_request(code, "the body must be {\"mode\": \"ai\"} or {\"mode\": \"normal\"}"),
+    };
+    let agent_call = state
+        .store
+        .live_calls()
+        .await
+        .iter()
+        .any(|c| c.serial == serial);
+    let reply = state.phones.set_mode(&serial, mode, agent_call).await;
+    info!(
+        serial = serial.as_str(),
+        target = mode.as_str(),
+        ok = reply.ok,
+        error = reply.error.as_str(),
+        "phone mode switch"
+    );
+    Json(mode_reply_json(&reply)).into_response()
 }
 
 /// Tasks tab: prefer TaskStore (canonical); snake_case status.
@@ -982,11 +1481,7 @@ async fn tasks_confirm(
         return unauthorized();
     }
     if !task_id_safe(&id) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "invalid task id"})),
-        )
-            .into_response();
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid task id");
     }
     let rt = state.settings_store.snapshot();
     match on_confirm(
@@ -1013,11 +1508,7 @@ async fn tasks_ignore(
         return unauthorized();
     }
     if !task_id_safe(&id) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "invalid task id"})),
-        )
-            .into_response();
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid task id");
     }
     match on_ignore(&state.task_store, &id).await {
         Ok(task) => Json(json!({"ok": true, "task": task})).into_response(),
@@ -1028,14 +1519,9 @@ async fn tasks_ignore(
 async fn stream_wav(store: &CallStore, rel: &str, headers: &HeaderMap) -> Response {
     use tokio::io::{AsyncReadExt, AsyncSeekExt};
     let Some(path) = store.audio_abs(rel) else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "file missing"})),
-        )
-            .into_response();
+        return api_error(StatusCode::NOT_FOUND, "no_audio", "file missing");
     };
-    let open_failed =
-        || (StatusCode::NOT_FOUND, Json(json!({"error": "open failed"}))).into_response();
+    let open_failed = || api_error(StatusCode::NOT_FOUND, "open_failed", "open failed");
     let Ok(meta) = tokio::fs::metadata(&path).await else {
         return open_failed();
     };
@@ -1078,6 +1564,18 @@ mod tests {
     }
 
     #[test]
+    fn mode_switch_needs_a_json_content_type() {
+        let mut m = HeaderMap::new();
+        assert!(!is_json_request(&m));
+        m.insert(header::CONTENT_TYPE, "text/plain;charset=UTF-8".parse().unwrap());
+        assert!(!is_json_request(&m));
+        m.insert(header::CONTENT_TYPE, "application/json; charset=utf-8".parse().unwrap());
+        assert!(is_json_request(&m));
+        m.insert(header::CONTENT_TYPE, "Application/JSON".parse().unwrap());
+        assert!(is_json_request(&m));
+    }
+
+    #[test]
     fn range_parsing() {
         assert_eq!(parse_range(&HeaderMap::new(), 100), None);
         assert_eq!(parse_range(&h("bytes=0-"), 100), Some((0, 99)));
@@ -1116,11 +1614,128 @@ mod tests {
         assert_eq!(out, UI_HTML);
         assert!(a.gzip.len() < UI_HTML.len() / 2);
     }
+
+    #[test]
+    fn channel_errors_carry_a_code_and_the_field() {
+        let e: anyhow::Error = crate::notify::ChannelError::new("missing_field", "token", "bot token is empty").into();
+        let body = channel_error_body("telegram", &e);
+        assert_eq!((body["code"].as_str(), body["field"].as_str()), (Some("missing_field"), Some("token")));
+        assert_eq!(body["kind"], "telegram");
+        assert_eq!(body["error"], "bot token is empty");
+        // Behind a context it is still found.
+        let wrapped = e.context("sending the test message");
+        assert_eq!(channel_error_body("telegram", &wrapped)["code"], "missing_field");
+        // Errors without a code fall back to a generic one.
+        let plain = anyhow::anyhow!("boom");
+        assert_eq!(channel_error_body("ntfy", &plain)["code"], "send_failed");
+    }
+
+    #[test]
+    fn phone_hello_old_and_new_apps() {
+        // An app from before the mode switch: AI mode, cannot be switched from the page.
+        let old = parse_phone_hello(&json!({
+            "type": "hello", "serial": "pixel-10341", "mode": "CONTROL_IDLE",
+            "model": "Pixel 7", "app_version": "0.2.0"
+        }));
+        assert_eq!(old.mode, PhoneMode::Ai);
+        assert!(!old.supports_mode);
+        assert_eq!((old.model.as_str(), old.app_version.as_str()), ("Pixel 7", "0.2.0"));
+        let new = parse_phone_hello(&json!({
+            "type": "hello", "mode": "CONTROL_IDLE", "phone_mode": "normal", "in_call": true
+        }));
+        assert_eq!(new.mode, PhoneMode::Normal);
+        assert!(new.supports_mode && new.in_call);
+        // The connection kind is never taken for the phone mode.
+        let odd = parse_phone_hello(&json!({"phone_mode": "CONTROL_IDLE"}));
+        assert_eq!((odd.mode, odd.supports_mode), (PhoneMode::Ai, false));
+    }
+
+    #[test]
+    fn mode_reply_parsing() {
+        let ok = parse_mode_reply(&json!({"type": "set_mode_result", "id": "x", "ok": true, "mode": "normal", "error": ""}));
+        assert_eq!(ok, ModeReply { ok: true, mode: Some(PhoneMode::Normal), error: String::new() });
+        let fail = parse_mode_reply(&json!({"ok": false, "mode": "ai", "error": "dialer_failed"}));
+        assert_eq!((fail.mode, fail.error.as_str()), (Some(PhoneMode::Ai), "dialer_failed"));
+        // Whatever the phone sends ends up as a plain code.
+        assert_eq!(parse_mode_reply(&json!({"ok": false, "error": "<b>x</b> y"})).error, "bxby");
+        assert_eq!(parse_mode_reply(&json!({})).error, "failed");
+    }
+
+    #[test]
+    fn mode_reply_json_shape() {
+        let ok = ModeReply { ok: true, mode: Some(PhoneMode::Ai), error: String::new() };
+        assert_eq!(mode_reply_json(&ok), json!({"ok": true, "mode": "ai", "error_code": null}));
+        assert_eq!(
+            mode_reply_json(&ModeReply::failed(None, "timeout")),
+            json!({"ok": false, "mode": null, "error_code": "timeout"})
+        );
+    }
+
+    #[test]
+    fn switch_blockers() {
+        assert_eq!(switch_blocker(false, true, false), Some("offline"));
+        assert_eq!(switch_blocker(true, false, false), Some("unsupported"));
+        assert_eq!(switch_blocker(true, true, true), Some("in_call"));
+        assert_eq!(switch_blocker(true, true, false), None);
+    }
+
+    #[test]
+    fn mode_reply_goes_only_to_its_phone() {
+        let devices = PhoneDevices::default();
+        let (tx, mut rx) = oneshot::channel();
+        devices.waiting().insert("id1".into(), ("pixel-1".into(), tx));
+        devices.on_mode_reply("pixel-2", &json!({"id": "id1", "ok": true, "mode": "normal"}));
+        assert!(rx.try_recv().is_err());
+        devices.on_mode_reply("pixel-1", &json!({"id": "id1", "ok": true, "mode": "normal"}));
+        assert_eq!(rx.try_recv().unwrap().mode, Some(PhoneMode::Normal));
+    }
+
+    #[test]
+    fn disconnected_phone_is_never_in_call() {
+        let hello = parse_phone_hello(&json!({"phone_mode": "normal", "in_call": true}));
+        let p = PhoneEntry { sink: None, hello, last_seen_ms: 5 };
+        let v = phone_json("pixel-1", &p, true);
+        assert_eq!((v["connected"].clone(), v["in_call"].clone()), (json!(false), json!(false)));
+        assert_eq!(v["mode"], json!("normal"));
+    }
+
+    #[test]
+    fn console_url_from_public_url() {
+        assert_eq!(phone_console_url(""), None);
+        assert_eq!(phone_console_url("192.168.1.20:8787"), None);
+        assert_eq!(phone_console_url("ftp://192.168.1.20"), None);
+        assert_eq!(phone_console_url("http://"), None);
+        assert_eq!(
+            phone_console_url("http://192.168.1.20:8787").as_deref(),
+            Some("http://192.168.1.20:8787/calls/")
+        );
+        assert_eq!(
+            phone_console_url(" http://192.168.1.20:8787/calls/ ").as_deref(),
+            Some("http://192.168.1.20:8787/calls/")
+        );
+        assert_eq!(phone_console_url("https://myna.example/").as_deref(), Some("https://myna.example/calls/"));
+    }
+
+    #[test]
+    fn mode_body_parsing() {
+        assert_eq!(parse_mode_body(br#"{"mode":"normal"}"#), Ok(PhoneMode::Normal));
+        assert_eq!(parse_mode_body(br#"{"mode":" ai "}"#), Ok(PhoneMode::Ai));
+        assert_eq!(parse_mode_body(br#"{"mode":"off"}"#), Err("invalid_mode"));
+        assert_eq!(parse_mode_body(br#"{"mode":1}"#), Err("bad_request"));
+        assert_eq!(parse_mode_body(br#"{}"#), Err("bad_request"));
+        assert_eq!(parse_mode_body(b"mode=normal"), Err("bad_request"));
+        assert_eq!(parse_mode_body(b""), Err("bad_request"));
+    }
 }
 
 pub fn router(state: CallsState) -> Router {
     Router::new()
         .route("/", get(ui))
+        .route("/manifest.webmanifest", get(|| async { static_file(MANIFEST, "application/manifest+json") }))
+        .route("/icon-192.png", get(|| async { static_file(ICON_192, "image/png") }))
+        .route("/icon-512.png", get(|| async { static_file(ICON_512, "image/png") }))
+        .route("/apple-touch-icon.png", get(|| async { static_file(APPLE_TOUCH_ICON, "image/png") }))
+        .route("/favicon.ico", get(favicon))
         .route("/api/list", get(list))
         .route("/api/stats", get(stats))
         .route("/api/live", get(live))
@@ -1137,6 +1752,7 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/notify/test", post(notify_test))
         .route("/api/notify/send", post(notify_send))
         .route("/api/devices", get(devices))
+        .route("/api/devices/{serial}/mode", post(device_mode))
         .route("/api/tasks", get(tasks_list))
         .route("/api/tasks/{id}/confirm", post(tasks_confirm))
         .route("/api/tasks/{id}/ignore", post(tasks_ignore))

@@ -126,8 +126,10 @@ LATE_SEC = 300  # add the receive time when a message is forwarded later than th
 SEND_GAP_SEC = 1.5
 SENDS_PER_TICK = 15
 BODY_MAX = 3000  # the agent cuts a whole notification at 3500 characters
-LANG_REFRESH_SEC = 600
-LANG_RETRY_SEC = 60
+LANG_REFRESH_SEC = 60  # the agent's language (and time zone) are asked again this often
+LANG_RETRY_SEC = 30
+LANG_TRIES = 2  # quick tries in a row before waiting LANG_RETRY_SEC
+LANG_WAIT_SEC = 180  # messages wait this long for the agent's language, then go out in English
 HEALTH_TIMEOUT = 4.0
 SEND_TIMEOUT = 30.0
 
@@ -269,27 +271,71 @@ def normalize_lang(code: str) -> str:
 
 
 class Language:
-    """Language of the message labels: SMS_LANG, else the agent's, else English."""
+    """Language of the message labels: SMS_LANG, else the agent's, else English.
+
+    Until the agent has told its language once, code() answers None: messages wait
+    (they stay queued or unread and are tried again) for up to LANG_WAIT_SEC, and only
+    then go out in English. The agent is asked again every LANG_REFRESH_SEC, so a change
+    in the web console reaches the labels within a minute.
+    """
 
     def __init__(self, explicit: str = "", fetch: Callable[[], str | None] | None = None) -> None:
         self.fixed = normalize_lang(explicit) if explicit.strip() else ""
         self.fetch = fetch
-        self.value = "en"
+        self.value: str | None = None
         self.next_check = 0.0
+        self.waiting_since: float | None = None
 
-    def code(self) -> str:
+    def ask(self) -> str | None:
+        for _ in range(LANG_TRIES):
+            try:
+                got = self.fetch() if self.fetch else None
+            except Exception:
+                got = None
+            if got:
+                return got
+        return None
+
+    def code(self) -> str | None:
         if self.fixed:
             return self.fixed
+        if not self.fetch:
+            return "en"
+        now = time.time()
+        if now >= self.next_check:
+            got = self.ask()
+            if got:
+                self.value = normalize_lang(got)
+                self.next_check = now + LANG_REFRESH_SEC
+            else:  # agent not answering: keep what we have and ask again soon
+                self.next_check = now + LANG_RETRY_SEC
+        if self.value:
+            return self.value
+        if self.waiting_since is None:
+            self.waiting_since = now
+        return "en" if now - self.waiting_since >= LANG_WAIT_SEC else None
+
+
+class AgentZone:
+    """The agent's UTC offset, for the receive time of late messages; asked at most every
+    LANG_REFRESH_SEC. None (this machine's own zone) until the agent has told it."""
+
+    def __init__(self, fetch: Callable[[], dt.tzinfo | None] | None = None) -> None:
+        self.fetch = fetch
+        self.value: dt.tzinfo | None = None
+        self.next_check = 0.0
+
+    def get(self) -> dt.tzinfo | None:
         now = time.time()
         if self.fetch and now >= self.next_check:
             try:
                 got = self.fetch()
             except Exception:
                 got = None
-            if got:
-                self.value = normalize_lang(got)
+            if got is not None:
+                self.value = got
                 self.next_check = now + LANG_REFRESH_SEC
-            else:  # agent not answering: keep what we have and ask again soon
+            else:
                 self.next_check = now + LANG_RETRY_SEC
         return self.value
 
@@ -357,6 +403,19 @@ def agent_in_call() -> bool:
 def agent_language() -> str | None:
     lang = (agent_health() or {}).get("language")
     return lang if isinstance(lang, str) and lang.strip() else None
+
+
+def agent_utc_offset() -> dt.tzinfo | None:
+    """The agent's time zone as a fixed UTC offset, from the local_time in its /health
+    (e.g. 2026-11-13T07:52:22+08:00); None when it does not say."""
+    stamp = (agent_health() or {}).get("local_time")
+    if not isinstance(stamp, str) or not stamp.strip():
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(stamp.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.tzinfo if parsed.utcoffset() is not None else None
 
 
 def agent_adb_path() -> str:
@@ -623,9 +682,16 @@ def mask_sender(sender: str) -> str:
     return f"[{len(sender or '')} chars]"
 
 
+def format_stamp(ts: float, tz: dt.tzinfo | None = None) -> str:
+    """A receive time: in the agent's zone when it is known, else this machine's."""
+    if tz is not None:
+        return dt.datetime.fromtimestamp(ts, tz).strftime("%Y-%m-%d %H:%M")
+    return time.strftime("%Y-%m-%d %H:%M", time.localtime(ts))
+
+
 def format_sms(lang: str, sender: str, line: str, body: str, serial: str, model: str,
-               received_ms: int, now: float) -> tuple[str, str]:
-    """(title, text) of the notification for one SMS."""
+               received_ms: int, now: float, tz: dt.tzinfo | None = None) -> tuple[str, str]:
+    """(title, text) of the notification for one SMS. `tz` = the agent's time zone."""
     t = TEXTS.get(lang) or TEXTS["en"]
     sep = t["sep"]
     if len(body) > BODY_MAX:
@@ -635,7 +701,7 @@ def format_sms(lang: str, sender: str, line: str, body: str, serial: str, model:
         out.append(f"{t['to']}{sep}{line}")
     out.append(f"{t['text']}{sep}{body}")
     if received_ms and now - received_ms / 1000 > LATE_SEC:
-        stamp = time.strftime("%Y-%m-%d %H:%M", time.localtime(received_ms / 1000))
+        stamp = format_stamp(received_ms / 1000, tz)
         out.append(f"{t['received']}{sep}{stamp} ({t['late']})")
     out.append(f"{t['device']}{sep}{model} ({serial})" if model else f"{t['device']}{sep}{serial}")
     return t["title"], "\n".join(out)
@@ -651,11 +717,13 @@ def format_flood(lang: str, serial: str, model: str, count: int) -> tuple[str, s
 
 class Forwarder:
     def __init__(self, adb=None, deliver_fn=deliver, in_call=agent_in_call,
-                 lang: Callable[[], str] | None = None, dry_run: bool = False) -> None:
+                 lang: Callable[[], str | None] | None = None,
+                 zone: Callable[[], dt.tzinfo | None] | None = None, dry_run: bool = False) -> None:
         self.adb = adb or Adb(agent_adb_path)
         self.deliver = deliver_fn
         self.in_call = in_call
         self.lang = lang or Language(SMS_LANG, agent_language).code
+        self.zone = zone or AgentZone(agent_utc_offset).get
         self.dry = dry_run
         self.state = read_json(STATE)
         self.state.setdefault("phones", {})
@@ -717,11 +785,19 @@ class Forwarder:
             return True
         if self.sends >= SENDS_PER_TICK:
             return False
+        lang = self.lang()
+        if not lang:
+            # Not in a guessed language: the message stays and is tried again.
+            self.warn("lang", "the agent's language is not known yet; messages wait for it "
+                              f"(at most {int(LANG_WAIT_SEC)} s, then English)", 300)
+            return False
         wait = SEND_GAP_SEC - (time.time() - self.last_send)
         if wait > 0:
             time.sleep(wait)
-        title, text = format_sms(self.lang(), sender, self.line_for(serial, sub), body, serial,
-                                 self.phone(serial).get("model", ""), received_ms, time.time())
+        late = bool(received_ms) and time.time() - received_ms / 1000 > LATE_SEC
+        title, text = format_sms(lang, sender, self.line_for(serial, sub), body, serial,
+                                 self.phone(serial).get("model", ""), received_ms, time.time(),
+                                 self.zone() if late else None)
         ok, via = self.deliver(title, text)
         self.last_send = time.time()
         self.sends += 1
@@ -831,13 +907,16 @@ class Forwarder:
             return
         st["inbox"] = "ok"
         if len(rows) > FLOOD_CAP:
+            lang = None if self.dry else self.lang()
+            if not self.dry and not lang:
+                return  # the rows stay; skipped and reported once the language is known
             log(f"WARN inbox {serial}: {len(rows)} rows past the cursor at once; skipped (no backlog)")
             if self.dry:
                 return
             ph["inbox_id"] = max([ph["inbox_id"]] + [r["id"] for r in rows])
             ph["inbox_date"] = max([ph.get("inbox_date", 0)] + [r["date"] for r in rows])
             self.dirty = True
-            self.deliver(*format_flood(self.lang(), serial, ph.get("model", ""), len(rows)))
+            self.deliver(*format_flood(lang or "en", serial, ph.get("model", ""), len(rows)))
             return
         for r in rows:
             if not self.forward(serial, "inbox", str(r["id"]), r["addr"], r["body"], r["date"], r["sub"]):

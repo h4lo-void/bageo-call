@@ -18,7 +18,7 @@ There are two kinds of settings:
 | Language | The language the AI speaks and the language of notifications and summaries. English, 繁體中文 (Taiwan), 简体中文, 日本語, 한국어, Español, Français, Deutsch, Português. |
 | Your name | How callers refer to you. Used wherever a prompt says `{owner}`. |
 | Answer style | **AI assistant** — says it is an AI answering for you and takes a message. **As me** — answers as you. |
-| AI answers calls | Master switch. Off: calls are picked up and hung up at once, nothing is said. (To let calls ring unanswered instead, switch off *AI answering* in the phone app.) |
+| AI answers calls | Master switch. Off: calls are picked up and hung up at once, nothing is said. (To have one phone ring normally so you can answer it yourself, switch it to a [normal phone](PHONE.md#normal-phone-mode) instead.) |
 | Gemini API key | Your key from Google AI Studio. Stored on your computer only. |
 | Live model | The Gemini Live model. Default `gemini-3.8-live`. Models with "thinking" in the name answer more carefully and a little slower. |
 | Voice | One of Gemini's built-in voices; ▶ plays a sample in your language. |
@@ -29,7 +29,7 @@ There are two kinds of settings:
 |---|---|
 | Ring before answering | How long the caller hears ringing (default 3 s, up to 8 s). The AI gets ready during this time. |
 | Get the AI ready while the phone rings | Connects to Gemini and has the first words ready before pick-up, so the AI speaks at once. Costs one short Gemini session even when the caller hangs up while it rings. |
-| Answer hidden numbers | On: callers without caller ID are answered like anyone else. Off: they are hung up on. |
+| Answer hidden numbers | On: callers without caller ID are answered like anyone else. Off: they hear the same short "not available" announcement as blocked numbers (in your language and the *Announcement voice*), and the call ends. The announcement comes recorded with the program, so no Gemini key is needed. |
 | Let the caller interrupt | On phones where it is possible (see [Phone setup](PHONE.md#which-phones)), the AI stops talking when the caller cuts in. |
 | Let Gemini decide when the caller has finished | On (recommended): Gemini's own voice detection decides when it is the AI's turn. Off: a simpler detector in the agent does. |
 | Longest normal call | The AI starts wrapping up about 25 seconds before this (3–30 minutes, default 5). |
@@ -66,8 +66,24 @@ connect for a few seconds.
 ### Notifications
 
 See [Notifications](NOTIFICATIONS.md). *Address of this console* is the address
-put into notification links (e.g. `http://192.168.1.20:8787`); leave it empty
-for no links.
+put into notification links (e.g. `http://192.168.1.20:8787`). Left empty, it
+is filled in while the console is open to your network (`AGENT_HOST=0.0.0.0`):
+`http://<network name>.local:8787/` while the agent answers that name, else
+the computer's network address. With the console on this computer only,
+notifications carry no links; inside Docker nothing is filled in, set it
+yourself. *System → About* shows the address in use.
+
+*Network name* (default `myna`) is the name phones and computers on your
+network can use instead of the IP: `http://myna.local:8787/`. Letters, digits
+and hyphens; empty, `off`, `0`, `none` or `false` turns it off. The agent
+answers the name itself (multicast DNS, UDP port 5353) while the console is
+open to your network, sharing the port with the system's own responder
+(Bonjour on macOS, avahi on Linux, the DNS client of Windows). Some systems
+still keep the port to themselves: the agent then logs a line starting with
+`mDNS:` and the links use the IP address. It does not start inside a
+container. Some older Android phones do not open `.local` names at all; under
+a `.local` address *System → About* also shows the IP address, and the QR
+code works as well.
 
 ### Summary & calendar
 
@@ -100,7 +116,8 @@ Set as environment variables or in `.env`. All are optional.
 | `AGENT_PORT` | `8787` | Port of the web console and of the phones' connection. |
 | `CALLS_UI_TOKEN` | *(empty)* | Password for the web console and API. Send as `?token=…`, `Authorization: Bearer …` or `X-Calls-Token`. **Set it whenever `AGENT_HOST` is not `127.0.0.1`.** |
 | `DEVICE_TOKEN` | *(empty)* | Phones that do not come through USB must connect with `…/ws?token=<this>`. **Set it whenever `AGENT_HOST` is not `127.0.0.1`.** Phones on USB are exempt (the USB tunnel ends on the computer itself). |
-| `PUBLIC_URL` | *(empty)* | Same as *Address of this console*; the web console's value wins. |
+| `PUBLIC_URL` | *(empty)* | Same as *Address of this console*; the web console's value wins. Empty = automatic (see [Notifications](#notifications)). |
+| `MDNS_NAME` | `myna` | Same as *Network name*: the console answers at `http://<this>.local:8787/` on your network. Empty, `off`, `0`, `none` or `false` = off; on Windows an empty value counts as not set, so write `MDNS_NAME=off`. The web console's value wins. |
 
 ### Using the console from other devices
 
@@ -111,11 +128,21 @@ your phone or another computer on your home network:
 AGENT_HOST=0.0.0.0
 CALLS_UI_TOKEN=choose-a-long-random-string
 DEVICE_TOKEN=another-long-random-string
-PUBLIC_URL=http://192.168.1.20:8787
 ```
 
-Open `http://192.168.1.20:8787/?token=choose-a-long-random-string` once; the
-page remembers the token. The connection is plain HTTP — fine on a home network
+Open `http://myna.local:8787/?token=choose-a-long-random-string` (or the
+computer's IP, e.g. `http://192.168.1.20:8787/?token=…`) once; the page
+remembers the token. *System → About* shows the address with a QR code to scan
+with your phone, and how to add the console to the home screen: iPhone *Share →
+Add to Home Screen*, Android Chrome menu ⋮ → *Add to Home screen*, Chrome or
+Edge on a computer the install icon in the address bar.
+
+If this computer is on a VPN that sends all traffic through the tunnel, the
+agent may take the VPN's address for the name and the links. Set `AGENT_HOST`
+to the computer's LAN IP (e.g. `AGENT_HOST=192.168.1.20`); the name and the
+links then use that address.
+
+The connection is plain HTTP — fine on a home network
 you trust, not for the open internet. To reach it from outside, use a VPN
 (WireGuard, Tailscale) or a reverse proxy with HTTPS and its own login; do not
 forward the port.
@@ -127,6 +154,19 @@ forward the port.
 | `CALLS_DATA_DIR` | `data/calls` | Call records, recordings, settings. |
 | `CALLS_RETENTION_DAYS` | `7` | Calls older than this are deleted, records and audio (1–3650). |
 | `ASSETS_DIR` | `assets` next to the program | Folder with the bundled sounds. |
+
+### Time zone
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `TZ` | *(the computer's own)* | Time zone of the times in notifications (`Nov 13, 08:09`, written the way your language writes dates), of "today" in the call list and of calendar suggestions. A zone name such as `Asia/Taipei`, `Europe/Berlin` or `America/New_York`. Set it only when the computer the agent runs on is not in your zone. The current value is in `/health` as `local_time`. |
+
+In Docker, `docker-compose.yml` passes the host's zone into the container by
+mounting `/etc/localtime` (Linux hosts) and leaves `TZ` unset; put
+`TZ=Asia/Taipei` in `.env` to use another zone. On Docker Desktop for Windows
+or macOS, remove the `/etc/localtime` line from `docker-compose.yml` and set
+`TZ` in `.env`; with neither, the container runs on UTC. Leave `TZ` out
+rather than empty: an empty `TZ` means UTC.
 
 ### Phones on USB
 

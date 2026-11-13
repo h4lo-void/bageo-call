@@ -24,6 +24,7 @@ use serde_json::{json, Value};
 use tracing::{info, warn};
 
 use crate::config::Settings;
+use crate::locale::{self, Lang};
 use crate::services::{resample_pcm16, transcribe_pcm16};
 
 /// Traditional-Chinese spam / telemarketing phrases (keyword path; no OpenRouter required).
@@ -105,7 +106,8 @@ pub struct ExtractedIntent {
     pub raw_json: Value,
 }
 
-/// Strict JSON-only system prompt for OpenRouter intent extraction.
+/// Strict JSON-only system prompt for OpenRouter intent extraction, Traditional
+/// Chinese; [`intent_system_prompt`] picks the one for the agent's language.
 pub const INTENT_SYSTEM_PROMPT: &str = r#"你是電話留言意圖分析器。分析來電者留言，只輸出單一 JSON 物件（不要 markdown、不要解釋）。
 
 欄位：
@@ -117,6 +119,44 @@ pub const INTENT_SYSTEM_PROMPT: &str = r#"你是電話留言意圖分析器。�
 - confidence: 0.0 到 1.0 的浮點數
 
 reply_method=phone 且未留聯絡方式時，可將 reply_contact 設為提供的 caller_id。"#;
+
+/// The same instructions for every language other than Chinese; `{language}`
+/// is the language the summary is written in.
+const INTENT_SYSTEM_PROMPT_EN: &str = r#"You analyse a voicemail a caller left. Output exactly one JSON object (no markdown, no explanation).
+
+Fields:
+- intent: Message | Callback | Schedule | Question | Spam | Other
+- summary: a one-sentence summary written in {language}
+- datetime_hint: the date or time mentioned (ISO or plain words), or null
+- reply_method: phone | email | none
+- reply_contact: the phone number or email the caller left, or null
+- confidence: a number from 0.0 to 1.0
+
+If reply_method is phone and the caller left no contact, reply_contact may be the given caller_id."#;
+
+/// The intent prompt with the summary asked for in `lang`: Traditional Chinese
+/// for zh-TW, Simplified for zh-CN, otherwise the language named in English.
+pub fn intent_system_prompt(lang: Lang) -> String {
+    match lang {
+        Lang::ZhTw => INTENT_SYSTEM_PROMPT.to_string(),
+        Lang::ZhCn => zhconv::zhconv(
+            &INTENT_SYSTEM_PROMPT.replace("一句話繁體中文摘要", "一句話簡體中文摘要"),
+            zhconv::Variant::ZhCN,
+        ),
+        other => INTENT_SYSTEM_PROMPT_EN.replace("{language}", locale::phrases(other).name_en),
+    }
+}
+
+/// What the intent model reads: the caller ID and the message, labelled in the
+/// prompt's language.
+fn intent_user_body(lang: Lang, caller_id: &str, transcript: &str) -> String {
+    let label = match lang {
+        Lang::ZhTw => "留言內容：",
+        Lang::ZhCn => "留言内容：",
+        _ => "Message:",
+    };
+    format!("caller_id: {caller_id}\n\n{label}\n{transcript}")
+}
 
 /// Read a voicemail WAV, decode to PCM, and transcribe via Whisper.
 pub async fn transcribe_voicemail_wav(
@@ -149,7 +189,7 @@ pub async fn extract_intent(
         return Ok(heuristic_intent_with(trimmed, caller_id, spam_keywords));
     }
 
-    let user_body = format!("caller_id: {caller_id}\n\n留言內容：\n{trimmed}");
+    let user_body = intent_user_body(locale::current(), caller_id, trimmed);
     let raw_text = chat_openrouter_intent(
         http,
         settings,
@@ -275,17 +315,18 @@ async fn chat_openrouter_intent(
         model
     };
     // Product path: deepseek-v4-flash via domestic API (same key as TRTC_LLM_CONFIG).
+    let system = intent_system_prompt(locale::current());
     if model.to_ascii_lowercase().contains("deepseek")
         || crate::deepseek::api_key_from_llm_config(settings.trtc_llm_config.as_ref()).is_some()
             && model == crate::deepseek::DEEPSEEK_MODEL
     {
-        return crate::deepseek::chat_completions(http, key, INTENT_SYSTEM_PROMPT, &user_text, 256)
+        return crate::deepseek::chat_completions(http, key, &system, &user_text, 256)
             .await;
     }
     let payload = json!({
         "model": model,
         "messages": [
-            {"role": "system", "content": INTENT_SYSTEM_PROMPT},
+            {"role": "system", "content": system},
             {"role": "user", "content": user_text},
         ],
         "stream": false,
@@ -1011,6 +1052,17 @@ fn normalize_reply_method(v: Option<&Value>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn intent_summary_is_asked_for_in_the_agents_language() {
+        assert!(intent_system_prompt(Lang::ZhTw).contains("一句話繁體中文摘要"));
+        let cn = intent_system_prompt(Lang::ZhCn);
+        assert!(cn.contains("简体中文摘要") && !cn.contains("繁體"), "{cn}");
+        let de = intent_system_prompt(Lang::De);
+        assert!(de.contains("written in German") && !de.contains('{'), "{de}");
+        assert!(intent_user_body(Lang::Ja, "0912", "x").contains("Message:\nx"));
+        assert!(intent_user_body(Lang::ZhTw, "0912", "x").contains("留言內容：\nx"));
+    }
 
     #[test]
     fn strip_fences_and_parse() {

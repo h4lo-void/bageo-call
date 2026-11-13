@@ -6,7 +6,9 @@
     <string name="notification_title">Myna</string>
     <string name="notification_text_armed">Bereit. Wartet auf Anrufe; das Telefon bleibt stumm.</string>
     <string name="notification_text_in_call">Die KI bearbeitet gerade einen Anruf.</string>
-    <string name="notification_text_disabled">Die KI-Anrufannahme ist pausiert.</string>
+    <string name="notification_text_normal">Normales Telefon: Anrufe klingeln und du nimmst sie selbst an.</string>
+    <string name="channel_service">Myna-Dienst</string>
+    <string name="channel_info">Myna-Hinweise</string>
     <string name="uplink_missing_title">Der Anrufer kann die KI nicht hören</string>
     <string name="uplink_missing_text">Der Audiopfad des Anrufs ist nicht verfügbar. Prüfe, ob das Myna-Modul installiert und aktiviert ist, und starte das Telefon neu.</string>
 
@@ -15,33 +17,85 @@
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_compat">Getestet auf Pixel 7, 7a, 8 und 9. Andere gerootete Telefone funktionieren möglicherweise auch – Nutzung auf eigene Gefahr.</string>
 
-    <!-- Master switch and service -->
-    <string name="ai_switch_title">KI-Anrufannahme</string>
-    <string name="ai_switch_desc">Wenn aktiviert, werden eingehende Anrufe lautlos angenommen und von der KI auf deinem PC bearbeitet.</string>
+    <!-- Status card and the switch between AI mode and normal phone -->
+    <string name="st_ai_on">Die KI nimmt deine Anrufe an</string>
+    <string name="st_ai_on_d">Eingehende Anrufe nimmt die KI an. Das Telefon bleibt stumm.</string>
+    <string name="st_normal">Normales Telefon: Anrufe klingeln wie gewohnt</string>
+    <string name="st_normal_d">Die KI nimmt nicht ab. Du nimmst Anrufe selbst an, wie bei jedem Telefon. Schalte den Schalter unten ein, damit die KI wieder annimmt.</string>
+    <string name="st_offline">Noch nicht mit dem Computer verbunden</string>
+    <string name="st_offline_d">Prüfe, ob Myna auf dem Computer läuft und das Telefon per USB angeschlossen ist (oder trag unter „Erweitert“ eine WLAN-Adresse ein). Bis dahin kann die KI nicht mit Anrufern sprechen.</string>
+    <string name="st_steps">Offene Einrichtungsschritte: %1$d</string>
+    <string name="st_steps_d">Erledige die Schritte unten, damit die KI Anrufe annehmen kann.</string>
+    <string name="st_service_off">Der Annahmedienst läuft nicht</string>
+    <string name="st_service_off_d">Tippe auf „Starten“, um ihn wieder zu starten.</string>
+    <string name="btn_start">Starten</string>
+    <string name="st_switching">Wird umgestellt…</string>
+    <string name="st_switching_d">Das dauert meist nur ein paar Sekunden.</string>
+    <string name="mode_switch_label">KI nimmt meine Anrufe an</string>
+    <string name="mode_switch_hint">Ausschalten, um es als normales Telefon zu nutzen: Anrufe klingeln und du nimmst selbst ab.</string>
+    <string name="confirm_ai_title">Soll die KI Anrufe annehmen?</string>
+    <string name="confirm_ai_body">Dieses Telefon wird zum KI-Telefon: Anrufe klingeln nicht mehr und die KI nimmt ab. Google Telefon wird deaktiviert und „Bitte nicht stören“ eingeschaltet.</string>
+    <string name="confirm_normal_title">Als normales Telefon nutzen?</string>
+    <string name="confirm_normal_body">Anrufe klingeln und du nimmst sie selbst an. Die KI nimmt auf diesem Telefon keine Anrufe mehr an.</string>
+    <string name="btn_switch">Umstellen</string>
+    <string name="mode_failed">Die Umstellung wurde nicht abgeschlossen. %1$s Du kannst es noch einmal versuchen.</string>
+    <string name="mode_err_in_call">Es läuft ein Anruf; leg zuerst auf.</string>
+    <string name="mode_err_busy">Die vorige Umstellung läuft noch.</string>
+    <string name="mode_err_no_root">Myna hat keinen Root-Zugriff. Erlaube ihn in Magisk oder KernelSU.</string>
+    <string name="mode_err_save">Der Modus konnte nicht gespeichert werden.</string>
+    <string name="mode_err_dialer">Die Standard-Telefon-App konnte nicht geändert werden.</string>
+    <string name="mode_err_screening">Die Anruffilterung konnte nicht geändert werden.</string>
+    <string name="mode_err_dnd">„Bitte nicht stören“ konnte nicht geändert werden.</string>
+    <string name="mode_err_volume">Die Klingellautstärke konnte nicht eingestellt werden.</string>
+    <string name="mode_err_other">Ein unerwarteter Fehler ist aufgetreten.</string>
+    <string name="btn_console">Webkonsole öffnen</string>
+    <string name="msg_no_browser">Keine App auf diesem Telefon kann Webseiten öffnen.</string>
+    <string name="st_legacy_off">Auf diesem Telefon war der alte Schalter „KI-Annahme“ aus. Seit diesem Update entscheidet der Schalter oben: Jetzt nimmt die KI Anrufe an. Schalte ihn aus, um es als normales Telefon zu nutzen.</string>
+
+    <!-- Setup steps (AI mode) -->
+    <string name="steps_header">Einrichtungsschritte (%1$d von %2$d erledigt)</string>
+    <string name="status_ok">OK</string>
+    <string name="status_missing">Fehlt</string>
+    <string name="status_check">Prüfen</string>
+    <string name="step_module_title">Myna-Modul installieren</string>
+    <string name="step_module_ok">Das Modul ist aktiv.</string>
+    <string name="step_module_missing">Installiere das Myna-Modul in Magisk oder KernelSU und starte das Telefon neu.</string>
+    <string name="step_perms_title">Myna Telefon und Mikrofon erlauben</string>
+    <string name="step_perms_desc">Damit Myna Anrufe bemerkt, annimmt und den Ton an den Computer schickt.</string>
+    <string name="step_dialer_title">Myna als Standard-Telefon-App festlegen</string>
+    <string name="step_dialer_desc">Damit kein Anrufbildschirm erscheint, während die KI spricht.</string>
+    <string name="step_screening_title">Myna als Anruffilter-App festlegen</string>
+    <string name="step_screening_desc">Damit eingehende Anrufe nicht klingeln.</string>
+    <string name="step_dnd_title">Myna „Bitte nicht stören“ steuern lassen</string>
+    <string name="step_dnd_desc">Hält das Telefon still, während die KI annimmt.</string>
+    <string name="step_battery_title">Myna nicht schlafen legen lassen</string>
+    <string name="step_battery_desc">Verhindert, dass Android Myna zum Akkusparen beendet und Anrufe verloren gehen.</string>
+    <string name="btn_allow">Zulassen</string>
+    <string name="btn_set">Festlegen</string>
+    <string name="btn_open_settings">Einstellungen öffnen</string>
+    <string name="grant_perms">Erteile die angeforderten Berechtigungen und tippe dann noch einmal auf „Dienst starten“.</string>
+    <string name="msg_perm_settings">Einige Berechtigungen können hier nicht mehr angefragt werden. Erteile sie in den Systemeinstellungen der App.</string>
+
+    <!-- Advanced: service -->
+    <string name="advanced">Erweitert</string>
+    <string name="section_service">Dienst</string>
     <string name="service_running">Dienst: läuft</string>
     <string name="service_stopped">Dienst: gestoppt</string>
     <string name="btn_start_service">Dienst starten</string>
     <string name="btn_stop_service">Dienst stoppen</string>
     <string name="msg_service_started">Dienst gestartet.</string>
     <string name="msg_service_stopped">Dienst gestoppt.</string>
-    <string name="grant_perms">Erteile die angeforderten Berechtigungen und tippe dann noch einmal auf „Dienst starten“.</string>
 
-    <!-- Checklist -->
-    <string name="section_checklist">Einrichtungs-Checkliste</string>
-    <string name="status_ok">OK</string>
-    <string name="status_missing">Fehlt</string>
-    <string name="status_check">Prüfen</string>
-
+    <!-- Advanced: detailed checks -->
+    <string name="section_details">Ausführliche Prüfung</string>
     <string name="check_priv_title">Als privilegierte System-App installiert</string>
     <string name="check_priv_ok">Installiert unter %1$s</string>
     <string name="check_priv_missing">Als normale App installiert (%1$s). Installiere das Myna-Modul in Magisk oder KernelSU und starte neu. Falls du die APK zusätzlich von Hand installiert hast, deinstalliere diese Kopie.</string>
-
     <string name="check_privperm_title">Privilegierte Berechtigungen</string>
     <string name="check_privperm_desc">Werden beim Start vom Modul erteilt. Auf diesem Bildschirm lassen sie sich nicht erteilen.</string>
     <string name="perm_capture_audio_output">Audio des Anrufs erfassen</string>
     <string name="perm_modify_phone_state">KI-Stimme in den Anruf einspeisen</string>
     <string name="perm_control_incall">Anrufbildschirm ersetzen</string>
-
     <string name="section_runtime_perms">App-Berechtigungen</string>
     <string name="perm_record_audio">Mikrofon: Audio des Anrufs aufnehmen</string>
     <string name="perm_read_phone_state">Telefon: erkennen, wann ein Anruf beginnt und endet</string>
@@ -49,27 +103,12 @@
     <string name="perm_answer_calls">Anrufe annehmen: automatisch abheben und auflegen</string>
     <string name="perm_call_phone">Anrufe tätigen: Rückruffunktion</string>
     <string name="perm_post_notifications">Benachrichtigungen: Dienstbenachrichtigung anzeigen</string>
-    <string name="btn_grant">Erteilen</string>
-    <string name="msg_perm_settings">Einige Berechtigungen können hier nicht mehr angefragt werden. Erteile sie in den Systemeinstellungen der App.</string>
-
-    <string name="section_system_settings">Systemeinstellungen</string>
-    <string name="check_dialer_title">Standard-Telefon-App</string>
-    <string name="check_dialer_desc">Damit kann die App Anrufe annehmen, ohne einen Anrufbildschirm zu zeigen.</string>
-    <string name="check_screening_title">Anruffilter-App</string>
-    <string name="check_screening_desc">Schaltet den Klingelton für eingehende Anrufe stumm.</string>
-    <string name="btn_set">Festlegen</string>
-    <string name="check_dnd_title">Zugriff auf „Bitte nicht stören“</string>
-    <string name="check_dnd_desc">Hält das Telefon still, während es als Anrufbeantworter arbeitet.</string>
-    <string name="btn_open_settings">Einstellungen öffnen</string>
-    <string name="check_battery_title">Ausnahme von der Akkuoptimierung</string>
-    <string name="check_battery_desc">Verhindert, dass Android den Dienst schlafen legt.</string>
-    <string name="btn_allow">Zulassen</string>
     <string name="check_uplink_title">Einspeisung der KI-Stimme in den Anruf</string>
     <string name="check_uplink_ok">Telefonie-Audioausgang gefunden.</string>
     <string name="check_uplink_idle">Im Moment nicht sichtbar. Bei manchen Telefonen erscheint er nur während eines Anrufs; die App meldet sich, wenn die Einspeisung fehlschlägt.</string>
     <string name="check_uplink_missing">Benötigt das Modul: Die Berechtigung MODIFY_PHONE_STATE fehlt.</string>
 
-    <!-- Connection -->
+    <!-- Advanced: connection -->
     <string name="section_connection">Verbindung</string>
     <string name="agent_url_label">Agent-Adresse</string>
     <string name="connection_hint_usb">USB (Standard, empfohlen): Lass ws://127.0.0.1:8765 stehen. Das PC-Programm leitet diesen Port automatisch per adb reverse über das USB-Kabel weiter.</string>
@@ -84,12 +123,19 @@
     <string name="test_running">Verbindung wird hergestellt …</string>
     <string name="test_ok">Verbunden</string>
     <string name="test_failed">Fehlgeschlagen: %1$s</string>
-    <string name="test_timeout">keine Antwort innerhalb von 5 Sekunden</string>
-    <string name="test_closed">Verbindung geschlossen (Code %1$d)</string>
+    <string name="test_fail_timeout">keine Antwort innerhalb von 5 Sekunden</string>
+    <string name="test_fail_refused">Der Computer hat die Verbindung abgelehnt. Läuft Myna dort und ist die USB-Verbindung eingerichtet?</string>
+    <string name="test_fail_host">Diese Adresse wurde nicht gefunden</string>
+    <string name="test_fail_network">Diese Adresse ist nicht erreichbar. Sind Telefon und Computer im selben Netzwerk?</string>
+    <string name="test_fail_auth">Abgelehnt: Das Token in der Adresse fehlt oder ist falsch</string>
+    <string name="test_fail_tls">Die sichere Verbindung (wss) ist fehlgeschlagen</string>
+    <string name="test_fail_rejected">Etwas hat geantwortet, aber es ist nicht Myna oder hat die Verbindung abgelehnt</string>
+    <string name="test_fail_other">Keine Verbindung möglich</string>
+    <string name="test_details">Details</string>
 
     <!-- About and safety -->
     <string name="section_about">Info und Sicherheit</string>
-    <string name="about_dedicated">Verwende ein eigenes Telefon nur für diesen Zweck. Das Modul übernimmt die Telefon-App, schaltet den Klingelton stumm und aktiviert „Bitte nicht stören“ – als normales Telefon ist das Gerät dann nicht mehr nutzbar.</string>
-    <string name="about_rollback">Um wieder ein normales Telefon zu haben, deaktiviere oder entferne das Modul in Magisk oder KernelSU und starte neu. Falls die Google-Telefon-App oder der Klingelton danach noch ausgeschaltet sind, folge den Schritten zur Wiederherstellung in der README.</string>
+    <string name="about_dedicated">Im KI-Modus übernimmt das Modul die Telefon-App, schaltet den Klingelton stumm und aktiviert „Bitte nicht stören“. Am besten nimmst du ein Zweittelefon. Um es eine Zeit lang normal zu nutzen, schalte den Schalter oben aus.</string>
+    <string name="about_rollback">Um Myna ganz zu entfernen, schalte zuerst den Schalter oben aus (zurück zum normalen Telefon), deaktiviere oder entferne dann das Modul in Magisk oder KernelSU und starte neu.</string>
     <string name="about_legal">Die Gesetze zum Aufzeichnen von Anrufen und zur Pflicht, Anrufer auf eine KI hinzuweisen, unterscheiden sich je nach Land. Für die Einhaltung bist du selbst verantwortlich.</string>
 </resources>

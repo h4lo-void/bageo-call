@@ -14,6 +14,8 @@ X-Calls-Token: <token>
 
 權杖錯誤或沒帶，會得到 `401`。
 
+錯誤的回應是 `{ok: false, code, error}`：`code` 是固定的英文代碼，可以拿來判斷（`not_found`、`invalid_id`、`no_audio`、`preview_failed`、`save_failed`、`missing_field`、`auth_failed`…；網頁控制台會用你的語言顯示），`error` 是詳細說明（大多是英文）。例外：`POST /calls/api/devices/{serial}/mode` 一律回 `{ok, mode, error_code}`（見下方）。
+
 ## 通話
 
 | 方法與路徑 | 內容 |
@@ -23,7 +25,7 @@ X-Calls-Token: <token>
 | `GET /calls/api/call/{id}/event.ics` | 行事曆建議，iCalendar 檔案格式。該通話沒有建議時回 `404`。 |
 | `GET /calls/api/audio/{id}/listen` | 你當時會聽到的整通電話（對方和 AI 混在一起），WAV，支援 range 請求。 |
 | `GET /calls/api/audio/{id}/remote` · `/tts` · `/audio/{id}` | 只有對方 · 只有 AI · 原始的混音錄音。 |
-| `GET /calls/api/live` | 進行中的通話和已連線的手機：`{ok, count, calls, control_idle_clients, control_idle_serials}`。 |
+| `GET /calls/api/live` | 進行中的通話和已連線的手機：`{ok, count, calls, control_idle_clients, control_idle_serials, normal_mode_serials}`。`normal_mode_serials` 是已連線、但切成一般手機的手機；網頁不把它們算進待命手機。 |
 | `GET /calls/api/stats` | `{ok, stats: {total, today, voicemails, blocked}}`。 |
 | `GET /calls/api/export.csv` | 篩選後的清單，CSV 格式（查詢參數同 `list`，最多 2000 列）。 |
 
@@ -35,7 +37,7 @@ X-Calls-Token: <token>
 
 | 方法與路徑 | 內容 |
 |---|---|
-| `GET /calls/api/settings` | `{ok, settings, storage_path}`。機密欄位會以遮罩形式回傳（`"abc…wxyz"`），並附一個 `<name>_set` 旗標；通知管道回傳時 `url` / `token` 是空的，另外附上 `url_hint`、`token_hint`、`url_set`、`token_set`。還有幾個唯讀的輔助欄位：`default_prompt`、`voices`、`ambience_kinds`、`languages`、`notify_kinds`、`sample_lines`、`summary_ready`。 |
+| `GET /calls/api/settings` | `{ok, settings, storage_path, console_url, console_ip_url}`：`console_url` 是目前用的控制台網址（你填的，或自動帶入的；只有這台電腦能開時是空的），`console_ip_url` 是把 `.local` 名稱換成區網 IP 的同一個網址。機密欄位會以遮罩形式回傳（`"abc…wxyz"`），並附一個 `<name>_set` 旗標；通知管道回傳時 `url` / `token` 是空的，另外附上 `url_hint`、`token_hint`、`url_set`、`token_set`。還有幾個唯讀的輔助欄位：`default_prompt`、`voices`、`ambience_kinds`、`languages`、`notify_kinds`、`sample_lines`、`summary_ready`。 |
 | `PUT /calls/api/settings` | 一個 JSON 物件，只放要修改的欄位。回應同 `GET`。 |
 
 `PUT` 的規則：
@@ -57,7 +59,7 @@ PUT /calls/api/settings
 
 | 方法與路徑 | 內容 |
 |---|---|
-| `POST /calls/api/notify/test` | Body `{"channel": {kind, url, token, target, id?}}`。把測試訊息傳到那一個管道（已儲存的機密會依 `id` 補上）。回 `200 {ok: true}`，或 `502 {ok: false, error}` 並附上該服務的回應。 |
+| `POST /calls/api/notify/test` | Body `{"channel": {kind, url, token, target, id?}}`。把測試訊息傳到那一個管道（已儲存的機密會依 `id` 補上）。回 `200 {ok: true}`，或 `502 {ok: false, code, field, kind, error}`：`code` 是出錯的原因（`missing_field`、`bad_url`、`bad_value`、`auth_failed`、`service_not_found`、`http_error`、`service_error`、`network_error`、`send_failed`），`field` 是 `url` / `token` / `target` 哪一欄（或空白），`error` 是該服務的回應。 |
 | `POST /calls/api/notify/send` | Body `{"title": "...", "body": "..."}`。把你的訊息傳到每一個啟用的管道。只要有一個管道接受，就回 `{ok: true}`。 |
 
 你自己的 webhook 會收到的 JSON，在[通知](NOTIFICATIONS.md#webhook-json)裡有說明。
@@ -70,11 +72,22 @@ PUT /calls/api/settings
 
 | 方法與路徑 | 內容 |
 |---|---|
-| `GET /calls/api/devices` | `{ok, usb: {enabled, adb_found, adb_path, error, phones: [{serial, state, model, reverse, app_installed}]}, connected: [...], labels: {<phone id>: <model>}, calls_in_progress}`。 |
-| `GET /health` | 一個很大的扁平 JSON 物件，用於排查問題：版本、語言、哪些東西已設定、已連線的手機、進行中的通話；不含金鑰或 token。有設定控制台權杖而請求沒帶時，只會回傳 `ok`、`version`、`language`、`active_call_count` 和 `control_idle_clients`（監控用已經足夠）。 |
+| `GET /calls/api/devices` | `{ok, usb: {enabled, adb_found, adb_path, error, phones: [{serial, state, model, reverse, app_installed}]}, connected: [...], labels: {<phone id>: <model>}, calls_in_progress, phones: [...]}`。最外層的 `phones` 是主程式啟動後在 control 連線上見過的每支手機：`{serial, connected, mode, supports_mode, model, app_version, in_call, last_seen_ms}`。`mode` 是 `ai`（AI 接聽）或 `normal`（一般手機，見[手機設定](PHONE.md#一般手機模式)）；比這個功能舊的 App，`supports_mode` 是 false，永遠是 `ai`。 |
+| `POST /calls/api/devices/{serial}/mode` | Body `{"mode": "ai" \| "normal"}`。叫手機切換，最多等 15 秒等它回覆。一律回 `{ok, mode, error_code}`：`mode` 是切換後手機的模式（不知道時為 `null`），成功時 `error_code` 是 `null`，否則是這些代碼之一：`offline`（沒連上）、`unsupported`（App 太舊）、`in_call`、`busy`（上一次切換還在做）、`no_root`、`save_failed`、`dialer_failed`、`screening_failed`、`dnd_failed`、`volume_failed`、`failed`，或 `timeout`。`timeout` 的意思是「還沒確認」，不是失敗：切換本身可能讓手機 App 重新啟動，它重新連上後才回報結果，所以稍後再讀一次模式（`GET /calls/api/devices`）。Body 由主程式自己解析：不是 JSON、沒有字串 `mode`、或 serial 不是英數字、`-`、`_` 組成時，回 HTTP 400、同樣格式的 JSON，`error_code` 是 `bad_request`；`mode` 不認得時回 400 與 `invalid_mode`。請求一定要帶 `Content-Type: application/json`（沒有也回 400 `bad_request`），這樣別的網頁沒辦法透過你區網裡的瀏覽器偷偷切換手機。 |
+| `GET /health` | 一個很大的扁平 JSON 物件，用於排查問題：版本、語言、哪些東西已設定、已連線的手機、進行中的通話；不含金鑰或 token。`control_idle_clients`／`control_idle_serials` 算的是所有連上的手機；`normal_mode_serials` 列出切成一般手機、AI 不接它們電話的那幾支。有設定控制台權杖而請求沒帶時，只會回傳 `ok`、`version`、`language`、`active_call_count` 和 `control_idle_clients`（監控用已經足夠）。 |
 
 ## 手機這一端
 
 手機透過 WebSocket 連到 `/` 或 `/ws`（兩者相同）：每支手機一條長期維持的「control」連線，每通接聽的電話一條「media」連線，雙向傳送 JSON 文字訊框和原始的 16 kHz 單聲道 16 位元 PCM 二進位訊框。從這台電腦本身來的連線（USB 通道）一律接受；其他連線在有設定該權杖時，必須帶上 `?token=<DEVICE_TOKEN>`。
 
 訊息列表在 [`android/README.md`](../../android/README.md#websocket-protocol)（英文）。任何會講這個通訊協定的東西都可以代替手機——所以要加上 SIP 或軟體電話前端，可以完全不動通話邏輯。
+
+手機模式用到 control 連線上的這些訊息（雙方都會忽略不認得的東西，所以舊 App、舊主程式照樣能用）：
+
+| 方向 | 訊息 | 意思 |
+|---|---|---|
+| 手機 → 主程式 | `hello` 加上 `phone_mode`（`ai`／`normal`）和 `in_call` | 連上時手機的模式。`mode` 仍然是 `CONTROL_IDLE`（連線種類）。沒有 `phone_mode` = 舊 App：`ai`，不能從這裡切換。 |
+| 手機 → 主程式 | `{"type": "status", "mode": "ai" \| "normal", "in_call": bool}` | 模式或通話狀態變了。 |
+| 主程式 → 手機 | `{"type": "set_mode", "mode": "ai" \| "normal", "id": "<uuid>"}` | 切換（由上面的路由送出）。 |
+| 手機 → 主程式 | `{"type": "set_mode_result", "id": "<同一個>", "ok": bool, "mode": "...", "error": "<代碼>"}` | 結果；成功時 `error` 是空字串，代碼同上。 |
+| 主程式 → 手機 | `{"type": "agent_info", "console_url": "http://…/calls/"}` | 緊接在 hello 之後，主程式有控制台網址時才送：你填的網址（`public_url`）；沒填而控制台對區網開放時，用區網 IP 的網址（有些手機打不開 `.local` 名稱）。App 會因此顯示「打開網頁控制台」按鈕。 |

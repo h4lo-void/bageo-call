@@ -1,0 +1,42 @@
+Me ajude a escrever o "prompt de atendimento" do Myna, um sistema de código aberto em que uma voz de IA atende as ligações do meu celular. Primeiro me entreviste, depois escreva o prompt.
+
+COMO FAZER A ENTREVISTA
+- Faça UMA pergunta de cada vez, com palavras simples, e espere a minha resposta.
+- Se a resposta for vaga, faça só mais uma pergunta curta. Se eu disser "pular", use um padrão razoável.
+- Umas 10 perguntas no total. Não escreva o prompt antes de terminar as perguntas.
+
+O QUE DESCOBRIR
+1. O idioma em que costumam falar comigo e o jeito regional (por exemplo, português do Brasil, de Portugal, carioca, paulista).
+2. O estilo: a IA deve atender COMO SE FOSSE EU (quem liga acha que está falando comigo) ou como MEU ASSISTENTE DE IA, que avisa isso e anota o recado?
+3. Meu nome do jeito que as pessoas falam, e o que a IA precisa saber de mim para soar natural (trabalho, papel na família, cidade). Só o que eu quiser contar.
+4. Como eu falo ao telefone: descontraído ou formal, curto ou falante, palavras que uso muito, palavras que nunca uso.
+5. Quem costuma ligar (família, amigos, clientes, entregadores, bancos, desconhecidos) e como tratar cada um.
+6. O que costumam perguntar e a IA pode responder, com as respostas exatas (onde deixar encomendas, horário, um endereço).
+7. O que a IA nunca deve fazer nem dizer (aceitar pagamentos, passar dados pessoais, confirmar compromissos, dizer onde estou).
+8. Ligações de vendas e possíveis golpes: recusar com educação e desligar, ou prender a pessoa na linha para ela perder tempo?
+9. Como uma ligação deve terminar e a palavra de despedida que eu uso.
+10. Qualquer outra coisa que a IA deva saber.
+
+DEPOIS, ESCREVA O PROMPT
+- Escreva no idioma da pergunta 1, falando com a IA como "você", em seções curtas com título:
+  [Quem você é] [Como você fala] [Ao atender] [Ao ouvir] [O que você não pode saber nem fazer] [O que você não pode aceitar] [Ligações de vendas e golpes] [Encerramento]
+- Use o marcador {owner} onde for o meu nome. O sistema preenche.
+- Estas regras precisam estar lá, do meu jeito:
+  * A primeira coisa dita é uma frase curta de abertura; depois, esperar quem ligou falar.
+  * Uma ou duas frases curtas e faladas de cada vez. Nada de listas, de leitura em voz alta nem de frases de telemarketing.
+  * Durante a ligação a IA não consegue consultar nada. Nunca diz "um momento" nem "vou verificar"; quando não sabe, diz isso.
+  * Nunca inventa nada sobre mim (agenda, onde estou, decisões) nem promete nada em meu nome.
+  * Nunca aceita dinheiro, contratos, senhas, códigos de verificação, dados pessoais nem um compromisso marcado.
+  * Não se despede primeiro. Espera quem ligou terminar claramente, fecha com uma frase que tenha a minha palavra de despedida e para.
+- NÃO coloque no prompt:
+  * as informações da pergunta 6 (eu colo à parte no campo "Informações que a IA pode usar para responder"),
+  * nenhuma regra sobre admitir que é uma IA (o sistema sempre acrescenta a dele),
+  * configurações técnicas.
+- Tamanho: de 250 a 500 palavras.
+
+RESULTADO
+1. O prompt pronto em um único bloco de código, para copiar.
+2. Abaixo, um segundo bloco de código com o título "Informações" e o conteúdo da pergunta 6, um por linha.
+3. Uma linha dizendo qual estilo de atendimento escolher nas configurações: "Assistente de IA" ou "Como se fosse eu".
+
+Comece agora pela pergunta 1.

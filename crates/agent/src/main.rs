@@ -38,6 +38,7 @@ mod gemini_live;
 mod gmail;
 mod hold_music;
 mod locale;
+mod mdns;
 mod notify;
 mod openclaw;
 mod prompts;
@@ -221,6 +222,9 @@ struct AppState {
     task_store: Arc<TaskStore>,
     /// Idle control WS clients (`mode=CONTROL_IDLE`) for outbound callbacks.
     control: Arc<ControlRegistry>,
+    /// What each phone reported on its control connection (AI / normal phone mode,
+    /// app version) and the web console's mode switch.
+    phones: Arc<calls_http::PhoneDevices>,
     /// Rolling TRTC AI talk metrics (caller finished → AI audio back).
     trtc_talk: Arc<TrtcTalkMetrics>,
     /// Process-wide short-window dedup for incoming-call notifications. A bridge
@@ -908,6 +912,7 @@ async fn main() -> Result<()> {
         });
     }
     let control = ControlRegistry::new();
+    let phones = calls_http::PhoneDevices::new();
     let state = AppState {
         settings: settings.clone(),
         settings_store: settings_store.clone(),
@@ -928,6 +933,7 @@ async fn main() -> Result<()> {
         calls: calls.clone(),
         task_store: task_store.clone(),
         control: control.clone(),
+        phones: phones.clone(),
         trtc_talk: Arc::new(TrtcTalkMetrics::default()),
         incoming_notify_dedup: Arc::new(IncomingNotifyDedup::default()),
         call_reattach: Arc::new(CallReattachRegistry::default()),
@@ -1002,6 +1008,7 @@ async fn main() -> Result<()> {
         http: http.clone(),
         control: control.clone(),
         ambience: state.ambience.clone(),
+        phones: phones.clone(),
     };
     let addr: SocketAddr = format!("{}:{}", settings.host, settings.port).parse()?;
     let mode = settings.agent_mode.as_str();
@@ -1106,7 +1113,11 @@ async fn main() -> Result<()> {
                                     "tg confirm fulfill failed task_id={}: {e:#}",
                                     action.task_id
                                 );
-                                format!("確認失敗：{e:#}")
+                                format!(
+                                    "{}{}{e:#}",
+                                    locale::phrases(locale::current()).tc_confirm_failed,
+                                    locale::kv_sep()
+                                )
                             }
                         }
                     } else {
@@ -1114,7 +1125,11 @@ async fn main() -> Result<()> {
                             Ok(task) => fulfill::tg_result_text(&task, false),
                             Err(e) => {
                                 warn!("tg ignore fulfill failed task_id={}: {e:#}", action.task_id);
-                                format!("忽略失敗：{e:#}")
+                                format!(
+                                    "{}{}{e:#}",
+                                    locale::phrases(locale::current()).tc_ignore_failed,
+                                    locale::kv_sep()
+                                )
                             }
                         }
                     };
@@ -1156,11 +1171,21 @@ async fn main() -> Result<()> {
         if settings.device_token.trim().is_empty() {
             warn!("listening on {addr} without DEVICE_TOKEN: anyone on this network can connect as a phone");
         }
+        // `http://myna.local:8787/`: answer the console's network name (setting
+        // `mdns_name`, re-read while running; empty = off). Not in a container:
+        // Docker's bridge network keeps the answers inside Docker.
+        if settings_store::in_container() {
+            info!("mDNS: not started inside a container (see docker-compose.yml)");
+        } else {
+            let store = settings_store.clone();
+            mdns::spawn(addr.ip(), move || store.snapshot().mdns_name.clone());
+        }
     }
 
     let app = Router::new()
         .route("/", get(root))
         .route("/index", get(redirect_to_calls))
+        .route("/favicon.ico", get(calls_http::favicon))
         .route("/health", get(health))
         .route("/v1/turn", post(turn))
         .route("/v1/transfer", get(transfer_smoke).post(transfer_smoke))
@@ -1461,7 +1486,10 @@ async fn health(
     body.insert("whisper_model".into(), json!(s.whisper_model));
     body.insert("sample_rate".into(), json!(s.sample_rate));
     body.insert("calls_ui".into(), json!("/calls/"));
-    body.insert("calls_ui_url".into(), json!(s.public_url));
+    body.insert(
+        "calls_ui_url".into(),
+        json!(settings_store::effective_console_url(s)),
+    );
     body.insert("version".into(), json!(env!("CARGO_PKG_VERSION")));
     // The clock notifications and "today" use (set TZ when it is not yours).
     body.insert(
@@ -1506,6 +1534,12 @@ async fn health(
     let control_serials = state.control.connected_serials().await;
     body.insert("control_idle_clients".into(), json!(control_serials.len()));
     body.insert("control_idle_serials".into(), json!(control_serials));
+    // Connected phones switched to "normal phone": still in control_idle_*, but the AI
+    // does not answer their calls.
+    body.insert(
+        "normal_mode_serials".into(),
+        json!(state.phones.normal_mode_serials()),
+    );
     // TRTC AI: caller finished speaking → first AI audio (ms). 0 = no sample yet.
     let n = state.trtc_talk.reply_count.load(Ordering::Relaxed);
     body.insert(
@@ -1763,6 +1797,7 @@ async fn handle_control_idle_ws(
                     Err(_) => continue,
                 };
                 let mtype = parsed.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                state.phones.touch(&serial);
                 match mtype {
                     "place_call_ack" | "place_call_failed" | "outbound_ready" | "call_end" => {
                         state
@@ -1772,6 +1807,16 @@ async fn handle_control_idle_ws(
                     }
                     "ping" => {
                         let _ = send_json(&sink, json!({"type":"pong"})).await;
+                    }
+                    // The phone's mode (AI / normal phone) or call state changed.
+                    "status" => {
+                        state.phones.on_status(&serial, &parsed);
+                        sync_normal_mode(&state, &serial).await;
+                    }
+                    // Answer to a web console mode switch (`set_mode`).
+                    "set_mode_result" => {
+                        state.phones.on_mode_reply(&serial, &parsed);
+                        sync_normal_mode(&state, &serial).await;
                     }
                     // Phone rings (not answered yet): how long to ring, and the AI gets
                     // ready meanwhile (ring once before answering).
@@ -1828,6 +1873,30 @@ async fn handle_control_idle_ws(
     // Only drop our own sink: if the phone already reconnected, the registry holds
     // the new socket and removing by serial alone would hide a live idle phone.
     state.control.unregister_client_sink(&serial, &sink).await;
+    state.phones.disconnected(&serial, &sink);
+}
+
+/// Call-backs skip phones in normal-phone mode: keep the dispatcher's list in line.
+async fn sync_normal_mode(state: &AppState, serial: &str) {
+    let normal = state.phones.mode_of(serial) == Some(calls_http::PhoneMode::Normal);
+    state.control.set_normal_mode(serial, normal).await;
+}
+
+/// Tell a phone's app where the web console is, for its "Open the web console"
+/// button: the address typed in the settings (`public_url`) or, when that is empty,
+/// the LAN IP address (some Android phones cannot open `.local` names, so the
+/// automatic `myna.local` address is not used here). Nothing is sent while it is
+/// unknown; older apps ignore the message.
+async fn send_agent_info(state: &AppState, sink: &WsSink) {
+    let eff = state.settings_store.snapshot().effective(&state.settings);
+    let base = if eff.public_url.trim().is_empty() {
+        settings_store::lan_console_url(&eff)
+    } else {
+        settings_store::effective_console_url(&eff)
+    };
+    if let Some(url) = calls_http::phone_console_url(&base) {
+        let _ = send_json(sink, json!({"type": "agent_info", "console_url": url})).await;
+    }
 }
 
 async fn ws_upgrade(
@@ -2061,6 +2130,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         .control
                                         .register_client(serial.clone(), sink.clone())
                                         .await;
+                                    state.phones.connected(&serial, sink.clone(), &parsed);
+                                    sync_normal_mode(&state, &serial).await;
                                     let _ = send_json(
                                         &sink,
                                         json!({
@@ -2080,6 +2151,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                             "control_idle blocklist clear failed serial={serial}: {e:#}"
                                         );
                                     }
+                                    send_agent_info(&state, &sink).await;
                                     handle_control_idle_ws(state, serial, sink, stream).await;
                                     return;
                                 }
@@ -3748,8 +3820,11 @@ fn spawn_empty_cid_wait(
     });
 }
 
-/// Unknown CID: short reject WAV (Charon pre-record) then hangup — no Gemini Live.
-/// Single clip: `ivr_reject_unknown.wav` only (never concatenate period menu WAV).
+/// Hidden number while "answer hidden numbers" is off: one short line, then
+/// hang up — no Gemini Live. The line is the owner's own recording when
+/// `IVR_REJECT_UNKNOWN_WAV` is set, else the same "cannot be reached"
+/// announcement blocked numbers get, in the AI's voice and the agent's language
+/// (made beforehand, never during the call). Neither ready: hang up at once.
 async fn start_unknown_caller_reject(
     sink: &WsSink,
     state: &AppState,
@@ -3807,28 +3882,43 @@ async fn start_unknown_caller_reject(
                 return;
             }
         }
-        let spoken = state.settings.ivr_reject_unknown_text.clone();
-        let (source, tts_pcm) = if let Some(pcm) = state.ivr_reject_unknown_pcm.clone() {
-            ("ivr_reject_unknown_wav", pcm.as_ref().clone())
-        } else if let Some(pcm) = state.ivr_goodbye_pcm.clone() {
-            // Soft fallback only if asset missing after rebuild race.
-            ("ivr_reject_fallback_goodbye", pcm.as_ref().clone())
+        let announce = voice_preview::reject_announce_text().to_string();
+        let (source, tts_pcm, spoken) = if let Some(pcm) = state.ivr_reject_unknown_pcm.clone() {
+            let own = state.settings.ivr_reject_unknown_text.trim();
+            let spoken = if own.is_empty() { announce } else { own.to_string() };
+            ("ivr_reject_unknown_wav", pcm.as_ref().clone(), spoken)
         } else {
-            ("ivr_reject_unknown_missing", Vec::new())
+            let rt = state.settings_store.snapshot();
+            let voice = voice_preview::reject_voice(&rt).to_string();
+            // Made earlier, else the recording that comes with the program (no key needed).
+            match state
+                .previews
+                .cached_reject_clip(&rt.gemini_live_model, &voice, rt.lang(), state.settings.sample_rate)
+            {
+                Some(pcm) => ("reject_unknown_announce", pcm, announce),
+                None => {
+                    // No recording for this voice and not made yet: have it for the next one.
+                    let st = state.clone();
+                    tokio::spawn(async move {
+                        prepare_reject_clip(&st).await;
+                    });
+                    ("reject_unknown_none", Vec::new(), String::new())
+                }
+            }
         };
         info!(
             "unknown-caller reject serial={serial} source={source} pcm_bytes={} text={spoken:?}",
             tts_pcm.len()
         );
-        if let Some(c) = active_call.lock().await.as_mut() {
-            c.push_event("reject_unknown_play");
-        }
-        let _ = send_json(
-            &sink,
-            json!({"type":"reply_text","text": spoken, "source": source}),
-        )
-        .await;
         if !tts_pcm.is_empty() {
+            if let Some(c) = active_call.lock().await.as_mut() {
+                c.push_event("reject_unknown_play");
+            }
+            let _ = send_json(
+                &sink,
+                json!({"type":"reply_text","text": spoken, "source": source}),
+            )
+            .await;
             let _ = send_tts_pcm(&sink, &state, &tts_pcm, &active_call, source, None).await;
         }
         send_hangup_with_retries(&sink, &serial, "unknown_caller_reject", 3, None).await;
@@ -3957,10 +4047,11 @@ fn save_reject_list_notes(state: &AppState, record: &CallRecord) {
         )
     } else {
         let reason = reason
-            .map(|r| format!("\n{}: {r}", p.n_reason))
+            .map(|r| format!("\n{}{}{r}", p.n_reason, p.sep))
             .unwrap_or_default();
+        let sep = p.sep;
         format!(
-            "{}: {number}{reason}\n{}: {}\n{}: {}",
+            "{}{sep}{number}{reason}\n{}{sep}{}\n{}{sep}{}",
             p.s_caller,
             p.s_matter,
             p.n_blocked,
@@ -7371,24 +7462,25 @@ fn maybe_notify_voicemail(state: &AppState, call: &ActiveCall, notified: &Arc<At
         return;
     }
     let contact = call.reply_contact().unwrap_or("").to_string();
+    let p = locale::phrases(locale::current());
     let reply_line = match (call.reply_method(), call.contact_verified()) {
         (Some("phone"), true) => {
             if contact.is_empty() {
-                "☎️ 要求回電此來電號碼（已按1確認，但號碼未知）".to_string()
+                format!("☎️ {}", p.vm_call_back_unknown)
             } else {
-                format!("☎️ 要求回電：{contact}（已按1確認）")
+                format!("☎️ {}", locale::fill(p.vm_call_back_to, &contact))
             }
         }
         (Some("email"), true) => {
             if contact.is_empty() {
-                "📧 要求回信（已按1確認，但地址未知）".to_string()
+                format!("📧 {}", p.vm_email_unknown)
             } else {
-                format!("📧 要求回信：{contact}（已按1確認）")
+                format!("📧 {}", locale::fill(p.vm_email_to, &contact))
             }
         }
-        (Some("phone"), false) => "☎️ 要求回電（未核對號碼）".to_string(),
-        (Some(_), _) => "ℹ️ 不需回覆（純轉達）".to_string(),
-        (None, _) => "ℹ️ 未選擇回覆方式（通話提前結束）".to_string(),
+        (Some("phone"), false) => format!("☎️ {}", p.vm_call_back_unchecked),
+        (Some(_), _) => format!("ℹ️ {}", p.vm_no_reply),
+        (None, _) => format!("ℹ️ {}", p.vm_no_choice),
     };
     let http = state.http.clone();
     let settings = state.settings.clone();
@@ -7407,6 +7499,9 @@ fn maybe_notify_voicemail(state: &AppState, call: &ActiveCall, notified: &Arc<At
             warn!("voicemail TG skipped (notify not configured) serial={serial} call_id={call_id}");
             return;
         }
+        let lang = locale::current();
+        let p = locale::phrases(lang);
+        let sep = p.sep;
         let mut deepseek_block = String::new();
         let mut whisper_chars = 0usize;
         if let Some(rel) = vm_rel.as_deref() {
@@ -7432,8 +7527,11 @@ fn maybe_notify_voicemail(state: &AppState, call: &ActiveCall, notified: &Arc<At
                             "voicemail deepseek skipped (no API key in trtc_llm_config) serial={serial} call_id={call_id}"
                         );
                         deepseek_block = format!(
-                            "需求：{}\n回電：請自己確認",
-                            tx.chars().take(400).collect::<String>()
+                            "{}{sep}{}\n{}{sep}{}",
+                            p.s_matter,
+                            tx.chars().take(400).collect::<String>(),
+                            p.s_todo,
+                            p.vm_decide_callback
                         );
                     }
                 }
@@ -7457,14 +7555,16 @@ fn maybe_notify_voicemail(state: &AppState, call: &ActiveCall, notified: &Arc<At
                 listen_recording_line(
                     &eff,
                     &call_id,
-                    &locale::zh_or(&format!("留言約 {secs:.0} 秒"), &format!("about {secs:.0} s"))
+                    &locale::fill(p.vm_length, &locale::duration(lang, secs))
                 )
             ));
             notify_ai_request(&http, &eff, &caller, &serial, &body).await
         } else {
             let mut reply = reply_line;
             reply.push_str(&format!(
-                "\n需求：留言約 {secs:.0} 秒，逐字稿失敗，請聽錄音。"
+                "\n{}{sep}{}",
+                p.s_matter,
+                locale::fill(p.vm_no_transcript, &locale::duration(lang, secs))
             ));
             reply.push_str(&format!("\n{}", listen_recording_line(&eff, &call_id, "")));
             notify_voicemail(&http, &eff, &caller, &serial, secs, &reply).await
@@ -7568,7 +7668,7 @@ fn spawn_voicemail_task(state: &AppState, call: &ActiveCall) {
                     .patch(
                         &task_id,
                         TaskPatch {
-                            summary: Some("語音留言（轉錄失敗，待人工處理）".into()),
+                            summary: Some(locale::phrases(locale::current()).vm_task_failed.to_string()),
                             fulfill_error: Some(Some(format!("extract: {e:#}"))),
                             ..Default::default()
                         },
@@ -7588,24 +7688,29 @@ fn spawn_voicemail_task(state: &AppState, call: &ActiveCall) {
         let token = rt.telegram_bot_token.trim();
         let chat = rt.telegram_chat_id.trim();
         if tg_inbound::task_card_ready(rt.call_notify, token, chat) {
+            let p = locale::phrases(locale::current());
+            let sep = p.sep;
             let title = if task.summary.trim().is_empty() {
-                format!("語音留言 — {}", display_caller_id(&caller_id))
+                format!("{} — {}", p.n_voicemail, display_caller_id(&caller_id))
             } else {
                 task.summary.clone()
             };
-            let body = format!(
-                "來電：{}\nPixel：{}\n狀態：pending\n{}",
+            let mut body = format!(
+                "{}{sep}{}\n{}{sep}{}\n{}{sep}{}",
+                p.n_number,
                 display_caller_id(&caller_id),
-                serial,
-                if task.transcript.trim().is_empty() {
-                    String::new()
-                } else {
-                    format!(
-                        "逐字稿：{}",
-                        task.transcript.chars().take(400).collect::<String>()
-                    )
-                }
+                p.n_phone,
+                notify::device_label(&serial),
+                p.tc_status,
+                p.tc_pending,
             );
+            if !task.transcript.trim().is_empty() {
+                body.push_str(&format!(
+                    "\n{}{sep}{}",
+                    p.tc_transcript,
+                    task.transcript.chars().take(400).collect::<String>()
+                ));
+            }
             if let Err(e) = send_task_card(&http, token, chat, &title, &task_id, &body).await {
                 warn!("telegram task card failed id={task_id}: {e:#}");
             }
@@ -7778,9 +7883,11 @@ fn spawn_ai_talk_tg_summary(
                 warn!("ai talk summary skipped serial={serial}: no summary service (set a Gemini, DeepSeek or OpenAI-compatible key)");
                 let _ = caller_disp;
                 note_source = "no_key";
-                locale::zh_or(
-                    "事情：（沒有設定摘要服務，沒有摘要）\n要處理：請看網頁逐字稿",
-                    "No summary service is set up. See the transcript in the web console.",
+                let p = locale::phrases(locale::current());
+                let sep = p.sep;
+                format!(
+                    "{}{sep}{}\n{}{sep}{}",
+                    p.s_matter, p.s_no_service, p.s_todo, p.s_see_transcript
                 )
             }
         } else if ai_failed {
@@ -7788,15 +7895,18 @@ fn spawn_ai_talk_tg_summary(
             ai_fail_summary_body(secs)
         } else {
             note_source = "none";
-            locale::zh_or(
-                &format!("事情：通話約 {secs:.0} 秒，沒有可用的逐字稿\n要處理：請到網頁聽錄音"),
-                &format!("The call lasted about {secs:.0} s and there is no usable transcript. Listen to the recording in the web console."),
+            let lang = locale::current();
+            let p = locale::phrases(lang);
+            let sep = p.sep;
+            format!(
+                "{}{sep}{}\n{}{sep}{}",
+                p.s_matter,
+                locale::fill(p.s_no_transcript, &locale::duration(lang, secs)),
+                p.s_todo,
+                p.s_listen_recording
             )
         };
-        let no_summary = locale::phrases(locale::current()).s_no_summary;
-        if note_source == "deepseek"
-            && (body.starts_with("事情：（摘要服務暫時沒回應") || body.contains(no_summary))
-        {
+        if note_source == "deepseek" && deepseek::is_fallback_summary(&body) {
             note_source = "fallback";
             if stalled {
                 // We know what it was without the summary model: say so instead of a quote.
@@ -7806,13 +7916,7 @@ fn spawn_ai_talk_tg_summary(
         let ai_failed_line = locale::phrases(locale::current()).s_ai_failed;
         if ai_failed && !body.contains("AI 沒接上") && !body.contains(ai_failed_line) {
             // The summary model usually writes it (prompt rule); make sure the owner sees it.
-            body.insert_str(
-                0,
-                &locale::zh_or(
-                    "【AI 沒接上，系統直接掛斷】\n",
-                    "[The AI did not connect; the system hung up]\n",
-                ),
-            );
+            body.insert_str(0, &format!("{}\n", locale::phrases(locale::current()).s_ai_fail_prefix));
         }
 
         // A date the call fixed (delivery, appointment, callback time) becomes a
@@ -7873,7 +7977,7 @@ fn spawn_ai_talk_tg_summary(
 
         if let Some(ev) = &calendar_event {
             let label = locale::phrases(locale::current()).n_calendar;
-            body.push_str(&format!("\n📅 {label}: {} ({})", ev.title, ev.when()));
+            body.push_str(&format!("\n📅 {label}{}{} ({})", locale::kv_sep(), ev.title, ev.when()));
             if ev.google_event_id.is_empty() {
                 // Not inserted for the owner: one tap opens the filled-in form.
                 body.push_str(&format!("\n{}", ev.google_link("")));
@@ -7902,15 +8006,19 @@ fn record_had_ai_fail_hangup(events: &[String]) -> bool {
 
 /// Notification body when the AI never spoke and nothing usable was transcribed.
 fn ai_fail_summary_body(secs: f64) -> String {
-    let p = locale::phrases(locale::current());
-    locale::zh_or(
-        &format!(
-            "對方：聽不清楚\n事情：AI 沒接上，約 {secs:.0} 秒後系統掛斷，對方沒聽到回應\nAI 回覆：AI 沒接上，沒講話\n要處理：認得這號碼的話回電"
-        ),
-        &format!(
-            "{}: the system hung up after about {secs:.0} s; the caller heard nothing\n{}: {}\n{}: call back if you know the number",
-            p.s_matter, p.s_reply, p.s_ai_failed, p.s_todo
-        ),
+    let lang = locale::current();
+    let p = locale::phrases(lang);
+    let sep = p.sep;
+    format!(
+        "{}{sep}{}\n{}{sep}{}\n{}{sep}{}\n{}{sep}{}",
+        p.s_caller,
+        p.s_unclear,
+        p.s_matter,
+        locale::fill(p.s_ai_fail_matter, &locale::duration(lang, secs)),
+        p.s_reply,
+        p.s_ai_failed,
+        p.s_todo,
+        p.s_call_back_if_known
     )
 }
 
@@ -7923,37 +8031,22 @@ fn stall_fallback_summary(dialogue: &str, secs: f64) -> String {
         .collect::<Vec<_>>()
         .join("");
     let hits = gemini_live::stall_keyword_hits(&caller);
-    let named: String = hits.iter().take(4).copied().collect::<Vec<_>>().join(", ");
-    if !locale::current().is_zh() {
-        let p = locale::phrases(locale::current());
-        let topic = if named.is_empty() {
-            "sales / scam call".to_string()
-        } else {
-            format!("sales / scam call (mentioned: {named})")
-        };
-        let talk = if secs < 90.0 {
-            format!("{secs:.0} s")
-        } else {
-            format!("{:.0} min", secs / 60.0)
-        };
-        return format!(
-            "{}: {topic}\n{}: kept them talking for about {talk}; gave no data and agreed to nothing\n{}: -",
-            p.s_matter, p.s_reply, p.s_todo
-        );
-    }
-    let topic = if hits.is_empty() {
-        "推銷／詐騙電話".to_string()
+    let lang = locale::current();
+    let p = locale::phrases(lang);
+    let sep = p.sep;
+    let named: String = hits.iter().take(4).copied().collect::<Vec<_>>().join(p.list_sep);
+    let topic = if named.is_empty() {
+        p.s_stall_topic.to_string()
     } else {
-        format!("推銷／詐騙電話（提到：{}）", named.replace(", ", "、"))
+        locale::fill(p.s_stall_topic_kw, &named)
     };
-    let talk = if secs < 90.0 {
-        format!("{secs:.0} 秒")
-    } else {
-        format!("{:.0} 分鐘", secs / 60.0)
-    };
-    locale::zh_or(
-        &format!("事情：{topic}\nAI 回覆：故意陪他聊了約 {talk}，沒給資料也沒答應\n要處理：不用"),
-        "",
+    format!(
+        "{}{sep}{topic}\n{}{sep}{}\n{}{sep}{}",
+        p.s_matter,
+        p.s_reply,
+        locale::fill(p.s_stall_reply, &locale::duration(lang, secs)),
+        p.s_todo,
+        p.s_nothing
     )
 }
 
@@ -8016,7 +8109,7 @@ fn map_extracted_reply_method(raw: Option<&str>) -> Option<ReplyMethod> {
 fn display_caller_id(caller_id: &str) -> &str {
     let t = caller_id.trim();
     if t.is_empty() {
-        "unknown"
+        locale::phrases(locale::current()).n_hidden
     } else {
         t
     }

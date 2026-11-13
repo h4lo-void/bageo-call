@@ -16,12 +16,19 @@ import java.util.concurrent.atomic.AtomicLong
  * In-call audio uses a second WebSocket via [BridgeClient] on OFFHOOK.
  *
  * Handles agent → phone commands such as `{"type":"place_call",...}` and the
- * `answer_plan` reply to a ringing call's `incoming`.
+ * `answer_plan` reply to a ringing call's `incoming`, `set_mode` (AI phone / normal
+ * phone) and `agent_info` (the web console's address).
  * Sends a periodic `ping` so the idle registration stays alive; reconnects quickly on drop.
+ *
+ * [describe] adds the phone's current state to the `hello` (`phone_mode`, `in_call`).
+ * The phone mode is not called `mode`: that field says which connection this is.
+ * [onOpened] runs right after the hello was sent (on the socket's thread).
  */
 class AgentControlClient(
     private val url: String,
     private val onCommand: (JSONObject) -> Unit,
+    private val describe: (JSONObject) -> Unit = {},
+    private val onOpened: () -> Unit = {},
 ) {
     private var client: WebSocketClient? = null
     private val open = AtomicBoolean(false)
@@ -39,6 +46,7 @@ class AgentControlClient(
         val ws = object : WebSocketClient(URI(url)) {
             override fun onOpen(handshakedata: ServerHandshake?) {
                 open.set(true)
+                current = this@AgentControlClient
                 val hello = JSONObject()
                     .put("type", "hello")
                     .put("serial", serial)
@@ -46,8 +54,18 @@ class AgentControlClient(
                     .put("play_tts_locally", false)
                     .put("model", android.os.Build.MODEL)
                     .put("app_version", BuildConfig.VERSION_NAME)
+                try {
+                    describe(hello)
+                } catch (e: Exception) {
+                    Log.w(TAG, "hello state failed: ${e.message}")
+                }
                 send(hello.toString())
                 Log.i(TAG, "control WS open ${Prefs.redactUrl(url)} serial=$serial mode=CONTROL_IDLE")
+                try {
+                    onOpened()
+                } catch (e: Exception) {
+                    Log.w(TAG, "after-hello step failed: ${e.message}")
+                }
                 ensurePingLoop()
             }
 
@@ -59,7 +77,7 @@ class AgentControlClient(
                         "hello_ack", "hello_ok", "ack", "pong" -> {
                             Log.i(TAG, "control TEXT ${obj.optString("type")}")
                         }
-                        "place_call", "blocklist_sync", "answer_plan" -> onCommand(obj)
+                        "place_call", "blocklist_sync", "answer_plan", "set_mode", "agent_info" -> onCommand(obj)
                         else -> Log.i(TAG, "control TEXT type=${obj.optString("type")} len=${message.length}")
                     }
                 } catch (e: Exception) {
@@ -69,6 +87,7 @@ class AgentControlClient(
 
             override fun onClose(code: Int, reason: String?, remote: Boolean) {
                 open.set(false)
+                if (current === this@AgentControlClient) current = null
                 client = null
                 Log.w(TAG, "control WS closed code=$code reason=$reason remote=$remote")
                 scheduleReconnect(serial)
@@ -104,6 +123,7 @@ class AgentControlClient(
     fun close() {
         shouldRun.set(false)
         open.set(false)
+        if (current === this) current = null
         try {
             client?.close()
         } catch (_: Exception) {
@@ -169,5 +189,12 @@ class AgentControlClient(
         private const val PING_INTERVAL_MS = 15_000L
         /** Faster than 3s — idle drops show up as missing callbacks. */
         private const val RECONNECT_MS = 1_500L
+
+        /** The client whose connection is open (one per running service). */
+        @Volatile
+        private var current: AgentControlClient? = null
+
+        /** True while the service's control connection to the agent is open (setup screen). */
+        fun isAgentConnected(): Boolean = current?.isOpen() == true
     }
 }

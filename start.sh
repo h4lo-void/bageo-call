@@ -8,21 +8,26 @@
 #   2. finds the agent program (a downloaded release, or builds it with Rust)
 #   3. makes sure adb (Android platform-tools) is there, offering to download it
 #   4. starts the agent and opens the web console
+#   5. the first time the agent answers, puts a "Myna Console" shortcut to the
+#      web console on the desktop (macOS: .webloc; Linux: an app menu entry,
+#      copied to the desktop folder when there is one)
 #
 # Options: --no-browser   do not open the web console
 #          --yes          answer "yes" to the platform-tools download
 #          --build        build from source even when a program is already there
+#          --no-shortcut  no desktop shortcut (or MYNA_NO_SHORTCUT=1)
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$root"
 
-no_browser=0; yes=0; build=0
+no_browser=0; yes=0; build=0; no_shortcut=0
 for arg in "$@"; do
   case "$arg" in
     --no-browser) no_browser=1 ;;
     --yes) yes=1 ;;
     --build) build=1 ;;
+    --no-shortcut) no_shortcut=1 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -41,6 +46,9 @@ if [ -f .env ]; then
     if eval "[ -z \"\${$key+x}\" ]"; then export "$key=$val"; fi
   done < .env
 fi
+case "$(printf '%s' "${MYNA_NO_SHORTCUT:-}" | tr '[:upper:]' '[:lower:]')" in
+  1|true|yes|on) no_shortcut=1 ;;
+esac
 
 # 2. the agent program
 agent=""
@@ -114,6 +122,86 @@ if [ "$no_browser" -eq 0 ]; then
     if command -v open >/dev/null 2>&1; then open "$url"
     elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$url" >/dev/null 2>&1
     fi
+  ) &
+fi
+
+# 5. desktop shortcut to the web console, once the agent answers; kept when it exists
+shortcut_label() {
+  loc=""
+  if [ "$(uname -s)" = Darwin ]; then loc=$(defaults read -g AppleLocale 2>/dev/null || true); fi
+  [ -n "$loc" ] || loc=${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}
+  case "$loc" in
+    zh*) echo "Myna 控制台" ;;
+    ja*) echo "Myna コンソール" ;;
+    ko*) echo "Myna 콘솔" ;;
+    es*) echo "Consola de Myna" ;;
+    fr*) echo "Console Myna" ;;
+    de*) echo "Myna-Konsole" ;;
+    pt*) echo "Console do Myna" ;;
+    *) echo "Myna Console" ;;
+  esac
+}
+make_shortcut() {
+  label=$(shortcut_label)
+  if [ "$(uname -s)" = Darwin ]; then
+    file="$HOME/Desktop/$label.webloc"
+    if [ ! -d "$HOME/Desktop" ] || [ -e "$file" ]; then return 0; fi
+    cat > "$file" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>URL</key>
+  <string>$url</string>
+</dict>
+</plist>
+EOF
+    return 0
+  fi
+  apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+  file="$apps/myna-console.desktop"
+  if [ -e "$file" ]; then return 0; fi
+  mkdir -p "$apps"
+  cat > "$file" <<EOF
+[Desktop Entry]
+Type=Application
+Name=$label
+Comment=$url
+Exec=xdg-open $url
+Icon=web-browser
+Terminal=false
+Categories=Network;
+EOF
+  chmod +x "$file"
+  desk=$(xdg-user-dir DESKTOP 2>/dev/null || true)
+  [ -n "$desk" ] || desk="$HOME/Desktop"
+  if [ -d "$desk" ] && [ "$desk" != "$HOME" ] && [ ! -e "$desk/myna-console.desktop" ]; then
+    cp "$file" "$desk/myna-console.desktop"
+    chmod +x "$desk/myna-console.desktop"
+    # GNOME only starts desktop files marked as trusted.
+    gio set "$desk/myna-console.desktop" metadata::trusted true >/dev/null 2>&1 || true
+  fi
+}
+if [ "$no_shortcut" -eq 0 ]; then
+  # Ask the agent where it listens: 127.0.0.1 unless AGENT_HOST names one address.
+  case "${AGENT_HOST:-}" in
+    ''|0.0.0.0|::) probe_host=127.0.0.1 ;;
+    *:*) probe_host="[${AGENT_HOST}]" ;;
+    *) probe_host=$AGENT_HOST ;;
+  esac
+  (
+    i=0
+    while [ "$i" -lt 60 ]; do
+      sleep 2
+      i=$((i + 1))
+      if command -v curl >/dev/null 2>&1; then
+        curl -fsS -o /dev/null --max-time 2 "http://$probe_host:$port/health" 2>/dev/null || continue
+      elif command -v wget >/dev/null 2>&1; then
+        wget -q -O /dev/null -T 2 "http://$probe_host:$port/health" 2>/dev/null || continue
+      fi
+      make_shortcut || true
+      break
+    done
   ) &
 fi
 exec "$agent"

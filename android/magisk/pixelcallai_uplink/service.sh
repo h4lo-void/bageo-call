@@ -1,13 +1,26 @@
 #!/system/bin/sh
 # Late-start: roles + mute + arm service. Never abort boot; all ops best-effort.
+#
+# Phone mode, kept outside the module folder so it survives module updates:
+#   /data/adb/pixelcallai/mode = "normal": an ordinary phone. Only grant the app's
+#     permissions and start its service; leave the phone app, Google Phone,
+#     Do Not Disturb and the volumes alone.
+#   No file, or anything else: AI mode, the takeover below (how every phone ran
+#     before the switch existed). The app writes the file (Myna > "AI answers my calls").
 MODDIR=${0%/*}
 PKG=com.pixelcallai.streamer
 GDIALER=com.google.android.dialer
+MODE_FILE=/data/adb/pixelcallai/mode
+# Before comparing, drop every blank character and a UTF-8 BOM (the app and the
+# mode script use the same rule).
+STRIP=' \t\r\n\v\f\357\273\277'
 
 chmod 755 "$MODDIR/inject" 2>/dev/null || true
 mkdir -p /data/local/tmp
 touch /data/local/tmp/pixelcallai_uplink.pcm
 chmod 666 /data/local/tmp/pixelcallai_uplink.pcm 2>/dev/null || true
+# No mode switch can be running this early: drop a lock left by a reboot mid-switch.
+rm -rf /data/adb/pixelcallai/apply.lock 2>/dev/null || true
 
 (
   i=0
@@ -32,29 +45,39 @@ chmod 666 /data/local/tmp/pixelcallai_uplink.pcm 2>/dev/null || true
     exit 0
   fi
 
+  MODE=ai
+  if [ -f "$MODE_FILE" ] && [ "$(tr -d "$STRIP" < "$MODE_FILE" 2>/dev/null)" = "normal" ]; then
+    MODE=normal
+  fi
+
   pm grant "$PKG" android.permission.RECORD_AUDIO >/dev/null 2>&1 || true
   pm grant "$PKG" android.permission.READ_PHONE_STATE >/dev/null 2>&1 || true
   pm grant "$PKG" android.permission.ANSWER_PHONE_CALLS >/dev/null 2>&1 || true
   pm grant "$PKG" android.permission.ACCESS_NOTIFICATION_POLICY >/dev/null 2>&1 || true
   cmd appops set "$PKG" ACCESS_NOTIFICATION_POLICY allow >/dev/null 2>&1 || true
 
-  cmd role add-role-holder android.app.role.DIALER "$PKG" >/dev/null 2>&1 || true
-  cmd role add-role-holder android.app.role.CALL_SCREENING "$PKG" >/dev/null 2>&1 || true
-  telecom set-default-dialer "$PKG" >/dev/null 2>&1 || true
-
-  # Only disable Google Dialer after we are default dialer.
-  DEF=$(telecom get-default-dialer 2>/dev/null || true)
-  if [ "$DEF" = "$PKG" ]; then
-    pm disable "$GDIALER/com.android.incallui.InCallServiceImpl" >/dev/null 2>&1 || true
-    pm disable "$GDIALER/com.android.incallui.InCallActivity" >/dev/null 2>&1 || true
-    pm disable-user --user 0 "$GDIALER" >/dev/null 2>&1 || true
+  if [ "$MODE" = "normal" ]; then
+    DEF=$(telecom get-default-dialer 2>/dev/null || true)
+    log -t pixelcallai_uplink "service.sh: normal phone mode ($MODE_FILE) — no takeover"
   else
-    log -t pixelcallai_uplink "service.sh: default dialer is '$DEF' — leave $GDIALER enabled"
-  fi
+    cmd role add-role-holder android.app.role.DIALER "$PKG" >/dev/null 2>&1 || true
+    cmd role add-role-holder android.app.role.CALL_SCREENING "$PKG" >/dev/null 2>&1 || true
+    telecom set-default-dialer "$PKG" >/dev/null 2>&1 || true
 
-  settings put global zen_mode 2 >/dev/null 2>&1 || true
-  settings put system volume_ring 0 >/dev/null 2>&1 || true
-  settings put system volume_notification 0 >/dev/null 2>&1 || true
+    # Only disable Google Dialer after we are default dialer.
+    DEF=$(telecom get-default-dialer 2>/dev/null || true)
+    if [ "$DEF" = "$PKG" ]; then
+      pm disable "$GDIALER/com.android.incallui.InCallServiceImpl" >/dev/null 2>&1 || true
+      pm disable "$GDIALER/com.android.incallui.InCallActivity" >/dev/null 2>&1 || true
+      pm disable-user --user 0 "$GDIALER" >/dev/null 2>&1 || true
+    else
+      log -t pixelcallai_uplink "service.sh: default dialer is '$DEF' — leave $GDIALER enabled"
+    fi
+
+    settings put global zen_mode 2 >/dev/null 2>&1 || true
+    settings put system volume_ring 0 >/dev/null 2>&1 || true
+    settings put system volume_notification 0 >/dev/null 2>&1 || true
+  fi
 
   am start-foreground-service -n "$PKG/.CallAudioService" -a "$PKG.START" >/dev/null 2>&1 || true
   CLI=/data/adb/modules/zygisk_vector/cli
@@ -62,5 +85,5 @@ chmod 666 /data/local/tmp/pixelcallai_uplink.pcm 2>/dev/null || true
     "$CLI" modules enable "$PKG" >/dev/null 2>&1 || true
     "$CLI" scope set "$PKG" com.android.phone/0 >/dev/null 2>&1 || true
   fi
-  log -t pixelcallai_uplink "service.sh hard-takeover done pkg=$PKG def=$DEF"
+  log -t pixelcallai_uplink "service.sh done mode=$MODE pkg=$PKG def=$DEF"
 ) &

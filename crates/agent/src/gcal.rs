@@ -15,10 +15,11 @@ use serde_json::{json, Value};
 const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const CALENDAR_API: &str = "https://www.googleapis.com/calendar/v3/calendars";
 
-/// Safe ZH when GCal OAuth fields empty — keep in sync with `fulfill::GCAL_MISSING_MSG`.
-/// Never include credential values in any bail string.
-pub const GCAL_MISSING_CRED_MSG: &str =
-    "Google 日曆憑證未設定 — 請至「設定」分頁填寫 Client ID / Secret / Refresh Token 後再確認";
+/// Google Calendar OAuth fields not set, in the agent's language (also what a
+/// task follow-up shows). Never include credential values in an error.
+pub fn gcal_missing_cred_msg() -> &'static str {
+    crate::locale::phrases(crate::locale::current()).f_gcal_missing
+}
 
 /// Exchange a long-lived refresh token for a short-lived access token.
 async fn refresh_access_token(
@@ -145,7 +146,7 @@ fn resolve_calendar_id(calendar_id: &str) -> &str {
 fn validate_client_id(client_id: &str) -> Result<&str> {
     let client_id = client_id.trim();
     if client_id.is_empty() {
-        bail!("{GCAL_MISSING_CRED_MSG}");
+        bail!("{}", gcal_missing_cred_msg());
     }
     Ok(client_id)
 }
@@ -153,8 +154,8 @@ fn validate_client_id(client_id: &str) -> Result<&str> {
 fn validate_client_secret(client_secret: &str) -> Result<&str> {
     let client_secret = client_secret.trim();
     if client_secret.is_empty() {
-        // Never echo the secret; same ZH as fulfill missing-cred.
-        bail!("{GCAL_MISSING_CRED_MSG}");
+        // Never echo the secret.
+        bail!("{}", gcal_missing_cred_msg());
     }
     if client_secret.len() < 8 {
         bail!("Google 日曆 Client Secret 過短 — 請至「設定」分頁重新填寫（不會顯示憑證內容）");
@@ -165,7 +166,7 @@ fn validate_client_secret(client_secret: &str) -> Result<&str> {
 fn validate_refresh_token(refresh_token: &str) -> Result<&str> {
     let refresh_token = refresh_token.trim();
     if refresh_token.is_empty() {
-        bail!("{GCAL_MISSING_CRED_MSG}");
+        bail!("{}", gcal_missing_cred_msg());
     }
     if refresh_token.len() < 8 {
         bail!("Google 日曆 Refresh Token 過短 — 請至「設定」分頁重新填寫（不會顯示憑證內容）");

@@ -267,20 +267,28 @@ pub async fn summarize(http: &Client, settings: &Settings, caller_id: &str, tran
 }
 
 fn empty_transcript_summary(lang: Lang) -> String {
-    if lang == Lang::ZhTw {
-        return "對方：沒說是誰\n事情：（沒有逐字稿，請聽錄音）\nAI 回覆：不明\n要處理：請聽錄音確認".to_string();
+    const TW: &str = "對方：沒說是誰\n事情：（沒有逐字稿，請聽錄音）\nAI 回覆：不明\n要處理：請聽錄音確認";
+    match lang {
+        Lang::ZhTw => TW.to_string(),
+        Lang::ZhCn => zhconv::zhconv(TW, zhconv::Variant::ZhCN),
+        _ => {
+            let p = locale::phrases(lang);
+            format!("{}{}{}", p.s_matter, p.sep, p.s_no_summary)
+        }
     }
-    let p = locale::phrases(lang);
-    format!("{}: {}", p.s_matter, p.s_no_summary)
 }
 
 /// [`fallback_summary`] for any language: the caller's first real line and a
 /// pointer to the web console.
 fn fallback_summary_in(lang: Lang, caller: &str, transcript: &str) -> String {
-    if lang == Lang::ZhTw {
-        return fallback_summary(caller, transcript);
+    match lang {
+        Lang::ZhTw => return fallback_summary(caller, transcript),
+        // The same Chinese lines (the input is labelled 對方／接聽 too), in Simplified.
+        Lang::ZhCn => return zhconv::zhconv(&fallback_summary(caller, transcript), zhconv::Variant::ZhCN),
+        _ => {}
     }
     let p = locale::phrases(lang);
+    let sep = p.sep;
     let first = transcript
         .lines()
         .map(str::trim)
@@ -288,9 +296,23 @@ fn fallback_summary_in(lang: Lang, caller: &str, transcript: &str) -> String {
         .map(str::trim)
         .find(|t| t.chars().filter(|c| c.is_alphanumeric()).count() >= 3);
     match first {
-        Some(t) => format!("{}: \"{}\"\n{}: {}", p.s_matter, clip_chars(t, 80), p.s_todo, p.s_no_summary),
-        None => format!("{}: {}", p.s_matter, p.s_no_summary),
+        Some(t) => format!(
+            "{}{sep}{}\n{}{sep}{}",
+            p.s_matter,
+            locale::quoted(lang, &clip_chars(t, 80)),
+            p.s_todo,
+            p.s_no_summary
+        ),
+        None => format!("{}{sep}{}", p.s_matter, p.s_no_summary),
     }
+}
+
+/// The summary is one of the stand-ins [`summarize`] writes when no model
+/// answered (no Chinese gist line, or the "no summary" note of the agent's language).
+pub fn is_fallback_summary(text: &str) -> bool {
+    text.contains("（摘要服務暫時沒回應）")
+        || text.contains("（摘要服务暂时没回应）")
+        || text.contains(locale::phrases(locale::current()).s_no_summary)
 }
 
 /// Pull `APIKey` from opaque `TRTC_LLM_CONFIG` JSON (never log the value).
@@ -852,6 +874,19 @@ mod tests {
         let s = fallback_summary("+886900", "明天开会请回电");
         assert!(s.contains("明天開會"), "{s}");
         assert!(s.starts_with("事情："), "{s}");
+    }
+
+    #[test]
+    fn fallbacks_use_each_languages_separator() {
+        let input = "接聽：喂？\n對方：我是小明，明天中午吃飯？\n";
+        let cn = fallback_summary_in(Lang::ZhCn, "", input);
+        assert!(cn.starts_with("事情：（摘要服务暂时没回应）"), "{cn}");
+        assert!(is_fallback_summary(&cn));
+        let fr = fallback_summary_in(Lang::Fr, "", "Caller: Bonjour, c'est Paul.");
+        assert!(fr.starts_with("Objet : « Bonjour, c'est Paul. »"), "{fr}");
+        assert!(empty_transcript_summary(Lang::ZhCn).starts_with("对方：没说是谁"));
+        assert_eq!(empty_transcript_summary(Lang::De), "Anliegen: (Keine Zusammenfassung – siehe Transkript in der Web-Konsole.)");
+        assert!(!is_fallback_summary("事情：明天中午吃飯"));
     }
 
     #[test]

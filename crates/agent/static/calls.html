@@ -7,7 +7,10 @@
 <meta name="theme-color" content="#0d7a6f" />
 <meta name="referrer" content="no-referrer" />
 <title>Myna</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230d7a6f'/%3E%3Cpath d='M11 8c1 0 2 2 2.6 3.4.3.8 0 1.6-.6 2.1l-1 .9c.9 2 2.6 3.7 4.6 4.6l.9-1c.5-.6 1.3-.9 2.1-.6C21 18 23 19 23 20v2c0 1.1-.9 2-2 2C14.4 24 8 17.6 8 11c0-1.1.9-2 2-2z' fill='white'/%3E%3C/svg%3E" />
+<link rel="icon" href="favicon.ico" sizes="32x32" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="apple-mobile-web-app-title" content="Myna" />
 <script>
 /* Theme before first paint: ?theme= > saved choice > system. */
 (function () {
@@ -285,6 +288,15 @@ audio{width:100%;height:42px;margin-top:10px;display:block}
 .item b{display:block;font-weight:600}
 .item .d{color:var(--muted);font-size:.87rem}
 .wide{grid-column:1/-1}
+.cu{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;padding-bottom:14px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+.cu .qr{width:148px;height:148px;image-rendering:pixelated;border-radius:8px;flex:0 0 auto}
+.cu .lbl{font-weight:600;margin-bottom:4px}
+.cu-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.cu-row a{font-size:1rem;word-break:break-all}
+.a2hs{margin-top:14px}
+.a2hs b{display:block}
+.a2hs ul{margin:6px 0 0;padding-left:20px}
+.a2hs .btn{margin-top:8px}
 
 /* ---------- toast + dialog ---------- */
 #toast{position:fixed;left:50%;top:16px;transform:translate(-50%,-200%);visibility:hidden;transition:transform .2s,visibility .2s;z-index:90;padding:10px 16px;border-radius:12px;background:var(--text);color:var(--bg);font-weight:600;max-width:calc(100vw - 24px);box-shadow:0 8px 24px rgba(0,0,0,.2)}
@@ -721,6 +733,9 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <input type="url" id="f-public_url" data-k="public_url" data-t="text" spellcheck="false" placeholder="http://192.168.1.20:8787" />
             <div class="help" data-i18n="f_public_url_h"></div>
             <button type="button" class="btn sm ghost" id="btnUseThisUrl" style="margin-top:4px;padding-left:0"></button></div>
+          <div class="field"><label for="f-mdns_name" data-i18n="f_mdns_name"></label>
+            <input type="text" id="f-mdns_name" data-k="mdns_name" data-t="text" spellcheck="false" autocapitalize="off" autocomplete="off" maxlength="63" placeholder="myna" style="max-width:16rem" />
+            <div class="help" data-i18n="f_mdns_name_h"></div></div>
         </div></div>
 
         <!-- Summary & calendar -->
@@ -807,6 +822,27 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
       </div>
       <div class="card pad wide">
         <h2><svg class="i"><use href="#i-info"/></svg><span data-i18n="about"></span></h2>
+        <div class="cu">
+          <canvas id="sysQr" class="qr" role="img" data-i18n-aria="cu_qr_alt" hidden></canvas>
+          <div class="grow">
+            <div class="lbl" data-i18n="cu_title"></div>
+            <div class="cu-row">
+              <a id="sysUrl" class="mono" target="_blank" rel="noopener"></a>
+              <button type="button" class="btn sm" id="btnCopyUrl"><svg class="i sm"><use href="#i-copy"/></svg><span data-i18n="cu_copy"></span></button>
+            </div>
+            <p class="help" id="sysUrlHelp"></p>
+            <p class="help" id="sysUrlIp" hidden><span data-i18n="cu_ip"></span> <a id="sysUrlIpLink" class="mono" target="_blank" rel="noopener"></a></p>
+            <div class="a2hs" id="a2hs">
+              <b data-i18n="a2hs_title"></b>
+              <button type="button" class="btn sm primary" id="btnInstall" hidden><svg class="i sm"><use href="#i-download"/></svg><span data-i18n="a2hs_install"></span></button>
+              <ul class="help" id="a2hsHow">
+                <li data-i18n="a2hs_ios"></li>
+                <li data-i18n="a2hs_android"></li>
+                <li data-i18n="a2hs_desktop"></li>
+              </ul>
+            </div>
+          </div>
+        </div>
         <dl class="kv" id="sysAbout"></dl>
         <details class="fold" style="margin-top:14px">
           <summary data-i18n="raw_health"></summary>
@@ -859,8 +895,10 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
  *   translation already works.
  *
  *   Keys starting with vc_ (voice character), amb_ (background sound),
- *   ev_ (call event) and hint_ (notification service) are looked up from
- *   codes the agent sends; an unknown code is shown as it is.
+ *   ev_ (call event), hint_ and nf_ (notification service and its fields)
+ *   and err_ (error code of an API answer) are looked up from codes the
+ *   agent sends; an unknown code is shown as it is (an unknown error code:
+ *   the agent's own message).
  * ===================================================================== */
 const I18N = {};
 
@@ -1096,7 +1134,7 @@ I18N["en"] = {
   f_prewarm: "Get the AI ready while the phone rings",
   f_prewarm_h: "The AI connects during the ring and speaks the moment the call is answered. Off: callers wait 1 to 3 seconds for the first word.",
   f_unknown: "Answer hidden numbers",
-  f_unknown_h: "On: callers without a caller ID get the AI like everyone else. Off: their call is ended at once.",
+  f_unknown_h: "On: callers without a caller ID get the AI like everyone else. Off: they hear a short “not available” announcement and the call ends.",
   f_barge: "Let the caller interrupt",
   f_barge_h: "The AI stops when the caller talks over it. Used only on phones that do not pick up the AI's own voice (checked at the start of every call).",
   f_vad: "Let Gemini decide when the caller has finished",
@@ -1203,7 +1241,7 @@ I18N["en"] = {
   hint_apprise: "The notify URL of your Apprise API server, e.g. http://host:8000/notify/KEY. A tag limits which of its services get the message.",
   hint_webhook: "Any URL that accepts a JSON POST with event, title, body and data. Handy for n8n, Home Assistant or your own scripts.",
   f_public_url: "Address of this console",
-  f_public_url_h: "Used for the links in notifications, e.g. http://192.168.1.20:8787. Empty = no links.",
+  f_public_url_h: "Used for the links in notifications, e.g. http://192.168.1.20:8787. Empty = automatic: the network name below (or this computer's network address) when the console is open to your network, no links otherwise. In Docker nothing is filled in automatically: set it yourself.",
   use_this_url: "Use the address of this page: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "After each call the AI writes a short summary. It uses your Gemini key, so there is normally nothing to set up here.",
@@ -1284,6 +1322,141 @@ I18N["en"] = {
   ab_retention: "Recordings kept",
   ab_days: "{n} days",
   raw_health: "Raw /health data (for troubleshooting)",
+  // ---- call events, notification services, error codes (from the agent)
+  ev_hello_reattach: "Phone reconnected during the call",
+  ev_live_ai_start: "AI assistant started (older menu)",
+  ev_shaming_played: "Energy-waste announcement played",
+  ev_voicemail_intro: "Voicemail greeting played",
+  ev_voicemail_saved: "Voicemail saved",
+  ev_vm_end_hash: "Message ended with #",
+  ev_vm_end_max: "Message reached the time limit",
+  ev_vm_end_silence: "Message ended after silence",
+  ev_vm_end_hangup: "Caller hung up while leaving a message",
+  ev_vm_no_reply: "Caller wants no reply",
+  ev_vm_confirm_timeout: "No answer about how to reply",
+  ev_vm_contact_readback_timeout: "No answer when the contact was read back",
+  ev_vm_contact_rejected: "Caller said the contact was wrong",
+  ev_vm_reply_contact_confirmed: "Caller confirmed the contact",
+  ev_vm_reply_phone_confirmed: "Caller asked for a call back",
+  ev_vm_finish_auto_hangup: "Voicemail finished, hung up",
+  ev_gemini_fail_to_voicemail: "AI failed, went to voicemail",
+  ev_gemini_zero_delivery_to_voicemail: "AI sent no sound, went to voicemail",
+  ev_gemini_delivery_fail_to_voicemail: "AI audio could not be played, went to voicemail",
+  ev_blocked_spam: "Blocked as spam",
+  nf_telegram: "Telegram",
+  nf_discord: "Discord",
+  nf_slack: "Slack / Mattermost",
+  nf_line: "LINE (Messaging API)",
+  nf_ntfy: "ntfy",
+  nf_gotify: "Gotify",
+  nf_bark: "Bark (iOS)",
+  nf_pushover: "Pushover",
+  nf_wecom: "WeCom group bot",
+  nf_dingtalk: "DingTalk bot",
+  nf_feishu: "Feishu / Lark bot",
+  nf_serverchan: "ServerChan",
+  nf_matrix: "Matrix",
+  nf_gmail: "Email (Gmail)",
+  nf_apprise: "Apprise API",
+  nf_webhook: "Webhook (JSON)",
+  nf_telegram_token: "Bot token",
+  nf_telegram_target: "Chat ID",
+  nf_discord_url: "Webhook URL",
+  nf_slack_url: "Incoming webhook URL",
+  nf_line_token: "Channel access token",
+  nf_line_target: "User or group ID",
+  nf_ntfy_url: "Server",
+  nf_ntfy_token: "Access token (optional)",
+  nf_ntfy_target: "Topic",
+  nf_gotify_url: "Server URL",
+  nf_gotify_token: "App token",
+  nf_bark_url: "Server",
+  nf_bark_token: "Device key",
+  nf_pushover_token: "API token",
+  nf_pushover_target: "User key",
+  nf_wecom_url: "Webhook URL",
+  nf_dingtalk_url: "Webhook URL",
+  nf_dingtalk_token: "Signing secret (optional)",
+  nf_feishu_url: "Webhook URL",
+  nf_serverchan_token: "SendKey",
+  nf_matrix_url: "Homeserver URL",
+  nf_matrix_token: "Access token",
+  nf_matrix_target: "Room ID",
+  nf_gmail_url: "Gmail address",
+  nf_gmail_token: "App password",
+  nf_gmail_target: "Send to (empty = yourself)",
+  nf_apprise_url: "Notify URL (…/notify/KEY)",
+  nf_apprise_target: "Tag (optional)",
+  nf_webhook_url: "URL",
+  nf_webhook_token: "Bearer token (optional)",
+  err_unauthorized: "The access token was not accepted.",
+  err_not_found: "Not found.",
+  err_invalid_id: "That ID is not valid.",
+  err_no_calendar: "This call has no calendar suggestion.",
+  err_no_audio: "This call has no recording of that kind.",
+  err_open_failed: "The recording could not be opened.",
+  err_unknown_voice: "This voice is not available.",
+  err_unknown_background: "This background sound is not available.",
+  err_background_missing: "The sound file for this background is missing.",
+  err_preview_failed: "The sample could not be made. Check the Gemini API key and try again.",
+  err_bad_request: "The agent did not understand the request.",
+  err_save_failed: "The settings could not be written to disk.",
+  err_empty_body: "The message is empty.",
+  err_task_not_found: "This task no longer exists.",
+  err_fulfill_failed: "The task could not be carried out.",
+  err_unknown_channel: "The agent does not know this notification service.",
+  err_missing_field: "Fill in “{field}”.",
+  err_bad_url: "“{field}” must start with http:// or https://.",
+  err_bad_value: "“{field}” does not look right.",
+  err_auth_failed: "The service refused the token or password.",
+  err_service_not_found: "The service does not know this address or token.",
+  err_http_error: "The service answered with an error.",
+  err_service_error: "The service reported a problem with the message.",
+  err_network_error: "The service could not be reached.",
+  err_send_failed: "Sending failed.",
+  f_mdns_name: "Network name",
+  f_mdns_name_h: "Phones and computers on the same network can open this console at http://<name>.local:8787. Works only when the console is open to your network. Letters, digits and hyphens. Empty = off.",
+  cu_title: "Console address",
+  cu_copy: "Copy",
+  cu_qr_h: "Scan the code with your phone's camera to open the console there.",
+  cu_local: "Only this computer can open this address. To open the console from your phone, open it to your network (AGENT_HOST=0.0.0.0, see the guide).",
+  cu_qr_alt: "QR code of the console address",
+  a2hs_title: "Add this page to your home screen. Next time, just tap the icon.",
+  a2hs_install: "Install",
+  a2hs_ios: "iPhone and iPad: Share → Add to Home Screen (Safari).",
+  a2hs_android: "Android: Chrome menu ⋮ → Add to Home screen.",
+  a2hs_desktop: "Computer: the install icon at the right of the address bar (Chrome, Edge).",
+  cu_ip: "Phones that cannot open .local addresses (some older Android phones) use:",
+  // ---- phone mode (System view)
+  ph_mode_normal: "Normal phone: calls ring, the AI does not answer",
+  ph_app: "App {v}",
+  ph_need_update: "Update the Myna app on this phone to switch it from here",
+  ph_to_normal: "Switch to normal phone",
+  ph_to_ai: "Let the AI answer again",
+  ph_switching: "Switching…",
+  ph_to_normal_t: "Make {name} a normal phone?",
+  ph_to_normal_b: "Calls to this phone will no longer be answered by the AI. It rings like a normal phone and someone has to pick up. You can switch back at any time.",
+  ph_now_normal: "It is now a normal phone",
+  ph_now_ai: "The AI answers this phone again",
+  ph_mode_fail: "Switch failed: {why}",
+  ph_incall_wait: "On a call: switch after it ends",
+  ph_last_seen: "Last connected {time}",
+  pm_err_in_call: "the phone is on a call. Try again after it ends",
+  pm_err_busy: "the phone is still finishing the previous switch",
+  pm_err_no_root: "Myna has no root access on the phone (allow it in Magisk or KernelSU)",
+  pm_err_save_failed: "the phone could not save the mode",
+  pm_err_dialer_failed: "the phone could not change its default phone app",
+  pm_err_screening_failed: "the phone could not change its call screening setting",
+  pm_err_dnd_failed: "the phone could not change Do Not Disturb",
+  pm_err_volume_failed: "the phone could not turn its ringer back on",
+  pm_err_invalid_mode: "the phone did not recognize this mode",
+  pm_err_offline: "the phone is not connected",
+  pm_err_unsupported: "the app on the phone is too old. Update it first",
+  pm_err_timeout: "Result not confirmed yet. Refresh this page in a moment.",
+  pm_err_network: "the agent could not be reached",
+  pm_err_failed: "something went wrong on the phone",
+  pm_err_bad_request: "the request was not understood",
+  pill_all_normal: "All phones are normal phones",
 };
 
 I18N["zh-TW"] = {
@@ -1518,7 +1691,7 @@ I18N["zh-TW"] = {
   f_prewarm: "響鈴時先讓 AI 準備好",
   f_prewarm_h: "電話還在響就先連上 AI，一接起來馬上開口。關閉的話，對方要等 1 到 3 秒才聽到第一句。",
   f_unknown: "未顯示號碼也接聽",
-  f_unknown_h: "開：沒有顯示號碼的來電一樣交給 AI。關：直接掛斷。",
+  f_unknown_h: "開：沒有顯示號碼的來電一樣交給 AI。關：播一句「無法接通」的語音後掛斷。",
   f_barge: "對方可以打斷 AI",
   f_barge_h: "對方插話時 AI 會停下來。只會用在收音不會錄到 AI 自己聲音的手機上（每通電話開頭自動檢查）。",
   f_vad: "讓 Gemini 判斷對方什麼時候講完",
@@ -1625,7 +1798,7 @@ I18N["zh-TW"] = {
   hint_apprise: "你的 Apprise API 伺服器的通知網址，例如 http://host:8000/notify/KEY。標籤可以限定只傳給其中某些服務。",
   hint_webhook: "任何能接收 JSON POST 的網址，內容有 event、title、body 和 data。適合接 n8n、Home Assistant 或自己的程式。",
   f_public_url: "這個控制台的網址",
-  f_public_url_h: "通知裡的連結會用到，例如 http://192.168.1.20:8787。留空 = 通知不附連結。",
+  f_public_url_h: "通知裡的連結會用到，例如 http://192.168.1.20:8787。留空 = 自動：控制台對區網開放時，用下面的區網名稱（或這台電腦的區網 IP）；只有這台電腦能開時，通知不附連結。在 Docker 裡不會自動填，請自己設定。",
   use_this_url: "使用目前這個頁面的網址：{url}",
   // ---- settings: summary & calendar
   g_summary_d: "每通電話結束後，AI 會寫一段簡短的摘要。預設使用你的 Gemini 金鑰，通常不需要另外設定。",
@@ -1706,6 +1879,141 @@ I18N["zh-TW"] = {
   ab_retention: "錄音保留",
   ab_days: "{n} 天",
   raw_health: "原始 /health 資料（除錯用）",
+  // ---- call events, notification services, error codes (from the agent)
+  ev_hello_reattach: "通話中手機重新連上",
+  ev_live_ai_start: "AI 助理開始（舊選單）",
+  ev_shaming_played: "播放浪費能源提示",
+  ev_voicemail_intro: "播放留言提示",
+  ev_voicemail_saved: "已存語音留言",
+  ev_vm_end_hash: "按 # 結束留言",
+  ev_vm_end_max: "留言達到時間上限",
+  ev_vm_end_silence: "安靜太久，留言結束",
+  ev_vm_end_hangup: "留言時對方掛斷",
+  ev_vm_no_reply: "對方不需要回覆",
+  ev_vm_confirm_timeout: "回覆方式沒有回應",
+  ev_vm_contact_readback_timeout: "唸回聯絡方式後沒有回應",
+  ev_vm_contact_rejected: "對方說聯絡方式不對",
+  ev_vm_reply_contact_confirmed: "對方確認聯絡方式",
+  ev_vm_reply_phone_confirmed: "對方要求回電",
+  ev_vm_finish_auto_hangup: "留言結束，自動掛斷",
+  ev_gemini_fail_to_voicemail: "AI 失敗，改走語音留言",
+  ev_gemini_zero_delivery_to_voicemail: "AI 沒有聲音，改走語音留言",
+  ev_gemini_delivery_fail_to_voicemail: "AI 聲音送不出去，改走語音留言",
+  ev_blocked_spam: "當成騷擾電話擋掉",
+  nf_telegram: "Telegram",
+  nf_discord: "Discord",
+  nf_slack: "Slack / Mattermost",
+  nf_line: "LINE（Messaging API）",
+  nf_ntfy: "ntfy",
+  nf_gotify: "Gotify",
+  nf_bark: "Bark（iOS）",
+  nf_pushover: "Pushover",
+  nf_wecom: "企業微信群機器人",
+  nf_dingtalk: "釘釘機器人",
+  nf_feishu: "飛書／Lark 機器人",
+  nf_serverchan: "Server醬",
+  nf_matrix: "Matrix",
+  nf_gmail: "電子郵件（Gmail）",
+  nf_apprise: "Apprise API",
+  nf_webhook: "Webhook（JSON）",
+  nf_telegram_token: "Bot 權杖",
+  nf_telegram_target: "聊天 ID（Chat ID）",
+  nf_discord_url: "Webhook 網址",
+  nf_slack_url: "Incoming Webhook 網址",
+  nf_line_token: "Channel access token",
+  nf_line_target: "使用者或群組 ID",
+  nf_ntfy_url: "伺服器",
+  nf_ntfy_token: "存取權杖（選填）",
+  nf_ntfy_target: "主題（Topic）",
+  nf_gotify_url: "伺服器網址",
+  nf_gotify_token: "App 權杖",
+  nf_bark_url: "伺服器",
+  nf_bark_token: "裝置金鑰",
+  nf_pushover_token: "API 權杖",
+  nf_pushover_target: "使用者金鑰（User key）",
+  nf_wecom_url: "Webhook 網址",
+  nf_dingtalk_url: "Webhook 網址",
+  nf_dingtalk_token: "加簽密鑰（選填）",
+  nf_feishu_url: "Webhook 網址",
+  nf_serverchan_token: "SendKey",
+  nf_matrix_url: "Homeserver 網址",
+  nf_matrix_token: "存取權杖",
+  nf_matrix_target: "聊天室 ID",
+  nf_gmail_url: "Gmail 地址",
+  nf_gmail_token: "應用程式密碼",
+  nf_gmail_target: "寄到（空白＝寄給自己）",
+  nf_apprise_url: "通知網址（…/notify/KEY）",
+  nf_apprise_target: "標籤（選填）",
+  nf_webhook_url: "網址",
+  nf_webhook_token: "Bearer 權杖（選填）",
+  err_unauthorized: "存取權杖不正確。",
+  err_not_found: "找不到。",
+  err_invalid_id: "這個 ID 不正確。",
+  err_no_calendar: "這通電話沒有行事曆建議。",
+  err_no_audio: "這通電話沒有這種錄音。",
+  err_open_failed: "錄音打不開。",
+  err_unknown_voice: "沒有這個聲音。",
+  err_unknown_background: "沒有這個背景音。",
+  err_background_missing: "這個背景音的音檔不見了。",
+  err_preview_failed: "試聽做不出來。請檢查 Gemini API 金鑰再試一次。",
+  err_bad_request: "agent 看不懂這個要求。",
+  err_save_failed: "設定檔寫不進磁碟。",
+  err_empty_body: "訊息是空的。",
+  err_task_not_found: "這個任務已經不在了。",
+  err_fulfill_failed: "任務沒辦法執行。",
+  err_unknown_channel: "agent 不認得這個通知服務。",
+  err_missing_field: "請填寫「{field}」。",
+  err_bad_url: "「{field}」要用 http:// 或 https:// 開頭。",
+  err_bad_value: "「{field}」看起來不對。",
+  err_auth_failed: "服務拒絕了權杖或密碼。",
+  err_service_not_found: "服務不認得這個網址或權杖。",
+  err_http_error: "服務回覆錯誤。",
+  err_service_error: "服務說這則訊息有問題。",
+  err_network_error: "連不上服務。",
+  err_send_failed: "傳送失敗。",
+  f_mdns_name: "區網名稱",
+  f_mdns_name_h: "同一個網路裡的手機、電腦可以用 http://<名稱>.local:8787 打開這個控制台。控制台要對區網開放才有用。只能用英文字母、數字和連字號（-）。留空 = 關閉。",
+  cu_title: "控制台網址",
+  cu_copy: "複製",
+  cu_qr_h: "用手機相機掃這個 QR code，就能在手機上打開控制台。",
+  cu_local: "這個網址只有這台電腦能開。要用手機打開，請讓控制台對區網開放（AGENT_HOST=0.0.0.0，見說明文件）。",
+  cu_qr_alt: "控制台網址的 QR code",
+  a2hs_title: "把這個網頁加到主畫面，下次點圖示就打開。",
+  a2hs_install: "安裝",
+  a2hs_ios: "iPhone、iPad：Safari 的「分享」→「加入主畫面」。",
+  a2hs_android: "Android：Chrome 選單 ⋮ →「加到主畫面」。",
+  a2hs_desktop: "電腦：Chrome、Edge 網址列右邊的安裝圖示。",
+  cu_ip: "打不開 .local 網址的手機（有些舊的 Android）請用：",
+  // ---- phone mode (System view)
+  ph_mode_normal: "一般手機：來電會正常響，AI 不接",
+  ph_app: "App 版本 {v}",
+  ph_need_update: "這支手機的 Myna App 要更新，才能從這裡切換",
+  ph_to_normal: "改成一般手機",
+  ph_to_ai: "改回 AI 接聽",
+  ph_switching: "切換中…",
+  ph_to_normal_t: "把「{name}」改成一般手機？",
+  ph_to_normal_b: "這支手機的來電將不再由 AI 接聽，會像一般手機一樣響，要有人自己接。之後隨時可以改回來。",
+  ph_now_normal: "已改成一般手機",
+  ph_now_ai: "已改回 AI 接聽",
+  ph_mode_fail: "切換失敗：{why}",
+  ph_incall_wait: "通話中，掛斷後才能切換",
+  ph_last_seen: "最後連線 {time}",
+  pm_err_in_call: "手機正在通話，掛斷後再試",
+  pm_err_busy: "手機上一次切換還沒做完",
+  pm_err_no_root: "手機沒有給 Myna root 權限（請在 Magisk 或 KernelSU 允許）",
+  pm_err_save_failed: "手機無法儲存模式設定",
+  pm_err_dialer_failed: "手機沒辦法更換預設電話 App",
+  pm_err_screening_failed: "手機沒辦法更換來電過濾設定",
+  pm_err_dnd_failed: "手機沒辦法更改勿擾模式",
+  pm_err_volume_failed: "手機沒辦法把鈴聲調回來",
+  pm_err_invalid_mode: "手機不認得這個模式",
+  pm_err_offline: "手機沒有連上",
+  pm_err_unsupported: "手機上的 App 太舊，請先更新",
+  pm_err_timeout: "結果未確認，請稍後重新整理。",
+  pm_err_network: "連不上主程式",
+  pm_err_failed: "手機上發生沒預期到的錯誤",
+  pm_err_bad_request: "主程式看不懂這個請求",
+  pill_all_normal: "手機都是一般手機模式",
 };
 
 I18N["zh-CN"] = {
@@ -1940,7 +2248,7 @@ I18N["zh-CN"] = {
   f_prewarm: "响铃时先让 AI 准备好",
   f_prewarm_h: "电话还在响就先连上 AI，一接通马上开口。关闭的话，对方要等 1 到 3 秒才听到第一句。",
   f_unknown: "未显示号码也接听",
-  f_unknown_h: "开：没有显示号码的来电同样交给 AI。关：直接挂断。",
+  f_unknown_h: "开：没有显示号码的来电同样交给 AI。关：播一句“无法接通”的语音后挂断。",
   f_barge: "对方可以打断 AI",
   f_barge_h: "对方插话时 AI 会停下来。只用于收音不会录到 AI 自己声音的手机（每通电话开头自动检测）。",
   f_vad: "让 Gemini 判断对方什么时候说完",
@@ -2047,7 +2355,7 @@ I18N["zh-CN"] = {
   hint_apprise: "你的 Apprise API 服务器的通知地址，例如 http://host:8000/notify/KEY。标签可以限定只发给其中某些服务。",
   hint_webhook: "任何能接收 JSON POST 的地址，内容包含 event、title、body 和 data。适合对接 n8n、Home Assistant 或自己的脚本。",
   f_public_url: "这个控制台的地址",
-  f_public_url_h: "通知里的链接会用到，例如 http://192.168.1.20:8787。留空 = 通知不带链接。",
+  f_public_url_h: "通知里的链接会用到，例如 http://192.168.1.20:8787。留空 = 自动：控制台对局域网开放时，用下面的局域网名称（或这台电脑的局域网 IP）；只有这台电脑能打开时，通知不带链接。在 Docker 里不会自动填写，请自己设置。",
   use_this_url: "使用当前页面的地址：{url}",
   // ---- settings: summary & calendar
   g_summary_d: "每通电话结束后，AI 会写一段简短的摘要。默认使用你的 Gemini 密钥，通常不需要另外设置。",
@@ -2128,6 +2436,141 @@ I18N["zh-CN"] = {
   ab_retention: "录音保留",
   ab_days: "{n} 天",
   raw_health: "原始 /health 数据（排查问题用）",
+  // ---- call events, notification services, error codes (from the agent)
+  ev_hello_reattach: "通话中手机重新连上",
+  ev_live_ai_start: "AI 助理开始（旧菜单）",
+  ev_shaming_played: "播放浪费能源提示",
+  ev_voicemail_intro: "播放留言提示",
+  ev_voicemail_saved: "已保存语音留言",
+  ev_vm_end_hash: "按 # 结束留言",
+  ev_vm_end_max: "留言达到时长上限",
+  ev_vm_end_silence: "长时间没声音，留言结束",
+  ev_vm_end_hangup: "留言时对方挂断",
+  ev_vm_no_reply: "对方不需要回复",
+  ev_vm_confirm_timeout: "回复方式没有回应",
+  ev_vm_contact_readback_timeout: "读回联系方式后没有回应",
+  ev_vm_contact_rejected: "对方说联系方式不对",
+  ev_vm_reply_contact_confirmed: "对方确认联系方式",
+  ev_vm_reply_phone_confirmed: "对方要求回电",
+  ev_vm_finish_auto_hangup: "留言结束，自动挂断",
+  ev_gemini_fail_to_voicemail: "AI 失败，转到语音留言",
+  ev_gemini_zero_delivery_to_voicemail: "AI 没有声音，转到语音留言",
+  ev_gemini_delivery_fail_to_voicemail: "AI 声音发不出去，转到语音留言",
+  ev_blocked_spam: "作为骚扰电话拦截",
+  nf_telegram: "Telegram",
+  nf_discord: "Discord",
+  nf_slack: "Slack / Mattermost",
+  nf_line: "LINE（Messaging API）",
+  nf_ntfy: "ntfy",
+  nf_gotify: "Gotify",
+  nf_bark: "Bark（iOS）",
+  nf_pushover: "Pushover",
+  nf_wecom: "企业微信群机器人",
+  nf_dingtalk: "钉钉机器人",
+  nf_feishu: "飞书／Lark 机器人",
+  nf_serverchan: "Server酱",
+  nf_matrix: "Matrix",
+  nf_gmail: "电子邮件（Gmail）",
+  nf_apprise: "Apprise API",
+  nf_webhook: "Webhook（JSON）",
+  nf_telegram_token: "Bot 令牌",
+  nf_telegram_target: "聊天 ID（Chat ID）",
+  nf_discord_url: "Webhook 地址",
+  nf_slack_url: "Incoming Webhook 地址",
+  nf_line_token: "Channel access token",
+  nf_line_target: "用户或群组 ID",
+  nf_ntfy_url: "服务器",
+  nf_ntfy_token: "访问令牌（可选）",
+  nf_ntfy_target: "主题（Topic）",
+  nf_gotify_url: "服务器地址",
+  nf_gotify_token: "App 令牌",
+  nf_bark_url: "服务器",
+  nf_bark_token: "设备密钥",
+  nf_pushover_token: "API 令牌",
+  nf_pushover_target: "用户密钥（User key）",
+  nf_wecom_url: "Webhook 地址",
+  nf_dingtalk_url: "Webhook 地址",
+  nf_dingtalk_token: "加签密钥（可选）",
+  nf_feishu_url: "Webhook 地址",
+  nf_serverchan_token: "SendKey",
+  nf_matrix_url: "Homeserver 地址",
+  nf_matrix_token: "访问令牌",
+  nf_matrix_target: "房间 ID",
+  nf_gmail_url: "Gmail 地址",
+  nf_gmail_token: "应用专用密码",
+  nf_gmail_target: "发送到（留空＝发给自己）",
+  nf_apprise_url: "通知地址（…/notify/KEY）",
+  nf_apprise_target: "标签（可选）",
+  nf_webhook_url: "地址",
+  nf_webhook_token: "Bearer 令牌（可选）",
+  err_unauthorized: "访问令牌不正确。",
+  err_not_found: "找不到。",
+  err_invalid_id: "这个 ID 不正确。",
+  err_no_calendar: "这通电话没有日历建议。",
+  err_no_audio: "这通电话没有这种录音。",
+  err_open_failed: "录音打不开。",
+  err_unknown_voice: "没有这个声音。",
+  err_unknown_background: "没有这个背景音。",
+  err_background_missing: "这个背景音的音频文件不见了。",
+  err_preview_failed: "试听生成失败。请检查 Gemini API 密钥后再试。",
+  err_bad_request: "agent 看不懂这个请求。",
+  err_save_failed: "设置文件写不进磁盘。",
+  err_empty_body: "消息是空的。",
+  err_task_not_found: "这个任务已经不在了。",
+  err_fulfill_failed: "任务无法执行。",
+  err_unknown_channel: "agent 不认识这个通知服务。",
+  err_missing_field: "请填写“{field}”。",
+  err_bad_url: "“{field}”要以 http:// 或 https:// 开头。",
+  err_bad_value: "“{field}”看起来不对。",
+  err_auth_failed: "服务拒绝了令牌或密码。",
+  err_service_not_found: "服务不认识这个地址或令牌。",
+  err_http_error: "服务返回了错误。",
+  err_service_error: "服务说这条消息有问题。",
+  err_network_error: "连不上服务。",
+  err_send_failed: "发送失败。",
+  f_mdns_name: "局域网名称",
+  f_mdns_name_h: "同一网络里的手机、电脑可以用 http://<名称>.local:8787 打开这个控制台。控制台要对局域网开放才有用。只能用英文字母、数字和连字符（-）。留空 = 关闭。",
+  cu_title: "控制台地址",
+  cu_copy: "复制",
+  cu_qr_h: "用手机相机扫这个二维码，就能在手机上打开控制台。",
+  cu_local: "这个地址只有这台电脑能打开。要用手机打开，请让控制台对局域网开放（AGENT_HOST=0.0.0.0，见说明文档）。",
+  cu_qr_alt: "控制台地址的二维码",
+  a2hs_title: "把这个网页添加到主屏幕，下次点图标就能打开。",
+  a2hs_install: "安装",
+  a2hs_ios: "iPhone、iPad：Safari 的“分享”→“添加到主屏幕”。",
+  a2hs_android: "Android：Chrome 菜单 ⋮ →“添加到主屏幕”。",
+  a2hs_desktop: "电脑：Chrome、Edge 地址栏右侧的安装图标。",
+  cu_ip: "打不开 .local 地址的手机（有些旧的 Android）请用：",
+  // ---- phone mode (System view)
+  ph_mode_normal: "普通手机：来电正常响铃，AI 不接",
+  ph_app: "App 版本 {v}",
+  ph_need_update: "这部手机的 Myna 应用需要更新，才能从这里切换",
+  ph_to_normal: "改成普通手机",
+  ph_to_ai: "改回 AI 接听",
+  ph_switching: "切换中…",
+  ph_to_normal_t: "把“{name}”改成普通手机？",
+  ph_to_normal_b: "这部手机的来电将不再由 AI 接听，会像普通手机一样响铃，需要有人自己接。之后随时可以改回来。",
+  ph_now_normal: "已改成普通手机",
+  ph_now_ai: "已改回 AI 接听",
+  ph_mode_fail: "切换失败：{why}",
+  ph_incall_wait: "通话中，挂断后才能切换",
+  ph_last_seen: "最后连接 {time}",
+  pm_err_in_call: "手机正在通话，挂断后再试",
+  pm_err_busy: "手机上一次切换还没做完",
+  pm_err_no_root: "手机没有给 Myna root 权限（请在 Magisk 或 KernelSU 中允许）",
+  pm_err_save_failed: "手机无法保存模式设置",
+  pm_err_dialer_failed: "手机没办法更换默认电话应用",
+  pm_err_screening_failed: "手机没办法更改来电过滤设置",
+  pm_err_dnd_failed: "手机没办法更改勿扰模式",
+  pm_err_volume_failed: "手机没办法把铃声调回来",
+  pm_err_invalid_mode: "手机不认识这个模式",
+  pm_err_offline: "手机没有连接",
+  pm_err_unsupported: "手机上的应用太旧，请先更新",
+  pm_err_timeout: "结果未确认，请稍后刷新。",
+  pm_err_network: "连接不上主程序",
+  pm_err_failed: "手机上发生了意外错误",
+  pm_err_bad_request: "主程序无法识别这个请求",
+  pill_all_normal: "手机都是普通手机模式",
 };
 
 I18N["ja"] = {
@@ -2362,7 +2805,7 @@ I18N["ja"] = {
   f_prewarm: "呼び出し中に AI を準備する",
   f_prewarm_h: "呼び出し中に AI へ接続しておき、電話に出た瞬間に話し始めます。オフの場合、相手は最初のひと言まで 1〜3 秒待ちます。",
   f_unknown: "非通知の電話にも出る",
-  f_unknown_h: "オン：非通知の着信もほかと同じく AI が出ます。オフ：すぐに切ります。",
+  f_unknown_h: "オン：非通知の着信もほかと同じく AI が出ます。オフ：「おつなぎできません」という短いアナウンスを流して切ります。",
   f_barge: "相手が話をさえぎれるようにする",
   f_barge_h: "相手が話し始めると AI は話を止めます。AI 自身の声を拾わないスマホでのみ使われます（通話の最初に毎回確認します）。",
   f_vad: "相手が話し終えたかを Gemini に判断させる",
@@ -2469,7 +2912,7 @@ I18N["ja"] = {
   hint_apprise: "Apprise API サーバーの通知 URL です（例：http://host:8000/notify/KEY）。タグを指定すると、送信先のサービスを絞り込めます。",
   hint_webhook: "event、title、body、data を含む JSON の POST を受け取れる URL なら何でも使えます。n8n、Home Assistant、自作スクリプトなどに便利です。",
   f_public_url: "このコンソールのアドレス",
-  f_public_url_h: "通知に入れるリンクに使います（例：http://192.168.1.20:8787）。空欄 = リンクなし。",
+  f_public_url_h: "通知に入れるリンクに使います（例：http://192.168.1.20:8787）。空欄 = 自動：コンソールをネットワークに公開しているときは下のネットワーク名（またはこのPCのIPアドレス）、このPCでしか開けないときはリンクなし。Docker では自動で入らないので、自分で設定してください。",
   use_this_url: "このページのアドレスを使う：{url}",
   // ---- settings: summary & calendar
   g_summary_d: "通話が終わるたびに、AI が短い要約を書きます。Gemini のキーを使うので、通常ここで設定することはありません。",
@@ -2550,6 +2993,141 @@ I18N["ja"] = {
   ab_retention: "録音の保存期間",
   ab_days: "{n} 日",
   raw_health: "/health の生データ（トラブルシューティング用）",
+  // ---- call events, notification services, error codes (from the agent)
+  ev_hello_reattach: "通話中にスマホが再接続",
+  ev_live_ai_start: "AI アシスタント開始（旧メニュー）",
+  ev_shaming_played: "エネルギー浪費アナウンスを再生",
+  ev_voicemail_intro: "留守電の案内を再生",
+  ev_voicemail_saved: "留守電を保存",
+  ev_vm_end_hash: "# で伝言を終了",
+  ev_vm_end_max: "伝言が時間の上限に到達",
+  ev_vm_end_silence: "無音が続き伝言を終了",
+  ev_vm_end_hangup: "伝言中に相手が切断",
+  ev_vm_no_reply: "相手は返信不要",
+  ev_vm_confirm_timeout: "返信方法の質問に応答なし",
+  ev_vm_contact_readback_timeout: "連絡先の読み上げ後に応答なし",
+  ev_vm_contact_rejected: "相手が連絡先の誤りを指摘",
+  ev_vm_reply_contact_confirmed: "相手が連絡先を確認",
+  ev_vm_reply_phone_confirmed: "相手が折り返しを希望",
+  ev_vm_finish_auto_hangup: "留守電終了、自動で切断",
+  ev_gemini_fail_to_voicemail: "AI 失敗のため留守電へ",
+  ev_gemini_zero_delivery_to_voicemail: "AI の音声がなく留守電へ",
+  ev_gemini_delivery_fail_to_voicemail: "AI の音声を流せず留守電へ",
+  ev_blocked_spam: "迷惑電話としてブロック",
+  nf_telegram: "Telegram",
+  nf_discord: "Discord",
+  nf_slack: "Slack / Mattermost",
+  nf_line: "LINE（Messaging API）",
+  nf_ntfy: "ntfy",
+  nf_gotify: "Gotify",
+  nf_bark: "Bark（iOS）",
+  nf_pushover: "Pushover",
+  nf_wecom: "WeCom（企業微信）グループボット",
+  nf_dingtalk: "DingTalk（釘釘）ボット",
+  nf_feishu: "Feishu / Lark ボット",
+  nf_serverchan: "ServerChan（Server酱）",
+  nf_matrix: "Matrix",
+  nf_gmail: "メール（Gmail）",
+  nf_apprise: "Apprise API",
+  nf_webhook: "Webhook（JSON）",
+  nf_telegram_token: "ボットトークン",
+  nf_telegram_target: "チャット ID",
+  nf_discord_url: "Webhook URL",
+  nf_slack_url: "Incoming Webhook URL",
+  nf_line_token: "チャネルアクセストークン",
+  nf_line_target: "ユーザーまたはグループ ID",
+  nf_ntfy_url: "サーバー",
+  nf_ntfy_token: "アクセストークン（任意）",
+  nf_ntfy_target: "トピック",
+  nf_gotify_url: "サーバー URL",
+  nf_gotify_token: "アプリトークン",
+  nf_bark_url: "サーバー",
+  nf_bark_token: "デバイスキー",
+  nf_pushover_token: "API トークン",
+  nf_pushover_target: "ユーザーキー",
+  nf_wecom_url: "Webhook URL",
+  nf_dingtalk_url: "Webhook URL",
+  nf_dingtalk_token: "署名シークレット（任意）",
+  nf_feishu_url: "Webhook URL",
+  nf_serverchan_token: "SendKey",
+  nf_matrix_url: "ホームサーバー URL",
+  nf_matrix_token: "アクセストークン",
+  nf_matrix_target: "ルーム ID",
+  nf_gmail_url: "Gmail アドレス",
+  nf_gmail_token: "アプリ パスワード",
+  nf_gmail_target: "送信先（空欄＝自分宛て）",
+  nf_apprise_url: "通知 URL（…/notify/KEY）",
+  nf_apprise_target: "タグ（任意）",
+  nf_webhook_url: "URL",
+  nf_webhook_token: "Bearer トークン（任意）",
+  err_unauthorized: "アクセストークンが受け付けられませんでした。",
+  err_not_found: "見つかりません。",
+  err_invalid_id: "この ID は正しくありません。",
+  err_no_calendar: "この通話にはカレンダーの提案がありません。",
+  err_no_audio: "この通話にはその種類の録音がありません。",
+  err_open_failed: "録音を開けませんでした。",
+  err_unknown_voice: "この音声は使えません。",
+  err_unknown_background: "この背景音は使えません。",
+  err_background_missing: "この背景音のファイルがありません。",
+  err_preview_failed: "サンプルを作れませんでした。Gemini API キーを確認して、もう一度お試しください。",
+  err_bad_request: "agent がリクエストを理解できませんでした。",
+  err_save_failed: "設定をディスクに書き込めませんでした。",
+  err_empty_body: "メッセージが空です。",
+  err_task_not_found: "このタスクはもうありません。",
+  err_fulfill_failed: "タスクを実行できませんでした。",
+  err_unknown_channel: "agent はこの通知サービスを知りません。",
+  err_missing_field: "「{field}」を入力してください。",
+  err_bad_url: "「{field}」は http:// か https:// で始めてください。",
+  err_bad_value: "「{field}」が正しくないようです。",
+  err_auth_failed: "サービスがトークンまたはパスワードを拒否しました。",
+  err_service_not_found: "サービスはこのアドレスまたはトークンを知りません。",
+  err_http_error: "サービスがエラーを返しました。",
+  err_service_error: "サービスがメッセージの問題を報告しました。",
+  err_network_error: "サービスに接続できませんでした。",
+  err_send_failed: "送信に失敗しました。",
+  f_mdns_name: "ネットワーク名",
+  f_mdns_name_h: "同じネットワークのスマホやPCから http://<名前>.local:8787 でこのコンソールを開けます。コンソールをネットワークに公開しているときだけ使えます。英字・数字・ハイフンのみ。空欄 = オフ。",
+  cu_title: "コンソールのアドレス",
+  cu_copy: "コピー",
+  cu_qr_h: "スマホのカメラでこのコードを読み取ると、スマホでコンソールが開きます。",
+  cu_local: "このアドレスはこのPCでしか開けません。スマホから開くには、コンソールをネットワークに公開してください（AGENT_HOST=0.0.0.0、ガイド参照）。",
+  cu_qr_alt: "コンソールのアドレスの QR コード",
+  a2hs_title: "このページをホーム画面に追加すると、次からはアイコンをタップするだけで開けます。",
+  a2hs_install: "インストール",
+  a2hs_ios: "iPhone・iPad：Safari の「共有」→「ホーム画面に追加」。",
+  a2hs_android: "Android：Chrome のメニュー ⋮ →「ホーム画面に追加」。",
+  a2hs_desktop: "パソコン：Chrome・Edge のアドレスバー右側にあるインストールのアイコン。",
+  cu_ip: ".local のアドレスを開けないスマホ（古い Android など）はこちら：",
+  // ---- phone mode (System view)
+  ph_mode_normal: "通常のスマホ：着信音が鳴り、AI は出ません",
+  ph_app: "アプリ {v}",
+  ph_need_update: "ここから切り替えるには、このスマホの Myna アプリを更新してください",
+  ph_to_normal: "通常のスマホにする",
+  ph_to_ai: "AI が出るように戻す",
+  ph_switching: "切り替え中…",
+  ph_to_normal_t: "「{name}」を通常のスマホにしますか？",
+  ph_to_normal_b: "このスマホの電話には、今後 AI が出ません。普通のスマホと同じように鳴るので、誰かが出る必要があります。いつでも元に戻せます。",
+  ph_now_normal: "通常のスマホにしました",
+  ph_now_ai: "また AI が出るようになりました",
+  ph_mode_fail: "切り替えに失敗しました：{why}",
+  ph_incall_wait: "通話中です。終わってから切り替えてください",
+  ph_last_seen: "最終接続 {time}",
+  pm_err_in_call: "スマホが通話中です。終わってからもう一度",
+  pm_err_busy: "スマホが前の切り替えをまだ処理しています",
+  pm_err_no_root: "スマホで Myna に root 権限がありません（Magisk か KernelSU で許可してください）",
+  pm_err_save_failed: "スマホがモードを保存できませんでした",
+  pm_err_dialer_failed: "スマホがデフォルトの電話アプリを変更できませんでした",
+  pm_err_screening_failed: "スマホが着信フィルタの設定を変更できませんでした",
+  pm_err_dnd_failed: "スマホがサイレント モードを変更できませんでした",
+  pm_err_volume_failed: "スマホが着信音を元に戻せませんでした",
+  pm_err_invalid_mode: "スマホがこのモードを認識できませんでした",
+  pm_err_offline: "スマホがつながっていません",
+  pm_err_unsupported: "スマホのアプリが古すぎます。先に更新してください",
+  pm_err_timeout: "結果はまだ確認できていません。少したってから再読み込みしてください。",
+  pm_err_network: "エージェントに接続できません",
+  pm_err_failed: "スマホで予期しないエラーが起きました",
+  pm_err_bad_request: "リクエストを解釈できませんでした",
+  pill_all_normal: "すべて通常のスマホです",
 };
 
 I18N["ko"] = {
@@ -2784,7 +3362,7 @@ I18N["ko"] = {
   f_prewarm: "벨이 울리는 동안 AI 준비",
   f_prewarm_h: "벨이 울리는 동안 AI에 미리 연결해, 전화를 받자마자 말을 시작합니다. 끄면 상대방이 첫마디를 듣기까지 1~3초 기다립니다.",
   f_unknown: "발신번호 표시 제한 전화도 받기",
-  f_unknown_h: "켬: 번호가 표시되지 않는 전화도 똑같이 AI가 받습니다. 끔: 바로 끊습니다.",
+  f_unknown_h: "켬: 번호가 표시되지 않는 전화도 똑같이 AI가 받습니다. 끔: ‘연결할 수 없다’는 짧은 안내를 들려준 뒤 끊습니다.",
   f_barge: "상대방이 말을 끊을 수 있게 하기",
   f_barge_h: "상대방이 끼어들면 AI가 말을 멈춥니다. AI 자신의 목소리가 마이크에 잡히지 않는 휴대폰에서만 사용됩니다(통화를 시작할 때마다 확인).",
   f_vad: "상대방 말이 끝났는지 Gemini가 판단",
@@ -2891,7 +3469,7 @@ I18N["ko"] = {
   hint_apprise: "Apprise API 서버의 알림 URL입니다(예: http://host:8000/notify/KEY). 태그를 지정하면 일부 서비스로만 보낼 수 있습니다.",
   hint_webhook: "event, title, body, data가 담긴 JSON POST를 받을 수 있는 URL이면 됩니다. n8n, Home Assistant, 직접 만든 스크립트에 연결할 때 편리합니다.",
   f_public_url: "이 콘솔의 주소",
-  f_public_url_h: "알림에 넣는 링크에 사용합니다(예: http://192.168.1.20:8787). 비워 두면 링크를 넣지 않습니다.",
+  f_public_url_h: "알림에 넣는 링크에 사용합니다(예: http://192.168.1.20:8787). 비워 두면 자동: 콘솔이 네트워크에 열려 있으면 아래 네트워크 이름(또는 이 컴퓨터의 네트워크 주소), 이 컴퓨터에서만 열 수 있으면 링크를 넣지 않습니다. Docker에서는 자동으로 채워지지 않으니 직접 설정하세요.",
   use_this_url: "지금 이 페이지의 주소 사용: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "통화가 끝날 때마다 AI가 짧은 요약을 씁니다. Gemini 키를 사용하므로 보통은 따로 설정할 것이 없습니다.",
@@ -2972,6 +3550,141 @@ I18N["ko"] = {
   ab_retention: "녹음 보관 기간",
   ab_days: "{n}일",
   raw_health: "/health 원본 데이터(문제 해결용)",
+  // ---- call events, notification services, error codes (from the agent)
+  ev_hello_reattach: "통화 중 휴대폰 다시 연결",
+  ev_live_ai_start: "AI 비서 시작(이전 메뉴)",
+  ev_shaming_played: "에너지 낭비 안내 재생",
+  ev_voicemail_intro: "음성 메시지 안내 재생",
+  ev_voicemail_saved: "음성 메시지 저장",
+  ev_vm_end_hash: "#으로 메시지 종료",
+  ev_vm_end_max: "메시지 시간 한도 도달",
+  ev_vm_end_silence: "조용해서 메시지 종료",
+  ev_vm_end_hangup: "메시지를 남기는 중 상대가 끊음",
+  ev_vm_no_reply: "상대가 회신 필요 없다고 함",
+  ev_vm_confirm_timeout: "회신 방법 질문에 응답 없음",
+  ev_vm_contact_readback_timeout: "연락처를 읽어 준 뒤 응답 없음",
+  ev_vm_contact_rejected: "상대가 연락처가 틀리다고 함",
+  ev_vm_reply_contact_confirmed: "상대가 연락처 확인",
+  ev_vm_reply_phone_confirmed: "상대가 회신 전화 요청",
+  ev_vm_finish_auto_hangup: "음성 메시지 끝, 자동으로 끊음",
+  ev_gemini_fail_to_voicemail: "AI 실패로 음성 메시지로 전환",
+  ev_gemini_zero_delivery_to_voicemail: "AI 소리가 없어 음성 메시지로 전환",
+  ev_gemini_delivery_fail_to_voicemail: "AI 소리를 내보내지 못해 음성 메시지로 전환",
+  ev_blocked_spam: "스팸으로 차단",
+  nf_telegram: "Telegram",
+  nf_discord: "Discord",
+  nf_slack: "Slack / Mattermost",
+  nf_line: "LINE (Messaging API)",
+  nf_ntfy: "ntfy",
+  nf_gotify: "Gotify",
+  nf_bark: "Bark (iOS)",
+  nf_pushover: "Pushover",
+  nf_wecom: "WeCom 그룹 봇",
+  nf_dingtalk: "DingTalk 봇",
+  nf_feishu: "Feishu / Lark 봇",
+  nf_serverchan: "ServerChan",
+  nf_matrix: "Matrix",
+  nf_gmail: "이메일 (Gmail)",
+  nf_apprise: "Apprise API",
+  nf_webhook: "Webhook (JSON)",
+  nf_telegram_token: "봇 토큰",
+  nf_telegram_target: "채팅 ID",
+  nf_discord_url: "Webhook URL",
+  nf_slack_url: "Incoming Webhook URL",
+  nf_line_token: "채널 액세스 토큰",
+  nf_line_target: "사용자 또는 그룹 ID",
+  nf_ntfy_url: "서버",
+  nf_ntfy_token: "액세스 토큰(선택)",
+  nf_ntfy_target: "토픽",
+  nf_gotify_url: "서버 URL",
+  nf_gotify_token: "앱 토큰",
+  nf_bark_url: "서버",
+  nf_bark_token: "기기 키",
+  nf_pushover_token: "API 토큰",
+  nf_pushover_target: "사용자 키",
+  nf_wecom_url: "Webhook URL",
+  nf_dingtalk_url: "Webhook URL",
+  nf_dingtalk_token: "서명 시크릿(선택)",
+  nf_feishu_url: "Webhook URL",
+  nf_serverchan_token: "SendKey",
+  nf_matrix_url: "홈서버 URL",
+  nf_matrix_token: "액세스 토큰",
+  nf_matrix_target: "방 ID",
+  nf_gmail_url: "Gmail 주소",
+  nf_gmail_token: "앱 비밀번호",
+  nf_gmail_target: "받는 사람(비우면 나에게)",
+  nf_apprise_url: "알림 URL(…/notify/KEY)",
+  nf_apprise_target: "태그(선택)",
+  nf_webhook_url: "URL",
+  nf_webhook_token: "Bearer 토큰(선택)",
+  err_unauthorized: "액세스 토큰이 맞지 않습니다.",
+  err_not_found: "찾을 수 없습니다.",
+  err_invalid_id: "올바른 ID가 아닙니다.",
+  err_no_calendar: "이 통화에는 캘린더 제안이 없습니다.",
+  err_no_audio: "이 통화에는 그런 녹음이 없습니다.",
+  err_open_failed: "녹음을 열 수 없습니다.",
+  err_unknown_voice: "이 음성은 쓸 수 없습니다.",
+  err_unknown_background: "이 배경음은 쓸 수 없습니다.",
+  err_background_missing: "이 배경음의 소리 파일이 없습니다.",
+  err_preview_failed: "샘플을 만들지 못했습니다. Gemini API 키를 확인하고 다시 시도하세요.",
+  err_bad_request: "agent가 요청을 이해하지 못했습니다.",
+  err_save_failed: "설정을 디스크에 쓰지 못했습니다.",
+  err_empty_body: "메시지가 비어 있습니다.",
+  err_task_not_found: "이 작업은 더 이상 없습니다.",
+  err_fulfill_failed: "작업을 실행하지 못했습니다.",
+  err_unknown_channel: "agent가 모르는 알림 서비스입니다.",
+  err_missing_field: "‘{field}’을(를) 입력하세요.",
+  err_bad_url: "‘{field}’은(는) http:// 또는 https://로 시작해야 합니다.",
+  err_bad_value: "‘{field}’이(가) 올바르지 않아 보입니다.",
+  err_auth_failed: "서비스가 토큰이나 비밀번호를 거부했습니다.",
+  err_service_not_found: "서비스가 이 주소나 토큰을 모릅니다.",
+  err_http_error: "서비스가 오류로 응답했습니다.",
+  err_service_error: "서비스가 메시지에 문제가 있다고 알렸습니다.",
+  err_network_error: "서비스에 연결할 수 없습니다.",
+  err_send_failed: "보내지 못했습니다.",
+  f_mdns_name: "네트워크 이름",
+  f_mdns_name_h: "같은 네트워크의 휴대폰이나 컴퓨터에서 http://<이름>.local:8787 로 이 콘솔을 열 수 있습니다. 콘솔이 네트워크에 열려 있을 때만 됩니다. 영문자, 숫자, 하이픈(-)만 쓸 수 있습니다. 비워 두면 꺼짐.",
+  cu_title: "콘솔 주소",
+  cu_copy: "복사",
+  cu_qr_h: "휴대폰 카메라로 이 코드를 찍으면 휴대폰에서 콘솔이 열립니다.",
+  cu_local: "이 주소는 이 컴퓨터에서만 열 수 있습니다. 휴대폰에서 열려면 콘솔을 네트워크에 여세요(AGENT_HOST=0.0.0.0, 안내서 참고).",
+  cu_qr_alt: "콘솔 주소 QR 코드",
+  a2hs_title: "이 페이지를 홈 화면에 추가하면 다음부터는 아이콘만 누르면 열립니다.",
+  a2hs_install: "설치",
+  a2hs_ios: "iPhone·iPad: Safari의 공유 → 홈 화면에 추가.",
+  a2hs_android: "Android: Chrome 메뉴 ⋮ → 홈 화면에 추가.",
+  a2hs_desktop: "컴퓨터: Chrome·Edge 주소창 오른쪽의 설치 아이콘.",
+  cu_ip: ".local 주소를 열 수 없는 휴대폰(일부 오래된 Android)은 이 주소를 쓰세요:",
+  // ---- phone mode (System view)
+  ph_mode_normal: "일반 휴대전화: 전화가 울리고 AI는 받지 않습니다",
+  ph_app: "앱 {v}",
+  ph_need_update: "여기서 전환하려면 이 휴대전화의 Myna 앱을 업데이트하세요",
+  ph_to_normal: "일반 휴대전화로 전환",
+  ph_to_ai: "다시 AI가 받기",
+  ph_switching: "전환 중…",
+  ph_to_normal_t: "'{name}'을(를) 일반 휴대전화로 바꿀까요?",
+  ph_to_normal_b: "이 휴대전화로 오는 전화는 더 이상 AI가 받지 않습니다. 일반 휴대전화처럼 울리므로 누군가 직접 받아야 합니다. 언제든 다시 바꿀 수 있습니다.",
+  ph_now_normal: "일반 휴대전화로 바꿨습니다",
+  ph_now_ai: "다시 AI가 전화를 받습니다",
+  ph_mode_fail: "전환 실패: {why}",
+  ph_incall_wait: "통화 중입니다. 끝난 뒤에 전환하세요",
+  ph_last_seen: "마지막 연결 {time}",
+  pm_err_in_call: "휴대전화가 통화 중입니다. 끝난 뒤 다시 시도하세요",
+  pm_err_busy: "휴대전화가 이전 전환을 아직 처리하고 있습니다",
+  pm_err_no_root: "휴대전화에서 Myna에 루트 권한이 없습니다(Magisk 또는 KernelSU에서 허용하세요)",
+  pm_err_save_failed: "휴대전화가 모드를 저장하지 못했습니다",
+  pm_err_dialer_failed: "휴대전화가 기본 전화 앱을 바꾸지 못했습니다",
+  pm_err_screening_failed: "휴대전화가 통화 필터링 설정을 바꾸지 못했습니다",
+  pm_err_dnd_failed: "휴대전화가 방해 금지 모드를 바꾸지 못했습니다",
+  pm_err_volume_failed: "휴대전화가 벨소리를 다시 켜지 못했습니다",
+  pm_err_invalid_mode: "휴대전화가 이 모드를 인식하지 못했습니다",
+  pm_err_offline: "휴대전화가 연결되어 있지 않습니다",
+  pm_err_unsupported: "휴대전화의 앱이 너무 오래되었습니다. 먼저 업데이트하세요",
+  pm_err_timeout: "결과가 아직 확인되지 않았습니다. 잠시 후 새로 고침하세요.",
+  pm_err_network: "에이전트에 연결할 수 없습니다",
+  pm_err_failed: "휴대전화에서 예상하지 못한 오류가 발생했습니다",
+  pm_err_bad_request: "요청을 이해할 수 없습니다",
+  pill_all_normal: "모두 일반 휴대전화 모드입니다",
 };
 
 I18N["es"] = {
@@ -3206,7 +3919,7 @@ I18N["es"] = {
   f_prewarm: "Preparar la IA mientras suena el teléfono",
   f_prewarm_h: "La IA se conecta mientras suena y habla en cuanto se contesta. Desactivado: quien llama espera de 1 a 3 segundos hasta la primera palabra.",
   f_unknown: "Contestar números ocultos",
-  f_unknown_h: "Activado: la IA atiende las llamadas sin identificador igual que las demás. Desactivado: su llamada se corta enseguida.",
+  f_unknown_h: "Activado: la IA atiende las llamadas sin identificador igual que las demás. Desactivado: oyen un breve aviso de «no disponible» y la llamada termina.",
   f_barge: "Dejar que quien llama interrumpa",
   f_barge_h: "La IA se calla cuando la otra persona habla por encima. Solo se usa en teléfonos que no captan la propia voz de la IA (se comprueba al empezar cada llamada).",
   f_vad: "Dejar que Gemini decida cuándo ha terminado de hablar la otra persona",
@@ -3313,7 +4026,7 @@ I18N["es"] = {
   hint_apprise: "La URL de notificación de tu servidor Apprise API, p. ej. http://host:8000/notify/KEY. Una etiqueta limita qué servicios reciben el mensaje.",
   hint_webhook: "Cualquier URL que acepte un POST en JSON con event, title, body y data. Útil para n8n, Home Assistant o tus propios scripts.",
   f_public_url: "Dirección de esta consola",
-  f_public_url_h: "Se usa para los enlaces de las notificaciones, p. ej. http://192.168.1.20:8787. Vacío = sin enlaces.",
+  f_public_url_h: "Se usa para los enlaces de las notificaciones, p. ej. http://192.168.1.20:8787. Vacío = automático: el nombre en la red de abajo (o la dirección de este equipo en la red) cuando la consola está abierta a tu red; si solo este equipo puede abrirla, sin enlaces. En Docker no se rellena solo: configúrala tú.",
   use_this_url: "Usar la dirección de esta página: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Después de cada llamada, la IA escribe un breve resumen. Usa tu clave de Gemini, así que normalmente no hay nada que configurar aquí.",
@@ -3394,6 +4107,141 @@ I18N["es"] = {
   ab_retention: "Las grabaciones se guardan",
   ab_days: "{n} días",
   raw_health: "Datos sin procesar de /health (para resolver problemas)",
+  // ---- call events, notification services, error codes (from the agent)
+  ev_hello_reattach: "El teléfono se reconectó durante la llamada",
+  ev_live_ai_start: "Empezó el asistente de IA (menú antiguo)",
+  ev_shaming_played: "Se reprodujo el aviso de energía malgastada",
+  ev_voicemail_intro: "Se reprodujo el saludo del buzón",
+  ev_voicemail_saved: "Mensaje de voz guardado",
+  ev_vm_end_hash: "Mensaje terminado con #",
+  ev_vm_end_max: "El mensaje llegó al límite de tiempo",
+  ev_vm_end_silence: "Mensaje terminado tras un silencio",
+  ev_vm_end_hangup: "Colgó mientras dejaba el mensaje",
+  ev_vm_no_reply: "No quiere respuesta",
+  ev_vm_confirm_timeout: "No respondió cómo quiere la respuesta",
+  ev_vm_contact_readback_timeout: "No respondió tras leerle el contacto",
+  ev_vm_contact_rejected: "Dijo que el contacto no era correcto",
+  ev_vm_reply_contact_confirmed: "Confirmó el contacto",
+  ev_vm_reply_phone_confirmed: "Pidió que le devuelvan la llamada",
+  ev_vm_finish_auto_hangup: "Buzón terminado, se colgó",
+  ev_gemini_fail_to_voicemail: "Falló la IA, pasó al buzón de voz",
+  ev_gemini_zero_delivery_to_voicemail: "La IA no envió sonido, pasó al buzón de voz",
+  ev_gemini_delivery_fail_to_voicemail: "No se pudo reproducir la IA, pasó al buzón de voz",
+  ev_blocked_spam: "Bloqueada como spam",
+  nf_telegram: "Telegram",
+  nf_discord: "Discord",
+  nf_slack: "Slack / Mattermost",
+  nf_line: "LINE (Messaging API)",
+  nf_ntfy: "ntfy",
+  nf_gotify: "Gotify",
+  nf_bark: "Bark (iOS)",
+  nf_pushover: "Pushover",
+  nf_wecom: "Bot de grupo de WeCom",
+  nf_dingtalk: "Bot de DingTalk",
+  nf_feishu: "Bot de Feishu / Lark",
+  nf_serverchan: "ServerChan",
+  nf_matrix: "Matrix",
+  nf_gmail: "Correo (Gmail)",
+  nf_apprise: "Apprise API",
+  nf_webhook: "Webhook (JSON)",
+  nf_telegram_token: "Token del bot",
+  nf_telegram_target: "ID del chat",
+  nf_discord_url: "URL del webhook",
+  nf_slack_url: "URL del webhook entrante",
+  nf_line_token: "Token de acceso del canal",
+  nf_line_target: "ID de usuario o grupo",
+  nf_ntfy_url: "Servidor",
+  nf_ntfy_token: "Token de acceso (opcional)",
+  nf_ntfy_target: "Tema (topic)",
+  nf_gotify_url: "URL del servidor",
+  nf_gotify_token: "Token de la aplicación",
+  nf_bark_url: "Servidor",
+  nf_bark_token: "Clave del dispositivo",
+  nf_pushover_token: "Token de la API",
+  nf_pushover_target: "Clave de usuario",
+  nf_wecom_url: "URL del webhook",
+  nf_dingtalk_url: "URL del webhook",
+  nf_dingtalk_token: "Secreto de firma (opcional)",
+  nf_feishu_url: "URL del webhook",
+  nf_serverchan_token: "SendKey",
+  nf_matrix_url: "URL del homeserver",
+  nf_matrix_token: "Token de acceso",
+  nf_matrix_target: "ID de la sala",
+  nf_gmail_url: "Dirección de Gmail",
+  nf_gmail_token: "Contraseña de aplicación",
+  nf_gmail_target: "Enviar a (vacío = a ti)",
+  nf_apprise_url: "URL de notificación (…/notify/KEY)",
+  nf_apprise_target: "Etiqueta (opcional)",
+  nf_webhook_url: "URL",
+  nf_webhook_token: "Token Bearer (opcional)",
+  err_unauthorized: "No se aceptó el token de acceso.",
+  err_not_found: "No se encontró.",
+  err_invalid_id: "Ese ID no es válido.",
+  err_no_calendar: "Esta llamada no tiene sugerencia de calendario.",
+  err_no_audio: "Esta llamada no tiene una grabación de ese tipo.",
+  err_open_failed: "No se pudo abrir la grabación.",
+  err_unknown_voice: "Esta voz no está disponible.",
+  err_unknown_background: "Este sonido de fondo no está disponible.",
+  err_background_missing: "Falta el archivo de este sonido de fondo.",
+  err_preview_failed: "No se pudo crear la muestra. Revisa la clave de la API de Gemini y vuelve a intentarlo.",
+  err_bad_request: "El agente no entendió la petición.",
+  err_save_failed: "No se pudieron guardar los ajustes en el disco.",
+  err_empty_body: "El mensaje está vacío.",
+  err_task_not_found: "Esta tarea ya no existe.",
+  err_fulfill_failed: "No se pudo llevar a cabo la tarea.",
+  err_unknown_channel: "El agente no conoce este servicio de notificaciones.",
+  err_missing_field: "Rellena «{field}».",
+  err_bad_url: "«{field}» debe empezar por http:// o https://.",
+  err_bad_value: "«{field}» no parece correcto.",
+  err_auth_failed: "El servicio rechazó el token o la contraseña.",
+  err_service_not_found: "El servicio no conoce esta dirección o token.",
+  err_http_error: "El servicio respondió con un error.",
+  err_service_error: "El servicio informó de un problema con el mensaje.",
+  err_network_error: "No se pudo conectar con el servicio.",
+  err_send_failed: "No se pudo enviar.",
+  f_mdns_name: "Nombre en la red",
+  f_mdns_name_h: "Los teléfonos y equipos de la misma red pueden abrir esta consola en http://<nombre>.local:8787. Solo funciona si la consola está abierta a tu red. Letras, números y guiones. Vacío = desactivado.",
+  cu_title: "Dirección de la consola",
+  cu_copy: "Copiar",
+  cu_qr_h: "Escanea el código con la cámara del teléfono para abrir la consola allí.",
+  cu_local: "Solo este equipo puede abrir esta dirección. Para abrir la consola desde el teléfono, ábrela a tu red (AGENT_HOST=0.0.0.0, consulta la guía).",
+  cu_qr_alt: "Código QR de la dirección de la consola",
+  a2hs_title: "Añade esta página a la pantalla de inicio. La próxima vez, solo toca el icono.",
+  a2hs_install: "Instalar",
+  a2hs_ios: "iPhone y iPad: Compartir → Añadir a pantalla de inicio (Safari).",
+  a2hs_android: "Android: menú ⋮ de Chrome → Añadir a pantalla de inicio.",
+  a2hs_desktop: "Ordenador: el icono de instalar a la derecha de la barra de direcciones (Chrome, Edge).",
+  cu_ip: "Teléfonos que no abren direcciones .local (algunos Android antiguos):",
+  // ---- phone mode (System view)
+  ph_mode_normal: "Teléfono normal: las llamadas suenan y la IA no contesta",
+  ph_app: "App {v}",
+  ph_need_update: "Actualiza la app Myna de este teléfono para cambiarlo desde aquí",
+  ph_to_normal: "Pasar a teléfono normal",
+  ph_to_ai: "Volver a que conteste la IA",
+  ph_switching: "Cambiando…",
+  ph_to_normal_t: "¿Pasar «{name}» a teléfono normal?",
+  ph_to_normal_b: "La IA dejará de contestar las llamadas de este teléfono. Sonará como un teléfono normal y alguien tendrá que contestar. Puedes volver a cambiarlo cuando quieras.",
+  ph_now_normal: "Ahora es un teléfono normal",
+  ph_now_ai: "La IA vuelve a contestar este teléfono",
+  ph_mode_fail: "No se pudo cambiar: {why}",
+  ph_incall_wait: "En una llamada: cambia cuando termine",
+  ph_last_seen: "Última conexión: {time}",
+  pm_err_in_call: "el teléfono está en una llamada. Inténtalo cuando termine",
+  pm_err_busy: "el teléfono aún está terminando el cambio anterior",
+  pm_err_no_root: "Myna no tiene acceso root en el teléfono (permítelo en Magisk o KernelSU)",
+  pm_err_save_failed: "el teléfono no pudo guardar el modo",
+  pm_err_dialer_failed: "el teléfono no pudo cambiar su app de teléfono predeterminada",
+  pm_err_screening_failed: "el teléfono no pudo cambiar el filtro de llamadas",
+  pm_err_dnd_failed: "el teléfono no pudo cambiar No molestar",
+  pm_err_volume_failed: "el teléfono no pudo volver a activar el tono",
+  pm_err_invalid_mode: "el teléfono no reconoce este modo",
+  pm_err_offline: "el teléfono no está conectado",
+  pm_err_unsupported: "la app del teléfono es demasiado antigua. Actualízala primero",
+  pm_err_timeout: "El resultado aún no está confirmado. Vuelve a cargar la página en un momento.",
+  pm_err_network: "no se puede contactar con el agente",
+  pm_err_failed: "algo salió mal en el teléfono",
+  pm_err_bad_request: "no se entendió la solicitud",
+  pill_all_normal: "Todos son teléfonos normales",
 };
 
 I18N["fr"] = {
@@ -3628,7 +4476,7 @@ I18N["fr"] = {
   f_prewarm: "Préparer l'IA pendant la sonnerie",
   f_prewarm_h: "L'IA se connecte pendant la sonnerie et parle dès que l'appel est pris. Désactivé : le correspondant attend 1 à 3 secondes avant le premier mot.",
   f_unknown: "Répondre aux numéros masqués",
-  f_unknown_h: "Activé : les appels sans numéro affiché sont pris par l'IA comme les autres. Désactivé : leur appel est aussitôt raccroché.",
+  f_unknown_h: "Activé : les appels sans numéro affiché sont pris par l'IA comme les autres. Désactivé : ils entendent une courte annonce « non disponible », puis l'appel se termine.",
   f_barge: "Laisser le correspondant interrompre",
   f_barge_h: "L'IA s'arrête quand le correspondant parle en même temps qu'elle. Utilisé uniquement sur les téléphones qui ne captent pas la propre voix de l'IA (vérifié au début de chaque appel).",
   f_vad: "Laisser Gemini décider quand le correspondant a fini de parler",
@@ -3735,7 +4583,7 @@ I18N["fr"] = {
   hint_apprise: "L'URL de notification de votre serveur Apprise API, ex. http://host:8000/notify/KEY. Une étiquette limite les services qui reçoivent le message.",
   hint_webhook: "N'importe quelle URL qui accepte un POST JSON contenant event, title, body et data. Pratique pour n8n, Home Assistant ou vos propres scripts.",
   f_public_url: "Adresse de cette console",
-  f_public_url_h: "Sert aux liens dans les notifications, ex. http://192.168.1.20:8787. Vide = pas de liens.",
+  f_public_url_h: "Sert aux liens dans les notifications, ex. http://192.168.1.20:8787. Vide = automatique : le nom sur le réseau ci-dessous (ou l'adresse de cet ordinateur sur le réseau) quand la console est ouverte à votre réseau ; sinon pas de liens. Dans Docker, rien n'est rempli automatiquement : indiquez-la vous-même.",
   use_this_url: "Utiliser l'adresse de cette page : {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Après chaque appel, l'IA rédige un court résumé. Elle utilise votre clé Gemini : en général, il n'y a rien à configurer ici.",
@@ -3816,6 +4664,141 @@ I18N["fr"] = {
   ab_retention: "Conservation des enregistrements",
   ab_days: "{n} jours",
   raw_health: "Données brutes de /health (pour le dépannage)",
+  // ---- call events, notification services, error codes (from the agent)
+  ev_hello_reattach: "Téléphone reconnecté pendant l'appel",
+  ev_live_ai_start: "Assistant IA démarré (ancien menu)",
+  ev_shaming_played: "Annonce sur l'énergie gaspillée diffusée",
+  ev_voicemail_intro: "Annonce de messagerie diffusée",
+  ev_voicemail_saved: "Message vocal enregistré",
+  ev_vm_end_hash: "Message terminé par #",
+  ev_vm_end_max: "Durée maximale du message atteinte",
+  ev_vm_end_silence: "Message terminé après un silence",
+  ev_vm_end_hangup: "L'appelant a raccroché pendant le message",
+  ev_vm_no_reply: "L'appelant ne veut pas de réponse",
+  ev_vm_confirm_timeout: "Pas de réponse sur le moyen de rappel",
+  ev_vm_contact_readback_timeout: "Pas de réponse après la relecture du contact",
+  ev_vm_contact_rejected: "L'appelant a dit que le contact était faux",
+  ev_vm_reply_contact_confirmed: "L'appelant a confirmé le contact",
+  ev_vm_reply_phone_confirmed: "L'appelant demande à être rappelé",
+  ev_vm_finish_auto_hangup: "Message terminé, raccroché",
+  ev_gemini_fail_to_voicemail: "Échec de l'IA, passage à la messagerie",
+  ev_gemini_zero_delivery_to_voicemail: "L'IA n'a envoyé aucun son, passage à la messagerie",
+  ev_gemini_delivery_fail_to_voicemail: "Le son de l'IA n'a pas pu être diffusé, passage à la messagerie",
+  ev_blocked_spam: "Bloqué comme spam",
+  nf_telegram: "Telegram",
+  nf_discord: "Discord",
+  nf_slack: "Slack / Mattermost",
+  nf_line: "LINE (Messaging API)",
+  nf_ntfy: "ntfy",
+  nf_gotify: "Gotify",
+  nf_bark: "Bark (iOS)",
+  nf_pushover: "Pushover",
+  nf_wecom: "Bot de groupe WeCom",
+  nf_dingtalk: "Bot DingTalk",
+  nf_feishu: "Bot Feishu / Lark",
+  nf_serverchan: "ServerChan",
+  nf_matrix: "Matrix",
+  nf_gmail: "E-mail (Gmail)",
+  nf_apprise: "Apprise API",
+  nf_webhook: "Webhook (JSON)",
+  nf_telegram_token: "Jeton du bot",
+  nf_telegram_target: "ID du chat",
+  nf_discord_url: "URL du webhook",
+  nf_slack_url: "URL du webhook entrant",
+  nf_line_token: "Jeton d'accès du canal",
+  nf_line_target: "ID d'utilisateur ou de groupe",
+  nf_ntfy_url: "Serveur",
+  nf_ntfy_token: "Jeton d'accès (facultatif)",
+  nf_ntfy_target: "Sujet (topic)",
+  nf_gotify_url: "URL du serveur",
+  nf_gotify_token: "Jeton de l'application",
+  nf_bark_url: "Serveur",
+  nf_bark_token: "Clé de l'appareil",
+  nf_pushover_token: "Jeton d'API",
+  nf_pushover_target: "Clé utilisateur",
+  nf_wecom_url: "URL du webhook",
+  nf_dingtalk_url: "URL du webhook",
+  nf_dingtalk_token: "Secret de signature (facultatif)",
+  nf_feishu_url: "URL du webhook",
+  nf_serverchan_token: "SendKey",
+  nf_matrix_url: "URL du homeserver",
+  nf_matrix_token: "Jeton d'accès",
+  nf_matrix_target: "ID du salon",
+  nf_gmail_url: "Adresse Gmail",
+  nf_gmail_token: "Mot de passe d'application",
+  nf_gmail_target: "Envoyer à (vide = vous-même)",
+  nf_apprise_url: "URL de notification (…/notify/KEY)",
+  nf_apprise_target: "Étiquette (facultatif)",
+  nf_webhook_url: "URL",
+  nf_webhook_token: "Jeton Bearer (facultatif)",
+  err_unauthorized: "Le jeton d'accès n'a pas été accepté.",
+  err_not_found: "Introuvable.",
+  err_invalid_id: "Cet identifiant n'est pas valide.",
+  err_no_calendar: "Cet appel n'a pas de suggestion d'agenda.",
+  err_no_audio: "Cet appel n'a pas d'enregistrement de ce type.",
+  err_open_failed: "Impossible d'ouvrir l'enregistrement.",
+  err_unknown_voice: "Cette voix n'est pas disponible.",
+  err_unknown_background: "Ce son de fond n'est pas disponible.",
+  err_background_missing: "Le fichier de ce son de fond est introuvable.",
+  err_preview_failed: "Impossible de créer l'aperçu. Vérifiez la clé d'API Gemini et réessayez.",
+  err_bad_request: "L'agent n'a pas compris la demande.",
+  err_save_failed: "Impossible d'écrire les réglages sur le disque.",
+  err_empty_body: "Le message est vide.",
+  err_task_not_found: "Cette tâche n'existe plus.",
+  err_fulfill_failed: "Impossible d'exécuter la tâche.",
+  err_unknown_channel: "L'agent ne connaît pas ce service de notification.",
+  err_missing_field: "Remplissez « {field} ».",
+  err_bad_url: "« {field} » doit commencer par http:// ou https://.",
+  err_bad_value: "« {field} » ne semble pas correct.",
+  err_auth_failed: "Le service a refusé le jeton ou le mot de passe.",
+  err_service_not_found: "Le service ne connaît pas cette adresse ou ce jeton.",
+  err_http_error: "Le service a répondu par une erreur.",
+  err_service_error: "Le service a signalé un problème avec le message.",
+  err_network_error: "Impossible de joindre le service.",
+  err_send_failed: "Échec de l'envoi.",
+  f_mdns_name: "Nom sur le réseau",
+  f_mdns_name_h: "Les téléphones et ordinateurs du même réseau peuvent ouvrir cette console sur http://<nom>.local:8787. Fonctionne seulement si la console est ouverte à votre réseau. Lettres, chiffres et tirets. Vide = désactivé.",
+  cu_title: "Adresse de la console",
+  cu_copy: "Copier",
+  cu_qr_h: "Scannez le code avec l'appareil photo du téléphone pour y ouvrir la console.",
+  cu_local: "Seul cet ordinateur peut ouvrir cette adresse. Pour ouvrir la console depuis votre téléphone, ouvrez-la à votre réseau (AGENT_HOST=0.0.0.0, voir le guide).",
+  cu_qr_alt: "QR code de l'adresse de la console",
+  a2hs_title: "Ajoutez cette page à l'écran d'accueil : la prochaine fois, touchez simplement l'icône.",
+  a2hs_install: "Installer",
+  a2hs_ios: "iPhone et iPad : Partager → Sur l'écran d'accueil (Safari).",
+  a2hs_android: "Android : menu ⋮ de Chrome → Ajouter à l'écran d'accueil.",
+  a2hs_desktop: "Ordinateur : l'icône d'installation à droite de la barre d'adresse (Chrome, Edge).",
+  cu_ip: "Téléphones qui n'ouvrent pas les adresses .local (certains anciens Android) :",
+  // ---- phone mode (System view)
+  ph_mode_normal: "Téléphone normal : les appels sonnent, l'IA ne répond pas",
+  ph_app: "Appli {v}",
+  ph_need_update: "Mettez à jour l'appli Myna de ce téléphone pour le changer d'ici",
+  ph_to_normal: "Passer en téléphone normal",
+  ph_to_ai: "Laisser l'IA répondre à nouveau",
+  ph_switching: "Changement…",
+  ph_to_normal_t: "Passer « {name} » en téléphone normal ?",
+  ph_to_normal_b: "L'IA ne répondra plus aux appels de ce téléphone. Il sonnera comme un téléphone normal et quelqu'un devra décrocher. Vous pouvez revenir en arrière à tout moment.",
+  ph_now_normal: "C'est maintenant un téléphone normal",
+  ph_now_ai: "L'IA répond de nouveau sur ce téléphone",
+  ph_mode_fail: "Échec du changement : {why}",
+  ph_incall_wait: "En communication : changez une fois l'appel terminé",
+  ph_last_seen: "Dernière connexion : {time}",
+  pm_err_in_call: "le téléphone est en communication. Réessayez après l'appel",
+  pm_err_busy: "le téléphone termine encore le changement précédent",
+  pm_err_no_root: "Myna n'a pas l'accès root sur le téléphone (autorisez-le dans Magisk ou KernelSU)",
+  pm_err_save_failed: "le téléphone n'a pas pu enregistrer le mode",
+  pm_err_dialer_failed: "le téléphone n'a pas pu changer d'application Téléphone par défaut",
+  pm_err_screening_failed: "le téléphone n'a pas pu modifier le filtrage des appels",
+  pm_err_dnd_failed: "le téléphone n'a pas pu modifier Ne pas déranger",
+  pm_err_volume_failed: "le téléphone n'a pas pu rétablir la sonnerie",
+  pm_err_invalid_mode: "le téléphone ne reconnaît pas ce mode",
+  pm_err_offline: "le téléphone n'est pas connecté",
+  pm_err_unsupported: "l'appli du téléphone est trop ancienne. Mettez-la d'abord à jour",
+  pm_err_timeout: "Résultat pas encore confirmé. Actualisez la page dans un instant.",
+  pm_err_network: "agent injoignable",
+  pm_err_failed: "une erreur inattendue s'est produite sur le téléphone",
+  pm_err_bad_request: "la requête n'a pas été comprise",
+  pill_all_normal: "Tous en mode téléphone normal",
 };
 
 I18N["de"] = {
@@ -4050,7 +5033,7 @@ I18N["de"] = {
   f_prewarm: "KI vorbereiten, während es klingelt",
   f_prewarm_h: "Die KI verbindet sich schon beim Klingeln und spricht, sobald abgenommen wird. Aus: Anrufer warten 1 bis 3 Sekunden auf das erste Wort.",
   f_unknown: "Unterdrückte Nummern annehmen",
-  f_unknown_h: "Ein: Anrufer ohne Rufnummernanzeige bekommen die KI wie alle anderen. Aus: Ihr Anruf wird sofort beendet.",
+  f_unknown_h: "Ein: Anrufer ohne Rufnummernanzeige bekommen die KI wie alle anderen. Aus: Sie hören eine kurze Ansage „nicht erreichbar“, dann endet der Anruf.",
   f_barge: "Anrufer darf unterbrechen",
   f_barge_h: "Die KI hört auf zu sprechen, wenn der Anrufer dazwischenredet. Wird nur bei Telefonen genutzt, die die eigene Stimme der KI nicht mit aufnehmen (wird zu Beginn jedes Anrufs geprüft).",
   f_vad: "Gemini entscheiden lassen, wann der Anrufer fertig ist",
@@ -4157,7 +5140,7 @@ I18N["de"] = {
   hint_apprise: "Die Notify-URL deines Apprise-API-Servers, z. B. http://host:8000/notify/KEY. Ein Tag begrenzt, welche Dienste die Nachricht bekommen.",
   hint_webhook: "Jede URL, die einen JSON-POST mit event, title, body und data annimmt. Praktisch für n8n, Home Assistant oder eigene Skripte.",
   f_public_url: "Adresse dieser Konsole",
-  f_public_url_h: "Wird für die Links in Benachrichtigungen verwendet, z. B. http://192.168.1.20:8787. Leer = keine Links.",
+  f_public_url_h: "Wird für die Links in Benachrichtigungen verwendet, z. B. http://192.168.1.20:8787. Leer = automatisch: der Netzwerkname unten (oder die Netzwerkadresse dieses Computers), wenn die Konsole im Netzwerk erreichbar ist; sonst keine Links. In Docker wird nichts automatisch eingetragen: bitte selbst setzen.",
   use_this_url: "Adresse dieser Seite verwenden: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Nach jedem Anruf schreibt die KI eine kurze Zusammenfassung. Dafür wird dein Gemini-Schlüssel verwendet – normalerweise musst du hier nichts einrichten.",
@@ -4238,6 +5221,141 @@ I18N["de"] = {
   ab_retention: "Aufnahmen werden aufbewahrt",
   ab_days: "{n} Tage",
   raw_health: "Rohdaten von /health (zur Fehlersuche)",
+  // ---- call events, notification services, error codes (from the agent)
+  ev_hello_reattach: "Telefon während des Anrufs neu verbunden",
+  ev_live_ai_start: "KI-Assistent gestartet (altes Menü)",
+  ev_shaming_played: "Ansage zur Energieverschwendung abgespielt",
+  ev_voicemail_intro: "Mailbox-Ansage abgespielt",
+  ev_voicemail_saved: "Sprachnachricht gespeichert",
+  ev_vm_end_hash: "Nachricht mit # beendet",
+  ev_vm_end_max: "Nachricht hat die Zeitgrenze erreicht",
+  ev_vm_end_silence: "Nachricht nach Stille beendet",
+  ev_vm_end_hangup: "Anrufer hat während der Nachricht aufgelegt",
+  ev_vm_no_reply: "Anrufer möchte keine Antwort",
+  ev_vm_confirm_timeout: "Keine Antwort auf die Frage nach dem Rückweg",
+  ev_vm_contact_readback_timeout: "Keine Antwort nach dem Vorlesen des Kontakts",
+  ev_vm_contact_rejected: "Anrufer sagt, der Kontakt stimmt nicht",
+  ev_vm_reply_contact_confirmed: "Anrufer hat den Kontakt bestätigt",
+  ev_vm_reply_phone_confirmed: "Anrufer möchte zurückgerufen werden",
+  ev_vm_finish_auto_hangup: "Mailbox beendet, aufgelegt",
+  ev_gemini_fail_to_voicemail: "KI fehlgeschlagen, zur Mailbox",
+  ev_gemini_zero_delivery_to_voicemail: "KI ohne Ton, zur Mailbox",
+  ev_gemini_delivery_fail_to_voicemail: "KI-Ton nicht abspielbar, zur Mailbox",
+  ev_blocked_spam: "Als Spam blockiert",
+  nf_telegram: "Telegram",
+  nf_discord: "Discord",
+  nf_slack: "Slack / Mattermost",
+  nf_line: "LINE (Messaging API)",
+  nf_ntfy: "ntfy",
+  nf_gotify: "Gotify",
+  nf_bark: "Bark (iOS)",
+  nf_pushover: "Pushover",
+  nf_wecom: "WeCom-Gruppenbot",
+  nf_dingtalk: "DingTalk-Bot",
+  nf_feishu: "Feishu-/Lark-Bot",
+  nf_serverchan: "ServerChan",
+  nf_matrix: "Matrix",
+  nf_gmail: "E-Mail (Gmail)",
+  nf_apprise: "Apprise API",
+  nf_webhook: "Webhook (JSON)",
+  nf_telegram_token: "Bot-Token",
+  nf_telegram_target: "Chat-ID",
+  nf_discord_url: "Webhook-URL",
+  nf_slack_url: "URL des eingehenden Webhooks",
+  nf_line_token: "Channel-Access-Token",
+  nf_line_target: "Benutzer- oder Gruppen-ID",
+  nf_ntfy_url: "Server",
+  nf_ntfy_token: "Zugriffstoken (optional)",
+  nf_ntfy_target: "Thema (Topic)",
+  nf_gotify_url: "Server-URL",
+  nf_gotify_token: "App-Token",
+  nf_bark_url: "Server",
+  nf_bark_token: "Geräteschlüssel",
+  nf_pushover_token: "API-Token",
+  nf_pushover_target: "Benutzerschlüssel",
+  nf_wecom_url: "Webhook-URL",
+  nf_dingtalk_url: "Webhook-URL",
+  nf_dingtalk_token: "Signaturschlüssel (optional)",
+  nf_feishu_url: "Webhook-URL",
+  nf_serverchan_token: "SendKey",
+  nf_matrix_url: "Homeserver-URL",
+  nf_matrix_token: "Zugriffstoken",
+  nf_matrix_target: "Raum-ID",
+  nf_gmail_url: "Gmail-Adresse",
+  nf_gmail_token: "App-Passwort",
+  nf_gmail_target: "Senden an (leer = an dich)",
+  nf_apprise_url: "Benachrichtigungs-URL (…/notify/KEY)",
+  nf_apprise_target: "Tag (optional)",
+  nf_webhook_url: "URL",
+  nf_webhook_token: "Bearer-Token (optional)",
+  err_unauthorized: "Das Zugriffstoken wurde nicht akzeptiert.",
+  err_not_found: "Nicht gefunden.",
+  err_invalid_id: "Diese ID ist ungültig.",
+  err_no_calendar: "Dieser Anruf hat keinen Kalendervorschlag.",
+  err_no_audio: "Für diesen Anruf gibt es keine solche Aufnahme.",
+  err_open_failed: "Die Aufnahme konnte nicht geöffnet werden.",
+  err_unknown_voice: "Diese Stimme ist nicht verfügbar.",
+  err_unknown_background: "Dieses Hintergrundgeräusch ist nicht verfügbar.",
+  err_background_missing: "Die Datei für dieses Hintergrundgeräusch fehlt.",
+  err_preview_failed: "Die Hörprobe konnte nicht erstellt werden. Prüfe den Gemini-API-Schlüssel und versuche es erneut.",
+  err_bad_request: "Der Agent hat die Anfrage nicht verstanden.",
+  err_save_failed: "Die Einstellungen konnten nicht gespeichert werden.",
+  err_empty_body: "Die Nachricht ist leer.",
+  err_task_not_found: "Diese Aufgabe gibt es nicht mehr.",
+  err_fulfill_failed: "Die Aufgabe konnte nicht ausgeführt werden.",
+  err_unknown_channel: "Der Agent kennt diesen Benachrichtigungsdienst nicht.",
+  err_missing_field: "Bitte „{field}“ ausfüllen.",
+  err_bad_url: "„{field}“ muss mit http:// oder https:// beginnen.",
+  err_bad_value: "„{field}“ sieht nicht richtig aus.",
+  err_auth_failed: "Der Dienst hat Token oder Passwort abgelehnt.",
+  err_service_not_found: "Der Dienst kennt diese Adresse oder dieses Token nicht.",
+  err_http_error: "Der Dienst hat mit einem Fehler geantwortet.",
+  err_service_error: "Der Dienst meldet ein Problem mit der Nachricht.",
+  err_network_error: "Der Dienst ist nicht erreichbar.",
+  err_send_failed: "Senden fehlgeschlagen.",
+  f_mdns_name: "Netzwerkname",
+  f_mdns_name_h: "Handys und Computer im selben Netzwerk öffnen diese Konsole unter http://<Name>.local:8787. Funktioniert nur, wenn die Konsole im Netzwerk erreichbar ist. Buchstaben, Ziffern und Bindestriche. Leer = aus.",
+  cu_title: "Adresse der Konsole",
+  cu_copy: "Kopieren",
+  cu_qr_h: "Scannen Sie den Code mit der Handykamera, um die Konsole dort zu öffnen.",
+  cu_local: "Nur dieser Computer kann diese Adresse öffnen. Um die Konsole vom Handy aus zu öffnen, machen Sie sie im Netzwerk erreichbar (AGENT_HOST=0.0.0.0, siehe Anleitung).",
+  cu_qr_alt: "QR-Code der Konsolenadresse",
+  a2hs_title: "Legen Sie diese Seite auf den Startbildschirm. Beim nächsten Mal tippen Sie einfach auf das Symbol.",
+  a2hs_install: "Installieren",
+  a2hs_ios: "iPhone und iPad: Teilen → Zum Home-Bildschirm (Safari).",
+  a2hs_android: "Android: Chrome-Menü ⋮ → Zum Startbildschirm hinzufügen.",
+  a2hs_desktop: "Computer: das Installationssymbol rechts in der Adressleiste (Chrome, Edge).",
+  cu_ip: "Handys, die keine .local-Adressen öffnen (manche ältere Android-Geräte):",
+  // ---- phone mode (System view)
+  ph_mode_normal: "Normales Telefon: Anrufe klingeln, die KI nimmt nicht ab",
+  ph_app: "App {v}",
+  ph_need_update: "Aktualisiere die Myna-App auf diesem Telefon, um es von hier umzustellen",
+  ph_to_normal: "Auf normales Telefon umstellen",
+  ph_to_ai: "Wieder die KI annehmen lassen",
+  ph_switching: "Wird umgestellt…",
+  ph_to_normal_t: "„{name}“ auf normales Telefon umstellen?",
+  ph_to_normal_b: "Anrufe auf diesem Telefon nimmt die KI nicht mehr an. Es klingelt wie ein normales Telefon und jemand muss abnehmen. Du kannst jederzeit zurückschalten.",
+  ph_now_normal: "Jetzt ein normales Telefon",
+  ph_now_ai: "Die KI nimmt auf diesem Telefon wieder an",
+  ph_mode_fail: "Umstellung fehlgeschlagen: {why}",
+  ph_incall_wait: "Im Gespräch: nach dem Auflegen umstellen",
+  ph_last_seen: "Zuletzt verbunden: {time}",
+  pm_err_in_call: "Das Telefon ist im Gespräch. Versuch es nach dem Auflegen erneut",
+  pm_err_busy: "Das Telefon ist mit der vorigen Umstellung noch nicht fertig",
+  pm_err_no_root: "Myna hat auf dem Telefon keinen Root-Zugriff (in Magisk oder KernelSU erlauben)",
+  pm_err_save_failed: "Das Telefon konnte den Modus nicht speichern",
+  pm_err_dialer_failed: "Das Telefon konnte die Standard-Telefon-App nicht ändern",
+  pm_err_screening_failed: "Das Telefon konnte die Anruffilterung nicht ändern",
+  pm_err_dnd_failed: "Das Telefon konnte „Bitte nicht stören“ nicht ändern",
+  pm_err_volume_failed: "Das Telefon konnte den Klingelton nicht wieder einschalten",
+  pm_err_invalid_mode: "Das Telefon kennt diesen Modus nicht",
+  pm_err_offline: "Das Telefon ist nicht verbunden",
+  pm_err_unsupported: "Die App auf dem Telefon ist zu alt. Aktualisiere sie zuerst",
+  pm_err_timeout: "Ergebnis noch nicht bestätigt. Lade die Seite gleich neu.",
+  pm_err_network: "Der Agent ist nicht erreichbar",
+  pm_err_failed: "Auf dem Telefon ist ein unerwarteter Fehler aufgetreten",
+  pm_err_bad_request: "Die Anfrage wurde nicht verstanden",
+  pill_all_normal: "Alle sind normale Telefone",
 };
 
 I18N["pt"] = {
@@ -4472,7 +5590,7 @@ I18N["pt"] = {
   f_prewarm: "Preparar a IA enquanto o telefone toca",
   f_prewarm_h: "A IA se conecta enquanto toca e fala assim que a chamada é atendida. Desligado: quem liga espera de 1 a 3 segundos pela primeira palavra.",
   f_unknown: "Atender números ocultos",
-  f_unknown_h: "Ligado: chamadas sem identificação são atendidas pela IA como as outras. Desligado: a chamada é encerrada na hora.",
+  f_unknown_h: "Ligado: chamadas sem identificação são atendidas pela IA como as outras. Desligado: a pessoa ouve um breve aviso de “indisponível” e a chamada termina.",
   f_barge: "Deixar quem ligou interromper",
   f_barge_h: "A IA para de falar quando a pessoa fala por cima. Só é usado em telefones que não captam a própria voz da IA (verificado no início de cada chamada).",
   f_vad: "Deixar o Gemini decidir quando a pessoa terminou de falar",
@@ -4579,7 +5697,7 @@ I18N["pt"] = {
   hint_apprise: "A URL de notificação do seu servidor Apprise API, ex.: http://host:8000/notify/KEY. Uma tag limita quais serviços recebem a mensagem.",
   hint_webhook: "Qualquer URL que aceite um POST em JSON com event, title, body e data. Útil para n8n, Home Assistant ou seus próprios scripts.",
   f_public_url: "Endereço deste console",
-  f_public_url_h: "Usado nos links das notificações, ex.: http://192.168.1.20:8787. Em branco = sem links.",
+  f_public_url_h: "Usado nos links das notificações, ex.: http://192.168.1.20:8787. Em branco = automático: o nome na rede abaixo (ou o endereço deste computador na rede) quando o console está aberto à sua rede; sem links quando só este computador consegue abri-lo. No Docker nada é preenchido automaticamente: defina você mesmo.",
   use_this_url: "Usar o endereço desta página: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Depois de cada chamada, a IA escreve um resumo curto. Ela usa a sua chave do Gemini, então normalmente não há nada para configurar aqui.",
@@ -4660,6 +5778,141 @@ I18N["pt"] = {
   ab_retention: "Gravações mantidas por",
   ab_days: "{n} dias",
   raw_health: "Dados brutos de /health (para solução de problemas)",
+  // ---- call events, notification services, error codes (from the agent)
+  ev_hello_reattach: "Telefone reconectado durante a chamada",
+  ev_live_ai_start: "Assistente de IA iniciado (menu antigo)",
+  ev_shaming_played: "Aviso de energia desperdiçada reproduzido",
+  ev_voicemail_intro: "Saudação da caixa postal reproduzida",
+  ev_voicemail_saved: "Mensagem de voz salva",
+  ev_vm_end_hash: "Mensagem encerrada com #",
+  ev_vm_end_max: "Mensagem atingiu o tempo máximo",
+  ev_vm_end_silence: "Mensagem encerrada após silêncio",
+  ev_vm_end_hangup: "Desligou enquanto deixava a mensagem",
+  ev_vm_no_reply: "Não quer resposta",
+  ev_vm_confirm_timeout: "Não respondeu como quer o retorno",
+  ev_vm_contact_readback_timeout: "Não respondeu depois da leitura do contato",
+  ev_vm_contact_rejected: "Disse que o contato estava errado",
+  ev_vm_reply_contact_confirmed: "Confirmou o contato",
+  ev_vm_reply_phone_confirmed: "Pediu retorno da ligação",
+  ev_vm_finish_auto_hangup: "Caixa postal encerrada, desligou",
+  ev_gemini_fail_to_voicemail: "Falha da IA, foi para a caixa postal",
+  ev_gemini_zero_delivery_to_voicemail: "A IA não enviou som, foi para a caixa postal",
+  ev_gemini_delivery_fail_to_voicemail: "O som da IA não pôde tocar, foi para a caixa postal",
+  ev_blocked_spam: "Bloqueada como spam",
+  nf_telegram: "Telegram",
+  nf_discord: "Discord",
+  nf_slack: "Slack / Mattermost",
+  nf_line: "LINE (Messaging API)",
+  nf_ntfy: "ntfy",
+  nf_gotify: "Gotify",
+  nf_bark: "Bark (iOS)",
+  nf_pushover: "Pushover",
+  nf_wecom: "Bot de grupo do WeCom",
+  nf_dingtalk: "Bot do DingTalk",
+  nf_feishu: "Bot do Feishu / Lark",
+  nf_serverchan: "ServerChan",
+  nf_matrix: "Matrix",
+  nf_gmail: "E-mail (Gmail)",
+  nf_apprise: "Apprise API",
+  nf_webhook: "Webhook (JSON)",
+  nf_telegram_token: "Token do bot",
+  nf_telegram_target: "ID do chat",
+  nf_discord_url: "URL do webhook",
+  nf_slack_url: "URL do webhook de entrada",
+  nf_line_token: "Token de acesso do canal",
+  nf_line_target: "ID de usuário ou grupo",
+  nf_ntfy_url: "Servidor",
+  nf_ntfy_token: "Token de acesso (opcional)",
+  nf_ntfy_target: "Tópico",
+  nf_gotify_url: "URL do servidor",
+  nf_gotify_token: "Token do app",
+  nf_bark_url: "Servidor",
+  nf_bark_token: "Chave do dispositivo",
+  nf_pushover_token: "Token da API",
+  nf_pushover_target: "Chave do usuário",
+  nf_wecom_url: "URL do webhook",
+  nf_dingtalk_url: "URL do webhook",
+  nf_dingtalk_token: "Segredo de assinatura (opcional)",
+  nf_feishu_url: "URL do webhook",
+  nf_serverchan_token: "SendKey",
+  nf_matrix_url: "URL do homeserver",
+  nf_matrix_token: "Token de acesso",
+  nf_matrix_target: "ID da sala",
+  nf_gmail_url: "Endereço do Gmail",
+  nf_gmail_token: "Senha de app",
+  nf_gmail_target: "Enviar para (vazio = você mesmo)",
+  nf_apprise_url: "URL de notificação (…/notify/KEY)",
+  nf_apprise_target: "Tag (opcional)",
+  nf_webhook_url: "URL",
+  nf_webhook_token: "Token Bearer (opcional)",
+  err_unauthorized: "O token de acesso não foi aceito.",
+  err_not_found: "Não encontrado.",
+  err_invalid_id: "Esse ID não é válido.",
+  err_no_calendar: "Esta chamada não tem sugestão de agenda.",
+  err_no_audio: "Esta chamada não tem gravação desse tipo.",
+  err_open_failed: "Não foi possível abrir a gravação.",
+  err_unknown_voice: "Esta voz não está disponível.",
+  err_unknown_background: "Este som de fundo não está disponível.",
+  err_background_missing: "O arquivo deste som de fundo está faltando.",
+  err_preview_failed: "Não foi possível criar a prévia. Confira a chave da API do Gemini e tente de novo.",
+  err_bad_request: "O agente não entendeu o pedido.",
+  err_save_failed: "Não foi possível gravar as configurações no disco.",
+  err_empty_body: "A mensagem está vazia.",
+  err_task_not_found: "Esta tarefa não existe mais.",
+  err_fulfill_failed: "Não foi possível executar a tarefa.",
+  err_unknown_channel: "O agente não conhece este serviço de notificação.",
+  err_missing_field: "Preencha “{field}”.",
+  err_bad_url: "“{field}” precisa começar com http:// ou https://.",
+  err_bad_value: "“{field}” não parece certo.",
+  err_auth_failed: "O serviço recusou o token ou a senha.",
+  err_service_not_found: "O serviço não conhece este endereço ou token.",
+  err_http_error: "O serviço respondeu com um erro.",
+  err_service_error: "O serviço relatou um problema com a mensagem.",
+  err_network_error: "Não foi possível conectar ao serviço.",
+  err_send_failed: "Falha ao enviar.",
+  f_mdns_name: "Nome na rede",
+  f_mdns_name_h: "Celulares e computadores na mesma rede abrem este console em http://<nome>.local:8787. Só funciona com o console aberto à sua rede. Letras, números e hífens. Em branco = desligado.",
+  cu_title: "Endereço do console",
+  cu_copy: "Copiar",
+  cu_qr_h: "Aponte a câmera do celular para o código para abrir o console nele.",
+  cu_local: "Só este computador consegue abrir este endereço. Para abrir o console no celular, abra-o para a sua rede (AGENT_HOST=0.0.0.0, veja o guia).",
+  cu_qr_alt: "QR code do endereço do console",
+  a2hs_title: "Adicione esta página à tela inicial. Da próxima vez, é só tocar no ícone.",
+  a2hs_install: "Instalar",
+  a2hs_ios: "iPhone e iPad: Compartilhar → Adicionar à Tela de Início (Safari).",
+  a2hs_android: "Android: menu ⋮ do Chrome → Adicionar à tela inicial.",
+  a2hs_desktop: "Computador: o ícone de instalar à direita da barra de endereços (Chrome, Edge).",
+  cu_ip: "Celulares que não abrem endereços .local (alguns Android antigos):",
+  // ---- phone mode (System view)
+  ph_mode_normal: "Telefone normal: as chamadas tocam e a IA não atende",
+  ph_app: "App {v}",
+  ph_need_update: "Atualize o app Myna deste telefone para trocar daqui",
+  ph_to_normal: "Mudar para telefone normal",
+  ph_to_ai: "Voltar a IA para atender",
+  ph_switching: "Alternando…",
+  ph_to_normal_t: "Mudar “{name}” para telefone normal?",
+  ph_to_normal_b: "A IA deixará de atender as chamadas deste telefone. Ele vai tocar como um telefone normal e alguém precisa atender. Você pode voltar quando quiser.",
+  ph_now_normal: "Agora é um telefone normal",
+  ph_now_ai: "A IA voltou a atender este telefone",
+  ph_mode_fail: "Falha ao alternar: {why}",
+  ph_incall_wait: "Em chamada: troque quando terminar",
+  ph_last_seen: "Última conexão: {time}",
+  pm_err_in_call: "o telefone está em chamada. Tente de novo quando terminar",
+  pm_err_busy: "o telefone ainda está terminando a troca anterior",
+  pm_err_no_root: "o Myna não tem acesso root no telefone (permita no Magisk ou KernelSU)",
+  pm_err_save_failed: "o telefone não conseguiu salvar o modo",
+  pm_err_dialer_failed: "o telefone não conseguiu trocar o app de telefone padrão",
+  pm_err_screening_failed: "o telefone não conseguiu alterar a triagem de chamadas",
+  pm_err_dnd_failed: "o telefone não conseguiu alterar o Não perturbe",
+  pm_err_volume_failed: "o telefone não conseguiu religar o toque",
+  pm_err_invalid_mode: "o telefone não reconhece este modo",
+  pm_err_offline: "o telefone não está conectado",
+  pm_err_unsupported: "o app do telefone é muito antigo. Atualize primeiro",
+  pm_err_timeout: "Resultado ainda não confirmado. Atualize a página daqui a pouco.",
+  pm_err_network: "o agente está inacessível",
+  pm_err_failed: "algo deu errado no telefone",
+  pm_err_bad_request: "a solicitação não foi entendida",
+  pill_all_normal: "Todos são telefones normais",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word
@@ -4669,6 +5922,11 @@ const INTERVIEW = {
   "zh-TW": "你要幫我寫 Myna 的「接聽提示詞」。Myna 是一套開源系統，由 AI 語音幫我接手機來電。請先訪問我，問完再寫提示詞。\n\n訪問的方式\n- 一次只問一個問題，用白話問，等我回答。\n- 我答得太籠統就再追問一句；我說「跳過」就用合理的預設。\n- 總共大約 10 題。題目問完之前不要開始寫提示詞。\n\n要問清楚的事\n1. 打來的人平常跟我講什麼語言、哪一種口音用語（例如台灣國語、台語夾雜、英文）。\n2. 接聽方式：要 AI「用我本人的身分」接（對方以為在跟我講話），還是當「我的 AI 助理」（會表明身分、幫忙記下事情轉達）？\n3. 對方怎麼稱呼我，以及 AI 需要知道才講得像的背景（工作、家裡的角色、住哪個城市），只講我願意透露的。\n4. 我講電話的樣子：隨性還是客氣、話少還是愛聊、常用的口頭禪、絕對不會講的話。\n5. 平常都是誰打來（家人、朋友、客戶、快遞、銀行、陌生人），每一種要怎麼應對。\n6. 對方常問、AI 可以直接回答的事，以及確切的答案（包裹放哪裡、營業時間、地址）。\n7. AI 絕對不能做、不能說的事（答應付錢、給個資、敲定時間、說我人在哪）。\n8. 推銷和疑似詐騙電話：客氣拒絕就掛，還是故意陪他聊、浪費他的時間？\n9. 電話要怎麼收尾，我習慣說的道別語（例如「掰掰」）。\n10. 其他 AI 應該知道的事。\n\n問完之後寫提示詞\n- 用第 1 題的語言寫，用「你」稱呼 AI，分成幾個有標題的短段落：\n  【你是誰】【講話的樣子】【接起來】【聽對方講】【你不知道、做不到的事】【不能答應的事】【推銷和詐騙】【結束】\n- 要寫到我名字的地方一律用 {owner} 這個代號，系統會自動換成我的名字。\n- 下面這些規則一定要寫進去，用我的語氣寫：\n  * 接起來第一句只說一句很短的開頭，說完就停，等對方開口。\n  * 每次只講一兩句口語的短句；不要條列、不要念稿、不要客服腔。\n  * 講電話的當下 AI 沒辦法查任何東西，不可以說「等一下」「我查一下」；不知道就老實說不確定。\n  * 不可以編造跟我有關的事（行程、人在哪、我的決定），也不可以替我做任何承諾。\n  * 錢、合約、密碼、驗證碼、個資、敲定見面時間，一律不答應。\n  * 不要自己先說再見：等對方明顯講完了，才用一句帶有我的道別語的話收尾，講完就停。\n- 不要寫進提示詞的東西：\n  * 第 6 題的資料（我會另外貼到設定頁的「AI 可以回答的資料」欄位）；\n  * 「被問到要承認是 AI」這類規則（系統固定會加）；\n  * 任何技術設定。\n- 長度：400 到 900 個中文字。\n\n輸出\n1. 完整的提示詞，放在一個程式碼區塊裡，讓我可以直接複製。\n2. 下面再一個程式碼區塊，標題「資料」，把第 6 題的內容一行一條列出來。\n3. 最後用一行告訴我，設定頁的接聽方式要選「AI 助理」還是「本人」。\n\n現在從第 1 題開始。",
   "zh-CN": "你要帮我写 Myna 的「接听提示词」。Myna 是一套开源系统，由 AI 语音帮我接手机来电。请先采访我，问完再写提示词。\n\n采访的方式\n- 一次只问一个问题，用大白话问，等我回答。\n- 我答得太笼统就再追问一句；我说「跳过」就用合理的默认值。\n- 总共大约 10 题。题目问完之前不要开始写提示词。\n\n要问清楚的事\n1. 打来的人平常跟我讲什么语言、带什么口音和用词（比如普通话、带方言、英文）。\n2. 接听方式：要 AI「以我本人的身份」接（对方以为在跟我说话），还是当「我的 AI 助理」（会表明身份、帮忙记下事情转达）？\n3. 对方怎么称呼我，以及 AI 需要知道才能说得像的背景（工作、家里的角色、所在城市），只说我愿意透露的。\n4. 我打电话的样子：随意还是客气、话少还是爱聊、常说的口头禅、绝对不会说的话。\n5. 平常都是谁打来（家人、朋友、客户、快递、银行、陌生人），每一种要怎么应对。\n6. 对方常问、AI 可以直接回答的事，以及确切的答案（快递放哪里、营业时间、地址）。\n7. AI 绝对不能做、不能说的事（答应付款、给个人信息、敲定时间、说我人在哪）。\n8. 推销和疑似诈骗电话：客气拒绝就挂，还是故意陪他聊、浪费他的时间？\n9. 电话要怎么收尾，我习惯说的道别语（比如「拜拜」）。\n10. 其他 AI 应该知道的事。\n\n问完之后写提示词\n- 用第 1 题的语言写，用「你」称呼 AI，分成几个带标题的短段落：\n  【你是谁】【说话的样子】【接起来】【听对方说】【你不知道、做不到的事】【不能答应的事】【推销和诈骗】【结束】\n- 要写到我名字的地方一律用 {owner} 这个占位符，系统会自动换成我的名字。\n- 下面这些规则一定要写进去，用我的语气写：\n  * 接起来第一句只说一句很短的开头，说完就停，等对方开口。\n  * 每次只说一两句口语的短句；不要分点罗列、不要念稿、不要客服腔。\n  * 通话当下 AI 没办法查任何东西，不可以说「等一下」「我查一下」；不知道就老实说不确定。\n  * 不可以编造跟我有关的事（行程、人在哪、我的决定），也不可以替我做任何承诺。\n  * 钱、合同、密码、验证码、个人信息、敲定见面时间，一律不答应。\n  * 不要自己先说再见：等对方明显说完了，才用一句带有我的道别语的话收尾，说完就停。\n- 不要写进提示词的东西：\n  * 第 6 题的资料（我会另外贴到设置页的「AI 可以回答的资料」一栏）；\n  * 「被问到要承认是 AI」这类规则（系统固定会加）；\n  * 任何技术设置。\n- 长度：400 到 900 个汉字。\n\n输出\n1. 完整的提示词，放在一个代码块里，让我可以直接复制。\n2. 下面再一个代码块，标题「资料」，把第 6 题的内容一行一条列出来。\n3. 最后用一行告诉我，设置页的接听方式要选「AI 助理」还是「本人」。\n\n现在从第 1 题开始。",
   "ja": "Myna の「応答プロンプト」を一緒に作ってください。Myna は、AI の音声が私のスマホにかかってきた電話に出てくれるオープンソースのシステムです。まず私にインタビューして、質問が終わってからプロンプトを書いてください。\n\nインタビューの進め方\n- 質問は一度に一つだけ。平易な言葉で聞いて、私の答えを待ってください。\n- 答えがあいまいなら短く一つだけ聞き返してください。「スキップ」と言ったら無難な既定値を使ってください。\n- 質問は全部で 10 問ほど。質問が終わるまでプロンプトは書かないでください。\n\n聞いてほしいこと\n1. かけてくる人が普段私と話す言語と、その土地の言い回し（例：標準語、関西弁、英語）。\n2. 応答のスタイル：AI が「私本人として」出る（相手は私と話していると思う）か、「私の AI アシスタント」として出て用件を預かるか。\n3. 相手が私を何と呼ぶか、そして自然に話すために AI が知っておくべきこと（仕事、家族での立場、住んでいる街）。話してもよい範囲だけ。\n4. 私の電話での話し方：くだけているか丁寧か、短いかよく話すか、口ぐせ、絶対に言わない言葉。\n5. 普段かけてくる人（家族、友人、お客さん、宅配、銀行、知らない人）と、それぞれへの対応。\n6. よく聞かれることで AI が答えてよいことと、その正確な答え（荷物の置き場所、営業時間、住所）。\n7. AI が絶対にしてはいけないこと・言ってはいけないこと（支払いの約束、個人情報、日時の確定、私の居場所）。\n8. 営業電話や詐欺らしい電話：丁寧に断って切るか、わざと話を引き延ばして相手の時間を使わせるか。\n9. 電話の終わり方と、私が使う別れのあいさつ（例：「失礼します」）。\n10. そのほか AI が知っておくべきこと。\n\n質問が終わったらプロンプトを書く\n- 質問 1 の言語で、AI に「あなた」と呼びかける形で、見出しつきの短い段落に分けて書いてください：\n  【あなたは誰か】【話し方】【電話に出るとき】【聞くとき】【知らないこと・できないこと】【応じてはいけないこと】【営業・詐欺の電話】【終わり方】\n- 私の名前が入るところはすべて {owner} と書いてください。システムが自動で置き換えます。\n- 次のルールは必ず、私の口調で入れてください：\n  * 出たら最初に短いひと言だけ言い、相手が話すのを待つ。\n  * 一度に話すのは短い話し言葉で一、二文。箇条書き、読み上げ、コールセンター調は使わない。\n  * 通話中は何も調べられない。「少々お待ちください」「確認します」とは言わず、分からないことは分からないと言う。\n  * 私についての事実（予定、居場所、判断）を作らない。私の代わりに約束をしない。\n  * お金、契約、パスワード、認証コード、個人情報、日時の確定には応じない。\n  * 自分から先に別れのあいさつをしない。相手の用件がはっきり終わってから、私の別れのあいさつを含むひと言で締めて、そこで止まる。\n- プロンプトに入れないもの：\n  * 質問 6 の内容（設定画面の「AI が答えてよい情報」欄に別に貼ります）\n  * 「AI かと聞かれたら認める」といったルール（システムが必ず追加します）\n  * 技術的な設定\n- 長さ：500〜1000 字。\n\n出力\n1. 完成したプロンプトを、そのままコピーできるようにコードブロック一つで。\n2. その下に「情報」という見出しのコードブロックをもう一つ作り、質問 6 の内容を一行に一つずつ。\n3. 最後に、設定画面の応答スタイルで「AI アシスタント」と「本人」のどちらを選ぶべきかを一行で。\n\nでは質問 1 から始めてください。",
+  "ko": "Myna의 \"응답 프롬프트\"를 쓰는 걸 도와주세요. Myna는 AI 음성이 제 휴대폰으로 오는 전화를 대신 받아 주는 오픈 소스 시스템입니다. 먼저 저를 인터뷰하고, 질문이 끝난 뒤에 프롬프트를 써 주세요.\n\n인터뷰 방법\n- 한 번에 한 가지만, 쉬운 말로 묻고 제 대답을 기다려 주세요.\n- 대답이 모호하면 짧게 한 번만 더 물어 주세요. 제가 \"건너뛰기\"라고 하면 무난한 기본값을 쓰세요.\n- 질문은 모두 10개 정도입니다. 질문이 끝나기 전에는 프롬프트를 쓰지 마세요.\n\n알아내야 할 것\n1. 전화하는 사람들이 보통 저와 쓰는 언어와 지역 말투(예: 표준어, 경상도 사투리, 영어).\n2. 응답 방식: AI가 \"저 본인으로서\" 받을지(상대는 저와 통화한다고 생각함), 아니면 \"제 AI 비서\"로서 그렇게 밝히고 용건을 받아 둘지.\n3. 사람들이 저를 부르는 이름, 그리고 AI가 자연스럽게 말하려면 알아야 할 제 정보(직업, 가족 안에서의 역할, 사는 도시). 제가 말해도 괜찮은 것만.\n4. 제가 전화할 때 말하는 방식: 편한지 격식 있는지, 짧은지 말이 많은지, 자주 쓰는 말, 절대 안 쓰는 말.\n5. 보통 누가 전화하는지(가족, 친구, 고객, 택배, 은행, 모르는 사람)와 각각 어떻게 대해야 하는지.\n6. 사람들이 자주 묻고 AI가 대답해도 되는 것과 그 정확한 답(택배 두는 곳, 영업시간, 주소).\n7. AI가 절대 하거나 말하면 안 되는 것(결제 동의, 개인정보 제공, 약속 확정, 제가 있는 곳).\n8. 영업 전화와 사기로 의심되는 전화: 정중히 거절하고 끊을지, 아니면 일부러 길게 붙잡아 상대 시간을 낭비시킬지.\n9. 통화를 어떻게 끝낼지, 그리고 제가 쓰는 작별 인사(예: \"네, 들어가세요\").\n10. 그 밖에 AI가 알아야 할 것.\n\n질문이 끝나면 프롬프트 쓰기\n- 1번 질문의 언어로, AI를 \"당신\"이라고 부르며, 제목이 붙은 짧은 부분으로 나눠 쓰세요:\n  [당신은 누구인가] [말하는 방식] [전화를 받을 때] [들을 때] [모르거나 할 수 없는 것] [동의하면 안 되는 것] [영업·사기 전화] [끝낼 때]\n- 제 이름이 들어갈 자리에는 모두 {owner}라고 쓰세요. 시스템이 채워 넣습니다.\n- 다음 규칙은 반드시 제 말투로 넣어 주세요:\n  * 받자마자 짧은 첫마디 한 줄만 하고, 상대가 말하기를 기다린다.\n  * 한 번에 짧은 구어체 문장 한두 개만. 목록, 낭독, 콜센터 말투는 쓰지 않는다.\n  * 통화 중에는 아무것도 찾아볼 수 없다. \"잠시만요\", \"확인해 볼게요\"라고 하지 않고, 모르면 모른다고 말한다.\n  * 저에 관한 사실(일정, 있는 곳, 결정)을 지어내지 않고, 저 대신 약속하지 않는다.\n  * 돈, 계약, 비밀번호, 인증번호, 개인정보, 확정된 약속에는 절대 동의하지 않는다.\n  * 먼저 작별 인사를 하지 않는다. 상대가 분명히 말을 마칠 때까지 기다렸다가, 제 작별 인사가 들어간 한 줄로 마무리하고 멈춘다.\n- 프롬프트에 넣지 말 것:\n  * 6번 질문의 내용(설정 화면의 \"AI가 답해도 되는 정보\" 칸에 따로 붙여 넣습니다),\n  * AI라고 인정하는 것에 관한 규칙(시스템이 항상 따로 넣습니다),\n  * 기술적인 설정.\n- 길이: 600~1200자.\n\n출력\n1. 완성된 프롬프트를 바로 복사할 수 있게 코드 블록 하나에.\n2. 그 아래에 \"정보\"라는 제목의 코드 블록을 하나 더 만들고, 6번 질문의 내용을 한 줄에 하나씩.\n3. 마지막으로 설정에서 응답 방식을 \"AI 비서\"와 \"본인\" 중 무엇으로 고를지 한 줄로.\n\n이제 1번 질문부터 시작하세요.",
+  "es": "Ayúdame a escribir el \"prompt de respuesta\" de Myna, un sistema de código abierto en el que una voz de IA contesta las llamadas de mi teléfono. Primero entrevístame y después escribe el prompt.\n\nCÓMO HACER LA ENTREVISTA\n- Haz UNA pregunta cada vez, con palabras sencillas, y espera mi respuesta.\n- Si mi respuesta es vaga, haz una sola pregunta corta más. Si digo \"saltar\", usa un valor razonable.\n- Unas 10 preguntas en total. No escribas el prompt hasta terminar las preguntas.\n\nQUÉ AVERIGUAR\n1. El idioma en que suele hablarme quien llama y su variante (por ejemplo, español de España, mexicano, rioplatense).\n2. El estilo: ¿la IA contesta COMO YO (quien llama cree que habla conmigo) o como MI ASISTENTE DE IA, que lo dice y toma el recado?\n3. Mi nombre tal como lo dice quien llama, y lo que la IA necesita saber de mí para sonar natural (trabajo, papel en la familia, ciudad). Solo lo que yo quiera contar.\n4. Cómo hablo por teléfono: relajado o formal, breve o hablador, palabras que uso mucho, palabras que nunca uso.\n5. Quién suele llamar (familia, amigos, clientes, mensajeros, bancos, desconocidos) y cómo tratar a cada uno.\n6. Lo que suelen preguntar y la IA puede responder, con las respuestas exactas (dónde dejar paquetes, horario, una dirección).\n7. Lo que la IA nunca debe hacer ni decir (aceptar pagos, dar datos personales, confirmar citas, decir dónde estoy).\n8. Llamadas comerciales y posibles estafas: ¿rechazarlas con educación y colgar, o entretenerlos para hacerles perder el tiempo?\n9. Cómo debe terminar una llamada y la palabra de despedida que uso.\n10. Cualquier otra cosa que la IA deba saber.\n\nDESPUÉS, ESCRIBE EL PROMPT\n- Escríbelo en el idioma de la pregunta 1, hablándole a la IA de \"tú\", en secciones cortas con título:\n  [Quién eres] [Cómo hablas] [Al contestar] [Al escuchar] [Lo que no puedes saber ni hacer] [Lo que no debes aceptar] [Llamadas comerciales y estafas] [Despedida]\n- Usa el marcador {owner} donde vaya mi nombre. El sistema lo rellena.\n- Estas reglas tienen que estar, dichas a mi manera:\n  * Lo primero es una frase corta para contestar; luego espera a que hable quien llama.\n  * Una o dos frases cortas y habladas cada vez. Nada de listas, de leer en voz alta ni de frases de centralita.\n  * Durante la llamada la IA no puede consultar nada. Nunca dice \"un momento\" ni \"déjame comprobarlo\"; si no lo sabe, lo dice.\n  * Nunca inventa datos sobre mí (agenda, dónde estoy, decisiones) ni promete nada en mi nombre.\n  * Nunca acepta dinero, contratos, contraseñas, códigos de verificación, datos personales ni una cita concreta.\n  * No se despide primero. Espera a que quien llama haya terminado claramente, cierra con una frase que contenga mi palabra de despedida y se calla.\n- NO pongas en el prompt:\n  * los datos de la pregunta 6 (los pego aparte en el cuadro \"Datos con los que la IA puede responder\"),\n  * ninguna regla sobre admitir que es una IA (el sistema siempre añade la suya),\n  * ajustes técnicos.\n- Extensión: de 250 a 500 palabras.\n\nRESULTADO\n1. El prompt terminado en un solo bloque de código, listo para copiar.\n2. Debajo, un segundo bloque de código titulado \"Datos\" con lo de la pregunta 6, uno por línea.\n3. Una línea que me diga qué estilo de respuesta elegir en los ajustes: \"Asistente de IA\" o \"Como yo\".\n\nEmpieza ya con la pregunta 1.",
+  "fr": "Aide-moi à écrire le « prompt de réponse » de Myna, un système open source dans lequel une voix d'IA répond aux appels de mon téléphone. Interviewe-moi d'abord, puis écris le prompt.\n\nCOMMENT MENER L'INTERVIEW\n- Pose UNE question à la fois, avec des mots simples, et attends ma réponse.\n- Si ma réponse est vague, pose une seule courte question de plus. Si je dis « passer », prends une valeur par défaut raisonnable.\n- Environ 10 questions en tout. N'écris pas le prompt avant la fin des questions.\n\nCE QU'IL FAUT SAVOIR\n1. La langue que les gens qui m'appellent parlent avec moi, et sa variante (par exemple français de France, québécois, belge).\n2. Le style : l'IA doit-elle répondre COMME MOI (on croit me parler) ou comme MON ASSISTANT IA, qui le dit et prend un message ?\n3. Mon nom tel que les gens le disent, et ce que l'IA doit savoir de moi pour sonner juste (travail, place dans la famille, ville). Seulement ce que je veux bien dire.\n4. Ma façon de parler au téléphone : détendue ou formelle, brève ou bavarde, les mots que j'emploie souvent, ceux que je n'emploie jamais.\n5. Qui appelle d'habitude (famille, amis, clients, livreurs, banques, inconnus) et comment traiter chacun.\n6. Ce qu'on me demande souvent et à quoi l'IA peut répondre, avec les réponses exactes (où laisser les colis, horaires, une adresse).\n7. Ce que l'IA ne doit jamais faire ni dire (accepter un paiement, donner des données personnelles, confirmer un rendez-vous, dire où je suis).\n8. Démarchage et arnaques probables : refuser poliment et raccrocher, ou les faire parler pour leur faire perdre leur temps ?\n9. Comment un appel doit se terminer, et le mot d'au revoir que j'utilise.\n10. Tout ce que l'IA devrait encore savoir.\n\nENSUITE, ÉCRIS LE PROMPT\n- Écris-le dans la langue de la question 1, en t'adressant à l'IA par « tu », en courtes sections titrées :\n  [Qui tu es] [Ta façon de parler] [Quand tu décroches] [Quand tu écoutes] [Ce que tu ne peux ni savoir ni faire] [Ce que tu ne dois pas accepter] [Démarchage et arnaques] [La fin de l'appel]\n- Mets {owner} partout où va mon nom. Le système le remplace.\n- Ces règles doivent y être, dites à ma façon :\n  * La première chose dite est une courte phrase d'accueil ; ensuite, attendre que l'appelant parle.\n  * Une ou deux phrases courtes et parlées à la fois. Pas de listes, pas de lecture, pas de phrases de standard téléphonique.\n  * Pendant l'appel, l'IA ne peut rien vérifier. Elle ne dit jamais « un instant » ni « je vérifie » ; si elle ne sait pas, elle le dit.\n  * Elle n'invente jamais rien sur moi (emploi du temps, où je suis, mes décisions) et ne promet jamais rien à ma place.\n  * Elle n'accepte jamais d'argent, de contrat, de mot de passe, de code de vérification, de données personnelles ni de rendez-vous fixe.\n  * Elle ne dit pas au revoir la première. Elle attend que l'appelant ait clairement fini, conclut par une phrase avec mon mot d'au revoir, puis s'arrête.\n- NE mets PAS dans le prompt :\n  * les informations de la question 6 (je les colle à part dans la case « Informations que l'IA peut donner »),\n  * de règle sur le fait d'avouer être une IA (le système ajoute toujours la sienne),\n  * de réglages techniques.\n- Longueur : 250 à 500 mots.\n\nRÉSULTAT\n1. Le prompt terminé dans un seul bloc de code, prêt à copier.\n2. En dessous, un deuxième bloc de code intitulé « Informations » avec le contenu de la question 6, une par ligne.\n3. Une ligne qui me dit quel style de réponse choisir dans les réglages : « Assistant IA » ou « À ma place ».\n\nCommence maintenant par la question 1.",
+  "de": "Hilf mir, den „Annahme-Prompt“ für Myna zu schreiben, ein Open-Source-System, in dem eine KI-Stimme die Anrufe auf meinem Handy annimmt. Interviewe mich zuerst und schreib danach den Prompt.\n\nSO LÄUFT DAS INTERVIEW\n- Stell immer nur EINE Frage, in einfachen Worten, und warte auf meine Antwort.\n- Wenn meine Antwort vage ist, frag einmal kurz nach. Wenn ich „überspringen“ sage, nimm einen sinnvollen Standard.\n- Insgesamt etwa 10 Fragen. Schreib den Prompt erst, wenn die Fragen fertig sind.\n\nWAS DU HERAUSFINDEN SOLLST\n1. Die Sprache, in der Anrufer meist mit mir sprechen, und ihre regionale Färbung (zum Beispiel Hochdeutsch, Schweizerdeutsch, österreichisches Deutsch).\n2. Die Art: Soll die KI ALS ICH annehmen (Anrufer glauben, mit mir zu sprechen) oder als MEIN KI-ASSISTENT, der das sagt und eine Nachricht aufnimmt?\n3. Mein Name, wie Anrufer ihn sagen, und was die KI über mich wissen muss, damit es echt klingt (Beruf, Rolle in der Familie, Stadt). Nur, was ich teilen möchte.\n4. Wie ich am Telefon rede: locker oder förmlich, knapp oder gesprächig, Wörter, die ich oft sage, Wörter, die ich nie sage.\n5. Wer meistens anruft (Familie, Freunde, Kunden, Paketdienste, Banken, Fremde) und wie jeder behandelt werden soll.\n6. Was Anrufer oft fragen und die KI beantworten darf, mit den genauen Antworten (wohin mit Paketen, Öffnungszeiten, eine Adresse).\n7. Was die KI nie tun oder sagen darf (Zahlungen zustimmen, persönliche Daten herausgeben, Termine bestätigen, sagen, wo ich bin).\n8. Werbeanrufe und mutmaßlicher Betrug: höflich ablehnen und auflegen oder sie hinhalten, um ihre Zeit zu verschwenden?\n9. Wie ein Anruf enden soll und welches Abschiedswort ich benutze.\n10. Alles andere, was die KI wissen sollte.\n\nDANN SCHREIB DEN PROMPT\n- Schreib ihn in der Sprache aus Frage 1, sprich die KI mit „du“ an, in kurzen Abschnitten mit Überschriften:\n  [Wer du bist] [Wie du sprichst] [Beim Annehmen] [Beim Zuhören] [Was du nicht wissen oder tun kannst] [Was du nicht zusagen darfst] [Werbe- und Betrugsanrufe] [Zum Schluss]\n- Schreib überall dort {owner}, wo mein Name steht. Das System setzt ihn ein.\n- Diese Regeln müssen drin sein, in meinem Ton:\n  * Zuerst kommt ein kurzer Satz zur Begrüßung; dann auf den Anrufer warten.\n  * Ein oder zwei kurze, gesprochene Sätze auf einmal. Keine Listen, kein Vorlesen, keine Callcenter-Floskeln.\n  * Während des Anrufs kann die KI nichts nachschauen. Sie sagt nie „einen Moment“ oder „ich schau mal nach“; wenn sie etwas nicht weiß, sagt sie das.\n  * Sie erfindet nie etwas über mich (Termine, wo ich bin, Entscheidungen) und verspricht nie etwas in meinem Namen.\n  * Sie stimmt nie Geld, Verträgen, Passwörtern, Bestätigungscodes, persönlichen Daten oder einem festen Termin zu.\n  * Sie verabschiedet sich nicht zuerst. Sie wartet, bis der Anrufer klar fertig ist, schließt mit einem Satz, der mein Abschiedswort enthält, und hört dann auf.\n- NICHT in den Prompt gehören:\n  * die Angaben aus Frage 6 (die füge ich getrennt in das Feld „Infos, mit denen die KI antworten darf“ ein),\n  * Regeln dazu, zuzugeben, dass sie eine KI ist (das System fügt immer seine eigene hinzu),\n  * technische Einstellungen.\n- Länge: 250 bis 500 Wörter.\n\nAUSGABE\n1. Den fertigen Prompt in einem einzigen Codeblock, bereit zum Kopieren.\n2. Darunter einen zweiten Codeblock mit der Überschrift „Infos“ mit den Angaben aus Frage 6, eine pro Zeile.\n3. Eine Zeile, die mir sagt, welche Art der Annahme ich in den Einstellungen wählen soll: „KI-Assistent“ oder „Als ich selbst“.\n\nFang jetzt mit Frage 1 an.",
+  "pt": "Me ajude a escrever o \"prompt de atendimento\" do Myna, um sistema de código aberto em que uma voz de IA atende as ligações do meu celular. Primeiro me entreviste, depois escreva o prompt.\n\nCOMO FAZER A ENTREVISTA\n- Faça UMA pergunta de cada vez, com palavras simples, e espere a minha resposta.\n- Se a resposta for vaga, faça só mais uma pergunta curta. Se eu disser \"pular\", use um padrão razoável.\n- Umas 10 perguntas no total. Não escreva o prompt antes de terminar as perguntas.\n\nO QUE DESCOBRIR\n1. O idioma em que costumam falar comigo e o jeito regional (por exemplo, português do Brasil, de Portugal, carioca, paulista).\n2. O estilo: a IA deve atender COMO SE FOSSE EU (quem liga acha que está falando comigo) ou como MEU ASSISTENTE DE IA, que avisa isso e anota o recado?\n3. Meu nome do jeito que as pessoas falam, e o que a IA precisa saber de mim para soar natural (trabalho, papel na família, cidade). Só o que eu quiser contar.\n4. Como eu falo ao telefone: descontraído ou formal, curto ou falante, palavras que uso muito, palavras que nunca uso.\n5. Quem costuma ligar (família, amigos, clientes, entregadores, bancos, desconhecidos) e como tratar cada um.\n6. O que costumam perguntar e a IA pode responder, com as respostas exatas (onde deixar encomendas, horário, um endereço).\n7. O que a IA nunca deve fazer nem dizer (aceitar pagamentos, passar dados pessoais, confirmar compromissos, dizer onde estou).\n8. Ligações de vendas e possíveis golpes: recusar com educação e desligar, ou prender a pessoa na linha para ela perder tempo?\n9. Como uma ligação deve terminar e a palavra de despedida que eu uso.\n10. Qualquer outra coisa que a IA deva saber.\n\nDEPOIS, ESCREVA O PROMPT\n- Escreva no idioma da pergunta 1, falando com a IA como \"você\", em seções curtas com título:\n  [Quem você é] [Como você fala] [Ao atender] [Ao ouvir] [O que você não pode saber nem fazer] [O que você não pode aceitar] [Ligações de vendas e golpes] [Encerramento]\n- Use o marcador {owner} onde for o meu nome. O sistema preenche.\n- Estas regras precisam estar lá, do meu jeito:\n  * A primeira coisa dita é uma frase curta de abertura; depois, esperar quem ligou falar.\n  * Uma ou duas frases curtas e faladas de cada vez. Nada de listas, de leitura em voz alta nem de frases de telemarketing.\n  * Durante a ligação a IA não consegue consultar nada. Nunca diz \"um momento\" nem \"vou verificar\"; quando não sabe, diz isso.\n  * Nunca inventa nada sobre mim (agenda, onde estou, decisões) nem promete nada em meu nome.\n  * Nunca aceita dinheiro, contratos, senhas, códigos de verificação, dados pessoais nem um compromisso marcado.\n  * Não se despede primeiro. Espera quem ligou terminar claramente, fecha com uma frase que tenha a minha palavra de despedida e para.\n- NÃO coloque no prompt:\n  * as informações da pergunta 6 (eu colo à parte no campo \"Informações que a IA pode usar para responder\"),\n  * nenhuma regra sobre admitir que é uma IA (o sistema sempre acrescenta a dele),\n  * configurações técnicas.\n- Tamanho: de 250 a 500 palavras.\n\nRESULTADO\n1. O prompt pronto em um único bloco de código, para copiar.\n2. Abaixo, um segundo bloco de código com o título \"Informações\" e o conteúdo da pergunta 6, um por linha.\n3. Uma linha dizendo qual estilo de atendimento escolher nas configurações: \"Assistente de IA\" ou \"Como se fosse eu\".\n\nComece agora pela pergunta 1.",
 };
 
 // =====================================================================
@@ -4891,7 +6149,9 @@ if (qs.get("token")) store.set("pca.token", token);
 const withTok = (url) => (token ? url + (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token) : url);
 
 class ApiError extends Error {
-  constructor(msg, status) { super(msg); this.status = status; }
+  // `detail`: the agent's own words, for a tooltip.
+  // `data`: the parsed answer, for routes with their own error field.
+  constructor(msg, status, detail, data) { super(msg); this.status = status; this.detail = detail || ""; this.data = data || null; }
 }
 let tokenAsk = null, tokenDeclined = false;
 function askToken(wrong) {
@@ -4919,10 +6179,24 @@ async function request(url, opts) {
 }
 async function api(path, opts) {
   const res = await request(apiBase + path, opts);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(data.error || data.detail || `HTTP ${res.status}`, res.status);
+  const data = (await res.json().catch(() => null)) || {};
+  if (!res.ok) throw new ApiError(apiErrorText(data, res.status), res.status, data.error || data.detail || "", data);
   return data;
 }
+// An error the agent answered with, in the language of this page: its `code`
+// (err_<code>), naming the field at fault; the agent's own words when the code
+// is not known here.
+function apiErrorText(data, status) {
+  const raw = String(data.error || data.detail || `HTTP ${status}`);
+  const code = String(data.code || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  const key = "err_" + code;
+  if (!code || (I18N[lang][key] == null && I18N.en[key] == null)) return raw;
+  const text = t(key, { field: data.field ? chanFieldLabel(String(data.kind || ""), String(data.field)) : "" });
+  // The service's own answer is what tells these apart; a phone shows no tooltip.
+  if (!ERR_WITH_DETAIL.has(code) || !raw.trim()) return text;
+  return /^(zh|ja)/.test(lang) ? `${text}（${raw}）` : `${text} (${raw})`;
+}
+const ERR_WITH_DETAIL = new Set(["http_error", "service_error", "network_error", "send_failed"]);
 const jsonBody = (method, body) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
 function showNet(msg) {
@@ -5056,7 +6330,7 @@ window.addEventListener("scroll", () => {
 }, { passive: true });
 
 // ---------------------------------------------------------------- live status
-let live = { ok: null, count: 0, calls: [], idle: 0, serials: [] };
+let live = { ok: null, count: 0, calls: [], idle: 0, serials: [], normal: [] };
 let labels = {};
 const devName = (serial) => labels[serial] || serial || "";
 const isLive = (c) => c.status === "ringing" || c.status === "active";
@@ -5065,7 +6339,7 @@ let askedLabels = "";
 async function pollLive() {
   try {
     const d = await api("/live");
-    live = { ok: true, count: Number(d.count || 0), calls: d.calls || [], idle: Number(d.control_idle_clients || 0), serials: d.control_idle_serials || [] };
+    live = { ok: true, count: Number(d.count || 0), calls: d.calls || [], idle: Number(d.control_idle_clients || 0), serials: d.control_idle_serials || [], normal: d.normal_mode_serials || [] };
     if (!tokenDeclined) $("netBanner").hidden = true;
     const sig = live.calls.map((c) => c.id + c.status).join(",");
     if (liveSig !== null && sig !== liveSig) {
@@ -5092,8 +6366,10 @@ function renderPill() {
   let cls = "", text = "…";
   if (live.ok === false) { cls = "bad"; text = t("pill_offline"); }
   else if (live.ok) {
-    if (live.idle > 0) { cls = "ok"; text = t("pill_ready", { n: live.idle }); }
+    const ready = readyPhones();
+    if (ready > 0) { cls = "ok"; text = t("pill_ready", { n: ready }); }
     else if (live.count > 0) { cls = "warn"; text = t("pill_busy"); }
+    else if (live.idle > 0) { cls = "warn"; text = t("pill_all_normal"); }
     else { cls = "bad"; text = t("pill_none"); }
   }
   p.className = "pill " + cls;
@@ -5121,7 +6397,11 @@ function tickLiveClock() {
 $("liveBanner").addEventListener("click", () => { if (live.calls[0]) setHash("call=" + live.calls[0].id); });
 function renderStatsExtras() {
   $("stLive").textContent = String(live.count);
-  $("stPhones").textContent = live.ok ? String(live.idle) : "–";
+  $("stPhones").textContent = live.ok ? String(readyPhones()) : "–";
+}
+// Connected phones the AI answers for: phones switched to "normal phone" do not count.
+function readyPhones() {
+  return Math.max(0, live.idle - live.normal.filter((s) => live.serials.includes(s)).length);
 }
 async function loadStats() {
   try {
@@ -5564,6 +6844,8 @@ $("btnBlock").addEventListener("click", async () => {
 // ---------------------------------------------------------------- settings
 let S = null;            // settings as the agent last sent them
 let storagePath = "";
+let consoleUrl = "";     // the console's address for other devices ("" = this computer only)
+let consoleIpUrl = "";   // the same at the LAN IP, for phones that cannot open .local names
 const form = $("setForm");
 const fieldEls = () => Array.from(form.querySelectorAll("[data-k]"));
 
@@ -5574,6 +6856,8 @@ async function loadSettings() {
     const d = await api("/settings");
     S = d.settings || {};
     storagePath = d.storage_path || "";
+    consoleUrl = d.console_url || "";
+    consoleIpUrl = d.console_ip_url || "";
     $("setLoading").hidden = true;
     $("setGrid").hidden = false;
     populate();
@@ -5666,7 +6950,7 @@ function buildMenus() {
   });
   fillSelect($("chanKind"), (sel) => {
     sel.append(h("option", { value: "", text: t("n_pick") }));
-    for (const k of S.notify_kinds || []) sel.append(h("option", { value: k.kind, text: k.label }));
+    for (const k of S.notify_kinds || []) sel.append(h("option", { value: k.kind, text: kindLabel(k.kind) }));
   });
 }
 
@@ -5709,6 +6993,17 @@ let chanSeq = 0;
 // Kinds whose address is itself the secret (a webhook URL).
 const URL_IS_SECRET = new Set(["discord", "slack", "wecom", "dingtalk", "feishu", "apprise", "webhook"]);
 const kindInfo = (kind) => ((S && S.notify_kinds) || []).find((k) => k.kind === kind) || { kind, label: kind, url: "", token: "", target: "", url_default: "" };
+// A notification service and its fields in the language of this page
+// (nf_<kind>, nf_<kind>_<field>); the agent's English label for one this page
+// does not know yet.
+function kindLabel(kind) {
+  const key = "nf_" + kind;
+  return I18N[lang][key] ?? I18N.en[key] ?? kindInfo(kind).label;
+}
+function chanFieldLabel(kind, f) {
+  const key = `nf_${kind}_${f}`;
+  return I18N[lang][key] ?? I18N.en[key] ?? (kindInfo(kind)[f] || f);
+}
 function chansFromSettings() {
   chans = (Array.isArray(S.notify_channels) ? S.notify_channels : []).map((c) => ({
     key: ++chanSeq, id: c.id || "", kind: c.kind || "", name: c.name || "", enabled: c.enabled !== false,
@@ -5746,13 +7041,14 @@ function chanInput(c, f, label, secret) {
 function chanCard(c) {
   const info = kindInfo(c.kind);
   const fields = h("div", { class: "chan-fields" }, chanInput(c, "name", t("n_name"), false));
-  if (info.url) fields.append(chanInput(c, "url", info.url, URL_IS_SECRET.has(c.kind)));
-  if (info.token) fields.append(chanInput(c, "token", info.token, true));
-  if (info.target) fields.append(chanInput(c, "target", info.target, false));
+  if (info.url) fields.append(chanInput(c, "url", chanFieldLabel(c.kind, "url"), URL_IS_SECRET.has(c.kind)));
+  if (info.token) fields.append(chanInput(c, "token", chanFieldLabel(c.kind, "token"), true));
+  if (info.target) fields.append(chanInput(c, "target", chanFieldLabel(c.kind, "target"), false));
   const res = h("span", { class: "res", "aria-live": "polite" });
   const testBtn = h("button", { type: "button", class: "btn sm", onclick: async () => {
     testBtn.disabled = true;
     res.className = "res muted";
+    res.title = "";
     res.textContent = t("n_testing");
     try {
       await api("/notify/test", jsonBody("POST", { channel: chanPayload(c) }));
@@ -5761,6 +7057,7 @@ function chanCard(c) {
     } catch (e) {
       res.className = "res err";
       res.textContent = t("n_test_fail", { msg: e.message });
+      res.title = e.detail && e.detail !== e.message ? e.detail : "";
     } finally { testBtn.disabled = false; }
   } }, icon("send", "sm"), t("n_test"));
   const card = h("div", { class: "chan" + (c.enabled ? "" : " offc") });
@@ -5769,7 +7066,7 @@ function chanCard(c) {
   card.append(
     h("div", { class: "chan-head" },
       icon("bell"),
-      h("span", { class: "kind", text: info.label }),
+      h("span", { class: "kind", text: kindLabel(c.kind) }),
       c.id ? null : h("span", { class: "tag warn", text: t("n_new") }),
       h("label", { class: "sw" }, h("span", { text: t("n_enabled") }), sw),
       h("button", { type: "button", class: "icon-btn", title: t("n_delete"), "aria-label": t("n_delete"), onclick: () => { chans = chans.filter((x) => x !== c); renderChannels(); updateDirty(); } }, icon("trash"))),
@@ -5882,6 +7179,7 @@ function relabelSettings(skipRows) {
   $("gcalReady").className = "tag " + (S.gcal_configured ? "ok" : "");
   $("gcalReady").textContent = t(S.gcal_configured ? "cal_ready" : "cal_notready");
   $("btnUseThisUrl").textContent = t("use_this_url", { url: location.origin });
+  $("f-public_url").placeholder = consoleUrl || "http://192.168.1.20:8787";
   renderHelper();
   updateDirty();
 }
@@ -5918,6 +7216,8 @@ async function saveSettings() {
     const d = await api("/settings", jsonBody("PUT", patch));
     S = d.settings || S;
     storagePath = d.storage_path || storagePath;
+    if ("console_url" in d) consoleUrl = d.console_url || "";
+    if ("console_ip_url" in d) consoleIpUrl = d.console_ip_url || "";
     populate();
     const srv = matchLang(S.language);
     if (srv) store.set("pca.srvlang", srv);
@@ -5966,12 +7266,13 @@ async function playPreview(params, statusEl, audioEl, what, buttons) {
   pvSeq.set(audioEl, seq);
   buttons.forEach((b) => { b.disabled = true; });
   statusEl.className = "pv-status";
+  statusEl.title = "";
   clear(statusEl).append(h("span", { class: "spin", style: "vertical-align:-3px;margin-right:8px" }), t("pv_preparing"));
   try {
     const res = await request(`${apiBase}/preview?${new URLSearchParams(params)}`);
     if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      throw new Error(d.error || `HTTP ${res.status}`);
+      const d = (await res.json().catch(() => null)) || {};
+      throw new ApiError(apiErrorText(d, res.status), res.status, d.error || "");
     }
     const blob = await res.blob();
     if (pvSeq.get(audioEl) !== seq) return;
@@ -5985,6 +7286,7 @@ async function playPreview(params, statusEl, audioEl, what, buttons) {
     if (pvSeq.get(audioEl) !== seq) return;
     statusEl.className = "pv-status err";
     statusEl.textContent = t("pv_failed", { msg: e.message });
+    statusEl.title = e.detail && e.detail !== e.message ? e.detail : "";
   } finally {
     if (pvSeq.get(audioEl) === seq) buttons.forEach((b) => { b.disabled = false; });
   }
@@ -6038,8 +7340,235 @@ function renderNote() {
 }
 
 // ---------------------------------------------------------------- system view
+// ---------------------------------------------------------------- console address
+// What other devices open (from the agent; "" = only this computer can open it).
+// A small QR encoder: byte mode, error correction level M, versions 1-10 (up to
+// 213 bytes), following the QR specification (ISO/IEC 18004) the way Project
+// Nayuki's reference implementation does. encode() returns rows of booleans
+// (true = dark) or null when the text is too long.
+const QR = (() => {
+  const ECC = [0, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26];
+  const BLOCKS = [0, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5];
+  const rawModules = (v) => {
+    let r = (16 * v + 128) * v + 64;
+    if (v >= 2) { const n = Math.floor(v / 7) + 2; r -= (25 * n - 10) * n - 55; if (v >= 7) r -= 36; }
+    return r;
+  };
+  const dataCodewords = (v) => Math.floor(rawModules(v) / 8) - ECC[v] * BLOCKS[v];
+  const gfMul = (x, y) => {
+    let z = 0;
+    for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >>> 7) * 0x11d); z ^= ((y >>> i) & 1) * x; }
+    return z;
+  };
+  function rsDivisor(degree) {
+    const r = new Array(degree).fill(0);
+    r[degree - 1] = 1;
+    let root = 1;
+    for (let i = 0; i < degree; i++) {
+      for (let j = 0; j < r.length; j++) {
+        r[j] = gfMul(r[j], root);
+        if (j + 1 < r.length) r[j] ^= r[j + 1];
+      }
+      root = gfMul(root, 0x02);
+    }
+    return r;
+  }
+  function rsRemainder(data, div) {
+    const r = div.map(() => 0);
+    for (const b of data) {
+      const f = b ^ r.shift();
+      r.push(0);
+      div.forEach((c, i) => { r[i] ^= gfMul(c, f); });
+    }
+    return r;
+  }
+  function encode(text) {
+    const bytes = Array.from(new TextEncoder().encode(text));
+    let v = 1;
+    while (v <= 10 && 4 + (v < 10 ? 8 : 16) + 8 * bytes.length > dataCodewords(v) * 8) v++;
+    if (v > 10) return null;
+    const bits = [];
+    const put = (val, n) => { for (let i = n - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
+    put(4, 4);
+    put(bytes.length, v < 10 ? 8 : 16);
+    for (const b of bytes) put(b, 8);
+    const dc = dataCodewords(v);
+    put(0, Math.min(4, dc * 8 - bits.length));
+    put(0, (8 - bits.length % 8) % 8);
+    const data = [];
+    for (let i = 0; i < bits.length; i += 8) data.push(bits.slice(i, i + 8).reduce((a, b) => (a << 1) | b, 0));
+    for (let pad = 0xec; data.length < dc; pad ^= 0xec ^ 0x11) data.push(pad);
+    const nBlocks = BLOCKS[v], eccLen = ECC[v], raw = Math.floor(rawModules(v) / 8);
+    const nShort = nBlocks - raw % nBlocks, shortLen = Math.floor(raw / nBlocks);
+    const div = rsDivisor(eccLen);
+    const blocks = [];
+    for (let i = 0, k = 0; i < nBlocks; i++) {
+      const dat = data.slice(k, k + shortLen - eccLen + (i < nShort ? 0 : 1));
+      k += dat.length;
+      const ecc = rsRemainder(dat, div);
+      if (i < nShort) dat.push(0);
+      blocks.push(dat.concat(ecc));
+    }
+    const words = [];
+    for (let i = 0; i < blocks[0].length; i++) {
+      blocks.forEach((b, j) => { if (i !== shortLen - eccLen || j >= nShort) words.push(b[i]); });
+    }
+    const size = v * 4 + 17;
+    const mod = Array.from({ length: size }, () => new Array(size).fill(false));
+    const fn = Array.from({ length: size }, () => new Array(size).fill(false));
+    const set = (x, y, dark) => { mod[y][x] = dark; fn[y][x] = true; };
+    for (let i = 0; i < size; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+    const finder = (cx, cy) => {
+      for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+        const x = cx + dx, y = cy + dy, d = Math.max(Math.abs(dx), Math.abs(dy));
+        if (x >= 0 && x < size && y >= 0 && y < size) set(x, y, d !== 2 && d !== 4);
+      }
+    };
+    finder(3, 3); finder(size - 4, 3); finder(3, size - 4);
+    if (v >= 2) {
+      const n = Math.floor(v / 7) + 2;
+      const step = Math.ceil((v * 4 + 4) / (n * 2 - 2)) * 2;
+      const pos = [6];
+      for (let p = size - 7; pos.length < n; p -= step) pos.splice(1, 0, p);
+      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+        if ((i === 0 && j === 0) || (i === 0 && j === n - 1) || (i === n - 1 && j === 0)) continue;
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) set(pos[i] + dx, pos[j] + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+      }
+    }
+    const format = (mask) => {
+      let r = mask;
+      for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537);
+      const b = ((mask << 10) | r) ^ 0x5412;
+      const bit = (i) => ((b >>> i) & 1) === 1;
+      for (let i = 0; i <= 5; i++) set(8, i, bit(i));
+      set(8, 7, bit(6)); set(8, 8, bit(7)); set(7, 8, bit(8));
+      for (let i = 9; i < 15; i++) set(14 - i, 8, bit(i));
+      for (let i = 0; i < 8; i++) set(size - 1 - i, 8, bit(i));
+      for (let i = 8; i < 15; i++) set(8, size - 15 + i, bit(i));
+      set(8, size - 8, true);
+    };
+    format(0);
+    if (v >= 7) {
+      let r = v;
+      for (let i = 0; i < 12; i++) r = (r << 1) ^ ((r >>> 11) * 0x1f25);
+      const b = (v << 12) | r;
+      for (let i = 0; i < 18; i++) {
+        const dark = ((b >>> i) & 1) === 1, a = size - 11 + i % 3, c = Math.floor(i / 3);
+        set(a, c, dark); set(c, a, dark);
+      }
+    }
+    let n = 0;
+    for (let right = size - 1; right >= 1; right -= 2) {
+      if (right === 6) right = 5;
+      for (let vert = 0; vert < size; vert++) for (let j = 0; j < 2; j++) {
+        const x = right - j, y = ((right + 1) & 2) === 0 ? size - 1 - vert : vert;
+        if (!fn[y][x] && n < words.length * 8) { mod[y][x] = ((words[n >>> 3] >>> (7 - (n & 7))) & 1) === 1; n++; }
+      }
+    }
+    const flip = (m) => {
+      for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+        let inv;
+        switch (m) {
+          case 0: inv = (x + y) % 2 === 0; break;
+          case 1: inv = y % 2 === 0; break;
+          case 2: inv = x % 3 === 0; break;
+          case 3: inv = (x + y) % 3 === 0; break;
+          case 4: inv = (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0; break;
+          case 5: inv = (x * y) % 2 + (x * y) % 3 === 0; break;
+          case 6: inv = ((x * y) % 2 + (x * y) % 3) % 2 === 0; break;
+          default: inv = ((x + y) % 2 + (x * y) % 3) % 2 === 0;
+        }
+        if (inv && !fn[y][x]) mod[y][x] = !mod[y][x];
+      }
+    };
+    const penalty = () => {
+      let p = 0, dark = 0;
+      for (let a = 0; a < size; a++) {
+        let runR = 1, runC = 1;
+        for (let b = 0; b < size; b++) {
+          if (mod[a][b]) dark++;
+          if (b > 0) {
+            if (mod[a][b] === mod[a][b - 1]) { runR++; p += runR === 5 ? 3 : runR > 5 ? 1 : 0; } else runR = 1;
+            if (mod[b][a] === mod[b - 1][a]) { runC++; p += runC === 5 ? 3 : runC > 5 ? 1 : 0; } else runC = 1;
+          }
+          if (a > 0 && b > 0 && mod[a][b] === mod[a - 1][b] && mod[a][b] === mod[a][b - 1] && mod[a][b] === mod[a - 1][b - 1]) p += 3;
+        }
+      }
+      return p + Math.floor(Math.abs(dark * 20 - size * size * 10) / (size * size)) * 10;
+    };
+    let best = 0, bestP = Infinity;
+    for (let m = 0; m < 8; m++) {
+      flip(m); format(m);
+      const p = penalty();
+      if (p < bestP) { best = m; bestP = p; }
+      flip(m);
+    }
+    flip(best); format(best);
+    return mod;
+  }
+  return { encode };
+})();
+function drawQr(canvas, text) {
+  const m = QR.encode(text);
+  const g = m && canvas.getContext("2d");
+  if (!g) return false;
+  const quiet = 4, n = m.length + quiet * 2, scale = Math.max(2, Math.ceil(300 / n));
+  canvas.width = canvas.height = n * scale;
+  g.fillStyle = "#fff";
+  g.fillRect(0, 0, canvas.width, canvas.height);
+  g.fillStyle = "#000";
+  m.forEach((row, y) => row.forEach((dark, x) => { if (dark) g.fillRect((x + quiet) * scale, (y + quiet) * scale, scale, scale); }));
+  return true;
+}
+let qrShown = null;
+let installEvt = null;   // the browser's install offer (Chrome, Edge), when it makes one
+const isLocalHost = (host) => host === "localhost" || host === "[::1]" || /^127\./.test(host);
+function renderConsoleUrl() {
+  const url = consoleUrl || (health && health.calls_ui_url) || "";
+  const localOnly = !url && isLocalHost(location.hostname);
+  const shown = url || location.origin + "/";
+  $("sysUrl").textContent = shown;
+  $("sysUrl").href = shown;
+  const canvas = $("sysQr");
+  const target = localOnly ? "" : shown;
+  if (target !== qrShown) {
+    qrShown = target;
+    canvas.hidden = !(target && drawQr(canvas, target));
+  }
+  const help = $("sysUrlHelp");
+  help.dataset.i18n = localOnly ? "cu_local" : "cu_qr_h";
+  help.textContent = t(help.dataset.i18n);
+  help.hidden = !localOnly && canvas.hidden;
+  // Under a .local address, the LAN IP too (some older Android phones cannot open .local names).
+  const viaName = /^https?:\/\/[^/:]+\.local(:\d+)?\//i.test(shown);
+  $("sysUrlIp").hidden = !(viaName && consoleIpUrl && consoleIpUrl !== shown);
+  $("sysUrlIpLink").textContent = consoleIpUrl;
+  $("sysUrlIpLink").href = consoleIpUrl || "#";
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  $("a2hs").hidden = standalone;
+  $("btnInstall").hidden = !installEvt;
+  $("a2hsHow").hidden = !!installEvt;
+}
+$("btnCopyUrl").addEventListener("click", () => copyWithToast($("sysUrl").textContent));
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installEvt = e;
+  renderConsoleUrl();
+});
+window.addEventListener("appinstalled", () => { installEvt = null; renderConsoleUrl(); });
+$("btnInstall").addEventListener("click", async () => {
+  const e = installEvt;
+  if (!e) return;
+  installEvt = null;
+  try { await e.prompt(); await e.userChoice; } catch (_) { /* dismissed */ }
+  renderConsoleUrl();
+});
+
 let health = null;
 let sysError = "";
+// Phone mode switches in progress / their last error code, by serial.
+const modeBusy = {};
+const modeErr = {};
 async function loadSystem() {
   const [dev, hl] = await Promise.allSettled([api("/devices"), fetch(withTok(healthUrl), { cache: "no-store" }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))]);
   if (dev.status === "fulfilled") {
@@ -6068,15 +7597,15 @@ function renderSystem() {
     const usb = devices.usb || {};
     const connected = devices.connected || [];
     const busy = new Map(live.calls.map((c) => [c.serial, c]));
+    const phoneInfo = new Map((devices.phones || []).map((p) => [p.serial, p]));
     box.append(h("h3", { style: "margin-top:0", text: t("sys_connected") }));
     if (!connected.length) box.append(sysItem("bad", "x", t("pill_none"), [t("ph_none")]));
-    for (const s of connected) {
-      const call = busy.get(s);
-      box.append(sysItem(call ? "warn" : "ok", call ? "phone" : "check", devName(s),
-        [call ? `${t("ph_incall")} · ${call.caller_id || t("hidden_number")}` : t("ph_ready"), devName(s) !== s ? s : ""]));
-    }
+    for (const s of connected) box.append(phoneItem(s, busy.get(s), phoneInfo.get(s)));
     for (const s of Object.keys(devices.labels || {})) {
-      if (!connected.includes(s)) box.append(sysItem("", "device", devName(s), [t("ph_seen"), s]));
+      if (connected.includes(s)) continue;
+      const seen = phoneInfo.get(s);
+      box.append(sysItem("", "device", devName(s), [t("ph_seen"),
+        seen && seen.last_seen_ms ? t("ph_last_seen", { time: fmtWhen(new Date(seen.last_seen_ms).toISOString()) }) : "", s]));
     }
     box.append(h("h3", { text: t("sys_usb") }));
     if (!usb.enabled) box.append(sysItem("", "info", t("usb_off"), [t("usb_off_d")]));
@@ -6121,6 +7650,7 @@ function renderSystem() {
   }
 
   // About
+  renderConsoleUrl();
   const kv = clear($("sysAbout"));
   const row = (label, value, mono) => { if (value != null && value !== "") kv.append(h("dt", { text: label }), h("dd", { class: mono ? "mono" : "", text: String(value) })); };
   if (health) {
@@ -6133,6 +7663,61 @@ function renderSystem() {
   $("sysRaw").textContent = health ? JSON.stringify(health, null, 2) : t("err_network");
 }
 $("btnSysRefresh").addEventListener("click", loadSystem);
+
+// One connected phone: its name, app version, what it does with calls now, and the
+// switch between "the AI answers" and "normal phone" (apps that report their mode).
+function phoneItem(s, call, ph) {
+  const normal = !!ph && ph.mode === "normal";
+  const inCall = !!call || !!(ph && ph.in_call);
+  const lines = [];
+  if (call) lines.push(`${t("ph_incall")} · ${call.caller_id || t("hidden_number")}`);
+  else if (inCall) lines.push(t("ph_incall"));
+  else lines.push(normal ? t("ph_mode_normal") : t("ph_ready"));
+  if (ph && ph.app_version) lines.push(t("ph_app", { v: ph.app_version }));
+  if (ph && !ph.supports_mode) lines.push(t("ph_need_update"));
+  if (modeErr[s] === "timeout") lines.push(t("pm_err_timeout"));
+  else if (modeErr[s]) lines.push(t("ph_mode_fail", { why: modeErrText(modeErr[s]) }));
+  if (devName(s) !== s) lines.push(s);
+  let action = null;
+  if (ph && ph.supports_mode) {
+    const switching = !!modeBusy[s];
+    action = h("button", {
+      type: "button", class: "btn sm" + (normal ? " primary" : ""), disabled: switching || inCall,
+      title: inCall ? t("ph_incall_wait") : "", onclick: () => switchPhoneMode(s, normal ? "ai" : "normal"),
+    }, switching ? h("span", { class: "spin", attr: { "aria-hidden": "true" } }) : null,
+    h("span", { text: switching ? t("ph_switching") : t(normal ? "ph_to_ai" : "ph_to_normal") }));
+  }
+  const name = devName(s) !== s ? devName(s) : (ph && ph.model) || s;
+  return sysItem(inCall ? "warn" : normal ? "" : "ok", inCall ? "phone" : normal ? "device" : "check", name, lines, action);
+}
+function modeErrText(code) {
+  const key = "pm_err_" + String(code || "").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  return I18N[lang][key] ?? I18N.en[key] ?? t("pm_err_failed");
+}
+async function switchPhoneMode(serial, target) {
+  if (modeBusy[serial]) return;
+  if (target === "normal") {
+    const yes = await ask({ title: t("ph_to_normal_t", { name: devName(serial) }), body: t("ph_to_normal_b"), ok: t("ph_to_normal"), danger: true });
+    if (!yes) return;
+  }
+  modeBusy[serial] = true;
+  delete modeErr[serial];
+  renderSystem();
+  try {
+    // The agent waits up to 15 s for the phone's answer.
+    const r = await api("/devices/" + encodeURIComponent(serial) + "/mode", jsonBody("POST", { mode: target }));
+    if (r.ok) toast(t(r.mode === "normal" ? "ph_now_normal" : "ph_now_ai"));
+    else modeErr[serial] = r.error_code || "failed";
+  } catch (e) {
+    if (e.status !== 401) modeErr[serial] = e.status === 0 ? "network" : ((e.data && e.data.error_code) || "failed");
+  }
+  // No answer within 15 s: the switch may still finish (the phone app can be restarted
+  // by it). Say so instead of "failed"; the list shows the mode the phone reports.
+  if (modeErr[serial] === "timeout") toast(t("pm_err_timeout"), false);
+  else if (modeErr[serial]) toast(t("ph_mode_fail", { why: modeErrText(modeErr[serial]) }), true);
+  delete modeBusy[serial];
+  await loadSystem();
+}
 
 // ---------------------------------------------------------------- keyboard + timers
 document.addEventListener("keydown", (e) => {

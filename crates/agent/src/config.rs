@@ -214,9 +214,11 @@ pub struct Settings {
     pub ivr_fail_wav: String,
     /// Goodbye WAV after max menu plays with no DTMF (or DTMF 0/#). Empty → Piper text.
     pub ivr_goodbye_wav: String,
-    /// Pre-recorded reject for unknown/private/hidden caller (no Gemini Live).
+    /// Hidden numbers when they are not answered: the owner's own recording.
+    /// Empty (default) = the "cannot be reached" announcement blocked numbers
+    /// get, in the AI's voice and the agent's language.
     pub ivr_reject_unknown_wav: String,
-    /// Spoken text paired with `ivr_reject_unknown_wav` (log / reply_text only).
+    /// Text of that recording (log / reply_text only); empty = the announcement's text.
     pub ivr_reject_unknown_text: String,
     /// Static menu body WAV (no greeting). Paired with time-of-day `ivr_greet_*.wav`.
     pub ivr_menu_body_wav: String,
@@ -324,6 +326,10 @@ pub struct Settings {
     pub notify_channels: Vec<crate::notify::Channel>,
     /// Address of the web console for links in notifications (`PUBLIC_URL`).
     pub public_url: String,
+    /// Name this computer answers to on the LAN, `<name>.local` (`MDNS_NAME`,
+    /// default `myna`; empty, `off`, `0`, `none` or `false` = off). Only while the
+    /// agent is open to the LAN.
+    pub mdns_name: String,
     /// OpenAI-compatible endpoint for the post-call summary (`SUMMARY_API_BASE`).
     pub summary_api_base: String,
     /// Model for the post-call summary (`SUMMARY_MODEL`).
@@ -384,11 +390,8 @@ impl Settings {
             ivr_fail_wav: env_or("IVR_FAIL_WAV", &asset_path("ivr_05_fail.wav")),
             // New short clone goodbye; set empty in env to disable WAV and use Piper text.
             ivr_goodbye_wav: env_or("IVR_GOODBYE_WAV", &asset_path("ivr_06_goodbye.wav")),
-            ivr_reject_unknown_wav: env_or("IVR_REJECT_UNKNOWN_WAV", &asset_path("ivr_reject_unknown.wav")),
-            ivr_reject_unknown_text: env_or(
-                "IVR_REJECT_UNKNOWN_TEXT",
-                "無法為此號碼提供服務。感謝您的來電。再見。",
-            ),
+            ivr_reject_unknown_wav: env_or("IVR_REJECT_UNKNOWN_WAV", ""),
+            ivr_reject_unknown_text: env_or("IVR_REJECT_UNKNOWN_TEXT", ""),
             ivr_menu_body_wav: env_or("IVR_MENU_BODY_WAV", &asset_path("ivr_menu_body.wav")),
             ivr_dtmf1_wait_wav: env_or("IVR_DTMF1_WAIT_WAV", &asset_path("ivr_dtmf1_wait.wav")),
             ivr_ai_hello_wav: env_or("IVR_AI_HELLO_WAV", &asset_path("ivr_ai_hello.wav")),
@@ -478,6 +481,7 @@ impl Settings {
             },
             notify_channels: Vec::new(),
             public_url: env_or("PUBLIC_URL", ""),
+            mdns_name: crate::mdns::parse_name_setting(&env_or("MDNS_NAME", "myna")),
             summary_api_base: env_or("SUMMARY_API_BASE", ""),
             summary_model: env_or("SUMMARY_MODEL", ""),
             gemini_api_key: env_or("GEMINI_API_KEY", "").into(),

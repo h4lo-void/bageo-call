@@ -6,7 +6,11 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 
-/** Auto-arm the silent AI call watcher after reboot (dedicated phone). */
+/**
+ * Start the service after a reboot, in both modes. In AI mode it answers calls; in
+ * normal phone mode it only keeps the connection to the agent (for the web console's
+ * mode switch) and leaves calls alone.
+ */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         val action = intent?.action ?: return
@@ -16,10 +20,6 @@ class BootReceiver : BroadcastReceiver() {
         ) {
             return
         }
-        if (!Prefs.isAiCallEnabled(context)) {
-            Log.i(TAG, "boot: AI call disabled; skip arm")
-            return
-        }
         val svc = Intent(context, CallAudioService::class.java).setAction(CallAudioService.ACTION_START)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -27,7 +27,7 @@ class BootReceiver : BroadcastReceiver() {
             } else {
                 context.startService(svc)
             }
-            Log.i(TAG, "boot: armed CallAudioService")
+            Log.i(TAG, "boot: started CallAudioService mode=${Prefs.phoneMode(context)}")
         } catch (e: Exception) {
             Log.e(TAG, "boot arm failed: ${e.message}")
         }

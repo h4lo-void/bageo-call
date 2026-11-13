@@ -46,6 +46,12 @@ Gemini, and serves the web console.
    a `platform-tools` folder next to the program.
 4. Your browser opens the web console at <http://localhost:8787/>. Leave the
    terminal window open: closing it stops the agent.
+5. The first time the agent answers, the script puts a **Myna Console**
+   shortcut on the desktop (macOS: a `.webloc` file; Linux: an app menu
+   entry, also copied to the desktop folder). Use it to open the console next
+   time. It is not made again while it exists; to skip it, start with
+   `-NoShortcut` (Windows) / `--no-shortcut`, or set `MYNA_NO_SHORTCUT=1`
+   in `.env`.
 
 ### From source
 
@@ -99,8 +105,8 @@ Details and rollback: [Phone setup](PHONE.md). In short:
 
 1. Copy `pixelcallai_uplink-<version>.zip` (from the release) to the phone and
    install it as a module in the Magisk or KernelSU app. Reboot.
-2. Open the **Myna** app and tap through its checklist until every
-   line says OK (permissions, default phone app, call screening, Do Not
+2. Open the **Myna** app and tap through its **Setup steps** until every
+   step says OK (permissions, default phone app, call screening, Do Not
    Disturb access, battery exemption). Allow root when asked.
 3. Turn on **USB debugging** (*Settings → About phone →* tap *Build number*
    seven times, then *System → Developer options → USB debugging*).
@@ -134,10 +140,18 @@ page usually says which piece is missing.
 every message goes to all of them. Per-service instructions:
 [Notifications](NOTIFICATIONS.md).
 
-For the links in notifications to open the call, set **Address of this
-console** to how *you* reach the computer (for example
-`http://192.168.1.20:8787`) and open the console to your network — see
+For the links in notifications to open the call, open the console to your
+network — see
 [Using it from other devices](SETTINGS.md#using-the-console-from-other-devices).
+The links then point to `http://myna.local:8787/` when the agent can answer
+that name, otherwise to the computer's network address; *System → About*
+shows which one, with a QR code. Set **Address of this console** only when you
+reach the computer some other way (a VPN name, a reverse proxy, Docker).
+
+On your phone, open *System* in the console on the computer: *About* shows the
+console's address with a QR code. Scan it, then add the page to the home
+screen (iPhone: *Share → Add to Home Screen*; Android: Chrome menu ⋮ → *Add to
+Home screen*). Next time, tap the Myna icon.
 
 ## 7. Keep it running
 

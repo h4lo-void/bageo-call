@@ -6,7 +6,9 @@
     <string name="notification_title">Myna</string>
     <string name="notification_text_armed">Prêt. En attente d\'appels ; le téléphone reste silencieux.</string>
     <string name="notification_text_in_call">L\'IA traite un appel.</string>
-    <string name="notification_text_disabled">La réponse par IA est en pause.</string>
+    <string name="notification_text_normal">Téléphone normal : les appels sonnent et vous y répondez vous-même.</string>
+    <string name="channel_service">Service Myna</string>
+    <string name="channel_info">Alertes Myna</string>
     <string name="uplink_missing_title">Le correspondant n\'entend pas l\'IA</string>
     <string name="uplink_missing_text">Le canal audio de l\'appel n\'est pas disponible. Vérifiez que le module Myna est installé et activé, puis redémarrez.</string>
 
@@ -15,33 +17,85 @@
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_compat">Testé sur Pixel 7, 7a, 8 et 9. D\'autres téléphones rootés peuvent fonctionner ; essayez à vos risques et périls.</string>
 
-    <!-- Master switch and service -->
-    <string name="ai_switch_title">Réponse par IA</string>
-    <string name="ai_switch_desc">Lorsque cette option est activée, les appels entrants sont pris en silence et traités par l\'IA qui tourne sur votre PC.</string>
+    <!-- Status card and the switch between AI mode and normal phone -->
+    <string name="st_ai_on">L\'IA répond à vos appels</string>
+    <string name="st_ai_on_d">L\'IA répond aux appels entrants. Le téléphone ne sonne pas.</string>
+    <string name="st_normal">Téléphone normal : les appels sonnent comme d\'habitude</string>
+    <string name="st_normal_d">L\'IA ne répond pas. Vous répondez vous-même, comme sur n\'importe quel téléphone. Activez l\'interrupteur ci-dessous pour que l\'IA réponde de nouveau.</string>
+    <string name="st_offline">Pas encore connecté à l\'ordinateur</string>
+    <string name="st_offline_d">Vérifiez que Myna tourne sur l\'ordinateur et que le téléphone est branché en USB (ou saisissez une adresse Wi-Fi dans Avancé). D\'ici là, l\'IA ne peut pas parler aux appelants.</string>
+    <string name="st_steps">Étapes de configuration restantes : %1$d</string>
+    <string name="st_steps_d">Terminez les étapes ci-dessous pour que l\'IA puisse répondre.</string>
+    <string name="st_service_off">Le service de réponse ne tourne pas</string>
+    <string name="st_service_off_d">Touchez Démarrer pour le relancer.</string>
+    <string name="btn_start">Démarrer</string>
+    <string name="st_switching">Changement en cours…</string>
+    <string name="st_switching_d">Cela prend en général quelques secondes.</string>
+    <string name="mode_switch_label">L\'IA répond à mes appels</string>
+    <string name="mode_switch_hint">Désactivez-le pour en faire un téléphone normal : les appels sonnent et vous répondez vous-même.</string>
+    <string name="confirm_ai_title">Laisser l\'IA répondre ?</string>
+    <string name="confirm_ai_body">Ce téléphone devient réservé à l\'IA : les appels ne sonnent plus et l\'IA décroche. Téléphone de Google est désactivé et Ne pas déranger est activé.</string>
+    <string name="confirm_normal_title">Repasser en téléphone normal ?</string>
+    <string name="confirm_normal_body">Les appels sonneront et vous y répondrez vous-même. L\'IA ne répondra plus sur ce téléphone.</string>
+    <string name="btn_switch">Changer</string>
+    <string name="mode_failed">Le changement n\'a pas abouti. %1$s Vous pouvez réessayer.</string>
+    <string name="mode_err_in_call">Un appel est en cours ; raccrochez d\'abord.</string>
+    <string name="mode_err_busy">Le changement précédent n\'est pas encore terminé.</string>
+    <string name="mode_err_no_root">Myna n\'a pas l\'accès root. Autorisez-le dans Magisk ou KernelSU.</string>
+    <string name="mode_err_save">Impossible d\'enregistrer le mode.</string>
+    <string name="mode_err_dialer">Impossible de changer l\'application Téléphone par défaut.</string>
+    <string name="mode_err_screening">Impossible de modifier le filtrage des appels.</string>
+    <string name="mode_err_dnd">Impossible de modifier Ne pas déranger.</string>
+    <string name="mode_err_volume">Impossible de régler le volume de la sonnerie.</string>
+    <string name="mode_err_other">Une erreur inattendue s\'est produite.</string>
+    <string name="btn_console">Ouvrir la console web</string>
+    <string name="msg_no_browser">Aucune application de ce téléphone ne peut ouvrir de pages web.</string>
+    <string name="st_legacy_off">Sur ce téléphone, l\'ancien interrupteur « Réponse par l\'IA » était désactivé. Depuis cette mise à jour, c\'est l\'interrupteur ci-dessus qui décide : l\'IA répond maintenant. Désactivez-le pour garder un téléphone normal.</string>
+
+    <!-- Setup steps (AI mode) -->
+    <string name="steps_header">Étapes de configuration (%1$d sur %2$d faites)</string>
+    <string name="status_ok">OK</string>
+    <string name="status_missing">Manquant</string>
+    <string name="status_check">À vérifier</string>
+    <string name="step_module_title">Installer le module Myna</string>
+    <string name="step_module_ok">Le module est actif.</string>
+    <string name="step_module_missing">Installez le module Myna dans Magisk ou KernelSU, puis redémarrez le téléphone.</string>
+    <string name="step_perms_title">Autoriser Myna à utiliser le téléphone et le micro</string>
+    <string name="step_perms_desc">Pour repérer les appels, décrocher et envoyer le son de l\'appel à l\'ordinateur.</string>
+    <string name="step_dialer_title">Faire de Myna l\'application Téléphone par défaut</string>
+    <string name="step_dialer_desc">Ainsi, aucun écran d\'appel ne s\'affiche pendant que l\'IA parle.</string>
+    <string name="step_screening_title">Faire de Myna l\'application de filtrage des appels</string>
+    <string name="step_screening_desc">Ainsi, les appels entrants ne sonnent pas.</string>
+    <string name="step_dnd_title">Autoriser Myna à gérer Ne pas déranger</string>
+    <string name="step_dnd_desc">Garde le téléphone silencieux pendant que l\'IA répond.</string>
+    <string name="step_battery_title">Empêcher Android de mettre Myna en veille</string>
+    <string name="step_battery_desc">Évite qu\'Android ferme Myna pour économiser la batterie et qu\'un appel soit manqué.</string>
+    <string name="btn_allow">Autoriser</string>
+    <string name="btn_set">Définir</string>
+    <string name="btn_open_settings">Ouvrir les paramètres</string>
+    <string name="grant_perms">Accordez les autorisations demandées, puis appuyez de nouveau sur Démarrer le service.</string>
+    <string name="msg_perm_settings">Certaines autorisations ne peuvent plus être demandées ici. Accordez-les dans les paramètres système de l\'application.</string>
+
+    <!-- Advanced: service -->
+    <string name="advanced">Avancé</string>
+    <string name="section_service">Service</string>
     <string name="service_running">Service : en cours d\'exécution</string>
     <string name="service_stopped">Service : arrêté</string>
     <string name="btn_start_service">Démarrer le service</string>
     <string name="btn_stop_service">Arrêter le service</string>
     <string name="msg_service_started">Service démarré.</string>
     <string name="msg_service_stopped">Service arrêté.</string>
-    <string name="grant_perms">Accordez les autorisations demandées, puis appuyez de nouveau sur Démarrer le service.</string>
 
-    <!-- Checklist -->
-    <string name="section_checklist">Liste de vérification</string>
-    <string name="status_ok">OK</string>
-    <string name="status_missing">Manquant</string>
-    <string name="status_check">À vérifier</string>
-
+    <!-- Advanced: detailed checks -->
+    <string name="section_details">Vérifications détaillées</string>
     <string name="check_priv_title">Installée comme application système privilégiée</string>
     <string name="check_priv_ok">Installée dans %1$s</string>
     <string name="check_priv_missing">Installée comme application normale (%1$s). Installez le module Myna dans Magisk ou KernelSU, puis redémarrez. Si vous avez aussi installé l\'APK à la main, désinstallez cette copie.</string>
-
     <string name="check_privperm_title">Autorisations privilégiées</string>
     <string name="check_privperm_desc">Accordées par le module au démarrage. Elles ne peuvent pas être accordées depuis cet écran.</string>
     <string name="perm_capture_audio_output">Capturer l\'audio de l\'appel</string>
     <string name="perm_modify_phone_state">Envoyer la voix de l\'IA dans l\'appel</string>
     <string name="perm_control_incall">Remplacer l\'écran d\'appel</string>
-
     <string name="section_runtime_perms">Autorisations de l\'application</string>
     <string name="perm_record_audio">Micro : enregistrer l\'audio de l\'appel</string>
     <string name="perm_read_phone_state">Téléphone : savoir quand un appel commence et se termine</string>
@@ -49,27 +103,12 @@
     <string name="perm_answer_calls">Répondre aux appels : décrocher et raccrocher automatiquement</string>
     <string name="perm_call_phone">Passer des appels : fonction de rappel</string>
     <string name="perm_post_notifications">Notifications : afficher la notification du service</string>
-    <string name="btn_grant">Accorder</string>
-    <string name="msg_perm_settings">Certaines autorisations ne peuvent plus être demandées ici. Accordez-les dans les paramètres système de l\'application.</string>
-
-    <string name="section_system_settings">Paramètres système</string>
-    <string name="check_dialer_title">Application Téléphone par défaut</string>
-    <string name="check_dialer_desc">Permet de répondre aux appels sans afficher d\'écran d\'appel.</string>
-    <string name="check_screening_title">Application de filtrage d\'appels</string>
-    <string name="check_screening_desc">Coupe la sonnerie des appels entrants.</string>
-    <string name="btn_set">Définir</string>
-    <string name="check_dnd_title">Accès à Ne pas déranger</string>
-    <string name="check_dnd_desc">Garde le téléphone silencieux pendant qu\'il sert de répondeur.</string>
-    <string name="btn_open_settings">Ouvrir les paramètres</string>
-    <string name="check_battery_title">Exemption d\'optimisation de la batterie</string>
-    <string name="check_battery_desc">Empêche Android de mettre le service en veille.</string>
-    <string name="btn_allow">Autoriser</string>
     <string name="check_uplink_title">Injection de la voix de l\'IA dans l\'appel</string>
     <string name="check_uplink_ok">Sortie audio de téléphonie détectée.</string>
     <string name="check_uplink_idle">Non visible pour le moment. Sur certains téléphones, elle n\'apparaît que pendant un appel ; l\'application vous avertit si l\'injection échoue.</string>
     <string name="check_uplink_missing">Nécessite le module : l\'autorisation MODIFY_PHONE_STATE est absente.</string>
 
-    <!-- Connection -->
+    <!-- Advanced: connection -->
     <string name="section_connection">Connexion</string>
     <string name="agent_url_label">Adresse de l\'agent</string>
     <string name="connection_hint_usb">USB (par défaut, recommandé) : gardez ws://127.0.0.1:8765. Le programme du PC redirige automatiquement ce port via le câble USB avec adb reverse.</string>
@@ -84,12 +123,19 @@
     <string name="test_running">Connexion…</string>
     <string name="test_ok">Connecté</string>
     <string name="test_failed">Échec : %1$s</string>
-    <string name="test_timeout">aucune réponse en 5 secondes</string>
-    <string name="test_closed">connexion fermée (code %1$d)</string>
+    <string name="test_fail_timeout">pas de réponse en 5 secondes</string>
+    <string name="test_fail_refused">l\'ordinateur a refusé la connexion. Myna tourne-t-il et le lien USB est-il prêt ?</string>
+    <string name="test_fail_host">adresse introuvable</string>
+    <string name="test_fail_network">adresse injoignable. Le téléphone et l\'ordinateur sont-ils sur le même réseau ?</string>
+    <string name="test_fail_auth">refusé : le jeton de l\'adresse manque ou est faux</string>
+    <string name="test_fail_tls">la connexion sécurisée (wss) a échoué</string>
+    <string name="test_fail_rejected">quelque chose a répondu, mais ce n\'est pas Myna ou la connexion a été refusée</string>
+    <string name="test_fail_other">connexion impossible</string>
+    <string name="test_details">Détails</string>
 
     <!-- About and safety -->
     <string name="section_about">À propos et sécurité</string>
-    <string name="about_dedicated">Utilisez un téléphone dédié. Le module remplace l\'application Téléphone, coupe la sonnerie et active Ne pas déranger : le téléphone ne peut plus servir de téléphone normal.</string>
-    <string name="about_rollback">Pour retrouver un téléphone normal, désactivez ou supprimez le module dans Magisk ou KernelSU, puis redémarrez. Si l\'application Téléphone de Google ou la sonnerie restent ensuite désactivées, suivez les étapes de restauration du README.</string>
+    <string name="about_dedicated">En mode IA, le module prend la place de l\'application Téléphone, coupe la sonnerie et active Ne pas déranger : mieux vaut un téléphone de secours. Pour l\'utiliser normalement un moment, désactivez l\'interrupteur en haut.</string>
+    <string name="about_rollback">Pour retirer complètement Myna, désactivez d\'abord l\'interrupteur en haut (retour au téléphone normal), puis désactivez ou supprimez le module dans Magisk ou KernelSU et redémarrez.</string>
     <string name="about_legal">Les lois sur l\'enregistrement des appels et sur l\'obligation d\'informer l\'interlocuteur qu\'il parle à une IA varient selon les pays. Leur respect relève de votre responsabilité.</string>
 </resources>
