@@ -923,6 +923,25 @@ fn is_foreign_number(caller_id: &str, home: &str) -> bool {
             .is_some_and(|rest| rest.len() >= 6 && !rest.starts_with(home))
 }
 
+/// The language the AI opens this call in when it is not the setting's: a caller
+/// from abroad (`+…`, not the SIM's country code — see [`is_intl_caller`]) whose
+/// country's main language is one the AI speaks ([`crate::locale::calling_code_lang`]).
+/// Local, hidden and other countries' numbers: `None` (the setting `language`).
+pub fn caller_opening_lang(caller_id: &str) -> Option<crate::locale::Lang> {
+    opening_lang_for(caller_id, &crate::locale::country_code(), crate::locale::current())
+}
+
+fn opening_lang_for(
+    caller_id: &str,
+    home: &str,
+    lang: crate::locale::Lang,
+) -> Option<crate::locale::Lang> {
+    if !is_foreign_number(caller_id, home) {
+        return None;
+    }
+    crate::locale::calling_code_lang(caller_id).filter(|l| *l != lang)
+}
+
 /// SIM countries (ISO 3166 alpha-2, lowercase) whose carriers play a recorded
 /// warning to us right after pickup on every call from abroad, with the country's
 /// calling code: Taiwan's (「這是國際電話，請注意小心詐騙」).
@@ -1008,13 +1027,11 @@ fn without_output_transcription(v: &Value) -> Value {
     c
 }
 
-fn persona_kick_client_content() -> String {
-    let p = crate::prompts::current();
-    crate::prompts::client_turn(if crate::locale::active().assistant {
-        &p.kick_open_assistant
-    } else {
-        &p.kick_open_persona
-    })
+/// The opening instruction; `opening` = a caller from abroad's language
+/// ([`caller_opening_lang`]), else the setting's.
+fn persona_kick_client_content(opening: Option<crate::locale::Lang>) -> String {
+    let active = crate::locale::active();
+    crate::prompts::client_turn(&crate::prompts::kick_open(active.lang, active.assistant, opening))
 }
 
 fn persona_wrap_up_client_content() -> String {
@@ -2749,6 +2766,9 @@ fn boost_downlink_for_phone(pcm: &[u8]) -> Vec<u8> {
 ///   international-call warning — persona mode then holds the opening for it (see
 ///   [`INTL_OPENING_HOLD`]). Asked at pickup, not at setup: a ring prewarm starts
 ///   before the phone knows which SIM the call came in on.
+/// - `opening_lang`: persona mode, a caller from abroad ([`caller_opening_lang`]):
+///   the opening line is said in that language, and the system prompt (stall
+///   session's too) gets the note to answer in the caller's language.
 ///
 /// On success, returns why the session ended so the agent can play goodbye WAV.
 pub async fn run_session(
@@ -2777,8 +2797,19 @@ pub async fn run_session(
     thinking_level: &str,
     intl_caller: IntlPromptCheck,
     appointments: Option<crate::appointments::ApptSession>,
+    opening_lang: Option<crate::locale::Lang>,
 ) -> Result<SessionEndReason> {
-    let stall = stall.filter(|_| persona);
+    let opening_lang = opening_lang.filter(|_| persona);
+    let with_caller_language = |prompt: &str| -> String {
+        match opening_lang {
+            Some(_) => crate::prompts::with_caller_language_note(prompt, crate::locale::current()),
+            None => prompt.to_string(),
+        }
+    };
+    let stall = stall.filter(|_| persona).map(|mut c| {
+        c.system_prompt = with_caller_language(c.system_prompt.as_str());
+        c
+    });
     // Appointments: persona calls only (setting `appointment_mode`).
     let appt = appointments.filter(|_| persona);
     let key = api_key.trim();
@@ -2819,7 +2850,7 @@ pub async fn run_session(
     let hangup_delay_ms = goodbye_hangup_delay_ms.clamp(200, 15_000);
     // The stored prompt stays as it is; appointments add their part after it
     // (with the current local time), and the tools.
-    let base_prompt = system_prompt.to_string();
+    let base_prompt = with_caller_language(system_prompt);
     let system_prompt = call_system_prompt(&base_prompt, appt.as_ref(), chrono::Local::now());
     let thinking = live_thinking_level(model, thinking_level);
     // Low-latency turn-taking: high EOU sensitivity + short silence.
@@ -2976,13 +3007,14 @@ pub async fn run_session(
         extract_owner_status(&system_prompt)
     };
     let greets_kick_text = if persona {
-        persona_kick_client_content()
+        persona_kick_client_content(opening_lang)
     } else {
         greets_kick_client_content_for(&owner_status)
     };
     info!(
-        "Gemini Live greets kick ready serial={serial} persona={persona} owner_status_chars={}",
-        owner_status.chars().count()
+        "Gemini Live greets kick ready serial={serial} persona={persona} owner_status_chars={} opening_lang={}",
+        owner_status.chars().count(),
+        opening_lang.map_or("-", |l| l.code())
     );
     // Max ~12s of 16 kHz mono s16le held until UnmuteAfterGreet (never inject mid-IVR).
     const PREBUF_CAP_BYTES: usize = 16_000 * 2 * 12;
@@ -6149,6 +6181,34 @@ mod tests {
     }
 
     #[test]
+    fn opening_follows_the_country_of_a_caller_from_abroad() {
+        use crate::locale::Lang;
+        // Taiwan SIM, Traditional Chinese.
+        assert_eq!(opening_lang_for("+12025550143", "886", Lang::ZhTw), Some(Lang::En));
+        assert_eq!(opening_lang_for(" +1 202-555-0143 ", "886", Lang::ZhTw), Some(Lang::En));
+        assert_eq!(opening_lang_for("+81312345678", "886", Lang::ZhTw), Some(Lang::Ja));
+        assert_eq!(opening_lang_for("+5215512345678", "886", Lang::ZhTw), Some(Lang::Es));
+        assert_eq!(opening_lang_for("+8613800138000", "886", Lang::ZhTw), Some(Lang::ZhCn));
+        // Hong Kong speaks the setting's language; a local, hidden or unlisted number.
+        assert_eq!(opening_lang_for("+85291234567", "886", Lang::ZhTw), None);
+        assert_eq!(opening_lang_for("+886912345678", "886", Lang::ZhTw), None);
+        assert_eq!(opening_lang_for("0912345678", "886", Lang::ZhTw), None);
+        assert_eq!(opening_lang_for("", "886", Lang::ZhTw), None);
+        assert_eq!(opening_lang_for("+84912345678", "886", Lang::ZhTw), None);
+        // English on a UK SIM: +44 is a local call, +1 already speaks English.
+        assert_eq!(opening_lang_for("+447700900123", "44", Lang::En), None);
+        assert_eq!(opening_lang_for("+12025550143", "44", Lang::En), None);
+        assert_eq!(opening_lang_for("+886912345678", "44", Lang::En), Some(Lang::ZhTw));
+        // A US SIM: all of +1 is local.
+        assert_eq!(opening_lang_for("+18765551234", "1", Lang::Es), None);
+        // No country code set: nothing counts as abroad.
+        assert_eq!(opening_lang_for("+81312345678", "", Lang::En), None);
+        // The running settings (unset in tests: Taiwan, zh-TW).
+        assert_eq!(caller_opening_lang("+33612345678"), Some(Lang::Fr));
+        assert_eq!(caller_opening_lang("+886912345678"), None);
+    }
+
+    #[test]
     fn carrier_prompt_wait_follows_the_sim_the_call_came_in_on() {
         // Taiwan SIM: callers from abroad get the warning, local ones do not.
         assert!(expects_carrier_intl_prompt("auto", false, "+12025550143", Some("tw")));
@@ -6377,7 +6437,9 @@ mod tests {
         assert!(t.contains("掰掰") && t.contains("改天再打"));
         let n: Value = serde_json::from_str(&persona_idle_nudge_client_content()).unwrap();
         let t = n.pointer("/clientContent/turns/0/parts/0/text").unwrap().as_str().unwrap();
-        assert!(t.contains("還在嗎") && t.contains("不要說掰掰"));
+        assert!(t.contains("還在不在") && t.contains("不要說掰掰"));
+        // In the language the caller speaks: a Vietnamese call got 「喂？請問還在嗎？」.
+        assert!(t.contains("對方講的語言") && !t.contains("還在嗎"));
         let r: Value = serde_json::from_str(&persona_resume_reply_client_content()).unwrap();
         let t = r.pointer("/clientContent/turns/0/parts/0/text").unwrap().as_str().unwrap();
         assert!(t.contains("不要重新打招呼"));
@@ -6391,13 +6453,36 @@ mod tests {
 
     #[test]
     fn persona_kick_and_wrap_up_payloads() {
-        let k: Value = serde_json::from_str(&persona_kick_client_content()).unwrap();
+        let k: Value = serde_json::from_str(&persona_kick_client_content(None)).unwrap();
         let t = k.pointer("/clientContent/turns/0/parts/0/text").unwrap().as_str().unwrap();
         assert!(t.contains("喂"));
         assert!(!t.contains("AI 助理"));
+        // A caller from the US: 「Hello?」, with the instruction still in Chinese.
+        let k: Value =
+            serde_json::from_str(&persona_kick_client_content(Some(crate::locale::Lang::En))).unwrap();
+        let t = k.pointer("/clientContent/turns/0/parts/0/text").unwrap().as_str().unwrap();
+        assert!(t.contains("「Hello?」") && t.contains("改用英文") && t.contains("國外號碼"), "{t}");
         let w: Value = serde_json::from_str(&persona_wrap_up_client_content()).unwrap();
         let t = w.pointer("/clientContent/turns/0/parts/0/text").unwrap().as_str().unwrap();
         assert!(t.contains("其他事情要忙") && t.contains("掰掰"));
+    }
+
+    #[test]
+    fn caller_goodbyes_in_vietnamese_thai_indonesian_end_the_call() {
+        for t in [
+            // Real calls that never hung up.
+            "Dạ vậy em để ở quầy lễ tân nhé. Cảm ơn anh, chào anh.",
+            "งั้นฝากไว้ที่นิติบุคคลนะคะ ขอบคุณค่ะ สวัสดีค่ะ",
+            "Baik, terima kasih, selamat siang.",
+        ] {
+            assert!(caller_wraps_up(t), "{t}");
+            assert!(looks_like_goodbye(t), "{t}");
+        }
+        // The same words open a call.
+        for t in ["Alo, chào anh.", "ฮัลโหล สวัสดีค่ะ", "Halo, selamat pagi."] {
+            assert!(!caller_wraps_up(t), "{t}");
+            assert!(!looks_like_goodbye(t), "{t}");
+        }
     }
 
     #[test]

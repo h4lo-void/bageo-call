@@ -107,6 +107,11 @@ cover:
 
 - **One short opening line, then wait.** The opening is generated while the
   phone still rings, so it must not depend on anything the caller said.
+  A call from abroad (a `+…` number whose country code is not *Country calling
+  code*) opens in the language of the caller's country when the AI speaks it —
+  "Hello?" for `+1` or `+44`, 「もしもし？」 for `+81` — and that call's prompt
+  gets one extra line telling the AI to answer in the caller's language. The
+  rest of your prompt is used as written.
 - **Short spoken turns.** One or two sentences. Long turns feel slow on a phone
   line and are hard to interrupt.
 - **Never make the caller wait.** There are no tools behind the voice. An AI

@@ -164,6 +164,63 @@ pub fn country_code() -> String {
         .collect()
 }
 
+/// Main language of a country, by calling code, for the countries whose
+/// language the AI speaks: a call from there opens in it (see
+/// `gemini_live::caller_opening_lang`).
+const CALLING_CODE_LANGS: &[(&str, Lang)] = &[
+    // US / Canada, UK, Australia, New Zealand, Ireland
+    ("1", Lang::En),
+    ("44", Lang::En),
+    ("61", Lang::En),
+    ("64", Lang::En),
+    ("353", Lang::En),
+    ("81", Lang::Ja),
+    ("82", Lang::Ko),
+    // Spain, Mexico, Argentina, Colombia, Chile, Peru, Venezuela
+    ("34", Lang::Es),
+    ("52", Lang::Es),
+    ("54", Lang::Es),
+    ("57", Lang::Es),
+    ("56", Lang::Es),
+    ("51", Lang::Es),
+    ("58", Lang::Es),
+    // France, Belgium
+    ("33", Lang::Fr),
+    ("32", Lang::Fr),
+    // Germany, Austria, Switzerland
+    ("49", Lang::De),
+    ("43", Lang::De),
+    ("41", Lang::De),
+    // Brazil, Portugal
+    ("55", Lang::Pt),
+    ("351", Lang::Pt),
+    ("86", Lang::ZhCn),
+    // Taiwan, Hong Kong, Macau
+    ("886", Lang::ZhTw),
+    ("852", Lang::ZhTw),
+    ("853", Lang::ZhTw),
+];
+
+/// The language of the country an international number (`+…`) belongs to,
+/// when it is one the AI speaks. Unknown country or no `+`: `None`.
+pub fn calling_code_lang(number: &str) -> Option<Lang> {
+    let n: String = number
+        .chars()
+        .filter(|c| c.is_ascii_digit() || *c == '+')
+        .collect();
+    longest_code_match(n.strip_prefix('+')?, CALLING_CODE_LANGS)
+}
+
+/// The entry with the longest calling code that starts `digits`: a `+1xxx`
+/// entry wins over `+1`, and `+351` / `+353` never fall back to a shorter code.
+fn longest_code_match(digits: &str, table: &[(&str, Lang)]) -> Option<Lang> {
+    table
+        .iter()
+        .filter(|&&(code, _)| !code.is_empty() && digits.starts_with(code))
+        .max_by_key(|&&(code, _)| code.len())
+        .map(|&(_, lang)| lang)
+}
+
 /// A line that exists in Chinese and English only (fallback summaries, notes
 /// for the summary model): Chinese for the two Chinese settings, English for
 /// every other language.
@@ -1981,7 +2038,11 @@ fn phrase_near_end(words: &[String], phrase: &str, slack: usize) -> bool {
 }
 
 /// Words that turn a following goodbye phrase into something else.
-const NEGATIONS: &[&str] = &["no", "not", "never", "nunca", "pas", "nicht", "nie", "não", "nao"];
+const NEGATIONS: &[&str] = &[
+    "no", "not", "never", "nunca", "pas", "nicht", "nie", "não", "nao",
+    // Vietnamese, Indonesian ("đừng tạm biệt vội", "jangan dadah dulu")
+    "không", "khong", "đừng", "chưa", "chẳng", "jangan", "tidak", "tak", "belum", "bukan",
+];
 
 /// `marker` sits within `slack` characters of the end of a text without spaces.
 fn run_near_end(compact: &str, marker: &str, slack: usize) -> bool {
@@ -2010,11 +2071,198 @@ fn is_question(text: &str) -> bool {
     t.ends_with('?') || t.ends_with('？') || t.ends_with("か。") || t.ends_with("까요")
 }
 
+// Goodbyes of callers who speak a language the AI has no phrase set for:
+// Vietnamese, Thai, Indonesian. [`ends_with_farewell`] checks them next to the
+// nine languages' own lists.
+
+/// Vietnamese and Indonesian goodbyes, whole words near the end. Vietnamese
+/// also without its tone marks: speech-to-text sometimes drops them.
+const EXTRA_WORD_FAREWELLS: &[&str] = &[
+    "tạm biệt", "tam biet", "hẹn gặp lại", "hen gap lai", "chào nhé", "chao nhe",
+    "sampai jumpa", "sampai ketemu", "selamat tinggal", "dadah", "daah",
+];
+
+/// A goodbye that also opens calls: "chào anh", "selamat pagi", "sawasdee ka".
+/// It counts only as the very last words, and only after a closing cue earlier in
+/// the same text ("Cảm ơn anh, chào anh.") or with a word after it that only a
+/// goodbye has ("chào anh nhé") — so a caller's "Alo, chào anh." at the start of
+/// a call is no goodbye.
+struct GreetingBye {
+    heads: &'static [&'static str],
+    /// Words that may follow it (whom it is said to, polite particles), at most
+    /// [`GREETING_BYE_TAIL`] of them.
+    tail: &'static [&'static str],
+    /// Words after it that make it a goodbye by themselves.
+    closing_tail: &'static [&'static str],
+    /// Words earlier in the text that mark the end of a call.
+    cues: &'static [&'static str],
+}
+
+const GREETING_BYE_TAIL: usize = 3;
+
+const GREETING_BYES: &[GreetingBye] = &[
+    // Vietnamese: "Cảm ơn anh, chào anh." "Thôi chào em nhé." "Cảm ơn, chào."
+    GreetingBye {
+        heads: &["chào", "chao"],
+        tail: &[
+            "anh", "chị", "chi", "em", "bạn", "ban", "cô", "co", "chú", "chu", "ông", "ong", "bà",
+            "ba", "cháu", "chau", "con", "cả", "ca", "nhà", "mọi", "moi", "người", "nguoi", "ạ", "a",
+            "nhé", "nhe", "nhá", "nha",
+        ],
+        closing_tail: &["nhé", "nhe", "nhá", "nha"],
+        cues: &[
+            "cảm ơn", "cám ơn", "cam on", "thôi", "thoi", "nhé", "nhá", "ok", "oke", "okay", "thanks",
+            "thank you",
+        ],
+    },
+    // Indonesian: "Baik, terima kasih, selamat siang."
+    GreetingBye {
+        heads: &["selamat pagi", "selamat siang", "selamat sore", "selamat malam"],
+        tail: &["ya", "pak", "bu", "bapak", "ibu", "mas", "mbak", "kak", "semua"],
+        closing_tail: &[],
+        cues: &[
+            "terima kasih", "trima kasih", "makasih", "trims", "itu saja", "sudah dulu", "ya sudah",
+            "segitu dulu", "ok", "oke", "okay", "thanks", "thank you",
+        ],
+    },
+    // Thai as speech-to-text sometimes writes it, in Latin letters.
+    GreetingBye {
+        heads: &["sawasdee", "sawatdee", "sawadee", "sawaddee"],
+        tail: &["ka", "kha", "krub", "krab", "khrap", "krap", "kub", "na"],
+        closing_tail: &[],
+        cues: &[
+            "khob khun", "khob kun", "kob kun", "khop khun", "kop khun", "ok", "okay", "thanks",
+            "thank you",
+        ],
+    },
+];
+
+impl GreetingBye {
+    fn ends(&self, ws: &[String]) -> bool {
+        self.heads.iter().any(|head| {
+            let h = words(head);
+            if h.is_empty() || ws.len() < h.len() {
+                return false;
+            }
+            let last = ws.len() - h.len();
+            (last.saturating_sub(GREETING_BYE_TAIL)..=last).any(|i| {
+                let after = &ws[i + h.len()..];
+                ws[i..i + h.len()] == h[..]
+                    && !(i > 0 && NEGATIONS.contains(&ws[i - 1].as_str()))
+                    && after.iter().all(|w| self.tail.contains(&w.as_str()))
+                    && (after.iter().any(|w| self.closing_tail.contains(&w.as_str()))
+                        || self.cues.iter().any(|c| has_phrase(&ws[..i], c)))
+            })
+        })
+    }
+}
+
+/// `phrase` (space-separated words) appears anywhere in `ws`.
+fn has_phrase(ws: &[String], phrase: &str) -> bool {
+    let p = words(phrase);
+    !p.is_empty() && ws.windows(p.len()).any(|w| w == &p[..])
+}
+
+/// Thai goodbyes (Thai is written without spaces: matched in the squeezed text).
+const TH_FAREWELLS: &[&str] = &["ลาก่อน", "บ๊ายบาย", "บายบาย", "บ๊ายบ๊าย"];
+/// Thai "hello / goodbye" (สวัสดีค่ะ), also as Chinese speech-to-text writes it:
+/// a goodbye only after one of [`TH_CUES`] earlier in the text.
+const TH_GREETING_BYES: &[&str] = &["สวัสดี", "沙瓦迪卡", "薩瓦迪卡", "萨瓦迪卡"];
+const TH_CUES: &[&str] = &["ขอบคุณ", "แค่นี้", "ไปก่อน", "วางสาย", "โอเค", "ok", "thank", "謝謝", "谢谢"];
+/// Polite particles that end a Thai sentence; they do not count against the slack.
+const TH_PARTICLES: &[&str] = &["ครับ", "คับ", "ค่ะ", "คะ", "นะ", "จ้า", "จ้ะ", "ฮะ"];
+/// What may come right before a Thai goodbye inside one run of letters
+/// ("ขอบคุณค่ะลาก่อน"); anything else is part of another word ("ขอเวลาก่อน",
+/// "give me a moment first", holds "ลาก่อน").
+const TH_LEADS: &[&str] = &["ครับ", "คับ", "ค่ะ", "คะ", "นะ", "จ้า", "ขอ", "ขอตัว", "งั้น", "แล้ว", "โอเค"];
+const TH_NEGATIONS: &[&str] = &["อย่า", "อย่าเพิ่ง", "ไม่", "ไม่ต้อง", "ยังไม่"];
+
+/// Lowercase letters and digits only. Thai tone marks drop out, so spellings
+/// that differ only in them match.
+fn squeeze(text: &str) -> String {
+    text.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect()
+}
+
+/// [`squeeze`]d `text`, and where each of its runs between spaces or
+/// punctuation starts in it (byte offsets).
+fn squeeze_runs(text: &str) -> (String, Vec<usize>) {
+    let mut out = String::new();
+    let mut starts = Vec::new();
+    let mut new_run = true;
+    for c in text.to_lowercase().chars() {
+        if c.is_alphanumeric() {
+            if new_run {
+                starts.push(out.len());
+                new_run = false;
+            }
+            out.push(c);
+        } else if c.is_whitespace() || c.is_ascii_punctuation() || "，。！？、；：…「」『』（）".contains(c) {
+            new_run = true;
+        }
+    }
+    (out, starts)
+}
+
+fn ends_with_any(text: &str, list: &[&str]) -> bool {
+    list.iter().any(|w| {
+        let w = squeeze(w);
+        !w.is_empty() && text.ends_with(w.as_str())
+    })
+}
+
+/// A Thai goodbye within `slack_chars` letters of the end (particles aside).
+fn thai_farewell(text: &str, slack_chars: usize) -> bool {
+    let (all, starts) = squeeze_runs(text);
+    let mut t = all.as_str();
+    'trim: loop {
+        for p in TH_PARTICLES {
+            let p = squeeze(p);
+            if p.is_empty() {
+                continue;
+            }
+            if let Some(rest) = t.strip_suffix(p.as_str()) {
+                t = rest;
+                continue 'trim;
+            }
+        }
+        break;
+    }
+    let near_end = |marker: &str| -> Option<usize> {
+        let m = squeeze(marker);
+        if m.is_empty() {
+            return None;
+        }
+        t.rfind(m.as_str())
+            .filter(|&i| t[i + m.len()..].chars().count() <= slack_chars)
+    };
+    TH_FAREWELLS.iter().any(|&m| {
+        near_end(m).is_some_and(|i| {
+            let before = &t[..i];
+            !ends_with_any(before, TH_NEGATIONS)
+                && (i == 0 || starts.contains(&i) || ends_with_any(before, TH_LEADS))
+        })
+    }) || TH_GREETING_BYES.iter().any(|&m| {
+        near_end(m).is_some_and(|i| {
+            let before = &t[..i];
+            !ends_with_any(before, TH_NEGATIONS)
+                && TH_CUES.iter().any(|c| before.contains(squeeze(c).as_str()))
+        })
+    })
+}
+
+/// [`ends_with_farewell`] for Vietnamese, Thai and Indonesian.
+fn extra_farewell(text: &str, slack: usize) -> bool {
+    let ws = words(text);
+    EXTRA_WORD_FAREWELLS.iter().any(|m| phrase_near_end(&ws, m, slack))
+        || GREETING_BYES.iter().any(|g| g.ends(&ws))
+        || thai_farewell(text, slack * 2)
+}
+
 /// What was said ends on a goodbye, in any supported language other than
-/// Chinese (those rules live in `gemini_live`). `slack` = words that may follow
-/// it ("bye now", "goodbye then").
+/// Chinese (those rules live in `gemini_live`), or in Vietnamese, Thai or
+/// Indonesian. `slack` = words that may follow it ("bye now", "goodbye then").
 pub fn ends_with_farewell(text: &str, slack: usize) -> bool {
-    ends_on(text, |p| p.farewells, slack, slack * 2)
+    ends_on(text, |p| p.farewells, slack, slack * 2) || extra_farewell(text, slack)
 }
 
 /// The caller's words end the call: a goodbye or "that's all" at the end, and
@@ -2134,6 +2382,124 @@ mod tests {
         assert!(caller_wraps_up("Okay, that's all, thank you."));
         assert!(caller_wraps_up("以上です。"));
         assert!(!caller_wraps_up("Bye?"));
+    }
+
+    #[test]
+    fn vietnamese_goodbyes_count_only_at_the_end() {
+        for t in [
+            // A real call that never hung up.
+            "Dạ vậy em để ở quầy lễ tân nhé. Cảm ơn anh, chào anh.",
+            "Vâng, tạm biệt anh.",
+            "Thôi chào em nhé.",
+            "Ok cảm ơn, chào.",
+            "Dạ vâng, cảm ơn chị. Em chào chị ạ.",
+            "Hẹn gặp lại nhé.",
+            "Chào nhé.",
+            "Cam on anh, chao anh",
+        ] {
+            assert!(ends_with_farewell(t, 2), "{t}");
+            assert!(caller_wraps_up(t), "{t}");
+        }
+        for t in [
+            // Greetings at the start of a call.
+            "Alo, chào anh.",
+            "Dạ em chào anh ạ.",
+            "Chào anh, em gọi từ bên giao hàng về đơn hàng của anh.",
+            // Not at the end, negated, a question.
+            "Hôm qua em đã nói tạm biệt với anh ấy rồi mà anh ấy vẫn gọi lại hỏi về khoản vay.",
+            "Khoan đã, đừng tạm biệt vội.",
+            "Cảm ơn anh, chào anh?",
+        ] {
+            assert!(!caller_wraps_up(t), "{t}");
+        }
+    }
+
+    #[test]
+    fn thai_goodbyes_count_only_at_the_end() {
+        for t in [
+            // A real call that never hung up.
+            "งั้นฝากไว้ที่นิติบุคคลนะคะ ขอบคุณค่ะ สวัสดีค่ะ",
+            "โอเคครับ ลาก่อนครับ",
+            "ขอบคุณค่ะลาก่อนค่ะ",
+            "บ๊ายบาย",
+            "บายบายค่ะ",
+            "ขอบคุณครับ สวัสดีครับ",
+            "Khob khun ka, sawasdee ka.",
+        ] {
+            assert!(ends_with_farewell(t, 2), "{t}");
+            assert!(caller_wraps_up(t), "{t}");
+        }
+        for t in [
+            // Greetings at the start of a call.
+            "ฮัลโหล สวัสดีค่ะ",
+            "สวัสดีค่ะ ดิฉันโทรมาจากธนาคารนะคะ",
+            "Sawasdee ka.",
+            // "Give me a moment first": ลาก่อน inside another word.
+            "ขอเวลาก่อนนะคะ",
+            // "Don't say goodbye yet."
+            "อย่าเพิ่งลาก่อนนะ",
+            "อย่าเพิ่ง ลาก่อนนะ",
+        ] {
+            assert!(!caller_wraps_up(t), "{t}");
+        }
+    }
+
+    #[test]
+    fn indonesian_goodbyes_count_only_at_the_end() {
+        for t in [
+            "Baik, terima kasih, selamat siang.",
+            "Makasih ya, selamat malam, Bu.",
+            "Oke, sampai jumpa.",
+            "Ya sudah, sampai ketemu lagi ya.",
+            "Dadah!",
+            "Daah.",
+        ] {
+            assert!(ends_with_farewell(t, 2), "{t}");
+            assert!(caller_wraps_up(t), "{t}");
+        }
+        for t in [
+            // Greetings at the start of a call.
+            "Halo, selamat pagi.",
+            "Selamat siang, saya dari bank mau menawarkan pinjaman.",
+            // Not at the end, negated, a question.
+            "Kemarin saya sudah bilang sampai jumpa ke dia tapi dia telepon lagi soal pinjaman.",
+            "Jangan dadah dulu.",
+            "Terima kasih, selamat sore?",
+        ] {
+            assert!(!caller_wraps_up(t), "{t}");
+        }
+    }
+
+    #[test]
+    fn calling_codes_name_the_callers_language() {
+        assert_eq!(calling_code_lang("+1 202-555-0143"), Some(Lang::En));
+        assert_eq!(calling_code_lang("+447700900123"), Some(Lang::En));
+        assert_eq!(calling_code_lang("+353871234567"), Some(Lang::En));
+        assert_eq!(calling_code_lang("+351912345678"), Some(Lang::Pt));
+        assert_eq!(calling_code_lang("+5511912345678"), Some(Lang::Pt));
+        assert_eq!(calling_code_lang("+5215512345678"), Some(Lang::Es));
+        assert_eq!(calling_code_lang("+3225123456"), Some(Lang::Fr));
+        assert_eq!(calling_code_lang("+41441234567"), Some(Lang::De));
+        assert_eq!(calling_code_lang("+81312345678"), Some(Lang::Ja));
+        assert_eq!(calling_code_lang("+821012345678"), Some(Lang::Ko));
+        assert_eq!(calling_code_lang("+8613800138000"), Some(Lang::ZhCn));
+        assert_eq!(calling_code_lang("+886912345678"), Some(Lang::ZhTw));
+        assert_eq!(calling_code_lang("+85291234567"), Some(Lang::ZhTw));
+        assert_eq!(calling_code_lang("+85361234567"), Some(Lang::ZhTw));
+        // Not one of the languages (Vietnam, Luxembourg), or no country code.
+        assert_eq!(calling_code_lang("+84912345678"), None);
+        assert_eq!(calling_code_lang("+352621123456"), None);
+        assert_eq!(calling_code_lang("0912345678"), None);
+        assert_eq!(calling_code_lang(""), None);
+        // The longest code that starts the number wins.
+        let table = [("1", Lang::En), ("1787", Lang::Es), ("35", Lang::De), ("351", Lang::Pt)];
+        assert_eq!(longest_code_match("17875551234", &table), Some(Lang::Es));
+        assert_eq!(longest_code_match("12025550143", &table), Some(Lang::En));
+        assert_eq!(longest_code_match("351912345678", &table), Some(Lang::Pt));
+        assert_eq!(longest_code_match("353871234567", &table), Some(Lang::De));
+        for (code, _) in CALLING_CODE_LANGS {
+            assert!(!code.is_empty() && code.chars().all(|c| c.is_ascii_digit()), "{code}");
+        }
     }
 
     #[test]

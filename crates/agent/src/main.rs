@@ -5668,6 +5668,20 @@ fn start_gemini_session_core(
     } else {
         None
     };
+    // A caller from abroad hears the opening in their country's language (the ring
+    // prewarm generates it now, so it is decided from the caller ID alone).
+    let opening_lang = if persona {
+        gemini_live::caller_opening_lang(&cfg.caller_id)
+    } else {
+        None
+    };
+    if let Some(l) = opening_lang {
+        info!(
+            "caller from abroad serial={serial} caller={} → opening in {}",
+            cfg.caller_id,
+            l.code()
+        );
+    }
     let appointment_book = appointments.as_ref().map(|a| a.book.clone());
     let force_hangup = Arc::new(AtomicBool::new(false));
     let delivered_bytes = Arc::new(AtomicU64::new(0));
@@ -5737,6 +5751,7 @@ fn start_gemini_session_core(
                 &thinking_level,
                 intl_caller,
                 appointments,
+                opening_lang,
             )
             .await
         })
