@@ -1374,6 +1374,14 @@ fn mode_bad_request(code: &str, message: &str) -> Response {
         .into_response()
 }
 
+fn is_json_request(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.split(';').next().unwrap_or("").trim().eq_ignore_ascii_case("application/json"))
+        .unwrap_or(false)
+}
+
 /// Switch one phone between "the AI answers" and "normal phone".
 async fn device_mode(
     State(state): State<CallsState>,
@@ -1387,6 +1395,12 @@ async fn device_mode(
     }
     if !task_id_safe(&serial) {
         return mode_bad_request("bad_request", "invalid phone serial");
+    }
+    // Only JSON: a cross-site form or no-cors fetch cannot send that without a CORS
+    // preflight, which this server never answers, so other web pages cannot switch
+    // phones from a browser on the same network.
+    if !is_json_request(&headers) {
+        return mode_bad_request("bad_request", "Content-Type must be application/json");
     }
     let mode = match parse_mode_body(&body) {
         Ok(mode) => mode,
@@ -1525,6 +1539,18 @@ mod tests {
         let mut m = HeaderMap::new();
         m.insert(header::RANGE, range.parse().unwrap());
         m
+    }
+
+    #[test]
+    fn mode_switch_needs_a_json_content_type() {
+        let mut m = HeaderMap::new();
+        assert!(!is_json_request(&m));
+        m.insert(header::CONTENT_TYPE, "text/plain;charset=UTF-8".parse().unwrap());
+        assert!(!is_json_request(&m));
+        m.insert(header::CONTENT_TYPE, "application/json; charset=utf-8".parse().unwrap());
+        assert!(is_json_request(&m));
+        m.insert(header::CONTENT_TYPE, "Application/JSON".parse().unwrap());
+        assert!(is_json_request(&m));
     }
 
     #[test]

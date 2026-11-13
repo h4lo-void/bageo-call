@@ -33,7 +33,10 @@ case "$ID" in ''|*[!A-Za-z0-9-]*) ID=invalid ;; esac
 mkdir -p "$DIR" || exit 3
 if ! mkdir "$LOCK" 2>/dev/null; then
   OLD=$(cat "$LOCK/pid" 2>/dev/null)
-  if [ -n "$OLD" ] && kill -0 "$OLD" 2>/dev/null; then
+  # Still held only when that pid is alive and really is this script (after a reboot
+  # or a SIGKILL the pid may belong to something else; service.sh also clears the
+  # lock at boot).
+  if [ -n "$OLD" ] && kill -0 "$OLD" 2>/dev/null && grep -q apply_mode "/proc/$OLD/cmdline" 2>/dev/null; then
     exit 4
   fi
   rm -rf "$LOCK"
@@ -41,6 +44,12 @@ if ! mkdir "$LOCK" 2>/dev/null; then
 fi
 echo $$ > "$LOCK/pid"
 trap 'rm -rf "$LOCK"' EXIT
+
+# Leave the app's cgroup: with KernelSU the root shell stays in it, and Android kills
+# the whole cgroup when it stops the app. Best effort; ignored where not allowed.
+for cg in /sys/fs/cgroup/cgroup.procs /dev/cpuctl/cgroup.procs /dev/cpuset/cgroup.procs; do
+  [ -w "$cg" ] && echo $$ > "$cg" 2>/dev/null
+done
 
 if command -v timeout >/dev/null 2>&1; then T="timeout 15"; else T=""; fi
 # q: run quietly with a time limit; o: same, keep stdout.
@@ -103,6 +112,19 @@ other_ready() {
   d=$(dialer)
   [ -n "$d" ] && [ "$d" != "$PKG" ] && [ "$d" != "null" ]
 }
+# The phone app step failed: never leave the phone without a phone app. Go back to AI
+# mode (Myna is the phone app again and answers), then report the failure.
+dialer_fail() {
+  step dialer fail
+  note "revert=ai"
+  echo ai > "$DIR/mode"
+  apply_ai
+  rm -f "$DIR/pending"
+  note "error=dialer_failed"
+  note "finished=$(date +%s)"
+  note "done=1"
+  exit 1
+}
 
 apply_normal() {
   # 1. Myna no longer screens (silences) incoming calls.
@@ -137,9 +159,10 @@ apply_normal() {
   step mic ok
 
   # 5. Last, because Android may stop Myna when it loses the role: the phone app.
+  #    The new phone app takes the role over before Myna lets go, so the phone is
+  #    never without one; on any failure dialer_fail puts Myna back.
   pkgs=$(o pm list packages)
-  [ -n "$pkgs" ] || fail dialer dialer_failed
-  remove_holder android.app.role.DIALER "$PKG"
+  [ -n "$pkgs" ] || dialer_fail
   if echo "$pkgs" | grep -qx "package:$GD"; then
     ok=1
     q pm enable "$GD" || ok=0
@@ -147,13 +170,16 @@ apply_normal() {
     q pm enable "$GD/com.android.incallui.InCallActivity" || ok=0
     # Only in older Google Phone versions.
     q pm enable "$GD/com.android.incallui.LegacyInCallActivity"
+    [ "$ok" = 1 ] || dialer_fail
+    o pm list packages -d | grep -qx "package:$GD" && dialer_fail
+    # The DIALER role has one holder: adding Google Phone replaces Myna.
     add_holder android.app.role.DIALER "$GD"
     q telecom set-default-dialer "$GD"
-    [ "$ok" = 1 ] || fail dialer dialer_failed
-    until_ok google_ready || fail dialer dialer_failed
+    until_ok google_ready || dialer_fail
   else
-    # No Google Phone: Android falls back to the phone's own phone app.
-    until_ok other_ready || fail dialer dialer_failed
+    # No Google Phone: let go, and Android falls back to the phone's own phone app.
+    remove_holder android.app.role.DIALER "$PKG"
+    until_ok other_ready || dialer_fail
   fi
   step dialer ok
 }

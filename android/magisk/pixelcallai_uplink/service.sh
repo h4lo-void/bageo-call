@@ -19,6 +19,8 @@ chmod 755 "$MODDIR/inject" 2>/dev/null || true
 mkdir -p /data/local/tmp
 touch /data/local/tmp/pixelcallai_uplink.pcm
 chmod 666 /data/local/tmp/pixelcallai_uplink.pcm 2>/dev/null || true
+# No mode switch can be running this early: drop a lock left by a reboot mid-switch.
+rm -rf /data/adb/pixelcallai/apply.lock 2>/dev/null || true
 
 (
   i=0

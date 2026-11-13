@@ -335,7 +335,8 @@ object PhoneModeManager {
 
     private fun scriptRunning(): Boolean {
         val out = RootShell.run(
-            "p=\$(cat $LOCK_DIR/pid 2>/dev/null); [ -n \"\$p\" ] && kill -0 \"\$p\" 2>/dev/null && echo yes; true",
+            "p=\$(cat $LOCK_DIR/pid 2>/dev/null); [ -n \"\$p\" ] && kill -0 \"\$p\" 2>/dev/null && " +
+                "grep -q apply_mode /proc/\$p/cmdline 2>/dev/null && echo yes; true",
             5,
         )
         return out.text.trim() == "yes"
