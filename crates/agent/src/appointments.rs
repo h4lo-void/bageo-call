@@ -15,9 +15,15 @@
 //! - After the call [`create_task`] and [`after_summary`] write the task and
 //!   send the card, the text message or both; [`decide`] carries out the
 //!   owner's ✅ / ❌ (Telegram button or `POST /calls/api/tasks/{id}/…`).
+//! - A call from one of the test numbers (setting `appointment_test_numbers`)
+//!   takes appointments in `auto` mode on the demo calendar ([`DemoCal`],
+//!   `demo_calendar.json`), whatever `appointment_mode` says and never on Google
+//!   Calendar; its appointment remembers that ([`Appointment::calendar`]), so the
+//!   owner's decision and a voided event go to the same calendar.
 //!
 //! Times are the machine's local time (`TZ`), written `YYYY-MM-DDTHH:MM`.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -75,6 +81,8 @@ pub const DECLINED: &str = "declined";
 
 pub const CHECK: &str = "check_availability";
 pub const PROPOSE: &str = "propose_appointment";
+/// [`Appointment::calendar`] of an appointment on the demo calendar ([`DemoCal`]).
+pub const DEMO_CALENDAR: &str = "demo";
 
 /// How long a calendar check may take: the caller is waiting on the line.
 const CHECK_TIMEOUT: Duration = Duration::from_secs(8);
@@ -121,6 +129,10 @@ pub struct Appointment {
     /// property `bageo_call`): finds them again when an answer was lost.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub tag: String,
+    /// The calendar its events are in: empty = Google Calendar, [`DEMO_CALENDAR`]
+    /// = the demo calendar of a test number.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub calendar: String,
     /// A write to the calendar timed out: it may or may not be there (look it up by `tag`).
     #[serde(skip)]
     pub write_unsure: bool,
@@ -149,6 +161,9 @@ pub struct Earlier {
     /// The call's tag, for an event whose id never came back.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub tag: String,
+    /// The calendar it is in ([`Appointment::calendar`]).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub calendar: String,
 }
 
 impl Earlier {
@@ -159,6 +174,7 @@ impl Earlier {
             title: a.title.clone(),
             event_id: a.event_id.clone(),
             tag: a.tag.clone(),
+            calendar: a.calendar.clone(),
         }
     }
 }
@@ -242,7 +258,10 @@ impl Appointment {
             start: self.start.clone(),
             end: self.end.clone(),
             all_day: false,
-            google_event_id: if self.status == BOOKED || self.status == CONFIRMED {
+            // The demo calendar is not Google Calendar.
+            google_event_id: if (self.status == BOOKED || self.status == CONFIRMED)
+                && self.calendar != DEMO_CALENDAR
+            {
                 self.event_id.clone()
             } else {
                 String::new()
@@ -634,11 +653,12 @@ impl CalendarAccess {
     }
 }
 
-/// Where appointments are checked and written: Google Calendar, or (tests) a
-/// stand-in that counts what was written.
+/// Where appointments are checked and written: Google Calendar, the demo
+/// calendar of a test number, or (tests) a stand-in that counts what was written.
 #[derive(Clone, Debug)]
 enum Cal {
     Google(CalendarAccess),
+    Demo(DemoCal),
     #[cfg(test)]
     Fake(Arc<FakeCal>),
 }
@@ -648,9 +668,28 @@ impl Cal {
         CalendarAccess::from_settings(rt).map(Cal::Google)
     }
 
+    /// The calendar an appointment's events are in ([`Appointment::calendar`]):
+    /// the demo calendar, else Google Calendar when it is set up.
+    fn for_calendar(rt: &RuntimeSettings, calendar: &str) -> Option<Self> {
+        if calendar == DEMO_CALENDAR {
+            Some(Cal::Demo(DemoCal::from_settings(rt)))
+        } else {
+            Self::from_settings(rt)
+        }
+    }
+
+    /// What [`Appointment::calendar`] says for this calendar.
+    fn name(&self) -> &'static str {
+        match self {
+            Cal::Demo(_) => DEMO_CALENDAR,
+            _ => "",
+        }
+    }
+
     async fn is_free_except(&self, http: &Client, start: &str, end: &str, own_id: &str) -> Result<bool> {
         match self {
             Cal::Google(c) => c.is_free_except(http, start, end, own_id).await,
+            Cal::Demo(d) => d.is_free_except(start, end, own_id),
             #[cfg(test)]
             Cal::Fake(f) => f.is_free_except(start, end, own_id),
         }
@@ -659,6 +698,7 @@ impl Cal {
     async fn insert(&self, http: &Client, appt: &Appointment, caller_id: &str) -> Result<String> {
         match self {
             Cal::Google(c) => c.insert(http, appt, caller_id).await,
+            Cal::Demo(d) => d.insert(appt, caller_id),
             #[cfg(test)]
             Cal::Fake(f) => f.insert(appt).await,
         }
@@ -667,6 +707,7 @@ impl Cal {
     async fn move_to(&self, http: &Client, event_id: &str, appt: &Appointment) -> Result<()> {
         match self {
             Cal::Google(c) => c.move_to(http, event_id, appt).await,
+            Cal::Demo(d) => d.move_to(event_id, appt),
             #[cfg(test)]
             Cal::Fake(f) => f.move_to(event_id, appt).await,
         }
@@ -675,6 +716,7 @@ impl Cal {
     async fn delete(&self, http: &Client, event_id: &str) -> Result<()> {
         match self {
             Cal::Google(c) => c.delete(http, event_id).await,
+            Cal::Demo(d) => d.delete(event_id),
             #[cfg(test)]
             Cal::Fake(f) => f.delete(event_id),
         }
@@ -683,6 +725,7 @@ impl Cal {
     async fn find_tagged(&self, http: &Client, tag: &str) -> Result<Vec<String>> {
         match self {
             Cal::Google(c) => c.find_tagged(http, tag).await,
+            Cal::Demo(d) => d.find_tagged(tag),
             #[cfg(test)]
             Cal::Fake(f) => Ok(f.find_tagged(tag)),
         }
@@ -705,6 +748,160 @@ impl Cal {
             self.move_to(http, &id, appt).await?;
             Ok(id)
         }
+    }
+}
+
+/// The demo calendar test numbers book on (setting `appointment_test_numbers`):
+/// `demo_calendar.json` in the data folder, `{"busy": [[start, end], …],
+/// "events": [[id, start, end, tag, title], …]}` with local `YYYY-MM-DDTHH:MM`
+/// times. "busy" are other plans; "events" are what calls put in. Without the
+/// file, lunch (12:00–13:00) and the evening (19:00–21:00) of the 14 days from
+/// today are busy. Read and written whole on every use, one use at a time
+/// ([`DEMO_LOCK`], never held across an await).
+#[derive(Clone, Debug)]
+struct DemoCal {
+    path: PathBuf,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct DemoBook {
+    /// Other plans: (start, end).
+    #[serde(default)]
+    busy: Vec<(String, String)>,
+    /// (id, start, end, tag, title)
+    #[serde(default)]
+    events: Vec<(String, String, String, String, String)>,
+}
+
+/// One use of the demo calendar file at a time.
+static DEMO_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+const DEMO_FILE: &str = "demo_calendar.json";
+/// Days with the default busy times (today first).
+const DEMO_DAYS: i64 = 14;
+
+impl DemoCal {
+    /// `demo_calendar.json` in the data folder (`/data/calls` when unknown).
+    fn from_settings(rt: &RuntimeSettings) -> Self {
+        let dir = rt.calls_data_dir.trim();
+        let dir = if dir.is_empty() { "/data/calls" } else { dir };
+        Self {
+            path: PathBuf::from(dir).join(DEMO_FILE),
+        }
+    }
+
+    fn hold() -> std::sync::MutexGuard<'static, ()> {
+        DEMO_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Lunch and the evening busy on the 14 days from `today`.
+    fn default_book(today: chrono::NaiveDate) -> DemoBook {
+        let at = |day: chrono::NaiveDate, h: u32| day.and_hms_opt(h, 0, 0).map(stamp).unwrap_or_default();
+        let mut busy = Vec::new();
+        for d in 0..DEMO_DAYS {
+            let day = today + Span::days(d);
+            busy.push((at(day, 12), at(day, 13)));
+            busy.push((at(day, 19), at(day, 21)));
+        }
+        DemoBook {
+            busy,
+            events: Vec::new(),
+        }
+    }
+
+    /// The file as it is (the default when there is none). Under [`DEMO_LOCK`].
+    fn load(&self) -> Result<DemoBook> {
+        match std::fs::read_to_string(&self.path) {
+            Ok(text) => serde_json::from_str(&text)
+                .with_context(|| format!("demo calendar {} unreadable", self.path.display())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                Ok(Self::default_book(chrono::Local::now().naive_local().date()))
+            }
+            Err(e) => Err(e).with_context(|| format!("demo calendar {}", self.path.display())),
+        }
+    }
+
+    /// Write the whole file: a temporary file first, then renamed over it. Under [`DEMO_LOCK`].
+    fn save(&self, book: &DemoBook) -> Result<()> {
+        if let Some(dir) = self.path.parent() {
+            std::fs::create_dir_all(dir).with_context(|| format!("demo calendar folder {}", dir.display()))?;
+        }
+        let tmp = self.path.with_extension("json.tmp");
+        std::fs::write(&tmp, serde_json::to_vec_pretty(book)?)
+            .with_context(|| format!("demo calendar {}", tmp.display()))?;
+        std::fs::rename(&tmp, &self.path).with_context(|| format!("demo calendar {}", self.path.display()))
+    }
+
+    /// Read, change and write the file back.
+    fn change<T>(&self, f: impl FnOnce(&mut DemoBook) -> Result<T>) -> Result<T> {
+        let _held = Self::hold();
+        let mut book = self.load()?;
+        let out = f(&mut book)?;
+        self.save(&book)?;
+        Ok(out)
+    }
+
+    fn read(&self) -> Result<DemoBook> {
+        let _held = Self::hold();
+        self.load()
+    }
+
+    /// Nothing between `start` and `end` apart from the event `own_id`.
+    fn is_free_except(&self, start: &str, end: &str, own_id: &str) -> Result<bool> {
+        let book = self.read()?;
+        let clash = |s: &str, e: &str| s < end && start < e;
+        let others = book.busy.iter().any(|(s, e)| clash(s, e));
+        let written = book
+            .events
+            .iter()
+            .any(|(id, s, e, _, _)| id != own_id && clash(s, e));
+        Ok(!others && !written)
+    }
+
+    fn insert(&self, appt: &Appointment, caller_id: &str) -> Result<String> {
+        let id = format!("demo-{}", uuid::Uuid::new_v4());
+        let event = (
+            id.clone(),
+            appt.start.clone(),
+            appt.end.clone(),
+            appt.tag.clone(),
+            appt.calendar_title(caller_id),
+        );
+        self.change(|b| {
+            b.events.push(event);
+            Ok(())
+        })?;
+        Ok(id)
+    }
+
+    fn move_to(&self, event_id: &str, appt: &Appointment) -> Result<()> {
+        self.change(|b| {
+            let e = b
+                .events
+                .iter_mut()
+                .find(|e| e.0 == event_id)
+                .context("no such event in the demo calendar")?;
+            e.1 = appt.start.clone();
+            e.2 = appt.end.clone();
+            Ok(())
+        })
+    }
+
+    fn delete(&self, event_id: &str) -> Result<()> {
+        self.change(|b| {
+            b.events.retain(|e| e.0 != event_id);
+            Ok(())
+        })
+    }
+
+    fn find_tagged(&self, tag: &str) -> Result<Vec<String>> {
+        Ok(self
+            .read()?
+            .events
+            .into_iter()
+            .filter(|e| !tag.is_empty() && e.3 == tag)
+            .map(|e| e.0)
+            .collect())
     }
 }
 
@@ -826,8 +1023,17 @@ pub struct ApptSession {
 }
 
 impl ApptSession {
-    /// None when appointments are off.
+    /// None when appointments are off. A test number (setting
+    /// `appointment_test_numbers`) always gets `auto` on the demo calendar.
     pub fn for_call(rt: &RuntimeSettings, http: &Client, caller_id: &str) -> Option<Self> {
+        if rt.is_appointment_test_number(caller_id) {
+            let demo = DemoCal::from_settings(rt);
+            info!(
+                "appointment test number: auto mode on the demo calendar path={}",
+                demo.path.display()
+            );
+            return Some(Self::new(rt, http, caller_id, Mode::Auto, Some(Cal::Demo(demo))));
+        }
         let mode = Mode::parse(&rt.appointment_mode);
         if mode == Mode::Off {
             return None;
@@ -835,7 +1041,11 @@ impl ApptSession {
         let calendar = Cal::from_settings(rt);
         // Without calendar access nothing can be checked or booked: the owner decides.
         let mode = if calendar.is_none() { Mode::Confirm } else { mode };
-        Some(Self {
+        Some(Self::new(rt, http, caller_id, mode, calendar))
+    }
+
+    fn new(rt: &RuntimeSettings, http: &Client, caller_id: &str, mode: Mode, calendar: Option<Cal>) -> Self {
+        Self {
             mode,
             calendar,
             reply_by_text: rt.appointment_sms && sms_number(caller_id).is_some(),
@@ -843,7 +1053,7 @@ impl ApptSession {
             http: http.clone(),
             tag: uuid::Uuid::new_v4().to_string(),
             book: CallAppointments::new(),
-        })
+        }
     }
 
     pub fn can_check(&self) -> bool {
@@ -934,6 +1144,7 @@ impl ApptSession {
             mode: self.mode.as_str().to_string(),
             status: PENDING.to_string(),
             tag: self.tag.clone(),
+            calendar: self.calendar.as_ref().map_or("", Cal::name).to_string(),
             ..Default::default()
         };
         if let (Mode::Auto, Some(cal)) = (self.mode, &self.calendar) {
@@ -1566,7 +1777,20 @@ pub async fn decide(
     task_id: &str,
     confirm: bool,
 ) -> Result<(TaskRecord, String)> {
-    decide_with(Cal::from_settings(rt), http, rt, store, calls, control, task_id, confirm).await
+    let cal = cal_for_task(rt, store, task_id).await;
+    decide_with(cal, http, rt, store, calls, control, task_id, confirm).await
+}
+
+/// The calendar a task's appointment is in ([`Appointment::calendar`]): a test
+/// number's appointment stays on the demo calendar.
+async fn cal_for_task(rt: &RuntimeSettings, store: &TaskStore, task_id: &str) -> Option<Cal> {
+    let calendar = store
+        .get(task_id)
+        .await
+        .and_then(|t| t.appointment)
+        .map(|a| a.calendar)
+        .unwrap_or_default();
+    Cal::for_calendar(rt, &calendar)
 }
 
 /// [`decide`] for a decision made on the web console or through the API. When
@@ -1583,8 +1807,8 @@ pub async fn decide_from_web(
     task_id: &str,
     confirm: bool,
 ) -> Result<(TaskRecord, String)> {
-    let (task, text, acted) =
-        decide_inner(Cal::from_settings(rt), http, rt, store, calls, control, task_id, confirm).await?;
+    let cal = cal_for_task(rt, store, task_id).await;
+    let (task, text, acted) = decide_inner(cal, http, rt, store, calls, control, task_id, confirm).await?;
     if let Some(card) = card_to_clear(&rt.telegram_bot_token, task.appointment.as_ref(), acted) {
         let (http, token, reply, id) = (http.clone(), rt.telegram_bot_token.trim().to_string(), text.clone(), task.id.clone());
         tokio::spawn(async move {
@@ -1676,7 +1900,9 @@ async fn decide_inner(
                 Ok(id) => {
                     appt.replaced.retain(|e| e.event_id != id);
                     appt.event_id = id;
-                    lines.push(p.ap_cal_added.to_string());
+                    // The demo calendar is not Google Calendar: say only that it is booked.
+                    let added = if cal.name() == DEMO_CALENDAR { p.ap_booked } else { p.ap_cal_added };
+                    lines.push(added.to_string());
                     store.push_event(task_id, "gcal_event_created").await?;
                 }
                 Err(e) => {
@@ -1773,8 +1999,15 @@ async fn voided_ids(cal: &Cal, http: &Client, e: &Earlier) -> Result<Vec<String>
 /// After the call: delete the events of appointments that no longer stand (a
 /// sales / scam call, or the AI never really answered). Returns those that
 /// could not be deleted, for a line in the summary ([`void_failed_line`]).
+/// Each is deleted from the calendar it is in ([`Earlier::calendar`]).
 pub async fn delete_voided(http: &Client, rt: &RuntimeSettings, voided: &[Earlier]) -> Vec<Earlier> {
-    delete_voided_with(Cal::from_settings(rt), http, voided).await
+    let (demo, google): (Vec<Earlier>, Vec<Earlier>) =
+        voided.iter().cloned().partition(|e| e.calendar == DEMO_CALENDAR);
+    let mut failed = delete_voided_with(Cal::from_settings(rt), http, &google).await;
+    if !demo.is_empty() {
+        failed.extend(delete_voided_with(Cal::for_calendar(rt, DEMO_CALENDAR), http, &demo).await);
+    }
+    failed
 }
 
 async fn delete_voided_with(cal: Option<Cal>, http: &Client, voided: &[Earlier]) -> Vec<Earlier> {
@@ -1956,6 +2189,141 @@ mod tests {
         let s = ApptSession::for_call(&rt, &http, "").unwrap();
         assert_eq!((s.mode, s.can_check(), s.reply_by_text), (Mode::Auto, true, false));
         assert!(!format!("{:?}", s.calendar).contains("secret"));
+    }
+
+    /// Settings with a fresh data folder (the demo calendar's home), no Google
+    /// Calendar, no texts.
+    fn demo_settings() -> (PathBuf, RuntimeSettings) {
+        let root = std::env::temp_dir().join(format!("bageo-demo-cal-{}", uuid::Uuid::new_v4()));
+        let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        rt.calls_data_dir = root.to_string_lossy().to_string();
+        rt.gcal_client_id = String::new();
+        rt.gcal_client_secret = String::new();
+        rt.gcal_refresh_token = String::new();
+        rt.appointment_sms = false;
+        (root, rt)
+    }
+
+    #[test]
+    fn test_numbers_book_on_the_demo_calendar_whatever_the_mode() {
+        let http = Client::new();
+        let (root, mut rt) = demo_settings();
+        rt.appointment_mode = "off".into();
+        rt.appointment_test_numbers = vec!["+1 650 555 0100".into()];
+        // On the list: auto on the demo calendar, though appointments are off.
+        for caller in ["+16505550100", "16505550100", "+1 (650) 555-0100"] {
+            let s = ApptSession::for_call(&rt, &http, caller).unwrap();
+            assert_eq!((s.mode, s.can_check()), (Mode::Auto, true), "{caller}");
+            assert!(matches!(s.calendar, Some(Cal::Demo(_))), "{caller}");
+        }
+        // Not on the list: as before.
+        for caller in ["0912345678", "+16505550101", ""] {
+            assert!(ApptSession::for_call(&rt, &http, caller).is_none(), "{caller}");
+        }
+        // Google Calendar set up and "confirm": the test number still books on
+        // the demo calendar; everyone else gets what the setting says.
+        rt.appointment_mode = "confirm".into();
+        rt.gcal_client_id = "id.apps.example".into();
+        rt.gcal_client_secret = "secret-123456".into();
+        rt.gcal_refresh_token = "refresh-123456".into();
+        let s = ApptSession::for_call(&rt, &http, "+16505550100").unwrap();
+        assert_eq!((s.mode, s.can_check()), (Mode::Auto, true));
+        assert!(matches!(s.calendar, Some(Cal::Demo(_))));
+        let other = ApptSession::for_call(&rt, &http, "0912345678").unwrap();
+        assert_eq!(other.mode, Mode::Confirm);
+        assert!(matches!(other.calendar, Some(Cal::Google(_))));
+        // Nothing was written by making the sessions.
+        assert!(!root.exists());
+    }
+
+    #[test]
+    fn demo_calendar_has_lunch_and_evenings_busy_and_keeps_what_is_written() {
+        let (root, rt) = demo_settings();
+        let cal = DemoCal::from_settings(&rt);
+        assert_eq!(cal.path, root.join("demo_calendar.json"));
+        // No file yet: lunch and the evening are busy, the rest is free.
+        assert!(!cal.is_free_except(&later(1, 12), &later(1, 13), "").unwrap());
+        assert!(!cal.is_free_except(&later(1, 11), &later(1, 13), "").unwrap());
+        assert!(!cal.is_free_except(&later(3, 19), &later(3, 20), "").unwrap());
+        assert!(cal.is_free_except(&later(1, 10), &later(1, 11), "").unwrap());
+        assert!(cal.is_free_except(&later(1, 13), &later(1, 14), "").unwrap());
+        assert!(cal.is_free_except(&later(1, 21), &later(1, 22), "").unwrap());
+        // Reading writes nothing.
+        assert!(!root.exists());
+        let mut a = appt(&later(1, 10), &later(1, 11), "看房");
+        a.tag = "tag-demo".into();
+        let id = cal.insert(&a, "+16505550100").unwrap();
+        assert!(!cal.is_free_except(&later(1, 10), &later(1, 11), "").unwrap());
+        // Its own event does not clash with itself.
+        assert!(cal.is_free_except(&later(1, 10), &later(1, 11), &id).unwrap());
+        assert_eq!(cal.find_tagged("tag-demo").unwrap(), vec![id.clone()]);
+        assert!(cal.find_tagged("").unwrap().is_empty());
+        // Saved in the documented shape; another handle on the folder sees it.
+        let file: Value = serde_json::from_str(&std::fs::read_to_string(&cal.path).unwrap()).unwrap();
+        assert_eq!(file["busy"].as_array().unwrap().len(), 28);
+        assert_eq!(file["busy"][0], json!([later(0, 12), later(0, 13)]));
+        assert_eq!(file["events"], json!([[id.as_str(), later(1, 10), later(1, 11), "tag-demo", "看房"]]));
+        assert!(!cal.path.with_extension("json.tmp").exists());
+        let again = DemoCal::from_settings(&rt);
+        assert!(!again.is_free_except(&later(1, 10), &later(1, 11), "").unwrap());
+        // Moved, then deleted.
+        let b = appt(&later(1, 15), &later(1, 16), "看房");
+        again.move_to(&id, &b).unwrap();
+        assert!(again.is_free_except(&later(1, 10), &later(1, 11), "").unwrap());
+        assert!(!again.is_free_except(&later(1, 15), &later(1, 16), "").unwrap());
+        assert!(again.move_to("no-such-event", &b).is_err());
+        again.delete(&id).unwrap();
+        assert!(again.is_free_except(&later(1, 15), &later(1, 16), "").unwrap());
+        assert!(!again.is_free_except(&later(1, 12), &later(1, 13), "").unwrap());
+        // A file that is not the demo calendar is not overwritten.
+        std::fs::write(&cal.path, "not json").unwrap();
+        assert!(cal.is_free_except(&later(1, 10), &later(1, 11), "").is_err());
+        assert!(cal.insert(&a, "").is_err());
+        assert_eq!(std::fs::read_to_string(&cal.path).unwrap(), "not json");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn demo_appointments_are_decided_and_voided_on_the_demo_calendar() {
+        let http = Client::new();
+        let (root, mut rt) = demo_settings();
+        rt.appointment_mode = "off".into();
+        rt.appointment_test_numbers = vec!["+1 650 555 0100".into()];
+        let s = ApptSession::for_call(&rt, &http, "+16505550100").unwrap();
+        let check = ToolCall {
+            id: "c".into(),
+            name: CHECK.into(),
+            args: json!({ "start": later(2, 12) }),
+        };
+        assert_eq!(s.run_tool(&check).await, json!({ "free": false }));
+        assert_eq!(s.run_tool(&propose_call(&later(2, 10), &later(2, 11))).await, json!({ "status": "booked" }));
+        let booked = s.book.outcome().unwrap();
+        assert_eq!((booked.status.as_str(), booked.calendar.as_str()), (BOOKED, DEMO_CALENDAR));
+        assert!(booked.event_id.starts_with("demo-"), "{}", booked.event_id);
+        // The web console does not call it a Google Calendar event.
+        assert!(booked.calendar_event().google_event_id.is_empty());
+        let demo = DemoCal::from_settings(&rt);
+        assert!(!demo.is_free_except(&later(2, 10), &later(2, 11), "").unwrap());
+        // Voided after the call: deleted from the demo calendar.
+        let voided = all_events(&booked);
+        assert_eq!(voided[0].calendar, DEMO_CALENDAR);
+        assert!(delete_voided(&http, &rt, &voided).await.is_empty());
+        assert!(demo.is_free_except(&later(2, 10), &later(2, 11), "").unwrap());
+        // The owner's ✅ on a demo appointment writes to the demo calendar.
+        let tasks = TaskStore::new(root.join("tasks"));
+        let calls = CallStore::new(root.join("calls"), false, false, 30);
+        let mut a = appt(&later(3, 10), &later(3, 11), "看房");
+        a.calendar = DEMO_CALENDAR.into();
+        let t = tasks
+            .create(TaskRecord { id: String::new(), ..task_for("+16505550100", &a) })
+            .await
+            .unwrap();
+        let (done, _) = decide(&http, &rt, &tasks, &calls, None, &t.id, true).await.unwrap();
+        assert_eq!(done.status, TaskStatus::Fulfilled);
+        let event_id = done.appointment.as_ref().unwrap().event_id.clone();
+        assert!(event_id.starts_with("demo-"), "{event_id}");
+        assert!(!demo.is_free_except(&later(3, 10), &later(3, 11), "").unwrap());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
