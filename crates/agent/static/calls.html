@@ -7,7 +7,10 @@
 <meta name="theme-color" content="#0d7a6f" />
 <meta name="referrer" content="no-referrer" />
 <title>Myna</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230d7a6f'/%3E%3Cpath d='M11 8c1 0 2 2 2.6 3.4.3.8 0 1.6-.6 2.1l-1 .9c.9 2 2.6 3.7 4.6 4.6l.9-1c.5-.6 1.3-.9 2.1-.6C21 18 23 19 23 20v2c0 1.1-.9 2-2 2C14.4 24 8 17.6 8 11c0-1.1.9-2 2-2z' fill='white'/%3E%3C/svg%3E" />
+<link rel="icon" href="favicon.ico" sizes="32x32" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="apple-mobile-web-app-title" content="Myna" />
 <script>
 /* Theme before first paint: ?theme= > saved choice > system. */
 (function () {
@@ -285,6 +288,15 @@ audio{width:100%;height:42px;margin-top:10px;display:block}
 .item b{display:block;font-weight:600}
 .item .d{color:var(--muted);font-size:.87rem}
 .wide{grid-column:1/-1}
+.cu{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;padding-bottom:14px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+.cu .qr{width:148px;height:148px;image-rendering:pixelated;border-radius:8px;flex:0 0 auto}
+.cu .lbl{font-weight:600;margin-bottom:4px}
+.cu-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.cu-row a{font-size:1rem;word-break:break-all}
+.a2hs{margin-top:14px}
+.a2hs b{display:block}
+.a2hs ul{margin:6px 0 0;padding-left:20px}
+.a2hs .btn{margin-top:8px}
 
 /* ---------- toast + dialog ---------- */
 #toast{position:fixed;left:50%;top:16px;transform:translate(-50%,-200%);visibility:hidden;transition:transform .2s,visibility .2s;z-index:90;padding:10px 16px;border-radius:12px;background:var(--text);color:var(--bg);font-weight:600;max-width:calc(100vw - 24px);box-shadow:0 8px 24px rgba(0,0,0,.2)}
@@ -721,6 +733,9 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <input type="url" id="f-public_url" data-k="public_url" data-t="text" spellcheck="false" placeholder="http://192.168.1.20:8787" />
             <div class="help" data-i18n="f_public_url_h"></div>
             <button type="button" class="btn sm ghost" id="btnUseThisUrl" style="margin-top:4px;padding-left:0"></button></div>
+          <div class="field"><label for="f-mdns_name" data-i18n="f_mdns_name"></label>
+            <input type="text" id="f-mdns_name" data-k="mdns_name" data-t="text" spellcheck="false" autocapitalize="off" autocomplete="off" maxlength="63" placeholder="myna" style="max-width:16rem" />
+            <div class="help" data-i18n="f_mdns_name_h"></div></div>
         </div></div>
 
         <!-- Summary & calendar -->
@@ -807,6 +822,27 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
       </div>
       <div class="card pad wide">
         <h2><svg class="i"><use href="#i-info"/></svg><span data-i18n="about"></span></h2>
+        <div class="cu">
+          <canvas id="sysQr" class="qr" role="img" data-i18n-aria="cu_qr_alt" hidden></canvas>
+          <div class="grow">
+            <div class="lbl" data-i18n="cu_title"></div>
+            <div class="cu-row">
+              <a id="sysUrl" class="mono" target="_blank" rel="noopener"></a>
+              <button type="button" class="btn sm" id="btnCopyUrl"><svg class="i sm"><use href="#i-copy"/></svg><span data-i18n="cu_copy"></span></button>
+            </div>
+            <p class="help" id="sysUrlHelp"></p>
+            <p class="help" id="sysUrlIp" hidden><span data-i18n="cu_ip"></span> <a id="sysUrlIpLink" class="mono" target="_blank" rel="noopener"></a></p>
+            <div class="a2hs" id="a2hs">
+              <b data-i18n="a2hs_title"></b>
+              <button type="button" class="btn sm primary" id="btnInstall" hidden><svg class="i sm"><use href="#i-download"/></svg><span data-i18n="a2hs_install"></span></button>
+              <ul class="help" id="a2hsHow">
+                <li data-i18n="a2hs_ios"></li>
+                <li data-i18n="a2hs_android"></li>
+                <li data-i18n="a2hs_desktop"></li>
+              </ul>
+            </div>
+          </div>
+        </div>
         <dl class="kv" id="sysAbout"></dl>
         <details class="fold" style="margin-top:14px">
           <summary data-i18n="raw_health"></summary>
@@ -1205,7 +1241,7 @@ I18N["en"] = {
   hint_apprise: "The notify URL of your Apprise API server, e.g. http://host:8000/notify/KEY. A tag limits which of its services get the message.",
   hint_webhook: "Any URL that accepts a JSON POST with event, title, body and data. Handy for n8n, Home Assistant or your own scripts.",
   f_public_url: "Address of this console",
-  f_public_url_h: "Used for the links in notifications, e.g. http://192.168.1.20:8787. Empty = no links.",
+  f_public_url_h: "Used for the links in notifications, e.g. http://192.168.1.20:8787. Empty = automatic: the network name below (or this computer's network address) when the console is open to your network, no links otherwise. In Docker nothing is filled in automatically: set it yourself.",
   use_this_url: "Use the address of this page: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "After each call the AI writes a short summary. It uses your Gemini key, so there is normally nothing to set up here.",
@@ -1378,6 +1414,19 @@ I18N["en"] = {
   err_service_error: "The service reported a problem with the message.",
   err_network_error: "The service could not be reached.",
   err_send_failed: "Sending failed.",
+  f_mdns_name: "Network name",
+  f_mdns_name_h: "Phones and computers on the same network can open this console at http://<name>.local:8787. Works only when the console is open to your network. Letters, digits and hyphens. Empty = off.",
+  cu_title: "Console address",
+  cu_copy: "Copy",
+  cu_qr_h: "Scan the code with your phone's camera to open the console there.",
+  cu_local: "Only this computer can open this address. To open the console from your phone, open it to your network (AGENT_HOST=0.0.0.0, see the guide).",
+  cu_qr_alt: "QR code of the console address",
+  a2hs_title: "Add this page to your home screen. Next time, just tap the icon.",
+  a2hs_install: "Install",
+  a2hs_ios: "iPhone and iPad: Share → Add to Home Screen (Safari).",
+  a2hs_android: "Android: Chrome menu ⋮ → Add to Home screen.",
+  a2hs_desktop: "Computer: the install icon at the right of the address bar (Chrome, Edge).",
+  cu_ip: "Phones that cannot open .local addresses (some older Android phones) use:",
 };
 
 I18N["zh-TW"] = {
@@ -1719,7 +1768,7 @@ I18N["zh-TW"] = {
   hint_apprise: "你的 Apprise API 伺服器的通知網址，例如 http://host:8000/notify/KEY。標籤可以限定只傳給其中某些服務。",
   hint_webhook: "任何能接收 JSON POST 的網址，內容有 event、title、body 和 data。適合接 n8n、Home Assistant 或自己的程式。",
   f_public_url: "這個控制台的網址",
-  f_public_url_h: "通知裡的連結會用到，例如 http://192.168.1.20:8787。留空 = 通知不附連結。",
+  f_public_url_h: "通知裡的連結會用到，例如 http://192.168.1.20:8787。留空 = 自動：控制台對區網開放時，用下面的區網名稱（或這台電腦的區網 IP）；只有這台電腦能開時，通知不附連結。在 Docker 裡不會自動填，請自己設定。",
   use_this_url: "使用目前這個頁面的網址：{url}",
   // ---- settings: summary & calendar
   g_summary_d: "每通電話結束後，AI 會寫一段簡短的摘要。預設使用你的 Gemini 金鑰，通常不需要另外設定。",
@@ -1892,6 +1941,19 @@ I18N["zh-TW"] = {
   err_service_error: "服務說這則訊息有問題。",
   err_network_error: "連不上服務。",
   err_send_failed: "傳送失敗。",
+  f_mdns_name: "區網名稱",
+  f_mdns_name_h: "同一個網路裡的手機、電腦可以用 http://<名稱>.local:8787 打開這個控制台。控制台要對區網開放才有用。只能用英文字母、數字和連字號（-）。留空 = 關閉。",
+  cu_title: "控制台網址",
+  cu_copy: "複製",
+  cu_qr_h: "用手機相機掃這個 QR code，就能在手機上打開控制台。",
+  cu_local: "這個網址只有這台電腦能開。要用手機打開，請讓控制台對區網開放（AGENT_HOST=0.0.0.0，見說明文件）。",
+  cu_qr_alt: "控制台網址的 QR code",
+  a2hs_title: "把這個網頁加到主畫面，下次點圖示就打開。",
+  a2hs_install: "安裝",
+  a2hs_ios: "iPhone、iPad：Safari 的「分享」→「加入主畫面」。",
+  a2hs_android: "Android：Chrome 選單 ⋮ →「加到主畫面」。",
+  a2hs_desktop: "電腦：Chrome、Edge 網址列右邊的安裝圖示。",
+  cu_ip: "打不開 .local 網址的手機（有些舊的 Android）請用：",
 };
 
 I18N["zh-CN"] = {
@@ -2233,7 +2295,7 @@ I18N["zh-CN"] = {
   hint_apprise: "你的 Apprise API 服务器的通知地址，例如 http://host:8000/notify/KEY。标签可以限定只发给其中某些服务。",
   hint_webhook: "任何能接收 JSON POST 的地址，内容包含 event、title、body 和 data。适合对接 n8n、Home Assistant 或自己的脚本。",
   f_public_url: "这个控制台的地址",
-  f_public_url_h: "通知里的链接会用到，例如 http://192.168.1.20:8787。留空 = 通知不带链接。",
+  f_public_url_h: "通知里的链接会用到，例如 http://192.168.1.20:8787。留空 = 自动：控制台对局域网开放时，用下面的局域网名称（或这台电脑的局域网 IP）；只有这台电脑能打开时，通知不带链接。在 Docker 里不会自动填写，请自己设置。",
   use_this_url: "使用当前页面的地址：{url}",
   // ---- settings: summary & calendar
   g_summary_d: "每通电话结束后，AI 会写一段简短的摘要。默认使用你的 Gemini 密钥，通常不需要另外设置。",
@@ -2406,6 +2468,19 @@ I18N["zh-CN"] = {
   err_service_error: "服务说这条消息有问题。",
   err_network_error: "连不上服务。",
   err_send_failed: "发送失败。",
+  f_mdns_name: "局域网名称",
+  f_mdns_name_h: "同一网络里的手机、电脑可以用 http://<名称>.local:8787 打开这个控制台。控制台要对局域网开放才有用。只能用英文字母、数字和连字符（-）。留空 = 关闭。",
+  cu_title: "控制台地址",
+  cu_copy: "复制",
+  cu_qr_h: "用手机相机扫这个二维码，就能在手机上打开控制台。",
+  cu_local: "这个地址只有这台电脑能打开。要用手机打开，请让控制台对局域网开放（AGENT_HOST=0.0.0.0，见说明文档）。",
+  cu_qr_alt: "控制台地址的二维码",
+  a2hs_title: "把这个网页添加到主屏幕，下次点图标就能打开。",
+  a2hs_install: "安装",
+  a2hs_ios: "iPhone、iPad：Safari 的“分享”→“添加到主屏幕”。",
+  a2hs_android: "Android：Chrome 菜单 ⋮ →“添加到主屏幕”。",
+  a2hs_desktop: "电脑：Chrome、Edge 地址栏右侧的安装图标。",
+  cu_ip: "打不开 .local 地址的手机（有些旧的 Android）请用：",
 };
 
 I18N["ja"] = {
@@ -2747,7 +2822,7 @@ I18N["ja"] = {
   hint_apprise: "Apprise API サーバーの通知 URL です（例：http://host:8000/notify/KEY）。タグを指定すると、送信先のサービスを絞り込めます。",
   hint_webhook: "event、title、body、data を含む JSON の POST を受け取れる URL なら何でも使えます。n8n、Home Assistant、自作スクリプトなどに便利です。",
   f_public_url: "このコンソールのアドレス",
-  f_public_url_h: "通知に入れるリンクに使います（例：http://192.168.1.20:8787）。空欄 = リンクなし。",
+  f_public_url_h: "通知に入れるリンクに使います（例：http://192.168.1.20:8787）。空欄 = 自動：コンソールをネットワークに公開しているときは下のネットワーク名（またはこのPCのIPアドレス）、このPCでしか開けないときはリンクなし。Docker では自動で入らないので、自分で設定してください。",
   use_this_url: "このページのアドレスを使う：{url}",
   // ---- settings: summary & calendar
   g_summary_d: "通話が終わるたびに、AI が短い要約を書きます。Gemini のキーを使うので、通常ここで設定することはありません。",
@@ -2920,6 +2995,19 @@ I18N["ja"] = {
   err_service_error: "サービスがメッセージの問題を報告しました。",
   err_network_error: "サービスに接続できませんでした。",
   err_send_failed: "送信に失敗しました。",
+  f_mdns_name: "ネットワーク名",
+  f_mdns_name_h: "同じネットワークのスマホやPCから http://<名前>.local:8787 でこのコンソールを開けます。コンソールをネットワークに公開しているときだけ使えます。英字・数字・ハイフンのみ。空欄 = オフ。",
+  cu_title: "コンソールのアドレス",
+  cu_copy: "コピー",
+  cu_qr_h: "スマホのカメラでこのコードを読み取ると、スマホでコンソールが開きます。",
+  cu_local: "このアドレスはこのPCでしか開けません。スマホから開くには、コンソールをネットワークに公開してください（AGENT_HOST=0.0.0.0、ガイド参照）。",
+  cu_qr_alt: "コンソールのアドレスの QR コード",
+  a2hs_title: "このページをホーム画面に追加すると、次からはアイコンをタップするだけで開けます。",
+  a2hs_install: "インストール",
+  a2hs_ios: "iPhone・iPad：Safari の「共有」→「ホーム画面に追加」。",
+  a2hs_android: "Android：Chrome のメニュー ⋮ →「ホーム画面に追加」。",
+  a2hs_desktop: "パソコン：Chrome・Edge のアドレスバー右側にあるインストールのアイコン。",
+  cu_ip: ".local のアドレスを開けないスマホ（古い Android など）はこちら：",
 };
 
 I18N["ko"] = {
@@ -3261,7 +3349,7 @@ I18N["ko"] = {
   hint_apprise: "Apprise API 서버의 알림 URL입니다(예: http://host:8000/notify/KEY). 태그를 지정하면 일부 서비스로만 보낼 수 있습니다.",
   hint_webhook: "event, title, body, data가 담긴 JSON POST를 받을 수 있는 URL이면 됩니다. n8n, Home Assistant, 직접 만든 스크립트에 연결할 때 편리합니다.",
   f_public_url: "이 콘솔의 주소",
-  f_public_url_h: "알림에 넣는 링크에 사용합니다(예: http://192.168.1.20:8787). 비워 두면 링크를 넣지 않습니다.",
+  f_public_url_h: "알림에 넣는 링크에 사용합니다(예: http://192.168.1.20:8787). 비워 두면 자동: 콘솔이 네트워크에 열려 있으면 아래 네트워크 이름(또는 이 컴퓨터의 네트워크 주소), 이 컴퓨터에서만 열 수 있으면 링크를 넣지 않습니다. Docker에서는 자동으로 채워지지 않으니 직접 설정하세요.",
   use_this_url: "지금 이 페이지의 주소 사용: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "통화가 끝날 때마다 AI가 짧은 요약을 씁니다. Gemini 키를 사용하므로 보통은 따로 설정할 것이 없습니다.",
@@ -3434,6 +3522,19 @@ I18N["ko"] = {
   err_service_error: "서비스가 메시지에 문제가 있다고 알렸습니다.",
   err_network_error: "서비스에 연결할 수 없습니다.",
   err_send_failed: "보내지 못했습니다.",
+  f_mdns_name: "네트워크 이름",
+  f_mdns_name_h: "같은 네트워크의 휴대폰이나 컴퓨터에서 http://<이름>.local:8787 로 이 콘솔을 열 수 있습니다. 콘솔이 네트워크에 열려 있을 때만 됩니다. 영문자, 숫자, 하이픈(-)만 쓸 수 있습니다. 비워 두면 꺼짐.",
+  cu_title: "콘솔 주소",
+  cu_copy: "복사",
+  cu_qr_h: "휴대폰 카메라로 이 코드를 찍으면 휴대폰에서 콘솔이 열립니다.",
+  cu_local: "이 주소는 이 컴퓨터에서만 열 수 있습니다. 휴대폰에서 열려면 콘솔을 네트워크에 여세요(AGENT_HOST=0.0.0.0, 안내서 참고).",
+  cu_qr_alt: "콘솔 주소 QR 코드",
+  a2hs_title: "이 페이지를 홈 화면에 추가하면 다음부터는 아이콘만 누르면 열립니다.",
+  a2hs_install: "설치",
+  a2hs_ios: "iPhone·iPad: Safari의 공유 → 홈 화면에 추가.",
+  a2hs_android: "Android: Chrome 메뉴 ⋮ → 홈 화면에 추가.",
+  a2hs_desktop: "컴퓨터: Chrome·Edge 주소창 오른쪽의 설치 아이콘.",
+  cu_ip: ".local 주소를 열 수 없는 휴대폰(일부 오래된 Android)은 이 주소를 쓰세요:",
 };
 
 I18N["es"] = {
@@ -3775,7 +3876,7 @@ I18N["es"] = {
   hint_apprise: "La URL de notificación de tu servidor Apprise API, p. ej. http://host:8000/notify/KEY. Una etiqueta limita qué servicios reciben el mensaje.",
   hint_webhook: "Cualquier URL que acepte un POST en JSON con event, title, body y data. Útil para n8n, Home Assistant o tus propios scripts.",
   f_public_url: "Dirección de esta consola",
-  f_public_url_h: "Se usa para los enlaces de las notificaciones, p. ej. http://192.168.1.20:8787. Vacío = sin enlaces.",
+  f_public_url_h: "Se usa para los enlaces de las notificaciones, p. ej. http://192.168.1.20:8787. Vacío = automático: el nombre en la red de abajo (o la dirección de este equipo en la red) cuando la consola está abierta a tu red; si solo este equipo puede abrirla, sin enlaces. En Docker no se rellena solo: configúrala tú.",
   use_this_url: "Usar la dirección de esta página: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Después de cada llamada, la IA escribe un breve resumen. Usa tu clave de Gemini, así que normalmente no hay nada que configurar aquí.",
@@ -3948,6 +4049,19 @@ I18N["es"] = {
   err_service_error: "El servicio informó de un problema con el mensaje.",
   err_network_error: "No se pudo conectar con el servicio.",
   err_send_failed: "No se pudo enviar.",
+  f_mdns_name: "Nombre en la red",
+  f_mdns_name_h: "Los teléfonos y equipos de la misma red pueden abrir esta consola en http://<nombre>.local:8787. Solo funciona si la consola está abierta a tu red. Letras, números y guiones. Vacío = desactivado.",
+  cu_title: "Dirección de la consola",
+  cu_copy: "Copiar",
+  cu_qr_h: "Escanea el código con la cámara del teléfono para abrir la consola allí.",
+  cu_local: "Solo este equipo puede abrir esta dirección. Para abrir la consola desde el teléfono, ábrela a tu red (AGENT_HOST=0.0.0.0, consulta la guía).",
+  cu_qr_alt: "Código QR de la dirección de la consola",
+  a2hs_title: "Añade esta página a la pantalla de inicio. La próxima vez, solo toca el icono.",
+  a2hs_install: "Instalar",
+  a2hs_ios: "iPhone y iPad: Compartir → Añadir a pantalla de inicio (Safari).",
+  a2hs_android: "Android: menú ⋮ de Chrome → Añadir a pantalla de inicio.",
+  a2hs_desktop: "Ordenador: el icono de instalar a la derecha de la barra de direcciones (Chrome, Edge).",
+  cu_ip: "Teléfonos que no abren direcciones .local (algunos Android antiguos):",
 };
 
 I18N["fr"] = {
@@ -4289,7 +4403,7 @@ I18N["fr"] = {
   hint_apprise: "L'URL de notification de votre serveur Apprise API, ex. http://host:8000/notify/KEY. Une étiquette limite les services qui reçoivent le message.",
   hint_webhook: "N'importe quelle URL qui accepte un POST JSON contenant event, title, body et data. Pratique pour n8n, Home Assistant ou vos propres scripts.",
   f_public_url: "Adresse de cette console",
-  f_public_url_h: "Sert aux liens dans les notifications, ex. http://192.168.1.20:8787. Vide = pas de liens.",
+  f_public_url_h: "Sert aux liens dans les notifications, ex. http://192.168.1.20:8787. Vide = automatique : le nom sur le réseau ci-dessous (ou l'adresse de cet ordinateur sur le réseau) quand la console est ouverte à votre réseau ; sinon pas de liens. Dans Docker, rien n'est rempli automatiquement : indiquez-la vous-même.",
   use_this_url: "Utiliser l'adresse de cette page : {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Après chaque appel, l'IA rédige un court résumé. Elle utilise votre clé Gemini : en général, il n'y a rien à configurer ici.",
@@ -4462,6 +4576,19 @@ I18N["fr"] = {
   err_service_error: "Le service a signalé un problème avec le message.",
   err_network_error: "Impossible de joindre le service.",
   err_send_failed: "Échec de l'envoi.",
+  f_mdns_name: "Nom sur le réseau",
+  f_mdns_name_h: "Les téléphones et ordinateurs du même réseau peuvent ouvrir cette console sur http://<nom>.local:8787. Fonctionne seulement si la console est ouverte à votre réseau. Lettres, chiffres et tirets. Vide = désactivé.",
+  cu_title: "Adresse de la console",
+  cu_copy: "Copier",
+  cu_qr_h: "Scannez le code avec l'appareil photo du téléphone pour y ouvrir la console.",
+  cu_local: "Seul cet ordinateur peut ouvrir cette adresse. Pour ouvrir la console depuis votre téléphone, ouvrez-la à votre réseau (AGENT_HOST=0.0.0.0, voir le guide).",
+  cu_qr_alt: "QR code de l'adresse de la console",
+  a2hs_title: "Ajoutez cette page à l'écran d'accueil : la prochaine fois, touchez simplement l'icône.",
+  a2hs_install: "Installer",
+  a2hs_ios: "iPhone et iPad : Partager → Sur l'écran d'accueil (Safari).",
+  a2hs_android: "Android : menu ⋮ de Chrome → Ajouter à l'écran d'accueil.",
+  a2hs_desktop: "Ordinateur : l'icône d'installation à droite de la barre d'adresse (Chrome, Edge).",
+  cu_ip: "Téléphones qui n'ouvrent pas les adresses .local (certains anciens Android) :",
 };
 
 I18N["de"] = {
@@ -4803,7 +4930,7 @@ I18N["de"] = {
   hint_apprise: "Die Notify-URL deines Apprise-API-Servers, z. B. http://host:8000/notify/KEY. Ein Tag begrenzt, welche Dienste die Nachricht bekommen.",
   hint_webhook: "Jede URL, die einen JSON-POST mit event, title, body und data annimmt. Praktisch für n8n, Home Assistant oder eigene Skripte.",
   f_public_url: "Adresse dieser Konsole",
-  f_public_url_h: "Wird für die Links in Benachrichtigungen verwendet, z. B. http://192.168.1.20:8787. Leer = keine Links.",
+  f_public_url_h: "Wird für die Links in Benachrichtigungen verwendet, z. B. http://192.168.1.20:8787. Leer = automatisch: der Netzwerkname unten (oder die Netzwerkadresse dieses Computers), wenn die Konsole im Netzwerk erreichbar ist; sonst keine Links. In Docker wird nichts automatisch eingetragen: bitte selbst setzen.",
   use_this_url: "Adresse dieser Seite verwenden: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Nach jedem Anruf schreibt die KI eine kurze Zusammenfassung. Dafür wird dein Gemini-Schlüssel verwendet – normalerweise musst du hier nichts einrichten.",
@@ -4976,6 +5103,19 @@ I18N["de"] = {
   err_service_error: "Der Dienst meldet ein Problem mit der Nachricht.",
   err_network_error: "Der Dienst ist nicht erreichbar.",
   err_send_failed: "Senden fehlgeschlagen.",
+  f_mdns_name: "Netzwerkname",
+  f_mdns_name_h: "Handys und Computer im selben Netzwerk öffnen diese Konsole unter http://<Name>.local:8787. Funktioniert nur, wenn die Konsole im Netzwerk erreichbar ist. Buchstaben, Ziffern und Bindestriche. Leer = aus.",
+  cu_title: "Adresse der Konsole",
+  cu_copy: "Kopieren",
+  cu_qr_h: "Scannen Sie den Code mit der Handykamera, um die Konsole dort zu öffnen.",
+  cu_local: "Nur dieser Computer kann diese Adresse öffnen. Um die Konsole vom Handy aus zu öffnen, machen Sie sie im Netzwerk erreichbar (AGENT_HOST=0.0.0.0, siehe Anleitung).",
+  cu_qr_alt: "QR-Code der Konsolenadresse",
+  a2hs_title: "Legen Sie diese Seite auf den Startbildschirm. Beim nächsten Mal tippen Sie einfach auf das Symbol.",
+  a2hs_install: "Installieren",
+  a2hs_ios: "iPhone und iPad: Teilen → Zum Home-Bildschirm (Safari).",
+  a2hs_android: "Android: Chrome-Menü ⋮ → Zum Startbildschirm hinzufügen.",
+  a2hs_desktop: "Computer: das Installationssymbol rechts in der Adressleiste (Chrome, Edge).",
+  cu_ip: "Handys, die keine .local-Adressen öffnen (manche ältere Android-Geräte):",
 };
 
 I18N["pt"] = {
@@ -5317,7 +5457,7 @@ I18N["pt"] = {
   hint_apprise: "A URL de notificação do seu servidor Apprise API, ex.: http://host:8000/notify/KEY. Uma tag limita quais serviços recebem a mensagem.",
   hint_webhook: "Qualquer URL que aceite um POST em JSON com event, title, body e data. Útil para n8n, Home Assistant ou seus próprios scripts.",
   f_public_url: "Endereço deste console",
-  f_public_url_h: "Usado nos links das notificações, ex.: http://192.168.1.20:8787. Em branco = sem links.",
+  f_public_url_h: "Usado nos links das notificações, ex.: http://192.168.1.20:8787. Em branco = automático: o nome na rede abaixo (ou o endereço deste computador na rede) quando o console está aberto à sua rede; sem links quando só este computador consegue abri-lo. No Docker nada é preenchido automaticamente: defina você mesmo.",
   use_this_url: "Usar o endereço desta página: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Depois de cada chamada, a IA escreve um resumo curto. Ela usa a sua chave do Gemini, então normalmente não há nada para configurar aqui.",
@@ -5490,6 +5630,19 @@ I18N["pt"] = {
   err_service_error: "O serviço relatou um problema com a mensagem.",
   err_network_error: "Não foi possível conectar ao serviço.",
   err_send_failed: "Falha ao enviar.",
+  f_mdns_name: "Nome na rede",
+  f_mdns_name_h: "Celulares e computadores na mesma rede abrem este console em http://<nome>.local:8787. Só funciona com o console aberto à sua rede. Letras, números e hífens. Em branco = desligado.",
+  cu_title: "Endereço do console",
+  cu_copy: "Copiar",
+  cu_qr_h: "Aponte a câmera do celular para o código para abrir o console nele.",
+  cu_local: "Só este computador consegue abrir este endereço. Para abrir o console no celular, abra-o para a sua rede (AGENT_HOST=0.0.0.0, veja o guia).",
+  cu_qr_alt: "QR code do endereço do console",
+  a2hs_title: "Adicione esta página à tela inicial. Da próxima vez, é só tocar no ícone.",
+  a2hs_install: "Instalar",
+  a2hs_ios: "iPhone e iPad: Compartilhar → Adicionar à Tela de Início (Safari).",
+  a2hs_android: "Android: menu ⋮ do Chrome → Adicionar à tela inicial.",
+  a2hs_desktop: "Computador: o ícone de instalar à direita da barra de endereços (Chrome, Edge).",
+  cu_ip: "Celulares que não abrem endereços .local (alguns Android antigos):",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word
@@ -6414,6 +6567,8 @@ $("btnBlock").addEventListener("click", async () => {
 // ---------------------------------------------------------------- settings
 let S = null;            // settings as the agent last sent them
 let storagePath = "";
+let consoleUrl = "";     // the console's address for other devices ("" = this computer only)
+let consoleIpUrl = "";   // the same at the LAN IP, for phones that cannot open .local names
 const form = $("setForm");
 const fieldEls = () => Array.from(form.querySelectorAll("[data-k]"));
 
@@ -6424,6 +6579,8 @@ async function loadSettings() {
     const d = await api("/settings");
     S = d.settings || {};
     storagePath = d.storage_path || "";
+    consoleUrl = d.console_url || "";
+    consoleIpUrl = d.console_ip_url || "";
     $("setLoading").hidden = true;
     $("setGrid").hidden = false;
     populate();
@@ -6745,6 +6902,7 @@ function relabelSettings(skipRows) {
   $("gcalReady").className = "tag " + (S.gcal_configured ? "ok" : "");
   $("gcalReady").textContent = t(S.gcal_configured ? "cal_ready" : "cal_notready");
   $("btnUseThisUrl").textContent = t("use_this_url", { url: location.origin });
+  $("f-public_url").placeholder = consoleUrl || "http://192.168.1.20:8787";
   renderHelper();
   updateDirty();
 }
@@ -6781,6 +6939,8 @@ async function saveSettings() {
     const d = await api("/settings", jsonBody("PUT", patch));
     S = d.settings || S;
     storagePath = d.storage_path || storagePath;
+    if ("console_url" in d) consoleUrl = d.console_url || "";
+    if ("console_ip_url" in d) consoleIpUrl = d.console_ip_url || "";
     populate();
     const srv = matchLang(S.language);
     if (srv) store.set("pca.srvlang", srv);
@@ -6903,6 +7063,230 @@ function renderNote() {
 }
 
 // ---------------------------------------------------------------- system view
+// ---------------------------------------------------------------- console address
+// What other devices open (from the agent; "" = only this computer can open it).
+// A small QR encoder: byte mode, error correction level M, versions 1-10 (up to
+// 213 bytes), following the QR specification (ISO/IEC 18004) the way Project
+// Nayuki's reference implementation does. encode() returns rows of booleans
+// (true = dark) or null when the text is too long.
+const QR = (() => {
+  const ECC = [0, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26];
+  const BLOCKS = [0, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5];
+  const rawModules = (v) => {
+    let r = (16 * v + 128) * v + 64;
+    if (v >= 2) { const n = Math.floor(v / 7) + 2; r -= (25 * n - 10) * n - 55; if (v >= 7) r -= 36; }
+    return r;
+  };
+  const dataCodewords = (v) => Math.floor(rawModules(v) / 8) - ECC[v] * BLOCKS[v];
+  const gfMul = (x, y) => {
+    let z = 0;
+    for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >>> 7) * 0x11d); z ^= ((y >>> i) & 1) * x; }
+    return z;
+  };
+  function rsDivisor(degree) {
+    const r = new Array(degree).fill(0);
+    r[degree - 1] = 1;
+    let root = 1;
+    for (let i = 0; i < degree; i++) {
+      for (let j = 0; j < r.length; j++) {
+        r[j] = gfMul(r[j], root);
+        if (j + 1 < r.length) r[j] ^= r[j + 1];
+      }
+      root = gfMul(root, 0x02);
+    }
+    return r;
+  }
+  function rsRemainder(data, div) {
+    const r = div.map(() => 0);
+    for (const b of data) {
+      const f = b ^ r.shift();
+      r.push(0);
+      div.forEach((c, i) => { r[i] ^= gfMul(c, f); });
+    }
+    return r;
+  }
+  function encode(text) {
+    const bytes = Array.from(new TextEncoder().encode(text));
+    let v = 1;
+    while (v <= 10 && 4 + (v < 10 ? 8 : 16) + 8 * bytes.length > dataCodewords(v) * 8) v++;
+    if (v > 10) return null;
+    const bits = [];
+    const put = (val, n) => { for (let i = n - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
+    put(4, 4);
+    put(bytes.length, v < 10 ? 8 : 16);
+    for (const b of bytes) put(b, 8);
+    const dc = dataCodewords(v);
+    put(0, Math.min(4, dc * 8 - bits.length));
+    put(0, (8 - bits.length % 8) % 8);
+    const data = [];
+    for (let i = 0; i < bits.length; i += 8) data.push(bits.slice(i, i + 8).reduce((a, b) => (a << 1) | b, 0));
+    for (let pad = 0xec; data.length < dc; pad ^= 0xec ^ 0x11) data.push(pad);
+    const nBlocks = BLOCKS[v], eccLen = ECC[v], raw = Math.floor(rawModules(v) / 8);
+    const nShort = nBlocks - raw % nBlocks, shortLen = Math.floor(raw / nBlocks);
+    const div = rsDivisor(eccLen);
+    const blocks = [];
+    for (let i = 0, k = 0; i < nBlocks; i++) {
+      const dat = data.slice(k, k + shortLen - eccLen + (i < nShort ? 0 : 1));
+      k += dat.length;
+      const ecc = rsRemainder(dat, div);
+      if (i < nShort) dat.push(0);
+      blocks.push(dat.concat(ecc));
+    }
+    const words = [];
+    for (let i = 0; i < blocks[0].length; i++) {
+      blocks.forEach((b, j) => { if (i !== shortLen - eccLen || j >= nShort) words.push(b[i]); });
+    }
+    const size = v * 4 + 17;
+    const mod = Array.from({ length: size }, () => new Array(size).fill(false));
+    const fn = Array.from({ length: size }, () => new Array(size).fill(false));
+    const set = (x, y, dark) => { mod[y][x] = dark; fn[y][x] = true; };
+    for (let i = 0; i < size; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+    const finder = (cx, cy) => {
+      for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+        const x = cx + dx, y = cy + dy, d = Math.max(Math.abs(dx), Math.abs(dy));
+        if (x >= 0 && x < size && y >= 0 && y < size) set(x, y, d !== 2 && d !== 4);
+      }
+    };
+    finder(3, 3); finder(size - 4, 3); finder(3, size - 4);
+    if (v >= 2) {
+      const n = Math.floor(v / 7) + 2;
+      const step = Math.ceil((v * 4 + 4) / (n * 2 - 2)) * 2;
+      const pos = [6];
+      for (let p = size - 7; pos.length < n; p -= step) pos.splice(1, 0, p);
+      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+        if ((i === 0 && j === 0) || (i === 0 && j === n - 1) || (i === n - 1 && j === 0)) continue;
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) set(pos[i] + dx, pos[j] + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+      }
+    }
+    const format = (mask) => {
+      let r = mask;
+      for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537);
+      const b = ((mask << 10) | r) ^ 0x5412;
+      const bit = (i) => ((b >>> i) & 1) === 1;
+      for (let i = 0; i <= 5; i++) set(8, i, bit(i));
+      set(8, 7, bit(6)); set(8, 8, bit(7)); set(7, 8, bit(8));
+      for (let i = 9; i < 15; i++) set(14 - i, 8, bit(i));
+      for (let i = 0; i < 8; i++) set(size - 1 - i, 8, bit(i));
+      for (let i = 8; i < 15; i++) set(8, size - 15 + i, bit(i));
+      set(8, size - 8, true);
+    };
+    format(0);
+    if (v >= 7) {
+      let r = v;
+      for (let i = 0; i < 12; i++) r = (r << 1) ^ ((r >>> 11) * 0x1f25);
+      const b = (v << 12) | r;
+      for (let i = 0; i < 18; i++) {
+        const dark = ((b >>> i) & 1) === 1, a = size - 11 + i % 3, c = Math.floor(i / 3);
+        set(a, c, dark); set(c, a, dark);
+      }
+    }
+    let n = 0;
+    for (let right = size - 1; right >= 1; right -= 2) {
+      if (right === 6) right = 5;
+      for (let vert = 0; vert < size; vert++) for (let j = 0; j < 2; j++) {
+        const x = right - j, y = ((right + 1) & 2) === 0 ? size - 1 - vert : vert;
+        if (!fn[y][x] && n < words.length * 8) { mod[y][x] = ((words[n >>> 3] >>> (7 - (n & 7))) & 1) === 1; n++; }
+      }
+    }
+    const flip = (m) => {
+      for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+        let inv;
+        switch (m) {
+          case 0: inv = (x + y) % 2 === 0; break;
+          case 1: inv = y % 2 === 0; break;
+          case 2: inv = x % 3 === 0; break;
+          case 3: inv = (x + y) % 3 === 0; break;
+          case 4: inv = (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0; break;
+          case 5: inv = (x * y) % 2 + (x * y) % 3 === 0; break;
+          case 6: inv = ((x * y) % 2 + (x * y) % 3) % 2 === 0; break;
+          default: inv = ((x + y) % 2 + (x * y) % 3) % 2 === 0;
+        }
+        if (inv && !fn[y][x]) mod[y][x] = !mod[y][x];
+      }
+    };
+    const penalty = () => {
+      let p = 0, dark = 0;
+      for (let a = 0; a < size; a++) {
+        let runR = 1, runC = 1;
+        for (let b = 0; b < size; b++) {
+          if (mod[a][b]) dark++;
+          if (b > 0) {
+            if (mod[a][b] === mod[a][b - 1]) { runR++; p += runR === 5 ? 3 : runR > 5 ? 1 : 0; } else runR = 1;
+            if (mod[b][a] === mod[b - 1][a]) { runC++; p += runC === 5 ? 3 : runC > 5 ? 1 : 0; } else runC = 1;
+          }
+          if (a > 0 && b > 0 && mod[a][b] === mod[a - 1][b] && mod[a][b] === mod[a][b - 1] && mod[a][b] === mod[a - 1][b - 1]) p += 3;
+        }
+      }
+      return p + Math.floor(Math.abs(dark * 20 - size * size * 10) / (size * size)) * 10;
+    };
+    let best = 0, bestP = Infinity;
+    for (let m = 0; m < 8; m++) {
+      flip(m); format(m);
+      const p = penalty();
+      if (p < bestP) { best = m; bestP = p; }
+      flip(m);
+    }
+    flip(best); format(best);
+    return mod;
+  }
+  return { encode };
+})();
+function drawQr(canvas, text) {
+  const m = QR.encode(text);
+  const g = m && canvas.getContext("2d");
+  if (!g) return false;
+  const quiet = 4, n = m.length + quiet * 2, scale = Math.max(2, Math.ceil(300 / n));
+  canvas.width = canvas.height = n * scale;
+  g.fillStyle = "#fff";
+  g.fillRect(0, 0, canvas.width, canvas.height);
+  g.fillStyle = "#000";
+  m.forEach((row, y) => row.forEach((dark, x) => { if (dark) g.fillRect((x + quiet) * scale, (y + quiet) * scale, scale, scale); }));
+  return true;
+}
+let qrShown = null;
+let installEvt = null;   // the browser's install offer (Chrome, Edge), when it makes one
+const isLocalHost = (host) => host === "localhost" || host === "[::1]" || /^127\./.test(host);
+function renderConsoleUrl() {
+  const url = consoleUrl || (health && health.calls_ui_url) || "";
+  const localOnly = !url && isLocalHost(location.hostname);
+  const shown = url || location.origin + "/";
+  $("sysUrl").textContent = shown;
+  $("sysUrl").href = shown;
+  const canvas = $("sysQr");
+  const target = localOnly ? "" : shown;
+  if (target !== qrShown) {
+    qrShown = target;
+    canvas.hidden = !(target && drawQr(canvas, target));
+  }
+  const help = $("sysUrlHelp");
+  help.dataset.i18n = localOnly ? "cu_local" : "cu_qr_h";
+  help.textContent = t(help.dataset.i18n);
+  help.hidden = !localOnly && canvas.hidden;
+  // Under a .local address, the LAN IP too (some older Android phones cannot open .local names).
+  const viaName = /^https?:\/\/[^/:]+\.local(:\d+)?\//i.test(shown);
+  $("sysUrlIp").hidden = !(viaName && consoleIpUrl && consoleIpUrl !== shown);
+  $("sysUrlIpLink").textContent = consoleIpUrl;
+  $("sysUrlIpLink").href = consoleIpUrl || "#";
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  $("a2hs").hidden = standalone;
+  $("btnInstall").hidden = !installEvt;
+  $("a2hsHow").hidden = !!installEvt;
+}
+$("btnCopyUrl").addEventListener("click", () => copyWithToast($("sysUrl").textContent));
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installEvt = e;
+  renderConsoleUrl();
+});
+window.addEventListener("appinstalled", () => { installEvt = null; renderConsoleUrl(); });
+$("btnInstall").addEventListener("click", async () => {
+  const e = installEvt;
+  if (!e) return;
+  installEvt = null;
+  try { await e.prompt(); await e.userChoice; } catch (_) { /* dismissed */ }
+  renderConsoleUrl();
+});
+
 let health = null;
 let sysError = "";
 async function loadSystem() {
@@ -6986,6 +7370,7 @@ function renderSystem() {
   }
 
   // About
+  renderConsoleUrl();
   const kv = clear($("sysAbout"));
   const row = (label, value, mono) => { if (value != null && value !== "") kv.append(h("dt", { text: label }), h("dd", { class: mono ? "mono" : "", text: String(value) })); };
   if (health) {

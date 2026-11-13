@@ -5,6 +5,15 @@
 #
 # The web console is then at http://<this-host>:8787/?token=<CALLS_UI_TOKEN>
 # and phones connect to ws://<this-host>:8787/ws?token=<DEVICE_TOKEN>.
+#
+# http://myna.local:8787 (the agent's network name, MDNS_NAME): the agent does
+# not answer it inside a container (with the default bridge network below the
+# answers would stay inside Docker). To use the name, let the host announce
+# it, e.g. with avahi:
+#   avahi-publish -a -R myna.local <this host's IP>
+# Links in notifications use PUBLIC_URL; inside a container nothing is filled
+# in automatically, so set it (e.g. http://192.168.1.20:8787 or
+# http://myna.local:8787) in .env.
 services:
   agent:
     build: .

@@ -605,10 +605,11 @@ pub fn device_label(serial: &str) -> String {
     }
 }
 
-/// Link that opens one call in the web console; empty when the console's
-/// address (`public_url`) is not set.
+/// Link that opens one call in the web console; empty when the console has no
+/// address other devices can open (see `settings_store::effective_console_url`).
 pub fn call_detail_url(settings: &Settings, call_id: &str) -> String {
-    let base = settings.public_url.trim().trim_end_matches('/');
+    let console = crate::settings_store::effective_console_url(settings);
+    let base = console.trim().trim_end_matches('/');
     if base.is_empty() {
         return String::new();
     }
