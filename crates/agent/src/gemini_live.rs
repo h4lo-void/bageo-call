@@ -909,15 +909,58 @@ pub(crate) fn looks_like_carrier_intl_prompt(caller_text: &str) -> bool {
 /// Caller ID from abroad (`+…`, not the SIM's own country code): the carrier plays its
 /// international-call warning to us right after pickup.
 pub fn is_intl_caller(caller_id: &str) -> bool {
+    is_foreign_number(caller_id, &crate::locale::country_code())
+}
+
+/// `caller_id` is written `+…` with a country code other than `home` (digits).
+fn is_foreign_number(caller_id: &str, home: &str) -> bool {
     let d: String = caller_id
         .chars()
         .filter(|c| c.is_ascii_digit() || *c == '+')
         .collect();
-    let home = crate::locale::country_code();
     !home.is_empty()
         && d.strip_prefix('+')
-            .is_some_and(|rest| rest.len() >= 6 && !rest.starts_with(&home))
+            .is_some_and(|rest| rest.len() >= 6 && !rest.starts_with(home))
 }
+
+/// SIM countries (ISO 3166 alpha-2, lowercase) whose carriers play a recorded
+/// warning to us right after pickup on every call from abroad, with the country's
+/// calling code: Taiwan's (「這是國際電話，請注意小心詐騙」).
+const CARRIER_INTL_PROMPT_SIMS: &[(&str, &str)] = &[("tw", "886")];
+
+/// Whether this call opens with the carrier's international-call warning, so the
+/// AI holds its first words until it has played.
+///
+/// - `setting` `off`: never. `on`: every caller from abroad (the setting's country
+///   code), whatever the SIM.
+/// - `auto`, with `sim_country` (the SIM the call came in on, sent by the phone app):
+///   only on a SIM whose carrier plays the warning, and only for a caller from outside
+///   that SIM's country. A US SIM never gets it, so a caller from the US — or from
+///   anywhere — hears 「喂？」 at once.
+/// - `auto`, SIM unknown (phone app older than 0.2.5): `auto_on` (the language is
+///   Traditional Chinese, so the SIM is assumed to be Taiwan's) and a caller from abroad.
+pub fn expects_carrier_intl_prompt(
+    setting: &str,
+    auto_on: bool,
+    caller_id: &str,
+    sim_country: Option<&str>,
+) -> bool {
+    match setting {
+        "off" => false,
+        "on" => is_intl_caller(caller_id),
+        _ => match sim_country.map(str::trim).filter(|c| !c.is_empty()) {
+            Some(sim) => CARRIER_INTL_PROMPT_SIMS
+                .iter()
+                .find(|(iso, _)| sim.eq_ignore_ascii_case(iso))
+                .is_some_and(|(_, code)| is_foreign_number(caller_id, code)),
+            None => auto_on && is_intl_caller(caller_id),
+        },
+    }
+}
+
+/// [`run_session`]'s pickup-time question: does this call open with the carrier's
+/// international-call warning?
+pub type IntlPromptCheck = Box<dyn Fn() -> bool + Send + Sync>;
 
 /// `generationConfig.thinkingConfig.thinkingLevel` for Live models that refuse a
 /// setup without it (`gemini-3.8-live-extended-thinking`: "Thinking level must be
@@ -2702,8 +2745,10 @@ fn boost_downlink_for_phone(pcm: &[u8]) -> Vec<u8> {
 ///   stops our playback.
 /// - `thinking_level`: setting `gemini_thinking_level`, sent only to models that
 ///   need it (see [`live_thinking_level`]).
-/// - `intl_caller`: the call is from abroad — persona mode holds the opening for the
-///   carrier's prompt (see [`INTL_OPENING_HOLD`]).
+/// - `intl_caller`: asked at pickup whether this call opens with the carrier's
+///   international-call warning — persona mode then holds the opening for it (see
+///   [`INTL_OPENING_HOLD`]). Asked at pickup, not at setup: a ring prewarm starts
+///   before the phone knows which SIM the call came in on.
 ///
 /// On success, returns why the session ended so the agent can play goodbye WAV.
 pub async fn run_session(
@@ -2730,7 +2775,7 @@ pub async fn run_session(
     server_vad: bool,
     barge_in: Arc<AtomicBool>,
     thinking_level: &str,
-    intl_caller: bool,
+    intl_caller: IntlPromptCheck,
     appointments: Option<crate::appointments::ApptSession>,
 ) -> Result<SessionEndReason> {
     let stall = stall.filter(|_| persona);
@@ -2844,7 +2889,7 @@ pub async fn run_session(
         )
         .await?;
         info!(
-            "Gemini Live setup sent serial={serial} voice={voice} stall={} max_s={} server_vad={server_vad} thinking={} intl={intl_caller} appointments={} non_blocking={non_blocking}",
+            "Gemini Live setup sent serial={serial} voice={voice} stall={} max_s={} server_vad={server_vad} thinking={} appointments={} non_blocking={non_blocking}",
             stall.is_some(),
             if persona { persona_max_secs } else { LIVE_MAX_SECS },
             thinking.unwrap_or("-"),
@@ -3114,7 +3159,7 @@ pub async fn run_session(
             // live loop then re-kicks / opens a fresh session if it repeats).
             greets_kicked = false;
         }
-        if !prebuf.is_empty() && persona && intl_caller {
+        if !prebuf.is_empty() && persona && intl_caller() {
             intl_hold_until = Some(tokio::time::Instant::now() + INTL_OPENING_HOLD);
             info!(
                 "Gemini Live intl caller serial={serial} — opening held up to {}ms for the carrier's international-call prompt (prebuf_bytes={})",
@@ -6101,6 +6146,27 @@ mod tests {
         assert!(!is_intl_caller(""));
         assert!(!is_intl_caller("unknown"));
         assert!(!is_intl_caller("+12"));
+    }
+
+    #[test]
+    fn carrier_prompt_wait_follows_the_sim_the_call_came_in_on() {
+        // Taiwan SIM: callers from abroad get the warning, local ones do not.
+        assert!(expects_carrier_intl_prompt("auto", false, "+12025550143", Some("tw")));
+        assert!(expects_carrier_intl_prompt("auto", true, "+8613800138000", Some("TW")));
+        assert!(!expects_carrier_intl_prompt("auto", true, "+886912345678", Some("tw")));
+        assert!(!expects_carrier_intl_prompt("auto", true, "0912345678", Some("tw")));
+        // US SIM (e.g. Tello on Wi-Fi calling): no warning from any caller, even with
+        // the language set to Traditional Chinese.
+        assert!(!expects_carrier_intl_prompt("auto", true, "+12025550143", Some("us")));
+        assert!(!expects_carrier_intl_prompt("auto", true, "+886912345678", Some("us")));
+        assert!(!expects_carrier_intl_prompt("auto", true, "2025550143", Some("us")));
+        // SIM unknown (older phone app) and the language says no: no wait.
+        assert!(!expects_carrier_intl_prompt("auto", false, "+12025550143", None));
+        assert!(!expects_carrier_intl_prompt("auto", false, "+12025550143", Some(" ")));
+        // `off` wins over everything.
+        assert!(!expects_carrier_intl_prompt("off", true, "+12025550143", Some("tw")));
+        // `on` waits whatever the SIM.
+        assert!(expects_carrier_intl_prompt("on", false, "+12025550143", Some("us")) == is_intl_caller("+12025550143"));
     }
 
     #[test]

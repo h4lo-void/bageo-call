@@ -5,6 +5,8 @@ import android.os.Build
 import android.telecom.Call
 import android.telecom.InCallService
 import android.telecom.VideoProfile
+import android.telephony.SubscriptionManager
+import android.telephony.TelephonyManager
 import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -41,6 +43,7 @@ class SilentInCallService : InCallService() {
         }
         val state = call.state
         val caller = stashCallerId(call)
+        stashSimCountry(call)
         Log.i(TAG, "onCallAdded state=$state caller_len=${caller.length}")
         ensureArmed(caller)
         LocalAudioGuard(this).applyHardMute()
@@ -83,6 +86,8 @@ class SilentInCallService : InCallService() {
     override fun onCallRemoved(call: Call) {
         super.onCallRemoved(call)
         liveCalls.remove(call)
+        // Every mode (normal phone mode never reaches CallAudioService's cleanup).
+        if (liveCalls.isEmpty()) Prefs.setLastSimCountry(this, "")
         val instanceId = callInstances.remove(call) ?: NO_CALL_INSTANCE
         val removedActiveCall = activeCallInstance.compareAndSet(instanceId, NO_CALL_INSTANCE)
         if (removedActiveCall) {
@@ -171,6 +176,28 @@ class SilentInCallService : InCallService() {
             Log.w(TAG, "stashCallerId failed: ${e.message}")
             ""
         }
+    }
+
+    /** Which SIM the call came in on, by country: see [Prefs.lastSimCountry]. */
+    private fun stashSimCountry(call: Call) {
+        val iso = try {
+            simCountryOf(call)
+        } catch (e: Exception) {
+            Log.w(TAG, "sim country lookup failed: ${e.message}")
+            ""
+        }
+        Prefs.setLastSimCountry(this, iso)
+        Log.i(TAG, "call sim_country=${iso.ifEmpty { "?" }}")
+    }
+
+    private fun simCountryOf(call: Call): String {
+        // Before Android 11 there is no PhoneAccountHandle → subscription lookup: unknown.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return ""
+        val handle = call.details?.accountHandle ?: return ""
+        val tm = getSystemService(TelephonyManager::class.java) ?: return ""
+        val subId = tm.getSubscriptionId(handle)
+        if (!SubscriptionManager.isValidSubscriptionId(subId)) return ""
+        return tm.createForSubscriptionId(subId).simCountryIso.orEmpty()
     }
 
     companion object {

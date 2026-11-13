@@ -33,7 +33,7 @@ class BridgeClient(
     fun isOpen(): Boolean = open.get() && client?.isOpen == true
     fun isAgentReady(): Boolean = agentReady.get()
 
-    fun connect(serial: String, callerId: String, sampleRate: Int) {
+    fun connect(serial: String, callerId: String, sampleRate: Int, simCountry: String = "") {
         debugSerial = serial
         agentReady.set(false)
         val ws = object : WebSocketClient(URI(url)) {
@@ -49,6 +49,7 @@ class BridgeClient(
                     .put("caller_id", callerId)
                     .put("sample_rate", sampleRate)
                     .put("mode", "SILENT_LOCAL")
+                    .put("sim_country", simCountry)
                     .put("play_tts_locally", false)
                     .put("local_menu", BuildConfig.LOCAL_MENU_ENABLED)
                     .put("model", android.os.Build.MODEL)
