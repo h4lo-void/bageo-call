@@ -130,6 +130,7 @@ PUT /calls/api/settings
 | 方向 | 消息 | 含义 |
 |---|---|---|
 | 手机 → 主程序 | `incoming` 和 media 的 `hello` 加上 `"sim_sub_id": <整数>` | 接这通电话的 SIM（Android subscription id）；这通电话的短信和回拨都用它。 |
-| 主程序 → 手机 | `answer_plan` 加上 `"reject": true` | 拦截号码、`reject_mode` 是 `decline`：在响铃时拒接。同时带 `"delay_ms": 0`，所以不认识它的应用会立刻接起来，由主程序播放语音。 |
+| 手机 → 主程序 | control 的 `hello` 加上 `"supports_reject": true` | 应用能在响铃时拒接。没有这个字段 = 旧应用：不管 `reject_mode` 怎么设置，拦截号码都会接起来播放语音。 |
+| 主程序 → 手机 | `answer_plan` 加上 `"reject": true` | 拦截号码、`reject_mode` 是 `decline`，而且应用说过 `supports_reject`：在响铃时拒接。同时带 `"delay_ms": 0`；应用还是接起来的话，由主程序播放语音。 |
 | 手机 → 主程序 | `{"type": "call_waiting_rejected", "serial": "…", "caller_id": "…", "sim_country": "us", "sim_sub_id": 20}` | 通话中有第二通来电，手机忙线拒接。主程序会留下通话记录并发出通知。 |
 | 主程序 → 手机 | `place_call` 加上 `"sub_id": <整数>` | 回拨从同一部手机打出去时，用对方当初打进来的那张 SIM。 |

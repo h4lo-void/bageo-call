@@ -194,6 +194,7 @@ as before):
 | Direction | Message | Meaning |
 |---|---|---|
 | phone → agent | `incoming` and the media `hello` with `"sim_sub_id": <int>` | The SIM (Android subscription id) that took the call; texts and call-backs for the call use it. |
-| agent → phone | `answer_plan` with `"reject": true` | A blocked number with `reject_mode` `decline`: refuse the ringing call. Sent with `"delay_ms": 0`, so an app that does not know it picks up at once and the agent plays the announcement. |
+| phone → agent | control `hello` with `"supports_reject": true` | The app can refuse a ringing call. No field = an older app: blocked numbers are picked up and get the announcement, whatever `reject_mode` says. |
+| agent → phone | `answer_plan` with `"reject": true` | A blocked number with `reject_mode` `decline`, to an app that said `supports_reject`: refuse the ringing call. Sent with `"delay_ms": 0`; if the app picks up after all, the agent plays the announcement. |
 | phone → agent | `{"type": "call_waiting_rejected", "serial": "…", "caller_id": "…", "sim_country": "us", "sim_sub_id": 20}` | A second call came in during a call and the phone turned it away (busy). The agent records it and sends a notification. |
 | agent → phone | `place_call` with `"sub_id": <int>` | A call-back dials out on the SIM the caller called, when it goes out on that phone. |

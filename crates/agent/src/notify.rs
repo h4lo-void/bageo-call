@@ -783,18 +783,10 @@ pub async fn notify_rejected_call(
     if !reason.is_empty() {
         card = card.row(p.n_reason, reason);
     }
-    let outcome = if declined {
-        locale::notify_zh_or(
-            "響鈴時直接拒接，沒有接起來，沒有用 AI",
-            "Declined while it rang: not picked up, no AI",
-        )
-    } else {
-        p.n_blocked_done.replace("{}", p.unavailable)
-    };
     let msg = card
         .row(p.n_phone, &device)
         .row(p.n_time, &when)
-        .tail(&outcome)
+        .tail(&blocked_outcome(declined))
         .message(
             "blocked",
             format!("{} {caller}", p.n_blocked),
@@ -807,6 +799,20 @@ pub async fn notify_rejected_call(
             }),
         );
     deliver(http, settings, &msg).await
+}
+
+/// What became of a blocked number's call: refused while it rang, or picked up
+/// for the "cannot be reached" announcement.
+fn blocked_outcome(declined: bool) -> String {
+    if declined {
+        locale::notify_zh_or(
+            "響鈴時直接拒接，沒有接起來，沒有用 AI",
+            "Declined while it rang: not picked up, no AI",
+        )
+    } else {
+        let p = locale::notify_phrases();
+        p.n_blocked_done.replace("{}", p.unavailable)
+    }
 }
 
 /// Headline of a call the phone refused because it was already on a call.
@@ -1090,6 +1096,14 @@ mod tests {
             Body::Json(v) => v,
             Body::Form(_) => panic!("form body"),
         }
+    }
+
+    #[test]
+    fn blocked_card_says_announced_unless_declined() {
+        // An app that cannot decline picked up: the card names the announcement.
+        let unavailable = locale::notify_phrases().unavailable;
+        assert!(blocked_outcome(false).contains(unavailable));
+        assert!(!blocked_outcome(true).contains(unavailable));
     }
 
     fn form_body(p: &Prepared) -> HashMap<String, String> {

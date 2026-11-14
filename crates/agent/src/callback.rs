@@ -315,6 +315,9 @@ pub struct ControlRegistry {
     normal_mode: Arc<Mutex<HashSet<String>>>,
     /// Phones whose app sends text messages (`supports_sms` in the control hello).
     sms_capable: Arc<Mutex<HashSet<String>>>,
+    /// Phones whose app can refuse a ringing call (`supports_reject` in the
+    /// control hello); older apps pick up whatever `answer_plan` says.
+    reject_capable: Arc<Mutex<HashSet<String>>>,
     /// `send_sms` sent, waiting for its result: message id → (serial, answer).
     sms_waiters: Arc<Mutex<SmsWaiters>>,
     /// What each recent text came to, also when its answer came after the wait
@@ -362,7 +365,7 @@ impl ControlRegistry {
             "control_idle client unregistered"
         );
         drop(clients);
-        self.forget_sms_phone(serial).await;
+        self.forget_phone(serial).await;
     }
 
     /// Remove `serial` only if it still maps to `sink` (reconnect-safe).
@@ -376,7 +379,7 @@ impl ControlRegistry {
             clients.remove(serial);
             info!(serial, count = clients.len(), "control_idle client unregistered");
             drop(clients);
-            self.forget_sms_phone(serial).await;
+            self.forget_phone(serial).await;
         } else {
             info!(
                 serial,
@@ -396,10 +399,28 @@ impl ControlRegistry {
         }
     }
 
-    /// A phone went away: it sends no more texts, and messages still waiting
-    /// for its answer end as [`SmsOutcome::Offline`].
-    async fn forget_sms_phone(&self, serial: &str) {
+    /// Record whether the phone's app can refuse a ringing call (from its control hello).
+    pub async fn set_supports_reject(&self, serial: &str, on: bool) {
+        let mut set = self.reject_capable.lock().await;
+        if on {
+            set.insert(serial.to_string());
+        } else {
+            set.remove(serial);
+        }
+    }
+
+    /// The phone's app said it can refuse a ringing call (`answer_plan` `reject`).
+    pub async fn supports_reject(&self, serial: &str) -> bool {
+        let set = self.reject_capable.lock().await;
+        control_serials(serial).iter().any(|s| set.contains(s))
+    }
+
+    /// A phone went away: it sends no more texts (messages still waiting for its
+    /// answer end as [`SmsOutcome::Offline`]) and its abilities are forgotten
+    /// until its next hello.
+    async fn forget_phone(&self, serial: &str) {
         self.sms_capable.lock().await.remove(serial);
+        self.reject_capable.lock().await.remove(serial);
         // Dropping the senders wakes the waiters.
         self.sms_waiters.lock().await.retain(|_, (s, _)| s != serial);
     }
@@ -1116,5 +1137,21 @@ mod tests {
         let early = json!({"type": "send_sms_delivered", "id": "t7", "ok": true});
         assert!(reg.handle_sms_delivered(&early).await);
         assert_eq!(reg.sms_outcome("t7").await, Some((true, Some(true))));
+    }
+
+    #[tokio::test]
+    async fn only_apps_that_say_so_can_decline() {
+        let reg = ControlRegistry::default();
+        assert!(!reg.supports_reject("pixel-10341").await);
+        reg.set_supports_reject("pixel-10341", true).await;
+        assert!(reg.supports_reject("pixel-10341").await);
+        // The work-profile twin's call rings on the main app's connection.
+        assert!(reg.supports_reject("pixel-1010341").await);
+        // A reconnect with an older app (no field) takes it back; so does a drop.
+        reg.set_supports_reject("pixel-10341", false).await;
+        assert!(!reg.supports_reject("pixel-10341").await);
+        reg.set_supports_reject("pixel-10341", true).await;
+        reg.unregister_client("pixel-10341").await;
+        assert!(!reg.supports_reject("pixel-10341").await);
     }
 }

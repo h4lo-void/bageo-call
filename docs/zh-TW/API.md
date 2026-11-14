@@ -130,6 +130,7 @@ PUT /calls/api/settings
 | 方向 | 訊息 | 意思 |
 |---|---|---|
 | 手機 → 主程式 | `incoming` 和 media 的 `hello` 加上 `"sim_sub_id": <整數>` | 接這通電話的 SIM（Android subscription id）；這通電話的簡訊和回撥都用它。 |
-| 主程式 → 手機 | `answer_plan` 加上 `"reject": true` | 拒接號碼、`reject_mode` 是 `decline`：在響鈴時拒接。同時帶 `"delay_ms": 0`，所以不認得的 App 會立刻接起來，由主程式播語音。 |
+| 手機 → 主程式 | control 的 `hello` 加上 `"supports_reject": true` | App 能在響鈴時拒接。沒有這個欄位 = 舊 App：不管 `reject_mode` 怎麼設，拒接號碼都會接起來播語音。 |
+| 主程式 → 手機 | `answer_plan` 加上 `"reject": true` | 拒接號碼、`reject_mode` 是 `decline`，而且 App 說過 `supports_reject`：在響鈴時拒接。同時帶 `"delay_ms": 0`；App 還是接起來的話，由主程式播語音。 |
 | 手機 → 主程式 | `{"type": "call_waiting_rejected", "serial": "…", "caller_id": "…", "sim_country": "us", "sim_sub_id": 20}` | 通話中有第二通來電，手機忙線拒接。主程式會留下通話紀錄並送出通知。 |
 | 主程式 → 手機 | `place_call` 加上 `"sub_id": <整數>` | 回撥從同一支手機打出去時，用對方當初打進來的那張 SIM。 |

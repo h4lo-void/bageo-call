@@ -759,6 +759,30 @@ impl RejectPending {
         let (ring, at) = self.inner.lock().unwrap_or_else(|e| e.into_inner()).remove(serial)?;
         (at.elapsed() <= REJECT_PENDING_TTL).then_some(ring)
     }
+
+    /// The media hello's share: the phone's ringing blocked call, only when the
+    /// hello is that call — its number is the same, or not known yet. A left-over
+    /// entry (its `incoming_cancel` lost) never turns the next caller away.
+    fn take_for_hello(&self, serial: &str, hello_caller: &str) -> Option<RejectRing> {
+        let ring = self.take(serial)?;
+        if hello_caller.trim().is_empty() || same_ringing_caller(&ring.caller, hello_caller) {
+            Some(ring)
+        } else {
+            info!(
+                "拒接號碼 ring left over serial={serial} rang={} hello={hello_caller} — not this call",
+                ring.caller
+            );
+            None
+        }
+    }
+}
+
+/// `reject_mode` `decline` applies to a phone whose app said it can refuse a
+/// ringing call (`supports_reject` in its control hello). Any other phone picks
+/// up whatever the plan says, so its blocked callers get the announcement — and
+/// the notification says so.
+async fn blocked_number_declined(rt: &RuntimeSettings, control: &ControlRegistry, serial: &str) -> bool {
+    rt.reject_declines() && control.supports_reject(serial).await
 }
 
 /// Isolated / secondary-user extra uid serial (`pixel-101NNNN` vs `pixel-1NNNN`).
@@ -1975,6 +1999,14 @@ async fn handle_control_idle_ws(
                     "incoming" => {
                         let caller = extract_caller_id_from_msg(&parsed).unwrap_or_default();
                         note_call_sim(&serial, &parsed);
+                        // A new call on this phone: a blocked call still waiting for its
+                        // hello (declined, or its incoming_cancel lost) is over.
+                        if let Some(old) = state.reject_pending.take(&serial) {
+                            info!(
+                                "incoming serial={serial} drops the earlier 拒接號碼 ring caller={}",
+                                old.caller
+                            );
+                        }
                         let sample_rate = parsed
                             .get("sample_rate")
                             .and_then(|v| v.as_u64())
@@ -1982,12 +2014,12 @@ async fn handle_control_idle_ws(
                             .map_or(state.settings.sample_rate, |v| v as u32);
                         let rt = state.settings_store.snapshot();
                         if settings_store::reject_number_hit(&rt.reject_numbers, &caller) {
-                            // Blocked number: no Gemini. `decline`: the phone refuses the
-                            // ringing call — the record and the notification are made now,
-                            // before the answer, so a phone app that cannot decline (it picks
-                            // up at once instead) finds them for its media hello. `announce`:
-                            // pick up at once so the media hello plays the announcement.
-                            let decline = rt.reject_declines();
+                            // Blocked number: no Gemini. Decline (`reject_mode` decline and
+                            // an app that can): the phone refuses the ringing call, so the
+                            // record and the notification are made now. Otherwise pick up at
+                            // once: the media hello plays the announcement and notifies.
+                            let decline =
+                                blocked_number_declined(&rt, &state.control, &serial).await;
                             let record_id = if decline {
                                 record_declined_call(&state, &serial, &caller, sample_rate, &rt).await
                             } else {
@@ -2307,6 +2339,15 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                                 == Some(true),
                                         )
                                         .await;
+                                    // Newer apps can refuse a ringing call (blocked numbers).
+                                    state
+                                        .control
+                                        .set_supports_reject(
+                                            &serial,
+                                            parsed.get("supports_reject").and_then(Value::as_bool)
+                                                == Some(true),
+                                        )
+                                        .await;
                                     let _ = send_json(
                                         &sink,
                                         json!({
@@ -2408,7 +2449,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                 );
                                 // Blocked numbers: this number, or the phone's ringing call was on
                                 // it (the hello may come before Telecom publishes the CID).
-                                let rang_listed = state.reject_pending.take(&serial);
+                                let rang_listed = state.reject_pending.take_for_hello(&serial, &caller_id);
                                 if caller_id.trim().is_empty() {
                                     if let Some(c) = rang_listed
                                         .as_ref()
@@ -2424,12 +2465,16 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         &caller_id,
                                     );
                                 call_reject_listed = reject_listed;
-                                // Declined while it rang, picked up anyway (a phone app that
-                                // cannot decline): the caller gets the announcement, the
-                                // record written at the decline goes on and its notification
-                                // is already out.
+                                // Declined while it rang, picked up anyway (the app said it
+                                // can decline, then did not): the caller gets the
+                                // announcement and the record written at the decline goes
+                                // on. Its "declined" notification was wrong: the usual one
+                                // below says what happened.
                                 if let Some(ring) = rang_listed.as_ref().filter(|r| r.declined) {
-                                    call_notified = true;
+                                    base_state
+                                        .incoming_notify_dedup
+                                        .release(&serial, &ring.caller)
+                                        .await;
                                     info!(
                                         "declined 拒接號碼 picked up anyway serial={serial} caller={caller_id} record={:?} → announcement",
                                         ring.record_id
@@ -11039,6 +11084,53 @@ mod call_control_tests {
         assert!(!first_call_waiting_report("pixel-cw-1", " +12025550143 "));
         assert!(first_call_waiting_report("pixel-cw-1", "+81312345678"));
         assert!(first_call_waiting_report("pixel-cw-2", "+12025550143"));
+    }
+
+    #[tokio::test]
+    async fn blocked_numbers_are_declined_only_by_apps_that_can() {
+        let mut rt = RuntimeSettings::from_base(&Settings::from_env());
+        rt.reject_mode = "decline".into();
+        let control = ControlRegistry::default();
+        // An older app (no `supports_reject` in its hello) would pick up anyway: it
+        // is told to, and the hello plays and notifies the announcement.
+        let old_app = blocked_number_declined(&rt, &control, "pixel-10341").await;
+        assert!(!old_app);
+        assert!(reject_answer_plan(old_app).get("reject").is_none());
+        // An app that says it can: refused while ringing.
+        control.set_supports_reject("pixel-10342", true).await;
+        let new_app = blocked_number_declined(&rt, &control, "pixel-10342").await;
+        assert!(new_app);
+        assert_eq!(reject_answer_plan(new_app)["reject"], true);
+        // `announce`: every phone picks up.
+        rt.reject_mode = "announce".into();
+        assert!(!blocked_number_declined(&rt, &control, "pixel-10342").await);
+    }
+
+    #[test]
+    fn a_left_over_blocked_ring_never_turns_the_next_caller_away() {
+        let p = RejectPending::default();
+        let declined = |caller: &str| RejectRing {
+            caller: caller.into(),
+            declined: true,
+            record_id: Some("rec-1".into()),
+        };
+        // A blocked number was declined and its incoming_cancel never came. The
+        // next, ordinary call's incoming drops the entry (what the control
+        // connection does first), so its hello — even before the CID is out —
+        // does not take the blocked call's record and announcement.
+        p.mark_ring("pixel-10341", declined("0912345678"));
+        assert!(p.take("pixel-10341").is_some());
+        assert_eq!(p.take_for_hello("pixel-10341", ""), None);
+        // Its incoming lost too: a hello with another number still is not that call.
+        p.mark_ring("pixel-10341", declined("0912345678"));
+        assert_eq!(p.take_for_hello("pixel-10341", "0922222222"), None);
+        assert_eq!(p.take("pixel-10341"), None);
+        // The blocked call's own hello (an app that picked up): the same number in
+        // another form, or none yet.
+        p.mark_ring("pixel-10341", declined("0912345678"));
+        assert!(p.take_for_hello("pixel-10341", "+886912345678").is_some());
+        p.mark("pixel-10341", "0912345678");
+        assert!(p.take_for_hello("pixel-10341", " ").is_some());
     }
 
     #[test]
