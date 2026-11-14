@@ -182,7 +182,8 @@ or agent leaves them out and works as before):
 
 | Direction | Message | Meaning |
 |---|---|---|
+| phone → agent | `hello` with `"supports_reject": true` | The app declines a ringing call when `answer_plan` says `reject`. No field = an older app that would answer the call anyway, so the agent answers and plays its message instead. |
 | phone → agent | `incoming`, and the media connection's `hello`, with `"sim_sub_id": <integer>` | Android's subscription id of the SIM the call came in on, next to `sim_country`. Left out when unknown. `caller_id` is empty for a hidden number (never the previous caller's). |
 | agent → phone | `answer_plan` with `"reject": true` | Decline the ringing call without answering it. `incoming_cancel` follows once the call has ended. Also honored when it arrives late, as long as the call still rings. |
 | phone → agent | `{"type": "call_waiting_rejected", "serial": "...", "caller_id": "...", "sim_country": "tw", "sim_sub_id": <integer>}` | A second call rang during a call and the phone declined it at once (AI mode). The fields describe the declined call; `sim_sub_id` is left out when unknown. |
-| agent → phone | `place_call` with `"sub_id": <integer>` | Dial from that SIM. When no SIM has that id, the phone's default is used. |
+| agent → phone | `place_call` with `"sub_id": <integer>` | Dial from that SIM. When no SIM has that id, the phone's default is used. While a call rings or is up, the phone does not dial and answers `place_call_failed` with `"reason": "busy"`. |

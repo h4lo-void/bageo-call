@@ -424,7 +424,7 @@ class CallAudioService : Service() {
             catchUpCallState(reason = "explicit-call-active-stale")
             return
         }
-        if (pendingOutboundCallId == null && SilentInCallService.isOutgoingCall() == true) {
+        if (SilentInCallService.isOwnCallInstance(instanceId)) {
             Log.i(TAG, "ignore ACTIVE instance=$instanceId: a call dialed by hand on the phone")
             return
         }
@@ -561,7 +561,8 @@ class CallAudioService : Service() {
                         Log.w(TAG, "RINGING while local session active; InCall state unavailable — keep current call")
                         return
                     }
-                    val caller = currentCallerId()
+                    // Keep only the ringing call's own number (never the stale session's).
+                    val caller = SilentInCallService.ringingCallInfo()?.callerId.orEmpty()
                     Log.w(TAG, "RINGING with stale local session — tear down before answer")
                     endCallSession()
                     if (caller.isNotBlank()) Prefs.setLastCallerId(this, caller)
@@ -647,7 +648,7 @@ class CallAudioService : Service() {
                 val kind = classifyOffhook(
                     agentCallback = pendingOutboundCallId != null,
                     answeredRing = answeredRing,
-                    outgoing = SilentInCallService.isOutgoingCall(),
+                    ownCall = SilentInCallService.isOwnCallUp(),
                 )
                 when (kind) {
                     OffhookKind.OWN -> onOwnCallOffhook()
@@ -668,6 +669,9 @@ class CallAudioService : Service() {
                 answerJob = null
                 audioGuard?.stopHoldLoop()
                 endCallSession()
+                // No call left: nothing stored may reach the next call (a hidden number
+                // must not pick up this call's number when the InCall data is late).
+                Prefs.clearLastCallInfo(this)
                 // Stay hard-muted while armed (idle watcher); do not restore yet.
                 audioGuard?.applyHardMute()
             }
@@ -708,33 +712,33 @@ class CallAudioService : Service() {
     }
 
     /**
-     * InCallService does not know the call yet (not bound): ask again a few times off the
-     * main thread (onCallAdded runs there). Still unknown → the AI is not attached; an
-     * explicit ACTIVE from SilentInCallService can still start it later.
+     * InCallService does not know the call yet (not bound, or onCallAdded not run): ask
+     * again a few times off the main thread (onCallAdded runs there). Still unknown → the
+     * AI is not attached; an explicit ACTIVE from SilentInCallService can still start it.
      */
     private fun recheckOffhookDirection(answeredRing: Boolean) {
         offhookWithoutAi = true
         Log.i(TAG, "OFFHOOK direction unknown (InCallService not bound) — check again")
         offhookRecheckJob?.cancel()
         offhookRecheckJob = scope.launch {
-            var outgoing: Boolean? = null
+            var ownCall: Boolean? = null
             for (attempt in 1..OUTGOING_CHECK_ATTEMPTS) {
                 delay(OUTGOING_CHECK_RETRY_MS)
-                outgoing = SilentInCallService.isOutgoingCall()
-                if (outgoing != null) break
+                ownCall = SilentInCallService.isOwnCallUp()
+                if (ownCall != null) break
             }
-            val decided = outgoing
+            val decided = ownCall
             mainHandler.post { resolveOffhookDirection(decided, answeredRing) }
         }
     }
 
-    private fun resolveOffhookDirection(outgoing: Boolean?, answeredRing: Boolean) {
+    private fun resolveOffhookDirection(ownCall: Boolean?, answeredRing: Boolean) {
         if (currentTelephonyCallState() != TelephonyManager.CALL_STATE_OFFHOOK) return
         val hasSession = synchronized(sessionOwnershipLock) {
             callActive || bridge != null || injector != null
         }
         if (hasSession) return
-        when (classifyOffhook(pendingOutboundCallId != null, answeredRing, outgoing)) {
+        when (classifyOffhook(pendingOutboundCallId != null, answeredRing, ownCall)) {
             OffhookKind.AI -> startOffhookSession(currentCallInstanceForTelephony())
             OffhookKind.OWN -> onOwnCallOffhook()
             OffhookKind.UNKNOWN -> Log.w(
@@ -843,11 +847,13 @@ class CallAudioService : Service() {
 
     /**
      * A number from SilentInCallService or screening must belong to the call that is up,
-     * not to a second (waiting) call: with an instance it must be the selected call;
-     * without one (screening) no call may be established.
+     * not to a second (waiting) call nor to a call that already ended: with an instance it
+     * must be a live call and the selected one; without one (screening) no call may be
+     * established.
      */
     private fun acceptsCallerIdFor(instanceId: Long): Boolean {
         if (instanceId != NO_CALL_INSTANCE) {
+            if (SilentInCallService.isLiveCallInstance(instanceId) != true) return false
             val selected = SilentInCallService.currentActiveCallInstanceId()
             return selected == NO_CALL_INSTANCE || selected == instanceId
         }
@@ -1381,6 +1387,12 @@ class CallAudioService : Service() {
         }
         if (number.isEmpty() || callId.isEmpty()) {
             fail("missing number or call_id")
+            return
+        }
+        // One call at a time: a callback dialed next to a call that rings or is up would
+        // be mixed up with it (media session, mute state, call_end).
+        if (isCallBusy()) {
+            fail("busy")
             return
         }
         val subId = SimSubscriptions.fromCommand(obj)
@@ -1957,14 +1969,16 @@ class CallAudioService : Service() {
         fun isAgentCallbackPending(): Boolean = agentCallbackPending
 
         /**
-         * Whether an OFFHOOK call gets the AI. [outgoing] null = InCallService does not know
-         * the call yet; a call this app answered after it rang is incoming even then.
+         * Whether an OFFHOOK call gets the AI. [ownCall] = dialed by hand (stored per call
+         * by SilentInCallService; an agent callback is false); null = InCallService does
+         * not know the call yet, and a call this app answered after it rang is incoming
+         * even then.
          */
-        internal fun classifyOffhook(agentCallback: Boolean, answeredRing: Boolean, outgoing: Boolean?): OffhookKind =
+        internal fun classifyOffhook(agentCallback: Boolean, answeredRing: Boolean, ownCall: Boolean?): OffhookKind =
             when {
                 agentCallback -> OffhookKind.AI
-                outgoing == true -> OffhookKind.OWN
-                outgoing == false -> OffhookKind.AI
+                ownCall == true -> OffhookKind.OWN
+                ownCall == false -> OffhookKind.AI
                 answeredRing -> OffhookKind.AI
                 else -> OffhookKind.UNKNOWN
             }

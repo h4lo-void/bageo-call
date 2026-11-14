@@ -427,7 +427,7 @@ App to agent:
 
 | `type` | Fields | When |
 |---|---|---|
-| `hello` | `serial`, `mode` = `"CONTROL_IDLE"`, `play_tts_locally` = `false`, `model`, `app_version`, `phone_mode` (`"ai"` / `"normal"`), `in_call`, `supports_sms` = `true` | Right after connecting. `phone_mode` is not called `mode` because `mode` names the connection. Apps before the mode switch send neither. Apps before 0.2.4 do not send `supports_sms` and cannot send text messages. |
+| `hello` | `serial`, `mode` = `"CONTROL_IDLE"`, `play_tts_locally` = `false`, `model`, `app_version`, `phone_mode` (`"ai"` / `"normal"`), `in_call`, `supports_sms` = `true`, `supports_reject` = `true` | Right after connecting. `phone_mode` is not called `mode` because `mode` names the connection. Apps before the mode switch send neither. Apps before 0.2.4 do not send `supports_sms` and cannot send text messages. `supports_reject`: the app declines a ringing call when `answer_plan` says `reject`; apps without it would answer the call instead. |
 | `ping` | `t` (milliseconds since epoch) | Every 15 s. |
 | `status` | `mode` (`"ai"` / `"normal"`), `in_call` | The phone mode or the call state (ringing or active vs idle) changed. |
 | `set_mode_result` | `id`, `ok`, `mode`, `error` | Answer to `set_mode`. `mode` is the mode afterwards; `error` is empty on success, otherwise a code from [Normal phone mode](#normal-phone-mode). |
@@ -435,7 +435,7 @@ App to agent:
 | `incoming_cancel` | `serial` | The call ended before it was answered. |
 | `call_waiting_rejected` | `serial`, `caller_id`, `sim_country`, `sim_sub_id` (only when known) | A second call rang during a call and was declined (AI mode). The fields describe the declined call. |
 | `place_call_ack` | `call_id`, `task_id`, `number`, `reason` = `""` | A requested call was dialed. |
-| `place_call_failed` | `call_id`, `task_id`, `number`, `reason` | A requested call could not be dialed. |
+| `place_call_failed` | `call_id`, `task_id`, `number`, `reason` | A requested call could not be dialed. `reason` `busy`: a call was ringing or up on the phone. |
 | `outbound_ready` | `call_id`, `task_id`, `number` | A requested call connected. |
 | `call_end` | `call_id`, `task_id`, `serial`, `reason` = `"normal"` | A requested call ended. |
 | `send_sms_result` | `id`, `ok`, `error` (only when `ok` is `false`) | Answer to `send_sms`, sent once every part of the message was reported sent, one part failed, or 60 seconds passed. `error` is one of `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception`. If the parts are reported after a `timeout` answer, a second answer with the real result follows. The answers for the last 20 ids are sent again after the control connection reconnects; the agent drops repeats by `id`. |
@@ -446,7 +446,7 @@ Agent to app:
 | `type` | Fields | Effect |
 |---|---|---|
 | `answer_plan` | `delay_ms`, `prewarm`, `reject` (optional) | How long to let the call ring before answering. `prewarm` is only logged. `reject` = `true`: decline the ringing call without answering it (`incoming_cancel` follows when it has ended); also honored when it arrives after the 500 ms wait, as long as the call still rings. |
-| `place_call` | `number`, `call_id`, `task_id`, `sub_id` (optional) | Dial `number`, from the SIM with subscription id `sub_id` when given (Android's default when that SIM is not found). A call that has not started dialing 30 seconds later is forgotten, so a later call is not taken for it. |
+| `place_call` | `number`, `call_id`, `task_id`, `sub_id` (optional) | Dial `number`, from the SIM with subscription id `sub_id` when given (Android's default when that SIM is not found). While a call rings or is up, the app does not dial and answers `place_call_failed` with `reason` `busy`. A call that has not started dialing 30 seconds later is forgotten, so a later call is not taken for it. |
 | `set_mode` | `mode` (`"ai"` / `"normal"`), `id` | Switch the phone mode; answered with `set_mode_result`. |
 | `send_sms` | `id` (1–64 characters), `to` (3–20 digits, optional leading `+`), `text` (1–500 characters), `sub_id` (optional) | Send `text` as a text message from the phone's own number: the SIM with subscription id `sub_id`, else the default SMS SIM. For example to reply to an appointment request. Answered with `send_sms_result` and, when the network reports it, `send_sms_delivered`. A `send_sms` with the id of a message still being sent is ignored; one with the id of a message already sent is answered again without sending it twice. |
 | `agent_info` | `console_url` | The web console's address, for the app's **Open the web console** button. Sent after `hello` only when the agent knows it; the app forgets the old one on every new connection. |

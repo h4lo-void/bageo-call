@@ -22,16 +22,25 @@ import java.util.concurrent.atomic.AtomicLong
  * - rejects a second call that rings while another call is up (call waiting), tells
  *   [CallAudioService] (`call_waiting_rejected`) and leaves the first call untouched;
  * - leaves a call dialed by hand on the phone alone: not muted, no AI. Calls the agent
- *   asked for (`place_call`) are not "by hand" ([CallAudioService.isAgentCallbackPending]).
+ *   asked for (`place_call`) are not "by hand": that is decided once per call, when it is
+ *   added ([CallInfo.agentCallback]), so clearing the agent's pending call later cannot
+ *   turn a callback into a call by hand.
  */
 class SilentInCallService : InCallService() {
     /** Number and SIM of one call as the agent gets them. [callerId] "" = hidden or unknown. */
-    class CallInfo(
+    data class CallInfo(
         val instanceId: Long,
         val callerId: String,
         val simCountry: String,
         val simSubId: Int?,
-    )
+        /** Placed from this phone (by hand or for the agent). */
+        val outgoing: Boolean,
+        /** Placed for the agent's `place_call` (outgoing while it was pending when the call was added). */
+        val agentCallback: Boolean,
+    ) {
+        /** Dialed by hand by the owner: never muted, no AI. */
+        val ownCall: Boolean get() = outgoing && !agentCallback
+    }
 
     private class SimInfo(val country: String, val subId: Int?)
 
@@ -65,12 +74,21 @@ class SilentInCallService : InCallService() {
             selectActiveCall(call, instanceId)
         }
         val state = call.state
-        val info = stashCallInfo(call, instanceId)
-        val ownCall = isOwnCall(call)
+        val outgoing = try {
+            call.details.callDirection == Call.Details.DIRECTION_OUTGOING
+        } catch (_: Exception) {
+            false
+        }
+        // Decided now, for this call only: the agent's pending place_call is the call it
+        // asked for. Later changes of that pending state do not change this call.
+        val agentCallback = outgoing && CallAudioService.isAgentCallbackPending()
+        val info = stashCallInfo(call, instanceId, outgoing, agentCallback)
+        val ownCall = info.ownCall
         Log.i(
             TAG,
             "onCallAdded state=$state instance=$instanceId caller_len=${info.callerId.length} " +
-                "sim_country=${info.simCountry.ifEmpty { "?" }} sim_sub_id=${info.simSubId ?: "?"} own=$ownCall",
+                "sim_country=${info.simCountry.ifEmpty { "?" }} sim_sub_id=${info.simSubId ?: "?"} " +
+                "outgoing=$outgoing agent_callback=$agentCallback own=$ownCall",
         )
         if (ownCall) {
             // Dialed by hand on this phone: the owner talks on it. No mute, no AI.
@@ -122,11 +140,9 @@ class SilentInCallService : InCallService() {
         liveCalls.remove(call)
         val instanceId = callInstances.remove(call) ?: NO_CALL_INSTANCE
         callInfos.remove(instanceId)
-        // Every mode (normal phone mode never reaches CallAudioService's cleanup).
-        if (liveCalls.isEmpty()) {
-            Prefs.setLastSimCountry(this, "")
-            Prefs.setLastSimSubId(this, null)
-        }
+        // Every mode (normal phone mode never reaches CallAudioService's cleanup): with
+        // no call left, nothing stored may outlive it (number, SIM country, sub id).
+        if (liveCalls.isEmpty()) Prefs.clearLastCallInfo(this)
         // A rejected waiting call was never selected: removing it changes nothing for
         // the call that stays up (no replacement, no CALL_ENDED).
         val removedActiveCall = activeCallInstance.compareAndSet(instanceId, NO_CALL_INSTANCE)
@@ -264,10 +280,10 @@ class SilentInCallService : InCallService() {
      * stored copy ([Prefs]) follows the selected call only, so a call that is not
      * selected cannot overwrite the number of the call that is up.
      */
-    private fun stashCallInfo(call: Call, instanceId: Long): CallInfo {
+    private fun stashCallInfo(call: Call, instanceId: Long, outgoing: Boolean, agentCallback: Boolean): CallInfo {
         val caller = handleOf(call)
         val sim = simOf(call)
-        val info = CallInfo(instanceId, caller, sim.country, sim.subId)
+        val info = CallInfo(instanceId, caller, sim.country, sim.subId, outgoing, agentCallback)
         callInfos[instanceId] = info
         if (activeCallInstance.get() == instanceId) {
             Prefs.clearLastCallInfo(this)
@@ -285,7 +301,7 @@ class SilentInCallService : InCallService() {
         if (handle.isEmpty() || known == null || handle == known.callerId) {
             return known?.callerId ?: handle
         }
-        callInfos[instanceId] = CallInfo(instanceId, handle, known.simCountry, known.simSubId)
+        callInfos[instanceId] = known.copy(callerId = handle)
         if (activeCallInstance.get() == instanceId) Prefs.setLastCallerId(this, handle)
         Log.i(TAG, "caller_id now known instance=$instanceId len=${handle.length}")
         return handle
@@ -355,18 +371,20 @@ class SilentInCallService : InCallService() {
         }
 
         /**
-         * True when the live call was placed from this phone (manual dial or callback).
-         * Null when InCallService is not bound (caller must stay conservative).
+         * True when the live call was dialed by hand on this phone; false for an incoming
+         * call or an agent callback. Null when InCallService is not bound or has not
+         * stored the call yet (caller must stay conservative).
          */
-        fun isOutgoingCall(): Boolean? {
+        fun isOwnCallUp(): Boolean? {
             if (activeService == null) return null
             val call = preferredLiveCall() ?: return null
-            return try {
-                call.details.callDirection == Call.Details.DIRECTION_OUTGOING
-            } catch (_: Exception) {
-                null
-            }
+            val id = callInstances[call] ?: return null
+            return callInfos[id]?.ownCall
         }
+
+        /** Call [instanceId] was dialed by hand on this phone (false when unknown). */
+        fun isOwnCallInstance(instanceId: Long): Boolean =
+            activeService != null && callInfos[instanceId]?.ownCall == true
 
         /** A call the owner dialed by hand is up: nothing may mute the phone now. */
         fun isOwnCallInProgress(): Boolean {
@@ -431,12 +449,14 @@ class SilentInCallService : InCallService() {
                 else -> false
             }
 
-        /** Dialed on this phone by the owner (not a `place_call` from the agent). */
-        private fun isOwnCall(call: Call): Boolean = try {
-            call.details.callDirection == Call.Details.DIRECTION_OUTGOING &&
-                !CallAudioService.isAgentCallbackPending()
-        } catch (_: Exception) {
-            false
+        /**
+         * Dialed on this phone by the owner, as stored when the call was added (not a
+         * `place_call` from the agent). A call without stored info is not treated as one,
+         * so it stays muted.
+         */
+        private fun isOwnCall(call: Call): Boolean {
+            val id = callInstances[call] ?: return false
+            return callInfos[id]?.ownCall == true
         }
 
         /** Re-assert Telecom mic mute while we own the active call (hold loop). */

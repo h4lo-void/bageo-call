@@ -126,7 +126,8 @@ PUT /calls/api/settings
 
 | 方向 | 訊息 | 意思 |
 |---|---|---|
+| 手機 → 主程式 | `hello` 加上 `"supports_reject": true` | App 認得 `answer_plan` 的 `reject`，會在響鈴時拒接。沒有這個欄位 = 舊 App，叫它拒接它還是會接起來，所以主程式改成接起來播語音。 |
 | 手機 → 主程式 | `incoming` 和 media 連線的 `hello` 加上 `"sim_sub_id": <整數>` | 這通電話打進來的那張 SIM 在 Android 的訂閱 id，跟 `sim_country` 一起送。不知道就不送。隱藏號碼時 `caller_id` 是空字串（不會是上一通的號碼）。 |
 | 主程式 → 手機 | `answer_plan` 加上 `"reject": true` | 響鈴中直接拒接，不接起來。電話結束後照樣送 `incoming_cancel`。晚到也有效，只要電話還在響。 |
 | 手機 → 主程式 | `{"type": "call_waiting_rejected", "serial": "...", "caller_id": "...", "sim_country": "tw", "sim_sub_id": <整數>}` | 通話中又有第二通打進來，手機立刻拒接（AI 模式）。欄位是被拒那一通的資料；不知道 `sim_sub_id` 就不送。 |
-| 主程式 → 手機 | `place_call` 加上 `"sub_id": <整數>` | 用那張 SIM 撥出。找不到那張 SIM 就用手機預設的。 |
+| 主程式 → 手機 | `place_call` 加上 `"sub_id": <整數>` | 用那張 SIM 撥出。找不到那張 SIM 就用手機預設的。手機有電話在響或通話中時不撥，回 `place_call_failed`，`"reason": "busy"`。 |
