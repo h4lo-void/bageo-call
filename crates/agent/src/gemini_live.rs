@@ -3727,8 +3727,8 @@ pub async fn run_session(
     // second time, and the AI said 「欸等一下」 twice). Cleared once the next
     // reply is heard.
     let mut stall_turn_kept = false;
-    // International call: this model turn's audio was held or dropped for the
-    // carrier's prompt (see IntlGate) — its end is no turn for the checks.
+    // This model turn's audio was held or dropped for the carrier's prompt (see
+    // IntlGate) or a voice menu — its end is no turn for the checks.
     let mut intl_gated_turn = false;
     // Stall quiet-line nudge: audio count when the last one went out (the next one
     // waits for the model's answer to it) and when.
@@ -5182,7 +5182,8 @@ pub async fn run_session(
                                     turn_out_text.clear();
                                     out_leak_turn = false;
                                     info!(
-                                        "Gemini Live turnComplete of a turn held for the carrier prompt serial={serial} gate={intl_gate:?} — turn checks skipped"
+                                        "Gemini Live turnComplete of a turn kept off the line serial={serial} gate={intl_gate:?} voice_menu={} — turn checks skipped",
+                                        ivr_since.is_some()
                                     );
                                 } else if turn_complete && tool_quiet {
                                     info!(
