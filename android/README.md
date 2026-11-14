@@ -389,14 +389,22 @@ to a PC on your own network is not encrypted.
 2. **Ringing.** The app does not answer yet. It waits up to 12 seconds for the control
    connection, tells the agent about the call (`incoming`), and rings for as long as
    the agent's `answer_plan` says (3 seconds if the agent does not reply within
-   500 ms, never more than 8 seconds).
+   500 ms, never more than 8 seconds). If the control connection is not up within
+   12 seconds, the app does not answer: the call keeps ringing until the carrier
+   ends it (missed call or voicemail). An `answer_plan` with `reject` declines the
+   call without answering it.
 3. **Answer.** The app answers without any sound or screen on the phone.
 4. **In call.** It opens a second *media* WebSocket, sends `hello`, streams the
    caller's audio to the agent and plays the audio it receives into the call.
+   If the media connection drops and is not open again within 3 seconds, the app
+   ends the call, so the caller is not left in silence.
 5. **End.** Either side can end the call: the agent sends `hangup`, or the caller
    hangs up and the app sends `call_end`.
 
-A call you dial by hand on the phone is left alone: the AI is not attached.
+A call you dial by hand on the phone is left alone: the AI is not attached, and the
+microphone and earpiece work normally for that call. A second call that rings during
+a call is declined at once (`call_waiting_rejected` tells the agent); the call in
+progress is not touched.
 
 More detail is in [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -419,28 +427,30 @@ App to agent:
 
 | `type` | Fields | When |
 |---|---|---|
-| `hello` | `serial`, `mode` = `"CONTROL_IDLE"`, `play_tts_locally` = `false`, `model`, `app_version`, `phone_mode` (`"ai"` / `"normal"`), `in_call`, `supports_sms` = `true` | Right after connecting. `phone_mode` is not called `mode` because `mode` names the connection. Apps before the mode switch send neither. Apps before 0.2.4 do not send `supports_sms` and cannot send text messages. |
+| `hello` | `serial`, `mode` = `"CONTROL_IDLE"`, `play_tts_locally` = `false`, `model`, `app_version`, `phone_mode` (`"ai"` / `"normal"`), `in_call`, `supports_sms` = `true`, `supports_reject` = `true` | Right after connecting. `phone_mode` is not called `mode` because `mode` names the connection. Apps before the mode switch send neither. Apps before 0.2.4 do not send `supports_sms` and cannot send text messages. `supports_reject`: the app declines a ringing call when `answer_plan` says `reject`; apps without it would answer the call instead. |
 | `ping` | `t` (milliseconds since epoch) | Every 15 s. |
 | `status` | `mode` (`"ai"` / `"normal"`), `in_call` | The phone mode or the call state (ringing or active vs idle) changed. |
 | `set_mode_result` | `id`, `ok`, `mode`, `error` | Answer to `set_mode`. `mode` is the mode afterwards; `error` is empty on success, otherwise a code from [Normal phone mode](#normal-phone-mode). |
-| `incoming` | `serial`, `caller_id`, `sample_rate` | A call is ringing. |
+| `incoming` | `serial`, `caller_id`, `sim_country`, `sample_rate`, `sim_sub_id` (only when known) | A call is ringing. `caller_id` is empty for a hidden number. `sim_country` (ISO code, lowercase, empty when unknown) and `sim_sub_id` (Android subscription id) name the SIM the call came in on. |
 | `incoming_cancel` | `serial` | The call ended before it was answered. |
+| `call_waiting_rejected` | `serial`, `caller_id`, `sim_country`, `sim_sub_id` (only when known) | A second call rang during a call and was declined (AI mode). The fields describe the declined call. |
 | `place_call_ack` | `call_id`, `task_id`, `number`, `reason` = `""` | A requested call was dialed. |
-| `place_call_failed` | `call_id`, `task_id`, `number`, `reason` | A requested call could not be dialed. |
+| `place_call_failed` | `call_id`, `task_id`, `number`, `reason` | A requested call could not be dialed. `reason` `busy`: a call was ringing or up on the phone. |
 | `outbound_ready` | `call_id`, `task_id`, `number` | A requested call connected. |
 | `call_end` | `call_id`, `task_id`, `serial`, `reason` = `"normal"` | A requested call ended. |
-| `send_sms_result` | `id`, `ok`, `error` (only when `ok` is `false`) | Answer to `send_sms`, sent once every part of the message was reported sent, one part failed, or 60 seconds passed. `error` is one of `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception`. Lost if the control connection is not open when the result is ready. |
+| `send_sms_result` | `id`, `ok`, `error` (only when `ok` is `false`) | Answer to `send_sms`, sent once every part of the message was reported sent, one part failed, or 60 seconds passed. `error` is one of `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception`. If the parts are reported after a `timeout` answer, a second answer with the real result follows. The answers for the last 20 ids are sent again after the control connection reconnects; the agent drops repeats by `id`. |
+| `send_sms_delivered` | `id`, `ok` | The network's delivery report: `true` once every part reached the recipient, `false` when a part failed for good. Not sent when the network gives no report (the app stops waiting after an hour). Kept and sent again like `send_sms_result`. |
 
 Agent to app:
 
 | `type` | Fields | Effect |
 |---|---|---|
-| `answer_plan` | `delay_ms`, `prewarm` | How long to let the call ring before answering. `prewarm` is only logged. |
-| `place_call` | `number`, `call_id`, `task_id` | Dial `number`. |
+| `answer_plan` | `delay_ms`, `prewarm`, `reject` (optional) | How long to let the call ring before answering. `prewarm` is only logged. `reject` = `true`: decline the ringing call without answering it (`incoming_cancel` follows when it has ended); also honored when it arrives after the 500 ms wait, as long as the call still rings. |
+| `place_call` | `number`, `call_id`, `task_id`, `sub_id` (optional) | Dial `number`, from the SIM with subscription id `sub_id` when given (Android's default when that SIM is not found). While a call rings or is up, the app does not dial and answers `place_call_failed` with `reason` `busy`. A call that has not started dialing 30 seconds later is forgotten, so a later call is not taken for it. |
 | `set_mode` | `mode` (`"ai"` / `"normal"`), `id` | Switch the phone mode; answered with `set_mode_result`. |
-| `send_sms` | `id` (1–64 characters), `to` (3–20 digits, optional leading `+`), `text` (1–500 characters) | Send `text` as a text message from the phone's own number (default SMS SIM), for example to reply to an appointment request. Answered with `send_sms_result`. A `send_sms` with the id of a message still being sent is ignored. |
+| `send_sms` | `id` (1–64 characters), `to` (3–20 digits, optional leading `+`), `text` (1–500 characters), `sub_id` (optional) | Send `text` as a text message from the phone's own number: the SIM with subscription id `sub_id`, else the default SMS SIM. For example to reply to an appointment request. Answered with `send_sms_result` and, when the network reports it, `send_sms_delivered`. A `send_sms` with the id of a message still being sent is ignored; one with the id of a message already sent is answered again without sending it twice. |
 | `agent_info` | `console_url` | The web console's address, for the app's **Open the web console** button. Sent after `hello` only when the agent knows it; the app forgets the old one on every new connection. |
-| `blocklist_sync` | `numbers` (array) | Stored, but not used: the app never rejects callers. |
+| `blocklist_sync` | `numbers` (array) | Stored, but not used: the app does not reject callers by this list (the agent decides, with `answer_plan` `reject`). |
 | `hello_ack`, `hello_ok`, `ack`, `pong` | | Logged only. |
 
 If the control connection drops, the app reconnects after 1.5 seconds.
@@ -451,7 +461,7 @@ App to agent:
 
 | `type` | Fields | When |
 |---|---|---|
-| `hello` | `serial`, `caller_id`, `sample_rate` (16000), `mode` = `"SILENT_LOCAL"`, `play_tts_locally` = `false`, `local_menu` (`false` in this build), `model`, `app_version` | Right after connecting. |
+| `hello` | `serial`, `caller_id`, `sample_rate` (16000), `mode` = `"SILENT_LOCAL"`, `sim_country`, `sim_sub_id` (only when known), `play_tts_locally` = `false`, `local_menu` (`false` in this build), `model`, `app_version` | Right after connecting. `sim_country` and `sim_sub_id` are the same as in `incoming`. |
 | `ringing` | `serial`, `caller_id` | Right after `hello`, and again if the caller's number only becomes known later. |
 | `call_end` | `serial`, `caller_id` | The call ended. The app closes the connection shortly afterwards. |
 | `local_menu_started`, `local_menu_done`, `local_menu_failed` | | Only in builds with `LOCAL_MENU_ENABLED = true`; never sent by default. |
@@ -462,6 +472,10 @@ yet.
 Binary frames, app to agent: the caller's voice as raw PCM, signed 16-bit
 little-endian, mono, 16 kHz, 60 ms per frame (1920 bytes). They are sent continuously
 during the call, including silence.
+
+The app pings the media connection and treats it as lost after 10 seconds without an
+answer. When it closes or fails during a call and is not open again 3 seconds later,
+the app ends the call (there is no reconnect within a call).
 
 Agent to app:
 
@@ -478,7 +492,9 @@ Agent to app:
 
 Binary frames, agent to app: raw PCM in the same format (signed 16-bit little-endian,
 mono, 16 kHz), played into the call in the order received. The app applies a soft
-limiter at about -2 dBFS.
+limiter at about -2 dBFS. Between the agent's audio the app writes silence into the
+call (40 ms at a time once nothing arrived for 100 ms) so the phone's audio path stays
+awake and the first word after a pause is not cut.
 
 Not verified from this folder alone: how the agent reacts to each message. That is
 defined by the agent's source.
@@ -517,7 +533,8 @@ adb logcat -s CallAudioService BridgeClient AgentControlClient TelephonyUplink V
 | A call screen from Google Dialer appears | The phone is in normal phone mode, or the app is not the default phone app, so Google Dialer was not disabled. Switch **AI answers my calls** on, or fix the role in **Setup steps**, and reboot. |
 | The call is answered but the caller hears nothing | Look for `TelephonyUplink` in the log. `TYPE_TELEPHONY unavailable` or `setPreferredDevice(TYPE_TELEPHONY) failed` means the phone does not offer the telephony output to the app (unsupported device, or the privileged permission is missing). The app also posts a notification in this case. |
 | The agent receives only silence | Look for `VoiceCallCapture` in the log. The `maxRms` value stays near zero if the device does not deliver call audio to the `VOICE_DOWNLINK` / `VOICE_CALL` sources. On Pixels the level is low by design (the earpiece volume is at minimum) and the agent is expected to amplify it. |
-| The phone does not answer at all | The phone is in normal phone mode (**AI answers my calls** is off), the service is stopped, or the app lacks `ANSWER_PHONE_CALLS`. Without a control connection the app still answers after about 12 seconds. |
+| The phone does not answer at all | The phone is in normal phone mode (**AI answers my calls** is off), the service is stopped, the app lacks `ANSWER_PHONE_CALLS`, or the agent was not reachable: without a control connection within 12 seconds the app does not answer (log: `agent not ready`) and the carrier takes the call as missed or to voicemail. |
+| A call ends by itself after a few seconds of silence | The media connection to the agent dropped (log: `media connection lost`). The app ends the call when it is not back within 3 seconds. |
 | The module made the phone fail to boot | Use the root manager's safe mode, or create `/data/adb/modules/pixelcallai_uplink/disable` from recovery, then reboot. |
 
 ## Legal

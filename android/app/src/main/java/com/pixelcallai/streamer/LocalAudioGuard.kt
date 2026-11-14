@@ -39,6 +39,13 @@ class LocalAudioGuard(context: Context) {
     fun restore(onFinished: (() -> Unit)? = null) = coordinator.requestRestore(onFinished)
 
     /**
+     * A call the owner dialed by hand in AI mode: [restore], then also take back the
+     * root microphone mute and raise the earpiece from its minimum, so the owner can
+     * hear and be heard. The next [applyHardMute] (call ended) mutes everything again.
+     */
+    fun restoreForOwnCall() = coordinator.requestRestoreForOwnCall()
+
+    /**
      * Normal phone mode: stop muting and forget the state saved when muting began, so
      * a later [restore] cannot put the AI-mode values back. [PhoneModeManager] sets the
      * normal volumes itself.
@@ -82,6 +89,7 @@ private class LocalAudioGuardCoordinator(context: Context) {
     private val fullPassPending = AtomicBoolean(false)
     private val rootPassPending = AtomicBoolean(false)
     private val restorePending = AtomicBoolean(false)
+    private val ownCallPending = AtomicBoolean(false)
     private val releasePending = AtomicBoolean(false)
     private val drainScheduled = AtomicBoolean(false)
     private val restoreCallbacks = ConcurrentLinkedQueue<() -> Unit>()
@@ -115,6 +123,8 @@ private class LocalAudioGuardCoordinator(context: Context) {
     fun requestHardMute(fromHold: Boolean, rootPass: Boolean) {
         // An ordinary phone (normal mode) is never muted.
         if (!Prefs.isAiCallEnabled(appContext)) return
+        // Nor is a call the owner dialed by hand (AI mode): they are talking on it.
+        if (SilentInCallService.isOwnCallInProgress()) return
         desiredMuted.set(true)
         if (!fromHold) fullPassPending.set(true)
         if (rootPass) rootPassPending.set(true)
@@ -150,6 +160,11 @@ private class LocalAudioGuardCoordinator(context: Context) {
         scheduleDrain()
     }
 
+    fun requestRestoreForOwnCall() {
+        ownCallPending.set(true)
+        requestRestore(null)
+    }
+
     fun requestRelease() {
         stopHoldLoop()
         desiredMuted.set(false)
@@ -182,6 +197,9 @@ private class LocalAudioGuardCoordinator(context: Context) {
                 }
                 if (restorePending.getAndSet(false)) {
                     runTrackedOperation("restore") { restoreBlocking() }
+                    if (ownCallPending.getAndSet(false)) {
+                        runTrackedOperation("own-call") { unmuteForOwnCallBlocking() }
+                    }
                     completeRestoreCallbacks()
                     if (desiredMuted.get()) mutePending.set(true)
                     continue
@@ -396,20 +414,14 @@ private class LocalAudioGuardCoordinator(context: Context) {
 
     /** Best-effort mic/root knobs. Never touches telephony output routing. */
     private fun applyRootForceMute() {
-        val cmds = arrayOf(
+        val cmds = listOf(
             "cmd media.audio_flinger mute mic 1",
             "settings put system volume_ring 0",
             "settings put system volume_notification 0",
             "settings put system volume_music 0",
             "settings put system volume_system 0",
             "settings put system volume_alarm 0",
-            "tinymix 'Mic Mute' 1",
-            "tinymix 'Microphone Mute' 1",
-            "tinymix 'ADC1 Mute' 1",
-            "tinymix 'ADC2 Mute' 1",
-            "tinymix 'IN1 Mute' 1",
-            "tinymix 'IN2 Mute' 1",
-        )
+        ) + ROOT_MIC_MUTE_CONTROLS.map { "tinymix '$it' 1" }
         for (cmd in cmds) trySu(cmd)
     }
 
@@ -504,6 +516,34 @@ private class LocalAudioGuardCoordinator(context: Context) {
         Log.i(TAG, "audio state restored")
     }
 
+    /**
+     * After [restoreBlocking] for the owner's own call: the root mic mutes are not
+     * part of the saved state, and the earpiece is kept at its minimum on purpose, so
+     * undo both here (the same controls normal phone mode resets).
+     */
+    private fun unmuteForOwnCallBlocking() {
+        try {
+            am.isMicrophoneMute = false
+        } catch (e: Exception) {
+            Log.w(TAG, "own call: microphone unmute failed: ${e.message}")
+        }
+        trySu("cmd media.audio_flinger mute mic 0")
+        for (control in ROOT_MIC_MUTE_CONTROLS) trySu("tinymix '$control' 0")
+        try {
+            val stream = AudioManager.STREAM_VOICE_CALL
+            val min = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) am.getStreamMinVolume(stream) else 1
+            val cur = am.getStreamVolume(stream)
+            if (cur <= min) {
+                val normal = PhoneModeManager.defaultVolume(am.getStreamMaxVolume(stream))
+                am.setStreamVolume(stream, normal, 0)
+                Log.i(TAG, "own call: voice call volume $cur -> $normal")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "own call: voice call volume failed: ${e.message}")
+        }
+        Log.i(TAG, "own call: microphone and earpiece back to normal")
+    }
+
     private fun forgetSavedState() {
         savedMicMute = null
         savedSpeaker = null
@@ -519,6 +559,16 @@ private class LocalAudioGuardCoordinator(context: Context) {
         private const val TAG = "LocalAudioGuard"
         private const val ROOT_PASS_TICKS = 4
         private const val AUDIO_OPERATION_WARN_MS = 3000L
+
+        /** tinymix microphone mutes set by [applyRootForceMute] (absent ones just fail). */
+        private val ROOT_MIC_MUTE_CONTROLS = listOf(
+            "Mic Mute",
+            "Microphone Mute",
+            "ADC1 Mute",
+            "ADC2 Mute",
+            "IN1 Mute",
+            "IN2 Mute",
+        )
 
         private val TRACKED_STREAMS = intArrayOf(
             AudioManager.STREAM_VOICE_CALL,

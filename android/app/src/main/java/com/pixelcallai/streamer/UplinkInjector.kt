@@ -6,6 +6,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.os.SystemClock
 import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
@@ -125,6 +126,13 @@ class StubUplinkInjector(
  * Open track only during an active call (OFFHOOK). Refuse to write PCM unless
  * setPreferredDevice succeeds and routed device is TYPE_TELEPHONY — otherwise
  * AudioTrack would leak to earpiece (local sound) and remote hears silence.
+ *
+ * Keepalive: an idle AudioTrack lets the Pixel 9 audio HAL go to sleep, and the next
+ * write then rebuilds the track (`restoreTrack_l: dead IAudioTrack`, about 0.6 s), which
+ * swallowed a short opening "喂？". Once the queue has been empty for
+ * [KEEPALIVE_IDLE_MS], zeros are written [KEEPALIVE_CHUNK_MS] at a time whenever the
+ * audio already in the track is about to run out, until [stop]. Queued audio is always
+ * written first and at once; the zeros are not counted in `bytesWritten`.
  */
 class TelephonyUplinkInjector(
     context: Context,
@@ -155,6 +163,8 @@ class TelephonyUplinkInjector(
     /** Live track for per-write preferred/routed TYPE_TELEPHONY checks. */
     @Volatile private var activeTrack: AudioTrack? = null
     private var bytesWritten = 0L
+    /** Keepalive zeros written (not call audio; kept out of [bytesWritten]). */
+    private var keepaliveBytes = 0L
     private var abortLogged = AtomicBoolean(false)
     private var readyLatch = CountDownLatch(1)
     private var dropWarnLogged = AtomicBoolean(false)
@@ -189,6 +199,7 @@ class TelephonyUplinkInjector(
             Log.w(TAG, "start: TYPE_TELEPHONY not visible yet; worker will keep retrying")
         }
         bytesWritten = 0L
+        keepaliveBytes = 0L
         routeReady.set(false)
         synchronized(writeBarrierLock) {
             synchronized(queueLock) {
@@ -357,7 +368,7 @@ class TelephonyUplinkInjector(
         if (worker != null) {
             Log.e(TAG, "TelephonyUplinkInjector stop timed out; restart held until worker exits")
         }
-        Log.i(TAG, "TelephonyUplinkInjector stopped bytesWritten=$bytesWritten")
+        Log.i(TAG, "TelephonyUplinkInjector stopped bytesWritten=$bytesWritten keepaliveBytes=$keepaliveBytes")
     }
 
     /**
@@ -561,8 +572,38 @@ class TelephonyUplinkInjector(
                 "routeReady — draining queue frames=${queue.size} bytesWritten=$bytesWritten",
             )
             var consecutiveErrors = 0
+            val silence = ByteArray(pcmBytesForMs(KEEPALIVE_CHUNK_MS))
+            var keepaliveLogged = false
+            // When the last call audio was written, and when the audio handed to the
+            // track (call audio or keepalive zeros) is estimated to run out.
+            var lastAudioAt = SystemClock.elapsedRealtime()
+            var playoutUntil = lastAudioAt
             while (running.get()) {
-                val queued = queue.poll(200, TimeUnit.MILLISECONDS) ?: continue
+                val keepaliveAt = maxOf(lastAudioAt + KEEPALIVE_IDLE_MS, playoutUntil - KEEPALIVE_LEAD_MS)
+                val waitMs = (keepaliveAt - SystemClock.elapsedRealtime()).coerceIn(1L, KEEPALIVE_IDLE_MS)
+                val queued = queue.poll(waitMs, TimeUnit.MILLISECONDS)
+                if (queued == null) {
+                    if (SystemClock.elapsedRealtime() < keepaliveAt) continue
+                    val n = writeKeepalive(liveTrack, silence) ?: continue
+                    if (n < 0) {
+                        Log.e(TAG, "keepalive write error: $n")
+                        if (n == AudioTrack.ERROR_DEAD_OBJECT) {
+                            // Rebuild now, while nobody is talking, not on the next word.
+                            routeReady.set(false)
+                            return false
+                        }
+                    } else {
+                        if (!keepaliveLogged) {
+                            keepaliveLogged = true
+                            Log.i(TAG, "keepalive: queue idle ${KEEPALIVE_IDLE_MS}ms, writing silence to keep the track awake")
+                        }
+                        keepaliveBytes += n.toLong()
+                        // The track's last sample is now 0; the next audio blends from there.
+                        synchronized(joinLock) { lastSample = 0 }
+                    }
+                    playoutUntil = maxOf(SystemClock.elapsedRealtime(), playoutUntil) + KEEPALIVE_CHUNK_MS
+                    continue
+                }
                 if (queued.pcm.isEmpty()) continue
                 if (queued.clearEpoch != clearEpoch.get()) {
                     Log.i(TAG, "discard cleared PCM before write epoch=${queued.clearEpoch}")
@@ -593,6 +634,7 @@ class TelephonyUplinkInjector(
                         }
                     }
                 }
+                val writeStartedAt = SystemClock.elapsedRealtime()
                 var offset = 0
                 while (offset < toWrite.size && running.get()) {
                     if (queued.clearEpoch != clearEpoch.get()) {
@@ -640,6 +682,8 @@ class TelephonyUplinkInjector(
                     offset += n
                     bytesWritten += n.toLong()
                 }
+                playoutUntil = maxOf(writeStartedAt, playoutUntil) + pcmMsForBytes(offset)
+                lastAudioAt = SystemClock.elapsedRealtime()
             }
             return true
         } catch (e: Exception) {
@@ -683,10 +727,34 @@ class TelephonyUplinkInjector(
         }
     }
 
+    /**
+     * One chunk of keepalive zeros, behind the same write barrier as call audio (so
+     * [clearPending] still waits for it). Null when stopping or when call audio is
+     * queued (that goes first); otherwise bytes written or a negative AudioTrack error.
+     */
+    private fun writeKeepalive(track: AudioTrack, silence: ByteArray): Int? =
+        synchronized(writeBarrierLock) {
+            if (!running.get() || !queue.isEmpty()) {
+                null
+            } else {
+                track.write(silence, 0, silence.size, AudioTrack.WRITE_BLOCKING)
+            }
+        }
+
+    private fun pcmBytesForMs(ms: Long): Int = (sampleRate.toLong() * ms / 1000L).toInt() * 2
+
+    private fun pcmMsForBytes(bytes: Int): Long = bytes.toLong() * 1000L / (sampleRate.toLong() * 2L)
+
     companion object {
         private const val TAG = "TelephonyUplink"
         private const val JOIN_JUMP = 2500
         private const val JOIN_SAMPLES = 32 // ~2 ms @ 16 kHz
+        /** Queue empty this long → start writing keepalive zeros. */
+        private const val KEEPALIVE_IDLE_MS = 100L
+        /** Length of one chunk of keepalive zeros. */
+        private const val KEEPALIVE_CHUNK_MS = 40L
+        /** Write the next chunk when about this much audio is left in the track. */
+        private const val KEEPALIVE_LEAD_MS = 20L
 
         internal fun retryDelayMs(attempt: Int): Long =
             (attempt.coerceAtLeast(1) * 100L).coerceAtMost(500L)

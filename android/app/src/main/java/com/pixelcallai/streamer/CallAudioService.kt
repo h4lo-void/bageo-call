@@ -2,13 +2,11 @@ package com.pixelcallai.streamer
 
 import java.io.File
 
-import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.content.Intent
 import android.os.Build
@@ -17,14 +15,12 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
-import android.provider.CallLog
 import android.telecom.TelecomManager
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
@@ -48,9 +44,12 @@ import java.util.concurrent.Future
  * - Idle/armed: CONTROL_IDLE WebSocket to the agent; hard-mute local mic/speaker.
  * - RINGING: wait until the agent control path is up, report `incoming`, ring for the
  *   agent's `answer_plan` (~one ring; the agent warms up the AI session meanwhile),
- *   then answer.
+ *   then answer (or decline when the plan says `reject`). Agent not up in time: the call
+ *   is not answered and keeps ringing (carrier missed call / voicemail).
  * - OFFHOOK: TYPE_TELEPHONY inject + media BridgeClient; the agent decides what the
  *   caller hears (AI voice). No phone-local menu (LOCAL_MENU_ENABLED=false).
+ *   A call dialed by hand on the phone gets no AI and is not muted. If the media
+ *   connection drops and is not back within [MEDIA_LOST_HANGUP_MS], the call is ended.
  */
 class CallAudioService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -74,6 +73,9 @@ class CallAudioService : Service() {
     private var pendingOutboundCallId: String? = null
     private var pendingOutboundNumber: String? = null
     private var pendingOutboundTaskId: String? = null
+    /** The `place_call` reached DIALING/OFFHOOK; one that never does is dropped after 30 s. */
+    @Volatile private var pendingOutboundDialed = false
+    private var pendingOutboundExpiry: Runnable? = null
     private var telephonyManager: TelephonyManager? = null
     private var telephonyCallback: TelephonyCallback? = null
     @Suppress("DEPRECATION")
@@ -103,8 +105,19 @@ class CallAudioService : Service() {
     private var answerJob: Job? = null
     private var callStateWatchdogJob: Job? = null
     @Volatile private var answerScheduled = false
-    /** Ringing call waiting for the agent's `answer_plan` (ring time, ms). */
-    @Volatile private var pendingAnswerPlan: CompletableDeferred<Long>? = null
+    /** Ringing call waiting for the agent's `answer_plan`. */
+    @Volatile private var pendingAnswerPlan: CompletableDeferred<AnswerPlan>? = null
+    /** The agent did not come up in time: this ringing call is left ringing, not answered. */
+    @Volatile private var ringGivenUp = false
+    /** The agent's `answer_plan` said `reject` for the call that is ringing. */
+    @Volatile private var answerRejected = false
+    /** OFFHOOK left without AI: a call dialed by hand, or its direction stayed unknown. */
+    @Volatile private var offhookWithoutAi = false
+    private var offhookRecheckJob: Job? = null
+    /** Started when the media connection drops; ends the call if it stays down. */
+    private var mediaLostJob: Job? = null
+    /** Control messages that found the connection closed; sent after the next hello. */
+    private val pendingControlJson = java.util.concurrent.ConcurrentLinkedQueue<org.json.JSONObject>()
     /** Last call state (ringing/active vs idle) reported to the agent in `status`. */
     @Volatile private var reportedInCall: Boolean? = null
     /**
@@ -145,6 +158,12 @@ class CallAudioService : Service() {
             cancelPendingServiceStop("new start action=${action ?: "sticky"}")
         }
         intent?.getStringExtra(EXTRA_CALLER_ID)?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            val instanceId = intent?.getLongExtra(EXTRA_CALL_INSTANCE_ID, NO_CALL_INSTANCE) ?: NO_CALL_INSTANCE
+            if (!acceptsCallerIdFor(instanceId)) {
+                // A second (waiting) call's number must not replace the number of the call that is up.
+                Log.i(TAG, "EXTRA_CALLER_ID ignored: not the call in progress (instance=$instanceId)")
+                return@let
+            }
             Prefs.setLastCallerId(this, it)
             Log.i(TAG, "EXTRA_CALLER_ID stashed len=${it.length}")
             // InCall/screening EXTRA can arrive after media hello already went out empty.
@@ -175,6 +194,14 @@ class CallAudioService : Service() {
                 // is already OFFHOOK. Reconcile against Telecom's aggregate state.
                 Log.i(TAG, "explicit Telecom call removed — reconcile actual call state")
                 handleExplicitCallEnded(intent.getLongExtra(EXTRA_CALL_INSTANCE_ID, NO_CALL_INSTANCE))
+            }
+            ACTION_CALL_WAITING_REJECTED -> {
+                armWatcher()
+                sendCallWaitingRejected(
+                    callerId = intent?.getStringExtra(EXTRA_WAITING_CALLER_ID).orEmpty(),
+                    simCountry = intent?.getStringExtra(EXTRA_SIM_COUNTRY).orEmpty(),
+                    simSubId = intent?.getIntExtra(EXTRA_SIM_SUB_ID, -1)?.takeIf { SimSubscriptions.isValid(it) },
+                )
             }
             ACTION_SET_ENABLED -> {
                 // Older entry point (adb): on = the AI answers, off = normal phone.
@@ -347,11 +374,13 @@ class CallAudioService : Service() {
                 }
                 if (state != null) {
                     val recoveryNeeded = when (state) {
-                        TelephonyManager.CALL_STATE_RINGING -> !answerScheduled && !callActive
+                        // A ring the agent was not ready for is left alone (not answered).
+                        TelephonyManager.CALL_STATE_RINGING -> !answerScheduled && !callActive && !ringGivenUp
                         // Do not treat a live media WS as missing just because a
-                        // duplicate OFFHOOK/ACTIVE race cleared a local flag.
+                        // duplicate OFFHOOK/ACTIVE race cleared a local flag. A call
+                        // left without AI (dialed by hand) is not a missing session.
                         TelephonyManager.CALL_STATE_OFFHOOK ->
-                            !callActive && bridge == null && injector == null
+                            !callActive && bridge == null && injector == null && !offhookWithoutAi
                         TelephonyManager.CALL_STATE_IDLE ->
                             callActive || answerScheduled || bridge != null || injector != null
                         else -> false
@@ -395,6 +424,10 @@ class CallAudioService : Service() {
             catchUpCallState(reason = "explicit-call-active-stale")
             return
         }
+        if (SilentInCallService.isOwnCallInstance(instanceId)) {
+            Log.i(TAG, "ignore ACTIVE instance=$instanceId: a call dialed by hand on the phone")
+            return
+        }
         val current = mediaCallInstance.get()
         if (keepMediaIfSamePstnCall("explicit ACTIVE", instanceId)) {
             return
@@ -403,6 +436,7 @@ class CallAudioService : Service() {
             Log.i(TAG, "explicit ACTIVE switching media instance=$current -> $instanceId")
             endCallSession()
         }
+        offhookWithoutAi = false
         startCallSession(smoke = false, callInstanceId = instanceId)
     }
 
@@ -508,34 +542,35 @@ class CallAudioService : Service() {
         }
         when (state) {
             TelephonyManager.CALL_STATE_RINGING -> {
-                val caller = currentCallerId()
                 if (answerScheduled) {
                     Log.i(TAG, "RINGING ignored (answer already scheduled)")
                     return
                 }
+                // The agent was not ready for this call: it keeps ringing (carrier missed
+                // call / voicemail) and is not scheduled again.
+                if (ringGivenUp) return
+                val established = SilentInCallService.hasEstablishedCall()
+                if (established == true) {
+                    // Call waiting (SilentInCallService rejects the second call) or a
+                    // ring next to a call dialed by hand: leave the call that is up alone.
+                    Log.i(TAG, "RINGING ignored as call waiting (established call remains)")
+                    return
+                }
                 if (callActive) {
-                    when (SilentInCallService.hasEstablishedCall()) {
-                        false -> {
-                            Log.w(TAG, "RINGING with stale local session — tear down before answer")
-                            endCallSession()
-                            if (caller.isNotBlank()) Prefs.setLastCallerId(this, caller)
-                        }
-                        true -> {
-                            Log.i(TAG, "RINGING ignored as call waiting (established call remains)")
-                            return
-                        }
-                        null -> {
-                            Log.w(TAG, "RINGING while local session active; InCall state unavailable — keep current call")
-                            return
-                        }
+                    if (established == null) {
+                        Log.w(TAG, "RINGING while local session active; InCall state unavailable — keep current call")
+                        return
                     }
+                    // Keep only the ringing call's own number (never the stale session's).
+                    val caller = SilentInCallService.ringingCallInfo()?.callerId.orEmpty()
+                    Log.w(TAG, "RINGING with stale local session — tear down before answer")
+                    endCallSession()
+                    if (caller.isNotBlank()) Prefs.setLastCallerId(this, caller)
                 }
                 answerScheduled = true
-                Log.i(
-                    TAG,
-                    "RINGING — wait agent CONTROL_IDLE (max ${AGENT_READY_TIMEOUT_MS}ms) then answer " +
-                        "caller=${caller.ifBlank { "?" }}",
-                )
+                answerRejected = false
+                offhookWithoutAi = false
+                Log.i(TAG, "RINGING — wait agent CONTROL_IDLE (max ${AGENT_READY_TIMEOUT_MS}ms) then answer")
                 audioGuard?.applyHardMute()
                 audioGuard?.startHoldLoop()
                 startControlClient()
@@ -549,21 +584,37 @@ class CallAudioService : Service() {
                     // Wait until the control path to the agent is live (or timeout).
                     val agentReady = waitForAgentControlReady(AGENT_READY_TIMEOUT_MS)
                     if (callActive) return@launch
+                    if (!agentReady) {
+                        // Answering now would give the caller dead air: leave the call
+                        // ringing so the carrier's missed call / voicemail takes it.
+                        ringGivenUp = true
+                        answerScheduled = false
+                        Log.w(
+                            TAG,
+                            "agent not ready within ${AGENT_READY_TIMEOUT_MS}ms — not answering; " +
+                                "the call keeps ringing (missed call / voicemail)",
+                        )
+                        return@launch
+                    }
+                    // This call's own number and SIM, once SilentInCallService stored them.
+                    val details = awaitRingingCallDetails(ringAt + CALL_INFO_WAIT_MS)
                     // Ring about once before answering, like a person reaching for the
                     // phone; the agent prepares the AI's opening line meanwhile.
-                    // Agent not ready = it already rang long enough.
-                    val ringMs = if (agentReady) {
-                        requestAnswerPlan(caller)
-                    } else {
-                        Log.w(TAG, "agent not ready within ${AGENT_READY_TIMEOUT_MS}ms — answer anyway")
-                        0L
+                    val plan = requestAnswerPlan(details)
+                    if (plan.reject || answerRejected) {
+                        rejectRingingCall()
+                        return@launch
                     }
-                    val waitMs = ringMs - (SystemClock.elapsedRealtime() - ringAt)
+                    val waitMs = plan.delayMs - (SystemClock.elapsedRealtime() - ringAt)
                     if (waitMs > 0) {
-                        Log.i(TAG, "ring ${ringMs}ms before answer — wait ${waitMs}ms more")
+                        Log.i(TAG, "ring ${plan.delayMs}ms before answer — wait ${waitMs}ms more")
                         delay(waitMs)
                     }
                     if (callActive) return@launch
+                    if (answerRejected) {
+                        rejectRingingCall()
+                        return@launch
+                    }
                     answerSilently()
                     Log.i(
                         TAG,
@@ -572,7 +623,10 @@ class CallAudioService : Service() {
                 }
             }
             TelephonyManager.CALL_STATE_OFFHOOK -> {
+                val answeredRing = answerScheduled
                 answerScheduled = false
+                ringGivenUp = false
+                answerRejected = false
                 answerJob?.cancel()
                 answerJob = null
                 val callInstanceId = currentCallInstanceForTelephony()
@@ -588,42 +642,110 @@ class CallAudioService : Service() {
                     Log.i(TAG, "OFFHOOK switching media instance=${mediaCallInstance.get()} -> $callInstanceId")
                     endCallSession()
                 }
-                val outboundId = pendingOutboundCallId
                 // A call dialed by hand on this phone is the user's own call:
-                // never attach the AI (it would greet into the ringback tone).
-                if (outboundId == null && SilentInCallService.isOutgoingCall() == true) {
-                    Log.i(TAG, "OFFHOOK outgoing manual call — AI session not started")
-                    return
+                // never attach the AI (it would greet into the ringback tone) and
+                // give the owner the microphone and earpiece back.
+                val kind = classifyOffhook(
+                    agentCallback = pendingOutboundCallId != null,
+                    answeredRing = answeredRing,
+                    ownCall = SilentInCallService.isOwnCallUp(),
+                )
+                when (kind) {
+                    OffhookKind.OWN -> onOwnCallOffhook()
+                    OffhookKind.UNKNOWN -> recheckOffhookDirection(answeredRing)
+                    OffhookKind.AI -> startOffhookSession(callInstanceId)
                 }
-                if (outboundId != null) {
-                    Log.i(
-                        TAG,
-                        "onOutboundReady call_id=$outboundId number_len=${pendingOutboundNumber?.length ?: 0}",
-                    )
-                    controlClient?.sendJson(
-                        org.json.JSONObject()
-                            .put("type", "outbound_ready")
-                            .put("call_id", outboundId)
-                            .put("task_id", pendingOutboundTaskId.orEmpty())
-                            .put("number", pendingOutboundNumber.orEmpty()),
-                    )
-                }
-                Log.i(TAG, "OFFHOOK — start silent stream session outbound=${outboundId != null}")
-                audioGuard?.applyHardMute()
-                audioGuard?.startHoldLoop()
-                startCallSession(smoke = false, callInstanceId = callInstanceId)
             }
             TelephonyManager.CALL_STATE_IDLE -> {
                 Log.i(TAG, "IDLE — end call session")
                 if (answerScheduled && !callActive) sendIncomingCancel()
                 answerScheduled = false
+                ringGivenUp = false
+                answerRejected = false
+                offhookWithoutAi = false
+                offhookRecheckJob?.cancel()
+                offhookRecheckJob = null
                 answerJob?.cancel()
                 answerJob = null
                 audioGuard?.stopHoldLoop()
                 endCallSession()
+                // No call left: nothing stored may reach the next call (a hidden number
+                // must not pick up this call's number when the InCall data is late).
+                Prefs.clearLastCallInfo(this)
                 // Stay hard-muted while armed (idle watcher); do not restore yet.
                 audioGuard?.applyHardMute()
             }
+        }
+    }
+
+    /** OFFHOOK of an incoming call or of the agent's `place_call`: start the AI session. */
+    private fun startOffhookSession(callInstanceId: Long) {
+        offhookWithoutAi = false
+        val outboundId = pendingOutboundCallId
+        if (outboundId != null) {
+            pendingOutboundDialed = true
+            Log.i(
+                TAG,
+                "onOutboundReady call_id=$outboundId number_len=${pendingOutboundNumber?.length ?: 0}",
+            )
+            controlClient?.sendJson(
+                org.json.JSONObject()
+                    .put("type", "outbound_ready")
+                    .put("call_id", outboundId)
+                    .put("task_id", pendingOutboundTaskId.orEmpty())
+                    .put("number", pendingOutboundNumber.orEmpty()),
+            )
+        }
+        Log.i(TAG, "OFFHOOK — start silent stream session outbound=${outboundId != null}")
+        audioGuard?.applyHardMute()
+        audioGuard?.startHoldLoop()
+        startCallSession(smoke = false, callInstanceId = callInstanceId)
+    }
+
+    /** A call dialed by hand on the phone: no AI, Telecom and local mutes taken back. */
+    private fun onOwnCallOffhook() {
+        offhookWithoutAi = true
+        Log.i(TAG, "OFFHOOK outgoing manual call — AI session not started; microphone and earpiece unmuted")
+        audioGuard?.stopHoldLoop()
+        SilentInCallService.unmuteOwnCall()
+        audioGuard?.restoreForOwnCall()
+    }
+
+    /**
+     * InCallService does not know the call yet (not bound, or onCallAdded not run): ask
+     * again a few times off the main thread (onCallAdded runs there). Still unknown → the
+     * AI is not attached; an explicit ACTIVE from SilentInCallService can still start it.
+     */
+    private fun recheckOffhookDirection(answeredRing: Boolean) {
+        offhookWithoutAi = true
+        Log.i(TAG, "OFFHOOK direction unknown (InCallService not bound) — check again")
+        offhookRecheckJob?.cancel()
+        offhookRecheckJob = scope.launch {
+            var ownCall: Boolean? = null
+            for (attempt in 1..OUTGOING_CHECK_ATTEMPTS) {
+                delay(OUTGOING_CHECK_RETRY_MS)
+                ownCall = SilentInCallService.isOwnCallUp()
+                if (ownCall != null) break
+            }
+            val decided = ownCall
+            mainHandler.post { resolveOffhookDirection(decided, answeredRing) }
+        }
+    }
+
+    private fun resolveOffhookDirection(ownCall: Boolean?, answeredRing: Boolean) {
+        if (currentTelephonyCallState() != TelephonyManager.CALL_STATE_OFFHOOK) return
+        val hasSession = synchronized(sessionOwnershipLock) {
+            callActive || bridge != null || injector != null
+        }
+        if (hasSession) return
+        when (classifyOffhook(pendingOutboundCallId != null, answeredRing, ownCall)) {
+            OffhookKind.AI -> startOffhookSession(currentCallInstanceForTelephony())
+            OffhookKind.OWN -> onOwnCallOffhook()
+            OffhookKind.UNKNOWN -> Log.w(
+                TAG,
+                "OFFHOOK direction still unknown after ${OUTGOING_CHECK_ATTEMPTS * OUTGOING_CHECK_RETRY_MS}ms — " +
+                    "AI not attached",
+            )
         }
     }
 
@@ -657,23 +779,119 @@ class CallAudioService : Service() {
      * `incoming` → agent `answer_plan`: how long to ring (the agent starts the AI
      * session meanwhile). No reply within [ANSWER_PLAN_WAIT_MS] (older agent) → default.
      */
-    private suspend fun requestAnswerPlan(caller: String): Long {
-        val plan = CompletableDeferred<Long>()
+    private suspend fun requestAnswerPlan(details: AgentCallDetails): AnswerPlan {
+        val plan = CompletableDeferred<AnswerPlan>()
         pendingAnswerPlan = plan
-        controlClient?.sendJson(
-            org.json.JSONObject()
-                .put("type", "incoming")
-                .put("serial", deviceSerial())
-                .put("caller_id", caller)
-                .put("sim_country", Prefs.lastSimCountry(this))
-                .put("sample_rate", BuildConfig.SAMPLE_RATE),
+        val incoming = org.json.JSONObject()
+            .put("type", "incoming")
+            .put("serial", deviceSerial())
+            .put("caller_id", details.callerId)
+            .put("sim_country", details.simCountry)
+            .put("sample_rate", BuildConfig.SAMPLE_RATE)
+        details.simSubId?.let { incoming.put("sim_sub_id", it) }
+        controlClient?.sendJson(incoming)
+        Log.i(
+            TAG,
+            "incoming sent caller_len=${details.callerId.length} " +
+                "sim_country=${details.simCountry.ifEmpty { "?" }} sim_sub_id=${details.simSubId ?: "?"}",
         )
-        val ms = withTimeoutOrNull(ANSWER_PLAN_WAIT_MS) { plan.await() }
+        val answer = withTimeoutOrNull(ANSWER_PLAN_WAIT_MS) { plan.await() }
         pendingAnswerPlan = null
-        if (ms == null) {
+        if (answer == null) {
             Log.w(TAG, "no answer_plan within ${ANSWER_PLAN_WAIT_MS}ms — ring ${DEFAULT_ANSWER_RING_MS}ms")
         }
-        return (ms ?: DEFAULT_ANSWER_RING_MS).coerceIn(0L, MAX_ANSWER_RING_MS)
+        val result = answer ?: AnswerPlan(DEFAULT_ANSWER_RING_MS, reject = false)
+        return result.copy(delayMs = result.delayMs.coerceIn(0L, MAX_ANSWER_RING_MS))
+    }
+
+    /** Agent `answer_plan` `reject`: decline the ringing call; IDLE then sends `incoming_cancel`. */
+    private fun rejectRingingCall() {
+        var ok = SilentInCallService.rejectRinging()
+        if (!ok) {
+            try {
+                val telecom = getSystemService(TELECOM_SERVICE) as TelecomManager
+                @Suppress("DEPRECATION")
+                ok = telecom.endCall()
+            } catch (e: Exception) {
+                Log.w(TAG, "endCall for reject failed: ${e.message}")
+            }
+        }
+        Log.i(TAG, "answer_plan reject: ringing call declined ok=$ok (not answered)")
+    }
+
+    /**
+     * Number and SIM of the call that rings, from SilentInCallService (waits until
+     * [deadline] for its onCallAdded). Without it: the stored values, which a new call
+     * cleared first, so they never belong to the previous call.
+     */
+    private suspend fun awaitRingingCallDetails(deadline: Long): AgentCallDetails {
+        while (true) {
+            SilentInCallService.ringingCallInfo()?.let { info ->
+                return AgentCallDetails(info.callerId, info.simCountry, info.simSubId)
+            }
+            if (SystemClock.elapsedRealtime() >= deadline) break
+            delay(CALL_INFO_POLL_MS)
+        }
+        Log.w(TAG, "ringing call's number/SIM not known within ${CALL_INFO_WAIT_MS}ms — using the stored values")
+        return storedCallDetails()
+    }
+
+    /** Number and SIM of call [instanceId] (0 = the selected call); stored values without InCallService. */
+    private fun callDetailsFor(instanceId: Long): AgentCallDetails {
+        val info = SilentInCallService.callInfo(instanceId) ?: return storedCallDetails()
+        return AgentCallDetails(info.callerId, info.simCountry, info.simSubId)
+    }
+
+    private fun storedCallDetails(): AgentCallDetails =
+        AgentCallDetails(Prefs.lastCallerId(this), Prefs.lastSimCountry(this), Prefs.lastSimSubId(this))
+
+    /**
+     * A number from SilentInCallService or screening must belong to the call that is up,
+     * not to a second (waiting) call nor to a call that already ended: with an instance it
+     * must be a live call and the selected one; without one (screening) no call may be
+     * established.
+     */
+    private fun acceptsCallerIdFor(instanceId: Long): Boolean {
+        if (instanceId != NO_CALL_INSTANCE) {
+            if (SilentInCallService.isLiveCallInstance(instanceId) != true) return false
+            val selected = SilentInCallService.currentActiveCallInstanceId()
+            return selected == NO_CALL_INSTANCE || selected == instanceId
+        }
+        return SilentInCallService.hasEstablishedCall() != true
+    }
+
+    /** SilentInCallService rejected a second call during a call: tell the agent. */
+    private fun sendCallWaitingRejected(callerId: String, simCountry: String, simSubId: Int?) {
+        val msg = org.json.JSONObject()
+            .put("type", "call_waiting_rejected")
+            .put("serial", deviceSerial())
+            .put("caller_id", callerId)
+            .put("sim_country", simCountry)
+        simSubId?.let { msg.put("sim_sub_id", it) }
+        sendControlOrQueue(msg)
+        Log.i(TAG, "call_waiting_rejected caller_len=${callerId.length} sim_sub_id=${simSubId ?: "?"}")
+    }
+
+    /** Send on the control connection now, or after its next hello when it is closed. */
+    private fun sendControlOrQueue(msg: org.json.JSONObject) {
+        val client = controlClient
+        if (client != null && client.isOpen()) {
+            client.sendJson(msg)
+            return
+        }
+        while (pendingControlJson.size >= MAX_PENDING_CONTROL_MESSAGES) pendingControlJson.poll()
+        pendingControlJson.offer(msg)
+        Log.i(TAG, "control connection closed — ${msg.optString("type")} queued until it is back")
+    }
+
+    private fun flushPendingControl() {
+        val client = controlClient ?: return
+        if (!client.isOpen()) return
+        while (true) {
+            val msg = pendingControlJson.poll() ?: break
+            client.sendJson(msg)
+            Log.i(TAG, "queued ${msg.optString("type")} sent")
+        }
     }
 
     /** The call ended while it rang (never answered): the agent drops the AI session it warmed up. */
@@ -775,7 +993,7 @@ class CallAudioService : Service() {
             audioGuard?.startHoldLoop()
 
             val serial = deviceSerial()
-            val caller = currentCallerId()
+            val details = callDetailsFor(callInstanceId)
             val dumpRoot = createDeviceProtectedStorageContext().cacheDir
 
             // Parallel: TYPE_TELEPHONY inject + media WS hello (was serial → +0.5–2s).
@@ -832,14 +1050,16 @@ class CallAudioService : Service() {
                 },
                 onText = { msg -> handleBridgeText(msg, generation, callInstanceId, inj) },
                 pcmDumpDir = File(dumpRoot, "tts_pcm"),
+                onDisconnected = { reason -> onMediaConnectionLost(generation, callInstanceId, smoke, reason) },
             )
             if (!mutateCurrentSession(generation, callInstanceId) {
                     bridge = client
                     client.connect(
                         serial = serial,
-                        callerId = caller,
+                        callerId = details.callerId,
                         sampleRate = BuildConfig.SAMPLE_RATE,
-                        simCountry = Prefs.lastSimCountry(this@CallAudioService),
+                        simCountry = details.simCountry,
+                        simSubId = details.simSubId,
                     )
                 }
             ) {
@@ -1008,6 +1228,9 @@ class CallAudioService : Service() {
                 // The mode the phone really ended up in, and a result lost with a restart.
                 sendStatus()
                 flushUnreportedResult()
+                flushPendingControl()
+                // Text message results the agent may have missed while disconnected.
+                smsSender?.replay()
             },
         )
         controlClient = client
@@ -1026,9 +1249,17 @@ class CallAudioService : Service() {
             "place_call" -> handlePlaceCall(obj)
             "blocklist_sync" -> handleBlocklistSync(obj)
             "answer_plan" -> {
-                val ms = obj.optLong("delay_ms", DEFAULT_ANSWER_RING_MS)
-                Log.i(TAG, "answer_plan delay_ms=$ms prewarm=${obj.optBoolean("prewarm")}")
-                pendingAnswerPlan?.complete(ms)
+                val plan = AnswerPlan(
+                    delayMs = obj.optLong("delay_ms", DEFAULT_ANSWER_RING_MS),
+                    reject = obj.optBoolean("reject", false),
+                )
+                Log.i(
+                    TAG,
+                    "answer_plan delay_ms=${plan.delayMs} reject=${plan.reject} prewarm=${obj.optBoolean("prewarm")}",
+                )
+                // A reject that arrives after the plan wait still counts while the call rings.
+                if (plan.reject && answerScheduled && !callActive) answerRejected = true
+                pendingAnswerPlan?.complete(plan)
             }
             "set_mode" -> handleSetMode(obj)
             "send_sms" -> smsSender?.handle(obj)
@@ -1158,12 +1389,20 @@ class CallAudioService : Service() {
             fail("missing number or call_id")
             return
         }
-        Log.i(TAG, "place_call call_id=$callId task_id=$taskId number_len=${number.length}")
-        pendingOutboundCallId = callId
-        pendingOutboundNumber = number
-        pendingOutboundTaskId = taskId.ifEmpty { null }
+        // One call at a time: a callback dialed next to a call that rings or is up would
+        // be mixed up with it (media session, mute state, call_end).
+        if (isCallBusy()) {
+            fail("busy")
+            return
+        }
+        val subId = SimSubscriptions.fromCommand(obj)
+        Log.i(
+            TAG,
+            "place_call call_id=$callId task_id=$taskId number_len=${number.length} sub_id=${subId ?: "-"}",
+        )
+        setPendingOutbound(callId, number, taskId.ifEmpty { null })
         Prefs.setLastCallerId(this, number)
-        val ok = OutboundCallHelper.placeCall(this, number, callId)
+        val ok = OutboundCallHelper.placeCall(this, number, callId, subId)
         controlClient?.sendJson(
             org.json.JSONObject()
                 .put("type", if (ok) "place_call_ack" else "place_call_failed")
@@ -1173,9 +1412,54 @@ class CallAudioService : Service() {
                 .put("reason", if (ok) "" else "dial_helper_failed"),
         )
         if (!ok) {
+            clearPendingOutbound(callId)
+        }
+    }
+
+    /** Remember the agent's `place_call`; dropped if it does not reach DIALING/OFFHOOK in 30 s. */
+    private fun setPendingOutbound(callId: String, number: String, taskId: String?) {
+        val expiry = Runnable { expirePendingOutbound(callId) }
+        val old = synchronized(sessionOwnershipLock) {
+            pendingOutboundCallId = callId
+            pendingOutboundNumber = number
+            pendingOutboundTaskId = taskId
+            pendingOutboundDialed = false
+            agentCallbackPending = true
+            pendingOutboundExpiry.also { pendingOutboundExpiry = expiry }
+        }
+        old?.let { mainHandler.removeCallbacks(it) }
+        mainHandler.postDelayed(expiry, OUTBOUND_DIAL_TIMEOUT_MS)
+    }
+
+    private fun clearPendingOutbound(callId: String) {
+        val old = synchronized(sessionOwnershipLock) {
+            if (pendingOutboundCallId != callId) return
             pendingOutboundCallId = null
             pendingOutboundNumber = null
             pendingOutboundTaskId = null
+            pendingOutboundDialed = false
+            agentCallbackPending = false
+            pendingOutboundExpiry.also { pendingOutboundExpiry = null }
+        }
+        old?.let { mainHandler.removeCallbacks(it) }
+    }
+
+    /** Otherwise the next call (even one dialed by hand) would be taken for the callback. */
+    private fun expirePendingOutbound(callId: String) {
+        val expired = synchronized(sessionOwnershipLock) {
+            if (pendingOutboundCallId != callId || pendingOutboundDialed) return@synchronized false
+            pendingOutboundCallId = null
+            pendingOutboundNumber = null
+            pendingOutboundTaskId = null
+            agentCallbackPending = false
+            pendingOutboundExpiry = null
+            true
+        }
+        if (expired) {
+            Log.w(
+                TAG,
+                "place_call call_id=$callId did not reach DIALING/OFFHOOK within ${OUTBOUND_DIAL_TIMEOUT_MS}ms — dropped",
+            )
         }
     }
 
@@ -1323,6 +1607,35 @@ class CallAudioService : Service() {
         }
     }
 
+    /**
+     * The media connection closed or failed during a call. There is no reconnect for a
+     * call in progress, so unless it is open again after [MEDIA_LOST_HANGUP_MS] the call
+     * is ended the way an agent `hangup` ends it, instead of leaving the caller in silence.
+     */
+    private fun onMediaConnectionLost(generation: Long, callInstanceId: Long, smoke: Boolean, reason: String) {
+        if (smoke) return
+        val watch = scope.launch(start = CoroutineStart.LAZY) {
+            delay(MEDIA_LOST_HANGUP_MS)
+            if (!isSessionCurrent(generation, callInstanceId)) return@launch
+            val client = synchronized(sessionOwnershipLock) { bridge }
+            if (client != null && client.isOpen()) {
+                Log.i(TAG, "media connection open again — keep the call")
+                return@launch
+            }
+            Log.w(TAG, "media connection still down after ${MEDIA_LOST_HANGUP_MS}ms — hang up the call")
+            hangupFromAgent(generation, callInstanceId)
+        }
+        val started = mutateCurrentSession(generation, callInstanceId) {
+            if (mediaLostJob?.isActive != true) mediaLostJob = watch
+        } && mediaLostJob === watch
+        if (started) {
+            Log.w(TAG, "media connection lost ($reason) — hang up in ${MEDIA_LOST_HANGUP_MS}ms unless it is back")
+            watch.start()
+        } else {
+            watch.cancel()
+        }
+    }
+
     private fun notifyUplinkMissing() {
         if (uplinkMissingNotified) return
         uplinkMissingNotified = true
@@ -1356,6 +1669,8 @@ class CallAudioService : Service() {
         var oldLocalWaitJob: Job? = null
         var oldCaptureJob: Job? = null
         var oldSessionJob: Job? = null
+        var oldMediaLostJob: Job? = null
+        var oldOutboundExpiry: Runnable? = null
         var outboundCallId: String? = null
         var outboundTaskId: String? = null
         var wasIdle = false
@@ -1378,11 +1693,15 @@ class CallAudioService : Service() {
             oldLocalWaitJob = localWaitJob.also { localWaitJob = null }
             oldCaptureJob = captureJob.also { captureJob = null }
             oldSessionJob = sessionJob.also { sessionJob = null }
+            oldMediaLostJob = mediaLostJob.also { mediaLostJob = null }
             oldInjector = injector.also { injector = null }
             oldBridge = bridge.also { bridge = null }
             outboundCallId = pendingOutboundCallId.also { pendingOutboundCallId = null }
             pendingOutboundNumber = null
             outboundTaskId = pendingOutboundTaskId.also { pendingOutboundTaskId = null }
+            pendingOutboundDialed = false
+            agentCallbackPending = false
+            oldOutboundExpiry = pendingOutboundExpiry.also { pendingOutboundExpiry = null }
             if (oldInjector != null) {
                 // Do not call the injector's stop method on the service main thread. The
                 // worker may be blocked in AudioTrack.write and native teardown can
@@ -1402,6 +1721,8 @@ class CallAudioService : Service() {
             }
             invalidated
         }
+        oldMediaLostJob?.cancel()
+        oldOutboundExpiry?.let { mainHandler.removeCallbacks(it) }
         if (rangUnanswered) sendIncomingCancel()
         if (wasIdle) {
             Log.i(TAG, "endCallSession invalidated idle generation=$invalidatedGeneration")
@@ -1457,49 +1778,12 @@ class CallAudioService : Service() {
         Log.i(TAG, "late caller_id forwarded to media WS len=${callerId.length}")
     }
 
-    private fun currentCallerId(): String {
-        // Prefer stashed incoming number (Intent EXTRA / screening / InCall / PHONE_STATE).
-        // Fall back to latest CallLog incoming row. Never use line1Number (own MSISDN).
-        val stashed = Prefs.lastCallerId(this)
-        if (stashed.isNotBlank()) return stashed
-        val fromLog = latestIncomingFromCallLog()
-        if (fromLog.isNotBlank()) {
-            Prefs.setLastCallerId(this, fromLog)
-            Log.i(TAG, "caller_id from CallLog len=${fromLog.length}")
-            return fromLog
-        }
-        return ""
-    }
-
-    private fun latestIncomingFromCallLog(): String {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            return ""
-        }
-        return try {
-            val uri = CallLog.Calls.CONTENT_URI
-            val projection = arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE)
-            contentResolver.query(
-                uri,
-                projection,
-                "${CallLog.Calls.TYPE}=?",
-                arrayOf(CallLog.Calls.INCOMING_TYPE.toString()),
-                "${CallLog.Calls.DATE} DESC",
-            )?.use { c ->
-                if (!c.moveToFirst()) return@use ""
-                val idx = c.getColumnIndex(CallLog.Calls.NUMBER)
-                if (idx < 0) return@use ""
-                c.getString(idx)?.trim().orEmpty()
-            }.orEmpty()
-        } catch (e: SecurityException) {
-            Log.w(TAG, "CallLog denied: ${e.message}")
-            ""
-        } catch (e: Exception) {
-            Log.w(TAG, "CallLog read failed: ${e.message}")
-            ""
-        }
-    }
+    /**
+     * Number of the call in progress: this call's own (SilentInCallService), else the
+     * stored one. Blank = hidden or unknown; never an older call's number (the call log
+     * only lists a call after it ended, so it always held the previous caller).
+     */
+    private fun currentCallerId(): String = callDetailsFor(currentCallInstanceForTelephony()).callerId
 
     private fun cancelPendingServiceStop(reason: String) {
         val oldToken = pendingServiceStopToken
@@ -1585,6 +1869,15 @@ class CallAudioService : Service() {
         nm.notify(NOTIF_ID, buildNotification(text ?: getString(R.string.notification_text_armed)))
     }
 
+    /** The agent's reply to `incoming`: ring [delayMs], or decline the call ([reject]). */
+    private data class AnswerPlan(val delayMs: Long, val reject: Boolean)
+
+    /** What the agent is told about a call: number ("" = hidden), SIM country and subscription. */
+    private data class AgentCallDetails(val callerId: String, val simCountry: String, val simSubId: Int?)
+
+    /** How an OFFHOOK call is handled: with the AI, as the owner's own call, or not yet known. */
+    internal enum class OffhookKind { AI, OWN, UNKNOWN }
+
     private fun buildNotification(text: String): Notification {
         val channelId = "call_stream_silent"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -1622,18 +1915,25 @@ class CallAudioService : Service() {
         const val ACTION_SMOKE_CONNECT = "com.pixelcallai.streamer.SMOKE_CONNECT"
         const val ACTION_CALL_ACTIVE = "com.pixelcallai.streamer.CALL_ACTIVE"
         const val ACTION_CALL_ENDED = "com.pixelcallai.streamer.CALL_ENDED"
+        /** SilentInCallService rejected a call that rang during another call. */
+        const val ACTION_CALL_WAITING_REJECTED = "com.pixelcallai.streamer.CALL_WAITING_REJECTED"
         const val EXTRA_ENABLED = "enabled"
         /** Incoming caller number from screening / InCall (not MSISDN). */
         const val EXTRA_CALLER_ID = "caller_id"
         /** Monotonic Telecom Call instance assigned by [SilentInCallService]. */
         const val EXTRA_CALL_INSTANCE_ID = "call_instance_id"
+        /** [ACTION_CALL_WAITING_REJECTED]: the rejected call's number, SIM country and subscription id (-1 = unknown). */
+        const val EXTRA_WAITING_CALLER_ID = "waiting_caller_id"
+        const val EXTRA_SIM_COUNTRY = "sim_country"
+        const val EXTRA_SIM_SUB_ID = "sim_sub_id"
         private const val NO_CALL_INSTANCE = 0L
         private const val NO_PENDING_SERVICE_STOP = 0L
         private const val NOTIF_ID = 42
         private const val NOTIF_INFO_ID = 43
         private const val TAG = "CallAudioService"
         /**
-         * Max ring wait for the agent's CONTROL_IDLE connection before answering anyway.
+         * Max ring wait for the agent's CONTROL_IDLE connection. Not up by then: the call
+         * is not answered (it rings on to the carrier's missed call / voicemail).
          * The agent starts talking only after the media hello.
          */
         private const val AGENT_READY_TIMEOUT_MS = 12_000L
@@ -1641,6 +1941,17 @@ class CallAudioService : Service() {
         private const val DEFAULT_ANSWER_RING_MS = 3_000L
         private const val MAX_ANSWER_RING_MS = 8_000L
         private const val ANSWER_PLAN_WAIT_MS = 500L
+        /** Longest wait after RINGING for SilentInCallService to store this call's number and SIM. */
+        private const val CALL_INFO_WAIT_MS = 150L
+        private const val CALL_INFO_POLL_MS = 10L
+        /** OFFHOOK direction unknown (InCallService not bound yet): ask again this often. */
+        private const val OUTGOING_CHECK_ATTEMPTS = 4
+        private const val OUTGOING_CHECK_RETRY_MS = 50L
+        /** A `place_call` that has not reached DIALING/OFFHOOK by then is forgotten. */
+        private const val OUTBOUND_DIAL_TIMEOUT_MS = 30_000L
+        /** Media connection down this long during a call → the call is ended. */
+        private const val MEDIA_LOST_HANGUP_MS = 3_000L
+        private const val MAX_PENDING_CONTROL_MESSAGES = 10
         /** Minimal settle after OFFHOOK before inject open (the agent owns any greeting delay). */
         private const val OFFHOOK_SETTLE_MS = 50L
         private const val CALL_STATE_WATCHDOG_MS = 250L
@@ -1649,6 +1960,28 @@ class CallAudioService : Service() {
          * After inject start, wait this many ms before local menu inject (only if LOCAL_MENU on).
          */
         private const val LOCAL_MENU_DELAY_MS = 50L
+
+        /** The agent's `place_call` is being dialed or is up (read by [SilentInCallService]). */
+        @Volatile
+        private var agentCallbackPending = false
+
+        /** True while a call the agent asked for is pending; such a call is not "dialed by hand". */
+        fun isAgentCallbackPending(): Boolean = agentCallbackPending
+
+        /**
+         * Whether an OFFHOOK call gets the AI. [ownCall] = dialed by hand (stored per call
+         * by SilentInCallService; an agent callback is false); null = InCallService does
+         * not know the call yet, and a call this app answered after it rang is incoming
+         * even then.
+         */
+        internal fun classifyOffhook(agentCallback: Boolean, answeredRing: Boolean, ownCall: Boolean?): OffhookKind =
+            when {
+                agentCallback -> OffhookKind.AI
+                ownCall == true -> OffhookKind.OWN
+                ownCall == false -> OffhookKind.AI
+                answeredRing -> OffhookKind.AI
+                else -> OffhookKind.UNKNOWN
+            }
     }
 
     /** Play `assets/ivr_wait.wav` once per call into uplink. */

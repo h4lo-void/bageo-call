@@ -118,5 +118,16 @@ PUT /calls/api/settings
 | 方向 | 消息 | 含义 |
 |---|---|---|
 | 手机 → 主程序 | `hello` 加上 `"supports_sms": true` | 应用能替主程序发短信。没有这个字段 = 旧应用：不会让它发短信。 |
-| 主程序 → 手机 | `{"type": "send_sms", "id": "<最多 64 个字符>", "to": "+886912345678", "text": "<UTF-8，最多 500 个字符>"}` | 只发给接那通电话的手机。`to` 只有数字，开头可以有 `+`。 |
-| 手机 → 主程序 | `{"type": "send_sms_result", "id": "<同一个>", "ok": true}` 或 `{"type": "send_sms_result", "id": "<同一个>", "ok": false, "error": "<代码>"}` | 短信每一段都回报发出后才回复（手机最多等 60 秒，超时回复 `timeout`）。`error` 是 `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception` 之一。主程序最多等 90 秒，没有回复就算失败。 |
+| 主程序 → 手机 | `{"type": "send_sms", "id": "<最多 64 个字符>", "to": "+886912345678", "text": "<UTF-8，最多 500 个字符>"}`，可以再加 `"sub_id": <整数>` | 只发给接那通电话的手机。`to` 只有数字，开头可以有 `+`。`sub_id` 指定用哪张 SIM 发（就是手机回报的 `sim_sub_id`）；没有就用手机默认的短信 SIM。已经发出过的 id 再来一次，手机只会再回复一次结果，不会重复发送。 |
+| 手机 → 主程序 | `{"type": "send_sms_result", "id": "<同一个>", "ok": true}` 或 `{"type": "send_sms_result", "id": "<同一个>", "ok": false, "error": "<代码>"}` | 短信每一段都回报发出后才回复（手机最多等 60 秒，超时回复 `timeout`；之后才收到回报，会再发一次真正的结果）。`error` 是 `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception` 之一。主程序最多等 90 秒，没有回复就算失败。control 连接重连后，手机会把最近 20 个 id 的结果再发一次，主程序用 `id` 去掉重复的。 |
+| 手机 → 主程序 | `{"type": "send_sms_delivered", "id": "<同一个>", "ok": true \| false}` | 运营商回报的送达结果：每一段都送到对方是 `true`，有一段确定送不到是 `false`。运营商有回报才会发（手机最多等一小时）；重连后也会跟结果一起再发一次。 |
+
+通话也用同一条连接，多了这些可以省略的字段和消息（旧应用、旧主程序不发也不认识，照样能用）：
+
+| 方向 | 消息 | 含义 |
+|---|---|---|
+| 手机 → 主程序 | `hello` 加上 `"supports_reject": true` | 应用认识 `answer_plan` 的 `reject`，会在响铃时拒接。没有这个字段 = 旧应用，让它拒接它还是会接起来，所以主程序改成接起来播放语音。 |
+| 手机 → 主程序 | `incoming` 和 media 连接的 `hello` 加上 `"sim_sub_id": <整数>` | 这通电话打进来的那张 SIM 在 Android 里的订阅 id，跟 `sim_country` 一起发。不知道就不发。隐藏号码时 `caller_id` 是空字符串（不会是上一通的号码）。 |
+| 主程序 → 手机 | `answer_plan` 加上 `"reject": true` | 响铃中直接拒接，不接起来。电话结束后照样发 `incoming_cancel`。晚到也有效，只要电话还在响。 |
+| 手机 → 主程序 | `{"type": "call_waiting_rejected", "serial": "...", "caller_id": "...", "sim_country": "tw", "sim_sub_id": <整数>}` | 通话中又有第二通打进来，手机立刻拒接（AI 模式）。字段是被拒那一通的信息；不知道 `sim_sub_id` 就不发。 |
+| 主程序 → 手机 | `place_call` 加上 `"sub_id": <整数>` | 用那张 SIM 拨出。找不到那张 SIM 就用手机默认的。手机有电话在响或通话中时不拨，回复 `place_call_failed`，`"reason": "busy"`。 |

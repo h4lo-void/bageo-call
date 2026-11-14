@@ -1,6 +1,7 @@
 package com.pixelcallai.streamer
 
 import android.content.Intent
+import android.media.AudioManager
 import android.os.Build
 import android.telecom.Call
 import android.telecom.CallScreeningService
@@ -65,6 +66,15 @@ class SilentCallScreeningService : CallScreeningService() {
             return
         }
 
+        // Call waiting: another call is up. The main process rejects this one. Muting here
+        // could mute a call the owner is talking on, and this number must not replace the
+        // number of the call in progress.
+        if (isAnotherCallUp()) {
+            respondAllowSilent(callDetails, silence = true)
+            Log.i(TAG, "another call is up (call waiting): no mute, no arm")
+            return
+        }
+
         // Allow + silence ring. Never skipCallLog / skipNotification on allow
         // (AOSP throws IllegalStateException → process death).
         respondAllowSilent(callDetails, silence = true)
@@ -92,6 +102,13 @@ class SilentCallScreeningService : CallScreeningService() {
         } catch (e: Exception) {
             Log.w(TAG, "arm CallAudioService failed: ${e.message}")
         }
+    }
+
+    /** A call is already connected or dialing (the audio mode is in-call). */
+    private fun isAnotherCallUp(): Boolean = try {
+        getSystemService(AudioManager::class.java)?.mode == AudioManager.MODE_IN_CALL
+    } catch (_: Exception) {
+        false
     }
 
     /**

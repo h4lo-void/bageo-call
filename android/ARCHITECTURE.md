@@ -35,16 +35,16 @@ agent over USB. The address can be changed on the setup screen (`Prefs.agentUrl`
 |---|---|
 | `CallAudioService` | Foreground service and state machine. Watches the call state, decides when to answer, owns the two WebSocket clients, the capture loop and the injector. |
 | `AgentControlClient` | Control WebSocket. Announces the phone, keeps the connection alive, reports ringing calls, receives `answer_plan` and `place_call`. Reconnects by itself. |
-| `BridgeClient` | Media WebSocket for one call. Sends `hello`, then call audio; hands received audio and JSON to the service. |
+| `BridgeClient` | Media WebSocket for one call. Sends `hello`, then call audio; hands received audio and JSON to the service, and reports a dropped connection. |
 | `VoiceCallCapture` | `AudioRecord` on the far-end call audio. Tries `VOICE_DOWNLINK` first, then `VOICE_CALL`. |
 | `TelephonyUplinkInjector` (`UplinkInjector.kt`) | `AudioTrack` whose preferred device is the `TYPE_TELEPHONY` output, fed from a queue by a worker thread. |
 | `LocalAudioGuard` | Keeps the phone itself silent: microphone muted, speaker off, earpiece at minimum, ringer and Do Not Disturb. All audio system calls run on one worker thread. |
-| `SilentInCallService` | The in-call service Android binds because the app is the default dialer. Shows nothing, never answers by itself, tells `CallAudioService` when a call becomes active or is removed. |
+| `SilentInCallService` | The in-call service Android binds because the app is the default dialer. Shows nothing, never answers by itself, tells `CallAudioService` when a call becomes active or is removed. Keeps each call's number and SIM, declines a second call that rings during a call, and leaves calls dialed by hand alone. |
 | `SilentCallScreeningService` | Call screening role. Allows every call and asks Android to silence the ringtone. Runs in its own process (`:screening`). |
 | `TransparentDialerActivity` | The activity a default dialer must have. Invisible; finishes immediately. |
 | `DialerRoleHelper` | Takes the dialer and call screening roles and disables Google Dialer's call UI, through `su`. |
-| `OutboundCallHelper` | Dials a number when the agent sends `place_call`. |
-| `SmsSender` | Sends a text message from the phone's number when the agent sends `send_sms` (replies to appointment requests) and answers with `send_sms_result`. Needs `SEND_SMS`, which the module grants at boot. |
+| `OutboundCallHelper` | Dials a number when the agent sends `place_call`, from the SIM its `sub_id` names. |
+| `SmsSender` | Sends a text message from the phone's number when the agent sends `send_sms` (replies to appointment requests) and answers with `send_sms_result` and `send_sms_delivered`. Needs `SEND_SMS`, which the module grants at boot. |
 | `BootReceiver` | Starts the service after boot and after the app is replaced. |
 | `MainActivity` | Setup and status screen. Not involved in calls. |
 | `Prefs` | Settings in device-protected storage, readable before the first unlock. |
@@ -57,9 +57,13 @@ agent over USB. The address can be changed on the setup screen (`Prefs.agentUrl`
 ```text
 RINGING
   SilentCallScreeningService: allow the call, silence the ringtone
-  SilentInCallService:        mute, do not answer
-  CallAudioService:           wait for the control WebSocket (max 12 s)
+  SilentInCallService:        mute, do not answer; keep this call's number and SIM
+                              (another call already up: decline this one at once)
+  CallAudioService:           wait for the control WebSocket (max 12 s; not up: do not
+                              answer, the call rings on to missed call / voicemail)
+                              wait for this call's number and SIM (max 150 ms)
                               send "incoming", wait for "answer_plan" (max 0.5 s)
+                              "reject": decline the call, do not answer
                               keep ringing for delay_ms (default 3 s, max 8 s)
                               answer
 OFFHOOK
@@ -68,6 +72,7 @@ OFFHOOK
                                            open BridgeClient, send "hello" + "ringing"
                               start VoiceCallCapture loop -> binary frames to the agent
                               agent binary frames -> injector queue -> call uplink
+                              media WebSocket lost for 3 s -> end the call
 IDLE
   CallAudioService:           send "call_end", close the media WebSocket,
                               stop capture and injector, stay armed for the next call
@@ -82,6 +87,10 @@ Details worth knowing:
   audio server and leave the call silent, so the injector waits for `MODE_IN_CALL`.
 - **Audio received before the route is ready is queued, not dropped**, so the first
   words are not lost.
+- **The audio track is never left idle.** Once nothing has been queued for 100 ms,
+  the injector writes 40 ms of silence whenever the track is about to run dry. On the
+  Pixel 9 an idle track let the audio HAL sleep, and the next write rebuilt the track
+  (about 0.6 s) and cut off a short first word. Queued audio always goes first.
 - **Only the preferred device is checked, not the routed device.** The source notes
   that on the tested Pixels the routed device often reports the earpiece even though
   the audio does reach the call.
@@ -92,7 +101,17 @@ Details worth knowing:
   Every callback carries a session generation number so that late callbacks from an
   earlier call are ignored.
 - **A call dialed by hand is left alone.** Only calls the agent asked for with
-  `place_call`, and incoming calls, get an AI session.
+  `place_call`, and incoming calls, get an AI session. A call dialed by hand is not
+  muted: the app takes back the Telecom mute, the microphone mutes and the minimum
+  earpiece volume for it, and mutes again when it ends. For a call the app did not
+  answer and whose direction Android cannot tell yet, the app asks again for 200 ms
+  and otherwise leaves the AI off.
+- **One call at a time.** A call that rings while another is up is declined at once
+  and reported as `call_waiting_rejected`. The call in progress keeps its number,
+  SIM, media session and mute state.
+- **No dead air.** If the agent is not reachable while the phone rings, the call is
+  not answered. If the media WebSocket drops during a call and is not open again
+  within 3 seconds, the call is ended.
 - **The captured audio is quiet.** The earpiece volume is held at minimum so nobody
   near the phone hears the caller, and on the tested Pixels that volume also scales
   the captured audio. The agent is expected to amplify it.
@@ -112,5 +131,6 @@ Both are `signature|privileged` permissions. The module places the APK under
 
 - No speech recognition, language model or speech synthesis. Those run in the agent.
 - No echo cancellation on the phone.
-- No call blocking. `SilentCallScreeningService` allows every call; the stored
-  blocklist is not consulted.
+- No call blocking of its own. `SilentCallScreeningService` allows every call; the
+  stored blocklist is not consulted. A ringing call is declined only when the agent's
+  `answer_plan` says `reject`, or when another call is already up.
