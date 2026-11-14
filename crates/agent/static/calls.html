@@ -233,6 +233,17 @@ audio{width:100%;height:42px;margin-top:10px;display:block}
 .msg.ai .bub{background:var(--bubble-ai);border-top-left-radius:14px;border-top-right-radius:4px}
 .msg.sys{align-self:center;max-width:100%;align-items:center}
 .msg.sys .bub{background:transparent;border:1px dashed var(--line-strong);color:var(--muted);font-size:.87rem;border-radius:10px}
+/* A line said in another language: its translation under it, in the bubble */
+.msg .bub .tr{display:block;margin-top:4px;font-size:.85em;color:var(--muted)}
+.d-sec>h3.h3row{display:flex;align-items:center;gap:8px}
+.h3row .icon-btn{width:30px;height:30px;margin:-6px 0 -6px auto}
+/* "Show translation" switch in the call's header */
+.trsw{display:inline-flex;align-items:center;gap:6px;font-size:.85rem;color:var(--muted);white-space:nowrap;cursor:pointer;flex:0 0 auto}
+.trsw input{appearance:none;-webkit-appearance:none;flex:0 0 auto;width:34px;height:20px;border-radius:999px;background:var(--line-strong);position:relative;cursor:pointer;margin:0;transition:background .15s;border:0;min-height:0;padding:0}
+.trsw input::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.trsw input:checked{background:var(--accent)}
+.trsw input:checked::after{left:16px}
+.trsw input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 16px;font-size:.9rem;margin:8px 0 0}
 .kv dt{color:var(--muted)}
 .kv dd{margin:0;word-break:break-word}
@@ -512,6 +523,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
           <div class="d-head">
             <button type="button" class="icon-btn back" id="btnBack" data-i18n-aria="back"><svg class="i"><use href="#i-back"/></svg></button>
             <h2 class="grow" id="dTitle"></h2>
+            <label class="trsw" id="dTrSw" hidden><input type="checkbox" id="dTrToggle" /><span data-i18n="d_show_tr"></span></label>
             <button type="button" class="icon-btn" id="btnCopyNum" data-i18n-aria="d_copy_number" data-i18n-title="d_copy_number"><svg class="i"><use href="#i-copy"/></svg></button>
             <button type="button" class="icon-btn closex" id="btnCloseDetail" data-i18n-aria="close" data-i18n-title="close"><svg class="i"><use href="#i-x"/></svg></button>
           </div>
@@ -546,7 +558,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <p class="muted" id="dNoRec" data-i18n="d_norec" hidden></p>
           </div>
           <div class="d-sec" id="dDlgSec" hidden>
-            <h3 data-i18n="d_dialogue"></h3>
+            <h3 class="h3row"><span data-i18n="d_dialogue"></span><button type="button" class="icon-btn" id="btnCopyDlg" data-i18n-aria="d_copy_dlg" data-i18n-title="d_copy_dlg"><svg class="i sm"><use href="#i-copy"/></svg></button></h3>
             <div class="chat" id="dDialogue"></div>
           </div>
           <div class="d-sec" id="dEndSec" hidden>
@@ -1110,6 +1122,8 @@ I18N["en"] = {
   tr_tts_h: "Only what the AI said.",
   tr_vm_h: "Only the message the caller left.",
   d_dialogue: "Conversation",
+  d_show_tr: "Show translation",
+  d_copy_dlg: "Copy conversation",
   who_caller: "Caller",
   who_ai: "AI",
   who_carrier: "Carrier announcement",
@@ -1120,6 +1134,7 @@ I18N["en"] = {
   end_blocked: "Blocked number: the “not available” announcement was played and the call ended. The AI did not answer.",
   end_spam: "Judged a sales or scam call, so the AI kept the caller talking to waste their time.",
   end_normal: "The AI answered and talked, and the call ended normally.",
+  end_call_waiting: "It came in during another call, and the phone turned it away as busy (no AI).",
   d_block: "Block this number",
   d_block_title: "Block {num}?",
   d_block_body: "Calls from this number will hear a short “not available” announcement. The AI will not answer them.",
@@ -1475,6 +1490,9 @@ I18N["en"] = {
   ev_gemini_zero_delivery_to_voicemail: "AI sent no sound, went to voicemail",
   ev_gemini_delivery_fail_to_voicemail: "AI audio could not be played, went to voicemail",
   ev_blocked_spam: "Blocked as spam",
+  ev_call_waiting_rejected: "Came in during another call, turned away as busy",
+  ev_reject_list_declined: "Declined while it rang",
+  ev_ivr_hangup: "Recording or voice menu: hung up",
   nf_telegram: "Telegram",
   nf_discord: "Discord",
   nf_slack: "Slack / Mattermost",
@@ -1735,6 +1753,8 @@ I18N["zh-TW"] = {
   tr_tts_h: "只有 AI 說的話。",
   tr_vm_h: "只有對方留下的留言。",
   d_dialogue: "對話內容",
+  d_show_tr: "顯示翻譯",
+  d_copy_dlg: "複製逐字稿",
   who_caller: "對方",
   who_ai: "AI",
   who_carrier: "電信業者提示音",
@@ -1745,6 +1765,7 @@ I18N["zh-TW"] = {
   end_blocked: "拒接號碼：播放「無法接通」語音後掛斷，AI 沒有接。",
   end_spam: "判斷是推銷或詐騙電話，AI 故意陪對方聊、拖時間。",
   end_normal: "AI 接聽並對話後，正常結束。",
+  end_call_waiting: "通話中插播，手機忙線拒接（沒有用 AI）。",
   d_block: "拒接這個號碼",
   d_block_title: "要拒接 {num} 嗎？",
   d_block_body: "這個號碼之後打來，只會聽到一小段「無法接通」的語音，AI 不會接聽。",
@@ -2100,6 +2121,9 @@ I18N["zh-TW"] = {
   ev_gemini_zero_delivery_to_voicemail: "AI 沒有聲音，改走語音留言",
   ev_gemini_delivery_fail_to_voicemail: "AI 聲音送不出去，改走語音留言",
   ev_blocked_spam: "當成騷擾電話擋掉",
+  ev_call_waiting_rejected: "通話中插播，忙線拒接",
+  ev_reject_list_declined: "響鈴時直接拒接",
+  ev_ivr_hangup: "對方是錄音或語音選單，已掛斷",
   nf_telegram: "Telegram",
   nf_discord: "Discord",
   nf_slack: "Slack / Mattermost",
@@ -2158,12 +2182,12 @@ I18N["zh-TW"] = {
   err_unknown_background: "沒有這個背景音。",
   err_background_missing: "這個背景音的音檔不見了。",
   err_preview_failed: "試聽做不出來。請檢查 Gemini API 金鑰再試一次。",
-  err_bad_request: "agent 看不懂這個要求。",
+  err_bad_request: "主程式看不懂這個要求。",
   err_save_failed: "設定檔寫不進磁碟。",
   err_empty_body: "訊息是空的。",
   err_task_not_found: "這個任務已經不在了。",
   err_fulfill_failed: "任務沒辦法執行。",
-  err_unknown_channel: "agent 不認得這個通知服務。",
+  err_unknown_channel: "主程式不認得這個通知服務。",
   err_missing_field: "請填寫「{field}」。",
   err_bad_url: "「{field}」要用 http:// 或 https:// 開頭。",
   err_bad_value: "「{field}」看起來不對。",
@@ -2360,6 +2384,8 @@ I18N["zh-CN"] = {
   tr_tts_h: "只有 AI 说的话。",
   tr_vm_h: "只有对方留下的留言。",
   d_dialogue: "对话内容",
+  d_show_tr: "显示翻译",
+  d_copy_dlg: "复制对话记录",
   who_caller: "对方",
   who_ai: "AI",
   who_carrier: "运营商提示音",
@@ -2370,6 +2396,7 @@ I18N["zh-CN"] = {
   end_blocked: "拦截号码：播放“无法接通”语音后挂断，AI 没有接听。",
   end_spam: "判断为推销或诈骗电话，AI 故意陪对方聊、拖时间。",
   end_normal: "AI 接听并对话后，正常结束。",
+  end_call_waiting: "通话中插播，手机占线拒接（没有用 AI）。",
   d_block: "拦截这个号码",
   d_block_title: "要拦截 {num} 吗？",
   d_block_body: "这个号码以后打来，只会听到一小段“无法接通”的语音，AI 不会接听。",
@@ -2725,6 +2752,9 @@ I18N["zh-CN"] = {
   ev_gemini_zero_delivery_to_voicemail: "AI 没有声音，转到语音留言",
   ev_gemini_delivery_fail_to_voicemail: "AI 声音发不出去，转到语音留言",
   ev_blocked_spam: "作为骚扰电话拦截",
+  ev_call_waiting_rejected: "通话中插播，占线拒接",
+  ev_reject_list_declined: "响铃时直接拒接",
+  ev_ivr_hangup: "对方是录音或语音菜单，已挂断",
   nf_telegram: "Telegram",
   nf_discord: "Discord",
   nf_slack: "Slack / Mattermost",
@@ -2783,12 +2813,12 @@ I18N["zh-CN"] = {
   err_unknown_background: "没有这个背景音。",
   err_background_missing: "这个背景音的音频文件不见了。",
   err_preview_failed: "试听生成失败。请检查 Gemini API 密钥后再试。",
-  err_bad_request: "agent 看不懂这个请求。",
+  err_bad_request: "主程序看不懂这个请求。",
   err_save_failed: "设置文件写不进磁盘。",
   err_empty_body: "消息是空的。",
   err_task_not_found: "这个任务已经不在了。",
   err_fulfill_failed: "任务无法执行。",
-  err_unknown_channel: "agent 不认识这个通知服务。",
+  err_unknown_channel: "主程序不认识这个通知服务。",
   err_missing_field: "请填写“{field}”。",
   err_bad_url: "“{field}”要以 http:// 或 https:// 开头。",
   err_bad_value: "“{field}”看起来不对。",
@@ -2985,6 +3015,8 @@ I18N["ja"] = {
   tr_tts_h: "AI が話した内容だけ。",
   tr_vm_h: "相手が残したメッセージだけ。",
   d_dialogue: "会話",
+  d_show_tr: "翻訳を表示",
+  d_copy_dlg: "会話をコピー",
   who_caller: "相手",
   who_ai: "AI",
   who_carrier: "通信会社のアナウンス",
@@ -2995,6 +3027,7 @@ I18N["ja"] = {
   end_blocked: "着信拒否の番号：「おつなぎできません」のアナウンスを流して切りました。AI は応答していません。",
   end_spam: "営業または詐欺の電話と判断し、AI がわざと話を引き延ばしました。",
   end_normal: "AI が応答して会話し、通常どおり終了しました。",
+  end_call_waiting: "別の通話中にかかってきたため、スマホが話し中として拒否しました（AI は使っていません）。",
   d_block: "この番号を着信拒否",
   d_block_title: "{num} を着信拒否にしますか？",
   d_block_body: "この番号からの電話には「おつなぎできません」という短いアナウンスだけが流れ、AI は応答しません。",
@@ -3350,6 +3383,9 @@ I18N["ja"] = {
   ev_gemini_zero_delivery_to_voicemail: "AI の音声がなく留守電へ",
   ev_gemini_delivery_fail_to_voicemail: "AI の音声を流せず留守電へ",
   ev_blocked_spam: "迷惑電話としてブロック",
+  ev_call_waiting_rejected: "通話中の着信、話し中で拒否",
+  ev_reject_list_declined: "着信中に拒否",
+  ev_ivr_hangup: "録音・音声ガイダンスだったため切断",
   nf_telegram: "Telegram",
   nf_discord: "Discord",
   nf_slack: "Slack / Mattermost",
@@ -3408,12 +3444,12 @@ I18N["ja"] = {
   err_unknown_background: "この背景音は使えません。",
   err_background_missing: "この背景音のファイルがありません。",
   err_preview_failed: "サンプルを作れませんでした。Gemini API キーを確認して、もう一度お試しください。",
-  err_bad_request: "agent がリクエストを理解できませんでした。",
+  err_bad_request: "エージェントがリクエストを理解できませんでした。",
   err_save_failed: "設定をディスクに書き込めませんでした。",
   err_empty_body: "メッセージが空です。",
   err_task_not_found: "このタスクはもうありません。",
   err_fulfill_failed: "タスクを実行できませんでした。",
-  err_unknown_channel: "agent はこの通知サービスを知りません。",
+  err_unknown_channel: "エージェントはこの通知サービスを知りません。",
   err_missing_field: "「{field}」を入力してください。",
   err_bad_url: "「{field}」は http:// か https:// で始めてください。",
   err_bad_value: "「{field}」が正しくないようです。",
@@ -3610,6 +3646,8 @@ I18N["ko"] = {
   tr_tts_h: "AI가 한 말만 들립니다.",
   tr_vm_h: "상대방이 남긴 메시지만 들립니다.",
   d_dialogue: "대화 내용",
+  d_show_tr: "번역 보기",
+  d_copy_dlg: "대화 내용 복사",
   who_caller: "상대방",
   who_ai: "AI",
   who_carrier: "통신사 안내 음성",
@@ -3620,6 +3658,7 @@ I18N["ko"] = {
   end_blocked: "차단 번호: “연결할 수 없습니다” 안내를 들려주고 끊었습니다. AI는 받지 않았습니다.",
   end_spam: "영업 또는 사기 전화로 판단해, AI가 일부러 통화를 길게 끌었습니다.",
   end_normal: "AI가 받아 대화했고, 통화가 정상적으로 끝났습니다.",
+  end_call_waiting: "다른 통화 중에 걸려 와서 휴대전화가 통화 중으로 거절했습니다(AI 사용 안 함).",
   d_block: "이 번호 차단",
   d_block_title: "{num} 번호를 차단할까요?",
   d_block_body: "이 번호로 걸려 온 전화에는 “연결할 수 없습니다”라는 짧은 안내만 나가고, AI는 받지 않습니다.",
@@ -3975,6 +4014,9 @@ I18N["ko"] = {
   ev_gemini_zero_delivery_to_voicemail: "AI 소리가 없어 음성 메시지로 전환",
   ev_gemini_delivery_fail_to_voicemail: "AI 소리를 내보내지 못해 음성 메시지로 전환",
   ev_blocked_spam: "스팸으로 차단",
+  ev_call_waiting_rejected: "통화 중 착신, 통화 중으로 거절",
+  ev_reject_list_declined: "벨이 울리는 중 거절",
+  ev_ivr_hangup: "녹음 또는 음성 메뉴라서 끊음",
   nf_telegram: "Telegram",
   nf_discord: "Discord",
   nf_slack: "Slack / Mattermost",
@@ -4033,12 +4075,12 @@ I18N["ko"] = {
   err_unknown_background: "이 배경음은 쓸 수 없습니다.",
   err_background_missing: "이 배경음의 소리 파일이 없습니다.",
   err_preview_failed: "샘플을 만들지 못했습니다. Gemini API 키를 확인하고 다시 시도하세요.",
-  err_bad_request: "agent가 요청을 이해하지 못했습니다.",
+  err_bad_request: "에이전트가 요청을 이해하지 못했습니다.",
   err_save_failed: "설정을 디스크에 쓰지 못했습니다.",
   err_empty_body: "메시지가 비어 있습니다.",
   err_task_not_found: "이 작업은 더 이상 없습니다.",
   err_fulfill_failed: "작업을 실행하지 못했습니다.",
-  err_unknown_channel: "agent가 모르는 알림 서비스입니다.",
+  err_unknown_channel: "에이전트가 모르는 알림 서비스입니다.",
   err_missing_field: "‘{field}’을(를) 입력하세요.",
   err_bad_url: "‘{field}’은(는) http:// 또는 https://로 시작해야 합니다.",
   err_bad_value: "‘{field}’이(가) 올바르지 않아 보입니다.",
@@ -4235,6 +4277,8 @@ I18N["es"] = {
   tr_tts_h: "Solo lo que dijo la IA.",
   tr_vm_h: "Solo el mensaje que dejó quien llamó.",
   d_dialogue: "Conversación",
+  d_show_tr: "Mostrar traducción",
+  d_copy_dlg: "Copiar conversación",
   who_caller: "Quien llama",
   who_ai: "IA",
   who_carrier: "Aviso de la operadora",
@@ -4245,6 +4289,7 @@ I18N["es"] = {
   end_blocked: "Número bloqueado: se reprodujo el aviso de «no disponible» y la llamada terminó. La IA no contestó.",
   end_spam: "Se consideró una llamada de ventas o una estafa, y la IA entretuvo a quien llamaba para hacerle perder tiempo.",
   end_normal: "La IA contestó y conversó; la llamada terminó con normalidad.",
+  end_call_waiting: "Entró durante otra llamada y el teléfono la rechazó como ocupado (sin IA).",
   d_block: "Bloquear este número",
   d_block_title: "¿Bloquear {num}?",
   d_block_body: "Las llamadas de este número oirán un breve aviso de «no disponible». La IA no las contestará.",
@@ -4600,6 +4645,9 @@ I18N["es"] = {
   ev_gemini_zero_delivery_to_voicemail: "La IA no envió sonido, pasó al buzón de voz",
   ev_gemini_delivery_fail_to_voicemail: "No se pudo reproducir la IA, pasó al buzón de voz",
   ev_blocked_spam: "Bloqueada como spam",
+  ev_call_waiting_rejected: "Entró durante otra llamada, rechazada (ocupado)",
+  ev_reject_list_declined: "Rechazada mientras sonaba",
+  ev_ivr_hangup: "Era una grabación o un menú de voz: colgada",
   nf_telegram: "Telegram",
   nf_discord: "Discord",
   nf_slack: "Slack / Mattermost",
@@ -4860,6 +4908,8 @@ I18N["fr"] = {
   tr_tts_h: "Uniquement ce que l'IA a dit.",
   tr_vm_h: "Uniquement le message laissé par le correspondant.",
   d_dialogue: "Conversation",
+  d_show_tr: "Afficher la traduction",
+  d_copy_dlg: "Copier la conversation",
   who_caller: "Correspondant",
   who_ai: "IA",
   who_carrier: "Annonce de l'opérateur",
@@ -4870,6 +4920,7 @@ I18N["fr"] = {
   end_blocked: "Numéro bloqué : l'annonce « non disponible » a été diffusée, puis l'appel a pris fin. L'IA n'a pas répondu.",
   end_spam: "Appel jugé comme du démarchage ou une arnaque : l'IA a fait durer la conversation pour faire perdre du temps au correspondant.",
   end_normal: "L'IA a répondu et discuté, puis l'appel s'est terminé normalement.",
+  end_call_waiting: "L'appel est arrivé pendant un autre appel ; le téléphone l'a refusé comme occupé (sans IA).",
   d_block: "Bloquer ce numéro",
   d_block_title: "Bloquer le {num} ?",
   d_block_body: "Les appels venant de ce numéro entendront une courte annonce « non disponible ». L'IA n'y répondra pas.",
@@ -5225,6 +5276,9 @@ I18N["fr"] = {
   ev_gemini_zero_delivery_to_voicemail: "L'IA n'a envoyé aucun son, passage à la messagerie",
   ev_gemini_delivery_fail_to_voicemail: "Le son de l'IA n'a pas pu être diffusé, passage à la messagerie",
   ev_blocked_spam: "Bloqué comme spam",
+  ev_call_waiting_rejected: "Arrivé pendant un autre appel, refusé (occupé)",
+  ev_reject_list_declined: "Refusé pendant la sonnerie",
+  ev_ivr_hangup: "Enregistrement ou serveur vocal : raccroché",
   nf_telegram: "Telegram",
   nf_discord: "Discord",
   nf_slack: "Slack / Mattermost",
@@ -5485,6 +5539,8 @@ I18N["de"] = {
   tr_tts_h: "Nur das, was die KI gesagt hat.",
   tr_vm_h: "Nur die Nachricht, die der Anrufer hinterlassen hat.",
   d_dialogue: "Gespräch",
+  d_show_tr: "Übersetzung anzeigen",
+  d_copy_dlg: "Gespräch kopieren",
   who_caller: "Anrufer",
   who_ai: "KI",
   who_carrier: "Ansage des Netzbetreibers",
@@ -5495,6 +5551,7 @@ I18N["de"] = {
   end_blocked: "Blockierte Nummer: Die Ansage „nicht erreichbar“ wurde abgespielt und der Anruf beendet. Die KI hat nicht abgenommen.",
   end_spam: "Als Werbe- oder Betrugsanruf eingestuft: Die KI hat den Anrufer hingehalten, um seine Zeit zu verschwenden.",
   end_normal: "Die KI hat abgenommen und gesprochen; der Anruf endete normal.",
+  end_call_waiting: "Der Anruf kam während eines anderen Gesprächs; das Telefon hat ihn als besetzt abgewiesen (ohne KI).",
   d_block: "Diese Nummer blockieren",
   d_block_title: "{num} blockieren?",
   d_block_body: "Anrufe von dieser Nummer hören nur eine kurze Ansage „nicht erreichbar“. Die KI nimmt sie nicht an.",
@@ -5850,6 +5907,9 @@ I18N["de"] = {
   ev_gemini_zero_delivery_to_voicemail: "KI ohne Ton, zur Mailbox",
   ev_gemini_delivery_fail_to_voicemail: "KI-Ton nicht abspielbar, zur Mailbox",
   ev_blocked_spam: "Als Spam blockiert",
+  ev_call_waiting_rejected: "Kam während eines Gesprächs, als besetzt abgewiesen",
+  ev_reject_list_declined: "Beim Klingeln abgelehnt",
+  ev_ivr_hangup: "Bandansage oder Sprachmenü: aufgelegt",
   nf_telegram: "Telegram",
   nf_discord: "Discord",
   nf_slack: "Slack / Mattermost",
@@ -6110,6 +6170,8 @@ I18N["pt"] = {
   tr_tts_h: "Só o que a IA disse.",
   tr_vm_h: "Só a mensagem que a pessoa deixou.",
   d_dialogue: "Conversa",
+  d_show_tr: "Mostrar tradução",
+  d_copy_dlg: "Copiar conversa",
   who_caller: "Quem ligou",
   who_ai: "IA",
   who_carrier: "Aviso da operadora",
@@ -6120,6 +6182,7 @@ I18N["pt"] = {
   end_blocked: "Número bloqueado: o aviso de “indisponível” foi reproduzido e a chamada terminou. A IA não atendeu.",
   end_spam: "Considerada uma chamada de vendas ou um golpe; a IA manteve a pessoa falando para fazê-la perder tempo.",
   end_normal: "A IA atendeu e conversou, e a chamada terminou normalmente.",
+  end_call_waiting: "A chamada entrou durante outra ligação e o telefone recusou como ocupado (sem IA).",
   d_block: "Bloquear este número",
   d_block_title: "Bloquear {num}?",
   d_block_body: "As chamadas desse número vão ouvir um aviso curto de “indisponível”. A IA não vai atendê-las.",
@@ -6475,6 +6538,9 @@ I18N["pt"] = {
   ev_gemini_zero_delivery_to_voicemail: "A IA não enviou som, foi para a caixa postal",
   ev_gemini_delivery_fail_to_voicemail: "O som da IA não pôde tocar, foi para a caixa postal",
   ev_blocked_spam: "Bloqueada como spam",
+  ev_call_waiting_rejected: "Entrou durante outra ligação, recusada (ocupado)",
+  ev_reject_list_declined: "Recusada enquanto tocava",
+  ev_ivr_hangup: "Era uma gravação ou menu de voz: desligada",
   nf_telegram: "Telegram",
   nf_discord: "Discord",
   nf_slack: "Slack / Mattermost",
@@ -7136,6 +7202,7 @@ function callKind(c) {
 function endKey(c) {
   const ev = c.events || [];
   const has = (e) => ev.includes(e);
+  if (has("call_waiting_rejected")) return "end_call_waiting";
   if (has("persona_ai_fail_hangup")) return "end_ai_fail";
   if (has("gemini_fail_to_voicemail") || has("gemini_zero_delivery_to_voicemail")) return "end_voicemail";
   if (has("reject_unknown_caller")) return "end_hidden";
@@ -7292,6 +7359,8 @@ $("fKind").addEventListener("change", () => refreshCalls());
 // ---------------------------------------------------------------- call detail
 // notes: undefined = not asked yet, null = the agent has none (yet).
 const detail = { id: null, call: null, notes: undefined, calLink: "", track: "", audioFor: "", pollTimer: 0 };
+// Translations of the lines said in another language: shown unless turned off (kept in this browser).
+let showTr = store.get("pca.show_tr") !== "0";
 const endedRecently = (c) => !!c.ended_at && Date.now() - new Date(c.ended_at).getTime() < 3 * 60 * 1000;
 
 async function openCallById(id) {
@@ -7403,24 +7472,41 @@ const DIALOGUE_LABELS = {
   caller: ["對方", "对方", "Caller", "相手", "상대", "Llamante", "Appelant", "Anrufer", "Chamador"],
   ai: ["接聽", "接听", "AI", "KI", "IA"],
 };
-function dialogueTurns(text) {
+// `trs` (the record's dialogue_translations): the owner's-language
+// translation of each line of `text`, by line; a bubble made of several
+// lines carries their translations joined.
+function dialogueTurns(text, trs) {
   const out = [];
   let ended = true;
-  for (const raw of String(text || "").split("\n")) {
+  const lines = String(text || "").split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
     const m = raw.trim().match(/^([^:：]{1,12}?)\s*[：:]\s*(.*)$/);
     if (!m || (!DIALOGUE_LABELS.caller.includes(m[1]) && !DIALOGUE_LABELS.ai.includes(m[1]))) continue;
     const body = m[2].replace(/<[^<>]*>/g, "").trim(); // STT placeholders such as <noise>
     if (!body) continue;
     let who = DIALOGUE_LABELS.caller.includes(m[1]) ? "caller" : "ai";
     if (who === "caller" && isCarrierPrompt(body)) who = "carrier";
+    const tr = Array.isArray(trs) && typeof trs[i] === "string" ? trs[i].trim() : "";
     const last = out[out.length - 1];
     if (last && last.who === who && (!ended || who === "carrier")) {
       const glue = CJK.test(last.text.slice(-1)) || CJK.test(body[0]) ? "" : " ";
       last.text += glue + body;
-    } else out.push({ who, text: body });
+      if (tr) last.tr = last.tr ? last.tr + (CJK.test(last.tr.slice(-1)) || CJK.test(tr[0]) ? "" : " ") + tr : tr;
+    } else out.push({ who, text: body, tr });
     ended = /[。？！?!…⋯.]$/.test(body);
   }
   return out;
+}
+// The conversation as text: what was said, and (`withTr`) its translation
+// in brackets on the next line.
+function dialogueText(turns, withTr) {
+  const wide = /^(zh|ja)/.test(lang);
+  const sep = wide ? "：" : ": ";
+  return turns.map((x) => {
+    const line = t("who_" + x.who) + sep + x.text;
+    return withTr && x.tr ? line + "\n" + (wide ? "（" + x.tr + "）" : "(" + x.tr + ")") : line;
+  }).join("\n");
 }
 
 // Called again whenever the record, its notes or the language change; the
@@ -7497,15 +7583,17 @@ function renderDetail() {
   if (detail.audioFor !== c.id + "|" + want) setTrack(want, false);
   else $("dTrackHint").textContent = want ? t("tr_" + want + "_h") : "";
 
-  // Conversation
-  const turns = dialogueTurns(n && n.dialogue);
+  // Conversation; a line said in another language has its translation under it.
+  const turns = dialogueTurns(n && n.dialogue, n && n.dialogue_translations);
   $("dDlgSec").hidden = !turns.length;
+  $("dTrSw").hidden = !turns.some((x) => x.tr);
+  $("dTrToggle").checked = showTr;
   const chat = clear($("dDialogue"));
   for (const turn of turns) {
     const cls = turn.who === "ai" ? " ai" : turn.who === "carrier" ? " sys" : "";
     chat.append(h("div", { class: "msg" + cls },
       h("span", { class: "who2", text: t("who_" + turn.who) }),
-      h("div", { class: "bub", text: turn.text })));
+      h("div", { class: "bub", text: turn.text }, turn.tr && showTr ? h("span", { class: "tr", text: turn.tr }) : null)));
   }
 
   // How it ended
@@ -7526,6 +7614,16 @@ function renderDetail() {
   for (const e of c.events || []) evs.append(h("span", { class: "tag", title: e, text: tCode("ev_", e) }));
 }
 $("btnCopyNum").addEventListener("click", () => { if (detail.call) copyWithToast(detail.call.caller_id || ""); });
+$("dTrToggle").addEventListener("change", (e) => {
+  showTr = e.target.checked;
+  store.set("pca.show_tr", showTr ? "1" : "0");
+  renderDetail();
+});
+$("btnCopyDlg").addEventListener("click", () => {
+  const n = detail.notes;
+  const turns = dialogueTurns(n && n.dialogue, n && n.dialogue_translations);
+  if (turns.length) copyWithToast(dialogueText(turns, showTr));
+});
 $("btnCopyLink").addEventListener("click", () => {
   if (detail.id) copyWithToast(`${location.origin}${basePath}/#call=${detail.id}`);
 });
