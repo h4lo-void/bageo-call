@@ -50,7 +50,7 @@ AI 回覆：AI 怎麼回的，一句（例如「說放管理室就好」「說�
 規則：\n\
 - 事由出現繳水費／房租／電費／包裹／開會這類字眼，一定要寫進「事情」。\n\
 - 每行最多 25 個字左右，像傳訊息，不要寫成句子解釋。\n\
-- 「國際電話請注意小心詐騙」是電信公司的提示音，不是對方講的；之後對方講外語或聽不懂的內容，就當「疑似詐騙」。\n\
+- 「國際電話請注意小心詐騙」是電信公司的提示音，不是對方講的，也不是詐騙的證據。對方講外語本身不算推銷或詐騙；只有對方講的內容本身像推銷或詐騙，才寫「推銷電話」「疑似詐騙」。\n\
 - 【通話資訊】寫 AI 連不上、系統掛斷時，「AI 回覆」寫「AI 沒接上，沒講話」。\n\
 - 【通話資訊】寫 AI 故意陪聊拖時間、而【對話】看起來確實是推銷或詐騙時：「事情」寫賣什麼或什麼詐騙手法，「AI 回覆」寫「陪他繞了約 N 分鐘」（用長度換算），「要處理」寫「不用」；其實是正常電話就照一般寫。\n\
 - 【對話】裡「接聽：」是 AI 講的，不是對方的要求；不要把 AI 的話當成對方的事情。\n\
@@ -77,6 +77,7 @@ Output exactly four lines with these labels:\n\
 Rules:\n\
 - Each line is short, like a text message: about fifteen words at most.\n\
 - \"AI:\" lines are the AI talking; they are not the caller's request.\n\
+- The carrier's warning about international calls is not the caller and no sign of a scam. A caller speaking another language is not a sales or scam call either; only what they actually say can make it one.\n\
 - If [Call facts] says the AI could not connect and the system hung up, the {s_reply} line is: {s_ai_failed}.\n\
 - If [Call facts] says the AI deliberately kept the caller talking and the dialogue does look like a sales or scam call: {s_matter} is what was being sold or which scam it was, {s_reply} is that the AI kept them busy for about N minutes (work N out from the length), {s_todo} is nothing to do. If it was in fact a normal call, write it up normally.\n\
 - Do not invent anything you are not sure of; write that it was unclear.\n\
@@ -757,12 +758,51 @@ const MATTER_MARKS: &[&str] = &[
     "會議", "会议",
 ];
 
+/// Labels of the caller's lines in what the summary model reads
+/// ([`build_summary_input`]; 來電 in older voicemail transcripts), and of the
+/// AI's. Whisper's whole-call pass of the caller's side counts as the caller.
+const CALLER_LABELS: &[&str] = &[
+    "對方：", "对方：", "來電：", "来电：", "Caller:", "整通對方側：", "Caller's side, whole call:",
+];
+const AI_LABELS: &[&str] = &["接聽：", "接听：", "助理：", "AI:", "AI 對話段：", "AI part of the call:"];
+
+/// What the caller said. A transcript without speaker labels (a voicemail
+/// recording) is all the caller's.
+fn caller_side(transcript: &str) -> String {
+    let labelled = transcript.lines().map(str::trim).any(|l| {
+        CALLER_LABELS.iter().chain(AI_LABELS).any(|p| l.starts_with(p))
+    });
+    if !labelled {
+        return transcript.to_string();
+    }
+    transcript
+        .lines()
+        .map(str::trim)
+        .filter_map(|l| CALLER_LABELS.iter().find_map(|p| l.strip_prefix(p)))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Matter words in the caller's lines only: the AI saying 我在開會 is no
+/// matter of the caller's, and neither are the call facts.
 fn transcript_matter_hits(transcript: &str) -> Vec<&'static str> {
+    let said = caller_side(transcript);
     MATTER_MARKS
         .iter()
         .copied()
-        .filter(|m| transcript.contains(m))
+        .filter(|m| said.contains(m))
         .collect()
+}
+
+/// A matter line that says nothing: the model did not catch what it was.
+fn matter_is_placeholder(text: &str) -> bool {
+    text.is_empty()
+        || [
+            "聽不清楚", "听不清楚", "未說明", "未说明", "沒講事情", "没讲事情", "沒有逐字稿", "没有逐字稿",
+            "事由不明",
+        ]
+        .iter()
+        .any(|p| text.contains(p))
 }
 
 fn matter_demand_phrase(hits: &[&str]) -> String {
@@ -783,7 +823,9 @@ fn matter_demand_phrase(hits: &[&str]) -> String {
     }
 }
 
-/// If the transcript named a matter but the LLM summary dropped it, patch 需求.
+/// If the caller named a matter but the LLM summary dropped it, add it to the
+/// 事情／需求 line. What the model wrote stays: it may have the call right and
+/// the word be a side remark; only a line that says nothing is replaced.
 pub fn overlay_summary_matter(summary: &str, transcript: &str) -> String {
     let hits = transcript_matter_hits(transcript);
     if hits.is_empty() {
@@ -807,16 +849,20 @@ pub fn overlay_summary_matter(summary: &str, transcript: &str) -> String {
     let mut found = false;
     for line in &mut lines {
         let t = line.trim_start();
-        if t.starts_with("事情：") || t.starts_with("事情:") {
-            *line = format!("事情：{phrase}");
-            found = true;
-            break;
-        }
-        if t.starts_with("需求：") || t.starts_with("需求:") {
-            *line = format!("需求：{phrase}");
-            found = true;
-            break;
-        }
+        let Some((label, rest)) = ["事情", "需求"].iter().find_map(|label| {
+            let rest = t.strip_prefix(label)?;
+            let rest = rest.strip_prefix('：').or_else(|| rest.strip_prefix(':'))?;
+            Some((*label, rest.trim()))
+        }) else {
+            continue;
+        };
+        *line = if matter_is_placeholder(rest) {
+            format!("{label}：{phrase}")
+        } else {
+            format!("{label}：{rest}；也提到{phrase}")
+        };
+        found = true;
+        break;
     }
     if !found {
         if let Some(i) = lines.iter().position(|l| {
@@ -1253,6 +1299,40 @@ mod tests {
         let summary = "来电：0900\n需求：缴水费\n回电：无\n状态：需要联系";
         let out = overlay_summary_matter(summary, "請轉達繳水費");
         assert_eq!(out, summary);
+    }
+
+    #[test]
+    fn the_ais_words_are_not_the_callers_matter() {
+        let input = build_summary_input(
+            "0912345678",
+            30_000,
+            "",
+            "接聽：喂？我在開會。\n對方：明天送貨，有人在家嗎？\n接聽：好，放管理室就好。",
+            "",
+            "",
+        );
+        let summary = "對方：沒說是誰\n事情：明天送貨，問有沒有人在家\nAI 回覆：說放管理室\n要處理：不用";
+        assert_eq!(overlay_summary_matter(summary, &input), summary);
+        let en = build_summary_input_en("0912345678", 30_000, "", "接聽：我在開會\n對方：明天送貨", "", "");
+        assert_eq!(overlay_summary_matter(summary, &en), summary);
+    }
+
+    #[test]
+    fn a_matter_the_summary_dropped_is_added_to_what_it_wrote() {
+        let summary = "對方：小明（朋友）\n事情：明天送貨\nAI 回覆：說好\n要處理：不用";
+        let out = overlay_summary_matter(summary, "接聽：喂？\n對方：明天送貨，順便提醒你繳水費");
+        assert!(out.contains("事情：明天送貨；也提到缴水费"), "{out}");
+        assert!(out.contains("AI 回覆：說好"), "{out}");
+    }
+
+    #[test]
+    fn speaking_another_language_is_not_called_a_scam() {
+        for lang in [Lang::ZhTw, Lang::ZhCn] {
+            let p = summary_system_prompt(lang, "");
+            assert!(!p.contains("講外語或聽不懂的內容，就當") && !p.contains("讲外语或听不懂的内容，就当"), "{p}");
+            assert!(p.contains("對方講外語本身不算") || p.contains("对方讲外语本身不算"), "{p}");
+        }
+        assert!(summary_system_prompt(Lang::En, "").contains("speaking another language is not a sales or scam call"));
     }
 
     #[test]
