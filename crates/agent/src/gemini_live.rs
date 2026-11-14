@@ -1268,21 +1268,42 @@ const STT_CALLER_VOCAB_ZH_TW: [&str; 9] = [
     "保險", "保單", "貸款", "信貸", "信用卡", "投資", "國際電話", "管理室", "包裹",
 ];
 
+/// Taiwan carriers' warning on calls from abroad: the one word kept as
+/// vocabulary when the caller's language is left to detect.
+const STT_CARRIER_VOCAB_ZH_TW: &str = "國際電話";
+
 /// Speech-to-text config for the caller's side: `langs` as language hints
 /// ([`CallLangPlan::caller_stt`]; `None` = it detects the language itself), the
 /// owner's name and (Taiwan) the call logic's key words as vocabulary.
 fn stt_caller_config(langs: Option<&[&'static str]>) -> Value {
-    let active = crate::locale::active();
+    stt_caller_config_for(langs, &crate::locale::active())
+}
+
+/// [`stt_caller_config`] for given settings. The vocabulary in the owner's
+/// language (the owner's name as the settings write it, the call logic's key
+/// words) goes in only when the hints include that language. A caller left to
+/// language detection is expected to speak another one, and the vocabulary
+/// pulled the transcript into it: an English caller's line about a parcel came
+/// out as a Chinese translation with 包裹 in it, a Japanese もしもし as 摩西摩西.
+/// The carrier's warning stays: it plays on calls from abroad whatever the
+/// caller speaks.
+fn stt_caller_config_for(langs: Option<&[&'static str]>, active: &crate::locale::Active) -> Value {
+    let langs = langs.filter(|l| !l.is_empty());
+    let own_hint = langs.is_some_and(|l| l.contains(&crate::locale::phrases(active.lang).stt));
     let mut vocab: Vec<String> = Vec::new();
-    let owner = active.owner.trim();
-    if !owner.is_empty() {
-        vocab.push(owner.chars().take(40).collect());
-    }
-    if active.lang == crate::locale::Lang::ZhTw {
-        vocab.extend(STT_CALLER_VOCAB_ZH_TW.iter().map(|w| w.to_string()));
+    if own_hint {
+        let owner = active.owner.trim();
+        if !owner.is_empty() {
+            vocab.push(owner.chars().take(40).collect());
+        }
+        if active.lang == crate::locale::Lang::ZhTw {
+            vocab.extend(STT_CALLER_VOCAB_ZH_TW.iter().map(|w| w.to_string()));
+        }
+    } else if active.lang == crate::locale::Lang::ZhTw {
+        vocab.push(STT_CARRIER_VOCAB_ZH_TW.to_string());
     }
     let mut cfg = json!({});
-    if let Some(langs) = langs.filter(|l| !l.is_empty()) {
+    if let Some(langs) = langs {
         cfg["languageCodes"] = json!(langs);
     }
     if !vocab.is_empty() {
@@ -7299,13 +7320,50 @@ mod tests {
         assert!(auto.get("languageCodes").is_none());
         let empty: &[&'static str] = &[];
         assert!(stt_caller_config(Some(empty)).get("languageCodes").is_none());
-        // Unset settings (tests) are Taiwan's: the call logic's words stay as
+        // Unset settings (tests) are Taiwan's: the carrier's warning stays as
         // vocabulary either way.
         for cfg in [&hinted, &auto] {
             assert!(cfg["customVocabulary"]
                 .as_array()
                 .is_some_and(|v| v.iter().any(|w| w.as_str() == Some("國際電話"))));
         }
+    }
+
+    #[test]
+    fn caller_left_to_detect_gets_no_owner_vocabulary() {
+        // A US number on a US SIM, owner in Taiwan: no hints, the language is
+        // detected. The owner's name and the Chinese key words stayed in the
+        // vocabulary, and an English line about a parcel came out in Chinese
+        // (「…一個給你的包裹被送到我家門口了」), a Japanese もしもし as 摩西摩西.
+        use crate::locale::{Active, Lang};
+        let tw = Active { owner: "英先生".into(), ..Default::default() };
+        let words = |cfg: &Value| -> Vec<String> {
+            cfg["customVocabulary"]
+                .as_array()
+                .map(|v| v.iter().filter_map(|w| w.as_str().map(String::from)).collect())
+                .unwrap_or_default()
+        };
+        let us: std::collections::BTreeMap<String, String> = [("us".to_string(), "en".to_string())].into();
+        let plan = call_lang_plan("+12025550143", Some("us"), Lang::ZhTw, "886", &us);
+        assert_eq!(plan.caller_stt, None);
+        let auto = stt_caller_config_for(plan.caller_stt.as_deref(), &tw);
+        assert!(auto.get("languageCodes").is_none());
+        assert_eq!(words(&auto), vec!["國際電話".to_string()]);
+        // A Taiwanese caller: hints with the owner's language, the whole vocabulary.
+        let local = call_lang_plan("0912000000", Some("tw"), Lang::ZhTw, "886", &Default::default());
+        let hinted = stt_caller_config_for(local.caller_stt.as_deref(), &tw);
+        assert_eq!(hinted["languageCodes"], json!(["zh-TW", "en-US"]));
+        let w = words(&hinted);
+        assert!(w.contains(&"英先生".to_string()) && w.contains(&"包裹".to_string()), "{w:?}");
+        // Hints without the owner's language: none of the owner's words either.
+        let ja_only: &[&'static str] = &["ja-JP"];
+        let w = words(&stt_caller_config_for(Some(ja_only), &tw));
+        assert!(!w.iter().any(|x| x == "英先生" || x == "包裹" || x == "管理室"), "{w:?}");
+        // Another owner language: no Taiwan words, the name only with its hint.
+        let en = Active { lang: Lang::En, notify_lang: Lang::En, owner: "Alex".into(), ..Default::default() };
+        let en_hint: &[&'static str] = &["en-US"];
+        assert_eq!(words(&stt_caller_config_for(Some(en_hint), &en)), vec!["Alex".to_string()]);
+        assert!(stt_caller_config_for(None, &en).get("customVocabulary").is_none());
     }
 
     #[test]

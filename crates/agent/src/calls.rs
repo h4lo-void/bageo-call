@@ -97,6 +97,12 @@ pub struct CallNotes {
     /// Gemini's labelled dialogue (`對方：` / `接聽：` lines), whole call.
     #[serde(default)]
     pub dialogue: String,
+    /// The owner's-language translation of each `dialogue` line said in another
+    /// language (same index as the line; `None` = said in the owner's language,
+    /// too short, or not translated). Empty: nothing translated, or a record from
+    /// before translations.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dialogue_translations: Vec<Option<String>>,
     /// Whisper of the caller track (backup; empty for sales / scam stalling calls).
     #[serde(default)]
     pub recording_text: String,
@@ -2720,6 +2726,33 @@ mod tests {
             None
         ));
         assert!(store.save_notes("no-such-call", &notes).await.is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn notes_keep_line_translations_and_old_notes_still_read() {
+        // A record from before translations: no field, nothing translated.
+        let old: CallNotes = serde_json::from_str(
+            r#"{"summary":"對方：Mark","dialogue":"接聽：Hello?\n對方：Hello. Do you speak English?","recording_text":"","end_hint":"","source":"deepseek","updated_at":"2026-11-14T05:17:08Z"}"#,
+        )
+        .unwrap();
+        assert!(old.dialogue_translations.is_empty());
+        // Nothing translated: the field stays out of the file.
+        assert!(!serde_json::to_string(&old).unwrap().contains("dialogue_translations"));
+
+        let dir = std::env::temp_dir().join(format!("bageo-calls-tr-{}", Uuid::new_v4()));
+        let store = CallStore::new(dir.clone(), true, false, 7);
+        let call = store.start("pixel-1", "+12025550143", 16000, "active").await.unwrap();
+        let id = call.id.clone();
+        store.finalize(call, "ended").await;
+        let notes = CallNotes {
+            dialogue_translations: vec![None, Some("你好，你會說英文嗎？".into())],
+            ..old
+        };
+        store.save_notes(&id, &notes).await.unwrap();
+        let back = store.load_notes(&id).await.unwrap();
+        assert_eq!(back.dialogue_translations, notes.dialogue_translations);
+        assert_eq!(back.dialogue, notes.dialogue);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

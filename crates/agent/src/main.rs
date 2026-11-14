@@ -4617,6 +4617,7 @@ fn save_reject_list_notes(state: &AppState, record: &CallRecord) {
     let notes = calls::CallNotes {
         summary,
         dialogue: String::new(),
+        dialogue_translations: Vec::new(),
         recording_text: String::new(),
         end_hint: if declined {
             locale::notify_zh_or(
@@ -8486,6 +8487,10 @@ async fn whisper_call_wav(
 /// Calls longer than this skip the post-call Whisper pass (Gemini dialogue only).
 const WHISPER_MAX_CALL_MS: u64 = 5 * 60 * 1000;
 
+/// How long the call's notes wait for the translation of its lines in another
+/// language once the summary is written (both start together).
+const TRANSLATE_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// Press-1 hangup: Gemini live STT (+ optional Whisper AI segment) → **summary** → notification.
 /// The notification body is the summary only (not raw fragment dump). Hangup already stopped Live.
 fn spawn_ai_talk_tg_summary(
@@ -8564,6 +8569,15 @@ fn spawn_ai_talk_tg_summary(
                     .unwrap_or_default()
                     .trim(),
             ))
+        };
+        // Lines said in another language than the owner's, translated while the
+        // summary is written (same service); the web record shows them under the line.
+        let mut translation = {
+            let http = http.clone();
+            let eff = eff.clone();
+            let dialogue = live.clone();
+            let owner = locale::notify_lang();
+            tokio::spawn(async move { deepseek::translate_dialogue(&http, &eff, &dialogue, owner).await })
         };
         // A stalled sales / scam call — or any long call — may run up
         // to 30 min: Whisper on that would pin the agent host's CPUs during other calls and
@@ -8766,11 +8780,24 @@ fn spawn_ai_talk_tg_summary(
             }
         }
 
+        let dialogue_translations = match tokio::time::timeout(TRANSLATE_WAIT, &mut translation).await {
+            Ok(Ok(v)) => v,
+            Ok(Err(e)) => {
+                warn!("dialogue translation task failed serial={serial}: {e}");
+                Vec::new()
+            }
+            Err(_) => {
+                translation.abort();
+                warn!("dialogue translation timed out serial={serial}");
+                Vec::new()
+            }
+        };
         // The web console keeps the details; the notification stays short.
         let notes = calls::CallNotes {
             summary: body.clone(),
             // Speaker labels in the owner's language ("Caller: …").
             dialogue: gemini_live::localize_dialogue(&live_full, locale::notify_lang()),
+            dialogue_translations,
             recording_text: remote_tx.clone(),
             end_hint: end_hint.clone(),
             source: note_source.to_string(),
