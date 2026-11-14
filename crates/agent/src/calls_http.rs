@@ -1458,7 +1458,8 @@ async fn device_mode(
     Json(mode_reply_json(&reply)).into_response()
 }
 
-/// Tasks tab: prefer TaskStore (canonical); snake_case status.
+/// Tasks tab: prefer TaskStore (canonical); snake_case status. An appointment's
+/// task also says where its text goes out by default (`sms_route`).
 async fn tasks_list(
     State(state): State<CallsState>,
     headers: HeaderMap,
@@ -1468,6 +1469,12 @@ async fn tasks_list(
         return unauthorized();
     }
     let tasks = state.task_store.list(200).await;
+    let rt = state.settings_store.snapshot();
+    let connected = state.control.connected_serials().await;
+    let tasks: Vec<Value> = tasks
+        .iter()
+        .map(|t| crate::appointments::task_json(&rt, &connected, t))
+        .collect();
     Json(json!({"ok": true, "tasks": tasks})).into_response()
 }
 

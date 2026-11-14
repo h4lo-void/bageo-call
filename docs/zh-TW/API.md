@@ -85,7 +85,7 @@ PUT /calls/api/settings
 
 | 方法與路徑 | 內容 |
 |---|---|
-| `GET /calls/api/tasks` | 任務，最新的在前（最多 200 筆）：`{ok, tasks}`。網頁的「待確認的預約」就是 `appointment.status` 為 `pending` 的任務。 |
+| `GET /calls/api/tasks` | 任務，最新的在前（最多 200 筆）：`{ok, tasks}`。網頁的「待確認的預約」就是 `appointment.status` 為 `pending` 的任務。有預約的任務另帶 `sms_route`：沒另選手機時簡訊從哪裡發（網頁「重傳簡訊」選單的預設選項），跟主程式實際發送用同一套規則：`{serial, label, sim, test}`——`serial` 手機 ID，`label` 它在 `device_labels` 的名稱（沒有就是 ID），`sim` 依名稱挑的 SIM（`appointment_test_sms_sim`；用接這通的 SIM 或手機預設 SIM 時不出現），`test` 為 true 表示這是測試來電、手機或 SIM 由 `appointment_test_sms_phone`／`appointment_test_sms_sim` 指定。手機不在線也照樣列出，發送時才會回 `offline`。 |
 | `POST /calls/api/tasks/{id}/confirm` | 對預約來說等於在網頁或 Telegram 卡片上按 **✅ 確定**——寫進 Google 日曆，接著（開了 `appointment_sms` 時）傳簡訊給對方，可能要等最多 90 秒。回應 `{ok, task, message}`；`message` 是結果，網頁顯示的和 Telegram Bot 回的是同一段。這筆預約有發過 Telegram 卡片時，卡片上的按鈕會拿掉，並把 `message` 回到那個聊天（盡力而為，Telegram 失敗不影響決定）。只有第一次決定算數：之後再確定或婉拒——包括第一次還在處理時送來的，或在 Telegram 卡片上按的——都只回「已經處理過了」，不會有任何變化。請求要帶 `Content-Type: application/json`（不用 body），否則回 HTTP 400 `bad_request`，這樣別的網頁沒辦法透過你區網裡的瀏覽器替你決定。 |
 | `POST /calls/api/tasks/{id}/ignore` | 對預約來說等於 **❌ 婉拒**（通話中已經寫進日曆的那筆會刪掉；開了 `appointment_sms` 時傳簡訊）。回應與規則同上。 |
 
