@@ -118,7 +118,7 @@ cover:
   Simplified Chinese do not switch to each other: a `+86` caller to a 繁體中文
   setup still hears your setting's 「喂？」. With a phone app older than 0.2.5,
   which does not report the SIM, a call from abroad is a `+…` number whose
-  country code is not *Country calling code*. Some phones report the SIM only
+  country code is not yours (`COUNTRY_CODE`; `886` for 繁體中文). Some phones report the SIM only
   at pickup; when that changes the opening, the line prepared while it rang is
   dropped and the AI answers a moment later in the right language.
 - **Short spoken turns.** One or two sentences. Long turns feel slow on a phone

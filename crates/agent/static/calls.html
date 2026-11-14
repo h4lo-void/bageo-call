@@ -699,7 +699,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
         <a href="#settings/blocked" data-jump="blocked"><svg class="i sm"><use href="#i-ban"/></svg><span data-i18n="g_blocked"></span></a>
         <a href="#settings/notify" data-jump="notify"><svg class="i sm"><use href="#i-bell"/></svg><span data-i18n="g_notify"></span></a>
         <a href="#settings/summary" data-jump="summary"><svg class="i sm"><use href="#i-list"/></svg><span data-i18n="g_summary"></span></a>
-        <a href="#settings/region" data-jump="region"><svg class="i sm"><use href="#i-globe"/></svg><span data-i18n="g_region"></span></a>
+        <a href="#settings/region" data-jump="region"><svg class="i sm"><use href="#i-sliders"/></svg><span data-i18n="g_region"></span></a>
       </nav>
 
       <form id="setForm" autocomplete="off" novalidate>
@@ -941,24 +941,14 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
           </div>
         </div></div>
 
-        <!-- Region & advanced -->
+        <!-- Advanced -->
         <div class="card group" id="g-region"><div class="pad">
           <h2><span data-i18n="g_region"></span></h2>
-          <div class="two">
-            <div class="field"><label for="f-country_code" data-i18n="f_cc"></label>
-              <div class="inline"><span class="muted">+</span><input type="text" id="f-country_code" data-k="country_code" data-t="text" inputmode="numeric" maxlength="4" pattern="[0-9]*" style="width:7.5rem" /></div>
-              <div class="help" data-i18n="f_cc_h"></div></div>
-            <div class="field"><label for="f-gemini_thinking_level" data-i18n="f_think"></label>
-              <select id="f-gemini_thinking_level" data-k="gemini_thinking_level" data-t="text">
-                <option value="low" data-i18n="th_low"></option><option value="medium" data-i18n="th_medium"></option><option value="high" data-i18n="th_high"></option>
-              </select>
-              <div class="help" data-i18n="f_think_h"></div></div>
-          </div>
-          <div class="field"><label for="f-intl_carrier_prompt" data-i18n="f_carrier"></label>
-            <select id="f-intl_carrier_prompt" data-k="intl_carrier_prompt" data-t="text" style="max-width:16rem">
-              <option value="auto" data-i18n="tri_auto"></option><option value="on" data-i18n="on"></option><option value="off" data-i18n="off"></option>
+          <div class="field"><label for="f-gemini_thinking_level" data-i18n="f_think"></label>
+            <select id="f-gemini_thinking_level" data-k="gemini_thinking_level" data-t="text" style="max-width:16rem">
+              <option value="low" data-i18n="th_low"></option><option value="medium" data-i18n="th_medium"></option><option value="high" data-i18n="th_high"></option>
             </select>
-            <div class="help" data-i18n="f_carrier_h"></div></div>
+            <div class="help" data-i18n="f_think_h"></div></div>
         </div></div>
       </form>
     </div>
@@ -1410,7 +1400,7 @@ I18N["en"] = {
   g_blocked: "Blocked numbers",
   g_notify: "Notifications",
   g_summary: "Summary & calendar",
-  g_region: "Region & advanced",
+  g_region: "Advanced",
   // ---- settings: basics
   g_basics_d: "The few things the AI needs before it can answer your phone.",
   f_language: "Language",
@@ -1630,17 +1620,12 @@ I18N["en"] = {
   f_appt_test_phone_h: "Only for calls from the test numbers above: their appointment texts go out from this phone. Its id (pixel-12345) or the name you gave it, any case. Empty = the phone that took the call. Texts from test calls only go to numbers on the test list.",
   f_appt_test_sim: "SIM for those texts",
   f_appt_test_sim_h: "The SIM on that phone: its carrier name (Tello) or its own number. Empty = that phone's default SMS SIM, or the SIM that took the call when no phone is set. The phone app must be able to pick a SIM by name; an older app sends nothing.",
-  // ---- settings: region & advanced
-  f_cc: "Country calling code",
-  f_cc_h: "Digits only, e.g. 1, 44, 886. Lets blocked numbers written with + match the way your phone reports callers.",
+  // ---- settings: advanced
   f_think: "Thinking level",
   f_think_h: "Only for models with “thinking” in their name. Low answers fastest.",
   th_low: "Low",
   th_medium: "Medium",
   th_high: "High",
-  f_carrier: "Wait for the carrier's warning on international calls",
-  f_carrier_h: "Carriers in Taiwan play a recorded warning at the start of every call from abroad. The AI waits for it before speaking. Automatic = on when the language is Traditional Chinese.",
-  tri_auto: "Automatic",
   // ---- system view
   sys_phones: "Phones",
   sys_updated: "Updated {time}",
@@ -2137,7 +2122,7 @@ I18N["zh-TW"] = {
   g_blocked: "拒接號碼",
   g_notify: "通知",
   g_summary: "摘要與行事曆",
-  g_region: "地區與進階",
+  g_region: "進階",
   // ---- settings: basics
   g_basics_d: "AI 開始幫你接電話之前，需要知道的幾件事。",
   f_language: "語言",
@@ -2357,17 +2342,12 @@ I18N["zh-TW"] = {
   f_appt_test_phone_h: "只對上面測試號碼打來的電話有效：預約簡訊改由這支手機傳。填手機 id（pixel-12345）或你替它取的名稱，不分大小寫。空白 = 接那通電話的手機。測試來電的簡訊只會傳給測試號碼名單上的號碼。",
   f_appt_test_sim: "用哪張 SIM 傳",
   f_appt_test_sim_h: "那支手機上的 SIM：填電信名稱（例如 Tello）或那張卡自己的號碼。空白 = 有指定手機時用它的預設簡訊 SIM，沒指定時用接那通電話的 SIM。手機 App 要能用名稱選 SIM，舊版 App 不會傳。",
-  // ---- settings: region & advanced
-  f_cc: "國際電話國碼",
-  f_cc_h: "只填數字，例如 1、44、886。這樣用 + 開頭寫的拒接號碼，才能對上手機回報的來電號碼。",
+  // ---- settings: advanced
   f_think: "思考程度",
   f_think_h: "只有名稱裡有「thinking」的模型才會用到。「低」回話最快。",
   th_low: "低",
   th_medium: "中",
   th_high: "高",
-  f_carrier: "等電信業者的國際電話提示音播完",
-  f_carrier_h: "台灣的電信業者會在國外來電一開始播放一段提醒語音，AI 會等它播完才開口。自動 = 語言是繁體中文時開啟。",
-  tri_auto: "自動",
   // ---- system view
   sys_phones: "手機",
   sys_updated: "更新於 {time}",
@@ -2864,7 +2844,7 @@ I18N["zh-CN"] = {
   g_blocked: "拦截号码",
   g_notify: "通知",
   g_summary: "摘要与日历",
-  g_region: "地区与高级",
+  g_region: "高级",
   // ---- settings: basics
   g_basics_d: "AI 开始帮你接电话之前，需要知道的几件事。",
   f_language: "语言",
@@ -3084,17 +3064,12 @@ I18N["zh-CN"] = {
   f_appt_test_phone_h: "只对上面测试号码打来的电话有效：预约短信改由这部手机发。填手机 id（pixel-12345）或你给它取的名称，不区分大小写。留空 = 接那通电话的手机。测试来电的短信只会发给测试号码名单上的号码。",
   f_appt_test_sim: "用哪张 SIM 发",
   f_appt_test_sim_h: "那部手机上的 SIM：填运营商名称（例如 Tello）或那张卡自己的号码。留空 = 指定了手机时用它的默认短信 SIM，没指定时用接那通电话的 SIM。手机 App 要能按名称选 SIM，旧版 App 不会发。",
-  // ---- settings: region & advanced
-  f_cc: "国际电话区号",
-  f_cc_h: "只填数字，例如 1、44、86。这样用 + 开头写的拦截号码，才能和手机上报的来电号码对上。",
+  // ---- settings: advanced
   f_think: "思考程度",
   f_think_h: "只有名称里带“thinking”的模型才会用到。“低”回话最快。",
   th_low: "低",
   th_medium: "中",
   th_high: "高",
-  f_carrier: "等运营商的国际来电提示音播完",
-  f_carrier_h: "台湾的运营商会在境外来电一开始播放一段提醒语音，AI 会等它播完再开口。自动 = 语言是繁体中文时开启。",
-  tri_auto: "自动",
   // ---- system view
   sys_phones: "手机",
   sys_updated: "更新于 {time}",
@@ -3591,7 +3566,7 @@ I18N["ja"] = {
   g_blocked: "着信拒否の番号",
   g_notify: "通知",
   g_summary: "要約とカレンダー",
-  g_region: "地域と詳細設定",
+  g_region: "詳細設定",
   // ---- settings: basics
   g_basics_d: "AI が電話に出る前に必要な、最低限の設定です。",
   f_language: "言語",
@@ -3811,17 +3786,12 @@ I18N["ja"] = {
   f_appt_test_phone_h: "上のテスト用番号からの電話だけに有効です。予約の SMS をこのスマホから送ります。スマホの ID（pixel-12345）か付けた名前（大文字小文字は区別しません）。空欄 = 電話を受けたスマホ。テスト着信の SMS はテスト用番号の一覧にある番号にだけ送ります。",
   f_appt_test_sim: "送信に使う SIM",
   f_appt_test_sim_h: "そのスマホの SIM：通信事業者名（例: Tello）か、その SIM 自身の番号。空欄 = スマホを指定したときはその既定の SMS 用 SIM、指定しないときは電話を受けた SIM。名前で SIM を選べるアプリが必要です。古いアプリでは送りません。",
-  // ---- settings: region & advanced
-  f_cc: "国番号",
-  f_cc_h: "数字のみ（例：1、44、81）。+ から書いた着信拒否の番号を、スマホが通知する番号の形式と照合できるようにします。",
+  // ---- settings: advanced
   f_think: "思考レベル",
   f_think_h: "名前に「thinking」が入っているモデルだけで使われます。「低」が最も速く応答します。",
   th_low: "低",
   th_medium: "中",
   th_high: "高",
-  f_carrier: "国際電話の通信会社アナウンスを待つ",
-  f_carrier_h: "台湾の通信会社は、海外からの着信の冒頭に注意喚起の録音を流します。AI はそれが終わるまで話し始めません。自動 = 言語が繁体字中国語のときにオン。",
-  tri_auto: "自動",
   // ---- system view
   sys_phones: "スマホ",
   sys_updated: "{time} 更新",
@@ -4318,7 +4288,7 @@ I18N["ko"] = {
   g_blocked: "차단 번호",
   g_notify: "알림",
   g_summary: "요약과 캘린더",
-  g_region: "지역 및 고급 설정",
+  g_region: "고급 설정",
   // ---- settings: basics
   g_basics_d: "AI가 전화를 받기 전에 꼭 필요한 몇 가지입니다.",
   f_language: "언어",
@@ -4538,17 +4508,12 @@ I18N["ko"] = {
   f_appt_test_phone_h: "위 테스트 번호로 걸려 온 전화에만 적용됩니다. 예약 문자를 이 휴대폰에서 보냅니다. 휴대폰 ID(pixel-12345)나 붙인 이름(대소문자 무관). 비워 두면 전화를 받은 휴대폰. 테스트 전화의 문자는 테스트 번호 목록에 있는 번호로만 보냅니다.",
   f_appt_test_sim: "문자를 보낼 SIM",
   f_appt_test_sim_h: "그 휴대폰의 SIM: 통신사 이름(예: Tello)이나 그 SIM의 번호. 비워 두면 휴대폰을 지정한 경우 그 기본 문자 SIM, 지정하지 않은 경우 전화를 받은 SIM. 이름으로 SIM을 고를 수 있는 앱이 필요하며, 오래된 앱은 보내지 않습니다.",
-  // ---- settings: region & advanced
-  f_cc: "국가 번호",
-  f_cc_h: "숫자만 입력하세요(예: 1, 44, 82). +로 시작하게 적은 차단 번호가 휴대폰이 알려 주는 번호 형식과 맞도록 해 줍니다.",
+  // ---- settings: advanced
   f_think: "사고 수준",
   f_think_h: "이름에 “thinking”이 들어간 모델에서만 사용됩니다. “낮음”이 가장 빨리 답합니다.",
   th_low: "낮음",
   th_medium: "보통",
   th_high: "높음",
-  f_carrier: "국제전화의 통신사 안내 음성 기다리기",
-  f_carrier_h: "대만 통신사는 해외에서 걸려 온 전화가 연결되면 먼저 주의 안내 녹음을 들려줍니다. AI는 그 안내가 끝난 뒤에 말을 시작합니다. 자동 = 언어가 중국어 번체일 때 켜짐.",
-  tri_auto: "자동",
   // ---- system view
   sys_phones: "휴대폰",
   sys_updated: "{time} 업데이트",
@@ -5045,7 +5010,7 @@ I18N["es"] = {
   g_blocked: "Números bloqueados",
   g_notify: "Notificaciones",
   g_summary: "Resumen y calendario",
-  g_region: "Región y avanzado",
+  g_region: "Avanzado",
   // ---- settings: basics
   g_basics_d: "Lo poco que la IA necesita para poder contestar tu teléfono.",
   f_language: "Idioma",
@@ -5265,17 +5230,12 @@ I18N["es"] = {
   f_appt_test_phone_h: "Solo para llamadas de los números de prueba de arriba: los SMS de sus citas salen de este teléfono. Su id (pixel-12345) o el nombre que le pusiste, sin importar mayúsculas. Vacío = el teléfono que atendió la llamada. Los SMS de llamadas de prueba solo van a números de la lista de prueba.",
   f_appt_test_sim: "SIM para esos SMS",
   f_appt_test_sim_h: "La SIM de ese teléfono: el nombre del operador (Tello) o su propio número. Vacío = la SIM de SMS predeterminada de ese teléfono, o la SIM que atendió la llamada si no hay teléfono indicado. La app del teléfono debe poder elegir la SIM por nombre; una app antigua no envía nada.",
-  // ---- settings: region & advanced
-  f_cc: "Prefijo telefónico del país",
-  f_cc_h: "Solo cifras, p. ej. 1, 34, 52. Permite que los números bloqueados escritos con + coincidan con la forma en que tu teléfono indica quién llama.",
+  // ---- settings: advanced
   f_think: "Nivel de razonamiento",
   f_think_h: "Solo para modelos con «thinking» en el nombre. «Bajo» es el que responde más rápido.",
   th_low: "Bajo",
   th_medium: "Medio",
   th_high: "Alto",
-  f_carrier: "Esperar el aviso de la operadora en llamadas internacionales",
-  f_carrier_h: "Las operadoras de Taiwán reproducen un aviso grabado al principio de cada llamada del extranjero. La IA espera a que termine antes de hablar. Automático = activado cuando el idioma es chino tradicional.",
-  tri_auto: "Automático",
   // ---- system view
   sys_phones: "Teléfonos",
   sys_updated: "Actualizado a las {time}",
@@ -5772,7 +5732,7 @@ I18N["fr"] = {
   g_blocked: "Numéros bloqués",
   g_notify: "Notifications",
   g_summary: "Résumé et agenda",
-  g_region: "Région et options avancées",
+  g_region: "Options avancées",
   // ---- settings: basics
   g_basics_d: "Le peu dont l'IA a besoin avant de pouvoir répondre à votre téléphone.",
   f_language: "Langue",
@@ -5992,17 +5952,12 @@ I18N["fr"] = {
   f_appt_test_phone_h: "Uniquement pour les appels des numéros de test ci-dessus : les SMS de leurs rendez-vous partent de ce téléphone. Son identifiant (pixel-12345) ou le nom que vous lui avez donné, sans tenir compte de la casse. Vide = le téléphone qui a pris l'appel. Les SMS des appels de test ne vont qu'aux numéros de la liste de test.",
   f_appt_test_sim: "SIM pour ces SMS",
   f_appt_test_sim_h: "La SIM de ce téléphone : le nom de l'opérateur (Tello) ou son propre numéro. Vide = la SIM SMS par défaut de ce téléphone, ou la SIM qui a pris l'appel si aucun téléphone n'est indiqué. L'application du téléphone doit savoir choisir une SIM par son nom ; une application plus ancienne n'envoie rien.",
-  // ---- settings: region & advanced
-  f_cc: "Indicatif du pays",
-  f_cc_h: "Chiffres uniquement, ex. 1, 33, 44. Permet aux numéros bloqués écrits avec + de correspondre à la façon dont votre téléphone indique les appelants.",
+  // ---- settings: advanced
   f_think: "Niveau de réflexion",
   f_think_h: "Uniquement pour les modèles dont le nom contient « thinking ». « Faible » répond le plus vite.",
   th_low: "Faible",
   th_medium: "Moyen",
   th_high: "Élevé",
-  f_carrier: "Attendre l'annonce de l'opérateur sur les appels internationaux",
-  f_carrier_h: "À Taïwan, les opérateurs diffusent un avertissement enregistré au début de chaque appel venant de l'étranger. L'IA attend qu'il soit terminé avant de parler. Automatique = activé quand la langue est le chinois traditionnel.",
-  tri_auto: "Automatique",
   // ---- system view
   sys_phones: "Téléphones",
   sys_updated: "Mis à jour à {time}",
@@ -6499,7 +6454,7 @@ I18N["de"] = {
   g_blocked: "Blockierte Nummern",
   g_notify: "Benachrichtigungen",
   g_summary: "Zusammenfassung und Kalender",
-  g_region: "Region und Erweitert",
+  g_region: "Erweitert",
   // ---- settings: basics
   g_basics_d: "Das Wenige, das die KI braucht, bevor sie an dein Telefon gehen kann.",
   f_language: "Sprache",
@@ -6719,17 +6674,12 @@ I18N["de"] = {
   f_appt_test_phone_h: "Nur für Anrufe von den Testnummern oben: Ihre Termin-SMS gehen von diesem Telefon aus. Seine ID (pixel-12345) oder der Name, den du ihm gegeben hast, Groß-/Kleinschreibung egal. Leer = das Telefon, das den Anruf angenommen hat. SMS aus Testanrufen gehen nur an Nummern auf der Testliste.",
   f_appt_test_sim: "SIM für diese SMS",
   f_appt_test_sim_h: "Die SIM auf diesem Telefon: Name des Netzbetreibers (Tello) oder ihre eigene Nummer. Leer = die Standard-SIM für SMS dieses Telefons, oder die SIM, die den Anruf angenommen hat, wenn kein Telefon eingetragen ist. Die App auf dem Telefon muss eine SIM nach Namen wählen können; eine ältere App sendet nichts.",
-  // ---- settings: region & advanced
-  f_cc: "Ländervorwahl",
-  f_cc_h: "Nur Ziffern, z. B. 1, 44, 49. Damit passen blockierte Nummern, die mit + geschrieben sind, zu der Form, in der dein Telefon Anrufer meldet.",
+  // ---- settings: advanced
   f_think: "Denkstufe",
   f_think_h: "Nur für Modelle mit „thinking“ im Namen. „Niedrig“ antwortet am schnellsten.",
   th_low: "Niedrig",
   th_medium: "Mittel",
   th_high: "Hoch",
-  f_carrier: "Auf die Ansage des Netzbetreibers bei Auslandsanrufen warten",
-  f_carrier_h: "Netzbetreiber in Taiwan spielen zu Beginn jedes Anrufs aus dem Ausland eine aufgezeichnete Warnung ab. Die KI wartet sie ab, bevor sie spricht. Automatisch = an, wenn die Sprache traditionelles Chinesisch ist.",
-  tri_auto: "Automatisch",
   // ---- system view
   sys_phones: "Telefone",
   sys_updated: "Aktualisiert um {time}",
@@ -7226,7 +7176,7 @@ I18N["pt"] = {
   g_blocked: "Números bloqueados",
   g_notify: "Notificações",
   g_summary: "Resumo e agenda",
-  g_region: "Região e avançado",
+  g_region: "Avançado",
   // ---- settings: basics
   g_basics_d: "O pouco que a IA precisa para poder atender seu telefone.",
   f_language: "Idioma",
@@ -7446,17 +7396,12 @@ I18N["pt"] = {
   f_appt_test_phone_h: "Só para ligações dos números de teste acima: os SMS dos compromissos saem deste telefone. O id dele (pixel-12345) ou o nome que você deu, sem diferenciar maiúsculas. Vazio = o telefone que atendeu. SMS de ligações de teste só vão para números da lista de teste.",
   f_appt_test_sim: "SIM para esses SMS",
   f_appt_test_sim_h: "O SIM desse telefone: o nome da operadora (Tello) ou o número dele. Vazio = o SIM padrão de SMS desse telefone, ou o SIM que atendeu quando nenhum telefone foi indicado. O app do telefone precisa conseguir escolher o SIM pelo nome; um app antigo não envia nada.",
-  // ---- settings: region & advanced
-  f_cc: "Código do país",
-  f_cc_h: "Só números, ex.: 1, 55, 351. Faz com que os números bloqueados escritos com + correspondam ao formato em que o telefone informa quem ligou.",
+  // ---- settings: advanced
   f_think: "Nível de raciocínio",
   f_think_h: "Só para modelos com “thinking” no nome. “Baixo” responde mais rápido.",
   th_low: "Baixo",
   th_medium: "Médio",
   th_high: "Alto",
-  f_carrier: "Esperar o aviso da operadora em chamadas internacionais",
-  f_carrier_h: "As operadoras de Taiwan tocam um aviso gravado no início de toda chamada vinda do exterior. A IA espera o aviso terminar antes de falar. Automático = ligado quando o idioma é chinês tradicional.",
-  tri_auto: "Automático",
   // ---- system view
   sys_phones: "Telefones",
   sys_updated: "Atualizado às {time}",
