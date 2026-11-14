@@ -11,6 +11,13 @@
 //! No key, an error, a slow or unreadable answer all count as a scam or sales
 //! call — what the keywords alone decided before — because the owner would
 //! rather keep a doubtful caller talking than let a scammer go.
+//!
+//! The keywords often cross the line on the caller's first words, before they
+//! have said what they want: 「這邊是XX銀行信用卡風險管控中心」 is how a card
+//! desk checking a purchase opens, and how a fake bank opens too. Asked about
+//! that alone, the model was unsure and the real card desk was kept talking. So
+//! a caller who has only said who they are is [`Verdict::TooEarly`]: the call
+//! is looked at again once their next turn has ended (`gemini_live`).
 
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -29,6 +36,9 @@ pub enum Verdict {
     IvrRecording,
     /// An ordinary call that happened to use the words.
     Normal,
+    /// The caller has only greeted or said who they are, not yet what they
+    /// want: ask again after their next turn.
+    TooEarly,
 }
 
 impl Verdict {
@@ -37,6 +47,7 @@ impl Verdict {
             "scam_or_sales" => Some(Verdict::ScamOrSales),
             "ivr_recording" => Some(Verdict::IvrRecording),
             "normal" => Some(Verdict::Normal),
+            "too_early" => Some(Verdict::TooEarly),
             _ => None,
         }
     }
@@ -57,13 +68,14 @@ const MAX_DIALOGUE_CHARS: usize = 3000;
 const SYSTEM_PROMPT: &str = "\
 You check a phone call that is still going on. An AI answers the phone for its owner. A keyword check thinks the caller may be a scammer or a salesperson; if so, the AI will keep them talking on purpose. Decide from the dialogue so far whether that is right.\n\
 The dialogue may be in any language. \"Caller:\" lines are the person (or recording) that called; \"AI:\" lines are the AI answering for the owner.\n\
-Answer with JSON only, one of: {\"verdict\":\"scam_or_sales\"} {\"verdict\":\"ivr_recording\"} {\"verdict\":\"normal\"}.\n\
+Answer with JSON only, one of: {\"verdict\":\"scam_or_sales\"} {\"verdict\":\"ivr_recording\"} {\"verdict\":\"normal\"} {\"verdict\":\"too_early\"}.\n\
 \n\
 scam_or_sales: someone posing as a bank, the police, a prosecutor, a government office or customer service who wants the owner to work an ATM or online banking, cancel an instalment plan, move money into a supervised or safe account, add them on LINE or another chat app, join an investment group, or who promises guaranteed profits; anyone selling insurance, loans, investments or other products or services. Asking for a password, a one-time code, a PIN or ATM steps is scam_or_sales, whoever the caller claims to be.\n\
 ivr_recording: a pre-recorded message or an automatic voice menu: a machine reading out options, \"press 1\", \"press the pound key\", leave a message after the tone.\n\
-normal: family or friends talking about sending or receiving money; a courier delivering a parcel, cash on delivery included; a bank, card issuer or insurer following up on something the owner applied for or did (a call to verify an application, a fraud-risk check on a card purchase, a claim's progress) without asking for passwords, verification codes or ATM steps; anyone else calling about their own ordinary business.\n\
+normal: family or friends talking about sending or receiving money; a courier delivering a parcel, cash on delivery included; a bank, card issuer or insurer following up on something the owner applied for or did (a call to verify an application, a claim's progress) without asking for passwords, verification codes or ATM steps; a card issuer's fraud or risk-control desk asking whether a recent card purchase (an amount, a shop, a time) was the owner's, offering to block the card and send a new one, or telling the owner to call the number on the back of the card, as long as it asks for no password, code, card number, ATM steps, money transfer or app; anyone else calling about their own ordinary business.\n\
+too_early: the caller has only greeted or said who they are (a bank, a card centre, a risk-control or anti-fraud desk, customer service, a government office) and has not yet said what the call is about. Who they say they are decides nothing, however much it sounds like the start of a scam: the call is looked at again after their next turn.\n\
 \n\
-If you are unsure, answer scam_or_sales.";
+If the caller has said what they want and you are still unsure, answer scam_or_sales.";
 
 /// One client for the life of the agent, its connections kept open between
 /// reviews: a fresh TLS handshake to Gemini takes about a quarter of a second
@@ -81,7 +93,7 @@ fn client() -> &'static Client {
 }
 
 /// Ask the model whether a call the keywords flagged is a scam or sales call,
-/// a recording or an ordinary call. `dialogue` = the call so far (`對方：` /
+/// a recording, an ordinary call or too early to tell. `dialogue` = the call so far (`對方：` /
 /// `接聽：` or `Caller:` / `AI:` lines), `hits` = the keywords that matched.
 /// Anything but a clear answer within [`REVIEW_TIMEOUT`] is
 /// [`Verdict::ScamOrSales`].
@@ -196,7 +208,7 @@ fn request_body(dialogue: &str, hits: &[String], caller_id: &str, strict: bool) 
         generation["responseSchema"] = json!({
             "type": "OBJECT",
             "properties": {
-                "verdict": {"type": "STRING", "enum": ["scam_or_sales", "ivr_recording", "normal"]}
+                "verdict": {"type": "STRING", "enum": ["scam_or_sales", "ivr_recording", "normal", "too_early"]}
             },
             "required": ["verdict"]
         });
@@ -694,6 +706,7 @@ mod tests {
         assert_eq!(parse_verdict(body), Some(Verdict::Normal));
         assert_eq!(parse_verdict(r#"{"verdict":"ivr_recording"}"#), Some(Verdict::IvrRecording));
         assert_eq!(parse_verdict(r#"{"verdict":"Scam_Or_Sales"}"#), Some(Verdict::ScamOrSales));
+        assert_eq!(parse_verdict(r#"{"verdict":"too_early"}"#), Some(Verdict::TooEarly));
         assert_eq!(
             parse_verdict("```json\n{\"verdict\": \"normal\"}\n```"),
             Some(Verdict::Normal)
@@ -708,14 +721,17 @@ mod tests {
     }
 
     #[test]
-    fn the_request_holds_the_answer_to_three_labels_and_keeps_the_end_of_a_long_call() {
+    fn the_request_holds_the_answer_to_four_labels_and_keeps_the_end_of_a_long_call() {
         let long = format!("對方：{}\n對方：請你去 ATM 解除分期", "喂".repeat(4000));
         let hits = vec!["ATM".to_string(), "解除分期".to_string()];
         let body = request_body(&long, &hits, "+12025550143", true);
         let g = &body["generationConfig"];
         assert_eq!(g["temperature"], 0);
         assert_eq!(g["responseMimeType"], "application/json");
-        assert_eq!(g["responseSchema"]["properties"]["verdict"]["enum"][2], "normal");
+        assert_eq!(
+            g["responseSchema"]["properties"]["verdict"]["enum"],
+            json!(["scam_or_sales", "ivr_recording", "normal", "too_early"])
+        );
         assert_eq!(g["thinkingConfig"]["thinkingLevel"], "minimal", "{g}");
         assert!(g.get("thinkingConfig").and_then(|t| t.get("thinkingBudget")).is_none(), "{g}");
         assert!(g["maxOutputTokens"].as_u64().unwrap() >= 256, "{g}");
@@ -728,6 +744,26 @@ mod tests {
         assert!(plain["generationConfig"].get("responseSchema").is_none());
         assert!(plain["generationConfig"].get("thinkingConfig").is_none());
         assert!(plain["contents"][0]["parts"][0]["text"].as_str().unwrap().contains("Number: hidden"));
+    }
+
+    /// The real card desk was kept talking (2026-11-14): its opening line
+    /// 「這邊是XX銀行信用卡風險管控中心」 crossed the keywords on its own and the
+    /// model, unsure, said scam. Who is calling is now too early to tell; a
+    /// card desk asking about a purchase is normal; unsure after the caller has
+    /// said what they want is still scam_or_sales.
+    #[test]
+    fn an_introduction_is_too_early_and_a_card_check_is_normal() {
+        let p = SYSTEM_PROMPT;
+        assert!(p.contains("{\"verdict\":\"too_early\"}"), "{p}");
+        assert!(p.contains("too_early: the caller has only greeted or said who they are"), "{p}");
+        assert!(p.contains("risk-control or anti-fraud desk"), "{p}");
+        assert!(p.contains("asking whether a recent card purchase (an amount, a shop, a time) was the owner's"), "{p}");
+        assert!(p.contains("the number on the back of the card"), "{p}");
+        // The fake bank is still scam_or_sales, and so is a doubt once the matter is out.
+        assert!(p.contains("work an ATM or online banking, cancel an instalment plan"), "{p}");
+        assert!(p.contains("Asking for a password, a one-time code, a PIN or ATM steps is scam_or_sales"), "{p}");
+        assert!(p.ends_with("If the caller has said what they want and you are still unsure, answer scam_or_sales."), "{p}");
+        assert!(!p.contains("\nIf you are unsure, answer scam_or_sales."), "{p}");
     }
 
     /// A one-request-per-connection HTTP server: answers each request in turn
@@ -778,6 +814,7 @@ mod tests {
     }
 
     const NORMAL: &str = r#"{"candidates":[{"content":{"parts":[{"text":"{\"verdict\":\"normal\"}"}]}}]}"#;
+    const TOO_EARLY: &str = r#"{"candidates":[{"content":{"parts":[{"text":"{\"verdict\":\"too_early\"}"}]}}]}"#;
     /// What the API answers a setting the model does not take.
     const INVALID_ARGUMENT: &str =
         r#"{"error":{"code":400,"message":"Request contains an invalid argument.","status":"INVALID_ARGUMENT"}}"#;
@@ -798,6 +835,18 @@ mod tests {
         assert!(req.contains("\"responseschema\""), "{req}");
         assert!(req.contains("\"thinkinglevel\":\"minimal\""), "{req}");
         assert!(!req.contains("thinkingbudget"), "{req}");
+    }
+
+    #[tokio::test]
+    async fn an_introduction_alone_comes_back_too_early() {
+        let (base, server) = serve(vec![(200, TOO_EARLY, Duration::ZERO)]).await;
+        let dialogue = "接聽：Hello?\n對方：喂您好，這邊是大愛銀行信用卡風險管控中心。";
+        let hits = vec!["信用卡".to_string(), "銀行".to_string()];
+        let v = review_at(&Client::new(), &base, "test-key", dialogue, &hits, "unknown").await;
+        assert_eq!(v, Verdict::TooEarly);
+        let seen = server.await.unwrap();
+        assert!(seen[0].contains("too_early"), "{}", seen[0]);
+        assert!(seen[0].contains("Caller: 喂您好，這邊是大愛銀行信用卡風險管控中心。"), "{}", seen[0]);
     }
 
     #[test]
