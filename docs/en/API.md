@@ -208,10 +208,13 @@ the other side it will check and asks you (`ask_owner`): if you are watching the
 errand (the page asked for its live view in the last 6 seconds), the question
 shows there for up to 40 seconds; otherwise, or when you do not answer in time,
 the AI asks which options would work, says you will confirm and call back, and
-ends the call politely. What you type during the call goes to the AI as an
-instruction. Afterwards the summary model reads the call against the errand and
-you get one notification (title "📞 AI 代打：<name or number>", in the
-notification language).
+ends the call politely. The AI waits for the answer and settles nothing about it
+meanwhile; if the other side says goodbye first, the question ends there. What
+you type during the call goes to the AI as an instruction. Afterwards the
+summary model reads the call against the errand and you get one notification
+(title "📞 AI 代打：<name or number>", in the notification language). Something
+the AI agreed to on a question you did not answer is never `done`: the result
+is `need_owner`, telling you to confirm it or call back to change it.
 
 Who calls: `errand_identity` (setting; `assistant`, your assistant, by
 default, or `owner`, as you), and each errand may pick its own. Either way the AI
@@ -219,14 +222,22 @@ says it is an AI when sincerely asked, gives out no personal details beyond the
 errand, and agrees to no payment, deposit or transfer. Numbers: never an
 emergency number, a short code (7 digits or fewer) or a premium-rate number
 (e.g. Taiwan 0204 / 0209, +1 900 / 976); toll-free numbers are fine. A number
-written without a country code is one of your country (`country_code`). The call
+written without a plus is one of your country (`country_code`); one that starts
+with an international call prefix instead (`00`, Taiwan's `01x` and `00x`, North
+America's `011`, Japan's `010`) is `not_allowed` (write numbers abroad with
+`+`), as is a Taiwan number starting with 1 after the trunk 0. The call
 goes out from a phone in AI mode with a SIM of the number's country: the agent
 learns each phone's SIMs (subscription id and country) from the calls the phone
 reports, and from `sims` in its control hello when the app sends it
-(`phone_sims.json`). A phone whose SIMs it has never heard about dials only
-numbers of your own country (`country_code`), from its default SIM. A phone on
-a call: the errand waits (`queued`) and fails after 10 minutes; one call to a
-number at a time, shared with the appointments' AI call-backs. A call lasts at
+(`phone_sims.json`). A phone whose SIMs it has never heard about takes no
+errand (`sim_unknown`: call that phone once first). The phone is sent the
+number in E.164 form with the SIM to use; when the call's own report (its media
+hello) shows another SIM, or none, the agent hangs up at once, before the AI
+starts (`failed`, `call_code` `wrong_sim`, you are told) and forgets that SIM on
+that phone. A phone on a call: the errand waits (`queued`) and fails after 10
+minutes (`phone_busy`); one call to a number at a time, shared with the
+appointments' AI call-backs, and an errand waiting behind an earlier call to its
+number fails after 25 minutes (`number_busy`). A call lasts at
 most 10 minutes (the AI wraps up at 9:30). A voice menu: the AI waits up to 90
 seconds for a person (it cannot press keys); the carrier's recording ("number
 not in service"): it hangs up at once. No retries on its own: **Try again** is
@@ -249,8 +260,8 @@ status, result, record_id, ended_at, questions}`. Errands are kept in
 | Method and path | What |
 |---|---|
 | `GET /calls/api/errands` | `{ok, errands}`, the newest first, at most 200. |
-| `POST /calls/api/errands` | Body `{number, name, contact_id, task, identity, serial, follow_up_of}` (all but `task` and a number or contact may be left out; `serial` empty: any phone; `follow_up_of`: an earlier errand this call follows up). `{ok, errand}`. Errors (HTTP 400 `{ok: false, error, code}`, the same code in both): `no_number`, `bad_number`, `not_allowed`, `no_task`, `task_too_long` (over 1000 characters), `no_phone`, `no_sim_for_country`, `not_found` (`contact_id` or `follow_up_of`). |
-| `POST /calls/api/errands/{id}/cancel` | Waiting: dropped; dialing or on the call: hung up. `{ok, errand}`. |
+| `POST /calls/api/errands` | Body `{number, name, contact_id, task, identity, serial, follow_up_of}` (all but `task` and a number or contact may be left out; `serial` empty: any phone; `follow_up_of`: an earlier errand this call follows up). `{ok, errand}`. Errors (HTTP 400 `{ok: false, error, code}`, the same code in both): `no_number`, `bad_number`, `not_allowed`, `no_task`, `task_too_long` (over 1000 characters), `no_phone`, `sim_unknown` (no phone fits and one has SIMs the agent does not know yet), `no_sim_for_country`, `not_found` (`contact_id` or `follow_up_of`). |
+| `POST /calls/api/errands/{id}/cancel` | Waiting: dropped; dialing or on the call: hung up (a dial already sent no longer holds the phone or the number; should its call still start, it is hung up before the AI starts). `{ok, errand}`. |
 | `POST /calls/api/errands/{id}/retry` | The same errand once more (`attempts` + 1, the last try moved to `history`). `{ok, errand}`; under way: 400 `busy`; the phone codes as for a new errand. |
 | `DELETE /calls/api/errands/{id}` | `{ok}`; dialing or on the call: 400 `busy`. On every `…/errands/{id}…` path an unknown errand is HTTP 404 `not_found`. |
 | `GET /calls/api/errands/{id}/live?after=<seq>` | `{status, lines: [{seq, who, text, at}], question, watching}`: the captions after `seq` (`who`: `ai`, `callee`, `owner`, `system`; the newest 400 are kept) and the question waiting for you (`null` or `{id, text, options, asked_at, expires_at}`). Asking marks you as watching for 6 seconds. |

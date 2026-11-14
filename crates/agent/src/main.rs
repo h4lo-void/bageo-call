@@ -6094,11 +6094,27 @@ async fn spawn_gemini_session_tasks(
             record_id = c.id.clone();
         }
         if cb.errand {
-            // The owner cancelled it while it dialed: hang up at once, no AI.
-            if state.errands.cancel_requested(&cb.task_id) {
-                info!("errand cancelled before its call started serial={serial} id={} — hang up", cb.task_id);
+            // Only a call the errand still wants (not cancelled, deleted or over),
+            // on the SIM it was given (the media hello says which one the phone
+            // used): anything else is hung up at once, before the AI starts.
+            let (sim_sub, sim_country) = (call_sim_sub_id(&serial), call_sim_country(&serial));
+            let gate = state.errands.call_gate(&cb.task_id, sim_sub, sim_country.as_deref());
+            if gate != errands::CallGate::Go {
+                info!("errand call not wanted serial={serial} id={} gate={gate:?} — hang up", cb.task_id);
                 cancel.store(true, Ordering::Relaxed);
-                send_hangup_with_retries(&sink, &serial, "errand_cancelled", 3, Some(&media_call_guard)).await;
+                let why = if gate == errands::CallGate::WrongSim { "errand_wrong_sim" } else { "errand_cancelled" };
+                send_hangup_with_retries(&sink, &serial, why, 3, Some(&media_call_guard)).await;
+                if gate == errands::CallGate::WrongSim {
+                    let eff = rt.effective(&state.settings);
+                    let ctx = appointments::CallbackCtx {
+                        http: &state.http,
+                        settings: &eff,
+                        tasks: state.task_store.as_ref(),
+                        control: state.control.as_ref(),
+                        errands: Some(state.errands.as_ref()),
+                    };
+                    errands::wrong_sim(&ctx, &state.errands, &cb.task_id, sim_sub, sim_country.as_deref()).await;
+                }
                 return;
             }
             errand = Some(state.errands.attach_call(&cb.task_id, &record_id));

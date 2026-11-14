@@ -1415,10 +1415,11 @@ fn with_appointment_tools(setup: &mut Value, on: bool, non_blocking: bool) {
     }
 }
 
-/// An errand call declares `ask_owner` ([`crate::errands::tool_declarations`]).
-fn with_errand_tools(setup: &mut Value, non_blocking: bool) {
+/// An errand call declares `ask_owner` ([`crate::errands::tool_declarations`];
+/// blocking: the AI settles nothing while the owner is asked).
+fn with_errand_tools(setup: &mut Value) {
     if let Some(s) = setup.get_mut("setup").and_then(|x| x.as_object_mut()) {
-        s.insert("tools".into(), crate::errands::tool_declarations(non_blocking));
+        s.insert("tools".into(), crate::errands::tool_declarations());
     }
 }
 
@@ -3482,14 +3483,13 @@ pub async fn run_session(
         }
         with_appointment_tools(&mut setup, appt.is_some(), non_blocking);
         if errand.is_some() {
-            with_errand_tools(&mut setup, non_blocking);
+            with_errand_tools(&mut setup);
         }
         setup
     };
     // Appointments: propose_appointment goes NON_BLOCKING unless the API refused
     // that before; a setup that fails with it is sent once more without it.
-    // So does an errand's ask_owner.
-    let mut non_blocking = (appt.is_some() || errand.is_some()) && !NON_BLOCKING_REFUSED.load(Ordering::Relaxed);
+    let mut non_blocking = appt.is_some() && !NON_BLOCKING_REFUSED.load(Ordering::Relaxed);
     let mut debug_raw_left = debug_raw_budget();
     let (mut sink, mut stream, setup, mut conn_opened_at, setup_ok) = 'connect: loop {
         let connect_fut = tokio_tungstenite::connect_async(&url);
@@ -4013,6 +4013,9 @@ pub async fn run_session(
     let mut tool_open: std::collections::HashSet<String> = std::collections::HashSet::new();
     // Non-blocking calls being answered (the model goes on talking meanwhile).
     let mut tool_bg: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // An errand's ask_owner calls whose answer has not come yet (still waited for
+    // when the model dropped the call: the answer then goes as a note).
+    let mut ask_waiting: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut tool_tasks: Vec<tokio::task::JoinHandle<()>> = Vec::new();
     let mut tool_seq: u64 = 0;
     let mut live_gen: u32 = 0;
@@ -4106,7 +4109,7 @@ pub async fn run_session(
             }
         }
         // An errand's question waits for the owner: the line is not idle.
-        let errand_asking = errand.as_ref().is_some_and(|e| e.question_open());
+        let errand_asking = errand.as_ref().is_some_and(|e| e.question_open()) || !ask_waiting.is_empty();
 
         // The second look says sales / scam: the AI starts stalling.
         if std::mem::take(&mut stall_engage_now) && !stall_on && !own_matter && ivr_since.is_none() {
@@ -4972,18 +4975,17 @@ pub async fn run_session(
                                                 .await;
                                                 continue;
                                             }
-                                            let blocking = !non_blocking;
+                                            // Always blocking: the AI waits for the
+                                            // owner and settles nothing meanwhile.
+                                            let blocking = true;
                                             info!(
                                                 "Gemini Live toolCall serial={serial} name={} id={key} blocking={blocking} (errand: ask the owner) talk_s={}",
                                                 call.name,
                                                 session_start.elapsed().as_secs()
                                             );
-                                            if blocking {
-                                                model_turn_pending = true;
-                                                tool_open.insert(key.clone());
-                                            } else {
-                                                tool_bg.insert(key.clone());
-                                            }
+                                            model_turn_pending = true;
+                                            tool_open.insert(key.clone());
+                                            ask_waiting.insert(key.clone());
                                             let tx = tool_tx.clone();
                                             let gen = live_gen;
                                             tool_tasks.retain(|h| !h.is_finished());
@@ -5066,6 +5068,21 @@ pub async fn run_session(
                                         info!(
                                             "Gemini Live toolCallCancellation serial={serial} id={id} — its answer will not be sent"
                                         );
+                                        // An errand's question still waits for the owner:
+                                        // the AI is told so, and gets the answer as a note.
+                                        if ask_waiting.contains(&id) {
+                                            model_turn_pending = true;
+                                            if let Err(e) = send_text_before_deadline(
+                                                &mut sink,
+                                                crate::errands::still_asking_client_content(),
+                                                tokio::time::Instant::now() + API_SEND_TIMEOUT,
+                                                "gemini errand still-asking note send",
+                                            )
+                                            .await
+                                            {
+                                                warn!("Gemini Live errand still-asking note failed serial={serial}: {e:#}");
+                                            }
+                                        }
                                     }
                                 }
                                 // Caller words in this message: what the model says next
@@ -5363,6 +5380,16 @@ pub async fn run_session(
                                             stall_keep_chunks = audio_chunks_out;
                                         }
                                     } else if caller_closing {
+                                        // A question still waits for the owner: no time is
+                                        // left for it — the AI gets its answer now (absent)
+                                        // and says goodbye too.
+                                        if let Some(e) = &errand {
+                                            if e.close_question() {
+                                                info!(
+                                                    "Errand: the other side says goodbye while a question waits for the owner — closed serial={serial}"
+                                                );
+                                            }
+                                        }
                                         if post_arm_talk {
                                             // Their words after our closing are a farewell,
                                             // not new content: hang up once they finish.
@@ -5866,6 +5893,30 @@ pub async fn run_session(
                 } else {
                     tool_bg.remove(&done.key)
                 };
+                let asked = done.name == crate::errands::ASK_OWNER && ask_waiting.remove(&done.key);
+                if asked && (done.gen != live_gen || !open) {
+                    // The model dropped the call (the other side spoke over the
+                    // wait) or the socket changed: the owner's answer still
+                    // reaches the AI, as a note.
+                    let now = tokio::time::Instant::now();
+                    model_turn_pending = true;
+                    last_activity_at = now;
+                    match send_text_before_deadline(
+                        &mut sink,
+                        crate::errands::late_answer_client_content(&done.response),
+                        now + API_SEND_TIMEOUT,
+                        "gemini errand late answer send",
+                    )
+                    .await
+                    {
+                        Ok(()) => info!(
+                            "Gemini Live errand answer sent as a note serial={serial} id={} response={}",
+                            done.key, done.response
+                        ),
+                        Err(e) => warn!("Gemini Live errand late answer send failed serial={serial}: {e:#}"),
+                    }
+                    continue;
+                }
                 if done.gen != live_gen || !open {
                     info!(
                         "Gemini Live function answer dropped serial={serial} name={} id={} (cancelled or older session)",
