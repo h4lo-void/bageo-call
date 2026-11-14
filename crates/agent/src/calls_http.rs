@@ -34,6 +34,8 @@ pub struct CallsState {
     pub previews: Arc<crate::voice_preview::VoicePreviews>,
     /// Phones on the control connection: mode, app version, `set_mode` round trips.
     pub phones: Arc<PhoneDevices>,
+    /// The owner's contacts: names for the call list, and the contacts API.
+    pub contacts: Arc<crate::contacts::ContactStore>,
 }
 
 const UI_HTML: &str = include_str!("../static/calls.html");
@@ -355,6 +357,8 @@ async fn list(
         }
         Value::Object(out)
     };
+    // Names for the numbers that are contacts (the list shows them).
+    let contacts_by_number = crate::contacts::names_for(&state.contacts, &page.calls);
     Json(json!({
         "ok": true,
         "note": "Default page player is /listen (system audio + caller, ducked). _remote.wav = caller whole call; _tts.wav = system only; _vm.wav = voicemail slice.",
@@ -364,6 +368,7 @@ async fn list(
         "limit": page.limit,
         "offset": page.offset,
         "tasks_by_call": tasks_by_call,
+        "contacts_by_number": contacts_by_number,
     }))
     .into_response()
 }
@@ -435,11 +440,17 @@ async fn call_get(
     let calendar_link = notes
         .as_ref()
         .and_then(|n| n.calendar.as_ref().map(|ev| ev.google_link(&n.summary)));
+    // The caller's contact, when the number is one (null otherwise).
+    let contact = state
+        .contacts
+        .lookup(&rec.caller_id, rec.sim_country.as_deref())
+        .map(|c| json!({"id": c.id, "name": c.name, "note": c.note}));
     Json(json!({
         "ok": true,
         "call": rec,
         "notes": notes,
         "calendar_link": calendar_link,
+        "contact": contact,
     }))
     .into_response()
 }
@@ -1928,5 +1939,6 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/tasks/{id}/confirm", post(tasks_confirm))
         .route("/api/tasks/{id}/ignore", post(tasks_ignore))
         .route("/api/appointments/{id}/retry-sms", post(appointment_retry_sms))
+        .merge(crate::contacts::router())
         .with_state(state)
 }

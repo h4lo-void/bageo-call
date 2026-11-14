@@ -868,19 +868,26 @@ pub async fn notify_ai_request(
     let caller = display_or_hidden(caller_id);
     let device = device_label(serial);
     let when = now_stamp();
-    let msg = Card::new("☎️", p.n_summary)
+    // A caller in the contacts: the name after the number in the title.
+    let contact = crate::contacts::lookup(caller_id, None).map(|c| c.name);
+    let headline = match contact.as_deref() {
+        Some(name) => format!("{} · {name}", p.n_summary),
+        None => p.n_summary.to_string(),
+    };
+    let msg = Card::new("☎️", &headline)
         .code(p.n_number, &caller)
         .row(p.n_phone, &device)
         .row(p.n_time, &when)
         .tail(summary_body)
         .message(
             "summary",
-            format!("{} {caller}", p.n_summary),
+            format!("{} {}", p.n_summary, crate::contacts::named_number(&caller, contact.as_deref())),
             json!({
                 "caller_id": caller_id.trim(),
                 "device": device,
                 "time": when,
                 "summary": summary_body.trim(),
+                "contact": contact.as_deref().unwrap_or(""),
             }),
         );
     deliver(http, settings, &msg).await
