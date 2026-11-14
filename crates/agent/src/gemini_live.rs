@@ -984,10 +984,10 @@ pub struct CallLangPlan {
 ///
 /// Speech-to-text: a number of the owner's own country (or one whose country
 /// speaks the setting's language) keeps the setting's language and English as
-/// hints — auto-detect read a short 「喂？」 as Korean or German. A number from
-/// abroad hints the caller's language first, then the setting's; from a country
-/// whose language is not known, no hint at all, so Thai or Indonesian are not
-/// forced into Chinese (and a closing "Thanks, bye." is not lost).
+/// hints — auto-detect read a short 「喂？」 as Korean or German. Any other number
+/// gets no hint: the language is detected. A number says little about what its
+/// caller speaks (a Thai speaker on a US number came out as Chinese with
+/// [en-US, zh-TW], and a closing "Thanks, bye." was lost).
 pub fn call_lang_plan(
     caller_id: &str,
     sim: Option<&str>,
@@ -1029,14 +1029,10 @@ pub fn call_lang_plan(
         _ => false,
     };
     let usual = || stt_codes(&[lang, Lang::En]);
-    let caller_stt = if !abroad {
-        Some(usual())
-    } else {
-        match caller_lang {
-            Some(l) if l == lang || (l.is_zh() && lang.is_zh()) => Some(usual()),
-            Some(l) => Some(stt_codes(&[l, lang])),
-            None => None,
-        }
+    let caller_stt = match caller_lang {
+        _ if !abroad => Some(usual()),
+        Some(l) if l == lang || (l.is_zh() && lang.is_zh()) => Some(usual()),
+        _ => None,
     };
     CallLangPlan { opening, caller_stt }
 }
@@ -6356,15 +6352,15 @@ mod tests {
         };
         let usual_tw = || hints(&["zh-TW", "en-US"]);
         // Taiwan SIM, Traditional Chinese. A US number (as reported in a real call that
-        // spoke Thai and Indonesian): English opening, English first for speech-to-text.
+        // spoke Thai and Indonesian): English opening, speech-to-text detects the language.
         assert_eq!(
             call_lang_plan("+12025550143", Some("tw"), Lang::ZhTw, "886", &none),
-            plan(Some(Lang::En), hints(&["en-US", "zh-TW"]))
+            plan(Some(Lang::En), None)
         );
         // The same number with the international prefix 00.
         assert_eq!(
             call_lang_plan("0012025550143", Some("tw"), Lang::ZhTw, "886", &none),
-            plan(Some(Lang::En), hints(&["en-US", "zh-TW"]))
+            plan(Some(Lang::En), None)
         );
         // Local numbers: no switch, the usual hints.
         assert_eq!(
@@ -6389,7 +6385,7 @@ mod tests {
         // A US SIM in the same phone, set to English: a local US number hears English…
         assert_eq!(
             call_lang_plan("(202) 555-0143", Some("us"), Lang::ZhTw, "886", &us_en),
-            plan(Some(Lang::En), hints(&["en-US", "zh-TW"]))
+            plan(Some(Lang::En), None)
         );
         assert_eq!(
             call_lang_plan("2025550143", Some("US"), Lang::ZhTw, "886", &us_en).opening,
@@ -6403,20 +6399,20 @@ mod tests {
         // …and a Japanese number Japanese.
         assert_eq!(
             call_lang_plan("+81312345678", Some("us"), Lang::ZhTw, "886", &us_en),
-            plan(Some(Lang::Ja), hints(&["ja-JP", "zh-TW"]))
+            plan(Some(Lang::Ja), None)
         );
-        // The US SIM without a language of its own: the setting's opening, but the
-        // US caller is still transcribed with English first.
+        // The US SIM without a language of its own: the setting's opening; the US
+        // caller's language is detected.
         assert_eq!(
             call_lang_plan("2025550143", Some("us"), Lang::ZhTw, "886", &none),
-            plan(None, hints(&["en-US", "zh-TW"]))
+            plan(None, None)
         );
         // Canadian SIM set to French, English setting, owner's code +1: a Montreal
         // number hears French; a US number is from another country than the SIM's
         // and hears English, which is the setting.
         assert_eq!(
             call_lang_plan("514 555 0123", Some("ca"), Lang::En, "1", &ca_fr),
-            plan(Some(Lang::Fr), hints(&["fr-FR", "en-US"]))
+            plan(Some(Lang::Fr), None)
         );
         assert_eq!(
             call_lang_plan("+12025550143", Some("ca"), Lang::En, "1", &ca_fr),
@@ -6434,7 +6430,7 @@ mod tests {
         // the owner's, as before; national digits are the owner's country's.
         assert_eq!(
             call_lang_plan("+12025550143", None, Lang::ZhTw, "886", &us_en),
-            plan(Some(Lang::En), hints(&["en-US", "zh-TW"]))
+            plan(Some(Lang::En), None)
         );
         assert_eq!(
             call_lang_plan("2025550143", None, Lang::ZhTw, "886", &us_en),
