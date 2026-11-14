@@ -802,7 +802,7 @@ mod tests {
         for lang in locale::ALL {
             let marks: &[&str] = match lang {
                 Lang::ZhTw => &["不要說是、也不要說不是", "不要答應停卡、掛失", "卡片背面的客服", "也不要說「沒印象」"],
-                Lang::ZhCn => &["不要说是、也不要说不是", "不要答应停卡、挂失", "卡片背面的客服", "也不要说「没印象」"],
+                Lang::ZhCn => &["不要说是、也不要说不是", "不要答应停卡、挂失", "卡片背面的客服", "也不要说“没印象”"],
                 _ => &["say neither yes nor no", "Do not agree to block or cancel the card", "the number on the back of my card", "it doesn't ring a bell"],
             };
             assert!(marks.iter().all(|m| pack(lang).guard_persona.contains(m)), "{lang:?}: {}", pack(lang).guard_persona);
