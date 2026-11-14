@@ -1151,6 +1151,55 @@ fn without_output_transcription(v: &Value) -> Value {
     c
 }
 
+/// `v` with its output transcription's text replaced by `text`.
+fn with_output_transcription(v: &Value, text: &str) -> Value {
+    let mut c = v.clone();
+    for path in ["/serverContent/outputTranscription/text", "/outputTranscription/text"] {
+        if let Some(t) = c.pointer_mut(path) {
+            *t = json!(text);
+        }
+    }
+    c
+}
+
+/// Written in a script one of the AI's languages uses (Latin, Han, kana,
+/// Hangul), or punctuation and spaces that go with them.
+fn ai_script(c: char) -> bool {
+    c.is_ascii()
+        || c.is_whitespace()
+        || matches!(c,
+            '\u{00A0}'..='\u{024F}'
+            | '\u{1100}'..='\u{11FF}'
+            | '\u{1E00}'..='\u{1EFF}'
+            | '\u{2000}'..='\u{206F}'
+            | '\u{3000}'..='\u{30FF}'
+            | '\u{3130}'..='\u{318F}'
+            | '\u{31F0}'..='\u{31FF}'
+            | '\u{3400}'..='\u{4DBF}'
+            | '\u{4E00}'..='\u{9FFF}'
+            | '\u{AC00}'..='\u{D7AF}'
+            | '\u{F900}'..='\u{FAFF}'
+            | '\u{FF00}'..='\u{FFEF}')
+}
+
+/// A letter of a script none of the AI's languages is written in
+/// (Devanagari, Thai, Cyrillic, Arabic…).
+fn other_script(c: char) -> bool {
+    c.is_alphabetic() && !ai_script(c)
+}
+
+/// The AI's own words without what is in a script none of its languages use
+/// (a speech-to-text slip: 「七」 came back as 「सात」); None when nothing is left.
+fn without_other_script(text: &str) -> Option<String> {
+    let lead = text.starts_with(char::is_whitespace);
+    let kept: String = text.chars().filter(|c| ai_script(*c)).collect();
+    let kept = kept.split_whitespace().collect::<Vec<_>>().join(" ");
+    if kept.is_empty() {
+        return None;
+    }
+    Some(if lead { format!(" {kept}") } else { kept })
+}
+
 /// The opening instruction; `opening` = the call's opening language when it is
 /// not the setting's ([`call_lang_plan`]).
 fn persona_kick_client_content(opening: Option<crate::locale::Lang>) -> String {
@@ -3956,6 +4005,9 @@ pub async fn run_session(
     };
     // Everything the caller said (input STT), for the carrier-prompt check.
     let mut caller_text_all = String::new();
+    // An errand call: the other side has spoken a script none of the AI's
+    // languages use (then the AI may speak it too).
+    let mut caller_other_script = false;
     // Connection rotation for persona calls that outlive one Live socket (see
     // LIVE_ROTATE_AFTER_SECS). Once stalling engages, rotations carry its prompt
     // (first one right away).
@@ -5127,9 +5179,30 @@ pub async fn run_session(
                                 let intl_drop = matches!(intl_gate, IntlGate::Prompt { .. }) || ivr_since.is_some();
                                 // …and what it says before (held, maybe played later) is.
                                 let intl_hold = matches!(intl_gate, IntlGate::Waiting { .. });
+                                // An errand call: our own words read back in a script none of
+                                // the AI's languages use are a speech-to-text slip (「七」 came
+                                // back as 「सात」), left out of the captions and the record —
+                                // unless the other side speaks that script.
+                                if errand.is_some() && extract_transcription_snippets(&v).0.iter().any(|s| s.chars().any(other_script)) {
+                                    caller_other_script = true;
+                                }
+                                let ai_stt_slip = if errand.is_some() && !caller_other_script {
+                                    output_transcription_text(&v)
+                                        .filter(|t| t.chars().any(other_script))
+                                        .map(|t| (t.to_string(), without_other_script(t)))
+                                } else {
+                                    None
+                                };
                                 let v_clean;
                                 let v_tx = if (out_leak_turn || repeat_drop || intl_drop) && output_transcription_text(&v).is_some() {
                                     v_clean = without_output_transcription(&v);
+                                    &v_clean
+                                } else if let Some((raw, fixed)) = &ai_stt_slip {
+                                    info!("Errand: AI transcript in a script the call does not use serial={serial} raw={raw} kept={fixed:?}");
+                                    v_clean = match fixed {
+                                        Some(t) => with_output_transcription(&v, t),
+                                        None => without_output_transcription(&v),
+                                    };
                                     &v_clean
                                 } else {
                                     &v
@@ -6526,6 +6599,17 @@ mod tests {
     use super::*;
     use std::pin::Pin;
     use std::task::{Context, Poll};
+
+    #[test]
+    fn an_errand_ai_transcript_keeps_only_scripts_its_languages_use() {
+        assert_eq!(without_other_script("我們訂सात點").as_deref(), Some("我們訂點"));
+        assert_eq!(without_other_script(" सात"), None);
+        assert_eq!(without_other_script(" ¿Mesa para cuatro? Ça va, 네, はい、好"), Some(" ¿Mesa para cuatro? Ça va, 네, はい、好".to_string()));
+        assert!("सात".chars().any(other_script) && "Привет".chars().any(other_script));
+        assert!(!"七點半, Café, 네, はい, 12:30。".chars().any(other_script));
+        let v = json!({"serverContent": {"outputTranscription": {"text": "七सात"}}});
+        assert_eq!(output_transcription_text(&with_output_transcription(&v, "七")), Some("七"));
+    }
 
     #[test]
     fn noise_floor_raw_minimum_until_history() {

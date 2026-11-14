@@ -6104,21 +6104,23 @@ async fn spawn_gemini_session_tasks(
                 cancel.store(true, Ordering::Relaxed);
                 let why = if gate == errands::CallGate::WrongSim { "errand_wrong_sim" } else { "errand_cancelled" };
                 send_hangup_with_retries(&sink, &serial, why, 3, Some(&media_call_guard)).await;
-                if gate == errands::CallGate::WrongSim {
-                    let eff = rt.effective(&state.settings);
-                    let ctx = appointments::CallbackCtx {
-                        http: &state.http,
-                        settings: &eff,
-                        tasks: state.task_store.as_ref(),
-                        control: state.control.as_ref(),
-                        errands: Some(state.errands.as_ref()),
-                    };
-                    errands::wrong_sim(&ctx, &state.errands, &cb.task_id, sim_sub, sim_country.as_deref()).await;
-                }
+                // Its outbound call ends here: nothing of it may stay on the phone
+                // for the phone's next call.
+                let eff = rt.effective(&state.settings);
+                let ctx = appointments::CallbackCtx {
+                    http: &state.http,
+                    settings: &eff,
+                    tasks: state.task_store.as_ref(),
+                    control: state.control.as_ref(),
+                    errands: Some(state.errands.as_ref()),
+                };
+                errands::gated_call(&ctx, &state.errands, &cb.task_id, gate, sim_sub, sim_country.as_deref()).await;
                 return;
             }
             errand = Some(state.errands.attach_call(&cb.task_id, &record_id));
         }
+        // This call's summary ends this call-back (by the call's own record).
+        appointments::note_call_task(&record_id, &cb.task_id);
     }
     // Started at pickup: the media hello has reported the SIM (when the app does).
     let lang = call_lang_plan(&rt, &caller_id, call_sim_country(&serial).as_deref());
@@ -8643,7 +8645,7 @@ fn spawn_ai_talk_tg_summary(
     // The AI's call-back with an appointment's answer: no appointment and no
     // calendar suggestion from it, its own title, its result for the task.
     let ai_callback = appointments::is_ai_callback(&record.events);
-    let callback_task = if ai_callback { appointments::callback_task_on(&serial) } else { None };
+    let callback_task = if ai_callback { appointments::take_call_task(&call_id) } else { None };
     // An errand's call: its own result and notification ([`errands::after_call`]).
     let errand_call = errands::is_errand_record(&record.events);
     let errand_store = state.errands.clone();

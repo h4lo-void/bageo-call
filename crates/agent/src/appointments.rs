@@ -2752,13 +2752,39 @@ pub async fn callback_for_call(serial: &str, caller_id: &str) -> Option<Callback
     }
 }
 
-/// The call-back whose call the phone `serial` is on, or has just ended (for
-/// the call's summary).
-pub fn callback_task_on(serial: &str) -> Option<String> {
-    callbacks()
-        .iter()
-        .find(|c| matches!(c.stage, CallbackStage::OnCall | CallbackStage::Ended) && c.serial.eq_ignore_ascii_case(serial.trim()))
-        .map(|c| c.task_id.clone())
+/// Which call-back (or errand) each call record is: noted when the call's
+/// session took its script, taken by that call's summary. By the call's own
+/// record, never by the phone: a call-back left on a phone (one hung up before
+/// its AI started) once took the next call's result.
+static CALL_TASKS: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+/// Calls whose summary never came are forgotten after this many newer ones.
+const CALL_TASKS_MAX: usize = 100;
+
+/// The call with record `record_id` is call-back `task_id`'s.
+pub fn note_call_task(record_id: &str, task_id: &str) {
+    if record_id.is_empty() || task_id.is_empty() {
+        return;
+    }
+    let mut m = CALL_TASKS.lock().unwrap_or_else(|e| e.into_inner());
+    m.retain(|(r, _)| r != record_id);
+    m.push((record_id.to_string(), task_id.to_string()));
+    let over = m.len().saturating_sub(CALL_TASKS_MAX);
+    m.drain(..over);
+}
+
+/// The call-back the call with record `record_id` was (for its summary; once).
+pub fn take_call_task(record_id: &str) -> Option<String> {
+    let mut m = CALL_TASKS.lock().unwrap_or_else(|e| e.into_inner());
+    let i = m.iter().position(|(r, _)| r == record_id)?;
+    Some(m.remove(i).1)
+}
+
+/// A call-back's call was hung up before its AI started (an errand cancelled,
+/// deleted, over, or on the wrong SIM): it ends now, so nothing of it stays on
+/// the phone, and the next call to that number may go.
+pub async fn end_gated_call(ctx: &CallbackCtx<'_>, task_id: &str) {
+    info!("outbound call task_id={task_id} hung up before its AI started — ended");
+    finish_callback(ctx, task_id, "failed").await;
 }
 
 /// Errands: have `serial` dial `number` (from the SIM `sub_id`, None: its
@@ -4979,11 +5005,13 @@ mod tests {
         // Used once: a later call from that number is an ordinary call.
         assert!(take_ready_callback("phone-a1", "0912000101").is_none());
         assert_eq!(callbacks_stage("t-cb-a1"), Some(CallbackStage::OnCall));
-        // Its summary finds it by the phone; a ready report comes only once.
-        assert_eq!(callback_task_on("phone-a1").as_deref(), Some("t-cb-a1"));
+        // Its summary finds it by the call's own record; a ready report comes only once.
+        note_call_task("rec-a1", &got.task_id);
+        assert_eq!(take_call_task("rec-other"), None);
+        assert_eq!(take_call_task("rec-a1").as_deref(), Some("t-cb-a1"));
+        assert_eq!(take_call_task("rec-a1"), None);
         assert!(!callback_ready("t-cb-a1", "phone-a1", "0912000101"));
         callbacks_remove("t-cb-a1");
-        assert_eq!(callback_task_on("phone-a1"), None);
         // A hello without a number: the one call-back ready on that phone.
         assert!(callbacks_add(PendingCallback::new("t-cb-a2", "0912000102", "phone-a2", "S2".into())));
         assert!(callback_ready("t-cb-a2", "phone-a2", ""));

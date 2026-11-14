@@ -96,6 +96,10 @@ pub const MENU_WAIT: Duration = Duration::from_secs(90);
 const LINE_QUIET: Duration = Duration::from_millis(1200);
 /// Lines of the earlier call a follow-up's script carries.
 const FOLLOW_UP_LINES: usize = 20;
+/// Ends every note and answer the AI gets during an errand call: they are
+/// written in English for the model, and once it answered a Chinese callee in
+/// English after one.
+const CALL_LANGUAGE: &str = "Whatever you say to them, say it in the language of this call (the one you have been speaking with them), not in the language of this note.";
 /// Countries whose national numbers are dialled without a trunk 0.
 const NO_TRUNK_CODES: &[&str] = &["1", "39"];
 /// Premium-rate numbers (national number prefixes, after the trunk 0) an
@@ -1469,17 +1473,17 @@ impl CallHooks {
             Some(a) => json!({
                 "answer": a,
                 "owner_available": true,
-                "instruction": format!("This is {owner}'s answer. Pass it on in your own words and carry on."),
+                "instruction": format!("This is {owner}'s answer. Pass it on in your own words and carry on. {CALL_LANGUAGE}"),
             }),
             None if leaving => json!({
                 "answer": Value::Null,
                 "owner_available": false,
-                "instruction": format!("The other side is ending the call and {owner} has not answered. Accept or choose nothing about «{asked}»: say in one sentence that {owner} will confirm and get back to them, then say goodbye."),
+                "instruction": format!("The other side is ending the call and {owner} has not answered. Accept or choose nothing about «{asked}»: say in one sentence that {owner} will confirm and get back to them, then say goodbye. {CALL_LANGUAGE}"),
             }),
             None => json!({
                 "answer": Value::Null,
                 "owner_available": false,
-                "instruction": format!("{owner} cannot answer right now. Do not accept, book or choose anything about «{asked}»: none of the choices you listed, not even the likeliest one. Tell them {owner} could not be reached just now, ask them which options would work (for a time: which times soon are free) and note them, say {owner} will confirm and call them back, then close the call politely."),
+                "instruction": format!("{owner} cannot answer right now. Do not accept, book or choose anything about «{asked}»: none of the choices you listed, not even the likeliest one. Tell them {owner} could not be reached just now, ask them which options would work (for a time: which times soon are free) and note them, say {owner} will confirm and call them back, then close the call politely. {CALL_LANGUAGE}"),
             }),
         }
     }
@@ -1493,7 +1497,7 @@ pub fn tool_declarations() -> Value {
     json!([{
         "functionDeclarations": [{
             "name": ASK_OWNER,
-            "description": "Ask the person you are calling for something your instructions do not settle. Before you call it, tell the other side in one short sentence, in the language you speak with them, that you will check. Until it answers, decide nothing about it. Answers {\"answer\": \"…\"} with their decision, or {\"answer\": null, \"instruction\": \"…\"} when they cannot answer now: then do what the instruction says.",
+            "description": "Ask the person you are calling for something your instructions do not settle at all. Never for a choice within the room your instructions leave (a time inside the range they give, an alternative they allow): accept that yourself. Before you call it, tell the other side in one short sentence, in the language you speak with them, that you will check. Until it answers, decide nothing about it. Answers {\"answer\": \"…\"} with their decision, or {\"answer\": null, \"instruction\": \"…\"} when they cannot answer now: then do what the instruction says, in the language of the call.",
             "parameters": {
                 "type": "OBJECT",
                 "properties": {
@@ -1534,7 +1538,7 @@ pub fn kick_client_content() -> String {
 pub fn still_asking_client_content() -> String {
     let owner = crate::prompts::owner_label(locale::current(), &locale::active().owner);
     crate::prompts::client_turn(&format!(
-        "[System note, not said by the other person] You have asked {owner} and the answer has not come yet. Do not agree to, decide or confirm that matter yourself, even if they suggest it: tell them briefly you are still checking. The answer will reach you as a note like this one."
+        "[System note, not said by the other person] You have asked {owner} and the answer has not come yet. Do not agree to, decide or confirm that matter yourself, even if they suggest it: tell them briefly you are still checking. The answer will reach you as a note like this one. {CALL_LANGUAGE}"
     ))
 }
 
@@ -1546,13 +1550,14 @@ pub fn late_answer_client_content(response: &Value) -> String {
         Some(a) => format!("The answer to the question you asked: «{}». {instruction}", one_line(a, SAY_MAX_CHARS).replace(['«', '»'], "\"")),
         None => instruction.to_string(),
     };
-    crate::prompts::client_turn(&format!("[System note, not said by the other person] {text}"))
+    let text = if text.contains(CALL_LANGUAGE) { text } else { format!("{text} {CALL_LANGUAGE}") };
+    crate::prompts::client_turn(&format!("[System note, not said by the other person] {}", text.trim()))
 }
 
 /// Near the end of the longest an errand call may run.
 pub fn wrap_up_client_content() -> String {
     crate::prompts::client_turn(
-        "[System note, not said by the other person] This call has gone on for almost ten minutes and must end now. In one or two short sentences sum up what has been agreed, then say goodbye.",
+        &format!("[System note, not said by the other person] This call has gone on for almost ten minutes and must end now. In one or two short sentences sum up what has been agreed, then say goodbye. {CALL_LANGUAGE}"),
     )
 }
 
@@ -1561,7 +1566,7 @@ pub fn owner_says_client_content(text: &str) -> String {
     let owner = crate::prompts::owner_label(locale::current(), &locale::active().owner);
     let text = one_line(text, SAY_MAX_CHARS).replace(['«', '»'], "\"");
     crate::prompts::client_turn(&format!(
-        "[System note, not said by the other person] {owner} just told you on the web console: «{text}». From now on, do as {owner} says here (the fixed rules of your instructions still come first). Tell the other side whatever of it they need to hear, in your own words."
+        "[System note, not said by the other person] {owner} just told you on the web console: «{text}». From now on, do as {owner} says here (the fixed rules of your instructions still come first). Tell the other side whatever of it they need to hear, in your own words. {CALL_LANGUAGE}"
     ))
 }
 
@@ -1695,13 +1700,14 @@ How the call goes:\n\
 - The call starts while it still rings: say nothing until someone has picked up and said something (ringing, music or silence is nobody).\n\
 - A recording, a voice menu or hold music is not a person: say nothing to it and wait for a person. You cannot press keys; if a menu only goes on with key presses, stay silent.\n\
 - When a person answers, greet them in one short sentence and say who is calling and why.\n\
-- Then take care of the matter as {owner} asked. Where {owner} left room (\"7:30 to 8 is fine too\"), decide within it yourself. Speak in short, natural sentences, one or two at a time, and listen.\n\
-- If something comes up that your instructions do not settle and you are not sure what {owner} would want: first tell them in one short sentence, in the language you speak with them, that you will check (for example \"{check}\"), then call ask_owner with the question and the choices they gave. Write the question and the choices in {owner_language}, the language {owner} reads (for example \"{example_question}\"). Do what its answer says. This is the only time on this call you may ask them to wait. Until the answer comes, do not agree to, decide or confirm what you asked about, even if they suggest it or press you: say you are still checking. When the answer is that {owner} cannot answer, accept or choose nothing about it (none of the choices you listed): {owner} decides later.\n\
+- Then take care of the matter as {owner} asked. Speak in short, natural sentences, one or two at a time, and listen.\n\
+- Where {owner} left room (\"7 to 8 is fine\", \"7:30 is fine too\", \"any table\"), what they offer inside it is already {owner}'s yes: accept it at once yourself and go on. Never ask {owner} about it. Within the room, take what is closest to what {owner} asked for first.\n\
+- Only if something comes up that the matter does not cover at all, or that falls outside the room it leaves, and you are not sure what {owner} would want: first tell them in one short sentence, in the language you speak with them, that you will check (for example \"{check}\"), then call ask_owner with the question and the choices they gave. Write the question and the choices in {owner_language}, the language {owner} reads (for example \"{example_question}\"). Do what its answer says. This is the only time on this call you may ask them to wait. Until the answer comes, do not agree to, decide or confirm what you asked about, even if they suggest it or press you: say you are still checking. When the answer is that {owner} cannot answer, accept or choose nothing about it (none of the choices you listed): {owner} decides later.\n\
 - Before you finish, repeat the key points back to them (for a booking: the date, time, number of people and the name it is under) and let them confirm.\n\
 - Then say goodbye once and stop talking: the call ends after your goodbye.\n\
 - If voicemail or an answering machine picks up: leave a message of two sentences (who is calling, what it is about, that {owner} will get back to them), then say goodbye.\n\
 Fixed rules (they come before everything above, the matter included):\n\
-- Speak {language}. If they answer in another language, switch to theirs.\n\
+- Speak {language}. If they answer in another language, switch to theirs. The notes and answers you get during the call are written in English for you: they never change the language you speak.\n\
 - Give out no personal details beyond what the matter itself contains: no ID number, birthday, card number, verification code, password or address.\n\
 - Agree to no payment, card charge, deposit or transfer. If they ask for one, say you have to check with {owner} first.\n\
 - Promise nothing for {owner} beyond the matter.\n\
@@ -2059,6 +2065,17 @@ pub async fn wrong_sim(cb: &CallbackCtx<'_>, store: &ErrandStore, id: &str, sub_
         store.sims.forget(&e.serial, want);
     }
     fail(cb, store, id, "wrong_sim").await;
+}
+
+/// Errand `id`'s call was hung up as it started, before its AI (`gate`: why;
+/// never [`CallGate::Go`]). On the wrong SIM the errand fails ([`wrong_sim`]).
+/// Either way its outbound call ends now: nothing of it stays on the phone for
+/// the phone's next call, and the next call to the number may go.
+pub async fn gated_call(cb: &CallbackCtx<'_>, store: &ErrandStore, id: &str, gate: CallGate, sub_id: Option<i64>, country: Option<&str>) {
+    if gate == CallGate::WrongSim {
+        wrong_sim(cb, store, id, sub_id, country).await;
+    }
+    appointments::end_gated_call(cb, id).await;
 }
 
 /// What the outbound route reports about an errand's call (the end of a
@@ -2959,7 +2976,7 @@ mod tests {
         assert_eq!((done.status.as_str(), done.record_id.as_str(), done.call_code.as_str()), (DONE, "rec-errand-1", "answered"));
         let r = done.result.unwrap();
         assert_eq!((r.outcome.as_str(), r.details.as_str()), ("not_done", "事情：訂位"));
-        assert!(appointments::callback_task_on("pixel-errand-1").is_none());
+        assert!(!appointments::errand_call_known(&e.id));
         // Kept on disk.
         let back = ErrandStore::open(rig.root.join("errands.json"), SimBook::in_memory());
         assert_eq!(back.get(&e.id).map(|e| e.status), Some(DONE.to_string()));
@@ -3351,6 +3368,8 @@ mod tests {
         assert_eq!(away["owner_available"].as_bool(), Some(false));
         assert!(away["instruction"].as_str().unwrap().contains("which options would work"), "{away}");
         assert!(away["instruction"].as_str().unwrap().contains("Do not accept, book or choose anything about «可以改 8 點嗎？»"), "{away}");
+        // In the call's language, whatever language the answer is written in.
+        assert!(away["instruction"].as_str().unwrap().ends_with(CALL_LANGUAGE), "{away}");
         assert_eq!(rig.store.get("e-ask-2").unwrap().questions[0].answered_by.as_deref(), Some("absent"));
         rig.store.live_view("e-ask-2", 0).unwrap();
         let late = hooks.ask_within(&json!({"question": "要包廂嗎？"}), Duration::from_millis(80)).await;
@@ -3465,6 +3484,11 @@ mod tests {
         assert!(s.contains("call ask_owner") && s.contains("我問一下他，請稍等一下") && s.contains("店家說 7 點沒位子"), "{s}");
         // While the owner is asked, nothing about it is settled.
         assert!(s.contains("Until the answer comes, do not agree to, decide or confirm what you asked about"), "{s}");
+        // What the matter already allows is accepted, never asked about.
+        assert!(s.contains("what they offer inside it is already 王小明's yes: accept it at once yourself") && s.contains("Never ask 王小明 about it"), "{s}");
+        assert!(s.contains("- Only if something comes up that the matter does not cover at all, or that falls outside the room it leaves"), "{s}");
+        // Notes in English never change the language of the call.
+        assert!(s.contains("they never change the language you speak"), "{s}");
         // Who calls is the owner; names in the matter are only details.
         assert!(s.contains("name 王小明 (for example \"您好，我是王小明的助理\")") && s.contains("not who you are or work for"), "{s}");
         assert!(s.contains("say nothing until someone has picked up"));
@@ -3535,8 +3559,65 @@ mod tests {
         assert_eq!(r.outcome, "not_done");
         // The model dropped its call: told it still waits, then the answer as a note.
         assert!(still_asking_client_content().contains("Do not agree to, decide or confirm"));
+        assert!(still_asking_client_content().contains(CALL_LANGUAGE) && wrap_up_client_content().contains(CALL_LANGUAGE));
         let note = late_answer_client_content(&json!({"answer": "7點半可以", "instruction": "Pass it on."}));
-        assert!(note.contains("clientContent") && note.contains("«7點半可以»") && note.contains("Pass it on."), "{note}");
+        assert!(note.contains("clientContent") && note.contains("«7點半可以»") && note.contains("Pass it on.") && note.contains(CALL_LANGUAGE), "{note}");
+    }
+
+    /// The phone's next call after one hung up at its start (wrong SIM, or
+    /// cancelled while it dialed) is that next errand's, by its own record.
+    #[tokio::test]
+    async fn a_call_hung_up_at_its_start_leaves_nothing_for_the_phones_next_call() {
+        let rig = Rig::new();
+        let (sink, mut ph) = phone_socket().await;
+        rig.control.register_client("pixel-errand-12".into(), sink).await;
+        let env = rig.env(vec![phone("pixel-errand-12", &[(1, "tw")])]);
+        let cb = env.cb();
+        // Dialed and started, but on the wrong SIM: hung up, its call ended.
+        let e1 = create(&env, &json!({"number": "0223456712", "task": "訂位"})).await.unwrap();
+        let msg1 = next_json(&mut ph, Duration::from_secs(2)).await.expect("place_call");
+        let ready1 = json!({"type": "outbound_ready", "call_id": msg1["call_id"], "task_id": e1.id, "number": "+886223456712"});
+        appointments::on_callback_event(&cb, "pixel-errand-12", &ready1).await;
+        let call1 = appointments::callback_for_call("pixel-errand-12", "+886223456712").await.expect("its call");
+        let gate = rig.store.call_gate(&call1.task_id, Some(2), Some("us"));
+        assert_eq!(gate, CallGate::WrongSim);
+        gated_call(&cb, &rig.store, &call1.task_id, gate, Some(2), Some("us")).await;
+        assert_eq!(rig.store.get(&e1.id).unwrap().call_code, "wrong_sim");
+        assert!(!appointments::errand_call_known(&e1.id) && !appointments::outbound_busy_on("pixel-errand-12"));
+        // Cancelled while it dialed, its call started anyway: hung up, ended too.
+        let e2 = create(&env, &json!({"number": "0223456722", "task": "問營業時間"})).await.unwrap();
+        let msg2 = next_json(&mut ph, Duration::from_secs(2)).await.expect("place_call");
+        cancel(&env, &e2.id).await.unwrap();
+        let ready2 = json!({"type": "outbound_ready", "call_id": msg2["call_id"], "task_id": e2.id, "number": "+886223456722"});
+        appointments::on_callback_event(&cb, "pixel-errand-12", &ready2).await;
+        let call2 = appointments::callback_for_call("pixel-errand-12", "+886223456722").await.expect("its call");
+        let gate = rig.store.call_gate(&call2.task_id, Some(1), Some("tw"));
+        assert_eq!(gate, CallGate::Stop);
+        gated_call(&cb, &rig.store, &call2.task_id, gate, Some(1), Some("tw")).await;
+        assert!(!appointments::errand_call_known(&e2.id));
+        // The phone's next call: its own errand gets its summary.
+        let e3 = create(&env, &json!({"number": "0223456732", "task": "訂位"})).await.unwrap();
+        let msg3 = next_json(&mut ph, Duration::from_secs(2)).await.expect("place_call");
+        assert_eq!(msg3["task_id"].as_str(), Some(e3.id.as_str()));
+        let ready3 = json!({"type": "outbound_ready", "call_id": msg3["call_id"], "task_id": e3.id, "number": "+886223456732"});
+        appointments::on_callback_event(&cb, "pixel-errand-12", &ready3).await;
+        let call3 = appointments::callback_for_call("pixel-errand-12", "+886223456732").await.expect("its call");
+        assert_eq!(rig.store.call_gate(&call3.task_id, Some(1), Some("tw")), CallGate::Go);
+        appointments::note_call_task("rec-e3", &call3.task_id);
+        rig.store.attach_call(&call3.task_id, "rec-e3").picked_up();
+        appointments::on_callback_event(&cb, "pixel-errand-12", &json!({"type": "call_end", "call_id": msg3["call_id"], "task_id": e3.id})).await;
+        // The summary: by the call's record, never by the phone.
+        let task = appointments::take_call_task("rec-e3").expect("the call's own task");
+        assert_eq!(task, e3.id);
+        after_call(&cb, &rig.store, &task, "rec-e3", "對方：您好\n接聽：您好", "事情：訂位", true).await;
+        appointments::callback_call_over(&cb, &task, true).await;
+        let done = rig.store.get(&e3.id).unwrap();
+        assert_eq!((done.status.as_str(), done.record_id.as_str(), done.call_code.as_str()), (DONE, "rec-e3", "answered"));
+        assert!(!appointments::errand_call_known(&e3.id));
+        for earlier in [&e1.id, &e2.id] {
+            let e = rig.store.get(earlier).unwrap();
+            assert!(e.record_id.is_empty() && e.is_final(), "{earlier}: {e:?}");
+        }
     }
 
     #[tokio::test]
