@@ -8487,9 +8487,11 @@ async fn whisper_call_wav(
 /// Calls longer than this skip the post-call Whisper pass (Gemini dialogue only).
 const WHISPER_MAX_CALL_MS: u64 = 5 * 60 * 1000;
 
-/// How long the call's notes wait for the translation of its lines in another
-/// language once the summary is written (both start together).
-const TRANSLATE_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+/// How long the translation of the lines in another language may still take
+/// once the notes are saved, the notification sent and the appointments
+/// handled (it starts with the summary; nothing waits on it). It is added to
+/// the saved notes when it arrives.
+const TRANSLATE_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
 
 /// Press-1 hangup: Gemini live STT (+ optional Whisper AI segment) → **summary** → notification.
 /// The notification body is the summary only (not raw fragment dump). Hangup already stopped Live.
@@ -8780,24 +8782,13 @@ fn spawn_ai_talk_tg_summary(
             }
         }
 
-        let dialogue_translations = match tokio::time::timeout(TRANSLATE_WAIT, &mut translation).await {
-            Ok(Ok(v)) => v,
-            Ok(Err(e)) => {
-                warn!("dialogue translation task failed serial={serial}: {e}");
-                Vec::new()
-            }
-            Err(_) => {
-                translation.abort();
-                warn!("dialogue translation timed out serial={serial}");
-                Vec::new()
-            }
-        };
         // The web console keeps the details; the notification stays short.
         let notes = calls::CallNotes {
             summary: body.clone(),
             // Speaker labels in the owner's language ("Caller: …").
             dialogue: gemini_live::localize_dialogue(&live_full, locale::notify_lang()),
-            dialogue_translations,
+            // Added below when the translation arrives (the notes do not wait for it).
+            dialogue_translations: Vec::new(),
             recording_text: remote_tx.clone(),
             end_hint: end_hint.clone(),
             source: note_source.to_string(),
@@ -8880,6 +8871,29 @@ fn spawn_ai_talk_tg_summary(
         let rt = settings_store.snapshot();
         for task in appointment_tasks {
             appointments::after_summary(&http, &rt, &task_store, &calls, &control, &task, &detail_url).await;
+        }
+        // Last, so a slow translation holds up nothing and its write comes after
+        // every other write to these notes (the appointments' included).
+        let dialogue_translations = match tokio::time::timeout(TRANSLATE_WAIT, &mut translation).await {
+            Ok(Ok(v)) => v,
+            Ok(Err(e)) => {
+                warn!("dialogue translation task failed serial={serial}: {e}");
+                Vec::new()
+            }
+            Err(_) => {
+                translation.abort();
+                warn!("dialogue translation timed out serial={serial}");
+                Vec::new()
+            }
+        };
+        if dialogue_translations.iter().any(|t| t.is_some()) {
+            if let Some(mut saved) = calls.load_notes(&call_id).await {
+                saved.dialogue_translations = dialogue_translations;
+                match calls.save_notes(&call_id, &saved).await {
+                    Ok(()) => info!("call notes translations added id={call_id}"),
+                    Err(e) => warn!("call notes translations save failed id={call_id}: {e:#}"),
+                }
+            }
         }
     });
 }
