@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v0.2.0 to build the downloads and attach them to a GitHub
+# Push a tag like v1.0.0 to build the downloads and attach them to a GitHub
 # Release:
 #   bageo-call-<version>-windows-x64.zip
 #   bageo-call-<version>-macos-arm64.tar.gz / -macos-x64.tar.gz
@@ -51,7 +51,7 @@ jobs:
           mkdir -p "dist/$dir"
           cp "target/release/${{ matrix.exe }}" "dist/$dir/"
           cp -R assets docs "dist/$dir/"
-          cp README*.md CHANGELOG.md LICENSE NOTICE.md .env.example "dist/$dir/"
+          cp README*.md CHANGELOG.md LICENSE COMMERCIAL_LICENSE.md LEGAL.md AUDIT_REPORT.md NOTICE.md SECURITY.md .env.example "dist/$dir/"
           if [ "${{ runner.os }}" = "Windows" ]; then
             cp start.ps1 start.cmd "dist/$dir/"
             (cd dist && 7z a -tzip "$dir.zip" "$dir" > /dev/null)

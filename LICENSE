@@ -1,21 +1,89 @@
-MIT License
+SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
 
-Copyright (c) 2026 Bageo contributors
+Bageo (bageo-call) — Dual License Notice
+Copyright (C) 2026 h4lo-void (https://github.com/h4lo-void)
+All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+========================================================================
+1. DUAL-LICENSING MODEL (AGPL-3.0-ONLY / COMMERCIAL LICENSE)
+========================================================================
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+This software and its associated documentation, scripts, Android application,
+root module, and web console (collectively, "Bageo") are made available by
+the copyright holder (h4lo-void) under a Dual-Licensing model. You may elect
+to use, modify, or distribute Bageo under EITHER:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+  (A) Open-Source Community License: GNU Affero General Public License,
+      Version 3, dated 19 November 2007, ONLY ("AGPL-3.0-only"); OR
+
+  (B) Commercial / Proprietary License: A separate, paid, written commercial
+      license agreement executed directly with the copyright holder
+      (h4lo-void), as described in COMMERCIAL_LICENSE.md.
+
+Unless you have executed a valid written Commercial License with h4lo-void,
+your use, modification, propagation, conveyance, or network operation of
+Bageo is governed strictly and exclusively by AGPL-3.0-only, together with
+the supplemental notices in LEGAL.md and NOTICE.md.
+
+========================================================================
+2. OPEN-SOURCE LICENSE TERMS (AGPL-3.0-ONLY)
+========================================================================
+
+Under Option (A), Bageo is licensed strictly under Version 3 of the GNU
+Affero General Public License (19 November 2007), published by the Free
+Software Foundation. The "or any later version" option is NOT granted;
+only the copyright holder (h4lo-void) may authorize licensing under any
+other or subsequent license version.
+
+Canonical text of AGPL-3.0-only:
+  - https://www.gnu.org/licenses/agpl-3.0.html
+  - https://www.gnu.org/licenses/agpl-3.0.txt
+  - https://spdx.org/licenses/AGPL-3.0-only.html
+
+Key obligations under AGPL-3.0-only include, without limitation:
+  - Network & Telephony Source Disclosure (Section 13): If you modify Bageo
+    and allow users or third parties to interact with it remotely over a
+    computer or telecommunications network (including via the web console,
+    HTTP/WebSocket APIs, messaging bots, VoIP bridges, or automated inbound/
+    outbound telephone calls or SMS), you must prominently offer and provide
+    the Complete Corresponding Source Code of your modified version to all
+    such users at no charge under AGPL-3.0-only.
+  - Derivative & Bundled Distribution (Sections 4-6): Any software, container
+    image, custom ROM, or hardware device incorporating or distributing Bageo
+    must be licensed as a whole under AGPL-3.0-only with complete source code.
+  - Supplemental Terms (Section 7): Pursuant to AGPL-3.0 Section 7(b)-(f),
+    you must preserve all copyright notices, author attributions (h4lo-void),
+    and LEGAL.md risk/disclaimer notices intact; you may not misrepresent the
+    origin of this work; no trademark rights in "Bageo", "八哥", or
+    "bageo-call" are granted; and any redistributor who offers contractual
+    warranties or liability assumptions to recipients must indemnify and hold
+    harmless the original author and contributors.
+
+========================================================================
+3. COMMERCIAL LICENSE REQUIREMENT FOR CLOSED-SOURCE OPERATORS
+========================================================================
+
+Any operator, enterprise, telecom/VoIP service provider, call-center vendor,
+SaaS platform, or hardware/OEM manufacturer wishing to deploy, host, embed,
+or distribute Bageo (or derivatives) without complying with the full source-
+disclosure and copyleft obligations of AGPL-3.0-only MUST obtain a prior
+written Commercial License from h4lo-void (see COMMERCIAL_LICENSE.md).
+
+========================================================================
+4. NO WARRANTY, ZERO LIABILITY & OPERATOR RESPONSIBILITY
+========================================================================
+
+BAGEO IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT ANY EXPRESS OR IMPLIED
+WARRANTY OF ANY KIND (INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, NON-INFRINGEMENT, OR LEGAL COMPLIANCE IN ANY JURISDICTION).
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE
+COPYRIGHT HOLDER (h4lo-void) OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, PUNITIVE, OR CONSEQUENTIAL DAMAGES,
+REGULATORY FINES, TELECOM CHARGES, DEVICE DAMAGE, DATA LOSS, AI HALLUCINATION,
+OR THIRD-PARTY CLAIMS ARISING FROM ANY USE OR MISUSE OF THIS SOFTWARE.
+
+The person or entity deploying or operating Bageo is the sole legal operator
+and data controller of their installation and bears 100% of all legal,
+civil, criminal, regulatory, and telecommunications responsibilities.
+See LEGAL.md for full operator terms, prohibited uses, and indemnification.

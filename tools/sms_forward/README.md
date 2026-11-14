@@ -7,7 +7,7 @@ optional and experimental. The agent works without it, and nothing starts it for
 
 It runs on the computer the phones are plugged into, reads them over `adb` and uses
 only the Python standard library (Python 3.10 or newer; tested with 3.12 on Windows).
-It works with Bageo 1.0 and the 0.2.x agents: it needs only the agent's
+It works with Bageo 1.0: it needs only the agent's
 `POST /calls/api/notify/send` route, and on the phone either nothing (inbox) or the
 Bageo app's optional SMS hook. The texts the agent itself sends to callers (appointment
 replies) go out through the phone app and are unrelated to this script.
@@ -124,7 +124,7 @@ file. All are optional.
 | `SMS_INBOX_SEC` | `60` | Seconds between inbox polls. |
 | `SMS_DEDUP_SEC` | `86400` | The same text from the same sender on the same phone is sent once within this time. |
 | `SMS_FLOOD_CAP` | `20` | More new inbox messages than this at once are skipped. |
-| `SMS_HOME` | `~/.bageo-call/sms` | Folder for the state, log, lock and settings file. Environment only. If unset and only `~/.myna-call/sms` (the folder from before the rename to Bageo) exists, that one is used and the log says so. |
+| `SMS_HOME` | `~/.bageo-call/sms` | Folder for the state, log, lock and settings file. Environment only. |
 | `SMS_ENV_FILE` | `<SMS_HOME>/sms_forward.env` | Another settings file. Environment only. |
 
 Files in `SMS_HOME`:

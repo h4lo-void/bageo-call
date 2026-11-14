@@ -1,31 +1,48 @@
 # Notices
 
-Bageo is released under the MIT License (see `LICENSE`). The parts listed
-below come under other terms or from other projects.
+Copyright (C) 2026 **h4lo-void** (<https://github.com/h4lo-void>).
+
+Bageo is dual-licensed under the **GNU Affero General Public License v3.0 only**
+(`AGPL-3.0-only`, see [`LICENSE`](LICENSE)) for open-source community use, or a
+separate written **Commercial License** from **h4lo-void** (see
+[`COMMERCIAL_LICENSE.md`](COMMERCIAL_LICENSE.md)) for closed-source or
+commercial operators. All use is subject to [`LEGAL.md`](LEGAL.md).
+
+The parts listed below come under other terms or from other projects.
 
 ## Files under other terms
 
 - `android/magisk/pixelcallai_uplink/META-INF/com/google/android/update-binary`
-  — module installer script, GPL-3.0-only (see the header of the file). It is a
-  separate program run by the root manager when the module is installed; it is
-  not linked into the app or the agent.
+  — module installer script, `GPL-3.0-only` (Copyright 2022–2024 Andrew
+  Gunnerson; see the header of the file). It is a standalone installer script
+  run by the root manager when the module zip is flashed; it is not linked into
+  the Android app or the Rust agent.
 - `assets/ambience_*.wav` — built from CC0 (public-domain) recordings from
   Freesound plus sounds synthesised for this project. Sources are listed in
   [`assets/README.md`](assets/README.md).
+- `assets/voices/*/*.wav` — 1,080 prerecorded voice preview and
+  "cannot be reached" announcement clips generated for this project with
+  `agent make-voice-samples` (see [`assets/README.md`](assets/README.md)).
 
 ## Third-party software
 
 The agent is built from Rust crates listed in `Cargo.lock`, each under its own
-license (mostly MIT / Apache-2.0). The Android app uses AndroidX Core,
-Java-WebSocket (MIT) and kotlinx.coroutines (Apache-2.0). The start scripts can
-download Android SDK Platform-Tools (adb) from Google; it is distributed under
-Google's own terms and is not part of this repository.
+permissive license (MIT / Apache-2.0 / BSD / ISC). The Android app uses
+AndroidX Core (`Apache-2.0`), Java-WebSocket (`MIT`), kotlinx.coroutines
+(`Apache-2.0`) and compile-only Xposed API stubs (`Apache-2.0`). The start
+scripts can download Android SDK Platform-Tools (`adb`) from Google on
+request; `adb` is distributed under Google's own terms and is not part of this
+repository.
 
-## Services
+## Trademarks & third-party services
 
-The agent talks to services you choose and configure with your own keys:
-Google Gemini for the voice, optionally another model for summaries, and the
-notification services you add. Their terms and prices are between you and
-them. This project is not affiliated with Google or any of those services.
-"Pixel" is a trademark of Google LLC and is used here only to say which phones
-the project was tested on.
+The names **Bageo**, **八哥** and **bageo-call**, together with the project's
+visual marks, are reserved identifiers of this project; the open-source license
+grants no trademark rights (AGPL-3.0 Section 7(e)).
+
+The agent talks only to services you choose and configure with your own keys:
+Google Gemini for the live voice, optionally another model for summaries, and
+the notification services you add. Their terms and prices are strictly between
+you and them. This project is not affiliated with or endorsed by Google LLC or
+any of those services. "Pixel", "Android" and "Gemini" are trademarks of
+Google LLC and are used here solely to identify compatible hardware and APIs.

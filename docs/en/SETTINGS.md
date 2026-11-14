@@ -114,7 +114,7 @@ The default for *Call as* is *AI calls: call as* under [Basics](#basics). Every 
 
 Left empty, *Address of this console* is filled in while the console is open to your network (`AGENT_HOST=0.0.0.0`): `http://<network name>.local:8787/` while the agent answers that name, else the computer's network address. With the console on this computer only, notifications carry no links; inside Docker, set it yourself. *System → About* shows the address in use.
 
-The agent answers the *Network name* itself (multicast DNS, UDP port 5353) while the console is open to your network, but not inside a container. If the system keeps that port to itself, the log shows a line starting with `mDNS:` and links use the IP address. Older Android phones that cannot open `.local` names can use the IP address or the QR code under *System → About*. Upgrading from Myna: a name saved in the console stays; otherwise set the name to `myna` to keep `http://myna.local:8787/`.
+The agent answers the *Network name* itself (multicast DNS, UDP port 5353) while the console is open to your network, but not inside a container. If the system keeps that port to itself, the log shows a line starting with `mDNS:` and links use the IP address. Older Android phones that cannot open `.local` names can use the IP address or the QR code under *System → About*.
 
 ### Summary & calendar
 
@@ -249,7 +249,7 @@ The agent keeps `adb reverse` up and starts the phone app by itself.
 
 ### Country calling code
 
-`COUNTRY_CODE` is your own country's calling code, digits only, without `+` (`1`, `44`, `81`; up to four digits). The agent uses it to read a number written without a country code: blocked numbers (so `+44 20…` matches the national form the phone reports), contacts, AI errands, and calls from a phone app older than 1.0 (0.2.4 and earlier), which does not report which SIM took the call. A caller from another country is transcribed with their country's language first (or, when the AI does not speak it, with the language detected), so their goodbye is not lost.
+`COUNTRY_CODE` is your own country's calling code, digits only, without `+` (`1`, `44`, `81`; up to four digits). The agent uses it to read a number written without a country code: blocked numbers (so `+44 20…` matches the national form the phone reports), contacts, and AI errands. A caller from another country is transcribed with their country's language first (or, when the AI does not speak it, with the language detected), so their goodbye is not lost.
 
 Empty = `886` when *Language* is 繁體中文, else none. Set it only when your language does not point to a single country (English, Spanish, …). It is not in the web console; besides the environment variable, `country_code` in `settings.json` or `PUT /calls/api/settings` sets it. A `country_code` in `settings.json`, even an empty one, wins over `COUNTRY_CODE`; delete that line to use the environment variable again.
 
@@ -278,7 +278,7 @@ Notification routes you can set the same way. They are used in addition to the c
 
 ### Start script
 
-`BAGEO_NO_SHORTCUT=1` keeps the start script from putting the "Bageo Console" shortcut on the desktop, like `-NoShortcut` (`start.ps1`) or `--no-shortcut` (`start.sh`). The old name `MYNA_NO_SHORTCUT` still works.
+`BAGEO_NO_SHORTCUT=1` keeps the start script from putting the "Bageo Console" shortcut on the desktop, like `-NoShortcut` (`start.ps1`) or `--no-shortcut` (`start.sh`).
 
 ### Logging
 

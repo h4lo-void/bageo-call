@@ -9,8 +9,7 @@
 #   3. makes sure adb (Android platform-tools) is there, offering to download it
 #   4. starts the agent and opens the web console
 #   5. the first time the agent answers, puts a "Bageo Console" shortcut to the
-#      web console on the desktop (-NoShortcut or BAGEO_NO_SHORTCUT=1: don't;
-#      MYNA_NO_SHORTCUT, the name from before the rename, still works)
+#      web console on the desktop (-NoShortcut or BAGEO_NO_SHORTCUT=1: don't)
 param(
     [switch]$NoBrowser,      # do not open the web console
     [switch]$Yes,            # answer "yes" to the platform-tools download
@@ -91,7 +90,7 @@ if (-not $NoBrowser) {
 }
 
 # 5. desktop shortcut to the web console, once the agent answers; kept when it exists
-$noShortcutEnv = @("1", "true", "yes", "on") -contains ("$(if ($env:BAGEO_NO_SHORTCUT) { $env:BAGEO_NO_SHORTCUT } else { $env:MYNA_NO_SHORTCUT })").ToLower()
+$noShortcutEnv = @("1", "true", "yes", "on") -contains ("$($env:BAGEO_NO_SHORTCUT)").ToLower()
 if (-not $NoShortcut -and -not $noShortcutEnv) {
     # The name in the system's language (written as escapes: this file is read as ANSI).
     $label = switch -Regex ((Get-UICulture).Name) {
@@ -107,10 +106,7 @@ if (-not $NoShortcut -and -not $noShortcutEnv) {
     $desktop = [Environment]::GetFolderPath("Desktop")
     if ($desktop) {
         $shortcut = Join-Path $desktop "$label.url"
-        # A shortcut from before the rename to Bageo ("Myna Console") opens the same
-        # address: keep it and add no second one.
-        $oldShortcut = Join-Path $desktop ($label.Replace("Bageo", "Myna") + ".url")
-        if (-not (Test-Path -LiteralPath $shortcut) -and -not (Test-Path -LiteralPath $oldShortcut)) {
+        if (-not (Test-Path -LiteralPath $shortcut)) {
             # Ask the agent where it listens: 127.0.0.1 unless AGENT_HOST names one address.
             $probeHost = "127.0.0.1"
             $listenHost = "$env:AGENT_HOST".Trim()

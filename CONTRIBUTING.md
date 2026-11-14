@@ -136,5 +136,20 @@ first.
   network addresses or deployment details in code, tests or docs.
 - User-facing text goes through the language tables.
 
-By contributing you agree that your contribution is licensed under the MIT
-License of this repository.
+## Contributor License Grant
+
+Bageo is dual-licensed under `AGPL-3.0-only` and commercial licenses offered by
+the copyright holder (**h4lo-void**); see [`LICENSE`](LICENSE) and
+[`COMMERCIAL_LICENSE.md`](COMMERCIAL_LICENSE.md). By submitting a pull request,
+patch, or other contribution to this repository, you:
+
+1. Represent that the contribution is your original work and that you have the
+   legal right to grant the rights below;
+2. Grant **h4lo-void** (and successors) a perpetual, worldwide, non-exclusive,
+   royalty-free, irrevocable, transferable, and sublicensable license (including
+   under any applicable copyrights and essential patent claims) to use,
+   reproduce, modify, distribute, and **relicense** your contribution as part of
+   Bageo under both `AGPL-3.0-only` and any commercial or proprietary licenses;
+   and
+3. Agree that your contribution is provided "AS IS" without warranties, subject
+   to [`LEGAL.md`](LEGAL.md).

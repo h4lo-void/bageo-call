@@ -136,3 +136,9 @@ Check your carrier's terms on automated answering. Calls are ordinary incoming
 calls on your line, and this software adds no charges of its own; roaming and
 premium-rate rules apply as always, and the texts and calls the AI sends for
 you are billed by your plan like any other.
+
+## Operator liability, disclaimer and licensing
+
+Bageo is unhosted source code provided strictly "AS IS" without warranty of any kind. The original author (**h4lo-void**) operates no servers or call relays and never touches your calls, recordings, messages or keys. **You alone are the operator, subscriber of record and data controller of your installation**, and you bear 100% of all civil, criminal, regulatory, telecom and billing responsibilities arising from your use or misuse of the software.
+
+Before running Bageo, read the binding [**Legal Disclaimer, Prohibited Uses & Assumption of Risk (`LEGAL.md`)**](../../LEGAL.md), the [**Dual & Commercial License Terms (`COMMERCIAL_LICENSE.md`)**](../../COMMERCIAL_LICENSE.md) (`AGPL-3.0-only` / Commercial License), and the [**v1.0 Project Audit Report (`AUDIT_REPORT.md`)**](../../AUDIT_REPORT.md).

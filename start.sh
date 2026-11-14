@@ -15,8 +15,7 @@
 # Options: --no-browser   do not open the web console
 #          --yes          answer "yes" to the platform-tools download
 #          --build        build from source even when a program is already there
-#          --no-shortcut  no desktop shortcut (or BAGEO_NO_SHORTCUT=1; the name
-#                         from before the rename, MYNA_NO_SHORTCUT, still works)
+#          --no-shortcut  no desktop shortcut (or BAGEO_NO_SHORTCUT=1)
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -47,7 +46,7 @@ if [ -f .env ]; then
     if eval "[ -z \"\${$key+x}\" ]"; then export "$key=$val"; fi
   done < .env
 fi
-case "$(printf '%s' "${BAGEO_NO_SHORTCUT:-${MYNA_NO_SHORTCUT:-}}" | tr '[:upper:]' '[:lower:]')" in
+case "$(printf '%s' "${BAGEO_NO_SHORTCUT:-}" | tr '[:upper:]' '[:lower:]')" in
   1|true|yes|on) no_shortcut=1 ;;
 esac
 
@@ -144,12 +143,9 @@ shortcut_label() {
 }
 make_shortcut() {
   label=$(shortcut_label)
-  # A shortcut from before the rename to Bageo ("Myna Console") opens the same
-  # address: keep it and add no second one.
-  old_label=$(printf '%s' "$label" | sed 's/Bageo/Myna/')
   if [ "$(uname -s)" = Darwin ]; then
     file="$HOME/Desktop/$label.webloc"
-    if [ ! -d "$HOME/Desktop" ] || [ -e "$file" ] || [ -e "$HOME/Desktop/$old_label.webloc" ]; then return 0; fi
+    if [ ! -d "$HOME/Desktop" ] || [ -e "$file" ]; then return 0; fi
     cat > "$file" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -164,7 +160,7 @@ EOF
   fi
   apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
   file="$apps/bageo-console.desktop"
-  if [ -e "$file" ] || [ -e "$apps/myna-console.desktop" ]; then return 0; fi
+  if [ -e "$file" ]; then return 0; fi
   mkdir -p "$apps"
   cat > "$file" <<EOF
 [Desktop Entry]
@@ -179,8 +175,7 @@ EOF
   chmod +x "$file"
   desk=$(xdg-user-dir DESKTOP 2>/dev/null || true)
   [ -n "$desk" ] || desk="$HOME/Desktop"
-  if [ -d "$desk" ] && [ "$desk" != "$HOME" ] && [ ! -e "$desk/bageo-console.desktop" ] \
-    && [ ! -e "$desk/myna-console.desktop" ]; then
+  if [ -d "$desk" ] && [ "$desk" != "$HOME" ] && [ ! -e "$desk/bageo-console.desktop" ]; then
     cp "$file" "$desk/bageo-console.desktop"
     chmod +x "$desk/bageo-console.desktop"
     # GNOME only starts desktop files marked as trusted.

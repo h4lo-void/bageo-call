@@ -12,8 +12,8 @@ Please do not open a public issue for security problems. Use GitHub's
 repository to report privately. Include what an attacker can do, how to
 reproduce it, and the version.
 
-Security fixes go into the latest release (1.0.x). Older 0.x versions get no
-fixes; update the agent and the phone module together.
+Security fixes go into the latest release (1.0.x); update the agent and the
+phone module together.
 
 ## Running it safely
 
@@ -52,4 +52,4 @@ fixes; update the agent and the phone module together.
 
 Found a way around any of these? Please report it privately, as above.
 
-See also [Privacy, safety and the law](docs/en/PRIVACY_AND_LEGAL.md).
+See also [Privacy, safety and the law](docs/en/PRIVACY_AND_LEGAL.md), [Legal disclaimer & operator terms](LEGAL.md) and the [v1.0 project security & compliance audit report (`gemini-4-carbon`)](AUDIT_REPORT.md).

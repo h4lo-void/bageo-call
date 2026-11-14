@@ -12,7 +12,8 @@
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/release-v1.0.0-brightgreen.svg" alt="Release v1.0.0"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="许可证：AGPL-3.0-only"></a>
+  <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/商业授权-双重授权-gold.svg" alt="提供商业授权"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Docker-lightgrey.svg" alt="平台：Windows、macOS、Linux、Docker">
   <img src="https://img.shields.io/badge/agent-Rust-orange.svg" alt="主程序：Rust">
   <img src="https://img.shields.io/badge/phone-Android%20%2B%20Magisk%20%2F%20KernelSU-3DDC84.svg" alt="手机：Android＋Magisk 或 KernelSU">
@@ -22,7 +23,7 @@
   <a href="README.md">English</a> · <a href="README.zh-TW.md">繁體中文</a> · <strong>简体中文</strong>
 </p>
 
-Bageo（八哥，旧名 Myna）让 AI 用**你原来的手机号**接电话，也替你打电话。插着你 SIM 卡的备用 Android 手机（已 root）负责接通，电脑上的程序把每通电话实时发给 Gemini Live 再传回来：对方听到的是响一声就接、可以插话、会筛掉骚扰和诈骗电话、等对方说再见才挂的自然声音。和架在 SIP 线路或虚拟号码上的 AI 电话服务不同，你不用换号、不用付平台月费，每一段录音都留在你自己的硬盘上。
+Bageo（八哥）让 AI 用**你原来的手机号**接电话，也替你打电话。插着你 SIM 卡的备用 Android 手机（已 root）负责接通，电脑上的程序把每通电话实时发给 Gemini Live 再传回来：对方听到的是响一声就接、可以插话、会筛掉骚扰和诈骗电话、等对方说再见才挂的自然声音。和架在 SIP 线路或虚拟号码上的 AI 电话服务不同，你不用换号、不用付平台月费，每一段录音都留在你自己的硬盘上。
 
 名字取自八哥（bāgē）：一种会学身边的人说话的鸟。
 
@@ -194,7 +195,10 @@ Telegram（预约卡片带“同意／不同意”按钮）、Discord、Slack／
 | [API](docs/zh-CN/API.md) | REST 接口（通话、联系人、待处理事项、AI 代打）、手机通信协议 |
 | [架构](docs/zh-CN/ARCHITECTURE.md) | 模块、一通来电与一通拨出的完整过程、数据存放 |
 | [路线图](docs/zh-CN/ROADMAP.md) | 已经有的、还没有的、接下来要做的 |
-| [v1.0 发布说明](CHANGELOG.md) | 1.0 有什么新东西、怎么升级 |
+| [v1.0 发布说明](CHANGELOG.md) | 1.0 正式版完整功能亮点 |
+| [法律免责声明与使用限制](LEGAL.md) | 部署者独立责任、严禁违法用途、风险自负与抗辩赔偿条款 |
+| [双重授权与商业授权](COMMERCIAL_LICENSE.md) | 免费 `AGPL-3.0-only` 社区授权与闭源商业授权洽询 |
+| [全项目技术与安全审计报告](AUDIT_REPORT.md) | 由 `gemini-4-carbon` 模型实际具名签署的完整项目审计报告 |
 | [`android/`](android/README.md) | 构建手机应用和模块（英文） |
 | [`tools/sms_forward/`](tools/sms_forward/README.md) | 可选：把手机收到的短信转发到你的通知（英文） |
 
@@ -232,7 +236,7 @@ Telegram（预约卡片带“同意／不同意”按钮）、Discord、Slack／
 
 ### 要花多少钱？
 
-软件免费（MIT 许可证）。AI 处理的每通电话（不论来电还是拨出），Google 都会按用量收取 Gemini Live 的语音费用；摘要只是发给 Gemini 最便宜模型的一小段文字。试听声音和拒接语音都是预录的，不花钱。另外就是运营商的号码费用和电脑的电费；想设上限，可以在 Google 账号里设置预算。
+个人与开源社区免费使用（`AGPL-3.0-only`；如需闭源商用或商业托管请[取得商业授权](COMMERCIAL_LICENSE.md)）。AI 处理的每通电话（不论来电还是拨出），Google 都会按用量收取 Gemini Live 的语音费用；摘要只是发给 Gemini 最便宜模型的一小段文字。试听声音和拒接语音都是预录的，不花钱。另外就是运营商的号码费用和电脑的电费；想设上限，可以在 Google 账号里设置预算。
 
 ### 让 AI 接电话合法吗？
 
@@ -242,6 +246,11 @@ Telegram（预约卡片带“同意／不同意”按钮）、Discord、Slack／
 
 不能。实时语音用的是 Gemini Live，需要网络和 Gemini 密钥。摘要可以通过 Ollama 使用本地模型（见[摘要与日历](docs/zh-CN/SETTINGS.md#摘要与日历)）；完全本地的语音流程不在支持的配置里（见[路线图](docs/zh-CN/ROADMAP.md)）。
 
-## 许可证
+## 许可证与法律责任声明
 
-[MIT](LICENSE)。附带的音效为 CC0；有一个安装脚本采用 GPL-3.0，详见 [NOTICE.md](NOTICE.md)（英文）。本项目与 Google 没有关联；Pixel 和 Gemini 是 Google LLC 的商标。
+本项目采用**双重授权（Dual Licensing）**模式发布（版权所有 © 2026 **h4lo-void**）：
+
+- **社区开源授权：** [GNU Affero 通用公共许可证第 3.0 版（仅限 `AGPL-3.0-only`）](LICENSE)——个人与开源社区免费使用；任何修改版本只要允许他人通过网络或电话线路交互，即须按第 13 条免费公开完整衍生源代码。
+- **取得商业授权：** 若企业、电信／云总机运营商、呼叫中心或硬件厂商不愿按 `AGPL-3.0-only` 开源，可向原作者购买专有／商业授权，详见 [**双重授权与商业授权条款（COMMERCIAL_LICENSE.md）**](COMMERCIAL_LICENSE.md)。
+
+**法律责任隔离与风险自负：** 本项目仅为纯自托管开源代码，按“现状（AS IS）”提供且不附带任何担保。部署者本人为唯一的实际行为人与数据控制者，须完全独立承担当地通话录音、AI 身份披露、自动拨号、手机 Root 失去保修及资费账单的一切民刑事与行政责任，严禁任何违法诈骗、窃听或骚扰用途。使用前请务必详阅 [**法律免责声明（LEGAL.md）**](LEGAL.md)、[隐私、安全与法律](docs/zh-CN/PRIVACY_AND_LEGAL.md) 及 [`gemini-4-carbon` 具名全项目审计报告](AUDIT_REPORT.md)。第三方声明见 [NOTICE.md](NOTICE.md)。本项目与 Google LLC 无关；Pixel、Android 与 Gemini 是 Google LLC 的商标。

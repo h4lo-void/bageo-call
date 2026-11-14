@@ -41,7 +41,7 @@
    - **Linux：** 在终端运行 `./start.sh`。
 3. 脚本会查找 `adb`（Google 的 Android platform-tools，USB 连接要用）。没装的话，脚本会询问是否从 Google 下载到程序旁边的 `platform-tools` 文件夹。
 4. 浏览器会打开网页控制台 <http://localhost:8787/>。终端窗口请保持打开：关掉它，主程序就停了。
-5. 主程序第一次启动成功时，脚本会在桌面放一个“**Bageo 控制台**”快捷方式（macOS 是 `.webloc` 文件；Linux 是应用菜单里的条目，也会复制到桌面文件夹）。快捷方式还在就不会重新创建。不想要的话，启动时加 `-NoShortcut`（Windows）或 `--no-shortcut`，或在 `.env` 里设置 `BAGEO_NO_SHORTCUT=1`。改名前留下的“Myna 控制台”快捷方式也算数，旧的 `MYNA_NO_SHORTCUT=1` 照样有效。
+5. 主程序第一次启动成功时，脚本会在桌面放一个“**Bageo 控制台**”快捷方式（macOS 是 `.webloc` 文件；Linux 是应用菜单里的条目，也会复制到桌面文件夹）。快捷方式还在就不会重新创建。不想要的话，启动时加 `-NoShortcut`（Windows）或 `--no-shortcut`，或在 `.env` 里设置 `BAGEO_NO_SHORTCUT=1`。
 
 ### 从源码
 
@@ -60,7 +60,7 @@ cp .env.example .env        # 设置 CALLS_UI_TOKEN 和 DEVICE_TOKEN
 docker compose up -d --build
 ```
 
-在容器里，主程序对局域网开放，所以两个令牌都必须设置。控制台地址是 `http://<主机>:8787/?token=<CALLS_UI_TOKEN>`，手机通过 Wi-Fi 连接 `ws://<主机>:8787/ws?token=<DEVICE_TOKEN>`（见[手机设置 → Wi-Fi](PHONE.md#wi-fi)）。容器里的主程序不会响应 `bageo.local`，也没法自己算出通知链接要用的控制台地址，所以请在 `.env` 里设置 `PUBLIC_URL`（例如 `http://192.168.1.20:8787`）。时区设置和从 Myna 旧名升级的做法，写在 `docker-compose.yml` 的注释里。
+在容器里，主程序对局域网开放，所以两个令牌都必须设置。控制台地址是 `http://<主机>:8787/?token=<CALLS_UI_TOKEN>`，手机通过 Wi-Fi 连接 `ws://<主机>:8787/ws?token=<DEVICE_TOKEN>`（见[手机设置 → Wi-Fi](PHONE.md#wi-fi)）。容器里的主程序不会响应 `bageo.local`，也没法自己算出通知链接要用的控制台地址，所以请在 `.env` 里设置 `PUBLIC_URL`（例如 `http://192.168.1.20:8787`）。时区设置写在 `docker-compose.yml` 的注释里。
 
 ### 数据存在哪里
 
