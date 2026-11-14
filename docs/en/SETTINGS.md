@@ -19,6 +19,7 @@ There are two kinds of settings:
 | Language of notifications and summaries | The language of what you read: notifications, call summaries (also in the call list), appointment cards and their results, messages from the SMS forwarder. Default *Same as the AI's language*. Set it when callers should hear another language than the one you read — say you are abroad and the AI answers in English, while your notifications stay in 繁體中文. The summary is written in this language whatever language the call was in. Switching the console's display language (top right) sets this to the same language. |
 | Main language for each SIM | For a phone with SIMs from more than one country. Pick a SIM's country and the language calls on it start in — say *United States (US)* → English, while *Language* stays 繁體中文. A caller whose number is from another country than the SIM's still hears that country's language when the AI speaks it (a Japanese number calling the US SIM hears Japanese). SIMs the phones have reported since the agent started are listed already; on *Same as the AI's language* nothing changes. Needs phone app 0.2.5 or later, which reports the SIM of each call. Saved as `sim_languages`, e.g. `{"us": "en"}`. |
 | Your name | How callers refer to you. Used wherever a prompt says `{owner}`. |
+| Other names callers use for you | One per line, up to 10: other names callers may use for you, such as an English name or a nickname. When the AI hears one, it knows they mean you — in both answer styles, with your own prompt too. Call summaries still write *Your name*. Saved as `owner_aliases`. |
 | Answer style | **AI assistant** — says it is an AI answering for you and takes a message. **As me** — answers as you. |
 | AI answers calls | Master switch. Off: calls are picked up and hung up at once, nothing is said. (To have one phone ring normally so you can answer it yourself, switch it to a [normal phone](PHONE.md#normal-phone-mode) instead.) |
 | Gemini API key | Your key from Google AI Studio. Stored on your computer only. |
@@ -197,7 +198,7 @@ rather than empty: an empty `TZ` means UTC.
 
 These only set the starting value; the web console overrides them:
 `GEMINI_API_KEY`, `APP_LANGUAGE` (`en`, `zh-TW`, …), `NOTIFY_LANGUAGE` (empty =
-the same as `APP_LANGUAGE`), `OWNER_NAME`,
+the same as `APP_LANGUAGE`), `OWNER_NAME`, `OWNER_ALIASES` (comma separated),
 `ANSWER_STYLE` (`assistant` / `persona`), `GEMINI_LIVE_MODEL`,
 `GEMINI_VOICE_NAME`, `COUNTRY_CODE`, `SUMMARY_PROVIDER` (`auto` / `gemini` /
 `deepseek`), `SUMMARY_API_BASE`, `SUMMARY_MODEL`,

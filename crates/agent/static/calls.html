@@ -715,7 +715,10 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
               <div class="help" data-i18n="f_language_h"></div></div>
             <div class="field"><label for="f-owner_name" data-i18n="f_owner"></label>
               <input type="text" id="f-owner_name" data-k="owner_name" data-t="text" maxlength="40" data-i18n-ph="f_owner_ph" />
-              <div class="help" data-i18n="f_owner_h"></div></div>
+              <div class="help" data-i18n="f_owner_h"></div>
+              <div class="field"><label for="f-owner_aliases" data-i18n="f_owner_aliases"></label>
+                <textarea id="f-owner_aliases" data-k="owner_aliases" data-t="lines" rows="2" spellcheck="false" data-i18n-ph="f_owner_aliases_ph"></textarea>
+                <div class="help" data-i18n="f_owner_aliases_h"></div></div></div>
           </div>
           <div class="field"><label for="f-notify_language" data-i18n="f_notify_lang"></label>
             <select id="f-notify_language" data-k="notify_language" data-t="text" style="max-width:20rem"></select>
@@ -1429,6 +1432,9 @@ I18N["en"] = {
   f_owner: "Your name",
   f_owner_ph: "e.g. Alex",
   f_owner_h: "The name callers use for you. The AI uses it when it talks about you.",
+  f_owner_aliases: "Other names callers use for you",
+  f_owner_aliases_ph: "e.g. Lex",
+  f_owner_aliases_h: "One per line. Other names callers may use for you, such as an English name or a nickname; when the AI hears one, it knows they mean you. Up to 10.",
   f_style: "Answer style",
   style_assistant: "AI assistant",
   style_assistant_d: "Says it is your AI assistant and takes a message.",
@@ -2156,6 +2162,9 @@ I18N["zh-TW"] = {
   f_owner: "你的名字",
   f_owner_ph: "例如：小安",
   f_owner_h: "來電的人怎麼稱呼你。AI 提到你的時候會用這個名字。",
+  f_owner_aliases: "其他人怎麼叫你",
+  f_owner_aliases_ph: "例如：Alex",
+  f_owner_aliases_h: "一行一個。來電的人可能用的其他稱呼，例如英文名字、綽號；AI 聽到這些名字會知道是在找你。最多 10 個。",
   f_style: "接聽身分",
   style_assistant: "AI 助理",
   style_assistant_d: "會表明自己是你的 AI 助理，幫忙記下事情轉達。",
@@ -2883,6 +2892,9 @@ I18N["zh-CN"] = {
   f_owner: "你的名字",
   f_owner_ph: "例如：小安",
   f_owner_h: "来电的人怎么称呼你。AI 提到你的时候会用这个名字。",
+  f_owner_aliases: "其他人怎么叫你",
+  f_owner_aliases_ph: "例如：Alex",
+  f_owner_aliases_h: "一行一个。来电的人可能用的其他称呼，例如英文名字、绰号；AI 听到这些名字会知道是在找你。最多 10 个。",
   f_style: "接听身份",
   style_assistant: "AI 助理",
   style_assistant_d: "会表明自己是你的 AI 助理，帮忙记下事情转达。",
@@ -3610,6 +3622,9 @@ I18N["ja"] = {
   f_owner: "あなたの名前",
   f_owner_ph: "例：田中",
   f_owner_h: "相手があなたを呼ぶときの名前です。AI があなたのことを話すときに使います。",
+  f_owner_aliases: "ほかの呼ばれ方",
+  f_owner_aliases_ph: "例：Alex",
+  f_owner_aliases_h: "1 行に 1 つ。相手があなたを呼ぶときのほかの名前（英語名、あだ名など）です。AI はこれを聞くと、あなたへの電話だとわかります。最大 10 個。",
   f_style: "応答スタイル",
   style_assistant: "AI アシスタント",
   style_assistant_d: "あなたの AI アシスタントだと名乗り、用件を預かります。",
@@ -4337,6 +4352,9 @@ I18N["ko"] = {
   f_owner: "내 이름",
   f_owner_ph: "예: 민수",
   f_owner_h: "상대방이 나를 부르는 이름입니다. AI가 나에 대해 말할 때 사용합니다.",
+  f_owner_aliases: "다른 사람들이 나를 부르는 이름",
+  f_owner_aliases_ph: "예: Alex",
+  f_owner_aliases_h: "한 줄에 하나. 상대방이 나를 부를 때 쓰는 다른 이름(영어 이름, 별명 등)입니다. AI는 이 이름을 들으면 나를 찾는 전화라는 것을 압니다. 최대 10개.",
   f_style: "응답 방식",
   style_assistant: "AI 비서",
   style_assistant_d: "내 AI 비서라고 밝히고 용건을 받아 둡니다.",
@@ -5064,6 +5082,9 @@ I18N["es"] = {
   f_owner: "Tu nombre",
   f_owner_ph: "p. ej. Álex",
   f_owner_h: "El nombre con el que te llaman. La IA lo usa cuando habla de ti.",
+  f_owner_aliases: "Otros nombres con los que te llaman",
+  f_owner_aliases_ph: "p. ej. Lex",
+  f_owner_aliases_h: "Uno por línea. Otros nombres que puede usar quien llama, como un nombre en inglés o un apodo; cuando la IA oye uno, sabe que te buscan a ti. Hasta 10.",
   f_style: "Estilo de respuesta",
   style_assistant: "Asistente de IA",
   style_assistant_d: "Dice que es tu asistente de IA y toma el recado.",
@@ -5791,6 +5812,9 @@ I18N["fr"] = {
   f_owner: "Votre nom",
   f_owner_ph: "ex. Alex",
   f_owner_h: "Le nom que vos correspondants utilisent pour vous. L'IA s'en sert quand elle parle de vous.",
+  f_owner_aliases: "Autres noms qu'on vous donne",
+  f_owner_aliases_ph: "ex. Lex",
+  f_owner_aliases_h: "Un par ligne. D'autres noms que vos correspondants peuvent utiliser, comme un prénom anglais ou un surnom ; quand l'IA en entend un, elle sait que c'est vous qu'on cherche. 10 au maximum.",
   f_style: "Style de réponse",
   style_assistant: "Assistant IA",
   style_assistant_d: "Se présente comme votre assistant IA et prend un message.",
@@ -6518,6 +6542,9 @@ I18N["de"] = {
   f_owner: "Dein Name",
   f_owner_ph: "z. B. Alex",
   f_owner_h: "Der Name, mit dem Anrufer dich ansprechen. Die KI verwendet ihn, wenn sie über dich spricht.",
+  f_owner_aliases: "Andere Namen für dich",
+  f_owner_aliases_ph: "z. B. Lex",
+  f_owner_aliases_h: "Einer pro Zeile. Andere Namen, mit denen Anrufer dich ansprechen, etwa ein englischer Name oder ein Spitzname; hört die KI einen davon, weiß sie, dass du gemeint bist. Höchstens 10.",
   f_style: "Art der Annahme",
   style_assistant: "KI-Assistent",
   style_assistant_d: "Sagt, dass er dein KI-Assistent ist, und nimmt eine Nachricht entgegen.",
@@ -7245,6 +7272,9 @@ I18N["pt"] = {
   f_owner: "Seu nome",
   f_owner_ph: "ex.: Alex",
   f_owner_h: "O nome que as pessoas usam para falar com você. A IA usa esse nome quando fala de você.",
+  f_owner_aliases: "Outros nomes que usam para você",
+  f_owner_aliases_ph: "ex.: Lex",
+  f_owner_aliases_h: "Um por linha. Outros nomes que as pessoas podem usar para falar com você, como um nome em inglês ou um apelido; quando a IA ouve um deles, sabe que estão procurando você. No máximo 10.",
   f_style: "Estilo de atendimento",
   style_assistant: "Assistente de IA",
   style_assistant_d: "Diz que é seu assistente de IA e anota o recado.",
