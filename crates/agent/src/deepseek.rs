@@ -51,6 +51,7 @@ AI 回覆：AI 怎麼回的，一句（例如「說放管理室就好」「說�
 - 事由出現繳水費／房租／電費／包裹／開會這類字眼，一定要寫進「事情」。\n\
 - 每行最多 25 個字左右，像傳訊息，不要寫成句子解釋。\n\
 - 「國際電話請注意小心詐騙」是電信公司的提示音，不是對方講的，也不是詐騙的證據。對方講外語本身不算推銷或詐騙；只有對方講的內容本身像推銷或詐騙，才寫「推銷電話」「疑似詐騙」。\n\
+- 銀行、信用卡中心打來確認某一筆刷卡或交易是不是{owner}本人（沒有要轉帳、去 ATM、給驗證碼或密碼、裝 App、解除分期）：不是推銷也不是詐騙，就算【通話資訊】寫 AI 陪他聊也一樣。「事情」寫哪家銀行、金額、商店、時間（例如「大愛銀行：昨晚11點網路電器行3280元，問是否本人刷」）；「要處理」提醒{owner}自己確認（例如「自己確認是否本人刷；不是就打卡片背面客服，別回撥來電」），不能寫「不用」。\n\
 - 【通話資訊】寫 AI 連不上、系統掛斷時，「AI 回覆」寫「AI 沒接上，沒講話」。\n\
 - 【通話資訊】寫 AI 故意陪聊拖時間、而【對話】看起來確實是推銷或詐騙時：「事情」寫賣什麼或什麼詐騙手法，「AI 回覆」寫「陪他繞了約 N 分鐘」（用長度換算），「要處理」寫「不用」；其實是正常電話就照一般寫。\n\
 - 【對話】裡「接聽：」是 AI 講的，不是對方的要求；不要把 AI 的話當成對方的事情。\n\
@@ -78,6 +79,7 @@ Rules:\n\
 - Each line is short, like a text message: about fifteen words at most.\n\
 - \"AI:\" lines are the AI talking; they are not the caller's request.\n\
 - The carrier's warning about international calls is not the caller and no sign of a scam. A caller speaking another language is not a sales or scam call either; only what they actually say can make it one.\n\
+- A bank or card centre calling only to check whether a card charge or transaction was {owner}'s (no request to transfer money, go to an ATM, give a code or password, install an app or cancel an instalment plan) is neither a sales call nor a scam, even if [Call facts] says the AI kept them talking: {s_matter} names the bank, the amount, the shop and the time; {s_todo} tells {owner} to check whether the charge was theirs and, if it was not, to call the number on the back of the card (not the number that called) — never that there is nothing to do.\n\
 - If [Call facts] says the AI could not connect and the system hung up, the {s_reply} line is: {s_ai_failed}.\n\
 - If [Call facts] says the AI deliberately kept the caller talking and the dialogue does look like a sales or scam call: {s_matter} is what was being sold or which scam it was, {s_reply} is that the AI kept them busy for about N minutes (work N out from the length), {s_todo} is nothing to do. If it was in fact a normal call, write it up normally.\n\
 - Do not invent anything you are not sure of; write that it was unclear.\n\
@@ -1703,6 +1705,41 @@ mod tests {
             assert!(p.contains("對方講外語本身不算") || p.contains("对方讲外语本身不算"), "{p}");
         }
         assert!(summary_system_prompt(Lang::En, "").contains("speaking another language is not a sales or scam call"));
+    }
+
+    /// A card desk checking a purchase (2026-11-14: summed up as 「疑似詐騙」,
+    /// 「要處理：不用」): not a scam; the matter names bank, amount, shop and
+    /// time; the owner is told to check it on the number on the back of the
+    /// card — in every language the owner reads.
+    #[test]
+    fn a_card_check_summary_tells_the_owner_to_check_it() {
+        for l in locale::ALL {
+            let p = summary_system_prompt(l, "Alex");
+            let marks: &[&str] = match l {
+                Lang::ZhTw => &[
+                    "確認某一筆刷卡或交易是不是Alex本人",
+                    "不是推銷也不是詐騙，就算【通話資訊】寫 AI 陪他聊也一樣",
+                    "「事情」寫哪家銀行、金額、商店、時間",
+                    "不是就打卡片背面客服，別回撥來電",
+                    "不能寫「不用」",
+                ],
+                Lang::ZhCn => &["确认某一笔刷卡或交易是不是Alex本人", "不是推销也不是诈骗", "哪家银行、金额、商店、时间", "卡片背面客服", "不能写"],
+                _ => &[
+                    "check whether a card charge or transaction was Alex's",
+                    "is neither a sales call nor a scam, even if [Call facts] says the AI kept them talking",
+                    "the bank, the amount, the shop and the time",
+                    "call the number on the back of the card (not the number that called)",
+                    "never that there is nothing to do",
+                ],
+            };
+            for m in marks {
+                assert!(p.contains(m), "{l:?}: {m}\n{p}");
+            }
+            assert!(!p.contains("{s_") && !p.contains("{owner}"), "{l:?}");
+        }
+        // Its matter line is no pitch.
+        let s = "對方：大愛銀行信用卡中心\n事情：大愛銀行：昨晚11點網路電器行3280元，問是否本人刷\nAI 回覆：說要再想一下\n要處理：自己確認是否本人刷；不是就打卡片背面客服，別回撥來電";
+        assert!(!summary_says_sales(Lang::ZhTw, s));
     }
 
     /// Reviewer: Whisper's "AI 對話段" is the caller's uplink while the AI was
