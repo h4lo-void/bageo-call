@@ -1681,9 +1681,14 @@ fn persona_resume_reply_client_content() -> String {
 /// A call reviewed as normal is looked at again only once the score has grown by
 /// [`STALL_REVIEW_STEP`], at most [`STALL_REVIEW_MAX`] times a call.
 /// A caller who had only said who they are (too early to tell) is looked at
-/// again once their next turn has ended, whatever the score; such looks do not
-/// count against [`STALL_REVIEW_MAX`]. The [`STALL_REVIEW_EARLY_MAX`]th "too
-/// early" in a call counts as a scam, like any doubt without the review.
+/// again once their turn has ended, whatever the score; such looks do not
+/// count against [`STALL_REVIEW_MAX`]. The look takes about a second, and by
+/// then the caller has often finished that turn ("…信用卡風險管控中心。您的帳戶
+/// 被誤設成分期付款，要請您現在去ATM解除分期。") and the AI is answering: a "too
+/// early" for a turn that ended, or got more keywords, while it was being
+/// looked at is asked again at once, not a whole turn later. The
+/// [`STALL_REVIEW_EARLY_MAX`]th "too early" in a call counts as a scam, like
+/// any doubt without the review.
 const STALL_REVIEW_MAX: u32 = 3;
 const STALL_REVIEW_STEP: u32 = 2;
 /// The keywords trip mid-sentence: the first look may see half the
@@ -1703,6 +1708,9 @@ struct StallReview {
     /// The last review was too early to tell: the next one goes when the
     /// caller's next turn has ended ([`StallReview::should_ask_after_turn`]).
     after_turn: bool,
+    /// The caller's turn ended while the pending review was under way
+    /// ([`StallReview::note_caller_turn_end`]): it saw only part of that turn.
+    turn_ended: bool,
 }
 
 /// What a verdict does to the call.
@@ -1716,6 +1724,9 @@ enum StallVerdictStep {
     Carry,
     /// Too early to tell: nothing changes until the caller's next turn has ended.
     AfterTurn,
+    /// Too early to tell, but the caller's turn ended or more keywords came
+    /// while it was being looked at: look again now (already counted as asked).
+    AskAgain,
 }
 
 impl StallReview {
@@ -1744,15 +1755,29 @@ impl StallReview {
         true
     }
 
-    /// The verdict of the review asked at `score`.
+    /// The caller's turn has just ended: a review under way saw only part of it.
+    fn note_caller_turn_end(&mut self) {
+        if self.pending {
+            self.turn_ended = true;
+        }
+    }
+
+    /// The verdict of the review asked at `score`, the score unchanged since.
+    #[cfg(test)]
     fn verdict(&mut self, verdict: crate::stall_review::Verdict, score: u32) -> StallVerdictStep {
+        self.verdict_now(verdict, score, score)
+    }
+
+    /// The verdict of the review asked at score `asked_at`; the score is `now`.
+    fn verdict_now(&mut self, verdict: crate::stall_review::Verdict, asked_at: u32, now: u32) -> StallVerdictStep {
         use crate::stall_review::Verdict;
         self.pending = false;
+        let turn_ended = std::mem::take(&mut self.turn_ended);
         match verdict {
             Verdict::ScamOrSales => StallVerdictStep::Engage,
             Verdict::IvrRecording => StallVerdictStep::Ivr,
             Verdict::Normal => {
-                self.normal_at = Some(score);
+                self.normal_at = Some(asked_at);
                 StallVerdictStep::Carry
             }
             Verdict::TooEarly => {
@@ -1760,6 +1785,11 @@ impl StallReview {
                 if self.early >= STALL_REVIEW_EARLY_MAX {
                     // Still only who they are: unsure is a scam, as without the review.
                     StallVerdictStep::Engage
+                } else if turn_ended || now > asked_at {
+                    // What it saw was not all the caller said: look again now.
+                    self.pending = true;
+                    self.asked += 1;
+                    StallVerdictStep::AskAgain
                 } else {
                     self.after_turn = true;
                     StallVerdictStep::AfterTurn
@@ -5216,26 +5246,26 @@ pub async fn run_session(
                                             "Gemini Live new model turn after caller serial={serial} (clear recap STT window)"
                                         );
                                         // The caller had only said who they were: their turn is
-                                        // over now, so the second look goes again.
-                                        if stall.is_some()
-                                            && !stall_on
-                                            && !own_matter
-                                            && ivr_since.is_none()
-                                            && stall_review.should_ask_after_turn()
-                                        {
-                                            spawn_stall_review(
-                                                &review_tx,
-                                                &review_key,
-                                                &transcript_out,
-                                                &stall_hits,
-                                                review_number,
-                                                stall_score,
-                                            );
-                                            info!(
-                                                "Persona stall second look after the caller's turn serial={serial} score={stall_score} hits={stall_hits:?} talk_s={} n={}",
-                                                session_start.elapsed().as_secs(),
-                                                stall_review.asked
-                                            );
+                                        // over now, so the second look goes again. A look still
+                                        // under way saw only part of this turn: noted, so its
+                                        // "too early" is asked again as soon as it comes back.
+                                        if stall.is_some() && !stall_on && !own_matter && ivr_since.is_none() {
+                                            stall_review.note_caller_turn_end();
+                                            if stall_review.should_ask_after_turn() {
+                                                spawn_stall_review(
+                                                    &review_tx,
+                                                    &review_key,
+                                                    &transcript_out,
+                                                    &stall_hits,
+                                                    review_number,
+                                                    stall_score,
+                                                );
+                                                info!(
+                                                    "Persona stall second look after the caller's turn serial={serial} score={stall_score} hits={stall_hits:?} talk_s={} n={}",
+                                                    session_start.elapsed().as_secs(),
+                                                    stall_review.asked
+                                                );
+                                            }
                                         }
                                     }
                                     if first_downlink_at.is_none() {
@@ -5656,7 +5686,7 @@ pub async fn run_session(
             }
             verdict = review_rx.recv() => {
                 let Some((score, verdict)) = verdict else { continue };
-                let step = stall_review.verdict(verdict, score);
+                let step = stall_review.verdict_now(verdict, score, stall_score);
                 info!(
                     "Persona stall review serial={serial} verdict={verdict:?} score_asked={score} score_now={stall_score} reviews={} → {step:?}",
                     stall_review.asked
@@ -5666,6 +5696,25 @@ pub async fn run_session(
                     StallVerdictStep::Ivr => {
                         ivr_enter.get_or_insert("review");
                     }
+                    // The caller finished that turn (or said more) meanwhile: what the
+                    // look saw was only its start. Look again now, at all of it.
+                    StallVerdictStep::AskAgain if stall.is_some() && !stall_on && !own_matter && ivr_since.is_none() => {
+                        spawn_stall_review(
+                            &review_tx,
+                            &review_key,
+                            &transcript_out,
+                            &stall_hits,
+                            review_number,
+                            stall_score,
+                        );
+                        info!(
+                            "Persona stall second look again at once (the caller's turn ended or more keywords came meanwhile) serial={serial} score={stall_score} hits={stall_hits:?} talk_s={} n={}",
+                            session_start.elapsed().as_secs(),
+                            stall_review.asked
+                        );
+                    }
+                    // Stalling started, the caller's own matter or a voice menu: nothing to look at.
+                    StallVerdictStep::AskAgain => stall_review.pending = false,
                     StallVerdictStep::Carry | StallVerdictStep::AfterTurn => {}
                 }
             }
@@ -6440,6 +6489,79 @@ mod tests {
         }
         assert_eq!(r.verdict(TooEarly, 3), StallVerdictStep::Engage);
         assert_eq!(STALL_REVIEW_EARLY_MAX, 4);
+    }
+
+    /// One turn: 「…信用卡風險管控中心。」 then 「您的帳戶被誤設成分期付款，要請您現在去
+    /// ATM解除分期。」. The look asked on the introduction comes back "too early"
+    /// only after that turn has ended and the AI is answering (seen on every
+    /// probe call: asked 32.374, AI speaks 32.673, verdict 33.624). It is asked
+    /// again at once, not a whole turn later, and the scam is stalled.
+    #[test]
+    fn a_too_early_look_at_a_finished_turn_is_asked_again_at_once() {
+        use crate::stall_review::Verdict::*;
+        let mut hits = Vec::new();
+        let asked_at = stall_score_add("喂您好，這邊是大愛銀行信用卡風險管控中心。", &mut hits);
+        let mut r = StallReview::default();
+        assert!(r.should_ask(stall_engages(asked_at, &hits), asked_at));
+        // The rest of the same turn arrives while it is looked at…
+        let now = asked_at + stall_score_add("您的帳戶被誤設成分期付款，要請您現在去ATM解除分期。", &mut hits);
+        assert_eq!(now, 8, "{hits:?}");
+        for kw in ["分期", "atm", "帳戶"] {
+            assert!(hits.contains(&kw), "{hits:?}");
+        }
+        assert!(!r.should_ask(true, now), "one look at a time");
+        // …the turn ends and the AI answers…
+        r.note_caller_turn_end();
+        assert!(!r.should_ask_after_turn());
+        // …then the look comes back "too early": asked again at once.
+        assert_eq!(r.verdict_now(TooEarly, asked_at, now), StallVerdictStep::AskAgain);
+        assert!(!r.should_ask(true, now) && !r.should_ask_after_turn(), "the new look is under way");
+        assert_eq!(r.verdict_now(ScamOrSales, now, now), StallVerdictStep::Engage);
+        assert_eq!((r.asked, r.early), (2, 1));
+        // Either sign is enough: the turn ended with no new keyword…
+        let mut r = StallReview::default();
+        assert!(r.should_ask(true, 3));
+        r.note_caller_turn_end();
+        assert_eq!(r.verdict_now(TooEarly, 3, 3), StallVerdictStep::AskAgain);
+        // …or more keywords came while the turn goes on.
+        let mut r = StallReview::default();
+        assert!(r.should_ask(true, 3));
+        assert_eq!(r.verdict_now(TooEarly, 3, 5), StallVerdictStep::AskAgain);
+        // A turn that ended before the look was asked is not a reason to ask again.
+        let mut r = StallReview::default();
+        r.note_caller_turn_end();
+        assert!(r.should_ask(true, 3));
+        assert_eq!(r.verdict_now(TooEarly, 3, 3), StallVerdictStep::AfterTurn);
+    }
+
+    /// A real card desk that so far only said who it is: its late "too early"
+    /// is asked again at once and sees the whole turn — still only the
+    /// introduction — so it is too early again and waits for the next turn,
+    /// whose question about a purchase is normal. No stalling on the way.
+    #[test]
+    fn a_real_desk_looked_at_again_at_once_still_waits_for_its_matter() {
+        use crate::stall_review::Verdict::*;
+        let mut hits = Vec::new();
+        let s = stall_score_add("喂您好，這邊是大愛銀行信用卡風險管控中心。", &mut hits);
+        let mut r = StallReview::default();
+        assert!(r.should_ask(true, s));
+        r.note_caller_turn_end();
+        assert_eq!(r.verdict_now(TooEarly, s, s), StallVerdictStep::AskAgain);
+        // The new look was asked after the turn ended: nothing more came, so its
+        // "too early" waits for the caller's next turn.
+        assert_eq!(r.verdict_now(TooEarly, s, s), StallVerdictStep::AfterTurn);
+        assert!(!r.should_ask(true, s));
+        let more = stall_score_add(
+            "我們看到您的卡片昨天晚上11點左右在網路電器商店有一筆3280元的消費。想跟您確認是您本人刷的嗎?",
+            &mut hits,
+        );
+        assert_eq!(more, 0, "{hits:?}");
+        r.note_caller_turn_end();
+        assert!(r.should_ask_after_turn());
+        assert_eq!(r.verdict_now(Normal, s, s + more), StallVerdictStep::Carry);
+        assert!(!r.should_ask(true, s + more) && !r.should_ask_after_turn());
+        assert_eq!((r.asked, r.early), (3, 2));
+        assert!(r.early < STALL_REVIEW_EARLY_MAX);
     }
 
     /// The fixed guard of the answering-as-me style: a card desk's "was this
