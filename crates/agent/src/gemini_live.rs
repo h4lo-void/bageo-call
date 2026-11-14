@@ -1671,6 +1671,78 @@ fn persona_resume_reply_client_content() -> String {
     crate::prompts::client_turn(&crate::prompts::current().kick_resume)
 }
 
+/// Sales / scam keywords crossed the line: a second look ([`crate::stall_review`])
+/// before the AI starts keeping the caller busy. The AI talks on meanwhile.
+/// A call reviewed as normal is looked at again only once the score has grown by
+/// [`STALL_REVIEW_STEP`], at most [`STALL_REVIEW_MAX`] times a call.
+const STALL_REVIEW_MAX: u32 = 3;
+const STALL_REVIEW_STEP: u32 = 2;
+
+#[derive(Debug, Default)]
+struct StallReview {
+    /// A review is under way.
+    pending: bool,
+    /// Reviews asked for this call.
+    asked: u32,
+    /// The score the last "normal" verdict was given at.
+    normal_at: Option<u32>,
+}
+
+/// What a verdict does to the call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StallVerdictStep {
+    /// Sales / scam: the AI starts stalling.
+    Engage,
+    /// A recording or voice menu: the AI goes quiet and we hang up (see [`ivr_hangs_up`]).
+    Ivr,
+    /// An ordinary call: nothing changes.
+    Carry,
+}
+
+impl StallReview {
+    /// The keyword score is now `score` (`flagged`: [`stall_engages`]): ask for a review?
+    fn should_ask(&mut self, flagged: bool, score: u32) -> bool {
+        if !flagged || self.pending || self.asked >= STALL_REVIEW_MAX {
+            return false;
+        }
+        if self.normal_at.is_some_and(|at| score < at + STALL_REVIEW_STEP) {
+            return false;
+        }
+        self.pending = true;
+        self.asked += 1;
+        true
+    }
+
+    /// The verdict of the review asked at `score`.
+    fn verdict(&mut self, verdict: crate::stall_review::Verdict, score: u32) -> StallVerdictStep {
+        use crate::stall_review::Verdict;
+        self.pending = false;
+        match verdict {
+            Verdict::ScamOrSales => StallVerdictStep::Engage,
+            Verdict::IvrRecording => StallVerdictStep::Ivr,
+            Verdict::Normal => {
+                self.normal_at = Some(score);
+                StallVerdictStep::Carry
+            }
+        }
+    }
+}
+
+/// A recording or voice menu: we hang up once the line has been quiet this long…
+const IVR_QUIET_END: Duration = Duration::from_secs(4);
+/// …or this long after it was recognised.
+const IVR_MAX: Duration = Duration::from_secs(20);
+
+/// `since`: how long ago the call was found to be a recording; `line_quiet_for`:
+/// how long the line has been quiet, `None` while it talks.
+fn ivr_hangs_up(since: Duration, line_quiet_for: Option<Duration>) -> bool {
+    since >= IVR_MAX || line_quiet_for.is_some_and(|q| q >= IVR_QUIET_END)
+}
+
+fn persona_ivr_client_content() -> String {
+    crate::prompts::client_turn(&crate::prompts::current().kick_ivr)
+}
+
 /// The first turn on a fresh (rotated) Live socket sometimes finishes with an
 /// output transcript but not one audio chunk — the caller hears nothing
 /// (seen with a farewell and with a 「喂？還在嗎？」 nudge).
@@ -1947,6 +2019,9 @@ pub enum SessionEndReason {
     CantCommunicate,
     /// Remote WS closed without explicit cancel.
     WsClosed,
+    /// The caller was a recording or voice menu (persona mode with sales / scam
+    /// stalling on): we hung up on it.
+    IvrHangup,
 }
 
 impl SessionEndReason {
@@ -1954,7 +2029,7 @@ impl SessionEndReason {
     pub fn should_play_goodbye(self) -> bool {
         matches!(
             self,
-            Self::Goodbye | Self::MaxDuration | Self::CantCommunicate | Self::WsClosed
+            Self::Goodbye | Self::MaxDuration | Self::CantCommunicate | Self::WsClosed | Self::IvrHangup
         )
     }
 
@@ -1965,6 +2040,7 @@ impl SessionEndReason {
             Self::MaxDuration => "max_duration",
             Self::CantCommunicate => "cant_communicate",
             Self::WsClosed => "ws_closed",
+            Self::IvrHangup => "ivr_hangup",
         }
     }
 }
@@ -3525,7 +3601,8 @@ pub async fn run_session(
     // phone knows which SIM the call came in on): whatever the model says first —
     // the opening prepared while it rang, or the one it says now — waits for the
     // carrier's warning (see IntlGate).
-    let mut intl_gate = intl_gate_at_unmute(persona, persona && intl_caller(), tokio::time::Instant::now());
+    let intl_call = persona && intl_caller();
+    let mut intl_gate = intl_gate_at_unmute(persona, intl_call, tokio::time::Instant::now());
     if intl_gate != IntlGate::Open {
         if opening_mark.is_none() {
             opening_mark = transcript_out
@@ -3727,6 +3804,18 @@ pub async fn run_session(
     let mut chunks_at_turn_start: u64 = 0;
     let mut repeat_guard = RepeatGuard::default();
     let mut repeat_drops: u32 = 0;
+    // Sales / scam: the second look at a call the keywords flagged (stall_review)
+    // runs on its own task and answers here; its "scam" verdict starts the
+    // stalling at the top of the loop. The session is not told the caller's
+    // number, only whether it is from abroad.
+    let mut stall_review = StallReview::default();
+    let (review_tx, mut review_rx) = mpsc::unbounded_channel::<(u32, crate::stall_review::Verdict)>();
+    let review_key = key.to_string();
+    let review_number: &'static str = if intl_call { "unknown (from abroad)" } else { "unknown" };
+    let mut stall_engage_now = false;
+    // The caller is a recording or voice menu: why (to be acted on), and since when.
+    let mut ivr_enter: Option<&'static str> = None;
+    let mut ivr_since: Option<tokio::time::Instant> = None;
 
     let signal_force_hangup = |hangup_signaled: &mut bool| {
         if *hangup_signaled {
@@ -3762,6 +3851,97 @@ pub async fn run_session(
                 );
             }
             break;
+        }
+
+        // The second look says sales / scam: the AI starts stalling.
+        if std::mem::take(&mut stall_engage_now) && !stall_on && !own_matter && ivr_since.is_none() {
+            if let Some(c) = stall.as_ref() {
+                stall_on = true;
+                c.engaged.store(true, Ordering::Relaxed);
+                repeat_guard.clear();
+                // No appointments with a sales / scam caller.
+                if let Some(a) = &appt {
+                    a.book.discard();
+                }
+                // The normal call's wrap-up may have gone out while the call was being
+                // looked at: stalling has its own cap, and with the flag left set its
+                // quiet-line and keep nudges never went and the call ran to the hard cut.
+                let wrap_was_sent = std::mem::take(&mut wrap_up_sent);
+                // A closing armed before the verdict no longer counts.
+                if goodbye_pending {
+                    goodbye_pending = false;
+                    bye_from_caller = false;
+                    output_goodbye_at = None;
+                    end_reason = SessionEndReason::WsClosed;
+                }
+                // Stall session: its prompt, and its own model (setting
+                // `gemini_stall_model`) — same voice, so the caller hears no change.
+                let next = stall_session_setup(&setup, &c.system_prompt, &c.model, thinking_level);
+                if next != setup {
+                    rotate_setup = Some(next);
+                    rotate_due = Some(
+                        tokio::time::Instant::now() + Duration::from_secs(STALL_PROMPT_SWITCH_FORCE_SECS),
+                    );
+                }
+                // Stalling may run longer than a normal call.
+                (wrap_secs, wrap_force_secs, max_secs) = talk_limits(persona, c.max_secs);
+                info!(
+                    "Persona stall engaged serial={serial} score={stall_score} hits={stall_hits:?} talk_s={} cap_s={max_secs} wrap_up_was_sent={wrap_was_sent} switch={} model={}",
+                    session_start.elapsed().as_secs(),
+                    rotate_setup.is_some(),
+                    rotate_setup
+                        .as_ref()
+                        .and_then(|s| s.pointer("/setup/model"))
+                        .and_then(|m| m.as_str())
+                        .unwrap_or(model_path.as_str())
+                );
+            }
+        }
+        // A recording or voice menu: the AI says nothing to it (its audio is dropped
+        // too), no stalling, no nudges; we hang up below.
+        if let Some(why) = ivr_enter.take() {
+            if ivr_since.is_none() {
+                let now = tokio::time::Instant::now();
+                ivr_since = Some(now);
+                stall_keep_due = None;
+                stall_keep_after_turn = false;
+                repeat_guard.clear();
+                if play_head.ai_audible(Duration::ZERO) {
+                    play_head.request_flush();
+                }
+                play_head.set_generating(false);
+                match send_text_before_deadline(
+                    &mut sink,
+                    persona_ivr_client_content(),
+                    now + KICK_SEND_TIMEOUT,
+                    "gemini persona ivr send",
+                )
+                .await
+                {
+                    Ok(()) => info!(
+                        "Persona caller is a recording / voice menu ({why}) serial={serial} talk_s={} stall={stall_on} — AI quiet, hang up after {}s of quiet line or {}s",
+                        session_start.elapsed().as_secs(),
+                        IVR_QUIET_END.as_secs(),
+                        IVR_MAX.as_secs()
+                    ),
+                    Err(e) => warn!("Persona ivr instruction send failed serial={serial}: {e:#}"),
+                }
+            }
+        }
+        if let Some(t0) = ivr_since {
+            let now = tokio::time::Instant::now();
+            let quiet = (!activity_open)
+                .then(|| last_caller_voice_at.map_or(Duration::MAX, |t| now.saturating_duration_since(t)));
+            if ivr_hangs_up(now.saturating_duration_since(t0), quiet) {
+                end_reason = SessionEndReason::IvrHangup;
+                signal_force_hangup(&mut hangup_signaled);
+                info!(
+                    "Persona recording / voice menu serial={serial} event=ivr_hangup after_ms={} quiet_ms={} — hang up",
+                    now.saturating_duration_since(t0).as_millis(),
+                    quiet.map_or(0, |q| q.min(IVR_MAX).as_millis())
+                );
+                break;
+            }
         }
 
         // Persona calls may outlive a Live WebSocket (~10 min): switch to a fresh
@@ -4207,7 +4387,7 @@ pub async fn run_session(
         // Stalling: the caller said bye. If the model answered by itself its turn is
         // checked at turnComplete; if it stays quiet it is told to hold them.
         if let Some(due) = stall_keep_due {
-            if wrap_up_sent || audio_chunks_out > stall_keep_chunks {
+            if wrap_up_sent || ivr_since.is_some() || audio_chunks_out > stall_keep_chunks {
                 stall_keep_due = None;
             } else if tokio::time::Instant::now() >= due
                 && !activity_open
@@ -4295,11 +4475,12 @@ pub async fn run_session(
             && !model_generating
             && !ai_playing
             && play_head.drained_for(Duration::from_millis(300), PLAYER_DRAIN_SLACK_BYTES);
-        // A function call open (appointments) is not a quiet line.
+        // A function call open (appointments) is not a quiet line; a recording gets no nudge.
         if persona
             && first_downlink_at.is_some()
             && !goodbye_pending
             && tool_open.is_empty()
+            && ivr_since.is_none()
             && (stall_quiet || plain_quiet)
         {
             idle_nudges += 1;
@@ -4584,8 +4765,9 @@ pub async fn run_session(
                                     );
                                 }
                                 // International call: the model's words during the carrier's
-                                // prompt are not played, so not written down either.
-                                let intl_drop = matches!(intl_gate, IntlGate::Prompt { .. });
+                                // prompt are not played, so not written down either; nor
+                                // anything it says to a recording / voice menu.
+                                let intl_drop = matches!(intl_gate, IntlGate::Prompt { .. }) || ivr_since.is_some();
                                 // …and what it says before (held, maybe played later) is.
                                 let intl_hold = matches!(intl_gate, IntlGate::Waiting { .. });
                                 let v_clean;
@@ -4743,53 +4925,39 @@ pub async fn run_session(
                                             "Persona caller follows up on the owner's own matter — no 陪聊 this call serial={serial} stall={stall_on} text={s}"
                                         );
                                     }
-                                    if let Some(c) =
-                                        stall.as_ref().filter(|_| !stall_on && !own_matter)
+                                    // A recorded voice menu ("查帳單請按1，轉接專人請按9"): nobody to
+                                    // stall; the AI goes quiet and we hang up.
+                                    if persona
+                                        && stall.is_some()
+                                        && ivr_since.is_none()
+                                        && ivr_enter.is_none()
+                                        && crate::stall_review::ivr_cue(&in_tx_window)
                                     {
+                                        ivr_enter = Some("menu words");
+                                    }
+                                    // Sales / scam keywords: once they cross the line the call gets
+                                    // a second look (stall_review) while the AI talks on; its verdict
+                                    // decides whether the AI starts stalling.
+                                    if stall.is_some() && !stall_on && !own_matter && ivr_since.is_none() {
                                         stall_score += stall_score_add(&in_tx_window, &mut stall_hits);
-                                        if stall_engages(stall_score, &stall_hits) {
-                                            stall_on = true;
-                                            c.engaged.store(true, Ordering::Relaxed);
-                                            repeat_guard.clear();
-                                            // No appointments with a sales / scam caller.
-                                            if let Some(a) = &appt {
-                                                a.book.discard();
-                                            }
-                                            // A closing armed before the verdict no longer counts.
-                                            if goodbye_pending && !wrap_up_sent {
-                                                goodbye_pending = false;
-                                                bye_from_caller = false;
-                                                output_goodbye_at = None;
-                                                end_reason = SessionEndReason::WsClosed;
-                                            }
-                                            // Stall session: its prompt, and its own model (setting
-                                            // `gemini_stall_model`) — same voice, so the caller
-                                            // hears no change.
-                                            let next = stall_session_setup(
-                                                &setup,
-                                                &c.system_prompt,
-                                                &c.model,
-                                                thinking_level,
-                                            );
-                                            if next != setup {
-                                                rotate_setup = Some(next);
-                                                rotate_due = Some(
-                                                    tokio::time::Instant::now()
-                                                        + Duration::from_secs(STALL_PROMPT_SWITCH_FORCE_SECS),
-                                                );
-                                            }
-                                            // Stalling may run longer than a normal call.
-                                            (wrap_secs, wrap_force_secs, max_secs) =
-                                                talk_limits(persona, c.max_secs);
+                                        if stall_review.should_ask(stall_engages(stall_score, &stall_hits), stall_score) {
+                                            let dialogue = transcript_out
+                                                .as_ref()
+                                                .and_then(|b| b.lock().ok().map(|g| merge_dialogue_fragments(&g)))
+                                                .unwrap_or_default();
+                                            let hits: Vec<String> = stall_hits.iter().map(|h| h.to_string()).collect();
+                                            let key = review_key.clone();
+                                            let tx = review_tx.clone();
+                                            let score = stall_score;
+                                            tokio::spawn(async move {
+                                                let verdict =
+                                                    crate::stall_review::review(&key, &dialogue, &hits, review_number).await;
+                                                let _ = tx.send((score, verdict));
+                                            });
                                             info!(
-                                                "Persona stall engaged serial={serial} score={stall_score} hits={stall_hits:?} talk_s={} cap_s={max_secs} wrap_up_sent={wrap_up_sent} switch={} model={}",
+                                                "Persona stall flagged serial={serial} score={stall_score} hits={stall_hits:?} talk_s={} — second look n={} (the AI talks on meanwhile)",
                                                 session_start.elapsed().as_secs(),
-                                                rotate_setup.is_some(),
-                                                rotate_setup
-                                                    .as_ref()
-                                                    .and_then(|s| s.pointer("/setup/model"))
-                                                    .and_then(|m| m.as_str())
-                                                    .unwrap_or(model_path.as_str())
+                                                stall_review.asked
                                             );
                                         }
                                     }
@@ -5347,6 +5515,21 @@ pub async fn run_session(
                     model_turn_pending = true;
                     tool_answer_at = Some(now);
                     tool_answer_chunks = audio_chunks_out;
+                }
+            }
+            verdict = review_rx.recv() => {
+                let Some((score, verdict)) = verdict else { continue };
+                let step = stall_review.verdict(verdict, score);
+                info!(
+                    "Persona stall review serial={serial} verdict={verdict:?} score_asked={score} score_now={stall_score} reviews={} → {step:?}",
+                    stall_review.asked
+                );
+                match step {
+                    StallVerdictStep::Engage => stall_engage_now = true,
+                    StallVerdictStep::Ivr => {
+                        ivr_enter.get_or_insert("review");
+                    }
+                    StallVerdictStep::Carry => {}
                 }
             }
             up = uplink_rx.recv() => {
@@ -6034,6 +6217,53 @@ mod tests {
         let secs: Vec<u64> = (1..=6).map(|n| rotate_retry_after(n).as_secs()).collect();
         assert_eq!(secs, [5, 10, 20, 40, 40, 40]);
         assert_eq!(LIVE_ROTATE_MAX, 6);
+    }
+
+    #[test]
+    fn a_flagged_call_gets_a_second_look_before_the_ai_stalls() {
+        use crate::stall_review::Verdict::*;
+        let mut r = StallReview::default();
+        // Not flagged: nothing to look at.
+        assert!(!r.should_ask(false, 2));
+        // Flagged: one review at a time, the AI talking on meanwhile.
+        assert!(r.should_ask(true, 3));
+        assert!(!r.should_ask(true, 4));
+        // "Normal": no stalling, and another look only 2 points later.
+        assert_eq!(r.verdict(Normal, 3), StallVerdictStep::Carry);
+        assert!(!r.should_ask(true, 4));
+        assert!(r.should_ask(true, 5));
+        assert_eq!(r.verdict(ScamOrSales, 5), StallVerdictStep::Engage);
+        // At most three looks a call.
+        let mut r = StallReview::default();
+        for s in [3, 5, 7] {
+            assert!(r.should_ask(true, s));
+            assert_eq!(r.verdict(Normal, s), StallVerdictStep::Carry);
+        }
+        assert!(!r.should_ask(true, 30));
+        // A recording / voice menu.
+        let mut r = StallReview::default();
+        assert!(r.should_ask(true, 3));
+        assert_eq!(r.verdict(IvrRecording, 3), StallVerdictStep::Ivr);
+        // The stalling starts at most this late (no answer in time = scam / sales).
+        assert_eq!(crate::stall_review::REVIEW_TIMEOUT, Duration::from_millis(1_500));
+    }
+
+    #[test]
+    fn a_voice_menu_is_hung_up_on() {
+        // The menu goes on: at the latest 20 s after it was recognised.
+        assert!(!ivr_hangs_up(Duration::from_secs(5), None));
+        assert!(ivr_hangs_up(IVR_MAX, None));
+        // The menu stopped: 4 s of quiet line.
+        assert!(!ivr_hangs_up(Duration::from_secs(5), Some(Duration::from_secs(3))));
+        assert!(ivr_hangs_up(Duration::from_secs(5), Some(IVR_QUIET_END)));
+        assert_eq!((IVR_QUIET_END, IVR_MAX), (Duration::from_secs(4), Duration::from_secs(20)));
+        assert_eq!(SessionEndReason::IvrHangup.as_str(), "ivr_hangup");
+        assert!(SessionEndReason::IvrHangup.should_play_goodbye());
+        // What makes the call a menu, and the AI told to keep quiet to it.
+        assert!(crate::stall_review::ivr_cue("查帳單請按1，轉接專人請按9"));
+        let k: Value = serde_json::from_str(&persona_ivr_client_content()).unwrap();
+        let t = k.pointer("/clientContent/turns/0/parts/0/text").unwrap().as_str().unwrap();
+        assert!(t.contains("不要對它講話") && t.contains("不是對方說的話"), "{t}");
     }
 
     #[test]

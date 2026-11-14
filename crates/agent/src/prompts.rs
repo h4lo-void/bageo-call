@@ -62,6 +62,8 @@ pub struct Pack {
     pub kick_repeat: String,
     pub kick_stall_idle: String,
     pub kick_idle: String,
+    /// The caller is a recording or a voice menu: say nothing to it.
+    pub kick_ivr: String,
     /// Leads the call's transcript in a fresh (rotated) Live session; the second
     /// one once the call is judged sales / scam.
     pub history_note: String,
@@ -101,6 +103,7 @@ const ZH_KICK_REPEAT: &str = "【系統指令·不是對方說的話】連線剛
 const ZH_KICK_STALL_IDLE: &str = "【系統指令·不是對方說的話】對方安靜了幾秒。不要乾等，主動接話，怎麼接隨你：\
 問他還在不在、碎念一下剛剛那件事、或丟一個新問題讓他講，一兩句，不要說掰掰。";
 const ZH_KICK_IDLE: &str = "【系統指令·不是對方說的話】對方安靜好一陣子了。像真人一樣只用一句很短的話問他還在不在（自己換說法；對方講中文就像「喂？還在嗎？」），講完就停，不要說掰掰。";
+const ZH_KICK_IVR: &str = "【系統指令·不是對方說的話】對方是預錄的語音或語音選單（一直自己講、叫你按鍵），不是真人。不要對它講話、不要回應它，保持安靜。";
 /// A rotated session read the Chinese note as a cue to go back to Chinese with a
 /// caller who had been speaking English: the note names the caller's language.
 const ZH_HISTORY_NOTE: &str = "【系統：這通電話已經講了一段時間，連線剛剛切換，下面是到目前為止的對話文字。\
@@ -213,6 +216,7 @@ fn zh_tw_pack() -> Pack {
         kick_repeat: ZH_KICK_REPEAT.to_string(),
         kick_stall_idle: in_caller_language(ZH_KICK_STALL_IDLE),
         kick_idle: in_caller_language(ZH_KICK_IDLE),
+        kick_ivr: ZH_KICK_IVR.to_string(),
         history_note: format!("{ZH_HISTORY_NOTE}】"),
         history_note_stall: format!("{ZH_HISTORY_NOTE}{ZH_HISTORY_NOTE_STALL}】"),
         read_line: ZH_READ_LINE.to_string(),
@@ -258,6 +262,7 @@ fn zh_cn_pack() -> Pack {
         kick_repeat: to_cn(&p.kick_repeat),
         kick_stall_idle: to_cn(&p.kick_stall_idle),
         kick_idle: to_cn(&p.kick_idle),
+        kick_ivr: to_cn(&p.kick_ivr),
         history_note: to_cn(&p.history_note),
         history_note_stall: to_cn(&p.history_note_stall),
         read_line: to_cn(&p.read_line),
@@ -382,6 +387,7 @@ const EN_KICK_RESUME: &str = "The connection switched over for a moment. Carry o
 const EN_KICK_REPEAT: &str = "The connection just switched and your last line made no sound; the caller did not hear it. Say that line again naturally (same meaning is enough), then stop.";
 const EN_KICK_STALL_IDLE: &str = "The caller has been quiet for a few seconds. Do not just wait; speak up, any way you like: ask whether they are still there, mutter about what was just said, or bring a new question for them to talk about. One or two sentences, no goodbye.";
 const EN_KICK_IDLE: &str = "The caller has been quiet for a good while. Like a real person, ask in one very short line whether they are still there (your own wording), then stop. Do not say goodbye.";
+const EN_KICK_IVR: &str = "The caller is a recorded message or an automatic voice menu (it talks on by itself and tells you to press keys), not a person. Do not talk to it and do not answer it; stay silent.";
 const EN_HISTORY_NOTE: &str = "[System note — not something the caller said] This call has been going on for a while and the connection just switched over; below is the conversation so far. Carry on exactly as before, in the language the caller is speaking now (even if that is not {language}); do not greet them again and do not say hello.";
 const EN_HISTORY_NOTE_STALL: &str = " This call has been judged a sales or scam call: from your next line on, follow [Keep them talking] from your instructions, in your own way, and drop the earlier kind of replies (\"I'll think about it\", \"I'll check later\", \"call me later\").";
 const EN_READ_LINE: &str = "Say exactly this line: \"{line}\"";
@@ -447,6 +453,7 @@ fn generic_pack(lang: Lang) -> Pack {
         kick_repeat: sys(EN_KICK_REPEAT),
         kick_stall_idle: in_caller_language(EN_KICK_STALL_IDLE),
         kick_idle: in_caller_language(EN_KICK_IDLE),
+        kick_ivr: sys(EN_KICK_IVR),
         history_note: fill(EN_HISTORY_NOTE),
         history_note_stall: fill(&format!("{EN_HISTORY_NOTE}{EN_HISTORY_NOTE_STALL}")),
         read_line: fill(EN_READ_LINE),
@@ -804,6 +811,7 @@ mod tests {
                 &p.kick_repeat,
                 &p.kick_stall_idle,
                 &p.kick_idle,
+                &p.kick_ivr,
                 &p.history_note,
                 &p.history_note_stall,
                 &p.preview_system,

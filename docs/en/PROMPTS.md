@@ -190,6 +190,14 @@ instructions are added at the end and take priority.
 A caller following up on something *you* raised (a complaint, a claim) is never
 treated as a sales call, whatever words they use.
 
+With it on, a call whose words look like a pitch gets a quick second look
+before the AI starts: a small model reads the call so far (at most 1.5 s; the
+AI talks on meanwhile). Family talking about money, a courier collecting cash
+on delivery or your card company checking a purchase you made are left alone,
+and looked at again only if more such words come (three times a call at
+most). A recorded voice menu ("press 1 for…") gets no answer: the AI stays
+quiet and the agent hangs up after 4 s of quiet line, or 20 s.
+
 ## What you cannot change
 
 The agent appends these to every prompt, built-in or your own:
