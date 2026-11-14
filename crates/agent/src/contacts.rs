@@ -3173,6 +3173,7 @@ mod tests {
             lang: Lang::ZhTw,
             assistant: false,
             owner: "林先生",
+            aliases: &[],
             custom: "",
             status: "",
             stall: crate::gemini_live::StallPrompt::Off,

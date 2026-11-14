@@ -15,6 +15,7 @@
 | 通知語言 | 給你看的文字用的語言：通知、通話摘要（通話紀錄裡也是）、預約確認卡片和決定結果、簡訊轉發的訊息。預設「跟 AI 講話的語言相同」。來電者該聽的語言跟你看的不一樣時再設，例如人在國外，讓 AI 用英文接電話，通知和摘要還是繁體中文。不管通話是什麼語言，摘要都用這個語言寫。在網頁右上角切換顯示語言時，這裡也會跟著改成同一種語言。 |
 | 各 SIM 卡的主要語言 | 手機裡有不同國家的 SIM 卡時用。選 SIM 卡的國家，和打進那張卡的電話要用的開場語言，例如「美國 (US)」→ English，「語言」還是繁體中文。來電號碼是 SIM 卡以外的國家、AI 又會講那國的語言時，還是用那國的語言（日本號碼打進美國卡，用日文）。主程式啟動後手機回報過的 SIM 卡已經列出來了；留在「跟 AI 講話的語言相同」就什麼都不變。需要手機 App 0.2.5 以上，它會回報每通電話是哪張卡接的。存成 `sim_languages`，例如 `{"us": "en"}`。 |
 | 你的名字 | 來電的人怎麼稱呼你。提示詞裡寫 `{owner}` 的地方都會用到。 |
+| 其他人怎麼叫你 | 一行一個，最多 10 個：來電的人可能用的其他稱呼，例如英文名字、綽號。AI 聽到這些名字會知道是在找你；兩種接聽身分都一樣，自己改過提示詞也一樣。通話摘要還是寫「你的名字」。存成 `owner_aliases`。 |
 | 接聽身分 | **AI 助理**——會說自己是替你接電話的 AI，幫忙記下留言。**本人**——以你的身分接聽。 |
 | 由 AI 接聽來電 | 總開關。關：來電會被接起來並立刻掛斷，什麼都不說。（如果想讓某支手機正常響、自己接，請把它切成[一般手機](PHONE.md#一般手機模式)。） |
 | Gemini API 金鑰 | 你從 Google AI Studio 取得的金鑰。只存在你的電腦上。 |
@@ -140,7 +141,7 @@ DEVICE_TOKEN=another-long-random-string
 
 ### 第一次啟動的預設值
 
-這些只決定初始值；網頁控制台的設定會蓋過它們：`GEMINI_API_KEY`、`APP_LANGUAGE`（`en`、`zh-TW`…）、`NOTIFY_LANGUAGE`（空白 = 跟 `APP_LANGUAGE` 相同）、`OWNER_NAME`、`ANSWER_STYLE`（`assistant` / `persona`）、`GEMINI_LIVE_MODEL`、`GEMINI_VOICE_NAME`、`COUNTRY_CODE`、`SUMMARY_PROVIDER`（`auto` / `gemini` / `deepseek`）、`SUMMARY_API_BASE`、`SUMMARY_MODEL`、`DEEPSEEK_API_KEY`（摘要用的 API 金鑰）、`TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`、`NOTIFY_WEBHOOK_URL`、`APPOINTMENT_MODE`（`off` / `confirm`）、`APPOINTMENT_SMS`（`true` / `false`）、`APPOINTMENT_REPLY`（`auto` / `sms` / `call`）。
+這些只決定初始值；網頁控制台的設定會蓋過它們：`GEMINI_API_KEY`、`APP_LANGUAGE`（`en`、`zh-TW`…）、`NOTIFY_LANGUAGE`（空白 = 跟 `APP_LANGUAGE` 相同）、`OWNER_NAME`、`OWNER_ALIASES`（用逗號分隔）、`ANSWER_STYLE`（`assistant` / `persona`）、`GEMINI_LIVE_MODEL`、`GEMINI_VOICE_NAME`、`COUNTRY_CODE`、`SUMMARY_PROVIDER`（`auto` / `gemini` / `deepseek`）、`SUMMARY_API_BASE`、`SUMMARY_MODEL`、`DEEPSEEK_API_KEY`（摘要用的 API 金鑰）、`TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`、`NOTIFY_WEBHOOK_URL`、`APPOINTMENT_MODE`（`off` / `confirm`）、`APPOINTMENT_SMS`（`true` / `false`）、`APPOINTMENT_REPLY`（`auto` / `sms` / `call`）。
 
 ### 日誌與開發
 

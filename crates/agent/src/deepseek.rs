@@ -59,6 +59,11 @@ AI 回覆：AI 怎麼回的，一句（例如「說放管理室就好」「說�
 - 不確定的事不要編，寫「聽不清楚」。\n\
 - 不要重複號碼、時間、手機型號，這些訊息外面已經有了。";
 
+/// Added to the summary instructions when the owner has other names
+/// (setting `owner_aliases`, `{aliases}`).
+const TG_SUMMARY_ALIASES_RULE: &str = "\n- 來電的人或 AI 可能用{aliases}稱呼{owner}：那都是{owner}本人，不是另一個人；摘要裡一律寫「{owner}」。";
+const SUMMARY_ALIASES_RULE_EN: &str = "\n- The caller or the AI may call {owner} {aliases}: that is {owner}, not someone else; always write {owner} in the note.";
+
 /// The same job for every language without its own prompt: English
 /// instructions, the four labels in the language the owner reads.
 const SUMMARY_SYSTEM_PROMPT_EN: &str = "\
@@ -88,20 +93,25 @@ Rules:\n\
 - Do not repeat the number, the time or the phone model; the message already shows them.";
 
 /// The summary model's instructions in the language the owner reads.
-pub fn summary_system_prompt(lang: Lang, owner: &str) -> String {
+pub fn summary_system_prompt(lang: Lang, owner: &str, aliases: &[String]) -> String {
+    let names = crate::prompts::alias_list(lang, owner, aliases);
     let owner = crate::prompts::owner_label(lang, owner);
-    match lang {
-        Lang::ZhTw => TG_SUMMARY_SYSTEM_PROMPT.replace("{owner}", &owner),
+    let rule = |r: &str| if names.is_empty() { String::new() } else { r.to_string() };
+    let prompt = match lang {
+        Lang::ZhTw => format!("{TG_SUMMARY_SYSTEM_PROMPT}{}", rule(TG_SUMMARY_ALIASES_RULE)).replace("{owner}", &owner),
         Lang::ZhCn => zhconv::zhconv(
-            &TG_SUMMARY_SYSTEM_PROMPT
-                .replace("一律繁體中文、台灣用語", "一律簡體中文")
-                .replace("{owner}", &owner),
+            &format!(
+                "{}{}",
+                TG_SUMMARY_SYSTEM_PROMPT.replace("一律繁體中文、台灣用語", "一律簡體中文"),
+                rule(TG_SUMMARY_ALIASES_RULE)
+            )
+            .replace("{owner}", &owner),
             zhconv::Variant::ZhCN,
         ),
         other => {
             let p = locale::phrases(other);
             let (sales, scam) = sales_labels(other);
-            SUMMARY_SYSTEM_PROMPT_EN
+            format!("{SUMMARY_SYSTEM_PROMPT_EN}{}", rule(SUMMARY_ALIASES_RULE_EN))
                 .replace("{owner}", &owner)
                 .replace("{language}", p.name_en)
                 .replace("{s_caller}", p.s_caller)
@@ -112,7 +122,9 @@ pub fn summary_system_prompt(lang: Lang, owner: &str) -> String {
                 .replace("{s_todo}", p.s_todo)
                 .replace("{s_ai_failed}", p.s_ai_failed)
         }
-    }
+    };
+    // The names go in last: the Simplified conversion leaves them as written.
+    prompt.replace("{aliases}", &names)
 }
 
 /// Where the summary request goes.
@@ -360,7 +372,7 @@ pub async fn summarize(http: &Client, settings: &Settings, caller_id: &str, tran
     let Some(endpoint) = summary_endpoint(settings) else {
         return fallback_summary_in(lang, caller, &trimmed);
     };
-    let system = summary_system_prompt(lang, &active.owner);
+    let system = summary_system_prompt(lang, &active.owner, &active.owner_aliases);
     // A busy service (503 on every model) gets one more round a few seconds later.
     for round in 0..2 {
         if round > 0 {
@@ -696,7 +708,8 @@ pub async fn summarize_for_telegram_with_llm_config(
             info!("deepseek tg summary retry caller={caller}");
         }
         for model in &models {
-            let system = summary_system_prompt(lang, &locale::active().owner);
+            let active = locale::active();
+            let system = summary_system_prompt(lang, &active.owner, &active.owner_aliases);
             match chat_completions_model(http, api_key, model, &system, &user, 320).await {
                 Ok(text) if !text.trim().is_empty() => {
                     let text = polish_summary(lang, &text, &trimmed);
@@ -1500,9 +1513,9 @@ mod tests {
     #[test]
     fn summary_is_written_for_the_owner_whatever_the_call_language() {
         // The prompt asks for the owner's language even when the call was in another.
-        assert!(summary_system_prompt(Lang::ZhTw, "").contains("通話是別的語言也一樣"));
-        assert!(summary_system_prompt(Lang::ZhCn, "").contains("通话是别的语言也一样"));
-        assert!(summary_system_prompt(Lang::Ja, "").contains("Write in Japanese, whatever language the call was in"));
+        assert!(summary_system_prompt(Lang::ZhTw, "", &[]).contains("通話是別的語言也一樣"));
+        assert!(summary_system_prompt(Lang::ZhCn, "", &[]).contains("通话是别的语言也一样"));
+        assert!(summary_system_prompt(Lang::Ja, "", &[]).contains("Write in Japanese, whatever language the call was in"));
         // The input's sections follow the summary's language, not the call's.
         let dialogue = "接聽：Hello?\n對方：Hi, it's the dentist. Your appointment is tomorrow at 3.";
         let zh = build_summary_input_in(Lang::ZhTw, "", 30_000, "", dialogue, "", "");
@@ -1520,15 +1533,31 @@ mod tests {
 
     #[test]
     fn summary_prompt_follows_the_language_and_owner() {
-        let tw = summary_system_prompt(Lang::ZhTw, "王小明");
+        let tw = summary_system_prompt(Lang::ZhTw, "王小明", &[]);
         assert!(tw.contains("你是王小明的電話秘書") && !tw.contains("{owner}"));
-        let cn = summary_system_prompt(Lang::ZhCn, "王小明");
+        let cn = summary_system_prompt(Lang::ZhCn, "王小明", &[]);
         assert!(cn.contains("一律简体中文") && cn.contains("电话秘书") && !cn.contains("繁體"));
-        let es = summary_system_prompt(Lang::Es, "Ana");
+        let es = summary_system_prompt(Lang::Es, "Ana", &[]);
         assert!(es.contains("Write in Spanish") && es.contains("Asunto:") && es.contains("Pendiente:"));
         assert!(!es.contains('{'), "{es}");
-        let en = summary_system_prompt(Lang::En, "");
+        let en = summary_system_prompt(Lang::En, "", &[]);
         assert!(en.contains("for the owner.") && en.contains("To do:"));
+    }
+
+    #[test]
+    fn summary_prompt_names_the_owners_other_names() {
+        let names = ["小明".to_string(), "Ming".to_string(), "王小明".to_string()];
+        let tw = summary_system_prompt(Lang::ZhTw, "王小明", &names);
+        assert!(tw.ends_with("\n- 來電的人或 AI 可能用「小明」、「Ming」稱呼王小明：那都是王小明本人，不是另一個人；摘要裡一律寫「王小明」。"), "{tw}");
+        let cn = summary_system_prompt(Lang::ZhCn, "王小明", &names);
+        assert!(cn.contains("可能用“小明”、“Ming”称呼王小明") && cn.contains("不是另一个人"), "{cn}");
+        let es = summary_system_prompt(Lang::Es, "Alex", &["Lex".to_string()]);
+        assert!(es.ends_with("may call Alex \"Lex\": that is Alex, not someone else; always write Alex in the note."), "{es}");
+        // No other names (or only the owner's own): the instructions as they were.
+        for l in locale::ALL {
+            assert_eq!(summary_system_prompt(l, "Alex", &["ALEX".to_string()]), summary_system_prompt(l, "Alex", &[]));
+            assert!(!summary_system_prompt(l, "Alex", &[]).contains("{aliases}"));
+        }
     }
 
     #[test]
@@ -1702,11 +1731,11 @@ mod tests {
     #[test]
     fn speaking_another_language_is_not_called_a_scam() {
         for lang in [Lang::ZhTw, Lang::ZhCn] {
-            let p = summary_system_prompt(lang, "");
+            let p = summary_system_prompt(lang, "", &[]);
             assert!(!p.contains("講外語或聽不懂的內容，就當") && !p.contains("讲外语或听不懂的内容，就当"), "{p}");
             assert!(p.contains("對方講外語本身不算") || p.contains("对方讲外语本身不算"), "{p}");
         }
-        assert!(summary_system_prompt(Lang::En, "").contains("speaking another language is not a sales or scam call"));
+        assert!(summary_system_prompt(Lang::En, "", &[]).contains("speaking another language is not a sales or scam call"));
     }
 
     /// A card desk checking a purchase (2026-11-14: summed up as 「疑似詐騙」,
@@ -1716,7 +1745,7 @@ mod tests {
     #[test]
     fn a_card_check_summary_tells_the_owner_to_check_it() {
         for l in locale::ALL {
-            let p = summary_system_prompt(l, "Alex");
+            let p = summary_system_prompt(l, "Alex", &[]);
             let marks: &[&str] = match l {
                 Lang::ZhTw => &[
                     "確認某一筆刷卡或交易是不是Alex本人",
@@ -1808,7 +1837,7 @@ mod tests {
         // Every language's prompt names its two marks.
         for l in locale::ALL {
             let (sales, scam) = sales_labels(l);
-            let p = summary_system_prompt(l, "Alex");
+            let p = summary_system_prompt(l, "Alex", &[]);
             assert!(l.is_zh() || (p.contains(sales) && p.contains(scam) && !p.contains("{s_sales}")), "{l:?}");
         }
     }

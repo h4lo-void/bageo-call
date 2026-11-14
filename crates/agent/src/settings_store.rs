@@ -213,6 +213,10 @@ pub struct RuntimeSettings {
     /// The owner's name as callers say it (`{owner}` in prompts).
     #[serde(default)]
     pub owner_name: String,
+    /// Other names callers use for the owner (an English name, a nickname): the
+    /// AI knows they mean the owner. Stored by [`clean_owner_aliases`].
+    #[serde(default)]
+    pub owner_aliases: Vec<String>,
     /// `assistant` = the AI says it is the owner's AI assistant and takes a
     /// message; `persona` = it answers as the owner (and still admits to being
     /// an AI when sincerely asked).
@@ -551,6 +555,7 @@ impl RuntimeSettings {
             notify_language: sanitize_notify_language(&env_or("NOTIFY_LANGUAGE", "")),
             sim_languages: std::collections::BTreeMap::new(),
             owner_name: env_or("OWNER_NAME", ""),
+            owner_aliases: clean_owner_aliases(&split_list(&env_or("OWNER_ALIASES", "")), &env_or("OWNER_NAME", "")),
             answer_style: sanitize_answer_style(&env_or("ANSWER_STYLE", "assistant")),
             knowledge_notes: env_or("KNOWLEDGE_NOTES", ""),
             reply_in_caller_language: env_bool("REPLY_IN_CALLER_LANGUAGE", false),
@@ -635,6 +640,7 @@ impl RuntimeSettings {
             notify_lang: self.notify_lang(),
             assistant: self.is_assistant_style(),
             owner: self.owner_name.trim().to_string(),
+            owner_aliases: self.owner_aliases.clone(),
             country_code: self.effective_country_code(),
             name_fixes: crate::locale::parse_name_fixes(&self.name_corrections),
         }
@@ -645,6 +651,7 @@ impl RuntimeSettings {
             lang: self.lang(),
             assistant: self.is_assistant_style(),
             owner: &self.owner_name,
+            aliases: &self.owner_aliases,
             custom: &self.gemini_persona_prompt,
             status: if self.owner_status_enabled { &self.owner_status_text } else { "" },
             stall,
@@ -763,6 +770,7 @@ impl RuntimeSettings {
             notify_language,
             sim_languages,
             owner_name,
+            owner_aliases,
             answer_style,
             knowledge_notes,
             country_code,
@@ -844,6 +852,7 @@ impl RuntimeSettings {
         self.appointment_mode = sanitize_appointment_mode(&self.appointment_mode);
         self.calendar_app = crate::calendar::sanitize_app(&self.calendar_app);
         self.appointment_reply = crate::appointments::sanitize_reply_setting(&self.appointment_reply);
+        self.owner_aliases = clean_owner_aliases(&self.owner_aliases, &self.owner_name);
     }
 
     /// Overlay runtime-editable values onto the env base so existing call
@@ -1147,6 +1156,8 @@ struct Overrides {
     sim_languages: Option<std::collections::BTreeMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     owner_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_aliases: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     answer_style: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1633,6 +1644,10 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     if let Some(v) = ov.owner_name.take() {
         ov.owner_name = Some(v.chars().filter(|c| !c.is_control()).take(40).collect());
     }
+    p_list(patch, "owner_aliases", &mut ov.owner_aliases);
+    if let Some(v) = ov.owner_aliases.take() {
+        ov.owner_aliases = Some(clean_owner_aliases(&v, ov.owner_name.as_deref().unwrap_or("")));
+    }
     p_string(patch, "answer_style", &mut ov.answer_style);
     if let Some(v) = ov.answer_style.take() {
         ov.answer_style = Some(sanitize_answer_style(&v));
@@ -1754,6 +1769,29 @@ fn without_leading_zeros(d: &str) -> &str {
 /// Two national numbers are the same line (a leading trunk `0` or not).
 fn same_number(a: &str, b: &str) -> bool {
     a == b || without_leading_zeros(a) == without_leading_zeros(b)
+}
+
+/// `owner_aliases` as stored: each name without control characters, trimmed,
+/// at most 40 characters; blank ones, repeats and the owner's own name dropped
+/// (any case); at most [`crate::prompts::OWNER_ALIASES_MAX`].
+fn clean_owner_aliases(list: &[String], owner: &str) -> Vec<String> {
+    let mut seen = vec![owner.trim().to_lowercase()];
+    let mut out = Vec::new();
+    for a in list {
+        let a: String = a.chars().filter(|c| !c.is_control()).collect();
+        let a: String = a.trim().chars().take(40).collect();
+        let a = a.trim().to_string();
+        let key = a.to_lowercase();
+        if a.is_empty() || seen.contains(&key) {
+            continue;
+        }
+        seen.push(key);
+        out.push(a);
+        if out.len() == crate::prompts::OWNER_ALIASES_MAX {
+            break;
+        }
+    }
+    out
 }
 
 /// One blocked number: the number and why, as separate fields. Settings saved
@@ -2572,6 +2610,72 @@ mod tests {
         let saved = saved.as_object().unwrap();
         assert!(saved.keys().all(|k| !k.starts_with("appointment_test")), "{saved:?}");
         assert_eq!((saved["appointment_mode"].as_str(), saved["appointment_sms"].as_bool()), (Some("confirm"), Some(true)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn owner_aliases_default_empty_clean_and_persist() {
+        let dir = std::env::temp_dir().join(format!("bageo-call-owner-aliases-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("temp settings dir");
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        assert!(store.snapshot().owner_aliases.is_empty());
+        assert_eq!(store.masked_json()["owner_aliases"], json!([]));
+        let mut list = vec![
+            json!(" Lex "),
+            json!(""),
+            json!("   "),
+            json!("lex"),
+            json!("Al\u{7}ex"),
+            json!("ALEX"),
+            json!("x".repeat(60)),
+            json!("Le\nx"),
+        ];
+        list.extend((1..=12).map(|i| json!(format!("N{i}"))));
+        let rt = store
+            .apply_patch(&json!({
+                "gemini_persona_mode": true,
+                "language": "zh-TW",
+                "answer_style": "persona",
+                "owner_name": "Alex",
+                "owner_aliases": list
+            }))
+            .unwrap();
+        // Trimmed, control characters out, 40 characters; blanks, repeats and
+        // the owner's own name (any case) dropped; at most 10.
+        let mut want = vec!["Lex".to_string(), "x".repeat(40)];
+        want.extend((1..=8).map(|i| format!("N{i}")));
+        assert_eq!(rt.owner_aliases, want);
+        assert_eq!(rt.locale_active().owner_aliases, want);
+        // Every prompt of a call carries them: the call's, the stalling one,
+        // the assistant style's and an edited one.
+        assert!(rt.gemini_system_prompt_for_call().contains("來電的人也可能叫你「Lex」、「xxxx"));
+        assert!(rt.persona_stall_system_prompt().contains("來電的人也可能叫你「Lex」"));
+        let rt = store
+            .apply_patch(&json!({ "answer_style": "assistant", "gemini_persona_prompt": "你幫{owner}接電話。" }))
+            .unwrap();
+        let p = rt.gemini_system_prompt_for_call();
+        assert!(p.starts_with("你幫Alex接電話。") && p.contains("來電的人說要找「Lex」"), "{p}");
+        // Survives a restart; another key leaves it alone.
+        let again = SettingsStore::load(base.clone());
+        assert_eq!(again.snapshot().owner_aliases, want);
+        // An alias that becomes the owner's name drops out.
+        let rt = again.apply_patch(&json!({ "owner_name": "lex" })).unwrap();
+        assert_eq!(rt.owner_aliases, want[1..].to_vec());
+        // An empty list clears it.
+        let rt = again.apply_patch(&json!({ "owner_aliases": [] })).unwrap();
+        assert!(rt.owner_aliases.is_empty());
+        assert!(SettingsStore::load(base).snapshot().owner_aliases.is_empty());
+        // A settings file written before the key existed loads as before.
+        let old_dir = dir.join("old");
+        std::fs::create_dir_all(old_dir.join("config")).expect("old settings dir");
+        std::fs::write(old_dir.join("config").join("settings.json"), r#"{"owner_name":"Alex","language":"en"}"#)
+            .expect("old settings.json");
+        let mut old_base = Settings::from_env();
+        old_base.calls_data_dir = old_dir.to_string_lossy().to_string();
+        let old = SettingsStore::load(old_base).snapshot();
+        assert_eq!((old.owner_name.as_str(), old.owner_aliases.len()), ("Alex", 0));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

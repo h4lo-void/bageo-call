@@ -901,6 +901,7 @@ pub fn persona_system_prompt(
         lang: active.lang,
         assistant: active.assistant,
         owner: &active.owner,
+        aliases: &active.owner_aliases,
         custom,
         status: if owner_status_enabled { owner_status } else { "" },
         stall,

@@ -86,6 +86,8 @@ pub struct Active {
     /// Answer as the owner's AI assistant instead of as the owner.
     pub assistant: bool,
     pub owner: String,
+    /// Other names callers use for the owner (settings `owner_aliases`).
+    pub owner_aliases: Vec<String>,
     /// Country calling code of the phone's SIM, digits only (`886`, `1`, `81`).
     pub country_code: String,
     /// Names speech-to-text keeps getting wrong → how they should read
@@ -102,6 +104,7 @@ impl Default for Active {
             notify_lang: Lang::ZhTw,
             assistant: false,
             owner: String::new(),
+            owner_aliases: Vec::new(),
             country_code: "886".to_string(),
             name_fixes: Vec::new(),
         }
