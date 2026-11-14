@@ -818,7 +818,7 @@ pub const PERSONA_HELLO_LOOP_NOTE: &str = "\n【對方一直喂】對方一直�
 /// `{owner}` = setting `owner_name`.
 pub const PERSONA_GUARD: &str = "\n【底線（固定）】平常就以{owner}的身分自然講話。\
 但如果對方很認真地問你是不是真人、是不是機器人或 AI，不要說謊：簡單說「我這邊是{owner}設的 AI 語音幫忙接電話，本人之後都會看到」，然後照常聽對方說完。\
-銀行、電信、保險、公家機關要核對身分、說「這通電話會錄音」或問「請問是{owner}本人嗎」時，不要冒充本人說「對，我是」，改說像「我這邊先幫他接，你先說什麼事」，然後照常聽他說。\
+銀行、電信、保險、公家機關提到要核對身分、確認是不是{owner}本人、這通電話會錄音，或要{owner}的個資時：這一條優先於上面的「對，我是」和「不要說自己是幫誰接的」——不要冒充本人說「對，我是」，改說像「我這邊先幫他接，你先說什麼事」，然後照常聽他說。\
 不要替{owner}做任何承諾。";
 
 /// Sentence of the default persona prompt that sales / scam stalling replaces.
@@ -2326,26 +2326,71 @@ fn intl_gate_at_unmute(persona: bool, expects_warning: bool, now: tokio::time::I
     }
 }
 
-/// A short acknowledgement (「嗯」「好」"okay"): no new words of the caller's own.
-fn is_ack_only(text: &str) -> bool {
-    let t: String = crate::zh_tw::norm(text)
-        .to_lowercase()
-        .chars()
-        .filter(|c| c.is_alphanumeric() || *c == ' ')
-        .collect();
-    let t = t.trim();
-    t.is_empty()
-        || t.chars().all(|c| "嗯喔哦噢好對的欸啊阿呃恩唔啦呀耶".contains(c))
-        || ["ok", "okay", "mm", "mhm", "uh huh", "yeah", "yes", "right", "はい", "うん", "네", "예", "sí", "si", "oui", "ja", "sim"]
-            .contains(&t)
+/// Characters of a short reply in Chinese (「嗯嗯」「好」「對啊」「好的」).
+const ACK_CHARS: &str = "嗯喔哦噢好對对的欸啊阿呃恩唔啦呀耶囉";
+/// Short replies as words of their own ("okay", "mm", 「はい」, "vâng").
+const ACK_WORDS: &[&str] = &[
+    "ok", "okay", "mm", "mhm", "hm", "hmm", "uh", "huh", "yeah", "yes", "right", "sure", "はい", "うん", "네",
+    "예", "sí", "si", "oui", "ja", "sim", "vâng", "dạ", "ya",
+];
+
+/// What was said without the thanks and short replies at its end
+/// (「那就先這樣，好，謝謝，嗯嗯」 → 「那就先這樣」).
+fn strip_trailing_fluff(text: &str) -> &str {
+    let mut t = text;
+    loop {
+        let before = t.len();
+        t = crate::locale::strip_trailing_thanks(t).trim_end_matches(|c: char| ACK_CHARS.contains(c));
+        // The last word, when it is a short reply of its own.
+        let start = t
+            .char_indices()
+            .rev()
+            .find(|(_, c)| !(c.is_alphanumeric() || *c == '\''))
+            .map_or(0, |(i, c)| i + c.len_utf8());
+        if start < t.len() && ACK_WORDS.contains(&t[start..].to_lowercase().as_str()) {
+            t = &t[..start];
+        }
+        if t.len() == before {
+            return t;
+        }
+    }
+}
+
+/// What was said ends as a question (「那就先這樣嗎」 with or without 「？」).
+fn ends_as_question(text: &str) -> bool {
+    let t = text.trim_end();
+    if t.ends_with(['?', '？']) || t.ends_with("か。") || t.ends_with("까요") {
+        return true;
+    }
+    let core = t
+        .trim_end_matches(|c: char| !c.is_alphanumeric())
+        .trim_end_matches(|c: char| "喔哦囉啦呢耶齁欸啊".contains(c));
+    core.ends_with('嗎') || core.ends_with('吗')
+}
+
+/// The caller's words with the piece that just came at their end. The window
+/// skips a short piece it already holds (`push_tx_window`): 「嗎？」 after an
+/// earlier question never got to its end.
+fn with_latest<'a>(window: &'a str, latest: &str) -> std::borrow::Cow<'a, str> {
+    let piece = latest.trim();
+    if piece.is_empty() || window.trim_end().ends_with(piece) {
+        std::borrow::Cow::Borrowed(window)
+    } else {
+        std::borrow::Cow::Owned(format!("{window}{piece}"))
+    }
 }
 
 /// The caller said bye (or 「先這樣」) first, then more came of the same words:
-/// 「那就先這樣」+「嗎？」, "That's all" + "for today, right?". Unless it was only an
-/// "mm", the goodbye is taken back. `window`: the caller's words so far; `latest`:
-/// the piece that just came.
+/// 「那就先這樣」+「嗎？」, "That's all" + "for today, right?". A question takes the
+/// goodbye back, and so do new words of their own; thanks and short replies
+/// after it (「謝謝，嗯嗯」 in one piece) do not. `window`: the caller's words so
+/// far; `latest`: the piece that just came.
 fn caller_withdraws_bye(window: &str, latest: &str) -> bool {
-    !caller_wraps_up(window) && !is_ack_only(latest)
+    let heard = with_latest(window, latest);
+    if ends_as_question(&heard) {
+        return true;
+    }
+    !caller_wraps_up(strip_trailing_fluff(&heard)) && !strip_trailing_fluff(latest).trim().is_empty()
 }
 
 /// How long a hangup of ours waits for the phone to play what it still holds.
@@ -2841,9 +2886,17 @@ impl DownlinkPlayHead {
     }
 
     /// AI audio not yet played by the phone: still queued here plus what the
-    /// phone holds (the player sends up to ~1 s ahead).
+    /// phone holds (the player sends up to ~1 s ahead). Less than one frame
+    /// queued here counts as nothing, as for [`Self::ai_audible`]: the player
+    /// keeps such a remainder for the next reply, and counted it held every
+    /// quiet-line clock (15 s still-there, 25 s end) until the 5-minute cap.
     pub fn speech_left(&self, sample_rate: u32) -> Duration {
-        let queued = Duration::from_millis(u64::from(pcm16_ms(self.queued(), sample_rate)));
+        let queued_bytes = self.queued();
+        let queued = if queued_bytes <= PLAYER_DRAIN_SLACK_BYTES {
+            Duration::ZERO
+        } else {
+            Duration::from_millis(u64::from(pcm16_ms(queued_bytes, sample_rate)))
+        };
         let on_phone = self
             .speech_tail
             .lock()
@@ -4964,7 +5017,8 @@ pub async fn run_session(
                                     // Persona: only how the caller's latest words END counts
                                     // (bye / wrap-up); assistant (relay) mode keeps the old window match.
                                     let caller_closing = if persona {
-                                        caller_end_signal = caller_wraps_up(&in_tx_window);
+                                        // With this piece at the end even when the window skipped it.
+                                        caller_end_signal = caller_wraps_up(&with_latest(&in_tx_window, s));
                                         caller_end_signal
                                     } else {
                                         looks_like_goodbye(s) || looks_like_goodbye(&in_tx_window)
@@ -8225,12 +8279,13 @@ mod tests {
 
     /// Acceptance C (evaluation): an everyday 「等一下」 (= later) also counts as
     /// "hold on" and stretches the quiet line to 45 / 90 s until the caller talks
-    /// again; real hold requests are caught.
+    /// again; real hold requests are caught. Fixed after review: 「等一下」 as
+    /// "later" no longer counts.
     #[test]
     fn reviewer_hold_words_everyday_later() {
         assert!(crate::locale::asks_to_hold("等一下，我去拿"));
-        assert!(crate::locale::asks_to_hold("我等一下要出門，所以放管理室"));
-        assert!(crate::locale::asks_to_hold("那我等一下再打給你"));
+        assert!(!crate::locale::asks_to_hold("我等一下要出門，所以放管理室"));
+        assert!(!crate::locale::asks_to_hold("那我等一下再打給你"));
         assert!(!crate::locale::asks_to_hold("好，放管理室就好"));
         assert_eq!((PERSONA_HOLD_NUDGE_SECS, PERSONA_HOLD_END_SECS), (45, 90));
         assert_eq!((PERSONA_IDLE_NUDGE_SECS, PERSONA_IDLE_END_SECS), (15, 25));

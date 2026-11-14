@@ -2293,10 +2293,9 @@ pub fn strip_trailing_thanks(text: &str) -> &str {
 
 /// "Hold on", "one moment", 「等一下，我去拿」: the caller is leaving the phone for a
 /// while or putting us through, so a long quiet line is expected. Matched
-/// anywhere in what they said: Chinese (after [`crate::zh_tw::norm`]), Japanese,
-/// Korean and Thai as runs of letters, the others as whole words.
+/// anywhere in what they said: Chinese as requests only ([`zh_asks_to_hold`]),
+/// Japanese, Korean and Thai as runs of letters, the others as whole words.
 const HOLD_RUNS: &[&str] = &[
-    "等一下", "等我一下", "稍等", "我去拿", "我查一下", "幫你轉", "轉接",
     "少々お待ち", "ちょっと待って", "お待ちください",
     "잠시만요", "잠깐만요", "잠시만기다려",
     "รอสักครู่", "รอแป๊บ", "แป๊บนึง",
@@ -2310,12 +2309,39 @@ const HOLD_WORDS: &[&str] = &[
 ];
 
 pub fn asks_to_hold(text: &str) -> bool {
-    let runs = squeeze(&crate::zh_tw::norm(text));
+    if zh_asks_to_hold(text) {
+        return true;
+    }
+    let runs = squeeze(text);
     if HOLD_RUNS.iter().any(|m| runs.contains(squeeze(m).as_str())) {
         return true;
     }
     let ws = words(text);
     HOLD_WORDS.iter().any(|m| has_phrase(&ws, m))
+}
+
+/// Chinese asking us to hold on. 「等一下」 is also "later" (「我等一下要出門」「那我等
+/// 一下再打給你」): it counts only as a request — in one of these forms, or on
+/// its own (「好，等一下。」).
+const ZH_HOLD_REQUESTS: &[&str] = &[
+    "等一下喔", "等一下哦", "等一下下", "等我一下", "你等一下", "您等一下", "妳等一下", "請等一下",
+    "稍等", "我查一下", "我去拿", "幫你轉", "幫您轉", "轉接", "等等喔", "等等哦",
+];
+
+fn zh_asks_to_hold(text: &str) -> bool {
+    let t: String = crate::zh_tw::norm(text).chars().filter(|c| !c.is_whitespace()).collect();
+    if ZH_HOLD_REQUESTS.iter().any(|m| t.contains(m)) {
+        return true;
+    }
+    ["等一下", "等等"].iter().any(|m| {
+        t.match_indices(m).any(|(i, _)| {
+            let before = t[..i].chars().next_back();
+            let after = t[i + m.len()..].chars().next();
+            // Nothing of the sentence around it but a lead-in like 「好，」「那」.
+            after.map_or(true, |c| !c.is_alphanumeric())
+                && before.map_or(true, |c| !c.is_alphanumeric() || "好嗯欸喂啊那".contains(c))
+        })
+    })
 }
 
 // Goodbyes of callers who speak a language the AI has no phrase set for:
@@ -2584,8 +2610,25 @@ pub fn ends_with_farewell(text: &str, slack: usize) -> bool {
 pub fn caller_wraps_up(text: &str) -> bool {
     let wrapup = |t: &str| ends_on(t, |p| p.wrapups, 2, 4);
     !is_question(text)
-        && (ends_with_farewell(text, 2) || wrapup(text) || wrapup(strip_trailing_thanks(text)))
+        && (ends_with_farewell(text, 2)
+            || wrapup(text)
+            || wrapup(strip_trailing_thanks(text))
+            || VI_THANKS_CLOSING.ends(&words(text)))
 }
+
+/// Vietnamese callers often close with thanks alone, said politely to the end
+/// ("Em cảm ơn anh ạ", "Cảm ơn anh nhé"): a courier's call never hung up after
+/// it. Thanks then a particle (ạ / nhé / nha) as the very last words; the
+/// caller's side only — the AI's own 「cảm ơn anh ạ」 is no goodbye.
+const VI_THANKS_CLOSING: GreetingBye = GreetingBye {
+    heads: &["cảm ơn", "cám ơn", "cam on"],
+    tail: &[
+        "anh", "chị", "chi", "em", "bạn", "ban", "cô", "co", "chú", "chu", "ông", "ong", "bà", "ba", "cháu",
+        "chau", "nhiều", "nhieu", "lắm", "ạ", "nhé", "nhe", "nha", "nhá",
+    ],
+    closing_tail: &["ạ", "nhé", "nhe", "nha", "nhá"],
+    cues: &[],
+};
 
 /// Sales / scam keywords of the non-Chinese lists found in `text`.
 /// Word languages match at the start of a word ("loan" hits "loans").
@@ -2787,10 +2830,25 @@ mod tests {
             "Đợi chút nhé",
             "Tunggu sebentar ya",
             "รอสักครู่นะคะ",
+            "好，等一下。",
+            "你等一下，我叫他來聽",
+            "請稍等，我幫您轉接",
         ] {
             assert!(asks_to_hold(t), "{t}");
         }
-        for t in ["我今天有空", "Hello, is this Alex?", "That's all, thanks", "Momentan nicht", "もしもし", ""] {
+        for t in [
+            "我今天有空",
+            "Hello, is this Alex?",
+            "That's all, thanks",
+            "Momentan nicht",
+            "もしもし",
+            "",
+            // 「等一下」 as "later", 「等等」 as "and so on".
+            "我等一下要出門，所以放管理室",
+            "那我等一下再打給你",
+            "等一下再說",
+            "保險、貸款等等都有",
+        ] {
             assert!(!asks_to_hold(t), "{t}");
         }
     }
@@ -2827,6 +2885,15 @@ mod tests {
             "Dạ ok anh, để em đưa máy cho chị em nhé. Alo, em chào anh ạ.",
             "Dạ vâng, em để ở quầy lễ tân nhé. Em chào anh ạ.",
         ] {
+            assert!(!caller_wraps_up(t), "{t}");
+        }
+        // Thanks alone, said to the end, closes a Vietnamese call — the caller's
+        // words only (the AI's own thanks are no goodbye).
+        for t in ["Dạ, em cảm ơn anh ạ.", "Em cảm ơn anh ạ", "Ok, cảm ơn anh nhé", "Em cảm ơn anh nhiều ạ", "Cảm ơn chị nha"] {
+            assert!(caller_wraps_up(t), "{t}");
+            assert!(!ends_with_farewell(t, 2), "{t}");
+        }
+        for t in ["Cảm ơn anh ạ, cho em hỏi thêm một chút về đơn hàng.", "Cảm ơn anh ạ?", "Em cảm ơn anh"] {
             assert!(!caller_wraps_up(t), "{t}");
         }
     }
