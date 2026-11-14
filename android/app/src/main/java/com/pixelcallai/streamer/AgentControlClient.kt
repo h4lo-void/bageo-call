@@ -18,7 +18,8 @@ import java.util.concurrent.atomic.AtomicLong
  * Handles agent → phone commands such as `{"type":"place_call",...}` and the
  * `answer_plan` reply to a ringing call's `incoming`, `set_mode` (AI phone / normal
  * phone), `agent_info` (the web console's address) and `send_sms` (the hello says
- * `supports_sms`).
+ * `supports_sms`). The hello's `supports_reject` tells the agent that this app declines a
+ * ringing call when `answer_plan` says `reject` (older apps would answer it).
  * Sends a periodic `ping` so the idle registration stays alive; reconnects quickly on drop.
  *
  * [describe] adds the phone's current state to the `hello` (`phone_mode`, `in_call`).
@@ -56,6 +57,7 @@ class AgentControlClient(
                     .put("model", android.os.Build.MODEL)
                     .put("app_version", BuildConfig.VERSION_NAME)
                     .put("supports_sms", true)
+                    .put("supports_reject", true)
                 try {
                     describe(hello)
                 } catch (e: Exception) {

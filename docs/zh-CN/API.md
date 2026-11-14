@@ -29,7 +29,7 @@ X-Calls-Token: <token>
 | `GET /calls/api/stats` | `{ok, stats: {total, today, voicemails, blocked}}`。 |
 | `GET /calls/api/export.csv` | 筛选后的列表，CSV 格式（查询参数同 `list`，最多 2000 行）。 |
 
-通话记录（`call`，以及 `calls` 里的每一条）包含的字段有：`id`、`serial`（手机）、`caller_id`、`started_at` / `ended_at`（RFC 3339，UTC）、`duration_ms`、`status`（`ringing`、`active`、`ended`）、`events`（按顺序发生的事——例如 `active`、`persona_stall_spam`、`reject_list`、`reject_list_declined`、`call_waiting_rejected`、`persona_ai_fail_hangup`、`ended`）、`summary`、有哪些音频文件、`sim_country` / `sim_sub_id`（这通电话打进来的 SIM，手机应用说了才有）、`reply_method` / `reply_contact`（也包括对方在电话里说要回电的号码），对方跟 AI 约了时间时还有 `appointment`（通话结束时的样子，见[日程预约](#日程预约)）；通话后的变化（你的决定、短信结果）会更新在 `notes.appointment`。
+通话记录（`call`，以及 `calls` 里的每一条）包含的字段有：`id`、`serial`（手机）、`caller_id`、`started_at` / `ended_at`（RFC 3339，UTC）、`duration_ms`、`status`（`ringing`、`active`、`ended`）、`events`（按顺序发生的事——例如 `active`、`persona_stall_spam`、`reject_list`、`persona_ai_fail_hangup`、`ended`）、`summary`、有哪些音频文件，对方跟 AI 约了时间时还有 `appointment`（通话结束时的样子，见[日程预约](#日程预约)）；通话后的变化（你的决定、短信结果）会更新在 `notes.appointment`。
 
 在 `notes.dialogue` 里，每一行是一次发言，前面带有主程序语言的说话人标签和分隔符：简体中文是 `对方：`／`接听：`，繁体中文 `對方：`／`接聽：`，英文 `Caller: `／`AI: `，日文 `相手：`／`AI：`，韩文 `상대: `／`AI: `，西班牙文 `Llamante: `／`IA: `，法文 `Appelant : `／`IA : `，德文 `Anrufer: `／`KI: `，葡萄牙文 `Chamador: `／`IA: `。旧版本保存的记录无论语言都是 `對方：`／`接聽：`。
 
@@ -81,14 +81,13 @@ PUT /calls/api/settings
 }
 ```
 
-时间是本地时间（`TZ`）。`status`：`pending`（等你决定）、`booked`（通话中已写进日历）、`confirmed`、`declined`。`event_id`：写进 Google 日历后的日程 ID。`auto_error`：“有空直接答应”没能排入的原因。`replaced`：同一通电话里先前已写进日历、后来改掉的时间。`sms`：`sent`，或短信没发出的原因（`offline`、`old_app`、`timeout`、`busy`、`no_number`，或手机返回的错误代码）。`tag`：这通电话在它写进日历的日程上留的标记（见下句）。`tg_card`：发给这条预约的 Telegram 卡片 `{chat_id, message_id}`，在别处决定后用来去掉卡片上的按钮。`write_error`：上次按确定没能写进日历的原因（预约还在等）；`held_busy`：被拦下是因为时段有日程，下一次确定照样写入。`sim_country`／`sim_sub_id`：接这通电话的 SIM 卡；没有国家代码的来电号码按它的国家来读，短信也从它发。一通电话可以约不止一件事：每件各有自己的任务和 `tag`（这通电话的 tag，接着是 `<tag>-2`…），通话记录和笔记放第一件，其他的在 `more`。空的字段不会出现。主程序写进日历的日程都带私有扩展属性 `bageo_call=<appointment.tag>`，写入时没收到响应的那条之后能找回来，不会写两次。
+时间是本地时间（`TZ`）。`status`：`pending`（等你决定）、`booked`（通话中已写进日历）、`confirmed`、`declined`。`event_id`：写进 Google 日历后的日程 ID。`auto_error`：“有空直接答应”没能排入的原因。`replaced`：同一通电话里先前已写进日历、后来改掉的时间。`sms`：`sent`，或短信没发出的原因（`offline`、`old_app`、`timeout`、`busy`、`no_number`，或手机返回的错误代码）。`tag`：这通电话在它写进日历的日程上留的标记（见下句）。`tg_card`：发给这条预约的 Telegram 卡片 `{chat_id, message_id}`，在别处决定后用来去掉卡片上的按钮。空的字段不会出现。主程序写进日历的日程都带私有扩展属性 `bageo_call=<appointment.tag>`，写入时没收到响应的那条之后能找回来，不会写两次。
 
 | 方法和路径 | 内容 |
 |---|---|
 | `GET /calls/api/tasks` | 任务，最新的在前（最多 200 条）：`{ok, tasks}`。网页的“待确认的预约”就是 `appointment.status` 为 `pending` 的任务。 |
-| `POST /calls/api/tasks/{id}/confirm` | 对预约来说等于在网页或 Telegram 卡片上按 **✅ 确定**——写进 Google 日历，接着（开启 `appointment_sms` 时）给对方发短信，可能要等最多 90 秒。响应 `{ok, task, message}`；`message` 是结果，网页显示的和 Telegram Bot 回复的是同一段。这条预约发过 Telegram 卡片时，卡片上的按钮会去掉，并把 `message` 回复到那个聊天（尽力而为，Telegram 失败不影响决定）。只有第一次决定才算：之后再确定或婉拒——包括第一次还在处理时发来的，或在 Telegram 卡片上按的——都只回复“已经处理过了”，不会有任何变化。写进日历前会再查一次那个时段：日历上已经有日程或写入失败时，预约保持 `pending` 并带 `write_error`，不发短信、Telegram 卡片的按钮保留，`message` 写明原因，之后可以再确定；因时段有日程被拦下（`held_busy`）的，下一次确定就照样写入。请求要带 `Content-Type: application/json`（不用 body），否则返回 HTTP 400 `bad_request`，这样别的网页无法通过你局域网里的浏览器替你决定。 |
+| `POST /calls/api/tasks/{id}/confirm` | 对预约来说等于在网页或 Telegram 卡片上按 **✅ 确定**——写进 Google 日历，接着（开启 `appointment_sms` 时）给对方发短信，可能要等最多 90 秒。响应 `{ok, task, message}`；`message` 是结果，网页显示的和 Telegram Bot 回复的是同一段。这条预约发过 Telegram 卡片时，卡片上的按钮会去掉，并把 `message` 回复到那个聊天（尽力而为，Telegram 失败不影响决定）。只有第一次决定才算：之后再确定或婉拒——包括第一次还在处理时发来的，或在 Telegram 卡片上按的——都只回复“已经处理过了”，不会有任何变化。请求要带 `Content-Type: application/json`（不用 body），否则返回 HTTP 400 `bad_request`，这样别的网页无法通过你局域网里的浏览器替你决定。 |
 | `POST /calls/api/tasks/{id}/ignore` | 对预约来说等于 **❌ 婉拒**（通话中已经写进日历的那条会删掉；开启 `appointment_sms` 时发短信）。响应与规则同上。 |
-| `POST /calls/api/appointments/{id}/retry-sms` | 已确定或已婉拒、但短信没发出（`sms` 是失败代码）的预约，再给对方发一次短信，内容按当初的决定。body 可省略，带 `{"serial": "<手机>"}` 就改用另一部在线的手机发；不带就用接这通电话的那部。响应 `{ok, sms, message}`：`ok` 表示发出去了，`sms` 是新的状态代码，`message` 是结果。还在等决定、已经发过、没发过短信，或号码收不到短信（`no_number`）的：HTTP 409 `sms_not_retryable`，附当前的 `sms`。请求要带 `Content-Type: application/json`；手机不是由字母、数字、`-`、`_` 组成的，返回 400 `invalid_serial`。 |
 
 ## 手机与健康状态
 
@@ -119,19 +118,18 @@ PUT /calls/api/settings
 | 方向 | 消息 | 含义 |
 |---|---|---|
 | 手机 → 主程序 | `hello` 加上 `"supports_sms": true` | 应用能替主程序发短信。没有这个字段 = 旧应用：不会让它发短信。 |
-| 主程序 → 手机 | `{"type": "send_sms", "id": "<最多 64 个字符>", "to": "+886912345678", "text": "<UTF-8，最多 500 个字符>"}` | 只发给接那通电话的手机。`to` 只有数字，开头可以有 `+`。 |
-| 手机 → 主程序 | `{"type": "send_sms_result", "id": "<同一个>", "ok": true}` 或 `{"type": "send_sms_result", "id": "<同一个>", "ok": false, "error": "<代码>"}` | 短信每一段都回报发出后才回复（手机最多等 60 秒，超时回复 `timeout`）。`error` 是 `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception` 之一。主程序最多等 90 秒，没有回复就算失败。 |
-| 主程序 → 手机 | `send_sms` 加上 `"sub_id": <整数>` | 可选：用哪张 SIM（Android subscription id）发——就是那通电话打进来的 SIM。没有就用手机的默认 SIM。 |
-| 手机 → 主程序 | `{"type": "send_sms_delivered", "id": "<同一个>", "ok": bool}` | 运营商的送达回报（长短信每一段都可能回报；只要有一个 `false` 就算没送达）。 |
+| 主程序 → 手机 | `{"type": "send_sms", "id": "<最多 64 个字符>", "to": "+886912345678", "text": "<UTF-8，最多 500 个字符>"}`，可以再加 `"sub_id": <整数>` | 只发给接那通电话的手机。`to` 只有数字，开头可以有 `+`。`sub_id` 指定用哪张 SIM 发（就是手机回报的 `sim_sub_id`）；没有就用手机默认的短信 SIM。已经发出过的 id 再来一次，手机只会再回复一次结果，不会重复发送。 |
+| 手机 → 主程序 | `{"type": "send_sms_result", "id": "<同一个>", "ok": true}` 或 `{"type": "send_sms_result", "id": "<同一个>", "ok": false, "error": "<代码>"}` | 短信每一段都回报发出后才回复（手机最多等 60 秒，超时回复 `timeout`；之后才收到回报，会再发一次真正的结果）。`error` 是 `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception` 之一。主程序最多等 90 秒，没有回复就算失败。control 连接重连后，手机会把最近 20 个 id 的结果再发一次，主程序用 `id` 去掉重复的。 |
+| 手机 → 主程序 | `{"type": "send_sms_delivered", "id": "<同一个>", "ok": true \| false}` | 运营商回报的送达结果：每一段都送到对方是 `true`，有一段确定送不到是 `false`。运营商有回报才会发（手机最多等一小时）；重连后也会跟结果一起再发一次。 |
 
-主程序不再等待之后才到的结果照样会记录下来。手机回的 `timeout` 不是最终结果：之后收到运营商回应时，手机会用同一个 `id` 再发真正的结果，取代那个 timeout（还在等待的发送会继续等它）。手机重新连接后会补发最近的结果：同样的结果再来不会改变任何东西，已经有确定结果的短信收到不同的结果也不会改。
-
-通话用到这些可选字段（不认识的应用或主程序照旧运行）：
+通话也用同一条连接，多了这些可以省略的字段和消息（旧应用、旧主程序不发也不认识，照样能用）：
 
 | 方向 | 消息 | 含义 |
 |---|---|---|
-| 手机 → 主程序 | `incoming` 和 media 的 `hello` 加上 `"sim_sub_id": <整数>` | 接这通电话的 SIM（Android subscription id）；这通电话的短信和回拨都用它。 |
-| 手机 → 主程序 | control 的 `hello` 加上 `"supports_reject": true` | 应用能在响铃时拒接。没有这个字段 = 旧应用：不管 `reject_mode` 怎么设置，拦截号码都会接起来播放语音。 |
-| 主程序 → 手机 | `answer_plan` 加上 `"reject": true` | 拦截号码、`reject_mode` 是 `decline`，而且应用说过 `supports_reject`：在响铃时拒接。同时带 `"delay_ms": 0`；应用还是接起来的话，由主程序播放语音。 |
-| 手机 → 主程序 | `{"type": "call_waiting_rejected", "serial": "…", "caller_id": "…", "sim_country": "us", "sim_sub_id": 20}` | 通话中有第二通来电，手机忙线拒接。主程序会留下通话记录并发出通知。 |
-| 主程序 → 手机 | `place_call` 加上 `"sub_id": <整数>` | 回拨从同一部手机打出去时，用对方当初打进来的那张 SIM。 |
+| 手机 → 主程序 | `hello` 加上 `"supports_reject": true` | 应用认识 `answer_plan` 的 `reject`，会在响铃时拒接。没有这个字段 = 旧应用，让它拒接它还是会接起来，所以主程序改成接起来播放语音。 |
+| 手机 → 主程序 | `incoming` 和 media 连接的 `hello` 加上 `"sim_sub_id": <整数>` | 这通电话打进来的那张 SIM 在 Android 里的订阅 id，跟 `sim_country` 一起发。不知道就不发。隐藏号码时 `caller_id` 是空字符串（不会是上一通的号码）。 |
+| 主程序 → 手机 | `answer_plan` 加上 `"reject": true` | 响铃中直接拒接，不接起来。电话结束后照样发 `incoming_cancel`。晚到也有效，只要电话还在响。 |
+| 手机 → 主程序 | `{"type": "call_waiting_rejected", "serial": "...", "caller_id": "...", "sim_country": "tw", "sim_sub_id": <整数>}` | 通话中又有第二通打进来，手机立刻拒接（AI 模式）。字段是被拒那一通的信息；不知道 `sim_sub_id` 就不发。 |
+| 主程序 → 手机 | `place_call` 加上 `"sub_id": <整数>` | 用那张 SIM 拨出。找不到那张 SIM 就用手机默认的。手机有电话在响或通话中时不拨，回复 `place_call_failed`，`"reason": "busy"`。 |
+
+主程序这边：主程序不再等之后才到的结果照样会记下来；手机之后用同一个 `id` 送来的真正结果会取代 `timeout`（还在等的发送会继续等它），同样的结果再来、或已经有确定结果的短信收到不同结果，都不会改。拦截号码只有在 `reject_mode` 是 `decline`、而且手机说过 `supports_reject` 时才让手机拒接；否则接起来播放语音，通知会写清楚是哪一种。收到 `call_waiting_rejected` 会留下通话记录并发出通知。回拨从接原来那通电话的手机打出去时才带 `sub_id`。

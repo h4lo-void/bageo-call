@@ -40,10 +40,7 @@ A call record (`call`, and each entry of `calls`) carries among others: `id`,
 `serial` (the phone), `caller_id`, `started_at` / `ended_at` (RFC 3339, UTC),
 `duration_ms`, `status` (`ringing`, `active`, `ended`), `events` (what happened,
 in order — e.g. `active`, `persona_stall_spam`, `reject_list`,
-`reject_list_declined`, `call_waiting_rejected`, `persona_ai_fail_hangup`,
-`ended`), `summary`, which audio files exist, `sim_country` / `sim_sub_id` (the
-SIM the call came in on, when the phone app says), `reply_method` /
-`reply_contact` (also a number the caller said to call back on) and,
+`persona_ai_fail_hangup`, `ended`), `summary`, which audio files exist and,
 when the caller set a time with the AI, `appointment` as the call left it
 (see [Appointments](#appointments)); `notes.appointment` is kept up to date
 after the call (your decision, the text result).
@@ -129,13 +126,6 @@ in the calendar. `sms`: `sent`, or why the text did not go (`offline`,
 the call's own mark on the events it writes (below). `tg_card`: `{chat_id,
 message_id}` of the Telegram card sent for it, whose buttons are taken off when
 you decide elsewhere. Empty fields are left out.
-`write_error`: why the last ✅ could not put it in the calendar (it still
-waits). `held_busy`: that time was not free, so the next ✅ books it anyway.
-`sim_country` / `sim_sub_id`: the SIM that took the call; its country
-reads a caller ID without a country code for the text, which goes out from it.
-A call can agree to more than one appointment: each gets a task and a `tag` of
-its own (the call's, then `<tag>-2`, …), and the call record and notes keep the
-first with the others in `more`.
 Events the agent writes carry the private extended property
 `bageo_call=<appointment.tag>`, so an event whose insert answer was lost is found
 again instead of written twice.
@@ -143,9 +133,8 @@ again instead of written twice.
 | Method and path | What |
 |---|---|
 | `GET /calls/api/tasks` | Tasks, newest first (up to 200): `{ok, tasks}`. The console's *Appointments to confirm* list is the tasks whose `appointment.status` is `pending`. |
-| `POST /calls/api/tasks/{id}/confirm` | For an appointment: the same as **✅ Confirm** in the web console or on its Telegram card — Google Calendar, then (with `appointment_sms`) the text to the caller, which may take up to 90 seconds. `{ok, task, message}`; `message` is what happened, as the console shows it and the Telegram bot replies it. When a Telegram card went out for the appointment, its buttons are taken off and `message` is posted in that chat (best effort; the decision stands either way). Only the first decision counts: a second confirm or decline — also one sent while the first is still running, or a press on the Telegram card — answers "already handled" and changes nothing. The time is checked again just before it is written: when something is in the calendar then by now, or the write fails, the appointment stays `pending` with `write_error`, nothing is texted, the Telegram card keeps its buttons, `message` says why, and it can be confirmed again; after a busy time (`held_busy`) the next confirm writes it anyway. Needs `Content-Type: application/json` (no body), otherwise HTTP 400 `bad_request`, so other web pages cannot decide from a browser on your network. |
+| `POST /calls/api/tasks/{id}/confirm` | For an appointment: the same as **✅ Confirm** in the web console or on its Telegram card — Google Calendar, then (with `appointment_sms`) the text to the caller, which may take up to 90 seconds. `{ok, task, message}`; `message` is what happened, as the console shows it and the Telegram bot replies it. When a Telegram card went out for the appointment, its buttons are taken off and `message` is posted in that chat (best effort; the decision stands either way). Only the first decision counts: a second confirm or decline — also one sent while the first is still running, or a press on the Telegram card — answers "already handled" and changes nothing. Needs `Content-Type: application/json` (no body), otherwise HTTP 400 `bad_request`, so other web pages cannot decide from a browser on your network. |
 | `POST /calls/api/tasks/{id}/ignore` | For an appointment: **❌ Decline** (an event the call already put in the calendar is removed; the text when `appointment_sms` is on). Same answer and rules. |
-| `POST /calls/api/appointments/{id}/retry-sms` | Texts the caller of a confirmed or declined appointment again when its text did not go out (`sms` is a failure code), saying what the decision said. Optional body `{"serial": "<phone>"}` sends it from another connected phone; without it, from the phone that took the call. `{ok, sms, message}`: `ok` when it was sent, `sms` the new code, `message` what happened. Still waiting, already sent, never texted, or a number that takes no texts (`no_number`): HTTP 409 `sms_not_retryable` with the current `sms`. Needs `Content-Type: application/json`; a phone that is not letters, digits, `-` and `_` gets 400 `invalid_serial`. |
 
 ## Phones and health
 
@@ -184,25 +173,27 @@ Text messages to callers (appointments) use the same connection:
 | Direction | Message | Meaning |
 |---|---|---|
 | phone → agent | `hello` with `"supports_sms": true` | The app can send texts for the agent. No field = an older app: no texts are asked of it. |
-| agent → phone | `{"type": "send_sms", "id": "<≤ 64 characters>", "to": "+886912345678", "text": "<UTF-8, ≤ 500 characters>"}` | Sent only to the phone that took the call. `to` is digits with an optional leading `+`. |
-| phone → agent | `{"type": "send_sms_result", "id": "<same>", "ok": true}` or `{"type": "send_sms_result", "id": "<same>", "ok": false, "error": "<code>"}` | Sent once every part of the message has reported back (the phone gives up after 60 seconds: `timeout`). `error` is one of `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception`. The agent waits up to 90 seconds; no answer counts as failed. |
-| agent → phone | `send_sms` with `"sub_id": <int>` | Optional: the SIM (Android subscription id) to send from — the one the call came in on. Without it, the phone's default SIM. |
-| phone → agent | `{"type": "send_sms_delivered", "id": "<same>", "ok": bool}` | The carrier's delivery report (each part of a long text may report; one `false` means not delivered). |
+| agent → phone | `{"type": "send_sms", "id": "<≤ 64 characters>", "to": "+886912345678", "text": "<UTF-8, ≤ 500 characters>"}`, optionally with `"sub_id": <integer>` | Sent only to the phone that took the call. `to` is digits with an optional leading `+`. `sub_id` picks the SIM (the `sim_sub_id` the phone reported); without it the phone's default SMS SIM sends. An id the phone already sent is answered again, not texted twice. |
+| phone → agent | `{"type": "send_sms_result", "id": "<same>", "ok": true}` or `{"type": "send_sms_result", "id": "<same>", "ok": false, "error": "<code>"}` | Sent once every part of the message has reported back (the phone gives up after 60 seconds: `timeout`; a report that comes later still sends a second result with the real outcome). `error` is one of `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception`. The agent waits up to 90 seconds; no answer counts as failed. The phone sends the results for its last 20 ids again after the control connection reconnects, so the agent drops repeats by `id`. |
+| phone → agent | `{"type": "send_sms_delivered", "id": "<same>", "ok": true \| false}` | The network's delivery report: `true` once every part reached the recipient, `false` when a part failed for good. Only when the network reports delivery (the phone waits up to an hour); sent again after a reconnect like the result. |
 
-A result that comes after the agent stopped waiting is still recorded. The
-phone's `timeout` is not final: when the radio answers later, the phone sends the
-real result under the same `id` and it replaces the timeout (a send still waiting
-keeps waiting for it). After reconnecting the phone resends its recent results:
-the same result again changes nothing, nor does a different one for a text
-already settled.
-
-Calls use these optional fields (an app or agent that does not know them works
-as before):
+Calls use the same connection for these optional fields and messages (an older app
+or agent leaves them out and works as before):
 
 | Direction | Message | Meaning |
 |---|---|---|
-| phone → agent | `incoming` and the media `hello` with `"sim_sub_id": <int>` | The SIM (Android subscription id) that took the call; texts and call-backs for the call use it. |
-| phone → agent | control `hello` with `"supports_reject": true` | The app can refuse a ringing call. No field = an older app: blocked numbers are picked up and get the announcement, whatever `reject_mode` says. |
-| agent → phone | `answer_plan` with `"reject": true` | A blocked number with `reject_mode` `decline`, to an app that said `supports_reject`: refuse the ringing call. Sent with `"delay_ms": 0`; if the app picks up after all, the agent plays the announcement. |
-| phone → agent | `{"type": "call_waiting_rejected", "serial": "…", "caller_id": "…", "sim_country": "us", "sim_sub_id": 20}` | A second call came in during a call and the phone turned it away (busy). The agent records it and sends a notification. |
-| agent → phone | `place_call` with `"sub_id": <int>` | A call-back dials out on the SIM the caller called, when it goes out on that phone. |
+| phone → agent | `hello` with `"supports_reject": true` | The app declines a ringing call when `answer_plan` says `reject`. No field = an older app that would answer the call anyway, so the agent answers and plays its message instead. |
+| phone → agent | `incoming`, and the media connection's `hello`, with `"sim_sub_id": <integer>` | Android's subscription id of the SIM the call came in on, next to `sim_country`. Left out when unknown. `caller_id` is empty for a hidden number (never the previous caller's). |
+| agent → phone | `answer_plan` with `"reject": true` | Decline the ringing call without answering it. `incoming_cancel` follows once the call has ended. Also honored when it arrives late, as long as the call still rings. |
+| phone → agent | `{"type": "call_waiting_rejected", "serial": "...", "caller_id": "...", "sim_country": "tw", "sim_sub_id": <integer>}` | A second call rang during a call and the phone declined it at once (AI mode). The fields describe the declined call; `sim_sub_id` is left out when unknown. |
+| agent → phone | `place_call` with `"sub_id": <integer>` | Dial from that SIM. When no SIM has that id, the phone's default is used. While a call rings or is up, the phone does not dial and answers `place_call_failed` with `"reason": "busy"`. |
+
+On the agent's side: a result that comes after the agent stopped waiting is still
+recorded, and the phone's later real result under the same `id` replaces a
+`timeout` (a send still waiting keeps waiting for it); the same result again, or
+a different one for a text already settled, changes nothing. A blocked number is
+declined only when `reject_mode` is `decline` and the phone said
+`supports_reject`; otherwise it is picked up and gets the announcement, and the
+notification says which happened. `call_waiting_rejected` becomes a call record
+and a notification. A call-back carries `sub_id` when it goes out on the phone
+that took the original call.

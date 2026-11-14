@@ -107,7 +107,15 @@ USB.
   [normal phone](#normal-phone-mode). To stop the AI on every phone at once,
   switch off *AI answers calls* in the web console (calls are then picked up
   and hung up).
-- A call you dial yourself on the phone is left alone.
+- A call you dial yourself on the phone is left alone: no AI, and the microphone
+  and earpiece work normally for it.
+- One call at a time: a second call that rings during a call is declined at once,
+  and the agent is told about it.
+- If the computer cannot be reached when a call rings, the phone does not answer;
+  the call goes to your carrier's missed call or voicemail. If the connection to
+  the computer drops during a call for more than 3 seconds, the phone hangs up
+  instead of leaving the caller in silence.
+- With two SIMs, the agent knows which SIM each call came in on.
 - The **Open the web console** button in the app appears once the agent has a
   console address: *Address of this console* in the settings, or, when that is
   empty and the console is open to your network, the computer's LAN address.
