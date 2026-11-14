@@ -380,6 +380,9 @@ impl RingPrewarmRegistry {
         } else if plan.appointments && e.caller_id.trim() != caller_id.trim() {
             // The session's appointments are bound to the number it rang with.
             "appointments bound to the ringing number"
+        } else if e.plan.contact != plan.contact {
+            // The prompt names the contact of the number it rang with (or none).
+            "caller's contact differs at pickup"
         } else {
             // The number sent while ringing can be stale (call-log fallback before
             // Telecom publishes the CID): everything it decided is the same for the
@@ -436,6 +439,8 @@ struct CallerPlan {
     intl_hold: bool,
     /// Appointments are on for this caller (the session is bound to the number).
     appointments: bool,
+    /// The contact the caller's number belongs to (its id): the prompt names them.
+    contact: Option<String>,
 }
 
 /// [`CallerPlan`] for `caller_id` on the SIM of country `sim` (None = unknown),
@@ -451,6 +456,7 @@ fn caller_plan(rt: &RuntimeSettings, caller_id: &str, sim: Option<&str>) -> Call
         ),
         appointments: rt.is_appointment_test_number(caller_id)
             || appointments::Mode::parse(&rt.appointment_mode) != appointments::Mode::Off,
+        contact: contacts::lookup(caller_id, sim).map(|c| c.id),
     }
 }
 
@@ -6215,8 +6221,11 @@ fn start_gemini_session_core(
         } = cfg.clone();
         // A caller in the owner's contacts: the prompt says who it is. Normal calls
         // only: the sales / scam prompt the session may switch to has no such line.
+        // The SIM as the ring prewarm reads it (the last one the phone reported while
+        // the call rings), so the contact is the one its plan checks at pickup.
         let system = if persona {
-            contacts::with_caller(&system, rt, &cfg.caller_id, call_sim_country(&serial).as_deref())
+            let sim = call_sim_country(&serial).or_else(|| phone_region::last_sim(&canonical_device_serial(&serial)));
+            contacts::with_caller(&system, rt, &cfg.caller_id, sim.as_deref())
         } else {
             system
         };
@@ -10481,6 +10490,7 @@ mod ring_prewarm_tests {
             lang,
             intl_hold: false,
             appointments: false,
+            contact: None,
         }
     }
 
@@ -10625,6 +10635,27 @@ mod ring_prewarm_tests {
         pw.plan = booked.clone();
         reg.insert("pixel-1", pw);
         assert!(reg.take("pixel-1", "0922222222", 16_000, &booked).is_some());
+    }
+
+    #[tokio::test]
+    async fn pickup_drops_a_session_set_up_for_another_contact() {
+        let reg = RingPrewarmRegistry::default();
+        let named = |id: Option<&str>| CallerPlan { contact: id.map(str::to_string), ..plan_of(usual()) };
+        // Rang with one contact's number, picked up with another's, or one that is
+        // no contact (or the other way round): the held prompt names the wrong person.
+        for (rang, picked) in [(Some("a"), Some("b")), (Some("a"), None), (None, Some("b"))] {
+            let (mut pw, cancel) = entry("0912345678", live());
+            pw.plan = named(rang);
+            reg.insert("pixel-1", pw);
+            assert!(reg.take("pixel-1", "0922222222", 16_000, &named(picked)).is_none(), "{rang:?} {picked:?}");
+            assert!(cancel.load(Ordering::Relaxed));
+        }
+        // The same contact (its number written another way): adopted.
+        let (mut pw, cancel) = entry("+886912345678", live());
+        pw.plan = named(Some("a"));
+        reg.insert("pixel-1", pw);
+        assert!(reg.take("pixel-1", "0912345678", 16_000, &named(Some("a"))).is_some());
+        assert!(!cancel.load(Ordering::Relaxed));
     }
 
     #[tokio::test]
