@@ -2073,7 +2073,7 @@ async fn test_text_route(
 /// Send the caller the text for this decision through the phone that took the
 /// call (or `serial`, another phone the owner picked). A test call
 /// ([`is_test_call`]) texts only test numbers, from the phone and SIM its
-/// settings name ([`test_text_route`]) unless the owner picked a phone.
+/// settings name ([`test_text_route`]) unless the owner picked another phone.
 /// Returns the [`Appointment::sms`] code and the owner's line.
 async fn text_caller(
     rt: &RuntimeSettings,
@@ -2089,7 +2089,10 @@ async fn text_caller(
         return ("no_number".to_string(), p.ap_sms_cannot.to_string());
     };
     let test_call = is_test_call(rt, task, appt);
-    if test_call && !rt.is_appointment_test_number(&to) {
+    // `to` is the caller's number with its country code added (`sms_number_on`);
+    // the list may have it either way.
+    let listed = rt.is_appointment_test_number(&to) || rt.is_appointment_test_number(&task.caller_id);
+    if test_call && !listed {
         info!("appointment sms task_id={} not sent: a test call to a number off the test list", task.id);
         return (
             "not_test_number".to_string(),
@@ -2100,10 +2103,17 @@ async fn text_caller(
         return sms_report(&SmsOutcome::Offline, &to);
     };
     let (phone, sim) = match serial.map(str::trim).filter(|s| !s.is_empty()) {
-        // The SIM that took the call; another phone sends from its own default.
         Some(picked) => {
-            let sim = if picked == task.serial { SmsSim::from_sub_id(appt.sim_sub_id) } else { SmsSim::Default };
-            (picked.to_string(), sim)
+            let route = if test_call { Some(test_text_route(rt, control, task, appt).await) } else { None };
+            match route {
+                // The owner picked the test phone itself: the SIM the settings name.
+                Some((test_phone, sim)) if test_phone.eq_ignore_ascii_case(picked) => (picked.to_string(), sim),
+                // The SIM that took the call; another phone sends from its own default.
+                _ => {
+                    let sim = if picked == task.serial { SmsSim::from_sub_id(appt.sim_sub_id) } else { SmsSim::Default };
+                    (picked.to_string(), sim)
+                }
+            }
         }
         None if test_call => test_text_route(rt, control, task, appt).await,
         None => (task.serial.clone(), SmsSim::from_sub_id(appt.sim_sub_id)),
@@ -4451,6 +4461,23 @@ mod tests {
         away.appointment_test_sms_phone = "pixel-99999".into();
         let t7 = task("t7", "+16505550123", &a);
         assert_eq!(text_caller(&away, Some(&control), &t7, &a, true, None).await.0, "offline");
+        assert_eq!(next_json(&mut took, quiet).await, None);
+
+        // The owner picks the test phone itself: the SIM by name, as without a pick.
+        control.set_supports_sim_select("pixel-12345", true).await;
+        let t8 = task("t8", "+16505550123", &a);
+        let (code, msg) = text_and_answer(&control, &mut tester, text_caller(&rt, Some(&control), &t8, &a, true, Some("pixel-12345"))).await;
+        assert_eq!(code, "sent");
+        assert_eq!((msg["sim"].clone(), msg.get("sub_id")), (json!("Tello"), None));
+
+        // The list and the phone write the number without its country code: the
+        // text (to +1…) still goes to that listed number.
+        let mut national = rt.clone();
+        national.appointment_test_numbers = vec!["6505550123".into()];
+        let t9 = task("t9", "6505550123", &a);
+        let (code, msg) = text_and_answer(&control, &mut tester, text_caller(&national, Some(&control), &t9, &a, true, None)).await;
+        assert_eq!(code, "sent");
+        assert_eq!(msg["to"], json!("+16505550123"));
         assert_eq!(next_json(&mut took, quiet).await, None);
     }
 
