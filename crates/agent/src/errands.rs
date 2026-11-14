@@ -1462,6 +1462,9 @@ impl CallHooks {
         });
         self.store.persist_later();
         info!(errand = self.errand_id.as_str(), question = qid.as_str(), by, "errand question to the owner");
+        // Named in the answer: the model once picked the first of its own
+        // choices right after hearing the owner could not answer.
+        let asked = question.replace(['«', '»'], "\"");
         match answer {
             Some(a) => json!({
                 "answer": a,
@@ -1471,12 +1474,12 @@ impl CallHooks {
             None if leaving => json!({
                 "answer": Value::Null,
                 "owner_available": false,
-                "instruction": format!("The other side is ending the call and {owner} has not answered. Settle nothing about it: say in one sentence that {owner} will confirm and get back to them, then say goodbye."),
+                "instruction": format!("The other side is ending the call and {owner} has not answered. Accept or choose nothing about «{asked}»: say in one sentence that {owner} will confirm and get back to them, then say goodbye."),
             }),
             None => json!({
                 "answer": Value::Null,
                 "owner_available": false,
-                "instruction": format!("{owner} cannot answer right now. Do not settle it yourself. Ask them which options would work (for a time: which times soon are free), note them, say {owner} will confirm and call them back, then close the call politely."),
+                "instruction": format!("{owner} cannot answer right now. Do not accept, book or choose anything about «{asked}»: none of the choices you listed, not even the likeliest one. Tell them {owner} could not be reached just now, ask them which options would work (for a time: which times soon are free) and note them, say {owner} will confirm and call them back, then close the call politely."),
             }),
         }
     }
@@ -1693,7 +1696,7 @@ How the call goes:\n\
 - A recording, a voice menu or hold music is not a person: say nothing to it and wait for a person. You cannot press keys; if a menu only goes on with key presses, stay silent.\n\
 - When a person answers, greet them in one short sentence and say who is calling and why.\n\
 - Then take care of the matter as {owner} asked. Where {owner} left room (\"7:30 to 8 is fine too\"), decide within it yourself. Speak in short, natural sentences, one or two at a time, and listen.\n\
-- If something comes up that your instructions do not settle and you are not sure what {owner} would want: first tell them in one short sentence, in the language you speak with them, that you will check (for example \"{check}\"), then call ask_owner with the question and the choices they gave. Write the question and the choices in {owner_language}, the language {owner} reads (for example \"{example_question}\"). Do what its answer says. This is the only time on this call you may ask them to wait. Until the answer comes, do not agree to, decide or confirm what you asked about, even if they suggest it or press you: say you are still checking.\n\
+- If something comes up that your instructions do not settle and you are not sure what {owner} would want: first tell them in one short sentence, in the language you speak with them, that you will check (for example \"{check}\"), then call ask_owner with the question and the choices they gave. Write the question and the choices in {owner_language}, the language {owner} reads (for example \"{example_question}\"). Do what its answer says. This is the only time on this call you may ask them to wait. Until the answer comes, do not agree to, decide or confirm what you asked about, even if they suggest it or press you: say you are still checking. When the answer is that {owner} cannot answer, accept or choose nothing about it (none of the choices you listed): {owner} decides later.\n\
 - Before you finish, repeat the key points back to them (for a booking: the date, time, number of people and the name it is under) and let them confirm.\n\
 - Then say goodbye once and stop talking: the call ends after your goodbye.\n\
 - If voicemail or an answering machine picks up: leave a message of two sentences (who is calling, what it is about, that {owner} will get back to them), then say goodbye.\n\
@@ -3347,6 +3350,7 @@ mod tests {
         let away = hooks.ask_within(&json!({"question": "可以改 8 點嗎？"}), Duration::from_secs(5)).await;
         assert_eq!(away["owner_available"].as_bool(), Some(false));
         assert!(away["instruction"].as_str().unwrap().contains("which options would work"), "{away}");
+        assert!(away["instruction"].as_str().unwrap().contains("Do not accept, book or choose anything about «可以改 8 點嗎？»"), "{away}");
         assert_eq!(rig.store.get("e-ask-2").unwrap().questions[0].answered_by.as_deref(), Some("absent"));
         rig.store.live_view("e-ask-2", 0).unwrap();
         let late = hooks.ask_within(&json!({"question": "要包廂嗎？"}), Duration::from_millis(80)).await;
