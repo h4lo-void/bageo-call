@@ -191,7 +191,7 @@ dnd_on() { z=$(zen); [ -n "$z" ] && [ "$z" != "0" ]; }
 
 apply_ai() {
   for p in RECORD_AUDIO READ_PHONE_STATE ANSWER_PHONE_CALLS ACCESS_NOTIFICATION_POLICY \
-      POST_NOTIFICATIONS READ_CALL_LOG CALL_PHONE SEND_SMS READ_PHONE_NUMBERS; do
+      POST_NOTIFICATIONS READ_CALL_LOG CALL_PHONE SEND_SMS; do
     q pm grant "$PKG" "android.permission.$p"
   done
   q cmd appops set "$PKG" ACCESS_NOTIFICATION_POLICY allow

@@ -20,7 +20,6 @@ import java.util.concurrent.atomic.AtomicLong
  * phone), `agent_info` (the web console's address) and `send_sms` (the hello says
  * `supports_sms`). The hello's `supports_reject` tells the agent that this app declines a
  * ringing call when `answer_plan` says `reject` (older apps would answer it).
- * `supports_sim_select` says `send_sms` may name its SIM by carrier or number (`sim`).
  * Sends a periodic `ping` so the idle registration stays alive; reconnects quickly on drop.
  *
  * [describe] adds the phone's current state to the `hello` (`phone_mode`, `in_call`).
@@ -59,7 +58,6 @@ class AgentControlClient(
                     .put("app_version", BuildConfig.VERSION_NAME)
                     .put("supports_sms", true)
                     .put("supports_reject", true)
-                    .put("supports_sim_select", true)
                 try {
                     describe(hello)
                 } catch (e: Exception) {

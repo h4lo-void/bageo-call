@@ -453,8 +453,7 @@ fn caller_plan(rt: &RuntimeSettings, caller_id: &str, sim: Option<&str>) -> Call
             caller_id,
             sim,
         ),
-        appointments: rt.is_appointment_test_number(caller_id)
-            || appointments::Mode::parse(&rt.appointment_mode) != appointments::Mode::Off,
+        appointments: appointments::Mode::parse(&rt.appointment_mode) != appointments::Mode::Off,
         contact: contacts::lookup(caller_id, sim).map(|c| c.id),
     }
 }
@@ -1244,7 +1243,6 @@ async fn main() -> Result<()> {
                         );
                         tokio::spawn(async move {
                             let text = match appointments::decide(
-                                &http,
                                 &rt,
                                 &task_store,
                                 &calls,
@@ -2375,15 +2373,6 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         .set_supports_reject(
                                             &serial,
                                             parsed.get("supports_reject").and_then(Value::as_bool)
-                                                == Some(true),
-                                        )
-                                        .await;
-                                    // Newer apps send a text from a SIM named by carrier or number.
-                                    state
-                                        .control
-                                        .set_supports_sim_select(
-                                            &serial,
-                                            parsed.get("supports_sim_select").and_then(Value::as_bool)
                                                 == Some(true),
                                         )
                                         .await;
@@ -5735,7 +5724,6 @@ fn start_ring_prewarm(
         goodbye_hangup_delay_ms,
         Arc::new(AtomicBool::new(false)),
         None,
-        &state.http,
         None,
     );
     let id = state.ring_prewarm.insert(
@@ -6097,7 +6085,6 @@ async fn spawn_gemini_session_tasks(
         goodbye_hangup_delay_ms,
         barge_in,
         Some(media_call_guard.clone()),
-        &state.http,
         callback.as_ref().map(|c| c.script.clone()),
     );
     // Kept for one fresh-socket retry if this session never delivers audio
@@ -6162,7 +6149,6 @@ fn start_gemini_session_core(
     goodbye_hangup_delay_ms: u64,
     barge_in: Arc<AtomicBool>,
     media_guard: Option<MediaCallGuard>,
-    http: &reqwest::Client,
     callback_script: Option<String>,
 ) -> GeminiSessionCore {
     // The AI's own call-back with an appointment's answer
@@ -6240,7 +6226,7 @@ fn start_gemini_session_core(
     };
     // Appointments (setting `appointment_mode`): normal persona calls only.
     let mut appointments = if persona && !is_callback {
-        appointments::ApptSession::for_call(rt, http, &cfg.caller_id)
+        appointments::ApptSession::for_call(rt, &cfg.caller_id)
     } else {
         None
     };
@@ -8637,7 +8623,7 @@ fn spawn_ai_talk_tg_summary(
             }
             other => other,
         };
-        let mut void_failed = appointments::delete_voided(&http, &rt, &voided).await;
+        let mut void_failed = appointments::delete_voided(&voided);
         if !voided.is_empty() {
             info!(
                 "voided appointment events serial={serial} call_id={call_id} count={} not_deleted={}",
@@ -8831,7 +8817,7 @@ fn spawn_ai_talk_tg_summary(
         if late_sales {
             if let Some(a) = appointment.take() {
                 let events = appointments::all_events(&a);
-                let failed = appointments::delete_voided(&http, &rt, &events).await;
+                let failed = appointments::delete_voided(&events);
                 info!(
                     "appointment voided after the call (sales / scam) serial={serial} call_id={call_id} events={} not_deleted={}",
                     events.len(),
@@ -8958,7 +8944,7 @@ fn spawn_ai_talk_tg_summary(
         }
         let rt = settings_store.snapshot();
         for task in appointment_tasks {
-            appointments::after_summary(&http, &rt, &task_store, &calls, &control, &task, &detail_url).await;
+            appointments::after_summary(&http, &rt, &task_store, &task, &detail_url).await;
         }
         if let Some(task_id) = &callback_task {
             let ctx = appointments::CallbackCtx {
@@ -10636,7 +10622,6 @@ mod ring_prewarm_tests {
         rt.intl_carrier_prompt = "auto".into();
         rt.sim_languages = Default::default();
         rt.appointment_mode = "off".into();
-        rt.appointment_test_numbers = Vec::new();
         rt
     }
 

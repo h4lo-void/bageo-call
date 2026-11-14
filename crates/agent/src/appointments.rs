@@ -22,19 +22,9 @@
 //!   carries out the owner's "accept" / "decline" on one of them (Telegram
 //!   button or `POST /calls/api/tasks/{id}/…`): the text to the caller, and
 //!   for "accept" the link that adds it to the owner's calendar.
-//! - A call from one of the test numbers (setting `appointment_test_numbers`)
-//!   takes appointments in `auto` mode on the demo calendar ([`DemoCal`],
-//!   `demo_calendar.json`), whatever `appointment_mode` says: free times are
-//!   checked and booked on the call, so the whole path can be tried without a
-//!   real phone call to anyone. Its appointment remembers that
-//!   ([`Appointment::calendar`]), so the owner's decision and a voided event go
-//!   to the demo calendar too. An "accept" the demo calendar cannot take (the
-//!   write failed, or another appointment took the time meanwhile) leaves it
-//!   waiting, with nothing texted, to be pressed again.
 //!
 //! Times are the machine's local time (`TZ`), written `YYYY-MM-DDTHH:MM`.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -45,7 +35,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tracing::{info, warn};
 
-use crate::callback::{ControlRegistry, SmsOutcome, SmsSim, SMS_RESULT_WAIT};
+use crate::callback::{ControlRegistry, SmsOutcome, SMS_RESULT_WAIT};
 use crate::calls::{CallRecord, CallStore};
 use crate::locale::{self, Lang, Phrases};
 use crate::settings_store::RuntimeSettings;
@@ -59,9 +49,6 @@ pub enum Mode {
     /// The AI says it will check and get back to the caller; the owner decides
     /// on the web console or a Telegram card.
     Confirm,
-    /// A free time is taken on the call and put in the demo calendar: test
-    /// numbers only ([`ApptSession::for_call`]), never a setting.
-    Auto,
 }
 
 impl Mode {
@@ -78,7 +65,6 @@ impl Mode {
         match self {
             Mode::Off => "off",
             Mode::Confirm => "confirm",
-            Mode::Auto => "auto",
         }
     }
 }
@@ -250,7 +236,7 @@ pub fn sanitize_reply_setting(s: &str) -> String {
     }
     .to_string()
 }
-/// Put in the demo calendar on the call (`auto`, a test number).
+/// Put in a calendar on the call (records from older versions).
 pub const BOOKED: &str = "booked";
 /// The owner said yes.
 pub const CONFIRMED: &str = "confirmed";
@@ -259,29 +245,12 @@ pub const DECLINED: &str = "declined";
 
 pub const CHECK: &str = "check_availability";
 pub const PROPOSE: &str = "propose_appointment";
-/// [`Appointment::calendar`] of an appointment on the demo calendar ([`DemoCal`]).
-pub const DEMO_CALENDAR: &str = "demo";
 
-/// How long `check_availability` may take: the caller is waiting on the line.
-/// A slower calendar answers "unknown" and the AI says it will confirm.
-const CHECK_TIMEOUT: Duration = Duration::from_secs(3);
-/// How long the check before writing may take (an `auto` booking, the owner's
-/// ✅). Nobody waits on the line for it, so it gets longer than [`CHECK_TIMEOUT`].
-const BOOK_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
-/// How long writing to the calendar may take. Its own limit (not the check's)
-/// so a slow insert is not cut short and taken for a failure; when it is cut
-/// anyway, the event is found again by its tag ([`Appointment::tag`]).
-const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
-/// How long an `auto` booking waits for the calendar while another booking or
-/// an owner's ✅ is writing (that one holds it at most check + write, 15 s);
-/// then the owner decides instead. Waiting, checking and writing together stay
-/// within [`TOOL_WAIT`], which is what the end of a call waits for.
-const CALENDAR_TURN_WAIT: Duration = Duration::from_secs(8);
 /// How long a proposal waits for the one the model sent just before it in the
 /// same message ([`ToolCall::after`]).
 const AFTER_WAIT: Duration = Duration::from_secs(3);
-/// The longest one proposal can run (waiting for the calendar, the check, the
-/// write), plus a margin.
+/// The longest one proposal can run (waiting for the one sent before it and
+/// for its turn), plus a margin.
 pub const TOOL_WAIT: Duration = Duration::from_secs(24);
 const STAMP: &str = "%Y-%m-%dT%H:%M";
 const TITLE_MAX: usize = 80;
@@ -290,14 +259,6 @@ const SMS_TEXT_MAX: usize = 500;
 /// How a caller ID without a country code is read when the SIM that took the
 /// call is not known (records and apps from before the SIM was reported).
 const DEFAULT_SMS_REGION: &str = "tw";
-
-/// One check-then-write on a calendar at a time, across every call and every
-/// decision: two callers asking for the same free hour (or the owner confirming
-/// two appointments for it) must not both find it free and both write it.
-fn calendar_turn() -> &'static tokio::sync::Mutex<()> {
-    static TURN: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
-    TURN.get_or_init(|| tokio::sync::Mutex::new(()))
-}
 
 /// Numbers proposals in the order they arrive (process-wide, from 1).
 fn next_seq() -> u64 {
@@ -316,11 +277,11 @@ pub struct Appointment {
     pub title: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub caller_name: String,
-    /// `confirm` or `auto` (a test number): how the call took it.
+    /// `confirm` or `auto`: how the call took it.
     pub mode: String,
     /// [`PENDING`], [`BOOKED`], [`CONFIRMED`] or [`DECLINED`].
     pub status: String,
-    /// The event's id once it is in the demo calendar (records from before
+    /// The event's id once it is in the calendar (records from before
     /// Google Calendar was disconnected: its event there).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub event_id: String,
@@ -348,23 +309,16 @@ pub struct Appointment {
     /// answer was lost.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub tag: String,
-    /// The calendar its events are in: [`DEMO_CALENDAR`] = the demo calendar of
-    /// a test number; empty = none (the owner adds it to their own calendar).
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub calendar: String,
-    /// A write to the calendar timed out: it may or may not be there (look it up by `tag`).
-    #[serde(skip)]
-    pub write_unsure: bool,
     /// The Telegram card sent for it, to take its buttons off when the owner
     /// decides on the web or through the API.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tg_card: Option<TgCard>,
-    /// The owner's "accept" could not put it in the demo calendar (the write
+    /// The owner's "accept" could not put it in the calendar (the write
     /// failed, or the time was taken meanwhile): what they were told. It still
     /// waits; cleared once an "accept" goes through.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub write_error: String,
-    /// An "accept" was held because the time is not free in the demo calendar.
+    /// An "accept" was held because the time is not free in the calendar.
     /// The owner was told so: the next one books it anyway.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub held_busy: bool,
@@ -401,9 +355,6 @@ pub struct Earlier {
     /// The call's tag, for an event whose id never came back.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub tag: String,
-    /// The calendar it is in ([`Appointment::calendar`]).
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub calendar: String,
 }
 
 impl Earlier {
@@ -414,7 +365,6 @@ impl Earlier {
             title: a.title.clone(),
             event_id: a.event_id.clone(),
             tag: a.tag.clone(),
-            calendar: a.calendar.clone(),
         }
     }
 }
@@ -471,16 +421,6 @@ impl Appointment {
     /// Its time and what it is ("11/14（週六）15:00–16:00 看房").
     pub fn headline(&self, lang: Lang) -> String {
         format!("{} {}", self.when(lang), self.title.trim()).trim().to_string()
-    }
-
-    /// The calendar event's title: what it is, else "Appointment — caller".
-    fn calendar_title(&self, caller_id: &str) -> String {
-        let t = self.title.trim();
-        if t.is_empty() {
-            locale::fill(texts().e_appointment, display_caller(caller_id))
-        } else {
-            t.to_string()
-        }
     }
 
     /// As a calendar entry: "Add to calendar" in the web console and the
@@ -557,12 +497,11 @@ fn display_caller(caller_id: &str) -> &str {
 #[derive(Debug, Default)]
 pub struct CallAppointments {
     inner: std::sync::Mutex<Book>,
-    /// Proposals still running (a calendar write may be under way).
+    /// Proposals still running.
     in_flight: std::sync::atomic::AtomicUsize,
     /// One proposal of the call at a time ([`ApptSession::run_tool`] runs each
     /// function call on a task of its own): "eight doesn't work, make it half
-    /// past nine" arrives as two calls almost at once, and two `auto` bookings
-    /// side by side would both write.
+    /// past nine" arrives as two calls almost at once.
     turns: tokio::sync::Mutex<()>,
 }
 
@@ -673,7 +612,7 @@ impl Book {
     /// scam, nothing is kept (an event it already wrote goes on the voided list).
     fn put(&mut self, target: Target, appt: Appointment, seq: u64, replaces: bool) -> bool {
         if self.discarded {
-            if !appt.event_id.is_empty() || appt.write_unsure {
+            if !appt.event_id.is_empty() {
                 self.voided.push(Earlier::of(&appt));
             }
             return false;
@@ -769,7 +708,7 @@ impl CallAppointments {
         b.discarded = true;
         b.reviewed_normal = false;
         for slot in std::mem::take(&mut b.slots) {
-            if !slot.appt.event_id.is_empty() || slot.appt.write_unsure {
+            if !slot.appt.event_id.is_empty() {
                 b.voided.push(Earlier::of(&slot.appt));
             }
             b.voided.extend(slot.earlier);
@@ -791,14 +730,6 @@ impl CallAppointments {
     pub fn was_reviewed_normal(&self) -> bool {
         let b = self.book();
         !b.discarded && b.reviewed_normal
-    }
-
-    /// The event of the appointment agreed last, when it is in the calendar.
-    pub fn booked_event(&self) -> Option<Appointment> {
-        self.book()
-            .latest()
-            .map(|s| s.appt.clone())
-            .filter(|a| !a.event_id.is_empty())
     }
 
     /// Calendar events of this call that no longer stand (to delete).
@@ -831,7 +762,7 @@ impl CallAppointments {
     }
 
     /// Wait (up to `max`) until no proposal is running, so the end of a call
-    /// does not miss an event that is being written.
+    /// does not miss one.
     pub async fn settled(&self, max: Duration) {
         let until = tokio::time::Instant::now() + max;
         while self.in_flight.load(std::sync::atomic::Ordering::SeqCst) > 0
@@ -896,7 +827,7 @@ pub fn tool_declarations(non_blocking: bool) -> Value {
         "functionDeclarations": [
             {
                 "name": CHECK,
-                "description": "Whether the person you speak for is free at a local date and time. Answers {\"free\": true}, {\"free\": false} (busy; what it is stays private) or {\"free\": null} (the calendar could not be read).",
+                "description": "Whether the person you speak for is free at a local date and time. Answers {\"free\": null}: the schedule cannot be seen on this call.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
@@ -910,7 +841,7 @@ pub fn tool_declarations(non_blocking: bool) -> Value {
             },
             {
                 "name": PROPOSE,
-                "description": "Record an appointment agreed with the caller. Answers {\"status\": \"booked\"} (it is in the calendar), {\"status\": \"pending_owner_confirmation\"} (not settled yet; tell_caller says what the caller is told) or {\"status\": \"superseded\"} (a later call of yours already changed it; say nothing). Call it again with replaces_previous true only when the two of you change the time agreed last; with replaces_previous false for another, separate appointment (both stand). A back-up time the caller mentions is not a change.",
+                "description": "Record an appointment agreed with the caller. Answers {\"status\": \"pending_owner_confirmation\"} (not settled yet; tell_caller says what the caller is told) or {\"status\": \"superseded\"} (a later call of yours already changed it; say nothing). Call it again with replaces_previous true only when the two of you change the time agreed last; with replaces_previous false for another, separate appointment (both stand). A back-up time the caller mentions is not a change.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
@@ -995,10 +926,9 @@ pub fn parse_tool_cancellation(msg: &Value) -> Vec<String> {
 
 /// The client message answering one function call. [`PROPOSE`]'s answer says
 /// `"scheduling": "SILENT"`: the model already said what it had to (blocking
-/// or not, it is not to speak about it again) — except when `auto` could not
-/// book the time it already agreed to (`"not_booked": true`): then
-/// `"WHEN_IDLE"`, so it tells the caller it has to confirm after all — or
-/// when the call was refused (`"error"`, e.g. a wrong weekday), so it calls again.
+/// or not, it is not to speak about it again) — except when the call was
+/// refused (`"error"`, e.g. a wrong weekday): then `"WHEN_IDLE"`, so it calls
+/// again.
 pub fn tool_response(id: &str, name: &str, response: Value) -> Value {
     let mut response = response;
     if name == PROPOSE {
@@ -1016,335 +946,7 @@ pub fn tool_response(id: &str, name: &str, response: Value) -> Value {
 
 /// A [`PROPOSE`] answer the model is not to speak about ([`tool_response`]).
 pub fn answer_is_silent(name: &str, response: &Value) -> bool {
-    name == PROPOSE
-        && response.get("not_booked").and_then(Value::as_bool) != Some(true)
-        && response.get("error").is_none()
-}
-
-/// Where appointments are checked and written: the demo calendar of a test
-/// number, or (tests) a stand-in that counts what was written. Other calls
-/// have none: no calendar account is connected.
-#[derive(Clone, Debug)]
-enum Cal {
-    Demo(DemoCal),
-    #[cfg(test)]
-    Fake(Arc<FakeCal>),
-}
-
-impl Cal {
-    /// The calendar an appointment's events are in ([`Appointment::calendar`]):
-    /// the demo calendar, else none.
-    fn for_calendar(rt: &RuntimeSettings, calendar: &str) -> Option<Self> {
-        (calendar == DEMO_CALENDAR).then(|| Cal::Demo(DemoCal::from_settings(rt)))
-    }
-
-    /// What [`Appointment::calendar`] says for this calendar.
-    fn name(&self) -> &'static str {
-        match self {
-            Cal::Demo(_) => DEMO_CALENDAR,
-            _ => "",
-        }
-    }
-
-    async fn is_free_except(&self, http: &Client, start: &str, end: &str, own_id: &str) -> Result<bool> {
-        let _ = http;
-        match self {
-            Cal::Demo(d) => d.is_free_except(start, end, own_id),
-            #[cfg(test)]
-            Cal::Fake(f) => f.is_free_except(start, end, own_id),
-        }
-    }
-
-    async fn insert(&self, http: &Client, appt: &Appointment, caller_id: &str) -> Result<String> {
-        let _ = http;
-        match self {
-            Cal::Demo(d) => d.insert(appt, caller_id),
-            #[cfg(test)]
-            Cal::Fake(f) => f.insert(appt).await,
-        }
-    }
-
-    async fn move_to(&self, http: &Client, event_id: &str, appt: &Appointment) -> Result<()> {
-        let _ = http;
-        match self {
-            Cal::Demo(d) => d.move_to(event_id, appt),
-            #[cfg(test)]
-            Cal::Fake(f) => f.move_to(event_id, appt).await,
-        }
-    }
-
-    async fn delete(&self, http: &Client, event_id: &str) -> Result<()> {
-        let _ = http;
-        match self {
-            Cal::Demo(d) => d.delete(event_id),
-            #[cfg(test)]
-            Cal::Fake(f) => f.delete(event_id),
-        }
-    }
-
-    async fn find_tagged(&self, http: &Client, tag: &str) -> Result<Vec<String>> {
-        let _ = http;
-        match self {
-            Cal::Demo(d) => d.find_tagged(tag),
-            #[cfg(test)]
-            Cal::Fake(f) => Ok(f.find_tagged(tag)),
-        }
-    }
-
-    /// Put the appointment in the calendar at its time: move its own event
-    /// `own_id` ([`own_event`]), else insert one. The event's id.
-    async fn write_at(&self, http: &Client, appt: &Appointment, own_id: &str, caller_id: &str) -> Result<String> {
-        if own_id.is_empty() {
-            self.insert(http, appt, caller_id).await
-        } else {
-            self.move_to(http, own_id, appt).await?;
-            Ok(own_id.to_string())
-        }
-    }
-}
-
-/// The demo calendar test numbers book on (setting `appointment_test_numbers`):
-/// `demo_calendar.json` in the data folder, `{"busy": [[start, end], …],
-/// "events": [[id, start, end, tag, title], …]}` with local `YYYY-MM-DDTHH:MM`
-/// times. "busy" are other plans; "events" are what calls put in. Without the
-/// file, lunch (12:00–13:00) and the evening (19:00–21:00) of the 14 days from
-/// today are busy. Read and written whole on every use, one use at a time
-/// ([`DEMO_LOCK`], never held across an await).
-#[derive(Clone, Debug)]
-struct DemoCal {
-    path: PathBuf,
-}
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-struct DemoBook {
-    /// Other plans: (start, end).
-    #[serde(default)]
-    busy: Vec<(String, String)>,
-    /// (id, start, end, tag, title)
-    #[serde(default)]
-    events: Vec<(String, String, String, String, String)>,
-}
-
-/// One use of the demo calendar file at a time.
-static DEMO_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-const DEMO_FILE: &str = "demo_calendar.json";
-/// Days with the default busy times (today first).
-const DEMO_DAYS: i64 = 14;
-
-impl DemoCal {
-    /// `demo_calendar.json` in the data folder (`/data/calls` when unknown).
-    fn from_settings(rt: &RuntimeSettings) -> Self {
-        let dir = rt.calls_data_dir.trim();
-        let dir = if dir.is_empty() { "/data/calls" } else { dir };
-        Self {
-            path: PathBuf::from(dir).join(DEMO_FILE),
-        }
-    }
-
-    fn hold() -> std::sync::MutexGuard<'static, ()> {
-        DEMO_LOCK.lock().unwrap_or_else(|e| e.into_inner())
-    }
-
-    /// Lunch and the evening busy on the 14 days from `today`.
-    fn default_book(today: chrono::NaiveDate) -> DemoBook {
-        let at = |day: chrono::NaiveDate, h: u32| day.and_hms_opt(h, 0, 0).map(stamp).unwrap_or_default();
-        let mut busy = Vec::new();
-        for d in 0..DEMO_DAYS {
-            let day = today + Span::days(d);
-            busy.push((at(day, 12), at(day, 13)));
-            busy.push((at(day, 19), at(day, 21)));
-        }
-        DemoBook {
-            busy,
-            events: Vec::new(),
-        }
-    }
-
-    /// The file as it is (the default when there is none). Under [`DEMO_LOCK`].
-    fn load(&self) -> Result<DemoBook> {
-        match std::fs::read_to_string(&self.path) {
-            Ok(text) => serde_json::from_str(&text)
-                .with_context(|| format!("demo calendar {} unreadable", self.path.display())),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                Ok(Self::default_book(chrono::Local::now().naive_local().date()))
-            }
-            Err(e) => Err(e).with_context(|| format!("demo calendar {}", self.path.display())),
-        }
-    }
-
-    /// Write the whole file: a temporary file first, then renamed over it. Under [`DEMO_LOCK`].
-    fn save(&self, book: &DemoBook) -> Result<()> {
-        if let Some(dir) = self.path.parent() {
-            std::fs::create_dir_all(dir).with_context(|| format!("demo calendar folder {}", dir.display()))?;
-        }
-        let tmp = self.path.with_extension("json.tmp");
-        std::fs::write(&tmp, serde_json::to_vec_pretty(book)?)
-            .with_context(|| format!("demo calendar {}", tmp.display()))?;
-        std::fs::rename(&tmp, &self.path).with_context(|| format!("demo calendar {}", self.path.display()))
-    }
-
-    /// Read, change and write the file back.
-    fn change<T>(&self, f: impl FnOnce(&mut DemoBook) -> Result<T>) -> Result<T> {
-        let _held = Self::hold();
-        let mut book = self.load()?;
-        let out = f(&mut book)?;
-        self.save(&book)?;
-        Ok(out)
-    }
-
-    fn read(&self) -> Result<DemoBook> {
-        let _held = Self::hold();
-        self.load()
-    }
-
-    /// Nothing between `start` and `end` apart from the event `own_id`.
-    fn is_free_except(&self, start: &str, end: &str, own_id: &str) -> Result<bool> {
-        let book = self.read()?;
-        let clash = |s: &str, e: &str| s < end && start < e;
-        let others = book.busy.iter().any(|(s, e)| clash(s, e));
-        let written = book
-            .events
-            .iter()
-            .any(|(id, s, e, _, _)| id != own_id && clash(s, e));
-        Ok(!others && !written)
-    }
-
-    fn insert(&self, appt: &Appointment, caller_id: &str) -> Result<String> {
-        let id = format!("demo-{}", uuid::Uuid::new_v4());
-        let event = (
-            id.clone(),
-            appt.start.clone(),
-            appt.end.clone(),
-            appt.tag.clone(),
-            appt.calendar_title(caller_id),
-        );
-        self.change(|b| {
-            b.events.push(event);
-            Ok(())
-        })?;
-        Ok(id)
-    }
-
-    fn move_to(&self, event_id: &str, appt: &Appointment) -> Result<()> {
-        self.change(|b| {
-            let e = b
-                .events
-                .iter_mut()
-                .find(|e| e.0 == event_id)
-                .context("no such event in the demo calendar")?;
-            e.1 = appt.start.clone();
-            e.2 = appt.end.clone();
-            Ok(())
-        })
-    }
-
-    fn delete(&self, event_id: &str) -> Result<()> {
-        self.change(|b| {
-            b.events.retain(|e| e.0 != event_id);
-            Ok(())
-        })
-    }
-
-    fn find_tagged(&self, tag: &str) -> Result<Vec<String>> {
-        Ok(self
-            .read()?
-            .events
-            .into_iter()
-            .filter(|e| !tag.is_empty() && e.3 == tag)
-            .map(|e| e.0)
-            .collect())
-    }
-}
-
-/// A calendar for the tests: busy times of others, the events written, and
-/// how many inserts / moves / deletes happened.
-#[cfg(test)]
-#[derive(Debug, Default)]
-pub(crate) struct FakeCal {
-    /// (id, start, end, tag)
-    events: std::sync::Mutex<Vec<(String, String, String, String)>>,
-    /// Other people's appointments: (start, end).
-    busy: std::sync::Mutex<Vec<(String, String)>>,
-    inserts: std::sync::atomic::AtomicUsize,
-    moves: std::sync::atomic::AtomicUsize,
-    deletes: std::sync::atomic::AtomicUsize,
-    /// Writes take this long (to overlap two decisions).
-    write_delay_ms: std::sync::atomic::AtomicU64,
-    fail_delete: std::sync::atomic::AtomicBool,
-    fail_insert: std::sync::atomic::AtomicBool,
-}
-
-#[cfg(test)]
-impl FakeCal {
-    fn count(n: &std::sync::atomic::AtomicUsize) -> usize {
-        n.load(std::sync::atomic::Ordering::SeqCst)
-    }
-
-    async fn delay(&self) {
-        let ms = self.write_delay_ms.load(std::sync::atomic::Ordering::SeqCst);
-        if ms > 0 {
-            tokio::time::sleep(Duration::from_millis(ms)).await;
-        }
-    }
-
-    fn is_free_except(&self, start: &str, end: &str, own_id: &str) -> Result<bool> {
-        let clash = |s: &str, e: &str| s < end && start < e;
-        let others = self.busy.lock().unwrap().iter().any(|(s, e)| clash(s, e));
-        let written = self
-            .events
-            .lock()
-            .unwrap()
-            .iter()
-            .any(|(id, s, e, _)| id != own_id && clash(s, e));
-        Ok(!others && !written)
-    }
-
-    async fn insert(&self, appt: &Appointment) -> Result<String> {
-        self.delay().await;
-        if self.fail_insert.load(std::sync::atomic::Ordering::SeqCst) {
-            anyhow::bail!("日曆建立行程失敗（HTTP 503）");
-        }
-        let n = self.inserts.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-        let id = format!("ev{n}");
-        self.events
-            .lock()
-            .unwrap()
-            .push((id.clone(), appt.start.clone(), appt.end.clone(), appt.tag.clone()));
-        Ok(id)
-    }
-
-    async fn move_to(&self, event_id: &str, appt: &Appointment) -> Result<()> {
-        self.delay().await;
-        self.moves.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let mut ev = self.events.lock().unwrap();
-        let e = ev
-            .iter_mut()
-            .find(|e| e.0 == event_id)
-            .context("no such event")?;
-        e.1 = appt.start.clone();
-        e.2 = appt.end.clone();
-        Ok(())
-    }
-
-    fn delete(&self, event_id: &str) -> Result<()> {
-        if self.fail_delete.load(std::sync::atomic::Ordering::SeqCst) {
-            anyhow::bail!("日曆刪除行程失敗（HTTP 500）");
-        }
-        self.deletes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        self.events.lock().unwrap().retain(|e| e.0 != event_id);
-        Ok(())
-    }
-
-    fn find_tagged(&self, tag: &str) -> Vec<String> {
-        self.events
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|e| !tag.is_empty() && e.3 == tag)
-            .map(|e| e.0.clone())
-            .collect()
-    }
+    name == PROPOSE && response.get("error").is_none()
 }
 
 /// What an appointment's calendar entry says under its title: the caller's
@@ -1366,9 +968,8 @@ pub fn event_description(caller_id: &str, appt: &Appointment) -> String {
 /// What one call's Live session needs for appointments.
 #[derive(Clone)]
 pub struct ApptSession {
-    /// [`Mode::Confirm`], or [`Mode::Auto`] for a test number (never off).
+    /// [`Mode::Confirm`] (never off).
     pub mode: Mode,
-    calendar: Option<Cal>,
     /// How the owner's answer will reach the caller unless the owner picks
     /// another way ([`default_reply`]): what the AI promises on the call.
     pub reply: Reply,
@@ -1382,49 +983,34 @@ pub struct ApptSession {
     /// SIM that took the call is known.
     home: Option<String>,
     caller_id: String,
-    http: Client,
     /// This call's mark on the events it writes ([`Appointment::tag`]).
     tag: String,
-    /// How long an `auto` booking waits for the calendar ([`CALENDAR_TURN_WAIT`]).
-    turn_wait: Duration,
     /// What the caller agreed to.
     pub book: Arc<CallAppointments>,
 }
 
 impl ApptSession {
-    /// None when appointments are off. A test number (setting
-    /// `appointment_test_numbers`) always gets `auto` on the demo calendar;
-    /// every other call `confirm`, with no calendar to look at.
-    pub fn for_call(rt: &RuntimeSettings, http: &Client, caller_id: &str) -> Option<Self> {
-        if rt.is_appointment_test_number(caller_id) {
-            let demo = DemoCal::from_settings(rt);
-            info!(
-                "appointment test number: auto mode on the demo calendar path={}",
-                demo.path.display()
-            );
-            return Some(Self::new(rt, http, caller_id, Mode::Auto, Some(Cal::Demo(demo))));
-        }
+    /// None when appointments are off; otherwise `confirm`, with no calendar
+    /// to look at.
+    pub fn for_call(rt: &RuntimeSettings, caller_id: &str) -> Option<Self> {
         if Mode::parse(&rt.appointment_mode) == Mode::Off {
             return None;
         }
-        Some(Self::new(rt, http, caller_id, Mode::Confirm, None))
+        Some(Self::new(rt, caller_id, Mode::Confirm))
     }
 
-    fn new(rt: &RuntimeSettings, http: &Client, caller_id: &str, mode: Mode, calendar: Option<Cal>) -> Self {
+    fn new(rt: &RuntimeSettings, caller_id: &str, mode: Mode) -> Self {
         let home = home_region(rt);
         let reply = default_reply(&rt.appointment_reply, reply_options(rt, caller_id, home.as_deref()));
         Self {
             mode,
-            calendar,
             reply,
             reply_by_text: reply == Reply::Sms,
             sms_on: rt.appointment_sms,
             reply_setting: rt.appointment_reply.clone(),
             home,
             caller_id: caller_id.trim().to_string(),
-            http: http.clone(),
             tag: uuid::Uuid::new_v4().to_string(),
-            turn_wait: CALENDAR_TURN_WAIT,
             book: CallAppointments::new(),
         }
     }
@@ -1444,15 +1030,9 @@ impl ApptSession {
         self.reply_by_text = self.reply == Reply::Sms;
     }
 
-    pub fn can_check(&self) -> bool {
-        self.calendar.is_some()
-    }
-
     /// Added after the call's system instruction (the stored prompt is not touched).
     pub fn prompt_block(&self, now: chrono::DateTime<chrono::Local>) -> String {
         prompt_block(
-            self.mode,
-            self.can_check(),
             self.reply,
             &locale::active(),
             now.naive_local(),
@@ -1464,7 +1044,7 @@ impl ApptSession {
     pub async fn run_tool(&self, call: &ToolCall) -> Value {
         let now = chrono::Local::now().naive_local();
         match call.name.as_str() {
-            CHECK => self.check(&call.args, now).await,
+            CHECK => self.check(&call.args, now),
             PROPOSE => {
                 let seq = if call.seq == 0 { next_seq() } else { call.seq };
                 self.propose(&call.args, now, seq, call.after).await
@@ -1474,11 +1054,6 @@ impl ApptSession {
                 json!({ "error": "unknown_function" })
             }
         }
-    }
-
-    /// The event of the appointment agreed last (it does not clash with itself).
-    fn own_event_id(&self) -> String {
-        self.book.booked_event().map(|a| a.event_id).unwrap_or_default()
     }
 
     /// The answer to a proposal that waits for the owner: not settled, and what
@@ -1494,41 +1069,18 @@ impl ApptSession {
         })
     }
 
-    async fn check(&self, args: &Value, now: NaiveDateTime) -> Value {
+    fn check(&self, args: &Value, now: NaiveDateTime) -> Value {
         if let Some(e) = period_mismatch(args) {
             return e;
         }
-        let (start, end) = match window(args, now) {
+        let (start, _) = match window(args, now) {
             Ok(w) => w,
             Err(why) => return bad_time(why),
         };
         if let Some(e) = weekday_mismatch(args, start) {
             return e;
         }
-        let Some(cal) = &self.calendar else {
-            return unavailable();
-        };
-        let own = self.own_event_id();
-        match tokio::time::timeout(
-            CHECK_TIMEOUT,
-            cal.is_free_except(&self.http, &stamp(start), &stamp(end), &own),
-        )
-        .await
-        {
-            Ok(Ok(free)) => {
-                info!("appointment check start={} end={} free={free}", stamp(start), stamp(end));
-                json!({ "free": free })
-            }
-            Ok(Err(e)) => {
-                warn!("appointment check failed: {e:#}");
-                unavailable()
-            }
-            Err(_) => {
-                // The caller is waiting: "I'll confirm" beats a long silence.
-                warn!("appointment check timed out after {}s: answered unknown", CHECK_TIMEOUT.as_secs());
-                json!({ "free": null, "reason": "calendar_slow" })
-            }
-        }
+        unavailable()
     }
 
     /// `seq`: the call's place in the order calls arrived ([`ToolCall::seq`]);
@@ -1565,20 +1117,16 @@ impl ApptSession {
             .and_then(Value::as_bool)
             .unwrap_or(true);
         let (start, end) = (stamp(start), stamp(end));
-        let (target, own, tag) = {
+        let (target, tag) = {
             let b = self.book.book();
             let target = b.target(seq, replaces, &start, &end);
-            let own = match target {
-                Target::Change(i) => Some(b.slots[i].appt.clone()),
-                _ => None,
-            };
-            (target, own, b.tag_for(target, &self.tag))
+            (target, b.tag_for(target, &self.tag))
         };
         if target == Target::Stale {
             info!("appointment proposal seq={seq} start={start} superseded by a later one");
             return json!({ "status": "superseded" });
         }
-        let mut appt = Appointment {
+        let appt = Appointment {
             start,
             end,
             title: clean_text(args.get("title"), TITLE_MAX),
@@ -1586,140 +1134,23 @@ impl ApptSession {
             mode: self.mode.as_str().to_string(),
             status: PENDING.to_string(),
             tag,
-            calendar: self.calendar.as_ref().map_or("", Cal::name).to_string(),
             ..Default::default()
         };
-        if let (Mode::Auto, Some(cal)) = (self.mode, &self.calendar) {
-            self.book_auto(cal, &mut appt, own.as_ref()).await;
-        }
-        let booked = appt.status == BOOKED;
         info!(
-            "appointment proposed seq={seq} replaces={replaces} new={} start={} end={} mode={} booked={booked} auto_error={:?}",
+            "appointment proposed seq={seq} replaces={replaces} new={} start={} end={} mode={}",
             target == Target::New,
             appt.start,
             appt.end,
-            appt.mode,
-            appt.auto_error
+            appt.mode
         );
-        if !self.book.put(target, appt, seq, replaces) {
-            return pending;
-        }
-        if booked {
-            json!({ "status": "booked" })
-        } else if self.mode == Mode::Auto && self.calendar.is_some() {
-            // It agreed already (auto) but the time could not be booked.
-            json!({ "status": "pending_owner_confirmation", "not_booked": true })
-        } else {
-            pending
-        }
-    }
-
-    /// `auto`: check for a clash (the event of the appointment it changes,
-    /// `own`, does not count; this call's other appointments do), then move that
-    /// event to the new time — or insert one when there is none yet. The same
-    /// time as the event already booked writes nothing. When it cannot be booked
-    /// the event stays where it is and the appointment keeps its id, so the
-    /// owner's ✅ moves it instead of adding a second one.
-    async fn book_auto(&self, cal: &Cal, appt: &mut Appointment, own: Option<&Appointment>) {
-        let own = own.filter(|o| !o.event_id.is_empty());
-        if let Some(o) = own.filter(|o| o.start == appt.start && o.end == appt.end) {
-            appt.event_id = o.event_id.clone();
-            appt.status = BOOKED.to_string();
-            return;
-        }
-        let own_id = own.map(|o| o.event_id.clone()).unwrap_or_default();
-        let fail = |appt: &mut Appointment, why: String| {
-            appt.auto_error = why;
-            if !own_id.is_empty() {
-                appt.event_id = own_id.clone();
-            }
-        };
-        // Another call may be booking the same hour: its check and write first
-        // — but only so long; the end of the call does not wait for ever.
-        let Ok(_turn) = tokio::time::timeout(self.turn_wait, calendar_turn().lock()).await else {
-            warn!("appointment auto booking: the calendar was busy for {:?}, left to the owner", self.turn_wait);
-            fail(appt, calendar_busy().to_string());
-            return;
-        };
-        match tokio::time::timeout(
-            BOOK_CHECK_TIMEOUT,
-            cal.is_free_except(&self.http, &appt.start, &appt.end, &own_id),
-        )
-        .await
-        {
-            Ok(Ok(true)) => {}
-            Ok(Ok(false)) => {
-                fail(appt, texts().ap_busy.to_string());
-                return;
-            }
-            Ok(Err(e)) => {
-                fail(appt, format!("{e:#}"));
-                return;
-            }
-            Err(_) => {
-                fail(appt, calendar_slow(BOOK_CHECK_TIMEOUT.as_secs()));
-                return;
-            }
-        }
-        let draft = appt.clone();
-        let write = async {
-            if own_id.is_empty() {
-                cal.insert(&self.http, &draft, &self.caller_id).await
-            } else {
-                cal.move_to(&self.http, &own_id, &draft).await.map(|()| own_id.clone())
-            }
-        };
-        match tokio::time::timeout(WRITE_TIMEOUT, write).await {
-            Ok(Ok(id)) => {
-                appt.event_id = id;
-                appt.status = BOOKED.to_string();
-            }
-            Ok(Err(e)) => fail(appt, format!("{e:#}")),
-            Err(_) => {
-                fail(appt, calendar_slow(WRITE_TIMEOUT.as_secs()));
-                // Maybe written after all: a moved event keeps its id; a new one
-                // is found by its tag when the owner confirms or it is voided.
-                appt.write_unsure = own_id.is_empty();
-            }
-        }
+        // Not kept when the call was judged sales / scam meanwhile; it waits either way.
+        self.book.put(target, appt, seq, replaces);
+        pending
     }
 }
 
 fn unavailable() -> Value {
     json!({ "free": null, "reason": "calendar_unavailable" })
-}
-
-/// The demo calendar did not answer within `secs`: why an `auto` booking or an
-/// "accept" did not go through, in the owner's language.
-fn calendar_slow(secs: u64) -> String {
-    let s = match locale::notify_lang() {
-        Lang::ZhTw => "日曆沒有及時回應（{} 秒）",
-        Lang::ZhCn => "日历没有及时响应（{} 秒）",
-        Lang::En => "the calendar did not answer in time ({} s)",
-        Lang::Ja => "カレンダーが時間内に応答しませんでした（{} 秒）",
-        Lang::Ko => "캘린더가 제때 응답하지 않았습니다({}초)",
-        Lang::Es => "el calendario no respondió a tiempo ({} s)",
-        Lang::Fr => "l'agenda n'a pas répondu à temps ({} s)",
-        Lang::De => "der Kalender hat nicht rechtzeitig geantwortet ({} s)",
-        Lang::Pt => "a agenda não respondeu a tempo ({} s)",
-    };
-    locale::fill(s, &secs.to_string())
-}
-
-/// The demo calendar was writing another booking the whole time an `auto`
-/// booking could wait for it, in the owner's language.
-fn calendar_busy() -> &'static str {
-    match locale::notify_lang() {
-        Lang::ZhTw => "日曆正在寫入另一筆預約",
-        Lang::ZhCn => "日历正在写入另一条预约",
-        Lang::En => "the calendar was busy with another booking",
-        Lang::Ja => "カレンダーが別の予約を書き込み中でした",
-        Lang::Ko => "캘린더가 다른 예약을 기록하는 중이었습니다",
-        Lang::Es => "el calendario estaba guardando otra cita",
-        Lang::Fr => "l'agenda enregistrait un autre rendez-vous",
-        Lang::De => "der Kalender trug gerade einen anderen Termin ein",
-        Lang::Pt => "a agenda estava gravando outro compromisso",
-    }
 }
 
 fn bad_time(why: &str) -> Value {
@@ -1907,8 +1338,6 @@ fn check_back_said(active: &locale::Active, reply: Reply) -> String {
 /// answers in the call's language). Coming last, they win over a prompt line
 /// such as "do not agree to plans for the owner".
 pub fn prompt_block(
-    mode: Mode,
-    can_check: bool,
     reply: Reply,
     active: &locale::Active,
     now: NaiveDateTime,
@@ -1916,21 +1345,10 @@ pub fn prompt_block(
 ) -> String {
     let owner = crate::prompts::owner_label(active.lang, &active.owner);
     let language = locale::phrases(active.lang).name_en;
-    let me = !active.assistant;
     // What the AI says for a time that is not settled on the call (the owner's
     // wording), by how the answer will reach the caller: a text, a call-back,
     // or — neither can — only "get back to you".
     let said = check_back_said(active, reply);
-    let back = match reply {
-        Reply::Sms => "text them back later",
-        Reply::Call => "call them back later",
-        Reply::None => "get back to them",
-    };
-    let has_plans = if me {
-        "you already have something on then".to_string()
-    } else {
-        format!("{owner} already has something on then")
-    };
     let mut s = format!(
         "\n\n[Appointments — this part overrides anything above about not agreeing to plans or invitations for {owner}]\n"
     );
@@ -1968,26 +1386,9 @@ pub fn prompt_block(
         "When the caller asks whether {owner} is free at some time, or wants to set a time (a meeting, a visit, coming by, a call at a set time):\n"
     ));
     s.push_str("- Never make the caller wait on the line and never say you are looking something up right now, in any language (nothing like \"one moment\", \"hold on\", \"let me look\", \"ちょっと待って\", \"確認するから待って\", \"等一下\"): call the function silently and carry on with the conversation. Saying that you will check it after the call and get back to them is something else: that is exactly what you say below.\n");
-    if can_check {
-        s.push_str("- As soon as there is a day and a time, call check_availability (start, weekday, and end if they said how long) before you say anything about whether it works. Only a vague time (\"next week\", \"some afternoon\")? Ask which day and what time first.\n");
-        s.push_str(&format!(
-            "- {{\"free\": false}}: say {has_plans}, never what it is. Only if they ask, suggest another time (you may check that one too).\n"
-        ));
-        if mode == Mode::Auto {
-            s.push_str("- {\"free\": true}: agree naturally, then call propose_appointment.\n");
-        } else {
-            s.push_str(&format!(
-                "- {{\"free\": true}}: do not say it is settled; say {said}, in {language}, then call propose_appointment.\n"
-            ));
-        }
-        s.push_str(&format!(
-            "- {{\"free\": null}} (the calendar could not be read): you do not know whether {owner} is free, so do not say it is free or that it should work; say {said}, in {language}, then call propose_appointment.\n"
-        ));
-    } else {
-        s.push_str(&format!(
-            "- You cannot see {owner}'s schedule on this call, so do not call check_availability, and you do not know whether {owner} is free: do not say it is free, that it should work or that it is settled. Once there is a day and a time, say {said} — in {language}, with the same meaning — then call propose_appointment. Only a vague time? Ask which day and what time first.\n"
-        ));
-    }
+    s.push_str(&format!(
+        "- You cannot see {owner}'s schedule on this call, so do not call check_availability, and you do not know whether {owner} is free: do not say it is free, that it should work or that it is settled. Once there is a day and a time, say {said} — in {language}, with the same meaning — then call propose_appointment. Only a vague time? Ask which day and what time first.\n"
+    ));
     match reply {
         Reply::Sms => {}
         Reply::Call => s.push_str("- The answer reaches this caller by a call-back: never promise a text message.\n"),
@@ -1997,7 +1398,7 @@ pub fn prompt_block(
         "- propose_appointment: start (and end) as agreed, weekday, period, title = what it is about in a few words in {language}, caller_name only if they said their name (otherwise leave it out). Call it once for each appointment you agree on. If the two of you really change the time of the appointment agreed last, call it again with replaces_previous = true (the new time replaces it). If the caller sets up another, separate appointment (another matter or another day, and both stand), call it with replaces_previous = false. A back-up time the caller offers (\"if not, the afternoon works too\") or another time named in passing is not a change: do not call it for that.\n"
     ));
     s.push_str(&format!(
-        "- Its answer \"pending_owner_confirmation\" means it is not settled yet: if you have not said it already, say {said}; never say it is booked. If it also has \"not_booked\": true, you had already agreed but it could not go into the calendar: briefly tell the caller you still need to check and will {back}. \"booked\" means it is settled and you may say so.\n"
+        "- Its answer \"pending_owner_confirmation\" means it is not settled yet: if you have not said it already, say {said}; never say it is booked.\n"
     ));
     s.push_str("- {\"error\": \"weekday_mismatch\"}: the date you sent is another weekday (\"date_is\" says which). Take the right date from the list above and call again; say nothing about it to the caller.\n");
     s.push_str("- {\"error\": \"period_mismatch\"}: the hour you sent is not in the part of the day the caller named (\"hint\" says what to fix, e.g. 20:00 for eight in the evening). Correct start and call again; say nothing about it to the caller.\n");
@@ -2169,90 +1570,22 @@ fn sms_report(out: &SmsOutcome, shown_number: &str) -> (String, String) {
     }
 }
 
-/// A test number's appointment (setting `appointment_test_numbers`): on the
-/// demo calendar, or from a number on the list.
-fn is_test_call(rt: &RuntimeSettings, task: &TaskRecord, appt: &Appointment) -> bool {
-    appt.calendar == DEMO_CALENDAR || rt.is_appointment_test_number(&task.caller_id)
-}
-
-/// The phone the setting `appointment_test_sms_phone` names: a connected
-/// phone's id (any case), else the phone whose `device_labels` name it is (any
-/// case; a connected one first), else the setting as written (a phone id that
-/// is not connected now).
-fn named_phone(name: &str, labels: &std::collections::BTreeMap<String, String>, connected: &[String]) -> String {
-    let name = name.trim();
-    if let Some(s) = connected.iter().find(|s| s.eq_ignore_ascii_case(name)) {
-        return s.clone();
-    }
-    let wanted = name.to_lowercase();
-    let labelled: Vec<&String> = labels
-        .iter()
-        .filter(|(_, label)| label.trim().to_lowercase() == wanted)
-        .map(|(id, _)| id)
-        .collect();
-    labelled
-        .iter()
-        .find(|id| connected.iter().any(|s| s.eq_ignore_ascii_case(id)))
-        .or_else(|| labelled.first())
-        .map(|id| id.to_string())
-        .unwrap_or_else(|| name.to_string())
-}
-
-/// Where a test call's text goes out (settings `appointment_test_sms_phone` and
-/// `appointment_test_sms_sim`): that phone, or the one that took the call; the
-/// SIM by name, else that phone's default SIM, else the SIM that took the call.
-/// `connected`: the phones connected now ([`ControlRegistry::connected_serials`]).
-fn test_text_route(rt: &RuntimeSettings, connected: &[String], task: &TaskRecord, appt: &Appointment) -> (String, SmsSim) {
-    let phone_set = rt.appointment_test_sms_phone.trim();
-    let sim_set = rt.appointment_test_sms_sim.trim();
-    let phone = if phone_set.is_empty() {
-        task.serial.clone()
-    } else {
-        named_phone(phone_set, &rt.device_labels, connected)
-    };
-    let sim = if !sim_set.is_empty() {
-        SmsSim::Named(sim_set.to_string())
-    } else if !phone_set.is_empty() {
-        SmsSim::Default
-    } else {
-        SmsSim::from_sub_id(appt.sim_sub_id)
-    };
-    (phone, sim)
-}
-
-/// The phone and SIM a text goes out from when the owner picks no phone: for a
-/// test call ([`is_test_call`]) those its settings name ([`test_text_route`]),
-/// else the phone and SIM that took the call.
-fn default_text_route(rt: &RuntimeSettings, connected: &[String], task: &TaskRecord, appt: &Appointment) -> (String, SmsSim) {
-    if is_test_call(rt, task, appt) {
-        test_text_route(rt, connected, task, appt)
-    } else {
-        (task.serial.clone(), SmsSim::from_sub_id(appt.sim_sub_id))
-    }
-}
-
 /// Where an appointment's text goes out when the owner picks no phone, as the
-/// web console shows it (`sms_route` on `GET /calls/api/tasks`).
+/// web console shows it (`sms_route` on `GET /calls/api/tasks`): the phone
+/// that took the call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SmsRoute {
     /// The phone's id.
     pub serial: String,
     /// The phone's name in `device_labels`, else its id.
     pub label: String,
-    /// The SIM the phone looks up by name (`appointment_test_sms_sim`); left
-    /// out when the phone uses the SIM that took the call or its default SIM.
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub sim: String,
-    /// A test call whose phone or SIM the test text settings name.
-    pub test: bool,
 }
 
-/// The route of [`default_text_route`] for a task's appointment; None for a
-/// task without an appointment or a phone. The phone need not be connected.
-pub fn sms_route(rt: &RuntimeSettings, connected: &[String], task: &TaskRecord) -> Option<SmsRoute> {
-    let appt = task.appointment.as_ref()?;
-    let (serial, sim) = default_text_route(rt, connected, task, appt);
-    let serial = serial.trim().to_string();
+/// The [`SmsRoute`] of a task's appointment; None for a task without an
+/// appointment or a phone. The phone need not be connected.
+pub fn sms_route(rt: &RuntimeSettings, task: &TaskRecord) -> Option<SmsRoute> {
+    task.appointment.as_ref()?;
+    let serial = task.serial.trim().to_string();
     if serial.is_empty() {
         return None;
     }
@@ -2264,20 +1597,14 @@ pub fn sms_route(rt: &RuntimeSettings, connected: &[String], task: &TaskRecord) 
         .filter(|label| !label.is_empty())
         .unwrap_or(&serial)
         .to_string();
-    let sim = match sim {
-        SmsSim::Named(name) => name.trim().to_string(),
-        SmsSim::Default | SmsSim::SubId(_) => String::new(),
-    };
-    let set = !rt.appointment_test_sms_phone.trim().is_empty() || !rt.appointment_test_sms_sim.trim().is_empty();
-    let test = set && is_test_call(rt, task, appt);
-    Some(SmsRoute { serial, label, sim, test })
+    Some(SmsRoute { serial, label })
 }
 
 /// A task as `GET /calls/api/tasks` lists it: an appointment's task with its
 /// [`SmsRoute`] as `sms_route`.
-pub fn task_json(rt: &RuntimeSettings, connected: &[String], task: &TaskRecord) -> Value {
+pub fn task_json(rt: &RuntimeSettings, task: &TaskRecord) -> Value {
     let mut v = serde_json::to_value(task).unwrap_or(Value::Null);
-    if let (Some(route), Some(obj)) = (sms_route(rt, connected, task), v.as_object_mut()) {
+    if let (Some(route), Some(obj)) = (sms_route(rt, task), v.as_object_mut()) {
         obj.insert("sms_route".into(), json!(route));
     }
     v
@@ -2295,26 +1622,24 @@ pub fn sms_code_text(lang: Lang, code: &str) -> Option<&'static str> {
         "timeout" => Some(p.ap_sms_timeout),
         "busy" => Some(p.ap_sms_busy),
         "no_number" => Some(p.ap_sms_cannot),
-        "not_test_number" => Some(p.ap_sms_not_test),
         _ => None,
     };
     own.or_else(|| phone_sms_code(lang, code))
 }
 
-/// The codes a phone answers a text with ([`crate::callback::SMS_ERROR_CODES`];
-/// `no_sim`: no SIM on the phone, or more than one, matched the one asked for).
+/// The codes a phone answers a text with ([`crate::callback::SMS_ERROR_CODES`]).
 fn phone_sms_code(lang: Lang, code: &str) -> Option<&'static str> {
-    const CODES: [&str; 7] = ["no_permission", "bad_request", "no_service", "radio_off", "generic_failure", "exception", "no_sim"];
-    let words: [&'static str; 7] = match lang {
-        Lang::ZhTw => ["手機 App 沒有傳簡訊的權限", "號碼或內容不被接受", "手機沒有訊號", "手機的行動網路關閉（飛航模式）", "電信端沒有收下這則簡訊", "手機 App 發生錯誤", "手機上找不到設定裡指定的那張 SIM（或符合的不只一張）"],
-        Lang::ZhCn => ["手机 App 没有发短信的权限", "号码或内容不被接受", "手机没有信号", "手机的移动网络关闭（飞行模式）", "运营商没有接收这条短信", "手机 App 出错了", "手机上找不到设置里指定的那张 SIM（或符合的不止一张）"],
-        Lang::En => ["the phone app may not send texts", "the number or the text was not accepted", "no mobile signal", "the phone's radio is off (airplane mode)", "the carrier did not take the text", "the phone app ran into an error", "the phone has no SIM matching the one in settings (or more than one)"],
-        Lang::Ja => ["アプリに SMS 送信の権限がありません", "番号か本文が受け付けられませんでした", "圏外です", "機内モードなどで電波がオフです", "通信事業者が SMS を受け付けませんでした", "スマホのアプリでエラーが起きました", "設定で指定した SIM がスマホに見つかりません（または複数あります）"],
-        Lang::Ko => ["앱에 문자 전송 권한이 없음", "번호나 내용이 받아들여지지 않음", "휴대폰 신호 없음", "비행기 모드 등으로 전파가 꺼짐", "통신사가 문자를 받지 않음", "휴대폰 앱에서 오류 발생", "설정에서 지정한 SIM을 휴대폰에서 찾을 수 없음(또는 여러 개)"],
-        Lang::Es => ["la app no tiene permiso para enviar SMS", "no se aceptó el número o el texto", "sin cobertura", "la radio del teléfono está apagada (modo avión)", "el operador no aceptó el SMS", "la app del teléfono tuvo un error", "el teléfono no tiene la SIM indicada en los ajustes (o tiene más de una)"],
-        Lang::Fr => ["l'application n'a pas le droit d'envoyer des SMS", "le numéro ou le texte n'a pas été accepté", "pas de réseau mobile", "la radio du téléphone est coupée (mode avion)", "l'opérateur n'a pas accepté le SMS", "l'application du téléphone a rencontré une erreur", "le téléphone n'a pas la SIM indiquée dans les réglages (ou en a plusieurs)"],
-        Lang::De => ["die App darf keine SMS senden", "Nummer oder Text wurde nicht angenommen", "kein Mobilfunknetz", "Funk am Telefon aus (Flugmodus)", "der Netzbetreiber hat die SMS nicht angenommen", "in der App auf dem Telefon ist ein Fehler aufgetreten", "das Telefon hat keine SIM, die zur Einstellung passt (oder mehrere)"],
-        Lang::Pt => ["o app não tem permissão para enviar SMS", "o número ou o texto não foi aceito", "sem sinal de celular", "o rádio do telefone está desligado (modo avião)", "a operadora não aceitou o SMS", "o app do telefone teve um erro", "o telefone não tem o SIM indicado nas configurações (ou tem mais de um)"],
+    const CODES: [&str; 6] = ["no_permission", "bad_request", "no_service", "radio_off", "generic_failure", "exception"];
+    let words: [&'static str; 6] = match lang {
+        Lang::ZhTw => ["手機 App 沒有傳簡訊的權限", "號碼或內容不被接受", "手機沒有訊號", "手機的行動網路關閉（飛航模式）", "電信端沒有收下這則簡訊", "手機 App 發生錯誤"],
+        Lang::ZhCn => ["手机 App 没有发短信的权限", "号码或内容不被接受", "手机没有信号", "手机的移动网络关闭（飞行模式）", "运营商没有接收这条短信", "手机 App 出错了"],
+        Lang::En => ["the phone app may not send texts", "the number or the text was not accepted", "no mobile signal", "the phone's radio is off (airplane mode)", "the carrier did not take the text", "the phone app ran into an error"],
+        Lang::Ja => ["アプリに SMS 送信の権限がありません", "番号か本文が受け付けられませんでした", "圏外です", "機内モードなどで電波がオフです", "通信事業者が SMS を受け付けませんでした", "スマホのアプリでエラーが起きました"],
+        Lang::Ko => ["앱에 문자 전송 권한이 없음", "번호나 내용이 받아들여지지 않음", "휴대폰 신호 없음", "비행기 모드 등으로 전파가 꺼짐", "통신사가 문자를 받지 않음", "휴대폰 앱에서 오류 발생"],
+        Lang::Es => ["la app no tiene permiso para enviar SMS", "no se aceptó el número o el texto", "sin cobertura", "la radio del teléfono está apagada (modo avión)", "el operador no aceptó el SMS", "la app del teléfono tuvo un error"],
+        Lang::Fr => ["l'application n'a pas le droit d'envoyer des SMS", "le numéro ou le texte n'a pas été accepté", "pas de réseau mobile", "la radio du téléphone est coupée (mode avion)", "l'opérateur n'a pas accepté le SMS", "l'application du téléphone a rencontré une erreur"],
+        Lang::De => ["die App darf keine SMS senden", "Nummer oder Text wurde nicht angenommen", "kein Mobilfunknetz", "Funk am Telefon aus (Flugmodus)", "der Netzbetreiber hat die SMS nicht angenommen", "in der App auf dem Telefon ist ein Fehler aufgetreten"],
+        Lang::Pt => ["o app não tem permissão para enviar SMS", "o número ou o texto não foi aceito", "sem sinal de celular", "o rádio do telefone está desligado (modo avião)", "a operadora não aceitou o SMS", "o app do telefone teve um erro"],
     };
     CODES.iter().position(|c| *c == code).map(|i| words[i])
 }
@@ -2329,10 +1654,8 @@ pub fn calendar_link(rt: &RuntimeSettings, task: &TaskRecord, appt: &Appointment
 }
 
 /// Send the caller the text for this decision through the phone that took the
-/// call (or `serial`, another phone the owner picked). A test call
-/// ([`is_test_call`]) texts only test numbers, from the phone and SIM its
-/// settings name ([`default_text_route`]) unless the owner picked another phone.
-/// Returns the [`Appointment::sms`] code and the owner's line.
+/// call (or `serial`, another phone the owner picked). Returns the
+/// [`Appointment::sms`] code and the owner's line.
 async fn text_caller(
     rt: &RuntimeSettings,
     control: Option<&ControlRegistry>,
@@ -2346,46 +1669,21 @@ async fn text_caller(
     let Some(to) = sms_number_on(&task.caller_id, region.as_deref()) else {
         return ("no_number".to_string(), p.ap_sms_cannot.to_string());
     };
-    let test_call = is_test_call(rt, task, appt);
-    // `to` is the caller's number with its country code added (`sms_number_on`);
-    // the list may have it either way.
-    let listed = rt.is_appointment_test_number(&to) || rt.is_appointment_test_number(&task.caller_id);
-    if test_call && !listed {
-        info!("appointment sms task_id={} not sent: a test call to a number off the test list", task.id);
-        return (
-            "not_test_number".to_string(),
-            locale::fill(p.ap_sms_not_sent, p.ap_sms_not_test),
-        );
-    }
     let Some(control) = control else {
         return sms_report(&SmsOutcome::Offline, &to);
     };
-    let (phone, sim) = match serial.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(picked) => {
-            let route = if test_call {
-                Some(test_text_route(rt, &control.connected_serials().await, task, appt))
-            } else {
-                None
-            };
-            match route {
-                // The owner picked the test phone itself: the SIM the settings name.
-                Some((test_phone, sim)) if test_phone.eq_ignore_ascii_case(picked) => (picked.to_string(), sim),
-                // The SIM that took the call; another phone sends from its own default.
-                _ => {
-                    let sim = if picked == task.serial { SmsSim::from_sub_id(appt.sim_sub_id) } else { SmsSim::Default };
-                    (picked.to_string(), sim)
-                }
-            }
-        }
-        None => default_text_route(rt, &control.connected_serials().await, task, appt),
-    };
+    let phone = serial
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(task.serial.as_str());
+    // The SIM that took the call; another phone sends from its own default.
+    let sub_id = if phone == task.serial { appt.sim_sub_id } else { None };
     // To the caller: in the language the AI spoke with them.
     let text = sms_text(locale::current(), &rt.owner_name, appt, confirmed);
-    let out = control.send_sms_from(&phone, &sim, &task.id, &to, &text, SMS_RESULT_WAIT).await;
+    let out = control.send_sms_on(phone, sub_id, &task.id, &to, &text, SMS_RESULT_WAIT).await;
     info!(
-        "appointment sms task_id={} serial={phone} sim={} test_call={test_call} outcome={out:?}",
-        task.id,
-        sim.describe()
+        "appointment sms task_id={} serial={phone} sub_id={sub_id:?} outcome={out:?}",
+        task.id
     );
     sms_report(&out, task.caller_id.trim())
 }
@@ -2994,8 +2292,8 @@ If they seriously ask whether they are talking to a real person, say that you ar
 // After the call
 // ---------------------------------------------------------------------------
 
-/// The line under the post-call summary: "📅 已排入行事曆：…", or — waiting for
-/// the owner — "📅 預約待你確認：… — 到網頁確認：<link>" (`link` = the call's page
+/// The line under the post-call summary for an appointment that waits for
+/// the owner: "📅 預約待你確認：… — 到網頁確認：<link>" (`link` = the call's page
 /// in the web console; without one, where to go). Every notification channel
 /// gets it, so the owner learns of it whatever they use. One line for each
 /// appointment of the call ([`Appointment::more`]).
@@ -3010,8 +2308,7 @@ pub fn summary_line(appt: &Appointment, link: &str) -> String {
 fn summary_line_one(appt: &Appointment, link: &str) -> String {
     let lang = locale::notify_lang();
     let p = locale::phrases(lang);
-    let label = if appt.status == BOOKED { p.ap_booked } else { p.ap_pending };
-    let mut s = format!("📅 {label}{}{}", p.sep, appt.headline(lang));
+    let mut s = format!("📅 {}{}{}", p.ap_pending, p.sep, appt.headline(lang));
     if appt.status == PENDING {
         let link = link.trim();
         let web = if link.is_empty() {
@@ -3050,11 +2347,6 @@ pub async fn create_task(store: &TaskStore, call: &CallRecord, appt: &Appointmen
 
 async fn create_one(store: &TaskStore, call: &CallRecord, appt: &Appointment) -> Option<TaskRecord> {
     let lang = locale::notify_lang();
-    let booked = appt.status == BOOKED;
-    let mut events = vec!["appointment_from_call".to_string()];
-    if booked {
-        events.push("calendar_event_created".to_string());
-    }
     let task = TaskRecord {
         id: String::new(),
         created_at: String::new(),
@@ -3062,7 +2354,7 @@ async fn create_one(store: &TaskStore, call: &CallRecord, appt: &Appointment) ->
         call_id: call.id.clone(),
         serial: call.serial.clone(),
         caller_id: call.caller_id.clone(),
-        status: if booked { TaskStatus::Fulfilled } else { TaskStatus::Pending },
+        status: TaskStatus::Pending,
         intent: TaskIntent::Appointment,
         summary: appt.headline(lang),
         transcript: String::new(),
@@ -3077,10 +2369,10 @@ async fn create_one(store: &TaskStore, call: &CallRecord, appt: &Appointment) ->
         ),
         contact_verified: false,
         voicemail_path: None,
-        calendar_event_id: (!appt.event_id.is_empty()).then(|| appt.event_id.clone()),
-        fulfill_error: (!appt.auto_error.is_empty()).then(|| appt.auto_error.clone()),
+        calendar_event_id: None,
+        fulfill_error: None,
         openclaw_ref: None,
-        events,
+        events: vec!["appointment_from_call".to_string()],
         appointment: Some(appt.clone()),
     };
     match store.create(task).await {
@@ -3126,12 +2418,6 @@ pub fn card_text(rt: &RuntimeSettings, task: &TaskRecord, appt: &Appointment, li
         Reply::None if !rt.appointment_sms => format!("{}{sep}{}", p.ap_sms, p.ap_sms_off),
         Reply::None => format!("{}{sep}{}", p.ap_sms, p.ap_sms_cannot),
     });
-    if !appt.auto_error.is_empty() {
-        lines.push(locale::fill(p.ap_auto_failed, &appt.auto_error));
-    }
-    if !appt.write_error.is_empty() {
-        lines.push(appt.write_error.clone());
-    }
     for e in &appt.replaced {
         lines.push(locale::fill(p.ap_replaced, &e.when(lang)));
     }
@@ -3143,75 +2429,48 @@ pub fn card_text(rt: &RuntimeSettings, task: &TaskRecord, appt: &Appointment, li
 
 /// After the summary went out: the card for an appointment that waits for
 /// the owner (Telegram set up and `call_notify` on; the web console shows it
-/// either way), or — booked on the call — the text message to the caller.
-/// `link`: the call's page in the web console.
+/// either way). `link`: the call's page in the web console.
 pub async fn after_summary(
     http: &Client,
     rt: &RuntimeSettings,
     store: &TaskStore,
-    calls: &CallStore,
-    control: &ControlRegistry,
     task: &TaskRecord,
     link: &str,
 ) {
-    let Some(mut appt) = task.appointment.clone() else {
+    let Some(appt) = task.appointment.clone() else {
         return;
     };
+    if appt.status != PENDING {
+        return;
+    }
     let token = rt.telegram_bot_token.trim();
     let chat = rt.telegram_chat_id.trim();
-    let tg = crate::tg_inbound::task_card_ready(rt.call_notify, token, chat);
-    if appt.status == PENDING {
-        if !tg {
-            info!("appointment card not sent (Telegram not set up; decided on the web) task_id={}", task.id);
-            return;
-        }
-        let p = texts();
-        let (title, body) = card_text(rt, task, &appt, link);
-        match crate::tg_inbound::send_task_card_labeled(
-            http, token, chat, &title, &task.id, &body, p.ap_confirm, p.ap_decline,
-        )
-        .await
-        {
-            Ok(message_id) if message_id != 0 => {
-                let card = TgCard { chat_id: chat.to_string(), message_id };
-                if keep_card(store, &task.id, &card, CARD_SETTLE_WAIT).await == CardFate::Close {
-                    // Decided on the web while the card was on its way: no buttons
-                    // for a decision already made.
-                    crate::tg_inbound::remove_inline_keyboard(http, token, &card.chat_id, card.message_id).await;
-                    let text = format!("{}\n{}", p.ap_already, appt.headline(locale::notify_lang()));
-                    if let Err(e) = crate::tg_inbound::send_plain_message(http, token, &card.chat_id, &text).await {
-                        warn!("appointment card close note failed task_id={}: {e:#}", task.id);
-                    }
-                    info!("appointment card closed at once (decided while it was sent) task_id={}", task.id);
+    if !crate::tg_inbound::task_card_ready(rt.call_notify, token, chat) {
+        info!("appointment card not sent (Telegram not set up; decided on the web) task_id={}", task.id);
+        return;
+    }
+    let p = texts();
+    let (title, body) = card_text(rt, task, &appt, link);
+    match crate::tg_inbound::send_task_card_labeled(
+        http, token, chat, &title, &task.id, &body, p.ap_confirm, p.ap_decline,
+    )
+    .await
+    {
+        Ok(message_id) if message_id != 0 => {
+            let card = TgCard { chat_id: chat.to_string(), message_id };
+            if keep_card(store, &task.id, &card, CARD_SETTLE_WAIT).await == CardFate::Close {
+                // Decided on the web while the card was on its way: no buttons
+                // for a decision already made.
+                crate::tg_inbound::remove_inline_keyboard(http, token, &card.chat_id, card.message_id).await;
+                let text = format!("{}\n{}", p.ap_already, appt.headline(locale::notify_lang()));
+                if let Err(e) = crate::tg_inbound::send_plain_message(http, token, &card.chat_id, &text).await {
+                    warn!("appointment card close note failed task_id={}: {e:#}", task.id);
                 }
+                info!("appointment card closed at once (decided while it was sent) task_id={}", task.id);
             }
-            Ok(_) => {}
-            Err(e) => warn!("appointment card failed task_id={}: {e:#}", task.id),
         }
-        return;
-    }
-    if appt.status != BOOKED || !rt.appointment_sms {
-        return;
-    }
-    let (code, line) = text_caller(rt, Some(control), task, &appt, true, None).await;
-    appt.sms = code;
-    let _ = store.push_event(&task.id, &format!("sms_{}", appt.sms)).await;
-    let _ = store
-        .patch(
-            &task.id,
-            TaskPatch {
-                appointment: Some(appt.clone()),
-                ..Default::default()
-            },
-        )
-        .await;
-    update_call_notes(calls, &task.call_id, &appt).await;
-    if tg {
-        let lang = locale::notify_lang();
-        let text = format!("📅 {}\n{line}", appt.headline(lang));
-        if let Err(e) = crate::tg_inbound::send_plain_message(http, token, chat, &text).await {
-            warn!("appointment sms report failed task_id={}: {e:#}", task.id);
-        }
+        Ok(_) => {}
+        Err(e) => warn!("appointment card failed task_id={}: {e:#}", task.id),
     }
 }
 
@@ -3219,8 +2478,8 @@ pub async fn after_summary(
 /// (two Telegram presses in one batch, Telegram and the API together, ✅ then ❌).
 static DECIDING: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
-/// How long a card just sent waits for a decision under way (calendar, then a
-/// text message that may wait 90 s for the phone) before it is settled.
+/// How long a card just sent waits for a decision under way (a text message
+/// that may wait 90 s for the phone) before it is settled.
 const CARD_SETTLE_WAIT: Duration = Duration::from_secs(150);
 
 /// What becomes of a Telegram card that was just sent.
@@ -3310,14 +2569,11 @@ impl Drop for Deciding {
     }
 }
 
-/// The owner's ✅ (`confirm`) or ❌ on an appointment: calendar, text
-/// message, task and call notes. Returns the task and the reply for Telegram.
-/// Only the first decision acts; one made while it runs, or after, is answered
-/// "already handled" and changes nothing — except a ✅ the calendar could not
-/// take ([`Held`]): the appointment still waits, and as the press took the
-/// Telegram card's buttons off, a new card goes out to press again.
+/// The owner's ✅ (`confirm`) or ❌ on an appointment: text message, task and
+/// call notes. Returns the task and the reply for Telegram. Only the first
+/// decision acts; one made while it runs, or after, is answered "already
+/// handled" and changes nothing.
 pub async fn decide(
-    http: &Client,
     rt: &RuntimeSettings,
     store: &TaskStore,
     calls: &CallStore,
@@ -3325,61 +2581,16 @@ pub async fn decide(
     task_id: &str,
     confirm: bool,
 ) -> Result<(TaskRecord, String)> {
-    let cal = cal_for_task(rt, store, task_id).await;
-    let (task, text, done) = decide_inner(cal, http, rt, store, calls, control, task_id, confirm).await?;
-    if done == Decision::Held {
-        resend_card(http, rt, store, &task).await;
-    }
-    Ok((task, text))
-}
-
-/// A new Telegram card for an appointment that still waits after a ✅ on its
-/// card (the press took the old card's buttons off).
-async fn resend_card(http: &Client, rt: &RuntimeSettings, store: &TaskStore, task: &TaskRecord) {
-    let token = rt.telegram_bot_token.trim();
-    let chat = rt.telegram_chat_id.trim();
-    let Some(appt) = task.appointment.as_ref() else {
-        return;
-    };
-    if !crate::tg_inbound::task_card_ready(true, token, chat) {
-        return;
-    }
-    let p = texts();
-    let (title, body) = card_text(rt, task, appt, "");
-    match crate::tg_inbound::send_task_card_labeled(
-        http, token, chat, &title, &task.id, &body, p.ap_confirm, p.ap_decline,
-    )
-    .await
-    {
-        Ok(message_id) if message_id != 0 => {
-            let card = TgCard { chat_id: chat.to_string(), message_id };
-            if keep_card(store, &task.id, &card, CARD_SETTLE_WAIT).await == CardFate::Close {
-                crate::tg_inbound::remove_inline_keyboard(http, token, &card.chat_id, card.message_id).await;
-            }
-        }
-        Ok(_) => {}
-        Err(e) => warn!("appointment card (again) failed task_id={}: {e:#}", task.id),
-    }
-}
-
-/// The calendar a task's appointment is in ([`Appointment::calendar`]): a test
-/// number's appointment stays on the demo calendar.
-async fn cal_for_task(rt: &RuntimeSettings, store: &TaskStore, task_id: &str) -> Option<Cal> {
-    let calendar = store
-        .get(task_id)
+    decide_inner(rt, store, calls, control, task_id, confirm)
         .await
-        .and_then(|t| t.appointment)
-        .map(|a| a.calendar)
-        .unwrap_or_default();
-    Cal::for_calendar(rt, &calendar)
+        .map(|(task, text, _)| (task, text))
 }
 
 /// [`decide`] for a decision made on the web console or through the API. When
 /// it acted and a Telegram card went out for the appointment, the card's
 /// buttons are taken off and the result is posted in that chat, as after a
 /// press on the card (best effort, in the background: Telegram failing changes
-/// nothing about the decision). A ✅ the calendar could not take leaves the
-/// buttons on (it can be pressed again there); only the result is posted.
+/// nothing about the decision).
 /// `reply`: how the caller is told, as the owner picked it (None: the default).
 #[allow(clippy::too_many_arguments)]
 pub async fn decide_from_web(
@@ -3392,17 +2603,13 @@ pub async fn decide_from_web(
     confirm: bool,
     reply: Option<Reply>,
 ) -> Result<(TaskRecord, String)> {
-    let cal = cal_for_task(rt, store, task_id).await;
-    let (task, text, done) = decide_inner_with(cal, http, rt, store, calls, control, task_id, confirm, reply).await?;
+    let (task, text, done) = decide_inner_with(rt, store, calls, control, task_id, confirm, reply).await?;
     if let Some(card) = card_to_clear(&rt.telegram_bot_token, task.appointment.as_ref(), done != Decision::Already) {
-        let close = done == Decision::Settled;
         let (http, token, reply, id) = (http.clone(), rt.telegram_bot_token.trim().to_string(), text.clone(), task.id.clone());
         tokio::spawn(async move {
-            if close {
-                crate::tg_inbound::remove_inline_keyboard(&http, &token, &card.chat_id, card.message_id).await;
-            }
+            crate::tg_inbound::remove_inline_keyboard(&http, &token, &card.chat_id, card.message_id).await;
             match crate::tg_inbound::send_plain_message(&http, &token, &card.chat_id, &reply).await {
-                Ok(()) => info!("appointment card followed a web decision task_id={id} closed={close}"),
+                Ok(()) => info!("appointment card followed a web decision task_id={id}"),
                 Err(e) => warn!("appointment card follow-up failed task_id={id}: {e:#}"),
             }
         });
@@ -3420,171 +2627,18 @@ pub fn card_to_clear(bot_token: &str, appt: Option<&Appointment>, acted: bool) -
     appt?.tg_card.clone().filter(|c| !c.chat_id.trim().is_empty() && c.message_id != 0)
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn decide_with(
-    cal: Option<Cal>,
-    http: &Client,
-    rt: &RuntimeSettings,
-    store: &TaskStore,
-    calls: &CallStore,
-    control: Option<&ControlRegistry>,
-    task_id: &str,
-    confirm: bool,
-) -> Result<(TaskRecord, String)> {
-    decide_inner(cal, http, rt, store, calls, control, task_id, confirm)
-        .await
-        .map(|(task, text, _)| (task, text))
-}
-
 /// What an owner's decision did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Decision {
-    /// Confirmed or declined: calendar, text, task and notes follow it.
+    /// Confirmed or declined: text, task and notes follow it.
     Settled,
-    /// ✅, but the calendar could not take it ([`Held`]): it still waits,
-    /// nothing was texted, and it can be decided again.
-    Held,
     /// Decided before, or a decision is under way: nothing changed.
     Already,
 }
 
-/// Why a ✅ left the appointment waiting.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Held {
-    /// Something else is in the calendar at that time now (another caller's
-    /// appointment booked meanwhile, or the owner's own entry for it). The next
-    /// ✅ books it anyway ([`Appointment::held_busy`]).
-    Taken,
-    /// The calendar did not take the write: why.
-    Failed(String),
-}
-
-impl Held {
-    /// What the owner is told (the reply, the card, the web console).
-    fn line(&self, lang: Lang) -> String {
-        let (failed, taken) = held_phrases(lang);
-        match self {
-            Held::Taken => taken.to_string(),
-            Held::Failed(why) => locale::fill(failed, why),
-        }
-    }
-
-    /// The task's event.
-    fn event(&self) -> &'static str {
-        match self {
-            Held::Taken => "appointment_time_taken",
-            Held::Failed(_) => "appointment_write_failed",
-        }
-    }
-}
-
-/// What the owner reads when an "accept" on the demo calendar is held, in each
-/// language: the write failed (`{}` = why), the time is not free (and another
-/// "accept" books it anyway).
-fn held_phrases(lang: Lang) -> (&'static str, &'static str) {
-    match lang {
-        Lang::ZhTw => (
-            "⚠️ 寫入日曆失敗，還沒傳簡訊，預約仍待確認，可再按一次同意：{}",
-            "⚠️ 這個時段日曆上已經有行程：還沒寫入日曆、也沒傳簡訊，預約仍待確認。再按一次同意就照樣排入",
-        ),
-        Lang::ZhCn => (
-            "⚠️ 写入日历失败，还没发短信，预约仍待确认，可再按一次同意：{}",
-            "⚠️ 这个时段日历上已经有日程：还没写入日历、也没发短信，预约仍待确认。再按一次同意就照样排入",
-        ),
-        Lang::En => (
-            "⚠️ Couldn't write it to the calendar, so no text went out; it still waits, press Accept again: {}",
-            "⚠️ There is already something in your calendar at that time: nothing written, no text sent, it still waits. Press Accept again to book it anyway",
-        ),
-        Lang::Ja => (
-            "⚠️ カレンダーへの書き込みに失敗したため SMS は送っていません。予約は確認待ちのままで、もう一度「承諾」を押せます：{}",
-            "⚠️ この時間はカレンダーにすでに予定があります。書き込みも SMS の送信もしておらず、予約は確認待ちのままです。もう一度「承諾」を押すとそのまま登録します",
-        ),
-        Lang::Ko => (
-            "⚠️ 캘린더에 기록하지 못해 문자는 보내지 않았습니다. 예약은 확인 대기 중이며 수락을 다시 누를 수 있습니다: {}",
-            "⚠️ 그 시간에는 캘린더에 이미 일정이 있습니다. 기록하지 않았고 문자도 보내지 않았으며 예약은 확인 대기 중입니다. 수락을 한 번 더 누르면 그대로 등록합니다",
-        ),
-        Lang::Es => (
-            "⚠️ No se pudo guardar en el calendario y no se envió el SMS; la cita sigue pendiente, puedes pulsar Aceptar otra vez: {}",
-            "⚠️ A esa hora ya hay algo en tu calendario: no se guardó nada ni se envió SMS; la cita sigue pendiente. Pulsa Aceptar otra vez para agendarla igualmente",
-        ),
-        Lang::Fr => (
-            "⚠️ Échec de l'écriture dans l'agenda, aucun SMS envoyé ; le rendez-vous reste en attente, vous pouvez appuyer à nouveau sur Accepter : {}",
-            "⚠️ Il y a déjà quelque chose dans votre agenda à cette heure : rien n'a été écrit ni envoyé par SMS ; le rendez-vous reste en attente. Appuyez à nouveau sur Accepter pour l'ajouter quand même",
-        ),
-        Lang::De => (
-            "⚠️ Eintragen in den Kalender fehlgeschlagen, keine SMS gesendet; der Termin wartet weiter, du kannst noch einmal auf Zusagen drücken: {}",
-            "⚠️ Zu dieser Zeit steht schon etwas in deinem Kalender: nichts eingetragen, keine SMS gesendet; der Termin wartet weiter. Drück noch einmal auf Zusagen, um ihn trotzdem einzutragen",
-        ),
-        Lang::Pt => (
-            "⚠️ Não foi possível gravar na agenda e nenhum SMS foi enviado; o compromisso continua pendente, pode tocar em Aceitar de novo: {}",
-            "⚠️ Já há algo na sua agenda nesse horário: nada foi gravado nem enviado por SMS; o compromisso continua pendente. Toque em Aceitar de novo para marcar assim mesmo",
-        ),
-    }
-}
-
-/// An earlier write of this appointment may be in the calendar without its id
-/// (`auto`, or a ✅ whose write timed out): looked up by its tag.
-fn may_have_written(appt: &Appointment) -> bool {
-    !appt.tag.is_empty() && (appt.mode == Mode::Auto.as_str() || !appt.write_error.is_empty())
-}
-
-/// The appointment's own event in the calendar: its id, or one an earlier write
-/// left (found by its tag). Empty: none.
-async fn own_event(cal: &Cal, http: &Client, appt: &Appointment) -> String {
-    if !appt.event_id.is_empty() || !may_have_written(appt) {
-        return appt.event_id.clone();
-    }
-    match tokio::time::timeout(BOOK_CHECK_TIMEOUT, cal.find_tagged(http, &appt.tag)).await {
-        Ok(Ok(found)) => found.into_iter().next().unwrap_or_default(),
-        Ok(Err(e)) => {
-            warn!("appointment tagged lookup failed: {e:#}");
-            String::new()
-        }
-        Err(_) => {
-            warn!("appointment tagged lookup timed out");
-            String::new()
-        }
-    }
-}
-
-/// ✅: put the appointment in the calendar at its time — while that time is
-/// still free apart from its own event: another call's appointment may have
-/// taken it since. Checked and written as one step for every call at once
-/// ([`calendar_turn`], held at most check + write, 15 s; its own event is
-/// looked up before). A check that cannot answer (no read access, slow) does
-/// not stop the write, nor does a busy time the owner was already told about
-/// ([`Appointment::held_busy`]). The event's id.
-async fn confirm_in_calendar(
-    cal: &Cal,
-    http: &Client,
-    appt: &Appointment,
-    caller_id: &str,
-) -> std::result::Result<String, Held> {
-    let own = own_event(cal, http, appt).await;
-    let _turn = calendar_turn().lock().await;
-    if appt.held_busy {
-        info!("appointment confirmed again after a busy time: written anyway");
-    } else {
-        match tokio::time::timeout(BOOK_CHECK_TIMEOUT, cal.is_free_except(http, &appt.start, &appt.end, &own)).await {
-            Ok(Ok(true)) => {}
-            Ok(Ok(false)) => return Err(Held::Taken),
-            Ok(Err(e)) => warn!("appointment re-check before writing failed (written anyway): {e:#}"),
-            Err(_) => warn!("appointment re-check before writing timed out (written anyway)"),
-        }
-    }
-    match tokio::time::timeout(WRITE_TIMEOUT, cal.write_at(http, appt, &own, caller_id)).await {
-        Ok(Ok(id)) => Ok(id),
-        Ok(Err(e)) => Err(Held::Failed(format!("{e:#}"))),
-        Err(_) => Err(Held::Failed(calendar_slow(WRITE_TIMEOUT.as_secs()))),
-    }
-}
-
-/// [`decide_with`], also saying what this decision did (the caller is told
-/// the default way).
-#[allow(clippy::too_many_arguments)]
+/// [`decide`], also saying what this decision did (the caller is told the
+/// default way).
 async fn decide_inner(
-    cal: Option<Cal>,
-    http: &Client,
     rt: &RuntimeSettings,
     store: &TaskStore,
     calls: &CallStore,
@@ -3592,16 +2646,13 @@ async fn decide_inner(
     task_id: &str,
     confirm: bool,
 ) -> Result<(TaskRecord, String, Decision)> {
-    decide_inner_with(cal, http, rt, store, calls, control, task_id, confirm, None).await
+    decide_inner_with(rt, store, calls, control, task_id, confirm, None).await
 }
 
 /// [`decide_inner`] with the way the caller is told: `reply` as the owner
 /// picked it (one that cannot reach this caller tells nobody), None: the
 /// default for the number ([`default_reply`]).
-#[allow(clippy::too_many_arguments)]
 async fn decide_inner_with(
-    cal: Option<Cal>,
-    http: &Client,
     rt: &RuntimeSettings,
     store: &TaskStore,
     calls: &CallStore,
@@ -3642,71 +2693,12 @@ async fn decide_inner_with(
     let headline = appt.headline(lang);
     let mut lines: Vec<String> = Vec::new();
     if confirm {
-        // Only a test number's appointment is in a calendar here (the demo
-        // one); everyone else's goes in the owner's own with the link below.
-        if let Some(cal) = &cal {
-            match confirm_in_calendar(cal, http, &appt, &task.caller_id).await {
-                Ok(id) => {
-                    appt.replaced.retain(|e| e.event_id != id);
-                    appt.event_id = id;
-                    lines.push(p.ap_booked.to_string());
-                    store.push_event(task_id, "calendar_event_created").await?;
-                }
-                Err(held) => {
-                    // Not settled: no text to the caller, and it can be decided again.
-                    let line = held.line(lang);
-                    warn!("appointment confirm held task_id={task_id}: {held:?}");
-                    appt.write_error = line.clone();
-                    // Told the time is not free: the next ✅ books it anyway.
-                    appt.held_busy = held == Held::Taken;
-                    store.push_event(task_id, held.event()).await?;
-                    let updated = store
-                        .patch(
-                            task_id,
-                            TaskPatch {
-                                appointment: Some(appt.clone()),
-                                fulfill_error: Some(Some(line.clone())),
-                                ..Default::default()
-                            },
-                        )
-                        .await?;
-                    update_call_notes(calls, &task.call_id, &appt).await;
-                    return Ok((updated, format!("{line}\n{headline}"), Decision::Held));
-                }
-            }
-        }
         store.push_event(task_id, "appointment_confirmed").await?;
         appt.write_error.clear();
         appt.held_busy = false;
         appt.status = CONFIRMED.to_string();
     } else {
         store.push_event(task_id, "appointment_declined").await?;
-        // Its own event (auto mode, a time it could not move to, or one whose
-        // write answer was lost and is found by its tag): not kept.
-        if let Some(cal) = &cal {
-            let mut ids: Vec<String> = Vec::new();
-            if !appt.event_id.is_empty() {
-                ids.push(appt.event_id.clone());
-            } else if may_have_written(&appt) {
-                match cal.find_tagged(http, &appt.tag).await {
-                    Ok(found) => ids = found,
-                    Err(e) => warn!("appointment tagged lookup failed task_id={task_id}: {e:#}"),
-                }
-            }
-            for id in ids {
-                match cal.delete(http, &id).await {
-                    Ok(()) => {
-                        lines.push(p.ap_cal_removed.to_string());
-                        appt.event_id.clear();
-                        store.push_event(task_id, "calendar_event_deleted").await?;
-                    }
-                    Err(e) => {
-                        warn!("appointment calendar delete failed task_id={task_id}: {e:#}");
-                        lines.push(locale::fill(p.ap_void_failed, &appt.headline(lang)));
-                    }
-                }
-            }
-        }
         appt.write_error.clear();
         appt.status = DECLINED.to_string();
     }
@@ -3842,63 +2834,13 @@ pub async fn retry_sms(
     Ok(RetrySms::Tried { sms: code, line, task })
 }
 
-/// The events a voided appointment left in the calendar, also one whose id was
-/// lost (found by the call's tag).
-async fn voided_ids(cal: &Cal, http: &Client, e: &Earlier) -> Result<Vec<String>> {
-    if !e.event_id.is_empty() {
-        return Ok(vec![e.event_id.clone()]);
-    }
-    if e.tag.is_empty() {
-        return Ok(Vec::new());
-    }
-    cal.find_tagged(http, &e.tag).await
-}
-
-/// After the call: delete the events of appointments that no longer stand (a
-/// sales / scam call, or the AI never really answered). Returns those that
-/// could not be deleted, for a line in the summary ([`void_failed_line`]).
-/// Each is deleted from the calendar it is in ([`Earlier::calendar`]).
-pub async fn delete_voided(http: &Client, rt: &RuntimeSettings, voided: &[Earlier]) -> Vec<Earlier> {
-    let (demo, other): (Vec<Earlier>, Vec<Earlier>) =
-        voided.iter().cloned().partition(|e| e.calendar == DEMO_CALENDAR);
-    // Events an older agent wrote to Google Calendar: nothing here can reach
-    // them now, so the summary asks the owner to delete them.
-    let mut failed = delete_voided_with(None, http, &other).await;
-    if !demo.is_empty() {
-        failed.extend(delete_voided_with(Cal::for_calendar(rt, DEMO_CALENDAR), http, &demo).await);
-    }
-    failed
-}
-
-async fn delete_voided_with(cal: Option<Cal>, http: &Client, voided: &[Earlier]) -> Vec<Earlier> {
-    if voided.is_empty() {
-        return Vec::new();
-    }
-    let Some(cal) = cal else {
-        // Nothing can be deleted without access (nothing was written without it either).
-        return voided.iter().filter(|e| !e.event_id.is_empty()).cloned().collect();
-    };
-    let mut failed = Vec::new();
-    for e in voided {
-        let ids = match voided_ids(&cal, http, e).await {
-            Ok(ids) => ids,
-            Err(err) => {
-                warn!("voided appointment lookup failed: {err:#}");
-                failed.push(e.clone());
-                continue;
-            }
-        };
-        for id in ids {
-            match cal.delete(http, &id).await {
-                Ok(()) => info!("voided appointment deleted from the calendar start={}", e.start),
-                Err(err) => {
-                    warn!("voided appointment delete failed start={}: {err:#}", e.start);
-                    failed.push(Earlier { event_id: id, ..e.clone() });
-                }
-            }
-        }
-    }
-    failed
+/// After the call: the events of appointments that no longer stand (a sales /
+/// scam call, or the AI never really answered). No calendar is connected, so
+/// nothing is deleted here: the events an older agent wrote to a calendar are
+/// returned, for a line in the summary asking the owner to delete them
+/// ([`void_failed_line`]).
+pub fn delete_voided(voided: &[Earlier]) -> Vec<Earlier> {
+    voided.iter().filter(|e| !e.event_id.is_empty()).cloned().collect()
 }
 
 /// The summary's line for an event that is void but still in the calendar.
@@ -3921,7 +2863,7 @@ pub fn all_events(appt: &Appointment) -> Vec<Earlier> {
     let mut out: Vec<Earlier> = Vec::new();
     for a in appt.each() {
         out.extend(a.replaced.iter().cloned());
-        if !a.event_id.is_empty() || a.write_unsure {
+        if !a.event_id.is_empty() {
             out.push(Earlier::of(&a));
         }
     }
@@ -3984,25 +2926,14 @@ mod tests {
     fn session(mode: Mode) -> ApptSession {
         ApptSession {
             mode,
-            calendar: None,
             reply: Reply::None,
             reply_by_text: false,
             sms_on: false,
             reply_setting: "sms".into(),
             home: None,
             caller_id: "0912345678".into(),
-            http: Client::new(),
             tag: "tag-test".into(),
-            turn_wait: CALENDAR_TURN_WAIT,
             book: CallAppointments::new(),
-        }
-    }
-
-    /// An `auto` session on a stand-in calendar.
-    fn auto_session(cal: &Arc<FakeCal>) -> ApptSession {
-        ApptSession {
-            calendar: Some(Cal::Fake(cal.clone())),
-            ..session(Mode::Auto)
         }
     }
 
@@ -4020,10 +2951,6 @@ mod tests {
             seq: 0,
             after: 0,
         }
-    }
-
-    fn count(n: &std::sync::atomic::AtomicUsize) -> usize {
-        FakeCal::count(n)
     }
 
     fn task_for(caller_id: &str, a: &Appointment) -> TaskRecord {
@@ -4056,7 +2983,6 @@ mod tests {
         assert_eq!(Mode::parse(" Confirm "), Mode::Confirm);
         // "auto" (booking on Google Calendar) is gone: an old setting asks the owner.
         assert_eq!(Mode::parse("AUTO"), Mode::Confirm);
-        assert_eq!(Mode::parse(Mode::Auto.as_str()), Mode::Confirm);
         for s in ["", "off", "yes", "on", "automatic"] {
             assert_eq!(Mode::parse(s), Mode::Off, "{s}");
         }
@@ -4064,152 +2990,22 @@ mod tests {
 
     #[test]
     fn appointments_follow_the_setting_and_no_calendar_is_checked() {
-        let http = Client::new();
         let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
-        rt.appointment_test_numbers.clear();
         rt.appointment_mode = "off".into();
-        assert!(ApptSession::for_call(&rt, &http, "0912345678").is_none());
+        assert!(ApptSession::for_call(&rt, "0912345678").is_none());
         // "confirm", and an "auto" saved by an older agent: the owner decides,
         // nothing is checked; a text goes back only to numbers that take one.
         for mode in ["confirm", "auto"] {
             rt.appointment_mode = mode.into();
             rt.appointment_sms = true;
-            let s = ApptSession::for_call(&rt, &http, "0912345678").unwrap();
-            assert_eq!((s.mode, s.can_check(), s.reply_by_text), (Mode::Confirm, false, true), "{mode}");
-            assert!(s.calendar.is_none());
-            assert!(!ApptSession::for_call(&rt, &http, "0225550123").unwrap().reply_by_text);
-            assert!(!ApptSession::for_call(&rt, &http, "").unwrap().reply_by_text);
+            let s = ApptSession::for_call(&rt, "0912345678").unwrap();
+            assert_eq!((s.mode, s.reply_by_text), (Mode::Confirm, true), "{mode}");
+            assert!(s.prompt_block(chrono::Local::now()).contains("do not call check_availability"), "{mode}");
+            assert!(!ApptSession::for_call(&rt, "0225550123").unwrap().reply_by_text);
+            assert!(!ApptSession::for_call(&rt, "").unwrap().reply_by_text);
             rt.appointment_sms = false;
-            assert!(!ApptSession::for_call(&rt, &http, "0912345678").unwrap().reply_by_text);
+            assert!(!ApptSession::for_call(&rt, "0912345678").unwrap().reply_by_text);
         }
-    }
-
-    /// Settings with a fresh data folder (the demo calendar's home), no texts.
-    fn demo_settings() -> (PathBuf, RuntimeSettings) {
-        let root = std::env::temp_dir().join(format!("bageo-demo-cal-{}", uuid::Uuid::new_v4()));
-        let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
-        rt.calls_data_dir = root.to_string_lossy().to_string();
-        rt.appointment_sms = false;
-        rt.appointment_reply = "sms".into();
-        (root, rt)
-    }
-
-    #[test]
-    fn test_numbers_book_on_the_demo_calendar_whatever_the_mode() {
-        let http = Client::new();
-        let (root, mut rt) = demo_settings();
-        rt.appointment_mode = "off".into();
-        rt.appointment_test_numbers = vec!["+1 650 555 0100".into()];
-        // On the list: auto on the demo calendar, though appointments are off.
-        for caller in ["+16505550100", "16505550100", "+1 (650) 555-0100"] {
-            let s = ApptSession::for_call(&rt, &http, caller).unwrap();
-            assert_eq!((s.mode, s.can_check()), (Mode::Auto, true), "{caller}");
-            assert!(matches!(s.calendar, Some(Cal::Demo(_))), "{caller}");
-        }
-        // Not on the list: as before.
-        for caller in ["0912345678", "+16505550101", ""] {
-            assert!(ApptSession::for_call(&rt, &http, caller).is_none(), "{caller}");
-        }
-        // "confirm": the test number still books on the demo calendar; everyone
-        // else is asked about, with no calendar.
-        rt.appointment_mode = "confirm".into();
-        let s = ApptSession::for_call(&rt, &http, "+16505550100").unwrap();
-        assert_eq!((s.mode, s.can_check()), (Mode::Auto, true));
-        assert!(matches!(s.calendar, Some(Cal::Demo(_))));
-        let other = ApptSession::for_call(&rt, &http, "0912345678").unwrap();
-        assert_eq!((other.mode, other.can_check()), (Mode::Confirm, false));
-        // Nothing was written by making the sessions.
-        assert!(!root.exists());
-    }
-
-    #[test]
-    fn demo_calendar_has_lunch_and_evenings_busy_and_keeps_what_is_written() {
-        let (root, rt) = demo_settings();
-        let cal = DemoCal::from_settings(&rt);
-        assert_eq!(cal.path, root.join("demo_calendar.json"));
-        // No file yet: lunch and the evening are busy, the rest is free.
-        assert!(!cal.is_free_except(&later(1, 12), &later(1, 13), "").unwrap());
-        assert!(!cal.is_free_except(&later(1, 11), &later(1, 13), "").unwrap());
-        assert!(!cal.is_free_except(&later(3, 19), &later(3, 20), "").unwrap());
-        assert!(cal.is_free_except(&later(1, 10), &later(1, 11), "").unwrap());
-        assert!(cal.is_free_except(&later(1, 13), &later(1, 14), "").unwrap());
-        assert!(cal.is_free_except(&later(1, 21), &later(1, 22), "").unwrap());
-        // Reading writes nothing.
-        assert!(!root.exists());
-        let mut a = appt(&later(1, 10), &later(1, 11), "看房");
-        a.tag = "tag-demo".into();
-        let id = cal.insert(&a, "+16505550100").unwrap();
-        assert!(!cal.is_free_except(&later(1, 10), &later(1, 11), "").unwrap());
-        // Its own event does not clash with itself.
-        assert!(cal.is_free_except(&later(1, 10), &later(1, 11), &id).unwrap());
-        assert_eq!(cal.find_tagged("tag-demo").unwrap(), vec![id.clone()]);
-        assert!(cal.find_tagged("").unwrap().is_empty());
-        // Saved in the documented shape; another handle on the folder sees it.
-        let file: Value = serde_json::from_str(&std::fs::read_to_string(&cal.path).unwrap()).unwrap();
-        assert_eq!(file["busy"].as_array().unwrap().len(), 28);
-        assert_eq!(file["busy"][0], json!([later(0, 12), later(0, 13)]));
-        assert_eq!(file["events"], json!([[id.as_str(), later(1, 10), later(1, 11), "tag-demo", "看房"]]));
-        assert!(!cal.path.with_extension("json.tmp").exists());
-        let again = DemoCal::from_settings(&rt);
-        assert!(!again.is_free_except(&later(1, 10), &later(1, 11), "").unwrap());
-        // Moved, then deleted.
-        let b = appt(&later(1, 15), &later(1, 16), "看房");
-        again.move_to(&id, &b).unwrap();
-        assert!(again.is_free_except(&later(1, 10), &later(1, 11), "").unwrap());
-        assert!(!again.is_free_except(&later(1, 15), &later(1, 16), "").unwrap());
-        assert!(again.move_to("no-such-event", &b).is_err());
-        again.delete(&id).unwrap();
-        assert!(again.is_free_except(&later(1, 15), &later(1, 16), "").unwrap());
-        assert!(!again.is_free_except(&later(1, 12), &later(1, 13), "").unwrap());
-        // A file that is not the demo calendar is not overwritten.
-        std::fs::write(&cal.path, "not json").unwrap();
-        assert!(cal.is_free_except(&later(1, 10), &later(1, 11), "").is_err());
-        assert!(cal.insert(&a, "").is_err());
-        assert_eq!(std::fs::read_to_string(&cal.path).unwrap(), "not json");
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[tokio::test]
-    async fn demo_appointments_are_decided_and_voided_on_the_demo_calendar() {
-        let http = Client::new();
-        let (root, mut rt) = demo_settings();
-        rt.appointment_mode = "off".into();
-        rt.appointment_test_numbers = vec!["+1 650 555 0100".into()];
-        let s = ApptSession::for_call(&rt, &http, "+16505550100").unwrap();
-        let check = ToolCall {
-            id: "c".into(),
-            name: CHECK.into(),
-            args: json!({ "start": later(2, 12) }),
-            seq: 0,
-            after: 0,
-        };
-        assert_eq!(s.run_tool(&check).await, json!({ "free": false }));
-        assert_eq!(s.run_tool(&propose_call(&later(2, 10), &later(2, 11))).await, json!({ "status": "booked" }));
-        let booked = s.book.outcome().unwrap();
-        assert_eq!((booked.status.as_str(), booked.calendar.as_str()), (BOOKED, DEMO_CALENDAR));
-        assert!(booked.event_id.starts_with("demo-"), "{}", booked.event_id);
-        let demo = DemoCal::from_settings(&rt);
-        assert!(!demo.is_free_except(&later(2, 10), &later(2, 11), "").unwrap());
-        // Voided after the call: deleted from the demo calendar.
-        let voided = all_events(&booked);
-        assert_eq!(voided[0].calendar, DEMO_CALENDAR);
-        assert!(delete_voided(&http, &rt, &voided).await.is_empty());
-        assert!(demo.is_free_except(&later(2, 10), &later(2, 11), "").unwrap());
-        // The owner's ✅ on a demo appointment writes to the demo calendar.
-        let tasks = TaskStore::new(root.join("tasks"));
-        let calls = CallStore::new(root.join("calls"), false, false, 30);
-        let mut a = appt(&later(3, 10), &later(3, 11), "看房");
-        a.calendar = DEMO_CALENDAR.into();
-        let t = tasks
-            .create(TaskRecord { id: String::new(), ..task_for("+16505550100", &a) })
-            .await
-            .unwrap();
-        let (done, _) = decide(&http, &rt, &tasks, &calls, None, &t.id, true).await.unwrap();
-        assert_eq!(done.status, TaskStatus::Fulfilled);
-        let event_id = done.appointment.as_ref().unwrap().event_id.clone();
-        assert!(event_id.starts_with("demo-"), "{event_id}");
-        assert!(!demo.is_free_except(&later(3, 10), &later(3, 11), "").unwrap());
-        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -4289,15 +3085,15 @@ mod tests {
         let t = at(2026, 11, 16, 9, 5); // a Monday
         for l in locale::ALL {
             let p = locale::phrases(l);
-            for s in [p.ap_sms_hi_owner, p.ap_sms_ok, p.ap_sms_no, p.ap_auto_failed, p.ap_replaced, p.ap_cal_link, p.ap_sms_sent, p.ap_sms_not_sent, p.ap_sms_code, p.ap_void_failed, p.ap_sales_voided] {
+            for s in [p.ap_sms_hi_owner, p.ap_sms_ok, p.ap_sms_no, p.ap_replaced, p.ap_cal_link, p.ap_sms_sent, p.ap_sms_not_sent, p.ap_sms_code, p.ap_void_failed, p.ap_sales_voided] {
                 assert_eq!(s.matches("{}").count(), 1, "{l:?}: {s}");
             }
-            for s in [p.ap_sms_hi, p.ap_confirm, p.ap_decline, p.ap_card_title, p.ap_what, p.ap_name, p.ap_sms, p.ap_sms_will, p.ap_sms_off, p.ap_sms_cannot, p.ap_pending, p.ap_booked, p.ap_busy, p.ap_confirmed, p.ap_declined, p.ap_sms_old_app, p.ap_sms_offline, p.ap_sms_timeout, p.ap_already, p.ap_sms_busy, p.ap_cal_removed] {
+            for s in [p.ap_sms_hi, p.ap_confirm, p.ap_decline, p.ap_card_title, p.ap_what, p.ap_name, p.ap_sms, p.ap_sms_will, p.ap_sms_off, p.ap_sms_cannot, p.ap_pending, p.ap_confirmed, p.ap_declined, p.ap_sms_old_app, p.ap_sms_offline, p.ap_sms_timeout, p.ap_already, p.ap_sms_busy] {
                 assert!(!s.trim().is_empty() && !s.contains('{'), "{l:?}: {s}");
             }
             // The buttons are words ("同意" / "不同意"), no ✅ / ❌; nothing says Google.
             assert!(!p.ap_confirm.contains('✅') && !p.ap_decline.contains('❌') && p.ap_confirm != p.ap_decline, "{l:?}");
-            for s in [p.ap_cal_removed, p.ap_cal_link, p.ap_booked, p.ap_sms_will] {
+            for s in [p.ap_cal_link, p.ap_sms_will] {
                 assert!(!s.contains("Google"), "{l:?}: {s}");
             }
             assert_eq!(p.ap_dt_fmt.matches("{}").count(), 1, "{l:?}");
@@ -4352,8 +3148,8 @@ mod tests {
                 "response": {"status": "pending_owner_confirmation", "scheduling": "SILENT"}}]}})
         );
         assert!(r["toolResponse"]["functionResponses"][0]["response"].get("scheduling").is_none());
-        // auto could not book what it agreed to: the model gets to say so.
-        let speak = tool_response("fc-3", PROPOSE, json!({"status": "pending_owner_confirmation", "not_booked": true}));
+        // A refused call (wrong weekday): the model gets to call again.
+        let speak = tool_response("fc-3", PROPOSE, json!({"error": "weekday_mismatch", "date_is": "Wed"}));
         assert_eq!(speak["toolResponse"]["functionResponses"][0]["response"]["scheduling"], "WHEN_IDLE");
         // NON_BLOCKING only on propose_appointment, and only when asked for.
         let nb = tool_declarations(true);
@@ -4487,10 +3283,6 @@ mod tests {
         let line = summary_line(&out, "");
         assert!(line.starts_with("📅 預約待你確認：11/15（週日）10:00–11:00 看房"), "{line}");
         assert!(line.contains("11/14（週六）15:00–16:00 看房"), "{line}");
-        let mut booked = out.clone();
-        booked.status = BOOKED.into();
-        booked.replaced.clear();
-        assert_eq!(summary_line(&booked, "http://bageo.local/calls/#call=c1"), "📅 已排入行事曆：11/15（週日）10:00–11:00 看房");
     }
 
     #[test]
@@ -4520,10 +3312,10 @@ mod tests {
         assert!(!crate::tg_inbound::task_card_ready(false, "123:abc", "42"));
         assert!(crate::tg_inbound::task_card_ready(true, "123:abc", "42"));
         // Without Telegram nothing is sent: the task waits on the web, no card kept.
-        let (root, store, calls) = stores();
+        let (root, store, _) = stores();
         let a = appt(&later(2, 15), &later(2, 16), "看房");
         let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
-        after_summary(&Client::new(), &rt, &store, &calls, &ControlRegistry::default(), &t, "http://x/calls/#call=c").await;
+        after_summary(&Client::new(), &rt, &store, &t, "http://x/calls/#call=c").await;
         let kept = store.get(&t.id).await.unwrap();
         assert_eq!(kept.status, TaskStatus::Pending);
         assert_eq!(kept.appointment.and_then(|a| a.tg_card), None);
@@ -4547,17 +3339,15 @@ mod tests {
         assert_eq!(card_to_clear("123:abc", None, true), None);
         // The card is kept through the decision; only the first one acts.
         let (root, store, calls) = stores();
-        let cal = Arc::new(FakeCal::default());
         let mut b = appt(&later(2, 15), &later(2, 16), "看房");
         b.tg_card = Some(card.clone());
         let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &b) }).await.unwrap();
-        let http = Client::new();
-        let (done, _, acted) = decide_inner(Some(Cal::Fake(cal.clone())), &http, &plain_settings(), &store, &calls, None, &t.id, true)
+        let (done, _, acted) = decide_inner(&plain_settings(), &store, &calls, None, &t.id, true)
             .await
             .unwrap();
         assert_eq!(acted, Decision::Settled);
         assert_eq!(card_to_clear("123:abc", done.appointment.as_ref(), acted != Decision::Already), Some(card));
-        let (again, text, acted) = decide_inner(Some(Cal::Fake(cal.clone())), &http, &plain_settings(), &store, &calls, None, &t.id, false)
+        let (again, text, acted) = decide_inner(&plain_settings(), &store, &calls, None, &t.id, false)
             .await
             .unwrap();
         assert!(acted == Decision::Already && text.starts_with("這個預約已經處理過了"), "{text}");
@@ -4570,26 +3360,23 @@ mod tests {
     #[tokio::test]
     async fn a_card_that_lands_after_a_web_decision_never_undoes_it() {
         let (root, store, calls) = stores();
-        let cal = Arc::new(FakeCal::default());
-        let http = Client::new();
         let card = TgCard { chat_id: "42".into(), message_id: 7 };
         // Decided on the web while the card was on its way…
         let a = appt(&later(2, 15), &later(2, 16), "看房");
         let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
-        let (_, _, acted1) = decide_inner(Some(Cal::Fake(cal.clone())), &http, &plain_settings(), &store, &calls, None, &t.id, true)
+        let (_, _, acted1) = decide_inner(&plain_settings(), &store, &calls, None, &t.id, true)
             .await
             .unwrap();
         assert_eq!(acted1, Decision::Settled);
         // …then its message id comes back: the decision stands, the buttons come off.
         assert_eq!(keep_card(&store, &t.id, &card, Duration::from_secs(1)).await, CardFate::Close);
         let after = store.get(&t.id).await.unwrap().appointment.unwrap();
-        assert_eq!((after.status.as_str(), after.event_id.as_str(), after.tg_card.as_ref()), (CONFIRMED, "ev1", None));
-        // A press on the card (or the web again) does nothing: one calendar write.
-        let (_, text, acted2) = decide_inner(Some(Cal::Fake(cal.clone())), &http, &plain_settings(), &store, &calls, None, &t.id, true)
+        assert_eq!((after.status.as_str(), after.tg_card.as_ref()), (CONFIRMED, None));
+        // A press on the card (or the web again) does nothing.
+        let (_, text, acted2) = decide_inner(&plain_settings(), &store, &calls, None, &t.id, true)
             .await
             .unwrap();
         assert!(acted2 == Decision::Already && text.starts_with("這個預約已經處理過了"), "{text}");
-        assert_eq!(count(&cal.inserts), 1);
 
         // Still waiting: the card goes onto the task as it stands now.
         let t2 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
@@ -4624,7 +3411,7 @@ mod tests {
     fn prompt_tells_the_time_and_follows_mode_and_style() {
         let now = at(2026, 11, 13, 14, 5);
         let me = locale::Active { owner: "王先生".into(), ..Default::default() };
-        let p = prompt_block(Mode::Confirm, true, Reply::Sms, &me, now, "+08:00");
+        let p = prompt_block(Reply::Sms, &me, now, "+08:00");
         assert!(p.contains("2026-11-13 14:05 (Friday)") && p.contains("UTC+08:00"), "{p}");
         // A dated list to count weekdays on: "Wednesday" said on a Friday is the 18th.
         // Today, tomorrow and the day after are named (the model counted a day short).
@@ -4636,28 +3423,28 @@ mod tests {
         assert!(p.contains("Next week's Mon..Sun: Mon 2026-11-16, Tue 2026-11-17, Wed 2026-11-18, Thu 2026-11-19, Fri 2026-11-20, Sat 2026-11-21, Sun 2026-11-22."), "{p}");
         assert!(p.contains("下禮拜三") && p.contains("is next week's Wed"), "{p}");
         // On a Sunday this week still starts on the Monday before.
-        let sunday = prompt_block(Mode::Confirm, true, Reply::Sms, &me, at(2026, 11, 15, 9, 0), "+08:00");
+        let sunday = prompt_block(Reply::Sms, &me, at(2026, 11, 15, 9, 0), "+08:00");
         assert!(sunday.contains("This week's Mon..Sun: Mon 2026-11-09,") && sunday.contains("Next week's Mon..Sun: Mon 2026-11-16,"), "{sunday}");
         // Another appointment is not a change of time; the part of the day is checked.
         assert!(p.contains("replaces_previous = true") && p.contains("replaces_previous = false"), "{p}");
         assert!(p.contains("period_mismatch") && p.contains("晚上") && p.contains("evening"), "{p}");
         assert!(p.contains("check_availability") && p.contains("propose_appointment"));
         // What the AI says to the caller is about "you", in the owner's words.
-        assert!(p.contains("say \"Let me check and I'll text you back later.\" (in Chinese: 「我確認一下，晚點再用簡訊回你」), in Traditional"), "{p}");
+        assert!(p.contains("say \"Let me check and I'll text you back later.\" (in Chinese: 「我確認一下，晚點再用簡訊回你」) — in Traditional"), "{p}");
         assert!(p.contains("overrides anything above") && p.contains("王先生"));
         // No waiting on the line; saying it will be checked after the call is that line.
-        assert!(p.contains("never say you are looking something up right now") && p.contains("ちょっと待って") && p.contains("never what it is"), "{p}");
+        assert!(p.contains("never say you are looking something up right now") && p.contains("ちょっと待って"), "{p}");
         assert!(!p.contains("\"let me check\""), "{p}");
         assert!(p.contains("A back-up time the caller offers") && p.contains("do not call it for that"));
         assert!(p.contains("weekday_mismatch"));
         assert!(p.contains("scam caller"));
-        let auto = prompt_block(Mode::Auto, true, Reply::None, &me, now, "+08:00");
-        assert!(auto.contains("agree naturally") && !auto.contains("text them"));
-        let blind = prompt_block(Mode::Confirm, false, Reply::None, &me, now, "+08:00");
-        assert!(blind.contains("do not call check_availability") && blind.contains("do not say it is free"), "{blind}");
+        // No calendar to look at: it never says the time is free.
+        assert!(p.contains("do not call check_availability") && p.contains("do not say it is free"), "{p}");
+        let none = prompt_block(Reply::None, &me, now, "+08:00");
+        assert!(!none.contains("text them"), "{none}");
         let assistant = locale::Active { assistant: true, ..me };
-        let a = prompt_block(Mode::Confirm, true, Reply::None, &assistant, now, "+08:00");
-        assert!(a.contains("王先生 already has something on") && a.contains("check with 王先生"));
+        let a = prompt_block(Reply::None, &assistant, now, "+08:00");
+        assert!(a.contains("check with 王先生"), "{a}");
         assert!(a.contains("\"I'll check with 王先生 and get back to you.\" (in Chinese: 「我跟王先生確認一下再回你」)"), "{a}");
     }
 
@@ -4667,13 +3454,13 @@ mod tests {
     fn the_ai_promises_a_text_a_call_back_or_nothing() {
         let now = at(2026, 11, 13, 14, 5);
         let me = locale::Active::default();
-        let text = prompt_block(Mode::Confirm, false, Reply::Sms, &me, now, "+08:00");
+        let text = prompt_block(Reply::Sms, &me, now, "+08:00");
         assert!(text.contains("\"Let me check and I'll text you back later.\" (in Chinese: 「我確認一下，晚點再用簡訊回你」)"), "{text}");
         assert!(!text.contains("never promise a text") && !text.contains("never promise to text"), "{text}");
-        let call = prompt_block(Mode::Confirm, false, Reply::Call, &me, now, "+08:00");
+        let call = prompt_block(Reply::Call, &me, now, "+08:00");
         assert!(call.contains("\"Let me check and I'll call you back later.\" (in Chinese: 「我確認一下，晚點再打給你」)"), "{call}");
         assert!(call.contains("never promise a text message") && !call.contains("text you back"), "{call}");
-        let none = prompt_block(Mode::Confirm, false, Reply::None, &me, now, "+08:00");
+        let none = prompt_block(Reply::None, &me, now, "+08:00");
         assert!(none.contains("\"Let me check and get back to you.\" (in Chinese: 「我確認一下再回你」)"), "{none}");
         assert!(none.contains("never promise to text or call them") && !none.contains("text you back") && !none.contains("call you back"), "{none}");
         // Every prompt says it before the proposal and never calls it settled.
@@ -4682,10 +3469,10 @@ mod tests {
         }
         // Simplified Chinese, English and the assistant style.
         let cn = locale::Active { lang: Lang::ZhCn, ..Default::default() };
-        assert!(prompt_block(Mode::Confirm, false, Reply::Sms, &cn, now, "+08:00").contains("「我确认一下，晚点再用短信回你」"));
-        assert!(prompt_block(Mode::Confirm, false, Reply::Call, &cn, now, "+08:00").contains("「我确认一下，晚点再打给你」"));
+        assert!(prompt_block(Reply::Sms, &cn, now, "+08:00").contains("「我确认一下，晚点再用短信回你」"));
+        assert!(prompt_block(Reply::Call, &cn, now, "+08:00").contains("「我确认一下，晚点再打给你」"));
         let en = locale::Active { lang: Lang::En, ..Default::default() };
-        let p = prompt_block(Mode::Confirm, false, Reply::Sms, &en, now, "+08:00");
+        let p = prompt_block(Reply::Sms, &en, now, "+08:00");
         assert!(p.contains("say \"Let me check and I'll text you back later.\" — in English") && !p.contains("in Chinese"), "{p}");
         assert_eq!(check_back_line(false, "Sam", Reply::Call), "I'll check with Sam and call you back later.");
         // The proposal's answer to the model carries the same line.
@@ -4728,9 +3515,7 @@ mod tests {
         rt.appointment_sms = true;
         rt.appointment_reply = "auto".into();
         rt.appointment_mode = "confirm".into();
-        rt.appointment_test_numbers = Vec::new();
-        let http = Client::new();
-        let reply_of = |n: &str| ApptSession::for_call(&rt, &http, n).unwrap().reply;
+        let reply_of = |n: &str| ApptSession::for_call(&rt, n).unwrap().reply;
         assert_eq!((reply_of("0912345678"), reply_of("0225550123"), reply_of("")), (Reply::Sms, Reply::Call, Reply::None));
         for w in [Reply::Sms, Reply::Call, Reply::None] {
             assert_eq!(Reply::parse(&w.as_str().to_uppercase()), Some(w));
@@ -4746,11 +3531,10 @@ mod tests {
         rt.appointment_sms = true;
         rt.appointment_reply = "auto".into();
         let a = appt(&later(2, 15), &later(2, 16), "看房");
-        let http = Client::new();
         let control = ControlRegistry::default();
         // A landline by default gets a call-back; no phone connected to place it: said so.
         let t = store.create(TaskRecord { id: String::new(), ..task_for("0225550123", &a) }).await.unwrap();
-        let (task, text, _) = decide_inner_with(None, &http, &rt, &store, &calls, Some(&control), &t.id, true, None).await.unwrap();
+        let (task, text, _) = decide_inner_with(&rt, &store, &calls, Some(&control), &t.id, true, None).await.unwrap();
         let got = task.appointment.unwrap();
         assert_eq!((got.reply.as_str(), got.call.as_str(), got.sms.as_str()), ("call", "no_phone", ""));
         assert!(text.contains("AI 沒有回電：沒有可以撥號的手機連線"), "{text}");
@@ -4760,17 +3544,17 @@ mod tests {
         assert!(take_ready_callback("", "0225550123").is_none());
         // A mobile, the owner picks "nobody": nothing is sent.
         let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
-        let (task, text, _) = decide_inner_with(None, &http, &rt, &store, &calls, Some(&control), &t.id, false, Some(Reply::None)).await.unwrap();
+        let (task, text, _) = decide_inner_with(&rt, &store, &calls, Some(&control), &t.id, false, Some(Reply::None)).await.unwrap();
         let got = task.appointment.unwrap();
         assert_eq!((got.reply.as_str(), got.sms.as_str(), got.call.as_str()), ("none", "", ""));
         assert!(text.contains("沒有通知對方"), "{text}");
         // A text asked for a landline cannot go: nobody is told.
         let t = store.create(TaskRecord { id: String::new(), ..task_for("0225550123", &a) }).await.unwrap();
-        let (task, _, _) = decide_inner_with(None, &http, &rt, &store, &calls, Some(&control), &t.id, true, Some(Reply::Sms)).await.unwrap();
+        let (task, _, _) = decide_inner_with(&rt, &store, &calls, Some(&control), &t.id, true, Some(Reply::Sms)).await.unwrap();
         assert_eq!(task.appointment.unwrap().reply, "none");
         // A hidden number: never a text or a call.
         let t = store.create(TaskRecord { id: String::new(), ..task_for("", &a) }).await.unwrap();
-        let (task, text, _) = decide_inner_with(None, &http, &rt, &store, &calls, Some(&control), &t.id, true, Some(Reply::Call)).await.unwrap();
+        let (task, text, _) = decide_inner_with(&rt, &store, &calls, Some(&control), &t.id, true, Some(Reply::Call)).await.unwrap();
         assert_eq!(task.appointment.unwrap().reply, "none");
         assert!(text.contains("未顯示號碼，沒辦法通知對方"), "{text}");
         let _ = std::fs::remove_dir_all(&root);
@@ -4903,9 +3687,8 @@ mod tests {
         assert_eq!(default_reply("call", reply_options(&rt, "0204-123456", Some("tw"))), Reply::None);
         assert_eq!(default_reply("auto", reply_options(&rt, "0800-000-123", Some("tw"))), Reply::None);
         rt.appointment_mode = "confirm".into();
-        rt.appointment_test_numbers = Vec::new();
         rt.appointment_reply = "auto".into();
-        let s = ApptSession::for_call(&rt, &Client::new(), "0800000123").unwrap();
+        let s = ApptSession::for_call(&rt, "0800000123").unwrap();
         assert_eq!(s.reply, Reply::None);
     }
 
@@ -4958,7 +3741,7 @@ mod tests {
     fn text_result_codes_read_as_words_in_every_language() {
         let codes = [
             "offline", "old_app", "timeout", "busy", "no_number", "no_permission", "bad_request", "no_service",
-            "radio_off", "generic_failure", "exception", "no_sim", "not_test_number",
+            "radio_off", "generic_failure", "exception",
         ];
         for l in locale::ALL {
             for code in codes {
@@ -4969,11 +3752,6 @@ mod tests {
             assert_eq!(sms_code_text(l, "sent"), None);
         }
         assert_eq!(sms_code_text(Lang::ZhTw, " generic_failure "), Some("電信端沒有收下這則簡訊"));
-        assert_eq!(sms_code_text(Lang::ZhTw, "not_test_number"), Some("這是測試來電，對方號碼不在測試號碼名單上"));
-        assert_eq!(
-            sms_code_text(Lang::En, "no_sim"),
-            Some("the phone has no SIM matching the one in settings (or more than one)")
-        );
         for code in crate::callback::SMS_ERROR_CODES {
             assert!(sms_code_text(Lang::En, code).is_some(), "{code}");
         }
@@ -4997,169 +3775,56 @@ mod tests {
     async fn two_decisions_at_once_act_only_once() {
         let (root, store, calls) = stores();
         let rt = plain_settings();
-        let http = Client::new();
-        let cal = Arc::new(FakeCal::default());
-        cal.write_delay_ms.store(150, std::sync::atomic::Ordering::SeqCst);
         let a = appt(&later(2, 15), &later(2, 16), "看房");
         let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
         // ✅ and ❌ pressed together (or Telegram and the API): the first one acts.
         let (first, second) = tokio::join!(
-            decide_with(Some(Cal::Fake(cal.clone())), &http, &rt, &store, &calls, None, &t.id, true),
-            decide_with(Some(Cal::Fake(cal.clone())), &http, &rt, &store, &calls, None, &t.id, false),
+            decide(&rt, &store, &calls, None, &t.id, true),
+            decide(&rt, &store, &calls, None, &t.id, false),
         );
         let (first, second) = (first.unwrap(), second.unwrap());
         assert!(first.1.starts_with("✅ 已同意預約"), "{}", first.1);
         assert!(second.1.starts_with("這個預約已經處理過了"), "{}", second.1);
-        assert_eq!(count(&cal.inserts), 1);
         let done = store.get(&t.id).await.unwrap();
         assert_eq!(done.status, TaskStatus::Fulfilled);
-        assert_eq!(done.appointment.as_ref().map(|a| (a.status.as_str(), a.event_id.as_str())), Some((CONFIRMED, "ev1")));
+        assert_eq!(done.appointment.as_ref().map(|a| a.status.as_str()), Some(CONFIRMED));
         assert_eq!(done.events.iter().filter(|e| e.starts_with("appointment_")).count(), 1, "{:?}", done.events);
-        // Asked while another decision holds the task: nothing happens. (Another
-        // hour: the first one is taken now.)
+        // Asked while another decision holds the task: nothing happens.
         let a2 = appt(&later(3, 15), &later(3, 16), "看房");
         let t2 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a2) }).await.unwrap();
         let held = Deciding::claim(&t2.id).unwrap();
         assert!(Deciding::claim(&t2.id).is_none());
-        let (_, text) = decide_with(Some(Cal::Fake(cal.clone())), &http, &rt, &store, &calls, None, &t2.id, true).await.unwrap();
+        let (_, text) = decide(&rt, &store, &calls, None, &t2.id, true).await.unwrap();
         assert!(text.starts_with("這個預約已經處理過了"), "{text}");
         assert_eq!(store.get(&t2.id).await.unwrap().status, TaskStatus::Pending);
         drop(held);
-        let (_, text) = decide_with(Some(Cal::Fake(cal.clone())), &http, &rt, &store, &calls, None, &t2.id, true).await.unwrap();
+        let (_, text) = decide(&rt, &store, &calls, None, &t2.id, true).await.unwrap();
         assert!(text.starts_with("✅ 已同意預約"), "{text}");
-        assert_eq!(count(&cal.inserts), 2);
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    #[tokio::test]
-    async fn auto_moves_its_own_event_instead_of_booking_twice() {
-        let cal = Arc::new(FakeCal::default());
-        let s = auto_session(&cal);
-        let booked = json!({"status": "booked"});
-        let (a, b) = (later(2, 15), later(2, 16));
-        assert_eq!(s.run_tool(&propose_call(&a, &b)).await, booked);
-        assert_eq!(count(&cal.inserts), 1);
-        // Its own event does not make that time look busy.
-        let check = ToolCall { id: "c".into(), name: CHECK.into(), args: json!({"start": a}), seq: 0, after: 0 };
-        assert_eq!(s.run_tool(&check).await, json!({"free": true}));
-        // Longer now (overlaps only its own event): moved, not added.
-        assert_eq!(s.run_tool(&propose_call(&a, &later(2, 17))).await, booked);
-        assert_eq!((count(&cal.inserts), count(&cal.moves)), (1, 1));
-        let out = s.book.outcome().unwrap();
-        assert_eq!((out.event_id.as_str(), out.end.as_str()), ("ev1", later(2, 17).as_str()));
-        assert!(out.replaced.is_empty());
-        // The same time again: booked, nothing written.
-        assert_eq!(s.run_tool(&propose_call(&a, &later(2, 17))).await, booked);
-        assert_eq!((count(&cal.inserts), count(&cal.moves)), (1, 1));
-        // Someone else has that time: not booked; the call's event keeps its id…
-        cal.busy.lock().unwrap().push((later(3, 9), later(3, 12)));
-        assert_eq!(
-            s.run_tool(&propose_call(&later(3, 10), &later(3, 11))).await,
-            json!({"status": "pending_owner_confirmation", "not_booked": true})
-        );
-        let out = s.book.outcome().unwrap();
-        assert_eq!((out.status.as_str(), out.event_id.as_str()), (PENDING, "ev1"));
-        assert_eq!(out.auto_error, texts().ap_busy);
-        assert!(out.replaced.is_empty());
-        // …so the owner's ✅ moves it there instead of adding a second one — once
-        // the other plans are gone: while they stand, ✅ is held (nothing written).
-        let (root, store, calls) = stores();
-        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &out) }).await.unwrap();
-        let (held, text) = decide_with(Some(Cal::Fake(cal.clone())), &Client::new(), &plain_settings(), &store, &calls, None, &t.id, true)
-            .await
-            .unwrap();
-        assert!(text.starts_with("⚠️ 這個時段日曆上已經有行程"), "{text}");
-        assert_eq!(held.appointment.as_ref().map(|a| a.status.as_str()), Some(PENDING));
-        assert_eq!((count(&cal.inserts), count(&cal.moves)), (1, 1));
-        cal.busy.lock().unwrap().clear();
-        let (done, _) = decide_with(Some(Cal::Fake(cal.clone())), &Client::new(), &plain_settings(), &store, &calls, None, &t.id, true)
-            .await
-            .unwrap();
-        assert_eq!((count(&cal.inserts), count(&cal.moves)), (1, 2));
-        let done = done.appointment.unwrap();
-        assert_eq!((done.event_id.as_str(), done.status.as_str()), ("ev1", CONFIRMED));
-        assert!(done.write_error.is_empty());
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[tokio::test]
-    async fn lost_answers_and_declines_do_not_leave_extra_events() {
-        let (root, store, calls) = stores();
-        let http = Client::new();
-        let cal = Arc::new(FakeCal::default());
-        // An insert whose answer was lost (timeout) is found by the call's tag.
-        cal.events.lock().unwrap().push(("ev7".into(), later(2, 9), later(2, 10), "tag-test".into()));
-        let mut a = appt(&later(2, 9), &later(2, 10), "看房");
-        a.mode = "auto".into();
-        a.tag = "tag-test".into();
-        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
-        let (done, _) = decide_with(Some(Cal::Fake(cal.clone())), &http, &plain_settings(), &store, &calls, None, &t.id, true)
-            .await
-            .unwrap();
-        assert_eq!((count(&cal.inserts), count(&cal.moves)), (0, 1));
-        assert_eq!(done.appointment.unwrap().event_id, "ev7");
-        // Declining an appointment whose event is in the calendar takes it out.
-        let mut b = a.clone();
-        b.event_id = "ev7".into();
-        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &b) }).await.unwrap();
-        let (done, text) = decide_with(Some(Cal::Fake(cal.clone())), &http, &plain_settings(), &store, &calls, None, &t.id, false)
-            .await
-            .unwrap();
-        assert!(text.contains("已從行事曆刪除"), "{text}");
-        assert_eq!(count(&cal.deletes), 1);
-        assert!(done.appointment.unwrap().event_id.is_empty());
-        // Declining one whose write answer was lost (no id kept): found by its tag
-        // and taken out as well.
-        cal.events.lock().unwrap().push(("ev8".into(), later(3, 9), later(3, 10), "tag-lost".into()));
-        let mut c = appt(&later(3, 9), &later(3, 10), "看房");
-        c.mode = "auto".into();
-        c.tag = "tag-lost".into();
-        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &c) }).await.unwrap();
-        let (_, text) = decide_with(Some(Cal::Fake(cal.clone())), &http, &plain_settings(), &store, &calls, None, &t.id, false)
-            .await
-            .unwrap();
-        assert!(text.contains("已從行事曆刪除"), "{text}");
-        assert_eq!(count(&cal.deletes), 2);
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[tokio::test]
-    async fn a_scam_verdict_voids_what_the_call_booked_and_it_is_deleted() {
-        let http = Client::new();
-        let cal = Arc::new(FakeCal::default());
-        let s = auto_session(&cal);
-        s.run_tool(&propose_call(&later(2, 15), &later(2, 16))).await;
-        s.book.discard();
-        assert_eq!(s.book.outcome(), None);
-        let voided = s.book.voided();
+    #[test]
+    fn a_scam_verdict_voids_the_call_s_events_and_the_owner_deletes_them() {
+        // An appointment that holds a calendar event (a record from an older
+        // version): judged sales / scam, the call keeps nothing and the event
+        // is voided.
+        let book = CallAppointments::new();
+        let mut a = appt(&later(2, 15), &later(2, 16), "看房");
+        a.event_id = "ev1".into();
+        assert!(book.record(a));
+        book.discard();
+        assert_eq!(book.outcome(), None);
+        let voided = book.voided();
         assert_eq!(voided.iter().map(|e| e.event_id.as_str()).collect::<Vec<_>>(), vec!["ev1"]);
-        assert!(delete_voided_with(Some(Cal::Fake(cal.clone())), &http, &voided).await.is_empty());
-        assert_eq!(count(&cal.deletes), 1);
-        // The verdict lands while the event is being written: it is voided as well,
-        // and the model is only told it waits.
-        let cal2 = Arc::new(FakeCal::default());
-        cal2.write_delay_ms.store(200, std::sync::atomic::Ordering::SeqCst);
-        let s2 = auto_session(&cal2);
-        let runner = s2.clone();
-        let call = propose_call(&later(4, 9), &later(4, 10));
-        let running = tokio::spawn(async move { runner.run_tool(&call).await });
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        s2.book.discard();
-        assert_eq!(running.await.unwrap()["status"], "pending_owner_confirmation");
-        let voided = s2.book.voided();
-        assert_eq!(voided.iter().map(|e| e.event_id.as_str()).collect::<Vec<_>>(), vec!["ev1"]);
-        s2.book.settled(Duration::from_millis(10)).await;
-        // Could not be deleted: a line for the summary says so.
-        cal2.fail_delete.store(true, std::sync::atomic::Ordering::SeqCst);
-        let failed = delete_voided_with(Some(Cal::Fake(cal2.clone())), &http, &voided).await;
-        assert_eq!(failed.len(), 1);
+        // No calendar to delete it from: a line for the summary says so.
+        let failed = delete_voided(&voided);
+        assert_eq!(failed, voided);
         let line = void_failed_line(&failed[0]);
         assert!(line.starts_with("📅 通話中排入的「") && line.contains("請自己刪"), "{line}");
-        // An event whose id was never answered is found by the call's tag.
-        cal2.fail_delete.store(false, std::sync::atomic::Ordering::SeqCst);
-        let lost = Earlier { start: later(4, 9), tag: "tag-test".into(), ..Default::default() };
-        assert!(delete_voided_with(Some(Cal::Fake(cal2.clone())), &http, &[lost]).await.is_empty());
-        assert_eq!(count(&cal2.deletes), 1);
+        // Proposed after the verdict: not kept, and nothing more to void.
+        assert!(!book.record(appt(&later(3, 15), &later(3, 16), "看房")));
+        assert_eq!(book.voided().len(), 1);
+        assert!(delete_voided(&[Earlier { start: later(4, 9), tag: "tag-test".into(), ..Default::default() }]).is_empty());
         // A booked appointment of a call that turned out bad: everything it wrote.
         let mut booked = appt(&later(2, 15), &later(2, 16), "看房");
         booked.event_id = "ev9".into();
@@ -5181,7 +3846,7 @@ mod tests {
         rt.public_url = "http://bageo.local/".into();
         let a = appt("2026-11-14T15:00", "2026-11-14T16:00", "看房");
         let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
-        let (done, text) = decide(&Client::new(), &rt, &store, &calls, None, &t.id, true).await.unwrap();
+        let (done, text) = decide(&rt, &store, &calls, None, &t.id, true).await.unwrap();
         assert_eq!(done.status, TaskStatus::Fulfilled);
         assert_eq!(done.appointment.as_ref().unwrap().status, CONFIRMED);
         assert!(text.starts_with("✅ 已同意預約\n11/14（週六）15:00–16:00 看房"), "{text}");
@@ -5195,23 +3860,23 @@ mod tests {
         assert!(text.contains("%E8%99%9F%E7%A2%BC%EF%BC%9A0912345678"), "{text}");
         assert!(done.events.contains(&"appointment_confirmed".to_string()));
         // Pressed again: nothing happens twice.
-        let (_, again) = decide(&Client::new(), &rt, &store, &calls, None, &t.id, false).await.unwrap();
+        let (_, again) = decide(&rt, &store, &calls, None, &t.id, false).await.unwrap();
         assert!(again.starts_with("這個預約已經處理過了"), "{again}");
         // Apple Calendar chosen: the task's .ics at the console's address.
         rt.calendar_app = "apple".into();
         let t3 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
-        let (_, text) = decide(&Client::new(), &rt, &store, &calls, None, &t3.id, true).await.unwrap();
+        let (_, text) = decide(&rt, &store, &calls, None, &t3.id, true).await.unwrap();
         assert!(text.ends_with(&format!("📅 加入行事曆：http://bageo.local/calls/api/tasks/{}/event.ics", t3.id)), "{text}");
         // …and without an address other devices can open: no link at all.
         rt.public_url = String::new();
         let t4 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
-        let (_, text) = decide(&Client::new(), &rt, &store, &calls, None, &t4.id, true).await.unwrap();
+        let (_, text) = decide(&rt, &store, &calls, None, &t4.id, true).await.unwrap();
         assert!(!text.contains("加入行事曆"), "{text}");
         // Declined, texts on, the phone is not connected: said so.
         rt.appointment_sms = true;
         let t2 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
         let control = ControlRegistry::default();
-        let (done, text) = decide(&Client::new(), &rt, &store, &calls, Some(&control), &t2.id, false).await.unwrap();
+        let (done, text) = decide(&rt, &store, &calls, Some(&control), &t2.id, false).await.unwrap();
         assert_eq!(done.status, TaskStatus::Ignored);
         assert_eq!(done.appointment.as_ref().unwrap().sms, "offline");
         assert!(text.starts_with("❌ 已婉拒預約") && text.contains("簡訊沒傳出：手機沒連線"), "{text}");
@@ -5224,164 +3889,45 @@ mod tests {
         ToolCall { id: id.into(), name: PROPOSE.into(), args, seq, after: 0 }
     }
 
-    const SEQ: std::sync::atomic::Ordering = std::sync::atomic::Ordering::SeqCst;
-
     #[tokio::test]
-    async fn a_failed_calendar_write_keeps_it_waiting_and_texts_nobody() {
-        let (root, store, calls) = stores();
-        let http = Client::new();
-        let cal = Arc::new(FakeCal::default());
-        cal.fail_insert.store(true, SEQ);
-        let mut rt = plain_settings();
-        rt.appointment_sms = true;
-        let control = ControlRegistry::default();
-        let mut a = appt(&later(2, 15), &later(2, 16), "看房");
-        a.sim_country = Some("tw".into());
-        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
-        let (task, text, done) = decide_inner(Some(Cal::Fake(cal.clone())), &http, &rt, &store, &calls, Some(&control), &t.id, true)
-            .await
-            .unwrap();
-        assert_eq!(done, Decision::Held);
-        assert!(text.starts_with("⚠️ 寫入日曆失敗") && text.contains("可再按一次") && text.contains("HTTP 503"), "{text}");
-        let held = task.appointment.clone().unwrap();
-        // Still waiting, nothing texted (no "sms_…" either), the reason kept.
-        assert_eq!((held.status.as_str(), held.sms.as_str()), (PENDING, ""));
-        assert!(held.write_error.contains("HTTP 503"), "{}", held.write_error);
-        assert_eq!(task.status, TaskStatus::Pending);
-        assert!(task.fulfill_error.as_deref().is_some_and(|e| e.contains("HTTP 503")));
-        assert!(task.events.contains(&"appointment_write_failed".to_string()), "{:?}", task.events);
-        assert!(!task.events.iter().any(|e| e == "appointment_confirmed" || e.starts_with("sms_")), "{:?}", task.events);
-        // The card (sent again after a press) says so.
-        let (_, body) = card_text(&rt, &task, &held, "");
-        assert!(body.contains("寫入日曆失敗"), "{body}");
-        // Pressed again once the calendar answers: confirmed, and only now the text.
-        cal.fail_insert.store(false, SEQ);
-        let (task, text, done) = decide_inner(Some(Cal::Fake(cal.clone())), &http, &rt, &store, &calls, Some(&control), &t.id, true)
-            .await
-            .unwrap();
-        assert_eq!(done, Decision::Settled);
-        assert!(text.starts_with("✅ 已同意預約"), "{text}");
-        let ok = task.appointment.clone().unwrap();
-        assert_eq!((ok.status.as_str(), ok.event_id.as_str(), ok.sms.as_str()), (CONFIRMED, "ev1", "offline"));
-        assert!(ok.write_error.is_empty() && task.fulfill_error.is_none());
-        assert_eq!(task.status, TaskStatus::Fulfilled);
-        // Decided now: another press changes nothing.
-        let (_, _, done) = decide_inner(Some(Cal::Fake(cal.clone())), &http, &rt, &store, &calls, Some(&control), &t.id, true)
-            .await
-            .unwrap();
-        assert_eq!(done, Decision::Already);
-        assert_eq!(count(&cal.inserts), 1);
-        // Held phrases exist in every language.
-        for l in locale::ALL {
-            let (failed, taken) = held_phrases(l);
-            assert_eq!(failed.matches("{}").count(), 1, "{l:?}");
-            assert!(!taken.contains('{') && taken.starts_with("⚠️"), "{l:?}");
-        }
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[tokio::test]
-    async fn a_quick_change_of_time_books_once_and_the_later_call_wins() {
-        let booked = json!({"status": "booked"});
+    async fn a_quick_change_of_time_keeps_one_appointment_and_the_later_call_wins() {
+        let pending = json!("pending_owner_confirmation");
         let eight = later(2, 8);
         let half_nine = later(2, 9).replace(":00", ":30");
-        // "Eight doesn't work, make it half past nine": two calls almost at once;
-        // the first is still writing (slow calendar) when the second runs.
-        let cal = Arc::new(FakeCal::default());
-        cal.write_delay_ms.store(150, SEQ);
-        let s = auto_session(&cal);
+        // "Eight doesn't work, make it half past nine": two calls almost at once.
+        let s = session(Mode::Confirm);
         let first = propose_args("a", json!({"start": eight, "title": "看房"}), next_seq());
         let second = propose_args("b", json!({"start": half_nine, "title": "看房"}), next_seq());
         let (r1, r2) = tokio::join!(s.run_tool(&first), async {
             tokio::time::sleep(Duration::from_millis(20)).await;
             s.run_tool(&second).await
         });
-        assert_eq!((r1, r2), (booked.clone(), booked.clone()));
-        // One event, moved to the later time — not two.
-        assert_eq!((count(&cal.inserts), count(&cal.moves)), (1, 1));
-        let events = cal.events.lock().unwrap().clone();
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].1, half_nine);
+        assert_eq!((r1["status"].clone(), r2["status"].clone()), (pending.clone(), pending.clone()));
+        // One appointment, at the later time — not two.
         let all = s.book.outcomes();
         assert_eq!(all.len(), 1);
-        assert_eq!((all[0].start.as_str(), all[0].event_id.as_str()), (half_nine.as_str(), "ev1"));
+        assert_eq!(all[0].start, half_nine);
 
         // The later call's task ran first: the earlier one finds it already
         // changed and leaves it alone.
-        let cal2 = Arc::new(FakeCal::default());
-        cal2.write_delay_ms.store(50, SEQ);
-        let s2 = auto_session(&cal2);
+        let s2 = session(Mode::Confirm);
         let (older, newer) = (next_seq(), next_seq());
-        assert_eq!(s2.run_tool(&propose_args("b", json!({"start": half_nine, "title": "看房"}), newer)).await, booked);
+        assert_eq!(s2.run_tool(&propose_args("b", json!({"start": half_nine, "title": "看房"}), newer)).await["status"], pending);
         assert_eq!(
             s2.run_tool(&propose_args("a", json!({"start": eight, "title": "看房"}), older)).await,
             json!({"status": "superseded"})
         );
-        assert_eq!((count(&cal2.inserts), count(&cal2.moves)), (1, 0));
+        assert_eq!(s2.book.outcomes().len(), 1);
         assert_eq!(s2.book.outcome().unwrap().start, half_nine);
         assert!(answer_is_silent(PROPOSE, &json!({"status": "superseded"})));
     }
 
     #[tokio::test]
-    async fn two_callers_at_once_cannot_both_take_the_same_hour() {
-        let cal = Arc::new(FakeCal::default());
-        cal.write_delay_ms.store(150, SEQ);
-        let a = ApptSession { tag: "tag-a".into(), ..auto_session(&cal) };
-        let b = ApptSession { tag: "tag-b".into(), ..auto_session(&cal) };
-        let (from, to) = (later(3, 10), later(3, 11));
-        let (ca, cb) = (propose_call(&from, &to), propose_call(&from, &to));
-        let (ra, rb) = tokio::join!(a.run_tool(&ca), b.run_tool(&cb));
-        let booked = json!({"status": "booked"});
-        let waits = json!({"status": "pending_owner_confirmation", "not_booked": true});
-        assert!((ra == booked && rb == waits) || (ra == waits && rb == booked), "{ra} {rb}");
-        assert_eq!(count(&cal.inserts), 1);
-        let loser = if ra == booked { b.book.outcome().unwrap() } else { a.book.outcome().unwrap() };
-        assert_eq!((loser.status.as_str(), loser.auto_error.as_str()), (PENDING, texts().ap_busy));
-
-        // The owner confirms the one that waits: the hour is taken, so it stays
-        // waiting and nobody is texted "fine".
-        let (root, store, calls) = stores();
-        let http = Client::new();
-        let mut rt = plain_settings();
-        rt.appointment_sms = true;
-        let control = ControlRegistry::default();
-        let mut l = loser.clone();
-        l.sim_country = Some("tw".into());
-        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &l) }).await.unwrap();
-        let (task, text, done) = decide_inner(Some(Cal::Fake(cal.clone())), &http, &rt, &store, &calls, Some(&control), &t.id, true)
-            .await
-            .unwrap();
-        assert_eq!(done, Decision::Held);
-        assert!(text.contains("已經有行程") && text.contains("再按一次同意就照樣排入"), "{text}");
-        let held = task.appointment.unwrap();
-        assert_eq!((held.status.as_str(), held.sms.as_str()), (PENDING, ""));
-        assert!(task.events.contains(&"appointment_time_taken".to_string()));
-        assert_eq!(count(&cal.inserts), 1);
-
-        // Two appointments for one free hour confirmed at the same moment: one
-        // is written, the other is held.
-        let (x, y) = (appt(&later(4, 10), &later(4, 11), "看房"), appt(&later(4, 10), &later(4, 11), "修水管"));
-        let tx = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &x) }).await.unwrap();
-        let ty = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &y) }).await.unwrap();
-        let rt = plain_settings();
-        let (dx, dy) = tokio::join!(
-            decide_inner(Some(Cal::Fake(cal.clone())), &http, &rt, &store, &calls, None, &tx.id, true),
-            decide_inner(Some(Cal::Fake(cal.clone())), &http, &rt, &store, &calls, None, &ty.id, true),
-        );
-        let mut outcomes = vec![dx.unwrap().2, dy.unwrap().2];
-        outcomes.sort_by_key(|d| *d == Decision::Held);
-        assert_eq!(outcomes, vec![Decision::Settled, Decision::Held]);
-        assert_eq!(count(&cal.inserts), 2);
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[tokio::test]
     async fn a_second_appointment_on_the_same_call_is_kept_apart() {
-        let cal = Arc::new(FakeCal::default());
-        let s = auto_session(&cal);
-        let booked = json!({"status": "booked"});
-        // A viewing first, then a separate call on another day: two events.
-        assert_eq!(s.run_tool(&propose_call(&later(2, 10), &later(2, 11))).await, booked);
+        let s = session(Mode::Confirm);
+        let pending = json!("pending_owner_confirmation");
+        // A viewing first, then a separate call on another day: two appointments.
+        assert_eq!(s.run_tool(&propose_call(&later(2, 10), &later(2, 11))).await["status"], pending);
         let other = |start: String, replaces: Option<bool>| {
             let mut args = json!({"start": start, "title": "電話會議"});
             if let Some(r) = replaces {
@@ -5389,30 +3935,24 @@ mod tests {
             }
             propose_args("o", args, 0)
         };
-        assert_eq!(s.run_tool(&other(later(4, 15), Some(false))).await, booked);
-        assert_eq!((count(&cal.inserts), count(&cal.moves)), (2, 0));
+        assert_eq!(s.run_tool(&other(later(4, 15), Some(false))).await["status"], pending);
+        assert_eq!(s.book.outcomes().len(), 2);
         // A change of time (replaces_previous left out = true) moves the one agreed last.
-        assert_eq!(s.run_tool(&other(later(4, 16), None)).await, booked);
-        assert_eq!((count(&cal.inserts), count(&cal.moves)), (2, 1));
-        // Proposed again as "another" at the very same time: the same one, nothing written.
-        assert_eq!(s.run_tool(&other(later(4, 16), Some(false))).await, booked);
-        assert_eq!((count(&cal.inserts), count(&cal.moves)), (2, 1));
+        assert_eq!(s.run_tool(&other(later(4, 16), None)).await["status"], pending);
+        // Proposed again as "another" at the very same time: the same one, not a third.
+        assert_eq!(s.run_tool(&other(later(4, 16), Some(false))).await["status"], pending);
         let all = s.book.outcomes();
         assert_eq!(all.len(), 2);
-        assert_eq!((all[0].start.as_str(), all[0].event_id.as_str()), (later(2, 10).as_str(), "ev1"));
-        assert_eq!((all[1].start.as_str(), all[1].event_id.as_str()), (later(4, 16).as_str(), "ev2"));
+        assert_eq!((all[0].start.as_str(), all[1].start.as_str()), (later(2, 10).as_str(), later(4, 16).as_str()));
         assert_eq!((all[0].tag.as_str(), all[1].tag.as_str()), ("tag-test", "tag-test-2"));
-        // The record keeps the first, the other in `more`; the summary names both;
-        // voiding the call takes out every event.
+        // The record keeps the first, the other in `more`; the summary names both.
         let rec = s.book.outcome().unwrap();
         assert_eq!(rec.more.len(), 1);
         assert_eq!(summary_line(&rec, "").lines().count(), 2);
-        let ids: Vec<String> = all_events(&rec).into_iter().map(|e| e.event_id).collect();
-        assert_eq!(ids, vec!["ev1", "ev2"]);
+        // Nothing of it is in a calendar: voiding the call leaves nothing to delete.
+        assert!(all_events(&rec).is_empty());
         s.book.discard();
-        let mut voided: Vec<String> = s.book.voided().into_iter().map(|e| e.event_id).collect();
-        voided.sort();
-        assert_eq!(voided, vec!["ev1", "ev2"]);
+        assert!(s.book.voided().is_empty());
     }
 
     #[tokio::test]
@@ -5440,15 +3980,13 @@ mod tests {
         assert_eq!(titles, vec!["看房", "修水管"]);
         assert!(made.iter().all(|t| t.appointment.as_ref().unwrap().more.is_empty()));
         // The second is confirmed on its own; the first still waits, also in the call's notes.
-        let cal = Arc::new(FakeCal::default());
-        let (_, text) = decide_with(Some(Cal::Fake(cal.clone())), &Client::new(), &plain_settings(), &tasks, &calls, None, &made[1].id, true)
+        let (_, text) = decide(&plain_settings(), &tasks, &calls, None, &made[1].id, true)
             .await
             .unwrap();
         assert!(text.starts_with("✅ 已同意預約"), "{text}");
         assert_eq!(tasks.get(&made[0].id).await.unwrap().appointment.unwrap().status, PENDING);
         let n = calls.load_notes(&rec.id).await.unwrap().appointment.unwrap();
         assert_eq!((n.status.as_str(), n.more.len(), n.more[0].status.as_str()), (PENDING, 1, CONFIRMED));
-        assert_eq!(n.more[0].event_id, "ev1");
         // Notes from before a call could take two: replaced as a whole.
         let mut only = made[0].appointment.clone().unwrap();
         only.status = DECLINED.into();
@@ -5480,18 +4018,17 @@ mod tests {
         ] {
             assert_eq!(period_mismatch(&ok), None, "{ok}");
         }
-        // Both functions send it back before anything is checked or written,
+        // Both functions send it back before anything is checked or kept,
         // and the model is made to speak (call again), never silently.
-        let cal = Arc::new(FakeCal::default());
-        let s = auto_session(&cal);
+        let s = session(Mode::Confirm);
         let check = ToolCall { id: "c".into(), name: CHECK.into(), args: json!({"start": later(2, 8), "period": "evening"}), seq: 0, after: 0 };
         assert_eq!(s.run_tool(&check).await["error"], "period_mismatch");
         let r = s.run_tool(&propose_args("p", json!({"start": later(2, 8), "period": "evening", "title": "晚餐"}), 0)).await;
         assert_eq!(r["error"], "period_mismatch");
         assert_eq!(tool_response("p", PROPOSE, r)["toolResponse"]["functionResponses"][0]["response"]["scheduling"], "WHEN_IDLE");
-        assert_eq!((count(&cal.inserts), s.book.outcome()), (0, None));
+        assert_eq!(s.book.outcome(), None);
         let ok = s.run_tool(&propose_args("p", json!({"start": later(2, 20), "period": "evening", "title": "晚餐"}), 0)).await;
-        assert_eq!(ok, json!({"status": "booked"}));
+        assert_eq!(ok["status"], "pending_owner_confirmation");
         // Offered on both functions; "replaces_previous" on propose_appointment.
         let decl = tool_declarations(true);
         for f in decl[0]["functionDeclarations"].as_array().unwrap() {
@@ -5502,12 +4039,10 @@ mod tests {
 
     #[test]
     fn the_line_that_took_the_call_goes_with_its_appointments() {
-        let http = Client::new();
         let mut rt = plain_settings();
         rt.appointment_sms = true;
         rt.appointment_mode = "confirm".into();
-        rt.appointment_test_numbers = Vec::new();
-        let mut s = ApptSession::for_call(&rt, &http, "2025550143").unwrap();
+        let mut s = ApptSession::for_call(&rt, "2025550143").unwrap();
         // Read as Taiwanese until the SIM is known: no text back.
         assert!(!s.reply_by_text);
         s.set_line(Some(" US ".into()), Some(2));
@@ -5592,213 +4127,117 @@ mod tests {
         (r.0, msg)
     }
 
-    #[test]
-    fn the_test_text_phone_is_found_by_id_or_name() {
-        let labels: std::collections::BTreeMap<String, String> = [
-            ("pixel-12345".to_string(), "Pixel 9".to_string()),
-            ("pixel-23456".to_string(), "Test phone".to_string()),
-            ("pixel-34567".to_string(), "test PHONE".to_string()),
-        ]
-        .into_iter()
-        .collect();
-        let connected = vec!["pixel-12345".to_string(), "pixel-34567".to_string()];
-        assert_eq!(named_phone(" PIXEL-12345 ", &labels, &connected), "pixel-12345");
-        assert_eq!(named_phone("pixel 9", &labels, &connected), "pixel-12345");
-        // Two phones with that name: the connected one.
-        assert_eq!(named_phone("Test Phone", &labels, &connected), "pixel-34567");
-        assert_eq!(named_phone("Test Phone", &labels, &[]), "pixel-23456");
-        // Not connected and no such name: the id as written.
-        assert_eq!(named_phone("pixel-99999", &labels, &connected), "pixel-99999");
-    }
-
-    #[tokio::test]
-    async fn test_calls_text_from_the_phone_and_sim_the_settings_name() {
-        use crate::callback::test_socket::{next_json, phone_socket};
-        let quiet = std::time::Duration::from_millis(150);
-        let control = ControlRegistry::default();
-        // pixel-1 takes the calls; pixel-12345 ("Pixel 9") is the test phone.
-        let (took_sink, mut took) = phone_socket().await;
-        let (test_sink, mut tester) = phone_socket().await;
-        control.register_client("pixel-1".into(), took_sink).await;
-        control.register_client("pixel-12345".into(), test_sink).await;
-        for s in ["pixel-1", "pixel-12345"] {
-            control.set_supports_sms(s, true).await;
-        }
-        control.set_supports_sim_select("pixel-12345", true).await;
-        let mut rt = plain_settings();
-        rt.appointment_test_numbers = vec!["16505550123".into()];
-        rt.appointment_test_sms_phone = "pixel 9".into();
-        rt.appointment_test_sms_sim = "Tello".into();
-        rt.device_labels.insert("pixel-12345".into(), "Pixel 9".into());
-        let mut a = appt(&later(2, 15), &later(2, 16), "看房");
-        a.status = BOOKED.into();
-        a.calendar = DEMO_CALENDAR.into();
-        a.sim_country = Some("us".into());
-        a.sim_sub_id = Some(2);
-        let task = |id: &str, caller: &str, a: &Appointment| TaskRecord { id: id.into(), ..task_for(caller, a) };
-
-        // A test call: the phone named by its label, the SIM by name, no sub_id.
-        let t1 = task("t1", "+1 650 555 0123", &a);
-        let (code, msg) = text_and_answer(&control, &mut tester, text_caller(&rt, Some(&control), &t1, &a, true, None)).await;
-        assert_eq!(code, "sent");
-        assert_eq!((msg["to"].clone(), msg["sim"].clone(), msg.get("sub_id")), (json!("+16505550123"), json!("Tello"), None));
-        assert_eq!(next_json(&mut took, quiet).await, None);
-
-        // Any other call: the phone and SIM that took it, settings or not.
-        let mut plain = a.clone();
-        plain.calendar = String::new();
-        let t2 = task("t2", "+16505550142", &plain);
-        let (code, msg) = text_and_answer(&control, &mut took, text_caller(&rt, Some(&control), &t2, &plain, true, None)).await;
-        assert_eq!(code, "sent");
-        assert_eq!((msg["to"].clone(), msg["sub_id"].clone(), msg.get("sim")), (json!("+16505550142"), json!(2), None));
-        assert_eq!(next_json(&mut tester, quiet).await, None);
-
-        // A phone the owner picks wins, from its own SIM choice.
-        let t3 = task("t3", "+16505550123", &a);
-        let (code, msg) = text_and_answer(&control, &mut took, text_caller(&rt, Some(&control), &t3, &a, true, Some("pixel-1"))).await;
-        assert_eq!(code, "sent");
-        assert_eq!((msg["sub_id"].clone(), msg.get("sim")), (json!(2), None));
-
-        // A test call to a number off the list (taken off since): nothing is sent.
-        let t4 = task("t4", "+16505550142", &a);
-        let (code, line) = text_caller(&rt, Some(&control), &t4, &a, true, None).await;
-        assert_eq!(code, "not_test_number");
-        assert_eq!(line, "簡訊沒傳出：這是測試來電，對方號碼不在測試號碼名單上");
-        assert_eq!(next_json(&mut tester, quiet).await, None);
-        assert_eq!(next_json(&mut took, quiet).await, None);
-
-        // No SIM set: that phone's default SIM.
-        let mut default_sim = rt.clone();
-        default_sim.appointment_test_sms_sim = String::new();
-        let t5 = task("t5", "+16505550123", &a);
-        let (code, msg) = text_and_answer(&control, &mut tester, text_caller(&default_sim, Some(&control), &t5, &a, true, None)).await;
-        assert_eq!(code, "sent");
-        assert!(msg.get("sim").is_none() && msg.get("sub_id").is_none(), "{msg}");
-
-        // An app that cannot pick a SIM by name: not sent (never from its default SIM).
-        control.set_supports_sim_select("pixel-12345", false).await;
-        let t6 = task("t6", "+16505550123", &a);
-        let (code, line) = text_caller(&rt, Some(&control), &t6, &a, true, None).await;
-        assert_eq!((code.as_str(), line.as_str()), ("old_app", "簡訊沒傳出：手機 App 太舊，不支援傳簡訊"));
-        assert_eq!(next_json(&mut tester, quiet).await, None);
-        assert_eq!(next_json(&mut took, quiet).await, None);
-
-        // The test phone is not connected: offline.
-        let mut away = rt.clone();
-        away.appointment_test_sms_phone = "pixel-99999".into();
-        let t7 = task("t7", "+16505550123", &a);
-        assert_eq!(text_caller(&away, Some(&control), &t7, &a, true, None).await.0, "offline");
-        assert_eq!(next_json(&mut took, quiet).await, None);
-
-        // The owner picks the test phone itself: the SIM by name, as without a pick.
-        control.set_supports_sim_select("pixel-12345", true).await;
-        let t8 = task("t8", "+16505550123", &a);
-        let (code, msg) = text_and_answer(&control, &mut tester, text_caller(&rt, Some(&control), &t8, &a, true, Some("pixel-12345"))).await;
-        assert_eq!(code, "sent");
-        assert_eq!((msg["sim"].clone(), msg.get("sub_id")), (json!("Tello"), None));
-
-        // The list and the phone write the number without its country code: the
-        // text (to +1…) still goes to that listed number.
-        let mut national = rt.clone();
-        national.appointment_test_numbers = vec!["6505550123".into()];
-        let t9 = task("t9", "6505550123", &a);
-        let (code, msg) = text_and_answer(&control, &mut tester, text_caller(&national, Some(&control), &t9, &a, true, None)).await;
-        assert_eq!(code, "sent");
-        assert_eq!(msg["to"], json!("+16505550123"));
-        assert_eq!(next_json(&mut took, quiet).await, None);
-    }
-
     #[tokio::test]
     async fn the_shown_text_route_is_the_one_the_text_takes() {
         use crate::callback::test_socket::{next_json, phone_socket};
         let quiet = std::time::Duration::from_millis(150);
         let control = ControlRegistry::default();
-        // pixel-1 ("Pixel 7") takes the calls; pixel-12345 ("Pixel 9") is the test phone.
+        // pixel-1 ("Pixel 7") takes the calls; pixel-12345 is another connected phone.
         let (took_sink, mut took) = phone_socket().await;
-        let (test_sink, mut tester) = phone_socket().await;
+        let (other_sink, mut other) = phone_socket().await;
         control.register_client("pixel-1".into(), took_sink).await;
-        control.register_client("pixel-12345".into(), test_sink).await;
+        control.register_client("pixel-12345".into(), other_sink).await;
         for s in ["pixel-1", "pixel-12345"] {
             control.set_supports_sms(s, true).await;
-            control.set_supports_sim_select(s, true).await;
         }
-        let connected = control.connected_serials().await;
         let mut rt = plain_settings();
-        rt.appointment_test_numbers = vec!["16505550123".into()];
-        rt.appointment_test_sms_phone = "pixel 9".into();
-        rt.appointment_test_sms_sim = "Tello".into();
         rt.device_labels.insert("pixel-1".into(), "Pixel 7".into());
-        rt.device_labels.insert("pixel-12345".into(), "Pixel 9".into());
-        rt.device_labels.insert("pixel-23456".into(), "Pixel 8".into());
         let mut a = appt(&later(2, 15), &later(2, 16), "看房");
-        a.status = BOOKED.into();
-        a.calendar = DEMO_CALENDAR.into();
+        a.status = CONFIRMED.into();
+        a.sim_country = Some("us".into());
         a.sim_sub_id = Some(2);
-        let mut plain = a.clone();
-        plain.calendar = String::new();
         let task = |id: &str, caller: &str, a: &Appointment| TaskRecord { id: id.into(), ..task_for(caller, a) };
-        let route = |serial: &str, label: &str, sim: &str, test: bool| SmsRoute {
+        let route = |serial: &str, label: &str| SmsRoute {
             serial: serial.into(),
             label: label.into(),
-            sim: sim.into(),
-            test,
         };
 
-        // Any other call: the phone that took it, from the SIM that took it.
-        let t1 = task("r1", "+16505550142", &plain);
-        assert_eq!(sms_route(&rt, &connected, &t1), Some(route("pixel-1", "Pixel 7", "", false)));
-        assert_eq!(
-            task_json(&rt, &connected, &t1)["sms_route"],
-            json!({"serial": "pixel-1", "label": "Pixel 7", "test": false})
-        );
-        let (code, msg) = text_and_answer(&control, &mut took, text_caller(&rt, Some(&control), &t1, &plain, true, None)).await;
-        assert_eq!((code.as_str(), msg["sub_id"].clone(), msg.get("sim")), ("sent", json!(2), None));
-        assert_eq!(next_json(&mut tester, quiet).await, None);
+        // The phone that took the call, from the SIM that took it.
+        let t1 = task("r1", "+16505550142", &a);
+        assert_eq!(sms_route(&rt, &t1), Some(route("pixel-1", "Pixel 7")));
+        assert_eq!(task_json(&rt, &t1)["sms_route"], json!({"serial": "pixel-1", "label": "Pixel 7"}));
+        let (code, msg) = text_and_answer(&control, &mut took, text_caller(&rt, Some(&control), &t1, &a, true, None)).await;
+        assert_eq!((code.as_str(), msg["to"].clone(), msg["sub_id"].clone()), ("sent", json!("+16505550142"), json!(2)));
+        assert_eq!(next_json(&mut other, quiet).await, None);
 
-        // A test call with the test phone and SIM set: that phone (by its name) and that SIM.
-        let t2 = task("r2", "+16505550123", &a);
-        assert_eq!(sms_route(&rt, &connected, &t2), Some(route("pixel-12345", "Pixel 9", "Tello", true)));
-        assert_eq!(
-            task_json(&rt, &connected, &t2)["sms_route"],
-            json!({"serial": "pixel-12345", "label": "Pixel 9", "sim": "Tello", "test": true})
-        );
-        let (code, msg) = text_and_answer(&control, &mut tester, text_caller(&rt, Some(&control), &t2, &a, true, None)).await;
-        assert_eq!((code.as_str(), msg["sim"].clone(), msg.get("sub_id")), ("sent", json!("Tello"), None));
+        // The owner picks the phone that took the call: still the SIM that took it.
+        let t2 = task("r2", "+16505550142", &a);
+        let (code, msg) = text_and_answer(&control, &mut took, text_caller(&rt, Some(&control), &t2, &a, true, Some("pixel-1"))).await;
+        assert_eq!((code.as_str(), msg["sub_id"].clone()), ("sent", json!(2)));
+
+        // Another phone the owner picks sends from its own default SIM.
+        let t3 = task("r3", "+16505550142", &a);
+        let (code, msg) = text_and_answer(&control, &mut other, text_caller(&rt, Some(&control), &t3, &a, true, Some("pixel-12345"))).await;
+        assert_eq!(code, "sent");
+        assert!(msg.get("sub_id").is_none(), "{msg}");
         assert_eq!(next_json(&mut took, quiet).await, None);
 
-        // A test call with neither set: as any other call.
-        let mut unset = rt.clone();
-        unset.appointment_test_sms_phone = String::new();
-        unset.appointment_test_sms_sim = String::new();
-        let t3 = task("r3", "+16505550123", &a);
-        assert_eq!(sms_route(&unset, &connected, &t3), Some(route("pixel-1", "Pixel 7", "", false)));
-        let (code, msg) = text_and_answer(&control, &mut took, text_caller(&unset, Some(&control), &t3, &a, true, None)).await;
-        assert_eq!((code.as_str(), msg["sub_id"].clone(), msg.get("sim")), ("sent", json!(2), None));
-        assert_eq!(next_json(&mut tester, quiet).await, None);
-
-        // Only the SIM set: the phone that took the call, the SIM by name.
-        let mut sim_only = rt.clone();
-        sim_only.appointment_test_sms_phone = String::new();
-        let t4 = task("r4", "+16505550123", &a);
-        assert_eq!(sms_route(&sim_only, &connected, &t4), Some(route("pixel-1", "Pixel 7", "Tello", true)));
-        let (code, msg) = text_and_answer(&control, &mut took, text_caller(&sim_only, Some(&control), &t4, &a, true, None)).await;
-        assert_eq!((code.as_str(), msg["sim"].clone(), msg.get("sub_id")), ("sent", json!("Tello"), None));
-        assert_eq!(next_json(&mut tester, quiet).await, None);
-
-        // The test phone is not connected: still shown; the text answers offline.
-        let mut away = rt.clone();
-        away.appointment_test_sms_phone = "pixel 8".into();
-        let t5 = task("r5", "+16505550123", &a);
-        assert_eq!(sms_route(&away, &connected, &t5), Some(route("pixel-23456", "Pixel 8", "Tello", true)));
-        assert_eq!(text_caller(&away, Some(&control), &t5, &a, true, None).await.0, "offline");
-        assert_eq!(next_json(&mut took, quiet).await, None);
-        assert_eq!(next_json(&mut tester, quiet).await, None);
+        // A phone without a name is shown by its id.
+        let unnamed = TaskRecord { serial: "pixel-12345".into(), ..task("r4", "+16505550142", &a) };
+        assert_eq!(sms_route(&rt, &unnamed), Some(route("pixel-12345", "pixel-12345")));
 
         // A task without an appointment has no route.
-        let mut other = task("r6", "+16505550142", &plain);
-        other.appointment = None;
-        assert_eq!(sms_route(&rt, &connected, &other), None);
-        assert!(task_json(&rt, &connected, &other).get("sms_route").is_none());
+        let mut no_appt = task("r5", "+16505550142", &a);
+        no_appt.appointment = None;
+        assert_eq!(sms_route(&rt, &no_appt), None);
+        assert!(task_json(&rt, &no_appt).get("sms_route").is_none());
+    }
+
+    /// Appointments saved by older versions — booked on the call, with a
+    /// calendar event and the calendar's own fields (on the demo calendar of
+    /// test numbers also `"calendar": "demo"`) — still load and are handled like
+    /// any other; nothing tries to reach a calendar.
+    #[tokio::test]
+    async fn old_booked_appointments_with_calendar_events_still_load() {
+        let (root, store, calls) = stores();
+        let rt = plain_settings();
+        let old = |status: &str| -> TaskRecord {
+            let mut v = serde_json::to_value(task_for("+16505550100", &appt(&later(3, 10), &later(3, 11), "看房"))).unwrap();
+            let a = v["appointment"].as_object_mut().unwrap();
+            for (k, val) in [
+                ("mode", json!("auto")),
+                ("status", json!(status)),
+                ("event_id", json!("demo-1")),
+                ("tag", json!("tag-demo")),
+                ("calendar", json!("demo")),
+                ("auto_error", json!("日曆沒有及時回應（10 秒）")),
+                ("write_error", json!("⚠️ 寫入日曆失敗")),
+                ("held_busy", json!(true)),
+                ("replaced", json!([{"start": later(2, 10), "end": later(2, 11), "title": "看房", "event_id": "demo-0"}])),
+                ("sms", json!("offline")),
+            ] {
+                a.insert(k.into(), val);
+            }
+            v["id"] = json!("");
+            serde_json::from_value(v).unwrap()
+        };
+        // Waiting: the owner's ✅ goes through with nothing to write to, and
+        // the calendar's leftovers no longer hold it.
+        let t = store.create(old(PENDING)).await.unwrap();
+        let (done, text) = decide(&rt, &store, &calls, None, &t.id, true).await.unwrap();
+        assert_eq!(done.status, TaskStatus::Fulfilled);
+        assert!(text.starts_with("✅ 已同意預約"), "{text}");
+        let a = done.appointment.unwrap();
+        assert_eq!((a.status.as_str(), a.write_error.as_str(), a.held_busy), (CONFIRMED, "", false));
+        assert!(serde_json::to_value(&a).unwrap().get("calendar").is_none());
+        // Declined: its event is not looked for or deleted.
+        let t = store.create(old(PENDING)).await.unwrap();
+        let (done, text) = decide(&rt, &store, &calls, None, &t.id, false).await.unwrap();
+        assert_eq!(done.status, TaskStatus::Ignored);
+        assert_eq!(done.appointment.unwrap().event_id, "demo-1");
+        assert!(text.starts_with("❌ 已婉拒預約") && !text.contains('刪'), "{text}");
+        // Booked on the call: listed as in the calendar, its text can be sent
+        // again, and voiding it only asks the owner to delete its events.
+        let t = store.create(old(BOOKED)).await.unwrap();
+        let booked = t.appointment.clone().unwrap();
+        assert!(sms_retryable(&booked));
+        match retry_sms(&rt, &store, &calls, None, &t.id, None).await.unwrap() {
+            RetrySms::Tried { sms, .. } => assert_eq!(sms, "offline"),
+            other => panic!("{other:?}"),
+        }
+        let failed = delete_voided(&all_events(&booked));
+        assert_eq!(failed.iter().map(|e| e.event_id.as_str()).collect::<Vec<_>>(), vec!["demo-0", "demo-1"]);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     // ---- Review t5 (acceptance): checks added by the reviewer ----
@@ -5826,74 +4265,6 @@ mod tests {
         changing.await.unwrap();
         let starts: Vec<String> = s.book.outcomes().into_iter().map(|a| a.start).collect();
         assert_eq!(starts, vec![later(2, 10), later(4, 16)], "the first appointment must stay; the new one moves");
-    }
-
-    /// C: check_availability is answered while another call holds the
-    /// calendar lock for a booking (it never takes that lock).
-    #[tokio::test]
-    async fn review_a_check_is_not_held_up_by_another_calls_booking() {
-        let cal = Arc::new(FakeCal::default());
-        let s = auto_session(&cal);
-        let check = ToolCall { id: "c".into(), name: CHECK.into(), args: json!({"start": later(6, 10)}), seq: 0, after: 0 };
-        let held = calendar_turn().lock().await;
-        let answer = tokio::time::timeout(Duration::from_millis(500), s.run_tool(&check)).await;
-        drop(held);
-        assert_eq!(answer.expect("check waited for the calendar lock"), json!({"free": true}));
-    }
-
-    /// B: ✅ on an `auto` appointment whose write answer was lost finds its own
-    /// event by its tag: not "taken", moved instead of written twice.
-    #[tokio::test]
-    async fn review_confirm_is_not_blocked_by_its_own_auto_event() {
-        let (root, store, calls) = stores();
-        let cal = Arc::new(FakeCal::default());
-        let (from, to) = (later(7, 10), later(7, 11));
-        cal.events.lock().unwrap().push(("ev9".into(), from.clone(), to.clone(), "tag-own".into()));
-        let mut a = appt(&from, &to, "看房");
-        a.mode = "auto".into();
-        a.tag = "tag-own".into();
-        a.auto_error = "日曆沒有及時回應（15 秒）".into();
-        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
-        let (task, text, done) = decide_inner(Some(Cal::Fake(cal.clone())), &Client::new(), &plain_settings(), &store, &calls, None, &t.id, true)
-            .await
-            .unwrap();
-        assert_eq!(done, Decision::Settled, "{text}");
-        assert_eq!(task.appointment.unwrap().event_id, "ev9");
-        assert_eq!((count(&cal.inserts), count(&cal.moves)), (0, 1));
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// B: the owner put the same thing in the calendar himself, then pressed ✅:
-    /// held once, told the time is not free and that another ✅ books it anyway;
-    /// the second ✅ books it (and only then texts).
-    #[tokio::test]
-    async fn review_the_owners_own_entry_for_the_same_time_is_confirmed_on_the_second_press() {
-        let (root, store, calls) = stores();
-        let cal = Arc::new(FakeCal::default());
-        let (from, to) = (later(8, 15), later(8, 16));
-        cal.busy.lock().unwrap().push((from.clone(), to.clone()));
-        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &appt(&from, &to, "看房")) }).await.unwrap();
-        let (task, text, done) = decide_inner(Some(Cal::Fake(cal.clone())), &Client::new(), &plain_settings(), &store, &calls, None, &t.id, true)
-            .await
-            .unwrap();
-        assert_eq!(done, Decision::Held);
-        assert!(text.contains("這個時段日曆上已經有行程") && text.contains("再按一次同意就照樣排入"), "{text}");
-        assert!(!text.contains("其他預約"), "{text}");
-        let held = task.appointment.unwrap();
-        assert_eq!((held.status.as_str(), held.held_busy), (PENDING, true));
-        // The card and the console show the same words.
-        assert!(held.write_error.contains("再按一次同意就照樣排入"), "{}", held.write_error);
-        assert_eq!(count(&cal.inserts), 0);
-        let (task, text, done) = decide_inner(Some(Cal::Fake(cal.clone())), &Client::new(), &plain_settings(), &store, &calls, None, &t.id, true)
-            .await
-            .unwrap();
-        assert_eq!(done, Decision::Settled, "{text}");
-        assert!(text.starts_with("✅ 已同意預約"), "{text}");
-        let done = task.appointment.unwrap();
-        assert_eq!((done.status.as_str(), done.event_id.as_str(), done.held_busy), (CONFIRMED, "ev1", false));
-        assert!(done.write_error.is_empty());
-        assert_eq!(count(&cal.inserts), 1);
-        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// D: the numbers named in the review ticket.
@@ -5945,29 +4316,5 @@ mod tests {
         a.status = CONFIRMED.into();
         a.sms = "no_number".into();
         assert!(!sms_retryable(&a));
-    }
-
-    /// The end of a call waits [`TOOL_WAIT`] for proposals: an `auto` booking
-    /// that cannot get the calendar (an owner's ✅ is writing) soon leaves it
-    /// to the owner instead of writing after the call was read.
-    #[tokio::test]
-    async fn an_auto_booking_waits_for_the_calendar_only_so_long() {
-        assert!(CALENDAR_TURN_WAIT + BOOK_CHECK_TIMEOUT + WRITE_TIMEOUT < TOOL_WAIT);
-        assert!(BOOK_CHECK_TIMEOUT + WRITE_TIMEOUT <= Duration::from_secs(15));
-        let cal = Arc::new(FakeCal::default());
-        let s = ApptSession { turn_wait: Duration::from_millis(100), ..auto_session(&cal) };
-        let held = calendar_turn().lock().await;
-        let started = std::time::Instant::now();
-        let r = s.run_tool(&propose_call(&later(9, 10), &later(9, 11))).await;
-        drop(held);
-        assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
-        assert_eq!(r, json!({"status": "pending_owner_confirmation", "not_booked": true}));
-        assert_eq!(count(&cal.inserts), 0);
-        let out = s.book.outcome().unwrap();
-        assert_eq!(out.status, PENDING);
-        assert_eq!(out.auto_error, "日曆正在寫入另一筆預約");
-        // Once the calendar is free again a booking goes in as before.
-        let s2 = auto_session(&cal);
-        assert_eq!(s2.run_tool(&propose_call(&later(9, 10), &later(9, 11))).await, json!({"status": "booked"}));
     }
 }
