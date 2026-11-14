@@ -81,14 +81,14 @@ PUT /calls/api/settings
 }
 ```
 
-時間是當地時間（`TZ`）。`status`：`pending`（等你決定）、`booked`（通話中已寫進日曆）、`confirmed`、`declined`。`event_id`：寫進 Google 日曆後的活動 ID。`auto_error`：「有空直接答應」沒能排入的原因。`replaced`：同一通電話裡先前已寫進日曆、後來改掉的時間。`sms`：`sent`，或簡訊沒傳出的原因（`offline`、`old_app`、`timeout`、`busy`、`no_number`，或手機回的錯誤代碼）。`tag`：這通電話在它寫進日曆的活動上留的記號（見下句）。`tg_card`：發給這筆預約的 Telegram 卡片 `{chat_id, message_id}`，在別處決定後用來拿掉卡片上的按鈕。`write_error`：上次按確定沒能寫進日曆的原因（預約還在等）。`sim_country`／`sim_sub_id`：接這通電話的 SIM 卡；沒有國碼的來電號碼照它的國家來讀，簡訊也從它傳。一通電話可以約不只一件事：每件各有自己的任務和 `tag`（這通電話的 tag，接著是 `<tag>-2`…），通話紀錄和筆記放第一件，其他的在 `more`。空的欄位不會出現。主程式寫進日曆的活動都帶私有擴充屬性 `bageo_call=<appointment.tag>`，寫入時沒收到回應的那筆之後找得回來，不會寫兩次。
+時間是當地時間（`TZ`）。`status`：`pending`（等你決定）、`booked`（通話中已寫進日曆）、`confirmed`、`declined`。`event_id`：寫進 Google 日曆後的活動 ID。`auto_error`：「有空直接答應」沒能排入的原因。`replaced`：同一通電話裡先前已寫進日曆、後來改掉的時間。`sms`：`sent`，或簡訊沒傳出的原因（`offline`、`old_app`、`timeout`、`busy`、`no_number`，或手機回的錯誤代碼）。`tag`：這通電話在它寫進日曆的活動上留的記號（見下句）。`tg_card`：發給這筆預約的 Telegram 卡片 `{chat_id, message_id}`，在別處決定後用來拿掉卡片上的按鈕。`write_error`：上次按確定沒能寫進日曆的原因（預約還在等）；`held_busy`：被擋是因為時段有行程，下一次確定照樣寫入。`sim_country`／`sim_sub_id`：接這通電話的 SIM 卡；沒有國碼的來電號碼照它的國家來讀，簡訊也從它傳。一通電話可以約不只一件事：每件各有自己的任務和 `tag`（這通電話的 tag，接著是 `<tag>-2`…），通話紀錄和筆記放第一件，其他的在 `more`。空的欄位不會出現。主程式寫進日曆的活動都帶私有擴充屬性 `bageo_call=<appointment.tag>`，寫入時沒收到回應的那筆之後找得回來，不會寫兩次。
 
 | 方法與路徑 | 內容 |
 |---|---|
 | `GET /calls/api/tasks` | 任務，最新的在前（最多 200 筆）：`{ok, tasks}`。網頁的「待確認的預約」就是 `appointment.status` 為 `pending` 的任務。 |
-| `POST /calls/api/tasks/{id}/confirm` | 對預約來說等於在網頁或 Telegram 卡片上按 **✅ 確定**——寫進 Google 日曆，接著（開了 `appointment_sms` 時）傳簡訊給對方，可能要等最多 90 秒。回應 `{ok, task, message}`；`message` 是結果，網頁顯示的和 Telegram Bot 回的是同一段。這筆預約有發過 Telegram 卡片時，卡片上的按鈕會拿掉，並把 `message` 回到那個聊天（盡力而為，Telegram 失敗不影響決定）。只有第一次決定算數：之後再確定或婉拒——包括第一次還在處理時送來的，或在 Telegram 卡片上按的——都只回「已經處理過了」，不會有任何變化。寫進日曆前會再查一次那個時段：已被其他預約占用或寫入失敗時，預約維持 `pending` 並帶 `write_error`，不傳簡訊、Telegram 卡片的按鈕留著，`message` 寫原因，之後可以再確定。請求要帶 `Content-Type: application/json`（不用 body），否則回 HTTP 400 `bad_request`，這樣別的網頁沒辦法透過你區網裡的瀏覽器替你決定。 |
+| `POST /calls/api/tasks/{id}/confirm` | 對預約來說等於在網頁或 Telegram 卡片上按 **✅ 確定**——寫進 Google 日曆，接著（開了 `appointment_sms` 時）傳簡訊給對方，可能要等最多 90 秒。回應 `{ok, task, message}`；`message` 是結果，網頁顯示的和 Telegram Bot 回的是同一段。這筆預約有發過 Telegram 卡片時，卡片上的按鈕會拿掉，並把 `message` 回到那個聊天（盡力而為，Telegram 失敗不影響決定）。只有第一次決定算數：之後再確定或婉拒——包括第一次還在處理時送來的，或在 Telegram 卡片上按的——都只回「已經處理過了」，不會有任何變化。寫進日曆前會再查一次那個時段：日曆上已經有行程或寫入失敗時，預約維持 `pending` 並帶 `write_error`，不傳簡訊、Telegram 卡片的按鈕留著，`message` 寫原因，之後可以再確定；因時段有行程被擋（`held_busy`）的，下一次確定就照樣寫入。請求要帶 `Content-Type: application/json`（不用 body），否則回 HTTP 400 `bad_request`，這樣別的網頁沒辦法透過你區網裡的瀏覽器替你決定。 |
 | `POST /calls/api/tasks/{id}/ignore` | 對預約來說等於 **❌ 婉拒**（通話中已經寫進日曆的那筆會刪掉；開了 `appointment_sms` 時傳簡訊）。回應與規則同上。 |
-| `POST /calls/api/appointments/{id}/retry-sms` | 已確定或已婉拒、但簡訊沒傳出（`sms` 是失敗代碼）的預約，再傳一次簡訊給對方，內容照當初的決定。body 可省略，帶 `{"serial": "<手機>"}` 就改用另一支在線的手機傳；沒帶就用接這通電話的那支。回應 `{ok, sms, message}`：`ok` 表示傳出去了，`sms` 是新的狀態代碼，`message` 是結果。還在等決定、已經傳過或沒傳過簡訊的：HTTP 409 `sms_not_retryable`，附目前的 `sms`。請求要帶 `Content-Type: application/json`；手機不是英數字、`-`、`_` 組成的，回 400 `invalid_serial`。 |
+| `POST /calls/api/appointments/{id}/retry-sms` | 已確定或已婉拒、但簡訊沒傳出（`sms` 是失敗代碼）的預約，再傳一次簡訊給對方，內容照當初的決定。body 可省略，帶 `{"serial": "<手機>"}` 就改用另一支在線的手機傳；沒帶就用接這通電話的那支。回應 `{ok, sms, message}`：`ok` 表示傳出去了，`sms` 是新的狀態代碼，`message` 是結果。還在等決定、已經傳過、沒傳過簡訊，或號碼收不到簡訊（`no_number`）的：HTTP 409 `sms_not_retryable`，附目前的 `sms`。請求要帶 `Content-Type: application/json`；手機不是英數字、`-`、`_` 組成的，回 400 `invalid_serial`。 |
 
 ## 手機與健康狀態
 

@@ -94,12 +94,21 @@ pub const DEMO_CALENDAR: &str = "demo";
 const CHECK_TIMEOUT: Duration = Duration::from_secs(3);
 /// How long the check before writing may take (an `auto` booking, the owner's
 /// ✅). Nobody waits on the line for it, so it gets longer than [`CHECK_TIMEOUT`].
-const BOOK_CHECK_TIMEOUT: Duration = Duration::from_secs(8);
+const BOOK_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long writing to the calendar may take. Its own limit (not the check's)
 /// so a slow insert is not cut short and taken for a failure; when it is cut
 /// anyway, the event is found again by its tag ([`Appointment::tag`]).
-const WRITE_TIMEOUT: Duration = Duration::from_secs(15);
-/// The longest one proposal can run (check, then write), plus a margin.
+const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long an `auto` booking waits for the calendar while another booking or
+/// an owner's ✅ is writing (that one holds it at most check + write, 15 s);
+/// then the owner decides instead. Waiting, checking and writing together stay
+/// within [`TOOL_WAIT`], which is what the end of a call waits for.
+const CALENDAR_TURN_WAIT: Duration = Duration::from_secs(8);
+/// How long a proposal waits for the one the model sent just before it in the
+/// same message ([`ToolCall::after`]).
+const AFTER_WAIT: Duration = Duration::from_secs(3);
+/// The longest one proposal can run (waiting for the calendar, the check, the
+/// write), plus a margin.
 pub const TOOL_WAIT: Duration = Duration::from_secs(24);
 const STAMP: &str = "%Y-%m-%dT%H:%M";
 const TITLE_MAX: usize = 80;
@@ -171,6 +180,11 @@ pub struct Appointment {
     /// once a ✅ goes through.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub write_error: String,
+    /// A ✅ was held because the time is not free in the calendar (the owner's
+    /// own entry for the same thing, say). The owner was told so: the next ✅
+    /// books it anyway.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub held_busy: bool,
     /// The country of the SIM that took the call (ISO 3166 alpha-2): how a
     /// caller ID without a country code is read for the text message.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -392,6 +406,9 @@ struct Book {
     /// The line that took the call ([`CallAppointments::set_line`]).
     sim_country: Option<String>,
     sim_sub_id: Option<i64>,
+    /// Proposals of this call that are over (kept, refused or superseded), for
+    /// the one sent after them ([`ToolCall::after`]).
+    finished: std::collections::HashSet<u64>,
 }
 
 /// One appointment of the call.
@@ -520,6 +537,15 @@ impl Drop for InFlight<'_> {
     }
 }
 
+/// Marks a proposal over when it returns, however it returns.
+struct Finished<'a>(&'a CallAppointments, u64);
+
+impl Drop for Finished<'_> {
+    fn drop(&mut self) {
+        self.0.book().finished.insert(self.1);
+    }
+}
+
 impl CallAppointments {
     pub fn new() -> Arc<Self> {
         Arc::new(Self::default())
@@ -590,6 +616,25 @@ impl CallAppointments {
     fn start_proposal(&self) -> InFlight<'_> {
         self.in_flight.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         InFlight(&self.in_flight)
+    }
+
+    fn is_finished(&self, seq: u64) -> bool {
+        self.book().finished.contains(&seq)
+    }
+
+    /// Wait (up to `max`) until proposal `seq` of this call is over. False: it
+    /// was not (it never came, or is still writing).
+    async fn wait_finished(&self, seq: u64, max: Duration) -> bool {
+        let until = tokio::time::Instant::now() + max;
+        loop {
+            if self.is_finished(seq) {
+                return true;
+            }
+            if tokio::time::Instant::now() >= until {
+                return false;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
     }
 
     /// Wait (up to `max`) until no proposal is running, so the end of a call
@@ -710,22 +755,36 @@ pub struct ToolCall {
     /// the server message is read: the calls then run on tasks of their own,
     /// which may start in any order. 0 = not numbered (taken when it runs).
     pub seq: u64,
+    /// The [`PROPOSE`] call sent just before it in the same message (its
+    /// `seq`; 0 = none). It runs first: "another appointment" and "change its
+    /// time" can come in one message, and the change belongs to the new one.
+    pub after: u64,
 }
 
 /// The function calls in a server message (none for every other message),
-/// numbered in the order they came ([`ToolCall::seq`]).
+/// numbered in the order they came ([`ToolCall::seq`]), each proposal tied to
+/// the one before it ([`ToolCall::after`]).
 pub fn parse_tool_calls(msg: &Value) -> Vec<ToolCall> {
+    let mut last_proposal = 0;
     msg.pointer("/toolCall/functionCalls")
         .and_then(Value::as_array)
         .map(|calls| {
             calls
                 .iter()
                 .filter_map(|c| {
+                    let name = c.get("name")?.as_str()?.to_string();
+                    let seq = next_seq();
+                    let after = if name == PROPOSE {
+                        std::mem::replace(&mut last_proposal, seq)
+                    } else {
+                        0
+                    };
                     Some(ToolCall {
                         id: c.get("id").and_then(Value::as_str).unwrap_or("").to_string(),
-                        name: c.get("name")?.as_str()?.to_string(),
+                        name,
                         args: c.get("args").cloned().unwrap_or_else(|| json!({})),
-                        seq: next_seq(),
+                        seq,
+                        after,
                     })
                 })
                 .collect()
@@ -1257,6 +1316,8 @@ pub struct ApptSession {
     http: Client,
     /// This call's mark on the events it writes ([`Appointment::tag`]).
     tag: String,
+    /// How long an `auto` booking waits for the calendar ([`CALENDAR_TURN_WAIT`]).
+    turn_wait: Duration,
     /// What the caller agreed to.
     pub book: Arc<CallAppointments>,
 }
@@ -1294,6 +1355,7 @@ impl ApptSession {
             caller_id: caller_id.trim().to_string(),
             http: http.clone(),
             tag: uuid::Uuid::new_v4().to_string(),
+            turn_wait: CALENDAR_TURN_WAIT,
             book: CallAppointments::new(),
         }
     }
@@ -1331,7 +1393,7 @@ impl ApptSession {
             CHECK => self.check(&call.args, now).await,
             PROPOSE => {
                 let seq = if call.seq == 0 { next_seq() } else { call.seq };
-                self.propose(&call.args, now, seq).await
+                self.propose(&call.args, now, seq, call.after).await
             }
             other => {
                 warn!("appointment tool: unknown function {other}");
@@ -1382,8 +1444,11 @@ impl ApptSession {
         }
     }
 
-    /// `seq`: the call's place in the order calls arrived ([`ToolCall::seq`]).
-    async fn propose(&self, args: &Value, now: NaiveDateTime, seq: u64) -> Value {
+    /// `seq`: the call's place in the order calls arrived ([`ToolCall::seq`]);
+    /// `after`: the proposal sent just before it in the same message, which
+    /// goes first ([`ToolCall::after`]).
+    async fn propose(&self, args: &Value, now: NaiveDateTime, seq: u64, after: u64) -> Value {
+        let _over = Finished(&self.book, seq);
         let pending = json!({ "status": "pending_owner_confirmation" });
         if let Some(e) = period_mismatch(args) {
             return e;
@@ -1399,6 +1464,12 @@ impl ApptSession {
             return pending;
         }
         let _running = self.book.start_proposal();
+        // Tasks start in any order: one sent after another in the same message
+        // lets that one go first (it cannot see it otherwise — "change its
+        // time" would change the wrong appointment). Not for ever: it may never come.
+        if after != 0 && !self.book.wait_finished(after, AFTER_WAIT).await {
+            warn!("appointment proposal seq={seq} went on without seq={after} (not over after {}s)", AFTER_WAIT.as_secs());
+        }
         // The call's proposals one after the other; which one a proposal
         // changes is decided by arrival (`seq`), not by which got here first.
         let _turn = self.book.turns.lock().await;
@@ -1476,8 +1547,13 @@ impl ApptSession {
                 appt.event_id = own_id.clone();
             }
         };
-        // Another call may be booking the same hour: its check and write first.
-        let _turn = calendar_turn().lock().await;
+        // Another call may be booking the same hour: its check and write first
+        // — but only so long; the end of the call does not wait for ever.
+        let Ok(_turn) = tokio::time::timeout(self.turn_wait, calendar_turn().lock()).await else {
+            warn!("appointment auto booking: the calendar was busy for {:?}, left to the owner", self.turn_wait);
+            fail(appt, format!("Google Calendar: busy with another booking ({}s)", self.turn_wait.as_secs()));
+            return;
+        };
         match tokio::time::timeout(
             BOOK_CHECK_TIMEOUT,
             cal.is_free_except(&self.http, &appt.start, &appt.end, &own_id),
@@ -1839,9 +1915,13 @@ const MOBILE_NUMBERS: &[(&str, &[&str], usize, usize)] = &[
 /// Calling codes whose numbers are dialled at home without a trunk `0`.
 const NO_TRUNK_CODES: &[&str] = &["1", "39"];
 
+/// +1 toll-free (800, 833…888) and premium (900) codes: business lines, not
+/// phones a text reaches.
+const NANP_NO_TEXT: &[&str] = &["800", "833", "844", "855", "866", "877", "888", "900"];
+
 fn takes_texts(country: &str, code: &str, national: &str) -> bool {
     if code == "1" {
-        return national.len() == 10;
+        return national.len() == 10 && !NANP_NO_TEXT.contains(&&national[..3]);
     }
     match MOBILE_NUMBERS.iter().find(|(c, ..)| *c == country) {
         Some((_, prefixes, min, max)) => {
@@ -2426,7 +2506,8 @@ enum Decision {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Held {
     /// Something else is in the calendar at that time now (another caller's
-    /// appointment, booked or confirmed meanwhile).
+    /// appointment booked meanwhile, or the owner's own entry for it). The next
+    /// ✅ books it anyway ([`Appointment::held_busy`]).
     Taken,
     /// The calendar did not take the write: why.
     Failed(String),
@@ -2452,44 +2533,44 @@ impl Held {
 }
 
 /// What the owner reads when a ✅ is held, in each language: the write failed
-/// (`{}` = why), the time is taken.
+/// (`{}` = why), the time is not free (and another ✅ books it anyway).
 fn held_phrases(lang: Lang) -> (&'static str, &'static str) {
     match lang {
         Lang::ZhTw => (
             "⚠️ 寫入日曆失敗，還沒傳簡訊，預約仍待確認，可再按一次確定：{}",
-            "⚠️ 這時段已被其他預約占用：沒寫入日曆、也沒傳簡訊，預約仍待確認",
+            "⚠️ 這個時段日曆上已經有行程：還沒寫入日曆、也沒傳簡訊，預約仍待確認。再按一次確定就照樣排入",
         ),
         Lang::ZhCn => (
             "⚠️ 写入日历失败，还没发短信，预约仍待确认，可再按一次确定：{}",
-            "⚠️ 这个时段已被其他预约占用：没写入日历、也没发短信，预约仍待确认",
+            "⚠️ 这个时段日历上已经有日程：还没写入日历、也没发短信，预约仍待确认。再按一次确定就照样排入",
         ),
         Lang::En => (
             "⚠️ Couldn't write it to the calendar, so no text went out; it still waits, press Confirm again: {}",
-            "⚠️ That time is already taken by another appointment: nothing written, no text sent; it still waits for you",
+            "⚠️ There is already something in your calendar at that time: nothing written, no text sent, it still waits. Press Confirm again to book it anyway",
         ),
         Lang::Ja => (
             "⚠️ カレンダーへの書き込みに失敗したため SMS は送っていません。予約は確認待ちのままで、もう一度「確定」を押せます：{}",
-            "⚠️ この時間はほかの予約で埋まっています。カレンダーには書き込まず SMS も送っていません。予約は確認待ちのままです",
+            "⚠️ この時間はカレンダーにすでに予定があります。書き込みも SMS の送信もしておらず、予約は確認待ちのままです。もう一度「確定」を押すとそのまま登録します",
         ),
         Lang::Ko => (
             "⚠️ 캘린더에 기록하지 못해 문자는 보내지 않았습니다. 예약은 확인 대기 중이며 확정을 다시 누를 수 있습니다: {}",
-            "⚠️ 그 시간은 이미 다른 예약이 있습니다. 캘린더에 기록하지 않았고 문자도 보내지 않았습니다. 예약은 확인 대기 중입니다",
+            "⚠️ 그 시간에는 캘린더에 이미 일정이 있습니다. 기록하지 않았고 문자도 보내지 않았으며 예약은 확인 대기 중입니다. 확정을 한 번 더 누르면 그대로 등록합니다",
         ),
         Lang::Es => (
             "⚠️ No se pudo guardar en el calendario y no se envió el SMS; la cita sigue pendiente, puedes pulsar Confirmar otra vez: {}",
-            "⚠️ Esa hora ya la ocupa otra cita: no se guardó en el calendario ni se envió SMS; la cita sigue pendiente",
+            "⚠️ A esa hora ya hay algo en tu calendario: no se guardó nada ni se envió SMS; la cita sigue pendiente. Pulsa Confirmar otra vez para agendarla igualmente",
         ),
         Lang::Fr => (
             "⚠️ Échec de l'écriture dans l'agenda, aucun SMS envoyé ; le rendez-vous reste en attente, vous pouvez appuyer à nouveau sur Confirmer : {}",
-            "⚠️ Ce créneau est déjà pris par un autre rendez-vous : rien n'a été écrit ni envoyé par SMS ; le rendez-vous reste en attente",
+            "⚠️ Il y a déjà quelque chose dans votre agenda à cette heure : rien n'a été écrit ni envoyé par SMS ; le rendez-vous reste en attente. Appuyez à nouveau sur Confirmer pour l'ajouter quand même",
         ),
         Lang::De => (
             "⚠️ Eintragen in den Kalender fehlgeschlagen, keine SMS gesendet; der Termin wartet weiter, du kannst noch einmal auf Bestätigen drücken: {}",
-            "⚠️ Diese Zeit ist schon durch einen anderen Termin belegt: nichts eingetragen, keine SMS gesendet; der Termin wartet weiter",
+            "⚠️ Zu dieser Zeit steht schon etwas in deinem Kalender: nichts eingetragen, keine SMS gesendet; der Termin wartet weiter. Drück noch einmal auf Bestätigen, um ihn trotzdem einzutragen",
         ),
         Lang::Pt => (
             "⚠️ Não foi possível gravar na agenda e nenhum SMS foi enviado; o compromisso continua pendente, pode tocar em Confirmar de novo: {}",
-            "⚠️ Esse horário já está ocupado por outro compromisso: nada foi gravado nem enviado por SMS; o compromisso continua pendente",
+            "⚠️ Já há algo na sua agenda nesse horário: nada foi gravado nem enviado por SMS; o compromisso continua pendente. Toque em Confirmar de novo para marcar assim mesmo",
         ),
     }
 }
@@ -2522,21 +2603,27 @@ async fn own_event(cal: &Cal, http: &Client, appt: &Appointment) -> String {
 /// ✅: put the appointment in the calendar at its time — while that time is
 /// still free apart from its own event: another call's appointment may have
 /// taken it since. Checked and written as one step for every call at once
-/// ([`calendar_turn`]). A check that cannot answer (no read access, slow)
-/// does not stop the write. The event's id.
+/// ([`calendar_turn`], held at most check + write, 15 s; its own event is
+/// looked up before). A check that cannot answer (no read access, slow) does
+/// not stop the write, nor does a busy time the owner was already told about
+/// ([`Appointment::held_busy`]). The event's id.
 async fn confirm_in_calendar(
     cal: &Cal,
     http: &Client,
     appt: &Appointment,
     caller_id: &str,
 ) -> std::result::Result<String, Held> {
-    let _turn = calendar_turn().lock().await;
     let own = own_event(cal, http, appt).await;
-    match tokio::time::timeout(BOOK_CHECK_TIMEOUT, cal.is_free_except(http, &appt.start, &appt.end, &own)).await {
-        Ok(Ok(true)) => {}
-        Ok(Ok(false)) => return Err(Held::Taken),
-        Ok(Err(e)) => warn!("appointment re-check before writing failed (written anyway): {e:#}"),
-        Err(_) => warn!("appointment re-check before writing timed out (written anyway)"),
+    let _turn = calendar_turn().lock().await;
+    if appt.held_busy {
+        info!("appointment confirmed again after a busy time: written anyway");
+    } else {
+        match tokio::time::timeout(BOOK_CHECK_TIMEOUT, cal.is_free_except(http, &appt.start, &appt.end, &own)).await {
+            Ok(Ok(true)) => {}
+            Ok(Ok(false)) => return Err(Held::Taken),
+            Ok(Err(e)) => warn!("appointment re-check before writing failed (written anyway): {e:#}"),
+            Err(_) => warn!("appointment re-check before writing timed out (written anyway)"),
+        }
     }
     match tokio::time::timeout(WRITE_TIMEOUT, cal.write_at(http, appt, &own, caller_id)).await {
         Ok(Ok(id)) => Ok(id),
@@ -2608,6 +2695,8 @@ async fn decide_inner(
                     let line = held.line(lang);
                     warn!("appointment confirm held task_id={task_id}: {held:?}");
                     appt.write_error = line.clone();
+                    // Told the time is not free: the next ✅ books it anyway.
+                    appt.held_busy = held == Held::Taken;
                     store.push_event(task_id, held.event()).await?;
                     let updated = store
                         .patch(
@@ -2626,6 +2715,7 @@ async fn decide_inner(
         }
         store.push_event(task_id, "appointment_confirmed").await?;
         appt.write_error.clear();
+        appt.held_busy = false;
         appt.status = CONFIRMED.to_string();
     } else {
         store.push_event(task_id, "appointment_declined").await?;
@@ -2704,9 +2794,11 @@ pub enum RetrySms {
 }
 
 /// A decided appointment whose text did not go out, or may not have (its
-/// [`Appointment::sms`] is a failure code): it may be sent again.
+/// [`Appointment::sms`] is a failure code): it may be sent again — not to a
+/// number that takes no texts (`no_number`), which would only fail again.
 pub fn sms_retryable(appt: &Appointment) -> bool {
-    matches!(appt.status.as_str(), BOOKED | CONFIRMED | DECLINED) && !appt.sms.is_empty() && appt.sms != "sent"
+    matches!(appt.status.as_str(), BOOKED | CONFIRMED | DECLINED)
+        && !matches!(appt.sms.as_str(), "" | "sent" | "no_number")
 }
 
 /// Text the caller of a decided appointment again (`POST
@@ -2903,6 +2995,7 @@ mod tests {
             caller_id: "0912345678".into(),
             http: Client::new(),
             tag: "tag-test".into(),
+            turn_wait: CALENDAR_TURN_WAIT,
             book: CallAppointments::new(),
         }
     }
@@ -2927,6 +3020,7 @@ mod tests {
             name: PROPOSE.into(),
             args: json!({"start": start, "end": end, "title": "看房"}),
             seq: 0,
+            after: 0,
         }
     }
 
@@ -3095,6 +3189,7 @@ mod tests {
             name: CHECK.into(),
             args: json!({ "start": later(2, 12) }),
             seq: 0,
+            after: 0,
         };
         assert_eq!(s.run_tool(&check).await, json!({ "free": false }));
         assert_eq!(s.run_tool(&propose_call(&later(2, 10), &later(2, 11))).await, json!({ "status": "booked" }));
@@ -3328,6 +3423,7 @@ mod tests {
             name: PROPOSE.into(),
             args: json!({"start": stamp(start), "weekday": wrong, "title": "dinner"}),
             seq: 0,
+            after: 0,
         };
         let r = s.run_tool(&call).await;
         assert_eq!(r["error"], "weekday_mismatch");
@@ -3345,15 +3441,16 @@ mod tests {
     async fn without_calendar_check_is_unknown_and_proposals_wait_for_the_owner() {
         let s = session(Mode::Confirm);
         let start = (chrono::Local::now().naive_local() + Span::days(2)).format(STAMP).to_string();
-        let check = ToolCall { id: "1".into(), name: CHECK.into(), args: json!({"start": start}), seq: 0 };
+        let check = ToolCall { id: "1".into(), name: CHECK.into(), args: json!({"start": start}), seq: 0, after: 0 };
         assert_eq!(s.run_tool(&check).await, json!({"free": null, "reason": "calendar_unavailable"}));
-        let bad = ToolCall { id: "2".into(), name: CHECK.into(), args: json!({"start": "soon"}), seq: 0 };
+        let bad = ToolCall { id: "2".into(), name: CHECK.into(), args: json!({"start": "soon"}), seq: 0, after: 0 };
         assert_eq!(s.run_tool(&bad).await["error"], "bad_start");
         let propose = ToolCall {
             id: "3".into(),
             name: PROPOSE.into(),
             args: json!({"start": start, "title": " 看房\n", "caller_name": "陳先生"}),
             seq: 0,
+            after: 0,
         };
         assert_eq!(s.run_tool(&propose).await, json!({"status": "pending_owner_confirmation"}));
         let got = s.book.outcome().unwrap();
@@ -3363,10 +3460,10 @@ mod tests {
         );
         // The last proposal counts.
         let later = (chrono::Local::now().naive_local() + Span::days(3)).format(STAMP).to_string();
-        let again = ToolCall { id: "4".into(), name: PROPOSE.into(), args: json!({"start": later, "title": "看房"}), seq: 0 };
+        let again = ToolCall { id: "4".into(), name: PROPOSE.into(), args: json!({"start": later, "title": "看房"}), seq: 0, after: 0 };
         s.run_tool(&again).await;
         assert_eq!(s.book.outcome().unwrap().start, later);
-        let other = ToolCall { id: "5".into(), name: "other".into(), args: json!({}), seq: 0 };
+        let other = ToolCall { id: "5".into(), name: "other".into(), args: json!({}), seq: 0, after: 0 };
         assert_eq!(s.run_tool(&other).await["error"], "unknown_function");
         // Judged sales / scam: nothing is kept, the model still gets an answer.
         s.book.discard();
@@ -3658,7 +3755,7 @@ mod tests {
         assert_eq!(s.run_tool(&propose_call(&a, &b)).await, booked);
         assert_eq!(count(&cal.inserts), 1);
         // Its own event does not make that time look busy.
-        let check = ToolCall { id: "c".into(), name: CHECK.into(), args: json!({"start": a}), seq: 0 };
+        let check = ToolCall { id: "c".into(), name: CHECK.into(), args: json!({"start": a}), seq: 0, after: 0 };
         assert_eq!(s.run_tool(&check).await, json!({"free": true}));
         // Longer now (overlaps only its own event): moved, not added.
         assert_eq!(s.run_tool(&propose_call(&a, &later(2, 17))).await, booked);
@@ -3686,7 +3783,7 @@ mod tests {
         let (held, text) = decide_with(Some(Cal::Fake(cal.clone())), &Client::new(), &plain_settings(), &store, &calls, None, &t.id, true)
             .await
             .unwrap();
-        assert!(text.starts_with("⚠️ 這時段已被其他預約占用"), "{text}");
+        assert!(text.starts_with("⚠️ 這個時段日曆上已經有行程"), "{text}");
         assert_eq!(held.appointment.as_ref().map(|a| a.status.as_str()), Some(PENDING));
         assert_eq!((count(&cal.inserts), count(&cal.moves)), (1, 1));
         cal.busy.lock().unwrap().clear();
@@ -3818,7 +3915,7 @@ mod tests {
     }
 
     fn propose_args(id: &str, args: Value, seq: u64) -> ToolCall {
-        ToolCall { id: id.into(), name: PROPOSE.into(), args, seq }
+        ToolCall { id: id.into(), name: PROPOSE.into(), args, seq, after: 0 }
     }
 
     const SEQ: std::sync::atomic::Ordering = std::sync::atomic::Ordering::SeqCst;
@@ -3949,7 +4046,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(done, Decision::Held);
-        assert!(text.contains("已被其他預約占用"), "{text}");
+        assert!(text.contains("已經有行程") && text.contains("再按一次確定就照樣排入"), "{text}");
         let held = task.appointment.unwrap();
         assert_eq!((held.status.as_str(), held.sms.as_str()), (PENDING, ""));
         assert!(task.events.contains(&"appointment_time_taken".to_string()));
@@ -4081,7 +4178,7 @@ mod tests {
         // and the model is made to speak (call again), never silently.
         let cal = Arc::new(FakeCal::default());
         let s = auto_session(&cal);
-        let check = ToolCall { id: "c".into(), name: CHECK.into(), args: json!({"start": later(2, 8), "period": "evening"}), seq: 0 };
+        let check = ToolCall { id: "c".into(), name: CHECK.into(), args: json!({"start": later(2, 8), "period": "evening"}), seq: 0, after: 0 };
         assert_eq!(s.run_tool(&check).await["error"], "period_mismatch");
         let r = s.run_tool(&propose_args("p", json!({"start": later(2, 8), "period": "evening", "title": "晚餐"}), 0)).await;
         assert_eq!(r["error"], "period_mismatch");
@@ -4162,7 +4259,7 @@ mod tests {
             other => panic!("{other:?}"),
         }
         let mut b = a.clone();
-        for (status, sms, ok) in [(BOOKED, "busy", true), (PENDING, "offline", false), (DECLINED, "", false), (CONFIRMED, "no_service", true)] {
+        for (status, sms, ok) in [(BOOKED, "busy", true), (PENDING, "offline", false), (DECLINED, "", false), (CONFIRMED, "no_service", true), (CONFIRMED, "no_number", false)] {
             b.status = status.into();
             b.sms = sms.into();
             assert_eq!(sms_retryable(&b), ok, "{status} {sms}");
@@ -4173,18 +4270,26 @@ mod tests {
     // ---- Review t5 (acceptance): checks added by the reviewer ----
 
     /// A: "another appointment" (replaces_previous false) and right after it
-    /// "change that one" (true) arrive together; the later call's task runs
+    /// "change that one" (true) arrive together in one message, each on a task
+    /// of its own as the Live session runs them; the later call's task runs
     /// first. The change belongs to the new appointment; the first one stays.
     #[tokio::test]
-    #[ignore = "review A: known ordering gap, run with --ignored"]
     async fn review_a_change_that_runs_before_the_appointment_it_changes() {
         let s = session(Mode::Confirm);
         s.run_tool(&propose_args("1", json!({"start": later(2, 10), "title": "看房"}), next_seq())).await;
-        let (new_seq, change_seq) = (next_seq(), next_seq());
-        let another = propose_args("2", json!({"start": later(4, 15), "title": "電話會議", "replaces_previous": false}), new_seq);
-        let change = propose_args("3", json!({"start": later(4, 16), "title": "電話會議", "replaces_previous": true}), change_seq);
-        s.run_tool(&change).await;
+        let msg = json!({"toolCall": {"functionCalls": [
+            {"id": "2", "name": PROPOSE, "args": {"start": later(4, 15), "title": "電話會議", "replaces_previous": false}},
+            {"id": "3", "name": PROPOSE, "args": {"start": later(4, 16), "title": "電話會議", "replaces_previous": true}},
+        ]}});
+        let calls = parse_tool_calls(&msg);
+        let (another, change) = (calls[0].clone(), calls[1].clone());
+        assert_eq!((another.after, change.after), (0, another.seq));
+        let runner = s.clone();
+        let changing = tokio::spawn(async move { runner.run_tool(&change).await });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(!changing.is_finished(), "the change waits for the appointment it changes");
         s.run_tool(&another).await;
+        changing.await.unwrap();
         let starts: Vec<String> = s.book.outcomes().into_iter().map(|a| a.start).collect();
         assert_eq!(starts, vec![later(2, 10), later(4, 16)], "the first appointment must stay; the new one moves");
     }
@@ -4195,7 +4300,7 @@ mod tests {
     async fn review_a_check_is_not_held_up_by_another_calls_booking() {
         let cal = Arc::new(FakeCal::default());
         let s = auto_session(&cal);
-        let check = ToolCall { id: "c".into(), name: CHECK.into(), args: json!({"start": later(6, 10)}), seq: 0 };
+        let check = ToolCall { id: "c".into(), name: CHECK.into(), args: json!({"start": later(6, 10)}), seq: 0, after: 0 };
         let held = calendar_turn().lock().await;
         let answer = tokio::time::timeout(Duration::from_millis(500), s.run_tool(&check)).await;
         drop(held);
@@ -4225,23 +4330,35 @@ mod tests {
     }
 
     /// B: the owner put the same thing in the calendar himself, then pressed ✅:
-    /// held as "taken by another appointment", nothing texted, every time.
+    /// held once, told the time is not free and that another ✅ books it anyway;
+    /// the second ✅ books it (and only then texts).
     #[tokio::test]
-    async fn review_the_owners_own_entry_for_the_same_time_holds_confirm() {
+    async fn review_the_owners_own_entry_for_the_same_time_is_confirmed_on_the_second_press() {
         let (root, store, calls) = stores();
         let cal = Arc::new(FakeCal::default());
         let (from, to) = (later(8, 15), later(8, 16));
         cal.busy.lock().unwrap().push((from.clone(), to.clone()));
         let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &appt(&from, &to, "看房")) }).await.unwrap();
-        for _ in 0..2 {
-            let (task, text, done) = decide_inner(Some(Cal::Fake(cal.clone())), &Client::new(), &plain_settings(), &store, &calls, None, &t.id, true)
-                .await
-                .unwrap();
-            assert_eq!(done, Decision::Held);
-            assert!(text.contains("已被其他預約占用"), "{text}");
-            assert_eq!(task.appointment.unwrap().status, PENDING);
-        }
+        let (task, text, done) = decide_inner(Some(Cal::Fake(cal.clone())), &Client::new(), &plain_settings(), &store, &calls, None, &t.id, true)
+            .await
+            .unwrap();
+        assert_eq!(done, Decision::Held);
+        assert!(text.contains("這個時段日曆上已經有行程") && text.contains("再按一次確定就照樣排入"), "{text}");
+        assert!(!text.contains("其他預約"), "{text}");
+        let held = task.appointment.unwrap();
+        assert_eq!((held.status.as_str(), held.held_busy), (PENDING, true));
+        // The card and the console show the same words.
+        assert!(held.write_error.contains("再按一次確定就照樣排入"), "{}", held.write_error);
         assert_eq!(count(&cal.inserts), 0);
+        let (task, text, done) = decide_inner(Some(Cal::Fake(cal.clone())), &Client::new(), &plain_settings(), &store, &calls, None, &t.id, true)
+            .await
+            .unwrap();
+        assert_eq!(done, Decision::Settled, "{text}");
+        assert!(text.starts_with("✅ 已確定預約"), "{text}");
+        let done = task.appointment.unwrap();
+        assert_eq!((done.status.as_str(), done.event_id.as_str(), done.held_busy), (CONFIRMED, "ev1", false));
+        assert!(done.write_error.is_empty());
+        assert_eq!(count(&cal.inserts), 1);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -4261,18 +4378,21 @@ mod tests {
         // The old entry point reads a number without a country code as Taiwanese.
         assert_eq!(sms_number("0912345678").as_deref(), Some("+886912345678"));
         assert_eq!(sms_number("2025550143"), None);
-        // A US toll-free number is texted today (see the ignored test below).
-        assert_eq!(sms_number_on("+18005551234", None).as_deref(), Some("+18005551234"));
+        // A US toll-free number is not texted (see the test below).
+        assert_eq!(sms_number_on("+18005551234", None), None);
     }
 
     /// D: North American toll-free numbers (800/888/877/866/855/844/833) are
     /// business lines that do not take ordinary texts.
     #[test]
-    #[ignore = "review D: toll-free +1 numbers are texted today, run with --ignored"]
     fn review_toll_free_numbers_are_not_texted() {
         for n in ["+18005551234", "+1 888 555 1234", "+18775551234", "+18665551234", "+18555551234", "+18445551234", "+18335551234"] {
             assert_eq!(sms_number_on(n, None), None, "{n}");
         }
+        // Premium numbers neither; an ordinary number that only contains 800 still is.
+        assert_eq!(sms_number_on("+19005551234", None), None);
+        assert_eq!(sms_number_on("8005551234", Some("us")), None);
+        assert_eq!(sms_number_on("+12128005555", None).as_deref(), Some("+12128005555"));
     }
 
     /// E: retry on an id that does not exist is an error (the endpoint answers 404 first).
@@ -4286,11 +4406,34 @@ mod tests {
 
     /// E: a number that cannot take texts ("no_number") gets a retry that can only fail again.
     #[test]
-    #[ignore = "review E: no_number is offered a retry, run with --ignored"]
     fn review_no_number_is_not_offered_again() {
         let mut a = appt(&later(2, 15), &later(2, 16), "看房");
         a.status = CONFIRMED.into();
         a.sms = "no_number".into();
         assert!(!sms_retryable(&a));
+    }
+
+    /// The end of a call waits [`TOOL_WAIT`] for proposals: an `auto` booking
+    /// that cannot get the calendar (an owner's ✅ is writing) soon leaves it
+    /// to the owner instead of writing after the call was read.
+    #[tokio::test]
+    async fn an_auto_booking_waits_for_the_calendar_only_so_long() {
+        assert!(CALENDAR_TURN_WAIT + BOOK_CHECK_TIMEOUT + WRITE_TIMEOUT < TOOL_WAIT);
+        assert!(BOOK_CHECK_TIMEOUT + WRITE_TIMEOUT <= Duration::from_secs(15));
+        let cal = Arc::new(FakeCal::default());
+        let s = ApptSession { turn_wait: Duration::from_millis(100), ..auto_session(&cal) };
+        let held = calendar_turn().lock().await;
+        let started = std::time::Instant::now();
+        let r = s.run_tool(&propose_call(&later(9, 10), &later(9, 11))).await;
+        drop(held);
+        assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
+        assert_eq!(r, json!({"status": "pending_owner_confirmation", "not_booked": true}));
+        assert_eq!(count(&cal.inserts), 0);
+        let out = s.book.outcome().unwrap();
+        assert_eq!(out.status, PENDING);
+        assert!(out.auto_error.contains("busy"), "{}", out.auto_error);
+        // Once the calendar is free again a booking goes in as before.
+        let s2 = auto_session(&cal);
+        assert_eq!(s2.run_tool(&propose_call(&later(9, 10), &later(9, 11))).await, json!({"status": "booked"}));
     }
 }

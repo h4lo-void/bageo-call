@@ -8526,11 +8526,14 @@ function apptBlock(callId, ap, named) {
       h("button", { type: "button", class: "btn sm primary", disabled: busy, onclick: () => decideAppt(tk.id, true), text: t("ap_confirm") }),
       h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => decideAppt(tk.id, false), text: t("ap_decline") })));
   }
-  if (tk && st !== "pending" && cur.sms && cur.sms !== "sent") box.append(smsRetryRow(tk, busy));
+  if (tk && smsRetryable(st, cur.sms)) box.append(smsRetryRow(tk, busy));
   const said = busy ? t("ap_working") : tk && apptResult && apptResult.id === tk.id ? apptResult.text : "";
   if (said) box.append(h("p", { class: "help appt-msg", role: "status", text: said }));
   return box;
 }
+// The agent's rule (appointments.rs sms_retryable): a decided appointment whose
+// text did not go out — not to a number that takes no texts, which would only fail again.
+const smsRetryable = (st, sms) => st !== "pending" && !!sms && !["sent", "no_number"].includes(sms);
 // "Send the text again": from the phone that took the call, or another connected one.
 function smsRetryRow(tk, busy) {
   const sel = h("select", { "aria-label": t("ap_sms_from"), title: t("ap_sms_from") },
