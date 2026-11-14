@@ -142,7 +142,9 @@ also in the task's `events`
 `demo` for a test number's appointment, whose `event_id`, `replaced` (earlier
 times of the same call), `auto_error` and `tag` are about the demo calendar.
 `tg_card`: `{chat_id, message_id}` of the Telegram card sent for it, whose
-buttons are taken off when you decide elsewhere. Empty fields are left out.
+buttons are taken off when you decide elsewhere. `call_lang`: the language
+spoken on the call (`zh-TW`, `en`…); the AI call-back speaks it (records
+without it: the `language` setting). Empty fields are left out.
 
 | Method and path | What |
 |---|---|

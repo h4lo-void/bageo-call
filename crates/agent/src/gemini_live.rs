@@ -1158,18 +1158,490 @@ fn persona_kick_client_content(opening: Option<crate::locale::Lang>) -> String {
     crate::prompts::client_turn(&crate::prompts::kick_open(active.lang, active.assistant, opening))
 }
 
-/// The AI's own call-back (an appointment's answer): no opening is asked for
-/// while it rings. This only nudges the model when the callee has spoken and
-/// it has not started ([`CALLBACK_RING_MAX`]).
+/// The AI's own call-back (an appointment's answer): nothing is asked for while
+/// it rings (Gemini hears silence). Sent once the callee has picked up and
+/// spoken ([`CallbackFloor::pickup`]), and again if the model stays quiet.
 fn callback_kick_client_content() -> String {
     crate::prompts::client_turn(
-        "[System note, not said by the other person] They have picked up and spoken. Start the call as your instructions say: who is calling and why, the answer, then one goodbye.",
+        "[System note, not said by the other person] They have picked up and spoken (their words did not reach you). Start the call now as your instructions say: who is calling and why, the answer, then one goodbye — all of it, once.",
     )
+}
+
+/// Told to the model when a reply of its was dropped unheard
+/// ([`FloorStep::Drop`]), so it does not count it as said: before the answer
+/// reached them it says it all once they speak; after, it says nothing more
+/// unless they speak. `turnComplete` false: it asks for no reply now.
+fn callback_unheard_client_content(answered: bool) -> String {
+    let text = if answered {
+        "[System note, not said by the other person] They did not hear what you just said: nobody was speaking to you. Say nothing more unless they speak to you."
+    } else {
+        "[System note, not said by the other person] They did not hear what you just said: the line was still ringing or quiet. Say nothing now; once they have picked up and spoken, say all of it, as your instructions say."
+    };
+    json!({
+        "clientContent": {
+            "turns": [{ "role": "user", "parts": [{ "text": text }] }],
+            "turnComplete": false
+        }
+    })
+    .to_string()
 }
 
 /// A call-back nobody speaks on this long (it rings, or the line stays
 /// silent) is ended: no answer.
 const CALLBACK_RING_MAX: Duration = Duration::from_secs(70);
+
+/// AI call-back: the callee counts as having spoken (the AI may answer) once
+/// this much of their voice is on the line, in runs of at least
+/// `LOCAL_MIN_VOICE_MS` (a click or a breath is none)…
+const CALLBACK_CALLEE_VOICE_MS: u32 = 400;
+/// …or this much when their words ask to hear it again (「什麼？」, "Sorry?").
+const CALLBACK_CALLEE_ASK_VOICE_MS: u32 = LOCAL_MIN_VOICE_MS;
+/// Their voice and their words count together only this close: a quiet line
+/// this long starts over (a ringing tone, the line goes quiet, then a stray
+/// transcript is no one speaking).
+const CALLBACK_CALLEE_QUIET_RESET_MS: u32 = 2_500;
+/// A reply the model generated before the callee had spoken waits this long
+/// after its end for their words (the transcript may come after the reply),
+/// then it is dropped unheard.
+const CALLBACK_HELD_GRACE: Duration = Duration::from_millis(1_500);
+/// Once the AI has given the answer (it ends on a goodbye), the line quiet this
+/// long on both sides ends the call.
+const CALLBACK_DONE_QUIET: Duration = Duration::from_secs(8);
+/// Replies of the AI that reach the line on one call-back, the answer included;
+/// the call ends a moment after the last one.
+const CALLBACK_REPLIES_MAX: u32 = 4;
+/// Quiet line after that last reply before the call ends.
+const CALLBACK_LAST_REPLY_QUIET: Duration = Duration::from_secs(1);
+/// Model audio held for a call-back reply, in seconds of speech (the answer
+/// runs ~10–15 s and is generated faster than it is spoken).
+const CALLBACK_HOLD_SECS: usize = 30;
+/// Before the callee picks up, voice counts as theirs only once they pause
+/// this long (the AI does not start over their 「喂？你好」)…
+const CALLBACK_PICKUP_PAUSE_MS: u32 = 600;
+/// …or after this much of it.
+const CALLBACK_PICKUP_TALK_MS: u32 = 3_000;
+/// Share of a frame's energy between 350 and 520 Hz that makes it a ringing
+/// tone: ring-back tones are 400–480 Hz everywhere (440+480 Hz in Taiwan and
+/// the US, 425 in Europe, 450 in China, 400 in Japan) and louder than a caller
+/// on the line; speech spreads over far more of the spectrum.
+const RINGBACK_BAND_SHARE: f64 = 0.6;
+
+/// A 16 kHz frame that is a ringing tone rather than a voice
+/// ([`RINGBACK_BAND_SHARE`], from the frame's own DFT bins).
+fn ringback_like(pcm16: &[u8]) -> bool {
+    let x: Vec<f64> = pcm16
+        .chunks_exact(2)
+        .map(|b| f64::from(i16::from_le_bytes([b[0], b[1]])))
+        .collect();
+    let n = x.len();
+    let total: f64 = x.iter().map(|s| s * s).sum();
+    if n < 160 || total <= 0.0 {
+        return false;
+    }
+    let bins = |hz: f64| hz * n as f64 / 16_000.0;
+    let mut band = 0.0;
+    for k in bins(350.0).ceil() as usize..=bins(520.0).floor() as usize {
+        let coeff = 2.0 * (2.0 * std::f64::consts::PI * k as f64 / n as f64).cos();
+        let (mut s1, mut s2) = (0.0f64, 0.0f64);
+        for &v in &x {
+            let s0 = v + coeff * s1 - s2;
+            s2 = s1;
+            s1 = s0;
+        }
+        band += s1 * s1 + s2 * s2 - coeff * s1 * s2;
+    }
+    2.0 * band / (n as f64 * total) >= RINGBACK_BAND_SHARE
+}
+
+/// What a ringing or quiet line comes out as in the callee's transcript with
+/// nobody speaking: the words of the Taiwan carrier's international-call warning
+/// (they were vocabulary on the caller's side, and a silent call-back line came
+/// out as 「國際電話」 twice — the AI gave its answer twice) and subtitle lines
+/// speech-to-text makes up on silence. Longest first.
+const CALLBACK_NOT_SPEECH: &[&str] = &[
+    "謝謝觀看", "感謝觀看", "國際電話", "國際來電", "國外來電", "這是", "此為", "請您", "請", "注意", "小心", "詐騙",
+    "接通", "掛斷", "字幕",
+];
+
+/// The callee's transcript has words of theirs in it: something is left once
+/// STT markers (`<noise>`) and the mishearings of a quiet line
+/// ([`CALLBACK_NOT_SPEECH`]) are taken out. A lone 「喂」 counts.
+pub(crate) fn callee_said_words(text: &str) -> bool {
+    let mut t: String = crate::zh_tw::norm(&strip_stt_markers(text))
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect();
+    for w in CALLBACK_NOT_SPEECH {
+        t = t.replace(w, "");
+    }
+    !t.is_empty()
+}
+
+/// The callee asks to hear it again (「什麼？」「再說一次」, "Sorry?", "What?").
+fn callee_asks_again(text: &str) -> bool {
+    let t = crate::zh_tw::norm(text).to_lowercase();
+    [
+        "什麼", "蛤", "啥", "再說", "再講", "沒聽", "聽不", "what", "sorry", "pardon", "again", "repeat",
+        "もう一度", "なんて", "뭐라고", "다시", "qué", "perdón", "repite", "quoi", "répét", "wie bitte",
+        "nochmal", "noch mal", "o quê", "desculpa", "repete",
+    ]
+    .iter()
+    .any(|w| t.contains(w))
+}
+
+/// AI call-back: what the callee has said since the AI's last reply began —
+/// their voice on the line (local VAD frames) and their transcript — and
+/// whether that is someone really speaking ([`Self::spoke`]).
+#[derive(Debug, Default, Clone)]
+struct CalleeHeard {
+    /// Current run of voice, and the quiet line since its last voiced frame.
+    run_ms: u32,
+    quiet_ms: u32,
+    /// Voice in runs of at least `LOCAL_MIN_VOICE_MS`.
+    voice_ms: u32,
+    words: String,
+    /// They spoke: kept until the AI's next reply begins (the reply may come
+    /// after a pause).
+    spoke: bool,
+    /// Before pickup Gemini hears nothing, so there is no transcript: their
+    /// voice alone counts (ringing tones are not voice: [`ringback_like`]).
+    voice_only: bool,
+}
+
+impl CalleeHeard {
+    /// One uplink frame: `voiced` = their voice (our own echo is not).
+    fn frame(&mut self, voiced: bool, frame_ms: u32) {
+        if voiced {
+            self.quiet_ms = 0;
+            let before = self.run_ms;
+            self.run_ms = self.run_ms.saturating_add(frame_ms);
+            if self.run_ms >= LOCAL_MIN_VOICE_MS {
+                let add = if before < LOCAL_MIN_VOICE_MS { self.run_ms } else { frame_ms };
+                self.voice_ms = self.voice_ms.saturating_add(add);
+            }
+        } else {
+            self.quiet_ms = self.quiet_ms.saturating_add(frame_ms);
+            if self.quiet_ms >= LOCAL_PRE_ACTIVITY_HANGOVER_MS {
+                self.run_ms = 0;
+            }
+            if self.quiet_ms >= CALLBACK_CALLEE_QUIET_RESET_MS && !self.spoke {
+                self.voice_ms = 0;
+                self.words.clear();
+            }
+        }
+        self.check();
+    }
+
+    /// A piece of their transcript.
+    fn words(&mut self, piece: &str) {
+        push_tx_window(&mut self.words, piece, 400);
+        self.check();
+    }
+
+    /// Their voice and their words, both: [`CALLBACK_CALLEE_VOICE_MS`] of voice
+    /// (less when they ask to hear it again) and words that are not a quiet
+    /// line's mishearing ([`callee_said_words`]).
+    fn check(&mut self) {
+        if self.spoke {
+            return;
+        }
+        if self.voice_only {
+            self.spoke = self.voice_ms >= CALLBACK_CALLEE_VOICE_MS;
+            return;
+        }
+        if !callee_said_words(&self.words) {
+            return;
+        }
+        let need = if callee_asks_again(&self.words) {
+            CALLBACK_CALLEE_ASK_VOICE_MS
+        } else {
+            CALLBACK_CALLEE_VOICE_MS
+        };
+        self.spoke = self.voice_ms >= need;
+    }
+
+    fn spoke(&self) -> bool {
+        self.spoke
+    }
+
+    /// They have picked up: spoken, then paused (or talked on long enough).
+    fn picked_up(&self) -> bool {
+        self.spoke && (self.quiet_ms >= CALLBACK_PICKUP_PAUSE_MS || self.voice_ms >= CALLBACK_PICKUP_TALK_MS)
+    }
+}
+
+/// AI call-back. Until the callee picks up and speaks, Gemini hears silence and
+/// no caller turn opens ([`Self::line_audio`], [`Self::turn_may_open`]): a
+/// ringing tone or a quiet line cannot make the model talk. Their voice — not a
+/// ringing tone — then sends the model its cue ([`Self::pickup`]). After that a
+/// reply of the model's reaches the line only when the callee has really spoken
+/// (voice and words, [`CalleeHeard`]) since the AI's last reply began; until
+/// then its audio is held, and dropped — the model told so — if their words do
+/// not come. At most [`CALLBACK_REPLIES_MAX`] replies reach the line.
+#[derive(Debug, Default)]
+struct CallbackFloor {
+    callee: CalleeHeard,
+    /// The callee has picked up and spoken: the line reaches Gemini.
+    picked: bool,
+    /// The model's current reply is on the line.
+    on_line: bool,
+    /// A reply held off the line: `Some(None)` while it is generated,
+    /// `Some(Some(t))` once it ended at `t`.
+    held: Option<Option<tokio::time::Instant>>,
+    /// Replies that reached the line (the first one is the answer).
+    replies: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum FloorStep {
+    Wait,
+    /// The callee spoke: the held reply plays (`over`: its generation has ended).
+    Play { over: bool },
+    /// Their words did not come: the held reply is dropped unheard, and the
+    /// model is told so (`note`, [`callback_unheard_client_content`]).
+    Drop { note: String },
+}
+
+impl CallbackFloor {
+    /// A call-back's floor at dialing: waiting for the callee to pick up.
+    fn for_pickup() -> Self {
+        Self { callee: CalleeHeard { voice_only: true, ..Default::default() }, ..Default::default() }
+    }
+
+    /// One uplink frame (16 kHz): `voiced` = the local VAD heard voice there.
+    /// Before pickup a ringing tone is no voice.
+    fn line_frame(&mut self, pcm16: &[u8], voiced: bool, frame_ms: u32) {
+        let voiced = voiced && (self.picked || !ringback_like(pcm16));
+        self.callee.frame(voiced, frame_ms);
+    }
+
+    /// Gemini gets this frame's real audio (else silence): only once the callee
+    /// has picked up, and inside their turn.
+    fn line_audio(&self, activity_open: bool) -> bool {
+        self.picked && activity_open
+    }
+
+    /// The local VAD may open a caller turn: not before pickup.
+    fn turn_may_open(&self) -> bool {
+        self.picked
+    }
+
+    /// The callee has just picked up and spoken: the cue that has the model say
+    /// the answer (once).
+    fn pickup(&mut self) -> Option<String> {
+        if self.picked || !self.callee.picked_up() {
+            return None;
+        }
+        self.picked = true;
+        Some(callback_kick_client_content())
+    }
+
+    fn drop_step(&self) -> FloorStep {
+        FloorStep::Drop { note: callback_unheard_client_content(self.replies > 0) }
+    }
+
+    fn may_reply(&self) -> bool {
+        self.picked && self.replies < CALLBACK_REPLIES_MAX && self.callee.spoke()
+    }
+
+    fn start_reply(&mut self) {
+        self.on_line = true;
+        self.replies += 1;
+        self.callee = CalleeHeard::default();
+    }
+
+    /// Model audio came: true = it plays now, false = it is held.
+    fn model_audio(&mut self) -> bool {
+        if self.on_line {
+            return true;
+        }
+        if self.held.is_none() && self.may_reply() {
+            self.start_reply();
+            return true;
+        }
+        self.held = Some(None);
+        false
+    }
+
+    /// The model's turn is complete.
+    fn turn_over(&mut self, now: tokio::time::Instant) {
+        if self.on_line {
+            self.on_line = false;
+        } else if self.held == Some(None) {
+            self.held = Some(Some(now));
+        }
+    }
+
+    /// The line talked over the model (`interrupted`): its reply is over; a held
+    /// one answered something earlier and is dropped (true).
+    fn interrupted(&mut self) -> bool {
+        self.on_line = false;
+        self.held.take().is_some()
+    }
+
+    /// Each pass of the call loop: play or drop what is held.
+    fn step(&mut self, now: tokio::time::Instant) -> FloorStep {
+        let Some(ended) = self.held else {
+            return FloorStep::Wait;
+        };
+        if self.may_reply() {
+            self.held = None;
+            self.start_reply();
+            self.on_line = ended.is_none();
+            return FloorStep::Play { over: ended.is_some() };
+        }
+        let stale = ended.is_some_and(|t| {
+            self.replies >= CALLBACK_REPLIES_MAX || now.saturating_duration_since(t) >= CALLBACK_HELD_GRACE
+        });
+        if stale {
+            self.held = None;
+            return self.drop_step();
+        }
+        FloorStep::Wait
+    }
+
+    /// How long the line must stay quiet (both sides) before the call-back ends:
+    /// none before the answer has been given.
+    fn done_after(&self) -> Option<Duration> {
+        match self.replies {
+            0 => None,
+            n if n >= CALLBACK_REPLIES_MAX => Some(CALLBACK_LAST_REPLY_QUIET),
+            _ => Some(CALLBACK_DONE_QUIET),
+        }
+    }
+}
+
+/// Take the AI's lines written after `mark` back out of the transcript (a
+/// reply held off the line and dropped); the caller's lines stay. Returns what
+/// was removed.
+fn drop_ai_lines_after(text: &mut String, mark: usize) -> String {
+    if mark >= text.len() || !text.is_char_boundary(mark) {
+        return String::new();
+    }
+    let tail = text.split_off(mark);
+    let mut dropped: Vec<&str> = Vec::new();
+    for line in tail.split('\n').filter(|l| !l.trim().is_empty()) {
+        if let Some(said) = line.strip_prefix("接聽：") {
+            dropped.push(said);
+            continue;
+        }
+        if !text.is_empty() && !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text.push_str(line);
+    }
+    dropped.concat()
+}
+
+/// Common short words of the Latin-script languages the AI speaks: which one a
+/// line is in.
+const LATIN_LANG_WORDS: [(crate::locale::Lang, &[&str]); 5] = [
+    (crate::locale::Lang::En, &[
+        "the", "and", "is", "are", "you", "your", "i", "i'm", "it", "to", "of", "for", "this", "that", "what",
+        "yes", "hello", "thanks", "thank", "okay", "bye", "goodbye", "will", "can", "at", "we", "be", "not",
+        "with", "on", "see", "about", "calling",
+    ]),
+    (crate::locale::Lang::Es, &[
+        "el", "la", "los", "las", "que", "de", "y", "es", "usted", "para", "por", "con", "hola", "gracias",
+        "sí", "está", "muy", "bien", "pero", "un", "una", "adiós", "llamo",
+    ]),
+    (crate::locale::Lang::Fr, &[
+        "le", "la", "les", "de", "des", "et", "est", "vous", "je", "pas", "que", "un", "une", "bonjour",
+        "merci", "oui", "c'est", "pour", "avec", "au", "revoir",
+    ]),
+    (crate::locale::Lang::De, &[
+        "der", "die", "das", "und", "ist", "sie", "ich", "nicht", "ein", "eine", "zu", "mit", "danke", "ja",
+        "bitte", "guten", "tag", "wir", "auf", "wiedersehen", "ihnen",
+    ]),
+    (crate::locale::Lang::Pt, &[
+        "o", "os", "as", "que", "de", "e", "é", "você", "para", "com", "não", "um", "uma", "olá", "obrigado",
+        "obrigada", "sim", "está", "bom", "tchau",
+    ]),
+];
+
+/// The language a line of the dialogue is in, by its letters, and how much of
+/// it there is: kana (Japanese, with its kanji), hangul (Korean), Chinese
+/// characters (`zh`), or Latin words — which language by its common short
+/// words, English when none stands out; a word weighs two characters. None for
+/// a line too short to tell (「喂？」, 「好，掰掰」, "Hello?", "Okay, goodbye.").
+fn line_lang(text: &str, zh: crate::locale::Lang) -> Option<(crate::locale::Lang, usize)> {
+    let (mut han, mut kana, mut hangul) = (0usize, 0usize, 0usize);
+    let mut words: Vec<String> = Vec::new();
+    let mut word = String::new();
+    for c in text.chars() {
+        let latin = c.is_ascii_alphabetic() || ('\u{00c0}'..='\u{024f}').contains(&c);
+        if latin || (c == '\'' && !word.is_empty()) {
+            word.extend(c.to_lowercase());
+            continue;
+        }
+        if !word.is_empty() {
+            words.push(std::mem::take(&mut word));
+        }
+        if ('\u{3040}'..='\u{30ff}').contains(&c) {
+            kana += 1;
+        } else if ('\u{ac00}'..='\u{d7af}').contains(&c) || ('\u{3130}'..='\u{318f}').contains(&c) {
+            hangul += 1;
+        } else if ('\u{4e00}'..='\u{9fff}').contains(&c) || ('\u{3400}'..='\u{4dbf}').contains(&c) {
+            han += 1;
+        }
+    }
+    if !word.is_empty() {
+        words.push(word);
+    }
+    let latin = if words.len() >= 3 { words.len() * 2 } else { 0 };
+    let cjk = |n: usize| if n >= 4 { n } else { 0 };
+    let japanese = if kana > 0 { cjk(kana + han) } else { 0 };
+    let chinese = if kana > 0 { 0 } else { cjk(han) };
+    let korean = cjk(hangul);
+    let latin_lang = || {
+        LATIN_LANG_WORDS
+            .iter()
+            .map(|(l, list)| (*l, words.iter().filter(|w| list.contains(&w.trim_matches('\''))).count()))
+            .fold((crate::locale::Lang::En, 0), |best, (l, n)| if n > best.1 { (l, n) } else { best })
+            .0
+    };
+    [(crate::locale::Lang::Ja, japanese), (crate::locale::Lang::Ko, korean), (zh, chinese), (crate::locale::Lang::En, latin)]
+        .into_iter()
+        .filter(|(_, n)| *n > 0)
+        .max_by_key(|(_, n)| *n)
+        .map(|(l, n)| if l == crate::locale::Lang::En { (latin_lang(), n) } else { (l, n) })
+}
+
+/// The language a call was held in, from its dialogue (`對方：` / `接聽：` lines,
+/// [`merge_dialogue_fragments`]): what the AI said — it answers in the caller's
+/// language, whatever its opening line was — or, when no line of the AI's tells,
+/// what the caller said. The language with the most said in it ([`line_lang`]);
+/// None when no line tells. Chinese is the owner's variant when `owner` is
+/// Chinese, else Traditional.
+pub(crate) fn dialogue_lang(dialogue: &str, owner: crate::locale::Lang) -> Option<crate::locale::Lang> {
+    let zh = if owner.is_zh() { owner } else { crate::locale::Lang::ZhTw };
+    let tally = |label: &str| {
+        let mut totals: Vec<(crate::locale::Lang, usize)> = Vec::new();
+        for (l, n) in dialogue
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix(label))
+            .filter_map(|text| line_lang(text, zh))
+        {
+            match totals.iter_mut().find(|(x, _)| *x == l) {
+                Some(t) => t.1 += n,
+                None => totals.push((l, n)),
+            }
+        }
+        totals.into_iter().max_by_key(|(_, n)| *n).map(|(l, _)| l)
+    };
+    tally("接聽：").or_else(|| tally("對方："))
+}
+
+/// The languages of an AI call-back: the one spoken on the call it answers
+/// (`spoken`, [`dialogue_lang`]) for the AI, and with English for the callee's
+/// speech-to-text — whatever the number or the SIM would suggest (a caller who
+/// spoke Chinese from a US number was called back in English).
+pub fn callback_lang_plan(spoken: crate::locale::Lang, setting: crate::locale::Lang) -> CallLangPlan {
+    CallLangPlan {
+        opening: Some(spoken).filter(|l| *l != setting),
+        caller_stt: Some(stt_codes(&[spoken, crate::locale::Lang::En])),
+    }
+}
 
 fn persona_wrap_up_client_content() -> String {
     crate::prompts::client_turn(&crate::prompts::current().kick_wrap_up)
@@ -1328,6 +1800,17 @@ fn stt_caller_config_for(langs: Option<&[&'static str]>, active: &crate::locale:
         cfg["customVocabulary"] = json!(vocab);
     }
     cfg
+}
+
+/// Speech-to-text config for the callee of an AI call-back: language hints
+/// only. No vocabulary: 「國際電話」 (there for the carrier's warning on calls
+/// from abroad, which a call-back never gets) is what a silent call-back line
+/// came out as, and the AI answered it.
+fn stt_callee_config(langs: Option<&[&'static str]>) -> Value {
+    match langs.filter(|l| !l.is_empty()) {
+        Some(l) => json!({ "languageCodes": l }),
+        None => json!({}),
+    }
 }
 
 /// Speech-to-text hints for the AI's own voice: the call's opening language
@@ -3459,7 +3942,11 @@ pub async fn run_session(
                 // auto-detect read a short Chinese "hello?" as German / Hindi / Korean,
                 // and stall / carrier-prompt / bye detection all read this STT; a caller
                 // from abroad gets their own language first (or auto-detect).
-                "inputAudioTranscription": stt_caller_config(lang_plan.caller_stt.as_deref()),
+                "inputAudioTranscription": if callback {
+                    stt_callee_config(lang_plan.caller_stt.as_deref())
+                } else {
+                    stt_caller_config(lang_plan.caller_stt.as_deref())
+                },
                 "outputAudioTranscription": stt_ai_config(opening_lang),
                 "realtimeInputConfig": realtime_input_config(server_vad)
             }
@@ -3805,6 +4292,10 @@ pub async fn run_session(
             INTL_OPENING_HOLD.as_millis(),
             prebuf.len()
         );
+    } else if callback {
+        // A call-back: nothing the model said before pickup is for anyone.
+        prebuf.clear();
+        prebuf_chunks = 0;
     } else if !prebuf.is_empty() {
         // Flush held first-turn audio immediately (caller already heard full IVR greet).
         prebuf_flushed_bytes = prebuf.len() as u64;
@@ -3977,6 +4468,14 @@ pub async fn run_session(
     let mut fd_tick = tokio::time::Instant::now();
     // An AI call-back: still waiting for the callee to pick up and speak.
     let mut callback_waiting = callback;
+    // An AI call-back: a reply plays only once the callee has really spoken
+    // (CallbackFloor); a held one's transcript mark (its lines come out if it is
+    // dropped) and its words (a closing in them counts once it plays).
+    let mut cb_floor = CallbackFloor::for_pickup();
+    let mut cb_held_mark: Option<usize> = None;
+    let mut cb_held_text = String::new();
+    let mut cb_drop_now = false;
+    let cb_hold_cap = (phone_sr as usize).max(8_000) * 2 * CALLBACK_HOLD_SECS;
     // Testing only: rotate once after N s so it is testable without ~8 min.
     let test_rotate_after: Option<u64> = std::env::var("GEMINI_TEST_ROTATE_AFTER_SECS")
         .ok()
@@ -4365,17 +4864,102 @@ pub async fn run_session(
         // call prompt — is talking: pause the first-audio watchdog meanwhile instead
         // of killing a healthy socket (e.g. fresh session at 5 s, AI
         // first heard at 8.6 s).
-        // An AI call-back rings first: the first-audio watchdog starts when the
-        // callee has spoken (their words in the transcript, or the model
-        // already answering them); nobody for CALLBACK_RING_MAX ends the call.
+        // An AI call-back: a reply the model generated before the callee spoke
+        // plays once they do, or is dropped unheard (CallbackFloor).
+        if callback {
+            let now = tokio::time::Instant::now();
+            let step = if std::mem::take(&mut cb_drop_now) {
+                cb_floor.drop_step()
+            } else {
+                cb_floor.step(now)
+            };
+            match step {
+                FloorStep::Wait => {}
+                FloorStep::Play { over } => {
+                    let n = prebuf.len() as u64;
+                    if n > 0 {
+                        downlink_pcm_bytes = downlink_pcm_bytes.saturating_add(n);
+                        on_downlink(std::mem::take(&mut prebuf));
+                        audio_chunks_out = audio_chunks_out.saturating_add(prebuf_chunks);
+                        last_activity_at = now;
+                        if first_downlink_at.is_none() {
+                            first_downlink_at = Some(now);
+                        }
+                    }
+                    prebuf_chunks = 0;
+                    cb_held_mark = None;
+                    if over {
+                        // Its turnComplete went by while it was held.
+                        model_turn_pending = false;
+                    } else {
+                        // The rest of this reply plays, and its end is a turn like any other.
+                        intl_gated_turn = false;
+                        play_head.set_generating(model_generating);
+                    }
+                    if persona && !goodbye_pending && caller_had_voice && looks_like_persona_closing(&cb_held_text) {
+                        goodbye_pending = true;
+                        end_reason = SessionEndReason::Goodbye;
+                    }
+                    info!(
+                        "Gemini Live call-back serial={serial} — the callee spoke: the held reply plays ({}ms, ended={over}) n={} closing={goodbye_pending}",
+                        pcm16_ms(n, phone_sr),
+                        cb_floor.replies
+                    );
+                    cb_held_text.clear();
+                }
+                FloorStep::Drop { note } => {
+                    let dropped_ms = pcm16_ms(prebuf.len() as u64, phone_sr);
+                    prebuf.clear();
+                    prebuf_chunks = 0;
+                    let dropped = match (cb_held_mark.take(), transcript_out.as_ref()) {
+                        (Some(mark), Some(buf)) => buf
+                            .lock()
+                            .map(|mut g| drop_ai_lines_after(&mut g, mark))
+                            .unwrap_or_default(),
+                        _ => String::new(),
+                    };
+                    out_tx_window.clear();
+                    turn_out_text.clear();
+                    cb_held_text.clear();
+                    // The model is told nobody heard it, so it does not count it as said.
+                    let told = send_text_before_deadline(
+                        &mut sink,
+                        note,
+                        now + KICK_SEND_TIMEOUT,
+                        "gemini call-back unheard note send",
+                    )
+                    .await
+                    .is_ok();
+                    info!(
+                        "Gemini Live call-back serial={serial} — the AI spoke with nobody speaking to it: dropped unheard ({dropped_ms}ms {dropped:?}) replies={} model_told={told}",
+                        cb_floor.replies
+                    );
+                }
+            }
+        }
+        // An AI call-back rings first, Gemini hearing silence: once the callee has
+        // picked up and spoken (their voice, not a ringing tone) the model gets
+        // its cue and the first-audio watchdog starts; nobody for
+        // CALLBACK_RING_MAX ends the call.
         if callback_waiting {
             let now = tokio::time::Instant::now();
-            if !caller_text_all.trim().is_empty() || delivered_bytes.load(Ordering::Relaxed) > 0 {
+            if let Some(kick) = cb_floor.pickup() {
                 callback_waiting = false;
                 first_delivery_window_start = now;
                 first_delivery_deadline = now + FIRST_DELIVERY_TIMEOUT;
                 fd_grace = Duration::ZERO;
-                info!("Gemini Live call-back serial={serial} — the callee spoke; the AI may answer");
+                model_turn_pending = true;
+                let sent = send_text_before_deadline(
+                    &mut sink,
+                    kick,
+                    now + KICK_SEND_TIMEOUT,
+                    "gemini call-back pickup kick send",
+                )
+                .await
+                .is_ok();
+                info!(
+                    "Gemini Live call-back serial={serial} — the callee picked up and spoke: the AI says the answer now (cue sent={sent})"
+                );
             } else if session_start.elapsed() >= CALLBACK_RING_MAX {
                 end_reason = SessionEndReason::CantCommunicate;
                 signal_force_hangup(&mut hangup_signaled);
@@ -4497,6 +5081,7 @@ pub async fn run_session(
         }
         if fire_wav
             && persona
+            && !callback
             && !wrap_up_sent
             && !bye_from_caller
             && only_carrier_prompt_so_far(&caller_text_all, carrier_prompt_until, last_caller_voice_at)
@@ -4648,6 +5233,26 @@ pub async fn run_session(
                 break;
             }
         }
+        // An AI call-back: the answer has been given and nobody has said anything
+        // since (both sides quiet CALLBACK_DONE_QUIET; the answer ends on a
+        // goodbye), or the last reply a call-back may have is over: hang up.
+        if let Some(quiet) = cb_floor.done_after().filter(|_| callback) {
+            if !cb_floor.on_line
+                && !activity_open
+                && tool_open.is_empty()
+                && play_head.drained_for(quiet, PLAYER_DRAIN_SLACK_BYTES)
+                && last_caller_voice_at.map_or(true, |t| t.elapsed() >= quiet)
+            {
+                end_reason = SessionEndReason::Goodbye;
+                signal_force_hangup(&mut hangup_signaled);
+                info!(
+                    "Gemini Live call-back serial={serial} — answer given, line quiet {}ms replies={}: hang up",
+                    quiet.as_millis(),
+                    cb_floor.replies
+                );
+                break;
+            }
+        }
         // The quiet-line clocks run from when the phone has played our last words:
         // the model sends a reply faster than it is spoken, and the phone holds up
         // to ~1 s of it.
@@ -4693,8 +5298,10 @@ pub async fn run_session(
             && !model_generating
             && !ai_playing
             && play_head.drained_for(Duration::from_millis(300), PLAYER_DRAIN_SLACK_BYTES);
-        // A function call open (appointments) is not a quiet line; a recording gets no nudge.
+        // A function call open (appointments) is not a quiet line; a recording gets no
+        // nudge; nor does a call-back (the AI talks only when the callee has).
         if persona
+            && !callback
             && first_downlink_at.is_some()
             && !goodbye_pending
             && tool_open.is_empty()
@@ -4958,6 +5565,15 @@ pub async fn run_session(
                                 // of the turn before and is written down as usual.
                                 let has_audio = server_msg_has_audio(&v);
                                 let model_output = has_audio || output_transcription_text(&v).is_some();
+                                // A call-back: this reply of the model's is held off the line
+                                // until the callee has really spoken (CallbackFloor).
+                                let cb_hold = callback
+                                    && if has_audio { !cb_floor.model_audio() } else { !cb_floor.on_line };
+                                if cb_hold && has_audio && cb_held_mark.is_none() {
+                                    cb_held_mark = transcript_out
+                                        .as_ref()
+                                        .and_then(|b| b.lock().ok().map(|g| g.len()));
+                                }
                                 let was_dropping = repeat_guard.is_dropping();
                                 let repeat_drop = model_output
                                     && repeat_guard.drops(
@@ -5004,12 +5620,20 @@ pub async fn run_session(
                                 for s in &out_tx {
                                     push_tx_window(&mut out_tx_window, s, 800);
                                     push_tx_window(&mut turn_out_text, s, 400);
+                                    if cb_hold {
+                                        // Its closing counts once it plays.
+                                        if cb_floor.held.is_some() {
+                                            push_tx_window(&mut cb_held_text, s, 400);
+                                        }
+                                        continue;
+                                    }
                                     if persona {
                                         // Natural closing from the model ends the call; no recap gate.
                                         // Never on the opening line (caller has not spoken yet).
                                         let closing = looks_like_persona_closing(s)
                                             || looks_like_persona_closing(&out_tx_window);
                                         if closing
+                                            && !callback
                                             && !wrap_up_sent
                                             && only_carrier_prompt_so_far(
                                                 &caller_text_all,
@@ -5126,6 +5750,9 @@ pub async fn run_session(
                                 }
                                 // Caller farewell also arms hangup (after model turn / idle).
                                 for s in &in_tx {
+                                    if callback {
+                                        cb_floor.callee.words(s);
+                                    }
                                     push_tx_window(&mut in_tx_window, s, 800);
                                     push_tx_window(&mut caller_text_all, s, 400);
                                     push_tx_window(&mut caller_recent, s, 400);
@@ -5240,6 +5867,11 @@ pub async fn run_session(
                                     play_head.set_generating(false);
                                     mute_model_audio = false;
                                     repeat_guard.interrupted();
+                                    // A call-back reply held off the line answered something
+                                    // earlier: dropped (the model answers what comes now).
+                                    if callback && cb_floor.interrupted() {
+                                        cb_drop_now = true;
+                                    }
                                     // The caller is talking: the model answers them instead.
                                     stall_keep_after_turn = false;
                                     // Gemini heard the caller start over a reply we had not
@@ -5259,11 +5891,25 @@ pub async fn run_session(
                                 }
                                 if has_audio {
                                     model_generating = true;
-                                    play_head.set_generating(!mute_model_audio && !repeat_drop && !intl_hold && !intl_drop);
+                                    play_head.set_generating(
+                                        !mute_model_audio && !repeat_drop && !intl_hold && !intl_drop && !cb_hold,
+                                    );
                                 }
                                 // After a barge-in, the rest of the cut reply is not played.
                                 let n = if (mute_model_audio || repeat_drop || intl_drop) && has_audio {
                                     intl_gated_turn |= intl_drop;
+                                    0
+                                } else if cb_hold && has_audio {
+                                    // A call-back: kept until the callee has spoken (CallbackFloor).
+                                    intl_gated_turn = true;
+                                    let mut capture = |pcm: Vec<u8>| {
+                                        let take = pcm.len().min(cb_hold_cap.saturating_sub(prebuf.len()));
+                                        if take > 0 {
+                                            prebuf.extend_from_slice(&pcm[..take]);
+                                            prebuf_chunks = prebuf_chunks.saturating_add(1);
+                                        }
+                                    };
+                                    let _ = handle_server_msg(&v, phone_sr, &mut capture);
                                     0
                                 } else if intl_hold && has_audio {
                                     // Kept until the carrier's prompt has come or not (IntlGate).
@@ -5383,6 +6029,9 @@ pub async fn run_session(
                                 if turn_complete {
                                     turns_done += 1;
                                     chunks_at_turn_start = audio_chunks_out;
+                                    if callback {
+                                        cb_floor.turn_over(tokio::time::Instant::now());
+                                    }
                                 }
                                 if turn_complete && dropped_turn {
                                     let owed = repeat_guard.reply_owed();
@@ -5954,6 +6603,9 @@ pub async fn run_session(
                             &mut voiced_ms,
                             &mut silence_ms,
                         );
+                        if callback {
+                            cb_floor.line_frame(&pcm16, is_voice, frame_ms);
+                        }
                         // Caller already talking when our reply started (or local VAD
                         // mode): stop our playback like a person who gets interrupted
                         // (once per AI turn; a short "mm" does not).
@@ -5980,7 +6632,8 @@ pub async fn run_session(
                             if persona && goodbye_pending {
                                 voice_since_arm_ms = voice_since_arm_ms.saturating_add(frame_ms);
                             }
-                            if voiced_ms >= LOCAL_MIN_VOICE_MS {
+                            // A call-back not picked up yet: a ringing tone is nobody.
+                            if voiced_ms >= LOCAL_MIN_VOICE_MS && (!callback || cb_floor.turn_may_open()) {
                                 caller_had_voice = true;
                                 // Persona: a short 「掰掰」 back must not cancel the hangup, but
                                 // real new content after the closing ("oh, by the way…") keeps talking.
@@ -6010,7 +6663,12 @@ pub async fn run_session(
                                     );
                                 }
                             }
-                            if !activity_open && voiced_ms >= LOCAL_MIN_VOICE_MS {
+                            // Before a call-back's callee has picked up no turn opens
+                            // (no activityStart either): Gemini hears silence.
+                            if !activity_open
+                                && voiced_ms >= LOCAL_MIN_VOICE_MS
+                                && (!callback || cb_floor.turn_may_open())
+                            {
                                 // Server VAD: the local turn is bookkeeping only (bye /
                                 // idle / rotation logic) — Gemini already hears the line.
                                 let opened = server_vad || {
@@ -6072,6 +6730,13 @@ pub async fn run_session(
                             // except on an echo-free line, where the caller may cut in.
                             if hold_frame || (downlink_echo && !activity_open && !overlap) {
                                 uplink_buf.resize(uplink_buf.len() + pcm16.len(), 0);
+                            } else if callback && !cb_floor.line_audio(activity_open) {
+                                // A call-back: Gemini hears silence until the callee has
+                                // picked up, then their voice only (from its onset, the
+                                // preroll sent when their turn opens) — never the ringing
+                                // or a quiet line it could take for words.
+                                uplink_buf.resize(uplink_buf.len() + pcm16.len(), 0);
+                                push_preroll(&mut preroll, &pcm16, preroll_cap);
                             } else if !frame_in_hold {
                                 uplink_buf.extend_from_slice(&pcm16);
                             }
@@ -6290,6 +6955,249 @@ mod tests {
             nf.push(4000.0, 60);
         }
         assert_eq!(nf.voice_threshold(), LOCAL_VAD_RAW_MIN_RMS);
+    }
+
+    fn voice(c: &mut CalleeHeard, frames: u32) {
+        for _ in 0..frames {
+            c.frame(true, 40);
+        }
+    }
+
+    fn hush(c: &mut CalleeHeard, frames: u32) {
+        for _ in 0..frames {
+            c.frame(false, 40);
+        }
+    }
+
+    #[test]
+    fn a_call_back_callee_speaks_only_with_voice_and_words() {
+        for t in ["國際電話", "國際電話。", "這是國際電話，請注意小心詐騙", "<noise>", "謝謝觀看", "  "] {
+            assert!(!callee_said_words(t), "{t}");
+        }
+        for t in ["喂？", "Hello?", "國際電話。喂？", "好，謝謝", "もしもし"] {
+            assert!(callee_said_words(t), "{t}");
+        }
+        // A ringing tone and a misheard 「國際電話」: nobody.
+        let mut c = CalleeHeard::default();
+        voice(&mut c, 50);
+        c.words("國際電話");
+        assert!(!c.spoke());
+        // Words without voice, or clicks under LOCAL_MIN_VOICE_MS: nobody.
+        let mut c = CalleeHeard::default();
+        c.words("喂？你好");
+        assert!(!c.spoke());
+        for _ in 0..20 {
+            voice(&mut c, 2);
+            hush(&mut c, 10);
+        }
+        assert!(!c.spoke());
+        // One short 「喂」 (240 ms) is not enough; a second one is.
+        let mut c = CalleeHeard::default();
+        voice(&mut c, 6);
+        c.words("喂？");
+        assert!(!c.spoke());
+        hush(&mut c, 12);
+        voice(&mut c, 6);
+        assert!(c.spoke());
+        // Words first, then 400 ms of voice.
+        let mut c = CalleeHeard::default();
+        c.words("Hello, who is this?");
+        voice(&mut c, 10);
+        assert!(c.spoke());
+        // A tone, a long quiet line, then a stray word: nobody.
+        let mut c = CalleeHeard::default();
+        voice(&mut c, 25);
+        hush(&mut c, 70);
+        c.words("嗯");
+        assert!(!c.spoke());
+        // Asking to hear it again needs less voice.
+        let mut c = CalleeHeard::default();
+        voice(&mut c, 6);
+        c.words("什麼？");
+        assert!(c.spoke());
+    }
+
+    #[test]
+    fn a_call_back_reply_plays_only_after_the_callee_spoke() {
+        let t0 = tokio::time::Instant::now();
+        let mut f = CallbackFloor::for_pickup();
+        // Anything the model said before pickup is held, and never plays then.
+        assert!(!f.model_audio());
+        f.turn_over(t0);
+        assert_eq!(f.step(t0 + Duration::from_millis(500)), FloorStep::Wait);
+        match f.step(t0 + CALLBACK_HELD_GRACE) {
+            // Dropped, and the model is told nobody heard it (no reply asked for).
+            FloorStep::Drop { note } => {
+                assert!(note.contains("did not hear") && note.contains("say all of it"), "{note}");
+                assert_eq!(serde_json::from_str::<Value>(&note).unwrap()["clientContent"]["turnComplete"], json!(false));
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!((f.replies, f.done_after()), (0, None));
+        // They pick up and say 「喂？」: the cue goes out, and the answer plays.
+        voice(&mut f.callee, 12);
+        hush(&mut f.callee, 16);
+        assert!(f.pickup().is_some());
+        assert!(f.model_audio());
+        assert!(f.model_audio(), "the rest of the answer plays");
+        f.turn_over(t0);
+        assert_eq!((f.replies, f.done_after()), (1, Some(CALLBACK_DONE_QUIET)));
+        // Answer over, nobody says anything: a second answer never reaches the line.
+        f.callee.words("國際電話");
+        hush(&mut f.callee, 75);
+        assert!(!f.model_audio());
+        f.turn_over(t0);
+        match f.step(t0 + CALLBACK_HELD_GRACE) {
+            FloorStep::Drop { note } => assert!(note.contains("Say nothing more unless they speak"), "{note}"),
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(f.replies, 1);
+        // Words that come while a reply is held: it plays once they do.
+        assert!(!f.model_audio());
+        voice(&mut f.callee, 12);
+        f.callee.words("喂？還在嗎？");
+        assert_eq!(f.step(t0), FloorStep::Play { over: false });
+        assert!(f.model_audio());
+        f.turn_over(t0);
+        assert_eq!(f.replies, 2);
+        // 「什麼？」: it may say it again.
+        voice(&mut f.callee, 6);
+        f.callee.words("什麼？");
+        assert!(f.model_audio());
+        f.turn_over(t0);
+        assert_eq!(f.replies, 3);
+        // Talked over: a held reply is dropped at once.
+        assert!(!f.model_audio());
+        assert!(f.interrupted());
+        assert_eq!(f.step(t0), FloorStep::Wait);
+        // At most CALLBACK_REPLIES_MAX replies; then the call ends a moment after.
+        let mut f = CallbackFloor { picked: true, replies: CALLBACK_REPLIES_MAX - 1, ..Default::default() };
+        voice(&mut f.callee, 12);
+        f.callee.words("好，那就這樣");
+        assert!(f.model_audio());
+        f.turn_over(t0);
+        voice(&mut f.callee, 12);
+        f.callee.words("等一下還有一件事");
+        assert!(!f.model_audio());
+        assert_eq!(f.done_after(), Some(CALLBACK_LAST_REPLY_QUIET));
+    }
+
+    #[test]
+    fn a_dropped_call_back_reply_leaves_only_the_callee_s_lines() {
+        let mut t = String::from("對方：喂？");
+        let mark = t.len();
+        t.push_str("\n接聽：您好，我是林先生\n對方：國際電話\n接聽：，我回覆您");
+        assert_eq!(drop_ai_lines_after(&mut t, mark), "您好，我是林先生，我回覆您");
+        assert_eq!(t, "對方：喂？\n對方：國際電話");
+        let mut t = String::from("接聽：Hello");
+        assert_eq!(drop_ai_lines_after(&mut t, 0), "Hello");
+        assert_eq!(t, "");
+        let mut t = String::new();
+        assert_eq!(drop_ai_lines_after(&mut t, 0), "");
+    }
+
+    /// `n` samples at 16 kHz: a sum of sines (Hz, amplitude), phase `from`.
+    fn sines(parts: &[(f64, f64)], n: usize, from: usize) -> Vec<u8> {
+        (from..from + n)
+            .flat_map(|i| {
+                let t = i as f64 / 16_000.0;
+                let s: f64 = parts.iter().map(|(hz, a)| a * (2.0 * std::f64::consts::PI * hz * t).sin()).sum();
+                (s.clamp(-32_000.0, 32_000.0) as i16).to_le_bytes()
+            })
+            .collect()
+    }
+
+    /// A voice-like frame: twenty harmonics of 140 Hz.
+    fn voicelike(n: usize, from: usize) -> Vec<u8> {
+        let parts: Vec<(f64, f64)> = (1..=20).map(|h| (140.0 * h as f64, 700.0)).collect();
+        sines(&parts, n, from)
+    }
+
+    #[test]
+    fn ringing_tones_are_told_from_a_voice() {
+        for n in [320, 640] {
+            for tone in [vec![(440.0, 9_000.0), (480.0, 9_000.0)], vec![(425.0, 12_000.0)], vec![(450.0, 12_000.0)], vec![(400.0, 12_000.0)]] {
+                assert!(ringback_like(&sines(&tone, n, 0)), "{tone:?} n={n}");
+            }
+            assert!(!ringback_like(&voicelike(n, 0)), "n={n}");
+            assert!(!ringback_like(&sines(&[(1_000.0, 9_000.0)], n, 0)), "n={n}");
+        }
+        assert!(!ringback_like(&[0u8; 640]));
+        assert!(!ringback_like(&sines(&[(440.0, 9_000.0)], 80, 0)), "too short to tell");
+    }
+
+    #[test]
+    fn a_call_back_line_stays_silent_until_the_callee_picks_up() {
+        let mut f = CallbackFloor::for_pickup();
+        let ring = [(440.0, 9_000.0), (480.0, 9_000.0)];
+        let mut at = 0;
+        // Ten seconds of ringing (1 s on, 2 s off), all of it loud enough for the VAD:
+        // Gemini gets silence, no turn opens, and the model gets no cue.
+        for _ in 0..3 {
+            for _ in 0..25 {
+                f.line_frame(&sines(&ring, 640, at), true, 40);
+                at += 640;
+                assert!(!f.line_audio(true) && !f.line_audio(false) && !f.turn_may_open());
+                assert!(f.pickup().is_none());
+            }
+            for _ in 0..50 {
+                f.line_frame(&[0u8; 640], false, 40);
+                assert!(f.pickup().is_none());
+            }
+        }
+        // 「喂？」 while still talking: not yet (the AI does not start over them).
+        for _ in 0..12 {
+            f.line_frame(&voicelike(640, at), true, 40);
+            at += 640;
+            assert!(f.pickup().is_none() && !f.line_audio(true) && !f.turn_may_open());
+        }
+        // They pause: the cue goes out, once, and from now on the line reaches Gemini.
+        let mut cue = None;
+        for _ in 0..16 {
+            f.line_frame(&[0u8; 640], false, 40);
+            cue = cue.or_else(|| f.pickup());
+        }
+        let cue = cue.expect("picked up");
+        assert!(cue.contains("picked up and spoken") && cue.contains("all of it, once"), "{cue}");
+        assert_eq!(serde_json::from_str::<Value>(&cue).unwrap()["clientContent"]["turnComplete"], json!(true));
+        assert!(f.pickup().is_none());
+        assert!(f.turn_may_open() && f.line_audio(true) && !f.line_audio(false));
+    }
+
+    #[test]
+    fn the_call_s_language_is_what_was_said_on_it() {
+        use crate::locale::Lang;
+        // A US number, opened in English, held in Chinese.
+        let d = "接聽：Hello?\n對方：喂，你好，我想約林先生明天中午吃飯\n接聽：好啊，明天中午可以，我確認一下時間再回你。\n對方：好，謝謝，掰掰\n接聽：掰掰";
+        assert_eq!(dialogue_lang(d, Lang::ZhTw), Some(Lang::ZhTw));
+        assert_eq!(dialogue_lang(d, Lang::ZhCn), Some(Lang::ZhCn));
+        assert_eq!(dialogue_lang(d, Lang::En), Some(Lang::ZhTw));
+        let en = "接聽：喂？\n對方：Hi, is this Mr. Ying? I would like to book a table for Sunday.\n接聽：Sure, Sunday at noon works for me, I will check and get back to you.";
+        assert_eq!(dialogue_lang(en, Lang::ZhTw), Some(Lang::En));
+        assert_eq!(dialogue_lang("接聽：はい、日曜日の十二時で大丈夫です。", Lang::ZhTw), Some(Lang::Ja));
+        assert_eq!(dialogue_lang("接聽：네, 일요일 열두 시 괜찮습니다.", Lang::ZhTw), Some(Lang::Ko));
+        assert_eq!(dialogue_lang("接聽：Sí, el domingo a las doce está muy bien, gracias.", Lang::ZhTw), Some(Lang::Es));
+        assert_eq!(dialogue_lang("接聽：Oui, dimanche à midi c'est parfait, merci.", Lang::ZhTw), Some(Lang::Fr));
+        // Nothing the AI said tells: the caller's lines do.
+        assert_eq!(dialogue_lang("接聽：Hello?\n對方：Hola, quiero hacer una reserva para el domingo.", Lang::ZhTw), Some(Lang::Es));
+        assert_eq!(dialogue_lang("接聽：喂？\n對方：喂？", Lang::ZhTw), None);
+        assert_eq!(dialogue_lang("", Lang::ZhTw), None);
+    }
+
+    #[test]
+    fn a_call_back_s_languages_follow_the_call_it_answers() {
+        use crate::locale::Lang;
+        // Spoke Chinese from a US number on a US SIM (that alone opens in English).
+        let plan = callback_lang_plan(Lang::ZhTw, Lang::ZhTw);
+        assert_eq!(plan.opening, None);
+        assert_eq!(plan.caller_stt, Some(stt_codes(&[Lang::ZhTw, Lang::En])));
+        let en = callback_lang_plan(Lang::En, Lang::ZhTw);
+        assert_eq!((en.opening, en.caller_stt), (Some(Lang::En), Some(stt_codes(&[Lang::En]))));
+        // The callee's speech-to-text has no vocabulary.
+        let cfg = stt_callee_config(plan.caller_stt.as_deref());
+        assert!(cfg.get("customVocabulary").is_none());
+        assert_eq!(cfg["languageCodes"], json!(stt_codes(&[Lang::ZhTw, Lang::En])));
+        assert_eq!(stt_callee_config(None), json!({}));
     }
 
     #[test]

@@ -376,6 +376,12 @@ pub struct Appointment {
     /// the number the caller rang.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sim_sub_id: Option<i64>,
+    /// The language the AI and the caller spoke on the call (`zh-TW`, `en`…,
+    /// [`crate::gemini_live::dialogue_lang`]): the AI's call-back with the
+    /// owner's answer speaks it. Empty: not known (nothing was said, or a record
+    /// from before it was kept) — the call-back goes by the setting.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub call_lang: String,
     /// The other appointments the same call agreed to, each with a task of its
     /// own ([`create_tasks`]). Only on the call's record and notes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -512,6 +518,20 @@ impl Appointment {
             a
         }));
         out
+    }
+
+    /// Keep the language the call was held in ([`Self::call_lang`]) on this
+    /// appointment and the others of the same call.
+    pub fn set_call_lang(&mut self, lang: Lang) {
+        self.call_lang = lang.code().to_string();
+        for m in &mut self.more {
+            m.call_lang = self.call_lang.clone();
+        }
+    }
+
+    /// The language the call-back speaks ([`Self::call_lang`]), if known.
+    pub fn spoken_lang(&self) -> Option<Lang> {
+        Some(self.call_lang.trim()).filter(|c| !c.is_empty()).map(Lang::parse)
     }
 
     /// Two copies of the same appointment (the call's, its task's): the same
@@ -2448,8 +2468,11 @@ async fn call_caller(
     let Some(control) = control else {
         return ("no_phone".to_string(), locale::fill(w.not_placed, w.no_phone));
     };
-    let script = callback_prompt(&locale::active(), locale::current(), appt, confirmed);
-    let cb = PendingCallback::new(&task.id, &number, &task.serial, script);
+    // The script and the call's speech-to-text in one language: the call's.
+    let lang = callback_lang(appt);
+    let script = callback_prompt(&locale::active(), lang, appt, confirmed);
+    let mut cb = PendingCallback::new(&task.id, &number, &task.serial, script);
+    cb.lang = Some(lang);
     if !callbacks_add(cb.clone()) {
         info!("appointment call-back task_id={} waits for an earlier call-back to the same number", task.id);
         return ("queued".to_string(), callback_words(lang).queued.to_string());
@@ -2459,6 +2482,13 @@ async fn call_caller(
         callbacks_remove(&task.id);
     }
     (code, line)
+}
+
+/// The language of an appointment's call-back — its script and its Live
+/// session alike: the one spoken on the call it answers
+/// ([`Appointment::call_lang`]); a record without it, the setting's.
+pub fn callback_lang(appt: &Appointment) -> Lang {
+    appt.spoken_lang().unwrap_or_else(locale::current)
 }
 
 /// Ask a phone to place a call-back: `dialing`, or why it did not go out
@@ -2517,6 +2547,8 @@ struct PendingCallback {
     serial: String,
     /// What the AI follows on it ([`callback_prompt`]).
     script: String,
+    /// The language of the call it answers ([`Appointment::call_lang`]), if known.
+    lang: Option<Lang>,
     stage: CallbackStage,
     /// When it got to `stage`.
     since: std::time::Instant,
@@ -2530,6 +2562,7 @@ impl PendingCallback {
             key: number_key(number),
             serial: serial.trim().to_string(),
             script,
+            lang: None,
             stage: CallbackStage::Queued,
             since: std::time::Instant::now(),
         }
@@ -2636,6 +2669,9 @@ pub struct CallbackCall {
     pub task_id: String,
     /// The system prompt instead of the answering one ([`callback_prompt`]).
     pub script: String,
+    /// The language its script is in, which the session speaks and the callee's
+    /// speech-to-text expects ([`callback_lang`]).
+    pub lang: Option<Lang>,
 }
 
 /// The call-back the phone `serial` reported ready whose number is this
@@ -2660,7 +2696,7 @@ fn take_ready_callback(serial: &str, caller_id: &str) -> Option<CallbackCall> {
     let c = &mut list[i];
     c.stage = CallbackStage::OnCall;
     c.since = std::time::Instant::now();
-    Some(CallbackCall { task_id: c.task_id.clone(), script: c.script.clone() })
+    Some(CallbackCall { task_id: c.task_id.clone(), script: c.script.clone(), lang: c.lang })
 }
 
 /// A call-back is dialing on `serial` to this number (its `outbound_ready`
@@ -2710,12 +2746,13 @@ pub fn is_ai_callback(events: &[String]) -> bool {
 }
 
 /// The callee said something on the call (the Live dialogue has a line of
-/// theirs): they answered.
+/// theirs with words in it, not only what a quiet line comes out as —
+/// [`crate::gemini_live::callee_said_words`]): they answered.
 pub fn callee_spoke(dialogue: &str) -> bool {
     dialogue
         .lines()
         .filter_map(|l| l.trim().strip_prefix("對方："))
-        .any(|l| !l.trim().is_empty())
+        .any(crate::gemini_live::callee_said_words)
 }
 
 /// What call-back bookkeeping outside a decision works with.
@@ -2936,9 +2973,9 @@ fn callback_words(lang: Lang) -> CallbackWords {
 }
 
 /// What the AI follows on its call-back with the owner's answer (English; it
-/// speaks `lang`, the language it used with the caller, or theirs): who is
-/// calling, the answer — the time and what it is about, or a polite no — then
-/// one goodbye, after which the call ends.
+/// speaks `lang`, the language of the call it answers): who is calling, the
+/// answer — the time and what it is about, or a polite no — and one goodbye,
+/// all once; said again only when the callee asks.
 pub fn callback_prompt(active: &locale::Active, lang: Lang, appt: &Appointment, confirmed: bool) -> String {
     let owner = crate::prompts::owner_label(lang, &active.owner);
     let language = locale::phrases(lang).name_en;
@@ -2961,12 +2998,12 @@ pub fn callback_prompt(active: &locale::Active, lang: Lang, appt: &Appointment, 
         "You are making a short phone call for {owner}. Earlier this person called and asked to meet at {when}{about}; {owner} has decided, and you are calling them back with the answer.\n\
 Who is calling: {who}.\n\
 The answer: {answer}\n\
+Language: speak {language} the whole call, the language of their call. Switch only if they clearly talk to you in another language, in whole sentences; a tone, noise, a recording or words you did not catch are no reason to switch.\n\
 How the call goes:\n\
-- The call starts while it still rings: say nothing until they have picked up and said something (a ringing tone, music or silence is not them).\n\
-- Then greet them in one short sentence, say who is calling and that you are calling back about the appointment they asked for.\n\
-- Then give the answer in one or two short sentences, in {language} (if they answer in another language, use theirs).\n\
-- If they ask, say the time again. Agree to nothing new and do not move the time; if they want another time, say {owner} will get back to them about it. Give out no personal details, codes or other information.\n\
-- Then say goodbye once and stop talking: the call ends after your goodbye.\n\
+- The call starts while it still rings: say nothing until you are told they have picked up and spoken (a ringing tone, music or silence is not them).\n\
+- Then, in one go: greet them in one short sentence, say who is calling and that you are calling back about the appointment they asked for, give the answer in one or two short sentences, and say goodbye once.\n\
+- Once they have heard it, say it only that once: say the answer again only if they ask for it (\"what?\", \"sorry?\", \"say that again\"), and only once; if they ask about the time, tell them the time. If you are told they did not hear you, say all of it when they speak. Agree to nothing new and do not move the time; if they want another time, say {owner} will get back to them about it. Give out no personal details, codes or other information.\n\
+- After your goodbye, stay quiet and let the call end: say nothing more unless they speak to you, and then answer in a few words.\n\
 - If voicemail or an answering machine picks up, leave the answer in two sentences and say goodbye.\n\
 If they seriously ask whether they are talking to a real person, say that you are an AI assistant."
     )
@@ -4764,13 +4801,18 @@ mod tests {
         let me = locale::Active { owner: "王先生".into(), ..Default::default() };
         let yes = callback_prompt(&me, Lang::ZhTw, &a, true);
         assert!(yes.contains("11/14（週六）15:00 (看房) works") && yes.contains("Confirm the time"), "{yes}");
-        assert!(yes.contains("in Traditional Chinese") && yes.contains("you speak as 王先生 yourself"), "{yes}");
-        assert!(yes.contains("say goodbye once and stop talking") && yes.contains("AI assistant"), "{yes}");
+        assert!(yes.contains("speak Traditional Chinese") && yes.contains("you speak as 王先生 yourself"), "{yes}");
+        assert!(yes.contains("say goodbye once") && yes.contains("AI assistant"), "{yes}");
+        // Once they have heard it: again only when asked, once; unheard, all of it again.
+        assert!(yes.contains("Once they have heard it, say it only that once") && yes.contains("only if they ask for it"), "{yes}");
+        assert!(yes.contains("If you are told they did not hear you, say all of it"), "{yes}");
+        // Noise or a misheard word is no reason to change language.
+        assert!(yes.contains("Switch only if they clearly talk to you in another language"), "{yes}");
         let no = callback_prompt(&locale::Active { assistant: true, ..me }, Lang::En, &a, false);
         assert!(no.contains("cannot make it at Sat, Nov 14, 3:00 PM (看房) after all") && no.contains("Apologize"), "{no}");
-        assert!(no.contains("王先生's assistant") && no.contains("in English"), "{no}");
+        assert!(no.contains("王先生's assistant") && no.contains("speak English the whole call"), "{no}");
         // The AI waits for the callee: the ringing is no one to talk to.
-        assert!(yes.contains("say nothing until they have picked up and said something"), "{yes}");
+        assert!(yes.contains("say nothing until you are told they have picked up and spoken"), "{yes}");
     }
 
     #[test]
@@ -4858,6 +4900,44 @@ mod tests {
         assert!(callee_spoke("AI：\n對方：喂？\nAI：您好"));
         assert!(!callee_spoke("AI：您好，我是王先生\n對方： "));
         assert!(!callee_spoke(""));
+        // What a ringing or silent line comes out as is nobody answering.
+        assert!(!callee_spoke("對方：國際電話\n接聽：您好，我是王先生\n對方：國際電話。"));
+        assert!(!callee_spoke("對方：<noise>\n對方：謝謝觀看"));
+        assert!(callee_spoke("對方：國際電話\n對方：Okay, goodbye."));
+    }
+
+    #[test]
+    fn a_call_back_speaks_the_language_of_the_call_it_answers() {
+        // Kept on every appointment of the call; an older record has none.
+        let mut a = appt("2026-11-15T12:30", "2026-11-15T13:30", "吃飯");
+        a.more.push(appt("2026-11-16T12:30", "2026-11-16T13:30", "吃飯"));
+        assert_eq!(a.spoken_lang(), None);
+        a.set_call_lang(Lang::ZhTw);
+        assert_eq!(a.spoken_lang(), Some(Lang::ZhTw));
+        assert!(a.each().iter().all(|x| x.call_lang == "zh-TW"));
+        assert_eq!(serde_json::to_value(&a).unwrap()["call_lang"], "zh-TW");
+        let old: Appointment = serde_json::from_value(serde_json::json!({
+            "start": "2026-11-15T12:30", "end": "2026-11-15T13:30", "mode": "confirm", "status": "pending"
+        }))
+        .unwrap();
+        assert_eq!(old.spoken_lang(), None);
+        assert!(serde_json::to_value(&old).unwrap().get("call_lang").is_none());
+        // Without it the script and the session both take the setting's language
+        // (unit tests: zh-TW), the language the call-back's session is given.
+        assert_eq!(callback_lang(&old), locale::current());
+        assert_eq!(callback_lang(&a), Lang::ZhTw);
+        let mut en = old.clone();
+        en.set_call_lang(Lang::En);
+        assert_eq!(callback_lang(&en), Lang::En);
+        assert!(callback_prompt(&locale::Active::default(), callback_lang(&old), &old, true).contains("speak Traditional Chinese"));
+        // The call-back's session gets it with the script.
+        let mut cb = PendingCallback::new("t-cb-l1", "0912000401", "phone-l1", "S".into());
+        cb.lang = a.spoken_lang();
+        assert!(callbacks_add(cb));
+        assert!(callback_ready("t-cb-l1", "phone-l1", "0912000401"));
+        let got = take_ready_callback("phone-l1", "0912000401").unwrap();
+        assert_eq!(got.lang, Some(Lang::ZhTw));
+        callbacks_remove("t-cb-l1");
     }
 
     #[test]
