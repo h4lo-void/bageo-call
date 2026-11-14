@@ -169,7 +169,7 @@ pub fn for_owner(text: &str) -> String {
 /// [`for_owner`] for a given notification language.
 pub fn for_owner_in(lang: Lang, text: &str) -> String {
     if lang == Lang::ZhTw {
-        crate::zh_tw::norm(text)
+        crate::zh_tw::for_reading(text)
     } else {
         text.to_string()
     }
