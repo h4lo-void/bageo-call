@@ -65,11 +65,19 @@ normal: family or friends talking about sending or receiving money; a courier de
 \n\
 If you are unsure, answer scam_or_sales.";
 
-/// One client for the life of the agent: a pooled connection saves the TLS
-/// handshake on the next review.
+/// One client for the life of the agent, its connections kept open between
+/// reviews: a fresh TLS handshake to Gemini takes about a quarter of a second
+/// of the caller's wait.
 fn client() -> &'static Client {
     static CLIENT: OnceLock<Client> = OnceLock::new();
-    CLIENT.get_or_init(Client::new)
+    CLIENT.get_or_init(|| {
+        Client::builder()
+            .pool_idle_timeout(Duration::from_secs(600))
+            .pool_max_idle_per_host(2)
+            .tcp_keepalive(Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| Client::new())
+    })
 }
 
 /// Ask the model whether a call the keywords flagged is a scam or sales call,
@@ -128,9 +136,9 @@ async fn ask(
     caller_id: &str,
 ) -> Result<Verdict> {
     let url = format!("{}/v1beta/models/{REVIEW_MODEL}:generateContent", base.trim_end_matches('/'));
-    let mut thinking_off = true;
+    let mut strict = true;
     loop {
-        let body = request_body(dialogue, hits, caller_id, thinking_off);
+        let body = request_body(dialogue, hits, caller_id, strict);
         let resp = http
             .post(&url)
             .header("x-goog-api-key", key)
@@ -140,10 +148,11 @@ async fn ask(
             .context("request")?;
         let status = resp.status();
         let text = resp.text().await.context("response body")?;
-        if status.as_u16() == 400 && thinking_off && text.contains("thinking") {
-            // A model that cannot switch thinking off refuses the whole request;
-            // asking again without the setting still beats the timeout.
-            thinking_off = false;
+        if status.as_u16() == 400 && strict {
+            // A setting the model does not take comes back as a bare
+            // INVALID_ARGUMENT that does not name it. One more try without the
+            // answer schema, inside the same deadline.
+            strict = false;
             continue;
         }
         if !status.is_success() {
@@ -153,9 +162,11 @@ async fn ask(
     }
 }
 
-/// The generateContent request. Thinking is switched off and the answer is
-/// held to the three labels: every token is time the caller waits.
-fn request_body(dialogue: &str, hits: &[String], caller_id: &str, thinking_off: bool) -> Value {
+/// The generateContent request. No thinkingConfig: gemini-flash-lite-latest
+/// refuses a request that carries one (400 INVALID_ARGUMENT) and answers in
+/// about a second without it. `strict` holds the answer to the three labels;
+/// the retry after a 400 leaves that out and reads the model's text.
+fn request_body(dialogue: &str, hits: &[String], caller_id: &str, strict: bool) -> Value {
     let dialogue = crate::deepseek::relabel_dialogue_en(dialogue.trim());
     let number = match caller_id.trim() {
         "" => "hidden",
@@ -170,16 +181,15 @@ fn request_body(dialogue: &str, hits: &[String], caller_id: &str, thinking_off: 
         "temperature": 0,
         "maxOutputTokens": 32,
         "responseMimeType": "application/json",
-        "responseSchema": {
+    });
+    if strict {
+        generation["responseSchema"] = json!({
             "type": "OBJECT",
             "properties": {
                 "verdict": {"type": "STRING", "enum": ["scam_or_sales", "ivr_recording", "normal"]}
             },
             "required": ["verdict"]
-        }
-    });
-    if thinking_off {
-        generation["thinkingConfig"] = json!({"thinkingBudget": 0});
+        });
     }
     json!({
         "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
@@ -225,106 +235,288 @@ fn tail_chars(s: &str, n: usize) -> &str {
     &s[skip..]
 }
 
-/// Words a recorded voice menu says: "請按 1", "press one", "番を押して", … in
-/// the agent's languages. A hint for the caller of [`review`]; a menu cannot
-/// be kept talking.
+/// A recorded voice menu: at least two key options ("查帳單請按1，轉接專人請按9",
+/// "for billing press 1, for support press 2"), or one option that says what
+/// it is for ("若要查詢餘額，請按1", "for billing, press 1", "日本語は1を押して").
+/// The key has to follow the press word straight away and end there.
+///
+/// Strict on purpose: a menu verdict hangs up, and people on ordinary calls
+/// say 按 5 樓, 語音信箱 or "press one button".
 pub fn ivr_cue(text: &str) -> bool {
     let lower = text.to_lowercase();
-    let squeezed: String = lower.chars().filter(|c| !c.is_whitespace()).collect();
-    run_cue(&squeezed) || word_cue(&lower)
+    let chars: Vec<char> = lower.chars().collect();
+    let squeezed: Vec<char> = chars.iter().copied().filter(|c| !c.is_whitespace()).collect();
+    let mut p = Presses::default();
+    for q in [
+        han_presses(&chars),
+        ja_presses(&chars),
+        ko_presses(&squeezed),
+        th_presses(&squeezed),
+        word_presses(&lower),
+    ] {
+        p.keys += q.keys;
+        p.purposed |= q.purposed;
+    }
+    p.keys >= 2 || p.purposed
 }
 
-/// Phrases that only a menu says, matched with spaces removed.
-const RUN_PHRASES: &[&str] = &[
-    "重聽請按", "重听请按", "轉接專人請按", "转接专人请按", "請按井字鍵", "请按井字键",
-    "語音信箱", "语音信箱", "番を押して", "번을눌러", "번을누르",
-];
+/// Key presses found in a text: how many, and whether any says what it is for.
+#[derive(Debug, Default, Clone, Copy)]
+struct Presses {
+    keys: usize,
+    purposed: bool,
+}
+
+impl Presses {
+    fn add(&mut self, purposed: bool) {
+        self.keys += 1;
+        self.purposed |= purposed;
+    }
+}
 
 const HAN_NUMERALS: &str = "零〇一二三四五六七八九";
-const THAI_NUMERALS: &[&str] = &[
-    "ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า",
-];
 
 fn is_digit(c: char) -> bool {
     c.is_ascii_digit() || ('０'..='９').contains(&c)
 }
 
-/// Languages written without spaces: a press verb followed by a key.
-fn run_cue(s: &str) -> bool {
-    if RUN_PHRASES.iter().any(|p| s.contains(p)) {
-        return true;
-    }
-    // 請按 / 撳 (Cantonese) take a spoken numeral too; a bare 按 only a digit,
-    // since 按一下 is "press it once" and 按時 "on time".
-    let han = |verb: &str, numerals: bool| {
-        s.match_indices(verb).any(|(i, _)| {
-            let mut rest = s[i + verb.len()..].chars();
-            let Some(key) = rest.next() else { return false };
-            let next = rest.next();
-            if is_digit(key) {
-                // 按1成 / 按10% are rates, not keys.
-                !next.is_some_and(|n| is_digit(n) || matches!(n, '%' | '％' | '成' | '折'))
-            } else if matches!(key, '#' | '＃' | '*' | '＊') {
-                true
-            } else if matches!(key, '井' | '星' | '米') {
-                // 井字鍵 / 星號 / 米字鍵, not 按星期.
-                next.is_some_and(|n| matches!(n, '字' | '號' | '号' | '鍵' | '键'))
-            } else if numerals && HAN_NUMERALS.contains(key) {
-                !next.is_some_and(|n| matches!(n, '下' | '次' | '按' | '點' | '点'))
-            } else {
-                false
-            }
-        })
-    };
-    if han("請按", true) || han("请按", true) || han("撳", true) || han("按", false) {
-        return true;
-    }
-    // Japanese: 1を押して / ＃を押して (番を押して is a phrase above).
-    let ja = s.match_indices("を押して").any(|(i, _)| {
-        s[..i]
-            .chars()
-            .last()
-            .is_some_and(|c| is_digit(c) || HAN_NUMERALS.contains(c) || matches!(c, '#' | '＃' | '*' | '＊'))
-    });
-    // Thai: กด 1 / กดหนึ่ง, not กดดัน ("pressure").
-    let th = s.match_indices("กด").any(|(i, _)| {
-        let rest = &s[i + "กด".len()..];
-        rest.chars().next().is_some_and(|c| is_digit(c) || ('๐'..='๙').contains(&c))
-            || THAI_NUMERALS.iter().any(|n| rest.starts_with(n))
-    });
-    ja || th
+fn starts_at(chars: &[char], i: usize, s: &str) -> bool {
+    s.chars().enumerate().all(|(k, c)| chars.get(i + k) == Some(&c))
 }
 
-/// Phrases of word languages that only a menu says.
-const WORD_PHRASES: &[&[&str]] = &[
-    &["to", "speak", "to", "an", "agent"],
-    &["para", "español"],
-    &["para", "espanol"],
-    &["appuyez", "sur"],
-    &["drücken", "sie"],
-    &["pressione"],
-    &["nhấn", "phím"],
-    &["bấm", "phím"],
+/// Length in chars of the first of `list` that starts at `i`.
+fn match_any(chars: &[char], i: usize, list: &[&str]) -> Option<usize> {
+    list.iter().find(|s| starts_at(chars, i, s)).map(|s| s.chars().count())
+}
+
+fn skip_ws(chars: &[char], mut i: usize) -> usize {
+    while i < chars.len() && chars[i].is_whitespace() {
+        i += 1;
+    }
+    i
+}
+
+const CLAUSE_SEPS: &str = "，,、；;：:。.！!？?\n";
+const SENTENCE_ENDS: &str = "。.！!？?\n";
+
+/// The words before a key press that can say what it is for: its own clause,
+/// or the clause before when the press opens one ("若要查詢餘額，請按1"). Never
+/// back past `floor` (the previous key) or a sentence end.
+fn lead_in(chars: &[char], at: usize, floor: usize) -> String {
+    let clause_start = |end: usize| {
+        let mut s = end;
+        while s > floor && !CLAUSE_SEPS.contains(chars[s - 1]) {
+            s -= 1;
+        }
+        s
+    };
+    let s = clause_start(at);
+    let own: String = chars[s..at].iter().collect();
+    if !own.trim().is_empty() || s <= floor || SENTENCE_ENDS.contains(chars[s - 1]) {
+        return own;
+    }
+    let p = clause_start(s - 1);
+    chars[p..s - 1].iter().collect()
+}
+
+/// Chinese and Cantonese.
+const HAN_VERBS: &[&str] = &["請按", "请按", "請撳", "请撳", "按", "撳"];
+const HAN_NAMED_KEYS: &[&str] = &[
+    "井字鍵", "井字键", "井號鍵", "井号键", "井號", "井号", "米字鍵", "米字键", "星號鍵", "星号键",
+    "星號", "星号", "星字鍵", "星字键",
+];
+const HAN_KEY_SUFFIXES: &[&str] = &["字鍵", "字键", "號鍵", "号键", "鍵", "键", "字", "號", "号"];
+/// What a menu option is for: 若要…、查詢…、轉接…、國語…
+const HAN_PURPOSES: &[&str] = &[
+    "若要", "如要", "如需", "如果要", "欲", "查詢", "查询", "轉接", "转接", "重聽", "重听", "專人", "专人",
+    "人工", "客服", "服務", "服务", "國語", "国语", "台語", "台语", "華語", "华语", "英語", "英语", "客語",
+    "客语", "粵語", "粤语", "普通話", "普通话", "廣東話", "广东话", "english", "返回", "主選單", "主选单",
+    "上一層", "上一层", "結束", "结束", "繳費", "缴费", "帳單", "帐单", "账单", "餘額", "余额", "掛失",
+    "挂失", "預約", "预约", "留言",
 ];
 
-/// Press verbs that take a key: "press 1", "pulse 1", "tapez 1", "tekan 1", …
-const PRESS_VERBS: &[&str] = &["press", "pulse", "marque", "oprima", "presione", "tapez", "digite", "tecle", "tekan"];
+/// The end of a key right after a Chinese press verb: one digit or numeral
+/// (with 字／號／鍵 after it), # or *, or a named key such as 井字鍵.
+fn han_key(chars: &[char], j: usize) -> Option<usize> {
+    if let Some(n) = match_any(chars, j, HAN_NAMED_KEYS) {
+        return Some(j + n);
+    }
+    let c = *chars.get(j)?;
+    let numeral = |c: char| is_digit(c) || HAN_NUMERALS.contains(c);
+    if !(numeral(c) || matches!(c, '#' | '＃' | '*' | '＊')) {
+        return None;
+    }
+    // One key: 按10% / 按一二 are not.
+    if chars.get(j + 1).is_some_and(|&n| numeral(n)) {
+        return None;
+    }
+    Some(j + 1 + match_any(chars, j + 1, HAN_KEY_SUFFIXES).unwrap_or(0))
+}
+
+fn han_presses(chars: &[char]) -> Presses {
+    let mut p = Presses::default();
+    let (mut i, mut floor) = (0, 0);
+    while i < chars.len() {
+        let Some(v) = match_any(chars, i, HAN_VERBS) else {
+            i += 1;
+            continue;
+        };
+        let Some(key_end) = han_key(chars, skip_ws(chars, i + v)) else {
+            i += v;
+            continue;
+        };
+        // The key ends at punctuation, the end, or the next option's purpose
+        // (按1查詢、國語請按1台語請按2); 按5樓、按2下、請按八折 go on with a word.
+        let after = skip_ws(chars, key_end);
+        let purpose_after = match_any(chars, after, HAN_PURPOSES).is_some();
+        if after == chars.len() || !chars[after].is_alphanumeric() || purpose_after {
+            let before = lead_in(chars, i, floor);
+            p.add(purpose_after || HAN_PURPOSES.iter().any(|w| before.contains(w)));
+            floor = key_end;
+        }
+        i = key_end;
+    }
+    p
+}
+
+/// Japanese: 1を押して / 1番を押して / シャープを押して, "for" = …は／…場合.
+fn ja_presses(chars: &[char]) -> Presses {
+    const NAMED: &[&str] = &["シャープ", "米印", "アスタリスク"];
+    const LEADS: &[&str] = &["は", "場合", "なら", "方"];
+    let mut p = Presses::default();
+    let mut floor = 0;
+    for b in 0..chars.len() {
+        if !starts_at(chars, b, "を押") {
+            continue;
+        }
+        let k = if b > 0 && chars[b - 1] == '番' { b - 1 } else { b };
+        let named = NAMED.iter().find_map(|s| {
+            let n = s.chars().count();
+            (k >= n && starts_at(chars, k - n, s)).then_some(n)
+        });
+        let key_start = match named {
+            Some(n) => k - n,
+            None => {
+                let numeral = |c: char| is_digit(c) || HAN_NUMERALS.contains(c);
+                let Some(&c) = k.checked_sub(1).and_then(|i| chars.get(i)) else { continue };
+                if !(numeral(c) || matches!(c, '#' | '＃' | '*' | '＊'))
+                    || (k >= 2 && numeral(chars[k - 2]))
+                {
+                    continue;
+                }
+                k - 1
+            }
+        };
+        if key_start < floor {
+            continue;
+        }
+        let before = lead_in(chars, key_start, floor);
+        p.add(LEADS.iter().any(|l| before.contains(l)));
+        floor = b;
+    }
+    p
+}
+
+/// Korean (spaces removed): 0번을 눌러, "for" = …은／는／…면.
+fn ko_presses(s: &[char]) -> Presses {
+    const PRESS: &[&str] = &["번을눌러", "번을누르", "번눌러", "번누르"];
+    const LEADS: &[&str] = &["려면", "원하시면", "경우"];
+    let mut p = Presses::default();
+    let mut floor = 0;
+    for b in 1..s.len() {
+        if match_any(s, b, PRESS).is_none() || !is_digit(s[b - 1]) || (b >= 2 && is_digit(s[b - 2])) {
+            continue;
+        }
+        let before = lead_in(s, b - 1, floor);
+        let purposed = before.chars().last().is_some_and(|c| matches!(c, '은' | '는' | '면'))
+            || LEADS.iter().any(|l| before.contains(l));
+        p.add(purposed);
+        floor = b;
+    }
+    p
+}
+
+/// Thai (spaces removed): กด 1 / กดหนึ่ง, "for" = หาก／ถ้า／สำหรับ… before or เพื่อ after.
+fn th_presses(s: &[char]) -> Presses {
+    const NUMERALS: &[&str] = &["ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"];
+    // What may follow a key: what it is for, the next option, a polite ending.
+    const AFTER: &[&str] = &["เพื่อ", "หาก", "ถ้า", "สำหรับ", "กด", "ค่ะ", "คะ", "ครับ", "หรือ"];
+    const LEADS: &[&str] = &["หาก", "ถ้า", "ต้องการ", "สำหรับ", "เพื่อ"];
+    let thai_digit = |c: char| is_digit(c) || ('๐'..='๙').contains(&c);
+    let mut p = Presses::default();
+    let (mut i, mut floor) = (0, 0);
+    while i < s.len() {
+        if !starts_at(s, i, "กด") {
+            i += 1;
+            continue;
+        }
+        let j = i + 2;
+        let key_end = if s.get(j).is_some_and(|&c| thai_digit(c)) && !s.get(j + 1).is_some_and(|&c| thai_digit(c)) {
+            j + 1
+        } else if let Some(n) = match_any(s, j, NUMERALS) {
+            j + n
+        } else {
+            i = j;
+            continue;
+        };
+        // กดสองครั้ง is "press twice".
+        if key_end == s.len() || !s[key_end].is_alphanumeric() || match_any(s, key_end, AFTER).is_some() {
+            let before: String = s[floor.max(i.saturating_sub(40))..i].iter().collect();
+            p.add(starts_at(s, key_end, "เพื่อ") || LEADS.iter().any(|l| before.contains(l)));
+            floor = key_end;
+        }
+        i = key_end;
+    }
+    p
+}
+
+/// Press verbs of the word languages (en, es, fr, de, pt, vi, id).
+const PRESS_VERBS: &[&[&str]] = &[
+    &["appuyez", "sur"],
+    &["drücken", "sie"],
+    &["press"],
+    &["pulse"],
+    &["marque"],
+    &["oprima"],
+    &["presione"],
+    &["pressione"],
+    &["tapez"],
+    &["digite"],
+    &["tecle"],
+    &["tekan"],
+    &["nhấn"],
+    &["bấm"],
+];
 
 /// Words that may stand between the verb and the key ("press the pound key").
-const KEY_ARTICLES: &[&str] = &["the", "la", "el", "le", "a", "o", "on"];
+const KEY_ARTICLES: &[&str] = &["the", "la", "el", "le", "a", "o", "die"];
+/// The key's own name before it: "la touche 2", "die Taste 1", "phím 1".
+const KEY_NOUNS: &[&str] = &["touche", "taste", "tecla", "phím", "số"];
 
 /// Keys by name: en, es, fr, de, pt, id.
 const KEY_WORDS: &[&str] = &[
     "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "pound", "star", "hash",
     "cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "asterisco",
-    "zéro", "un", "deux", "trois", "quatre", "cinq", "sept", "huit", "neuf", "dièse", "étoile",
+    "zéro", "deux", "trois", "quatre", "cinq", "sept", "huit", "neuf", "dièse", "étoile",
     "null", "eins", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun",
-    "um", "dois", "três", "quatro", "sete", "oito", "nove",
+    "dois", "três", "quatro", "sete", "oito", "nove",
     "nol", "satu", "dua", "tiga", "empat", "lima", "enam", "tujuh", "delapan", "sembilan",
 ];
 
-/// Whole words, so "pressed" is not "press" and "pressione" not "press".
-/// `#` and `*` are words of their own.
+/// What an option is for: "for billing, press 1", "press 1 to …", "para …".
+const PURPOSE_WORDS: &[&str] = &[
+    "for", "to", "if", "para", "pour", "si", "se", "für", "um", "wenn", "falls", "untuk", "jika", "kalau",
+    "nếu", "để",
+];
+
+/// Words a clause may open with before its purpose or verb.
+const FILLERS: &[&str] = &[
+    "and", "or", "y", "o", "et", "ou", "und", "oder", "e", "atau", "dan", "và", "hoặc", "please", "bitte",
+    "silakan", "veuillez", "vui", "lòng", "por", "favor",
+];
+
+/// Whole words, so "pressed" is not "press". `#` and `*` are words of their
+/// own; commas and colons become "," and sentence ends ".".
 fn tokens(lower: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
@@ -336,8 +528,11 @@ fn tokens(lower: &str) -> Vec<String> {
         if !cur.is_empty() {
             out.push(std::mem::take(&mut cur));
         }
-        if matches!(c, '#' | '*') {
-            out.push(c.to_string());
+        match c {
+            '#' | '*' => out.push(c.to_string()),
+            ',' | ':' => out.push(",".to_string()),
+            '.' | ';' | '!' | '?' | '¿' | '¡' => out.push(".".to_string()),
+            _ => {}
         }
     }
     if !cur.is_empty() {
@@ -346,27 +541,73 @@ fn tokens(lower: &str) -> Vec<String> {
     out
 }
 
-fn word_cue(lower: &str) -> bool {
-    let ws = tokens(lower);
-    let is_key = |w: &str| {
-        (w.len() <= 2 && w.chars().all(|c| c.is_ascii_digit())) || w == "#" || w == "*" || KEY_WORDS.contains(&w)
-    };
-    if WORD_PHRASES
-        .iter()
-        .any(|p| ws.windows(p.len()).any(|win| win.iter().zip(p.iter()).all(|(a, b)| a == b)))
-    {
-        return true;
+fn clause_start(ws: &[String], at: usize) -> usize {
+    let mut s = at;
+    while s > 0 && ws[s - 1] != "," && ws[s - 1] != "." {
+        s -= 1;
     }
-    ws.iter().enumerate().any(|(i, w)| {
-        if !PRESS_VERBS.contains(&w.as_str()) {
-            return false;
-        }
-        let mut j = i + 1;
+    s
+}
+
+fn skip_fillers(ws: &[String], mut k: usize, end: usize) -> usize {
+    while k < end && FILLERS.contains(&ws[k].as_str()) {
+        k += 1;
+    }
+    k
+}
+
+/// The clause with the verb opens with a purpose ("for billing press 1"), or
+/// the verb opens its clause and the one before it, after a comma, does
+/// ("for billing, press 1").
+fn purpose_before(ws: &[String], verb: usize) -> bool {
+    let is_purpose = |w: &String| PURPOSE_WORDS.contains(&w.as_str());
+    let start = clause_start(ws, verb);
+    let first = skip_fillers(ws, start, verb);
+    if first < verb {
+        return is_purpose(&ws[first]);
+    }
+    if start == 0 || ws[start - 1] != "," {
+        return false;
+    }
+    let prev = clause_start(ws, start - 1);
+    let first = skip_fillers(ws, prev, start - 1);
+    first < start - 1 && is_purpose(&ws[first])
+}
+
+fn word_presses(lower: &str) -> Presses {
+    let ws = tokens(lower);
+    let mut p = Presses::default();
+    let mut i = 0;
+    while i < ws.len() {
+        let Some(verb) = PRESS_VERBS
+            .iter()
+            .find(|v| ws.len() - i >= v.len() && v.iter().zip(&ws[i..]).all(|(a, b)| a == b))
+        else {
+            i += 1;
+            continue;
+        };
+        let mut j = i + verb.len();
         if ws.get(j).is_some_and(|a| KEY_ARTICLES.contains(&a.as_str())) {
             j += 1;
         }
-        ws.get(j).is_some_and(|k| is_key(k))
-    })
+        if ws.get(j).is_some_and(|a| KEY_NOUNS.contains(&a.as_str())) {
+            j += 1;
+        }
+        let is_key = ws.get(j).is_some_and(|k| {
+            (k.len() == 1 && k.chars().all(|c| c.is_ascii_digit()))
+                || k == "#"
+                || k == "*"
+                || KEY_WORDS.contains(&k.as_str())
+        });
+        if !is_key {
+            i += verb.len();
+            continue;
+        }
+        let purpose_after = ws.get(j + 1).is_some_and(|a| PURPOSE_WORDS.contains(&a.as_str()));
+        p.add(purpose_after || purpose_before(&ws, i));
+        i = j + 1;
+    }
+    p
 }
 
 #[cfg(test)]
@@ -376,13 +617,13 @@ mod tests {
     use tokio::net::TcpListener;
 
     #[test]
-    fn menu_words_in_every_language() {
+    fn menus_in_every_language() {
         for text in [
             "查詢帳單請按1，重聽請按九",
             "您好，轉接專人請按 9",
+            "若要查詢餘額，請按1",
+            "國語請按1台語請按2",
             "請按井字鍵結束",
-            "請按#號",
-            "您撥的電話將轉接到語音信箱",
             "按 1 查詢餘額",
             "普通話服務請按二",
             "广东话服务请按三，重听请按零",
@@ -390,19 +631,19 @@ mod tests {
             "For billing, press 1.",
             "Press one for sales.",
             "Press pound to repeat this menu.",
-            "To speak to an agent, stay on the line.",
+            "For billing press 1, for support press 2",
             "Para español, oprima dos.",
-            "1番を押してください",
-            "日本語は１を押してください",
-            "상담원 연결은 0번을 눌러 주세요",
             "Pulse 1 para ventas",
             "Para soporte, marque uno",
-            "Appuyez sur la touche étoile",
+            "お問い合わせは1番を押してください",
+            "日本語は１を押してください",
+            "상담원 연결은 0번을 눌러 주세요",
             "Pour le service client, tapez 1",
+            "Pour la facturation, appuyez sur la touche 2",
             "Für Deutsch drücken Sie die Eins",
-            "Pressione a tecla asterisco",
+            "Para vendas, pressione 1",
             "Para suporte, digite 1",
-            "Para vendas, tecle um",
+            "Para vendas, tecle 2",
             "Vui lòng nhấn phím 1 để gặp nhân viên",
             "Bấm phím 9 để nghe lại",
             "กด 1 เพื่อติดต่อเจ้าหน้าที่",
@@ -422,9 +663,11 @@ mod tests {
             "你到了按一下門鈴",
             "利息按1成計算",
             "請按星期一的時間來",
+            "我要轉接，門鈴按2",
             "I pressed one key and it broke",
             "She was pressing 1 again",
             "The press release is out",
+            "Please press 1",
             "Je suis sur la route",
             "Sie drücken nicht",
             "กดดันมากเลย",
@@ -455,20 +698,22 @@ mod tests {
     }
 
     #[test]
-    fn the_request_switches_thinking_off_and_keeps_the_end_of_a_long_call() {
+    fn the_request_holds_the_answer_to_three_labels_and_keeps_the_end_of_a_long_call() {
         let long = format!("對方：{}\n對方：請你去 ATM 解除分期", "喂".repeat(4000));
         let hits = vec!["ATM".to_string(), "解除分期".to_string()];
         let body = request_body(&long, &hits, "+12025550143", true);
         let g = &body["generationConfig"];
         assert_eq!(g["temperature"], 0);
         assert_eq!(g["responseMimeType"], "application/json");
-        assert_eq!(g["thinkingConfig"]["thinkingBudget"], 0);
+        assert_eq!(g["responseSchema"]["properties"]["verdict"]["enum"][2], "normal");
+        assert!(g.get("thinkingConfig").is_none(), "{g}");
         let user = body["contents"][0]["parts"][0]["text"].as_str().unwrap();
         assert!(user.contains("Caller: 請你去 ATM 解除分期"), "{user}");
         assert!(user.contains("Keywords that matched: ATM, 解除分期"), "{user}");
         assert!(user.contains("Number: +12025550143"), "{user}");
         assert!(user.chars().count() < MAX_DIALOGUE_CHARS + 200);
         let plain = request_body("對方：你好", &[], "", false);
+        assert!(plain["generationConfig"].get("responseSchema").is_none());
         assert!(plain["generationConfig"].get("thinkingConfig").is_none());
         assert!(plain["contents"][0]["parts"][0]["text"].as_str().unwrap().contains("Number: hidden"));
     }
@@ -521,6 +766,9 @@ mod tests {
     }
 
     const NORMAL: &str = r#"{"candidates":[{"content":{"parts":[{"text":"{\"verdict\":\"normal\"}"}]}}]}"#;
+    /// What the API answers a setting the model does not take.
+    const INVALID_ARGUMENT: &str =
+        r#"{"error":{"code":400,"message":"Request contains an invalid argument.","status":"INVALID_ARGUMENT"}}"#;
 
     fn hits() -> Vec<String> {
         vec!["匯款".to_string()]
@@ -535,7 +783,13 @@ mod tests {
         let req = seen[0].to_lowercase();
         assert!(req.starts_with("post /v1beta/models/gemini-flash-lite-latest:generatecontent "), "{req}");
         assert!(req.contains("x-goog-api-key: test-key"), "{req}");
-        assert!(req.contains("\"thinkingbudget\":0"), "{req}");
+        assert!(req.contains("\"responseschema\""), "{req}");
+        assert!(!req.contains("thinking"), "{req}");
+    }
+
+    #[test]
+    fn the_shared_client_is_built_once() {
+        assert!(std::ptr::eq(client(), client()));
     }
 
     #[tokio::test]
@@ -558,15 +812,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_model_that_must_think_is_asked_again_without_the_setting() {
-        let refused = r#"{"error":{"code":400,"message":"thinking budget is not supported by this model"}}"#;
+    async fn a_refused_request_is_asked_again_without_the_schema() {
         let menu = r#"{"candidates":[{"content":{"parts":[{"text":"{\"verdict\":\"ivr_recording\"}"}]}}]}"#;
-        let (base, server) = serve(vec![(400, refused, Duration::ZERO), (200, menu, Duration::ZERO)]).await;
+        let (base, server) = serve(vec![(400, INVALID_ARGUMENT, Duration::ZERO), (200, menu, Duration::ZERO)]).await;
         let v = review_at(&Client::new(), &base, "test-key", "對方：查詢帳單請按1", &hits(), "").await;
         assert_eq!(v, Verdict::IvrRecording);
         let seen = server.await.unwrap();
-        assert!(seen[0].contains("thinkingBudget"));
-        assert!(!seen[1].contains("thinkingBudget"));
+        assert!(seen[0].contains("responseSchema"));
+        assert!(!seen[1].contains("responseSchema"));
+    }
+
+    #[tokio::test]
+    async fn a_second_refusal_is_not_asked_again() {
+        let (base, server) = serve(vec![
+            (400, INVALID_ARGUMENT, Duration::ZERO),
+            (400, INVALID_ARGUMENT, Duration::ZERO),
+        ])
+        .await;
+        let v = review_at(&Client::new(), &base, "test-key", "對方：保證獲利", &hits(), "").await;
+        assert_eq!(v, Verdict::ScamOrSales);
+        assert_eq!(server.await.unwrap().len(), 2);
     }
 
     #[tokio::test]
