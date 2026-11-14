@@ -181,9 +181,12 @@ Text messages to callers (appointments) use the same connection:
 | agent → phone | `send_sms` with `"sub_id": <int>` | Optional: the SIM (Android subscription id) to send from — the one the call came in on. Without it, the phone's default SIM. |
 | phone → agent | `{"type": "send_sms_delivered", "id": "<same>", "ok": bool}` | The carrier's delivery report (each part of a long text may report; one `false` means not delivered). |
 
-A result that comes after the agent stopped waiting is still recorded, and the
-phone may send its last result again after reconnecting: the first result of an
-id counts, repeats change nothing.
+A result that comes after the agent stopped waiting is still recorded. The
+phone's `timeout` is not final: when the radio answers later, the phone sends the
+real result under the same `id` and it replaces the timeout (a send still waiting
+keeps waiting for it). After reconnecting the phone resends its recent results:
+the same result again changes nothing, nor does a different one for a text
+already settled.
 
 Calls use these optional fields (an app or agent that does not know them works
 as before):

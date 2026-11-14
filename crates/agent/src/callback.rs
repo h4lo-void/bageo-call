@@ -256,12 +256,38 @@ impl<V> Recent<V> {
 }
 
 /// What one text came to, as the phone reported it.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct SmsReport {
-    /// `send_sms_result`: sent or not; None = no result yet.
-    sent: Option<bool>,
+    /// `send_sms_result`; None = no result yet.
+    result: Option<SmsOutcome>,
     /// `send_sms_delivered`: false once any report says not delivered.
     delivered: Option<bool>,
+}
+
+/// The phone gave up waiting for the radio after 60 s (`timeout`): not final —
+/// the real result can still come, under the same id.
+fn is_phone_timeout(out: &SmsOutcome) -> bool {
+    matches!(out, SmsOutcome::Failed(code) if code == "timeout")
+}
+
+/// What a `send_sms_result` adds to what is known about its text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResultNews {
+    /// The first result, or the real one after the phone's own `timeout`.
+    New,
+    /// The same result again (the phone resends its recent ones after reconnecting).
+    Repeat,
+    /// A different result for a text already settled: it stays as it was.
+    Settled,
+}
+
+fn weigh_result(known: Option<&SmsOutcome>, new: &SmsOutcome) -> ResultNews {
+    match known {
+        None => ResultNews::New,
+        Some(k) if k == new => ResultNews::Repeat,
+        Some(k) if is_phone_timeout(k) => ResultNews::New,
+        Some(_) => ResultNews::Settled,
+    }
 }
 
 /// The control serials a call's phone may be registered under: its own, and the
@@ -460,10 +486,12 @@ impl ControlRegistry {
         }
     }
 
-    /// A phone's `send_sms_result`; false when nothing was waiting for it. Every
-    /// first result of an id is recorded, also one that comes after the wait
-    /// ended; a repeat of a result already counted (the phone resends its last
-    /// one after reconnecting) changes nothing.
+    /// A phone's `send_sms_result`; true when a waiting send took it. Recorded
+    /// also after the wait ended. The phone's own `timeout` is not final: the
+    /// real result may follow under the same id and replaces it, and a waiting
+    /// send keeps waiting for it (up to its own limit). The same result again
+    /// (the phone resends its recent ones after reconnecting) changes nothing,
+    /// nor does a different one for a text already settled.
     pub async fn handle_sms_result(&self, msg: &Value) -> bool {
         let Some((id, out)) = parse_sms_result(msg) else {
             return false;
@@ -471,11 +499,21 @@ impl ControlRegistry {
         {
             let mut reports = self.sms_reports.lock().await;
             let report = reports.get_or_insert(&id);
-            if report.sent.is_some() {
-                info!(id, "send_sms_result repeated: already counted");
-                return false;
+            match weigh_result(report.result.as_ref(), &out) {
+                ResultNews::New => report.result = Some(out.clone()),
+                ResultNews::Repeat => {
+                    info!(id, "send_sms_result repeated: already counted");
+                    return false;
+                }
+                ResultNews::Settled => {
+                    info!(id, outcome = ?out, known = ?report.result, "send_sms_result ignored: already settled");
+                    return false;
+                }
             }
-            report.sent = Some(out == SmsOutcome::Sent);
+        }
+        if is_phone_timeout(&out) && self.sms_waiters.lock().await.contains_key(&id) {
+            info!(id, "send_sms_result timeout from the phone: still waiting for its real result");
+            return false;
         }
         let Some((serial, tx)) = self.sms_waiters.lock().await.remove(&id) else {
             info!(id, outcome = ?out, "send_sms_result after the wait ended: recorded");
@@ -507,8 +545,11 @@ impl ControlRegistry {
         let id: String = id.chars().take(SMS_ID_MAX).collect();
         let reports = self.sms_reports.lock().await;
         let r = reports.get(&id)?;
+        if r.result.is_none() && r.delivered.is_none() {
+            return None;
+        }
         // A delivery report only exists for a text that went out.
-        let sent = r.sent.or(r.delivered.map(|_| true))?;
+        let sent = r.result == Some(SmsOutcome::Sent) || r.delivered.is_some();
         Some((sent, r.delivered))
     }
 
@@ -1029,10 +1070,32 @@ mod tests {
         let late = json!({"type": "send_sms_result", "id": "t5", "ok": true});
         assert!(!reg.handle_sms_result(&late).await);
         assert_eq!(reg.sms_outcome("t5").await, Some((true, None)));
-        // The phone resends its last result after reconnecting: counted once.
+        // The phone resends its recent results after reconnecting: counted once,
+        // and a different one does not undo a settled text.
+        assert!(!reg.handle_sms_result(&late).await);
         let replay = json!({"type": "send_sms_result", "id": "t5", "ok": false, "error": "no_service"});
         assert!(!reg.handle_sms_result(&replay).await);
         assert_eq!(reg.sms_outcome("t5").await, Some((true, None)));
+        // The phone timed out (60 s), then its radio answered: the real result
+        // replaces the timeout, a resent timeout does not come back.
+        let timeout = json!({"type": "send_sms_result", "id": "t8", "ok": false, "error": "timeout"});
+        let sent = json!({"type": "send_sms_result", "id": "t8", "ok": true});
+        assert!(!reg.handle_sms_result(&timeout).await);
+        assert_eq!(reg.sms_outcome("t8").await, Some((false, None)));
+        assert!(!reg.handle_sms_result(&sent).await);
+        assert_eq!(reg.sms_outcome("t8").await, Some((true, None)));
+        assert!(!reg.handle_sms_result(&timeout).await);
+        assert!(!reg.handle_sms_result(&sent).await);
+        assert_eq!(reg.sms_outcome("t8").await, Some((true, None)));
+        // A send still waiting is not ended by the phone's timeout; it gets the
+        // real result that follows.
+        let (tx, mut rx) = oneshot::channel();
+        reg.sms_waiters.lock().await.insert("t9".into(), ("pixel-1".into(), tx));
+        let t9_timeout = json!({"type": "send_sms_result", "id": "t9", "ok": false, "error": "timeout"});
+        assert!(!reg.handle_sms_result(&t9_timeout).await);
+        assert!(rx.try_recv().is_err());
+        assert!(reg.handle_sms_result(&json!({"type": "send_sms_result", "id": "t9", "ok": true})).await);
+        assert_eq!(rx.await.unwrap(), SmsOutcome::Sent);
         // A waiting send gets the first result; a repeat does not reach it twice.
         let (tx, rx) = oneshot::channel();
         reg.sms_waiters.lock().await.insert("t6".into(), ("pixel-1".into(), tx));
