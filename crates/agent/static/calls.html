@@ -1140,6 +1140,7 @@ I18N["en"] = {
   save_bar: "Unsaved changes: {n}",
   save_btn: "Save changes",
   saved: "Saved. Applies from the next call.",
+  notify_follows_ui: "Notifications are now in {lang} too (settings: Notification language).",
   save_failed: "Could not save: {msg}",
   range_err: "{label}: enter a value from {lo} to {hi}",
   sec_saved: "Saved",
@@ -1748,6 +1749,7 @@ I18N["zh-TW"] = {
   save_bar: "尚未儲存的變更：{n}",
   save_btn: "儲存變更",
   saved: "已儲存，下一通電話開始生效。",
+  notify_follows_ui: "通知也改成{lang}了（設定：通知語言）。",
   save_failed: "儲存失敗：{msg}",
   range_err: "{label}：請輸入 {lo} 到 {hi} 之間的數字",
   sec_saved: "已設定",
@@ -2356,6 +2358,7 @@ I18N["zh-CN"] = {
   save_bar: "未保存的更改：{n}",
   save_btn: "保存更改",
   saved: "已保存，从下一通电话开始生效。",
+  notify_follows_ui: "通知也改成{lang}了（设置：通知语言）。",
   save_failed: "保存失败：{msg}",
   range_err: "{label}：请输入 {lo} 到 {hi} 之间的数字",
   sec_saved: "已设置",
@@ -2964,6 +2967,7 @@ I18N["ja"] = {
   save_bar: "未保存の変更：{n}",
   save_btn: "変更を保存",
   saved: "保存しました。次の通話から反映されます。",
+  notify_follows_ui: "通知も{lang}に切り替えました（設定：通知の言語）。",
   save_failed: "保存できませんでした：{msg}",
   range_err: "{label}：{lo}〜{hi} の値を入力してください",
   sec_saved: "設定済み",
@@ -3572,6 +3576,7 @@ I18N["ko"] = {
   save_bar: "저장하지 않은 변경 사항: {n}",
   save_btn: "변경 사항 저장",
   saved: "저장했습니다. 다음 통화부터 적용됩니다.",
+  notify_follows_ui: "알림도 {lang}(으)로 바꿨습니다 (설정: 알림 언어).",
   save_failed: "저장하지 못했습니다: {msg}",
   range_err: "{label}: {lo}~{hi} 사이의 값을 입력해 주세요",
   sec_saved: "설정됨",
@@ -4180,6 +4185,7 @@ I18N["es"] = {
   save_bar: "Cambios sin guardar: {n}",
   save_btn: "Guardar cambios",
   saved: "Guardado. Se aplica a partir de la próxima llamada.",
+  notify_follows_ui: "Las notificaciones también están ahora en {lang} (ajustes: idioma de las notificaciones).",
   save_failed: "No se pudo guardar: {msg}",
   range_err: "{label}: escribe un valor entre {lo} y {hi}",
   sec_saved: "Guardada",
@@ -4788,6 +4794,7 @@ I18N["fr"] = {
   save_bar: "Modifications non enregistrées : {n}",
   save_btn: "Enregistrer",
   saved: "Enregistré. S'applique dès le prochain appel.",
+  notify_follows_ui: "Les notifications sont maintenant aussi en {lang} (réglages : langue des notifications).",
   save_failed: "Enregistrement impossible : {msg}",
   range_err: "{label} : saisissez une valeur entre {lo} et {hi}",
   sec_saved: "Enregistrée",
@@ -5396,6 +5403,7 @@ I18N["de"] = {
   save_bar: "Ungespeicherte Änderungen: {n}",
   save_btn: "Änderungen speichern",
   saved: "Gespeichert. Gilt ab dem nächsten Anruf.",
+  notify_follows_ui: "Benachrichtigungen sind jetzt auch auf {lang} (Einstellungen: Sprache der Benachrichtigungen).",
   save_failed: "Speichern fehlgeschlagen: {msg}",
   range_err: "{label}: Gib einen Wert von {lo} bis {hi} ein",
   sec_saved: "Gespeichert",
@@ -6004,6 +6012,7 @@ I18N["pt"] = {
   save_bar: "Alterações não salvas: {n}",
   save_btn: "Salvar alterações",
   saved: "Salvo. Vale a partir da próxima chamada.",
+  notify_follows_ui: "As notificações agora também estão em {lang} (configurações: idioma das notificações).",
   save_failed: "Não foi possível salvar: {msg}",
   range_err: "{label}: digite um valor de {lo} a {hi}",
   sec_saved: "Salva",
@@ -6761,9 +6770,28 @@ function setLang(l) {
   for (const l of LANGS) $("langSel").append(h("option", { value: l, text: LANG_NAMES[l] || l }));
 })();
 $("langSel").addEventListener("change", () => {
-  store.set("pca.lang", $("langSel").value);
-  setLang($("langSel").value);
+  const l = $("langSel").value;
+  store.set("pca.lang", l);
+  setLang(l);
+  followNotifyLang(l);
 });
+// The owner reads notifications in the language they read this console in:
+// switching it here also sets the agent's notification language (still editable
+// on its own in the settings). Only that one field is saved; other edits stay.
+async function followNotifyLang(l) {
+  if (!S || matchLang(S.notify_language || S.language) === l) return;
+  try {
+    const d = await api("/settings", jsonBody("PUT", { notify_language: l }));
+    S = d.settings || S;
+    const el = $("f-notify_language");
+    if (el) el.value = S.notify_language || "";
+    updateDirty();
+    store.set("pca.srvlang", l);
+    toast(t("notify_follows_ui", { lang: LANG_NAMES[l] || l }));
+  } catch (e) {
+    if (e.status !== 401) toast(t("save_failed", { msg: e.message }), true);
+  }
+}
 
 // ---------------------------------------------------------------- views / routing
 const VIEWS = ["calls", "settings", "system"];
