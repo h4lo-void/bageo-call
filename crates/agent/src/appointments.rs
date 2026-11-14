@@ -2047,18 +2047,14 @@ fn named_phone(name: &str, labels: &std::collections::BTreeMap<String, String>, 
 /// Where a test call's text goes out (settings `appointment_test_sms_phone` and
 /// `appointment_test_sms_sim`): that phone, or the one that took the call; the
 /// SIM by name, else that phone's default SIM, else the SIM that took the call.
-async fn test_text_route(
-    rt: &RuntimeSettings,
-    control: &ControlRegistry,
-    task: &TaskRecord,
-    appt: &Appointment,
-) -> (String, SmsSim) {
+/// `connected`: the phones connected now ([`ControlRegistry::connected_serials`]).
+fn test_text_route(rt: &RuntimeSettings, connected: &[String], task: &TaskRecord, appt: &Appointment) -> (String, SmsSim) {
     let phone_set = rt.appointment_test_sms_phone.trim();
     let sim_set = rt.appointment_test_sms_sim.trim();
     let phone = if phone_set.is_empty() {
         task.serial.clone()
     } else {
-        named_phone(phone_set, &rt.device_labels, &control.connected_serials().await)
+        named_phone(phone_set, &rt.device_labels, connected)
     };
     let sim = if !sim_set.is_empty() {
         SmsSim::Named(sim_set.to_string())
@@ -2070,10 +2066,73 @@ async fn test_text_route(
     (phone, sim)
 }
 
+/// The phone and SIM a text goes out from when the owner picks no phone: for a
+/// test call ([`is_test_call`]) those its settings name ([`test_text_route`]),
+/// else the phone and SIM that took the call.
+fn default_text_route(rt: &RuntimeSettings, connected: &[String], task: &TaskRecord, appt: &Appointment) -> (String, SmsSim) {
+    if is_test_call(rt, task, appt) {
+        test_text_route(rt, connected, task, appt)
+    } else {
+        (task.serial.clone(), SmsSim::from_sub_id(appt.sim_sub_id))
+    }
+}
+
+/// Where an appointment's text goes out when the owner picks no phone, as the
+/// web console shows it (`sms_route` on `GET /calls/api/tasks`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SmsRoute {
+    /// The phone's id.
+    pub serial: String,
+    /// The phone's name in `device_labels`, else its id.
+    pub label: String,
+    /// The SIM the phone looks up by name (`appointment_test_sms_sim`); left
+    /// out when the phone uses the SIM that took the call or its default SIM.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub sim: String,
+    /// A test call whose phone or SIM the test text settings name.
+    pub test: bool,
+}
+
+/// The route of [`default_text_route`] for a task's appointment; None for a
+/// task without an appointment or a phone. The phone need not be connected.
+pub fn sms_route(rt: &RuntimeSettings, connected: &[String], task: &TaskRecord) -> Option<SmsRoute> {
+    let appt = task.appointment.as_ref()?;
+    let (serial, sim) = default_text_route(rt, connected, task, appt);
+    let serial = serial.trim().to_string();
+    if serial.is_empty() {
+        return None;
+    }
+    let label = rt
+        .device_labels
+        .iter()
+        .find(|(id, _)| id.eq_ignore_ascii_case(&serial))
+        .map(|(_, label)| label.trim())
+        .filter(|label| !label.is_empty())
+        .unwrap_or(&serial)
+        .to_string();
+    let sim = match sim {
+        SmsSim::Named(name) => name.trim().to_string(),
+        SmsSim::Default | SmsSim::SubId(_) => String::new(),
+    };
+    let set = !rt.appointment_test_sms_phone.trim().is_empty() || !rt.appointment_test_sms_sim.trim().is_empty();
+    let test = set && is_test_call(rt, task, appt);
+    Some(SmsRoute { serial, label, sim, test })
+}
+
+/// A task as `GET /calls/api/tasks` lists it: an appointment's task with its
+/// [`SmsRoute`] as `sms_route`.
+pub fn task_json(rt: &RuntimeSettings, connected: &[String], task: &TaskRecord) -> Value {
+    let mut v = serde_json::to_value(task).unwrap_or(Value::Null);
+    if let (Some(route), Some(obj)) = (sms_route(rt, connected, task), v.as_object_mut()) {
+        obj.insert("sms_route".into(), json!(route));
+    }
+    v
+}
+
 /// Send the caller the text for this decision through the phone that took the
 /// call (or `serial`, another phone the owner picked). A test call
 /// ([`is_test_call`]) texts only test numbers, from the phone and SIM its
-/// settings name ([`test_text_route`]) unless the owner picked another phone.
+/// settings name ([`default_text_route`]) unless the owner picked another phone.
 /// Returns the [`Appointment::sms`] code and the owner's line.
 async fn text_caller(
     rt: &RuntimeSettings,
@@ -2104,7 +2163,11 @@ async fn text_caller(
     };
     let (phone, sim) = match serial.map(str::trim).filter(|s| !s.is_empty()) {
         Some(picked) => {
-            let route = if test_call { Some(test_text_route(rt, control, task, appt).await) } else { None };
+            let route = if test_call {
+                Some(test_text_route(rt, &control.connected_serials().await, task, appt))
+            } else {
+                None
+            };
             match route {
                 // The owner picked the test phone itself: the SIM the settings name.
                 Some((test_phone, sim)) if test_phone.eq_ignore_ascii_case(picked) => (picked.to_string(), sim),
@@ -2115,8 +2178,7 @@ async fn text_caller(
                 }
             }
         }
-        None if test_call => test_text_route(rt, control, task, appt).await,
-        None => (task.serial.clone(), SmsSim::from_sub_id(appt.sim_sub_id)),
+        None => default_text_route(rt, &control.connected_serials().await, task, appt),
     };
     // To the caller: in the language the AI spoke with them.
     let text = sms_text(locale::current(), &rt.owner_name, appt, confirmed);
@@ -4479,6 +4541,99 @@ mod tests {
         assert_eq!(code, "sent");
         assert_eq!(msg["to"], json!("+16505550123"));
         assert_eq!(next_json(&mut took, quiet).await, None);
+    }
+
+    #[tokio::test]
+    async fn the_shown_text_route_is_the_one_the_text_takes() {
+        use crate::callback::test_socket::{next_json, phone_socket};
+        let quiet = std::time::Duration::from_millis(150);
+        let control = ControlRegistry::default();
+        // pixel-1 ("Pixel 7") takes the calls; pixel-12345 ("Pixel 9") is the test phone.
+        let (took_sink, mut took) = phone_socket().await;
+        let (test_sink, mut tester) = phone_socket().await;
+        control.register_client("pixel-1".into(), took_sink).await;
+        control.register_client("pixel-12345".into(), test_sink).await;
+        for s in ["pixel-1", "pixel-12345"] {
+            control.set_supports_sms(s, true).await;
+            control.set_supports_sim_select(s, true).await;
+        }
+        let connected = control.connected_serials().await;
+        let mut rt = plain_settings();
+        rt.appointment_test_numbers = vec!["16505550123".into()];
+        rt.appointment_test_sms_phone = "pixel 9".into();
+        rt.appointment_test_sms_sim = "Tello".into();
+        rt.device_labels.insert("pixel-1".into(), "Pixel 7".into());
+        rt.device_labels.insert("pixel-12345".into(), "Pixel 9".into());
+        rt.device_labels.insert("pixel-23456".into(), "Pixel 8".into());
+        let mut a = appt(&later(2, 15), &later(2, 16), "看房");
+        a.status = BOOKED.into();
+        a.calendar = DEMO_CALENDAR.into();
+        a.sim_sub_id = Some(2);
+        let mut plain = a.clone();
+        plain.calendar = String::new();
+        let task = |id: &str, caller: &str, a: &Appointment| TaskRecord { id: id.into(), ..task_for(caller, a) };
+        let route = |serial: &str, label: &str, sim: &str, test: bool| SmsRoute {
+            serial: serial.into(),
+            label: label.into(),
+            sim: sim.into(),
+            test,
+        };
+
+        // Any other call: the phone that took it, from the SIM that took it.
+        let t1 = task("r1", "+16505550142", &plain);
+        assert_eq!(sms_route(&rt, &connected, &t1), Some(route("pixel-1", "Pixel 7", "", false)));
+        assert_eq!(
+            task_json(&rt, &connected, &t1)["sms_route"],
+            json!({"serial": "pixel-1", "label": "Pixel 7", "test": false})
+        );
+        let (code, msg) = text_and_answer(&control, &mut took, text_caller(&rt, Some(&control), &t1, &plain, true, None)).await;
+        assert_eq!((code.as_str(), msg["sub_id"].clone(), msg.get("sim")), ("sent", json!(2), None));
+        assert_eq!(next_json(&mut tester, quiet).await, None);
+
+        // A test call with the test phone and SIM set: that phone (by its name) and that SIM.
+        let t2 = task("r2", "+16505550123", &a);
+        assert_eq!(sms_route(&rt, &connected, &t2), Some(route("pixel-12345", "Pixel 9", "Tello", true)));
+        assert_eq!(
+            task_json(&rt, &connected, &t2)["sms_route"],
+            json!({"serial": "pixel-12345", "label": "Pixel 9", "sim": "Tello", "test": true})
+        );
+        let (code, msg) = text_and_answer(&control, &mut tester, text_caller(&rt, Some(&control), &t2, &a, true, None)).await;
+        assert_eq!((code.as_str(), msg["sim"].clone(), msg.get("sub_id")), ("sent", json!("Tello"), None));
+        assert_eq!(next_json(&mut took, quiet).await, None);
+
+        // A test call with neither set: as any other call.
+        let mut unset = rt.clone();
+        unset.appointment_test_sms_phone = String::new();
+        unset.appointment_test_sms_sim = String::new();
+        let t3 = task("r3", "+16505550123", &a);
+        assert_eq!(sms_route(&unset, &connected, &t3), Some(route("pixel-1", "Pixel 7", "", false)));
+        let (code, msg) = text_and_answer(&control, &mut took, text_caller(&unset, Some(&control), &t3, &a, true, None)).await;
+        assert_eq!((code.as_str(), msg["sub_id"].clone(), msg.get("sim")), ("sent", json!(2), None));
+        assert_eq!(next_json(&mut tester, quiet).await, None);
+
+        // Only the SIM set: the phone that took the call, the SIM by name.
+        let mut sim_only = rt.clone();
+        sim_only.appointment_test_sms_phone = String::new();
+        let t4 = task("r4", "+16505550123", &a);
+        assert_eq!(sms_route(&sim_only, &connected, &t4), Some(route("pixel-1", "Pixel 7", "Tello", true)));
+        let (code, msg) = text_and_answer(&control, &mut took, text_caller(&sim_only, Some(&control), &t4, &a, true, None)).await;
+        assert_eq!((code.as_str(), msg["sim"].clone(), msg.get("sub_id")), ("sent", json!("Tello"), None));
+        assert_eq!(next_json(&mut tester, quiet).await, None);
+
+        // The test phone is not connected: still shown; the text answers offline.
+        let mut away = rt.clone();
+        away.appointment_test_sms_phone = "pixel 8".into();
+        let t5 = task("r5", "+16505550123", &a);
+        assert_eq!(sms_route(&away, &connected, &t5), Some(route("pixel-23456", "Pixel 8", "Tello", true)));
+        assert_eq!(text_caller(&away, Some(&control), &t5, &a, true, None).await.0, "offline");
+        assert_eq!(next_json(&mut took, quiet).await, None);
+        assert_eq!(next_json(&mut tester, quiet).await, None);
+
+        // A task without an appointment has no route.
+        let mut other = task("r6", "+16505550142", &plain);
+        other.appointment = None;
+        assert_eq!(sms_route(&rt, &connected, &other), None);
+        assert!(task_json(&rt, &connected, &other).get("sms_route").is_none());
     }
 
     // ---- Review t5 (acceptance): checks added by the reviewer ----

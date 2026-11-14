@@ -85,7 +85,7 @@ PUT /calls/api/settings
 
 | 方法和路径 | 内容 |
 |---|---|
-| `GET /calls/api/tasks` | 任务，最新的在前（最多 200 条）：`{ok, tasks}`。网页的“待确认的预约”就是 `appointment.status` 为 `pending` 的任务。 |
+| `GET /calls/api/tasks` | 任务，最新的在前（最多 200 条）：`{ok, tasks}`。网页的“待确认的预约”就是 `appointment.status` 为 `pending` 的任务。有预约的任务另带 `sms_route`：没另选手机时短信从哪里发（网页“重发短信”菜单的默认选项），跟主程序实际发送用同一套规则：`{serial, label, sim, test}`——`serial` 手机 ID，`label` 它在 `device_labels` 的名称（没有就是 ID），`sim` 按名称挑的 SIM（`appointment_test_sms_sim`；用接这通电话的 SIM 或手机默认 SIM 时不出现），`test` 为 true 表示这是测试来电、手机或 SIM 由 `appointment_test_sms_phone`／`appointment_test_sms_sim` 指定。手机不在线也照样列出，发送时才会返回 `offline`。 |
 | `POST /calls/api/tasks/{id}/confirm` | 对预约来说等于在网页或 Telegram 卡片上按 **✅ 确定**——写进 Google 日历，接着（开启 `appointment_sms` 时）给对方发短信，可能要等最多 90 秒。响应 `{ok, task, message}`；`message` 是结果，网页显示的和 Telegram Bot 回复的是同一段。这条预约发过 Telegram 卡片时，卡片上的按钮会去掉，并把 `message` 回复到那个聊天（尽力而为，Telegram 失败不影响决定）。只有第一次决定才算：之后再确定或婉拒——包括第一次还在处理时发来的，或在 Telegram 卡片上按的——都只回复“已经处理过了”，不会有任何变化。请求要带 `Content-Type: application/json`（不用 body），否则返回 HTTP 400 `bad_request`，这样别的网页无法通过你局域网里的浏览器替你决定。 |
 | `POST /calls/api/tasks/{id}/ignore` | 对预约来说等于 **❌ 婉拒**（通话中已经写进日历的那条会删掉；开启 `appointment_sms` 时发短信）。响应与规则同上。 |
 

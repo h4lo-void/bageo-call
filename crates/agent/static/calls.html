@@ -1084,6 +1084,8 @@ I18N["en"] = {
   ap_retry_sms: "Send the text again",
   ap_sms_from: "Send from",
   ap_sms_from_call: "{phone} (took the call)",
+  ap_sms_from_test: "{phone} (set for test calls)",
+  ap_sms_from_test_sim: "{phone} · {sim} (set for test calls)",
   sms_c_offline: "the phone is not connected",
   sms_c_old_app: "the phone app is too old",
   sms_c_timeout: "the phone did not respond",
@@ -1707,6 +1709,8 @@ I18N["zh-TW"] = {
   ap_retry_sms: "重傳簡訊",
   ap_sms_from: "用哪支手機傳",
   ap_sms_from_call: "{phone}（接這通的手機）",
+  ap_sms_from_test: "{phone}（測試簡訊設定）",
+  ap_sms_from_test_sim: "{phone}・{sim}（測試簡訊設定）",
   sms_c_offline: "手機沒連線",
   sms_c_old_app: "手機 App 太舊",
   sms_c_timeout: "手機沒有回應（逾時）",
@@ -2330,6 +2334,8 @@ I18N["zh-CN"] = {
   ap_retry_sms: "重发短信",
   ap_sms_from: "用哪部手机发",
   ap_sms_from_call: "{phone}（接这通电话的手机）",
+  ap_sms_from_test: "{phone}（测试短信设置）",
+  ap_sms_from_test_sim: "{phone}・{sim}（测试短信设置）",
   sms_c_offline: "手机没连线",
   sms_c_old_app: "手机 App 太旧",
   sms_c_timeout: "手机没有回应（超时）",
@@ -2953,6 +2959,8 @@ I18N["ja"] = {
   ap_retry_sms: "SMS を再送",
   ap_sms_from: "送信に使う端末",
   ap_sms_from_call: "{phone}（この電話を受けた端末）",
+  ap_sms_from_test: "{phone}（テスト着信の SMS 設定）",
+  ap_sms_from_test_sim: "{phone}・{sim}（テスト着信の SMS 設定）",
   sms_c_offline: "スマホが接続されていません",
   sms_c_old_app: "スマホのアプリが古い",
   sms_c_timeout: "スマホから応答がありません",
@@ -3576,6 +3584,8 @@ I18N["ko"] = {
   ap_retry_sms: "문자 다시 보내기",
   ap_sms_from: "보낼 휴대폰",
   ap_sms_from_call: "{phone} (이 전화를 받은 휴대폰)",
+  ap_sms_from_test: "{phone} (테스트 전화 문자 설정)",
+  ap_sms_from_test_sim: "{phone} · {sim} (테스트 전화 문자 설정)",
   sms_c_offline: "휴대폰이 연결되어 있지 않음",
   sms_c_old_app: "휴대폰 앱이 오래됨",
   sms_c_timeout: "휴대폰이 응답하지 않음",
@@ -4199,6 +4209,8 @@ I18N["es"] = {
   ap_retry_sms: "Reenviar el SMS",
   ap_sms_from: "Enviar desde",
   ap_sms_from_call: "{phone} (atendió la llamada)",
+  ap_sms_from_test: "{phone} (ajuste de SMS de prueba)",
+  ap_sms_from_test_sim: "{phone} · {sim} (ajuste de SMS de prueba)",
   sms_c_offline: "el teléfono no está conectado",
   sms_c_old_app: "la app del teléfono es demasiado antigua",
   sms_c_timeout: "el teléfono no respondió",
@@ -4822,6 +4834,8 @@ I18N["fr"] = {
   ap_retry_sms: "Renvoyer le SMS",
   ap_sms_from: "Envoyer depuis",
   ap_sms_from_call: "{phone} (a pris l'appel)",
+  ap_sms_from_test: "{phone} (réglage des SMS de test)",
+  ap_sms_from_test_sim: "{phone} · {sim} (réglage des SMS de test)",
   sms_c_offline: "le téléphone n'est pas connecté",
   sms_c_old_app: "l'application du téléphone est trop ancienne",
   sms_c_timeout: "le téléphone n'a pas répondu",
@@ -5445,6 +5459,8 @@ I18N["de"] = {
   ap_retry_sms: "SMS erneut senden",
   ap_sms_from: "Senden von",
   ap_sms_from_call: "{phone} (hat den Anruf angenommen)",
+  ap_sms_from_test: "{phone} (Einstellung für Test-SMS)",
+  ap_sms_from_test_sim: "{phone} · {sim} (Einstellung für Test-SMS)",
   sms_c_offline: "das Telefon ist nicht verbunden",
   sms_c_old_app: "die App auf dem Telefon ist zu alt",
   sms_c_timeout: "das Telefon hat nicht geantwortet",
@@ -6068,6 +6084,8 @@ I18N["pt"] = {
   ap_retry_sms: "Reenviar o SMS",
   ap_sms_from: "Enviar de",
   ap_sms_from_call: "{phone} (atendeu a ligação)",
+  ap_sms_from_test: "{phone} (ajuste de SMS de teste)",
+  ap_sms_from_test_sim: "{phone} · {sim} (ajuste de SMS de teste)",
   sms_c_offline: "o telefone não está conectado",
   sms_c_old_app: "o app do telefone é antigo demais",
   sms_c_timeout: "o telefone não respondeu",
@@ -8595,12 +8613,21 @@ function apptBlock(callId, ap, named) {
 // The agent's rule (appointments.rs sms_retryable): a decided appointment whose
 // text did not go out — not to a number that takes no texts, which would only fail again.
 const smsRetryable = (st, sms) => st !== "pending" && !!sms && !["sent", "no_number"].includes(sms);
-// "Send the text again": from the phone that took the call, or another connected one.
+// "Send the text again": by default from the phone (and SIM) the agent would use
+// (`sms_route`: the phone that took the call, or for a test call the phone and SIM
+// the test text settings name), or from another connected phone.
 function smsRetryRow(tk, busy) {
+  const route = tk.sms_route || null;
+  const from = (route && route.serial) || tk.serial;
+  const phone = (route && route.label) || devName(from);
+  const first = route && route.test
+    ? (route.sim ? t("ap_sms_from_test_sim", { phone, sim: route.sim }) : t("ap_sms_from_test", { phone }))
+    : t("ap_sms_from_call", { phone });
   const sel = h("select", { "aria-label": t("ap_sms_from"), title: t("ap_sms_from") },
-    h("option", { value: "", text: t("ap_sms_from_call", { phone: devName(tk.serial) }) }));
+    h("option", { value: "", text: first }));
   for (const s of (devices && devices.connected) || []) {
-    if (s !== tk.serial) sel.append(h("option", { value: s, text: devName(s) }));
+    // Phone ids compare in any case (a device label's key may differ from the connected id).
+    if (String(s).toLowerCase() !== String(from).toLowerCase()) sel.append(h("option", { value: s, text: devName(s) }));
   }
   return h("div", { class: "btns appt-retry" }, sel,
     h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => retrySms(tk.id, sel.value), text: t("ap_retry_sms") }));
