@@ -2613,7 +2613,20 @@ pub fn caller_wraps_up(text: &str) -> bool {
         && (ends_with_farewell(text, 2)
             || wrapup(text)
             || wrapup(strip_trailing_thanks(text))
-            || VI_THANKS_CLOSING.ends(&words(text)))
+            || VI_THANKS_CLOSING.ends(&words(text))
+            || ja_thanks_closing(text))
+}
+
+/// Japanese business calls close with thanks in the past tense, as the very
+/// last words: 「（ご利用）ありがとうございました」 ends the call the way
+/// 「失礼します」 does (a courier's call never hung up after it). The present
+/// 「ありがとうございます」 is said mid-call and does not count. The caller's
+/// side only, like [`caller_wraps_up`] as a whole.
+fn ja_thanks_closing(text: &str) -> bool {
+    let t = text.trim_end_matches(|c: char| c.is_whitespace() || "。．.、,!！〜～ー".contains(c));
+    ["ありがとうございました", "有難うございました", "ありがとう御座いました"]
+        .iter()
+        .any(|s| t.ends_with(s))
 }
 
 /// Vietnamese callers often close with thanks alone, said politely to the end
@@ -2851,6 +2864,17 @@ mod tests {
         ] {
             assert!(!asks_to_hold(t), "{t}");
         }
+    }
+
+    #[test]
+    fn japanese_past_thanks_at_the_end_closes_the_call() {
+        // A courier's call that never hung up.
+        assert!(caller_wraps_up("かしこまりました。それでは、管理室の方にお預けしておきますね。ご利用ありがとうございました。"));
+        assert!(caller_wraps_up("お忙しいところありがとうございました"));
+        // Present-tense thanks are said mid-call; thanks followed by more words are not the end.
+        assert!(!caller_wraps_up("ありがとうございます。"));
+        assert!(!caller_wraps_up("ありがとうございました。それで、明日の件ですが"));
+        assert!(!caller_wraps_up("ありがとうございましたか？"));
     }
 
     #[test]

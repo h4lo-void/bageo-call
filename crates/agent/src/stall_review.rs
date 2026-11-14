@@ -158,14 +158,23 @@ async fn ask(
         if !status.is_success() {
             bail!("status {status}: {}", head_chars(&text, 80));
         }
-        return parse_verdict(&text).with_context(|| format!("unreadable answer: {}", head_chars(&text, 80)));
+        return parse_verdict(&text).with_context(|| {
+            let finish = serde_json::from_str::<Value>(&text)
+                .ok()
+                .and_then(|v| v.pointer("/candidates/0/finishReason").and_then(Value::as_str).map(str::to_string))
+                .unwrap_or_default();
+            format!("unreadable answer (finish {finish:?}): {}", head_chars(&text.replace('\n', " "), 120))
+        });
     }
 }
 
-/// The generateContent request. No thinkingConfig: gemini-flash-lite-latest
-/// refuses a request that carries one (400 INVALID_ARGUMENT) and answers in
-/// about a second without it. `strict` holds the answer to the three labels;
-/// the retry after a 400 leaves that out and reads the model's text.
+/// The generateContent request. gemini-flash-lite-latest is a thinking model:
+/// on a long, unclear call it thinks before it answers, and the thoughts count
+/// against `maxOutputTokens` — a small cap cut the answer off (every review of
+/// a real call came back unreadable). Room for both, and the least thinking it
+/// takes (`thinkingLevel` minimal; a `thinkingBudget` is refused with a 400).
+/// `strict` holds the answer to the three labels; the retry after a 400 leaves
+/// that and the thinking setting out and reads the model's text.
 fn request_body(dialogue: &str, hits: &[String], caller_id: &str, strict: bool) -> Value {
     let dialogue = crate::deepseek::relabel_dialogue_en(dialogue.trim());
     let number = match caller_id.trim() {
@@ -179,10 +188,11 @@ fn request_body(dialogue: &str, hits: &[String], caller_id: &str, strict: bool) 
     );
     let mut generation = json!({
         "temperature": 0,
-        "maxOutputTokens": 32,
+        "maxOutputTokens": 512,
         "responseMimeType": "application/json",
     });
     if strict {
+        generation["thinkingConfig"] = json!({"thinkingLevel": "minimal"});
         generation["responseSchema"] = json!({
             "type": "OBJECT",
             "properties": {
@@ -706,7 +716,9 @@ mod tests {
         assert_eq!(g["temperature"], 0);
         assert_eq!(g["responseMimeType"], "application/json");
         assert_eq!(g["responseSchema"]["properties"]["verdict"]["enum"][2], "normal");
-        assert!(g.get("thinkingConfig").is_none(), "{g}");
+        assert_eq!(g["thinkingConfig"]["thinkingLevel"], "minimal", "{g}");
+        assert!(g.get("thinkingConfig").and_then(|t| t.get("thinkingBudget")).is_none(), "{g}");
+        assert!(g["maxOutputTokens"].as_u64().unwrap() >= 256, "{g}");
         let user = body["contents"][0]["parts"][0]["text"].as_str().unwrap();
         assert!(user.contains("Caller: 請你去 ATM 解除分期"), "{user}");
         assert!(user.contains("Keywords that matched: ATM, 解除分期"), "{user}");
@@ -784,7 +796,8 @@ mod tests {
         assert!(req.starts_with("post /v1beta/models/gemini-flash-lite-latest:generatecontent "), "{req}");
         assert!(req.contains("x-goog-api-key: test-key"), "{req}");
         assert!(req.contains("\"responseschema\""), "{req}");
-        assert!(!req.contains("thinking"), "{req}");
+        assert!(req.contains("\"thinkinglevel\":\"minimal\""), "{req}");
+        assert!(!req.contains("thinkingbudget"), "{req}");
     }
 
     #[test]
@@ -820,6 +833,7 @@ mod tests {
         let seen = server.await.unwrap();
         assert!(seen[0].contains("responseSchema"));
         assert!(!seen[1].contains("responseSchema"));
+        assert!(!seen[1].contains("thinkingConfig"));
     }
 
     #[tokio::test]
