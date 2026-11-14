@@ -2733,7 +2733,7 @@ mod tests {
     async fn notes_keep_line_translations_and_old_notes_still_read() {
         // A record from before translations: no field, nothing translated.
         let old: CallNotes = serde_json::from_str(
-            r#"{"summary":"對方：Mark","dialogue":"接聽：Hello?\n對方：Hello. Do you speak English?","recording_text":"","end_hint":"","source":"deepseek","updated_at":"2026-11-14T05:17:08Z"}"#,
+            r#"{"summary":"對方：Tom","dialogue":"接聽：Hello?\n對方：Hello. Do you speak English?","recording_text":"","end_hint":"","source":"deepseek","updated_at":"2026-11-14T05:17:08Z"}"#,
         )
         .unwrap();
         assert!(old.dialogue_translations.is_empty());

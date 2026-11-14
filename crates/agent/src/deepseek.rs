@@ -1189,7 +1189,7 @@ fn latin_line_in_other_language(text: &str, owner: Lang) -> bool {
 /// words — which Latin-script language by its common words — or anything
 /// else). Short lines are left as they are: "OK", "Hello?", 「もしもし」, a name
 /// read the same to anyone. Mixed lines go by what most of the line is in
-/// (「我是 Mark」 is Chinese).
+/// (「我是 Tom」 is Chinese).
 pub fn needs_translation(text: &str, owner: Lang) -> bool {
     let n = count_scripts(text);
     let japanese = n.kana > 0;
@@ -1804,7 +1804,7 @@ mod translate_tests {
             assert!(!needs_translation(short, tw), "{short}");
         }
         // Chinese with an English name or brand in it is Chinese; Simplified too.
-        assert!(!needs_translation("嗨。我是Mark。我剛搬進你的大樓。", tw));
+        assert!(!needs_translation("嗨。我是Tom。我剛搬進你的大樓。", tw));
         assert!(!needs_translation("我要訂 iPhone 15 Pro 兩支", tw));
         assert!(!needs_translation("我这边是管理室，你有一个包裹", tw));
         // Japanese (kanji or not), Korean, Russian are other languages.

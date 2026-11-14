@@ -7385,7 +7385,7 @@ mod tests {
         // vocabulary, and an English line about a parcel came out in Chinese
         // (「…一個給你的包裹被送到我家門口了」), a Japanese もしもし as 摩西摩西.
         use crate::locale::{Active, Lang};
-        let tw = Active { owner: "英先生".into(), ..Default::default() };
+        let tw = Active { owner: "林先生".into(), ..Default::default() };
         let words = |cfg: &Value| -> Vec<String> {
             cfg["customVocabulary"]
                 .as_array()
@@ -7403,11 +7403,11 @@ mod tests {
         let hinted = stt_caller_config_for(local.caller_stt.as_deref(), &tw);
         assert_eq!(hinted["languageCodes"], json!(["zh-TW", "en-US"]));
         let w = words(&hinted);
-        assert!(w.contains(&"英先生".to_string()) && w.contains(&"包裹".to_string()), "{w:?}");
+        assert!(w.contains(&"林先生".to_string()) && w.contains(&"包裹".to_string()), "{w:?}");
         // Hints without the owner's language: none of the owner's words either.
         let ja_only: &[&'static str] = &["ja-JP"];
         let w = words(&stt_caller_config_for(Some(ja_only), &tw));
-        assert!(!w.iter().any(|x| x == "英先生" || x == "包裹" || x == "管理室"), "{w:?}");
+        assert!(!w.iter().any(|x| x == "林先生" || x == "包裹" || x == "管理室"), "{w:?}");
         // Another owner language: no Taiwan words, the name only with its hint.
         let en = Active { lang: Lang::En, notify_lang: Lang::En, owner: "Alex".into(), ..Default::default() };
         let en_hint: &[&'static str] = &["en-US"];
