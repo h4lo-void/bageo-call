@@ -760,11 +760,13 @@ const MATTER_MARKS: &[&str] = &[
 
 /// Labels of the caller's lines in what the summary model reads
 /// ([`build_summary_input`]; 來電 in older voicemail transcripts), and of the
-/// AI's. Whisper's whole-call pass of the caller's side counts as the caller.
+/// AI's. Both Whisper passes are the caller's uplink: the whole call, and
+/// "AI 對話段" — the caller while the AI was on (`calls.rs` `ai_remote_pcm`).
 const CALLER_LABELS: &[&str] = &[
     "對方：", "对方：", "來電：", "来电：", "Caller:", "整通對方側：", "Caller's side, whole call:",
+    "AI 對話段：", "AI part of the call:",
 ];
-const AI_LABELS: &[&str] = &["接聽：", "接听：", "助理：", "AI:", "AI 對話段：", "AI part of the call:"];
+const AI_LABELS: &[&str] = &["接聽：", "接听：", "助理：", "AI:"];
 
 /// What the caller said. A transcript without speaker labels (a voicemail
 /// recording) is all the caller's.
