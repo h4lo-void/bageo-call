@@ -131,3 +131,5 @@ PUT /calls/api/settings
 | 主程式 → 手機 | `answer_plan` 加上 `"reject": true` | 響鈴中直接拒接，不接起來。電話結束後照樣送 `incoming_cancel`。晚到也有效，只要電話還在響。 |
 | 手機 → 主程式 | `{"type": "call_waiting_rejected", "serial": "...", "caller_id": "...", "sim_country": "tw", "sim_sub_id": <整數>}` | 通話中又有第二通打進來，手機立刻拒接（AI 模式）。欄位是被拒那一通的資料；不知道 `sim_sub_id` 就不送。 |
 | 主程式 → 手機 | `place_call` 加上 `"sub_id": <整數>` | 用那張 SIM 撥出。找不到那張 SIM 就用手機預設的。手機有電話在響或通話中時不撥，回 `place_call_failed`，`"reason": "busy"`。 |
+
+主程式這邊：主程式不再等之後才到的結果照樣會記下來；手機之後用同一個 `id` 送來的真正結果會取代 `timeout`（還在等的傳送會繼續等它），同樣的結果再來、或已經有確定結果的簡訊收到不同結果，都不會改。拒接號碼只有在 `reject_mode` 是 `decline`、而且手機說過 `supports_reject` 時才叫手機拒接；否則接起來播語音，通知會寫清楚是哪一種。收到 `call_waiting_rejected` 會留下通話紀錄並送出通知。回撥從接原本那通電話的手機打出去時才帶 `sub_id`。

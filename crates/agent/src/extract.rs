@@ -718,6 +718,9 @@ fn infer_reply_method_keywords(text: &str) -> Option<String> {
 ///
 /// Accepts ASCII digits, full-width digits, and common Mandarin phone digits
 /// (零/〇/洞、一/幺、二…); Piper `display` spaces digits / spells `@`·`.` for TTS.
+/// A phone number is one unbroken run of digits and only a Taiwan mobile, a
+/// Taiwan landline or an international number written with + (kept in
+/// `contact`); see [`extract_phone_hint`].
 pub fn extract_spoken_contact(transcript: &str, caller_id: &str) -> Option<SpokenContact> {
     let trimmed = transcript.trim();
     if trimmed.is_empty() {
@@ -731,14 +734,15 @@ pub fn extract_spoken_contact(transcript: &str, caller_id: &str) -> Option<Spoke
             contact: email,
         });
     }
-    if let Some(phone) = extract_phone_hint(&folded).or_else(|| extract_phone_hint(trimmed)) {
+    // The raw text: folding turns 。 into a dot, which would join two numbers.
+    if let Some(phone) = extract_phone_hint(trimmed) {
         let spoken = normalize_phone_digits(&phone);
         let caller = normalize_phone_digits(caller_id);
         if spoken.len() >= 8 && !phones_equivalent(&spoken, &caller) {
             return Some(SpokenContact {
                 method: "phone".into(),
                 display: phone_readback_display(&spoken),
-                contact: spoken,
+                contact: phone,
             });
         }
     }
@@ -829,67 +833,81 @@ fn phones_equivalent(a: &str, b: &str) -> bool {
     ca == cb || ca.ends_with(&cb) || cb.ends_with(&ca)
 }
 
-fn extract_phone_hint(text: &str) -> Option<String> {
-    let chars: Vec<char> = text.chars().collect();
-    let mut best: Option<(String, usize, i32)> = None; // digits, len, score
-    let mut i = 0;
-    while i < chars.len() {
-        if chars[i].is_ascii_digit() || chars[i] == '+' {
-            let mut digits = String::new();
-            let mut raw = String::new();
-            while i < chars.len() {
-                let c = chars[i];
-                if c.is_ascii_digit() {
-                    digits.push(c);
-                    raw.push(c);
-                    i += 1;
-                } else if c == '+' && raw.is_empty() {
-                    raw.push(c);
-                    i += 1;
-                } else if matches!(c, ' ' | '-' | '.' | '，' | ',' | '、' | '/' | '／')
-                    && !digits.is_empty()
-                {
-                    raw.push(c);
-                    i += 1;
-                } else {
-                    break;
-                }
-            }
-            // E.164-ish: usable mobiles are 8–15 digits; longer runs are usually noise.
-            if (8..=15).contains(&digits.len()) {
-                let candidate = if raw.starts_with('+') {
-                    format!("+{}", digits)
-                } else {
-                    digits.clone()
-                };
-                let score = phone_candidate_score(&digits);
-                let better = match &best {
-                    None => true,
-                    Some((_, best_len, best_score)) => {
-                        score > *best_score || (score == *best_score && digits.len() > *best_len)
-                    }
-                };
-                if better {
-                    best = Some((candidate, digits.len(), score));
-                }
-            }
-        } else {
-            i += 1;
-        }
-    }
-    best.map(|(s, _, _)| s)
+/// A digit as said or typed, and whether it was typed (Arabic or full-width)
+/// rather than a spoken numeral (零九幺…).
+fn phone_digit(ch: char) -> Option<(char, bool)> {
+    let d = spoken_digit_char(ch)?;
+    Some((d, ch.is_ascii_digit() || ('０'..='９').contains(&ch)))
 }
 
-fn phone_candidate_score(digits: &str) -> i32 {
-    let mut score = 0;
-    if digits.starts_with("09") && digits.len() == 10 {
-        score += 3; // TW mobile
-    } else if digits.starts_with("8869") || digits.starts_with("88609") {
-        score += 2;
-    } else if digits.starts_with('9') && digits.len() == 9 {
-        score += 1; // TW mobile without leading 0
+/// Separators inside a typed number: "0912-345-678", "0912 345 678",
+/// "0912、345、678". Never a comma or a full stop: those end a sentence, and
+/// "零九一二三四五六七八，一下" is a number and then the next words.
+fn is_phone_separator(c: char) -> bool {
+    matches!(c, ' ' | '-' | '－' | '.' | '、' | '/' | '／')
+}
+
+/// How much a digit run looks like a number to call back, or `None` when it
+/// is no phone number at all: a Taiwan mobile (10 digits, 09…) first, then an
+/// international number written with + (8–15 digits), then a Taiwan landline
+/// (9–10 digits, 02…08…).
+fn phone_candidate_score(number: &str) -> Option<i32> {
+    if let Some(digits) = number.strip_prefix('+') {
+        return (8..=15).contains(&digits.len()).then_some(2);
     }
-    score
+    let b = number.as_bytes();
+    if b.len() == 10 && number.starts_with("09") {
+        Some(3)
+    } else if (9..=10).contains(&b.len()) && b[0] == b'0' && (b'2'..=b'8').contains(&b[1]) {
+        Some(1)
+    } else {
+        None
+    }
+}
+
+/// The phone number in `text`: an unbroken run of digits (typed, spoken or
+/// mixed), where typed digits may be grouped by [`is_phone_separator`]. Runs
+/// that are no phone number ([`phone_candidate_score`]) are skipped.
+fn extract_phone_hint(text: &str) -> Option<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let typed = |i: usize| chars.get(i).and_then(|&c| phone_digit(c)).is_some_and(|(_, t)| t);
+    let mut best: Option<(String, i32)> = None;
+    let mut i = 0;
+    while i < chars.len() {
+        let plus = matches!(chars[i], '+' | '＋') && typed(i + 1);
+        if !plus && phone_digit(chars[i]).is_none() {
+            i += 1;
+            continue;
+        }
+        let mut number = String::new();
+        if plus {
+            number.push('+');
+            i += 1;
+        }
+        while i < chars.len() {
+            if let Some((d, _)) = phone_digit(chars[i]) {
+                number.push(d);
+                i += 1;
+                continue;
+            }
+            // Up to two separators, between typed digits only.
+            let mut j = i;
+            while j < chars.len() && j - i < 2 && is_phone_separator(chars[j]) {
+                j += 1;
+            }
+            if j > i && i > 0 && typed(i - 1) && typed(j) {
+                i = j;
+                continue;
+            }
+            break;
+        }
+        if let Some(score) = phone_candidate_score(&number) {
+            if best.as_ref().map_or(true, |(_, s)| score > *s) {
+                best = Some((number, score));
+            }
+        }
+    }
+    best.map(|(n, _)| n)
 }
 
 /// Scan for `local@domain.tld` even when glued to CJK punctuation / words.
@@ -1205,6 +1223,42 @@ mod tests {
         assert!(
             extract_spoken_contact("序號 1234567890123456 沒有電話", "+886900111222").is_none()
         );
+    }
+
+    #[test]
+    fn spoken_digits_stop_at_punctuation() {
+        let c = extract_spoken_contact("零九一二三四五六七八，一下", "+886900111222").unwrap();
+        assert_eq!(c.contact, "0912345678");
+        let c = extract_spoken_contact("我是八，零九一二三四五六七八。九點後打", "").unwrap();
+        assert_eq!(c.contact, "0912345678");
+        // Commas and full stops split typed digits too.
+        assert!(extract_spoken_contact("0912，345，678", "").is_none());
+        assert!(extract_spoken_contact("0912。345678", "").is_none());
+        // Spoken numerals do not take separators.
+        assert!(extract_spoken_contact("零九一二 三四五 六七八", "").is_none());
+        // Glued on, the run is no number any more.
+        assert!(extract_spoken_contact("零九一二三四五六七八一", "").is_none());
+    }
+
+    #[test]
+    fn spoken_contact_takes_only_phone_shaped_numbers() {
+        let c = extract_spoken_contact("公司電話 02 2345 6789", "").unwrap();
+        assert_eq!(c.contact, "0223456789");
+        let c = extract_spoken_contact("打 03-1234567 找我", "").unwrap();
+        assert_eq!(c.contact, "031234567");
+        let c = extract_spoken_contact("call me on +1 202 555 0143", "").unwrap();
+        assert_eq!(c.contact, "+12025550143");
+        assert_eq!(c.display, "1 2 0 2 5 5 5 0 1 4 3");
+        let c = extract_spoken_contact("東京オフィス +81312345678", "").unwrap();
+        assert_eq!(c.contact, "+81312345678");
+        // A mobile wins over a landline or an international number in the same words.
+        let c = extract_spoken_contact("+81312345678 或 0912345678", "").unwrap();
+        assert_eq!(c.contact, "0912345678");
+        for text in ["12345678", "091234567", "09123456789", "886912345678", "0912345", "+1234567"] {
+            assert!(extract_spoken_contact(text, "").is_none(), "{text}");
+        }
+        // The caller's own number in international form is still the caller's.
+        assert!(extract_spoken_contact("+886 912 345 678", "0912345678").is_none());
     }
 
     #[test]

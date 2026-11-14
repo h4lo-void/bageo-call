@@ -187,3 +187,13 @@ or agent leaves them out and works as before):
 | agent → phone | `answer_plan` with `"reject": true` | Decline the ringing call without answering it. `incoming_cancel` follows once the call has ended. Also honored when it arrives late, as long as the call still rings. |
 | phone → agent | `{"type": "call_waiting_rejected", "serial": "...", "caller_id": "...", "sim_country": "tw", "sim_sub_id": <integer>}` | A second call rang during a call and the phone declined it at once (AI mode). The fields describe the declined call; `sim_sub_id` is left out when unknown. |
 | agent → phone | `place_call` with `"sub_id": <integer>` | Dial from that SIM. When no SIM has that id, the phone's default is used. While a call rings or is up, the phone does not dial and answers `place_call_failed` with `"reason": "busy"`. |
+
+On the agent's side: a result that comes after the agent stopped waiting is still
+recorded, and the phone's later real result under the same `id` replaces a
+`timeout` (a send still waiting keeps waiting for it); the same result again, or
+a different one for a text already settled, changes nothing. A blocked number is
+declined only when `reject_mode` is `decline` and the phone said
+`supports_reject`; otherwise it is picked up and gets the announcement, and the
+notification says which happened. `call_waiting_rejected` becomes a call record
+and a notification. A call-back carries `sub_id` when it goes out on the phone
+that took the original call.

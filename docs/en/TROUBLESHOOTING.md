@@ -39,7 +39,7 @@ piece that is missing. The agent's terminal window shows what it is doing;
 | The AI hangs up too early | Its prompt lets it say goodbye before the caller is done. See the ending rule in [Writing the prompt](PROMPTS.md#writing-or-editing-it-yourself). |
 | The call never ends | The caller never said a goodbye the agent recognises and stayed on the line; it ends at *Longest normal call*. Shorten that if it happens often. |
 | First words come late | Switch on *Get the AI ready while the phone rings* and keep *Ring before answering* at 3 s or more. |
-| It answers in the wrong language | Set *Language*. Short first words ("hello?") are easy to mis-detect; with *Reply in the caller's language* off the AI stays in your language. |
+| It answers in the wrong language | *Language* sets the opening line (and *SIM languages* the opening on another SIM). After that the AI follows the caller once they clearly speak another language; a short "hello?" alone does not switch it. |
 | A real call was treated as sales / scam | Switch off *Keep them talking*, or tell us which words triggered it (the agent's terminal output names them: `stall engaged … hits=[…]`). |
 
 ## Notifications

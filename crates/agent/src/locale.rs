@@ -1288,6 +1288,11 @@ static JA: Phrases = Phrases {
     wrapups: &[
         "以上です", "それだけです", "また連絡します", "またご連絡します", "またかけます",
         "かけ直します", "掛け直します",
+        // 「それでは」 also opens the AI's own sentences: the caller's side only.
+        "それでは",
+        // Alone, 「よろしくお願いします」 also ends a caller's introduction at the
+        // start of a business call: only after 「では」 does it close one.
+        "ではよろしくお願いいたします", "ではよろしくお願いします", "じゃあよろしくお願いします",
     ],
     stall: &[
         ("保険", 2), ("ローン", 2), ("融資", 2), ("借入", 2), ("クレジットカード", 2),
@@ -1622,7 +1627,7 @@ static ES: Phrases = Phrases {
     farewells: &[
         "adiós", "adios", "hasta luego", "hasta pronto", "hasta mañana", "nos vemos", "chao",
         "chau", "que tenga buen día", "que tenga un buen día", "que tengas buen día", "cuídese",
-        "cuídate", "un saludo",
+        "cuídate", "un saludo", "órale gracias", "orale gracias",
     ],
     wrapups: &[
         "eso es todo", "nada más", "eso sería todo", "le dejo", "te dejo", "tengo que irme",
@@ -1792,7 +1797,7 @@ static FR: Phrases = Phrases {
     ap_web_label: "Confirmer sur le web",
     farewells: &[
         "au revoir", "à bientôt", "a bientot", "à plus", "à plus tard", "à tout à l'heure",
-        "à demain", "bonne journée", "bonne soirée", "bonne fin de journée", "ciao",
+        "à demain", "bonne journée", "bonne journee", "bonne soirée", "bonne fin de journée", "ciao",
     ],
     wrapups: &[
         "c'est tout", "rien d'autre", "je vous laisse", "je te laisse", "je dois y aller",
@@ -1964,7 +1969,7 @@ static DE: Phrases = Phrases {
     ap_web_label: "Im Web bestätigen",
     farewells: &[
         "tschüss", "tschüs", "tschuess", "auf wiederhören", "auf wiedersehen", "wiederhören",
-        "bis bald", "bis später", "bis dann", "schönen tag noch", "schönen abend noch",
+        "bis bald", "bis später", "bis dann", "schönen tag noch", "schönen tag", "schönen abend noch",
         "mach's gut", "machs gut", "ciao",
     ],
     wrapups: &[
@@ -2136,7 +2141,7 @@ static PT: Phrases = Phrases {
     ap_web_label: "Confirmar na web",
     farewells: &[
         "tchau", "adeus", "até logo", "até mais", "até breve", "até amanhã", "tenha um bom dia",
-        "tenha uma boa tarde", "um abraço", "falou",
+        "tenha uma boa tarde", "um abraço", "falou", "valeu",
     ],
     wrapups: &[
         "é só isso", "só isso", "mais nada", "é tudo", "tenho que ir", "preciso desligar",
@@ -2183,7 +2188,13 @@ fn phrase_near_end(words: &[String], phrase: &str, slack: usize) -> bool {
     // "Hace tiempo que no nos vemos" (we haven't seen each other in ages) is
     // no goodbye: a negation right before the phrase rules it out.
     let negated = |i: usize| i > 0 && NEGATIONS.contains(&words[i - 1].as_str());
-    (first_start..=last_start).any(|i| words[i..i + p.len()] == p[..] && !negated(i))
+    // "Say bye to grandma" is said to someone else on the caller's side.
+    let to_someone_else = |i: usize| {
+        let after = &words[i + p.len()..];
+        after.first().is_some_and(|w| w == "to")
+            && after.get(1).is_some_and(|w| !["you", "y'all", "all", "everyone", "everybody"].contains(&w.as_str()))
+    };
+    (first_start..=last_start).any(|i| words[i..i + p.len()] == p[..] && !negated(i) && !to_someone_else(i))
 }
 
 /// Words that turn a following goodbye phrase into something else.
@@ -2220,6 +2231,119 @@ fn is_question(text: &str) -> bool {
     t.ends_with('?') || t.ends_with('？') || t.ends_with("か。") || t.ends_with("까요")
 }
 
+/// Thanks that people add after their goodbye or wrap-up (「好的，那就先這樣，謝謝您」,
+/// "That's all, thank you so much"). Longer ones first: "muchas gracias" before
+/// "gracias", so nothing of them is left behind.
+const THANKS: &[&str] = &[
+    "thank you so much", "thank you very much", "thanks so much", "thanks a lot", "many thanks",
+    "thank you", "thanks", "thx",
+    "muchísimas gracias", "muchas gracias", "gracias", "merci beaucoup", "merci bien", "merci",
+    "vielen dank", "danke schön", "danke schon", "dankeschön", "danke",
+    "muito obrigado", "muito obrigada", "obrigado", "obrigada",
+    "どうもありがとうございました", "どうもありがとうございます", "ありがとうございました",
+    "ありがとうございます", "ありがとう",
+    "감사합니다", "고맙습니다", "감사해요", "고마워요",
+    "謝謝您", "謝謝你", "謝謝妳", "謝謝", "谢谢您", "谢谢你", "谢谢", "感謝您", "感謝你", "感謝",
+    "感谢您", "感谢你", "感谢", "多謝", "多谢",
+    "cảm ơn", "cám ơn", "terima kasih", "makasih",
+];
+
+fn is_latin_letter(c: char) -> bool {
+    c.is_ascii_alphabetic() || ('\u{00C0}'..='\u{024F}').contains(&c) || ('\u{1E00}'..='\u{1EFF}').contains(&c)
+}
+
+/// `text` without `suffix` (lowercase) at its end, compared without case; a
+/// Latin suffix must be a whole word ("thanks", not the end of another word).
+fn strip_suffix_nocase<'a>(text: &'a str, suffix: &str) -> Option<&'a str> {
+    let n = suffix.chars().count();
+    if n == 0 {
+        return None;
+    }
+    let (start, _) = text.char_indices().rev().nth(n - 1)?;
+    if text[start..].to_lowercase() != suffix {
+        return None;
+    }
+    let head = &text[..start];
+    let latin = suffix.chars().next().is_some_and(is_latin_letter);
+    if latin && head.chars().next_back().is_some_and(char::is_alphanumeric) {
+        return None;
+    }
+    Some(head)
+}
+
+fn trim_end_marks(t: &str) -> &str {
+    t.trim_end_matches(|c: char| !c.is_alphanumeric())
+}
+
+/// What was said, without the thanks (and punctuation) at its end: the words
+/// before them decide whether the caller is leaving. Thanks alone leave nothing
+/// — a bare 「謝謝」 is no goodbye.
+pub fn strip_trailing_thanks(text: &str) -> &str {
+    let mut t = trim_end_marks(text);
+    'again: loop {
+        for thanks in THANKS {
+            if let Some(head) = strip_suffix_nocase(t, thanks) {
+                t = trim_end_marks(head);
+                continue 'again;
+            }
+        }
+        return t;
+    }
+}
+
+/// "Hold on", "one moment", 「等一下，我去拿」: the caller is leaving the phone for a
+/// while or putting us through, so a long quiet line is expected. Matched
+/// anywhere in what they said: Chinese as requests only ([`zh_asks_to_hold`]),
+/// Japanese, Korean and Thai as runs of letters, the others as whole words.
+const HOLD_RUNS: &[&str] = &[
+    "少々お待ち", "ちょっと待って", "お待ちください",
+    "잠시만요", "잠깐만요", "잠시만기다려",
+    "รอสักครู่", "รอแป๊บ", "แป๊บนึง",
+];
+const HOLD_WORDS: &[&str] = &[
+    "hold on", "one moment", "just a sec", "just a second", "let me check", "hang on",
+    "un momento", "espere", "um momento", "só um minuto", "so um minuto", "un instant",
+    "ne quittez pas", "einen moment", "bleiben sie dran",
+    "chờ chút", "đợi chút", "chờ một chút", "đợi một chút", "cho chut",
+    "tunggu sebentar", "sebentar ya", "mohon tunggu",
+];
+
+pub fn asks_to_hold(text: &str) -> bool {
+    if zh_asks_to_hold(text) {
+        return true;
+    }
+    let runs = squeeze(text);
+    if HOLD_RUNS.iter().any(|m| runs.contains(squeeze(m).as_str())) {
+        return true;
+    }
+    let ws = words(text);
+    HOLD_WORDS.iter().any(|m| has_phrase(&ws, m))
+}
+
+/// Chinese asking us to hold on. 「等一下」 is also "later" (「我等一下要出門」「那我等
+/// 一下再打給你」): it counts only as a request — in one of these forms, or on
+/// its own (「好，等一下。」).
+const ZH_HOLD_REQUESTS: &[&str] = &[
+    "等一下喔", "等一下哦", "等一下下", "等我一下", "你等一下", "您等一下", "妳等一下", "請等一下",
+    "稍等", "我查一下", "我去拿", "幫你轉", "幫您轉", "轉接", "等等喔", "等等哦",
+];
+
+fn zh_asks_to_hold(text: &str) -> bool {
+    let t: String = crate::zh_tw::norm(text).chars().filter(|c| !c.is_whitespace()).collect();
+    if ZH_HOLD_REQUESTS.iter().any(|m| t.contains(m)) {
+        return true;
+    }
+    ["等一下", "等等"].iter().any(|m| {
+        t.match_indices(m).any(|(i, _)| {
+            let before = t[..i].chars().next_back();
+            let after = t[i + m.len()..].chars().next();
+            // Nothing of the sentence around it but a lead-in like 「好，」「那」.
+            after.map_or(true, |c| !c.is_alphanumeric())
+                && before.map_or(true, |c| !c.is_alphanumeric() || "好嗯欸喂啊那".contains(c))
+        })
+    })
+}
+
 // Goodbyes of callers who speak a language the AI has no phrase set for:
 // Vietnamese, Thai, Indonesian. [`ends_with_farewell`] checks them next to the
 // nine languages' own lists.
@@ -2228,7 +2352,10 @@ fn is_question(text: &str) -> bool {
 /// also without its tone marks: speech-to-text sometimes drops them.
 const EXTRA_WORD_FAREWELLS: &[&str] = &[
     "tạm biệt", "tam biet", "hẹn gặp lại", "hen gap lai", "chào nhé", "chao nhe",
+    // "That's it then": how many Vietnamese calls end.
+    "thế nhé", "vậy nhé", "thôi nhé", "thoi nhe", "bye nhé", "bye nhe",
     "sampai jumpa", "sampai ketemu", "selamat tinggal", "dadah", "daah",
+    "sampai nanti", "sudah dulu ya", "udah dulu ya", "segitu dulu ya",
 ];
 
 /// A goodbye that also opens calls: "chào anh", "selamat pagi", "sawasdee ka".
@@ -2344,7 +2471,11 @@ fn has_cue(ws: &[String], cue: &str) -> bool {
 }
 
 /// Thai goodbyes (Thai is written without spaces: matched in the squeezed text).
-const TH_FAREWELLS: &[&str] = &["ลาก่อน", "บ๊ายบาย", "บายบาย", "บ๊ายบ๊าย"];
+const TH_FAREWELLS: &[&str] = &[
+    "ลาก่อน", "บ๊ายบาย", "บายบาย", "บ๊ายบ๊าย",
+    // "Talk again later", "that's all for now".
+    "ไว้คุยกันใหม่", "ไว้ค่อยคุยกัน", "แค่นี้ก่อน",
+];
 /// Thai "hello / goodbye" (สวัสดีค่ะ), also as Chinese speech-to-text writes it:
 /// a goodbye only right after one of [`TH_CUES`] (see [`thai_cue_window`]).
 const TH_GREETING_BYES: &[&str] = &["สวัสดี", "沙瓦迪卡", "薩瓦迪卡", "萨瓦迪卡"];
@@ -2468,15 +2599,49 @@ fn extra_farewell(text: &str, slack: usize) -> bool {
 /// What was said ends on a goodbye, in any supported language other than
 /// Chinese (those rules live in `gemini_live`), or in Vietnamese, Thai or
 /// Indonesian. `slack` = words that may follow it ("bye now", "goodbye then").
+/// Thanks after it do not count ([`strip_trailing_thanks`]): "Bye, thank you so much".
 pub fn ends_with_farewell(text: &str, slack: usize) -> bool {
-    ends_on(text, |p| p.farewells, slack, slack * 2) || extra_farewell(text, slack)
+    let farewell = |t: &str| ends_on(t, |p| p.farewells, slack, slack * 2) || extra_farewell(t, slack);
+    farewell(text) || farewell(strip_trailing_thanks(text))
 }
 
 /// The caller's words end the call: a goodbye or "that's all" at the end, and
-/// not a question.
+/// not a question. Thanks after it do not count: "Alright, that's all, thank you so much".
 pub fn caller_wraps_up(text: &str) -> bool {
-    !is_question(text) && (ends_with_farewell(text, 2) || ends_on(text, |p| p.wrapups, 2, 4))
+    let wrapup = |t: &str| ends_on(t, |p| p.wrapups, 2, 4);
+    !is_question(text)
+        && (ends_with_farewell(text, 2)
+            || wrapup(text)
+            || wrapup(strip_trailing_thanks(text))
+            || VI_THANKS_CLOSING.ends(&words(text))
+            || ja_thanks_closing(text))
 }
+
+/// Japanese business calls close with thanks in the past tense, as the very
+/// last words: 「（ご利用）ありがとうございました」 ends the call the way
+/// 「失礼します」 does (a courier's call never hung up after it). The present
+/// 「ありがとうございます」 is said mid-call and does not count. The caller's
+/// side only, like [`caller_wraps_up`] as a whole.
+fn ja_thanks_closing(text: &str) -> bool {
+    let t = text.trim_end_matches(|c: char| c.is_whitespace() || "。．.、,!！〜～ー".contains(c));
+    ["ありがとうございました", "有難うございました", "ありがとう御座いました"]
+        .iter()
+        .any(|s| t.ends_with(s))
+}
+
+/// Vietnamese callers often close with thanks alone, said politely to the end
+/// ("Em cảm ơn anh ạ", "Cảm ơn anh nhé"): a courier's call never hung up after
+/// it. Thanks then a particle (ạ / nhé / nha) as the very last words; the
+/// caller's side only — the AI's own 「cảm ơn anh ạ」 is no goodbye.
+const VI_THANKS_CLOSING: GreetingBye = GreetingBye {
+    heads: &["cảm ơn", "cám ơn", "cam on"],
+    tail: &[
+        "anh", "chị", "chi", "em", "bạn", "ban", "cô", "co", "chú", "chu", "ông", "ong", "bà", "ba", "cháu",
+        "chau", "nhiều", "nhieu", "lắm", "ạ", "nhé", "nhe", "nha", "nhá",
+    ],
+    closing_tail: &["ạ", "nhé", "nhe", "nha", "nhá"],
+    cues: &[],
+};
 
 /// Sales / scam keywords of the non-Chinese lists found in `text`.
 /// Word languages match at the start of a word ("loan" hits "loans").
@@ -2586,6 +2751,31 @@ mod tests {
             "Tá bom, obrigado, tchau.",
             "はい、ありがとうございました。失礼します。",
             "네 감사합니다. 안녕히 계세요.",
+            // Everyday closings in each language.
+            "Okay, have a good one.",
+            "Take care!",
+            "Cheers.",
+            "Talk soon.",
+            "Okay bye now.",
+            "それでは失礼いたします。",
+            "수고하세요.",
+            "네, 들어가세요.",
+            "네 감사합니다 안녕히 계세요",
+            "Órale, gracias.",
+            "Bueno, hasta luego.",
+            "Nos vemos.",
+            "Chao.",
+            "Valeu, tchau.",
+            "Valeu!",
+            "Até mais.",
+            "Bonne journée !",
+            "Merci, à bientôt.",
+            "Danke, schönen Tag.",
+            "Tschüss.",
+            "Auf Wiederhören.",
+            // Thanks after the goodbye.
+            "Okay, bye, thank you so much!",
+            "Adiós, muchas gracias.",
         ] {
             assert!(ends_with_farewell(t, 2), "{t}");
             assert!(caller_wraps_up(t), "{t}");
@@ -2598,12 +2788,93 @@ mod tests {
             "Is that all?",
             "もしもし",
             "Buenas noches",
+            // Thanks alone, or a goodbye said to someone else in the room.
+            "Thank you.",
+            "Thanks so much",
+            "Muchas gracias",
+            "감사합니다",
+            "Say bye to grandma",
+            "Come on, say bye bye to Auntie",
+            // A caller introducing themselves on a business call.
+            "株式会社ABCの田中と申します。よろしくお願いいたします。",
         ] {
             assert!(!caller_wraps_up(t), "{t}");
         }
         assert!(caller_wraps_up("Okay, that's all, thank you."));
+        assert!(caller_wraps_up("Alright, that's all, thank you so much"));
+        assert!(caller_wraps_up("Okay, bye to you"));
         assert!(caller_wraps_up("以上です。"));
+        assert!(caller_wraps_up("それでは。"));
+        assert!(caller_wraps_up("では、よろしくお願いいたします。"));
+        // The same words turned into a question: not leaving yet.
+        assert!(!caller_wraps_up("それではよろしいでしょうか？"));
+        assert!(!caller_wraps_up("Okay, that's all for today, right?"));
         assert!(!caller_wraps_up("Bye?"));
+    }
+
+    #[test]
+    fn thanks_after_the_last_words_are_set_aside() {
+        assert_eq!(strip_trailing_thanks("好的，那就先這樣，謝謝您"), "好的，那就先這樣");
+        assert_eq!(strip_trailing_thanks("Alright, that's all, thank you so much!"), "Alright, that's all");
+        assert_eq!(strip_trailing_thanks("はい、以上です。ありがとうございました。"), "はい、以上です");
+        assert_eq!(strip_trailing_thanks("Merci beaucoup"), "");
+        assert_eq!(strip_trailing_thanks("謝謝"), "");
+        // Only whole Latin words.
+        assert_eq!(strip_trailing_thanks("bethanks"), "bethanks");
+        assert_eq!(strip_trailing_thanks("Hello?"), "Hello");
+    }
+
+    #[test]
+    fn asking_to_hold_in_every_language() {
+        for t in [
+            "等一下喔，我去拿",
+            "好，我幫你轉接",
+            "帮你转一下",
+            "稍等",
+            "Hold on a sec, let me get him",
+            "One moment please",
+            "少々お待ちください",
+            "잠시만요",
+            "잠시만 기다려 주세요",
+            "Un momento, por favor",
+            "Um momento",
+            "Ne quittez pas",
+            "Einen Moment bitte",
+            "Đợi chút nhé",
+            "Tunggu sebentar ya",
+            "รอสักครู่นะคะ",
+            "好，等一下。",
+            "你等一下，我叫他來聽",
+            "請稍等，我幫您轉接",
+        ] {
+            assert!(asks_to_hold(t), "{t}");
+        }
+        for t in [
+            "我今天有空",
+            "Hello, is this Alex?",
+            "That's all, thanks",
+            "Momentan nicht",
+            "もしもし",
+            "",
+            // 「等一下」 as "later", 「等等」 as "and so on".
+            "我等一下要出門，所以放管理室",
+            "那我等一下再打給你",
+            "等一下再說",
+            "保險、貸款等等都有",
+        ] {
+            assert!(!asks_to_hold(t), "{t}");
+        }
+    }
+
+    #[test]
+    fn japanese_past_thanks_at_the_end_closes_the_call() {
+        // A courier's call that never hung up.
+        assert!(caller_wraps_up("かしこまりました。それでは、管理室の方にお預けしておきますね。ご利用ありがとうございました。"));
+        assert!(caller_wraps_up("お忙しいところありがとうございました"));
+        // Present-tense thanks are said mid-call; thanks followed by more words are not the end.
+        assert!(!caller_wraps_up("ありがとうございます。"));
+        assert!(!caller_wraps_up("ありがとうございました。それで、明日の件ですが"));
+        assert!(!caller_wraps_up("ありがとうございましたか？"));
     }
 
     #[test]
@@ -2618,6 +2889,8 @@ mod tests {
             "Hẹn gặp lại nhé.",
             "Chào nhé.",
             "Cam on anh, chao anh",
+            "Dạ vâng, thế nhé.",
+            "Ok vậy nhé.",
         ] {
             assert!(ends_with_farewell(t, 2), "{t}");
             assert!(caller_wraps_up(t), "{t}");
@@ -2638,6 +2911,15 @@ mod tests {
         ] {
             assert!(!caller_wraps_up(t), "{t}");
         }
+        // Thanks alone, said to the end, closes a Vietnamese call — the caller's
+        // words only (the AI's own thanks are no goodbye).
+        for t in ["Dạ, em cảm ơn anh ạ.", "Em cảm ơn anh ạ", "Ok, cảm ơn anh nhé", "Em cảm ơn anh nhiều ạ", "Cảm ơn chị nha"] {
+            assert!(caller_wraps_up(t), "{t}");
+            assert!(!ends_with_farewell(t, 2), "{t}");
+        }
+        for t in ["Cảm ơn anh ạ, cho em hỏi thêm một chút về đơn hàng.", "Cảm ơn anh ạ?", "Em cảm ơn anh"] {
+            assert!(!caller_wraps_up(t), "{t}");
+        }
     }
 
     #[test]
@@ -2651,6 +2933,7 @@ mod tests {
             "บายบายค่ะ",
             "ขอบคุณครับ สวัสดีครับ",
             "Khob khun ka, sawasdee ka.",
+            "ขอบคุณค่ะ ไว้คุยกันใหม่นะคะ",
         ] {
             assert!(ends_with_farewell(t, 2), "{t}");
             assert!(caller_wraps_up(t), "{t}");
@@ -2681,6 +2964,8 @@ mod tests {
             "Ya sudah, sampai ketemu lagi ya.",
             "Dadah!",
             "Daah.",
+            "Ya sudah, sampai nanti ya.",
+            "Oke, sudah dulu ya.",
             // "Terima kasih" written in Chinese by speech-to-text, alone or run into
             // other Chinese characters.
             "謝謝，selamat siang.",
