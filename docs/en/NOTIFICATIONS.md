@@ -53,8 +53,9 @@ Transcript / recording: http://192.0.2.10:8787/calls/#call=…
 - **The calendar lines** appear only when the call fixed a date and *Suggest
   calendar events* is on ([Settings reference](SETTINGS.md#summary--calendar)).
   The link opens the calendar you chose the first time you pressed **Add to
-  calendar** (`calendar_app`; Google Calendar until you choose). See
-  [Add to calendar](#appointments) below.
+  calendar** (`calendar_app`). Until you choose, there is no calendar link:
+  open the call's page (the last line) and press **Add to calendar** to pick
+  one. See [Add to calendar](#appointments) below.
 - **The last line** appears when the agent has an address other devices can
   open: *Address of this console*, or the automatic one when the console is
   open to your network (not inside Docker). See
@@ -165,7 +166,9 @@ notifications and in the console opens the calendar you picked the first time
 you pressed **Add to calendar** (setting `calendar_app`): the filled-in "new
 event" form of Google Calendar, Outlook.com, Microsoft 365 or Yahoo Calendar,
 or, for Apple Calendar and plain `.ics`, the event's `.ics` file at *Address of
-this console*. That `.ics` link carries a key (an HMAC) that opens only this
+this console*. Until you pick one, the bot's answer links the call's page in
+the console instead (no console address, no link), where **Add to calendar**
+asks which calendar and remembers it. That `.ics` link carries a key (an HMAC) that opens only this
 one file, never your console token, so it is safe to tap from a chat; without
 a console address there is no `.ics` link. The agent connects to no calendar
 account.

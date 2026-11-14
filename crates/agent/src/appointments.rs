@@ -1664,13 +1664,35 @@ fn phone_sms_code(lang: Lang, code: &str) -> Option<&'static str> {
     CODES.iter().position(|c| *c == code).map(|i| words[i])
 }
 
-/// The link that adds an appointment to the owner's calendar (setting
-/// `calendar_app`): that calendar's "new event" form filled in, or the task's
-/// `.ics` at the console's address (empty without `public_url`).
-pub fn calendar_link(rt: &RuntimeSettings, task: &TaskRecord, appt: &Appointment) -> String {
+/// The link that adds an appointment to the owner's calendar: the calendar
+/// they chose (setting `calendar_app`) — its "new event" form filled in, or
+/// the task's `.ics` at `public_url`. Not chosen yet: the call's page in the
+/// web console (`console`, the address other devices open it at — the one the
+/// summary's call link uses), where "Add to calendar" asks which calendar and
+/// keeps the answer for the next ones. Empty when the address it needs is.
+pub fn calendar_link(rt: &RuntimeSettings, console: &str, task: &TaskRecord, appt: &Appointment) -> String {
+    if crate::calendar::sanitize_app(&rt.calendar_app).is_empty() {
+        return console_call_url(console, &task.call_id);
+    }
     let ics = crate::calendar::ics_url(&rt.public_url, &format!("tasks/{}", task.id));
     appt.calendar_event()
         .link_for(&rt.calendar_app, &event_description(&task.caller_id, appt), &ics)
+}
+
+/// A call's page in the web console (`…/calls/#call=<id>`); empty without
+/// an address or a call id the console's address takes.
+fn console_call_url(console: &str, call_id: &str) -> String {
+    let base = console.trim().trim_end_matches('/');
+    let id = call_id.trim();
+    if base.is_empty()
+        || id.is_empty()
+        || id.len() > 128
+        || !id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+    {
+        return String::new();
+    }
+    let base = base.strip_suffix("/calls").unwrap_or(base);
+    format!("{base}/calls/#call={id}")
 }
 
 /// Send the caller the text for this decision through the phone that took the
@@ -2822,15 +2844,18 @@ impl Drop for Deciding {
 /// call notes. Returns the task and the reply for Telegram. Only the first
 /// decision acts; one made while it runs, or after, is answered "already
 /// handled" and changes nothing.
+/// `console`: the web console's address as other devices open it
+/// (`settings_store::effective_console_url`; empty: none).
 pub async fn decide(
     rt: &RuntimeSettings,
+    console: &str,
     store: &TaskStore,
     calls: &CallStore,
     control: Option<&ControlRegistry>,
     task_id: &str,
     confirm: bool,
 ) -> Result<(TaskRecord, String)> {
-    decide_inner(rt, store, calls, control, task_id, confirm)
+    decide_inner(rt, console, store, calls, control, task_id, confirm)
         .await
         .map(|(task, text, _)| (task, text))
 }
@@ -2845,6 +2870,7 @@ pub async fn decide(
 pub async fn decide_from_web(
     http: &Client,
     rt: &RuntimeSettings,
+    console: &str,
     store: &TaskStore,
     calls: &CallStore,
     control: Option<&ControlRegistry>,
@@ -2852,7 +2878,7 @@ pub async fn decide_from_web(
     confirm: bool,
     reply: Option<Reply>,
 ) -> Result<(TaskRecord, String)> {
-    let (task, text, done) = decide_inner_with(rt, store, calls, control, task_id, confirm, reply).await?;
+    let (task, text, done) = decide_inner_with(rt, console, store, calls, control, task_id, confirm, reply).await?;
     if let Some(card) = card_to_clear(&rt.telegram_bot_token, task.appointment.as_ref(), done != Decision::Already) {
         let (http, token, reply, id) = (http.clone(), rt.telegram_bot_token.trim().to_string(), text.clone(), task.id.clone());
         tokio::spawn(async move {
@@ -2889,20 +2915,23 @@ enum Decision {
 /// default way).
 async fn decide_inner(
     rt: &RuntimeSettings,
+    console: &str,
     store: &TaskStore,
     calls: &CallStore,
     control: Option<&ControlRegistry>,
     task_id: &str,
     confirm: bool,
 ) -> Result<(TaskRecord, String, Decision)> {
-    decide_inner_with(rt, store, calls, control, task_id, confirm, None).await
+    decide_inner_with(rt, console, store, calls, control, task_id, confirm, None).await
 }
 
 /// [`decide_inner`] with the way the caller is told: `reply` as the owner
 /// picked it (one that cannot reach this caller tells nobody), None: the
 /// default for the number ([`default_reply`]).
+#[allow(clippy::too_many_arguments)]
 async fn decide_inner_with(
     rt: &RuntimeSettings,
+    console: &str,
     store: &TaskStore,
     calls: &CallStore,
     control: Option<&ControlRegistry>,
@@ -2984,7 +3013,7 @@ async fn decide_inner_with(
     }
     if confirm {
         // One tap puts it in the owner's own calendar (the one they chose).
-        let link = calendar_link(rt, &task, &appt);
+        let link = calendar_link(rt, console, &task, &appt);
         if !link.is_empty() {
             lines.push(format!("📅 {}", locale::fill(p.ap_cal_link, &link)));
         }
@@ -3591,12 +3620,12 @@ mod tests {
         let mut b = appt(&later(2, 15), &later(2, 16), "看房");
         b.tg_card = Some(card.clone());
         let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &b) }).await.unwrap();
-        let (done, _, acted) = decide_inner(&plain_settings(), &store, &calls, None, &t.id, true)
+        let (done, _, acted) = decide_inner(&plain_settings(), "", &store, &calls, None, &t.id, true)
             .await
             .unwrap();
         assert_eq!(acted, Decision::Settled);
         assert_eq!(card_to_clear("123:abc", done.appointment.as_ref(), acted != Decision::Already), Some(card));
-        let (again, text, acted) = decide_inner(&plain_settings(), &store, &calls, None, &t.id, false)
+        let (again, text, acted) = decide_inner(&plain_settings(), "", &store, &calls, None, &t.id, false)
             .await
             .unwrap();
         assert!(acted == Decision::Already && text.starts_with("這個預約已經處理過了"), "{text}");
@@ -3613,7 +3642,7 @@ mod tests {
         // Decided on the web while the card was on its way…
         let a = appt(&later(2, 15), &later(2, 16), "看房");
         let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
-        let (_, _, acted1) = decide_inner(&plain_settings(), &store, &calls, None, &t.id, true)
+        let (_, _, acted1) = decide_inner(&plain_settings(), "", &store, &calls, None, &t.id, true)
             .await
             .unwrap();
         assert_eq!(acted1, Decision::Settled);
@@ -3622,7 +3651,7 @@ mod tests {
         let after = store.get(&t.id).await.unwrap().appointment.unwrap();
         assert_eq!((after.status.as_str(), after.tg_card.as_ref()), (CONFIRMED, None));
         // A press on the card (or the web again) does nothing.
-        let (_, text, acted2) = decide_inner(&plain_settings(), &store, &calls, None, &t.id, true)
+        let (_, text, acted2) = decide_inner(&plain_settings(), "", &store, &calls, None, &t.id, true)
             .await
             .unwrap();
         assert!(acted2 == Decision::Already && text.starts_with("這個預約已經處理過了"), "{text}");
@@ -3783,7 +3812,7 @@ mod tests {
         let control = ControlRegistry::default();
         // A landline by default gets a call-back; no phone connected to place it: said so.
         let t = store.create(TaskRecord { id: String::new(), ..task_for("0225550123", &a) }).await.unwrap();
-        let (task, text, _) = decide_inner_with(&rt, &store, &calls, Some(&control), &t.id, true, None).await.unwrap();
+        let (task, text, _) = decide_inner_with(&rt, "", &store, &calls, Some(&control), &t.id, true, None).await.unwrap();
         let got = task.appointment.unwrap();
         assert_eq!((got.reply.as_str(), got.call.as_str(), got.sms.as_str()), ("call", "no_phone", ""));
         assert!(text.contains("AI 沒有回電：沒有可以撥號的手機連線"), "{text}");
@@ -3793,17 +3822,17 @@ mod tests {
         assert!(take_ready_callback("", "0225550123").is_none());
         // A mobile, the owner picks "nobody": nothing is sent.
         let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
-        let (task, text, _) = decide_inner_with(&rt, &store, &calls, Some(&control), &t.id, false, Some(Reply::None)).await.unwrap();
+        let (task, text, _) = decide_inner_with(&rt, "", &store, &calls, Some(&control), &t.id, false, Some(Reply::None)).await.unwrap();
         let got = task.appointment.unwrap();
         assert_eq!((got.reply.as_str(), got.sms.as_str(), got.call.as_str()), ("none", "", ""));
         assert!(text.contains("沒有通知對方"), "{text}");
         // A text asked for a landline cannot go: nobody is told.
         let t = store.create(TaskRecord { id: String::new(), ..task_for("0225550123", &a) }).await.unwrap();
-        let (task, _, _) = decide_inner_with(&rt, &store, &calls, Some(&control), &t.id, true, Some(Reply::Sms)).await.unwrap();
+        let (task, _, _) = decide_inner_with(&rt, "", &store, &calls, Some(&control), &t.id, true, Some(Reply::Sms)).await.unwrap();
         assert_eq!(task.appointment.unwrap().reply, "none");
         // A hidden number: never a text or a call.
         let t = store.create(TaskRecord { id: String::new(), ..task_for("", &a) }).await.unwrap();
-        let (task, text, _) = decide_inner_with(&rt, &store, &calls, Some(&control), &t.id, true, Some(Reply::Call)).await.unwrap();
+        let (task, text, _) = decide_inner_with(&rt, "", &store, &calls, Some(&control), &t.id, true, Some(Reply::Call)).await.unwrap();
         assert_eq!(task.appointment.unwrap().reply, "none");
         assert!(text.contains("未顯示號碼，沒辦法通知對方"), "{text}");
         let _ = std::fs::remove_dir_all(&root);
@@ -4115,8 +4144,8 @@ mod tests {
         let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
         // ✅ and ❌ pressed together (or Telegram and the API): the first one acts.
         let (first, second) = tokio::join!(
-            decide(&rt, &store, &calls, None, &t.id, true),
-            decide(&rt, &store, &calls, None, &t.id, false),
+            decide(&rt, "http://bageo.local/", &store, &calls, None, &t.id, true),
+            decide(&rt, "http://bageo.local/", &store, &calls, None, &t.id, false),
         );
         let (first, second) = (first.unwrap(), second.unwrap());
         assert!(first.1.starts_with("✅ 已同意預約"), "{}", first.1);
@@ -4130,11 +4159,11 @@ mod tests {
         let t2 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a2) }).await.unwrap();
         let held = Deciding::claim(&t2.id).unwrap();
         assert!(Deciding::claim(&t2.id).is_none());
-        let (_, text) = decide(&rt, &store, &calls, None, &t2.id, true).await.unwrap();
+        let (_, text) = decide(&rt, "http://bageo.local/", &store, &calls, None, &t2.id, true).await.unwrap();
         assert!(text.starts_with("這個預約已經處理過了"), "{text}");
         assert_eq!(store.get(&t2.id).await.unwrap().status, TaskStatus::Pending);
         drop(held);
-        let (_, text) = decide(&rt, &store, &calls, None, &t2.id, true).await.unwrap();
+        let (_, text) = decide(&rt, "http://bageo.local/", &store, &calls, None, &t2.id, true).await.unwrap();
         assert!(text.starts_with("✅ 已同意預約"), "{text}");
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -4170,6 +4199,16 @@ mod tests {
         assert!(all_events(&appt(&later(2, 15), &later(2, 16), "看房")).is_empty());
     }
 
+    #[test]
+    fn console_call_url_takes_the_console_and_a_plain_call_id() {
+        assert_eq!(console_call_url("http://bageo.local/calls/", "abc-1_2"), "http://bageo.local/calls/#call=abc-1_2");
+        assert_eq!(console_call_url("http://192.168.1.20:8787", "c"), "http://192.168.1.20:8787/calls/#call=c");
+        assert_eq!(console_call_url("  ", "c"), "");
+        assert_eq!(console_call_url("http://bageo.local/", " "), "");
+        assert_eq!(console_call_url("http://bageo.local/", "a/b"), "");
+        assert_eq!(console_call_url("http://bageo.local/", &"a".repeat(129)), "");
+    }
+
     #[tokio::test]
     async fn owner_decision_without_calendar_or_texts_updates_the_task() {
         let root = std::env::temp_dir().join(format!("bageo-appt-{}", uuid::Uuid::new_v4()));
@@ -4182,37 +4221,47 @@ mod tests {
         rt.public_url = "http://bageo.local/".into();
         let a = appt("2026-11-14T15:00", "2026-11-14T16:00", "看房");
         let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
-        let (done, text) = decide(&rt, &store, &calls, None, &t.id, true).await.unwrap();
+        let (done, text) = decide(&rt, "http://bageo.local/", &store, &calls, None, &t.id, true).await.unwrap();
         assert_eq!(done.status, TaskStatus::Fulfilled);
         assert_eq!(done.appointment.as_ref().unwrap().status, CONFIRMED);
         assert!(text.starts_with("✅ 已同意預約\n11/14（週六）15:00–16:00 看房"), "{text}");
-        // No calendar of its own: one tap adds it to the owner's (Google
-        // Calendar's form until another calendar is chosen), with the caller in it.
+        // No calendar chosen yet: the call's page, where "Add to calendar"
+        // asks which one (never a calendar picked for the owner).
+        assert!(text.ends_with("\n📅 加入行事曆：http://bageo.local/calls/#call=c"), "{text}");
+        assert!(!text.contains("calendar.google.com"), "{text}");
+        assert!(done.events.contains(&"appointment_confirmed".to_string()));
+        // Pressed again: nothing happens twice.
+        let (_, again) = decide(&rt, "http://bageo.local/", &store, &calls, None, &t.id, false).await.unwrap();
+        assert!(again.starts_with("這個預約已經處理過了"), "{again}");
+        // Not chosen and no address other devices can open: no link at all.
+        let tn = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
+        let (_, text) = decide(&rt, "", &store, &calls, None, &tn.id, true).await.unwrap();
+        assert!(!text.contains("加入行事曆"), "{text}");
+        // Google Calendar chosen: its form filled in, with the caller in it.
+        rt.calendar_app = "google".into();
+        let tg = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
+        let (_, text) = decide(&rt, "http://bageo.local/", &store, &calls, None, &tg.id, true).await.unwrap();
         assert!(
             text.contains("\n📅 加入行事曆：https://calendar.google.com/calendar/render?action=TEMPLATE&text=%E7%9C%8B%E6%88%BF&dates=20261114T150000/20261114T160000&details="),
             "{text}"
         );
         // The caller's number goes in the entry (`號碼：0912345678`).
         assert!(text.contains("%E8%99%9F%E7%A2%BC%EF%BC%9A0912345678"), "{text}");
-        assert!(done.events.contains(&"appointment_confirmed".to_string()));
-        // Pressed again: nothing happens twice.
-        let (_, again) = decide(&rt, &store, &calls, None, &t.id, false).await.unwrap();
-        assert!(again.starts_with("這個預約已經處理過了"), "{again}");
         // Apple Calendar chosen: the task's .ics at the console's address.
         rt.calendar_app = "apple".into();
         let t3 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
-        let (_, text) = decide(&rt, &store, &calls, None, &t3.id, true).await.unwrap();
+        let (_, text) = decide(&rt, "http://bageo.local/", &store, &calls, None, &t3.id, true).await.unwrap();
         assert!(text.ends_with(&format!("📅 加入行事曆：http://bageo.local/calls/api/tasks/{}/event.ics", t3.id)), "{text}");
         // …and without an address other devices can open: no link at all.
         rt.public_url = String::new();
         let t4 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
-        let (_, text) = decide(&rt, &store, &calls, None, &t4.id, true).await.unwrap();
+        let (_, text) = decide(&rt, "http://bageo.local/", &store, &calls, None, &t4.id, true).await.unwrap();
         assert!(!text.contains("加入行事曆"), "{text}");
         // Declined, texts on, the phone is not connected: said so.
         rt.appointment_sms = true;
         let t2 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
         let control = ControlRegistry::default();
-        let (done, text) = decide(&rt, &store, &calls, Some(&control), &t2.id, false).await.unwrap();
+        let (done, text) = decide(&rt, "http://bageo.local/", &store, &calls, Some(&control), &t2.id, false).await.unwrap();
         assert_eq!(done.status, TaskStatus::Ignored);
         assert_eq!(done.appointment.as_ref().unwrap().sms, "offline");
         assert!(text.starts_with("❌ 已婉拒預約") && text.contains("簡訊沒傳出：手機沒連線"), "{text}");
@@ -4316,7 +4365,7 @@ mod tests {
         assert_eq!(titles, vec!["看房", "修水管"]);
         assert!(made.iter().all(|t| t.appointment.as_ref().unwrap().more.is_empty()));
         // The second is confirmed on its own; the first still waits, also in the call's notes.
-        let (_, text) = decide(&plain_settings(), &tasks, &calls, None, &made[1].id, true)
+        let (_, text) = decide(&plain_settings(), "", &tasks, &calls, None, &made[1].id, true)
             .await
             .unwrap();
         assert!(text.starts_with("✅ 已同意預約"), "{text}");
@@ -4550,7 +4599,7 @@ mod tests {
         // Waiting: the owner's ✅ goes through with nothing to write to, and
         // the calendar's leftovers no longer hold it.
         let t = store.create(old(PENDING)).await.unwrap();
-        let (done, text) = decide(&rt, &store, &calls, None, &t.id, true).await.unwrap();
+        let (done, text) = decide(&rt, "http://bageo.local/", &store, &calls, None, &t.id, true).await.unwrap();
         assert_eq!(done.status, TaskStatus::Fulfilled);
         assert!(text.starts_with("✅ 已同意預約"), "{text}");
         let a = done.appointment.unwrap();
@@ -4558,7 +4607,7 @@ mod tests {
         assert!(serde_json::to_value(&a).unwrap().get("calendar").is_none());
         // Declined: its event is not looked for or deleted.
         let t = store.create(old(PENDING)).await.unwrap();
-        let (done, text) = decide(&rt, &store, &calls, None, &t.id, false).await.unwrap();
+        let (done, text) = decide(&rt, "http://bageo.local/", &store, &calls, None, &t.id, false).await.unwrap();
         assert_eq!(done.status, TaskStatus::Ignored);
         assert_eq!(done.appointment.unwrap().event_id, "demo-1");
         assert!(text.starts_with("❌ 已婉拒預約") && !text.contains('刪'), "{text}");

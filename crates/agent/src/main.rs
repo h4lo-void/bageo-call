@@ -1216,6 +1216,7 @@ async fn main() -> Result<()> {
         let http = http.clone();
         let control = control.clone();
         let calls = state.calls.clone();
+        let base = state.settings.clone();
         tokio::spawn(async move {
             let mut poller = TgPoller::new();
             loop {
@@ -1251,9 +1252,12 @@ async fn main() -> Result<()> {
                             control.clone(),
                             token.clone(),
                         );
+                        // The call's page for "Add to calendar" while no calendar is chosen.
+                        let console = settings_store::effective_console_url(&rt.effective(&base));
                         tokio::spawn(async move {
                             let text = match appointments::decide(
                                 &rt,
+                                &console,
                                 &task_store,
                                 &calls,
                                 Some(control.as_ref()),
@@ -8972,9 +8976,15 @@ fn spawn_ai_talk_tg_summary(
                 body.push_str(&format!("\n📅 {label}{}{} ({})", locale::notify_kv_sep(), ev.title, ev.when()));
                 // One tap adds it to the calendar the owner chose (setting
                 // `calendar_app`): its form, or the call's `.ics` at the console's
-                // address (no link for Apple / .ics without one).
+                // address (no link for Apple / .ics without one). Not chosen
+                // yet: no calendar is picked for them — the call's page (the
+                // last line) asks which one on "Add to calendar".
                 let ics = calendar::ics_url(&eff.public_url, &format!("call/{call_id}"));
-                let link = ev.link_for(&rt.calendar_app, "", &ics);
+                let link = if calendar::sanitize_app(&rt.calendar_app).is_empty() {
+                    String::new()
+                } else {
+                    ev.link_for(&rt.calendar_app, "", &ics)
+                };
                 if !link.is_empty() {
                     body.push_str(&format!("\n{link}"));
                 }

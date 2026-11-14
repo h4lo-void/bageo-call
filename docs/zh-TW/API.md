@@ -224,7 +224,7 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 |---|---|
 | `GET /calls/api/tasks` | 任務，最新的在前（最多 200 筆）：`{ok, tasks}`。預約任務另外帶 `calendar_links`（`{google, outlook, office365, yahoo}`）；`reply` = `{sms, call, default}`（這位來電者能不能收簡訊、能不能回電，以及「預設回覆方式」會選哪個）；`sms_route` = `{serial, label}`，你沒另選手機時簡訊從哪支發（接這通電話的手機；`label` 是它在 `device_labels` 的名稱，沒有就是 id）；來電者是聯絡人時還有 `contact_name`。網頁上的「待處理事項」就是 `appointment.status` 為 `pending` 的任務。 |
 | `GET /calls/api/tasks/{id}/event.ics` | 預約的 iCalendar 檔（Apple 日曆和其他 App）。用控制台權杖或連結裡的 `?k=<HMAC 金鑰>` 開；任務沒有預約時回 HTTP 404 `no_calendar`。 |
-| `POST /calls/api/tasks/{id}/confirm` | **同意**，跟在網頁或 Telegram 卡片上按一樣。Body：空的、`{}` 或 `{"reply": "sms" \| "call" \| "none"}`。沒帶 `reply` 時照「預設回覆方式」；選了這位來電者用不了的方式就不通知。回應 `{ok, task, message}`：`message` 是白話寫的結果，跟 Telegram Bot 回的同一段，附上你選的 `calendar_app` 的「加入行事曆」連結。傳簡訊最多可能等 90 秒；回電交給手機撥出（在 `appointment.call` 看進度）。 |
+| `POST /calls/api/tasks/{id}/confirm` | **同意**，跟在網頁或 Telegram 卡片上按一樣。Body：空的、`{}` 或 `{"reply": "sms" \| "call" \| "none"}`。沒帶 `reply` 時照「預設回覆方式」；選了這位來電者用不了的方式就不通知。回應 `{ok, task, message}`：`message` 是白話寫的結果，跟 Telegram Bot 回的同一段，附上你選的 `calendar_app` 的「加入行事曆」連結（還沒選時是這通電話在網頁的頁面，在那裡按「加入行事曆」選一家；沒有控制台網址就不附）。傳簡訊最多可能等 90 秒；回電交給手機撥出（在 `appointment.call` 看進度）。 |
 | `POST /calls/api/tasks/{id}/ignore` | **不同意**：用同樣的方式告訴對方，客氣婉拒。body、回應和規則同上。 |
 | `POST /calls/api/appointments/{id}/retry-sms` | 已決定的預約簡訊沒傳出時再傳一次。Body：空的、`{}` 或 `{"serial": "<手機>"}`（換另一支已連線的手機；沒帶就是接這通電話的那支）。回應 `{ok, sms, message}`：傳出去了 `ok` 才是 true，`sms` 是新的代碼。還在等、已經傳出或本來就不能傳（`no_number`）時回 HTTP 409 `sms_not_retryable`（附目前的 `sms`）；404 `task_not_found`；400 `invalid_serial`／`bad_request`。 |
 

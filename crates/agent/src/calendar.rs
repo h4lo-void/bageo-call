@@ -250,8 +250,9 @@ impl Event {
     /// What "Add to calendar" opens for the calendar the owner chose (setting
     /// `calendar_app`): that web calendar's form, or — Apple Calendar, `.ics` —
     /// `ics_url`, the event's file (empty when there is no address other
-    /// devices can open). Not chosen yet: Google Calendar's form, the one
-    /// link notifications carried before there was a choice.
+    /// devices can open). Not chosen yet: Google Calendar's form — callers
+    /// that link for the owner check the choice first and send them to the web
+    /// console to make it instead.
     pub fn link_for(&self, app: &str, details: &str, ics_url: &str) -> String {
         match sanitize_app(app).as_str() {
             "outlook" => self.outlook_link(details),

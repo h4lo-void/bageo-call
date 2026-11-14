@@ -1772,10 +1772,12 @@ async fn appointment_decision(
 ) -> Option<Response> {
     let task = state.task_store.get(id).await?;
     task.appointment.as_ref()?;
+    let console = crate::settings_store::effective_console_url(&rt.effective(&state.settings));
     Some(
         match crate::appointments::decide_from_web(
             &state.http,
             rt,
+            &console,
             &state.task_store,
             &state.store,
             Some(state.control.as_ref()),
