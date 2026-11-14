@@ -1,18 +1,35 @@
-# Bundled sounds
+# Bageo bundled sounds: background ambience and voice samples
+
+This folder holds the audio the Bageo agent ships with: background sounds that play
+quietly under the AI's voice on a phone call, and pre-recorded Gemini Live voice
+samples for previews and blocked-number announcements. Use this page to see where each
+sound comes from and how to add or re-record your own.
+
+| File pattern | What it is |
+|---|---|
+| `ambience_<kind>.wav` | [Background sounds](#background-sounds-ambience_kindwav), all CC0 |
+| `voices/<language>/<Voice>_<n>.wav` | [Voice samples](#voice-samples-voiceslanguagevoice_nwav) recorded with Gemini Live |
+| `ivr_*.wav`, `hold_transfer.wav` | [Older menu flows](#optional-sounds-of-the-older-menu-flows), not shipped |
 
 ## Background sounds (`ambience_<kind>.wav`)
 
-The room the AI seems to be in: a quiet bed under its voice, chosen in the web
-console (*Settings → How it answers → Background sound*). The agent loads every
-`ambience_<kind>.wav` it finds here at start-up (16 kHz mono, 16-bit PCM).
+A background sound sets the room the AI seems to be in: a quiet bed under its voice,
+chosen in the web console (*Settings → How it answers → Background sound*). The agent
+loads every `ambience_<kind>.wav` it finds here at start-up (16 kHz mono, 16-bit PCM).
 
-All recordings are **CC0 (public domain)** from [Freesound](https://freesound.org);
-the number is the Freesound sound ID (`https://freesound.org/s/<id>/`). Each was
-cut to stretches without intelligible speech, band-limited to telephone range
-(150 Hz – 7 kHz), tamed for sudden peaks, cross-faded into a seamless loop and
-normalised to −30 dBFS RMS (the agent plays it at about −50 / −44 / −38 dBFS for
-level 1 / 2 / 3; the AI's voice sits around −16 dBFS). Sounds marked
-"synthesised" were generated for this project and carry no third-party rights.
+All recordings are **CC0 (public domain)** from [Freesound](https://freesound.org).
+The numbers below are Freesound sound IDs (`https://freesound.org/s/<id>/`). Sounds
+marked "synthesised" were generated for this project and carry no third-party rights.
+
+Each recording was:
+
+1. cut to stretches without intelligible speech,
+2. band-limited to telephone range (150 Hz – 7 kHz) and tamed for sudden peaks,
+3. cross-faded into a seamless loop,
+4. normalised to −30 dBFS RMS.
+
+The agent plays it at about −50 / −44 / −38 dBFS for level 1 / 2 / 3; the AI's voice
+sits around −16 dBFS.
 
 | File | Length | Sources |
 |---|---|---|
@@ -34,31 +51,36 @@ construction beds.
 
 ### Adding your own
 
-Drop a 16 kHz mono 16-bit WAV named `ambience_<kind>.wav` here. A new *kind*
-also has to be added to `KINDS` in `crates/agent/src/ambience.rs` and to the
-names in the web console's translations; replacing the file of an existing kind
-needs no code change. Use material you have the right to distribute, without
-recognisable voices.
+- **Replace a sound:** overwrite the file of an existing kind with a 16 kHz mono
+  16-bit WAV. No code change is needed.
+- **Add a new kind:** drop `ambience_<kind>.wav` here, add the kind to `KINDS` in
+  `crates/agent/src/ambience.rs` and add its name to the web console's translations.
+
+Use material you have the right to distribute, without recognisable voices.
 
 ## Voice samples (`voices/<language>/<Voice>_<n>.wav`)
 
-Every Gemini Live voice the settings page offers, in every language: the three
-preview lines (`_0`, `_1`, `_2`) and the blocked-number announcement
-(`_reject`), so a preview or a blocked call never spends anyone's Gemini quota.
-16 kHz mono IMA ADPCM WAV. Spoken by Gemini Live (model `gemini-3.8-live`) and
-recorded with
+For every Gemini Live voice the settings page offers, in every language, this folder
+holds the three preview lines (`_0`, `_1`, `_2`) and the blocked-number
+announcement (`_reject`). A preview or a blocked call therefore never spends anyone's
+Gemini quota. Format: 16 kHz mono IMA ADPCM WAV, spoken by Gemini Live (model
+`gemini-3.8-live`).
+
+To record them:
 
     GEMINI_API_KEY=… agent make-voice-samples assets/voices
 
-which only records what is missing (delete a file to record it again) and
-checks every recording against Gemini's transcript of it. After changing a
-line in `locale.rs` (`preview`, `unavailable`), delete that language's files and run it
-again. The agent uses a sample only when it runs at the same sample rate
-(`SAMPLE_RATE`, default 16000); otherwise it records its own on first use.
+The command only records what is missing (delete a file to record it again) and checks
+every recording against Gemini's transcript of it. After changing a line in
+`locale.rs` (`preview`, `unavailable`), delete that language's files and run it
+again.
+
+The agent uses a sample only when it runs at the same sample rate (`SAMPLE_RATE`,
+default 16000); otherwise it records its own on first use.
 
 ## Optional sounds of the older menu flows
 
-The agent also looks here for `ivr_*.wav` and `hold_transfer.wav` (greeting,
-voicemail and hold-music clips of the older menu-based modes). None are shipped:
-the default mode — an AI voice answering directly — does not use them, and the
-agent runs without them.
+The agent also looks here for `ivr_*.wav` and `hold_transfer.wav`: greeting,
+voicemail and hold-music clips of the older menu-based modes. None are shipped. The
+default mode, an AI voice answering directly, does not use them, and the agent runs
+without them.

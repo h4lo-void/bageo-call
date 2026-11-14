@@ -1,10 +1,23 @@
-# Architecture
+# How Bageo works: architecture of a self-hosted AI phone assistant
 
-Bageo has three parts: a phone app with a root module that turns a spare
-Android phone into a call box, one Rust program on your computer (the
-*agent*) that holds all the logic, and a web console compiled into that
-program. There is no database, no message broker and no cloud service of the
-project's own.
+Bageo lets an AI answer and place calls on your real phone number. This page
+follows one call from the ring on a rooted Android phone, through one Rust
+program on your computer, to Gemini Live and back, and names the file that
+handles each step. Read it before you change the code, debug a call, or put
+another front end in place of the phone.
+
+## The big picture
+
+Bageo has three parts. There is no database, no message broker and no cloud
+service of the project's own.
+
+1. **A spare Android phone** (rooted, with your SIM) runs the Bageo app and a
+   root module. It answers, dials and carries audio. It makes no decisions.
+2. **The agent**, one Rust program on your computer, holds all the logic: when
+   to answer, the Gemini Live session, the hang-up and scam rules, summaries,
+   contacts, appointments, errands and notifications.
+3. **The web console**, one HTML page compiled into the agent, in nine
+   languages.
 
 ```mermaid
 flowchart LR
@@ -17,9 +30,9 @@ flowchart LR
         data[("data/calls<br/>records, WAV, contacts,<br/>to-do, errands, settings")]
         ui["web console<br/>(one HTML page)"]
     end
-    other([Caller or callee]) <-- "mobile network" --> app
+    other(["Caller or callee"]) <-- "mobile network" --> app
     app <-- "control + media WebSocket<br/>adb reverse (USB) or Wi-Fi<br/>JSON + 16 kHz PCM" --> agent
-    agent <-- "WebSocket<br/>audio in, audio out, tool calls" --> gemini[(Gemini Live API)]
+    agent <-- "WebSocket<br/>audio in, audio out, tool calls" --> gemini[("Gemini Live API")]
     agent -- "transcript, contact files,<br/>scam review" --> llm[("Gemini Flash-Lite<br/>or an OpenAI-compatible model")]
     agent --> data
     ui <--> agent
@@ -30,180 +43,218 @@ flowchart LR
 
 | Piece | Where | Role |
 |---|---|---|
-| **Phone app** | [`android/`](../../android) | Answers or places the call silently, captures the other side's voice, plays the AI's voice into the call, reports the SIM of each call, sends texts on request. Holds no logic about the conversation. |
-| **Root module** | `android/magisk/pixelcallai_uplink` | Installs the app as a privileged system app, sets the phone up as a call box at every boot, and runs the root helper that switches between AI phone and normal phone. |
-| **Agent** | [`crates/agent`](../../crates/agent) | Everything else: the call state machine, the Gemini Live sessions, recording, summaries, contacts, appointments, errands, notifications, the web console and its API, the USB link to the phones. |
-| **Web console** | `crates/agent/static/calls.html` | One self-contained page compiled into the agent, in nine languages. |
+| **Phone app** | [`android/`](../../android) | Answers or places the call silently, captures the other side's voice, plays the AI's voice into the call, reports the SIM of each call, sends texts on request. No conversation logic. Details: [phone-side architecture](../../android/ARCHITECTURE.md). |
+| **Root module** | `android/magisk/pixelcallai_uplink` | Installs the app as a privileged system app, sets the phone up as a call box at every boot, and runs the root helper behind the AI phone / [normal phone](PHONE.md#normal-phone-mode) switch. |
+| **Agent** | [`crates/agent`](../../crates/agent) | Everything else: the call state machine, Gemini Live sessions, recording, summaries, contacts, appointments, errands, notifications, the web console and its API, the USB link to the phones. |
+| **Web console** | `crates/agent/static/calls.html` | One self-contained page compiled into the agent. |
 | **SMS forwarder** | [`tools/sms_forward`](../../tools/sms_forward) | Optional, separate Python script that forwards the phone's incoming texts. |
 
 ### Agent modules
 
 | Module | What it does |
 |---|---|
-| `main.rs` | Start-up, the phone WebSocket endpoints, the incoming-call state machine, the after-call pipeline. |
-| `gemini_live.rs` | One Live session per call: audio relay, echo check, interruption, hang-up rules, sales detection and the switch to Stall Mode, session renewal, the special modes for AI call-backs and errands (wait for the callee, ringback filter, tool calls). |
-| `prompts.rs`, `locale.rs` | The system prompt of each call, assembled per language and answer style; the phrases each language uses and listens for. |
-| `stall_review.rs` | The second look before Stall Mode: a small model classifies the call as `scam_or_sales`, `normal`, `ivr_recording` or `too_early`, within 1.5 s. |
-| `appointments.rs` | The `propose_appointment` tool on normal calls, the to-do items it creates, Accept / Decline, the text or AI call-back that tells the caller, and the shared outbound queue. |
+| `main.rs` | Start-up, the phone WebSocket endpoints, the incoming-call state machine, ring pre-warm, the after-call pipeline. |
+| `gemini_live.rs` | One Live session per call: audio relay, echo check, interruptions, hang-up rules, sales detection and the switch to Stall Mode, session renewal, and the outbound modes (wait for the callee, ringback filter, tool calls). |
+| `prompts.rs`, `locale.rs` | The system prompt of each call, built per language and answer style; the phrases each language says and listens for. |
+| `stall_review.rs` | The second look before Stall Mode: `gemini-flash-lite-latest` labels the call `scam_or_sales`, `normal`, `ivr_recording` or `too_early` within 1.5 s. |
+| `appointments.rs` | The appointment tools on normal calls, the to-do items they create, Accept / Decline, the text or AI call-back that tells the caller, and the shared outbound queue. |
 | `callback.rs` | The phones' control connections: `place_call`, `send_sms` and their results, routed to the right phone. |
 | `errands.rs` | AI errands: number checks, phone and SIM choice (`SimBook`), the errand script and `ask_owner`, live captions, what you type during the call, the structured result. |
-| `contacts.rs` | The contact list, number matching however a number is written, import from vCard / CSV / TSV / text / `.xlsx` / `.docx` and through Gemini for PDFs and pictures, vCard export. |
-| `phone_region.rs` | Which country a number belongs to, read the way the SIM that took the call reads it; the SIM country each phone reported. |
-| `calendar.rs` | Calendar suggestions and the "add to calendar" links for Google, Outlook.com, Microsoft 365, Yahoo and `.ics`. |
-| `deepseek.rs` | The after-call summary over Gemini or any OpenAI-compatible API (the name is historical), translations of lines said in another language, the result of an errand. |
-| `tasks.rs` | The store behind *To do*. |
-| `notify.rs`, `gmail.rs`, `tg_inbound.rs` | The 16 notification channels, e-mail over SMTP, and Telegram button presses. |
+| `contacts.rs` | The contact list; number matching however a number is written; import from vCard, CSV, TSV, text, `.xlsx` and `.docx`, and through Gemini for PDFs and pictures; vCard export. |
+| `phone_region.rs` | Which country a number belongs to, read the way the answering SIM reads it; the SIM country each phone reported. |
+| `calendar.rs` | Calendar suggestions and "add to calendar" links for Google, Outlook.com, Microsoft 365, Yahoo and `.ics`. |
+| `deepseek.rs` | The after-call summary over Gemini or any OpenAI-compatible API (the file name is historical), translations of lines said in another language, the result of an errand. |
+| `tasks.rs` | The store behind **To do**. |
+| `notify.rs`, `gmail.rs`, `tg_inbound.rs` | The 16 notification channels, e-mail over SMTP, Telegram button presses. |
 | `calls.rs`, `calls_http.rs` | Call records, recordings and transcripts; the web console's REST API. |
 | `settings_store.rs` | Settings from `.env` plus what the console saved, applied without a restart. |
 | `usb_bridge.rs` | Keeps `adb reverse` up for every USB phone and starts the app's call service. |
 | `mdns.rs` | Answers `bageo.local` on the local network (multicast DNS), so the console opens without knowing the computer's IP. |
-| `adpcm.rs`, `voice_preview.rs`, `ambience.rs` | The 1,080 bundled voice clips in IMA ADPCM, voice previews and "not available" announcements, the twelve background sounds. |
+| `adpcm.rs`, `voice_preview.rs`, `ambience.rs` | The 1,080 bundled voice clips (IMA ADPCM), voice previews and the "not available" announcement, the 12 background sounds. |
 
-## One incoming call, step by step
+## An incoming call, step by step
+
+```mermaid
+sequenceDiagram
+    participant C as Caller
+    participant P as Phone app
+    participant A as Agent
+    participant G as Gemini Live
+    C->>P: rings
+    P->>A: incoming (number, SIM)
+    A->>P: answer_plan (ring 3 s)
+    A->>G: open session, prepare the opening line
+    P->>A: picks up, opens the media WebSocket
+    A->>P: opening line, about 0.43 s after pick-up
+    loop conversation
+        P->>A: caller audio (60 ms PCM frames)
+        A->>G: caller audio
+        G->>A: AI audio and transcripts
+        A->>P: AI audio with background sound
+    end
+    A->>P: hangup
+    A->>A: recording, summary, to-do, notifications
+```
 
 1. **Idle.** Each phone keeps a *control* WebSocket open to the agent. On USB
-   the app dials `ws://127.0.0.1:8765` on the phone; `adb reverse`, kept up by
-   `usb_bridge.rs`, carries that to the agent's port.
-2. **Ringing.** The app reports `incoming` with the caller's number and the SIM
-   it came in on. The agent decides:
-   - a blocked number is hung up on while it rings, or picked up for the
-     recorded announcement, and never reaches Gemini;
-   - otherwise it answers with an `answer_plan` (ring for *n* ms, 3 s by
-     default) and, with *ring pre-warm*, opens the Gemini Live session right
-     away. The prompt is assembled now: your prompt or the built-in one, status
-     note, notes, who is calling if the number is in your contacts, the other
-     names callers use for you, the language rules for this SIM and this
-     number, the appointment tool when appointments are on, and the fixed
-     rules (see [Writing the prompt](PROMPTS.md#what-the-ai-is-told-on-every-call)).
-     The model generates its opening line, which is held back until pick-up.
+   the app dials `ws://127.0.0.1:8765` on the phone, and `adb reverse`
+   (kept up by `usb_bridge.rs`) carries it to the agent. Over
+   [Wi-Fi](PHONE.md#wi-fi) the app connects to the agent's address directly.
+2. **Ringing.** The app reports `incoming` with the caller's number and the
+   SIM the call came in on. The agent decides:
+   - A blocked number is hung up on while it rings, or picked up for the
+     recorded announcement. It never reaches Gemini.
+   - Any other call gets an `answer_plan`: ring for `answer_ring_ms` (3 s by
+     default, 8 s at most), then pick up. With **Get the AI ready while the
+     phone rings** (`gemini_ring_prewarm`) the agent opens the Gemini Live
+     session right away and builds the prompt: your prompt or the built-in
+     one, your status note and notes, the caller's name if the number is in
+     your contacts, the other names callers use for you, the language rules
+     for this SIM and number, the appointment tools when appointments are on,
+     and the fixed rules (see
+     [Writing the prompt](PROMPTS.md#what-the-ai-is-told-on-every-call)). The
+     model prepares its opening line, which is held back until pick-up.
 3. **Pick-up.** The app answers and opens a *media* WebSocket. Caller audio
-   flows up as 60 ms PCM frames; the agent adopts the pre-warmed session,
-   releases the opening line (measured median: about 0.43 s from pick-up), and
-   from then on relays audio both ways. A phone that reports the SIM only at
-   pick-up can change the opening language; the prepared line is then dropped
-   and the AI answers a moment later in the right language.
-4. **Conversation** (`gemini_live.rs`). The agent
-   - normalises the quiet call audio and checks, in the first seconds, whether
-     the phone's capture contains the AI's own voice. That decides whether the
-     caller may interrupt (about 0.8 s of speech; short "mm" sounds do not
-     count) and how the background sound is mixed;
-   - streams the caller to Gemini, which detects turn ends itself by default,
-     and Gemini's audio back to the phone, mixed with the background sound;
+   flows up in 60 ms PCM frames. The agent adopts the pre-warmed session and
+   releases the opening line (measured median: about 0.43 s after pick-up).
+   Some phones report the SIM only at pick-up; if that changes the opening
+   language, the prepared line is dropped and the AI answers a moment later in
+   the right language.
+4. **Conversation** (`gemini_live.rs`). The agent:
+   - boosts the quiet call audio and checks in the first seconds whether the
+     phone's capture contains the AI's own voice. That decides whether the
+     caller may interrupt (**Let the caller interrupt**: about 0.8 s of speech;
+     a short "mm" does not count) and how the background sound is mixed;
+   - streams the caller to Gemini, which detects the end of each turn itself by
+     default, and sends Gemini's audio back mixed with the background sound;
    - on a Taiwanese SIM taking a call from abroad, keeps the AI quiet until the
      carrier's recorded warning has finished;
-   - reads Gemini's transcripts of both sides to drive the few rules that are
-     not left to the model: whether the caller is leaving (a goodbye at the end
-     of what they said), whether the call is a sales pitch or scam (keyword
-     score → `stall_review.rs` → Stall Mode on a fresh session), a nudge when
-     the line goes quiet, a wrap-up before the longest call length;
-   - answers the model's `propose_appointment` call on a task of its own, so
-     the audio never waits for it;
-   - replaces the Live session with a fresh one carrying the transcript every
-     few minutes, because a Live connection has a limited lifetime.
-5. **Hang-up.** When the caller's last words were a goodbye, or the AI said
-   goodbye and the line stayed quiet for 6 s, the agent sends `hangup`. A
-   recorded voice menu gets no answer and is hung up on after a few seconds of
-   quiet. If the AI never produced audio (no key, service down) it hangs up at
-   once rather than leave the caller in silence.
+   - reads Gemini's transcripts of both sides to run the few rules that are
+     not left to the model: whether the caller is leaving (their last words are
+     a goodbye), whether this is a sales or scam call (keyword score, then
+     `stall_review.rs`, then Stall Mode on a fresh session), a nudge when
+     the line goes quiet, and a wrap-up before the longest call length;
+   - answers the model's appointment tool calls on a separate task, so the
+     audio never waits;
+   - replaces the Live session with a fresh one that carries the transcript
+     (about every 8 minutes), because a Live connection has a limited lifetime.
+5. **Hang-up.** The agent sends `hangup` when the caller's last words were a
+   goodbye, or when the AI said goodbye and the line stayed quiet for 6 s. A
+   recorded voice menu gets no answer and is hung up on after 4 s of quiet
+   (20 s at most). If the AI never produced audio (no key, service down), the
+   call is ended at once instead of leaving the caller in silence.
 6. **Afterwards** (`main.rs`, `deepseek.rs`, `appointments.rs`,
-   `notify.rs`). The recording is finalised (mixed, caller only, AI only), the
-   transcript goes to the summary model, the four-line summary is saved next
-   to the call and sent to every notification channel. Each appointment the
-   caller asked for becomes a *To do* item (none from sales or scam calls).
-   Lines said in another language are translated in the background and added
-   to the notes when they arrive, so the notification never waits for them.
+   `notify.rs`). The recording is saved three ways (mixed, caller only,
+   AI only). The transcript goes to the summary model, and the four-line
+   summary is stored with the call and sent to every notification channel.
+   Each appointment the caller asked for becomes a **To do** item (never from
+   sales or scam calls). Lines in another language are translated in the
+   background and added when ready, so the notification never waits for them.
 
-## One outgoing call: an AI errand or an appointment call-back
+> **Example: a sales call that never ends.** A caller offers a "free policy
+> check-up". The keyword score crosses its line, `stall_review.rs` answers
+> `scam_or_sales`, and a fresh Live session with the Stall Mode prompt
+> takes over: the AI sounds interested, asks how the premium is worked out,
+> and never gives out data or agrees to anything. If the caller has only said
+> who they are, the review answers `too_early` and looks again after their
+> next turn. No key, an error or a slow answer counts as `scam_or_sales`.
 
-Both kinds share one outbound route in `appointments.rs`: one call to a number
-at a time, `place_call` only to the phone (and SIM) chosen for it, and the
-script applied only to the call that phone reports for that task. An incoming
-call from the same number never gets the outbound script.
+## An outgoing call: AI errand or call-back
+
+Picture an errand like "Book a table for four tomorrow at 7; 7:30 is also
+fine." Errands and appointment call-backs share one outbound route in
+`appointments.rs`: one call to a number at a time, `place_call` only to the
+phone and SIM chosen for it, and the script applied only to the call that
+phone reports for that task. An incoming call from the same number never gets
+the outbound script.
 
 1. **The request.** An errand comes from `POST /calls/api/errands` (the
-   *Errands* page or **Ask AI to call** on a contact); a call-back from
-   **Accept** / **Decline** with *AI call-back* on a *To do* item or its
-   Telegram card.
-2. **Number checks.** Errands refuse emergency numbers, short codes (7 digits
-   or fewer), premium-rate numbers and numbers written after an international
-   call prefix (`00`, `011`, Taiwan's `01x` / `00x`, Japan's `010`); numbers
-   abroad are written with `+`. Call-backs go only to the caller's own number,
-   only within the answering SIM's country, never to toll-free, premium or short
-   numbers.
+   **Errands** page, or **Ask AI to call** on a contact; see
+   [the API](API.md#ai-errands)). A call-back comes from **Accept** /
+   **Decline** with **AI call-back** chosen on a **To do** item or its
+   Telegram card (see [appointments](API.md#appointments-and-tasks)).
+2. **Number checks.** Errands refuse emergency numbers and other short codes
+   (7 digits or fewer), premium-rate numbers, and numbers written after an
+   international call prefix (`00`, `011`, Taiwan's `01x` / `00x`,
+   Japan's `010`); write numbers abroad with `+`. Call-backs go only to the
+   caller's own number, only within the answering SIM's country, and never to
+   toll-free, premium-rate or short numbers.
 3. **Phone and SIM.** An errand picks a phone in AI mode that has a SIM of the
    number's country. The agent learns each phone's SIMs (subscription id and
-   country) from the calls it reports, and from a `sims` list in its control
-   hello, and keeps them in `phone_sims.json`. A phone whose SIMs it has never
-   heard of takes no errand (`sim_unknown`). A call-back goes out on the phone
-   and SIM that took the original call.
-4. **Dialing.** The agent sends `place_call` with the checked number in E.164
-   form and the SIM to use. When the call's media hello reports a different SIM,
-   or none, the agent hangs up before the AI starts (`wrong_sim`) and forgets
-   that SIM on that phone. A cancelled errand is never dialed; a call that still
+   country) from the calls it reports and from the `sims` list in its control
+   hello, and keeps them in `phone_sims.json`. A phone whose SIMs it has
+   never heard of takes no errand (`sim_unknown`). A call-back goes out on
+   the phone and SIM that took the original call.
+4. **Dialing.** The agent sends `place_call` with the number in E.164 form
+   and the SIM to use. If the call's media hello reports another SIM, or none,
+   the agent hangs up before the AI speaks (`wrong_sim`) and forgets that
+   SIM on that phone. A cancelled errand is never dialed; a call that still
    starts after a cancel is hung up at once.
 5. **Waiting for a person.** The AI does not say "Hello?" into the ringback.
-   The agent passes only silence to Gemini until the callee has picked up and
-   spoken (at least 400 ms of voice, with the 350–520 Hz ringback filtered out).
-   Nobody for 70 s means no answer; a carrier's "not in service" recording is
-   hung up on at once; an errand waits out a voice menu for up to 90 s.
+   Gemini gets only silence until the callee picks up and speaks (at least
+   400 ms of voice, with the 350–520 Hz ringback filtered out). Nobody for
+   70 s means no answer; a carrier's "not in service" recording is hung up on
+   at once; an errand waits out a voice menu for up to 90 s.
 6. **The conversation.**
    - A **call-back** says who is calling, gives your answer once (the time and
-     what it is about, or a polite no) in the language of the original call,
-     says goodbye and ends.
+     topic, or a polite no) in the language of the original call, says goodbye
+     and ends.
    - An **errand** follows its script: say whom it calls for, settle what the
-     errand allows on its own, and call `ask_owner` for anything else. The call
-     blocks on the answer: if the console asked for the live view in the last
-     6 s, the question shows there for up to 40 s; otherwise, or on timeout,
-     the AI is told that none of its own options may be taken, asks the other
-     side which ones would work, and closes politely. What you type during the
-     call (`say`) reaches the AI as an instruction. Every note reminds the AI
-     to keep the call's language, numbers included. An errand call lasts at most
+     errand allows, and call `ask_owner` for anything else. The call waits
+     for the answer. If the console had the live view open in the last 6 s,
+     the question shows there for up to 40 s; otherwise, or on timeout, the AI
+     is told it may not take any of its own options, asks the other side which
+     ones would work, and closes politely. What you type during the call
+     (`say`) reaches the AI as an instruction. Every note reminds the AI to
+     keep the call's language, numbers included. An errand lasts at most
      10 minutes, with a wrap-up at 9:30.
-7. **Afterwards.** A call-back's outcome goes on its *To do* item, with
-   one notification titled "📞 AI call-back". An errand's transcript, task and
+7. **Afterwards.** A call-back's outcome goes on its **To do** item, with one
+   notification titled "AI call-back". An errand's transcript, task and
    questions go to the summary model, which returns `{outcome, summary,
-   details, follow_up, options, event}`. Anything the AI agreed to on a question
-   you did not answer turns the outcome into `need_owner`. You get one 📞
-   notification with the contact's name or the number; **Call again** and
-   **Reply, and have the AI call again** (`follow_up_of`, carrying the last
-   lines of the earlier call) are yours to press.
+   details, follow_up, options, event}`. If the AI agreed to something on a
+   question you did not answer, the outcome becomes `need_owner`. You get
+   one notification with the contact's name or the number, and the errand
+   offers **Call again** and **Reply, and have the AI call again**
+   (`follow_up_of`, which carries the last lines of the earlier call).
 
-## Where the model gets tools, and where it does not
+## When the AI gets tools
 
-On an ordinary call the voice has no slow lookups behind it: the model cannot
-search the web or read a calendar mid-sentence, it is told so, and it is told
-never to say "let me check". Everything that needs judgement happens after the
-call, with you reading the summary.
+On an ordinary call nothing slow sits behind the voice: the model cannot
+search the web or read your calendar mid-sentence, it is told so, and it is
+told never to say "let me check". Anything that needs judgement happens after
+the call, when you read the summary.
 
-Two features give the model a tool, each under a strict state machine in the
+Two features give the model tools, each held by a strict state machine in the
 agent:
 
-- `propose_appointment` (normal calls with appointments on, never in Stall
-  Mode): records the requested time and topic. The AI only promises to get
-  back to the caller; nothing is confirmed until you press **Accept**, and only
-  the first decision counts.
-- `ask_owner` (errand calls only): blocks the AI until you answer or the
-  question times out; a result that settled an unanswered question becomes
-  `need_owner`.
+- **Appointments** (normal calls with appointments on, never in Stall Mode):
+  `check_availability` always answers that the schedule cannot be seen on
+  this call (`{"free": null}`), and the prompt tells the model not to call
+  it; `propose_appointment` records the requested time and topic. The AI
+  only promises to get back to the caller. Nothing is confirmed until you
+  press **Accept**, and only the first decision counts.
+- **Errands** (errand calls only): `ask_owner` holds the AI until you answer
+  or the question times out. A result that settled an unanswered question
+  becomes `need_owner`.
 
-Deterministic rules around the model handle what must not go wrong: when to
-hang up, when to stop a blocked caller, never leaving a caller in silence,
-which numbers may be dialed and from which SIM.
+Fixed rules around the model handle what must not go wrong: when to hang up,
+when to stop a blocked caller, never leaving a caller in silence, which
+numbers may be dialed and from which SIM.
 
 ## Languages
 
-`locale.rs` holds, per language, the short phrases the model is shown (how one
-answers the phone, how one says goodbye), the words the hang-up and sales-call
-rules listen for, the speech-recognition hint, and the notification labels.
-`prompts.rs` builds the system prompt: Traditional Chinese uses the prompts the
-project was tuned with on real calls, Simplified Chinese a converted copy, and
-every other language one set of English instructions that names the language to
-speak and quotes that language's phrases. The opening language follows the
-caller's number and the SIM's main language; every prompt tells the AI to follow
-the caller into another language. Adding a language means adding one `Phrases`
-block and its entry in the web console's dictionary.
+`locale.rs` holds, per language, the short phrases the model is shown (how
+people answer the phone, how they say goodbye), the words the hang-up and
+sales rules listen for, the speech-recognition hint, and the notification
+labels. `prompts.rs` builds the system prompt: Traditional Chinese has its own
+hand-tuned prompts, Simplified Chinese a converted copy, and every other
+language one set of English instructions that names the language to speak and
+quotes its phrases. The opening language follows the caller's number and the
+SIM's main language, and every prompt tells the AI to follow the caller into
+another language. To add a language, add one `Phrases` block and its entry in
+the web console's dictionary.
 
-## Storage
+## Where your data lives
 
 ```text
 data/calls/
@@ -218,28 +269,30 @@ data/calls/
   voice_preview/                    cached voice samples and announcements
 ```
 
-Plain JSON and WAV files, no database; delete or back up at will. Every write
-goes to a temporary file first and is then renamed over the old one. An
-unreadable `errands.json` or `phone_sims.json` is moved aside rather than
-overwritten.
+Plain JSON and WAV files, no database. Every write goes to a temporary file
+first and is then renamed over the old one. An unreadable `errands.json` or
+`phone_sims.json` is moved aside rather than overwritten.
+
+**Try it:** to back up everything, copy the `data/calls` folder. Keep the copy
+private: `settings.json` holds your API keys in plain text.
 
 ## Design choices
 
-- **Speech to speech.** One model hears and speaks, so latency and interruption
-  come from the model, not from a chain of speech-to-text, LLM and
-  text-to-speech.
-- **Your SIM, your phone.** No SIP trunk and no cloud telephony: the phone
+- **Speech to speech.** One model hears and speaks, so latency and
+  interruptions come from the model, not from a chain of speech-to-text, LLM
+  and text-to-speech.
+- **Your SIM, your phone.** No SIP trunk and no cloud telephony. The phone
   protocol is small and documented in [API](API.md), so another front end
   could stand in for the phone.
 - **One process.** Nothing else to install, keep alive or secure.
 - **Fail closed on the risky paths.** A doubtful scam review counts as a scam
-  (the caller is kept talking, not let through); an unknown SIM takes no
-  errand; an appointment waits for you.
+  (the caller is kept talking, not let through); a phone with an unknown SIM
+  takes no errand; an appointment waits for you.
 
 ## Older code paths
 
 The agent grew out of a menu-based system (recorded greeting, DTMF, hold
 music, voicemail, a Tencent TRTC bridge, a Whisper / LLM / Piper pipeline).
-That code is still in `main.rs` and its own modules, switched off by default
-and without its recordings. It is kept for now because it is interleaved with
-the live path; removing it cleanly is on the [roadmap](ROADMAP.md).
+That code is still in `main.rs` and its own modules, off by default and
+without its recordings. It stays for now because it is interleaved with the
+live path; removing it cleanly is on the [roadmap](ROADMAP.md).

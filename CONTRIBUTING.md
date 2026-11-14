@@ -1,7 +1,18 @@
-# Contributing
+# Contributing to Bageo
 
-Thank you for looking into Bageo. The most valuable contributions right
-now are **reports**: which phone, which language, what happened.
+Bageo lives on real phones, real SIMs and real carriers, and every phone and
+country behaves a little differently. That makes the most useful contribution
+a short report: **which phone, which language, what happened.**
+
+## Ways to help
+
+| You have | What helps most |
+|---|---|
+| A rooted Android phone other than a Pixel 7, 7a, 8 or 9 | A report: did calls connect, could the AI hear the caller and be heard? |
+| A language other than Traditional Chinese | A report on greetings, goodbyes and sales detection in your language, or better phrases in `locale.rs` |
+| An account with a notification service | Try that channel against the real service and tell us |
+| Rust or Kotlin experience | A bug fix with a unit test |
+| A good eye for text | Documentation fixes, in all three languages |
 
 ## Reporting what works and what does not
 
@@ -15,9 +26,9 @@ Open an issue with:
 - what you did, what you expected, what happened;
 - the relevant lines of the agent's terminal output (`RUST_LOG=agent=debug` for
   more) and, for phone problems, `adb logcat` filtered as shown in
-  `android/README.md`.
+  [`android/README.md`](android/README.md#troubleshooting).
 
-Remove phone numbers, names and keys. Never attach `settings.json` or
+Remove phone numbers, names and keys first. Never attach `settings.json` or
 recordings of other people.
 
 ## Building
@@ -27,13 +38,13 @@ cargo test -p agent          # the agent's tests
 cargo build --release -p agent
 ```
 
-The phone app: see [`android/README.md`](android/README.md).
+The phone app: see [`android/README.md`](android/README.md#build).
 The SMS forwarder: `python -m unittest` in `tools/sms_forward`.
 
-Working on the web console without rebuilding: start the agent with
+To work on the web console without rebuilding, start the agent with
 `CALLS_UI_FILE=crates/agent/static/calls.html` and reload the browser.
 
-Run one area's tests by name while you work, then the whole suite before a pull
+While you work, run one area's tests by name; run the whole suite before a pull
 request:
 
 ```text
@@ -64,17 +75,16 @@ Everything lives in `crates/agent/src`. The files you are most likely to touch:
 | `locale.rs` | The nine languages: phrases, goodbye words, notification labels, sales keywords. |
 | `calendar.rs`, `phone_region.rs`, `voice_preview.rs` | Calendar links and `.ics`; phone numbers and countries; the recorded voice previews. |
 
-The web console is the single file `crates/agent/static/calls.html` (all nine
-languages inside). The phone side is described in
+The web console is the single file `crates/agent/static/calls.html`, with all
+nine languages inside. The phone side is described in
 [`android/ARCHITECTURE.md`](android/ARCHITECTURE.md).
 
 ## Changing the call logic
 
-The files `crates/agent/src/gemini_live.rs` and `main.rs` hold behaviour that
-was tuned on real phone calls over months; much of it looks odd until you know
-the failure it prevents. Please:
+`gemini_live.rs` and `main.rs` hold behaviour that was tuned on real phone
+calls; much of it looks odd until you know the failure it prevents. Please:
 
-- keep changes small and say what real-call behaviour they are for;
+- keep changes small and say which real-call behaviour they are for;
 - add or adapt a unit test (the pure helpers — goodbye detection, sales
   keywords, prompt building, request shapes, number checks, errand results — are
   all testable without a phone);
@@ -101,7 +111,7 @@ the AI speaks. A state-changing route must keep requiring
 ## Adding a notification service
 
 `crates/agent/src/notify.rs`: one entry in `KINDS`, one arm in `prepare`
-(build the HTTP request), and a test of the request shape. Mention in the pull
+(build the HTTP request), and a test of the request shape. Say in the pull
 request whether you tried it against the real service.
 
 ## Documentation
@@ -113,11 +123,17 @@ Field names, codes and routes stay in English. Examples use made-up names,
 `192.0.2.x` / `.local` addresses and placeholder numbers (`0912345678`,
 `+1 202 555 0143`).
 
+## Pull requests
+
+Changes reach `main` only through a pull request, merged on GitHub. Keep one
+topic per pull request, and describe the problem and the resulting behaviour
+first.
+
 ## Style
 
 - Rust: `cargo fmt`; no new dependencies without a reason.
-- Comments say why, not what; no personal data, real phone numbers, private
-  network addresses or deployment details, in code, tests or docs.
+- Comments say why, not what. No personal data, real phone numbers, private
+  network addresses or deployment details in code, tests or docs.
 - User-facing text goes through the language tables.
 
 By contributing you agree that your contribution is licensed under the MIT

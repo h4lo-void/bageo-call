@@ -1,19 +1,18 @@
-# Bageo: Android app and root module
+# Bageo for Android: rooted call audio bridge (Magisk / KernelSU module)
 
-This folder contains the phone side of Bageo:
+This folder holds the phone side of Bageo, which lets an AI voice (Gemini Live)
+answer calls to your own phone number. It builds an Android app and a Magisk /
+KernelSU module. Together they turn a spare rooted phone, such as a Pixel, into an
+audio bridge: the app answers calls on your SIM, streams the caller's voice to the
+Bageo agent on your computer and plays the AI's reply back into the call.
 
-- **`app/`**: the Android app `com.pixelcallai.streamer`. It answers incoming calls
-  silently, streams the caller's voice to the agent program on your PC over a
-  WebSocket, and plays the AI's voice back into the call so the caller hears it.
-  For the agent it also sends text messages (appointment replies) and places
-  calls (AI call-backs and AI errands), each from the SIM the agent names.
-- **`magisk/pixelcallai_uplink/`**: a Magisk / KernelSU module that installs the app
-  as a *privileged system app*. Android only lets privileged apps capture call audio
-  and write audio into the call, so the app cannot do its job as a normal install.
-  Its root helper also carries out the switch between AI mode and a normal phone.
+| Part | What it does |
+|---|---|
+| `app/` | The Android app `com.pixelcallai.streamer`. Answers incoming calls silently, streams the caller's audio to the agent over a WebSocket and plays the AI's voice into the call. For the agent it also sends text messages (appointment replies) and places calls (AI call-backs and AI errands), each from the SIM the agent names. |
+| `magisk/pixelcallai_uplink/` | The module. It installs the app as a *privileged system app*, because Android only lets privileged apps record call audio and write audio into a call; a normal install cannot do the job. Its root helper also carries out the switch between AI mode and a normal phone. |
 
-The phone does no AI work itself. It is an audio bridge between the phone network and
-the agent.
+The phone does no AI work itself. The package name and module id keep the project's
+earlier working name, so phones already running the module update in place.
 
 **Version 1.0:** app `versionName` `1.0.0`, `versionCode` 28; module `version`
 `v1.0.0`, `versionCode` 20 (`module.prop`); release file
@@ -22,42 +21,51 @@ the agent.
 accepts `sim` in `send_sms`: a SIM is always picked by its subscription id
 (`sub_id`).
 
-The package name (`com.pixelcallai.streamer`) and the module id (`pixelcallai_uplink`)
-keep the project's earlier working name, so phones that already run the module can be
-updated in place.
-
 > **Use a dedicated phone.** The module takes over the phone app, disables Google
-> Dialer, turns on Do Not Disturb and sets the ringer volume to zero. The phone stops
-> being usable as a normal handset until you switch it to a
-> [normal phone](#normal-phone-mode) or roll back (see [Rollback](#rollback)).
+> Dialer, turns on Do Not Disturb and sets the ringer volume to zero. The phone is not
+> a usable handset until you switch it to a [normal phone](#normal-phone-mode) or
+> [roll back](#rollback).
+
+| I want to… | Go to |
+|---|---|
+| Check whether my phone can work | [Requirements](#requirements) |
+| Build the APK and the module zip | [Build](#build) |
+| Put it on the phone and connect it | [Install](#install), [Connect over USB or Wi-Fi](#connect-over-usb-or-wi-fi) |
+| Know exactly what the module changes | [What changes on the phone](#what-changes-on-the-phone) |
+| Use the phone as a normal phone again | [Normal phone mode](#normal-phone-mode) |
+| Remove Bageo | [Rollback](#rollback) |
+| See which permissions it uses and why | [Permissions](#permissions) |
+| Write or debug an agent | [How a call flows](#how-a-call-flows), [WebSocket protocol](#websocket-protocol) |
+| Forward incoming SMS (for example to Telegram) | [Optional SMS hook](#optional-sms-hook) |
+| Fix a problem | [Troubleshooting](#troubleshooting) |
 
 ## Requirements
 
-- A phone with an **unlocked bootloader and root** through Magisk or KernelSU.
-- A SIM that can receive calls.
-- Android 10 or newer (`minSdk 29`).
-- **Tested phones: Pixel 7, 7a, 8 and 9.** Comments in the source refer to Android 16
-  on those phones.
-- **Other phones are untested.** Whether they work depends on the device's telephony
-  audio HAL: it must allow a privileged app to record the call
-  (`VOICE_DOWNLINK` / `VOICE_CALL` audio source) and to play into the call through an
-  output device of type `TYPE_TELEPHONY`. A phone that lacks either one will not
-  work. Try at your own risk.
-- A PC running the Bageo agent, connected by USB (recommended) or on the same
-  network.
+| You need | Details |
+|---|---|
+| Root | An unlocked bootloader and Magisk or KernelSU. |
+| SIM | One that can receive calls. |
+| Android | 10 or newer (`minSdk 29`). |
+| Phone | **Tested: Pixel 7, 7a, 8 and 9.** Comments in the source refer to Android 16 on those phones. Other phones are untested. |
+| Computer | Running the Bageo agent, connected by USB (recommended) or on the same network. |
+
+On other phones, success depends on the device's telephony audio HAL. It must let a
+privileged app record the call (`VOICE_DOWNLINK` / `VOICE_CALL` audio source) and
+play into the call through an output device of type `TYPE_TELEPHONY`. A phone that
+lacks either will not work. Try at your own risk.
 
 ## Build
 
-You need **JDK 17** and the **Android SDK** (platform `android-35`; the Android Gradle
-Plugin downloads matching build tools if they are missing and the SDK licenses are
-accepted). Tell Gradle where the SDK is with the `ANDROID_HOME` environment variable
+You need **JDK 17** and the **Android SDK** (platform `android-35`; the Android
+Gradle Plugin downloads matching build tools if they are missing and the SDK licenses
+are accepted). Point Gradle at the SDK with the `ANDROID_HOME` environment variable
 or a `local.properties` file in this folder:
 
 ```properties
 sdk.dir=/path/to/android-sdk
 ```
 
-Build the APK and package the module zip in one step:
+Build the APK and package the module zip in one step, from the `android` folder:
 
 ```powershell
 # Windows (PowerShell), from the android folder
@@ -76,235 +84,220 @@ Both scripts run `:app:assembleDebug`, copy the APK into the module as
 magisk/dist/pixelcallai_uplink-<versionName>.zip
 ```
 
-To build only the APK: `.\gradlew.bat :app:assembleDebug` (Windows) or
-`sh ./gradlew :app:assembleDebug` (macOS / Linux). The APK is written to
+To build only the APK, run `.\gradlew.bat :app:assembleDebug` (Windows) or
+`sh ./gradlew :app:assembleDebug` (macOS / Linux). It is written to
 `app/build/outputs/apk/debug/app-debug.apk`.
 
-Notes:
+The debug build is minified on purpose so the app stays in a single dex file: as a
+privileged app on Android 16, a second dex file caused `ClassNotFoundException` at
+start-up.
 
-- The debug build is minified on purpose so the app stays in a single dex file; as a
-  privileged app on Android 16 a second dex file caused `ClassNotFoundException` at
-  start-up.
-- The APK is signed with the debug key of the machine that builds it, unless
-  `PCA_KEYSTORE_FILE`, `PCA_KEYSTORE_PASSWORD`, `PCA_KEY_ALIAS` and `PCA_KEY_PASSWORD`
-  point to a key of your own. Android ties an installed app to its signing key: when
-  you move between builds signed by different keys (another machine, a release vs. your
-  own build), remove the module and reboot before installing the other one — not doing
-  so has not been tested.
-- Releases on GitHub are signed with the project's own key, kept as repository secrets
+### Signing keys
+
+- **Your own build** is signed with the debug key of the machine that builds it,
+  unless `PCA_KEYSTORE_FILE`, `PCA_KEYSTORE_PASSWORD`, `PCA_KEY_ALIAS` and
+  `PCA_KEY_PASSWORD` point to a key of your own.
+- **GitHub releases** are signed with the project's key, kept as repository secrets
   (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
-  `ANDROID_KEY_PASSWORD`), so one release installs over the previous one. Moving the
-  phones in daily use from a debug-key build to the release key by installing the new
-  module over the old one worked: Android logged *signature changed; retaining data*
-  and kept the app's data and permissions.
+  `ANDROID_KEY_PASSWORD`), so one release installs over the previous one.
+- **Changing keys.** Android ties an installed app to its signing key. A release-key
+  module installed over a debug-key build kept the app's data and permissions (Android
+  logs *signature changed; retaining data*). Other key changes are untested: remove the
+  module and reboot before installing the other build.
 
 ## Install
 
-1. If you ever installed the APK as a normal app (`adb install`), uninstall it first.
-   Never have both a normal install and the module.
+1. If you ever installed the APK as a normal app (`adb install`), uninstall it.
+   Never have a normal install and the module at the same time.
 2. Copy `pixelcallai_uplink-<version>.zip` to the phone.
-3. In the Magisk or KernelSU app, install the zip as a module.
-4. Reboot.
-5. Open **Bageo**. The card at the top says in one sentence what the phone does right
+3. In the Magisk or KernelSU app, install the zip as a module, then reboot.
+4. Open **Bageo**. The card at the top says in one sentence what the phone does right
    now. Work through **Setup steps** until every step shows OK:
-   - *Install the Bageo module*: confirms the module is active (privileged app and
-     privileged permissions).
-   - *Allow Bageo to use the phone and microphone*: tap **Allow**.
-   - *Make Bageo the default phone app*, *Make Bageo the call screening app*: tap
-     **Set**.
-   - *Let Bageo control Do Not Disturb*, *Do not let Android put Bageo to sleep*: tap
-     the button and allow it.
 
-   The individual permissions and the call-audio check (*AI voice injection into
-   the call*) are under **Advanced → Detailed checks**.
-6. In **Advanced → Connection**, keep the USB default or enter the Wi-Fi address
-   (see below), then tap **Test connection** while the agent is running on the PC.
-   A failure is shown as a plain reason (refused, timed out, address not found…);
-   the raw error is under **Details**.
-7. Leave **AI answers my calls** on. The app shows a permanent low-priority
-   notification while the service runs, and starts again by itself after a reboot.
+   | Step | Action |
+   |---|---|
+   | *Install the Bageo module* | Confirms the module is active (privileged app and privileged permissions). |
+   | *Allow Bageo to use the phone and microphone* | Tap **Allow**. |
+   | *Make Bageo the default phone app*, *Make Bageo the call screening app* | Tap **Set**. |
+   | *Let Bageo control Do Not Disturb*, *Do not let Android put Bageo to sleep* | Tap the button and allow it. |
+
+   The individual permissions and the call-audio check (*AI voice injection into the
+   call*) are under **Advanced → Detailed checks**.
+5. In **Advanced → Connection**, keep the USB default or enter the Wi-Fi address (see
+   below), then tap **Test connection** while the agent is running. A failure is shown
+   as a plain reason (refused, timed out, address not found…); the raw error is under
+   **Details**.
+6. Leave **AI answers my calls** on. The app shows a permanent low-priority
+   notification while its service runs and starts again by itself after a reboot.
    Once the agent has sent the console's address, **Open the web console** opens it.
 
-The app does not need root for anything essential: the module grants the
-permissions, takes the phone over at boot and carries out the mode switch through
-its own root helper. When the root manager asks whether the app may use root,
-allowing it lets the app repeat the role and mute commands listed below each time
-its service starts (useful after another app took the dialer role); denying it
-changes nothing else. KernelSU only offers `su` to apps on its allow list.
+The app needs no root for anything essential: the module grants the permissions,
+takes the phone over at boot and runs the mode switch. If the root manager asks, allowing
+root only lets the app repeat the role and mute commands
+([below](#while-the-apps-service-runs)) each time its service starts, which helps after
+another app took the dialer role. KernelSU only offers `su` to apps on its allow list.
 
 ### Updating
 
-Install the new module zip over the old one and reboot. The mode file, the
-connection address and the app's permissions are kept. Releases are signed with
-the project's key, so one release installs over another (see [Build](#build) for
-moving between keys). From 0.2.x to 1.0 nothing has to be done by hand: the
-module no longer grants the permission 0.2.4 used to read SIM numbers (a grant
-left from then is simply unused), and an agent older than 1.0 keeps working with
+Install the new module zip over the old one and reboot. The mode file, the connection
+address and the app's permissions are kept (mind [Signing keys](#signing-keys)). From
+0.2.x to 1.0 there is nothing to do by hand: a leftover grant of the SIM-number
+permission 0.2.4 used is simply unused, and an agent older than 1.0 keeps working with
 the new app because neither side relies on the removed fields.
 
-### Connection: USB or Wi-Fi
+### Connect over USB or Wi-Fi
 
-- **USB (default, recommended).** The app connects to `ws://127.0.0.1:8765`. On the
-  PC, `adb reverse tcp:8765 tcp:<agent port>` maps that port to the agent through the
-  USB cable. The agent on the PC sets this up by itself and re-checks it every few
-  seconds. USB keeps working when Wi-Fi is off.
-- **Wi-Fi.** Enter the address the PC program shows, for example
-  `ws://192.0.2.10:8787/ws?token=...`. The address must start with `ws://` or `wss://`.
-  The phone and the PC must be on the same network. Anything after `?` is left out of
-  the app's log output.
+| | USB (default, recommended) | Wi-Fi |
+|---|---|---|
+| Address on the phone | `ws://127.0.0.1:8765` | The address the PC program shows, for example `ws://192.0.2.10:8787/ws?token=...`. Must start with `ws://` or `wss://`. |
+| How it reaches the agent | `adb reverse tcp:8765 tcp:<agent port>` maps the port through the cable. The agent sets this up by itself and re-checks it every few seconds. | Phone and PC must be on the same network. |
+| Good to know | Keeps working with Wi-Fi off. | Anything after `?` is left out of the app's log output. |
 
-The address is stored on the phone (device-protected storage, so it is available
-before the first unlock after a reboot). **Reset to USB default** removes the stored
-value. After you save a new address the app restarts its service so the new address is
-used; if a call is in progress it asks you to restart the service afterwards.
+The address is stored on the phone in device-protected storage, so it is available
+before the first unlock after a reboot. **Reset to USB default** removes it. After you
+save a new address the app restarts its service; if a call is in progress it asks you
+to restart the service afterwards.
 
 ## What changes on the phone
 
-### The module, at every boot (`service.sh`)
+### At every boot (`service.sh`)
 
-The script waits for the system to finish booting (up to about 3 minutes), then
-10 more seconds, then until the package manager knows the app (it gives up after
-about a minute and does nothing). All commands are best effort and none of them
-stop the boot.
+The script waits for the system to finish booting (up to about 3 minutes), then 10 more
+seconds, then until the package manager knows the app (it gives up after about a
+minute and does nothing). Every command is best effort; none of them can stop the boot.
 
-It reads the phone mode from `/data/adb/pixelcallai/mode` first (see
-[Normal phone mode](#normal-phone-mode)). When the file says `normal` it only does
-steps 1, 2, 6 and 7. With no file, or anything else in it, it does all the steps
-below, exactly as before the mode switch existed.
+It starts the module's root helper, `mode_daemon.sh`, and reads the phone mode from
+`/data/adb/pixelcallai/mode` (see [Normal phone mode](#normal-phone-mode)). If the
+file says `normal`, only steps 1, 2, 6 and 7 run. With no file, or anything else in
+it, all steps run:
 
-1. Creates `/data/local/tmp/pixelcallai_uplink.pcm` (mode 666). This is a debugging
-   aid; the normal call path does not use it.
-2. Grants the app `RECORD_AUDIO`, `READ_PHONE_STATE`, `ANSWER_PHONE_CALLS`, `SEND_SMS`,
-   and `ACCESS_NOTIFICATION_POLICY`, and allows the `ACCESS_NOTIFICATION_POLICY`
-   app-op.
+1. Creates `/data/local/tmp/pixelcallai_uplink.pcm` (mode 666), a debugging aid the
+   normal call path does not use.
+2. Grants the app `RECORD_AUDIO`, `READ_PHONE_STATE`, `ANSWER_PHONE_CALLS`,
+   `SEND_SMS` and `ACCESS_NOTIFICATION_POLICY`, and allows the
+   `ACCESS_NOTIFICATION_POLICY` app-op.
 3. Gives the app the **Dialer** and **Call screening** roles and makes it the default
    dialer (`telecom set-default-dialer`).
 4. Only if the app really is the default dialer: disables Google Dialer's in-call
-   components (`InCallServiceImpl`, `InCallActivity`) and then the whole
+   components (`InCallServiceImpl`, `InCallActivity`), then the whole
    `com.google.android.dialer` package for user 0 (`pm disable-user`).
-5. Turns on Do Not Disturb in its strictest mode (`zen_mode 2`) and sets the ring and
-   notification volume settings to 0.
+5. Turns on Do Not Disturb in its strictest mode (`zen_mode 2`) and sets the ring
+   and notification volume settings to 0.
 6. Starts the app's foreground service.
 7. Only if the LSPosed-compatible module `zygisk_vector` is installed: enables this
    app as an LSPosed module scoped to `com.android.phone` (see
    [Optional SMS hook](#optional-sms-hook)).
 
-Before that, `post-fs-data.sh` sets file modes and SELinux labels on the APK and the
-permission file, and overlays them onto `/system/priv-app` and
-`/system/etc/permissions` (work directory `/dev/pca_ov`).
-
-The module also ships
+Earlier in boot, `post-fs-data.sh` sets file modes and SELinux labels on the APK and
+the permission file and overlays them onto `/system/priv-app` and
+`/system/etc/permissions` (work directory `/dev/pca_ov`). The module ships
 `system/etc/permissions/privapp-permissions-com.pixelcallai.streamer.xml`, the
 allow-list that lets Android grant the privileged permissions.
 
-### The app, while its service runs
+### While the app's service runs
 
-In AI mode:
+In AI mode the service:
 
-- Repeats the role commands from step 3 and the Google Dialer disabling from step 4
-  through `su` each time the service starts. Unlike `service.sh`, the app does this
-  without first checking that it is the default dialer.
-- Mutes the microphone, turns the speakerphone off, and holds the in-call earpiece
+- Repeats the role commands of step 3 and the Google Dialer disabling of step 4 through
+  `su` each time it starts. Unlike `service.sh`, it does not first check that it is
+  the default dialer.
+- Mutes the microphone, turns the speakerphone off and holds the in-call earpiece
   volume at its minimum. During a call it repeats the microphone mute every 500 ms.
-- The first time it arms: sets media, ring, notification, system, alarm and DTMF
-  volume to 0, switches the ringer to silent and turns on Do Not Disturb.
-- With root, also runs `cmd media.audio_flinger mute mic 1`, the volume settings above
-  and several `tinymix` microphone mute controls. Controls that do not exist on a
-  device are ignored.
-- **Stop service** restores the microphone, speakerphone, audio mode, ringer mode,
-  Do Not Disturb filter and volumes it saved when it armed, except the earpiece
-  volume, which stays at minimum.
+- The first time it arms: sets media, ring, notification, system, alarm and DTMF volume
+  to 0, switches the ringer to silent and turns on Do Not Disturb.
+- With root, also runs `cmd media.audio_flinger mute mic 1`, the volume settings
+  above and several `tinymix` microphone mute controls (controls a device lacks are
+  ignored).
+- On **Stop service**, restores the microphone, speakerphone, audio mode, ringer mode,
+  Do Not Disturb filter and volumes it saved when it armed. The earpiece volume stays
+  at minimum.
 
 In normal phone mode the service only keeps the control connection to the agent
-(status, the remote mode switch, and `send_sms`, which still sends in this mode).
-It does not repeat the role commands, mute anything, silence or answer calls.
+(status, the remote mode switch, and `send_sms`, which still works). It does not
+repeat the role commands, mute anything, or silence or answer calls.
 
-### Status bar
-
-With the app as the default dialer and Google Dialer disabled, no full-screen call
-screen appears. Android may still show its own small "ongoing call" indicator in the
-status bar; that belongs to the system and the app does not hide it.
+With the app as default dialer and Google Dialer disabled, no full-screen call screen
+appears. Android may still show its own small "ongoing call" indicator in the status
+bar; that belongs to the system and the app does not hide it.
 
 ## Normal phone mode
 
-The app's main switch, **AI answers my calls**, moves the phone between two modes;
-the web console does the same remotely (`set_mode`, see below). A switch is refused
-while a call rings or is active. The module carries it out as root, so the app needs
-no root permission for it. It can simply be repeated: every step runs again and is
-checked, and the first one that does not take effect is reported as a code
-(`dialer_failed`, `screening_failed`, `dnd_failed`, `volume_failed`, `save_failed`,
-`no_root`, `in_call`, `busy`). `no_root` means the module's helper did not take the
-request: the module is not running (enable **Bageo Uplink**, shown as **Myna Uplink** when installed before the
-rename, in Magisk or KernelSU and
-reboot).
+The app's main switch, **AI answers my calls**, moves the phone between two modes. The
+web console does the same remotely (`set_mode`, see the
+[protocol](#websocket-protocol)). No reboot is needed, and the app needs no root
+permission: the module's helper runs the switch as root.
 
 | | AI mode (`ai`, default) | Normal phone (`normal`) |
 |---|---|---|
 | Default phone app | Bageo; Google Dialer disabled | Google Dialer, enabled again (on phones without it, Android's own) |
-| Call screening role | Bageo (silences the ringer) | removed from Bageo |
-| Do Not Disturb | on | off |
-| Ringer and volumes | silent and zero; earpiece at minimum | ringer normal; ring, notification, earpiece, media, alarm and system volume restored |
-| Microphone | muted during calls | left alone |
-| Incoming calls | answered by the AI | ring; you answer |
-| App service | full call handling | control connection only |
+| Call screening role | Bageo (silences the ringer) | Removed from Bageo |
+| Do Not Disturb | On | Off |
+| Ringer and volumes | Silent and zero; earpiece at minimum | Ringer normal; ring, notification, earpiece, media, alarm and system volume restored |
+| Microphone | Muted during calls | Left alone |
+| Incoming calls | Answered by the AI | Ring; you answer |
+| App service | Full call handling | Control connection only |
+
+A switch is refused while a call rings or is active. It can safely be repeated: every
+step runs again and is checked, and the first one that does not take effect is
+reported as a code:
+
+| Code | Meaning |
+|---|---|
+| `in_call` | A call rings or is active. |
+| `busy` | Another switch is still running. |
+| `invalid_mode` | The request named neither `ai` nor `normal`. |
+| `no_root` | The module's helper did not take the request: the module is not running. Enable **Bageo Uplink** (shown as **Myna Uplink** if installed before the rename) in Magisk or KernelSU and reboot. |
+| `dialer_failed`, `screening_failed`, `dnd_failed`, `volume_failed`, `save_failed` | That step did not take effect. |
+| `failed` | Any other failure, for example the request could not be written or the helper gave no usable answer. |
+
+### How the switch runs
 
 The system settings are changed by the module's root script,
-`magisk/pixelcallai_uplink/apply_mode.sh`. The app cannot count on `su` (KernelSU
-only offers it to apps on its allow list), so at every boot `service.sh` starts
-`mode_daemon.sh`, a small root helper in the same folder, in its own session. The
-app writes a request to `files/mode/request` in its device-protected storage
-(`/data/user_de/0/com.pixelcallai.streamer/`), one line:
-`<ai|normal> <id> [six volumes]`. The helper looks every 2 seconds, takes it, checks
-it (a malformed request is not run and is reported as `error=invalid_request`), runs
-`sh apply_mode.sh` with it and writes its answer to `files/mode/state`. A request
-nobody takes within 10 seconds is withdrawn and reported as `no_root`. The script
-runs outside the app, so it runs to the end even when Android stops the app: removing
-an app from the phone-app role can do that. For the same reason the normal-phone
-order is call screening, Do Not Disturb, ringer and volumes, microphone, and **the
-phone app last**. That last step
-only counts as done when `telecom get-default-dialer` reports Google Dialer, Google
-Dialer is not in `pm list packages -d` and both in-call components were enabled
-(or, without Google Dialer, when the default phone app is no longer Bageo). If
-`pm list packages` itself fails, the step fails (`dialer_failed`); it never
-assumes there is no Google Dialer. Every root command runs under `toybox timeout`.
+`magisk/pixelcallai_uplink/apply_mode.sh`. The app cannot count on `su`, so at
+every boot `service.sh` starts `mode_daemon.sh`, a small root helper in the same
+folder, in its own session.
 
-Where it is stored:
+1. The app writes a one-line request, `<ai|normal> <id> [six volumes]`, to
+   `files/mode/request` in its device-protected storage
+   (`/data/user_de/0/com.pixelcallai.streamer/`).
+2. The helper looks every 2 seconds, takes the request and checks it. A malformed
+   request is not run and is reported as `error=invalid_request`. A request nobody
+   takes within 10 seconds is withdrawn and reported as `no_root`.
+3. The helper runs `sh apply_mode.sh` and writes its answer to `files/mode/state`.
 
-- `/data/adb/pixelcallai/mode`: `ai` or `normal`, written by the script when the
-  app switches. It is outside the module folder, so module updates keep it.
-  `service.sh` reads it at every boot; **no file means `ai`**, so a phone that was
-  never switched behaves exactly as before. Before comparing, `service.sh`, the
-  script and the app all drop blanks (space, tab, CR, LF, VT, FF) and a UTF-8 BOM.
-- `/data/adb/pixelcallai/pending`: exists from the start of a switch until every
-  step worked.
-- `/data/adb/pixelcallai/last_apply`: the last run, `key=value` lines (`id`,
-  `mode`, `step_<name>=ok|fail`, then `error=<code>` or `result=ok`, and `done=1`).
-- `/data/adb/pixelcallai/apply.lock`: held while a run is going (its pid inside).
-- `/data/adb/pixelcallai/daemon.pid`: the helper's pid; `service.sh` removes it at
-  boot.
-- `files/mode/state` in the app's device-protected storage: the helper's answer,
-  owned by the app and readable only by it. `key=value` lines: `daemon=1`, `mode`,
-  `pending`, `running`, `updated` and `uptime` (the app ignores a state written
-  before the last reboot), `request` and `exit` (the last request and the script's
-  exit code once it ended), `error=invalid_request`, and every `last_apply` line as
-  `log.<key>`. Written when the helper starts, before and after every run, and
-  whenever the file is missing.
-- `files/mode/normal_audio` in the same folder: the volumes saved when the phone
-  last went from normal to AI (`ring=…`, `notification=…`, `voice_call=…`,
-  `music=…`, `alarm=…`, `system=…`). Switching to normal restores them; a missing
-  or zero value becomes half of that volume's maximum.
-- The app keeps a copy of the mode in its device-protected storage
-  (`files/phone_mode`), cached in memory per process; the `:screening` process
-  reads it again for every incoming call.
+The script runs outside the app, so it finishes even if Android stops the app, which
+removing an app from the phone-app role can do. For the same reason the order towards
+a normal phone is call screening, Do Not Disturb, ringer and volumes, microphone, and
+**the phone app last**. That last step only counts as done when
+`telecom get-default-dialer` reports Google Dialer, Google Dialer is not in
+`pm list packages -d` and both in-call components were enabled (or, without Google
+Dialer, when the default phone app is no longer Bageo). If `pm list packages` itself
+fails, the step fails (`dialer_failed`); it never assumes Google Dialer is absent.
+Every root command runs under `toybox timeout`.
 
-When the service starts it waits for a state the helper wrote since this boot (at
-boot the helper starts after the app), then asks for the switch again if `pending`
-exists, if the mode is `normal` but Bageo is still the default phone app (an
-interrupted switch, or an older version that took the phone over), or if its own
-copy differs from the file. If the
-agent asked for the switch and the app was stopped before it could answer, it sends
-that `set_mode_result` after its next `hello`; the agent keeps waiting through the
-reconnect (up to 15 seconds), and the web console calls a timeout "not confirmed yet".
+### Where the mode is stored
+
+| Path | Contents |
+|---|---|
+| `/data/adb/pixelcallai/mode` | `ai` or `normal`, written by the script when the app switches. Outside the module folder, so module updates keep it. `service.sh` reads it at every boot; **no file means `ai`**, so a phone that was never switched behaves as before. `service.sh`, the script and the app all drop blanks (space, tab, CR, LF, VT, FF) and a UTF-8 BOM before comparing. |
+| `/data/adb/pixelcallai/pending` | Exists from the start of a switch until every step worked. |
+| `/data/adb/pixelcallai/last_apply` | The last run as `key=value` lines: `id`, `mode`, `step_<name>=ok\|fail`, then `error=<code>` or `result=ok`, and `done=1`. |
+| `/data/adb/pixelcallai/apply.lock` | Held while a run is going (its pid inside). |
+| `/data/adb/pixelcallai/daemon.pid` | The helper's pid; `service.sh` removes it at boot. |
+| `files/mode/state` (app's device-protected storage) | The helper's answer, owned by the app and readable only by it. `key=value` lines: `daemon=1`, `mode`, `pending`, `running`, `updated` and `uptime` (the app ignores a state written before the last reboot), `request` and `exit` (the last request and the script's exit code once it ended), `error=invalid_request`, and every `last_apply` line as `log.<key>`. Written when the helper starts, before and after every run, and whenever the file is missing. |
+| `files/mode/normal_audio` (same folder) | The volumes saved when the phone last went from normal to AI (`ring=…`, `notification=…`, `voice_call=…`, `music=…`, `alarm=…`, `system=…`). Switching to normal restores them; a missing or zero value becomes half of that volume's maximum. |
+| `files/phone_mode` (same storage) | The app's own copy of the mode, cached in memory per process; the `:screening` process reads it again for every incoming call. |
+
+### After a restart or an interrupted switch
+
+When the service starts, it waits for a state the helper wrote since this boot (at
+boot the helper starts after the app). It then asks for the switch again if
+`pending` exists, if the mode is `normal` but Bageo is still the default phone
+app (an interrupted switch, or an older version that took the phone over), or if its
+own copy differs from the file. If the agent asked for the switch and the app was
+stopped before it could answer, it sends that `set_mode_result` after its next
+`hello`; the agent keeps waiting through the reconnect (up to 15 seconds), and the
+web console calls a timeout "not confirmed yet".
 
 In normal mode the service runs as a foreground service of type `phoneCall` only
 (not `microphone`); if Android refuses the foreground start, the app logs it and
@@ -315,43 +308,47 @@ setting (`AI_CALL_ENABLED`) no longer counts. The phone answers with the AI (no 
 file means `ai`), the app logs it and its status card shows a hint until the new
 switch is used once.
 
+### Switching from adb
+
 The older `com.pixelcallai.streamer.SET_ENABLED` service intent performs the same
-switch, without a reboot:
+switch without a reboot (`--ez enabled true` = AI mode):
 
 ```text
 adb shell am start-foreground-service -n com.pixelcallai.streamer/.CallAudioService -a com.pixelcallai.streamer.SET_ENABLED --ez enabled false
 ```
 
-(`--ez enabled true` = AI mode.) Or write the file and reboot:
-`adb shell "su -c 'mkdir -p /data/adb/pixelcallai && echo normal > /data/adb/pixelcallai/mode'"`
-(`echo ai`, or `rm -f` the file, for AI mode).
+Or write the mode file and reboot (`echo ai`, or `rm -f` the file, for AI mode):
+
+```text
+adb shell "su -c 'mkdir -p /data/adb/pixelcallai && echo normal > /data/adb/pixelcallai/mode'"
+```
 
 ## Rollback
 
-**Before installing an older version** (anything before 0.2.2), switch back to AI
-mode, or run `adb shell "su -c 'rm -rf /data/adb/pixelcallai'"`. Older versions do
-not read the mode file: their `service.sh` takes the phone over at every boot even
-when the file says `normal`. When this version is installed again later, it finds
-`normal` and turns the phone into a normal phone by itself, so the AI stops
-answering without anyone asking for it.
+**Before installing an older version** (anything before 0.2.2), switch back to AI mode
+or run `adb shell "su -c 'rm -rf /data/adb/pixelcallai'"`. Older versions do not
+read the mode file, so their `service.sh` takes the phone over at every boot even
+when the file says `normal`. If this version is installed again later, it finds
+`normal` and turns the phone into a normal phone by itself, and the AI stops
+answering without anyone asking.
 
-0. Switch the phone to a [normal phone](#normal-phone-mode) first. That re-enables
-   Google Dialer, turns Do Not Disturb off and restores the volumes, so steps 2 and
-   3 below are then already done.
-1. In the Magisk or KernelSU app, disable or remove the **Bageo Uplink**
-   module, then reboot. If the phone does not boot far enough to do that, use the root
-   manager's safe mode, or from `adb shell` / recovery with root:
+To remove Bageo:
+
+1. Switch the phone to a [normal phone](#normal-phone-mode). That re-enables Google
+   Dialer, turns Do Not Disturb off and restores the volumes, so steps 3 and 4 below
+   are then already done.
+2. In the Magisk or KernelSU app, disable or remove the **Bageo Uplink** module and
+   reboot. If the phone does not boot far enough for that, use the root manager's
+   safe mode, or from `adb shell` / recovery with root:
 
    ```text
    touch /data/adb/modules/pixelcallai_uplink/disable
    reboot
    ```
 
-   `/data/adb/pixelcallai/` (the mode file) stays; delete it too for a clean
-   removal.
-
-2. Google Dialer and Do Not Disturb are **not** restored by removing the module,
-   because those settings are stored by Android. Re-enable the dialer:
+   `/data/adb/pixelcallai/` (the mode file) stays; delete it too for a clean removal.
+3. Removing the module does **not** restore Google Dialer or Do Not Disturb, because
+   Android stores those settings. Re-enable the dialer:
 
    ```text
    adb shell su -c "pm enable com.google.android.dialer"
@@ -362,25 +359,25 @@ answering without anyone asking for it.
    adb shell su -c "telecom set-default-dialer com.google.android.dialer"
    ```
 
-3. Turn Do Not Disturb off and raise the ring, notification and call volume in the
+4. Turn Do Not Disturb off and raise the ring, notification and call volume in the
    system settings.
 
-Do not disable `com.android.phone`; that is the telephony stack itself.
+Do not disable `com.android.phone`: that is the telephony stack itself.
 
 ## Permissions
 
-Privileged permissions (only granted because the module installs the app under
-`/system/priv-app` and ships the allow-list file):
+**Privileged permissions.** Granted only because the module installs the app under
+`/system/priv-app` and ships the allow-list file.
 
 | Permission | Why |
 |---|---|
 | `CAPTURE_AUDIO_OUTPUT` | Record the call audio (`VOICE_DOWNLINK` / `VOICE_CALL` sources). |
 | `MODIFY_PHONE_STATE` | Play the AI's audio into the call through the `TYPE_TELEPHONY` output. |
-| `CONTROL_INCALL_EXPERIENCE` | Control the in-call experience (the app's invisible in-call service). |
+| `CONTROL_INCALL_EXPERIENCE` | Run the app's invisible in-call service. |
 | `WRITE_SECURE_SETTINGS` | Declared and allow-listed; the current code changes settings through `su` instead. |
-| `INTERACT_ACROSS_USERS`, `MANAGE_USERS` | Present in the allow-list file only; the app does not declare them. |
+| `INTERACT_ACROSS_USERS`, `MANAGE_USERS` | In the allow-list file only; the app does not declare them. |
 
-Permissions you grant on the setup screen:
+**Granted on the setup screen.**
 
 | Permission | Why |
 |---|---|
@@ -388,10 +385,10 @@ Permissions you grant on the setup screen:
 | `READ_PHONE_STATE` | Know when a call rings, connects and ends. |
 | `READ_CALL_LOG` | Read the caller's number when it did not arrive any other way. |
 | `ANSWER_PHONE_CALLS` | Answer and hang up automatically. |
-| `CALL_PHONE` | Place a call when the agent asks for a call-back. |
+| `CALL_PHONE` | Place a call when the agent asks for a call-back or errand. |
 | `POST_NOTIFICATIONS` (Android 13+) | Show the service notification. |
 
-Other declared permissions:
+**Other declared permissions.**
 
 | Permission | Why |
 |---|---|
@@ -402,67 +399,63 @@ Other declared permissions:
 | `RECEIVE_BOOT_COMPLETED` | Start again after a reboot. |
 | `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Ask for the battery optimization exemption. |
 | `MANAGE_OWN_CALLS` | Declared; not used by the current code. |
-| `SEND_SMS` | Send a text message when the agent asks (`send_sms`, for example to reply to an appointment request). The module grants it at boot and when the phone switches to AI mode; the setup screen does not ask for it. |
+| `SEND_SMS` | Send a text when the agent asks (`send_sms`, for example to reply to an appointment request). The module grants it at boot and when the phone switches to AI mode; the setup screen does not ask for it. |
 
 SIMs are told apart only by Android's subscription id, which `READ_PHONE_STATE`
-already covers; no permission to read the SIMs' own numbers is requested.
-
-The manifest also sets `usesCleartextTraffic="true"`, because `ws://` to localhost or
-to a PC on your own network is not encrypted.
+already covers; no permission to read the SIMs' own numbers is requested. The manifest
+sets `usesCleartextTraffic="true"`, because `ws://` to localhost or to a PC on
+your own network is not encrypted.
 
 ## How a call flows
 
+**Incoming call**
+
 1. **Idle.** The service keeps a *control* WebSocket open to the agent and sends a
    `ping` every 15 seconds.
-2. **Ringing.** The app does not answer yet. It waits up to 12 seconds for the control
-   connection, tells the agent about the call (`incoming`), and rings for as long as
-   the agent's `answer_plan` says (3 seconds if the agent does not reply within
-   500 ms, never more than 8 seconds). If the control connection is not up within
-   12 seconds, the app does not answer: the call keeps ringing until the carrier
-   ends it (missed call or voicemail). An `answer_plan` with `reject` declines the
-   call without answering it.
-3. **Answer.** The app answers without any sound or screen on the phone.
+2. **Ringing.** The app waits up to 12 seconds for the control connection, tells the
+   agent about the call (`incoming`) and lets it ring for as long as the agent's
+   `answer_plan` says (3 seconds if the agent does not reply within 500 ms, never
+   more than 8 seconds). Without a control connection within 12 seconds, the app does
+   not answer and the call rings until the carrier ends it (missed call or voicemail).
+   An `answer_plan` with `reject` declines the call without answering it.
+3. **Answer.** The app answers with no sound or screen on the phone.
 4. **In call.** It opens a second *media* WebSocket, sends `hello`, streams the
-   caller's audio to the agent and plays the audio it receives into the call.
-   If the media connection drops and is not open again within 3 seconds, the app
-   ends the call, so the caller is not left in silence.
-5. **End.** Either side can end the call: the agent sends `hangup`, or the caller
-   hangs up and the app sends `call_end`.
+   caller's audio to the agent and plays the audio it receives into the call. If the
+   media connection drops and is not back within 3 seconds, the app ends the call so
+   the caller is not left in silence.
+5. **End.** The agent sends `hangup`, or the caller hangs up and the app sends
+   `call_end`.
 
-A call you dial by hand on the phone is left alone: the AI is not attached, and the
-microphone and earpiece work normally for that call. A second call that rings during
-a call is declined at once (`call_waiting_rejected` tells the agent); the call in
-progress is not touched.
+A call you dial by hand gets no AI, and its microphone and earpiece work normally. A second call that rings during a call is declined at once
+(`call_waiting_rejected` tells the agent); the call in progress is not touched.
 
-### Outgoing calls for the agent
+**Outgoing call for the agent** (call-back or errand)
 
-1. The agent sends `place_call` with the number (E.164 for errands), a `call_id`, a
-   `task_id` and usually a `sub_id`.
-2. If a call rings or is up, the app answers `place_call_failed` with `reason`
-   `busy` and dials nothing; the agent queues the call. Otherwise it dials from the
-   SIM with that subscription id (Android's default when that SIM is not found) and
-   answers `place_call_ack`.
-3. When the call connects, the app answers `outbound_ready`, opens the media
-   WebSocket and sends `hello` with `sim_sub_id`: the agent checks that the call went
-   out on the SIM it asked for (an errand on another SIM is hung up at once, before
-   the AI speaks).
+1. The agent sends `place_call` with the number (E.164 for errands), a `call_id`,
+   a `task_id` and usually a `sub_id`.
+2. The app dials from the SIM with that subscription id (Android's default when that
+   SIM is not found) and answers `place_call_ack`, or answers `place_call_failed`
+   without dialing ([reasons](#control-connection-open-while-the-service-runs); on
+   `busy` the agent queues the call).
+3. When the call connects, the app sends `outbound_ready`, opens the media WebSocket
+   and sends `hello` with `sim_sub_id`. The agent checks that the call went out on
+   the SIM it asked for; an errand on another SIM is hung up at once, before the AI
+   speaks.
 4. Audio flows as for an incoming call. When the call ends the app sends `call_end`
    with the same `call_id` and `task_id`. A requested call that has not started
-   dialing 30 seconds later is forgotten, so a later call is not taken for it.
+   dialing 30 seconds later is forgotten, so a later call is not mistaken for it.
 
-Only calls the agent asked for, and incoming calls, get an AI session.
-
-More detail is in [ARCHITECTURE.md](ARCHITECTURE.md).
+Only incoming calls and calls the agent asked for get an AI session. More detail is in
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## WebSocket protocol
 
 Derived from the app source (`AgentControlClient.kt`, `BridgeClient.kt`,
-`CallAudioService.kt`). The app is the WebSocket client for both connections, and both
-use the same address. Text frames are JSON objects with a `type` field. Fields the app
-does not know are ignored.
-
-With the default address `ws://127.0.0.1:8765` the handshake requests path `/`; the
-app requests exactly the path and query you configure.
+`CallAudioService.kt`, `SmsSender.kt`). The app is the WebSocket client for both
+connections, and both use the same address. Text frames are JSON objects with a
+`type` field; fields the app does not know are ignored. With the default address
+`ws://127.0.0.1:8765` the handshake requests path `/`; otherwise the app requests
+exactly the path and query you configure.
 
 `serial` is `Build.getSerial()`; if Android refuses it, the app sends
 `pixel-<app uid>` instead.
@@ -473,7 +466,7 @@ App to agent:
 
 | `type` | Fields | When |
 |---|---|---|
-| `hello` | `serial`, `mode` = `"CONTROL_IDLE"`, `play_tts_locally` = `false`, `model`, `app_version`, `phone_mode` (`"ai"` / `"normal"`), `in_call`, `supports_sms` = `true`, `supports_reject` = `true` | Right after connecting. `phone_mode` is not called `mode` because `mode` names the connection. Apps before the mode switch send neither. Apps before 0.2.4 do not send `supports_sms` and cannot send text messages. `supports_reject`: the app declines a ringing call when `answer_plan` says `reject`; apps without it would answer the call instead. The agent also accepts an optional `sims` list (`[{sub_id, country}]`) here to learn the phone's SIMs; the 1.0 app does not send it, so the agent learns them from `incoming` and the media `hello`. |
+| `hello` | `serial`, `mode` = `"CONTROL_IDLE"`, `play_tts_locally` = `false`, `model`, `app_version`, `phone_mode` (`"ai"` / `"normal"`), `in_call`, `supports_sms` = `true`, `supports_reject` = `true` | Right after connecting. `phone_mode` is not called `mode` because `mode` names the connection; apps before the mode switch send neither. Apps before 0.2.4 do not send `supports_sms` and cannot send texts. Without `supports_reject` an app would answer a call the agent wants rejected. The agent also accepts an optional `sims` list (`[{sub_id, country}]`); the 1.0 app does not send it, so the agent learns the SIMs from `incoming` and the media `hello`. |
 | `ping` | `t` (milliseconds since epoch) | Every 15 s. |
 | `status` | `mode` (`"ai"` / `"normal"`), `in_call` | The phone mode or the call state (ringing or active vs idle) changed. |
 | `set_mode_result` | `id`, `ok`, `mode`, `error` | Answer to `set_mode`. `mode` is the mode afterwards; `error` is empty on success, otherwise a code from [Normal phone mode](#normal-phone-mode). |
@@ -481,22 +474,22 @@ App to agent:
 | `incoming_cancel` | `serial` | The call ended before it was answered. |
 | `call_waiting_rejected` | `serial`, `caller_id`, `sim_country`, `sim_sub_id` (only when known) | A second call rang during a call and was declined (AI mode). The fields describe the declined call. |
 | `place_call_ack` | `call_id`, `task_id`, `number`, `reason` = `""` | A requested call was dialed. |
-| `place_call_failed` | `call_id`, `task_id`, `number`, `reason` | A requested call could not be dialed. `reason` `busy`: a call was ringing or up on the phone. |
+| `place_call_failed` | `call_id`, `task_id`, `number`, `reason` | A requested call was not dialed. `reason`: `busy` (a call was ringing or up), `ai_call_disabled` (normal phone mode), `missing number or call_id`, or `dial_helper_failed` (Android refused to place it). |
 | `outbound_ready` | `call_id`, `task_id`, `number` | A requested call connected. |
 | `call_end` | `call_id`, `task_id`, `serial`, `reason` = `"normal"` | A requested call ended. |
-| `send_sms_result` | `id`, `ok`, `error` (only when `ok` is `false`) | Answer to `send_sms`, sent once every part of the message was reported sent, one part failed, or 60 seconds passed. `error` is one of `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception`. If the parts are reported after a `timeout` answer, a second answer with the real result follows. The answers for the last 20 ids are sent again after the control connection reconnects; the agent drops repeats by `id`. |
-| `send_sms_delivered` | `id`, `ok` | The network's delivery report: `true` once every part reached the recipient, `false` when a part failed for good. Not sent when the network gives no report (the app stops waiting after an hour). Kept and sent again like `send_sms_result`. |
+| `send_sms_result` | `id`, `ok`, `error` (only when `ok` is `false`) | Answer to `send_sms`, sent once every part was reported sent, one part failed, or 60 seconds passed. `error`: `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout` or `exception`. If the parts are reported after a `timeout` answer, a second answer with the real result follows. The answers for the last 20 ids are sent again after the control connection reconnects; the agent drops repeats by `id`. |
+| `send_sms_delivered` | `id`, `ok` | The network's delivery report: `true` once every part reached the recipient, `false` when a part failed for good. Not sent when the network gives no report (the app stops waiting after an hour). Kept and re-sent like `send_sms_result`. |
 
 Agent to app:
 
 | `type` | Fields | Effect |
 |---|---|---|
-| `answer_plan` | `delay_ms`, `prewarm`, `reject` (optional) | How long to let the call ring before answering. `prewarm` is only logged. `reject` = `true`: decline the ringing call without answering it (`incoming_cancel` follows when it has ended); also honored when it arrives after the 500 ms wait, as long as the call still rings. |
-| `place_call` | `number`, `call_id`, `task_id`, `sub_id` (optional) | Dial `number`, from the SIM with subscription id `sub_id` when given (Android's default when that SIM is not found). While a call rings or is up, the app does not dial and answers `place_call_failed` with `reason` `busy`. A call that has not started dialing 30 seconds later is forgotten, so a later call is not taken for it. |
+| `answer_plan` | `delay_ms`, `prewarm`, `reject` (optional) | How long to let the call ring before answering. `prewarm` is only logged. `reject` = `true`: decline the ringing call without answering (`incoming_cancel` follows once it has ended); also honored after the 500 ms wait, as long as the call still rings. |
+| `place_call` | `number`, `call_id`, `task_id`, `sub_id` (optional) | Dial `number` from the SIM with subscription id `sub_id` when given (Android's default when that SIM is not found). Answered with `place_call_ack` or `place_call_failed`. |
 | `set_mode` | `mode` (`"ai"` / `"normal"`), `id` | Switch the phone mode; answered with `set_mode_result`. |
-| `send_sms` | `id` (1–64 characters), `to` (3–20 digits, optional leading `+`), `text` (1–500 characters), `sub_id` (optional) | Send `text` as a text message from the phone's own number: the SIM with subscription id `sub_id`, else the default SMS SIM. For example to reply to an appointment request. Answered with `send_sms_result` and, when the network reports it, `send_sms_delivered`. A `send_sms` with the id of a message still being sent is ignored; one with the id of a message already sent is answered again without sending it twice. |
-| `agent_info` | `console_url` | The web console's address, for the app's **Open the web console** button. Sent after `hello` only when the agent knows it; the app forgets the old one on every new connection. |
-| `blocklist_sync` | `numbers` (array) | Stored, but not used: the app does not reject callers by this list (the agent decides, with `answer_plan` `reject`). |
+| `send_sms` | `id` (1–64 characters), `to` (3–20 digits, optional leading `+`), `text` (1–500 characters), `sub_id` (optional) | Send `text` from the phone's own number: the SIM with subscription id `sub_id`, else the default SMS SIM. Answered with `send_sms_result` and, when the network reports it, `send_sms_delivered`. A repeat of an id still being sent is ignored; a repeat of an id already sent is answered again without sending twice. |
+| `agent_info` | `console_url` | The web console's address for **Open the web console**. Sent after `hello` only when the agent knows it; the app forgets the old one on every new connection. |
+| `blocklist_sync` | `numbers` (array) | Stored but unused: the agent decides rejections with `answer_plan` `reject`. |
 | `hello_ack`, `hello_ok`, `ack`, `pong` | | Logged only. |
 
 If the control connection drops, the app reconnects after 1.5 seconds.
@@ -507,62 +500,58 @@ App to agent:
 
 | `type` | Fields | When |
 |---|---|---|
-| `hello` | `serial`, `caller_id`, `sample_rate` (16000), `mode` = `"SILENT_LOCAL"`, `sim_country`, `sim_sub_id` (only when known), `play_tts_locally` = `false`, `local_menu` (`false` in this build), `model`, `app_version` | Right after connecting. `sim_country` and `sim_sub_id` are the same as in `incoming`. |
-| `ringing` | `serial`, `caller_id` | Right after `hello`, and again if the caller's number only becomes known later. |
+| `hello` | `serial`, `caller_id`, `sample_rate` (16000), `mode` = `"SILENT_LOCAL"`, `sim_country`, `sim_sub_id` (only when known), `play_tts_locally` = `false`, `local_menu` (`false` in this build), `model`, `app_version` | Right after connecting. `sim_country` and `sim_sub_id` match `incoming`. `caller_id` can be empty when Android has not reported the number yet. |
+| `ringing` | `serial`, `caller_id` | Right after `hello`, and again if the caller's number becomes known later. |
 | `call_end` | `serial`, `caller_id` | The call ended. The app closes the connection shortly afterwards. |
 | `local_menu_started`, `local_menu_done`, `local_menu_failed` | | Only in builds with `LOCAL_MENU_ENABLED = true`; never sent by default. |
-
-`caller_id` can be an empty string in `hello` when Android has not reported the number
-yet.
-
-Binary frames, app to agent: the caller's voice as raw PCM, signed 16-bit
-little-endian, mono, 16 kHz, 60 ms per frame (1920 bytes). They are sent continuously
-during the call, including silence.
-
-The app pings the media connection and treats it as lost after 10 seconds without an
-answer. When it closes or fails during a call and is not open again 3 seconds later,
-the app ends the call (there is no reconnect within a call).
 
 Agent to app:
 
 | `type` | Fields | Effect |
 |---|---|---|
-| `ready`, `hello_ack`, `hello_ok` | | Marks the agent as ready. No other effect in the current code. |
-| `tts_start` | `source` | Audio is about to follow. For most sources the app first drops audio it has queued but not yet played. Sources starting with `gemini_live` keep the queue. `gemini_wait` belongs to an older flow in which the phone played a bundled "please wait" clip; no clip is shipped, so it has no effect. |
+| `ready`, `hello_ack`, `hello_ok` | | Marks the agent as ready; no other effect in the current code. |
+| `tts_start` | `source` | Audio is about to follow. For most sources the app first drops audio it has queued but not yet played; sources starting with `gemini_live` keep the queue. `gemini_wait` belongs to an older flow in which the phone played a bundled "please wait" clip; no clip is shipped, so it has no effect. |
 | `tts_end` | `source` | End of that audio. |
 | `dtmf` | `digit`, `confidence` | Drops queued audio. |
 | `stop_local_menu` | `reason` | Only relevant when `LOCAL_MENU_ENABLED = true`. |
 | `hangup` | `reason` | End the call. |
-| `place_call` | as above | Same as on the control connection. |
+| `place_call` | as on the control connection | As on the control connection. |
 | `reply_text`, `tts_text` | `text` | Logged only (the length, not the text). |
 
-Binary frames, agent to app: raw PCM in the same format (signed 16-bit little-endian,
-mono, 16 kHz), played into the call in the order received. The app applies a soft
-limiter at about -2 dBFS. Between the agent's audio the app writes silence into the
-call (40 ms at a time once nothing arrived for 100 ms) so the phone's audio path stays
-awake and the first word after a pause is not cut.
+**Audio frames.** Both directions use raw PCM, signed 16-bit little-endian, mono,
+16 kHz, in binary frames.
 
-Not verified from this folder alone: how the agent reacts to each message. That is
-defined by the agent's source.
+- App to agent: the caller's voice, 60 ms per frame (1920 bytes), sent continuously
+  during the call, including silence.
+- Agent to app: played into the call in the order received, through a soft limiter at
+  about -2 dBFS. Between the agent's audio the app writes silence into the call (40 ms
+  at a time once nothing arrived for 100 ms), so the phone's audio path stays awake and
+  the first word after a pause is not cut.
+
+The app pings the media connection and treats it as lost after 10 seconds without an
+answer. There is no reconnect within a call: if the connection closes or fails and is
+not open again 3 seconds later, the app ends the call.
 
 ## Optional SMS hook
 
-`SmsRilHook.kt` is an Xposed / LSPosed hook that is **inactive unless an LSPosed-style
-framework is installed** and this app is enabled as a module for `com.android.phone`.
-When active, it writes each incoming SMS (sender, text, timestamp) as a JSON file into
-the `pixel-sms-push` folder of the phone process's device-protected cache directory,
-where a separate tool can pick it up: the optional
-[SMS forwarder](../tools/sms_forward/README.md) on the PC. Nothing on the phone forwards
-those files anywhere. `service.sh` enables the hook automatically when the `zygisk_vector` module
-is present (step 7 above). If you do not want it, do not install an LSPosed framework,
-or disable this app in the framework's module list.
+`SmsRilHook.kt` is an Xposed / LSPosed hook that stays **inactive unless an
+LSPosed-style framework is installed** and this app is enabled as a module for
+`com.android.phone`. When active, it writes each incoming SMS (sender, text,
+timestamp) as a JSON file into the `pixel-sms-push` folder of the phone process's
+device-protected cache directory. Nothing on the phone forwards those files; the
+optional [SMS forwarder](../tools/sms_forward/README.md) on the PC picks them up and
+sends them to your notification channels, such as Telegram.
 
-`xposed-stub/` contains empty compile-time stand-ins for the Xposed API so the hook
+`service.sh` enables the hook automatically when the `zygisk_vector` module is
+present ([step 7](#at-every-boot-servicesh)). If you do not want it, do not install an
+LSPosed framework, or disable this app in the framework's module list.
+
+`xposed-stub/` contains empty compile-time stand-ins for the Xposed API, so the hook
 compiles without bundling the real library.
 
 ## Troubleshooting
 
-Useful log command:
+Start with the log:
 
 ```text
 adb logcat -s CallAudioService BridgeClient AgentControlClient TelephonyUplink VoiceCallCapture LocalAudioGuard SilentInCall SilentCallScreen DialerRoleHelper
@@ -570,27 +559,26 @@ adb logcat -s CallAudioService BridgeClient AgentControlClient TelephonyUplink V
 
 | Symptom | What to check |
 |---|---|
-| Checklist says *Installed as a normal app* | The module is not active, or a normal install is shadowing it. Check that the module is enabled, uninstall any normal install, reboot. `adb shell pm path com.pixelcallai.streamer` should print a path under `/system/priv-app/`. |
-| *Privileged permissions* show Missing | Same cause as above. These permissions are only granted to an app under `/system/priv-app` at boot. |
-| **Test connection** fails with "connection refused" (USB) | The agent is not running, or `adb reverse` is not set up. Run `adb reverse --list` on the PC; it should list `tcp:8765`. Unplugging the cable removes the mapping. |
-| **Test connection** fails on Wi-Fi | Wrong address, the PC firewall blocks the port, or the phone and PC are on different networks. |
+| Checklist says *Installed as a normal app*, or *Privileged permissions* show Missing | The module is not active, or a normal install shadows it; privileged permissions are only granted at boot to an app under `/system/priv-app`. Enable the module, uninstall any normal install, reboot. `adb shell pm path com.pixelcallai.streamer` should print a path under `/system/priv-app/`. |
+| **Test connection**: "connection refused" (USB) | The agent is not running, or `adb reverse` is not set up. `adb reverse --list` on the PC should list `tcp:8765`. Unplugging the cable removes the mapping. |
+| **Test connection** fails on Wi-Fi | Wrong address, the PC firewall blocks the port, or phone and PC are on different networks. |
 | **Test connection** reports an invalid status code | Something answered, but not as a WebSocket at that path. Check the path and token in the address. |
 | The phone still rings out loud | Do Not Disturb access is missing, or the app is not the default phone app and call screening app. |
-| A call screen from Google Dialer appears | The phone is in normal phone mode, or the app is not the default phone app, so Google Dialer was not disabled. Switch **AI answers my calls** on, or fix the role in **Setup steps**, and reboot. |
-| The call is answered but the caller hears nothing | Look for `TelephonyUplink` in the log. `TYPE_TELEPHONY unavailable` or `setPreferredDevice(TYPE_TELEPHONY) failed` means the phone does not offer the telephony output to the app (unsupported device, or the privileged permission is missing). The app also posts a notification in this case. |
-| The agent receives only silence | Look for `VoiceCallCapture` in the log. The `maxRms` value stays near zero if the device does not deliver call audio to the `VOICE_DOWNLINK` / `VOICE_CALL` sources. On Pixels the level is low by design (the earpiece volume is at minimum) and the agent is expected to amplify it. |
-| The phone does not answer at all | The phone is in normal phone mode (**AI answers my calls** is off), the service is stopped, the app lacks `ANSWER_PHONE_CALLS`, or the agent was not reachable: without a control connection within 12 seconds the app does not answer (log: `agent not ready`) and the carrier takes the call as missed or to voicemail. |
-| A call ends by itself after a few seconds of silence | The media connection to the agent dropped (log: `media connection lost`). The app ends the call when it is not back within 3 seconds. |
-| A text from the agent is not sent | Look for `SmsSender` in the log. `no_permission`: the module did not grant `SEND_SMS` (reboot, or switch to AI mode once); `no_service` / `radio_off` / `generic_failure`: no signal, airplane mode, or the carrier refused it (for example a prepaid SIM without credit). |
-| The agent's call-back or errand never dials | The phone was ringing or on a call (`place_call_failed` with `busy`; the agent retries later), or it is in normal phone mode, where the agent sends no calls. Look for `OutboundCallHelper` in the log. |
-| An errand call is hung up the moment it connects | It went out on another SIM than the one the agent asked for (`wrong_sim`), usually because a SIM was swapped. Call the phone once so the agent learns its SIMs again. |
+| Google Dialer's call screen appears | The phone is in normal phone mode, or the app is not the default phone app, so Google Dialer was not disabled. Turn **AI answers my calls** on, or fix the role in **Setup steps**, and reboot. |
+| Call is answered but the caller hears nothing | Look for `TelephonyUplink`. `TYPE_TELEPHONY unavailable` or `setPreferredDevice(TYPE_TELEPHONY) failed` means the phone does not offer the telephony output to the app (unsupported device, or the privileged permission is missing). The app also posts a notification. |
+| The agent receives only silence | Look for `VoiceCallCapture`. `maxRms` stays near zero if the device does not deliver call audio to the `VOICE_DOWNLINK` / `VOICE_CALL` sources. On Pixels the level is low by design (earpiece at minimum) and the agent amplifies it. |
+| The phone does not answer at all | Normal phone mode (**AI answers my calls** off), the service is stopped, `ANSWER_PHONE_CALLS` is missing, or the agent was unreachable: without a control connection within 12 seconds the app does not answer (log: `agent not ready`) and the carrier treats the call as missed or sends it to voicemail. |
+| A call ends by itself after a few seconds of silence | The media connection dropped (log: `media connection lost`) and was not back within 3 seconds. |
+| A text from the agent is not sent | Look for `SmsSender`. `no_permission`: the module did not grant `SEND_SMS` (reboot, or switch to AI mode once). `no_service` / `radio_off` / `generic_failure`: no signal, airplane mode, or the carrier refused it (for example, the SIM has no balance or the line is suspended). |
+| The agent's call-back or errand never dials | Look for `OutboundCallHelper` and the `place_call_failed` reason: `busy` (the phone was ringing or on a call; the agent retries later), `ai_call_disabled` (normal phone mode), `dial_helper_failed` (Android refused the call). |
+| An errand call is hung up the moment it connects | It went out on another SIM than the agent asked for (`wrong_sim`), usually after a SIM swap. Call the phone once so the agent learns its SIMs again. |
 | The module made the phone fail to boot | Use the root manager's safe mode, or create `/data/adb/modules/pixelcallai_uplink/disable` from recovery, then reboot. |
 
 ## Legal
 
-Recording calls, and having an AI speak to callers without telling them, is regulated
-differently from place to place. Find out what applies to you before using this.
-You are responsible for how you use it.
+Recording calls, and letting an AI speak to callers without telling them, is regulated
+differently from place to place. Find out what applies to you before using this; you
+are responsible for how you use it.
 
 `magisk/pixelcallai_uplink/META-INF/com/google/android/update-binary` carries its own
 copyright and license header (GPL-3.0-only).

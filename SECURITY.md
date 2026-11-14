@@ -1,5 +1,10 @@
 # Security
 
+Bageo answers calls, places calls and sends texts from your real phone number.
+Whoever can use its console or API can do the same, so treat access to it like
+access to your phone. This page covers how to report a problem, how to run the
+agent safely, and what it already guards against.
+
 ## Reporting a vulnerability
 
 Please do not open a public issue for security problems. Use GitHub's
@@ -10,21 +15,20 @@ reproduce it, and the version.
 Security fixes go into the latest release (1.0.x). Older 0.x versions get no
 fixes; update the agent and the phone module together.
 
-## What to keep in mind when running it
+## Running it safely
 
 - The agent listens on `127.0.0.1` by default. When you set
   `AGENT_HOST=0.0.0.0`, always set `CALLS_UI_TOKEN` (web console and API) and
   `DEVICE_TOKEN` (phones over Wi-Fi).
 - The web console has one shared token, no accounts and no HTTPS. Do not expose
-  it to the internet; use a VPN.
+  it to the internet; reach it from outside through a VPN.
+- Since 1.0 the agent can place calls (AI errands, AI call-backs) and send texts
+  from your SIM. Treat `CALLS_UI_TOKEN` like the PIN of your phone.
 - `data/calls/config/settings.json` holds your API keys and notification
   tokens in plain text; recordings and transcripts are other people's personal
-  data.
+  data. Protect the `data/` folder and its backups accordingly.
 - The phone module installs a privileged system app. Install only builds you
   trust.
-- Since 1.0 the agent can place calls (AI errands, AI call-backs) and send texts
-  from your SIM. Anyone who can use the console or the API can make it do so:
-  treat `CALLS_UI_TOKEN` like the PIN of your phone.
 
 ## Built-in protections
 
@@ -46,6 +50,6 @@ fixes; update the agent and the phone module together.
 - **Secrets stay hidden.** The settings API returns keys and notification tokens
   masked; `/health` without the token returns only a short status.
 
-Please report a way around any of these privately, as above.
+Found a way around any of these? Please report it privately, as above.
 
-See [Privacy, safety and the law](docs/en/PRIVACY_AND_LEGAL.md).
+See also [Privacy, safety and the law](docs/en/PRIVACY_AND_LEGAL.md).

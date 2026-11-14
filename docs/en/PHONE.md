@@ -1,74 +1,77 @@
-# Phone setup
+# Phone setup: turn a rooted Android phone into an AI call answerer
 
-The phone is the gateway to the telephone network: it holds your SIM, answers
-the call without a sound, sends the caller's voice to the agent and plays the
-AI's voice into the call. It does no AI work itself.
+The phone is Bageo's line to the telephone network. It holds your SIM, picks
+up calls without a sound, streams the caller's voice to the agent on your
+computer and plays the AI's voice back into the call. The AI (Gemini Live) runs
+through the agent; the phone does no AI work itself. This page covers which
+phones work, installing the root module, connecting by USB or Wi-Fi, switching
+between AI answering and a normal phone, and undoing it all.
 
-Everything about building the app, its permissions and its protocol is in
-[`android/README.md`](../../android/README.md). This page is the user's view.
+Building the app, its permissions and its protocol are covered in
+[`android/README.md`](../../android/README.md).
 
-This page describes **Bageo 1.0**: the app `1.0.0` (versionCode 28) inside the
-root module `v1.0.0` (versionCode 20), installed from
-`pixelcallai_uplink-1.0.0.zip`. The app's version is shown on its
-*Advanced* screen and on the web console's *System → Phones*.
+This page describes **Bageo 1.0**: the root module `v1.0.0` (versionCode 20)
+with the app `1.0.0` (versionCode 28) inside, installed from
+`pixelcallai_uplink-1.0.0.zip`. The app shows its version under *Advanced*,
+and the web console under *System → Phones*.
 
 ## What the phone does
 
 | Job | How |
 |---|---|
-| Answers incoming calls without a sound | It lets the call ring for the time the agent asks (3 s by default), picks up silently, sends the caller's voice to the agent and plays the AI's voice into the call. Nobody near the phone hears either side. |
-| Switches between **AI answers my calls** and **Normal phone** | One switch in the app, or one button in the web console. The module's root helper changes the system settings, so the app itself needs no root permission. See [Normal phone mode](#normal-phone-mode). |
-| Leaves your own calls alone | A call you dial by hand on the phone gets no AI, and its microphone and earpiece work normally; the phone goes back to silent when it ends. |
-| Texts callers for you | When you accept or decline an appointment and the reply is a text, the phone that took the call sends it from its own number (`send_sms`). |
-| Places calls for the agent | The AI call-back with your answer to an appointment, and AI errands you start from the web console's *Errands* page (`place_call`). |
-| Uses the right SIM | On a dual-SIM phone, texts and outgoing calls go out from the SIM the agent names by its Android subscription id (`sub_id`): the SIM the original call came in on, or for an errand a SIM of the number's country. |
-| Handles call waiting | One call at a time: a second call that rings during a call is declined at once (the caller gets busy) and reported to the agent (`call_waiting_rejected`), which lists it and sends a "📵" notification. |
-| Fails safe | No agent while it rings: it does not answer, and the carrier treats the call as missed. The connection to the agent lost for 3 seconds during a call: it hangs up instead of leaving the caller in silence. |
+| Answers calls silently | Lets the call ring as long as the agent asks (3 s by default), picks up without a sound and carries both voices between the call and the agent. Nobody near the phone hears either side. |
+| Switches between AI and normal phone | One switch in the app, or one button in the web console. The module's root helper changes the system settings, so the app needs no root permission. See [Normal phone mode](#normal-phone-mode). |
+| Leaves your own calls alone | A call you dial by hand gets no AI, and the microphone and earpiece work normally; afterwards the phone goes silent again. Only incoming calls and calls the agent asks for (AI call-backs and errands) get the AI. |
+| Sends texts for you | When you answer an appointment by text, the phone that took the call sends it from its own number (`send_sms`). |
+| Places calls for the agent | AI call-backs with your answer to an appointment, and AI errands from the console's *Errands* page (`place_call`). It never dials while ringing or on a call: the new call waits (an errand up to 10 minutes). |
+| Picks the right SIM | On a dual-SIM phone, texts and outgoing calls use the SIM the agent names by its Android subscription id (`sub_id`): the SIM the original call came in on, or for an errand a SIM from the number's country. |
+| Takes one call at a time | A second call during a call is declined at once (the caller hears busy) and reported to the agent (`call_waiting_rejected`). It shows in the call list, and you get a "📵 Missed while on another call" notification. |
+| Fails safe | Agent unreachable while it rings: it does not answer, and the call goes to your carrier's missed call or voicemail. Link to the agent lost for 3 seconds during a call: it hangs up instead of leaving the caller in silence. |
 
 ## Which phones
 
-- **Tested: Google Pixel 7, 7a, 8 and 9**, rooted with Magisk or KernelSU.
-- **Other phones: try at your own risk.** The app needs two things from the
-  phone's audio hardware layer that many phones do not offer to apps, even
-  privileged ones: recording the other party's voice during a call, and playing
-  sound *into* the call. If either is missing, the call is answered but one
-  side hears nothing. There is no list of other working models yet — if you try
-  one, please report what happened.
-- Android 10 or newer.
+- **Tested:** Google Pixel 7, 7a, 8 and 9, rooted with Magisk or KernelSU.
+- **Android 10 or newer.**
+- **Other phones: at your own risk.** The app needs two things that many
+  phones keep from apps, even privileged ones: recording the other party
+  during a call, and playing sound *into* the call. If either is missing, the
+  call is answered but one side hears nothing. There is no list of other
+  working models yet; if you try one, please report what happened.
 
-One behaviour differs between phones, and the agent works it out by itself at
-the start of every call. Where the phone's call recording does not contain the
-AI's own voice (the Pixel 9 in our use), the caller can cut in while the AI is
-talking and the background sound runs through the whole call. Where it does
-(Pixel 7 and 7a in our use), the AI's own voice is filtered out of what it
-hears, so it finishes its sentence before it listens again, and the background
-sound plays only while the AI speaks.
+Phones also differ in one detail, which the agent measures by itself at the
+start of every call: whether the phone's call recording picks up the AI's own
+voice.
+
+| Call recording | What changes | Tested phones |
+|---|---|---|
+| Without the AI's voice | The caller can cut in while the AI is talking, and the background sound plays through the whole call. | Pixel 9 |
+| With the AI's voice | The AI's voice is filtered out of what it hears, so it finishes its sentence before it listens again, and the background sound plays only while the AI speaks. | Pixel 7, 7a |
 
 ## Use a spare phone
 
-Installing the module turns the phone into a call box:
+Installing the module turns the phone into a dedicated call box:
 
-- the app becomes the default phone app and call-screening app, and Google's
-  phone app is disabled (no call screen appears);
-- Do Not Disturb is switched on, ringer and notification volume go to zero;
-- during calls the microphone is muted, the speaker is off and the earpiece is
-  at its minimum — nothing in the room is heard and nothing is played out loud.
+- Bageo becomes the default phone app and the call screening app, and Google's
+  phone app is disabled, so no call screen appears.
+- Do Not Disturb goes on; ringer and notification volume go to zero.
+- During calls the microphone is muted, the speaker is off and the earpiece is
+  at its minimum: nothing in the room is picked up and nothing plays out loud.
 
-You can still place calls from it with another dialer app, but do not expect a
-normal handset. All of this can be switched off from the app or the web
-console (see [Normal phone mode](#normal-phone-mode)) and undone for good (see
+You can still dial out with another dialer app, but it is no longer an everyday
+handset. All of this can be switched off from the app or the web console (see
+[Normal phone mode](#normal-phone-mode)) and removed for good (see
 [Rollback](#rollback)).
 
 ## Install
 
-1. **Root** the phone (Magisk or KernelSU). Not covered here.
-2. If you ever installed the app as a normal APK, uninstall it. Never have both.
-3. Copy `pixelcallai_uplink-<version>.zip` to the phone, open the Magisk or
-   KernelSU app → *Modules* → *Install from storage* → pick the zip → reboot.
-   For this release the file is `pixelcallai_uplink-1.0.0.zip`.
-4. Open **Bageo**. The card at the top says in one sentence what the phone does
-   right now. Below it, **Setup steps** lists what is still missing, each step
-   with a button:
+1. **Root** the phone with Magisk or KernelSU (not covered here).
+2. If you ever installed the app as a plain APK, uninstall it. Never have both.
+3. Copy `pixelcallai_uplink-<version>.zip` to the phone (for this release
+   `pixelcallai_uplink-1.0.0.zip`). In the Magisk or KernelSU app: *Modules →
+   Install from storage* → pick the zip → reboot.
+4. Open **Bageo**. The card at the top says in one sentence what the phone is
+   doing right now. Below it, **Setup steps** lists what is still missing,
+   each with a button:
 
    | Step | What to do |
    |---|---|
@@ -78,167 +81,159 @@ console (see [Normal phone mode](#normal-phone-mode)) and undone for good (see
    | Let Bageo control Do Not Disturb | **Open settings** and allow it. |
    | Do not let Android put Bageo to sleep | **Allow**, so Android does not stop the service. |
 
-   The Bageo app itself does not need root access (the module does the root
-   work), so if the root manager asks, either answer is fine. When every step is done the list
-   folds away, and once the phone is connected to the computer the card says
-   *The AI is answering your calls*. The connection address, the connection
-   test and the detailed checks are under **Advanced**.
+   The app itself needs no root access (the module does the root work), so if
+   the root manager asks, either answer is fine. When every step is done the
+   list folds away, and once the phone is connected to the computer the card
+   says *The AI is answering your calls*. The connection address, the
+   connection test and the detailed checks are under **Advanced**.
 
-   The permission to send texts (`SEND_SMS`) is granted by the module at boot
-   and whenever the phone switches to AI mode, so the setup screen does not ask
-   for it. On a dual-SIM phone each SIM is picked by its subscription id, never
-   by its own number, so no extra permission is needed.
+   You are not asked for the permission to send texts (`SEND_SMS`): the module
+   grants it at boot and whenever the phone switches to AI mode. A dual-SIM
+   phone picks each SIM by its subscription id, never by its own number, so no
+   extra permission is needed for that either.
 5. Leave **AI answers my calls** on.
 
 ### Updating
 
 Install the new zip over the old module the same way (*Install from storage*)
-and reboot. The mode you chose, the connection address and the app's
-permissions are kept. Releases from this repository are signed with the
-project's own key, so one installs over the other; if you switch between a
-release and a build of your own, remove the module and reboot first (see
+and reboot. Your mode, the connection address and the app's permissions are
+kept. Releases from this repository are signed with the project's own key, so
+one installs over the other. If you switch between a release and a build of
+your own, remove the module and reboot first (see
 [`android/README.md`](../../android/README.md#build)).
 
 ## Connect it to the computer
 
 ### USB (recommended)
 
-1. On the phone: *Settings → About phone →* tap *Build number* seven times;
+1. On the phone: *Settings → About phone*, tap *Build number* seven times,
    then *System → Developer options →* **USB debugging** on.
 2. Plug it into the computer running the agent.
 3. Accept **"Allow USB debugging?"** on the phone (tick *Always allow*).
 
 That is all. The agent finds the phone, maps the app's local address
 (`ws://127.0.0.1:8765`) through the cable to itself and starts the app's
-service. It repeats the check every fifteen seconds, so unplugging and
-replugging, or restarting either side, heals by itself. USB also keeps the
-phone charged and works without Wi-Fi.
-
-Several phones can be plugged into one computer; each answers its own number.
+service. It checks again every 15 seconds, so unplugging and replugging, or
+restarting either side, heals by itself. USB also keeps the phone charged and
+works without Wi-Fi. One computer can take several phones; each answers its
+own number.
 
 ### Wi-Fi
 
 Use this when the phone cannot be cabled to the computer.
 
-1. Start the agent so that it listens on the network and requires a token: in
+1. Start the agent so that it listens on the network and requires tokens: in
    `.env` set `AGENT_HOST=0.0.0.0`, `DEVICE_TOKEN=<a long random string>` and
    `CALLS_UI_TOKEN=<another one>` (see [Settings reference](SETTINGS.md)).
 2. In the app, under *Advanced → Connection*, enter
    `ws://<computer's address>:8787/ws?token=<DEVICE_TOKEN>` and save.
-   **Test connection** tells you whether it works, and if not, why in plain
+   **Test connection** tells you whether it works and, if not, why in plain
    words (the raw error is under *Details*).
 
-The connection is not encrypted (`ws://`): use it on your own network only, or
-put a TLS reverse proxy in front and use `wss://`. Calls are more robust on
+The connection is not encrypted (`ws://`): use it only on your own network, or
+put a TLS reverse proxy in front and use `wss://`. Calls are more robust over
 USB.
 
 ## Day to day
 
-- The app shows a quiet permanent notification while its service runs and
+- While its service runs, the app shows a quiet permanent notification. It
   starts by itself after a reboot.
 - To use the phone yourself for a while, switch it to a
   [normal phone](#normal-phone-mode). To stop the AI on every phone at once,
-  switch off *AI answers calls* in the web console (calls are then picked up
-  and hung up).
-- A call you dial yourself on the phone is left alone: no AI, and the microphone
-  and earpiece work normally for it. Only calls the agent asked for (AI
-  call-backs and errands) and incoming calls get the AI.
-- One call at a time: a second call that rings during a call is declined at
-  once; the call list shows it and you get a "📵 Missed while on another call"
-  notification.
-- While the phone is ringing or on a call it does not dial: an AI call-back or
-  errand waits for it (an errand up to 10 minutes) instead of interrupting.
-- If the computer cannot be reached when a call rings, the phone does not answer;
-  the call goes to your carrier's missed call or voicemail. If the connection to
-  the computer drops during a call for more than 3 seconds, the phone hangs up
-  instead of leaving the caller in silence.
-- With two SIMs, the agent knows which SIM each call came in on, uses it for
-  the opening language (*Main language for each SIM*), and answers texts and
+  switch off *AI answers calls* in the web console's settings (calls are then
+  picked up and hung up).
+- With two SIMs, the agent knows which SIM each call came in on. It picks the
+  opening language from *Main language for each SIM* and sends texts and
   call-backs from the same SIM.
 - AI errands need to know the phone's SIMs, which the agent learns from the
-  calls the phone reports. A newly set-up phone can take an errand once it has
+  calls the phone reports. A newly set-up phone can run an errand once it has
   taken one call; until then the console says *This phone hasn't taken a call
   yet*.
 - The **Open the web console** button in the app appears once the agent has a
-  console address: *Address of this console* in the settings, or, when that is
+  console address: *Address of this console* in the settings or, when that is
   empty and the console is open to your network, the computer's LAN address.
 
 ## Normal phone mode
 
-The phone has two modes. You can switch at any time except during a call:
+The phone has two modes, and you can switch at any time except during a call:
 
-- **AI answers my calls** (the default): the takeover described in
-  [Use a spare phone](#use-a-spare-phone). A phone that was never switched
-  stays in this mode after updates.
-- **Normal phone**: calls ring and you answer them yourself. The AI does not
-  pick up, nothing is muted, and Google's phone app is back.
+| Mode | What happens |
+|---|---|
+| **AI answers my calls** (default) | The takeover described in [Use a spare phone](#use-a-spare-phone). A phone that was never switched stays in this mode after updates. |
+| **Normal phone** | Calls ring and you answer them yourself. The AI does not pick up, nothing is muted, and Google's phone app is back. |
 
-**On the phone:** open Bageo and turn the big switch at the top,
-**AI answers my calls**, off or on. Confirm, and after a few seconds the card
-says *Normal phone: calls ring as usual* (or that the AI answers again).
+**On the phone:** open Bageo and turn the big switch at the top, **AI answers
+my calls**, off or on. Confirm; after a few seconds the card says *Normal
+phone: calls ring as usual*, or that the AI is answering again.
 
 **From the web console:** *System → Phones*. Each connected phone shows its
-name, app version, mode and a button, **Switch to normal phone** or
-**Let the AI answer again**. Switching to a normal phone asks for confirmation
-first. A phone whose app is older than this feature shows *Update the Bageo
-app…* instead of the button.
+name, app version, mode and a button: **Switch to normal phone** (asks for
+confirmation first) or **Let the AI answer again**. A phone whose app predates
+this feature shows *Update the Bageo app on this phone to switch it from here*
+instead.
+
+### What the switch changes
 
 Switching to a **normal phone** changes these system settings, in this order:
 
-1. Bageo is no longer the call-screening app, so calls are not silenced.
-2. Do Not Disturb is turned off.
-3. The ringer is set to normal, and the ring, notification, earpiece, media,
-   alarm and system volumes go back to what they were before the phone last
-   became an AI phone. Where nothing was saved, or the saved value was zero,
-   half of the maximum is used.
-4. The microphone is no longer muted and the earpiece is no longer held at its
+1. Bageo stops being the call screening app, so calls are no longer silenced.
+2. Do Not Disturb goes off.
+3. The ringer goes back to normal, and the ring, notification, earpiece,
+   media, alarm and system volumes return to what they were before the phone
+   last became an AI phone. Where nothing was saved, or the saved value was
+   zero, half of the maximum is used.
+4. The microphone is no longer muted, and the earpiece is no longer held at its
    lowest level.
 5. Last, Google Phone (`com.google.android.dialer`) is enabled again and
    becomes the default phone app. On a phone without it, Bageo gives the role
    up and Android uses its own phone app. The switch only counts as done when
    Google Phone really is the default phone app and is not disabled.
 
-The Bageo module makes these changes as root: a small helper it starts at
-every boot carries out the switch when the app asks, so the app needs no
-root permission for it. The changes go on even when Android stops the Bageo
-app on the way (taking the phone-app role away from an app can do that),
-which is why the phone app changes last.
+The module makes these changes as root: a small helper it starts at every boot
+carries out the switch when the app asks, so the app needs no root permission.
+Taking the phone-app role away from an app can make Android stop it; the
+helper keeps going regardless, which is why the phone app changes last.
 
-Bageo's service keeps running and stays connected to the agent, so you can
+In normal mode Bageo's service keeps running and stays connected, so you can
 switch back from the web console, but it does not answer, silence or mute any
-call. The web console shows the phone as a normal phone, and `/health` lists
-it in `normal_mode_serials`.
+call. The console shows the phone as a normal phone, and `/health` lists it in
+`normal_mode_serials`.
 
-Switching back to **AI answers my calls** first saves the current volumes,
-then repeats the module's takeover: Bageo becomes the phone app and the call
-screener, the Google Phone app is disabled, Do Not Disturb goes on and
-the volumes go to zero.
+Switching back to **AI answers my calls** first saves the current volumes, then
+repeats the module's takeover: Bageo becomes the phone app and the call
+screener, Google's phone app is disabled, Do Not Disturb goes on and the
+volumes go to zero.
 
-If a switch stops halfway, the app and the web console say which step did not
-work (for example, the default phone app could not be changed). Switching
-again repeats every step, and so does the next start of the app (after a
-reboot, for example) while a switch is unfinished. If the app says the Bageo
-module is not running, check in Magisk or KernelSU that **Bageo Uplink** is
-enabled (a module installed before the rename shows as **Myna Uplink**), then
-reboot the phone. When the web console gets no answer within
-15 seconds it says the result is not confirmed yet: refresh a little later
-to see the mode the phone reports.
+### If a switch does not finish
 
-If you used an app version before 0.2.2 and its **AI answering** switch was
-off, that setting no longer counts: after the update the phone answers with
-the AI, and the card at the top says so. Turn **AI answers my calls** off if
-the phone should stay a normal phone.
+- The app and the web console name the step that failed (for example, *the
+  phone could not change its default phone app*). Switching again repeats every
+  step, and so does the next start of the app (after a reboot, say) while a
+  switch is unfinished.
+- If the app says the Bageo module is not running, check in Magisk or KernelSU
+  that **Bageo Uplink** is enabled (a module installed before the rename shows
+  as **Myna Uplink**), then reboot the phone.
+- When the web console gets no answer within 15 seconds, it says *Result not
+  confirmed yet*: refresh a little later to see the mode the phone reports.
+- If you used an app version before 0.2.2 with its **AI answering** switch
+  off, that setting no longer counts: after the update the phone answers with
+  the AI, and the card at the top says so. Turn **AI answers my calls** off if
+  the phone should stay a normal phone.
 
-The mode is stored in `/data/adb/pixelcallai/mode` (`ai` or `normal`),
-outside the module's folder, so it survives reboots and module updates. The
-module reads it at every boot; no file means AI mode. The result of the last
-switch is in `last_apply` in the same folder, and `pending` exists while a
-switch is unfinished. The volumes saved for the normal phone are kept in the
-app's own storage.
+### Where the mode is stored
 
-To switch without the app's screen, from a computer with `adb`:
+The mode lives in `/data/adb/pixelcallai/mode` (`ai` or `normal`), outside
+the module's folder, so it survives reboots and module updates. The module
+reads it at every boot; no file means AI mode. The result of the last switch is
+in `last_apply` in the same folder, and `pending` exists while a switch is
+unfinished. The volumes saved for normal mode are kept in the app's own
+storage.
 
-- Without a reboot (the app does the whole switch at once):
+### Switching with adb
+
+To switch without touching the phone's screen, from a computer with `adb`:
+
+- Right away, without a reboot (the app does the whole switch):
 
   ```text
   adb shell am start-foreground-service -n com.pixelcallai.streamer/.CallAudioService -a com.pixelcallai.streamer.SET_ENABLED --ez enabled false
@@ -253,31 +248,32 @@ To switch without the app's screen, from a computer with `adb`:
   adb reboot
   ```
 
-  Back to AI mode: write `ai` instead (`echo ai > …`), or remove the file
-  with `adb shell "su -c 'rm -f /data/adb/pixelcallai/mode'"`, then reboot.
+  Back to AI mode: write `ai` instead (`echo ai > …`), or remove the file with
+  `adb shell "su -c 'rm -f /data/adb/pixelcallai/mode'"`, then reboot.
 
 ## Rollback
 
-**Before installing an older Bageo version** (any version before 0.2.2), switch
-the phone back to **AI answers my calls**, or delete the state folder:
-`adb shell "su -c 'rm -rf /data/adb/pixelcallai'"`. Older versions do not
-know the mode file: their module takes the phone over again at every boot,
-even when the file says `normal`. When you later install this version
-again, it finds `normal` in the file and turns the phone into a normal phone
-by itself, so the AI stops answering without anyone asking for it.
+**Before installing any Bageo version older than 0.2.2**, switch the phone back
+to **AI answers my calls** or delete the state folder:
+`adb shell "su -c 'rm -rf /data/adb/pixelcallai'"`. Older versions ignore the
+mode file and take the phone over at every boot. If you later install this
+version again and the file still says `normal`, it turns the phone into a
+normal phone by itself, and the AI stops answering without anyone asking.
 
-1. Switch the phone to a [normal phone](#normal-phone-mode) first. That
-   brings back Google's phone app, the ringer and the volumes, and turns off
-   Do Not Disturb, so steps 3 and 4 are then already done.
-2. Disable or remove the **Bageo Uplink** module in Magisk / KernelSU
-   and reboot. If the phone does not boot far enough, use the root manager's
-   safe mode, or with root from recovery:
-   `touch /data/adb/modules/pixelcallai_uplink/disable`.
-   The mode file `/data/adb/pixelcallai/` stays; delete that folder too if
-   you do not plan to install Bageo again.
-3. If you removed the module without switching first: removing it does
-   **not** bring back Google's phone app or turn off Do Not Disturb — Android
-   remembers those. Re-enable the phone app:
+To remove Bageo:
+
+1. Switch the phone to a [normal phone](#normal-phone-mode) first. That brings
+   back Google's phone app, the ringer and the volumes and turns off Do Not
+   Disturb, so steps 3 and 4 are already done.
+2. Disable or remove the **Bageo Uplink** module in Magisk or KernelSU and
+   reboot. If the phone does not boot far enough, use the root manager's safe
+   mode, or run this with root from recovery:
+   `touch /data/adb/modules/pixelcallai_uplink/disable`. The folder
+   `/data/adb/pixelcallai/` with the mode file stays; delete it too if you do
+   not plan to install Bageo again.
+3. If you removed the module without switching first: removing it does **not**
+   bring back Google's phone app or turn off Do Not Disturb, because Android
+   remembers both. Re-enable the phone app:
 
    ```text
    adb shell su -c "pm enable com.google.android.dialer"
@@ -293,3 +289,4 @@ by itself, so the AI stops answering without anyone asking for it.
 
 See [Troubleshooting](TROUBLESHOOTING.md) and the table at the end of
 [`android/README.md`](../../android/README.md#troubleshooting).
+
