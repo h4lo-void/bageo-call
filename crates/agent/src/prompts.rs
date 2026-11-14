@@ -675,9 +675,10 @@ mod tests {
     fn a_saved_copy_of_a_built_in_prompt_follows_the_language() {
         // The Chinese prompt saved as it was, then the language switched to English:
         // the English built-in prompt is used (the Chinese one forbids English).
-        let zh = default_prompt(Lang::ZhTw, false, "Alex");
+        // ctx() is Ctx<'static>: the test strings are leaked to fit it.
+        let zh: &'static str = Box::leak(default_prompt(Lang::ZhTw, false, "Alex").into_boxed_str());
         let mut c = ctx(Lang::En, false, StallPrompt::Off);
-        c.custom = &zh;
+        c.custom = zh;
         let en = build(&c);
         c.custom = "";
         assert_eq!(en, build(&c));
@@ -685,8 +686,8 @@ mod tests {
         c.custom = default_prompt_template(Lang::ZhTw, false);
         assert_eq!(build(&c), en);
         // An edited prompt is kept as written.
-        let edited = format!("{zh}\nAlways mention the cat.");
-        c.custom = &edited;
+        let edited: &'static str = Box::leak(format!("{zh}\nAlways mention the cat.").into_boxed_str());
+        c.custom = edited;
         assert!(build(&c).contains("Always mention the cat."));
     }
 
