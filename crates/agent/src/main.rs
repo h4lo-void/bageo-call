@@ -11050,3 +11050,72 @@ mod call_control_tests {
         assert_eq!(caller_side_text("接聽：喂？", ""), "");
     }
 }
+
+#[cfg(test)]
+mod review_t4_tests {
+    use super::*;
+
+    /// The AI-fail hangup lets go of the lease before it hangs up. If the phone's
+    /// call_end and the next call's hello land in that gap, the first call's
+    /// guarded sends must find their call over and never reach the next call.
+    #[tokio::test]
+    async fn ai_fail_hangup_after_call_end_never_reaches_the_next_call() {
+        let first = MediaCallGuard::inactive().next().await;
+        let phase = Arc::new(std::sync::Mutex::new(IvrPhase::LiveAi));
+        let slot: ActiveCallSlot = Arc::new(Mutex::new(None));
+        let next_call: Arc<std::sync::Mutex<Option<MediaCallGuard>>> =
+            Arc::new(std::sync::Mutex::new(None));
+        let f = &first;
+        let nc = next_call.clone();
+        let run = ai_fail_then_hang_up("pixel-1", &phase, &slot, &first, move || async move {
+            // No lease is held here: call_end (a writer) and the next hello get through.
+            f.invalidate().await;
+            let second = f.next().await;
+            // What every guarded send of the first call (send_gemini_media_json) asks.
+            assert!(f.lease_current().await.is_none());
+            assert!(!f.is_current());
+            assert!(second.is_current());
+            *nc.lock().unwrap() = Some(second);
+        });
+        tokio::time::timeout(Duration::from_secs(1), run)
+            .await
+            .expect("hangup closure ran with the lease still held");
+        let second = next_call.lock().unwrap().clone().expect("next hello");
+        assert_eq!(*phase.lock().unwrap(), IvrPhase::Done);
+        // A late AI failure of the first call does nothing to the second one.
+        let phase2 = Arc::new(std::sync::Mutex::new(IvrPhase::LiveAi));
+        let hung = AtomicBool::new(false);
+        let h = &hung;
+        ai_fail_then_hang_up("pixel-1", &phase2, &slot, &first, move || async move {
+            h.store(true, Ordering::Relaxed);
+        })
+        .await;
+        assert!(!hung.load(Ordering::Relaxed));
+        assert_eq!(*phase2.lock().unwrap(), IvrPhase::LiveAi);
+        assert!(second.is_current());
+    }
+
+    /// The control and the media connection both report the turned-away call;
+    /// the work-profile twin's copy is never the owner's.
+    #[test]
+    fn call_waiting_report_dedup_across_connections() {
+        assert!(first_call_waiting_report("pixel-20341", "0912000111"));
+        assert!(!first_call_waiting_report(" pixel-20341 ", "0912000111"));
+        // Another phone, same number: its own call.
+        assert!(first_call_waiting_report("pixel-20342", "0912000111"));
+        // Hidden number reported twice within the window: one call.
+        assert!(first_call_waiting_report("pixel-20343", ""));
+        assert!(!first_call_waiting_report("pixel-20343", "  "));
+        assert!(is_isolated_screening_serial("pixel-1010341"));
+    }
+
+    /// `reject_mode` decline sends `delay_ms` 0: an app that ignores `reject`
+    /// picks up at once and the hello plays the announcement.
+    #[test]
+    fn decline_plan_still_picks_up_at_once_on_old_apps() {
+        let plan = reject_answer_plan(true);
+        assert_eq!(plan["delay_ms"], 0);
+        assert_eq!(plan["prewarm"], false);
+        assert_eq!(plan["reject"], true);
+    }
+}

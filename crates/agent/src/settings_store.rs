@@ -2581,3 +2581,31 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+#[cfg(test)]
+mod review_t4_tests {
+    use super::*;
+
+    /// A settings.json saved by an older agent (no `reject_mode` key) loads as
+    /// decline.
+    #[test]
+    fn saved_settings_without_reject_mode_decline() {
+        let dir = std::env::temp_dir().join(format!(
+            "bageo-review-t4-settings-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp settings dir");
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        store.apply_patch(&json!({ "gemini_persona_mode": true })).unwrap();
+        let saved = std::fs::read_to_string(dir.join("config").join("settings.json"))
+            .expect("settings.json written");
+        assert!(!saved.contains("reject_mode"));
+        let rt = SettingsStore::load(base).snapshot();
+        assert!(rt.gemini_persona_mode);
+        assert_eq!(rt.reject_mode, "decline");
+        assert!(rt.reject_declines());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

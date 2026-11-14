@@ -2878,3 +2878,32 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+mod review_t4_tests {
+    use super::*;
+
+    /// A blocked number declined while it rang and a call turned away during
+    /// another call never count as live (the deploy waits for
+    /// active_call_count=0), also when the phone sends `incoming` twice.
+    #[tokio::test]
+    async fn declined_and_call_waiting_records_never_count_as_live() {
+        let dir = std::env::temp_dir().join(format!("bageo-review-t4-{}", Uuid::new_v4()));
+        let store = CallStore::new(dir.clone(), true, false, 7);
+        for status in ["reject_list", "reject_list", "call_waiting_rejected"] {
+            let mut call = store.start("pixel-1", "0912345678", 16000, status).await.unwrap();
+            assert!(store.live_calls().await.is_empty(), "{status} counted live while open");
+            call.push_event("reject_list_declined");
+            let rec = store.finalize(call, "ended").await;
+            assert!(rec.ended_at.is_some());
+            assert!(store.live_calls().await.is_empty());
+        }
+        // An old app picked the declined call up: live while it plays, not after.
+        let first = store.list().await.iter().find(|c| c.status == "ended").unwrap().id.clone();
+        let again = store.resume(&first, &["reject_list_declined", "ended"]).await.unwrap();
+        assert_eq!(store.live_calls().await.len(), 1);
+        store.finalize(again, "ended").await;
+        assert!(store.live_calls().await.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
