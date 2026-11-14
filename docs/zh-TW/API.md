@@ -118,8 +118,9 @@ PUT /calls/api/settings
 | 方向 | 訊息 | 意思 |
 |---|---|---|
 | 手機 → 主程式 | `hello` 加上 `"supports_sms": true` | App 能替主程式傳簡訊。沒有這個欄位 = 舊 App：不會要它傳簡訊。 |
-| 主程式 → 手機 | `{"type": "send_sms", "id": "<最多 64 字元>", "to": "+886912345678", "text": "<UTF-8，最多 500 字元>"}`，可再加 `"sub_id": <整數>` | 只送給接那通電話的手機。`to` 只有數字，開頭可以有 `+`。`sub_id` 指定用哪張 SIM 傳（就是手機回報的 `sim_sub_id`）；沒有就用手機預設的簡訊 SIM。已經送出過的 id 再來一次，手機只會再回一次結果，不會重複傳。 |
-| 手機 → 主程式 | `{"type": "send_sms_result", "id": "<同一個>", "ok": true}` 或 `{"type": "send_sms_result", "id": "<同一個>", "ok": false, "error": "<代碼>"}` | 簡訊每一段都回報送出後才回（手機最多等 60 秒，逾時回 `timeout`；之後才收到回報，會再送一次真正的結果）。`error` 是 `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception` 其中之一。主程式最多等 90 秒，沒回應就當作失敗。control 連線重連後，手機會把最近 20 個 id 的結果再送一次，主程式用 `id` 去掉重複的。 |
+| 手機 → 主程式 | `hello` 加上 `"supports_sim_select": true` | App 認得 `send_sms` 的 `sim`。沒有這個欄位 = 舊 App：要從指定 SIM 傳的簡訊不會交給它。 |
+| 主程式 → 手機 | `{"type": "send_sms", "id": "<最多 64 字元>", "to": "+886912345678", "text": "<UTF-8，最多 500 字元>"}`，可再加 `"sub_id": <整數>` 或 `"sim": "<電信名稱或號碼>"` | 送給接那通電話的手機；測試來電則送給設定指定的手機。`to` 只有數字，開頭可以有 `+`。`sub_id` 指定用哪張 SIM 傳（就是手機回報的 `sim_sub_id`）；沒有就用手機預設的簡訊 SIM。`sim`（設定 `appointment_test_sms_sim`，不會跟 `sub_id` 一起出現）找電信名稱或顯示名稱等於或包含它（不分大小寫）的 SIM，它有 7 碼以上數字時也比對 SIM 自己號碼的末幾碼；剛好一張符合才傳，否則不傳、回 `no_sim`。已經送出過的 id 再來一次，手機只會再回一次結果，不會重複傳。 |
+| 手機 → 主程式 | `{"type": "send_sms_result", "id": "<同一個>", "ok": true}` 或 `{"type": "send_sms_result", "id": "<同一個>", "ok": false, "error": "<代碼>"}` | 簡訊每一段都回報送出後才回（手機最多等 60 秒，逾時回 `timeout`；之後才收到回報，會再送一次真正的結果）。`error` 是 `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception`, `no_sim`（沒有或不只一張 SIM 符合 `sim`）其中之一。主程式最多等 90 秒，沒回應就當作失敗。control 連線重連後，手機會把最近 20 個 id 的結果再送一次，主程式用 `id` 去掉重複的。 |
 | 手機 → 主程式 | `{"type": "send_sms_delivered", "id": "<同一個>", "ok": true \| false}` | 電信回報的送達結果：每一段都送到對方是 `true`，有一段確定送不到是 `false`。電信有回報才會送（手機最多等一小時）；重連後也會跟結果一起再送一次。 |
 
 通話也用同一條連線，多了這些可省略的欄位和訊息（舊 App、舊主程式不送也不認得，照樣能用）：

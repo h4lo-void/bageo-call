@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <!-- Runtime permission; the Magisk module grants it at boot (agent send_sms). -->
     <uses-permission android:name="android.permission.SEND_SMS" />
+    <!-- Runtime permission, granted by the module: matches a send_sms "sim" against the SIMs' own numbers. -->
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />

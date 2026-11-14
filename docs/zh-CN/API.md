@@ -118,8 +118,9 @@ PUT /calls/api/settings
 | 方向 | 消息 | 含义 |
 |---|---|---|
 | 手机 → 主程序 | `hello` 加上 `"supports_sms": true` | 应用能替主程序发短信。没有这个字段 = 旧应用：不会让它发短信。 |
-| 主程序 → 手机 | `{"type": "send_sms", "id": "<最多 64 个字符>", "to": "+886912345678", "text": "<UTF-8，最多 500 个字符>"}`，可以再加 `"sub_id": <整数>` | 只发给接那通电话的手机。`to` 只有数字，开头可以有 `+`。`sub_id` 指定用哪张 SIM 发（就是手机回报的 `sim_sub_id`）；没有就用手机默认的短信 SIM。已经发出过的 id 再来一次，手机只会再回复一次结果，不会重复发送。 |
-| 手机 → 主程序 | `{"type": "send_sms_result", "id": "<同一个>", "ok": true}` 或 `{"type": "send_sms_result", "id": "<同一个>", "ok": false, "error": "<代码>"}` | 短信每一段都回报发出后才回复（手机最多等 60 秒，超时回复 `timeout`；之后才收到回报，会再发一次真正的结果）。`error` 是 `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception` 之一。主程序最多等 90 秒，没有回复就算失败。control 连接重连后，手机会把最近 20 个 id 的结果再发一次，主程序用 `id` 去掉重复的。 |
+| 手机 → 主程序 | `hello` 加上 `"supports_sim_select": true` | 应用认识 `send_sms` 的 `sim`。没有这个字段 = 旧应用：要从指定 SIM 发的短信不会交给它。 |
+| 主程序 → 手机 | `{"type": "send_sms", "id": "<最多 64 个字符>", "to": "+886912345678", "text": "<UTF-8，最多 500 个字符>"}`，可以再加 `"sub_id": <整数>` 或 `"sim": "<运营商名称或号码>"` | 发给接那通电话的手机；测试来电则发给设置指定的手机。`to` 只有数字，开头可以有 `+`。`sub_id` 指定用哪张 SIM 发（就是手机回报的 `sim_sub_id`）；没有就用手机默认的短信 SIM。`sim`（设置 `appointment_test_sms_sim`，不会跟 `sub_id` 一起出现）找运营商名称或显示名称等于或包含它（不区分大小写）的 SIM，它有 7 位以上数字时也比对 SIM 自己号码的末几位；刚好一张符合才发，否则不发、回复 `no_sim`。已经发出过的 id 再来一次，手机只会再回复一次结果，不会重复发送。 |
+| 手机 → 主程序 | `{"type": "send_sms_result", "id": "<同一个>", "ok": true}` 或 `{"type": "send_sms_result", "id": "<同一个>", "ok": false, "error": "<代码>"}` | 短信每一段都回报发出后才回复（手机最多等 60 秒，超时回复 `timeout`；之后才收到回报，会再发一次真正的结果）。`error` 是 `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception`, `no_sim`（没有或不止一张 SIM 符合 `sim`）之一。主程序最多等 90 秒，没有回复就算失败。control 连接重连后，手机会把最近 20 个 id 的结果再发一次，主程序用 `id` 去掉重复的。 |
 | 手机 → 主程序 | `{"type": "send_sms_delivered", "id": "<同一个>", "ok": true \| false}` | 运营商回报的送达结果：每一段都送到对方是 `true`，有一段确定送不到是 `false`。运营商有回报才会发（手机最多等一小时）；重连后也会跟结果一起再发一次。 |
 
 通话也用同一条连接，多了这些可以省略的字段和消息（旧应用、旧主程序不发也不认识，照样能用）：

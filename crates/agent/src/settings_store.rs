@@ -287,6 +287,16 @@ pub struct RuntimeSettings {
     /// ([`clean_test_numbers`]); empty by default.
     #[serde(default)]
     pub appointment_test_numbers: Vec<String>,
+    /// The phone that texts the callers of test numbers
+    /// ([`Self::appointment_test_numbers`]): its id (`pixel-12345`) or its name
+    /// in [`Self::device_labels`], any case. Empty = the phone that took the call.
+    #[serde(default)]
+    pub appointment_test_sms_phone: String,
+    /// The SIM those texts go out from, on that phone: its carrier name (`Tello`)
+    /// or its own number. Empty = that phone's default SMS SIM when a phone is
+    /// set above, else the SIM that took the call.
+    #[serde(default)]
+    pub appointment_test_sms_sim: String,
     /// Names speech-to-text keeps getting wrong, one `wrong=right` per entry
     /// (`黃先生=王先生`): applied to transcripts and summaries.
     #[serde(default)]
@@ -572,6 +582,8 @@ impl RuntimeSettings {
             appointment_mode: sanitize_appointment_mode(&env_or("APPOINTMENT_MODE", "off")),
             appointment_sms: env_bool("APPOINTMENT_SMS", false),
             appointment_test_numbers: Vec::new(),
+            appointment_test_sms_phone: String::new(),
+            appointment_test_sms_sim: String::new(),
             name_corrections: split_list(&env_or("NAME_CORRECTIONS", "")),
             device_labels: std::collections::BTreeMap::new(),
             calls_data_dir: base.calls_data_dir.clone(),
@@ -792,6 +804,8 @@ impl RuntimeSettings {
             device_labels,
             appointment_mode,
             appointment_test_numbers,
+            appointment_test_sms_phone,
+            appointment_test_sms_sim,
         );
         macro_rules! set_copy {
             ($($f:ident),+ $(,)?) => {$(
@@ -1207,6 +1221,10 @@ struct Overrides {
     appointment_sms: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     appointment_test_numbers: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    appointment_test_sms_phone: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    appointment_test_sms_sim: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     name_corrections: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1705,6 +1723,15 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     if let Some(v) = ov.appointment_test_numbers.take() {
         ov.appointment_test_numbers = Some(clean_test_numbers(v));
     }
+    for (key, slot) in [
+        ("appointment_test_sms_phone", &mut ov.appointment_test_sms_phone),
+        ("appointment_test_sms_sim", &mut ov.appointment_test_sms_sim),
+    ] {
+        p_string(patch, key, slot);
+        if let Some(v) = slot.take() {
+            *slot = Some(clean_short_name(&v));
+        }
+    }
     p_list(patch, "name_corrections", &mut ov.name_corrections);
     if let Some(map) = patch.get("device_labels").and_then(|v| v.as_object()) {
         ov.device_labels = Some(
@@ -1795,6 +1822,12 @@ fn clean_test_numbers(list: Vec<String>) -> Vec<String> {
         }
     }
     out
+}
+
+/// A phone or SIM name as stored: no control characters, at most 64 characters, trimmed.
+fn clean_short_name(v: &str) -> String {
+    let s: String = v.chars().filter(|c| !c.is_control()).take(64).collect();
+    s.trim().to_string()
 }
 
 /// The caller is on the appointment test numbers: the same national number
@@ -2578,6 +2611,35 @@ mod tests {
         let rt3 = again.apply_patch(&json!({ "appointment_test_numbers": [] })).unwrap();
         assert!(rt3.appointment_test_numbers.is_empty());
         assert!(SettingsStore::load(base).snapshot().appointment_test_numbers.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_number_text_phone_and_sim_default_empty_and_persist() {
+        let dir = std::env::temp_dir().join(format!("bageo-call-test-sms-sim-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("temp settings dir");
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        let rt = store.snapshot();
+        assert_eq!((rt.appointment_test_sms_phone.as_str(), rt.appointment_test_sms_sim.as_str()), ("", ""));
+        let shown = store.masked_json();
+        assert_eq!((shown["appointment_test_sms_phone"].clone(), shown["appointment_test_sms_sim"].clone()), (json!(""), json!("")));
+        let rt = store
+            .apply_patch(&json!({ "appointment_test_sms_phone": "  Pixel 9 ", "appointment_test_sms_sim": " Tello\n" }))
+            .unwrap();
+        assert_eq!((rt.appointment_test_sms_phone.as_str(), rt.appointment_test_sms_sim.as_str()), ("Pixel 9", "Tello"));
+        // Survives a restart; another key leaves them alone.
+        let again = SettingsStore::load(base.clone());
+        let rt2 = again.apply_patch(&json!({ "appointment_mode": "confirm" })).unwrap();
+        assert_eq!((rt2.appointment_test_sms_phone.as_str(), rt2.appointment_test_sms_sim.as_str()), ("Pixel 9", "Tello"));
+        // Long names are cut; empty clears.
+        let rt3 = again
+            .apply_patch(&json!({ "appointment_test_sms_phone": "", "appointment_test_sms_sim": "x".repeat(100) }))
+            .unwrap();
+        assert_eq!((rt3.appointment_test_sms_phone.as_str(), rt3.appointment_test_sms_sim.chars().count()), ("", 64));
+        let back = SettingsStore::load(base).snapshot();
+        assert_eq!((back.appointment_test_sms_phone.as_str(), back.appointment_test_sms_sim.len()), ("", 64));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

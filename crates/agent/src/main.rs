@@ -2349,6 +2349,15 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                                 == Some(true),
                                         )
                                         .await;
+                                    // Newer apps send a text from a SIM named by carrier or number.
+                                    state
+                                        .control
+                                        .set_supports_sim_select(
+                                            &serial,
+                                            parsed.get("supports_sim_select").and_then(Value::as_bool)
+                                                == Some(true),
+                                        )
+                                        .await;
                                     let _ = send_json(
                                         &sink,
                                         json!({
