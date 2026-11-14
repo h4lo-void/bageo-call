@@ -760,7 +760,8 @@ pub async fn notify_incoming_call(
     deliver(http, settings, &msg).await
 }
 
-/// A number on the blocked list called: it got the announcement, no AI.
+/// A number on the blocked list called: it got the announcement, no AI — or,
+/// `declined` (setting `reject_mode` `decline`), the phone refused it while it rang.
 /// `reason` = why the owner listed the number.
 pub async fn notify_rejected_call(
     http: &Client,
@@ -768,6 +769,7 @@ pub async fn notify_rejected_call(
     caller_id: &str,
     serial: &str,
     reason: &str,
+    declined: bool,
 ) -> bool {
     if !settings.call_notify {
         return false;
@@ -784,12 +786,70 @@ pub async fn notify_rejected_call(
     let msg = card
         .row(p.n_phone, &device)
         .row(p.n_time, &when)
-        .tail(&p.n_blocked_done.replace("{}", p.unavailable))
+        .tail(&blocked_outcome(declined))
         .message(
             "blocked",
             format!("{} {caller}", p.n_blocked),
-            json!({ "caller_id": caller_id.trim(), "device": device, "time": when, "reason": reason }),
+            json!({
+                "caller_id": caller_id.trim(),
+                "device": device,
+                "time": when,
+                "reason": reason,
+                "declined": declined,
+            }),
         );
+    deliver(http, settings, &msg).await
+}
+
+/// What became of a blocked number's call: refused while it rang, or picked up
+/// for the "cannot be reached" announcement.
+fn blocked_outcome(declined: bool) -> String {
+    if declined {
+        locale::notify_zh_or(
+            "響鈴時直接拒接，沒有接起來，沒有用 AI",
+            "Declined while it rang: not picked up, no AI",
+        )
+    } else {
+        let p = locale::notify_phrases();
+        p.n_blocked_done.replace("{}", p.unavailable)
+    }
+}
+
+/// Headline of a call the phone refused because it was already on a call.
+fn call_waiting_headline(caller: &str, device: &str) -> String {
+    locale::notify_zh_or(
+        &format!("通話中插播未接：{caller}（{device}）"),
+        &format!("Missed while on another call: {caller} ({device})"),
+    )
+}
+
+/// A second call came in during a call and the phone turned it away (busy).
+/// `sim_country`: the SIM it came in on, when the phone said.
+pub async fn notify_call_waiting_rejected(
+    http: &Client,
+    settings: &Settings,
+    caller_id: &str,
+    serial: &str,
+    sim_country: Option<&str>,
+) -> bool {
+    if !settings.call_notify {
+        return false;
+    }
+    let p = locale::notify_phrases();
+    let caller = display_or_hidden(caller_id);
+    let device = device_label(serial);
+    let when = now_stamp();
+    let headline = call_waiting_headline(&caller, &device);
+    let msg = Card::new("📵", &headline).row(p.n_time, &when).message(
+        "call_waiting",
+        headline.clone(),
+        json!({
+            "caller_id": caller_id.trim(),
+            "device": device,
+            "time": when,
+            "sim_country": sim_country.unwrap_or(""),
+        }),
+    );
     deliver(http, settings, &msg).await
 }
 
@@ -1036,6 +1096,14 @@ mod tests {
             Body::Json(v) => v,
             Body::Form(_) => panic!("form body"),
         }
+    }
+
+    #[test]
+    fn blocked_card_says_announced_unless_declined() {
+        // An app that cannot decline picked up: the card names the announcement.
+        let unavailable = locale::notify_phrases().unavailable;
+        assert!(blocked_outcome(false).contains(unavailable));
+        assert!(!blocked_outcome(true).contains(unavailable));
     }
 
     fn form_body(p: &Prepared) -> HashMap<String, String> {

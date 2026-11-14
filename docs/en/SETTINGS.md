@@ -62,8 +62,11 @@ recorded in every language, so it costs no Gemini quota. `*` at the end matches 
 at least four digits (`0800*`). Write numbers the way they show up in the call
 list; `+…` forms match when *Country calling code* is set.
 
-The phone app cannot refuse a ringing call, so these callers see the call
-connect for a few seconds.
+What happens to them is the setting `reject_mode`: `decline` (default) — the
+phone refuses the call while it rings, nothing is played; `announce` — the
+phone picks up, plays the announcement and hangs up, so the caller sees the call
+connect for a few seconds. A phone app too old to decline picks up and announces
+either way. Both leave the call in the call list and send a "⛔" notification.
 
 ### Notifications
 

@@ -29,7 +29,7 @@ X-Calls-Token: <token>
 | `GET /calls/api/stats` | `{ok, stats: {total, today, voicemails, blocked}}`。 |
 | `GET /calls/api/export.csv` | 筛选后的列表，CSV 格式（查询参数同 `list`，最多 2000 行）。 |
 
-通话记录（`call`，以及 `calls` 里的每一条）包含的字段有：`id`、`serial`（手机）、`caller_id`、`started_at` / `ended_at`（RFC 3339，UTC）、`duration_ms`、`status`（`ringing`、`active`、`ended`）、`events`（按顺序发生的事——例如 `active`、`persona_stall_spam`、`reject_list`、`persona_ai_fail_hangup`、`ended`）、`summary`、有哪些音频文件，对方跟 AI 约了时间时还有 `appointment`（通话结束时的样子，见[日程预约](#日程预约)）；通话后的变化（你的决定、短信结果）会更新在 `notes.appointment`。
+通话记录（`call`，以及 `calls` 里的每一条）包含的字段有：`id`、`serial`（手机）、`caller_id`、`started_at` / `ended_at`（RFC 3339，UTC）、`duration_ms`、`status`（`ringing`、`active`、`ended`）、`events`（按顺序发生的事——例如 `active`、`persona_stall_spam`、`reject_list`、`reject_list_declined`、`call_waiting_rejected`、`persona_ai_fail_hangup`、`ended`）、`summary`、有哪些音频文件、`sim_country` / `sim_sub_id`（这通电话打进来的 SIM，手机应用说了才有）、`reply_method` / `reply_contact`（也包括对方在电话里说要回电的号码），对方跟 AI 约了时间时还有 `appointment`（通话结束时的样子，见[日程预约](#日程预约)）；通话后的变化（你的决定、短信结果）会更新在 `notes.appointment`。
 
 在 `notes.dialogue` 里，每一行是一次发言，前面带有主程序语言的说话人标签和分隔符：简体中文是 `对方：`／`接听：`，繁体中文 `對方：`／`接聽：`，英文 `Caller: `／`AI: `，日文 `相手：`／`AI：`，韩文 `상대: `／`AI: `，西班牙文 `Llamante: `／`IA: `，法文 `Appelant : `／`IA : `，德文 `Anrufer: `／`KI: `，葡萄牙文 `Chamador: `／`IA: `。旧版本保存的记录无论语言都是 `對方：`／`接聽：`。
 
@@ -120,3 +120,17 @@ PUT /calls/api/settings
 | 手机 → 主程序 | `hello` 加上 `"supports_sms": true` | 应用能替主程序发短信。没有这个字段 = 旧应用：不会让它发短信。 |
 | 主程序 → 手机 | `{"type": "send_sms", "id": "<最多 64 个字符>", "to": "+886912345678", "text": "<UTF-8，最多 500 个字符>"}` | 只发给接那通电话的手机。`to` 只有数字，开头可以有 `+`。 |
 | 手机 → 主程序 | `{"type": "send_sms_result", "id": "<同一个>", "ok": true}` 或 `{"type": "send_sms_result", "id": "<同一个>", "ok": false, "error": "<代码>"}` | 短信每一段都回报发出后才回复（手机最多等 60 秒，超时回复 `timeout`）。`error` 是 `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception` 之一。主程序最多等 90 秒，没有回复就算失败。 |
+| 主程序 → 手机 | `send_sms` 加上 `"sub_id": <整数>` | 可选：用哪张 SIM（Android subscription id）发——就是那通电话打进来的 SIM。没有就用手机的默认 SIM。 |
+| 手机 → 主程序 | `{"type": "send_sms_delivered", "id": "<同一个>", "ok": bool}` | 运营商的送达回报（长短信每一段都可能回报；只要有一个 `false` 就算没送达）。 |
+
+主程序不再等待之后才到的结果照样会记录下来。手机回的 `timeout` 不是最终结果：之后收到运营商回应时，手机会用同一个 `id` 再发真正的结果，取代那个 timeout（还在等待的发送会继续等它）。手机重新连接后会补发最近的结果：同样的结果再来不会改变任何东西，已经有确定结果的短信收到不同的结果也不会改。
+
+通话用到这些可选字段（不认识的应用或主程序照旧运行）：
+
+| 方向 | 消息 | 含义 |
+|---|---|---|
+| 手机 → 主程序 | `incoming` 和 media 的 `hello` 加上 `"sim_sub_id": <整数>` | 接这通电话的 SIM（Android subscription id）；这通电话的短信和回拨都用它。 |
+| 手机 → 主程序 | control 的 `hello` 加上 `"supports_reject": true` | 应用能在响铃时拒接。没有这个字段 = 旧应用：不管 `reject_mode` 怎么设置，拦截号码都会接起来播放语音。 |
+| 主程序 → 手机 | `answer_plan` 加上 `"reject": true` | 拦截号码、`reject_mode` 是 `decline`，而且应用说过 `supports_reject`：在响铃时拒接。同时带 `"delay_ms": 0`；应用还是接起来的话，由主程序播放语音。 |
+| 手机 → 主程序 | `{"type": "call_waiting_rejected", "serial": "…", "caller_id": "…", "sim_country": "us", "sim_sub_id": 20}` | 通话中有第二通来电，手机忙线拒接。主程序会留下通话记录并发出通知。 |
+| 主程序 → 手机 | `place_call` 加上 `"sub_id": <整数>` | 回拨从同一部手机打出去时，用对方当初打进来的那张 SIM。 |

@@ -305,6 +305,8 @@ struct RingPrewarm {
     setup_ready: Arc<AtomicBool>,
     connect_failed: Arc<AtomicBool>,
     cfg: GeminiRetryCfg,
+    /// What the session was set up for from the number and SIM seen while it rang.
+    plan: CallerPlan,
     persona: bool,
     goodbye_hangup_delay_ms: u64,
 }
@@ -345,15 +347,16 @@ impl RingPrewarmRegistry {
     }
 
     /// Media hello after pickup: the ringing call's session, if still usable.
-    /// `lang`: the call's languages decided now, with the SIM the hello reported
-    /// — a session set up for other ones (the SIM was guessed while it rang) is not
-    /// handed over, so the pickup starts a fresh one.
+    /// `plan`: what the call needs, decided now with the number and SIM the hello
+    /// reported — a session set up for something else (the number sent while ringing
+    /// can be empty or the previous call's, the SIM guessed) is not handed over, so
+    /// the pickup starts a fresh one.
     fn take(
         &self,
         serial: &str,
         caller_id: &str,
         sample_rate: u32,
-        lang: &gemini_live::CallLangPlan,
+        plan: &CallerPlan,
     ) -> Option<RingPrewarm> {
         let e = self.entries().remove(serial)?;
         let why = if e.cancel.load(Ordering::Relaxed) {
@@ -362,15 +365,23 @@ impl RingPrewarmRegistry {
             "session already ended"
         } else if e.sample_rate != sample_rate {
             "sample rate differs"
-        } else if e.cfg.lang != *lang {
+        } else if e.plan.lang != plan.lang {
             info!(
-                "Ring prewarm languages serial={serial} id={} rang={:?} pickup={lang:?}",
-                e.id, e.cfg.lang
+                "Ring prewarm languages serial={serial} id={} rang={:?} pickup={:?}",
+                e.id, e.plan.lang, plan.lang
             );
             "languages differ at pickup"
+        } else if e.plan.intl_hold != plan.intl_hold {
+            "international-call prompt differs at pickup"
+        } else if e.plan.appointments != plan.appointments {
+            "appointments differ at pickup"
+        } else if plan.appointments && e.caller_id.trim() != caller_id.trim() {
+            // The session's appointments are bound to the number it rang with.
+            "appointments bound to the ringing number"
         } else {
             // The number sent while ringing can be stale (call-log fallback before
-            // Telecom publishes the CID); the session holds nothing caller-specific.
+            // Telecom publishes the CID): everything it decided is the same for the
+            // hello's number, which the session takes over at adoption.
             if !same_ringing_caller(&e.caller_id, caller_id) {
                 info!(
                     "Ring prewarm caller differs serial={serial} id={} rang_caller={} hello_caller={caller_id} — still the ringing call, adopt",
@@ -407,9 +418,38 @@ fn take_ring_prewarm(
         state.ring_prewarm.cancel(serial, None, "persona mode off at pickup");
         return None;
     }
-    // The SIM is known now (media hello); the ring may have had to guess it.
-    let lang = call_lang_plan(rt, caller_id, call_sim_country(serial).as_deref());
-    state.ring_prewarm.take(serial, caller_id, sample_rate, &lang)
+    // The number and SIM are known now (media hello); the ring may have had to guess.
+    let plan = caller_plan(rt, caller_id, call_sim_country(serial).as_deref());
+    state.ring_prewarm.take(serial, caller_id, sample_rate, &plan)
+}
+
+/// What a call's Live session is set up for from the caller's number and the SIM
+/// it came in on. A ring prewarm decides it with what the phone said while it
+/// rang; the pickup decides again with the media hello's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CallerPlan {
+    /// Opening language and the caller's speech-to-text hints.
+    lang: gemini_live::CallLangPlan,
+    /// The opening waits for the carrier's international-call warning.
+    intl_hold: bool,
+    /// Appointments are on for this caller (the session is bound to the number).
+    appointments: bool,
+}
+
+/// [`CallerPlan`] for `caller_id` on the SIM of country `sim` (None = unknown),
+/// as a persona call's session decides each part.
+fn caller_plan(rt: &RuntimeSettings, caller_id: &str, sim: Option<&str>) -> CallerPlan {
+    CallerPlan {
+        lang: call_lang_plan(rt, caller_id, sim),
+        intl_hold: gemini_live::expects_carrier_intl_prompt(
+            &rt.intl_carrier_prompt,
+            rt.lang() == locale::Lang::ZhTw,
+            caller_id,
+            sim,
+        ),
+        appointments: rt.is_appointment_test_number(caller_id)
+            || appointments::Mode::parse(&rt.appointment_mode) != appointments::Mode::Off,
+    }
 }
 
 /// Ring and hello report the same call (CID may still be empty on one side, or
@@ -676,25 +716,73 @@ fn cid_route_after_wait(caller: &str, answer_unknown: bool, listed: bool) -> Cid
 /// media hello (pickup follows at once; the hello can come without a CID).
 const REJECT_PENDING_TTL: Duration = Duration::from_secs(30);
 
-/// Phones whose ringing call is from a blocked number (serial → number, when).
+/// A ringing call from a blocked number, waiting for the phone's media hello.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RejectRing {
+    caller: String,
+    /// Declined while ringing (`reject_mode` `decline`): its record and
+    /// notification are done. A hello still coming means the phone app could not
+    /// decline and picked up: the caller gets the announcement.
+    declined: bool,
+    /// The record written when it was declined.
+    record_id: Option<String>,
+}
+
+/// Phones whose ringing call is from a blocked number (serial → that call, when).
 #[derive(Default)]
 struct RejectPending {
-    inner: std::sync::Mutex<HashMap<String, (String, tokio::time::Instant)>>,
+    inner: std::sync::Mutex<HashMap<String, (RejectRing, tokio::time::Instant)>>,
 }
 
 impl RejectPending {
+    /// Picked up for the announcement (`reject_mode` `announce`).
     fn mark(&self, serial: &str, caller: &str) {
+        self.mark_ring(
+            serial,
+            RejectRing {
+                caller: caller.to_string(),
+                declined: false,
+                record_id: None,
+            },
+        );
+    }
+
+    fn mark_ring(&self, serial: &str, ring: RejectRing) {
         self.inner
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .insert(serial.to_string(), (caller.to_string(), tokio::time::Instant::now()));
+            .insert(serial.to_string(), (ring, tokio::time::Instant::now()));
     }
 
-    /// The number the phone's ringing call was rejected for, if still fresh.
-    fn take(&self, serial: &str) -> Option<String> {
-        let (caller, at) = self.inner.lock().unwrap_or_else(|e| e.into_inner()).remove(serial)?;
-        (at.elapsed() <= REJECT_PENDING_TTL).then_some(caller)
+    /// The phone's ringing call from a blocked number, if still fresh.
+    fn take(&self, serial: &str) -> Option<RejectRing> {
+        let (ring, at) = self.inner.lock().unwrap_or_else(|e| e.into_inner()).remove(serial)?;
+        (at.elapsed() <= REJECT_PENDING_TTL).then_some(ring)
     }
+
+    /// The media hello's share: the phone's ringing blocked call, only when the
+    /// hello is that call — its number is the same, or not known yet. A left-over
+    /// entry (its `incoming_cancel` lost) never turns the next caller away.
+    fn take_for_hello(&self, serial: &str, hello_caller: &str) -> Option<RejectRing> {
+        let ring = self.take(serial)?;
+        if hello_caller.trim().is_empty() || same_ringing_caller(&ring.caller, hello_caller) {
+            Some(ring)
+        } else {
+            info!(
+                "拒接號碼 ring left over serial={serial} rang={} hello={hello_caller} — not this call",
+                ring.caller
+            );
+            None
+        }
+    }
+}
+
+/// `reject_mode` `decline` applies to a phone whose app said it can refuse a
+/// ringing call (`supports_reject` in its control hello). Any other phone picks
+/// up whatever the plan says, so its blocked callers get the announcement — and
+/// the notification says so.
+async fn blocked_number_declined(rt: &RuntimeSettings, control: &ControlRegistry, serial: &str) -> bool {
+    rt.reject_declines() && control.supports_reject(serial).await
 }
 
 /// Isolated / secondary-user extra uid serial (`pixel-101NNNN` vs `pixel-1NNNN`).
@@ -1686,6 +1774,7 @@ async fn health(
     body.insert("ambience_kind".into(), json!(rt.ambience_kind));
     body.insert("ambience_level".into(), json!(rt.ambience_level));
     body.insert("reject_numbers_len".into(), json!(rt.reject_numbers.len()));
+    body.insert("reject_mode".into(), json!(rt.reject_mode));
     body.insert("reject_voice".into(), json!(voice_preview::reject_voice(&rt)));
     body.insert(
         "reject_clip_ready".into(),
@@ -1884,6 +1973,14 @@ async fn handle_control_idle_ws(
                     "send_sms_result" => {
                         state.control.handle_sms_result(&parsed).await;
                     }
+                    // The carrier's delivery report for such a text.
+                    "send_sms_delivered" => {
+                        state.control.handle_sms_delivered(&parsed).await;
+                    }
+                    // A second call came in during a call and the phone turned it away.
+                    "call_waiting_rejected" => {
+                        on_call_waiting_rejected(&state, &serial, &parsed);
+                    }
                     "ping" => {
                         let _ = send_json(&sink, json!({"type":"pong"})).await;
                     }
@@ -1901,7 +1998,15 @@ async fn handle_control_idle_ws(
                     // ready meanwhile (ring once before answering).
                     "incoming" => {
                         let caller = extract_caller_id_from_msg(&parsed).unwrap_or_default();
-                        note_call_sim_country(&serial, &parsed);
+                        note_call_sim(&serial, &parsed);
+                        // A new call on this phone: a blocked call still waiting for its
+                        // hello (declined, or its incoming_cancel lost) is over.
+                        if let Some(old) = state.reject_pending.take(&serial) {
+                            info!(
+                                "incoming serial={serial} drops the earlier 拒接號碼 ring caller={}",
+                                old.caller
+                            );
+                        }
                         let sample_rate = parsed
                             .get("sample_rate")
                             .and_then(|v| v.as_u64())
@@ -1909,16 +2014,29 @@ async fn handle_control_idle_ws(
                             .map_or(state.settings.sample_rate, |v| v as u32);
                         let rt = state.settings_store.snapshot();
                         if settings_store::reject_number_hit(&rt.reject_numbers, &caller) {
-                            // Blocked number: no Gemini; pick up at once so the media
-                            // hello can hang up (the phone app cannot decline a ringing call).
-                            state.reject_pending.mark(&serial, &caller);
-                            let _ = send_json(
-                                &sink,
-                                json!({"type": "answer_plan", "delay_ms": 0, "prewarm": false}),
-                            )
-                            .await;
+                            // Blocked number: no Gemini. Decline (`reject_mode` decline and
+                            // an app that can): the phone refuses the ringing call, so the
+                            // record and the notification are made now. Otherwise pick up at
+                            // once: the media hello plays the announcement and notifies.
+                            let decline =
+                                blocked_number_declined(&rt, &state.control, &serial).await;
+                            let record_id = if decline {
+                                record_declined_call(&state, &serial, &caller, sample_rate, &rt).await
+                            } else {
+                                None
+                            };
+                            state.reject_pending.mark_ring(
+                                &serial,
+                                RejectRing {
+                                    caller: caller.clone(),
+                                    declined: decline,
+                                    record_id,
+                                },
+                            );
+                            let _ = send_json(&sink, reject_answer_plan(decline)).await;
                             info!(
-                                "incoming serial={serial} caller={caller} on 拒接號碼 → pick up and hang up at once (no AI)"
+                                "incoming serial={serial} caller={caller} on 拒接號碼 → {} (no AI)",
+                                if decline { "decline while ringing" } else { "pick up, announce, hang up" }
                             );
                             continue;
                         }
@@ -2221,6 +2339,15 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                                 == Some(true),
                                         )
                                         .await;
+                                    // Newer apps can refuse a ringing call (blocked numbers).
+                                    state
+                                        .control
+                                        .set_supports_reject(
+                                            &serial,
+                                            parsed.get("supports_reject").and_then(Value::as_bool)
+                                                == Some(true),
+                                        )
+                                        .await;
                                     let _ = send_json(
                                         &sink,
                                         json!({
@@ -2277,7 +2404,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                 if let Some(c) = extract_caller_id_from_msg(&parsed) {
                                     caller_id = c;
                                 }
-                                note_call_sim_country(&serial, &parsed);
+                                note_call_sim(&serial, &parsed);
                                 if let Some(sr) = parsed.get("sample_rate").and_then(|v| v.as_u64()) {
                                     sample_rate = sr as u32;
                                     vad = EnergyVad::new(
@@ -2322,10 +2449,12 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                 );
                                 // Blocked numbers: this number, or the phone's ringing call was on
                                 // it (the hello may come before Telecom publishes the CID).
-                                let rang_listed = state.reject_pending.take(&serial);
+                                let rang_listed = state.reject_pending.take_for_hello(&serial, &caller_id);
                                 if caller_id.trim().is_empty() {
-                                    if let Some(c) =
-                                        rang_listed.as_deref().filter(|c| !c.trim().is_empty())
+                                    if let Some(c) = rang_listed
+                                        .as_ref()
+                                        .map(|r| r.caller.as_str())
+                                        .filter(|c| !c.trim().is_empty())
                                     {
                                         caller_id = c.to_string();
                                     }
@@ -2336,6 +2465,37 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         &caller_id,
                                     );
                                 call_reject_listed = reject_listed;
+                                // Declined while it rang, picked up anyway (the app said it
+                                // can decline, then did not): the caller gets the
+                                // announcement and the record written at the decline goes
+                                // on. Its "declined" notification was wrong: the usual one
+                                // below says what happened.
+                                if let Some(ring) = rang_listed.as_ref().filter(|r| r.declined) {
+                                    base_state
+                                        .incoming_notify_dedup
+                                        .release(&serial, &ring.caller)
+                                        .await;
+                                    info!(
+                                        "declined 拒接號碼 picked up anyway serial={serial} caller={caller_id} record={:?} → announcement",
+                                        ring.record_id
+                                    );
+                                    if let Some(id) = ring.record_id.as_deref() {
+                                        let free = active_call.lock().await.is_none();
+                                        if free {
+                                            if let Some(call) = state
+                                                .calls
+                                                .resume(id, &["reject_list_declined", "ended"])
+                                                .await
+                                            {
+                                                *active_call.lock().await = Some(call);
+                                                state
+                                                    .call_reattach
+                                                    .mark_live(&serial, &caller_id, id, active_call.clone())
+                                                    .await;
+                                            }
+                                        }
+                                    }
+                                }
                                 let ensured = ensure_active_call(
                                     &state,
                                     &active_call,
@@ -2345,6 +2505,9 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                     "active",
                                 )
                                 .await;
+                                if let Some(c) = active_call.lock().await.as_mut() {
+                                    c.set_sim(call_sim_country(&serial), call_sim_sub_id(&serial));
+                                }
                                 if ensured == EnsureCall::Reattached {
                                     info!(
                                         "session hello reattached existing call_id serial={serial} caller={caller_id}"
@@ -2372,7 +2535,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         tokio::spawn(async move {
                                             let ok = if rejected {
                                                 notify_rejected_call(
-                                                    &http, &settings, &caller, &ser, &reject_note,
+                                                    &http, &settings, &caller, &ser, &reject_note, false,
                                                 )
                                                 .await
                                             } else {
@@ -2561,6 +2724,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                                         &sink,
                                                         &state,
                                                         &serial,
+                                                        &caller_id,
                                                         &ivr_phase,
                                                         &busy,
                                                         &mut hold_cancel,
@@ -2726,6 +2890,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                                         &sink,
                                                         &state,
                                                         &serial,
+                                                        &caller_id,
                                                         &ivr_phase,
                                                         &busy,
                                                         &mut hold_cancel,
@@ -2808,7 +2973,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         tokio::spawn(async move {
                                             let ok = if rejected {
                                                 notify_rejected_call(
-                                                    &http, &settings, &caller, &ser, &reject_note,
+                                                    &http, &settings, &caller, &ser, &reject_note, false,
                                                 )
                                                 .await
                                             } else {
@@ -2991,6 +3156,10 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                 *vm_contact_candidate.lock().unwrap_or_else(|e| e.into_inner()) =
                                     None;
                                 let _ = send_json(&sink, json!({"type":"reset_ack"})).await;
+                            }
+                            // The phone turned a second call away during this one.
+                            "call_waiting_rejected" => {
+                                on_call_waiting_rejected(&state, &serial, &parsed);
                             }
                             other => {
                                 let _ = send_json(
@@ -3796,6 +3965,152 @@ fn call_sim_country(serial: &str) -> Option<String> {
         .cloned()
 }
 
+/// Android subscription id of the SIM each phone's current call came in on
+/// (`sim_sub_id` on `incoming` / `hello`, newer phone apps): texts and call-backs
+/// for that call go out on the same SIM.
+fn call_sim_sub_ids() -> &'static std::sync::Mutex<HashMap<String, i64>> {
+    static M: std::sync::OnceLock<std::sync::Mutex<HashMap<String, i64>>> =
+        std::sync::OnceLock::new();
+    M.get_or_init(Default::default)
+}
+
+/// The `sim_sub_id` field; None when it is missing (older app) or not a valid id
+/// (Android's "no subscription" is -1).
+fn sim_sub_id_from_msg(parsed: &Value) -> Option<i64> {
+    parsed.get("sim_sub_id")?.as_i64().filter(|id| *id >= 0)
+}
+
+/// Like [`note_call_sim_country`]: every `incoming` / `hello` replaces it, so it
+/// never outlives its call.
+fn note_call_sim_sub_id(serial: &str, parsed: &Value) {
+    let key = canonical_device_serial(serial);
+    let mut m = call_sim_sub_ids().lock().unwrap_or_else(|e| e.into_inner());
+    match sim_sub_id_from_msg(parsed) {
+        Some(id) => {
+            m.insert(key, id);
+        }
+        None => {
+            m.remove(&key);
+        }
+    }
+}
+
+/// The SIM (subscription id) the phone's current call came in on.
+pub(crate) fn call_sim_sub_id(serial: &str) -> Option<i64> {
+    call_sim_sub_ids()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&canonical_device_serial(serial))
+        .copied()
+}
+
+/// The SIM fields of an `incoming` / `hello` (country and subscription id).
+fn note_call_sim(serial: &str, parsed: &Value) {
+    note_call_sim_country(serial, parsed);
+    note_call_sim_sub_id(serial, parsed);
+}
+
+/// How long a second report of the same turned-away call counts as that call.
+const CALL_WAITING_DEDUP: Duration = Duration::from_secs(5);
+
+/// First report of this phone turning this number away (the control and the
+/// media connection may both carry it).
+fn first_call_waiting_report(serial: &str, caller: &str) -> bool {
+    static SEEN: std::sync::OnceLock<std::sync::Mutex<HashMap<String, std::time::Instant>>> =
+        std::sync::OnceLock::new();
+    let key = format!("{}\u{1}{}", canonical_device_serial(serial), caller.trim());
+    let now = std::time::Instant::now();
+    let mut seen = SEEN
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    seen.retain(|_, at| now.duration_since(*at) < CALL_WAITING_DEDUP);
+    if seen.contains_key(&key) {
+        return false;
+    }
+    seen.insert(key, now);
+    true
+}
+
+/// The web record of a call turned away during another call: fixed text, no LLM.
+fn call_waiting_summary(caller: &str, sim_country: Option<&str>) -> String {
+    let p = locale::notify_phrases();
+    let sep = p.sep;
+    let number = display_caller_id(caller);
+    let sim = sim_country
+        .map(|c| format!(" (SIM {})", c.to_ascii_uppercase()))
+        .unwrap_or_default();
+    format!(
+        "{}{sep}{number}\n{}{sep}{}\n{}{sep}{}",
+        p.s_caller,
+        p.s_matter,
+        locale::notify_zh_or(
+            &format!("通話中插播，手機忙線拒接{sim}"),
+            &format!("came in during another call; the phone turned it away as busy{sim}"),
+        ),
+        p.s_todo,
+        locale::notify_zh_or("要聯絡的話自己回電", "call back if needed"),
+    )
+}
+
+/// `call_waiting_rejected`: a second call came in during a call and the phone
+/// turned it away (busy). A call record and a notification — no AI, no LLM. The
+/// call in progress keeps its own SIM ([`call_sim_country`]).
+fn on_call_waiting_rejected(state: &AppState, conn_serial: &str, parsed: &Value) {
+    let serial = parsed
+        .get("serial")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(conn_serial)
+        .to_string();
+    let caller = extract_caller_id_from_msg(parsed).unwrap_or_default();
+    let sim_country = sim_country_from_msg(parsed);
+    let sim_sub = sim_sub_id_from_msg(parsed);
+    if is_isolated_screening_serial(&serial) || !first_call_waiting_report(&serial, &caller) {
+        return;
+    }
+    info!(
+        "call waiting rejected serial={serial} caller={caller} sim_country={}",
+        sim_country.as_deref().unwrap_or("?")
+    );
+    let state = state.clone();
+    tokio::spawn(async move {
+        let sample_rate = state.settings.sample_rate;
+        if let Some(mut call) = state
+            .calls
+            .start(&serial, &caller, sample_rate, "call_waiting_rejected")
+            .await
+        {
+            call.set_sim(sim_country.clone(), sim_sub);
+            let record = state.calls.finalize(call, "ended").await;
+            let notes = calls::CallNotes {
+                summary: call_waiting_summary(&caller, sim_country.as_deref()),
+                end_hint: locale::notify_zh_or(
+                    "通話中插播：手機忙線拒接（沒有用 AI）",
+                    "call waiting: the phone was on another call and turned it away (no AI)",
+                ),
+                source: "call_waiting".to_string(),
+                updated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                ..Default::default()
+            };
+            if let Err(e) = state.calls.save_notes(&record.id, &notes).await {
+                warn!("call notes save failed id={}: {e:#}", record.id);
+            }
+        }
+        let settings = state.settings_store.snapshot().effective(&state.settings);
+        let ok = notify::notify_call_waiting_rejected(
+            &state.http,
+            &settings,
+            &caller,
+            &serial,
+            sim_country.as_deref(),
+        )
+        .await;
+        info!("call waiting notify serial={serial} caller={caller} ok={ok}");
+    });
+}
+
 /// The call's languages ([`gemini_live::call_lang_plan`]): `caller_id` on the SIM
 /// of country `sim` (`None` = unknown), with the settings `language`,
 /// `country_code` and `sim_languages`.
@@ -4115,7 +4430,10 @@ async fn start_reject_list_announce(
     prompt_cancel.store(true, Ordering::Relaxed);
     state.ring_prewarm.cancel(serial, None, "拒接號碼");
     if let Some(c) = active_call.lock().await.as_mut() {
-        c.push_event("reject_list");
+        // A record taken up again after a decline already says so.
+        if !c.has_event("reject_list") {
+            c.push_event("reject_list");
+        }
     }
     if !state
         .media_play
@@ -4183,11 +4501,71 @@ async fn start_reject_list_announce(
     });
 }
 
+/// `answer_plan` for a ringing blocked number: `decline` asks the phone to refuse
+/// the call; without it (`announce`, and what an app that does not know `reject`
+/// does anyway) the phone picks up at once for the announcement.
+fn reject_answer_plan(decline: bool) -> Value {
+    let mut plan = json!({"type": "answer_plan", "delay_ms": 0, "prewarm": false});
+    if decline {
+        plan["reject"] = json!(true);
+    }
+    plan
+}
+
+/// `reject_mode` `decline`: a declined call never gets a media hello, so its
+/// record (events `reject_list`, `reject_list_declined`) and the "⛔ blocked
+/// number" notification are made while it rings. Returns the record's id.
+async fn record_declined_call(
+    state: &AppState,
+    serial: &str,
+    caller: &str,
+    sample_rate: u32,
+    rt: &RuntimeSettings,
+) -> Option<String> {
+    // The work-profile twin's copy of the call is not the owner's.
+    if is_isolated_screening_serial(serial) {
+        return None;
+    }
+    let mut record_id = None;
+    if let Some(mut call) = state
+        .calls
+        .start(serial, caller, sample_rate, "reject_list")
+        .await
+    {
+        call.push_event("reject_list_declined");
+        call.set_sim(call_sim_country(serial), call_sim_sub_id(serial));
+        let record = state.calls.finalize(call, "ended").await;
+        save_reject_list_notes(state, &record);
+        record_id = Some(record.id);
+    }
+    let dedup = state.incoming_notify_dedup.clone();
+    if dedup.claim(serial, caller).await {
+        let http = state.http.clone();
+        let settings = state.settings_store.snapshot().effective(&state.settings);
+        let reason = settings_store::reject_reason(&rt.reject_numbers, caller).unwrap_or_default();
+        let (caller, serial) = (caller.to_string(), serial.to_string());
+        tokio::spawn(async move {
+            if notify_rejected_call(&http, &settings, &caller, &serial, &reason, true).await {
+                info!("declined call notify ok serial={serial} caller={caller}");
+            } else {
+                dedup.release(&serial, &caller).await;
+                warn!(
+                    "declined call notify FAILED serial={serial} caller={caller} call_notify={}",
+                    settings.call_notify
+                );
+            }
+        });
+    }
+    record_id
+}
+
 /// The web record of a blocked-number call: fixed text, no LLM.
 fn save_reject_list_notes(state: &AppState, record: &CallRecord) {
     if !record.events.iter().any(|e| e == "reject_list") {
         return;
     }
+    // Refused while it rang (`reject_mode` `decline`): nothing was played.
+    let declined = record.events.iter().any(|e| e == "reject_list_declined");
     let rt = state.settings_store.snapshot();
     let number = display_caller_id(&record.caller_id).to_string();
     // Number and reason on lines of their own.
@@ -4196,7 +4574,23 @@ fn save_reject_list_notes(state: &AppState, record: &CallRecord) {
     let lang = locale::notify_lang();
     let p = locale::phrases(lang);
     let announce = voice_preview::reject_announce_text();
-    let summary = if lang.is_zh() {
+    let summary = if declined {
+        let reason = reason
+            .map(|r| format!("\n{}{}{r}", p.n_reason, p.sep))
+            .unwrap_or_default();
+        let sep = p.sep;
+        format!(
+            "{}{sep}{number}{reason}\n{}{sep}{}\n{}{sep}{}",
+            p.s_caller,
+            p.s_matter,
+            p.n_blocked,
+            p.s_reply,
+            locale::notify_zh_or(
+                "響鈴時直接拒接，沒有接起來（沒用 AI）",
+                "declined while it rang: not picked up (no AI)",
+            )
+        )
+    } else if lang.is_zh() {
         let reason = reason.map(|r| format!("\n原因：{r}")).unwrap_or_default();
         locale::zh_or_in(
             lang,
@@ -4223,10 +4617,17 @@ fn save_reject_list_notes(state: &AppState, record: &CallRecord) {
         summary,
         dialogue: String::new(),
         recording_text: String::new(),
-        end_hint: locale::notify_zh_or(
-            "拒接號碼：播無法接通語音後掛斷（沒有用 AI）",
-            "blocked number: the announcement was played, then hung up (no AI)",
-        ),
+        end_hint: if declined {
+            locale::notify_zh_or(
+                "拒接號碼：響鈴時直接拒接（沒有用 AI）",
+                "blocked number: declined while it rang (no AI)",
+            )
+        } else {
+            locale::notify_zh_or(
+                "拒接號碼：播無法接通語音後掛斷（沒有用 AI）",
+                "blocked number: the announcement was played, then hung up (no AI)",
+            )
+        },
         source: "reject_list".to_string(),
         updated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         calendar: None,
@@ -5250,6 +5651,7 @@ fn start_ring_prewarm(
     // (`RingPrewarmRegistry::take`).
     let sim = call_sim_country(serial)
         .or_else(|| phone_region::last_sim(&canonical_device_serial(serial)));
+    let plan = caller_plan(rt, caller_id, sim.as_deref());
     let cfg = GeminiRetryCfg {
         api_key: rt.gemini_api_key.clone(),
         model: rt.gemini_live_model.clone(),
@@ -5259,7 +5661,7 @@ fn start_ring_prewarm(
         } else {
             rt.gemini_voice_name.clone()
         },
-        lang: call_lang_plan(rt, caller_id, sim.as_deref()),
+        lang: plan.lang.clone(),
         caller_id: caller_id.to_string(),
     };
     let cancel = Arc::new(AtomicBool::new(false));
@@ -5311,6 +5713,7 @@ fn start_ring_prewarm(
             setup_ready,
             connect_failed: Arc::new(AtomicBool::new(false)),
             cfg,
+            plan,
             persona: true,
             goodbye_hangup_delay_ms,
         },
@@ -5327,13 +5730,15 @@ fn start_ring_prewarm(
 
 /// Pickup of a call whose Gemini session started while it rang: this media call
 /// takes the session over. Its 「喂？」 is already held, so UnmuteAfterGreet plays
-/// it right after the answer settle. False = not adopted (session stopped).
+/// it right after the answer settle. `caller_id`: the hello's number, which the
+/// session reads from now on. False = not adopted (session stopped).
 #[allow(clippy::too_many_arguments)]
 async fn adopt_ring_prewarm(
     pw: RingPrewarm,
     sink: &WsSink,
     state: &AppState,
     serial: &str,
+    caller_id: &str,
     phase: &Arc<std::sync::Mutex<IvrPhase>>,
     busy: &Arc<Mutex<()>>,
     hold_cancel: &mut Option<Arc<AtomicBool>>,
@@ -5369,13 +5774,20 @@ async fn adopt_ring_prewarm(
         audio_opened_at,
         setup_ready,
         connect_failed,
-        cfg,
+        mut cfg,
         persona,
         goodbye_hangup_delay_ms,
         sample_rate,
         ..
     } = pw;
     let _ = core.media_guard.set(media_call_guard.clone());
+    let rang_caller = cfg.caller_id.clone();
+    if take_hello_caller(&core, &mut cfg, caller_id) {
+        info!(
+            "Ring prewarm caller updated serial={serial} id={id} rang_caller={rang_caller} hello_caller={}",
+            cfg.caller_id
+        );
+    }
     if let Ok(mut g) = gemini_uplink_tx.lock() {
         *g = Some(up_tx);
     }
@@ -5423,6 +5835,20 @@ async fn adopt_ring_prewarm(
         media_call_guard.clone(),
         persona,
     ));
+    true
+}
+
+/// The media hello's number replaces the one a ring prewarm started with (empty
+/// or the previous call's; [`RingPrewarmRegistry::take`] checked it leads to the
+/// same set-up): the carrier-prompt check and a fresh retry read it from now on.
+/// An empty hello number keeps the ringing one. True when it changed.
+fn take_hello_caller(core: &GeminiSessionCore, cfg: &mut GeminiRetryCfg, hello: &str) -> bool {
+    let hello = hello.trim();
+    if hello.is_empty() || hello == cfg.caller_id.trim() {
+        return false;
+    }
+    *core.caller.lock().unwrap_or_else(|e| e.into_inner()) = hello.to_string();
+    cfg.caller_id = hello.to_string();
     true
 }
 
@@ -5658,6 +6084,9 @@ struct GeminiSessionCore {
     barge_in: Arc<AtomicBool>,
     /// What the caller agrees to on this call (appointments on), for the call record.
     appointments: Option<Arc<appointments::CallAppointments>>,
+    /// The caller's number as the session reads it (the carrier-prompt check): a
+    /// ring prewarm's is replaced by the media hello's at adoption.
+    caller: Arc<std::sync::Mutex<String>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -5690,17 +6119,22 @@ fn start_gemini_session_core(
     let persona_max_secs = rt.persona_max_secs();
     let server_vad = rt.gemini_server_vad;
     let thinking_level = rt.gemini_thinking_level.clone();
+    let caller_slot = Arc::new(std::sync::Mutex::new(cfg.caller_id.clone()));
     // Asked at pickup: by then the media hello has said which SIM took the call
-    // (the ring prewarm starts before the phone knows).
+    // (the ring prewarm starts before the phone knows) and which number calls.
     let intl_caller: gemini_live::IntlPromptCheck = {
         let serial = serial.to_string();
-        let caller = cfg.caller_id.clone();
+        let caller_slot = caller_slot.clone();
         let setting = rt.intl_carrier_prompt.clone();
         let auto_on = rt.lang() == locale::Lang::ZhTw;
         Box::new(move || {
             if !persona {
                 return false;
             }
+            let caller = caller_slot
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
             let sim = call_sim_country(&serial);
             let hold = gemini_live::expects_carrier_intl_prompt(
                 &setting,
@@ -5826,6 +6260,7 @@ fn start_gemini_session_core(
         stall_engaged,
         barge_in,
         appointments: appointment_book,
+        caller: caller_slot,
     }
 }
 
@@ -7098,9 +7533,13 @@ fn start_voicemail_intro_for_gemini(
     let media_call_guard = media_call_guard.clone();
     let persona = state.settings_store.snapshot().gemini_persona_mode;
     tokio::spawn(async move {
-        let Some(_lease) = media_call_guard.lease_current().await else {
+        // No lease is held from here on: the hangup's guarded sends take it per
+        // message, and one held across them deadlocks with the media loop's
+        // `invalidate()` on the phone's call_end (tokio's RwLock queues a later
+        // reader behind a waiting writer, the writer waits for the held lease).
+        if !media_call_guard.is_current() {
             return;
-        };
+        }
         if persona {
             persona_ai_unavailable_hangup(&sink, &serial, &phase, &active_call, &media_call_guard)
                 .await;
@@ -7127,28 +7566,53 @@ async fn persona_ai_unavailable_hangup(
     active_call: &ActiveCallSlot,
     media_call_guard: &MediaCallGuard,
 ) {
-    {
-        let mut p = phase.lock().unwrap_or_else(|e| e.into_inner());
-        if matches!(*p, IvrPhase::Done | IvrPhase::Goodbye) {
-            info!("persona AI-fail hangup skipped serial={serial} phase={p:?}");
-            return;
-        }
-        *p = IvrPhase::Done;
-    }
-    warn!(
-        "真人模式 AI unavailable serial={serial} → hangup, no voicemail / no pre-recorded audio"
-    );
-    if let Some(c) = active_call.lock().await.as_mut() {
-        c.push_event("persona_ai_fail_hangup");
-    }
-    send_hangup_with_retries(
-        sink,
-        serial,
-        "persona_ai_unavailable",
-        3,
-        Some(media_call_guard),
-    )
+    ai_fail_then_hang_up(serial, phase, active_call, media_call_guard, move || {
+        send_hangup_with_retries(
+            sink,
+            serial,
+            "persona_ai_unavailable",
+            3,
+            Some(media_call_guard),
+        )
+    })
     .await;
+}
+
+/// [`persona_ai_unavailable_hangup`] with the hangup passed in. The phase and the
+/// record change under the media call's lease; the lease ends before `hang_up`,
+/// whose guarded sends each take it again — the phone answers the first hangup
+/// with call_end, and the media loop's `invalidate()` must get through between
+/// them.
+async fn ai_fail_then_hang_up<F, Fut>(
+    serial: &str,
+    phase: &Arc<std::sync::Mutex<IvrPhase>>,
+    active_call: &ActiveCallSlot,
+    media_call_guard: &MediaCallGuard,
+    hang_up: F,
+) where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
+    {
+        let Some(_lease) = media_call_guard.lease_current().await else {
+            return;
+        };
+        {
+            let mut p = phase.lock().unwrap_or_else(|e| e.into_inner());
+            if matches!(*p, IvrPhase::Done | IvrPhase::Goodbye) {
+                info!("persona AI-fail hangup skipped serial={serial} phase={p:?}");
+                return;
+            }
+            *p = IvrPhase::Done;
+        }
+        warn!(
+            "真人模式 AI unavailable serial={serial} → hangup, no voicemail / no pre-recorded audio"
+        );
+        if let Some(c) = active_call.lock().await.as_mut() {
+            c.push_event("persona_ai_fail_hangup");
+        }
+    }
+    hang_up().await;
 }
 
 fn start_voicemail_intro_guarded(
@@ -7841,6 +8305,8 @@ fn spawn_voicemail_task(state: &AppState, call: &ActiveCall) {
     };
     let reply_contact = call.reply_contact().map(str::to_string);
     let contact_verified = call.contact_verified();
+    let control = state.control.clone();
+    let sim_sub_id = call.sim_sub_id();
 
     tokio::spawn(async move {
         let draft = draft_from_voicemail(
@@ -7859,6 +8325,10 @@ fn spawn_voicemail_task(state: &AppState, call: &ActiveCall) {
                 return;
             }
         };
+        // A call-back for this task dials out on the SIM the caller called.
+        if let Some(sub) = sim_sub_id {
+            control.remember_task_sim(&task.id, &serial, sub).await;
+        }
         let task_id = task.id.clone();
         let rt = settings_store.snapshot();
         let eff = rt.effective(&settings);
@@ -8111,6 +8581,21 @@ fn spawn_ai_talk_tg_summary(
         };
         let live_full = live.clone();
         let live = clip_dialogue_for_summary(&live);
+        // A number (or e-mail) the caller said to reach them on, from their own
+        // words only (the AI may repeat or make one up): kept on the record and
+        // on the call's task. Not from a sales / scam call or one the AI missed.
+        let spoken_contact = if stalled || ai_failed {
+            None
+        } else {
+            extract::extract_spoken_contact(&caller_side_text(&live_full, &remote_tx), &caller)
+        };
+        if let Some(c) = &spoken_contact {
+            let kept = calls.set_reply_contact(&call_id, &c.method, &c.contact).await;
+            info!(
+                "spoken reply contact serial={serial} call_id={call_id} method={} kept_on_record={kept}",
+                c.method
+            );
+        }
 
         // Gemini's own labelled dialogue is the primary source; Whisper backs it up
         // (noisy lines → garbage). Sections are explained to the summary model
@@ -8288,10 +8773,25 @@ fn spawn_ai_talk_tg_summary(
         }
         // Appointment: its task now (the owner's buttons act on it), the card or
         // the text message after the summary.
-        let appointment_task = match &appointment {
+        let mut appointment_task = match &appointment {
             Some(a) => appointments::create_task(&task_store, &call_record, a).await,
             None => None,
         };
+        if let Some(task) = appointment_task.as_mut() {
+            if let Some(sub) = call_record.sim_sub_id {
+                control.remember_task_sim(&task.id, &serial, sub).await;
+            }
+            if let Some(c) = &spoken_contact {
+                let patch = TaskPatch {
+                    reply_contact: Some(Some(c.contact.clone())),
+                    ..Default::default()
+                };
+                match task_store.patch(&task.id, patch).await {
+                    Ok(t) => *task = t,
+                    Err(e) => warn!("task reply contact patch failed id={}: {e:#}", task.id),
+                }
+            }
+        }
         // The call's page in the web console, where a pending appointment is decided.
         let detail_url = notify::call_detail_url(&eff, &call_id);
         if notify_on {
@@ -8341,6 +8841,20 @@ fn spawn_ai_talk_tg_summary(
 /// Persona mode gave up on the AI and hung up (`persona_ai_unavailable_hangup`).
 fn record_had_ai_fail_hangup(events: &[String]) -> bool {
     events.iter().any(|e| e == "persona_ai_fail_hangup")
+}
+
+/// What the caller said, without the AI's lines: the caller's lines of the
+/// merged Live dialogue, else the speech-to-text of the caller's own track.
+fn caller_side_text(dialogue: &str, caller_track: &str) -> String {
+    let lines: Vec<&str> = dialogue
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("對方："))
+        .collect();
+    if lines.is_empty() {
+        caller_track.trim().to_string()
+    } else {
+        lines.join("\n")
+    }
 }
 
 /// Notification body when the AI never spoke and nothing usable was transcribed.
@@ -9898,6 +10412,7 @@ mod ring_prewarm_tests {
                 stall_engaged: Arc::new(AtomicBool::new(false)),
                 barge_in: Arc::new(AtomicBool::new(false)),
                 appointments: None,
+                caller: Arc::new(std::sync::Mutex::new(caller.to_string())),
             },
             up_tx,
             cancel: cancel.clone(),
@@ -9911,9 +10426,10 @@ mod ring_prewarm_tests {
                 model: String::new(),
                 system: String::new(),
                 voice_name: String::new(),
-                caller_id: String::new(),
+                caller_id: caller.to_string(),
                 lang: usual(),
             },
+            plan: plan_of(usual()),
             persona: true,
             goodbye_hangup_delay_ms: 1_000,
         };
@@ -9926,6 +10442,27 @@ mod ring_prewarm_tests {
             opening: None,
             caller_stt: Some(vec!["zh-TW", "en-US"]),
         }
+    }
+
+    /// A set-up with these languages, no carrier-prompt hold, appointments off.
+    fn plan_of(lang: gemini_live::CallLangPlan) -> CallerPlan {
+        CallerPlan {
+            lang,
+            intl_hold: false,
+            appointments: false,
+        }
+    }
+
+    /// Traditional Chinese, Taiwan's calling code, the carrier prompt on auto.
+    fn tw_settings() -> RuntimeSettings {
+        let mut rt = RuntimeSettings::from_base(&Settings::from_env());
+        rt.language = "zh-TW".into();
+        rt.country_code = "886".into();
+        rt.intl_carrier_prompt = "auto".into();
+        rt.sim_languages = Default::default();
+        rt.appointment_mode = "off".into();
+        rt.appointment_test_numbers = Vec::new();
+        rt
     }
 
     fn live() -> tokio::task::JoinHandle<anyhow::Result<gemini_live::SessionEndReason>> {
@@ -9948,7 +10485,9 @@ mod ring_prewarm_tests {
         let (pw, cancel) = entry("+886900111222", live());
         reg.insert("pixel-1", pw);
         assert_eq!(reg.pending(), 1);
-        let got = reg.take("pixel-1", "0900111222", 16_000, &usual()).expect("same call");
+        let got = reg
+            .take("pixel-1", "0900111222", 16_000, &plan_of(usual()))
+            .expect("same call");
         assert!(!cancel.load(Ordering::Relaxed));
         assert_eq!(reg.pending(), 0);
         drop(got);
@@ -9957,11 +10496,11 @@ mod ring_prewarm_tests {
         // ringing call; another sample rate is not usable.
         let (pw, cancel) = entry("0912345678", live());
         reg.insert("pixel-1", pw);
-        assert!(reg.take("pixel-1", "0900111222", 16_000, &usual()).is_some());
+        assert!(reg.take("pixel-1", "0900111222", 16_000, &plan_of(usual())).is_some());
         assert!(!cancel.load(Ordering::Relaxed));
         let (pw, cancel) = entry("0912345678", live());
         reg.insert("pixel-1", pw);
-        assert!(reg.take("pixel-1", "0912345678", 8_000, &usual()).is_none());
+        assert!(reg.take("pixel-1", "0912345678", 8_000, &plan_of(usual())).is_none());
         assert!(cancel.load(Ordering::Relaxed));
 
         // A session that already ended is never handed over.
@@ -9971,7 +10510,7 @@ mod ring_prewarm_tests {
         }
         let (pw, _) = entry("0912345678", done);
         reg.insert("pixel-1", pw);
-        assert!(reg.take("pixel-1", "0912345678", 16_000, &usual()).is_none());
+        assert!(reg.take("pixel-1", "0912345678", 16_000, &plan_of(usual())).is_none());
     }
 
     #[tokio::test]
@@ -9985,15 +10524,76 @@ mod ring_prewarm_tests {
             opening: Some(locale::Lang::En),
             caller_stt: Some(vec!["en-US", "zh-TW"]),
         };
-        assert!(reg.take("pixel-1", "2025550143", 16_000, &us).is_none());
+        assert!(reg.take("pixel-1", "2025550143", 16_000, &plan_of(us)).is_none());
         assert!(cancel.load(Ordering::Relaxed));
         assert_eq!(reg.pending(), 0);
         // Same opening, other hints: not handed over either.
         let (pw, cancel) = entry("+12025550143", live());
         reg.insert("pixel-1", pw);
         let auto = gemini_live::CallLangPlan { opening: None, caller_stt: None };
-        assert!(reg.take("pixel-1", "+12025550143", 16_000, &auto).is_none());
+        assert!(reg.take("pixel-1", "+12025550143", 16_000, &plan_of(auto)).is_none());
         assert!(cancel.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn pickup_decides_again_with_the_hellos_number() {
+        let rt = tw_settings();
+        let reg = RingPrewarmRegistry::default();
+        // It rang with the previous call's number (call-log fallback); the hello has
+        // the real one, from abroad: the carrier's international-call warning and
+        // the opening language were decided for the wrong number.
+        let rang = caller_plan(&rt, "0912345678", Some("tw"));
+        let picked = caller_plan(&rt, "+12025550143", Some("tw"));
+        assert!(!rang.intl_hold && picked.intl_hold);
+        assert_ne!(rang.lang, picked.lang);
+        let (mut pw, cancel) = entry("0912345678", live());
+        pw.plan = rang;
+        reg.insert("pixel-1", pw);
+        assert!(reg.take("pixel-1", "+12025550143", 16_000, &picked).is_none());
+        assert!(cancel.load(Ordering::Relaxed));
+        // Only the carrier prompt differs (both numbers foreign to the SIM, same
+        // language): not handed over either.
+        let mut held = caller_plan(&rt, "+12025550143", Some("tw"));
+        held.intl_hold = false;
+        let (mut pw, cancel) = entry("+12025550143", live());
+        pw.plan = held;
+        reg.insert("pixel-1", pw);
+        assert!(reg.take("pixel-1", "+12025550143", 16_000, &picked).is_none());
+        assert!(cancel.load(Ordering::Relaxed));
+
+        // Rang without a number, picked up with a local one: the same set-up, so
+        // the session is adopted and reads the hello's number from then on.
+        let local = caller_plan(&rt, "0922222222", Some("tw"));
+        assert_eq!(caller_plan(&rt, "", Some("tw")), local);
+        let (mut pw, cancel) = entry("", live());
+        pw.plan = local.clone();
+        reg.insert("pixel-1", pw);
+        let mut got = reg
+            .take("pixel-1", "0922222222", 16_000, &local)
+            .expect("same set-up");
+        assert!(!cancel.load(Ordering::Relaxed));
+        assert!(take_hello_caller(&got.core, &mut got.cfg, " 0922222222 "));
+        assert_eq!(got.cfg.caller_id, "0922222222");
+        assert_eq!(*got.core.caller.lock().unwrap(), "0922222222");
+        // An empty hello number keeps the one it has.
+        assert!(!take_hello_caller(&got.core, &mut got.cfg, ""));
+        assert_eq!(got.cfg.caller_id, "0922222222");
+
+        // Appointments on: the session is bound to the number it rang with, so
+        // another number at pickup starts a fresh one; the same number does not.
+        let mut rt = rt;
+        rt.appointment_mode = "confirm".into();
+        let booked = caller_plan(&rt, "0922222222", Some("tw"));
+        assert!(booked.appointments);
+        let (mut pw, cancel) = entry("0912345678", live());
+        pw.plan = caller_plan(&rt, "0912345678", Some("tw"));
+        reg.insert("pixel-1", pw);
+        assert!(reg.take("pixel-1", "0922222222", 16_000, &booked).is_none());
+        assert!(cancel.load(Ordering::Relaxed));
+        let (mut pw, _) = entry("0922222222", live());
+        pw.plan = booked.clone();
+        reg.insert("pixel-1", pw);
+        assert!(reg.take("pixel-1", "0922222222", 16_000, &booked).is_some());
     }
 
     #[tokio::test]
@@ -10141,7 +10741,9 @@ mod unknown_caller_tests {
         // What rang on the list still counts at pickup, once and only for a while.
         let p = RejectPending::default();
         p.mark("pixel-10133", "0255501234");
-        assert_eq!(p.take("pixel-10133").as_deref(), Some("0255501234"));
+        let ring = p.take("pixel-10133").expect("marked");
+        assert_eq!(ring.caller, "0255501234");
+        assert!(!ring.declined && ring.record_id.is_none());
         assert_eq!(p.take("pixel-10133"), None);
         assert_eq!(p.take("pixel-10111"), None);
         assert!(REJECT_PENDING_TTL >= Duration::from_secs(10));
@@ -10388,5 +10990,224 @@ mod summary_fallback_tests {
         let c = clip_dialogue_for_summary(&d);
         assert!(c.contains("中間省略") && c.chars().count() < 5_600);
         assert_eq!(clip_dialogue_for_summary("接聽：喂？"), "接聽：喂？");
+    }
+}
+
+#[cfg(test)]
+mod call_control_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn ai_fail_hangup_lets_the_call_end_through_between_attempts() {
+        let guard = MediaCallGuard::inactive().next().await;
+        let phase = Arc::new(std::sync::Mutex::new(IvrPhase::LiveAi));
+        let slot: ActiveCallSlot = Arc::new(Mutex::new(None));
+        let g = &guard;
+        let run = ai_fail_then_hang_up("pixel-1", &phase, &slot, &guard, move || async move {
+            // Hangup attempt 1: a guarded send holds the lease while it writes…
+            let first = g.lease_current().await;
+            assert!(first.is_some());
+            // …the phone answers it with call_end and the media loop invalidates
+            // (a writer: it waits for every lease still held)…
+            let writer = tokio::spawn({
+                let g = g.clone();
+                async move { g.invalidate().await }
+            });
+            tokio::task::yield_now().await;
+            drop(first);
+            // …and attempt 2 asks for the lease again: it finds the call over
+            // instead of queueing behind the writer for ever.
+            assert!(g.lease_current().await.is_none());
+            writer.await.expect("invalidate");
+        });
+        tokio::time::timeout(Duration::from_secs(1), run)
+            .await
+            .expect("the AI-fail hangup and the call_end waited on each other");
+        assert_eq!(*phase.lock().unwrap(), IvrPhase::Done);
+        assert!(!guard.is_current());
+        // The call is over: no second decision, no hangup.
+        let hung_up = AtomicBool::new(false);
+        let flag = &hung_up;
+        ai_fail_then_hang_up("pixel-1", &phase, &slot, &guard, move || async move {
+            flag.store(true, Ordering::Relaxed);
+        })
+        .await;
+        assert!(!hung_up.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn blocked_number_answer_plan() {
+        assert_eq!(
+            reject_answer_plan(true),
+            json!({"type": "answer_plan", "delay_ms": 0, "prewarm": false, "reject": true})
+        );
+        // `announce`, and what an app that does not know `reject` does: pick up at once.
+        assert_eq!(
+            reject_answer_plan(false),
+            json!({"type": "answer_plan", "delay_ms": 0, "prewarm": false})
+        );
+        // A declined ring tells a later media hello (an app that picked up anyway)
+        // which record goes on.
+        let p = RejectPending::default();
+        p.mark_ring(
+            "pixel-10133",
+            RejectRing {
+                caller: "0912345678".into(),
+                declined: true,
+                record_id: Some("rec-1".into()),
+            },
+        );
+        let ring = p.take("pixel-10133").expect("marked");
+        assert!(ring.declined);
+        assert_eq!(ring.record_id.as_deref(), Some("rec-1"));
+    }
+
+    #[test]
+    fn sim_sub_id_does_not_outlive_its_call() {
+        let serial = "pixel-sub-id-test";
+        note_call_sim(serial, &json!({"type": "incoming", "sim_country": "tw", "sim_sub_id": 3}));
+        assert_eq!(call_sim_sub_id(serial), Some(3));
+        assert_eq!(call_sim_country(serial).as_deref(), Some("tw"));
+        note_call_sim(serial, &json!({"type": "hello", "sim_sub_id": 4}));
+        assert_eq!(call_sim_sub_id(serial), Some(4));
+        // An app that does not send it (or a new call without it): unknown.
+        note_call_sim(serial, &json!({"type": "incoming"}));
+        assert_eq!(call_sim_sub_id(serial), None);
+        assert_eq!(sim_sub_id_from_msg(&json!({"sim_sub_id": -1})), None);
+        assert_eq!(sim_sub_id_from_msg(&json!({"sim_sub_id": "3"})), None);
+        assert_eq!(sim_sub_id_from_msg(&json!({"sim_sub_id": 0})), Some(0));
+    }
+
+    #[test]
+    fn a_turned_away_call_reported_twice_is_one() {
+        assert!(first_call_waiting_report("pixel-cw-1", "+12025550143"));
+        assert!(!first_call_waiting_report("pixel-cw-1", " +12025550143 "));
+        assert!(first_call_waiting_report("pixel-cw-1", "+81312345678"));
+        assert!(first_call_waiting_report("pixel-cw-2", "+12025550143"));
+    }
+
+    #[tokio::test]
+    async fn blocked_numbers_are_declined_only_by_apps_that_can() {
+        let mut rt = RuntimeSettings::from_base(&Settings::from_env());
+        rt.reject_mode = "decline".into();
+        let control = ControlRegistry::default();
+        // An older app (no `supports_reject` in its hello) would pick up anyway: it
+        // is told to, and the hello plays and notifies the announcement.
+        let old_app = blocked_number_declined(&rt, &control, "pixel-10341").await;
+        assert!(!old_app);
+        assert!(reject_answer_plan(old_app).get("reject").is_none());
+        // An app that says it can: refused while ringing.
+        control.set_supports_reject("pixel-10342", true).await;
+        let new_app = blocked_number_declined(&rt, &control, "pixel-10342").await;
+        assert!(new_app);
+        assert_eq!(reject_answer_plan(new_app)["reject"], true);
+        // `announce`: every phone picks up.
+        rt.reject_mode = "announce".into();
+        assert!(!blocked_number_declined(&rt, &control, "pixel-10342").await);
+    }
+
+    #[test]
+    fn a_left_over_blocked_ring_never_turns_the_next_caller_away() {
+        let p = RejectPending::default();
+        let declined = |caller: &str| RejectRing {
+            caller: caller.into(),
+            declined: true,
+            record_id: Some("rec-1".into()),
+        };
+        // A blocked number was declined and its incoming_cancel never came. The
+        // next, ordinary call's incoming drops the entry (what the control
+        // connection does first), so its hello — even before the CID is out —
+        // does not take the blocked call's record and announcement.
+        p.mark_ring("pixel-10341", declined("0912345678"));
+        assert!(p.take("pixel-10341").is_some());
+        assert_eq!(p.take_for_hello("pixel-10341", ""), None);
+        // Its incoming lost too: a hello with another number still is not that call.
+        p.mark_ring("pixel-10341", declined("0912345678"));
+        assert_eq!(p.take_for_hello("pixel-10341", "0922222222"), None);
+        assert_eq!(p.take("pixel-10341"), None);
+        // The blocked call's own hello (an app that picked up): the same number in
+        // another form, or none yet.
+        p.mark_ring("pixel-10341", declined("0912345678"));
+        assert!(p.take_for_hello("pixel-10341", "+886912345678").is_some());
+        p.mark("pixel-10341", "0912345678");
+        assert!(p.take_for_hello("pixel-10341", " ").is_some());
+    }
+
+    #[test]
+    fn caller_side_text_leaves_the_ai_out() {
+        let dialogue = "接聽：喂？\n對方：請回電給我\n接聽：好的，您的電話是？\n對方：零九三三";
+        assert_eq!(caller_side_text(dialogue, "whisper"), "請回電給我\n零九三三");
+        // Without a Live dialogue: the caller's own track.
+        assert_eq!(caller_side_text("", " 請回電 "), "請回電");
+        assert_eq!(caller_side_text("接聽：喂？", ""), "");
+    }
+}
+
+#[cfg(test)]
+mod review_t4_tests {
+    use super::*;
+
+    /// The AI-fail hangup lets go of the lease before it hangs up. If the phone's
+    /// call_end and the next call's hello land in that gap, the first call's
+    /// guarded sends must find their call over and never reach the next call.
+    #[tokio::test]
+    async fn ai_fail_hangup_after_call_end_never_reaches_the_next_call() {
+        let first = MediaCallGuard::inactive().next().await;
+        let phase = Arc::new(std::sync::Mutex::new(IvrPhase::LiveAi));
+        let slot: ActiveCallSlot = Arc::new(Mutex::new(None));
+        let next_call: Arc<std::sync::Mutex<Option<MediaCallGuard>>> =
+            Arc::new(std::sync::Mutex::new(None));
+        let f = &first;
+        let nc = next_call.clone();
+        let run = ai_fail_then_hang_up("pixel-1", &phase, &slot, &first, move || async move {
+            // No lease is held here: call_end (a writer) and the next hello get through.
+            f.invalidate().await;
+            let second = f.next().await;
+            // What every guarded send of the first call (send_gemini_media_json) asks.
+            assert!(f.lease_current().await.is_none());
+            assert!(!f.is_current());
+            assert!(second.is_current());
+            *nc.lock().unwrap() = Some(second);
+        });
+        tokio::time::timeout(Duration::from_secs(1), run)
+            .await
+            .expect("hangup closure ran with the lease still held");
+        let second = next_call.lock().unwrap().clone().expect("next hello");
+        assert_eq!(*phase.lock().unwrap(), IvrPhase::Done);
+        // A late AI failure of the first call does nothing to the second one.
+        let phase2 = Arc::new(std::sync::Mutex::new(IvrPhase::LiveAi));
+        let hung = AtomicBool::new(false);
+        let h = &hung;
+        ai_fail_then_hang_up("pixel-1", &phase2, &slot, &first, move || async move {
+            h.store(true, Ordering::Relaxed);
+        })
+        .await;
+        assert!(!hung.load(Ordering::Relaxed));
+        assert_eq!(*phase2.lock().unwrap(), IvrPhase::LiveAi);
+        assert!(second.is_current());
+    }
+
+    /// The control and the media connection both report the turned-away call;
+    /// the work-profile twin's copy is never the owner's.
+    #[test]
+    fn call_waiting_report_dedup_across_connections() {
+        assert!(first_call_waiting_report("pixel-20341", "0912000111"));
+        assert!(!first_call_waiting_report(" pixel-20341 ", "0912000111"));
+        // Another phone, same number: its own call.
+        assert!(first_call_waiting_report("pixel-20342", "0912000111"));
+        // Hidden number reported twice within the window: one call.
+        assert!(first_call_waiting_report("pixel-20343", ""));
+        assert!(!first_call_waiting_report("pixel-20343", "  "));
+        assert!(is_isolated_screening_serial("pixel-1010341"));
+    }
+
+    /// `reject_mode` decline sends `delay_ms` 0: an app that ignores `reject`
+    /// picks up at once and the hello plays the announcement.
+    #[test]
+    fn decline_plan_still_picks_up_at_once_on_old_apps() {
+        let plan = reject_answer_plan(true);
+        assert_eq!(plan["delay_ms"], 0);
+        assert_eq!(plan["prewarm"], false);
+        assert_eq!(plan["reject"], true);
     }
 }

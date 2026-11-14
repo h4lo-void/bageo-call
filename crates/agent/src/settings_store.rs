@@ -139,6 +139,11 @@ pub struct RuntimeSettings {
     /// Voice of the blocked-number announcement; empty = the AI's voice.
     #[serde(default)]
     pub reject_voice_name: String,
+    /// What a blocked number gets: `decline` (default) = the phone refuses the
+    /// ringing call, nothing is played; `announce` = picked up, the "cannot be
+    /// reached" announcement, hung up. A phone app that cannot decline announces.
+    #[serde(default = "default_reject_mode")]
+    pub reject_mode: String,
     /// Sales / scam stalling: in persona mode, once the caller is
     /// clearly selling (insurance / loans / investment / promos) or scamming, the
     /// AI keeps them talking about every term of the offer — never giving data
@@ -362,6 +367,18 @@ fn default_appointment_mode() -> String {
     "off".to_string()
 }
 
+fn default_reject_mode() -> String {
+    "decline".to_string()
+}
+
+/// `decline` / `announce`; anything else is decline.
+fn sanitize_reject_mode(s: &str) -> String {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "announce" => "announce".to_string(),
+        _ => default_reject_mode(),
+    }
+}
+
 /// `off` / `confirm` / `auto`; anything else is off.
 fn sanitize_appointment_mode(s: &str) -> String {
     crate::appointments::Mode::parse(s).as_str().to_string()
@@ -522,6 +539,7 @@ impl RuntimeSettings {
                     .collect(),
             ),
             reject_voice_name: env_or("REJECT_VOICE_NAME", ""),
+            reject_mode: sanitize_reject_mode(&env_or("REJECT_MODE", "decline")),
             persona_stall_spam: env_bool("PERSONA_STALL_SPAM", true),
             persona_stall_max_min: env_parse("PERSONA_STALL_MAX_MIN", STALL_MAX_MIN_DEFAULT),
             persona_normal_max_min: env_parse("PERSONA_NORMAL_MAX_MIN", NORMAL_MAX_MIN_DEFAULT),
@@ -589,6 +607,11 @@ impl RuntimeSettings {
     /// ([`Self::appointment_test_numbers`]).
     pub fn is_appointment_test_number(&self, caller_id: &str) -> bool {
         appointment_test_number_hit(&self.appointment_test_numbers, caller_id)
+    }
+
+    /// Blocked numbers are refused while they ring (`reject_mode` `decline`).
+    pub fn reject_declines(&self) -> bool {
+        self.reject_mode != "announce"
     }
 
     pub fn is_assistant_style(&self) -> bool {
@@ -727,6 +750,7 @@ impl RuntimeSettings {
             callback_whitelist,
             reject_numbers,
             reject_voice_name,
+            reject_mode,
             ivr_goodbye_text,
             ivr_vm_intro_text,
             ivr_vm_confirm_text,
@@ -829,6 +853,7 @@ impl RuntimeSettings {
         self.summary_provider = sanitize_summary_provider(&self.summary_provider);
         self.answer_style = sanitize_answer_style(&self.answer_style);
         self.intl_carrier_prompt = sanitize_tristate(&self.intl_carrier_prompt);
+        self.reject_mode = sanitize_reject_mode(&self.reject_mode);
         self.country_code = digits_only(&self.country_code);
         self.mdns_name = crate::mdns::parse_name_setting(&self.mdns_name);
         self.appointment_mode = sanitize_appointment_mode(&self.appointment_mode);
@@ -1040,6 +1065,8 @@ struct Overrides {
     reject_numbers: Option<Vec<RejectEntry>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reject_voice_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reject_mode: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     vm_max_ms: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1574,6 +1601,10 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     p_string(patch, "gemini_system_prompt", &mut ov.gemini_system_prompt);
     p_string(patch, "gemini_voice_name", &mut ov.gemini_voice_name);
     p_string(patch, "reject_voice_name", &mut ov.reject_voice_name);
+    p_string(patch, "reject_mode", &mut ov.reject_mode);
+    if let Some(v) = ov.reject_mode.take() {
+        ov.reject_mode = Some(sanitize_reject_mode(&v));
+    }
     p_secret(patch, "deepseek_api_key", &mut ov.deepseek_api_key);
     p_bool(patch, "owner_status_enabled", &mut ov.owner_status_enabled);
     p_bool(patch, "gemini_persona_mode", &mut ov.gemini_persona_mode);
@@ -1998,6 +2029,29 @@ mod tests {
         let again = SettingsStore::load(base);
         assert!(reject_number_hit(&again.snapshot().reject_numbers, "+886255501234"));
         assert_eq!(reject_reason(&again.snapshot().reject_numbers, "0255501234").as_deref(), Some("安信"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reject_mode_defaults_to_decline_and_keeps_only_known_values() {
+        let dir = std::env::temp_dir().join(format!(
+            "bageo-call-settings-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp settings dir");
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        assert_eq!(store.snapshot().reject_mode, "decline");
+        assert!(store.snapshot().reject_declines());
+        let rt = store.apply_patch(&json!({ "reject_mode": " Announce " })).unwrap();
+        assert_eq!(rt.reject_mode, "announce");
+        assert!(!rt.reject_declines());
+        // Saved: a restart keeps it; an unknown value is decline.
+        assert_eq!(SettingsStore::load(base.clone()).snapshot().reject_mode, "announce");
+        let rt = store.apply_patch(&json!({ "reject_mode": "hang-up" })).unwrap();
+        assert_eq!(rt.reject_mode, "decline");
+        assert_eq!(sanitize_reject_mode(""), "decline");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2524,6 +2578,34 @@ mod tests {
         let rt3 = again.apply_patch(&json!({ "appointment_test_numbers": [] })).unwrap();
         assert!(rt3.appointment_test_numbers.is_empty());
         assert!(SettingsStore::load(base).snapshot().appointment_test_numbers.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod review_t4_tests {
+    use super::*;
+
+    /// A settings.json saved by an older agent (no `reject_mode` key) loads as
+    /// decline.
+    #[test]
+    fn saved_settings_without_reject_mode_decline() {
+        let dir = std::env::temp_dir().join(format!(
+            "bageo-review-t4-settings-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp settings dir");
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        store.apply_patch(&json!({ "gemini_persona_mode": true })).unwrap();
+        let saved = std::fs::read_to_string(dir.join("config").join("settings.json"))
+            .expect("settings.json written");
+        assert!(!saved.contains("reject_mode"));
+        let rt = SettingsStore::load(base).snapshot();
+        assert!(rt.gemini_persona_mode);
+        assert_eq!(rt.reject_mode, "decline");
+        assert!(rt.reject_declines());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
