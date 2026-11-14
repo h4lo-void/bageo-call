@@ -448,7 +448,6 @@ fn caller_plan(rt: &RuntimeSettings, caller_id: &str, sim: Option<&str>) -> Call
     CallerPlan {
         lang: call_lang_plan(rt, caller_id, sim),
         intl_hold: gemini_live::expects_carrier_intl_prompt(
-            &rt.intl_carrier_prompt,
             rt.lang() == locale::Lang::ZhTw,
             caller_id,
             sim,
@@ -6199,8 +6198,7 @@ fn start_gemini_session_core(
     let intl_caller: gemini_live::IntlPromptCheck = {
         let serial = serial.to_string();
         let caller_slot = caller_slot.clone();
-        let setting = rt.intl_carrier_prompt.clone();
-        let auto_on = rt.lang() == locale::Lang::ZhTw;
+        let zh_tw = rt.lang() == locale::Lang::ZhTw;
         Box::new(move || {
             if !persona || is_callback {
                 return false;
@@ -6210,12 +6208,7 @@ fn start_gemini_session_core(
                 .unwrap_or_else(|e| e.into_inner())
                 .clone();
             let sim = call_sim_country(&serial);
-            let hold = gemini_live::expects_carrier_intl_prompt(
-                &setting,
-                auto_on,
-                &caller,
-                sim.as_deref(),
-            );
+            let hold = gemini_live::expects_carrier_intl_prompt(zh_tw, &caller, sim.as_deref());
             if gemini_live::is_intl_caller(&caller) || hold {
                 // How the check read the number on this SIM.
                 let number = sim
@@ -6223,7 +6216,7 @@ fn start_gemini_session_core(
                     .and_then(|s| phone_region::normalize(&caller, Some(s)))
                     .map_or_else(|| "?".to_string(), |n| format!("{} ({})", n.e164, n.country));
                 info!(
-                    "intl caller serial={serial} caller={caller} number={number} sim_country={} setting={setting} → hold opening for carrier prompt={hold}",
+                    "intl caller serial={serial} caller={caller} number={number} sim_country={} → hold opening for carrier prompt={hold}",
                     sim.as_deref().unwrap_or("?")
                 );
             }
@@ -10627,12 +10620,11 @@ mod ring_prewarm_tests {
         }
     }
 
-    /// Traditional Chinese, Taiwan's calling code, the carrier prompt on auto.
+    /// Traditional Chinese, Taiwan's calling code.
     fn tw_settings() -> RuntimeSettings {
         let mut rt = RuntimeSettings::from_base(&Settings::from_env());
         rt.language = "zh-TW".into();
         rt.country_code = "886".into();
-        rt.intl_carrier_prompt = "auto".into();
         rt.sim_languages = Default::default();
         rt.appointment_mode = "off".into();
         rt

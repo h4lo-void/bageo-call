@@ -699,7 +699,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
         <a href="#settings/blocked" data-jump="blocked"><svg class="i sm"><use href="#i-ban"/></svg><span data-i18n="g_blocked"></span></a>
         <a href="#settings/notify" data-jump="notify"><svg class="i sm"><use href="#i-bell"/></svg><span data-i18n="g_notify"></span></a>
         <a href="#settings/summary" data-jump="summary"><svg class="i sm"><use href="#i-list"/></svg><span data-i18n="g_summary"></span></a>
-        <a href="#settings/region" data-jump="region"><svg class="i sm"><use href="#i-globe"/></svg><span data-i18n="g_region"></span></a>
+        <a href="#settings/region" data-jump="region"><svg class="i sm"><use href="#i-sliders"/></svg><span data-i18n="g_region"></span></a>
       </nav>
 
       <form id="setForm" autocomplete="off" novalidate>
@@ -933,24 +933,14 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <div class="help" data-i18n="f_appt_reply_h"></div></div>
         </div></div>
 
-        <!-- Region & advanced -->
+        <!-- Advanced -->
         <div class="card group" id="g-region"><div class="pad">
           <h2><span data-i18n="g_region"></span></h2>
-          <div class="two">
-            <div class="field"><label for="f-country_code" data-i18n="f_cc"></label>
-              <div class="inline"><span class="muted">+</span><input type="text" id="f-country_code" data-k="country_code" data-t="text" inputmode="numeric" maxlength="4" pattern="[0-9]*" style="width:7.5rem" /></div>
-              <div class="help" data-i18n="f_cc_h"></div></div>
-            <div class="field"><label for="f-gemini_thinking_level" data-i18n="f_think"></label>
-              <select id="f-gemini_thinking_level" data-k="gemini_thinking_level" data-t="text">
-                <option value="low" data-i18n="th_low"></option><option value="medium" data-i18n="th_medium"></option><option value="high" data-i18n="th_high"></option>
-              </select>
-              <div class="help" data-i18n="f_think_h"></div></div>
-          </div>
-          <div class="field"><label for="f-intl_carrier_prompt" data-i18n="f_carrier"></label>
-            <select id="f-intl_carrier_prompt" data-k="intl_carrier_prompt" data-t="text" style="max-width:16rem">
-              <option value="auto" data-i18n="tri_auto"></option><option value="on" data-i18n="on"></option><option value="off" data-i18n="off"></option>
+          <div class="field"><label for="f-gemini_thinking_level" data-i18n="f_think"></label>
+            <select id="f-gemini_thinking_level" data-k="gemini_thinking_level" data-t="text" style="max-width:16rem">
+              <option value="low" data-i18n="th_low"></option><option value="medium" data-i18n="th_medium"></option><option value="high" data-i18n="th_high"></option>
             </select>
-            <div class="help" data-i18n="f_carrier_h"></div></div>
+            <div class="help" data-i18n="f_think_h"></div></div>
         </div></div>
       </form>
     </div>
@@ -1398,7 +1388,7 @@ I18N["en"] = {
   g_blocked: "Blocked numbers",
   g_notify: "Notifications",
   g_summary: "Summary & calendar",
-  g_region: "Region & advanced",
+  g_region: "Advanced",
   // ---- settings: basics
   g_basics_d: "The few things the AI needs before it can answer your phone.",
   f_language: "Language",
@@ -1615,17 +1605,12 @@ I18N["en"] = {
   ar_auto: "Automatic (by number)",
   ar_sms: "Always a text",
   ar_call: "Always an AI call-back",
-  // ---- settings: region & advanced
-  f_cc: "Country calling code",
-  f_cc_h: "Digits only, e.g. 1, 44, 886. Lets blocked numbers written with + match the way your phone reports callers.",
+  // ---- settings: advanced
   f_think: "Thinking level",
   f_think_h: "Only for models with “thinking” in their name. Low answers fastest.",
   th_low: "Low",
   th_medium: "Medium",
   th_high: "High",
-  f_carrier: "Wait for the carrier's warning on international calls",
-  f_carrier_h: "Carriers in Taiwan play a recorded warning at the start of every call from abroad. The AI waits for it before speaking. Automatic = on when the language is Traditional Chinese.",
-  tri_auto: "Automatic",
   // ---- system view
   sys_phones: "Phones",
   sys_updated: "Updated {time}",
@@ -2118,7 +2103,7 @@ I18N["zh-TW"] = {
   g_blocked: "拒接號碼",
   g_notify: "通知",
   g_summary: "摘要與行事曆",
-  g_region: "地區與進階",
+  g_region: "進階",
   // ---- settings: basics
   g_basics_d: "AI 開始幫你接電話之前，需要知道的幾件事。",
   f_language: "語言",
@@ -2335,17 +2320,12 @@ I18N["zh-TW"] = {
   ar_auto: "自動（依號碼判斷）",
   ar_sms: "一律傳簡訊",
   ar_call: "一律 AI 回電",
-  // ---- settings: region & advanced
-  f_cc: "國際電話國碼",
-  f_cc_h: "只填數字，例如 1、44、886。這樣用 + 開頭寫的拒接號碼，才能對上手機回報的來電號碼。",
+  // ---- settings: advanced
   f_think: "思考程度",
   f_think_h: "只有名稱裡有「thinking」的模型才會用到。「低」回話最快。",
   th_low: "低",
   th_medium: "中",
   th_high: "高",
-  f_carrier: "等電信業者的國際電話提示音播完",
-  f_carrier_h: "台灣的電信業者會在國外來電一開始播放一段提醒語音，AI 會等它播完才開口。自動 = 語言是繁體中文時開啟。",
-  tri_auto: "自動",
   // ---- system view
   sys_phones: "手機",
   sys_updated: "更新於 {time}",
@@ -2838,7 +2818,7 @@ I18N["zh-CN"] = {
   g_blocked: "拦截号码",
   g_notify: "通知",
   g_summary: "摘要与日历",
-  g_region: "地区与高级",
+  g_region: "高级",
   // ---- settings: basics
   g_basics_d: "AI 开始帮你接电话之前，需要知道的几件事。",
   f_language: "语言",
@@ -3055,17 +3035,12 @@ I18N["zh-CN"] = {
   ar_auto: "自动（按号码判断）",
   ar_sms: "一律发短信",
   ar_call: "一律 AI 回拨",
-  // ---- settings: region & advanced
-  f_cc: "国际电话区号",
-  f_cc_h: "只填数字，例如 1、44、86。这样用 + 开头写的拦截号码，才能和手机上报的来电号码对上。",
+  // ---- settings: advanced
   f_think: "思考程度",
   f_think_h: "只有名称里带“thinking”的模型才会用到。“低”回话最快。",
   th_low: "低",
   th_medium: "中",
   th_high: "高",
-  f_carrier: "等运营商的国际来电提示音播完",
-  f_carrier_h: "台湾的运营商会在境外来电一开始播放一段提醒语音，AI 会等它播完再开口。自动 = 语言是繁体中文时开启。",
-  tri_auto: "自动",
   // ---- system view
   sys_phones: "手机",
   sys_updated: "更新于 {time}",
@@ -3558,7 +3533,7 @@ I18N["ja"] = {
   g_blocked: "着信拒否の番号",
   g_notify: "通知",
   g_summary: "要約とカレンダー",
-  g_region: "地域と詳細設定",
+  g_region: "詳細設定",
   // ---- settings: basics
   g_basics_d: "AI が電話に出る前に必要な、最低限の設定です。",
   f_language: "言語",
@@ -3775,17 +3750,12 @@ I18N["ja"] = {
   ar_auto: "自動（番号で判断）",
   ar_sms: "常に SMS",
   ar_call: "常に AI が折り返し電話",
-  // ---- settings: region & advanced
-  f_cc: "国番号",
-  f_cc_h: "数字のみ（例：1、44、81）。+ から書いた着信拒否の番号を、スマホが通知する番号の形式と照合できるようにします。",
+  // ---- settings: advanced
   f_think: "思考レベル",
   f_think_h: "名前に「thinking」が入っているモデルだけで使われます。「低」が最も速く応答します。",
   th_low: "低",
   th_medium: "中",
   th_high: "高",
-  f_carrier: "国際電話の通信会社アナウンスを待つ",
-  f_carrier_h: "台湾の通信会社は、海外からの着信の冒頭に注意喚起の録音を流します。AI はそれが終わるまで話し始めません。自動 = 言語が繁体字中国語のときにオン。",
-  tri_auto: "自動",
   // ---- system view
   sys_phones: "スマホ",
   sys_updated: "{time} 更新",
@@ -4278,7 +4248,7 @@ I18N["ko"] = {
   g_blocked: "차단 번호",
   g_notify: "알림",
   g_summary: "요약과 캘린더",
-  g_region: "지역 및 고급 설정",
+  g_region: "고급 설정",
   // ---- settings: basics
   g_basics_d: "AI가 전화를 받기 전에 꼭 필요한 몇 가지입니다.",
   f_language: "언어",
@@ -4495,17 +4465,12 @@ I18N["ko"] = {
   ar_auto: "자동(번호로 판단)",
   ar_sms: "항상 문자",
   ar_call: "항상 AI 전화",
-  // ---- settings: region & advanced
-  f_cc: "국가 번호",
-  f_cc_h: "숫자만 입력하세요(예: 1, 44, 82). +로 시작하게 적은 차단 번호가 휴대폰이 알려 주는 번호 형식과 맞도록 해 줍니다.",
+  // ---- settings: advanced
   f_think: "사고 수준",
   f_think_h: "이름에 “thinking”이 들어간 모델에서만 사용됩니다. “낮음”이 가장 빨리 답합니다.",
   th_low: "낮음",
   th_medium: "보통",
   th_high: "높음",
-  f_carrier: "국제전화의 통신사 안내 음성 기다리기",
-  f_carrier_h: "대만 통신사는 해외에서 걸려 온 전화가 연결되면 먼저 주의 안내 녹음을 들려줍니다. AI는 그 안내가 끝난 뒤에 말을 시작합니다. 자동 = 언어가 중국어 번체일 때 켜짐.",
-  tri_auto: "자동",
   // ---- system view
   sys_phones: "휴대폰",
   sys_updated: "{time} 업데이트",
@@ -4998,7 +4963,7 @@ I18N["es"] = {
   g_blocked: "Números bloqueados",
   g_notify: "Notificaciones",
   g_summary: "Resumen y calendario",
-  g_region: "Región y avanzado",
+  g_region: "Avanzado",
   // ---- settings: basics
   g_basics_d: "Lo poco que la IA necesita para poder contestar tu teléfono.",
   f_language: "Idioma",
@@ -5215,17 +5180,12 @@ I18N["es"] = {
   ar_auto: "Automática (según el número)",
   ar_sms: "Siempre SMS",
   ar_call: "Siempre llamada de la IA",
-  // ---- settings: region & advanced
-  f_cc: "Prefijo telefónico del país",
-  f_cc_h: "Solo cifras, p. ej. 1, 34, 52. Permite que los números bloqueados escritos con + coincidan con la forma en que tu teléfono indica quién llama.",
+  // ---- settings: advanced
   f_think: "Nivel de razonamiento",
   f_think_h: "Solo para modelos con «thinking» en el nombre. «Bajo» es el que responde más rápido.",
   th_low: "Bajo",
   th_medium: "Medio",
   th_high: "Alto",
-  f_carrier: "Esperar el aviso de la operadora en llamadas internacionales",
-  f_carrier_h: "Las operadoras de Taiwán reproducen un aviso grabado al principio de cada llamada del extranjero. La IA espera a que termine antes de hablar. Automático = activado cuando el idioma es chino tradicional.",
-  tri_auto: "Automático",
   // ---- system view
   sys_phones: "Teléfonos",
   sys_updated: "Actualizado a las {time}",
@@ -5718,7 +5678,7 @@ I18N["fr"] = {
   g_blocked: "Numéros bloqués",
   g_notify: "Notifications",
   g_summary: "Résumé et agenda",
-  g_region: "Région et options avancées",
+  g_region: "Options avancées",
   // ---- settings: basics
   g_basics_d: "Le peu dont l'IA a besoin avant de pouvoir répondre à votre téléphone.",
   f_language: "Langue",
@@ -5935,17 +5895,12 @@ I18N["fr"] = {
   ar_auto: "Automatique (selon le numéro)",
   ar_sms: "Toujours un SMS",
   ar_call: "Toujours un rappel de l'IA",
-  // ---- settings: region & advanced
-  f_cc: "Indicatif du pays",
-  f_cc_h: "Chiffres uniquement, ex. 1, 33, 44. Permet aux numéros bloqués écrits avec + de correspondre à la façon dont votre téléphone indique les appelants.",
+  // ---- settings: advanced
   f_think: "Niveau de réflexion",
   f_think_h: "Uniquement pour les modèles dont le nom contient « thinking ». « Faible » répond le plus vite.",
   th_low: "Faible",
   th_medium: "Moyen",
   th_high: "Élevé",
-  f_carrier: "Attendre l'annonce de l'opérateur sur les appels internationaux",
-  f_carrier_h: "À Taïwan, les opérateurs diffusent un avertissement enregistré au début de chaque appel venant de l'étranger. L'IA attend qu'il soit terminé avant de parler. Automatique = activé quand la langue est le chinois traditionnel.",
-  tri_auto: "Automatique",
   // ---- system view
   sys_phones: "Téléphones",
   sys_updated: "Mis à jour à {time}",
@@ -6438,7 +6393,7 @@ I18N["de"] = {
   g_blocked: "Blockierte Nummern",
   g_notify: "Benachrichtigungen",
   g_summary: "Zusammenfassung und Kalender",
-  g_region: "Region und Erweitert",
+  g_region: "Erweitert",
   // ---- settings: basics
   g_basics_d: "Das Wenige, das die KI braucht, bevor sie an dein Telefon gehen kann.",
   f_language: "Sprache",
@@ -6655,17 +6610,12 @@ I18N["de"] = {
   ar_auto: "Automatisch (nach Nummer)",
   ar_sms: "Immer per SMS",
   ar_call: "Immer Rückruf der KI",
-  // ---- settings: region & advanced
-  f_cc: "Ländervorwahl",
-  f_cc_h: "Nur Ziffern, z. B. 1, 44, 49. Damit passen blockierte Nummern, die mit + geschrieben sind, zu der Form, in der dein Telefon Anrufer meldet.",
+  // ---- settings: advanced
   f_think: "Denkstufe",
   f_think_h: "Nur für Modelle mit „thinking“ im Namen. „Niedrig“ antwortet am schnellsten.",
   th_low: "Niedrig",
   th_medium: "Mittel",
   th_high: "Hoch",
-  f_carrier: "Auf die Ansage des Netzbetreibers bei Auslandsanrufen warten",
-  f_carrier_h: "Netzbetreiber in Taiwan spielen zu Beginn jedes Anrufs aus dem Ausland eine aufgezeichnete Warnung ab. Die KI wartet sie ab, bevor sie spricht. Automatisch = an, wenn die Sprache traditionelles Chinesisch ist.",
-  tri_auto: "Automatisch",
   // ---- system view
   sys_phones: "Telefone",
   sys_updated: "Aktualisiert um {time}",
@@ -7158,7 +7108,7 @@ I18N["pt"] = {
   g_blocked: "Números bloqueados",
   g_notify: "Notificações",
   g_summary: "Resumo e agenda",
-  g_region: "Região e avançado",
+  g_region: "Avançado",
   // ---- settings: basics
   g_basics_d: "O pouco que a IA precisa para poder atender seu telefone.",
   f_language: "Idioma",
@@ -7375,17 +7325,12 @@ I18N["pt"] = {
   ar_auto: "Automática (pelo número)",
   ar_sms: "Sempre SMS",
   ar_call: "Sempre ligação da IA",
-  // ---- settings: region & advanced
-  f_cc: "Código do país",
-  f_cc_h: "Só números, ex.: 1, 55, 351. Faz com que os números bloqueados escritos com + correspondam ao formato em que o telefone informa quem ligou.",
+  // ---- settings: advanced
   f_think: "Nível de raciocínio",
   f_think_h: "Só para modelos com “thinking” no nome. “Baixo” responde mais rápido.",
   th_low: "Baixo",
   th_medium: "Médio",
   th_high: "Alto",
-  f_carrier: "Esperar o aviso da operadora em chamadas internacionais",
-  f_carrier_h: "As operadoras de Taiwan tocam um aviso gravado no início de toda chamada vinda do exterior. A IA espera o aviso terminar antes de falar. Automático = ligado quando o idioma é chinês tradicional.",
-  tri_auto: "Automático",
   // ---- system view
   sys_phones: "Telefones",
   sys_updated: "Atualizado às {time}",

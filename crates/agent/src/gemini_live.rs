@@ -1070,35 +1070,28 @@ fn stt_codes(langs: &[crate::locale::Lang]) -> Vec<&'static str> {
 const CARRIER_INTL_PROMPT_SIMS: &[&str] = &["tw"];
 
 /// Whether this call opens with the carrier's international-call warning, so the
-/// AI holds its first words until it has played.
+/// AI holds its first words until it has played. There is no setting for it:
 ///
-/// - `setting` `off`: never. `on`: every caller from abroad (the setting's country
-///   code), whatever the SIM.
-/// - `auto`, with `sim_country` (the SIM the call came in on, sent by the phone app):
+/// - With `sim_country` (the SIM the call came in on, sent by the phone app):
 ///   only on a SIM whose carrier plays the warning, and only for a number of another
 ///   country than that SIM's, read the way the SIM reads it (`+…`, `00…`;
 ///   [`crate::phone_region::normalize`]). A US SIM never gets it, so a caller from
 ///   the US — or from anywhere — hears 「喂？」 at once.
-/// - `auto`, SIM unknown (phone app older than 0.2.5): `auto_on` (the language is
+/// - SIM unknown (phone app older than 0.2.5): `zh_tw` (the language is
 ///   Traditional Chinese, so the SIM is assumed to be Taiwan's) and a caller from abroad.
 pub fn expects_carrier_intl_prompt(
-    setting: &str,
-    auto_on: bool,
+    zh_tw: bool,
     caller_id: &str,
     sim_country: Option<&str>,
 ) -> bool {
-    match setting {
-        "off" => false,
-        "on" => is_intl_caller(caller_id),
-        _ => match sim_country.map(str::trim).filter(|c| !c.is_empty()) {
-            Some(sim) => {
-                let sim = sim.to_ascii_lowercase();
-                CARRIER_INTL_PROMPT_SIMS.contains(&sim.as_str())
-                    && crate::phone_region::normalize(caller_id, Some(sim.as_str()))
-                        .is_some_and(|n| n.country != sim.as_str())
-            }
-            None => auto_on && is_intl_caller(caller_id),
-        },
+    match sim_country.map(str::trim).filter(|c| !c.is_empty()) {
+        Some(sim) => {
+            let sim = sim.to_ascii_lowercase();
+            CARRIER_INTL_PROMPT_SIMS.contains(&sim.as_str())
+                && crate::phone_region::normalize(caller_id, Some(sim.as_str()))
+                    .is_some_and(|n| n.country != sim.as_str())
+        }
+        None => zh_tw && is_intl_caller(caller_id),
     }
 }
 
@@ -8652,29 +8645,25 @@ mod tests {
     #[test]
     fn carrier_prompt_wait_follows_the_sim_the_call_came_in_on() {
         // Taiwan SIM: callers from abroad get the warning, local ones do not.
-        assert!(expects_carrier_intl_prompt("auto", false, "+12025550143", Some("tw")));
-        assert!(expects_carrier_intl_prompt("auto", true, "+8613800138000", Some("TW")));
-        assert!(!expects_carrier_intl_prompt("auto", true, "+886912345678", Some("tw")));
-        assert!(!expects_carrier_intl_prompt("auto", true, "0912345678", Some("tw")));
+        assert!(expects_carrier_intl_prompt(false, "+12025550143", Some("tw")));
+        assert!(expects_carrier_intl_prompt(true, "+8613800138000", Some("TW")));
+        assert!(!expects_carrier_intl_prompt(true, "+886912345678", Some("tw")));
+        assert!(!expects_carrier_intl_prompt(true, "0912345678", Some("tw")));
         // Abroad is the number's country, read the way the SIM reads it: the
         // international prefix 00 and Hong Kong count; a hidden number does not.
-        assert!(expects_carrier_intl_prompt("auto", false, "0012025550143", Some("tw")));
-        assert!(expects_carrier_intl_prompt("auto", false, "+85291234567", Some("tw")));
-        assert!(!expects_carrier_intl_prompt("auto", true, "00886912345678", Some("tw")));
-        assert!(!expects_carrier_intl_prompt("auto", true, "", Some("tw")));
-        assert!(!expects_carrier_intl_prompt("auto", true, "unknown", Some("tw")));
+        assert!(expects_carrier_intl_prompt(false, "0012025550143", Some("tw")));
+        assert!(expects_carrier_intl_prompt(false, "+85291234567", Some("tw")));
+        assert!(!expects_carrier_intl_prompt(true, "00886912345678", Some("tw")));
+        assert!(!expects_carrier_intl_prompt(true, "", Some("tw")));
+        assert!(!expects_carrier_intl_prompt(true, "unknown", Some("tw")));
         // US SIM (e.g. Tello on Wi-Fi calling): no warning from any caller, even with
         // the language set to Traditional Chinese.
-        assert!(!expects_carrier_intl_prompt("auto", true, "+12025550143", Some("us")));
-        assert!(!expects_carrier_intl_prompt("auto", true, "+886912345678", Some("us")));
-        assert!(!expects_carrier_intl_prompt("auto", true, "2025550143", Some("us")));
+        assert!(!expects_carrier_intl_prompt(true, "+12025550143", Some("us")));
+        assert!(!expects_carrier_intl_prompt(true, "+886912345678", Some("us")));
+        assert!(!expects_carrier_intl_prompt(true, "2025550143", Some("us")));
         // SIM unknown (older phone app) and the language says no: no wait.
-        assert!(!expects_carrier_intl_prompt("auto", false, "+12025550143", None));
-        assert!(!expects_carrier_intl_prompt("auto", false, "+12025550143", Some(" ")));
-        // `off` wins over everything.
-        assert!(!expects_carrier_intl_prompt("off", true, "+12025550143", Some("tw")));
-        // `on` waits whatever the SIM.
-        assert!(expects_carrier_intl_prompt("on", false, "+12025550143", Some("us")) == is_intl_caller("+12025550143"));
+        assert!(!expects_carrier_intl_prompt(false, "+12025550143", None));
+        assert!(!expects_carrier_intl_prompt(false, "+12025550143", Some(" ")));
     }
 
     #[test]

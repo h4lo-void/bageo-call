@@ -233,11 +233,6 @@ pub struct RuntimeSettings {
     /// how blocked numbers written with `+…` match the national form.
     #[serde(default = "default_country_code")]
     pub country_code: String,
-    /// Taiwan carriers play a recorded warning at the start of every call from
-    /// abroad; the AI waits for it before its first words. `auto` = on when the
-    /// language is zh-TW, or `on` / `off`.
-    #[serde(default = "default_auto")]
-    pub intl_carrier_prompt: String,
     /// OpenAI-compatible chat endpoint for the post-call summary, e.g.
     /// `https://api.openai.com/v1`. Empty = DeepSeek when `deepseek_api_key` is
     /// set, else Gemini with the Live API key.
@@ -434,13 +429,6 @@ fn sanitize_answer_style(s: &str) -> String {
     }
 }
 
-fn sanitize_tristate(s: &str) -> String {
-    match s.trim().to_ascii_lowercase().as_str() {
-        l @ ("on" | "off") => l.to_string(),
-        _ => default_auto(),
-    }
-}
-
 fn digits_only(s: &str) -> String {
     s.chars().filter(|c| c.is_ascii_digit()).take(4).collect()
 }
@@ -560,7 +548,6 @@ impl RuntimeSettings {
             knowledge_notes: env_or("KNOWLEDGE_NOTES", ""),
             reply_in_caller_language: env_bool("REPLY_IN_CALLER_LANGUAGE", false),
             country_code: digits_only(&env_or("COUNTRY_CODE", "")),
-            intl_carrier_prompt: sanitize_tristate(&env_or("INTL_CARRIER_PROMPT", "auto")),
             summary_api_base: env_or("SUMMARY_API_BASE", ""),
             summary_model: env_or("SUMMARY_MODEL", ""),
             summary_provider: sanitize_summary_provider(&env_or("SUMMARY_PROVIDER", "auto")),
@@ -624,15 +611,6 @@ impl RuntimeSettings {
         }
     }
 
-    /// The AI holds its first words for the carrier's international-call warning.
-    pub fn intl_carrier_prompt_on(&self) -> bool {
-        match self.intl_carrier_prompt.as_str() {
-            "on" => true,
-            "off" => false,
-            _ => self.lang() == crate::locale::Lang::ZhTw,
-        }
-    }
-
     /// What the Live session's helpers read (`locale::set_active`).
     pub fn locale_active(&self) -> crate::locale::Active {
         crate::locale::Active {
@@ -656,7 +634,7 @@ impl RuntimeSettings {
             status: if self.owner_status_enabled { &self.owner_status_text } else { "" },
             stall,
             knowledge: &self.knowledge_notes,
-            carrier_note: self.intl_carrier_prompt_on(),
+            carrier_note: self.lang() == crate::locale::Lang::ZhTw,
             auto_language: self.reply_in_caller_language,
         })
     }
@@ -774,7 +752,6 @@ impl RuntimeSettings {
             answer_style,
             knowledge_notes,
             country_code,
-            intl_carrier_prompt,
             summary_api_base,
             summary_model,
             summary_provider,
@@ -845,7 +822,6 @@ impl RuntimeSettings {
         );
         self.summary_provider = sanitize_summary_provider(&self.summary_provider);
         self.answer_style = sanitize_answer_style(&self.answer_style);
-        self.intl_carrier_prompt = sanitize_tristate(&self.intl_carrier_prompt);
         self.reject_mode = sanitize_reject_mode(&self.reject_mode);
         self.country_code = digits_only(&self.country_code);
         self.mdns_name = crate::mdns::parse_name_setting(&self.mdns_name);
@@ -1166,8 +1142,6 @@ struct Overrides {
     reply_in_caller_language: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     country_code: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    intl_carrier_prompt: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     summary_api_base: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1663,10 +1637,6 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     p_string(patch, "country_code", &mut ov.country_code);
     if let Some(v) = ov.country_code.take() {
         ov.country_code = Some(digits_only(&v));
-    }
-    p_string(patch, "intl_carrier_prompt", &mut ov.intl_carrier_prompt);
-    if let Some(v) = ov.intl_carrier_prompt.take() {
-        ov.intl_carrier_prompt = Some(sanitize_tristate(&v));
     }
     p_string(patch, "summary_api_base", &mut ov.summary_api_base);
     p_string(patch, "summary_model", &mut ov.summary_model);
@@ -2705,5 +2675,47 @@ mod review_t4_tests {
         assert_eq!(rt.reject_mode, "decline");
         assert!(rt.reject_declines());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The AI waits for the carrier's international-call warning on its own: a
+    /// settings.json from when `intl_carrier_prompt` was a setting still loads,
+    /// its `on` / `off` changes nothing, and the next save drops it.
+    #[test]
+    fn old_intl_carrier_prompt_setting_is_ignored() {
+        for old in ["on", "off", "auto"] {
+            let dir = std::env::temp_dir().join(format!(
+                "bageo-intl-carrier-prompt-{}",
+                uuid::Uuid::new_v4()
+            ));
+            std::fs::create_dir_all(dir.join("config")).expect("temp settings dir");
+            let path = dir.join("config").join("settings.json");
+            let saved = json!({
+                "language": "zh-TW",
+                "answer_style": "persona",
+                "intl_carrier_prompt": old
+            });
+            std::fs::write(&path, serde_json::to_vec_pretty(&saved).unwrap()).unwrap();
+            let mut base = Settings::from_env();
+            base.calls_data_dir = dir.to_string_lossy().to_string();
+            let store = SettingsStore::load(base.clone());
+            let rt = store.snapshot();
+            assert_eq!((rt.language.as_str(), rt.answer_style.as_str()), ("zh-TW", "persona"));
+            let mut fresh = RuntimeSettings::from_base(&base);
+            fresh.language = "zh-TW".into();
+            fresh.answer_style = "persona".into();
+            let prompt = rt.persona_stall_system_prompt();
+            assert_eq!(prompt, fresh.persona_stall_system_prompt(), "{old}");
+            assert!(prompt.contains(crate::gemini_live::PERSONA_CARRIER_NOTE), "{old}");
+            assert!(!store.masked_json().to_string().contains("intl_carrier_prompt"));
+            store.apply_patch(&json!({ "owner_name": "Alex" })).unwrap();
+            let text = std::fs::read_to_string(&path).unwrap();
+            assert!(!text.contains("intl_carrier_prompt"), "{text}");
+            let file: Value = serde_json::from_str(&text).unwrap();
+            assert_eq!(
+                (file["language"].as_str(), file["owner_name"].as_str()),
+                (Some("zh-TW"), Some("Alex"))
+            );
+            let _ = std::fs::remove_dir_all(&dir);
+        }
     }
 }

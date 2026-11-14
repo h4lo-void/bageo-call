@@ -36,6 +36,8 @@
 | 状态留言 | 一行关于“此刻”的说明（“今天在等送货”）；只有相关时才会提到。 |
 | 背景音 | 垫在 AI 声音后面的轻微环境音：关、家里、办公室、街边、医院、救护车经过、台风天、雷雨、工地、地铁、夜市、鞭炮／节庆、开车中。音量有三档。 |
 
+境外来电时，如果接电话的是台湾 SIM 卡，AI 会等运营商的提示音播完再开口（自动判断，不用设置）。
+
 ### 推销与诈骗电话
 
 | 设置 | 作用 |
@@ -50,7 +52,7 @@
 
 ### 拦截号码
 
-一份号码列表，每个号码可以选填原因；这些号码打来不会用到 AI 和 Gemini。“拒接方式”（`reject_mode`）：**响铃时直接挂断（不接通）**（默认），或 **接起播“无法接通”再挂断**：播一小段“您拨打的号码暂时无法接通”语音，用你选的语言播放，声音默认和 AI 一样，也可以在“拒接语音的声音”里另外选（每个声音的每种语言都已经预先录好，不会消耗你的 Gemini 额度），这种方式来电者会看到电话接通几秒钟。结尾加 `*` 可以匹配至少四位的开头（`0800*`）。号码请按通话列表里显示的样子写；设置了“国际电话区号”时，`+…` 的写法也能匹配上。太旧、不会拒接的手机应用无论哪种都会接起来播放语音。两种都会在通话列表留下记录，并发出“⛔”通知。
+一份号码列表，每个号码可以选填原因；这些号码打来不会用到 AI 和 Gemini。“拒接方式”（`reject_mode`）：**响铃时直接挂断（不接通）**（默认），或 **接起播“无法接通”再挂断**：播一小段“您拨打的号码暂时无法接通”语音，用你选的语言播放，声音默认和 AI 一样，也可以在“拒接语音的声音”里另外选（每个声音的每种语言都已经预先录好，不会消耗你的 Gemini 额度），这种方式来电者会看到电话接通几秒钟。结尾加 `*` 可以匹配至少四位的开头（`0800*`）。号码请按通话列表里显示的样子写；知道你的区号时（[`COUNTRY_CODE`](#国际电话区号)），`+…` 的写法也能匹配上。太旧、不会拒接的手机应用无论哪种都会接起来播放语音。两种都会在通话列表留下记录，并发出“⛔”通知。
 
 ### 通知
 
@@ -74,12 +76,10 @@
 
 如果完全没有可用来写摘要的密钥，通知里会改放对方开头说的几句话；文字记录则始终可以在控制台里看到。
 
-### 地区与高级
+### 高级
 
 | 设置 | 作用 |
 |---|---|
-| 国际电话区号 | 你自己国家的国际电话区号，不带 `+`（`886`、`1`、`44`、`81`）。这样写成 `+44 20…` 的拦截号码，才能和手机上报的国内格式对上。别的国家打来的电话，对方的话会先用那国的语言转成文字（AI 不会那国语言时，让语音识别自己判断），道别才不会漏掉。手机 App 没上报是哪张卡接的时候，没有 `+` 的号码都当成这个国家的。语言设为繁體中文而这一栏留空时，会按 `886` 处理。 |
-| 等运营商的国际来电提示音播完 | 台湾的运营商会在每通境外来电的开头播放一段预录的警示语。“自动”只在“台湾 SIM 卡接到别国号码”（`+…` 或 `00…` 开头、区号不是台湾）时让 AI 等它播完再开口；其他 SIM 卡（例如双卡手机上的美国卡）接到的电话没有这段警示语，AI 会马上开口。手机 App 0.2.5 起会告诉 agent 这通电话是哪张卡接的；更早的 App 不会，这时看语言：繁體中文就当成台湾卡。“开”＝所有境外号码都等，“关”＝都不等。 |
 | 思考程度 | 只适用于“thinking”的 Live 模型：低／中／高。 |
 
 ## 启动选项
@@ -139,9 +139,13 @@ DEVICE_TOKEN=another-long-random-string
 | `USB_PHONE_PORT` | `8765` | 应用在手机上连接的端口。要改的话，必须连同应用里的地址一起改。 |
 | `USB_BRIDGE_INTERVAL_SEC` | `15` | 多久检查一次 USB 连接。 |
 
+### 国际电话区号
+
+`COUNTRY_CODE`：你自己国家的国际电话区号，只填数字、不带 `+`（`1`、`44`、`81`）。主程序用它解读没写区号的号码：拦截号码、联系人，以及早于 0.2.5、不会上报是哪张 SIM 卡接的手机 App 接到的电话。留空时，语言是繁體中文就按 `886` 处理，其他语言就没有。只有语言对不上单一国家（例如英语、西班牙语）时才需要设置。网页控制台里没有这一栏；除了环境变量，也可以用 `settings.json` 的 `country_code` 或 `PUT /calls/api/settings` 设置。`settings.json` 里有 `country_code`（包括旧版在控制台保存过的值，空的也算）时以它为准，`COUNTRY_CODE` 不会生效；要改回用环境变量，就把 `settings.json` 里那一行删掉。
+
 ### 首次运行的默认值
 
-这些只决定初始值；网页控制台里的设置会覆盖它们：`GEMINI_API_KEY`、`APP_LANGUAGE`（`en`、`zh-TW`…）、`NOTIFY_LANGUAGE`（留空 = 与 `APP_LANGUAGE` 相同）、`OWNER_NAME`、`OWNER_ALIASES`（用逗号分隔）、`ANSWER_STYLE`（`assistant` / `persona`）、`GEMINI_LIVE_MODEL`、`GEMINI_VOICE_NAME`、`COUNTRY_CODE`、`SUMMARY_PROVIDER`（`auto` / `gemini` / `deepseek`）、`SUMMARY_API_BASE`、`SUMMARY_MODEL`、`DEEPSEEK_API_KEY`（摘要用的 API 密钥）、`TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`、`NOTIFY_WEBHOOK_URL`、`APPOINTMENT_MODE`（`off` / `confirm`）、`APPOINTMENT_SMS`（`true` / `false`）、`APPOINTMENT_REPLY`（`auto` / `sms` / `call`）。
+这些只决定初始值；网页控制台里的设置会覆盖它们：`GEMINI_API_KEY`、`APP_LANGUAGE`（`en`、`zh-TW`…）、`NOTIFY_LANGUAGE`（留空 = 与 `APP_LANGUAGE` 相同）、`OWNER_NAME`、`OWNER_ALIASES`（用逗号分隔）、`ANSWER_STYLE`（`assistant` / `persona`）、`GEMINI_LIVE_MODEL`、`GEMINI_VOICE_NAME`、`SUMMARY_PROVIDER`（`auto` / `gemini` / `deepseek`）、`SUMMARY_API_BASE`、`SUMMARY_MODEL`、`DEEPSEEK_API_KEY`（摘要用的 API 密钥）、`TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`、`NOTIFY_WEBHOOK_URL`、`APPOINTMENT_MODE`（`off` / `confirm`）、`APPOINTMENT_SMS`（`true` / `false`）、`APPOINTMENT_REPLY`（`auto` / `sms` / `call`）。
 
 ### 日志与开发
 

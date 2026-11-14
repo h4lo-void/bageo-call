@@ -40,6 +40,8 @@ There are two kinds of settings:
 | Status note | One line about right now ("expecting a delivery today"); mentioned only when relevant. |
 | Background sound | A quiet room tone under the AI's voice: off, home, office, street, hospital, ambulance passing, typhoon, thunderstorm, construction, metro, night market, firecrackers, car. Three levels. |
 
+On a call from abroad taken by a Taiwanese SIM, the AI waits for the carrier's recorded warning to finish before it speaks (decided automatically; there is nothing to set).
+
 ### Sales & scam calls
 
 | Setting | What it does |
@@ -64,7 +66,7 @@ pick another under *Announcement voice* (every voice comes recorded in every
 language, so it costs no Gemini quota); these callers see the call connect for a
 few seconds. `*` at the end matches a prefix of at least four digits (`0800*`).
 Write numbers the way they show up in the call list; `+…` forms match when
-*Country calling code* is set.
+your country calling code is known ([`COUNTRY_CODE`](#country-calling-code)).
 A phone app too old to decline picks up and announces either way. Both leave
 the call in the call list and send a "⛔" notification.
 
@@ -109,12 +111,10 @@ Times are the computer's local time (`TZ` below).
 Without any key for the summary, the notification carries the caller's first
 words instead, and the transcript is always in the console.
 
-### Region & advanced
+### Advanced
 
 | Setting | What it does |
 |---|---|
-| Country calling code | Your own country's calling code without `+` (`886`, `1`, `44`, `81`). Lets blocked numbers written as `+44 20…` match the national form the phone reports. A caller from another country is transcribed with their country's language first (or, when the AI does not speak it, with the language detected), so their goodbye is not lost. When the phone app does not say which SIM took a call, numbers without `+` are read as this country's. With the language set to 繁體中文 and this left empty, `886` is assumed. |
-| Wait for the carrier's warning on international calls | Taiwan's carriers play a recorded warning at the start of every call from abroad. On *auto* the AI waits for it only when a Taiwanese SIM takes a call from another country (`+…` or `00…` of another country code); calls on any other SIM (say, a US SIM in a dual-SIM phone) have no warning, so the AI answers at once. Phone app 0.2.5+ reports which SIM took the call; with an older app, *auto* goes by the language (繁體中文 = a Taiwanese SIM). *On* waits on every call from abroad, *off* never. |
 | Thinking level | For "thinking" Live models only: low / medium / high. |
 
 ## Start-up options
@@ -191,13 +191,27 @@ rather than empty: an empty `TZ` means UTC.
 | `USB_PHONE_PORT` | `8765` | The port the app dials on the phone. Change only together with the app's address. |
 | `USB_BRIDGE_INTERVAL_SEC` | `15` | How often the USB link is checked. |
 
+### Country calling code
+
+`COUNTRY_CODE`: your own country's calling code, digits only, without `+`
+(`1`, `44`, `81`). It is how the agent reads a number written without a
+country code: blocked numbers, contacts, and calls from a phone app older than
+0.2.5, which does not say which SIM took the call. Empty = `886` when the
+language is 繁體中文, else none. Set it only when your language does not point
+to a single country (English, Spanish, …). It is not in the web console;
+besides the environment variable, `country_code` in `settings.json` or
+`PUT /calls/api/settings` sets it. A `country_code` in `settings.json`
+(including one saved from the console by an older version, even an empty one)
+wins over `COUNTRY_CODE`; delete that line to go back to the environment
+variable.
+
 ### First-run defaults
 
 These only set the starting value; the web console overrides them:
 `GEMINI_API_KEY`, `APP_LANGUAGE` (`en`, `zh-TW`, …), `NOTIFY_LANGUAGE` (empty =
 the same as `APP_LANGUAGE`), `OWNER_NAME`, `OWNER_ALIASES` (comma separated),
 `ANSWER_STYLE` (`assistant` / `persona`), `GEMINI_LIVE_MODEL`,
-`GEMINI_VOICE_NAME`, `COUNTRY_CODE`, `SUMMARY_PROVIDER` (`auto` / `gemini` /
+`GEMINI_VOICE_NAME`, `SUMMARY_PROVIDER` (`auto` / `gemini` /
 `deepseek`), `SUMMARY_API_BASE`, `SUMMARY_MODEL`,
 `DEEPSEEK_API_KEY` (the summary API key), `TELEGRAM_BOT_TOKEN`,
 `TELEGRAM_CHAT_ID`, `NOTIFY_WEBHOOK_URL`, `APPOINTMENT_MODE` (`off` /
