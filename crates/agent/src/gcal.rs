@@ -7,6 +7,9 @@
 //! `bageo_call=<tag>` ([`EVENT_TAG_KEY`]) so they can be found again when the
 //! answer to an insert was lost (timeout).
 //!
+//! The access token from the refresh token is kept until a minute before it
+//! expires ([`TokenCache`]): a call's calendar check is one request, not two.
+//!
 //! Settings (see [`crate::settings_store::RuntimeSettings`]):
 //! `gcal_client_id`, `gcal_client_secret`, `gcal_refresh_token`, `gcal_calendar_id`.
 //!
@@ -18,6 +21,9 @@ use chrono::{
 };
 use reqwest::Client;
 use serde_json::{json, Value};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration as StdDuration, Instant};
+use tracing::error;
 
 const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const CALENDAR_API: &str = "https://www.googleapis.com/calendar/v3/calendars";
@@ -31,7 +37,104 @@ pub fn gcal_missing_cred_msg() -> &'static str {
     crate::locale::phrases(crate::locale::current()).f_gcal_missing
 }
 
-/// Exchange a long-lived refresh token for a short-lived access token.
+/// An access token is given up this long before Google says it expires.
+const TOKEN_EARLY: StdDuration = StdDuration::from_secs(60);
+/// Its lifetime when the answer does not say (`expires_in`).
+const TOKEN_DEFAULT_SECS: u64 = 3600;
+
+/// The access token last fetched, for the credentials it was fetched with.
+#[derive(Default)]
+struct TokenCache {
+    entry: Option<(u64, String, Instant)>,
+}
+
+impl TokenCache {
+    /// The token for these credentials (`key`, [`cred_key`]) while it is good at `now`.
+    fn get(&self, key: u64, now: Instant) -> Option<String> {
+        self.entry
+            .as_ref()
+            .filter(|(k, _, until)| *k == key && now < *until)
+            .map(|(_, token, _)| token.clone())
+    }
+
+    /// Keep a fresh token that lives `expires_in` seconds; one about to expire is not kept.
+    fn put(&mut self, key: u64, token: &str, expires_in: Option<u64>, now: Instant) {
+        let life = StdDuration::from_secs(expires_in.unwrap_or(TOKEN_DEFAULT_SECS));
+        self.entry = life
+            .checked_sub(TOKEN_EARLY)
+            .filter(|d| !d.is_zero())
+            .map(|d| (key, token.to_string(), now + d));
+    }
+
+    fn forget(&mut self) {
+        self.entry = None;
+    }
+}
+
+fn token_cache() -> &'static Mutex<TokenCache> {
+    static CACHE: OnceLock<Mutex<TokenCache>> = OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// Which credentials a cached token belongs to (a hash: the secrets are not kept twice).
+fn cred_key(client_id: &str, client_secret: &str, refresh_token: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (client_id, client_secret, refresh_token).hash(&mut h);
+    h.finish()
+}
+
+/// Google refused the token (HTTP 401): the next request fetches a new one.
+fn forget_token_on(status: u16) {
+    if status == 401 {
+        token_cache().lock().unwrap_or_else(|e| e.into_inner()).forget();
+    }
+}
+
+/// The refresh token was revoked or expired (`invalid_grant`): said once per
+/// refresh token in the log, not on every calendar request after it.
+#[derive(Default)]
+struct GrantAlarm {
+    reported: Option<u64>,
+}
+
+impl GrantAlarm {
+    /// True the first time for these credentials.
+    fn first(&mut self, key: u64) -> bool {
+        if self.reported == Some(key) {
+            return false;
+        }
+        self.reported = Some(key);
+        true
+    }
+
+    /// A token was fetched again: a later refusal is news.
+    fn clear(&mut self) {
+        self.reported = None;
+    }
+}
+
+fn grant_alarm() -> &'static Mutex<GrantAlarm> {
+    static ALARM: OnceLock<Mutex<GrantAlarm>> = OnceLock::new();
+    ALARM.get_or_init(Default::default)
+}
+
+/// The OAuth error code of a token answer (`{"error": "invalid_grant", …}`),
+/// letters and `_` only — never the rest of the body.
+fn token_error_code(body: &str) -> Option<String> {
+    let v: Value = serde_json::from_str(body).ok()?;
+    let code: String = v
+        .get("error")?
+        .as_str()?
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .take(40)
+        .collect();
+    (!code.is_empty()).then_some(code)
+}
+
+/// A short-lived access token for the refresh token: the one kept from before
+/// while it is good ([`TokenCache`]), else a new one.
 async fn refresh_access_token(
     http: &Client,
     client_id: &str,
@@ -41,6 +144,14 @@ async fn refresh_access_token(
     let client_id = validate_client_id(client_id)?;
     let client_secret = validate_client_secret(client_secret)?;
     let refresh_token = validate_refresh_token(refresh_token)?;
+    let key = cred_key(client_id, client_secret, refresh_token);
+    if let Some(token) = token_cache()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(key, Instant::now())
+    {
+        return Ok(token);
+    }
 
     let resp = http
         .post(TOKEN_URL)
@@ -55,21 +166,38 @@ async fn refresh_access_token(
         .context("Google 日曆權杖更新連線失敗")?;
 
     if !resp.status().is_success() {
-        // Never dump response body — may echo client_id / token fragments.
+        // Never dump response body — may echo client_id / token fragments; only
+        // its error code is read.
         let status = resp.status().as_u16();
-        let _ = resp.text().await;
+        let body = resp.text().await.unwrap_or_default();
+        if token_error_code(&body).as_deref() == Some("invalid_grant") {
+            if grant_alarm().lock().unwrap_or_else(|e| e.into_inner()).first(key) {
+                error!(
+                    "Google Calendar refresh token was revoked or has expired (invalid_grant): the owner must authorize Google Calendar again and save the new refresh token in Settings"
+                );
+            }
+            bail!("Google 日曆授權已失效（invalid_grant）— 請重新授權，把新的 Refresh Token 填到「設定」分頁");
+        }
         bail!("{}", token_http_error_zh(status));
     }
 
     let data: Value = resp.json().await.context("Google 日曆權杖回應格式錯誤")?;
-    data.get("access_token")
+    let token = data
+        .get("access_token")
         .and_then(|v| v.as_str())
         .map(str::to_string)
         .ok_or_else(|| {
             anyhow::anyhow!(
                 "Google 日曆權杖回應缺少 access_token — 請至「設定」分頁檢查 Refresh Token"
             )
-        })
+        })?;
+    let expires_in = data.get("expires_in").and_then(Value::as_u64);
+    token_cache()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .put(key, &token, expires_in, Instant::now());
+    grant_alarm().lock().unwrap_or_else(|e| e.into_inner()).clear();
+    Ok(token)
 }
 
 /// Insert a calendar event; returns the created Google event id.
@@ -144,6 +272,7 @@ pub async fn insert_event_tagged(
     if !resp.status().is_success() {
         // Never dump response body into fulfill_error.
         let status = resp.status().as_u16();
+        forget_token_on(status);
         let _ = resp.text().await;
         bail!("{}", insert_http_error_zh(status));
     }
@@ -255,6 +384,7 @@ pub async fn list_events(
         .context("Google 日曆行程列表連線失敗")?;
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
+        forget_token_on(status);
         let _ = resp.text().await;
         bail!("{}", read_http_error_zh(status));
     }
@@ -292,6 +422,7 @@ pub async fn find_tagged(
         .context("Google 日曆行程列表連線失敗")?;
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
+        forget_token_on(status);
         let _ = resp.text().await;
         bail!("{}", read_http_error_zh(status));
     }
@@ -339,6 +470,7 @@ pub async fn move_event(
         .context("Google 日曆更改行程連線失敗")?;
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
+        forget_token_on(status);
         let _ = resp.text().await;
         bail!("{}", write_http_error_zh(status, "更改"));
     }
@@ -365,6 +497,7 @@ pub async fn delete_event(
         .await
         .context("Google 日曆刪除行程連線失敗")?;
     let status = resp.status().as_u16();
+    forget_token_on(status);
     let _ = resp.text().await;
     if delete_status_ok(status) {
         Ok(())
@@ -483,6 +616,7 @@ pub async fn query_free(
     if !resp.status().is_success() {
         // Never dump the response body.
         let status = resp.status().as_u16();
+        forget_token_on(status);
         let _ = resp.text().await;
         bail!("{}", freebusy_http_error_zh(status));
     }
@@ -896,6 +1030,46 @@ mod tests {
 
     fn utc(y: i32, m: u32, d: u32, h: u32, min: u32) -> DateTime<Utc> {
         Utc.with_ymd_and_hms(y, m, d, h, min, 0).unwrap()
+    }
+
+    #[test]
+    fn access_tokens_are_kept_until_a_minute_before_they_expire() {
+        let now = Instant::now();
+        let key = cred_key("id.apps.example", "secret-123456", "refresh-123456");
+        let mut c = TokenCache::default();
+        assert_eq!(c.get(key, now), None);
+        c.put(key, "tok-1", Some(3599), now);
+        assert_eq!(c.get(key, now).as_deref(), Some("tok-1"));
+        assert_eq!(c.get(key, now + StdDuration::from_secs(3538)).as_deref(), Some("tok-1"));
+        // From 60 seconds before it expires: fetched again.
+        assert_eq!(c.get(key, now + StdDuration::from_secs(3539)), None);
+        // Other credentials (a new refresh token saved): not this token.
+        assert_ne!(key, cred_key("id.apps.example", "secret-123456", "refresh-654321"));
+        assert_eq!(c.get(cred_key("id.apps.example", "secret-123456", "refresh-654321"), now), None);
+        // No lifetime given: an hour; one that is about to expire is not kept.
+        c.put(key, "tok-2", None, now);
+        assert_eq!(c.get(key, now + StdDuration::from_secs(3000)).as_deref(), Some("tok-2"));
+        c.put(key, "tok-3", Some(30), now);
+        assert_eq!(c.get(key, now), None);
+        c.put(key, "tok-4", Some(3599), now);
+        c.forget();
+        assert_eq!(c.get(key, now), None);
+    }
+
+    #[test]
+    fn a_revoked_refresh_token_is_reported_once() {
+        assert_eq!(token_error_code(r#"{"error": "invalid_grant", "error_description": "Token has been expired or revoked."}"#).as_deref(), Some("invalid_grant"));
+        assert_eq!(token_error_code(r#"{"error": "invalid_client"}"#).as_deref(), Some("invalid_client"));
+        for body in ["", "not json", "{}", r#"{"error": 400}"#, r#"{"error": "<>"}"#] {
+            assert_eq!(token_error_code(body), None, "{body}");
+        }
+        let mut alarm = GrantAlarm::default();
+        assert!(alarm.first(1));
+        assert!(!alarm.first(1));
+        // Another refresh token, or the same one after a token was fetched again: said again.
+        assert!(alarm.first(2));
+        alarm.clear();
+        assert!(alarm.first(2));
     }
 
     #[test]

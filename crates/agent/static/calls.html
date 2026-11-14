@@ -218,6 +218,9 @@ pre.block.prose{font:inherit;font-size:.9rem}
 .appt .btns{display:flex;gap:8px;flex-wrap:wrap}
 .appt-wait{flex-basis:100%;font-size:.85rem;color:var(--muted)}
 .appt-msg{white-space:pre-wrap}
+.appt-one+.appt-one{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.appt-one>.btns{margin-top:6px}
+.appt-retry select{width:auto;max-width:16rem;min-height:36px;padding:4px 10px}
 .seg{display:inline-flex;background:var(--surface2);border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}
 .seg button{border:0;background:transparent;padding:6px 14px;border-radius:8px;cursor:pointer;font-weight:600;color:var(--muted);min-height:34px}
 .seg button[aria-selected=true]{background:var(--surface);color:var(--text);box-shadow:0 0 0 1px var(--line)}
@@ -529,15 +532,9 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
                   <a class="btn sm primary" id="dCalGoogle" target="_blank" rel="noopener noreferrer"><svg class="i sm"><use href="#i-external"/></svg><span data-i18n="d_cal_add"></span></a>
                   <a class="btn sm" id="dCalIcs" download="call-event.ics"><svg class="i sm"><use href="#i-download"/></svg><span data-i18n="d_cal_ics"></span></a>
                   <span class="tag ok" id="dCalAdded" hidden><svg class="i sm"><use href="#i-check"/></svg><span data-i18n="d_cal_added"></span></span>
-                  <span class="tag" id="dApptStatus" hidden></span>
-                  <span class="tag warn" id="dApptCal" hidden></span>
-                  <span class="tag bad" id="dApptSms" hidden></span>
                 </div>
-                <div class="btns" id="dApptActs" hidden>
-                  <button type="button" class="btn sm primary" id="dApptOk" data-i18n="ap_confirm"></button>
-                  <button type="button" class="btn sm" id="dApptNo" data-i18n="ap_decline"></button>
-                </div>
-                <p class="help appt-msg" id="dApptMsg" hidden role="status"></p>
+                <!-- The call's appointments: where each stands, its buttons, its text to the caller -->
+                <div id="dAppts" hidden></div>
               </div>
             </div>
           </div>
@@ -742,6 +739,10 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
           <h2><span data-i18n="g_blocked"></span></h2>
           <p class="desc" data-i18n="g_blocked_d"></p>
           <div id="blockedField">
+            <div class="field"><label for="f-reject_mode" data-i18n="f_reject_mode"></label>
+              <select id="f-reject_mode" data-k="reject_mode" data-t="text" style="max-width:24rem">
+                <option value="decline" data-i18n="reject_decline"></option><option value="announce" data-i18n="reject_announce"></option>
+              </select></div>
             <div class="rows" id="blockRows" data-k="reject_numbers" data-t="rejects"></div>
             <div class="pv" style="margin-top:0">
               <button type="button" class="btn sm" id="btnBlockAdd"><svg class="i sm"><use href="#i-plus"/></svg><span data-i18n="b_add"></span></button>
@@ -1073,6 +1074,9 @@ I18N["en"] = {
   d_appt_sms_failed: "text not sent ({code})",
   d_appt_sms_none: "number can't take texts",
   d_appt_cal_none: "not in the calendar",
+  ap_retry_sms: "Send the text again",
+  ap_sms_from: "Send from",
+  ap_sms_from_call: "{phone} (took the call)",
   sms_c_offline: "the phone is not connected",
   sms_c_old_app: "the phone app is too old",
   sms_c_timeout: "the phone did not respond",
@@ -1289,7 +1293,7 @@ I18N["en"] = {
   h_copy: "Copy interview prompt",
   h_read: "Read the interview prompt",
   // ---- settings: blocked numbers
-  g_blocked_d: "Callers on this list hear a short “not available” announcement and the call ends. The AI is not used. The call still shows up in the list.",
+  g_blocked_d: "Calls from numbers on this list never reach the AI. Choose below how they are turned away. The call still shows up in the list.",
   b_number: "Number",
   b_number_ph: "e.g. 0255501234 or 0800*",
   b_reason: "Reason (optional)",
@@ -1299,6 +1303,9 @@ I18N["en"] = {
   b_empty: "No blocked numbers.",
   b_preview: "Preview the announcement",
   b_help: "Write the number any way you like. End it with * to block every number that starts with those digits (at least 4).",
+  f_reject_mode: "How blocked calls are turned away",
+  reject_decline: "Hang up while it rings (the call never connects)",
+  reject_announce: "Answer, play “not available”, then hang up",
   f_reject_voice: "Announcement voice",
   f_reject_voice_h: "The announcement is spoken in the language chosen above.",
   rv_same: "Same as the AI's voice",
@@ -1502,6 +1509,8 @@ I18N["en"] = {
   err_unauthorized: "The access token was not accepted.",
   err_not_found: "Not found.",
   err_invalid_id: "That ID is not valid.",
+  err_sms_not_retryable: "This text can't be sent again: the appointment isn't decided yet, or the text already went out.",
+  err_invalid_serial: "That phone is not valid.",
   err_no_calendar: "This call has no calendar suggestion.",
   err_no_audio: "This call has no recording of that kind.",
   err_open_failed: "The recording could not be opened.",
@@ -1682,6 +1691,9 @@ I18N["zh-TW"] = {
   d_appt_sms_failed: "簡訊沒傳出（{code}）",
   d_appt_sms_none: "對方號碼收不到簡訊",
   d_appt_cal_none: "沒寫進日曆",
+  ap_retry_sms: "重傳簡訊",
+  ap_sms_from: "用哪支手機傳",
+  ap_sms_from_call: "{phone}（接這通的手機）",
   sms_c_offline: "手機沒連線",
   sms_c_old_app: "手機 App 太舊",
   sms_c_timeout: "手機沒有回應（逾時）",
@@ -1898,7 +1910,7 @@ I18N["zh-TW"] = {
   h_copy: "複製訪談提示詞",
   h_read: "查看訪談提示詞",
   // ---- settings: blocked numbers
-  g_blocked_d: "名單上的號碼打來，只會聽到一小段「無法接通」的語音就掛斷，不會用到 AI。通話紀錄還是會留著。",
+  g_blocked_d: "名單上的號碼打來，不會用到 AI；怎麼拒接在下面選。通話紀錄還是會留著。",
   b_number: "號碼",
   b_number_ph: "例如 0255501234 或 0800*",
   b_reason: "原因（可不填）",
@@ -1908,6 +1920,9 @@ I18N["zh-TW"] = {
   b_empty: "沒有拒接號碼。",
   b_preview: "試聽語音",
   b_help: "號碼怎麼寫都可以。結尾加 * 表示拒接所有以這幾碼開頭的號碼（至少 4 碼）。",
+  f_reject_mode: "拒接方式",
+  reject_decline: "響鈴時直接掛斷（不接通）",
+  reject_announce: "接起播「無法接通」再掛斷",
   f_reject_voice: "拒接語音的聲音",
   f_reject_voice_h: "拒接語音會用上面選的語言播放。",
   rv_same: "跟 AI 的聲音一樣",
@@ -2111,6 +2126,8 @@ I18N["zh-TW"] = {
   err_unauthorized: "存取權杖不正確。",
   err_not_found: "找不到。",
   err_invalid_id: "這個 ID 不正確。",
+  err_sms_not_retryable: "這則簡訊不能重傳：預約還沒決定，或簡訊已經傳出去了。",
+  err_invalid_serial: "這支手機不正確。",
   err_no_calendar: "這通電話沒有行事曆建議。",
   err_no_audio: "這通電話沒有這種錄音。",
   err_open_failed: "錄音打不開。",
@@ -2291,6 +2308,9 @@ I18N["zh-CN"] = {
   d_appt_sms_failed: "短信没发出（{code}）",
   d_appt_sms_none: "对方号码收不到短信",
   d_appt_cal_none: "没写进日历",
+  ap_retry_sms: "重发短信",
+  ap_sms_from: "用哪部手机发",
+  ap_sms_from_call: "{phone}（接这通电话的手机）",
   sms_c_offline: "手机没连线",
   sms_c_old_app: "手机 App 太旧",
   sms_c_timeout: "手机没有回应（超时）",
@@ -2507,7 +2527,7 @@ I18N["zh-CN"] = {
   h_copy: "复制访谈提示词",
   h_read: "查看访谈提示词",
   // ---- settings: blocked numbers
-  g_blocked_d: "名单上的号码打来，只会听到一小段“无法接通”的语音就挂断，不会用到 AI。通话记录仍会保留。",
+  g_blocked_d: "名单上的号码打来，不会用到 AI；怎么拒接在下面选。通话记录仍会保留。",
   b_number: "号码",
   b_number_ph: "例如 0255501234 或 0800*",
   b_reason: "原因（可不填）",
@@ -2517,6 +2537,9 @@ I18N["zh-CN"] = {
   b_empty: "没有拦截号码。",
   b_preview: "试听语音",
   b_help: "号码怎么写都可以。结尾加 * 表示拦截所有以这几位开头的号码（至少 4 位）。",
+  f_reject_mode: "拒接方式",
+  reject_decline: "响铃时直接挂断（不接通）",
+  reject_announce: "接起播“无法接通”再挂断",
   f_reject_voice: "拒接语音的声音",
   f_reject_voice_h: "拒接语音会用上面选的语言播放。",
   rv_same: "跟 AI 的声音一样",
@@ -2720,6 +2743,8 @@ I18N["zh-CN"] = {
   err_unauthorized: "访问令牌不正确。",
   err_not_found: "找不到。",
   err_invalid_id: "这个 ID 不正确。",
+  err_sms_not_retryable: "这条短信不能重发：预约还没决定，或者短信已经发出去了。",
+  err_invalid_serial: "这部手机不正确。",
   err_no_calendar: "这通电话没有日历建议。",
   err_no_audio: "这通电话没有这种录音。",
   err_open_failed: "录音打不开。",
@@ -2900,6 +2925,9 @@ I18N["ja"] = {
   d_appt_sms_failed: "SMS 未送信（{code}）",
   d_appt_sms_none: "相手の番号は SMS 不可",
   d_appt_cal_none: "カレンダー未登録",
+  ap_retry_sms: "SMS を再送",
+  ap_sms_from: "送信に使う端末",
+  ap_sms_from_call: "{phone}（この電話を受けた端末）",
   sms_c_offline: "スマホが接続されていません",
   sms_c_old_app: "スマホのアプリが古い",
   sms_c_timeout: "スマホから応答がありません",
@@ -3116,7 +3144,7 @@ I18N["ja"] = {
   h_copy: "インタビュー用プロンプトをコピー",
   h_read: "インタビュー用プロンプトを読む",
   // ---- settings: blocked numbers
-  g_blocked_d: "このリストの番号からの電話には、「おつなぎできません」という短いアナウンスを流して切ります。AI は使いません。通話の記録は残ります。",
+  g_blocked_d: "このリストの番号からの電話は AI につなぎません。断り方は下で選べます。通話の記録は残ります。",
   b_number: "番号",
   b_number_ph: "例：0255501234、0800*",
   b_reason: "理由（任意）",
@@ -3126,6 +3154,9 @@ I18N["ja"] = {
   b_empty: "着信拒否の番号はありません。",
   b_preview: "アナウンスを試聴",
   b_help: "番号の書き方は自由です。末尾に * を付けると、その数字で始まるすべての番号を拒否します（4 桁以上）。",
+  f_reject_mode: "着信拒否のしかた",
+  reject_decline: "鳴っているうちに切る（つながらない）",
+  reject_announce: "応答して「おつなぎできません」を流してから切る",
   f_reject_voice: "アナウンスの声",
   f_reject_voice_h: "アナウンスは上で選んだ言語で流れます。",
   rv_same: "AI と同じ声",
@@ -3329,6 +3360,8 @@ I18N["ja"] = {
   err_unauthorized: "アクセストークンが受け付けられませんでした。",
   err_not_found: "見つかりません。",
   err_invalid_id: "この ID は正しくありません。",
+  err_sms_not_retryable: "この SMS は再送できません。予約がまだ決まっていないか、SMS はもう送信済みです。",
+  err_invalid_serial: "この端末は正しくありません。",
   err_no_calendar: "この通話にはカレンダーの提案がありません。",
   err_no_audio: "この通話にはその種類の録音がありません。",
   err_open_failed: "録音を開けませんでした。",
@@ -3509,6 +3542,9 @@ I18N["ko"] = {
   d_appt_sms_failed: "문자 못 보냄({code})",
   d_appt_sms_none: "문자를 받을 수 없는 번호",
   d_appt_cal_none: "캘린더에 없음",
+  ap_retry_sms: "문자 다시 보내기",
+  ap_sms_from: "보낼 휴대폰",
+  ap_sms_from_call: "{phone} (이 전화를 받은 휴대폰)",
   sms_c_offline: "휴대폰이 연결되어 있지 않음",
   sms_c_old_app: "휴대폰 앱이 오래됨",
   sms_c_timeout: "휴대폰이 응답하지 않음",
@@ -3725,7 +3761,7 @@ I18N["ko"] = {
   h_copy: "인터뷰 프롬프트 복사",
   h_read: "인터뷰 프롬프트 읽기",
   // ---- settings: blocked numbers
-  g_blocked_d: "이 목록의 번호에서 전화가 오면 “연결할 수 없습니다”라는 짧은 안내를 들려주고 끊습니다. AI는 사용하지 않습니다. 통화 기록은 그대로 남습니다.",
+  g_blocked_d: "이 목록의 번호에서 온 전화는 AI에 연결하지 않습니다. 거절하는 방법은 아래에서 고르세요. 통화 기록은 그대로 남습니다.",
   b_number: "번호",
   b_number_ph: "예: 0255501234 또는 0800*",
   b_reason: "이유(선택)",
@@ -3735,6 +3771,9 @@ I18N["ko"] = {
   b_empty: "차단한 번호가 없습니다.",
   b_preview: "안내 음성 미리 듣기",
   b_help: "번호는 어떤 형식으로 적어도 됩니다. 끝에 *를 붙이면 그 숫자로 시작하는 모든 번호를 차단합니다(4자리 이상).",
+  f_reject_mode: "차단 방법",
+  reject_decline: "울리는 동안 바로 끊기 (연결 안 됨)",
+  reject_announce: "받아서 “연결할 수 없습니다” 안내 후 끊기",
   f_reject_voice: "안내 음성 목소리",
   f_reject_voice_h: "안내 음성은 위에서 고른 언어로 나옵니다.",
   rv_same: "AI와 같은 목소리",
@@ -3938,6 +3977,8 @@ I18N["ko"] = {
   err_unauthorized: "액세스 토큰이 맞지 않습니다.",
   err_not_found: "찾을 수 없습니다.",
   err_invalid_id: "올바른 ID가 아닙니다.",
+  err_sms_not_retryable: "이 문자는 다시 보낼 수 없습니다. 예약이 아직 정해지지 않았거나 문자가 이미 나갔습니다.",
+  err_invalid_serial: "올바른 휴대폰이 아닙니다.",
   err_no_calendar: "이 통화에는 캘린더 제안이 없습니다.",
   err_no_audio: "이 통화에는 그런 녹음이 없습니다.",
   err_open_failed: "녹음을 열 수 없습니다.",
@@ -4118,6 +4159,9 @@ I18N["es"] = {
   d_appt_sms_failed: "SMS no enviado ({code})",
   d_appt_sms_none: "el número no recibe SMS",
   d_appt_cal_none: "no está en el calendario",
+  ap_retry_sms: "Reenviar el SMS",
+  ap_sms_from: "Enviar desde",
+  ap_sms_from_call: "{phone} (atendió la llamada)",
   sms_c_offline: "el teléfono no está conectado",
   sms_c_old_app: "la app del teléfono es demasiado antigua",
   sms_c_timeout: "el teléfono no respondió",
@@ -4334,7 +4378,7 @@ I18N["es"] = {
   h_copy: "Copiar el prompt de entrevista",
   h_read: "Leer el prompt de entrevista",
   // ---- settings: blocked numbers
-  g_blocked_d: "Quien llame desde un número de esta lista oirá un breve aviso de «no disponible» y la llamada terminará. No se usa la IA. La llamada sigue apareciendo en la lista.",
+  g_blocked_d: "Las llamadas de los números de esta lista nunca llegan a la IA. Elige abajo cómo se rechazan. La llamada sigue apareciendo en la lista.",
   b_number: "Número",
   b_number_ph: "p. ej. 0255501234 o 0800*",
   b_reason: "Motivo (opcional)",
@@ -4344,6 +4388,9 @@ I18N["es"] = {
   b_empty: "No hay números bloqueados.",
   b_preview: "Escuchar el aviso",
   b_help: "Escribe el número como quieras. Termínalo con * para bloquear todos los números que empiecen por esos dígitos (al menos 4).",
+  f_reject_mode: "Cómo se rechazan",
+  reject_decline: "Colgar mientras suena (la llamada no se conecta)",
+  reject_announce: "Contestar, poner el aviso de «no disponible» y colgar",
   f_reject_voice: "Voz del aviso",
   f_reject_voice_h: "El aviso se dice en el idioma elegido arriba.",
   rv_same: "La misma voz que la IA",
@@ -4547,6 +4594,8 @@ I18N["es"] = {
   err_unauthorized: "No se aceptó el token de acceso.",
   err_not_found: "No se encontró.",
   err_invalid_id: "Ese ID no es válido.",
+  err_sms_not_retryable: "Este SMS no se puede reenviar: la cita aún no está decidida o el SMS ya se envió.",
+  err_invalid_serial: "Ese teléfono no es válido.",
   err_no_calendar: "Esta llamada no tiene sugerencia de calendario.",
   err_no_audio: "Esta llamada no tiene una grabación de ese tipo.",
   err_open_failed: "No se pudo abrir la grabación.",
@@ -4727,6 +4776,9 @@ I18N["fr"] = {
   d_appt_sms_failed: "SMS non envoyé ({code})",
   d_appt_sms_none: "numéro sans SMS",
   d_appt_cal_none: "pas dans l'agenda",
+  ap_retry_sms: "Renvoyer le SMS",
+  ap_sms_from: "Envoyer depuis",
+  ap_sms_from_call: "{phone} (a pris l'appel)",
   sms_c_offline: "le téléphone n'est pas connecté",
   sms_c_old_app: "l'application du téléphone est trop ancienne",
   sms_c_timeout: "le téléphone n'a pas répondu",
@@ -4943,7 +4995,7 @@ I18N["fr"] = {
   h_copy: "Copier le prompt d'entretien",
   h_read: "Lire le prompt d'entretien",
   // ---- settings: blocked numbers
-  g_blocked_d: "Les correspondants de cette liste entendent une courte annonce « non disponible », puis l'appel prend fin. L'IA n'est pas utilisée. L'appel apparaît quand même dans la liste.",
+  g_blocked_d: "Les appels des numéros de cette liste n'arrivent jamais à l'IA. Choisissez ci-dessous comment ils sont refusés. L'appel apparaît quand même dans la liste.",
   b_number: "Numéro",
   b_number_ph: "ex. 0255501234 ou 0800*",
   b_reason: "Raison (facultatif)",
@@ -4953,6 +5005,9 @@ I18N["fr"] = {
   b_empty: "Aucun numéro bloqué.",
   b_preview: "Écouter l'annonce",
   b_help: "Écrivez le numéro comme vous voulez. Terminez par * pour bloquer tous les numéros qui commencent par ces chiffres (4 au minimum).",
+  f_reject_mode: "Comment refuser ces appels",
+  reject_decline: "Raccrocher pendant la sonnerie (l'appel n'aboutit pas)",
+  reject_announce: "Décrocher, annoncer « non disponible », puis raccrocher",
   f_reject_voice: "Voix de l'annonce",
   f_reject_voice_h: "L'annonce est dite dans la langue choisie plus haut.",
   rv_same: "La même voix que l'IA",
@@ -5156,6 +5211,8 @@ I18N["fr"] = {
   err_unauthorized: "Le jeton d'accès n'a pas été accepté.",
   err_not_found: "Introuvable.",
   err_invalid_id: "Cet identifiant n'est pas valide.",
+  err_sms_not_retryable: "Ce SMS ne peut pas être renvoyé : le rendez-vous n'est pas encore décidé, ou le SMS est déjà parti.",
+  err_invalid_serial: "Ce téléphone n'est pas valide.",
   err_no_calendar: "Cet appel n'a pas de suggestion d'agenda.",
   err_no_audio: "Cet appel n'a pas d'enregistrement de ce type.",
   err_open_failed: "Impossible d'ouvrir l'enregistrement.",
@@ -5336,6 +5393,9 @@ I18N["de"] = {
   d_appt_sms_failed: "SMS nicht gesendet ({code})",
   d_appt_sms_none: "Nummer ohne SMS",
   d_appt_cal_none: "nicht im Kalender",
+  ap_retry_sms: "SMS erneut senden",
+  ap_sms_from: "Senden von",
+  ap_sms_from_call: "{phone} (hat den Anruf angenommen)",
   sms_c_offline: "das Telefon ist nicht verbunden",
   sms_c_old_app: "die App auf dem Telefon ist zu alt",
   sms_c_timeout: "das Telefon hat nicht geantwortet",
@@ -5552,7 +5612,7 @@ I18N["de"] = {
   h_copy: "Interview-Prompt kopieren",
   h_read: "Interview-Prompt lesen",
   // ---- settings: blocked numbers
-  g_blocked_d: "Anrufer auf dieser Liste hören eine kurze Ansage „nicht erreichbar“, dann endet der Anruf. Die KI wird nicht verwendet. Der Anruf erscheint trotzdem in der Liste.",
+  g_blocked_d: "Anrufe von Nummern auf dieser Liste erreichen die KI nie. Wie sie abgewiesen werden, wählst du unten. Der Anruf erscheint trotzdem in der Liste.",
   b_number: "Nummer",
   b_number_ph: "z. B. 0255501234 oder 0800*",
   b_reason: "Grund (optional)",
@@ -5562,6 +5622,9 @@ I18N["de"] = {
   b_empty: "Keine blockierten Nummern.",
   b_preview: "Ansage anhören",
   b_help: "Schreib die Nummer, wie du möchtest. Mit * am Ende blockierst du alle Nummern, die mit diesen Ziffern beginnen (mindestens 4).",
+  f_reject_mode: "So werden sie abgewiesen",
+  reject_decline: "Beim Klingeln auflegen (der Anruf kommt nicht zustande)",
+  reject_announce: "Annehmen, „nicht erreichbar“ ansagen, dann auflegen",
   f_reject_voice: "Stimme der Ansage",
   f_reject_voice_h: "Die Ansage kommt in der oben gewählten Sprache.",
   rv_same: "Dieselbe Stimme wie die KI",
@@ -5765,6 +5828,8 @@ I18N["de"] = {
   err_unauthorized: "Das Zugriffstoken wurde nicht akzeptiert.",
   err_not_found: "Nicht gefunden.",
   err_invalid_id: "Diese ID ist ungültig.",
+  err_sms_not_retryable: "Diese SMS kann nicht erneut gesendet werden: Der Termin ist noch nicht entschieden, oder die SMS ist schon raus.",
+  err_invalid_serial: "Dieses Telefon ist ungültig.",
   err_no_calendar: "Dieser Anruf hat keinen Kalendervorschlag.",
   err_no_audio: "Für diesen Anruf gibt es keine solche Aufnahme.",
   err_open_failed: "Die Aufnahme konnte nicht geöffnet werden.",
@@ -5945,6 +6010,9 @@ I18N["pt"] = {
   d_appt_sms_failed: "SMS não enviado ({code})",
   d_appt_sms_none: "número não recebe SMS",
   d_appt_cal_none: "fora da agenda",
+  ap_retry_sms: "Reenviar o SMS",
+  ap_sms_from: "Enviar de",
+  ap_sms_from_call: "{phone} (atendeu a ligação)",
   sms_c_offline: "o telefone não está conectado",
   sms_c_old_app: "o app do telefone é antigo demais",
   sms_c_timeout: "o telefone não respondeu",
@@ -6161,7 +6229,7 @@ I18N["pt"] = {
   h_copy: "Copiar o prompt de entrevista",
   h_read: "Ler o prompt de entrevista",
   // ---- settings: blocked numbers
-  g_blocked_d: "Quem ligar de um número desta lista ouve um aviso curto de “indisponível” e a chamada termina. A IA não é usada. A chamada continua aparecendo na lista.",
+  g_blocked_d: "Ligações dos números desta lista nunca chegam à IA. Escolha abaixo como elas são recusadas. A chamada continua aparecendo na lista.",
   b_number: "Número",
   b_number_ph: "ex.: 0255501234 ou 0800*",
   b_reason: "Motivo (opcional)",
@@ -6171,6 +6239,9 @@ I18N["pt"] = {
   b_empty: "Nenhum número bloqueado.",
   b_preview: "Ouvir o aviso",
   b_help: "Escreva o número do jeito que quiser. Termine com * para bloquear todos os números que começam com esses dígitos (pelo menos 4).",
+  f_reject_mode: "Como recusar",
+  reject_decline: "Desligar enquanto toca (a chamada não completa)",
+  reject_announce: "Atender, tocar o aviso de “indisponível” e desligar",
   f_reject_voice: "Voz do aviso",
   f_reject_voice_h: "O aviso é falado no idioma escolhido acima.",
   rv_same: "A mesma voz da IA",
@@ -6374,6 +6445,8 @@ I18N["pt"] = {
   err_unauthorized: "O token de acesso não foi aceito.",
   err_not_found: "Não encontrado.",
   err_invalid_id: "Esse ID não é válido.",
+  err_sms_not_retryable: "Este SMS não pode ser reenviado: o compromisso ainda não foi decidido ou o SMS já foi enviado.",
+  err_invalid_serial: "Esse telefone não é válido.",
   err_no_calendar: "Esta chamada não tem sugestão de agenda.",
   err_no_audio: "Esta chamada não tem gravação desse tipo.",
   err_open_failed: "Não foi possível abrir a gravação.",
@@ -7319,39 +7392,19 @@ function renderDetail() {
     $("dCalAdded").hidden = !added;
     $("dCalIcs").href = withTok(`${apiBase}/call/${encodeURIComponent(c.id)}/event.ics`);
   }
-  // An appointment the AI took on the call: where it stands. While it waits for
-  // the owner's ✅ (or was declined) there is no second way to add it.
+  // The appointments the AI took on the call (the first on the record, the
+  // others in its `more`), each with where it stands. While the first waits
+  // for the owner's ✅ (or was declined) there is no second way to add it.
   const ap = n && n.appointment;
   $("dCalLabel").dataset.i18n = ap ? "d_appt" : "d_cal";
   $("dCalLabel").textContent = t(ap ? "d_appt" : "d_cal");
-  $("dApptStatus").hidden = !ap;
-  // The task of this call's appointment (fresher than the notes): its buttons
-  // while it waits, then what came of the decision.
-  const apTask = ap ? apptTaskFor(c.id) : null;
-  const cur = apTask ? apTask.appointment : ap;
-  $("dApptCal").hidden = $("dApptSms").hidden = $("dApptActs").hidden = $("dApptMsg").hidden = true;
+  const apBox = clear($("dAppts"));
+  apBox.hidden = !ap;
   if (ap) {
-    const st = ["pending", "booked", "confirmed", "declined"].includes(cur.status) ? cur.status : "pending";
-    $("dApptStatus").className = "tag " + (st === "declined" ? "bad" : st === "pending" ? "warn" : "ok");
-    $("dApptStatus").textContent = t("d_appt_" + st) + (cur.sms === "sent" ? " · " + t("d_appt_sms_sent") : "");
-    if (st === "pending" || st === "declined") $("dCalGoogle").hidden = true;
-    if (st === "confirmed" && !cur.event_id) {
-      $("dApptCal").hidden = false;
-      $("dApptCal").textContent = t("d_appt_cal_none");
-    }
-    if (cur.sms && cur.sms !== "sent") {
-      $("dApptSms").hidden = false;
-      // Why, in words (the phone's codes too); an unknown code as it came.
-      $("dApptSms").textContent = cur.sms === "no_number" ? t("d_appt_sms_none") : t("d_appt_sms_failed", { code: tCode("sms_c_", cur.sms) });
-    }
-    const busy = !!apTask && apptBusy.has(apTask.id);
-    if (st === "pending" && apTask) {
-      $("dApptActs").hidden = false;
-      $("dApptOk").disabled = $("dApptNo").disabled = busy;
-    }
-    const said = busy ? t("ap_working") : apTask && apptResult && apptResult.id === apTask.id ? apptResult.text : "";
-    $("dApptMsg").hidden = !said;
-    $("dApptMsg").textContent = said;
+    const all = [ap, ...(Array.isArray(ap.more) ? ap.more : [])];
+    for (const one of all) apBox.append(apptBlock(c.id, one, all.length > 1));
+    const first = apptView(c.id, ap);
+    if (first.st === "pending" || first.st === "declined") $("dCalGoogle").hidden = true;
   }
 
   // Recording: keep the player where it is when only the text around it changed.
@@ -8443,7 +8496,51 @@ function apptWhen(a) {
   return full(s) + (s.toDateString() === e.toDateString() ? "–" + strf(f.end, e, "") : " – " + full(e));
 }
 const apptPending = () => apptTasks.filter((tk) => tk.appointment.status === "pending");
-const apptTaskFor = (callId) => apptTasks.find((tk) => tk.call_id === callId) || null;
+// One appointment of a call as it stands now: its task (fresher than the call's
+// notes; a call's appointments are told apart by their tag) and its status.
+function apptView(callId, ap) {
+  const tk = apptTasks.find((x) => x.call_id === callId && (!ap.tag || x.appointment.tag === ap.tag)) || null;
+  const cur = tk ? tk.appointment : ap;
+  const st = ["pending", "booked", "confirmed", "declined"].includes(cur.status) ? cur.status : "pending";
+  return { tk, cur, st };
+}
+// An appointment in a call's details: where it stands, ✅ / ❌ while it waits,
+// why a ✅ did not go through, and the text to the caller — with a way to send
+// it again when it did not go out. `named`: more than one on the call.
+function apptBlock(callId, ap, named) {
+  const { tk, cur, st } = apptView(callId, ap);
+  const busy = !!tk && apptBusy.has(tk.id);
+  const box = h("div", { class: "appt-one" });
+  if (named) box.append(h("div", { class: "appt-when", text: apptWhen(cur) + (cur.title ? " " + cur.title : "") }));
+  box.append(h("div", { class: "btns" },
+    h("span", { class: "tag " + (st === "declined" ? "bad" : st === "pending" ? "warn" : "ok"), text: t("d_appt_" + st) + (cur.sms === "sent" ? " · " + t("d_appt_sms_sent") : "") }),
+    st === "confirmed" && !cur.event_id ? h("span", { class: "tag warn", text: t("d_appt_cal_none") }) : null,
+    // Why, in words (the phone's codes too); an unknown code as it came.
+    cur.sms && cur.sms !== "sent"
+      ? h("span", { class: "tag bad", text: cur.sms === "no_number" ? t("d_appt_sms_none") : t("d_appt_sms_failed", { code: tCode("sms_c_", cur.sms) }) })
+      : null));
+  // A ✅ the calendar did not take (the agent's own words): it still waits.
+  if (st === "pending" && cur.write_error) box.append(h("p", { class: "note" }, icon("alert", "sm"), h("span", { text: cur.write_error })));
+  if (st === "pending" && tk) {
+    box.append(h("div", { class: "btns" },
+      h("button", { type: "button", class: "btn sm primary", disabled: busy, onclick: () => decideAppt(tk.id, true), text: t("ap_confirm") }),
+      h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => decideAppt(tk.id, false), text: t("ap_decline") })));
+  }
+  if (tk && st !== "pending" && cur.sms && cur.sms !== "sent") box.append(smsRetryRow(tk, busy));
+  const said = busy ? t("ap_working") : tk && apptResult && apptResult.id === tk.id ? apptResult.text : "";
+  if (said) box.append(h("p", { class: "help appt-msg", role: "status", text: said }));
+  return box;
+}
+// "Send the text again": from the phone that took the call, or another connected one.
+function smsRetryRow(tk, busy) {
+  const sel = h("select", { "aria-label": t("ap_sms_from"), title: t("ap_sms_from") },
+    h("option", { value: "", text: t("ap_sms_from_call", { phone: devName(tk.serial) }) }));
+  for (const s of (devices && devices.connected) || []) {
+    if (s !== tk.serial) sel.append(h("option", { value: s, text: devName(s) }));
+  }
+  return h("div", { class: "btns appt-retry" }, sel,
+    h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => retrySms(tk.id, sel.value), text: t("ap_retry_sms") }));
+}
 function apptWho(tk) {
   const num = tk.caller_id || t("hidden_number");
   return tk.appointment.caller_name ? tk.appointment.caller_name + " · " + num : num;
@@ -8480,7 +8577,9 @@ function renderAppts() {
         h("div", { class: "appt-when", text: apptWhen(a) + (a.title ? " " + a.title : "") }),
         h("div", { class: "appt-sub" },
           h("span", { text: apptWho(tk) }), " · ",
-          h("a", { href: "#call=" + encodeURIComponent(tk.call_id), text: t("ap_open_call") }))),
+          h("a", { href: "#call=" + encodeURIComponent(tk.call_id), text: t("ap_open_call") })),
+        // A ✅ the calendar did not take: it still waits, press again.
+        a.write_error ? h("p", { class: "note" }, icon("alert", "sm"), h("span", { text: a.write_error })) : null),
       h("span", { class: "btns" },
         h("button", { type: "button", class: "btn sm primary", disabled: busy, onclick: () => decideAppt(tk.id, true), text: t("ap_confirm") }),
         h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => decideAppt(tk.id, false), text: t("ap_decline") })),
@@ -8514,9 +8613,27 @@ async function decideAppt(id, confirm) {
   refreshCalls({ keep: true });
   if (detail.id) loadDetail(detail.id);
 }
+// The text of a decided appointment, sent again (from `serial`, empty = the
+// phone that took the call); the agent's answer is shown, then it is reloaded.
+async function retrySms(id, serial) {
+  if (apptBusy.has(id)) return;
+  apptBusy.add(id);
+  apptResult = null;
+  if (detail.call) renderDetail();
+  try {
+    const d = await api("/appointments/" + encodeURIComponent(id) + "/retry-sms", jsonBody("POST", serial ? { serial } : {}));
+    apptResult = { id, text: String(d.message || tCode("sms_c_", String(d.sms || ""))), bad: !d.ok };
+  } catch (e) {
+    apptResult = { id, text: e.message, bad: true };
+  } finally {
+    apptBusy.delete(id);
+  }
+  await loadAppts();
+  renderAppts();
+  if (detail.call) renderDetail();
+  if (detail.id) loadDetail(detail.id);
+}
 $("apptResultClose").addEventListener("click", () => { apptResult = null; renderAppts(); if (detail.call) renderDetail(); });
-$("dApptOk").addEventListener("click", () => { const tk = detail.id && apptTaskFor(detail.id); if (tk) decideAppt(tk.id, true); });
-$("dApptNo").addEventListener("click", () => { const tk = detail.id && apptTaskFor(detail.id); if (tk) decideAppt(tk.id, false); });
 
 document.addEventListener("keydown", (e) => {
   const tag = (e.target && e.target.tagName) || "";

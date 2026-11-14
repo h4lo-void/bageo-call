@@ -1536,6 +1536,93 @@ fn json_required() -> Response {
     api_error(StatusCode::BAD_REQUEST, "bad_request", "Content-Type must be application/json")
 }
 
+/// The body of `POST /api/appointments/{id}/retry-sms`: empty, `{}` or
+/// `{"serial": "<phone>"}`, the phone to send from (empty or none: the one that
+/// took the call). Err is the 400 answer's code: `bad_request` (not a JSON
+/// object, `serial` not a string) or `invalid_serial`.
+pub fn parse_retry_body(body: &[u8]) -> Result<Option<String>, &'static str> {
+    if body.iter().all(u8::is_ascii_whitespace) {
+        return Ok(None);
+    }
+    let v: Value = serde_json::from_slice(body).map_err(|_| "bad_request")?;
+    let obj = v.as_object().ok_or("bad_request")?;
+    match obj.get("serial") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) if s.trim().is_empty() => Ok(None),
+        Some(Value::String(s)) if task_id_safe(s.trim()) => Ok(Some(s.trim().to_string())),
+        Some(Value::String(_)) => Err("invalid_serial"),
+        Some(_) => Err("bad_request"),
+    }
+}
+
+/// Text the caller of a decided appointment again, when the text did not go
+/// out (or it is not known whether it did): `{ok, sms, message}` — `ok` when it
+/// was sent, `sms` the new code ([`crate::appointments::Appointment::sms`]),
+/// `message` what happened in the owner's words. Waiting, already sent or
+/// never to be sent: HTTP 409 `sms_not_retryable` with the code it has.
+async fn appointment_retry_sms(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+    Path(id): Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    // JSON only, like a decision: other web pages cannot text a caller from a
+    // browser on the network.
+    if !is_json_request(&headers) {
+        return json_required();
+    }
+    if !task_id_safe(&id) {
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid task id");
+    }
+    let serial = match parse_retry_body(&body) {
+        Ok(serial) => serial,
+        Err(code) => return api_error(StatusCode::BAD_REQUEST, code, "the body must be {} or {\"serial\": \"<phone>\"}"),
+    };
+    let is_appointment = state
+        .task_store
+        .get(&id)
+        .await
+        .is_some_and(|t| t.appointment.is_some());
+    if !is_appointment {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({"ok": false, "error": "appointment not found", "code": "task_not_found"})),
+        )
+            .into_response();
+    }
+    let rt = state.settings_store.snapshot();
+    match crate::appointments::retry_sms(
+        &rt,
+        &state.task_store,
+        &state.store,
+        Some(state.control.as_ref()),
+        &id,
+        serial.as_deref(),
+    )
+    .await
+    {
+        Ok(crate::appointments::RetrySms::Tried { sms, line, .. }) => {
+            info!(task_id = id.as_str(), sms = sms.as_str(), "appointment sms retried");
+            Json(json!({"ok": sms == "sent", "sms": sms, "message": line})).into_response()
+        }
+        Ok(crate::appointments::RetrySms::NotAllowed { sms }) => (
+            StatusCode::CONFLICT,
+            Json(json!({
+                "ok": false,
+                "sms": sms,
+                "code": "sms_not_retryable",
+                "error": "only a confirmed or declined appointment whose text did not go out can be texted again",
+            })),
+        )
+            .into_response(),
+        Err(e) => fulfill_err_response(e),
+    }
+}
+
 /// An appointment task (the AI took it on a call) is confirmed or declined by
 /// [`crate::appointments::decide_from_web`] (calendar, text to the caller, and
 /// the Telegram card's buttons taken off); None for any other task.
@@ -1622,6 +1709,18 @@ mod tests {
         assert!(is_json_request(&m));
         m.insert(header::CONTENT_TYPE, "Application/JSON".parse().unwrap());
         assert!(is_json_request(&m));
+    }
+
+    #[test]
+    fn a_text_is_sent_again_from_the_phone_asked_for() {
+        for body in [&b""[..], b"  ", b"{}", br#"{"serial": null}"#, br#"{"serial": " "}"#] {
+            assert_eq!(parse_retry_body(body), Ok(None), "{:?}", String::from_utf8_lossy(body));
+        }
+        assert_eq!(parse_retry_body(br#"{"serial": " pixel-10341 "}"#), Ok(Some("pixel-10341".to_string())));
+        assert_eq!(parse_retry_body(br#"{"serial": "../etc"}"#), Err("invalid_serial"));
+        for bad in [&br#"{"serial": 7}"#[..], b"[]", b"serial=pixel-1", br#""pixel-1""#] {
+            assert_eq!(parse_retry_body(bad), Err("bad_request"), "{:?}", String::from_utf8_lossy(bad));
+        }
     }
 
     #[test]
@@ -1805,5 +1904,6 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/tasks", get(tasks_list))
         .route("/api/tasks/{id}/confirm", post(tasks_confirm))
         .route("/api/tasks/{id}/ignore", post(tasks_ignore))
+        .route("/api/appointments/{id}/retry-sms", post(appointment_retry_sms))
         .with_state(state)
 }

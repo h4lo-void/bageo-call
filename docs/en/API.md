@@ -126,6 +126,12 @@ in the calendar. `sms`: `sent`, or why the text did not go (`offline`,
 the call's own mark on the events it writes (below). `tg_card`: `{chat_id,
 message_id}` of the Telegram card sent for it, whose buttons are taken off when
 you decide elsewhere. Empty fields are left out.
+`write_error`: why the last ✅ could not put it in the calendar (it still
+waits). `sim_country` / `sim_sub_id`: the SIM that took the call; its country
+reads a caller ID without a country code for the text, which goes out from it.
+A call can agree to more than one appointment: each gets a task and a `tag` of
+its own (the call's, then `<tag>-2`, …), and the call record and notes keep the
+first with the others in `more`.
 Events the agent writes carry the private extended property
 `bageo_call=<appointment.tag>`, so an event whose insert answer was lost is found
 again instead of written twice.
@@ -133,8 +139,9 @@ again instead of written twice.
 | Method and path | What |
 |---|---|
 | `GET /calls/api/tasks` | Tasks, newest first (up to 200): `{ok, tasks}`. The console's *Appointments to confirm* list is the tasks whose `appointment.status` is `pending`. |
-| `POST /calls/api/tasks/{id}/confirm` | For an appointment: the same as **✅ Confirm** in the web console or on its Telegram card — Google Calendar, then (with `appointment_sms`) the text to the caller, which may take up to 90 seconds. `{ok, task, message}`; `message` is what happened, as the console shows it and the Telegram bot replies it. When a Telegram card went out for the appointment, its buttons are taken off and `message` is posted in that chat (best effort; the decision stands either way). Only the first decision counts: a second confirm or decline — also one sent while the first is still running, or a press on the Telegram card — answers "already handled" and changes nothing. Needs `Content-Type: application/json` (no body), otherwise HTTP 400 `bad_request`, so other web pages cannot decide from a browser on your network. |
+| `POST /calls/api/tasks/{id}/confirm` | For an appointment: the same as **✅ Confirm** in the web console or on its Telegram card — Google Calendar, then (with `appointment_sms`) the text to the caller, which may take up to 90 seconds. `{ok, task, message}`; `message` is what happened, as the console shows it and the Telegram bot replies it. When a Telegram card went out for the appointment, its buttons are taken off and `message` is posted in that chat (best effort; the decision stands either way). Only the first decision counts: a second confirm or decline — also one sent while the first is still running, or a press on the Telegram card — answers "already handled" and changes nothing. The time is checked again just before it is written: when another appointment has taken it, or the write fails, the appointment stays `pending` with `write_error`, nothing is texted, the Telegram card keeps its buttons, `message` says why, and it can be confirmed again. Needs `Content-Type: application/json` (no body), otherwise HTTP 400 `bad_request`, so other web pages cannot decide from a browser on your network. |
 | `POST /calls/api/tasks/{id}/ignore` | For an appointment: **❌ Decline** (an event the call already put in the calendar is removed; the text when `appointment_sms` is on). Same answer and rules. |
+| `POST /calls/api/appointments/{id}/retry-sms` | Texts the caller of a confirmed or declined appointment again when its text did not go out (`sms` is a failure code), saying what the decision said. Optional body `{"serial": "<phone>"}` sends it from another connected phone; without it, from the phone that took the call. `{ok, sms, message}`: `ok` when it was sent, `sms` the new code, `message` what happened. Still waiting, already sent or never texted: HTTP 409 `sms_not_retryable` with the current `sms`. Needs `Content-Type: application/json`; a phone that is not letters, digits, `-` and `_` gets 400 `invalid_serial`. |
 
 ## Phones and health
 
