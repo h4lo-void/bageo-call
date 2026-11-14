@@ -8146,6 +8146,115 @@ mod tests {
         delivered.store(1, Ordering::Relaxed);
         assert!(api_send_deadline(&delivered, first_delivery_deadline) > first_delivery_deadline);
     }
+
+    // ---- Reviewer acceptance tests (fix/call-conversation 78ce5a9) ----
+
+    /// Requirement 5: the quiet-line clocks start once the phone has played our
+    /// words. run_session treats `!speech_left().is_zero()` as "AI still playing"
+    /// and resets last_activity_at every loop while it is. The downlink player
+    /// (main.rs stream_gemini_downlink_pcm) keeps a remainder smaller than one
+    /// 40 ms frame queued between replies ("Keep tiny remainder for next
+    /// segment"), which drained_for() forgives with PLAYER_DRAIN_SLACK_BYTES but
+    /// speech_left() does not: the quiet clocks never start after such a reply.
+    #[test]
+    fn reviewer_quiet_clock_is_not_held_by_the_sub_frame_remainder() {
+        let h = DownlinkPlayHead::new();
+        let frame: u64 = 1_280; // 40 ms @ 16 kHz, the player's frame
+        h.enqueue(3 * frame + 1_000);
+        for _ in 0..3 {
+            h.dequeue(frame);
+        }
+        // Segment over: player idle, the phone has played everything sent.
+        h.set_outbound(false);
+        h.set_speech_tail(tokio::time::Instant::now());
+        assert!(h.drained_for(Duration::ZERO, PLAYER_DRAIN_SLACK_BYTES), "the player counts as drained");
+        let left = h.speech_left(16_000);
+        assert!(
+            left.is_zero(),
+            "ai_playing stays true while only the kept remainder is queued: speech_left={left:?}"
+        );
+    }
+
+    /// Acceptance B (pass side): short replies after a closing take nothing back;
+    /// a closing that turns into a question does.
+    #[test]
+    fn reviewer_closing_then_short_reply_or_question() {
+        assert!(caller_wraps_up("掰掰"));
+        assert!(!caller_withdraws_bye("掰掰，嗯", "嗯"));
+        assert!(!caller_withdraws_bye("掰掰，嗯", "掰掰，嗯"));
+        assert!(!caller_withdraws_bye("那就先這樣，好，謝謝，嗯嗯", "嗯嗯"));
+        assert!(!caller_withdraws_bye("那就先這樣，謝謝", "謝謝"));
+        assert!(caller_withdraws_bye("那就先這樣嗎？", "嗎？"));
+        assert!(caller_withdraws_bye("好，那就先這樣嗎？", "嗎？"));
+        // Through the session's window (push_tx_window) with no earlier question.
+        let mut w = String::new();
+        push_tx_window(&mut w, "好，那就先這樣", 800);
+        assert!(caller_wraps_up(&w));
+        push_tx_window(&mut w, "嗎？", 800);
+        assert!(caller_withdraws_bye(&w, "嗎？"), "{w}");
+    }
+
+    /// Acceptance B (fail side): thanks and an "mm" arriving in one transcript
+    /// piece after the closing count as new words and take the goodbye back.
+    #[test]
+    fn reviewer_thanks_and_mm_in_one_piece_keep_the_goodbye() {
+        let cases = [
+            ("那就先這樣，好，謝謝，嗯嗯", "好，謝謝，嗯嗯"),
+            ("那就先這樣，謝謝，嗯嗯", "謝謝，嗯嗯"),
+            ("好，掰掰，謝謝喔，嗯", "謝謝喔，嗯"),
+        ];
+        let withdrawn: Vec<_> = cases
+            .iter()
+            .filter(|(w, s)| caller_withdraws_bye(w, s))
+            .collect();
+        assert!(withdrawn.is_empty(), "goodbye taken back by a short reply: {withdrawn:?}");
+    }
+
+    /// Requirement 3 through the session's window: the caller asked something
+    /// earlier in the call, so push_tx_window drops the short 「嗎？」 piece
+    /// (`window.contains(piece) && < 4 chars`) and the goodbye is never taken back.
+    #[test]
+    fn reviewer_question_tail_after_an_earlier_question() {
+        let mut w = String::new();
+        push_tx_window(&mut w, "你明天有空嗎？", 800);
+        push_tx_window(&mut w, "好，那就先這樣", 800);
+        assert!(caller_wraps_up(&w), "{w}");
+        push_tx_window(&mut w, "嗎？", 800);
+        assert!(caller_withdraws_bye(&w, "嗎？"), "window never got the question: {w}");
+    }
+
+    /// Acceptance C (evaluation): an everyday 「等一下」 (= later) also counts as
+    /// "hold on" and stretches the quiet line to 45 / 90 s until the caller talks
+    /// again; real hold requests are caught.
+    #[test]
+    fn reviewer_hold_words_everyday_later() {
+        assert!(crate::locale::asks_to_hold("等一下，我去拿"));
+        assert!(crate::locale::asks_to_hold("我等一下要出門，所以放管理室"));
+        assert!(crate::locale::asks_to_hold("那我等一下再打給你"));
+        assert!(!crate::locale::asks_to_hold("好，放管理室就好"));
+        assert_eq!((PERSONA_HOLD_NUDGE_SECS, PERSONA_HOLD_END_SECS), (45, 90));
+        assert_eq!((PERSONA_IDLE_NUDGE_SECS, PERSONA_IDLE_END_SECS), (15, 25));
+    }
+
+    /// Acceptance D/E: entering voice-menu mode needs a review verdict (or the
+    /// menu cue); a Normal verdict changes nothing; failed rotations back off
+    /// 5/10/20/40 s; a person talking after the menu is still hung up at 20 s.
+    #[test]
+    fn reviewer_ivr_entry_and_rotation_backoff() {
+        use crate::stall_review::Verdict::*;
+        let mut r = StallReview::default();
+        assert!(!r.should_ask(false, 10), "no review below the line");
+        assert!(r.should_ask(true, 3));
+        assert_eq!(r.verdict(Normal, 3), StallVerdictStep::Carry);
+        assert!(r.should_ask(true, 5));
+        assert_eq!(r.verdict(IvrRecording, 5), StallVerdictStep::Ivr);
+        assert!(!crate::stall_review::ivr_cue("我等一下要出門，所以放管理室"));
+        assert!(!crate::stall_review::ivr_cue("你好，我是中華電信，請問是英先生嗎"));
+        assert!(ivr_hangs_up(Duration::from_secs(20), None), "talking line, 20 s: hung up");
+        assert!(!ivr_hangs_up(Duration::from_secs(19), None));
+        let backoff: Vec<u64> = (1..=5).map(|n| rotate_retry_after(n).as_secs()).collect();
+        assert_eq!(backoff, [5, 10, 20, 40, 40]);
+    }
 }
 
 /// Returns phone-rate PCM bytes forwarded (0 if no model audio).
