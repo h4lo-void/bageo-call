@@ -122,13 +122,12 @@ in its notes and on the task:
 }
 ```
 
-Times are local (`TZ`). `status`: `pending` (waiting for you), `booked` (a
-test number's call booked it on the demo calendar), `confirmed`, `declined`.
-`reply`: how the caller was told — `sms`, `call` or `none`. `sms`: `sent`, or
-why the text did not go (`offline`, `old_app`, `timeout`, `busy`,
-`no_number`, `not_test_number` (a test call's text goes only to the test
-numbers), or the phone's code: `no_permission`, `bad_request`, `no_service`,
-`radio_off`, `generic_failure`, `exception`, `no_sim`; the console and the
+Times are local (`TZ`). `status`: `pending` (waiting for you), `booked` (put
+in a calendar on the call; records from older versions only), `confirmed`,
+`declined`. `reply`: how the caller was told — `sms`, `call` or `none`.
+`sms`: `sent`, or why the text did not go (`offline`, `old_app`, `timeout`,
+`busy`, `no_number`, or the phone's code: `no_permission`, `bad_request`,
+`no_service`, `radio_off`, `generic_failure`, `exception`; the console and the
 Telegram reply say each in words). `call`: the AI call-back — `queued` (after
 an earlier call-back to the same number), `dialing` (the phone was asked to
 call), `connected` (the phone dialed; the AI waits for the callee to speak),
@@ -138,15 +137,13 @@ unknown), or why it was not placed (`no_phone`, `send_failed`, `no_number`,
 `not_callable`: a number a call-back may not dial); the phone's reports are
 also in the task's `events`
 (`callback_place_call_ack`, `callback_place_call_failed`,
-`callback_outbound_ready`, `callback_done`, `callback_failed`). `calendar`:
-`demo` for a test number's appointment, whose `event_id`, `replaced` (earlier
-times of the same call), `auto_error` and `tag` are about the demo calendar.
-`tg_card`: `{chat_id, message_id}` of the Telegram card sent for it, whose
+`callback_outbound_ready`, `callback_done`, `callback_failed`). `tg_card`:
+`{chat_id, message_id}` of the Telegram card sent for it, whose
 buttons are taken off when you decide elsewhere. Empty fields are left out.
 
 | Method and path | What |
 |---|---|
-| `GET /calls/api/tasks` | Tasks, newest first (up to 200): `{ok, tasks}`. An appointment task also has `calendar_links` (`{google, outlook, office365, yahoo}`, as for a call) and `reply` = `{sms, call, default}`: whether a text or a call-back can reach this caller, and the way *Default reply* picks. The console's *To do* is the tasks whose `appointment.status` is `pending`. A task with an appointment also has `sms_route`, where its text goes out when no other phone is picked (the first choice of the console's *Send the text again*), by the same rule the agent sends with: `{serial, label, sim, test}` — `serial` the phone's id, `label` its name in `device_labels` (else its id), `sim` the SIM it picks by name (`appointment_test_sms_sim`; left out when it uses the SIM that took the call or its default SIM), `test` true for a test call whose phone or SIM `appointment_test_sms_phone` / `appointment_test_sms_sim` set. The phone need not be connected; sending then answers `offline`. |
+| `GET /calls/api/tasks` | Tasks, newest first (up to 200): `{ok, tasks}`. An appointment task also has `calendar_links` (`{google, outlook, office365, yahoo}`, as for a call) and `reply` = `{sms, call, default}`: whether a text or a call-back can reach this caller, and the way *Default reply* picks. The console's *To do* is the tasks whose `appointment.status` is `pending`. A task with an appointment also has `sms_route`, where its text goes out when no other phone is picked (the first choice of the console's *Send the text again*): `{serial, label}` — `serial` the id of the phone that took the call, `label` its name in `device_labels` (else its id). The phone need not be connected; sending then answers `offline`. |
 | `GET /calls/api/tasks/{id}/event.ics` | An appointment as an iCalendar file (Apple Calendar and other apps). Opens with the console token or a link's `?k=<key>`, as for a call. |
 | `POST /calls/api/tasks/{id}/confirm` | For an appointment: **Accept**, as in the web console or on its Telegram card. Body: empty, `{}` or `{"reply": "sms" \| "call" \| "none"}`, how the caller is told (none given: *Default reply*; a way that cannot reach this caller tells nobody). A text may take up to 90 seconds; a call-back is handed to the phone (`appointment.call`). `{ok, task, message}`; `message` is what happened, in words, as the Telegram bot replies it (with the link that adds it to your calendar). When a Telegram card went out for the appointment, its buttons are taken off and `message` is posted in that chat (best effort; the decision stands either way). Only the first decision counts: a second confirm or decline — also one sent while the first is still running, or a press on the Telegram card — answers "already handled" and changes nothing. Needs `Content-Type: application/json`, otherwise HTTP 400 `bad_request`, so other web pages cannot decide from a browser on your network; another body is HTTP 400 `bad_request` too. |
 | `POST /calls/api/tasks/{id}/ignore` | For an appointment: **Decline** (the caller is told the same way, with a polite no). Same body, answer and rules. |
@@ -235,9 +232,8 @@ Text messages to callers (appointments) use the same connection:
 | Direction | Message | Meaning |
 |---|---|---|
 | phone → agent | `hello` with `"supports_sms": true` | The app can send texts for the agent. No field = an older app: no texts are asked of it. |
-| phone → agent | `hello` with `"supports_sim_select": true` | The app understands `sim` in `send_sms`. No field = an older app: a text that must go out from a named SIM is not sent to it. |
-| agent → phone | `{"type": "send_sms", "id": "<≤ 64 characters>", "to": "+886912345678", "text": "<UTF-8, ≤ 500 characters>"}`, optionally with `"sub_id": <integer>` or `"sim": "<carrier name or number>"` | Sent to the phone that took the call, or to the phone the settings name for test calls. `to` is digits with an optional leading `+`. `sub_id` picks the SIM (the `sim_sub_id` the phone reported); without it the phone's default SMS SIM sends. `sim` (the setting `appointment_test_sms_sim`, never together with `sub_id`) picks the active SIM whose carrier name or display name equals or contains it (any case), or, when it has at least 7 digits, whose own number ends in the same digits; exactly one SIM must match, otherwise nothing is sent and the answer is `no_sim`. An id the phone already sent is answered again, not texted twice. |
-| phone → agent | `{"type": "send_sms_result", "id": "<same>", "ok": true}` or `{"type": "send_sms_result", "id": "<same>", "ok": false, "error": "<code>"}` | Sent once every part of the message has reported back (the phone gives up after 60 seconds: `timeout`; a report that comes later still sends a second result with the real outcome). `error` is one of `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception`, `no_sim` (no SIM, or more than one, matched `sim`). The agent waits up to 90 seconds; no answer counts as failed. The phone sends the results for its last 20 ids again after the control connection reconnects, so the agent drops repeats by `id`. |
+| agent → phone | `{"type": "send_sms", "id": "<≤ 64 characters>", "to": "+886912345678", "text": "<UTF-8, ≤ 500 characters>"}`, optionally with `"sub_id": <integer>` | Sent to the phone that took the call, or to the one picked for *Send the text again*. `to` is digits with an optional leading `+`. `sub_id` picks the SIM (the `sim_sub_id` the phone reported); without it the phone's default SMS SIM sends. An id the phone already sent is answered again, not texted twice. |
+| phone → agent | `{"type": "send_sms_result", "id": "<same>", "ok": true}` or `{"type": "send_sms_result", "id": "<same>", "ok": false, "error": "<code>"}` | Sent once every part of the message has reported back (the phone gives up after 60 seconds: `timeout`; a report that comes later still sends a second result with the real outcome). `error` is one of `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception`. The agent waits up to 90 seconds; no answer counts as failed. The phone sends the results for its last 20 ids again after the control connection reconnects, so the agent drops repeats by `id`. |
 | phone → agent | `{"type": "send_sms_delivered", "id": "<same>", "ok": true \| false}` | The network's delivery report: `true` once every part reached the recipient, `false` when a part failed for good. Only when the network reports delivery (the phone waits up to an hour); sent again after a reconnect like the result. |
 
 Calls use the same connection for these optional fields and messages (an older app

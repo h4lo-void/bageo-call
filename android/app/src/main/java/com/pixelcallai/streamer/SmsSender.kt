@@ -1,7 +1,6 @@
 package com.pixelcallai.streamer
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -14,8 +13,6 @@ import android.os.Handler
 import android.os.Looper
 import android.telephony.SmsManager
 import android.telephony.SmsMessage
-import android.telephony.SubscriptionInfo
-import android.telephony.SubscriptionManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
@@ -24,9 +21,7 @@ import kotlin.random.Random
 
 /**
  * Agent `send_sms` (control connection): sends a text message from the phone's own
- * number — the SIM named by `sim` (carrier or display name, or the SIM's own number;
- * exactly one active SIM must match, see [SimSubscriptions.matching]), else the SIM with
- * subscription id `sub_id`, else the default SMS SIM — and answers with
+ * number — the SIM named by `sub_id`, else the default SMS SIM — and answers with
  * `send_sms_result` once every part was reported sent, one part failed, or [TIMEOUT_MS]
  * passed. A part reported after that timeout still answers again with the real result.
  * When the network reports delivery, `send_sms_delivered` follows (`ok` false when the
@@ -37,10 +32,9 @@ import kotlin.random.Random
  * id was already sent is answered from there instead of texting twice.
  *
  * Error codes: no_permission, bad_request, no_service, radio_off, generic_failure,
- * timeout, exception, no_sim (no SIM or more than one matched `sim`; nothing is sent).
- * A `send_sms` whose id is still being sent is ignored.
+ * timeout, exception. A `send_sms` whose id is still being sent is ignored.
  * All state lives on the main thread. Logs show only the last 3 digits of the number
- * and never the text; for `sim`, only how many SIMs matched and the one used.
+ * and never the text.
  */
 class SmsSender(
     private val context: Context,
@@ -122,8 +116,7 @@ class SmsSender(
         val id = obj.optString("id")
         val to = obj.optString("to")
         val text = obj.optString("text")
-        val commandSubId = SimSubscriptions.fromCommand(obj)
-        val simName = SimSubscriptions.simFromCommand(obj)
+        val subId = SimSubscriptions.fromCommand(obj)
         if (id.isEmpty() || id.length > MAX_ID_LENGTH || !NUMBER.matches(to) ||
             text.isBlank() || text.codePointCount(0, text.length) > MAX_TEXT_CHARS
         ) {
@@ -151,18 +144,6 @@ class SmsSender(
             return
         }
         try {
-            val subId = if (simName != null) {
-                val found = matchingSims(simName)
-                if (found.size != 1) {
-                    Log.w(TAG, "send_sms id=$id: ${found.size} SIMs match the named SIM; not sent")
-                    answer(id, "no_sim")
-                    return
-                }
-                Log.i(TAG, "send_sms id=$id: 1 SIM matches the named SIM, sub_id=${found[0]}")
-                found[0]
-            } else {
-                commandSubId
-            }
             val sms = smsManager(subId)
             if (sms == null) {
                 Log.w(TAG, "send_sms id=$id: no SmsManager")
@@ -401,39 +382,6 @@ class SmsSender(
         } ?: return null
         return deliveryOutcome(status, format)
     }
-
-    /**
-     * The active SIMs [wanted] names ([SimSubscriptions.matching]). Their numbers are read
-     * only when [wanted] looks like a number; a number that cannot be read is not compared.
-     */
-    @SuppressLint("MissingPermission")
-    private fun matchingSims(wanted: String): List<Int> {
-        val sm = context.getSystemService(SubscriptionManager::class.java) ?: return emptyList()
-        val withNumbers = SimSubscriptions.looksLikeNumber(wanted)
-        val sims = (sm.activeSubscriptionInfoList ?: emptyList()).map { info ->
-            SimSubscriptions.Sim(
-                subId = info.subscriptionId,
-                carrierName = info.carrierName?.toString(),
-                displayName = info.displayName?.toString(),
-                number = if (withNumbers) numberOf(sm, info) else null,
-            )
-        }
-        return SimSubscriptions.matching(sims, wanted)
-    }
-
-    /** The SIM's own number (READ_PHONE_NUMBERS on Android 13+); null when it may not be read. */
-    @SuppressLint("MissingPermission")
-    @Suppress("DEPRECATION")
-    private fun numberOf(sm: SubscriptionManager, info: SubscriptionInfo): String? =
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                sm.getPhoneNumber(info.subscriptionId)
-            } else {
-                info.number
-            }
-        } catch (_: SecurityException) {
-            null
-        }
 
     /** The SIM [subId] names, or the default SMS SIM. */
     @Suppress("DEPRECATION")

@@ -7,8 +7,7 @@
 //!
 //! The same connection carries text messages to callers (appointments):
 //! `send_sms` out, `send_sms_result` and `send_sms_delivered` back, only to
-//! apps whose hello says `supports_sms` ([`ControlRegistry::send_sms_on`]); a
-//! SIM picked by name only to apps that also say `supports_sim_select`.
+//! apps whose hello says `supports_sms` ([`ControlRegistry::send_sms_on`]).
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
@@ -149,8 +148,7 @@ pub enum SmsOutcome {
 }
 
 /// Error codes a phone may answer `send_sms` with; anything else reads as `generic_failure`.
-/// `no_sim`: no SIM, or more than one, matched the `sim` of the message.
-pub const SMS_ERROR_CODES: [&str; 8] = [
+pub const SMS_ERROR_CODES: [&str; 7] = [
     "no_permission",
     "bad_request",
     "no_service",
@@ -158,7 +156,6 @@ pub const SMS_ERROR_CODES: [&str; 8] = [
     "generic_failure",
     "timeout",
     "exception",
-    "no_sim",
 ];
 /// How long the agent waits for `send_sms_result` (the phone gives up after 60 s).
 pub const SMS_RESULT_WAIT: Duration = Duration::from_secs(90);
@@ -168,48 +165,12 @@ const SMS_ID_MAX: usize = 64;
 /// tasks whose call's SIM is remembered for a call-back: the newest this many.
 const RECENT_MAX: usize = 256;
 
-/// The SIM a text goes out from.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SmsSim {
-    /// The phone's default SMS SIM.
-    Default,
-    /// Android's subscription id (the SIM that took the call).
-    SubId(i64),
-    /// A SIM the phone finds by its carrier name or its own number (setting
-    /// `appointment_test_sms_sim`). Only for apps whose hello says
-    /// `supports_sim_select`: an older app would send from its default SIM.
-    Named(String),
-}
-
-impl SmsSim {
-    /// `sub_id` when known, else the default SIM.
-    pub fn from_sub_id(sub_id: Option<i64>) -> Self {
-        sub_id.map_or(Self::Default, Self::SubId)
-    }
-
-    /// For logs: never the name itself (it may be the SIM's own number).
-    pub fn describe(&self) -> String {
-        match self {
-            Self::Default => "default".to_string(),
-            Self::SubId(id) => format!("sub_id={id}"),
-            Self::Named(name) => format!("named(len={})", name.chars().count()),
-        }
-    }
-}
-
 /// `{"type":"send_sms","id":…,"to":…,"text":…}` for the phone, with `"sub_id"`
-/// (the SIM to send from) or `"sim"` (a SIM to look up by carrier name or
-/// number, never together with `sub_id`); without either the app uses its default SIM.
-pub fn send_sms_payload(id: &str, to: &str, text: &str, sim: &SmsSim) -> Value {
+/// (the SIM to send from) when given; an app that does not know it uses its default SIM.
+pub fn send_sms_payload(id: &str, to: &str, text: &str, sub_id: Option<i64>) -> Value {
     let mut payload = json!({ "type": "send_sms", "id": id, "to": to, "text": text });
-    match sim {
-        SmsSim::Default => {}
-        SmsSim::SubId(sub) => payload["sub_id"] = json!(sub),
-        SmsSim::Named(name) => {
-            if !name.trim().is_empty() {
-                payload["sim"] = json!(name.trim());
-            }
-        }
+    if let Some(sub) = sub_id {
+        payload["sub_id"] = json!(sub);
     }
     payload
 }
@@ -357,9 +318,6 @@ pub struct ControlRegistry {
     /// Phones whose app can refuse a ringing call (`supports_reject` in the
     /// control hello); older apps pick up whatever `answer_plan` says.
     reject_capable: Arc<Mutex<HashSet<String>>>,
-    /// Phones whose app picks a SIM by name for a text (`supports_sim_select`
-    /// in the control hello).
-    sim_select_capable: Arc<Mutex<HashSet<String>>>,
     /// `send_sms` sent, waiting for its result: message id → (serial, answer).
     sms_waiters: Arc<Mutex<SmsWaiters>>,
     /// What each recent text came to, also when its answer came after the wait
@@ -457,24 +415,12 @@ impl ControlRegistry {
         control_serials(serial).iter().any(|s| set.contains(s))
     }
 
-    /// Record whether the phone's app sends a text from a SIM named by carrier
-    /// or number (`"sim"` in `send_sms`; from its control hello).
-    pub async fn set_supports_sim_select(&self, serial: &str, on: bool) {
-        let mut set = self.sim_select_capable.lock().await;
-        if on {
-            set.insert(serial.to_string());
-        } else {
-            set.remove(serial);
-        }
-    }
-
     /// A phone went away: it sends no more texts (messages still waiting for its
     /// answer end as [`SmsOutcome::Offline`]) and its abilities are forgotten
     /// until its next hello.
     async fn forget_phone(&self, serial: &str) {
         self.sms_capable.lock().await.remove(serial);
         self.reject_capable.lock().await.remove(serial);
-        self.sim_select_capable.lock().await.remove(serial);
         // Dropping the senders wakes the waiters.
         self.sms_waiters.lock().await.retain(|_, (s, _)| s != serial);
     }
@@ -488,28 +434,12 @@ impl ControlRegistry {
     }
 
     /// [`Self::send_sms`] from the SIM `sub_id` (Android subscription id; None =
-    /// the phone's default SIM).
+    /// the phone's default SIM). What the phone reports later, also after `wait`,
+    /// is kept for [`Self::sms_outcome`].
     pub async fn send_sms_on(
         &self,
         serial: &str,
         sub_id: Option<i64>,
-        id: &str,
-        to: &str,
-        text: &str,
-        wait: Duration,
-    ) -> SmsOutcome {
-        self.send_sms_from(serial, &SmsSim::from_sub_id(sub_id), id, to, text, wait).await
-    }
-
-    /// [`Self::send_sms`] from the SIM `sim`. A SIM by name goes only to an app
-    /// that said `supports_sim_select`; any other app gets nothing
-    /// ([`SmsOutcome::Unsupported`]) rather than a text from the wrong SIM.
-    /// What the phone reports later, also after `wait`, is kept for
-    /// [`Self::sms_outcome`].
-    pub async fn send_sms_from(
-        &self,
-        serial: &str,
-        sim: &SmsSim,
         id: &str,
         to: &str,
         text: &str,
@@ -534,10 +464,6 @@ impl ControlRegistry {
             info!(serial, "send_sms: the phone's app does not send texts");
             return SmsOutcome::Unsupported;
         }
-        if matches!(sim, SmsSim::Named(_)) && !self.sim_select_capable.lock().await.contains(&serial) {
-            info!(serial, "send_sms: the phone's app cannot pick a SIM by name");
-            return SmsOutcome::Unsupported;
-        }
         let text: String = text.chars().take(SMS_TEXT_MAX).collect();
         if id.is_empty() || text.trim().is_empty() || !sms_to_ok(to) {
             return SmsOutcome::Failed("bad_request".to_string());
@@ -552,7 +478,7 @@ impl ControlRegistry {
         }
         // A new send under this id: what an earlier one reported no longer applies.
         self.sms_reports.lock().await.remove(&id);
-        if let Err(e) = send_ws_json(&sink, send_sms_payload(&id, to, &text, sim)).await {
+        if let Err(e) = send_ws_json(&sink, send_sms_payload(&id, to, &text, sub_id)).await {
             self.sms_waiters.lock().await.remove(&id);
             warn!(serial, "send_sms write failed: {e:#}");
             return SmsOutcome::Offline;
@@ -560,7 +486,7 @@ impl ControlRegistry {
         info!(
             serial,
             id,
-            sim = %sim.describe(),
+            sub_id = ?sub_id,
             to_len = to.len(),
             text_chars = text.chars().count(),
             "send_sms dispatched"
@@ -1166,23 +1092,13 @@ mod tests {
     #[test]
     fn send_sms_message_and_its_result() {
         assert_eq!(
-            send_sms_payload("task-1", "+886912345678", "你好", &SmsSim::Default),
+            send_sms_payload("task-1", "+886912345678", "你好", None),
             json!({"type": "send_sms", "id": "task-1", "to": "+886912345678", "text": "你好"})
         );
         assert_eq!(
-            send_sms_payload("task-1", "0912345678", "hi", &SmsSim::from_sub_id(Some(2))),
+            send_sms_payload("task-1", "0912345678", "hi", Some(2)),
             json!({"type": "send_sms", "id": "task-1", "to": "0912345678", "text": "hi", "sub_id": 2})
         );
-        // A SIM by name: "sim" and never "sub_id"; a blank name is the default SIM.
-        assert_eq!(
-            send_sms_payload("task-1", "+16505550123", "hi", &SmsSim::Named(" Tello ".into())),
-            json!({"type": "send_sms", "id": "task-1", "to": "+16505550123", "text": "hi", "sim": "Tello"})
-        );
-        assert_eq!(
-            send_sms_payload("task-1", "+16505550123", "hi", &SmsSim::Named("  ".into())),
-            json!({"type": "send_sms", "id": "task-1", "to": "+16505550123", "text": "hi"})
-        );
-        assert_eq!(SmsSim::Named("+16505550199".into()).describe(), "named(len=12)");
         let ok = json!({"type": "send_sms_result", "id": "task-1", "ok": true});
         assert_eq!(parse_sms_result(&ok), Some(("task-1".to_string(), SmsOutcome::Sent)));
         let failed = json!({"type": "send_sms_result", "id": "task-1", "ok": false, "error": "no_service"});
@@ -1192,49 +1108,12 @@ mod tests {
         );
         let odd = json!({"type": "send_sms_result", "id": "x", "ok": false, "error": "<script>"});
         assert_eq!(parse_sms_result(&odd).unwrap().1, SmsOutcome::Failed("generic_failure".into()));
-        let no_sim = json!({"type": "send_sms_result", "id": "x", "ok": false, "error": "no_sim"});
-        assert_eq!(parse_sms_result(&no_sim).unwrap().1, SmsOutcome::Failed("no_sim".into()));
         assert_eq!(parse_sms_result(&json!({"type": "place_call_ack", "id": "x"})), None);
         assert_eq!(parse_sms_result(&json!({"type": "send_sms_result", "ok": true})), None);
         assert!(sms_to_ok("+886912345678") && sms_to_ok("0912345678"));
         assert!(!sms_to_ok("09-12") && !sms_to_ok("++886") && !sms_to_ok("") && !sms_to_ok("abc"));
         assert_eq!(control_serials("pixel-1010341"), vec!["pixel-1010341", "pixel-10341"]);
         assert_eq!(control_serials("pixel-10341"), vec!["pixel-10341"]);
-    }
-
-    #[tokio::test]
-    async fn a_sim_by_name_goes_only_to_apps_that_pick_one() {
-        use test_socket::{next_json, phone_socket};
-        let reg = ControlRegistry::default();
-        let (sink, mut phone) = phone_socket().await;
-        reg.register_client("pixel-12345".into(), sink).await;
-        reg.set_supports_sms("pixel-12345", true).await;
-        assert_eq!(reg.connected_serials().await, vec!["pixel-12345".to_string()]);
-        let tello = SmsSim::Named("Tello".into());
-        let wait = Duration::from_millis(200);
-        // An app without `supports_sim_select`: nothing is sent (it would use its default SIM).
-        let out = reg.send_sms_from("pixel-12345", &tello, "n1", "+16505550123", "hi", wait).await;
-        assert_eq!(out, SmsOutcome::Unsupported);
-        assert_eq!(next_json(&mut phone, Duration::from_millis(100)).await, None);
-        // A SIM by id still goes to it.
-        let out = reg.send_sms_from("pixel-12345", &SmsSim::SubId(3), "n2", "+16505550123", "hi", wait).await;
-        assert_eq!(out, SmsOutcome::Timeout);
-        assert_eq!(next_json(&mut phone, wait).await.unwrap()["sub_id"], 3);
-        // An app that picks a SIM by name gets it, without `sub_id`.
-        reg.set_supports_sim_select("pixel-12345", true).await;
-        let (out, msg) = tokio::join!(
-            reg.send_sms_from("pixel-12345", &tello, "n3", "+16505550123", "hi", Duration::from_secs(5)),
-            async {
-                let msg = next_json(&mut phone, Duration::from_secs(5)).await.unwrap();
-                reg.handle_sms_result(&json!({"type": "send_sms_result", "id": "n3", "ok": true})).await;
-                msg
-            }
-        );
-        assert_eq!(out, SmsOutcome::Sent);
-        assert_eq!((msg["sim"].clone(), msg.get("sub_id")), (json!("Tello"), None));
-        // Forgotten with the phone, until its next hello.
-        reg.unregister_client("pixel-12345").await;
-        assert!(!reg.sim_select_capable.lock().await.contains("pixel-12345"));
     }
 
     #[tokio::test]

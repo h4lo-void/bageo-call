@@ -540,10 +540,10 @@ async fn task_event_ics(
 /// One task for the web console: as stored, and for an appointment the web
 /// calendars' forms (`calendar_links`) and how its answer can reach the caller
 /// (`reply`: `{sms, call, default}`, [`crate::appointments::default_reply`]).
-/// Also the phone and SIM a test call's text goes out from (`sms_route`,
+/// Also the phone its text goes out from (`sms_route`,
 /// [`crate::appointments::task_json`]).
-fn task_json(task: &crate::tasks::TaskRecord, rt: &crate::settings_store::RuntimeSettings, connected: &[String]) -> Value {
-    let mut v = crate::appointments::task_json(rt, connected, task);
+fn task_json(task: &crate::tasks::TaskRecord, rt: &crate::settings_store::RuntimeSettings) -> Value {
+    let mut v = crate::appointments::task_json(rt, task);
     if let (Some(appt), Some(o)) = (task.appointment.as_ref(), v.as_object_mut()) {
         use crate::appointments as ap;
         let details = ap::event_description(&task.caller_id, appt);
@@ -1578,13 +1578,12 @@ async fn tasks_list(
         return unauthorized();
     }
     let rt = state.settings_store.snapshot();
-    let connected = state.control.connected_serials().await;
     let tasks: Vec<Value> = state
         .task_store
         .list(200)
         .await
         .iter()
-        .map(|t| task_json(t, &rt, &connected))
+        .map(|t| task_json(t, &rt))
         .collect();
     Json(json!({"ok": true, "tasks": tasks})).into_response()
 }
@@ -1778,8 +1777,7 @@ async fn appointment_decision(
         .await
         {
             Ok((task, message)) => {
-                let connected = state.control.connected_serials().await;
-                Json(json!({"ok": true, "task": task_json(&task, rt, &connected), "message": message})).into_response()
+                Json(json!({"ok": true, "task": task_json(&task, rt), "message": message})).into_response()
             }
             Err(e) => fulfill_err_response(e),
         },

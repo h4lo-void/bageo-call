@@ -7164,11 +7164,9 @@ mod tests {
         assert!(g.drops(true, 4, false, 2, false, now));
         g.interrupted();
         assert!(!g.is_dropping() && !g.drops(true, 4, false, 2, false, now));
-        // Only a silent propose answer arms it (an error or "not booked" is meant to be said).
+        // Only a silent propose answer arms it (an error is meant to be said).
         use crate::appointments::{answer_is_silent, CHECK, PROPOSE};
         assert!(answer_is_silent(PROPOSE, &json!({"status": "pending_owner_confirmation"})));
-        assert!(answer_is_silent(PROPOSE, &json!({"status": "booked"})));
-        assert!(!answer_is_silent(PROPOSE, &json!({"status": "pending_owner_confirmation", "not_booked": true})));
         assert!(!answer_is_silent(PROPOSE, &json!({"error": "weekday_mismatch", "date_is": "Thursday"})));
         assert!(!answer_is_silent(CHECK, &json!({"free": true})));
     }
@@ -7800,10 +7798,9 @@ mod tests {
         assert_eq!(call_system_prompt("你是我。", None, now), "你是我。");
         let mut rt = crate::settings_store::RuntimeSettings::from_base(&crate::config::Settings::from_env());
         rt.appointment_mode = "off".into();
-        let http = reqwest::Client::new();
-        assert!(crate::appointments::ApptSession::for_call(&rt, &http, "0912345678").is_none());
+        assert!(crate::appointments::ApptSession::for_call(&rt, "0912345678").is_none());
         rt.appointment_mode = "confirm".into();
-        let a = crate::appointments::ApptSession::for_call(&rt, &http, "0912345678").unwrap();
+        let a = crate::appointments::ApptSession::for_call(&rt, "0912345678").unwrap();
         let p = call_system_prompt("你是我。", Some(&a), now);
         assert!(p.starts_with("你是我。\n\n[Appointments") && p.contains(&now.format("%Y-%m-%d").to_string()), "{p}");
         assert!(p.contains("do not repeat what you have just told the caller"), "{p}");
