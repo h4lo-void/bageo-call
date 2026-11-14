@@ -8304,7 +8304,7 @@ mod tests {
         assert!(r.should_ask(true, 5));
         assert_eq!(r.verdict(IvrRecording, 5), StallVerdictStep::Ivr);
         assert!(!crate::stall_review::ivr_cue("我等一下要出門，所以放管理室"));
-        assert!(!crate::stall_review::ivr_cue("你好，我是中華電信，請問是英先生嗎"));
+        assert!(!crate::stall_review::ivr_cue("你好，我是中華電信，請問是王先生嗎"));
         assert!(ivr_hangs_up(Duration::from_secs(20), None), "talking line, 20 s: hung up");
         assert!(!ivr_hangs_up(Duration::from_secs(19), None));
         let backoff: Vec<u64> = (1..=5).map(|n| rotate_retry_after(n).as_secs()).collect();
