@@ -173,5 +173,16 @@ Text messages to callers (appointments) use the same connection:
 | Direction | Message | Meaning |
 |---|---|---|
 | phone → agent | `hello` with `"supports_sms": true` | The app can send texts for the agent. No field = an older app: no texts are asked of it. |
-| agent → phone | `{"type": "send_sms", "id": "<≤ 64 characters>", "to": "+886912345678", "text": "<UTF-8, ≤ 500 characters>"}` | Sent only to the phone that took the call. `to` is digits with an optional leading `+`. |
-| phone → agent | `{"type": "send_sms_result", "id": "<same>", "ok": true}` or `{"type": "send_sms_result", "id": "<same>", "ok": false, "error": "<code>"}` | Sent once every part of the message has reported back (the phone gives up after 60 seconds: `timeout`). `error` is one of `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception`. The agent waits up to 90 seconds; no answer counts as failed. |
+| agent → phone | `{"type": "send_sms", "id": "<≤ 64 characters>", "to": "+886912345678", "text": "<UTF-8, ≤ 500 characters>"}`, optionally with `"sub_id": <integer>` | Sent only to the phone that took the call. `to` is digits with an optional leading `+`. `sub_id` picks the SIM (the `sim_sub_id` the phone reported); without it the phone's default SMS SIM sends. An id the phone already sent is answered again, not texted twice. |
+| phone → agent | `{"type": "send_sms_result", "id": "<same>", "ok": true}` or `{"type": "send_sms_result", "id": "<same>", "ok": false, "error": "<code>"}` | Sent once every part of the message has reported back (the phone gives up after 60 seconds: `timeout`; a report that comes later still sends a second result with the real outcome). `error` is one of `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception`. The agent waits up to 90 seconds; no answer counts as failed. The phone sends the results for its last 20 ids again after the control connection reconnects, so the agent drops repeats by `id`. |
+| phone → agent | `{"type": "send_sms_delivered", "id": "<same>", "ok": true \| false}` | The network's delivery report: `true` once every part reached the recipient, `false` when a part failed for good. Only when the network reports delivery (the phone waits up to an hour); sent again after a reconnect like the result. |
+
+Calls use the same connection for these optional fields and messages (an older app
+or agent leaves them out and works as before):
+
+| Direction | Message | Meaning |
+|---|---|---|
+| phone → agent | `incoming`, and the media connection's `hello`, with `"sim_sub_id": <integer>` | Android's subscription id of the SIM the call came in on, next to `sim_country`. Left out when unknown. `caller_id` is empty for a hidden number (never the previous caller's). |
+| agent → phone | `answer_plan` with `"reject": true` | Decline the ringing call without answering it. `incoming_cancel` follows once the call has ended. Also honored when it arrives late, as long as the call still rings. |
+| phone → agent | `{"type": "call_waiting_rejected", "serial": "...", "caller_id": "...", "sim_country": "tw", "sim_sub_id": <integer>}` | A second call rang during a call and the phone declined it at once (AI mode). The fields describe the declined call; `sim_sub_id` is left out when unknown. |
+| agent → phone | `place_call` with `"sub_id": <integer>` | Dial from that SIM. When no SIM has that id, the phone's default is used. |

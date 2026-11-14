@@ -10,6 +10,7 @@ object Prefs {
     const val KEY_MODE = "AUDIO_MODE"
     const val KEY_LAST_CALLER_ID = "LAST_CALLER_ID"
     const val KEY_LAST_SIM_COUNTRY = "LAST_SIM_COUNTRY"
+    const val KEY_LAST_SIM_SUB_ID = "LAST_SIM_SUB_ID"
     const val KEY_AGENT_URL = "AGENT_URL"
     /** Web console address the agent sent (`agent_info`); cleared on every new connection. */
     const val KEY_CONSOLE_URL = "CONSOLE_URL"
@@ -215,6 +216,28 @@ object Prefs {
         sp(ctx).edit().putString(KEY_LAST_SIM_COUNTRY, iso.trim().lowercase()).apply()
     }
 
+    /** Subscription id of the SIM the current call uses; null = unknown. */
+    fun lastSimSubId(ctx: Context): Int? =
+        sp(ctx).getInt(KEY_LAST_SIM_SUB_ID, NO_SUB_ID).takeIf { it >= 0 }
+
+    fun setLastSimSubId(ctx: Context, subId: Int?) {
+        val editor = sp(ctx).edit()
+        if (subId == null || subId < 0) editor.remove(KEY_LAST_SIM_SUB_ID) else editor.putInt(KEY_LAST_SIM_SUB_ID, subId)
+        editor.apply()
+    }
+
+    /**
+     * A new call starts: forget the previous call's number and SIM, so a hidden number
+     * can never show up as the last caller.
+     */
+    fun clearLastCallInfo(ctx: Context) {
+        sp(ctx).edit()
+            .remove(KEY_LAST_CALLER_ID)
+            .putString(KEY_LAST_SIM_COUNTRY, "")
+            .remove(KEY_LAST_SIM_SUB_ID)
+            .apply()
+    }
+
     fun blocklist(ctx: Context): Set<String> =
         sp(ctx).getStringSet(KEY_BLOCKLIST, emptySet()) ?: emptySet()
 
@@ -232,4 +255,6 @@ object Prefs {
     @Suppress("unused")
     private fun normalizeNumber(s: String): String =
         s.filter { !it.isWhitespace() && it != '-' }
+
+    private const val NO_SUB_ID = -1
 }
