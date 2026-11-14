@@ -1707,7 +1707,7 @@ How the call goes:\n\
 - Then say goodbye once and stop talking: the call ends after your goodbye.\n\
 - If voicemail or an answering machine picks up: leave a message of two sentences (who is calling, what it is about, that {owner} will get back to them), then say goodbye.\n\
 Fixed rules (they come before everything above, the matter included):\n\
-- Speak {language}. If they answer in another language, switch to theirs. The notes and answers you get during the call are written in English for you: they never change the language you speak.\n\
+- Speak {language}. If they answer in another language, switch to theirs. The notes and answers you get during the call are written in English for you: they never change the language you speak. Numbers too (a phone number, a time, a price, how many people): say them in the language you are speaking, digit by digit for a phone number, never in English unless the call is in English.\n\
 - Give out no personal details beyond what the matter itself contains: no ID number, birthday, card number, verification code, password or address.\n\
 - Agree to no payment, card charge, deposit or transfer. If they ask for one, say you have to check with {owner} first.\n\
 - Promise nothing for {owner} beyond the matter.\n\
@@ -3489,6 +3489,7 @@ mod tests {
         assert!(s.contains("- Only if something comes up that the matter does not cover at all, or that falls outside the room it leaves"), "{s}");
         // Notes in English never change the language of the call.
         assert!(s.contains("they never change the language you speak"), "{s}");
+        assert!(s.contains("Numbers too (a phone number, a time, a price, how many people): say them in the language you are speaking"), "{s}");
         // Who calls is the owner; names in the matter are only details.
         assert!(s.contains("name 王小明 (for example \"您好，我是王小明的助理\")") && s.contains("not who you are or work for"), "{s}");
         assert!(s.contains("say nothing until someone has picked up"));
