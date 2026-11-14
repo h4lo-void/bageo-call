@@ -1335,6 +1335,18 @@ mod tests {
         assert!(summary_system_prompt(Lang::En, "").contains("speaking another language is not a sales or scam call"));
     }
 
+    /// Reviewer: Whisper's "AI 對話段" is the caller's uplink while the AI was
+    /// on (calls.rs `ai_remote_pcm` → `_ai.wav`), so the caller's matter in it counts.
+    #[test]
+    fn reviewer_whisper_ai_segment_is_the_callers_voice() {
+        let summary = "對方：沒說是誰\n事情：聽不清楚\nAI 回覆：只有打招呼\n要處理：不用";
+        for dialogue in ["", "接聽：喂？"] {
+            let input = build_summary_input("0912345678", 20_000, "", dialogue, "嗯要繳水費", "嗯要繳水費");
+            let out = overlay_summary_matter(summary, &input);
+            assert!(out.contains("事情：缴水费"), "{input}\n---\n{out}");
+        }
+    }
+
     #[test]
     fn gemini_summaries_think_little_and_get_room_deepseek_is_unchanged() {
         let gemini = Endpoint { url: GEMINI_OPENAI_URL.into(), key: "k".into(), models: vec![GEMINI_SUMMARY_MODEL.into()] };

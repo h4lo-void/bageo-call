@@ -574,4 +574,69 @@ mod tests {
         let v = review_at(&Client::new(), "http://127.0.0.1:9", " ", "對方：信用卡", &hits(), "").await;
         assert_eq!(v, Verdict::ScamOrSales);
     }
+
+    /// Reviewer: things people say on an ordinary call. A menu verdict hangs up.
+    #[test]
+    fn reviewer_everyday_sentences_are_not_a_menu() {
+        let cases = [
+            "按照你說的",
+            "請按時吃藥",
+            "I'll press the issue",
+            "The press release is out",
+            "プレスの仕事をしています",
+            "按讚",
+            "我按了兩次門鈴",
+            "我打給你都轉進語音信箱",
+            "你手機一直進語音信箱，我留言了",
+            "請按一般程序辦理就好",
+            "請按三餐飯後吃藥",
+            "這個方案請按八折計算給你",
+            "你搭電梯按 5 樓就到了",
+            "你按 1 號電梯上來",
+            "門鈴按2下就好",
+            "撳一撳個掣就得",
+            "I want to speak to an agent about my policy",
+            "Just press one button and it starts",
+            "I'll press, um, the doorbell",
+            "We need to press on one more time",
+            "His pulse 72, blood pressure fine",
+            "Marque um horário com o médico",
+            "C'est une marque un peu chère",
+            "Appuyez sur la sonnette en arrivant",
+            "Drücken Sie mir die Daumen",
+            "몇 번을 눌러도 안 돼요",
+            "กดสองครั้งนะ",
+            "Tekan dua kali tombolnya",
+        ];
+        let hit: Vec<&str> = cases.iter().copied().filter(|t| ivr_cue(t)).collect();
+        assert!(hit.is_empty(), "everyday sentences read as a menu ({} of {}): {hit:#?}", hit.len(), cases.len());
+    }
+
+    /// Reviewer: the 400-then-retry path is inside the same 1.5 s budget.
+    #[tokio::test]
+    async fn reviewer_retry_after_400_stays_within_the_timeout() {
+        let refused = r#"{"error":{"code":400,"message":"thinking budget is not supported by this model"}}"#;
+        let (base, server) = serve(vec![
+            (400, refused, Duration::from_millis(1000)),
+            (200, NORMAL, Duration::from_millis(1000)),
+        ])
+        .await;
+        let started = Instant::now();
+        let v = review_at(&Client::new(), &base, "test-key", "對方：媽，我下午匯款給你", &hits(), "").await;
+        let took = started.elapsed();
+        assert_eq!(v, Verdict::ScamOrSales);
+        assert!(took >= REVIEW_TIMEOUT && took < Duration::from_millis(1900), "{took:?}");
+        server.abort();
+    }
+
+    /// Reviewer: an unreadable 200 and a server that is not there both keep the stall.
+    #[tokio::test]
+    async fn reviewer_garbage_and_unreachable_keep_the_caller_talking() {
+        let (base, server) = serve(vec![(200, "<html>oops</html>", Duration::ZERO)]).await;
+        let v = review_at(&Client::new(), &base, "test-key", "對方：保證獲利", &hits(), "").await;
+        assert_eq!(v, Verdict::ScamOrSales);
+        server.await.unwrap();
+        let v = review_at(&Client::new(), "http://127.0.0.1:9", "test-key", "對方：保證獲利", &hits(), "").await;
+        assert_eq!(v, Verdict::ScamOrSales);
+    }
 }
