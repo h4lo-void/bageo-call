@@ -1761,7 +1761,7 @@ Answer with one JSON object and nothing else:\n\
 - follow_up: what {owner} should do next; \"\" when nothing.\n\
 - options: the choices the other side offered (times, dates, alternatives); [] when none.\n\
 - event: only when a specific date and time was agreed (a booking, a meeting, a visit): {{\"start\": \"YYYY-MM-DDTHH:MM\", \"end\": \"YYYY-MM-DDTHH:MM or empty\", \"title\": \"a few words\"}} in local time; null otherwise.\n\
-- Questions the AI asked {owner} that {owner} did not answer (listed in the input): whatever the AI agreed to or decided on them is not {owner}'s consent. Then outcome is never \"done\": use \"need_owner\", and say plainly in summary and follow_up what the AI agreed to on its own (\"the AI said yes to 7:30\"), that {owner} should confirm it, and call back to change it if it does not suit.\n\
+- A choice the AI made within the room the errand leaves (it says \"7:30 to 8 is fine too\" and 7:30 was booked) is {owner}'s own: that is \"done\". Only what the input marks as not answered by {owner} is not.\n\
 Write summary, details, follow_up, options and the event title in {language}. Go by what the other side actually said; the errand and the AI's own words are no proof that it happened."
     )
 }
@@ -1778,10 +1778,15 @@ fn result_input(e: &Errand, dialogue: &str) -> String {
         for q in &e.questions {
             let a = match &q.answer {
                 Some(a) if q.answered_by.as_deref() == Some("owner") => a.clone(),
-                _ => "(NOT ANSWERED by the owner: anything the AI settled on this is not the owner's consent)".to_string(),
+                _ => "(NOT ANSWERED by the owner)".to_string(),
             };
             s.push_str(&format!("- {} -> {}\n", q.text, a));
         }
+    }
+    if !unanswered(e).is_empty() {
+        s.push_str(
+            "The owner did NOT answer the questions marked so. Whatever the AI agreed to or decided on them is not the owner's consent: then outcome is never \"done\". Use \"need_owner\", and say plainly in summary and follow_up what the AI agreed to on its own (\"the AI said yes to 7:30\"), that the owner should confirm it, and call back to change it if it does not suit.\n",
+        );
     }
     let lines: Vec<String> = dialogue
         .lines()
@@ -3510,8 +3515,9 @@ mod tests {
         assert_eq!(r.outcome, "need_owner");
         assert!(r.follow_up.starts_with(&locale::fill(w.unconfirmed, "7點沒位子，7點半可以嗎？")) && r.follow_up.ends_with("準時到"), "{}", r.follow_up);
         let input = result_input(&e, "對方：7點半可以\n接聽：好，那就7點半");
-        assert!(input.contains("7點沒位子，7點半可以嗎？ -> (NOT ANSWERED by the owner"), "{input}");
-        assert!(result_prompt("王小明", Lang::ZhTw, chrono::Local::now()).contains("is not 王小明's consent"));
+        assert!(input.contains("7點沒位子，7點半可以嗎？ -> (NOT ANSWERED by the owner)") && input.contains("is not the owner's consent"), "{input}");
+        // Only then: a call with every question answered (or none) is read as usual.
+        assert!(result_prompt("王小明", Lang::ZhTw, chrono::Local::now()).contains("within the room the errand leaves"));
         // Answered by the owner, or not done: left as it is.
         let mut ok = rig.store.get("e-ask-3").unwrap();
         ok.questions[0].answered_by = Some("owner".into());
@@ -3519,6 +3525,7 @@ mod tests {
         let mut r = Outcome { outcome: "done".into(), ..Default::default() };
         settle_unanswered(&mut r, &ok, &w);
         assert_eq!((r.outcome.as_str(), r.follow_up.as_str()), ("done", ""));
+        assert!(!result_input(&ok, "").contains("not the owner's consent"));
         let mut r = Outcome { outcome: "not_done".into(), ..Default::default() };
         settle_unanswered(&mut r, &e, &w);
         assert_eq!(r.outcome, "not_done");
