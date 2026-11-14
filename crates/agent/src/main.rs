@@ -5789,6 +5789,10 @@ async fn adopt_ring_prewarm(
             cfg.caller_id
         );
     }
+    // The media hello says which SIM took the call: appointments text back from it.
+    if let Some(book) = core.appointments.as_ref() {
+        book.set_line(call_sim_country(serial), call_sim_sub_id(serial));
+    }
     if let Ok(mut g) = gemini_uplink_tx.lock() {
         *g = Some(up_tx);
     }
@@ -6158,11 +6162,17 @@ fn start_gemini_session_core(
         })
     };
     // Appointments (setting `appointment_mode`): normal persona calls only.
-    let appointments = if persona {
+    let mut appointments = if persona {
         appointments::ApptSession::for_call(rt, http, &cfg.caller_id)
     } else {
         None
     };
+    // The SIM that took the call: a text back to the caller goes from it, and
+    // its country reads a number without a country code. A ring prewarm sets it
+    // again at pickup from the media hello.
+    if let Some(a) = appointments.as_mut() {
+        a.set_line(call_sim_country(serial), call_sim_sub_id(serial));
+    }
     // The opening language and the caller's speech-to-text hints, decided with the
     // call's config (a ring prewarm's is checked again at pickup).
     let lang_plan = cfg.lang.clone();
@@ -6509,6 +6519,12 @@ async fn run_gemini_session_to_end(
                 stats.frames,
                 stats.turns
             );
+            if reason == gemini_live::SessionEndReason::IvrHangup {
+                let mut slot = active_call.lock().await;
+                if let Some(c) = slot.as_mut() {
+                    c.push_event("ivr_hangup");
+                }
+            }
             // Always hangup on agent-initiated end — even if cancel raced mid-drain.
             // (Old gate `!cancel` skipped hangup after WS glitch during the goodbye, leaving line open.)
             if reason.should_play_goodbye() {
@@ -8774,11 +8790,13 @@ fn spawn_ai_talk_tg_summary(
         }
         // Appointment: its task now (the owner's buttons act on it), the card or
         // the text message after the summary.
-        let mut appointment_task = match &appointment {
-            Some(a) => appointments::create_task(&task_store, &call_record, a).await,
-            None => None,
+        // A call can agree on several appointments: one task (and one card or
+        // text) each.
+        let mut appointment_tasks = match &appointment {
+            Some(a) => appointments::create_tasks(&task_store, &call_record, a).await,
+            None => Vec::new(),
         };
-        if let Some(task) = appointment_task.as_mut() {
+        for task in appointment_tasks.iter_mut() {
             if let Some(sub) = call_record.sim_sub_id {
                 control.remember_task_sim(&task.id, &serial, sub).await;
             }
@@ -8832,8 +8850,8 @@ fn spawn_ai_talk_tg_summary(
         } else {
             info!("ai talk tg summary skipped (notify not configured) serial={serial} — notes on web only");
         }
-        if let Some(task) = appointment_task {
-            let rt = settings_store.snapshot();
+        let rt = settings_store.snapshot();
+        for task in appointment_tasks {
             appointments::after_summary(&http, &rt, &task_store, &calls, &control, &task, &detail_url).await;
         }
     });

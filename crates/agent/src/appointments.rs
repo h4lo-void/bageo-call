@@ -2042,7 +2042,7 @@ async fn text_caller(
     let sub_id = if phone == task.serial { appt.sim_sub_id } else { None };
     // To the caller: in the language the AI spoke with them.
     let text = sms_text(locale::current(), &rt.owner_name, appt, confirmed);
-    let out = control.send_sms(phone, &task.id, &to, &text, SMS_RESULT_WAIT).await;
+    let out = control.send_sms_on(phone, sub_id, &task.id, &to, &text, SMS_RESULT_WAIT).await;
     info!(
         "appointment sms task_id={} serial={phone} sub_id={sub_id:?} outcome={out:?}",
         task.id

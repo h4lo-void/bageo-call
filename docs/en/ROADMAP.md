@@ -21,7 +21,7 @@ speech-to-text, LLM and text-to-speech.
 | Real interruption (barge-in) | ✅ On phones whose call recording is free of the AI's own voice (Pixel 9 in our use); otherwise the AI finishes its sentence first. |
 | Silence handling | ✅ Asks whether the caller is still there, then ends the call. |
 | Voice-activity detection, noise | ✅ Gemini's, or a local detector. |
-| Language detection, switching mid-call | 🟡 Optional *Reply in the caller's language*; relies on the model. |
+| Language detection, switching mid-call | 🟡 The AI follows the caller's language on every call; relies on the model. |
 | Many languages, localised prompts | 🟡 Nine languages; only Traditional Chinese is proven on real calls. |
 | Dialects and accents | 🟡 Whatever the model understands; no tuning of our own. |
 | Spam / robocall handling | ✅ Blocked numbers; sales and scam calls detected by keywords and either declined or stalled. |
