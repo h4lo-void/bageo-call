@@ -581,10 +581,21 @@ pub fn default_prompt_template(lang: Lang, assistant: bool) -> &'static str {
     }
 }
 
+/// `custom` is a built-in prompt saved as it was (any language, with or without
+/// the owner's name filled in): it follows the language setting like an empty one.
+/// A saved copy of the Chinese prompt kept the AI on 「不要講英文」 after the
+/// language was switched to English.
+fn is_unedited_default(custom: &str, assistant: bool, owner: &str) -> bool {
+    let c = custom.trim();
+    crate::locale::ALL.iter().any(|l| {
+        c == default_prompt(*l, assistant, owner).trim() || c == default_prompt_template(*l, assistant).trim()
+    })
+}
+
 /// System prompt of one call.
 pub fn build(ctx: &Ctx) -> String {
     let p = pack(ctx.lang);
-    let base = if ctx.custom.trim().is_empty() {
+    let base = if ctx.custom.trim().is_empty() || is_unedited_default(ctx.custom, ctx.assistant, ctx.owner) {
         if ctx.assistant {
             p.assistant_default.clone()
         } else {
@@ -658,6 +669,25 @@ mod tests {
             carrier_note: lang == Lang::ZhTw,
             auto_language: false,
         }
+    }
+
+    #[test]
+    fn a_saved_copy_of_a_built_in_prompt_follows_the_language() {
+        // The Chinese prompt saved as it was, then the language switched to English:
+        // the English built-in prompt is used (the Chinese one forbids English).
+        let zh = default_prompt(Lang::ZhTw, false, "Alex");
+        let mut c = ctx(Lang::En, false, StallPrompt::Off);
+        c.custom = &zh;
+        let en = build(&c);
+        c.custom = "";
+        assert_eq!(en, build(&c));
+        // The template (owner placeholder kept) counts too.
+        c.custom = default_prompt_template(Lang::ZhTw, false);
+        assert_eq!(build(&c), en);
+        // An edited prompt is kept as written.
+        let edited = format!("{zh}\nAlways mention the cat.");
+        c.custom = &edited;
+        assert!(build(&c).contains("Always mention the cat."));
     }
 
     #[test]
