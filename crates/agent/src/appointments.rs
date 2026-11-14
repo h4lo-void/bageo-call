@@ -4169,4 +4169,128 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    // ---- Review t5 (acceptance): checks added by the reviewer ----
+
+    /// A: "another appointment" (replaces_previous false) and right after it
+    /// "change that one" (true) arrive together; the later call's task runs
+    /// first. The change belongs to the new appointment; the first one stays.
+    #[tokio::test]
+    #[ignore = "review A: known ordering gap, run with --ignored"]
+    async fn review_a_change_that_runs_before_the_appointment_it_changes() {
+        let s = session(Mode::Confirm);
+        s.run_tool(&propose_args("1", json!({"start": later(2, 10), "title": "看房"}), next_seq())).await;
+        let (new_seq, change_seq) = (next_seq(), next_seq());
+        let another = propose_args("2", json!({"start": later(4, 15), "title": "電話會議", "replaces_previous": false}), new_seq);
+        let change = propose_args("3", json!({"start": later(4, 16), "title": "電話會議", "replaces_previous": true}), change_seq);
+        s.run_tool(&change).await;
+        s.run_tool(&another).await;
+        let starts: Vec<String> = s.book.outcomes().into_iter().map(|a| a.start).collect();
+        assert_eq!(starts, vec![later(2, 10), later(4, 16)], "the first appointment must stay; the new one moves");
+    }
+
+    /// C: check_availability is answered while another call holds the
+    /// calendar lock for a booking (it never takes that lock).
+    #[tokio::test]
+    async fn review_a_check_is_not_held_up_by_another_calls_booking() {
+        let cal = Arc::new(FakeCal::default());
+        let s = auto_session(&cal);
+        let check = ToolCall { id: "c".into(), name: CHECK.into(), args: json!({"start": later(6, 10)}), seq: 0 };
+        let held = calendar_turn().lock().await;
+        let answer = tokio::time::timeout(Duration::from_millis(500), s.run_tool(&check)).await;
+        drop(held);
+        assert_eq!(answer.expect("check waited for the calendar lock"), json!({"free": true}));
+    }
+
+    /// B: ✅ on an `auto` appointment whose write answer was lost finds its own
+    /// event by its tag: not "taken", moved instead of written twice.
+    #[tokio::test]
+    async fn review_confirm_is_not_blocked_by_its_own_auto_event() {
+        let (root, store, calls) = stores();
+        let cal = Arc::new(FakeCal::default());
+        let (from, to) = (later(7, 10), later(7, 11));
+        cal.events.lock().unwrap().push(("ev9".into(), from.clone(), to.clone(), "tag-own".into()));
+        let mut a = appt(&from, &to, "看房");
+        a.mode = "auto".into();
+        a.tag = "tag-own".into();
+        a.auto_error = "Google Calendar: timeout (15s)".into();
+        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
+        let (task, text, done) = decide_inner(Some(Cal::Fake(cal.clone())), &Client::new(), &plain_settings(), &store, &calls, None, &t.id, true)
+            .await
+            .unwrap();
+        assert_eq!(done, Decision::Settled, "{text}");
+        assert_eq!(task.appointment.unwrap().event_id, "ev9");
+        assert_eq!((count(&cal.inserts), count(&cal.moves)), (0, 1));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// B: the owner put the same thing in the calendar himself, then pressed ✅:
+    /// held as "taken by another appointment", nothing texted, every time.
+    #[tokio::test]
+    async fn review_the_owners_own_entry_for_the_same_time_holds_confirm() {
+        let (root, store, calls) = stores();
+        let cal = Arc::new(FakeCal::default());
+        let (from, to) = (later(8, 15), later(8, 16));
+        cal.busy.lock().unwrap().push((from.clone(), to.clone()));
+        let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &appt(&from, &to, "看房")) }).await.unwrap();
+        for _ in 0..2 {
+            let (task, text, done) = decide_inner(Some(Cal::Fake(cal.clone())), &Client::new(), &plain_settings(), &store, &calls, None, &t.id, true)
+                .await
+                .unwrap();
+            assert_eq!(done, Decision::Held);
+            assert!(text.contains("已被其他預約占用"), "{text}");
+            assert_eq!(task.appointment.unwrap().status, PENDING);
+        }
+        assert_eq!(count(&cal.inserts), 0);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// D: the numbers named in the review ticket.
+    #[test]
+    fn review_sms_numbers_from_the_ticket() {
+        assert_eq!(sms_number_on("+12025550143", None).as_deref(), Some("+12025550143"));
+        assert_eq!(sms_number_on("+12025550143", Some("tw")).as_deref(), Some("+12025550143"));
+        assert_eq!(sms_number_on("2025550143", Some("us")).as_deref(), Some("+12025550143"));
+        assert_eq!(sms_number_on("0912345678", Some("tw")).as_deref(), Some("+886912345678"));
+        assert_eq!(sms_number_on("+819012345678", None).as_deref(), Some("+819012345678"));
+        assert_eq!(sms_number_on("02-2345-6789", Some("tw")), None);
+        for sim in [None, Some("tw"), Some("us")] {
+            assert_eq!(sms_number_on("", sim), None, "{sim:?}");
+            assert_eq!(sms_number_on("unknown", sim), None, "{sim:?}");
+        }
+        // The old entry point reads a number without a country code as Taiwanese.
+        assert_eq!(sms_number("0912345678").as_deref(), Some("+886912345678"));
+        assert_eq!(sms_number("2025550143"), None);
+        // A US toll-free number is texted today (see the ignored test below).
+        assert_eq!(sms_number_on("+18005551234", None).as_deref(), Some("+18005551234"));
+    }
+
+    /// D: North American toll-free numbers (800/888/877/866/855/844/833) are
+    /// business lines that do not take ordinary texts.
+    #[test]
+    #[ignore = "review D: toll-free +1 numbers are texted today, run with --ignored"]
+    fn review_toll_free_numbers_are_not_texted() {
+        for n in ["+18005551234", "+1 888 555 1234", "+18775551234", "+18665551234", "+18555551234", "+18445551234", "+18335551234"] {
+            assert_eq!(sms_number_on(n, None), None, "{n}");
+        }
+    }
+
+    /// E: retry on an id that does not exist is an error (the endpoint answers 404 first).
+    #[tokio::test]
+    async fn review_retry_on_a_missing_task_is_refused() {
+        let (root, store, calls) = stores();
+        let r = retry_sms(&plain_settings(), &store, &calls, None, "no-such-task", None).await;
+        assert!(r.is_err(), "{r:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// E: a number that cannot take texts ("no_number") gets a retry that can only fail again.
+    #[test]
+    #[ignore = "review E: no_number is offered a retry, run with --ignored"]
+    fn review_no_number_is_not_offered_again() {
+        let mut a = appt(&later(2, 15), &later(2, 16), "看房");
+        a.status = CONFIRMED.into();
+        a.sms = "no_number".into();
+        assert!(!sms_retryable(&a));
+    }
 }

@@ -1723,6 +1723,22 @@ mod tests {
         }
     }
 
+    /// Review t5 (E): ids and phones the retry-sms endpoint must refuse.
+    #[test]
+    fn review_retry_ids_and_serials_that_must_be_refused() {
+        for id in ["", "..", "../etc/passwd", "..%2Fetc", "a/b", "a\\b", "x y", "<script>"] {
+            assert!(!task_id_safe(id), "{id}");
+        }
+        assert!(!task_id_safe(&"a".repeat(129)));
+        assert!(task_id_safe("20261114-abc_DEF-1"));
+        let long = format!(r#"{{"serial": "{}"}}"#, "p".repeat(129));
+        assert_eq!(parse_retry_body(long.as_bytes()), Err("invalid_serial"));
+        for bad in [r#"{"serial": "../x"}"#, r#"{"serial": "pixel 1"}"#, r#"{"serial": "a/b"}"#] {
+            assert_eq!(parse_retry_body(bad.as_bytes()), Err("invalid_serial"), "{bad}");
+        }
+        assert_eq!(parse_retry_body(br#"{"serial": true}"#), Err("bad_request"));
+    }
+
     #[test]
     fn range_parsing() {
         assert_eq!(parse_range(&HeaderMap::new(), 100), None);
