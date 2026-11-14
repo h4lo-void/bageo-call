@@ -118,6 +118,14 @@ Content-Type: application/json
  "note": "我姐", "source": "manual", "updated_at": "2026-11-14T08:00:00Z"}}
 ```
 
+## AI 代打
+
+让 AI 帮你打电话：给它号码（或联系人）和要办的事（订位、跟朋友约时间、问店家事情），一部 AI 模式的手机就会拨出。通话中网页可以看实时字幕；遇到你没交代、它拿不准的事，AI 会先跟对方说要问一下，再问你（`ask_owner`）：你正在看这一笔（网页 6 秒内读过它的实时画面），问题就出现在网页上，最多等 40 秒；没在看或超时，AI 会问对方有哪些可行的选项、说确认后再回拨，然后客气收尾。通话中你在网页打的字会当成指示交给 AI。结束后摘要模型按交办内容整理结果，发一条通知（标题「📞 AI 代打：<名字或号码>」）。
+
+身份用设置 `errand_identity`（`assistant` 助理，默认；`owner` 本人），每笔也能单独选；无论哪种，被认真问是不是真人都会承认是 AI，不给交办以外的个人信息，不答应付款、订金、转账。号码：不拨紧急号码、7 位以下的短号与增值付费号码（如台湾 0204／0209、+1 900／976），免费电话可以拨；没写国码的号码一律当成本国号码（`country_code`）。拨出的手机要是 AI 模式、有该国 SIM：agent 从每部手机报告过的来电记下各张 SIM（subscription id 与国家），App 的控制 hello 带 `sims` 时以它为准（存在 `phone_sims.json`）；完全不知道 SIM 的手机只拨本国号码（`country_code`）、用默认卡。手机通话中就排队（`queued`），超过 10 分钟算失败；同一号码一次一通，跟预约 AI 回拨共用排队。一通最长 10 分钟（9 分半提醒收尾）。语音菜单最多等 90 秒等真人（AI 不能按键）；电信录音（空号、关机）直接挂断。不会自动重拨，要再打一次由你按。
+
+API（字段与错误码见英文版 [API](../en/API.md#ai-errands)）：`GET／POST /calls/api/errands`、`POST /calls/api/errands/{id}/cancel`、`POST …/{id}/retry`、`DELETE …/{id}`、`GET …/{id}/live?after=<seq>`、`POST …/{id}/say`。错误返回 `{ok: false, error, code}`（两者同值）；`POST` 都要 `Content-Type: application/json`。
+
 ## 手机与健康状态
 
 | 方法和路径 | 内容 |

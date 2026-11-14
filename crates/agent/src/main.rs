@@ -33,6 +33,7 @@ mod contacts;
 mod debug_probe;
 mod deepseek;
 mod dtmf;
+mod errands;
 mod extract;
 mod fulfill;
 mod gemini_live;
@@ -246,6 +247,8 @@ struct AppState {
     previews: Arc<voice_preview::VoicePreviews>,
     /// Background sound beds (`ambience_<kind>.wav` in the assets dir).
     ambience: Arc<ambience::AmbienceLibrary>,
+    /// Calls the owner has the AI make ([`errands`]).
+    errands: Arc<errands::ErrandStore>,
 }
 
 const INCOMING_NOTIFY_DEDUP_WINDOW: Duration = Duration::from_secs(30);
@@ -1012,6 +1015,11 @@ async fn main() -> Result<()> {
     // The owner's contacts (names for caller IDs), next to the call records.
     let contacts = contacts::ContactStore::open(PathBuf::from(&settings.calls_data_dir).join("contacts.json"));
     contacts::install(contacts.clone());
+    // Calls the owner has the AI make (errands), and the SIMs each phone has
+    // reported (an errand dials from a SIM of the number's country).
+    let phone_sims = errands::SimBook::open(PathBuf::from(&settings.calls_data_dir).join("phone_sims.json"));
+    errands::install_sims(phone_sims.clone());
+    let errand_store = errands::ErrandStore::open(PathBuf::from(&settings.calls_data_dir).join("errands.json"), phone_sims);
     {
         let calls = calls.clone();
         let task_store = task_store.clone();
@@ -1069,6 +1077,7 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(config::assets_dir),
             settings.sample_rate,
         )),
+        errands: errand_store.clone(),
     };
     // Blocked numbers: have the announcement in the chosen voice ready before the first
     // such call (made once, then cached on disk). The network can be down for a
@@ -1093,6 +1102,7 @@ async fn main() -> Result<()> {
             loop {
                 tick.tick().await;
                 appointment_callbacks(&state, "", None).await;
+                errand_tick(&state).await;
             }
         });
     }
@@ -1139,6 +1149,7 @@ async fn main() -> Result<()> {
         ambience: state.ambience.clone(),
         phones: phones.clone(),
         contacts: contacts.clone(),
+        errands: errand_store.clone(),
     };
     let addr: SocketAddr = format!("{}:{}", settings.host, settings.port).parse()?;
     let mode = settings.agent_mode.as_str();
@@ -2018,6 +2029,7 @@ async fn handle_control_idle_ws(
                     "status" => {
                         state.phones.on_status(&serial, &parsed);
                         sync_normal_mode(&state, &serial).await;
+                        errands::note_hello_sims(&canonical_device_serial(&serial), &parsed);
                     }
                     // Answer to a web console mode switch (`set_mode`).
                     "set_mode_result" => {
@@ -2360,6 +2372,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         .await;
                                     state.phones.connected(&serial, sink.clone(), &parsed);
                                     sync_normal_mode(&state, &serial).await;
+                                    // An app that lists its SIMs: errands dial from the right one.
+                                    errands::note_hello_sims(&canonical_device_serial(&serial), &parsed);
                                     // Newer apps send texts for the agent (appointments).
                                     state
                                         .control
@@ -4047,6 +4061,12 @@ pub(crate) fn call_sim_sub_id(serial: &str) -> Option<i64> {
 fn note_call_sim(serial: &str, parsed: &Value) {
     note_call_sim_country(serial, parsed);
     note_call_sim_sub_id(serial, parsed);
+    // Kept for errands: which SIM of this phone is of which country.
+    errands::note_call_sim(
+        &canonical_device_serial(serial),
+        sim_sub_id_from_msg(parsed),
+        sim_country_from_msg(parsed).as_deref(),
+    );
 }
 
 /// How long a second report of the same turned-away call counts as that call.
@@ -5737,6 +5757,7 @@ fn start_ring_prewarm(
         None,
         &state.http,
         None,
+        None,
     );
     let id = state.ring_prewarm.insert(
         serial,
@@ -6061,10 +6082,26 @@ async fn spawn_gemini_session_tasks(
     // reported dialing for it (`outbound_ready` with its task and number) —
     // never an incoming call or a ring prewarm (which starts elsewhere).
     let callback = appointments::callback_for_call(&serial, &caller_id).await;
+    let mut errand = None;
     if let Some(cb) = &callback {
-        info!("appointment call-back session serial={serial} task_id={}", cb.task_id);
+        info!("appointment call-back session serial={serial} task_id={} errand={}", cb.task_id, cb.errand);
+        let mut record_id = String::new();
         if let Some(c) = active_call.lock().await.as_mut() {
             c.push_event(appointments::AI_CALLBACK_EVENT);
+            if cb.errand {
+                c.push_event(errands::ERRAND_EVENT);
+            }
+            record_id = c.id.clone();
+        }
+        if cb.errand {
+            // The owner cancelled it while it dialed: hang up at once, no AI.
+            if state.errands.cancel_requested(&cb.task_id) {
+                info!("errand cancelled before its call started serial={serial} id={} — hang up", cb.task_id);
+                cancel.store(true, Ordering::Relaxed);
+                send_hangup_with_retries(&sink, &serial, "errand_cancelled", 3, Some(&media_call_guard)).await;
+                return;
+            }
+            errand = Some(state.errands.attach_call(&cb.task_id, &record_id));
         }
     }
     // Started at pickup: the media hello has reported the SIM (when the app does).
@@ -6099,6 +6136,7 @@ async fn spawn_gemini_session_tasks(
         Some(media_call_guard.clone()),
         &state.http,
         callback.as_ref().map(|c| c.script.clone()),
+        errand,
     );
     // Kept for one fresh-socket retry if this session never delivers audio
     // (not for a call-back: nobody may have answered, and a retry would greet).
@@ -6164,6 +6202,7 @@ fn start_gemini_session_core(
     media_guard: Option<MediaCallGuard>,
     http: &reqwest::Client,
     callback_script: Option<String>,
+    errand: Option<Arc<errands::CallHooks>>,
 ) -> GeminiSessionCore {
     // The AI's own call-back with an appointment's answer
     // (`appointments::callback_for_call`): its script instead of the answering
@@ -6272,7 +6311,8 @@ fn start_gemini_session_core(
         // only: the sales / scam prompt the session may switch to has no such line.
         // The SIM as the ring prewarm reads it (the last one the phone reported while
         // the call rings), so the contact is the one its plan checks at pickup.
-        let system = if persona {
+        // An errand's script names whom it calls itself.
+        let system = if persona && errand.is_none() {
             let sim = call_sim_country(&serial).or_else(|| phone_region::last_sim(&canonical_device_serial(&serial)));
             contacts::with_caller(&system, rt, &cfg.caller_id, sim.as_deref())
         } else {
@@ -6328,6 +6368,7 @@ fn start_gemini_session_core(
                 appointments,
                 lang_plan,
                 is_callback,
+                errand,
             )
             .await
         })
@@ -8587,6 +8628,9 @@ fn spawn_ai_talk_tg_summary(
     // calendar suggestion from it, its own title, its result for the task.
     let ai_callback = appointments::is_ai_callback(&record.events);
     let callback_task = if ai_callback { appointments::callback_task_on(&serial) } else { None };
+    // An errand's call: its own result and notification ([`errands::after_call`]).
+    let errand_call = errands::is_errand_record(&record.events);
+    let errand_store = state.errands.clone();
     // A call-back nobody answered ends the AI's way too: no "AI failed".
     let ai_failed = record_had_ai_fail_hangup(&record.events) && !ai_callback;
     let stalled = record.events.iter().any(|e| e == "persona_stall_spam");
@@ -8790,7 +8834,7 @@ fn spawn_ai_talk_tg_summary(
             // The summary model usually writes it (prompt rule); make sure the owner sees it.
             body.insert_str(0, &format!("{}\n", locale::notify_phrases().s_ai_fail_prefix));
         }
-        if ai_callback {
+        if ai_callback && !errand_call {
             let code = if callee_answered { "answered" } else { "no_answer" };
             body.insert_str(0, &format!("{}\n", appointments::callback_result_line(locale::notify_lang(), code, &caller)));
         }
@@ -8893,7 +8937,7 @@ fn spawn_ai_talk_tg_summary(
         }
         // The call's page in the web console, where a pending appointment is decided.
         let detail_url = notify::call_detail_url(&eff, &call_id);
-        if notify_on {
+        if notify_on && !errand_call {
             if let Some(ev) = &calendar_event {
                 let label = locale::notify_phrases().n_calendar;
                 body.push_str(&format!("\n📅 {label}{}{} ({})", locale::notify_kv_sep(), ev.title, ev.when()));
@@ -8934,6 +8978,8 @@ fn spawn_ai_talk_tg_summary(
                 body.chars().count(),
                 transcript.chars().count()
             );
+        } else if errand_call {
+            info!("errand call serial={serial}: no summary notice, the errand sends its own");
         } else {
             info!("ai talk tg summary skipped (notify not configured) serial={serial} — notes on web only");
         }
@@ -8947,7 +8993,11 @@ fn spawn_ai_talk_tg_summary(
                 settings: &eff,
                 tasks: task_store.as_ref(),
                 control: control.as_ref(),
+                errands: Some(errand_store.as_ref()),
             };
+            if errand_call {
+                errands::after_call(&ctx, &errand_store, task_id, &call_id, &live_full, &notes.summary, callee_answered).await;
+            }
             appointments::callback_call_over(&ctx, task_id, callee_answered).await;
         }
         // Last, so a slow translation holds up nothing and its write comes after
@@ -8986,11 +9036,31 @@ async fn appointment_callbacks(state: &AppState, serial: &str, ev: Option<&Value
         settings: &eff,
         tasks: state.task_store.as_ref(),
         control: state.control.as_ref(),
+        errands: Some(state.errands.as_ref()),
     };
     match ev {
         Some(msg) => appointments::on_callback_event(&ctx, serial, msg).await,
         None => appointments::sweep_callbacks(&ctx).await,
     }
+}
+
+/// Errands waiting for a phone: dialed once it is free, failed after their
+/// limit ([`errands::sweep`]). Every 15 s.
+async fn errand_tick(state: &AppState) {
+    let rt = state.settings_store.snapshot();
+    let eff = rt.effective(&state.settings);
+    let phones = errands::phone_view(&state.control, &state.phones, &state.calls, &state.errands.sims).await;
+    let env = errands::Env {
+        store: &state.errands,
+        rt: &rt,
+        settings: &eff,
+        http: &state.http,
+        tasks: &state.task_store,
+        control: &state.control,
+        calls: &state.calls,
+        phones,
+    };
+    errands::sweep(&env).await;
 }
 
 /// Persona mode gave up on the AI and hung up (`persona_ai_unavailable_hangup`).

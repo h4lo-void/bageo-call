@@ -820,6 +820,43 @@ impl ControlRegistry {
         Ok(true)
     }
 
+    /// Dispatch `place_call` to exactly the phone `serial` (from the SIM
+    /// `sub_id`; None: its default), never another one: an errand's phone and
+    /// SIM were picked for the number's country. `Ok(false)` when that phone
+    /// is not connected or is a normal phone.
+    pub async fn try_dispatch_on(&self, task_id: &str, number: &str, serial: &str, sub_id: Option<i64>) -> Result<bool> {
+        let number = number.trim();
+        if number.is_empty() {
+            anyhow::bail!("number empty");
+        }
+        let sink = {
+            let clients = self.clients.lock().await;
+            if self.normal_mode.lock().await.contains(serial) {
+                info!(task_id, serial, "place_call: the phone is a normal phone");
+                return Ok(false);
+            }
+            match clients.get(serial) {
+                Some(sink) => sink.clone(),
+                None => {
+                    info!(task_id, serial, "place_call: the phone is not connected");
+                    return Ok(false);
+                }
+            }
+        };
+        let mut session = CallbackSession::new(task_id, number);
+        session.serial = serial.to_string();
+        session.sub_id = sub_id;
+        let payload = start_callback_request(&mut session, None);
+        send_ws_json(&sink, payload)
+            .await
+            .with_context(|| format!("send place_call serial={serial} task_id={task_id}"))?;
+        let call_id = session.call_id.clone();
+        self.sessions.lock().await.insert(task_id.to_string(), session);
+        self.call_index.lock().await.insert(call_id, task_id.to_string());
+        info!(task_id, serial, sub_id = ?sub_id, number_len = number.len(), "place_call dispatched on its phone");
+        Ok(true)
+    }
+
     /// Advance session from phone → agent control WS telemetry.
     pub async fn handle_phone_event(&self, msg: &Value, store: &TaskStore) {
         let mtype = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");

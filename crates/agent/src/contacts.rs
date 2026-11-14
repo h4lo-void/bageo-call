@@ -685,6 +685,11 @@ impl ContactStore {
         self.with_book(|b| b.find(&key).map(|i| b.contacts[i].clone()))
     }
 
+    /// The contact with this id.
+    pub fn get(&self, id: &str) -> Option<Contact> {
+        self.with_book(|b| b.position(id).map(|i| b.contacts[i].clone()))
+    }
+
     /// What an import would bring: each draft with the saved contact it repeats.
     pub fn preview(&self, drafts: Vec<Draft>) -> Vec<PreviewEntry> {
         self.with_book(|b| {
@@ -859,6 +864,11 @@ pub fn install(store: Arc<ContactStore>) {
 /// The contact a caller ID belongs to ([`ContactStore::lookup`]).
 pub fn lookup(number: &str, region: Option<&str>) -> Option<Contact> {
     STORE.get()?.lookup(number, region)
+}
+
+/// The contact with this id ([`ContactStore::get`]).
+pub fn by_id(id: &str) -> Option<Contact> {
+    STORE.get()?.get(id)
 }
 
 /// Caller ID → `{id, name}` for the calls whose number is a contact's (the

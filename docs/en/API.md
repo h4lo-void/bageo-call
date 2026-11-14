@@ -198,6 +198,76 @@ Content-Type: application/json
  "note": "my sister", "source": "manual", "updated_at": "2026-11-14T08:00:00Z"}}
 ```
 
+## AI errands
+
+The AI makes a call for you: you give it a number (or a contact) and what to
+get done — book a table, fix a time with a friend, ask a shop something — and a
+phone in AI mode dials out. While the call runs, the web console can show live
+captions; when the AI meets something your instructions do not settle, it tells
+the other side it will check and asks you (`ask_owner`): if you are watching the
+errand (the page asked for its live view in the last 6 seconds), the question
+shows there for up to 40 seconds; otherwise, or when you do not answer in time,
+the AI asks which options would work, says you will confirm and call back, and
+ends the call politely. What you type during the call goes to the AI as an
+instruction. Afterwards the summary model reads the call against the errand and
+you get one notification (title "📞 AI 代打：<name or number>", in the
+notification language).
+
+Who calls: `errand_identity` (setting; `assistant`, your assistant, by
+default, or `owner`, as you), and each errand may pick its own. Either way the AI
+says it is an AI when sincerely asked, gives out no personal details beyond the
+errand, and agrees to no payment, deposit or transfer. Numbers: never an
+emergency number, a short code (7 digits or fewer) or a premium-rate number
+(e.g. Taiwan 0204 / 0209, +1 900 / 976); toll-free numbers are fine. A number
+written without a country code is one of your country (`country_code`). The call
+goes out from a phone in AI mode with a SIM of the number's country: the agent
+learns each phone's SIMs (subscription id and country) from the calls the phone
+reports, and from `sims` in its control hello when the app sends it
+(`phone_sims.json`). A phone whose SIMs it has never heard about dials only
+numbers of your own country (`country_code`), from its default SIM. A phone on
+a call: the errand waits (`queued`) and fails after 10 minutes; one call to a
+number at a time, shared with the appointments' AI call-backs. A call lasts at
+most 10 minutes (the AI wraps up at 9:30). A voice menu: the AI waits up to 90
+seconds for a person (it cannot press keys); the carrier's recording ("number
+not in service"): it hangs up at once. No retries on its own: **Try again** is
+yours.
+
+An errand is `{id, created_at, updated_at, number, name, contact_id, task,
+identity, serial, device_label, status, call_code, attempts, record_id,
+follow_up_of, questions: [{id, text, options, answer, answered_by, asked_at}],
+result, history}`. `status`: `queued`, `dialing`, `on_call`, `done`,
+`no_answer`, `failed`, `cancelled`. `result`: `null` or `{outcome, summary,
+details, follow_up, options, event}`; `outcome`: `done`, `partial`,
+`not_done`, `need_owner` (choices in `options`), `no_answer`, `voicemail`,
+`failed`; `event`: `null` or `{start, end, title}` (local time with its
+offset, `end` left out when not agreed). `record_id` is the call's record
+(`GET /calls/api/call/{id}`); `history` keeps the earlier tries `{attempt,
+status, result, record_id, ended_at, questions}`. Errands are kept in
+`errands.json` (the newest 500); one still under way when the agent restarts is
+`failed` (`call_code` `agent_restarted`).
+
+| Method and path | What |
+|---|---|
+| `GET /calls/api/errands` | `{ok, errands}`, the newest first, at most 200. |
+| `POST /calls/api/errands` | Body `{number, name, contact_id, task, identity, serial, follow_up_of}` (all but `task` and a number or contact may be left out; `serial` empty: any phone; `follow_up_of`: an earlier errand this call follows up). `{ok, errand}`. Errors (HTTP 400 `{ok: false, error, code}`, the same code in both): `no_number`, `bad_number`, `not_allowed`, `no_task`, `task_too_long` (over 1000 characters), `no_phone`, `no_sim_for_country`; 404 `not_found` (`contact_id` or `follow_up_of`). |
+| `POST /calls/api/errands/{id}/cancel` | Waiting: dropped; dialing or on the call: hung up. `{ok, errand}`. |
+| `POST /calls/api/errands/{id}/retry` | The same errand once more (`attempts` + 1, the last try moved to `history`). `{ok, errand}`; under way: 400 `busy`; the phone codes as for a new errand. |
+| `DELETE /calls/api/errands/{id}` | `{ok}`; dialing or on the call: 400 `busy`. |
+| `GET /calls/api/errands/{id}/live?after=<seq>` | `{status, lines: [{seq, who, text, at}], question, watching}`: the captions after `seq` (`who`: `ai`, `callee`, `owner`, `system`; the newest 400 are kept) and the question waiting for you (`null` or `{id, text, options, asked_at, expires_at}`). Asking marks you as watching for 6 seconds. |
+| `POST /calls/api/errands/{id}/say` | Body `{text, question_id}` (at most 300 characters): the answer to that question, or an instruction for the AI. `{ok}`. Errors: `not_on_call`, `empty_text`, `text_too_long`, `question_closed` (answered, timed out, or not the question waiting). |
+
+Like the other changes, the `POST` requests need `Content-Type:
+application/json` (an empty body is `{}`), so other web pages cannot place a
+call from a browser on your network.
+
+```text
+POST /calls/api/errands
+Content-Type: application/json
+{"number": "02-2345-6789", "name": "Din Tai Fung", "task": "Book a table for 4 tomorrow at 7 pm under Wang. 7:30 to 8 is fine too."}
+
+{"ok": true, "errand": {"id": "e3f1…", "status": "dialing", "serial": "pixel-12345", "attempts": 1, "result": null, …}}
+```
+
 ## Phones and health
 
 | Method and path | What |

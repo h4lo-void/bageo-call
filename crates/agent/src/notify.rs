@@ -960,6 +960,42 @@ fn ai_callback_message(caller_id: &str, device: &str, when: &str, headline: &str
         )
 }
 
+/// About an errand the AI called for (`crate::errands`): what came of it, or
+/// why the call never got going. `headline`: "AI 代打：<name or number>" in
+/// the owner's language.
+pub async fn notify_ai_errand(
+    http: &Client,
+    settings: &Settings,
+    number: &str,
+    serial: &str,
+    headline: &str,
+    body: &str,
+) -> bool {
+    if !settings.call_notify {
+        return false;
+    }
+    deliver(http, settings, &ai_errand_message(number, &device_label(serial), &now_stamp(), headline, body)).await
+}
+
+fn ai_errand_message(number: &str, device: &str, when: &str, headline: &str, body: &str) -> Message {
+    let p = locale::notify_phrases();
+    Card::new("📞", headline)
+        .code(p.n_number, &display_or_hidden(number))
+        .row(p.n_phone, device)
+        .row(p.n_time, when)
+        .tail(body)
+        .message(
+            "ai_errand",
+            headline.to_string(),
+            json!({
+                "number": number.trim(),
+                "device": device,
+                "time": when,
+                "summary": body.trim(),
+            }),
+        )
+}
+
 /// A plain title + body message to every channel.
 pub async fn notify_event(http: &Client, settings: &Settings, title: &str, body: &str) -> bool {
     let msg = Message {

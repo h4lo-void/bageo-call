@@ -36,6 +36,8 @@ pub struct CallsState {
     pub phones: Arc<PhoneDevices>,
     /// The owner's contacts: names for the call list, and the contacts API.
     pub contacts: Arc<crate::contacts::ContactStore>,
+    /// Calls the owner has the AI make ([`crate::errands`]), and their API.
+    pub errands: Arc<crate::errands::ErrandStore>,
 }
 
 const UI_HTML: &str = include_str!("../static/calls.html");
@@ -1421,6 +1423,13 @@ impl PhoneDevices {
             .map(|p| p.hello.mode)
     }
 
+    /// The connected phone said a call rings or is up on it.
+    pub fn in_call(&self, serial: &str) -> bool {
+        self.phones()
+            .get(serial)
+            .is_some_and(|p| p.sink.is_some() && p.hello.in_call)
+    }
+
     /// Connected phones in normal-phone mode: the AI does not answer their calls.
     pub fn normal_mode_serials(&self) -> Vec<String> {
         let mut v: Vec<String> = self
@@ -2068,5 +2077,6 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/tasks/{id}/event.ics", get(task_event_ics))
         .route("/api/appointments/{id}/retry-sms", post(appointment_retry_sms))
         .merge(crate::contacts::router())
+        .merge(crate::errands::router())
         .with_state(state)
 }
