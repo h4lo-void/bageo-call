@@ -40,7 +40,10 @@ A call record (`call`, and each entry of `calls`) carries among others: `id`,
 `serial` (the phone), `caller_id`, `started_at` / `ended_at` (RFC 3339, UTC),
 `duration_ms`, `status` (`ringing`, `active`, `ended`), `events` (what happened,
 in order — e.g. `active`, `persona_stall_spam`, `reject_list`,
-`persona_ai_fail_hangup`, `ended`), `summary`, which audio files exist and,
+`reject_list_declined`, `call_waiting_rejected`, `persona_ai_fail_hangup`,
+`ended`), `summary`, which audio files exist, `sim_country` / `sim_sub_id` (the
+SIM the call came in on, when the phone app says), `reply_method` /
+`reply_contact` (also a number the caller said to call back on) and,
 when the caller set a time with the AI, `appointment` as the call left it
 (see [Appointments](#appointments)); `notes.appointment` is kept up to date
 after the call (your decision, the text result).
@@ -175,3 +178,19 @@ Text messages to callers (appointments) use the same connection:
 | phone → agent | `hello` with `"supports_sms": true` | The app can send texts for the agent. No field = an older app: no texts are asked of it. |
 | agent → phone | `{"type": "send_sms", "id": "<≤ 64 characters>", "to": "+886912345678", "text": "<UTF-8, ≤ 500 characters>"}` | Sent only to the phone that took the call. `to` is digits with an optional leading `+`. |
 | phone → agent | `{"type": "send_sms_result", "id": "<same>", "ok": true}` or `{"type": "send_sms_result", "id": "<same>", "ok": false, "error": "<code>"}` | Sent once every part of the message has reported back (the phone gives up after 60 seconds: `timeout`). `error` is one of `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception`. The agent waits up to 90 seconds; no answer counts as failed. |
+| agent → phone | `send_sms` with `"sub_id": <int>` | Optional: the SIM (Android subscription id) to send from — the one the call came in on. Without it, the phone's default SIM. |
+| phone → agent | `{"type": "send_sms_delivered", "id": "<same>", "ok": bool}` | The carrier's delivery report (each part of a long text may report; one `false` means not delivered). |
+
+A result that comes after the agent stopped waiting is still recorded, and the
+phone may send its last result again after reconnecting: the first result of an
+id counts, repeats change nothing.
+
+Calls use these optional fields (an app or agent that does not know them works
+as before):
+
+| Direction | Message | Meaning |
+|---|---|---|
+| phone → agent | `incoming` and the media `hello` with `"sim_sub_id": <int>` | The SIM (Android subscription id) that took the call; texts and call-backs for the call use it. |
+| agent → phone | `answer_plan` with `"reject": true` | A blocked number with `reject_mode` `decline`: refuse the ringing call. Sent with `"delay_ms": 0`, so an app that does not know it picks up at once and the agent plays the announcement. |
+| phone → agent | `{"type": "call_waiting_rejected", "serial": "…", "caller_id": "…", "sim_country": "us", "sim_sub_id": 20}` | A second call came in during a call and the phone turned it away (busy). The agent records it and sends a notification. |
+| agent → phone | `place_call` with `"sub_id": <int>` | A call-back dials out on the SIM the caller called, when it goes out on that phone. |

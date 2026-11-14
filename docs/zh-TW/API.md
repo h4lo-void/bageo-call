@@ -29,7 +29,7 @@ X-Calls-Token: <token>
 | `GET /calls/api/stats` | `{ok, stats: {total, today, voicemails, blocked}}`。 |
 | `GET /calls/api/export.csv` | 篩選後的清單，CSV 格式（查詢參數同 `list`，最多 2000 列）。 |
 
-通話紀錄（`call`，以及 `calls` 裡的每一筆）帶有的欄位包括：`id`、`serial`（手機）、`caller_id`、`started_at` / `ended_at`（RFC 3339，UTC）、`duration_ms`、`status`（`ringing`、`active`、`ended`）、`events`（依序發生的事——例如 `active`、`persona_stall_spam`、`reject_list`、`persona_ai_fail_hangup`、`ended`）、`summary`、有哪些音訊檔，對方跟 AI 約了時間時還有 `appointment`（通話結束當下的樣子，見[行程預約](#行程預約)）；通話後的變化（你的決定、簡訊結果）會更新在 `notes.appointment`。
+通話紀錄（`call`，以及 `calls` 裡的每一筆）帶有的欄位包括：`id`、`serial`（手機）、`caller_id`、`started_at` / `ended_at`（RFC 3339，UTC）、`duration_ms`、`status`（`ringing`、`active`、`ended`）、`events`（依序發生的事——例如 `active`、`persona_stall_spam`、`reject_list`、`reject_list_declined`、`call_waiting_rejected`、`persona_ai_fail_hangup`、`ended`）、`summary`、有哪些音訊檔、`sim_country` / `sim_sub_id`（這通電話打進來的 SIM，手機 App 有說才有）、`reply_method` / `reply_contact`（也包括對方在電話裡說要回電的號碼），對方跟 AI 約了時間時還有 `appointment`（通話結束當下的樣子，見[行程預約](#行程預約)）；通話後的變化（你的決定、簡訊結果）會更新在 `notes.appointment`。
 
 在 `notes.dialogue` 裡，每一行是一次發言，前面加上主程式語言的說話者標籤和分隔符號：繁體中文是 `對方：`／`接聽：`，簡體中文 `对方：`／`接听：`，英文 `Caller: `／`AI: `，日文 `相手：`／`AI：`，韓文 `상대: `／`AI: `，西班牙文 `Llamante: `／`IA: `，法文 `Appelant : `／`IA : `，德文 `Anrufer: `／`KI: `，葡萄牙文 `Chamador: `／`IA: `。舊版存的紀錄不論語言都是 `對方：`／`接聽：`。
 
@@ -120,3 +120,16 @@ PUT /calls/api/settings
 | 手機 → 主程式 | `hello` 加上 `"supports_sms": true` | App 能替主程式傳簡訊。沒有這個欄位 = 舊 App：不會要它傳簡訊。 |
 | 主程式 → 手機 | `{"type": "send_sms", "id": "<最多 64 字元>", "to": "+886912345678", "text": "<UTF-8，最多 500 字元>"}` | 只送給接那通電話的手機。`to` 只有數字，開頭可以有 `+`。 |
 | 手機 → 主程式 | `{"type": "send_sms_result", "id": "<同一個>", "ok": true}` 或 `{"type": "send_sms_result", "id": "<同一個>", "ok": false, "error": "<代碼>"}` | 簡訊每一段都回報送出後才回（手機最多等 60 秒，逾時回 `timeout`）。`error` 是 `no_permission`, `bad_request`, `no_service`, `radio_off`, `generic_failure`, `timeout`, `exception` 其中之一。主程式最多等 90 秒，沒回應就當作失敗。 |
+| 主程式 → 手機 | `send_sms` 加上 `"sub_id": <整數>` | 選填：用哪張 SIM（Android subscription id）傳——就是那通電話打進來的 SIM。沒有就用手機的預設 SIM。 |
+| 手機 → 主程式 | `{"type": "send_sms_delivered", "id": "<同一個>", "ok": bool}` | 電信的送達回報（長簡訊每一段都可能回報；只要有一個 `false` 就算沒送達）。 |
+
+主程式不再等之後才到的結果照樣會記下來；手機重新連上後可能把最後一個結果再送一次：同一個 `id` 只算第一個結果，重複的不會改變任何東西。
+
+通話用到這些選填欄位（不認得的 App 或主程式照舊運作）：
+
+| 方向 | 訊息 | 意思 |
+|---|---|---|
+| 手機 → 主程式 | `incoming` 和 media 的 `hello` 加上 `"sim_sub_id": <整數>` | 接這通電話的 SIM（Android subscription id）；這通電話的簡訊和回撥都用它。 |
+| 主程式 → 手機 | `answer_plan` 加上 `"reject": true` | 拒接號碼、`reject_mode` 是 `decline`：在響鈴時拒接。同時帶 `"delay_ms": 0`，所以不認得的 App 會立刻接起來，由主程式播語音。 |
+| 手機 → 主程式 | `{"type": "call_waiting_rejected", "serial": "…", "caller_id": "…", "sim_country": "us", "sim_sub_id": 20}` | 通話中有第二通來電，手機忙線拒接。主程式會留下通話紀錄並送出通知。 |
+| 主程式 → 手機 | `place_call` 加上 `"sub_id": <整數>` | 回撥從同一支手機打出去時，用對方當初打進來的那張 SIM。 |

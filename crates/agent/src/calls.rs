@@ -81,6 +81,13 @@ pub struct CallRecord {
     /// (later decisions are in [`CallNotes::appointment`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub appointment: Option<crate::appointments::Appointment>,
+    /// Country of the SIM the call came in on (ISO 3166 alpha-2, lowercase), when
+    /// the phone app said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sim_country: Option<String>,
+    /// That SIM's Android subscription id, when the phone app said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sim_sub_id: Option<i64>,
 }
 
 /// Detailed post-call record for the web UI (the notification only gets `summary`).
@@ -242,11 +249,32 @@ pub struct ActiveCall {
     contact_verified: bool,
     /// What the caller agreed to on this call (appointments), shared with the Live session.
     appointments: Option<Arc<crate::appointments::CallAppointments>>,
+    /// The SIM the call came in on: country and Android subscription id.
+    sim_country: Option<String>,
+    sim_sub_id: Option<i64>,
 }
 
 impl ActiveCall {
     pub fn push_event(&mut self, ev: &str) {
         self.events.push(ev.to_string());
+    }
+
+    pub fn has_event(&self, ev: &str) -> bool {
+        self.events.iter().any(|e| e == ev)
+    }
+
+    /// The SIM the call came in on (unknown parts stay as they were).
+    pub fn set_sim(&mut self, country: Option<String>, sub_id: Option<i64>) {
+        if country.is_some() {
+            self.sim_country = country;
+        }
+        if sub_id.is_some() {
+            self.sim_sub_id = sub_id;
+        }
+    }
+
+    pub fn sim_sub_id(&self) -> Option<i64> {
+        self.sim_sub_id
     }
 
     /// The call's appointment book (its Live session writes, the record reads at the end).
@@ -1352,52 +1380,16 @@ impl CallStore {
             warn!("calls date dir {}: {e}", dir.display());
             return None;
         }
-        let pcm_path = dir.join(format!("{id}.pcm"));
-        let tts_pcm_path = dir.join(format!("{id}_tts.pcm"));
-        // ~30 minutes of 16-bit mono — covers long hold + IVR without unbounded growth.
-        let mix_bytes_cap = u64::from(sample_rate) * 2 * 60 * 30;
-        let call = ActiveCall {
-            id: id.clone(),
-            started_at: started_at.clone(),
-            started_instant: Instant::now(),
-            serial: serial.to_string(),
-            caller_id: caller_id.to_string(),
-            status: initial_status.to_string(),
-            sample_rate,
+        let call = self.new_active(
+            &id,
+            &started_at,
             date_dir,
-            mix: Vec::with_capacity(sample_rate as usize * 2 * 60),
-            tts_mix: Vec::new(),
-            remote_mix: Vec::with_capacity(sample_rate as usize * 2 * 60),
-            ai_remote_pcm: Vec::new(),
-            ai_segment_active: false,
-            ai_seg_start: None,
-            ai_seg_end: None,
-            uplink_bytes: 0,
-            tts_bytes: 0,
-            mix_bytes_cap,
-            events: vec![initial_status.to_string()],
-            record_tts: self.record_tts,
-            tts_outbound_active: false,
-            last_tts_tail: Vec::new(),
-            echo_probe: Vec::new(),
-            echo_free: None,
-            echo_check_frames: 0,
-            echo_check_max_ratio: 0.0,
-            barge_in: Arc::new(AtomicBool::new(false)),
-            barge_in_allowed: false,
-            remote_write: 0,
-            tts_write: 0,
-            bed_mix: Vec::new(),
-            bed_write: 0,
-            pcm_path,
-            tts_pcm_path,
-            voicemail_rel: None,
-            vm_duration_ms: 0,
-            reply_method: None,
-            reply_contact: None,
-            contact_verified: false,
-            appointments: None,
-        };
+            serial,
+            caller_id,
+            sample_rate,
+            initial_status,
+            vec![initial_status.to_string()],
+        );
         let draft = call.to_record(None, None, 0);
         let snap = {
             let mut idx = self.index.lock().await;
@@ -1424,6 +1416,115 @@ impl CallStore {
             "call record start id={id} serial={serial} caller={caller_id} status={initial_status} continuous_mix=true remote_track=true"
         );
         Some(call)
+    }
+
+    /// A call record finalized moments ago taken up again by the same call: a
+    /// blocked number declined while it rang and then picked up anyway by a phone
+    /// app that cannot decline. One record for the call; `drop_events` are the
+    /// marks of the first ending. None when recording is off, the record is
+    /// unknown or still in progress.
+    pub async fn resume(&self, id: &str, drop_events: &[&str]) -> Option<ActiveCall> {
+        if !self.record_enabled {
+            return None;
+        }
+        let (call, snap) = {
+            let mut idx = self.index.lock().await;
+            let rec = idx.calls.iter_mut().find(|c| c.id == id)?;
+            if rec.ended_at.is_none() {
+                return None;
+            }
+            let date_dir = record_date_dir(rec)
+                .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string());
+            let events: Vec<String> = rec
+                .events
+                .iter()
+                .filter(|e| !drop_events.contains(&e.as_str()))
+                .cloned()
+                .collect();
+            let mut call = self.new_active(
+                &rec.id,
+                &rec.started_at,
+                date_dir,
+                &rec.serial,
+                &rec.caller_id,
+                rec.sample_rate,
+                "active",
+                events,
+            );
+            call.set_sim(rec.sim_country.clone(), rec.sim_sub_id);
+            // In progress again (the call list and /live show it so).
+            rec.status = "active".to_string();
+            rec.ended_at = None;
+            rec.events = call.events.clone();
+            (call, self.snapshot_index(&idx))
+        };
+        self.write_index_snapshot(snap).await;
+        info!("call record resumed id={id} serial={}", call.serial);
+        Some(call)
+    }
+
+    /// A fresh in-memory call (nothing written yet).
+    #[allow(clippy::too_many_arguments)]
+    fn new_active(
+        &self,
+        id: &str,
+        started_at: &str,
+        date_dir: String,
+        serial: &str,
+        caller_id: &str,
+        sample_rate: u32,
+        status: &str,
+        events: Vec<String>,
+    ) -> ActiveCall {
+        let dir = self.root.join(&date_dir);
+        let pcm_path = dir.join(format!("{id}.pcm"));
+        let tts_pcm_path = dir.join(format!("{id}_tts.pcm"));
+        // ~30 minutes of 16-bit mono — covers long hold + IVR without unbounded growth.
+        let mix_bytes_cap = u64::from(sample_rate) * 2 * 60 * 30;
+        ActiveCall {
+            id: id.to_string(),
+            started_at: started_at.to_string(),
+            started_instant: Instant::now(),
+            serial: serial.to_string(),
+            caller_id: caller_id.to_string(),
+            status: status.to_string(),
+            sample_rate,
+            date_dir,
+            mix: Vec::with_capacity(sample_rate as usize * 2 * 60),
+            tts_mix: Vec::new(),
+            remote_mix: Vec::with_capacity(sample_rate as usize * 2 * 60),
+            ai_remote_pcm: Vec::new(),
+            ai_segment_active: false,
+            ai_seg_start: None,
+            ai_seg_end: None,
+            uplink_bytes: 0,
+            tts_bytes: 0,
+            mix_bytes_cap,
+            events,
+            record_tts: self.record_tts,
+            tts_outbound_active: false,
+            last_tts_tail: Vec::new(),
+            echo_probe: Vec::new(),
+            echo_free: None,
+            echo_check_frames: 0,
+            echo_check_max_ratio: 0.0,
+            barge_in: Arc::new(AtomicBool::new(false)),
+            barge_in_allowed: false,
+            remote_write: 0,
+            tts_write: 0,
+            bed_mix: Vec::new(),
+            bed_write: 0,
+            pcm_path,
+            tts_pcm_path,
+            voicemail_rel: None,
+            vm_duration_ms: 0,
+            reply_method: None,
+            reply_contact: None,
+            contact_verified: false,
+            appointments: None,
+            sim_country: None,
+            sim_sub_id: None,
+        }
     }
 
     pub async fn finalize(&self, mut call: ActiveCall, final_status: &str) -> CallRecord {
@@ -1631,6 +1732,30 @@ impl CallStore {
     pub async fn get(&self, id: &str) -> Option<CallRecord> {
         let idx = self.index.lock().await;
         idx.calls.iter().find(|c| c.id == id).cloned()
+    }
+
+    /// A way to reach the caller found after the call (a number they said to call
+    /// back on): `method` `phone` / `email`. A record that already has one keeps it.
+    pub async fn set_reply_contact(&self, id: &str, method: &str, contact: &str) -> bool {
+        let contact = contact.trim();
+        if contact.is_empty() {
+            return false;
+        }
+        let snap = {
+            let mut idx = self.index.lock().await;
+            let Some(rec) = idx.calls.iter_mut().find(|c| c.id == id) else {
+                return false;
+            };
+            if rec.reply_contact.as_deref().is_some_and(|c| !c.trim().is_empty()) {
+                return false;
+            }
+            rec.reply_method = Some(method.to_string());
+            rec.reply_contact = Some(contact.to_string());
+            rec.contact_verified = false;
+            self.snapshot_index(&idx)
+        };
+        self.write_index_snapshot(snap).await;
+        true
     }
 
     /// Store the post-call notes: short summary on the index row (list / notification),
@@ -1858,6 +1983,8 @@ impl ActiveCall {
             summary: None,
             echo_free: self.echo_free,
             appointment: self.appointments.as_ref().and_then(|b| b.outcome()),
+            sim_country: self.sim_country.clone(),
+            sim_sub_id: self.sim_sub_id,
         }
     }
 }
@@ -2132,6 +2259,8 @@ mod tests {
             reply_contact: None,
             contact_verified: false,
             appointments: None,
+            sim_country: None,
+            sim_sub_id: None,
         }
     }
 
@@ -2620,6 +2749,36 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[tokio::test]
+    async fn a_declined_call_picked_up_after_all_keeps_one_record() {
+        let dir = std::env::temp_dir().join(format!("bageo-calls-resume-{}", Uuid::new_v4()));
+        let store = CallStore::new(dir.clone(), true, false, 7);
+        let mut call = store.start("pixel-1", "0912345678", 16000, "reject_list").await.unwrap();
+        call.push_event("reject_list_declined");
+        call.set_sim(Some("tw".into()), Some(2));
+        let id = call.id.clone();
+        let rec = store.finalize(call, "ended").await;
+        assert_eq!(rec.sim_sub_id, Some(2));
+        // Still live: nothing to resume.
+        let live = store.start("pixel-2", "0922222222", 16000, "active").await.unwrap();
+        assert!(store.resume(&live.id, &[]).await.is_none());
+        // The phone picked up anyway: the same record goes on.
+        let mut again = store.resume(&id, &["reject_list_declined", "ended"]).await.unwrap();
+        assert_eq!(again.id, id);
+        assert!(again.has_event("reject_list") && !again.has_event("reject_list_declined"));
+        assert_eq!(store.live_calls().await.iter().filter(|c| c.id == id).count(), 1);
+        again.push_event("hello");
+        let rec = store.finalize(again, "ended").await;
+        assert_eq!(rec.sim_country.as_deref(), Some("tw"));
+        assert_eq!(store.list().await.iter().filter(|c| c.id == id).count(), 1);
+        assert!(store.get(&id).await.unwrap().ended_at.is_some());
+        // A number said on the call to call back on.
+        assert!(store.set_reply_contact(&id, "phone", "0933333333").await);
+        assert!(!store.set_reply_contact(&id, "phone", "0944444444").await);
+        assert_eq!(store.get(&id).await.unwrap().reply_contact.as_deref(), Some("0933333333"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn call_matches_status_caller_and_transcript() {
         let rec = CallRecord {
@@ -2646,6 +2805,8 @@ mod tests {
             summary: None,
             echo_free: None,
             appointment: None,
+            sim_country: None,
+            sim_sub_id: None,
         };
         let mut transcripts = std::collections::HashMap::new();
         transcripts.insert("abc".into(), "請回撥明天開會".into());
