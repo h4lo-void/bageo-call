@@ -50,7 +50,7 @@ of USB: see [Phone setup](PHONE.md#wi-fi).
 | The AI hangs up before the caller is done | Its prompt lets it say goodbye too early. | See the ending rule in [Writing the prompt](PROMPTS.md#writing-or-editing-it-yourself). |
 | The call never ends | The caller stays on the line without a goodbye the agent recognises. | It ends at *Longest normal call*; shorten that if it happens often. |
 | A silent call ends after about half a minute | Intended: a pocket dial or a robot that only listens should not hold the line. | Nothing to fix; the timings are in the table below. |
-| On a call from abroad the AI starts late, or talks over a recorded warning | Carriers in Taiwan play a fraud warning on calls from abroad. When a Taiwanese SIM takes the call, the AI waits until the line goes quiet (7.5 seconds at most) and then says its opening line once. A phone app older than 1.0 (0.2.4 and earlier) does not report which SIM took the call, so the agent goes by the number's country code ([`COUNTRY_CODE`](SETTINGS.md#country-calling-code)). | There is no setting for the wait. Keep the phone app [up to date](PHONE.md#updating). |
+| On a call from abroad the AI starts late, or talks over a recorded warning | Carriers in Taiwan play a fraud warning on calls from abroad. When a Taiwanese SIM takes the call, the AI waits until the line goes quiet (7.5 seconds at most) and then says its opening line once. | There is no setting for the wait. Keep the phone app [up to date](PHONE.md#updating). |
 | A second caller says your line was busy | One call at a time, by design. A call that rings during a call is declined at once. | It is listed in the calls, and you get a "Missed while on another call" notification. |
 | The first words come late | The AI only connects after pick-up. | Switch on *Get the AI ready while the phone rings* and keep *Ring before answering* at 3 s or more. |
 | It answers in the wrong language | *Language* sets the opening line, and *Main language for each SIM* the opening on another country's SIM. After that the AI follows the caller once they clearly speak another language (every call gets this instruction automatically; there is no switch for it); a short "hello?" alone does not switch it. | Check *Language* and *Main language for each SIM*, and make sure your prompt does not tie the AI to one language (for example "always answer in English"). |
@@ -139,7 +139,7 @@ takes what you miss. Calls you dial yourself on the AI phone are never muted
 or taken over.
 
 **What does it cost?**
-The software is free (MIT licence). Google bills Gemini Live audio by use, for
+Bageo is free for personal and open-source use under `AGPL-3.0-only` (closed-source commercial use requires a [Commercial License](../../COMMERCIAL_LICENSE.md)). Google bills Gemini Live audio by use, for
 incoming calls, AI call-backs and AI errands alike; the summary is a small text
 request to Gemini's lowest-cost model. Voice previews and the blocked-number
 announcement come prerecorded and cost nothing. Add a phone plan that receives

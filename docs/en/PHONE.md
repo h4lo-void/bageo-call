@@ -211,14 +211,9 @@ volumes go to zero.
   step, and so does the next start of the app (after a reboot, say) while a
   switch is unfinished.
 - If the app says the Bageo module is not running, check in Magisk or KernelSU
-  that **Bageo Uplink** is enabled (a module installed before the rename shows
-  as **Myna Uplink**), then reboot the phone.
+  that **Bageo Uplink** is enabled, then reboot the phone.
 - When the web console gets no answer within 15 seconds, it says *Result not
   confirmed yet*: refresh a little later to see the mode the phone reports.
-- If you used an app version before 0.2.2 with its **AI answering** switch
-  off, that setting no longer counts: after the update the phone answers with
-  the AI, and the card at the top says so. Turn **AI answers my calls** off if
-  the phone should stay a normal phone.
 
 ### Where the mode is stored
 
@@ -252,13 +247,6 @@ To switch without touching the phone's screen, from a computer with `adb`:
   `adb shell "su -c 'rm -f /data/adb/pixelcallai/mode'"`, then reboot.
 
 ## Rollback
-
-**Before installing any Bageo version older than 0.2.2**, switch the phone back
-to **AI answers my calls** or delete the state folder:
-`adb shell "su -c 'rm -rf /data/adb/pixelcallai'"`. Older versions ignore the
-mode file and take the phone over at every boot. If you later install this
-version again and the file still says `normal`, it turns the phone into a
-normal phone by itself, and the AI stops answering without anyone asking.
 
 To remove Bageo:
 

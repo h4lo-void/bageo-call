@@ -62,8 +62,7 @@ program: no database, no other services to install.
    shortcut on the desktop (macOS: a `.webloc` file; Linux: an app menu entry,
    also copied to the desktop folder). It is not created again while it
    exists. To skip it, start with `-NoShortcut` (Windows) or `--no-shortcut`,
-   or set `BAGEO_NO_SHORTCUT=1` in `.env`. A *Myna Console* shortcut from
-   before the rename counts too, and `MYNA_NO_SHORTCUT=1` still works.
+   or set `BAGEO_NO_SHORTCUT=1` in `.env`.
 
 ### From source
 
@@ -90,8 +89,7 @@ phones connect over Wi-Fi to `ws://<host>:8787/ws?token=<DEVICE_TOKEN>` (see
 [Phone setup → Wi-Fi](PHONE.md#wi-fi)). Inside a container the agent does not
 answer to `bageo.local` and cannot work out the console address for
 notification links, so set `PUBLIC_URL` in `.env` (for example
-`http://192.168.1.20:8787`). The comments in `docker-compose.yml` cover the
-time zone and upgrading from the Myna name.
+`http://192.168.1.20:8787`). The comments in `docker-compose.yml` cover the time zone.
 
 ### Where your data lives
 

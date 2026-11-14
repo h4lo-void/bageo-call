@@ -59,23 +59,6 @@ no SIP trunk, no rented number, no platform fee.
 - **Summaries on your Gemini key by default** (its lowest-cost model). Choose
   *Another service* for DeepSeek, OpenAI, OpenRouter or a local Ollama.
 
-## Changes that affect existing setups
-
-- **Google Calendar connection removed.** Entries are added with one tap to the
-  calendar you choose. Saved Google Calendar credentials are ignored and dropped
-  at the next save. An appointment mode of *auto* from an older version works as
-  **Ask me first**.
-- **Appointment texts go out from the SIM that took the call**, or from the
-  phone you pick under **Send the text again**.
-- **The country calling code left the console.** It comes from `COUNTRY_CODE`
-  (or `country_code` in `settings.json`); with 繁體中文 and nothing set, `886`
-  is assumed. A value saved by an older version still wins; delete that line to
-  use the environment variable.
-- **The carrier-warning setting is gone.** The AI waits for the warning only when
-  a Taiwanese SIM takes a call from abroad, decided automatically.
-- **Summary service** has two choices: *Gemini* (default) or *Another service*.
-  An older *DeepSeek* setting becomes *Another service*; *Automatic* becomes
-  *Another service* when a base URL or key is set, otherwise *Gemini*.
 
 ## Downloads
 
@@ -91,17 +74,6 @@ Each desktop package holds the agent, the 1,080 bundled voice clips and
 background sounds, the start scripts and the documentation. Docker users build
 from the repository with `docker compose up -d --build`.
 
-## Upgrading from 0.2.x
-
-1. Stop the agent and back up the `data/` folder (and `.env` if you have one).
-2. Unpack the 1.0.0 package and move `data/` and `.env` into it, or unpack it
-   over the old folder. Docker: pull the new code and run
-   `docker compose up -d --build`; the data volume stays.
-3. Make sure no call is in progress, install the new phone module over the old
-   one in Magisk or KernelSU, and reboot the phone. It is signed with the same
-   project key, so the app keeps its data.
-4. Start the agent. Settings, call records and contacts carry over. Let each
-   phone take one call before its first AI errand, so the agent learns its SIMs.
 
 ## How 1.0 was tested
 
@@ -146,13 +118,6 @@ Bageo 是用你原本門號運作的開源 AI 電話助理，1.0 是第一個正
 - **更好的訪談提示詞**，九種語言都有：它會問出你真的會說的原話和絕對不說的詞，寫出來的提示詞比較不像照稿念。
 - **摘要預設用你的 Gemini 金鑰**（最便宜的模型）。想用 DeepSeek、OpenAI、OpenRouter 或本機 Ollama，選「其他服務」。
 
-### 會影響現有設定的變更
-
-- **移除 Google 日曆連線。** 行程改成一鍵加入你選的行事曆。之前存的 Google 日曆憑證會被忽略，下次儲存時刪除。舊版存的預約模式「自動」會當成「**先問我**」。
-- **預約簡訊從接那通電話的 SIM 卡發出**，或從你在「重傳簡訊」選的手機發出。
-- **國碼移出控制台。** 改從 `COUNTRY_CODE`（或 `settings.json` 的 `country_code`）讀取；語言是繁體中文又沒設定時，預設 `886`。舊版存下的值仍然優先；刪掉那一行就會改用環境變數。
-- **國際提示音的設定拿掉了。** 只有台灣 SIM 卡接到國外來電時，AI 才會等提示音播完，由程式自動判斷。
-- **摘要服務**只剩兩個選項：「Gemini」（預設）或「其他服務」。舊的「DeepSeek」會變成「其他服務」；「自動」在有設定 API 網址或金鑰時變成「其他服務」，否則變成「Gemini」。
 
 ### 下載
 
@@ -166,12 +131,6 @@ Bageo 是用你原本門號運作的開源 AI 電話助理，1.0 是第一個正
 
 每個桌面套件都包含主程式、1,080 個內建語音檔與背景音、啟動腳本和文件。Docker 使用者在 repository 執行 `docker compose up -d --build` 建置。
 
-### 從 0.2.x 升級
-
-1. 停止主程式，備份 `data/` 資料夾（有 `.env` 的話也一起）。
-2. 解壓縮 1.0.0 套件，把 `data/` 和 `.env` 搬進去；或直接解壓縮蓋過舊資料夾。Docker：拉新程式碼後執行 `docker compose up -d --build`，資料磁碟區會保留。
-3. 確認沒有通話進行中，在 Magisk 或 KernelSU 把新的手機模組直接裝在舊的上面，再重新開機。它用同一把專案金鑰簽章，App 資料會保留。
-4. 啟動主程式。設定、通話紀錄和聯絡人都會沿用。每支手機第一次 AI 代打前，先讓它接一通電話，主程式才知道它的 SIM 卡。
 
 ### 1.0 怎麼測的
 
@@ -207,13 +166,6 @@ Bageo 是用你原本手机号运行的开源 AI 电话助理，1.0 是第一个
 - **更好的访谈提示词**，九种语言都有：它会问出你平时真会说的原话和绝不会说的词，写出来的提示词更不像背稿。
 - **摘要默认用你的 Gemini 密钥**（最便宜的模型）。想用 DeepSeek、OpenAI、OpenRouter 或本地 Ollama，选“其他服务”。
 
-### 影响现有设置的变更
-
-- **移除 Google 日历连接。** 日程改为一键加入你选择的日历。旧版保存的 Google 日历凭据会被忽略，下次保存时清除。旧版保存的预约模式“自动”会按“**先问我**”运行。
-- **预约短信从接听那通电话的 SIM 卡发出**，或从你在“重发短信”里选的手机发出。
-- **国际电话区号移出控制台。** 改从 `COUNTRY_CODE`（或 `settings.json` 的 `country_code`）读取；语言为繁體中文且未设置时默认 `886`。旧版保存的值仍然优先；删掉那一行就会改用环境变量。
-- **移除国际提示音开关。** 只有台湾 SIM 卡接到境外来电时，AI 才会等提示音播完，由程序自动判断。
-- **摘要服务**只剩两个选项：“Gemini”（默认）或“其他服务”。旧版“DeepSeek”会变成“其他服务”；“自动”在填有 API 地址或密钥时变成“其他服务”，否则变成“Gemini”。
 
 ### 下载
 
@@ -227,12 +179,6 @@ Bageo 是用你原本手机号运行的开源 AI 电话助理，1.0 是第一个
 
 每个桌面套件都包含主程序、1,080 个内置语音文件与背景音、启动脚本和文档。Docker 用户在仓库根目录执行 `docker compose up -d --build` 构建。
 
-### 从 0.2.x 升级
-
-1. 停止主程序，备份 `data/` 文件夹（有 `.env` 的话也一并备份）。
-2. 解压 1.0.0 套件，把 `data/` 和 `.env` 移进去；或直接解压覆盖旧文件夹。Docker：拉取新代码后执行 `docker compose up -d --build`，数据卷会保留。
-3. 确认没有正在进行的通话，在 Magisk 或 KernelSU 中把新的手机模块直接覆盖安装，然后重启手机。模块用同一把项目密钥签名，应用数据会保留。
-4. 启动主程序。设置、通话记录和联系人都会沿用。每部手机第一次 AI 代打前，先让它接一通电话，主程序才知道它的 SIM 卡。
 
 ### 1.0 怎么测的
 

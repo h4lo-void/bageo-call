@@ -12,7 +12,8 @@
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/release-v1.0.0-brightgreen.svg" alt="Release v1.0.0"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="License: AGPL-3.0-only"></a>
+  <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/commercial-dual%20license-gold.svg" alt="Commercial License Available"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Docker-lightgrey.svg" alt="Platform: Windows, macOS, Linux, Docker">
   <img src="https://img.shields.io/badge/agent-Rust-orange.svg" alt="Agent: Rust">
   <img src="https://img.shields.io/badge/phone-Android%20%2B%20Magisk%20%2F%20KernelSU-3DDC84.svg" alt="Phone: Android with Magisk or KernelSU">
@@ -22,7 +23,7 @@
   <strong>English</strong> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.zh-CN.md">简体中文</a>
 </p>
 
-Bageo (formerly Myna) lets an AI answer and place calls on **the phone number
+Bageo lets an AI answer and place calls on **the phone number
 you already have**. A spare rooted Android phone holds your SIM, and one
 program on your computer streams each call to Gemini Live and back, so callers
 hear a natural voice that picks up after one ring, lets them interrupt, screens
@@ -343,7 +344,10 @@ More, including the techniques that make the biggest difference:
 | [API](docs/en/API.md) | REST endpoints (calls, contacts, to-do, errands), phone protocol |
 | [Architecture](docs/en/ARCHITECTURE.md) | Modules, one incoming and one outgoing call step by step, storage |
 | [Roadmap](docs/en/ROADMAP.md) | What is there, what is not, what comes next |
-| [Release notes v1.0](CHANGELOG.md) | What is new in 1.0 and how to upgrade |
+| [Release notes v1.0](CHANGELOG.md) | What is in Bageo 1.0 |
+| [Legal disclaimer & operator terms](LEGAL.md) | Operator responsibility, prohibited uses, no-warranty and indemnification |
+| [Dual & commercial licensing](COMMERCIAL_LICENSE.md) | Free `AGPL-3.0-only` community terms and closed-source commercial licensing |
+| [Project security & compliance audit](AUDIT_REPORT.md) | Full v1.0 codebase, security and license audit signed by `gemini-4-carbon` |
 | [`android/`](android/README.md) | Building the phone app and module |
 | [`tools/sms_forward/`](tools/sms_forward/README.md) | Optional: forward the phone's text messages to your notifications |
 
@@ -397,7 +401,7 @@ play into it; otherwise the call is answered but one side hears nothing. See
 
 ### How much does it cost to run?
 
-The software is free (MIT). Google bills the Gemini Live audio per use for
+Bageo is free for personal and open-source use under `AGPL-3.0-only` (closed-source or commercial hosted operators need a [Commercial License](COMMERCIAL_LICENSE.md)). Google bills the Gemini Live audio per use for
 every call the AI handles, incoming or outgoing; summaries are small text
 requests to Gemini's lowest-cost model. Voice previews and the blocked-number
 announcement are prerecorded and cost nothing. Add your phone plan and the
@@ -419,8 +423,11 @@ Gemini key. Summaries can run on a local model through Ollama (see
 [Summary & calendar](docs/en/SETTINGS.md#summary--calendar)); a fully local
 voice stack is not part of the supported setup ([Roadmap](docs/en/ROADMAP.md)).
 
-## License
+## License & Legal Disclaimer
 
-[MIT](LICENSE). Bundled sounds are CC0; one installer script is GPL-3.0; see
-[NOTICE.md](NOTICE.md). Not affiliated with Google; Pixel and Gemini are
-trademarks of Google LLC.
+**Dual-licensed** by **h4lo-void**:
+
+- **Open-Source Community License:** [GNU Affero General Public License v3.0 only (`AGPL-3.0-only`)](LICENSE) — free for personal, academic, and open-source use. Modifying Bageo and letting others interact with it over a network or phone line requires releasing the complete corresponding source code under `AGPL-3.0-only`.
+- **Obtain a Commercial License:** Operators, enterprises, SaaS/call-center providers, or hardware vendors who wish to deploy, embed, or host Bageo without `AGPL-3.0-only` source-code disclosure can purchase a separate written proprietary license — see [**Commercial License Terms**](COMMERCIAL_LICENSE.md).
+
+**Legal responsibility:** Bageo is self-hosted software provided strictly "AS IS" without warranty. You alone are the operator and data controller of your installation and bear full legal responsibility for call recording, AI disclosure, dialing, hardware rooting, and carrier/API charges. Read [**LEGAL.md**](LEGAL.md), [Privacy, safety and the law](docs/en/PRIVACY_AND_LEGAL.md), and the [`gemini-4-carbon` Project Audit Report](AUDIT_REPORT.md) before use. Third-party notices are in [NOTICE.md](NOTICE.md). Not affiliated with Google LLC; Pixel, Android, and Gemini are trademarks of Google LLC.

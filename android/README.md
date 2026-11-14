@@ -16,10 +16,7 @@ earlier working name, so phones already running the module update in place.
 
 **Version 1.0:** app `versionName` `1.0.0`, `versionCode` 28; module `version`
 `v1.0.0`, `versionCode` 20 (`module.prop`); release file
-`pixelcallai_uplink-1.0.0.zip`. Compared with 0.2.4 it no longer requests
-`READ_PHONE_NUMBERS`, no longer announces `supports_sim_select` and no longer
-accepts `sim` in `send_sms`: a SIM is always picked by its subscription id
-(`sub_id`).
+`pixelcallai_uplink-1.0.0.zip`. A SIM is always picked by its subscription id (`sub_id`).
 
 > **Use a dedicated phone.** The module takes over the phone app, disables Google
 > Dialer, turns on Do Not Disturb and sets the ringer volume to zero. The phone is not
@@ -140,10 +137,7 @@ another app took the dialer role. KernelSU only offers `su` to apps on its allow
 ### Updating
 
 Install the new module zip over the old one and reboot. The mode file, the connection
-address and the app's permissions are kept (mind [Signing keys](#signing-keys)). From
-0.2.x to 1.0 there is nothing to do by hand: a leftover grant of the SIM-number
-permission 0.2.4 used is simply unused, and an agent older than 1.0 keeps working with
-the new app because neither side relies on the removed fields.
+address and the app's permissions are kept (mind [Signing keys](#signing-keys)).
 
 ### Connect over USB or Wi-Fi
 
@@ -246,7 +240,7 @@ reported as a code:
 | `in_call` | A call rings or is active. |
 | `busy` | Another switch is still running. |
 | `invalid_mode` | The request named neither `ai` nor `normal`. |
-| `no_root` | The module's helper did not take the request: the module is not running. Enable **Bageo Uplink** (shown as **Myna Uplink** if installed before the rename) in Magisk or KernelSU and reboot. |
+| `no_root` | The module's helper did not take the request: the module is not running. Enable **Bageo Uplink** in Magisk or KernelSU and reboot. |
 | `dialer_failed`, `screening_failed`, `dnd_failed`, `volume_failed`, `save_failed` | That step did not take effect. |
 | `failed` | Any other failure, for example the request could not be written or the helper gave no usable answer. |
 
@@ -303,10 +297,6 @@ In normal mode the service runs as a foreground service of type `phoneCall` only
 (not `microphone`); if Android refuses the foreground start, the app logs it and
 still opens the control connection.
 
-Upgrading from a version before 0.2.2 whose **AI answering** switch was off: that old
-setting (`AI_CALL_ENABLED`) no longer counts. The phone answers with the AI (no mode
-file means `ai`), the app logs it and its status card shows a hint until the new
-switch is used once.
 
 ### Switching from adb
 
@@ -324,13 +314,6 @@ adb shell "su -c 'mkdir -p /data/adb/pixelcallai && echo normal > /data/adb/pixe
 ```
 
 ## Rollback
-
-**Before installing an older version** (anything before 0.2.2), switch back to AI mode
-or run `adb shell "su -c 'rm -rf /data/adb/pixelcallai'"`. Older versions do not
-read the mode file, so their `service.sh` takes the phone over at every boot even
-when the file says `normal`. If this version is installed again later, it finds
-`normal` and turns the phone into a normal phone by itself, and the AI stops
-answering without anyone asking.
 
 To remove Bageo:
 
@@ -466,7 +449,7 @@ App to agent:
 
 | `type` | Fields | When |
 |---|---|---|
-| `hello` | `serial`, `mode` = `"CONTROL_IDLE"`, `play_tts_locally` = `false`, `model`, `app_version`, `phone_mode` (`"ai"` / `"normal"`), `in_call`, `supports_sms` = `true`, `supports_reject` = `true` | Right after connecting. `phone_mode` is not called `mode` because `mode` names the connection; apps before the mode switch send neither. Apps before 0.2.4 do not send `supports_sms` and cannot send texts. Without `supports_reject` an app would answer a call the agent wants rejected. The agent also accepts an optional `sims` list (`[{sub_id, country}]`); the 1.0 app does not send it, so the agent learns the SIMs from `incoming` and the media `hello`. |
+| `hello` | `serial`, `mode` = `"CONTROL_IDLE"`, `play_tts_locally` = `false`, `model`, `app_version`, `phone_mode` (`"ai"` / `"normal"`), `in_call`, `supports_sms` = `true`, `supports_reject` = `true` | Right after connecting. `phone_mode` is not called `mode` because `mode` names the connection. Without `supports_reject` an app would answer a call the agent wants rejected. The agent also accepts an optional `sims` list (`[{sub_id, country}]`); the 1.0 app does not send it, so the agent learns the SIMs from `incoming` and the media `hello`. |
 | `ping` | `t` (milliseconds since epoch) | Every 15 s. |
 | `status` | `mode` (`"ai"` / `"normal"`), `in_call` | The phone mode or the call state (ringing or active vs idle) changed. |
 | `set_mode_result` | `id`, `ok`, `mode`, `error` | Answer to `set_mode`. `mode` is the mode afterwards; `error` is empty on success, otherwise a code from [Normal phone mode](#normal-phone-mode). |
