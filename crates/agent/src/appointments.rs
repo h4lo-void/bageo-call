@@ -118,7 +118,7 @@ impl Reply {
 }
 
 /// What can reach a caller: a text (texts on, setting `appointment_sms`, and
-/// a number that takes one), a call (any number that is shown).
+/// a number that takes one), a call (a number a call-back may dial, [`callable_on`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub struct ReplyOptions {
     pub sms: bool,
@@ -141,12 +141,88 @@ pub fn callable(number: &str) -> bool {
     number.chars().filter(char::is_ascii_digit).count() >= 3
 }
 
+/// Toll-free, premium and shared-cost numbers (national number prefixes) a
+/// call-back never dials, by country.
+const NO_CALLBACK_PREFIXES: &[(&str, &[&str])] = &[
+    // 0800 / 0809 toll-free; 0203 / 0204 / 0205 / 0209 premium (Taipei
+    // numbers never start 02-0).
+    ("tw", &["800", "809", "20"]),
+    ("jp", &["120", "800", "570", "990"]),
+    ("kr", &["80", "60"]),
+    ("cn", &["400", "800"]),
+    ("hk", &["800", "900"]),
+    ("sg", &["800", "1800", "1900"]),
+    ("gb", &["800", "808", "84", "87", "9"]),
+    ("de", &["800", "137", "138", "180", "900"]),
+    ("fr", &["80", "81", "82", "89"]),
+    ("au", &["1800", "1300", "190", "13"]),
+];
+
+/// A number an AI call-back may dial on a line of country `region` (the SIM
+/// that took the call, ISO 3166 alpha-2; None: Taiwan): a number of that same
+/// country, as long as a real phone number there (Taiwan: 8 or 9 digits after
+/// the trunk 0, landline or mobile; +1: 10 digits), and no toll-free, premium
+/// or shared-cost number ([`NO_CALLBACK_PREFIXES`], +1 800…888 and 900).
+/// Hidden numbers, short codes (165, 110, 1999…), numbers from abroad and
+/// cut-off digits are not.
+pub fn callable_on(caller_id: &str, region: Option<&str>) -> bool {
+    let t = caller_id.trim();
+    if t.is_empty()
+        || !t
+            .chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, '+' | ' ' | '-' | '(' | ')' | '.'))
+    {
+        return false;
+    }
+    let region = region
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(DEFAULT_SMS_REGION)
+        .to_ascii_lowercase();
+    let Some(code) = crate::phone_region::calling_code(&region) else {
+        return false;
+    };
+    let digits: String = t.chars().filter(char::is_ascii_digit).collect();
+    if !t.starts_with('+') && !digits.starts_with("00") {
+        // Dialled at home: with the trunk 0, or the country code without its
+        // plus; bare digits are a short code or a cut-off number.
+        let with_code = digits.starts_with(code) && digits.len() >= code.len() + 8;
+        if !NO_TRUNK_CODES.contains(&code) && !digits.starts_with('0') && !with_code {
+            return false;
+        }
+    }
+    let Some(n) = crate::phone_region::normalize(t, Some(&region)) else {
+        return false;
+    };
+    if n.country != region {
+        return false;
+    }
+    let Some(national) = n.e164.strip_prefix('+').and_then(|d| d.strip_prefix(code)) else {
+        return false;
+    };
+    let national = if code == "39" { national } else { national.trim_start_matches('0') };
+    let (min, max) = match (region.as_str(), code) {
+        ("tw", _) => (8, 9),
+        (_, "1") => (10, 10),
+        _ => (7, 15 - code.len()),
+    };
+    if !(min..=max).contains(&national.len()) {
+        return false;
+    }
+    let blocked: &[&str] = if code == "1" {
+        NANP_NO_TEXT
+    } else {
+        NO_CALLBACK_PREFIXES.iter().find(|(c, _)| *c == region).map_or(&[], |(_, p)| p)
+    };
+    !blocked.iter().any(|p| national.starts_with(p))
+}
+
 /// [`ReplyOptions`] for `caller_id`; `region`: the country of the SIM that
 /// took the call ([`sms_number_on`]).
 pub fn reply_options(rt: &RuntimeSettings, caller_id: &str, region: Option<&str>) -> ReplyOptions {
     ReplyOptions {
         sms: rt.appointment_sms && sms_number_on(caller_id, region).is_some(),
-        call: callable(caller_id),
+        call: callable_on(caller_id, region),
     }
 }
 
@@ -1344,7 +1420,7 @@ impl ApptSession {
         let region = self.book.sim_country().or_else(|| self.home.clone());
         let opts = ReplyOptions {
             sms: self.sms_on && sms_number_on(&self.caller_id, region.as_deref()).is_some(),
-            call: callable(&self.caller_id),
+            call: callable_on(&self.caller_id, region.as_deref()),
         };
         self.reply = default_reply(&self.reply_setting, opts);
         self.reply_by_text = self.reply == Reply::Sms;
@@ -2345,54 +2421,138 @@ fn reply_words(lang: Lang) -> ReplyWords {
 /// goodbye and the call ends. It goes out on the existing call-back route
 /// ([`ControlRegistry::try_dispatch_phone_callback`]: the phone that took the
 /// call when it is connected, from the SIM that call came in on — the route's
-/// own choice), to the caller's own number only: the owner picked this way
-/// for this caller, so the number needs no place on `callback_whitelist`. The
-/// AI's script waits for that call ([`take_callback_prompt`]). Returns the
-/// [`Appointment::call`] code and the owner's line.
+/// own choice), to the caller's own number only, and only to a number a
+/// call-back may dial ([`callable_on`]): the owner picked this way for this
+/// caller, so the number needs no place on `callback_whitelist`. A call-back to
+/// a number another call-back is still calling waits for that one to end
+/// ([`finish_callback`]). The AI's script waits for the phone to report this
+/// very call ([`callback_for_call`]). Returns the [`Appointment::call`] code
+/// and the owner's line.
 async fn call_caller(
+    rt: &RuntimeSettings,
     control: Option<&ControlRegistry>,
     task: &TaskRecord,
     appt: &Appointment,
     confirmed: bool,
 ) -> (String, String) {
-    let w = reply_words(locale::notify_lang());
-    let number = crate::callback::callback_number(task.reply_contact.as_deref(), &task.caller_id);
+    let lang = locale::notify_lang();
+    let w = reply_words(lang);
+    let number = task.caller_id.trim().to_string();
     if !callable(&number) {
         return ("no_number".to_string(), w.hidden.to_string());
     }
-    let not_placed = |code: &str, why: &str| (code.to_string(), locale::fill(w.not_placed, why));
+    let region = caller_region(rt, appt, &task.serial);
+    if !callable_on(&number, region.as_deref()) {
+        return ("not_callable".to_string(), callback_words(lang).not_callable.to_string());
+    }
     let Some(control) = control else {
-        return not_placed("no_phone", w.no_phone);
+        return ("no_phone".to_string(), locale::fill(w.not_placed, w.no_phone));
     };
-    remember_callback(&number, &task.id, callback_prompt(&locale::active(), locale::current(), appt, confirmed));
-    let only_this_number = [number.clone()];
+    let script = callback_prompt(&locale::active(), locale::current(), appt, confirmed);
+    let cb = PendingCallback::new(&task.id, &number, &task.serial, script);
+    if !callbacks_add(cb.clone()) {
+        info!("appointment call-back task_id={} waits for an earlier call-back to the same number", task.id);
+        return ("queued".to_string(), callback_words(lang).queued.to_string());
+    }
+    let (code, line) = dispatch_callback(control, &cb).await;
+    if code != "dialing" {
+        callbacks_remove(&task.id);
+    }
+    (code, line)
+}
+
+/// Ask a phone to place a call-back: `dialing`, or why it did not go out
+/// (`no_phone`, `send_failed`), and the owner's line.
+async fn dispatch_callback(control: &ControlRegistry, cb: &PendingCallback) -> (String, String) {
+    let w = reply_words(locale::notify_lang());
+    let not_placed = |code: &str, why: &str| (code.to_string(), locale::fill(w.not_placed, why));
+    let only_this_number = [cb.number.clone()];
     match control
-        .try_dispatch_phone_callback(&task.id, &number, &task.serial, &only_this_number)
+        .try_dispatch_phone_callback(&cb.task_id, &cb.number, &cb.serial, &only_this_number)
         .await
     {
         Ok(true) => {
-            info!("appointment call-back placed task_id={} serial={}", task.id, task.serial);
-            ("dialing".to_string(), locale::fill(w.dialing, task.caller_id.trim()))
+            // The phone the route picked (not always the one that took the call).
+            if let Some(s) = control.callback_session_for(&cb.task_id, "").await {
+                callbacks_set_serial(&cb.task_id, &s.serial);
+            }
+            info!("appointment call-back placed task_id={}", cb.task_id);
+            ("dialing".to_string(), locale::fill(w.dialing, &cb.number))
         }
-        Ok(false) => {
-            forget_callback(&task.id);
-            not_placed("no_phone", w.no_phone)
-        }
+        Ok(false) => not_placed("no_phone", w.no_phone),
         Err(e) => {
-            warn!("appointment call-back not placed task_id={}: {e:#}", task.id);
-            forget_callback(&task.id);
+            warn!("appointment call-back not placed task_id={}: {e:#}", cb.task_id);
             not_placed("send_failed", w.send_failed)
         }
     }
 }
 
-/// Scripts for the AI's call-backs, waiting for their call's Live session:
-/// (number key, task id, script, when asked).
-static CALLBACKS: std::sync::Mutex<Vec<(String, String, String, std::time::Instant)>> =
-    std::sync::Mutex::new(Vec::new());
-/// The phone dials at once; a call to the same number later than this is
-/// another call (the caller ringing in, say), not the call-back.
-const CALLBACK_SCRIPT_TTL: Duration = Duration::from_secs(120);
+/// Where an appointment's call-back stands ([`PendingCallback`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CallbackStage {
+    /// Waits for an earlier call-back to the same number to end.
+    Queued,
+    /// `place_call` sent; the phone has not reported the call yet.
+    Dialing,
+    /// The phone that dials it reported `outbound_ready` for it (with its task,
+    /// call and number): that phone's next media session with this number is
+    /// this call ([`callback_for_call`]).
+    Ready,
+    /// Its Live session has the script.
+    OnCall,
+    /// The phone reported its end; whether the callee spoke decides the result
+    /// ([`callback_call_over`]).
+    Ended,
+}
+
+/// A call-back with an appointment's answer, from the decision until it ended.
+#[derive(Debug, Clone)]
+struct PendingCallback {
+    task_id: String,
+    /// The number dialed.
+    number: String,
+    /// [`number_key`] of `number`: call-backs to one number go one at a time.
+    key: String,
+    /// The phone asked to dial it (until then, the one that took the call).
+    serial: String,
+    /// What the AI follows on it ([`callback_prompt`]).
+    script: String,
+    stage: CallbackStage,
+    /// When it got to `stage`.
+    since: std::time::Instant,
+}
+
+impl PendingCallback {
+    fn new(task_id: &str, number: &str, serial: &str, script: String) -> Self {
+        Self {
+            task_id: task_id.to_string(),
+            number: number.trim().to_string(),
+            key: number_key(number),
+            serial: serial.trim().to_string(),
+            script,
+            stage: CallbackStage::Queued,
+            since: std::time::Instant::now(),
+        }
+    }
+}
+
+/// The call-backs under way, by task.
+static CALLBACKS: std::sync::Mutex<Vec<PendingCallback>> = std::sync::Mutex::new(Vec::new());
+/// Reported ready this long ago and no media session took it: not this call.
+const CALLBACK_READY_WINDOW: Duration = Duration::from_secs(60);
+/// A media session that starts a moment before the phone's `outbound_ready`
+/// is handled waits this long for it (only with a call-back dialing on that
+/// phone to that number).
+const CALLBACK_READY_WAIT: Duration = Duration::from_secs(3);
+/// `place_call` sent and no word from the phone: the app drops a dial that
+/// does not start within 30 s without saying so.
+const CALLBACK_DIAL_LIMIT: Duration = Duration::from_secs(75);
+/// Reported ready, but no media session ever took its script.
+const CALLBACK_READY_LIMIT: Duration = Duration::from_secs(180);
+/// Ended, but the call's summary never said whether the callee spoke.
+const CALLBACK_ENDED_LIMIT: Duration = Duration::from_secs(300);
+/// On the call this long: its end was lost.
+const CALLBACK_CALL_LIMIT: Duration = Duration::from_secs(45 * 60);
 
 /// The digits that tell numbers apart however they are written (`+886 912…`,
 /// `0912…`): the last nine.
@@ -2401,31 +2561,378 @@ fn number_key(number: &str) -> String {
     digits[digits.len().saturating_sub(9)..].iter().collect()
 }
 
-fn callbacks() -> std::sync::MutexGuard<'static, Vec<(String, String, String, std::time::Instant)>> {
+fn callbacks() -> std::sync::MutexGuard<'static, Vec<PendingCallback>> {
     CALLBACKS.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-fn remember_callback(number: &str, task_id: &str, script: String) {
+/// Take on a call-back: true = dial it now (stage `Dialing`), false = it waits
+/// for an earlier one to the same number (stage `Queued`).
+fn callbacks_add(mut cb: PendingCallback) -> bool {
     let mut list = callbacks();
-    list.retain(|(_, id, _, at)| id != task_id && at.elapsed() < CALLBACK_SCRIPT_TTL);
-    list.push((number_key(number), task_id.to_string(), script, std::time::Instant::now()));
+    list.retain(|c| c.task_id != cb.task_id);
+    let busy = list.iter().any(|c| c.key == cb.key);
+    cb.stage = if busy { CallbackStage::Queued } else { CallbackStage::Dialing };
+    cb.since = std::time::Instant::now();
+    list.push(cb);
+    !busy
 }
 
-fn forget_callback(task_id: &str) {
-    callbacks().retain(|(_, id, ..)| id != task_id);
+fn callbacks_stage(task_id: &str) -> Option<CallbackStage> {
+    callbacks().iter().find(|c| c.task_id == task_id).map(|c| c.stage)
 }
 
-/// The script for a Live session that is the AI's call-back to `number`
-/// (it is used once); None for every other call.
-pub fn take_callback_prompt(number: &str) -> Option<String> {
-    let key = number_key(number);
-    if key.len() < 3 {
+fn callbacks_set_stage(task_id: &str, stage: CallbackStage) {
+    if let Some(c) = callbacks().iter_mut().find(|c| c.task_id == task_id) {
+        c.stage = stage;
+        c.since = std::time::Instant::now();
+    }
+}
+
+fn callbacks_set_serial(task_id: &str, serial: &str) {
+    if let Some(c) = callbacks().iter_mut().find(|c| c.task_id == task_id) {
+        c.serial = serial.trim().to_string();
+    }
+}
+
+fn callbacks_remove(task_id: &str) -> Option<PendingCallback> {
+    let mut list = callbacks();
+    let i = list.iter().position(|c| c.task_id == task_id)?;
+    Some(list.remove(i))
+}
+
+/// The next call-back waiting for the number `key` (now `Dialing`); none while
+/// another call-back to it is still under way.
+fn callbacks_next(key: &str) -> Option<PendingCallback> {
+    let mut list = callbacks();
+    if list.iter().any(|c| c.key == key && c.stage != CallbackStage::Queued) {
         return None;
     }
+    let c = list.iter_mut().find(|c| c.key == key && c.stage == CallbackStage::Queued)?;
+    c.stage = CallbackStage::Dialing;
+    c.since = std::time::Instant::now();
+    Some(c.clone())
+}
+
+/// The phone `serial` reported `outbound_ready` for `task_id` (`number`: the
+/// number it dialed; empty from an app that does not say). True when that is
+/// the call-back dialing on that phone to that number, which is now `Ready`.
+fn callback_ready(task_id: &str, serial: &str, number: &str) -> bool {
+    let key = number_key(number);
     let mut list = callbacks();
-    list.retain(|(.., at)| at.elapsed() < CALLBACK_SCRIPT_TTL);
-    let i = list.iter().position(|(k, ..)| *k == key)?;
-    Some(list.remove(i).2)
+    let Some(c) = list.iter_mut().find(|c| c.task_id == task_id) else {
+        return false;
+    };
+    if c.stage != CallbackStage::Dialing || !c.serial.eq_ignore_ascii_case(serial.trim()) || (!key.is_empty() && key != c.key) {
+        return false;
+    }
+    c.stage = CallbackStage::Ready;
+    c.since = std::time::Instant::now();
+    true
+}
+
+/// A call's Live session that is an appointment's call-back ([`callback_for_call`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallbackCall {
+    pub task_id: String,
+    /// The system prompt instead of the answering one ([`callback_prompt`]).
+    pub script: String,
+}
+
+/// The call-back the phone `serial` reported ready whose number is this
+/// media session's `caller_id` (a hello without one: the only one ready on that
+/// phone). It is `OnCall` from now on, so its script goes to one session only.
+fn take_ready_callback(serial: &str, caller_id: &str) -> Option<CallbackCall> {
+    let key = number_key(caller_id);
+    let mut list = callbacks();
+    let ready = |c: &PendingCallback| {
+        c.stage == CallbackStage::Ready && c.serial.eq_ignore_ascii_case(serial.trim()) && c.since.elapsed() < CALLBACK_READY_WINDOW
+    };
+    let i = if key.is_empty() {
+        let mut on_phone = list.iter().enumerate().filter(|(_, c)| ready(c));
+        let (i, _) = on_phone.next()?;
+        if on_phone.next().is_some() {
+            return None;
+        }
+        i
+    } else {
+        list.iter().position(|c| ready(c) && c.key == key)?
+    };
+    let c = &mut list[i];
+    c.stage = CallbackStage::OnCall;
+    c.since = std::time::Instant::now();
+    Some(CallbackCall { task_id: c.task_id.clone(), script: c.script.clone() })
+}
+
+/// A call-back is dialing on `serial` to this number (its `outbound_ready`
+/// may still be on its way).
+fn callback_dialing_on(serial: &str, caller_id: &str) -> bool {
+    let key = number_key(caller_id);
+    callbacks().iter().any(|c| {
+        c.stage == CallbackStage::Dialing && c.serial.eq_ignore_ascii_case(serial.trim()) && (key.is_empty() || c.key == key)
+    })
+}
+
+/// Whether the Live session starting for a call on `serial` with `caller_id`
+/// is an appointment's call-back, and its script. Only the call the phone
+/// reported dialing for it (`outbound_ready` with its task, call and number,
+/// [`on_callback_event`]): never an incoming call from that number, a ring
+/// prewarm or a session of another phone. Waits a moment only while a
+/// call-back to this number is dialing on this phone.
+pub async fn callback_for_call(serial: &str, caller_id: &str) -> Option<CallbackCall> {
+    let until = tokio::time::Instant::now() + CALLBACK_READY_WAIT;
+    loop {
+        if let Some(c) = take_ready_callback(serial, caller_id) {
+            return Some(c);
+        }
+        if !callback_dialing_on(serial, caller_id) || tokio::time::Instant::now() >= until {
+            return None;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+/// The call-back whose call the phone `serial` is on, or has just ended (for
+/// the call's summary).
+pub fn callback_task_on(serial: &str) -> Option<String> {
+    callbacks()
+        .iter()
+        .find(|c| matches!(c.stage, CallbackStage::OnCall | CallbackStage::Ended) && c.serial.eq_ignore_ascii_case(serial.trim()))
+        .map(|c| c.task_id.clone())
+}
+
+/// The call record's event for a call that was the AI's call-back.
+pub const AI_CALLBACK_EVENT: &str = "ai_callback";
+
+/// A call record that was the AI's call-back: no calendar suggestion, no
+/// appointments, its own summary title ([`callback_headline`]).
+pub fn is_ai_callback(events: &[String]) -> bool {
+    events.iter().any(|e| e == AI_CALLBACK_EVENT)
+}
+
+/// The callee said something on the call (the Live dialogue has a line of
+/// theirs): they answered.
+pub fn callee_spoke(dialogue: &str) -> bool {
+    dialogue
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("對方："))
+        .any(|l| !l.trim().is_empty())
+}
+
+/// What call-back bookkeeping outside a decision works with.
+pub struct CallbackCtx<'a> {
+    pub http: &'a Client,
+    /// The effective settings (notification channels).
+    pub settings: &'a crate::config::Settings,
+    pub tasks: &'a TaskStore,
+    pub control: &'a ControlRegistry,
+}
+
+/// A phone's report on a call (`outbound_ready`, `place_call_failed`,
+/// `call_end` on its control socket, from `serial`) that is about an
+/// appointment's call-back: `outbound_ready` of the call this phone was asked
+/// to place, to that number, readies its script; a failed dial, or an end
+/// before its call started, ends it as `failed`; the end of its call waits for
+/// the call's summary ([`callback_call_over`]). Reports on anything else are
+/// left alone.
+pub async fn on_callback_event(ctx: &CallbackCtx<'_>, serial: &str, msg: &Value) {
+    let kind = msg.get("type").and_then(Value::as_str).unwrap_or("");
+    let call_id = msg.get("call_id").and_then(Value::as_str).unwrap_or("").trim();
+    let task_id = msg.get("task_id").and_then(Value::as_str).unwrap_or("").trim();
+    let Some(session) = ctx.control.callback_session_for(task_id, call_id).await else {
+        return;
+    };
+    let task_id = session.task_id.clone();
+    let Some(stage) = callbacks_stage(&task_id) else {
+        return;
+    };
+    if !call_id.is_empty() && session.call_id != call_id {
+        info!("appointment call-back task_id={task_id}: {kind} of another call ignored");
+        return;
+    }
+    match kind {
+        "outbound_ready" => {
+            callbacks_set_serial(&task_id, &session.serial);
+            let number = msg.get("number").and_then(Value::as_str).unwrap_or("");
+            if callback_ready(&task_id, serial, number) {
+                info!("appointment call-back task_id={task_id} serial={serial}: dialing, the AI waits for the callee");
+                set_call_code(ctx.tasks, &task_id, "connected").await;
+            } else {
+                warn!("appointment call-back task_id={task_id}: outbound_ready from serial={serial} does not match the call asked for — not used");
+            }
+        }
+        "place_call_failed" => finish_callback(ctx, &task_id, "failed").await,
+        "call_end" => match stage {
+            CallbackStage::OnCall => callbacks_set_stage(&task_id, CallbackStage::Ended),
+            CallbackStage::Ended | CallbackStage::Queued => {}
+            CallbackStage::Dialing | CallbackStage::Ready => finish_callback(ctx, &task_id, "failed").await,
+        },
+        _ => {}
+    }
+}
+
+/// The call-back's call is over and its summary is written: `answered` when
+/// the callee said something on it ([`callee_spoke`]), else `no_answer`.
+pub async fn callback_call_over(ctx: &CallbackCtx<'_>, task_id: &str, answered: bool) {
+    finish_callback(ctx, task_id, if answered { "answered" } else { "no_answer" }).await;
+}
+
+/// Call-backs the phone never reported on in time (see the limits above).
+pub async fn sweep_callbacks(ctx: &CallbackCtx<'_>) {
+    for (task_id, code) in callbacks_overdue() {
+        warn!("appointment call-back task_id={task_id}: no report in time — {code}");
+        finish_callback(ctx, &task_id, code).await;
+    }
+}
+
+fn callbacks_overdue() -> Vec<(String, &'static str)> {
+    callbacks()
+        .iter()
+        .filter_map(|c| {
+            let age = c.since.elapsed();
+            let code = match c.stage {
+                CallbackStage::Dialing if age >= CALLBACK_DIAL_LIMIT => "failed",
+                CallbackStage::Ready if age >= CALLBACK_READY_LIMIT => "failed",
+                CallbackStage::Ended if age >= CALLBACK_ENDED_LIMIT => "done",
+                CallbackStage::OnCall if age >= CALLBACK_CALL_LIMIT => "done",
+                _ => return None,
+            };
+            Some((c.task_id.clone(), code))
+        })
+        .collect()
+}
+
+/// A call-back is over (`code`, [`Appointment::call`]): kept on its task,
+/// told on the notification channels when its call never happened (its
+/// summary tells the rest), and the next call-back to that number dialed.
+async fn finish_callback(ctx: &CallbackCtx<'_>, task_id: &str, code: &str) {
+    let Some(done) = callbacks_remove(task_id) else {
+        return;
+    };
+    info!("appointment call-back over task_id={task_id} result={code}");
+    set_call_code(ctx.tasks, task_id, code).await;
+    if callback_needs_notice(code) {
+        notify_callback(ctx, task_id, code).await;
+    }
+    while let Some(next) = callbacks_next(&done.key) {
+        let (c, _) = dispatch_callback(ctx.control, &next).await;
+        set_call_code(ctx.tasks, &next.task_id, &c).await;
+        if c == "dialing" {
+            break;
+        }
+        callbacks_remove(&next.task_id);
+        notify_callback(ctx, &next.task_id, &c).await;
+    }
+}
+
+/// Results the call's summary does not tell: the call never got going.
+fn callback_needs_notice(code: &str) -> bool {
+    matches!(code, "failed" | "no_phone" | "send_failed")
+}
+
+/// Keep a call-back's progress on its task (`appointment.call`). A decision
+/// still writing the task finishes first (it writes `dialing` or `queued`).
+async fn set_call_code(tasks: &TaskStore, task_id: &str, code: &str) {
+    let _claim = Deciding::claim_within(task_id, Duration::from_secs(15)).await;
+    let Some(task) = tasks.get(task_id).await else {
+        return;
+    };
+    let Some(mut appt) = task.appointment.clone() else {
+        return;
+    };
+    if appt.call == code {
+        return;
+    }
+    appt.call = code.to_string();
+    let patch = TaskPatch { appointment: Some(appt), ..Default::default() };
+    if let Err(e) = tasks.patch(task_id, patch).await {
+        warn!("appointment call-back result not kept task_id={task_id}: {e:#}");
+        return;
+    }
+    let _ = tasks.push_event(task_id, &format!("callback_result_{code}")).await;
+}
+
+/// "📞 AI 回電：<number>" with what became of the call-back and the appointment.
+async fn notify_callback(ctx: &CallbackCtx<'_>, task_id: &str, code: &str) {
+    let Some(task) = ctx.tasks.get(task_id).await else {
+        return;
+    };
+    let Some(appt) = task.appointment.as_ref() else {
+        return;
+    };
+    let lang = locale::notify_lang();
+    let body = format!("{}\n{}", callback_result_line(lang, code, &task.caller_id), appt.headline(lang));
+    let ok = crate::notify::notify_ai_callback(
+        ctx.http,
+        ctx.settings,
+        &task.caller_id,
+        &task.serial,
+        &callback_headline(lang, &task.caller_id),
+        &body,
+    )
+    .await;
+    info!("appointment call-back notice task_id={task_id} result={code} sent={ok}");
+}
+
+/// The title of everything about a call-back: "AI 回電：<number>".
+pub fn callback_headline(lang: Lang, number: &str) -> String {
+    format!("{}{}{}", callback_words(lang).title, locale::phrases(lang).sep, number.trim())
+}
+
+/// A call-back's result ([`Appointment::call`]) in the owner's words.
+pub fn callback_result_line(lang: Lang, code: &str, number: &str) -> String {
+    let w = reply_words(lang);
+    let c = callback_words(lang);
+    match code {
+        "answered" => c.answered.to_string(),
+        "no_answer" => c.no_answer.to_string(),
+        "failed" => c.failed.to_string(),
+        "done" => c.done.to_string(),
+        "queued" => c.queued.to_string(),
+        "not_callable" => c.not_callable.to_string(),
+        "dialing" | "connected" => locale::fill(w.dialing, number.trim()),
+        "no_phone" => locale::fill(w.not_placed, w.no_phone),
+        "send_failed" => locale::fill(w.not_placed, w.send_failed),
+        "no_number" => w.hidden.to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// The owner's words about the AI's call-backs ([`callback_result_line`]).
+struct CallbackWords {
+    /// "AI 回電" (the notification's title).
+    title: &'static str,
+    /// It waits for an earlier call-back to the same number.
+    queued: &'static str,
+    /// A number a call-back may not dial ([`callable_on`]).
+    not_callable: &'static str,
+    answered: &'static str,
+    no_answer: &'static str,
+    failed: &'static str,
+    /// It ended; whether anyone answered is not known.
+    done: &'static str,
+}
+
+fn callback_words(lang: Lang) -> CallbackWords {
+    let w = |title, queued, not_callable, answered, no_answer, failed, done| CallbackWords {
+        title,
+        queued,
+        not_callable,
+        answered,
+        no_answer,
+        failed,
+        done,
+    };
+    match lang {
+        Lang::ZhTw => w("AI 回電", "等打給同一個號碼的前一通回電結束，AI 再撥", "AI 沒有回電：這個號碼不能回電（國外、免付費、加值或特殊號碼）", "AI 回電接通，已告訴對方結果", "AI 回電了，對方沒接", "AI 回電撥不出去", "AI 回電的通話已結束"),
+        Lang::ZhCn => w("AI 回拨", "等拨给同一个号码的前一通回拨结束，AI 再拨", "AI 没有回拨：这个号码不能回拨（境外、免费、增值或特殊号码）", "AI 回拨接通，已告诉对方结果", "AI 回拨了，对方没接", "AI 回拨拨不出去", "AI 回拨的通话已结束"),
+        Lang::En => w("AI call-back", "The AI calls once its earlier call-back to the same number has ended", "No call-back: this number can't be called back (abroad, toll-free, premium or a short code)", "The AI's call-back got through and the caller was told", "The AI called back; nobody answered", "The AI's call-back couldn't be placed", "The AI's call-back has ended"),
+        Lang::Ja => w("AI の折り返し電話", "同じ番号への前の折り返し電話が終わってから AI が電話します", "折り返し電話なし：この番号には折り返せません（海外・フリーダイヤル・有料・短縮番号）", "AI の折り返し電話がつながり、結果を伝えました", "AI が電話しましたが、相手は出ませんでした", "AI の折り返し電話をかけられませんでした", "AI の折り返し電話は終わりました"),
+        Lang::Ko => w("AI 회신 전화", "같은 번호로 건 앞의 회신 전화가 끝나면 AI가 전화합니다", "회신 전화 없음: 이 번호로는 다시 걸 수 없습니다(해외, 수신자 부담, 유료, 특수 번호)", "AI의 회신 전화가 연결되어 결과를 알렸습니다", "AI가 전화했지만 받지 않았습니다", "AI가 전화를 걸지 못했습니다", "AI의 회신 전화가 끝났습니다"),
+        Lang::Es => w("Llamada de la IA", "La IA llamará cuando termine su llamada anterior al mismo número", "Sin llamada: a este número no se puede llamar (extranjero, gratuito, de tarificación especial o corto)", "La llamada de la IA conectó y se le dio la respuesta", "La IA llamó y nadie contestó", "La IA no pudo hacer la llamada", "La llamada de la IA terminó"),
+        Lang::Fr => w("Rappel de l'IA", "L'IA appellera une fois son rappel précédent au même numéro terminé", "Pas de rappel : ce numéro ne peut pas être rappelé (étranger, gratuit, surtaxé ou court)", "Le rappel de l'IA a abouti et l'appelant a eu la réponse", "L'IA a rappelé, personne n'a répondu", "L'IA n'a pas pu passer l'appel", "Le rappel de l'IA est terminé"),
+        Lang::De => w("KI-Rückruf", "Die KI ruft an, sobald ihr voriger Rückruf an dieselbe Nummer vorbei ist", "Kein Rückruf: diese Nummer kann nicht zurückgerufen werden (Ausland, kostenlos, kostenpflichtig oder Kurzwahl)", "Der Rückruf der KI kam durch, der Anrufer weiß Bescheid", "Die KI hat angerufen, niemand ging ran", "Die KI konnte nicht anrufen", "Der Rückruf der KI ist beendet"),
+        Lang::Pt => w("Retorno da IA", "A IA liga quando terminar a ligação anterior dela para o mesmo número", "Sem retorno: não dá para ligar para esse número (exterior, gratuito, tarifado ou curto)", "A ligação da IA foi atendida e a pessoa recebeu a resposta", "A IA ligou e ninguém atendeu", "A IA não conseguiu fazer a ligação", "A ligação da IA terminou"),
+    }
 }
 
 /// What the AI follows on its call-back with the owner's answer (English; it
@@ -2455,7 +2962,8 @@ pub fn callback_prompt(active: &locale::Active, lang: Lang, appt: &Appointment, 
 Who is calling: {who}.\n\
 The answer: {answer}\n\
 How the call goes:\n\
-- When they pick up, greet them in one short sentence, say who is calling and that you are calling back about the appointment they asked for.\n\
+- The call starts while it still rings: say nothing until they have picked up and said something (a ringing tone, music or silence is not them).\n\
+- Then greet them in one short sentence, say who is calling and that you are calling back about the appointment they asked for.\n\
 - Then give the answer in one or two short sentences, in {language} (if they answer in another language, use theirs).\n\
 - If they ask, say the time again. Agree to nothing new and do not move the time; if they want another time, say {owner} will get back to them about it. Give out no personal details, codes or other information.\n\
 - Then say goodbye once and stop talking: the call ends after your goodbye.\n\
@@ -3205,7 +3713,7 @@ async fn decide_inner_with(
             store.push_event(task_id, &format!("sms_{}", appt.sms)).await?;
         }
         Reply::Call => {
-            let (code, line) = call_caller(control, &task, &appt, confirm).await;
+            let (code, line) = call_caller(rt, control, &task, &appt, confirm).await;
             appt.call = code;
             lines.push(line);
             store.push_event(task_id, &format!("callback_{}", appt.call)).await?;
@@ -4192,7 +4700,7 @@ mod tests {
         rt.appointment_sms = true;
         assert_eq!(reply_options(&rt, "0912345678", Some("tw")), mobile);
         assert_eq!(reply_options(&rt, "02-2555-0123", Some("tw")), landline);
-        assert_eq!(reply_options(&rt, "0800-000-123", Some("tw")), landline);
+        assert_eq!(reply_options(&rt, "0800-000-123", Some("tw")), hidden);
         for h in ["", "anonymous", "private", "Unknown"] {
             assert_eq!(reply_options(&rt, h, Some("tw")), hidden, "{h}");
         }
@@ -4230,7 +4738,8 @@ mod tests {
         assert!(text.contains("AI 沒有回電：沒有可以撥號的手機連線"), "{text}");
         assert!(task.events.contains(&"callback_no_phone".to_string()), "{:?}", task.events);
         // Nothing left waiting for a call that never went out.
-        assert_eq!(take_callback_prompt("0225550123"), None);
+        assert!(callbacks_stage(&t.id).is_none());
+        assert!(take_ready_callback("", "0225550123").is_none());
         // A mobile, the owner picks "nobody": nothing is sent.
         let t = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
         let (task, text, _) = decide_inner_with(None, &http, &rt, &store, &calls, Some(&control), &t.id, false, Some(Reply::None)).await.unwrap();
@@ -4260,15 +4769,126 @@ mod tests {
         let no = callback_prompt(&locale::Active { assistant: true, ..me }, Lang::En, &a, false);
         assert!(no.contains("cannot make it at Sat, Nov 14, 3:00 PM (看房) after all") && no.contains("Apologize"), "{no}");
         assert!(no.contains("王先生's assistant") && no.contains("in English"), "{no}");
-        // Kept for the call to that number, however it is written; used once.
-        remember_callback("+886 912-000-001", "t-cb", yes.clone());
-        assert_eq!(take_callback_prompt("0922000001"), None);
-        assert_eq!(take_callback_prompt("0912000001").as_deref(), Some(yes.as_str()));
-        assert_eq!(take_callback_prompt("0912000001"), None);
-        remember_callback("0912000002", "t-cb2", no);
-        forget_callback("t-cb2");
-        assert_eq!(take_callback_prompt("+886912000002"), None);
-        assert_eq!(take_callback_prompt(""), None);
+        // The AI waits for the callee: the ringing is no one to talk to.
+        assert!(yes.contains("say nothing until they have picked up and said something"), "{yes}");
+    }
+
+    #[test]
+    fn a_call_back_script_goes_only_to_the_call_its_phone_reported() {
+        let cb = PendingCallback::new("t-cb-a1", "0912000101", "phone-a1", "SCRIPT-A1".into());
+        assert!(callbacks_add(cb));
+        // Dialing, nothing reported yet: no session of that phone gets it — an
+        // incoming call from that number, a ring prewarm (no report ever comes).
+        assert!(take_ready_callback("phone-a1", "0912000101").is_none());
+        // outbound_ready from another phone, or for another number: not this call.
+        assert!(!callback_ready("t-cb-a1", "phone-b1", "0912000101"));
+        assert!(!callback_ready("t-cb-a1", "phone-a1", "0912000199"));
+        assert!(!callback_ready("t-cb-other", "phone-a1", "0912000101"));
+        assert!(callback_ready("t-cb-a1", "phone-a1", "+886912000101"));
+        // Ready: only that phone's session with that number (written any way).
+        assert!(take_ready_callback("phone-b1", "0912000101").is_none());
+        assert!(take_ready_callback("phone-a1", "0922000101").is_none());
+        let got = take_ready_callback("phone-a1", "+886 912 000 101").unwrap();
+        assert_eq!((got.task_id.as_str(), got.script.as_str()), ("t-cb-a1", "SCRIPT-A1"));
+        // Used once: a later call from that number is an ordinary call.
+        assert!(take_ready_callback("phone-a1", "0912000101").is_none());
+        assert_eq!(callbacks_stage("t-cb-a1"), Some(CallbackStage::OnCall));
+        // Its summary finds it by the phone; a ready report comes only once.
+        assert_eq!(callback_task_on("phone-a1").as_deref(), Some("t-cb-a1"));
+        assert!(!callback_ready("t-cb-a1", "phone-a1", "0912000101"));
+        callbacks_remove("t-cb-a1");
+        assert_eq!(callback_task_on("phone-a1"), None);
+        // A hello without a number: the one call-back ready on that phone.
+        assert!(callbacks_add(PendingCallback::new("t-cb-a2", "0912000102", "phone-a2", "S2".into())));
+        assert!(callback_ready("t-cb-a2", "phone-a2", ""));
+        assert_eq!(take_ready_callback("phone-a2", "").map(|c| c.task_id).as_deref(), Some("t-cb-a2"));
+        callbacks_remove("t-cb-a2");
+    }
+
+    #[test]
+    fn call_backs_to_one_number_go_one_after_another() {
+        assert!(callbacks_add(PendingCallback::new("t-cb-q1", "0912000201", "phone-q", "A".into())));
+        // The same number, written another way: it waits.
+        assert!(!callbacks_add(PendingCallback::new("t-cb-q2", "+886912000201", "phone-q", "B".into())));
+        // Another number goes right away.
+        assert!(callbacks_add(PendingCallback::new("t-cb-q3", "0912000202", "phone-q", "C".into())));
+        assert_eq!(callbacks_stage("t-cb-q2"), Some(CallbackStage::Queued));
+        // Waiting, it cannot be taken for a call.
+        assert!(!callback_ready("t-cb-q2", "phone-q", "0912000201"));
+        let key = number_key("0912000201");
+        assert!(callbacks_next(&key).is_none(), "the first one is still under way");
+        callbacks_remove("t-cb-q1");
+        assert_eq!(callbacks_next(&key).map(|c| c.task_id).as_deref(), Some("t-cb-q2"));
+        assert_eq!(callbacks_stage("t-cb-q2"), Some(CallbackStage::Dialing));
+        assert!(callbacks_next(&key).is_none());
+        callbacks_remove("t-cb-q2");
+        callbacks_remove("t-cb-q3");
+    }
+
+    #[test]
+    fn a_call_back_the_phone_never_reports_on_ends_as_failed() {
+        assert!(callbacks_add(PendingCallback::new("t-cb-o1", "0912000301", "phone-o", "A".into())));
+        assert!(!callbacks_overdue().iter().any(|(id, _)| id == "t-cb-o1"));
+        let back = |by: Duration| std::time::Instant::now().checked_sub(by).unwrap();
+        callbacks().iter_mut().find(|c| c.task_id == "t-cb-o1").unwrap().since = back(CALLBACK_DIAL_LIMIT);
+        assert!(callbacks_overdue().contains(&("t-cb-o1".to_string(), "failed")));
+        // Ended without its summary: over, result unknown.
+        callbacks_set_stage("t-cb-o1", CallbackStage::Ended);
+        callbacks().iter_mut().find(|c| c.task_id == "t-cb-o1").unwrap().since = back(CALLBACK_ENDED_LIMIT);
+        assert!(callbacks_overdue().contains(&("t-cb-o1".to_string(), "done")));
+        callbacks_remove("t-cb-o1");
+        // What the owner reads, and which results get their own notice.
+        assert_eq!(callback_result_line(Lang::ZhTw, "no_answer", "x"), "AI 回電了，對方沒接");
+        assert_eq!(callback_result_line(Lang::ZhTw, "failed", "x"), "AI 回電撥不出去");
+        assert_eq!(callback_result_line(Lang::ZhTw, "answered", "x"), "AI 回電接通，已告訴對方結果");
+        assert_eq!(callback_headline(Lang::ZhTw, " 0912000000 "), "AI 回電：0912000000");
+        assert!(callback_needs_notice("failed") && !callback_needs_notice("no_answer") && !callback_needs_notice("answered"));
+        for l in locale::ALL {
+            for code in ["answered", "no_answer", "failed", "done", "queued", "not_callable", "no_phone", "send_failed"] {
+                let s = callback_result_line(l, code, "x");
+                assert!(!s.is_empty() && !s.contains('_') && !s.contains('{'), "{l:?} {code}: {s}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_call_back_record_is_marked_and_tells_whether_the_callee_spoke() {
+        assert!(is_ai_callback(&["gemini_unmute_after_greet".into(), AI_CALLBACK_EVENT.into()]));
+        assert!(!is_ai_callback(&["gemini_unmute_after_greet".into()]));
+        assert!(callee_spoke("AI：\n對方：喂？\nAI：您好"));
+        assert!(!callee_spoke("AI：您好，我是王先生\n對方： "));
+        assert!(!callee_spoke(""));
+    }
+
+    #[test]
+    fn only_a_real_number_of_the_line_s_own_country_is_called_back() {
+        for n in ["0912345678", "+886912345678", "886912345678", "02-2555-0123", "037-123456", "089-123456"] {
+            assert!(callable_on(n, Some("tw")), "{n}");
+        }
+        // Toll-free, premium, short codes, cut-off digits, hidden, abroad.
+        for n in ["0800-000-123", "0809-000-123", "0204-123456", "0209-123456", "165", "110", "1999", "113", "2555-0123", "", "anonymous", "+12025550143", "+8613800138000", "00852-2123-4567"] {
+            assert!(!callable_on(n, Some("tw")), "{n}");
+        }
+        // A US line: US numbers, not toll-free or premium ones.
+        assert!(callable_on("+1 330-555-0100", Some("us")));
+        assert!(callable_on("3305550100", Some("us")));
+        for n in ["+18005550100", "+18885550100", "+19005550100", "+886912345678", "911"] {
+            assert!(!callable_on(n, Some("us")), "{n}");
+        }
+        // What the owner may pick, and so what the AI promises on the call.
+        let mut rt = plain_settings();
+        rt.appointment_sms = true;
+        let none = ReplyOptions { sms: false, call: false };
+        assert_eq!(reply_options(&rt, "0800-000-123", Some("tw")), none);
+        assert_eq!(reply_options(&rt, "165", Some("tw")), none);
+        assert!(!reply_options(&rt, "+12025550143", Some("tw")).call);
+        assert_eq!(default_reply("call", reply_options(&rt, "0204-123456", Some("tw"))), Reply::None);
+        assert_eq!(default_reply("auto", reply_options(&rt, "0800-000-123", Some("tw"))), Reply::None);
+        rt.appointment_mode = "confirm".into();
+        rt.appointment_test_numbers = Vec::new();
+        rt.appointment_reply = "auto".into();
+        let s = ApptSession::for_call(&rt, &Client::new(), "0800000123").unwrap();
+        assert_eq!(s.reply, Reply::None);
     }
 
     #[test]

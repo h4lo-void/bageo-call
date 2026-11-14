@@ -1074,6 +1074,18 @@ async fn main() -> Result<()> {
             }
         });
     }
+    // Appointment call-backs a phone never reported on (the app drops a dial
+    // that does not start without saying so): checked every 15 s.
+    {
+        let state = state.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(15));
+            loop {
+                tick.tick().await;
+                appointment_callbacks(&state, "", None).await;
+            }
+        });
+    }
 
     if settings.agent_mode == AgentMode::Llm
         && settings.llm_provider == LlmProvider::OpenRouter
@@ -1973,6 +1985,8 @@ async fn handle_control_idle_ws(
                             .control
                             .handle_phone_event(&parsed, &state.task_store)
                             .await;
+                        // An appointment's call-back: its call on this phone, or its end.
+                        appointment_callbacks(&state, &serial, Some(&parsed)).await;
                     }
                     // Answer to `send_sms` (appointments: a text to the caller).
                     "send_sms_result" => {
@@ -5710,6 +5724,7 @@ fn start_ring_prewarm(
         Arc::new(AtomicBool::new(false)),
         None,
         &state.http,
+        None,
     );
     let id = state.ring_prewarm.insert(
         serial,
@@ -6030,6 +6045,16 @@ async fn spawn_gemini_session_tasks(
         return;
     }
     let rt = state.settings_store.snapshot();
+    // The AI's call-back with an appointment's answer: only the call this phone
+    // reported dialing for it (`outbound_ready` with its task and number) —
+    // never an incoming call or a ring prewarm (which starts elsewhere).
+    let callback = appointments::callback_for_call(&serial, &caller_id).await;
+    if let Some(cb) = &callback {
+        info!("appointment call-back session serial={serial} task_id={}", cb.task_id);
+        if let Some(c) = active_call.lock().await.as_mut() {
+            c.push_event(appointments::AI_CALLBACK_EVENT);
+        }
+    }
     // Started at pickup: the media hello has reported the SIM (when the app does).
     let lang = call_lang_plan(&rt, &caller_id, call_sim_country(&serial).as_deref());
     let cfg = GeminiRetryCfg {
@@ -6061,9 +6086,11 @@ async fn spawn_gemini_session_tasks(
         barge_in,
         Some(media_call_guard.clone()),
         &state.http,
+        callback.as_ref().map(|c| c.script.clone()),
     );
-    // Kept for one fresh-socket retry if this session never delivers audio.
-    let retry_cfg = fresh_retry_left.then_some(cfg);
+    // Kept for one fresh-socket retry if this session never delivers audio
+    // (not for a call-back: nobody may have answered, and a retry would greet).
+    let retry_cfg = (fresh_retry_left && callback.is_none()).then_some(cfg);
     run_gemini_session_to_end(
         core,
         sink,
@@ -6124,14 +6151,13 @@ fn start_gemini_session_core(
     barge_in: Arc<AtomicBool>,
     media_guard: Option<MediaCallGuard>,
     http: &reqwest::Client,
+    callback_script: Option<String>,
 ) -> GeminiSessionCore {
     // The AI's own call-back with an appointment's answer
-    // (`appointments::call_caller`): its script instead of the answering
-    // prompt, and no appointments or sales stalling on that call.
-    let callback_cfg = appointments::take_callback_prompt(&cfg.caller_id).map(|system| {
-        info!("appointment call-back session serial={serial}");
-        GeminiRetryCfg { system, ..cfg.clone() }
-    });
+    // (`appointments::callback_for_call`): its script instead of the answering
+    // prompt, no opening while it rings, and no appointments, sales stalling
+    // or international carrier-prompt wait on that call.
+    let callback_cfg = callback_script.map(|system| GeminiRetryCfg { system, ..cfg.clone() });
     let is_callback = callback_cfg.is_some();
     let cfg = callback_cfg.as_ref().unwrap_or(cfg);
     // Persona mode has no fixed clock, only the call-length safety cap; sales / scam stalling
@@ -6155,7 +6181,7 @@ fn start_gemini_session_core(
         let setting = rt.intl_carrier_prompt.clone();
         let auto_on = rt.lang() == locale::Lang::ZhTw;
         Box::new(move || {
-            if !persona {
+            if !persona || is_callback {
                 return false;
             }
             let caller = caller_slot
@@ -6279,6 +6305,7 @@ fn start_gemini_session_core(
                 intl_caller,
                 appointments,
                 lang_plan,
+                is_callback,
             )
             .await
         })
@@ -8528,7 +8555,12 @@ fn spawn_ai_talk_tg_summary(
     let remote_rel = record.remote_audio_path.clone();
     let duration_ms = record.duration_ms;
     let end_hint = summary_end_hint(&record.events);
-    let ai_failed = record_had_ai_fail_hangup(&record.events);
+    // The AI's call-back with an appointment's answer: no appointment and no
+    // calendar suggestion from it, its own title, its result for the task.
+    let ai_callback = appointments::is_ai_callback(&record.events);
+    let callback_task = if ai_callback { appointments::callback_task_on(&serial) } else { None };
+    // A call-back nobody answered ends the AI's way too: no "AI failed".
+    let ai_failed = record_had_ai_fail_hangup(&record.events) && !ai_callback;
     let stalled = record.events.iter().any(|e| e == "persona_stall_spam");
     // Nothing from the AI reached the caller: Gemini's own transcript is text it
     // generated but never played (e.g. 「喂？你好。」 with 0 audio) — drop it.
@@ -8587,6 +8619,11 @@ fn spawn_ai_talk_tg_summary(
                     .trim(),
             ))
         };
+        // A call-back: did the callee say anything (else nobody answered)?
+        let callee_answered = ai_callback
+            && appointments::callee_spoke(&gemini_live::merge_dialogue_fragments(
+                live_transcript.lock().map(|g| g.clone()).unwrap_or_default().trim(),
+            ));
         // A stalled sales / scam call — or any long call — may run up
         // to 30 min: Whisper on that would pin the agent host's CPUs during other calls and
         // time out, and Gemini's own dialogue is the primary record anyway.
@@ -8623,7 +8660,7 @@ fn spawn_ai_talk_tg_summary(
         // A number (or e-mail) the caller said to reach them on, from their own
         // words only (the AI may repeat or make one up): kept on the record and
         // on the call's task. Not from a sales / scam call or one the AI missed.
-        let spoken_contact = if stalled || ai_failed {
+        let spoken_contact = if stalled || ai_failed || ai_callback {
             None
         } else {
             extract::extract_spoken_contact(&caller_side_text(&live_full, &remote_tx), &caller)
@@ -8716,6 +8753,10 @@ fn spawn_ai_talk_tg_summary(
             // The summary model usually writes it (prompt rule); make sure the owner sees it.
             body.insert_str(0, &format!("{}\n", locale::notify_phrases().s_ai_fail_prefix));
         }
+        if ai_callback {
+            let code = if callee_answered { "answered" } else { "no_answer" };
+            body.insert_str(0, &format!("{}\n", appointments::callback_result_line(locale::notify_lang(), code, &caller)));
+        }
 
         // An appointment from a sales / scam call the check during the call
         // missed: the summary marks the call so, in the words its prompt
@@ -8754,6 +8795,7 @@ fn spawn_ai_talk_tg_summary(
         let mut calendar_event: Option<calendar::Event> = None;
         if rt.calendar_suggest
             && appointment.is_none()
+            && !ai_callback
             && note_source == "deepseek"
             && !stalled
             && !late_sales
@@ -8842,7 +8884,12 @@ fn spawn_ai_talk_tg_summary(
                 body.push('\n');
                 body.push_str(&link);
             }
-            let ok = notify_ai_request(&http, &eff, &caller, &serial, &body).await;
+            let ok = if ai_callback {
+                let title = appointments::callback_headline(locale::notify_lang(), &caller);
+                notify::notify_ai_callback(&http, &eff, &caller, &serial, &title, &body).await
+            } else {
+                notify_ai_request(&http, &eff, &caller, &serial, &body).await
+            };
             info!(
                 "ai talk tg summary notify serial={serial} backend={backend} ok={ok} source={source} body_chars={} tx_chars={}",
                 body.chars().count(),
@@ -8855,7 +8902,33 @@ fn spawn_ai_talk_tg_summary(
         for task in appointment_tasks {
             appointments::after_summary(&http, &rt, &task_store, &calls, &control, &task, &detail_url).await;
         }
+        if let Some(task_id) = &callback_task {
+            let ctx = appointments::CallbackCtx {
+                http: &http,
+                settings: &eff,
+                tasks: task_store.as_ref(),
+                control: control.as_ref(),
+            };
+            appointments::callback_call_over(&ctx, task_id, callee_answered).await;
+        }
     });
+}
+
+/// Appointment call-backs: a phone's report on a call it was asked to place
+/// (`ev`, from `serial`), or None for the periodic check of ones never
+/// reported on ([`appointments::on_callback_event`], [`appointments::sweep_callbacks`]).
+async fn appointment_callbacks(state: &AppState, serial: &str, ev: Option<&Value>) {
+    let eff = state.settings_store.snapshot().effective(&state.settings);
+    let ctx = appointments::CallbackCtx {
+        http: &state.http,
+        settings: &eff,
+        tasks: state.task_store.as_ref(),
+        control: state.control.as_ref(),
+    };
+    match ev {
+        Some(msg) => appointments::on_callback_event(&ctx, serial, msg).await,
+        None => appointments::sweep_callbacks(&ctx).await,
+    }
 }
 
 /// Persona mode gave up on the AI and hung up (`persona_ai_unavailable_hangup`).

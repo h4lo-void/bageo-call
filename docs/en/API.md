@@ -126,11 +126,17 @@ Times are local (`TZ`). `status`: `pending` (waiting for you), `booked` (a
 test number's call booked it on the demo calendar), `confirmed`, `declined`.
 `reply`: how the caller was told — `sms`, `call` or `none`. `sms`: `sent`, or
 why the text did not go (`offline`, `old_app`, `timeout`, `busy`,
-`no_number`, or the phone's code: `no_permission`, `bad_request`,
-`no_service`, `radio_off`, `generic_failure`, `exception`; the console and
-the Telegram reply say each in words). `call`: the AI call-back — `dialing`
-(the phone was asked to call), or why it was not placed (`no_phone`,
-`send_failed`, `no_number`); how the call went follows in the task's `events`
+`no_number`, `not_test_number` (a test call's text goes only to the test
+numbers), or the phone's code: `no_permission`, `bad_request`, `no_service`,
+`radio_off`, `generic_failure`, `exception`, `no_sim`; the console and the
+Telegram reply say each in words). `call`: the AI call-back — `queued` (after
+an earlier call-back to the same number), `dialing` (the phone was asked to
+call), `connected` (the phone dialed; the AI waits for the callee to speak),
+`answered` (the callee was told), `no_answer` (nobody spoke), `failed` (the
+phone could not place it or never reported it), `done` (ended, outcome
+unknown), or why it was not placed (`no_phone`, `send_failed`, `no_number`,
+`not_callable`: a number a call-back may not dial); the phone's reports are
+also in the task's `events`
 (`callback_place_call_ack`, `callback_place_call_failed`,
 `callback_outbound_ready`, `callback_done`, `callback_failed`). `calendar`:
 `demo` for a test number's appointment, whose `event_id`, `replaced` (earlier

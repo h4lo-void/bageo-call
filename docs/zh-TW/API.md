@@ -82,7 +82,7 @@ PUT /calls/api/settings
 }
 ```
 
-時間是當地時間（`TZ`）。`status`：`pending`（等你決定）、`booked`（測試號碼的通話在模擬日曆上排入）、`confirmed`、`declined`。`reply`：怎麼告訴對方——`sms`、`call` 或 `none`。`sms`：`sent`，或簡訊沒傳出的原因（`offline`、`old_app`、`timeout`、`busy`、`no_number`，或手機回的代碼：`no_permission`、`bad_request`、`no_service`、`radio_off`、`generic_failure`、`exception`；網頁和 Telegram 回覆會用白話寫）。`call`：AI 回電——`dialing`（已請手機撥出），或沒撥出的原因（`no_phone`、`send_failed`、`no_number`）；之後通話的狀況記在任務的 `events`（`callback_place_call_ack`、`callback_place_call_failed`、`callback_outbound_ready`、`callback_done`、`callback_failed`）。`calendar`：測試號碼的預約是 `demo`，它的 `event_id`、`replaced`（同一通電話先前的時間）、`auto_error`、`tag` 都是模擬日曆上的。`tg_card`：發給這筆預約的 Telegram 卡片 `{chat_id, message_id}`，在別處決定後用來拿掉卡片上的按鈕。空的欄位不會出現。
+時間是當地時間（`TZ`）。`status`：`pending`（等你決定）、`booked`（測試號碼的通話在模擬日曆上排入）、`confirmed`、`declined`。`reply`：怎麼告訴對方——`sms`、`call` 或 `none`。`sms`：`sent`，或簡訊沒傳出的原因（`offline`、`old_app`、`timeout`、`busy`、`no_number`、`not_test_number`（測試來電的簡訊只傳給測試號碼），或手機回的代碼：`no_permission`、`bad_request`、`no_service`、`radio_off`、`generic_failure`、`exception`、`no_sim`；網頁和 Telegram 回覆會用白話寫）。`call`：AI 回電——`queued`（等打給同一個號碼的前一通回電結束）、`dialing`（已請手機撥出）、`connected`（手機已撥號，AI 等對方接起來出聲）、`answered`（接通並已告知）、`no_answer`（沒人出聲）、`failed`（手機撥不出去或沒回報）、`done`（通話結束、結果不明），或沒撥出的原因（`no_phone`、`send_failed`、`no_number`、`not_callable`：這個號碼不能回電）；手機的回報也記在任務的 `events`（`callback_place_call_ack`、`callback_place_call_failed`、`callback_outbound_ready`、`callback_done`、`callback_failed`）。`calendar`：測試號碼的預約是 `demo`，它的 `event_id`、`replaced`（同一通電話先前的時間）、`auto_error`、`tag` 都是模擬日曆上的。`tg_card`：發給這筆預約的 Telegram 卡片 `{chat_id, message_id}`，在別處決定後用來拿掉卡片上的按鈕。空的欄位不會出現。
 
 | 方法與路徑 | 內容 |
 |---|---|

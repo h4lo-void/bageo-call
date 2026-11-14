@@ -744,6 +744,16 @@ impl ControlRegistry {
         self.sessions.lock().await.len()
     }
 
+    /// The call-back session of `task_id` (empty: the task of `call_id`, the
+    /// call the agent asked a phone to place), as it stands now. Read-only.
+    pub async fn callback_session_for(&self, task_id: &str, call_id: &str) -> Option<CallbackSession> {
+        let task_id = match task_id.trim() {
+            "" => self.call_index.lock().await.get(call_id.trim())?.clone(),
+            t => t.to_string(),
+        };
+        self.sessions.lock().await.get(&task_id).cloned()
+    }
+
     /// Dispatch `place_call` to a connected control client. Returns `true` when sent.
     ///
     /// Gates (fail-closed):
