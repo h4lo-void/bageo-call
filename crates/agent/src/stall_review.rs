@@ -53,6 +53,15 @@ impl Verdict {
     }
 }
 
+/// What is known about the caller's number when asking for a review.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CallerContext {
+    pub number: String,
+    /// Sanitized name (+ optional note) when the number is in the owner's
+    /// address book (`contacts::review_label`).
+    pub saved_contact: Option<String>,
+}
+
 /// How long the caller may wait for the verdict.
 pub const REVIEW_TIMEOUT: Duration = Duration::from_millis(1500);
 
@@ -70,10 +79,10 @@ You check a phone call that is still going on. An AI answers the phone for its o
 The dialogue may be in any language. \"Caller:\" lines are the person (or recording) that called; \"AI:\" lines are the AI answering for the owner.\n\
 Answer with JSON only, one of: {\"verdict\":\"scam_or_sales\"} {\"verdict\":\"ivr_recording\"} {\"verdict\":\"normal\"} {\"verdict\":\"too_early\"}.\n\
 \n\
-scam_or_sales: someone posing as a bank, the police, a prosecutor, a government office or customer service who wants the owner to work an ATM or online banking, cancel an instalment plan, move money into a supervised or safe account, add them on LINE or another chat app, join an investment group, or who promises guaranteed profits; anyone selling insurance, loans, investments or other products or services. Asking for a password, a one-time code, a PIN or ATM steps is scam_or_sales, whoever the caller claims to be.\n\
+scam_or_sales: someone posing as a bank, the police, a prosecutor, a government office, a health-insurance or telecom agency, customs or customer service who wants the owner to work an ATM or online banking, cancel an instalment plan or an automatic / wholesale deduction, move money into a supervised or safe account, buy gift or point cards, install a remote-access app, add them on LINE or another chat app (including for a police statement or warrant), join an investment group, keep the call secret (\"investigation is confidential\"), or who promises guaranteed profits; anyone selling insurance (including \"policy check-ups\", \"free coverage upgrades\" or add-on riders), loans, refinancing or balance transfers, investments, free trials / classes / demos, or other products or services, even if they opened with a polite account or customer-care check, or disguised the pitch as a survey or old-customer perk. Asking for a password, a one-time code, a PIN or ATM steps is scam_or_sales, whoever the caller claims to be.\n\
 ivr_recording: a pre-recorded message or an automatic voice menu: a machine reading out options, \"press 1\", \"press the pound key\", leave a message after the tone.\n\
-normal: family or friends talking about sending or receiving money; a courier delivering a parcel, cash on delivery included; a bank, card issuer or insurer following up on something the owner applied for or did (a call to verify an application, a claim's progress) without asking for passwords, verification codes or ATM steps; a card issuer's fraud or risk-control desk asking whether a recent card purchase (an amount, a shop, a time) was the owner's, offering to block the card and send a new one, or telling the owner to call the number on the back of the card, as long as it asks for no password, code, card number, ATM steps, money transfer or app; anyone else calling about their own ordinary business.\n\
-too_early: the caller has only greeted or said who they are (a bank, a card centre, a risk-control or anti-fraud desk, customer service, a government office) and has not yet said what the call is about. Who they say they are decides nothing, however much it sounds like the start of a scam: the call is looked at again after their next turn.\n\
+normal: family, friends, a landlord, a colleague or a client (especially when listed in \"Saved in owner's contacts\") talking about sending or receiving money, rent, invoices, insurance or ordinary plans, unless they pitch as a salesperson or ask for scam actions (caller IDs can be spoofed); a courier or food delivery delivering a parcel or order, cash on delivery or bank transfer for the delivery included; a bank, card issuer or insurer following up on something the owner applied for or already holds (verifying an application, card delivery, a claim's progress or payout, a payment reminder on an existing policy or bill) without pitching new insurance, loans or paid upgrades and without asking for passwords, verification codes, ATM steps, safe accounts or chat apps; a card issuer's fraud or risk-control desk asking whether a recent card purchase (an amount, a shop, a time) was the owner's, offering to block the card and send a new one, or telling the owner to call the number on the back of the card, as long as it asks for no password, code, card number, ATM steps, money transfer or app; a clinic, hospital, school, repair shop, building management or genuine police station asking the owner to visit in person (never via LINE, secrecy or money transfers); anyone else calling about their own ordinary business.\n\
+too_early: the caller has only greeted or said who they are (a bank, a card centre, a risk-control or anti-fraud desk, customer service, a government office, an insurer, a telecom, a clinic or a company) and has not yet said what the call is about. Who they say they are decides nothing, however much it sounds like the start of a scam: the call is looked at again after their next turn.\n\
 \n\
 If the caller has said what they want and you are still unsure, answer scam_or_sales.";
 
@@ -92,16 +101,52 @@ fn client() -> &'static Client {
     })
 }
 
+/// Unambiguous scam keywords: even a saved contact (whose number could be
+/// spoofed) falls back to `ScamOrSales` if the review call times out on these.
+const HARD_SCAM_HITS: &[&str] = &[
+    "atm", "驗證碼", "验证码", "監管帳戶", "监管账户", "偵查不公開", "侦查不公开",
+    "人頭帳戶", "警示戶", "點數卡", "禮品卡", "傳票", "拘票", "通緝", "鎖卡", "健保署",
+    "健保局", "海關扣留", "遠端操控", "穩賺不賠", "保證獲利", "飆股", "報明牌",
+    "verification code", "arrest warrant", "gift card", "safe account", "remote access",
+    "anydesk", "teamviewer", "guaranteed return",
+    "暗証番号", "認証コード", "逮捕", "遠隔操作",
+    "인증번호", "비밀번호", "보이스피싱", "안전계좌", "원격",
+    "código de verificación", "contraseña", "code de vérification", "mot de passe",
+    "bestätigungscode", "passwort", "senha",
+];
+
+fn has_hard_scam_hit(hits: &[String]) -> bool {
+    hits.iter().any(|h| {
+        let lower = h.trim().to_lowercase();
+        HARD_SCAM_HITS.iter().any(|m| lower == *m)
+    })
+}
+
 /// Ask the model whether a call the keywords flagged is a scam or sales call,
 /// a recording, an ordinary call or too early to tell. `dialogue` = the call so far (`對方：` /
 /// `接聽：` or `Caller:` / `AI:` lines), `hits` = the keywords that matched.
 /// Anything but a clear answer within [`REVIEW_TIMEOUT`] is
 /// [`Verdict::ScamOrSales`].
 pub async fn review(api_key: &str, dialogue: &str, hits: &[String], caller_id: &str) -> Verdict {
-    review_at(client(), GEMINI_BASE, api_key, dialogue, hits, caller_id).await
+    let ctx = CallerContext {
+        number: caller_id.to_string(),
+        saved_contact: None,
+    };
+    review_with_context(api_key, dialogue, hits, &ctx).await
+}
+
+/// [`review`] with caller contact information when available.
+pub async fn review_with_context(
+    api_key: &str,
+    dialogue: &str,
+    hits: &[String],
+    ctx: &CallerContext,
+) -> Verdict {
+    review_at_with_context(client(), GEMINI_BASE, api_key, dialogue, hits, ctx).await
 }
 
 /// [`review`] against any server (tests run a local one).
+#[cfg(test)]
 async fn review_at(
     http: &Client,
     base: &str,
@@ -110,14 +155,35 @@ async fn review_at(
     hits: &[String],
     caller_id: &str,
 ) -> Verdict {
+    let ctx = CallerContext {
+        number: caller_id.to_string(),
+        saved_contact: None,
+    };
+    review_at_with_context(http, base, api_key, dialogue, hits, &ctx).await
+}
+
+async fn review_at_with_context(
+    http: &Client,
+    base: &str,
+    api_key: &str,
+    dialogue: &str,
+    hits: &[String],
+    ctx: &CallerContext,
+) -> Verdict {
     let head = head_chars(dialogue.trim(), 80);
     let key = api_key.trim();
+    let caller_id = ctx.number.as_str();
+    let fallback = if ctx.saved_contact.is_some() && !has_hard_scam_hit(hits) {
+        Verdict::Normal
+    } else {
+        Verdict::ScamOrSales
+    };
     if key.is_empty() {
-        warn!("stall review: no Gemini key, kept as scam_or_sales caller={caller_id} dialogue={head:?}");
-        return Verdict::ScamOrSales;
+        warn!("stall review: no Gemini key, fallback={fallback:?} caller={caller_id} dialogue={head:?}");
+        return fallback;
     }
     let started = Instant::now();
-    match tokio::time::timeout(REVIEW_TIMEOUT, ask(http, base, key, dialogue, hits, caller_id)).await {
+    match tokio::time::timeout(REVIEW_TIMEOUT, ask(http, base, key, dialogue, hits, ctx)).await {
         Ok(Ok(verdict)) => {
             info!(
                 "stall review verdict={verdict:?} caller={caller_id} hits={hits:?} ms={} dialogue={head:?}",
@@ -126,15 +192,15 @@ async fn review_at(
             verdict
         }
         Ok(Err(e)) => {
-            warn!("stall review failed, kept as scam_or_sales caller={caller_id}: {e:#} dialogue={head:?}");
-            Verdict::ScamOrSales
+            warn!("stall review failed, fallback={fallback:?} caller={caller_id}: {e:#} dialogue={head:?}");
+            fallback
         }
         Err(_) => {
             warn!(
-                "stall review timed out after {} ms, kept as scam_or_sales caller={caller_id} dialogue={head:?}",
+                "stall review timed out after {} ms, fallback={fallback:?} caller={caller_id} dialogue={head:?}",
                 REVIEW_TIMEOUT.as_millis()
             );
-            Verdict::ScamOrSales
+            fallback
         }
     }
 }
@@ -145,12 +211,12 @@ async fn ask(
     key: &str,
     dialogue: &str,
     hits: &[String],
-    caller_id: &str,
+    ctx: &CallerContext,
 ) -> Result<Verdict> {
     let url = format!("{}/v1beta/models/{REVIEW_MODEL}:generateContent", base.trim_end_matches('/'));
     let mut strict = true;
     loop {
-        let body = request_body(dialogue, hits, caller_id, strict);
+        let body = request_body_with_context(dialogue, hits, ctx, strict);
         let resp = http
             .post(&url)
             .header("x-goog-api-key", key)
@@ -187,14 +253,35 @@ async fn ask(
 /// takes (`thinkingLevel` minimal; a `thinkingBudget` is refused with a 400).
 /// `strict` holds the answer to the three labels; the retry after a 400 leaves
 /// that and the thinking setting out and reads the model's text.
+#[cfg(test)]
 fn request_body(dialogue: &str, hits: &[String], caller_id: &str, strict: bool) -> Value {
+    let ctx = CallerContext {
+        number: caller_id.to_string(),
+        saved_contact: None,
+    };
+    request_body_with_context(dialogue, hits, &ctx, strict)
+}
+
+fn request_body_with_context(
+    dialogue: &str,
+    hits: &[String],
+    ctx: &CallerContext,
+    strict: bool,
+) -> Value {
     let dialogue = crate::deepseek::relabel_dialogue_en(dialogue.trim());
-    let number = match caller_id.trim() {
+    let number = match ctx.number.trim() {
         "" => "hidden",
         n => n,
     };
+    let contact_line = ctx
+        .saved_contact
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|c| format!("Saved in owner's contacts: {c}\n"))
+        .unwrap_or_default();
     let user = format!(
-        "Number: {number}\nKeywords that matched: {}\n\nDialogue so far:\n{}",
+        "Number: {number}\n{contact_line}Keywords that matched: {}\n\nDialogue so far:\n{}",
         hits.join(", "),
         tail_chars(&dialogue, MAX_DIALOGUE_CHARS)
     );
@@ -966,5 +1053,48 @@ mod tests {
         server.await.unwrap();
         let v = review_at(&Client::new(), "http://127.0.0.1:9", "test-key", "對方：保證獲利", &hits(), "").await;
         assert_eq!(v, Verdict::ScamOrSales);
+    }
+
+    /// A saved contact talking about everyday money transfers is not turned into
+    /// a scam target when the review request fails or times out — unless hard
+    /// scam words (ATM, OTP, safe account, warrant, etc.) were spoken.
+    #[tokio::test]
+    async fn saved_contact_is_protected_on_timeout_unless_hard_scam_words_hit() {
+        let mom = CallerContext {
+            number: "+886912345678".into(),
+            saved_contact: Some("媽媽 (note: 家裡)".into()),
+        };
+        let body = request_body_with_context(
+            "對方：兒子，我剛去銀行匯款到你帳戶喔",
+            &["銀行".into(), "匯款".into(), "帳戶".into()],
+            &mom,
+            true,
+        );
+        let user = body["contents"][0]["parts"][0]["text"].as_str().unwrap();
+        assert!(user.contains("Saved in owner's contacts: 媽媽 (note: 家裡)"), "{user}");
+
+        // Unreachable / timed-out review on ordinary transfer words from Mom -> Normal.
+        let v = review_at_with_context(
+            &Client::new(),
+            "http://127.0.0.1:9",
+            "test-key",
+            "對方：兒子，我剛去銀行匯款到你帳戶喔",
+            &["銀行".into(), "匯款".into(), "帳戶".into()],
+            &mom,
+        )
+        .await;
+        assert_eq!(v, Verdict::Normal);
+
+        // Spoofed saved number asking for a verification code or ATM -> still ScamOrSales.
+        let spoof = review_at_with_context(
+            &Client::new(),
+            "http://127.0.0.1:9",
+            "test-key",
+            "對方：請去ATM輸入驗證碼解除設定",
+            &["銀行".into(), "atm".into(), "驗證碼".into()],
+            &mom,
+        )
+        .await;
+        assert_eq!(spoof, Verdict::ScamOrSales);
     }
 }

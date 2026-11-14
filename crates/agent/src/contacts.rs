@@ -972,6 +972,22 @@ pub fn with_caller(prompt: &str, rt: &RuntimeSettings, caller_id: &str, sim_coun
     with_caller_block(prompt, lang, &caller_block(lang, rt.is_assistant_style(), &rt.owner_name, &c.name, &c.note))
 }
 
+/// Short, prompt-safe label for `stall_review` when `caller_id` is in the
+/// owner's contacts (e.g. `"媽媽 (note: 家裡)"`). `None` when unknown.
+pub fn review_label(caller_id: &str, sim_country: Option<&str>) -> Option<String> {
+    let c = lookup(caller_id, sim_country)?;
+    let name = prompt_safe(&c.name, PROMPT_NAME_MAX_CHARS);
+    if name.is_empty() {
+        return None;
+    }
+    let note = prompt_safe(&c.note, PROMPT_NOTE_MAX_CHARS);
+    if note.is_empty() {
+        Some(name)
+    } else {
+        Some(format!("{name} (note: {note})"))
+    }
+}
+
 // ---------------------------------------------------------------- vCard
 
 /// The contacts as a vCard 3.0 file (phones, Google Contacts and Outlook read it).

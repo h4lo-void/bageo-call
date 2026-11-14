@@ -6175,16 +6175,33 @@ fn start_gemini_session_core(
     // Persona mode has no fixed clock, only the call-length safety cap; sales / scam stalling
     // swaps in its prompt once the caller scores as sales/scam.
     let stall_engaged = Arc::new(AtomicBool::new(false));
-    let stall_cfg = (persona && rt.persona_stall_spam && !is_callback).then(|| gemini_live::StallCfg {
-        engaged: stall_engaged.clone(),
-        system_prompt: rt.persona_stall_system_prompt(),
-        model: rt.gemini_stall_model.clone(),
-        max_secs: rt.persona_stall_max_secs(),
-    });
     let persona_max_secs = rt.persona_max_secs();
     let server_vad = rt.gemini_server_vad;
     let thinking_level = rt.gemini_thinking_level.clone();
     let caller_slot = Arc::new(std::sync::Mutex::new(cfg.caller_id.clone()));
+    let stall_cfg = (persona && rt.persona_stall_spam && !is_callback).then(|| {
+        let serial_for_ctx = serial.to_string();
+        let caller_slot_for_ctx = caller_slot.clone();
+        gemini_live::StallCfg {
+            engaged: stall_engaged.clone(),
+            system_prompt: rt.persona_stall_system_prompt(),
+            model: rt.gemini_stall_model.clone(),
+            max_secs: rt.persona_stall_max_secs(),
+            caller_context: Some(gemini_live::CallerContextFn(Arc::new(move || {
+                let caller = caller_slot_for_ctx
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone();
+                let sim = call_sim_country(&serial_for_ctx)
+                    .or_else(|| phone_region::last_sim(&canonical_device_serial(&serial_for_ctx)));
+                let saved_contact = contacts::review_label(&caller, sim.as_deref());
+                stall_review::CallerContext {
+                    number: caller,
+                    saved_contact,
+                }
+            }))),
+        }
+    });
     // Asked at pickup: by then the media hello has said which SIM took the call
     // (the ring prewarm starts before the phone knows) and which number calls.
     let intl_caller: gemini_live::IntlPromptCheck = {
@@ -8807,7 +8824,9 @@ fn spawn_ai_talk_tg_summary(
             && appointment.is_some()
             && !gemini_live::dialogue_own_matter(&live_full)
             && (deepseek::summary_says_sales(locale::notify_lang(), &body)
-                || (note_source != "deepseek" && gemini_live::dialogue_is_sales(&live_full)));
+                || (note_source != "deepseek"
+                    && !appointment_book.as_ref().is_some_and(|b| b.was_reviewed_normal())
+                    && gemini_live::dialogue_is_sales(&live_full)));
         let mut sales_voided: Vec<appointments::Earlier> = Vec::new();
         if late_sales {
             if let Some(a) = appointment.take() {
