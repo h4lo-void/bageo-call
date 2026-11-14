@@ -89,6 +89,22 @@ const WARM_TEXT_ONLY_REKICKS: u32 = 3;
 /// prompt is the only one; quiet → the opening plays. (A greeting, then the
 /// prompt, then 「喂？」 again sounds odd.)
 const INTL_OPENING_HOLD: Duration = Duration::from_millis(2_500);
+/// How long the line voice that ends an international hold counts as the carrier's
+/// prompt (~6 s long), whatever its transcript says: a foreign caller's speech
+/// hints (en first, or none) can turn the Chinese prompt into other words, and the
+/// prompt must never count as the caller (no hang-up on it).
+const CARRIER_PROMPT_SPAN: Duration = Duration::from_millis(7_500);
+
+/// The caller has only played the carrier's prompt so far: its words are in the
+/// transcript, or all line voice so far came within the prompt's span.
+fn only_carrier_prompt_so_far(
+    caller_text_all: &str,
+    prompt_until: Option<tokio::time::Instant>,
+    last_caller_voice_at: Option<tokio::time::Instant>,
+) -> bool {
+    looks_like_carrier_intl_prompt(caller_text_all)
+        || prompt_until.is_some_and(|until| last_caller_voice_at.map_or(true, |t| t <= until))
+}
 /// Before activityStart, do not zero voiced_ms on every sub-threshold frame.
 /// Only a run of this much continuous silence resets the accumulator (quiet
 /// PSTN dips). Instant reset never reached LOCAL_MIN_VOICE_MS → no
@@ -923,15 +939,12 @@ fn is_foreign_number(caller_id: &str, home: &str) -> bool {
             .is_some_and(|rest| rest.len() >= 6 && !rest.starts_with(home))
 }
 
-/// The language the AI opens this call in when it is not the setting's: a caller
-/// from abroad (`+…`, not the SIM's country code — see [`is_intl_caller`]) whose
-/// country's main language is one the AI speaks ([`crate::locale::calling_code_lang`]).
-/// Local, hidden and other countries' numbers: `None` (the setting `language`);
-/// so are Traditional and Simplified Chinese for each other (both answer 「喂？」).
-pub fn caller_opening_lang(caller_id: &str) -> Option<crate::locale::Lang> {
-    opening_lang_for(caller_id, &crate::locale::country_code(), crate::locale::current())
-}
-
+/// The opening language of a call whose SIM is unknown (phone app older than
+/// 0.2.5), when it is not the setting's: a caller from abroad (`+…`, not the
+/// owner's country code `home` — see [`is_intl_caller`]) whose country's main
+/// language is one the AI speaks ([`crate::locale::calling_code_lang`]). Local,
+/// hidden and other countries' numbers: `None` (the setting `language`); so are
+/// Traditional and Simplified Chinese for each other (both answer 「喂？」).
 fn opening_lang_for(
     caller_id: &str,
     home: &str,
@@ -943,10 +956,107 @@ fn opening_lang_for(
     crate::locale::calling_code_lang(caller_id).filter(|l| *l != lang && !(l.is_zh() && lang.is_zh()))
 }
 
+/// How a call's languages are set up ([`call_lang_plan`]): the opening line and
+/// the hints for transcribing the caller. Fixed for the whole call (its Live
+/// session, a fresh retry, the rotated and the stall sessions).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallLangPlan {
+    /// Persona mode opens in this language, and the prompt gets the note to answer
+    /// in the caller's language; `None` = the setting `language`.
+    pub opening: Option<crate::locale::Lang>,
+    /// `languageCodes` for the caller's speech-to-text; `None` = none, it
+    /// detects the language itself.
+    pub caller_stt: Option<Vec<&'static str>>,
+}
+
+/// A call's languages, from the caller ID, the country of the SIM that took the
+/// call (`sim`, ISO 3166 alpha-2; `None` = the phone app does not say), the
+/// setting `language`, the owner's country calling code (`home_code`, digits:
+/// `effective_country_code`) and the setting `sim_languages` (SIM country →
+/// language code).
+///
+/// Opening: the number is read the way that SIM reads it
+/// ([`crate::phone_region::normalize`]). From another country than the SIM's,
+/// whose language the AI speaks ([`crate::locale::country_lang`]): that
+/// language. Otherwise the SIM's main language (`sim_languages`), else
+/// `language`. Chinese never switches between its two variants. SIM unknown: a
+/// `+…` number of another country code than `home_code` ([`opening_lang_for`]).
+///
+/// Speech-to-text: a number of the owner's own country (or one whose country
+/// speaks the setting's language) keeps the setting's language and English as
+/// hints — auto-detect read a short 「喂？」 as Korean or German. A number from
+/// abroad hints the caller's language first, then the setting's; from a country
+/// whose language is not known, no hint at all, so Thai or Indonesian are not
+/// forced into Chinese (and a closing "Thanks, bye." is not lost).
+pub fn call_lang_plan(
+    caller_id: &str,
+    sim: Option<&str>,
+    lang: crate::locale::Lang,
+    home_code: &str,
+    sim_langs: &std::collections::BTreeMap<String, String>,
+) -> CallLangPlan {
+    use crate::locale::{country_lang, Lang};
+    let sim = sim
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty());
+    let sim = sim.as_deref();
+    let home = crate::phone_region::country_of_code(home_code);
+    let number = crate::phone_region::normalize(caller_id, sim.or(home));
+    // The main language the owner set for this SIM's country.
+    let sim_lang = sim
+        .and_then(|s| sim_langs.get(s))
+        .map(|code| Lang::parse(code));
+    let opening = match sim {
+        Some(sim) => {
+            let main = sim_lang.unwrap_or(lang);
+            let caller = number
+                .as_ref()
+                .filter(|n| n.country != sim)
+                .and_then(|n| country_lang(n.country))
+                .filter(|l| !(l.is_zh() && main.is_zh()));
+            Some(caller.unwrap_or(main)).filter(|l| *l != lang)
+        }
+        None => opening_lang_for(caller_id, home_code, lang),
+    };
+    // What the caller most likely speaks: the SIM's main language for a number of
+    // the SIM's own country, else the language of the number's country.
+    let caller_lang = number.as_ref().and_then(|n| match sim_lang {
+        Some(l) if sim == Some(n.country) => Some(l),
+        _ => country_lang(n.country),
+    });
+    let abroad = match (number.as_ref(), home.or(sim)) {
+        (Some(n), Some(own)) => n.country != own,
+        _ => false,
+    };
+    let usual = || stt_codes(&[lang, Lang::En]);
+    let caller_stt = if !abroad {
+        Some(usual())
+    } else {
+        match caller_lang {
+            Some(l) if l == lang || (l.is_zh() && lang.is_zh()) => Some(usual()),
+            Some(l) => Some(stt_codes(&[l, lang])),
+            None => None,
+        }
+    };
+    CallLangPlan { opening, caller_stt }
+}
+
+/// Speech-to-text codes of `langs`, in order, each once.
+fn stt_codes(langs: &[crate::locale::Lang]) -> Vec<&'static str> {
+    let mut codes: Vec<&'static str> = Vec::new();
+    for l in langs {
+        let code = crate::locale::phrases(*l).stt;
+        if !codes.contains(&code) {
+            codes.push(code);
+        }
+    }
+    codes
+}
+
 /// SIM countries (ISO 3166 alpha-2, lowercase) whose carriers play a recorded
-/// warning to us right after pickup on every call from abroad, with the country's
-/// calling code: Taiwan's (「這是國際電話，請注意小心詐騙」).
-const CARRIER_INTL_PROMPT_SIMS: &[(&str, &str)] = &[("tw", "886")];
+/// warning to us right after pickup on every call from abroad: Taiwan's
+/// (「這是國際電話，請注意小心詐騙」).
+const CARRIER_INTL_PROMPT_SIMS: &[&str] = &["tw"];
 
 /// Whether this call opens with the carrier's international-call warning, so the
 /// AI holds its first words until it has played.
@@ -954,9 +1064,10 @@ const CARRIER_INTL_PROMPT_SIMS: &[(&str, &str)] = &[("tw", "886")];
 /// - `setting` `off`: never. `on`: every caller from abroad (the setting's country
 ///   code), whatever the SIM.
 /// - `auto`, with `sim_country` (the SIM the call came in on, sent by the phone app):
-///   only on a SIM whose carrier plays the warning, and only for a caller from outside
-///   that SIM's country. A US SIM never gets it, so a caller from the US — or from
-///   anywhere — hears 「喂？」 at once.
+///   only on a SIM whose carrier plays the warning, and only for a number of another
+///   country than that SIM's, read the way the SIM reads it (`+…`, `00…`;
+///   [`crate::phone_region::normalize`]). A US SIM never gets it, so a caller from
+///   the US — or from anywhere — hears 「喂？」 at once.
 /// - `auto`, SIM unknown (phone app older than 0.2.5): `auto_on` (the language is
 ///   Traditional Chinese, so the SIM is assumed to be Taiwan's) and a caller from abroad.
 pub fn expects_carrier_intl_prompt(
@@ -969,10 +1080,12 @@ pub fn expects_carrier_intl_prompt(
         "off" => false,
         "on" => is_intl_caller(caller_id),
         _ => match sim_country.map(str::trim).filter(|c| !c.is_empty()) {
-            Some(sim) => CARRIER_INTL_PROMPT_SIMS
-                .iter()
-                .find(|(iso, _)| sim.eq_ignore_ascii_case(iso))
-                .is_some_and(|(_, code)| is_foreign_number(caller_id, code)),
+            Some(sim) => {
+                let sim = sim.to_ascii_lowercase();
+                CARRIER_INTL_PROMPT_SIMS.contains(&sim.as_str())
+                    && crate::phone_region::normalize(caller_id, Some(sim.as_str()))
+                        .is_some_and(|n| n.country != sim.as_str())
+            }
             None => auto_on && is_intl_caller(caller_id),
         },
     }
@@ -1028,8 +1141,8 @@ fn without_output_transcription(v: &Value) -> Value {
     c
 }
 
-/// The opening instruction; `opening` = a caller from abroad's language
-/// ([`caller_opening_lang`]), else the setting's.
+/// The opening instruction; `opening` = the call's opening language when it is
+/// not the setting's ([`call_lang_plan`]).
 fn persona_kick_client_content(opening: Option<crate::locale::Lang>) -> String {
     let active = crate::locale::active();
     crate::prompts::client_turn(&crate::prompts::kick_open(active.lang, active.assistant, opening))
@@ -1113,15 +1226,11 @@ const STT_CALLER_VOCAB_ZH_TW: [&str; 9] = [
     "保險", "保單", "貸款", "信貸", "信用卡", "投資", "國際電話", "管理室", "包裹",
 ];
 
-/// Speech-to-text hints for the caller's side: the agent's language first, then
-/// English; the owner's name and (Taiwan) the call logic's key words as vocabulary.
-fn stt_caller_config() -> Value {
+/// Speech-to-text config for the caller's side: `langs` as language hints
+/// ([`CallLangPlan::caller_stt`]; `None` = it detects the language itself), the
+/// owner's name and (Taiwan) the call logic's key words as vocabulary.
+fn stt_caller_config(langs: Option<&[&'static str]>) -> Value {
     let active = crate::locale::active();
-    let lang = crate::locale::phrases(active.lang).stt;
-    let mut langs = vec![lang];
-    if lang != "en-US" {
-        langs.push("en-US");
-    }
     let mut vocab: Vec<String> = Vec::new();
     let owner = active.owner.trim();
     if !owner.is_empty() {
@@ -1130,16 +1239,28 @@ fn stt_caller_config() -> Value {
     if active.lang == crate::locale::Lang::ZhTw {
         vocab.extend(STT_CALLER_VOCAB_ZH_TW.iter().map(|w| w.to_string()));
     }
-    let mut cfg = json!({ "languageCodes": langs });
+    let mut cfg = json!({});
+    if let Some(langs) = langs.filter(|l| !l.is_empty()) {
+        cfg["languageCodes"] = json!(langs);
+    }
     if !vocab.is_empty() {
         cfg["customVocabulary"] = json!(vocab);
     }
     cfg
 }
 
-/// Speech-to-text hint for the AI's own voice: the agent's language.
-fn stt_ai_config() -> Value {
-    json!({ "languageCodes": [crate::locale::phrases(crate::locale::current()).stt] })
+/// Speech-to-text hint for the AI's own voice. It speaks the caller's language
+/// when that comes first in `caller_langs` ([`CallLangPlan::caller_stt`]), so it
+/// gets the same hints (none = detect): with only the owner's language, its English
+/// or Thai replies were written down as Chinese. Otherwise the owner's language,
+/// as always.
+fn stt_ai_config(caller_langs: Option<&[&'static str]>) -> Value {
+    let own = crate::locale::phrases(crate::locale::current()).stt;
+    match caller_langs {
+        Some(l) if l.first().is_some_and(|f| *f != own) => json!({ "languageCodes": l }),
+        None => json!({}),
+        _ => json!({ "languageCodes": [own] }),
+    }
 }
 
 /// Per-call sales / scam stalling config (None = feature off or not persona mode).
@@ -2767,9 +2888,10 @@ fn boost_downlink_for_phone(pcm: &[u8]) -> Vec<u8> {
 ///   international-call warning — persona mode then holds the opening for it (see
 ///   [`INTL_OPENING_HOLD`]). Asked at pickup, not at setup: a ring prewarm starts
 ///   before the phone knows which SIM the call came in on.
-/// - `opening_lang`: persona mode, a caller from abroad ([`caller_opening_lang`]):
-///   the opening line is said in that language, and the system prompt (stall
-///   session's too) gets the note to answer in the caller's language.
+/// - `lang_plan`: the call's languages ([`call_lang_plan`]). Persona mode with an
+///   opening language: the opening line is said in it, and the system prompt (stall
+///   session's too) gets the note to answer in the caller's language. Its
+///   speech-to-text hints go into the setup for the caller's side.
 ///
 /// On success, returns why the session ended so the agent can play goodbye WAV.
 pub async fn run_session(
@@ -2798,9 +2920,9 @@ pub async fn run_session(
     thinking_level: &str,
     intl_caller: IntlPromptCheck,
     appointments: Option<crate::appointments::ApptSession>,
-    opening_lang: Option<crate::locale::Lang>,
+    lang_plan: CallLangPlan,
 ) -> Result<SessionEndReason> {
-    let opening_lang = opening_lang.filter(|_| persona);
+    let opening_lang = lang_plan.opening.filter(|_| persona);
     let with_caller_language = |prompt: &str| -> String {
         match opening_lang {
             Some(_) => crate::prompts::with_caller_language_note(prompt, crate::locale::current()),
@@ -2874,9 +2996,10 @@ pub async fn run_session(
                 },
                 // Capture speech-to-text for the post-call summary. Language hints:
                 // auto-detect read a short Chinese "hello?" as German / Hindi / Korean,
-                // and stall / carrier-prompt / bye detection all read this STT.
-                "inputAudioTranscription": stt_caller_config(),
-                "outputAudioTranscription": stt_ai_config(),
+                // and stall / carrier-prompt / bye detection all read this STT; a caller
+                // from abroad gets their own language first (or auto-detect).
+                "inputAudioTranscription": stt_caller_config(lang_plan.caller_stt.as_deref()),
+                "outputAudioTranscription": stt_ai_config(lang_plan.caller_stt.as_deref()),
                 "realtimeInputConfig": realtime_input_config(server_vad)
             }
         });
@@ -3031,6 +3154,8 @@ pub async fn run_session(
     let mut opening_mark: Option<usize> = None;
     // International call: the held opening waits for the carrier's prompt until then.
     let mut intl_hold_until: Option<tokio::time::Instant> = None;
+    // Set when an international hold ends on line voice (the carrier's prompt).
+    let mut carrier_prompt_until: Option<tokio::time::Instant> = None;
 
     // ConnectAtAnswer warmhold: generate first AI turn *silently* while period WAV plays.
     // Buffer model audio here; flush to telephony only when audio_open (UnmuteAfterGreet).
@@ -3552,6 +3677,7 @@ pub async fn run_session(
             if caller_had_voice || now >= until {
                 intl_hold_until = None;
                 if caller_had_voice {
+                    carrier_prompt_until = Some(now + CARRIER_PROMPT_SPAN);
                     let dropped_ms = pcm16_ms(prebuf.len() as u64, phone_sr);
                     prebuf.clear();
                     let dropped = opening_mark
@@ -3697,7 +3823,7 @@ pub async fn run_session(
             && persona
             && !wrap_up_sent
             && !bye_from_caller
-            && looks_like_carrier_intl_prompt(&caller_text_all)
+            && only_carrier_prompt_so_far(&caller_text_all, carrier_prompt_until, last_caller_voice_at)
         {
             // Input STT of the carrier prompt landed after the closing was armed.
             goodbye_pending = false;
@@ -4158,7 +4284,11 @@ pub async fn run_session(
                                             || looks_like_persona_closing(&out_tx_window);
                                         if closing
                                             && !wrap_up_sent
-                                            && looks_like_carrier_intl_prompt(&caller_text_all)
+                                            && only_carrier_prompt_so_far(
+                                                &caller_text_all,
+                                                carrier_prompt_until,
+                                                last_caller_voice_at,
+                                            )
                                         {
                                             if !goodbye_pending {
                                                 info!(
@@ -6208,9 +6338,136 @@ mod tests {
         assert_eq!(opening_lang_for("+18765551234", "1", Lang::Es), None);
         // No country code set: nothing counts as abroad.
         assert_eq!(opening_lang_for("+81312345678", "", Lang::En), None);
-        // The running settings (unset in tests: Taiwan, zh-TW).
-        assert_eq!(caller_opening_lang("+33612345678"), Some(Lang::Fr));
-        assert_eq!(caller_opening_lang("+886912345678"), None);
+    }
+
+    #[test]
+    fn call_languages_follow_the_number_and_the_sim() {
+        use crate::locale::Lang;
+        use std::collections::BTreeMap;
+        let none: BTreeMap<String, String> = BTreeMap::new();
+        let us_en: BTreeMap<String, String> = [("us".to_string(), "en".to_string())].into_iter().collect();
+        let ca_fr: BTreeMap<String, String> = [("ca".to_string(), "fr".to_string())].into_iter().collect();
+        fn hints(codes: &[&'static str]) -> Option<Vec<&'static str>> {
+            Some(codes.to_vec())
+        }
+        let plan = |opening: Option<Lang>, caller_stt: Option<Vec<&'static str>>| CallLangPlan {
+            opening,
+            caller_stt,
+        };
+        let usual_tw = || hints(&["zh-TW", "en-US"]);
+        // Taiwan SIM, Traditional Chinese. A US number (as reported in a real call that
+        // spoke Thai and Indonesian): English opening, English first for speech-to-text.
+        assert_eq!(
+            call_lang_plan("+12025550143", Some("tw"), Lang::ZhTw, "886", &none),
+            plan(Some(Lang::En), hints(&["en-US", "zh-TW"]))
+        );
+        // The same number with the international prefix 00.
+        assert_eq!(
+            call_lang_plan("0012025550143", Some("tw"), Lang::ZhTw, "886", &none),
+            plan(Some(Lang::En), hints(&["en-US", "zh-TW"]))
+        );
+        // Local numbers: no switch, the usual hints.
+        assert_eq!(
+            call_lang_plan("0912345678", Some("tw"), Lang::ZhTw, "886", &none),
+            plan(None, usual_tw())
+        );
+        assert_eq!(
+            call_lang_plan("+886223456789", Some("tw"), Lang::ZhTw, "886", &none),
+            plan(None, usual_tw())
+        );
+        // A country whose language the AI does not speak (Thailand): the SIM's
+        // language, and speech-to-text finds the language itself.
+        assert_eq!(
+            call_lang_plan("+66812345678", Some("tw"), Lang::ZhTw, "886", &none),
+            plan(None, None)
+        );
+        // Chinese never switches variants; a +86 caller keeps the usual hints.
+        assert_eq!(
+            call_lang_plan("+8613800138000", Some("tw"), Lang::ZhTw, "886", &none),
+            plan(None, usual_tw())
+        );
+        // A US SIM in the same phone, set to English: a local US number hears English…
+        assert_eq!(
+            call_lang_plan("(202) 555-0143", Some("us"), Lang::ZhTw, "886", &us_en),
+            plan(Some(Lang::En), hints(&["en-US", "zh-TW"]))
+        );
+        assert_eq!(
+            call_lang_plan("2025550143", Some("US"), Lang::ZhTw, "886", &us_en).opening,
+            Some(Lang::En)
+        );
+        // …a Taiwanese number on it hears Chinese (its own country's language)…
+        assert_eq!(
+            call_lang_plan("+886912345678", Some("us"), Lang::ZhTw, "886", &us_en),
+            plan(None, usual_tw())
+        );
+        // …and a Japanese number Japanese.
+        assert_eq!(
+            call_lang_plan("+81312345678", Some("us"), Lang::ZhTw, "886", &us_en),
+            plan(Some(Lang::Ja), hints(&["ja-JP", "zh-TW"]))
+        );
+        // The US SIM without a language of its own: the setting's opening, but the
+        // US caller is still transcribed with English first.
+        assert_eq!(
+            call_lang_plan("2025550143", Some("us"), Lang::ZhTw, "886", &none),
+            plan(None, hints(&["en-US", "zh-TW"]))
+        );
+        // Canadian SIM set to French, English setting, owner's code +1: a Montreal
+        // number hears French; a US number is from another country than the SIM's
+        // and hears English, which is the setting.
+        assert_eq!(
+            call_lang_plan("514 555 0123", Some("ca"), Lang::En, "1", &ca_fr),
+            plan(Some(Lang::Fr), hints(&["fr-FR", "en-US"]))
+        );
+        assert_eq!(
+            call_lang_plan("+12025550143", Some("ca"), Lang::En, "1", &ca_fr),
+            plan(None, hints(&["en-US"]))
+        );
+        // Hidden numbers: the SIM's language, the usual hints.
+        for hidden in ["", "unknown"] {
+            assert_eq!(call_lang_plan(hidden, Some("tw"), Lang::ZhTw, "886", &none), plan(None, usual_tw()));
+            assert_eq!(
+                call_lang_plan(hidden, Some("us"), Lang::ZhTw, "886", &us_en),
+                plan(Some(Lang::En), usual_tw())
+            );
+        }
+        // SIM unknown (phone app older than 0.2.5): abroad = +… of another code than
+        // the owner's, as before; national digits are the owner's country's.
+        assert_eq!(
+            call_lang_plan("+12025550143", None, Lang::ZhTw, "886", &us_en),
+            plan(Some(Lang::En), hints(&["en-US", "zh-TW"]))
+        );
+        assert_eq!(
+            call_lang_plan("2025550143", None, Lang::ZhTw, "886", &us_en),
+            plan(None, usual_tw())
+        );
+        // No SIM and no country code: nothing counts as abroad.
+        assert_eq!(
+            call_lang_plan("+81312345678", None, Lang::En, "", &none),
+            plan(None, hints(&["en-US"]))
+        );
+    }
+
+    #[test]
+    fn caller_stt_hints_or_auto_detect() {
+        // The AI's own voice: the caller's hints when their language leads (it replies
+        // in it), none when the caller's language is detected.
+        let foreign: &[&'static str] = &["th-TH"];
+        assert_eq!(stt_ai_config(Some(foreign))["languageCodes"], json!(["th-TH"]));
+        assert!(stt_ai_config(None).get("languageCodes").is_none());
+        let codes: &[&'static str] = &["en-US", "zh-TW"];
+        let hinted = stt_caller_config(Some(codes));
+        assert_eq!(hinted["languageCodes"], json!(["en-US", "zh-TW"]));
+        let auto = stt_caller_config(None);
+        assert!(auto.get("languageCodes").is_none());
+        let empty: &[&'static str] = &[];
+        assert!(stt_caller_config(Some(empty)).get("languageCodes").is_none());
+        // Unset settings (tests) are Taiwan's: the call logic's words stay as
+        // vocabulary either way.
+        for cfg in [&hinted, &auto] {
+            assert!(cfg["customVocabulary"]
+                .as_array()
+                .is_some_and(|v| v.iter().any(|w| w.as_str() == Some("國際電話"))));
+        }
     }
 
     #[test]
@@ -6220,6 +6477,13 @@ mod tests {
         assert!(expects_carrier_intl_prompt("auto", true, "+8613800138000", Some("TW")));
         assert!(!expects_carrier_intl_prompt("auto", true, "+886912345678", Some("tw")));
         assert!(!expects_carrier_intl_prompt("auto", true, "0912345678", Some("tw")));
+        // Abroad is the number's country, read the way the SIM reads it: the
+        // international prefix 00 and Hong Kong count; a hidden number does not.
+        assert!(expects_carrier_intl_prompt("auto", false, "0012025550143", Some("tw")));
+        assert!(expects_carrier_intl_prompt("auto", false, "+85291234567", Some("tw")));
+        assert!(!expects_carrier_intl_prompt("auto", true, "00886912345678", Some("tw")));
+        assert!(!expects_carrier_intl_prompt("auto", true, "", Some("tw")));
+        assert!(!expects_carrier_intl_prompt("auto", true, "unknown", Some("tw")));
         // US SIM (e.g. Tello on Wi-Fi calling): no warning from any caller, even with
         // the language set to Traditional Chinese.
         assert!(!expects_carrier_intl_prompt("auto", true, "+12025550143", Some("us")));
@@ -6396,6 +6660,15 @@ mod tests {
 
     #[test]
     fn carrier_intl_prompt_is_not_the_caller() {
+        // Line voice inside the prompt's span counts as the prompt even when its
+        // transcript is not Chinese (foreign-caller speech hints); later voice does not.
+        let t0 = tokio::time::Instant::now();
+        let until = Some(t0 + CARRIER_PROMPT_SPAN);
+        assert!(only_carrier_prompt_so_far("This is an international call", until, Some(t0 + Duration::from_secs(5))));
+        assert!(only_carrier_prompt_so_far("", until, None));
+        assert!(!only_carrier_prompt_so_far("Hi, this is Mike", until, Some(t0 + Duration::from_secs(9))));
+        assert!(!only_carrier_prompt_so_far("Hi, this is Mike", None, Some(t0)));
+        assert!(only_carrier_prompt_so_far("這是國際電話，請注意小心詐騙。", None, Some(t0)));
         // Gemini input STT of the carrier prompt.
         assert!(looks_like_carrier_intl_prompt("小心詐騙, 接通國際電話愛注意。"));
         assert!(looks_like_carrier_intl_prompt("這是國際電話，請注意小心詐騙。"));

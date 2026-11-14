@@ -268,6 +268,7 @@ audio{width:100%;height:42px;margin-top:10px;display:block}
 .pv-status.err{color:var(--bad)}
 .rows{display:flex;flex-direction:column;gap:8px;margin:12px 0}
 .brow{display:grid;grid-template-columns:minmax(9rem,14rem) minmax(0,1fr) auto;gap:8px;align-items:center}
+.slrow{grid-template-columns:minmax(0,20rem) minmax(0,14rem) auto}
 .chan{border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px;background:var(--surface)}
 .chan.offc{opacity:.75}
 .chan-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -364,6 +365,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
   .snav{margin:-4px -12px 0;padding:8px 12px}
   .brow{grid-template-columns:minmax(0,1fr) auto}
   .brow .b-why{grid-column:1;grid-row:2}
+  .brow .sl-lang{grid-column:1;grid-row:2}
   .brow .icon-btn{grid-row:1/3;align-self:center}
   .savebar{bottom:calc(74px + env(safe-area-inset-bottom));width:calc(100vw - 24px);padding-left:14px}
   .savebar .grow{font-size:.9rem}
@@ -609,6 +611,12 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
           <div class="field"><label for="f-notify_language" data-i18n="f_notify_lang"></label>
             <select id="f-notify_language" data-k="notify_language" data-t="text" style="max-width:20rem"></select>
             <div class="help" data-i18n="f_notify_lang_h"></div></div>
+          <div class="field" id="simLangField"><div class="lbl" id="lbl-simlang" data-i18n="f_simlang"></div>
+            <div class="rows" id="simLangRows" data-k="sim_languages" data-t="simlangs" role="group" aria-labelledby="lbl-simlang"></div>
+            <div class="pv" style="margin-top:0">
+              <button type="button" class="btn sm" id="btnSimLangAdd"><svg class="i sm"><use href="#i-plus"/></svg><span data-i18n="sl_add"></span></button>
+            </div>
+            <div class="help" data-i18n="f_simlang_h"></div></div>
           <div class="field" id="styleField"><div class="lbl" id="lbl-style" data-i18n="f_style"></div>
             <div class="choice" role="radiogroup" aria-labelledby="lbl-style" data-k="answer_style" data-t="radio">
               <label><input type="radio" name="answer_style" value="assistant" /><span><b data-i18n="style_assistant"></b><small data-i18n="style_assistant_d"></small></span></label>
@@ -1154,6 +1162,14 @@ I18N["en"] = {
   f_notify_lang: "Language of notifications and summaries",
   f_notify_lang_h: "What you read: notifications, call summaries (also in the call list), appointment cards, forwarded texts. Callers still hear the language above.",
   nl_same: "Same as the AI's language",
+  f_simlang: "Main language for each SIM",
+  f_simlang_h: "For a phone with SIMs from more than one country: a call that comes in on a SIM from this country starts in this language. A caller whose number is from another country still hears that country's language when the AI speaks it. Needs phone app 0.2.5 or later, which reports the SIM of each call. SIMs your phones have reported since the agent started are listed already; on “Same as the AI's language” nothing changes.",
+  sl_country: "SIM country",
+  sl_lang: "Main language",
+  sl_pick: "Choose a country",
+  sl_add: "Add a SIM country",
+  sl_remove: "Remove this SIM",
+  sl_empty: "No SIM has its own language: every call starts in the language above.",
   f_owner: "Your name",
   f_owner_ph: "e.g. Alex",
   f_owner_h: "The name callers use for you. The AI uses it when it talks about you.",
@@ -1754,6 +1770,14 @@ I18N["zh-TW"] = {
   f_notify_lang: "通知和摘要的語言",
   f_notify_lang_h: "給你看的文字：通知、通話摘要（通話紀錄裡也是）、預約確認卡片、簡訊轉發。來電者聽到的還是上面的語言。",
   nl_same: "跟 AI 講話的語言相同",
+  f_simlang: "各 SIM 卡的主要語言",
+  f_simlang_h: "手機裡有不同國家的 SIM 卡時用：打進這個國家 SIM 卡的電話，AI 開場用這個語言。來電號碼是別的國家、AI 又會講那國的語言時，還是用那國的語言。需要手機 App 0.2.5 以上，它會回報每通電話是哪張卡接的。主程式啟動後手機回報過的 SIM 卡已經列出來了；留在「跟 AI 講話的語言相同」就什麼都不變。",
+  sl_country: "SIM 卡國家",
+  sl_lang: "主要語言",
+  sl_pick: "選擇國家",
+  sl_add: "新增 SIM 卡國家",
+  sl_remove: "移除這張 SIM 卡",
+  sl_empty: "沒有 SIM 卡另外設語言：每通電話都用上面的語言開場。",
   f_owner: "你的名字",
   f_owner_ph: "例如：小安",
   f_owner_h: "來電的人怎麼稱呼你。AI 提到你的時候會用這個名字。",
@@ -2354,6 +2378,14 @@ I18N["zh-CN"] = {
   f_notify_lang: "通知和摘要的语言",
   f_notify_lang_h: "给你看的文字：通知、通话摘要（通话记录里也是）、预约确认卡片、短信转发。来电者听到的还是上面的语言。",
   nl_same: "与 AI 说话的语言相同",
+  f_simlang: "各 SIM 卡的主要语言",
+  f_simlang_h: "手机里有不同国家的 SIM 卡时使用：打进这个国家 SIM 卡的电话，AI 开场用这个语言。来电号码是别的国家、AI 又会说那国的语言时，仍然用那国的语言。需要手机 App 0.2.5 以上，它会上报每通电话是哪张卡接的。主程序启动后手机上报过的 SIM 卡已经列出来了；保持“与 AI 说话的语言相同”就什么都不变。",
+  sl_country: "SIM 卡国家",
+  sl_lang: "主要语言",
+  sl_pick: "选择国家",
+  sl_add: "添加 SIM 卡国家",
+  sl_remove: "移除这张 SIM 卡",
+  sl_empty: "没有 SIM 卡单独设置语言：每通电话都用上面的语言开场。",
   f_owner: "你的名字",
   f_owner_ph: "例如：小安",
   f_owner_h: "来电的人怎么称呼你。AI 提到你的时候会用这个名字。",
@@ -2954,6 +2986,14 @@ I18N["ja"] = {
   f_notify_lang: "通知と要約の言語",
   f_notify_lang_h: "あなたが読むもの：通知、通話の要約（通話一覧でも）、予約の確認カード、転送された SMS。相手が聞くのは上の言語のままです。",
   nl_same: "AI が話す言語と同じ",
+  f_simlang: "SIM ごとの主な言語",
+  f_simlang_h: "複数の国の SIM を使うスマホ向けです。この国の SIM にかかってきた電話は、この言語で出ます。相手の番号が別の国で、AI がその国の言語を話せる場合は、その言語で出ます。電話ごとにどの SIM で受けたかを知らせる、スマホアプリ 0.2.5 以降が必要です。エージェントの起動後にスマホが知らせてきた SIM はすでに並んでいます。「AI が話す言語と同じ」のままなら何も変わりません。",
+  sl_country: "SIM の国",
+  sl_lang: "主な言語",
+  sl_pick: "国を選択",
+  sl_add: "SIM の国を追加",
+  sl_remove: "この SIM を削除",
+  sl_empty: "個別の言語を設定した SIM はありません。どの電話も上の言語で出ます。",
   f_owner: "あなたの名前",
   f_owner_ph: "例：田中",
   f_owner_h: "相手があなたを呼ぶときの名前です。AI があなたのことを話すときに使います。",
@@ -3554,6 +3594,14 @@ I18N["ko"] = {
   f_notify_lang: "알림과 요약 언어",
   f_notify_lang_h: "내가 읽는 것: 알림, 통화 요약(통화 목록 포함), 예약 확인 카드, 전달된 문자. 전화한 사람은 계속 위의 언어로 듣습니다.",
   nl_same: "AI가 말하는 언어와 같음",
+  f_simlang: "SIM별 주 언어",
+  f_simlang_h: "여러 나라의 SIM을 쓰는 휴대폰용입니다. 이 나라 SIM으로 걸려 온 전화는 이 언어로 받습니다. 전화한 번호가 다른 나라이고 AI가 그 나라 언어를 할 수 있으면 그 언어로 받습니다. 통화마다 어느 SIM으로 받았는지 알려 주는 휴대폰 앱 0.2.5 이상이 필요합니다. 에이전트가 시작된 뒤 휴대폰이 알려 준 SIM은 이미 목록에 있습니다. 'AI가 말하는 언어와 같음'으로 두면 바뀌는 것이 없습니다.",
+  sl_country: "SIM 국가",
+  sl_lang: "주 언어",
+  sl_pick: "국가 선택",
+  sl_add: "SIM 국가 추가",
+  sl_remove: "이 SIM 삭제",
+  sl_empty: "따로 언어를 정한 SIM이 없습니다. 모든 전화를 위의 언어로 받습니다.",
   f_owner: "내 이름",
   f_owner_ph: "예: 민수",
   f_owner_h: "상대방이 나를 부르는 이름입니다. AI가 나에 대해 말할 때 사용합니다.",
@@ -4154,6 +4202,14 @@ I18N["es"] = {
   f_notify_lang: "Idioma de notificaciones y resúmenes",
   f_notify_lang_h: "Lo que lees tú: notificaciones, resúmenes de llamadas (también en la lista de llamadas), tarjetas de citas y SMS reenviados. Quien llama sigue oyendo el idioma de arriba.",
   nl_same: "El mismo idioma que habla la IA",
+  f_simlang: "Idioma principal de cada SIM",
+  f_simlang_h: "Para un teléfono con SIM de más de un país: una llamada que entra por una SIM de este país empieza en este idioma. Si el número de quien llama es de otro país y la IA habla su idioma, empieza en ese. Necesita la app del teléfono 0.2.5 o posterior, que indica la SIM de cada llamada. Las SIM que tus teléfonos han indicado desde que arrancó el agente ya aparecen; con «El mismo idioma que habla la IA» no cambia nada.",
+  sl_country: "País de la SIM",
+  sl_lang: "Idioma principal",
+  sl_pick: "Elige un país",
+  sl_add: "Añadir país de SIM",
+  sl_remove: "Quitar esta SIM",
+  sl_empty: "Ninguna SIM tiene idioma propio: todas las llamadas empiezan en el idioma de arriba.",
   f_owner: "Tu nombre",
   f_owner_ph: "p. ej. Álex",
   f_owner_h: "El nombre con el que te llaman. La IA lo usa cuando habla de ti.",
@@ -4754,6 +4810,14 @@ I18N["fr"] = {
   f_notify_lang: "Langue des notifications et des résumés",
   f_notify_lang_h: "Ce que vous lisez : notifications, résumés d'appel (aussi dans la liste des appels), cartes de rendez-vous, SMS transférés. Vos correspondants entendent toujours la langue ci-dessus.",
   nl_same: "Comme la langue de l'IA",
+  f_simlang: "Langue principale de chaque SIM",
+  f_simlang_h: "Pour un téléphone avec des SIM de plusieurs pays : un appel reçu sur une SIM de ce pays commence dans cette langue. Si le numéro de l'appelant est d'un autre pays et que l'IA parle sa langue, l'appel commence dans celle-ci. Il faut l'application du téléphone 0.2.5 ou plus récente, qui indique la SIM de chaque appel. Les SIM signalées par vos téléphones depuis le démarrage de l'agent sont déjà listées ; avec « Comme la langue de l'IA », rien ne change.",
+  sl_country: "Pays de la SIM",
+  sl_lang: "Langue principale",
+  sl_pick: "Choisir un pays",
+  sl_add: "Ajouter un pays de SIM",
+  sl_remove: "Retirer cette SIM",
+  sl_empty: "Aucune SIM n'a sa propre langue : chaque appel commence dans la langue ci-dessus.",
   f_owner: "Votre nom",
   f_owner_ph: "ex. Alex",
   f_owner_h: "Le nom que vos correspondants utilisent pour vous. L'IA s'en sert quand elle parle de vous.",
@@ -5354,6 +5418,14 @@ I18N["de"] = {
   f_notify_lang: "Sprache der Benachrichtigungen und Zusammenfassungen",
   f_notify_lang_h: "Was du liest: Benachrichtigungen, Anrufzusammenfassungen (auch in der Anrufliste), Terminkarten, weitergeleitete SMS. Anrufer hören weiterhin die Sprache oben.",
   nl_same: "Wie die Sprache der KI",
+  f_simlang: "Hauptsprache je SIM",
+  f_simlang_h: "Für ein Telefon mit SIMs aus mehreren Ländern: Ein Anruf auf einer SIM aus diesem Land beginnt in dieser Sprache. Ist die Nummer des Anrufers aus einem anderen Land und spricht die KI dessen Sprache, beginnt er in dieser. Braucht die Telefon-App 0.2.5 oder neuer, die zu jedem Anruf die SIM meldet. SIMs, die deine Telefone seit dem Start des Agenten gemeldet haben, stehen schon in der Liste; mit „Wie die Sprache der KI“ ändert sich nichts.",
+  sl_country: "Land der SIM",
+  sl_lang: "Hauptsprache",
+  sl_pick: "Land auswählen",
+  sl_add: "SIM-Land hinzufügen",
+  sl_remove: "Diese SIM entfernen",
+  sl_empty: "Keine SIM hat eine eigene Sprache: Jeder Anruf beginnt in der Sprache oben.",
   f_owner: "Dein Name",
   f_owner_ph: "z. B. Alex",
   f_owner_h: "Der Name, mit dem Anrufer dich ansprechen. Die KI verwendet ihn, wenn sie über dich spricht.",
@@ -5954,6 +6026,14 @@ I18N["pt"] = {
   f_notify_lang: "Idioma das notificações e resumos",
   f_notify_lang_h: "O que você lê: notificações, resumos das chamadas (também na lista de chamadas), cartões de agendamento e SMS encaminhados. Quem liga continua ouvindo o idioma acima.",
   nl_same: "O mesmo idioma da IA",
+  f_simlang: "Idioma principal de cada SIM",
+  f_simlang_h: "Para um telefone com SIMs de mais de um país: uma chamada que chega por um SIM deste país começa neste idioma. Se o número de quem liga for de outro país e a IA falar o idioma dele, começa nesse. Precisa do app do telefone 0.2.5 ou mais recente, que informa o SIM de cada chamada. Os SIMs que seus telefones informaram desde que o agente iniciou já aparecem na lista; com “O mesmo idioma da IA” nada muda.",
+  sl_country: "País do SIM",
+  sl_lang: "Idioma principal",
+  sl_pick: "Escolha um país",
+  sl_add: "Adicionar país de SIM",
+  sl_remove: "Remover este SIM",
+  sl_empty: "Nenhum SIM tem idioma próprio: todas as chamadas começam no idioma acima.",
   f_owner: "Seu nome",
   f_owner_ph: "ex.: Alex",
   f_owner_h: "O nome que as pessoas usam para falar com você. A IA usa esse nome quando fala de você.",
@@ -7472,6 +7552,69 @@ $("blockRows").addEventListener("click", (e) => {
   updateDirty();
 });
 
+// ----- main language of each SIM: rows of {country, lang}, saved as {country: lang}
+const regionNames = {};
+// A country in the language of this page ("United States", "美國"); the code
+// itself where the browser has no names.
+function countryName(cc) {
+  const code = String(cc || "").toUpperCase();
+  try {
+    if (!regionNames[lang]) regionNames[lang] = new Intl.DisplayNames([loc()], { type: "region" });
+    return regionNames[lang].of(code) || code;
+  } catch (_) { return code; }
+}
+const simLangNorm = (v) => Object.entries(v && typeof v === "object" && !Array.isArray(v) ? v : {})
+  .map(([country, l]) => ({ country: String(country).toLowerCase(), lang: String(l || "") }));
+function simLangObj(rows) {
+  const out = {};
+  for (const e of rows) if (e.country && e.lang) out[e.country] = e.lang;
+  return Object.fromEntries(Object.keys(out).sort().map((k) => [k, out[k]]));
+}
+function simLangRow(e) {
+  const cc = h("select", { class: "sl-cc", "aria-label": t("sl_country") });
+  const list = Array.isArray(S && S.countries) ? S.countries.slice() : [];
+  if (e.country && !list.includes(e.country)) list.push(e.country);
+  cc.append(h("option", { value: "", text: t("sl_pick") }));
+  list.map((c) => ({ c, name: countryName(c) }))
+    .sort((a, b) => a.name.localeCompare(b.name, loc()))
+    .forEach(({ c, name }) => cc.append(h("option", { value: c, text: `${name} (${c.toUpperCase()})` })));
+  cc.value = e.country || "";
+  const lg = h("select", { class: "sl-lang", "aria-label": t("sl_lang") });
+  lg.append(h("option", { value: "", text: t("nl_same") }));
+  for (const code of (S && S.languages) || LANGS) lg.append(h("option", { value: code, text: LANG_NAMES[code] || code }));
+  lg.value = e.lang || "";
+  return h("div", { class: "brow slrow" }, cc, lg,
+    h("button", { type: "button", class: "icon-btn sl-del", title: t("sl_remove"), "aria-label": t("sl_remove") }, icon("trash")));
+}
+function renderSimLangRows(list) {
+  const box = clear($("simLangRows"));
+  let rows = list;
+  if (!rows) {
+    rows = simLangNorm(S && S.sim_languages);
+    // SIMs the phones reported that have no language of their own yet.
+    for (const c of (S && S.seen_sim_countries) || []) if (!rows.some((r) => r.country === c)) rows.push({ country: c, lang: "" });
+  }
+  if (!rows.length) box.append(h("p", { class: "muted sl-empty", text: t("sl_empty") }));
+  for (const e of rows) box.append(simLangRow(e));
+}
+const simLangRowsNow = () => Array.from(document.querySelectorAll("#simLangRows .slrow")).map((r) => ({ country: r.querySelector(".sl-cc").value, lang: r.querySelector(".sl-lang").value }));
+const simLangValue = () => simLangObj(simLangRowsNow());
+$("btnSimLangAdd").addEventListener("click", () => {
+  const box = $("simLangRows");
+  const empty = box.querySelector(".sl-empty");
+  if (empty) empty.remove();
+  const row = simLangRow({ country: "", lang: "" });
+  box.append(row);
+  row.querySelector(".sl-cc").focus();
+});
+$("simLangRows").addEventListener("click", (e) => {
+  const del = e.target.closest(".sl-del");
+  if (!del) return;
+  del.closest(".slrow").remove();
+  if (!$("simLangRows").querySelector(".slrow")) renderSimLangRows([]);
+  updateDirty();
+});
+
 // ----- notification channels
 let chans = [];
 let chanSeq = 0;
@@ -7584,6 +7727,7 @@ function curValue(el) {
     case "sec2ms": { const v = parseFloat(el.value); return Number.isFinite(v) ? Math.round(v * 1000) : null; }
     case "radio": { const r = el.querySelector("input:checked"); return r ? r.value : ""; }
     case "rejects": return rejectValue();
+    case "simlangs": return simLangValue();
     case "channels": return chanValue();
     case "lines": return el.value.split("\n").map((s) => s.trim()).filter(Boolean);
     default: return el.value.trim();
@@ -7595,6 +7739,7 @@ function origValue(el) {
     case "bool": return !!v;
     case "int": case "sec2ms": return v == null ? null : Number(v);
     case "rejects": return rejectNorm(v);
+    case "simlangs": return simLangObj(simLangNorm(v));
     case "channels": return chanOrig(v);
     case "lines": return Array.isArray(v) ? v.map((s) => String(s).trim()).filter(Boolean) : [];
     case "secret": return "";
@@ -7638,6 +7783,7 @@ function populate() {
       case "sec2ms": el.value = v == null ? "" : String(Number(v) / 1000); break;
       case "radio": el.querySelectorAll("input").forEach((r) => { r.checked = r.value === String(v); }); break;
       case "rejects": renderRejectRows(); break;
+      case "simlangs": renderSimLangRows(); break;
       case "channels": chansFromSettings(); renderChannels(); break;
       case "lines": el.value = Array.isArray(v) ? v.join("\n") : ""; break;
       case "secret": el.value = ""; delete el.dataset.clear; refreshSecret(k); break;
@@ -7657,6 +7803,7 @@ function relabelSettings(skipRows) {
     buildMenus();
     const rows = rejectRowsNow();
     renderRejectRows(rows);
+    renderSimLangRows(simLangRowsNow());
     renderChannels();
     document.querySelectorAll("[data-secret]").forEach((b) => { applyI18n(b); refreshSecret(b.dataset.secret); });
   }

@@ -56,7 +56,7 @@ Records saved by earlier versions use `對方：` / `接聽：` in every languag
 
 | Method and path | What |
 |---|---|
-| `GET /calls/api/settings` | `{ok, settings, storage_path, console_url, console_ip_url}`: `console_url` is the console's address in use (the one you typed, or the automatic one; empty when only this computer can open it), `console_ip_url` the same with the LAN IP instead of a `.local` name. Secrets come back masked (`"abc…wxyz"`) with a `<name>_set` flag; notification channels come back with empty `url` / `token` and `url_hint`, `token_hint`, `url_set`, `token_set`. Also read-only helpers: `default_prompt`, `voices`, `ambience_kinds`, `languages`, `notify_kinds`, `sample_lines`, `summary_ready`. |
+| `GET /calls/api/settings` | `{ok, settings, storage_path, console_url, console_ip_url}`: `console_url` is the console's address in use (the one you typed, or the automatic one; empty when only this computer can open it), `console_ip_url` the same with the LAN IP instead of a `.local` name. Secrets come back masked (`"abc…wxyz"`) with a `<name>_set` flag; notification channels come back with empty `url` / `token` and `url_hint`, `token_hint`, `url_set`, `token_set`. Also read-only helpers: `default_prompt`, `voices`, `ambience_kinds`, `languages`, `countries` (ISO codes for *Main language for each SIM*), `seen_sim_countries` (SIM countries the phones reported since the agent started), `notify_kinds`, `sample_lines`, `summary_ready`. |
 | `PUT /calls/api/settings` | A JSON object with only the fields to change. Answer as for `GET`. |
 
 Rules for `PUT`:
