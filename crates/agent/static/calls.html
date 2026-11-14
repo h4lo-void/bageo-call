@@ -329,6 +329,42 @@ dialog .field{margin-top:14px}
 dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;flex-wrap:wrap}
 .dlg-err{color:var(--bad);font-size:.87rem;margin-top:8px}
 
+/* ---------- contacts ---------- */
+.ct-bar .btn{flex:0 0 auto}
+.ct-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center;padding:12px 14px;border-radius:var(--radius);background:var(--surface);border:1px solid var(--line);cursor:pointer;text-align:left;width:100%}
+.ct-row:hover{border-color:var(--line-strong);background:color-mix(in srgb,var(--surface) 70%,var(--surface2))}
+.ct-av{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent-ink);font-weight:700}
+.ct-row .who{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ct-row .nums{font-family:var(--mono);font-size:.86rem;color:var(--muted);overflow-wrap:anywhere}
+.ct-row .gist{color:var(--muted);font-size:.88rem;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ct-imp{margin-bottom:16px}
+.ct-imp h2{font-size:1.05rem}
+.ct-drop{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding:22px 16px;margin-top:12px;border:2px dashed var(--line-strong);border-radius:var(--radius-sm);cursor:pointer;color:var(--muted)}
+.ct-drop b{color:var(--text)}
+.ct-drop:hover,.ct-drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.ct-imp-status{margin-top:12px;display:flex;gap:8px;align-items:center}
+.ct-imp-status.err{color:var(--bad)}
+.ct-prev-bar{display:flex;gap:10px 16px;align-items:center;flex-wrap:wrap;margin-top:14px}
+.ct-chk{display:flex;gap:8px;align-items:center;font-weight:600;cursor:pointer}
+.ct-chk input,.ct-tbl input{width:18px;height:18px;accent-color:var(--accent);margin:0}
+.ct-dup{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto}
+.ct-dup select{width:auto;min-height:36px}
+.ct-tbl-wrap{overflow:auto;max-height:60vh;margin-top:10px;border:1px solid var(--line);border-radius:var(--radius-sm)}
+.ct-tbl{width:100%;border-collapse:collapse;font-size:.9rem}
+.ct-tbl th{position:sticky;top:0;background:var(--surface2);text-align:left;font-weight:600;color:var(--muted);padding:8px 10px;white-space:nowrap}
+.ct-tbl td{padding:8px 10px;border-top:1px solid var(--line);vertical-align:top}
+.ct-tbl td.mono{font-family:var(--mono);font-size:.85rem}
+.ct-tbl td .tag{margin-top:4px;white-space:normal;border-radius:8px}
+.ct-tbl tr.off td{opacity:.5}
+.ct-prev-foot{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
+#ctDlg .ct-del{margin-right:auto}
+@media (max-width:720px){
+  .ct-row{grid-template-columns:auto minmax(0,1fr);gap:12px}
+  .ct-row .src{display:none}
+  .ct-dup{margin-left:0}
+  .ct-tbl th:nth-child(4),.ct-tbl td:nth-child(4){display:none}
+}
+
 /* ---------- responsive ---------- */
 @media (max-width:1000px){
   .calls-grid.has-detail{grid-template-columns:minmax(0,1fr)}
@@ -414,6 +450,8 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
   <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
   <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h0M4 12h0M4 18h0"/></symbol>
   <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M15.5 4.7a3.5 3.5 0 0 1 0 6.6M17.5 14.2a6.5 6.5 0 0 1 4 5.8"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></symbol>
 </svg>
 
 <a class="skip" href="#main" data-i18n="skip"></a>
@@ -425,6 +463,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
     </a>
     <nav class="nav" id="nav" data-i18n-aria="nav_main">
       <a href="#calls" data-tab="calls"><svg class="i"><use href="#i-phone"/></svg><span data-i18n="tab_calls"></span></a>
+      <a href="#contacts" data-tab="contacts"><svg class="i"><use href="#i-users"/></svg><span data-i18n="tab_contacts"></span></a>
       <a href="#settings" data-tab="settings"><svg class="i"><use href="#i-sliders"/></svg><span data-i18n="tab_settings"></span><i class="dot" id="navDirty" hidden></i></a>
       <a href="#system" data-tab="system"><svg class="i"><use href="#i-activity"/></svg><span data-i18n="tab_system"></span></a>
     </nav>
@@ -555,6 +594,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
           </div>
           <div class="d-sec">
             <div class="actions">
+              <button type="button" class="btn sm" id="btnAddContact" hidden><svg class="i sm"><use href="#i-plus"/></svg><span data-i18n="ct_add_from_call"></span></button>
               <button type="button" class="btn sm danger" id="btnBlock"><svg class="i sm"><use href="#i-ban"/></svg><span data-i18n="d_block"></span></button>
               <button type="button" class="btn sm" id="btnCopyLink"><svg class="i sm"><use href="#i-link"/></svg><span data-i18n="d_copy_link"></span></button>
               <button type="button" class="btn sm" id="btnJson"><svg class="i sm"><use href="#i-download"/></svg><span data-i18n="d_json"></span></button>
@@ -567,6 +607,56 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
           </div>
         </div>
       </aside>
+    </div>
+  </section>
+
+  <!-- ======================= Contacts ======================= -->
+  <section id="view-contacts" data-view="contacts" hidden>
+    <div class="row" style="margin-bottom:14px">
+      <h1 class="view-title grow" style="margin:0" data-i18n="tab_contacts"></h1>
+      <span class="muted small" id="ctMeta"></span>
+    </div>
+    <div class="filters ct-bar">
+      <label class="search"><svg class="i sm"><use href="#i-search"/></svg>
+        <input type="search" id="ctQ" autocomplete="off" data-i18n-ph="ct_search_ph" data-i18n-aria="ct_search_ph" /></label>
+      <button type="button" class="btn primary" id="ctAdd"><svg class="i sm"><use href="#i-plus"/></svg><span data-i18n="ct_add"></span></button>
+      <button type="button" class="btn" id="ctImport"><svg class="i sm"><use href="#i-upload"/></svg><span data-i18n="ct_import"></span></button>
+      <a class="btn" id="ctExport" href="#" download="contacts.vcf"><svg class="i sm"><use href="#i-download"/></svg><span data-i18n="ct_export"></span></a>
+    </div>
+    <!-- Import: a file, what was found in it (tick, merge or skip), then saved -->
+    <div class="card pad ct-imp" id="ctImp" hidden>
+      <div class="row">
+        <h2 class="grow" data-i18n="ct_imp_title"></h2>
+        <button type="button" class="icon-btn" id="ctImpClose" data-i18n-aria="close" data-i18n-title="close"><svg class="i"><use href="#i-x"/></svg></button>
+      </div>
+      <label class="ct-drop" id="ctDrop" tabindex="0">
+        <input type="file" id="ctFile" hidden accept=".vcf,.vcard,.csv,.tsv,.txt,.xlsx,.docx,.pdf,image/*,text/*" />
+        <svg class="i lg"><use href="#i-upload"/></svg>
+        <b data-i18n="ct_imp_drop"></b>
+        <span class="help" data-i18n="ct_imp_formats"></span>
+      </label>
+      <p class="ct-imp-status" id="ctImpStatus" role="status" hidden></p>
+      <div id="ctPrev" hidden>
+        <div class="ct-prev-bar">
+          <label class="ct-chk"><input type="checkbox" id="ctAll" /><span data-i18n="ct_imp_all"></span></label>
+          <label class="ct-dup"><span data-i18n="ct_imp_dup_mode"></span>
+            <select id="ctDupMode"><option value="merge" data-i18n="ct_imp_merge"></option><option value="skip" data-i18n="ct_imp_skip"></option></select></label>
+        </div>
+        <div class="ct-tbl-wrap">
+          <table class="ct-tbl">
+            <thead><tr><th></th><th data-i18n="ct_name"></th><th data-i18n="ct_phones"></th><th data-i18n="ct_note"></th></tr></thead>
+            <tbody id="ctPrevBody"></tbody>
+          </table>
+        </div>
+        <div class="ct-prev-foot">
+          <button type="button" class="btn" id="ctImpCancel" data-i18n="cancel"></button>
+          <button type="button" class="btn primary" id="ctImpGo"></button>
+        </div>
+      </div>
+    </div>
+    <div class="list" id="ctList"></div>
+    <div class="more" id="ctMoreWrap" hidden>
+      <button type="button" class="btn" id="ctMore" data-i18n="load_more"></button>
     </div>
   </section>
 
@@ -928,6 +1018,28 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
     </div>
   </form>
 </dialog>
+<dialog id="ctDlg" aria-labelledby="ctDlgTitle">
+  <form method="dialog" id="ctForm" novalidate>
+    <h2 id="ctDlgTitle"></h2>
+    <div class="field"><label for="ctName" data-i18n="ct_name"></label><input type="text" id="ctName" maxlength="80" autocomplete="off" /></div>
+    <div class="field">
+      <label for="ctPhones" data-i18n="ct_phones"></label>
+      <textarea id="ctPhones" rows="3" autocomplete="off" spellcheck="false" inputmode="tel"></textarea>
+      <p class="help" data-i18n="ct_phones_help"></p>
+    </div>
+    <div class="field">
+      <label for="ctNote" data-i18n="ct_note"></label>
+      <textarea id="ctNote" rows="2" maxlength="500"></textarea>
+      <p class="help" data-i18n="ct_note_help"></p>
+    </div>
+    <div class="dlg-err" id="ctErr" hidden></div>
+    <div class="dlg-btns">
+      <button type="button" class="btn danger ct-del" id="ctDel"><svg class="i sm"><use href="#i-trash"/></svg><span data-i18n="ct_delete"></span></button>
+      <button type="button" class="btn" id="ctCancel" data-i18n="cancel"></button>
+      <button type="submit" class="btn primary" id="ctSave" data-i18n="ct_save"></button>
+    </div>
+  </form>
+</dialog>
 <script>
 "use strict";
 /* =====================================================================
@@ -1136,6 +1248,66 @@ I18N["en"] = {
   ev_persona_stall_spam: "Judged sales / scam",
   ev_persona_ai_fail_hangup: "AI failed, hung up",
   ev_gemini_zero_audio_reconnect: "AI reconnected (no sound)",
+  // ---- contacts
+  tab_contacts: "Contacts",
+  ct_search_ph: "Search name, number or note",
+  ct_add: "Add",
+  ct_import: "Import",
+  ct_export: "Export vCard",
+  ct_count: "{n} contacts",
+  ct_empty_title: "No contacts yet",
+  ct_empty_body: "Add people yourself, or import a file exported from your phone, Google Contacts or Outlook. When they call, the call list shows their name and the AI knows who is calling.",
+  ct_empty_filtered: "No contact matches",
+  ct_new_title: "New contact",
+  ct_edit_title: "Edit contact",
+  ct_name: "Name",
+  ct_phones: "Phone numbers",
+  ct_phones_help: "One number per line.",
+  ct_note: "Note",
+  ct_note_help: "The AI sees this when they call, e.g. “my sister”, “landlord”, “colleague”.",
+  ct_save: "Save",
+  ct_delete: "Delete",
+  ct_delete_title: "Delete {name}?",
+  ct_delete_body: "Calls from these numbers will show only the number again.",
+  ct_deleted: "{name} deleted",
+  ct_saved: "Saved",
+  ct_need_name: "Enter a name.",
+  ct_need_phone: "Enter at least one phone number.",
+  ct_exists: "This number is already saved for {name}.",
+  ct_add_from_call: "Add to contacts",
+  ct_src_manual: "Manual",
+  ct_src_vcf: "vCard",
+  ct_src_csv: "Spreadsheet",
+  ct_src_text: "Text",
+  ct_src_ai: "Read by AI",
+  ct_imp_title: "Import contacts",
+  ct_imp_drop: "Drop a file here, or click to choose one",
+  ct_imp_formats: "vCard, CSV, Excel, Word and text files are read here; PDF, pictures and other files are read by Gemini (add the Gemini API key in Settings first). Up to 10 MB.",
+  ct_imp_reading: "Reading {file}…",
+  ct_imp_found: "Found {n} in {file}.",
+  ct_imp_skipped: "{n} entries without a name or number were left out.",
+  ct_imp_none: "No contacts with a phone number were found in this file.",
+  ct_imp_by_ai: "Gemini read this file: check the names and numbers before you import.",
+  ct_imp_all: "Select all",
+  ct_imp_dup_mode: "Already saved",
+  ct_imp_merge: "Merge (add new numbers and notes)",
+  ct_imp_skip: "Skip",
+  ct_imp_new: "New",
+  ct_imp_dup: "Same number as {name}",
+  ct_imp_dup_name: "Same name as {name}",
+  ct_imp_go: "Import {n}",
+  ct_imp_saving: "Saving {n}…",
+  ct_imp_done: "Imported: {added} new, {merged} merged, {skipped} skipped",
+  err_contact_exists: "This number is already saved for another contact.",
+  err_invalid_contact: "Enter a name and at least one phone number.",
+  err_contact_not_found: "This contact no longer exists.",
+  err_too_many_contacts: "At most 10,000 contacts can be kept.",
+  err_contacts_save_failed: "The contacts could not be written to disk.",
+  err_need_gemini_key: "This kind of file is read by Gemini: add the Gemini API key in Settings first.",
+  err_unsupported_file: "This kind of file cannot be read. Save it as .xlsx, .csv, .vcf or PDF and try again.",
+  err_file_too_large: "The file is larger than 10 MB.",
+  err_empty_file: "The file is empty.",
+  err_ai_failed: "Gemini could not read the file.",
   // ---- settings: general
   s_nav: "Settings sections",
   s_meta: "Changes apply from the next call.",
@@ -1753,6 +1925,66 @@ I18N["zh-TW"] = {
   ev_persona_stall_spam: "判斷為推銷／詐騙",
   ev_persona_ai_fail_hangup: "AI 失敗，已掛斷",
   ev_gemini_zero_audio_reconnect: "AI 重新連線（沒有聲音）",
+  // ---- contacts
+  tab_contacts: "聯絡人",
+  ct_search_ph: "搜尋名字、號碼或備註",
+  ct_add: "新增",
+  ct_import: "匯入",
+  ct_export: "匯出 vCard",
+  ct_count: "共 {n} 位",
+  ct_empty_title: "還沒有聯絡人",
+  ct_empty_body: "可以自己新增，或匯入手機、Google 通訊錄、Outlook 匯出的檔案。這些號碼打來時，通話紀錄會顯示名字，AI 也知道是誰打來的。",
+  ct_empty_filtered: "找不到符合的聯絡人",
+  ct_new_title: "新增聯絡人",
+  ct_edit_title: "編輯聯絡人",
+  ct_name: "名字",
+  ct_phones: "電話",
+  ct_phones_help: "一行一支號碼。",
+  ct_note: "備註",
+  ct_note_help: "這個人打來時 AI 會看到，例如「我姊」「房東」「公司同事」。",
+  ct_save: "儲存",
+  ct_delete: "刪除",
+  ct_delete_title: "要刪除「{name}」嗎？",
+  ct_delete_body: "刪掉之後，這些號碼打來就只會顯示號碼。",
+  ct_deleted: "已刪除「{name}」",
+  ct_saved: "已儲存",
+  ct_need_name: "請填名字。",
+  ct_need_phone: "至少要填一支電話。",
+  ct_exists: "這支號碼已經存在「{name}」裡了。",
+  ct_add_from_call: "加入聯絡人",
+  ct_src_manual: "手動",
+  ct_src_vcf: "vCard",
+  ct_src_csv: "表格",
+  ct_src_text: "文字",
+  ct_src_ai: "AI 讀取",
+  ct_imp_title: "匯入聯絡人",
+  ct_imp_drop: "把檔案拖到這裡，或點這裡選檔案",
+  ct_imp_formats: "vCard、CSV、Excel、Word、純文字直接讀；PDF、圖片和其他檔案交給 Gemini 讀（要先到設定填 Gemini 金鑰）。檔案最大 10 MB。",
+  ct_imp_reading: "正在讀「{file}」…",
+  ct_imp_found: "在「{file}」找到 {n} 位。",
+  ct_imp_skipped: "有 {n} 筆沒有名字或電話，已略過。",
+  ct_imp_none: "這個檔案裡找不到有電話的聯絡人。",
+  ct_imp_by_ai: "這份是 Gemini 讀出來的，匯入前請核對名字和號碼。",
+  ct_imp_all: "全選",
+  ct_imp_dup_mode: "已經有的聯絡人",
+  ct_imp_merge: "合併（補上新號碼和備註）",
+  ct_imp_skip: "略過",
+  ct_imp_new: "新的",
+  ct_imp_dup: "號碼跟「{name}」一樣",
+  ct_imp_dup_name: "名字跟「{name}」一樣",
+  ct_imp_go: "匯入 {n} 位",
+  ct_imp_saving: "正在存 {n} 位…",
+  ct_imp_done: "匯入完成：新增 {added} 位、合併 {merged} 位、略過 {skipped} 位",
+  err_contact_exists: "這支號碼已經是別的聯絡人的了。",
+  err_invalid_contact: "請填名字和至少一支電話。",
+  err_contact_not_found: "這位聯絡人已經不在了。",
+  err_too_many_contacts: "聯絡人最多只能存 10,000 位。",
+  err_contacts_save_failed: "聯絡人寫不進磁碟。",
+  err_need_gemini_key: "這種檔案要交給 Gemini 讀，請先到設定填 Gemini 金鑰。",
+  err_unsupported_file: "看不懂這種檔案。請另存成 .xlsx、.csv、.vcf 或 PDF 再試一次。",
+  err_file_too_large: "檔案超過 10 MB。",
+  err_empty_file: "檔案是空的。",
+  err_ai_failed: "Gemini 讀不出這個檔案。",
   // ---- settings: general
   s_nav: "設定分類",
   s_meta: "變更會從下一通電話開始生效。",
@@ -2370,6 +2602,66 @@ I18N["zh-CN"] = {
   ev_persona_stall_spam: "判断为推销／诈骗",
   ev_persona_ai_fail_hangup: "AI 失败，已挂断",
   ev_gemini_zero_audio_reconnect: "AI 重新连接（没有声音）",
+  // ---- contacts
+  tab_contacts: "联系人",
+  ct_search_ph: "搜索名字、号码或备注",
+  ct_add: "新增",
+  ct_import: "导入",
+  ct_export: "导出 vCard",
+  ct_count: "共 {n} 位",
+  ct_empty_title: "还没有联系人",
+  ct_empty_body: "可以自己新增，或导入手机、Google 通讯录、Outlook 导出的文件。这些号码打来时，通话记录会显示名字，AI 也知道是谁打来的。",
+  ct_empty_filtered: "找不到符合的联系人",
+  ct_new_title: "新增联系人",
+  ct_edit_title: "编辑联系人",
+  ct_name: "名字",
+  ct_phones: "电话",
+  ct_phones_help: "一行一个号码。",
+  ct_note: "备注",
+  ct_note_help: "这个人打来时 AI 会看到，例如“我姐”“房东”“公司同事”。",
+  ct_save: "保存",
+  ct_delete: "删除",
+  ct_delete_title: "要删除“{name}”吗？",
+  ct_delete_body: "删除之后，这些号码打来就只会显示号码。",
+  ct_deleted: "已删除“{name}”",
+  ct_saved: "已保存",
+  ct_need_name: "请填写名字。",
+  ct_need_phone: "至少要填一个电话。",
+  ct_exists: "这个号码已经存在“{name}”里了。",
+  ct_add_from_call: "加入联系人",
+  ct_src_manual: "手动",
+  ct_src_vcf: "vCard",
+  ct_src_csv: "表格",
+  ct_src_text: "文字",
+  ct_src_ai: "AI 读取",
+  ct_imp_title: "导入联系人",
+  ct_imp_drop: "把文件拖到这里，或点这里选择文件",
+  ct_imp_formats: "vCard、CSV、Excel、Word、纯文本直接读取；PDF、图片和其他文件交给 Gemini 读取（要先在设置里填 Gemini 密钥）。文件最大 10 MB。",
+  ct_imp_reading: "正在读取“{file}”…",
+  ct_imp_found: "在“{file}”找到 {n} 位。",
+  ct_imp_skipped: "有 {n} 条没有名字或电话，已跳过。",
+  ct_imp_none: "这个文件里找不到有电话的联系人。",
+  ct_imp_by_ai: "这份是 Gemini 读出来的，导入前请核对名字和号码。",
+  ct_imp_all: "全选",
+  ct_imp_dup_mode: "已有的联系人",
+  ct_imp_merge: "合并（补上新号码和备注）",
+  ct_imp_skip: "跳过",
+  ct_imp_new: "新的",
+  ct_imp_dup: "号码和“{name}”相同",
+  ct_imp_dup_name: "名字和“{name}”相同",
+  ct_imp_go: "导入 {n} 位",
+  ct_imp_saving: "正在保存 {n} 位…",
+  ct_imp_done: "导入完成：新增 {added} 位、合并 {merged} 位、跳过 {skipped} 位",
+  err_contact_exists: "这个号码已经属于别的联系人了。",
+  err_invalid_contact: "请填写名字和至少一个电话。",
+  err_contact_not_found: "这位联系人已经不存在了。",
+  err_too_many_contacts: "联系人最多只能保存 10,000 位。",
+  err_contacts_save_failed: "联系人写不进磁盘。",
+  err_need_gemini_key: "这种文件要交给 Gemini 读取，请先在设置里填 Gemini 密钥。",
+  err_unsupported_file: "无法读取这种文件。请另存为 .xlsx、.csv、.vcf 或 PDF 再试一次。",
+  err_file_too_large: "文件超过 10 MB。",
+  err_empty_file: "文件是空的。",
+  err_ai_failed: "Gemini 读不出这个文件。",
   // ---- settings: general
   s_nav: "设置分类",
   s_meta: "更改从下一通电话开始生效。",
@@ -2987,6 +3279,66 @@ I18N["ja"] = {
   ev_persona_stall_spam: "営業／詐欺と判断",
   ev_persona_ai_fail_hangup: "AI 失敗のため切断",
   ev_gemini_zero_audio_reconnect: "AI を再接続（音声なし）",
+  // ---- contacts
+  tab_contacts: "連絡先",
+  ct_search_ph: "名前・番号・メモで検索",
+  ct_add: "追加",
+  ct_import: "インポート",
+  ct_export: "vCard で書き出し",
+  ct_count: "{n} 件",
+  ct_empty_title: "連絡先はまだありません",
+  ct_empty_body: "手で追加するか、スマホ・Google コンタクト・Outlook から書き出したファイルを取り込めます。登録した番号から電話があると、通話一覧に名前が出て、AI も相手が誰か分かります。",
+  ct_empty_filtered: "一致する連絡先はありません",
+  ct_new_title: "連絡先を追加",
+  ct_edit_title: "連絡先を編集",
+  ct_name: "名前",
+  ct_phones: "電話番号",
+  ct_phones_help: "1 行に 1 つの番号。",
+  ct_note: "メモ",
+  ct_note_help: "この人から電話があると AI が読みます（例：「姉」「大家さん」「同僚」）。",
+  ct_save: "保存",
+  ct_delete: "削除",
+  ct_delete_title: "「{name}」を削除しますか？",
+  ct_delete_body: "削除すると、これらの番号からの電話は番号だけの表示に戻ります。",
+  ct_deleted: "「{name}」を削除しました",
+  ct_saved: "保存しました",
+  ct_need_name: "名前を入力してください。",
+  ct_need_phone: "電話番号を 1 つ以上入力してください。",
+  ct_exists: "この番号はすでに「{name}」に登録されています。",
+  ct_add_from_call: "連絡先に追加",
+  ct_src_manual: "手入力",
+  ct_src_vcf: "vCard",
+  ct_src_csv: "表",
+  ct_src_text: "テキスト",
+  ct_src_ai: "AI 読み取り",
+  ct_imp_title: "連絡先のインポート",
+  ct_imp_drop: "ここにファイルをドロップ、またはクリックして選択",
+  ct_imp_formats: "vCard・CSV・Excel・Word・テキストはここで読み取ります。PDF・画像・その他のファイルは Gemini が読み取ります（先に設定で Gemini API キーを入力してください）。最大 10 MB。",
+  ct_imp_reading: "「{file}」を読み取り中…",
+  ct_imp_found: "「{file}」から {n} 件見つかりました。",
+  ct_imp_skipped: "名前か番号のない {n} 件は除きました。",
+  ct_imp_none: "このファイルには電話番号のある連絡先が見つかりませんでした。",
+  ct_imp_by_ai: "Gemini が読み取った内容です。取り込む前に名前と番号を確認してください。",
+  ct_imp_all: "すべて選択",
+  ct_imp_dup_mode: "登録済みの連絡先",
+  ct_imp_merge: "統合（新しい番号とメモを追加）",
+  ct_imp_skip: "スキップ",
+  ct_imp_new: "新規",
+  ct_imp_dup: "「{name}」と同じ番号",
+  ct_imp_dup_name: "「{name}」と同じ名前",
+  ct_imp_go: "{n} 件を取り込む",
+  ct_imp_saving: "{n} 件を保存中…",
+  ct_imp_done: "インポート完了：新規 {added} 件、統合 {merged} 件、スキップ {skipped} 件",
+  err_contact_exists: "この番号はすでに別の連絡先に登録されています。",
+  err_invalid_contact: "名前と電話番号を 1 つ以上入力してください。",
+  err_contact_not_found: "この連絡先はもうありません。",
+  err_too_many_contacts: "保存できる連絡先は 10,000 件までです。",
+  err_contacts_save_failed: "連絡先をディスクに書き込めませんでした。",
+  err_need_gemini_key: "この種類のファイルは Gemini が読み取ります。先に設定で Gemini API キーを入力してください。",
+  err_unsupported_file: "この種類のファイルは読み取れません。.xlsx・.csv・.vcf・PDF で保存してもう一度お試しください。",
+  err_file_too_large: "ファイルが 10 MB を超えています。",
+  err_empty_file: "ファイルが空です。",
+  err_ai_failed: "Gemini がファイルを読み取れませんでした。",
   // ---- settings: general
   s_nav: "設定の項目",
   s_meta: "変更は次の通話から反映されます。",
@@ -3604,6 +3956,66 @@ I18N["ko"] = {
   ev_persona_stall_spam: "영업/사기로 판단",
   ev_persona_ai_fail_hangup: "AI 실패로 끊음",
   ev_gemini_zero_audio_reconnect: "AI 다시 연결(소리 없음)",
+  // ---- contacts
+  tab_contacts: "연락처",
+  ct_search_ph: "이름, 번호, 메모로 검색",
+  ct_add: "추가",
+  ct_import: "가져오기",
+  ct_export: "vCard로 내보내기",
+  ct_count: "{n}명",
+  ct_empty_title: "아직 연락처가 없습니다",
+  ct_empty_body: "직접 추가하거나 휴대전화, Google 주소록, Outlook에서 내보낸 파일을 가져오세요. 저장된 번호로 전화가 오면 통화 목록에 이름이 표시되고 AI도 누가 전화했는지 압니다.",
+  ct_empty_filtered: "일치하는 연락처가 없습니다",
+  ct_new_title: "새 연락처",
+  ct_edit_title: "연락처 편집",
+  ct_name: "이름",
+  ct_phones: "전화번호",
+  ct_phones_help: "한 줄에 번호 하나.",
+  ct_note: "메모",
+  ct_note_help: "이 사람이 전화하면 AI가 봅니다(예: “언니”, “집주인”, “회사 동료”).",
+  ct_save: "저장",
+  ct_delete: "삭제",
+  ct_delete_title: "{name}을(를) 삭제할까요?",
+  ct_delete_body: "삭제하면 이 번호들로 오는 전화에는 번호만 표시됩니다.",
+  ct_deleted: "{name}을(를) 삭제했습니다",
+  ct_saved: "저장했습니다",
+  ct_need_name: "이름을 입력하세요.",
+  ct_need_phone: "전화번호를 하나 이상 입력하세요.",
+  ct_exists: "이 번호는 이미 {name}에 저장되어 있습니다.",
+  ct_add_from_call: "연락처에 추가",
+  ct_src_manual: "직접 입력",
+  ct_src_vcf: "vCard",
+  ct_src_csv: "표",
+  ct_src_text: "텍스트",
+  ct_src_ai: "AI 인식",
+  ct_imp_title: "연락처 가져오기",
+  ct_imp_drop: "여기에 파일을 끌어다 놓거나 눌러서 선택하세요",
+  ct_imp_formats: "vCard, CSV, Excel, Word, 텍스트 파일은 바로 읽고, PDF·사진·기타 파일은 Gemini가 읽습니다(먼저 설정에서 Gemini API 키를 입력하세요). 최대 10MB.",
+  ct_imp_reading: "{file} 읽는 중…",
+  ct_imp_found: "{file}에서 {n}명을 찾았습니다.",
+  ct_imp_skipped: "이름이나 번호가 없는 {n}건은 제외했습니다.",
+  ct_imp_none: "이 파일에서 전화번호가 있는 연락처를 찾지 못했습니다.",
+  ct_imp_by_ai: "Gemini가 읽은 내용입니다. 가져오기 전에 이름과 번호를 확인하세요.",
+  ct_imp_all: "모두 선택",
+  ct_imp_dup_mode: "이미 있는 연락처",
+  ct_imp_merge: "합치기(새 번호와 메모 추가)",
+  ct_imp_skip: "건너뛰기",
+  ct_imp_new: "새 연락처",
+  ct_imp_dup: "{name}과(와) 같은 번호",
+  ct_imp_dup_name: "{name}과(와) 같은 이름",
+  ct_imp_go: "{n}명 가져오기",
+  ct_imp_saving: "{n}명 저장 중…",
+  ct_imp_done: "가져오기 완료: 새로 {added}명, 합침 {merged}명, 건너뜀 {skipped}명",
+  err_contact_exists: "이 번호는 이미 다른 연락처에 저장되어 있습니다.",
+  err_invalid_contact: "이름과 전화번호를 하나 이상 입력하세요.",
+  err_contact_not_found: "이 연락처는 더 이상 없습니다.",
+  err_too_many_contacts: "연락처는 최대 10,000명까지 저장할 수 있습니다.",
+  err_contacts_save_failed: "연락처를 디스크에 쓰지 못했습니다.",
+  err_need_gemini_key: "이런 파일은 Gemini가 읽습니다. 먼저 설정에서 Gemini API 키를 입력하세요.",
+  err_unsupported_file: "이런 파일은 읽을 수 없습니다. .xlsx, .csv, .vcf 또는 PDF로 저장한 뒤 다시 시도하세요.",
+  err_file_too_large: "파일이 10MB를 넘습니다.",
+  err_empty_file: "파일이 비어 있습니다.",
+  err_ai_failed: "Gemini가 파일을 읽지 못했습니다.",
   // ---- settings: general
   s_nav: "설정 항목",
   s_meta: "변경 사항은 다음 통화부터 적용됩니다.",
@@ -4221,6 +4633,66 @@ I18N["es"] = {
   ev_persona_stall_spam: "Considerada ventas / estafa",
   ev_persona_ai_fail_hangup: "Falló la IA, se colgó",
   ev_gemini_zero_audio_reconnect: "La IA se reconectó (sin sonido)",
+  // ---- contacts
+  tab_contacts: "Contactos",
+  ct_search_ph: "Buscar nombre, número o nota",
+  ct_add: "Añadir",
+  ct_import: "Importar",
+  ct_export: "Exportar vCard",
+  ct_count: "{n} contactos",
+  ct_empty_title: "Todavía no hay contactos",
+  ct_empty_body: "Añádelos a mano o importa un archivo exportado del teléfono, de Google Contactos o de Outlook. Cuando llamen, la lista de llamadas mostrará su nombre y la IA sabrá quién llama.",
+  ct_empty_filtered: "Ningún contacto coincide",
+  ct_new_title: "Nuevo contacto",
+  ct_edit_title: "Editar contacto",
+  ct_name: "Nombre",
+  ct_phones: "Teléfonos",
+  ct_phones_help: "Un número por línea.",
+  ct_note: "Nota",
+  ct_note_help: "La IA la ve cuando esta persona llama, p. ej. «mi hermana», «el casero», «compañero de trabajo».",
+  ct_save: "Guardar",
+  ct_delete: "Eliminar",
+  ct_delete_title: "¿Eliminar a {name}?",
+  ct_delete_body: "Las llamadas de estos números volverán a mostrar solo el número.",
+  ct_deleted: "{name} eliminado",
+  ct_saved: "Guardado",
+  ct_need_name: "Escribe un nombre.",
+  ct_need_phone: "Escribe al menos un número de teléfono.",
+  ct_exists: "Este número ya está guardado en {name}.",
+  ct_add_from_call: "Añadir a contactos",
+  ct_src_manual: "A mano",
+  ct_src_vcf: "vCard",
+  ct_src_csv: "Hoja de cálculo",
+  ct_src_text: "Texto",
+  ct_src_ai: "Leído por la IA",
+  ct_imp_title: "Importar contactos",
+  ct_imp_drop: "Suelta aquí un archivo o haz clic para elegirlo",
+  ct_imp_formats: "Los archivos vCard, CSV, Excel, Word y de texto se leen aquí; los PDF, las imágenes y otros archivos los lee Gemini (antes añade la clave de la API de Gemini en Ajustes). Hasta 10 MB.",
+  ct_imp_reading: "Leyendo {file}…",
+  ct_imp_found: "{n} encontrados en {file}.",
+  ct_imp_skipped: "Se omitieron {n} entradas sin nombre o sin número.",
+  ct_imp_none: "No se encontraron contactos con número de teléfono en este archivo.",
+  ct_imp_by_ai: "Gemini leyó este archivo: revisa los nombres y los números antes de importar.",
+  ct_imp_all: "Seleccionar todo",
+  ct_imp_dup_mode: "Ya guardados",
+  ct_imp_merge: "Combinar (añadir números y notas nuevos)",
+  ct_imp_skip: "Omitir",
+  ct_imp_new: "Nuevo",
+  ct_imp_dup: "Mismo número que {name}",
+  ct_imp_dup_name: "Mismo nombre que {name}",
+  ct_imp_go: "Importar {n}",
+  ct_imp_saving: "Guardando {n}…",
+  ct_imp_done: "Importados: {added} nuevos, {merged} combinados, {skipped} omitidos",
+  err_contact_exists: "Este número ya está guardado en otro contacto.",
+  err_invalid_contact: "Escribe un nombre y al menos un número de teléfono.",
+  err_contact_not_found: "Este contacto ya no existe.",
+  err_too_many_contacts: "Se pueden guardar como máximo 10.000 contactos.",
+  err_contacts_save_failed: "No se pudieron guardar los contactos en el disco.",
+  err_need_gemini_key: "Este tipo de archivo lo lee Gemini: antes añade la clave de la API de Gemini en Ajustes.",
+  err_unsupported_file: "No se puede leer este tipo de archivo. Guárdalo como .xlsx, .csv, .vcf o PDF y vuelve a intentarlo.",
+  err_file_too_large: "El archivo ocupa más de 10 MB.",
+  err_empty_file: "El archivo está vacío.",
+  err_ai_failed: "Gemini no pudo leer el archivo.",
   // ---- settings: general
   s_nav: "Secciones de los ajustes",
   s_meta: "Los cambios se aplican a partir de la próxima llamada.",
@@ -4838,6 +5310,66 @@ I18N["fr"] = {
   ev_persona_stall_spam: "Jugé démarchage / arnaque",
   ev_persona_ai_fail_hangup: "Échec de l'IA, raccroché",
   ev_gemini_zero_audio_reconnect: "IA reconnectée (aucun son)",
+  // ---- contacts
+  tab_contacts: "Contacts",
+  ct_search_ph: "Rechercher un nom, un numéro ou une note",
+  ct_add: "Ajouter",
+  ct_import: "Importer",
+  ct_export: "Exporter en vCard",
+  ct_count: "{n} contacts",
+  ct_empty_title: "Aucun contact pour l'instant",
+  ct_empty_body: "Ajoutez-les vous-même ou importez un fichier exporté depuis votre téléphone, Google Contacts ou Outlook. Quand ils appellent, la liste des appels affiche leur nom et l'IA sait qui appelle.",
+  ct_empty_filtered: "Aucun contact ne correspond",
+  ct_new_title: "Nouveau contact",
+  ct_edit_title: "Modifier le contact",
+  ct_name: "Nom",
+  ct_phones: "Numéros de téléphone",
+  ct_phones_help: "Un numéro par ligne.",
+  ct_note: "Note",
+  ct_note_help: "L'IA la voit quand cette personne appelle, par ex. « ma sœur », « le propriétaire », « un collègue ».",
+  ct_save: "Enregistrer",
+  ct_delete: "Supprimer",
+  ct_delete_title: "Supprimer {name} ?",
+  ct_delete_body: "Les appels de ces numéros n'afficheront plus que le numéro.",
+  ct_deleted: "{name} supprimé",
+  ct_saved: "Enregistré",
+  ct_need_name: "Saisissez un nom.",
+  ct_need_phone: "Saisissez au moins un numéro de téléphone.",
+  ct_exists: "Ce numéro est déjà enregistré pour {name}.",
+  ct_add_from_call: "Ajouter aux contacts",
+  ct_src_manual: "Saisi à la main",
+  ct_src_vcf: "vCard",
+  ct_src_csv: "Tableur",
+  ct_src_text: "Texte",
+  ct_src_ai: "Lu par l'IA",
+  ct_imp_title: "Importer des contacts",
+  ct_imp_drop: "Déposez un fichier ici ou cliquez pour en choisir un",
+  ct_imp_formats: "Les fichiers vCard, CSV, Excel, Word et texte sont lus ici ; les PDF, les images et les autres fichiers sont lus par Gemini (ajoutez d'abord la clé d'API Gemini dans les réglages). 10 Mo au maximum.",
+  ct_imp_reading: "Lecture de {file}…",
+  ct_imp_found: "{n} trouvés dans {file}.",
+  ct_imp_skipped: "{n} entrées sans nom ou sans numéro ont été ignorées.",
+  ct_imp_none: "Aucun contact avec un numéro de téléphone dans ce fichier.",
+  ct_imp_by_ai: "Gemini a lu ce fichier : vérifiez les noms et les numéros avant d'importer.",
+  ct_imp_all: "Tout sélectionner",
+  ct_imp_dup_mode: "Déjà enregistrés",
+  ct_imp_merge: "Fusionner (ajouter les nouveaux numéros et notes)",
+  ct_imp_skip: "Ignorer",
+  ct_imp_new: "Nouveau",
+  ct_imp_dup: "Même numéro que {name}",
+  ct_imp_dup_name: "Même nom que {name}",
+  ct_imp_go: "Importer {n}",
+  ct_imp_saving: "Enregistrement de {n}…",
+  ct_imp_done: "Importés : {added} nouveaux, {merged} fusionnés, {skipped} ignorés",
+  err_contact_exists: "Ce numéro est déjà enregistré pour un autre contact.",
+  err_invalid_contact: "Saisissez un nom et au moins un numéro de téléphone.",
+  err_contact_not_found: "Ce contact n'existe plus.",
+  err_too_many_contacts: "On peut garder 10 000 contacts au maximum.",
+  err_contacts_save_failed: "Impossible d'écrire les contacts sur le disque.",
+  err_need_gemini_key: "Ce type de fichier est lu par Gemini : ajoutez d'abord la clé d'API Gemini dans les réglages.",
+  err_unsupported_file: "Ce type de fichier ne peut pas être lu. Enregistrez-le en .xlsx, .csv, .vcf ou PDF et réessayez.",
+  err_file_too_large: "Le fichier dépasse 10 Mo.",
+  err_empty_file: "Le fichier est vide.",
+  err_ai_failed: "Gemini n'a pas pu lire le fichier.",
   // ---- settings: general
   s_nav: "Sections des réglages",
   s_meta: "Les modifications s'appliquent dès le prochain appel.",
@@ -5455,6 +5987,66 @@ I18N["de"] = {
   ev_persona_stall_spam: "Als Werbung / Betrug eingestuft",
   ev_persona_ai_fail_hangup: "KI fehlgeschlagen, aufgelegt",
   ev_gemini_zero_audio_reconnect: "KI neu verbunden (kein Ton)",
+  // ---- contacts
+  tab_contacts: "Kontakte",
+  ct_search_ph: "Name, Nummer oder Notiz suchen",
+  ct_add: "Hinzufügen",
+  ct_import: "Importieren",
+  ct_export: "Als vCard exportieren",
+  ct_count: "{n} Kontakte",
+  ct_empty_title: "Noch keine Kontakte",
+  ct_empty_body: "Lege Kontakte selbst an oder importiere eine Datei, die du aus dem Telefon, Google Kontakte oder Outlook exportiert hast. Rufen diese Nummern an, zeigt die Anrufliste den Namen und die KI weiß, wer anruft.",
+  ct_empty_filtered: "Kein Kontakt passt",
+  ct_new_title: "Neuer Kontakt",
+  ct_edit_title: "Kontakt bearbeiten",
+  ct_name: "Name",
+  ct_phones: "Telefonnummern",
+  ct_phones_help: "Eine Nummer pro Zeile.",
+  ct_note: "Notiz",
+  ct_note_help: "Die KI sieht sie, wenn diese Person anruft, z. B. „meine Schwester“, „Vermieter“, „Kollege“.",
+  ct_save: "Speichern",
+  ct_delete: "Löschen",
+  ct_delete_title: "{name} löschen?",
+  ct_delete_body: "Anrufe von diesen Nummern zeigen dann wieder nur die Nummer.",
+  ct_deleted: "{name} gelöscht",
+  ct_saved: "Gespeichert",
+  ct_need_name: "Gib einen Namen ein.",
+  ct_need_phone: "Gib mindestens eine Telefonnummer ein.",
+  ct_exists: "Diese Nummer ist bereits bei {name} gespeichert.",
+  ct_add_from_call: "Zu Kontakten hinzufügen",
+  ct_src_manual: "Von Hand",
+  ct_src_vcf: "vCard",
+  ct_src_csv: "Tabelle",
+  ct_src_text: "Text",
+  ct_src_ai: "Von der KI gelesen",
+  ct_imp_title: "Kontakte importieren",
+  ct_imp_drop: "Datei hier ablegen oder zum Auswählen klicken",
+  ct_imp_formats: "vCard-, CSV-, Excel-, Word- und Textdateien werden hier gelesen; PDFs, Bilder und andere Dateien liest Gemini (dafür zuerst den Gemini-API-Schlüssel in den Einstellungen eintragen). Bis 10 MB.",
+  ct_imp_reading: "{file} wird gelesen…",
+  ct_imp_found: "{n} in {file} gefunden.",
+  ct_imp_skipped: "{n} Einträge ohne Namen oder Nummer wurden ausgelassen.",
+  ct_imp_none: "In dieser Datei wurden keine Kontakte mit Telefonnummer gefunden.",
+  ct_imp_by_ai: "Gemini hat diese Datei gelesen: Prüfe Namen und Nummern vor dem Import.",
+  ct_imp_all: "Alle auswählen",
+  ct_imp_dup_mode: "Bereits gespeichert",
+  ct_imp_merge: "Zusammenführen (neue Nummern und Notizen ergänzen)",
+  ct_imp_skip: "Überspringen",
+  ct_imp_new: "Neu",
+  ct_imp_dup: "Gleiche Nummer wie {name}",
+  ct_imp_dup_name: "Gleicher Name wie {name}",
+  ct_imp_go: "{n} importieren",
+  ct_imp_saving: "{n} werden gespeichert…",
+  ct_imp_done: "Importiert: {added} neu, {merged} zusammengeführt, {skipped} übersprungen",
+  err_contact_exists: "Diese Nummer ist bereits bei einem anderen Kontakt gespeichert.",
+  err_invalid_contact: "Gib einen Namen und mindestens eine Telefonnummer ein.",
+  err_contact_not_found: "Diesen Kontakt gibt es nicht mehr.",
+  err_too_many_contacts: "Es lassen sich höchstens 10.000 Kontakte speichern.",
+  err_contacts_save_failed: "Die Kontakte konnten nicht gespeichert werden.",
+  err_need_gemini_key: "Diese Art Datei liest Gemini: Trag zuerst den Gemini-API-Schlüssel in den Einstellungen ein.",
+  err_unsupported_file: "Diese Art Datei kann nicht gelesen werden. Speichere sie als .xlsx, .csv, .vcf oder PDF und versuch es noch einmal.",
+  err_file_too_large: "Die Datei ist größer als 10 MB.",
+  err_empty_file: "Die Datei ist leer.",
+  err_ai_failed: "Gemini konnte die Datei nicht lesen.",
   // ---- settings: general
   s_nav: "Bereiche der Einstellungen",
   s_meta: "Änderungen gelten ab dem nächsten Anruf.",
@@ -6072,6 +6664,66 @@ I18N["pt"] = {
   ev_persona_stall_spam: "Considerada vendas / golpe",
   ev_persona_ai_fail_hangup: "Falha da IA, chamada desligada",
   ev_gemini_zero_audio_reconnect: "IA reconectada (sem som)",
+  // ---- contacts
+  tab_contacts: "Contatos",
+  ct_search_ph: "Buscar nome, número ou nota",
+  ct_add: "Adicionar",
+  ct_import: "Importar",
+  ct_export: "Exportar vCard",
+  ct_count: "{n} contatos",
+  ct_empty_title: "Ainda não há contatos",
+  ct_empty_body: "Adicione à mão ou importe um arquivo exportado do celular, do Google Contatos ou do Outlook. Quando ligarem, a lista de chamadas mostra o nome e a IA sabe quem está ligando.",
+  ct_empty_filtered: "Nenhum contato encontrado",
+  ct_new_title: "Novo contato",
+  ct_edit_title: "Editar contato",
+  ct_name: "Nome",
+  ct_phones: "Telefones",
+  ct_phones_help: "Um número por linha.",
+  ct_note: "Nota",
+  ct_note_help: "A IA vê isto quando a pessoa liga, por ex. “minha irmã”, “o proprietário”, “colega de trabalho”.",
+  ct_save: "Salvar",
+  ct_delete: "Excluir",
+  ct_delete_title: "Excluir {name}?",
+  ct_delete_body: "As chamadas desses números voltam a mostrar só o número.",
+  ct_deleted: "{name} excluído",
+  ct_saved: "Salvo",
+  ct_need_name: "Digite um nome.",
+  ct_need_phone: "Digite pelo menos um número de telefone.",
+  ct_exists: "Este número já está salvo em {name}.",
+  ct_add_from_call: "Adicionar aos contatos",
+  ct_src_manual: "À mão",
+  ct_src_vcf: "vCard",
+  ct_src_csv: "Planilha",
+  ct_src_text: "Texto",
+  ct_src_ai: "Lido pela IA",
+  ct_imp_title: "Importar contatos",
+  ct_imp_drop: "Solte um arquivo aqui ou clique para escolher",
+  ct_imp_formats: "Arquivos vCard, CSV, Excel, Word e de texto são lidos aqui; PDFs, imagens e outros arquivos são lidos pelo Gemini (antes adicione a chave da API do Gemini nas configurações). Até 10 MB.",
+  ct_imp_reading: "Lendo {file}…",
+  ct_imp_found: "{n} encontrados em {file}.",
+  ct_imp_skipped: "{n} entradas sem nome ou número ficaram de fora.",
+  ct_imp_none: "Nenhum contato com número de telefone foi encontrado neste arquivo.",
+  ct_imp_by_ai: "O Gemini leu este arquivo: confira os nomes e os números antes de importar.",
+  ct_imp_all: "Selecionar tudo",
+  ct_imp_dup_mode: "Já salvos",
+  ct_imp_merge: "Mesclar (adicionar números e notas novos)",
+  ct_imp_skip: "Pular",
+  ct_imp_new: "Novo",
+  ct_imp_dup: "Mesmo número de {name}",
+  ct_imp_dup_name: "Mesmo nome de {name}",
+  ct_imp_go: "Importar {n}",
+  ct_imp_saving: "Salvando {n}…",
+  ct_imp_done: "Importados: {added} novos, {merged} mesclados, {skipped} pulados",
+  err_contact_exists: "Este número já está salvo em outro contato.",
+  err_invalid_contact: "Digite um nome e pelo menos um número de telefone.",
+  err_contact_not_found: "Este contato não existe mais.",
+  err_too_many_contacts: "É possível guardar no máximo 10.000 contatos.",
+  err_contacts_save_failed: "Não foi possível gravar os contatos no disco.",
+  err_need_gemini_key: "Este tipo de arquivo é lido pelo Gemini: antes adicione a chave da API do Gemini nas configurações.",
+  err_unsupported_file: "Não é possível ler este tipo de arquivo. Salve como .xlsx, .csv, .vcf ou PDF e tente de novo.",
+  err_file_too_large: "O arquivo tem mais de 10 MB.",
+  err_empty_file: "O arquivo está vazio.",
+  err_ai_failed: "O Gemini não conseguiu ler o arquivo.",
   // ---- settings: general
   s_nav: "Seções das configurações",
   s_meta: "As alterações valem a partir da próxima chamada.",
@@ -6836,6 +7488,8 @@ function setLang(l) {
   if (detail.call) renderDetail();
   renderAppts();
   relabelSettings();
+  renderContacts();
+  renderImport();
   if (view === "system") renderSystem();
 }
 (function fillLangSel() {
@@ -6866,7 +7520,7 @@ async function followNotifyLang(l) {
 }
 
 // ---------------------------------------------------------------- views / routing
-const VIEWS = ["calls", "settings", "system"];
+const VIEWS = ["calls", "contacts", "settings", "system"];
 let view = "calls";
 let pendingJump = "";
 function setTitle() {
@@ -6882,6 +7536,7 @@ function showView(name) {
   setTitle();
   updateDirty();
   if (name === "system") loadSystem();
+  if (name === "contacts") loadContacts();
   if (changed) window.scrollTo(0, 0);
 }
 function setHash(hash, replace) {
@@ -7132,6 +7787,8 @@ async function refreshCalls(o) {
     if (seq !== listSeq) return;
     const page = d.calls || [];
     calls = append ? calls.concat(page.filter((c) => !calls.some((x) => x.id === c.id))) : page;
+    const named = d.contacts_by_number || {};
+    contactsByNumber = append ? { ...contactsByNumber, ...named } : named;
     callsTotal = d.total ?? calls.length;
     listState = "ok";
   } catch (e) {
@@ -7150,11 +7807,13 @@ async function refreshCalls(o) {
 function callRow(c) {
   const k = callKind(c);
   const gist = gistOf(c);
+  const who = contactOf(c);
   return h("button", { type: "button", class: "call" + (c.id === detail.id ? " sel" : ""), dataset: { id: c.id } },
     h("span", { class: "kico " + (k.k || "") }, icon(k.icon)),
     h("span", { style: "min-width:0" },
-      h("div", { class: "who", text: c.caller_id || t("hidden_number") }),
+      h("div", { class: "who", text: who ? who.name : c.caller_id || t("hidden_number") }),
       h("div", { class: "sub" },
+        who ? h("span", { class: "mono", text: c.caller_id }) : null,
         h("span", { class: "tag " + k.tag, text: t(k.label) }),
         devName(c.serial) ? h("span", { text: devName(c.serial) }) : null),
       gist ? h("div", { class: "gist", text: gist }) : null),
@@ -7222,6 +7881,7 @@ async function openCallById(id) {
   detail.notes = undefined;
   detail.calLink = "";
   detail.track = "";
+  detail.contact = undefined;
   if (known) { renderDetail(); showDetail(); }
   await loadDetail(id);
 }
@@ -7233,6 +7893,7 @@ async function loadDetail(id) {
     detail.call = d.call;
     detail.notes = d.notes || null;
     detail.calLink = d.calendar_link || "";
+    detail.contact = d.contact || null;
     renderDetail();
     showDetail();
     // The summary is written 10–40 s after hang-up: look again while it is pending.
@@ -7350,9 +8011,11 @@ function renderDetail() {
   if (!c) return;
   const n = detail.notes;
   const k = callKind(c);
-  $("dTitle").textContent = c.caller_id || t("hidden_number");
+  const who = contactOf(c);
+  $("dTitle").textContent = who ? who.name : c.caller_id || t("hidden_number");
   $("btnCopyNum").hidden = !String(c.caller_id || "").trim();
   const meta = clear($("dMeta"));
+  if (who) meta.append(h("span", { class: "mono", text: c.caller_id }));
   meta.append(h("span", { class: "tag " + k.tag }, icon(k.icon, "sm"), t(k.label)));
   meta.append(h("span", { text: fmtFull(c.started_at) }));
   if (!isLive(c) && c.duration_ms) meta.append(h("span", {}, "· ", fmtDur(c.duration_ms)));
@@ -7436,6 +8099,7 @@ function renderDetail() {
 
   // Actions + technical details
   $("btnBlock").hidden = String(c.caller_id || "").replace(/\D/g, "").length < 5;
+  $("btnAddContact").hidden = !!who || String(c.caller_id || "").replace(/\D/g, "").length < 5;
   const kv = clear($("dKv"));
   const row = (label, value, mono) => { kv.append(h("dt", { text: label }), h("dd", { class: mono ? "mono" : "", text: value })); };
   row(t("d_phone"), devName(c.serial) === c.serial ? c.serial : `${devName(c.serial)} (${c.serial})`);
@@ -7479,6 +8143,323 @@ $("btnBlock").addEventListener("click", async () => {
     if (wasDirty) { renderRejectRows(); updateDirty(); } else populate();
     toast(grew ? t("d_block_done", { num }) : t("d_blocked_already", { num }));
   } catch (e) { if (e.status !== 401) toast(t("save_failed", { msg: e.message }), true); }
+});
+
+// ---------------------------------------------------------------- contacts
+// Caller ID → {id, name} for the calls on the list (the agent matches a number
+// however it is written).
+let contactsByNumber = {};
+// A call's contact: the open call's from its own answer, the others' from the list.
+function contactOf(c) {
+  if (!c) return null;
+  if (detail.id === c.id && detail.contact !== undefined) return detail.contact;
+  return contactsByNumber[c.caller_id] || null;
+}
+const CT_PAGE = 100;
+const cts = { list: [], total: 0, count: 0, state: "idle", error: "", seq: 0 };
+async function loadContacts(o) {
+  const more = !!(o && o.more);
+  const seq = ++cts.seq;
+  if (cts.state !== "ok") { cts.state = "loading"; renderContacts(); }
+  const p = new URLSearchParams();
+  const q = $("ctQ").value.trim();
+  if (q) p.set("q", q);
+  p.set("limit", String(more ? CT_PAGE : Math.max(CT_PAGE, cts.list.length)));
+  p.set("offset", String(more ? cts.list.length : 0));
+  try {
+    const d = await api("/contacts?" + p.toString());
+    if (seq !== cts.seq) return;
+    cts.list = more ? cts.list.concat(d.contacts || []) : d.contacts || [];
+    cts.total = Number(d.total ?? cts.list.length);
+    cts.count = Number(d.count ?? cts.total);
+    cts.state = "ok";
+  } catch (e) {
+    if (seq !== cts.seq) return;
+    cts.state = "error";
+    cts.error = e.message;
+  }
+  renderContacts();
+}
+function contactRow(c) {
+  const first = Array.from(String(c.name || "").trim())[0] || "?";
+  return h("button", { type: "button", class: "ct-row", dataset: { id: c.id } },
+    h("span", { class: "ct-av", "aria-hidden": "true", text: first.toLocaleUpperCase(loc()) }),
+    h("span", { style: "min-width:0" },
+      h("div", { class: "who", text: c.name }),
+      h("div", { class: "nums", text: (c.phones || []).join(" · ") }),
+      c.note ? h("div", { class: "gist", text: c.note }) : null),
+    h("span", { class: "tag src", text: tCode("ct_src_", c.source || "manual") }));
+}
+function renderContacts() {
+  const box = clear($("ctList"));
+  $("ctExport").href = withTok(apiBase + "/contacts/export.vcf");
+  $("ctExport").hidden = cts.state === "ok" && !cts.count;
+  $("ctMeta").textContent = cts.state === "ok" && cts.count ? t("ct_count", { n: cts.count }) : "";
+  $("ctMoreWrap").hidden = true;
+  if (cts.state === "idle" || cts.state === "loading") {
+    for (let i = 0; i < 3; i++) box.append(h("div", { class: "skel" }));
+    return;
+  }
+  if (cts.state === "error") {
+    box.append(h("div", { class: "card empty" }, icon("alert"),
+      h("h3", { text: t("err_load", { msg: cts.error }) }),
+      h("p", {}, h("button", { type: "button", class: "btn", style: "margin-top:12px", onclick: () => loadContacts(), text: t("retry") }))));
+    return;
+  }
+  if (!cts.list.length) {
+    if ($("ctQ").value.trim()) box.append(h("div", { class: "card empty" }, icon("search"), h("h3", { text: t("ct_empty_filtered") })));
+    else box.append(h("div", { class: "card empty" }, icon("users"), h("h3", { text: t("ct_empty_title") }), h("p", { text: t("ct_empty_body") })));
+    return;
+  }
+  for (const c of cts.list) box.append(contactRow(c));
+  $("ctMoreWrap").hidden = cts.list.length >= cts.total;
+}
+// After a change: this list, and the names on the calls.
+function contactsChanged() {
+  loadContacts();
+  refreshCalls({ keep: true });
+  if (detail.id) loadDetail(detail.id);
+}
+
+// ---- one contact: the editor dialog
+function ctErr(msg, el) {
+  $("ctErr").textContent = msg || "";
+  $("ctErr").hidden = !msg;
+  if (el) el.focus();
+}
+// A number that is someone else's already names them.
+function contactErrText(e) {
+  const other = e.data && e.data.code === "contact_exists" && e.data.contact;
+  return other ? t("ct_exists", { name: other.name }) : e.message;
+}
+// Resolves to the saved contact, "deleted", or null (closed without saving).
+function editContact(c, preset) {
+  return new Promise((resolve) => {
+    const d = $("ctDlg");
+    const src = c || preset || {};
+    $("ctDlgTitle").textContent = t(c ? "ct_edit_title" : "ct_new_title");
+    $("ctName").value = src.name || "";
+    $("ctPhones").value = (src.phones || []).join("\n");
+    $("ctNote").value = src.note || "";
+    $("ctDel").hidden = !c;
+    $("ctSave").disabled = false;
+    ctErr("");
+    let done = false;
+    const finish = (v) => {
+      if (done) return;
+      done = true;
+      d.removeEventListener("close", onClose);
+      if (d.open) d.close();
+      resolve(v);
+    };
+    const onClose = () => { if (!d.open) finish(null); };
+    d.addEventListener("close", onClose);
+    $("ctCancel").onclick = () => finish(null);
+    $("ctDel").onclick = async () => {
+      if (!c) return;
+      const ok = await ask({ title: t("ct_delete_title", { name: c.name }), body: t("ct_delete_body"), ok: t("ct_delete"), danger: true });
+      if (!ok) return;
+      try {
+        await api("/contacts/" + encodeURIComponent(c.id), { method: "DELETE" });
+        toast(t("ct_deleted", { name: c.name }));
+        finish("deleted");
+      } catch (e) { if (e.status !== 401) ctErr(contactErrText(e)); }
+    };
+    $("ctForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const body = {
+        name: $("ctName").value.trim(),
+        phones: $("ctPhones").value.split(/[\n;,、，]+/).map((s) => s.trim()).filter(Boolean),
+        note: $("ctNote").value.trim(),
+      };
+      if (!body.name) return ctErr(t("ct_need_name"), $("ctName"));
+      if (!body.phones.length) return ctErr(t("ct_need_phone"), $("ctPhones"));
+      $("ctSave").disabled = true;
+      try {
+        const r = c
+          ? await api("/contacts/" + encodeURIComponent(c.id), jsonBody("PUT", body))
+          : await api("/contacts", jsonBody("POST", body));
+        toast(t("ct_saved"));
+        finish(r.contact || null);
+      } catch (err) {
+        if (err.status !== 401) ctErr(contactErrText(err));
+      } finally {
+        $("ctSave").disabled = false;
+      }
+    };
+    d.showModal();
+    $("ctName").focus();
+  });
+}
+// Esc closes the editor only, not the call behind it.
+$("ctDlg").addEventListener("keydown", (e) => { if (e.key === "Escape") e.stopPropagation(); });
+$("ctList").addEventListener("click", async (e) => {
+  const b = e.target.closest(".ct-row");
+  const c = b && cts.list.find((x) => x.id === b.dataset.id);
+  if (c && (await editContact(c))) contactsChanged();
+});
+$("ctAdd").addEventListener("click", async () => { if (await editContact(null)) contactsChanged(); });
+$("ctMore").addEventListener("click", () => loadContacts({ more: true }));
+let ctQTimer = 0;
+$("ctQ").addEventListener("input", () => { clearTimeout(ctQTimer); ctQTimer = setTimeout(() => loadContacts(), 250); });
+// A call from a number that is no contact yet.
+$("btnAddContact").addEventListener("click", async () => {
+  const c = detail.call;
+  const num = String((c && c.caller_id) || "").trim();
+  if (!num) return;
+  const saved = await editContact(null, { phones: [num] });
+  if (!saved || saved === "deleted") return;
+  if (detail.call && detail.call.id === c.id) {
+    detail.contact = { id: saved.id, name: saved.name, note: saved.note };
+    renderDetail();
+  }
+  contactsChanged();
+});
+
+// ---- import: a file → what is in it → the owner ticks → saved
+const IMPORT_MAX = 10 * 1024 * 1024;
+const imp = { entries: [], busy: false };
+const importOn = (e) => e.on && !(e.duplicate && $("ctDupMode").value === "skip");
+function openImport() {
+  $("ctImp").hidden = false;
+  renderImport();
+  $("ctImp").scrollIntoView({ block: "nearest" });
+}
+function closeImport() {
+  imp.entries = [];
+  imp.busy = false;
+  $("ctFile").value = "";
+  $("ctImp").hidden = true;
+  impStatus("");
+  renderImport();
+}
+function impStatus(msg, kind) {
+  const el = clear($("ctImpStatus"));
+  el.hidden = !msg;
+  el.className = "ct-imp-status" + (kind === "err" ? " err" : "");
+  if (!msg) return;
+  if (kind === "busy") el.append(h("span", { class: "spin" }));
+  else if (kind === "err") el.append(icon("alert", "sm"));
+  el.append(h("span", { class: "grow", text: msg }));
+}
+// What Gemini answered is worth showing (a quota, a refusal).
+function importErrText(e) {
+  return e.data && e.data.code === "ai_failed" && e.detail ? e.message + " (" + e.detail + ")" : e.message;
+}
+async function importFile(file) {
+  if (!file || imp.busy) return;
+  openImport();
+  if (file.size > IMPORT_MAX) { impStatus(t("err_file_too_large"), "err"); return; }
+  if (!file.size) { impStatus(t("err_empty_file"), "err"); return; }
+  imp.busy = true;
+  imp.entries = [];
+  renderImport();
+  impStatus(t("ct_imp_reading", { file: file.name }), "busy");
+  try {
+    const d = await api("/contacts/import", {
+      method: "POST",
+      headers: { "Content-Type": file.type || "application/octet-stream", "X-Filename": encodeURIComponent(file.name || "contacts") },
+      body: file,
+    });
+    imp.entries = (d.entries || []).map((e) => ({ ...e, on: true }));
+    const n = imp.entries.length;
+    const parts = [n ? t("ct_imp_found", { n, file: d.file || file.name }) : t("ct_imp_none")];
+    if (d.skipped) parts.push(t("ct_imp_skipped", { n: d.skipped }));
+    if (d.ai && n) parts.push(t("ct_imp_by_ai"));
+    impStatus(parts.join(" "), n ? "" : "err");
+  } catch (e) {
+    impStatus(e.status === 401 ? "" : importErrText(e), "err");
+  } finally {
+    imp.busy = false;
+    $("ctFile").value = "";
+    renderImport();
+  }
+}
+function updateImportBar() {
+  const n = imp.entries.filter(importOn).length;
+  const all = $("ctAll");
+  all.checked = imp.entries.length > 0 && imp.entries.every((e) => e.on);
+  all.indeterminate = !all.checked && imp.entries.some((e) => e.on);
+  $("ctImpGo").textContent = t("ct_imp_go", { n });
+  $("ctImpGo").disabled = !n || imp.busy;
+}
+function renderImport() {
+  const has = imp.entries.length > 0;
+  $("ctPrev").hidden = !has;
+  $("ctDrop").hidden = has || imp.busy;
+  const body = clear($("ctPrevBody"));
+  imp.entries.forEach((e, i) => {
+    const dup = e.duplicate;
+    const tag = dup
+      ? h("span", { class: "tag warn", text: t(dup.by === "name" ? "ct_imp_dup_name" : "ct_imp_dup", { name: dup.name }) })
+      : h("span", { class: "tag ok", text: t("ct_imp_new") });
+    body.append(h("tr", { class: importOn(e) ? "" : "off" },
+      h("td", {}, h("input", { type: "checkbox", checked: e.on, dataset: { i: String(i) }, "aria-label": e.name })),
+      h("td", {}, h("div", { text: e.name }), tag),
+      h("td", { class: "mono", text: (e.phones || []).join(" · ") }),
+      h("td", { text: e.note || "" })));
+  });
+  updateImportBar();
+}
+$("ctPrevBody").addEventListener("change", (ev) => {
+  const box = ev.target;
+  const e = imp.entries[Number(box.dataset.i)];
+  if (!e) return;
+  e.on = box.checked;
+  box.closest("tr").classList.toggle("off", !importOn(e));
+  updateImportBar();
+});
+$("ctAll").addEventListener("change", () => {
+  for (const e of imp.entries) e.on = $("ctAll").checked;
+  renderImport();
+});
+$("ctDupMode").addEventListener("change", renderImport);
+$("ctImpGo").addEventListener("click", async () => {
+  const list = imp.entries.filter(importOn);
+  if (!list.length || imp.busy) return;
+  imp.busy = true;
+  updateImportBar();
+  impStatus(t("ct_imp_saving", { n: list.length }), "busy");
+  try {
+    const d = await api("/contacts/batch", jsonBody("POST", {
+      contacts: list.map((e) => ({ name: e.name, phones: e.phones, note: e.note, source: e.source })),
+      duplicates: $("ctDupMode").value,
+    }));
+    toast(t("ct_imp_done", { added: d.added || 0, merged: d.merged || 0, skipped: d.skipped || 0 }));
+    closeImport();
+    contactsChanged();
+  } catch (e) {
+    imp.busy = false;
+    updateImportBar();
+    impStatus(e.status === 401 ? "" : e.message, "err");
+  }
+});
+$("ctImpCancel").addEventListener("click", closeImport);
+$("ctImpClose").addEventListener("click", closeImport);
+$("ctImport").addEventListener("click", () => {
+  openImport();
+  if (!imp.busy) $("ctFile").click();
+});
+$("ctFile").addEventListener("change", () => importFile($("ctFile").files[0]));
+$("ctDrop").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  e.preventDefault();
+  $("ctFile").click();
+});
+// A file dropped anywhere on the Contacts view.
+const draggingFiles = (e) => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files");
+$("view-contacts").addEventListener("dragover", (e) => {
+  if (!draggingFiles(e)) return;
+  e.preventDefault();
+  if ($("ctImp").hidden) openImport();
+  $("ctDrop").classList.add("over");
+});
+$("view-contacts").addEventListener("dragleave", (e) => { if (e.target === $("ctDrop")) $("ctDrop").classList.remove("over"); });
+$("view-contacts").addEventListener("drop", (e) => {
+  $("ctDrop").classList.remove("over");
+  if (!draggingFiles(e)) return;
+  e.preventDefault();
+  importFile(e.dataTransfer.files[0]);
 });
 
 // ---------------------------------------------------------------- settings

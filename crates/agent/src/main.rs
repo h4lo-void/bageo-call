@@ -29,6 +29,7 @@ mod callback;
 mod calls;
 mod calls_http;
 mod config;
+mod contacts;
 mod debug_probe;
 mod deepseek;
 mod dtmf;
@@ -1003,6 +1004,9 @@ async fn main() -> Result<()> {
         settings.calls_retention_days,
     );
     let task_store = TaskStore::new(PathBuf::from(&settings.calls_data_dir).join("tasks"));
+    // The owner's contacts (names for caller IDs), next to the call records.
+    let contacts = contacts::ContactStore::open(PathBuf::from(&settings.calls_data_dir).join("contacts.json"));
+    contacts::install(contacts.clone());
     {
         let calls = calls.clone();
         let task_store = task_store.clone();
@@ -1117,6 +1121,7 @@ async fn main() -> Result<()> {
         control: control.clone(),
         ambience: state.ambience.clone(),
         phones: phones.clone(),
+        contacts: contacts.clone(),
     };
     let addr: SocketAddr = format!("{}:{}", settings.host, settings.port).parse()?;
     let mode = settings.agent_mode.as_str();
@@ -6208,6 +6213,13 @@ fn start_gemini_session_core(
             voice_name,
             ..
         } = cfg.clone();
+        // A caller in the owner's contacts: the prompt says who it is. Normal calls
+        // only: the sales / scam prompt the session may switch to has no such line.
+        let system = if persona {
+            contacts::with_caller(&system, rt, &cfg.caller_id, call_sim_country(&serial).as_deref())
+        } else {
+            system
+        };
         let force_hangup = force_hangup.clone();
         let delivered_bytes = delivered_bytes.clone();
         let play_head = play_head.clone();

@@ -136,6 +136,53 @@ again instead of written twice.
 | `POST /calls/api/tasks/{id}/confirm` | For an appointment: the same as **✅ Confirm** in the web console or on its Telegram card — Google Calendar, then (with `appointment_sms`) the text to the caller, which may take up to 90 seconds. `{ok, task, message}`; `message` is what happened, as the console shows it and the Telegram bot replies it. When a Telegram card went out for the appointment, its buttons are taken off and `message` is posted in that chat (best effort; the decision stands either way). Only the first decision counts: a second confirm or decline — also one sent while the first is still running, or a press on the Telegram card — answers "already handled" and changes nothing. Needs `Content-Type: application/json` (no body), otherwise HTTP 400 `bad_request`, so other web pages cannot decide from a browser on your network. |
 | `POST /calls/api/tasks/{id}/ignore` | For an appointment: **❌ Decline** (an event the call already put in the calendar is removed; the text when `appointment_sms` is on). Same answer and rules. |
 
+## Contacts
+
+Names for the numbers that call, kept in `contacts.json` in the call records'
+folder (`CALLS_DATA_DIR`). A number matches however it is written:
+`+886912345678`, `0912-345-678` and `886912345678` are one number; a number
+without a country code is read in your country (`country_code`) or, for a call,
+in the country of the SIM it came in on. A caller who is a contact gets their
+name on the call list (`contacts_by_number` in `GET /calls/api/list`:
+`{<caller_id>: {id, name}}`), on the call (`contact` in
+`GET /calls/api/call/{id}`: `{id, name, note}` or `null`), after the number in
+the title of the summary notification, and in the AI's prompt on ordinary calls
+(a call judged sales / scam, which the AI keeps talking, gets no such line).
+
+A contact is `{id, name, phones: [...], note, source, updated_at}`; `source` is
+`manual`, `vcf`, `csv`, `text` or `ai` (read by Gemini). A number belongs to one
+contact only.
+
+| Method and path | What |
+|---|---|
+| `GET /calls/api/contacts` | Query `q` (name, note, or a number written any way), `limit`, `offset`. `{ok, contacts, total, offset, count}`: the matches by name (`total` of them) and how many contacts there are in all (`count`). |
+| `POST /calls/api/contacts` | Body `{name, phones: [...], note}`: `{ok, contact}`. A number that is another contact's: HTTP 409 `contact_exists` with `contact: {id, name}`; no name or no number: 400 `invalid_contact`. |
+| `PUT /calls/api/contacts/{id}` | The same body; replaces the name, numbers and note. 404 `contact_not_found`, 409 and 400 as above. |
+| `DELETE /calls/api/contacts/{id}` | `{ok}`. |
+| `POST /calls/api/contacts/import` | The file itself as the body (up to 10 MB), its name URL-encoded in `X-Filename`. Reads it and saves nothing: `{ok, file, format, ai, entries: [{name, phones, note, source, duplicate}], skipped}`. `format`: `vcf`, `csv`, `text`, `xlsx`, `docx`, `pdf` or `image`; `ai`: Gemini read it; `duplicate`: `null`, or the saved contact the entry repeats, `{id, name, by: "phone" \| "name"}`; `skipped`: entries without a name or a number. Errors: 400 `empty_file`, 413 `file_too_large`, 415 `unsupported_file`, 400 `need_gemini_key`, 502 `ai_failed` (Gemini's answer in `error`). |
+| `POST /calls/api/contacts/batch` | Body `{contacts: [{name, phones, note, source}], duplicates: "merge" \| "skip"}`: the entries you keep from an import. One that repeats a saved contact is merged into it (its new numbers and note added) or skipped. `{ok, added, merged, skipped, count}`. |
+| `GET /calls/api/contacts/export.vcf` | Every contact as a vCard 3.0 file. |
+
+Read by the agent itself: vCard 2.1, 3.0 and 4.0 (quoted-printable, any
+`CHARSET`); CSV and TSV with a header row (Google Contacts, Outlook, or columns
+named like *Name*, *Phone*, 姓名, 電話) or without one, in UTF-8, UTF-16 or your
+computer's encoding (Big5, GBK, Shift_JIS, EUC-KR, Windows-1252); plain text
+with a name and a number on each line; the tables in `.xlsx` and `.docx` files.
+PDF files, pictures and files in which nothing was found go to Gemini
+(`gemini-flash-lite-latest`, with the Gemini API key of the settings). Like the
+other changes, `POST`, `PUT` and `batch` need `Content-Type: application/json`
+and `import` needs `X-Filename`, so other web pages cannot send them from a
+browser on your network.
+
+```text
+POST /calls/api/contacts
+Content-Type: application/json
+{"name": "Mei Lin", "phones": ["0912 000 000", "+1 202 555 0143"], "note": "my sister"}
+
+{"ok": true, "contact": {"id": "4f0c9a…", "name": "Mei Lin", "phones": ["0912 000 000", "+1 202 555 0143"],
+ "note": "my sister", "source": "manual", "updated_at": "2026-11-14T08:00:00Z"}}
+```
+
 ## Phones and health
 
 | Method and path | What |

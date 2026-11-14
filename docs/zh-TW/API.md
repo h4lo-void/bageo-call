@@ -89,6 +89,33 @@ PUT /calls/api/settings
 | `POST /calls/api/tasks/{id}/confirm` | 對預約來說等於在網頁或 Telegram 卡片上按 **✅ 確定**——寫進 Google 日曆，接著（開了 `appointment_sms` 時）傳簡訊給對方，可能要等最多 90 秒。回應 `{ok, task, message}`；`message` 是結果，網頁顯示的和 Telegram Bot 回的是同一段。這筆預約有發過 Telegram 卡片時，卡片上的按鈕會拿掉，並把 `message` 回到那個聊天（盡力而為，Telegram 失敗不影響決定）。只有第一次決定算數：之後再確定或婉拒——包括第一次還在處理時送來的，或在 Telegram 卡片上按的——都只回「已經處理過了」，不會有任何變化。請求要帶 `Content-Type: application/json`（不用 body），否則回 HTTP 400 `bad_request`，這樣別的網頁沒辦法透過你區網裡的瀏覽器替你決定。 |
 | `POST /calls/api/tasks/{id}/ignore` | 對預約來說等於 **❌ 婉拒**（通話中已經寫進日曆的那筆會刪掉；開了 `appointment_sms` 時傳簡訊）。回應與規則同上。 |
 
+## 聯絡人
+
+替打來的號碼配上名字，存在通話紀錄資料夾（`CALLS_DATA_DIR`）的 `contacts.json`。號碼不管怎麼寫都對得上：`+886912345678`、`0912-345-678`、`886912345678` 是同一支；沒有國碼的號碼照你的國家（`country_code`）讀，通話則照接到這通電話的 SIM 卡所屬國家讀。打來的人在聯絡人裡時：通話列表顯示名字（`GET /calls/api/list` 的 `contacts_by_number`：`{<caller_id>: {id, name}}`）、通話詳情也有（`GET /calls/api/call/{id}` 的 `contact`：`{id, name, note}` 或 `null`）、通話摘要通知的標題在號碼後面加名字，一般電話的 AI 提示詞也會說是誰打來的（判定推銷／詐騙、AI 陪聊的電話不加）。
+
+一位聯絡人是 `{id, name, phones: [...], note, source, updated_at}`；`source` 是 `manual`、`vcf`、`csv`、`text` 或 `ai`（Gemini 讀出來的）。一支號碼只屬於一位聯絡人。
+
+| 方法與路徑 | 內容 |
+|---|---|
+| `GET /calls/api/contacts` | 查詢參數 `q`（名字、備註或號碼，號碼怎麼寫都可以）、`limit`、`offset`。回應 `{ok, contacts, total, offset, count}`：依名字排序的符合結果（共 `total` 筆），以及全部聯絡人數（`count`）。 |
+| `POST /calls/api/contacts` | Body `{name, phones: [...], note}`，回應 `{ok, contact}`。號碼已經是別的聯絡人的：HTTP 409 `contact_exists`，附 `contact: {id, name}`；沒有名字或沒有號碼：400 `invalid_contact`。 |
+| `PUT /calls/api/contacts/{id}` | 同樣的 body，取代名字、號碼和備註。404 `contact_not_found`、409、400 同上。 |
+| `DELETE /calls/api/contacts/{id}` | `{ok}`。 |
+| `POST /calls/api/contacts/import` | Body 就是檔案本身（最大 10 MB），檔名 URL 編碼後放在 `X-Filename`。只讀、不存：`{ok, file, format, ai, entries: [{name, phones, note, source, duplicate}], skipped}`。`format`：`vcf`、`csv`、`text`、`xlsx`、`docx`、`pdf` 或 `image`；`ai`：是 Gemini 讀的；`duplicate`：`null`，或這筆重複的已存聯絡人 `{id, name, by: "phone" \| "name"}`；`skipped`：沒有名字或號碼而略過的筆數。錯誤：400 `empty_file`、413 `file_too_large`、415 `unsupported_file`、400 `need_gemini_key`、502 `ai_failed`（Gemini 的回覆在 `error`）。 |
+| `POST /calls/api/contacts/batch` | Body `{contacts: [{name, phones, note, source}], duplicates: "merge" \| "skip"}`：匯入時勾選要留的那些。跟已存聯絡人重複的，合併進去（補上新號碼和備註）或略過。回應 `{ok, added, merged, skipped, count}`。 |
+| `GET /calls/api/contacts/export.vcf` | 全部聯絡人匯出成 vCard 3.0 檔。 |
+
+主程式自己讀的格式：vCard 2.1、3.0、4.0（含 quoted-printable、各種 `CHARSET`）；有表頭（Google 通訊錄、Outlook，或欄名像 *姓名*、*電話*、Name、Phone）或沒有表頭的 CSV、TSV，編碼 UTF-8、UTF-16 或電腦的編碼（Big5、GBK、Shift_JIS、EUC-KR、Windows-1252）；一行一個「名字 號碼」的純文字；`.xlsx`、`.docx` 裡的表格。PDF、圖片和讀不到人的檔案交給 Gemini（`gemini-flash-lite-latest`，用設定裡的 Gemini 金鑰）。跟其他會改資料的 API 一樣，`POST`、`PUT`、`batch` 要帶 `Content-Type: application/json`，`import` 要帶 `X-Filename`，這樣別的網頁沒辦法透過你區網裡的瀏覽器送這些請求。
+
+```text
+POST /calls/api/contacts
+Content-Type: application/json
+{"name": "林小美", "phones": ["0912 000 000", "+1 202 555 0143"], "note": "我姊"}
+
+{"ok": true, "contact": {"id": "4f0c9a…", "name": "林小美", "phones": ["0912 000 000", "+1 202 555 0143"],
+ "note": "我姊", "source": "manual", "updated_at": "2026-11-14T08:00:00Z"}}
+```
+
 ## 手機與健康狀態
 
 | 方法與路徑 | 內容 |
