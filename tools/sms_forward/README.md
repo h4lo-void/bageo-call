@@ -8,6 +8,12 @@ without it, and nothing starts it for you.
 It runs on the computer the phones are plugged into and uses only the Python
 standard library (Python 3.10 or newer; tested with 3.12 on Windows).
 
+It works with Bageo 1.0 and with the 0.2.x agents: it only needs the agent's
+`POST /calls/api/notify/send` route, and on the phone either nothing (inbox) or
+the Bageo app's optional SMS hook. It is independent of the texts the agent
+itself sends to callers for appointments: those go out through the phone app,
+and this script only forwards what the phones receive.
+
 **Status:** the logic is covered by offline tests with fake phones. On real phones,
 this way of reading SMS has only been exercised on the project's own rooted Pixel
 phones. Reading a phone without root (inbox only) is covered by the tests but has
@@ -60,6 +66,13 @@ language is `zh-TW`, converts Simplified Chinese to Traditional.
 - `adb` (Android platform-tools). The agent's start scripts offer to download it.
 - Each phone connected by USB with **USB debugging** on and this computer allowed.
 - For the inbox: the phone must have been unlocked once since it was switched on.
+  Android keeps the SMS database in credential-encrypted storage, which stays
+  locked after a restart until the PIN, pattern or password is entered once
+  (*Direct Boot*); until then the inbox reads as unavailable and the log says
+  `inbox … unreadable`. Nothing is lost: the inbox position is kept, so once you
+  unlock the phone the script forwards what arrived in the meantime (within the
+  `SMS_FLOOD_CAP` limit). The call-box phone typically sits locked after a power
+  cut or an update, so unlock it once whenever it restarted.
   Reading SMS with `content query` needs no extra app on most phones, but some
   devices and Android versions refuse it to adb. If the phone is rooted, the script
   then retries through `su`; if not, that phone cannot be read.
@@ -68,7 +81,10 @@ language is `zh-TW`, converts Simplified Chinese to Traditional.
   enabled as a module for `com.android.phone`
   ([Optional SMS hook](../../android/README.md#optional-sms-hook)), and root for
   adb's shell (`su`). The phone may ask once whether *Shell* may have root access.
-  Without all of this the script falls back to the inbox on its own.
+  Without all of this the script falls back to the inbox on its own. The hook
+  writes into the phone process's device-protected storage, which is readable
+  before the first unlock, so with the hook new texts are forwarded right after a
+  restart too.
 
 ## Run it
 
@@ -208,7 +224,8 @@ Look at `sms_forward.log` and `health.json` in `SMS_HOME` first.
 | `deliver failed … no answer` | The agent is not running, or `AGENT_URL` is wrong. Messages are kept and sent later. |
 | `deliver failed … 401` | The agent has a `CALLS_UI_TOKEN`; set the same value as `AGENT_TOKEN`. |
 | `deliver failed … no notification channel accepted it` | No channel is set up, or every channel failed. Use the test button under *Settings → Notifications*. |
-| `inbox … unreadable` | Unlock the phone once after a restart. If it stays, this phone does not let adb read SMS; a rooted phone is read through `su` instead. |
+| `inbox … unreadable` | Normal right after the phone restarted: Android keeps the SMS inbox locked until the phone is unlocked once with its PIN (*Direct Boot*). Unlock it; the messages that arrived meanwhile follow. If it stays after unlocking, this phone does not let adb read SMS; a rooted phone is read through `su` instead. |
+| Texts arrive late after a power cut or an update | The phone restarted and waited, locked, for its PIN. Unlock it once; install the optional SMS hook if texts should be forwarded even before that. |
 | `hook queue … not readable` | Normal on a phone without root or without the hook; the inbox is used. Set `SMS_USE_SU=0` to stop it trying. |
 | Old messages did not arrive after the first start | Intended: only messages that arrive after a phone was first seen are forwarded. |
 | A repeated, identical message arrived only once | Intended within `SMS_DEDUP_SEC` (24 hours). Lower it if you need every repeat. |

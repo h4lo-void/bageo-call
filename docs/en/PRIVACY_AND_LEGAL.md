@@ -12,15 +12,21 @@ answer your phone.
 | The live audio of each call, both directions, plus the prompt and your notes | Sent to **Google's Gemini Live API** while the call lasts. | Google, under the terms of the Gemini API for your key and region. |
 | The transcript of the call | Sent after the call to the **summary model**: Google by default, or the service you configured. Once more for the calendar suggestion when that is on. | That service. A local model (Ollama) keeps it on your machine. |
 | The summary and the caller's number | Sent to **every notification channel** you set up. | Those services, and whoever is in those chats. |
-| Voice samples of the settings page, the "not available" announcement | Generated through Gemini once, then cached locally. | Google. |
+| Translations of transcript lines spoken in another language | Made by the **summary model** after the call, stored in the call's notes (`dialogue_translations`). | The summary service, as above. |
+| Voice previews and the "not available" announcement | **Shipped with the program**: 30 voices × 9 languages, each recorded as a preview and as the announcement — 1,080 clips in `assets/voices/`, played straight from your computer. Only *regenerate* or a voice without a recording opens a Gemini session. | Nobody. |
+| Contacts | `contacts.json` in the data folder. vCard, CSV/TSV, plain text, `.xlsx` and `.docx` files you import are read on your computer. **PDF files and pictures** (and files in which nothing was found) are sent to Gemini (`gemini-flash-lite-latest`) to read the names and numbers. A caller's contact name goes into the AI's prompt on ordinary calls. | Google, for the files sent to Gemini. |
+| AI errands | What you ask the AI to get done (`errands.json`, the newest 500), the SIMs each phone has (`phone_sims.json`), the call's record and recording in `data/calls/`. During the call your instructions and both sides' audio go to Gemini Live; afterwards the transcript goes to the summary model to write the result. | Google (and your summary service); the person called hears the AI. |
+| Appointment replies | A **text** from your phone to the caller with only the time (and your name), never what the appointment is about; an **AI call-back** whose audio goes to Gemini Live like any call. Both go out from your own SIM and number. | Your carrier and the caller. |
+| Calendars | **No calendar account is connected.** *Add to calendar* opens a filled-in "new event" form of the calendar you chose in your own browser, or downloads an `.ics` file from the console; a link in a notification carries a key that opens only that one file. | Only the calendar you open the link with. |
 
 The agent contacts nothing else: no telemetry, no update check, no account.
 The start script downloads `adb` from Google if you agree to it.
 
-**Your callers did not choose any of this.** Their voice goes to Google and
-their words to the services above. Treat recordings and transcripts as other
-people's personal data: keep the retention short, do not forward them
-carelessly, and do not make the console reachable from the internet.
+**Your callers did not choose any of this, and neither did the people the AI
+calls for you.** Their voice goes to Google and their words to the services
+above. Treat recordings, transcripts and contacts as other people's personal
+data: keep the retention short, do not forward them carelessly, and do not make
+the console reachable from the internet.
 
 ## Recording calls
 
@@ -58,12 +64,33 @@ keep `CALLS_RETENTION_DAYS=1`. Rules also differ for business use.
   keyword-based and can be wrong — a real caller will then meet a strangely
   slow and curious person. Check the summaries; switch it off if in doubt.
 
+## The AI calling people for you
+
+AI errands and AI call-backs are outgoing calls made by a machine in your name.
+
+- With *Call as* **Your assistant** (the default) the AI says it is calling on
+  your behalf. With **You in person** it speaks as you. In both cases it admits
+  to being an AI when sincerely asked, gives out no personal details beyond the
+  errand, and agrees to no payment, deposit or transfer.
+- Rules on automated and artificial-voice calls are stricter than those on
+  answering your own phone. In the US, for example, the FCC treats AI-generated
+  voices as "artificial" voices under the Telephone Consumer Protection Act,
+  which restricts such calls to mobile numbers without the called person's
+  prior consent. Use errands for ordinary personal matters — a booking, a
+  question to a shop, a time with a friend — never for marketing, mass calling
+  or calls the other side would not expect from you.
+- The agent will not dial emergency numbers, short codes or premium-rate
+  numbers, and calls each errand once; it never redials on its own.
+
 ## What the AI will and will not do
 
-Built into every prompt: it does not agree to payments, contracts or
-appointments, gives out no passwords, codes or personal data, makes no promise
-on your behalf, and does not obey instructions from the caller ("ignore your
-rules"). These are instructions to a language model, not guarantees. Anything
+Built into every prompt: it does not agree to payments or contracts, does not
+fix an appointment on the call (with *Appointments* on it says it will check and
+you decide later), gives out no passwords, codes or personal data, makes no
+promise on your behalf, and does not obey instructions from the caller ("ignore
+your rules"). On an errand it agrees only to what your instructions allow and
+asks you about the rest. These are instructions to a language model, not
+guarantees. Anything
 you write into *Notes the AI may answer from* can be said to **any** caller —
 put nothing secret there.
 

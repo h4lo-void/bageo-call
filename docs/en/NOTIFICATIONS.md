@@ -1,7 +1,10 @@
 # Notifications
 
 The agent sends a message when a call comes in, when a blocked number called,
-and — a few seconds after a call ends — the summary. Set it up under
+when a second call was turned away during a call, when an AI call-back or an
+AI errand has ended, and — a few seconds after a call ends — the summary.
+Appointments waiting for your decision come along with the summary, and on
+Telegram as a card with **Accept** / **Decline** buttons. Set it up under
 *Settings → Notifications*: **Add channel**, choose the service, fill in its
 fields, **Send test**, **Save**.
 
@@ -11,7 +14,8 @@ fields, **Send test**, **Save**.
   a field empty when editing to keep what is stored.
 - *Send notifications* at the top, switched off, silences everything without deleting the
   channels.
-- Messages are written in the language chosen under *Settings → Language*.
+- Messages are written in the *Language of notifications and summaries*
+  (default: the AI's language), whatever language the call was in.
 
 > **Status:** Telegram has been used daily. The other services are implemented
 > from their public documentation and their requests are covered by unit tests,
@@ -32,12 +36,58 @@ AI said: sounded keen, did not fix the time
 To do: call Jay back to confirm
 📅 Calendar: Lunch with Jay (11/13 12:00)
 https://calendar.google.com/calendar/render?action=TEMPLATE&…
-Transcript / recording: http://192.168.1.20:8787/calls/#call=…
+Transcript / recording: http://192.0.2.10:8787/calls/#call=…
 ```
 
 The last line appears when the agent has a console address: *Address of this console*, or the automatic one when the console is open to your network (not inside Docker). The calendar
 lines appear only when the call fixed a date
 ([Settings reference](SETTINGS.md#summary--calendar)).
+The calendar link opens the calendar you chose for **Add to calendar**
+(`calendar_app`; Google Calendar until you choose): a filled-in "new event"
+form, or for Apple Calendar and `.ics` the event's file at your console
+address, opened by a key for that one file. A caller in your contacts appears
+as "☎️ Call summary · Jay" in the title.
+
+## Messages you get
+
+Every message goes to all enabled channels, in the *Language of notifications
+and summaries*. Each starts with an icon so you can tell them apart at a
+glance:
+
+| Icon and title | When | Webhook `event` |
+|---|---|---|
+| 📞 Incoming call | A call was picked up. | `incoming` |
+| ⛔ Blocked number called | A number on your blocked list called; the message says whether it was declined while it rang or answered with the announcement, and your reason for blocking it. | `blocked` |
+| ☎️ Call summary | A few seconds after a call ended: who, what about, what the AI said, what you should do, and the links. A caller in your contacts gets their name after the title. | `summary` |
+| 📵 Missed while on another call | A second call rang during a call and the phone declined it (the caller heard busy). Call them back if you know the number. | `call_waiting` |
+| 📞 AI call-back: <number> | The AI called a caller back with your answer to an appointment: how it went (answered, nobody answered, could not be placed) and the call's summary. | `ai_callback` |
+| 📞 AI errand call: <name or number> | An AI errand you started has ended: the result, details, your decision when it needs one, the next step, the time agreed and a link to the *Errands* page. | `ai_errand` |
+| 📅 Appointment to confirm | A caller set a time with the AI; on Telegram also as a card with buttons (see [Appointments](#appointments)). | part of `summary` |
+| New SMS | A text message the optional [SMS forwarder](../../tools/sms_forward/README.md) passed on. | `event` |
+
+A call-waiting message looks like this:
+
+```text
+📵 Missed while on another call: 0912345678 (Pixel 9)
+Time: Nov 14, 18:02
+```
+
+An errand's result:
+
+```text
+📞 AI errand call: Din Tai Fung
+Number: 0223456789
+Phone: Pixel 9
+Time: Nov 14, 18:05
+
+Done: Table for 4 booked tomorrow 7:30 pm under Wang
+Details: They hold the table for 15 minutes.
+📅 Agreed time: Nov 15, 19:30 Dinner at Din Tai Fung
+http://bageo.local:8787/calls/#errands
+```
+
+When the AI agreed to something on a question you did not answer, the result
+is *Your decision* and a line asks you to check it and call back to change it.
 
 ## Appointments
 
@@ -48,17 +98,16 @@ up (Telegram, Apprise, a webhook, …):
 
 ```text
 📅 Appointment to confirm: Sat, Nov 14, 3:00 PM–4:00 PM House viewing — confirm in the web console: http://bageo.local/calls/#call=…
-📅 Added to your calendar: Sat, Nov 14, 3:00 PM–4:00 PM House viewing
 ```
 
-The first is *Ask me first* (or *Book it if I'm free* when the calendar could
-not take it). You decide it in the web console: under **Appointments to
-confirm** at the top of the Calls page, or in the call's details, with **✅
-Confirm** / **❌ Decline**. The link opens the call; when the console has no
-address other devices can open (*Address of this console* in Settings), the
-line ends with "confirm in the web console" instead. The second line is *Book
-it if I'm free*. With no notification channel set up nothing is sent, and the
-appointment simply waits in the console.
+You decide it in the web console: under **To do** at the top of the Calls page,
+or in the call's details, pick how the caller hears your answer (**Text**,
+**AI call-back** or **Don't tell them**) and press **Accept** or **Decline**.
+The link opens the call; when the console has no address other devices can
+open (*Address of this console* in Settings), the line ends with "confirm in
+the web console" instead. With no notification channel set up nothing is sent,
+and the appointment simply waits in the console. Nothing is ever written into
+a calendar by itself.
 
 With a Telegram bot set up (bot token and chat ID) and *Send notifications* on,
 an appointment waiting for you also comes as a card you can tap:
@@ -71,45 +120,65 @@ Time: Sat, Nov 14, 3:00 PM–4:00 PM
 What: House viewing
 Name: Mr Chen
 Phone: Pixel 8
-Text to caller: sent when you tap Confirm or Decline
+Text to caller: sent when you tap Accept or Decline
 Confirm on the web: http://bageo.local/calls/#call=…
-[✅ Confirm] [❌ Decline]
+[Accept] [Decline]
 ```
 
-**✅ Confirm** puts it in Google Calendar; **❌ Decline** removes an event the
-call already put there and leaves the rest of the calendar alone. With *Text
-the caller* on, the phone that took the call then texts the caller in your
-name — only the time, never what the appointment is about. Only the first
-decision counts, wherever it is made (console, card or
-[API](API.md#appointments)); a second one, also at the same moment, gets "This
-appointment has already been handled". The answer says what happened — in the
-console, and from the bot after a press on the card: "Added to Google Calendar"
-(or why not), "Text sent to 0912345678", or "Text not sent: the phone is not
-connected" / "the phone app is too old to send texts" / "error code
-no_service". For landlines, hidden numbers and foreign numbers, the card says
-to call them back yourself. After *Book it if I'm free* the text goes out right
-after the call and the bot reports it the same way.
+The *Text to caller* line follows *Default reply* for this number. It can also
+read "Reply: the AI calls them back once you tap Accept or Decline" (a
+landline, or texts turned off), "won't be sent ("Text the caller" is off in
+Settings)", "can't text this number, so call them back yourself", or "hidden
+number: the caller can't be told". A button press uses *Default reply*; to
+choose another way, decide in the web console.
 
-When you decide in the console or through the API, the card's buttons are taken
-off and the bot posts the same answer in the chat, so the card never offers a
-decision that was already made (a card that arrives after you already decided comes without buttons). If Telegram cannot be reached, the decision
-still stands.
+After a press the bot answers with what happened, for example:
 
-When a call that already put an event in your calendar turns out to be a sales
-or scam call (during the call, or afterwards when its summary marks it "Sales
-call" or "Suspected scam" — a bank's fraud desk or the police calling about
-fraud does not count), the event is deleted after the call and no card comes.
-When the summary made that call, it says so:
+```text
+✅ Appointment accepted
+Sat, Nov 14, 3:00 PM–4:00 PM House viewing
+Text sent to 0912345678
+📅 Add it to your calendar: https://calendar.google.com/calendar/render?action=TEMPLATE&…
+```
+
+or "❌ Appointment declined", "The AI is calling 0912345678 back", "Text not
+sent: the phone is not connected" / "the phone app is too old to send texts" /
+"error code no_service". When a text did not go out, the appointment in the
+console gets **Send the text again**, from the same phone or another connected
+one.
+
+**Add to calendar works with any calendar.** The link in the bot's answer, in
+notifications and in the console goes to the calendar you picked the first time
+you pressed **Add to calendar** (setting `calendar_app`): the filled-in "new
+event" form of Google Calendar, Outlook.com, Microsoft 365 or Yahoo Calendar,
+or, for Apple Calendar and the plain `.ics` choice, the event's `.ics` file at
+*Address of this console*. That `.ics` link carries a key (an HMAC) that opens
+only this one file, never your console token, so it is safe to tap from a chat;
+without a console address there is no `.ics` link. The agent connects to no
+calendar account.
+
+Only the first decision counts, wherever it is made (console, card or
+[API](API.md#appointments-and-tasks)); a second one, also at the same moment,
+gets "This appointment has already been handled". When you decide in the
+console or through the API, the card's buttons are taken off and the bot posts
+the same answer in the chat, so the card never offers a decision that was
+already made (a card that arrives after you already decided comes without
+buttons). If Telegram cannot be reached, the decision still stands.
+
+The AI call-back with your answer speaks the call's language, waits for the
+callee to pick up and speak, says who is calling and your answer once, and
+says goodbye. Its notification is "📞 AI call-back: <number>"; one that could
+not be placed is sent to your channels too.
+
+Sales and scam calls never leave an appointment. When a call turns out to be
+one only afterwards — its summary marks it "Sales call" or "Suspected scam" (a
+bank's fraud desk or the police calling about fraud does not count) — the
+appointment is dropped, no card comes, and the summary says so:
 
 ```text
 📅 Judged a sales call, so the appointment booked during the call was canceled: Sat, Nov 14, 3:00 PM–4:00 PM House viewing
 ```
 
-If Google refuses to delete it, the summary says that instead:
-
-```text
-📅 "Sat, Nov 14, 3:00 PM–4:00 PM House viewing" from the call was canceled but couldn't be removed from your calendar. Please delete it yourself.
-```
 
 ## Services
 
@@ -301,8 +370,11 @@ For n8n, Zapier, Make, Home Assistant, Node-RED or your own code. The agent
 | `event` | When | `data` |
 |---|---|---|
 | `incoming` | a call was picked up | `caller_id`, `device`, `time` |
-| `blocked` | a blocked number called | `caller_id`, `device`, `time`, `reason` |
-| `summary` | a few seconds after a call ended | `caller_id`, `device`, `time`, `summary` |
+| `blocked` | a blocked number called | `caller_id`, `device`, `time`, `reason`, `declined` (`true`: refused while it rang; `false`: answered with the announcement) |
+| `summary` | a few seconds after a call ended | `caller_id`, `device`, `time`, `summary`, `contact` (the contact's name, or empty) |
+| `call_waiting` | a second call rang during a call and was declined | `caller_id`, `device`, `time`, `sim_country` |
+| `ai_callback` | the AI's call-back for an appointment ended, or could not be placed | `caller_id`, `device`, `time`, `summary` |
+| `ai_errand` | an AI errand ended, or never got going | `number`, `device`, `time`, `summary` |
 | `voicemail` | a voicemail was saved (older menu mode) | `caller_id`, `device`, `time`, `seconds` |
 | `event` | a message sent through the API (`/calls/api/notify/send`) | — |
 | `test` | *Send test* | — |

@@ -51,7 +51,7 @@ jobs:
           mkdir -p "dist/$dir"
           cp "target/release/${{ matrix.exe }}" "dist/$dir/"
           cp -R assets docs "dist/$dir/"
-          cp README*.md LICENSE NOTICE.md .env.example "dist/$dir/"
+          cp README*.md CHANGELOG.md LICENSE NOTICE.md .env.example "dist/$dir/"
           if [ "${{ runner.os }}" = "Windows" ]; then
             cp start.ps1 start.cmd "dist/$dir/"
             (cd dist && 7z a -tzip "$dir.zip" "$dir" > /dev/null)
@@ -108,6 +108,9 @@ jobs:
     if: ${{ !cancelled() && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          path: src
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -120,5 +123,7 @@ jobs:
         run: cd dist && sha256sum * > SHA256SUMS.txt
       - uses: softprops/action-gh-release@v2
         with:
+          name: Bageo ${{ github.ref_name }}
+          body_path: src/CHANGELOG.md
           files: dist/*
           generate_release_notes: true

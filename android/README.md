@@ -5,12 +5,22 @@ This folder contains the phone side of Bageo:
 - **`app/`**: the Android app `com.pixelcallai.streamer`. It answers incoming calls
   silently, streams the caller's voice to the agent program on your PC over a
   WebSocket, and plays the AI's voice back into the call so the caller hears it.
+  For the agent it also sends text messages (appointment replies) and places
+  calls (AI call-backs and AI errands), each from the SIM the agent names.
 - **`magisk/pixelcallai_uplink/`**: a Magisk / KernelSU module that installs the app
   as a *privileged system app*. Android only lets privileged apps capture call audio
   and write audio into the call, so the app cannot do its job as a normal install.
+  Its root helper also carries out the switch between AI mode and a normal phone.
 
 The phone does no AI work itself. It is an audio bridge between the phone network and
 the agent.
+
+**Version 1.0:** app `versionName` `1.0.0`, `versionCode` 28; module `version`
+`v1.0.0`, `versionCode` 20 (`module.prop`); release file
+`pixelcallai_uplink-1.0.0.zip`. Compared with 0.2.4 it no longer requests
+`READ_PHONE_NUMBERS`, no longer announces `supports_sim_select` and no longer
+accepts `sim` in `send_sms`: a SIM is always picked by its subscription id
+(`sub_id`).
 
 The package name (`com.pixelcallai.streamer`) and the module id (`pixelcallai_uplink`)
 keep the project's earlier working name, so phones that already run the module can be
@@ -115,8 +125,22 @@ Notes:
    notification while the service runs, and starts again by itself after a reboot.
    Once the agent has sent the console's address, **Open the web console** opens it.
 
-When the root manager asks whether the app may use root, allow it. The app uses `su`
-for the role and mute commands listed below.
+The app does not need root for anything essential: the module grants the
+permissions, takes the phone over at boot and carries out the mode switch through
+its own root helper. When the root manager asks whether the app may use root,
+allowing it lets the app repeat the role and mute commands listed below each time
+its service starts (useful after another app took the dialer role); denying it
+changes nothing else. KernelSU only offers `su` to apps on its allow list.
+
+### Updating
+
+Install the new module zip over the old one and reboot. The mode file, the
+connection address and the app's permissions are kept. Releases are signed with
+the project's key, so one release installs over another (see [Build](#build) for
+moving between keys). From 0.2.x to 1.0 nothing has to be done by hand: the
+module no longer grants the permission 0.2.4 used to read SIM numbers (a grant
+left from then is simply unused), and an agent older than 1.0 keeps working with
+the new app because neither side relies on the removed fields.
 
 ### Connection: USB or Wi-Fi
 
@@ -150,8 +174,9 @@ below, exactly as before the mode switch existed.
 
 1. Creates `/data/local/tmp/pixelcallai_uplink.pcm` (mode 666). This is a debugging
    aid; the normal call path does not use it.
-2. Grants the app `RECORD_AUDIO`, `READ_PHONE_STATE`, `ANSWER_PHONE_CALLS`, `SEND_SMS`
-   and `ACCESS_NOTIFICATION_POLICY`, and allows the `ACCESS_NOTIFICATION_POLICY` app-op.
+2. Grants the app `RECORD_AUDIO`, `READ_PHONE_STATE`, `ANSWER_PHONE_CALLS`, `SEND_SMS`,
+   and `ACCESS_NOTIFICATION_POLICY`, and allows the `ACCESS_NOTIFICATION_POLICY`
+   app-op.
 3. Gives the app the **Dialer** and **Call screening** roles and makes it the default
    dialer (`telecom set-default-dialer`).
 4. Only if the app really is the default dialer: disables Google Dialer's in-call
@@ -379,6 +404,9 @@ Other declared permissions:
 | `MANAGE_OWN_CALLS` | Declared; not used by the current code. |
 | `SEND_SMS` | Send a text message when the agent asks (`send_sms`, for example to reply to an appointment request). The module grants it at boot and when the phone switches to AI mode; the setup screen does not ask for it. |
 
+SIMs are told apart only by Android's subscription id, which `READ_PHONE_STATE`
+already covers; no permission to read the SIMs' own numbers is requested.
+
 The manifest also sets `usesCleartextTraffic="true"`, because `ws://` to localhost or
 to a PC on your own network is not encrypted.
 
@@ -406,6 +434,24 @@ microphone and earpiece work normally for that call. A second call that rings du
 a call is declined at once (`call_waiting_rejected` tells the agent); the call in
 progress is not touched.
 
+### Outgoing calls for the agent
+
+1. The agent sends `place_call` with the number (E.164 for errands), a `call_id`, a
+   `task_id` and usually a `sub_id`.
+2. If a call rings or is up, the app answers `place_call_failed` with `reason`
+   `busy` and dials nothing; the agent queues the call. Otherwise it dials from the
+   SIM with that subscription id (Android's default when that SIM is not found) and
+   answers `place_call_ack`.
+3. When the call connects, the app answers `outbound_ready`, opens the media
+   WebSocket and sends `hello` with `sim_sub_id`: the agent checks that the call went
+   out on the SIM it asked for (an errand on another SIM is hung up at once, before
+   the AI speaks).
+4. Audio flows as for an incoming call. When the call ends the app sends `call_end`
+   with the same `call_id` and `task_id`. A requested call that has not started
+   dialing 30 seconds later is forgotten, so a later call is not taken for it.
+
+Only calls the agent asked for, and incoming calls, get an AI session.
+
 More detail is in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## WebSocket protocol
@@ -427,7 +473,7 @@ App to agent:
 
 | `type` | Fields | When |
 |---|---|---|
-| `hello` | `serial`, `mode` = `"CONTROL_IDLE"`, `play_tts_locally` = `false`, `model`, `app_version`, `phone_mode` (`"ai"` / `"normal"`), `in_call`, `supports_sms` = `true`, `supports_reject` = `true` | Right after connecting. `phone_mode` is not called `mode` because `mode` names the connection. Apps before the mode switch send neither. Apps before 0.2.4 do not send `supports_sms` and cannot send text messages. `supports_reject`: the app declines a ringing call when `answer_plan` says `reject`; apps without it would answer the call instead. |
+| `hello` | `serial`, `mode` = `"CONTROL_IDLE"`, `play_tts_locally` = `false`, `model`, `app_version`, `phone_mode` (`"ai"` / `"normal"`), `in_call`, `supports_sms` = `true`, `supports_reject` = `true` | Right after connecting. `phone_mode` is not called `mode` because `mode` names the connection. Apps before the mode switch send neither. Apps before 0.2.4 do not send `supports_sms` and cannot send text messages. `supports_reject`: the app declines a ringing call when `answer_plan` says `reject`; apps without it would answer the call instead. The agent also accepts an optional `sims` list (`[{sub_id, country}]`) here to learn the phone's SIMs; the 1.0 app does not send it, so the agent learns them from `incoming` and the media `hello`. |
 | `ping` | `t` (milliseconds since epoch) | Every 15 s. |
 | `status` | `mode` (`"ai"` / `"normal"`), `in_call` | The phone mode or the call state (ringing or active vs idle) changed. |
 | `set_mode_result` | `id`, `ok`, `mode`, `error` | Answer to `set_mode`. `mode` is the mode afterwards; `error` is empty on success, otherwise a code from [Normal phone mode](#normal-phone-mode). |
@@ -535,6 +581,9 @@ adb logcat -s CallAudioService BridgeClient AgentControlClient TelephonyUplink V
 | The agent receives only silence | Look for `VoiceCallCapture` in the log. The `maxRms` value stays near zero if the device does not deliver call audio to the `VOICE_DOWNLINK` / `VOICE_CALL` sources. On Pixels the level is low by design (the earpiece volume is at minimum) and the agent is expected to amplify it. |
 | The phone does not answer at all | The phone is in normal phone mode (**AI answers my calls** is off), the service is stopped, the app lacks `ANSWER_PHONE_CALLS`, or the agent was not reachable: without a control connection within 12 seconds the app does not answer (log: `agent not ready`) and the carrier takes the call as missed or to voicemail. |
 | A call ends by itself after a few seconds of silence | The media connection to the agent dropped (log: `media connection lost`). The app ends the call when it is not back within 3 seconds. |
+| A text from the agent is not sent | Look for `SmsSender` in the log. `no_permission`: the module did not grant `SEND_SMS` (reboot, or switch to AI mode once); `no_service` / `radio_off` / `generic_failure`: no signal, airplane mode, or the carrier refused it (for example a prepaid SIM without credit). |
+| The agent's call-back or errand never dials | The phone was ringing or on a call (`place_call_failed` with `busy`; the agent retries later), or it is in normal phone mode, where the agent sends no calls. Look for `OutboundCallHelper` in the log. |
+| An errand call is hung up the moment it connects | It went out on another SIM than the one the agent asked for (`wrong_sim`), usually because a SIM was swapped. Call the phone once so the agent learns its SIMs again. |
 | The module made the phone fail to boot | Use the root manager's safe mode, or create `/data/adb/modules/pixelcallai_uplink/disable` from recovery, then reboot. |
 
 ## Legal

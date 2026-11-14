@@ -7,6 +7,24 @@ AI's voice into the call. It does no AI work itself.
 Everything about building the app, its permissions and its protocol is in
 [`android/README.md`](../../android/README.md). This page is the user's view.
 
+This page describes **Bageo 1.0**: the app `1.0.0` (versionCode 28) inside the
+root module `v1.0.0` (versionCode 20), installed from
+`pixelcallai_uplink-1.0.0.zip`. The app's version is shown on its
+*Advanced* screen and on the web console's *System → Phones*.
+
+## What the phone does
+
+| Job | How |
+|---|---|
+| Answers incoming calls without a sound | It lets the call ring for the time the agent asks (3 s by default), picks up silently, sends the caller's voice to the agent and plays the AI's voice into the call. Nobody near the phone hears either side. |
+| Switches between **AI answers my calls** and **Normal phone** | One switch in the app, or one button in the web console. The module's root helper changes the system settings, so the app itself needs no root permission. See [Normal phone mode](#normal-phone-mode). |
+| Leaves your own calls alone | A call you dial by hand on the phone gets no AI, and its microphone and earpiece work normally; the phone goes back to silent when it ends. |
+| Texts callers for you | When you accept or decline an appointment and the reply is a text, the phone that took the call sends it from its own number (`send_sms`). |
+| Places calls for the agent | The AI call-back with your answer to an appointment, and AI errands you start from the web console's *Errands* page (`place_call`). |
+| Uses the right SIM | On a dual-SIM phone, texts and outgoing calls go out from the SIM the agent names by its Android subscription id (`sub_id`): the SIM the original call came in on, or for an errand a SIM of the number's country. |
+| Handles call waiting | One call at a time: a second call that rings during a call is declined at once (the caller gets busy) and reported to the agent (`call_waiting_rejected`), which lists it and sends a "📵" notification. |
+| Fails safe | No agent while it rings: it does not answer, and the carrier treats the call as missed. The connection to the agent lost for 3 seconds during a call: it hangs up instead of leaving the caller in silence. |
+
 ## Which phones
 
 - **Tested: Google Pixel 7, 7a, 8 and 9**, rooted with Magisk or KernelSU.
@@ -47,6 +65,7 @@ console (see [Normal phone mode](#normal-phone-mode)) and undone for good (see
 2. If you ever installed the app as a normal APK, uninstall it. Never have both.
 3. Copy `pixelcallai_uplink-<version>.zip` to the phone, open the Magisk or
    KernelSU app → *Modules* → *Install from storage* → pick the zip → reboot.
+   For this release the file is `pixelcallai_uplink-1.0.0.zip`.
 4. Open **Bageo**. The card at the top says in one sentence what the phone does
    right now. Below it, **Setup steps** lists what is still missing, each step
    with a button:
@@ -64,7 +83,21 @@ console (see [Normal phone mode](#normal-phone-mode)) and undone for good (see
    folds away, and once the phone is connected to the computer the card says
    *The AI is answering your calls*. The connection address, the connection
    test and the detailed checks are under **Advanced**.
+
+   The permission to send texts (`SEND_SMS`) is granted by the module at boot
+   and whenever the phone switches to AI mode, so the setup screen does not ask
+   for it. On a dual-SIM phone each SIM is picked by its subscription id, never
+   by its own number, so no extra permission is needed.
 5. Leave **AI answers my calls** on.
+
+### Updating
+
+Install the new zip over the old module the same way (*Install from storage*)
+and reboot. The mode you chose, the connection address and the app's
+permissions are kept. Releases from this repository are signed with the
+project's own key, so one installs over the other; if you switch between a
+release and a build of your own, remove the module and reboot first (see
+[`android/README.md`](../../android/README.md#build)).
 
 ## Connect it to the computer
 
@@ -108,14 +141,24 @@ USB.
   switch off *AI answers calls* in the web console (calls are then picked up
   and hung up).
 - A call you dial yourself on the phone is left alone: no AI, and the microphone
-  and earpiece work normally for it.
-- One call at a time: a second call that rings during a call is declined at once,
-  and the agent is told about it.
+  and earpiece work normally for it. Only calls the agent asked for (AI
+  call-backs and errands) and incoming calls get the AI.
+- One call at a time: a second call that rings during a call is declined at
+  once; the call list shows it and you get a "📵 Missed while on another call"
+  notification.
+- While the phone is ringing or on a call it does not dial: an AI call-back or
+  errand waits for it (an errand up to 10 minutes) instead of interrupting.
 - If the computer cannot be reached when a call rings, the phone does not answer;
   the call goes to your carrier's missed call or voicemail. If the connection to
   the computer drops during a call for more than 3 seconds, the phone hangs up
   instead of leaving the caller in silence.
-- With two SIMs, the agent knows which SIM each call came in on.
+- With two SIMs, the agent knows which SIM each call came in on, uses it for
+  the opening language (*Main language for each SIM*), and answers texts and
+  call-backs from the same SIM.
+- AI errands need to know the phone's SIMs, which the agent learns from the
+  calls the phone reports. A newly set-up phone can take an errand once it has
+  taken one call; until then the console says *This phone hasn't taken a call
+  yet*.
 - The **Open the web console** button in the app appears once the agent has a
   console address: *Address of this console* in the settings, or, when that is
   empty and the console is open to your network, the computer's LAN address.

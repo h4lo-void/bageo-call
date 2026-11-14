@@ -231,6 +231,8 @@ const CALLING_CODE_LANGS: &[(&str, Lang)] = &[
     ("61", Lang::En),
     ("64", Lang::En),
     ("353", Lang::En),
+    // Singapore
+    ("65", Lang::En),
     ("81", Lang::Ja),
     ("82", Lang::Ko),
     // Spain, Mexico, Argentina, Colombia, Chile, Peru, Venezuela
@@ -292,6 +294,7 @@ const COUNTRY_LANGS: &[(&str, Lang)] = &[
     ("gg", Lang::En),
     ("im", Lang::En),
     ("je", Lang::En),
+    ("sg", Lang::En),
     // English-speaking members of the North American plan (+1).
     ("ag", Lang::En),
     ("ai", Lang::En),
@@ -1596,6 +1599,10 @@ static ES: Phrases = Phrases {
         ("gratis", 1), ("tarifa", 1), ("encuesta", 1), ("compañía", 1), ("luz", 1), ("fibra", 1),
         ("demostración", 2), ("prueba gratuita", 2), ("nuestra plataforma", 2), ("nuestro producto", 2),
         ("cuenta", 1), ("banco", 1), ("atención al cliente", 1), ("asesor", 1),
+        // Fake bank / card centre: go to an ATM to stop instalments, a frozen account.
+        ("cajero", 2), ("cajero automático", 2), ("cajero automatico", 2), ("cuotas", 2),
+        ("plan de pagos", 2), ("mensualidades", 2), ("cargo recurrente", 2), ("cargos automáticos", 2),
+        ("cuenta bloqueada", 2), ("cuenta congelada", 2), ("desbloquear", 2),
     ],
     own_matter: &["su reclamación", "su consulta", "su solicitud", "su incidencia", "su queja", "devolver su llamada"],
 };
@@ -2926,6 +2933,7 @@ mod tests {
         assert_eq!(country_lang("us"), Some(Lang::En));
         assert_eq!(country_lang(" CA "), Some(Lang::En));
         assert_eq!(country_lang("jm"), Some(Lang::En));
+        assert_eq!(country_lang("sg"), Some(Lang::En));
         assert_eq!(country_lang("pr"), Some(Lang::Es));
         assert_eq!(country_lang("mx"), Some(Lang::Es));
         assert_eq!(country_lang("jp"), Some(Lang::Ja));
@@ -2957,6 +2965,7 @@ mod tests {
         assert_eq!(calling_code_lang("+1 202-555-0143"), Some(Lang::En));
         assert_eq!(calling_code_lang("+447700900123"), Some(Lang::En));
         assert_eq!(calling_code_lang("+353871234567"), Some(Lang::En));
+        assert_eq!(calling_code_lang("+65 9123 4567"), Some(Lang::En));
         assert_eq!(calling_code_lang("+351912345678"), Some(Lang::Pt));
         assert_eq!(calling_code_lang("+5511912345678"), Some(Lang::Pt));
         assert_eq!(calling_code_lang("+5215512345678"), Some(Lang::Es));

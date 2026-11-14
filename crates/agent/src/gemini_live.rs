@@ -1237,6 +1237,9 @@ const CALLBACK_RING_MAX: Duration = Duration::from_secs(70);
 /// this much of their voice is on the line, in runs of at least
 /// `LOCAL_MIN_VOICE_MS` (a click or a breath is none)…
 const CALLBACK_CALLEE_VOICE_MS: u32 = 400;
+/// Before pickup there is no transcript yet, and a crisp 「喂？」 or "Hello?" is
+/// often ~250–300 ms followed by silence; ringback tones are filtered separately.
+const CALLBACK_PICKUP_VOICE_MS: u32 = LOCAL_MIN_VOICE_MS;
 /// …or this much when their words ask to hear it again (「什麼？」, "Sorry?").
 const CALLBACK_CALLEE_ASK_VOICE_MS: u32 = LOCAL_MIN_VOICE_MS;
 /// Their voice and their words count together only this close: a quiet line
@@ -1389,7 +1392,7 @@ impl CalleeHeard {
             return;
         }
         if self.voice_only {
-            self.spoke = self.voice_ms >= CALLBACK_CALLEE_VOICE_MS;
+            self.spoke = self.voice_ms >= CALLBACK_PICKUP_VOICE_MS;
             return;
         }
         if !callee_said_words(&self.words) {
@@ -7025,7 +7028,11 @@ pub async fn run_session(
                             &mut silence_ms,
                         );
                         if cb_once {
-                            cb_floor.line_frame(&pcm16, is_voice, frame_ms);
+                            let cb_voiced = is_voice
+                                || (!cb_floor.picked
+                                    && frame_voice
+                                    && delivered_bytes.load(Ordering::Relaxed) == 0);
+                            cb_floor.line_frame(&pcm16, cb_voiced, frame_ms);
                         }
                         // Caller already talking when our reply started (or local VAD
                         // mode): stop our playback like a person who gets interrupted
@@ -7598,6 +7605,29 @@ mod tests {
         assert_eq!(serde_json::from_str::<Value>(&cue).unwrap()["clientContent"]["turnComplete"], json!(true));
         assert!(f.pickup().is_none());
         assert!(f.turn_may_open() && f.line_audio(true) && !f.line_audio(false));
+
+        // A crisp ~280 ms "Hello?" / 「喂？」 (7 x 40 ms < 400 ms) followed by silence
+        // also picks up, while a 120 ms click/breath does not.
+        let mut short = CallbackFloor::for_pickup();
+        for _ in 0..3 {
+            short.line_frame(&voicelike(640, at), true, 40);
+            at += 640;
+        }
+        for _ in 0..20 {
+            short.line_frame(&[0u8; 640], false, 40);
+            assert!(short.pickup().is_none(), "120 ms click must not pick up");
+        }
+        for _ in 0..7 {
+            short.line_frame(&voicelike(640, at), true, 40);
+            at += 640;
+            assert!(short.pickup().is_none());
+        }
+        let mut short_cue = None;
+        for _ in 0..16 {
+            short.line_frame(&[0u8; 640], false, 40);
+            short_cue = short_cue.or_else(|| short.pickup());
+        }
+        assert!(short_cue.is_some(), "280 ms Hello? + pause must pick up");
     }
 
     #[test]
@@ -7608,7 +7638,7 @@ mod tests {
         assert_eq!(dialogue_lang(d, Lang::ZhTw), Some(Lang::ZhTw));
         assert_eq!(dialogue_lang(d, Lang::ZhCn), Some(Lang::ZhCn));
         assert_eq!(dialogue_lang(d, Lang::En), Some(Lang::ZhTw));
-        let en = "接聽：喂？\n對方：Hi, is this Mr. Ying? I would like to book a table for Sunday.\n接聽：Sure, Sunday at noon works for me, I will check and get back to you.";
+        let en = "接聽：喂？\n對方：Hi, is this Mr. Lin? I would like to book a table for Sunday.\n接聽：Sure, Sunday at noon works for me, I will check and get back to you.";
         assert_eq!(dialogue_lang(en, Lang::ZhTw), Some(Lang::En));
         assert_eq!(dialogue_lang("接聽：はい、日曜日の十二時で大丈夫です。", Lang::ZhTw), Some(Lang::Ja));
         assert_eq!(dialogue_lang("接聽：네, 일요일 열두 시 괜찮습니다.", Lang::ZhTw), Some(Lang::Ko));
@@ -8431,6 +8461,31 @@ mod tests {
         s += stall_score_add("繳款有中斷一段時間欸。沒有,我是想說你安信的賬戶有在。流動齁。", &mut hits);
         assert!(stall_engages(s, &hits), "{s} {hits:?}");
         assert!(hits.contains(&"帳戶") && hits.contains(&"繳款"));
+    }
+
+    #[test]
+    fn a_spanish_fake_bank_sending_the_caller_to_an_atm_engages_stalling() {
+        // Two lines of a fake bank: go to the ATM to stop the instalments.
+        let mut hits = Vec::new();
+        let s = stall_score_add("Vaya al cajero automático para cancelar las cuotas.", &mut hits);
+        assert!(s >= STALL_SCORE_THRESHOLD && stall_engages(s, &hits), "{s} {hits:?}");
+        assert!(hits.contains(&"cajero automático") && hits.contains(&"cuotas"), "{hits:?}");
+        assert!(!hits.contains(&"cajero"), "the longer phrase counts once: {hits:?}");
+        // The same as speech-to-text writes it without accents, and a frozen account.
+        for t in [
+            "le llamamos del banco, tiene un cargo recurrente, vaya al cajero automatico",
+            "su cuenta bloqueada tiene un plan de pagos, para desbloquear vaya al cajero",
+            "su cuenta congelada tiene mensualidades y cargos automáticos pendientes",
+        ] {
+            let mut hits = Vec::new();
+            let s = stall_score_add(t, &mut hits);
+            assert!(s >= STALL_SCORE_THRESHOLD && stall_engages(s, &hits), "{t} {s} {hits:?}");
+            assert!(hits.iter().any(|h| stall_keyword_weight(h) >= STALL_STRONG_WEIGHT), "{t} {hits:?}");
+        }
+        // An ordinary Spanish call stays below.
+        let mut hits = Vec::new();
+        let s = stall_score_add("Hola, soy Marta, ¿comemos mañana a las dos?", &mut hits);
+        assert!(s < STALL_SCORE_THRESHOLD, "{s} {hits:?}");
     }
 
     #[test]
