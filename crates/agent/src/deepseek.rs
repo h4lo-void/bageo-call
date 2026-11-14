@@ -1024,6 +1024,374 @@ fn build_summary_input_en(
     s
 }
 
+// ---------------------------------------------------------------------------
+// Dialogue translation: after the call, the lines said in another language
+// than the owner's get a translation into it (one request, the summary's
+// service), shown under each line in the web record.
+
+/// Lines and characters sent for translation, from the start of the call (a
+/// stalled sales call can run for half an hour).
+const TRANSLATE_MAX_LINES: usize = 120;
+const TRANSLATE_MAX_CHARS: usize = 8_000;
+
+/// Which writing a line is mostly in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LineScript {
+    /// Chinese characters, no kana.
+    Han,
+    /// Kana, with or without kanji.
+    Japanese,
+    Hangul,
+    Latin,
+    /// Cyrillic, Thai, Arabic and the rest: none of the owner's languages.
+    Other,
+}
+
+/// How much of a line is in each writing: Chinese characters, kana and hangul
+/// one each, words of the alphabets one each (Thai and the other scripts
+/// written without spaces: three letters a word).
+#[derive(Debug, Default, Clone, Copy)]
+struct ScriptCount {
+    han: usize,
+    kana: usize,
+    hangul: usize,
+    latin_words: usize,
+    other_words: usize,
+}
+
+fn is_han(c: char) -> bool {
+    ('\u{4e00}'..='\u{9fff}').contains(&c)
+        || ('\u{3400}'..='\u{4dbf}').contains(&c)
+        || ('\u{f900}'..='\u{faff}').contains(&c)
+}
+
+fn is_kana(c: char) -> bool {
+    ('\u{3040}'..='\u{30ff}').contains(&c)
+        || ('\u{31f0}'..='\u{31ff}').contains(&c)
+        || ('\u{ff66}'..='\u{ff9f}').contains(&c)
+}
+
+fn is_hangul(c: char) -> bool {
+    ('\u{ac00}'..='\u{d7af}').contains(&c)
+        || ('\u{1100}'..='\u{11ff}').contains(&c)
+        || ('\u{3130}'..='\u{318f}').contains(&c)
+}
+
+fn is_latin_letter(c: char) -> bool {
+    c.is_ascii_alphabetic()
+        || (c.is_alphabetic() && (('\u{00c0}'..='\u{024f}').contains(&c) || ('\u{1e00}'..='\u{1eff}').contains(&c)))
+}
+
+/// Thai, Lao, Myanmar, Khmer: written without spaces between words.
+fn is_unspaced_script(c: char) -> bool {
+    ('\u{0e00}'..='\u{0eff}').contains(&c)
+        || ('\u{1000}'..='\u{109f}').contains(&c)
+        || ('\u{1780}'..='\u{17ff}').contains(&c)
+}
+
+fn count_scripts(text: &str) -> ScriptCount {
+    let mut n = ScriptCount::default();
+    let mut unspaced = 0usize;
+    // The word being read: Some(true) Latin, Some(false) another alphabet.
+    let mut word: Option<bool> = None;
+    let chars: Vec<char> = text.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
+        if is_han(c) {
+            n.han += 1;
+        } else if is_kana(c) {
+            n.kana += 1;
+        } else if is_hangul(c) {
+            n.hangul += 1;
+        } else if is_unspaced_script(c) {
+            unspaced += 1;
+        } else if c.is_alphabetic() {
+            let latin = is_latin_letter(c);
+            if word != Some(latin) {
+                if latin {
+                    n.latin_words += 1;
+                } else {
+                    n.other_words += 1;
+                }
+                word = Some(latin);
+            }
+            continue;
+        } else if matches!(c, '\'' | '’') && word.is_some() && chars.get(i + 1).is_some_and(|x| x.is_alphabetic()) {
+            // it's, l'agent, d'accord: one word.
+            continue;
+        }
+        word = None;
+    }
+    n.other_words += unspaced.div_ceil(3);
+    n
+}
+
+/// Common short words of the Latin-script languages, to tell them apart.
+fn latin_function_words(lang: Lang) -> &'static [&'static str] {
+    match lang {
+        Lang::En => &[
+            "the", "and", "is", "are", "was", "you", "your", "i", "i'm", "it", "it's", "to", "of", "for", "with",
+            "this", "that", "what", "do", "does", "have", "has", "can", "will", "my", "me", "we", "be", "not",
+            "just", "hello", "hi", "yes", "thanks", "thank", "please", "okay", "sure", "there", "here", "at",
+            "from", "would", "could", "should", "about", "if", "or", "but", "how", "when", "where", "who", "why",
+            "get", "got", "good", "bye", "tonight", "today", "tomorrow", "speak", "call", "don't",
+        ],
+        Lang::Es => &[
+            "el", "la", "los", "las", "que", "de", "y", "es", "usted", "para", "por", "con", "no", "un", "una",
+            "hola", "gracias", "sí", "qué", "está", "estoy", "muy", "bien", "pero", "como", "cómo", "mi", "su",
+            "lo", "le", "se", "del", "al", "buenos", "días", "mañana", "hoy", "señor", "señora", "vale", "claro",
+            "puedo", "puede", "tengo", "tiene", "hay", "habla", "llamo", "quiero",
+        ],
+        Lang::Fr => &[
+            "le", "la", "les", "de", "des", "et", "est", "vous", "je", "pas", "que", "un", "une", "pour", "avec",
+            "bonjour", "merci", "oui", "c'est", "ce", "il", "elle", "nous", "mais", "du", "au", "aux", "sur",
+            "dans", "ne", "mon", "votre", "très", "bien", "bonsoir", "monsieur", "madame", "d'accord", "demain",
+            "aujourd'hui", "ça", "j'ai", "suis", "je suis", "allô", "qui",
+        ],
+        Lang::De => &[
+            "der", "die", "das", "und", "ist", "sie", "ich", "nicht", "ein", "eine", "zu", "mit", "für", "guten",
+            "tag", "danke", "ja", "bitte", "haben", "wir", "auf", "den", "dem", "es", "sind", "bin", "wie", "was",
+            "aber", "oder", "morgen", "heute", "herr", "frau", "schön", "gut", "hallo", "tschüss", "noch", "auch",
+            "kann", "können", "ihre", "ihnen",
+        ],
+        Lang::Pt => &[
+            "o", "os", "as", "que", "de", "e", "é", "você", "para", "com", "não", "um", "uma", "olá", "obrigado",
+            "obrigada", "sim", "está", "estou", "por", "do", "da", "dos", "das", "no", "na", "meu", "minha", "seu",
+            "sua", "mas", "como", "bom", "dia", "tarde", "noite", "amanhã", "hoje", "senhor", "senhora", "tudo",
+            "bem", "tchau", "então", "aqui",
+        ],
+        _ => &[],
+    }
+}
+
+/// A Latin-script line reads as another of the Latin-script languages than
+/// `owner`: one of them has at least two of its common words in it, more than
+/// the owner's language has.
+fn latin_line_in_other_language(text: &str, owner: Lang) -> bool {
+    let words: Vec<String> = text
+        .split(|c: char| !(c.is_alphabetic() || c == '\'' || c == '’'))
+        .map(|w| w.trim_matches(|c| c == '\'' || c == '’').replace('’', "'").to_lowercase())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let hits = |l: Lang| {
+        let list = latin_function_words(l);
+        words.iter().filter(|w| list.contains(&w.as_str())).count()
+    };
+    let own = hits(owner);
+    [Lang::En, Lang::Es, Lang::Fr, Lang::De, Lang::Pt]
+        .into_iter()
+        .filter(|l| *l != owner)
+        .any(|l| {
+            let n = hits(l);
+            n >= 2 && n > own
+        })
+}
+
+/// A line of the dialogue is in another language than `owner` and long enough
+/// to translate. Told by its letters (Chinese characters, kana, hangul, Latin
+/// words — which Latin-script language by its common words — or anything
+/// else). Short lines are left as they are: "OK", "Hello?", 「もしもし」, a name
+/// read the same to anyone. Mixed lines go by what most of the line is in
+/// (「我是 Tom」 is Chinese).
+pub fn needs_translation(text: &str, owner: Lang) -> bool {
+    let n = count_scripts(text);
+    let japanese = n.kana > 0;
+    let sizes = [
+        (LineScript::Han, if japanese { 0 } else { n.han }),
+        (LineScript::Japanese, if japanese { n.han + n.kana } else { 0 }),
+        (LineScript::Hangul, n.hangul),
+        (LineScript::Latin, n.latin_words),
+        (LineScript::Other, n.other_words),
+    ];
+    let Some(&(script, size)) = sizes.iter().filter(|(_, s)| *s > 0).max_by_key(|(_, s)| *s) else {
+        return false;
+    };
+    let short = match script {
+        LineScript::Latin | LineScript::Other => size < 3,
+        _ => size < 5,
+    };
+    if short {
+        return false;
+    }
+    let own = match owner {
+        Lang::ZhTw | Lang::ZhCn => LineScript::Han,
+        Lang::Ja => LineScript::Japanese,
+        Lang::Ko => LineScript::Hangul,
+        _ => LineScript::Latin,
+    };
+    let own_size = sizes.iter().find(|(s, _)| *s == own).map_or(0, |(_, s)| *s);
+    if own_size < size {
+        return true;
+    }
+    own == LineScript::Latin && latin_line_in_other_language(text, owner)
+}
+
+/// The lines of a dialogue (`對方：` / `接聽：`, one per speaker run:
+/// [`crate::gemini_live::merge_dialogue_fragments`]) to translate for `owner`:
+/// the line's index and its words. From the start, at most
+/// [`TRANSLATE_MAX_LINES`] lines and [`TRANSLATE_MAX_CHARS`] characters.
+pub fn lines_to_translate(dialogue: &str, owner: Lang) -> Vec<(usize, String)> {
+    let mut out: Vec<(usize, String)> = Vec::new();
+    let mut chars = 0usize;
+    for (i, line) in dialogue.lines().enumerate() {
+        let Some((label, text)) = line.split_once('：') else {
+            continue;
+        };
+        if !matches!(label.trim(), "對方" | "接聽") {
+            continue;
+        }
+        let text = text.trim();
+        if !needs_translation(text, owner) {
+            continue;
+        }
+        let len = text.chars().count();
+        if out.len() >= TRANSLATE_MAX_LINES || chars + len > TRANSLATE_MAX_CHARS {
+            break;
+        }
+        chars += len;
+        out.push((i, text.to_string()));
+    }
+    out
+}
+
+fn translate_system_prompt(owner: Lang) -> String {
+    let name = locale::phrases(owner).name_en;
+    format!(
+        "You translate lines of a phone call transcript into {name}.\n\
+         The user message is a JSON array of objects {{\"i\": number, \"t\": text}}, one per line.\n\
+         Reply with only a JSON array of objects {{\"i\": the same number, \"t\": the translation}}, \
+         one for every line, in the same order. No other text.\n\
+         Translate each line on its own, faithfully and naturally, as words spoken on the phone. \
+         Keep names, numbers, amounts and times as they are. Do not add notes; do not merge, split \
+         or leave out lines."
+    )
+}
+
+fn translate_request(asked: &[(usize, String)]) -> String {
+    Value::Array(asked.iter().map(|(i, t)| json!({"i": i, "t": t})).collect()).to_string()
+}
+
+/// Room for the translations: about two tokens a character, and on Gemini
+/// (whose thinking takes from the same budget) 1500 more.
+fn translate_max_tokens(endpoint: &Endpoint, chars: usize) -> u32 {
+    let base = (300 + chars * 2).min(8_000) as u32;
+    if is_gemini(endpoint) {
+        base + 1_500
+    } else {
+        base
+    }
+}
+
+/// Keep one translation of a line asked for: not empty, not the line itself
+/// (the model copied it), the first one for its index.
+fn keep_translation(out: &mut Vec<(usize, String)>, asked: &[(usize, String)], i: usize, t: &str) {
+    let Some((_, src)) = asked.iter().find(|(a, _)| *a == i) else {
+        return;
+    };
+    let t = t.trim();
+    if t.is_empty() || t == src.trim() || out.iter().any(|(j, _)| *j == i) {
+        return;
+    }
+    out.push((i, t.to_string()));
+}
+
+/// The model's answer as (line index, translation) for the lines asked
+/// (`asked`: [`lines_to_translate`]). Objects `{"i", "t"}` go by their index; a
+/// bare array of strings only when it has one per line asked. A code fence or
+/// words around the array are skipped. `None` when nothing usable came back.
+pub fn parse_translations(reply: &str, asked: &[(usize, String)]) -> Option<Vec<(usize, String)>> {
+    let start = reply.find('[')?;
+    let end = reply.rfind(']')?;
+    if end <= start {
+        return None;
+    }
+    let items: Vec<Value> = serde_json::from_str(&reply[start..=end]).ok()?;
+    let mut out: Vec<(usize, String)> = Vec::new();
+    if !items.is_empty() && items.iter().all(Value::is_string) {
+        if items.len() != asked.len() {
+            return None;
+        }
+        for ((i, _), v) in asked.iter().zip(&items) {
+            keep_translation(&mut out, asked, *i, v.as_str().unwrap_or(""));
+        }
+    } else {
+        for v in &items {
+            let i = v.get("i").and_then(|x| {
+                x.as_u64()
+                    .or_else(|| x.as_str().and_then(|s| s.trim().parse().ok()))
+            });
+            let t = ["t", "text", "translation"]
+                .iter()
+                .find_map(|k| v.get(*k).and_then(Value::as_str));
+            if let (Some(i), Some(t)) = (i, t) {
+                keep_translation(&mut out, asked, i as usize, t);
+            }
+        }
+    }
+    out.sort_by_key(|(i, _)| *i);
+    (!out.is_empty()).then_some(out)
+}
+
+/// Translations as one entry per line of a dialogue of `lines` lines, what the
+/// call record keeps ([`crate::calls::CallNotes::dialogue_translations`]):
+/// empty when there is none.
+pub fn translations_by_line(lines: usize, found: &[(usize, String)]) -> Vec<Option<String>> {
+    let mut v: Vec<Option<String>> = vec![None; lines];
+    for (i, t) in found {
+        if let Some(slot) = v.get_mut(*i) {
+            *slot = Some(t.clone());
+        }
+    }
+    if v.iter().all(Option::is_none) {
+        Vec::new()
+    } else {
+        v
+    }
+}
+
+/// The lines of `dialogue` said in another language than `owner`'s
+/// ([`needs_translation`]), translated into it in one request to the summary's
+/// service ([`summary_endpoint`], its models in order). One entry per line of
+/// `dialogue` (`None` = left as said). Empty when nothing needs translating,
+/// no service is set or none answered usably: the record then shows the lines
+/// as they were said, and the summary and notification do not wait on this.
+pub async fn translate_dialogue(http: &Client, settings: &Settings, dialogue: &str, owner: Lang) -> Vec<Option<String>> {
+    let asked = lines_to_translate(dialogue, owner);
+    if asked.is_empty() {
+        return Vec::new();
+    }
+    let Some(endpoint) = summary_endpoint(settings) else {
+        return Vec::new();
+    };
+    let system = translate_system_prompt(owner);
+    let user = translate_request(&asked);
+    let chars: usize = asked.iter().map(|(_, t)| t.chars().count()).sum();
+    let max_tokens = translate_max_tokens(&endpoint, chars);
+    for model in &endpoint.models {
+        match chat_at(http, &endpoint, model, &system, &user, max_tokens).await {
+            Ok(reply) => match parse_translations(&reply, &asked) {
+                Some(found) => {
+                    let found: Vec<(usize, String)> = found
+                        .into_iter()
+                        .map(|(i, t)| (i, locale::for_owner_in(owner, &t)))
+                        .collect();
+                    info!(
+                        "dialogue translated model={model} lines={} asked={}",
+                        found.len(),
+                        asked.len()
+                    );
+                    return translations_by_line(dialogue.lines().count(), &found);
+                }
+                None => warn!(
+                    "dialogue translation unreadable model={model} reply_chars={}",
+                    reply.chars().count()
+                ),
+            },
+            Err(e) => warn!("dialogue translation failed model={model}: {e:#}"),
+        }
+    }
+    Vec::new()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1441,5 +1809,157 @@ mod tests {
             let p = summary_system_prompt(l, "Alex");
             assert!(l.is_zh() || (p.contains(sales) && p.contains(scam) && !p.contains("{s_sales}")), "{l:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod translate_tests {
+    use super::*;
+
+    fn no_service() -> Settings {
+        let mut s = Settings::from_env();
+        s.summary_api_base = String::new();
+        s.summary_model = String::new();
+        s.deepseek_api_key = String::new();
+        s.openrouter_api_key = String::new();
+        s.trtc_llm_config = "".into();
+        s.gemini_api_key = "".into();
+        s
+    }
+
+    #[test]
+    fn foreign_lines_by_their_letters() {
+        let tw = Lang::ZhTw;
+        // The call this came from: English on a Taiwanese owner's record.
+        assert!(needs_translation("Hello. Do you speak English?", tw));
+        assert!(needs_translation(
+            "Should I leave it with the front desk, or do you want to come and get it tonight?",
+            tw
+        ));
+        // Short lines read the same to anyone.
+        for short in ["Hello?", "OK", "Hey Mike!", "Bye-bye.", "Goodbye.", "もしもし。", "여보세요?", "1234 5678", ""] {
+            assert!(!needs_translation(short, tw), "{short}");
+        }
+        // Chinese with an English name or brand in it is Chinese; Simplified too.
+        assert!(!needs_translation("嗨。我是Tom。我剛搬進你的大樓。", tw));
+        assert!(!needs_translation("我要訂 iPhone 15 Pro 兩支", tw));
+        assert!(!needs_translation("我这边是管理室，你有一个包裹", tw));
+        // Japanese (kanji or not), Korean, Russian are other languages.
+        assert!(needs_translation("土曜日のハイキング、日曜日に変更になったよ。", tw));
+        assert!(needs_translation("그럼 경비실에 맡겨 둘게요", tw));
+        assert!(needs_translation("Здравствуйте, это служба доставки", tw));
+        // A Japanese owner: Chinese is foreign, Japanese is not.
+        assert!(needs_translation("你好，我這邊是黑貓宅急便。", Lang::Ja));
+        assert!(!needs_translation("土曜日のハイキング、日曜日に変更になったよ。", Lang::Ja));
+        // An English owner: Chinese and Spanish are foreign, English is not.
+        assert!(!needs_translation("Should I leave it with the front desk?", Lang::En));
+        assert!(needs_translation("你好，我這邊是黑貓宅急便。", Lang::En));
+        assert!(needs_translation("Hola, buenos días, ¿está el señor Wang?", Lang::En));
+        assert!(!needs_translation("Gracias", Lang::En));
+        // A Spanish owner reads Spanish, not English; German for a French owner.
+        assert!(needs_translation("Should I leave it with the front desk?", Lang::Es));
+        assert!(!needs_translation("Hola, buenos días, ¿está el señor Wang?", Lang::Es));
+        assert!(!needs_translation("Guten Tag, ich rufe wegen Ihrer Bestellung an.", Lang::De));
+        assert!(needs_translation("Guten Tag, ich rufe wegen Ihrer Bestellung an.", Lang::Fr));
+        // Latin words that tell no language apart: left as they are.
+        assert!(!needs_translation("Maple Family Clinic", Lang::En));
+    }
+
+    #[test]
+    fn translations_go_back_to_their_lines() {
+        let dialogue = "接聽：Hello?\n對方：Hello. Do you speak English?\n接聽：Yes, I do. What can I do for you?\n對方：好，那我放管理室了。\n對方：Okay, sounds good. Thanks. Bye.";
+        let asked = lines_to_translate(dialogue, Lang::ZhTw);
+        assert_eq!(asked.iter().map(|(i, _)| *i).collect::<Vec<_>>(), vec![1, 2, 4]);
+        assert_eq!(asked[0].1, "Hello. Do you speak English?");
+        let req: Value = serde_json::from_str(&translate_request(&asked)).unwrap();
+        assert_eq!(req[0], json!({"i": 1, "t": "Hello. Do you speak English?"}));
+        assert!(translate_system_prompt(Lang::ZhTw).contains("Traditional Chinese (Taiwan Mandarin)"));
+        // By index, in any order, in a code fence; an index not asked is dropped.
+        let reply = "```json\n[{\"i\": 4, \"t\": \"好，聽起來不錯。謝謝，掰掰。\"}, {\"i\": 1, \"t\": \"你好，你會說英文嗎？\"}, {\"i\": \"2\", \"text\": \"會，有什麼事嗎？\"}, {\"i\": 9, \"t\": \"沒問的\"}]\n```";
+        let found = parse_translations(reply, &asked).unwrap();
+        assert_eq!(
+            found,
+            vec![
+                (1, "你好，你會說英文嗎？".to_string()),
+                (2, "會，有什麼事嗎？".to_string()),
+                (4, "好，聽起來不錯。謝謝，掰掰。".to_string()),
+            ]
+        );
+        let by_line = translations_by_line(dialogue.lines().count(), &found);
+        assert_eq!(by_line.len(), 5);
+        assert_eq!(by_line[0], None);
+        assert_eq!(by_line[1].as_deref(), Some("你好，你會說英文嗎？"));
+        assert_eq!(by_line[3], None);
+        // A bare array of strings counts only with one per line asked.
+        let plain = "[\"你好，你會說英文嗎？\", \"會，有什麼事嗎？\", \"好，掰掰。\"]";
+        assert_eq!(parse_translations(plain, &asked).unwrap().len(), 3);
+        assert!(parse_translations("[\"你好\", \"會\"]", &asked).is_none());
+        // A line copied as it was, or left empty, is no translation.
+        let copied = "[{\"i\":1,\"t\":\"Hello. Do you speak English?\"},{\"i\":2,\"t\":\" \"}]";
+        assert!(parse_translations(copied, &asked).is_none());
+        for bad in ["Sorry, I cannot help with that.", "[{\"i\": 1}", "{\"i\": 1, \"t\": \"x\"}", "[]"] {
+            assert!(parse_translations(bad, &asked).is_none(), "{bad}");
+        }
+        assert!(translations_by_line(5, &[]).is_empty());
+        assert!(translations_by_line(2, &[(7, "x".into())]).is_empty());
+        // Nothing in another language: nothing to ask.
+        assert!(lines_to_translate("對方：好，那我放管理室了。\n接聽：好，謝謝，掰掰。", Lang::ZhTw).is_empty());
+    }
+
+    #[tokio::test]
+    async fn one_request_and_the_owners_script() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let dialogue = "接聽：Hello?\n對方：Hello. Do you speak English?\n接聽：Yes, I do. What can I do for you?";
+        // No service set: nothing, and the record shows the lines as said.
+        assert!(translate_dialogue(&Client::new(), &no_service(), dialogue, Lang::ZhTw).await.is_empty());
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf: Vec<u8> = Vec::new();
+            let mut chunk = [0u8; 8192];
+            loop {
+                let n = sock.read(&mut chunk).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                buf.extend_from_slice(&chunk[..n]);
+                let text = String::from_utf8_lossy(&buf).to_string();
+                if let Some(head) = text.find("\r\n\r\n") {
+                    let len = text[..head]
+                        .lines()
+                        .find_map(|l| {
+                            let l = l.to_ascii_lowercase();
+                            l.strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                        })
+                        .unwrap_or(0);
+                    if buf.len() >= head + 4 + len {
+                        break;
+                    }
+                }
+            }
+            // The model answers in Simplified Chinese.
+            let answer = json!([{"i": 1, "t": "你好，你会说英文吗？"}, {"i": 2, "t": "会，有什么事吗？"}]).to_string();
+            let body = json!({"choices": [{"message": {"content": answer}}]}).to_string();
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            sock.write_all(resp.as_bytes()).await.unwrap();
+            String::from_utf8_lossy(&buf).to_string()
+        });
+        let mut s = no_service();
+        s.summary_api_base = format!("http://127.0.0.1:{port}/v1");
+        s.summary_model = "local-model".into();
+        let out = translate_dialogue(&Client::new(), &s, dialogue, Lang::ZhTw).await;
+        // One entry per line, the short "Hello?" left alone, Taiwan's script.
+        assert_eq!(
+            out,
+            vec![None, Some("你好，你會說英文嗎？".to_string()), Some("會，有什麼事嗎？".to_string())]
+        );
+        let request = server.await.unwrap();
+        assert!(request.starts_with("POST /v1/chat/completions "), "{request}");
+        assert!(request.contains("local-model") && request.contains("Hello. Do you speak English?"), "{request}");
     }
 }

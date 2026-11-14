@@ -21,8 +21,8 @@ X-Calls-Token: <token>
 | 方法與路徑 | 內容 |
 |---|---|
 | `GET /calls/api/list` | 通話紀錄，最新的在前。查詢參數：`limit`、`offset`、`q`（對號碼、手機、事件、逐字稿做文字搜尋）、`caller`、`serial`、`status`、`has_transcript`。回應：`{ok, calls: [...], total, limit, offset}`。 |
-| `GET /calls/api/call/{id}` | 單一通話：`{ok, call, notes, calendar_link}`。`notes`（摘要寫好之前是 null）包含 `summary`、`dialogue`、`end_hint`、`source`、`updated_at`，通話中講定了日期時還有 `calendar` = `{title, start, end, all_day}`（當地時間，`YYYY-MM-DDTHH:MM`）。 |
-| `GET /calls/api/call/{id}/event.ics` | 行事曆建議，iCalendar 檔案格式。該通話沒有建議時回 `404`。 |
+| `GET /calls/api/call/{id}` | 單一通話：`{ok, call, notes, calendar_link, calendar_links}`。`notes`（摘要寫好之前是 null）包含 `summary`、`dialogue`、`end_hint`、`source`、`updated_at`，通話中講定了日期時還有 `calendar` = `{title, start, end, all_day}`（當地時間，`YYYY-MM-DDTHH:MM`）。`calendar_links` = `{google, outlook, office365, yahoo}`：各網頁行事曆填好這個活動的「新增活動」表單（`calendar_link` 是 Google 那個，留給舊版用）。 |
+| `GET /calls/api/call/{id}/event.ics` | 行事曆建議，iCalendar 檔案格式。該通話沒有建議時回 `404`。用控制台 token 開，或用 `?k=<金鑰>`：通知裡的連結帶的是只能開這個檔案的金鑰，不是 token。 |
 | `GET /calls/api/audio/{id}/listen` | 你當時會聽到的整通電話（對方和 AI 混在一起），WAV，支援 range 請求。 |
 | `GET /calls/api/audio/{id}/remote` · `/tts` · `/audio/{id}` | 只有對方 · 只有 AI · 原始的混音錄音。 |
 | `GET /calls/api/live` | 進行中的通話和已連線的手機：`{ok, count, calls, control_idle_clients, control_idle_serials, normal_mode_serials}`。`normal_mode_serials` 是已連線、但切成一般手機的手機；網頁不把它們算進待命手機。 |
@@ -42,7 +42,8 @@ X-Calls-Token: <token>
 
 `PUT` 的規則：
 
-- 機密欄位（`gemini_api_key`、`deepseek_api_key`、`gcal_client_secret`、`gcal_refresh_token`）沒帶或是 `""` 時，保留原本儲存的值；`"<name>_clear": true` 則會清空它。
+- 機密欄位（`gemini_api_key`、`deepseek_api_key`）沒帶或是 `""` 時，保留原本儲存的值；`"<name>_clear": true` 則會清空它。
+- `calendar_app` 是 `google`、`outlook`、`office365`、`apple`、`yahoo`、`ics` 或空白（還沒選）；其他值存成空白。`appointment_reply` 是 `auto`、`sms` 或 `call`。舊版存的、這版已經沒有的欄位（Google 日曆憑證、`calendar_auto_add`）讀進來時忽略，下次存檔就不見。
 - `notify_channels` 是整個取代。一列 `{id, kind, name, enabled, url, token, target}` 的 `url` 或 `token` 是空的時，會保留 `id` 和 `kind` 相同的那一列原本儲存的值；沒有 `id` 的列是新增的；你沒列出來的列會被刪除。
 - `reject_numbers` 是一個 `{number, reason}` 的清單。
 
@@ -70,7 +71,7 @@ PUT /calls/api/settings
 
 ## 行程預約
 
-`appointment_mode` 設成 `confirm` 或 `auto` 時（見[設定](SETTINGS.md#摘要與行事曆)），對方跟 AI 約好時間的那通電話會留下一筆任務（`intent` 為 `appointment`），通話紀錄、它的 notes 和任務上都有一個 `appointment` 物件：
+`appointment_mode` 設成 `confirm` 時（見[設定](SETTINGS.md#摘要與行事曆)；舊版存的 `auto` 當作 `confirm`），對方跟 AI 約好時間的那通電話會留下一筆任務（`intent` 為 `appointment`），通話紀錄、它的 notes 和任務上都有一個 `appointment` 物件：
 
 ```json
 {
@@ -81,13 +82,41 @@ PUT /calls/api/settings
 }
 ```
 
-時間是當地時間（`TZ`）。`status`：`pending`（等你決定）、`booked`（通話中已寫進日曆）、`confirmed`、`declined`。`event_id`：寫進 Google 日曆後的活動 ID。`auto_error`：「有空直接答應」沒能排入的原因。`replaced`：同一通電話裡先前已寫進日曆、後來改掉的時間。`sms`：`sent`，或簡訊沒傳出的原因（`offline`、`old_app`、`timeout`、`busy`、`no_number`，或手機回的錯誤代碼）。`tag`：這通電話在它寫進日曆的活動上留的記號（見下句）。`tg_card`：發給這筆預約的 Telegram 卡片 `{chat_id, message_id}`，在別處決定後用來拿掉卡片上的按鈕。空的欄位不會出現。主程式寫進日曆的活動都帶私有擴充屬性 `bageo_call=<appointment.tag>`，寫入時沒收到回應的那筆之後找得回來，不會寫兩次。
+時間是當地時間（`TZ`）。`status`：`pending`（等你決定）、`booked`（測試號碼的通話在模擬日曆上排入）、`confirmed`、`declined`。`reply`：怎麼告訴對方——`sms`、`call` 或 `none`。`sms`：`sent`，或簡訊沒傳出的原因（`offline`、`old_app`、`timeout`、`busy`、`no_number`、`not_test_number`（測試來電的簡訊只傳給測試號碼），或手機回的代碼：`no_permission`、`bad_request`、`no_service`、`radio_off`、`generic_failure`、`exception`、`no_sim`；網頁和 Telegram 回覆會用白話寫）。`call`：AI 回電——`queued`（等打給同一個號碼的前一通回電結束）、`dialing`（已請手機撥出）、`connected`（手機已撥號，AI 等對方接起來出聲）、`answered`（接通並已告知）、`no_answer`（沒人出聲）、`failed`（手機撥不出去或沒回報）、`done`（通話結束、結果不明），或沒撥出的原因（`no_phone`、`send_failed`、`no_number`、`not_callable`：這個號碼不能回電）；手機的回報也記在任務的 `events`（`callback_place_call_ack`、`callback_place_call_failed`、`callback_outbound_ready`、`callback_done`、`callback_failed`）。`calendar`：測試號碼的預約是 `demo`，它的 `event_id`、`replaced`（同一通電話先前的時間）、`auto_error`、`tag` 都是模擬日曆上的。`tg_card`：發給這筆預約的 Telegram 卡片 `{chat_id, message_id}`，在別處決定後用來拿掉卡片上的按鈕。空的欄位不會出現。
 
 | 方法與路徑 | 內容 |
 |---|---|
-| `GET /calls/api/tasks` | 任務，最新的在前（最多 200 筆）：`{ok, tasks}`。網頁的「待確認的預約」就是 `appointment.status` 為 `pending` 的任務。有預約的任務另帶 `sms_route`：沒另選手機時簡訊從哪裡發（網頁「重傳簡訊」選單的預設選項），跟主程式實際發送用同一套規則：`{serial, label, sim, test}`——`serial` 手機 ID，`label` 它在 `device_labels` 的名稱（沒有就是 ID），`sim` 依名稱挑的 SIM（`appointment_test_sms_sim`；用接這通的 SIM 或手機預設 SIM 時不出現），`test` 為 true 表示這是測試來電、手機或 SIM 由 `appointment_test_sms_phone`／`appointment_test_sms_sim` 指定。手機不在線也照樣列出，發送時才會回 `offline`。 |
-| `POST /calls/api/tasks/{id}/confirm` | 對預約來說等於在網頁或 Telegram 卡片上按 **✅ 確定**——寫進 Google 日曆，接著（開了 `appointment_sms` 時）傳簡訊給對方，可能要等最多 90 秒。回應 `{ok, task, message}`；`message` 是結果，網頁顯示的和 Telegram Bot 回的是同一段。這筆預約有發過 Telegram 卡片時，卡片上的按鈕會拿掉，並把 `message` 回到那個聊天（盡力而為，Telegram 失敗不影響決定）。只有第一次決定算數：之後再確定或婉拒——包括第一次還在處理時送來的，或在 Telegram 卡片上按的——都只回「已經處理過了」，不會有任何變化。請求要帶 `Content-Type: application/json`（不用 body），否則回 HTTP 400 `bad_request`，這樣別的網頁沒辦法透過你區網裡的瀏覽器替你決定。 |
-| `POST /calls/api/tasks/{id}/ignore` | 對預約來說等於 **❌ 婉拒**（通話中已經寫進日曆的那筆會刪掉；開了 `appointment_sms` 時傳簡訊）。回應與規則同上。 |
+| `GET /calls/api/tasks` | 任務，最新的在前（最多 200 筆）：`{ok, tasks}`。預約任務另外有 `calendar_links`（`{google, outlook, office365, yahoo}`，同通話）和 `reply` = `{sms, call, default}`：這位來電者能不能收簡訊、能不能回電，以及「預設回覆方式」選的方式。網頁的「待處理事項」就是 `appointment.status` 為 `pending` 的任務。有預約的任務另帶 `sms_route`：沒另選手機時簡訊從哪裡發（網頁「重傳簡訊」選單的預設選項），跟主程式實際發送用同一套規則：`{serial, label, sim, test}`——`serial` 手機 ID，`label` 它在 `device_labels` 的名稱（沒有就是 ID），`sim` 依名稱挑的 SIM（`appointment_test_sms_sim`；用接這通的 SIM 或手機預設 SIM 時不出現），`test` 為 true 表示這是測試來電、手機或 SIM 由 `appointment_test_sms_phone`／`appointment_test_sms_sim` 指定。手機不在線也照樣列出，發送時才會回 `offline`。 |
+| `GET /calls/api/tasks/{id}/event.ics` | 預約的 iCalendar 檔（Apple 日曆和其他 App）。跟通話的一樣，用控制台 token 或連結的 `?k=<金鑰>` 開。 |
+| `POST /calls/api/tasks/{id}/confirm` | 對預約來說等於在網頁或 Telegram 卡片上按 **同意**。Body：空的、`{}` 或 `{"reply": "sms" \| "call" \| "none"}`，怎麼告訴對方（沒帶：照「預設回覆方式」；選了這位來電者用不了的方式就不通知）。傳簡訊可能要等最多 90 秒；回電交給手機撥出（`appointment.call`）。回應 `{ok, task, message}`；`message` 是用白話寫的結果，Telegram Bot 回的是同一段（附加入你的行事曆的連結）。這筆預約有發過 Telegram 卡片時，卡片上的按鈕會拿掉，並把 `message` 回到那個聊天（盡力而為，Telegram 失敗不影響決定）。只有第一次決定算數：之後再同意或不同意——包括第一次還在處理時送來的，或在 Telegram 卡片上按的——都只回「已經處理過了」，不會有任何變化。請求要帶 `Content-Type: application/json`，否則回 HTTP 400 `bad_request`，這樣別的網頁沒辦法透過你區網裡的瀏覽器替你決定；body 不是上面的格式也回 HTTP 400 `bad_request`。 |
+| `POST /calls/api/tasks/{id}/ignore` | 對預約來說等於 **不同意**（用同樣的方式告訴對方，客氣婉拒）。body、回應與規則同上。 |
+
+## 聯絡人
+
+替打來的號碼配上名字，存在通話紀錄資料夾（`CALLS_DATA_DIR`）的 `contacts.json`。號碼不管怎麼寫都對得上：`+886912345678`、`0912-345-678`、`886912345678` 是同一支；沒有國碼的號碼照你的國家（`country_code`）讀，通話則照接到這通電話的 SIM 卡所屬國家讀。打來的人在聯絡人裡時：通話列表顯示名字（`GET /calls/api/list` 的 `contacts_by_number`：`{<caller_id>: {id, name}}`）、通話詳情也有（`GET /calls/api/call/{id}` 的 `contact`：`{id, name, note}` 或 `null`）、通話摘要通知的標題在號碼後面加名字，一般電話的 AI 提示詞也會說是誰打來的（判定推銷／詐騙、AI 陪聊的電話不加）。
+
+一位聯絡人是 `{id, name, phones: [...], note, source, updated_at}`；`source` 是 `manual`、`vcf`、`csv`、`text` 或 `ai`（Gemini 讀出來的）。一支號碼只屬於一位聯絡人。
+
+| 方法與路徑 | 內容 |
+|---|---|
+| `GET /calls/api/contacts` | 查詢參數 `q`（名字、備註或號碼，號碼怎麼寫都可以）、`limit`、`offset`。回應 `{ok, contacts, total, offset, count}`：依名字排序的符合結果（共 `total` 筆），以及全部聯絡人數（`count`）。 |
+| `POST /calls/api/contacts` | Body `{name, phones: [...], note}`，回應 `{ok, contact}`。號碼已經是別的聯絡人的：HTTP 409 `contact_exists`，附 `contact: {id, name}`；沒有名字或沒有號碼：400 `invalid_contact`。 |
+| `PUT /calls/api/contacts/{id}` | 同樣的 body，取代名字、號碼和備註。404 `contact_not_found`、409、400 同上。 |
+| `DELETE /calls/api/contacts/{id}` | `{ok}`。 |
+| `POST /calls/api/contacts/import` | Body 就是檔案本身（最大 10 MB），檔名 URL 編碼後放在 `X-Filename`。只讀、不存：`{ok, file, format, ai, entries: [{name, phones, note, source, duplicate}], skipped}`。`format`：`vcf`、`csv`、`text`、`xlsx`、`docx`、`pdf` 或 `image`；`ai`：是 Gemini 讀的；`duplicate`：`null`，或這筆重複的已存聯絡人 `{id, name, by: "phone" \| "name"}`；`skipped`：沒有名字或號碼而略過的筆數。錯誤：400 `empty_file`、413 `file_too_large`、415 `unsupported_file`、400 `need_gemini_key`、502 `ai_failed`（Gemini 的回覆在 `error`）。 |
+| `POST /calls/api/contacts/batch` | Body `{contacts: [{name, phones, note, source}], duplicates: "merge" \| "skip"}`：匯入時勾選要留的那些。跟已存聯絡人重複的，合併進去（補上新號碼和備註）或略過。回應 `{ok, added, merged, skipped, count}`。 |
+| `GET /calls/api/contacts/export.vcf` | 全部聯絡人匯出成 vCard 3.0 檔。 |
+
+主程式自己讀的格式：vCard 2.1、3.0、4.0（含 quoted-printable、各種 `CHARSET`）；有表頭（Google 通訊錄、Outlook，或欄名像 *姓名*、*電話*、Name、Phone）或沒有表頭的 CSV、TSV，編碼 UTF-8、UTF-16 或電腦的編碼（Big5、GBK、Shift_JIS、EUC-KR、Windows-1252）；一行一個「名字 號碼」的純文字；`.xlsx`、`.docx` 裡的表格。PDF、圖片和讀不到人的檔案交給 Gemini（`gemini-flash-lite-latest`，用設定裡的 Gemini 金鑰）。跟其他會改資料的 API 一樣，`POST`、`PUT`、`batch` 要帶 `Content-Type: application/json`，`import` 要帶 `X-Filename`，這樣別的網頁沒辦法透過你區網裡的瀏覽器送這些請求。
+
+```text
+POST /calls/api/contacts
+Content-Type: application/json
+{"name": "林小美", "phones": ["0912 000 000", "+1 202 555 0143"], "note": "我姊"}
+
+{"ok": true, "contact": {"id": "4f0c9a…", "name": "林小美", "phones": ["0912 000 000", "+1 202 555 0143"],
+ "note": "我姊", "source": "manual", "updated_at": "2026-11-14T08:00:00Z"}}
+```
 
 ## 手機與健康狀態
 

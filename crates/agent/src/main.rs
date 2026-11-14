@@ -29,12 +29,12 @@ mod callback;
 mod calls;
 mod calls_http;
 mod config;
+mod contacts;
 mod debug_probe;
 mod deepseek;
 mod dtmf;
 mod extract;
 mod fulfill;
-mod gcal;
 mod gemini_live;
 mod gmail;
 mod hold_music;
@@ -379,6 +379,9 @@ impl RingPrewarmRegistry {
         } else if plan.appointments && e.caller_id.trim() != caller_id.trim() {
             // The session's appointments are bound to the number it rang with.
             "appointments bound to the ringing number"
+        } else if e.plan.contact != plan.contact {
+            // The prompt names the contact of the number it rang with (or none).
+            "caller's contact differs at pickup"
         } else {
             // The number sent while ringing can be stale (call-log fallback before
             // Telecom publishes the CID): everything it decided is the same for the
@@ -435,6 +438,8 @@ struct CallerPlan {
     intl_hold: bool,
     /// Appointments are on for this caller (the session is bound to the number).
     appointments: bool,
+    /// The contact the caller's number belongs to (its id): the prompt names them.
+    contact: Option<String>,
 }
 
 /// [`CallerPlan`] for `caller_id` on the SIM of country `sim` (None = unknown),
@@ -450,6 +455,7 @@ fn caller_plan(rt: &RuntimeSettings, caller_id: &str, sim: Option<&str>) -> Call
         ),
         appointments: rt.is_appointment_test_number(caller_id)
             || appointments::Mode::parse(&rt.appointment_mode) != appointments::Mode::Off,
+        contact: contacts::lookup(caller_id, sim).map(|c| c.id),
     }
 }
 
@@ -1003,6 +1009,9 @@ async fn main() -> Result<()> {
         settings.calls_retention_days,
     );
     let task_store = TaskStore::new(PathBuf::from(&settings.calls_data_dir).join("tasks"));
+    // The owner's contacts (names for caller IDs), next to the call records.
+    let contacts = contacts::ContactStore::open(PathBuf::from(&settings.calls_data_dir).join("contacts.json"));
+    contacts::install(contacts.clone());
     {
         let calls = calls.clone();
         let task_store = task_store.clone();
@@ -1075,6 +1084,18 @@ async fn main() -> Result<()> {
             }
         });
     }
+    // Appointment call-backs a phone never reported on (the app drops a dial
+    // that does not start without saying so): checked every 15 s.
+    {
+        let state = state.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(15));
+            loop {
+                tick.tick().await;
+                appointment_callbacks(&state, "", None).await;
+            }
+        });
+    }
 
     if settings.agent_mode == AgentMode::Llm
         && settings.llm_provider == LlmProvider::OpenRouter
@@ -1117,6 +1138,7 @@ async fn main() -> Result<()> {
         control: control.clone(),
         ambience: state.ambience.clone(),
         phones: phones.clone(),
+        contacts: contacts.clone(),
     };
     let addr: SocketAddr = format!("{}:{}", settings.host, settings.port).parse()?;
     let mode = settings.agent_mode.as_str();
@@ -1329,6 +1351,11 @@ async fn main() -> Result<()> {
         if settings.calls_ui_token.trim().is_empty() {
             warn!("listening on {addr} without CALLS_UI_TOKEN: anyone on this network can open the web console");
         }
+    }
+    // Links to an `.ics` that leave the console (notifications, Telegram) carry
+    // a key made from the console token, never the token itself.
+    calendar::set_link_secret(&settings.calls_ui_token);
+    if !addr.ip().is_loopback() {
         if settings.device_token.trim().is_empty() {
             warn!("listening on {addr} without DEVICE_TOKEN: anyone on this network can connect as a phone");
         }
@@ -1969,6 +1996,8 @@ async fn handle_control_idle_ws(
                             .control
                             .handle_phone_event(&parsed, &state.task_store)
                             .await;
+                        // An appointment's call-back: its call on this phone, or its end.
+                        appointment_callbacks(&state, &serial, Some(&parsed)).await;
                     }
                     // Answer to `send_sms` (appointments: a text to the caller).
                     "send_sms_result" => {
@@ -4626,6 +4655,7 @@ fn save_reject_list_notes(state: &AppState, record: &CallRecord) {
     let notes = calls::CallNotes {
         summary,
         dialogue: String::new(),
+        dialogue_translations: Vec::new(),
         recording_text: String::new(),
         end_hint: if declined {
             locale::notify_zh_or(
@@ -5706,6 +5736,7 @@ fn start_ring_prewarm(
         Arc::new(AtomicBool::new(false)),
         None,
         &state.http,
+        None,
     );
     let id = state.ring_prewarm.insert(
         serial,
@@ -6026,6 +6057,16 @@ async fn spawn_gemini_session_tasks(
         return;
     }
     let rt = state.settings_store.snapshot();
+    // The AI's call-back with an appointment's answer: only the call this phone
+    // reported dialing for it (`outbound_ready` with its task and number) —
+    // never an incoming call or a ring prewarm (which starts elsewhere).
+    let callback = appointments::callback_for_call(&serial, &caller_id).await;
+    if let Some(cb) = &callback {
+        info!("appointment call-back session serial={serial} task_id={}", cb.task_id);
+        if let Some(c) = active_call.lock().await.as_mut() {
+            c.push_event(appointments::AI_CALLBACK_EVENT);
+        }
+    }
     // Started at pickup: the media hello has reported the SIM (when the app does).
     let lang = call_lang_plan(&rt, &caller_id, call_sim_country(&serial).as_deref());
     let cfg = GeminiRetryCfg {
@@ -6057,9 +6098,11 @@ async fn spawn_gemini_session_tasks(
         barge_in,
         Some(media_call_guard.clone()),
         &state.http,
+        callback.as_ref().map(|c| c.script.clone()),
     );
-    // Kept for one fresh-socket retry if this session never delivers audio.
-    let retry_cfg = fresh_retry_left.then_some(cfg);
+    // Kept for one fresh-socket retry if this session never delivers audio
+    // (not for a call-back: nobody may have answered, and a retry would greet).
+    let retry_cfg = (fresh_retry_left && callback.is_none()).then_some(cfg);
     run_gemini_session_to_end(
         core,
         sink,
@@ -6120,11 +6163,19 @@ fn start_gemini_session_core(
     barge_in: Arc<AtomicBool>,
     media_guard: Option<MediaCallGuard>,
     http: &reqwest::Client,
+    callback_script: Option<String>,
 ) -> GeminiSessionCore {
+    // The AI's own call-back with an appointment's answer
+    // (`appointments::callback_for_call`): its script instead of the answering
+    // prompt, no opening while it rings, and no appointments, sales stalling
+    // or international carrier-prompt wait on that call.
+    let callback_cfg = callback_script.map(|system| GeminiRetryCfg { system, ..cfg.clone() });
+    let is_callback = callback_cfg.is_some();
+    let cfg = callback_cfg.as_ref().unwrap_or(cfg);
     // Persona mode has no fixed clock, only the call-length safety cap; sales / scam stalling
     // swaps in its prompt once the caller scores as sales/scam.
     let stall_engaged = Arc::new(AtomicBool::new(false));
-    let stall_cfg = (persona && rt.persona_stall_spam).then(|| gemini_live::StallCfg {
+    let stall_cfg = (persona && rt.persona_stall_spam && !is_callback).then(|| gemini_live::StallCfg {
         engaged: stall_engaged.clone(),
         system_prompt: rt.persona_stall_system_prompt(),
         model: rt.gemini_stall_model.clone(),
@@ -6142,7 +6193,7 @@ fn start_gemini_session_core(
         let setting = rt.intl_carrier_prompt.clone();
         let auto_on = rt.lang() == locale::Lang::ZhTw;
         Box::new(move || {
-            if !persona {
+            if !persona || is_callback {
                 return false;
             }
             let caller = caller_slot
@@ -6171,7 +6222,7 @@ fn start_gemini_session_core(
         })
     };
     // Appointments (setting `appointment_mode`): normal persona calls only.
-    let mut appointments = if persona {
+    let mut appointments = if persona && !is_callback {
         appointments::ApptSession::for_call(rt, http, &cfg.caller_id)
     } else {
         None
@@ -6217,6 +6268,16 @@ fn start_gemini_session_core(
             voice_name,
             ..
         } = cfg.clone();
+        // A caller in the owner's contacts: the prompt says who it is. Normal calls
+        // only: the sales / scam prompt the session may switch to has no such line.
+        // The SIM as the ring prewarm reads it (the last one the phone reported while
+        // the call rings), so the contact is the one its plan checks at pickup.
+        let system = if persona {
+            let sim = call_sim_country(&serial).or_else(|| phone_region::last_sim(&canonical_device_serial(&serial)));
+            contacts::with_caller(&system, rt, &cfg.caller_id, sim.as_deref())
+        } else {
+            system
+        };
         let force_hangup = force_hangup.clone();
         let delivered_bytes = delivered_bytes.clone();
         let play_head = play_head.clone();
@@ -6266,6 +6327,7 @@ fn start_gemini_session_core(
                 intl_caller,
                 appointments,
                 lang_plan,
+                is_callback,
             )
             .await
         })
@@ -8495,6 +8557,12 @@ async fn whisper_call_wav(
 /// Calls longer than this skip the post-call Whisper pass (Gemini dialogue only).
 const WHISPER_MAX_CALL_MS: u64 = 5 * 60 * 1000;
 
+/// How long the translation of the lines in another language may still take
+/// once the notes are saved, the notification sent and the appointments
+/// handled (it starts with the summary; nothing waits on it). It is added to
+/// the saved notes when it arrives.
+const TRANSLATE_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
+
 /// Press-1 hangup: Gemini live STT (+ optional Whisper AI segment) → **summary** → notification.
 /// The notification body is the summary only (not raw fragment dump). Hangup already stopped Live.
 fn spawn_ai_talk_tg_summary(
@@ -8515,7 +8583,12 @@ fn spawn_ai_talk_tg_summary(
     let remote_rel = record.remote_audio_path.clone();
     let duration_ms = record.duration_ms;
     let end_hint = summary_end_hint(&record.events);
-    let ai_failed = record_had_ai_fail_hangup(&record.events);
+    // The AI's call-back with an appointment's answer: no appointment and no
+    // calendar suggestion from it, its own title, its result for the task.
+    let ai_callback = appointments::is_ai_callback(&record.events);
+    let callback_task = if ai_callback { appointments::callback_task_on(&serial) } else { None };
+    // A call-back nobody answered ends the AI's way too: no "AI failed".
+    let ai_failed = record_had_ai_fail_hangup(&record.events) && !ai_callback;
     let stalled = record.events.iter().any(|e| e == "persona_stall_spam");
     // Nothing from the AI reached the caller: Gemini's own transcript is text it
     // generated but never played (e.g. 「喂？你好。」 with 0 audio) — drop it.
@@ -8574,6 +8647,20 @@ fn spawn_ai_talk_tg_summary(
                     .trim(),
             ))
         };
+        // Lines said in another language than the owner's, translated while the
+        // summary is written (same service); the web record shows them under the line.
+        let mut translation = {
+            let http = http.clone();
+            let eff = eff.clone();
+            let dialogue = live.clone();
+            let owner = locale::notify_lang();
+            tokio::spawn(async move { deepseek::translate_dialogue(&http, &eff, &dialogue, owner).await })
+        };
+        // A call-back: did the callee say anything (else nobody answered)?
+        let callee_answered = ai_callback
+            && appointments::callee_spoke(&gemini_live::merge_dialogue_fragments(
+                live_transcript.lock().map(|g| g.clone()).unwrap_or_default().trim(),
+            ));
         // A stalled sales / scam call — or any long call — may run up
         // to 30 min: Whisper on that would pin the agent host's CPUs during other calls and
         // time out, and Gemini's own dialogue is the primary record anyway.
@@ -8610,7 +8697,7 @@ fn spawn_ai_talk_tg_summary(
         // A number (or e-mail) the caller said to reach them on, from their own
         // words only (the AI may repeat or make one up): kept on the record and
         // on the call's task. Not from a sales / scam call or one the AI missed.
-        let spoken_contact = if stalled || ai_failed {
+        let spoken_contact = if stalled || ai_failed || ai_callback {
             None
         } else {
             extract::extract_spoken_contact(&caller_side_text(&live_full, &remote_tx), &caller)
@@ -8703,6 +8790,10 @@ fn spawn_ai_talk_tg_summary(
             // The summary model usually writes it (prompt rule); make sure the owner sees it.
             body.insert_str(0, &format!("{}\n", locale::notify_phrases().s_ai_fail_prefix));
         }
+        if ai_callback {
+            let code = if callee_answered { "answered" } else { "no_answer" };
+            body.insert_str(0, &format!("{}\n", appointments::callback_result_line(locale::notify_lang(), code, &caller)));
+        }
 
         // An appointment from a sales / scam call the check during the call
         // missed: the summary marks the call so, in the words its prompt
@@ -8741,36 +8832,14 @@ fn spawn_ai_talk_tg_summary(
         let mut calendar_event: Option<calendar::Event> = None;
         if rt.calendar_suggest
             && appointment.is_none()
+            && !ai_callback
             && note_source == "deepseek"
             && !stalled
             && !late_sales
             && !ai_failed
         {
-            if let Some(mut ev) = calendar::suggest(&http, &eff, &transcript).await {
+            if let Some(ev) = calendar::suggest(&http, &eff, &transcript).await {
                 info!("calendar suggestion serial={serial} start={} all_day={}", ev.start, ev.all_day);
-                if rt.calendar_auto_add && rt.gcal_configured() {
-                    if let (Some(start), Some(end)) = (
-                        calendar::local_rfc3339(&ev.start),
-                        calendar::local_rfc3339(&ev.end),
-                    ) {
-                        match gcal::insert_event(
-                            &http,
-                            &rt.gcal_client_id,
-                            &rt.gcal_client_secret,
-                            &rt.gcal_refresh_token,
-                            &rt.gcal_calendar_id,
-                            &ev.title,
-                            &body,
-                            &start,
-                            &end,
-                        )
-                        .await
-                        {
-                            Ok(id) => ev.google_event_id = id,
-                            Err(e) => warn!("calendar auto-add failed serial={serial}: {e:#}"),
-                        }
-                    }
-                }
                 calendar_event = Some(ev);
             }
         }
@@ -8780,6 +8849,8 @@ fn spawn_ai_talk_tg_summary(
             summary: body.clone(),
             // Speaker labels in the owner's language ("Caller: …").
             dialogue: gemini_live::localize_dialogue(&live_full, locale::notify_lang()),
+            // Added below when the translation arrives (the notes do not wait for it).
+            dialogue_translations: Vec::new(),
             recording_text: remote_tx.clone(),
             end_hint: end_hint.clone(),
             source: note_source.to_string(),
@@ -8826,11 +8897,13 @@ fn spawn_ai_talk_tg_summary(
             if let Some(ev) = &calendar_event {
                 let label = locale::notify_phrases().n_calendar;
                 body.push_str(&format!("\n📅 {label}{}{} ({})", locale::notify_kv_sep(), ev.title, ev.when()));
-                if ev.google_event_id.is_empty() {
-                    // Not inserted for the owner: one tap opens the filled-in form.
-                    body.push_str(&format!("\n{}", ev.google_link("")));
-                } else {
-                    body.push_str(" ✓");
+                // One tap adds it to the calendar the owner chose (setting
+                // `calendar_app`): its form, or the call's `.ics` at the console's
+                // address (no link for Apple / .ics without one).
+                let ics = calendar::ics_url(&eff.public_url, &format!("call/{call_id}"));
+                let link = ev.link_for(&rt.calendar_app, "", &ics);
+                if !link.is_empty() {
+                    body.push_str(&format!("\n{link}"));
                 }
             }
             if let Some(a) = &appointment {
@@ -8850,7 +8923,12 @@ fn spawn_ai_talk_tg_summary(
                 body.push('\n');
                 body.push_str(&link);
             }
-            let ok = notify_ai_request(&http, &eff, &caller, &serial, &body).await;
+            let ok = if ai_callback {
+                let title = appointments::callback_headline(locale::notify_lang(), &caller);
+                notify::notify_ai_callback(&http, &eff, &caller, &serial, &title, &body).await
+            } else {
+                notify_ai_request(&http, &eff, &caller, &serial, &body).await
+            };
             info!(
                 "ai talk tg summary notify serial={serial} backend={backend} ok={ok} source={source} body_chars={} tx_chars={}",
                 body.chars().count(),
@@ -8863,7 +8941,56 @@ fn spawn_ai_talk_tg_summary(
         for task in appointment_tasks {
             appointments::after_summary(&http, &rt, &task_store, &calls, &control, &task, &detail_url).await;
         }
+        if let Some(task_id) = &callback_task {
+            let ctx = appointments::CallbackCtx {
+                http: &http,
+                settings: &eff,
+                tasks: task_store.as_ref(),
+                control: control.as_ref(),
+            };
+            appointments::callback_call_over(&ctx, task_id, callee_answered).await;
+        }
+        // Last, so a slow translation holds up nothing and its write comes after
+        // every other write to these notes (the appointments' included).
+        let dialogue_translations = match tokio::time::timeout(TRANSLATE_WAIT, &mut translation).await {
+            Ok(Ok(v)) => v,
+            Ok(Err(e)) => {
+                warn!("dialogue translation task failed serial={serial}: {e}");
+                Vec::new()
+            }
+            Err(_) => {
+                translation.abort();
+                warn!("dialogue translation timed out serial={serial}");
+                Vec::new()
+            }
+        };
+        if dialogue_translations.iter().any(|t| t.is_some()) {
+            if let Some(mut saved) = calls.load_notes(&call_id).await {
+                saved.dialogue_translations = dialogue_translations;
+                match calls.save_notes(&call_id, &saved).await {
+                    Ok(()) => info!("call notes translations added id={call_id}"),
+                    Err(e) => warn!("call notes translations save failed id={call_id}: {e:#}"),
+                }
+            }
+        }
     });
+}
+
+/// Appointment call-backs: a phone's report on a call it was asked to place
+/// (`ev`, from `serial`), or None for the periodic check of ones never
+/// reported on ([`appointments::on_callback_event`], [`appointments::sweep_callbacks`]).
+async fn appointment_callbacks(state: &AppState, serial: &str, ev: Option<&Value>) {
+    let eff = state.settings_store.snapshot().effective(&state.settings);
+    let ctx = appointments::CallbackCtx {
+        http: &state.http,
+        settings: &eff,
+        tasks: state.task_store.as_ref(),
+        control: state.control.as_ref(),
+    };
+    match ev {
+        Some(msg) => appointments::on_callback_event(&ctx, serial, msg).await,
+        None => appointments::sweep_callbacks(&ctx).await,
+    }
 }
 
 /// Persona mode gave up on the AI and hung up (`persona_ai_unavailable_hangup`).
@@ -10478,6 +10605,7 @@ mod ring_prewarm_tests {
             lang,
             intl_hold: false,
             appointments: false,
+            contact: None,
         }
     }
 
@@ -10622,6 +10750,27 @@ mod ring_prewarm_tests {
         pw.plan = booked.clone();
         reg.insert("pixel-1", pw);
         assert!(reg.take("pixel-1", "0922222222", 16_000, &booked).is_some());
+    }
+
+    #[tokio::test]
+    async fn pickup_drops_a_session_set_up_for_another_contact() {
+        let reg = RingPrewarmRegistry::default();
+        let named = |id: Option<&str>| CallerPlan { contact: id.map(str::to_string), ..plan_of(usual()) };
+        // Rang with one contact's number, picked up with another's, or one that is
+        // no contact (or the other way round): the held prompt names the wrong person.
+        for (rang, picked) in [(Some("a"), Some("b")), (Some("a"), None), (None, Some("b"))] {
+            let (mut pw, cancel) = entry("0912345678", live());
+            pw.plan = named(rang);
+            reg.insert("pixel-1", pw);
+            assert!(reg.take("pixel-1", "0922222222", 16_000, &named(picked)).is_none(), "{rang:?} {picked:?}");
+            assert!(cancel.load(Ordering::Relaxed));
+        }
+        // The same contact (its number written another way): adopted.
+        let (mut pw, cancel) = entry("+886912345678", live());
+        pw.plan = named(Some("a"));
+        reg.insert("pixel-1", pw);
+        assert!(reg.take("pixel-1", "0912345678", 16_000, &named(Some("a"))).is_some());
+        assert!(!cancel.load(Ordering::Relaxed));
     }
 
     #[tokio::test]

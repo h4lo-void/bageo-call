@@ -868,19 +868,26 @@ pub async fn notify_ai_request(
     let caller = display_or_hidden(caller_id);
     let device = device_label(serial);
     let when = now_stamp();
-    let msg = Card::new("☎️", p.n_summary)
+    // A caller in the contacts: the name after the number in the title.
+    let contact = crate::contacts::lookup(caller_id, None).map(|c| c.name);
+    let headline = match contact.as_deref() {
+        Some(name) => format!("{} · {name}", p.n_summary),
+        None => p.n_summary.to_string(),
+    };
+    let msg = Card::new("☎️", &headline)
         .code(p.n_number, &caller)
         .row(p.n_phone, &device)
         .row(p.n_time, &when)
         .tail(summary_body)
         .message(
             "summary",
-            format!("{} {caller}", p.n_summary),
+            format!("{} {}", p.n_summary, crate::contacts::named_number(&caller, contact.as_deref())),
             json!({
                 "caller_id": caller_id.trim(),
                 "device": device,
                 "time": when,
                 "summary": summary_body.trim(),
+                "contact": contact.as_deref().unwrap_or(""),
             }),
         );
     deliver(http, settings, &msg).await
@@ -914,6 +921,43 @@ pub async fn notify_voicemail(
             json!({ "caller_id": caller_id.trim(), "device": device, "time": when, "seconds": secs }),
         );
     deliver(http, settings, &msg).await
+}
+
+/// About the AI's call-back with an appointment's answer: the summary of its
+/// call, or why it never got going. `headline`: "AI 回電：<number>" in the
+/// owner's language (`crate::appointments::callback_headline`).
+pub async fn notify_ai_callback(
+    http: &Client,
+    settings: &Settings,
+    caller_id: &str,
+    serial: &str,
+    headline: &str,
+    body: &str,
+) -> bool {
+    if !settings.call_notify {
+        return false;
+    }
+    deliver(http, settings, &ai_callback_message(caller_id, &device_label(serial), &now_stamp(), headline, body)).await
+}
+
+fn ai_callback_message(caller_id: &str, device: &str, when: &str, headline: &str, body: &str) -> Message {
+    let p = locale::notify_phrases();
+    let caller = display_or_hidden(caller_id);
+    Card::new("📞", headline)
+        .code(p.n_number, &caller)
+        .row(p.n_phone, device)
+        .row(p.n_time, when)
+        .tail(body)
+        .message(
+            "ai_callback",
+            headline.to_string(),
+            json!({
+                "caller_id": caller_id.trim(),
+                "device": device,
+                "time": when,
+                "summary": body.trim(),
+            }),
+        )
 }
 
 /// A plain title + body message to every channel.
@@ -1104,6 +1148,14 @@ mod tests {
         let unavailable = locale::notify_phrases().unavailable;
         assert!(blocked_outcome(false).contains(unavailable));
         assert!(!blocked_outcome(true).contains(unavailable));
+    }
+
+    #[test]
+    fn an_ai_call_back_has_its_own_title() {
+        let m = ai_callback_message("0912000000", "Pixel 9", "11/14 15:00", "AI 回電：0912000000", "AI 回電了，對方沒接");
+        assert!(m.body.starts_with("📞 AI 回電：0912000000\n"), "{}", m.body);
+        assert!(m.body.ends_with("AI 回電了，對方沒接") && m.html.unwrap().starts_with("<b>📞 AI 回電：0912000000</b>"));
+        assert_eq!((m.event.as_str(), m.title.as_str()), ("ai_callback", "AI 回電：0912000000"));
     }
 
     fn form_body(p: &Prepared) -> HashMap<String, String> {

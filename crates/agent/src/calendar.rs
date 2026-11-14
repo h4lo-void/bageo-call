@@ -1,12 +1,12 @@
 //! Calendar suggestion: when a call fixes a date (a delivery window, an
 //! appointment, a time someone will call back), the summary model is asked for
-//! it as a small JSON object. The owner then gets
-//!
-//! - an "add to Google Calendar" link in the notification and the web console
-//!   (a plain link: no Google account is connected to the agent),
-//! - an `.ics` file from the web console for every other calendar app,
-//! - and, only when the Google Calendar credentials are filled in and
-//!   `calendar_auto_add` is on, the event inserted right away.
+//! it as a small JSON object. The owner adds it to their own calendar with one
+//! tap; no calendar account is connected to the agent. Which calendar is the
+//! owner's choice (setting `calendar_app`, [`APPS`]): "Add to calendar" in the
+//! notification and the web console opens Google Calendar's, Outlook.com's,
+//! Microsoft 365's or Yahoo's "new event" form filled in, or the event's
+//! `.ics` file, which Apple Calendar and every other calendar app open
+//! ([`Event::link_for`]).
 //!
 //! Times are the machine's local time, written without a zone, so calendar apps
 //! read them in the owner's own time zone.
@@ -26,14 +26,34 @@ pub struct Event {
     pub end: String,
     #[serde(default)]
     pub all_day: bool,
-    /// Google Calendar event id when it was inserted automatically.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub google_event_id: String,
 }
 
 const STAMP: &str = "%Y-%m-%dT%H:%M";
 /// A suggestion further out than this is more likely a misread date.
 const MAX_DAYS_AHEAD: i64 = 400;
+
+/// Setting `calendar_app`: where "Add to calendar" puts an event — Google
+/// Calendar, Outlook.com, Microsoft 365 (Outlook with a work or school
+/// account), Apple Calendar (the `.ics` file: iPhone Safari offers to add it),
+/// Yahoo Calendar, or the `.ics` file for any other app. Empty = not chosen
+/// yet: the web console asks on the first press.
+pub const APPS: [&str; 6] = ["google", "outlook", "office365", "apple", "yahoo", "ics"];
+
+/// One of [`APPS`] (any case); anything else is empty (not chosen).
+pub fn sanitize_app(s: &str) -> String {
+    let t = s.trim().to_ascii_lowercase();
+    APPS.iter().find(|a| **a == t).map(|a| a.to_string()).unwrap_or_default()
+}
+
+/// The web calendars' "new event" forms for one event, filled in (Apple
+/// Calendar and other apps take the `.ics` file instead).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Links {
+    pub google: String,
+    pub outlook: String,
+    pub office365: String,
+    pub yahoo: String,
+}
 
 /// What the summary model is asked. `now` = the machine's local time.
 pub fn extraction_prompt(lang: Lang, owner: &str, now: NaiveDateTime) -> String {
@@ -119,7 +139,6 @@ pub fn parse_event(reply: &str, now: NaiveDateTime) -> Option<Event> {
         start: start.format(STAMP).to_string(),
         end: end.format(STAMP).to_string(),
         all_day,
-        google_event_id: String::new(),
     })
 }
 
@@ -156,11 +175,91 @@ impl Event {
             "https://calendar.google.com/calendar/render?action=TEMPLATE&text={}&dates={s}/{e}",
             pct(&self.title)
         );
-        let details: String = details.trim().chars().take(600).collect();
+        let details = details_text(details);
         if !details.is_empty() {
             url.push_str(&format!("&details={}", pct(&details)));
         }
         url
+    }
+
+    /// Outlook.com (a personal Microsoft account): its "new event" form filled in.
+    pub fn outlook_link(&self, details: &str) -> String {
+        self.microsoft_link("https://outlook.live.com", details)
+    }
+
+    /// Microsoft 365 (Outlook with a work or school account).
+    pub fn office365_link(&self, details: &str) -> String {
+        self.microsoft_link("https://outlook.office.com", details)
+    }
+
+    /// Outlook on the web's compose deeplink. `startdt` / `enddt` without a
+    /// zone are read in the signed-in user's own; a whole-day event gives
+    /// dates, the end being the day after the last, with `allday=true`.
+    fn microsoft_link(&self, host: &str, details: &str) -> String {
+        let Some((s, e)) = self.times() else {
+            return String::new();
+        };
+        let fmt = if self.all_day { "%Y-%m-%d" } else { "%Y-%m-%dT%H:%M:%S" };
+        let mut url = format!(
+            "{host}/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent&subject={}&startdt={}&enddt={}",
+            pct(&self.title),
+            s.format(fmt),
+            e.format(fmt)
+        );
+        if self.all_day {
+            url.push_str("&allday=true");
+        }
+        let details = details_text(details);
+        if !details.is_empty() {
+            url.push_str(&format!("&body={}", pct(&details)));
+        }
+        url
+    }
+
+    /// Yahoo Calendar's "new event" form (`v=60`). Yahoo has no time zone
+    /// parameter: `st` / `et` (`YYYYMMDDTHHMMSS`) are wall-clock times. One
+    /// whole day is its date with `dur=allday` (Yahoo ignores `dur` once `et`
+    /// is there); several whole days give `et`, the day after the last.
+    pub fn yahoo_link(&self, details: &str) -> String {
+        let (Some((s, e)), Some((a, b))) = (self.compact_range(), self.times()) else {
+            return String::new();
+        };
+        let mut url = format!("https://calendar.yahoo.com/?v=60&title={}&st={s}", pct(&self.title));
+        if self.all_day && b - a <= Duration::days(1) {
+            url.push_str("&dur=allday");
+        } else {
+            url.push_str(&format!("&et={e}"));
+        }
+        let details = details_text(details);
+        if !details.is_empty() {
+            url.push_str(&format!("&desc={}", pct(&details)));
+        }
+        url
+    }
+
+    /// All four web calendars' forms.
+    pub fn links(&self, details: &str) -> Links {
+        Links {
+            google: self.google_link(details),
+            outlook: self.outlook_link(details),
+            office365: self.office365_link(details),
+            yahoo: self.yahoo_link(details),
+        }
+    }
+
+    /// What "Add to calendar" opens for the calendar the owner chose (setting
+    /// `calendar_app`): that web calendar's form, or — Apple Calendar, `.ics` —
+    /// `ics_url`, the event's file (empty when there is no address other
+    /// devices can open). Not chosen yet: Google Calendar's form, the one
+    /// link notifications carried before there was a choice.
+    pub fn link_for(&self, app: &str, details: &str, ics_url: &str) -> String {
+        match sanitize_app(app).as_str() {
+            "outlook" => self.outlook_link(details),
+            "office365" => self.office365_link(details),
+            "yahoo" => self.yahoo_link(details),
+            "apple" | "ics" => ics_url.trim().to_string(),
+            _ => self.google_link(details),
+        }
     }
 
     /// An iCalendar file with this one event (floating local time).
@@ -195,6 +294,66 @@ fn pct(s: &str) -> String {
         }
     }
     out
+}
+
+/// What goes into a form's description: trimmed, at most 600 characters.
+fn details_text(details: &str) -> String {
+    details.trim().chars().take(600).collect()
+}
+
+/// The console token (`CALLS_UI_TOKEN`), set once at start: links to an
+/// `.ics` that leave the console (notifications, Telegram) carry a key made
+/// from it ([`link_key`]), never the token itself.
+static LINK_SECRET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+pub fn set_link_secret(token: &str) {
+    let _ = LINK_SECRET.set(token.trim().to_string());
+}
+
+/// The key that opens one `.ics` without the console token (`what` =
+/// `call/<id>` or `tasks/<id>`, its path under `/calls/api/`). Empty when no
+/// token is set: then the file opens without one.
+pub fn link_key(token: &str, what: &str) -> String {
+    use hmac::{Hmac, Mac};
+    let token = token.trim();
+    if token.is_empty() {
+        return String::new();
+    }
+    let Ok(mut mac) = Hmac::<sha2::Sha256>::new_from_slice(token.as_bytes()) else {
+        return String::new();
+    };
+    mac.update(b"bageo-ics:");
+    mac.update(what.as_bytes());
+    mac.finalize().into_bytes().iter().take(16).map(|b| format!("{b:02x}")).collect()
+}
+
+/// `key` is the one [`link_key`] gives for `what` (compared in full).
+pub fn key_opens(token: &str, what: &str, key: &str) -> bool {
+    let want = link_key(token, what);
+    !want.is_empty()
+        && want.len() == key.len()
+        && want.bytes().zip(key.bytes()).fold(0u8, |d, (a, b)| d | (a ^ b)) == 0
+}
+
+/// Address of an `.ics` for a link outside the console: `<public_url>/calls/api/
+/// <what>/event.ics`, with its key when the console has a token. Empty without
+/// `public_url`: no address other devices are known to open.
+pub fn ics_url(public_url: &str, what: &str) -> String {
+    ics_url_with(public_url, what, LINK_SECRET.get().map(String::as_str).unwrap_or(""))
+}
+
+fn ics_url_with(public_url: &str, what: &str, token: &str) -> String {
+    let base = public_url.trim().trim_end_matches('/');
+    if base.is_empty() {
+        return String::new();
+    }
+    let base = base.strip_suffix("/calls").unwrap_or(base);
+    let mut url = format!("{base}/calls/api/{what}/event.ics");
+    let key = link_key(token, what);
+    if !key.is_empty() {
+        url.push_str(&format!("?k={key}"));
+    }
+    url
 }
 
 /// iCalendar TEXT escaping.
@@ -243,16 +402,6 @@ pub async fn suggest(
         }
     }
     None
-}
-
-/// Local wall-clock time as RFC 3339 with the machine's offset.
-pub fn local_rfc3339(stamp: &str) -> Option<String> {
-    use chrono::TimeZone;
-    let naive = parse_stamp(stamp)?;
-    chrono::Local
-        .from_local_datetime(&naive)
-        .earliest()
-        .map(|dt| dt.to_rfc3339())
 }
 
 #[cfg(test)]
@@ -328,7 +477,6 @@ mod tests {
             start: "2026-11-20T10:30".into(),
             end: "2026-11-20T11:15".into(),
             all_day: false,
-            google_event_id: String::new(),
         };
         let link = ev.google_link("From a call, 0912…");
         assert!(link.starts_with("https://calendar.google.com/calendar/render?action=TEMPLATE&text=%E7%89%99%E9%86%AB%20%26%20"), "{link}");
@@ -346,6 +494,99 @@ mod tests {
         let day = Event { all_day: true, start: "2026-11-30T00:00".into(), end: "2026-12-01T00:00".into(), ..ev };
         assert!(day.google_link("").ends_with("&dates=20261130/20261201"));
         assert!(day.ics("d", "", stamp).contains("DTSTART;VALUE=DATE:20261130\r\nDTEND;VALUE=DATE:20261201\r\n"));
+    }
+
+    #[test]
+    fn outlook_office365_and_yahoo_links_carry_local_time_and_whole_days() {
+        let ev = Event {
+            title: "看房 & 簽約".into(),
+            start: "2026-11-20T10:30".into(),
+            end: "2026-11-20T11:15".into(),
+            all_day: false,
+        };
+        // Outlook.com and Microsoft 365: the same form on two hosts, times
+        // without a zone (the signed-in user's own).
+        let tail = "/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent\
+                    &subject=%E7%9C%8B%E6%88%BF%20%26%20%E7%B0%BD%E7%B4%84\
+                    &startdt=2026-11-20T10:30:00&enddt=2026-11-20T11:15:00&body=From%20a%20call";
+        assert_eq!(ev.outlook_link("From a call"), format!("https://outlook.live.com{tail}"));
+        assert_eq!(ev.office365_link(" From a call\n"), format!("https://outlook.office.com{tail}"));
+        assert!(!ev.outlook_link("").contains("&body=") && !ev.outlook_link("").contains("allday"));
+        // Yahoo: wall-clock st / et, no zone.
+        assert_eq!(
+            ev.yahoo_link("Line one\nLine two"),
+            "https://calendar.yahoo.com/?v=60&title=%E7%9C%8B%E6%88%BF%20%26%20%E7%B0%BD%E7%B4%84\
+             &st=20261120T103000&et=20261120T111500&desc=Line%20one%0ALine%20two"
+        );
+        // One whole day: dates with the day after as the end (Outlook), the
+        // date with dur=allday and no et (Yahoo), the dates range (Google).
+        let day = Event { all_day: true, start: "2026-11-30T00:00".into(), end: "2026-12-01T00:00".into(), ..ev.clone() };
+        let ms = day.outlook_link("");
+        assert!(ms.ends_with("&startdt=2026-11-30&enddt=2026-12-01&allday=true"), "{ms}");
+        assert!(day.office365_link("").starts_with("https://outlook.office.com/") && day.office365_link("").contains("&allday=true"));
+        assert!(day.yahoo_link("").ends_with("&st=20261130&dur=allday"), "{}", day.yahoo_link(""));
+        assert!(day.google_link("").ends_with("&dates=20261130/20261201"));
+        // Several whole days: Yahoo takes et, the day after the last.
+        let days = Event { end: "2026-12-03T00:00".into(), ..day.clone() };
+        assert!(days.yahoo_link("").ends_with("&st=20261130&et=20261203"), "{}", days.yahoo_link(""));
+        assert!(days.outlook_link("").contains("&startdt=2026-11-30&enddt=2026-12-03&allday=true"));
+        // An unreadable time gives no link at all.
+        let bad = Event { start: "soon".into(), ..ev.clone() };
+        let none = Links::default();
+        assert_eq!(bad.links("x"), none);
+        let all = ev.links("x");
+        assert!(all.google.starts_with("https://calendar.google.com/") && all.outlook.starts_with("https://outlook.live.com/"));
+        assert!(all.office365.starts_with("https://outlook.office.com/") && all.yahoo.starts_with("https://calendar.yahoo.com/?v=60&"));
+    }
+
+    #[test]
+    fn the_chosen_calendar_decides_the_link() {
+        let ev = Event {
+            title: "Dentist".into(),
+            start: "2026-11-20T10:30".into(),
+            end: "2026-11-20T11:15".into(),
+            all_day: false,
+        };
+        let ics = "http://bageo.local/calls/api/call/c1/event.ics";
+        assert_eq!(ev.link_for("google", "", ics), ev.google_link(""));
+        assert_eq!(ev.link_for(" Outlook ", "", ics), ev.outlook_link(""));
+        assert_eq!(ev.link_for("office365", "", ics), ev.office365_link(""));
+        assert_eq!(ev.link_for("yahoo", "", ics), ev.yahoo_link(""));
+        assert_eq!(ev.link_for("apple", "", ics), ics);
+        assert_eq!(ev.link_for("ics", "", ics), ics);
+        // Apple / .ics without an address: no link rather than another calendar's.
+        assert_eq!(ev.link_for("apple", "", " "), "");
+        // Not chosen yet (or a value from elsewhere): Google Calendar, as before.
+        assert_eq!(ev.link_for("", "", ics), ev.google_link(""));
+        assert_eq!(ev.link_for("gcal", "", ics), ev.google_link(""));
+        for app in APPS {
+            assert_eq!(sanitize_app(&app.to_uppercase()), app);
+        }
+        for other in ["", "outlook.com", "google calendar", "auto"] {
+            assert_eq!(sanitize_app(other), "", "{other}");
+        }
+    }
+
+    #[test]
+    fn ics_links_outside_the_console_carry_a_key_not_the_token() {
+        assert_eq!(ics_url_with("", "call/c1", "secret"), "");
+        assert_eq!(ics_url_with("http://bageo.local/", "call/c1", ""), "http://bageo.local/calls/api/call/c1/event.ics");
+        assert_eq!(
+            ics_url_with("https://phone.example.com/calls/", "tasks/t1", ""),
+            "https://phone.example.com/calls/api/tasks/t1/event.ics"
+        );
+        let url = ics_url_with("http://bageo.local", "call/c1", "secret-token");
+        let key = link_key("secret-token", "call/c1");
+        assert_eq!(key.len(), 32);
+        assert_eq!(url, format!("http://bageo.local/calls/api/call/c1/event.ics?k={key}"));
+        assert!(!url.contains("secret"));
+        assert!(key_opens("secret-token", "call/c1", &key));
+        // Another file, another token, a cut key, no token: refused.
+        assert!(!key_opens("secret-token", "call/c2", &key));
+        assert!(!key_opens("other-token", "call/c1", &key));
+        assert!(!key_opens("secret-token", "call/c1", &key[..31]));
+        assert!(!key_opens("", "call/c1", ""));
+        assert_eq!(link_key(" ", "call/c1"), "");
     }
 
     #[test]

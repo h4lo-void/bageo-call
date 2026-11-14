@@ -159,12 +159,15 @@ Be aware of what has and has not been proven:
   call rang and was answered, the mode stayed after a reboot, and after
   switching back the AI answered.
 - **Appointments (new in 0.2.4, off by default).** When a caller asks for a
-  time, the AI can check your Google Calendar and either book it or say it will
-  confirm; you decide in the web console (and on a Telegram card if a bot is
-  set up). Tried with a simulated caller in nine languages, not yet with a
-  Google Calendar connected. Texting the caller back: the phone hands the text
-  to the network, but on our two test SIMs the carriers refused it, so a
-  delivered reply has not been seen yet.
+  time, the AI says it will check and get back to them by text or by phone;
+  under *To do* in the web console you pick how they hear it (a text, a
+  call-back from the AI, or nothing) and accept or decline (also on a Telegram
+  card if a bot is set up), and one tap adds an accepted one to the calendar
+  you chose. No calendar account is connected to the agent. Tried with a
+  simulated caller in nine languages. Texting the caller back: the phone hands
+  the text to the network, but on our two test SIMs the carriers refused it,
+  so a delivered reply has not been seen yet; the AI call-back has not been
+  tried on a real call yet.
 - **The phone module is signed with the project's own key**, so later releases
   install over it. If you installed the module from the first v0.2.0 download,
   which was signed with a temporary key, you can install the current one over

@@ -11,9 +11,14 @@
 //!
 //! Secrets API contract (`masked_json` / `apply_patch`):
 //! - GET returns a masked value ("abc…wxyz" or "••••") plus `<field>_set`.
-//! - GET also includes `gmail_configured` / `gcal_configured` (fulfill readiness; no secrets).
+//! - GET also includes `gmail_configured` (fulfill readiness; no secrets).
 //! - PUT with the secret field absent or "" keeps the stored value.
 //! - PUT with `<field>_clear: true` clears it (stored as an empty override).
+//!
+//! Keys a settings.json saved by an older agent may still hold and this one no
+//! longer knows (the Google Calendar credentials and `calendar_auto_add`, gone
+//! with the Google Calendar connection) are skipped when it is read and left
+//! out the next time it is written.
 //!
 //! Hot-swap: the merged snapshot is an `Arc<RuntimeSettings>` behind a
 //! `std::sync::RwLock`. Call sessions grab one snapshot at call start; HTTP
@@ -49,11 +54,6 @@ pub struct RuntimeSettings {
     pub gmail_user: String,
     pub gmail_app_password: String,
     pub gmail_from_name: String,
-    // Google Calendar — for task fulfillment
-    pub gcal_client_id: String,
-    pub gcal_client_secret: String,
-    pub gcal_refresh_token: String,
-    pub gcal_calendar_id: String,
     // OpenClaw — for task fulfillment
     pub openclaw_url: String,
     pub openclaw_token: String,
@@ -265,25 +265,32 @@ pub struct RuntimeSettings {
     /// model per call.
     #[serde(default = "default_true")]
     pub calendar_suggest: bool,
-    /// Also insert the event into Google Calendar right away (needs the
-    /// `gcal_*` credentials).
+    /// The calendar "Add to calendar" opens ([`crate::calendar::APPS`]): in
+    /// the web console and in notifications. Empty = not chosen yet (the web
+    /// console asks on the first press).
     #[serde(default)]
-    pub calendar_auto_add: bool,
-    /// Appointments on a call ([`crate::appointments`]): `off` (default),
-    /// `confirm` (the AI says it will confirm; the owner decides from a Telegram
-    /// card) or `auto` (a free time is taken and put in Google Calendar). Without
-    /// the Google Calendar credentials the AI cannot check the calendar and
-    /// `auto` works like `confirm`.
+    pub calendar_app: String,
+    /// Appointments on a call ([`crate::appointments`]): `off` (default) or
+    /// `confirm` (the AI says it will check and get back to the caller; the
+    /// owner accepts or declines on the web console or a Telegram card). An
+    /// `auto` saved by an older agent reads as `confirm`.
     #[serde(default = "default_appointment_mode")]
     pub appointment_mode: String,
-    /// After the owner confirms or declines (or `auto` books it), text the caller
-    /// through the phone that took the call (Taiwan mobile numbers only).
+    /// After the owner accepts or declines (or a test number's call books it),
+    /// text the caller through the phone that took the call (numbers that take
+    /// texts only).
     #[serde(default)]
     pub appointment_sms: bool,
+    /// How the owner's answer reaches a caller when the owner does not pick a
+    /// way ([`crate::appointments::default_reply`]): `auto` (default: a text to
+    /// a mobile, the AI calls back a landline, nobody for a hidden number),
+    /// `sms` or `call`. Also what the AI promises on the call.
+    #[serde(default = "default_auto")]
+    pub appointment_reply: String,
     /// Numbers that try out appointments: a call from one of them takes
     /// appointments in `auto` mode on the demo calendar (`demo_calendar.json` in
     /// the data folder, [`crate::appointments`]) whatever `appointment_mode` says,
-    /// and never touches Google Calendar. Stored as national digits
+    /// the only calendar the AI checks or writes. Stored as national digits
     /// ([`clean_test_numbers`]); empty by default.
     #[serde(default)]
     pub appointment_test_numbers: Vec<String>,
@@ -389,7 +396,7 @@ fn sanitize_reject_mode(s: &str) -> String {
     }
 }
 
-/// `off` / `confirm` / `auto`; anything else is off.
+/// `off` / `confirm` (an old `auto` is `confirm`); anything else is off.
 fn sanitize_appointment_mode(s: &str) -> String {
     crate::appointments::Mode::parse(s).as_str().to_string()
 }
@@ -483,10 +490,6 @@ impl RuntimeSettings {
             gmail_user: env_or("GMAIL_USER", ""),
             gmail_app_password: env_or("GMAIL_APP_PASSWORD", ""),
             gmail_from_name: env_or("GMAIL_FROM_NAME", ""),
-            gcal_client_id: env_or("GCAL_CLIENT_ID", ""),
-            gcal_client_secret: env_or("GCAL_CLIENT_SECRET", ""),
-            gcal_refresh_token: env_or("GCAL_REFRESH_TOKEN", ""),
-            gcal_calendar_id: env_or("GCAL_CALENDAR_ID", ""),
             openclaw_url: env_or("OPENCLAW_URL", ""),
             openclaw_token: env_or("OPENCLAW_TOKEN", ""),
             shaming_enabled: env_bool("SHAMING_ENABLED", false),
@@ -578,9 +581,10 @@ impl RuntimeSettings {
             public_url: env_or("PUBLIC_URL", ""),
             mdns_name: base.mdns_name.clone(),
             calendar_suggest: env_bool("CALENDAR_SUGGEST", true),
-            calendar_auto_add: env_bool("CALENDAR_AUTO_ADD", false),
+            calendar_app: String::new(),
             appointment_mode: sanitize_appointment_mode(&env_or("APPOINTMENT_MODE", "off")),
             appointment_sms: env_bool("APPOINTMENT_SMS", false),
+            appointment_reply: crate::appointments::sanitize_reply_setting(&env_or("APPOINTMENT_REPLY", "auto")),
             appointment_test_numbers: Vec::new(),
             appointment_test_sms_phone: String::new(),
             appointment_test_sms_sim: String::new(),
@@ -750,10 +754,6 @@ impl RuntimeSettings {
             gmail_user,
             gmail_app_password,
             gmail_from_name,
-            gcal_client_id,
-            gcal_client_secret,
-            gcal_refresh_token,
-            gcal_calendar_id,
             openclaw_url,
             openclaw_token,
             shaming_template,
@@ -806,6 +806,8 @@ impl RuntimeSettings {
             appointment_test_numbers,
             appointment_test_sms_phone,
             appointment_test_sms_sim,
+            calendar_app,
+            appointment_reply,
         );
         macro_rules! set_copy {
             ($($f:ident),+ $(,)?) => {$(
@@ -847,7 +849,6 @@ impl RuntimeSettings {
             ambience_level,
             reply_in_caller_language,
             calendar_suggest,
-            calendar_auto_add,
             appointment_sms,
         );
         self.ivr_start_delay_ms = self
@@ -871,6 +872,8 @@ impl RuntimeSettings {
         self.country_code = digits_only(&self.country_code);
         self.mdns_name = crate::mdns::parse_name_setting(&self.mdns_name);
         self.appointment_mode = sanitize_appointment_mode(&self.appointment_mode);
+        self.calendar_app = crate::calendar::sanitize_app(&self.calendar_app);
+        self.appointment_reply = crate::appointments::sanitize_reply_setting(&self.appointment_reply);
     }
 
     /// Overlay runtime-editable values onto the env base so existing call
@@ -940,13 +943,6 @@ impl RuntimeSettings {
     /// Fulfill email gate: Gmail user + app password both non-empty after trim.
     pub fn gmail_configured(&self) -> bool {
         !self.gmail_user.trim().is_empty() && !self.gmail_app_password.trim().is_empty()
-    }
-
-    /// Fulfill calendar gate: OAuth client id/secret + refresh token all non-empty.
-    pub fn gcal_configured(&self) -> bool {
-        !self.gcal_client_id.trim().is_empty()
-            && !self.gcal_client_secret.trim().is_empty()
-            && !self.gcal_refresh_token.trim().is_empty()
     }
 
     /// UserSig path ready (SDKAppID + secret key). Mirrors `TrtcSettings::configured`.
@@ -1049,14 +1045,6 @@ struct Overrides {
     gmail_app_password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     gmail_from_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    gcal_client_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    gcal_client_secret: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    gcal_refresh_token: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    gcal_calendar_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     openclaw_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1214,11 +1202,13 @@ struct Overrides {
     #[serde(skip_serializing_if = "Option::is_none")]
     calendar_suggest: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    calendar_auto_add: Option<bool>,
+    calendar_app: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     appointment_mode: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     appointment_sms: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    appointment_reply: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     appointment_test_numbers: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1248,7 +1238,7 @@ impl SettingsStore {
         let path = Path::new(&base.calls_data_dir)
             .join("config")
             .join("settings.json");
-        let overrides = match std::fs::read_to_string(&path) {
+        let mut overrides = match std::fs::read_to_string(&path) {
             Ok(text) => match serde_json::from_str::<Overrides>(&text) {
                 Ok(o) => {
                     info!("runtime settings overrides loaded path={}", path.display());
@@ -1264,6 +1254,11 @@ impl SettingsStore {
             },
             Err(_) => Overrides::default(),
         };
+        // An `auto` from before the Google Calendar connection was removed is
+        // `confirm` now, and is saved so.
+        if let Some(m) = overrides.appointment_mode.take() {
+            overrides.appointment_mode = Some(sanitize_appointment_mode(&m));
+        }
         let mut rt = RuntimeSettings::from_base(&base);
         rt.apply(&overrides);
         Arc::new(Self {
@@ -1322,7 +1317,7 @@ impl SettingsStore {
     }
 
     /// GET representation: secrets masked + `*_set` flags; rest verbatim.
-    /// Also includes `gmail_configured` / `gcal_configured` (fulfill gates; no secrets).
+    /// Also includes `gmail_configured` (fulfill gate; no secrets).
     pub fn masked_json(&self) -> Value {
         masked(&self.snapshot())
     }
@@ -1349,12 +1344,10 @@ impl SettingsStore {
     }
 }
 
-const SECRET_FIELDS: [&str; 13] = [
+const SECRET_FIELDS: [&str; 11] = [
     "openrouter_api_key",
     "telegram_bot_token",
     "gmail_app_password",
-    "gcal_client_secret",
-    "gcal_refresh_token",
     "openclaw_token",
     "trtc_secret_key",
     "trtc_secret_id",
@@ -1379,7 +1372,6 @@ fn masked(rt: &RuntimeSettings) -> Value {
     }
     // Fulfill readiness (no secrets) — UI Settings tab + offline units.
     m.insert("gmail_configured".into(), json!(rt.gmail_configured()));
-    m.insert("gcal_configured".into(), json!(rt.gcal_configured()));
     m.insert("trtc_configured".into(), json!(rt.trtc_configured()));
     m.insert(
         "trtc_cloud_api_ready".into(),
@@ -1539,10 +1531,6 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     p_string(patch, "gmail_user", &mut ov.gmail_user);
     p_secret(patch, "gmail_app_password", &mut ov.gmail_app_password);
     p_string(patch, "gmail_from_name", &mut ov.gmail_from_name);
-    p_string(patch, "gcal_client_id", &mut ov.gcal_client_id);
-    p_secret(patch, "gcal_client_secret", &mut ov.gcal_client_secret);
-    p_secret(patch, "gcal_refresh_token", &mut ov.gcal_refresh_token);
-    p_string(patch, "gcal_calendar_id", &mut ov.gcal_calendar_id);
     p_string(patch, "openclaw_url", &mut ov.openclaw_url);
     p_secret(patch, "openclaw_token", &mut ov.openclaw_token);
     p_bool(patch, "shaming_enabled", &mut ov.shaming_enabled);
@@ -1713,12 +1701,19 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
         ov.mdns_name = Some(crate::mdns::parse_name_setting(&v));
     }
     p_bool(patch, "calendar_suggest", &mut ov.calendar_suggest);
-    p_bool(patch, "calendar_auto_add", &mut ov.calendar_auto_add);
+    p_string(patch, "calendar_app", &mut ov.calendar_app);
+    if let Some(v) = ov.calendar_app.take() {
+        ov.calendar_app = Some(crate::calendar::sanitize_app(&v));
+    }
     p_string(patch, "appointment_mode", &mut ov.appointment_mode);
     if let Some(v) = ov.appointment_mode.take() {
         ov.appointment_mode = Some(sanitize_appointment_mode(&v));
     }
     p_bool(patch, "appointment_sms", &mut ov.appointment_sms);
+    p_string(patch, "appointment_reply", &mut ov.appointment_reply);
+    if let Some(v) = ov.appointment_reply.take() {
+        ov.appointment_reply = Some(crate::appointments::sanitize_reply_setting(&v));
+    }
     p_list(patch, "appointment_test_numbers", &mut ov.appointment_test_numbers);
     if let Some(v) = ov.appointment_test_numbers.take() {
         ov.appointment_test_numbers = Some(clean_test_numbers(v));
@@ -2132,31 +2127,21 @@ mod tests {
     }
 
     #[test]
-    fn gmail_gcal_configured_and_masked_flags() {
+    fn gmail_configured_and_masked_flags() {
         let mut rt = RuntimeSettings::from_base(&Settings::from_env());
         rt.gmail_user.clear();
         rt.gmail_app_password.clear();
-        rt.gcal_client_id.clear();
-        rt.gcal_client_secret.clear();
-        rt.gcal_refresh_token.clear();
         assert!(!rt.gmail_configured());
-        assert!(!rt.gcal_configured());
         let empty = masked(&rt);
         assert_eq!(empty.get("gmail_configured"), Some(&json!(false)));
-        assert_eq!(empty.get("gcal_configured"), Some(&json!(false)));
         // Secrets stay masked / never raw in GET payload.
         assert_eq!(empty.get("gmail_app_password"), Some(&json!("")));
 
         rt.gmail_user = "bot@gmail.com".into();
         rt.gmail_app_password = "abcdefghijklmnop".into();
-        rt.gcal_client_id = "cid".into();
-        rt.gcal_client_secret = "sec-secret-99".into();
-        rt.gcal_refresh_token = "rt-refresh-99".into();
         assert!(rt.gmail_configured());
-        assert!(rt.gcal_configured());
         let ready = masked(&rt);
         assert_eq!(ready.get("gmail_configured"), Some(&json!(true)));
-        assert_eq!(ready.get("gcal_configured"), Some(&json!(true)));
         let masked_pw = ready
             .get("gmail_app_password")
             .and_then(|v| v.as_str())
@@ -2433,14 +2418,78 @@ mod tests {
         let again = SettingsStore::load(base.clone());
         assert_eq!(again.snapshot().appointment_mode, "confirm");
         assert!(again.snapshot().appointment_sms);
-        // Anything unknown is off; another key leaves both alone.
+        // Anything unknown is off; "auto" (gone with Google Calendar) is
+        // confirm; another key leaves both alone.
         let rt = again.apply_patch(&json!({ "appointment_mode": "always" })).unwrap();
         assert_eq!(rt.appointment_mode, "off");
         let rt = again.apply_patch(&json!({ "appointment_mode": "auto" })).unwrap();
         let rt2 = again.apply_patch(&json!({ "calendar_suggest": false })).unwrap();
-        assert_eq!((rt.appointment_mode.as_str(), rt2.appointment_mode.as_str()), ("auto", "auto"));
+        assert_eq!((rt.appointment_mode.as_str(), rt2.appointment_mode.as_str()), ("confirm", "confirm"));
         assert!(rt2.appointment_sms);
-        assert_eq!(SettingsStore::load(base).snapshot().appointment_mode, "auto");
+        assert_eq!(SettingsStore::load(base).snapshot().appointment_mode, "confirm");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A settings.json written while Google Calendar could be connected loads
+    /// without an error: the credentials and `calendar_auto_add` are skipped
+    /// (and gone once it is saved again), `auto` appointments are `confirm`,
+    /// everything else is kept.
+    #[test]
+    fn settings_from_the_google_calendar_days_still_load() {
+        let dir = std::env::temp_dir().join(format!("bageo-call-old-gcal-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(dir.join("config")).expect("temp settings dir");
+        let old = json!({
+            "gmail_user": "bot@gmail.com",
+            "gcal_client_id": "id.apps.example",
+            "gcal_client_secret": "secret-123456",
+            "gcal_refresh_token": "refresh-123456",
+            "gcal_calendar_id": "primary",
+            "calendar_auto_add": true,
+            "calendar_suggest": false,
+            "appointment_mode": "auto",
+            "appointment_sms": true
+        });
+        let path = dir.join("config").join("settings.json");
+        std::fs::write(&path, serde_json::to_vec_pretty(&old).unwrap()).unwrap();
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        let rt = store.snapshot();
+        assert_eq!(rt.gmail_user, "bot@gmail.com");
+        assert!(!rt.calendar_suggest && rt.appointment_sms);
+        assert_eq!((rt.appointment_mode.as_str(), rt.calendar_app.as_str()), ("confirm", ""));
+        let shown = store.masked_json().to_string();
+        assert!(!shown.contains("gcal") && !shown.contains("calendar_auto_add") && !shown.contains("refresh-123456"), "{shown}");
+        // The next save writes only what this agent knows.
+        let rt = store.apply_patch(&json!({ "calendar_app": " Outlook " })).unwrap();
+        assert_eq!(rt.calendar_app, "outlook");
+        let saved: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let saved = saved.as_object().unwrap();
+        assert!(saved.keys().all(|k| !k.starts_with("gcal") && k != "calendar_auto_add"), "{saved:?}");
+        assert_eq!((saved["appointment_mode"].as_str(), saved["calendar_app"].as_str()), (Some("confirm"), Some("outlook")));
+        assert_eq!(saved["gmail_user"], "bot@gmail.com");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_chosen_calendar_is_kept_and_unknown_ones_are_not_chosen() {
+        let dir = std::env::temp_dir().join(format!("bageo-call-calendar-app-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("temp settings dir");
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        assert_eq!(store.snapshot().calendar_app, "");
+        assert_eq!(store.masked_json()["calendar_app"], "");
+        assert_eq!(store.apply_patch(&json!({ "calendar_app": "APPLE" })).unwrap().calendar_app, "apple");
+        assert_eq!(SettingsStore::load(base.clone()).snapshot().calendar_app, "apple");
+        // Another key leaves it alone; a name it does not know is "not chosen".
+        assert_eq!(store.apply_patch(&json!({ "calendar_suggest": true })).unwrap().calendar_app, "apple");
+        assert_eq!(store.apply_patch(&json!({ "calendar_app": "outlook.com" })).unwrap().calendar_app, "");
+        // The default way to tell a caller: automatic until another is picked.
+        assert_eq!(store.snapshot().appointment_reply, "auto");
+        assert_eq!(store.apply_patch(&json!({ "appointment_reply": " Call " })).unwrap().appointment_reply, "call");
+        assert_eq!(SettingsStore::load(base.clone()).snapshot().appointment_reply, "call");
+        assert_eq!(store.apply_patch(&json!({ "appointment_reply": "fax" })).unwrap().appointment_reply, "auto");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

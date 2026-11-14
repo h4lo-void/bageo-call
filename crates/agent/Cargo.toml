@@ -33,5 +33,7 @@ sha2.workspace = true
 base64.workspace = true
 flate2.workspace = true
 zhconv = "0.4.2"
+# Contacts import: CSV files saved in Big5, GBK, Shift_JIS … (Excel's local encodings).
+encoding_rs = "0.8"
 # Share UDP 5353 with the system's mDNS responder (SO_REUSEADDR / SO_REUSEPORT).
 socket2 = { version = "0.6", features = ["all"] }

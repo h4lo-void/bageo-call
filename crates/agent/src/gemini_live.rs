@@ -1158,6 +1158,19 @@ fn persona_kick_client_content(opening: Option<crate::locale::Lang>) -> String {
     crate::prompts::client_turn(&crate::prompts::kick_open(active.lang, active.assistant, opening))
 }
 
+/// The AI's own call-back (an appointment's answer): no opening is asked for
+/// while it rings. This only nudges the model when the callee has spoken and
+/// it has not started ([`CALLBACK_RING_MAX`]).
+fn callback_kick_client_content() -> String {
+    crate::prompts::client_turn(
+        "[System note, not said by the other person] They have picked up and spoken. Start the call as your instructions say: who is calling and why, the answer, then one goodbye.",
+    )
+}
+
+/// A call-back nobody speaks on this long (it rings, or the line stays
+/// silent) is ended: no answer.
+const CALLBACK_RING_MAX: Duration = Duration::from_secs(70);
+
 fn persona_wrap_up_client_content() -> String {
     crate::prompts::client_turn(&crate::prompts::current().kick_wrap_up)
 }
@@ -1273,21 +1286,42 @@ const STT_CALLER_VOCAB_ZH_TW: [&str; 9] = [
     "保險", "保單", "貸款", "信貸", "信用卡", "投資", "國際電話", "管理室", "包裹",
 ];
 
+/// Taiwan carriers' warning on calls from abroad: the one word kept as
+/// vocabulary when the caller's language is left to detect.
+const STT_CARRIER_VOCAB_ZH_TW: &str = "國際電話";
+
 /// Speech-to-text config for the caller's side: `langs` as language hints
 /// ([`CallLangPlan::caller_stt`]; `None` = it detects the language itself), the
 /// owner's name and (Taiwan) the call logic's key words as vocabulary.
 fn stt_caller_config(langs: Option<&[&'static str]>) -> Value {
-    let active = crate::locale::active();
+    stt_caller_config_for(langs, &crate::locale::active())
+}
+
+/// [`stt_caller_config`] for given settings. The vocabulary in the owner's
+/// language (the owner's name as the settings write it, the call logic's key
+/// words) goes in only when the hints include that language. A caller left to
+/// language detection is expected to speak another one, and the vocabulary
+/// pulled the transcript into it: an English caller's line about a parcel came
+/// out as a Chinese translation with 包裹 in it, a Japanese もしもし as 摩西摩西.
+/// The carrier's warning stays: it plays on calls from abroad whatever the
+/// caller speaks.
+fn stt_caller_config_for(langs: Option<&[&'static str]>, active: &crate::locale::Active) -> Value {
+    let langs = langs.filter(|l| !l.is_empty());
+    let own_hint = langs.is_some_and(|l| l.contains(&crate::locale::phrases(active.lang).stt));
     let mut vocab: Vec<String> = Vec::new();
-    let owner = active.owner.trim();
-    if !owner.is_empty() {
-        vocab.push(owner.chars().take(40).collect());
-    }
-    if active.lang == crate::locale::Lang::ZhTw {
-        vocab.extend(STT_CALLER_VOCAB_ZH_TW.iter().map(|w| w.to_string()));
+    if own_hint {
+        let owner = active.owner.trim();
+        if !owner.is_empty() {
+            vocab.push(owner.chars().take(40).collect());
+        }
+        if active.lang == crate::locale::Lang::ZhTw {
+            vocab.extend(STT_CALLER_VOCAB_ZH_TW.iter().map(|w| w.to_string()));
+        }
+    } else if active.lang == crate::locale::Lang::ZhTw {
+        vocab.push(STT_CARRIER_VOCAB_ZH_TW.to_string());
     }
     let mut cfg = json!({});
-    if let Some(langs) = langs.filter(|l| !l.is_empty()) {
+    if let Some(langs) = langs {
         cfg["languageCodes"] = json!(langs);
     }
     if !vocab.is_empty() {
@@ -3353,6 +3387,7 @@ pub async fn run_session(
     intl_caller: IntlPromptCheck,
     appointments: Option<crate::appointments::ApptSession>,
     lang_plan: CallLangPlan,
+    callback: bool,
 ) -> Result<SessionEndReason> {
     let opening_lang = lang_plan.opening.filter(|_| persona);
     let stall = stall.filter(|_| persona).map(|mut c| {
@@ -3556,7 +3591,12 @@ pub async fn run_session(
     } else {
         extract_owner_status(&system_prompt)
     };
-    let greets_kick_text = if persona {
+    // An AI call-back (`callback`): the phone dialed, so the line rings first
+    // and nobody is there to greet; the model speaks once the callee has
+    // spoken, and no opening is asked for.
+    let greets_kick_text = if callback {
+        callback_kick_client_content()
+    } else if persona {
         persona_kick_client_content(opening_lang)
     } else {
         greets_kick_client_content_for(&owner_status)
@@ -3568,7 +3608,7 @@ pub async fn run_session(
     );
     // Max ~12s of 16 kHz mono s16le held until UnmuteAfterGreet (never inject mid-IVR).
     const PREBUF_CAP_BYTES: usize = 16_000 * 2 * 12;
-    let mut greets_kicked = false;
+    let mut greets_kicked = callback;
     let mut prebuf: Vec<u8> = Vec::with_capacity(64 * 1024);
     let mut prebuf_chunks: u64 = 0;
     let mut prebuf_flushed_bytes: u64 = 0;
@@ -3594,7 +3634,7 @@ pub async fn run_session(
             .and_then(|b| b.lock().ok().map(|g| g.len()))
             .unwrap_or(0);
         opening_mark = Some(warm_transcript_mark);
-        if setup_ready.load(Ordering::Relaxed) {
+        if !greets_kicked && setup_ready.load(Ordering::Relaxed) {
             if send_text_before_deadline(
                 &mut sink,
                 greets_kick_text.clone(),
@@ -3676,6 +3716,7 @@ pub async fn run_session(
                             // openings): ask again now, while the phone still rings,
                             // instead of after pickup. The unheard line leaves the transcript.
                             if greets_kicked
+                                && !callback
                                 && prebuf.is_empty()
                                 && v.pointer("/serverContent/turnComplete")
                                     .and_then(|x| x.as_bool())
@@ -3749,7 +3790,9 @@ pub async fn run_session(
     // phone knows which SIM the call came in on): whatever the model says first —
     // the opening prepared while it rang, or the one it says now — waits for the
     // carrier's warning (see IntlGate).
-    let intl_call = persona && intl_caller();
+    // A call-back dials out: no carrier prompt comes, and the callee's first
+    // words must not be taken for one.
+    let intl_call = persona && !callback && intl_caller();
     let mut intl_gate = intl_gate_at_unmute(persona, intl_call, tokio::time::Instant::now());
     if intl_gate != IntlGate::Open {
         if opening_mark.is_none() {
@@ -3788,6 +3831,8 @@ pub async fn run_session(
         .await?;
         greets_kicked = true;
         info!("Gemini Live dialog greets kick sent serial={serial} (post-unmute)");
+    } else if callback {
+        info!("Gemini Live call-back serial={serial} — no opening; the AI waits for the callee to speak");
     } else {
         info!("Gemini Live dialog greets already pre-kicked serial={serial}");
     }
@@ -3930,6 +3975,8 @@ pub async fn run_session(
     // First-audio watchdog paused while the caller talks (see FIRST_DELIVERY_CALLER_*).
     let mut fd_grace = Duration::ZERO;
     let mut fd_tick = tokio::time::Instant::now();
+    // An AI call-back: still waiting for the callee to pick up and speak.
+    let mut callback_waiting = callback;
     // Testing only: rotate once after N s so it is testable without ~8 min.
     let test_rotate_after: Option<u64> = std::env::var("GEMINI_TEST_ROTATE_AFTER_SECS")
         .ok()
@@ -4318,8 +4365,31 @@ pub async fn run_session(
         // call prompt — is talking: pause the first-audio watchdog meanwhile instead
         // of killing a healthy socket (e.g. fresh session at 5 s, AI
         // first heard at 8.6 s).
+        // An AI call-back rings first: the first-audio watchdog starts when the
+        // callee has spoken (their words in the transcript, or the model
+        // already answering them); nobody for CALLBACK_RING_MAX ends the call.
+        if callback_waiting {
+            let now = tokio::time::Instant::now();
+            if !caller_text_all.trim().is_empty() || delivered_bytes.load(Ordering::Relaxed) > 0 {
+                callback_waiting = false;
+                first_delivery_window_start = now;
+                first_delivery_deadline = now + FIRST_DELIVERY_TIMEOUT;
+                fd_grace = Duration::ZERO;
+                info!("Gemini Live call-back serial={serial} — the callee spoke; the AI may answer");
+            } else if session_start.elapsed() >= CALLBACK_RING_MAX {
+                end_reason = SessionEndReason::CantCommunicate;
+                signal_force_hangup(&mut hangup_signaled);
+                info!(
+                    "Gemini Live call-back serial={serial} — nobody spoke within {}s: no answer, hang up",
+                    CALLBACK_RING_MAX.as_secs()
+                );
+                break;
+            } else {
+                first_delivery_deadline = now + FIRST_DELIVERY_TIMEOUT;
+            }
+        }
         let fd_now = tokio::time::Instant::now();
-        if delivered_bytes.load(Ordering::Relaxed) == 0 {
+        if delivered_bytes.load(Ordering::Relaxed) == 0 && !callback_waiting {
             let caller_busy = first_delivery_paused(
                 activity_open,
                 last_caller_voice_at.map_or(false, |t| t.elapsed() < FIRST_DELIVERY_CALLER_HOLD),
@@ -4333,7 +4403,7 @@ pub async fn run_session(
             }
         }
         fd_tick = fd_now;
-        let fd_action = if intl_gate != IntlGate::Open {
+        let fd_action = if intl_gate != IntlGate::Open || callback_waiting {
             FirstDeliveryAction::Wait
         } else {
             first_delivery_action(
@@ -7572,13 +7642,50 @@ mod tests {
         assert!(auto.get("languageCodes").is_none());
         let empty: &[&'static str] = &[];
         assert!(stt_caller_config(Some(empty)).get("languageCodes").is_none());
-        // Unset settings (tests) are Taiwan's: the call logic's words stay as
+        // Unset settings (tests) are Taiwan's: the carrier's warning stays as
         // vocabulary either way.
         for cfg in [&hinted, &auto] {
             assert!(cfg["customVocabulary"]
                 .as_array()
                 .is_some_and(|v| v.iter().any(|w| w.as_str() == Some("國際電話"))));
         }
+    }
+
+    #[test]
+    fn caller_left_to_detect_gets_no_owner_vocabulary() {
+        // A US number on a US SIM, owner in Taiwan: no hints, the language is
+        // detected. The owner's name and the Chinese key words stayed in the
+        // vocabulary, and an English line about a parcel came out in Chinese
+        // (「…一個給你的包裹被送到我家門口了」), a Japanese もしもし as 摩西摩西.
+        use crate::locale::{Active, Lang};
+        let tw = Active { owner: "林先生".into(), ..Default::default() };
+        let words = |cfg: &Value| -> Vec<String> {
+            cfg["customVocabulary"]
+                .as_array()
+                .map(|v| v.iter().filter_map(|w| w.as_str().map(String::from)).collect())
+                .unwrap_or_default()
+        };
+        let us: std::collections::BTreeMap<String, String> = [("us".to_string(), "en".to_string())].into();
+        let plan = call_lang_plan("+12025550143", Some("us"), Lang::ZhTw, "886", &us);
+        assert_eq!(plan.caller_stt, None);
+        let auto = stt_caller_config_for(plan.caller_stt.as_deref(), &tw);
+        assert!(auto.get("languageCodes").is_none());
+        assert_eq!(words(&auto), vec!["國際電話".to_string()]);
+        // A Taiwanese caller: hints with the owner's language, the whole vocabulary.
+        let local = call_lang_plan("0912000000", Some("tw"), Lang::ZhTw, "886", &Default::default());
+        let hinted = stt_caller_config_for(local.caller_stt.as_deref(), &tw);
+        assert_eq!(hinted["languageCodes"], json!(["zh-TW", "en-US"]));
+        let w = words(&hinted);
+        assert!(w.contains(&"林先生".to_string()) && w.contains(&"包裹".to_string()), "{w:?}");
+        // Hints without the owner's language: none of the owner's words either.
+        let ja_only: &[&'static str] = &["ja-JP"];
+        let w = words(&stt_caller_config_for(Some(ja_only), &tw));
+        assert!(!w.iter().any(|x| x == "林先生" || x == "包裹" || x == "管理室"), "{w:?}");
+        // Another owner language: no Taiwan words, the name only with its hint.
+        let en = Active { lang: Lang::En, notify_lang: Lang::En, owner: "Alex".into(), ..Default::default() };
+        let en_hint: &[&'static str] = &["en-US"];
+        assert_eq!(words(&stt_caller_config_for(Some(en_hint), &en)), vec!["Alex".to_string()]);
+        assert!(stt_caller_config_for(None, &en).get("customVocabulary").is_none());
     }
 
     #[test]
