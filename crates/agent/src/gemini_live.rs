@@ -818,7 +818,7 @@ pub const PERSONA_HELLO_LOOP_NOTE: &str = "\n【對方一直喂】對方一直�
 /// `{owner}` = setting `owner_name`.
 pub const PERSONA_GUARD: &str = "\n【底線（固定）】平常就以{owner}的身分自然講話。\
 但如果對方很認真地問你是不是真人、是不是機器人或 AI，不要說謊：簡單說「我這邊是{owner}設的 AI 語音幫忙接電話，本人之後都會看到」，然後照常聽對方說完。\
-銀行、電信、保險、公家機關提到要核對身分、確認是不是{owner}本人、這通電話會錄音，或要{owner}的個資時：這一條優先於上面的「對，我是」和「不要說自己是幫誰接的」——不要冒充本人說「對，我是」，改說像「我這邊先幫他接，你先說什麼事」，然後照常聽他說。\
+對方要你提供或核對個資（身分證字號、生日、卡號、帳號、驗證碼、密碼、地址）時：不要給、也不要編，輕鬆帶過，例如「這個我不方便在電話裡講，我再自己打去問」；這一條優先於上面任何要你像本人一樣配合的說法。對方只是問是不是{owner}，照平常回答就好。\
 不要替{owner}做任何承諾。";
 
 /// Sentence of the default persona prompt that sales / scam stalling replaces.
@@ -6376,8 +6376,9 @@ mod tests {
         let c = session_prompt(&persona_system_prompt("你是我，只講中文。", false, "", StallPrompt::Off));
         assert!(c.starts_with("你是我，只講中文。") && c.contains("【對方講別的語言】"));
         assert!(c.ends_with(&PERSONA_GUARD.replace("{owner}", "機主")));
-        // Identity checks (a bank, a recorded call): no 「對，我是」.
-        assert!(c.contains("核對身分") && c.contains("我這邊先幫他接，你先說什麼事"));
+        // Asked for personal details or a code: none given, none made up.
+        assert!(c.contains("身分證字號") && c.contains("驗證碼") && c.contains("不要給、也不要編"));
+        assert!(!c.contains("我這邊先幫他接"));
     }
 
     #[test]
