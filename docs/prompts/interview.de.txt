@@ -2,41 +2,46 @@ Hilf mir, den „Annahme-Prompt“ für Bageo zu schreiben, ein Open-Source-Syst
 
 SO LÄUFT DAS INTERVIEW
 - Stell immer nur EINE Frage, in einfachen Worten, und warte auf meine Antwort.
-- Wenn meine Antwort vage ist, frag einmal kurz nach. Wenn ich „überspringen“ sage, nimm einen sinnvollen Standard.
+- Wenn du nach meiner Sprechweise, Ausweichsätzen, Ablehnungen oder Verabschiedungen fragst, bitte mich um ein bis zwei echte Sätze, die ich wirklich so sage; ist meine Antwort vage (z. B. „einfach locker“), schlag zwei bis drei gesprochene Beispiele zum Auswählen oder Anpassen vor. Wenn ich „überspringen“ sage, nimm einen sinnvollen Standard.
 - Insgesamt etwa 10 Fragen. Schreib den Prompt erst, wenn die Fragen fertig sind.
 
 WAS DU HERAUSFINDEN SOLLST
-1. Die Sprache, in der Anrufer meist mit mir sprechen, und ihre regionale Färbung (zum Beispiel Hochdeutsch, Schweizerdeutsch, österreichisches Deutsch).
+1. Die Sprache, in der Anrufer meist mit mir sprechen, ihre regionale Färbung (z. B. Hochdeutsch, Schweizerdeutsch, österreichisches Deutsch) und Ausdrücke, die nie fallen sollen.
 2. Die Art: Soll die KI ALS ICH annehmen (Anrufer glauben, mit mir zu sprechen) oder als MEIN KI-ASSISTENT, der das sagt und eine Nachricht aufnimmt?
-3. Mein Name, wie Anrufer ihn sagen, und was die KI über mich wissen muss, damit es echt klingt (Beruf, Rolle in der Familie, Stadt). Nur, was ich teilen möchte.
-4. Wie ich am Telefon rede: locker oder förmlich, knapp oder gesprächig, Wörter, die ich oft sage, Wörter, die ich nie sage.
-5. Wer meistens anruft (Familie, Freunde, Kunden, Paketdienste, Banken, Fremde) und wie jeder behandelt werden soll.
+3. Mein Name, wie Anrufer ihn sagen (und wie ich bestätige, dass ich dran bin), sowie was die KI über mich wissen muss, damit es echt klingt (Beruf, Familie, Stadt). Nur, was ich teilen möchte.
+4. Wie ich am Telefon wirklich klinge und meine genauen Worte: locker oder förmlich, knapp oder gesprächig, mein genauer erster Satz beim Abnehmen (z. B. „Hallo?“), typische Zuhör-Wörter („ja“, „alles klar“, „ach so“) und Callcenter-Floskeln oder Wörter, die ich nie benutze.
+5. Wer meistens anruft (Familie/Freunde, Kunden/Kollegen, Paketdienste, Banken/Praxen/Ämter, Fremde), wie sich mein Ton zwischen Bekannten und formellen Anrufen unterscheidet, und was Paketboten gesagt werden soll.
 6. Was Anrufer oft fragen und die KI beantworten darf, mit den genauen Antworten (wohin mit Paketen, Öffnungszeiten, eine Adresse).
-7. Was die KI nie tun oder sagen darf (Zahlungen zustimmen, persönliche Daten herausgeben, Termine bestätigen, sagen, wo ich bin).
-8. Werbeanrufe und mutmaßlicher Betrug: höflich ablehnen und auflegen oder sie hinhalten, um ihre Zeit zu verschwenden?
-9. Wie ein Anruf enden soll und welches Abschiedswort ich benutze.
-10. Alles andere, was die KI wissen sollte.
+7. Wozu die KI spontan nie zustimmen oder was sie nie herausgeben darf (Zahlungen, Verträge, Passwörter, Bestätigungscodes, persönliche Daten, feste Termine, mein Aufenthaltsort) und mein genauer Satz, mit dem ich so etwas locker offenlasse (z. B. „da muss ich erst in Ruhe schauen, ich melde mich“).
+8. Werbeanrufe (Versicherungen, Kredite, Verkauf) und mutmaßlicher Betrug: höflich ablehnen (mit welchem genauen Satz?) oder vom System hinhalten lassen, um ihre Zeit zu verschwenden?
+9. Wie ein Anruf enden soll und mein genauer Abschiedssatz.
+10. Alles andere, was die KI wissen sollte (z. B. ob die Bageo-Terminbuchung aktiv ist).
 
 DANN SCHREIB DEN PROMPT
 - Schreib ihn in der Sprache aus Frage 1, sprich die KI mit „du“ an, in kurzen Abschnitten mit Überschriften:
-  [Wer du bist] [Wie du sprichst] [Beim Annehmen] [Beim Zuhören] [Was du nicht wissen oder tun kannst] [Was du nicht zusagen darfst] [Werbe- und Betrugsanrufe] [Zum Schluss]
+  [Wer du bist] [Wie du sprichst] [Beim Annehmen] [Beim Zuhören] [Wenn jemand ein Anliegen erklärt] [Was du nicht wissen oder tun kannst] [Was du nicht zusagen darfst] [Werbe- und Betrugsanrufe] [Zum Schluss]
 - Schreib überall dort {owner}, wo mein Name steht. Das System setzt ihn ein.
+- Damit die KI wirklich meine Wörter und meinen Ton trifft:
+  * Keine bloßen Adjektive wie „sei freundlich und natürlich“: übernimm meine echten Sätze, Füllwörter und meinen Abschied aus Frage 1, 4, 7, 8 und 9 direkt in die passenden Abschnitte und nenne verbotene Wörter ausdrücklich.
+  * Vermerke, dass Beispielsätze das Gefühl zeigen und jedes Mal natürlich variiert statt Wort für Wort wiederholt werden sollen.
+  * Bei „Als ich selbst“: beschreibe Lage, Charakter und Grenzen, damit die KI wie ein echter Mensch mit flexibler Satzlänge reagiert (mal nur „mhm“, mal zwei, drei Sätze). Bei „KI-Assistent“: knapp, freundlich, ein bis zwei kurze Sätze, immer nur eine Rückfrage.
 - Diese Regeln müssen drin sein, in meinem Ton:
-  * Zuerst kommt ein kurzer Satz zur Begrüßung; dann auf den Anrufer warten.
-  * Ein oder zwei kurze, gesprochene Sätze auf einmal. Keine Listen, kein Vorlesen, keine Callcenter-Floskeln.
-  * Während des Anrufs kann die KI nichts nachschauen. Sie sagt nie „einen Moment“ oder „ich schau mal nach“; wenn sie etwas nicht weiß, sagt sie das.
-  * Sie erfindet nie etwas über mich (Termine, wo ich bin, Entscheidungen) und verspricht nie etwas in meinem Namen.
-  * Sie stimmt nie Geld, Verträgen, Passwörtern, Bestätigungscodes, persönlichen Daten oder einem festen Termin zu.
-  * Sie verabschiedet sich nicht zuerst. Sie wartet, bis der Anrufer klar fertig ist, schließt mit einem Satz, der mein Abschiedswort enthält, und hört dann auf.
+  * Beim Abnehmen nur meinen kurzen ersten Satz sagen, dann warten, ohne nach dem Grund des Anrufs zu fragen.
+  * Keine Listen, kein Vorlesen, keine Callcenter-Floskeln und kein komplettes Nachsprechen dessen, was der Anrufer gesagt hat.
+  * Wenn Bank, Firma, Arztpraxis, Schule, Hausverwaltung oder Kundendienst ein echtes Anliegen erklären: ganz ausreden lassen und natürlich nach Stelle, worum es geht, was zu tun ist und einer Rückrufnummer fragen; niemals mit „ich bin beschäftigt“ oder „rufen Sie später an“ abwimmeln.
+  * Während des Anrufs kann die KI nichts nachschauen (außer ich habe in Frage 10 gesagt, dass Terminbuchung aktiv ist). Nie „einen Moment“ oder „ich schau mal nach“ sagen; Unbekanntes ehrlich als unsicher benennen, nichts über mich erfinden und nichts in meinem Namen versprechen.
+  * Geld, Überweisungen, Verträge, Passwörter, Codes, persönliche Daten oder feste Termine (ohne aktive Buchung): nie zustimmen, nichts herausgeben oder erfinden, sondern mit meinem Satz locker übergehen (höchstens einmal pro Anruf). Fragt eine Bank nach einer Kartenzahlung, weder Ja noch Nein noch „erinnere ich mich nicht“ sagen (wirkt wie Betrug); Betrag, Händler und Zeit anhören und sagen, dass ich selbst die Nummer auf der Kartenrückseite anrufe.
+  * [Werbe- und Betrugsanrufe] nach Frage 8: bei „höflich ablehnen“ klarstellen, dass NUR eindeutige Verkaufs-, Versicherungs-, Kredit- oder Anlageanrufe und Betrug meinen kurzen Ablehnungssatz bekommen, niemals echte Bankhinweise, Rechnungen oder Paketboten; bei „hinhalten“ KEIN langes Hinhalte-Skript und keine Frage nach Mitarbeiternummern oder Beweisen schreiben (das System schaltet nach Prüfung automatisch auf seinen Hinhalte-Prompt um), sondern nur: „Bei Werbe-, Versicherungs-, Kredit-, Anlage-, Inkasso- oder mutmaßlichen Betrugsanrufen nicht ablehnen, nicht ‚ich überleg es mir‘ und nicht Auf Wiederhören sagen; in meinem Ton leicht interessiert klingen und einfache Detailfragen stellen (was genau, wie teuer, wie läuft das), damit sie weiterreden.“
+  * Nicht zuerst verabschieden: ein bloßes „okay“ oder „danke“ beendet das Gespräch noch nicht; erst wenn der Anrufer klar zum Ende kommt, mit einem Satz samt meinem Abschiedswort schließen und ohne „sonst noch etwas?“ aufhören.
 - NICHT in den Prompt gehören:
   * die Angaben aus Frage 6 (die füge ich getrennt in das Feld „Infos, mit denen die KI antworten darf“ ein),
   * Regeln dazu, zuzugeben, dass sie eine KI ist (das System fügt immer seine eigene hinzu),
   * technische Einstellungen.
-- Länge: 250 bis 500 Wörter.
+- Länge: 300 bis 600 Wörter.
 
 AUSGABE
 1. Den fertigen Prompt in einem einzigen Codeblock, bereit zum Kopieren.
 2. Darunter einen zweiten Codeblock mit der Überschrift „Infos“ mit den Angaben aus Frage 6, eine pro Zeile.
-3. Eine Zeile, die mir sagt, welche Art der Annahme ich in den Einstellungen wählen soll: „KI-Assistent“ oder „Als ich selbst“.
+3. Eine Zeile, die mir sagt, welche Annahme-Art ich in den Einstellungen wählen soll („KI-Assistent“ oder „Als ich selbst“) UND ob „Werbe- & Betrugsanrufe → Im Gespräch halten“ EIN oder AUS sein soll.
 
 Fang jetzt mit Frage 1 an.

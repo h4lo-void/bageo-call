@@ -54,7 +54,7 @@ You do not need to know how to write prompts.
 4. It gives you three things:
    - **the prompt** in a code block → paste into *Settings → Prompt → Your own prompt*;
    - **Notes** → paste into *Notes the AI may answer from*;
-   - **which answer style to select** → set *Settings → Answer style*.
+   - **which answer style and sales-stalling setting to select** → set *Settings → Answer style* and *Settings → Sales & scam calls → Keep them talking*.
 5. Save, call your number, listen. If something is off, tell the chat AI what
    happened ("it talks too much", "it asked my caller for their name twice")
    and ask for a corrected prompt.
@@ -95,13 +95,20 @@ cover:
 | Section | Say |
 |---|---|
 | Who you are | *As me*: "You are {owner}, answering your own phone; you are not an assistant." — or — *AI assistant*: "You are the AI assistant answering {owner}'s phone; you are not {owner}." |
-| How you talk | Language and regional flavour, relaxed or formal, short sentences, your typical words. No lists, no call-centre phrases. |
+| How you talk | Language and regional flavour, relaxed or formal, the exact phrases and listener reactions you actually say out loud, plus banned words; state that example lines show the feel and should be varied naturally each time. No lists, no call-centre phrases. |
 | Picking up | The exact kind of first line ("Hello?"), and then to stop and wait. |
 | Listening | Not to talk over the caller; how to react when they finish a point. |
+| When the caller has something to explain | Let a bank, company, clinic, school, building desk or support agent finish explaining real business and ask who called, what it is about, what is needed and a callback number; never brush them off with "I'm busy / call later". |
 | What you cannot know or do | It cannot look anything up during the call; never "one moment" / "let me check"; say so when unsure; never invent your schedule or whereabouts. |
-| Things not to agree to | Money, contracts, passwords, verification codes, personal data, fixed appointments. |
+| Things not to agree to | Money, contracts, passwords, verification codes, personal data, fixed appointments, and the exact hedge phrase you use to pass over them lightly (at most once per call). |
 | Sales and scam calls | Decline in one line — or see [below](#sales-and-scam-calls). |
 | Ending | Wait until the caller is clearly done, then one closing line with your goodbye word. |
+
+**How to get the exact words and tone you want:**
+
+- **Give exact spoken phrases and banned words, not just adjectives.** Instead of "sound friendly and casual", write the exact opener ("Hello?"), listener fillers ("yeah", "right", "gotcha"), hedge ("let me check on that and get back to you") and farewell ("Alright, bye") you actually say, plus phrases it must never use ("never say 'how may I assist you'").
+- **Say that example lines are for feel, not scripts to repeat verbatim.** Without that note, voice models tend to repeat the one quoted example at the end of every turn; with it, they keep your vocabulary while varying phrasing like a real person.
+- **In *As me* style, write situation and boundaries rather than a rigid sentence-count formula.** Letting turn length flex with the moment (sometimes just "mm-hm", sometimes two or three sentences when chatting) sounds much more human than forcing two full sentences every time.
 
 **Rules the call engine relies on** — keep them, in your own words:
 
@@ -184,19 +191,27 @@ investment, "your account is frozen", …):
   ends when the caller gives up, or after *Longest such call* minutes.
 
 The switch from normal to stalling happens mid-call and replaces a few lines of
-the **built-in** prompt. With your own prompt it still works — the stalling
-instructions are added at the end and take priority.
+the **built-in** prompt. With your own prompt it still works — when *Keep them
+talking* is on, the system overrides any immediate sales-decline rule while the
+call is still being checked (leaving ordinary calls alone) and appends the full
+stalling instructions at the end once confirmed. Do not put a long stalling
+script or "ask for their staff ID / proof" into your custom prompt (asking for
+proof makes scammers hang up at once).
 
-A caller following up on something *you* raised (a complaint, a claim) is never
+A caller following up on something *you* raised (a complaint, a repair, an application) is never
 treated as a sales call, whatever words they use.
 
-With it on, a call whose words look like a pitch gets a quick second look
-before the AI starts: a small model reads the call so far (at most 1.5 s; the
-AI talks on meanwhile). Family talking about money, a courier collecting cash
-on delivery or your card company checking a purchase you made are left alone,
-and looked at again only if more such words come (three times a call at
-most). A caller who has only said who they are ("this is your bank's card
-risk-control centre") is looked at again once they have said what they want.
+With it on, a call whose words look like a sales pitch, insurance offer or scam
+gets a quick second look before the AI starts stalling: a small model reads the
+call so far together with whether the caller is in your contacts (at most 1.5 s;
+the AI talks on meanwhile). Saved contacts talking about transfers or bills, a
+courier collecting cash on delivery, your card company checking a purchase you
+made, or a bank / insurer updating you on an existing claim payout or card
+delivery (without pitching new plans or asking for ATM steps, codes, safe
+accounts or chat apps) are left alone, and looked at again only if more such
+words come (three times a call at most). A caller who has only said who they
+are ("this is your bank's card risk-control centre", "this is Mia from Acme
+Insurance") is looked at again once they have said what they want.
 A recorded voice menu ("press 1 for…") gets no answer: the AI stays
 quiet and the agent hangs up after 4 s of quiet line, or 20 s.
 

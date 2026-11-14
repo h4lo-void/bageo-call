@@ -52,6 +52,7 @@ AI 回覆：AI 怎麼回的，一句（例如「說放管理室就好」「說�
 - 每行最多 25 個字左右，像傳訊息，不要寫成句子解釋。\n\
 - 「國際電話請注意小心詐騙」是電信公司的提示音，不是對方講的，也不是詐騙的證據。對方講外語本身不算推銷或詐騙；只有對方講的內容本身像推銷或詐騙，才寫「推銷電話」「疑似詐騙」。\n\
 - 銀行、信用卡中心打來確認某一筆刷卡或交易是不是{owner}本人（沒有要轉帳、去 ATM、給驗證碼或密碼、裝 App、解除分期）：不是推銷也不是詐騙，就算【通話資訊】寫 AI 陪他聊也一樣。「事情」寫哪家銀行、金額、商店、時間（例如「大愛銀行：昨晚11點網路電器行3280元，問是否本人刷」）；「要處理」提醒{owner}自己確認（例如「自己確認是否本人刷；不是就打卡片背面客服，別回撥來電」），不能寫「不用」。\n\
+- 保險公司或銀行單純通知{owner}既有申請進度、既有保單理賠結果／入帳、卡片寄送或帳單提醒，以及親友、房東、廠商談日常匯款或帳務（沒有推銷新保單／貸款／方案，也沒有要操作 ATM、給驗證碼或密碼、轉帳到安全帳戶、加 LINE）：不是推銷也不是詐騙，照一般電話寫事由與待辦，不要寫「推銷電話」或「疑似詐騙」。\n\
 - 【通話資訊】寫 AI 連不上、系統掛斷時，「AI 回覆」寫「AI 沒接上，沒講話」。\n\
 - 【通話資訊】寫 AI 故意陪聊拖時間、而【對話】看起來確實是推銷或詐騙時：「事情」寫賣什麼或什麼詐騙手法，「AI 回覆」寫「陪他繞了約 N 分鐘」（用長度換算），「要處理」寫「不用」；其實是正常電話就照一般寫。\n\
 - 【對話】裡「接聽：」是 AI 講的，不是對方的要求；不要把 AI 的話當成對方的事情。\n\
@@ -80,6 +81,7 @@ Rules:\n\
 - \"AI:\" lines are the AI talking; they are not the caller's request.\n\
 - The carrier's warning about international calls is not the caller and no sign of a scam. A caller speaking another language is not a sales or scam call either; only what they actually say can make it one.\n\
 - A bank or card centre calling only to check whether a card charge or transaction was {owner}'s (no request to transfer money, go to an ATM, give a code or password, install an app or cancel an instalment plan) is neither a sales call nor a scam, even if [Call facts] says the AI kept them talking: {s_matter} names the bank, the amount, the shop and the time; {s_todo} tells {owner} to check whether the charge was theirs and, if it was not, to call the number on the back of the card (not the number that called) — never that there is nothing to do.\n\
+- An insurer or bank updating {owner} on an existing application, claim payout, card delivery or bill reminder, or a known person / vendor discussing an ordinary transfer or invoice (with no pitch for new insurance, loans or paid plans, and no request for ATM steps, codes, passwords, safe accounts or chat apps), is neither a sales call nor a scam: write it up as a normal call.\n\
 - If [Call facts] says the AI could not connect and the system hung up, the {s_reply} line is: {s_ai_failed}.\n\
 - If [Call facts] says the AI deliberately kept the caller talking and the dialogue does look like a sales or scam call: {s_matter} is what was being sold or which scam it was, {s_reply} is that the AI kept them busy for about N minutes (work N out from the length), {s_todo} is nothing to do. If it was in fact a normal call, write it up normally.\n\
 - Do not invent anything you are not sure of; write that it was unclear.\n\

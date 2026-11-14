@@ -1341,6 +1341,16 @@ fn stt_ai_config(opening: Option<crate::locale::Lang>) -> Value {
     json!({ "languageCodes": stt_codes(&langs) })
 }
 
+/// Live lookup of the caller's number and saved-contact label for `stall_review`.
+#[derive(Clone)]
+pub struct CallerContextFn(pub Arc<dyn Fn() -> crate::stall_review::CallerContext + Send + Sync>);
+
+impl std::fmt::Debug for CallerContextFn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CallerContextFn(..)")
+    }
+}
+
 /// Per-call sales / scam stalling config (None = feature off or not persona mode).
 #[derive(Debug, Clone)]
 pub struct StallCfg {
@@ -1355,6 +1365,8 @@ pub struct StallCfg {
     /// Talk cap once engaged (setting `persona_stall_max_min`), replacing the
     /// normal-call cap.
     pub max_secs: u64,
+    /// Caller's number and saved-contact label (read when `stall_review` runs).
+    pub caller_context: Option<CallerContextFn>,
 }
 
 /// Same setup, another system prompt (the rotated stall session).
@@ -1496,25 +1508,39 @@ const STALL_KEYWORDS: &[(&str, u32)] = &[
     // insurance
     ("保險", 2), ("保單", 2), ("保費", 2), ("壽險", 2), ("醫療險", 2), ("意外險", 2),
     ("儲蓄險", 2), ("年金險", 2), ("投資型", 2),
+    ("人壽", 2), ("產險", 2), ("保戶", 2), ("保單健檢", 2), ("保障規劃", 2),
+    ("提高保額", 2), ("加保", 2), ("投保", 2), ("實支實付", 2), ("重大傷病", 2),
+    ("長照險", 2), ("失能險", 2), ("防癌險", 2), ("癌症險", 2), ("滿期金", 2),
     // banks / loans / cards
     ("貸款", 2), ("信貸", 2), ("房貸", 2), ("車貸", 2), ("代償", 2), ("整合負債", 2),
     ("債務協商", 2), ("低利", 2), ("利率", 2), ("額度", 2), ("預借現金", 2), ("辦卡", 2),
     ("信用卡", 2), ("分期", 2), ("週轉", 2), ("周轉", 2),
+    ("融資", 2), ("增貸", 2), ("轉貸", 2), ("二胎", 2), ("汽機車貸款", 2), ("免保人", 2),
+    ("資金需求", 2), ("額度評估", 2), ("卡友專案", 2),
+    ("降息", 1), ("過件", 1), ("撥款", 1), ("核貸", 1),
     // debt collection (a fake-bank call about an overdue instalment was only
     // judged at 75 s, on 凍結)
     ("催繳", 2), ("催收", 2), ("欠款", 2), ("逾期", 2), ("繳款", 1), ("還款", 1), ("協商", 1),
     // investment
     ("投資", 2), ("理財", 2), ("股票", 2), ("飆股", 2), ("報明牌", 2), ("虛擬貨幣", 2),
     ("加密貨幣", 2), ("比特幣", 2), ("外匯", 2), ("期貨", 2), ("穩賺", 2), ("獲利", 2),
+    ("保證獲利", 2), ("穩賺不賠", 2), ("帶單", 2), ("操盤", 1), ("內線", 1), ("抽籤", 1), ("申購", 1),
     // scams
     ("檢察官", 2), ("地檢署", 2), ("刑事局", 2), ("監管帳戶", 2), ("洗錢", 2), ("涉案", 2),
     ("偵查不公開", 2), ("人頭帳戶", 2), ("健保局", 2), ("重複扣款", 2), ("解除設定", 2),
     ("凍結", 2), ("中獎", 2), ("猜猜我是誰", 2), ("驗證碼", 2), ("atm", 2), ("匯款", 2),
     ("轉帳", 2),
+    ("自動扣款", 2), ("連續扣款", 2), ("解除扣款", 2), ("取消扣款", 2), ("批發商", 2), ("經銷商", 2),
+    ("簽單錯誤", 2), ("訂單錯誤", 2), ("健保署", 2), ("鎖卡", 2), ("海關扣留", 2), ("包裹異常", 2),
+    ("傳票", 2), ("拘票", 2), ("通緝", 2), ("盜用", 2), ("冒用", 2), ("警示戶", 2),
+    ("點數卡", 2), ("禮品卡", 2), ("遠端操控", 2), ("加賴", 2),
     // promotions
     ("推銷", 2), ("促銷", 2), ("贈品", 2), ("抽獎", 2), ("預售屋", 2), ("建案", 2),
     ("靈骨塔", 2), ("塔位", 2), ("生前契約", 2), ("健康食品", 2), ("保健食品", 2),
-    ("淨水器", 2), ("理專", 2), ("優惠", 1), ("專案", 1), ("方案", 1), ("免費", 1),
+    ("淨水器", 2), ("理專", 2), ("老客戶回饋", 2), ("專屬優惠", 2), ("限時優惠", 2),
+    ("免費體驗", 2), ("免費試聽", 2), ("體驗課", 2), ("市場調查", 2), ("電話訪問", 2),
+    ("醫美", 2), ("瘦身", 2), ("節費", 2), ("太陽能", 2), ("電銷", 2), ("行銷", 1),
+    ("優惠", 1), ("專案", 1), ("方案", 1), ("免費", 1),
     ("折扣", 1), ("升級", 1), ("續約", 1), ("門號", 1), ("電信", 1), ("課程", 1),
     ("問卷", 1), ("民調", 1),
     // software / service pitches
@@ -1538,8 +1564,11 @@ pub(crate) fn stall_keyword_hits(caller_text: &str) -> Vec<&'static str> {
 /// a longer one that also hit counts once, as the longer one: 免費 and 試用 in
 /// 免費試用, "insurance" in "life insurance", 無料 in 無料体験.
 fn stall_score_add(caller_text: &str, hits: &mut Vec<&'static str>) -> u32 {
-    // Live STT writes 帳戶 as 賬戶 too.
-    let t = crate::zh_tw::norm(caller_text).to_ascii_lowercase().replace('賬', "帳");
+    // Live STT writes 帳戶 as 賬戶 and 加賴 (add LINE) as 加頼 too.
+    let t = crate::zh_tw::norm(caller_text)
+        .to_ascii_lowercase()
+        .replace('賬', "帳")
+        .replace("加頼", "加賴");
     let mut found: Vec<(&'static str, u32)> =
         STALL_KEYWORDS.iter().filter(|(kw, _)| has_keyword(&t, kw)).copied().collect();
     // Other languages' lists (whole words; see `locale`).
@@ -1597,6 +1626,7 @@ fn stall_engages(score: u32, hits: &[&'static str]) -> bool {
 const OWN_MATTER_MARKS: &[&str] = &[
     "您反應", "你反應", "您有反應", "你有反應", "您的反應", "您反映", "你反映", "您有反映",
     "你有反映", "您的反映", "申訴", "客訴", "調查結果", "調查的結果", "您申請的", "你申請的",
+    "您報修", "你報修", "您送修", "你送修", "回覆您反映", "回覆您反應",
 ];
 
 pub(crate) fn looks_like_own_matter(caller_text: &str) -> bool {
@@ -1841,7 +1871,7 @@ fn spawn_stall_review(
     key: &str,
     transcript: &Option<Arc<std::sync::Mutex<String>>>,
     hits: &[&'static str],
-    number: &'static str,
+    ctx: crate::stall_review::CallerContext,
     score: u32,
 ) {
     let dialogue = transcript
@@ -1852,7 +1882,7 @@ fn spawn_stall_review(
     let hits: Vec<String> = hits.iter().map(|h| h.to_string()).collect();
     let tx = tx.clone();
     tokio::spawn(async move {
-        let verdict = crate::stall_review::review(&key, &dialogue, &hits, number).await;
+        let verdict = crate::stall_review::review_with_context(&key, &dialogue, &hits, &ctx).await;
         let _ = tx.send((score, verdict));
     });
 }
@@ -4006,7 +4036,21 @@ pub async fn run_session(
     let mut stall_review = StallReview::default();
     let (review_tx, mut review_rx) = mpsc::unbounded_channel::<(u32, crate::stall_review::Verdict)>();
     let review_key = key.to_string();
-    let review_number: &'static str = if intl_call { "unknown (from abroad)" } else { "unknown" };
+    let fallback_review_number: &'static str = if intl_call { "unknown (from abroad)" } else { "unknown" };
+    let review_ctx = || -> crate::stall_review::CallerContext {
+        if let Some(f) = stall.as_ref().and_then(|c| c.caller_context.as_ref()) {
+            let mut ctx = (f.0)();
+            if ctx.number.trim().is_empty() {
+                ctx.number = fallback_review_number.to_string();
+            }
+            ctx
+        } else {
+            crate::stall_review::CallerContext {
+                number: fallback_review_number.to_string(),
+                saved_contact: None,
+            }
+        }
+    };
     let mut stall_engage_now = false;
     // The caller is a recording or voice menu: why (to be acted on), and since when.
     let mut ivr_enter: Option<&'static str> = None;
@@ -5164,7 +5208,7 @@ pub async fn run_session(
                                                 &review_key,
                                                 &transcript_out,
                                                 &stall_hits,
-                                                review_number,
+                                                review_ctx(),
                                                 stall_score,
                                             );
                                             info!(
@@ -5327,7 +5371,7 @@ pub async fn run_session(
                                                     &review_key,
                                                     &transcript_out,
                                                     &stall_hits,
-                                                    review_number,
+                                                    review_ctx(),
                                                     stall_score,
                                                 );
                                                 info!(
@@ -5762,7 +5806,12 @@ pub async fn run_session(
                     stall_review.asked
                 );
                 match step {
-                    StallVerdictStep::Engage => stall_engage_now = true,
+                    StallVerdictStep::Engage => {
+                        if let Some(a) = &appt {
+                            a.book.set_reviewed_normal(false);
+                        }
+                        stall_engage_now = true;
+                    }
                     StallVerdictStep::Ivr => {
                         ivr_enter.get_or_insert("review");
                     }
@@ -5774,7 +5823,7 @@ pub async fn run_session(
                             &review_key,
                             &transcript_out,
                             &stall_hits,
-                            review_number,
+                            review_ctx(),
                             stall_score,
                         );
                         info!(
@@ -5785,7 +5834,12 @@ pub async fn run_session(
                     }
                     // Stalling started, the caller's own matter or a voice menu: nothing to look at.
                     StallVerdictStep::AskAgain => stall_review.pending = false,
-                    StallVerdictStep::Carry | StallVerdictStep::AfterTurn => {}
+                    StallVerdictStep::Carry => {
+                        if let Some(a) = &appt {
+                            a.book.set_reviewed_normal(true);
+                        }
+                    }
+                    StallVerdictStep::AfterTurn => {}
                 }
             }
             up = uplink_rx.recv() => {
@@ -8690,6 +8744,36 @@ mod tests {
         assert!(!ivr_hangs_up(Duration::from_secs(19), None));
         let backoff: Vec<u64> = (1..=5).map(|n| rotate_retry_after(n).as_secs()).collect();
         assert_eq!(backoff, [5, 10, 20, 40, 40]);
+    }
+
+    #[test]
+    fn soft_insurance_loan_and_deduction_scams_engage_while_clinics_and_repairs_do_not() {
+        // Soft pitches and newer scam scripts that previously missed the keyword gate.
+        for pitch in [
+            "您好，我是富邦人壽專員，今天打來幫老客戶做免費保單健檢",
+            "王先生您好，我們這邊是中租融資，請問最近有資金需求或增貸規劃嗎",
+            "您的訂單系統設錯成批發商，每個月會自動扣款，我們幫您轉接銀行客服解除扣款",
+            "這裡是健保署，您的健保卡在南部被盜用，即將鎖卡",
+            "老師每天帶單穩賺不賠，你先加頼領飆股",
+            "Hi, calling about your extended warranty and a special offer on your account",
+        ] {
+            let mut hits = Vec::new();
+            let s = stall_score_add(pitch, &mut hits);
+            assert!(stall_engages(s, &hits), "{pitch} -> score={s} hits={hits:?}");
+        }
+        // Ordinary clinic, courier, repair and friend calls stay untouched.
+        for ordinary in [
+            "您好，這裡是康健牙醫診所，提醒您明天下午三點看診，記得帶健保卡喔",
+            "您好，您的包裹貨到付款八百元，放管理室可以嗎",
+            "我們看到您的卡片昨天晚上11點左右在網路電器商店有一筆3280元的消費。想跟您確認是您本人刷的嗎?",
+        ] {
+            let mut hits = Vec::new();
+            let s = stall_score_add(ordinary, &mut hits);
+            assert!(!stall_engages(s, &hits), "{ordinary} -> score={s} hits={hits:?}");
+        }
+        // Owner's repair follow-ups are never stalled even if payment words appear.
+        assert!(looks_like_own_matter("您好，您報修的冷氣原廠報價出來了，可以轉帳或付現"));
+        assert!(looks_like_own_matter("回覆您反映的帳單分期問題"));
     }
 }
 

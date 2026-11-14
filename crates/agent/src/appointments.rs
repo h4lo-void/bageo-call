@@ -575,6 +575,10 @@ struct Book {
     made: usize,
     /// Judged a sales / scam call: nothing of this call is kept.
     discarded: bool,
+    /// `stall_review` explicitly judged the live dialogue an ordinary call
+    /// (not sales / scam): protects its appointments from the keyword-only
+    /// post-call fallback when the summary service is unreachable.
+    reviewed_normal: bool,
     /// Calendar events this call wrote that no longer stand (the call was
     /// judged sales / scam): deleted after the call.
     voided: Vec<Earlier>,
@@ -763,6 +767,7 @@ impl CallAppointments {
     pub fn discard(&self) {
         let mut b = self.book();
         b.discarded = true;
+        b.reviewed_normal = false;
         for slot in std::mem::take(&mut b.slots) {
             if !slot.appt.event_id.is_empty() || slot.appt.write_unsure {
                 b.voided.push(Earlier::of(&slot.appt));
@@ -773,6 +778,19 @@ impl CallAppointments {
 
     pub fn is_discarded(&self) -> bool {
         self.book().discarded
+    }
+
+    /// Record whether `stall_review` judged this call an ordinary call.
+    pub fn set_reviewed_normal(&self, normal: bool) {
+        let mut b = self.book();
+        if !b.discarded {
+            b.reviewed_normal = normal;
+        }
+    }
+
+    pub fn was_reviewed_normal(&self) -> bool {
+        let b = self.book();
+        !b.discarded && b.reviewed_normal
     }
 
     /// The event of the appointment agreed last, when it is in the calendar.
