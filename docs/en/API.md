@@ -28,8 +28,8 @@ Errors answer `{ok: false, code, error}`: `code` is a stable word to act on
 | Method and path | What |
 |---|---|
 | `GET /calls/api/list` | Call records, newest first. Query: `limit`, `offset`, `q` (free text over number, phone, events, transcript), `caller`, `serial`, `status`, `has_transcript`. Answer: `{ok, calls: [...], total, limit, offset}`. |
-| `GET /calls/api/call/{id}` | One call: `{ok, call, notes, calendar_link}`. `notes` (null until the summary is written) has `summary`, `dialogue`, `end_hint`, `source`, `updated_at` and, when the call fixed a date, `calendar` = `{title, start, end, all_day}` (local time, `YYYY-MM-DDTHH:MM`). |
-| `GET /calls/api/call/{id}/event.ics` | The calendar suggestion as an iCalendar file. `404` when the call has none. |
+| `GET /calls/api/call/{id}` | One call: `{ok, call, notes, calendar_link, calendar_links}`. `notes` (null until the summary is written) has `summary`, `dialogue`, `end_hint`, `source`, `updated_at` and, when the call fixed a date, `calendar` = `{title, start, end, all_day}` (local time, `YYYY-MM-DDTHH:MM`). `calendar_links` = `{google, outlook, office365, yahoo}`: each web calendar's "new event" form for it, filled in (`calendar_link` is the Google one, kept for older clients). |
+| `GET /calls/api/call/{id}/event.ics` | The calendar suggestion as an iCalendar file. `404` when the call has none. Opens with the console token, or with `?k=<key>`: the key a notification's link carries for this one file instead of the token. |
 | `GET /calls/api/audio/{id}/listen` | The call as you would have heard it (caller and AI mixed), WAV, range requests supported. |
 | `GET /calls/api/audio/{id}/remote` · `/tts` · `/audio/{id}` | Caller only · AI only · the raw mixed recording. |
 | `GET /calls/api/live` | Calls in progress and the phones connected: `{ok, count, calls, control_idle_clients, control_idle_serials, normal_mode_serials}`. `normal_mode_serials` are connected phones switched to a normal phone; the page does not count them as ready. |
@@ -61,9 +61,13 @@ Records saved by earlier versions use `對方：` / `接聽：` in every languag
 
 Rules for `PUT`:
 
-- A secret field (`gemini_api_key`, `deepseek_api_key`, `gcal_client_secret`,
-  `gcal_refresh_token`) that is absent or `""` keeps its stored value;
-  `"<name>_clear": true` empties it.
+- A secret field (`gemini_api_key`, `deepseek_api_key`) that is absent or
+  `""` keeps its stored value; `"<name>_clear": true` empties it.
+- `calendar_app` is `google`, `outlook`, `office365`, `apple`, `yahoo`,
+  `ics`, or empty (not chosen yet); anything else is stored as empty.
+  `appointment_reply` is `auto`, `sms` or `call`. Keys an older version
+  stored and this one no longer has (the Google Calendar credentials,
+  `calendar_auto_add`) are ignored and dropped at the next save.
 - `notify_channels` is replaced as a whole. A row `{id, kind, name, enabled,
   url, token, target}` whose `url` or `token` is empty keeps the stored value
   of the row with the same `id` and `kind`; a row without `id` is new; rows you
@@ -103,10 +107,11 @@ Gemini session; only `regen=true` or a voice without a recording opens one.
 
 ## Appointments
 
-With `appointment_mode` `confirm` or `auto` (see
-[Settings](SETTINGS.md#summary--calendar)), a call where the caller set a time
-with the AI leaves a task (`intent` `appointment`) and an `appointment` object
-on the call record, in its notes and on the task:
+With `appointment_mode` `confirm` (see
+[Settings](SETTINGS.md#summary--calendar); an `auto` saved by an older version
+reads as `confirm`), a call where the caller set a time with the AI leaves a
+task (`intent` `appointment`) and an `appointment` object on the call record,
+in its notes and on the task:
 
 ```json
 {
@@ -117,24 +122,28 @@ on the call record, in its notes and on the task:
 }
 ```
 
-Times are local (`TZ`). `status`: `pending` (waiting for you), `booked` (put
-in the calendar on the call), `confirmed`, `declined`. `event_id`: the Google
-Calendar event once it is there. `auto_error`: why *Book it if I'm free* could
-not book it. `replaced`: earlier times of the same call that were already put
-in the calendar. `sms`: `sent`, or why the text did not go (`offline`,
-`old_app`, `timeout`, `busy`, `no_number`, or the phone's error code). `tag`:
-the call's own mark on the events it writes (below). `tg_card`: `{chat_id,
-message_id}` of the Telegram card sent for it, whose buttons are taken off when
-you decide elsewhere. Empty fields are left out.
-Events the agent writes carry the private extended property
-`bageo_call=<appointment.tag>`, so an event whose insert answer was lost is found
-again instead of written twice.
+Times are local (`TZ`). `status`: `pending` (waiting for you), `booked` (a
+test number's call booked it on the demo calendar), `confirmed`, `declined`.
+`reply`: how the caller was told — `sms`, `call` or `none`. `sms`: `sent`, or
+why the text did not go (`offline`, `old_app`, `timeout`, `busy`,
+`no_number`, or the phone's code: `no_permission`, `bad_request`,
+`no_service`, `radio_off`, `generic_failure`, `exception`; the console and
+the Telegram reply say each in words). `call`: the AI call-back — `dialing`
+(the phone was asked to call), or why it was not placed (`no_phone`,
+`send_failed`, `no_number`); how the call went follows in the task's `events`
+(`callback_place_call_ack`, `callback_place_call_failed`,
+`callback_outbound_ready`, `callback_done`, `callback_failed`). `calendar`:
+`demo` for a test number's appointment, whose `event_id`, `replaced` (earlier
+times of the same call), `auto_error` and `tag` are about the demo calendar.
+`tg_card`: `{chat_id, message_id}` of the Telegram card sent for it, whose
+buttons are taken off when you decide elsewhere. Empty fields are left out.
 
 | Method and path | What |
 |---|---|
-| `GET /calls/api/tasks` | Tasks, newest first (up to 200): `{ok, tasks}`. The console's *Appointments to confirm* list is the tasks whose `appointment.status` is `pending`. A task with an appointment also has `sms_route`, where its text goes out when no other phone is picked (the first choice of the console's *Send the text again*), by the same rule the agent sends with: `{serial, label, sim, test}` — `serial` the phone's id, `label` its name in `device_labels` (else its id), `sim` the SIM it picks by name (`appointment_test_sms_sim`; left out when it uses the SIM that took the call or its default SIM), `test` true for a test call whose phone or SIM `appointment_test_sms_phone` / `appointment_test_sms_sim` set. The phone need not be connected; sending then answers `offline`. |
-| `POST /calls/api/tasks/{id}/confirm` | For an appointment: the same as **✅ Confirm** in the web console or on its Telegram card — Google Calendar, then (with `appointment_sms`) the text to the caller, which may take up to 90 seconds. `{ok, task, message}`; `message` is what happened, as the console shows it and the Telegram bot replies it. When a Telegram card went out for the appointment, its buttons are taken off and `message` is posted in that chat (best effort; the decision stands either way). Only the first decision counts: a second confirm or decline — also one sent while the first is still running, or a press on the Telegram card — answers "already handled" and changes nothing. Needs `Content-Type: application/json` (no body), otherwise HTTP 400 `bad_request`, so other web pages cannot decide from a browser on your network. |
-| `POST /calls/api/tasks/{id}/ignore` | For an appointment: **❌ Decline** (an event the call already put in the calendar is removed; the text when `appointment_sms` is on). Same answer and rules. |
+| `GET /calls/api/tasks` | Tasks, newest first (up to 200): `{ok, tasks}`. An appointment task also has `calendar_links` (`{google, outlook, office365, yahoo}`, as for a call) and `reply` = `{sms, call, default}`: whether a text or a call-back can reach this caller, and the way *Default reply* picks. The console's *To do* is the tasks whose `appointment.status` is `pending`. A task with an appointment also has `sms_route`, where its text goes out when no other phone is picked (the first choice of the console's *Send the text again*), by the same rule the agent sends with: `{serial, label, sim, test}` — `serial` the phone's id, `label` its name in `device_labels` (else its id), `sim` the SIM it picks by name (`appointment_test_sms_sim`; left out when it uses the SIM that took the call or its default SIM), `test` true for a test call whose phone or SIM `appointment_test_sms_phone` / `appointment_test_sms_sim` set. The phone need not be connected; sending then answers `offline`. |
+| `GET /calls/api/tasks/{id}/event.ics` | An appointment as an iCalendar file (Apple Calendar and other apps). Opens with the console token or a link's `?k=<key>`, as for a call. |
+| `POST /calls/api/tasks/{id}/confirm` | For an appointment: **Accept**, as in the web console or on its Telegram card. Body: empty, `{}` or `{"reply": "sms" \| "call" \| "none"}`, how the caller is told (none given: *Default reply*; a way that cannot reach this caller tells nobody). A text may take up to 90 seconds; a call-back is handed to the phone (`appointment.call`). `{ok, task, message}`; `message` is what happened, in words, as the Telegram bot replies it (with the link that adds it to your calendar). When a Telegram card went out for the appointment, its buttons are taken off and `message` is posted in that chat (best effort; the decision stands either way). Only the first decision counts: a second confirm or decline — also one sent while the first is still running, or a press on the Telegram card — answers "already handled" and changes nothing. Needs `Content-Type: application/json`, otherwise HTTP 400 `bad_request`, so other web pages cannot decide from a browser on your network; another body is HTTP 400 `bad_request` too. |
+| `POST /calls/api/tasks/{id}/ignore` | For an appointment: **Decline** (the caller is told the same way, with a polite no). Same body, answer and rules. |
 
 ## Phones and health
 

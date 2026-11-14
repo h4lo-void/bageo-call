@@ -34,7 +34,6 @@ mod deepseek;
 mod dtmf;
 mod extract;
 mod fulfill;
-mod gcal;
 mod gemini_live;
 mod gmail;
 mod hold_music;
@@ -1329,6 +1328,11 @@ async fn main() -> Result<()> {
         if settings.calls_ui_token.trim().is_empty() {
             warn!("listening on {addr} without CALLS_UI_TOKEN: anyone on this network can open the web console");
         }
+    }
+    // Links to an `.ics` that leave the console (notifications, Telegram) carry
+    // a key made from the console token, never the token itself.
+    calendar::set_link_secret(&settings.calls_ui_token);
+    if !addr.ip().is_loopback() {
         if settings.device_token.trim().is_empty() {
             warn!("listening on {addr} without DEVICE_TOKEN: anyone on this network can connect as a phone");
         }
@@ -6121,10 +6125,19 @@ fn start_gemini_session_core(
     media_guard: Option<MediaCallGuard>,
     http: &reqwest::Client,
 ) -> GeminiSessionCore {
+    // The AI's own call-back with an appointment's answer
+    // (`appointments::call_caller`): its script instead of the answering
+    // prompt, and no appointments or sales stalling on that call.
+    let callback_cfg = appointments::take_callback_prompt(&cfg.caller_id).map(|system| {
+        info!("appointment call-back session serial={serial}");
+        GeminiRetryCfg { system, ..cfg.clone() }
+    });
+    let is_callback = callback_cfg.is_some();
+    let cfg = callback_cfg.as_ref().unwrap_or(cfg);
     // Persona mode has no fixed clock, only the call-length safety cap; sales / scam stalling
     // swaps in its prompt once the caller scores as sales/scam.
     let stall_engaged = Arc::new(AtomicBool::new(false));
-    let stall_cfg = (persona && rt.persona_stall_spam).then(|| gemini_live::StallCfg {
+    let stall_cfg = (persona && rt.persona_stall_spam && !is_callback).then(|| gemini_live::StallCfg {
         engaged: stall_engaged.clone(),
         system_prompt: rt.persona_stall_system_prompt(),
         model: rt.gemini_stall_model.clone(),
@@ -6171,7 +6184,7 @@ fn start_gemini_session_core(
         })
     };
     // Appointments (setting `appointment_mode`): normal persona calls only.
-    let mut appointments = if persona {
+    let mut appointments = if persona && !is_callback {
         appointments::ApptSession::for_call(rt, http, &cfg.caller_id)
     } else {
         None
@@ -8746,31 +8759,8 @@ fn spawn_ai_talk_tg_summary(
             && !late_sales
             && !ai_failed
         {
-            if let Some(mut ev) = calendar::suggest(&http, &eff, &transcript).await {
+            if let Some(ev) = calendar::suggest(&http, &eff, &transcript).await {
                 info!("calendar suggestion serial={serial} start={} all_day={}", ev.start, ev.all_day);
-                if rt.calendar_auto_add && rt.gcal_configured() {
-                    if let (Some(start), Some(end)) = (
-                        calendar::local_rfc3339(&ev.start),
-                        calendar::local_rfc3339(&ev.end),
-                    ) {
-                        match gcal::insert_event(
-                            &http,
-                            &rt.gcal_client_id,
-                            &rt.gcal_client_secret,
-                            &rt.gcal_refresh_token,
-                            &rt.gcal_calendar_id,
-                            &ev.title,
-                            &body,
-                            &start,
-                            &end,
-                        )
-                        .await
-                        {
-                            Ok(id) => ev.google_event_id = id,
-                            Err(e) => warn!("calendar auto-add failed serial={serial}: {e:#}"),
-                        }
-                    }
-                }
                 calendar_event = Some(ev);
             }
         }
@@ -8826,11 +8816,13 @@ fn spawn_ai_talk_tg_summary(
             if let Some(ev) = &calendar_event {
                 let label = locale::notify_phrases().n_calendar;
                 body.push_str(&format!("\n📅 {label}{}{} ({})", locale::notify_kv_sep(), ev.title, ev.when()));
-                if ev.google_event_id.is_empty() {
-                    // Not inserted for the owner: one tap opens the filled-in form.
-                    body.push_str(&format!("\n{}", ev.google_link("")));
-                } else {
-                    body.push_str(" ✓");
+                // One tap adds it to the calendar the owner chose (setting
+                // `calendar_app`): its form, or the call's `.ics` at the console's
+                // address (no link for Apple / .ics without one).
+                let ics = calendar::ics_url(&eff.public_url, &format!("call/{call_id}"));
+                let link = ev.link_for(&rt.calendar_app, "", &ics);
+                if !link.is_empty() {
+                    body.push_str(&format!("\n{link}"));
                 }
             }
             if let Some(a) = &appointment {
