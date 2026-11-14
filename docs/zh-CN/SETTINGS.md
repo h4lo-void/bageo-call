@@ -64,8 +64,8 @@
 
 | 设置 | 作用 |
 |---|---|
-| 摘要服务 | **自动**（默认）：下面“改用其他服务写摘要”设置了就用它，否则有 DeepSeek 密钥就用 DeepSeek，再不然用你的 Gemini 密钥（模型 `gemini-flash-latest`）。**Gemini（便宜）**：始终用你的 Gemini 密钥和 Gemini 最便宜的模型 `gemini-flash-lite-latest`（下面填了“模型”会先试它，不行再退到 `gemini-flash-latest`）。**DeepSeek**：始终用 DeepSeek。选的服务没有密钥时，与自动相同。日历建议也用同一个服务。 |
-| 改用其他服务写摘要 | 请填写服务兼容 OpenAI 的 **API 地址**（例如 `https://api.openai.com/v1`、`https://api.deepseek.com/v1`、`https://openrouter.ai/api/v1`，或本地的 Ollama：`http://127.0.0.1:11434/v1`）、**模型**名称，以及 **API 密钥**（本地服务器不需要）。只填 DeepSeek 的密钥（不填 API 地址）就会使用 DeepSeek。“摘要服务”选“自动”时才用这里的 API 地址。 |
+| 摘要服务 | **Gemini**（默认）：用你的 Gemini 密钥和 Gemini 最便宜的模型 `gemini-flash-lite-latest`（下面填了 Gemini 的“模型”会先试它，不行再退到 `gemini-flash-latest`）。**其他服务**：显示下面的字段，可以改用任何兼容 OpenAI 的服务。没有 Gemini 密钥时，选 Gemini 与选其他服务相同。旧版的设置：“DeepSeek”会变成“其他服务”；“自动”在下面填了 API 地址或 API 密钥时变成“其他服务”，否则变成“Gemini”。日历建议也用同一个服务。 |
+| 其他服务 | 请填写服务兼容 OpenAI 的 **API 地址**（例如 DeepSeek：`https://api.deepseek.com/v1`，模型 `deepseek-chat`；`https://api.openai.com/v1`、`https://openrouter.ai/api/v1`，或本地的 Ollama：`http://127.0.0.1:11434/v1`）、**模型**名称，以及 **API 密钥**（本地服务器不需要）。不填 API 地址时：填了 API 密钥就用 DeepSeek，否则用 Gemini。 |
 | 建议日历日程 | 通话中约定了日期时——送货时段、预约、对方说好几点回电——摘要会附上“添加到日历”链接，指向你选的日历（见“添加到日历”）。每通电话会多向摘要模型发一次请求。不会自动往任何日历里添加任何东西。 |
 | 添加到日历 | 不是一个字段：第一次在网页按“添加到日历”（日历建议或已同意的预约）会问你要添加到哪个日历——Google 日历、Outlook.com、Microsoft 365（Outlook 工作或学校账号）、Apple 日历（用 `.ics` 文件，iPhone 的 Safari 打开会直接问要不要添加）、Yahoo 日历，或直接下载 `.ics`——之后就记住（设置 `calendar_app`），按一下直接用那个，按钮旁边的“更换”可以改。通知和 Telegram 回复附的也是同一个日历的链接；选 Apple 日历或 `.ics` 时，附的是这个日程在“控制台地址”下的 `.ics`（没填地址就不附；设置了访问 token 时，链接带的是只能打开这个文件的密钥，不是 token 本身）。主程序不连接任何日历账号。 |
 | 日程预约 | 默认关闭。对方想跟你约时间（见面、来访、约好时间通电话）时，AI 不会当场答应，也不会叫对方等：会说“我确认一下，晚点再用短信回你”——要用回拨告知时说“我确认一下，晚点再打给你”，两个都不行时只说“我确认一下再回你”（按下面“默认回复方式”依号码决定）。通话后预约会出现在网页“通话”页最上方的“待处理事项”（和这通电话的详情）：谁、什么事、什么时间，选择怎么告诉对方——**发短信**、**AI 回拨**或**不通知对方**，预先选好“默认回复方式”的那个（能收短信的号码才能发短信、能回拨的号码才能回拨，见下一行）——再按 **同意**／**不同意**。按了之后那条会留着显示结果，例如“已同意，已发短信给对方”、短信没发出的原因、AI 回拨到哪一步；同意的会出现“添加到日历”。设置了 Telegram Bot、“发送通知”开启时，也会收到带 **同意**／**不同意** 按钮的卡片（按“默认回复方式”；按完 Bot 的回复附“添加到日历”链接）；其他通知渠道会收到附通话链接的提醒。只有第一次决定才算，之后再按——即使是同时按、在卡片上按，或通过 API——都不会有任何变化，在别处决定后卡片上的按钮也会去掉。对方只是顺口提的备选时间（“不行的话下午也可以”）不会覆盖谈好的时间；同一通电话另外约的第二件事（别的事、别的日子）会分开记、各自决定。推销、诈骗电话一律不约：一通电话被判定为这类电话——通话中判定，或通话后摘要标成“推销电话”“疑似诈骗”（银行防诈骗、警察通知这类电话不算；没有摘要模型响应时：对方的话合起来看得出是这类电话）——或 AI 连不上、系统直接挂断时，谈好的不算数、不会等你处理。“以本人身份”和“AI 助理”两种接听风格都能用。有预约的那通电话不再另外生成日历建议。旧版保存的 `auto`（“有空直接答应”，当时可以连接 Google 日历）现在当作“先问我”。 |
@@ -145,7 +145,7 @@ DEVICE_TOKEN=another-long-random-string
 
 ### 首次运行的默认值
 
-这些只决定初始值；网页控制台里的设置会覆盖它们：`GEMINI_API_KEY`、`APP_LANGUAGE`（`en`、`zh-TW`…）、`NOTIFY_LANGUAGE`（留空 = 与 `APP_LANGUAGE` 相同）、`OWNER_NAME`、`OWNER_ALIASES`（用逗号分隔）、`ANSWER_STYLE`（`assistant` / `persona`）、`GEMINI_LIVE_MODEL`、`GEMINI_VOICE_NAME`、`SUMMARY_PROVIDER`（`auto` / `gemini` / `deepseek`）、`SUMMARY_API_BASE`、`SUMMARY_MODEL`、`DEEPSEEK_API_KEY`（摘要用的 API 密钥）、`TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`、`NOTIFY_WEBHOOK_URL`、`APPOINTMENT_MODE`（`off` / `confirm`）、`APPOINTMENT_SMS`（`true` / `false`）、`APPOINTMENT_REPLY`（`auto` / `sms` / `call`）。
+这些只决定初始值；网页控制台里的设置会覆盖它们：`GEMINI_API_KEY`、`APP_LANGUAGE`（`en`、`zh-TW`…）、`NOTIFY_LANGUAGE`（留空 = 与 `APP_LANGUAGE` 相同）、`OWNER_NAME`、`OWNER_ALIASES`（用逗号分隔）、`ANSWER_STYLE`（`assistant` / `persona`）、`GEMINI_LIVE_MODEL`、`GEMINI_VOICE_NAME`、`SUMMARY_PROVIDER`（`gemini` / `custom`；旧的 `deepseek`、`auto` 按上面“摘要服务”的说明对应）、`SUMMARY_API_BASE`、`SUMMARY_MODEL`、`DEEPSEEK_API_KEY`（摘要用的 API 密钥）、`TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`、`NOTIFY_WEBHOOK_URL`、`APPOINTMENT_MODE`（`off` / `confirm`）、`APPOINTMENT_SMS`（`true` / `false`）、`APPOINTMENT_REPLY`（`auto` / `sms` / `call`）。
 
 ### 日志与开发
 
