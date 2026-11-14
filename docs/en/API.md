@@ -139,7 +139,9 @@ also in the task's `events`
 (`callback_place_call_ack`, `callback_place_call_failed`,
 `callback_outbound_ready`, `callback_done`, `callback_failed`). `tg_card`:
 `{chat_id, message_id}` of the Telegram card sent for it, whose
-buttons are taken off when you decide elsewhere. Empty fields are left out.
+buttons are taken off when you decide elsewhere. `call_lang`: the language
+spoken on the call (`zh-TW`, `en`…); the AI call-back speaks it (records
+without it: the `language` setting). Empty fields are left out.
 
 | Method and path | What |
 |---|---|

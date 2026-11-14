@@ -6056,7 +6056,13 @@ async fn spawn_gemini_session_tasks(
         }
     }
     // Started at pickup: the media hello has reported the SIM (when the app does).
-    let lang = call_lang_plan(&rt, &caller_id, call_sim_country(&serial).as_deref());
+    // A call-back speaks the language its script is in (the call it answers,
+    // else the setting's: appointments::callback_lang), whatever the number and
+    // the SIM suggest.
+    let lang = match callback.as_ref().and_then(|c| c.lang) {
+        Some(spoken) => gemini_live::callback_lang_plan(spoken, rt.lang()),
+        None => call_lang_plan(&rt, &caller_id, call_sim_country(&serial).as_deref()),
+    };
     let cfg = GeminiRetryCfg {
         api_key,
         model,
@@ -8696,6 +8702,13 @@ fn spawn_ai_talk_tg_summary(
             (whisper, remote_tx)
         };
         let live_full = live.clone();
+        // The language the call was held in: the AI's call-back with the owner's
+        // answer speaks it.
+        if let Some(a) = appointment.as_mut() {
+            if let Some(spoken) = gemini_live::dialogue_lang(&live_full, locale::current()) {
+                a.set_call_lang(spoken);
+            }
+        }
         let live = clip_dialogue_for_summary(&live);
         // A number (or e-mail) the caller said to reach them on, from their own
         // words only (the AI may repeat or make one up): kept on the record and
