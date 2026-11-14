@@ -21,8 +21,8 @@ X-Calls-Token: <token>
 | 方法和路径 | 内容 |
 |---|---|
 | `GET /calls/api/list` | 通话记录，最新的在前。查询参数：`limit`、`offset`、`q`（对号码、手机、事件、文字记录做文本搜索）、`caller`、`serial`、`status`、`has_transcript`。响应：`{ok, calls: [...], total, limit, offset}`。 |
-| `GET /calls/api/call/{id}` | 单个通话：`{ok, call, notes, calendar_link}`。`notes`（摘要写好之前是 null）包含 `summary`、`dialogue`、`end_hint`、`source`、`updated_at`，通话中约定了日期时还有 `calendar` = `{title, start, end, all_day}`（本地时间，`YYYY-MM-DDTHH:MM`）。 |
-| `GET /calls/api/call/{id}/event.ics` | 日历建议，iCalendar 文件格式。该通话没有建议时返回 `404`。 |
+| `GET /calls/api/call/{id}` | 单个通话：`{ok, call, notes, calendar_link, calendar_links}`。`notes`（摘要写好之前是 null）包含 `summary`、`dialogue`、`end_hint`、`source`、`updated_at`，通话中约定了日期时还有 `calendar` = `{title, start, end, all_day}`（本地时间，`YYYY-MM-DDTHH:MM`）。`calendar_links` = `{google, outlook, office365, yahoo}`：各网页日历填好这个日程的“新建日程”表单（`calendar_link` 是 Google 那个，留给旧版用）。 |
+| `GET /calls/api/call/{id}/event.ics` | 日历建议，iCalendar 文件格式。该通话没有建议时返回 `404`。用控制台 token 打开，或用 `?k=<密钥>`：通知里的链接带的是只能打开这个文件的密钥，不是 token。 |
 | `GET /calls/api/audio/{id}/listen` | 你当时会听到的整通电话（对方和 AI 混在一起），WAV，支持 range 请求。 |
 | `GET /calls/api/audio/{id}/remote` · `/tts` · `/audio/{id}` | 只有对方 · 只有 AI · 原始的混音录音。 |
 | `GET /calls/api/live` | 进行中的通话和已连接的手机：`{ok, count, calls, control_idle_clients, control_idle_serials, normal_mode_serials}`。`normal_mode_serials` 是已连接、但切成普通手机的手机；网页不把它们算进待命手机。 |
@@ -42,7 +42,8 @@ X-Calls-Token: <token>
 
 `PUT` 的规则：
 
-- 机密字段（`gemini_api_key`、`deepseek_api_key`、`gcal_client_secret`、`gcal_refresh_token`）缺失或为 `""` 时，保留原来保存的值；`"<name>_clear": true` 则会清空它。
+- 机密字段（`gemini_api_key`、`deepseek_api_key`）缺失或为 `""` 时，保留原来保存的值；`"<name>_clear": true` 则会清空它。
+- `calendar_app` 是 `google`、`outlook`、`office365`、`apple`、`yahoo`、`ics` 或空（还没选）；其他值保存为空。`appointment_reply` 是 `auto`、`sms` 或 `call`。旧版保存的、这版已经没有的字段（Google 日历凭据、`calendar_auto_add`）读入时忽略，下次保存就不见了。
 - `notify_channels` 是整体替换。一行 `{id, kind, name, enabled, url, token, target}` 的 `url` 或 `token` 为空时，会保留 `id` 和 `kind` 相同的那一行原来保存的值；没有 `id` 的行是新增的；你没列出来的行会被删除。
 - `reject_numbers` 是一个由 `{number, reason}` 组成的列表。
 
@@ -70,7 +71,7 @@ PUT /calls/api/settings
 
 ## 日程预约
 
-`appointment_mode` 设为 `confirm` 或 `auto` 时（见[设置](SETTINGS.md#摘要与日历)），对方跟 AI 约好时间的那通电话会留下一条任务（`intent` 为 `appointment`），通话记录、它的 notes 和任务上都有一个 `appointment` 对象：
+`appointment_mode` 设为 `confirm` 时（见[设置](SETTINGS.md#摘要与日历)；旧版保存的 `auto` 当作 `confirm`），对方跟 AI 约好时间的那通电话会留下一条任务（`intent` 为 `appointment`），通话记录、它的 notes 和任务上都有一个 `appointment` 对象：
 
 ```json
 {
@@ -81,13 +82,14 @@ PUT /calls/api/settings
 }
 ```
 
-时间是本地时间（`TZ`）。`status`：`pending`（等你决定）、`booked`（通话中已写进日历）、`confirmed`、`declined`。`event_id`：写进 Google 日历后的日程 ID。`auto_error`：“有空直接答应”没能排入的原因。`replaced`：同一通电话里先前已写进日历、后来改掉的时间。`sms`：`sent`，或短信没发出的原因（`offline`、`old_app`、`timeout`、`busy`、`no_number`，或手机返回的错误代码）。`tag`：这通电话在它写进日历的日程上留的标记（见下句）。`tg_card`：发给这条预约的 Telegram 卡片 `{chat_id, message_id}`，在别处决定后用来去掉卡片上的按钮。空的字段不会出现。主程序写进日历的日程都带私有扩展属性 `bageo_call=<appointment.tag>`，写入时没收到响应的那条之后能找回来，不会写两次。
+时间是本地时间（`TZ`）。`status`：`pending`（等你决定）、`booked`（测试号码的通话在模拟日历上排入）、`confirmed`、`declined`。`reply`：怎么告诉对方——`sms`、`call` 或 `none`。`sms`：`sent`，或短信没发出的原因（`offline`、`old_app`、`timeout`、`busy`、`no_number`、`not_test_number`（测试来电的短信只发给测试号码），或手机返回的代码：`no_permission`、`bad_request`、`no_service`、`radio_off`、`generic_failure`、`exception`、`no_sim`；网页和 Telegram 回复会用白话写）。`call`：AI 回拨——`queued`（等拨给同一个号码的前一通回拨结束）、`dialing`（已请手机拨出）、`connected`（手机已拨号，AI 等对方接起来出声）、`answered`（接通并已告知）、`no_answer`（没人出声）、`failed`（手机拨不出去或没回报）、`done`（通话结束、结果不明），或没拨出的原因（`no_phone`、`send_failed`、`no_number`、`not_callable`：这个号码不能回拨）；手机的回报也记在任务的 `events`（`callback_place_call_ack`、`callback_place_call_failed`、`callback_outbound_ready`、`callback_done`、`callback_failed`）。`calendar`：测试号码的预约是 `demo`，它的 `event_id`、`replaced`（同一通电话先前的时间）、`auto_error`、`tag` 都是模拟日历上的。`tg_card`：发给这条预约的 Telegram 卡片 `{chat_id, message_id}`，在别处决定后用来去掉卡片上的按钮。空的字段不会出现。
 
 | 方法和路径 | 内容 |
 |---|---|
-| `GET /calls/api/tasks` | 任务，最新的在前（最多 200 条）：`{ok, tasks}`。网页的“待确认的预约”就是 `appointment.status` 为 `pending` 的任务。有预约的任务另带 `sms_route`：没另选手机时短信从哪里发（网页“重发短信”菜单的默认选项），跟主程序实际发送用同一套规则：`{serial, label, sim, test}`——`serial` 手机 ID，`label` 它在 `device_labels` 的名称（没有就是 ID），`sim` 按名称挑的 SIM（`appointment_test_sms_sim`；用接这通电话的 SIM 或手机默认 SIM 时不出现），`test` 为 true 表示这是测试来电、手机或 SIM 由 `appointment_test_sms_phone`／`appointment_test_sms_sim` 指定。手机不在线也照样列出，发送时才会返回 `offline`。 |
-| `POST /calls/api/tasks/{id}/confirm` | 对预约来说等于在网页或 Telegram 卡片上按 **✅ 确定**——写进 Google 日历，接着（开启 `appointment_sms` 时）给对方发短信，可能要等最多 90 秒。响应 `{ok, task, message}`；`message` 是结果，网页显示的和 Telegram Bot 回复的是同一段。这条预约发过 Telegram 卡片时，卡片上的按钮会去掉，并把 `message` 回复到那个聊天（尽力而为，Telegram 失败不影响决定）。只有第一次决定才算：之后再确定或婉拒——包括第一次还在处理时发来的，或在 Telegram 卡片上按的——都只回复“已经处理过了”，不会有任何变化。请求要带 `Content-Type: application/json`（不用 body），否则返回 HTTP 400 `bad_request`，这样别的网页无法通过你局域网里的浏览器替你决定。 |
-| `POST /calls/api/tasks/{id}/ignore` | 对预约来说等于 **❌ 婉拒**（通话中已经写进日历的那条会删掉；开启 `appointment_sms` 时发短信）。响应与规则同上。 |
+| `GET /calls/api/tasks` | 任务，最新的在前（最多 200 条）：`{ok, tasks}`。预约任务另外有 `calendar_links`（`{google, outlook, office365, yahoo}`，同通话）和 `reply` = `{sms, call, default}`：这位来电者能不能收短信、能不能回拨，以及“默认回复方式”选的方式。网页的“待处理事项”就是 `appointment.status` 为 `pending` 的任务。有预约的任务另带 `sms_route`：没另选手机时短信从哪里发（网页“重发短信”菜单的默认选项），跟主程序实际发送用同一套规则：`{serial, label, sim, test}`——`serial` 手机 ID，`label` 它在 `device_labels` 的名称（没有就是 ID），`sim` 按名称挑的 SIM（`appointment_test_sms_sim`；用接这通电话的 SIM 或手机默认 SIM 时不出现），`test` 为 true 表示这是测试来电、手机或 SIM 由 `appointment_test_sms_phone`／`appointment_test_sms_sim` 指定。手机不在线也照样列出，发送时才会返回 `offline`。 |
+| `GET /calls/api/tasks/{id}/event.ics` | 预约的 iCalendar 文件（Apple 日历和其他应用）。和通话的一样，用控制台 token 或链接的 `?k=<密钥>` 打开。 |
+| `POST /calls/api/tasks/{id}/confirm` | 对预约来说等于在网页或 Telegram 卡片上按 **同意**。Body：空的、`{}` 或 `{"reply": "sms" \| "call" \| "none"}`，怎么告诉对方（没带：按“默认回复方式”；选了这位来电者用不了的方式就不通知）。发短信可能要等最多 90 秒；回拨交给手机拨出（`appointment.call`）。响应 `{ok, task, message}`；`message` 是用白话写的结果，Telegram Bot 回复的是同一段（附添加到你的日历的链接）。这条预约发过 Telegram 卡片时，卡片上的按钮会去掉，并把 `message` 回复到那个聊天（尽力而为，Telegram 失败不影响决定）。只有第一次决定才算：之后再同意或不同意——包括第一次还在处理时发来的，或在 Telegram 卡片上按的——都只回复“已经处理过了”，不会有任何变化。请求要带 `Content-Type: application/json`，否则返回 HTTP 400 `bad_request`，这样别的网页无法通过你局域网里的浏览器替你决定；body 不是上面的格式也返回 HTTP 400 `bad_request`。 |
+| `POST /calls/api/tasks/{id}/ignore` | 对预约来说等于 **不同意**（用同样的方式告诉对方，客气婉拒）。body、响应与规则同上。 |
 
 ## 联系人
 

@@ -96,6 +96,34 @@ pub struct TokenQuery {
     pub token: Option<String>,
 }
 
+/// An `.ics` download: the console token, or the key a link outside the
+/// console carries instead ([`crate::calendar::link_key`]).
+#[derive(Deserialize)]
+pub struct IcsQuery {
+    pub token: Option<String>,
+    pub k: Option<String>,
+}
+
+/// The console token opens it, or the key made for this one file (`what` =
+/// its path under `/calls/api/`).
+fn ics_access_ok(settings: &Settings, headers: &HeaderMap, query: &IcsQuery, what: &str) -> bool {
+    token_ok_parts(settings, headers, query.token.as_deref())
+        || query
+            .k
+            .as_deref()
+            .is_some_and(|k| crate::calendar::key_opens(&settings.calls_ui_token, what, k))
+}
+
+/// An event as an `.ics` file download.
+fn ics_response(ics: String) -> Response {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/calendar; charset=utf-8")
+        .header(header::CONTENT_DISPOSITION, "attachment; filename=\"call-event.ics\"")
+        .body(Body::from(ics))
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
 /// Extends auth token with optional list filters (all additive / backward compatible).
 /// Sorted newest-first (`sort=started_at_desc` in the JSON response).
 #[derive(Deserialize)]
@@ -436,7 +464,8 @@ async fn call_get(
     };
     // Post-call summary + full dialogue (null until the summary task wrote it).
     let notes = state.store.load_notes(&id).await;
-    // The filled-in Google Calendar form for the call's calendar suggestion.
+    // The filled-in Google Calendar form for the call's calendar suggestion
+    // (kept for older pages), and every web calendar's form ("Add to calendar").
     let calendar_link = notes
         .as_ref()
         .and_then(|n| n.calendar.as_ref().map(|ev| ev.google_link(&n.summary)));
@@ -445,28 +474,33 @@ async fn call_get(
         .contacts
         .lookup(&rec.caller_id, rec.sim_country.as_deref())
         .map(|c| json!({"id": c.id, "name": c.name, "note": c.note}));
+    let calendar_links = notes
+        .as_ref()
+        .and_then(|n| n.calendar.as_ref().map(|ev| ev.links(&n.summary)));
     Json(json!({
         "ok": true,
         "call": rec,
         "notes": notes,
         "calendar_link": calendar_link,
         "contact": contact,
+        "calendar_links": calendar_links,
     }))
     .into_response()
 }
 
-/// The call's calendar suggestion as an `.ics` file (any calendar app opens it).
+/// The call's calendar suggestion as an `.ics` file (any calendar app opens it;
+/// iPhone Safari offers to add it to Apple Calendar).
 async fn call_event_ics(
     State(state): State<CallsState>,
     headers: HeaderMap,
-    Query(query): Query<TokenQuery>,
+    Query(query): Query<IcsQuery>,
     Path(id): Path<String>,
 ) -> Response {
-    if !token_ok(&state.settings, &headers, &query) {
-        return unauthorized();
-    }
     if !task_id_safe(&id) {
         return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid call id");
+    }
+    if !ics_access_ok(&state.settings, &headers, &query, &format!("call/{id}")) {
+        return unauthorized();
     }
     let Some(notes) = state.store.load_notes(&id).await else {
         return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
@@ -474,13 +508,77 @@ async fn call_event_ics(
     let Some(event) = notes.calendar else {
         return api_error(StatusCode::NOT_FOUND, "no_calendar", "this call has no calendar suggestion");
     };
-    let ics = event.ics(&id, &notes.summary, chrono::Utc::now().naive_utc());
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/calendar; charset=utf-8")
-        .header(header::CONTENT_DISPOSITION, "attachment; filename=\"call-event.ics\"")
-        .body(Body::from(ics))
-        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+    ics_response(event.ics(&id, &notes.summary, chrono::Utc::now().naive_utc()))
+}
+
+/// An appointment task's event as an `.ics` file: "Add to calendar" for
+/// Apple Calendar or another app, also from a notification or a Telegram reply.
+async fn task_event_ics(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<IcsQuery>,
+    Path(id): Path<String>,
+) -> Response {
+    if !task_id_safe(&id) {
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid task id");
+    }
+    if !ics_access_ok(&state.settings, &headers, &query, &format!("tasks/{id}")) {
+        return unauthorized();
+    }
+    let Some((task, appt)) = state
+        .task_store
+        .get(&id)
+        .await
+        .and_then(|t| t.appointment.clone().map(|a| (t, a)))
+    else {
+        return api_error(StatusCode::NOT_FOUND, "no_calendar", "this task has no appointment");
+    };
+    let details = crate::appointments::event_description(&task.caller_id, &appt);
+    ics_response(appt.calendar_event().ics(&id, &details, chrono::Utc::now().naive_utc()))
+}
+
+/// One task for the web console: as stored, and for an appointment the web
+/// calendars' forms (`calendar_links`) and how its answer can reach the caller
+/// (`reply`: `{sms, call, default}`, [`crate::appointments::default_reply`]).
+/// Also the phone and SIM a test call's text goes out from (`sms_route`,
+/// [`crate::appointments::task_json`]).
+fn task_json(task: &crate::tasks::TaskRecord, rt: &crate::settings_store::RuntimeSettings, connected: &[String]) -> Value {
+    let mut v = crate::appointments::task_json(rt, connected, task);
+    if let (Some(appt), Some(o)) = (task.appointment.as_ref(), v.as_object_mut()) {
+        use crate::appointments as ap;
+        let details = ap::event_description(&task.caller_id, appt);
+        o.insert("calendar_links".into(), json!(appt.calendar_event().links(&details)));
+        let region = appt
+            .sim_country
+            .clone()
+            .or_else(|| crate::phone_region::last_sim(&task.serial));
+        let opts = ap::reply_options(rt, &task.caller_id, region.as_deref());
+        o.insert(
+            "reply".into(),
+            json!({ "sms": opts.sms, "call": opts.call, "default": ap::default_reply(&rt.appointment_reply, opts).as_str() }),
+        );
+        // The caller as the owner saved them (the to-do list shows the name).
+        if let Some(c) = crate::contacts::lookup(&task.caller_id, region.as_deref()) {
+            o.insert("contact_name".into(), json!(c.name));
+        }
+    }
+    v
+}
+
+/// The body of a decision (`POST /api/tasks/{id}/confirm|ignore`): empty, `{}`
+/// or `{"reply": "sms" | "call" | "none"}`, how the caller of an appointment is
+/// told (none given: the default). Err: not that shape (`bad_request`).
+pub fn parse_decision_body(body: &[u8]) -> Result<Option<crate::appointments::Reply>, &'static str> {
+    if body.iter().all(u8::is_ascii_whitespace) {
+        return Ok(None);
+    }
+    let v: Value = serde_json::from_slice(body).map_err(|_| "bad_request")?;
+    let obj = v.as_object().ok_or("bad_request")?;
+    match obj.get("reply") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) => crate::appointments::Reply::parse(s).map(Some).ok_or("bad_request"),
+        Some(_) => Err("bad_request"),
+    }
 }
 
 /// CSV export of the filtered call list (same query params as `/api/list`).
@@ -1479,12 +1577,14 @@ async fn tasks_list(
     if !token_ok(&state.settings, &headers, &query) {
         return unauthorized();
     }
-    let tasks = state.task_store.list(200).await;
     let rt = state.settings_store.snapshot();
     let connected = state.control.connected_serials().await;
-    let tasks: Vec<Value> = tasks
+    let tasks: Vec<Value> = state
+        .task_store
+        .list(200)
+        .await
         .iter()
-        .map(|t| crate::appointments::task_json(&rt, &connected, t))
+        .map(|t| task_json(t, &rt, &connected))
         .collect();
     Json(json!({"ok": true, "tasks": tasks})).into_response()
 }
@@ -1494,6 +1594,7 @@ async fn tasks_confirm(
     headers: HeaderMap,
     Query(query): Query<TokenQuery>,
     Path(id): Path<String>,
+    body: axum::body::Bytes,
 ) -> Response {
     if !token_ok(&state.settings, &headers, &query) {
         return unauthorized();
@@ -1506,8 +1607,12 @@ async fn tasks_confirm(
     if !task_id_safe(&id) {
         return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid task id");
     }
+    let reply = match parse_decision_body(&body) {
+        Ok(r) => r,
+        Err(code) => return api_error(StatusCode::BAD_REQUEST, code, "the body must be {} or {\"reply\": \"sms\" | \"call\" | \"none\"}"),
+    };
     let rt = state.settings_store.snapshot();
-    if let Some(r) = appointment_decision(&state, &rt, &id, true).await {
+    if let Some(r) = appointment_decision(&state, &rt, &id, true, reply).await {
         return r;
     }
     match on_confirm(
@@ -1529,6 +1634,7 @@ async fn tasks_ignore(
     headers: HeaderMap,
     Query(query): Query<TokenQuery>,
     Path(id): Path<String>,
+    body: axum::body::Bytes,
 ) -> Response {
     if !token_ok(&state.settings, &headers, &query) {
         return unauthorized();
@@ -1539,8 +1645,12 @@ async fn tasks_ignore(
     if !task_id_safe(&id) {
         return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid task id");
     }
+    let reply = match parse_decision_body(&body) {
+        Ok(r) => r,
+        Err(code) => return api_error(StatusCode::BAD_REQUEST, code, "the body must be {} or {\"reply\": \"sms\" | \"call\" | \"none\"}"),
+    };
     let rt = state.settings_store.snapshot();
-    if let Some(r) = appointment_decision(&state, &rt, &id, false).await {
+    if let Some(r) = appointment_decision(&state, &rt, &id, false, reply).await {
         return r;
     }
     match on_ignore(&state.task_store, &id).await {
@@ -1642,13 +1752,15 @@ async fn appointment_retry_sms(
 }
 
 /// An appointment task (the AI took it on a call) is confirmed or declined by
-/// [`crate::appointments::decide_from_web`] (calendar, text to the caller, and
-/// the Telegram card's buttons taken off); None for any other task.
+/// [`crate::appointments::decide_from_web`] (the caller told the way `reply`
+/// says, else the default; the Telegram card's buttons taken off); None for
+/// any other task.
 async fn appointment_decision(
     state: &CallsState,
     rt: &crate::settings_store::RuntimeSettings,
     id: &str,
     confirm: bool,
+    reply: Option<crate::appointments::Reply>,
 ) -> Option<Response> {
     let task = state.task_store.get(id).await?;
     task.appointment.as_ref()?;
@@ -1661,10 +1773,14 @@ async fn appointment_decision(
             Some(state.control.as_ref()),
             id,
             confirm,
+            reply,
         )
         .await
         {
-            Ok((task, message)) => Json(json!({"ok": true, "task": task, "message": message})).into_response(),
+            Ok((task, message)) => {
+                let connected = state.control.connected_serials().await;
+                Json(json!({"ok": true, "task": task_json(&task, rt, &connected), "message": message})).into_response()
+            }
             Err(e) => fulfill_err_response(e),
         },
     )
@@ -1731,6 +1847,17 @@ mod tests {
 
     #[test]
     fn a_text_is_sent_again_from_the_phone_asked_for() {
+        // (the decision's body is read the same careful way)
+        use crate::appointments::Reply;
+        for body in [&b""[..], b" ", b"{}", br#"{"reply": null}"#] {
+            assert_eq!(parse_decision_body(body), Ok(None), "{:?}", String::from_utf8_lossy(body));
+        }
+        assert_eq!(parse_decision_body(br#"{"reply": "call"}"#), Ok(Some(Reply::Call)));
+        assert_eq!(parse_decision_body(br#"{"reply": " SMS "}"#), Ok(Some(Reply::Sms)));
+        assert_eq!(parse_decision_body(br#"{"reply": "none"}"#), Ok(Some(Reply::None)));
+        for bad in [&br#"{"reply": "fax"}"#[..], br#"{"reply": 1}"#, b"[]", b"reply=call"] {
+            assert_eq!(parse_decision_body(bad), Err("bad_request"), "{:?}", String::from_utf8_lossy(bad));
+        }
         for body in [&b""[..], b"  ", b"{}", br#"{"serial": null}"#, br#"{"serial": " "}"#] {
             assert_eq!(parse_retry_body(body), Ok(None), "{:?}", String::from_utf8_lossy(body));
         }
@@ -1938,6 +2065,7 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/tasks", get(tasks_list))
         .route("/api/tasks/{id}/confirm", post(tasks_confirm))
         .route("/api/tasks/{id}/ignore", post(tasks_ignore))
+        .route("/api/tasks/{id}/event.ics", get(task_event_ics))
         .route("/api/appointments/{id}/retry-sms", post(appointment_retry_sms))
         .merge(crate::contacts::router())
         .with_state(state)

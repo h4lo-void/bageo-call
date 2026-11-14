@@ -1153,6 +1153,19 @@ fn persona_kick_client_content(opening: Option<crate::locale::Lang>) -> String {
     crate::prompts::client_turn(&crate::prompts::kick_open(active.lang, active.assistant, opening))
 }
 
+/// The AI's own call-back (an appointment's answer): no opening is asked for
+/// while it rings. This only nudges the model when the callee has spoken and
+/// it has not started ([`CALLBACK_RING_MAX`]).
+fn callback_kick_client_content() -> String {
+    crate::prompts::client_turn(
+        "[System note, not said by the other person] They have picked up and spoken. Start the call as your instructions say: who is calling and why, the answer, then one goodbye.",
+    )
+}
+
+/// A call-back nobody speaks on this long (it rings, or the line stays
+/// silent) is ended: no answer.
+const CALLBACK_RING_MAX: Duration = Duration::from_secs(70);
+
 fn persona_wrap_up_client_content() -> String {
     crate::prompts::client_turn(&crate::prompts::current().kick_wrap_up)
 }
@@ -3279,6 +3292,7 @@ pub async fn run_session(
     intl_caller: IntlPromptCheck,
     appointments: Option<crate::appointments::ApptSession>,
     lang_plan: CallLangPlan,
+    callback: bool,
 ) -> Result<SessionEndReason> {
     let opening_lang = lang_plan.opening.filter(|_| persona);
     let stall = stall.filter(|_| persona).map(|mut c| {
@@ -3482,7 +3496,12 @@ pub async fn run_session(
     } else {
         extract_owner_status(&system_prompt)
     };
-    let greets_kick_text = if persona {
+    // An AI call-back (`callback`): the phone dialed, so the line rings first
+    // and nobody is there to greet; the model speaks once the callee has
+    // spoken, and no opening is asked for.
+    let greets_kick_text = if callback {
+        callback_kick_client_content()
+    } else if persona {
         persona_kick_client_content(opening_lang)
     } else {
         greets_kick_client_content_for(&owner_status)
@@ -3494,7 +3513,7 @@ pub async fn run_session(
     );
     // Max ~12s of 16 kHz mono s16le held until UnmuteAfterGreet (never inject mid-IVR).
     const PREBUF_CAP_BYTES: usize = 16_000 * 2 * 12;
-    let mut greets_kicked = false;
+    let mut greets_kicked = callback;
     let mut prebuf: Vec<u8> = Vec::with_capacity(64 * 1024);
     let mut prebuf_chunks: u64 = 0;
     let mut prebuf_flushed_bytes: u64 = 0;
@@ -3520,7 +3539,7 @@ pub async fn run_session(
             .and_then(|b| b.lock().ok().map(|g| g.len()))
             .unwrap_or(0);
         opening_mark = Some(warm_transcript_mark);
-        if setup_ready.load(Ordering::Relaxed) {
+        if !greets_kicked && setup_ready.load(Ordering::Relaxed) {
             if send_text_before_deadline(
                 &mut sink,
                 greets_kick_text.clone(),
@@ -3602,6 +3621,7 @@ pub async fn run_session(
                             // openings): ask again now, while the phone still rings,
                             // instead of after pickup. The unheard line leaves the transcript.
                             if greets_kicked
+                                && !callback
                                 && prebuf.is_empty()
                                 && v.pointer("/serverContent/turnComplete")
                                     .and_then(|x| x.as_bool())
@@ -3675,7 +3695,9 @@ pub async fn run_session(
     // phone knows which SIM the call came in on): whatever the model says first —
     // the opening prepared while it rang, or the one it says now — waits for the
     // carrier's warning (see IntlGate).
-    let intl_call = persona && intl_caller();
+    // A call-back dials out: no carrier prompt comes, and the callee's first
+    // words must not be taken for one.
+    let intl_call = persona && !callback && intl_caller();
     let mut intl_gate = intl_gate_at_unmute(persona, intl_call, tokio::time::Instant::now());
     if intl_gate != IntlGate::Open {
         if opening_mark.is_none() {
@@ -3714,6 +3736,8 @@ pub async fn run_session(
         .await?;
         greets_kicked = true;
         info!("Gemini Live dialog greets kick sent serial={serial} (post-unmute)");
+    } else if callback {
+        info!("Gemini Live call-back serial={serial} — no opening; the AI waits for the callee to speak");
     } else {
         info!("Gemini Live dialog greets already pre-kicked serial={serial}");
     }
@@ -3856,6 +3880,8 @@ pub async fn run_session(
     // First-audio watchdog paused while the caller talks (see FIRST_DELIVERY_CALLER_*).
     let mut fd_grace = Duration::ZERO;
     let mut fd_tick = tokio::time::Instant::now();
+    // An AI call-back: still waiting for the callee to pick up and speak.
+    let mut callback_waiting = callback;
     // Testing only: rotate once after N s so it is testable without ~8 min.
     let test_rotate_after: Option<u64> = std::env::var("GEMINI_TEST_ROTATE_AFTER_SECS")
         .ok()
@@ -4244,8 +4270,31 @@ pub async fn run_session(
         // call prompt — is talking: pause the first-audio watchdog meanwhile instead
         // of killing a healthy socket (e.g. fresh session at 5 s, AI
         // first heard at 8.6 s).
+        // An AI call-back rings first: the first-audio watchdog starts when the
+        // callee has spoken (their words in the transcript, or the model
+        // already answering them); nobody for CALLBACK_RING_MAX ends the call.
+        if callback_waiting {
+            let now = tokio::time::Instant::now();
+            if !caller_text_all.trim().is_empty() || delivered_bytes.load(Ordering::Relaxed) > 0 {
+                callback_waiting = false;
+                first_delivery_window_start = now;
+                first_delivery_deadline = now + FIRST_DELIVERY_TIMEOUT;
+                fd_grace = Duration::ZERO;
+                info!("Gemini Live call-back serial={serial} — the callee spoke; the AI may answer");
+            } else if session_start.elapsed() >= CALLBACK_RING_MAX {
+                end_reason = SessionEndReason::CantCommunicate;
+                signal_force_hangup(&mut hangup_signaled);
+                info!(
+                    "Gemini Live call-back serial={serial} — nobody spoke within {}s: no answer, hang up",
+                    CALLBACK_RING_MAX.as_secs()
+                );
+                break;
+            } else {
+                first_delivery_deadline = now + FIRST_DELIVERY_TIMEOUT;
+            }
+        }
         let fd_now = tokio::time::Instant::now();
-        if delivered_bytes.load(Ordering::Relaxed) == 0 {
+        if delivered_bytes.load(Ordering::Relaxed) == 0 && !callback_waiting {
             let caller_busy = first_delivery_paused(
                 activity_open,
                 last_caller_voice_at.map_or(false, |t| t.elapsed() < FIRST_DELIVERY_CALLER_HOLD),
@@ -4259,7 +4308,7 @@ pub async fn run_session(
             }
         }
         fd_tick = fd_now;
-        let fd_action = if intl_gate != IntlGate::Open {
+        let fd_action = if intl_gate != IntlGate::Open || callback_waiting {
             FirstDeliveryAction::Wait
         } else {
             first_delivery_action(

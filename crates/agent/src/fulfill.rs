@@ -1,24 +1,23 @@
-//! Fulfillment orchestration: user confirm → OpenClaw handoff or built-in Gmail / GCal / callback queue.
+//! Fulfillment orchestration: user confirm → OpenClaw handoff or built-in Gmail / callback queue.
 //!
 //! Web (`calls_http`) and Telegram (`main` poller) both call [`on_confirm`] with shared
 //! `http`, `RuntimeSettings`, `TaskStore`, and [`ControlRegistry`].
 //!
-//! Works without OpenRouter — only Gmail / GCal / OpenClaw / phone-control credentials matter
-//! for the chosen reply path.
+//! Works without OpenRouter — only Gmail / OpenClaw / phone-control credentials matter
+//! for the chosen reply path. No calendar is written: a date goes in the owner's
+//! own calendar through "Add to calendar" ([`crate::calendar`]).
 
 use anyhow::{Context, Result};
-use chrono::Utc;
 use reqwest::Client;
 use serde_json::to_value;
 use tracing::{info, warn};
 
 use crate::callback::{callback_number, callback_whitelist_allows, ControlRegistry};
-use crate::gcal::{gcal_missing_cred_msg, insert_event, parse_datetime_hint};
 use crate::gmail::{gmail_missing_cred_msg, send_mail};
 use crate::locale::{self, Lang, Phrases};
 use crate::openclaw::{configured as openclaw_configured, handoff_task};
 use crate::settings_store::RuntimeSettings;
-use crate::tasks::{ReplyMethod, TaskIntent, TaskPatch, TaskRecord, TaskStatus, TaskStore};
+use crate::tasks::{ReplyMethod, TaskPatch, TaskRecord, TaskStatus, TaskStore};
 
 /// What the owner reads (task errors, the e-mail, the follow-up message), in
 /// the agent's language.
@@ -161,14 +160,6 @@ async fn fulfill_builtin(
             Ok(()) => {
                 store.push_event(task_id, "email_sent").await?;
             }
-            Err(e) => errors.push(format!("{e:#}")),
-        }
-    }
-
-    // Calendar event
-    if should_schedule_calendar(task) {
-        match try_insert_calendar(http, rt, store, task_id, task).await {
-            Ok(()) => {}
             Err(e) => errors.push(format!("{e:#}")),
         }
     }
@@ -317,69 +308,6 @@ async fn try_send_email(http: &Client, rt: &RuntimeSettings, task: &TaskRecord) 
     .await
 }
 
-async fn try_insert_calendar(
-    http: &Client,
-    rt: &RuntimeSettings,
-    store: &TaskStore,
-    task_id: &str,
-    task: &TaskRecord,
-) -> Result<()> {
-    if !rt.gcal_configured() {
-        anyhow::bail!("{}", gcal_missing_cred_msg());
-    }
-
-    let summary = calendar_summary(task);
-    let description = calendar_description(task);
-
-    let (start_rfc3339, end_rfc3339) = if let Some(hint) = task
-        .datetime_hint
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        let now = Utc::now();
-        let (start, end) = parse_datetime_hint(hint, now)
-            .with_context(|| locale::fill(texts().f_bad_time, hint))?;
-        (start.to_rfc3339(), end.to_rfc3339())
-    } else {
-        (String::new(), String::new())
-    };
-
-    let event_id = insert_event(
-        http,
-        &rt.gcal_client_id,
-        &rt.gcal_client_secret,
-        &rt.gcal_refresh_token,
-        &rt.gcal_calendar_id,
-        &summary,
-        &description,
-        &start_rfc3339,
-        &end_rfc3339,
-    )
-    .await
-    .with_context(|| texts().f_gcal_failed.to_string())?;
-
-    store
-        .patch(
-            task_id,
-            TaskPatch {
-                calendar_event_id: Some(event_id),
-                ..Default::default()
-            },
-        )
-        .await?;
-    store.push_event(task_id, "gcal_event_created").await?;
-    Ok(())
-}
-
-fn should_schedule_calendar(task: &TaskRecord) -> bool {
-    matches!(task.intent, TaskIntent::Appointment)
-        || task
-            .datetime_hint
-            .as_ref()
-            .is_some_and(|h| !h.trim().is_empty())
-}
-
 fn email_subject(task: &TaskRecord) -> String {
     let summary = task.summary.trim();
     if summary.is_empty() {
@@ -413,39 +341,6 @@ fn email_body(task: &TaskRecord) -> String {
     body
 }
 
-fn calendar_summary(task: &TaskRecord) -> String {
-    let summary = task.summary.trim();
-    if !summary.is_empty() {
-        summary.to_string()
-    } else {
-        locale::fill(texts().e_appointment, display_caller(&task.caller_id))
-    }
-}
-
-fn calendar_description(task: &TaskRecord) -> String {
-    let p = texts();
-    let sep = locale::kv_sep();
-    let mut parts = Vec::new();
-    parts.push(format!("{}{sep}{}", p.s_caller, display_caller(&task.caller_id)));
-    parts.push(format!("{}{sep}{}", p.n_phone, crate::notify::device_label(&task.serial)));
-    if !task.summary.trim().is_empty() {
-        parts.push(format!("{}{sep}{}", p.e_summary, task.summary.trim()));
-    }
-    if !task.transcript.trim().is_empty() {
-        parts.push(format!("{}{sep}{}", p.tc_transcript, task.transcript.trim()));
-    }
-    parts.join("\n")
-}
-
-fn display_caller(caller_id: &str) -> &str {
-    let t = caller_id.trim();
-    if t.is_empty() {
-        texts().n_hidden
-    } else {
-        t
-    }
-}
-
 /// Short status line for Telegram follow-up after confirm/ignore.
 pub fn tg_result_text(task: &TaskRecord, confirmed: bool) -> String {
     let p = texts();
@@ -477,6 +372,7 @@ pub fn tg_result_text(task: &TaskRecord, confirmed: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tasks::TaskIntent;
 
     #[test]
     fn actionable_includes_failed_for_retry() {
@@ -490,12 +386,11 @@ mod tests {
     #[test]
     fn missing_cred_messages_are_clear() {
         assert!(gmail_missing_cred_msg().contains("設定"));
-        assert!(gcal_missing_cred_msg().contains("設定"));
         assert!(texts().f_callback_waiting.contains("控制"));
         // Every language says where to fix it.
         for l in locale::ALL {
             let p = locale::phrases(l);
-            assert!(p.f_gmail_missing.contains("Gmail") && p.f_gcal_missing.contains("Google"), "{l:?}");
+            assert!(p.f_gmail_missing.contains("Gmail"), "{l:?}");
         }
     }
 
