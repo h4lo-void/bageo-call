@@ -2208,10 +2208,17 @@ fn unauthorized() -> Response {
         .into_response()
 }
 
-/// An error answer: `error` and `code` both carry the code.
+/// An error answer, HTTP 400: `error` and `code` both carry the code.
 fn bad(code: &str) -> Response {
-    let status = if code == "not_found" { StatusCode::NOT_FOUND } else { StatusCode::BAD_REQUEST };
-    (status, Json(json!({"ok": false, "error": code, "code": code}))).into_response()
+    (StatusCode::BAD_REQUEST, Json(json!({"ok": false, "error": code, "code": code}))).into_response()
+}
+
+/// An error on `…/errands/{id}…`: an unknown errand is HTTP 404 `not_found`.
+fn bad_for_id(code: &str) -> Response {
+    if code == "not_found" {
+        return (StatusCode::NOT_FOUND, Json(json!({"ok": false, "error": code, "code": code}))).into_response();
+    }
+    bad(code)
 }
 
 /// Changes take JSON only: another web page cannot send that without a CORS
@@ -2264,15 +2271,16 @@ fn refused(state: &CallsState, headers: &HeaderMap, q: &ApiQuery, id: Option<&st
         return Some(unauthorized());
     }
     if id.is_some_and(|i| !id_safe(i)) {
-        return Some(bad("not_found"));
+        return Some(bad_for_id("not_found"));
     }
     None
 }
 
+/// `{ok, errand}`, or the error of an `…/errands/{id}…` action.
 fn errand_answer(r: Result<Errand, &'static str>) -> Response {
     match r {
         Ok(e) => Json(json!({"ok": true, "errand": e})).into_response(),
-        Err(code) => bad(code),
+        Err(code) => bad_for_id(code),
     }
 }
 
@@ -2294,7 +2302,11 @@ async fn create_errand(State(state): State<CallsState>, headers: HeaderMap, Quer
         return bad("bad_request");
     };
     let now = now_of(&state).await;
-    errand_answer(create(&env_of(&state, &now), &body).await)
+    // A contact or earlier errand that is not there is a bad request here (400).
+    match create(&env_of(&state, &now), &body).await {
+        Ok(e) => Json(json!({"ok": true, "errand": e})).into_response(),
+        Err(code) => bad(code),
+    }
 }
 
 async fn cancel_errand(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<ApiQuery>, UrlPath(id): UrlPath<String>) -> Response {
@@ -2326,7 +2338,7 @@ async fn delete_errand(State(state): State<CallsState>, headers: HeaderMap, Quer
     let now = now_of(&state).await;
     match delete(&env_of(&state, &now), &id).await {
         Ok(()) => Json(json!({"ok": true})).into_response(),
-        Err(code) => bad(code),
+        Err(code) => bad_for_id(code),
     }
 }
 
@@ -2336,7 +2348,7 @@ async fn live_errand(State(state): State<CallsState>, headers: HeaderMap, Query(
     }
     match state.errands.live_view(&id, q.after.unwrap_or(0)) {
         Some(v) => Json(v).into_response(),
-        None => bad("not_found"),
+        None => bad_for_id("not_found"),
     }
 }
 
@@ -2359,7 +2371,7 @@ async fn say_errand(
     let text = body_str(&body, "text");
     match say(&state.errands, &id, &text, body.get("question_id").and_then(Value::as_str)) {
         Ok(()) => Json(json!({"ok": true})).into_response(),
-        Err(code) => bad(code),
+        Err(code) => bad_for_id(code),
     }
 }
 

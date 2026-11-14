@@ -249,10 +249,10 @@ status, result, record_id, ended_at, questions}`. Errands are kept in
 | Method and path | What |
 |---|---|
 | `GET /calls/api/errands` | `{ok, errands}`, the newest first, at most 200. |
-| `POST /calls/api/errands` | Body `{number, name, contact_id, task, identity, serial, follow_up_of}` (all but `task` and a number or contact may be left out; `serial` empty: any phone; `follow_up_of`: an earlier errand this call follows up). `{ok, errand}`. Errors (HTTP 400 `{ok: false, error, code}`, the same code in both): `no_number`, `bad_number`, `not_allowed`, `no_task`, `task_too_long` (over 1000 characters), `no_phone`, `no_sim_for_country`; 404 `not_found` (`contact_id` or `follow_up_of`). |
+| `POST /calls/api/errands` | Body `{number, name, contact_id, task, identity, serial, follow_up_of}` (all but `task` and a number or contact may be left out; `serial` empty: any phone; `follow_up_of`: an earlier errand this call follows up). `{ok, errand}`. Errors (HTTP 400 `{ok: false, error, code}`, the same code in both): `no_number`, `bad_number`, `not_allowed`, `no_task`, `task_too_long` (over 1000 characters), `no_phone`, `no_sim_for_country`, `not_found` (`contact_id` or `follow_up_of`). |
 | `POST /calls/api/errands/{id}/cancel` | Waiting: dropped; dialing or on the call: hung up. `{ok, errand}`. |
 | `POST /calls/api/errands/{id}/retry` | The same errand once more (`attempts` + 1, the last try moved to `history`). `{ok, errand}`; under way: 400 `busy`; the phone codes as for a new errand. |
-| `DELETE /calls/api/errands/{id}` | `{ok}`; dialing or on the call: 400 `busy`. |
+| `DELETE /calls/api/errands/{id}` | `{ok}`; dialing or on the call: 400 `busy`. On every `…/errands/{id}…` path an unknown errand is HTTP 404 `not_found`. |
 | `GET /calls/api/errands/{id}/live?after=<seq>` | `{status, lines: [{seq, who, text, at}], question, watching}`: the captions after `seq` (`who`: `ai`, `callee`, `owner`, `system`; the newest 400 are kept) and the question waiting for you (`null` or `{id, text, options, asked_at, expires_at}`). Asking marks you as watching for 6 seconds. |
 | `POST /calls/api/errands/{id}/say` | Body `{text, question_id}` (at most 300 characters): the answer to that question, or an instruction for the AI. `{ok}`. Errors: `not_on_call`, `empty_text`, `text_too_long`, `question_closed` (answered, timed out, or not the question waiting). |
 
