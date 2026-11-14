@@ -46,6 +46,7 @@ mod phone_region;
 mod prompts;
 mod services;
 mod settings_store;
+mod stall_review;
 mod tasks;
 mod tg_inbound;
 mod trtc;
