@@ -388,6 +388,77 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
   .ct-tbl th:nth-child(4),.ct-tbl td:nth-child(4){display:none}
 }
 
+/* ---------- AI errands ---------- */
+.er-form{margin-bottom:18px}
+.er-form>h2{font-size:1.1rem}
+.er-form>.desc{color:var(--muted);margin:4px 0 0}
+.er-to{position:relative}
+.er-sugg{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:25;background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius-sm);box-shadow:0 10px 30px rgba(0,0,0,.18);max-height:300px;overflow:auto;padding:4px}
+.er-sugg button{display:flex;gap:10px;align-items:baseline;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:8px;background:transparent;color:var(--text);cursor:pointer}
+.er-sugg button:hover,.er-sugg button:focus-visible{background:var(--surface2)}
+.er-sugg button b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.er-sugg .mono{color:var(--muted);margin-left:auto;white-space:nowrap}
+.er-sugg .none{padding:8px 10px;color:var(--muted);font-size:.9rem}
+.er-pick{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:.92rem;color:var(--muted)}
+.er-pick b{color:var(--text)}
+.er-pick select{width:auto;min-height:34px;padding:4px 30px 4px 10px}
+.er-pick .btn{min-height:30px}
+.er-count{font-variant-numeric:tabular-nums;white-space:nowrap}
+.er-list-head{margin:6px 0 10px}
+.er-list-head h2{font-size:1.08rem}
+.er-card{padding:14px 16px}
+.er-card.er-flash{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.er-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center}
+.er-head .who{font-weight:700;font-size:1.02rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.er-head .sub{display:flex;gap:8px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:.85rem;margin-top:2px}
+.er-side{display:flex;flex-direction:column;align-items:flex-end;gap:3px;color:var(--muted);font-size:.85rem;white-space:nowrap;font-variant-numeric:tabular-nums}
+.er-side .pulse,.er-live>h3 .pulse{width:8px;height:8px}
+.er-task{margin:10px 0 0;white-space:pre-wrap}
+.er-task.clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.er-more{padding-left:0;min-height:30px}
+.er-sec{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.er-sec>h3{display:flex;gap:8px;align-items:center;font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;font-weight:700}
+.er-live>h3 .pulse{color:var(--accent)}
+.er-watch{text-transform:none;letter-spacing:0;font-weight:500;margin-left:auto;text-align:right}
+.er-lines{max-height:320px;overflow:auto;overscroll-behavior:contain;padding:10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg)}
+.er-lines .er-empty{text-align:center;padding:6px 0}
+.msg.owner{align-self:flex-end;align-items:flex-end}
+.msg.owner .bub{background:var(--info-soft);border-top-left-radius:14px;border-top-right-radius:4px}
+.er-q{margin-top:10px;padding:12px 14px;border-radius:var(--radius-sm);background:var(--warn-soft);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent)}
+.er-q-h{display:flex;gap:6px;align-items:center;color:var(--warn);font-weight:700;font-size:.9rem}
+.er-q-left{color:var(--warn);font-weight:600;font-size:.85rem;font-variant-numeric:tabular-nums;white-space:nowrap}
+.er-q>b{display:block;margin-top:6px;font-size:1.02rem;white-space:pre-wrap}
+.er-q .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.er-say{display:flex;gap:8px;margin-top:10px;align-items:stretch}
+.er-say input{flex:1 1 auto;min-width:0}
+.er-say .btn{flex:0 0 auto}
+.er-tell-l{display:block;font-weight:600;font-size:.88rem;margin-top:12px}
+.er-sum{margin-top:8px;white-space:pre-wrap}
+.er-res .kv dd{white-space:pre-wrap}
+.er-res .cal{margin-top:10px}
+.er-opts{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.er-fu{margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface2)}
+.er-fu textarea{margin-top:8px;min-height:80px}
+.er-fu .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.er-qa{padding:6px 0}
+.er-qa+.er-qa{border-top:1px dashed var(--line)}
+.er-qa-a{font-weight:600;margin-top:2px}
+.er-qa-a.muted{font-weight:400}
+.er-hist{padding:8px 0;border-top:1px solid var(--line);font-size:.9rem}
+.er-hist p{margin-top:4px;white-space:pre-wrap;color:var(--muted)}
+.er-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.er-acts .er-del{margin-left:auto}
+.ct-item{display:flex;gap:8px;align-items:center}
+.ct-item>.ct-row{flex:1 1 auto;min-width:0}
+.ct-call{flex:0 0 auto}
+@media (max-width:720px){
+  .er-head{grid-template-columns:auto minmax(0,1fr);gap:12px}
+  .er-side{grid-column:1/-1;flex-direction:row;flex-wrap:wrap;align-items:center;gap:4px 10px}
+  .er-lines{max-height:260px}
+  .ct-call span{display:none}
+  .ct-call{padding:5px 10px}
+}
+
 /* ---------- responsive ---------- */
 @media (max-width:1000px){
   .calls-grid.has-detail{grid-template-columns:minmax(0,1fr)}
@@ -475,6 +546,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
   <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
   <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M15.5 4.7a3.5 3.5 0 0 1 0 6.6M17.5 14.2a6.5 6.5 0 0 1 4 5.8"/></symbol>
   <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></symbol>
+  <symbol id="i-phone-out" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/><path d="M15 3h6v6M21 3l-6 6"/></symbol>
 </svg>
 
 <a class="skip" href="#main" data-i18n="skip"></a>
@@ -486,6 +558,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
     </a>
     <nav class="nav" id="nav" data-i18n-aria="nav_main">
       <a href="#calls" data-tab="calls"><svg class="i"><use href="#i-phone"/></svg><span data-i18n="tab_calls"></span></a>
+      <a href="#errands" data-tab="errands"><svg class="i"><use href="#i-phone-out"/></svg><span data-i18n="tab_errands"></span></a>
       <a href="#contacts" data-tab="contacts"><svg class="i"><use href="#i-users"/></svg><span data-i18n="tab_contacts"></span></a>
       <a href="#settings" data-tab="settings"><svg class="i"><use href="#i-sliders"/></svg><span data-i18n="tab_settings"></span><i class="dot" id="navDirty" hidden></i></a>
       <a href="#system" data-tab="system"><svg class="i"><use href="#i-activity"/></svg><span data-i18n="tab_system"></span></a>
@@ -632,6 +705,43 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
     </div>
   </section>
 
+  <!-- ======================= Errands ======================= -->
+  <!-- The owner asks the AI to call someone and take care of something; the
+       calls it makes (live captions while on), and what came of them -->
+  <section id="view-errands" data-view="errands" hidden>
+    <h1 class="view-title" data-i18n="tab_errands"></h1>
+    <form class="card pad er-form" id="erForm" autocomplete="off" novalidate>
+      <h2 data-i18n="er_new"></h2>
+      <p class="desc" data-i18n="er_new_d"></p>
+      <div class="field"><label for="erTo" data-i18n="er_to"></label>
+        <div class="er-to">
+          <input type="text" id="erTo" maxlength="80" spellcheck="false" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="erSugg" data-i18n-ph="er_to_ph" />
+          <div class="er-sugg" id="erSugg" role="listbox" hidden></div>
+        </div>
+        <div class="er-pick" id="erPick" hidden></div></div>
+      <div class="field"><label for="erTask" data-i18n="er_task"></label>
+        <textarea id="erTask" rows="4" maxlength="1000" data-i18n-ph="er_task_ph"></textarea>
+        <div class="help row"><span class="grow" data-i18n="er_task_h"></span><span class="er-count" id="erTaskCount">0 / 1000</span></div></div>
+      <div class="field"><div class="lbl" id="lbl-er-id" data-i18n="er_identity"></div>
+        <div class="choice" role="radiogroup" aria-labelledby="lbl-er-id">
+          <label><input type="radio" name="er_identity" value="assistant" checked /><span><b id="erIdAssistant"></b><small data-i18n="er_id_assistant_d"></small></span></label>
+          <label><input type="radio" name="er_identity" value="owner" /><span><b id="erIdOwner"></b><small data-i18n="er_id_owner_d"></small></span></label>
+        </div></div>
+      <div class="field"><label for="erPhone" data-i18n="er_phone"></label>
+        <select id="erPhone" style="max-width:28rem"></select>
+        <div class="help" id="erPhoneHelp" data-i18n="er_phone_h" hidden></div></div>
+      <p class="dlg-err" id="erErr" role="alert" hidden></p>
+      <div class="row" style="margin-top:16px">
+        <button type="submit" class="btn primary" id="erGo"><svg class="i sm"><use href="#i-phone-out"/></svg><span data-i18n="er_start"></span></button>
+      </div>
+    </form>
+    <div class="row er-list-head">
+      <h2 class="grow" data-i18n="er_list"></h2>
+      <button type="button" class="icon-btn bordered" id="erRefresh" data-i18n-aria="refresh" data-i18n-title="refresh"><svg class="i"><use href="#i-refresh"/></svg></button>
+    </div>
+    <div class="list" id="erList"></div>
+  </section>
+
   <!-- ======================= Contacts ======================= -->
   <section id="view-contacts" data-view="contacts" hidden>
     <div class="row" style="margin-bottom:14px">
@@ -734,6 +844,11 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
               <label><input type="radio" name="answer_style" value="assistant" /><span><b data-i18n="style_assistant"></b><small data-i18n="style_assistant_d"></small></span></label>
               <label><input type="radio" name="answer_style" value="persona" /><span><b data-i18n="style_persona"></b><small data-i18n="style_persona_d"></small></span></label>
             </div></div>
+          <div class="field"><label for="f-errand_identity" data-i18n="f_er_identity"></label>
+            <select id="f-errand_identity" data-k="errand_identity" data-t="text" style="max-width:20rem">
+              <option value="assistant" data-i18n="er_id_opt_assistant"></option><option value="owner" data-i18n="er_id_opt_owner"></option>
+            </select>
+            <div class="help" data-i18n="f_er_identity_h"></div></div>
           <div class="field"><label for="f-gemini_api_key"><span data-i18n="f_key"></span><span class="tag" data-flag="gemini_api_key"></span></label>
             <div data-secret="gemini_api_key"></div>
             <div class="help"><span data-i18n="f_key_h"></span> <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" data-i18n="f_key_link"></a></div></div>
@@ -1793,6 +1908,115 @@ I18N["en"] = {
   pm_err_failed: "something went wrong on the phone",
   pm_err_bad_request: "the request was not understood",
   pill_all_normal: "All phones are normal phones",
+  // ---- AI errands (the Errands view, its setting, the contact button)
+  tab_errands: "Errands",
+  er_new: "Ask the AI to make a call",
+  er_new_d: "The AI calls, takes care of it and tells you how it went. While it is on the call you can follow along, answer its questions and tell it what to say.",
+  er_to: "Who to call",
+  er_to_ph: "Type a name to find a contact, or a phone number",
+  er_no_match: "No contact by that name. You can also type the number.",
+  er_will_call: "Will call:",
+  er_clear: "Clear",
+  er_need_pick: "Pick a contact from the list, or type a phone number.",
+  er_task: "What to take care of",
+  er_task_ph: "e.g. Book a table for 4 tomorrow at 7 pm under Ying, non-smoking; if 7 is full, 7:30 to 8 is fine too\nor: Ask which day this weekend, Saturday or Sunday, suits him for dinner",
+  er_task_h: "Say what you want done and what you can accept. If the AI is unsure during the call, it asks you here.",
+  er_identity: "Call as",
+  er_id_assistant: "{name}'s assistant",
+  er_id_owner: "{name} in person",
+  er_id_assistant_anon: "Your assistant",
+  er_id_owner_anon: "You in person",
+  er_id_assistant_d: "The AI says it is calling for you, as your assistant.",
+  er_id_owner_d: "The AI speaks as you.",
+  er_phone: "Phone to call from",
+  er_phone_auto: "Automatic (a free phone that can call this number)",
+  er_phone_normal: "{name} (normal phone mode, the AI can't use it)",
+  er_phone_h: "A phone in normal phone mode can't make AI calls. Switch it back to AI answering on the System page.",
+  er_start: "Start the call",
+  er_starting: "Sending…",
+  er_started: "Handed to the AI. It is calling now.",
+  er_queued: "Queued. The AI calls as soon as a phone is free.",
+  er_list: "Your errands",
+  er_empty_title: "No errands yet",
+  er_empty_body: "Write above what needs doing. The AI calls, handles it and tells you the result.",
+  er_st_queued: "Queued",
+  er_st_dialing: "Dialing",
+  er_st_on_call: "On the call",
+  er_st_done: "Done",
+  er_st_no_answer: "No answer",
+  er_st_failed: "Failed",
+  er_st_cancelled: "Cancelled",
+  er_oc_done: "Done",
+  er_oc_partial: "Partly done",
+  er_oc_not_done: "Not done",
+  er_oc_need_owner: "Your decision needed",
+  er_oc_no_answer: "No answer",
+  er_oc_voicemail: "Voicemail",
+  er_oc_failed: "Failed",
+  er_attempt: "Attempt {n}",
+  er_via: "From {phone}",
+  er_as_assistant: "As assistant",
+  er_as_owner: "As you",
+  er_more: "Show all",
+  er_less: "Show less",
+  er_live: "Live captions",
+  er_live_wait: "Dialing, waiting for them to pick up…",
+  er_live_none: "Nobody has spoken yet.",
+  er_watching: "You're watching: when unsure, the AI asks you first.",
+  er_who_ai: "AI",
+  er_who_callee: "Them",
+  er_who_owner: "You",
+  er_q_title: "The AI is asking you",
+  er_q_left: "{n} s left",
+  er_q_over: "Time's up, the AI will decide",
+  er_q_ph: "Or type your own answer",
+  er_send: "Send",
+  er_tell: "Tell the AI",
+  er_tell_ph: "e.g. Tell them 8 pm works too",
+  er_tell_sent: "Passed to the AI",
+  er_hangup: "Hang up",
+  er_hangup_t: "Hang up this call?",
+  er_hangup_b: "The AI ends the call right away. The errand may not be done yet.",
+  er_hung_up: "Hung up",
+  er_cancel_q: "Cancel",
+  er_cancelled: "Cancelled",
+  er_result: "Result",
+  er_writing: "Writing up the result…",
+  er_details: "Details",
+  er_follow_up: "Next step",
+  er_asked: "The AI asked you",
+  er_ans_absent: "You weren't there, no answer",
+  er_ans_timeout: "No answer in time",
+  er_options: "Their options. Pick one and the AI calls back with it:",
+  er_reply_own: "Write a reply",
+  er_fu_title: "Reply, and have the AI call again",
+  er_fu_h: "The AI calls {who} again and replies with this.",
+  er_fu_go: "Have the AI call",
+  er_retry: "Call again",
+  er_retried: "Calling again",
+  er_open_call: "Call record",
+  er_delete: "Delete",
+  er_delete_t: "Delete this errand?",
+  er_delete_b: "It leaves this list. The call records stay.",
+  er_deleted: "Deleted",
+  er_history: "Earlier attempts ({n})",
+  er_hist_row: "Attempt {n}",
+  er_err_no_number: "Enter the number to call.",
+  er_err_bad_number: "That number doesn't look right.",
+  er_err_not_allowed: "The AI can't call this number (emergency, special or premium-rate number).",
+  er_err_no_sim_for_country: "No phone has a SIM that can call this country's numbers.",
+  er_err_sim_unknown: "This phone hasn't taken a call yet, so the system doesn't know which SIMs it has. Call it once, then try again.",
+  er_err_no_task: "Write what the AI should take care of.",
+  er_err_task_too_long: "That's too long: at most 1,000 characters.",
+  er_err_no_phone: "No AI phone is available right now (none connected, or all in normal phone mode).",
+  er_err_not_found: "That errand or contact no longer exists.",
+  er_err_busy: "This call is still queued or on the line. Try again after it ends.",
+  er_err_not_on_call: "The call has ended, so the AI can't pass this on.",
+  er_ct_call: "Ask AI to call",
+  f_er_identity: "AI calls: call as",
+  f_er_identity_h: "Who the AI says it is when it calls for you. Each errand can still pick its own.",
+  er_id_opt_assistant: "Your assistant",
+  er_id_opt_owner: "You in person",
 };
 
 I18N["zh-TW"] = {
@@ -2506,6 +2730,115 @@ I18N["zh-TW"] = {
   pm_err_failed: "手機上發生沒預期到的錯誤",
   pm_err_bad_request: "主程式看不懂這個請求",
   pill_all_normal: "手機都是一般手機模式",
+  // ---- AI errands (the Errands view, its setting, the contact button)
+  tab_errands: "AI 代打",
+  er_new: "請 AI 幫你打電話",
+  er_new_d: "AI 會打過去把事情辦好，再告訴你結果。通話中可以看即時字幕、回答 AI 的問題，或交代它要說什麼。",
+  er_to: "打給誰",
+  er_to_ph: "輸入名字找聯絡人，或直接輸入號碼",
+  er_no_match: "找不到這個名字的聯絡人；也可以直接輸入號碼。",
+  er_will_call: "會打：",
+  er_clear: "清除",
+  er_need_pick: "請從清單選一位聯絡人，或輸入電話號碼。",
+  er_task: "要處理的事",
+  er_task_ph: "例如：訂明天晚上 7 點 4 位，姓英，非吸菸區；7 點沒位子的話 7 點半到 8 點也可以\n或：問他這週六或週日哪天有空一起吃飯",
+  er_task_h: "寫清楚要辦什麼、哪些條件可以接受。AI 通話中拿不定主意時，會在這裡問你。",
+  er_identity: "用什麼身分打",
+  er_id_assistant: "以{name}的助理身分打",
+  er_id_owner: "以{name}本人身分打",
+  er_id_assistant_anon: "以你的助理身分打",
+  er_id_owner_anon: "以你本人身分打",
+  er_id_assistant_d: "AI 會說自己是助理，替你打這通電話。",
+  er_id_owner_d: "AI 直接用你的身分講話。",
+  er_phone: "用哪支手機打",
+  er_phone_auto: "自動（挑有空、能打這個號碼的手機）",
+  er_phone_normal: "{name}（一般手機模式，AI 不能用）",
+  er_phone_h: "一般手機模式的手機不能讓 AI 打電話，要先到系統頁切回 AI 接聽。",
+  er_start: "開始打",
+  er_starting: "送出中…",
+  er_started: "已交給 AI，正在撥號。",
+  er_queued: "已排隊，手機一有空就打。",
+  er_list: "交辦紀錄",
+  er_empty_title: "還沒請 AI 打過電話",
+  er_empty_body: "在上面寫好要辦的事，AI 會打過去處理，再把結果告訴你。",
+  er_st_queued: "排隊中",
+  er_st_dialing: "撥號中",
+  er_st_on_call: "通話中",
+  er_st_done: "完成",
+  er_st_no_answer: "沒接",
+  er_st_failed: "失敗",
+  er_st_cancelled: "已取消",
+  er_oc_done: "辦好了",
+  er_oc_partial: "辦好一部分",
+  er_oc_not_done: "沒辦成",
+  er_oc_need_owner: "要你決定",
+  er_oc_no_answer: "沒接",
+  er_oc_voicemail: "語音信箱",
+  er_oc_failed: "失敗",
+  er_attempt: "第 {n} 次撥",
+  er_via: "用 {phone}",
+  er_as_assistant: "助理身分",
+  er_as_owner: "本人身分",
+  er_more: "展開",
+  er_less: "收合",
+  er_live: "即時字幕",
+  er_live_wait: "撥號中，等對方接…",
+  er_live_none: "還沒有人說話。",
+  er_watching: "你正在看：AI 拿不定主意會先問你。",
+  er_who_ai: "AI",
+  er_who_callee: "對方",
+  er_who_owner: "你",
+  er_q_title: "AI 在問你",
+  er_q_left: "還有 {n} 秒",
+  er_q_over: "時間到了，AI 會自己決定",
+  er_q_ph: "或自己打一句回答",
+  er_send: "送出",
+  er_tell: "交代 AI",
+  er_tell_ph: "例如：跟他說 8 點也可以",
+  er_tell_sent: "已轉告 AI",
+  er_hangup: "掛斷",
+  er_hangup_t: "要掛斷這通電話嗎？",
+  er_hangup_b: "AI 會馬上掛掉，事情可能還沒辦完。",
+  er_hung_up: "已掛斷",
+  er_cancel_q: "取消",
+  er_cancelled: "已取消",
+  er_result: "結果",
+  er_writing: "正在整理結果…",
+  er_details: "細節",
+  er_follow_up: "接下來",
+  er_asked: "AI 問過你",
+  er_ans_absent: "你不在、沒回答",
+  er_ans_timeout: "時間到，沒回答",
+  er_options: "對方給的選項，按一個請 AI 回電告訴他：",
+  er_reply_own: "自己寫回覆",
+  er_fu_title: "回覆後請 AI 再打",
+  er_fu_h: "AI 會再打給{who}，照這段話回覆。",
+  er_fu_go: "請 AI 再打",
+  er_retry: "再打一次",
+  er_retried: "重新撥打中",
+  er_open_call: "看通話紀錄",
+  er_delete: "刪除",
+  er_delete_t: "要刪除這筆交辦嗎？",
+  er_delete_b: "會從這個清單移除，通話紀錄還會留著。",
+  er_deleted: "已刪除",
+  er_history: "前幾次（{n}）",
+  er_hist_row: "第 {n} 次",
+  er_err_no_number: "請輸入要打的號碼。",
+  er_err_bad_number: "這個號碼看起來不對。",
+  er_err_not_allowed: "這個號碼不能由 AI 撥打（緊急、特碼或付費號碼）。",
+  er_err_no_sim_for_country: "沒有能打這個國家號碼的手機卡。",
+  er_err_sim_unknown: "這支手機還沒接過電話，系統還不知道它有哪些卡；先打給它一通再試。",
+  er_err_no_task: "請寫要處理的事。",
+  er_err_task_too_long: "要處理的事太長了，最多 1000 字。",
+  er_err_no_phone: "目前沒有可用的 AI 手機（手機沒連上，或都切成一般手機）。",
+  er_err_not_found: "找不到這筆交辦或這位聯絡人，可能已經刪掉了。",
+  er_err_busy: "這通還在排隊或通話中，等它結束再試。",
+  er_err_not_on_call: "電話已經結束了，AI 收不到這句話。",
+  er_ct_call: "請 AI 打",
+  f_er_identity: "AI 代打預設身分",
+  f_er_identity_h: "AI 幫你打電話時預設用什麼身分；每次交辦還可以另外選。",
+  er_id_opt_assistant: "助理",
+  er_id_opt_owner: "本人",
 };
 
 I18N["zh-CN"] = {
@@ -3219,6 +3552,115 @@ I18N["zh-CN"] = {
   pm_err_failed: "手机上发生了意外错误",
   pm_err_bad_request: "主程序无法识别这个请求",
   pill_all_normal: "手机都是普通手机模式",
+  // ---- AI errands (the Errands view, its setting, the contact button)
+  tab_errands: "AI 代打",
+  er_new: "请 AI 帮你打电话",
+  er_new_d: "AI 会打过去把事情办好，再告诉你结果。通话中可以看实时字幕、回答 AI 的问题，或交代它要说什么。",
+  er_to: "打给谁",
+  er_to_ph: "输入名字查找联系人，或直接输入号码",
+  er_no_match: "找不到这个名字的联系人；也可以直接输入号码。",
+  er_will_call: "会打：",
+  er_clear: "清除",
+  er_need_pick: "请从列表选一位联系人，或输入电话号码。",
+  er_task: "要处理的事",
+  er_task_ph: "例如：订明天晚上 7 点 4 位，姓英，非吸烟区；7 点没位子的话 7 点半到 8 点也可以\n或：问他这周六或周日哪天有空一起吃饭",
+  er_task_h: "写清楚要办什么、哪些条件可以接受。AI 通话中拿不定主意时，会在这里问你。",
+  er_identity: "用什么身份打",
+  er_id_assistant: "以{name}的助理身份打",
+  er_id_owner: "以{name}本人身份打",
+  er_id_assistant_anon: "以你的助理身份打",
+  er_id_owner_anon: "以你本人身份打",
+  er_id_assistant_d: "AI 会说自己是助理，替你打这通电话。",
+  er_id_owner_d: "AI 直接以你的身份说话。",
+  er_phone: "用哪部手机打",
+  er_phone_auto: "自动（挑空闲、能打这个号码的手机）",
+  er_phone_normal: "{name}（普通手机模式，AI 不能用）",
+  er_phone_h: "普通手机模式的手机不能让 AI 打电话，要先到系统页切回 AI 接听。",
+  er_start: "开始打",
+  er_starting: "发送中…",
+  er_started: "已交给 AI，正在拨号。",
+  er_queued: "已排队，手机一空闲就打。",
+  er_list: "交办记录",
+  er_empty_title: "还没请 AI 打过电话",
+  er_empty_body: "在上面写好要办的事，AI 会打过去处理，再把结果告诉你。",
+  er_st_queued: "排队中",
+  er_st_dialing: "拨号中",
+  er_st_on_call: "通话中",
+  er_st_done: "完成",
+  er_st_no_answer: "没接",
+  er_st_failed: "失败",
+  er_st_cancelled: "已取消",
+  er_oc_done: "办好了",
+  er_oc_partial: "办好一部分",
+  er_oc_not_done: "没办成",
+  er_oc_need_owner: "要你决定",
+  er_oc_no_answer: "没接",
+  er_oc_voicemail: "语音信箱",
+  er_oc_failed: "失败",
+  er_attempt: "第 {n} 次拨",
+  er_via: "用 {phone}",
+  er_as_assistant: "助理身份",
+  er_as_owner: "本人身份",
+  er_more: "展开",
+  er_less: "收起",
+  er_live: "实时字幕",
+  er_live_wait: "拨号中，等对方接…",
+  er_live_none: "还没有人说话。",
+  er_watching: "你正在看：AI 拿不定主意会先问你。",
+  er_who_ai: "AI",
+  er_who_callee: "对方",
+  er_who_owner: "你",
+  er_q_title: "AI 在问你",
+  er_q_left: "还有 {n} 秒",
+  er_q_over: "时间到了，AI 会自己决定",
+  er_q_ph: "或自己输入一句回答",
+  er_send: "发送",
+  er_tell: "交代 AI",
+  er_tell_ph: "例如：跟他说 8 点也可以",
+  er_tell_sent: "已转告 AI",
+  er_hangup: "挂断",
+  er_hangup_t: "要挂断这通电话吗？",
+  er_hangup_b: "AI 会马上挂断，事情可能还没办完。",
+  er_hung_up: "已挂断",
+  er_cancel_q: "取消",
+  er_cancelled: "已取消",
+  er_result: "结果",
+  er_writing: "正在整理结果…",
+  er_details: "细节",
+  er_follow_up: "接下来",
+  er_asked: "AI 问过你",
+  er_ans_absent: "你不在、没回答",
+  er_ans_timeout: "时间到，没回答",
+  er_options: "对方给的选项，按一个请 AI 回电告诉他：",
+  er_reply_own: "自己写回复",
+  er_fu_title: "回复后请 AI 再打",
+  er_fu_h: "AI 会再打给{who}，照这段话回复。",
+  er_fu_go: "请 AI 再打",
+  er_retry: "再打一次",
+  er_retried: "重新拨打中",
+  er_open_call: "看通话记录",
+  er_delete: "删除",
+  er_delete_t: "要删除这条交办吗？",
+  er_delete_b: "会从这个列表移除，通话记录还会保留。",
+  er_deleted: "已删除",
+  er_history: "前几次（{n}）",
+  er_hist_row: "第 {n} 次",
+  er_err_no_number: "请输入要打的号码。",
+  er_err_bad_number: "这个号码看起来不对。",
+  er_err_not_allowed: "这个号码不能由 AI 拨打（紧急、特殊或付费号码）。",
+  er_err_no_sim_for_country: "没有能打这个国家号码的手机卡。",
+  er_err_sim_unknown: "这部手机还没接过电话，系统还不知道它有哪些卡；先打给它一通再试。",
+  er_err_no_task: "请写要处理的事。",
+  er_err_task_too_long: "要处理的事太长了，最多 1000 字。",
+  er_err_no_phone: "目前没有可用的 AI 手机（手机没连接，或都切成普通手机）。",
+  er_err_not_found: "找不到这条交办或这位联系人，可能已经删除了。",
+  er_err_busy: "这通还在排队或通话中，等它结束再试。",
+  er_err_not_on_call: "电话已经结束了，AI 收不到这句话。",
+  er_ct_call: "请 AI 打",
+  f_er_identity: "AI 代打默认身份",
+  f_er_identity_h: "AI 帮你打电话时默认用什么身份；每次交办还可以另外选。",
+  er_id_opt_assistant: "助理",
+  er_id_opt_owner: "本人",
 };
 
 I18N["ja"] = {
@@ -3932,6 +4374,115 @@ I18N["ja"] = {
   pm_err_failed: "スマホで予期しないエラーが起きました",
   pm_err_bad_request: "リクエストを解釈できませんでした",
   pill_all_normal: "すべて通常のスマホです",
+  // ---- AI errands (the Errands view, its setting, the contact button)
+  tab_errands: "AI 代理電話",
+  er_new: "AI に電話をお願いする",
+  er_new_d: "AI が電話をかけて用件を済ませ、結果を知らせます。通話中は字幕を見たり、AI の質問に答えたり、伝えてほしいことを指示したりできます。",
+  er_to: "電話する相手",
+  er_to_ph: "名前で連絡先を検索、または電話番号を入力",
+  er_no_match: "その名前の連絡先はありません。番号を直接入力することもできます。",
+  er_will_call: "発信先：",
+  er_clear: "クリア",
+  er_need_pick: "リストから連絡先を選ぶか、電話番号を入力してください。",
+  er_task: "用件",
+  er_task_ph: "例：明日の夜 7 時に 4 名、英で予約、禁煙席。7 時が満席なら 7 時半〜8 時でも可\nまたは：今週の土曜か日曜、どちらが食事に都合がいいか聞いて",
+  er_task_h: "何をしてほしいか、どこまでなら受けられるかを書いてください。通話中に AI が迷ったら、ここであなたに聞きます。",
+  er_identity: "名乗り方",
+  er_id_assistant: "{name}のアシスタントとしてかける",
+  er_id_owner: "{name}本人としてかける",
+  er_id_assistant_anon: "あなたのアシスタントとしてかける",
+  er_id_owner_anon: "あなた本人としてかける",
+  er_id_assistant_d: "AI はアシスタントとして代わりに電話していると伝えます。",
+  er_id_owner_d: "AI があなた本人として話します。",
+  er_phone: "発信に使うスマホ",
+  er_phone_auto: "自動（空いていて、この番号にかけられるスマホ）",
+  er_phone_normal: "{name}（通常のスマホモードのため AI は使えません）",
+  er_phone_h: "通常のスマホモードのスマホでは AI は発信できません。システム画面で AI 応答に戻してください。",
+  er_start: "発信する",
+  er_starting: "送信中…",
+  er_started: "AI に任せました。発信しています。",
+  er_queued: "順番待ちです。スマホが空きしだい発信します。",
+  er_list: "依頼の記録",
+  er_empty_title: "まだ AI に電話を頼んでいません",
+  er_empty_body: "上に用件を書くと、AI が電話して対応し、結果を知らせます。",
+  er_st_queued: "順番待ち",
+  er_st_dialing: "発信中",
+  er_st_on_call: "通話中",
+  er_st_done: "完了",
+  er_st_no_answer: "不在",
+  er_st_failed: "失敗",
+  er_st_cancelled: "取り消し",
+  er_oc_done: "済みました",
+  er_oc_partial: "一部済み",
+  er_oc_not_done: "済みませんでした",
+  er_oc_need_owner: "あなたの判断が必要",
+  er_oc_no_answer: "不在",
+  er_oc_voicemail: "留守番電話",
+  er_oc_failed: "失敗",
+  er_attempt: "{n} 回目の発信",
+  er_via: "{phone} から",
+  er_as_assistant: "アシスタントとして",
+  er_as_owner: "本人として",
+  er_more: "全文を表示",
+  er_less: "閉じる",
+  er_live: "リアルタイム字幕",
+  er_live_wait: "発信中。相手が出るのを待っています…",
+  er_live_none: "まだ誰も話していません。",
+  er_watching: "表示中：AI は迷ったらまずあなたに聞きます。",
+  er_who_ai: "AI",
+  er_who_callee: "相手",
+  er_who_owner: "あなた",
+  er_q_title: "AI からの質問",
+  er_q_left: "残り {n} 秒",
+  er_q_over: "時間切れ。AI が判断します",
+  er_q_ph: "または自分で答えを入力",
+  er_send: "送信",
+  er_tell: "AI に指示",
+  er_tell_ph: "例：8 時でも大丈夫と伝えて",
+  er_tell_sent: "AI に伝えました",
+  er_hangup: "切る",
+  er_hangup_t: "この電話を切りますか？",
+  er_hangup_b: "AI はすぐに電話を切ります。用件はまだ済んでいないかもしれません。",
+  er_hung_up: "切りました",
+  er_cancel_q: "取り消す",
+  er_cancelled: "取り消しました",
+  er_result: "結果",
+  er_writing: "結果をまとめています…",
+  er_details: "詳細",
+  er_follow_up: "次にすること",
+  er_asked: "AI が聞いたこと",
+  er_ans_absent: "不在のため回答なし",
+  er_ans_timeout: "時間内に回答なし",
+  er_options: "相手からの選択肢です。選ぶと AI がかけ直して伝えます：",
+  er_reply_own: "返事を書く",
+  er_fu_title: "返事を書いて AI にかけ直してもらう",
+  er_fu_h: "AI が{who}にもう一度電話して、この内容で返事をします。",
+  er_fu_go: "AI にかけ直してもらう",
+  er_retry: "もう一度かける",
+  er_retried: "かけ直しています",
+  er_open_call: "通話記録を見る",
+  er_delete: "削除",
+  er_delete_t: "この依頼を削除しますか？",
+  er_delete_b: "このリストから消えます。通話記録は残ります。",
+  er_deleted: "削除しました",
+  er_history: "前回まで（{n}）",
+  er_hist_row: "{n} 回目",
+  er_err_no_number: "電話番号を入力してください。",
+  er_err_bad_number: "この番号は正しくないようです。",
+  er_err_not_allowed: "この番号には AI から発信できません（緊急・特番・有料番号）。",
+  er_err_no_sim_for_country: "この国の番号にかけられる SIM がありません。",
+  er_err_sim_unknown: "このスマホはまだ電話を受けたことがないため、どの SIM が入っているか分かりません。一度このスマホに電話をかけてから、もう一度お試しください。",
+  er_err_no_task: "用件を書いてください。",
+  er_err_task_too_long: "用件が長すぎます。1000 文字までです。",
+  er_err_no_phone: "使える AI 用スマホがありません（未接続、またはすべて通常のスマホモード）。",
+  er_err_not_found: "その依頼または連絡先はもうありません。",
+  er_err_busy: "この電話はまだ順番待ちか通話中です。終わってからもう一度お試しください。",
+  er_err_not_on_call: "通話は終わっているため、AI に伝えられません。",
+  er_ct_call: "AI に電話を頼む",
+  f_er_identity: "AI 代理電話の名乗り方（既定）",
+  f_er_identity_h: "AI があなたの代わりに電話するときの既定の名乗り方です。依頼ごとに変えることもできます。",
+  er_id_opt_assistant: "アシスタント",
+  er_id_opt_owner: "本人",
 };
 
 I18N["ko"] = {
@@ -4645,6 +5196,115 @@ I18N["ko"] = {
   pm_err_failed: "휴대전화에서 예상하지 못한 오류가 발생했습니다",
   pm_err_bad_request: "요청을 이해할 수 없습니다",
   pill_all_normal: "모두 일반 휴대전화 모드입니다",
+  // ---- AI errands (the Errands view, its setting, the contact button)
+  tab_errands: "AI 대리 전화",
+  er_new: "AI에게 전화 부탁하기",
+  er_new_d: "AI가 전화해서 일을 처리하고 결과를 알려 줍니다. 통화 중에는 실시간 자막을 보고, AI의 질문에 답하고, 할 말을 전할 수 있습니다.",
+  er_to: "누구에게",
+  er_to_ph: "이름으로 연락처를 찾거나 전화번호를 입력하세요",
+  er_no_match: "그 이름의 연락처가 없습니다. 번호를 바로 입력해도 됩니다.",
+  er_will_call: "걸 번호:",
+  er_clear: "지우기",
+  er_need_pick: "목록에서 연락처를 고르거나 전화번호를 입력하세요.",
+  er_task: "처리할 일",
+  er_task_ph: "예: 내일 저녁 7시 4명, 영 씨 이름으로, 금연석. 7시가 꽉 찼으면 7시 반~8시도 괜찮음\n또는: 이번 주 토요일이나 일요일 중 언제 같이 밥 먹을 시간이 되는지 물어봐 줘",
+  er_task_h: "무엇을 해야 하는지, 어디까지 괜찮은지 적어 주세요. 통화 중 AI가 판단이 어려우면 여기서 물어봅니다.",
+  er_identity: "누구로서 전화할까요",
+  er_id_assistant: "{name}의 비서로 전화",
+  er_id_owner: "{name} 본인으로 전화",
+  er_id_assistant_anon: "내 비서로 전화",
+  er_id_owner_anon: "나 본인으로 전화",
+  er_id_assistant_d: "AI가 비서라고 밝히고 대신 전화합니다.",
+  er_id_owner_d: "AI가 본인으로서 말합니다.",
+  er_phone: "전화할 휴대폰",
+  er_phone_auto: "자동 (비어 있고 이 번호로 걸 수 있는 휴대폰)",
+  er_phone_normal: "{name} (일반 휴대폰 모드라 AI가 쓸 수 없음)",
+  er_phone_h: "일반 휴대폰 모드인 휴대폰으로는 AI가 전화할 수 없습니다. 시스템 화면에서 AI 응답으로 바꾸세요.",
+  er_start: "전화 걸기",
+  er_starting: "보내는 중…",
+  er_started: "AI에게 맡겼습니다. 지금 거는 중입니다.",
+  er_queued: "대기열에 넣었습니다. 휴대폰이 비면 바로 겁니다.",
+  er_list: "부탁한 전화",
+  er_empty_title: "아직 AI에게 부탁한 전화가 없습니다",
+  er_empty_body: "위에 할 일을 적으면 AI가 전화해서 처리하고 결과를 알려 줍니다.",
+  er_st_queued: "대기 중",
+  er_st_dialing: "거는 중",
+  er_st_on_call: "통화 중",
+  er_st_done: "완료",
+  er_st_no_answer: "안 받음",
+  er_st_failed: "실패",
+  er_st_cancelled: "취소됨",
+  er_oc_done: "처리됨",
+  er_oc_partial: "일부 처리됨",
+  er_oc_not_done: "처리 못 함",
+  er_oc_need_owner: "결정 필요",
+  er_oc_no_answer: "안 받음",
+  er_oc_voicemail: "음성사서함",
+  er_oc_failed: "실패",
+  er_attempt: "{n}번째 시도",
+  er_via: "{phone}(으)로",
+  er_as_assistant: "비서로",
+  er_as_owner: "본인으로",
+  er_more: "펼치기",
+  er_less: "접기",
+  er_live: "실시간 자막",
+  er_live_wait: "거는 중, 상대가 받기를 기다리는 중…",
+  er_live_none: "아직 아무도 말하지 않았습니다.",
+  er_watching: "보고 있음: AI가 판단이 어려우면 먼저 물어봅니다.",
+  er_who_ai: "AI",
+  er_who_callee: "상대",
+  er_who_owner: "나",
+  er_q_title: "AI의 질문",
+  er_q_left: "{n}초 남음",
+  er_q_over: "시간이 지나 AI가 결정합니다",
+  er_q_ph: "또는 직접 답을 입력",
+  er_send: "보내기",
+  er_tell: "AI에게 전하기",
+  er_tell_ph: "예: 8시도 괜찮다고 전해 줘",
+  er_tell_sent: "AI에게 전했습니다",
+  er_hangup: "끊기",
+  er_hangup_t: "이 전화를 끊을까요?",
+  er_hangup_b: "AI가 바로 끊습니다. 일이 아직 끝나지 않았을 수 있습니다.",
+  er_hung_up: "끊었습니다",
+  er_cancel_q: "취소",
+  er_cancelled: "취소했습니다",
+  er_result: "결과",
+  er_writing: "결과를 정리하는 중…",
+  er_details: "세부 내용",
+  er_follow_up: "다음 할 일",
+  er_asked: "AI가 물어본 것",
+  er_ans_absent: "자리에 없어 답하지 않음",
+  er_ans_timeout: "시간 안에 답하지 않음",
+  er_options: "상대가 준 선택지입니다. 하나를 누르면 AI가 다시 전화해 알려 줍니다:",
+  er_reply_own: "직접 답장 쓰기",
+  er_fu_title: "답을 정해 AI에게 다시 전화 부탁",
+  er_fu_h: "AI가 {who}에게 다시 전화해 이 내용으로 답합니다.",
+  er_fu_go: "AI에게 다시 전화 부탁",
+  er_retry: "다시 걸기",
+  er_retried: "다시 거는 중",
+  er_open_call: "통화 기록 보기",
+  er_delete: "삭제",
+  er_delete_t: "이 부탁을 삭제할까요?",
+  er_delete_b: "이 목록에서 사라집니다. 통화 기록은 남습니다.",
+  er_deleted: "삭제했습니다",
+  er_history: "이전 시도 ({n})",
+  er_hist_row: "{n}번째",
+  er_err_no_number: "걸 번호를 입력하세요.",
+  er_err_bad_number: "번호가 올바르지 않은 것 같습니다.",
+  er_err_not_allowed: "이 번호는 AI가 걸 수 없습니다 (긴급·특수·유료 번호).",
+  er_err_no_sim_for_country: "이 나라 번호로 걸 수 있는 SIM이 없습니다.",
+  er_err_sim_unknown: "이 휴대폰은 아직 전화를 받은 적이 없어 어떤 SIM이 있는지 모릅니다. 한 번 전화를 걸어 본 뒤 다시 시도하세요.",
+  er_err_no_task: "처리할 일을 적어 주세요.",
+  er_err_task_too_long: "처리할 일이 너무 깁니다. 최대 1,000자입니다.",
+  er_err_no_phone: "지금 쓸 수 있는 AI 휴대폰이 없습니다 (연결 안 됨, 또는 모두 일반 휴대폰 모드).",
+  er_err_not_found: "그 부탁이나 연락처가 더 이상 없습니다.",
+  er_err_busy: "이 전화는 아직 대기 중이거나 통화 중입니다. 끝난 뒤 다시 시도하세요.",
+  er_err_not_on_call: "통화가 끝나서 AI에게 전할 수 없습니다.",
+  er_ct_call: "AI에게 전화 부탁",
+  f_er_identity: "AI 대리 전화 기본 신분",
+  f_er_identity_h: "AI가 대신 전화할 때 기본으로 밝힐 신분입니다. 부탁할 때마다 따로 고를 수도 있습니다.",
+  er_id_opt_assistant: "비서",
+  er_id_opt_owner: "본인",
 };
 
 I18N["es"] = {
@@ -5358,6 +6018,115 @@ I18N["es"] = {
   pm_err_failed: "algo salió mal en el teléfono",
   pm_err_bad_request: "no se entendió la solicitud",
   pill_all_normal: "Todos son teléfonos normales",
+  // ---- AI errands (the Errands view, its setting, the contact button)
+  tab_errands: "Encargos",
+  er_new: "Pídele a la IA que haga una llamada",
+  er_new_d: "La IA llama, se encarga y te cuenta cómo fue. Durante la llamada puedes seguir los subtítulos, responder a sus preguntas y decirle qué decir.",
+  er_to: "A quién llamar",
+  er_to_ph: "Escribe un nombre para buscar un contacto, o un número",
+  er_no_match: "No hay ningún contacto con ese nombre. También puedes escribir el número.",
+  er_will_call: "Llamará a:",
+  er_clear: "Borrar",
+  er_need_pick: "Elige un contacto de la lista o escribe un número de teléfono.",
+  er_task: "Qué hay que hacer",
+  er_task_ph: "p. ej.: Reservar mesa para 4 mañana a las 7 de la tarde a nombre de Ying, zona de no fumadores; si a las 7 está lleno, de 7:30 a 8 también vale\no: Pregúntale qué día le va mejor para cenar este fin de semana, sábado o domingo",
+  er_task_h: "Explica qué quieres conseguir y qué puedes aceptar. Si la IA duda durante la llamada, te pregunta aquí.",
+  er_identity: "Llamar como",
+  er_id_assistant: "Asistente de {name}",
+  er_id_owner: "{name} en persona",
+  er_id_assistant_anon: "Tu asistente",
+  er_id_owner_anon: "Tú en persona",
+  er_id_assistant_d: "La IA dice que llama de tu parte, como tu asistente.",
+  er_id_owner_d: "La IA habla como si fueras tú.",
+  er_phone: "Teléfono para llamar",
+  er_phone_auto: "Automático (uno libre que pueda llamar a este número)",
+  er_phone_normal: "{name} (modo teléfono normal, la IA no puede usarlo)",
+  er_phone_h: "Un teléfono en modo normal no puede hacer llamadas de la IA. Vuelve a ponerlo en respuesta con IA en la página Sistema.",
+  er_start: "Llamar",
+  er_starting: "Enviando…",
+  er_started: "En manos de la IA. Está llamando.",
+  er_queued: "En cola. La IA llama en cuanto haya un teléfono libre.",
+  er_list: "Tus encargos",
+  er_empty_title: "Aún no hay encargos",
+  er_empty_body: "Escribe arriba lo que hay que hacer. La IA llama, se encarga y te cuenta el resultado.",
+  er_st_queued: "En cola",
+  er_st_dialing: "Marcando",
+  er_st_on_call: "En llamada",
+  er_st_done: "Hecho",
+  er_st_no_answer: "Sin respuesta",
+  er_st_failed: "Falló",
+  er_st_cancelled: "Cancelado",
+  er_oc_done: "Hecho",
+  er_oc_partial: "Hecho en parte",
+  er_oc_not_done: "No se logró",
+  er_oc_need_owner: "Tienes que decidir",
+  er_oc_no_answer: "Sin respuesta",
+  er_oc_voicemail: "Buzón de voz",
+  er_oc_failed: "Falló",
+  er_attempt: "Intento {n}",
+  er_via: "Desde {phone}",
+  er_as_assistant: "Como asistente",
+  er_as_owner: "Como tú",
+  er_more: "Ver todo",
+  er_less: "Ver menos",
+  er_live: "Subtítulos en directo",
+  er_live_wait: "Marcando, esperando a que contesten…",
+  er_live_none: "Nadie ha hablado todavía.",
+  er_watching: "Lo estás viendo: si la IA duda, te pregunta primero.",
+  er_who_ai: "IA",
+  er_who_callee: "Interlocutor",
+  er_who_owner: "Tú",
+  er_q_title: "La IA te pregunta",
+  er_q_left: "Quedan {n} s",
+  er_q_over: "Se acabó el tiempo, decide la IA",
+  er_q_ph: "O escribe tu propia respuesta",
+  er_send: "Enviar",
+  er_tell: "Dile a la IA",
+  er_tell_ph: "p. ej.: Dile que a las 8 también va bien",
+  er_tell_sent: "Se lo pasamos a la IA",
+  er_hangup: "Colgar",
+  er_hangup_t: "¿Colgar esta llamada?",
+  er_hangup_b: "La IA cuelga enseguida. Puede que el encargo no esté terminado.",
+  er_hung_up: "Colgado",
+  er_cancel_q: "Cancelar",
+  er_cancelled: "Cancelado",
+  er_result: "Resultado",
+  er_writing: "Redactando el resultado…",
+  er_details: "Detalles",
+  er_follow_up: "Siguiente paso",
+  er_asked: "La IA te preguntó",
+  er_ans_absent: "No estabas, sin respuesta",
+  er_ans_timeout: "Sin respuesta a tiempo",
+  er_options: "Sus opciones. Elige una y la IA vuelve a llamar para decírsela:",
+  er_reply_own: "Escribir respuesta",
+  er_fu_title: "Responde y que la IA vuelva a llamar",
+  er_fu_h: "La IA vuelve a llamar a {who} y responde con esto.",
+  er_fu_go: "Que llame la IA",
+  er_retry: "Volver a llamar",
+  er_retried: "Volviendo a llamar",
+  er_open_call: "Registro de la llamada",
+  er_delete: "Eliminar",
+  er_delete_t: "¿Eliminar este encargo?",
+  er_delete_b: "Sale de esta lista. Los registros de llamadas se quedan.",
+  er_deleted: "Eliminado",
+  er_history: "Intentos anteriores ({n})",
+  er_hist_row: "Intento {n}",
+  er_err_no_number: "Escribe el número al que llamar.",
+  er_err_bad_number: "Ese número no parece correcto.",
+  er_err_not_allowed: "La IA no puede llamar a este número (emergencias, especial o de tarificación adicional).",
+  er_err_no_sim_for_country: "Ningún teléfono tiene una SIM que pueda llamar a números de ese país.",
+  er_err_sim_unknown: "Este teléfono aún no ha recibido llamadas, así que el sistema no sabe qué SIM tiene. Llámalo una vez y vuelve a intentarlo.",
+  er_err_no_task: "Escribe qué tiene que hacer la IA.",
+  er_err_task_too_long: "Es demasiado largo: 1000 caracteres como máximo.",
+  er_err_no_phone: "No hay ningún teléfono de IA disponible ahora (ninguno conectado, o todos en modo normal).",
+  er_err_not_found: "Ese encargo o contacto ya no existe.",
+  er_err_busy: "Esta llamada sigue en cola o en curso. Inténtalo cuando termine.",
+  er_err_not_on_call: "La llamada ya terminó, la IA no puede transmitirlo.",
+  er_ct_call: "Que llame la IA",
+  f_er_identity: "Llamadas de la IA: llamar como",
+  f_er_identity_h: "Quién dice ser la IA cuando llama por ti. Cada encargo puede elegir otra opción.",
+  er_id_opt_assistant: "Tu asistente",
+  er_id_opt_owner: "Tú en persona",
 };
 
 I18N["fr"] = {
@@ -6071,6 +6840,115 @@ I18N["fr"] = {
   pm_err_failed: "une erreur inattendue s'est produite sur le téléphone",
   pm_err_bad_request: "la requête n'a pas été comprise",
   pill_all_normal: "Tous en mode téléphone normal",
+  // ---- AI errands (the Errands view, its setting, the contact button)
+  tab_errands: "Appels IA",
+  er_new: "Demander à l'IA de passer un appel",
+  er_new_d: "L'IA appelle, s'en occupe et vous dit comment ça s'est passé. Pendant l'appel, vous pouvez suivre les sous-titres, répondre à ses questions et lui dire quoi dire.",
+  er_to: "Qui appeler",
+  er_to_ph: "Tapez un nom pour trouver un contact, ou un numéro",
+  er_no_match: "Aucun contact à ce nom. Vous pouvez aussi taper le numéro.",
+  er_will_call: "Appellera :",
+  er_clear: "Effacer",
+  er_need_pick: "Choisissez un contact dans la liste ou tapez un numéro.",
+  er_task: "Ce qu'il faut régler",
+  er_task_ph: "ex. : Réserver demain à 19 h pour 4 au nom de Ying, non-fumeur ; si 19 h est complet, de 19 h 30 à 20 h ça va aussi\nou : Lui demander quel jour lui convient ce week-end, samedi ou dimanche, pour dîner ensemble",
+  er_task_h: "Dites ce que vous voulez obtenir et ce que vous acceptez. Si l'IA hésite pendant l'appel, elle vous le demande ici.",
+  er_identity: "Appeler en tant que",
+  er_id_assistant: "Assistant de {name}",
+  er_id_owner: "{name} en personne",
+  er_id_assistant_anon: "Votre assistant",
+  er_id_owner_anon: "Vous en personne",
+  er_id_assistant_d: "L'IA dit qu'elle appelle de votre part, comme votre assistant.",
+  er_id_owner_d: "L'IA parle comme si c'était vous.",
+  er_phone: "Téléphone pour appeler",
+  er_phone_auto: "Automatique (un téléphone libre qui peut appeler ce numéro)",
+  er_phone_normal: "{name} (mode téléphone normal, l'IA ne peut pas l'utiliser)",
+  er_phone_h: "Un téléphone en mode normal ne peut pas passer d'appels IA. Remettez-le en réponse par l'IA dans la page Système.",
+  er_start: "Lancer l'appel",
+  er_starting: "Envoi…",
+  er_started: "Confié à l'IA. Elle appelle.",
+  er_queued: "En file d'attente. L'IA appelle dès qu'un téléphone est libre.",
+  er_list: "Vos demandes",
+  er_empty_title: "Aucune demande pour l'instant",
+  er_empty_body: "Écrivez ci-dessus ce qu'il faut faire. L'IA appelle, s'en occupe et vous donne le résultat.",
+  er_st_queued: "En attente",
+  er_st_dialing: "Numérotation",
+  er_st_on_call: "En ligne",
+  er_st_done: "Terminé",
+  er_st_no_answer: "Pas de réponse",
+  er_st_failed: "Échec",
+  er_st_cancelled: "Annulé",
+  er_oc_done: "Réglé",
+  er_oc_partial: "Réglé en partie",
+  er_oc_not_done: "Pas réglé",
+  er_oc_need_owner: "À vous de décider",
+  er_oc_no_answer: "Pas de réponse",
+  er_oc_voicemail: "Messagerie",
+  er_oc_failed: "Échec",
+  er_attempt: "Essai {n}",
+  er_via: "Depuis {phone}",
+  er_as_assistant: "En assistant",
+  er_as_owner: "En votre nom",
+  er_more: "Tout afficher",
+  er_less: "Réduire",
+  er_live: "Sous-titres en direct",
+  er_live_wait: "Numérotation, en attente qu'on décroche…",
+  er_live_none: "Personne n'a encore parlé.",
+  er_watching: "Vous regardez : en cas de doute, l'IA vous demande d'abord.",
+  er_who_ai: "IA",
+  er_who_callee: "Interlocuteur",
+  er_who_owner: "Vous",
+  er_q_title: "L'IA vous demande",
+  er_q_left: "Encore {n} s",
+  er_q_over: "Temps écoulé, l'IA décide",
+  er_q_ph: "Ou tapez votre propre réponse",
+  er_send: "Envoyer",
+  er_tell: "Dire à l'IA",
+  er_tell_ph: "ex. : Dis-lui que 20 h ça va aussi",
+  er_tell_sent: "Transmis à l'IA",
+  er_hangup: "Raccrocher",
+  er_hangup_t: "Raccrocher cet appel ?",
+  er_hangup_b: "L'IA raccroche tout de suite. La demande n'est peut-être pas réglée.",
+  er_hung_up: "Raccroché",
+  er_cancel_q: "Annuler",
+  er_cancelled: "Annulé",
+  er_result: "Résultat",
+  er_writing: "Rédaction du résultat…",
+  er_details: "Détails",
+  er_follow_up: "Étape suivante",
+  er_asked: "L'IA vous a demandé",
+  er_ans_absent: "Vous n'étiez pas là, pas de réponse",
+  er_ans_timeout: "Pas de réponse à temps",
+  er_options: "Leurs propositions. Choisissez-en une et l'IA rappelle pour la donner :",
+  er_reply_own: "Écrire une réponse",
+  er_fu_title: "Répondre et faire rappeler l'IA",
+  er_fu_h: "L'IA rappelle {who} et répond avec ceci.",
+  er_fu_go: "Faire rappeler l'IA",
+  er_retry: "Rappeler",
+  er_retried: "Nouvel appel en cours",
+  er_open_call: "Fiche de l'appel",
+  er_delete: "Supprimer",
+  er_delete_t: "Supprimer cette demande ?",
+  er_delete_b: "Elle quitte cette liste. Les fiches d'appel restent.",
+  er_deleted: "Supprimée",
+  er_history: "Essais précédents ({n})",
+  er_hist_row: "Essai {n}",
+  er_err_no_number: "Saisissez le numéro à appeler.",
+  er_err_bad_number: "Ce numéro ne semble pas correct.",
+  er_err_not_allowed: "L'IA ne peut pas appeler ce numéro (urgence, numéro spécial ou surtaxé).",
+  er_err_no_sim_for_country: "Aucun téléphone n'a de SIM pouvant appeler les numéros de ce pays.",
+  er_err_sim_unknown: "Ce téléphone n'a encore reçu aucun appel : le système ne sait pas quelles SIM il contient. Appelez-le une fois, puis réessayez.",
+  er_err_no_task: "Écrivez ce que l'IA doit régler.",
+  er_err_task_too_long: "C'est trop long : 1000 caractères au maximum.",
+  er_err_no_phone: "Aucun téléphone IA disponible pour l'instant (aucun connecté, ou tous en mode normal).",
+  er_err_not_found: "Cette demande ou ce contact n'existe plus.",
+  er_err_busy: "Cet appel est encore en attente ou en ligne. Réessayez quand il sera fini.",
+  er_err_not_on_call: "L'appel est terminé, l'IA ne peut plus transmettre ceci.",
+  er_ct_call: "Faire appeler l'IA",
+  f_er_identity: "Appels IA : appeler en tant que",
+  f_er_identity_h: "Qui l'IA dit être quand elle appelle pour vous. Chaque demande peut choisir autrement.",
+  er_id_opt_assistant: "Votre assistant",
+  er_id_opt_owner: "Vous en personne",
 };
 
 I18N["de"] = {
@@ -6784,6 +7662,115 @@ I18N["de"] = {
   pm_err_failed: "Auf dem Telefon ist ein unerwarteter Fehler aufgetreten",
   pm_err_bad_request: "Die Anfrage wurde nicht verstanden",
   pill_all_normal: "Alle sind normale Telefone",
+  // ---- AI errands (the Errands view, its setting, the contact button)
+  tab_errands: "KI-Anrufe",
+  er_new: "Die KI anrufen lassen",
+  er_new_d: "Die KI ruft an, erledigt es und sagt dir, wie es gelaufen ist. Während des Anrufs kannst du mitlesen, ihre Fragen beantworten und ihr sagen, was sie sagen soll.",
+  er_to: "Wen anrufen",
+  er_to_ph: "Namen tippen, um einen Kontakt zu finden, oder eine Nummer",
+  er_no_match: "Kein Kontakt mit diesem Namen. Du kannst auch die Nummer eingeben.",
+  er_will_call: "Ruft an:",
+  er_clear: "Leeren",
+  er_need_pick: "Wähle einen Kontakt aus der Liste oder gib eine Telefonnummer ein.",
+  er_task: "Was zu erledigen ist",
+  er_task_ph: "z. B.: Morgen um 19 Uhr einen Tisch für 4 auf den Namen Ying reservieren, Nichtraucher; wenn 19 Uhr voll ist, geht auch 19:30 bis 20 Uhr\noder: Frag ihn, ob er dieses Wochenende Samstag oder Sonntag Zeit zum Essen hat",
+  er_task_h: "Schreib, was erledigt werden soll und was für dich in Ordnung ist. Ist die KI im Gespräch unsicher, fragt sie dich hier.",
+  er_identity: "Anrufen als",
+  er_id_assistant: "Assistenz von {name}",
+  er_id_owner: "{name} persönlich",
+  er_id_assistant_anon: "Deine Assistenz",
+  er_id_owner_anon: "Du persönlich",
+  er_id_assistant_d: "Die KI sagt, dass sie als deine Assistenz in deinem Auftrag anruft.",
+  er_id_owner_d: "Die KI spricht als du.",
+  er_phone: "Telefon zum Anrufen",
+  er_phone_auto: "Automatisch (ein freies Telefon, das diese Nummer anrufen kann)",
+  er_phone_normal: "{name} (normaler Telefonmodus, die KI kann es nicht nutzen)",
+  er_phone_h: "Ein Telefon im normalen Modus kann keine KI-Anrufe machen. Stell es auf der Seite System wieder auf KI-Annahme.",
+  er_start: "Anruf starten",
+  er_starting: "Wird gesendet…",
+  er_started: "An die KI übergeben. Sie ruft jetzt an.",
+  er_queued: "In der Warteschlange. Die KI ruft an, sobald ein Telefon frei ist.",
+  er_list: "Deine Aufträge",
+  er_empty_title: "Noch keine Aufträge",
+  er_empty_body: "Schreib oben, was zu tun ist. Die KI ruft an, erledigt es und sagt dir das Ergebnis.",
+  er_st_queued: "Wartet",
+  er_st_dialing: "Wählt",
+  er_st_on_call: "Im Gespräch",
+  er_st_done: "Erledigt",
+  er_st_no_answer: "Nicht erreicht",
+  er_st_failed: "Fehlgeschlagen",
+  er_st_cancelled: "Abgebrochen",
+  er_oc_done: "Erledigt",
+  er_oc_partial: "Teilweise erledigt",
+  er_oc_not_done: "Nicht erledigt",
+  er_oc_need_owner: "Du musst entscheiden",
+  er_oc_no_answer: "Nicht erreicht",
+  er_oc_voicemail: "Mailbox",
+  er_oc_failed: "Fehlgeschlagen",
+  er_attempt: "Versuch {n}",
+  er_via: "Über {phone}",
+  er_as_assistant: "Als Assistenz",
+  er_as_owner: "Als du",
+  er_more: "Alles anzeigen",
+  er_less: "Weniger",
+  er_live: "Live-Untertitel",
+  er_live_wait: "Wählt, wartet, bis abgenommen wird…",
+  er_live_none: "Noch hat niemand gesprochen.",
+  er_watching: "Du schaust zu: Ist die KI unsicher, fragt sie zuerst dich.",
+  er_who_ai: "KI",
+  er_who_callee: "Gegenüber",
+  er_who_owner: "Du",
+  er_q_title: "Die KI fragt dich",
+  er_q_left: "Noch {n} s",
+  er_q_over: "Zeit abgelaufen, die KI entscheidet",
+  er_q_ph: "Oder eigene Antwort eingeben",
+  er_send: "Senden",
+  er_tell: "Der KI sagen",
+  er_tell_ph: "z. B.: Sag ihm, 20 Uhr geht auch",
+  er_tell_sent: "An die KI weitergegeben",
+  er_hangup: "Auflegen",
+  er_hangup_t: "Diesen Anruf beenden?",
+  er_hangup_b: "Die KI legt sofort auf. Der Auftrag ist dann vielleicht nicht erledigt.",
+  er_hung_up: "Aufgelegt",
+  er_cancel_q: "Abbrechen",
+  er_cancelled: "Abgebrochen",
+  er_result: "Ergebnis",
+  er_writing: "Ergebnis wird zusammengefasst…",
+  er_details: "Details",
+  er_follow_up: "Nächster Schritt",
+  er_asked: "Die KI hat dich gefragt",
+  er_ans_absent: "Du warst nicht da, keine Antwort",
+  er_ans_timeout: "Nicht rechtzeitig beantwortet",
+  er_options: "Ihre Vorschläge. Wähl einen, und die KI ruft zurück und sagt ihn durch:",
+  er_reply_own: "Antwort schreiben",
+  er_fu_title: "Antworten und die KI erneut anrufen lassen",
+  er_fu_h: "Die KI ruft {who} noch einmal an und antwortet damit.",
+  er_fu_go: "KI anrufen lassen",
+  er_retry: "Erneut anrufen",
+  er_retried: "Ruft erneut an",
+  er_open_call: "Anrufprotokoll",
+  er_delete: "Löschen",
+  er_delete_t: "Diesen Auftrag löschen?",
+  er_delete_b: "Er verschwindet aus dieser Liste. Die Anrufprotokolle bleiben.",
+  er_deleted: "Gelöscht",
+  er_history: "Frühere Versuche ({n})",
+  er_hist_row: "Versuch {n}",
+  er_err_no_number: "Gib die Nummer ein, die angerufen werden soll.",
+  er_err_bad_number: "Diese Nummer sieht nicht richtig aus.",
+  er_err_not_allowed: "Diese Nummer darf die KI nicht anrufen (Notruf, Sonder- oder Mehrwertnummer).",
+  er_err_no_sim_for_country: "Kein Telefon hat eine SIM, die Nummern dieses Landes anrufen kann.",
+  er_err_sim_unknown: "Dieses Telefon hat noch keinen Anruf bekommen, daher weiß das System nicht, welche SIMs es hat. Ruf es einmal an und versuch es dann noch einmal.",
+  er_err_no_task: "Schreib, was die KI erledigen soll.",
+  er_err_task_too_long: "Das ist zu lang: höchstens 1000 Zeichen.",
+  er_err_no_phone: "Gerade ist kein KI-Telefon verfügbar (keins verbunden oder alle im normalen Modus).",
+  er_err_not_found: "Diesen Auftrag oder Kontakt gibt es nicht mehr.",
+  er_err_busy: "Dieser Anruf wartet noch oder läuft. Versuch es, wenn er vorbei ist.",
+  er_err_not_on_call: "Der Anruf ist vorbei, die KI kann das nicht mehr ausrichten.",
+  er_ct_call: "KI anrufen lassen",
+  f_er_identity: "KI-Anrufe: anrufen als",
+  f_er_identity_h: "Als wer sich die KI ausgibt, wenn sie für dich anruft. Jeder Auftrag kann es anders wählen.",
+  er_id_opt_assistant: "Deine Assistenz",
+  er_id_opt_owner: "Du persönlich",
 };
 
 I18N["pt"] = {
@@ -7497,6 +8484,115 @@ I18N["pt"] = {
   pm_err_failed: "algo deu errado no telefone",
   pm_err_bad_request: "a solicitação não foi entendida",
   pill_all_normal: "Todos são telefones normais",
+  // ---- AI errands (the Errands view, its setting, the contact button)
+  tab_errands: "Ligações IA",
+  er_new: "Peça para a IA fazer uma ligação",
+  er_new_d: "A IA liga, resolve e conta como foi. Durante a ligação você pode acompanhar as legendas, responder às perguntas dela e dizer o que ela deve falar.",
+  er_to: "Para quem ligar",
+  er_to_ph: "Digite um nome para achar um contato, ou um número",
+  er_no_match: "Nenhum contato com esse nome. Você também pode digitar o número.",
+  er_will_call: "Vai ligar para:",
+  er_clear: "Limpar",
+  er_need_pick: "Escolha um contato da lista ou digite um número de telefone.",
+  er_task: "O que resolver",
+  er_task_ph: "ex.: Reservar mesa para 4 amanhã às 19h em nome de Ying, área de não fumantes; se às 19h estiver lotado, das 19h30 às 20h também serve\nou: Pergunte qual dia fica melhor para jantarmos neste fim de semana, sábado ou domingo",
+  er_task_h: "Diga o que quer resolver e o que você aceita. Se a IA ficar em dúvida durante a ligação, ela pergunta aqui.",
+  er_identity: "Ligar como",
+  er_id_assistant: "Assistente de {name}",
+  er_id_owner: "{name} em pessoa",
+  er_id_assistant_anon: "Seu assistente",
+  er_id_owner_anon: "Você em pessoa",
+  er_id_assistant_d: "A IA diz que está ligando em seu nome, como seu assistente.",
+  er_id_owner_d: "A IA fala como se fosse você.",
+  er_phone: "Telefone para ligar",
+  er_phone_auto: "Automático (um livre que consiga ligar para este número)",
+  er_phone_normal: "{name} (modo telefone normal, a IA não pode usar)",
+  er_phone_h: "Um telefone no modo normal não faz ligações da IA. Volte-o para atendimento por IA na página Sistema.",
+  er_start: "Ligar",
+  er_starting: "Enviando…",
+  er_started: "Entregue à IA. Ela está ligando.",
+  er_queued: "Na fila. A IA liga assim que um telefone ficar livre.",
+  er_list: "Seus pedidos",
+  er_empty_title: "Nenhum pedido ainda",
+  er_empty_body: "Escreva acima o que precisa ser feito. A IA liga, resolve e conta o resultado.",
+  er_st_queued: "Na fila",
+  er_st_dialing: "Discando",
+  er_st_on_call: "Em ligação",
+  er_st_done: "Concluído",
+  er_st_no_answer: "Não atendeu",
+  er_st_failed: "Falhou",
+  er_st_cancelled: "Cancelado",
+  er_oc_done: "Resolvido",
+  er_oc_partial: "Resolvido em parte",
+  er_oc_not_done: "Não resolvido",
+  er_oc_need_owner: "Você precisa decidir",
+  er_oc_no_answer: "Não atendeu",
+  er_oc_voicemail: "Caixa postal",
+  er_oc_failed: "Falhou",
+  er_attempt: "Tentativa {n}",
+  er_via: "Pelo {phone}",
+  er_as_assistant: "Como assistente",
+  er_as_owner: "Como você",
+  er_more: "Ver tudo",
+  er_less: "Ver menos",
+  er_live: "Legendas ao vivo",
+  er_live_wait: "Discando, esperando atenderem…",
+  er_live_none: "Ninguém falou ainda.",
+  er_watching: "Você está acompanhando: na dúvida, a IA pergunta a você primeiro.",
+  er_who_ai: "IA",
+  er_who_callee: "Interlocutor",
+  er_who_owner: "Você",
+  er_q_title: "A IA está perguntando",
+  er_q_left: "Faltam {n} s",
+  er_q_over: "Tempo esgotado, a IA decide",
+  er_q_ph: "Ou digite sua própria resposta",
+  er_send: "Enviar",
+  er_tell: "Dizer à IA",
+  er_tell_ph: "ex.: Diga que às 20h também dá",
+  er_tell_sent: "Repassado à IA",
+  er_hangup: "Desligar",
+  er_hangup_t: "Desligar esta ligação?",
+  er_hangup_b: "A IA desliga na hora. O pedido pode não estar resolvido.",
+  er_hung_up: "Desligado",
+  er_cancel_q: "Cancelar",
+  er_cancelled: "Cancelado",
+  er_result: "Resultado",
+  er_writing: "Escrevendo o resultado…",
+  er_details: "Detalhes",
+  er_follow_up: "Próximo passo",
+  er_asked: "A IA perguntou a você",
+  er_ans_absent: "Você não estava, sem resposta",
+  er_ans_timeout: "Sem resposta a tempo",
+  er_options: "Opções que deram. Escolha uma e a IA liga de volta para dizer:",
+  er_reply_own: "Escrever resposta",
+  er_fu_title: "Responder e pedir para a IA ligar de novo",
+  er_fu_h: "A IA liga de novo para {who} e responde com isto.",
+  er_fu_go: "Pedir para a IA ligar",
+  er_retry: "Ligar de novo",
+  er_retried: "Ligando de novo",
+  er_open_call: "Registro da ligação",
+  er_delete: "Excluir",
+  er_delete_t: "Excluir este pedido?",
+  er_delete_b: "Ele sai desta lista. Os registros das ligações ficam.",
+  er_deleted: "Excluído",
+  er_history: "Tentativas anteriores ({n})",
+  er_hist_row: "Tentativa {n}",
+  er_err_no_number: "Digite o número para ligar.",
+  er_err_bad_number: "Esse número não parece certo.",
+  er_err_not_allowed: "A IA não pode ligar para este número (emergência, especial ou tarifado).",
+  er_err_no_sim_for_country: "Nenhum telefone tem um chip que ligue para números desse país.",
+  er_err_sim_unknown: "Este telefone ainda não recebeu ligações, então o sistema não sabe quais chips ele tem. Ligue para ele uma vez e tente de novo.",
+  er_err_no_task: "Escreva o que a IA deve resolver.",
+  er_err_task_too_long: "Ficou longo demais: no máximo 1000 caracteres.",
+  er_err_no_phone: "Nenhum telefone de IA disponível agora (nenhum conectado, ou todos no modo normal).",
+  er_err_not_found: "Esse pedido ou contato não existe mais.",
+  er_err_busy: "Esta ligação ainda está na fila ou em andamento. Tente quando terminar.",
+  er_err_not_on_call: "A ligação já terminou, a IA não consegue repassar isso.",
+  er_ct_call: "Pedir ligação à IA",
+  f_er_identity: "Ligações da IA: ligar como",
+  f_er_identity_h: "Quem a IA diz ser quando liga por você. Cada pedido pode escolher outra opção.",
+  er_id_opt_assistant: "Seu assistente",
+  er_id_opt_owner: "Você em pessoa",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word
@@ -7822,6 +8918,7 @@ function setLang(l) {
   if (detail.call) renderDetail();
   renderAppts();
   relabelSettings();
+  renderErrands();
   renderContacts();
   renderImport();
   if (view === "system") renderSystem();
@@ -7854,7 +8951,7 @@ async function followNotifyLang(l) {
 }
 
 // ---------------------------------------------------------------- views / routing
-const VIEWS = ["calls", "contacts", "settings", "system"];
+const VIEWS = ["calls", "errands", "contacts", "settings", "system"];
 let view = "calls";
 let pendingJump = "";
 function setTitle() {
@@ -7871,6 +8968,7 @@ function showView(name) {
   updateDirty();
   if (name === "system") loadSystem();
   if (name === "contacts") loadContacts();
+  if (name === "errands") showErrands();
   if (changed) window.scrollTo(0, 0);
 }
 function setHash(hash, replace) {
@@ -8023,6 +9121,7 @@ async function loadDevices() {
     devices = await api("/devices");
     labels = { ...labels, ...(devices.labels || {}) };
     if (view === "calls") { renderCalls(); renderLive(); if (detail.call) renderDetail(); }
+    if (view === "errands") erRenderPhones();
   } catch (_) { /* shown on the System view */ }
   return devices;
 }
@@ -8544,13 +9643,19 @@ async function loadContacts(o) {
 }
 function contactRow(c) {
   const first = Array.from(String(c.name || "").trim())[0] || "?";
-  return h("button", { type: "button", class: "ct-row", dataset: { id: c.id } },
+  const row = h("button", { type: "button", class: "ct-row", dataset: { id: c.id } },
     h("span", { class: "ct-av", "aria-hidden": "true", text: first.toLocaleUpperCase(loc()) }),
     h("span", { style: "min-width:0" },
       h("div", { class: "who", text: c.name }),
       h("div", { class: "nums", text: (c.phones || []).join(" · ") }),
       c.note ? h("div", { class: "gist", text: c.note }) : null),
     h("span", { class: "tag src", text: tCode("ct_src_", c.source || "manual") }));
+  // "Ask AI to call": this contact under "Who to call" on the Errands view.
+  const phones = (c.phones || []).filter(Boolean);
+  if (!phones.length) return row;
+  return h("div", { class: "ct-item" }, row,
+    h("button", { type: "button", class: "btn sm ct-call", title: t("er_ct_call"), "aria-label": t("er_ct_call") + " · " + c.name, onclick: () => errandFromContact(c) },
+      icon("phone-out", "sm"), h("span", { text: t("er_ct_call") })));
 }
 function renderContacts() {
   const box = clear($("ctList"));
@@ -9218,6 +10323,7 @@ function populate() {
   updateDirty();
   renderSetup();
   renderNote();
+  renderErrandForm();
 }
 // Everything on the Settings view whose text is made in code (called on a
 // language switch too; it must not lose what is typed but not saved).
@@ -10081,7 +11187,8 @@ async function saveCalApp(app) {
 // .ics (Apple Calendar: iPhone Safari offers to add it; other apps: a download).
 function openCal(app, links, icsPath) {
   if (app === "apple" || app === "ics") {
-    const a = h("a", { href: withTok(apiBase + icsPath) });
+    // An errand's event: its .ics made on this page (a data: link).
+    const a = h("a", { href: /^data:/.test(icsPath) ? icsPath : withTok(apiBase + icsPath) });
     if (app === "ics") a.download = "event.ics";
     document.body.append(a);
     a.click();
@@ -10117,7 +11224,7 @@ function choseCal(app) {
   if ($("calDlg").open) $("calDlg").close();
   // Opened within the press (a new tab is allowed then), then remembered.
   if (p) openCal(app, p.links, p.icsPath);
-  saveCalApp(app).then(() => { renderAppts(); if (detail.call) renderDetail(); });
+  saveCalApp(app).then(() => { renderAppts(); renderErrands(); if (detail.call) renderDetail(); });
 }
 // "Add to calendar" for one event (`links`: the web calendars' forms;
 // `icsPath`: its .ics under the API): straight to the chosen calendar, asked
@@ -10130,6 +11237,670 @@ function calButton(links, icsPath) {
   }, icon(app === "ics" ? "download" : "calendar", "sm"), h("span", { text: app ? t("cal_do_" + app) : t("cal_add") }));
   return h("span", { class: "cal-add" }, go,
     app ? h("button", { type: "button", class: "btn sm", title: t("cal_change"), "aria-label": t("cal_change"), onclick: () => pickCal(links, icsPath), text: t("cal_change_short") }) : null);
+}
+
+// ---------------------------------------------------------------- AI errands
+// The owner asks the AI to phone someone and take care of something
+// (GET/POST /errands, newest first). While the call is on, its card shows the
+// live captions (/errands/{id}/live, asked once a second only while this view
+// is in front and the tab is visible: the agent takes that as "the owner is
+// watching" and asks before deciding), the AI's question with one-tap
+// answers, and a box to tell the AI something. Afterwards: what came of it,
+// reply and call again, call again, add to calendar.
+const ER_ACTIVE = ["dialing", "on_call"];
+const ER_OPEN = ["queued", "dialing", "on_call"];
+const ER_RETRY = ["no_answer", "failed", "cancelled"];
+const ER_ST_TAG = { dialing: "info", on_call: "accent", done: "ok", no_answer: "warn", failed: "bad" };
+const ER_OC_TAG = { done: "ok", partial: "warn", not_done: "bad", need_owner: "warn", no_answer: "warn", voicemail: "warn", failed: "bad" };
+const er = { list: [], state: "idle", error: "", seq: 0, busy: new Set(), sending: false };
+const erCards = new Map();  // errand id → { sig, el }: a card is rebuilt only when it changed
+const erLive = new Map();   // errand id → its captions while the call is on
+const erExpanded = new Set();
+const erFollow = new Map(); // errand id → the reply being written ("reply and call again")
+let erPick = null;          // the contact picked under "Who to call": { contact_id, name, phones, number }
+let erIdTouched = false;
+let erPhonesSig = "";
+let erFormLang = "";
+let erTicks = 0;
+const erOpen = (e) => ER_OPEN.includes(e.status);
+const erPath = (id, tail) => "/" + encodeURIComponent(id) + (tail || "");
+const erTitle = (e) => String(e.name || "").trim() || String(e.number || "") || "—";
+
+async function erApi(path, opts) {
+  const d = await api("/errands" + path, opts);
+  if (d && d.ok === false) throw new ApiError(String(d.error || ""), 400, String(d.error || ""), d);
+  return d;
+}
+// A refused request comes back as {"ok":false,"error":"<code>"}: the code in words.
+function erErrText(e) {
+  const code = String((e && e.data && (e.data.error || e.data.code)) || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  const key = "er_err_" + code;
+  return code && (I18N[lang][key] != null || I18N.en[key] != null) ? t(key) : e.message;
+}
+function erPut(x) {
+  if (!x || !x.id) return;
+  const i = er.list.findIndex((y) => y.id === x.id);
+  if (i >= 0) er.list[i] = x; else er.list.unshift(x);
+  er.state = "ok";
+}
+// Requests overlap (timer, after an action): only the answer to the latest is used.
+async function loadErrands() {
+  const seq = ++er.seq;
+  if (er.state !== "ok") { er.state = "loading"; renderErrands(); }
+  try {
+    const d = await erApi("");
+    if (seq !== er.seq) return;
+    er.list = Array.isArray(d.errands) ? d.errands : [];
+    er.state = "ok";
+  } catch (e) {
+    if (seq !== er.seq || er.state === "ok") return; // keep what is shown
+    er.state = "error";
+    er.error = e.message;
+  }
+  renderErrands();
+}
+function showErrands() {
+  loadErrands();
+  loadDevices().then(() => erRenderPhones());
+}
+
+// ---- the form: who, what, as whom, from which phone
+function erDefaultIdentity() { return S && S.errand_identity === "owner" ? "owner" : "assistant"; }
+function erIdentity() {
+  const r = document.querySelector('input[name="er_identity"]:checked');
+  return r ? r.value : erDefaultIdentity();
+}
+function erSetIdentity(v) { document.querySelectorAll('input[name="er_identity"]').forEach((r) => { r.checked = r.value === v; }); }
+function renderErrandForm() {
+  const name = String((S && S.owner_name) || "").trim();
+  $("erIdAssistant").textContent = name ? t("er_id_assistant", { name }) : t("er_id_assistant_anon");
+  $("erIdOwner").textContent = name ? t("er_id_owner", { name }) : t("er_id_owner_anon");
+  if (!erIdTouched) erSetIdentity(erDefaultIdentity());
+  erRenderPhones();
+  if (erFormLang !== lang) { erFormLang = lang; erRenderPick(); erSending(er.sending); }
+}
+// The connected phones; one in "normal phone" mode is listed but cannot be picked.
+function erPhones() {
+  const info = new Map(((devices && devices.phones) || []).map((p) => [p.serial, p]));
+  const all = new Set([...((devices && devices.connected) || []), ...live.serials]);
+  return Array.from(all).map((s) => ({ serial: s, normal: (info.has(s) && info.get(s).mode === "normal") || live.normal.includes(s) }));
+}
+function erRenderPhones() {
+  const list = erPhones();
+  const sig = JSON.stringify([lang, list, list.map((p) => devName(p.serial))]);
+  if (sig === erPhonesSig) return;
+  erPhonesSig = sig;
+  const sel = $("erPhone");
+  const keep = sel.value;
+  clear(sel).append(h("option", { value: "", text: t("er_phone_auto") }));
+  for (const p of list) sel.append(h("option", { value: p.serial, disabled: p.normal, text: p.normal ? t("er_phone_normal", { name: devName(p.serial) }) : devName(p.serial) }));
+  sel.value = list.some((p) => p.serial === keep && !p.normal) ? keep : "";
+  $("erPhoneHelp").hidden = !list.some((p) => p.normal);
+}
+function erRenderPick() {
+  const box = clear($("erPick"));
+  box.hidden = !erPick;
+  if (!erPick) return;
+  box.append(icon("user", "sm"), h("span", { text: t("er_will_call") }));
+  if (erPick.phones.length > 1) {
+    const sel = h("select", { "aria-label": t("er_will_call"), onchange: (ev) => { erPick.number = ev.target.value; } },
+      erPick.phones.map((p) => h("option", { value: p, text: p })));
+    sel.value = erPick.number;
+    box.append(h("b", { text: erPick.name }), sel);
+  } else box.append(h("b", { text: erPick.name }), h("span", { class: "mono", text: erPick.number }));
+  box.append(h("button", { type: "button", class: "btn sm ghost", text: t("er_clear"), onclick: () => { erPick = null; $("erTo").value = ""; erRenderPick(); $("erTo").focus(); } }));
+}
+function erCount() { $("erTaskCount").textContent = $("erTask").value.length + " / 1000"; }
+function erFormErr(msg, el) {
+  $("erErr").textContent = msg || "";
+  $("erErr").hidden = !msg;
+  if (el) el.focus();
+}
+function erSending(on) {
+  er.sending = on;
+  const b = $("erGo");
+  b.disabled = on;
+  clear(b).append(on ? h("span", { class: "spin", attr: { "aria-hidden": "true" } }) : icon("phone-out", "sm"), h("span", { text: t(on ? "er_starting" : "er_start") }));
+}
+function erResetForm() {
+  erPick = null;
+  $("erTo").value = "";
+  $("erTask").value = "";
+  erCount();
+  erIdTouched = false;
+  erSetIdentity(erDefaultIdentity());
+  $("erPhone").value = "";
+  erRenderPick();
+  erHideSugg();
+}
+
+// "Who to call": a name finds contacts (one line per number), a number is used as typed.
+let erSuggSeq = 0, erSuggTimer = 0;
+function erHideSugg() {
+  $("erSugg").hidden = true;
+  $("erTo").setAttribute("aria-expanded", "false");
+}
+async function erSearch() {
+  const q = $("erTo").value.trim();
+  const seq = ++erSuggSeq;
+  if (!q) { erHideSugg(); return; }
+  let list = [];
+  try { list = (await api("/contacts?" + new URLSearchParams({ q, limit: "8" }).toString())).contacts || []; } catch (_) { list = []; }
+  if (seq !== erSuggSeq) return;
+  const box = clear($("erSugg"));
+  let n = 0;
+  for (const c of list) {
+    for (const p of (c.phones || []).filter(Boolean)) {
+      if (n++ >= 12) break;
+      box.append(h("button", { type: "button", attr: { role: "option" }, onclick: () => erChoose(c, p) }, h("b", { text: c.name }), h("span", { class: "mono", text: p })));
+    }
+  }
+  if (!n && !/\d{3}/.test(q)) box.append(h("div", { class: "none", text: t("er_no_match") }));
+  const open = box.childElementCount > 0;
+  box.hidden = !open;
+  $("erTo").setAttribute("aria-expanded", String(open));
+}
+function erChoose(c, number) {
+  const phones = (c.phones || []).filter(Boolean);
+  erPick = { contact_id: c.id, name: String(c.name || ""), phones: phones.length ? phones : [number], number };
+  $("erTo").value = erPick.name;
+  erHideSugg();
+  erRenderPick();
+  erFormErr("");
+}
+// Contacts → "Ask AI to call": this contact here, the cursor in "What to take care of".
+function errandFromContact(c) {
+  const phones = (c.phones || []).filter(Boolean);
+  if (!phones.length) return;
+  erChoose(c, phones[0]);
+  history.pushState(null, "", location.pathname + location.search + "#errands");
+  route();
+  $("erTask").focus();
+}
+$("erTo").addEventListener("input", () => {
+  if (erPick) { erPick = null; erRenderPick(); }
+  clearTimeout(erSuggTimer);
+  erSuggTimer = setTimeout(erSearch, 200);
+});
+$("erTo").addEventListener("keydown", (ev) => {
+  const first = $("erSugg").hidden ? null : $("erSugg").querySelector("button");
+  if (ev.key === "ArrowDown" && first) { ev.preventDefault(); first.focus(); }
+  else if (ev.key === "Enter" && first) { ev.preventDefault(); first.click(); }
+  else if (ev.key === "Escape") erHideSugg();
+});
+$("erSugg").addEventListener("keydown", (ev) => {
+  const b = ev.target.closest("button");
+  if (!b) return;
+  if (ev.key === "ArrowDown" && b.nextElementSibling) { ev.preventDefault(); b.nextElementSibling.focus(); }
+  else if (ev.key === "ArrowUp") { ev.preventDefault(); (b.previousElementSibling || $("erTo")).focus(); }
+  else if (ev.key === "Escape") { erHideSugg(); $("erTo").focus(); }
+});
+document.addEventListener("click", (ev) => { if (!ev.target.closest || !ev.target.closest(".er-to")) erHideSugg(); });
+$("erTask").addEventListener("input", erCount);
+document.querySelectorAll('input[name="er_identity"]').forEach((r) => r.addEventListener("change", () => { erIdTouched = true; }));
+$("erRefresh").addEventListener("click", () => loadErrands());
+$("erForm").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  if (er.sending) return;
+  erFormErr("");
+  const to = $("erTo").value.trim();
+  const task = $("erTask").value.trim();
+  let body;
+  if (erPick) body = { number: erPick.number, name: erPick.name, contact_id: erPick.contact_id };
+  else if (/\d/.test(to)) body = { number: to, name: "" };
+  else return erFormErr(to ? t("er_need_pick") : t("er_err_no_number"), $("erTo"));
+  if (!task) return erFormErr(t("er_err_no_task"), $("erTask"));
+  body.task = task;
+  body.identity = erIdentity();
+  body.serial = $("erPhone").value;
+  erSending(true);
+  try {
+    const d = await erApi("", jsonBody("POST", body));
+    erResetForm();
+    toast(t(d.errand && d.errand.status === "queued" ? "er_queued" : "er_started"));
+    if (d.errand) { erPut(d.errand); renderErrands(); erReveal(d.errand.id); }
+    loadErrands();
+  } catch (e) {
+    if (e.status !== 401) erFormErr(erErrText(e));
+  } finally {
+    erSending(false);
+  }
+});
+function erReveal(id) {
+  const c = erCards.get(id);
+  if (!c) return;
+  c.el.classList.add("er-flash");
+  c.el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion:reduce)").matches ? "auto" : "smooth", block: "center" });
+  setTimeout(() => c.el.classList.remove("er-flash"), 2500);
+}
+
+// ---- the list: one card per errand, kept (with its captions and what is typed) while unchanged
+function erSig(e) {
+  return JSON.stringify([lang, calApp(), e.updated_at, e.status, e.attempts, e.result, e.questions, e.history, e.record_id,
+    e.device_label, e.serial, e.name, e.number, e.task, e.identity, er.busy.has(e.id), erExpanded.has(e.id), erFollow.has(e.id), devName(e.serial)]);
+}
+function renderErrands() {
+  renderErrandForm();
+  const box = $("erList");
+  if (er.state !== "ok" || !er.list.length) {
+    clear(box);
+    erCards.clear();
+    erLive.clear();
+    if (er.state === "idle" || er.state === "loading") for (let i = 0; i < 2; i++) box.append(h("div", { class: "skel" }));
+    else if (er.state === "error") {
+      box.append(h("div", { class: "card empty" }, icon("alert"), h("h3", { text: t("err_load", { msg: er.error }) }),
+        h("p", {}, h("button", { type: "button", class: "btn", style: "margin-top:12px", onclick: () => loadErrands(), text: t("retry") }))));
+    } else box.append(h("div", { class: "card empty" }, icon("phone-out"), h("h3", { text: t("er_empty_title") }), h("p", { text: t("er_empty_body") })));
+    return;
+  }
+  for (const n of Array.from(box.children)) if (!n.classList.contains("er-card")) n.remove();
+  const keep = new Set();
+  let prev = null;
+  for (const e of er.list) {
+    keep.add(e.id);
+    const sig = erSig(e);
+    let c = erCards.get(e.id);
+    if (!c || c.sig !== sig) {
+      const el = errandCard(e);
+      if (c && c.el.parentNode) c.el.replaceWith(el);
+      c = { sig, el };
+      erCards.set(e.id, c);
+    }
+    const want = prev ? prev.nextSibling : box.firstChild;
+    if (want !== c.el) box.insertBefore(c.el, want);
+    prev = c.el;
+  }
+  for (const [id, c] of erCards) if (!keep.has(id)) { c.el.remove(); erCards.delete(id); }
+  // A rebuilt card moved the captions: back to where the owner was (the end, unless scrolled up).
+  for (const [id, st] of erLive) {
+    const e = er.list.find((x) => x.id === id);
+    if (!e || !ER_ACTIVE.includes(e.status)) { erLive.delete(id); continue; }
+    if (st.box && st.box.isConnected) st.els.lines.scrollTop = st.stick ? st.els.lines.scrollHeight : st.top;
+  }
+}
+function errandCard(e) {
+  const st = e.status;
+  const active = ER_ACTIVE.includes(st);
+  const busy = er.busy.has(e.id);
+  const card = h("article", { class: "card er-card", dataset: { id: e.id } });
+  const phone = String(e.device_label || "").trim() || (e.serial ? devName(e.serial) : "");
+  card.append(h("div", { class: "er-head" },
+    h("span", { class: "kico " + (active ? "live" : st === "done" ? "ai" : st === "failed" ? "failed" : "") }, icon("phone-out")),
+    h("div", { style: "min-width:0" },
+      h("div", { class: "who", text: erTitle(e) }),
+      h("div", { class: "sub" },
+        String(e.name || "").trim() && e.number ? h("span", { class: "mono", text: e.number }) : null,
+        h("span", { class: "tag", text: t(e.identity === "owner" ? "er_as_owner" : "er_as_assistant") }),
+        phone ? h("span", { text: t("er_via", { phone }) }) : null)),
+    h("div", { class: "er-side" },
+      h("span", { class: "tag " + (ER_ST_TAG[st] || "") }, active ? h("span", { class: "pulse" }) : null, h("span", { text: tCode("er_st_", st || "queued") })),
+      h("span", { text: fmtWhen(e.created_at) }),
+      Number(e.attempts) > 0 ? h("span", { text: t("er_attempt", { n: e.attempts }) }) : null)));
+  const task = String(e.task || "");
+  const long = task.length > 140 || task.split("\n").length > 3;
+  const open = erExpanded.has(e.id);
+  card.append(h("p", { class: "er-task" + (long && !open ? " clamp" : ""), text: task }));
+  if (long) {
+    card.append(h("button", { type: "button", class: "btn sm ghost er-more", attr: { "aria-expanded": String(open) }, text: t(open ? "er_less" : "er_more"),
+      onclick: () => { if (open) erExpanded.delete(e.id); else erExpanded.add(e.id); renderErrands(); } }));
+  }
+  if (active) card.append(erLiveBox(e));
+  if (!erOpen(e)) {
+    const res = erResult(e);
+    if (res) card.append(res);
+    const asked = erAsked(e);
+    if (asked) card.append(asked);
+  }
+  if (Array.isArray(e.history) && e.history.length) card.append(erHistory(e));
+  card.append(erActions(e, busy));
+  return card;
+}
+
+// ---- while the call is on: captions, the AI's question, "Tell the AI"
+function erLiveState(id) {
+  let st = erLive.get(id);
+  if (!st) {
+    st = { after: 0, lines: [], question: null, answered: "", watching: false, inflight: false, status: "", box: null, els: null, lang: "", qShown: "", stick: true, top: 0, reload: "" };
+    erLive.set(id, st);
+  }
+  return st;
+}
+function erLineEl(l) {
+  const who = ["ai", "callee", "owner"].includes(l.who) ? l.who : "system";
+  const text = String(l.text || "");
+  if (who === "system") return h("div", { class: "msg sys" }, h("div", { class: "bub", text }));
+  const at = new Date(l.at || "");
+  return h("div", { class: "msg " + who },
+    h("span", { class: "who2", text: t("er_who_" + who) + (isNaN(at) ? "" : " · " + fmtClockTime(at)) }),
+    h("div", { class: "bub", text }));
+}
+function erEmptyLine(st) {
+  const box = st.els.lines;
+  let el = box.querySelector(".er-empty");
+  if (st.lines.length) { if (el) el.remove(); return; }
+  if (!el) { el = h("p", { class: "muted small er-empty" }); box.append(el); }
+  el.textContent = t(st.status === "dialing" ? "er_live_wait" : "er_live_none");
+}
+function erLiveBox(e) {
+  const st = erLiveState(e.id);
+  st.status = e.status;
+  if (st.box && st.lang === lang) { erEmptyLine(st); return st.box; }
+  st.lang = lang;
+  const lines = h("div", { class: "chat er-lines", attr: { role: "log", "aria-live": "polite", "aria-label": t("er_live") } });
+  lines.addEventListener("scroll", () => {
+    if (!lines.isConnected) return;
+    st.top = lines.scrollTop;
+    st.stick = lines.scrollHeight - lines.scrollTop - lines.clientHeight < 40;
+  }, { passive: true });
+  const watch = h("span", { class: "er-watch", hidden: true });
+  const q = h("div", { class: "er-q", hidden: true });
+  const sayIn = h("input", { type: "text", maxLength: 300, autocomplete: "off", placeholder: t("er_tell_ph"), "aria-label": t("er_tell") });
+  const sayBtn = h("button", { type: "submit", class: "btn" }, icon("send", "sm"), h("span", { text: t("er_send") }));
+  const say = h("form", { class: "er-say", onsubmit: async (ev) => {
+    ev.preventDefault();
+    const text = sayIn.value.trim();
+    if (text && (await erSay(e.id, text, "", sayBtn))) sayIn.value = "";
+  } }, sayIn, sayBtn);
+  st.els = { lines, watch, q, qLeft: null };
+  st.qShown = "";
+  st.box = h("div", { class: "er-sec er-live" },
+    h("h3", {}, h("span", { class: "pulse" }), h("span", { text: t("er_live") }), watch),
+    lines, q, h("span", { class: "er-tell-l", text: t("er_tell") }), say);
+  for (const l of st.lines) lines.append(erLineEl(l));
+  erEmptyLine(st);
+  erRenderQ(e.id, st);
+  erRenderWatch(st);
+  return st.box;
+}
+function erRenderWatch(st) {
+  st.els.watch.hidden = !st.watching;
+  st.els.watch.textContent = st.watching ? t("er_watching") : "";
+}
+function erRenderQ(id, st) {
+  const q = st.question;
+  const box = st.els.q;
+  if (!q || !q.id || q.id === st.answered) { box.hidden = true; clear(box); st.qShown = ""; st.els.qLeft = null; return; }
+  if (st.qShown === q.id) { erTickQ(st); return; }
+  st.qShown = q.id;
+  clear(box);
+  const left = h("span", { class: "er-q-left" });
+  const inp = h("input", { type: "text", maxLength: 300, autocomplete: "off", placeholder: t("er_q_ph"), "aria-label": t("er_q_ph") });
+  const send = h("button", { type: "submit", class: "btn sm primary", text: t("er_send") });
+  const opts = (Array.isArray(q.options) ? q.options : []).filter((o) => String(o || "").trim());
+  box.append(
+    h("div", { class: "row" }, h("span", { class: "grow er-q-h" }, icon("alert", "sm"), h("span", { text: t("er_q_title") })), left),
+    h("b", { text: String(q.text || "") }),
+    opts.length ? h("div", { class: "btns" }, opts.map((o) => h("button", { type: "button", class: "btn sm", text: String(o), onclick: (ev) => erAnswer(id, q.id, String(o), ev.currentTarget) }))) : null,
+    h("form", { class: "er-say", onsubmit: (ev) => { ev.preventDefault(); const v = inp.value.trim(); if (v) erAnswer(id, q.id, v, send); } }, inp, send));
+  st.els.qLeft = left;
+  box.hidden = false;
+  erTickQ(st);
+}
+// Seconds left to answer (the question's expires_at); afterwards the AI decides on its own.
+function erTickQ(st) {
+  const q = st.question, el = st.els && st.els.qLeft;
+  if (!q || !el) return;
+  const end = new Date(q.expires_at || "").getTime();
+  if (isNaN(end)) { el.textContent = ""; return; }
+  const s = Math.ceil((end - Date.now()) / 1000);
+  el.textContent = s > 0 ? t("er_q_left", { n: s }) : t("er_q_over");
+}
+async function erAnswer(id, qid, text, btn) {
+  if (!(await erSay(id, text, qid, btn))) return;
+  const st = erLive.get(id);
+  if (st) { st.answered = qid; if (st.els) erRenderQ(id, st); }
+}
+// What the owner says goes to the AI; it shows in the captions once the agent has it.
+async function erSay(id, text, qid, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    await erApi(erPath(id, "/say"), jsonBody("POST", qid ? { text, question_id: qid } : { text }));
+    toast(t("er_tell_sent"));
+    erPoll(id);
+    return true;
+  } catch (e) {
+    if (e.status !== 401) toast(erErrText(e), true);
+    return false;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+async function erPoll(id) {
+  const st = erLive.get(id);
+  if (!st || st.inflight) return;
+  st.inflight = true;
+  try {
+    const d = await api("/errands" + erPath(id, "/live?after=" + st.after));
+    if (erLive.get(id) !== st) return;
+    const fresh = (Array.isArray(d.lines) ? d.lines : []).filter((l) => Number(l.seq) > st.after).sort((a, b) => a.seq - b.seq);
+    if (fresh.length) {
+      st.after = Number(fresh[fresh.length - 1].seq);
+      st.lines.push(...fresh);
+      if (st.lines.length > 2000) st.lines.splice(0, st.lines.length - 2000);
+      if (st.els) {
+        const stick = st.stick;
+        for (const l of fresh) st.els.lines.append(erLineEl(l));
+        if (stick) st.els.lines.scrollTop = st.els.lines.scrollHeight;
+      }
+    }
+    st.question = d.question || null;
+    st.watching = !!d.watching;
+    if (d.status) st.status = d.status;
+    if (st.els) { erEmptyLine(st); erRenderQ(id, st); erRenderWatch(st); }
+    // The call moved on (answered, ended): the list says what became of it.
+    const e = er.list.find((x) => x.id === id);
+    if (d.status && e && d.status !== e.status && st.reload !== d.status) { st.reload = d.status; loadErrands(); }
+  } catch (err) {
+    if (err.status === 404) loadErrands();
+  } finally {
+    st.inflight = false;
+  }
+}
+// Every second while the Errands view is in front (the page timer skips hidden tabs).
+function errandTick() {
+  erTicks++;
+  for (const e of er.list) if (ER_ACTIVE.includes(e.status) && erLive.has(e.id)) erPoll(e.id);
+  for (const st of erLive.values()) erTickQ(st);
+  if (erTicks % 5 === 0 && er.list.some(erOpen)) loadErrands();
+}
+
+// ---- once it ended: what came of it
+function erResult(e) {
+  const r = e.result;
+  if (!r) {
+    if (e.status !== "done") return null;
+    return h("div", { class: "er-sec er-res" }, h("p", { class: "muted row" }, h("span", { class: "spin" }), h("span", { text: t("er_writing") })));
+  }
+  const sec = h("div", { class: "er-sec er-res" }, h("h3", { text: t("er_result") }));
+  const oc = String(r.outcome || "");
+  if (oc) sec.append(h("span", { class: "tag " + (ER_OC_TAG[oc] || ""), text: tCode("er_oc_", oc) }));
+  if (r.summary) sec.append(h("p", { class: "er-sum", text: String(r.summary) }));
+  const kv = h("dl", { class: "kv" });
+  if (r.details) kv.append(h("dt", { text: t("er_details") }), h("dd", { text: String(r.details) }));
+  if (r.follow_up) kv.append(h("dt", { text: t("er_follow_up") }), h("dd", { text: String(r.follow_up) }));
+  if (kv.childElementCount) sec.append(kv);
+  const ev = r.event;
+  if (ev && ev.start && parseStamp(ev.start)) {
+    sec.append(h("div", { class: "cal" }, icon("calendar", "ci"),
+      h("div", { class: "grow" },
+        h("b", { text: String(ev.title || erTitle(e)) }),
+        h("span", { text: apptWhen(ev) }),
+        h("div", { class: "btns" }, calButton(erCalLinks(e, ev), erIcsHref(e, ev))))));
+  }
+  const opts = (Array.isArray(r.options) ? r.options : []).filter((o) => String(o || "").trim());
+  if (opts.length || oc === "need_owner") {
+    if (opts.length) sec.append(h("p", { class: "small muted", style: "margin-top:10px", text: t("er_options") }));
+    sec.append(h("div", { class: "er-opts" },
+      opts.map((o) => h("button", { type: "button", class: "btn sm", text: String(o), onclick: () => erOpenFollow(e.id, String(o)) })),
+      h("button", { type: "button", class: "btn sm ghost", text: t("er_reply_own"), onclick: () => erOpenFollow(e.id, "") })));
+  }
+  if (erFollow.has(e.id)) sec.append(erFollowForm(e));
+  return sec;
+}
+function erAsked(e) {
+  const list = Array.isArray(e.questions) ? e.questions : [];
+  if (!list.length) return null;
+  const sec = h("div", { class: "er-sec" }, h("h3", { text: t("er_asked") }));
+  for (const q of list) {
+    const mine = q.answered_by === "owner" && String(q.answer || "").trim();
+    sec.append(h("div", { class: "er-qa" },
+      h("div", { text: String(q.text || "") }),
+      h("div", { class: "er-qa-a" + (mine ? "" : " muted"), text: mine ? String(q.answer) : t(q.answered_by === "timeout" ? "er_ans_timeout" : "er_ans_absent") })));
+  }
+  return sec;
+}
+function erOpenFollow(id, text) {
+  erFollow.set(id, text);
+  renderErrands();
+  const c = erCards.get(id);
+  const ta = c && c.el.querySelector(".er-fu textarea");
+  if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+// "Reply, and have the AI call again": a new errand to the same number, as the same person.
+function erFollowForm(e) {
+  const ta = h("textarea", { rows: 3, maxLength: 1000, value: erFollow.get(e.id) || "", "aria-label": t("er_fu_title"), oninput: (ev) => erFollow.set(e.id, ev.target.value) });
+  const go = h("button", { type: "submit", class: "btn sm primary" }, icon("phone-out", "sm"), h("span", { text: t("er_fu_go") }));
+  return h("form", { class: "er-fu", onsubmit: async (ev) => {
+    ev.preventDefault();
+    const task = ta.value.trim();
+    if (!task) { ta.focus(); return; }
+    go.disabled = true;
+    try {
+      const body = { number: e.number, name: e.name || "", task, identity: e.identity === "owner" ? "owner" : "assistant", serial: "", follow_up_of: e.id };
+      if (e.contact_id) body.contact_id = e.contact_id;
+      const d = await erApi("", jsonBody("POST", body));
+      erFollow.delete(e.id);
+      toast(t(d.errand && d.errand.status === "queued" ? "er_queued" : "er_started"));
+      if (d.errand) erPut(d.errand);
+      renderErrands();
+      if (d.errand) erReveal(d.errand.id);
+      loadErrands();
+    } catch (err) {
+      if (err.status !== 401) toast(erErrText(err), true);
+    } finally {
+      go.disabled = false;
+    }
+  } },
+    h("b", { text: t("er_fu_title") }),
+    h("p", { class: "help", text: t("er_fu_h", { who: erTitle(e) }) }),
+    ta,
+    h("div", { class: "btns" }, go, h("button", { type: "button", class: "btn sm", text: t("cancel"), onclick: () => { erFollow.delete(e.id); renderErrands(); } })));
+}
+function erHistory(e) {
+  const d = h("details", { class: "fold er-sec" }, h("summary", { text: t("er_history", { n: e.history.length }) }));
+  for (const x of e.history.slice().reverse()) {
+    const r = x.result || {};
+    const oc = String(r.outcome || "");
+    d.append(h("div", { class: "er-hist" },
+      h("div", { class: "row" },
+        h("b", { text: t("er_hist_row", { n: x.attempt }) }),
+        h("span", { class: "tag " + (oc ? ER_OC_TAG[oc] || "" : ER_ST_TAG[x.status] || ""), text: oc ? tCode("er_oc_", oc) : tCode("er_st_", x.status || "done") }),
+        x.ended_at ? h("span", { class: "small muted", text: fmtWhen(x.ended_at) }) : null,
+        x.record_id ? h("a", { class: "small", href: "#call=" + encodeURIComponent(x.record_id), text: t("er_open_call") }) : null),
+      r.summary ? h("p", { text: String(r.summary) }) : null));
+  }
+  return d;
+}
+function erActions(e, busy) {
+  const row = h("div", { class: "er-acts" });
+  const st = e.status;
+  const oc = e.result && e.result.outcome;
+  if (ER_ACTIVE.includes(st)) row.append(h("button", { type: "button", class: "btn sm danger", disabled: busy, onclick: () => erHangup(e) }, icon("x", "sm"), h("span", { text: t("er_hangup") })));
+  if (st === "queued") row.append(h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => erAct(e, "/cancel", "er_cancelled"), text: t("er_cancel_q") }));
+  if (ER_RETRY.includes(st) || (st === "done" && ["no_answer", "voicemail", "failed"].includes(oc))) {
+    row.append(h("button", { type: "button", class: "btn sm primary", disabled: busy, onclick: () => erAct(e, "/retry", "er_retried") }, icon("refresh", "sm"), h("span", { text: t("er_retry") })));
+  }
+  if (e.record_id) row.append(h("a", { class: "btn sm", href: "#call=" + encodeURIComponent(e.record_id) }, icon("list", "sm"), h("span", { text: t("er_open_call") })));
+  if (!erOpen(e)) row.append(h("button", { type: "button", class: "btn sm ghost er-del", disabled: busy, onclick: () => erDelete(e) }, icon("trash", "sm"), h("span", { text: t("er_delete") })));
+  if (busy) row.append(h("span", { class: "spin", attr: { "aria-hidden": "true" } }));
+  return row;
+}
+// Cancel (queued), hang up (dialing / on the call) or call again (it ended).
+async function erAct(e, tail, okKey) {
+  if (er.busy.has(e.id)) return;
+  er.busy.add(e.id);
+  renderErrands();
+  try {
+    const d = await erApi(erPath(e.id, tail), jsonBody("POST", {}));
+    if (tail === "/retry") erLive.delete(e.id);
+    if (d.errand) erPut(d.errand);
+    toast(t(okKey));
+  } catch (err) {
+    if (err.status !== 401) toast(erErrText(err), true);
+  } finally {
+    er.busy.delete(e.id);
+    renderErrands();
+    loadErrands();
+  }
+}
+async function erHangup(e) {
+  const yes = await ask({ title: t("er_hangup_t"), body: t("er_hangup_b"), ok: t("er_hangup"), danger: true });
+  if (yes) erAct(e, "/cancel", "er_hung_up");
+}
+async function erDelete(e) {
+  const yes = await ask({ title: t("er_delete_t"), body: t("er_delete_b"), ok: t("er_delete"), danger: true });
+  if (!yes || er.busy.has(e.id)) return;
+  er.busy.add(e.id);
+  renderErrands();
+  try {
+    await erApi(erPath(e.id), { method: "DELETE" });
+    er.list = er.list.filter((x) => x.id !== e.id);
+    erFollow.delete(e.id);
+    erExpanded.delete(e.id);
+    toast(t("er_deleted"));
+  } catch (err) {
+    if (err.status !== 401) toast(erErrText(err), true);
+  } finally {
+    er.busy.delete(e.id);
+    renderErrands();
+    loadErrands();
+  }
+}
+
+// "Add to calendar" for a result's event: the forms the agent builds for a
+// call's suggestion (calendar.rs), made here from the event's wall-clock time
+// (one hour when it has no end), and its .ics as a data: link.
+function erEventTimes(ev) {
+  const s = parseStamp(ev.start);
+  if (!s) return null;
+  let e = parseStamp(ev.end);
+  if (!e || e <= s) e = new Date(s.getTime() + 3600000);
+  return [s, e];
+}
+const erP2 = (x) => String(x).padStart(2, "0");
+const erCompact = (d) => d.getFullYear() + erP2(d.getMonth() + 1) + erP2(d.getDate()) + "T" + erP2(d.getHours()) + erP2(d.getMinutes()) + "00";
+const erIsoLocal = (d) => d.getFullYear() + "-" + erP2(d.getMonth() + 1) + "-" + erP2(d.getDate()) + "T" + erP2(d.getHours()) + ":" + erP2(d.getMinutes()) + ":00";
+function erCalDetails(e) {
+  const r = e.result || {};
+  return [erTitle(e) + (String(e.name || "").trim() && e.number ? " · " + e.number : ""), r.summary || ""].filter(Boolean).join("\n").trim().slice(0, 600);
+}
+function erCalLinks(e, ev) {
+  const tm = erEventTimes(ev);
+  if (!tm) return {};
+  const [s, end] = tm;
+  const title = encodeURIComponent(String(ev.title || erTitle(e)));
+  const det = encodeURIComponent(erCalDetails(e));
+  const ms = (host) => host + "/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent&subject=" + title +
+    "&startdt=" + erIsoLocal(s) + "&enddt=" + erIsoLocal(end) + (det ? "&body=" + det : "");
+  return {
+    google: "https://calendar.google.com/calendar/render?action=TEMPLATE&text=" + title + "&dates=" + erCompact(s) + "/" + erCompact(end) + (det ? "&details=" + det : ""),
+    outlook: ms("https://outlook.live.com"),
+    office365: ms("https://outlook.office.com"),
+    yahoo: "https://calendar.yahoo.com/?v=60&title=" + title + "&st=" + erCompact(s) + "&et=" + erCompact(end) + (det ? "&desc=" + det : ""),
+  };
+}
+function erIcsHref(e, ev) {
+  const tm = erEventTimes(ev);
+  if (!tm) return "";
+  const esc = (s) => String(s).replace(/[\\;,]/g, (m) => "\\" + m).replace(/\r?\n/g, "\\n");
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+  const out = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//bageo-call//EN", "BEGIN:VEVENT",
+    "UID:errand-" + esc(e.id) + "@myna-call", "DTSTAMP:" + stamp, "DTSTART:" + erCompact(tm[0]), "DTEND:" + erCompact(tm[1]),
+    "SUMMARY:" + esc(ev.title || erTitle(e))];
+  const det = erCalDetails(e);
+  if (det) out.push("DESCRIPTION:" + esc(det));
+  out.push("END:VEVENT", "END:VCALENDAR");
+  return "data:text/calendar;charset=utf-8," + encodeURIComponent(out.join("\r\n") + "\r\n");
 }
 
 document.addEventListener("keydown", (e) => {
@@ -10148,11 +11919,13 @@ setInterval(() => {
   // Decided on Telegram or elsewhere: the panel follows within half a minute.
   if (ticks % 30 === 0 && view === "calls") loadAppts();
   if (ticks % 8 === 0 && view === "system") loadSystem();
+  if (view === "errands") errandTick();
 }, 1000);
 document.addEventListener("visibilitychange", () => {
   if (!visible()) return;
   pollLive();
   refreshCalls({ keep: true });
+  if (view === "errands") loadErrands();
 });
 
 // ---------------------------------------------------------------- start

@@ -1813,10 +1813,16 @@ async fn dispatch_callback(control: &ControlRegistry, cb: &PendingCallback) -> (
     let w = reply_words(locale::notify_lang());
     let not_placed = |code: &str, why: &str| (code.to_string(), locale::fill(w.not_placed, why));
     let only_this_number = [cb.number.clone()];
-    match control
-        .try_dispatch_phone_callback(&cb.task_id, &cb.number, &cb.serial, &only_this_number)
-        .await
-    {
+    // An errand goes out on the phone and SIM it was given, never another.
+    let placed = match cb.kind {
+        CallbackKind::Appointment => {
+            control
+                .try_dispatch_phone_callback(&cb.task_id, &cb.number, &cb.serial, &only_this_number)
+                .await
+        }
+        CallbackKind::Errand => control.try_dispatch_on(&cb.task_id, &cb.number, &cb.serial, cb.sub_id).await,
+    };
+    match placed {
         Ok(true) => {
             // The phone the route picked (not always the one that took the call).
             if let Some(s) = control.callback_session_for(&cb.task_id, "").await {
@@ -1851,6 +1857,15 @@ enum CallbackStage {
     Ended,
 }
 
+/// What an outbound call is for: an appointment's answer (its task), or an
+/// errand the owner gave the AI ([`crate::errands`]; its id in `task_id`). Both
+/// share one queue per number and the phone's reports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CallbackKind {
+    Appointment,
+    Errand,
+}
+
 /// A call-back with an appointment's answer, from the decision until it ended.
 #[derive(Debug, Clone)]
 struct PendingCallback {
@@ -1868,6 +1883,13 @@ struct PendingCallback {
     stage: CallbackStage,
     /// When it got to `stage`.
     since: std::time::Instant,
+    kind: CallbackKind,
+    /// The SIM to dial from (an errand's; None: the route's own choice).
+    sub_id: Option<i64>,
+    /// Cancelled after `place_call` went out (an errand): it no longer holds the
+    /// phone or the number, and is kept only so that its call, should the phone
+    /// still place it, is known and hung up ([`cancel_errand_call`]).
+    dropped: bool,
 }
 
 impl PendingCallback {
@@ -1881,7 +1903,15 @@ impl PendingCallback {
             lang: None,
             stage: CallbackStage::Queued,
             since: std::time::Instant::now(),
+            kind: CallbackKind::Appointment,
+            sub_id: None,
+            dropped: false,
         }
+    }
+
+    /// An errand's call: on that phone (and SIM) only.
+    fn errand(id: &str, number: &str, serial: &str, sub_id: Option<i64>, script: String) -> Self {
+        Self { kind: CallbackKind::Errand, sub_id, ..Self::new(id, number, serial, script) }
     }
 }
 
@@ -1914,20 +1944,49 @@ fn callbacks() -> std::sync::MutexGuard<'static, Vec<PendingCallback>> {
     CALLBACKS.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Take on a call-back: true = dial it now (stage `Dialing`), false = it waits
-/// for an earlier one to the same number (stage `Queued`).
-fn callbacks_add(mut cb: PendingCallback) -> bool {
+/// What [`callbacks_try_add`] did with a call-back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Added {
+    /// Dial it now (stage `Dialing`).
+    Dial,
+    /// It waits for an earlier call to the same number (stage `Queued`).
+    Wait,
+    /// Its task's call already went to a phone (`Dialing`, `Ready`, `OnCall`):
+    /// nothing added, never a second `place_call` for it.
+    AlreadyOut,
+}
+
+fn callbacks_try_add(mut cb: PendingCallback) -> Added {
     let mut list = callbacks();
+    let out = |c: &PendingCallback| matches!(c.stage, CallbackStage::Dialing | CallbackStage::Ready | CallbackStage::OnCall);
+    if list.iter().any(|c| c.task_id == cb.task_id && out(c)) {
+        return Added::AlreadyOut;
+    }
     list.retain(|c| c.task_id != cb.task_id);
-    let busy = list.iter().any(|c| c.key == cb.key);
+    let busy = list.iter().any(|c| c.key == cb.key && !c.dropped);
     cb.stage = if busy { CallbackStage::Queued } else { CallbackStage::Dialing };
     cb.since = std::time::Instant::now();
     list.push(cb);
-    !busy
+    if busy {
+        Added::Wait
+    } else {
+        Added::Dial
+    }
+}
+
+/// Take on a call-back: true = dial it now (stage `Dialing`), false = it waits
+/// for an earlier one to the same number (stage `Queued`), or its task's call
+/// is already out (left as it is).
+fn callbacks_add(cb: PendingCallback) -> bool {
+    callbacks_try_add(cb) == Added::Dial
 }
 
 fn callbacks_stage(task_id: &str) -> Option<CallbackStage> {
     callbacks().iter().find(|c| c.task_id == task_id).map(|c| c.stage)
+}
+
+fn callbacks_kind(task_id: &str) -> Option<CallbackKind> {
+    callbacks().iter().find(|c| c.task_id == task_id).map(|c| c.kind)
 }
 
 fn callbacks_set_stage(task_id: &str, stage: CallbackStage) {
@@ -1953,7 +2012,7 @@ fn callbacks_remove(task_id: &str) -> Option<PendingCallback> {
 /// another call-back to it is still under way.
 fn callbacks_next(key: &str) -> Option<PendingCallback> {
     let mut list = callbacks();
-    if list.iter().any(|c| c.key == key && c.stage != CallbackStage::Queued) {
+    if list.iter().any(|c| c.key == key && c.stage != CallbackStage::Queued && !c.dropped) {
         return None;
     }
     let c = list.iter_mut().find(|c| c.key == key && c.stage == CallbackStage::Queued)?;
@@ -1988,6 +2047,8 @@ pub struct CallbackCall {
     /// The language its script is in, which the session speaks and the callee's
     /// speech-to-text expects ([`callback_lang`]).
     pub lang: Option<Lang>,
+    /// An errand's call ([`crate::errands`]): `task_id` is the errand's id.
+    pub errand: bool,
 }
 
 /// The call-back the phone `serial` reported ready whose number is this
@@ -2012,7 +2073,7 @@ fn take_ready_callback(serial: &str, caller_id: &str) -> Option<CallbackCall> {
     let c = &mut list[i];
     c.stage = CallbackStage::OnCall;
     c.since = std::time::Instant::now();
-    Some(CallbackCall { task_id: c.task_id.clone(), script: c.script.clone(), lang: c.lang })
+    Some(CallbackCall { task_id: c.task_id.clone(), script: c.script.clone(), lang: c.lang, errand: c.kind == CallbackKind::Errand })
 }
 
 /// A call-back is dialing on `serial` to this number (its `outbound_ready`
@@ -2043,13 +2104,120 @@ pub async fn callback_for_call(serial: &str, caller_id: &str) -> Option<Callback
     }
 }
 
-/// The call-back whose call the phone `serial` is on, or has just ended (for
-/// the call's summary).
-pub fn callback_task_on(serial: &str) -> Option<String> {
-    callbacks()
-        .iter()
-        .find(|c| matches!(c.stage, CallbackStage::OnCall | CallbackStage::Ended) && c.serial.eq_ignore_ascii_case(serial.trim()))
-        .map(|c| c.task_id.clone())
+/// Which call-back (or errand) each call record is: noted when the call's
+/// session took its script, taken by that call's summary. By the call's own
+/// record, never by the phone: a call-back left on a phone (one hung up before
+/// its AI started) once took the next call's result.
+static CALL_TASKS: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+/// Calls whose summary never came are forgotten after this many newer ones.
+const CALL_TASKS_MAX: usize = 100;
+
+/// The call with record `record_id` is call-back `task_id`'s.
+pub fn note_call_task(record_id: &str, task_id: &str) {
+    if record_id.is_empty() || task_id.is_empty() {
+        return;
+    }
+    let mut m = CALL_TASKS.lock().unwrap_or_else(|e| e.into_inner());
+    m.retain(|(r, _)| r != record_id);
+    m.push((record_id.to_string(), task_id.to_string()));
+    let over = m.len().saturating_sub(CALL_TASKS_MAX);
+    m.drain(..over);
+}
+
+/// The call-back the call with record `record_id` was (for its summary; once).
+pub fn take_call_task(record_id: &str) -> Option<String> {
+    let mut m = CALL_TASKS.lock().unwrap_or_else(|e| e.into_inner());
+    let i = m.iter().position(|(r, _)| r == record_id)?;
+    Some(m.remove(i).1)
+}
+
+/// A call-back's call was hung up before its AI started (an errand cancelled,
+/// deleted, over, or on the wrong SIM): it ends now, so nothing of it stays on
+/// the phone, and the next call to that number may go.
+pub async fn end_gated_call(ctx: &CallbackCtx<'_>, task_id: &str) {
+    info!("outbound call task_id={task_id} hung up before its AI started — ended");
+    finish_callback(ctx, task_id, "failed").await;
+}
+
+/// Errands: have `serial` dial `number` (from the SIM `sub_id`, None: its
+/// default) for errand `id`, its AI following `script` on that call only.
+/// `dialing`, `queued` (an earlier call to the number is under way: its end
+/// dials this one), `no_phone` or `send_failed`. An errand whose call is
+/// already out is `dialing` without a second `place_call`.
+pub(crate) async fn place_errand_call(control: &ControlRegistry, id: &str, number: &str, serial: &str, sub_id: Option<i64>, script: String) -> String {
+    let cb = PendingCallback::errand(id, number, serial, sub_id, script);
+    match callbacks_try_add(cb.clone()) {
+        Added::AlreadyOut => {
+            warn!("errand id={id}: its call is already out — not dialed again");
+            return "dialing".to_string();
+        }
+        Added::Wait => {
+            info!("errand id={id} waits for an earlier call to the same number");
+            return "queued".to_string();
+        }
+        Added::Dial => {}
+    }
+    let (code, _) = dispatch_callback(control, &cb).await;
+    if code != "dialing" {
+        callbacks_remove(id);
+    }
+    code
+}
+
+/// Errands: forget errand `id`'s outbound call while it still waits its turn
+/// (cancelled, deleted or given up). False when none waits: a call already
+/// handed to the phone stays until the phone reports its end.
+pub(crate) fn drop_errand_call(id: &str) -> bool {
+    let mut list = callbacks();
+    let Some(i) = list.iter().position(|c| c.task_id == id && c.stage == CallbackStage::Queued) else {
+        return false;
+    };
+    list.remove(i);
+    true
+}
+
+/// Errands: errand `id` has an outbound call here (waiting its turn or under way).
+pub(crate) fn errand_call_known(id: &str) -> bool {
+    callbacks().iter().any(|c| c.task_id == id)
+}
+
+/// Errands: the owner cancelled errand `id`. Waiting its turn: forgotten. Sent
+/// to the phone but not on the line yet (`Dialing`, `Ready`): it no longer
+/// holds the phone nor the number, and the next call waiting for that number
+/// goes out now; it is kept only so that, should the phone still place it, its
+/// media session is known as this errand's and hung up at once
+/// ([`crate::errands::ErrandStore::call_gate`]). On the line: its session hangs
+/// up (the errand's cancel flag).
+pub(crate) async fn cancel_errand_call(ctx: &CallbackCtx<'_>, id: &str) {
+    let key = {
+        let mut list = callbacks();
+        let Some(i) = list.iter().position(|c| c.task_id == id) else {
+            return;
+        };
+        match list[i].stage {
+            CallbackStage::Queued => {
+                list.remove(i);
+                return;
+            }
+            CallbackStage::Dialing | CallbackStage::Ready if !list[i].dropped => {
+                list[i].dropped = true;
+                list[i].key.clone()
+            }
+            _ => return,
+        }
+    };
+    info!("errand id={id} cancelled while it dialed: its phone and number are free for the next call");
+    advance_queue(ctx, &key).await;
+}
+
+/// An outbound call (call-back or errand) is dialing on `serial` or on the
+/// line there.
+pub(crate) fn outbound_busy_on(serial: &str) -> bool {
+    callbacks().iter().any(|c| {
+        !c.dropped
+            && matches!(c.stage, CallbackStage::Dialing | CallbackStage::Ready | CallbackStage::OnCall)
+            && c.serial.eq_ignore_ascii_case(serial.trim())
+    })
 }
 
 /// The call record's event for a call that was the AI's call-back.
@@ -2078,6 +2246,8 @@ pub struct CallbackCtx<'a> {
     pub settings: &'a crate::config::Settings,
     pub tasks: &'a TaskStore,
     pub control: &'a ControlRegistry,
+    /// The errands, whose calls go out on the same route.
+    pub errands: Option<&'a crate::errands::ErrandStore>,
 }
 
 /// A phone's report on a call (`outbound_ready`, `place_call_failed`,
@@ -2098,6 +2268,7 @@ pub async fn on_callback_event(ctx: &CallbackCtx<'_>, serial: &str, msg: &Value)
     let Some(stage) = callbacks_stage(&task_id) else {
         return;
     };
+    let errand = callbacks_kind(&task_id) == Some(CallbackKind::Errand);
     if !call_id.is_empty() && session.call_id != call_id {
         info!("appointment call-back task_id={task_id}: {kind} of another call ignored");
         return;
@@ -2108,10 +2279,16 @@ pub async fn on_callback_event(ctx: &CallbackCtx<'_>, serial: &str, msg: &Value)
             let number = msg.get("number").and_then(Value::as_str).unwrap_or("");
             if callback_ready(&task_id, serial, number) {
                 info!("appointment call-back task_id={task_id} serial={serial}: dialing, the AI waits for the callee");
-                set_call_code(ctx.tasks, &task_id, "connected").await;
+                if !errand {
+                    set_call_code(ctx.tasks, &task_id, "connected").await;
+                }
             } else {
                 warn!("appointment call-back task_id={task_id}: outbound_ready from serial={serial} does not match the call asked for — not used");
             }
+        }
+        // The phone was on a call: an errand waits for it again.
+        "place_call_failed" if errand && msg.get("reason").and_then(Value::as_str) == Some("busy") => {
+            finish_callback(ctx, &task_id, "phone_busy").await
         }
         "place_call_failed" => finish_callback(ctx, &task_id, "failed").await,
         "call_end" => match stage {
@@ -2161,19 +2338,54 @@ async fn finish_callback(ctx: &CallbackCtx<'_>, task_id: &str, code: &str) {
     let Some(done) = callbacks_remove(task_id) else {
         return;
     };
-    info!("appointment call-back over task_id={task_id} result={code}");
-    set_call_code(ctx.tasks, task_id, code).await;
-    if callback_needs_notice(code) {
-        notify_callback(ctx, task_id, code).await;
+    info!("outbound call over task_id={task_id} kind={:?} result={code}", done.kind);
+    match done.kind {
+        CallbackKind::Appointment => {
+            set_call_code(ctx.tasks, task_id, code).await;
+            if callback_needs_notice(code) {
+                notify_callback(ctx, task_id, code).await;
+            }
+        }
+        CallbackKind::Errand => {
+            if let Some(store) = ctx.errands {
+                crate::errands::outbound_over(ctx, store, task_id, code).await;
+            }
+        }
     }
-    while let Some(next) = callbacks_next(&done.key) {
+    advance_queue(ctx, &done.key).await;
+}
+
+/// The call-backs waiting for the number `key`, dialed in turn until one goes
+/// out (none while another call to it is under way).
+async fn advance_queue(ctx: &CallbackCtx<'_>, key: &str) {
+    while let Some(next) = callbacks_next(key) {
+        // An errand cancelled or deleted while it waited: never dialed.
+        if next.kind == CallbackKind::Errand && ctx.errands.is_some_and(|s| !s.call_allowed(&next.task_id)) {
+            info!("errand id={} no longer wanted: its turn skipped", next.task_id);
+            callbacks_remove(&next.task_id);
+            continue;
+        }
         let (c, _) = dispatch_callback(ctx.control, &next).await;
-        set_call_code(ctx.tasks, &next.task_id, &c).await;
+        if next.kind == CallbackKind::Appointment {
+            set_call_code(ctx.tasks, &next.task_id, &c).await;
+        }
         if c == "dialing" {
+            if next.kind == CallbackKind::Errand {
+                if let Some(store) = ctx.errands {
+                    crate::errands::outbound_dialing(store, &next.task_id).await;
+                }
+            }
             break;
         }
         callbacks_remove(&next.task_id);
-        notify_callback(ctx, &next.task_id, &c).await;
+        match next.kind {
+            CallbackKind::Appointment => notify_callback(ctx, &next.task_id, &c).await,
+            CallbackKind::Errand => {
+                if let Some(store) = ctx.errands {
+                    crate::errands::outbound_over(ctx, store, &next.task_id, &c).await;
+                }
+            }
+        }
     }
 }
 
@@ -3637,11 +3849,13 @@ mod tests {
         // Used once: a later call from that number is an ordinary call.
         assert!(take_ready_callback("phone-a1", "0912000101").is_none());
         assert_eq!(callbacks_stage("t-cb-a1"), Some(CallbackStage::OnCall));
-        // Its summary finds it by the phone; a ready report comes only once.
-        assert_eq!(callback_task_on("phone-a1").as_deref(), Some("t-cb-a1"));
+        // Its summary finds it by the call's own record; a ready report comes only once.
+        note_call_task("rec-a1", &got.task_id);
+        assert_eq!(take_call_task("rec-other"), None);
+        assert_eq!(take_call_task("rec-a1").as_deref(), Some("t-cb-a1"));
+        assert_eq!(take_call_task("rec-a1"), None);
         assert!(!callback_ready("t-cb-a1", "phone-a1", "0912000101"));
         callbacks_remove("t-cb-a1");
-        assert_eq!(callback_task_on("phone-a1"), None);
         // A hello without a number: the one call-back ready on that phone.
         assert!(callbacks_add(PendingCallback::new("t-cb-a2", "0912000102", "phone-a2", "S2".into())));
         assert!(callback_ready("t-cb-a2", "phone-a2", ""));
@@ -3667,6 +3881,48 @@ mod tests {
         assert!(callbacks_next(&key).is_none());
         callbacks_remove("t-cb-q2");
         callbacks_remove("t-cb-q3");
+    }
+
+    #[test]
+    fn an_errand_and_a_call_back_to_one_number_take_turns() {
+        assert!(callbacks_add(PendingCallback::new("t-cb-e1", "0912000401", "phone-e", "APPT".into())));
+        assert!(!callbacks_add(PendingCallback::errand("e-cb-e2", "+886912000401", "phone-e", Some(2), "ERRAND".into())));
+        assert!(errand_call_known("e-cb-e2") && !errand_call_known("e-cb-nope"));
+        let key = number_key("0912000401");
+        assert!(callbacks_next(&key).is_none(), "the call-back is still under way");
+        // The appointment's call-back ends: the errand's turn, on its phone and SIM.
+        callbacks_remove("t-cb-e1");
+        let next = callbacks_next(&key).unwrap();
+        assert_eq!((next.task_id.as_str(), next.kind, next.sub_id), ("e-cb-e2", CallbackKind::Errand, Some(2)));
+        // An incoming call from that number before the phone reports the dial: not it.
+        assert!(take_ready_callback("phone-e", "0912000401").is_none());
+        assert!(callback_ready("e-cb-e2", "phone-e", "0912000401"));
+        let call = take_ready_callback("phone-e", "0912000401").unwrap();
+        assert_eq!((call.task_id.as_str(), call.script.as_str(), call.errand), ("e-cb-e2", "ERRAND", true));
+        // No call language of an appointment rides on it: its session plans its own.
+        assert_eq!(call.lang, None);
+        assert!(outbound_busy_on("phone-e") && !outbound_busy_on("phone-other"));
+        // Its call is out: never added (dialed) twice, nor dropped as if it waited.
+        assert!(!callbacks_add(PendingCallback::errand("e-cb-e2", "+886912000401", "phone-e", Some(2), "AGAIN".into())));
+        assert_eq!(callbacks_stage("e-cb-e2"), Some(CallbackStage::OnCall));
+        assert!(!drop_errand_call("e-cb-e2"));
+        callbacks_remove("e-cb-e2");
+        assert!(!outbound_busy_on("phone-e") && !errand_call_known("e-cb-e2"));
+        // An appointment's call-back is still no errand.
+        assert!(callbacks_add(PendingCallback::new("t-cb-e3", "0912000402", "phone-e", "APPT".into())));
+        assert!(callback_ready("t-cb-e3", "phone-e", "0912000402"));
+        assert!(!take_ready_callback("phone-e", "0912000402").unwrap().errand);
+        callbacks_remove("t-cb-e3");
+        // An appointment's call-back keeps the call's language as well as its errand flag.
+        let mut cb = PendingCallback::new("t-cb-e4", "0912000403", "phone-e", "APPT".into());
+        cb.lang = Some(Lang::En);
+        assert!(callbacks_add(cb));
+        assert!(callback_ready("t-cb-e4", "phone-e", "0912000403"));
+        let call = take_ready_callback("phone-e", "0912000403").unwrap();
+        assert_eq!((call.errand, call.lang), (false, Some(Lang::En)));
+        note_call_task("rec-e4", &call.task_id);
+        assert_eq!(take_call_task("rec-e4").as_deref(), Some("t-cb-e4"));
+        callbacks_remove("t-cb-e4");
     }
 
     #[test]

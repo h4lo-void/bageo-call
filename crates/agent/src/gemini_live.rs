@@ -1145,6 +1145,55 @@ fn without_output_transcription(v: &Value) -> Value {
     c
 }
 
+/// `v` with its output transcription's text replaced by `text`.
+fn with_output_transcription(v: &Value, text: &str) -> Value {
+    let mut c = v.clone();
+    for path in ["/serverContent/outputTranscription/text", "/outputTranscription/text"] {
+        if let Some(t) = c.pointer_mut(path) {
+            *t = json!(text);
+        }
+    }
+    c
+}
+
+/// Written in a script one of the AI's languages uses (Latin, Han, kana,
+/// Hangul), or punctuation and spaces that go with them.
+fn ai_script(c: char) -> bool {
+    c.is_ascii()
+        || c.is_whitespace()
+        || matches!(c,
+            '\u{00A0}'..='\u{024F}'
+            | '\u{1100}'..='\u{11FF}'
+            | '\u{1E00}'..='\u{1EFF}'
+            | '\u{2000}'..='\u{206F}'
+            | '\u{3000}'..='\u{30FF}'
+            | '\u{3130}'..='\u{318F}'
+            | '\u{31F0}'..='\u{31FF}'
+            | '\u{3400}'..='\u{4DBF}'
+            | '\u{4E00}'..='\u{9FFF}'
+            | '\u{AC00}'..='\u{D7AF}'
+            | '\u{F900}'..='\u{FAFF}'
+            | '\u{FF00}'..='\u{FFEF}')
+}
+
+/// A letter of a script none of the AI's languages is written in
+/// (Devanagari, Thai, Cyrillic, Arabic…).
+fn other_script(c: char) -> bool {
+    c.is_alphabetic() && !ai_script(c)
+}
+
+/// The AI's own words without what is in a script none of its languages use
+/// (a speech-to-text slip: 「七」 came back as 「सात」); None when nothing is left.
+fn without_other_script(text: &str) -> Option<String> {
+    let lead = text.starts_with(char::is_whitespace);
+    let kept: String = text.chars().filter(|c| ai_script(*c)).collect();
+    let kept = kept.split_whitespace().collect::<Vec<_>>().join(" ");
+    if kept.is_empty() {
+        return None;
+    }
+    Some(if lead { format!(" {kept}") } else { kept })
+}
+
 /// The opening instruction; `opening` = the call's opening language when it is
 /// not the setting's ([`call_lang_plan`]).
 fn persona_kick_client_content(opening: Option<crate::locale::Lang>) -> String {
@@ -1637,6 +1686,51 @@ pub fn callback_lang_plan(spoken: crate::locale::Lang, setting: crate::locale::L
     }
 }
 
+/// What a Live session is for, as far as the calls the phone dials go
+/// ([`run_session`]'s `callback` and `errand`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Outbound {
+    /// A call that came in.
+    Incoming,
+    /// An appointment's call-back: the owner's answer, said once.
+    CallBack,
+    /// An errand ([`crate::errands`]): a conversation the AI holds for the owner.
+    Errand,
+}
+
+impl Outbound {
+    fn of(callback: bool, errand: bool) -> Self {
+        match (callback, errand) {
+            (false, _) => Self::Incoming,
+            (true, false) => Self::CallBack,
+            (true, true) => Self::Errand,
+        }
+    }
+
+    /// The answer said once ([`CallbackFloor`]): Gemini hears nothing until the
+    /// callee's voice (not a ringing tone) has picked up, each reply waits for
+    /// the callee to have spoken, at most [`CALLBACK_REPLIES_MAX`] replies, and a
+    /// quiet line after the answer ends the call ([`CALLBACK_DONE_QUIET`]). An
+    /// appointment's call-back only: an errand talks for as many turns as it
+    /// takes, waits for the owner's answers (`ask_owner`), hears a voice menu
+    /// or the carrier's recording from its first word, and leaves a message on
+    /// voicemail.
+    fn answers_once(self) -> bool {
+        self == Self::CallBack
+    }
+
+    /// Speech-to-text for the other side: a call-back's callee without any
+    /// vocabulary ([`stt_callee_config`]); anyone else with the caller's (the
+    /// owner's name, the call logic's words: [`stt_caller_config_for`]).
+    fn other_side_stt(self, langs: Option<&[&'static str]>, active: &crate::locale::Active) -> Value {
+        if self.answers_once() {
+            stt_callee_config(langs)
+        } else {
+            stt_caller_config_for(langs, active)
+        }
+    }
+}
+
 fn persona_wrap_up_client_content() -> String {
     crate::prompts::client_turn(&crate::prompts::current().kick_wrap_up)
 }
@@ -1901,6 +1995,14 @@ fn with_appointment_tools(setup: &mut Value, on: bool, non_blocking: bool) {
         } else {
             s.remove("tools");
         }
+    }
+}
+
+/// An errand call declares `ask_owner` ([`crate::errands::tool_declarations`];
+/// blocking: the AI settles nothing while the owner is asked).
+fn with_errand_tools(setup: &mut Value) {
+    if let Some(s) = setup.get_mut("setup").and_then(|x| x.as_object_mut()) {
+        s.insert("tools".into(), crate::errands::tool_declarations());
     }
 }
 
@@ -2421,7 +2523,7 @@ fn persona_idle_nudge_client_content() -> String {
 
 /// Drop STT placeholders such as `<no speech detected>` (the AI's silent turn
 /// during the carrier prompt).
-fn strip_stt_markers(s: &str) -> String {
+pub(crate) fn strip_stt_markers(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut depth = 0u32;
     for c in s.chars() {
@@ -2436,7 +2538,7 @@ fn strip_stt_markers(s: &str) -> String {
 }
 
 /// Append an STT fragment: Chinese joins directly, Latin words keep a space.
-fn join_fragment(acc: &mut String, next: &str) {
+pub(crate) fn join_fragment(acc: &mut String, next: &str) {
     // A fragment the STT began with a space starts a new word (Korean, accented
     // Latin); Chinese and Japanese join directly; two ASCII words always get one.
     let spaced = next.starts_with(char::is_whitespace);
@@ -3895,7 +3997,9 @@ pub async fn run_session(
     appointments: Option<crate::appointments::ApptSession>,
     lang_plan: CallLangPlan,
     callback: bool,
+    errand: Option<Arc<crate::errands::CallHooks>>,
 ) -> Result<SessionEndReason> {
+    let outbound = Outbound::of(callback, errand.is_some());
     let opening_lang = lang_plan.opening.filter(|_| persona);
     let stall = stall.filter(|_| persona).map(|mut c| {
         c.system_prompt = session_prompt(c.system_prompt.as_str());
@@ -3966,11 +4070,8 @@ pub async fn run_session(
                 // auto-detect read a short Chinese "hello?" as German / Hindi / Korean,
                 // and stall / carrier-prompt / bye detection all read this STT; a caller
                 // from abroad gets their own language first (or auto-detect).
-                "inputAudioTranscription": if callback {
-                    stt_callee_config(lang_plan.caller_stt.as_deref())
-                } else {
-                    stt_caller_config(lang_plan.caller_stt.as_deref())
-                },
+                // An appointment's call-back: no vocabulary for its callee (Outbound::other_side_stt).
+                "inputAudioTranscription": outbound.other_side_stt(lang_plan.caller_stt.as_deref(), &crate::locale::active()),
                 "outputAudioTranscription": stt_ai_config(opening_lang),
                 "realtimeInputConfig": realtime_input_config(server_vad)
             }
@@ -3984,6 +4085,9 @@ pub async fn run_session(
             }
         }
         with_appointment_tools(&mut setup, appt.is_some(), non_blocking);
+        if errand.is_some() {
+            with_errand_tools(&mut setup);
+        }
         setup
     };
     // Appointments: propose_appointment goes NON_BLOCKING unless the API refused
@@ -4105,7 +4209,9 @@ pub async fn run_session(
     // An AI call-back (`callback`): the phone dialed, so the line rings first
     // and nobody is there to greet; the model speaks once the callee has
     // spoken, and no opening is asked for.
-    let greets_kick_text = if callback {
+    let greets_kick_text = if errand.is_some() {
+        crate::errands::kick_client_content()
+    } else if callback {
         callback_kick_client_content()
     } else if persona {
         persona_kick_client_content(opening_lang)
@@ -4449,9 +4555,17 @@ pub async fn run_session(
     // us to hold on ("等一下，我去拿", "one moment"): a long quiet line is expected.
     let mut caller_recent = String::new();
     let mut caller_hold = false;
-    let (mut wrap_secs, mut wrap_force_secs, mut max_secs) = talk_limits(persona, persona_max_secs);
+    // An errand call: wrapped up at 9:30, ended at 10 minutes.
+    let (mut wrap_secs, mut wrap_force_secs, mut max_secs) = if errand.is_some() {
+        (crate::errands::WRAP_UP_AT_SECS, crate::errands::WRAP_UP_AT_SECS + 10, crate::errands::CALL_MAX_SECS)
+    } else {
+        talk_limits(persona, persona_max_secs)
+    };
     // Everything the caller said (input STT), for the carrier-prompt check.
     let mut caller_text_all = String::new();
+    // An errand call: the other side has spoken a script none of the AI's
+    // languages use (then the AI may speak it too).
+    let mut caller_other_script = false;
     // Connection rotation for persona calls that outlive one Live socket (see
     // LIVE_ROTATE_AFTER_SECS). Once stalling engages, rotations carry its prompt
     // (first one right away).
@@ -4492,6 +4606,9 @@ pub async fn run_session(
     let mut fd_tick = tokio::time::Instant::now();
     // An AI call-back: still waiting for the callee to pick up and speak.
     let mut callback_waiting = callback;
+    // An appointment's call-back says its answer once (Outbound::answers_once,
+    // CallbackFloor); an errand's call is a conversation and goes without it.
+    let cb_once = outbound.answers_once();
     // An AI call-back: a reply plays only once the callee has really spoken
     // (CallbackFloor); a held one's transcript mark (its lines come out if it is
     // dropped) and its words (a closing in them counts once it plays).
@@ -4500,6 +4617,12 @@ pub async fn run_session(
     let mut cb_held_text = String::new();
     let mut cb_drop_now = false;
     let cb_hold_cap = (phone_sr as usize).max(8_000) * 2 * CALLBACK_HOLD_SECS;
+    // An errand: what the owner types on the web console, a voice menu heard
+    // (since when, and the AI's audio count then), the carrier's recording.
+    let mut errand_says = errand.as_ref().and_then(|e| e.take_says());
+    let mut errand_menu_since: Option<tokio::time::Instant> = None;
+    let mut errand_menu_chunks: u64 = 0;
+    let mut errand_carrier: Option<String> = None;
     // Testing only: rotate once after N s so it is testable without ~8 min.
     let test_rotate_after: Option<u64> = std::env::var("GEMINI_TEST_ROTATE_AFTER_SECS")
         .ok()
@@ -4511,6 +4634,9 @@ pub async fn run_session(
     let mut tool_open: std::collections::HashSet<String> = std::collections::HashSet::new();
     // Non-blocking calls being answered (the model goes on talking meanwhile).
     let mut tool_bg: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // An errand's ask_owner calls whose answer has not come yet (still waited for
+    // when the model dropped the call: the answer then goes as a note).
+    let mut ask_waiting: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut tool_tasks: Vec<tokio::task::JoinHandle<()>> = Vec::new();
     let mut tool_seq: u64 = 0;
     let mut live_gen: u32 = 0;
@@ -4584,6 +4710,41 @@ pub async fn run_session(
             }
             break;
         }
+
+        // An errand: the owner cancelled it, the carrier's recording answered,
+        // or a voice menu never brought a person on.
+        if let Some(e) = &errand {
+            if e.cancel_requested() {
+                end_reason = SessionEndReason::Goodbye;
+                signal_force_hangup(&mut hangup_signaled);
+                info!("Errand call cancelled by the owner serial={serial} — hang up");
+                break;
+            }
+            if let Some(said) = errand_carrier.take() {
+                e.note_carrier(&said);
+                end_reason = SessionEndReason::IvrHangup;
+                signal_force_hangup(&mut hangup_signaled);
+                info!("Errand call reached the carrier's recording serial={serial} — hang up");
+                break;
+            }
+            if let Some(t0) = errand_menu_since {
+                if audio_chunks_out > errand_menu_chunks {
+                    errand_menu_since = None;
+                    e.note_menu(false);
+                    info!("Errand call: the AI talks after the voice menu (a person came on) serial={serial}");
+                } else if t0.elapsed() >= crate::errands::MENU_WAIT {
+                    end_reason = SessionEndReason::IvrHangup;
+                    signal_force_hangup(&mut hangup_signaled);
+                    info!(
+                        "Errand call: voice menu, no person within {}s serial={serial} — hang up",
+                        crate::errands::MENU_WAIT.as_secs()
+                    );
+                    break;
+                }
+            }
+        }
+        // An errand's question waits for the owner: the line is not idle.
+        let errand_asking = errand.as_ref().is_some_and(|e| e.question_open()) || !ask_waiting.is_empty();
 
         // The second look says sales / scam: the AI starts stalling.
         if std::mem::take(&mut stall_engage_now) && !stall_on && !own_matter && ivr_since.is_none() {
@@ -4695,6 +4856,7 @@ pub async fn run_session(
                 && !model_turn_pending
                 && !goodbye_pending
                 && tool_open.is_empty()
+                && !errand_asking
                 && play_head.drained_for(Duration::from_millis(300), PLAYER_DRAIN_SLACK_BYTES);
             let backoff = !ws_dead && rotate_retry_at.map_or(false, |t| now < t);
             if wanted && (pause || forced) && !backoff {
@@ -4902,9 +5064,9 @@ pub async fn run_session(
         // call prompt — is talking: pause the first-audio watchdog meanwhile instead
         // of killing a healthy socket (e.g. fresh session at 5 s, AI
         // first heard at 8.6 s).
-        // An AI call-back: a reply the model generated before the callee spoke
-        // plays once they do, or is dropped unheard (CallbackFloor).
-        if callback {
+        // An appointment's call-back: a reply the model generated before the
+        // callee spoke plays once they do, or is dropped unheard (CallbackFloor).
+        if cb_once {
             let now = tokio::time::Instant::now();
             let step = if std::mem::take(&mut cb_drop_now) {
                 cb_floor.drop_step()
@@ -4975,29 +5137,42 @@ pub async fn run_session(
                 }
             }
         }
-        // An AI call-back rings first, Gemini hearing silence: once the callee has
-        // picked up and spoken (their voice, not a ringing tone) the model gets
-        // its cue and the first-audio watchdog starts; nobody for
-        // CALLBACK_RING_MAX ends the call.
+        // A call the phone dialed rings first; nobody for CALLBACK_RING_MAX ends
+        // it. An appointment's call-back: Gemini hears silence until the callee
+        // has picked up and spoken (their voice, not a ringing tone); then the
+        // model gets its cue and the first-audio watchdog starts. An errand: the
+        // other side's first words (a person, a voice menu or the carrier's
+        // recording, which its script and checks tell apart) or the model
+        // already answering them.
         if callback_waiting {
             let now = tokio::time::Instant::now();
-            if let Some(kick) = cb_floor.pickup() {
+            let kick = if cb_once { cb_floor.pickup() } else { None };
+            let errand_heard = !cb_once
+                && (!caller_text_all.trim().is_empty() || delivered_bytes.load(Ordering::Relaxed) > 0);
+            if kick.is_some() || errand_heard {
                 callback_waiting = false;
                 first_delivery_window_start = now;
                 first_delivery_deadline = now + FIRST_DELIVERY_TIMEOUT;
                 fd_grace = Duration::ZERO;
-                model_turn_pending = true;
-                let sent = send_text_before_deadline(
-                    &mut sink,
-                    kick,
-                    now + KICK_SEND_TIMEOUT,
-                    "gemini call-back pickup kick send",
-                )
-                .await
-                .is_ok();
-                info!(
-                    "Gemini Live call-back serial={serial} — the callee picked up and spoke: the AI says the answer now (cue sent={sent})"
-                );
+                if let Some(kick) = kick {
+                    model_turn_pending = true;
+                    let sent = send_text_before_deadline(
+                        &mut sink,
+                        kick,
+                        now + KICK_SEND_TIMEOUT,
+                        "gemini call-back pickup kick send",
+                    )
+                    .await
+                    .is_ok();
+                    info!(
+                        "Gemini Live call-back serial={serial} — the callee picked up and spoke: the AI says the answer now (cue sent={sent})"
+                    );
+                } else {
+                    info!("Gemini Live call-back serial={serial} — the callee spoke; the AI may answer");
+                }
+                if let Some(e) = &errand {
+                    e.picked_up();
+                }
             } else if session_start.elapsed() >= CALLBACK_RING_MAX {
                 end_reason = SessionEndReason::CantCommunicate;
                 signal_force_hangup(&mut hangup_signaled);
@@ -5025,7 +5200,8 @@ pub async fn run_session(
             }
         }
         fd_tick = fd_now;
-        let fd_action = if intl_gate != IntlGate::Open || callback_waiting {
+        // An errand on a voice menu: the AI stays quiet on purpose.
+        let fd_action = if intl_gate != IntlGate::Open || callback_waiting || errand_menu_since.is_some() {
             FirstDeliveryAction::Wait
         } else {
             first_delivery_action(
@@ -5075,7 +5251,9 @@ pub async fn run_session(
             );
         // Persona: our own 掰掰 does not end the call — hold the line until the
         // caller says bye / wraps up, or stays quiet PERSONA_BYE_SILENCE after it.
+        // An errand call is ours: the AI's own goodbye ends it.
         let awaiting_caller_bye = persona
+            && errand.is_none()
             && goodbye_pending
             && !wrap_up_sent
             && awaits_caller_bye(
@@ -5097,7 +5275,7 @@ pub async fn run_session(
             ),
             activity_open,
             // A function call open: the model still has something to say.
-            waiting_model_reply || awaiting_caller_bye || !tool_open.is_empty(),
+            waiting_model_reply || awaiting_caller_bye || !tool_open.is_empty() || errand_asking,
         );
         let now = tokio::time::Instant::now();
         let clock_was = output_goodbye_at.is_some();
@@ -5203,6 +5381,8 @@ pub async fn run_session(
                 repeat_guard.clear();
                 let nudge = if stall_on {
                     persona_stall_wrap_up_client_content()
+                } else if errand.is_some() {
+                    crate::errands::wrap_up_client_content()
                 } else {
                     persona_wrap_up_client_content()
                 };
@@ -5271,10 +5451,11 @@ pub async fn run_session(
                 break;
             }
         }
-        // An AI call-back: the answer has been given and nobody has said anything
-        // since (both sides quiet CALLBACK_DONE_QUIET; the answer ends on a
-        // goodbye), or the last reply a call-back may have is over: hang up.
-        if let Some(quiet) = cb_floor.done_after().filter(|_| callback) {
+        // An appointment's call-back: the answer has been given and nobody has
+        // said anything since (both sides quiet CALLBACK_DONE_QUIET; the answer
+        // ends on a goodbye), or the last reply a call-back may have is over:
+        // hang up. Never an errand's call (Outbound::answers_once).
+        if let Some(quiet) = cb_floor.done_after().filter(|_| cb_once) {
             if !cb_floor.on_line
                 && !activity_open
                 && tool_open.is_empty()
@@ -5337,12 +5518,14 @@ pub async fn run_session(
             && !ai_playing
             && play_head.drained_for(Duration::from_millis(300), PLAYER_DRAIN_SLACK_BYTES);
         // A function call open (appointments) is not a quiet line; a recording gets no
-        // nudge; nor does a call-back (the AI talks only when the callee has).
+        // nudge; nor does an appointment's call-back (the AI talks only when the
+        // callee has). An errand's call does get one.
         if persona
-            && !callback
+            && !cb_once
             && first_downlink_at.is_some()
             && !goodbye_pending
             && tool_open.is_empty()
+            && !errand_asking
             && ivr_since.is_none()
             && (stall_quiet || plain_quiet)
         {
@@ -5379,6 +5562,7 @@ pub async fn run_session(
         // Idle after last real activity (caller voice or model audio).
         if first_downlink_at.is_some()
             && tool_open.is_empty()
+            && !errand_asking
             && last_activity_at.elapsed() >= Duration::from_secs(idle_end_secs)
         {
             end_reason = if caller_had_voice {
@@ -5524,6 +5708,56 @@ pub async fn run_session(
                                         } else {
                                             call.id.clone()
                                         };
+                                        // An errand: ask_owner, answered on its own task (the
+                                        // owner may take up to ASK_WAIT).
+                                        if let Some(e) = errand.clone() {
+                                            if call.name != crate::errands::ASK_OWNER {
+                                                warn!(
+                                                    "Gemini Live toolCall the errand call did not declare serial={serial} name={}",
+                                                    call.name
+                                                );
+                                                let msg = crate::appointments::tool_response(
+                                                    &call.id,
+                                                    &call.name,
+                                                    json!({ "error": "unavailable" }),
+                                                );
+                                                let _ = send_text_before_deadline(
+                                                    &mut sink,
+                                                    msg.to_string(),
+                                                    now + API_SEND_TIMEOUT,
+                                                    "gemini toolResponse send",
+                                                )
+                                                .await;
+                                                continue;
+                                            }
+                                            // Always blocking: the AI waits for the
+                                            // owner and settles nothing meanwhile.
+                                            let blocking = true;
+                                            info!(
+                                                "Gemini Live toolCall serial={serial} name={} id={key} blocking={blocking} (errand: ask the owner) talk_s={}",
+                                                call.name,
+                                                session_start.elapsed().as_secs()
+                                            );
+                                            model_turn_pending = true;
+                                            tool_open.insert(key.clone());
+                                            ask_waiting.insert(key.clone());
+                                            let tx = tool_tx.clone();
+                                            let gen = live_gen;
+                                            tool_tasks.retain(|h| !h.is_finished());
+                                            tool_tasks.push(tokio::spawn(async move {
+                                                let response = e.ask(&call.args).await;
+                                                let _ = tx.send(ToolDone {
+                                                    gen,
+                                                    key,
+                                                    id: call.id,
+                                                    name: call.name,
+                                                    response,
+                                                    blocking,
+                                                    after_speech: None,
+                                                });
+                                            }));
+                                            continue;
+                                        }
                                         let Some(a) = appt.clone() else {
                                             // No functions were declared: answer so it does not wait.
                                             warn!(
@@ -5589,6 +5823,21 @@ pub async fn run_session(
                                         info!(
                                             "Gemini Live toolCallCancellation serial={serial} id={id} — its answer will not be sent"
                                         );
+                                        // An errand's question still waits for the owner:
+                                        // the AI is told so, and gets the answer as a note.
+                                        if ask_waiting.contains(&id) {
+                                            model_turn_pending = true;
+                                            if let Err(e) = send_text_before_deadline(
+                                                &mut sink,
+                                                crate::errands::still_asking_client_content(),
+                                                tokio::time::Instant::now() + API_SEND_TIMEOUT,
+                                                "gemini errand still-asking note send",
+                                            )
+                                            .await
+                                            {
+                                                warn!("Gemini Live errand still-asking note failed serial={serial}: {e:#}");
+                                            }
+                                        }
                                     }
                                 }
                                 // Caller words in this message: what the model says next
@@ -5603,9 +5852,9 @@ pub async fn run_session(
                                 // of the turn before and is written down as usual.
                                 let has_audio = server_msg_has_audio(&v);
                                 let model_output = has_audio || output_transcription_text(&v).is_some();
-                                // A call-back: this reply of the model's is held off the line
-                                // until the callee has really spoken (CallbackFloor).
-                                let cb_hold = callback
+                                // An appointment's call-back: this reply of the model's is held
+                                // off the line until the callee has really spoken (CallbackFloor).
+                                let cb_hold = cb_once
                                     && if has_audio { !cb_floor.model_audio() } else { !cb_floor.on_line };
                                 if cb_hold && has_audio && cb_held_mark.is_none() {
                                     cb_held_mark = transcript_out
@@ -5642,15 +5891,45 @@ pub async fn run_session(
                                 let intl_drop = matches!(intl_gate, IntlGate::Prompt { .. }) || ivr_since.is_some();
                                 // …and what it says before (held, maybe played later) is.
                                 let intl_hold = matches!(intl_gate, IntlGate::Waiting { .. });
+                                // An errand call: our own words read back in a script none of
+                                // the AI's languages use are a speech-to-text slip (「七」 came
+                                // back as 「सात」), left out of the captions and the record —
+                                // unless the other side speaks that script.
+                                if errand.is_some() && extract_transcription_snippets(&v).0.iter().any(|s| s.chars().any(other_script)) {
+                                    caller_other_script = true;
+                                }
+                                let ai_stt_slip = if errand.is_some() && !caller_other_script {
+                                    output_transcription_text(&v)
+                                        .filter(|t| t.chars().any(other_script))
+                                        .map(|t| (t.to_string(), without_other_script(t)))
+                                } else {
+                                    None
+                                };
                                 let v_clean;
                                 let v_tx = if (out_leak_turn || repeat_drop || intl_drop) && output_transcription_text(&v).is_some() {
                                     v_clean = without_output_transcription(&v);
+                                    &v_clean
+                                } else if let Some((raw, fixed)) = &ai_stt_slip {
+                                    info!("Errand: AI transcript in a script the call does not use serial={serial} raw={raw} kept={fixed:?}");
+                                    v_clean = match fixed {
+                                        Some(t) => with_output_transcription(&v, t),
+                                        None => without_output_transcription(&v),
+                                    };
                                     &v_clean
                                 } else {
                                     &v
                                 };
                                 append_transcriptions(v_tx, &transcript_out);
                                 let (in_tx, out_tx) = extract_transcription_snippets(v_tx);
+                                // An errand: live captions for the owner's web console.
+                                if let Some(e) = &errand {
+                                    for s in &in_tx {
+                                        e.caption(true, s);
+                                    }
+                                    for s in &out_tx {
+                                        e.caption(false, s);
+                                    }
+                                }
                                 // Prefer a COMPLETE recap (matter filled in) before any hangup.
                                 // Greeting 「我幫您轉達」 and trailing 「關於」 must not arm.
                                 // Arm as soon as STT shows a complete recap — do not wait for a
@@ -5788,12 +6067,31 @@ pub async fn run_session(
                                 }
                                 // Caller farewell also arms hangup (after model turn / idle).
                                 for s in &in_tx {
-                                    if callback {
+                                    if cb_once {
                                         cb_floor.callee.words(s);
                                     }
                                     push_tx_window(&mut in_tx_window, s, 800);
                                     push_tx_window(&mut caller_text_all, s, 400);
                                     push_tx_window(&mut caller_recent, s, 400);
+                                    // An errand: a voice menu waits for a person (MENU_WAIT);
+                                    // the carrier's recording before the AI said anything ends it.
+                                    if let Some(e) = &errand {
+                                        if errand_menu_since.is_none() && crate::stall_review::ivr_cue(&in_tx_window) {
+                                            errand_menu_since = Some(tokio::time::Instant::now());
+                                            errand_menu_chunks = audio_chunks_out;
+                                            e.note_menu(true);
+                                            info!(
+                                                "Errand call: voice menu serial={serial} — the AI waits up to {}s for a person",
+                                                crate::errands::MENU_WAIT.as_secs()
+                                            );
+                                        }
+                                        if errand_carrier.is_none()
+                                            && first_downlink_at.is_none()
+                                            && crate::errands::carrier_message(&in_tx_window)
+                                        {
+                                            errand_carrier = Some(in_tx_window.clone());
+                                        }
+                                    }
                                     let hold = crate::locale::asks_to_hold(&caller_recent);
                                     if hold != caller_hold {
                                         caller_hold = hold;
@@ -5878,6 +6176,16 @@ pub async fn run_session(
                                             stall_keep_chunks = audio_chunks_out;
                                         }
                                     } else if caller_closing {
+                                        // A question still waits for the owner: no time is
+                                        // left for it — the AI gets its answer now (absent)
+                                        // and says goodbye too.
+                                        if let Some(e) = &errand {
+                                            if e.close_question() {
+                                                info!(
+                                                    "Errand: the other side says goodbye while a question waits for the owner — closed serial={serial}"
+                                                );
+                                            }
+                                        }
                                         if post_arm_talk {
                                             // Their words after our closing are a farewell,
                                             // not new content: hang up once they finish.
@@ -5901,13 +6209,16 @@ pub async fn run_session(
                                     info!(
                                         "Gemini Live interrupted serial={serial} server_vad={server_vad} activity_open={activity_open} muted={mute_model_audio}"
                                     );
+                                    if let Some(e) = &errand {
+                                        e.turn_done();
+                                    }
                                     model_generating = false;
                                     play_head.set_generating(false);
                                     mute_model_audio = false;
                                     repeat_guard.interrupted();
                                     // A call-back reply held off the line answered something
                                     // earlier: dropped (the model answers what comes now).
-                                    if callback && cb_floor.interrupted() {
+                                    if cb_once && cb_floor.interrupted() {
                                         cb_drop_now = true;
                                     }
                                     // The caller is talking: the model answers them instead.
@@ -6039,6 +6350,9 @@ pub async fn run_session(
                                     model_generating = false;
                                     play_head.set_generating(false);
                                     mute_model_audio = false;
+                                    if let Some(e) = &errand {
+                                        e.turn_done();
+                                    }
                                 }
                                 // Opening turn finished with an output transcript but zero
                                 // audio. A re-kick on the same socket sometimes speaks
@@ -6067,7 +6381,7 @@ pub async fn run_session(
                                 if turn_complete {
                                     turns_done += 1;
                                     chunks_at_turn_start = audio_chunks_out;
-                                    if callback {
+                                    if cb_once {
                                         cb_floor.turn_over(tokio::time::Instant::now());
                                     }
                                 }
@@ -6397,6 +6711,30 @@ pub async fn run_session(
                 } else {
                     tool_bg.remove(&done.key)
                 };
+                let asked = done.name == crate::errands::ASK_OWNER && ask_waiting.remove(&done.key);
+                if asked && (done.gen != live_gen || !open) {
+                    // The model dropped the call (the other side spoke over the
+                    // wait) or the socket changed: the owner's answer still
+                    // reaches the AI, as a note.
+                    let now = tokio::time::Instant::now();
+                    model_turn_pending = true;
+                    last_activity_at = now;
+                    match send_text_before_deadline(
+                        &mut sink,
+                        crate::errands::late_answer_client_content(&done.response),
+                        now + API_SEND_TIMEOUT,
+                        "gemini errand late answer send",
+                    )
+                    .await
+                    {
+                        Ok(()) => info!(
+                            "Gemini Live errand answer sent as a note serial={serial} id={} response={}",
+                            done.key, done.response
+                        ),
+                        Err(e) => warn!("Gemini Live errand late answer send failed serial={serial}: {e:#}"),
+                    }
+                    continue;
+                }
                 if done.gen != live_gen || !open {
                     info!(
                         "Gemini Live function answer dropped serial={serial} name={} id={} (cancelled or older session)",
@@ -6405,7 +6743,11 @@ pub async fn run_session(
                     continue;
                 }
                 let now = tokio::time::Instant::now();
-                let msg = crate::appointments::tool_response(&done.id, &done.name, done.response.clone());
+                let msg = if done.name == crate::errands::ASK_OWNER {
+                    crate::errands::ask_response(&done.id, done.response.clone(), done.blocking)
+                } else {
+                    crate::appointments::tool_response(&done.id, &done.name, done.response.clone())
+                };
                 match send_text_before_deadline(
                     &mut sink,
                     msg.to_string(),
@@ -6439,6 +6781,37 @@ pub async fn run_session(
                     model_turn_pending = true;
                     tool_answer_at = Some(now);
                     tool_answer_chunks = audio_chunks_out;
+                }
+            }
+            // An errand: what the owner typed on the web console during the call.
+            said = async {
+                match errand_says.as_mut() {
+                    Some(rx) => rx.recv().await,
+                    None => std::future::pending::<Option<String>>().await,
+                }
+            } => {
+                match said {
+                    Some(text) => {
+                        let now = tokio::time::Instant::now();
+                        model_turn_pending = true;
+                        repeat_guard.clear();
+                        match send_text_before_deadline(
+                            &mut sink,
+                            crate::errands::owner_says_client_content(&text),
+                            now + KICK_SEND_TIMEOUT,
+                            "gemini errand owner note send",
+                        )
+                        .await
+                        {
+                            Ok(()) => info!(
+                                "Errand call: the owner's words went to the AI serial={serial} chars={}",
+                                text.chars().count()
+                            ),
+                            Err(e) => warn!("Errand owner note send failed serial={serial}: {e:#}"),
+                        }
+                        last_activity_at = now;
+                    }
+                    None => errand_says = None,
                 }
             }
             verdict = review_rx.recv() => {
@@ -6651,7 +7024,7 @@ pub async fn run_session(
                             &mut voiced_ms,
                             &mut silence_ms,
                         );
-                        if callback {
+                        if cb_once {
                             cb_floor.line_frame(&pcm16, is_voice, frame_ms);
                         }
                         // Caller already talking when our reply started (or local VAD
@@ -6680,8 +7053,8 @@ pub async fn run_session(
                             if persona && goodbye_pending {
                                 voice_since_arm_ms = voice_since_arm_ms.saturating_add(frame_ms);
                             }
-                            // A call-back not picked up yet: a ringing tone is nobody.
-                            if voiced_ms >= LOCAL_MIN_VOICE_MS && (!callback || cb_floor.turn_may_open()) {
+                            // An appointment's call-back not picked up yet: a ringing tone is nobody.
+                            if voiced_ms >= LOCAL_MIN_VOICE_MS && (!cb_once || cb_floor.turn_may_open()) {
                                 caller_had_voice = true;
                                 // Persona: a short 「掰掰」 back must not cancel the hangup, but
                                 // real new content after the closing ("oh, by the way…") keeps talking.
@@ -6715,7 +7088,7 @@ pub async fn run_session(
                             // (no activityStart either): Gemini hears silence.
                             if !activity_open
                                 && voiced_ms >= LOCAL_MIN_VOICE_MS
-                                && (!callback || cb_floor.turn_may_open())
+                                && (!cb_once || cb_floor.turn_may_open())
                             {
                                 // Server VAD: the local turn is bookkeeping only (bye /
                                 // idle / rotation logic) — Gemini already hears the line.
@@ -6778,8 +7151,8 @@ pub async fn run_session(
                             // except on an echo-free line, where the caller may cut in.
                             if hold_frame || (downlink_echo && !activity_open && !overlap) {
                                 uplink_buf.resize(uplink_buf.len() + pcm16.len(), 0);
-                            } else if callback && !cb_floor.line_audio(activity_open) {
-                                // A call-back: Gemini hears silence until the callee has
+                            } else if cb_once && !cb_floor.line_audio(activity_open) {
+                                // An appointment's call-back: Gemini hears silence until the callee has
                                 // picked up, then their voice only (from its onset, the
                                 // preroll sent when their turn opens) — never the ringing
                                 // or a quiet line it could take for words.
@@ -6907,6 +7280,10 @@ pub async fn run_session(
     // Immediate close on hangup — stops Gemini Live token burn.
     let _ = sink.send(WsMessage::Close(None)).await;
     let _ = sink.close().await;
+    // An errand's question still waiting for the owner is not answered now.
+    if let Some(e) = &errand {
+        e.end_questions();
+    }
     // A function call may still be writing to the calendar: let it finish (at
     // most TOOL_WAIT) so the end of the call sees the event it wrote.
     tool_tasks.retain(|h| !h.is_finished());
@@ -6993,6 +7370,17 @@ mod tests {
     use super::*;
     use std::pin::Pin;
     use std::task::{Context, Poll};
+
+    #[test]
+    fn an_errand_ai_transcript_keeps_only_scripts_its_languages_use() {
+        assert_eq!(without_other_script("我們訂सात點").as_deref(), Some("我們訂點"));
+        assert_eq!(without_other_script(" सात"), None);
+        assert_eq!(without_other_script(" ¿Mesa para cuatro? Ça va, 네, はい、好"), Some(" ¿Mesa para cuatro? Ça va, 네, はい、好".to_string()));
+        assert!("सात".chars().any(other_script) && "Привет".chars().any(other_script));
+        assert!(!"七點半, Café, 네, はい, 12:30。".chars().any(other_script));
+        let v = json!({"serverContent": {"outputTranscription": {"text": "七सात"}}});
+        assert_eq!(output_transcription_text(&with_output_transcription(&v, "七")), Some("七"));
+    }
 
     #[test]
     fn noise_floor_raw_minimum_until_history() {
@@ -7230,6 +7618,30 @@ mod tests {
         assert_eq!(dialogue_lang("接聽：Hello?\n對方：Hola, quiero hacer una reserva para el domingo.", Lang::ZhTw), Some(Lang::Es));
         assert_eq!(dialogue_lang("接聽：喂？\n對方：喂？", Lang::ZhTw), None);
         assert_eq!(dialogue_lang("", Lang::ZhTw), None);
+    }
+
+    #[test]
+    fn only_an_appointment_call_back_says_its_answer_once() {
+        use crate::locale::{Active, Lang};
+        let call_back = Outbound::of(true, false);
+        let errand = Outbound::of(true, true);
+        assert_eq!(
+            (call_back, errand, Outbound::of(false, false)),
+            (Outbound::CallBack, Outbound::Errand, Outbound::Incoming)
+        );
+        // The one-answer floor (held replies, the pickup gate, CALLBACK_REPLIES_MAX,
+        // the quiet hang-up) is the appointment call-back's alone.
+        assert!(call_back.answers_once());
+        assert!(!errand.answers_once() && !Outbound::Incoming.answers_once());
+        // Speech-to-text: a call-back's callee gets no vocabulary; an errand's other
+        // side keeps the caller's, the owner's name in it.
+        let me = Active { owner: "王先生".into(), lang: Lang::ZhTw, ..Default::default() };
+        let langs = stt_codes(&[Lang::ZhTw, Lang::En]);
+        assert_eq!(call_back.other_side_stt(Some(&langs), &me), stt_callee_config(Some(&langs)));
+        let errand_stt = errand.other_side_stt(Some(&langs), &me);
+        assert_eq!(errand_stt, stt_caller_config_for(Some(&langs), &me));
+        assert!(errand_stt.to_string().contains("王先生"), "{errand_stt}");
+        assert_eq!(Outbound::Incoming.other_side_stt(Some(&langs), &me), errand_stt);
     }
 
     #[test]

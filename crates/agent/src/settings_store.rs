@@ -287,6 +287,11 @@ pub struct RuntimeSettings {
     /// `sms` or `call`. Also what the AI promises on the call.
     #[serde(default = "default_auto")]
     pub appointment_reply: String,
+    /// Who the AI is on the calls it makes for the owner ([`crate::errands`]):
+    /// `assistant` (the owner's assistant; default) or `owner` (the owner
+    /// in person). Each errand may pick its own.
+    #[serde(default = "default_errand_identity")]
+    pub errand_identity: String,
     /// Names speech-to-text keeps getting wrong, one `wrong=right` per entry
     /// (`黃先生=王先生`): applied to transcripts and summaries.
     #[serde(default)]
@@ -365,6 +370,18 @@ fn default_mdns_name() -> String {
 
 fn default_appointment_mode() -> String {
     "off".to_string()
+}
+
+fn default_errand_identity() -> String {
+    "assistant".to_string()
+}
+
+/// Setting `errand_identity`: `owner`, else `assistant`.
+pub fn sanitize_errand_identity(s: &str) -> String {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "owner" => "owner".to_string(),
+        _ => default_errand_identity(),
+    }
 }
 
 fn default_reject_mode() -> String {
@@ -566,6 +583,7 @@ impl RuntimeSettings {
             appointment_mode: sanitize_appointment_mode(&env_or("APPOINTMENT_MODE", "off")),
             appointment_sms: env_bool("APPOINTMENT_SMS", false),
             appointment_reply: crate::appointments::sanitize_reply_setting(&env_or("APPOINTMENT_REPLY", "auto")),
+            errand_identity: sanitize_errand_identity(&env_or("ERRAND_IDENTITY", "assistant")),
             name_corrections: split_list(&env_or("NAME_CORRECTIONS", "")),
             device_labels: std::collections::BTreeMap::new(),
             calls_data_dir: base.calls_data_dir.clone(),
@@ -791,6 +809,7 @@ impl RuntimeSettings {
             appointment_mode,
             calendar_app,
             appointment_reply,
+            errand_identity,
         );
         macro_rules! set_copy {
             ($($f:ident),+ $(,)?) => {$(
@@ -857,6 +876,7 @@ impl RuntimeSettings {
         self.calendar_app = crate::calendar::sanitize_app(&self.calendar_app);
         self.appointment_reply = crate::appointments::sanitize_reply_setting(&self.appointment_reply);
         self.owner_aliases = clean_owner_aliases(&self.owner_aliases, &self.owner_name);
+        self.errand_identity = sanitize_errand_identity(&self.errand_identity);
     }
 
     /// Overlay runtime-editable values onto the env base so existing call
@@ -1192,6 +1212,8 @@ struct Overrides {
     appointment_sms: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     appointment_reply: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    errand_identity: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     name_corrections: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1705,6 +1727,10 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     p_string(patch, "appointment_reply", &mut ov.appointment_reply);
     if let Some(v) = ov.appointment_reply.take() {
         ov.appointment_reply = Some(crate::appointments::sanitize_reply_setting(&v));
+    }
+    p_string(patch, "errand_identity", &mut ov.errand_identity);
+    if let Some(v) = ov.errand_identity.take() {
+        ov.errand_identity = Some(sanitize_errand_identity(&v));
     }
     p_list(patch, "name_corrections", &mut ov.name_corrections);
     if let Some(map) = patch.get("device_labels").and_then(|v| v.as_object()) {
@@ -2459,6 +2485,23 @@ mod tests {
         assert_eq!(store.apply_patch(&json!({ "appointment_reply": " Call " })).unwrap().appointment_reply, "call");
         assert_eq!(SettingsStore::load(base.clone()).snapshot().appointment_reply, "call");
         assert_eq!(store.apply_patch(&json!({ "appointment_reply": "fax" })).unwrap().appointment_reply, "auto");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_errand_identity_is_the_assistant_unless_set_to_the_owner() {
+        let dir = std::env::temp_dir().join(format!("bageo-call-errand-identity-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("temp settings dir");
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        assert_eq!(store.snapshot().errand_identity, "assistant");
+        assert_eq!(store.masked_json()["errand_identity"], "assistant");
+        assert_eq!(store.apply_patch(&json!({ "errand_identity": " Owner " })).unwrap().errand_identity, "owner");
+        assert_eq!(SettingsStore::load(base.clone()).snapshot().errand_identity, "owner");
+        assert_eq!(store.apply_patch(&json!({ "calendar_suggest": true })).unwrap().errand_identity, "owner");
+        assert_eq!(store.apply_patch(&json!({ "errand_identity": "robot" })).unwrap().errand_identity, "assistant");
+        assert_eq!(sanitize_errand_identity(""), "assistant");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
