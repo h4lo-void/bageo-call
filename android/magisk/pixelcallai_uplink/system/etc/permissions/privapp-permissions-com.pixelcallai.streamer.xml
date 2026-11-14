@@ -5,6 +5,7 @@
         <permission name="android.permission.MODIFY_PHONE_STATE" />
         <permission name="android.permission.ANSWER_PHONE_CALLS" />
         <permission name="android.permission.READ_PHONE_STATE" />
+        <permission name="android.permission.READ_PHONE_NUMBERS" />
         <permission name="android.permission.READ_CALL_LOG" />
         <permission name="android.permission.WRITE_SECURE_SETTINGS" />
         <permission name="android.permission.MODIFY_AUDIO_SETTINGS" />
