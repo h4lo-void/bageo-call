@@ -234,18 +234,20 @@ pub struct RuntimeSettings {
     /// language is zh-TW, or `on` / `off`.
     #[serde(default = "default_auto")]
     pub intl_carrier_prompt: String,
-    /// OpenAI-compatible chat endpoint for the post-call summary, e.g.
-    /// `https://api.openai.com/v1`. Empty = DeepSeek when `deepseek_api_key` is
-    /// set, else Gemini with the Live API key.
+    /// OpenAI-compatible chat endpoint for the post-call summary when
+    /// `summary_provider` is `custom`, e.g. `https://api.openai.com/v1`.
+    /// Empty = DeepSeek when `deepseek_api_key` is set, else Gemini with the
+    /// Live API key.
     #[serde(default)]
     pub summary_api_base: String,
     /// Model for the post-call summary; empty = the endpoint's default.
     #[serde(default)]
     pub summary_model: String,
-    /// Which service writes the post-call summary: `auto` (the endpoint above,
-    /// else DeepSeek, else Gemini, else OpenRouter), `gemini` (Gemini's
-    /// lowest-cost model with the Live API key) or `deepseek`. A choice without
-    /// its key works like `auto` ([`crate::deepseek::summary_endpoint_for`]).
+    /// Which service writes the post-call summary: `gemini` (Gemini's
+    /// lowest-cost model with the Live API key) or `custom` (the endpoint
+    /// above, else DeepSeek, else Gemini, else OpenRouter). Gemini without its
+    /// key works like `custom` ([`crate::deepseek::summary_endpoint_for`]).
+    /// Older values are turned into one of the two when the settings load.
     #[serde(default = "default_auto")]
     pub summary_provider: String,
     /// Where notifications go (Telegram, Discord, ntfy, …), all of them at once.
@@ -436,9 +438,14 @@ fn sanitize_sim_languages<'a>(
         .collect()
 }
 
-/// `auto` / `gemini` / `deepseek`; anything else is auto.
+/// `gemini` / `custom`, or a value from before there were only these two:
+/// `deepseek`, else `auto` (resolved when the settings load).
 fn sanitize_summary_provider(s: &str) -> String {
-    crate::deepseek::Provider::parse(s).as_str().to_string()
+    let v = s.trim().to_ascii_lowercase();
+    match v.as_str() {
+        "gemini" | "custom" | "deepseek" => v,
+        _ => default_auto(),
+    }
 }
 
 fn sanitize_answer_style(s: &str) -> String {
@@ -617,6 +624,27 @@ impl RuntimeSettings {
     /// Which service writes the post-call summary.
     pub fn summary_provider(&self) -> crate::deepseek::Provider {
         crate::deepseek::Provider::parse(&self.summary_provider)
+    }
+
+    /// `summary_provider` as `gemini` or `custom`. A value from before keeps
+    /// the summary going where it went: `deepseek` is `custom`, and when a
+    /// DeepSeek key is set the address it passed over is set aside; `auto`
+    /// (or none) is `custom` when an address or a summary key of its own is
+    /// set, else `gemini`.
+    fn settle_summary_provider(&mut self) {
+        let v = sanitize_summary_provider(&self.summary_provider);
+        if v == "gemini" || v == "custom" {
+            self.summary_provider = v;
+            return;
+        }
+        let summary_key = !self.deepseek_api_key.trim().is_empty()
+            || !env_or("DEEPSEEK_API_KEY", "").trim().is_empty()
+            || crate::deepseek::api_key_from_llm_config(&self.trtc_llm_config).is_some();
+        if v == "deepseek" && summary_key {
+            self.summary_api_base.clear();
+        }
+        let custom = v == "deepseek" || summary_key || !self.summary_api_base.trim().is_empty();
+        self.summary_provider = if custom { "custom" } else { "gemini" }.to_string();
     }
 
     /// The caller is one of the appointment test numbers
@@ -865,7 +893,7 @@ impl RuntimeSettings {
                 .iter()
                 .map(|(k, v)| (k.as_str(), v.as_str())),
         );
-        self.summary_provider = sanitize_summary_provider(&self.summary_provider);
+        self.settle_summary_provider();
         self.answer_style = sanitize_answer_style(&self.answer_style);
         self.intl_carrier_prompt = sanitize_tristate(&self.intl_carrier_prompt);
         self.reject_mode = sanitize_reject_mode(&self.reject_mode);
@@ -1260,7 +1288,22 @@ impl SettingsStore {
             overrides.appointment_mode = Some(sanitize_appointment_mode(&m));
         }
         let mut rt = RuntimeSettings::from_base(&base);
+        let summary_provider = overrides
+            .summary_provider
+            .clone()
+            .unwrap_or_else(|| rt.summary_provider.clone());
         rt.apply(&overrides);
+        // A value from before the summary service was Gemini or custom (`auto`,
+        // none, `deepseek`) is resolved once, here, and saved so: a key saved
+        // later does not move a summary the console shows on Gemini. `deepseek`
+        // also drops the address it passed over.
+        let older = sanitize_summary_provider(&summary_provider);
+        if older != "gemini" && older != "custom" {
+            overrides.summary_provider = Some(rt.summary_provider.clone());
+        }
+        if older == "deepseek" {
+            overrides.summary_api_base = Some(rt.summary_api_base.clone());
+        }
         Arc::new(Self {
             base,
             path,
@@ -2577,8 +2620,8 @@ mod tests {
     }
 
     #[test]
-    fn summary_provider_defaults_auto_and_sanitizes() {
-        use crate::deepseek::Provider;
+    fn summary_provider_defaults_gemini_and_resolves_older_values() {
+        use crate::deepseek::{summary_endpoint_for, Provider, DEEPSEEK_API_URL};
         let dir = std::env::temp_dir().join(format!(
             "bageo-call-summary-provider-{}",
             uuid::Uuid::new_v4()
@@ -2587,36 +2630,72 @@ mod tests {
         let mut base = Settings::from_env();
         base.calls_data_dir = dir.to_string_lossy().to_string();
         let store = SettingsStore::load(base.clone());
-        assert_eq!(store.snapshot().summary_provider, "auto");
-        assert_eq!(store.snapshot().summary_provider(), Provider::Auto);
-        assert_eq!(store.masked_json()["summary_provider"], "auto");
-        let rt = store.apply_patch(&json!({ "summary_provider": " Gemini " })).unwrap();
-        assert_eq!((rt.summary_provider.as_str(), rt.summary_provider()), ("gemini", Provider::Gemini));
+        assert_eq!(store.snapshot().summary_provider, "gemini");
+        assert_eq!(store.snapshot().summary_provider(), Provider::Gemini);
+        assert_eq!(store.masked_json()["summary_provider"], "gemini");
+        let rt = store.apply_patch(&json!({ "summary_provider": " Custom " })).unwrap();
+        assert_eq!((rt.summary_provider.as_str(), rt.summary_provider()), ("custom", Provider::Custom));
         // Survives a restart (settings.json override); another key leaves it alone.
         let again = SettingsStore::load(base.clone());
-        assert_eq!(again.snapshot().summary_provider, "gemini");
+        assert_eq!(again.snapshot().summary_provider, "custom");
         let rt = again.apply_patch(&json!({ "summary_model": "gemini-2.5-flash" })).unwrap();
-        assert_eq!(rt.summary_provider, "gemini");
-        let rt = again.apply_patch(&json!({ "summary_provider": "deepseek" })).unwrap();
-        assert_eq!(rt.summary_provider(), Provider::DeepSeek);
+        assert_eq!(rt.summary_provider, "custom");
         let rt = again.apply_patch(&json!({ "summary_provider": "openai" })).unwrap();
-        assert_eq!(rt.summary_provider, "auto");
-        assert_eq!(SettingsStore::load(base).snapshot().summary_provider, "auto");
-        // A settings file written before either key existed: auto, and the
-        // notifications in the AI's language.
-        let old_dir = dir.join("old");
-        std::fs::create_dir_all(old_dir.join("config")).expect("old settings dir");
-        std::fs::write(
-            old_dir.join("config").join("settings.json"),
-            r#"{"language":"fr","summary_model":"deepseek-chat"}"#,
-        )
-        .expect("old settings.json");
-        let mut old_base = Settings::from_env();
-        old_base.calls_data_dir = old_dir.to_string_lossy().to_string();
-        let old = SettingsStore::load(old_base).snapshot();
-        assert_eq!(old.summary_model, "deepseek-chat");
-        assert_eq!((old.summary_provider.as_str(), old.notify_language.as_str()), ("auto", ""));
-        assert_eq!(old.notify_lang(), crate::locale::Lang::Fr);
+        assert_eq!(rt.summary_provider, "gemini");
+        assert_eq!(SettingsStore::load(base).snapshot().summary_provider, "gemini");
+        // Settings files from before: the service and address they end up with,
+        // after loading and after saving something else.
+        let own = "http://127.0.0.1:11434/v1";
+        let older = [
+            (r#"{"language":"fr","summary_model":"deepseek-chat"}"#.to_string(), "gemini", ""),
+            (r#"{"summary_provider":"auto","gemini_api_key":"AIzaTEST"}"#.to_string(), "gemini", ""),
+            (r#"{"summary_provider":"auto","deepseek_api_key":"sk-ds"}"#.to_string(), "custom", ""),
+            (format!(r#"{{"summary_api_base":"{own}"}}"#), "custom", own),
+            (r#"{"summary_provider":"openai","trtc_llm_config":"{\"APIKey\":\"sk-cfg\"}"}"#.to_string(), "custom", ""),
+            (r#"{"summary_provider":"gemini","deepseek_api_key":"sk-ds"}"#.to_string(), "gemini", ""),
+            (r#"{"summary_provider":"deepseek"}"#.to_string(), "custom", ""),
+            (format!(r#"{{"summary_provider":"deepseek","summary_api_base":"{own}"}}"#), "custom", own),
+            (
+                format!(r#"{{"summary_provider":"deepseek","summary_api_base":"{own}","deepseek_api_key":"sk-ds"}}"#),
+                "custom",
+                "",
+            ),
+        ];
+        for (i, (file, provider, api_base)) in older.iter().enumerate() {
+            let old_dir = dir.join(format!("old{i}"));
+            std::fs::create_dir_all(old_dir.join("config")).expect("old settings dir");
+            std::fs::write(old_dir.join("config").join("settings.json"), file).expect("old settings.json");
+            let mut old_base = Settings::from_env();
+            old_base.calls_data_dir = old_dir.to_string_lossy().to_string();
+            let old = SettingsStore::load(old_base.clone());
+            let rt = old.snapshot();
+            assert_eq!((rt.summary_provider.as_str(), rt.summary_api_base.as_str()), (*provider, *api_base), "{file}");
+            let rt = old.apply_patch(&json!({ "owner_name": "Alex" })).unwrap();
+            assert_eq!((rt.summary_provider.as_str(), rt.summary_api_base.as_str()), (*provider, *api_base), "{file}");
+            let rt = SettingsStore::load(old_base.clone()).snapshot();
+            assert_eq!((rt.summary_provider.as_str(), rt.summary_api_base.as_str()), (*provider, *api_base), "{file}");
+            if i == 0 {
+                // Written before either key existed: the notifications in the AI's language.
+                assert_eq!((rt.summary_model.as_str(), rt.notify_language.as_str()), ("deepseek-chat", ""));
+                assert_eq!(rt.notify_lang(), crate::locale::Lang::Fr);
+            }
+            if i == older.len() - 1 {
+                // DeepSeek went past the address before, and still does.
+                let e = summary_endpoint_for(&rt.effective(&old_base), rt.summary_provider()).unwrap();
+                assert_eq!((e.url.as_str(), e.key.as_str()), (DEEPSEEK_API_URL, "sk-ds"));
+            }
+        }
+        // Left on Gemini, it stays Gemini when a summary key is saved later.
+        let fresh_dir = dir.join("fresh");
+        std::fs::create_dir_all(&fresh_dir).expect("fresh settings dir");
+        let mut fresh_base = Settings::from_env();
+        fresh_base.calls_data_dir = fresh_dir.to_string_lossy().to_string();
+        let fresh = SettingsStore::load(fresh_base.clone());
+        let rt = fresh.apply_patch(&json!({ "deepseek_api_key": "sk-ds" })).unwrap();
+        assert_eq!(rt.summary_provider, "gemini");
+        let rt = fresh.apply_patch(&json!({ "trtc_llm_config": "{\"APIKey\":\"sk-cfg\"}" })).unwrap();
+        assert_eq!(rt.summary_provider, "gemini");
+        assert_eq!(SettingsStore::load(fresh_base).snapshot().summary_provider, "gemini");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -1,11 +1,11 @@
 //! The post-call summary: a few short lines for the notification, written by a
 //! chat model over an OpenAI-compatible API ([`summary_endpoint`]).
 //!
-//! Which service: the settings' own endpoint (`summary_api_base`, e.g. OpenAI,
-//! OpenRouter or a local Ollama), else DeepSeek when its key is set, else
-//! Gemini with the Live API key — so one Gemini key is enough to get going.
-//! The setting `summary_provider` can pin Gemini (on its lowest-cost model) or
-//! DeepSeek instead ([`Provider`]).
+//! Which service ([`Provider`]): Gemini on its lowest-cost model with the Live
+//! API key — so one Gemini key is enough to get going — or another service the
+//! owner sets up: their own endpoint (`summary_api_base`, e.g. DeepSeek,
+//! OpenAI, OpenRouter or a local Ollama), else DeepSeek when its key is set,
+//! else Gemini, else OpenRouter.
 //!
 //! The summary is written in the language the owner reads
 //! ([`locale::notify_lang`]), whatever language the call was in.
@@ -133,29 +133,27 @@ pub const GEMINI_SUMMARY_LITE_MODEL: &str = "gemini-flash-lite-latest";
 /// Which service writes the summary (settings `summary_provider`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Provider {
-    /// The settings' own endpoint, else DeepSeek, else Gemini, else OpenRouter.
-    Auto,
     /// Gemini with the Live API key, on its lowest-cost model.
     Gemini,
-    /// DeepSeek.
-    DeepSeek,
+    /// Another service: the settings' own endpoint, else DeepSeek, else
+    /// Gemini, else OpenRouter.
+    Custom,
 }
 
 impl Provider {
-    /// The settings value: `auto` / `gemini` / `deepseek`; anything else is auto.
+    /// The settings value: `gemini` / `custom`; anything else is Gemini (the
+    /// settings turn older values into one of the two first).
     pub fn parse(s: &str) -> Provider {
         match s.trim().to_ascii_lowercase().as_str() {
-            "gemini" => Provider::Gemini,
-            "deepseek" => Provider::DeepSeek,
-            _ => Provider::Auto,
+            "custom" => Provider::Custom,
+            _ => Provider::Gemini,
         }
     }
 
     pub fn as_str(self) -> &'static str {
         match self {
-            Provider::Auto => "auto",
             Provider::Gemini => "gemini",
-            Provider::DeepSeek => "deepseek",
+            Provider::Custom => "custom",
         }
     }
 }
@@ -163,14 +161,14 @@ impl Provider {
 /// The running agent's choice. A process-wide slot like the language
 /// ([`locale::set_active`]): the summary's callers only hold the env-shaped
 /// [`Settings`].
-static PROVIDER: std::sync::RwLock<Provider> = std::sync::RwLock::new(Provider::Auto);
+static PROVIDER: std::sync::RwLock<Provider> = std::sync::RwLock::new(Provider::Custom);
 
 /// Set at startup and on every settings save.
 pub fn set_provider(p: Provider) {
     *PROVIDER.write().unwrap_or_else(|e| e.into_inner()) = p;
 }
 
-/// The running agent's [`Provider`]; unset (unit tests) = auto.
+/// The running agent's [`Provider`]; unset (unit tests) = custom.
 pub fn provider() -> Provider {
     *PROVIDER.read().unwrap_or_else(|e| e.into_inner())
 }
@@ -190,10 +188,9 @@ pub fn summary_endpoint(settings: &Settings) -> Option<Endpoint> {
     summary_endpoint_for(settings, provider())
 }
 
-/// The service for a given [`Provider`]. `Gemini` and `DeepSeek` without
-/// their key work like `Auto`. `Gemini` tries the settings' `summary_model`
-/// first when one is set, then [`GEMINI_SUMMARY_LITE_MODEL`], then
-/// [`GEMINI_SUMMARY_MODEL`].
+/// The service for a given [`Provider`]. `Gemini` without its key works like
+/// `Custom`. `Gemini` tries the settings' `summary_model` first when one is
+/// set, then [`GEMINI_SUMMARY_LITE_MODEL`], then [`GEMINI_SUMMARY_MODEL`].
 pub fn summary_endpoint_for(settings: &Settings, provider: Provider) -> Option<Endpoint> {
     let model = settings.summary_model.trim();
     let own_models = |fallback: &[&str]| -> Vec<String> {
@@ -222,32 +219,24 @@ pub fn summary_endpoint_for(settings: &Settings, provider: Provider) -> Option<E
         })
     };
     let gemini = settings.gemini_api_key.trim();
-    match provider {
-        Provider::Gemini if !gemini.is_empty() => {
-            // A model name left over from another service (e.g. deepseek-chat) would
-            // fail on every summary before the lite model is tried: skip it.
-            let mut models: Vec<String> = Vec::new();
-            let own = settings.summary_model.trim();
-            if own.starts_with("gemini") {
-                models.push(own.to_string());
-            }
-            for m in [GEMINI_SUMMARY_LITE_MODEL, GEMINI_SUMMARY_MODEL] {
-                if !models.iter().any(|x| x == m) {
-                    models.push(m.to_string());
-                }
-            }
-            return Some(Endpoint {
-                url: GEMINI_OPENAI_URL.to_string(),
-                key: gemini.to_string(),
-                models,
-            });
+    if provider == Provider::Gemini && !gemini.is_empty() {
+        // A model name left over from another service (e.g. deepseek-chat) would
+        // fail on every summary before the lite model is tried: skip it.
+        let mut models: Vec<String> = Vec::new();
+        let own = settings.summary_model.trim();
+        if own.starts_with("gemini") {
+            models.push(own.to_string());
         }
-        Provider::DeepSeek => {
-            if let Some(e) = deepseek_endpoint() {
-                return Some(e);
+        for m in [GEMINI_SUMMARY_LITE_MODEL, GEMINI_SUMMARY_MODEL] {
+            if !models.iter().any(|x| x == m) {
+                models.push(m.to_string());
             }
         }
-        _ => {}
+        return Some(Endpoint {
+            url: GEMINI_OPENAI_URL.to_string(),
+            key: gemini.to_string(),
+            models,
+        });
     }
     let base = settings.summary_api_base.trim();
     if !base.is_empty() {
@@ -1433,7 +1422,7 @@ mod tests {
     }
 
     #[test]
-    fn summary_provider_pins_gemini_lite_or_deepseek() {
+    fn summary_provider_gemini_or_custom() {
         fn models(e: &Endpoint) -> Vec<&str> {
             e.models.iter().map(String::as_str).collect()
         }
@@ -1456,41 +1445,48 @@ mod tests {
         let e = summary_endpoint_for(&s, Provider::Gemini).unwrap();
         assert_eq!(models(&e), vec![GEMINI_SUMMARY_LITE_MODEL, GEMINI_SUMMARY_MODEL]);
         s.summary_model = "gemini-2.5-flash".into();
-        // DeepSeek: passes over the own endpoint too.
-        let e = summary_endpoint_for(&s, Provider::DeepSeek).unwrap();
-        assert_eq!((e.url.as_str(), e.key.as_str()), (DEEPSEEK_API_URL, "sk-ds"));
-        // Auto is the order it always was: the own endpoint first.
-        let e = summary_endpoint_for(&s, Provider::Auto).unwrap();
+        // Custom: the own endpoint first.
+        let e = summary_endpoint_for(&s, Provider::Custom).unwrap();
         assert_eq!(e.url, "http://127.0.0.1:11434/v1/chat/completions");
         assert_eq!(models(&e), vec!["gemini-2.5-flash"]);
-        // A choice without its key works like auto.
+        // Gemini without its key works like custom.
         s.gemini_api_key = "".into();
-        assert_eq!(summary_endpoint_for(&s, Provider::Gemini), summary_endpoint_for(&s, Provider::Auto));
+        assert_eq!(summary_endpoint_for(&s, Provider::Gemini), summary_endpoint_for(&s, Provider::Custom));
+        // Custom without an address: DeepSeek with its key…
         s.summary_api_base = String::new();
-        s.deepseek_api_key = String::new();
         s.summary_model = String::new();
-        s.gemini_api_key = "AIzaTEST".into();
-        let e = summary_endpoint_for(&s, Provider::DeepSeek).unwrap();
-        assert_eq!((e.url.as_str(), models(&e)), (GEMINI_OPENAI_URL, vec![GEMINI_SUMMARY_MODEL]));
-        // The DeepSeek key may come from the older TRTC LLM config.
+        let e = summary_endpoint_for(&s, Provider::Custom).unwrap();
+        assert_eq!((e.url.as_str(), e.key.as_str()), (DEEPSEEK_API_URL, "sk-ds"));
+        assert_eq!(models(&e), vec![DEEPSEEK_MODEL, "deepseek-reasoner"]);
+        // …which may come from the older TRTC LLM config…
+        s.deepseek_api_key = String::new();
         s.trtc_llm_config = r#"{"APIKey":"sk-cfg"}"#.into();
-        let e = summary_endpoint_for(&s, Provider::DeepSeek).unwrap();
+        let e = summary_endpoint_for(&s, Provider::Custom).unwrap();
         assert_eq!((e.url.as_str(), e.key.as_str()), (DEEPSEEK_API_URL, "sk-cfg"));
+        // …else Gemini, else OpenRouter.
+        s.trtc_llm_config = "".into();
+        s.gemini_api_key = "AIzaTEST".into();
+        let e = summary_endpoint_for(&s, Provider::Custom).unwrap();
+        assert_eq!((e.url.as_str(), models(&e)), (GEMINI_OPENAI_URL, vec![GEMINI_SUMMARY_MODEL]));
+        s.gemini_api_key = "".into();
+        s.openrouter_api_key = "sk-or".into();
+        let e = summary_endpoint_for(&s, Provider::Custom).unwrap();
+        assert_eq!(e.key, "sk-or");
+        assert_eq!(summary_endpoint_for(&s, Provider::Gemini), Some(e));
         // Nothing set: nothing to call, whatever the choice.
         let empty = settings();
-        for p in [Provider::Auto, Provider::Gemini, Provider::DeepSeek] {
+        for p in [Provider::Gemini, Provider::Custom] {
             assert_eq!(summary_endpoint_for(&empty, p), None, "{p:?}");
         }
     }
 
     #[test]
     fn summary_provider_setting_values() {
-        assert_eq!(Provider::parse(" Gemini "), Provider::Gemini);
-        assert_eq!(Provider::parse("deepseek"), Provider::DeepSeek);
-        for other in ["", "auto", "openai", "gemini-flash-lite-latest"] {
-            assert_eq!(Provider::parse(other), Provider::Auto, "{other}");
+        assert_eq!(Provider::parse(" Custom "), Provider::Custom);
+        for other in ["", " Gemini ", "openai", "gemini-flash-lite-latest"] {
+            assert_eq!(Provider::parse(other), Provider::Gemini, "{other}");
         }
-        for p in [Provider::Auto, Provider::Gemini, Provider::DeepSeek] {
+        for p in [Provider::Gemini, Provider::Custom] {
             assert_eq!(Provider::parse(p.as_str()), p);
         }
     }
