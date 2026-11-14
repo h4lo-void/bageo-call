@@ -8626,7 +8626,8 @@ function smsRetryRow(tk, busy) {
   const sel = h("select", { "aria-label": t("ap_sms_from"), title: t("ap_sms_from") },
     h("option", { value: "", text: first }));
   for (const s of (devices && devices.connected) || []) {
-    if (s !== from) sel.append(h("option", { value: s, text: devName(s) }));
+    // Phone ids compare in any case (a device label's key may differ from the connected id).
+    if (String(s).toLowerCase() !== String(from).toLowerCase()) sel.append(h("option", { value: s, text: devName(s) }));
   }
   return h("div", { class: "btns appt-retry" }, sel,
     h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => retrySms(tk.id, sel.value), text: t("ap_retry_sms") }));
