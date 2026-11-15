@@ -46,7 +46,7 @@
   <img src="docs/images/scene-stall.zh-TW.svg" width="760" alt="一通信貸推銷電話。對方說你有一筆低利信貸額度核准了，AI 問利息是月息還是年息；對方要核對身分證字號，AI 繼續問問題。27 分鐘後對方想掛電話，AI 說：欸等一下，我還有一個問題。結果：陪聊 27 分鐘，沒有給出任何個資，錄音與摘要已存檔。">
 </p>
 
-AI 一確定對方是推銷或詐騙，就變成一個有興趣、反應慢、愛問細節的客人：一直問、故意把數字聽錯，最長纏住對方 30 分鐘，一項真實資料都不給。你會收到錄音、逐字稿和一段摘要。正常電話不會被誤傷：銀行核對刷卡、診所、快遞、家人。陪聊模式預設開啟，一個開關就能關掉。[三道防線怎麼判斷](docs/zh-TW/FEATURES.md)
+AI 一確定對方是推銷或詐騙，就變成一個有興趣、反應慢、愛問細節的客人：一直問、故意把數字聽錯，最長纏住對方 30 分鐘，一項真實資料都不給。你會收到錄音、逐字稿和一段摘要。正常電話不會被誤傷：銀行核對刷卡、診所、快遞、家人。陪聊模式預設開啟，一個開關就能關掉。[三道防線怎麼判斷](docs/zh-TW/FEATURES.md#擋推銷與詐騙電話加上陪聊模式)
 
 ## 懶得打電話？寫一句話就好
 
@@ -54,7 +54,7 @@ AI 一確定對方是推銷或詐騙，就變成一個有興趣、反應慢、�
   <img src="docs/images/scene-errand.zh-TW.svg" width="760" alt="一次 AI 代打。你交代：訂明天晚上 7 點 4 位，7 點半也可以。AI 以小明助理的身分打給餐廳；7 點客滿，餐廳問 7 點半可不可以，AI 答應。結果：辦好了，明天晚上 7 點半、4 位，可以一鍵加入行事曆。">
 </p>
 
-訂位、改期、問店家有沒有貨或幾點開門，都可以交代。對方提到你沒交代的事，AI 會先在畫面上問你；它絕不自己答應任何事：你來不及回，它就說會跟你確認，然後客氣收尾。[AI 代打的完整說明](docs/zh-TW/FEATURES.md)
+訂位、改期、問店家有沒有貨或幾點開門，都可以交代。對方提到你沒交代的事，AI 會先在畫面上問你；它絕不自己答應任何事：你來不及回，它就說會跟你確認，然後客氣收尾。[AI 代打的完整說明](docs/zh-TW/FEATURES.md#ai-代打替你打電話)
 
 ## 運作方式
 
@@ -80,7 +80,7 @@ AI 一確定對方是推銷或詐騙，就變成一個有興趣、反應慢、�
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/calendar.svg" width="56" height="56" alt=""><br>
       <strong>預約等你點頭</strong><br>
-      開啟行程預約後，對方想約時間會先進你的待處理事項；你按同意或不同意，AI 再傳簡訊或回電告訴他。
+      開啟行程預約後，對方想約時間會先進待處理事項，等你決定，AI 再傳簡訊或回電通知對方。
     </td>
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/contacts.svg" width="56" height="56" alt=""><br>
@@ -102,7 +102,7 @@ AI 一確定對方是推銷或詐騙，就變成一個有興趣、反應慢、�
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/notify.svg" width="56" height="56" alt=""><br>
       <strong>16 種通知管道</strong><br>
-      每通電話結束，摘要送到 Telegram、LINE、Discord、Gmail 等。
+      每通電話結束，摘要送到 Telegram、LINE、Discord 等管道。
     </td>
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/local.svg" width="56" height="56" alt=""><br>
@@ -195,7 +195,7 @@ AI 一確定對方是推銷或詐騙，就變成一個有興趣、反應慢、�
 
 ## 授權與法律責任聲明
 
-本專案採用**雙重授權（Dual Licensing）**模式發佈（著作權所有 © 2026 **h4lo-void**）：
+本專案採用<strong>雙重授權（Dual Licensing）</strong>模式發佈（著作權所有 © 2026 **h4lo-void**）：
 
 - **社群開源授權：** [GNU Affero 通用公共授權條款第 3.0 版（僅限 `AGPL-3.0-only`）](LICENSE)——個人與開源社群免費使用；惟任何修改版本只要供他人透過網路或電話線路互動，即須依第 13 條免費公開完整衍生原始碼。
 - **取得商業授權：** 若企業、電信／雲端總機營運商、客服中心或硬體廠商不願依 `AGPL-3.0-only` 開源，可向原作者購買專有／商業授權，詳見 [**雙重授權與商業授權條款（COMMERCIAL_LICENSE.md）**](COMMERCIAL_LICENSE.md)。

@@ -46,7 +46,7 @@
   <img src="docs/images/scene-stall.zh-CN.svg" width="760" alt="一通贷款推销电话。对方说你有一笔低息信用贷款额度批下来了，AI 问利息是按月还是按年；对方要核对身份证号，AI 继续提问。27 分钟后对方想挂电话，AI 说：诶等一下，我还有一个问题。结果：陪聊 27 分钟，没有给出任何个人信息，录音和摘要已保存。">
 </p>
 
-AI 一确定对方是推销或诈骗，就变成一个有兴趣、反应慢、爱问细节的客户：一直问、故意把数字听错，最长缠住对方 30 分钟，一项真实信息都不给。你会收到录音、文字记录和一段摘要。正常电话不会被误伤：银行核对刷卡、诊所、快递、家人。陪聊模式默认开启，一个开关就能关掉。[三道防线怎么判断](docs/zh-CN/FEATURES.md)
+AI 一确定对方是推销或诈骗，就变成一个有兴趣、反应慢、爱问细节的客户：一直问、故意把数字听错，最长缠住对方 30 分钟，一项真实信息都不给。你会收到录音、文字记录和一段摘要。正常电话不会被误伤：银行核对刷卡、诊所、快递、家人。陪聊模式默认开启，一个开关就能关掉。[三道防线怎么判断](docs/zh-CN/FEATURES.md#拦截骚扰与诈骗电话加上陪聊模式)
 
 ## 懒得打电话？写一句话就行
 
@@ -54,7 +54,7 @@ AI 一确定对方是推销或诈骗，就变成一个有兴趣、反应慢、�
   <img src="docs/images/scene-errand.zh-CN.svg" width="760" alt="一次 AI 代打。你交代：订明天晚上 7 点 4 位，7 点半也行。AI 以小明助理的身份打给餐厅；7 点满了，餐厅问 7 点半可不可以，AI 答应。结果：办好了，明天晚上 7 点半、4 位，可以一键添加到日历。">
 </p>
 
-订位、改期、问店家有没有货或几点开门，都可以交代。对方提到你没交代的事，AI 会先在屏幕上问你；它绝不自己答应任何事：你来不及回，它就说会跟你确认，然后客气收尾。[AI 代打的完整说明](docs/zh-CN/FEATURES.md)
+订位、改期、问店家有没有货或几点开门，都可以交代。对方提到你没交代的事，AI 会先在屏幕上问你；它绝不自己答应任何事：你来不及回，它就说会跟你确认，然后客气收尾。[AI 代打的完整说明](docs/zh-CN/FEATURES.md#ai-代打替你打电话)
 
 ## 工作原理
 
@@ -80,7 +80,7 @@ AI 一确定对方是推销或诈骗，就变成一个有兴趣、反应慢、�
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/calendar.svg" width="56" height="56" alt=""><br>
       <strong>预约等你点头</strong><br>
-      开启日程预约后，对方想约时间会先进你的待处理事项；你点同意或不同意，AI 再发短信或回拨告诉他。
+      开启日程预约后，对方想约时间会先进待处理事项，等你决定，AI 再发短信或回拨通知对方。
     </td>
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/contacts.svg" width="56" height="56" alt=""><br>
@@ -102,7 +102,7 @@ AI 一确定对方是推销或诈骗，就变成一个有兴趣、反应慢、�
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/notify.svg" width="56" height="56" alt=""><br>
       <strong>16 种通知渠道</strong><br>
-      每通电话结束，摘要发到 Telegram、Discord、飞书、钉钉等。
+      每通电话结束，摘要发到 Telegram、Discord、飞书等渠道。
     </td>
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/local.svg" width="56" height="56" alt=""><br>
@@ -195,7 +195,7 @@ AI 一确定对方是推销或诈骗，就变成一个有兴趣、反应慢、�
 
 ## 许可证与法律责任声明
 
-本项目采用**双重授权（Dual Licensing）**模式发布（版权所有 © 2026 **h4lo-void**）：
+本项目采用<strong>双重授权（Dual Licensing）</strong>模式发布（版权所有 © 2026 **h4lo-void**）：
 
 - **社区开源授权：** [GNU Affero 通用公共许可证第 3.0 版（仅限 `AGPL-3.0-only`）](LICENSE)——个人与开源社区免费使用；任何修改版本只要允许他人通过网络或电话线路交互，即须按第 13 条免费公开完整衍生源代码。
 - **取得商业授权：** 若企业、电信／云总机运营商、呼叫中心或硬件厂商不愿按 `AGPL-3.0-only` 开源，可向原作者购买专有／商业授权，详见 [**双重授权与商业授权条款（COMMERCIAL_LICENSE.md）**](COMMERCIAL_LICENSE.md)。
