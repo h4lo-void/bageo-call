@@ -1,4 +1,4 @@
-# Unreleased
+# Bageo v1.1.0
 
 - **16 more notification channels (32 in all).** Microsoft Teams (Workflows
   webhook with an Adaptive Card), Google Chat, Rocket.Chat, Zulip, Webex,
