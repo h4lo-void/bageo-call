@@ -70,6 +70,8 @@ pub struct TgPoller {
     offset: i64,
     /// When set, card callbacks from other chats are dropped (security).
     allowed_chat_id: Option<String>,
+    /// Card callbacks count only from a sender on each of these lists.
+    card_senders: Vec<Vec<String>>,
     api: String,
     me: Option<BotMe>,
 }
@@ -90,9 +92,16 @@ impl TgPoller {
         Self {
             offset: 0,
             allowed_chat_id: None,
+            card_senders: Vec::new(),
             api: api.trim_end_matches('/').to_string(),
             me: None,
         }
+    }
+
+    /// Card buttons count only from a sender on each of these lists (the
+    /// owner narrowed the chat to some of its members); none: anyone in it.
+    pub fn set_card_senders(&mut self, lists: Vec<Vec<String>>) {
+        self.card_senders = lists.into_iter().filter(|l| !l.is_empty()).collect();
     }
 
     /// Restrict inbound card callbacks to this chat (RuntimeSettings.telegram_chat_id).
@@ -202,6 +211,13 @@ impl TgPoller {
         if msg.pointer("/from/is_bot").and_then(Value::as_bool) == Some(true) {
             return None;
         }
+        // Someone else's words passed on (a forward) are no command of the owner's.
+        if ["forward_origin", "forward_date", "forward_from", "forward_from_chat", "forward_sender_name"]
+            .iter()
+            .any(|k| msg.get(*k).is_some())
+        {
+            return None;
+        }
         let text = msg.get("text")?.as_str()?.trim();
         if text.is_empty() {
             return None;
@@ -288,6 +304,13 @@ impl TgPoller {
                 answer_callback_query(http, &self.api, bot_token, callback_id, None).await;
                 return Ok(None);
             }
+        }
+
+        let sender = query.pointer("/from/id").map(json_chat_id_string).unwrap_or_default();
+        if !self.card_senders.iter().all(|l| !sender.is_empty() && l.iter().any(|u| u.trim() == sender)) {
+            warn!("telegram callback rejected sender={sender} chat_id={chat_id} task_id={task_id}: not on the sender list");
+            answer_callback_query(http, &self.api, bot_token, callback_id, None).await;
+            return Ok(None);
         }
 
         let p = crate::locale::notify_phrases();
@@ -567,24 +590,37 @@ pub async fn send_outbound(http: &Client, api: &str, bot_token: &str, chat_id: &
     post_ok(http, &method_url(api, token, "sendMessage"), &payload).await
 }
 
-/// The bot's command menu (setMyCommands); an empty list removes it
-/// (deleteMyCommands): a bot whose chats take no commands shows none.
-pub async fn set_my_commands(http: &Client, api: &str, bot_token: &str, commands: &[(&str, &str)]) {
+/// The bot's command menu, set only for the chats that take commands (scope
+/// "chat"): strangers who open the bot see none. The menu for every chat is
+/// removed first (older versions set it); an empty list removes the menu of
+/// the chats given too.
+pub async fn set_my_commands(http: &Client, api: &str, bot_token: &str, commands: &[(&str, &str)], chats: &[String]) {
     let token = bot_token.trim();
     if token.is_empty() {
         return;
     }
-    let (method, payload) = if commands.is_empty() {
-        ("deleteMyCommands", json!({}))
+    let scope = |chat: &str| match chat.trim().parse::<i64>() {
+        Ok(id) => json!({"type": "chat", "chat_id": id}),
+        Err(_) => json!({"type": "chat", "chat_id": chat.trim()}),
+    };
+    let mut calls: Vec<(&str, Value)> = vec![("deleteMyCommands", json!({}))];
+    if commands.is_empty() {
+        for chat in chats.iter().filter(|c| !c.trim().is_empty()) {
+            calls.push(("deleteMyCommands", json!({ "scope": scope(chat) })));
+        }
     } else {
         let list: Vec<Value> = commands
             .iter()
             .map(|(c, d)| json!({"command": c, "description": d.chars().take(256).collect::<String>()}))
             .collect();
-        ("setMyCommands", json!({ "commands": list }))
-    };
-    if let Err(e) = post_ok(http, &method_url(api, token, method), &payload).await {
-        debug!("telegram {method}: {}", redact(&format!("{e:#}"), token));
+        for chat in chats.iter().filter(|c| !c.trim().is_empty()) {
+            calls.push(("setMyCommands", json!({ "commands": list, "scope": scope(chat) })));
+        }
+    }
+    for (method, payload) in calls {
+        if let Err(e) = post_ok(http, &method_url(api, token, method), &payload).await {
+            debug!("telegram {method}: {}", redact(&format!("{e:#}"), token));
+        }
     }
 }
 
@@ -980,9 +1016,11 @@ mod tests {
         assert_eq!((edits[0]["message_id"].clone(), edits[0]["reply_markup"].clone()), (json!(10), json!({"inline_keyboard": []})));
         assert_eq!(fake_api::sent(&seen, "sendMessage").len(), 1);
 
-        set_my_commands(&http, &api, "123:TEST", &[("calls", "Recent calls")]).await;
-        set_my_commands(&http, &api, "123:TEST", &[]).await;
+        set_my_commands(&http, &api, "123:TEST", &[("calls", "Recent calls")], &["42".to_string()]).await;
+        set_my_commands(&http, &api, "123:TEST", &[], &["42".to_string()]).await;
         assert_eq!(fake_api::sent(&seen, "setMyCommands")[0]["commands"][0]["command"], "calls");
+        // Only for the chat that takes commands, never for every chat.
+        assert_eq!(fake_api::sent(&seen, "setMyCommands")[0]["scope"], json!({"type": "chat", "chat_id": 42}));
         assert!(fake_api::methods(&seen).last().is_some_and(|m| m.eq_ignore_ascii_case("deleteMyCommands")));
     }
 }

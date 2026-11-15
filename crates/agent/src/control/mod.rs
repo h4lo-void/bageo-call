@@ -66,6 +66,8 @@ pub mod telegram;
 pub mod words;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod sec_tests;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -270,6 +272,29 @@ struct Memory {
     question: Option<OpenQuestion>,
 }
 
+/// A secret as it may appear in a reply: as it is, and percent-encoded the
+/// way a URL carries it (upper- and lower-case hex).
+fn secret_forms(s: &str) -> Vec<String> {
+    let mut up = String::new();
+    let mut low = String::new();
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || b"-._~".contains(&b) {
+            up.push(b as char);
+            low.push(b as char);
+        } else {
+            up.push_str(&format!("%{b:02X}"));
+            low.push_str(&format!("%{b:02x}"));
+        }
+    }
+    let mut out = vec![s.to_string()];
+    for f in [up, low] {
+        if !out.contains(&f) {
+            out.push(f);
+        }
+    }
+    out
+}
+
 fn clip(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         return s.to_string();
@@ -463,7 +488,7 @@ impl Controller {
             }
         };
         info!(chat, action = action_kind(&action), "chat command");
-        Some(self.run(rt, chat, &m.sender_id, action, w).await)
+        Some(self.run(rt, chat, &m.sender_id, action, !text.starts_with('/'), w).await)
     }
 
     async fn on_button(&self, rt: &RuntimeSettings, chat: &str, m: &Inbound, data: &str, w: &'static Words) -> Option<Outbound> {
@@ -500,8 +525,12 @@ impl Controller {
         nlu::read(&self.state.http, &self.gemini_base, key, text, chrono::Local::now().date_naive()).await
     }
 
-    async fn run(&self, rt: &RuntimeSettings, chat: &str, sender: &str, action: Action, w: &'static Words) -> Outbound {
-        if !action.needs_confirmation() {
+    /// from_model: the action is the model's reading of free text. What it
+    /// would say for the owner on a live call (a line for the AI, an answer to
+    /// its question) then waits for the owner's yes too: the reading may be wrong.
+    async fn run(&self, rt: &RuntimeSettings, chat: &str, sender: &str, action: Action, from_model: bool, w: &'static Words) -> Outbound {
+        let speaks = matches!(action, Action::Say { .. } | Action::Answer { .. });
+        if !action.needs_confirmation() && !(from_model && speaks) {
             return reply(&self.perform(rt, chat, action).await, w);
         }
         match self.prepare(rt, chat, action, w).await {
@@ -866,6 +895,14 @@ impl Controller {
                 let ask = if confirm { w.ask_confirm } else { w.ask_ignore };
                 Ok((Job::Decide { task_id: line.id, confirm }, words::fmt(ask, &[&what])))
             }
+            Action::Say { r, text } => {
+                let summary = words::fmt(w.ask_say, &[&text]);
+                Ok((Job::Act { action: Action::Say { r, text } }, summary))
+            }
+            Action::Answer { text } => {
+                let summary = words::fmt(w.ask_answer, &[&text]);
+                Ok((Job::Act { action: Action::Answer { text } }, summary))
+            }
             _ => Err(Outcome::Failed { code: "not_confirmable".to_string() }),
         }
     }
@@ -874,6 +911,7 @@ impl Controller {
     async fn execute(&self, rt: &RuntimeSettings, chat: &str, job: Job) -> Outcome {
         let st = &self.state;
         match job {
+            Job::Act { action } => self.perform(rt, chat, action).await,
             Job::Errand { body } => {
                 let cap = rt.control_errands_per_hour.min(access::ERRANDS_PER_HOUR_MAX);
                 if !self.limits.errand_room(chat, cap) {
@@ -902,6 +940,13 @@ impl Controller {
                 }
             }
             Job::Decide { task_id, confirm } => {
+                // The web console (or a card) may have decided it while the owner
+                // was asked here: the first decision stands.
+                match st.task_store.get(&task_id).await {
+                    Some(t) if matches!(t.status, crate::tasks::TaskStatus::Pending) => {}
+                    Some(_) => return Outcome::Failed { code: "already_decided".to_string() },
+                    None => return Outcome::NotFound { what: task_id },
+                }
                 let appointment = st.task_store.get(&task_id).await.is_some_and(|t| t.appointment.is_some());
                 let done = if appointment {
                     // The console address the web API passes (the calendar link of a
@@ -961,9 +1006,12 @@ impl Controller {
         }
         let mut text = locale::for_owner(&out.text);
         for s in secrets.iter().map(|s| s.trim()).filter(|s| s.chars().count() >= 8) {
-            text = text.replace(s, "•••");
-            for b in out.buttons.iter_mut() {
-                b.label = b.label.replace(s, "•••");
+            // Also as written in a URL (a request error names its address).
+            for form in secret_forms(s) {
+                text = text.replace(&form, "•••");
+                for b in out.buttons.iter_mut() {
+                    b.label = b.label.replace(&form, "•••");
+                }
             }
         }
         out.text = clip(&text, OUT_MAX_CHARS);
@@ -981,7 +1029,14 @@ impl Controller {
     /// True when the question went out to at least one chat.
     fn push_question(&self, q: &errands::OwnerQuestion) -> bool {
         let rt = self.settings();
-        let chats = access::command_chats(&rt);
+        // Only chats a running adapter reaches: a Telegram channel without a
+        // bot token gets nothing, and the AI must not wait on the phone for it.
+        let reached: Vec<(String, String)> = access::telegram_bots(&rt).into_iter().flat_map(|b| b.chats).collect();
+        let is_telegram = |id: &str| id == ENV_TELEGRAM || rt.notify_channels.iter().any(|c| c.id == id && c.kind == "telegram");
+        let chats: Vec<(String, String)> = access::command_chats(&rt)
+            .into_iter()
+            .filter(|c| !is_telegram(&c.0) || reached.contains(c))
+            .collect();
         if chats.is_empty() || self.pushes.receiver_count() == 0 {
             return false;
         }

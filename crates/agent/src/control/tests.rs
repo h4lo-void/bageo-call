@@ -140,7 +140,9 @@ async fn nothing_is_answered_until_commands_are_on_for_that_very_chat() {
 
     // A sender list narrows the chat down.
     rig.set(json!({"telegram_control_users": ["42", "x/y", "王小明", "42"]}));
-    assert_eq!(rig.state.settings_store.snapshot().telegram_control_users, vec!["42".to_string()]);
+    // Entries that are no id are kept as written (they match nobody), so a
+    // list of names alone still narrows the chat; repeats go.
+    assert_eq!(rig.state.settings_store.snapshot().telegram_control_users, vec!["42".to_string(), "x/y".to_string(), "王小明".to_string()]);
     assert_eq!(c.handle(&from(ENV_TELEGRAM, "42", "99", Body::Text("/help".into()))).await, None);
     assert!(c.handle(&owner("/status")).await.is_some());
 }
@@ -478,4 +480,73 @@ async fn the_telegram_bot_answers_its_chat_and_hands_card_presses_on() {
     assert!(replies[0]["text"].as_str().unwrap().contains("/errand"));
     assert_eq!(fake_api::sent(&seen, "setMyCommands")[0]["commands"].as_array().unwrap().len(), command::COMMANDS.len());
 }
+// ---- Acceptance review (correctness): edge cases of the confirmation and the questions.
 
+#[tokio::test]
+async fn review_a_yes_after_the_web_decided_the_to_do_does_not_undo_it() {
+    let rig = Rig::with_env_bot();
+    let c = rig.controller();
+    let id = rig.task("task-review-1", "王小明想改約時間").await;
+    let ask = c.handle(&owner(&format!("/ignore {id}"))).await.unwrap();
+    assert_eq!(ask.buttons.len(), 2, "{}", ask.text);
+    // Meanwhile the owner accepts it on the web console (it now waits for the phone).
+    rig.state.task_store.update_status(&id, TaskStatus::Confirmed).await.unwrap();
+    let late = c.handle(&owner("1")).await.unwrap();
+    assert!(
+        matches!(rig.task_status(&id).await, TaskStatus::Confirmed),
+        "the chat's yes to a pending to-do overrode the web console's decision: {}",
+        late.text
+    );
+}
+
+#[tokio::test]
+async fn review_a_typed_1_from_another_member_leaves_the_owners_confirmation_waiting() {
+    let rig = Rig::with_env_bot();
+    let c = rig.controller();
+    let id = rig.task("task-review-2", "回電給王小明").await;
+    let ask = c.handle(&owner(&format!("/ignore {id}"))).await.unwrap();
+    assert_eq!(ask.buttons.len(), 2, "{}", ask.text);
+    let other = c.handle(&from(ENV_TELEGRAM, "42", "43", Body::Text("1".into()))).await.unwrap();
+    assert!(reads_as(&other.text, |w| w.expired.to_string()), "{}", other.text);
+    assert!(matches!(rig.task_status(&id).await, TaskStatus::Pending));
+    // The owner's typed 1 works like the button (a new message, no edit).
+    let done = c.handle(&owner("1")).await.unwrap();
+    assert!(done.edit.is_none());
+    assert!(matches!(rig.task_status(&id).await, TaskStatus::Ignored), "{}", done.text);
+}
+
+#[test]
+fn review_a_long_reply_is_cut_to_4000_characters() {
+    let rig = Rig::with_env_bot();
+    let c = rig.controller();
+    let rt = rig.state.settings_store.snapshot();
+    let out = c.scrub(&rt, Outbound { text: "字".repeat(5000), buttons: vec![], edit: None });
+    assert_eq!(out.text.chars().count(), 4000);
+    assert!(out.text.ends_with('…'));
+}
+
+#[tokio::test]
+async fn review_a_question_is_not_counted_as_sent_to_a_chat_no_bot_can_reach() {
+    let rig = Rig::new();
+    rig.set(json!({
+        "telegram_bot_token": "123:TESTTOKEN",
+        "telegram_chat_id": "42",
+        "notify_channels": [{"kind": "telegram", "enabled": true, "token": "", "target": "-1001", "control": true}],
+    }));
+    let rt = rig.state.settings_store.snapshot();
+    assert!(rt.notify_channels[0].control, "{:?}", rt.notify_channels);
+    let bots = access::telegram_bots(&rt);
+    assert!(bots.iter().all(|b| b.chats.iter().all(|(_, chat)| chat != "-1001")), "no bot serves that chat: {bots:?}");
+    let c = rig.controller();
+    // The environment's bot is polled for its to-do cards, so a receiver exists.
+    let _env_bot = c.subscribe();
+    let q = crate::errands::OwnerQuestion {
+        errand_id: "e0123456789abcdef".into(),
+        question_id: "q1".into(),
+        who: "王小明".into(),
+        text: "七點還是八點？".into(),
+        options: vec![],
+        wait: Duration::from_secs(40),
+    };
+    assert!(!(c.question_hook())(&q), "the AI would wait 40 s on the phone for an answer no chat can give");
+}

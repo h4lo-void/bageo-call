@@ -21,6 +21,9 @@ pub enum Job {
     Errand { body: Value },
     Mode { serial: String, mode: PhoneMode },
     Decide { task_id: String, confirm: bool },
+    /// A line for the AI on a call or an answer to its question, read from
+    /// free text: done once the owner says yes.
+    Act { action: super::command::Action },
 }
 
 struct Pending {

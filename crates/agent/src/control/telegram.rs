@@ -79,13 +79,21 @@ pub async fn run_bot(ctrl: Arc<Controller>, http: Client, api: String, bot: Tele
         if let Some((_, chat)) = bot.chats.iter().find(|(id, _)| id == ENV_TELEGRAM) {
             poller.set_allowed_chat_id(chat);
         }
+        poller.set_card_senders(bot.card_lists.clone());
     }
-    let menu = if bot.commands {
+    // The menu goes only to this bot's chats that take commands now.
+    let rt = ctrl.settings();
+    let takes_commands = |id: &str| {
+        (id == ENV_TELEGRAM && rt.telegram_control) || rt.notify_channels.iter().any(|c| c.id == id && c.enabled && c.control)
+    };
+    let command_chats: Vec<String> = bot.chats.iter().filter(|(id, _)| takes_commands(id)).map(|(_, chat)| chat.clone()).collect();
+    let menu = if bot.commands && !command_chats.is_empty() {
         super::words::menu(super::words::words(crate::locale::notify_lang()))
     } else {
         Vec::new()
     };
-    tg_inbound::set_my_commands(&http, &api, &bot.token, &menu).await;
+    let all_chats: Vec<String> = bot.chats.iter().map(|(_, chat)| chat.clone()).collect();
+    tg_inbound::set_my_commands(&http, &api, &bot.token, &menu, if menu.is_empty() { &all_chats } else { &command_chats }).await;
     loop {
         let polled = match poller.poll_once(&http, &bot.token).await {
             Ok(p) => p,

@@ -409,9 +409,10 @@ pub fn sanitize_sender_ids(list: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for id in list.iter().flat_map(|s| s.split([',', ' ', '\n', ';'])) {
         let id = id.trim();
-        let ok = !id.is_empty()
-            && id.chars().count() <= 64
-            && id.chars().all(|c| c.is_ascii_alphanumeric() || "_@.:+-".contains(c));
+        // Kept as written even when it is no id (a name): it then matches no
+        // sender, so the list still narrows the chat. Dropping it would leave
+        // the list empty, and an empty list lets everyone in the chat.
+        let ok = !id.is_empty() && id.chars().count() <= 64 && !id.chars().any(char::is_control);
         if !ok || out.iter().any(|o| o == id) {
             continue;
         }

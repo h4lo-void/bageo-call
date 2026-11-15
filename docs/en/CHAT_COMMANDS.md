@@ -51,12 +51,15 @@ key the bot answers with a short pointer to `/help`.
 
 ## What waits for your OK
 
-Placing a call, switching a phone's mode and accepting or ignoring a to-do
-first get a summary with **✅ Go ahead / ✖ Drop** buttons (or reply **1** / **2**).
+Placing a call, switching a phone's mode and accepting or ignoring a to-do,
+and a line for the AI or an answer to its question that the model read from
+your free text (typed `/say` and replies to its question go at once), first
+get a summary with **✅ Go ahead / ✖ Drop** buttons (or reply **1** / **2**).
 
 - It waits **2 minutes**; after that it does nothing.
 - Only the person who asked, in the same chat, can confirm it, and only once.
-  A newer request replaces an older one.
+  A newer request replaces an older one. A to-do already decided on the web
+  console or a card is left as it is.
 - A call is checked before you are asked: emergency, short-code and
   premium-rate numbers, a phone with a SIM of the number's country, and so on,
   exactly as on the web console.
@@ -86,7 +89,12 @@ The result of an AI call still arrives as the usual notification.
   callers say are never given to the model that reads your messages, so words
   spoken on a call cannot become a command.
 - Anyone who can write in a chat with commands on can use them. Keep it a
-  private chat with the bot, or list the allowed user IDs.
+  private chat with the bot, or list the allowed user IDs. Entries that are no
+  ID (a name) are kept and match nobody, so a list never turns into "everyone".
+  The list also applies to the to-do cards' buttons, and when the same bot and
+  chat are switched on twice, both lists apply.
+- The command menu is set only for the chats that take commands; strangers
+  who open the bot see none. Forwarded messages are never read as commands.
 
 ## Settings
 

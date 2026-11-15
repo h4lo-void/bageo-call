@@ -27,25 +27,54 @@ pub fn chat_key(channel_id: &str, chat_id: &str) -> String {
 /// Whether this sender in this chat may give commands. None: not allowed (the
 /// switch is off, another chat, a sender not on the list, an unknown channel).
 pub fn authorize(rt: &RuntimeSettings, m: &Inbound) -> Option<Grant> {
-    let (on, kind, chat, users) = if m.channel_id == ENV_TELEGRAM {
+    let (on, kind, chat, token, users) = if m.channel_id == ENV_TELEGRAM {
         (
             rt.telegram_control && !rt.telegram_bot_token.trim().is_empty(),
             "telegram",
             rt.telegram_chat_id.trim(),
+            rt.telegram_bot_token.trim(),
             &rt.telegram_control_users,
         )
     } else {
         let c = rt.notify_channels.iter().find(|c| !c.id.is_empty() && c.id == m.channel_id)?;
-        (c.enabled && c.control && COMMAND_KINDS.contains(&c.kind.as_str()), c.kind.as_str(), c.target.trim(), &c.control_users)
+        (
+            c.enabled && c.control && COMMAND_KINDS.contains(&c.kind.as_str()),
+            c.kind.as_str(),
+            c.target.trim(),
+            c.token.trim(),
+            &c.control_users,
+        )
     };
     if !on || kind != m.platform || chat.is_empty() || m.chat_id.trim() != chat {
         return None;
     }
+    // Every list on the same bot and chat applies: one entry switched on
+    // without a list must not undo another one's list.
     let sender = m.sender_id.trim();
-    if !users.is_empty() && !users.iter().any(|u| !sender.is_empty() && u.trim() == sender) {
+    let mut lists = sender_lists(rt, kind, token, chat);
+    lists.push(users);
+    if !lists.iter().all(|l| l.is_empty() || (!sender.is_empty() && l.iter().any(|u| u.trim() == sender))) {
         return None;
     }
     Some(Grant { chat: chat_key(&m.channel_id, chat) })
+}
+
+/// The sender lists of every entry switched on for one bot and chat: the
+/// environment's Telegram bot and each channel with the same kind, token and target.
+pub fn sender_lists<'a>(rt: &'a RuntimeSettings, kind: &str, token: &str, chat: &str) -> Vec<&'a Vec<String>> {
+    let mut out = Vec::new();
+    if token.is_empty() || chat.is_empty() {
+        return out;
+    }
+    if kind == "telegram" && rt.telegram_control && rt.telegram_bot_token.trim() == token && rt.telegram_chat_id.trim() == chat {
+        out.push(&rt.telegram_control_users);
+    }
+    for c in &rt.notify_channels {
+        if c.enabled && c.control && c.kind == kind && c.token.trim() == token && c.target.trim() == chat {
+            out.push(&c.control_users);
+        }
+    }
+    out
 }
 
 /// The chats that take commands now: (channel id, chat id). Questions from the
@@ -80,6 +109,9 @@ pub struct TelegramBot {
     /// At least one of its chats takes commands (its command menu is set).
     pub commands: bool,
     pub chats: Vec<(String, String)>,
+    /// The environment's bot: to-do card buttons count only from a sender on
+    /// each of these lists (empty: anyone in its chat).
+    pub card_lists: Vec<Vec<String>>,
 }
 
 /// The bots to poll: the environment's whenever it is set (its to-do cards
@@ -106,7 +138,7 @@ pub fn telegram_bots(rt: &RuntimeSettings) -> Vec<TelegramBot> {
                     }
                 }
             }
-            None => bots.push(TelegramBot { token: token.to_string(), env, commands, chats: vec![chat] }),
+            None => bots.push(TelegramBot { token: token.to_string(), env, commands, chats: vec![chat], card_lists: Vec::new() }),
         }
     };
     for c in &rt.notify_channels {
@@ -120,6 +152,21 @@ pub fn telegram_bots(rt: &RuntimeSettings) -> Vec<TelegramBot> {
         (ENV_TELEGRAM.to_string(), rt.telegram_chat_id.trim().to_string()),
         rt.telegram_control,
     );
+    // The card buttons of the environment's bot follow the sender lists of its
+    // chat (its own, also when commands are off, and the same chat's channels).
+    let env_chat = rt.telegram_chat_id.trim();
+    if let Some(b) = bots.iter_mut().find(|b| b.env) {
+        let mut lists: Vec<Vec<String>> = Vec::new();
+        if !rt.telegram_control_users.is_empty() {
+            lists.push(rt.telegram_control_users.clone());
+        }
+        for l in sender_lists(rt, "telegram", &b.token, env_chat) {
+            if !l.is_empty() && !lists.contains(l) {
+                lists.push(l.clone());
+            }
+        }
+        b.card_lists = lists;
+    }
     bots
 }
 
