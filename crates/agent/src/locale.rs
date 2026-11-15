@@ -1066,7 +1066,8 @@ static EN: Phrases = Phrases {
     farewells: &[
         "bye", "bye bye", "bye now", "goodbye", "good bye", "see you", "see ya", "see you later",
         "talk to you later", "talk later", "talk soon", "speak soon", "take care",
-        "have a good day", "have a nice day", "have a great day", "have a good one",
+        "have a good day", "have a nice day", "have a great day", "have a wonderful day",
+        "have a lovely day", "have a good one", "have a good evening", "have a great evening",
         "have a good night", "good night", "cheers",
     ],
     wrapups: &[
@@ -1376,7 +1377,7 @@ static KO: Phrases = Phrases {
     ap_web_label: "웹에서 확인",
     farewells: &[
         "안녕히 계세요", "안녕히계세요", "안녕히 가세요", "들어가세요", "끊을게요", "끊겠습니다",
-        "수고하세요", "바이바이", "다음에 봬요", "다음에 뵙겠습니다",
+        "수고하세요", "좋은 하루 되세요", "좋은 하루 보내세요", "바이바이", "다음에 봬요", "다음에 뵙겠습니다",
     ],
     wrapups: &[
         "이상입니다", "그게 다예요", "다시 전화드릴게요", "다시 전화드리겠습니다",
@@ -1527,8 +1528,11 @@ static ES: Phrases = Phrases {
     ap_web_label: "Confirmar en la web",
     farewells: &[
         "adiós", "adios", "hasta luego", "hasta pronto", "hasta mañana", "nos vemos", "chao",
-        "chau", "que tenga buen día", "que tenga un buen día", "que tengas buen día", "cuídese",
-        "cuídate", "un saludo", "órale gracias", "orale gracias",
+        "chau", "que tenga buen día", "que tenga un buen día", "que tengas buen día",
+        "que tenga un excelente día", "que tengas un excelente día", "que tenga excelente día",
+        "que tenga un lindo día", "que tengas un lindo día", "que tenga un feliz día",
+        "que tengas un feliz día", "que tenga buena tarde", "que tenga una buena tarde",
+        "que tenga excelente tarde", "cuídese", "cuídate", "un saludo", "órale gracias", "orale gracias",
     ],
     wrapups: &[
         "eso es todo", "nada más", "eso sería todo", "le dejo", "te dejo", "tengo que irme",
@@ -1679,7 +1683,8 @@ static FR: Phrases = Phrases {
     ap_web_label: "Confirmer sur le web",
     farewells: &[
         "au revoir", "à bientôt", "a bientot", "à plus", "à plus tard", "à tout à l'heure",
-        "à demain", "bonne journée", "bonne journee", "bonne soirée", "bonne fin de journée", "ciao",
+        "à demain", "bonne journée", "bonne journee", "excellente journée", "très bonne journée",
+        "bonne soirée", "bonne fin de journée", "ciao",
     ],
     wrapups: &[
         "c'est tout", "rien d'autre", "je vous laisse", "je te laisse", "je dois y aller",
@@ -1830,8 +1835,8 @@ static DE: Phrases = Phrases {
     ap_web_label: "Im Web bestätigen",
     farewells: &[
         "tschüss", "tschüs", "tschuess", "auf wiederhören", "auf wiedersehen", "wiederhören",
-        "bis bald", "bis später", "bis dann", "schönen tag noch", "schönen tag", "schönen abend noch",
-        "mach's gut", "machs gut", "ciao",
+        "bis bald", "bis später", "bis dann", "schönen tag noch", "schönen tag", "einen schönen tag",
+        "schönen abend noch", "mach's gut", "machs gut", "ciao",
     ],
     wrapups: &[
         "das war's", "das wars", "das wäre alles", "das ist alles", "sonst nichts",
@@ -1982,7 +1987,8 @@ static PT: Phrases = Phrases {
     ap_web_label: "Confirmar na web",
     farewells: &[
         "tchau", "adeus", "até logo", "até mais", "até breve", "até amanhã", "tenha um bom dia",
-        "tenha uma boa tarde", "um abraço", "falou", "valeu",
+        "tenha um ótimo dia", "tenha uma boa tarde", "tenha uma ótima tarde",
+        "tenha uma boa noite", "um abraço", "falou", "valeu",
     ],
     wrapups: &[
         "é só isso", "só isso", "mais nada", "é tudo", "tenho que ir", "preciso desligar",
@@ -2916,6 +2922,23 @@ mod tests {
             }
             assert!(p.sep.contains(':') || p.sep.contains('：'), "{l:?}");
             assert_eq!(fill(p.vm_call_back_to, "0912").matches("0912").count(), 1, "{l:?}");
+        }
+    }
+
+    #[test]
+    fn polite_service_farewells_close_without_matching_greetings() {
+        for s in [
+            "Thanks for your time and have a wonderful day.",
+            "Muchas gracias por su tiempo. Y que tenga un excelente día.",
+            "Merci beaucoup, excellente journée.",
+            "Vielen Dank und einen schönen Tag.",
+            "Obrigado, tenha um ótimo dia.",
+            "감사합니다, 좋은 하루 되세요.",
+        ] {
+            assert!(ends_with_farewell(s, 0), "expected farewell: {s}");
+        }
+        for open in ["Hola, buen día, hablo del banco.", "Olá, bom dia, tudo bem?"] {
+            assert!(!ends_with_farewell(open, 2), "greeting must not match farewell: {open}");
         }
     }
 }

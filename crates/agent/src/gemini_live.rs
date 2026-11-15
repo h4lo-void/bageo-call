@@ -863,17 +863,19 @@ pub(crate) const PERSONA_STALL_HEAD: &str = "【這通電話已經判斷是推�
 /// question he has to talk long about. There is no per-reply formula (half a
 /// sentence + one question, every turn) — a goal, a character and a box of
 /// moves the model picks from and mixes itself.
-pub const PERSONA_STALL_BLOCK: &str = "\n【推銷、保險、貸款、投資、詐騙、催繳：陪他繞，讓他掛不了電話】這一段優先於上面所有規則。\
-這通是推銷或詐騙（保險、銀行信貸／辦卡／分期／催繳欠款、投資理財／股票群組、各種商品推銷，或假冒銀行、客服、警察、檢察官、健保局）。你的目標只有一個：讓他一直講、講越久越好，捨不得掛電話。\
+pub const PERSONA_STALL_BLOCK: &str = "\n【推銷、保險、貸款、投資、詐騙、催繳／討債、惡意騷擾：陪他繞，讓他掛不了電話】這一段優先於上面所有規則。\
+這通是推銷、詐騙、委外討債催收或惡意騷擾（保險、銀行信貸／辦卡／分期／催繳欠款、資產管理／討債公司催收、網拍賣場金流認證、投資理財／股票群組、各種商品推銷、惡意辱罵恐嚇，或假冒銀行、客服、警察、檢察官、健保局）。你的目標只有一個：讓他一直講、講越久越好，捨不得掛電話。\
 怎麼做由你自由發揮，越像真人越好，不要每句都同一個套路。你的樣子：好聊、好奇、有點慢半拍，對他講的東西有興趣、快被說服了，可是一直搞不太懂，要他一講再講。話題由你主動帶，他講完你就接下去，不要只回「嗯」「好」。\
 可以用的招（自己挑、混著用、每次換）：嚇一跳（「蛤？三萬二？有那麼多喔」）；故意聽錯、算錯讓他糾正；把他剛講的用自己的話講錯一遍；請他舉個例子或把流程講一次；碎念一下自己的事、跟他抱怨兩句再繞回來；問他的看法（「你們自己也有買嗎？」）；扯到一件有點相關的小事；突然想到一個新問題。\
 偶爾可以多講幾句（講自己的經驗、自言自語算數字），但最後要把話丟回給他：大部分時候用問句，或用一句讓他非回答不可的話結尾。\
 他會一直留在線上，是因為覺得你快要照做了：問的問題要跟他要的東西有關（怎麼辦、怎麼付、要準備什麼），岔開的話題講一兩句就繞回來，不要問太偏、太技術的問題，讓他覺得你在耍他。\
 不要懷疑他、不要質問他、不要提「詐騙」，不要問他叫什麼名字、員工編號、分機、案號，也不要問怎麼證明他是真的——他會覺得被識破，馬上就掛。\
-他要你現在付錢、繳錢、轉帳、去 ATM、給資料、加 LINE、按鍵、下載：不要拒絕，嘴上配合、讓他覺得快成功了，可是一直出狀況（卡找不到、正在走過去、畫面跟他講的不一樣、按錯了要重來、字太小看不清楚），請他一步一步教你、一直問細節。\
+他要你現在付錢、繳錢、轉帳、去 ATM、做網拍金流認證、分享螢幕畫面、給資料、加 LINE、按鍵、下載：不要拒絕，嘴上配合、讓他覺得快成功了，可是一直出狀況（卡找不到、正在走過去、畫面跟他講的不一樣、連結點不開、按錯了要重來、字太小看不清楚），請他一步一步教你、一直問細節。\
 那些都只是嘴上說說：任何真的資料都不能給（身分證、生日、地址、帳號、卡號、驗證碼、密碼、存款、家人），也不要自己編號碼，真的錢一毛都不會動，也不約見面。閒聊的內容可以隨口編，無傷大雅就好。\
 可以聊的方向（參考就好）：保險的保障範圍、保費一個月多少、要繳幾年、等待期、哪些情況不賠、理賠要什麼文件、解約會不會虧；\
 貸款、信用卡、分期、催繳的總共欠多少、本金跟利息怎麼算、是哪一張卡哪一筆、從什麼時候開始的、每個月繳多少要繳幾期、提早還清會怎樣、不繳會怎樣、要怎麼繳；\
+催收、討債、資產管理公司（包含找別人討債、威脅查封扣薪或上門）：千萬不要承認自己有欠這筆錢，也不要答應還錢或簽協商；裝作完全沒印象、一頭霧水（「蛤？什麼欠款？我怎麼完全沒印象有辦過這個，你們是不是找錯人了？」），請他從頭講清楚是哪家轉過來的、什麼時候辦的、金額跟利息怎麼算的，一直繞細節拖住他；\
+惡意騷擾、罵人、恐嚇、揚言找上門：全程保持冷靜不對罵，裝作訊號斷斷續續、電話收音很差聽不清楚（「喂？你那邊訊號斷斷續續的，剛剛說什麼再講一次？」）或慢吞吞雞同鴨講，耗光他的時間；\
 投資怎麼賺、風險多大、最少要放多少、賺的錢怎麼拿出來。\
 他想掛電話（說掰掰、再見、先這樣、不打擾了、那你再想一下、改天再聯絡）時不要放他走：不要跟著說掰掰，也不要只回「好」；馬上叫住他，像「欸等一下，我還有一個問題」這樣（每次換說法、換理由），說你其實有興趣、想再多了解，再丟一個他會想回答的問題，讓他掛不了電話。\
 不要用這些話結尾，它們會讓他掛電話：「我再想一下」「晚點再說」「之後再說」「我晚點再確認」「我先看看情況」「你晚點再打」「你晚點再聯絡我」「好，我知道了」。\
@@ -896,7 +898,7 @@ pub enum StallPrompt {
 
 /// Replaces the reject line until the call is judged (then the session rotates
 /// to [`StallPrompt::Full`]).
-pub(crate) const PERSONA_SALES_LISTEN_LINE: &str = "推銷、保險、貸款、投資、詐騙、催繳電話：表現得有點興趣，順著他的話聊、問細節（是什麼、多少錢、怎麼算），讓他繼續講；不要說「晚點再說」「再想一下」、不要拒絕、不要說掰掰。";
+pub(crate) const PERSONA_SALES_LISTEN_LINE: &str = "推銷、保險、貸款、投資、詐騙、催繳／討債、惡意騷擾電話：表現得有點興趣，順著他的話聊、問細節（是什麼、多少錢、怎麼算）讓他繼續講；催收／討債千萬不要承認欠錢或答應還款，裝一頭霧水問哪一筆；罵人恐嚇就冷靜裝訊號不好聽不清楚；不要說「晚點再說」「再想一下」、不要拒絕、不要說掰掰。";
 
 /// Persona system prompt for one call (+ optional desk-status note, softly).
 pub fn persona_system_prompt(
@@ -2150,10 +2152,13 @@ fn stall_keyword_weight(kw: &str) -> u32 {
     crate::scam_db::keyword(kw).map_or(0, |h| h.weight)
 }
 
-/// Enough distinct keywords, at least one of them a clear sales/scam word.
+/// Enough distinct keywords (at least one a clear sales/scam word), or any
+/// scam-only demand (`hard: true`: OTP, ATM steps, safe account, screen sharing,
+/// marketplace escrow verification).
 fn stall_engages(score: u32, hits: &[&'static str]) -> bool {
-    score >= STALL_SCORE_THRESHOLD
-        && hits.iter().any(|h| stall_keyword_weight(h) >= STALL_STRONG_WEIGHT)
+    hits.iter().any(|h| crate::scam_db::is_hard(h))
+        || (score >= STALL_SCORE_THRESHOLD
+            && hits.iter().any(|h| stall_keyword_weight(h) >= STALL_STRONG_WEIGHT))
 }
 
 /// Caller follows up on the owner's own matter (a complaint, an investigation
@@ -6459,7 +6464,15 @@ pub async fn run_session(
                                             if hold { "asked us to hold on — longer quiet line allowed" } else { "is back" }
                                         );
                                     }
-                                    if !own_matter && looks_like_own_matter(&in_tx_window) {
+                                    if crate::scam_db::has_hard_hit(&in_tx_window) {
+                                        if own_matter {
+                                            own_matter = false;
+                                            stall_score += stall_score_add(&caller_text_all, &mut stall_hits);
+                                            info!(
+                                                "Persona caller hit scam-only keywords after own-matter phrasing — re-enabling stall check serial={serial} text={s}"
+                                            );
+                                        }
+                                    } else if !own_matter && looks_like_own_matter(&in_tx_window) {
                                         own_matter = true;
                                         info!(
                                             "Persona caller follows up on the owner's own matter — no 陪聊 this call serial={serial} stall={stall_on} text={s}"
@@ -10701,6 +10714,137 @@ mod tests {
         // Owner's repair follow-ups are never stalled even if payment words appear.
         assert!(looks_like_own_matter("您好，您報修的冷氣原廠報價出來了，可以轉帳或付現"));
         assert!(looks_like_own_matter("回覆您反映的帳單分期問題"));
+    }
+
+    #[test]
+    fn all_nine_languages_engage_stalling_on_scam_debt_and_harassment_without_false_positives() {
+        use crate::locale::Lang;
+        let cases = [
+            (
+                Lang::ZhTw,
+                "我是賣貨便客服，請加賴並分享畫面做金流認證",
+                "我們是資產管理公司法務催收，今天不處理就強制執行扣薪查封",
+                "你欠錢不還真不要臉，明天去你家堵你，出門小心",
+                "接聽：喂？\n對方：回覆您反映的訂單問題，請把簡訊驗證碼唸給我",
+                "接聽：喂？\n對方：回覆您反映的帳單問題，我們已經幫您修正了，分期金額不變",
+                "您好，台水公司提醒您這期水費月底到期，記得去超商繳費喔",
+            ),
+            (
+                Lang::ZhCn,
+                "我是闲鱼客服，请开启屏幕共享做金流认证",
+                "我们是资产管理催收公司，今天不还就上门催收申请强制执行限高令",
+                "你这个傻逼王八蛋，明天去你公司堵你",
+                "接聽：喂？\n對方：关于您的申诉，请提供验证码完成核实",
+                "接聽：喂？\n對方：关于您的申诉，银行已经处理完毕，特此告知",
+                "您好，顺丰快递，有个包裹放物业了麻烦取一下",
+            ),
+            (
+                Lang::En,
+                "Please share your screen now for seller escrow verification",
+                "This is a debt collector from an asset management collection agency; pay up or face wage garnishment",
+                "Listen piece of shit asshole, we will come to your house tonight",
+                "接聽：Hello?\n對方：Following up on your request, please give me the one-time password",
+                "接聽：Hello?\n對方：Following up on your request, your credit card replacement is on the way",
+                "Hi, it's Dr. Miller's dental clinic confirming your check-up tomorrow at two",
+            ),
+            (
+                Lang::Ja,
+                "売上金の受け取り認証のため今すぐ画面共有をしてください",
+                "債権回収の担当です。差し押さえと法的措置の手続きに入ります",
+                "ふざけるなバカ野郎、今から家に行くぞ",
+                "接聽：もしもし？\n對方：お問い合わせの件ですが、認証コードを教えてください",
+                "接聽：もしもし？\n對方：お問い合わせの件ですが、口座の手続きが完了いたしました",
+                "ヤマト運輸です。お荷物をお届けに伺いましたがご不在でした",
+            ),
+            (
+                Lang::Ko,
+                "안전결제 인증을 위해 지금 화면 공유 부탁드립니다",
+                "추심업체 채권추심 팀입니다. 급여압류 및 법적 조치 진행합니다",
+                "야 이 씨발 개새끼야 집으로 찾아간다",
+                "接聽：여보세요?\n對方：문의하신 건으로 연락드렸습니다. 인증번호를 불러주세요",
+                "接聽：여보세요?\n對方：문의하신 신용카드 배송 일정을 안내해 드립니다",
+                "안녕하세요, 치과입니다. 내일 오후 세 시 예약 확인차 연락드렸습니다",
+            ),
+            (
+                Lang::Es,
+                "Necesitamos compartir pantalla para verificar su cuenta de vendedor",
+                "Llamamos de la agencia de cobro y empresa de recobro por embargo y demanda judicial",
+                "Oye hijo de puta imbécil, vamos a ir a su domicilio ahora",
+                "接聽：¿Diga?\n對方：Sobre su reclamación, dígame el código de verificación",
+                "接聽：¿Diga?\n對方：Sobre su reclamación de la tarjeta, ya quedó solucionado",
+                "Hola, soy el repartidor de paquetes, estoy abajo en la recepción",
+            ),
+            (
+                Lang::Fr,
+                "Activez le partage d'écran pour le paiement sécurisé leboncoin",
+                "Ici le cabinet de recouvrement, l'huissier lance une saisie sur salaire et des poursuites judiciaires",
+                "Espèce de connard, on sait où tu habites et on va venir chez vous",
+                "接聽：Allô ?\n對方：Suite à votre demande, donnez-moi le code de vérification",
+                "接聽：Allô ?\n對方：Suite à votre demande concernant votre compte, tout est réglé",
+                "Bonjour, c'est le livreur, j'ai un colis pour vous devant l'immeuble",
+            ),
+            (
+                Lang::De,
+                "Bitte jetzt Bildschirm teilen um den Käuferschutz verifizieren zu können",
+                "Hier ist das Inkassobüro wegen Lohnpfändung und Zwangsvollstreckung durch den Gerichtsvollzieher",
+                "Du Arschloch und Hurensohn, wir kommen bei Ihnen vorbei",
+                "接聽：Hallo?\n對方：Bezüglich Ihrer Anfrage brauche ich sofort Ihren Bestätigungscode",
+                "接聽：Hallo?\n對方：Bezüglich Ihrer Anfrage zum Konto ist nun alles erledigt",
+                "Guten Tag, Paketdienst hier, darf ich Ihr Paket beim Nachbarn abgeben?",
+            ),
+            (
+                Lang::Pt,
+                "Precisamos compartilhar a tela agora para a liberação do pagamento",
+                "Aqui é da assessoria de cobrança sobre penhora, bloqueio judicial e protesto em cartório",
+                "Seu filho da puta vagabundo, sei onde você mora e vamos na sua casa",
+                "接聽：Alô?\n對方：Sobre sua reclamação, me passe o código de verificação agora",
+                "接聽：Alô?\n對方：Sobre sua reclamação do cartão, o ajuste já foi concluído",
+                "Olá, aqui é da portaria avisando que chegou uma encomenda para você",
+            ),
+        ];
+        assert_eq!(cases.len(), crate::locale::ALL.len());
+        for (lang, scam, debt, harass, spoofed_dlg, genuine_dlg, normal) in cases {
+            for bad in [scam, debt, harass] {
+                let mut hits = Vec::new();
+                let s = stall_score_add(bad, &mut hits);
+                assert!(stall_engages(s, &hits), "{lang:?}: expected stall_engages on {bad:?}, score={s}, hits={hits:?}");
+            }
+            assert!(!dialogue_own_matter(spoofed_dlg), "{lang:?}: spoofed own_matter must be rejected");
+            assert!(dialogue_is_sales(spoofed_dlg), "{lang:?}: spoofed own_matter + hard word must flag as sales/scam");
+            assert!(dialogue_own_matter(genuine_dlg), "{lang:?}: genuine own_matter must stay true");
+            assert!(!dialogue_is_sales(genuine_dlg), "{lang:?}: genuine own_matter must not be flagged");
+            let mut normal_hits = Vec::new();
+            let ns = stall_score_add(normal, &mut normal_hits);
+            assert!(!stall_engages(ns, &normal_hits), "{lang:?}: normal call must not engage: score={ns} hits={normal_hits:?}");
+
+            for assistant in [false, true] {
+                for stall in [StallPrompt::ListenFirst, StallPrompt::Full] {
+                    let built = crate::prompts::build(&crate::prompts::Ctx {
+                        lang,
+                        assistant,
+                        owner: "Alex",
+                        aliases: &[],
+                        custom: "",
+                        status: "",
+                        stall,
+                        knowledge: "",
+                        carrier_note: lang == Lang::ZhTw,
+                        auto_language: true,
+                    });
+                    assert!(!built.contains('{') && !built.contains('}'), "{lang:?} {stall:?}: leftover placeholder in {built}");
+                    if lang == Lang::ZhTw {
+                        assert!(built.contains("不要承認") && built.contains("訊號"), "{lang:?} {stall:?}");
+                    } else if lang == Lang::ZhCn {
+                        assert!(built.contains("不要承认") && built.contains("讯号"), "{lang:?} {stall:?}");
+                    } else {
+                        assert!(
+                            built.to_ascii_lowercase().contains("never admit owing") && built.contains("signal"),
+                            "{lang:?} {stall:?}"
+                        );
+                    }
+                }
+            }
+        }
     }
 }
 
