@@ -13,6 +13,18 @@
 - **Chat commands (Telegram).** From the chat your notifications go to, look up calls (`/calls`, `/call`), have the AI call someone (`/errand` or plain words), decide to-dos, answer the AI's questions during its call and switch a phone's mode. Off until switched on per chat; calls, mode switches and to-do decisions wait for your OK; other chats get no answer. See [docs/en/CHAT_COMMANDS.md](docs/en/CHAT_COMMANDS.md).
 - **在聊天室操作（Telegram）。** 在收通知的聊天室就能查通話紀錄（`/calls`、`/call`）、叫 AI 代打（`/errand` 或直接打字）、處理待辦、回答 AI 通話中的問題、切換手機模式。要在每個聊天室各自打開；撥電話、切換模式、處理待辦都會先問你確認；其他聊天室一律不回覆。見 [docs/zh-TW/CHAT_COMMANDS.md](docs/zh-TW/CHAT_COMMANDS.md)。
 - **在聊天室操作（Telegram）。** 在接收通知的聊天室就能查通话记录（`/calls`、`/call`）、让 AI 代打（`/errand` 或直接打字）、处理待办、回答 AI 通话中的问题、切换手机模式。要在每个聊天室各自打开；拨电话、切换模式、处理待办都会先问你确认；其他聊天室一律不回复。见 [docs/zh-CN/CHAT_COMMANDS.md](docs/zh-CN/CHAT_COMMANDS.md)。
+- **Sharper scam and sales detection, in 19 languages.** What sales and scam
+  calls sound like is now a database (42 kinds of call, keywords in 19
+  languages) instead of word lists in the code, and you can add your own words
+  and numbers in `config/scam_db.local.json`. Calls without known words are
+  looked at too, so new scripts are caught; an unsure answer waits for the
+  caller's next turn; a review that fails convicts nobody unless they asked for
+  scam-only things (a code, ATM steps, a safe account); a caller judged wrongly
+  is let go back to a normal conversation. Each call's page shows what the call
+  was judged and lets you mark it scam, sales or not; the number's next calls
+  are judged with your mark. See [Settings](docs/en/SETTINGS.md#sales--scam-calls).
+- **繁體中文：詐騙與推銷辨識更準，支援 19 種語言。** 推銷與詐騙的說法改成資料庫（42 種話術、19 種語言的關鍵字），不再寫死在程式裡，也可以在 `config/scam_db.local.json` 加自己的字眼和號碼。沒踩到已知字眼的電話也會檢查，新話術也抓得到；模型不確定時等對方下一句再看；複審失敗時，除非對方要驗證碼、操作 ATM、轉安全帳戶這類只有詐騙才會要的東西，不再一律當詐騙；誤判的來電會放回正常應對。通話頁會顯示判斷結果，可以標「是詐騙」「是推銷」「不是」，這個號碼之後打來會參考你的標記。
+- **简体中文：诈骗与推销识别更准，支持 19 种语言。** 推销与诈骗的说法改成数据库（42 种话术、19 种语言的关键词），不再写死在程序里，也可以在 `config/scam_db.local.json` 加自己的词和号码。没碰到已知词的电话也会检查，新话术也能抓到；模型不确定时等对方下一句再看；复审失败时，除非对方要验证码、操作 ATM、转安全账户这类只有诈骗才会要的东西，不再一律当诈骗；误判的来电会放回正常应对。通话页会显示判断结果，可以标“是诈骗”“是推销”“不是”，这个号码之后打来会参考你的标记。
 
 # Bageo v1.0.0
 

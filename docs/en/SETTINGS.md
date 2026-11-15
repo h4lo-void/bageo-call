@@ -65,6 +65,26 @@ A caller opens with a "pre-approved loan", or claims to be from your bank's secu
 | Keep them talking | on | The stalling described above. Off: the AI declines and ends the call. |
 | Longest such call | 30 min | 3 to 30 minutes. Longer calls use more of your Gemini quota. |
 | Model for these calls | `gemini-3.8-live` | The model a call switches to once it is judged sales or scam. Empty = keep the call's own model. |
+| Also check calls without sales or scam words | on | A low-cost model reads what the caller has said, at most three times a call, so new scripts, other languages and garbled words are caught as well. Off: only calls that use known sales or scam words are checked. |
+
+**How a call is judged.** Words from the built-in scam database (42 kinds of sales and scam calls, keywords in 19 languages) start a second look by a low-cost model; with the setting above, calls without such words get a look too. The model names the kind of call and how sure it is, and an unsure answer waits for the caller's next turn. When the model does not answer in time, only requests that are a scam whoever makes them (a verification code, ATM steps, gift cards, remote access, a "safe account") start the stalling at once; otherwise the next turn is looked at, and after two failures in a row the keywords decide alone. Two caller turns into the stalling, one more look can let a wrongly judged caller go back to a normal conversation. Saved contacts and numbers you marked *It was not* are left alone, unless they ask for those scam-only things.
+
+On a call's page, *Sales / scam check* shows what the call was judged and which kind; *It was a scam*, *It was sales* and *It was not* mark the number, and its next calls are judged with your mark (hidden numbers are not remembered). Your own words and numbers go in `config/scam_db.local.json` in the data folder. It is read again when it changes, and a missing or broken file changes nothing:
+
+```json
+{
+  "keywords": [
+    {"text": "會員續約專線", "lang": "zh-TW", "typology": "general_promotion", "weight": 2},
+    {"text": "read me the six digits", "lang": "en", "typology": "otp_theft", "weight": 2, "hard": true}
+  ],
+  "numbers": [
+    {"number": "0223456789", "verdict": "safe", "note": "building management"},
+    {"number": "+15550100", "verdict": "scam", "typology": "irs_ssa_impersonation"}
+  ]
+}
+```
+
+`weight` is 1 (counts only with other words) or 2 (clear on its own); `hard` counts only for a kind of call that is a scam whoever asks. `typology` must be one of the built-in kinds in `crates/agent/data/scam_db.json`; entries the agent cannot place are skipped and named in its log.
 
 ### Prompt
 

@@ -88,6 +88,50 @@ pub struct CallRecord {
     /// That SIM's Android subscription id, when the phone app said.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sim_sub_id: Option<i64>,
+    /// How the call was judged as sales / scam, when it was (kind of call,
+    /// confidence, let go again) — whether or not the AI kept them talking.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scam: Option<ScamJudgement>,
+    /// What the owner said about it on the console (`scam` / `sales` / `safe`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scam_feedback: Option<String>,
+}
+
+/// How a call was judged as sales / scam during the call.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScamJudgement {
+    /// `scam` or `sales`.
+    pub kind: String,
+    /// The scam database's kind of call ([`crate::scam_db`]); empty when none was named.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub typology: String,
+    /// The second look's `high` / `medium` / `low`; empty when it did not answer.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub confidence: String,
+    /// What decided: `review` (the second look), `hard_words` (it did not answer
+    /// and the caller said words only scammers say), `keywords` (it kept failing).
+    #[serde(default)]
+    pub source: String,
+    /// A later look found an ordinary call and the AI went back to normal.
+    #[serde(default)]
+    pub released: bool,
+}
+
+impl ScamJudgement {
+    /// The call still counts as sales / scam (not let go again).
+    pub fn stands(&self) -> bool {
+        !self.released
+    }
+}
+
+/// An owner's mark for a call: `scam`, `sales` or `safe` (also `not_scam` / `normal`).
+pub fn parse_scam_verdict(s: &str) -> Option<&'static str> {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "scam" => Some("scam"),
+        "sales" => Some("sales"),
+        "safe" | "not_scam" | "normal" => Some("safe"),
+        _ => None,
+    }
 }
 
 /// Detailed post-call record for the web UI (the notification only gets `summary`).
@@ -258,6 +302,8 @@ pub struct ActiveCall {
     /// The SIM the call came in on: country and Android subscription id.
     sim_country: Option<String>,
     sim_sub_id: Option<i64>,
+    /// How the call was judged as sales / scam (set while it goes on).
+    scam: Option<ScamJudgement>,
 }
 
 impl ActiveCall {
@@ -267,6 +313,15 @@ impl ActiveCall {
 
     pub fn has_event(&self, ev: &str) -> bool {
         self.events.iter().any(|e| e == ev)
+    }
+
+    /// How the call was judged as sales / scam so far.
+    pub fn set_scam(&mut self, judged: ScamJudgement) {
+        self.scam = Some(judged);
+    }
+
+    pub fn scam(&self) -> Option<&ScamJudgement> {
+        self.scam.as_ref()
     }
 
     /// The SIM the call came in on (unknown parts stay as they were).
@@ -1458,6 +1513,7 @@ impl CallStore {
                 events,
             );
             call.set_sim(rec.sim_country.clone(), rec.sim_sub_id);
+            call.scam = rec.scam.clone();
             // In progress again (the call list and /live show it so).
             rec.status = "active".to_string();
             rec.ended_at = None;
@@ -1530,6 +1586,7 @@ impl CallStore {
             appointments: None,
             sim_country: None,
             sim_sub_id: None,
+            scam: None,
         }
     }
 
@@ -1738,6 +1795,20 @@ impl CallStore {
     pub async fn get(&self, id: &str) -> Option<CallRecord> {
         let idx = self.index.lock().await;
         idx.calls.iter().find(|c| c.id == id).cloned()
+    }
+
+    /// The owner's mark for a call (`scam` / `sales` / `safe`): the record after
+    /// it, or None when the call is unknown.
+    pub async fn set_scam_feedback(&self, id: &str, verdict: &str) -> Option<CallRecord> {
+        let (rec, snap) = {
+            let mut idx = self.index.lock().await;
+            let rec = idx.calls.iter_mut().find(|c| c.id == id)?;
+            rec.scam_feedback = Some(verdict.to_string());
+            let rec = rec.clone();
+            (rec, self.snapshot_index(&idx))
+        };
+        self.write_index_snapshot(snap).await;
+        Some(rec)
     }
 
     /// A way to reach the caller found after the call (a number they said to call
@@ -1991,6 +2062,8 @@ impl ActiveCall {
             appointment: self.appointments.as_ref().and_then(|b| b.outcome()),
             sim_country: self.sim_country.clone(),
             sim_sub_id: self.sim_sub_id,
+            scam: self.scam.clone(),
+            scam_feedback: None,
         }
     }
 }
@@ -2267,6 +2340,7 @@ mod tests {
             appointments: None,
             sim_country: None,
             sim_sub_id: None,
+            scam: None,
         }
     }
 
@@ -2840,6 +2914,8 @@ mod tests {
             appointment: None,
             sim_country: None,
             sim_sub_id: None,
+            scam: None,
+            scam_feedback: None,
         };
         let mut transcripts = std::collections::HashMap::new();
         transcripts.insert("abc".into(), "請回撥明天開會".into());

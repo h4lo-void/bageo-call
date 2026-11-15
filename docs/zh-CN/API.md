@@ -79,7 +79,8 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 | 方法与路径 | 内容 |
 |---|---|
 | `GET /calls/api/list` | 通话记录，最新的在前。查询参数：`limit`（最多 500；不带就返回全部）、`offset`、`q`（对号码、手机、事件、文字记录和摘要做文本搜索）、`caller`、`serial`、`status`、`has_transcript`、`has_voicemail`。响应：`{ok, calls, total, limit, offset, tasks_by_call, contacts_by_number}`。`tasks_by_call` 是 `{<通话 id>: {id, status, summary}}`，这一页每通电话最新的一条任务；`contacts_by_number` 是 `{<caller_id>: {id, name}}`，这一页里是联系人的来电者。 |
-| `GET /calls/api/call/{id}` | 单个通话：`{ok, call, notes, contact, calendar_link, calendar_links}`。`contact` 是 `{id, name, note}` 或 `null`。`calendar_links` = `{google, outlook, office365, yahoo}`：各网页日历已填好这通电话日历建议的“新建活动”表单（`calendar_link` 是 Google 那个，留给旧版用）。 |
+| `GET /calls/api/call/{id}` | 单个通话：`{ok, call, notes, contact, calendar_link, calendar_links, scam_names}`。`contact` 是 `{id, name, note}` 或 `null`。`calendar_links` = `{google, outlook, office365, yahoo}`：各网页日历已填好这通电话日历建议的“新建活动”表单（`calendar_link` 是 Google 那个，留给旧版用）。`scam_names`：判断出的话术类型在控制台各语言的名称，没有就是 `null`。 |
+| `POST /calls/api/call/{id}/scam-feedback` | 你对这通的标记：JSON `{"verdict": "scam" \| "sales" \| "safe"}`，可另带内置的 `typology`。记在记录上（`scam_feedback`），号码没隐藏的话也记在这个号码上，它之后打来会参考。返回 `{ok, call, number}`；HTTP 400 `invalid_verdict`／`invalid_typology`。 |
 | `GET /calls/api/call/{id}/event.ics` | 日历建议的 iCalendar 文件；这通电话没有建议时返回 HTTP 404 `no_calendar`。用控制台令牌打开，或用 `?k=<密钥>`：通知链接里带的是只能打开这一个文件的 HMAC 密钥，不是令牌。 |
 | `GET /calls/api/audio/{id}/listen` | 你当时会听到的整通电话（对方和 AI 混在一起），WAV，支持 range 请求，可以拖动播放位置。 |
 | `GET /calls/api/audio/{id}/remote` · `/tts` · `/vm` · `/audio/{id}` | 只有对方 · 只有 AI · 旧版菜单模式的语音留言 · 原始混音录音。文件不存在时返回 HTTP 404 `no_audio`。 |
@@ -99,7 +100,9 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 | `started_at`／`ended_at` | RFC 3339，UTC。 |
 | `duration_ms` | 通话时长。 |
 | `status` | `ringing`、`active`、`ended`。旧版的记录可能还有 `blocked_spam`。 |
-| `events` | 依次发生的事，例如 `active`、`persona_stall_spam`（判定为推销或诈骗）、`reject_list`（拦截号码）、`call_waiting_rejected`（通话中拒接的第二通）、`ai_callback`（日程预约的 AI 回拨）、`ai_errand`（AI 代打）、`persona_ai_fail_hangup`、`ended`。 |
+| `events` | 依次发生的事，例如 `active`、`persona_stall_spam`（判定为推销或诈骗）、`persona_scam_detected`（陪聊关闭时判定为推销或诈骗）、`persona_stall_released`（之后确认是正常电话、改回正常应对）、`reject_list`（拦截号码）、`call_waiting_rejected`（通话中拒接的第二通）、`ai_callback`（日程预约的 AI 回拨）、`ai_errand`（AI 代打）、`persona_ai_fail_hangup`、`ended`。 |
+| `scam` | 判定为推销或诈骗时才有：`{kind, typology, confidence, source, released}`。`kind` 是 `scam` 或 `sales`，`typology` 是内置的话术类型；`source` 是 `review`（复审判的）、`hard_words`（复审没回答，但对方说了只有诈骗才会说的话）或 `keywords`（复审一直失败，只靠关键词）；`released` = 之后再看一次，放回正常应对。 |
+| `scam_feedback` | 你在通话页的标记：`scam`、`sales` 或 `safe`。 |
 | `summary` | 写好后的摘要文字。 |
 | `appointment` | 对方跟 AI 约了时间时：通话结束那一刻的预约（见[日程预约与任务](#日程预约与任务)）。之后的变化（你的决定、短信和回拨结果）更新到 `notes.appointment`。 |
 | `sim_country`、`sim_sub_id` | 这通电话是哪张 SIM 卡接的（手机有上报时）。 |

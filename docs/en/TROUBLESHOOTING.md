@@ -74,7 +74,7 @@ blocked number still gets through:
 | Symptom | Why | Fix |
 |---|---|---|
 | A prefix such as `080*` blocks nothing | A `*` pattern needs at least four digits before the star (`0800*`), so one short line cannot block a whole region or every mobile. | Lengthen the prefix. Write numbers the way the call list shows them; `+…` forms match only when your country code is known. |
-| A real call was treated as sales or scam | The check starts from keywords, which honest callers sometimes use too. The terminal names them: `stall engaged … hits=[…]`. | Switch off *Keep them talking*, or tell us which words triggered it. |
+| A real call was treated as sales or scam | The check starts from keywords, which honest callers sometimes use too, and a low-cost model takes a second look. The terminal names the words: `stall engaged … hits=[…]`. | On the call's page press *It was not* under *Sales / scam check*: the number is treated like a saved contact from then on. You can also switch off *Keep them talking*. |
 | A friend or family member was kept talking | They are not saved as a contact. | Save them under *Contacts*. Before stalling, the agent takes a second look, and a contact talking about money, transfers or bills is left alone, unless they ask for things like a verification code or ATM steps (caller ID can be faked). |
 
 ## Appointments and texts

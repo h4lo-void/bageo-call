@@ -689,6 +689,12 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <h3 data-i18n="d_ended"></h3>
             <p id="dEnd"></p>
           </div>
+          <div class="d-sec" id="dScamSec" hidden>
+            <h3 data-i18n="d_scam"></h3>
+            <p id="dScam"></p>
+            <p class="muted" data-i18n="d_fb_q"></p>
+            <div class="actions" id="dScamFb"></div>
+          </div>
           <div class="d-sec">
             <div class="actions">
               <button type="button" class="btn sm" id="btnAddContact" hidden><svg class="i sm"><use href="#i-plus"/></svg><span data-i18n="ct_add_from_call"></span></button>
@@ -921,6 +927,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
           <h2><span data-i18n="g_spam"></span></h2>
           <p class="desc" data-i18n="g_spam_d"></p>
           <label class="sw"><input type="checkbox" data-k="persona_stall_spam" data-t="bool" /><span><b data-i18n="f_stall"></b><small data-i18n="f_stall_h"></small></span></label>
+          <label class="sw"><input type="checkbox" data-k="scam_review_without_keywords" data-t="bool" /><span><b data-i18n="f_scam_blind"></b><small data-i18n="f_scam_blind_h"></small></span></label>
           <div class="two">
             <div class="field"><label for="f-persona_stall_max_min" data-i18n="f_stall_max"></label>
               <div class="inline"><input type="number" id="f-persona_stall_max_min" data-k="persona_stall_max_min" data-t="int" min="3" max="30" step="1" inputmode="numeric" /><span class="muted" data-i18n="unit_minutes"></span></div>
@@ -1429,6 +1436,21 @@ I18N["en"] = {
   ev_ai_segment_start: "AI conversation started",
   ev_ai_segment_end: "AI conversation ended",
   ev_persona_stall_spam: "Judged sales / scam",
+  d_scam: "Sales / scam check",
+  d_scam_scam: "Judged a scam",
+  d_scam_sales: "Judged a sales call",
+  d_scam_none: "Not judged a sales or scam call",
+  d_scam_released: "Judged a sales or scam call at first, then let go as an ordinary call",
+  d_fb_q: "Was this right? Your answer is used for this number's next calls.",
+  d_fb_scam: "It was a scam",
+  d_fb_sales: "It was sales",
+  d_fb_safe: "It was not",
+  d_fb_done: "Marked. This number's next calls are judged with it.",
+  d_fb_done_hidden: "Marked. A hidden number is not remembered.",
+  ev_persona_stall_released: "Let go as an ordinary call",
+  ev_persona_scam_detected: "Judged sales / scam (stalling off)",
+  f_scam_blind: "Also check calls without sales or scam words",
+  f_scam_blind_h: "A low-cost model reads what the caller has said, at most three times a call, so new scripts and other languages are caught too. Off: only calls that use known sales or scam words are checked.",
   ev_ai_callback: "AI call-back",
   ev_persona_ai_fail_hangup: "AI failed, hung up",
   ev_gemini_zero_audio_reconnect: "AI reconnected (no sound)",
@@ -2329,6 +2351,21 @@ I18N["zh-TW"] = {
   ev_ai_segment_start: "AI 對話開始",
   ev_ai_segment_end: "AI 對話結束",
   ev_persona_stall_spam: "判斷為推銷／詐騙",
+  d_scam: "推銷／詐騙判斷",
+  d_scam_scam: "判斷為詐騙",
+  d_scam_sales: "判斷為推銷",
+  d_scam_none: "沒有判斷為推銷或詐騙",
+  d_scam_released: "一開始判斷為推銷或詐騙，之後確認是正常電話，已改回正常應對",
+  d_fb_q: "判斷對嗎？你的回答會用在這個號碼之後的來電。",
+  d_fb_scam: "是詐騙",
+  d_fb_sales: "是推銷",
+  d_fb_safe: "不是",
+  d_fb_done: "已記下，這個號碼之後打來會參考這個判斷。",
+  d_fb_done_hidden: "已記下。未顯示號碼不會被記住。",
+  ev_persona_stall_released: "已改回正常應對",
+  ev_persona_scam_detected: "判斷為推銷／詐騙（陪聊關閉）",
+  f_scam_blind: "沒有推銷或詐騙字眼的電話也檢查",
+  f_scam_blind_h: "用低成本模型讀對方說的內容，每通最多三次，新話術和其他語言也抓得到。關閉：只有用到已知推銷或詐騙字眼的電話才檢查。",
   ev_ai_callback: "AI 回電",
   ev_persona_ai_fail_hangup: "AI 失敗，已掛斷",
   ev_gemini_zero_audio_reconnect: "AI 重新連線（沒有聲音）",
@@ -3229,6 +3266,21 @@ I18N["zh-CN"] = {
   ev_ai_segment_start: "AI 对话开始",
   ev_ai_segment_end: "AI 对话结束",
   ev_persona_stall_spam: "判断为推销／诈骗",
+  d_scam: "推销／诈骗判断",
+  d_scam_scam: "判断为诈骗",
+  d_scam_sales: "判断为推销",
+  d_scam_none: "没有判断为推销或诈骗",
+  d_scam_released: "一开始判断为推销或诈骗，之后确认是正常电话，已改回正常应对",
+  d_fb_q: "判断对吗？你的回答会用在这个号码之后的来电。",
+  d_fb_scam: "是诈骗",
+  d_fb_sales: "是推销",
+  d_fb_safe: "不是",
+  d_fb_done: "已记下，这个号码之后打来会参考这个判断。",
+  d_fb_done_hidden: "已记下。未显示号码不会被记住。",
+  ev_persona_stall_released: "已改回正常应对",
+  ev_persona_scam_detected: "判断为推销／诈骗（陪聊关闭）",
+  f_scam_blind: "没有推销或诈骗字眼的电话也检查",
+  f_scam_blind_h: "用低成本模型读对方说的内容，每通最多三次，新话术和其他语言也能抓到。关闭：只有用到已知推销或诈骗字眼的电话才检查。",
   ev_ai_callback: "AI 回拨",
   ev_persona_ai_fail_hangup: "AI 失败，已挂断",
   ev_gemini_zero_audio_reconnect: "AI 重新连接（没有声音）",
@@ -4129,6 +4181,21 @@ I18N["ja"] = {
   ev_ai_segment_start: "AI の会話開始",
   ev_ai_segment_end: "AI の会話終了",
   ev_persona_stall_spam: "営業／詐欺と判断",
+  d_scam: "営業／詐欺の判定",
+  d_scam_scam: "詐欺と判定",
+  d_scam_sales: "営業電話と判定",
+  d_scam_none: "営業・詐欺とは判定していません",
+  d_scam_released: "最初は営業・詐欺と判定しましたが、普通の電話と分かったので通常の応対に戻しました",
+  d_fb_q: "この判定は正しいですか？回答はこの番号からの次の電話に使われます。",
+  d_fb_scam: "詐欺だった",
+  d_fb_sales: "営業だった",
+  d_fb_safe: "違う",
+  d_fb_done: "記録しました。この番号からの次の電話はこれを参考に判定します。",
+  d_fb_done_hidden: "記録しました。非通知の番号は覚えません。",
+  ev_persona_stall_released: "通常の応対に戻した",
+  ev_persona_scam_detected: "営業／詐欺と判定（引き延ばしオフ）",
+  f_scam_blind: "営業・詐欺の言葉がない電話も確認する",
+  f_scam_blind_h: "低コストのモデルが相手の話を1通話につき最大3回読み、新しい手口や他の言語も見つけます。オフ：既知の営業・詐欺の言葉が出た電話だけを確認します。",
   ev_ai_callback: "AI の折り返し電話",
   ev_persona_ai_fail_hangup: "AI 失敗のため切断",
   ev_gemini_zero_audio_reconnect: "AI を再接続（音声なし）",
@@ -5029,6 +5096,21 @@ I18N["ko"] = {
   ev_ai_segment_start: "AI 대화 시작",
   ev_ai_segment_end: "AI 대화 종료",
   ev_persona_stall_spam: "영업/사기로 판단",
+  d_scam: "영업/사기 판단",
+  d_scam_scam: "사기로 판단",
+  d_scam_sales: "영업 전화로 판단",
+  d_scam_none: "영업이나 사기로 판단하지 않음",
+  d_scam_released: "처음에는 영업이나 사기로 판단했지만 일반 전화로 확인되어 평소처럼 응대했습니다",
+  d_fb_q: "판단이 맞았나요? 답변은 이 번호의 다음 전화에 반영됩니다.",
+  d_fb_scam: "사기였음",
+  d_fb_sales: "영업이었음",
+  d_fb_safe: "아니었음",
+  d_fb_done: "기록했습니다. 이 번호의 다음 전화는 이를 참고해 판단합니다.",
+  d_fb_done_hidden: "기록했습니다. 발신번호 표시 제한 번호는 기억하지 않습니다.",
+  ev_persona_stall_released: "일반 응대로 전환",
+  ev_persona_scam_detected: "영업/사기로 판단 (붙잡기 꺼짐)",
+  f_scam_blind: "영업·사기 단어가 없는 전화도 확인",
+  f_scam_blind_h: "저비용 모델이 통화당 최대 3번 상대방의 말을 읽어 새로운 수법과 다른 언어도 잡아냅니다. 끄면 알려진 영업·사기 단어가 나온 전화만 확인합니다.",
   ev_ai_callback: "AI 회신 전화",
   ev_persona_ai_fail_hangup: "AI 실패로 끊음",
   ev_gemini_zero_audio_reconnect: "AI 다시 연결(소리 없음)",
@@ -5929,6 +6011,21 @@ I18N["es"] = {
   ev_ai_segment_start: "Empezó la conversación con la IA",
   ev_ai_segment_end: "Terminó la conversación con la IA",
   ev_persona_stall_spam: "Considerada ventas / estafa",
+  d_scam: "Ventas / estafa",
+  d_scam_scam: "Considerada una estafa",
+  d_scam_sales: "Considerada una llamada de ventas",
+  d_scam_none: "No se consideró de ventas ni estafa",
+  d_scam_released: "Al principio se consideró de ventas o estafa; luego se vio que era una llamada normal y la IA volvió a atenderla con normalidad",
+  d_fb_q: "¿Fue correcto? Tu respuesta se usa en las próximas llamadas de este número.",
+  d_fb_scam: "Era una estafa",
+  d_fb_sales: "Era de ventas",
+  d_fb_safe: "No lo era",
+  d_fb_done: "Anotado. Las próximas llamadas de este número se juzgan con esto.",
+  d_fb_done_hidden: "Anotado. Un número oculto no se recuerda.",
+  ev_persona_stall_released: "Vuelta a una llamada normal",
+  ev_persona_scam_detected: "Considerada ventas / estafa (entretener desactivado)",
+  f_scam_blind: "Revisar también llamadas sin palabras de ventas o estafa",
+  f_scam_blind_h: "Un modelo económico lee lo que dijo quien llama, como máximo tres veces por llamada, para detectar guiones nuevos y otros idiomas. Desactivado: solo se revisan llamadas con palabras conocidas de ventas o estafa.",
   ev_ai_callback: "Llamada de la IA",
   ev_persona_ai_fail_hangup: "Falló la IA, se colgó",
   ev_gemini_zero_audio_reconnect: "La IA se reconectó (sin sonido)",
@@ -6829,6 +6926,21 @@ I18N["fr"] = {
   ev_ai_segment_start: "Début de la conversation avec l'IA",
   ev_ai_segment_end: "Fin de la conversation avec l'IA",
   ev_persona_stall_spam: "Jugé démarchage / arnaque",
+  d_scam: "Démarchage / arnaque",
+  d_scam_scam: "Jugé comme une arnaque",
+  d_scam_sales: "Jugé comme du démarchage",
+  d_scam_none: "Pas jugé comme démarchage ou arnaque",
+  d_scam_released: "Jugé d'abord comme démarchage ou arnaque, puis reconnu comme un appel normal : l'IA a repris une conversation normale",
+  d_fb_q: "Était-ce juste ? Votre réponse sert pour les prochains appels de ce numéro.",
+  d_fb_scam: "C'était une arnaque",
+  d_fb_sales: "C'était du démarchage",
+  d_fb_safe: "Ce n'en était pas",
+  d_fb_done: "Noté. Les prochains appels de ce numéro en tiendront compte.",
+  d_fb_done_hidden: "Noté. Un numéro masqué n'est pas mémorisé.",
+  ev_persona_stall_released: "Revenu à un appel normal",
+  ev_persona_scam_detected: "Jugé démarchage / arnaque (temporisation désactivée)",
+  f_scam_blind: "Vérifier aussi les appels sans mots de démarchage ou d'arnaque",
+  f_scam_blind_h: "Un modèle peu coûteux lit ce qu'a dit le correspondant, au plus trois fois par appel, pour repérer les nouveaux scénarios et les autres langues. Désactivé : seuls les appels contenant des mots connus de démarchage ou d'arnaque sont vérifiés.",
   ev_ai_callback: "Rappel de l'IA",
   ev_persona_ai_fail_hangup: "Échec de l'IA, raccroché",
   ev_gemini_zero_audio_reconnect: "IA reconnectée (aucun son)",
@@ -7729,6 +7841,21 @@ I18N["de"] = {
   ev_ai_segment_start: "KI-Gespräch begonnen",
   ev_ai_segment_end: "KI-Gespräch beendet",
   ev_persona_stall_spam: "Als Werbung / Betrug eingestuft",
+  d_scam: "Werbung / Betrug",
+  d_scam_scam: "Als Betrug eingestuft",
+  d_scam_sales: "Als Werbeanruf eingestuft",
+  d_scam_none: "Nicht als Werbung oder Betrug eingestuft",
+  d_scam_released: "Zuerst als Werbung oder Betrug eingestuft, dann als normaler Anruf erkannt: die KI hat wieder normal geantwortet",
+  d_fb_q: "War das richtig? Deine Antwort gilt für die nächsten Anrufe dieser Nummer.",
+  d_fb_scam: "Es war Betrug",
+  d_fb_sales: "Es war Werbung",
+  d_fb_safe: "War es nicht",
+  d_fb_done: "Gespeichert. Die nächsten Anrufe dieser Nummer werden damit beurteilt.",
+  d_fb_done_hidden: "Gespeichert. Eine unterdrückte Nummer wird nicht gemerkt.",
+  ev_persona_stall_released: "Zurück zum normalen Anruf",
+  ev_persona_scam_detected: "Als Werbung / Betrug eingestuft (Hinhalten aus)",
+  f_scam_blind: "Auch Anrufe ohne Werbe- oder Betrugswörter prüfen",
+  f_scam_blind_h: "Ein günstiges Modell liest höchstens dreimal pro Anruf, was der Anrufer gesagt hat, und erkennt so auch neue Maschen und andere Sprachen. Aus: nur Anrufe mit bekannten Werbe- oder Betrugswörtern werden geprüft.",
   ev_ai_callback: "KI-Rückruf",
   ev_persona_ai_fail_hangup: "KI fehlgeschlagen, aufgelegt",
   ev_gemini_zero_audio_reconnect: "KI neu verbunden (kein Ton)",
@@ -8629,6 +8756,21 @@ I18N["pt"] = {
   ev_ai_segment_start: "Conversa com a IA iniciada",
   ev_ai_segment_end: "Conversa com a IA encerrada",
   ev_persona_stall_spam: "Considerada vendas / golpe",
+  d_scam: "Vendas / golpe",
+  d_scam_scam: "Considerada um golpe",
+  d_scam_sales: "Considerada uma ligação de vendas",
+  d_scam_none: "Não foi considerada vendas nem golpe",
+  d_scam_released: "Primeiro considerada vendas ou golpe; depois se viu que era uma ligação normal e a IA voltou a atender normalmente",
+  d_fb_q: "Estava certo? Sua resposta vale para as próximas ligações deste número.",
+  d_fb_scam: "Era golpe",
+  d_fb_sales: "Era vendas",
+  d_fb_safe: "Não era",
+  d_fb_done: "Anotado. As próximas ligações deste número usam isso.",
+  d_fb_done_hidden: "Anotado. Um número oculto não é guardado.",
+  ev_persona_stall_released: "Voltou a uma ligação normal",
+  ev_persona_scam_detected: "Considerada vendas / golpe (enrolar desligado)",
+  f_scam_blind: "Verificar também ligações sem palavras de vendas ou golpe",
+  f_scam_blind_h: "Um modelo barato lê o que a pessoa disse, no máximo três vezes por ligação, para pegar golpes novos e outros idiomas. Desligado: só ligações com palavras conhecidas de vendas ou golpe são verificadas.",
   ev_ai_callback: "Retorno da IA",
   ev_persona_ai_fail_hangup: "Falha da IA, chamada desligada",
   ev_gemini_zero_audio_reconnect: "IA reconectada (sem som)",
@@ -10034,6 +10176,7 @@ async function openCallById(id) {
   detail.call = known || null;
   detail.notes = undefined;
   detail.calLinks = null;
+  detail.scamNames = null;
   detail.track = "";
   detail.contact = undefined;
   if (known) { renderDetail(); showDetail(); }
@@ -10048,6 +10191,7 @@ async function loadDetail(id) {
     detail.notes = d.notes || null;
     detail.contact = d.contact || null;
     detail.calLinks = d.calendar_links || null;
+    detail.scamNames = d.scam_names || null;
     renderDetail();
     showDetail();
     // The summary is written 10–40 s after hang-up: look again while it is pending.
@@ -10264,6 +10408,19 @@ function renderDetail() {
   $("dEndSec").hidden = !endText;
   $("dEnd").textContent = endText;
 
+  // Sales / scam: what the call was judged (and the kind of call, when named)
+  // and the owner's mark, which the number's next calls are judged with.
+  $("dScamSec").hidden = isLive(c);
+  const sj = c.scam;
+  const scamName = sj && detail.scamNames ? (detail.scamNames[lang] || detail.scamNames.en || "") : "";
+  const scamHead = !sj ? t("d_scam_none") : sj.released ? t("d_scam_released") : t(sj.kind === "scam" ? "d_scam_scam" : "d_scam_sales");
+  $("dScam").textContent = [scamHead, scamName].filter(Boolean).join(" · ");
+  const fb = clear($("dScamFb"));
+  for (const v of ["scam", "sales", "safe"]) {
+    const mine = c.scam_feedback === v;
+    fb.append(h("button", { type: "button", class: "btn sm" + (mine ? " primary" : ""), "aria-pressed": String(mine), dataset: { fb: v }, text: t("d_fb_" + v) }));
+  }
+
   // Actions + technical details
   $("btnBlock").hidden = String(c.caller_id || "").replace(/\D/g, "").length < 5;
   $("btnAddContact").hidden = !!who || String(c.caller_id || "").replace(/\D/g, "").length < 5;
@@ -10277,6 +10434,16 @@ function renderDetail() {
   for (const e of c.events || []) evs.append(h("span", { class: "tag", title: e, text: tCode("ev_", e) }));
 }
 $("btnCopyNum").addEventListener("click", () => { if (detail.call) copyWithToast(detail.call.caller_id || ""); });
+$("dScamFb").addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-fb]");
+  const c = detail.call;
+  if (!b || !c) return;
+  try {
+    const d = await api("/call/" + encodeURIComponent(c.id) + "/scam-feedback", jsonBody("POST", { verdict: b.dataset.fb }));
+    if (detail.id === c.id && d.call) { detail.call = d.call; renderDetail(); }
+    toast(t(d.number ? "d_fb_done" : "d_fb_done_hidden"));
+  } catch (err) { if (err.status !== 401) toast(t("save_failed", { msg: err.message }), true); }
+});
 $("dTrToggle").addEventListener("change", (e) => {
   showTr = e.target.checked;
   store.set("pca.show_tr", showTr ? "1" : "0");

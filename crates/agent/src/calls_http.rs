@@ -479,6 +479,12 @@ async fn call_get(
     let calendar_links = notes
         .as_ref()
         .and_then(|n| n.calendar.as_ref().map(|ev| ev.links(&n.summary)));
+    // The judged kind of call in every language the page speaks (null when none was named).
+    let scam_names = rec
+        .scam
+        .as_ref()
+        .and_then(|j| crate::scam_db::typology(&j.typology))
+        .map(|t| t.names.clone());
     Json(json!({
         "ok": true,
         "call": rec,
@@ -486,9 +492,100 @@ async fn call_get(
         "calendar_link": calendar_link,
         "contact": contact,
         "calendar_links": calendar_links,
+        "scam_names": scam_names,
     }))
     .into_response()
 }
+/// The body of `POST /api/call/{id}/scam-feedback`: `{"verdict": "scam" | "sales" | "safe"}`
+/// (`not_scam` / `normal` = safe), optionally with the database's `typology`.
+/// Err is the 400 answer's code.
+pub fn parse_scam_feedback_body(body: &[u8]) -> Result<(&'static str, String), &'static str> {
+    let v: Value = serde_json::from_slice(body).map_err(|_| "bad_request")?;
+    let verdict = v
+        .get("verdict")
+        .and_then(Value::as_str)
+        .and_then(crate::calls::parse_scam_verdict)
+        .ok_or("invalid_verdict")?;
+    let typology = match v.get("typology") {
+        None | Some(Value::Null) => String::new(),
+        Some(Value::String(t)) if t.trim().is_empty() => String::new(),
+        Some(Value::String(t)) => crate::scam_db::typology(t.trim()).ok_or("invalid_typology")?.id.clone(),
+        Some(_) => return Err("invalid_typology"),
+    };
+    Ok((verdict, typology))
+}
+
+/// The owner's mark for a call: kept on the record, for the caller's number
+/// (not a hidden one) in the number book — "safe" protects it like a contact,
+/// "scam" / "sales" has its next calls looked at sooner — and in the feedback
+/// log. Err: (status, code).
+pub async fn apply_scam_feedback(
+    store: &CallStore,
+    book: &crate::scam_db::NumberBook,
+    id: &str,
+    verdict: &str,
+    typology: &str,
+) -> Result<Value, (StatusCode, &'static str)> {
+    let Some(before) = store.get(id).await else {
+        return Err((StatusCode::NOT_FOUND, "not_found"));
+    };
+    let typology = if typology.is_empty() && verdict != "safe" {
+        before.scam.as_ref().map(|j| j.typology.clone()).unwrap_or_default()
+    } else {
+        typology.to_string()
+    };
+    let rec = store.set_scam_feedback(id, verdict).await.ok_or((StatusCode::NOT_FOUND, "not_found"))?;
+    // The SIM's country the record kept places a local number; without it the
+    // number is remembered by its digits.
+    let key = crate::scam_db::number_key(&rec.caller_id, rec.sim_country.as_deref());
+    let entry = key.as_deref().map(|k| book.mark_owner(k, verdict, &typology));
+    book.log_feedback(&json!({
+        "at": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        "call_id": rec.id,
+        "number": key,
+        "verdict": verdict,
+        "typology": typology,
+        "judged": rec.scam,
+        "events": rec.events,
+    }));
+    info!(
+        "scam feedback call_id={id} verdict={verdict} typology={typology} number_remembered={} judged={:?}",
+        entry.is_some(),
+        rec.scam.as_ref().map(|j| (j.kind.as_str(), j.typology.as_str()))
+    );
+    Ok(json!({"ok": true, "call": rec, "number": entry}))
+}
+
+/// `POST /api/call/{id}/scam-feedback`: "this call was a scam / sales call" or "it was not".
+async fn call_scam_feedback(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+    Path(id): Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    // JSON only: other web pages cannot mark numbers from a browser on the network.
+    if !is_json_request(&headers) {
+        return json_required();
+    }
+    if !task_id_safe(&id) {
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid call id");
+    }
+    let (verdict, typology) = match parse_scam_feedback_body(&body) {
+        Ok(x) => x,
+        Err(code) => {
+            return api_error(StatusCode::BAD_REQUEST, code, "the body must be {\"verdict\": \"scam\" | \"sales\" | \"safe\"} with an optional known \"typology\"")
+        }
+    };
+    match apply_scam_feedback(&state.store, crate::scam_db::numbers(), &id, verdict, &typology).await {
+        Ok(v) => Json(v).into_response(),
+        Err((status, code)) => api_error(status, code, "call not found"),
+    }
+}
+
 
 /// The call's calendar suggestion as an `.ics` file (any calendar app opens it;
 /// iPhone Safari offers to add it to Apple Calendar).
@@ -2088,6 +2185,7 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/live", get(live))
         .route("/api/call/{id}", get(call_get))
         .route("/api/call/{id}/event.ics", get(call_event_ics))
+        .route("/api/call/{id}/scam-feedback", post(call_scam_feedback))
         .route("/api/export.csv", get(export_csv))
         .route("/api/audio/{id}", get(audio))
         .route("/api/audio/{id}/listen", get(audio_listen))

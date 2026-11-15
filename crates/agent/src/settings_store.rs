@@ -150,6 +150,11 @@ pub struct RuntimeSettings {
     /// or agreeing to anything.
     #[serde(default = "default_true")]
     pub persona_stall_spam: bool,
+    /// Look at calls no keyword flagged once the caller has said what they want
+    /// (a cheap Gemini model, at most three times a call): catches scams in
+    /// words no keyword list has. Off: only keywords start the second look.
+    #[serde(default = "default_true")]
+    pub scam_review_without_keywords: bool,
     /// Cap of a persona-mode call judged sales / scam (the stall cap), minutes
     /// (clamped 3–30; recording caps at 30). Normal calls have their own cap,
     /// `persona_normal_max_min`.
@@ -594,6 +599,7 @@ impl RuntimeSettings {
             reject_voice_name: env_or("REJECT_VOICE_NAME", ""),
             reject_mode: sanitize_reject_mode(&env_or("REJECT_MODE", "decline")),
             persona_stall_spam: env_bool("PERSONA_STALL_SPAM", true),
+            scam_review_without_keywords: env_bool("SCAM_REVIEW_WITHOUT_KEYWORDS", true),
             persona_stall_max_min: env_parse("PERSONA_STALL_MAX_MIN", STALL_MAX_MIN_DEFAULT),
             persona_normal_max_min: env_parse("PERSONA_NORMAL_MAX_MIN", NORMAL_MAX_MIN_DEFAULT),
             gemini_stall_model: env_or("GEMINI_STALL_MODEL", STALL_MODEL_DEFAULT),
@@ -892,6 +898,7 @@ impl RuntimeSettings {
             gemini_persona_mode,
             answer_unknown_callers,
             persona_stall_spam,
+            scam_review_without_keywords,
             persona_stall_max_min,
             persona_normal_max_min,
             gemini_server_vad,
@@ -1202,6 +1209,8 @@ struct Overrides {
     answer_unknown_callers: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     persona_stall_spam: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scam_review_without_keywords: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     persona_stall_max_min: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1689,6 +1698,7 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     p_string(patch, "gemini_persona_prompt", &mut ov.gemini_persona_prompt);
     p_bool(patch, "answer_unknown_callers", &mut ov.answer_unknown_callers);
     p_bool(patch, "persona_stall_spam", &mut ov.persona_stall_spam);
+    p_bool(patch, "scam_review_without_keywords", &mut ov.scam_review_without_keywords);
     p_bool(patch, "gemini_server_vad", &mut ov.gemini_server_vad);
     p_bool(patch, "gemini_barge_in", &mut ov.gemini_barge_in);
     p_bool(patch, "gemini_ring_prewarm", &mut ov.gemini_ring_prewarm);

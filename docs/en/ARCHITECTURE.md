@@ -56,7 +56,8 @@ flowchart LR
 | `main.rs` | Start-up, the phone WebSocket endpoints, the incoming-call state machine, ring pre-warm, the after-call pipeline. |
 | `gemini_live.rs` | One Live session per call: audio relay, echo check, interruptions, hang-up rules, sales detection and the switch to Stall Mode, session renewal, and the outbound modes (wait for the callee, ringback filter, tool calls). |
 | `prompts.rs`, `locale.rs` | The system prompt of each call, built per language and answer style; the phrases each language says and listens for. |
-| `stall_review.rs` | The second look before Stall Mode: `gemini-flash-lite-latest` labels the call `scam_or_sales`, `normal`, `ivr_recording` or `too_early` within 1.5 s. |
+| `stall_review.rs` | The second look before Stall Mode: `gemini-flash-lite-latest` labels the call `scam_or_sales`, `normal`, `ivr_recording` or `too_early` within 1.5 s, naming the kind of call from the scam database and how sure it is. |
+| `scam_db.rs` | The sales and scam database (`data/scam_db.json`: kinds of call, keywords in 19 languages, number hints), your additions in `config/scam_db.local.json`, and the marks per number. |
 | `appointments.rs` | The appointment tools on normal calls, the to-do items they create, Accept / Decline, the text or AI call-back that tells the caller, and the shared outbound queue. |
 | `callback.rs` | The phones' control connections: `place_call`, `send_sms` and their results, routed to the right phone. |
 | `errands.rs` | AI errands: number checks, phone and SIM choice (`SimBook`), the errand script and `ask_owner`, live captions, what you type during the call, the structured result. |
@@ -157,7 +158,11 @@ sequenceDiagram
 > takes over: the AI sounds interested, asks how the premium is worked out,
 > and never gives out data or agrees to anything. If the caller has only said
 > who they are, the review answers `too_early` and looks again after their
-> next turn. No key, an error or a slow answer counts as `scam_or_sales`.
+> next turn. When the review does not answer in time, only words that are a
+> scam whoever says them (a code, ATM steps, a safe account) start the stalling
+> at once; otherwise the next turn is looked at, and after two failures in a
+> row the keywords decide alone. Two caller turns into the stalling, one more
+> look can let a wrongly judged caller go.
 
 ## An outgoing call: AI errand or call-back
 
@@ -285,8 +290,8 @@ private: `settings.json` holds your API keys in plain text.
   protocol is small and documented in [API](API.md), so another front end
   could stand in for the phone.
 - **One process.** Nothing else to install, keep alive or secure.
-- **Fail closed on the risky paths.** A doubtful scam review counts as a scam
-  (the caller is kept talking, not let through); a phone with an unknown SIM
+- **Fail closed on the risky paths.** Words that are a scam whoever says them
+  keep the caller talking even when the review cannot answer; a phone with an unknown SIM
   takes no errand; an appointment waits for you.
 
 ## Older code paths
