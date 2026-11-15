@@ -22,7 +22,7 @@ questions about iPhones, root, cost and keeping your real phone number usable.
 | `The agent program was not found.` | You cloned the source and Rust is not installed, so there is nothing to run. | Install [Rust](https://rustup.rs) and run the start script again, or unpack a release package from GitHub Releases into the folder. |
 | Windows: "running scripts is disabled on this system" | PowerShell blocks `.ps1` files by default. | Start `start.cmd` instead of `start.ps1`; it launches PowerShell with the right option. |
 | macOS: "cannot be opened because the developer cannot be verified" | The release is not notarised by Apple. | Right-click → *Open*, or allow it in *System Settings → Privacy & Security*, or run `xattr -dr com.apple.quarantine .` in the folder. |
-| The console asks for an access token | `CALLS_UI_TOKEN` is set. | Type the token (the browser remembers it), or open `http://…:8787/?token=<your token>`. |
+| The console asks for a password | A console password or `CALLS_UI_TOKEN` is set. | Type the password (the browser remembers it), or open `http://…:8787/?token=<your password>`. |
 
 ## The phone does not show up
 

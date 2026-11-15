@@ -16,7 +16,7 @@ AI 电话助理一直不接、接起来就挂、预约短信发不出去？在�
 | `The agent program was not found.`（找不到主程序） | 你克隆了源码却没装 Rust，所以没有程序可以运行。 | 安装 [Rust](https://rustup.rs) 后再运行一次启动脚本，或者把 GitHub Releases 上的发行版解压到这个文件夹。 |
 | Windows：“running scripts is disabled on this system”（已禁止运行脚本） | PowerShell 默认不允许运行 `.ps1`。 | 改用 `start.cmd`，不要直接运行 `start.ps1`；它会用正确的选项启动 PowerShell。 |
 | macOS：“cannot be opened because the developer cannot be verified”（无法验证开发者） | 发行版没有经过 Apple 公证。 | 右键点击 →“打开”，或到“系统设置 → 隐私与安全性”里允许，或在该文件夹里运行 `xattr -dr com.apple.quarantine .`。 |
-| 控制台要求输入访问令牌 | 设置了 `CALLS_UI_TOKEN`。 | 输入令牌（浏览器会记住），或打开 `http://…:8787/?token=<your token>`。 |
+| 控制台要求输入密码 | 设置了控制台密码或 `CALLS_UI_TOKEN`。 | 输入密码（浏览器会记住），或打开 `http://…:8787/?token=<你的密码>`。 |
 
 ## 手机没有出现
 

@@ -51,6 +51,8 @@ The few things the AI needs before it can answer your phone.
 | Longest normal call | 5 min | 3 to 30 minutes. About 25 seconds before the limit the AI wraps up politely and hangs up. |
 | Status note | off | One line about right now, up to 400 characters ("Deliveries: please leave the parcel at the front desk"). The AI mentions it only when it fits the call. |
 | Background sound, Background volume | off, Medium | A quiet room tone under the AI's voice, so it sounds like someone picking up in a real place: Office, Home, Street, Hospital, Ambulance passing, Typhoon, Thunderstorm, Construction site, Metro / subway, Night market, Firecrackers / festival, Driving. Volume Quiet, Medium or Loud. **Voice + background** and **Background only** play a sample. |
+| Whitelist call transfer: Transfer | Off: the AI answers | What happens when someone on the Whitelist calls (`whitelist_mode`). **Off: the AI answers** (`off`). **Always: put through to your phone** (`direct`): the AI phone declines the call, your carrier's forward-when-busy rings your own phone, and you get a notification at once. Turn forwarding on first by dialing `**67*your number#` on the AI phone. **Only when it is urgent** (`emergency`): the AI answers and gives the caller your number only if they say it is urgent, and alerts you. The Whitelist tab on the **Contacts** page has the same setting. |
+| Whitelist call transfer: Your own phone number | empty | The number the AI gives an urgent caller; it also appears in the notification (`whitelist_forward_number`). |
 
 **The caller's language.** There is nothing to set: when a caller clearly speaks another language, or asks whether you speak one, the AI switches to it.
 
@@ -65,7 +67,7 @@ A caller opens with a "pre-approved loan", or claims to be from your bank's secu
 | Keep them talking | on | The stalling described above. Off: the AI declines and ends the call. |
 | Longest such call | 30 min | 3 to 30 minutes. Longer calls use more of your Gemini quota. |
 | Model for these calls | `gemini-3.8-live` | The model a call switches to once it is judged sales or scam. Empty = keep the call's own model. |
-| Also check calls without sales or scam words | on | A low-cost model reads what the caller has said, at most three times a call, so new scripts, other languages and garbled words are caught as well. Off: only calls that use known sales or scam words are checked. |
+| Check every call for sales and scams | on | On: a low-cost model reads what the caller has said (at most three times a call), so new scripts, other languages and garbled words are caught too. Off: only calls that use known sales or scam words are checked. |
 
 **How a call is judged.** Words from the built-in scam database (42 kinds of sales and scam calls, keywords in 19 languages) start a second look by a low-cost model; with the setting above, calls without such words get a look too. The model names the kind of call and how sure it is, and an unsure answer waits for the caller's next turn. When the model does not answer in time, only requests that are a scam whoever makes them (a verification code, ATM steps, gift cards, remote access, a "safe account") start the stalling at once; otherwise the next turn is looked at, and after two failures in a row the keywords decide alone. Two caller turns into the stalling, one more look can let a wrongly judged caller go back to a normal conversation. Saved contacts and numbers you marked *It was not* are left alone, unless they ask for those scam-only things.
 
@@ -99,8 +101,6 @@ Call screening at its bluntest: calls from numbers on this list never reach the 
 | Number, Reason | empty | One number per row, with an optional reason. End a number with `*` to block every number that starts with those digits (at least four, e.g. `0800*`). Write numbers the way they show up in the call list; `+…` forms match too once your country calling code is known ([`COUNTRY_CODE`](#country-calling-code)). |
 | How blocked calls are turned away | Hang up while it rings | Saved as `reject_mode`. **Hang up while it rings** (`decline`): the call never connects. **Answer, play "not available", then hang up** (`announce`): a short "the number you have dialed is not available" in your *Language*; the caller sees the call connect for a few seconds. A phone app too old to decline picks up and announces either way. |
 | Announcement voice | Same as the AI's voice | The voice of that announcement (hidden numbers hear it too). Every voice comes recorded in every language, so it costs no Gemini quota. **Preview the announcement** plays it. |
-| Whitelist handling (`whitelist_mode`) | Off (AI answers normally) | Set in the **Contacts** tab for callers marked `whitelist`: **Off** (`off`), **Forward directly to real number** (`direct` — declines the call at once to trigger carrier conditional call forwarding `*67*` and pushes an instant alert), or **Forward only when AI detects an emergency** (`emergency` — AI answers first and gives the caller your real forwarding number + triggers an urgent alert if they have an urgent matter). |
-| Real forwarding number (`whitelist_forward_number`) | empty | Your real phone number used by Whitelist direct/emergency transfer. |
 
 Try it: open a call in the call list and press **Block this number**, or tap the signed **Block / Stall / Whitelist** buttons in any notification channel to classify the caller in one tap.
 
@@ -132,13 +132,6 @@ The default for *Call as* is *AI calls: call as* under [Basics](#basics). Every 
 | Send notifications | on | Off: nothing is sent to any channel. |
 | Channels | none | Telegram, Discord, LINE, ntfy, email, webhooks and more; every enabled channel gets every message. Set-up for each is in [Notifications](NOTIFICATIONS.md). |
 | Commands from chat | off | Look up calls, have the AI call someone and decide to-dos from a Telegram chat (`telegram_control`, `telegram_control_users`, `control_errands_per_hour`, `control_commands_per_minute`). See [Chat commands](CHAT_COMMANDS.md). |
-| MCP for AI agents | off | Built-in Model Context Protocol server at `POST /mcp` (`mcp_enabled`, `mcp_token`, `mcp_calls`, `mcp_errands_per_hour`, `mcp_allowed_origins`). See [MCP](MCP.md). |
-| Address of this console | empty (automatic) | The address put into notification links, e.g. `http://192.0.2.10:8787`. |
-| Network name | `bageo` | The name phones and computers on your network can use instead of the IP: `http://bageo.local:8787/`. Letters, digits and hyphens; empty, `off`, `0`, `none` or `false` turns it off. |
-
-Left empty, *Address of this console* is filled in while the console is open to your network (`AGENT_HOST=0.0.0.0`): `http://<network name>.local:8787/` while the agent answers that name, else the computer's network address. With the console on this computer only, notifications carry no links; inside Docker, set it yourself. *System → About* shows the address in use.
-
-The agent answers the *Network name* itself (multicast DNS, UDP port 5353) while the console is open to your network, but not inside a container. If the system keeps that port to itself, the log shows a line starting with `mDNS:` and links use the IP address. Older Android phones that cannot open `.local` names can use the IP address or the QR code under *System → About*.
 
 ### Summary & calendar
 
@@ -196,7 +189,14 @@ Times are the computer's local time (see [Time zone](#time-zone)). Without any k
 | Setting | Default | What it does |
 |---|---|---|
 | Thinking level | Low | For Live models with "thinking" in their name only: Low, Medium or High. Low answers fastest. Saved as `gemini_thinking_level`. |
-| External access password (`ui_password`) | empty | Password required to open the web console or call the API when accessed from another device or external network. On your first visit without a password set, the console pops up a setup modal so you can set one right away. |
+| Console password | empty | Once set, the console and the API ask for it (the browser remembers it). The first time you open the console without a password, it offers to set one. Saved as `ui_password`. |
+| Let other AI tools connect (MCP) | off | Built-in Model Context Protocol server at `POST /mcp` (`mcp_enabled`, `mcp_token`, `mcp_calls`, `mcp_errands_per_hour`, `mcp_allowed_origins`). See [MCP](MCP.md). |
+| Address of this console | empty (automatic) | The address put into notification links, e.g. `http://192.0.2.10:8787`. |
+| Network name | `bageo` | The name phones and computers on your network can use instead of the IP: `http://bageo.local:8787/`. Letters, digits and hyphens; empty, `off`, `0`, `none` or `false` turns it off. |
+
+Left empty, *Address of this console* is filled in while the console is open to your network (`AGENT_HOST=0.0.0.0`): `http://<network name>.local:8787/` while the agent answers that name, else the computer's network address. With the console on this computer only, notifications carry no links; inside Docker, set it yourself. *System → About* shows the address in use.
+
+The agent answers the *Network name* itself (multicast DNS, UDP port 5353) while the console is open to your network, but not inside a container. If the system keeps that port to itself, the log shows a line starting with `mDNS:` and links use the IP address. Older Android phones that cannot open `.local` names can use the IP address or the QR code under *System → About*.
 
 *Country calling code* is set at start-up; see [Country calling code](#country-calling-code).
 
@@ -224,7 +224,7 @@ In Docker, only the variables listed under `environment:` in `docker-compose.yml
 | `AGENT_PORT` | `8787` | Port of the web console and of the phones' connection. |
 | `CALLS_UI_TOKEN` | *(empty)* | Password for the web console and API. Send as `?token=…`, `Authorization: Bearer …` or `X-Calls-Token`. **Set it whenever `AGENT_HOST` is not `127.0.0.1`.** |
 | `DEVICE_TOKEN` | *(empty)* | Phones that do not come through USB must connect with `…/ws?token=<this>`. **Set it whenever `AGENT_HOST` is not `127.0.0.1`.** Phones on USB are exempt (the USB tunnel ends on the computer itself). |
-| `PUBLIC_URL` | *(empty)* | Same as *Address of this console*; the web console's value wins. Empty = automatic (see [Notifications](#notifications)). |
+| `PUBLIC_URL` | *(empty)* | Same as *Address of this console*; the web console's value wins. Empty = automatic (see [Advanced](#advanced)). |
 | `MDNS_NAME` | `bageo` | Same as *Network name*: the console answers at `http://<this>.local:8787/` on your network. Empty, `off`, `0`, `none` or `false` = off; on Windows an empty value counts as not set, so write `MDNS_NAME=off`. The web console's value wins. |
 
 ### Using the console from other devices
