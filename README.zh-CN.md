@@ -71,7 +71,7 @@ flowchart LR
     agent <-- "语音对语音" --> gemini[("Gemini Live")]
     agent -- "摘要、防诈复审、<br/>联系人导入、翻译" --> lite[("Gemini Flash-Lite<br/>或任何 OpenAI 兼容模型")]
     agent <--> console["网页控制台<br/>http://bageo.local:8787"]
-    agent --> notify["16 种通知渠道"]
+    agent --> notify["32 种通知渠道"]
     agent --> data[("data/ 文件夹<br/>在你的硬盘上")]
 ```
 
@@ -144,9 +144,9 @@ flowchart LR
 
 在控制台“**系统**”页或 Bageo 应用里，随时把备用机切回普通手机、再切回来。普通手机模式下，Google 电话恢复为拨号应用、勿扰模式关闭、音量还原，来电正常响铃、由你自己接；重启后模式不变。切换由 Magisk／KernelSU 模块的 root 小程序执行，所以 Bageo 应用本身完全不需要 root 权限。详见[普通手机模式](docs/zh-CN/PHONE.md#普通手机模式)。
 
-### 16 种通知渠道，数据存在自己的硬盘
+### 32 种通知渠道，数据存在自己的硬盘
 
-Telegram（预约卡片带“同意／不同意”按钮）、Discord、Slack／Mattermost、LINE Messaging API、ntfy、Gotify、Bark、Pushover、企业微信、钉钉（支持加签）、飞书／Lark、Server酱、Matrix、Gmail、Apprise，以及给 n8n、Zapier、Home Assistant 用的 JSON Webhook。可以任意组合，每条消息都会发到所有渠道。可选的[短信转发器](tools/sms_forward/README.md)会把手机收到的短信也转到同样的渠道。
+Telegram（预约卡片带“同意／不同意”按钮）、Discord、Slack／Mattermost、Microsoft Teams、Google Chat、Rocket.Chat、Zulip、Webex、Nextcloud Talk、Synology Chat、LINE Messaging API、Signal（通过 signal-cli-rest-api）、ntfy、Gotify、Bark、Pushover、Pushbullet、企业微信、钉钉（支持加签）、飞书／Lark、Server酱、PushPlus、PushDeer、WxPusher、Chanify、Matrix、Gmail、任意 SMTP 服务器的电子邮件、Home Assistant、IFTTT、Apprise，以及给 n8n、Zapier 用的 JSON Webhook。可以任意组合，每条消息都会发到所有渠道。可选的[短信转发器](tools/sms_forward/README.md)会把手机收到的短信也转到同样的渠道。
 
 会离开你电脑的有：实时通话音频发给 Gemini，文字记录发给摘要模型（默认是同一个密钥的 Gemini Flash-Lite，也可以换成任何 OpenAI 兼容服务，包括本机的 Ollama），摘要发给你配置的通知渠道。详见[隐私、安全与法律](docs/zh-CN/PRIVACY_AND_LEGAL.md)。
 
@@ -188,7 +188,7 @@ Telegram（预约卡片带“同意／不同意”按钮）、Discord、Slack／
 | [开始使用](docs/zh-CN/GETTING_STARTED.md) | 在 Windows／macOS／Linux／Docker 上安装、第一通电话、第一次 AI 代打 |
 | [手机设置](docs/zh-CN/PHONE.md) | Root 模块、应用检查清单、USB 与 Wi-Fi、普通手机模式、还原 |
 | [编写提示词](docs/zh-CN/PROMPTS.md) | AI 每通电话收到什么、访谈提示词、资料、写法技巧、固定底线 |
-| [通知](docs/zh-CN/NOTIFICATIONS.md) | 16 种渠道各自怎么配置；webhook 内容格式 |
+| [通知](docs/zh-CN/NOTIFICATIONS.md) | 32 种渠道各自怎么配置；webhook 内容格式 |
 | [设置参考](docs/zh-CN/SETTINGS.md) | 每一项设置和启动选项 |
 | [故障排查与常见问题](docs/zh-CN/TROUBLESHOOTING.md) | 遇到问题的时候 |
 | [隐私、安全与法律](docs/zh-CN/PRIVACY_AND_LEGAL.md) | 哪些东西会离开你的电脑；录音和披露 AI 身份的规定 |

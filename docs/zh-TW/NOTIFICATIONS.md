@@ -1,6 +1,6 @@
-# 通知：通話摘要傳到 Telegram、LINE、Discord、Email 等 16 種管道
+# 通知：通話摘要傳到 Telegram、LINE、Discord、Email 等 32 種管道
 
-AI 電話助理幫你接完電話，掛斷幾秒後，手機就收到一段摘要：誰打來、要做什麼、AI 怎麼回、你要處理什麼。Bageo 也能在來電時、拒接號碼或插播被擋下時、AI 回電或 AI 代打結束時通知你。支援 16 種服務，從 Telegram、LINE 到企業微信、ntfy、Email，以及你自己的 Webhook。
+AI 電話助理幫你接完電話，掛斷幾秒後，手機就收到一段摘要：誰打來、要做什麼、AI 怎麼回、你要處理什麼。Bageo 也能在來電時、拒接號碼或插播被擋下時、AI 回電或 AI 代打結束時通知你。支援 32 種服務，從 Telegram、LINE、Teams、Signal 到企業微信、ntfy、Home Assistant、Email，以及你自己的 Webhook。
 
 **一分鐘設定好：**「設定 → 通知」→「**新增管道**」→ 選服務 → 填欄位 →「**傳送測試**」→「**儲存變更**」。
 
@@ -11,6 +11,7 @@ AI 電話助理幫你接完電話，掛斷幾秒後，手機就收到一段摘�
 - 太長的訊息會依各服務的上限截短（例如 Pushover 1,000 字元，Discord 和企業微信 1,900 字元）。
 
 > **測試程度：** Telegram 是用得最多的管道。其他服務依照各自的公開文件實作，請求內容有單元測試涵蓋，但在真實帳號上用得還不多。哪一個失敗了，「傳送測試」會顯示該服務的回應，歡迎回報。
+> 1.0 之後新增的服務（Microsoft Teams、Google Chat、Rocket.Chat、Zulip、Webex、Nextcloud Talk、Synology Chat、Signal、Pushbullet、PushPlus、PushDeer、WxPusher、Chanify、SMTP 電子郵件、Home Assistant、IFTTT）都還沒有在真實帳號上試過。
 
 ## 訊息長什麼樣子
 
@@ -132,18 +133,34 @@ AI 在你來不及回答的問題上先答應了的話，結果會是「要你�
 |---|---|---|
 | [Telegram](#telegram) | Bot 權杖、聊天 ID | 通用；預約卡片只有它有 |
 | [Discord](#discord) | Webhook 網址 | Discord 伺服器 |
-| [Slack / Mattermost](#slack--mattermost) | Incoming Webhook 網址 | 工作群組、Rocket.Chat |
+| [Slack / Mattermost](#slack--mattermost) | Incoming Webhook 網址 | 工作群組 |
+| [Microsoft Teams](#microsoft-teams) | Workflow Webhook 網址 | 用 Microsoft 365 的公司 |
+| [Google Chat](#google-chat) | Webhook 網址 | Google Workspace |
+| [Rocket.Chat](#rocketchat) | Webhook 網址 | 自架團隊聊天 |
+| [Zulip](#zulip) | 伺服器網址、Bot 信箱和 API 金鑰、頻道 | 開源團隊聊天 |
+| [Webex](#webex) | Bot 存取權杖、聊天室 ID 或信箱 | Cisco Webex |
+| [Nextcloud Talk](#nextcloud-talk) | 伺服器網址、使用者和應用程式密碼、對話代碼 | 自架 Nextcloud |
+| [Synology Chat](#synology-chat) | Webhook 網址 | 群暉 NAS 使用者 |
 | [LINE](#line) | Channel access token、使用者或群組 ID | 台灣、日本、泰國 |
+| [Signal](#signal) | 自己架的 signal-cli-rest-api、寄件號碼、收件人 | Signal 使用者 |
 | [ntfy](#ntfy) | 主題 | 自架、Android 推播 |
 | [Gotify](#gotify) | 伺服器網址、App 權杖 | 自架 |
 | [Bark (iOS)](#bark-ios) | 裝置金鑰 | iPhone 推播 |
 | [Pushover](#pushover) | API 權杖、使用者金鑰 | iOS 與 Android 推播 |
+| [Pushbullet](#pushbullet) | 存取權杖 | Android 與電腦推播 |
 | [企業微信群機器人（WeCom）](#企業微信群機器人wecom) | Webhook 網址 | 企業微信 |
 | [釘釘機器人（DingTalk）](#釘釘機器人dingtalk) | Webhook 網址、加簽密鑰 | 釘釘 |
 | [飛書／Lark 機器人](#飛書lark-機器人) | Webhook 網址 | 飛書、Lark |
 | [Server醬（ServerChan）](#server醬serverchan) | SendKey | 推到微信 |
+| [PushPlus](#pushplus) | Token | 推到微信（推送加） |
+| [PushDeer](#pushdeer) | PushKey | iOS 與 Android 推播，可自架 |
+| [WxPusher](#wxpusher) | SPT，或 appToken 加 UID | 推到微信 |
+| [Chanify](#chanify) | Token | iOS 與 Android 推播，可自架 |
 | [Matrix](#matrix) | Homeserver 網址、存取權杖、聊天室 ID | Element 等 Matrix App |
 | [電子郵件（Gmail）](#電子郵件gmail) | Gmail 地址、應用程式密碼 | Email |
+| [電子郵件（SMTP）](#電子郵件smtp) | SMTP 網址、密碼 | 其他任何郵件服務 |
+| [Home Assistant](#home-assistant) | 伺服器網址、存取權杖、通知服務 | 智慧家庭、Companion App |
+| [IFTTT Webhooks](#ifttt-webhooks) | Webhooks 金鑰、事件名稱 | IFTTT Applet |
 | [Apprise API](#apprise-api) | 通知網址 | 再連上百種服務 |
 | [Webhook (JSON)](#webhook-json) | 網址 | n8n、Zapier、Make、Home Assistant、你自己的程式 |
 
@@ -170,11 +187,84 @@ AI 在你來不及回答的問題上先答應了的話，結果會是「要你�
 
 ### Slack / Mattermost
 
-Slack：到 <https://api.slack.com/apps> 建立 App →「Incoming Webhooks」→ 啟用 →「Add New Webhook to Workspace」→ 複製網址。Mattermost：「Integrations → Incoming Webhooks」。Rocket.Chat 的 incoming webhook 也接受同樣格式。
+Slack：到 <https://api.slack.com/apps> 建立 App →「Incoming Webhooks」→ 啟用 →「Add New Webhook to Workspace」→ 複製網址。Mattermost：「Integrations → Incoming Webhooks」。
 
 | 欄位 | 填什麼 |
 |---|---|
 | Incoming Webhook 網址 | `https://hooks.slack.com/services/…` |
+
+### Microsoft Teams
+
+舊的 Office 365 連接器（`webhook.office.com` 開頭的網址）已經停用。這裡用的是 **Workflows（工作流程）** 的 Webhook，送出的是 Adaptive Card。
+
+1. 在 Teams 打開頻道的「**…**」選單 →「工作流程」。
+2. 選「收到 Webhook 要求時張貼在頻道中」，選好團隊和頻道，做完設定。
+3. 複製它顯示的網址。網址裡含有簽章，請像密碼一樣保管。
+
+| 欄位 | 填什麼 |
+|---|---|
+| Workflow Webhook 網址 | 第 3 步的網址 |
+
+訊息的每一行在卡片上各自成一行，第一行是粗體。
+
+### Google Chat
+
+需要 Google Workspace 帳戶，個人 Google 帳戶不能加 Webhook。打開聊天室 → 點聊天室名稱 →「應用程式與整合 → Webhook → 新增 Webhook」→ 複製網址。
+
+| 欄位 | 填什麼 |
+|---|---|
+| Webhook 網址 | `https://chat.googleapis.com/v1/spaces/…/messages?key=…&token=…` |
+
+### Rocket.Chat
+
+「管理 → 工作區 → 整合 → 新增 → 傳入（Incoming）」：啟用、選頻道和要用哪個使用者發文，儲存後複製「Webhook URL」。
+
+| 欄位 | 填什麼 |
+|---|---|
+| Webhook 網址 | `https://chat.example.org/hooks/…/…` |
+
+### Zulip
+
+在「個人設定 → Bot → 新增 Bot」建立一個 Bot（類型選「Incoming webhook」就夠了），並讓它訂閱要發的頻道。Bot 的信箱和 API 金鑰在 Bot 卡片上。
+
+| 欄位 | 填什麼 |
+|---|---|
+| 伺服器網址 | 你的組織，例如 `https://example.zulipchat.com` |
+| Bot 信箱:API 金鑰 | 兩者用冒號連起來：`calls-bot@example.zulipchat.com:abc123…` |
+| 頻道 > 主題，或信箱 | `calls > phone`；只填頻道（`calls`）會發到主題「Bageo」；填一個以上的信箱（用逗號分隔）則傳私訊 |
+
+訊息超過 2,400 字元會截短，才不會超過 Zulip 10,000 位元組的上限。
+
+### Webex
+
+到 <https://developer.webex.com/my-apps> 建立 Bot，複製它的 **Bot 存取權杖**（只會顯示一次），再把 Bot 加進聊天室。聊天室 ID 可以登入 developer.webex.com，用 Bot 的權杖執行「List Rooms」查到；要傳給某個人，就改填對方的信箱。
+
+| 欄位 | 填什麼 |
+|---|---|
+| Bot 存取權杖 | Bot 的 token |
+| 聊天室 ID 或信箱 | `Y2lzY29zcGFyazovL3Vz…` 或 `someone@example.com` |
+
+訊息超過 1,800 字元會截短（Webex 最多收 7,439 位元組）。
+
+### Nextcloud Talk
+
+以一個 Nextcloud 使用者的身分發訊息，另開一個 Bageo 專用的使用者最清楚。在「個人設定 → 安全性 → 裝置與工作階段」替它建立**應用程式密碼**，再把這個使用者加進對話。對話代碼是對話連結的最後一段（`https://cloud.example.org/call/abc123xy` → `abc123xy`）。
+
+| 欄位 | 填什麼 |
+|---|---|
+| 伺服器網址 | `https://cloud.example.org` |
+| 使用者:應用程式密碼 | `bageo:xxxxx-xxxxx-xxxxx-xxxxx-xxxxx` |
+| 對話代碼（token） | `abc123xy` |
+
+### Synology Chat
+
+在 Synology Chat：點大頭貼 →「整合 → 傳入的 Webhook → 建立」，選頻道、儲存，然後複製 Webhook 網址。
+
+| 欄位 | 填什麼 |
+|---|---|
+| Webhook 網址 | `https://nas.example.org:5001/webapi/entry.cgi?api=SYNO.Chat.External&method=incoming&version=2&token=…` |
+
+主程式會檢查 HTTPS 憑證。NAS 還在用它自己簽的憑證的話，在自家網路裡改用 5000 埠的 `http://` 網址。
 
 ### LINE
 
@@ -191,6 +281,18 @@ LINE Notify 已在 2025 年停止服務；這裡用的是 **Messaging API**。
 | 使用者或群組 ID | `U…` 或 `C…` |
 
 官方帳號的免費方案，每月可發的推播則數有限。
+
+### Signal
+
+Signal 沒有 Bot API，所以要透過你自己架的 [signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api)（一個 Docker 容器）。把它連結成你自己 Signal 帳號的第二台裝置，或用另一個號碼註冊。
+
+| 欄位 | 填什麼 |
+|---|---|
+| API 伺服器網址 | 容器的位址，例如 `http://signal-api:8080` |
+| 寄件號碼 | signal-cli 用的號碼，國際格式（`+15550100`） |
+| 收件人 | 號碼（`+15550101`）或群組 ID（`group.…`），用逗號分隔 |
+
+訊息超過 2,000 字元會截短。
 
 ### ntfy
 
@@ -229,6 +331,15 @@ LINE Notify 已在 2025 年停止服務；這裡用的是 **Messaging API**。
 | API 權杖 | 該應用程式的 token |
 | 使用者金鑰（User key） | Pushover 首頁上你的 user key |
 
+### Pushbullet
+
+pushbullet.com →「Settings → Account → Create Access Token」。免費帳號每月可推播的則數有限。
+
+| 欄位 | 填什麼 |
+|---|---|
+| 存取權杖 | `o.…` |
+| 裝置 ID 或信箱（選填） | 留空＝你所有的裝置；填裝置 ID（`iden`）只推到那台；填信箱則推給另一位 Pushbullet 使用者 |
+
 ### 企業微信群機器人（WeCom）
 
 在群組裡「新增群機器人」→ 複製 webhook 網址。
@@ -262,6 +373,47 @@ LINE Notify 已在 2025 年停止服務；這裡用的是 **Messaging API**。
 |---|---|
 | SendKey | Turbo 版是 `SCT…`，Server醬³ 是 `sctp…` |
 
+### PushPlus
+
+用微信登入 <https://www.pushplus.plus>，複製你的 **token**。訊息會從 PushPlus 的微信公眾號送到。
+
+| 欄位 | 填什麼 |
+|---|---|
+| Token | 你的 token |
+| 群組編碼（選填） | 填群組編碼就發給該群組；留空只發給自己 |
+
+### PushDeer
+
+安裝 PushDeer 並登入，在「Key」新增一把 **Key** 並複製。
+
+| 欄位 | 填什麼 |
+|---|---|
+| 伺服器 | 留空就是 `https://api2.pushdeer.com`，或填你自己的 PushDeer 伺服器 |
+| PushKey | `PDU…` |
+
+### WxPusher
+
+有兩種方式，都在 <https://wxpusher.zjiekou.com>：
+
+- **極簡推送：**用微信掃 QR code 關注，取得你的 SPT（`SPT_…`）。收件留空。
+- **應用程式：**建立應用程式取得 **appToken**（`AT_…`）。掃過它 QR code 的人會有使用者 ID（`UID_…`）；主題則是數字 ID。
+
+| 欄位 | 填什麼 |
+|---|---|
+| appToken（AT_…）或 SPT | `SPT_…` 或 `AT_…` |
+| UID 或主題 ID | 只有 appToken 才要填：`UID_…` 和主題數字，用逗號分隔 |
+
+微信上的摘要只顯示標題前 20 個字。
+
+### Chanify
+
+在 Chanify App 裡替一個傳送者建立 **token** 並複製。
+
+| 欄位 | 填什麼 |
+|---|---|
+| 伺服器 | 留空就是 `https://api.chanify.net`，或填你自己的 Chanify 節點 |
+| Token | App 給的 token |
+
 ### Matrix
 
 建立一個機器人帳號，邀請它進聊天室並讓它加入。聊天室 ID 在「Room settings → Advanced」（`!abc…:example.org`）。聊天室必須是未加密的。
@@ -281,6 +433,52 @@ LINE Notify 已在 2025 年停止服務；這裡用的是 **Messaging API**。
 | Gmail 地址 | 寄件的帳號 |
 | 應用程式密碼 | 16 個字元的應用程式密碼 |
 | 寄到（空白＝寄給自己） | 收件人 |
+
+### 電子郵件（SMTP）
+
+任何支援 TLS 的郵件伺服器都行：iCloud、Yahoo、Fastmail、QQ 郵箱、163、公司的或你自己架的。伺服器和登入帳號寫在同一個欄位：
+
+```text
+smtp://you@example.com@smtp.example.com:587     STARTTLS（大多數郵件服務）
+smtps://you@example.com@smtp.example.com:465    一連線就走 TLS
+```
+
+最後一個 `@` 前面是登入帳號，同時也是寄件地址；帳號本身的 `@` 也可以寫成 `%40`。465 埠一律是一連線就走 TLS。沒寫埠就用 587（`smtps://` 則是 465）。寄件人名稱是「Bageo」。
+
+| 欄位 | 填什麼 |
+|---|---|
+| SMTP 網址（smtp://帳號@主機:埠） | 如上 |
+| 密碼 | 帳號密碼，或郵件服務要求的應用程式密碼／授權碼（iCloud、Yahoo、Fastmail、QQ 郵箱、163 都要） |
+| 寄到（空白＝寄給登入帳號） | 收件人 |
+
+限制：登入帳號必須是電子郵件地址；伺服器要接受 `AUTH LOGIN`；憑證必須來自公開的憑證機構（自己簽的憑證會被拒絕）；不支援沒有 TLS 的連線。寄 Gmail 的話，[Gmail](#電子郵件gmail) 管道要填的欄位比較少。
+
+### Home Assistant
+
+透過 Home Assistant 的 **notify** 動作送出，例如送到手機上的 Companion App。
+
+1. 在 Home Assistant：個人資料 →「安全性」→「長期存取權杖」→「建立權杖」。
+2. 在「開發者工具 → 動作」找服務：搜尋 `notify.`（Companion App 會新增 `notify.mobile_app_<手機名稱>`）。
+
+| 欄位 | 填什麼 |
+|---|---|
+| 伺服器網址 | 留空就是 `http://homeassistant.local:8123`，或填你的網址 |
+| 長期存取權杖 | 第 1 步的權杖 |
+| 通知服務 | `mobile_app_pixel_9`，前面有沒有 `notify.` 都可以 |
+
+訊息超過 1,000 字元會截短，因為手機推播只能帶大約 4 KB。
+
+### IFTTT Webhooks
+
+1. 到 <https://ifttt.com/maker_webhooks> 連結 Webhooks；「Documentation」會顯示你的**金鑰**。
+2. 建立 Applet：*If* Webhooks →「Receive a web request」，事件名稱例如 `bageo_call`，*Then* 選你想做的事。`{{Value1}}` 是標題、`{{Value2}}` 是內容、`{{Value3}}` 是事件（`summary`、`incoming`…）。
+
+| 欄位 | 填什麼 |
+|---|---|
+| Webhooks 金鑰 | 第 1 步的金鑰 |
+| 事件名稱 | `bageo_call` |
+
+使用 Webhooks 的 Applet 可能需要 IFTTT 付費方案。
 
 ### Apprise API
 

@@ -185,7 +185,7 @@ page usually names the missing piece.
 
 Go to *Settings → Notifications → Add channel*, pick a service, fill in the
 fields (each has a hint on where to find it) and press **Send test**. Add as
-many as you like; every message goes to all of them. There are 16 services,
+many as you like; every message goes to all of them. There are 32 services,
 from Telegram (with Accept / Decline buttons for appointments) to a custom
 webhook. Setup for each one: [Notifications](NOTIFICATIONS.md).
 

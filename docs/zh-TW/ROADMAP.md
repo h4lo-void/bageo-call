@@ -55,7 +55,7 @@ Bageo 1.0 這套開源 AI 電話助理已經做到哪些、哪些只做到一部
 |---|---|---|
 | 自備金鑰，沒有平台按分鐘計費 | 已完成 | 一把 Gemini 金鑰就涵蓋全部；摘要可以改用任何 OpenAI 相容服務或本機模型。 |
 | 資料都存在自己的電腦 | 已完成 | 送去模型和通知服務的內容除外，見[隱私](PRIVACY_AND_LEGAL.md)。 |
-| 通知、webhook、n8n／Zapier | 已完成 | 16 種管道，包括電子郵件和 [JSON webhook](NOTIFICATIONS.md#webhook-json)；其他用 REST API。 |
+| 通知、webhook、n8n／Zapier | 已完成 | 32 種管道，包括電子郵件和 [JSON webhook](NOTIFICATIONS.md#webhook-json)；其他用 REST API。 |
 | 任何裝置都能開的網頁控制台 | 已完成 | `bageo.local`、QR code、加到主畫面。 |
 | 一步啟動 | 已完成 | Windows、macOS、Linux 啟動腳本；Docker 映像檔。 |
 | 備用機切回一般手機 | 已完成 | 控制台或 App 一鍵切換；App 不需要 root。 |
