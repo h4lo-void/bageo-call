@@ -59,7 +59,7 @@
 <summary>八哥怎麼回？</summary>
 <br>
 
-> <strong>八哥</strong>：你好，包裹需要本人簽收嗎？
+> <strong>八哥</strong>：你好，我是 AI 助理，幫忙接電話。包裹需要本人簽收嗎？
 >
 > <strong>對方</strong>：需要，今天下午五點前都能再配送。
 

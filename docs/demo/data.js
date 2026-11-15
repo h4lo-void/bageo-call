@@ -35,7 +35,7 @@ window.BAGEO_DEMO = {
       {
         "id": "delivery",
         "title": "Package delivery",
-        "teaser": "A package needs your signature.",
+        "teaser": "A package arrives while you’re busy.",
         "description": "Bageo gets the details. You decide what happens next.",
         "outcome": "Signature needed. Another delivery is possible before 5 pm; confirm a time yourself.",
         "task": "",
@@ -46,7 +46,7 @@ window.BAGEO_DEMO = {
           ],
           [
             "assistant",
-            "Hello! Does it need a signature in person?"
+            "Hi, I’m an AI assistant answering this phone. Does it need a signature in person?"
           ],
           [
             "caller",
@@ -158,7 +158,7 @@ window.BAGEO_DEMO = {
           ],
           [
             "assistant",
-            "你好，包裹需要本人簽收嗎？"
+            "你好，我是 AI 助理，幫忙接電話。包裹需要本人簽收嗎？"
           ],
           [
             "caller",
@@ -270,7 +270,7 @@ window.BAGEO_DEMO = {
           ],
           [
             "assistant",
-            "你好，包裹需要本人签收吗？"
+            "你好，我是 AI 助理，帮忙接电话。包裹需要本人签收吗？"
           ],
           [
             "caller",
@@ -285,7 +285,7 @@ window.BAGEO_DEMO = {
       {
         "id": "sales",
         "title": "推销陪聊",
-        "teaser": "「有个超优惠方案」打来了。",
+        "teaser": "“有个超优惠方案”打来了。",
         "description": "让八哥一题接一题问，这段演示里不提供任何个人信息。",
         "outcome": "继续问细节；演示中没有提供个人信息。",
         "task": "",
@@ -382,7 +382,7 @@ window.BAGEO_DEMO = {
           ],
           [
             "assistant",
-            "こんにちは。本人のサインが必要ですか？"
+            "こんにちは。AIアシスタントが代わりに電話に出ています。本人のサインが必要ですか？"
           ],
           [
             "caller",
@@ -494,7 +494,7 @@ window.BAGEO_DEMO = {
           ],
           [
             "assistant",
-            "안녕하세요. 본인 서명이 필요한가요?"
+            "안녕하세요. 대신 전화를 받는 AI 비서입니다. 본인 서명이 필요한가요?"
           ],
           [
             "caller",
@@ -606,7 +606,7 @@ window.BAGEO_DEMO = {
           ],
           [
             "assistant",
-            "Hola, ¿hace falta que el destinatario firme en persona?"
+            "Hola, soy un asistente de IA que atiende este teléfono. ¿Hace falta que el destinatario firme en persona?"
           ],
           [
             "caller",
@@ -718,7 +718,7 @@ window.BAGEO_DEMO = {
           ],
           [
             "assistant",
-            "Bonjour, le destinataire doit-il signer en personne ?"
+            "Bonjour, je suis un assistant IA qui répond à ce téléphone. Le destinataire doit-il signer en personne ?"
           ],
           [
             "caller",
@@ -830,7 +830,7 @@ window.BAGEO_DEMO = {
           ],
           [
             "assistant",
-            "Hallo, muss die empfangende Person selbst unterschreiben?"
+            "Hallo, ich bin ein KI-Assistent und nehme diesen Anruf entgegen. Muss die empfangende Person selbst unterschreiben?"
           ],
           [
             "caller",
@@ -942,7 +942,7 @@ window.BAGEO_DEMO = {
           ],
           [
             "assistant",
-            "Olá, é necessária a assinatura do destinatário em pessoa?"
+            "Olá, sou um assistente de IA que atende este telefone. É necessária a assinatura do destinatário em pessoa?"
           ],
           [
             "caller",

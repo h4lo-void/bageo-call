@@ -50,7 +50,7 @@
 Open a call, then click through it line by line. <sub>Scripted examples, not real call recordings.</sub>
 
 <details>
-<summary><strong>Package delivery</strong> — A package needs your signature.</summary>
+<summary><strong>Package delivery</strong> — A package arrives while you’re busy.</summary>
 <br>
 
 > <strong>Caller</strong>: Your package is here.
@@ -59,7 +59,7 @@ Open a call, then click through it line by line. <sub>Scripted examples, not rea
 <summary>What does Bageo say?</summary>
 <br>
 
-> <strong>Bageo</strong>: Hello! Does it need a signature in person?
+> <strong>Bageo</strong>: Hi, I’m an AI assistant answering this phone. Does it need a signature in person?
 >
 > <strong>Caller</strong>: Yes. We can deliver again before five this afternoon.
 
