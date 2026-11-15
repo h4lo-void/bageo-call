@@ -20,20 +20,25 @@
 
 <table>
   <tr>
-    <td width="33%" align="center" valign="top">
+    <td width="25%" align="center" valign="top">
       <img src="docs/images/icons/answer.svg" width="56" height="56" alt=""><br>
       <strong>接電話</strong><br>
       響一聲就接，講話像真人，等對方說再見才掛。
     </td>
-    <td width="33%" align="center" valign="top">
+    <td width="25%" align="center" valign="top">
       <img src="docs/images/icons/stall.svg" width="56" height="56" alt=""><br>
       <strong>擋詐騙</strong><br>
       認出推銷和詐騙電話，裝成問題超多的客人，最長纏住對方 30 分鐘。
     </td>
-    <td width="33%" align="center" valign="top">
+    <td width="25%" align="center" valign="top">
       <img src="docs/images/icons/errand.svg" width="56" height="56" alt=""><br>
       <strong>代打電話</strong><br>
-      寫一句「訂明天晚上 7 點 4 位」，它就替你打；拿不準會先問你。
+      寫一句話交代，它就替你打；拿不準會先問你。
+    </td>
+    <td width="25%" align="center" valign="top">
+      <img src="docs/images/icons/languages.svg" width="56" height="56" alt=""><br>
+      <strong>會講九種語言</strong><br>
+      繁中、簡中、英、日、韓、西、法、德、葡語都通；對方換語言，它就跟著換。
     </td>
   </tr>
 </table>
@@ -55,6 +60,14 @@ AI 一確定對方是推銷或詐騙，就變成一個有興趣、反應慢、�
 </p>
 
 訂位、改期、問店家有沒有貨或幾點開門，都可以交代。對方提到你沒交代的事，AI 會先在畫面上問你；它絕不自己答應任何事：你來不及回，它就說會跟你確認，然後客氣收尾。[AI 代打的完整說明](docs/zh-TW/FEATURES.md#ai-代打替你打電話)
+
+## 外國人打來？八哥會講九種語言
+
+<p align="center">
+  <img src="docs/images/languages.zh-TW.svg" width="900" alt="Bageo 會講九種語言：英文、繁體中文、簡體中文、日文、韓文、西班牙文、法文、德文、葡萄牙文，各用自己的方式說「喂？」。">
+</p>
+
+AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種語言都有。雙卡手機每張 SIM 卡可以各設主要語言；國外號碼打來，就用那一國的語言開場；對方中途改講別的語言，AI 也跟著換。逐字稿保留原文，每句附上翻成你通知語言的對照。[語言與雙卡的完整說明](docs/zh-TW/FEATURES.md#九種語言雙卡逐字稿附翻譯)
 
 ## 運作方式
 
@@ -88,9 +101,9 @@ AI 一確定對方是推銷或詐騙，就變成一個有興趣、反應慢、�
       通訊錄可以從 vCard、CSV、Excel、Word、PDF，甚至名片照片匯入。
     </td>
     <td width="33%" align="center" valign="top">
-      <img src="docs/images/icons/languages.svg" width="56" height="56" alt=""><br>
-      <strong>9 種語言、30 種聲音</strong><br>
-      對方講什麼語言就跟著換，逐字稿附翻譯。
+      <img src="docs/images/icons/switch.svg" width="56" height="56" alt=""><br>
+      <strong>一鍵切回一般手機</strong><br>
+      備用機隨時可以切回普通手機自己接，再切回 AI 接聽。
     </td>
   </tr>
   <tr>

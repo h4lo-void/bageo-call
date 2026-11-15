@@ -20,20 +20,25 @@
 
 <table>
   <tr>
-    <td width="33%" align="center" valign="top">
+    <td width="25%" align="center" valign="top">
       <img src="docs/images/icons/answer.svg" width="56" height="56" alt=""><br>
       <strong>接电话</strong><br>
       响一声就接，说话像真人，等对方说再见才挂。
     </td>
-    <td width="33%" align="center" valign="top">
+    <td width="25%" align="center" valign="top">
       <img src="docs/images/icons/stall.svg" width="56" height="56" alt=""><br>
       <strong>拦诈骗</strong><br>
       认出推销和诈骗电话，装成问题特别多的客户，最长缠住对方 30 分钟。
     </td>
-    <td width="33%" align="center" valign="top">
+    <td width="25%" align="center" valign="top">
       <img src="docs/images/icons/errand.svg" width="56" height="56" alt=""><br>
       <strong>代打电话</strong><br>
-      写一句“订明天晚上 7 点 4 位”，它就替你打；拿不准会先问你。
+      写一句话交代，它就替你打；拿不准会先问你。
+    </td>
+    <td width="25%" align="center" valign="top">
+      <img src="docs/images/icons/languages.svg" width="56" height="56" alt=""><br>
+      <strong>会说九种语言</strong><br>
+      简中、繁中、英、日、韩、西、法、德、葡语都行；对方换语言，它就跟着换。
     </td>
   </tr>
 </table>
@@ -55,6 +60,14 @@ AI 一确定对方是推销或诈骗，就变成一个有兴趣、反应慢、�
 </p>
 
 订位、改期、问店家有没有货或几点开门，都可以交代。对方提到你没交代的事，AI 会先在屏幕上问你；它绝不自己答应任何事：你来不及回，它就说会跟你确认，然后客气收尾。[AI 代打的完整说明](docs/zh-CN/FEATURES.md#ai-代打替你打电话)
+
+## 外国人打来？八哥会说九种语言
+
+<p align="center">
+  <img src="docs/images/languages.zh-CN.svg" width="900" alt="Bageo 会说九种语言：英语、繁体中文、简体中文、日语、韩语、西班牙语、法语、德语、葡萄牙语，各用自己的方式说“喂？”。">
+</p>
+
+AI 的语音、内置提示词、网页控制台、手机应用和通知，九种语言都有。双卡手机每张 SIM 卡可以各设主要语言；国外号码打来，就用那个国家的语言开场；对方中途改说别的语言，AI 也跟着换。文字记录保留原文，每句附上翻译成你通知语言的对照。[语言与双卡的完整说明](docs/zh-CN/FEATURES.md#九种语言双卡文字记录附翻译)
 
 ## 工作原理
 
@@ -88,9 +101,9 @@ AI 一确定对方是推销或诈骗，就变成一个有兴趣、反应慢、�
       通讯录可以从 vCard、CSV、Excel、Word、PDF，甚至名片照片导入。
     </td>
     <td width="33%" align="center" valign="top">
-      <img src="docs/images/icons/languages.svg" width="56" height="56" alt=""><br>
-      <strong>9 种语言、30 种声音</strong><br>
-      对方说什么语言就跟着换，文字记录附翻译。
+      <img src="docs/images/icons/switch.svg" width="56" height="56" alt=""><br>
+      <strong>一键切回普通手机</strong><br>
+      备用机随时可以切回普通手机自己接，再切回 AI 接听。
     </td>
   </tr>
   <tr>

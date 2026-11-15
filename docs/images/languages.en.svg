@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 318" width="900" height="318" role="img" aria-labelledby="t" xml:lang="en" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">
+  <title id="t">Bageo speaks nine languages: English, Traditional Chinese, Simplified Chinese, Japanese, Korean, Spanish, French, German and Portuguese. Each one answers with its own hello.</title>
+  <style>
+    .p{animation:p 10.8s linear infinite}
+    @keyframes p{0%{opacity:0}2%,9%{opacity:1}11.1%,100%{opacity:0}}
+    .w1{animation:wv 1.3s ease-in-out infinite}
+    .w2{animation:wv 1.3s ease-in-out .3s infinite}
+    @keyframes wv{0%,100%{opacity:.2}50%{opacity:1}}
+    @media (prefers-reduced-motion:reduce){.p,.w1,.w2{animation:none}}
+  </style>
+  <rect x=".75" y=".75" width="898.5" height="316.5" rx="24" fill="#1B1B1F" stroke="#3A3A44" stroke-width="1.5"/>
+  <text x="38" y="36" font-size="14" font-weight="700" fill="#9A9AA5">NINE LANGUAGES, AND IT FOLLOWS THE CALLER</text>
+  <g transform="translate(35 87) scale(.625)">
+    <rect x="8" y="8" width="240" height="240" rx="56" fill="#FFCF4A"/>
+    <g fill="#0E8F8F"><rect x="52" y="204" width="136" height="16" rx="8"/><rect x="44" y="204" width="34" height="30" rx="11"/><rect x="162" y="204" width="34" height="30" rx="11"/></g>
+    <g stroke="#E08A00" stroke-width="7" stroke-linecap="round"><line x1="104" y1="186" x2="104" y2="203"/><line x1="128" y1="186" x2="128" y2="203"/></g>
+    <polygon points="70,150 22,176 30,192 84,176" fill="#1B1B1F"/>
+    <ellipse cx="112" cy="142" rx="56" ry="50" fill="#1B1B1F"/>
+    <circle cx="146" cy="88" r="38" fill="#1B1B1F"/>
+    <polygon points="158,60 166,30 172,56 184,36 184,64 198,50 190,76" fill="#1B1B1F"/>
+    <g transform="rotate(-24 100 150)"><ellipse cx="100" cy="150" rx="42" ry="25" fill="#34343B"/><ellipse cx="88" cy="160" rx="18" ry="7" fill="#FFFFFF"/></g>
+    <g fill="#FFF4D8" stroke="#1B1B1F" stroke-width="3" stroke-linejoin="round"><polygon points="178,74 216,84 180,92"/><polygon points="180,94 208,102 176,106"/></g>
+    <circle cx="158" cy="80" r="8" fill="#FF8A1F"/>
+    <circle cx="159" cy="80" r="3.5" fill="#1B1B1F"/>
+    <g fill="none" stroke="#1B1B1F" stroke-width="5" stroke-linecap="round"><path class="w1" d="M222 80 q7 13 0 26"/><path class="w2" d="M233 71 q13 22 0 44"/></g>
+  </g>
+  <rect x="236" y="62" width="200" height="64" rx="16" fill="#FFCF4A" stroke="#FFCF4A" stroke-width="1.5"/>
+  <text xml:lang="en" x="254" y="101" font-size="20" font-weight="800" fill="#1B1B1F">Hello?</text>
+  <text xml:lang="en" x="420" y="99" text-anchor="end" font-size="13" fill="#4A3A00">English</text>
+  <rect x="450" y="62" width="200" height="64" rx="16" fill="#24242B" stroke="#3A3A44" stroke-width="1.5"/>
+  <text xml:lang="zh-Hant" x="468" y="101" font-size="20" font-weight="800" fill="#FFFFFF">喂？</text>
+  <text xml:lang="zh-Hant" x="634" y="99" text-anchor="end" font-size="13" fill="#B5B5C0">繁體中文</text>
+  <rect class="p" style="animation-delay:1.2s" opacity="0" x="450" y="62" width="200" height="64" rx="16" fill="none" stroke="#FFCF4A" stroke-width="2.5"/>
+  <rect x="664" y="62" width="200" height="64" rx="16" fill="#24242B" stroke="#3A3A44" stroke-width="1.5"/>
+  <text xml:lang="zh-Hans" x="682" y="101" font-size="20" font-weight="800" fill="#FFFFFF">喂？</text>
+  <text xml:lang="zh-Hans" x="848" y="99" text-anchor="end" font-size="13" fill="#B5B5C0">简体中文</text>
+  <rect class="p" style="animation-delay:2.4s" opacity="0" x="664" y="62" width="200" height="64" rx="16" fill="none" stroke="#FFCF4A" stroke-width="2.5"/>
+  <rect x="236" y="140" width="200" height="64" rx="16" fill="#24242B" stroke="#3A3A44" stroke-width="1.5"/>
+  <text xml:lang="ja" x="254" y="179" font-size="20" font-weight="800" fill="#FFFFFF">もしもし？</text>
+  <text xml:lang="ja" x="420" y="177" text-anchor="end" font-size="13" fill="#B5B5C0">日本語</text>
+  <rect class="p" style="animation-delay:3.6s" opacity="0" x="236" y="140" width="200" height="64" rx="16" fill="none" stroke="#FFCF4A" stroke-width="2.5"/>
+  <rect x="450" y="140" width="200" height="64" rx="16" fill="#24242B" stroke="#3A3A44" stroke-width="1.5"/>
+  <text xml:lang="ko" x="468" y="179" font-size="20" font-weight="800" fill="#FFFFFF">여보세요?</text>
+  <text xml:lang="ko" x="634" y="177" text-anchor="end" font-size="13" fill="#B5B5C0">한국어</text>
+  <rect class="p" style="animation-delay:4.8s" opacity="0" x="450" y="140" width="200" height="64" rx="16" fill="none" stroke="#FFCF4A" stroke-width="2.5"/>
+  <rect x="664" y="140" width="200" height="64" rx="16" fill="#24242B" stroke="#3A3A44" stroke-width="1.5"/>
+  <text xml:lang="es" x="682" y="179" font-size="20" font-weight="800" fill="#FFFFFF">¿Diga?</text>
+  <text xml:lang="es" x="848" y="177" text-anchor="end" font-size="13" fill="#B5B5C0">Español</text>
+  <rect class="p" style="animation-delay:6.0s" opacity="0" x="664" y="140" width="200" height="64" rx="16" fill="none" stroke="#FFCF4A" stroke-width="2.5"/>
+  <rect x="236" y="218" width="200" height="64" rx="16" fill="#24242B" stroke="#3A3A44" stroke-width="1.5"/>
+  <text xml:lang="fr" x="254" y="257" font-size="20" font-weight="800" fill="#FFFFFF">Allô ?</text>
+  <text xml:lang="fr" x="420" y="255" text-anchor="end" font-size="13" fill="#B5B5C0">Français</text>
+  <rect class="p" style="animation-delay:7.2s" opacity="0" x="236" y="218" width="200" height="64" rx="16" fill="none" stroke="#FFCF4A" stroke-width="2.5"/>
+  <rect x="450" y="218" width="200" height="64" rx="16" fill="#24242B" stroke="#3A3A44" stroke-width="1.5"/>
+  <text xml:lang="de" x="468" y="257" font-size="20" font-weight="800" fill="#FFFFFF">Hallo?</text>
+  <text xml:lang="de" x="634" y="255" text-anchor="end" font-size="13" fill="#B5B5C0">Deutsch</text>
+  <rect class="p" style="animation-delay:8.4s" opacity="0" x="450" y="218" width="200" height="64" rx="16" fill="none" stroke="#FFCF4A" stroke-width="2.5"/>
+  <rect x="664" y="218" width="200" height="64" rx="16" fill="#24242B" stroke="#3A3A44" stroke-width="1.5"/>
+  <text xml:lang="pt" x="682" y="257" font-size="20" font-weight="800" fill="#FFFFFF">Alô?</text>
+  <text xml:lang="pt" x="848" y="255" text-anchor="end" font-size="13" fill="#B5B5C0">Português</text>
+  <rect class="p" style="animation-delay:9.6s" opacity="0" x="664" y="218" width="200" height="64" rx="16" fill="none" stroke="#FFCF4A" stroke-width="2.5"/>
+</svg>

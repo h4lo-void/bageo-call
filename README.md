@@ -20,20 +20,25 @@
 
 <table>
   <tr>
-    <td width="33%" align="center" valign="top">
+    <td width="25%" align="center" valign="top">
       <img src="docs/images/icons/answer.svg" width="56" height="56" alt=""><br>
       <strong>Answers your calls</strong><br>
       Picks up after one ring, talks like a person and waits for the caller to say goodbye.
     </td>
-    <td width="33%" align="center" valign="top">
+    <td width="25%" align="center" valign="top">
       <img src="docs/images/icons/stall.svg" width="56" height="56" alt=""><br>
       <strong>Stalls scammers</strong><br>
       Spots sales and scam calls, then plays a slow, curious customer for up to 30 minutes.
     </td>
-    <td width="33%" align="center" valign="top">
+    <td width="25%" align="center" valign="top">
       <img src="docs/images/icons/errand.svg" width="56" height="56" alt=""><br>
       <strong>Runs your errands</strong><br>
-      Write one line, such as “book a table for four at 7”, and it makes the call. When unsure, it asks you first.
+      Write one line and it makes the call for you. When unsure, it asks you first.
+    </td>
+    <td width="25%" align="center" valign="top">
+      <img src="docs/images/icons/languages.svg" width="56" height="56" alt=""><br>
+      <strong>Speaks nine languages</strong><br>
+      English, Chinese, Japanese, Korean, Spanish, French, German and Portuguese. It switches when the caller does.
     </td>
   </tr>
 </table>
@@ -55,6 +60,14 @@ Once a call is clearly sales or a scam, the AI turns into an interested, slow, e
 </p>
 
 Book a table, move an appointment, ask a shop about stock or opening hours. When the other side raises something you did not cover, the AI asks you on screen before it answers. It never agrees to anything on its own: if you do not reply in time, it says you will confirm and ends the call politely. [More about AI errands](docs/en/FEATURES.md#ai-errands-it-makes-calls-for-you)
+
+## A caller from abroad? Bageo speaks nine languages.
+
+<p align="center">
+  <img src="docs/images/languages.en.svg" width="900" alt="Bageo speaks nine languages: English, Traditional Chinese, Simplified Chinese, Japanese, Korean, Spanish, French, German and Portuguese. Each one answers with its own hello.">
+</p>
+
+The AI's voice, the built-in prompts, the web console, the phone app and the notifications all come in nine languages. On a dual-SIM phone each SIM opens calls in its own language, a caller from abroad hears their country's language, and when a caller switches language mid-call, the AI follows. Transcripts keep the original words, each line with a translation into your notification language. [More about languages and dual SIM](docs/en/FEATURES.md#nine-languages-dual-sim-translated-transcripts)
 
 ## How it works
 
@@ -88,9 +101,9 @@ The phone only carries the call; everything else runs on your own computer. The 
       Import contacts from vCard, CSV, Excel, Word, PDF or a photo of a business card.
     </td>
     <td width="33%" align="center" valign="top">
-      <img src="docs/images/icons/languages.svg" width="56" height="56" alt=""><br>
-      <strong>9 languages, 30 voices</strong><br>
-      It follows the caller's language, and transcripts come with a translation.
+      <img src="docs/images/icons/switch.svg" width="56" height="56" alt=""><br>
+      <strong>One switch back to a normal phone</strong><br>
+      Turn the spare phone into an ordinary phone and back again, from the console or the app.
     </td>
   </tr>
   <tr>
