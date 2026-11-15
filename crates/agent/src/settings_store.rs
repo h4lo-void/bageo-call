@@ -311,6 +311,24 @@ pub struct RuntimeSettings {
     /// answering that chat for the rest of the minute (1–120).
     #[serde(default = "default_control_commands_per_minute")]
     pub control_commands_per_minute: u32,
+    /// The MCP tool interface at `POST /mcp` ([crate::mcp]). Off by default;
+    /// it answers nothing until `mcp_token` is set too.
+    #[serde(default)]
+    pub mcp_enabled: bool,
+    /// The bearer token an MCP client sends (`Authorization: Bearer …`).
+    #[serde(default)]
+    pub mcp_token: String,
+    /// What MCP clients may do about calls: `off` (look only), `confirm`
+    /// (the AI calls once the owner says yes in a command chat) or `direct`.
+    #[serde(default = "default_mcp_calls")]
+    pub mcp_calls: String,
+    /// AI calls MCP clients may ask for per hour, all together (0 = none; at most 30).
+    #[serde(default = "default_mcp_errands_per_hour")]
+    pub mcp_errands_per_hour: u32,
+    /// Browser origins allowed to reach `/mcp` (exact, `https://app.example`).
+    /// A request without an Origin header (a local client) is not a browser's.
+    #[serde(default)]
+    pub mcp_allowed_origins: Vec<String>,
     /// Names speech-to-text keeps getting wrong, one `wrong=right` per entry
     /// (`黃先生=王先生`): applied to transcripts and summaries.
     #[serde(default)]
@@ -401,6 +419,40 @@ fn default_control_errands_per_hour() -> u32 {
 
 fn default_control_commands_per_minute() -> u32 {
     20
+}
+
+fn default_mcp_calls() -> String {
+    "off".to_string()
+}
+
+fn default_mcp_errands_per_hour() -> u32 {
+    3
+}
+
+/// Setting `mcp_calls`: `confirm` or `direct`, else `off`.
+pub fn sanitize_mcp_calls(s: &str) -> String {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "confirm" => "confirm".to_string(),
+        "direct" => "direct".to_string(),
+        _ => default_mcp_calls(),
+    }
+}
+
+/// Setting `mcp_allowed_origins`: `scheme://host[:port]` each, without a
+/// path or a trailing slash; at most 20, each once.
+pub fn sanitize_origins(list: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for o in list.iter().flat_map(|s| s.split([',', ' ', '\n', ';'])) {
+        let o = o.trim().trim_end_matches('/').to_ascii_lowercase();
+        let Some((scheme, host)) = o.split_once("://") else { continue };
+        if !matches!(scheme, "http" | "https") || host.is_empty() || host.contains(['/', '?', '#', '@']) {
+            continue;
+        }
+        if !out.contains(&o) && out.len() < 20 {
+            out.push(o);
+        }
+    }
+    out
 }
 
 /// Who may give chat commands: platform user ids (letters, digits and
@@ -637,6 +689,11 @@ impl RuntimeSettings {
             telegram_control_users: sanitize_sender_ids(&[env_or("TELEGRAM_CONTROL_USERS", "")]),
             control_errands_per_hour: env_parse("CONTROL_ERRANDS_PER_HOUR", default_control_errands_per_hour()).min(30),
             control_commands_per_minute: env_parse("CONTROL_COMMANDS_PER_MINUTE", default_control_commands_per_minute()).clamp(1, 120),
+            mcp_enabled: env_bool("MCP_ENABLED", false),
+            mcp_token: env_or("MCP_TOKEN", ""),
+            mcp_calls: sanitize_mcp_calls(&env_or("MCP_CALLS", "off")),
+            mcp_errands_per_hour: env_parse("MCP_ERRANDS_PER_HOUR", default_mcp_errands_per_hour()).min(30),
+            mcp_allowed_origins: sanitize_origins(&[env_or("MCP_ALLOWED_ORIGINS", "")]),
             name_corrections: split_list(&env_or("NAME_CORRECTIONS", "")),
             device_labels: std::collections::BTreeMap::new(),
             calls_data_dir: base.calls_data_dir.clone(),
@@ -864,6 +921,9 @@ impl RuntimeSettings {
             appointment_reply,
             errand_identity,
             telegram_control_users,
+            mcp_token,
+            mcp_calls,
+            mcp_allowed_origins,
         );
         macro_rules! set_copy {
             ($($f:ident),+ $(,)?) => {$(
@@ -875,6 +935,8 @@ impl RuntimeSettings {
             telegram_control,
             control_errands_per_hour,
             control_commands_per_minute,
+            mcp_enabled,
+            mcp_errands_per_hour,
             call_notify,
             shaming_enabled,
             spam_ai_filter_enabled,
@@ -1283,6 +1345,16 @@ struct Overrides {
     #[serde(skip_serializing_if = "Option::is_none")]
     control_commands_per_minute: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    mcp_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mcp_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mcp_calls: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mcp_errands_per_hour: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mcp_allowed_origins: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     name_corrections: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     device_labels: Option<std::collections::BTreeMap<String, String>>,
@@ -1426,11 +1498,12 @@ impl SettingsStore {
     }
 }
 
-const SECRET_FIELDS: [&str; 11] = [
+const SECRET_FIELDS: [&str; 12] = [
     "openrouter_api_key",
     "telegram_bot_token",
     "gmail_app_password",
     "openclaw_token",
+    "mcp_token",
     "trtc_secret_key",
     "trtc_secret_id",
     "trtc_cloud_secret_key",
@@ -1813,6 +1886,20 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     p_u32(patch, "control_commands_per_minute", &mut ov.control_commands_per_minute);
     if let Some(v) = ov.control_commands_per_minute.take() {
         ov.control_commands_per_minute = Some(v.clamp(1, 120));
+    }
+    p_bool(patch, "mcp_enabled", &mut ov.mcp_enabled);
+    p_secret(patch, "mcp_token", &mut ov.mcp_token);
+    p_string(patch, "mcp_calls", &mut ov.mcp_calls);
+    if let Some(v) = ov.mcp_calls.take() {
+        ov.mcp_calls = Some(sanitize_mcp_calls(&v));
+    }
+    p_u32(patch, "mcp_errands_per_hour", &mut ov.mcp_errands_per_hour);
+    if let Some(v) = ov.mcp_errands_per_hour.take() {
+        ov.mcp_errands_per_hour = Some(v.min(30));
+    }
+    p_list(patch, "mcp_allowed_origins", &mut ov.mcp_allowed_origins);
+    if let Some(v) = ov.mcp_allowed_origins.take() {
+        ov.mcp_allowed_origins = Some(sanitize_origins(&v));
     }
     p_list(patch, "name_corrections", &mut ov.name_corrections);
     if let Some(map) = patch.get("device_labels").and_then(|v| v.as_object()) {

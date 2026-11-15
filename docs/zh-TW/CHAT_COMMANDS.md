@@ -74,5 +74,7 @@ AI 代打的結果照舊用一般通知送出。
 
 ## 給開發者
 
-指令、檢查、確認和上限都在 `crates/agent/src/control/`；要接新的聊天軟體，只要寫一層薄薄的轉接：把訊息轉成 `control::Inbound` 交給 `Controller::handle`，再把拿回來的 `Outbound` 顯示出來。介面說明寫在 `control/mod.rs` 開頭；`control/telegram.rs` 是第一個轉接層。MCP 工具介面也可以對應到同一組動作。
+指令、檢查、確認和上限都在 `crates/agent/src/control/`；要接新的聊天軟體，只要寫一層薄薄的轉接：把訊息轉成 `control::Inbound` 交給 `Controller::handle`，再把拿回來的 `Outbound` 顯示出來。介面說明寫在 `control/mod.rs` 開頭；`control/telegram.rs` 是第一個轉接層。目前只有 Telegram 能下指令；Discord、Slack、Matrix 等其他管道照樣收得到所有通知。
+
+AI 代理（Claude、ChatGPT、Grok、OpenClaw（龍蝦）…）可以透過內建的 MCP 伺服器使用同一組動作：見 [MCP](MCP.md)。
 

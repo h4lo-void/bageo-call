@@ -1,8 +1,10 @@
 <p align="center">
-  <img src="docs/images/bageo.svg" width="128" alt="Bageo：站在電話話筒上的八哥">
+  <img src="docs/images/banner.zh-TW.svg" width="900" alt="Bageo（八哥）：你的門號，AI 幫你接。接電話、擋詐騙、代打電話。">
 </p>
 
-<h1 align="center">Bageo（八哥）</h1>
+<p align="center">
+  <a href="README.md">English</a> · <strong>繁體中文</strong> · <a href="README.zh-CN.md">简体中文</a>
+</p>
 
 <p align="center">
   <strong>AI 接電話、替你打電話的 AI 電話助理（Gemini Live＋你自己的門號）</strong><br>
@@ -14,204 +16,272 @@
   <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/release-v1.0.0-brightgreen.svg" alt="Release v1.0.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="授權：AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/商業授權-雙重授權-gold.svg" alt="提供商業授權"></a>
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Docker-lightgrey.svg" alt="平台：Windows、macOS、Linux、Docker">
-  <img src="https://img.shields.io/badge/agent-Rust-orange.svg" alt="主程式：Rust">
-  <img src="https://img.shields.io/badge/phone-Android%20%2B%20Magisk%20%2F%20KernelSU-3DDC84.svg" alt="手機：Android＋Magisk 或 KernelSU">
 </p>
+
+<table>
+  <tr>
+    <td width="25%" align="center" valign="top">
+      <img src="docs/images/icons/answer.svg" width="56" height="56" alt=""><br>
+      <strong>接電話</strong><br>
+      響一聲就接，講話像真人，等對方說再見才掛。
+    </td>
+    <td width="25%" align="center" valign="top">
+      <img src="docs/images/icons/stall.svg" width="56" height="56" alt=""><br>
+      <strong>擋詐騙</strong><br>
+      認出推銷和詐騙電話，裝成問題超多的客人，最長纏住對方 30 分鐘。
+    </td>
+    <td width="25%" align="center" valign="top">
+      <img src="docs/images/icons/errand.svg" width="56" height="56" alt=""><br>
+      <strong>代打電話</strong><br>
+      寫一句話交代，它就替你打；拿不準會先問你。
+    </td>
+    <td width="25%" align="center" valign="top">
+      <img src="docs/images/icons/languages.svg" width="56" height="56" alt=""><br>
+      <strong>會講九種語言</strong><br>
+      繁中、簡中、英、日、韓、西、法、德、葡語都通；對方換語言，它就跟著換。
+    </td>
+  </tr>
+</table>
+
+<p align="center"><sub>名字取自八哥（bāgē）：一種會學身邊的人講話的鳥。</sub></p>
+
+## 玩玩看：猜猜八哥怎麼回
+
+點開一通電話，再一句一句點下去。 <sub>示範對話，不是真實通話錄音。</sub>
+
+<details>
+<summary><strong>包裹來電</strong>　包裹到了，但你正忙。</summary>
+<br>
+
+> <strong>對方</strong>：你的包裹到了。
+
+<details>
+<summary>八哥怎麼回？</summary>
+<br>
+
+> <strong>八哥</strong>：你好，我是 AI 助理，幫忙接電話。包裹需要本人簽收嗎？
+>
+> <strong>對方</strong>：需要，今天下午五點前都能再配送。
+
+<details>
+<summary>然後呢？</summary>
+<br>
+
+> <strong>八哥</strong>：我會轉告，請本人再跟你確認時間。
+
+<strong>你收到的重點：</strong> 包裹需本人簽收，下午五點前可再配送；等你確認時間。
+
+</details>
+</details>
+</details>
+
+<details>
+<summary><strong>推銷電話</strong>　「有個超優惠方案」打來了。</summary>
+<br>
+
+> <strong>對方</strong>：有一筆低利貸款，今天就能辦！
+
+<details>
+<summary>八哥會掛掉嗎？</summary>
+<br>
+
+> <strong>八哥</strong>：利息是月息還是年息？
+>
+> <strong>對方</strong>：先提供你的身分資料。
+
+<details>
+<summary>八哥會給嗎？</summary>
+<br>
+
+> <strong>八哥</strong>：先說說手續費怎麼算？每個月要付多少？
+
+<strong>你收到的重點：</strong> 一項個資都沒給，問題倒是越問越多。這樣最長可以纏住對方 30 分鐘。
+
+</details>
+</details>
+</details>
+
+<details>
+<summary><strong>代打訂位</strong>　交代一句，少打一通。</summary>
+<br>
+
+> <strong>你交代</strong>：幫我訂明晚四位，七點或七點半都可以。
+
+<details>
+<summary>八哥怎麼開口？</summary>
+<br>
+
+> <strong>八哥</strong>：你好，我是 AI 助理，想訂明晚七點四位。
+>
+> <strong>餐廳</strong>：七點滿了，七點半可以。
+
+<details>
+<summary>八哥會答應嗎？</summary>
+<br>
+
+> <strong>八哥</strong>：七點半也可以，麻煩訂四位，謝謝。
+>
+> <strong>餐廳</strong>：好的，明晚七點半四位。
+
+<strong>你收到的重點：</strong> 明晚 19:30、四位，在你交代的範圍內。超出範圍的事，它會先問你。
+
+</details>
+</details>
+</details>
+
+## 詐騙打來？八哥陪他慢慢聊
 
 <p align="center">
-  <a href="README.md">English</a> · <strong>繁體中文</strong> · <a href="README.zh-CN.md">简体中文</a>
+  <img src="docs/images/scene-stall.zh-TW.svg" width="760" alt="一通信貸推銷電話。對方說你有一筆低利信貸額度核准了，AI 問利息是月息還是年息；對方要核對身分證字號，AI 繼續問問題。27 分鐘後對方想掛電話，AI 說：欸等一下，我還有一個問題。結果：陪聊 27 分鐘，沒有給出任何個資，錄音與摘要已存檔。">
 </p>
 
-Bageo（八哥）讓 AI 用**你原本的電話號碼**接電話，也替你打電話。插著你 SIM 卡的備用 Android 手機（已 root）負責接通，電腦上的程式把每通電話即時送到 Gemini Live 再送回來：對方聽到的是響一聲就接、可以插話、會過濾推銷與詐騙電話、等對方說再見才掛的自然聲音。跟架在 SIP 線路或虛擬號碼上的 AI 電話服務不同，你不用換門號、不用付平台月費，每一段錄音都留在你自己的硬碟。
+AI 一確定對方是推銷或詐騙，就變成一個有興趣、反應慢、愛問細節的客人：一直問、故意把數字聽錯，最長纏住對方 30 分鐘，一項真實資料都不給。你會收到錄音、逐字稿和一段摘要。正常電話不會被誤傷：銀行核對刷卡、診所、快遞、家人。陪聊模式預設開啟，一個開關就能關掉。[三道防線怎麼判斷](docs/zh-TW/FEATURES.md#擋推銷與詐騙電話加上陪聊模式)
 
-名字取自八哥（bāgē）：一種會學身邊的人講話的鳥。
+## 懶得打電話？寫一句話就好
 
-## 實際通話聽起來像這樣
+<p align="center">
+  <img src="docs/images/scene-errand.zh-TW.svg" width="760" alt="一次 AI 代打。你交代：訂明天晚上 7 點 4 位，7 點半也可以。AI 以小明助理的身分打給餐廳；7 點客滿，餐廳問 7 點半可不可以，AI 答應。結果：辦好了，明天晚上 7 點半、4 位，可以一鍵加入行事曆。">
+</p>
 
-**一通信貸推銷電話。** 接聽身分是「本人」，「陪他聊、拖時間」開著（預設）。
+訂位、改期、問店家有沒有貨或幾點開門，都可以交代。對方提到你沒交代的事，AI 會先在畫面上問你；它絕不自己答應任何事：你來不及回，它就說會跟你確認，然後客氣收尾。[AI 代打的完整說明](docs/zh-TW/FEATURES.md#ai-代打替你打電話)
 
-> **對方：** 您好，這裡是旭日財務，您有一筆低利信貸額度已經核准了。
->
-> **AI：** 喔？信貸喔？那利息怎麼算，是月息還是年息？
->
-> **對方：** 年息，只要 2.8%。我先跟您核對一下身分證字號就可以辦了。
->
-> **AI：** 欸，2.8% 是整筆算的嗎？那我如果提早還，要不要另外付錢？
+## 外國人打來？八哥會講九種語言
 
-AI 會一直問、故意把數字聽錯、聊一聊就岔題，就是不給任何一項資料，直到對方放棄或滿 30 分鐘。你會收到錄音、逐字稿和一段簡短摘要。
+<p align="center">
+  <img src="docs/images/languages.zh-TW.svg" width="900" alt="Bageo 會講九種語言：英文、繁體中文、簡體中文、日文、韓文、西班牙文、法文、德文、葡萄牙文，各用自己的方式說「喂？」。">
+</p>
 
-**一次 AI 代打。** 你在「AI 代打」頁寫下：「訂明天晚上 7 點 4 位，7 點半也可以。」
+AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種語言都有。雙卡手機每張 SIM 卡可以各設主要語言；國外號碼打來，就用那一國的語言開場；對方中途改講別的語言，AI 也跟著換。逐字稿保留原文，每句附上翻成你通知語言的對照。[語言與雙卡的完整說明](docs/zh-TW/FEATURES.md#九種語言雙卡逐字稿附翻譯)
 
-> **AI：** 您好，我是小明的助理，想訂明天晚上 7 點 4 位。
->
-> **餐廳：** 不好意思，7 點客滿了，7 點半可以嗎？
->
-> **AI：** 7 點半可以，訂位名字是小明。
+## 運作方式
 
-結果標成「**辦好了**」：明天晚上 7 點半、4 位，附一個加入行事曆的按鈕。如果餐廳只給 8 點半，AI 會先在控制台問你。
+<p align="center">
+  <img src="docs/images/how-it-works.zh-TW.svg" width="900" alt="Bageo 怎麼運作：對方透過電信網路打到你的備用手機（已 root、插著你的 SIM 卡），手機用 USB 或 Wi-Fi 把通話聲音交給你電腦上的 Bageo 主程式，主程式再跟 Gemini Live 對話。錄音留在你的硬碟，通知送到 32 種管道，一切在網頁控制台管理。">
+</p>
+
+手機只負責接通電話，其他事都在你自己的電腦上處理。手機還在響，AI 就已經連上，所以接起後約 **0.43 秒**開口（實測中位數）。一通電話的完整過程：[架構](docs/zh-TW/ARCHITECTURE.md)。
 
 ## 為什麼選 Bageo
 
 | | 架在 SIP 線路或虛擬號碼上的 AI 電話服務 | Bageo |
 |---|---|---|
-| **電話號碼** | 服務商給的號碼，或把你的來電轉接過去 | 你原本的門號，插在你自己的手機裡；AI 撥出時顯示的也是它 |
-| **費用** | 通常是月費或按分鐘計費 | 沒有平台月費：只付 Google 的 Gemini 用量（用你自己的 API 金鑰）和電信門號費 |
-| **你的資料** | 錄音和逐字稿放在服務商的伺服器 | 程式旁邊 `data/` 資料夾裡的一般檔案；不需要資料庫，也沒有我們的帳號 |
-| **要準備什麼** | 一個帳號 | 一支已 root 的備用 Android 手機，和一台一直開著的電腦 |
+| **號碼** | 服務商給的號碼，或把你的來電轉接過去 | 你原本的門號，AI 撥出時顯示的也是它 |
+| **費用** | 月費或按分鐘計費 | 沒有平台月費，只付 Gemini 用量和電信門號費 |
+| **資料** | 放在服務商的伺服器 | 你硬碟上 `data/` 資料夾裡的一般檔案 |
+| **代價** | 註冊帳號就能用 | 要一支已 root 的備用 Android 手機，和一台一直開著的電腦 |
 
-它也又快又輕。手機還在響，AI 就已經連上，接起後約 **0.43 秒**開口（實測中位數）。主程式是單一 Rust 程式，可以跑在 Windows 10/11、macOS（Apple Silicon 與 Intel）、Linux 或 Docker，一台迷你電腦或舊筆電就綽綽有餘。
+## 還會這些
 
-## 運作方式
+<table>
+  <tr>
+    <td width="33%" align="center" valign="top">
+      <img src="docs/images/icons/calendar.svg" width="56" height="56" alt=""><br>
+      <strong>預約等你點頭</strong><br>
+      開啟行程預約後，對方想約時間會先進待處理事項，等你決定，AI 再傳簡訊或回電通知對方。
+    </td>
+    <td width="33%" align="center" valign="top">
+      <img src="docs/images/icons/contacts.svg" width="56" height="56" alt=""><br>
+      <strong>認得誰打來</strong><br>
+      通訊錄可以從 vCard、CSV、Excel、Word、PDF，甚至名片照片匯入。
+    </td>
+    <td width="33%" align="center" valign="top">
+      <img src="docs/images/icons/switch.svg" width="56" height="56" alt=""><br>
+      <strong>一鍵切回一般手機</strong><br>
+      備用機隨時可以切回普通手機自己接，再切回 AI 接聽。
+    </td>
+  </tr>
+  <tr>
+    <td width="33%" align="center" valign="top">
+      <img src="docs/images/icons/sound.svg" width="56" height="56" alt=""><br>
+      <strong>聽起來像真的在講電話</strong><br>
+      可以墊背景音：居家、辦公室、街邊、夜市等 12 種。
+    </td>
+    <td width="33%" align="center" valign="top">
+      <img src="docs/images/icons/notify.svg" width="56" height="56" alt=""><br>
+      <strong>32 種通知管道</strong><br>
+      每通電話結束，摘要送到 Telegram、LINE、Discord 等管道。
+    </td>
+    <td width="33%" align="center" valign="top">
+      <img src="docs/images/icons/local.svg" width="56" height="56" alt=""><br>
+      <strong>資料留在自己手上</strong><br>
+      錄音和逐字稿都是你硬碟上的一般檔案，不用跟我們註冊帳號。
+    </td>
+  </tr>
+</table>
 
-```mermaid
-flowchart LR
-    other(["來電者或受話方"]) <-- "行動網路<br/>你的 SIM 卡" --> phone["備用 Android 手機<br/>已 root，Bageo App＋模組"]
-    phone <-- "USB（adb reverse）或 Wi-Fi<br/>通話音訊＋控制訊息" --> agent["Bageo 主程式<br/>單一 Rust 程式"]
-    agent <-- "語音對語音" --> gemini[("Gemini Live")]
-    agent -- "摘要、防詐複審、<br/>聯絡人匯入、翻譯" --> lite[("Gemini Flash-Lite<br/>或任何 OpenAI 相容模型")]
-    agent <--> console["網頁控制台<br/>http://bageo.local:8787"]
-    agent --> notify["32 種通知管道"]
-    agent --> data[("data/ 資料夾<br/>在你的硬碟上")]
-```
-
-手機只負責行動網路，其他事都由主程式處理。手機還在響的時候，主程式就開好 Gemini Live 連線、準備好第一句話，所以電話一接通 AI 就開口。AI 代打和 AI 回電走同一條路往外撥。一通來電與一通撥出的完整過程：[架構](docs/zh-TW/ARCHITECTURE.md)。
-
-## 功能
-
-### 像真人一樣接你的電話
-
-- **響一聲，再說「喂？」** 手機預設響 3 秒（最長 8 秒），主程式利用這段時間把開場白準備好（**響鈴預熱**）。
-- **兩種接聽身分。** 「AI 助理」（預設）會說自己是替你接電話的 AI，幫你記下留言；「本人」照你平常的方式講話，有人認真問起時仍會承認自己是 AI。
-- **自然的一來一往。** 每通電話開頭，主程式會檢查手機收音裡有沒有 AI 自己的聲音；沒有的手機（測試中是 Pixel 9）可以讓對方插話：對方講滿約 0.8 秒 AI 就停，「嗯」「好」這種短回應不會打斷。線上安靜時會問「還在嗎？」。對方自己最後一句是道別，AI 才掛斷；一般電話到了「一般電話最長」（預設 5 分鐘）會客氣收尾。
-- **聽起來就像在講電話。** AI 聲音後面可以墊背景音，12 種、三段音量：居家、辦公室、街邊、醫院、救護車經過、颱風天、大雷雨、工地、捷運、夜市、鞭炮、開車中。
-- **30 種聲音 × 9 種語言，試聽免費。** 程式內附 1,080 個預錄音檔（IMA ADPCM，只有一般 WAV 的四分之一大小），試聽聲音和「無法接通」語音都不花 API 額度。
-- **只講你寫下來的事。** 「AI 可以回答的資料」放包裹放哪裡、上班時間這類事實；「狀態留言」寫一行現在的狀況（「今天下午在等送貨」）。沒寫在裡面的事，AI 不可以自己編。
-- **拒接號碼與未顯示號碼。** 拒接名單上的號碼會在響鈴時直接拒接，或播一小段語音再掛，完全碰不到 AI。未顯示號碼預設照常交給 AI；關掉「未顯示號碼也接聽」，就改成播語音後掛斷。
-
-### AI 代打：替你打電話
-
-在「**AI 代打**」頁，或聯絡人旁邊按「**請 AI 打**」，選要打給誰、寫下要辦的事：訂位、改期、跟朋友約時間、問店家有沒有貨或幾點開門。再選「**以你的助理身分打**」（預設）或「**以你本人身分打**」。
-
-- **即時字幕**：通話中即時顯示雙方說的話。
-- **拿不準先問你。** 對方提到你沒交代清楚的事，AI 會請對方稍等，然後呼叫 `ask_owner`：你的畫面會跳出一張附 AI 選項、40 秒倒數的提問卡，點選項或打字回答都可以。通話中也能隨時打字交代 AI（`say`）。
-- **絕不背著你答應。** 你不在線上或時間到沒回答，AI 不會自己挑任何一個選項；它會問清楚對方哪些時間或選擇可以、說會跟你確認，然後禮貌收尾。結果標成「**要你決定**」：挑一個選項或寫回覆，按「**回覆後請 AI 再打**」，AI 會帶著上一通的內容再打一次（`follow_up_of`）。
-- **結果清楚，只發一則通知。** 「辦好了」「辦好一部分」「沒辦成」「要你決定」「沒接」「語音信箱」或「失敗」，附細節、對方給的選項和講定的時間，可以直接加入行事曆。
-- **安全撥號。** 緊急電話、短碼、高額付費電話，以及寫在國際冠碼後面的號碼一律拒撥。主程式會從來電學到每支手機插著哪國的 SIM 卡（`phone_sims.json`），只用跟號碼同一國的 SIM 卡撥出；撥號瞬間手機回報的 SIM 卡不對，就在接通前掛斷（`wrong_sim`），代打絕不會不小心變成國際電話。
-- **合理的上限。** 同一個號碼一次只打一通；每通最長 10 分鐘，9 分 30 秒開始收尾；不會自動重撥（要不要「**再打一次**」由你決定）；碰到語音選單最多等 90 秒；電信「空號」錄音一聽到就掛。
-
-### 擋推銷與詐騙電話，加上陪聊模式
-
-三道防線做來電過濾，判斷對方是不是推銷或詐騙：
-
-1. **回覆你的事直接放行。** 對方是回覆**你**主動提出的事（客訴、報修、申辦、理賠），不管用了什麼字眼都放行。
-2. **多語加權關鍵字。** 保險、貸款與增貸、軟性電銷，以及新型詐騙手法（ATM 操作、扣款設定錯誤、點數卡、「加我 LINE」）。
-3. **再看一次語意。** 關鍵字分數過線時，`gemini-flash-lite` 會讀目前為止的對話，並參考對方在不在你的通訊錄；這段時間 AI 照常講話（最多 1.5 秒）。對方只報了單位名稱、還沒說要做什麼，會判成 `too_early`，等他下一句講完再看一次。
-
-正常電話不會被誤傷：銀行核對刷卡、醫院診所、貨到付款的快遞、家人談錢。銀行問某筆刷卡是不是你刷的，AI 不替你承認也不否認，不答應停卡或掛失，只記下金額、商家和時間，摘要會提醒你自己撥卡片背面的電話確認。
-
-確定是推銷或詐騙，就切換成**陪聊模式**（Stall Mode，設定「陪他聊、拖時間」，預設開啟）：AI 化身一個有興趣、反應慢、愛問細節、又一直出狀況的客人，最長纏住對方 30 分鐘（「這類電話最長」），絕不透露任何真實資料，也絕不答應付款。關掉的話，AI 會客氣婉拒並結束通話。
-
-### 行程預約變成待處理事項
-
-來電的人想約時間時（「行程預約」，預設關閉），AI 不會當場答應，而是依這個號碼收得到什麼，說會確認後再傳簡訊或回電。通話結束後，這筆請求會出現在控制台的「**待處理事項**」（用 `TELEGRAM_BOT_TOKEN` 指定 Telegram Bot 時，也會變成一張有按鈕的 Telegram 卡片）：誰、什麼事、什麼時間，「**同意**」或「**不同意**」，以及怎麼讓對方知道你的答覆：
-
-- **傳簡訊**：從接這通電話的 SIM 卡發出，內容只有時間，絕不夾帶對方講的話。
-- **AI 回電**：AI 等過回鈴音，直到對方接起並開口，用原本那通電話的語言把你的答覆講一次，道別後掛斷。
-- **不通知對方**。
-
-同意的預約一鍵就能加入 **Google 日曆、Outlook.com、Microsoft 365、Apple 日曆（.ics）、Yahoo 日曆，或直接下載 .ics**。主程式不需要你的行事曆帳號或權杖。
-
-### 幾乎什麼檔案都能匯入的通訊錄
-
-通訊錄裡的人打來，通話紀錄、摘要和通知都會顯示名字；AI 知道是誰打來，也看得到你寫的備註；存起來的聯絡人在防詐複審裡也受到保護。可以從這些格式匯入：
-
-- vCard 2.1／3.0／4.0、Google 與 Outlook 的 CSV、TSV 和純文字，在你的電腦上解析，自動判斷編碼（UTF-8、UTF-16、Big5、GBK、Shift_JIS、EUC-KR、Windows-1252）；
-- Excel `.xlsx` 和 Word `.docx` 裡的表格，同樣在本機解析；
-- PDF、名片照片、通訊錄截圖，交給 Gemini Flash-Lite 辨識。
-
-存檔前每一筆都會先給你看；重複的可以合併或略過，整份通訊錄也能匯出成 vCard。
-
-### 九種語言、雙卡、逐字稿附翻譯
-
-- **九種語言**涵蓋 AI 的語音、內建提示詞、網頁控制台、手機 App 和通知：English、繁體中文（台灣）、简体中文、日本語、한국어、Español、Français、Deutsch、Português。
-- **每張 SIM 卡各有主要語言。** 雙卡手機打進哪張卡，就用那張卡的語言開場；國外號碼打來，AI 會講那國語言就用那國語言。台灣 SIM 卡接到國外來電，AI 會等電信的國際電話防詐提示音播完才開口。
-- **跟著對方換語言**：對方改講別的語言、或問 AI 會不會講某種語言，通話中就切過去。
-- **逐字稿保留原文**：用其他語言講的句子保持原樣，每句下面附上翻成你通知語言的對照。
-- **其他人怎麼叫你**（`owner_aliases`）：英文名、綽號；對方找這些名字時，AI 知道是在找你。
-
-### 一鍵切換「AI 接聽 ↔ 一般手機」
-
-在控制台「**系統**」頁或 Bageo App 裡，隨時把備用機切回普通手機、再切回來。一般手機模式下，Google 電話恢復成撥號程式、勿擾模式關閉、音量還原，來電照常響、由你自己接；重開機後模式不變。切換由 Magisk／KernelSU 模組的 root 小程式執行，所以 Bageo App 本身完全不需要 root 權限。詳見[一般手機模式](docs/zh-TW/PHONE.md#一般手機模式)。
-
-### 32 種通知管道，資料存在自己的硬碟
-
-Telegram（預約卡片附「同意／不同意」按鈕）、Discord、Slack／Mattermost、Microsoft Teams、Google Chat、Rocket.Chat、Zulip、Webex、Nextcloud Talk、Synology Chat、LINE Messaging API、Signal（透過 signal-cli-rest-api）、ntfy、Gotify、Bark、Pushover、Pushbullet、企業微信、釘釘（支援加簽）、飛書／Lark、Server醬、PushPlus、PushDeer、WxPusher、Chanify、Matrix、Gmail、任何 SMTP 伺服器的電子郵件、Home Assistant、IFTTT、Apprise，以及給 n8n、Zapier 用的 JSON Webhook。可以任意搭配，每則訊息都會送到全部管道。選用的[簡訊轉發器](tools/sms_forward/README.md)會把手機收到的簡訊也轉到同樣的管道。
-
-會離開你電腦的有：即時通話音訊送到 Gemini，逐字稿送到摘要模型（預設是同一把金鑰的 Gemini Flash-Lite，也可以換成任何 OpenAI 相容服務，包括本機的 Ollama），摘要送到你設定的通知管道。詳見[隱私、安全與法律](docs/zh-TW/PRIVACY_AND_LEGAL.md)。
+每一項的完整說明：[功能總覽](docs/zh-TW/FEATURES.md)。
 
 ## 需要準備什麼
 
-| | |
-|---|---|
-| **一支備用 Android 手機**，有 SIM 卡 | 用 Magisk 或 KernelSU root，Android 10 以上。**實測過：Google Pixel 7、7a、8、9。** 其他已 root 的手機也許能用，要看它的音訊硬體層是否允許 App 錄下通話並把聲音播進通話。這支手機會變成專門接電話的機器。 |
-| **一台電腦**，需要接電話的時段要一直開著 | Windows 10/11、macOS（Apple Silicon 或 Intel）或 Linux；也可以用 Docker。不需要資料庫，也不需要其他服務。 |
-| **一條 USB 線** | 手機透過 USB 跟主程式連線（`adb reverse`，主程式自己設定）。也可以用 Wi-Fi。 |
-| **一把 Gemini API 金鑰** | 到 [Google AI Studio](https://aistudio.google.com/apikey) 取得。同一把金鑰涵蓋即時通話、摘要、防詐複審與聯絡人匯入。Google 依用量計費；想設上限，可以在 Google 帳號裡設預算。 |
+1. **一支備用 Android 手機**，插著你的 SIM 卡，用 Magisk 或 KernelSU root，Android 10 以上。實測過 Google Pixel 7、7a、8、9。
+2. **一台電腦**，需要接電話的時段開著：Windows 10/11、macOS、Linux 或 Docker。
+3. **一條 USB 線**（也可以用 Wi-Fi）。
+4. **一把 Gemini API 金鑰**，到 [Google AI Studio](https://aistudio.google.com/apikey) 取得，Google 依用量計費。
 
 ## 快速開始
 
-1. **下載**：從 [Releases](https://github.com/h4lo-void/bageo-call/releases) 下載適合你系統的套件並解壓縮；或 clone 這個 repository（啟動腳本會用 [Rust](https://rustup.rs) 自己建置）。
-2. **啟動**：Windows 按兩下 `start.cmd`，macOS 按兩下 `start.command`，Linux 執行 `./start.sh`。沒有 `adb` 的話，腳本會問你要不要下載，接著打開控制台 <http://localhost:8787/>。同一個網路裡的其他裝置可以用 <http://bageo.local:8787/>，或掃「**系統 → 關於**」裡的 QR code 打開。
-3. **填好基本設定**：在「**設定**」填入 Gemini API 金鑰、你的名字和其他人怎麼叫你、語言、接聽身分。按 ▶ 試聽各個聲音，挑一個。
-4. **準備手機**（只要一次）：在 Magisk 或 KernelSU 安裝發行版附的模組 `pixelcallai_uplink-<version>.zip`，重新開機，打開 **Bageo** App 把檢查清單做完。開啟 USB 偵錯、接上電腦，在「允許 USB 偵錯嗎？」按允許。見[手機設定](docs/zh-TW/PHONE.md)。
-5. **打一通試試**：「**系統**」頁顯示手機已連上後，用另一支手機撥它的號碼：響一聲、AI 接聽，通話連同錄音和摘要出現在控制台。再加一個通知管道，按「**傳送測試**」。
+1. **下載**：從 [Releases](https://github.com/h4lo-void/bageo-call/releases) 下載適合你系統的套件並解壓縮。
+2. **啟動**：Windows 按兩下 `start.cmd`，macOS 按兩下 `start.command`，Linux 執行 `./start.sh`，控制台會打開在 <http://localhost:8787/>。
+3. **填好基本設定**：在「**設定**」填入 Gemini API 金鑰、你的名字和語言，按 ▶ 試聽各個聲音，挑一個。
+4. **準備手機**（只要一次）：在 Magisk 或 KernelSU 安裝模組 `pixelcallai_uplink-<version>.zip`，重新開機，打開 **Bageo** App 把檢查清單做完，接上 USB。
+5. **打一通試試**：用另一支手機撥它的號碼，響一聲，AI 就接了。
 
-**試試看：** 第一通來電結束後（主程式也因此知道手機插著哪張 SIM 卡），打開「**AI 代打**」，輸入你自己的手機號碼，請 AI 訂位。你來扮演餐廳，故意給一個它沒被授權的時間，看提問卡跳出來。
-
-每個步驟的詳細說明（含 Docker 與開機自動啟動）：[開始使用](docs/zh-TW/GETTING_STARTED.md)。
-
-## 讓它講話像你
-
-內建提示詞不用調整就能用。想讓 AI 照**你**的方式講話，讓另一個 AI 訪談你就好：
-
-1. 打開「**設定 → 提示詞**」，找到「不想自己寫？」，選語言後按「**複製訪談提示詞**」（九種語言的原文也放在 [`docs/prompts/`](docs/prompts/)）。
-2. 貼到 ChatGPT、Claude、Gemini 或任何聊天 AI。它會一題一題問你大約十個問題：你怎麼講話、你真的會說的話和絕對不會說的詞、誰會打給你、哪些事絕不能答應、推銷電話要怎麼處理。
-3. 它會產出一份用你自己說話方式寫的提示詞、你的資料，以及接聽身分和推銷設定該怎麼選。貼上、儲存，下一通電話就會用上。
-
-更多說明，包括最有效的寫法：[撰寫提示詞](docs/zh-TW/PROMPTS.md)。
+卡住了？每個步驟的詳細說明：[開始使用](docs/zh-TW/GETTING_STARTED.md) · [手機設定](docs/zh-TW/PHONE.md)。
 
 ## 文件
 
 | | |
 |---|---|
-| [開始使用](docs/zh-TW/GETTING_STARTED.md) | 在 Windows／macOS／Linux／Docker 安裝、第一通電話、第一次 AI 代打 |
-| [手機設定](docs/zh-TW/PHONE.md) | Root 模組、App 檢查清單、USB 與 Wi-Fi、一般手機模式、還原 |
-| [撰寫提示詞](docs/zh-TW/PROMPTS.md) | AI 每通電話收到什麼、訪談提示詞、資料、寫法技巧、固定底線 |
-| [通知](docs/zh-TW/NOTIFICATIONS.md) | 32 種管道各自怎麼設定；webhook 內容格式 |
-| [設定參考](docs/zh-TW/SETTINGS.md) | 每一項設定與啟動選項 |
-| [疑難排解與常見問題](docs/zh-TW/TROUBLESHOOTING.md) | 遇到問題的時候 |
-| [隱私、安全與法律](docs/zh-TW/PRIVACY_AND_LEGAL.md) | 哪些東西會離開你的電腦；錄音與揭露 AI 身分的規定 |
-| [API](docs/zh-TW/API.md) | REST 端點（通話、聯絡人、待處理事項、AI 代打）、手機通訊協定 |
-| [架構](docs/zh-TW/ARCHITECTURE.md) | 模組、一通來電與一通撥出的完整過程、資料存放 |
-| [發展藍圖](docs/zh-TW/ROADMAP.md) | 已經有的、還沒有的、接下來要做的 |
-| [v1.0 發行說明](CHANGELOG.md) | 1.0 正式版完整功能重點 |
-| [法律免責聲明與使用限制](LEGAL.md) | 部署者獨立責任、禁止違法用途、風險自負與抗辯賠償條款 |
-| [雙重授權與商業授權](COMMERCIAL_LICENSE.md) | 免費 `AGPL-3.0-only` 社群授權與閉源商業授權洽詢 |
-| [全專案技術與資安審計報告](AUDIT_REPORT.md) | 由 `gemini-4-carbon` 模型實際具名簽署之完整專案審計報告 |
-| [`android/`](android/README.md) | 建置手機 App 與模組（英文） |
-| [`tools/sms_forward/`](tools/sms_forward/README.md) | 選用：把手機收到的簡訊轉到你的通知（英文） |
+| **上手** | [開始使用](docs/zh-TW/GETTING_STARTED.md) · [手機設定](docs/zh-TW/PHONE.md) · [疑難排解與常見問題](docs/zh-TW/TROUBLESHOOTING.md) |
+| **使用** | [功能總覽](docs/zh-TW/FEATURES.md) · [撰寫提示詞](docs/zh-TW/PROMPTS.md) · [設定參考](docs/zh-TW/SETTINGS.md) · [通知](docs/zh-TW/NOTIFICATIONS.md) |
+| **深入** | [架構](docs/zh-TW/ARCHITECTURE.md) · [API](docs/zh-TW/API.md) · [發展藍圖](docs/zh-TW/ROADMAP.md) · [v1.0 發行說明](CHANGELOG.md) · [`android/`（英文）](android/README.md) · [`tools/sms_forward/`（英文）](tools/sms_forward/README.md) |
+| **法律** | [隱私、安全與法律](docs/zh-TW/PRIVACY_AND_LEGAL.md) · [法律免責聲明與使用限制](LEGAL.md) · [雙重授權與商業授權](COMMERCIAL_LICENSE.md) · [全專案技術與資安審計報告](AUDIT_REPORT.md) |
 
-## 測試狀態
+**測試狀態**：超過 520 個自動化測試、234 通模擬通話（28 種語言），並在 Pixel 7、7a、9 實機測過。[詳細狀態](docs/zh-TW/FEATURES.md#測試狀態)。其他手機和語言的使用回報最有幫助，請見 [CONTRIBUTING.md](CONTRIBUTING.md)（英文）。
 
-| | |
-|---|---|
-| **自動化測試** | 每次改動都會在 CI 跑超過 520 個單元與整合測試。 |
-| **模擬通話** | 對真正的主程式跑了 234 通模擬通話，由 Gemini 扮演講 28 種語言的來電者，另有 15 種 AI 代打情境，全部通過。 |
-| **實機通話（1.0）** | Pixel 7、7a、9：接聽、插話、背景音、推銷與詐騙陪聊、拒接號碼、預約簡訊、AI 回電、一般手機模式。 |
-| **還需要實測回報** | AI 代打實際撥出、AI 回電碰到真實回鈴音、Telegram 以外的通知管道用真實帳號、其他語言、「AI 助理」身分、Docker、macOS 與 Linux 的 USB。 |
+## 常見問題
 
-其他手機和語言的使用回報最有幫助，請見 [CONTRIBUTING.md](CONTRIBUTING.md)（英文）。
+<details>
+<summary><strong>AI 可以用我原本的門號接電話嗎？</strong></summary>
+
+可以，這正是 Bageo 的用途。把 SIM 卡放進一支已 root 的備用 Android 手機，AI 就用你的號碼接電話、也從這個號碼撥出。想讓 SIM 卡留在主力手機，也可以把沒接的來電轉接到備用機的號碼：你的手機先響，沒接的才交給 AI（這時 AI 代打和回電顯示的是備用機的號碼）。
+
+</details>
+
+<details>
+<summary><strong>一定要 root 嗎？iPhone 可以用嗎？</strong></summary>
+
+一定要 root，iPhone 不行。Android 只允許有特權的系統 App 錄下通話並把聲音播進通話，所以手機需要 Magisk 或 KernelSU 才能安裝 Bageo 模組；iOS 完全不允許。
+
+</details>
+
+<details>
+<summary><strong>支援哪些手機？</strong></summary>
+
+實測過 Google Pixel 7、7a、8、9，需要 Android 10 以上。其他已 root 的手機，要它的音訊硬體層允許 App 錄下通話並把聲音播進通話才能用；不允許的話，電話會接起來，但有一方聽不到聲音。見[支援哪些手機](docs/zh-TW/PHONE.md#支援哪些手機)。
+
+</details>
+
+<details>
+<summary><strong>要花多少錢？</strong></summary>
+
+個人與開源社群免費使用（`AGPL-3.0-only`；若需閉源商用或商業代管請[取得商業授權](COMMERCIAL_LICENSE.md)）。AI 處理的每通電話（不論來電或撥出），Google 都會依用量收 Gemini Live 的語音費用；摘要只是送到 Gemini 最便宜模型的一小段文字。試聽聲音和拒接語音都是預錄的，不花錢。另外就是電信門號費和電腦的電費；想設上限，可以在 Google 帳號裡設預算。
+
+</details>
+
+<details>
+<summary><strong>讓 AI 接電話合法嗎？</strong></summary>
+
+要看你和通話對象在哪裡。通話錄音、揭露 AI 身分、自動撥出的電話，各有各的規定。「AI 助理」身分第一句話就會表明是 AI；「本人」身分在被認真問到時才會說。開始使用前，請先讀[隱私、安全與法律](docs/zh-TW/PRIVACY_AND_LEGAL.md)。
+
+</details>
+
+<details>
+<summary><strong>可以離線、不用 Google 嗎？</strong></summary>
+
+不行。即時語音用的是 Gemini Live，需要網路和 Gemini 金鑰。摘要可以透過 Ollama 用本機模型（見[摘要與行事曆](docs/zh-TW/SETTINGS.md#摘要與行事曆)）；完全本機的語音流程不在支援的設定裡（見[發展藍圖](docs/zh-TW/ROADMAP.md)）。
+
+</details>
 
 ## 請負責任地使用
 
@@ -220,35 +290,9 @@ Telegram（預約卡片附「同意／不同意」按鈕）、Discord、Slack／
 - **緊急狀況不要依賴它。** AI 代打絕不會撥緊急電話。
 - **Root 會讓保固失效，也可能出問題。** 請用備用手機。
 
-## 常見問題
-
-### AI 可以用我原本的門號接電話嗎？
-
-可以，這正是 Bageo 的用途。把 SIM 卡放進一支已 root 的備用 Android 手機，AI 就用你的號碼接電話、也從這個號碼撥出。想讓 SIM 卡留在主力手機，也可以把沒接的來電轉接到備用機的號碼：你的手機先響，沒接的才交給 AI（這時 AI 代打和回電顯示的是備用機的號碼）。
-
-### 一定要 root 嗎？iPhone 可以用嗎？
-
-一定要 root，iPhone 不行。Android 只允許有特權的系統 App 錄下通話並把聲音播進通話，所以手機需要 Magisk 或 KernelSU 才能安裝 Bageo 模組；iOS 完全不允許。
-
-### 支援哪些手機？
-
-實測過 Google Pixel 7、7a、8、9，需要 Android 10 以上。其他已 root 的手機，要它的音訊硬體層允許 App 錄下通話並把聲音播進通話才能用；不允許的話，電話會接起來，但有一方聽不到聲音。見[支援哪些手機](docs/zh-TW/PHONE.md#支援哪些手機)。
-
-### 要花多少錢？
-
-個人與開源社群免費使用（`AGPL-3.0-only`；若需閉源商用或商業代管請[取得商業授權](COMMERCIAL_LICENSE.md)）。AI 處理的每通電話（不論來電或撥出），Google 都會依用量收 Gemini Live 的語音費用；摘要只是送到 Gemini 最便宜模型的一小段文字。試聽聲音和拒接語音都是預錄的，不花錢。另外就是電信門號費和電腦的電費；想設上限，可以在 Google 帳號裡設預算。
-
-### 讓 AI 接電話合法嗎？
-
-要看你和通話對象在哪裡。通話錄音、揭露 AI 身分、自動撥出的電話，各有各的規定。「AI 助理」身分第一句話就會表明是 AI；「本人」身分在被認真問到時才會說。開始使用前，請先讀[隱私、安全與法律](docs/zh-TW/PRIVACY_AND_LEGAL.md)。
-
-### 可以離線、不用 Google 嗎？
-
-不行。即時語音用的是 Gemini Live，需要網路和 Gemini 金鑰。摘要可以透過 Ollama 用本機模型（見[摘要與行事曆](docs/zh-TW/SETTINGS.md#摘要與行事曆)）；完全本機的語音流程不在支援的設定裡（見[發展藍圖](docs/zh-TW/ROADMAP.md)）。
-
 ## 授權與法律責任聲明
 
-本專案採用**雙重授權（Dual Licensing）**模式發佈（著作權所有 © 2026 **h4lo-void**）：
+本專案採用<strong>雙重授權（Dual Licensing）</strong>模式發佈（著作權所有 © 2026 **h4lo-void**）：
 
 - **社群開源授權：** [GNU Affero 通用公共授權條款第 3.0 版（僅限 `AGPL-3.0-only`）](LICENSE)——個人與開源社群免費使用；惟任何修改版本只要供他人透過網路或電話線路互動，即須依第 13 條免費公開完整衍生原始碼。
 - **取得商業授權：** 若企業、電信／雲端總機營運商、客服中心或硬體廠商不願依 `AGPL-3.0-only` 開源，可向原作者購買專有／商業授權，詳見 [**雙重授權與商業授權條款（COMMERCIAL_LICENSE.md）**](COMMERCIAL_LICENSE.md)。

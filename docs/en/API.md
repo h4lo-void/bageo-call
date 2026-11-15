@@ -11,6 +11,7 @@ rooted Android phone speaks.
 | | |
 |---|---|
 | **Base address** | Where the agent listens, by default `http://127.0.0.1:8787`. API routes start with `/calls/api/`; the exceptions are `/health` and the phones' WebSocket. The console itself is `/calls/` (`/` redirects there). |
+| **AI agents** | `POST /mcp` is a Model Context Protocol server with its own token, off by default: see [MCP](MCP.md). |
 | **Format** | UTF-8 JSON unless a route says otherwise (WAV, CSV, vCard, iCalendar). Send JSON bodies with `Content-Type: application/json`. |
 | **Times** | Call records: RFC 3339 in UTC (`2026-11-14T07:02:11Z`). Appointments: local time (`TZ`) as `YYYY-MM-DDTHH:MM`. Errands: local time with its offset (`2026-11-15T19:00:00+08:00`). |
 | **Stability** | Field names come from the Rust structs in [`crates/agent/src`](../../crates/agent/src). Later versions may add fields, so ignore the ones you do not know. |

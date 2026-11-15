@@ -113,6 +113,10 @@ The commands, the checks, the confirmations and the limits live in
 `crates/agent/src/control/`; a chat app only needs a thin adapter that turns
 its messages into `control::Inbound`, hands them to `Controller::handle`
 and shows the `Outbound` it gets back. The contract is written at the top of
-`control/mod.rs`; `control/telegram.rs` is the first adapter. An MCP tool
-interface can map its tools to the same actions.
+`control/mod.rs`; `control/telegram.rs` is the first adapter. Today only
+Telegram takes commands; Discord, Slack, Matrix and the other channels still
+get every notification.
+
+An AI agent (Claude, ChatGPT, Grok, OpenClaw…) can use the same actions
+through the built-in MCP server: see [MCP](MCP.md).
 

@@ -129,6 +129,8 @@ The default for *Call as* is *AI calls: call as* under [Basics](#basics). Every 
 |---|---|---|
 | Send notifications | on | Off: nothing is sent to any channel. |
 | Channels | none | Telegram, Discord, LINE, ntfy, email, webhooks and more; every enabled channel gets every message. Set-up for each is in [Notifications](NOTIFICATIONS.md). |
+| Commands from chat | off | Look up calls, have the AI call someone and decide to-dos from a Telegram chat (`telegram_control`, `telegram_control_users`, `control_errands_per_hour`, `control_commands_per_minute`). See [Chat commands](CHAT_COMMANDS.md). |
+| MCP for AI agents | off | Built-in Model Context Protocol server at `POST /mcp` (`mcp_enabled`, `mcp_token`, `mcp_calls`, `mcp_errands_per_hour`, `mcp_allowed_origins`). See [MCP](MCP.md). |
 | Address of this console | empty (automatic) | The address put into notification links, e.g. `http://192.0.2.10:8787`. |
 | Network name | `bageo` | The name phones and computers on your network can use instead of the IP: `http://bageo.local:8787/`. Letters, digits and hyphens; empty, `off`, `0`, `none` or `false` turns it off. |
 

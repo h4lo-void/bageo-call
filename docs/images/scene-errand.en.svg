@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 453" width="760" height="453" role="img" aria-labelledby="t" xml:lang="en" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">
+  <title id="t">An AI errand. You wrote: book a table for four tomorrow at 7 pm, 7:30 is fine too. The AI calls the restaurant as Alex's assistant; seven is full, the restaurant offers half past seven, and the AI accepts. Result: done, tomorrow 7:30 pm, four people, ready for your calendar.</title>
+  <style>
+    .a0{animation:k0 13.5s ease-out infinite}
+    @keyframes k0{0%,5.9%{opacity:0;transform:translateY(10px)}9.3%,94.8%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    .a1{animation:k1 13.5s ease-out infinite}
+    @keyframes k1{0%,15.6%{opacity:0;transform:translateY(10px)}18.9%,94.8%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    .a2{animation:k2 13.5s ease-out infinite}
+    @keyframes k2{0%,25.2%{opacity:0;transform:translateY(10px)}28.5%,94.8%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    .a3{animation:k3 13.5s ease-out infinite}
+    @keyframes k3{0%,34.8%{opacity:0;transform:translateY(10px)}38.1%,94.8%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    .a4{animation:k4 13.5s ease-out infinite}
+    @keyframes k4{0%,44.4%{opacity:0;transform:translateY(10px)}47.8%,94.8%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    @media (prefers-reduced-motion:reduce){[class^="a"]{animation:none}}
+  </style>
+  <clipPath id="card"><rect width="760" height="453" rx="24"/></clipPath>
+  <rect x=".75" y=".75" width="758.5" height="451.5" rx="24" fill="#1B1B1F" stroke="#3A3A44" stroke-width="1.5"/>
+  <circle cx="44" cy="32" r="17" fill="#FFCF4A"/>
+  <g fill="none" stroke="#1B1B1F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="38" y1="38" x2="50" y2="26"/><polyline points="41,26 50,26 50,35"/></g>
+  <text x="74" y="38" font-size="18" font-weight="700" fill="#FFFFFF">AI errand: book a table</text>
+  <rect x="589" y="18" width="147" height="28" rx="14" fill="none" stroke="#FFCF4A" stroke-width="1.5"/>
+  <text x="662.5" y="37" text-anchor="middle" font-size="13.5" font-weight="700" fill="#FFCF4A">As your assistant</text>
+  <line x1="0" y1="64" x2="760" y2="64" stroke="#34343B" stroke-width="1.5"/>
+  <g class="a0">
+    <rect x="28" y="84" width="704" height="67" rx="14" fill="#24242B" stroke="#5A5A66" stroke-width="1.5" stroke-dasharray="6 6"/>
+    <text x="46" y="110" font-size="13" font-weight="700" fill="#FFCF4A">WHAT YOU WROTE</text>
+    <text x="46" y="135" font-size="17" fill="#F2F2F5">Book a table for four tomorrow at 7 pm. 7:30 is fine too.</text>
+  </g>
+  <g class="a1">
+    <circle cx="714" cy="190" r="18" fill="#FFCF4A"/>
+    <text x="714" y="195" text-anchor="middle" font-size="14" font-weight="800" fill="#1B1B1F">AI</text>
+    <rect x="281" y="169" width="405" height="68" rx="18" fill="#FFCF4A"/>
+    <text x="297" y="196.5" font-size="18" fill="#1B1B1F" font-weight="600">Hello, I'm Alex's assistant. I'd like to book</text>
+    <text x="297" y="222.5" font-size="18" fill="#1B1B1F" font-weight="600">a table for four tomorrow at seven.</text>
+  </g>
+  <g class="a2">
+    <circle cx="46" cy="272" r="18" fill="#3A3A44"/>
+    <circle cx="46" cy="267" r="5.5" fill="#B5B5C0"/>
+    <path d="M36 283 a10 9 0 0 1 20 0 z" fill="#B5B5C0"/>
+    <rect x="74" y="251" width="280" height="68" rx="18" fill="#2C2C34"/>
+    <text x="90" y="278.5" font-size="18" fill="#F2F2F5">Seven is full, I'm afraid.</text>
+    <text x="90" y="304.5" font-size="18" fill="#F2F2F5">Would half past seven work?</text>
+  </g>
+  <g class="a3">
+    <circle cx="714" cy="354" r="18" fill="#FFCF4A"/>
+    <text x="714" y="359" text-anchor="middle" font-size="14" font-weight="800" fill="#1B1B1F">AI</text>
+    <rect x="250" y="333" width="436" height="42" rx="18" fill="#FFCF4A"/>
+    <text x="266" y="360.5" font-size="18" fill="#1B1B1F" font-weight="600">Half past seven is fine. The booking is for Alex.</text>
+  </g>
+  <g class="a4">
+    <g clip-path="url(#card)"><rect x="0" y="397" width="760" height="56" fill="#0E8F8F"/></g>
+    <text x="380" y="430.6" text-anchor="middle" font-size="15.5" font-weight="700" fill="#FFFFFF">Done  ·  tomorrow 7:30 pm  ·  four people  ·  one tap adds it to your calendar</text>
+  </g>
+</svg>

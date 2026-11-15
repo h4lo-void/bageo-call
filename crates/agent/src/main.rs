@@ -41,6 +41,7 @@ mod gemini_live;
 mod gmail;
 mod hold_music;
 mod locale;
+mod mcp;
 mod mdns;
 mod notify;
 mod openclaw;
@@ -1390,6 +1391,8 @@ async fn main() -> Result<()> {
         .route("/v1/turn", post(turn))
         .route("/v1/transfer", get(transfer_smoke).post(transfer_smoke))
         .route("/ws", get(ws_upgrade))
+        // MCP tool interface (crate::mcp): off and silent until enabled with a token.
+        .merge(mcp::router(remote.clone()))
         .nest_service("/calls", calls_router(calls_state))
         .layer(TraceLayer::new_for_http())
         .with_state(state);

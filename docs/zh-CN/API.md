@@ -5,6 +5,7 @@ Bageo 网页控制台做的每件事，都是通过你自己电脑上的一个�
 | | |
 |---|---|
 | **基础地址** | 主程序监听的位置，默认 `http://127.0.0.1:8787`。API 路由都以 `/calls/api/` 开头，例外是 `/health` 和手机用的 WebSocket。控制台本身在 `/calls/`（`/` 会跳转过去）。 |
+| **AI 代理** | `POST /mcp` 是 Model Context Protocol 服务器，有自己的 token，默认关闭：见 [MCP](MCP.md)。 |
 | **格式** | UTF-8 的 JSON；路由另有说明的除外（WAV、CSV、vCard、iCalendar）。发送 JSON 请求体时请带 `Content-Type: application/json`。 |
 | **时间** | 通话记录：UTC 的 RFC 3339（`2026-11-14T07:02:11Z`）。日程预约：当地时间（`TZ`），格式 `YYYY-MM-DDTHH:MM`。AI 代打：带时差的当地时间（`2026-11-15T19:00:00+08:00`）。 |
 | **兼容性** | 字段名来自 [`crates/agent/src`](../../crates/agent/src) 里的 Rust 结构体。以后的版本可能新增字段，不认识的字段请直接忽略。 |

@@ -5,6 +5,7 @@ Bageo 網頁控制台做的每件事，都是透過你自己電腦上的一個�
 | | |
 |---|---|
 | **基底位址** | 主程式監聽的位置，預設 `http://127.0.0.1:8787`。API 路由都以 `/calls/api/` 開頭，例外是 `/health` 和手機用的 WebSocket。控制台本身在 `/calls/`（`/` 會轉址過去）。 |
+| **AI 代理** | `POST /mcp` 是 Model Context Protocol 伺服器，有自己的 token，預設關閉：見 [MCP](MCP.md)。 |
 | **格式** | UTF-8 的 JSON；路由另有說明的除外（WAV、CSV、vCard、iCalendar）。送 JSON body 時請帶 `Content-Type: application/json`。 |
 | **時間** | 通話紀錄：UTC 的 RFC 3339（`2026-11-14T07:02:11Z`）。行程預約：當地時間（`TZ`），格式 `YYYY-MM-DDTHH:MM`。AI 代打：帶時差的當地時間（`2026-11-15T19:00:00+08:00`）。 |
 | **相容性** | 欄位名稱來自 [`crates/agent/src`](../../crates/agent/src) 裡的 Rust 結構。之後的版本可能加新欄位，不認得的欄位請直接忽略。 |

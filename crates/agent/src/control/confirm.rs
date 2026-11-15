@@ -42,6 +42,10 @@ fn new_code() -> String {
     uuid::Uuid::new_v4().simple().to_string()[..6].to_ascii_uppercase()
 }
 
+/// The sender of a confirmation no one in the chat asked for (an MCP
+/// client's call): anyone allowed to give commands there may answer it.
+pub const ANY_SENDER: &str = "*";
+
 impl Confirmations {
     pub fn new(ttl: Duration) -> Self {
         Self { ttl, open: Mutex::new(HashMap::new()) }
@@ -53,9 +57,18 @@ impl Confirmations {
 
     /// Waits for the owner's yes; its code.
     pub fn ask(&self, chat: &str, sender: &str, job: Job) -> String {
+        self.ask_many(&[chat.to_string()], sender, job)
+    }
+
+    /// The same job waiting in several chats under one code: the first
+    /// answer in any of them settles it everywhere.
+    pub fn ask_many(&self, chats: &[String], sender: &str, job: Job) -> String {
         let code = new_code();
-        let pending = Pending { code: code.clone(), sender: sender.trim().to_string(), job, at: Instant::now() };
-        self.open().insert(chat.to_string(), pending);
+        let mut open = self.open();
+        for chat in chats {
+            let pending = Pending { code: code.clone(), sender: sender.trim().to_string(), job: job.clone(), at: Instant::now() };
+            open.insert(chat.clone(), pending);
+        }
         code
     }
 
@@ -75,16 +88,30 @@ impl Confirmations {
             open.remove(chat);
             return None;
         }
-        if code.is_some_and(|c| !c.trim().eq_ignore_ascii_case(&p.code)) || p.sender != sender.trim() {
+        if code.is_some_and(|c| !c.trim().eq_ignore_ascii_case(&p.code)) || (p.sender != ANY_SENDER && p.sender != sender.trim()) {
             return None;
         }
-        open.remove(chat).map(|p| p.job)
+        let taken = open.remove(chat)?;
+        open.retain(|_, q| q.code != taken.code);
+        Some(taken.job)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn one_code_in_many_chats_is_settled_by_the_first_answer_from_anyone_there() {
+        let c = Confirmations::new(Duration::from_secs(60));
+        let chats = vec!["tg:1".to_string(), "tg:2".to_string()];
+        let code = c.ask_many(&chats, ANY_SENDER, Job::Decide { task_id: "t1".into(), confirm: true });
+        assert!(c.waiting("tg:1") && c.waiting("tg:2"));
+        assert!(c.take("tg:2", "someone", Some("WRONG")).is_none());
+        assert!(c.take("tg:2", "someone", Some(&code)).is_some());
+        assert!(!c.waiting("tg:1"), "answered in one chat: gone from the other");
+        assert!(c.take("tg:1", "someone", Some(&code)).is_none());
+    }
 
     fn job() -> Job {
         Job::Decide { task_id: "t1".into(), confirm: true }

@@ -129,6 +129,8 @@ AI 要能替你接电话，先把这几项填好。
 |---|---|---|
 | 发送通知 | 开 | 关：什么都不会发到任何渠道。 |
 | 通知渠道 | 无 | Telegram、Discord、LINE、ntfy、电子邮件、Webhook 等等；每个启用的渠道都会收到每一条消息。各渠道怎么配置见[通知](NOTIFICATIONS.md)。 |
+| 在聊天室操作 | 关 | 在 Telegram 聊天室查通话记录、让 AI 代打、处理待办（`telegram_control`、`telegram_control_users`、`control_errands_per_hour`、`control_commands_per_minute`）。见[在聊天室操作](CHAT_COMMANDS.md)。 |
+| 给 AI 代理用的 MCP | 关 | 内置于 `POST /mcp` 的 Model Context Protocol 服务器（`mcp_enabled`、`mcp_token`、`mcp_calls`、`mcp_errands_per_hour`、`mcp_allowed_origins`）。见 [MCP](MCP.md)。 |
 | 这个控制台的地址 | 空（自动） | 放进通知链接的地址，例如 `http://192.0.2.10:8787`。 |
 | 局域网名称 | `bageo` | 同一网络里的手机、电脑可以用来代替 IP 的名字：`http://bageo.local:8787/`。只能用英文字母、数字和连字符；留空、`off`、`0`、`none` 或 `false` = 关闭。 |
 

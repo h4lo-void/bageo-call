@@ -44,9 +44,10 @@
 //! What a chat may do is decided here: an adapter never filters, rewords or
 //! adds commands. A new kind needs its name in [COMMAND_KINDS] (the settings
 //! page then shows the switch for its channels). An MCP tool interface maps
-//! each tool to an [Action]: [Controller::perform] runs the ones without side
-//! effects; the others go through [Controller::handle] like typed commands, so
-//! they wait for the owner's yes and a model never dials on its own.
+//! each tool to an [Action] ([crate::mcp]): [Controller::perform] runs the
+//! ones without side effects; a call goes through [Controller::request_errand],
+//! which waits for the owner's yes in the command chats unless the owner set
+//! `mcp_calls` to `direct`.
 //!
 //! # Safety
 //!
@@ -988,8 +989,8 @@ impl Controller {
         }
     }
 
-    /// Cut every key and token the agent holds out of a reply.
-    fn scrub(&self, rt: &RuntimeSettings, mut out: Outbound) -> Outbound {
+    /// Every key and token the agent holds (8 characters or more).
+    fn secrets(&self, rt: &RuntimeSettings) -> Vec<String> {
         let mut secrets: Vec<String> = vec![
             rt.telegram_bot_token.clone(),
             rt.gemini_api_key.clone(),
@@ -997,6 +998,7 @@ impl Controller {
             rt.deepseek_api_key.clone(),
             rt.gmail_app_password.clone(),
             rt.openclaw_token.clone(),
+            rt.mcp_token.clone(),
             self.state.settings.calls_ui_token.clone(),
             self.state.settings.device_token.clone(),
         ];
@@ -1004,10 +1006,15 @@ impl Controller {
             secrets.push(c.token.clone());
             secrets.push(c.url.clone());
         }
+        secrets.into_iter().map(|s| s.trim().to_string()).filter(|s| s.chars().count() >= 8).collect()
+    }
+
+    /// Cut every key and token the agent holds out of a reply.
+    fn scrub(&self, rt: &RuntimeSettings, mut out: Outbound) -> Outbound {
         let mut text = locale::for_owner(&out.text);
-        for s in secrets.iter().map(|s| s.trim()).filter(|s| s.chars().count() >= 8) {
+        for s in self.secrets(rt) {
             // Also as written in a URL (a request error names its address).
-            for form in secret_forms(s) {
+            for form in secret_forms(&s) {
                 text = text.replace(&form, "•••");
                 for b in out.buttons.iter_mut() {
                     b.label = b.label.replace(&form, "•••");
@@ -1016,6 +1023,105 @@ impl Controller {
         }
         out.text = clip(&text, OUT_MAX_CHARS);
         out
+    }
+
+    /// An outcome as JSON for an MCP client ([crate::mcp]), every key and
+    /// token cut out of it as from a chat reply.
+    pub fn outcome_json(&self, rt: &RuntimeSettings, o: &Outcome) -> Value {
+        let mut raw = serde_json::to_string(o).unwrap_or_else(|_| "{}".to_string());
+        for s in self.secrets(rt) {
+            for form in secret_forms(&s) {
+                // As JSON writes it (a quote or backslash in a secret is escaped).
+                let written = serde_json::to_string(&form).unwrap_or_default();
+                let inner = written.trim_matches('"');
+                if !inner.is_empty() {
+                    raw = raw.replace(inner, "•••");
+                }
+            }
+        }
+        serde_json::from_str(&raw).unwrap_or_else(|_| json!({ "kind": "failed", "code": "scrubbed" }))
+    }
+
+    /// Chats that take commands and that a running adapter reaches: a
+    /// Telegram channel without a bot token gets nothing, and no one may be
+    /// left waiting for an answer from there.
+    fn reached_chats(&self, rt: &RuntimeSettings) -> Vec<(String, String)> {
+        let reached: Vec<(String, String)> = access::telegram_bots(rt).into_iter().flat_map(|b| b.chats).collect();
+        let is_telegram = |id: &str| id == ENV_TELEGRAM || rt.notify_channels.iter().any(|c| c.id == id && c.kind == "telegram");
+        access::command_chats(rt)
+            .into_iter()
+            .filter(|c| !is_telegram(&c.0) || reached.contains(c))
+            .collect()
+    }
+
+    /// Room for one more message from this caller this minute (an MCP
+    /// client counts as one chat, [crate::mcp::MCP_CHAT]).
+    pub fn allow(&self, chat: &str, per_minute: u32) -> bool {
+        self.limits.allow_message(chat, per_minute)
+    }
+
+    /// An AI call an MCP client asks for ([crate::mcp]). origin: the chat key
+    /// its list numbers and limits are kept under; cap: requests per hour.
+    /// direct: queued at once through errands::create. Otherwise the owner
+    /// gets the summary with yes / no in every command chat an adapter
+    /// reaches; the first answer counts, and the call is made only on a yes
+    /// (then within that chat's own hourly limit too).
+    pub async fn request_errand(&self, rt: &RuntimeSettings, origin: &str, target: &str, task: &str, direct: bool, cap: u32) -> Outcome {
+        let (target, task) = match command::validate(Action::Errand { target: target.to_string(), task: task.to_string() }) {
+            Ok(Action::Errand { target, task }) => (target, task),
+            Ok(_) => return Outcome::Failed { code: "bad_request".to_string() },
+            Err(code) => return Outcome::Failed { code: code.to_string() },
+        };
+        let cap = cap.min(access::ERRANDS_PER_HOUR_MAX);
+        if !self.limits.errand_room(origin, cap) {
+            return Outcome::TooMany { limit: cap };
+        }
+        let (mut body, who, number) = match self.errand_target(&target) {
+            Ok(t) => t,
+            Err(o) => return o,
+        };
+        let now = errands::now_of(&self.state).await;
+        if let Err(code) = errands::pick_phone(&now.phones, &number, "", &errands::home_region(&now.rt)) {
+            return error_outcome(code);
+        }
+        body["task"] = json!(task);
+        if direct {
+            return match errands::create(&errands::env_of(&self.state, &now), &body).await {
+                Ok(e) => {
+                    self.limits.note_errand(origin);
+                    self.mem(origin, |m| m.errands = vec![e.id.clone()]);
+                    info!(errand = e.id.as_str(), "errand created from MCP");
+                    Outcome::ErrandStarted { errand: Self::errand_line(&e) }
+                }
+                Err(code) => error_outcome(code),
+            };
+        }
+        let chats = self.reached_chats(rt);
+        if chats.is_empty() || self.pushes.receiver_count() == 0 {
+            return Outcome::Failed { code: "no_owner_chat".to_string() };
+        }
+        // Each request counts, answered or not: a client cannot flood the
+        // owner's chats with cards.
+        self.limits.note_errand(origin);
+        let w = words(locale::notify_lang());
+        let summary = words::ask_errand(w, &who, &number, &task);
+        let keys: Vec<String> = chats.iter().map(|(c, i)| access::chat_key(c, i)).collect();
+        let code = self.confirms.ask_many(&keys, confirm::ANY_SENDER, Job::Errand { body });
+        let confirm = Outcome::Confirm { code: code.clone(), summary };
+        let card = Outbound {
+            text: format!("MCP · {}", words::render(&confirm, w)),
+            buttons: vec![
+                Button { label: w.yes.to_string(), data: format!("k:{code}:y") },
+                Button { label: w.no.to_string(), data: format!("k:{code}:n") },
+            ],
+            edit: None,
+        };
+        for (channel_id, chat_id) in chats {
+            let out = self.scrub(rt, card.clone());
+            let _ = self.pushes.send(Push { channel_id, chat_id, out });
+        }
+        info!(code = code.as_str(), "errand from MCP waits for the owner's yes");
+        confirm
     }
 
     /// What errands::ErrandStore calls when the AI on a call asks the owner
@@ -1029,14 +1135,7 @@ impl Controller {
     /// True when the question went out to at least one chat.
     fn push_question(&self, q: &errands::OwnerQuestion) -> bool {
         let rt = self.settings();
-        // Only chats a running adapter reaches: a Telegram channel without a
-        // bot token gets nothing, and the AI must not wait on the phone for it.
-        let reached: Vec<(String, String)> = access::telegram_bots(&rt).into_iter().flat_map(|b| b.chats).collect();
-        let is_telegram = |id: &str| id == ENV_TELEGRAM || rt.notify_channels.iter().any(|c| c.id == id && c.kind == "telegram");
-        let chats: Vec<(String, String)> = access::command_chats(&rt)
-            .into_iter()
-            .filter(|c| !is_telegram(&c.0) || reached.contains(c))
-            .collect();
+        let chats = self.reached_chats(&rt);
         if chats.is_empty() || self.pushes.receiver_count() == 0 {
             return false;
         }
