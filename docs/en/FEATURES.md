@@ -166,6 +166,18 @@ saved contacts are protected in the scam review. Import from:
 You see every entry before anything is saved; duplicates are merged or
 skipped, and the whole list exports as vCard.
 
+### 4-in-1 Contact Lists & Whitelist Call Transfer
+
+Every contact can be assigned to one of four lists (from the Contacts page, via one-tap buttons on call summary notifications, or via chat commands `/block`, `/stall`, `/white`, `/unblock`):
+
+- **Normal Contacts**: The AI knows who is calling and reads your note about them.
+- **⭐ Whitelist (`whitelist`)**: VIP contacts with three selectable call-handling modes:
+  1. *Normal AI answer*: AI greets them warmly knowing who they are.
+  2. *Transfer only when an emergency is detected*: AI answers first; if the caller reports an urgent matter (in any of the 9 languages), Bageo sends an immediate high-priority alert and gives them / transfers to your real phone number.
+  3. *Direct transfer*: Declines on the AI phone while ringing so carrier conditional forwarding (`*67*` / `**67*`) rings your real phone immediately, and sends you an instant transfer notification.
+- **⛔ Blacklist (`blacklist`)**: Unified with the blocked-numbers list — declines immediately or plays the unavailable announcement without invoking the AI.
+- **🎭 Force Stall (`stall`)**: Known spammers, debt collectors, or harassers enter **Stall Mode from second 0** as soon as the call connects, without waiting for keywords.
+
 ## Nine languages, dual SIM, translated transcripts
 
 - **Nine languages** for the AI's voice, the built-in prompts, the web

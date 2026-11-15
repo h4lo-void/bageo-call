@@ -109,11 +109,12 @@ pub struct IcsQuery {
 /// The console token opens it, or the key made for this one file (`what` =
 /// its path under `/calls/api/`).
 fn ics_access_ok(settings: &Settings, headers: &HeaderMap, query: &IcsQuery, what: &str) -> bool {
+    let active_tok = crate::settings_store::active_ui_token(&settings.calls_ui_token);
     token_ok_parts(settings, headers, query.token.as_deref())
         || query
             .k
             .as_deref()
-            .is_some_and(|k| crate::calendar::key_opens(&settings.calls_ui_token, what, k))
+            .is_some_and(|k| crate::calendar::key_opens(&active_tok, what, k))
 }
 
 /// An event as an `.ics` file download.
@@ -220,7 +221,8 @@ fn token_ok(settings: &Settings, headers: &HeaderMap, query: &TokenQuery) -> boo
 /// The request carries the console token (query, bearer or `x-calls-token`),
 /// or none is set.
 pub fn token_ok_parts(settings: &Settings, headers: &HeaderMap, query_token: Option<&str>) -> bool {
-    let expected = settings.calls_ui_token.trim();
+    let active = crate::settings_store::active_ui_token(&settings.calls_ui_token);
+    let expected = active.trim();
     if expected.is_empty() {
         return true;
     }
@@ -475,7 +477,14 @@ async fn call_get(
     let contact = state
         .contacts
         .lookup(&rec.caller_id, rec.sim_country.as_deref())
-        .map(|c| json!({"id": c.id, "name": c.name, "note": c.note}));
+        .map(|c| {
+            json!({
+                "id": c.id,
+                "name": c.name,
+                "note": c.note,
+                "kind": crate::contacts::sanitize_kind(&c.kind)
+            })
+        });
     let calendar_links = notes
         .as_ref()
         .and_then(|n| n.calendar.as_ref().map(|ev| ev.links(&n.summary)));
@@ -1929,6 +1938,275 @@ async fn stream_wav(store: &CallStore, rel: &str, headers: &HeaderMap) -> Respon
     }
 }
 
+/// Public auth status endpoint so the web console knows whether a password is
+/// required, whether the current token is valid, or whether to show the
+/// first-time external access password setup dialog.
+async fn auth_status(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+) -> Response {
+    let rt = state.settings_store.snapshot();
+    let active_tok = crate::settings_store::active_ui_token(&state.settings.calls_ui_token);
+    let password_set = !active_tok.trim().is_empty();
+    let authenticated = token_ok(&state.settings, &headers, &query);
+    let prompt_initial = !password_set && !rt.ui_password_prompted;
+    Json(json!({
+        "ok": true,
+        "password_set": password_set,
+        "authenticated": authenticated,
+        "prompt_initial": prompt_initial,
+        "language": rt.language,
+    }))
+    .into_response()
+}
+
+/// First-time password setup (`POST /calls/api/initial-password`): allowed when
+/// no password is set yet, or when already authenticated.
+async fn initial_password(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+    body: axum::body::Bytes,
+) -> Response {
+    if !is_json_request(&headers) {
+        return json_required();
+    }
+    let active_tok = crate::settings_store::active_ui_token(&state.settings.calls_ui_token);
+    if !active_tok.trim().is_empty() && !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    let Ok(v) = serde_json::from_slice::<Value>(&body) else {
+        return api_error(StatusCode::BAD_REQUEST, "bad_request", "invalid JSON");
+    };
+    let skip = v.get("skip").and_then(Value::as_bool).unwrap_or(false);
+    let pw = v
+        .get("password")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("");
+    let patch = if skip {
+        json!({ "ui_password_prompted": true })
+    } else if pw.is_empty() {
+        return api_error(StatusCode::BAD_REQUEST, "bad_request", "password cannot be empty");
+    } else {
+        json!({
+            "ui_password": pw,
+            "ui_password_prompted": true
+        })
+    };
+    match state.settings_store.apply_patch(&patch) {
+        Ok(_) => Json(json!({
+            "ok": true,
+            "password_set": !skip && !pw.is_empty(),
+        }))
+        .into_response(),
+        Err(e) => api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "save_failed",
+            format!("{e:#}"),
+        ),
+    }
+}
+
+#[derive(Deserialize)]
+struct QuickActionQuery {
+    #[serde(default)]
+    op: String,
+    #[serde(default)]
+    target: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    sig: String,
+    #[serde(default)]
+    token: Option<String>,
+}
+
+fn quick_action_html(title: &str, detail: &str, ok: bool) -> Response {
+    use crate::locale::Lang;
+    let lang = crate::locale::notify_lang();
+    let (html_lang, open_lbl) = match lang {
+        Lang::ZhTw => ("zh-Hant", "開啟 Bageo 控制台"),
+        Lang::ZhCn => ("zh-Hans", "打开 Bageo 控制台"),
+        Lang::Ja => ("ja", "Bageo コンソールを開く"),
+        Lang::Ko => ("ko", "Bageo 콘솔 열기"),
+        Lang::Es => ("es", "Abrir la consola de Bageo"),
+        Lang::Fr => ("fr", "Ouvrir la console Bageo"),
+        Lang::De => ("de", "Bageo-Konsole öffnen"),
+        Lang::Pt => ("pt-BR", "Abrir o console do Bageo"),
+        Lang::En => ("en", "Open Bageo Console"),
+    };
+    let badge = if ok { "✅" } else { "⚠️" };
+    let esc = |s: &str| {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+    };
+    let html = format!(
+        "<!doctype html><html lang=\"{html_lang}\"><head><meta charset=\"utf-8\">\
+         <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
+         <title>{} — Bageo</title>\
+         <style>body{{font-family:system-ui,-apple-system,sans-serif;background:#faf8f5;color:#1f1e1b;display:flex;align-items:center;justify-content:center;min-height:90vh;margin:0;padding:16px}}\
+         .card{{background:#fff;border:1px solid #e6e1d6;border-radius:14px;max-width:420px;width:100%;padding:24px;box-shadow:0 4px 16px rgba(0,0,0,.05);text-align:center}}\
+         .icon{{font-size:36px;margin-bottom:10px}}h1{{font-size:18px;margin:0 0 8px}}p{{font-size:14px;color:#5c584f;margin:0 0 18px;word-break:break-word}}\
+         a.btn{{display:inline-block;background:#2f5e4e;color:#fff;text-decoration:none;padding:9px 18px;border-radius:8px;font-size:14px;font-weight:600}}</style></head>\
+         <body><div class=\"card\"><div class=\"icon\">{badge}</div><h1>{}</h1><p>{}</p><a class=\"btn\" href=\"/calls/\">{open_lbl}</a></div></body></html>",
+        esc(title),
+        esc(title),
+        esc(detail)
+    );
+    Response::builder()
+        .status(if ok { StatusCode::OK } else { StatusCode::BAD_REQUEST })
+        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+        .header(header::CACHE_CONTROL, "no-store")
+        .body(Body::from(html))
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+/// Signed one-tap action endpoint (`GET/POST /calls/api/quick-action`) used by
+/// interactive buttons and links across all notification channels.
+async fn quick_action(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(q): Query<QuickActionQuery>,
+) -> Response {
+    use crate::locale::Lang;
+    let op = q.op.trim();
+    let target = q.target.trim();
+    let authed = token_ok_parts(&state.settings, &headers, q.token.as_deref())
+        || crate::calendar::quick_action_sig_ok(op, target, q.sig.trim());
+    if !authed {
+        return unauthorized();
+    }
+    let wants_json = headers
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|s| s.contains("application/json"));
+    let reply_out = |ok: bool, title: &str, detail: &str| -> Response {
+        if wants_json {
+            (
+                if ok { StatusCode::OK } else { StatusCode::BAD_REQUEST },
+                Json(json!({"ok": ok, "title": title, "message": detail})),
+            )
+                .into_response()
+        } else {
+            quick_action_html(title, detail, ok)
+        }
+    };
+    let lang = crate::locale::notify_lang();
+    let w = crate::control::words::words(lang);
+    let rt = state.settings_store.snapshot();
+    match op {
+        "confirm_task" | "ignore_task" => {
+            if !task_id_safe(target) {
+                return reply_out(false, &crate::control::words::fmt(w.not_found, &[target]), target);
+            }
+            let confirm = op == "confirm_task";
+            let p = crate::locale::phrases(lang);
+            if let Some(task) = state.task_store.get(target).await {
+                if task.appointment.is_some() {
+                    let console =
+                        crate::settings_store::effective_console_url(&rt.effective(&state.settings));
+                    return match crate::appointments::decide_from_web(
+                        &state.http,
+                        &rt,
+                        &console,
+                        &state.task_store,
+                        &state.store,
+                        Some(state.control.as_ref()),
+                        target,
+                        confirm,
+                        None,
+                    )
+                    .await
+                    {
+                        Ok((_, msg)) => reply_out(
+                            true,
+                            if confirm { p.ap_confirm } else { p.ap_decline },
+                            &msg,
+                        ),
+                        Err(e) => reply_out(false, &crate::control::words::fmt(w.failed, &[""]), &format!("{e:#}")),
+                    };
+                }
+            }
+            let res = if confirm {
+                on_confirm(
+                    &state.http,
+                    &rt,
+                    &state.task_store,
+                    target,
+                    Some(state.control.as_ref()),
+                )
+                .await
+            } else {
+                on_ignore(&state.task_store, target).await
+            };
+            match res {
+                Ok(t) => reply_out(
+                    true,
+                    if confirm { p.ap_confirm } else { p.ap_decline },
+                    &t.summary,
+                ),
+                Err(e) => reply_out(false, &crate::control::words::fmt(w.failed, &[""]), &format!("{e:#}")),
+            }
+        }
+        "block" | "stall" | "white" => {
+            let (kind, tmpl) = match op {
+                "block" => ("blacklist", w.list_blocked),
+                "stall" => ("stall", w.list_stall),
+                _ => ("whitelist", w.list_white),
+            };
+            let name = q.name.as_deref().unwrap_or("");
+            match state.contacts.upsert_by_number(target, name, "", kind).await {
+                Ok(c) => {
+                    let num = c.phones.first().map(String::as_str).unwrap_or(target);
+                    let who = crate::control::words::person(w, &c.name, num);
+                    let title = crate::control::words::fmt(tmpl, &[&who]);
+                    reply_out(true, &title, &who)
+                }
+                Err(_) => reply_out(false, w.e_bad_number, "bad_number"),
+            }
+        }
+        "unblock" => {
+            if let Some(c) = state.contacts.lookup(target, None) {
+                if c.kind == "blacklist" || c.kind == "stall" || c.kind == "whitelist" {
+                    let _ = state
+                        .contacts
+                        .update(
+                            &c.id,
+                            &crate::contacts::Draft {
+                                name: c.name,
+                                phones: c.phones,
+                                note: c.note,
+                                source: c.source,
+                                kind: String::new(),
+                            },
+                        )
+                        .await;
+                }
+            }
+            let title = crate::control::words::fmt(w.list_unblocked, &[target]);
+            reply_out(true, &title, target)
+        }
+        _ => {
+            let unknown = match lang {
+                Lang::ZhTw => "未知的操作",
+                Lang::ZhCn => "未知的操作",
+                Lang::Ja => "不明な操作",
+                Lang::Ko => "알 수 없는 작업",
+                Lang::Es => "Operación desconocida",
+                Lang::Fr => "Opération inconnue",
+                Lang::De => "Unbekannte Aktion",
+                Lang::Pt => "Operação desconhecida",
+                Lang::En => "Unknown operation",
+            };
+            reply_out(false, unknown, op)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2181,6 +2459,9 @@ pub fn router(state: CallsState) -> Router {
         .route("/apple-touch-icon.png", get(|| async { static_file(APPLE_TOUCH_ICON, "image/png") }))
         .route("/favicon.ico", get(favicon))
         .route("/api/list", get(list))
+        .route("/api/auth-status", get(auth_status))
+        .route("/api/initial-password", post(initial_password))
+        .route("/api/quick-action", get(quick_action).post(quick_action))
         .route("/api/stats", get(stats))
         .route("/api/live", get(live))
         .route("/api/call/{id}", get(call_get))

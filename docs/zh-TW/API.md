@@ -154,6 +154,9 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 | `appointment_reply` | `auto`（預設）、`sms` 或 `call`。 |
 | `reject_numbers` | `{number, reason}` 的清單。 |
 | `reject_mode` | `decline`（預設：響鈴時直接拒接）或 `announce`（接起來播語音）。 |
+| `whitelist_mode` | `off`（預設：照常由 AI 接聽）、`direct`（直接掛斷觸發電信忙線轉接並推播通知）或 `emergency`（AI 接聽並於偵測到緊急事件時告知 `whitelist_forward_number` 並發送緊急警報）。 |
+| `whitelist_forward_number` | 白名單直接轉接或緊急事件轉接時使用的真實電話號碼。 |
+| `ui_password` | 外部存取網頁控制台與 API 的密碼（讀取時遮罩；`"ui_password_clear": true` 可清空）。 |
 | `country_code` | 只有數字（`886`、`1`）。控制台不顯示；這裡有值時優先於 `COUNTRY_CODE`。 |
 | `gemini_thinking_level` | `low`（預設）／`medium`／`high`，只對 thinking 模型有效。 |
 
@@ -177,6 +180,9 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 |---|---|
 | `POST /calls/api/notify/test` | Body `{"channel": {kind, url, token, target, id?}}`。把測試訊息傳到那一個管道（已存的機密依 `id` 補上）。回 HTTP 200 `{ok: true}`、400 `unknown_channel`，或 502 `{ok: false, code, field, kind, error}`：`code` 是出錯原因（`missing_field`、`bad_url`、`bad_value`、`auth_failed`、`service_not_found`、`http_error`、`service_error`、`network_error`、`send_failed`），`field` 是 `url`／`token`／`target` 哪一欄（或空白），`error` 是該服務的回應。 |
 | `POST /calls/api/notify/send` | Body `{"title": "...", "body": "..."}`。把你的訊息傳到每一個啟用的管道（`title` 空白就用「Bageo」；`body` 空白回 HTTP 400 `empty_body`）。只要有一個管道接受就回 `{ok: true}`。[簡訊轉發工具](../../tools/sms_forward/README.md)（英文）就是用這條路由。 |
+| `GET /calls/api/quick-action` · `POST /calls/api/quick-action` | 32 種通知管道內附的單次簽章互動按鈕路由（`?act=confirm\|ignore\|block\|stall\|white&target=<id或號碼>&sig=<hmac>`）。透過 HMAC-SHA256 驗證，在手機通知中點開即生效，支援全部 9 種語言。 |
+| `POST /calls/api/control/inbound` | 跨平台通用指令 Webhook（支援 Slack、Discord、LINE、企業微信、釘釘、飛書、Mattermost、Rocket.Chat、Zulip、Matrix、Nextcloud Talk、Synology Chat、Home Assistant、n8n 或 curl：`{"text": "清單 5", "user": "owner", "channel": "line"}`）。可執行全部 18 個聊天指令（包含 `block`、`stall`、`white`、`unblock`）並以通知語言回傳 `{ok, text}`。 |
+| `GET /calls/api/auth-status` · `POST /calls/api/initial-password` | 查詢是否需要密碼與是否首次設定密碼（`{ok, password_required, needs_initial_password_setup}`），以及首次建立存取密碼（`{"password": "..."}`，僅在尚未設定任何密碼／Token 時可用）。 |
 
 你自己的 webhook 會收到的 JSON 和每一種事件，在[通知](NOTIFICATIONS.md#webhook-json)裡有說明。
 
@@ -380,13 +386,13 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/errands/e3f1a29c0b7d4e55/say" \
 
 聯絡人替打來的號碼配上名字，存在通話紀錄資料夾（`CALLS_DATA_DIR`）的 `contacts.json`。號碼不管怎麼寫都對得上：`+886912345678`、`0912-345-678`、`886912345678` 是同一支。沒有國碼的號碼照你的國家（`country_code`）解讀；來電則照接到這通電話的 SIM 卡所屬國家。聯絡人也用在 AI 代打（選聯絡人就不用打號碼）和推銷判斷：已存的聯絡人講到錢，不會被當成推銷或詐騙。
 
-一位聯絡人是 `{id, name, phones: [...], note, source, updated_at}`，最多 10 個號碼，名字最多 80 字、備註最多 500 字。`source` 是 `manual`、`vcf`、`csv`、`text` 或 `ai`（Gemini 讀出來的）。一個號碼只屬於一位聯絡人；通訊錄最多 10,000 位（`too_many_contacts`）。
+一位聯絡人是 `{id, name, phones: [...], note, kind, source, updated_at}`，最多 10 個號碼，名字最多 80 字、備註最多 500 字。`kind` 為 `contact`（預設一般聯絡人）、`whitelist`（白名單 VIP／家人，搭配 `whitelist_mode` 使用）、`blacklist`（黑名單，來電直接拒接）或 `stall`（啟動 Stalls 名單，來電直接進入 AI 陪聊反制模式）。`source` 是 `manual`、`vcf`、`csv`、`text` 或 `ai`（Gemini 讀出來的）。一個號碼只屬於一位聯絡人；通訊錄最多 10,000 位（`too_many_contacts`）。
 
 | 方法與路徑 | 內容 |
 |---|---|
-| `GET /calls/api/contacts` | 查詢參數 `q`（名字、備註或號碼，號碼怎麼寫都行）、`limit`、`offset`。回應 `{ok, contacts, total, offset, count}`：符合的結果（共 `total` 筆），以及全部聯絡人數（`count`）。 |
-| `POST /calls/api/contacts` | Body `{name, phones: [...], note}`，回應 `{ok, contact}`。號碼已經是別的聯絡人的：HTTP 409 `contact_exists`，附 `contact: {id, name}`。沒有名字或沒有號碼：400 `invalid_contact`，附出問題的 `field`。 |
-| `PUT /calls/api/contacts/{id}` | 同樣的 body，取代名字、號碼和備註。404 `contact_not_found`，409、400 同上。 |
+| `GET /calls/api/contacts` | 查詢參數 `q`（名字、備註或號碼，號碼怎麼寫都行）、`kind`（`contact` \| `whitelist` \| `blacklist` \| `stall`）、`limit`、`offset`。回應 `{ok, contacts, total, offset, count}`：符合的結果（共 `total` 筆），以及全部聯絡人數（`count`）。 |
+| `POST /calls/api/contacts` | Body `{name, phones: [...], note, kind?}`，回應 `{ok, contact}`。號碼已經是別的聯絡人的：HTTP 409 `contact_exists`，附 `contact: {id, name}`。沒有名字或沒有號碼：400 `invalid_contact`，附出問題的 `field`。 |
+| `PUT /calls/api/contacts/{id}` | 同樣的 body，取代名字、號碼、備註和名單分類 `kind`。404 `contact_not_found`，409、400 同上。 |
 | `DELETE /calls/api/contacts/{id}` | `{ok}`。 |
 | `POST /calls/api/contacts/import` | Body 就是檔案本身（最大 10 MB），檔名 URL 編碼後放在 `X-Filename`（沒帶回 400 `bad_request`）。只讀、**不存**（預覽）：`{ok, file, format, ai, entries: [{name, phones, note, source, duplicate}], skipped}`。`format`：`vcf`、`csv`、`text`、`xlsx`、`docx`、`pdf` 或 `image`。`ai`：是 Gemini 讀的。`duplicate`：`null`，或這筆重複的已存聯絡人 `{id, name, by: "phone" \| "name"}`。`skipped`：沒有名字或號碼而略過的筆數。錯誤：400 `empty_file`、413 `file_too_large`／`too_many_rows`、415 `unsupported_file`、400 `need_gemini_key`、502 `ai_failed`（Gemini 的回覆在 `error`）。 |
 | `POST /calls/api/contacts/batch` | Body `{contacts: [{name, phones, note, source}], duplicates: "merge" \| "skip"}`：匯入時你要留的那些。跟已存聯絡人重複的，合併進去（補上新號碼和備註；預設）或略過。回應 `{ok, added, merged, skipped, count}`。 |

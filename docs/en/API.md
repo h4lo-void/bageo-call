@@ -182,6 +182,9 @@ Fields worth knowing (all of them are in `RuntimeSettings` in
 | `appointment_reply` | `auto` (default), `sms` or `call`. |
 | `reject_numbers` | A list of `{number, reason}`. |
 | `reject_mode` | `decline` (default: refuse while it rings) or `announce` (answer and play the announcement). |
+| `whitelist_mode` | `off` (default: AI answers normally), `direct` (decline to trigger carrier call forwarding and alert), or `emergency` (AI answers and gives out `whitelist_forward_number` if the caller has an urgent matter). |
+| `whitelist_forward_number` | Your real forwarding phone number used by Whitelist direct/emergency transfer. |
+| `ui_password` | Password for external console/API access (masked on read; `"ui_password_clear": true` clears it). |
 | `country_code` | Digits only (`886`, `1`). Not shown in the console; a value here wins over `COUNTRY_CODE`. |
 | `gemini_thinking_level` | `low` (default) / `medium` / `high`, for thinking models only. |
 
@@ -212,6 +215,9 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 |---|---|
 | `POST /calls/api/notify/test` | Body `{"channel": {kind, url, token, target, id?}}`. Sends the test message to that one channel (stored secrets are filled in by `id`). HTTP 200 `{ok: true}`, 400 `unknown_channel`, or 502 `{ok: false, code, field, kind, error}`: `code` says what went wrong (`missing_field`, `bad_url`, `bad_value`, `auth_failed`, `service_not_found`, `http_error`, `service_error`, `network_error`, `send_failed`), `field` which of `url` / `token` / `target` (or empty), `error` the service's answer. |
 | `POST /calls/api/notify/send` | Body `{"title": "...", "body": "..."}`. Sends your message to every enabled channel (an empty `title` becomes "Bageo"; an empty `body` is HTTP 400 `empty_body`). `{ok: true}` when at least one channel accepted it. The [SMS forwarder](../../tools/sms_forward/README.md) uses this route. |
+| `GET /calls/api/quick-action` · `POST /calls/api/quick-action` | Signed one-tap action links included in notifications across all 32 channels (`?act=confirm\|ignore\|block\|stall\|white&target=<id_or_number>&sig=<hmac>`). Verified with HMAC-SHA256 so no console login is needed when tapped from a phone notification; localized in all 9 languages. |
+| `POST /calls/api/control/inbound` | Universal inbound chat command webhook for Slack, Discord, LINE, WeCom, DingTalk, Feishu/Lark, Mattermost, Rocket.Chat, Zulip, Matrix, Nextcloud Talk, Synology Chat, Home Assistant, n8n, or curl (`{"text": "calls 5", "user": "owner", "channel": "line"}`). Executes any chat command (`status`, `calls`, `call`, `todos`, `accept`, `decline`, `errand`, `errands`, `say`, `cancel`, `phone`, `block`, `stall`, `white`, `unblock`, `help`) and returns `{ok, text}` in your notification language. |
+| `GET /calls/api/auth-status` · `POST /calls/api/initial-password` | Public status check (`{ok, password_required, needs_initial_password_setup}`) and first-time password setup (`{"password": "..."}`, allowed only when no password/token is set yet). |
 
 The JSON your own webhook receives, and every event type, is described in
 [Notifications](NOTIFICATIONS.md#webhook-json).
@@ -482,16 +488,16 @@ for a call, in the country of the SIM it came in on. Contacts also feed AI
 errands (pick a contact instead of typing a number) and the sales check: a
 saved contact talking about money is not treated as a sales or scam call.
 
-A contact is `{id, name, phones: [...], note, source, updated_at}`, with up to 10
-numbers, a name up to 80 characters and a note up to 500. `source` is
+A contact is `{id, name, phones: [...], note, kind, source, updated_at}`, with up to 10
+numbers, a name up to 80 characters and a note up to 500. `kind` is `contact` (default), `whitelist` (VIP / family, used with `whitelist_mode`), `blacklist` (immediately rejected like `reject_numbers`), or `stall` (immediately enters AI anti-scam/harassment stalling). `source` is
 `manual`, `vcf`, `csv`, `text` or `ai` (read by Gemini). A number belongs to one
 contact only, and the book holds up to 10,000 contacts (`too_many_contacts`).
 
 | Method and path | What |
 |---|---|
-| `GET /calls/api/contacts` | Query `q` (name, note, or a number written any way), `limit`, `offset`. `{ok, contacts, total, offset, count}`: the matches (`total` of them) and how many contacts there are in all (`count`). |
-| `POST /calls/api/contacts` | Body `{name, phones: [...], note}`: `{ok, contact}`. A number that is another contact's: HTTP 409 `contact_exists` with `contact: {id, name}`. No name or no number: 400 `invalid_contact` with the `field` at fault. |
-| `PUT /calls/api/contacts/{id}` | The same body; replaces the name, numbers and note. 404 `contact_not_found`, 409 and 400 as above. |
+| `GET /calls/api/contacts` | Query `q` (name, note, or a number written any way), `kind` (`contact` \| `whitelist` \| `blacklist` \| `stall`), `limit`, `offset`. `{ok, contacts, total, offset, count}`: the matches (`total` of them) and how many contacts there are in all (`count`). |
+| `POST /calls/api/contacts` | Body `{name, phones: [...], note, kind?}`: `{ok, contact}`. A number that is another contact's: HTTP 409 `contact_exists` with `contact: {id, name}`. No name or no number: 400 `invalid_contact` with the `field` at fault. |
+| `PUT /calls/api/contacts/{id}` | The same body; replaces the name, numbers, note and kind. 404 `contact_not_found`, 409 and 400 as above. |
 | `DELETE /calls/api/contacts/{id}` | `{ok}`. |
 | `POST /calls/api/contacts/import` | The file itself as the body (up to 10 MB), its name URL-encoded in `X-Filename` (missing: 400 `bad_request`). Reads it and **saves nothing** (a preview): `{ok, file, format, ai, entries: [{name, phones, note, source, duplicate}], skipped}`. `format`: `vcf`, `csv`, `text`, `xlsx`, `docx`, `pdf` or `image`. `ai`: Gemini read it. `duplicate`: `null`, or the saved contact the entry repeats, `{id, name, by: "phone" \| "name"}`. `skipped`: entries without a name or a number. Errors: 400 `empty_file`, 413 `file_too_large` / `too_many_rows`, 415 `unsupported_file`, 400 `need_gemini_key`, 502 `ai_failed` (Gemini's answer in `error`). |
 | `POST /calls/api/contacts/batch` | Body `{contacts: [{name, phones, note, source}], duplicates: "merge" \| "skip"}`: the entries you keep from an import. One that repeats a saved contact is merged into it (its new numbers and note added; the default) or skipped. `{ok, added, merged, skipped, count}`. |

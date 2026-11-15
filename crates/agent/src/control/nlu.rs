@@ -23,9 +23,9 @@ pub const GEMINI_BASE: &str = "https://generativelanguage.googleapis.com";
 pub const TIMEOUT: Duration = Duration::from_secs(8);
 const INPUT_MAX_CHARS: usize = 1500;
 
-const ACTIONS: [&str; 15] = [
+const ACTIONS: [&str; 19] = [
     "help", "status", "calls", "call", "tasks", "confirm", "ignore", "errand", "errands", "cancel", "say", "answer", "mode",
-    "contacts", "none",
+    "contacts", "block", "stall", "white", "unblock", "none",
 ];
 
 const SYSTEM_PROMPT: &str = "\
@@ -38,6 +38,10 @@ Commands (field action) and their fields:\n\
 - errands: the AI's calls and their results. cancel: stop one (ref, may be empty). say: tell the AI on a call something (text; ref may be empty). answer: answer the question the AI asked (text).\n\
 - mode: switch a phone between the AI answering (mode ai) and a normal phone (mode normal). phone: its name, or its number in the list.\n\
 - contacts: find a contact (query).\n\
+- block: add a phone number to the blacklist (target: the phone number; text: optional name or reason).\n\
+- stall: add a phone number to the force-stall list so the AI stalls them from second 0 (target: the phone number; text: optional name or note).\n\
+- white: add a phone number to the whitelist (target: the phone number; text: optional name or note).\n\
+- unblock: remove a phone number from the blacklist or force-stall list (target: the phone number).\n\
 - status: the agent and its phones. help: what the agent can do from the chat.\n\
 - none: anything else (small talk, something these do not cover, a message you are unsure about).\n\
 Never make up a number, a name or a time that is not in the message. Leave the fields you do not use empty. Answer with JSON only.";

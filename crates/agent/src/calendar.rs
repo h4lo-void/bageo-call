@@ -302,13 +302,18 @@ fn details_text(details: &str) -> String {
     details.trim().chars().take(600).collect()
 }
 
-/// The console token (`CALLS_UI_TOKEN`), set once at start: links to an
-/// `.ics` that leave the console (notifications, Telegram) carry a key made
-/// from it ([`link_key`]), never the token itself.
-static LINK_SECRET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+/// The console token (`CALLS_UI_TOKEN` or `ui_password`), updated when settings
+/// change: links to an `.ics` or quick-action that leave the console
+/// (notifications, Telegram) carry a key made from it ([`link_key`]), never the
+/// token itself.
+static LINK_SECRET: std::sync::RwLock<String> = std::sync::RwLock::new(String::new());
 
 pub fn set_link_secret(token: &str) {
-    let _ = LINK_SECRET.set(token.trim().to_string());
+    *LINK_SECRET.write().unwrap_or_else(|e| e.into_inner()) = token.trim().to_string();
+}
+
+pub fn link_secret() -> String {
+    LINK_SECRET.read().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
 /// The key that opens one `.ics` without the console token (`what` =
@@ -340,7 +345,54 @@ pub fn key_opens(token: &str, what: &str, key: &str) -> bool {
 /// <what>/event.ics`, with its key when the console has a token. Empty without
 /// `public_url`: no address other devices are known to open.
 pub fn ics_url(public_url: &str, what: &str) -> String {
-    ics_url_with(public_url, what, LINK_SECRET.get().map(String::as_str).unwrap_or(""))
+    ics_url_with(public_url, what, &link_secret())
+}
+
+/// HMAC signature for a one-tap notification action (`confirm_task`,
+/// `ignore_task`, `block`, `stall`, `white`, `unblock`).
+pub fn quick_action_sig(op: &str, target: &str) -> String {
+    use hmac::{Hmac, Mac};
+    let secret = link_secret();
+    let key_bytes: &[u8] = if secret.is_empty() {
+        b"bageo-local-quick-action-key"
+    } else {
+        secret.as_bytes()
+    };
+    let Ok(mut mac) = Hmac::<sha2::Sha256>::new_from_slice(key_bytes) else {
+        return String::new();
+    };
+    mac.update(b"bageo-qa:");
+    mac.update(op.trim().as_bytes());
+    mac.update(b":");
+    mac.update(target.trim().as_bytes());
+    mac.finalize().into_bytes().iter().take(16).map(|b| format!("{b:02x}")).collect()
+}
+
+/// Constant-time check for a one-tap notification action signature.
+pub fn quick_action_sig_ok(op: &str, target: &str, sig: &str) -> bool {
+    let want = quick_action_sig(op, target);
+    !want.is_empty()
+        && want.len() == sig.len()
+        && want.bytes().zip(sig.bytes()).fold(0u8, |d, (a, b)| d | (a ^ b)) == 0
+}
+
+/// Signed one-tap action URL for notification buttons/links outside Telegram.
+pub fn quick_action_url(public_url: &str, op: &str, target: &str, name: &str) -> String {
+    let base = public_url.trim().trim_end_matches('/');
+    if base.is_empty() || op.trim().is_empty() || target.trim().is_empty() {
+        return String::new();
+    }
+    let base = base.strip_suffix("/calls").unwrap_or(base);
+    let sig = quick_action_sig(op.trim(), target.trim());
+    let mut u = format!(
+        "{base}/calls/api/quick-action?op={}&target={}&sig={sig}",
+        pct(op.trim()),
+        pct(target.trim()),
+    );
+    if !name.trim().is_empty() {
+        u.push_str(&format!("&name={}", pct(name.trim())));
+    }
+    u
 }
 
 fn ics_url_with(public_url: &str, what: &str, token: &str) -> String {

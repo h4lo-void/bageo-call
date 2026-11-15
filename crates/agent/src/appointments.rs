@@ -2875,14 +2875,24 @@ pub async fn after_summary(
     if appt.status != PENDING {
         return;
     }
+    let p = texts();
+    let (title, body) = card_text(rt, task, &appt, link);
+    let _ = crate::notify::notify_pending_appointment_non_tg(
+        http,
+        rt,
+        &task.id,
+        &task.caller_id,
+        &title,
+        &body,
+        link,
+    )
+    .await;
     let token = rt.telegram_bot_token.trim();
     let chat = rt.telegram_chat_id.trim();
     if !crate::tg_inbound::task_card_ready(rt.call_notify, token, chat) {
         info!("appointment card not sent (Telegram not set up; decided on the web) task_id={}", task.id);
         return;
     }
-    let p = texts();
-    let (title, body) = card_text(rt, task, &appt, link);
     match crate::tg_inbound::send_task_card_labeled(
         http, token, chat, &title, &task.id, &body, p.ap_confirm, p.ap_decline,
     )

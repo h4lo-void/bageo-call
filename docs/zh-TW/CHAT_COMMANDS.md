@@ -34,8 +34,12 @@
 | `/answer <內容>` | 回答 AI 問你的問題 |
 | `/mode <手機> ai\|normal` | 切換手機模式（手機名稱，或 `/status` 裡的編號） |
 | `/contacts <名字>` | 找聯絡人 |
+| `/block <號碼> [名稱／原因]` | 把號碼加入 ⛔ **黑名單**（拒接名單） |
+| `/stall <號碼> [名稱／備註]` | 把號碼加入 🎭 **啟動 Stalls 名單**（接起第 0 秒直接強制進入陪聊拖時間） |
+| `/white <號碼> [名稱／備註]` | 把號碼加入 ⭐ **白名單**（重要親友／支援直接轉接或緊急事件轉接） |
+| `/unblock <號碼>` | 從黑名單或啟動 Stalls 名單移除，恢復正常接聽 |
 
-也可以直接打字：「幫我打給 0912345678 訂今晚七點兩位」「昨天有誰打來」。這種自由文字會交給 Gemini 最便宜的模型（用*設定*裡的金鑰）轉成上面的指令；沒有金鑰時，機器人只回一句提示請你用 `/help`。
+也可以直接打字：「幫我打給 0912345678 訂今晚七點兩位」「昨天有誰打來」「把 0912345678 加進黑名單」「把 0223456789 設成啟動 Stalls 陪聊」「把 0988111222 加進白名單」。這種自由文字會交給 Gemini 最便宜的模型（用*設定*裡的金鑰）轉成上面的指令；沒有金鑰時，機器人只回一句提示請你用 `/help`。
 
 ## 哪些事會先問你
 
@@ -72,9 +76,35 @@ AI 代打的結果照舊用一般通知送出。
 | `control_errands_per_hour` | `CONTROL_ERRANDS_PER_HOUR` | 5（0–30） |
 | `control_commands_per_minute` | `CONTROL_COMMANDS_PER_MINUTE` | 20（1–120） |
 
+## 其他通知管道的操作方式（一鍵按鈕與通用指令 Webhook）
+
+除了 Telegram 雙向聊天外，**所有其他通知管道**也都支援互動操作：
+
+1. **通話摘要與預約通知的一鍵按鈕（免輸入密碼、HMAC 簽章保護）**
+   - 當設定好「這個控制台的網址」（`public_url`）時，每通電話的摘要通知與預約確認通知都會自動附上單次簽章動作按鈕／連結：
+     - 通話摘要：**⛔ 加入黑名單**、**🎭 設為陪聊（Stalls）**、**⭐ 加入白名單**
+     - 行程預約：**同意**、**不同意**
+   - 原生按鈕支援：
+     - **Telegram**：Inline Keyboard 按鈕
+     - **ntfy**：原生 Action 按鈕（在手機通知欄直接點按）
+     - **Home Assistant**：Companion App 通知 Action 按鈕與點擊跳轉（`clickAction`）
+     - **Microsoft Teams**：Adaptive Card `Action.OpenUrl` 按鈕
+     - **Bark / Pushover / Gotify / Chanify**：點擊通知直接跳轉連結（`url` / `click` / `link`）
+     - **Discord / Slack / LINE / Matrix / 企業微信 / 釘釘 / 飛書 / Email**：訊息內附帶可點擊的簽章連結
+
+2. **通用指令端點 `POST /calls/api/control/inbound`（讓任何管道都能下指令）**
+   - Home Assistant、n8n、Apple 捷徑（Shortcuts）、Discord/Slack/LINE 自架機器人等，都可以直接 POST 文字指令或自然語言到：
+     ```bash
+     curl -X POST http://bageo.local:8787/calls/api/control/inbound \
+       -H "Content-Type: application/json" \
+       -H "Authorization: Bearer <外部存取密碼或MCP_TOKEN>" \
+       -d '{"text": "/status", "channel_id": "ntfy", "reply": true}'
+     ```
+   - `text` 支援所有 `/status`、`/calls`、`/errand`、`/block`、`/stall`、`/white` 等斜線指令與自然語言；若 `"reply": true`，主程式還會把執行結果推播回指定的通知管道。
+
 ## 給開發者
 
-指令、檢查、確認和上限都在 `crates/agent/src/control/`；要接新的聊天軟體，只要寫一層薄薄的轉接：把訊息轉成 `control::Inbound` 交給 `Controller::handle`，再把拿回來的 `Outbound` 顯示出來。介面說明寫在 `control/mod.rs` 開頭；`control/telegram.rs` 是第一個轉接層。目前只有 Telegram 能下指令；Discord、Slack、Matrix 等其他管道照樣收得到所有通知。
+指令、檢查、確認和上限都在 `crates/agent/src/control/`；要接新的聊天軟體，只要寫一層薄薄的轉接：把訊息轉成 `control::Inbound` 交給 `Controller::handle`，或直接呼叫 `POST /calls/api/control/inbound`。
 
 AI 代理（Claude、ChatGPT、Grok、OpenClaw（龍蝦）…）可以透過內建的 MCP 伺服器使用同一組動作：見 [MCP](MCP.md)。
 

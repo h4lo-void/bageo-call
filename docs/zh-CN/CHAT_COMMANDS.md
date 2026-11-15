@@ -34,8 +34,12 @@
 | `/answer <内容>` | 回答 AI 问你的问题 |
 | `/mode <手机> ai\|normal` | 切换手机模式（手机名称，或 `/status` 里的编号） |
 | `/contacts <名字>` | 找联系人 |
+| `/block <号码> [名称／原因]` | 把号码加入 ⛔ **黑名单**（拒接名单） |
+| `/stall <号码> [名称／备注]` | 把号码加入 🎭 **启动 Stalls 名单**（接起第 0 秒直接强制进入陪聊拖时间） |
+| `/white <号码> [名称／备注]` | 把号码加入 ⭐ **白名单**（重要亲友／支持直接转接或紧急事件转接） |
+| `/unblock <号码>` | 从黑名单或启动 Stalls 名单移除，恢复正常接听 |
 
-也可以直接打字：“帮我打给 0912345678 订今晚七点两位”“昨天有谁打来”。这种自由文字会交给 Gemini 最便宜的模型（用*设置*里的密钥）转成上面的指令；没有密钥时，机器人只回一句提示请你用 `/help`。
+也可以直接打字：“帮我打给 0912345678 订今晚七点两位”“昨天有谁打来”“把 0912345678 加进黑名单”“把 0223456789 设成启动 Stalls 陪聊”“把 0988111222 加进白名单”。这种自由文字会交给 Gemini 最便宜的模型（用*设置*里的密钥）转成上面的指令；没有密钥时，机器人只回一句提示请你用 `/help`。
 
 ## 哪些事会先问你
 
@@ -72,9 +76,35 @@ AI 代打的结果照旧用普通通知发出。
 | `control_errands_per_hour` | `CONTROL_ERRANDS_PER_HOUR` | 5（0–30） |
 | `control_commands_per_minute` | `CONTROL_COMMANDS_PER_MINUTE` | 20（1–120） |
 
+## 其他通知渠道的操作方式（一键按钮与通用指令 Webhook）
+
+除了 Telegram 双向聊天外，**所有 32 种通知渠道**也都支持交互操作：
+
+1. **通话摘要与预约通知的一键按钮（免输入密码、HMAC 签名保护）**
+   - 当配置好“这个控制台的地址”（`public_url`）时，每通电话的摘要通知与预约确认通知都会自动附上单次签名动作按钮／链接：
+     - 通话摘要：**⛔ 加入黑名单**、**🎭 设为陪聊（Stalls）**、**⭐ 加入白名单**
+     - 日程预约：**同意**、**不同意**
+   - 原生按钮支持：
+     - **Telegram**：Inline Keyboard 按钮
+     - **ntfy**：原生 Action 按钮（在手机通知栏直接点按）
+     - **Home Assistant**：Companion App 通知 Action 按钮与点击跳转（`clickAction`）
+     - **Microsoft Teams**：Adaptive Card `Action.OpenUrl` 按钮
+     - **Bark / Pushover / Gotify / Chanify**：点击通知直接跳转链接（`url` / `click` / `link`）
+     - **Discord / Slack / LINE / Matrix / 企业微信 / 钉钉 / 飞书 / Email**：消息内附带可点击的签名链接
+
+2. **通用指令端点 `POST /calls/api/control/inbound`（让任何渠道都能下指令）**
+   - Home Assistant、n8n、Apple 快捷指令（Shortcuts）、Discord/Slack/LINE/企业微信/飞书自建机器人等，都可以直接 POST 文字指令或自然语言到：
+     ```bash
+     curl -X POST http://bageo.local:8787/calls/api/control/inbound \
+       -H "Content-Type: application/json" \
+       -H "Authorization: Bearer <外部访问密码或MCP_TOKEN>" \
+       -d '{"text": "/status", "reply_notify": true}'
+     ```
+   - `text` 支持所有 `/status`、`/calls`、`/errand`、`/block`、`/stall`、`/white` 等斜线指令与 9 种语言的自然语言；若 `"reply_notify": true`，主程序还会把执行结果推送回已启用的通知渠道。
+
 ## 给开发者
 
-指令、检查、确认和上限都在 `crates/agent/src/control/`；要接新的聊天软件，只要写一层薄薄的转接：把消息转成 `control::Inbound` 交给 `Controller::handle`，再把拿回来的 `Outbound` 显示出来。接口说明写在 `control/mod.rs` 开头；`control/telegram.rs` 是第一个转接层。目前只有 Telegram 能下指令；Discord、Slack、Matrix 等其他渠道照样收得到所有通知。
+指令、检查、确认和上限都在 `crates/agent/src/control/`；要接新的聊天软件，只要写一层薄薄的转接：把消息转成 `control::Inbound` 交给 `Controller::handle`，或直接调用 `POST /calls/api/control/inbound`。
 
 AI 代理（Claude、ChatGPT、Grok、OpenClaw（龙虾）…）可以通过内置的 MCP 服务器使用同一组动作：见 [MCP](MCP.md)。
 

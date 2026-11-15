@@ -43,9 +43,13 @@ Numbers like `1` or `#2` refer to the list the chat was shown last
 | `/answer <text>` | Answer the question the AI asked you |
 | `/mode <phone> ai\|normal` | Switch a phone (its name, or its number in `/status`) |
 | `/contacts <name>` | Find a contact |
+| `/block <number> [name/reason]` | Add a number to the ⛔ **Blacklist** (block & reject immediately) |
+| `/stall <number> [name/note]` | Add a number to the 🎭 **Force Stall list** (enter Stall mode from second 0) |
+| `/white <number> [name/note]` | Add a number to the ⭐ **Whitelist** (VIP / optional call transfer to your real phone) |
+| `/unblock <number>` | Remove a number from the Blacklist or Force Stall list and restore normal AI answering |
 
-You can also just write what you want: "call 0912345678 and book a table for
-two at 7 tonight", "who called yesterday?". Gemini's lowest-cost model
+You can also just write what you want in any language: "call 0912345678 and book a table for
+two at 7 tonight", "who called yesterday?", "block 0912345678 loan spam", "put 0223456789 on the force stall list", "add 0988111222 to whitelist Mom". Gemini's lowest-cost model
 (the key from *Settings*) turns it into one of the commands above; without a
 key the bot answers with a short pointer to `/help`.
 
@@ -107,15 +111,39 @@ The result of an AI call still arrives as the usual notification.
 | `control_errands_per_hour` | `CONTROL_ERRANDS_PER_HOUR` | 5 (0–30) |
 | `control_commands_per_minute` | `CONTROL_COMMANDS_PER_MINUTE` | 20 (1–120) |
 
+## Interactive buttons & commands across all 32 notification channels
+
+Beyond Telegram two-way chat, **all 32 notification channels** support interactive operation:
+
+1. **One-tap signed action buttons on call summaries & appointments (`GET/POST /calls/api/quick-action`)**
+   - When *Address of this console* (`public_url`) is configured, every call summary and pending appointment notification includes HMAC-SHA256 signed one-tap actions (no console password required):
+     - Call summaries: **⛔ Block**, **🎭 Force Stall**, **⭐ Whitelist**
+     - Pending appointments: **Accept**, **Decline**
+   - Native button support by channel:
+     - **Telegram**: Inline Keyboard buttons
+     - **ntfy**: Native HTTP POST action buttons directly in the phone notification shade
+     - **Home Assistant**: Companion App `data.actions` notification buttons & `clickAction`
+     - **Microsoft Teams**: Adaptive Card `Action.OpenUrl` buttons
+     - **Bark / Pushover / Gotify / Chanify**: Native tap-to-open URLs (`url` / `click` / `link`)
+     - **Discord / Slack / LINE / Matrix / WeCom / DingTalk / Feishu / Email**: Clickable signed action links appended to the message
+     - **Webhook (JSON)**: Structured `actions: [{ "label": "...", "url": "..." }]` array
+
+2. **Universal inbound command endpoint (`POST /calls/api/control/inbound`)**
+   - Connect Home Assistant, n8n, Make, Apple Shortcuts, or custom Discord / Slack / LINE / WeCom / Feishu bots by POSTing any slash command or natural language message:
+     ```bash
+     curl -X POST http://bageo.local:8787/calls/api/control/inbound \
+       -H "Content-Type: application/json" \
+       -H "Authorization: Bearer <ui_password or MCP_TOKEN>" \
+       -d '{"text": "/status", "reply_notify": true}'
+     ```
+   - Accepts all 18 slash commands (`/status`, `/calls`, `/errand`, `/block`, `/stall`, `/white`, `/unblock`, etc.) and natural language in any of the 9 supported languages. When `"reply_notify": true`, Bageo also pushes the reply back out to your enabled notification channels.
+
 ## For developers
 
 The commands, the checks, the confirmations and the limits live in
 `crates/agent/src/control/`; a chat app only needs a thin adapter that turns
 its messages into `control::Inbound`, hands them to `Controller::handle`
-and shows the `Outbound` it gets back. The contract is written at the top of
-`control/mod.rs`; `control/telegram.rs` is the first adapter. Today only
-Telegram takes commands; Discord, Slack, Matrix and the other channels still
-get every notification.
+and shows the `Outbound` it gets back — or simply calls `POST /calls/api/control/inbound`.
 
 An AI agent (Claude, ChatGPT, Grok, OpenClaw…) can use the same actions
 through the built-in MCP server: see [MCP](MCP.md).

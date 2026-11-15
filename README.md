@@ -182,7 +182,7 @@ The phone only carries the call; everything else runs on your own computer. The 
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/contacts.svg" width="56" height="56" alt=""><br>
       <strong>Knows who is calling</strong><br>
-      Import contacts from vCard, CSV, Excel, Word, PDF or a photo of a business card.
+      Import contacts from vCard, CSV, Excel, Word, PDF or a photo of a business card — with 4-in-1 Contacts, ⭐ Whitelist call transfer, ⛔ Blacklist &amp; 🎭 Force Stall lists.
     </td>
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/switch.svg" width="56" height="56" alt=""><br>
@@ -199,7 +199,7 @@ The phone only carries the call; everything else runs on your own computer. The 
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/notify.svg" width="56" height="56" alt=""><br>
       <strong>32 notification channels</strong><br>
-      A summary after every call, on Telegram, Discord, Slack, LINE, ntfy, Gmail and more.
+      A summary after every call with one-tap action buttons &amp; chat commands, on Telegram, Discord, Slack, LINE, Teams, ntfy, Home Assistant, Gmail and more.
     </td>
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/local.svg" width="56" height="56" alt=""><br>
@@ -233,7 +233,7 @@ Stuck? Every step in detail: [Getting started](docs/en/GETTING_STARTED.md) · [P
 | | |
 |---|---|
 | **Start** | [Getting started](docs/en/GETTING_STARTED.md) · [Phone setup](docs/en/PHONE.md) · [Troubleshooting & FAQ](docs/en/TROUBLESHOOTING.md) |
-| **Use** | [Features](docs/en/FEATURES.md) · [Writing the prompt](docs/en/PROMPTS.md) · [Settings reference](docs/en/SETTINGS.md) · [Notifications](docs/en/NOTIFICATIONS.md) |
+| **Use** | [Features](docs/en/FEATURES.md) · [Chat commands & notifications control](docs/en/CHAT_COMMANDS.md) · [Writing the prompt](docs/en/PROMPTS.md) · [Settings reference](docs/en/SETTINGS.md) · [Notifications](docs/en/NOTIFICATIONS.md) |
 | **Go deeper** | [Architecture](docs/en/ARCHITECTURE.md) · [API](docs/en/API.md) · [Roadmap](docs/en/ROADMAP.md) · [Release notes v1.0](CHANGELOG.md) · [`android/`](android/README.md) · [`tools/sms_forward/`](tools/sms_forward/README.md) |
 | **Legal** | [Privacy, safety and the law](docs/en/PRIVACY_AND_LEGAL.md) · [Legal disclaimer & operator terms](LEGAL.md) · [Dual & commercial licensing](COMMERCIAL_LICENSE.md) · [Project security & compliance audit](AUDIT_REPORT.md) |
 

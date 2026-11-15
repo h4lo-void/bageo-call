@@ -43,18 +43,18 @@ pub const TG_SUMMARY_SYSTEM_PROMPT: &str = "\
 \n\
 固定輸出四行：\n\
 對方：是誰。用對方自己說的身分（例如「小明（朋友）」「黑貓宅急便」「中華電信客服」）；沒說就寫「沒說是誰」。語音辨識錯字要自己修正成合理的名字或單位。\n\
-事情：對方打來要幹嘛，一兩句，寫具體（例如「明天下午送包裹，問有沒有人在家」「提醒繳水費」「約明天中午吃飯」）。推銷／詐騙／語音廣告就直接寫「推銷電話：賣什麼」「疑似詐騙」。對方什麼都沒講就寫「沒講事情就掛了」。\n\
+事情：對方打來要幹嘛，一兩句，寫具體（例如「明天下午送包裹，問有沒有人在家」「提醒繳水費」「約明天中午吃飯」）。推銷／詐騙／語音廣告就直接寫「推銷電話：賣什麼」「疑似詐騙」；討債公司／資產管理惡意催收寫「催收騷擾：討什麼債」；惡意辱罵／恐嚇電話寫「惡意騷擾」。對方什麼都沒講就寫「沒講事情就掛了」。\n\
 AI 回覆：AI 怎麼回的，一句（例如「說放管理室就好」「說晚點再確認」「直接拒絕」）；AI 沒講到重點就寫「只有打招呼」。\n\
-要處理：{owner}需不需要做什麼。要的話寫清楚動作，例如「回電給小明確認明天中午」「明天下午有人在家收包裹」「去繳水費」；不需要就寫「不用」。推銷和詐騙一律「不用」。\n\
+要處理：{owner}需不需要做什麼。要的話寫清楚動作，例如「回電給小明確認明天中午」「明天下午有人在家收包裹」「去繳水費」；不需要就寫「不用」。推銷、詐騙、惡意催收和惡意騷擾一律「不用」。\n\
 \n\
 規則：\n\
 - 事由出現繳水費／房租／電費／包裹／開會這類字眼，一定要寫進「事情」。\n\
 - 每行最多 25 個字左右，像傳訊息，不要寫成句子解釋。\n\
 - 「國際電話請注意小心詐騙」是電信公司的提示音，不是對方講的，也不是詐騙的證據。對方講外語本身不算推銷或詐騙；只有對方講的內容本身像推銷或詐騙，才寫「推銷電話」「疑似詐騙」。\n\
 - 銀行、信用卡中心打來確認某一筆刷卡或交易是不是{owner}本人（沒有要轉帳、去 ATM、給驗證碼或密碼、裝 App、解除分期）：不是推銷也不是詐騙，就算【通話資訊】寫 AI 陪他聊也一樣。「事情」寫哪家銀行、金額、商店、時間（例如「大愛銀行：昨晚11點網路電器行3280元，問是否本人刷」）；「要處理」提醒{owner}自己確認（例如「自己確認是否本人刷；不是就打卡片背面客服，別回撥來電」），不能寫「不用」。\n\
-- 保險公司或銀行單純通知{owner}既有申請進度、既有保單理賠結果／入帳、卡片寄送或帳單提醒，以及親友、房東、廠商談日常匯款或帳務（沒有推銷新保單／貸款／方案，也沒有要操作 ATM、給驗證碼或密碼、轉帳到安全帳戶、加 LINE）：不是推銷也不是詐騙，照一般電話寫事由與待辦，不要寫「推銷電話」或「疑似詐騙」。\n\
+- 保險公司、銀行、水電電信或房東單純禮貌通知{owner}既有申請進度、既有保單理賠結果／入帳、卡片寄送或日常帳單提醒，以及親友、廠商談日常匯款或帳務（沒有委外討債恐嚇查封扣薪、沒有推銷新保單／貸款／方案，也沒有要操作 ATM、給驗證碼或密碼、轉帳到安全帳戶、分享螢幕、加 LINE）：不是推銷也不是詐騙，照一般電話寫事由與待辦，不要寫「推銷電話」「疑似詐騙」或「催收騷擾」。\n\
 - 【通話資訊】寫 AI 連不上、系統掛斷時，「AI 回覆」寫「AI 沒接上，沒講話」。\n\
-- 【通話資訊】寫 AI 故意陪聊拖時間、而【對話】看起來確實是推銷或詐騙時：「事情」寫賣什麼或什麼詐騙手法，「AI 回覆」寫「陪他繞了約 N 分鐘」（用長度換算），「要處理」寫「不用」；其實是正常電話就照一般寫。\n\
+- 【通話資訊】寫 AI 故意陪聊拖時間、而【對話】看起來確實是推銷、詐騙、討債催收或惡意騷擾時：「事情」寫賣什麼、什麼詐騙手法、催收騷擾或惡意騷擾，「AI 回覆」寫「陪他繞了約 N 分鐘」（用長度換算），「要處理」寫「不用」；其實是正常電話就照一般寫。\n\
 - 【對話】裡「接聽：」是 AI 講的，不是對方的要求；不要把 AI 的話當成對方的事情。\n\
 - 不確定的事不要編，寫「聽不清楚」。\n\
 - 不要重複號碼、時間、手機型號，這些訊息外面已經有了。";
@@ -77,18 +77,18 @@ You are given:\n\
 \n\
 Output exactly four lines with these labels:\n\
 {s_caller}: who it was, in the caller's own words (a name, a company, a courier); if they did not say, write that they did not say. Turn obvious speech-recognition errors into a sensible name.\n\
-{s_matter}: what they wanted, in one or two short concrete phrases. A sales call or recorded advertisement: start this line with \"{s_sales}:\" and what was being sold. A call that looks like a scam: start it with \"{s_scam}\". Use these two only for calls that are themselves selling or scamming, not for a bank, the police or anyone else calling about fraud. If they said nothing: that they hung up without saying anything.\n\
+{s_matter}: what they wanted, in one or two short concrete phrases. A sales call or recorded advertisement: start this line with \"{s_sales}:\" and what was being sold. A call that looks like a scam, aggressive third-party debt collection, or malicious harassment / threats: start it with \"{s_scam}\" (and say what kind: scam, debt-collection harassment, or abusive harassment). Use these two only for calls that are themselves selling, scamming, aggressively dunning or harassing, not for a bank, the police or anyone else calling legitimately about fraud or a polite bill reminder. If they said nothing: that they hung up without saying anything.\n\
 {s_reply}: how the AI answered, in one phrase; if it only said hello, say so.\n\
-{s_todo}: whether {owner} has to do anything, as a clear action (call someone back about something, be home for a delivery tomorrow afternoon); otherwise that there is nothing to do. Sales and scam calls: nothing to do.\n\
+{s_todo}: whether {owner} has to do anything, as a clear action (call someone back about something, be home for a delivery tomorrow afternoon); otherwise that there is nothing to do. Sales, scam, debt-collection harassment and malicious harassment calls: nothing to do.\n\
 \n\
 Rules:\n\
 - Each line is short, like a text message: about fifteen words at most.\n\
 - \"AI:\" lines are the AI talking; they are not the caller's request.\n\
 - The carrier's warning about international calls is not the caller and no sign of a scam. A caller speaking another language is not a sales or scam call either; only what they actually say can make it one.\n\
 - A bank or card centre calling only to check whether a card charge or transaction was {owner}'s (no request to transfer money, go to an ATM, give a code or password, install an app or cancel an instalment plan) is neither a sales call nor a scam, even if [Call facts] says the AI kept them talking: {s_matter} names the bank, the amount, the shop and the time; {s_todo} tells {owner} to check whether the charge was theirs and, if it was not, to call the number on the back of the card (not the number that called) — never that there is nothing to do.\n\
-- An insurer or bank updating {owner} on an existing application, claim payout, card delivery or bill reminder, or a known person / vendor discussing an ordinary transfer or invoice (with no pitch for new insurance, loans or paid plans, and no request for ATM steps, codes, passwords, safe accounts or chat apps), is neither a sales call nor a scam: write it up as a normal call.\n\
+- An insurer, bank, utility, telecom or landlord politely updating {owner} on an existing application, claim payout, card delivery or routine bill reminder, or a known person / vendor discussing an ordinary transfer or invoice (with no third-party debt-collection threats, no pitch for new insurance, loans or paid plans, and no request for ATM steps, codes, passwords, safe accounts, screen sharing or chat apps), is neither a sales call nor a scam: write it up as a normal call.\n\
 - If [Call facts] says the AI could not connect and the system hung up, the {s_reply} line is: {s_ai_failed}.\n\
-- If [Call facts] says the AI deliberately kept the caller talking and the dialogue does look like a sales or scam call: {s_matter} is what was being sold or which scam it was, {s_reply} is that the AI kept them busy for about N minutes (work N out from the length), {s_todo} is nothing to do. If it was in fact a normal call, write it up normally.\n\
+- If [Call facts] says the AI deliberately kept the caller talking and the dialogue does look like a sales, scam, debt-collection harassment or malicious harassment call: {s_matter} starts with \"{s_sales}:\" or \"{s_scam}\" and names what was sold, which scam, or the debt/harassment, {s_reply} is that the AI kept them busy for about N minutes (work N out from the length), {s_todo} is nothing to do. If it was in fact a normal call, write it up normally.\n\
 - Do not invent anything you are not sure of; write that it was unclear.\n\
 - Do not repeat the number, the time or the phone model; the message already shows them.";
 
@@ -487,14 +487,18 @@ const NOT_A_PITCH: &[&str] = &[
 pub fn summary_says_sales(lang: Lang, summary: &str) -> bool {
     let (sales, scam) = sales_labels(lang);
     let extra: &[&str] = match lang {
-        Lang::ZhTw | Lang::ZhCn => &["語音廣告", "语音广告"],
-        Lang::En => &["sales pitch", "likely scam", "probable scam", "sales call"],
-        Lang::Ja => &["セールス電話", "詐欺電話"],
-        Lang::Ko => &["판매 전화", "광고 전화"],
-        Lang::Es => &["llamada de ventas", "presunta estafa", "intento de estafa"],
-        Lang::Fr => &["appel commercial", "arnaque probable", "tentative d'arnaque"],
-        Lang::De => &["verkaufsanruf", "betrugsversuch"],
-        Lang::Pt => &["ligação comercial", "tentativa de golpe"],
+        Lang::ZhTw | Lang::ZhCn => &[
+            "語音廣告", "语音广告", "催收騷擾", "催收骚扰", "討債騷擾", "讨债骚扰", "惡意騷擾", "恶意骚扰",
+        ],
+        Lang::En => &[
+            "sales pitch", "likely scam", "probable scam", "sales call", "debt-collection harassment", "debt collection harassment", "abusive harassment", "malicious harassment",
+        ],
+        Lang::Ja => &["セールス電話", "詐欺電話", "悪質な取り立て", "嫌がらせ電話", "脅迫電話"],
+        Lang::Ko => &["판매 전화", "광고 전화", "채권추심 괴롭힘", "악성 추심", "악성 괴롭힘", "협박 전화"],
+        Lang::Es => &["llamada de ventas", "presunta estafa", "intento de estafa", "cobro agresivo", "llamada de acoso"],
+        Lang::Fr => &["appel commercial", "arnaque probable", "tentative d'arnaque", "recouvrement agressif", "appel de harcèlement"],
+        Lang::De => &["verkaufsanruf", "betrugsversuch", "aggressives inkasso", "belästigungsanruf", "drohanruf"],
+        Lang::Pt => &["ligação comercial", "tentativa de golpe", "cobrança abusiva", "ligação de assédio"],
     };
     let label = locale::phrases(lang).s_matter;
     summary
@@ -1988,5 +1992,83 @@ mod translate_tests {
         let request = server.await.unwrap();
         assert!(request.starts_with("POST /v1/chat/completions "), "{request}");
         assert!(request.contains("local-model") && request.contains("Hello. Do you speak English?"), "{request}");
+    }
+
+    #[test]
+    fn summary_says_sales_covers_debt_and_harassment_across_all_nine_languages() {
+        let cases = [
+            (
+                Lang::ZhTw,
+                "事情：催收騷擾：資產管理公司討債威脅扣薪",
+                "事情：惡意騷擾：不明人士打來辱罵恐嚇",
+                "事情：大愛銀行：確認昨晚網路電器行3280元刷卡是否本人",
+                "事情：提醒月底前繳水費",
+            ),
+            (
+                Lang::ZhCn,
+                "事情：催收骚扰：委外催收公司威胁上门",
+                "事情：恶意骚扰：来电辱骂恐吓",
+                "事情：银行风控中心核实昨晚刷卡是否本人交易",
+                "事情：物业提醒缴纳本月水费",
+            ),
+            (
+                Lang::En,
+                "About: Suspected scam: debt-collection harassment threatening wage garnishment",
+                "About: Suspected scam: abusive harassment and threats",
+                "About: Bank fraud department checking whether a $120 card charge was yours",
+                "About: Friendly water bill payment reminder for next Friday",
+            ),
+            (
+                Lang::Ja,
+                "用件：詐欺の疑い（債権回収業者による悪質な取り立て）",
+                "用件：嫌がらせ電話・暴言と脅迫",
+                "用件：カード会社の不正利用確認（昨日の決済が本人か確認）",
+                "用件：来週の歯科予約のリマインダー",
+            ),
+            (
+                Lang::Ko,
+                "용건: 사기 의심 — 추심업체의 악성 추심 및 급여압류 협박",
+                "용건: 악성 괴롭힘 및 욕설 협박 전화",
+                "용건: 카드사 부정 사용 확인 센터에서 어제 결제 본인 여부 확인",
+                "용건: 이번 달 수도요금 납부 안내",
+            ),
+            (
+                Lang::Es,
+                "Asunto: Cobro agresivo de agencia de recobro con amenaza de embargo",
+                "Asunto: Llamada de acoso e insultos",
+                "Asunto: Departamento de fraude del banco verificando un cargo reciente",
+                "Asunto: Recordatorio de cita médica mañana a las diez",
+            ),
+            (
+                Lang::Fr,
+                "Objet : Recouvrement agressif par un cabinet menaçant de saisie",
+                "Objet : Appel de harcèlement et menaces",
+                "Objet : Service fraude de la banque vérifiant un paiement par carte",
+                "Objet : Rappel de rendez-vous chez le dentiste demain",
+            ),
+            (
+                Lang::De,
+                "Anliegen: Aggressives Inkasso mit Drohung einer Lohnpfändung",
+                "Anliegen: Böswilliger Belästigungsanruf und Drohungen",
+                "Anliegen: Betrugsabteilung der Bank prüft eine Kartenzahlung von gestern",
+                "Anliegen: Erinnerung an den Zahnarzttermin morgen um zehn Uhr",
+            ),
+            (
+                Lang::Pt,
+                "Assunto: Cobrança abusiva de assessoria ameaçando penhora",
+                "Assunto: Ligação de assédio com xingamentos e ameaças",
+                "Assunto: Departamento de fraudes do banco confirmando compra no cartão",
+                "Assunto: Lembrete de consulta odontológica amanhã à tarde",
+            ),
+        ];
+        assert_eq!(cases.len(), locale::ALL.len());
+        for (lang, debt_sum, harass_sum, fraud_desk_sum, polite_sum) in cases {
+            assert!(summary_says_sales(lang, debt_sum), "{lang:?}: debt summary should count: {debt_sum}");
+            assert!(summary_says_sales(lang, harass_sum), "{lang:?}: harassment summary should count: {harass_sum}");
+            assert!(!summary_says_sales(lang, fraud_desk_sum), "{lang:?}: bank fraud desk must NOT count: {fraud_desk_sum}");
+            assert!(!summary_says_sales(lang, polite_sum), "{lang:?}: polite reminder must NOT count: {polite_sum}");
+            let sp = summary_system_prompt(lang, "Alex", &[]);
+            assert!(!sp.contains('{') && !sp.contains('}'), "{lang:?}: placeholder in summary prompt");
+        }
     }
 }

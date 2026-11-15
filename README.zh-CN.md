@@ -182,7 +182,7 @@ AI 的语音、内置提示词、网页控制台、手机应用和通知，九�
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/contacts.svg" width="56" height="56" alt=""><br>
       <strong>认得谁打来</strong><br>
-      通讯录可以从 vCard、CSV、Excel、Word、PDF，甚至名片照片导入。
+      通讯录可以从 vCard、CSV、Excel、Word、PDF、名片照片导入，内置联系人、⭐ 白名单转接真实号码、⛔ 黑名单与 🎭 启动 Stalls 四合一分类。
     </td>
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/switch.svg" width="56" height="56" alt=""><br>
@@ -199,7 +199,7 @@ AI 的语音、内置提示词、网页控制台、手机应用和通知，九�
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/notify.svg" width="56" height="56" alt=""><br>
       <strong>32 种通知渠道</strong><br>
-      每通电话结束，摘要发到 Telegram、Discord、飞书等渠道。
+      每通电话结束，摘要与一键操作按钮发到 Telegram、飞书、企业微信、钉钉、Discord、Teams、ntfy、Home Assistant 等渠道，并支持聊天室指令远程控制。
     </td>
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/local.svg" width="56" height="56" alt=""><br>
@@ -233,7 +233,7 @@ AI 的语音、内置提示词、网页控制台、手机应用和通知，九�
 | | |
 |---|---|
 | **上手** | [开始使用](docs/zh-CN/GETTING_STARTED.md) · [手机设置](docs/zh-CN/PHONE.md) · [故障排查与常见问题](docs/zh-CN/TROUBLESHOOTING.md) |
-| **使用** | [功能总览](docs/zh-CN/FEATURES.md) · [编写提示词](docs/zh-CN/PROMPTS.md) · [设置参考](docs/zh-CN/SETTINGS.md) · [通知](docs/zh-CN/NOTIFICATIONS.md) |
+| **使用** | [功能总览](docs/zh-CN/FEATURES.md) · [聊天室指令与通知交互](docs/zh-CN/CHAT_COMMANDS.md) · [编写提示词](docs/zh-CN/PROMPTS.md) · [设置参考](docs/zh-CN/SETTINGS.md) · [通知](docs/zh-CN/NOTIFICATIONS.md) |
 | **深入** | [架构](docs/zh-CN/ARCHITECTURE.md) · [API](docs/zh-CN/API.md) · [路线图](docs/zh-CN/ROADMAP.md) · [v1.0 发布说明](CHANGELOG.md) · [`android/`（英文）](android/README.md) · [`tools/sms_forward/`（英文）](tools/sms_forward/README.md) |
 | **法律** | [隐私、安全与法律](docs/zh-CN/PRIVACY_AND_LEGAL.md) · [法律免责声明与使用限制](LEGAL.md) · [双重授权与商业授权](COMMERCIAL_LICENSE.md) · [全项目技术与安全审计报告](AUDIT_REPORT.md) |
 

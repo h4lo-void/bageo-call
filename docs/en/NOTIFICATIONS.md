@@ -77,7 +77,9 @@ Each message starts with an icon, so you can tell them apart at a glance:
 | 📵 Missed while on another call | A second call rang during a call and the phone declined it (the caller heard busy). Call back if you know the number. | `call_waiting` |
 | 📞 AI call-back: <number> | The AI called a caller back with your answer to an appointment: how it went (answered, nobody answered, could not be placed, or the number cannot be called back) and the call's summary. | `ai_callback` |
 | 📞 AI errand call: <name or number> | An AI errand you started has ended: the result, details, your decision when one is needed, the next step, the time agreed and a link to the *Errands* page. | `ai_errand` |
-| 📅 Appointment to confirm | A caller set a time with the AI; with a Telegram bot set through `TELEGRAM_BOT_TOKEN` also as a card with buttons (see [Appointments](#appointments)). | part of `summary` |
+| 📅 Appointment to confirm | A caller set a time with the AI; Telegram receives a card with buttons, and every other channel receives signed one-tap **Accept / Decline** buttons or links (see [Appointments](#appointments)). | `appointment_pending` / `summary` |
+| ⭐ Whitelist call forwarded | A whitelisted number called while **Forward directly to real number** is enabled; the phone declined the call to trigger carrier conditional call forwarding and sent an instant alert. | `whitelist_direct_transfer` |
+| 🚨 Urgent call from Whitelist | A whitelisted caller had an urgent matter during the call; the AI shared your forwarding number and sent an urgent alert. | `whitelist_urgent_transfer` |
 | ✅ Test notification | You pressed **Send test**. | `test` |
 | New SMS | A text message passed on by the optional [SMS forwarder](../../tools/sms_forward/README.md). | `event` |
 
@@ -663,6 +665,9 @@ For n8n, Zapier, Make, Home Assistant, Node-RED or your own code. The agent
 | `call_waiting` | a second call rang during a call and was declined | `caller_id`, `device`, `time`, `sim_country` |
 | `ai_callback` | the AI's call-back for an appointment ended, or could not be placed | `caller_id`, `device`, `time`, `summary` |
 | `ai_errand` | an AI errand ended, or never got going | `number`, `device`, `time`, `summary` |
+| `appointment_pending` | a caller booked an appointment waiting for your decision | `task_id`, `caller_id`, `device`, `title`, `start_at`, `accept_url`, `decline_url` |
+| `whitelist_direct_transfer` | a whitelisted call was declined to trigger carrier forwarding | `caller_id`, `device`, `time`, `forward_to`, `contact` |
+| `whitelist_urgent_transfer` | the AI detected an urgent matter from a whitelisted caller and gave them your forwarding number | `caller_id`, `device`, `time`, `forward_to`, `reason`, `contact` |
 | `voicemail` | a voicemail was saved (older menu mode) | `caller_id`, `device`, `time`, `seconds` |
 | `event` | a message sent through the API (`/calls/api/notify/send`) | `null` |
 | `test` | **Send test** | `{}` |

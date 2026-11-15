@@ -52,8 +52,120 @@ the owner's yes in their chat; check list_errands for where it stands.";
 pub fn router<S: Clone + Send + Sync + 'static>(ctrl: Arc<Controller>) -> Router<S> {
     Router::new()
         .route("/mcp", post(post_mcp).get(no_stream).delete(no_stream))
+        .route("/calls/api/control/inbound", post(post_control_inbound))
         .layer(DefaultBodyLimit::max(BODY_MAX))
         .with_state(ctrl)
+}
+
+#[derive(serde::Deserialize, Default)]
+struct InboundCommandReq {
+    #[serde(default)]
+    text: String,
+    #[serde(default)]
+    channel_id: String,
+    #[serde(default)]
+    sender_id: String,
+    #[serde(default)]
+    reply: bool,
+    #[serde(default)]
+    token: String,
+}
+
+/// Inbound command/NLU webhook for non-Telegram notification systems
+/// (Home Assistant, ntfy, Discord/Slack/Mattermost/Matrix/Teams bots, Shortcuts, Webhook).
+async fn post_control_inbound(
+    State(ctrl): State<Arc<Controller>>,
+    headers: HeaderMap,
+    Json(req): Json<InboundCommandReq>,
+) -> Response {
+    let rt = ctrl.settings();
+    let env_tok = std::env::var("CALLS_UI_TOKEN").unwrap_or_default();
+    let ui_tok = crate::settings_store::active_ui_token(&env_tok);
+    let mcp_tok = rt.mcp_token.trim();
+
+    let given_header = headers
+        .get("x-calls-token")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            headers
+                .get(header::AUTHORIZATION)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| {
+                    let (scheme, rest) = v.trim().split_once(char::is_whitespace)?;
+                    scheme.eq_ignore_ascii_case("bearer").then_some(rest.trim())
+                })
+        })
+        .unwrap_or_else(|| req.token.trim());
+
+    let auth_ok = if ui_tok.is_empty() && mcp_tok.is_empty() {
+        true
+    } else {
+        (!ui_tok.is_empty() && same(given_header, &ui_tok))
+            || (!mcp_tok.is_empty() && same(given_header, mcp_tok))
+    };
+    if !auth_ok {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "ok": false, "error": "unauthorized" })),
+        )
+            .into_response();
+    }
+
+    let text = req.text.trim();
+    if text.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "ok": false, "error": "empty_text" })),
+        )
+            .into_response();
+    }
+
+    let out = ctrl
+        .handle_external(&req.channel_id, &req.sender_id, text)
+        .await;
+
+    let mut pushed = false;
+    if req.reply && !out.text.trim().is_empty() {
+        let ch_id = req.channel_id.trim();
+        let msg = crate::notify::Message {
+            event: "control_reply".to_string(),
+            title: "🤖 Bageo".to_string(),
+            body: out.text.clone(),
+            html: None,
+            data: json!({
+                "buttons": out.buttons.iter().map(|b| json!({ "label": b.label, "data": b.data })).collect::<Vec<_>>(),
+            }),
+            link: None,
+            actions: Vec::new(),
+        };
+        if let Some(ch) = rt
+            .notify_channels
+            .iter()
+            .find(|c| c.enabled && (c.id == ch_id || c.name.eq_ignore_ascii_case(ch_id) || c.kind.eq_ignore_ascii_case(ch_id)))
+        {
+            let http = reqwest::Client::new();
+            pushed = crate::notify::send_channel(&http, ch, &msg).await.is_ok();
+        }
+    }
+
+    let buttons: Vec<Value> = out
+        .buttons
+        .iter()
+        .map(|b| json!({ "label": b.label, "data": b.data }))
+        .collect();
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "ok": true,
+            "text": out.text,
+            "buttons": buttons,
+            "pushed": pushed,
+        })),
+    )
+        .into_response()
 }
 
 /// No event stream and no sessions here.

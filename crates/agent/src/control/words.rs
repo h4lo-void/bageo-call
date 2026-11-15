@@ -11,7 +11,7 @@ use super::Outcome;
 /// The phrases of one language. Templates fill {1}, {2}, {3} in order ([fmt]).
 pub struct Words {
     /// One entry per [COMMANDS] entry, in that order: (arguments, what it does).
-    pub menu: [(&'static str, &'static str); 14],
+    pub menu: [(&'static str, &'static str); 18],
     pub help_head: &'static str,
     pub help_free: &'static str,
     pub hint: &'static str,
@@ -73,6 +73,10 @@ pub struct Words {
     pub e_too_long: &'static str,
     pub e_not_on_call: &'static str,
     pub e_busy: &'static str,
+    pub list_blocked: &'static str,
+    pub list_stall: &'static str,
+    pub list_white: &'static str,
+    pub list_unblocked: &'static str,
 }
 
 /// {1}, {2}, {3} of a template, in order.
@@ -263,6 +267,15 @@ pub fn render(o: &Outcome, w: &Words) -> String {
         Outcome::NotFound { what } => fmt(w.not_found, &[what]),
         Outcome::NoContact { what } => fmt(w.no_contact, &[what]),
         Outcome::ManyContacts { names } => fmt(w.many_contacts, &[&names.join(", ")]),
+        Outcome::ContactKindSet { list, number, name } => {
+            let who = person(w, name, number);
+            match list.as_str() {
+                "blacklist" => fmt(w.list_blocked, &[&who]),
+                "stall" => fmt(w.list_stall, &[&who]),
+                "whitelist" => fmt(w.list_white, &[&who]),
+                _ => fmt(w.list_unblocked, &[&who]),
+            }
+        }
         Outcome::Failed { code } => error_text(w, code),
     }
 }
@@ -293,6 +306,10 @@ const EN: Words = Words {
         ("<text>", "Answer the question the AI asked you"),
         ("<phone> ai|normal", "Switch a phone between AI answering and normal phone"),
         ("<name>", "Find a contact"),
+        ("<number> [name/reason]", "Add a number to the blacklist"),
+        ("<number> [name/note]", "Add a number to the Force Stall list"),
+        ("<number> [name/note]", "Add a number to the whitelist"),
+        ("<number>", "Remove a number from blacklist / Force Stall"),
     ],
     help_head: "Bageo from this chat. Commands:",
     help_free: "You can also just write what you want, e.g. “call 0912345678 and book a table for two at 7 tonight” or “who called yesterday?”. Calls, mode switches and to-do decisions wait for your OK.",
@@ -354,6 +371,10 @@ const EN: Words = Words {
     e_too_long: "That text is too long.",
     e_not_on_call: "That AI call is not on the line now.",
     e_busy: "That AI call is still under way.",
+    list_blocked: "⛔ Added to blacklist: {1}",
+    list_stall: "🎭 Added to Force Stall list: {1}",
+    list_white: "⭐ Added to whitelist: {1}",
+    list_unblocked: "✅ Restored to normal contacts: {1}",
 };
 
 const ZH_TW: Words = Words {
@@ -372,6 +393,10 @@ const ZH_TW: Words = Words {
         ("<內容>", "回答 AI 問你的問題"),
         ("<手機> ai|normal", "把手機切到 AI 接聽或一般手機"),
         ("<名字>", "找聯絡人"),
+        ("<號碼> [名稱/原因]", "加入黑名單（來電拒接）"),
+        ("<號碼> [名稱/備註]", "加入啟動 Stalls 名單（接起直接陪聊）"),
+        ("<號碼> [名稱/備註]", "加入白名單（重要聯絡人）"),
+        ("<號碼>", "解除黑名單／陪聊名單"),
     ],
     help_head: "在聊天室操作 Bageo。指令：",
     help_free: "也可以直接打字，例如「幫我打給 0912345678 訂今晚七點兩位」或「昨天有誰打來」。撥電話、切換手機模式、處理待辦都會先問你確認。",
@@ -433,6 +458,10 @@ const ZH_TW: Words = Words {
     e_too_long: "內容太長了。",
     e_not_on_call: "這通 AI 代打現在不在線上。",
     e_busy: "這通 AI 代打還在進行中。",
+    list_blocked: "⛔ 已加入黑名單：{1}",
+    list_stall: "🎭 已加入啟動 Stalls 名單：{1}",
+    list_white: "⭐ 已加入白名單：{1}",
+    list_unblocked: "✅ 已恢復為一般聯絡人：{1}",
 };
 
 const ZH_CN: Words = Words {
@@ -451,6 +480,10 @@ const ZH_CN: Words = Words {
         ("<内容>", "回答 AI 问你的问题"),
         ("<手机> ai|normal", "把手机切到 AI 接听或普通手机"),
         ("<名字>", "找联系人"),
+        ("<号码> [名称/原因]", "加入黑名单（来电拒接）"),
+        ("<号码> [名称/备注]", "加入启动 Stalls 名单（接起直接陪聊）"),
+        ("<号码> [名称/备注]", "加入白名单（重要联系人）"),
+        ("<号码>", "解除黑名单／陪聊名单"),
     ],
     help_head: "在聊天室操作 Bageo。指令：",
     help_free: "也可以直接打字，例如“帮我打给 0912345678 订今晚七点两位”或“昨天有谁打来”。拨电话、切换手机模式、处理待办都会先问你确认。",
@@ -512,6 +545,10 @@ const ZH_CN: Words = Words {
     e_too_long: "内容太长了。",
     e_not_on_call: "这通 AI 代打现在不在线上。",
     e_busy: "这通 AI 代打还在进行中。",
+    list_blocked: "⛔ 已加入黑名单：{1}",
+    list_stall: "🎭 已加入启动 Stalls 名单：{1}",
+    list_white: "⭐ 已加入白名单：{1}",
+    list_unblocked: "✅ 已恢复为普通联系人：{1}",
 };
 
 const JA: Words = Words {
@@ -530,6 +567,10 @@ const JA: Words = Words {
         ("<内容>", "AI からの質問に答える"),
         ("<スマホ> ai|normal", "スマホを AI 応答と通常の電話で切り替え"),
         ("<名前>", "連絡先を探す"),
+        ("<番号> [名前/理由]", "着信拒否リストに追加"),
+        ("<番号> [名前/メモ]", "引き延ばしリストに追加"),
+        ("<番号> [名前/メモ]", "ホワイトリストに追加"),
+        ("<番号>", "着信拒否・引き延ばしを解除"),
     ],
     help_head: "このチャットから Bageo を操作できます。コマンド：",
     help_free: "普通に書いても大丈夫です。例：「0912345678 に電話して今夜 7 時に 2 名で予約して」「昨日だれから電話があった？」。発信、モード切り替え、用件の判断はあなたの確認を待ちます。",
@@ -591,6 +632,10 @@ const JA: Words = Words {
     e_too_long: "内容が長すぎます。",
     e_not_on_call: "その AI 代理電話はいま通話中ではありません。",
     e_busy: "その AI 代理電話はまだ進行中です。",
+    list_blocked: "⛔ 着信拒否リストに追加しました：{1}",
+    list_stall: "🎭 引き延ばしリストに追加しました：{1}",
+    list_white: "⭐ ホワイトリストに追加しました：{1}",
+    list_unblocked: "✅ 通常の連絡先に戻しました：{1}",
 };
 
 const KO: Words = Words {
@@ -609,6 +654,10 @@ const KO: Words = Words {
         ("<내용>", "AI의 질문에 답하기"),
         ("<휴대폰> ai|normal", "휴대폰을 AI 응답 / 일반 휴대폰으로 전환"),
         ("<이름>", "연락처 찾기"),
+        ("<번호> [이름/사유]", "차단 목록에 추가"),
+        ("<번호> [이름/메모]", "시간 끌기 목록에 추가"),
+        ("<번호> [이름/메모]", "화이트리스트에 추가"),
+        ("<번호>", "차단·시간 끌기 해제"),
     ],
     help_head: "이 채팅에서 Bageo를 조작합니다. 명령어:",
     help_free: "그냥 써도 됩니다. 예: “0912345678에 전화해서 오늘 저녁 7시 2명 예약해 줘”, “어제 누가 전화했어?”. 전화 걸기, 모드 전환, 할 일 처리는 확인을 받은 뒤에 합니다.",
@@ -670,6 +719,10 @@ const KO: Words = Words {
     e_too_long: "내용이 너무 깁니다.",
     e_not_on_call: "그 AI 대리 전화는 지금 통화 중이 아닙니다.",
     e_busy: "그 AI 대리 전화는 아직 진행 중입니다.",
+    list_blocked: "⛔ 차단 목록에 추가했습니다: {1}",
+    list_stall: "🎭 시간 끌기 목록에 추가했습니다: {1}",
+    list_white: "⭐ 화이트리스트에 추가했습니다: {1}",
+    list_unblocked: "✅ 일반 연락처로 복구했습니다: {1}",
 };
 
 const ES: Words = Words {
@@ -688,6 +741,10 @@ const ES: Words = Words {
         ("<texto>", "Responder la pregunta de la IA"),
         ("<teléfono> ai|normal", "Cambiar un teléfono entre la IA y teléfono normal"),
         ("<nombre>", "Buscar un contacto"),
+        ("<número> [nombre/motivo]", "Añadir a la lista negra"),
+        ("<número> [nombre/nota]", "Añadir a la lista de retención (Stall)"),
+        ("<número> [nombre/nota]", "Añadir a la lista blanca"),
+        ("<número>", "Quitar de lista negra / retención"),
     ],
     help_head: "Bageo desde este chat. Comandos:",
     help_free: "También puedes escribir lo que quieres, p. ej. «llama al 0912345678 y reserva mesa para dos a las 7» o «¿quién llamó ayer?». Las llamadas, los cambios de modo y las decisiones sobre pendientes esperan tu confirmación.",
@@ -749,6 +806,10 @@ const ES: Words = Words {
     e_too_long: "Ese texto es demasiado largo.",
     e_not_on_call: "Esa llamada de la IA no está en línea ahora.",
     e_busy: "Esa llamada de la IA sigue en curso.",
+    list_blocked: "⛔ Añadido a la lista negra: {1}",
+    list_stall: "🎭 Añadido a la lista de retención (Stall): {1}",
+    list_white: "⭐ Añadido a la lista blanca: {1}",
+    list_unblocked: "✅ Restaurado como contacto normal: {1}",
 };
 
 const FR: Words = Words {
@@ -767,6 +828,10 @@ const FR: Words = Words {
         ("<texte>", "Répondre à la question de l'IA"),
         ("<téléphone> ai|normal", "Passer un téléphone en réponse IA ou en téléphone normal"),
         ("<nom>", "Chercher un contact"),
+        ("<numéro> [nom/motif]", "Ajouter à la liste noire"),
+        ("<numéro> [nom/note]", "Ajouter à la liste de rétention (Stall)"),
+        ("<numéro> [nom/note]", "Ajouter à la liste blanche"),
+        ("<numéro>", "Retirer de la liste noire / rétention"),
     ],
     help_head: "Bageo depuis ce chat. Commandes :",
     help_free: "Tu peux aussi écrire ce que tu veux, p. ex. « appelle le 0912345678 et réserve une table pour deux à 19 h » ou « qui a appelé hier ? ». Les appels, les changements de mode et les décisions sur les tâches attendent ton accord.",
@@ -828,6 +893,10 @@ const FR: Words = Words {
     e_too_long: "Ce texte est trop long.",
     e_not_on_call: "Cet appel de l'IA n'est pas en ligne.",
     e_busy: "Cet appel de l'IA est encore en cours.",
+    list_blocked: "⛔ Ajouté à la liste noire : {1}",
+    list_stall: "🎭 Ajouté à la liste de rétention (Stall) : {1}",
+    list_white: "⭐ Ajouté à la liste blanche : {1}",
+    list_unblocked: "✅ Rétabli comme contact normal : {1}",
 };
 
 const DE: Words = Words {
@@ -846,6 +915,10 @@ const DE: Words = Words {
         ("<Text>", "Die Frage der KI beantworten"),
         ("<Telefon> ai|normal", "Telefon zwischen KI und normalem Telefon umschalten"),
         ("<Name>", "Kontakt suchen"),
+        ("<Nummer> [Name/Grund]", "Nummer zur Sperrliste hinzufügen"),
+        ("<Nummer> [Name/Notiz]", "Nummer zur Hinhalte-Liste (Stall) hinzufügen"),
+        ("<Nummer> [Name/Notiz]", "Nummer zur Whitelist hinzufügen"),
+        ("<Nummer>", "Von Sperr-/Hinhalte-Liste entfernen"),
     ],
     help_head: "Bageo aus diesem Chat. Befehle:",
     help_free: "Du kannst auch einfach schreiben, was du willst, z. B. „ruf 0912345678 an und reservier für zwei um 19 Uhr“ oder „wer hat gestern angerufen?“. Anrufe, Moduswechsel und Entscheidungen zu Aufgaben warten auf dein OK.",
@@ -907,6 +980,10 @@ const DE: Words = Words {
     e_too_long: "Der Text ist zu lang.",
     e_not_on_call: "Dieser KI-Anruf ist gerade nicht in der Leitung.",
     e_busy: "Dieser KI-Anruf läuft noch.",
+    list_blocked: "⛔ Zur Sperrliste hinzugefügt: {1}",
+    list_stall: "🎭 Zur Hinhalte-Liste (Stall) hinzugefügt: {1}",
+    list_white: "⭐ Zur Whitelist hinzugefügt: {1}",
+    list_unblocked: "✅ Als normaler Kontakt wiederhergestellt: {1}",
 };
 
 const PT: Words = Words {
@@ -925,6 +1002,10 @@ const PT: Words = Words {
         ("<texto>", "Responder à pergunta da IA"),
         ("<celular> ai|normal", "Trocar um celular entre a IA atender e celular normal"),
         ("<nome>", "Procurar um contato"),
+        ("<número> [nome/motivo]", "Adicionar à lista de bloqueio"),
+        ("<número> [nome/nota]", "Adicionar à lista de enrolação (Stall)"),
+        ("<número> [nome/nota]", "Adicionar à lista branca"),
+        ("<número>", "Remover da lista de bloqueio / enrolação"),
     ],
     help_head: "Bageo por este chat. Comandos:",
     help_free: "Você também pode escrever o que quer, por ex. “ligue para 0912345678 e reserve mesa para dois às 19h” ou “quem ligou ontem?”. Ligações, trocas de modo e decisões sobre pendências esperam sua confirmação.",
@@ -986,5 +1067,9 @@ const PT: Words = Words {
     e_too_long: "Esse texto é longo demais.",
     e_not_on_call: "Essa ligação da IA não está na linha agora.",
     e_busy: "Essa ligação da IA ainda está em andamento.",
+    list_blocked: "⛔ Adicionado à lista de bloqueio: {1}",
+    list_stall: "🎭 Adicionado à lista de enrolação (Stall): {1}",
+    list_white: "⭐ Adicionado à lista branca: {1}",
+    list_unblocked: "✅ Restaurado como contato normal: {1}",
 };
 

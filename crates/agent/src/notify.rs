@@ -207,6 +207,13 @@ pub fn merge_channels(stored: &[Channel], incoming: Vec<Channel>) -> Vec<Channel
     out
 }
 
+/// An interactive action button / signed one-tap link on a notification.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NotifyAction {
+    pub label: String,
+    pub url: String,
+}
+
 /// What is sent.
 #[derive(Debug, Clone, Default)]
 pub struct Message {
@@ -219,6 +226,10 @@ pub struct Message {
     pub html: Option<String>,
     /// For webhooks: the facts as JSON.
     pub data: Value,
+    /// Optional primary URL opened when tapping the notification.
+    pub link: Option<String>,
+    /// Optional one-tap action buttons / links.
+    pub actions: Vec<NotifyAction>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -351,7 +362,7 @@ fn phone_number(s: &str) -> String {
 /// A Teams message holding one Adaptive Card. Adaptive Cards ignore single line
 /// breaks inside a TextBlock, so every line gets its own block; the first line
 /// is the headline and a blank line becomes extra space above the next block.
-fn teams_card(body: &str) -> Value {
+fn teams_card(body: &str, actions: &[NotifyAction]) -> Value {
     let mut blocks: Vec<Value> = Vec::new();
     let mut gap = false;
     for line in clip(body, 3500).lines() {
@@ -369,17 +380,24 @@ fn teams_card(body: &str) -> Value {
         gap = false;
         blocks.push(block);
     }
+    let mut content = json!({
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "type": "AdaptiveCard",
+        "version": "1.4",
+        "body": blocks,
+    });
+    if !actions.is_empty() {
+        content["actions"] = json!(actions
+            .iter()
+            .map(|a| json!({ "type": "Action.OpenUrl", "title": a.label, "url": a.url }))
+            .collect::<Vec<_>>());
+    }
     json!({
         "type": "message",
         "attachments": [{
             "contentType": "application/vnd.microsoft.card.adaptive",
             "contentUrl": null,
-            "content": {
-                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                "type": "AdaptiveCard",
-                "version": "1.4",
-                "body": blocks,
-            },
+            "content": content,
         }],
     })
 }
@@ -393,6 +411,7 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
     let base = ch.url_or_default();
     let title = msg.title.as_str();
     let body = msg.body.as_str();
+    let link = msg.link.as_deref().map(str::trim).filter(|s| !s.is_empty());
     Ok(match k.kind {
         "telegram" => {
             let token = need("token", "bot token", &ch.token)?;
@@ -405,6 +424,14 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
             if msg.html.is_some() {
                 payload["parse_mode"] = json!("HTML");
             }
+            if !msg.actions.is_empty() {
+                let row: Vec<Value> = msg
+                    .actions
+                    .iter()
+                    .map(|a| json!({ "text": a.label, "url": a.url }))
+                    .collect();
+                payload["reply_markup"] = json!({ "inline_keyboard": [row] });
+            }
             post_json(format!("https://api.telegram.org/bot{token}/sendMessage"), payload)
         }
         "discord" => post_json(
@@ -416,7 +443,7 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
         // Teams": the "Post to a channel when a webhook request is received"
         // workflow takes a message whose attachment is an Adaptive Card. The old
         // Office 365 connectors (MessageCard) are retired.
-        "teams" => post_json(need_http("url", "workflow webhook URL", &base)?, teams_card(body)),
+        "teams" => post_json(need_http("url", "workflow webhook URL", &base)?, teams_card(body, &msg.actions)),
         // https://developers.google.com/workspace/chat/quickstart/webhooks — the
         // space's webhook URL carries its key and token; text is capped at 4,096
         // characters.
@@ -530,44 +557,71 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
             if !ch.token.trim().is_empty() {
                 headers.push(("Authorization".to_string(), format!("Bearer {}", ch.token.trim())));
             }
+            let mut payload = json!({
+                "topic": need("target", "topic", &ch.target)?,
+                "title": clip(title, 200),
+                "message": clip(body, 3500),
+            });
+            if let Some(u) = link {
+                payload["click"] = json!(u);
+            }
+            if !msg.actions.is_empty() {
+                payload["actions"] = json!(msg
+                    .actions
+                    .iter()
+                    .take(3)
+                    .map(|a| json!({ "action": "view", "label": a.label, "url": a.url }))
+                    .collect::<Vec<_>>());
+            }
             Prepared {
                 put: false,
                 url: need_http("url", "server", &base)?,
                 headers,
-                body: Body::Json(json!({
-                    "topic": need("target", "topic", &ch.target)?,
-                    "title": clip(title, 200),
-                    "message": clip(body, 3500),
-                })),
+                body: Body::Json(payload),
             }
         }
-        "gotify" => post_json(
-            format!(
-                "{}/message?token={}",
-                need_http("url", "server URL", &base)?,
-                pct(need("token", "app token", &ch.token)?)
-            ),
-            json!({ "title": clip(title, 200), "message": clip(body, 3500), "priority": 5 }),
-        ),
-        "bark" => post_json(
-            format!("{}/push", need_http("url", "server", &base)?),
-            json!({
+        "gotify" => {
+            let mut payload = json!({ "title": clip(title, 200), "message": clip(body, 3500), "priority": 5 });
+            if let Some(u) = link {
+                payload["extras"] = json!({ "client::notification": { "click": { "url": u } } });
+            }
+            post_json(
+                format!(
+                    "{}/message?token={}",
+                    need_http("url", "server URL", &base)?,
+                    pct(need("token", "app token", &ch.token)?)
+                ),
+                payload,
+            )
+        }
+        "bark" => {
+            let mut payload = json!({
                 "device_key": need("token", "device key", &ch.token)?,
                 "title": clip(title, 200),
                 "body": clip(body, 3500),
-            }),
-        ),
-        "pushover" => Prepared {
-            put: false,
-            url: "https://api.pushover.net/1/messages.json".to_string(),
-            headers: Vec::new(),
-            body: Body::Form(vec![
+            });
+            if let Some(u) = link {
+                payload["url"] = json!(u);
+            }
+            post_json(format!("{}/push", need_http("url", "server", &base)?), payload)
+        }
+        "pushover" => {
+            let mut form = vec![
                 ("token".into(), need("token", "API token", &ch.token)?.to_string()),
                 ("user".into(), need("target", "user key", &ch.target)?.to_string()),
                 ("title".into(), clip(title, 200)),
                 ("message".into(), clip(body, 1000)),
-            ]),
-        },
+            ];
+            if let Some(u) = link {
+                form.push(("url".into(), u.to_string()));
+            }
+            Prepared {
+                put: false,
+                url: "https://api.pushover.net/1/messages.json".to_string(),
+                headers: Vec::new(),
+                body: Body::Form(form),
+            }
+        }
         // https://docs.pushbullet.com/#create-push — a "note" push to all your
         // devices, or to one device (`device_iden`) or one person (`email`).
         "pushbullet" => {
@@ -681,16 +735,22 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
         }
         // https://github.com/chanify/chanify (README, "Send message"): form
         // fields title and text on <server>/v1/sender/<token>.
-        "chanify" => Prepared {
-            put: false,
-            url: format!(
-                "{}/v1/sender/{}",
-                need_http("url", "server", &base)?,
-                pct(need("token", "token", &ch.token)?)
-            ),
-            headers: Vec::new(),
-            body: Body::Form(vec![("title".into(), clip(title, 100)), ("text".into(), clip(body, 3500))]),
-        },
+        "chanify" => {
+            let mut form = vec![("title".into(), clip(title, 100)), ("text".into(), clip(body, 3500))];
+            if let Some(u) = link {
+                form.push(("link".into(), u.to_string()));
+            }
+            Prepared {
+                put: false,
+                url: format!(
+                    "{}/v1/sender/{}",
+                    need_http("url", "server", &base)?,
+                    pct(need("token", "token", &ch.token)?)
+                ),
+                headers: Vec::new(),
+                body: Body::Form(form),
+            }
+        }
         "matrix" => Prepared {
             put: true,
             url: format!(
@@ -714,6 +774,26 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
             if service.is_empty() || !service.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
                 return Err(bad_value("target", "a notify service looks like mobile_app_pixel_9"));
             }
+            let mut payload = json!({ "title": clip(title, 200), "message": clip(body, 1000) });
+            if link.is_some() || !msg.actions.is_empty() {
+                let mut data = serde_json::Map::new();
+                if let Some(u) = link {
+                    data.insert("url".into(), json!(u));
+                    data.insert("clickAction".into(), json!(u));
+                }
+                if !msg.actions.is_empty() {
+                    data.insert(
+                        "actions".into(),
+                        json!(msg
+                            .actions
+                            .iter()
+                            .take(3)
+                            .map(|a| json!({ "action": "URI", "title": a.label, "uri": a.url }))
+                            .collect::<Vec<_>>()),
+                    );
+                }
+                payload["data"] = Value::Object(data);
+            }
             Prepared {
                 put: false,
                 url: format!("{}/api/services/notify/{service}", need_http("url", "server URL", &base)?),
@@ -721,7 +801,7 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
                     "Authorization".into(),
                     format!("Bearer {}", need("token", "long-lived access token", &ch.token)?),
                 )],
-                body: Body::Json(json!({ "title": clip(title, 200), "message": clip(body, 1000) })),
+                body: Body::Json(payload),
             }
         }
         // https://ifttt.com/maker_webhooks (Documentation): value1–value3 are
@@ -754,17 +834,24 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
             if !ch.token.trim().is_empty() {
                 headers.push(("Authorization".to_string(), format!("Bearer {}", ch.token.trim())));
             }
+            let mut payload = json!({
+                "event": msg.event,
+                "title": title,
+                "body": body,
+                "text": body,
+                "data": msg.data,
+            });
+            if let Some(u) = link {
+                payload["link"] = json!(u);
+            }
+            if !msg.actions.is_empty() {
+                payload["actions"] = json!(msg.actions);
+            }
             Prepared {
                 put: false,
                 url: need_http("url", "URL", &base)?,
                 headers,
-                body: Body::Json(json!({
-                    "event": msg.event,
-                    "title": title,
-                    "body": body,
-                    "text": body,
-                    "data": msg.data,
-                })),
+                body: Body::Json(payload),
             }
         }
         "gmail" | "smtp" => bail!("{} is sent over SMTP", k.kind),
@@ -1063,6 +1150,8 @@ impl Card {
             body: self.plain(),
             html: Some(self.html()),
             data,
+            link: None,
+            actions: Vec::new(),
         }
     }
 }
@@ -1207,7 +1296,7 @@ pub async fn notify_ai_request(
         Some(name) => format!("{} · {name}", p.n_summary),
         None => p.n_summary.to_string(),
     };
-    let msg = Card::new("☎️", &headline)
+    let mut msg = Card::new("☎️", &headline)
         .code(p.n_number, &caller)
         .row(p.n_phone, &device)
         .row(p.n_time, &when)
@@ -1223,7 +1312,133 @@ pub async fn notify_ai_request(
                 "contact": contact.as_deref().unwrap_or(""),
             }),
         );
+    let console = crate::settings_store::effective_console_url(settings);
+    if !console.trim().is_empty() && caller_id.chars().filter(char::is_ascii_digit).count() >= 3 {
+        let name_hint = contact.as_deref().unwrap_or("");
+        let (lbl_blk, lbl_stl, lbl_wht) = match locale::notify_lang() {
+            locale::Lang::ZhTw => ("⛔ 加入黑名單", "🎭 設為陪聊", "⭐ 加入白名單"),
+            locale::Lang::ZhCn => ("⛔ 加入黑名单", "🎭 设为陪聊", "⭐ 加入白名单"),
+            locale::Lang::Ja => ("⛔ 着信拒否", "🎭 引き延ばし", "⭐ ホワイトリスト"),
+            locale::Lang::Ko => ("⛔ 차단 목록", "🎭 시간 끌기", "⭐ 화이트리스트"),
+            locale::Lang::Es => ("⛔ Lista negra", "🎭 Retener (Stall)", "⭐ Lista blanca"),
+            locale::Lang::Fr => ("⛔ Liste noire", "🎭 Retenir (Stall)", "⭐ Liste blanche"),
+            locale::Lang::De => ("⛔ Sperrliste", "🎭 Hinhalten (Stall)", "⭐ Whitelist"),
+            locale::Lang::Pt => ("⛔ Bloquear", "🎭 Enrolar (Stall)", "⭐ Lista branca"),
+            locale::Lang::En => ("⛔ Block", "🎭 Force Stall", "⭐ Whitelist"),
+        };
+        for (lbl, act) in [(lbl_blk, "block"), (lbl_stl, "stall"), (lbl_wht, "white")] {
+            let u = crate::calendar::quick_action_url(&console, act, caller_id.trim(), name_hint);
+            if !u.is_empty() {
+                msg.actions.push(NotifyAction { label: lbl.to_string(), url: u });
+            }
+        }
+    }
     deliver(http, settings, &msg).await
+}
+
+/// Send a simple text alert (e.g. Whitelist Direct Transfer or Whitelist Emergency Alert)
+/// to all enabled notification channels.
+pub async fn send_text_alert(
+    http: &Client,
+    settings: &Settings,
+    event: &str,
+    title: &str,
+    body: &str,
+) -> bool {
+    if !settings.call_notify {
+        return false;
+    }
+    let msg = Message {
+        event: event.to_string(),
+        title: locale::for_owner(&sanitize_notify_text(title, 200)),
+        body: locale::for_owner(&sanitize_notify_text(body, 3500)),
+        html: None,
+        data: json!({}),
+        link: None,
+        actions: Vec::new(),
+    };
+    deliver(http, settings, &msg).await
+}
+
+/// Send a pending appointment card with one-tap Accept / Decline buttons/links
+/// to all enabled non-Telegram notification channels (Telegram uses its own
+/// interactive inline callback card via `tg_inbound::send_task_card_labeled`).
+pub async fn notify_pending_appointment_non_tg(
+    http: &Client,
+    rt: &crate::settings_store::RuntimeSettings,
+    task_id: &str,
+    caller_id: &str,
+    title: &str,
+    body: &str,
+    link: &str,
+) -> bool {
+    if !rt.call_notify {
+        return false;
+    }
+    let mut non_tg: Vec<Channel> = rt
+        .notify_channels
+        .iter()
+        .filter(|c| c.enabled && c.kind != "telegram")
+        .cloned()
+        .collect();
+    let gateway = rt.notify_gateway_url.trim();
+    if !gateway.is_empty() {
+        let tag = match rt.notify_gateway_tag.trim().trim_matches('/') {
+            "" => "normal",
+            t => t,
+        };
+        non_tg.push(Channel {
+            id: "env-gateway".to_string(),
+            kind: "apprise".to_string(),
+            name: "Apprise gateway (env)".to_string(),
+            enabled: true,
+            url: format!("{}/notify/{tag}", gateway.trim_end_matches('/')),
+            ..Channel::default()
+        });
+    }
+    if non_tg.is_empty() {
+        return false;
+    }
+    let p = locale::notify_phrases();
+    let console = rt.public_url.trim();
+    let confirm_url = crate::calendar::quick_action_url(console, "confirm_task", task_id, "");
+    let ignore_url = crate::calendar::quick_action_url(console, "ignore_task", task_id, "");
+    let mut actions = Vec::new();
+    let mut full_body = format!("📅 {title}\n{body}");
+    if !confirm_url.is_empty() && !ignore_url.is_empty() {
+        actions.push(NotifyAction { label: p.ap_confirm.to_string(), url: confirm_url.clone() });
+        actions.push(NotifyAction { label: p.ap_decline.to_string(), url: ignore_url.clone() });
+        full_body.push_str(&format!("\n\n{}: {confirm_url}\n{}: {ignore_url}", p.ap_confirm, p.ap_decline));
+    }
+    let msg = Message {
+        event: "appointment_pending".to_string(),
+        title: locale::for_owner(&sanitize_notify_text(title, 200)),
+        body: locale::for_owner(&sanitize_notify_text(&full_body, 3500)),
+        html: None,
+        data: json!({
+            "task_id": task_id,
+            "caller_id": caller_id.trim(),
+            "confirm_url": confirm_url,
+            "ignore_url": ignore_url,
+        }),
+        link: (!link.trim().is_empty()).then(|| link.trim().to_string()),
+        actions,
+    };
+    let sends = non_tg.iter().map(|ch| {
+        let msg = &msg;
+        async move { (ch, send_channel(http, ch, msg).await) }
+    });
+    let mut any = false;
+    for (ch, result) in futures_util::future::join_all(sends).await {
+        match result {
+            Ok(()) => {
+                any = true;
+                info!("notify ok kind={} name={:?} event={}", ch.kind, ch.name, msg.event);
+            }
+            Err(e) => warn!("notify failed kind={} name={:?} event={}: {e:#}", ch.kind, ch.name, msg.event),
+        }
+    }
+    any
 }
 
 /// A voicemail was saved (older menu flow): caller, length, how to reply.
@@ -1337,6 +1552,8 @@ pub async fn notify_event(http: &Client, settings: &Settings, title: &str, body:
         body: body.to_string(),
         html: None,
         data: Value::Null,
+        link: None,
+        actions: Vec::new(),
     };
     deliver(http, settings, &msg).await
 }
@@ -1503,6 +1720,8 @@ mod tests {
             body: "☎️ Call summary\nNumber: 0912345678".into(),
             html: Some("<b>☎️ Call summary</b>\nNumber: <code>0912345678</code>".into()),
             data: json!({ "caller_id": "0912345678" }),
+            link: None,
+            actions: Vec::new(),
         }
     }
 

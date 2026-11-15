@@ -182,7 +182,7 @@ AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/contacts.svg" width="56" height="56" alt=""><br>
       <strong>認得誰打來</strong><br>
-      通訊錄可以從 vCard、CSV、Excel、Word、PDF，甚至名片照片匯入。
+      通訊錄可以從 vCard、CSV、Excel、Word、PDF、名片照片匯入，內建聯絡人、⭐ 白名單轉接真實號碼、⛔ 黑名單與 🎭 啟動 Stalls 四合一分類。
     </td>
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/switch.svg" width="56" height="56" alt=""><br>
@@ -199,7 +199,7 @@ AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/notify.svg" width="56" height="56" alt=""><br>
       <strong>32 種通知管道</strong><br>
-      每通電話結束，摘要送到 Telegram、LINE、Discord 等管道。
+      每通電話結束，摘要與一鍵操作按鈕送到 Telegram、LINE、Discord、Teams、ntfy、Home Assistant 等管道，並支援聊天室指令遙控。
     </td>
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/local.svg" width="56" height="56" alt=""><br>
@@ -233,7 +233,7 @@ AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種
 | | |
 |---|---|
 | **上手** | [開始使用](docs/zh-TW/GETTING_STARTED.md) · [手機設定](docs/zh-TW/PHONE.md) · [疑難排解與常見問題](docs/zh-TW/TROUBLESHOOTING.md) |
-| **使用** | [功能總覽](docs/zh-TW/FEATURES.md) · [撰寫提示詞](docs/zh-TW/PROMPTS.md) · [設定參考](docs/zh-TW/SETTINGS.md) · [通知](docs/zh-TW/NOTIFICATIONS.md) |
+| **使用** | [功能總覽](docs/zh-TW/FEATURES.md) · [聊天室指令與通知互動](docs/zh-TW/CHAT_COMMANDS.md) · [撰寫提示詞](docs/zh-TW/PROMPTS.md) · [設定參考](docs/zh-TW/SETTINGS.md) · [通知](docs/zh-TW/NOTIFICATIONS.md) |
 | **深入** | [架構](docs/zh-TW/ARCHITECTURE.md) · [API](docs/zh-TW/API.md) · [發展藍圖](docs/zh-TW/ROADMAP.md) · [v1.0 發行說明](CHANGELOG.md) · [`android/`（英文）](android/README.md) · [`tools/sms_forward/`（英文）](tools/sms_forward/README.md) |
 | **法律** | [隱私、安全與法律](docs/zh-TW/PRIVACY_AND_LEGAL.md) · [法律免責聲明與使用限制](LEGAL.md) · [雙重授權與商業授權](COMMERCIAL_LICENSE.md) · [全專案技術與資安審計報告](AUDIT_REPORT.md) |
 

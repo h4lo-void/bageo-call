@@ -227,6 +227,8 @@ pub fn han_text(text: &str) -> String {
         .to_ascii_lowercase()
         .replace('賬', "帳")
         .replace("加頼", "加賴")
+        .replace("賣貨變", "賣貨便")
+        .replace("好賣加", "好賣+")
 }
 
 /// An ASCII keyword inside Chinese text only as a whole word: "streamline",
@@ -676,6 +678,11 @@ pub fn is_hard(text: &str) -> bool {
     keyword(text.trim()).is_some_and(|h| h.hard)
 }
 
+/// `text` contains at least one keyword that only scammers say (`hard: true`).
+pub fn has_hard_hit(text: &str) -> bool {
+    keyword_hits(text).iter().any(|h| h.hard)
+}
+
 /// The kind of call the hits point to: the typology with the most weight among
 /// them (the first heard on a tie).
 pub fn typology_for_hits(hits: &[&str]) -> Option<&'static str> {
@@ -691,8 +698,13 @@ pub fn typology_for_hits(hits: &[&str]) -> Option<&'static str> {
 }
 
 /// The caller follows up on something the owner raised (a complaint, a repair,
-/// an application): never a pitch, in any language of the database.
+/// an application): never a pitch, in any language of the database — unless the
+/// caller also makes a scam-only demand (OTP, ATM steps, safe account, screen
+/// sharing, marketplace escrow verification), which spoofs a follow-up.
 pub fn own_matter(text: &str) -> bool {
+    if has_hard_hit(text) {
+        return false;
+    }
     let han = crate::zh_tw::norm(text);
     let lower = text.to_lowercase();
     db().own_matter.iter().any(|(lang, phrases)| {
@@ -1249,5 +1261,120 @@ mod tests {
         assert!(f.notes.iter().any(|n| n.starts_with("Number hint (tw_shown_as_international)")), "{f:?}");
         let hidden = caller_facts_in(&book, &[], "", Some("tw"));
         assert_eq!(hidden.notes, vec!["Number hint (hidden_number): The number is hidden.".to_string()]);
+    }
+
+    #[test]
+    fn nine_supported_languages_catch_scams_debt_harassment_and_protect_normal_calls() {
+        // (lang, scam_hard, debt_dunning, harassment, spoofed_own_matter, genuine_own_matter, polite_normal)
+        let cases = [
+            (
+                Lang::ZhTw,
+                "您好，我是賣貨便客服，您的賣場需要做金流認證並分享畫面",
+                "這裡是資產管理公司委外催收，再不處理就聲請強制執行查封扣薪",
+                "你欠錢不還真不要臉，明天去你公司堵你，出門小心一點",
+                "回覆您反映的訂單問題，請立刻去ATM操作並把驗證碼唸給我",
+                "回覆您反映的網路斷線問題，工程師已經修復好了",
+                "您好，這裡是自來水公司，溫馨提醒您這期水費記得在月底前到超商繳納喔",
+            ),
+            (
+                Lang::ZhCn,
+                "您好，闲鱼买家拍下商品了，请开启屏幕共享完成实名认证",
+                "我们是催收公司，再不处理就上门催收并把你列入失信被执行人限高令",
+                "你这个傻逼，明天去你家堵你，让你好看",
+                "关于您的申诉已经受理，请提供短信验证码并转账到安全账户",
+                "关于您的申诉我们已经核实完毕，特此回电说明结果",
+                "您好，物业中心提醒您本月的物业费和水费账单已经发到信箱了",
+            ),
+            (
+                Lang::En,
+                "Hi, buyer support here: please share your screen to finish escrow verification",
+                "This is Apex collection agency and debt collector; pay up today or we start wage garnishment and legal action",
+                "Listen asshole, we will come to your house and ruin your life, watch your back",
+                "Following up on your request, please read me the verification code on your phone",
+                "Following up on your request from Tuesday, your router replacement has shipped",
+                "Hi, calling from City Water with a friendly reminder that your monthly water bill is due next Friday",
+            ),
+            (
+                Lang::Ja,
+                "フリマサポートです。売上金の受け取り認証のため画面共有をお願いします",
+                "債権回収の担当です。本日中にお支払いがない場合、法的措置および給与の差し押さえを行います",
+                "ふざけるなバカ野郎、今から家に行くぞ、会社に行くから覚悟しろ",
+                "お問い合わせの件につきまして、確認のため認証コードと暗証番号を教えてください",
+                "お問い合わせの件につきまして、調査結果をご報告いたします",
+                "水道局からのお知らせです。今月分の水道料金のお支払い期限は来週金曜日となっております",
+            ),
+            (
+                Lang::Ko,
+                "중고거래 고객센터입니다. 안전결제 인증을 위해 지금 화면 공유를 켜주세요",
+                "신용정보회사 추심업체입니다. 오늘까지 변제하지 않으면 법적 조치 및 급여압류 강제집행 들어갑니다",
+                "야 이 개새끼야, 내일 당장 집으로 찾아가고 회사로 찾아가서 가만 안 둬",
+                "문의하신 건 처리해 드리겠습니다. 문자로 간 인증번호와 비밀번호를 말씀해 주세요",
+                "문의하신 인터넷 수리 건이 완료되어 결과 안내차 연락드렸습니다",
+                "관리사무소입니다. 이번 달 수도요금 납부 기한이 다음 주 금요일까지라 안내드립니다",
+            ),
+            (
+                Lang::Es,
+                "Soporte de compraventa: necesitamos compartir pantalla para verificar su cuenta de vendedor",
+                "Hablamos de la agencia de cobro y empresa de recobro; si no paga hoy iniciaremos demanda judicial y embargo",
+                "Escúchame hijo de puta sinvergüenza, vamos a ir a su domicilio hoy mismo",
+                "Sobre su reclamación, por favor dígame el código de verificación para desbloquear la cuenta segura",
+                "Llamo sobre su reclamación de la semana pasada para informarle que ya quedó resuelta",
+                "Hola, le llamamos de la clínica dental para recordar su cita de limpieza mañana a las diez",
+            ),
+            (
+                Lang::Fr,
+                "Support client : activez le partage d'écran pour valider le paiement sécurisé leboncoin",
+                "Ici le cabinet de recouvrement : sans règlement immédiat, un huissier lancera une saisie sur salaire et des poursuites judiciaires",
+                "Écoute connard, on sait où tu habites et on va venir chez vous ce soir",
+                "Suite à votre demande, veuillez me donner le code de vérification reçu par SMS",
+                "Suite à votre demande d'hier, votre dossier de réparation est terminé",
+                "Bonjour, c'est le cabinet dentaire pour vous rappeler votre rendez-vous de demain à quatorze heures",
+            ),
+            (
+                Lang::De,
+                "Kundendienst hier: bitte Bildschirm teilen, um den Käuferschutz verifizieren zu können",
+                "Hier ist das Inkassobüro: zahlen Sie sofort, sonst folgen Mahnbescheid, Zwangsvollstreckung und Lohnpfändung durch den Gerichtsvollzieher",
+                "Hör zu du Arschloch, wir wissen wo du wohnst und kommen bei Ihnen vorbei, ich mach dich fertig",
+                "Bezüglich Ihrer Anfrage nennen Sie mir bitte sofort den Bestätigungscode und Ihr Passwort",
+                "Bezüglich Ihrer Anfrage von gestern wollte ich Ihnen kurz mitteilen, dass das Teil da ist",
+                "Guten Tag, hier ist die Zahnarztpraxis zur Erinnerung an Ihren Termin morgen um zehn Uhr",
+            ),
+            (
+                Lang::Pt,
+                "Suporte da plataforma: precisamos compartilhar a tela para fazer a liberação do pagamento",
+                "Aqui é da assessoria de cobrança e recuperação de crédito; sem pagamento hoje haverá bloqueio judicial, penhora e protesto em cartório",
+                "Olha aqui seu vagabundo caloteiro, sei onde você mora e vamos na sua casa hoje",
+                "Sobre sua reclamação, informe agora o código de verificação e sua senha para liberar",
+                "Retornando sua ligação sobre o reparo do aparelho, ele já está pronto para retirada",
+                "Olá, aqui é da clínica odontológica apenas lembrando da sua consulta amanhã às três da tarde",
+            ),
+        ];
+        assert_eq!(cases.len(), crate::locale::ALL.len());
+        for (lang, scam, debt, harass, spoofed_own, genuine_own, normal) in cases {
+            assert!(has_hard_hit(scam), "{lang:?}: scam should hit hard: {scam}");
+            let debt_hits = keyword_hits(debt);
+            let debt_score: u32 = debt_hits.iter().map(|h| h.weight).sum();
+            assert!(
+                debt_score >= 4 && debt_hits.iter().any(|h| h.typology == "debt_collection_harassment"),
+                "{lang:?}: debt should hit debt_collection_harassment: score={debt_score} hits={debt_hits:?}"
+            );
+            let harass_hits = keyword_hits(harass);
+            let harass_score: u32 = harass_hits.iter().map(|h| h.weight).sum();
+            assert!(
+                harass_score >= 4 && harass_hits.iter().any(|h| h.typology == "harassment_intimidation"),
+                "{lang:?}: harassment should hit harassment_intimidation: score={harass_score} hits={harass_hits:?}"
+            );
+            assert!(!own_matter(spoofed_own), "{lang:?}: spoofed own_matter must be overridden by hard hit");
+            assert!(has_hard_hit(spoofed_own), "{lang:?}: spoofed own_matter has hard hit");
+            assert!(own_matter(genuine_own), "{lang:?}: genuine own_matter must remain protected");
+            assert!(!has_hard_hit(normal), "{lang:?}: normal call must have no hard hit");
+            let normal_hits = keyword_hits(normal);
+            assert!(
+                !normal_hits.iter().any(|h| h.typology == "debt_collection_harassment" || h.typology == "harassment_intimidation"),
+                "{lang:?}: polite normal call must not hit debt/harassment: {normal_hits:?}"
+            );
+        }
+        // Taiwan STT homophones for marketplace scams normalize cleanly.
+        assert!(keyword_hits("我是賣貨變客服，還有好賣加的訂單").iter().filter(|h| h.typology == "marketplace_escrow_scam").count() >= 2);
     }
 }

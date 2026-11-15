@@ -90,17 +90,19 @@ On a call's page, *Sales / scam check* shows what the call was judged and which 
 
 How the AI talks; the built-in prompt works for most people. See [Writing the prompt](PROMPTS.md) for *Your own prompt* (empty = built-in; **Show the built-in prompt** shows it), *Notes the AI may answer from* (facts callers may ask about, one per line, up to 6,000 characters) and the interview prompt that lets ChatGPT, Claude or Gemini write a prompt with you.
 
-### Blocked numbers
+### Blocked numbers & 4-in-1 Contacts
 
-Call screening at its bluntest: calls from numbers on this list never reach the AI or Gemini. They still appear in the call list and send a "blocked number" notification.
+Call screening at its bluntest: calls from numbers on this list never reach the AI or Gemini. They still appear in the call list and send a "blocked number" notification. You can also manage **Contacts, Whitelist, Blacklist, and Stall list** in one place on the **Contacts** tab (`kind`: `contact`, `whitelist`, `blacklist`, `stall`).
 
 | Setting | Default | What it does |
 |---|---|---|
 | Number, Reason | empty | One number per row, with an optional reason. End a number with `*` to block every number that starts with those digits (at least four, e.g. `0800*`). Write numbers the way they show up in the call list; `+…` forms match too once your country calling code is known ([`COUNTRY_CODE`](#country-calling-code)). |
 | How blocked calls are turned away | Hang up while it rings | Saved as `reject_mode`. **Hang up while it rings** (`decline`): the call never connects. **Answer, play "not available", then hang up** (`announce`): a short "the number you have dialed is not available" in your *Language*; the caller sees the call connect for a few seconds. A phone app too old to decline picks up and announces either way. |
 | Announcement voice | Same as the AI's voice | The voice of that announcement (hidden numbers hear it too). Every voice comes recorded in every language, so it costs no Gemini quota. **Preview the announcement** plays it. |
+| Whitelist handling (`whitelist_mode`) | Off (AI answers normally) | Set in the **Contacts** tab for callers marked `whitelist`: **Off** (`off`), **Forward directly to real number** (`direct` — declines the call at once to trigger carrier conditional call forwarding `*67*` and pushes an instant alert), or **Forward only when AI detects an emergency** (`emergency` — AI answers first and gives the caller your real forwarding number + triggers an urgent alert if they have an urgent matter). |
+| Real forwarding number (`whitelist_forward_number`) | empty | Your real phone number used by Whitelist direct/emergency transfer. |
 
-Try it: open a call in the call list and press **Block this number** to add the caller in one step.
+Try it: open a call in the call list and press **Block this number**, or tap the signed **⛔ Block / 🎭 Stall / ⭐ Whitelist** buttons in any notification channel to classify the caller in one tap.
 
 ### AI errands
 
@@ -194,6 +196,7 @@ Times are the computer's local time (see [Time zone](#time-zone)). Without any k
 | Setting | Default | What it does |
 |---|---|---|
 | Thinking level | Low | For Live models with "thinking" in their name only: Low, Medium or High. Low answers fastest. Saved as `gemini_thinking_level`. |
+| External access password (`ui_password`) | empty | Password required to open the web console or call the API when accessed from another device or external network. On your first visit without a password set, the console pops up a setup modal so you can set one right away. |
 
 *Country calling code* is set at start-up; see [Country calling code](#country-calling-code).
 

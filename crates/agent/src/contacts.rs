@@ -86,6 +86,9 @@ pub struct Contact {
     /// `manual`, `vcf`, `csv`, `text` or `ai` (read by Gemini).
     #[serde(default)]
     pub source: String,
+    /// `""` (normal contact), `"whitelist"`, `"blacklist"` or `"stall"`.
+    #[serde(default)]
+    pub kind: String,
     /// RFC 3339, UTC.
     #[serde(default)]
     pub updated_at: String,
@@ -102,6 +105,19 @@ pub struct Draft {
     pub note: String,
     #[serde(default)]
     pub source: String,
+    /// `""` (normal contact), `"whitelist"`, `"blacklist"` or `"stall"`.
+    #[serde(default)]
+    pub kind: String,
+}
+
+/// Canonical contact category: `""` (normal contact), `"whitelist"`, `"blacklist"`, or `"stall"`.
+pub fn sanitize_kind(s: &str) -> String {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "whitelist" | "white" | "vip" => "whitelist".to_string(),
+        "blacklist" | "black" | "block" | "reject" => "blacklist".to_string(),
+        "stall" | "stalls" => "stall".to_string(),
+        _ => String::new(),
+    }
 }
 
 #[derive(Deserialize)]
@@ -432,7 +448,8 @@ fn tidy(d: &Draft, default_source: &str, region: Option<&str>) -> Result<Draft, 
     }
     let source = one_line(&d.source, 16).to_ascii_lowercase();
     let source = if SOURCES.contains(&source.as_str()) { source } else { default_source.to_string() };
-    Ok(Draft { name, phones, note, source })
+    let kind = sanitize_kind(&d.kind);
+    Ok(Draft { name, phones, note, source, kind })
 }
 
 /// Add what `d` has and `c` lacks: its numbers (up to the limit) and its note.
@@ -459,6 +476,11 @@ fn merge_into(c: &mut Contact, d: &Draft, region: Option<&str>) -> bool {
         } else {
             one_line(&format!("{} · {note}", c.note.trim()), NOTE_MAX_CHARS)
         };
+        changed = true;
+    }
+    let kind = sanitize_kind(&d.kind);
+    if !kind.is_empty() && c.kind != kind {
+        c.kind = kind;
         changed = true;
     }
     changed
@@ -652,28 +674,66 @@ impl ContactStore {
     /// Contacts by name; `query` (empty: all) matches the name, the note or a
     /// number (its digits however written: `0912 345` finds `+886912345678`).
     pub fn list(&self, query: &str) -> Vec<Contact> {
+        self.list_filtered(query, None)
+    }
+
+    /// Contacts filtered by optional category (`None` / `"all"` = all; `"contact"` = normal;
+    /// `"whitelist"`, `"blacklist"`, `"stall"`).
+    pub fn list_filtered(&self, query: &str, kind_filter: Option<&str>) -> Vec<Contact> {
         let q = query.trim().to_lowercase();
         let plain: String = q.chars().map(ascii_form).collect();
         let digits: String = plain.chars().filter(char::is_ascii_digit).collect();
         let digits = digits.trim_start_matches('0').to_string();
         let numeric = digits.len() >= 3 && plain.chars().all(|c| c.is_ascii_digit() || " +-().".contains(c));
+        let kf = kind_filter.map(|s| s.trim().to_ascii_lowercase());
         let mut out: Vec<Contact> = self.with_book(|b| {
             b.contacts
                 .iter()
                 .filter(|c| {
-                    q.is_empty()
-                        || c.name.to_lowercase().contains(&q)
-                        || c.note.to_lowercase().contains(&q)
-                        || c.phones.iter().any(|p| {
-                            p.contains(query.trim())
-                                || (numeric && p.chars().filter(char::is_ascii_digit).collect::<String>().contains(&digits))
-                        })
+                    let kind_ok = match kf.as_deref() {
+                        None | Some("") | Some("all") => true,
+                        Some("contact") | Some("normal") => c.kind.is_empty() || c.kind == "contact",
+                        Some(want) => c.kind == want,
+                    };
+                    kind_ok
+                        && (q.is_empty()
+                            || c.name.to_lowercase().contains(&q)
+                            || c.note.to_lowercase().contains(&q)
+                            || c.phones.iter().any(|p| {
+                                p.contains(query.trim())
+                                    || (numeric && p.chars().filter(char::is_ascii_digit).collect::<String>().contains(&digits))
+                            }))
                 })
                 .cloned()
                 .collect()
         });
         out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()).then_with(|| a.id.cmp(&b.id)));
         out
+    }
+
+    /// Counts per category: `{all, contact, whitelist, blacklist, stall}`.
+    pub fn counts_by_kind(&self) -> Value {
+        self.with_book(|b| {
+            let mut normal = 0usize;
+            let mut white = 0usize;
+            let mut black = 0usize;
+            let mut stall = 0usize;
+            for c in &b.contacts {
+                match c.kind.as_str() {
+                    "whitelist" => white += 1,
+                    "blacklist" => black += 1,
+                    "stall" => stall += 1,
+                    _ => normal += 1,
+                }
+            }
+            json!({
+                "all": b.contacts.len(),
+                "contact": normal,
+                "whitelist": white,
+                "blacklist": black,
+                "stall": stall,
+            })
+        })
     }
 
     /// The contact a caller ID belongs to. `region`: the country of the SIM
@@ -715,14 +775,22 @@ impl ContactStore {
             if b.contacts.len() >= MAX_CONTACTS {
                 return Err(ContactError::TooMany);
             }
-            let c = Contact { id: new_id(), name: d.name, phones: d.phones, note: d.note, source: d.source, updated_at: now() };
+            let c = Contact {
+                id: new_id(),
+                name: d.name,
+                phones: d.phones,
+                note: d.note,
+                source: d.source,
+                kind: d.kind,
+                updated_at: now(),
+            };
             b.push(c.clone());
             Ok(c)
         })
         .await
     }
 
-    /// A contact's name, numbers and note as given (its source stays).
+    /// A contact's name, numbers, note and category as given (its source stays).
     pub async fn update(&self, id: &str, draft: &Draft) -> Result<Contact, ContactError> {
         self.change(|b| {
             let i = b.position(id).ok_or(ContactError::NotFound)?;
@@ -736,6 +804,7 @@ impl ContactStore {
                 phones: d.phones,
                 note: d.note,
                 source: b.contacts[i].source.clone(),
+                kind: d.kind,
                 updated_at: now(),
             };
             b.set(i, c.clone());
@@ -749,6 +818,64 @@ impl ContactStore {
             let i = b.position(id).ok_or(ContactError::NotFound)?;
             let c = b.contacts[i].clone();
             b.remove(i);
+            Ok(c)
+        })
+        .await
+    }
+
+    /// Add or reclassify a contact by phone number (`kind`: `""`, `"whitelist"`,
+    /// `"blacklist"`, `"stall"`). Used by chat commands (`/block`, `/stall`, `/white`,
+    /// `/unblock`) and one-tap notification quick actions.
+    pub async fn upsert_by_number(&self, number: &str, name: &str, note: &str, kind: &str) -> Result<Contact, ContactError> {
+        let number = number.trim().to_string();
+        let name = name.trim().to_string();
+        let note = note.trim().to_string();
+        let kind = sanitize_kind(kind);
+        self.change(|b| {
+            let cleaned = clean_phone(&number).ok_or(ContactError::Invalid("phones"))?;
+            let key = num_key(&cleaned, b.region.as_deref()).ok_or(ContactError::Invalid("phones"))?;
+            if let Some(i) = b.find(&key) {
+                let mut c = b.contacts[i].clone();
+                if !name.is_empty() {
+                    c.name = one_line(&name, NAME_MAX_CHARS);
+                }
+                if !note.is_empty() && !c.note.contains(&note) {
+                    c.note = if c.note.trim().is_empty() {
+                        one_line(&note, NOTE_MAX_CHARS)
+                    } else {
+                        one_line(&format!("{} · {note}", c.note.trim()), NOTE_MAX_CHARS)
+                    };
+                }
+                c.kind = kind;
+                c.updated_at = now();
+                b.set(i, c.clone());
+                return Ok(c);
+            }
+            if b.contacts.len() >= MAX_CONTACTS {
+                return Err(ContactError::TooMany);
+            }
+            let fallback_name = if name.is_empty() { cleaned.clone() } else { name };
+            let d = tidy(
+                &Draft {
+                    name: fallback_name,
+                    phones: vec![cleaned],
+                    note,
+                    source: "manual".into(),
+                    kind,
+                },
+                "manual",
+                b.region.as_deref(),
+            )?;
+            let c = Contact {
+                id: new_id(),
+                name: d.name,
+                phones: d.phones,
+                note: d.note,
+                source: d.source,
+                kind: d.kind,
+                updated_at: now(),
+            };
+            b.push(c.clone());
             Ok(c)
         })
         .await
@@ -782,7 +909,15 @@ impl ContactStore {
                     Some(_) => r.skipped += 1,
                     None if b.contacts.len() >= MAX_CONTACTS => r.skipped += 1,
                     None => {
-                        b.push(Contact { id: new_id(), name: d.name, phones: d.phones, note: d.note, source: d.source, updated_at: stamp.clone() });
+                        b.push(Contact {
+                            id: new_id(),
+                            name: d.name,
+                            phones: d.phones,
+                            note: d.note,
+                            source: d.source,
+                            kind: d.kind,
+                            updated_at: stamp.clone(),
+                        });
                         r.added += 1;
                     }
                 }
@@ -871,8 +1006,23 @@ pub fn by_id(id: &str) -> Option<Contact> {
     STORE.get()?.get(id)
 }
 
-/// Caller ID → `{id, name}` for the calls whose number is a contact's (the
-/// call list shows the name).
+/// Whether `number` is on the Whitelist (`kind == "whitelist"`).
+pub fn is_whitelist(number: &str, region: Option<&str>) -> Option<Contact> {
+    lookup(number, region).filter(|c| c.kind == "whitelist")
+}
+
+/// Whether `number` is on the Blacklist (`kind == "blacklist"`).
+pub fn is_blacklist(number: &str, region: Option<&str>) -> Option<Contact> {
+    lookup(number, region).filter(|c| c.kind == "blacklist")
+}
+
+/// Whether `number` is on the Force-Stall list (`kind == "stall"`).
+pub fn is_force_stall(number: &str, region: Option<&str>) -> Option<Contact> {
+    lookup(number, region).filter(|c| c.kind == "stall")
+}
+
+/// Caller ID → `{id, name, kind}` for the calls whose number is a contact's (the
+/// call list shows the name and category badge).
 pub fn names_for(store: &ContactStore, calls: &[crate::calls::CallRecord]) -> Value {
     let mut out = serde_json::Map::new();
     for c in calls {
@@ -880,7 +1030,7 @@ pub fn names_for(store: &ContactStore, calls: &[crate::calls::CallRecord]) -> Va
             continue;
         }
         if let Some(ct) = store.lookup(&c.caller_id, c.sim_country.as_deref()) {
-            out.insert(c.caller_id.clone(), json!({"id": ct.id, "name": ct.name}));
+            out.insert(c.caller_id.clone(), json!({"id": ct.id, "name": ct.name, "kind": ct.kind}));
         }
     }
     Value::Object(out)
@@ -977,15 +1127,37 @@ pub fn with_caller(prompt: &str, rt: &RuntimeSettings, caller_id: &str, sim_coun
     let Some(c) = lookup(caller_id, sim_country) else {
         return prompt.to_string();
     };
+    if c.kind == "blacklist" || c.kind == "stall" {
+        return prompt.to_string();
+    }
     let lang = rt.lang();
-    info!(contact = c.id.as_str(), "caller is in the contacts: the prompt says who it is");
-    with_caller_block(prompt, lang, &caller_block(lang, rt.is_assistant_style(), &rt.owner_name, &c.name, &c.note))
+    info!(contact = c.id.as_str(), kind = c.kind.as_str(), "caller is in the contacts: the prompt says who it is");
+    let mut blk = caller_block(lang, rt.is_assistant_style(), &rt.owner_name, &c.name, &c.note);
+    if c.kind == "whitelist" && rt.whitelist_mode == "emergency" {
+        let emerg = match lang {
+            Lang::ZhTw => "\n【白名單緊急事件轉接】這位是白名單上的重要聯絡人。如果對方表示有緊急事件、急事、意外、住院、或需要立刻找本人，請馬上安撫對方並明確說「好，這件事很急，我現在馬上轉接／通知本人立刻聯繫你！」系統偵測到緊急事件後會立即通知本人並轉接至真實號碼。",
+            Lang::ZhCn => "\n【白名单紧急事件转接】这位是白名单上的重要联系人。如果对方表示有紧急事件、急事、意外、住院、或需要立刻找本人，请马上安抚对方并明确说「好，这件事很急，我现在马上转接／通知本人立刻联系你！」系统检测到紧急事件后会立即通知本人并转接至真实号码。",
+            Lang::Ja => "\n【ホワイトリスト緊急転送】この相手はホワイトリストの大切な連絡先です。緊急の用件、急用、事故、入院、または今すぐ本人と連絡を取りたいと伝えた場合は、すぐに安心させて「わかりました、急ぎの件ですね。今すぐ本人に転送・連絡します！」とはっきり伝えてください。システムが直ちに本人の実際の番号へ通知・転送します。",
+            Lang::Ko => "\n[화이트리스트 긴급 전환] 이 발신자는 화이트리스트의 중요한 연락처입니다. 긴급한 용무, 급한 일, 사고, 입원 또는 지금 당장 본인과 연락해야 한다고 말하면 즉시 안심시키고 “네, 급한 일이시군요. 지금 바로 본인에게 전환·알려 드리겠습니다!”라고 명확히 말하세요. 시스템이 즉시 본인의 실제 번호로 알림 및 전환을 수행합니다.",
+            Lang::Es => "\n[Transferencia de emergencia de lista blanca] Esta persona está en la lista blanca. Si indica una emergencia, asunto urgente, accidente, hospitalización o que necesita localizar al titular de inmediato, tranquilícela enseguida y diga claramente: «Entendido, es urgente; ahora mismo le paso o aviso para que se comunique con usted de inmediato». El sistema avisará y transferirá al número real de inmediato.",
+            Lang::Fr => "\n[Transfert d'urgence liste blanche] Cet appelant figure sur la liste blanche. S'il signale une urgence, un problème grave, un accident, une hospitalisation ou qu'il doit joindre la personne immédiatement, rassurez-le tout de suite et dites clairement : « Compris, c'est urgent — je vous transfère / je le préviens immédiatement ! » Le système alertera et transférera vers le vrai numéro.",
+            Lang::De => "\n[Whitelist-Notfallweiterleitung] Dieser Anrufer steht auf der Whitelist. Wenn er einen Notfall, eine dringende Angelegenheit, einen Unfall oder Krankenhausaufenthalt meldet oder die Person sofort erreichen muss, beruhige ihn sofort und sage klar: „Verstanden, das ist dringend — ich leite Sie sofort weiter bzw. gebe sofort Bescheid!“ Das System benachrichtigt und verbindet umgehend mit der echten Nummer.",
+            Lang::Pt => "\n[Transferência de emergência da lista branca] Este contato está na lista branca. Se informar uma emergência, assunto urgente, acidente, hospitalização ou precisar falar imediatamente, tranquilize-o na hora e diga claramente: \"Entendi, é urgente — vou transferir / avisar agora mesmo!\" O sistema enviará um alerta imediato e encaminhará para o número real.",
+            Lang::En => "\n[Whitelist Emergency Transfer] This caller is on the Whitelist. If they report an emergency, urgent matter, accident, or need to reach the owner immediately, reassure them right away and say clearly: \"Got it, this is urgent — I am notifying/transferring to them right now!\" The system will immediately alert and forward to the owner's real number.",
+        };
+        blk.push_str(emerg);
+    }
+    with_caller_block(prompt, lang, &blk)
 }
 
 /// Short, prompt-safe label for `stall_review` when `caller_id` is in the
-/// owner's contacts (e.g. `"媽媽 (note: 家裡)"`). `None` when unknown.
+/// owner's contacts (e.g. `"媽媽 (note: 家裡)"`). `None` when unknown or on the
+/// blacklist / stall list.
 pub fn review_label(caller_id: &str, sim_country: Option<&str>) -> Option<String> {
     let c = lookup(caller_id, sim_country)?;
+    if c.kind == "blacklist" || c.kind == "stall" {
+        return None;
+    }
     let name = prompt_safe(&c.name, PROMPT_NAME_MAX_CHARS);
     if name.is_empty() {
         return None;
@@ -1244,7 +1416,7 @@ impl Card {
         if !self.note.trim().is_empty() {
             notes.push(self.note.trim().to_string());
         }
-        Draft { name, phones: self.tels, note: notes.join(" · "), source: "vcf".into() }
+        Draft { name, phones: self.tels, note: notes.join(" · "), source: "vcf".into(), kind: String::new() }
     }
 }
 
@@ -1564,6 +1736,7 @@ impl Columns {
                 phones: cells(Col::Phone).into_iter().map(str::to_string).collect(),
                 note: notes.join(" · "),
                 source: source.into(),
+                kind: String::new(),
             });
         }
         p
@@ -1592,7 +1765,7 @@ fn read_headerless(rows: &[Vec<String>], source: &str) -> Parsed {
                 name = cell.to_string();
             }
         }
-        p.drafts.push(Draft { name, phones, note: String::new(), source: source.into() });
+        p.drafts.push(Draft { name, phones, note: String::new(), source: source.into(), kind: String::new() });
     }
     p
 }
@@ -1723,7 +1896,7 @@ pub fn parse_lines(text: &str) -> Vec<Draft> {
         if out.len() >= TABLE_MAX_ROWS {
             break;
         }
-        out.push(Draft { name, phones, note: String::new(), source: "text".into() });
+        out.push(Draft { name, phones, note: String::new(), source: "text".into(), kind: String::new() });
     }
     out
 }
@@ -2219,10 +2392,22 @@ fn finish(format: &'static str, ai: bool, found: Parsed, source: &str, region: O
                     book.set(i, c);
                 }
             }
-            None => book.push(Contact { id: String::new(), name: d.name, phones: d.phones, note: d.note, source: d.source, updated_at: String::new() }),
+            None => book.push(Contact {
+                id: String::new(),
+                name: d.name,
+                phones: d.phones,
+                note: d.note,
+                source: d.source,
+                kind: d.kind,
+                updated_at: String::new(),
+            }),
         }
     }
-    let drafts = book.contacts.into_iter().map(|c| Draft { name: c.name, phones: c.phones, note: c.note, source: c.source }).collect();
+    let drafts = book
+        .contacts
+        .into_iter()
+        .map(|c| Draft { name: c.name, phones: c.phones, note: c.note, source: c.source, kind: c.kind })
+        .collect();
     ImportRead { format, ai, drafts, skipped }
 }
 
@@ -2445,6 +2630,7 @@ fn drafts_from_json(text: &str) -> Option<Vec<Draft>> {
                 },
                 note: s(e, "note"),
                 source: "ai".into(),
+                kind: sanitize_kind(&s(e, "kind")),
             })
             .collect(),
     )
@@ -2569,23 +2755,34 @@ struct ContactsQuery {
     token: Option<String>,
     /// Name, note or number.
     q: Option<String>,
+    /// Category filter: `all` / `contact` / `whitelist` / `blacklist` / `stall`.
+    kind: Option<String>,
     limit: Option<usize>,
     offset: Option<usize>,
 }
 
-/// `GET /api/contacts`: `{ok, contacts, total, offset, count}` — the matches
-/// of `q` by name (`total` of them, this page from `offset`), and how many
-/// contacts there are in all (`count`).
+/// `GET /api/contacts`: `{ok, contacts, total, offset, count, counts}` — the matches
+/// of `q` by name (`total` of them, this page from `offset`), how many
+/// contacts there are in all (`count`), and per-category counts (`counts`).
 async fn list_contacts(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<ContactsQuery>) -> Response {
     if !authorized(&state, &headers, q.token.as_deref()) {
         return unauthorized();
     }
-    let all = state.contacts.list(q.q.as_deref().unwrap_or(""));
+    let all = state.contacts.list_filtered(q.q.as_deref().unwrap_or(""), q.kind.as_deref());
     let total = all.len();
     let offset = q.offset.unwrap_or(0).min(total);
     let limit = q.limit.filter(|&n| n > 0).unwrap_or(MAX_CONTACTS);
     let page: Vec<Contact> = all.into_iter().skip(offset).take(limit).collect();
-    Json(json!({"ok": true, "contacts": page, "total": total, "offset": offset, "count": state.contacts.len()})).into_response()
+    let counts = state.contacts.counts_by_kind();
+    Json(json!({
+        "ok": true,
+        "contacts": page,
+        "total": total,
+        "offset": offset,
+        "count": state.contacts.len(),
+        "counts": counts,
+    }))
+    .into_response()
 }
 
 fn parse_draft(body: &[u8]) -> Option<Draft> {
@@ -2789,7 +2986,7 @@ mod tests {
     const TW: Option<&str> = Some("tw");
 
     fn draft(name: &str, phones: &[&str], note: &str) -> Draft {
-        Draft { name: name.into(), phones: phones.iter().map(|p| p.to_string()).collect(), note: note.into(), source: String::new() }
+        Draft { name: name.into(), phones: phones.iter().map(|p| p.to_string()).collect(), note: note.into(), source: String::new(), kind: String::new() }
     }
 
     fn temp_dir() -> PathBuf {
@@ -2985,6 +3182,7 @@ mod tests {
                 phones: vec!["0912-000-000".into(), "02-2000-0000".into()],
                 note: "大學同學。愛喝咖啡".into(),
                 source: "vcf".into(),
+                kind: String::new(),
             }]
         );
         // Big5 in quoted-printable (old Taiwanese phones).
@@ -3024,6 +3222,7 @@ mod tests {
             phones: vec!["0912-000-011".into(), "+1 202 555 0143".into()],
             note: long.clone(),
             source: "manual".into(),
+            kind: String::new(),
             updated_at: String::new(),
         }];
         let vcf = to_vcf(&contacts);
@@ -3031,7 +3230,7 @@ mod tests {
         assert!(vcf.contains("FN:Lin\\, Mei\\; Jr.\r\n"), "{vcf}");
         assert_eq!(
             parse_vcard(&vcf),
-            vec![Draft { name: "Lin, Mei; Jr.".into(), phones: contacts[0].phones.clone(), note: long, source: "vcf".into() }]
+            vec![Draft { name: "Lin, Mei; Jr.".into(), phones: contacts[0].phones.clone(), note: long, source: "vcf".into(), kind: String::new() }]
         );
     }
 
@@ -3078,7 +3277,7 @@ mod tests {
                    陳大文,大文,,陳,,,,,,,,,,,,,,,,,,,,,,鄰居,,,* myContacts,Mobile,0912-000-005\n";
         assert_eq!(
             parse_delimited(old).unwrap().drafts,
-            vec![Draft { name: "陳大文".into(), phones: vec!["0912-000-005".into()], note: "鄰居".into(), source: "csv".into() }]
+            vec![Draft { name: "陳大文".into(), phones: vec!["0912-000-005".into()], note: "鄰居".into(), source: "csv".into(), kind: String::new() }]
         );
     }
 
@@ -3116,6 +3315,7 @@ mod tests {
                 phones: vec!["0912-000-017".into(), "02 2000 0017".into()],
                 note: "Example Store · VIP, pays on time".into(),
                 source: "csv".into(),
+                kind: String::new(),
             }]
         );
     }
@@ -3127,7 +3327,7 @@ mod tests {
         assert!(std::str::from_utf8(&bytes).is_err());
         assert_eq!(
             parse_delimited(&decode_text_for(&bytes, Lang::ZhTw)).unwrap().drafts,
-            vec![Draft { name: "陳大文".into(), phones: vec!["0912000002".into()], note: "鄰居".into(), source: "csv".into() }]
+            vec![Draft { name: "陳大文".into(), phones: vec!["0912000002".into()], note: "鄰居".into(), source: "csv".into(), kind: String::new() }]
         );
         let mut bom = vec![0xef, 0xbb, 0xbf];
         bom.extend_from_slice("姓名,電話\n林小美,0912000003\n".as_bytes());
@@ -3287,7 +3487,7 @@ mod tests {
         assert_eq!((read.format, read.ai), ("docx", false));
         assert_eq!(
             read.drafts,
-            vec![Draft { name: "陳大文".into(), phones: vec!["0912 000 009".into()], note: String::new(), source: "csv".into() }]
+            vec![Draft { name: "陳大文".into(), phones: vec!["0912 000 009".into()], note: String::new(), source: "csv".into(), kind: String::new() }]
         );
         // PDF and pictures need Gemini; old binary Office files are not read.
         assert!(matches!(read_file_at(&http, base, " ", "card.pdf", b"%PDF-1.7 x", TW).await, Err(ImportError::NeedKey)));
@@ -3320,7 +3520,7 @@ mod tests {
         ]}, "finishReason": "STOP"}]})
         .to_string();
         let got = parse_ai_answer(&answer).unwrap();
-        assert_eq!(got[0], Draft { name: "林小美".into(), phones: vec!["0912-000-010".into()], note: "房東".into(), source: "ai".into() });
+        assert_eq!(got[0], Draft { name: "林小美".into(), phones: vec!["0912-000-010".into()], note: "房東".into(), source: "ai".into(), kind: String::new() });
         assert_eq!(got[1].phones, vec!["+1 202 555 0143".to_string()]);
         let cut = json!({"candidates": [{"content": {"parts": [{"text": "[{\"name\": \"A\", \"pho"}]}, "finishReason": "MAX_TOKENS"}]}).to_string();
         assert!(format!("{:#}", parse_ai_answer(&cut).unwrap_err()).contains("cut off"));
