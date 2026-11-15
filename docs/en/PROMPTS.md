@@ -343,9 +343,9 @@ These calls follow scripts the agent writes, not your prompt:
   to the caller by text or by phone (whichever can reach that number) and
   records the request with `propose_appointment`. A request sent without the
   caller's yes (`confirmed_by_caller`) is answered `confirm_first` and the AI
-  asks first; each time is sent back once, at most twice a call. A request the
-  caller hangs up on before the AI has asked is not recorded. Your prompt's
-  style still applies.
+  asks first; each time is sent back once, at most twice a call. If the caller
+  hangs up before the AI has asked, the time still goes to your to-do list,
+  marked as not confirmed by the caller. Your prompt's style still applies.
 - **AI call-backs** say who is calling, give your answer once in the language of
   the original call, and say goodbye; they repeat it only when asked.
 - **AI errands** get the task you wrote, the identity you chose (your assistant

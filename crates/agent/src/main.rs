@@ -8730,6 +8730,8 @@ fn spawn_ai_talk_tg_summary(
         let (agreed, mut voided) = match &appointment_book {
             Some(book) => {
                 book.settled(appointments::TOOL_WAIT).await;
+                // A time sent back for the caller's yes that they hung up on is kept, marked unconfirmed.
+                book.seal_unconfirmed();
                 (book.outcome(), book.voided())
             }
             None => (recorded_appointment, Vec::new()),

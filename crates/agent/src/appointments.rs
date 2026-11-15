@@ -326,6 +326,11 @@ pub struct Appointment {
     /// The owner was told so: the next one books it anyway.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub held_busy: bool,
+    /// The caller never said yes to this time read back: the call ended before
+    /// the AI asked, or it was kept without the read-back. The owner checks it
+    /// with the caller before answering.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub time_unconfirmed: bool,
     /// The country of the SIM that took the call (ISO 3166 alpha-2): how a
     /// caller ID without a country code is read for the text message.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -554,6 +559,18 @@ struct Book {
     /// Start times sent back once because the caller had not confirmed them
     /// read back ([`CallAppointments::read_back_first`]).
     read_back_asked: std::collections::HashSet<String>,
+    /// Proposals sent back for the caller's yes ([`Held`]).
+    held: Vec<Held>,
+}
+
+/// A proposal sent back for the caller's yes ([`confirm_first`]): kept in
+/// case the call ends before the AI asks ([`CallAppointments::seal_unconfirmed`]).
+#[derive(Debug, Clone)]
+struct Held {
+    appt: Appointment,
+    seq: u64,
+    replaces: bool,
+    call_tag: String,
 }
 
 /// One appointment of the call.
@@ -638,6 +655,9 @@ impl Book {
     /// Keep what proposal `seq` agreed to. False: the call was judged sales /
     /// scam, nothing is kept (an event it already wrote goes on the voided list).
     fn put(&mut self, target: Target, appt: Appointment, seq: u64, replaces: bool) -> bool {
+        // A proposal kept after one sent back: the caller answered the
+        // read-back (or changed the time), so the one sent back is over.
+        self.held.retain(|h| h.seq > seq);
         if self.discarded {
             if !appt.event_id.is_empty() {
                 self.voided.push(Earlier::of(&appt));
@@ -734,6 +754,7 @@ impl CallAppointments {
         let mut b = self.book();
         b.discarded = true;
         b.reviewed_normal = false;
+        b.held.clear();
         for slot in std::mem::take(&mut b.slots) {
             if !slot.appt.event_id.is_empty() {
                 b.voided.push(Earlier::of(&slot.appt));
@@ -780,6 +801,39 @@ impl CallAppointments {
     fn read_back_first(&self, start: &str) -> bool {
         let mut b = self.book();
         b.read_back_asked.len() < READ_BACK_REFUSALS_MAX && b.read_back_asked.insert(start.to_string())
+    }
+
+    /// Keep a proposal sent back for the caller's yes ([`Held`]).
+    fn hold(&self, held: Held) {
+        let mut b = self.book();
+        if !b.discarded {
+            b.held.push(held);
+        }
+    }
+
+    /// The call is over. Proposals sent back for the caller's yes that no
+    /// later kept proposal replaced are kept after all, marked unconfirmed: a
+    /// caller who hangs up before the AI asks still reaches the owner, who
+    /// checks the time with them. A change of time takes the place of the time
+    /// it changed, as it would have on the call.
+    pub fn seal_unconfirmed(&self) {
+        let mut b = self.book();
+        let mut held = std::mem::take(&mut b.held);
+        if b.discarded {
+            return;
+        }
+        held.sort_by_key(|h| h.seq);
+        for h in held {
+            let target = b.target(h.seq, h.replaces, &h.appt.start, &h.appt.end);
+            if target == Target::Stale {
+                continue;
+            }
+            let mut appt = h.appt;
+            appt.tag = b.tag_for(target, &h.call_tag);
+            appt.time_unconfirmed = true;
+            info!("appointment kept unconfirmed at call end seq={} start={} replaces={}", h.seq, appt.start, h.replaces);
+            b.put(target, appt, h.seq, h.replaces);
+        }
     }
 
     /// Wait (up to `max`) until proposal `seq` of this call is over. False: it
@@ -1141,8 +1195,25 @@ impl ApptSession {
         }
         // The caller's yes to the time read back is what makes it theirs: a
         // misheard hour otherwise goes to the owner as what they asked for.
-        if args.get("confirmed_by_caller").and_then(Value::as_bool) != Some(true) && self.book.read_back_first(&stamp(start)) {
+        let confirmed = args.get("confirmed_by_caller").and_then(Value::as_bool) == Some(true);
+        if !confirmed && self.book.read_back_first(&stamp(start)) {
             info!("appointment proposal seq={seq} start={} sent back: not read back to the caller yet", stamp(start));
+            // Kept aside: should the caller hang up before the AI asks, the
+            // owner still gets the time, marked unconfirmed.
+            self.book.hold(Held {
+                appt: Appointment {
+                    start: stamp(start),
+                    end: stamp(end),
+                    title: clean_text(args.get("title"), TITLE_MAX),
+                    caller_name: clean_text(args.get("caller_name"), NAME_MAX),
+                    mode: self.mode.as_str().to_string(),
+                    status: PENDING.to_string(),
+                    ..Default::default()
+                },
+                seq,
+                replaces: args.get("replaces_previous").and_then(Value::as_bool).unwrap_or(true),
+                call_tag: self.tag.clone(),
+            });
             return confirm_first(locale::active().lang, start);
         }
         let _running = self.book.start_proposal();
@@ -1177,6 +1248,8 @@ impl ApptSession {
             mode: self.mode.as_str().to_string(),
             status: PENDING.to_string(),
             tag,
+            // Kept without the caller's yes (sent back as often as allowed).
+            time_unconfirmed: !confirmed,
             ..Default::default()
         };
         info!(
@@ -2671,6 +2744,10 @@ fn summary_line_one(appt: &Appointment, link: &str) -> String {
         s.push_str(" — ");
         s.push_str(&web);
     }
+    if appt.time_unconfirmed {
+        s.push_str("\n⚠️ ");
+        s.push_str(p.ap_time_unconfirmed);
+    }
     for e in &appt.replaced {
         s.push('\n');
         s.push_str(&locale::fill(p.ap_replaced, &e.when(lang)));
@@ -2752,6 +2829,9 @@ pub fn card_text(rt: &RuntimeSettings, task: &TaskRecord, appt: &Appointment, li
         format!("{}{sep}{}", p.n_number, display_caller(&task.caller_id)),
         format!("{}{sep}{}", p.n_time, appt.when(lang)),
     ];
+    if appt.time_unconfirmed {
+        lines.push(format!("⚠️ {}", p.ap_time_unconfirmed));
+    }
     if !appt.title.trim().is_empty() {
         lines.push(format!("{}{sep}{}", p.ap_what, appt.title.trim()));
     }
@@ -4454,17 +4534,73 @@ mod tests {
         assert_eq!(s.run_tool(&next).await["status"], "pending_owner_confirmation");
         assert!(t.elapsed() < Duration::from_secs(1), "{:?}", t.elapsed());
         assert_eq!(s.book.outcomes().len(), 1);
+        // The caller said yes to another time: the one sent back is over and
+        // does not come back at the end of the call.
+        s.book.seal_unconfirmed();
+        let all = s.book.outcomes();
+        assert_eq!((all.len(), all[0].start.clone(), all[0].time_unconfirmed), (1, later(2, 11), false));
     }
 
     #[tokio::test]
-    async fn a_change_sent_back_leaves_the_time_the_caller_moved_away_from() {
+    async fn a_change_sent_back_and_never_asked_takes_the_new_time_unconfirmed() {
         let s = session(Mode::Confirm);
         assert_eq!(s.run_tool(&propose_args("1", json!({"start": later(2, 10), "title": "看房"}), next_seq())).await["status"], "pending_owner_confirmation");
         let change = propose_args("2", json!({"start": later(2, 16), "title": "看房", "replaces_previous": true, "confirmed_by_caller": false}), next_seq());
         assert_eq!(s.run_tool(&change).await["error"], "confirm_first");
-        // Should the call end now, the owner is asked about 10:00, the time the caller just changed.
+        // During the call the agreed time is still 10:00…
         assert_eq!(s.book.outcome().unwrap().start, later(2, 10));
+        // …but the caller hung up before the AI asked: the owner gets 16:00, the
+        // time the caller moved to, marked unconfirmed, and no second appointment.
+        s.book.seal_unconfirmed();
+        let all = s.book.outcomes();
+        assert_eq!(all.len(), 1);
+        assert_eq!((all[0].start.clone(), all[0].time_unconfirmed), (later(2, 16), true));
+    }
+
+    #[tokio::test]
+    async fn a_time_sent_back_still_reaches_the_owner_when_the_caller_hangs_up() {
+        let s = session(Mode::Confirm);
+        let ask = ToolCall { id: "a".into(), name: PROPOSE.into(), args: json!({"start": later(2, 10), "title": "看房", "caller_name": "王小明"}), seq: next_seq(), after: 0 };
+        assert_eq!(s.run_tool(&ask).await["error"], "confirm_first");
+        assert!(s.book.outcome().is_none(), "not agreed yet while the call goes on");
+        s.book.seal_unconfirmed();
+        let a = s.book.outcome().expect("kept at the end of the call");
+        assert_eq!((a.start.clone(), a.status.as_str(), a.caller_name.as_str(), a.time_unconfirmed), (later(2, 10), PENDING, "王小明", true));
+        assert!(!a.tag.is_empty() && a.more.is_empty());
+        // Sealing twice keeps one.
+        s.book.seal_unconfirmed();
         assert_eq!(s.book.outcomes().len(), 1);
+        // The same time asked back and confirmed: kept once, without the mark.
+        let s = session(Mode::Confirm);
+        assert_eq!(s.run_tool(&ToolCall { id: "a".into(), name: PROPOSE.into(), args: json!({"start": later(2, 10), "title": "看房"}), seq: next_seq(), after: 0 }).await["error"], "confirm_first");
+        let yes = ToolCall { id: "b".into(), name: PROPOSE.into(), args: json!({"start": later(2, 10), "title": "看房", "confirmed_by_caller": true}), seq: next_seq(), after: 0 };
+        assert_eq!(s.run_tool(&yes).await["status"], "pending_owner_confirmation");
+        s.book.seal_unconfirmed();
+        let all = s.book.outcomes();
+        assert_eq!((all.len(), all[0].time_unconfirmed), (1, false));
+        // A sales / scam call keeps nothing, sent back or not.
+        let s = session(Mode::Confirm);
+        assert_eq!(s.run_tool(&ToolCall { id: "a".into(), name: PROPOSE.into(), args: json!({"start": later(2, 10), "title": "看房"}), seq: next_seq(), after: 0 }).await["error"], "confirm_first");
+        s.book.discard();
+        s.book.seal_unconfirmed();
+        assert!(s.book.outcomes().is_empty());
+    }
+
+    #[test]
+    fn an_unconfirmed_time_is_flagged_to_the_owner_and_old_records_still_load() {
+        let old: Appointment = serde_json::from_str(r#"{"start":"2026-11-20T15:30","end":"2026-11-20T16:30","mode":"confirm","status":"pending"}"#).unwrap();
+        assert!(!old.time_unconfirmed);
+        assert!(serde_json::to_value(&old).unwrap().get("time_unconfirmed").is_none());
+        let mut a = old.clone();
+        a.time_unconfirmed = true;
+        assert_eq!(serde_json::to_value(&a).unwrap()["time_unconfirmed"], true);
+        let warn = locale::phrases(locale::notify_lang()).ap_time_unconfirmed;
+        assert!(!warn.is_empty());
+        assert!(summary_line(&a, "").contains(warn) && !summary_line(&old, "").contains(warn));
+        let rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        let task = task_for("0912345678", &a);
+        assert!(card_text(&rt, &task, &a, "").1.contains(warn));
+        assert!(!card_text(&rt, &task, &old, "").1.contains(warn));
     }
 
     #[test]

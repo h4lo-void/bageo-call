@@ -1317,6 +1317,7 @@ I18N["en"] = {
   d_cal: "Calendar suggestion",
   d_appt: "Appointment",
   d_appt_pending: "Waiting for you",
+  ap_time_unconfirmed: "The caller never confirmed this time read back; check it with them before you answer",
   d_appt_booked: "Booked during the call",
   d_appt_confirmed: "Accepted",
   d_appt_declined: "Declined",
@@ -2233,6 +2234,7 @@ I18N["zh-TW"] = {
   d_cal: "行事曆建議",
   d_appt: "行程預約",
   d_appt_pending: "待你確認",
+  ap_time_unconfirmed: "對方沒有確認過這個時間，回覆前請先跟對方確認",
   d_appt_booked: "通話中已排入",
   d_appt_confirmed: "已同意",
   d_appt_declined: "已婉拒",
@@ -3149,6 +3151,7 @@ I18N["zh-CN"] = {
   d_cal: "日历建议",
   d_appt: "日程预约",
   d_appt_pending: "待你确认",
+  ap_time_unconfirmed: "对方没有确认过这个时间，回复前请先跟对方确认",
   d_appt_booked: "通话中已排入",
   d_appt_confirmed: "已同意",
   d_appt_declined: "已婉拒",
@@ -4065,6 +4068,7 @@ I18N["ja"] = {
   d_cal: "カレンダーの提案",
   d_appt: "予約",
   d_appt_pending: "確認待ち",
+  ap_time_unconfirmed: "相手はこの時間を確認していません。返事の前に相手に確認してください",
   d_appt_booked: "通話中に登録済み",
   d_appt_confirmed: "承諾済み",
   d_appt_declined: "お断り",
@@ -4981,6 +4985,7 @@ I18N["ko"] = {
   d_cal: "캘린더 제안",
   d_appt: "일정 예약",
   d_appt_pending: "확인 대기",
+  ap_time_unconfirmed: "상대방이 이 시간을 확인하지 않았습니다. 답하기 전에 먼저 확인해 주세요",
   d_appt_booked: "통화 중 등록됨",
   d_appt_confirmed: "수락함",
   d_appt_declined: "거절함",
@@ -5897,6 +5902,7 @@ I18N["es"] = {
   d_cal: "Sugerencia para el calendario",
   d_appt: "Cita",
   d_appt_pending: "Esperando tu respuesta",
+  ap_time_unconfirmed: "Quien llamó no confirmó esta hora; compruébala con esa persona antes de responder",
   d_appt_booked: "Reservada en la llamada",
   d_appt_confirmed: "Aceptada",
   d_appt_declined: "Rechazada",
@@ -6813,6 +6819,7 @@ I18N["fr"] = {
   d_cal: "Suggestion d'agenda",
   d_appt: "Rendez-vous",
   d_appt_pending: "En attente de votre réponse",
+  ap_time_unconfirmed: "Le correspondant n'a pas confirmé cette heure ; vérifiez-la avec lui avant de répondre",
   d_appt_booked: "Pris pendant l'appel",
   d_appt_confirmed: "Accepté",
   d_appt_declined: "Refusé",
@@ -7729,6 +7736,7 @@ I18N["de"] = {
   d_cal: "Kalendervorschlag",
   d_appt: "Termin",
   d_appt_pending: "Wartet auf dich",
+  ap_time_unconfirmed: "Der Anrufer hat diese Uhrzeit nicht bestätigt; kläre sie mit ihm, bevor du antwortest",
   d_appt_booked: "Im Gespräch eingetragen",
   d_appt_confirmed: "Zugesagt",
   d_appt_declined: "Abgesagt",
@@ -8645,6 +8653,7 @@ I18N["pt"] = {
   d_cal: "Sugestão para a agenda",
   d_appt: "Compromisso",
   d_appt_pending: "Aguardando você",
+  ap_time_unconfirmed: "Quem ligou não confirmou este horário; confirme com a pessoa antes de responder",
   d_appt_booked: "Marcado na ligação",
   d_appt_confirmed: "Aceito",
   d_appt_declined: "Recusado",
@@ -11952,6 +11961,7 @@ function apptBlock(callId, ap, named) {
     h("span", { class: "tag " + (st === "declined" ? "bad" : st === "pending" ? "warn" : "ok"), text: t("d_appt_" + st) })));
   // An Accept the calendar did not take (the agent's own words): it still waits.
   if (st === "pending" && cur.write_error) box.append(h("p", { class: "note" }, icon("alert", "sm"), h("span", { text: cur.write_error })));
+  if (st === "pending" && cur.time_unconfirmed) box.append(h("p", { class: "note" }, icon("alert", "sm"), h("span", { text: t("ap_time_unconfirmed") })));
   if (st === "pending" && tk) box.append(apptActions(tk, busy));
   if (st !== "pending" && tk) box.append(apptDone(tk, cur, st, busy));
   box.append(...apptStatus(tk, busy));
@@ -12013,6 +12023,8 @@ function renderAppts() {
         h("div", { class: "appt-sub" }, h("a", { href: "#call=" + encodeURIComponent(tk.call_id), text: t("ap_open_call") })),
         // An Accept the calendar did not take: it still waits, press again.
         st === "pending" && a.write_error ? h("p", { class: "note" }, icon("alert", "sm"), h("span", { text: a.write_error })) : null,
+        // Kept without the caller's yes to the time read back: check it with them first.
+        st === "pending" && a.time_unconfirmed ? h("p", { class: "note" }, icon("alert", "sm"), h("span", { text: t("ap_time_unconfirmed") })) : null,
         st === "pending" ? apptActions(tk, busy) : apptDone(tk, a, st, busy),
         ...apptStatus(tk, busy)),
       st === "pending" ? null : h("button", {
