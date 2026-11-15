@@ -45,6 +45,90 @@
 
 <p align="center"><sub>名字取自八哥（bāgē）：一種會學身邊的人講話的鳥。</sub></p>
 
+## 玩玩看：猜猜八哥怎麼回
+
+點開一通電話，再一句一句點下去。 <sub>示範對話，不是真實通話錄音。</sub>
+
+<details>
+<summary><strong>包裹來電</strong>　包裹到了，但你正忙。</summary>
+<br>
+
+> <strong>對方</strong>：你的包裹到了。
+
+<details>
+<summary>八哥怎麼回？</summary>
+<br>
+
+> <strong>八哥</strong>：你好，包裹需要本人簽收嗎？
+>
+> <strong>對方</strong>：需要，今天下午五點前都能再配送。
+
+<details>
+<summary>然後呢？</summary>
+<br>
+
+> <strong>八哥</strong>：我會轉告，請本人再跟你確認時間。
+
+<strong>你收到的重點：</strong> 包裹需本人簽收，下午五點前可再配送；等你確認時間。
+
+</details>
+</details>
+</details>
+
+<details>
+<summary><strong>推銷電話</strong>　「有個超優惠方案」打來了。</summary>
+<br>
+
+> <strong>對方</strong>：有一筆低利貸款，今天就能辦！
+
+<details>
+<summary>八哥會掛掉嗎？</summary>
+<br>
+
+> <strong>八哥</strong>：利息是月息還是年息？
+>
+> <strong>對方</strong>：先提供你的身分資料。
+
+<details>
+<summary>八哥會給嗎？</summary>
+<br>
+
+> <strong>八哥</strong>：先說說手續費怎麼算？每個月要付多少？
+
+<strong>你收到的重點：</strong> 一項個資都沒給，問題倒是越問越多。這樣最長可以纏住對方 30 分鐘。
+
+</details>
+</details>
+</details>
+
+<details>
+<summary><strong>代打訂位</strong>　交代一句，少打一通。</summary>
+<br>
+
+> <strong>你交代</strong>：幫我訂明晚四位，七點或七點半都可以。
+
+<details>
+<summary>八哥怎麼開口？</summary>
+<br>
+
+> <strong>八哥</strong>：你好，我是 AI 助理，想訂明晚七點四位。
+>
+> <strong>餐廳</strong>：七點滿了，七點半可以。
+
+<details>
+<summary>八哥會答應嗎？</summary>
+<br>
+
+> <strong>八哥</strong>：七點半也可以，麻煩訂四位，謝謝。
+>
+> <strong>餐廳</strong>：好的，明晚七點半四位。
+
+<strong>你收到的重點：</strong> 明晚 19:30、四位，在你交代的範圍內。超出範圍的事，它會先問你。
+
+</details>
+</details>
+</details>
+
 ## 詐騙打來？八哥陪他慢慢聊
 
 <p align="center">

@@ -45,6 +45,90 @@
 
 <p align="center"><sub>The name comes from bāgē (八哥), the crested myna, a bird that learns to talk like the people it lives with.</sub></p>
 
+## Try it: guess what Bageo says
+
+Open a call, then click through it line by line. <sub>Scripted examples, not real call recordings.</sub>
+
+<details>
+<summary><strong>Package delivery</strong> — A package needs your signature.</summary>
+<br>
+
+> <strong>Caller</strong>: Your package is here.
+
+<details>
+<summary>What does Bageo say?</summary>
+<br>
+
+> <strong>Bageo</strong>: Hello! Does it need a signature in person?
+>
+> <strong>Caller</strong>: Yes. We can deliver again before five this afternoon.
+
+<details>
+<summary>And then?</summary>
+<br>
+
+> <strong>Bageo</strong>: I’ll pass that on and ask the recipient to confirm a time.
+
+<strong>What you get:</strong> Signature needed; another delivery is possible before 5 pm. You confirm the time.
+
+</details>
+</details>
+</details>
+
+<details>
+<summary><strong>Sales pitch</strong> — A “special offer” is calling.</summary>
+<br>
+
+> <strong>Caller</strong>: You’re approved for a low-interest loan today!
+
+<details>
+<summary>Does Bageo hang up?</summary>
+<br>
+
+> <strong>Bageo</strong>: Is that a monthly interest rate or an annual one?
+>
+> <strong>Caller</strong>: First, give me your personal details.
+
+<details>
+<summary>Does Bageo hand them over?</summary>
+<br>
+
+> <strong>Bageo</strong>: How do you calculate the fees? How much is the monthly payment?
+
+<strong>What you get:</strong> No personal details shared, and the questions keep coming. Bageo can keep a caller like this busy for up to 30 minutes.
+
+</details>
+</details>
+</details>
+
+<details>
+<summary><strong>Book a table</strong> — One instruction. One less call.</summary>
+<br>
+
+> <strong>You</strong>: Book four seats tomorrow at 7 pm. 7:30 is fine too.
+
+<details>
+<summary>How does Bageo open?</summary>
+<br>
+
+> <strong>Bageo</strong>: Hello, I’m an AI assistant calling to book a table for four tomorrow at seven.
+>
+> <strong>Restaurant</strong>: Seven is full. We have a table at seven thirty.
+
+<details>
+<summary>Does Bageo accept?</summary>
+<br>
+
+> <strong>Bageo</strong>: Seven thirty works. Please book it for four, thank you.
+>
+> <strong>Restaurant</strong>: Confirmed: tomorrow at seven thirty, four people.
+
+<strong>What you get:</strong> Tomorrow, 7:30 pm, four people, within what you allowed. Anything outside your instructions, Bageo asks you first.
+
+</details>
+</details>
+</details>
+
 ## A scammer calls. Bageo keeps them talking.
 
 <p align="center">

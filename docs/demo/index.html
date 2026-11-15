@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Try Bageo in nine languages: an interactive, scripted demo of answering calls, handling sales calls, and making bookings.">
+<meta name="color-scheme" content="light"><title>Bageo — Play a call</title>
+<link rel="icon" href="bageo.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css?v=2">
+<script src="data.js?v=2" defer></script><script src="demo.js?v=2" defer></script>
+</head>
+<body>
+<header class="masthead"><a class="brand" href="https://github.com/h4lo-void/bageo-call" aria-label="Bageo on GitHub"><img src="bageo.svg" alt="" width="42" height="42">bageo<span class="brand-dot">.</span></a><span class="demo-tag" data-copy="simulation"></span><a class="source-link" href="https://github.com/h4lo-void/bageo-call" data-copy="source"></a></header>
+<main>
+<section class="playground" aria-labelledby="headline">
+<div class="story">
+<p class="eyebrow" data-copy="tagline"></p><h1 id="headline"><span id="hero-first"></span><br><span class="highlight" id="hero-second"></span></h1><p class="intro" data-copy="intro"></p>
+<div class="scene-label"><span class="step-number">01</span><h2 data-copy="choose"></h2></div>
+<div id="scenes" class="scenes" role="group"></div>
+<div class="scene-copy"><h3 id="scene-title"></h3><p id="scene-description"></p><blockquote id="task" hidden></blockquote></div>
+<div class="scene-label"><span class="step-number">02</span><h2 id="language-label" data-copy="language"></h2></div>
+<div class="languages" id="languages" role="group" aria-labelledby="language-label"></div>
+</div>
+<div class="phone-wrap">
+<div class="hello-sticker" id="greeting" aria-hidden="true"></div>
+<section class="phone" aria-labelledby="phone-title">
+<div class="phone-top"><span class="signal" aria-hidden="true">▂▄▆</span><span>BAGEO</span><span class="battery" aria-hidden="true"></span></div>
+<div class="call-head"><span class="status-light" aria-hidden="true"></span><span id="phone-title" role="status"></span><span class="call-count" id="count" aria-hidden="true">00 / 04</span></div>
+<div class="screen" id="screen">
+<div class="ring-screen" id="ring-screen"><div class="bird-orbit"><img src="bageo.svg" width="146" height="146" alt="Bageo"></div><h2 id="caller-title"></h2><p id="caller-teaser"></p><div class="ring-waves" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+<ol class="messages" id="messages" aria-live="polite" aria-relevant="additions" aria-atomic="false"></ol>
+<div class="result" id="result" hidden><span class="check" aria-hidden="true">✓</span><h3 data-copy="summary"></h3><p id="outcome"></p></div>
+</div>
+<div class="call-controls"><div class="progress" id="progress" role="progressbar" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0"><span></span></div><button class="primary" id="advance" type="button"><span id="advance-icon" aria-hidden="true">↗</span><span id="advance-text"></span></button><div class="secondary-controls"><button class="text-button" id="autoplay" type="button" aria-pressed="false"></button><button class="text-button" id="reset" type="button" data-copy="reset"></button></div></div>
+</section>
+<p class="phone-caption" data-copy="simulation"></p>
+</div>
+</section>
+<section class="takeaway" aria-label="Get Bageo"><div><strong data-copy="requirements"></strong><p data-copy="notice"></p></div><a class="get-started" id="setup" href="https://github.com/h4lo-void/bageo-call#quick-start"><span data-copy="setup"></span><span aria-hidden="true">↗</span></a></section>
+</main>
+<footer><span>Bageo · Open source · AGPL-3.0-only</span><a href="https://github.com/h4lo-void/bageo-call/blob/main/LICENSE">License</a></footer>
+<noscript><p class="no-js">This interactive demo needs JavaScript. Read the <a href="https://github.com/h4lo-void/bageo-call">Bageo README</a> instead.</p></noscript>
+</body></html>
