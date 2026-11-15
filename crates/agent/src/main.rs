@@ -30,6 +30,7 @@ mod calls;
 mod calls_http;
 mod config;
 mod contacts;
+mod control;
 mod debug_probe;
 mod deepseek;
 mod dtmf;
@@ -99,7 +100,7 @@ use notify::{
 use services::{chat, ensure_ollama_model, synthesize_piper, transcribe_pcm16, ChatMessage};
 use settings_store::{RuntimeSettings, SettingsStore};
 use tasks::{draft_from_voicemail, ReplyMethod, TaskIntent, TaskPatch, TaskStore};
-use tg_inbound::{send_task_card, TgPoller};
+use tg_inbound::send_task_card;
 use trtc_bridge::TrtcBridge;
 use vad::{EnergyVad, RemoteVoiceGate};
 
@@ -1208,8 +1209,15 @@ async fn main() -> Result<()> {
         );
     }
 
-    // Telegram inbound poller: confirm/ignore task cards (re-reads settings each loop).
-    // No spam-blocklist dependency. Backs off on poll errors (avoids tight CPU/API spin).
+    // Chat commands (crate::control): the chats that may operate the agent;
+    // the AI's questions during an errand call go there too.
+    let remote = control::Controller::new(calls_state.clone());
+    errand_store.set_question_hook(remote.question_hook());
+    // Telegram: every bot that serves a chat is long-polled
+    // (control::telegram). The to-do card buttons of the environment's bot
+    // come here and are handled as before. No spam-blocklist dependency.
+    let (card_tx, mut card_rx) = tokio::sync::mpsc::unbounded_channel::<tg_inbound::TgAction>();
+    control::telegram::spawn(remote.clone(), settings_store.clone(), http.clone(), card_tx);
     {
         let settings_store = settings_store.clone();
         let task_store = task_store.clone();
@@ -1218,24 +1226,13 @@ async fn main() -> Result<()> {
         let calls = state.calls.clone();
         let base = state.settings.clone();
         tokio::spawn(async move {
-            let mut poller = TgPoller::new();
-            loop {
-                let rt = settings_store.snapshot();
-                let token = rt.telegram_bot_token.trim().to_string();
-                let chat = rt.telegram_chat_id.trim().to_string();
-                if token.is_empty() || chat.is_empty() {
-                    tokio::time::sleep(Duration::from_secs(10)).await;
-                    continue;
+            while let Some(first) = card_rx.recv().await {
+                let token = settings_store.snapshot().telegram_bot_token.trim().to_string();
+                // Presses that came in one poll are handled in turn, as before.
+                let mut actions = vec![first];
+                while let Ok(more) = card_rx.try_recv() {
+                    actions.push(more);
                 }
-                poller.set_allowed_chat_id(&chat);
-                let actions = match poller.poll_once(&http, &token).await {
-                    Ok(a) => a,
-                    Err(e) => {
-                        warn!("telegram poll failed: {e:#}");
-                        tokio::time::sleep(Duration::from_secs(5)).await;
-                        continue;
-                    }
-                };
                 for action in actions {
                     let rt = settings_store.snapshot();
                     // Appointments: ✅ / ❌ on their card. On its own task — a text

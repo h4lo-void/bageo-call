@@ -292,6 +292,20 @@ pub struct RuntimeSettings {
     /// in person). Each errand may pick its own.
     #[serde(default = "default_errand_identity")]
     pub errand_identity: String,
+    /// Chat commands from the environment's Telegram bot, in its chat
+    /// (TELEGRAM_CHAT_ID; [crate::control]). Off by default.
+    #[serde(default)]
+    pub telegram_control: bool,
+    /// Telegram user ids that may give commands there; empty = anyone in that chat.
+    #[serde(default)]
+    pub telegram_control_users: Vec<String>,
+    /// AI calls one chat may start per hour (0 = none; at most 30).
+    #[serde(default = "default_control_errands_per_hour")]
+    pub control_errands_per_hour: u32,
+    /// Messages one chat may send per minute; past it the agent stops
+    /// answering that chat for the rest of the minute (1–120).
+    #[serde(default = "default_control_commands_per_minute")]
+    pub control_commands_per_minute: u32,
     /// Names speech-to-text keeps getting wrong, one `wrong=right` per entry
     /// (`黃先生=王先生`): applied to transcripts and summaries.
     #[serde(default)]
@@ -374,6 +388,34 @@ fn default_appointment_mode() -> String {
 
 fn default_errand_identity() -> String {
     "assistant".to_string()
+}
+
+fn default_control_errands_per_hour() -> u32 {
+    5
+}
+
+fn default_control_commands_per_minute() -> u32 {
+    20
+}
+
+/// Who may give chat commands: platform user ids (letters, digits and
+/// _ @ . : + -), separated by commas, spaces or lines; at most 20, each once.
+pub fn sanitize_sender_ids(list: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for id in list.iter().flat_map(|s| s.split([',', ' ', '\n', ';'])) {
+        let id = id.trim();
+        let ok = !id.is_empty()
+            && id.chars().count() <= 64
+            && id.chars().all(|c| c.is_ascii_alphanumeric() || "_@.:+-".contains(c));
+        if !ok || out.iter().any(|o| o == id) {
+            continue;
+        }
+        out.push(id.to_string());
+        if out.len() == 20 {
+            break;
+        }
+    }
+    out
 }
 
 /// Setting `errand_identity`: `owner`, else `assistant`.
@@ -584,6 +626,10 @@ impl RuntimeSettings {
             appointment_sms: env_bool("APPOINTMENT_SMS", false),
             appointment_reply: crate::appointments::sanitize_reply_setting(&env_or("APPOINTMENT_REPLY", "auto")),
             errand_identity: sanitize_errand_identity(&env_or("ERRAND_IDENTITY", "assistant")),
+            telegram_control: env_bool("TELEGRAM_CONTROL", false),
+            telegram_control_users: sanitize_sender_ids(&[env_or("TELEGRAM_CONTROL_USERS", "")]),
+            control_errands_per_hour: env_parse("CONTROL_ERRANDS_PER_HOUR", default_control_errands_per_hour()).min(30),
+            control_commands_per_minute: env_parse("CONTROL_COMMANDS_PER_MINUTE", default_control_commands_per_minute()).clamp(1, 120),
             name_corrections: split_list(&env_or("NAME_CORRECTIONS", "")),
             device_labels: std::collections::BTreeMap::new(),
             calls_data_dir: base.calls_data_dir.clone(),
@@ -810,6 +856,7 @@ impl RuntimeSettings {
             calendar_app,
             appointment_reply,
             errand_identity,
+            telegram_control_users,
         );
         macro_rules! set_copy {
             ($($f:ident),+ $(,)?) => {$(
@@ -818,6 +865,9 @@ impl RuntimeSettings {
         }
         set_copy!(
             ai_live_enabled,
+            telegram_control,
+            control_errands_per_hour,
+            control_commands_per_minute,
             call_notify,
             shaming_enabled,
             spam_ai_filter_enabled,
@@ -1214,6 +1264,14 @@ struct Overrides {
     appointment_reply: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     errand_identity: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    telegram_control: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    telegram_control_users: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    control_errands_per_hour: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    control_commands_per_minute: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     name_corrections: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1731,6 +1789,19 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     p_string(patch, "errand_identity", &mut ov.errand_identity);
     if let Some(v) = ov.errand_identity.take() {
         ov.errand_identity = Some(sanitize_errand_identity(&v));
+    }
+    p_bool(patch, "telegram_control", &mut ov.telegram_control);
+    p_list(patch, "telegram_control_users", &mut ov.telegram_control_users);
+    if let Some(v) = ov.telegram_control_users.take() {
+        ov.telegram_control_users = Some(sanitize_sender_ids(&v));
+    }
+    p_u32(patch, "control_errands_per_hour", &mut ov.control_errands_per_hour);
+    if let Some(v) = ov.control_errands_per_hour.take() {
+        ov.control_errands_per_hour = Some(v.min(30));
+    }
+    p_u32(patch, "control_commands_per_minute", &mut ov.control_commands_per_minute);
+    if let Some(v) = ov.control_commands_per_minute.take() {
+        ov.control_commands_per_minute = Some(v.clamp(1, 120));
     }
     p_list(patch, "name_corrections", &mut ov.name_corrections);
     if let Some(map) = patch.get("device_labels").and_then(|v| v.as_object()) {

@@ -256,6 +256,9 @@ For the appointment card with buttons, give the same bot through
 `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` as well; you will not get each
 message twice.
 
+To check calls, have the AI call someone or decide to-dos from this chat, see
+[Chat commands](CHAT_COMMANDS.md) (off until you switch it on for the chat).
+
 ### Discord
 
 Channel settings → *Integrations → Webhooks → New Webhook → Copy Webhook URL*.

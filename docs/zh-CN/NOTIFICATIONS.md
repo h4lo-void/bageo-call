@@ -177,6 +177,8 @@ AI 在你来不及回答的问题上先答应了的话，结果会是“要你�
 
 想收到带按钮的预约卡片，请把同一个 Bot 也用 `TELEGRAM_BOT_TOKEN` 和 `TELEGRAM_CHAT_ID` 指定；同一条消息不会收到两次。
 
+想在这个聊天室查通话记录、让 AI 代打或处理待办，见[在聊天室操作](CHAT_COMMANDS.md)（要在聊天室各自打开才会生效）。
+
 ### Discord
 
 频道设置 →“整合 → Webhook → 新 Webhook → 复制 Webhook 网址”。

@@ -308,6 +308,8 @@ audio{width:100%;height:42px;margin-top:10px;display:block}
 .chan-foot .res{font-size:.87rem;flex:1 1 12rem;min-width:0}
 .chan-foot .res.ok{color:var(--ok)}
 .chan-foot .res.err{color:var(--bad)}
+.chan-ctl{margin-top:12px}
+.chan-ctl .field{margin-top:8px}
 .addrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .addrow select{width:auto;flex:1 1 14rem;max-width:22rem}
 .savebar{position:fixed;left:50%;bottom:20px;transform:translate(-50%,180%);visibility:hidden;transition:transform .2s,visibility .2s;z-index:45;display:flex;gap:10px;align-items:center;padding:10px 10px 10px 18px;border-radius:14px;background:var(--text);color:var(--bg);box-shadow:0 10px 30px rgba(0,0,0,.25);max-width:calc(100vw - 24px);font-weight:600}
@@ -1001,6 +1003,18 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
               <button type="button" class="btn" id="btnChanAdd"><svg class="i sm"><use href="#i-plus"/></svg><span data-i18n="n_add"></span></button>
             </div>
           </div>
+          <div class="field" id="ctlField"><div class="lbl" data-i18n="rc_title"></div>
+            <p class="help" style="margin-top:0" data-i18n="rc_desc"></p>
+            <label class="sw" id="tgEnvCtl" hidden><input type="checkbox" data-k="telegram_control" data-t="bool" /><span><b data-i18n="rc_env"></b><small data-i18n="rc_env_h"></small></span></label>
+            <div class="two">
+              <div class="field"><label for="f-control_errands_per_hour" data-i18n="rc_errands"></label>
+                <div class="inline"><input type="number" id="f-control_errands_per_hour" data-k="control_errands_per_hour" data-t="int" min="0" max="30" step="1" inputmode="numeric" /></div>
+                <div class="help" data-i18n="rc_errands_h"></div></div>
+              <div class="field"><label for="f-control_commands_per_minute" data-i18n="rc_msgs"></label>
+                <div class="inline"><input type="number" id="f-control_commands_per_minute" data-k="control_commands_per_minute" data-t="int" min="1" max="120" step="1" inputmode="numeric" /></div>
+                <div class="help" data-i18n="rc_msgs_h"></div></div>
+            </div>
+          </div>
           <div class="field"><label for="f-public_url" data-i18n="f_public_url"></label>
             <input type="url" id="f-public_url" data-k="public_url" data-t="text" spellcheck="false" placeholder="http://192.168.1.20:8787" />
             <div class="help" data-i18n="f_public_url_h"></div>
@@ -1667,6 +1681,19 @@ I18N["en"] = {
   n_name: "Name",
   n_name_ph: "e.g. Family group",
   n_enabled: "Enabled",
+  n_ctl: "Take commands from this chat",
+  n_ctl_h: "You can then check calls, have the AI call someone and decide to-dos from here (send /help). Only this chat (the Chat ID above) gets answers; calls and changes wait for your OK.",
+  n_ctl_users: "Who may give commands",
+  n_ctl_users_ph: "Telegram user IDs, e.g. 123456789",
+  n_ctl_users_h: "Empty = anyone in this chat. For a group, list your own user ID (@userinfobot tells you).",
+  rc_title: "Commands from chat",
+  rc_desc: "Switch it on per channel above. Anything from another chat or sender gets no answer and is logged.",
+  rc_env: "Take commands in the Telegram chat set by environment variables",
+  rc_env_h: "The bot and chat of TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID. TELEGRAM_CONTROL_USERS limits who may give commands.",
+  rc_errands: "AI calls per chat per hour",
+  rc_errands_h: "0 = calls can only be started on the web console (at most 30).",
+  rc_msgs: "Messages per chat per minute",
+  rc_msgs_h: "Past this the agent stops answering that chat for the rest of the minute.",
   n_delete: "Delete this channel",
   n_test: "Send test",
   n_testing: "Sending…",
@@ -2554,6 +2581,19 @@ I18N["zh-TW"] = {
   n_name: "名稱",
   n_name_ph: "例如：家人群組",
   n_enabled: "啟用",
+  n_ctl: "允許在這個聊天室下指令",
+  n_ctl_h: "開啟後可以在這裡查通話紀錄、叫 AI 代打電話、處理待辦（傳 /help 看指令）。只有這個聊天室（上面的 Chat ID）會收到回覆；撥電話和變更設定都會先問你確認。",
+  n_ctl_users: "可以下指令的人",
+  n_ctl_users_ph: "Telegram 使用者 ID，例如 123456789",
+  n_ctl_users_h: "留空 = 這個聊天室裡的人都可以。群組請填你自己的使用者 ID（可以問 @userinfobot）。",
+  rc_title: "在聊天室操作",
+  rc_desc: "在上面每個管道各自開啟。其他聊天室或其他人傳來的訊息一律不回覆，只記在 log。",
+  rc_env: "允許在環境變數設定的 Telegram 聊天室下指令",
+  rc_env_h: "也就是 TELEGRAM_BOT_TOKEN／TELEGRAM_CHAT_ID 的機器人與聊天室。要限定可以下指令的人，請設 TELEGRAM_CONTROL_USERS。",
+  rc_errands: "每個聊天室每小時最多代打幾通",
+  rc_errands_h: "0 = 只能在網頁控制台叫 AI 代打（最多 30）。",
+  rc_msgs: "每個聊天室每分鐘最多幾則訊息",
+  rc_msgs_h: "超過後，這一分鐘內不再回覆那個聊天室。",
   n_delete: "刪除這個管道",
   n_test: "傳送測試",
   n_testing: "傳送中…",
@@ -3441,6 +3481,19 @@ I18N["zh-CN"] = {
   n_name: "名称",
   n_name_ph: "例如：家人群",
   n_enabled: "启用",
+  n_ctl: "允许在这个聊天室下指令",
+  n_ctl_h: "开启后可以在这里查通话记录、让 AI 代打电话、处理待办（发 /help 看指令）。只有这个聊天室（上面的 Chat ID）会收到回复；拨电话和更改设置都会先问你确认。",
+  n_ctl_users: "可以下指令的人",
+  n_ctl_users_ph: "Telegram 用户 ID，例如 123456789",
+  n_ctl_users_h: "留空 = 这个聊天室里的人都可以。群组请填你自己的用户 ID（可以问 @userinfobot）。",
+  rc_title: "在聊天室操作",
+  rc_desc: "在上面每个渠道各自开启。其他聊天室或其他人发来的消息一律不回复，只记在 log。",
+  rc_env: "允许在环境变量设置的 Telegram 聊天室下指令",
+  rc_env_h: "也就是 TELEGRAM_BOT_TOKEN／TELEGRAM_CHAT_ID 的机器人和聊天室。要限定可以下指令的人，请设 TELEGRAM_CONTROL_USERS。",
+  rc_errands: "每个聊天室每小时最多代打几通",
+  rc_errands_h: "0 = 只能在网页控制台让 AI 代打（最多 30）。",
+  rc_msgs: "每个聊天室每分钟最多几条消息",
+  rc_msgs_h: "超过后，这一分钟内不再回复那个聊天室。",
   n_delete: "删除这个渠道",
   n_test: "发送测试",
   n_testing: "发送中…",
@@ -4328,6 +4381,19 @@ I18N["ja"] = {
   n_name: "名前",
   n_name_ph: "例：家族グループ",
   n_enabled: "有効",
+  n_ctl: "このチャットからの操作を許可",
+  n_ctl_h: "オンにすると、ここで通話履歴の確認、AI 代理電話、用件の判断ができます（/help でコマンド一覧）。返信するのはこのチャット（上の Chat ID）だけで、発信や設定の変更はあなたの確認を待ちます。",
+  n_ctl_users: "操作できる人",
+  n_ctl_users_ph: "Telegram のユーザー ID（例：123456789）",
+  n_ctl_users_h: "空欄 = このチャットの全員。グループでは自分のユーザー ID を入れてください（@userinfobot で確認できます）。",
+  rc_title: "チャットからの操作",
+  rc_desc: "上の各チャネルごとにオンにします。ほかのチャットやほかの人からのメッセージには返信せず、ログに残すだけです。",
+  rc_env: "環境変数で設定した Telegram チャットからの操作を許可",
+  rc_env_h: "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID のボットとチャットです。操作できる人を絞るには TELEGRAM_CONTROL_USERS を設定します。",
+  rc_errands: "チャットごとの 1 時間あたりの AI 代理電話の上限",
+  rc_errands_h: "0 = Web コンソールからだけ頼めます（最大 30）。",
+  rc_msgs: "チャットごとの 1 分あたりのメッセージ上限",
+  rc_msgs_h: "超えると、その 1 分間はそのチャットに返信しません。",
   n_delete: "この通知先を削除",
   n_test: "テスト送信",
   n_testing: "送信中…",
@@ -5215,6 +5281,19 @@ I18N["ko"] = {
   n_name: "이름",
   n_name_ph: "예: 가족 단톡방",
   n_enabled: "사용",
+  n_ctl: "이 채팅에서 명령 허용",
+  n_ctl_h: "켜면 여기서 통화 기록 확인, AI 대리 전화, 할 일 처리를 할 수 있습니다(/help 로 명령어 확인). 이 채팅(위의 Chat ID)에만 답하며, 전화 걸기와 설정 변경은 확인을 받은 뒤에 합니다.",
+  n_ctl_users: "명령할 수 있는 사람",
+  n_ctl_users_ph: "Telegram 사용자 ID, 예: 123456789",
+  n_ctl_users_h: "비워 두면 이 채팅의 누구나. 그룹이라면 본인 사용자 ID를 넣으세요(@userinfobot 에서 확인).",
+  rc_title: "채팅에서 조작",
+  rc_desc: "위의 채널마다 각각 켭니다. 다른 채팅이나 다른 사람의 메시지에는 답하지 않고 로그에만 남깁니다.",
+  rc_env: "환경 변수로 설정한 Telegram 채팅에서 명령 허용",
+  rc_env_h: "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID 의 봇과 채팅입니다. 명령할 수 있는 사람을 제한하려면 TELEGRAM_CONTROL_USERS 를 설정하세요.",
+  rc_errands: "채팅별 시간당 AI 대리 전화 수",
+  rc_errands_h: "0 = 웹 콘솔에서만 요청할 수 있음(최대 30).",
+  rc_msgs: "채팅별 분당 메시지 수",
+  rc_msgs_h: "넘으면 그 1분 동안 그 채팅에 답하지 않습니다.",
   n_delete: "이 채널 삭제",
   n_test: "테스트 보내기",
   n_testing: "보내는 중…",
@@ -6102,6 +6181,19 @@ I18N["es"] = {
   n_name: "Nombre",
   n_name_ph: "p. ej. Grupo de la familia",
   n_enabled: "Activado",
+  n_ctl: "Aceptar comandos de este chat",
+  n_ctl_h: "Así puedes ver llamadas, pedir a la IA que llame y decidir pendientes desde aquí (envía /help). Solo responde a este chat (el Chat ID de arriba); las llamadas y los cambios esperan tu confirmación.",
+  n_ctl_users: "Quién puede dar comandos",
+  n_ctl_users_ph: "ID de usuario de Telegram, p. ej. 123456789",
+  n_ctl_users_h: "Vacío = cualquiera en este chat. En un grupo, pon tu propio ID de usuario (te lo dice @userinfobot).",
+  rc_title: "Comandos desde el chat",
+  rc_desc: "Actívalo en cada canal de arriba. Lo que llegue de otro chat u otra persona no recibe respuesta y queda en el registro.",
+  rc_env: "Aceptar comandos en el chat de Telegram de las variables de entorno",
+  rc_env_h: "El bot y el chat de TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID. TELEGRAM_CONTROL_USERS limita quién puede dar comandos.",
+  rc_errands: "Llamadas de la IA por chat y hora",
+  rc_errands_h: "0 = solo desde la consola web (máximo 30).",
+  rc_msgs: "Mensajes por chat y minuto",
+  rc_msgs_h: "Por encima, el agente deja de responder a ese chat durante el resto del minuto.",
   n_delete: "Eliminar este canal",
   n_test: "Enviar prueba",
   n_testing: "Enviando…",
@@ -6989,6 +7081,19 @@ I18N["fr"] = {
   n_name: "Nom",
   n_name_ph: "ex. Groupe famille",
   n_enabled: "Activé",
+  n_ctl: "Accepter des commandes de ce chat",
+  n_ctl_h: "Tu peux alors consulter les appels, faire appeler l'IA et décider des tâches d'ici (envoie /help). Seul ce chat (le Chat ID ci-dessus) reçoit des réponses ; les appels et les changements attendent ton accord.",
+  n_ctl_users: "Qui peut donner des commandes",
+  n_ctl_users_ph: "ID d'utilisateur Telegram, p. ex. 123456789",
+  n_ctl_users_h: "Vide = tout le monde dans ce chat. Pour un groupe, mets ton propre ID (demande-le à @userinfobot).",
+  rc_title: "Commandes depuis le chat",
+  rc_desc: "À activer pour chaque canal ci-dessus. Ce qui vient d'un autre chat ou d'une autre personne ne reçoit aucune réponse et est journalisé.",
+  rc_env: "Accepter des commandes dans le chat Telegram des variables d'environnement",
+  rc_env_h: "Le bot et le chat de TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID. TELEGRAM_CONTROL_USERS limite qui peut donner des commandes.",
+  rc_errands: "Appels de l'IA par chat et par heure",
+  rc_errands_h: "0 = seulement depuis la console web (30 au plus).",
+  rc_msgs: "Messages par chat et par minute",
+  rc_msgs_h: "Au-delà, l'agent ne répond plus à ce chat jusqu'à la fin de la minute.",
   n_delete: "Supprimer ce canal",
   n_test: "Envoyer un test",
   n_testing: "Envoi…",
@@ -7876,6 +7981,19 @@ I18N["de"] = {
   n_name: "Name",
   n_name_ph: "z. B. Familiengruppe",
   n_enabled: "Aktiv",
+  n_ctl: "Befehle aus diesem Chat annehmen",
+  n_ctl_h: "Dann kannst du hier Anrufe ansehen, die KI anrufen lassen und Aufgaben entscheiden (schick /help). Nur dieser Chat (die Chat-ID oben) bekommt Antworten; Anrufe und Änderungen warten auf dein OK.",
+  n_ctl_users: "Wer Befehle geben darf",
+  n_ctl_users_ph: "Telegram-Nutzer-IDs, z. B. 123456789",
+  n_ctl_users_h: "Leer = alle in diesem Chat. In einer Gruppe trag deine eigene Nutzer-ID ein (@userinfobot nennt sie dir).",
+  rc_title: "Befehle aus dem Chat",
+  rc_desc: "Für jeden Kanal oben einzeln einschalten. Nachrichten aus anderen Chats oder von anderen Personen bekommen keine Antwort und werden protokolliert.",
+  rc_env: "Befehle im Telegram-Chat aus den Umgebungsvariablen annehmen",
+  rc_env_h: "Bot und Chat von TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID. TELEGRAM_CONTROL_USERS begrenzt, wer Befehle geben darf.",
+  rc_errands: "KI-Anrufe pro Chat und Stunde",
+  rc_errands_h: "0 = nur über die Web-Konsole (höchstens 30).",
+  rc_msgs: "Nachrichten pro Chat und Minute",
+  rc_msgs_h: "Darüber antwortet der Agent diesem Chat bis zum Ende der Minute nicht mehr.",
   n_delete: "Diesen Kanal löschen",
   n_test: "Test senden",
   n_testing: "Wird gesendet …",
@@ -8763,6 +8881,19 @@ I18N["pt"] = {
   n_name: "Nome",
   n_name_ph: "ex.: Grupo da família",
   n_enabled: "Ativo",
+  n_ctl: "Aceitar comandos deste chat",
+  n_ctl_h: "Assim você vê ligações, pede para a IA ligar e decide pendências daqui (envie /help). Só este chat (o Chat ID acima) recebe respostas; ligações e mudanças esperam sua confirmação.",
+  n_ctl_users: "Quem pode dar comandos",
+  n_ctl_users_ph: "IDs de usuário do Telegram, por ex. 123456789",
+  n_ctl_users_h: "Em branco = qualquer pessoa neste chat. Num grupo, coloque seu próprio ID (o @userinfobot informa).",
+  rc_title: "Comandos pelo chat",
+  rc_desc: "Ative em cada canal acima. O que vier de outro chat ou de outra pessoa não recebe resposta e fica no log.",
+  rc_env: "Aceitar comandos no chat do Telegram das variáveis de ambiente",
+  rc_env_h: "O bot e o chat de TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID. TELEGRAM_CONTROL_USERS limita quem pode dar comandos.",
+  rc_errands: "Ligações da IA por chat por hora",
+  rc_errands_h: "0 = só pelo console web (no máximo 30).",
+  rc_msgs: "Mensagens por chat por minuto",
+  rc_msgs_h: "Acima disso, o agente para de responder a esse chat até o fim do minuto.",
   n_delete: "Excluir este canal",
   n_test: "Enviar teste",
   n_testing: "Enviando…",
@@ -10750,11 +10881,28 @@ function chansFromSettings() {
     key: ++chanSeq, id: c.id || "", kind: c.kind || "", name: c.name || "", enabled: c.enabled !== false,
     url: "", token: "", target: c.target || "",
     url_hint: c.url_hint || "", token_hint: c.token_hint || "", url_set: !!c.url_set, token_set: !!c.token_set,
+    control: !!c.control, control_users: Array.isArray(c.control_users) ? c.control_users.map(String) : [],
   }));
 }
-const chanPayload = (c) => ({ id: c.id, kind: c.kind, name: c.name.trim(), enabled: !!c.enabled, url: c.url.trim(), token: c.token.trim(), target: c.target.trim() });
+const chanPayload = (c) => ({ id: c.id, kind: c.kind, name: c.name.trim(), enabled: !!c.enabled, url: c.url.trim(), token: c.token.trim(), target: c.target.trim(), control: !!c.control, control_users: (c.control_users || []).slice() });
 const chanValue = () => chans.map(chanPayload);
-const chanOrig = (v) => (Array.isArray(v) ? v : []).map((c) => ({ id: c.id || "", kind: c.kind || "", name: String(c.name || "").trim(), enabled: c.enabled !== false, url: "", token: "", target: String(c.target || "").trim() }));
+const chanOrig = (v) => (Array.isArray(v) ? v : []).map((c) => ({ id: c.id || "", kind: c.kind || "", name: String(c.name || "").trim(), enabled: c.enabled !== false, url: "", token: "", target: String(c.target || "").trim(), control: !!c.control, control_users: Array.isArray(c.control_users) ? c.control_users.map(String) : [] }));
+// Channel kinds the agent takes commands from (crate::control::COMMAND_KINDS).
+const CMD_KINDS = new Set(["telegram"]);
+const splitIds = (s) => s.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
+// "Take commands from this chat" and who may give them, for kinds that can.
+function chanControl(c) {
+  if (!CMD_KINDS.has(c.kind)) return null;
+  const id = `ch-${c.key}-users`;
+  const users = h("input", { type: "text", id, value: (c.control_users || []).join(", "), placeholder: t("n_ctl_users_ph"), autocomplete: "off",
+    attr: { spellcheck: "false", maxlength: "600" }, oninput: () => { c.control_users = splitIds(users.value); updateDirty(); } });
+  const who = h("div", { class: "field" }, h("label", { for: id }, t("n_ctl_users")), users, h("div", { class: "help", text: t("n_ctl_users_h") }));
+  who.hidden = !c.control;
+  const box = h("input", { type: "checkbox", checked: !!c.control, onchange: () => { c.control = box.checked; who.hidden = !c.control; updateDirty(); } });
+  return h("div", { class: "chan-ctl" },
+    h("label", { class: "sw" }, box, h("span", {}, h("b", { text: t("n_ctl") }), h("small", { text: t("n_ctl_h") }))),
+    who);
+}
 function chanInput(c, f, label, secret) {
   const id = `ch-${c.key}-${f}`;
   const stored = !!c[f + "_set"];
@@ -10814,6 +10962,8 @@ function chanCard(c) {
     fields,
     hint !== c.kind ? h("p", { class: "help", text: hint }) : null,
     h("div", { class: "chan-foot" }, testBtn, res));
+  const ctl = chanControl(c);
+  if (ctl) fields.after(ctl);
   return card;
 }
 function renderChannels() {
@@ -10824,7 +10974,7 @@ function renderChannels() {
 $("btnChanAdd").addEventListener("click", () => {
   const kind = $("chanKind").value;
   if (!kind) { $("chanKind").focus(); return; }
-  chans.push({ key: ++chanSeq, id: "", kind, name: "", enabled: true, url: "", token: "", target: "", url_hint: "", token_hint: "", url_set: false, token_set: false });
+  chans.push({ key: ++chanSeq, id: "", kind, name: "", enabled: true, url: "", token: "", target: "", url_hint: "", token_hint: "", url_set: false, token_set: false, control: false, control_users: [] });
   $("chanKind").value = "";
   renderChannels();
   updateDirty();
@@ -10909,6 +11059,8 @@ function populate() {
   renderSetup();
   renderNote();
   renderErrandForm();
+  // The environment's bot can take commands only when it is set up.
+  $("tgEnvCtl").hidden = !(S.telegram_bot_token_set && String(S.telegram_chat_id || "").trim());
 }
 // Everything on the Settings view whose text is made in code (called on a
 // language switch too; it must not lose what is typed but not saved).

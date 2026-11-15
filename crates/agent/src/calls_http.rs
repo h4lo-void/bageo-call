@@ -180,7 +180,7 @@ impl ListQuery {
 }
 
 /// call_id -> searchable text (transcript + summary; multi-task calls are merged).
-async fn transcript_index(task_store: &TaskStore) -> HashMap<String, String> {
+pub(crate) async fn transcript_index(task_store: &TaskStore) -> HashMap<String, String> {
     // limit=0 -> all tasks (TaskStore newest-first).
     let tasks = task_store.list(0).await;
     let mut map: HashMap<String, String> = HashMap::new();

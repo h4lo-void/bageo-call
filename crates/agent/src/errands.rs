@@ -865,6 +865,24 @@ fn words(lang: Lang) -> Words {
     }
 }
 
+/// Where an errand stands, in the owner's words: its result, else its state
+/// (the chats that take commands list errands with it, [crate::control]).
+pub fn owner_status(e: &Errand) -> String {
+    let w = words(locale::notify_lang());
+    if let Some(r) = e.result.as_ref() {
+        let label = outcome_label(&w, &r.outcome);
+        let summary = one_line(&r.summary, 160);
+        return if summary.is_empty() { label.to_string() } else { format!("{label}{}{summary}", locale::notify_kv_sep()) };
+    }
+    match e.status.as_str() {
+        QUEUED => w.queued.to_string(),
+        DIALING => w.dialing.to_string(),
+        ON_CALL => w.picked_up.to_string(),
+        CANCELLED => w.cancelled.to_string(),
+        _ => locale::fill(code_reason(&w, &e.call_code), "").trim_end_matches(['：', ':', ' ']).to_string(),
+    }
+}
+
 fn outcome_label(w: &Words, outcome: &str) -> &'static str {
     OUTCOMES
         .iter()
@@ -1065,6 +1083,8 @@ pub struct ErrandStore {
     live: Mutex<HashMap<String, Live>>,
     writing: tokio::sync::Mutex<()>,
     pub sims: Arc<SimBook>,
+    /// Where the AI's questions to the owner also go ([ErrandStore::set_question_hook]).
+    question_hook: Mutex<Option<QuestionHook>>,
 }
 
 impl ErrandStore {
@@ -1094,6 +1114,7 @@ impl ErrandStore {
             live: Mutex::new(HashMap::new()),
             writing: tokio::sync::Mutex::new(()),
             sims,
+            question_hook: Mutex::new(None),
         });
         if stopped > 0 && store.writable {
             warn!("errands under way when the agent stopped: {stopped}, marked failed (agent_restarted)");
@@ -1111,6 +1132,16 @@ impl ErrandStore {
 
     fn live(&self) -> MutexGuard<'_, HashMap<String, Live>> {
         self.live.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Where the AI's questions to the owner also go: the chats that take
+    /// commands ([crate::control]). Set once at start-up.
+    pub fn set_question_hook(&self, hook: QuestionHook) {
+        *self.question_hook.lock().unwrap_or_else(|e| e.into_inner()) = Some(hook);
+    }
+
+    fn question_hook(&self) -> Option<QuestionHook> {
+        self.question_hook.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     pub fn get(&self, id: &str) -> Option<Errand> {
@@ -1285,6 +1316,24 @@ impl ErrandStore {
 
 // ---------------------------------------------------------------- the call
 
+/// A question the AI on an errand call asks the owner, as it goes to the
+/// chats that take commands ([crate::control]).
+#[derive(Debug, Clone)]
+pub struct OwnerQuestion {
+    pub errand_id: String,
+    pub question_id: String,
+    /// Who is called: the name, else the number.
+    pub who: String,
+    pub text: String,
+    pub options: Vec<String>,
+    /// How long the AI waits for the answer.
+    pub wait: Duration,
+}
+
+/// Sends an [OwnerQuestion] on; true when it reached a chat: the owner can
+/// answer there, so the AI waits for the answer as when they watch the console.
+pub type QuestionHook = Arc<dyn Fn(&OwnerQuestion) -> bool + Send + Sync>;
+
 /// What an errand's Live session reports to, and takes from, the errand.
 pub struct CallHooks {
     store: Arc<ErrandStore>,
@@ -1408,13 +1457,26 @@ impl CallHooks {
             .unwrap_or_default();
         let w = words(locale::notify_lang());
         let asked_at = now_stamp();
+        // Read before the live lock: elsewhere the list lock is taken before it.
+        let who = self.store.get(&self.errand_id).map(|e| e.who().to_string()).unwrap_or_default();
+        let hook = self.store.question_hook();
         let (qid, rx) = {
             let mut all = self.store.live();
             let l = all.entry(self.errand_id.clone()).or_default();
             l.asks += 1;
             let qid = format!("q{}", l.asks);
             l.line("system", &locale::fill(w.asking, &question));
-            let rx = if l.watching() {
+            let pushed = hook.is_some_and(|h| {
+                h(&OwnerQuestion {
+                    errand_id: self.errand_id.clone(),
+                    question_id: qid.clone(),
+                    who: who.clone(),
+                    text: question.clone(),
+                    options: options.clone(),
+                    wait,
+                })
+            });
+            let rx = if l.watching() || pushed {
                 let (tx, rx) = oneshot::channel();
                 let expires = chrono::Local::now() + chrono::Duration::from_std(wait).unwrap_or_else(|_| chrono::Duration::seconds(40));
                 l.pending = Some(Pending {
@@ -2575,20 +2637,21 @@ fn json_body(body: &[u8]) -> Option<Value> {
 }
 
 /// What an action's [`Env`] borrows: the settings now and the phones now.
-struct Now {
-    rt: Arc<RuntimeSettings>,
-    eff: Settings,
-    phones: Vec<PhoneView>,
+/// Also the chat commands' ([crate::control]).
+pub struct Now {
+    pub rt: Arc<RuntimeSettings>,
+    pub eff: Settings,
+    pub phones: Vec<PhoneView>,
 }
 
-async fn now_of(state: &CallsState) -> Now {
+pub async fn now_of(state: &CallsState) -> Now {
     let rt = state.settings_store.snapshot();
     let eff = rt.effective(&state.settings);
     let phones = phone_view(&state.control, &state.phones, &state.store, &state.errands.sims).await;
     Now { rt, eff, phones }
 }
 
-fn env_of<'a>(state: &'a CallsState, now: &'a Now) -> Env<'a> {
+pub fn env_of<'a>(state: &'a CallsState, now: &'a Now) -> Env<'a> {
     Env {
         store: &state.errands,
         rt: &now.rt,
@@ -2814,6 +2877,43 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.root);
         }
+    }
+
+    #[tokio::test]
+    async fn a_question_sent_to_a_command_chat_waits_for_the_answer_from_there() {
+        let rig = Rig::new();
+        let hooks = rig.on_call("e-chat-1");
+        let asked: Arc<Mutex<Vec<OwnerQuestion>>> = Arc::new(Mutex::new(Vec::new()));
+        let log = asked.clone();
+        rig.store.set_question_hook(Arc::new(move |q: &OwnerQuestion| {
+            log.lock().unwrap().push(q.clone());
+            true
+        }));
+        // Nobody watches the web console: only the chat can answer.
+        let ask = tokio::spawn({
+            let hooks = hooks.clone();
+            async move {
+                hooks
+                    .ask_within(&json!({"question": "七點還是八點？", "options": ["七點", "八點"]}), Duration::from_secs(5))
+                    .await
+            }
+        });
+        let mut question = None;
+        for _ in 0..200 {
+            if let Some(q) = asked.lock().unwrap().first().cloned() {
+                question = Some(q);
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        let q = question.expect("the chats were given the question");
+        assert_eq!((q.who.as_str(), q.options.len(), q.wait), ("0223456799", 2, Duration::from_secs(5)));
+        assert_eq!(say(&rig.store, "e-chat-1", "七點", Some(&q.question_id)), Ok(()));
+        let answer = ask.await.unwrap();
+        assert_eq!(answer["answer"], "七點");
+        assert_eq!(answer["owner_available"], true);
+        // The web console (or another chat) answering later is too late.
+        assert_eq!(say(&rig.store, "e-chat-1", "八點", Some(&q.question_id)), Err("question_closed"));
     }
 
     #[test]

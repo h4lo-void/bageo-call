@@ -44,6 +44,13 @@ pub struct Channel {
     pub token: String,
     #[serde(default)]
     pub target: String,
+    /// The owner may operate the agent from this chat ([crate::control]);
+    /// kinds in control::COMMAND_KINDS only. Off by default.
+    #[serde(default)]
+    pub control: bool,
+    /// Who may give commands there (platform user ids); empty = anyone in the chat.
+    #[serde(default)]
+    pub control_users: Vec<String>,
 }
 
 fn yes() -> bool {
@@ -124,6 +131,8 @@ impl Channel {
             "token_hint": mask_token(&self.token),
             "token_set": !self.token.trim().is_empty(),
             "target": self.target,
+            "control": self.control,
+            "control_users": self.control_users,
         })
     }
 }
@@ -190,6 +199,9 @@ pub fn merge_channels(stored: &[Channel], incoming: Vec<Channel>) -> Vec<Channel
         }
         c.name = c.name.trim().chars().take(60).collect();
         c.target = c.target.trim().to_string();
+        // Commands only where an adapter exists; who may give them, as ids.
+        c.control = c.control && crate::control::COMMAND_KINDS.contains(&c.kind.as_str());
+        c.control_users = crate::settings_store::sanitize_sender_ids(&c.control_users);
         out.push(c);
     }
     out
@@ -1353,6 +1365,7 @@ fn env_telegram(settings: &Settings) -> Option<Channel> {
         url: String::new(),
         token: token.to_string(),
         target: chat.to_string(),
+        ..Channel::default()
     })
 }
 
@@ -1479,6 +1492,7 @@ mod tests {
             url: url.into(),
             token: token.into(),
             target: target.into(),
+            ..Channel::default()
         }
     }
 

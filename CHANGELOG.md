@@ -10,6 +10,9 @@
   [Notifications](docs/en/NOTIFICATIONS.md).
 - **通知管道再加 16 種（共 32 種）。** Microsoft Teams（Workflows Webhook，送 Adaptive Card）、Google Chat、Rocket.Chat、Zulip、Webex、Nextcloud Talk、Synology Chat、Signal（透過 signal-cli-rest-api）、Pushbullet、PushPlus、PushDeer、WxPusher、Chanify、Home Assistant 通知服務、IFTTT Webhooks，以及任何支援 TLS 的 SMTP 郵件伺服器（STARTTLS 或 465 埠）。依各服務的公開文件實作並有單元測試，還沒有在真實帳號上試過。見[通知](docs/zh-TW/NOTIFICATIONS.md)。
 - **通知渠道再加 16 种（共 32 种）。** Microsoft Teams（Workflows Webhook，发送 Adaptive Card）、Google Chat、Rocket.Chat、Zulip、Webex、Nextcloud Talk、Synology Chat、Signal（通过 signal-cli-rest-api）、Pushbullet、PushPlus、PushDeer、WxPusher、Chanify、Home Assistant 通知服务、IFTTT Webhooks，以及任意支持 TLS 的 SMTP 邮件服务器（STARTTLS 或 465 端口）。按各服务的公开文档实现并有单元测试，还没有在真实账号上试过。见[通知](docs/zh-CN/NOTIFICATIONS.md)。
+- **Chat commands (Telegram).** From the chat your notifications go to, look up calls (`/calls`, `/call`), have the AI call someone (`/errand` or plain words), decide to-dos, answer the AI's questions during its call and switch a phone's mode. Off until switched on per chat; calls, mode switches and to-do decisions wait for your OK; other chats get no answer. See [docs/en/CHAT_COMMANDS.md](docs/en/CHAT_COMMANDS.md).
+- **在聊天室操作（Telegram）。** 在收通知的聊天室就能查通話紀錄（`/calls`、`/call`）、叫 AI 代打（`/errand` 或直接打字）、處理待辦、回答 AI 通話中的問題、切換手機模式。要在每個聊天室各自打開；撥電話、切換模式、處理待辦都會先問你確認；其他聊天室一律不回覆。見 [docs/zh-TW/CHAT_COMMANDS.md](docs/zh-TW/CHAT_COMMANDS.md)。
+- **在聊天室操作（Telegram）。** 在接收通知的聊天室就能查通话记录（`/calls`、`/call`）、让 AI 代打（`/errand` 或直接打字）、处理待办、回答 AI 通话中的问题、切换手机模式。要在每个聊天室各自打开；拨电话、切换模式、处理待办都会先问你确认；其他聊天室一律不回复。见 [docs/zh-CN/CHAT_COMMANDS.md](docs/zh-CN/CHAT_COMMANDS.md)。
 
 # Bageo v1.0.0
 
