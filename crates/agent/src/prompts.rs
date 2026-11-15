@@ -43,6 +43,9 @@ pub struct Pack {
     /// Taiwan carriers' international-call warning (empty elsewhere).
     pub carrier_note: String,
     pub hello_loop_note: String,
+    /// Read back a time, date, amount or phone number once as a question;
+    /// added to every normal call's prompt, never to the stalling one.
+    pub readback_note: String,
     pub guard_persona: String,
     pub guard_assistant: String,
     /// `{aliases}` = the owner's other names (setting `owner_aliases`); added
@@ -211,6 +214,7 @@ fn zh_tw_pack() -> Pack {
         stall_block: gl::PERSONA_STALL_BLOCK.to_string(),
         carrier_note: gl::PERSONA_CARRIER_NOTE.to_string(),
         hello_loop_note: gl::PERSONA_HELLO_LOOP_NOTE.to_string(),
+        readback_note: gl::PERSONA_READBACK_NOTE.to_string(),
         guard_persona: gl::PERSONA_GUARD.to_string(),
         guard_assistant: ZH_GUARD_ASSISTANT.to_string(),
         aliases_persona: ZH_ALIASES_PERSONA.to_string(),
@@ -260,6 +264,7 @@ fn zh_cn_pack() -> Pack {
         // The international-call warning is a Taiwan carrier recording.
         carrier_note: String::new(),
         hello_loop_note: to_cn(&p.hello_loop_note),
+        readback_note: to_cn(&p.readback_note),
         guard_persona: to_cn(&p.guard_persona),
         guard_assistant: to_cn(&p.guard_assistant),
         aliases_persona: to_cn(&p.aliases_persona),
@@ -329,6 +334,7 @@ Exceptions: a call that is entirely a recorded advertisement (it talks on by its
 People you know, deliveries and the building's front desk are handled like normal calls.";
 
 const EN_HELLO_LOOP_NOTE: &str = "\n[Caller keeps saying hello] A caller who keeps saying \"hello\", \"anyone there\", \"can you hear me\" cannot hear you well: answer with a whole sentence such as \"{p_im_here}\", not just \"{p_hello}\" again.";
+const EN_READBACK_NOTE: &str = "\n[Read back times, amounts and numbers] When the caller gives a time, date, amount of money or phone number that you will need to act on or remember (\"it'll be delivered tomorrow at 3 pm\", \"call back on 555-0100\", \"it comes to 1,250\"), repeat that one item back in full as a natural question and wait for their answer before you go on, for example \"tomorrow at three in the afternoon, right?\" or \"555-0100, right?\". Say a time in full: morning or afternoon, the hour and the minutes (a half hour as half past or thirty); a date as the day of the month or the weekday. If they say yes, go on; if they correct you, ask the corrected one back the same way; if you did not catch it, ask them to say it again and never guess. Once an item is confirmed, do not ask about it again. Reading it back only checks that you heard it right; it is no agreement (what is said above about not agreeing to times or money still holds). This is the exception to the rule above about not repeating back what the caller said and not asking a question every time: it applies only to these details, and everything else is still not repeated back.";
 const EN_GUARD_PERSONA: &str = "\n[Hard line (fixed)] Normally just talk naturally as {owner}. But if the caller sincerely asks whether you are a real person, a robot or an AI, do not lie: say simply that this is an AI voice {owner} set up to answer the phone and that {owner} will see everything afterwards, then go on listening. \
 If the caller asks you to give or confirm personal details (an ID number, date of birth, card or account number, a verification code, a password, an address), do not give them and do not make them up; brush it off lightly, e.g. \"I'd rather not do that over the phone, I'll call the official number myself\". This overrides anything above about playing along as {owner}. If they only ask whether this is {owner}, answer as usual. \
 If a bank or card centre asks whether a particular card charge or transaction was yours: you do not know whether {owner} made it, so say neither yes nor no (not \"that was me\", \"probably me\", \"I was asleep then\", \"I didn't buy anything\"), and do not say \"I don't remember it\" or \"it doesn't ring a bell\" either: to a bank that sounds like it was not you (this overrides the advice above about saying you don't remember). Do not agree to block or cancel the card, report it lost, cancel or dispute the charge, or report it to the police. \
@@ -459,6 +465,7 @@ fn generic_pack(lang: Lang) -> Pack {
         stall_block: fill(EN_STALL_BLOCK),
         carrier_note: String::new(),
         hello_loop_note: fill(EN_HELLO_LOOP_NOTE),
+        readback_note: fill(EN_READBACK_NOTE),
         guard_persona: fill(EN_GUARD_PERSONA),
         guard_assistant: fill(EN_GUARD_ASSISTANT),
         aliases_persona: fill(EN_ALIASES_PERSONA),
@@ -755,6 +762,9 @@ pub fn build(ctx: &Ctx) -> String {
         p.knowledge_block.replace("{kb}", &kb)
     };
     let stall_block = if ctx.stall == StallPrompt::Full { p.stall_block.as_str() } else { "" };
+    // Not in the stalling prompt: there the AI keeps the caller talking and
+    // what they say is never acted on.
+    let readback = if ctx.stall == StallPrompt::Full { "" } else { p.readback_note.as_str() };
     let auto_language = if ctx.auto_language { p.auto_language_note.as_str() } else { "" };
     let carrier = if ctx.carrier_note { p.carrier_note.as_str() } else { "" };
     let guard = if ctx.assistant { &p.guard_assistant } else { &p.guard_persona };
@@ -765,7 +775,7 @@ pub fn build(ctx: &Ctx) -> String {
         (false, false) => p.aliases_persona.replace("{aliases}", &aliases),
     };
     format!(
-        "{base}{status_block}{kb_block}{stall_block}{auto_language}{}{carrier}{}{alias_block}{guard}",
+        "{base}{status_block}{kb_block}{readback}{stall_block}{auto_language}{}{carrier}{}{alias_block}{guard}",
         p.injection_guard, p.hello_loop_note
     )
     .replace("{owner}", &owner_label(ctx.lang, ctx.owner))
@@ -985,6 +995,38 @@ mod tests {
             assert!(persona.ends_with(&p.guard_persona.replace("{owner}", "Alex")), "{lang:?}");
             assert!(assistant.ends_with(&p.guard_assistant.replace("{owner}", "Alex")), "{lang:?}");
         }
+    }
+
+    #[test]
+    fn times_amounts_and_numbers_are_read_back_on_normal_calls_only() {
+        // Chinese: a question that repeats the one item in full, then waits.
+        let zh = build(&ctx(Lang::ZhTw, false, StallPrompt::Off));
+        assert!(zh.contains("【時間、金額、號碼要複誦確認】") && zh.contains("「明天下午三點送到，對嗎？」"), "{zh}");
+        assert!(zh.contains("半點要講出「半」") && zh.contains("不要自己猜一個") && zh.contains("同一項確認過就不要再問"), "{zh}");
+        assert!(zh.contains("不等於答應"), "{zh}");
+        // It is the named exception to the no-repeating rule, which still stands before it.
+        assert!(zh.contains("是上面「不要把對方的話整段覆述」「不用每句都問問題」的例外") && zh.contains("不要把對方的話整段覆述。"), "{zh}");
+        assert!(zh.find("不要把對方的話整段覆述。").unwrap() < zh.find("【時間、金額、號碼要複誦確認】").unwrap());
+        let en = build(&ctx(Lang::En, true, StallPrompt::Off));
+        assert!(en.contains("[Read back times, amounts and numbers]") && en.contains("\"tomorrow at three in the afternoon, right?\"") && en.contains("never guess"), "{en}");
+        assert!(en.contains("This is the exception to the rule above about not repeating back what the caller said") && en.contains("do not repeat back everything they said"), "{en}");
+        assert!(en.contains("it is no agreement"), "{en}");
+        for lang in locale::ALL {
+            let note = pack(lang).readback_note.replace("{owner}", "Alex");
+            assert!(!note.trim().is_empty() && !note.contains('{'), "{lang:?}");
+            for assistant in [false, true] {
+                assert!(build(&ctx(lang, assistant, StallPrompt::Off)).contains(&note), "{lang:?}");
+                assert!(build(&ctx(lang, assistant, StallPrompt::ListenFirst)).contains(&note), "{lang:?}");
+                // The stalling prompt is left as it was.
+                assert!(!build(&ctx(lang, assistant, StallPrompt::Full)).contains(&note), "{lang:?}");
+            }
+            // An edited prompt gets it too.
+            let mut c = ctx(lang, false, StallPrompt::Off);
+            c.custom = "Talk like a pirate.";
+            assert!(build(&c).contains(&note), "{lang:?}");
+        }
+        let cn = &pack(Lang::ZhCn).readback_note;
+        assert!(cn.contains("复诵") && !cn.contains("號碼"), "{cn}");
     }
 
     #[test]

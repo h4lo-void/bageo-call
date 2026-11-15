@@ -25,6 +25,17 @@
   are judged with your mark. See [Settings](docs/en/SETTINGS.md#sales--scam-calls).
 - **繁體中文：詐騙與推銷辨識更準，支援 19 種語言。** 推銷與詐騙的說法改成資料庫（42 種話術、19 種語言的關鍵字），不再寫死在程式裡，也可以在 `config/scam_db.local.json` 加自己的字眼和號碼。沒踩到已知字眼的電話也會檢查，新話術也抓得到；模型不確定時等對方下一句再看；複審失敗時，除非對方要驗證碼、操作 ATM、轉安全帳戶這類只有詐騙才會要的東西，不再一律當詐騙；誤判的來電會放回正常應對。通話頁會顯示判斷結果，可以標「是詐騙」「是推銷」「不是」，這個號碼之後打來會參考你的標記。
 - **简体中文：诈骗与推销识别更准，支持 19 种语言。** 推销与诈骗的说法改成数据库（42 种话术、19 种语言的关键词），不再写死在程序里，也可以在 `config/scam_db.local.json` 加自己的词和号码。没碰到已知词的电话也会检查，新话术也能抓到；模型不确定时等对方下一句再看；复审失败时，除非对方要验证码、操作 ATM、转安全账户这类只有诈骗才会要的东西，不再一律当诈骗；误判的来电会放回正常应对。通话页会显示判断结果，可以标“是诈骗”“是推销”“不是”，这个号码之后打来会参考你的标记。
+- **The AI asks times and dates back before it counts on them.** On AI errands
+  it reads every time, date, quantity, price, address, phone number or booking
+  name back as a question as soon as it comes up, and waits for a yes before
+  any thanks or goodbye; the result and the notification mark anything the
+  other side never clearly confirmed as ⚠️ *Not confirmed by the other side*.
+  An appointment request is recorded only after the caller said yes to the time
+  read back in full (`propose_appointment` gets `confirmed_by_caller`; without
+  it the AI is sent back once to ask). On normal calls the AI asks a time, date,
+  amount or phone number back once as a question. Stall Mode is unchanged.
+- **繁體中文：時間、日期先問清楚再算數。** AI 代打時，對方一講到時間、日期、數量、金額、地址、電話號碼或訂位名字，AI 馬上用問句複誦、等對方說對，確認前不道謝、不道別；對方沒有明確確認的項目，結果和通知會標 ⚠️「未經對方確認」。行程預約要等來電者對完整複誦的時間說對才記下（`propose_appointment` 新增 `confirmed_by_caller`，沒帶會退回一次要 AI 先問）。一般來電講到時間、日期、金額或電話號碼，AI 會用問句複誦一次。陪聊模式不變。
+- **简体中文：时间、日期先问清楚再算数。** AI 代打时，对方一说到时间、日期、数量、金额、地址、电话号码或订位名字，AI 马上用问句复诵、等对方说对，确认前不道谢、不道别；对方没有明确确认的项目，结果和通知会标 ⚠️“未经对方确认”。日程预约要等来电者对完整复诵的时间说对才记下（`propose_appointment` 新增 `confirmed_by_caller`，没带会退回一次让 AI 先问）。普通来电说到时间、日期、金额或电话号码，AI 会用问句复诵一次。陪聊模式不变。
 
 # Bageo v1.0.0
 

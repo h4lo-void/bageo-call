@@ -436,6 +436,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
 .er-say .btn{flex:0 0 auto}
 .er-tell-l{display:block;font-weight:600;font-size:.88rem;margin-top:12px}
 .er-sum{margin-top:8px;white-space:pre-wrap}
+.er-unconf{color:var(--warn)}
 .er-res .kv dd{white-space:pre-wrap}
 .er-res .cal{margin-top:10px}
 .er-opts{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
@@ -2098,6 +2099,7 @@ I18N["en"] = {
   er_writing: "Writing up the result…",
   er_details: "Details",
   er_follow_up: "Next step",
+  er_unconfirmed: "Not confirmed by the other side",
   er_asked: "The AI asked you",
   er_ans_absent: "You weren't there, no answer",
   er_ans_timeout: "No answer in time",
@@ -3013,6 +3015,7 @@ I18N["zh-TW"] = {
   er_writing: "正在整理結果…",
   er_details: "細節",
   er_follow_up: "接下來",
+  er_unconfirmed: "未經對方確認",
   er_asked: "AI 問過你",
   er_ans_absent: "你不在、沒回答",
   er_ans_timeout: "時間到，沒回答",
@@ -3928,6 +3931,7 @@ I18N["zh-CN"] = {
   er_writing: "正在整理结果…",
   er_details: "细节",
   er_follow_up: "接下来",
+  er_unconfirmed: "未经对方确认",
   er_asked: "AI 问过你",
   er_ans_absent: "你不在、没回答",
   er_ans_timeout: "时间到，没回答",
@@ -4843,6 +4847,7 @@ I18N["ja"] = {
   er_writing: "結果をまとめています…",
   er_details: "詳細",
   er_follow_up: "次にすること",
+  er_unconfirmed: "相手の確認なし",
   er_asked: "AI が聞いたこと",
   er_ans_absent: "不在のため回答なし",
   er_ans_timeout: "時間内に回答なし",
@@ -5758,6 +5763,7 @@ I18N["ko"] = {
   er_writing: "결과를 정리하는 중…",
   er_details: "세부 내용",
   er_follow_up: "다음 할 일",
+  er_unconfirmed: "상대방 확인 안 됨",
   er_asked: "AI가 물어본 것",
   er_ans_absent: "자리에 없어 답하지 않음",
   er_ans_timeout: "시간 안에 답하지 않음",
@@ -6673,6 +6679,7 @@ I18N["es"] = {
   er_writing: "Redactando el resultado…",
   er_details: "Detalles",
   er_follow_up: "Siguiente paso",
+  er_unconfirmed: "Sin confirmar por la otra parte",
   er_asked: "La IA te preguntó",
   er_ans_absent: "No estabas, sin respuesta",
   er_ans_timeout: "Sin respuesta a tiempo",
@@ -7588,6 +7595,7 @@ I18N["fr"] = {
   er_writing: "Rédaction du résultat…",
   er_details: "Détails",
   er_follow_up: "Étape suivante",
+  er_unconfirmed: "Non confirmé par l'interlocuteur",
   er_asked: "L'IA vous a demandé",
   er_ans_absent: "Vous n'étiez pas là, pas de réponse",
   er_ans_timeout: "Pas de réponse à temps",
@@ -8503,6 +8511,7 @@ I18N["de"] = {
   er_writing: "Ergebnis wird zusammengefasst…",
   er_details: "Details",
   er_follow_up: "Nächster Schritt",
+  er_unconfirmed: "Nicht vom Gegenüber bestätigt",
   er_asked: "Die KI hat dich gefragt",
   er_ans_absent: "Du warst nicht da, keine Antwort",
   er_ans_timeout: "Nicht rechtzeitig beantwortet",
@@ -9418,6 +9427,7 @@ I18N["pt"] = {
   er_writing: "Escrevendo o resultado…",
   er_details: "Detalhes",
   er_follow_up: "Próximo passo",
+  er_unconfirmed: "Não confirmado pela outra parte",
   er_asked: "A IA perguntou a você",
   er_ans_absent: "Você não estava, sem resposta",
   er_ans_timeout: "Sem resposta a tempo",
@@ -12622,6 +12632,10 @@ function erResult(e) {
   const kv = h("dl", { class: "kv" });
   if (r.details) kv.append(h("dt", { text: t("er_details") }), h("dd", { text: String(r.details) }));
   if (r.follow_up) kv.append(h("dt", { text: t("er_follow_up") }), h("dd", { text: String(r.follow_up) }));
+  // Details the other side never confirmed when the AI read them back (a
+  // misheard time): flagged so the owner checks them before relying on them.
+  const unconf = (Array.isArray(r.unconfirmed) ? r.unconfirmed : []).map((x) => String(x || "").trim()).filter(Boolean);
+  if (unconf.length) kv.append(h("dt", { text: t("er_unconfirmed") }), h("dd", { class: "er-unconf", text: "⚠️ " + unconf.join(" / ") }));
   if (kv.childElementCount) sec.append(kv);
   const ev = r.event;
   if (ev && ev.start && parseStamp(ev.start)) {

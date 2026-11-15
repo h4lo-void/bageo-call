@@ -249,6 +249,10 @@ pub const PROPOSE: &str = "propose_appointment";
 /// How long a proposal waits for the one the model sent just before it in the
 /// same message ([`ToolCall::after`]).
 const AFTER_WAIT: Duration = Duration::from_secs(3);
+/// Proposals of one call sent back for want of the caller's yes to the time
+/// read back to them ([`confirm_first`]): each time once, and no more than
+/// this many in all, so a model that never sets the flag cannot loop.
+const READ_BACK_REFUSALS_MAX: usize = 2;
 /// The longest one proposal can run (waiting for the one sent before it and
 /// for its turn), plus a margin.
 pub const TOOL_WAIT: Duration = Duration::from_secs(24);
@@ -547,6 +551,9 @@ struct Book {
     /// Proposals of this call that are over (kept, refused or superseded), for
     /// the one sent after them ([`ToolCall::after`]).
     finished: std::collections::HashSet<u64>,
+    /// Start times sent back once because the caller had not confirmed them
+    /// read back ([`CallAppointments::read_back_first`]).
+    read_back_asked: std::collections::HashSet<String>,
 }
 
 /// One appointment of the call.
@@ -766,6 +773,15 @@ impl CallAppointments {
         self.book().finished.contains(&seq)
     }
 
+    /// A proposal for `start` came without the caller's yes to it read back:
+    /// true the first time for that start (send it back), false after that or
+    /// once [`READ_BACK_REFUSALS_MAX`] were sent back (keep it rather than
+    /// lose the appointment to a model that never sets the flag).
+    fn read_back_first(&self, start: &str) -> bool {
+        let mut b = self.book();
+        b.read_back_asked.len() < READ_BACK_REFUSALS_MAX && b.read_back_asked.insert(start.to_string())
+    }
+
     /// Wait (up to `max`) until proposal `seq` of this call is over. False: it
     /// was not (it never came, or is still writing).
     async fn wait_finished(&self, seq: u64, max: Duration) -> bool {
@@ -861,7 +877,7 @@ pub fn tool_declarations(non_blocking: bool) -> Value {
             },
             {
                 "name": PROPOSE,
-                "description": "Record an appointment agreed with the caller. Answers {\"status\": \"pending_owner_confirmation\"} (not settled yet; tell_caller says what the caller is told) or {\"status\": \"superseded\"} (a later call of yours already changed it; say nothing). Call it again with replaces_previous true only when the two of you change the time agreed last; with replaces_previous false for another, separate appointment (both stand). A back-up time the caller mentions is not a change.",
+                "description": "Record an appointment agreed with the caller, only after you asked its date and time back to them as a question and they said yes. Answers {\"status\": \"pending_owner_confirmation\"} (not settled yet; tell_caller says what the caller is told), {\"status\": \"superseded\"} (a later call of yours already changed it; say nothing) or {\"error\": \"confirm_first\"} (not recorded: ask the time back first, as ask_caller says). Call it again with replaces_previous true only when the two of you change the time agreed last; with replaces_previous false for another, separate appointment (both stand). A back-up time the caller mentions is not a change.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
@@ -871,9 +887,10 @@ pub fn tool_declarations(non_blocking: bool) -> Value {
                         "period": { "type": "STRING", "description": PERIOD_HELP },
                         "title": { "type": "STRING", "description": "What it is about, a few words." },
                         "caller_name": { "type": "STRING", "description": "The caller's name, only when they said it. Leave it out otherwise: never a word like \"friend\" or \"caller\"." },
-                        "replaces_previous": { "type": "BOOLEAN", "description": "true: this changes the time of the appointment agreed last in this call (it replaces it). false: another, separate appointment (another matter or day; both stand). Left out: true." }
+                        "replaces_previous": { "type": "BOOLEAN", "description": "true: this changes the time of the appointment agreed last in this call (it replaces it). false: another, separate appointment (another matter or day; both stand). Left out: true." },
+                        "confirmed_by_caller": { "type": "BOOLEAN", "description": READ_BACK_HELP }
                     },
-                    "required": ["start", "title"]
+                    "required": ["start", "title", "confirmed_by_caller"]
                 }
             }
         ]
@@ -1122,6 +1139,12 @@ impl ApptSession {
         if self.book.is_discarded() {
             return pending;
         }
+        // The caller's yes to the time read back is what makes it theirs: a
+        // misheard hour otherwise goes to the owner as what they asked for.
+        if args.get("confirmed_by_caller").and_then(Value::as_bool) != Some(true) && self.book.read_back_first(&stamp(start)) {
+            info!("appointment proposal seq={seq} start={} sent back: not read back to the caller yet", stamp(start));
+            return confirm_first(locale::active().lang, start);
+        }
         let _running = self.book.start_proposal();
         // Tasks start in any order: one sent after another in the same message
         // lets that one go first (it cannot see it otherwise — "change its
@@ -1177,6 +1200,57 @@ fn bad_time(why: &str) -> Value {
     json!({ "error": why, "expected": "start as a future local time, YYYY-MM-DDTHH:MM" })
 }
 
+/// The answer to a proposal the caller has not confirmed read back: not
+/// recorded, and what to ask them, worded from the very time sent. Spoken
+/// (`WHEN_IDLE`, it has an `error`): the model asks, then calls again.
+fn confirm_first(lang: Lang, start: NaiveDateTime) -> Value {
+    json!({
+        "error": "confirm_first",
+        "ask_caller": format!(
+            "Not recorded yet. Ask the caller back, as a question in the language of the call, the full date and time you understood — month, day and weekday, morning or afternoon, hour and minutes — for example {}, and wait for their answer. After a clear yes, call propose_appointment again with confirmed_by_caller = true. If they correct it, ask the corrected time back the same way first. If you did not catch it, ask them to say it again; never guess. If you already asked it back and they clearly said yes, call again now with confirmed_by_caller = true and say nothing more about it.",
+            read_back_example(lang, start)
+        ),
+    })
+}
+
+/// A read-back question for `t`, quoted, in `lang` (Chinese) or else in
+/// English: month, day, weekday, part of the day, hour and minutes, a half
+/// hour said as 「半」 — the details a fast reply loses ("four thirty" heard
+/// as "four").
+fn read_back_example(lang: Lang, t: NaiveDateTime) -> String {
+    let hour12 = match t.hour() % 12 {
+        0 => 12,
+        h => h,
+    };
+    match lang {
+        Lang::ZhTw | Lang::ZhCn => {
+            let part = match t.hour() {
+                0..=4 => "凌晨",
+                5..=11 => "上午",
+                12 => "中午",
+                13..=17 => "下午",
+                _ => "晚上",
+            };
+            let day = ["一", "二", "三", "四", "五", "六", "日"][t.weekday().num_days_from_monday() as usize];
+            let minutes = match t.minute() {
+                0 => String::new(),
+                30 => "半".to_string(),
+                m => format!("{m}分"),
+            };
+            let (date, clock, ask) = if lang == Lang::ZhTw { ("號", "點", "對嗎") } else { ("号", "点", "对吗") };
+            format!("「是{}月{}{date}星期{day}{part}{hour12}{clock}{minutes}，{ask}？」", t.month(), t.day())
+        }
+        _ => format!(
+            "\"So that's {}, {} {}, at {hour12}:{:02} {}, right?\"",
+            t.format("%A"),
+            t.format("%B"),
+            t.day(),
+            t.minute(),
+            if t.hour() < 12 { "am" } else { "pm" }
+        ),
+    }
+}
+
 /// The weekday the model gave (`weekday`, optional) is not the start date's:
 /// it worked the date out wrong ("Wednesday" as the 19th, a Thursday). The
 /// answer names the date's real weekday so it corrects the date and calls
@@ -1210,6 +1284,9 @@ fn clean_text(v: Option<&Value>, max: usize) -> String {
 
 /// The `period` parameter of both functions.
 const PERIOD_HELP: &str = "The part of the day the caller named, when they named one: morning, afternoon, evening or night. Checked against the hour of start.";
+
+/// The `confirmed_by_caller` parameter of propose_appointment.
+const READ_BACK_HELP: &str = "true only when you asked this date and time back to the caller as a question, in full (month, day and weekday, morning or afternoon, hour and minutes), and they clearly said yes to it. Otherwise false: the time is not recorded and the answer is {\"error\": \"confirm_first\"}.";
 
 /// A part of the day the caller named ("tonight", 早上, 午後…), sent as
 /// `period` so a time on the wrong side of the clock is caught: "eight
@@ -1369,6 +1446,9 @@ pub fn prompt_block(
     // wording), by how the answer will reach the caller: a text, a call-back,
     // or — neither can — only "get back to you".
     let said = check_back_said(active, reply);
+    // The read-back example is tomorrow at half past three, so its weekday is
+    // right for the dates listed below (a fixed date would contradict them).
+    let example = read_back_example(active.lang, (now.date() + Span::days(1)).and_hms_opt(15, 30, 0).unwrap_or(now));
     let mut s = format!(
         "\n\n[Appointments — this part overrides anything above about not agreeing to plans or invitations for {owner}]\n"
     );
@@ -1407,7 +1487,7 @@ pub fn prompt_block(
     ));
     s.push_str("- Never make the caller wait on the line and never say you are looking something up right now, in any language (nothing like \"one moment\", \"hold on\", \"let me look\", \"ちょっと待って\", \"確認するから待って\", \"等一下\"): call the function silently and carry on with the conversation. Saying that you will check it after the call and get back to them is something else: that is exactly what you say below.\n");
     s.push_str(&format!(
-        "- You cannot see {owner}'s schedule on this call, so do not call check_availability, and you do not know whether {owner} is free: do not say it is free, that it should work or that it is settled. Once there is a day and a time, say {said} — in {language}, with the same meaning — then call propose_appointment. Only a vague time? Ask which day and what time first.\n"
+        "- You cannot see {owner}'s schedule on this call, so do not call check_availability, and you do not know whether {owner} is free: do not say it is free, that it should work or that it is settled. Once there is a day and a time, first ask it back as a question, in full — month, day and weekday, morning or afternoon, hour and minutes (a half hour as half past or thirty, never rounded) — for example {example}, and wait for the caller's answer. Only after a clear yes, say {said} — in {language}, with the same meaning — then call propose_appointment with confirmed_by_caller = true. If they correct it, ask the corrected time back the same way. A short yes is enough (\"yes\", \"right\", \"對\", \"嗯\"): go on and do not ask again. If you did not catch the time itself (they spoke too fast, the line broke up, the words made no sense), ask them to say it again; never guess. Ask a time back once: do not ask again about a time they already confirmed. Only a vague time? Ask which day and what time first.\n"
     ));
     match reply {
         Reply::Sms => {}
@@ -1422,6 +1502,7 @@ pub fn prompt_block(
     ));
     s.push_str("- {\"error\": \"weekday_mismatch\"}: the date you sent is another weekday (\"date_is\" says which). Take the right date from the list above and call again; say nothing about it to the caller.\n");
     s.push_str("- {\"error\": \"period_mismatch\"}: the hour you sent is not in the part of the day the caller named (\"hint\" says what to fix, e.g. 20:00 for eight in the evening). Correct start and call again; say nothing about it to the caller.\n");
+    s.push_str("- {\"error\": \"confirm_first\"}: you called before the caller said yes to the time asked back. If you have not asked it back yet, ask it now (\"ask_caller\" has the wording) and call again with confirmed_by_caller = true after their yes; if you did and they said yes, call again at once with confirmed_by_caller = true and say nothing more about it.\n");
     s.push_str("- After calling propose_appointment do not repeat what you have just told the caller: if you already said it, simply go on with the conversation.\n");
     s.push_str("- Never make an appointment with a sales, insurance, loan, investment or scam caller.");
     s
@@ -3225,7 +3306,7 @@ mod tests {
         ToolCall {
             id: "p".into(),
             name: PROPOSE.into(),
-            args: json!({"start": start, "end": end, "title": "看房"}),
+            args: json!({"start": start, "end": end, "title": "看房", "confirmed_by_caller": true}),
             seq: 0,
             after: 0,
         }
@@ -3443,7 +3524,7 @@ mod tests {
             .map(|f| f["name"].as_str().unwrap())
             .collect();
         assert_eq!(names, vec![CHECK, PROPOSE]);
-        assert_eq!(decl[0]["functionDeclarations"][1]["parameters"]["required"], json!(["start", "title"]));
+        assert_eq!(decl[0]["functionDeclarations"][1]["parameters"]["required"], json!(["start", "title", "confirmed_by_caller"]));
     }
 
     #[test]
@@ -3498,7 +3579,7 @@ mod tests {
         assert_eq!(r["date_is"], start.format("%A").to_string());
         assert_eq!(s.book.outcome(), None);
         let right = ToolCall {
-            args: json!({"start": stamp(start), "weekday": start.format("%A").to_string(), "title": "dinner"}),
+            args: json!({"start": stamp(start), "weekday": start.format("%A").to_string(), "title": "dinner", "confirmed_by_caller": true}),
             ..call
         };
         assert_eq!(s.run_tool(&right).await["status"], "pending_owner_confirmation");
@@ -3516,7 +3597,7 @@ mod tests {
         let propose = ToolCall {
             id: "3".into(),
             name: PROPOSE.into(),
-            args: json!({"start": start, "title": " 看房\n", "caller_name": "陳先生"}),
+            args: json!({"start": start, "title": " 看房\n", "caller_name": "陳先生", "confirmed_by_caller": true}),
             seq: 0,
             after: 0,
         };
@@ -3532,7 +3613,7 @@ mod tests {
         );
         // The last proposal counts.
         let later = (chrono::Local::now().naive_local() + Span::days(3)).format(STAMP).to_string();
-        let again = ToolCall { id: "4".into(), name: PROPOSE.into(), args: json!({"start": later, "title": "看房"}), seq: 0, after: 0 };
+        let again = ToolCall { id: "4".into(), name: PROPOSE.into(), args: json!({"start": later, "title": "看房", "confirmed_by_caller": true}), seq: 0, after: 0 };
         s.run_tool(&again).await;
         assert_eq!(s.book.outcome().unwrap().start, later);
         let other = ToolCall { id: "5".into(), name: "other".into(), args: json!({}), seq: 0, after: 0 };
@@ -3716,6 +3797,13 @@ mod tests {
         assert!(p.contains("A back-up time the caller offers") && p.contains("do not call it for that"));
         assert!(p.contains("weekday_mismatch"));
         assert!(p.contains("scam caller"));
+        // The time is asked back in full (tomorrow's date as the example) and
+        // confirmed before the check-back line and the proposal.
+        assert!(p.contains("first ask it back as a question, in full") && p.contains("for example 「是11月14號星期六下午3點半，對嗎？」"), "{p}");
+        assert!(p.contains("Only after a clear yes, say") && p.contains("then call propose_appointment with confirmed_by_caller = true"), "{p}");
+        assert!(p.find("first ask it back").unwrap() < p.find("Only after a clear yes, say").unwrap());
+        assert!(p.contains("ask the corrected time back the same way") && p.contains("never guess"), "{p}");
+        assert!(p.contains("do not ask again about a time they already confirmed") && p.contains("{\"error\": \"confirm_first\"}"), "{p}");
         // No calendar to look at: it never says the time is free.
         assert!(p.contains("do not call check_availability") && p.contains("do not say it is free"), "{p}");
         let none = prompt_block(Reply::None, &me, now, "+08:00");
@@ -3752,6 +3840,7 @@ mod tests {
         let en = locale::Active { lang: Lang::En, ..Default::default() };
         let p = prompt_block(Reply::Sms, &en, now, "+08:00");
         assert!(p.contains("say \"Let me check and I'll text you back later.\" — in English") && !p.contains("in Chinese"), "{p}");
+        assert!(p.contains("for example \"So that's Saturday, November 14, at 3:30 pm, right?\""), "{p}");
         assert_eq!(check_back_line(false, "Sam", Reply::Call), "I'll check with Sam and call you back later.");
         // The proposal's answer to the model carries the same line.
         let mut s = session(Mode::Confirm);
@@ -4270,8 +4359,120 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    fn propose_args(id: &str, args: Value, seq: u64) -> ToolCall {
+    /// A proposal the caller confirmed read back, unless `args` says otherwise.
+    fn propose_args(id: &str, mut args: Value, seq: u64) -> ToolCall {
+        if args.get("confirmed_by_caller").is_none() {
+            args["confirmed_by_caller"] = json!(true);
+        }
         ToolCall { id: id.into(), name: PROPOSE.into(), args, seq, after: 0 }
+    }
+
+    #[tokio::test]
+    async fn a_time_is_recorded_only_after_the_caller_confirmed_it_read_back() {
+        let s = session(Mode::Confirm);
+        let start = (chrono::Local::now().naive_local().date() + Span::days(2)).and_hms_opt(16, 30, 0).unwrap();
+        let call = |confirmed: Option<bool>| {
+            let mut args = json!({"start": stamp(start), "weekday": start.format("%A").to_string(), "period": "afternoon", "title": "取雞排"});
+            if let Some(c) = confirmed {
+                args["confirmed_by_caller"] = json!(c);
+            }
+            ToolCall { id: "r".into(), name: PROPOSE.into(), args, seq: 0, after: 0 }
+        };
+        // Left out: not recorded; the model is told to ask the time back and speaks.
+        let r = s.run_tool(&call(None)).await;
+        assert_eq!(r["error"], "confirm_first");
+        let ask = r["ask_caller"].as_str().unwrap();
+        assert!(ask.contains("month, day and weekday, morning or afternoon, hour and minutes") && ask.contains(&start.day().to_string()), "{ask}");
+        assert!(ask.contains("confirmed_by_caller = true") && ask.contains("never guess") && ask.contains("say nothing more about it"), "{ask}");
+        assert_eq!(s.book.outcome(), None);
+        assert!(!answer_is_silent(PROPOSE, &r));
+        assert_eq!(tool_response("r", PROPOSE, r)["toolResponse"]["functionResponses"][0]["response"]["scheduling"], "WHEN_IDLE");
+        // After the caller's yes: kept as usual.
+        assert_eq!(s.run_tool(&call(Some(true))).await["status"], "pending_owner_confirmation");
+        assert_eq!(s.book.outcome().unwrap().start, stamp(start));
+        // false is no confirmation either.
+        let s2 = session(Mode::Confirm);
+        assert_eq!(s2.run_tool(&call(Some(false))).await["error"], "confirm_first");
+        // Declared, and required, on propose_appointment.
+        let decl = tool_declarations(true);
+        let params = &decl[0]["functionDeclarations"][1]["parameters"];
+        assert_eq!(params["properties"]["confirmed_by_caller"]["type"], "BOOLEAN");
+        assert!(params["required"].as_array().unwrap().contains(&json!("confirmed_by_caller")));
+    }
+
+    #[tokio::test]
+    async fn an_unconfirmed_time_is_sent_back_once_and_no_more_than_twice_a_call() {
+        // Separate appointments (replaces_previous false): each one is counted.
+        let raw = |start: String| ToolCall { id: "u".into(), name: PROPOSE.into(), args: json!({"start": start, "title": "看房", "replaces_previous": false}), seq: 0, after: 0 };
+        let s = session(Mode::Confirm);
+        // The same time again without the flag is kept: the model may have asked and left it out.
+        assert_eq!(s.run_tool(&raw(later(2, 10))).await["error"], "confirm_first");
+        assert_eq!(s.run_tool(&raw(later(2, 10))).await["status"], "pending_owner_confirmation");
+        // Another time is sent back once too; after two, nothing more is sent back.
+        assert_eq!(s.run_tool(&raw(later(3, 11))).await["error"], "confirm_first");
+        assert_eq!(s.run_tool(&raw(later(4, 12))).await["status"], "pending_owner_confirmation");
+        assert_eq!(s.book.outcomes().len(), 2);
+        // A call judged sales / scam keeps nothing and asks nothing.
+        let s3 = session(Mode::Confirm);
+        s3.book.discard();
+        assert_eq!(s3.run_tool(&raw(later(2, 10))).await["status"], "pending_owner_confirmation");
+        assert_eq!(s3.book.outcome(), None);
+    }
+
+    #[test]
+    fn a_time_is_read_back_in_full_in_the_language_of_the_call() {
+        // 2026-11-19 is a Thursday.
+        assert_eq!(read_back_example(Lang::ZhTw, at(2026, 11, 19, 16, 30)), "「是11月19號星期四下午4點半，對嗎？」");
+        assert_eq!(read_back_example(Lang::ZhCn, at(2026, 11, 20, 9, 5)), "「是11月20号星期五上午9点5分，对吗？」");
+        assert_eq!(read_back_example(Lang::ZhTw, at(2026, 11, 20, 20, 0)), "「是11月20號星期五晚上8點，對嗎？」");
+        assert_eq!(read_back_example(Lang::En, at(2026, 11, 22, 0, 0)), "\"So that's Sunday, November 22, at 12:00 am, right?\"");
+        assert_eq!(read_back_example(Lang::Ja, at(2026, 11, 19, 12, 15)), "\"So that's Thursday, November 19, at 12:15 pm, right?\"");
+    }
+
+    #[test]
+    fn read_back_example_at_the_edges_of_the_clock() {
+        // 2026-11-22 is a Sunday, 2026-11-23 a Monday.
+        assert_eq!(read_back_example(Lang::ZhTw, at(2026, 11, 22, 0, 0)), "「是11月22號星期日凌晨12點，對嗎？」");
+        assert_eq!(read_back_example(Lang::ZhTw, at(2026, 11, 22, 12, 0)), "「是11月22號星期日中午12點，對嗎？」");
+        assert_eq!(read_back_example(Lang::ZhTw, at(2026, 11, 22, 12, 30)), "「是11月22號星期日中午12點半，對嗎？」");
+        assert_eq!(read_back_example(Lang::ZhTw, at(2026, 11, 22, 23, 45)), "「是11月22號星期日晚上11點45分，對嗎？」");
+        assert_eq!(read_back_example(Lang::ZhCn, at(2026, 11, 23, 17, 0)), "「是11月23号星期一下午5点，对吗？」");
+        assert_eq!(read_back_example(Lang::En, at(2026, 11, 22, 12, 0)), "\"So that's Sunday, November 22, at 12:00 pm, right?\"");
+        assert_eq!(read_back_example(Lang::En, at(2026, 11, 23, 23, 59)), "\"So that's Monday, November 23, at 11:59 pm, right?\"");
+    }
+
+    #[tokio::test]
+    async fn a_sent_back_proposal_keeps_nothing_and_does_not_hold_up_the_next() {
+        let s = session(Mode::Confirm);
+        let first = next_seq();
+        let r = s.run_tool(&ToolCall { id: "a".into(), name: PROPOSE.into(), args: json!({"start": later(2, 10), "title": "看房"}), seq: first, after: 0 }).await;
+        assert_eq!(r["error"], "confirm_first");
+        assert!(s.book.outcomes().is_empty() && s.book.outcome().is_none());
+        // The proposal sent right after it in the same message does not wait AFTER_WAIT for it.
+        let t = std::time::Instant::now();
+        let next = ToolCall { id: "b".into(), name: PROPOSE.into(), args: json!({"start": later(2, 11), "title": "看房", "confirmed_by_caller": true}), seq: next_seq(), after: first };
+        assert_eq!(s.run_tool(&next).await["status"], "pending_owner_confirmation");
+        assert!(t.elapsed() < Duration::from_secs(1), "{:?}", t.elapsed());
+        assert_eq!(s.book.outcomes().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_change_sent_back_leaves_the_time_the_caller_moved_away_from() {
+        let s = session(Mode::Confirm);
+        assert_eq!(s.run_tool(&propose_args("1", json!({"start": later(2, 10), "title": "看房"}), next_seq())).await["status"], "pending_owner_confirmation");
+        let change = propose_args("2", json!({"start": later(2, 16), "title": "看房", "replaces_previous": true, "confirmed_by_caller": false}), next_seq());
+        assert_eq!(s.run_tool(&change).await["error"], "confirm_first");
+        // Should the call end now, the owner is asked about 10:00, the time the caller just changed.
+        assert_eq!(s.book.outcome().unwrap().start, later(2, 10));
+        assert_eq!(s.book.outcomes().len(), 1);
+    }
+
+    #[test]
+    fn a_short_yes_to_the_read_back_is_not_sent_to_be_asked_again() {
+        let me = locale::Active { owner: "王先生".into(), ..Default::default() };
+        let p = prompt_block(Reply::Sms, &me, at(2026, 11, 13, 14, 5), "+08:00");
+        // 「對」「嗯」 to the read-back question is a short answer: the prompt must not tell the AI to ask the time again for it.
+        assert!(!p.contains("their answer is short or unclear"), "{p}");
     }
 
     #[tokio::test]
@@ -4636,8 +4837,8 @@ mod tests {
         let s = session(Mode::Confirm);
         s.run_tool(&propose_args("1", json!({"start": later(2, 10), "title": "看房"}), next_seq())).await;
         let msg = json!({"toolCall": {"functionCalls": [
-            {"id": "2", "name": PROPOSE, "args": {"start": later(4, 15), "title": "電話會議", "replaces_previous": false}},
-            {"id": "3", "name": PROPOSE, "args": {"start": later(4, 16), "title": "電話會議", "replaces_previous": true}},
+            {"id": "2", "name": PROPOSE, "args": {"start": later(4, 15), "title": "電話會議", "replaces_previous": false, "confirmed_by_caller": true}},
+            {"id": "3", "name": PROPOSE, "args": {"start": later(4, 16), "title": "電話會議", "replaces_previous": true, "confirmed_by_caller": true}},
         ]}});
         let calls = parse_tool_calls(&msg);
         let (another, change) = (calls[0].clone(), calls[1].clone());

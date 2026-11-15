@@ -314,7 +314,7 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 | `record_id` | 這一次的通話紀錄（`GET /calls/api/call/{id}`：逐字稿和錄音）。 |
 | `follow_up_of` | 這通是接續哪一筆先前的代打；那一筆最後 20 行逐字稿會放進 AI 的腳本。 |
 | `questions` | `[{id, text, options, answer, answered_by, asked_at}]`：AI 問過你的問題，選項最多 4 個。`answered_by`：`owner`（你回答了）、`timeout`（你在看但沒來得及回答）、`absent`（沒人在看）；還在等時是 `null`。 |
-| `result` | `null` 或 `{outcome, summary, details, follow_up, options, event}`。`outcome`：`done`、`partial`、`not_done`、`need_owner`（選項在 `options`，最多 8 個）、`no_answer`、`voicemail`、`failed`。`event`：`null` 或 `{start, end, title}`（帶時差的當地時間；沒談定結束時間就沒有 `end`）。 |
+| `result` | `null` 或 `{outcome, summary, details, follow_up, options, event, unconfirmed}`。`outcome`：`done`、`partial`、`not_done`、`need_owner`（選項在 `options`，最多 8 個）、`no_answer`、`voicemail`、`failed`。`event`：`null` 或 `{start, end, title}`（帶時差的當地時間；沒談定結束時間就沒有 `end`）。`unconfirmed`：`details` 或 `event` 裡 AI 複誦時對方沒有明確確認的時間、日期、號碼或名字（最多 8 項）；沒有就不出現。 |
 | `history` | 先前幾次的嘗試，`[{attempt, status, result, record_id, ended_at, questions}]`。 |
 
 代打存在資料夾裡的 `errands.json`（保留最新 500 筆）。主程式重新啟動時還在進行中的代打會變成 `failed`（`call_code` `agent_restarted`）。

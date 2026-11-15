@@ -407,7 +407,7 @@ are told) and forgets that SIM on that phone until a call reports it again.
 | `record_id` | The call record of this try (`GET /calls/api/call/{id}`: transcript and recording). |
 | `follow_up_of` | An earlier errand this call follows up; its last 20 transcript lines go into the AI's script. |
 | `questions` | `[{id, text, options, answer, answered_by, asked_at}]`: what the AI asked you, with up to 4 options. `answered_by`: `owner` (you answered), `timeout` (you watched but did not answer in time), `absent` (nobody was watching); `null` while it waits. |
-| `result` | `null` or `{outcome, summary, details, follow_up, options, event}`. `outcome`: `done`, `partial`, `not_done`, `need_owner` (choices in `options`, up to 8), `no_answer`, `voicemail`, `failed`. `event`: `null` or `{start, end, title}` (local time with its offset; `end` left out when not agreed). |
+| `result` | `null` or `{outcome, summary, details, follow_up, options, event, unconfirmed}`. `outcome`: `done`, `partial`, `not_done`, `need_owner` (choices in `options`, up to 8), `no_answer`, `voicemail`, `failed`. `event`: `null` or `{start, end, title}` (local time with its offset; `end` left out when not agreed). `unconfirmed`: the times, dates, numbers or names in `details` or `event` the other side never clearly confirmed when the AI read them back (up to 8); left out when there are none. |
 | `history` | Earlier tries, `[{attempt, status, result, record_id, ended_at, questions}]`. |
 
 Errands are kept in `errands.json` in the data folder (the newest 500). An

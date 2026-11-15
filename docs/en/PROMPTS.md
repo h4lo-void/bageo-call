@@ -44,6 +44,18 @@ once" line is swapped for "let them say what they want". With *Appointments*
 on, a normal call also gets the appointment rules and the
 `propose_appointment` tool; Stall Mode never does.
 
+Every normal call, with the built-in prompt or your own, also gets one fixed
+rule after part 3: when the caller gives a time, date, amount or phone number
+you will need ("delivered tomorrow at 3 pm", "call back on 555-0100"), the AI
+asks that one item back as a question ("tomorrow at three in the afternoon,
+right?") and waits for the answer. A time is said in full, with morning or
+afternoon and the minutes; a correction is asked back again; something it did
+not catch is asked again, never guessed; and an item already confirmed is not
+asked twice. It is the stated exception to "do not repeat back what the caller
+said", and asking back is not agreeing. Speech recognition garbles fast
+speech ("four thirty" heard as "four"); the question gives the caller a chance
+to correct it. Stall Mode does not get this rule.
+
 `{owner}` anywhere in a prompt becomes the name in *Settings → Basics → Your
 name*. Changes apply from the next call; nothing needs restarting.
 
@@ -326,20 +338,30 @@ The agent appends these to every prompt, built-in or your own:
 These calls follow scripts the agent writes, not your prompt:
 
 - **Appointments** (when switched on): on a normal call the AI does not agree
-  to a time. It says it will check and get back to the caller by text or by
-  phone (whichever can reach that number) and records the request with
-  `propose_appointment`. Your prompt's style still applies.
+  to a time. It first asks the time back in full ("Thursday, November 19, at
+  4:30 pm, right?") and waits for a yes, then says it will check and get back
+  to the caller by text or by phone (whichever can reach that number) and
+  records the request with `propose_appointment`. A request sent without the
+  caller's yes (`confirmed_by_caller`) is answered `confirm_first` and the AI
+  asks first; each time is sent back once, at most twice a call. A request the
+  caller hangs up on before the AI has asked is not recorded. Your prompt's
+  style still applies.
 - **AI call-backs** say who is calling, give your answer once in the language of
   the original call, and say goodbye; they repeat it only when asked.
 - **AI errands** get the task you wrote, the identity you chose (your assistant
   or you) and fixed rules: say nothing to recordings or voice menus and wait
   for a person; settle only what the task allows and call `ask_owner` for
   anything else; give out no personal details beyond the task; agree to no
-  payment or deposit; repeat the key points before hanging up; leave a
-  two-sentence message on voicemail; admit to being an AI when sincerely
-  asked. The AI speaks the task's language and switches if the other side
-  answers in another. Here the task is the prompt: say what you want and what
-  you can accept ("7:30 to 8 is fine too").
+  payment or deposit; read every time, date, weekday, quantity, price,
+  address, phone number or booking name back as a question as soon as it
+  comes up ("today at 4:30 in the afternoon, right?") and wait for a yes
+  before any thanks or goodbye; leave a two-sentence message on voicemail;
+  admit to being an AI when sincerely asked. The AI speaks the task's
+  language and switches if the other side answers in another. After the call
+  the summary goes by what the other side last said and confirmed; a detail
+  they never clearly confirmed is marked *Not confirmed by the other side* in
+  the result and the notification. Here the task is the prompt: say what you
+  want and what you can accept ("7:30 to 8 is fine too").
 
 ## Test it with a real call
 

@@ -724,6 +724,7 @@ pub fn default_system_prompt() -> &'static str {
 禁止只唸到「會幫您轉達給王先生關於」或「會幫您轉達關於」就結束。\
 開場對方只說「喂／你好」時：若有目前狀態仍要先講完，再請對方留話；不要說再見、不要空轉達。\
 禁止長問卷；禁止「是不是关于…」「對嗎／再確認」。\
+例外：對方講到要轉達的時間、日期、金額、電話號碼，要用一句問句把那一項完整複誦一次（例如「明天下午三點半，對嗎？」），他說對再接著講；他更正就照更正的再問一次；沒聽清楚就請他再說一次，不要自己猜。\
 禁止只回空洞「好的我會轉告／好，再見」而不提事由。\
 禁止對方說完事由後只回「好的／嗯／了解」就當完成。有事由（水費、房租等）必須唸進完整轉達句；沒聽清就先問一次「請問要轉達什麼事？」，不要跳去再見。\
 不要主動問回電、貴姓、時間、找哪位；對方自己提才記。\
@@ -813,6 +814,16 @@ pub const PERSONA_CARRIER_NOTE: &str = "\n【電信提示音】國際電話（�
 
 /// A caller who cannot hear us keeps saying hello: answer with a whole sentence.
 pub const PERSONA_HELLO_LOOP_NOTE: &str = "\n【對方一直喂】對方一直說「喂」「哈囉」「有人在嗎」「聽得到嗎」，代表他聽不清楚你：直接回「有，我在，聽得到，請說」這類完整的一句，不要一直只回「喂？」。";
+
+/// Times, amounts and numbers the caller gives are read back once as a
+/// question: speech-to-text garbles fast speech (「四點半」 came through as
+/// 「字點看可以」 and was taken for four o'clock). Added after every prompt
+/// of a normal call, edited ones too, never to the sales / scam stalling one;
+/// it names itself the exception to 「不要把對方的話整段覆述」.
+pub const PERSONA_READBACK_NOTE: &str = "\n【時間、金額、號碼要複誦確認】對方講到之後要照著做或要記住的時間、日期、金額、電話號碼（例如「明天下午三點送到」「回電 02-1234-5678」「總共 1,250 元」），用一句自然的問句把那一項完整複誦一次，等他回答再往下聊，例如「明天下午三點送到，對嗎？」「02-1234-5678 對吧？」。\
+時間要講完整：上午還是下午、幾點、幾分，半點要講出「半」；日期講幾月幾號或星期幾。他說對就繼續；他更正就照更正的再用問句複誦一次；沒聽清楚就請他再說一次，不要自己猜一個。同一項確認過就不要再問。\
+複誦只是確認有沒有聽對，不等於答應（約時間、付錢照上面說的不要答應）。\
+這一條是上面「不要把對方的話整段覆述」「不用每句都問問題」的例外，只用在這幾種資訊上，其他的話照樣不要覆述。";
 
 /// Fixed guard appended to every persona prompt (not editable from the UI).
 /// `{owner}` = setting `owner_name`. A card desk asking whether a purchase
@@ -10194,6 +10205,8 @@ mod tests {
         assert!(p.contains("禁止問「找哪位／找誰／找王先生嗎」"));
         assert!(p.contains("禁止對方說完事由後只回「好的／嗯／了解」"));
         assert!(!p.contains("方便說一下找哪位"));
+        // The one exception to 「對嗎／再確認」: a time, date, amount or number is asked back once.
+        assert!(p.contains("例外：對方講到要轉達的時間、日期、金額、電話號碼，要用一句問句把那一項完整複誦一次") && p.contains("不要自己猜"));
     }
 
     #[test]
