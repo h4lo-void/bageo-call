@@ -1734,13 +1734,20 @@ impl Outbound {
     }
 
     /// Speech-to-text for the other side: a call-back's callee without any
-    /// vocabulary ([`stt_callee_config`]); anyone else with the caller's (the
-    /// owner's name, the call logic's words: [`stt_caller_config_for`]).
-    fn other_side_stt(self, langs: Option<&[&'static str]>, active: &crate::locale::Active) -> Value {
-        if self.answers_once() {
-            stt_callee_config(langs)
-        } else {
-            stt_caller_config_for(langs, active)
+    /// vocabulary ([`stt_callee_config`]); an errand's callee with the call's
+    /// own languages and the owner's name ([`stt_errand_config`], `opening` =
+    /// [`CallLangPlan::opening`]); a caller with the caller's (the owner's
+    /// name, the call logic's words: [`stt_caller_config_for`]).
+    fn other_side_stt(
+        self,
+        langs: Option<&[&'static str]>,
+        opening: Option<crate::locale::Lang>,
+        active: &crate::locale::Active,
+    ) -> Value {
+        match self {
+            Self::CallBack => stt_callee_config(langs),
+            Self::Errand => stt_errand_config(opening, active),
+            Self::Incoming => stt_caller_config_for(langs, active),
         }
     }
 }
@@ -1913,6 +1920,23 @@ fn stt_callee_config(langs: Option<&[&'static str]>) -> Value {
         Some(l) => json!({ "languageCodes": l }),
         None => json!({}),
     }
+}
+
+/// Speech-to-text config for the other side of an errand: the language hints
+/// are the one the AI opens in (`opening`, else the setting's) and the one the
+/// owner reads, once each; the owner's name is vocabulary only when the hints
+/// include the setting's language. No carrier word and none of the call logic's
+/// key words: an errand is dialled out, so no carrier warning plays on it, and
+/// 「國際電話」 is what a callee's English sentence came out as on a real
+/// errand, which the AI then answered in Chinese.
+fn stt_errand_config(opening: Option<crate::locale::Lang>, active: &crate::locale::Active) -> Value {
+    let langs = stt_codes(&[opening.unwrap_or(active.lang), active.notify_lang]);
+    let mut cfg = json!({ "languageCodes": langs });
+    let owner = active.owner.trim();
+    if !owner.is_empty() && langs.contains(&crate::locale::phrases(active.lang).stt) {
+        cfg["customVocabulary"] = json!([owner.chars().take(40).collect::<String>()]);
+    }
+    cfg
 }
 
 /// Speech-to-text hints for the AI's own voice: the call's opening language
@@ -4354,7 +4378,7 @@ pub async fn run_session(
                 // and stall / carrier-prompt / bye detection all read this STT; a caller
                 // from abroad gets their own language first (or auto-detect).
                 // An appointment's call-back: no vocabulary for its callee (Outbound::other_side_stt).
-                "inputAudioTranscription": outbound.other_side_stt(lang_plan.caller_stt.as_deref(), &crate::locale::active()),
+                "inputAudioTranscription": outbound.other_side_stt(lang_plan.caller_stt.as_deref(), lang_plan.opening, &crate::locale::active()),
                 "outputAudioTranscription": stt_ai_config(opening_lang),
                 "realtimeInputConfig": realtime_input_config(server_vad)
             }
@@ -8092,14 +8116,43 @@ mod tests {
         assert!(call_back.answers_once());
         assert!(!errand.answers_once() && !Outbound::Incoming.answers_once());
         // Speech-to-text: a call-back's callee gets no vocabulary; an errand's other
-        // side keeps the caller's, the owner's name in it.
+        // side gets the call's languages and the owner's name, a caller the call
+        // logic's words as well.
         let me = Active { owner: "王先生".into(), lang: Lang::ZhTw, ..Default::default() };
         let langs = stt_codes(&[Lang::ZhTw, Lang::En]);
-        assert_eq!(call_back.other_side_stt(Some(&langs), &me), stt_callee_config(Some(&langs)));
-        let errand_stt = errand.other_side_stt(Some(&langs), &me);
-        assert_eq!(errand_stt, stt_caller_config_for(Some(&langs), &me));
+        assert_eq!(call_back.other_side_stt(Some(&langs), None, &me), stt_callee_config(Some(&langs)));
+        let errand_stt = errand.other_side_stt(Some(&langs), None, &me);
+        assert_eq!(errand_stt, stt_errand_config(None, &me));
         assert!(errand_stt.to_string().contains("王先生"), "{errand_stt}");
-        assert_eq!(Outbound::Incoming.other_side_stt(Some(&langs), &me), errand_stt);
+        let incoming = Outbound::Incoming.other_side_stt(Some(&langs), None, &me);
+        assert_eq!(incoming, stt_caller_config_for(Some(&langs), &me));
+        assert_ne!(incoming, errand_stt);
+    }
+
+    #[test]
+    fn an_errand_s_other_side_is_heard_without_carrier_words() {
+        use crate::locale::{Active, Lang};
+        // An errand opened in English by a Chinese-reading owner: both languages
+        // as hints, the owner's name as vocabulary, never the carrier's warning.
+        let me = Active { owner: "王先生".into(), lang: Lang::ZhTw, notify_lang: Lang::ZhTw, ..Default::default() };
+        let cfg = Outbound::Errand.other_side_stt(None, Some(Lang::En), &me);
+        assert_eq!(cfg["languageCodes"], json!(stt_codes(&[Lang::En, Lang::ZhTw])));
+        assert_eq!(cfg["customVocabulary"], json!(["王先生"]));
+        assert!(!cfg.to_string().contains("國際電話"), "{cfg}");
+        // The same hints on every errand, whatever the call-back plan says.
+        let langs = stt_codes(&[Lang::ZhTw]);
+        assert_eq!(Outbound::Errand.other_side_stt(Some(&langs), Some(Lang::En), &me), cfg);
+        // Opening in the setting's language, owner reading English: the same two
+        // languages once each.
+        let en_owner = Active { owner: "Mr. Wang".into(), lang: Lang::ZhTw, notify_lang: Lang::En, ..Default::default() };
+        let cfg = Outbound::Errand.other_side_stt(None, None, &en_owner);
+        assert_eq!(cfg["languageCodes"], json!(stt_codes(&[Lang::ZhTw, Lang::En])));
+        assert!(!cfg.to_string().contains("國際電話"), "{cfg}");
+        // The owner's name only goes in when the hints include the owner's language.
+        let en_only = Active { owner: "王先生".into(), lang: Lang::ZhTw, notify_lang: Lang::En, ..Default::default() };
+        let cfg = Outbound::Errand.other_side_stt(None, Some(Lang::En), &en_only);
+        assert_eq!(cfg["languageCodes"], json!(stt_codes(&[Lang::En])));
+        assert!(cfg.get("customVocabulary").is_none(), "{cfg}");
     }
 
     #[test]
