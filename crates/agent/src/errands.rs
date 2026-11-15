@@ -2253,7 +2253,7 @@ fn notice_body(lang: Lang, e: &Errand, settings: &Settings) -> String {
     }
     // Right after the facts they qualify: the owner checks these before relying on them.
     if !r.unconfirmed.is_empty() {
-        lines.push(format!("⚠️ {}{sep}{}", w.not_confirmed, r.unconfirmed.join(" / ")));
+        lines.push(format!("{}{sep}{}", w.not_confirmed, r.unconfirmed.join(" / ")));
     }
     if r.outcome == "need_owner" && !r.options.is_empty() {
         lines.push(format!("{}{sep}{}", w.decide, r.options.join(" / ")));
@@ -2264,7 +2264,7 @@ fn notice_body(lang: Lang, e: &Errand, settings: &Settings) -> String {
     if let Some(ev) = &r.event {
         if let Ok(t) = chrono::DateTime::parse_from_rfc3339(&ev.start) {
             let when = locale::date_time(lang, &t.with_timezone(&chrono::Local).naive_local());
-            lines.push(format!("📅 {}{sep}{when} {}", w.when, ev.title).trim_end().to_string());
+            lines.push(format!("{}{sep}{when} {}", w.when, ev.title).trim_end().to_string());
         }
     }
     let link = errands_url(settings);
@@ -2274,7 +2274,7 @@ fn notice_body(lang: Lang, e: &Errand, settings: &Settings) -> String {
     lines.join("\n")
 }
 
-/// "AI 代打：<name or number>" (the notification's 📞 goes before it).
+/// "AI 代打：<name or number>".
 fn notice_headline(lang: Lang, e: &Errand) -> String {
     format!("{}{}{}", words(lang).title, locale::phrases(lang).sep, e.who())
 }
@@ -3617,14 +3617,14 @@ mod tests {
         let s = Settings::from_env();
         let mut e = Errand { name: "雞排店".into(), number: "0912345678".into(), result: Some(r), ..Default::default() };
         let body = notice_body(Lang::ZhTw, &e, &s);
-        assert!(body.contains("細節：取餐：下午 4:30\n⚠️ 未經對方確認：取餐：下午 4:30"), "{body}");
+        assert!(body.contains("細節：取餐：下午 4:30\n未經對方確認：取餐：下午 4:30"), "{body}");
         for l in locale::ALL {
             let w = words(l);
-            assert!(!w.not_confirmed.is_empty() && notice_body(l, &e, &s).contains(&format!("⚠️ {}", w.not_confirmed)), "{l:?}");
+            assert!(!w.not_confirmed.is_empty() && notice_body(l, &e, &s).contains(w.not_confirmed), "{l:?}");
         }
         // All confirmed: no such line.
         e.result.as_mut().unwrap().unconfirmed.clear();
-        assert!(!notice_body(Lang::ZhTw, &e, &s).contains("⚠️"));
+        assert!(!notice_body(Lang::ZhTw, &e, &s).contains(words(Lang::ZhTw).not_confirmed));
     }
 
     #[test]
@@ -3650,7 +3650,7 @@ mod tests {
         let s = Settings::from_env();
         let e = Errand { name: "店".into(), number: "0912345678".into(), result: Some(r), ..Default::default() };
         let body = notice_body(Lang::ZhTw, &e, &s);
-        assert!(body.contains("⚠️ 未經對方確認：<b>4:30</b> & 5"), "{body}");
+        assert!(body.contains("未經對方確認：<b>4:30</b> & 5"), "{body}");
     }
 
     #[test]
@@ -3900,7 +3900,7 @@ mod tests {
             ..Default::default()
         });
         let body = notice_body(Lang::ZhTw, &e, &s);
-        assert!(body.contains("辦好了：訂好了\n細節：4 位，王先生\n📅 約定時間：") && body.contains("鼎泰豐 4 位"), "{body}");
+        assert!(body.contains("辦好了：訂好了\n細節：4 位，王先生\n約定時間：") && body.contains("鼎泰豐 4 位"), "{body}");
         assert_eq!(notice_headline(Lang::ZhTw, &e), "AI 代打：鼎泰豐");
         e.name.clear();
         assert_eq!(notice_headline(Lang::En, &e), "AI errand call: 0223456789");

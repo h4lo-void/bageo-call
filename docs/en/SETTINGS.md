@@ -102,7 +102,7 @@ Call screening at its bluntest: calls from numbers on this list never reach the 
 | Whitelist handling (`whitelist_mode`) | Off (AI answers normally) | Set in the **Contacts** tab for callers marked `whitelist`: **Off** (`off`), **Forward directly to real number** (`direct` — declines the call at once to trigger carrier conditional call forwarding `*67*` and pushes an instant alert), or **Forward only when AI detects an emergency** (`emergency` — AI answers first and gives the caller your real forwarding number + triggers an urgent alert if they have an urgent matter). |
 | Real forwarding number (`whitelist_forward_number`) | empty | Your real phone number used by Whitelist direct/emergency transfer. |
 
-Try it: open a call in the call list and press **Block this number**, or tap the signed **⛔ Block / 🎭 Stall / ⭐ Whitelist** buttons in any notification channel to classify the caller in one tap.
+Try it: open a call in the call list and press **Block this number**, or tap the signed **Block / Stall / Whitelist** buttons in any notification channel to classify the caller in one tap.
 
 ### AI errands
 
@@ -113,7 +113,7 @@ The **Errands** tab has the AI make a call for you. Booking a table for four loo
 3. Choose *Call as* and, if you like, the *Phone to call from*, then press **Start the call**.
 4. Follow the live captions. You can type an instruction for the AI, answer a question it asks you, or **Hang up**.
 
-Afterwards the errand shows the result (Done, Partly done, Not done, Your decision needed, No answer, Voicemail, Failed) with details, the next step, the time agreed, a link to the call record and **Call again**. When the other side offered choices, pick one and the AI calls back with it. You also get one notification. During the call the AI reads every time, date, number or name back as a question and waits for a yes; anything the other side never clearly confirmed is marked ⚠️ **Not confirmed by the other side** on the result and in the notification, so check it before you rely on it.
+Afterwards the errand shows the result (Done, Partly done, Not done, Your decision needed, No answer, Voicemail, Failed) with details, the next step, the time agreed, a link to the call record and **Call again**. When the other side offered choices, pick one and the AI calls back with it. You also get one notification. During the call the AI reads every time, date, number or name back as a question and waits for a yes; anything the other side never clearly confirmed is marked **Not confirmed by the other side** on the result and in the notification, so check it before you rely on it.
 
 What it needs and how it behaves:
 

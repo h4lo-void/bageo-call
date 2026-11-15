@@ -182,7 +182,7 @@ AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/contacts.svg" width="56" height="56" alt=""><br>
       <strong>認得誰打來</strong><br>
-      通訊錄可以從 vCard、CSV、Excel、Word、PDF、名片照片匯入，內建聯絡人、⭐ 白名單轉接真實號碼、⛔ 黑名單與 🎭 啟動 Stalls 四合一分類。
+      通訊錄可以從 vCard、CSV、Excel、Word、PDF、名片照片匯入，內建聯絡人、白名單轉接真實號碼、黑名單與陪聊名單四合一分類。
     </td>
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/switch.svg" width="56" height="56" alt=""><br>

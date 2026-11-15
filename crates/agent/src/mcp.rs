@@ -131,7 +131,7 @@ async fn post_control_inbound(
         let ch_id = req.channel_id.trim();
         let msg = crate::notify::Message {
             event: "control_reply".to_string(),
-            title: "🤖 Bageo".to_string(),
+            title: "Bageo".to_string(),
             body: out.text.clone(),
             html: None,
             data: json!({

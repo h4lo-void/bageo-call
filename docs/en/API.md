@@ -306,7 +306,7 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/tasks/$TASK/confirm" \
 
 ```json
 {"ok": true, "task": {"id": "…", "appointment": {"status": "confirmed", "reply": "call", "call": "dialing"}},
- "message": "✅ Appointment accepted\nSat, Nov 14, 3:00 PM–4:00 PM House viewing\nThe AI is calling 0912345678 back\n📅 Add it to your calendar: https://calendar.google.com/…"}
+ "message": "Appointment accepted\nSat, Nov 14, 3:00 PM–4:00 PM House viewing\nThe AI is calling 0912345678 back\nAdd it to your calendar: https://calendar.google.com/…"}
 ```
 
 ## AI errands
@@ -339,7 +339,7 @@ first, the question ends there. What you type during the call reaches the AI
 as an instruction.
 
 **Afterwards.** The summary model reads the call against the errand, and you
-get one notification (title "📞 AI errand call: <name or number>", in the
+get one notification (title "AI errand call: <name or number>", in the
 notification language; webhook event `ai_errand`). If the AI agreed to
 something on a question you did not answer, the result is never `done`: it is
 `need_owner`, telling you to confirm or call back to change it.
@@ -581,7 +581,7 @@ they do not know, so old apps and old agents keep working.
 | phone → agent | `status` | `{mode, in_call}`: the mode or the call state changed. |
 | phone → agent | `incoming`, `incoming_cancel` | A call rings (`caller_id`, empty for a hidden number; `sim_country`; `sim_sub_id` when known) / it ended before it was answered. |
 | agent → phone | `answer_plan` | `{delay_ms, prewarm, reject}`: how long to ring before answering, or `reject: true` to decline the ringing call (blocked numbers with `reject_mode` `decline`). |
-| phone → agent | `call_waiting_rejected` | `{serial, caller_id, sim_country, sim_sub_id}`: a second call rang during a call and the phone declined it at once (AI mode). Becomes a call record and a "📵" notification. |
+| phone → agent | `call_waiting_rejected` | `{serial, caller_id, sim_country, sim_sub_id}`: a second call rang during a call and the phone declined it at once (AI mode). Becomes a call record and a "Missed while on a call" notification. |
 | agent → phone / phone → agent | `set_mode` / `set_mode_result` | `{mode, id}` / `{id, ok, mode, error}`: the remote mode switch; `error` uses the codes above. |
 | agent → phone | `agent_info` | `{console_url}` for the app's **Open the web console** button. Sent after the hello when the agent knows an address: `public_url`, or the LAN IP address when the console is open to your network. |
 | agent → phone | `place_call` | `{number, call_id, task_id, sub_id}`: dial out for an AI call-back or an AI errand, from the SIM with subscription id `sub_id` (the phone's default when that SIM is not found). While a call rings or is up, the phone does not dial and answers `place_call_failed` with `reason` `busy`. |

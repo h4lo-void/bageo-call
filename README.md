@@ -182,7 +182,7 @@ The phone only carries the call; everything else runs on your own computer. The 
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/contacts.svg" width="56" height="56" alt=""><br>
       <strong>Knows who is calling</strong><br>
-      Import contacts from vCard, CSV, Excel, Word, PDF or a photo of a business card — with 4-in-1 Contacts, ⭐ Whitelist call transfer, ⛔ Blacklist &amp; 🎭 Force Stall lists.
+      Import contacts from vCard, CSV, Excel, Word, PDF or a photo of a business card — with 4-in-1 Contacts, Whitelist call transfer, Blacklist &amp; Stall lists.
     </td>
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/switch.svg" width="56" height="56" alt=""><br>

@@ -2037,7 +2037,7 @@ fn quick_action_html(title: &str, detail: &str, ok: bool) -> Response {
         Lang::Pt => ("pt-BR", "Abrir o console do Bageo"),
         Lang::En => ("en", "Open Bageo Console"),
     };
-    let badge = if ok { "✅" } else { "⚠️" };
+    let tone = if ok { "" } else { " warn" };
     let esc = |s: &str| {
         s.replace('&', "&amp;")
             .replace('<', "&lt;")
@@ -2050,9 +2050,9 @@ fn quick_action_html(title: &str, detail: &str, ok: bool) -> Response {
          <title>{} — Bageo</title>\
          <style>body{{font-family:system-ui,-apple-system,sans-serif;background:#faf8f5;color:#1f1e1b;display:flex;align-items:center;justify-content:center;min-height:90vh;margin:0;padding:16px}}\
          .card{{background:#fff;border:1px solid #e6e1d6;border-radius:14px;max-width:420px;width:100%;padding:24px;box-shadow:0 4px 16px rgba(0,0,0,.05);text-align:center}}\
-         .icon{{font-size:36px;margin-bottom:10px}}h1{{font-size:18px;margin:0 0 8px}}p{{font-size:14px;color:#5c584f;margin:0 0 18px;word-break:break-word}}\
+         h1{{font-size:18px;margin:0 0 8px}}.warn h1{{color:#b3261e}}p{{font-size:14px;color:#5c584f;margin:0 0 18px;word-break:break-word}}\
          a.btn{{display:inline-block;background:#2f5e4e;color:#fff;text-decoration:none;padding:9px 18px;border-radius:8px;font-size:14px;font-weight:600}}</style></head>\
-         <body><div class=\"card\"><div class=\"icon\">{badge}</div><h1>{}</h1><p>{}</p><a class=\"btn\" href=\"/calls/\">{open_lbl}</a></div></body></html>",
+         <body><div class=\"card{tone}\"><h1>{}</h1><p>{}</p><a class=\"btn\" href=\"/calls/\">{open_lbl}</a></div></body></html>",
         esc(title),
         esc(title),
         esc(detail)

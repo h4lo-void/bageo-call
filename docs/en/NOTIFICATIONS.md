@@ -39,7 +39,7 @@ choose the service → fill in its fields → **Send test** → **Save changes**
 A call summary from a caller saved in your contacts:
 
 ```text
-☎️ Call summary · Jay
+Call summary · Jay
 Number: 0912345678
 Phone: Pixel 8
 Time: Nov 12, 18:02
@@ -48,7 +48,7 @@ Caller: Jay (friend)
 About: lunch tomorrow at noon?
 AI said: sounded keen, did not fix the time
 To do: call Jay back to confirm
-📅 Calendar: Lunch with Jay (11/13 12:00)
+Calendar: Lunch with Jay (11/13 12:00)
 https://calendar.google.com/calendar/render?action=TEMPLATE&…
 Transcript / recording: http://192.0.2.10:8787/calls/#call=…
 ```
@@ -67,40 +67,40 @@ Transcript / recording: http://192.0.2.10:8787/calls/#call=…
 
 ## Messages you get
 
-Each message starts with an icon, so you can tell them apart at a glance:
+These are the messages you can receive:
 
-| Icon and title | When | Webhook `event` |
+| Title | When | Webhook `event` |
 |---|---|---|
-| 📞 Incoming call | A call was picked up. | `incoming` |
-| ⛔ Blocked number called | A number on your blocked list called. Says whether it was declined while it rang or answered with the announcement, and your reason for blocking it. | `blocked` |
-| ☎️ Call summary | A few seconds after a call ended: who, what about, what the AI said, what you should do, and the links. | `summary` |
-| 📵 Missed while on another call | A second call rang during a call and the phone declined it (the caller heard busy). Call back if you know the number. | `call_waiting` |
-| 📞 AI call-back: <number> | The AI called a caller back with your answer to an appointment: how it went (answered, nobody answered, could not be placed, or the number cannot be called back) and the call's summary. | `ai_callback` |
-| 📞 AI errand call: <name or number> | An AI errand you started has ended: the result, details, your decision when one is needed, the next step, the time agreed and a link to the *Errands* page. | `ai_errand` |
-| 📅 Appointment to confirm | A caller set a time with the AI; Telegram receives a card with buttons, and every other channel receives signed one-tap **Accept / Decline** buttons or links (see [Appointments](#appointments)). | `appointment_pending` / `summary` |
-| ⭐ Whitelist call forwarded | A whitelisted number called while **Forward directly to real number** is enabled; the phone declined the call to trigger carrier conditional call forwarding and sent an instant alert. | `whitelist_direct_transfer` |
-| 🚨 Urgent call from Whitelist | A whitelisted caller had an urgent matter during the call; the AI shared your forwarding number and sent an urgent alert. | `whitelist_urgent_transfer` |
-| ✅ Test notification | You pressed **Send test**. | `test` |
+| Incoming call | A call was picked up. | `incoming` |
+| Blocked number called | A number on your blocked list called. Says whether it was declined while it rang or answered with the announcement, and your reason for blocking it. | `blocked` |
+| Call summary | A few seconds after a call ended: who, what about, what the AI said, what you should do, and the links. | `summary` |
+| Missed while on another call | A second call rang during a call and the phone declined it (the caller heard busy). Call back if you know the number. | `call_waiting` |
+| AI call-back: <number> | The AI called a caller back with your answer to an appointment: how it went (answered, nobody answered, could not be placed, or the number cannot be called back) and the call's summary. | `ai_callback` |
+| AI errand call: <name or number> | An AI errand you started has ended: the result, details, your decision when one is needed, the next step, the time agreed and a link to the *Errands* page. | `ai_errand` |
+| Appointment to confirm | A caller set a time with the AI; Telegram receives a card with buttons, and every other channel receives signed one-tap **Accept / Decline** buttons or links (see [Appointments](#appointments)). | `appointment_pending` / `summary` |
+| Whitelist call forwarded | A whitelisted number called while **Forward directly to real number** is enabled; the phone declined the call to trigger carrier conditional call forwarding and sent an instant alert. | `whitelist_direct_transfer` |
+| Urgent call from Whitelist | A whitelisted caller had an urgent matter during the call; the AI shared your forwarding number and sent an urgent alert. | `whitelist_urgent_transfer` |
+| Test notification | You pressed **Send test**. | `test` |
 | New SMS | A text message passed on by the optional [SMS forwarder](../../tools/sms_forward/README.md). | `event` |
 
 A call-waiting message:
 
 ```text
-📵 Missed while on another call: 0912345678 (Pixel 9)
+Missed while on another call: 0912345678 (Pixel 9)
 Time: Nov 14, 18:02
 ```
 
 An errand's result, for example a restaurant booking the AI made for you:
 
 ```text
-📞 AI errand call: Din Tai Fung
+AI errand call: Din Tai Fung
 Number: 0223456789
 Phone: Pixel 9
 Time: Nov 14, 18:05
 
 Done: Table for 4 booked tomorrow 7:30 pm under Wang
 Details: They hold the table for 15 minutes.
-📅 Agreed time: Nov 15, 19:30 Dinner at Din Tai Fung
+Agreed time: Nov 15, 19:30 Dinner at Din Tai Fung
 http://bageo.local:8787/calls/#errands
 ```
 
@@ -115,7 +115,7 @@ a call where the caller set a time with the AI gets one line under the summary,
 in place of the calendar lines, on every channel:
 
 ```text
-📅 Appointment to confirm: Sat, Nov 14, 3:00 PM–4:00 PM House viewing — confirm in the web console: http://bageo.local/calls/#call=…
+Appointment to confirm: Sat, Nov 14, 3:00 PM–4:00 PM House viewing — confirm in the web console: http://bageo.local/calls/#call=…
 ```
 
 **Decide in the web console:** under **To do** at the top of the Calls page,
@@ -133,7 +133,7 @@ Telegram channel added in the web console gets the reminder line above, but
 not the card.
 
 ```text
-📅 Appointment to confirm
+Appointment to confirm
 
 Number: 0912345678
 Time: Sat, Nov 14, 3:00 PM–4:00 PM
@@ -155,13 +155,13 @@ another way, decide in the web console.
 After a tap the bot answers with what happened:
 
 ```text
-✅ Appointment accepted
+Appointment accepted
 Sat, Nov 14, 3:00 PM–4:00 PM House viewing
 Text sent to 0912345678
-📅 Add it to your calendar: https://calendar.google.com/calendar/render?action=TEMPLATE&…
+Add it to your calendar: https://calendar.google.com/calendar/render?action=TEMPLATE&…
 ```
 
-Other answers: "❌ Appointment declined", "The AI is calling 0912345678 back",
+Other answers: "Appointment declined", "The AI is calling 0912345678 back",
 "Text not sent: the phone is not connected" / "the phone app is too old to send
 texts" / "error code no_service". When a text did not go out, the appointment
 in the console gets **Send the text again**, from the same phone or another
@@ -188,7 +188,7 @@ without buttons. If Telegram cannot be reached, the decision still stands.
 
 The AI call-back with your answer speaks the call's language, waits for the
 callee to pick up and speak, says who is calling and your answer once, and
-says goodbye. Its notification is "📞 AI call-back: <number>"; a call-back
+says goodbye. Its notification is "AI call-back: <number>"; a call-back
 that could not be placed is reported too.
 
 Sales and scam calls never leave an appointment. When a call turns out to be
@@ -197,7 +197,7 @@ bank's fraud desk or the police calling about fraud does not count), the
 appointment is dropped, no card is sent, and the summary says so:
 
 ```text
-📅 Judged a sales call, so the appointment booked during the call was canceled: Sat, Nov 14, 3:00 PM–4:00 PM House viewing
+Judged a sales call, so the appointment booked during the call was canceled: Sat, Nov 14, 3:00 PM–4:00 PM House viewing
 ```
 
 ## Services
@@ -645,7 +645,7 @@ For n8n, Zapier, Make, Home Assistant, Node-RED or your own code. The agent
 {
   "event": "summary",
   "title": "Call summary 0912345678",
-  "body": "☎️ Call summary\nNumber: 0912345678\n…",
+  "body": "Call summary\nNumber: 0912345678\n…",
   "text": "(same as body)",
   "data": {
     "caller_id": "0912345678",

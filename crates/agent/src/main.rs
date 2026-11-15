@@ -4590,7 +4590,7 @@ fn reject_answer_plan(decline: bool) -> Value {
 }
 
 /// `reject_mode` `decline`: a declined call never gets a media hello, so its
-/// record (events `reject_list`, `reject_list_declined`) and the "⛔ blocked
+/// record (events `reject_list`, `reject_list_declined`) and the "blocked
 /// number" notification are made while it rings. Returns the record's id.
 async fn record_declined_call(
     state: &AppState,
@@ -4657,91 +4657,91 @@ async fn record_whitelist_direct_transfer(
     let (real_lbl, about_lbl, reply_prefix, todo_lbl, end_hint, alert_title, status_lbl, fwd_lbl) = match lang {
         locale::Lang::ZhTw => (
             "真實號碼",
-            "⭐ 白名單來電直接轉接",
+            "白名單來電直接轉接",
             "未經 AI 篩選，直接轉接至",
             "請留意真實電話來電或回電",
             "白名單：直接轉接真實號碼（未經 AI 篩選）",
-            "⭐ 白名單來電直接轉接",
+            "白名單來電直接轉接",
             "已觸發直接轉接（未由 AI 攔截）",
             "轉接號碼",
         ),
         locale::Lang::ZhCn => (
             "真实号码",
-            "⭐ 白名单来电直接转接",
+            "白名单来电直接转接",
             "未经 AI 筛选，直接转接至",
             "请留意真实电话来电或回电",
             "白名单：直接转接真实号码（未经 AI 筛选）",
-            "⭐ 白名单来电直接转接",
+            "白名单来电直接转接",
             "已触发直接转接（未由 AI 拦截）",
             "转接号码",
         ),
         locale::Lang::Ja => (
             "本人の番号",
-            "⭐ ホワイトリスト着信の直接転送",
+            "ホワイトリスト着信の直接転送",
             "AI を通さず直接転送：",
             "本人の電話への着信をご確認いただくか折り返してください",
             "ホワイトリスト：本人の番号へ直接転送（AI 応答なし）",
-            "⭐ ホワイトリスト着信の直接転送",
+            "ホワイトリスト着信の直接転送",
             "直接転送を実行しました（AI 応答なし）",
             "転送先",
         ),
         locale::Lang::Ko => (
             "실제 번호",
-            "⭐ 화이트리스트 착신 직접 전환",
+            "화이트리스트 착신 직접 전환",
             "AI 거치지 않고 직접 전환:",
             "실제 전화 착신을 확인하거나 회신하세요",
             "화이트리스트: 실제 번호로 직접 전환 (AI 응답 없음)",
-            "⭐ 화이트리스트 착신 직접 전환",
+            "화이트리스트 착신 직접 전환",
             "직접 전환 실행됨 (AI 응답 없음)",
             "전환 번호",
         ),
         locale::Lang::Es => (
             "número real",
-            "⭐ Transferencia directa de lista blanca",
+            "Transferencia directa de lista blanca",
             "Transferido directamente sin filtro de IA a",
             "Atiende tu teléfono real o devuelve la llamada",
             "Lista blanca: transferencia directa al número real",
-            "⭐ Transferencia directa de lista blanca",
+            "Transferencia directa de lista blanca",
             "Transferencia directa activada (sin pasar por la IA)",
             "Número de desvío",
         ),
         locale::Lang::Fr => (
             "vrai numéro",
-            "⭐ Transfert direct liste blanche",
+            "Transfert direct liste blanche",
             "Transféré directement sans filtrage IA vers",
             "Surveillez votre vrai téléphone ou rappelez",
             "Liste blanche : transfert direct vers le vrai numéro",
-            "⭐ Transfert direct liste blanche",
+            "Transfert direct liste blanche",
             "Transfert direct déclenché (sans interception IA)",
             "Numéro de transfert",
         ),
         locale::Lang::De => (
             "echte Nummer",
-            "⭐ Whitelist-Direktweiterleitung",
+            "Whitelist-Direktweiterleitung",
             "Ohne KI-Filter direkt weitergeleitet an",
             "Bitte auf dem echten Telefon entgegennehmen oder zurückrufen",
             "Whitelist: direkte Weiterleitung an echte Nummer",
-            "⭐ Whitelist-Direktweiterleitung",
+            "Whitelist-Direktweiterleitung",
             "Direktweiterleitung ausgelöst (ohne KI)",
             "Weiterleitungsnummer",
         ),
         locale::Lang::Pt => (
             "número real",
-            "⭐ Transferência direta da lista branca",
+            "Transferência direta da lista branca",
             "Transferido diretamente sem triagem da IA para",
             "Acompanhe no seu telefone real ou retorne a ligação",
             "Lista branca: transferência direta para o número real",
-            "⭐ Transferência direta da lista branca",
+            "Transferência direta da lista branca",
             "Transferência direta acionada (sem passar pela IA)",
             "Número de transferência",
         ),
         locale::Lang::En => (
             "real number",
-            "⭐ Whitelist direct call transfer",
+            "Whitelist direct call transfer",
             "Forwarded directly without AI screening to",
             "Check your real phone or call back",
             "Whitelist: transferred directly to real number",
-            "⭐ Whitelist Direct Transfer",
+            "Whitelist Direct Transfer",
             "Direct transfer triggered (bypassed AI)",
             "Forwarding number",
         ),
@@ -6766,15 +6766,15 @@ async fn run_gemini_session_to_end(
                         let lang = locale::notify_lang();
                         let p = locale::phrases(lang);
                         let (urg_title, urg_label, fwd_label, urg_footer) = match lang {
-                            locale::Lang::ZhTw => ("🚨 白名單緊急事件通知", "緊急內容", "轉接號碼", "請立即回電或接手處理！"),
-                            locale::Lang::ZhCn => ("🚨 白名单紧急事件通知", "紧急内容", "转接号码", "请立即回电或接手处理！"),
-                            locale::Lang::Ja => ("🚨 ホワイトリスト緊急通知", "緊急の用件", "転送先番号", "直ちに折り返すか対応してください！"),
-                            locale::Lang::Ko => ("🚨 화이트리스트 긴급 알림", "긴급 내용", "전환 번호", "즉시 회신하거나 확인해 주세요!"),
-                            locale::Lang::Es => ("🚨 Alerta de emergencia (Lista blanca)", "Detalle urgente", "Número de desvío", "¡Por favor devuelve la llamada o atiende de inmediato!"),
-                            locale::Lang::Fr => ("🚨 Alerte d'urgence (Liste blanche)", "Urgence", "Numéro de transfert", "Veuillez rappeler ou prendre le relais immédiatement !"),
-                            locale::Lang::De => ("🚨 Whitelist-Notfallalarm", "Dringendes Anliegen", "Weiterleitungsnummer", "Bitte sofort zurückrufen oder übernehmen!"),
-                            locale::Lang::Pt => ("🚨 Alerta de emergência (Lista branca)", "Assunto urgente", "Número de transferência", "Por favor, retorne a ligação ou assuma imediatamente!"),
-                            locale::Lang::En => ("🚨 Whitelist Emergency Alert", "Urgent matter", "Forwarding number", "Please call back or take over immediately!"),
+                            locale::Lang::ZhTw => ("白名單緊急事件通知", "緊急內容", "轉接號碼", "請立即回電或接手處理！"),
+                            locale::Lang::ZhCn => ("白名单紧急事件通知", "紧急内容", "转接号码", "请立即回电或接手处理！"),
+                            locale::Lang::Ja => ("ホワイトリスト緊急通知", "緊急の用件", "転送先番号", "直ちに折り返すか対応してください！"),
+                            locale::Lang::Ko => ("화이트리스트 긴급 알림", "긴급 내용", "전환 번호", "즉시 회신하거나 확인해 주세요!"),
+                            locale::Lang::Es => ("Alerta de emergencia (Lista blanca)", "Detalle urgente", "Número de desvío", "¡Por favor devuelve la llamada o atiende de inmediato!"),
+                            locale::Lang::Fr => ("Alerte d'urgence (Liste blanche)", "Urgence", "Numéro de transfert", "Veuillez rappeler ou prendre le relais immédiatement !"),
+                            locale::Lang::De => ("Whitelist-Notfallalarm", "Dringendes Anliegen", "Weiterleitungsnummer", "Bitte sofort zurückrufen oder übernehmen!"),
+                            locale::Lang::Pt => ("Alerta de emergência (Lista branca)", "Assunto urgente", "Número de transferência", "Por favor, retorne a ligação ou assuma imediatamente!"),
+                            locale::Lang::En => ("Whitelist Emergency Alert", "Urgent matter", "Forwarding number", "Please call back or take over immediately!"),
                         };
                         let fwd_line = if fwd.is_empty() {
                             String::new()
@@ -8631,21 +8631,21 @@ fn maybe_notify_voicemail(state: &AppState, call: &ActiveCall, notified: &Arc<At
     let reply_line = match (call.reply_method(), call.contact_verified()) {
         (Some("phone"), true) => {
             if contact.is_empty() {
-                format!("☎️ {}", p.vm_call_back_unknown)
+                p.vm_call_back_unknown.to_string()
             } else {
-                format!("☎️ {}", locale::fill(p.vm_call_back_to, &contact))
+                locale::fill(p.vm_call_back_to, &contact)
             }
         }
         (Some("email"), true) => {
             if contact.is_empty() {
-                format!("📧 {}", p.vm_email_unknown)
+                p.vm_email_unknown.to_string()
             } else {
-                format!("📧 {}", locale::fill(p.vm_email_to, &contact))
+                locale::fill(p.vm_email_to, &contact)
             }
         }
-        (Some("phone"), false) => format!("☎️ {}", p.vm_call_back_unchecked),
-        (Some(_), _) => format!("ℹ️ {}", p.vm_no_reply),
-        (None, _) => format!("ℹ️ {}", p.vm_no_choice),
+        (Some("phone"), false) => p.vm_call_back_unchecked.to_string(),
+        (Some(_), _) => p.vm_no_reply.to_string(),
+        (None, _) => p.vm_no_choice.to_string(),
     };
     let http = state.http.clone();
     let settings = state.settings.clone();
@@ -9299,7 +9299,7 @@ fn spawn_ai_talk_tg_summary(
         if notify_on && !errand_call {
             if let Some(ev) = &calendar_event {
                 let label = locale::notify_phrases().n_calendar;
-                body.push_str(&format!("\n📅 {label}{}{} ({})", locale::notify_kv_sep(), ev.title, ev.when()));
+                body.push_str(&format!("\n{label}{}{} ({})", locale::notify_kv_sep(), ev.title, ev.when()));
                 // One tap adds it to the calendar the owner chose (setting
                 // `calendar_app`): its form, or the call's `.ics` at the console's
                 // address (no link for Apple / .ics without one). Not chosen

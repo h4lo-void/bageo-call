@@ -25,7 +25,7 @@ and the web console under *System → Phones*.
 | Sends texts for you | When you answer an appointment by text, the phone that took the call sends it from its own number (`send_sms`). |
 | Places calls for the agent | AI call-backs with your answer to an appointment, and AI errands from the console's *Errands* page (`place_call`). It never dials while ringing or on a call: the new call waits (an errand up to 10 minutes). |
 | Picks the right SIM | On a dual-SIM phone, texts and outgoing calls use the SIM the agent names by its Android subscription id (`sub_id`): the SIM the original call came in on, or for an errand a SIM from the number's country. |
-| Takes one call at a time | A second call during a call is declined at once (the caller hears busy) and reported to the agent (`call_waiting_rejected`). It shows in the call list, and you get a "📵 Missed while on another call" notification. |
+| Takes one call at a time | A second call during a call is declined at once (the caller hears busy) and reported to the agent (`call_waiting_rejected`). It shows in the call list, and you get a "Missed while on another call" notification. |
 | Fails safe | Agent unreachable while it rings: it does not answer, and the call goes to your carrier's missed call or voicemail. Link to the agent lost for 3 seconds during a call: it hangs up instead of leaving the caller in silence. |
 
 ## Which phones

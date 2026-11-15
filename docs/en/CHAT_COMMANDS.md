@@ -43,13 +43,13 @@ Numbers like `1` or `#2` refer to the list the chat was shown last
 | `/answer <text>` | Answer the question the AI asked you |
 | `/mode <phone> ai\|normal` | Switch a phone (its name, or its number in `/status`) |
 | `/contacts <name>` | Find a contact |
-| `/block <number> [name/reason]` | Add a number to the ⛔ **Blacklist** (block & reject immediately) |
-| `/stall <number> [name/note]` | Add a number to the 🎭 **Force Stall list** (enter Stall mode from second 0) |
-| `/white <number> [name/note]` | Add a number to the ⭐ **Whitelist** (VIP / optional call transfer to your real phone) |
-| `/unblock <number>` | Remove a number from the Blacklist or Force Stall list and restore normal AI answering |
+| `/block <number> [name/reason]` | Add a number to the **Blacklist** (block & reject immediately) |
+| `/stall <number> [name/note]` | Add a number to the **Stall list** (enter Stall mode from second 0) |
+| `/white <number> [name/note]` | Add a number to the **Whitelist** (VIP / optional call transfer to your real phone) |
+| `/unblock <number>` | Remove a number from the Blacklist or Stall list and restore normal AI answering |
 
 You can also just write what you want in any language: "call 0912345678 and book a table for
-two at 7 tonight", "who called yesterday?", "block 0912345678 loan spam", "put 0223456789 on the force stall list", "add 0988111222 to whitelist Mom". Gemini's lowest-cost model
+two at 7 tonight", "who called yesterday?", "block 0912345678 loan spam", "put 0223456789 on the stall list", "add 0988111222 to whitelist Mom". Gemini's lowest-cost model
 (the key from *Settings*) turns it into one of the commands above; without a
 key the bot answers with a short pointer to `/help`.
 
@@ -58,7 +58,7 @@ key the bot answers with a short pointer to `/help`.
 Placing a call, switching a phone's mode and accepting or ignoring a to-do,
 and a line for the AI or an answer to its question that the model read from
 your free text (typed `/say` and replies to its question go at once), first
-get a summary with **✅ Go ahead / ✖ Drop** buttons (or reply **1** / **2**).
+get a summary with **Go ahead / Drop** buttons (or reply **1** / **2**).
 
 - It waits **2 minutes**; after that it does nothing.
 - Only the person who asked, in the same chat, can confirm it, and only once.
@@ -117,7 +117,7 @@ Beyond Telegram two-way chat, **all 32 notification channels** support interacti
 
 1. **One-tap signed action buttons on call summaries & appointments (`GET/POST /calls/api/quick-action`)**
    - When *Address of this console* (`public_url`) is configured, every call summary and pending appointment notification includes HMAC-SHA256 signed one-tap actions (no console password required):
-     - Call summaries: **⛔ Block**, **🎭 Force Stall**, **⭐ Whitelist**
+     - Call summaries: **Block**, **Stall**, **Whitelist**
      - Pending appointments: **Accept**, **Decline**
    - Native button support by channel:
      - **Telegram**: Inline Keyboard buttons

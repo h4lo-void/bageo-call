@@ -182,7 +182,7 @@ AI 的语音、内置提示词、网页控制台、手机应用和通知，九�
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/contacts.svg" width="56" height="56" alt=""><br>
       <strong>认得谁打来</strong><br>
-      通讯录可以从 vCard、CSV、Excel、Word、PDF、名片照片导入，内置联系人、⭐ 白名单转接真实号码、⛔ 黑名单与 🎭 启动 Stalls 四合一分类。
+      通讯录可以从 vCard、CSV、Excel、Word、PDF、名片照片导入，内置联系人、白名单转接真实号码、黑名单与陪聊名单四合一分类。
     </td>
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/switch.svg" width="56" height="56" alt=""><br>

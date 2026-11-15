@@ -253,7 +253,7 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/tasks/$TASK/confirm" \
 
 ```json
 {"ok": true, "task": {"id": "…", "appointment": {"status": "confirmed", "reply": "call", "call": "dialing"}},
- "message": "✅ 已同意预约\n11月14日（周六）15:00–16:00 看房\nAI 正在回拨给 0912345678\n📅 添加到日历：https://calendar.google.com/…"}
+ "message": "已同意预约\n11月14日（周六）15:00–16:00 看房\nAI 正在回拨给 0912345678\n添加到日历：https://calendar.google.com/…"}
 ```
 
 ## AI 代打
@@ -268,7 +268,7 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 
 **通话中。** AI 遇到你的交代没说清楚的事，会跟对方说要确认一下，然后问你（`ask_owner` 函数）。你正在看这条代打时（6 秒内有人读过它的实时画面），问题会显示在那里，最多等 40 秒。没人在看、或你没来得及回答，AI 会问清楚哪些选项可行，说你确认后再回电，然后礼貌地结束通话。等答案的时候，AI 不会先替这个问题做决定；对方先说再见的话，问题就到此为止。你在通话中输入的文字会作为指示交给 AI。
 
-**通话后。** 摘要模型会对照交代内容读这通电话，你会收到一条通知（标题“📞 AI 代打电话：<名字或号码>”，用通知语言；webhook 事件 `ai_errand`）。AI 在你没回答的问题上自己答应的事，结果一定不是 `done`，而是 `need_owner`，提醒你确认，不合适就回电修改。
+**通话后。** 摘要模型会对照交代内容读这通电话，你会收到一条通知（标题“AI 代打电话：<名字或号码>”，用通知语言；webhook 事件 `ai_errand`）。AI 在你没回答的问题上自己答应的事，结果一定不是 `done`，而是 `need_owner`，提醒你确认，不合适就回电修改。
 
 **用谁的身份打。** 设置 `errand_identity`（默认 `assistant`，你的助理；或 `owner`，你本人），每条代打也可以单独指定。不论哪一种，被认真问到时 AI 都会承认自己是 AI，不透露交代内容以外的个人信息，也不答应任何付款、订金或转账。
 
@@ -386,7 +386,7 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/errands/e3f1a29c0b7d4e55/say" \
 
 联系人给打来的号码配上名字，保存在通话记录文件夹（`CALLS_DATA_DIR`）的 `contacts.json`。号码不管怎么写都能对上：`+886912345678`、`0912-345-678`、`886912345678` 是同一个号码。没有国家代码的号码按你的国家（`country_code`）解读；来电则按接到这通电话的 SIM 卡所属国家。联系人也用在 AI 代打（选联系人就不用输号码）和推销判断：已保存的联系人谈到钱，不会被当成推销或诈骗。
 
-一位联系人是 `{id, name, phones: [...], note, kind, source, updated_at}`，最多 10 个号码，名字最多 80 字、备注最多 500 字。`kind` 为 `contact`（默认普通联系人）、`whitelist`（白名单 VIP／家人，配合 `whitelist_mode` 使用）、`blacklist`（黑名单，来电直接拒接）或 `stall`（启动 Stalls 名单，来电直接进入 AI 陪聊反制模式）。`source` 为 `manual`、`vcf`、`csv`、`text` 或 `ai`（Gemini 读出来的）。一个号码只属于一位联系人；通讯录最多 10,000 位（`too_many_contacts`）。
+一位联系人是 `{id, name, phones: [...], note, kind, source, updated_at}`，最多 10 个号码，名字最多 80 字、备注最多 500 字。`kind` 为 `contact`（默认普通联系人）、`whitelist`（白名单 VIP／家人，配合 `whitelist_mode` 使用）、`blacklist`（黑名单，来电直接拒接）或 `stall`（陪聊名单，来电直接进入 AI 陪聊反制模式）。`source` 为 `manual`、`vcf`、`csv`、`text` 或 `ai`（Gemini 读出来的）。一个号码只属于一位联系人；通讯录最多 10,000 位（`too_many_contacts`）。
 
 | 方法与路径 | 内容 |
 |---|---|
@@ -459,7 +459,7 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/devices/pixel-12345/mode" \
 | 手机 → 主程序 | `status` | `{mode, in_call}`：模式或通话状态变了。 |
 | 手机 → 主程序 | `incoming`、`incoming_cancel` | 有电话在响（`caller_id`，隐藏号码时为空字符串；`sim_country`；知道时带 `sim_sub_id`）／接起来之前就结束了。 |
 | 主程序 → 手机 | `answer_plan` | `{delay_ms, prewarm, reject}`：响多久再接，或 `reject: true` 响铃中直接拒接（`reject_mode` 为 `decline` 的拦截号码）。 |
-| 手机 → 主程序 | `call_waiting_rejected` | `{serial, caller_id, sim_country, sim_sub_id}`：通话中又有第二通打进来，手机立刻拒接（AI 模式）。会留下通话记录并发出“📵”通知。 |
+| 手机 → 主程序 | `call_waiting_rejected` | `{serial, caller_id, sim_country, sim_sub_id}`：通话中又有第二通打进来，手机立刻拒接（AI 模式）。会留下通话记录并发出“通话中插播未接”通知。 |
 | 主程序 → 手机／手机 → 主程序 | `set_mode`／`set_mode_result` | `{mode, id}`／`{id, ok, mode, error}`：远程切换模式；`error` 用上面的代码。 |
 | 主程序 → 手机 | `agent_info` | `{console_url}`：给 App 的“**打开网页控制台**”按钮。主程序知道地址时才在 hello 之后发：`public_url`，或控制台对局域网开放时的局域网 IP 地址。 |
 | 主程序 → 手机 | `place_call` | `{number, call_id, task_id, sub_id}`：拨出电话（AI 回拨或 AI 代打），用 subscription id 为 `sub_id` 的 SIM 拨（找不到那张 SIM 就用手机默认的）。手机有电话在响或通话中时不拨，返回 `place_call_failed`，`reason` 为 `busy`。 |

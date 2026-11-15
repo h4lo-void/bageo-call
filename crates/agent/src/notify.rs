@@ -1089,15 +1089,14 @@ fn esc_html(s: &str) -> String {
 /// Headline + "label: value" lines, as plain text and as Telegram HTML.
 /// A `code` row shows monospaced in Telegram (tap to copy a number).
 struct Card {
-    icon: &'static str,
     headline: String,
     rows: Vec<(String, String, bool)>,
     tail: String,
 }
 
 impl Card {
-    fn new(icon: &'static str, headline: &str) -> Self {
-        Self { icon, headline: headline.to_string(), rows: Vec::new(), tail: String::new() }
+    fn new(headline: &str) -> Self {
+        Self { headline: headline.to_string(), rows: Vec::new(), tail: String::new() }
     }
 
     fn row(mut self, label: &str, value: &str) -> Self {
@@ -1117,7 +1116,7 @@ impl Card {
 
     fn plain(&self) -> String {
         let sep = kv_sep();
-        let mut s = format!("{} {}", self.icon, self.headline);
+        let mut s = self.headline.clone();
         for (l, v, _) in &self.rows {
             s.push_str(&format!("\n{l}{sep}{v}"));
         }
@@ -1129,7 +1128,7 @@ impl Card {
 
     fn html(&self) -> String {
         let sep = kv_sep();
-        let mut s = format!("<b>{} {}</b>", self.icon, esc_html(&self.headline));
+        let mut s = format!("<b>{}</b>", esc_html(&self.headline));
         for (l, v, code) in &self.rows {
             if *code {
                 s.push_str(&format!("\n{}{sep}<code>{}</code>", esc_html(l), esc_html(v)));
@@ -1170,7 +1169,7 @@ pub async fn notify_incoming_call(
     let caller = display_or_hidden(caller_id);
     let device = device_label(serial);
     let when = now_stamp();
-    let msg = Card::new("📞", p.n_incoming)
+    let msg = Card::new(p.n_incoming)
         .code(p.n_number, &caller)
         .row(p.n_phone, &device)
         .row(p.n_time, &when)
@@ -1201,7 +1200,7 @@ pub async fn notify_rejected_call(
     let device = device_label(serial);
     let when = now_stamp();
     let reason = reason.trim();
-    let mut card = Card::new("⛔", p.n_blocked).code(p.n_number, &caller);
+    let mut card = Card::new(p.n_blocked).code(p.n_number, &caller);
     if !reason.is_empty() {
         card = card.row(p.n_reason, reason);
     }
@@ -1262,7 +1261,7 @@ pub async fn notify_call_waiting_rejected(
     let device = device_label(serial);
     let when = now_stamp();
     let headline = call_waiting_headline(&caller, &device);
-    let msg = Card::new("📵", &headline).row(p.n_time, &when).message(
+    let msg = Card::new(&headline).row(p.n_time, &when).message(
         "call_waiting",
         headline.clone(),
         json!({
@@ -1296,7 +1295,7 @@ pub async fn notify_ai_request(
         Some(name) => format!("{} · {name}", p.n_summary),
         None => p.n_summary.to_string(),
     };
-    let mut msg = Card::new("☎️", &headline)
+    let mut msg = Card::new(&headline)
         .code(p.n_number, &caller)
         .row(p.n_phone, &device)
         .row(p.n_time, &when)
@@ -1316,15 +1315,15 @@ pub async fn notify_ai_request(
     if !console.trim().is_empty() && caller_id.chars().filter(char::is_ascii_digit).count() >= 3 {
         let name_hint = contact.as_deref().unwrap_or("");
         let (lbl_blk, lbl_stl, lbl_wht) = match locale::notify_lang() {
-            locale::Lang::ZhTw => ("⛔ 加入黑名單", "🎭 設為陪聊", "⭐ 加入白名單"),
-            locale::Lang::ZhCn => ("⛔ 加入黑名单", "🎭 设为陪聊", "⭐ 加入白名单"),
-            locale::Lang::Ja => ("⛔ 着信拒否", "🎭 引き延ばし", "⭐ ホワイトリスト"),
-            locale::Lang::Ko => ("⛔ 차단 목록", "🎭 시간 끌기", "⭐ 화이트리스트"),
-            locale::Lang::Es => ("⛔ Lista negra", "🎭 Retener (Stall)", "⭐ Lista blanca"),
-            locale::Lang::Fr => ("⛔ Liste noire", "🎭 Retenir (Stall)", "⭐ Liste blanche"),
-            locale::Lang::De => ("⛔ Sperrliste", "🎭 Hinhalten (Stall)", "⭐ Whitelist"),
-            locale::Lang::Pt => ("⛔ Bloquear", "🎭 Enrolar (Stall)", "⭐ Lista branca"),
-            locale::Lang::En => ("⛔ Block", "🎭 Force Stall", "⭐ Whitelist"),
+            locale::Lang::ZhTw => ("加入黑名單", "設為陪聊", "加入白名單"),
+            locale::Lang::ZhCn => ("加入黑名单", "设为陪聊", "加入白名单"),
+            locale::Lang::Ja => ("着信拒否", "引き延ばし", "ホワイトリスト"),
+            locale::Lang::Ko => ("차단 목록", "시간 끌기", "화이트리스트"),
+            locale::Lang::Es => ("Lista negra", "Entretener", "Lista blanca"),
+            locale::Lang::Fr => ("Liste noire", "Les faire parler", "Liste blanche"),
+            locale::Lang::De => ("Sperrliste", "Hinhalten", "Whitelist"),
+            locale::Lang::Pt => ("Bloquear", "Manter falando", "Lista branca"),
+            locale::Lang::En => ("Block", "Stall", "Whitelist"),
         };
         for (lbl, act) in [(lbl_blk, "block"), (lbl_stl, "stall"), (lbl_wht, "white")] {
             let u = crate::calendar::quick_action_url(&console, act, caller_id.trim(), name_hint);
@@ -1404,7 +1403,7 @@ pub async fn notify_pending_appointment_non_tg(
     let confirm_url = crate::calendar::quick_action_url(console, "confirm_task", task_id, "");
     let ignore_url = crate::calendar::quick_action_url(console, "ignore_task", task_id, "");
     let mut actions = Vec::new();
-    let mut full_body = format!("📅 {title}\n{body}");
+    let mut full_body = format!("{title}\n{body}");
     if !confirm_url.is_empty() && !ignore_url.is_empty() {
         actions.push(NotifyAction { label: p.ap_confirm.to_string(), url: confirm_url.clone() });
         actions.push(NotifyAction { label: p.ap_decline.to_string(), url: ignore_url.clone() });
@@ -1457,7 +1456,7 @@ pub async fn notify_voicemail(
     let caller = display_or_hidden(caller_id);
     let device = device_label(serial);
     let when = now_stamp();
-    let msg = Card::new("🎙️", p.n_voicemail)
+    let msg = Card::new(p.n_voicemail)
         .code(p.n_number, &caller)
         .row(p.n_phone, &device)
         .row(p.n_length, &format!("{secs:.0} {}", p.n_seconds))
@@ -1491,7 +1490,7 @@ pub async fn notify_ai_callback(
 fn ai_callback_message(caller_id: &str, device: &str, when: &str, headline: &str, body: &str) -> Message {
     let p = locale::notify_phrases();
     let caller = display_or_hidden(caller_id);
-    Card::new("📞", headline)
+    Card::new(headline)
         .code(p.n_number, &caller)
         .row(p.n_phone, device)
         .row(p.n_time, when)
@@ -1527,7 +1526,7 @@ pub async fn notify_ai_errand(
 
 fn ai_errand_message(number: &str, device: &str, when: &str, headline: &str, body: &str) -> Message {
     let p = locale::notify_phrases();
-    Card::new("📞", headline)
+    Card::new(headline)
         .code(p.n_number, &display_or_hidden(number))
         .row(p.n_phone, device)
         .row(p.n_time, when)
@@ -1561,7 +1560,7 @@ pub async fn notify_event(http: &Client, settings: &Settings, title: &str, body:
 /// The test message of the settings page.
 pub fn test_message() -> Message {
     let p = locale::notify_phrases();
-    Card::new("✅", p.n_test_title)
+    Card::new(p.n_test_title)
         .row(p.n_time, &now_stamp())
         .tail(p.n_test_body)
         .message("test", p.n_test_title.to_string(), json!({}))
@@ -1717,8 +1716,8 @@ mod tests {
         Message {
             event: "summary".into(),
             title: "Call summary 0912345678".into(),
-            body: "☎️ Call summary\nNumber: 0912345678".into(),
-            html: Some("<b>☎️ Call summary</b>\nNumber: <code>0912345678</code>".into()),
+            body: "Call summary\nNumber: 0912345678".into(),
+            html: Some("<b>Call summary</b>\nNumber: <code>0912345678</code>".into()),
             data: json!({ "caller_id": "0912345678" }),
             link: None,
             actions: Vec::new(),
@@ -1743,8 +1742,8 @@ mod tests {
     #[test]
     fn an_ai_call_back_has_its_own_title() {
         let m = ai_callback_message("0912000000", "Pixel 9", "11/14 15:00", "AI 回電：0912000000", "AI 回電了，對方沒接");
-        assert!(m.body.starts_with("📞 AI 回電：0912000000\n"), "{}", m.body);
-        assert!(m.body.ends_with("AI 回電了，對方沒接") && m.html.unwrap().starts_with("<b>📞 AI 回電：0912000000</b>"));
+        assert!(m.body.starts_with("AI 回電：0912000000\n"), "{}", m.body);
+        assert!(m.body.ends_with("AI 回電了，對方沒接") && m.html.unwrap().starts_with("<b>AI 回電：0912000000</b>"));
         assert_eq!((m.event.as_str(), m.title.as_str()), ("ai_callback", "AI 回電：0912000000"));
     }
 
@@ -1806,7 +1805,7 @@ mod tests {
         let plain = Message { html: None, ..msg() };
         let p = prepare(&c, &plain, 0).unwrap();
         assert!(json_body(&p).get("parse_mode").is_none());
-        assert!(json_body(&p)["text"].as_str().unwrap().starts_with("☎️ Call summary"));
+        assert!(json_body(&p)["text"].as_str().unwrap().starts_with("Call summary"));
     }
 
     #[test]
@@ -1914,7 +1913,7 @@ mod tests {
 
     #[test]
     fn teams_gets_an_adaptive_card_with_one_block_per_line() {
-        let m = Message { body: "☎️ Call summary\nNumber: 0912345678\n\nCaller: 王小明".into(), ..msg() };
+        let m = Message { body: "Call summary\nNumber: 0912345678\n\nCaller: 王小明".into(), ..msg() };
         let url = "https://example.logic.azure.com:443/workflows/abc/triggers/manual/paths/invoke?sig=s1";
         let p = prepare(&ch("teams", url, "", ""), &m, 0).unwrap();
         assert_eq!(p.url, url);
@@ -1928,7 +1927,7 @@ mod tests {
         assert_eq!(att["content"]["type"], "AdaptiveCard");
         let blocks = att["content"]["body"].as_array().unwrap();
         let texts: Vec<&str> = blocks.iter().map(|b| b["text"].as_str().unwrap()).collect();
-        assert_eq!(texts, ["☎️ Call summary", "Number: 0912345678", "Caller: 王小明"]);
+        assert_eq!(texts, ["Call summary", "Number: 0912345678", "Caller: 王小明"]);
         assert_eq!(blocks[0]["weight"], "Bolder");
         assert_eq!(blocks[1]["spacing"], "None");
         assert_eq!(blocks[2]["spacing"], "Medium");
@@ -2246,14 +2245,14 @@ mod tests {
 
     #[test]
     fn cards_read_the_same_in_text_and_html() {
-        let card = Card::new("📞", "Incoming call")
+        let card = Card::new("Incoming call")
             .code("Number", "<0912>")
             .row("Phone", "Pixel 8 & co")
             .tail("done");
-        assert_eq!(card.plain(), "📞 Incoming call\nNumber：<0912>\nPhone：Pixel 8 & co\n\ndone");
+        assert_eq!(card.plain(), "Incoming call\nNumber：<0912>\nPhone：Pixel 8 & co\n\ndone");
         assert_eq!(
             card.html(),
-            "<b>📞 Incoming call</b>\nNumber：<code>&lt;0912&gt;</code>\nPhone：Pixel 8 &amp; co\n\ndone"
+            "<b>Incoming call</b>\nNumber：<code>&lt;0912&gt;</code>\nPhone：Pixel 8 &amp; co\n\ndone"
         );
     }
 

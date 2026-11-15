@@ -2592,7 +2592,7 @@ async fn set_call_code(tasks: &TaskStore, task_id: &str, code: &str) {
     let _ = tasks.push_event(task_id, &format!("callback_result_{code}")).await;
 }
 
-/// "📞 AI 回電：<number>" with what became of the call-back and the appointment.
+/// "AI 回電：<number>" with what became of the call-back and the appointment.
 async fn notify_callback(ctx: &CallbackCtx<'_>, task_id: &str, code: &str) {
     let Some(task) = ctx.tasks.get(task_id).await else {
         return;
@@ -2718,7 +2718,7 @@ If they seriously ask whether they are talking to a real person, say that you ar
 // ---------------------------------------------------------------------------
 
 /// The line under the post-call summary for an appointment that waits for
-/// the owner: "📅 預約待你確認：… — 到網頁確認：<link>" (`link` = the call's page
+/// the owner: "預約待你確認：… — 到網頁確認：<link>" (`link` = the call's page
 /// in the web console; without one, where to go). Every notification channel
 /// gets it, so the owner learns of it whatever they use. One line for each
 /// appointment of the call ([`Appointment::more`]).
@@ -2733,7 +2733,7 @@ pub fn summary_line(appt: &Appointment, link: &str) -> String {
 fn summary_line_one(appt: &Appointment, link: &str) -> String {
     let lang = locale::notify_lang();
     let p = locale::phrases(lang);
-    let mut s = format!("📅 {}{}{}", p.ap_pending, p.sep, appt.headline(lang));
+    let mut s = format!("{}{}{}", p.ap_pending, p.sep, appt.headline(lang));
     if appt.status == PENDING {
         let link = link.trim();
         let web = if link.is_empty() {
@@ -2745,7 +2745,7 @@ fn summary_line_one(appt: &Appointment, link: &str) -> String {
         s.push_str(&web);
     }
     if appt.time_unconfirmed {
-        s.push_str("\n⚠️ ");
+        s.push_str("\n");
         s.push_str(p.ap_time_unconfirmed);
     }
     for e in &appt.replaced {
@@ -2830,7 +2830,7 @@ pub fn card_text(rt: &RuntimeSettings, task: &TaskRecord, appt: &Appointment, li
         format!("{}{sep}{}", p.n_time, appt.when(lang)),
     ];
     if appt.time_unconfirmed {
-        lines.push(format!("⚠️ {}", p.ap_time_unconfirmed));
+        lines.push(p.ap_time_unconfirmed.to_string());
     }
     if !appt.title.trim().is_empty() {
         lines.push(format!("{}{sep}{}", p.ap_what, appt.title.trim()));
@@ -3186,7 +3186,7 @@ async fn decide_inner_with(
         // One tap puts it in the owner's own calendar (the one they chose).
         let link = calendar_link(rt, console, &task, &appt);
         if !link.is_empty() {
-            lines.push(format!("📅 {}", locale::fill(p.ap_cal_link, &link)));
+            lines.push(locale::fill(p.ap_cal_link, &link));
         }
     }
     store
@@ -3295,14 +3295,14 @@ pub fn delete_voided(voided: &[Earlier]) -> Vec<Earlier> {
 /// The summary's line for an event that is void but still in the calendar.
 pub fn void_failed_line(e: &Earlier) -> String {
     let lang = locale::notify_lang();
-    format!("📅 {}", locale::fill(locale::phrases(lang).ap_void_failed, &e.when(lang)))
+    locale::fill(locale::phrases(lang).ap_void_failed, &e.when(lang))
 }
 
 /// The summary line for an event deleted because the summary judged the call
 /// a sales call afterwards.
 pub fn sales_void_line(e: &Earlier) -> String {
     let lang = locale::notify_lang();
-    format!("📅 {}", locale::fill(locale::phrases(lang).ap_sales_voided, &e.when(lang)))
+    locale::fill(locale::phrases(lang).ap_sales_voided, &e.when(lang))
 }
 
 /// Everything an appointment put in the calendar (the event and earlier ones,
@@ -3718,7 +3718,7 @@ mod tests {
     fn replaced_booked_times_are_listed() {
         // The summary judged it a sales call after the call: the deleted event is named.
         let gone = Earlier::of(&appt("2026-11-14T15:00", "2026-11-14T16:00", "看房"));
-        assert_eq!(sales_void_line(&gone), "📅 判定是推銷電話，已取消通話中排入的預約：11/14（週六）15:00–16:00 看房");
+        assert_eq!(sales_void_line(&gone), "判定是推銷電話，已取消通話中排入的預約：11/14（週六）15:00–16:00 看房");
         let book = CallAppointments::new();
         let mut first = appt("2026-11-14T15:00", "2026-11-14T16:00", "看房");
         first.event_id = "ev1".into();
@@ -3730,7 +3730,7 @@ mod tests {
         assert_eq!(out.replaced.len(), 1);
         assert_eq!(out.replaced[0].event_id, "ev1");
         let line = summary_line(&out, "");
-        assert!(line.starts_with("📅 預約待你確認：11/15（週日）10:00–11:00 看房"), "{line}");
+        assert!(line.starts_with("預約待你確認：11/15（週日）10:00–11:00 看房"), "{line}");
         assert!(line.contains("11/14（週六）15:00–16:00 看房"), "{line}");
     }
 
@@ -3739,10 +3739,10 @@ mod tests {
         let a = appt("2026-11-14T15:00", "2026-11-14T16:00", "看房");
         assert_eq!(
             summary_line(&a, "http://bageo.local/calls/#call=c1"),
-            "📅 預約待你確認：11/14（週六）15:00–16:00 看房 — 到網頁確認：http://bageo.local/calls/#call=c1"
+            "預約待你確認：11/14（週六）15:00–16:00 看房 — 到網頁確認：http://bageo.local/calls/#call=c1"
         );
         // No address other devices can open: where to go instead.
-        assert_eq!(summary_line(&a, " "), "📅 預約待你確認：11/14（週六）15:00–16:00 看房 — 到網頁控制台確認");
+        assert_eq!(summary_line(&a, " "), "預約待你確認：11/14（週六）15:00–16:00 看房 — 到網頁控制台確認");
         for l in locale::ALL {
             let p = locale::phrases(l);
             assert_eq!(p.ap_web_confirm.matches("{}").count(), 1, "{l:?}");
@@ -4245,7 +4245,7 @@ mod tests {
         a.caller_name = "陳先生".into();
         let task = task_for("0912345678", &a);
         let (title, body) = card_text(&rt, &task, &a, "");
-        assert_eq!(title, "📅 預約待確認");
+        assert_eq!(title, "預約待確認");
         assert!(body.contains("號碼：0912345678") && body.contains("時間：11/14（週六）15:00–16:00"), "{body}");
         assert!(body.contains("事由：看房") && body.contains("陳先生"), "{body}");
         assert!(body.contains("簡訊：按同意或不同意後會傳簡訊告訴對方"), "{body}");
@@ -4327,7 +4327,7 @@ mod tests {
             decide(&rt, "http://bageo.local/", &store, &calls, None, &t.id, false),
         );
         let (first, second) = (first.unwrap(), second.unwrap());
-        assert!(first.1.starts_with("✅ 已同意預約"), "{}", first.1);
+        assert!(first.1.starts_with("已同意預約"), "{}", first.1);
         assert!(second.1.starts_with("這個預約已經處理過了"), "{}", second.1);
         let done = store.get(&t.id).await.unwrap();
         assert_eq!(done.status, TaskStatus::Fulfilled);
@@ -4343,7 +4343,7 @@ mod tests {
         assert_eq!(store.get(&t2.id).await.unwrap().status, TaskStatus::Pending);
         drop(held);
         let (_, text) = decide(&rt, "http://bageo.local/", &store, &calls, None, &t2.id, true).await.unwrap();
-        assert!(text.starts_with("✅ 已同意預約"), "{text}");
+        assert!(text.starts_with("已同意預約"), "{text}");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -4364,7 +4364,7 @@ mod tests {
         let failed = delete_voided(&voided);
         assert_eq!(failed, voided);
         let line = void_failed_line(&failed[0]);
-        assert!(line.starts_with("📅 通話中排入的「") && line.contains("請自己刪"), "{line}");
+        assert!(line.starts_with("通話中排入的「") && line.contains("請自己刪"), "{line}");
         // Proposed after the verdict: not kept, and nothing more to void.
         assert!(!book.record(appt(&later(3, 15), &later(3, 16), "看房")));
         assert_eq!(book.voided().len(), 1);
@@ -4403,10 +4403,10 @@ mod tests {
         let (done, text) = decide(&rt, "http://bageo.local/", &store, &calls, None, &t.id, true).await.unwrap();
         assert_eq!(done.status, TaskStatus::Fulfilled);
         assert_eq!(done.appointment.as_ref().unwrap().status, CONFIRMED);
-        assert!(text.starts_with("✅ 已同意預約\n11/14（週六）15:00–16:00 看房"), "{text}");
+        assert!(text.starts_with("已同意預約\n11/14（週六）15:00–16:00 看房"), "{text}");
         // No calendar chosen yet: the call's page, where "Add to calendar"
         // asks which one (never a calendar picked for the owner).
-        assert!(text.ends_with("\n📅 加入行事曆：http://bageo.local/calls/#call=c"), "{text}");
+        assert!(text.ends_with("\n加入行事曆：http://bageo.local/calls/#call=c"), "{text}");
         assert!(!text.contains("calendar.google.com"), "{text}");
         assert!(done.events.contains(&"appointment_confirmed".to_string()));
         // Pressed again: nothing happens twice.
@@ -4421,7 +4421,7 @@ mod tests {
         let tg = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
         let (_, text) = decide(&rt, "http://bageo.local/", &store, &calls, None, &tg.id, true).await.unwrap();
         assert!(
-            text.contains("\n📅 加入行事曆：https://calendar.google.com/calendar/render?action=TEMPLATE&text=%E7%9C%8B%E6%88%BF&dates=20261114T150000/20261114T160000&details="),
+            text.contains("\n加入行事曆：https://calendar.google.com/calendar/render?action=TEMPLATE&text=%E7%9C%8B%E6%88%BF&dates=20261114T150000/20261114T160000&details="),
             "{text}"
         );
         // The caller's number goes in the entry (`號碼：0912345678`).
@@ -4430,7 +4430,7 @@ mod tests {
         rt.calendar_app = "apple".into();
         let t3 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
         let (_, text) = decide(&rt, "http://bageo.local/", &store, &calls, None, &t3.id, true).await.unwrap();
-        assert!(text.ends_with(&format!("📅 加入行事曆：http://bageo.local/calls/api/tasks/{}/event.ics", t3.id)), "{text}");
+        assert!(text.ends_with(&format!("加入行事曆：http://bageo.local/calls/api/tasks/{}/event.ics", t3.id)), "{text}");
         // …and without an address other devices can open: no link at all.
         rt.public_url = String::new();
         let t4 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
@@ -4443,7 +4443,7 @@ mod tests {
         let (done, text) = decide(&rt, "http://bageo.local/", &store, &calls, Some(&control), &t2.id, false).await.unwrap();
         assert_eq!(done.status, TaskStatus::Ignored);
         assert_eq!(done.appointment.as_ref().unwrap().sms, "offline");
-        assert!(text.starts_with("❌ 已婉拒預約") && text.contains("簡訊沒傳出：手機沒連線"), "{text}");
+        assert!(text.starts_with("已婉拒預約") && text.contains("簡訊沒傳出：手機沒連線"), "{text}");
         // Declined: nothing to add to a calendar.
         assert!(!text.contains("加入行事曆"), "{text}");
         let _ = std::fs::remove_dir_all(&root);
@@ -4715,7 +4715,7 @@ mod tests {
         let (_, text) = decide(&plain_settings(), "", &tasks, &calls, None, &made[1].id, true)
             .await
             .unwrap();
-        assert!(text.starts_with("✅ 已同意預約"), "{text}");
+        assert!(text.starts_with("已同意預約"), "{text}");
         assert_eq!(tasks.get(&made[0].id).await.unwrap().appointment.unwrap().status, PENDING);
         let n = calls.load_notes(&rec.id).await.unwrap().appointment.unwrap();
         assert_eq!((n.status.as_str(), n.more.len(), n.more[0].status.as_str()), (PENDING, 1, CONFIRMED));
@@ -4933,7 +4933,7 @@ mod tests {
                 ("tag", json!("tag-demo")),
                 ("calendar", json!("demo")),
                 ("auto_error", json!("日曆沒有及時回應（10 秒）")),
-                ("write_error", json!("⚠️ 寫入日曆失敗")),
+                ("write_error", json!("寫入日曆失敗")),
                 ("held_busy", json!(true)),
                 ("replaced", json!([{"start": later(2, 10), "end": later(2, 11), "title": "看房", "event_id": "demo-0"}])),
                 ("sms", json!("offline")),
@@ -4948,7 +4948,7 @@ mod tests {
         let t = store.create(old(PENDING)).await.unwrap();
         let (done, text) = decide(&rt, "http://bageo.local/", &store, &calls, None, &t.id, true).await.unwrap();
         assert_eq!(done.status, TaskStatus::Fulfilled);
-        assert!(text.starts_with("✅ 已同意預約"), "{text}");
+        assert!(text.starts_with("已同意預約"), "{text}");
         let a = done.appointment.unwrap();
         assert_eq!((a.status.as_str(), a.write_error.as_str(), a.held_busy), (CONFIRMED, "", false));
         assert!(serde_json::to_value(&a).unwrap().get("calendar").is_none());
@@ -4957,7 +4957,7 @@ mod tests {
         let (done, text) = decide(&rt, "http://bageo.local/", &store, &calls, None, &t.id, false).await.unwrap();
         assert_eq!(done.status, TaskStatus::Ignored);
         assert_eq!(done.appointment.unwrap().event_id, "demo-1");
-        assert!(text.starts_with("❌ 已婉拒預約") && !text.contains('刪'), "{text}");
+        assert!(text.starts_with("已婉拒預約") && !text.contains('刪'), "{text}");
         // Booked on the call: listed as in the calendar, its text can be sent
         // again, and voiding it only asks the owner to delete its events.
         let t = store.create(old(BOOKED)).await.unwrap();
