@@ -1,3 +1,16 @@
+# Unreleased
+
+- **16 more notification channels (32 in all).** Microsoft Teams (Workflows
+  webhook with an Adaptive Card), Google Chat, Rocket.Chat, Zulip, Webex,
+  Nextcloud Talk, Synology Chat, Signal (through signal-cli-rest-api),
+  Pushbullet, PushPlus, PushDeer, WxPusher, Chanify, Home Assistant notify
+  services, IFTTT Webhooks, and email through any SMTP server with TLS
+  (STARTTLS or port 465). Built from each service's public documentation and
+  covered by unit tests; not yet tried with live accounts. See
+  [Notifications](docs/en/NOTIFICATIONS.md).
+- **通知管道再加 16 種（共 32 種）。** Microsoft Teams（Workflows Webhook，送 Adaptive Card）、Google Chat、Rocket.Chat、Zulip、Webex、Nextcloud Talk、Synology Chat、Signal（透過 signal-cli-rest-api）、Pushbullet、PushPlus、PushDeer、WxPusher、Chanify、Home Assistant 通知服務、IFTTT Webhooks，以及任何支援 TLS 的 SMTP 郵件伺服器（STARTTLS 或 465 埠）。依各服務的公開文件實作並有單元測試，還沒有在真實帳號上試過。見[通知](docs/zh-TW/NOTIFICATIONS.md)。
+- **通知渠道再加 16 种（共 32 种）。** Microsoft Teams（Workflows Webhook，发送 Adaptive Card）、Google Chat、Rocket.Chat、Zulip、Webex、Nextcloud Talk、Synology Chat、Signal（通过 signal-cli-rest-api）、Pushbullet、PushPlus、PushDeer、WxPusher、Chanify、Home Assistant 通知服务、IFTTT Webhooks，以及任意支持 TLS 的 SMTP 邮件服务器（STARTTLS 或 465 端口）。按各服务的公开文档实现并有单元测试，还没有在真实账号上试过。见[通知](docs/zh-CN/NOTIFICATIONS.md)。
+
 # Bageo v1.0.0
 
 **English** · [繁體中文](#繁體中文) · [简体中文](#简体中文)

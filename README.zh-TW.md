@@ -71,7 +71,7 @@ flowchart LR
     agent <-- "語音對語音" --> gemini[("Gemini Live")]
     agent -- "摘要、防詐複審、<br/>聯絡人匯入、翻譯" --> lite[("Gemini Flash-Lite<br/>或任何 OpenAI 相容模型")]
     agent <--> console["網頁控制台<br/>http://bageo.local:8787"]
-    agent --> notify["16 種通知管道"]
+    agent --> notify["32 種通知管道"]
     agent --> data[("data/ 資料夾<br/>在你的硬碟上")]
 ```
 
@@ -144,9 +144,9 @@ flowchart LR
 
 在控制台「**系統**」頁或 Bageo App 裡，隨時把備用機切回普通手機、再切回來。一般手機模式下，Google 電話恢復成撥號程式、勿擾模式關閉、音量還原，來電照常響、由你自己接；重開機後模式不變。切換由 Magisk／KernelSU 模組的 root 小程式執行，所以 Bageo App 本身完全不需要 root 權限。詳見[一般手機模式](docs/zh-TW/PHONE.md#一般手機模式)。
 
-### 16 種通知管道，資料存在自己的硬碟
+### 32 種通知管道，資料存在自己的硬碟
 
-Telegram（預約卡片附「同意／不同意」按鈕）、Discord、Slack／Mattermost、LINE Messaging API、ntfy、Gotify、Bark、Pushover、企業微信、釘釘（支援加簽）、飛書／Lark、Server醬、Matrix、Gmail、Apprise，以及給 n8n、Zapier、Home Assistant 用的 JSON Webhook。可以任意搭配，每則訊息都會送到全部管道。選用的[簡訊轉發器](tools/sms_forward/README.md)會把手機收到的簡訊也轉到同樣的管道。
+Telegram（預約卡片附「同意／不同意」按鈕）、Discord、Slack／Mattermost、Microsoft Teams、Google Chat、Rocket.Chat、Zulip、Webex、Nextcloud Talk、Synology Chat、LINE Messaging API、Signal（透過 signal-cli-rest-api）、ntfy、Gotify、Bark、Pushover、Pushbullet、企業微信、釘釘（支援加簽）、飛書／Lark、Server醬、PushPlus、PushDeer、WxPusher、Chanify、Matrix、Gmail、任何 SMTP 伺服器的電子郵件、Home Assistant、IFTTT、Apprise，以及給 n8n、Zapier 用的 JSON Webhook。可以任意搭配，每則訊息都會送到全部管道。選用的[簡訊轉發器](tools/sms_forward/README.md)會把手機收到的簡訊也轉到同樣的管道。
 
 會離開你電腦的有：即時通話音訊送到 Gemini，逐字稿送到摘要模型（預設是同一把金鑰的 Gemini Flash-Lite，也可以換成任何 OpenAI 相容服務，包括本機的 Ollama），摘要送到你設定的通知管道。詳見[隱私、安全與法律](docs/zh-TW/PRIVACY_AND_LEGAL.md)。
 
@@ -188,7 +188,7 @@ Telegram（預約卡片附「同意／不同意」按鈕）、Discord、Slack／
 | [開始使用](docs/zh-TW/GETTING_STARTED.md) | 在 Windows／macOS／Linux／Docker 安裝、第一通電話、第一次 AI 代打 |
 | [手機設定](docs/zh-TW/PHONE.md) | Root 模組、App 檢查清單、USB 與 Wi-Fi、一般手機模式、還原 |
 | [撰寫提示詞](docs/zh-TW/PROMPTS.md) | AI 每通電話收到什麼、訪談提示詞、資料、寫法技巧、固定底線 |
-| [通知](docs/zh-TW/NOTIFICATIONS.md) | 16 種管道各自怎麼設定；webhook 內容格式 |
+| [通知](docs/zh-TW/NOTIFICATIONS.md) | 32 種管道各自怎麼設定；webhook 內容格式 |
 | [設定參考](docs/zh-TW/SETTINGS.md) | 每一項設定與啟動選項 |
 | [疑難排解與常見問題](docs/zh-TW/TROUBLESHOOTING.md) | 遇到問題的時候 |
 | [隱私、安全與法律](docs/zh-TW/PRIVACY_AND_LEGAL.md) | 哪些東西會離開你的電腦；錄音與揭露 AI 身分的規定 |

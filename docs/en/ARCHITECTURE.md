@@ -36,7 +36,7 @@ flowchart LR
     agent -- "transcript, contact files,<br/>scam review" --> llm[("Gemini Flash-Lite<br/>or an OpenAI-compatible model")]
     agent --> data
     ui <--> agent
-    agent -- "HTTPS" --> notify["16 notification services"]
+    agent -- "HTTPS" --> notify["32 notification services"]
 ```
 
 ## The pieces
@@ -65,7 +65,7 @@ flowchart LR
 | `calendar.rs` | Calendar suggestions and "add to calendar" links for Google, Outlook.com, Microsoft 365, Yahoo and `.ics`. |
 | `deepseek.rs` | The after-call summary over Gemini or any OpenAI-compatible API (the file name is historical), translations of lines said in another language, the result of an errand. |
 | `tasks.rs` | The store behind **To do**. |
-| `notify.rs`, `gmail.rs`, `tg_inbound.rs` | The 16 notification channels, e-mail over SMTP, Telegram button presses. |
+| `notify.rs`, `gmail.rs`, `tg_inbound.rs` | The 32 notification channels, e-mail over SMTP, Telegram button presses. |
 | `calls.rs`, `calls_http.rs` | Call records, recordings and transcripts; the web console's REST API. |
 | `settings_store.rs` | Settings from `.env` plus what the console saved, applied without a restart. |
 | `usb_bridge.rs` | Keeps `adb reverse` up for every USB phone and starts the app's call service. |

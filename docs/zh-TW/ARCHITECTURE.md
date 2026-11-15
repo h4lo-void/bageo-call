@@ -27,7 +27,7 @@ flowchart LR
     agent -- "逐字稿、聯絡人檔案、<br/>防詐複審" --> llm[("Gemini Flash-Lite<br/>或 OpenAI 相容模型")]
     agent --> data
     ui <--> agent
-    agent -- "HTTPS" --> notify["16 種通知服務"]
+    agent -- "HTTPS" --> notify["32 種通知服務"]
 ```
 
 ## 各個部分
@@ -56,7 +56,7 @@ flowchart LR
 | `calendar.rs` | 行事曆建議，以及 Google、Outlook.com、Microsoft 365、Yahoo、`.ics` 的「加入行事曆」連結。 |
 | `deepseek.rs` | 通話後的摘要，走 Gemini 或任何 OpenAI 相容 API（檔名是歷史遺留）；其他語言句子的翻譯；代打的結果。 |
 | `tasks.rs` | 「待處理事項」背後的儲存。 |
-| `notify.rs`、`gmail.rs`、`tg_inbound.rs` | 16 種通知管道、透過 SMTP 寄信、Telegram 按鈕。 |
+| `notify.rs`、`gmail.rs`、`tg_inbound.rs` | 32 種通知管道、透過 SMTP 寄信、Telegram 按鈕。 |
 | `calls.rs`、`calls_http.rs` | 通話紀錄、錄音與逐字稿；網頁控制台的 REST API。 |
 | `settings_store.rs` | `.env` 加上控制台存的設定，改了不用重新啟動。 |
 | `usb_bridge.rs` | 為每支 USB 手機維持 `adb reverse`，並啟動 App 的通話服務。 |
