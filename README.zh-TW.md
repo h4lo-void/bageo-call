@@ -156,7 +156,7 @@ AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種
 ## 運作方式
 
 <p align="center">
-  <img src="docs/images/how-it-works.zh-TW.svg" width="900" alt="Bageo 怎麼運作：對方透過電信網路打到你的備用手機（已 root、插著你的 SIM 卡），手機用 USB 或 Wi-Fi 把通話聲音交給你電腦上的 Bageo 主程式，主程式再跟 Gemini Live 對話。錄音留在你的硬碟，通知送到 16 種管道，一切在網頁控制台管理。">
+  <img src="docs/images/how-it-works.zh-TW.svg" width="900" alt="Bageo 怎麼運作：對方透過電信網路打到你的備用手機（已 root、插著你的 SIM 卡），手機用 USB 或 Wi-Fi 把通話聲音交給你電腦上的 Bageo 主程式，主程式再跟 Gemini Live 對話。錄音留在你的硬碟，通知送到 32 種管道，一切在網頁控制台管理。">
 </p>
 
 手機只負責接通電話，其他事都在你自己的電腦上處理。手機還在響，AI 就已經連上，所以接起後約 **0.43 秒**開口（實測中位數）。一通電話的完整過程：[架構](docs/zh-TW/ARCHITECTURE.md)。
@@ -198,7 +198,7 @@ AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種
     </td>
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/notify.svg" width="56" height="56" alt=""><br>
-      <strong>16 種通知管道</strong><br>
+      <strong>32 種通知管道</strong><br>
       每通電話結束，摘要送到 Telegram、LINE、Discord 等管道。
     </td>
     <td width="33%" align="center" valign="top">

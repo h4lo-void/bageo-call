@@ -65,6 +65,26 @@ A caller opens with a "pre-approved loan", or claims to be from your bank's secu
 | Keep them talking | on | The stalling described above. Off: the AI declines and ends the call. |
 | Longest such call | 30 min | 3 to 30 minutes. Longer calls use more of your Gemini quota. |
 | Model for these calls | `gemini-3.8-live` | The model a call switches to once it is judged sales or scam. Empty = keep the call's own model. |
+| Also check calls without sales or scam words | on | A low-cost model reads what the caller has said, at most three times a call, so new scripts, other languages and garbled words are caught as well. Off: only calls that use known sales or scam words are checked. |
+
+**How a call is judged.** Words from the built-in scam database (42 kinds of sales and scam calls, keywords in 19 languages) start a second look by a low-cost model; with the setting above, calls without such words get a look too. The model names the kind of call and how sure it is, and an unsure answer waits for the caller's next turn. When the model does not answer in time, only requests that are a scam whoever makes them (a verification code, ATM steps, gift cards, remote access, a "safe account") start the stalling at once; otherwise the next turn is looked at, and after two failures in a row the keywords decide alone. Two caller turns into the stalling, one more look can let a wrongly judged caller go back to a normal conversation. Saved contacts and numbers you marked *It was not* are left alone, unless they ask for those scam-only things.
+
+On a call's page, *Sales / scam check* shows what the call was judged and which kind; *It was a scam*, *It was sales* and *It was not* mark the number, and its next calls are judged with your mark (hidden numbers are not remembered). Your own words and numbers go in `config/scam_db.local.json` in the data folder. It is read again when it changes, and a missing or broken file changes nothing:
+
+```json
+{
+  "keywords": [
+    {"text": "會員續約專線", "lang": "zh-TW", "typology": "general_promotion", "weight": 2},
+    {"text": "read me the six digits", "lang": "en", "typology": "otp_theft", "weight": 2, "hard": true}
+  ],
+  "numbers": [
+    {"number": "0223456789", "verdict": "safe", "note": "building management"},
+    {"number": "+15550100", "verdict": "scam", "typology": "irs_ssa_impersonation"}
+  ]
+}
+```
+
+`weight` is 1 (counts only with other words) or 2 (clear on its own); `hard` counts only for a kind of call that is a scam whoever asks. `typology` must be one of the built-in kinds in `crates/agent/data/scam_db.json`; entries the agent cannot place are skipped and named in its log.
 
 ### Prompt
 
@@ -91,7 +111,7 @@ The **Errands** tab has the AI make a call for you. Booking a table for four loo
 3. Choose *Call as* and, if you like, the *Phone to call from*, then press **Start the call**.
 4. Follow the live captions. You can type an instruction for the AI, answer a question it asks you, or **Hang up**.
 
-Afterwards the errand shows the result (Done, Partly done, Not done, Your decision needed, No answer, Voicemail, Failed) with details, the next step, the time agreed, a link to the call record and **Call again**. When the other side offered choices, pick one and the AI calls back with it. You also get one notification.
+Afterwards the errand shows the result (Done, Partly done, Not done, Your decision needed, No answer, Voicemail, Failed) with details, the next step, the time agreed, a link to the call record and **Call again**. When the other side offered choices, pick one and the AI calls back with it. You also get one notification. During the call the AI reads every time, date, number or name back as a question and waits for a yes; anything the other side never clearly confirmed is marked ⚠️ **Not confirmed by the other side** on the result and in the notification, so check it before you rely on it.
 
 What it needs and how it behaves:
 
@@ -109,6 +129,8 @@ The default for *Call as* is *AI calls: call as* under [Basics](#basics). Every 
 |---|---|---|
 | Send notifications | on | Off: nothing is sent to any channel. |
 | Channels | none | Telegram, Discord, LINE, ntfy, email, webhooks and more; every enabled channel gets every message. Set-up for each is in [Notifications](NOTIFICATIONS.md). |
+| Commands from chat | off | Look up calls, have the AI call someone and decide to-dos from a Telegram chat (`telegram_control`, `telegram_control_users`, `control_errands_per_hour`, `control_commands_per_minute`). See [Chat commands](CHAT_COMMANDS.md). |
+| MCP for AI agents | off | Built-in Model Context Protocol server at `POST /mcp` (`mcp_enabled`, `mcp_token`, `mcp_calls`, `mcp_errands_per_hour`, `mcp_allowed_origins`). See [MCP](MCP.md). |
 | Address of this console | empty (automatic) | The address put into notification links, e.g. `http://192.0.2.10:8787`. |
 | Network name | `bageo` | The name phones and computers on your network can use instead of the IP: `http://bageo.local:8787/`. Letters, digits and hyphens; empty, `off`, `0`, `none` or `false` turns it off. |
 
@@ -139,7 +161,7 @@ When a caller wants to set a time with you (a meeting, a visit, a call at a set 
 
 How a request plays out:
 
-1. **On the call.** The AI never asks the caller to wait. It says it will check and text them back, or "call you back later" when the answer goes by call-back, or only "get back to you" when neither can reach them.
+1. **On the call.** The AI first asks the time back in full ("Thursday, November 19, at 4:30 pm, right?") and waits for a yes; a correction is asked back again. Then it says it will check and text them back, or "call you back later" when the answer goes by call-back, or only "get back to you" when neither can reach them. It never asks the caller to wait.
 2. **After the call.** The request waits under **To do** at the top of the **Calls** tab (and in the call's details): who, what and when, how the caller hears your answer (**Text**, **AI call-back** or **Don't tell them**; a way that cannot reach the number is greyed out), and **Accept** / **Decline**.
 3. **You decide.** The entry says what happened, in words: "Accepted, and the caller got a text", why a text did not go out, or how far the call-back got. An accepted one gets **Add to calendar**; a text that did not go out gets **Send the text again**.
 4. **On the go.** With a Telegram bot given through `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (or `telegram_bot_token` / `telegram_chat_id` through `PUT /calls/api/settings`) and *Send notifications* on, you also get a card with **Accept** / **Decline**. A Telegram channel added in the console, like every other channel, gets a reminder with a link to the call.

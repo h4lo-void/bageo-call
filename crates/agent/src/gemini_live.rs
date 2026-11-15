@@ -724,6 +724,7 @@ pub fn default_system_prompt() -> &'static str {
 禁止只唸到「會幫您轉達給王先生關於」或「會幫您轉達關於」就結束。\
 開場對方只說「喂／你好」時：若有目前狀態仍要先講完，再請對方留話；不要說再見、不要空轉達。\
 禁止長問卷；禁止「是不是关于…」「對嗎／再確認」。\
+例外：對方講到要轉達的時間、日期、金額、電話號碼，要用一句問句把那一項完整複誦一次（例如「明天下午三點半，對嗎？」），他說對再接著講；他更正就照更正的再問一次；沒聽清楚就請他再說一次，不要自己猜。\
 禁止只回空洞「好的我會轉告／好，再見」而不提事由。\
 禁止對方說完事由後只回「好的／嗯／了解」就當完成。有事由（水費、房租等）必須唸進完整轉達句；沒聽清就先問一次「請問要轉達什麼事？」，不要跳去再見。\
 不要主動問回電、貴姓、時間、找哪位；對方自己提才記。\
@@ -813,6 +814,16 @@ pub const PERSONA_CARRIER_NOTE: &str = "\n【電信提示音】國際電話（�
 
 /// A caller who cannot hear us keeps saying hello: answer with a whole sentence.
 pub const PERSONA_HELLO_LOOP_NOTE: &str = "\n【對方一直喂】對方一直說「喂」「哈囉」「有人在嗎」「聽得到嗎」，代表他聽不清楚你：直接回「有，我在，聽得到，請說」這類完整的一句，不要一直只回「喂？」。";
+
+/// Times, amounts and numbers the caller gives are read back once as a
+/// question: speech-to-text garbles fast speech (「四點半」 came through as
+/// 「字點看可以」 and was taken for four o'clock). Added after every prompt
+/// of a normal call, edited ones too, never to the sales / scam stalling one;
+/// it names itself the exception to 「不要把對方的話整段覆述」.
+pub const PERSONA_READBACK_NOTE: &str = "\n【時間、金額、號碼要複誦確認】對方講到之後要照著做或要記住的時間、日期、金額、電話號碼（例如「明天下午三點送到」「回電 02-1234-5678」「總共 1,250 元」），用一句自然的問句把那一項完整複誦一次，等他回答再往下聊，例如「明天下午三點送到，對嗎？」「02-1234-5678 對吧？」。\
+時間要講完整：上午還是下午、幾點、幾分，半點要講出「半」；日期講幾月幾號或星期幾。他說對就繼續；他更正就照更正的再用問句複誦一次；沒聽清楚就請他再說一次，不要自己猜一個。同一項確認過就不要再問。\
+複誦只是確認有沒有聽對，不等於答應（約時間、付錢照上面說的不要答應）。\
+這一條是上面「不要把對方的話整段覆述」「不用每句都問問題」的例外，只用在這幾種資訊上，其他的話照樣不要覆述。";
 
 /// Fixed guard appended to every persona prompt (not editable from the UI).
 /// `{owner}` = setting `owner_name`. A card desk asking whether a purchase
@@ -1925,7 +1936,7 @@ impl std::fmt::Debug for CallerContextFn {
     }
 }
 
-/// Per-call sales / scam stalling config (None = feature off or not persona mode).
+/// Per-call sales / scam config (None = not persona mode, or an AI call-back).
 #[derive(Debug, Clone)]
 pub struct StallCfg {
     /// Set once the caller's words score as sales/scam (agent records the event).
@@ -1941,6 +1952,15 @@ pub struct StallCfg {
     pub max_secs: u64,
     /// Caller's number and saved-contact label (read when `stall_review` runs).
     pub caller_context: Option<CallerContextFn>,
+    /// Keep a sales / scam caller talking (setting `persona_stall_spam`). Off,
+    /// the call is still judged and marked, and the AI goes on as normal.
+    pub play_along: bool,
+    /// Look at calls no keyword flagged once the caller has said what they
+    /// want (setting `scam_review_without_keywords`).
+    pub review_without_keywords: bool,
+    /// How the call was judged (kind of call, confidence, let go again), for
+    /// the call record.
+    pub judgement: Arc<std::sync::Mutex<Option<crate::calls::ScamJudgement>>>,
 }
 
 /// Same setup, another system prompt (the rotated stall session).
@@ -2084,54 +2104,6 @@ fn rotate_retry_after(fails: u32) -> Duration {
 /// Text history carried into the new session (most recent part of the call).
 const LIVE_HISTORY_MAX_CHARS: usize = 2_500;
 
-/// Caller words (Traditional, ASCII lowercased) that mark sales / scam calls.
-/// Weight 2 = clear on its own; 1 = needs company (「方案」「銀行」…).
-const STALL_KEYWORDS: &[(&str, u32)] = &[
-    // insurance
-    ("保險", 2), ("保單", 2), ("保費", 2), ("壽險", 2), ("醫療險", 2), ("意外險", 2),
-    ("儲蓄險", 2), ("年金險", 2), ("投資型", 2),
-    ("人壽", 2), ("產險", 2), ("保戶", 2), ("保單健檢", 2), ("保障規劃", 2),
-    ("提高保額", 2), ("加保", 2), ("投保", 2), ("實支實付", 2), ("重大傷病", 2),
-    ("長照險", 2), ("失能險", 2), ("防癌險", 2), ("癌症險", 2), ("滿期金", 2),
-    // banks / loans / cards
-    ("貸款", 2), ("信貸", 2), ("房貸", 2), ("車貸", 2), ("代償", 2), ("整合負債", 2),
-    ("債務協商", 2), ("低利", 2), ("利率", 2), ("額度", 2), ("預借現金", 2), ("辦卡", 2),
-    ("信用卡", 2), ("分期", 2), ("週轉", 2), ("周轉", 2),
-    ("融資", 2), ("增貸", 2), ("轉貸", 2), ("二胎", 2), ("汽機車貸款", 2), ("免保人", 2),
-    ("資金需求", 2), ("額度評估", 2), ("卡友專案", 2),
-    ("降息", 1), ("過件", 1), ("撥款", 1), ("核貸", 1),
-    // debt collection (a fake-bank call about an overdue instalment was only
-    // judged at 75 s, on 凍結)
-    ("催繳", 2), ("催收", 2), ("欠款", 2), ("逾期", 2), ("繳款", 1), ("還款", 1), ("協商", 1),
-    // investment
-    ("投資", 2), ("理財", 2), ("股票", 2), ("飆股", 2), ("報明牌", 2), ("虛擬貨幣", 2),
-    ("加密貨幣", 2), ("比特幣", 2), ("外匯", 2), ("期貨", 2), ("穩賺", 2), ("獲利", 2),
-    ("保證獲利", 2), ("穩賺不賠", 2), ("帶單", 2), ("操盤", 1), ("內線", 1), ("抽籤", 1), ("申購", 1),
-    // scams
-    ("檢察官", 2), ("地檢署", 2), ("刑事局", 2), ("監管帳戶", 2), ("洗錢", 2), ("涉案", 2),
-    ("偵查不公開", 2), ("人頭帳戶", 2), ("健保局", 2), ("重複扣款", 2), ("解除設定", 2),
-    ("凍結", 2), ("中獎", 2), ("猜猜我是誰", 2), ("驗證碼", 2), ("atm", 2), ("匯款", 2),
-    ("轉帳", 2),
-    ("自動扣款", 2), ("連續扣款", 2), ("解除扣款", 2), ("取消扣款", 2), ("批發商", 2), ("經銷商", 2),
-    ("簽單錯誤", 2), ("訂單錯誤", 2), ("健保署", 2), ("鎖卡", 2), ("海關扣留", 2), ("包裹異常", 2),
-    ("傳票", 2), ("拘票", 2), ("通緝", 2), ("盜用", 2), ("冒用", 2), ("警示戶", 2),
-    ("點數卡", 2), ("禮品卡", 2), ("遠端操控", 2), ("加賴", 2),
-    // promotions
-    ("推銷", 2), ("促銷", 2), ("贈品", 2), ("抽獎", 2), ("預售屋", 2), ("建案", 2),
-    ("靈骨塔", 2), ("塔位", 2), ("生前契約", 2), ("健康食品", 2), ("保健食品", 2),
-    ("淨水器", 2), ("理專", 2), ("老客戶回饋", 2), ("專屬優惠", 2), ("限時優惠", 2),
-    ("免費體驗", 2), ("免費試聽", 2), ("體驗課", 2), ("市場調查", 2), ("電話訪問", 2),
-    ("醫美", 2), ("瘦身", 2), ("節費", 2), ("太陽能", 2), ("電銷", 2), ("行銷", 1),
-    ("優惠", 1), ("專案", 1), ("方案", 1), ("免費", 1),
-    ("折扣", 1), ("升級", 1), ("續約", 1), ("門號", 1), ("電信", 1), ("課程", 1),
-    ("問卷", 1), ("民調", 1),
-    // software / service pitches
-    ("免費試用", 2), ("試用", 1), ("軟體", 1),
-    // who is calling / telemarketer openers
-    ("銀行", 1), ("客服", 1), ("帳戶", 1), ("會員", 1), ("專員", 1), ("業務", 1),
-    ("老師", 1), ("群組", 1), ("line", 1), ("介紹", 1), ("推薦", 1), ("耽誤", 1),
-];
-
 /// Distinct sales/scam keywords in a caller text, strongest first (post-call
 /// summary when the summary model is unavailable).
 pub(crate) fn stall_keyword_hits(caller_text: &str) -> Vec<&'static str> {
@@ -2141,24 +2113,16 @@ pub(crate) fn stall_keyword_hits(caller_text: &str) -> Vec<&'static str> {
     hits
 }
 
-/// Add new distinct sales/scam keywords found in the caller's words; returns
-/// the score they add. `hits` accumulates across the whole call. A word inside
-/// a longer one that also hit counts once, as the longer one: 免費 and 試用 in
-/// 免費試用, "insurance" in "life insurance", 無料 in 無料体験.
+/// Add new distinct sales/scam keywords found in the caller's words (the scam
+/// database's lists of every language, [`crate::scam_db::keyword_hits`]);
+/// returns the score they add. `hits` accumulates across the whole call. A word
+/// inside a longer one that also hit counts once, as the longer one: 免費 and
+/// 試用 in 免費試用, "insurance" in "life insurance", 無料 in 無料体験.
 fn stall_score_add(caller_text: &str, hits: &mut Vec<&'static str>) -> u32 {
-    // Live STT writes 帳戶 as 賬戶 and 加賴 (add LINE) as 加頼 too.
-    let t = crate::zh_tw::norm(caller_text)
-        .to_ascii_lowercase()
-        .replace('賬', "帳")
-        .replace("加頼", "加賴");
-    let mut found: Vec<(&'static str, u32)> =
-        STALL_KEYWORDS.iter().filter(|(kw, _)| has_keyword(&t, kw)).copied().collect();
-    // Other languages' lists (whole words; see `locale`).
-    for (kw, w) in crate::locale::stall_hits(caller_text) {
-        if !found.iter().any(|(k, _)| *k == kw) {
-            found.push((kw, w));
-        }
-    }
+    let found: Vec<(&'static str, u32)> = crate::scam_db::keyword_hits(caller_text)
+        .into_iter()
+        .map(|h| (h.text, h.weight))
+        .collect();
     let longer = |kw: &str, k: &str| k.len() > kw.len() && k.contains(kw);
     let mut add = 0;
     for &(kw, w) in &found {
@@ -2176,24 +2140,14 @@ fn stall_score_add(caller_text: &str, hits: &mut Vec<&'static str>) -> u32 {
 
 /// Chinese keywords match anywhere; Latin ones (`line`) only as whole words, so
 /// "streamline", "online" or "deadline" do not count as 加 LINE.
+#[cfg(test)]
 fn has_keyword(text: &str, kw: &str) -> bool {
-    if !kw.is_ascii() {
-        return text.contains(kw);
-    }
-    let word = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric());
-    text.match_indices(kw).any(|(i, _)| {
-        !word(text[..i].chars().next_back()) && !word(text[i + kw.len()..].chars().next())
-    })
+    crate::scam_db::han_contains(text, kw)
 }
 
-/// Weight of a sales / scam keyword, whichever list it is from.
+/// Weight of a sales / scam keyword (0: not one).
 fn stall_keyword_weight(kw: &str) -> u32 {
-    STALL_KEYWORDS
-        .iter()
-        .find(|(k, _)| *k == kw)
-        .map(|(_, w)| *w)
-        .or_else(|| crate::locale::stall_weight(kw))
-        .unwrap_or(0)
+    crate::scam_db::keyword(kw).map_or(0, |h| h.weight)
 }
 
 /// Enough distinct keywords, at least one of them a clear sales/scam word.
@@ -2203,17 +2157,11 @@ fn stall_engages(score: u32, hits: &[&'static str]) -> bool {
 }
 
 /// Caller follows up on the owner's own matter (a complaint, an investigation
-/// result): never sales / scam stalling — e.g. a bank calling back about a report
-/// made at a branch, where 信用卡／轉帳 would otherwise score as a pitch.
-const OWN_MATTER_MARKS: &[&str] = &[
-    "您反應", "你反應", "您有反應", "你有反應", "您的反應", "您反映", "你反映", "您有反映",
-    "你有反映", "您的反映", "申訴", "客訴", "調查結果", "調查的結果", "您申請的", "你申請的",
-    "您報修", "你報修", "您送修", "你送修", "回覆您反映", "回覆您反應",
-];
-
+/// result, a repair; the scam database's phrases in every language): never
+/// sales / scam stalling — e.g. a bank calling back about a report made at a
+/// branch, where 信用卡／轉帳 would otherwise score as a pitch.
 pub(crate) fn looks_like_own_matter(caller_text: &str) -> bool {
-    let t = crate::zh_tw::norm(caller_text);
-    OWN_MATTER_MARKS.iter().any(|m| t.contains(m)) || crate::locale::own_matter(caller_text)
+    crate::scam_db::own_matter(caller_text)
 }
 
 /// The caller's side of the merged dialogue (its 對方 lines).
@@ -2322,82 +2270,207 @@ fn persona_resume_reply_client_content() -> String {
     crate::prompts::client_turn(&crate::prompts::current().kick_resume)
 }
 
-/// Sales / scam keywords crossed the line: a second look ([`crate::stall_review`])
-/// before the AI starts keeping the caller busy. The AI talks on meanwhile.
-/// A call reviewed as normal is looked at again only once the score has grown by
-/// [`STALL_REVIEW_STEP`], at most [`STALL_REVIEW_MAX`] times a call.
-/// A caller who had only said who they are (too early to tell) is looked at
-/// again once their turn has ended, whatever the score; such looks do not
-/// count against [`STALL_REVIEW_MAX`]. The look takes about a second, and by
-/// then the caller has often finished that turn ("…信用卡風險管控中心。您的帳戶
-/// 被誤設成分期付款，要請您現在去ATM解除分期。") and the AI is answering: a "too
-/// early" for a turn that ended, or got more keywords, while it was being
-/// looked at is asked again at once, not a whole turn later. The
-/// [`STALL_REVIEW_EARLY_MAX`]th "too early" in a call counts as a scam, like
-/// any doubt without the review.
+/// Sales / scam: a second look ([`crate::stall_review`]) before the AI starts
+/// keeping the caller busy, and one more once it has started. The AI talks on
+/// meanwhile.
+///
+/// - Keywords crossed the line ([`StallReview::should_ask`]). A call reviewed as
+///   normal is looked at again only once the score has grown by
+///   [`STALL_REVIEW_STEP`], at most [`STALL_REVIEW_MAX`] such looks a call.
+/// - No keywords ([`StallReview::should_ask_blind`]): a caller who is not a contact
+///   is looked at once they have said what they want (their second turn with
+///   something in it, or [`BLIND_FIRST_UNITS`] words) and again after
+///   [`BLIND_NEXT_UNITS`] more, at most [`BLIND_MAX`] times. Scams in words no list has
+///   (a new script, a language without keywords, a speech-to-text slip) were
+///   never looked at before; a number marked or judged sales / scam before is
+///   looked at after its first such turn.
+/// - Too early (the caller has only said who they are) or a low-confidence
+///   scam: looked at again once their turn has ended. The look takes about a
+///   second, and by then the caller has often finished that turn ("…信用卡風險
+///   管控中心。您的帳戶被誤設成分期付款，要請您現在去ATM解除分期。") and the AI is
+///   answering: a look at a turn that ended, or got more keywords, while it was
+///   being looked at is asked again at once, not a whole turn later. Such looks
+///   do not count against the caps. The [`STALL_REVIEW_EARLY_MAX`]th "too early" of
+///   a keyword-flagged call counts as a scam; a second low-confidence scam in a
+///   row does when keywords flagged the call, and is let be when none did.
+/// - No answer ([`Verdict::Unavailable`]): words only scammers say still stall the
+///   caller; a contact or a number the owner marked safe is left alone; anything
+///   else is looked at again after the caller's next turn. After
+///   [`STALL_REVIEW_FAIL_MAX`] failures in a row (at once without a key) the keywords
+///   decide alone, as before the review existed: Gemini being down must not let
+///   an obvious scam through. Taking every failure for a scam kept ordinary
+///   callers talking for a whole call.
+/// - Stalling ([`StallReview::should_ask_confirm`]): one more look after the
+///   caller's next [`CONFIRM_AFTER_TURNS`] turns (one, if long); a sure "normal" lets
+///   the caller go back to an ordinary call ([`StallVerdictStep::Release`]).
 const STALL_REVIEW_MAX: u32 = 3;
 const STALL_REVIEW_STEP: u32 = 2;
 /// The keywords trip mid-sentence: the first look may see half the
 /// introduction, the next one the whole of it, a third the caller's matter.
 const STALL_REVIEW_EARLY_MAX: u32 = 4;
+/// Failed looks in a row before the keywords decide alone.
+const STALL_REVIEW_FAIL_MAX: u32 = 2;
+/// Looks at a call no keyword flagged.
+const BLIND_MAX: u32 = 3;
+/// The first of them: once the caller has had this many turns with something in them…
+const BLIND_FIRST_TURNS: u32 = 2;
+/// …or has said this much (see [`content_units`]).
+const BLIND_FIRST_UNITS: usize = 24;
+/// The next ones: once the caller has said this much more.
+const BLIND_NEXT_UNITS: usize = 16;
+/// A caller turn with less is a 「喂？」 or a 「嗯」, not something said.
+const CONTENT_TURN_UNITS: usize = 4;
+/// Stalling: the check whether to let the caller go comes after this many of their turns…
+const CONFIRM_AFTER_TURNS: u32 = 2;
+/// …or after one, when they have said this much since stalling started.
+const CONFIRM_EARLY_UNITS: usize = 12;
+
+/// Why a look was asked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum LookOrigin {
+    #[default]
+    Keywords,
+    Blind,
+    Confirm,
+}
+
+/// Why the call was judged sales / scam (recorded with it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum EngageWhy {
+    /// The second look said so.
+    #[default]
+    Review,
+    /// The look did not answer, and the caller said words only scammers say.
+    HardWords,
+    /// The look kept failing: the keywords decided alone.
+    KeywordRule,
+}
+
+impl EngageWhy {
+    fn as_str(self) -> &'static str {
+        match self {
+            EngageWhy::Review => "review",
+            EngageWhy::HardWords => "hard_words",
+            EngageWhy::KeywordRule => "keywords",
+        }
+    }
+}
+
+/// What the call looks like when a verdict comes back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct StallFacts {
+    /// The keyword score crossed the line ([`stall_engages`]).
+    flagged: bool,
+    /// A keyword only scammers say was heard ([`crate::scam_db::is_hard`]).
+    hard_hit: bool,
+    /// A saved contact or a number the owner marked safe.
+    protected: bool,
+}
 
 #[derive(Debug, Default)]
 struct StallReview {
     /// A review is under way.
     pending: bool,
+    /// Why the pending (or put-off) look was asked.
+    origin: LookOrigin,
     /// Reviews asked for this call.
     asked: u32,
     /// Reviews that came back too early to tell.
     early: u32,
+    /// Keyword looks that count against [`STALL_REVIEW_MAX`] (the pending one included).
+    kw_spent: u32,
+    /// Looks without keywords asked.
+    blind: u32,
+    /// How much the caller had said at the last look (see [`content_units`]).
+    units_seen: usize,
+    /// Looks that did not answer, in a row.
+    fails_in_row: u32,
+    /// Low-confidence scam answers in a row.
+    lows: u32,
+    /// Unsure "normal" answers while words only scammers say were heard.
+    hard_unsure: u32,
+    /// The look kept failing (or there is no key): the keywords decide alone.
+    keyword_rule: bool,
+    /// Why the last verdict engaged.
+    why: EngageWhy,
     /// The score the last "normal" verdict was given at.
     normal_at: Option<u32>,
-    /// The last review was too early to tell: the next one goes when the
-    /// caller's next turn has ended ([`StallReview::should_ask_after_turn`]).
-    after_turn: bool,
+    /// The last look was too early, unsure or unanswered: the next one goes
+    /// when the caller's next turn has ended ([`StallReview::should_ask_after_turn`]).
+    after_turn: Option<LookOrigin>,
     /// The caller's turn ended while the pending review was under way
     /// ([`StallReview::note_caller_turn_end`]): it saw only part of that turn.
     turn_ended: bool,
+    /// Stalling: caller turns ended since it started, what they had said when it
+    /// started, and whether the check to let them go was asked.
+    stall_turns: u32,
+    units_at_engage: usize,
+    confirm_asked: bool,
 }
 
 /// What a verdict does to the call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StallVerdictStep {
-    /// Sales / scam: the AI starts stalling.
+    /// Sales / scam: the AI starts stalling (stalling off: the call is marked so).
     Engage,
     /// A recording or voice menu: the AI goes quiet and we hang up (see [`ivr_hangs_up`]).
     Ivr,
-    /// An ordinary call: nothing changes.
+    /// An ordinary call (or nothing new): nothing changes.
     Carry,
-    /// Too early to tell: nothing changes until the caller's next turn has ended.
+    /// Too early, unsure or unanswered: nothing changes until the caller's next turn has ended.
     AfterTurn,
-    /// Too early to tell, but the caller's turn ended or more keywords came
+    /// Too early or unsure, but the caller's turn ended or more keywords came
     /// while it was being looked at: look again now (already counted as asked).
     AskAgain,
+    /// Stalling, and the check says a sure "normal": back to an ordinary call.
+    Release,
 }
 
 impl StallReview {
     /// The keyword score is now `score` (`flagged`: [`stall_engages`]): ask for a review?
     fn should_ask(&mut self, flagged: bool, score: u32) -> bool {
-        if !flagged || self.pending || self.after_turn || self.asked - self.early >= STALL_REVIEW_MAX {
+        if !flagged || self.pending || self.after_turn.is_some() || self.kw_spent >= STALL_REVIEW_MAX {
             return false;
         }
         if self.normal_at.is_some_and(|at| score < at + STALL_REVIEW_STEP) {
             return false;
         }
-        self.pending = true;
-        self.asked += 1;
+        self.start(LookOrigin::Keywords);
         true
     }
 
+    fn start(&mut self, origin: LookOrigin) {
+        self.pending = true;
+        self.origin = origin;
+        self.asked += 1;
+        match origin {
+            LookOrigin::Keywords => self.kw_spent += 1,
+            LookOrigin::Blind => self.blind += 1,
+            LookOrigin::Confirm => self.confirm_asked = true,
+        }
+    }
+
+    /// Why the look under way was asked, for the request.
+    fn purpose(&self) -> crate::stall_review::Purpose {
+        match self.origin {
+            LookOrigin::Keywords => crate::stall_review::Purpose::Keywords,
+            LookOrigin::Blind => crate::stall_review::Purpose::Content,
+            LookOrigin::Confirm => crate::stall_review::Purpose::Confirm,
+        }
+    }
+
     /// The caller's turn has just ended (the AI's reply started): ask for the
-    /// review a too-early verdict put off?
+    /// review a too-early, unsure or unanswered look put off?
     fn should_ask_after_turn(&mut self) -> bool {
-        if !self.after_turn || self.pending {
+        let Some(origin) = self.after_turn else { return false };
+        if self.pending {
             return false;
         }
-        self.after_turn = false;
-        self.pending = true;
-        self.asked += 1;
+        self.after_turn = None;
+        if origin == LookOrigin::Blind && self.blind >= BLIND_MAX {
+            return false;
+        }
+        self.start(origin);
         true
     }
 
@@ -2408,53 +2481,260 @@ impl StallReview {
         }
     }
 
+    /// A caller turn ended without keywords crossing the line: the caller has
+    /// had `turns` turns with something in them and said `units` so far
+    /// (`eager`: the number was marked or judged sales / scam before). Look anyway?
+    fn should_ask_blind(&mut self, units: usize, turns: u32, eager: bool) -> bool {
+        if self.pending || self.after_turn.is_some() || self.keyword_rule || self.blind >= BLIND_MAX {
+            return false;
+        }
+        let ready = if self.blind == 0 {
+            turns >= BLIND_FIRST_TURNS || units >= BLIND_FIRST_UNITS || (eager && turns >= 1)
+        } else {
+            true
+        };
+        // Nothing new since the last look (of any kind): not again.
+        let fresh = self.units_seen == 0 || units >= self.units_seen + BLIND_NEXT_UNITS;
+        if !ready || !fresh {
+            return false;
+        }
+        self.units_seen = units;
+        self.start(LookOrigin::Blind);
+        true
+    }
+
+    /// A look of any kind was asked when the caller had said `units`.
+    fn seen(&mut self, units: usize) {
+        self.units_seen = self.units_seen.max(units);
+    }
+
+    /// Stalling started when the caller had said `units`.
+    fn note_engaged(&mut self, units: usize) {
+        self.stall_turns = 0;
+        self.units_at_engage = units;
+    }
+
+    /// Stalling, a caller turn just ended (`units` said so far): check now whether
+    /// they should be let go? Once a call.
+    fn should_ask_confirm(&mut self, units: usize) -> bool {
+        self.stall_turns += 1;
+        if self.confirm_asked || self.pending {
+            return false;
+        }
+        let said = units.saturating_sub(self.units_at_engage);
+        if self.stall_turns < CONFIRM_AFTER_TURNS && said < CONFIRM_EARLY_UNITS {
+            return false;
+        }
+        self.start(LookOrigin::Confirm);
+        true
+    }
+
     /// The verdict of the review asked at `score`, the score unchanged since.
     #[cfg(test)]
     fn verdict(&mut self, verdict: crate::stall_review::Verdict, score: u32) -> StallVerdictStep {
         self.verdict_now(verdict, score, score)
     }
 
-    /// The verdict of the review asked at score `asked_at`; the score is `now`.
+    /// A sure verdict of a keyword-flagged call asked at score `asked_at`; the score is `now`.
+    #[cfg(test)]
     fn verdict_now(&mut self, verdict: crate::stall_review::Verdict, asked_at: u32, now: u32) -> StallVerdictStep {
-        use crate::stall_review::Verdict;
+        let facts = StallFacts {
+            flagged: true,
+            ..StallFacts::default()
+        };
+        self.decide(&crate::stall_review::Review::of(verdict), asked_at, now, facts)
+    }
+
+    /// Look again now (`more`: the caller said more while it was looked at) or
+    /// after their next turn; a look without keywords past its cap is not asked.
+    fn again(&mut self, origin: LookOrigin, more: bool) -> StallVerdictStep {
+        if origin == LookOrigin::Blind && self.blind >= BLIND_MAX {
+            return StallVerdictStep::Carry;
+        }
+        if more {
+            self.start(origin);
+            StallVerdictStep::AskAgain
+        } else {
+            self.after_turn = Some(origin);
+            StallVerdictStep::AfterTurn
+        }
+    }
+
+    /// The answer to the look asked at score `asked_at` (the score is `now`).
+    fn decide(&mut self, review: &crate::stall_review::Review, asked_at: u32, now: u32, facts: StallFacts) -> StallVerdictStep {
+        use crate::stall_review::{Confidence, Verdict};
         self.pending = false;
-        let turn_ended = std::mem::take(&mut self.turn_ended);
-        match verdict {
+        let origin = self.origin;
+        let more = std::mem::take(&mut self.turn_ended) || now > asked_at;
+        let not_spent = |s: &mut Self| {
+            if origin == LookOrigin::Keywords {
+                s.kw_spent = s.kw_spent.saturating_sub(1);
+            }
+        };
+        if origin == LookOrigin::Confirm {
+            // Stalling already: only a sure "normal" changes anything.
+            return if review.verdict == Verdict::Normal && review.confidence == Confidence::High {
+                StallVerdictStep::Release
+            } else {
+                StallVerdictStep::Carry
+            };
+        }
+        if review.verdict == Verdict::Unavailable {
+            self.fails_in_row += 1;
+            not_spent(self);
+            if facts.hard_hit {
+                self.why = EngageWhy::HardWords;
+                return StallVerdictStep::Engage;
+            }
+            if facts.protected {
+                self.normal_at = Some(asked_at);
+                return StallVerdictStep::Carry;
+            }
+            if review.no_key || self.fails_in_row >= STALL_REVIEW_FAIL_MAX {
+                self.keyword_rule = true;
+                if facts.flagged {
+                    self.why = EngageWhy::KeywordRule;
+                    return StallVerdictStep::Engage;
+                }
+                return StallVerdictStep::Carry;
+            }
+            self.after_turn = Some(origin);
+            return StallVerdictStep::AfterTurn;
+        }
+        self.fails_in_row = 0;
+        self.why = EngageWhy::Review;
+        match review.verdict {
+            Verdict::ScamOrSales if review.confidence == Confidence::Low => {
+                self.lows += 1;
+                not_spent(self);
+                if self.lows >= 2 {
+                    self.lows = 0;
+                    if facts.flagged || facts.hard_hit {
+                        return StallVerdictStep::Engage;
+                    }
+                    // Unsure twice, and no keyword says so either: let it be.
+                    self.normal_at = Some(asked_at);
+                    return StallVerdictStep::Carry;
+                }
+                self.again(origin, more)
+            }
             Verdict::ScamOrSales => StallVerdictStep::Engage,
             Verdict::IvrRecording => StallVerdictStep::Ivr,
             Verdict::Normal => {
+                self.lows = 0;
+                if facts.hard_hit && review.confidence != Confidence::High {
+                    // Words only scammers say ("the code", the ATM, a safe account,
+                    // remote control) and only an unsure "normal": a spoofed number
+                    // asking for a code looks like this. Look once more; unsure
+                    // twice, it is kept talking as a scam.
+                    self.hard_unsure += 1;
+                    not_spent(self);
+                    if self.hard_unsure >= 2 {
+                        self.why = EngageWhy::HardWords;
+                        return StallVerdictStep::Engage;
+                    }
+                    return self.again(origin, more);
+                }
                 self.normal_at = Some(asked_at);
                 StallVerdictStep::Carry
             }
             Verdict::TooEarly => {
                 self.early += 1;
+                not_spent(self);
                 if self.early >= STALL_REVIEW_EARLY_MAX {
-                    // Still only who they are: unsure is a scam, as without the review.
-                    StallVerdictStep::Engage
-                } else if turn_ended || now > asked_at {
-                    // What it saw was not all the caller said: look again now.
-                    self.pending = true;
-                    self.asked += 1;
-                    StallVerdictStep::AskAgain
-                } else {
-                    self.after_turn = true;
-                    StallVerdictStep::AfterTurn
+                    // Still only who they are: a keyword-flagged call is a scam, as
+                    // without the review; an unflagged one is let be.
+                    return if origin == LookOrigin::Keywords || facts.flagged {
+                        StallVerdictStep::Engage
+                    } else {
+                        StallVerdictStep::Carry
+                    };
                 }
+                self.again(origin, more)
             }
+            Verdict::Unavailable => StallVerdictStep::Carry,
         }
     }
 }
 
-/// Start a second look ([`crate::stall_review::review`]) at the call so far
-/// (`transcript`, merged into lines); its verdict comes back on `tx` with the
+/// How much a caller said: each Han, kana or hangul character counts one,
+/// each word of another script one.
+fn content_units(text: &str) -> usize {
+    let dense = |c: char| {
+        ('\u{3040}'..='\u{30ff}').contains(&c) || ('\u{3400}'..='\u{9fff}').contains(&c) || ('\u{ac00}'..='\u{d7af}').contains(&c)
+    };
+    let mut n = 0;
+    let mut in_word = false;
+    for c in text.chars() {
+        if dense(c) {
+            n += 1;
+            in_word = false;
+        } else if c.is_alphanumeric() {
+            if !in_word {
+                n += 1;
+                in_word = true;
+            }
+        } else {
+            in_word = false;
+        }
+    }
+    n
+}
+
+/// The caller's side of the merged dialogue: turns with something in them, and
+/// how much they said; the carrier's recorded warning is not the caller.
+fn caller_content(dialogue: &str) -> (u32, usize) {
+    let mut turns = 0;
+    let mut units = 0;
+    for line in dialogue.lines() {
+        let Some(t) = line.trim().strip_prefix("對方：") else { continue };
+        if looks_like_carrier_intl_prompt(t) {
+            continue;
+        }
+        let u = content_units(t);
+        units += u;
+        if u >= CONTENT_TURN_UNITS {
+            turns += 1;
+        }
+    }
+    (turns, units)
+}
+
+/// What the call is recorded as once judged: the kind of call the look named,
+/// or the one the keywords point to; a scam when only scammers' words were
+/// heard, otherwise sales, when neither names one.
+fn judgement_of(review: &crate::stall_review::Review, hits: &[&'static str], why: EngageWhy) -> crate::calls::ScamJudgement {
+    let typology = review.typology.or_else(|| crate::scam_db::typology_for_hits(hits));
+    let kind = match typology.and_then(crate::scam_db::typology) {
+        Some(t) => t.category.as_str(),
+        None if hits.iter().any(|h| crate::scam_db::is_hard(h)) => "scam",
+        None => "sales",
+    };
+    let confidence = match (why, review.verdict) {
+        (EngageWhy::Review, crate::stall_review::Verdict::ScamOrSales) => review.confidence.as_str(),
+        (EngageWhy::Review, _) => "low",
+        _ => "",
+    };
+    crate::calls::ScamJudgement {
+        kind: kind.to_string(),
+        typology: typology.unwrap_or_default().to_string(),
+        confidence: confidence.to_string(),
+        source: why.as_str().to_string(),
+        released: false,
+    }
+}
+
+/// Start a second look ([`crate::stall_review::review_with_context`]) at the call so
+/// far (`transcript`, merged into lines); its answer comes back on `tx` with the
 /// score it was asked at.
 fn spawn_stall_review(
-    tx: &mpsc::UnboundedSender<(u32, crate::stall_review::Verdict)>,
+    tx: &mpsc::UnboundedSender<(u32, crate::stall_review::Review)>,
     key: &str,
     transcript: &Option<Arc<std::sync::Mutex<String>>>,
     hits: &[&'static str],
     ctx: crate::stall_review::CallerContext,
     score: u32,
+    purpose: crate::stall_review::Purpose,
 ) {
     let dialogue = transcript
         .as_ref()
@@ -2464,8 +2744,8 @@ fn spawn_stall_review(
     let hits: Vec<String> = hits.iter().map(|h| h.to_string()).collect();
     let tx = tx.clone();
     tokio::spawn(async move {
-        let verdict = crate::stall_review::review_with_context(&key, &dialogue, &hits, &ctx).await;
-        let _ = tx.send((score, verdict));
+        let review = crate::stall_review::review_with_context(&key, &dialogue, &hits, &ctx, purpose).await;
+        let _ = tx.send((score, review));
     });
 }
 
@@ -4656,7 +4936,7 @@ pub async fn run_session(
     // stalling at the top of the loop. The session is not told the caller's
     // number, only whether it is from abroad.
     let mut stall_review = StallReview::default();
-    let (review_tx, mut review_rx) = mpsc::unbounded_channel::<(u32, crate::stall_review::Verdict)>();
+    let (review_tx, mut review_rx) = mpsc::unbounded_channel::<(u32, crate::stall_review::Review)>();
     let review_key = key.to_string();
     let fallback_review_number: &'static str = if intl_call { "unknown (from abroad)" } else { "unknown" };
     let review_ctx = || -> crate::stall_review::CallerContext {
@@ -4669,11 +4949,27 @@ pub async fn run_session(
         } else {
             crate::stall_review::CallerContext {
                 number: fallback_review_number.to_string(),
-                saved_contact: None,
+                ..crate::stall_review::CallerContext::default()
             }
         }
     };
-    let mut stall_engage_now = false;
+    // What the caller has said so far: turns with something in them, and how much.
+    let caller_said = || -> (u32, usize) {
+        transcript_out
+            .as_ref()
+            .and_then(|b| b.lock().ok().map(|g| caller_content(&merge_dialogue_fragments(&g))))
+            .unwrap_or((0, 0))
+    };
+    // Stalling is on (setting persona_stall_spam); off, a judged call is only marked.
+    let stall_play = stall.as_ref().is_some_and(|c| c.play_along);
+    // Calls no keyword flagged are looked at too (setting scam_review_without_keywords).
+    let blind_looks = stall.as_ref().is_some_and(|c| c.review_without_keywords);
+    let mut stall_engage_now: Option<crate::calls::ScamJudgement> = None;
+    let mut stall_release_now = false;
+    // Judged sales / scam with stalling off: marked, and not looked at again.
+    let mut stall_detected = false;
+    // The live socket runs the stall prompt (a rotation went through while stalling).
+    let mut live_is_stall = false;
     // The caller is a recording or voice menu: why (to be acted on), and since when.
     let mut ivr_enter: Option<&'static str> = None;
     let mut ivr_since: Option<tokio::time::Instant> = None;
@@ -4749,47 +5045,105 @@ pub async fn run_session(
         // An errand's question waits for the owner: the line is not idle.
         let errand_asking = errand.as_ref().is_some_and(|e| e.question_open()) || !ask_waiting.is_empty();
 
-        // The second look says sales / scam: the AI starts stalling.
-        if std::mem::take(&mut stall_engage_now) && !stall_on && !own_matter && ivr_since.is_none() {
+        // The second look says sales / scam: the AI starts stalling (stalling off:
+        // the call is only marked so, and the AI goes on as it was).
+        if let Some(judged) = stall_engage_now
+            .take()
+            .filter(|_| !stall_on && !stall_detected && !own_matter && ivr_since.is_none())
+        {
             if let Some(c) = stall.as_ref() {
-                stall_on = true;
-                c.engaged.store(true, Ordering::Relaxed);
-                repeat_guard.clear();
-                // No appointments with a sales / scam caller.
-                if let Some(a) = &appt {
-                    a.book.discard();
-                }
-                // The normal call's wrap-up may have gone out while the call was being
-                // looked at: stalling has its own cap, and with the flag left set its
-                // quiet-line and keep nudges never went and the call ran to the hard cut.
-                let wrap_was_sent = std::mem::take(&mut wrap_up_sent);
-                // A closing armed before the verdict no longer counts.
-                if goodbye_pending {
-                    goodbye_pending = false;
-                    bye_from_caller = false;
-                    output_goodbye_at = None;
-                    end_reason = SessionEndReason::WsClosed;
-                }
-                // Stall session: its prompt, and its own model (setting
-                // `gemini_stall_model`) — same voice, so the caller hears no change.
-                let next = stall_session_setup(&setup, &c.system_prompt, &c.model, thinking_level);
-                if next != setup {
-                    rotate_setup = Some(next);
-                    rotate_due = Some(
-                        tokio::time::Instant::now() + Duration::from_secs(STALL_PROMPT_SWITCH_FORCE_SECS),
+                if !c.play_along {
+                    stall_detected = true;
+                    if let Ok(mut j) = c.judgement.lock() {
+                        *j = Some(judged.clone());
+                    }
+                    info!(
+                        "Persona call judged {} ({}) serial={serial} source={} — stalling is off, marked only",
+                        judged.kind, judged.typology, judged.source
+                    );
+                } else {
+                    stall_on = true;
+                    stall_review.note_engaged(caller_said().1);
+                    c.engaged.store(true, Ordering::Relaxed);
+                    // After the flag: the call record reads both, the flag first.
+                    if let Ok(mut j) = c.judgement.lock() {
+                        *j = Some(judged.clone());
+                    }
+                    repeat_guard.clear();
+                    // No appointments with a sales / scam caller.
+                    if let Some(a) = &appt {
+                        a.book.discard();
+                    }
+                    // The normal call's wrap-up may have gone out while the call was being
+                    // looked at: stalling has its own cap, and with the flag left set its
+                    // quiet-line and keep nudges never went and the call ran to the hard cut.
+                    let wrap_was_sent = std::mem::take(&mut wrap_up_sent);
+                    // A closing armed before the verdict no longer counts.
+                    if goodbye_pending {
+                        goodbye_pending = false;
+                        bye_from_caller = false;
+                        output_goodbye_at = None;
+                        end_reason = SessionEndReason::WsClosed;
+                    }
+                    // Stall session: its prompt, and its own model (setting
+                    // `gemini_stall_model`) — same voice, so the caller hears no change.
+                    let next = stall_session_setup(&setup, &c.system_prompt, &c.model, thinking_level);
+                    if next != setup {
+                        rotate_setup = Some(next);
+                        rotate_due = Some(
+                            tokio::time::Instant::now() + Duration::from_secs(STALL_PROMPT_SWITCH_FORCE_SECS),
+                        );
+                    }
+                    // Stalling may run longer than a normal call.
+                    (wrap_secs, wrap_force_secs, max_secs) = talk_limits(persona, c.max_secs);
+                    info!(
+                        "Persona stall engaged serial={serial} kind={} typology={} confidence={} source={} score={stall_score} hits={stall_hits:?} talk_s={} cap_s={max_secs} wrap_up_was_sent={wrap_was_sent} switch={} model={}",
+                        judged.kind,
+                        judged.typology,
+                        judged.confidence,
+                        judged.source,
+                        session_start.elapsed().as_secs(),
+                        rotate_setup.is_some(),
+                        rotate_setup
+                            .as_ref()
+                            .and_then(|s| s.pointer("/setup/model"))
+                            .and_then(|m| m.as_str())
+                            .unwrap_or(model_path.as_str())
                     );
                 }
-                // Stalling may run longer than a normal call.
-                (wrap_secs, wrap_force_secs, max_secs) = talk_limits(persona, c.max_secs);
+            }
+        }
+        // The check after stalling started says an ordinary call, and is sure: the
+        // AI goes back to the normal prompt and model at the next pause (the
+        // rotation carries the call so far without the stalling note) and to the
+        // normal call's cap. Appointments were dropped when stalling started: the
+        // normal session goes on without them.
+        if std::mem::take(&mut stall_release_now) && stall_on {
+            if let Some(c) = stall.as_ref() {
+                stall_on = false;
+                if let Ok(mut j) = c.judgement.lock() {
+                    if let Some(j) = j.as_mut() {
+                        j.released = true;
+                    }
+                }
+                stall_keep_due = None;
+                stall_keep_after_turn = false;
+                stall_turn_kept = false;
+                stall_nudge_chunks = None;
+                stall_nudge_at = None;
+                repeat_guard.clear();
+                rotate_setup = appt.as_ref().map(|_| {
+                    let mut s = setup_with_system_prompt(&setup, &call_system_prompt(&base_prompt, None, chrono::Local::now()));
+                    with_appointment_tools(&mut s, false, false);
+                    s
+                });
+                if live_is_stall {
+                    rotate_due = Some(tokio::time::Instant::now() + Duration::from_secs(STALL_PROMPT_SWITCH_FORCE_SECS));
+                }
+                (wrap_secs, wrap_force_secs, max_secs) = talk_limits(persona, persona_max_secs);
                 info!(
-                    "Persona stall engaged serial={serial} score={stall_score} hits={stall_hits:?} talk_s={} cap_s={max_secs} wrap_up_was_sent={wrap_was_sent} switch={} model={}",
-                    session_start.elapsed().as_secs(),
-                    rotate_setup.is_some(),
-                    rotate_setup
-                        .as_ref()
-                        .and_then(|s| s.pointer("/setup/model"))
-                        .and_then(|m| m.as_str())
-                        .unwrap_or(model_path.as_str())
+                    "Persona stall released serial={serial} talk_s={} switch_back={live_is_stall} cap_s={max_secs} — the check found an ordinary call",
+                    session_start.elapsed().as_secs()
                 );
             }
         }
@@ -4896,6 +5250,8 @@ pub async fn run_session(
                     Ok((new_sink, new_stream)) => {
                         rotations = n;
                         rotate_fails = 0;
+                        // What the new socket runs (the release check switches back from it).
+                        live_is_stall = stall_on;
                         let _ = tokio::time::timeout(Duration::from_millis(500), sink.close()).await;
                         sink = new_sink;
                         stream = new_stream;
@@ -6112,7 +6468,7 @@ pub async fn run_session(
                                     // A recorded voice menu ("查帳單請按1，轉接專人請按9"): nobody to
                                     // stall; the AI goes quiet and we hang up.
                                     if persona
-                                        && stall.is_some()
+                                        && stall_play
                                         && ivr_since.is_none()
                                         && ivr_enter.is_none()
                                         && crate::stall_review::ivr_cue(&in_tx_window)
@@ -6122,9 +6478,26 @@ pub async fn run_session(
                                     // Sales / scam keywords: once they cross the line the call gets
                                     // a second look (stall_review) while the AI talks on; its verdict
                                     // decides whether the AI starts stalling.
-                                    if stall.is_some() && !stall_on && !own_matter && ivr_since.is_none() {
+                                    if stall.is_some() && !stall_on && !stall_detected && !own_matter && ivr_since.is_none() {
                                         stall_score += stall_score_add(&in_tx_window, &mut stall_hits);
-                                        if stall_review.should_ask(stall_engages(stall_score, &stall_hits), stall_score) {
+                                        let flagged = stall_engages(stall_score, &stall_hits);
+                                        if flagged && stall_review.keyword_rule && stall_engage_now.is_none() {
+                                            // The look kept failing: the keywords decide alone, as
+                                            // before it existed (a contact only on words only
+                                            // scammers say).
+                                            let hard = stall_hits.iter().any(|h| crate::scam_db::is_hard(h));
+                                            if hard || !review_ctx().protected() {
+                                                stall_engage_now = Some(judgement_of(
+                                                    &crate::stall_review::Review::of(crate::stall_review::Verdict::Unavailable),
+                                                    &stall_hits,
+                                                    EngageWhy::KeywordRule,
+                                                ));
+                                                info!(
+                                                    "Persona stall by keywords alone (the second look kept failing) serial={serial} score={stall_score} hits={stall_hits:?}"
+                                                );
+                                            }
+                                        } else if stall_review.should_ask(flagged, stall_score) {
+                                            stall_review.seen(caller_said().1);
                                             spawn_stall_review(
                                                 &review_tx,
                                                 &review_key,
@@ -6132,6 +6505,7 @@ pub async fn run_session(
                                                 &stall_hits,
                                                 review_ctx(),
                                                 stall_score,
+                                                crate::stall_review::Purpose::Keywords,
                                             );
                                             info!(
                                                 "Persona stall flagged serial={serial} score={stall_score} hits={stall_hits:?} talk_s={} — second look n={} (the AI talks on meanwhile)",
@@ -6313,11 +6687,15 @@ pub async fn run_session(
                                         info!(
                                             "Gemini Live new model turn after caller serial={serial} (clear recap STT window)"
                                         );
-                                        // The caller had only said who they were: their turn is
-                                        // over now, so the second look goes again. A look still
-                                        // under way saw only part of this turn: noted, so its
-                                        // "too early" is asked again as soon as it comes back.
-                                        if stall.is_some() && !stall_on && !own_matter && ivr_since.is_none() {
+                                        // The caller's turn is over. A look put off until now (they
+                                        // had only said who they were, the answer was unsure or did
+                                        // not come) goes again; a look still under way saw only
+                                        // part of this turn: noted, so its "too early" is asked
+                                        // again as soon as it comes back. With no keyword so far, a
+                                        // caller who is not a contact is looked at once they have
+                                        // said what they want. Stalling: the check whether to let
+                                        // them go.
+                                        if stall.is_some() && !stall_on && !stall_detected && !own_matter && ivr_since.is_none() {
                                             stall_review.note_caller_turn_end();
                                             if stall_review.should_ask_after_turn() {
                                                 spawn_stall_review(
@@ -6327,11 +6705,49 @@ pub async fn run_session(
                                                     &stall_hits,
                                                     review_ctx(),
                                                     stall_score,
+                                                    stall_review.purpose(),
                                                 );
                                                 info!(
-                                                    "Persona stall second look after the caller's turn serial={serial} score={stall_score} hits={stall_hits:?} talk_s={} n={}",
+                                                    "Persona stall second look after the caller's turn serial={serial} score={stall_score} hits={stall_hits:?} talk_s={} n={} purpose={:?}",
                                                     session_start.elapsed().as_secs(),
-                                                    stall_review.asked
+                                                    stall_review.asked,
+                                                    stall_review.purpose()
+                                                );
+                                            } else if blind_looks {
+                                                let (turns, units) = caller_said();
+                                                let ctx = review_ctx();
+                                                if !ctx.protected() && stall_review.should_ask_blind(units, turns, ctx.flagged_before) {
+                                                    spawn_stall_review(
+                                                        &review_tx,
+                                                        &review_key,
+                                                        &transcript_out,
+                                                        &stall_hits,
+                                                        ctx,
+                                                        stall_score,
+                                                        crate::stall_review::Purpose::Content,
+                                                    );
+                                                    info!(
+                                                        "Persona call looked at without keywords serial={serial} turns={turns} units={units} score={stall_score} talk_s={} n={}",
+                                                        session_start.elapsed().as_secs(),
+                                                        stall_review.asked
+                                                    );
+                                                }
+                                            }
+                                        } else if stall_on && !own_matter && ivr_since.is_none() {
+                                            stall_review.note_caller_turn_end();
+                                            if stall_review.should_ask_confirm(caller_said().1) {
+                                                spawn_stall_review(
+                                                    &review_tx,
+                                                    &review_key,
+                                                    &transcript_out,
+                                                    &stall_hits,
+                                                    review_ctx(),
+                                                    stall_score,
+                                                    crate::stall_review::Purpose::Confirm,
+                                                );
+                                                info!(
+                                                    "Persona stall check (let the caller go?) serial={serial} talk_s={}",
+                                                    session_start.elapsed().as_secs()
                                                 );
                                             }
                                         }
@@ -6818,10 +7234,19 @@ pub async fn run_session(
                 }
             }
             verdict = review_rx.recv() => {
-                let Some((score, verdict)) = verdict else { continue };
-                let step = stall_review.verdict_now(verdict, score, stall_score);
+                let Some((score, review)) = verdict else { continue };
+                let ctx = review_ctx();
+                let facts = StallFacts {
+                    flagged: stall_engages(stall_score, &stall_hits),
+                    hard_hit: stall_hits.iter().any(|h| crate::scam_db::is_hard(h)),
+                    protected: ctx.protected(),
+                };
+                let step = stall_review.decide(&review, score, stall_score, facts);
                 info!(
-                    "Persona stall review serial={serial} verdict={verdict:?} score_asked={score} score_now={stall_score} reviews={} → {step:?}",
+                    "Persona stall review serial={serial} verdict={:?} typology={:?} confidence={} score_asked={score} score_now={stall_score} reviews={} facts={facts:?} → {step:?}",
+                    review.verdict,
+                    review.typology,
+                    review.confidence.as_str(),
                     stall_review.asked
                 );
                 match step {
@@ -6829,21 +7254,24 @@ pub async fn run_session(
                         if let Some(a) = &appt {
                             a.book.set_reviewed_normal(false);
                         }
-                        stall_engage_now = true;
+                        stall_engage_now = Some(judgement_of(&review, &stall_hits, stall_review.why));
                     }
-                    StallVerdictStep::Ivr => {
+                    StallVerdictStep::Release => stall_release_now = true,
+                    StallVerdictStep::Ivr if stall_play => {
                         ivr_enter.get_or_insert("review");
                     }
+                    StallVerdictStep::Ivr => {}
                     // The caller finished that turn (or said more) meanwhile: what the
                     // look saw was only its start. Look again now, at all of it.
-                    StallVerdictStep::AskAgain if stall.is_some() && !stall_on && !own_matter && ivr_since.is_none() => {
+                    StallVerdictStep::AskAgain if stall.is_some() && !stall_on && !stall_detected && !own_matter && ivr_since.is_none() => {
                         spawn_stall_review(
                             &review_tx,
                             &review_key,
                             &transcript_out,
                             &stall_hits,
-                            review_ctx(),
+                            ctx,
                             stall_score,
+                            stall_review.purpose(),
                         );
                         info!(
                             "Persona stall second look again at once (the caller's turn ended or more keywords came meanwhile) serial={serial} score={stall_score} hits={stall_hits:?} talk_s={} n={}",
@@ -7900,6 +8328,141 @@ mod tests {
         assert_eq!(r.verdict(IvrRecording, 3), StallVerdictStep::Ivr);
         // The stalling starts at most this late (no answer in time = scam / sales).
         assert_eq!(crate::stall_review::REVIEW_TIMEOUT, Duration::from_millis(1_500));
+    }
+
+    fn review_of(verdict: crate::stall_review::Verdict, confidence: crate::stall_review::Confidence) -> crate::stall_review::Review {
+        crate::stall_review::Review { verdict, typology: None, confidence, no_key: false }
+    }
+
+    /// A look that does not answer (timeout, error) convicts nobody on its own:
+    /// only words only scammers say engage at once; otherwise the next turn is
+    /// looked at, and after two failures in a row the keywords decide as before.
+    #[test]
+    fn a_failed_look_convicts_only_on_hard_words_or_after_failing_twice() {
+        use crate::stall_review::{Confidence::*, Verdict::*};
+        let flagged = StallFacts { flagged: true, ..StallFacts::default() };
+        let failed = review_of(Unavailable, Medium);
+        let mut r = StallReview::default();
+        assert!(r.should_ask(true, 3));
+        assert_eq!(r.decide(&failed, 3, 3, flagged), StallVerdictStep::AfterTurn);
+        assert!(r.should_ask_after_turn());
+        assert_eq!(r.decide(&failed, 3, 3, flagged), StallVerdictStep::Engage);
+        assert_eq!(r.why, EngageWhy::KeywordRule);
+        // Hard words: at once.
+        let mut r = StallReview::default();
+        assert!(r.should_ask(true, 3));
+        let hard = StallFacts { flagged: true, hard_hit: true, ..StallFacts::default() };
+        assert_eq!(r.decide(&failed, 3, 3, hard), StallVerdictStep::Engage);
+        assert_eq!(r.why, EngageWhy::HardWords);
+        // A saved contact or a number marked safe is left alone…
+        let mut r = StallReview::default();
+        assert!(r.should_ask(true, 3));
+        let contact = StallFacts { flagged: true, protected: true, ..StallFacts::default() };
+        assert_eq!(r.decide(&failed, 3, 3, contact), StallVerdictStep::Carry);
+        // …unless it said words only scammers say (caller ids can be spoofed).
+        let mut r = StallReview::default();
+        assert!(r.should_ask(true, 3));
+        let spoofed = StallFacts { flagged: true, hard_hit: true, protected: true };
+        assert_eq!(r.decide(&failed, 3, 3, spoofed), StallVerdictStep::Engage);
+        // No key: asking again will not help, so the keywords decide at once.
+        let mut r = StallReview::default();
+        assert!(r.should_ask(true, 3));
+        let no_key = crate::stall_review::Review { no_key: true, ..failed };
+        assert_eq!(r.decide(&no_key, 3, 3, flagged), StallVerdictStep::Engage);
+        // A call the keywords did not flag is not engaged by the keyword rule.
+        let mut r = StallReview::default();
+        assert!(r.should_ask_blind(30, 2, false));
+        assert_eq!(r.decide(&no_key, 0, 0, StallFacts::default()), StallVerdictStep::Carry);
+    }
+
+    /// An unsure "scam" is looked at again after the caller's next turn; unsure
+    /// twice, it engages only when the keywords also say so.
+    #[test]
+    fn an_unsure_scam_answer_waits_for_the_next_turn() {
+        use crate::stall_review::{Confidence::*, Verdict::*};
+        let unsure = review_of(ScamOrSales, Low);
+        let flagged = StallFacts { flagged: true, ..StallFacts::default() };
+        let mut r = StallReview::default();
+        assert!(r.should_ask(true, 3));
+        assert_eq!(r.decide(&unsure, 3, 3, flagged), StallVerdictStep::AfterTurn);
+        assert!(r.should_ask_after_turn());
+        assert_eq!(r.decide(&unsure, 3, 3, flagged), StallVerdictStep::Engage);
+        // Without keywords behind it: let be.
+        let mut r = StallReview::default();
+        assert!(r.should_ask_blind(30, 2, false));
+        assert_eq!(r.decide(&unsure, 0, 0, StallFacts::default()), StallVerdictStep::AfterTurn);
+        assert!(r.should_ask_after_turn());
+        assert_eq!(r.decide(&unsure, 0, 0, StallFacts::default()), StallVerdictStep::Carry);
+        // A medium "scam" is enough.
+        let mut r = StallReview::default();
+        assert!(r.should_ask(true, 3));
+        assert_eq!(r.decide(&review_of(ScamOrSales, Medium), 3, 3, flagged), StallVerdictStep::Engage);
+    }
+
+    /// Words only scammers say and an unsure "normal" (a spoofed contact asking
+    /// for "the code"): looked at once more, a scam when unsure twice; a sure
+    /// "normal" holds.
+    #[test]
+    fn hard_words_need_a_sure_normal_to_be_let_be() {
+        use crate::stall_review::{Confidence::*, Verdict::*};
+        let hard = StallFacts { flagged: true, hard_hit: true, protected: true };
+        let mut r = StallReview::default();
+        assert!(r.should_ask(true, 3));
+        assert_eq!(r.decide(&review_of(Normal, Medium), 3, 3, hard), StallVerdictStep::AfterTurn);
+        assert!(r.should_ask_after_turn());
+        assert_eq!(r.decide(&review_of(Normal, Low), 3, 3, hard), StallVerdictStep::Engage);
+        assert_eq!(r.why, EngageWhy::HardWords);
+        let mut r = StallReview::default();
+        assert!(r.should_ask(true, 3));
+        assert_eq!(r.decide(&review_of(Normal, High), 3, 3, hard), StallVerdictStep::Carry);
+        // Without hard words an unsure "normal" is still normal.
+        let mut r = StallReview::default();
+        assert!(r.should_ask(true, 3));
+        let flagged = StallFacts { flagged: true, ..StallFacts::default() };
+        assert_eq!(r.decide(&review_of(Normal, Low), 3, 3, flagged), StallVerdictStep::Carry);
+    }
+
+    /// Calls no keyword flagged are looked at too: after the caller's second turn
+    /// with something in it (or enough said), then again only when they have said
+    /// more, at most three times a call; a number marked before is looked at sooner.
+    #[test]
+    fn calls_without_keywords_are_looked_at_a_few_times() {
+        use crate::stall_review::{Confidence::*, Verdict::*};
+        let normal = review_of(Normal, High);
+        let mut r = StallReview::default();
+        assert!(!r.should_ask_blind(8, 1, false));
+        assert!(r.should_ask_blind(10, 2, false));
+        assert!(!r.should_ask_blind(12, 3, false), "one at a time");
+        assert_eq!(r.decide(&normal, 0, 0, StallFacts::default()), StallVerdictStep::Carry);
+        assert!(!r.should_ask_blind(10 + BLIND_NEXT_UNITS - 1, 3, false), "nothing new said");
+        assert!(r.should_ask_blind(10 + BLIND_NEXT_UNITS, 3, false));
+        assert_eq!(r.decide(&normal, 0, 0, StallFacts::default()), StallVerdictStep::Carry);
+        assert!(r.should_ask_blind(10 + 2 * BLIND_NEXT_UNITS, 4, false));
+        assert_eq!(r.decide(&normal, 0, 0, StallFacts::default()), StallVerdictStep::Carry);
+        assert!(!r.should_ask_blind(500, 9, false), "at most {BLIND_MAX} a call");
+        // A number marked or judged before: after the first turn.
+        let mut r = StallReview::default();
+        assert!(r.should_ask_blind(6, 1, true));
+        assert_eq!(r.decide(&review_of(ScamOrSales, High), 0, 0, StallFacts::default()), StallVerdictStep::Engage);
+    }
+
+    /// Once stalling, one check after the caller's next two turns: only a sure
+    /// "normal" lets them go back to an ordinary call.
+    #[test]
+    fn a_wrongly_judged_caller_is_let_go_on_a_sure_normal() {
+        use crate::stall_review::{Confidence::*, Verdict::*};
+        let mut r = StallReview::default();
+        r.note_engaged(20);
+        assert!(!r.should_ask_confirm(22));
+        assert!(r.should_ask_confirm(24));
+        assert_eq!(r.decide(&review_of(Normal, High), 0, 0, StallFacts::default()), StallVerdictStep::Release);
+        assert!(!r.should_ask_confirm(80), "once a call");
+        for (verdict, confidence) in [(Normal, Medium), (ScamOrSales, High), (Unavailable, Medium)] {
+            let mut r = StallReview::default();
+            r.note_engaged(20);
+            assert!(r.should_ask_confirm(20 + CONFIRM_EARLY_UNITS));
+            assert_eq!(r.decide(&review_of(verdict, confidence), 0, 0, StallFacts::default()), StallVerdictStep::Carry, "{verdict:?} {confidence:?}");
+        }
     }
 
     /// The card desk of 2026-11-14: 「這邊是XX銀行信用卡風險管控中心」 alone
@@ -9642,6 +10205,8 @@ mod tests {
         assert!(p.contains("禁止問「找哪位／找誰／找王先生嗎」"));
         assert!(p.contains("禁止對方說完事由後只回「好的／嗯／了解」"));
         assert!(!p.contains("方便說一下找哪位"));
+        // The one exception to 「對嗎／再確認」: a time, date, amount or number is asked back once.
+        assert!(p.contains("例外：對方講到要轉達的時間、日期、金額、電話號碼，要用一句問句把那一項完整複誦一次") && p.contains("不要自己猜"));
     }
 
     #[test]

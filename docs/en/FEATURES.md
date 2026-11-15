@@ -191,13 +191,16 @@ ring for you to answer; the mode survives a reboot. The Magisk / KernelSU
 module's root helper makes the change, so the Bageo app itself never needs root
 access. See [Normal phone mode](PHONE.md#normal-phone-mode).
 
-## 16 notification channels, data on your disk
+## 32 notification channels, data on your disk
 
 Telegram (with Accept / Decline buttons for appointments), Discord, Slack /
-Mattermost, LINE Messaging API, ntfy, Gotify, Bark, Pushover, WeCom, DingTalk
-(with signing), Feishu / Lark, ServerChan, Matrix, Gmail, Apprise, and a JSON
-webhook for n8n, Zapier or Home Assistant. Use any mix; every message goes to
-all of them. The optional [SMS forwarder](../../tools/sms_forward/README.md) sends
+Mattermost, Microsoft Teams, Google Chat, Rocket.Chat, Zulip, Webex, Nextcloud
+Talk, Synology Chat, LINE Messaging API, Signal (through signal-cli-rest-api),
+ntfy, Gotify, Bark, Pushover, Pushbullet, WeCom, DingTalk (with signing),
+Feishu / Lark, ServerChan, PushPlus, PushDeer, WxPusher, Chanify, Matrix,
+Gmail, email through any SMTP server, Home Assistant, IFTTT, Apprise, and a
+JSON webhook for n8n or Zapier. Use any mix; every message goes to all of
+them. The optional [SMS forwarder](../../tools/sms_forward/README.md) sends
 the phone's incoming text messages to the same channels.
 
 What leaves your computer: the live call audio goes to Gemini, the transcript

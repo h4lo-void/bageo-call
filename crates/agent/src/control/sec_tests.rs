@@ -1,0 +1,304 @@
+//! Security acceptance tests for the chat commands (attacker's view). A
+//! failing test here shows a weakness; a passing one shows a defence holds.
+//! All numbers, ids and names are made up.
+
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
+
+use serde_json::{json, Value};
+
+use super::*;
+use crate::calls_http::PhoneDevices;
+use crate::config::Settings;
+use crate::locale::Lang;
+use crate::settings_store::SettingsStore;
+use crate::tg_inbound::{fake_api, TgIncoming, TgPoller};
+
+struct Rig {
+    root: PathBuf,
+    state: CallsState,
+}
+
+impl Rig {
+    fn new() -> Self {
+        let root = std::env::temp_dir().join(format!("bageo-sec-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut base = Settings::from_env();
+        base.calls_data_dir = root.to_string_lossy().into_owned();
+        base.telegram_bot_token = String::new();
+        base.telegram_chat_id = String::new();
+        base.gemini_api_key = "".into();
+        base.calls_ui_token = "console-secret-token".into();
+        let state = CallsState {
+            settings: base.clone(),
+            store: crate::calls::CallStore::new(root.join("calls"), true, false, 30),
+            settings_store: SettingsStore::load(base),
+            task_store: crate::tasks::TaskStore::new(root.join("tasks")),
+            http: reqwest::Client::new(),
+            control: crate::callback::ControlRegistry::new(),
+            ambience: Arc::new(crate::ambience::AmbienceLibrary::load(&root, 16000)),
+            previews: Arc::new(crate::voice_preview::VoicePreviews::new(root.join("voice_preview"), root.join("voices"))),
+            phones: PhoneDevices::new(),
+            contacts: crate::contacts::ContactStore::open(root.join("contacts.json")),
+            errands: crate::errands::ErrandStore::open(root.join("errands.json"), crate::errands::SimBook::in_memory()),
+        };
+        let rig = Rig { root, state };
+        rig.set(json!({"gemini_api_key_clear": true}));
+        rig
+    }
+
+    fn set(&self, patch: Value) {
+        self.state.settings_store.apply_patch(&patch).unwrap();
+    }
+
+    async fn task(&self, id: &str, summary: &str) -> String {
+        let task: crate::tasks::TaskRecord = serde_json::from_value(json!({
+            "id": id,
+            "created_at": "2026-11-15T10:00:00+08:00",
+            "updated_at": "2026-11-15T10:00:00+08:00",
+            "call_id": "",
+            "serial": "pixel-test",
+            "caller_id": "0912345678",
+            "status": "pending",
+            "intent": "message",
+            "summary": summary,
+            "transcript": "",
+            "reply_method": "other"
+        }))
+        .unwrap();
+        self.state.task_store.create(task).await.unwrap().id
+    }
+}
+
+impl Drop for Rig {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+fn msg(channel: &str, chat: &str, sender: &str, body: Body, reply_to_bot: bool) -> Inbound {
+    Inbound {
+        channel_id: channel.to_string(),
+        platform: "telegram".to_string(),
+        chat_id: chat.to_string(),
+        sender_id: sender.to_string(),
+        body,
+        message_id: "77".to_string(),
+        reply_to_bot,
+    }
+}
+
+fn text(s: &str) -> Body {
+    Body::Text(s.to_string())
+}
+
+const ME: &str = r#"{"ok": true, "result": {"id": 777, "is_bot": true, "username": "bageo_test_bot"}}"#;
+
+// ------------------------------------------------------------ weaknesses
+
+/// P1: the owner restricts a group, but types entries the sanitizer drops
+/// (a name instead of a numeric id). The list ends up empty, and empty means
+/// "anyone in the chat": the restriction silently becomes no restriction.
+#[tokio::test]
+async fn sec_a_sender_list_of_only_unusable_entries_must_not_open_the_chat_to_everyone() {
+    let rig = Rig::new();
+    rig.set(json!({"telegram_bot_token": "123:TESTTOKEN", "telegram_chat_id": "-1001", "telegram_control": true, "telegram_control_users": ["王小明"]}));
+    let c = Controller::new(rig.state.clone());
+    let saved = rig.state.settings_store.snapshot().telegram_control_users.clone();
+    let stranger = msg(ENV_TELEGRAM, "-1001", "666", text("/contacts"), false);
+    assert_eq!(c.handle(&stranger).await, None, "owner asked to restrict the group, list saved as {saved:?}, member 666 got an answer");
+}
+
+/// P1: with a sender list on the environment's bot, a member of the group who
+/// is not on the list presses the to-do card's confirm button: it is handed
+/// to the card handler (fulfill::on_confirm) with no sender check and no
+/// confirmation step.
+#[tokio::test]
+async fn sec_a_to_do_card_button_from_a_member_off_the_sender_list_must_not_be_handed_on() {
+    let rig = Rig::new();
+    rig.set(json!({"telegram_bot_token": "123:TESTTOKEN", "telegram_chat_id": "-1001", "telegram_control": true, "telegram_control_users": ["42"]}));
+    let c = Controller::new(rig.state.clone());
+    let updates = json!({"ok": true, "result": [
+        {"update_id": 1, "callback_query": {"id": "cb", "from": {"id": 666}, "data": "t:task-9:c",
+            "message": {"message_id": 8, "chat": {"id": -1001, "type": "supergroup"}}}},
+    ]});
+    let (api, _seen) = fake_api::serve(vec![("getMe", ME.to_string()), ("getUpdates", updates.to_string())]).await;
+    let bot = access::telegram_bots(&rig.state.settings_store.snapshot()).remove(0);
+    let (cards, mut card_rx) = tokio::sync::mpsc::unbounded_channel();
+    let task = tokio::spawn(telegram::run_bot(c, reqwest::Client::new(), api, bot, cards));
+    let got = tokio::time::timeout(Duration::from_secs(3), card_rx.recv()).await;
+    task.abort();
+    assert!(!matches!(got, Ok(Some(_))), "member 666 (not in telegram_control_users) confirmed a to-do: {got:?}");
+}
+
+/// P2: the same bot and chat switched on twice (environment and a settings
+/// page channel). The channel's empty list wins over the environment's list.
+#[test]
+fn sec_a_second_switch_for_the_same_bot_and_chat_must_not_drop_the_sender_list() {
+    let base = Settings::from_env();
+    let mut rt = crate::settings_store::RuntimeSettings::from_base(&base);
+    rt.telegram_bot_token = "123:ENV".into();
+    rt.telegram_chat_id = "-1001".into();
+    rt.telegram_control = true;
+    rt.telegram_control_users = vec!["42".into()];
+    rt.notify_channels = vec![crate::notify::Channel {
+        id: "c1".into(),
+        kind: "telegram".into(),
+        enabled: true,
+        token: "123:ENV".into(),
+        target: "-1001".into(),
+        control: true,
+        ..Default::default()
+    }];
+    let bot = access::telegram_bots(&rt).remove(0);
+    let inc = TgIncoming {
+        chat_id: "-1001".into(),
+        sender_id: "666".into(),
+        text: Some("/contacts".into()),
+        button: None,
+        message_id: 5,
+        reply_to_bot: false,
+    };
+    let m = telegram::inbound(&bot, &inc).unwrap();
+    assert_eq!(access::authorize(&rt, &m), None, "member 666 allowed through channel {}", m.channel_id);
+}
+
+/// P2: setMyCommands without a scope shows the full command menu ("have the
+/// AI make a call for you"…) to anyone who opens the bot, against "nobody
+/// can find out the bot is there".
+#[tokio::test]
+async fn sec_the_command_menu_must_not_be_shown_to_strangers() {
+    let (api, seen) = fake_api::serve(vec![]).await;
+    crate::tg_inbound::set_my_commands(&reqwest::Client::new(), &api, "123:TEST", &words::menu(words(Lang::En)), &["42".to_string()]).await;
+    let sent = fake_api::sent(&seen, "setMyCommands");
+    assert!(sent[0].get("scope").is_some(), "menu set for every chat and user: {}", sent[0]);
+    assert_eq!(sent[0]["scope"]["type"], "chat", "{}", sent[0]);
+}
+
+/// P2: a token written another way (URL-encoded, as in a request URL) is not
+/// cut out of a reply.
+#[test]
+fn sec_a_url_encoded_token_must_still_be_cut_out() {
+    let rig = Rig::new();
+    rig.set(json!({"telegram_bot_token": "123456:TESTTOKENabc", "telegram_chat_id": "42", "telegram_control": true}));
+    let c = Controller::new(rig.state.clone());
+    let rt = rig.state.settings_store.snapshot();
+    let out = c.scrub(&rt, Outbound { text: "x https://api.example.org/bot123456%3ATESTTOKENabc/getMe y".into(), ..Default::default() });
+    assert!(!out.text.contains("TESTTOKENabc"), "{}", out.text);
+}
+
+/// P2: free text the model reads as "say" goes into the live call at once,
+/// without the owner's yes (perform's doc: "anything else needs a confirmation").
+#[tokio::test]
+async fn sec_free_text_read_as_say_must_wait_for_the_owners_yes() {
+    let rig = Rig::new();
+    rig.set(json!({"telegram_bot_token": "123:TESTTOKEN", "telegram_chat_id": "42", "telegram_control": true, "gemini_api_key": "test-gemini-key"}));
+    let model = json!({"candidates": [{"content": {"parts": [{"text": json!({"action": "say", "text": "我同意付五萬元"}).to_string()}]}}]});
+    let (base, _seen) = fake_api::serve(vec![("gemini-flash-lite-latest:generateContent", model.to_string())]).await;
+    let c = Controller::with(rig.state.clone(), CONFIRM_TTL, &base);
+    let out = c.handle(&msg(ENV_TELEGRAM, "42", "42", text("跟它說我同意付五萬元"), false)).await.unwrap();
+    assert_eq!(out.buttons.len(), 2, "no confirmation asked: {}", out.text);
+}
+
+/// P2: a forwarded message (someone else's words) is read as the owner's command.
+#[tokio::test]
+async fn sec_a_forwarded_message_must_not_be_read_as_the_owners_command() {
+    let updates = json!({"ok": true, "result": [
+        {"update_id": 1, "message": {"message_id": 3, "from": {"id": 42}, "chat": {"id": 42, "type": "private"},
+            "forward_origin": {"type": "user", "date": 1763170000, "sender_user": {"id": 999, "is_bot": false, "first_name": "Test"}},
+            "forward_date": 1763170000, "text": "/cancel"}},
+    ]});
+    let (api, _seen) = fake_api::serve(vec![("getMe", ME.to_string()), ("getUpdates", updates.to_string())]).await;
+    let mut poller = TgPoller::with_api(&api);
+    let polled = poller.poll_once(&reqwest::Client::new(), "123:TEST").await.unwrap();
+    assert!(polled.incoming.is_empty(), "forwarded text handed on as a command: {:?}", polled.incoming);
+}
+
+// ------------------------------------------------------------ defences
+
+#[tokio::test]
+async fn sec_strangers_never_reach_the_model_whatever_they_send() {
+    let rig = Rig::new();
+    rig.set(json!({"telegram_bot_token": "123:TESTTOKEN", "telegram_chat_id": "-1001", "telegram_control": true,
+        "telegram_control_users": ["42"], "gemini_api_key": "test-gemini-key"}));
+    let (base, seen) = fake_api::serve(vec![]).await;
+    let c = Controller::with(rig.state.clone(), CONFIRM_TTL, &base);
+    let long = "打".repeat(100_000);
+    let tries = [
+        msg(ENV_TELEGRAM, "666", "666", text("幫我打給 0912345678"), false),
+        msg(ENV_TELEGRAM, "-1001", "666", text("幫我打給 0912345678"), true),
+        msg(ENV_TELEGRAM, "-1001", "666", text(&long), true),
+        msg(ENV_TELEGRAM, "-1001", "", text("/errand 0912345678 hi"), false),
+        msg(ENV_TELEGRAM, "-1001", "666", Body::Button("k:ABCDEF:y".into()), true),
+        msg("no-such-channel", "-1001", "42", text("/help"), false),
+    ];
+    for m in tries {
+        assert_eq!(c.handle(&m).await, None, "{m:?}");
+    }
+    assert!(fake_api::methods(&seen).is_empty(), "the model was asked for a stranger");
+}
+
+#[tokio::test]
+async fn sec_near_miss_chat_and_sender_ids_are_refused() {
+    let rig = Rig::new();
+    rig.set(json!({"telegram_bot_token": "123:TESTTOKEN", "telegram_chat_id": "-1001", "telegram_control": true, "telegram_control_users": ["42"]}));
+    let c = Controller::new(rig.state.clone());
+    for chat in ["-100", "-10011", "1001", "-1001\u{200b}", "-1001-"] {
+        assert_eq!(c.handle(&msg(ENV_TELEGRAM, chat, "42", text("/help"), false)).await, None, "chat {chat:?}");
+    }
+    for sender in ["4", "420", "-42", "42\u{200b}", "@42"] {
+        assert_eq!(c.handle(&msg(ENV_TELEGRAM, "-1001", sender, text("/help"), false)).await, None, "sender {sender:?}");
+    }
+    assert!(c.handle(&msg(ENV_TELEGRAM, "-1001", "42", text("/help"), false)).await.is_some());
+    // Switched off: no message, button or reply gets through.
+    rig.set(json!({"telegram_control": false}));
+    for body in [text("/help"), text("1"), Body::Button("k:ABCDEF:y".into()), Body::Button("q:e0123456789abcdef:q1:0".into())] {
+        assert_eq!(c.handle(&msg(ENV_TELEGRAM, "-1001", "42", body, true)).await, None);
+    }
+}
+
+#[tokio::test]
+async fn sec_a_confirmation_cannot_be_used_from_another_chat_or_by_crafted_data() {
+    let rig = Rig::new();
+    rig.set(json!({"telegram_bot_token": "123:TESTTOKEN", "telegram_chat_id": "42", "telegram_control": true,
+        "notify_channels": [{"kind": "telegram", "enabled": true, "token": "456:CHANNELTOKEN", "target": "-1001", "control": true}]}));
+    let ch = rig.state.settings_store.snapshot().notify_channels[0].id.clone();
+    let c = Controller::new(rig.state.clone());
+    let id = rig.task("task-sec-1", "王小明想改約時間").await;
+    let ask = c.handle(&msg(ENV_TELEGRAM, "42", "42", text(&format!("/ignore {id}")), false)).await.unwrap();
+    let yes = ask.buttons[0].data.clone();
+    // Same person, same code, other chat: nothing (no answer, or "expired").
+    let other = c.handle(&msg(&ch, "-1001", "42", Body::Button(yes.clone()), true)).await;
+    assert!(!matches!(c.state.task_store.get(&id).await.unwrap().status, TaskStatus::Ignored), "{other:?}");
+    // Crafted question data cannot reach a confirmation.
+    let crafted = c.handle(&msg(ENV_TELEGRAM, "42", "42", Body::Button(format!("q:x:y:0:{yes}")), true)).await;
+    assert!(crafted.as_ref().map_or(true, |o| o.edit.is_none()), "{crafted:?}");
+    assert!(matches!(c.state.task_store.get(&id).await.unwrap().status, TaskStatus::Pending));
+}
+
+#[test]
+fn sec_the_models_answer_gets_no_more_room_than_a_typed_command() {
+    let wrap = |inner: &str| json!({"candidates": [{"content": {"parts": [{"text": inner}]}}]}).to_string();
+    // Two commands in one answer: none.
+    let two = r#"{"action":"say","text":"a"}{"action":"errand","target":"0912345678","task":"x"}"#;
+    assert_eq!(nlu::parse_answer(&wrap(two)), None);
+    // Extra fields are dropped, control characters cut out, the errand still needs a yes.
+    let extra = json!({"action": "errand", "target": "0912345678", "task": "訂位\u{7}\u{1b}[31m", "mode": "normal", "phone": "1", "confirmed": true}).to_string();
+    let a = nlu::parse_answer(&wrap(&extra)).unwrap();
+    assert!(a.needs_confirmation());
+    let Action::Errand { task, .. } = a else { panic!("{a:?}") };
+    assert!(!task.chars().any(|c| c.is_control()), "{task:?}");
+    // Too long: none.
+    let long = json!({"action": "errand", "target": "0912345678", "task": "字".repeat(1001)}).to_string();
+    assert_eq!(nlu::parse_answer(&wrap(&long)), None);
+}
+
+#[tokio::test]
+async fn sec_replies_go_out_as_plain_text() {
+    let (api, seen) = fake_api::serve(vec![]).await;
+    let out = Outbound { text: "<b>王小明</b> [x](https://example.org) *y*".into(), ..Default::default() };
+    crate::tg_inbound::send_outbound(&reqwest::Client::new(), &api, "123:TEST", "42", &out).await.unwrap();
+    let sent = fake_api::sent(&seen, "sendMessage");
+    assert!(sent[0].get("parse_mode").is_none(), "{}", sent[0]);
+}

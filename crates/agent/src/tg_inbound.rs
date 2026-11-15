@@ -1,17 +1,25 @@
-//! Telegram inbound polling for AI task confirm/ignore buttons.
+//! Telegram Bot API: the to-do cards' buttons, and the messages and button
+//! presses of the chats that take commands ([crate::control]).
 //!
-//! Outbound task cards use [`send_task_card`] (Bot API + inline keyboard; Apprise
-//! cannot carry buttons). Inbound clicks: [`TgPoller::poll_once`] long-polls
-//! `getUpdates`. Wired from `main.rs` when bot token + chat id are set.
+//! Outbound task cards use [send_task_card] (Bot API + inline keyboard; Apprise
+//! cannot carry buttons). Inbound: [TgPoller::poll_once] long-polls
+//! getUpdates for one bot. A card button comes back as a [TgAction] (handled
+//! in main.rs); any other message or button press as a [TgIncoming], for
+//! crate::control::telegram, which decides whether it may be answered.
 //!
 //! **Not** gated by spam-blocklist (deny removed). Outbound cards share the
-//! `CALL_NOTIFY` / `call_notify` master switch via [`task_card_ready`].
-//! Call/VM plain alerts stay in [`crate::notify`] (Apprise → webhook → Bot API).
+//! CALL_NOTIFY / call_notify master switch via [task_card_ready].
+//! Call/VM plain alerts stay in [crate::notify] (Apprise → webhook → Bot API).
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use reqwest::Client;
 use serde_json::{json, Value};
 use tracing::{debug, info, warn};
+
+use crate::control::{Button, Outbound};
+
+/// The Bot API's address.
+pub const TELEGRAM_API: &str = "https://api.telegram.org";
 
 /// Telegram inline-keyboard action: user confirmed or ignored an AI task.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,15 +30,53 @@ pub struct TgAction {
     pub message_id: i64,
 }
 
-/// Long-poll state for Telegram `getUpdates`.
-pub struct TgPoller {
-    /// Next `offset` for getUpdates (last processed `update_id + 1`).
-    offset: i64,
-    /// When set, callbacks from other chats are dropped (security).
-    allowed_chat_id: Option<String>,
+/// A message or a (non-card) button press in a chat, for the chat commands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TgIncoming {
+    pub chat_id: String,
+    /// The Telegram user id of who wrote or pressed.
+    pub sender_id: String,
+    pub text: Option<String>,
+    /// The pressed button's callback data.
+    pub button: Option<String>,
+    /// The message, or the message carrying the pressed button.
+    pub message_id: i64,
+    /// It answers a message of this bot (a button press always does).
+    pub reply_to_bot: bool,
 }
 
-/// Telegram `callback_data` limit (bytes).
+/// What one long poll brought.
+#[derive(Debug, Default)]
+pub struct Polled {
+    pub actions: Vec<TgAction>,
+    pub incoming: Vec<TgIncoming>,
+}
+
+/// The bot itself (getMe).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BotMe {
+    id: i64,
+    username: String,
+}
+
+enum Callback {
+    Card(TgAction),
+    Other(TgIncoming),
+}
+
+/// Long-poll state for Telegram getUpdates.
+pub struct TgPoller {
+    /// Next offset for getUpdates (last processed update_id + 1).
+    offset: i64,
+    /// When set, card callbacks from other chats are dropped (security).
+    allowed_chat_id: Option<String>,
+    /// Card callbacks count only from a sender on each of these lists.
+    card_senders: Vec<Vec<String>>,
+    api: String,
+    me: Option<BotMe>,
+}
+
+/// Telegram callback_data limit (bytes).
 const MAX_CALLBACK_DATA: usize = 64;
 
 /// Long-poll timeout passed to getUpdates (seconds).
@@ -38,13 +84,27 @@ const GET_UPDATES_TIMEOUT_SECS: u32 = 10;
 
 impl TgPoller {
     pub fn new() -> Self {
+        Self::with_api(TELEGRAM_API)
+    }
+
+    /// A poller of the Bot API at another address (tests).
+    pub fn with_api(api: &str) -> Self {
         Self {
             offset: 0,
             allowed_chat_id: None,
+            card_senders: Vec::new(),
+            api: api.trim_end_matches('/').to_string(),
+            me: None,
         }
     }
 
-    /// Restrict inbound callbacks to this chat (`RuntimeSettings.telegram_chat_id`).
+    /// Card buttons count only from a sender on each of these lists (the
+    /// owner narrowed the chat to some of its members); none: anyone in it.
+    pub fn set_card_senders(&mut self, lists: Vec<Vec<String>>) {
+        self.card_senders = lists.into_iter().filter(|l| !l.is_empty()).collect();
+    }
+
+    /// Restrict inbound card callbacks to this chat (RuntimeSettings.telegram_chat_id).
     pub fn set_allowed_chat_id(&mut self, chat_id: &str) {
         let trimmed = chat_id.trim();
         self.allowed_chat_id = if trimmed.is_empty() {
@@ -54,16 +114,42 @@ impl TgPoller {
         };
     }
 
-    /// One long-poll cycle: fetch updates, answer callbacks, strip keyboards.
-    pub async fn poll_once(&mut self, http: &Client, bot_token: &str) -> Result<Vec<TgAction>> {
+    /// Who the bot is (getMe): its id tells a reply to the bot from other
+    /// replies, its username a command for it in a group ("/calls@my_bot").
+    /// Asked once; without an answer the id is the token's first part and
+    /// commands naming a bot are not taken.
+    async fn ensure_me(&mut self, http: &Client, token: &str) {
+        if self.me.is_some() {
+            return;
+        }
+        let answer: Option<Value> = match http.post(method_url(&self.api, token, "getMe")).json(&json!({})).send().await {
+            Ok(resp) => resp.json().await.ok(),
+            Err(_) => None,
+        };
+        let me = answer
+            .filter(|v| v.get("ok").and_then(Value::as_bool) == Some(true))
+            .and_then(|v| {
+                Some(BotMe {
+                    id: v.pointer("/result/id")?.as_i64()?,
+                    username: v.pointer("/result/username").and_then(Value::as_str).unwrap_or("").to_string(),
+                })
+            });
+        self.me = Some(me.unwrap_or_else(|| BotMe {
+            id: token.split(':').next().and_then(|s| s.parse().ok()).unwrap_or(0),
+            username: String::new(),
+        }));
+    }
+
+    /// One long-poll cycle: fetch updates, answer callbacks, strip card keyboards.
+    pub async fn poll_once(&mut self, http: &Client, bot_token: &str) -> Result<Polled> {
         let token = bot_token.trim();
         if token.is_empty() {
-            return Ok(Vec::new());
+            return Ok(Polled::default());
         }
+        self.ensure_me(http, token).await;
 
-        let url = bot_method_url(token, "getUpdates");
         let resp = http
-            .post(&url)
+            .post(method_url(&self.api, token, "getUpdates"))
             .json(&json!({
                 "offset": self.offset,
                 "timeout": GET_UPDATES_TIMEOUT_SECS,
@@ -92,7 +178,7 @@ impl TgPoller {
             .cloned()
             .unwrap_or_default();
 
-        let mut actions = Vec::new();
+        let mut polled = Polled::default();
 
         for update in updates {
             let update_id = update.get("update_id").and_then(Value::as_i64).unwrap_or(0);
@@ -100,15 +186,61 @@ impl TgPoller {
                 self.offset = update_id + 1;
             }
 
-            if let Some(action) = self
+            if let Some(msg) = update.get("message") {
+                if let Some(inc) = self.read_message(msg) {
+                    polled.incoming.push(inc);
+                }
+                continue;
+            }
+            match self
                 .handle_callback_query(http, token, update.get("callback_query"))
                 .await?
             {
-                actions.push(action);
+                Some(Callback::Card(action)) => polled.actions.push(action),
+                Some(Callback::Other(inc)) => polled.incoming.push(inc),
+                None => {}
             }
         }
 
-        Ok(actions)
+        Ok(polled)
+    }
+
+    /// A text message the bot should see. In a group: a command (for this
+    /// bot) or a reply to the bot; everything else there is people talking.
+    fn read_message(&self, msg: &Value) -> Option<TgIncoming> {
+        if msg.pointer("/from/is_bot").and_then(Value::as_bool) == Some(true) {
+            return None;
+        }
+        // Someone else's words passed on (a forward) are no command of the owner's.
+        if ["forward_origin", "forward_date", "forward_from", "forward_from_chat", "forward_sender_name"]
+            .iter()
+            .any(|k| msg.get(*k).is_some())
+        {
+            return None;
+        }
+        let text = msg.get("text")?.as_str()?.trim();
+        if text.is_empty() {
+            return None;
+        }
+        let chat = msg.get("chat")?;
+        let chat_id = json_chat_id_string(chat.get("id")?);
+        let private = chat.get("type").and_then(Value::as_str) == Some("private");
+        let me = self.me.as_ref();
+        let reply_to_bot = me.is_some_and(|me| {
+            me.id != 0 && msg.pointer("/reply_to_message/from/id").and_then(Value::as_i64) == Some(me.id)
+        });
+        let text = for_this_bot(text, me.map(|m| m.username.as_str()).unwrap_or(""))?;
+        if !private && !text.starts_with('/') && !reply_to_bot {
+            return None;
+        }
+        Some(TgIncoming {
+            chat_id,
+            sender_id: msg.pointer("/from/id").map(json_chat_id_string).unwrap_or_default(),
+            text: Some(text),
+            button: None,
+            message_id: msg.get("message_id").and_then(Value::as_i64).unwrap_or(0),
+            reply_to_bot,
+        })
     }
 
     async fn handle_callback_query(
@@ -116,7 +248,7 @@ impl TgPoller {
         http: &Client,
         bot_token: &str,
         query: Option<&Value>,
-    ) -> Result<Option<TgAction>> {
+    ) -> Result<Option<Callback>> {
         let Some(query) = query else {
             return Ok(None);
         };
@@ -129,16 +261,7 @@ impl TgPoller {
         let data = match query.get("data").and_then(Value::as_str) {
             Some(d) => d,
             None => {
-                answer_callback_query(http, bot_token, callback_id, None).await;
-                return Ok(None);
-            }
-        };
-
-        let (task_id, confirm) = match decode_callback_data(data) {
-            Some(parsed) => parsed,
-            None => {
-                debug!("telegram callback ignored unknown data={data:?}");
-                answer_callback_query(http, bot_token, callback_id, None).await;
+                answer_callback_query(http, &self.api, bot_token, callback_id, None).await;
                 return Ok(None);
             }
         };
@@ -154,39 +277,60 @@ impl TgPoller {
         let chat_id = match chat_id_val {
             Some(id) => json_chat_id_string(id),
             None => {
-                answer_callback_query(http, bot_token, callback_id, None).await;
+                answer_callback_query(http, &self.api, bot_token, callback_id, None).await;
                 return Ok(None);
             }
         };
 
+        let Some((task_id, confirm)) = decode_callback_data(data) else {
+            // Not a to-do card's: a button of the chat commands, which decide
+            // whether this chat and sender may press it.
+            answer_callback_query(http, &self.api, bot_token, callback_id, None).await;
+            return Ok(Some(Callback::Other(TgIncoming {
+                chat_id,
+                sender_id: query.pointer("/from/id").map(json_chat_id_string).unwrap_or_default(),
+                text: None,
+                button: Some(data.to_string()),
+                message_id: message_id.unwrap_or(0),
+                reply_to_bot: true,
+            })));
+        };
+
         if let Some(expected) = self.allowed_chat_id.as_deref() {
-            if !chat_id_matches(expected, chat_id_val.unwrap()) {
+            if !chat_id_matches(expected, chat_id_val.unwrap_or(&Value::Null)) {
                 warn!(
                     "telegram callback rejected chat_id={chat_id} expected={expected} task_id={task_id}"
                 );
-                answer_callback_query(http, bot_token, callback_id, None).await;
+                answer_callback_query(http, &self.api, bot_token, callback_id, None).await;
                 return Ok(None);
             }
         }
 
+        let sender = query.pointer("/from/id").map(json_chat_id_string).unwrap_or_default();
+        if !self.card_senders.iter().all(|l| !sender.is_empty() && l.iter().any(|u| u.trim() == sender)) {
+            warn!("telegram callback rejected sender={sender} chat_id={chat_id} task_id={task_id}: not on the sender list");
+            answer_callback_query(http, &self.api, bot_token, callback_id, None).await;
+            return Ok(None);
+        }
+
         let p = crate::locale::notify_phrases();
         let ack = if confirm { p.tc_confirm_ack } else { p.tc_ignore_ack };
-        answer_callback_query(http, bot_token, callback_id, Some(ack)).await;
+        answer_callback_query(http, &self.api, bot_token, callback_id, Some(ack)).await;
 
         if let Some(mid) = message_id {
-            remove_inline_keyboard(http, bot_token, &chat_id, mid).await;
+            remove_keyboard_at(http, &self.api, bot_token, &chat_id, mid).await;
         }
 
         info!(
             "telegram task action task_id={task_id} confirm={confirm} chat_id={chat_id} message_id={message_id:?}"
         );
 
-        Ok(Some(TgAction {
+        Ok(Some(Callback::Card(TgAction {
             task_id,
             confirm,
             chat_id,
             message_id: message_id.unwrap_or(0),
-        }))
+        })))
     }
 }
 
@@ -196,7 +340,24 @@ impl Default for TgPoller {
     }
 }
 
-/// Whether to send a new task card: `call_notify` on + bot token + chat id.
+/// A command naming a bot ("/calls@some_bot") is this bot's only when it names
+/// it (the name is dropped then); other text is as it is.
+fn for_this_bot(text: &str, username: &str) -> Option<String> {
+    if !text.starts_with('/') {
+        return Some(text.to_string());
+    }
+    let (head, rest) = match text.find(char::is_whitespace) {
+        Some(i) => (&text[..i], &text[i..]),
+        None => (text, ""),
+    };
+    match head.split_once('@') {
+        None => Some(text.to_string()),
+        Some((command, name)) if !username.is_empty() && name.eq_ignore_ascii_case(username) => Some(format!("{command}{rest}")),
+        Some(_) => None,
+    }
+}
+
+/// Whether to send a new task card: call_notify on + bot token + chat id.
 /// Independent of spam-blocklist (always allowed from that gate).
 pub fn task_card_ready(call_notify: bool, bot_token: &str, chat_id: &str) -> bool {
     call_notify && !bot_token.trim().is_empty() && !chat_id.trim().is_empty()
@@ -226,9 +387,9 @@ pub async fn send_task_card(
     .map(|_| ())
 }
 
-/// [`send_task_card`] with its own button texts (appointments: "✅ 確定" / "❌ 婉拒").
+/// [send_task_card] with its own button texts (appointments: "✅ 確定" / "❌ 婉拒").
 /// The buttons carry the same confirm / ignore data. Returns the card's
-/// `message_id` (0 when Telegram did not say), so its buttons can be taken off
+/// message_id (0 when Telegram did not say), so its buttons can be taken off
 /// when the owner decides somewhere else.
 #[allow(clippy::too_many_arguments)]
 pub async fn send_task_card_labeled(
@@ -290,7 +451,7 @@ pub async fn send_task_card_labeled(
     Ok(message_id)
 }
 
-/// The `message_id` of a `sendMessage` answer (`{"ok": true, "result": {"message_id": …}}`); 0 when missing.
+/// The message_id of a sendMessage answer ({"ok": true, "result": {"message_id": …}}); 0 when missing.
 fn sent_message_id(answer: &Value) -> i64 {
     answer
         .pointer("/result/message_id")
@@ -298,7 +459,7 @@ fn sent_message_id(answer: &Value) -> i64 {
         .unwrap_or(0)
 }
 
-/// The `sendMessage` body of a task card: the text and the two buttons.
+/// The sendMessage body of a task card: the text and the two buttons.
 fn task_card_payload(chat: &str, text: &str, task_id: &str, confirm_label: &str, ignore_label: &str) -> Value {
     json!({
         "chat_id": chat,
@@ -313,8 +474,17 @@ fn task_card_payload(chat: &str, text: &str, task_id: &str, confirm_label: &str,
     })
 }
 
-/// Telegram Bot API hard limit for `sendMessage.text`.
+/// Telegram Bot API hard limit for sendMessage.text.
 const MAX_MESSAGE_TEXT: usize = 4096;
+
+fn clip_message(text: &str) -> String {
+    if text.chars().count() <= MAX_MESSAGE_TEXT {
+        return text.to_string();
+    }
+    let mut out: String = text.chars().take(MAX_MESSAGE_TEXT - 1).collect();
+    out.push('…');
+    out
+}
 
 /// Best-effort plain follow-up after confirm/ignore (fulfill outcome).
 pub async fn send_plain_message(
@@ -358,11 +528,121 @@ pub async fn send_plain_message(
     Ok(())
 }
 
-fn bot_method_url(bot_token: &str, method: &str) -> String {
-    format!("https://api.telegram.org/bot{bot_token}/{method}")
+/// The inline keyboard for a reply's buttons: one row when they are few and
+/// short (yes / no), else one per row (an answer may be a whole phrase).
+fn keyboard(buttons: &[Button]) -> Option<Value> {
+    if buttons.is_empty() {
+        return None;
+    }
+    let cell = |b: &Button| json!({"text": b.label, "callback_data": b.data});
+    let short = buttons.len() <= 3 && buttons.iter().map(|b| b.label.chars().count()).sum::<usize>() <= 30;
+    let rows: Vec<Value> = if short {
+        vec![Value::Array(buttons.iter().map(cell).collect())]
+    } else {
+        buttons.iter().map(|b| json!([cell(b)])).collect()
+    };
+    Some(json!({ "inline_keyboard": rows }))
 }
 
-/// Encode callback payload. Prefers `t:{uuid}:c|i` (fits full UUID under 64 bytes).
+/// POST one Bot API method; Err unless Telegram says ok.
+async fn post_ok(http: &Client, url: &str, payload: &Value) -> Result<()> {
+    let resp = http.post(url).json(payload).send().await.context("telegram request")?;
+    let status = resp.status();
+    let body: Value = resp.json().await.unwrap_or(Value::Null);
+    if !status.is_success() || body.get("ok").and_then(Value::as_bool) != Some(true) {
+        let desc = body.get("description").and_then(Value::as_str).unwrap_or("unknown error");
+        bail!("telegram HTTP {}: {desc}", status.as_u16());
+    }
+    Ok(())
+}
+
+/// A chat command's answer: a new message, or (edit) the message whose button
+/// was pressed rewritten, its buttons replaced. An edit Telegram refuses (the
+/// message is gone or too old) is sent as a new message.
+pub async fn send_outbound(http: &Client, api: &str, bot_token: &str, chat_id: &str, out: &Outbound) -> Result<()> {
+    let token = bot_token.trim();
+    let chat = chat_id.trim();
+    if token.is_empty() || chat.is_empty() {
+        bail!("telegram bot token and chat id are required");
+    }
+    let text = clip_message(out.text.trim());
+    if text.is_empty() {
+        return Ok(());
+    }
+    let markup = keyboard(&out.buttons);
+    if let Some(mid) = out.edit.as_deref().and_then(|m| m.trim().parse::<i64>().ok()) {
+        let payload = json!({
+            "chat_id": chat,
+            "message_id": mid,
+            "text": text,
+            "disable_web_page_preview": true,
+            "reply_markup": markup.clone().unwrap_or_else(|| json!({ "inline_keyboard": [] })),
+        });
+        match post_ok(http, &method_url(api, token, "editMessageText"), &payload).await {
+            Ok(()) => return Ok(()),
+            Err(e) => debug!("telegram edit refused, sending anew: {}", redact(&format!("{e:#}"), token)),
+        }
+    }
+    let mut payload = json!({ "chat_id": chat, "text": text, "disable_web_page_preview": true });
+    if let Some(m) = markup {
+        payload["reply_markup"] = m;
+    }
+    post_ok(http, &method_url(api, token, "sendMessage"), &payload).await
+}
+
+/// The bot's command menu, set only for the chats that take commands (scope
+/// "chat"): strangers who open the bot see none. The menu for every chat is
+/// removed first (older versions set it); an empty list removes the menu of
+/// the chats given too.
+pub async fn set_my_commands(http: &Client, api: &str, bot_token: &str, commands: &[(&str, &str)], chats: &[String]) {
+    let token = bot_token.trim();
+    if token.is_empty() {
+        return;
+    }
+    let scope = |chat: &str| match chat.trim().parse::<i64>() {
+        Ok(id) => json!({"type": "chat", "chat_id": id}),
+        Err(_) => json!({"type": "chat", "chat_id": chat.trim()}),
+    };
+    let mut calls: Vec<(&str, Value)> = vec![("deleteMyCommands", json!({}))];
+    if commands.is_empty() {
+        for chat in chats.iter().filter(|c| !c.trim().is_empty()) {
+            calls.push(("deleteMyCommands", json!({ "scope": scope(chat) })));
+        }
+    } else {
+        let list: Vec<Value> = commands
+            .iter()
+            .map(|(c, d)| json!({"command": c, "description": d.chars().take(256).collect::<String>()}))
+            .collect();
+        for chat in chats.iter().filter(|c| !c.trim().is_empty()) {
+            calls.push(("setMyCommands", json!({ "commands": list, "scope": scope(chat) })));
+        }
+    }
+    for (method, payload) in calls {
+        if let Err(e) = post_ok(http, &method_url(api, token, method), &payload).await {
+            debug!("telegram {method}: {}", redact(&format!("{e:#}"), token));
+        }
+    }
+}
+
+/// Text without the bot token: a request error names its URL, and the token is in it.
+pub fn redact(text: &str, bot_token: &str) -> String {
+    let t = bot_token.trim();
+    if t.is_empty() {
+        text.to_string()
+    } else {
+        text.replace(t, "<token>")
+    }
+}
+
+fn method_url(api: &str, bot_token: &str, method: &str) -> String {
+    format!("{}/bot{bot_token}/{method}", api.trim_end_matches('/'))
+}
+
+fn bot_method_url(bot_token: &str, method: &str) -> String {
+    method_url(TELEGRAM_API, bot_token, method)
+}
+
+/// Encode callback payload. Prefers t:{uuid}:c|i (fits full UUID under 64 bytes).
 fn encode_callback_data(task_id: &str, confirm: bool) -> String {
     let action = if confirm { "c" } else { "i" };
     let short = format!("t:{task_id}:{action}");
@@ -430,6 +710,7 @@ fn chat_id_matches(expected: &str, actual: &Value) -> bool {
 
 async fn answer_callback_query(
     http: &Client,
+    api: &str,
     bot_token: &str,
     callback_query_id: &str,
     text: Option<&str>,
@@ -439,36 +720,119 @@ async fn answer_callback_query(
         payload["text"] = json!(t);
     }
 
-    let url = bot_method_url(bot_token, "answerCallbackQuery");
-    match http.post(&url).json(&payload).send().await {
+    match http.post(method_url(api, bot_token, "answerCallbackQuery")).json(&payload).send().await {
         Ok(resp) if resp.status().is_success() => {}
         Ok(resp) => warn!(
             "telegram answerCallbackQuery HTTP {}",
             resp.status().as_u16()
         ),
-        Err(e) => warn!("telegram answerCallbackQuery failed: {e}"),
+        Err(e) => warn!("telegram answerCallbackQuery failed: {}", redact(&e.to_string(), bot_token)),
     }
 }
 
 /// Best-effort: remove a card's inline keyboard (after a button press, or when
 /// the owner decided on the web).
 pub async fn remove_inline_keyboard(http: &Client, bot_token: &str, chat_id: &str, message_id: i64) {
-    let url = bot_method_url(bot_token, "editMessageReplyMarkup");
+    remove_keyboard_at(http, TELEGRAM_API, bot_token, chat_id, message_id).await
+}
+
+async fn remove_keyboard_at(http: &Client, api: &str, bot_token: &str, chat_id: &str, message_id: i64) {
     let payload = json!({
         "chat_id": chat_id,
         "message_id": message_id,
         "reply_markup": { "inline_keyboard": [] },
     });
 
-    match http.post(&url).json(&payload).send().await {
+    match http.post(method_url(api, bot_token, "editMessageReplyMarkup")).json(&payload).send().await {
         Ok(resp) if resp.status().is_success() => {}
         Ok(resp) => debug!(
             "telegram editMessageReplyMarkup HTTP {} chat_id={chat_id} message_id={message_id}",
             resp.status().as_u16()
         ),
         Err(e) => debug!(
-            "telegram editMessageReplyMarkup failed chat_id={chat_id} message_id={message_id}: {e}"
+            "telegram editMessageReplyMarkup failed chat_id={chat_id} message_id={message_id}: {}",
+            redact(&e.to_string(), bot_token)
         ),
+    }
+}
+
+/// A Bot API stand-in on this machine, for tests here and in crate::control.
+#[cfg(test)]
+pub(crate) mod fake_api {
+    use std::sync::{Arc, Mutex};
+
+    use serde_json::Value;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// What it was sent: (method, JSON body).
+    pub type Seen = Arc<Mutex<Vec<(String, Value)>>>;
+
+    /// Answers each method with its next canned body, in order (a method
+    /// without one left: {"ok": true, "result": true}, which getUpdates reads
+    /// as no updates). Its address and what it was sent.
+    pub async fn serve(answers: Vec<(&'static str, String)>) -> (String, Seen) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let seen: Seen = Arc::new(Mutex::new(Vec::new()));
+        let log = seen.clone();
+        tokio::spawn(async move {
+            let mut answers = answers;
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    return;
+                };
+                let (path, body) = read_request(&mut sock).await;
+                let method = path.rsplit('/').next().unwrap_or("").to_string();
+                let reply = match answers.iter().position(|(m, _)| m.eq_ignore_ascii_case(&method)) {
+                    Some(i) => answers.remove(i).1,
+                    None => r#"{"ok":true,"result":true}"#.to_string(),
+                };
+                log.lock().unwrap().push((method, serde_json::from_str(&body).unwrap_or(Value::Null)));
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+                    reply.len()
+                );
+                let _ = sock.write_all(resp.as_bytes()).await;
+                let _ = sock.shutdown().await;
+            }
+        });
+        (base, seen)
+    }
+
+    /// The methods it was asked, in order (as written in the path, lowercase).
+    pub fn methods(seen: &Seen) -> Vec<String> {
+        seen.lock().unwrap().iter().map(|(m, _)| m.clone()).collect()
+    }
+
+    /// The bodies sent to one method.
+    pub fn sent(seen: &Seen, method: &str) -> Vec<Value> {
+        seen.lock().unwrap().iter().filter(|(m, _)| m.eq_ignore_ascii_case(method)).map(|(_, b)| b.clone()).collect()
+    }
+
+    async fn read_request(sock: &mut tokio::net::TcpStream) -> (String, String) {
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            let n = sock.read(&mut chunk).await.unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            buf.extend_from_slice(&chunk[..n]);
+            if let Some(h) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                let head = String::from_utf8_lossy(&buf[..h]).to_string();
+                let len = head
+                    .lines()
+                    .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().to_string()))
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(0);
+                if buf.len() >= h + 4 + len {
+                    let path = head.split_whitespace().nth(1).unwrap_or("").to_string();
+                    let body = String::from_utf8_lossy(&buf[h + 4..h + 4 + len]).into_owned();
+                    return (path, body);
+                }
+            }
+        }
+        (String::new(), String::new())
     }
 }
 
@@ -553,5 +917,110 @@ mod tests {
         assert_eq!(row[1]["text"], "❌ 婉拒");
         assert_eq!(decode_callback_data(row[0]["callback_data"].as_str().unwrap()), Some((id.to_string(), true)));
         assert_eq!(decode_callback_data(row[1]["callback_data"].as_str().unwrap()), Some((id.to_string(), false)));
+    }
+
+    #[test]
+    fn a_command_naming_another_bot_is_not_this_bots() {
+        assert_eq!(for_this_bot("/calls@Bageo_Test_Bot today", "bageo_test_bot"), Some("/calls today".to_string()));
+        assert_eq!(for_this_bot("/calls@other_bot today", "bageo_test_bot"), None);
+        assert_eq!(for_this_bot("/calls@bageo_test_bot", ""), None);
+        assert_eq!(for_this_bot("/calls today", ""), Some("/calls today".to_string()));
+        assert_eq!(for_this_bot("hello @bageo_test_bot", "bageo_test_bot"), Some("hello @bageo_test_bot".to_string()));
+    }
+
+    #[test]
+    fn errors_never_show_the_bot_token() {
+        let e = "error sending request for url (https://api.telegram.org/bot123:SECRETpart/getUpdates)";
+        assert_eq!(redact(e, "123:SECRETpart"), "error sending request for url (https://api.telegram.org/bot<token>/getUpdates)");
+    }
+
+    fn update(id: i64, body: Value) -> Value {
+        let mut u = body;
+        u["update_id"] = json!(id);
+        u
+    }
+
+    #[tokio::test]
+    async fn one_poll_sorts_card_buttons_from_messages_and_keeps_groups_quiet() {
+        let updates = json!({"ok": true, "result": [
+            // Private chat: every message.
+            update(10, json!({"message": {"message_id": 1, "from": {"id": 42, "is_bot": false}, "chat": {"id": 42, "type": "private"}, "text": "/calls today"}})),
+            update(11, json!({"message": {"message_id": 2, "from": {"id": 42}, "chat": {"id": 42, "type": "private"}, "text": "昨天有誰打來"}})),
+            // A to-do card's button: as before.
+            update(12, json!({"callback_query": {"id": "cb1", "from": {"id": 42}, "data": "t:abc-123:c", "message": {"message_id": 9, "chat": {"id": 42}}}})),
+            // A chat command's button.
+            update(13, json!({"callback_query": {"id": "cb2", "from": {"id": 42}, "data": "k:ABCDEF:y", "message": {"message_id": 10, "chat": {"id": 42}}}})),
+            // Group: people talking, a command for another bot, another bot.
+            update(14, json!({"message": {"message_id": 3, "from": {"id": 43}, "chat": {"id": -100, "type": "supergroup"}, "text": "see you at 7"}})),
+            update(15, json!({"message": {"message_id": 4, "from": {"id": 43}, "chat": {"id": -100, "type": "supergroup"}, "text": "/status@other_bot"}})),
+            update(16, json!({"message": {"message_id": 5, "from": {"id": 99, "is_bot": true}, "chat": {"id": -100, "type": "supergroup"}, "text": "/status"}})),
+            // Group: a command for this bot, a reply to this bot.
+            update(17, json!({"message": {"message_id": 6, "from": {"id": 43}, "chat": {"id": -100, "type": "supergroup"}, "text": "/status@bageo_test_bot"}})),
+            update(18, json!({"message": {"message_id": 7, "from": {"id": 43}, "chat": {"id": -100, "type": "supergroup"}, "text": "可以", "reply_to_message": {"message_id": 6, "from": {"id": 777, "is_bot": true}}}})),
+        ]});
+        let me = json!({"ok": true, "result": {"id": 777, "is_bot": true, "username": "bageo_test_bot"}});
+        let (api, seen) = fake_api::serve(vec![("getMe", me.to_string()), ("getUpdates", updates.to_string())]).await;
+        let mut poller = TgPoller::with_api(&api);
+        poller.set_allowed_chat_id("42");
+        let polled = poller.poll_once(&Client::new(), "123:TEST").await.unwrap();
+
+        assert_eq!(polled.actions, vec![TgAction { task_id: "abc-123".into(), confirm: true, chat_id: "42".into(), message_id: 9 }]);
+        let got: Vec<(String, Option<String>, Option<String>, bool)> = polled
+            .incoming
+            .iter()
+            .map(|i| (i.chat_id.clone(), i.text.clone(), i.button.clone(), i.reply_to_bot))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("42".into(), Some("/calls today".into()), None, false),
+                ("42".into(), Some("昨天有誰打來".into()), None, false),
+                ("42".into(), None, Some("k:ABCDEF:y".into()), true),
+                ("-100".into(), Some("/status".into()), None, false),
+                ("-100".into(), Some("可以".into()), None, true),
+            ]
+        );
+        assert_eq!(polled.incoming[3].sender_id, "43");
+        // Both buttons were acknowledged; only the card lost its keyboard.
+        let m = fake_api::methods(&seen);
+        assert_eq!(m.iter().filter(|x| x.eq_ignore_ascii_case("answerCallbackQuery")).count(), 2);
+        assert_eq!(fake_api::sent(&seen, "editMessageReplyMarkup").len(), 1);
+        assert_eq!(fake_api::sent(&seen, "getUpdates")[0]["allowed_updates"], json!(["message", "callback_query"]));
+
+        // The next poll starts after the last update; who the bot is was asked once.
+        let _ = poller.poll_once(&Client::new(), "123:TEST").await.unwrap();
+        assert_eq!(fake_api::sent(&seen, "getUpdates")[1]["offset"], 19);
+        assert_eq!(fake_api::sent(&seen, "getMe").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn an_answer_goes_out_with_its_buttons_and_a_pressed_one_is_edited() {
+        let (api, seen) = fake_api::serve(vec![]).await;
+        let http = Client::new();
+        let out = Outbound {
+            text: "讓 AI 打給 0912345678".into(),
+            buttons: vec![
+                Button { label: "✅ 執行".into(), data: "k:ABCDEF:y".into() },
+                Button { label: "✖ 取消".into(), data: "k:ABCDEF:n".into() },
+            ],
+            edit: None,
+        };
+        send_outbound(&http, &api, "123:TEST", "42", &out).await.unwrap();
+        let sent = fake_api::sent(&seen, "sendMessage");
+        assert_eq!(sent[0]["chat_id"], "42");
+        assert_eq!(sent[0]["reply_markup"]["inline_keyboard"][0][1]["callback_data"], "k:ABCDEF:n");
+
+        let done = Outbound { text: "已取消".into(), buttons: vec![], edit: Some("10".into()) };
+        send_outbound(&http, &api, "123:TEST", "42", &done).await.unwrap();
+        let edits = fake_api::sent(&seen, "editMessageText");
+        assert_eq!((edits[0]["message_id"].clone(), edits[0]["reply_markup"].clone()), (json!(10), json!({"inline_keyboard": []})));
+        assert_eq!(fake_api::sent(&seen, "sendMessage").len(), 1);
+
+        set_my_commands(&http, &api, "123:TEST", &[("calls", "Recent calls")], &["42".to_string()]).await;
+        set_my_commands(&http, &api, "123:TEST", &[], &["42".to_string()]).await;
+        assert_eq!(fake_api::sent(&seen, "setMyCommands")[0]["commands"][0]["command"], "calls");
+        // Only for the chat that takes commands, never for every chat.
+        assert_eq!(fake_api::sent(&seen, "setMyCommands")[0]["scope"], json!({"type": "chat", "chat_id": 42}));
+        assert!(fake_api::methods(&seen).last().is_some_and(|m| m.eq_ignore_ascii_case("deleteMyCommands")));
     }
 }

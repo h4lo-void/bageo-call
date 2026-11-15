@@ -156,7 +156,7 @@ AI 的语音、内置提示词、网页控制台、手机应用和通知，九�
 ## 工作原理
 
 <p align="center">
-  <img src="docs/images/how-it-works.zh-CN.svg" width="900" alt="Bageo 的工作原理：对方通过运营商网络打到你的备用手机（已 root、插着你的 SIM 卡），手机用 USB 或 Wi-Fi 把通话声音交给你电脑上的 Bageo 主程序，主程序再和 Gemini Live 对话。录音留在你的硬盘，通知发到 16 种渠道，一切在网页控制台里管理。">
+  <img src="docs/images/how-it-works.zh-CN.svg" width="900" alt="Bageo 的工作原理：对方通过运营商网络打到你的备用手机（已 root、插着你的 SIM 卡），手机用 USB 或 Wi-Fi 把通话声音交给你电脑上的 Bageo 主程序，主程序再和 Gemini Live 对话。录音留在你的硬盘，通知发到 32 种渠道，一切在网页控制台里管理。">
 </p>
 
 手机只负责接通电话，其他事都在你自己的电脑上处理。手机还在响，AI 就已经连上，所以接起后约 **0.43 秒**开口（实测中位数）。一通电话的完整过程：[架构](docs/zh-CN/ARCHITECTURE.md)。
@@ -198,7 +198,7 @@ AI 的语音、内置提示词、网页控制台、手机应用和通知，九�
     </td>
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/notify.svg" width="56" height="56" alt=""><br>
-      <strong>16 种通知渠道</strong><br>
+      <strong>32 种通知渠道</strong><br>
       每通电话结束，摘要发到 Telegram、Discord、飞书等渠道。
     </td>
     <td width="33%" align="center" valign="top">

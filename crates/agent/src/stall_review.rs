@@ -3,14 +3,21 @@
 //! The keyword score in `gemini_live` trips on words that honest calls use as
 //! well: a relative asking for a transfer, a courier collecting cash on
 //! delivery, the card desk confirming a purchase the owner made, a recorded
-//! menu ("press 1"). The keywords stay as they are; when they cross the line, a
-//! cheap model reads the dialogue so far and says which kind of call it is
-//! ([`review`]).
+//! menu ("press 1"). When they cross the line, a cheap model reads the dialogue
+//! so far and says which kind of call it is ([`review_with_context`]), which kind of
+//! scam or sales call from the scam database ([`crate::scam_db`]) it is, and how
+//! sure it is. Calls that never say a keyword are looked at too, once the
+//! caller has said what they want (`Purpose::Content`), and a call already being
+//! stalled is looked at once more so an ordinary caller can be let go
+//! (`Purpose::Confirm`).
 //!
 //! The answer has to come within [`REVIEW_TIMEOUT`]: the caller is on the line.
-//! No key, an error, a slow or unreadable answer all count as a scam or sales
-//! call — what the keywords alone decided before — because the owner would
-//! rather keep a doubtful caller talking than let a scammer go.
+//! No key, an error, a slow or unreadable answer are [`Verdict::Unavailable`]:
+//! no verdict. What happens then is the call loop's rule (`gemini_live`): words only
+//! scammers say still stall the caller, anything else is looked at again after
+//! the caller's next turn, and only a model that keeps failing hands the call
+//! back to the keywords alone. Taking every failure for a scam kept ordinary
+//! callers talking for a whole call.
 //!
 //! The keywords often cross the line on the caller's first words, before they
 //! have said what they want: 「這邊是XX銀行信用卡風險管控中心」 is how a card
@@ -27,7 +34,7 @@ use reqwest::Client;
 use serde_json::{json, Value};
 use tracing::{info, warn};
 
-/// What the reviewing model makes of a call the keywords flagged.
+/// What the reviewing model makes of a call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verdict {
     /// A sales pitch or a scam: keep them talking.
@@ -39,6 +46,8 @@ pub enum Verdict {
     /// The caller has only greeted or said who they are, not yet what they
     /// want: ask again after their next turn.
     TooEarly,
+    /// No answer: no key, an error, too slow or unreadable.
+    Unavailable,
 }
 
 impl Verdict {
@@ -53,6 +62,76 @@ impl Verdict {
     }
 }
 
+/// How sure the model is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Confidence {
+    High,
+    Medium,
+    Low,
+}
+
+impl Confidence {
+    fn from_label(label: &str) -> Option<Confidence> {
+        match label.trim().to_ascii_lowercase().as_str() {
+            "high" => Some(Confidence::High),
+            "medium" => Some(Confidence::Medium),
+            "low" => Some(Confidence::Low),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Confidence::High => "high",
+            Confidence::Medium => "medium",
+            Confidence::Low => "low",
+        }
+    }
+}
+
+/// The model's answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Review {
+    pub verdict: Verdict,
+    /// The scam database's kind of call, when the model named a known one.
+    pub typology: Option<&'static str>,
+    /// An answer without one counts as medium.
+    pub confidence: Confidence,
+    /// Unavailable because there is no Gemini key (asking again will not help).
+    pub no_key: bool,
+}
+
+impl Review {
+    /// A bare verdict, as sure as can be.
+    pub fn of(verdict: Verdict) -> Review {
+        Review {
+            verdict,
+            typology: None,
+            confidence: Confidence::High,
+            no_key: false,
+        }
+    }
+
+    fn unavailable(no_key: bool) -> Review {
+        Review {
+            no_key,
+            ..Review::of(Verdict::Unavailable)
+        }
+    }
+}
+
+/// Why the call is looked at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Purpose {
+    /// Sales / scam keywords crossed the line.
+    #[default]
+    Keywords,
+    /// No keywords: the caller has said what they want.
+    Content,
+    /// The AI is already stalling: is this caller ordinary after all?
+    Confirm,
+}
+
 /// What is known about the caller's number when asking for a review.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CallerContext {
@@ -60,6 +139,21 @@ pub struct CallerContext {
     /// Sanitized name (+ optional note) when the number is in the owner's
     /// address book (`contacts::review_label`).
     pub saved_contact: Option<String>,
+    /// The owner's marks, earlier verdicts and number hints
+    /// ([`crate::scam_db::caller_facts`]), one English line each.
+    pub number_notes: Vec<String>,
+    /// The owner marked the number safe: treated like a saved contact.
+    pub owner_safe: bool,
+    /// Marked or judged sales / scam before: the call is looked at sooner.
+    pub flagged_before: bool,
+}
+
+impl CallerContext {
+    /// A saved contact or a number the owner marked safe: protected when the
+    /// review cannot answer, and not looked at without keywords.
+    pub fn protected(&self) -> bool {
+        self.saved_contact.is_some() || self.owner_safe
+    }
 }
 
 /// How long the caller may wait for the verdict.
@@ -71,13 +165,18 @@ pub const REVIEW_MODEL: &str = "gemini-flash-lite-latest";
 const GEMINI_BASE: &str = "https://generativelanguage.googleapis.com";
 
 /// The end of a long call is what tripped the keywords; a shorter input also
-/// answers faster.
+/// answers faster. Everything said about the call before the dialogue comes out
+/// of the same budget.
 const MAX_DIALOGUE_CHARS: usize = 3000;
+/// …but the dialogue keeps at least this much of it.
+const MIN_DIALOGUE_CHARS: usize = 1200;
+/// Kinds of call whose details (signals, ordinary look-alike) the request carries.
+const MAX_DETAILED_TYPES: usize = 4;
 
 const SYSTEM_PROMPT: &str = "\
 You check a phone call that is still going on. An AI answers the phone for its owner. A keyword check thinks the caller may be a scammer or a salesperson; if so, the AI will keep them talking on purpose. Decide from the dialogue so far whether that is right.\n\
 The dialogue may be in any language. \"Caller:\" lines are the person (or recording) that called; \"AI:\" lines are the AI answering for the owner.\n\
-Answer with JSON only, one of: {\"verdict\":\"scam_or_sales\"} {\"verdict\":\"ivr_recording\"} {\"verdict\":\"normal\"} {\"verdict\":\"too_early\"}.\n\
+Answer with JSON only: {\"verdict\":\"…\",\"typology\":\"…\",\"confidence\":\"…\"}. The verdict is one of: {\"verdict\":\"scam_or_sales\"} {\"verdict\":\"ivr_recording\"} {\"verdict\":\"normal\"} {\"verdict\":\"too_early\"}.\n\
 \n\
 scam_or_sales: someone posing as a bank, the police, a prosecutor, a government office, a health-insurance or telecom agency, customs or customer service who wants the owner to work an ATM or online banking, cancel an instalment plan or an automatic / wholesale deduction, move money into a supervised or safe account, buy gift or point cards, install a remote-access app, add them on LINE or another chat app (including for a police statement or warrant), join an investment group, keep the call secret (\"investigation is confidential\"), or who promises guaranteed profits; anyone selling insurance (including \"policy check-ups\", \"free coverage upgrades\" or add-on riders), loans, refinancing or balance transfers, investments, free trials / classes / demos, or other products or services, even if they opened with a polite account or customer-care check, or disguised the pitch as a survey or old-customer perk. Asking for a password, a one-time code, a PIN or ATM steps is scam_or_sales, whoever the caller claims to be.\n\
 ivr_recording: a pre-recorded message or an automatic voice menu: a machine reading out options, \"press 1\", \"press the pound key\", leave a message after the tone.\n\
@@ -85,6 +184,28 @@ normal: family, friends, a landlord, a colleague or a client (especially when li
 too_early: the caller has only greeted or said who they are (a bank, a card centre, a risk-control or anti-fraud desk, customer service, a government office, an insurer, a telecom, a clinic or a company) and has not yet said what the call is about. Who they say they are decides nothing, however much it sounds like the start of a scam: the call is looked at again after their next turn.\n\
 \n\
 If the caller has said what they want and you are still unsure, answer scam_or_sales.";
+
+/// How to fill in the type and the confidence, and what the background is worth.
+const ANSWER_RULES: &str = "\
+typology: the id from the list of types below that fits best; \"none\" for normal, too_early and ivr_recording, or when no type fits.\n\
+confidence: high = clear from what the caller said; medium = likely; low = a guess. A low-confidence scam_or_sales changes nothing yet: the call is looked at again after the caller's next turn.\n\
+The carrier's recorded warning on calls from abroad (「國際電話，請注意小心詐騙」, \"international call, beware of fraud\") is not the caller and no sign of a scam.\n\
+What is said about the number (the owner's marks, earlier calls, number hints) is background: never enough on its own, and a number marked safe can still be spoofed.";
+
+/// The full instruction: the rules, then every kind of call in the database by
+/// id and name (built once; the same text on every request).
+fn system_instruction() -> &'static str {
+    static TEXT: OnceLock<String> = OnceLock::new();
+    TEXT.get_or_init(|| {
+        let db = crate::scam_db::db();
+        let mut s = format!("{SYSTEM_PROMPT}\n\n{ANSWER_RULES}\n\nTypes (id (scam or sales; ! = what they ask is a scam whoever asks): what it is):\n");
+        for t in &db.typologies {
+            let bang = if t.hard { "!" } else { "" };
+            s.push_str(&format!("- {} ({}{bang}): {}\n", t.id, t.category.as_str(), t.name(crate::locale::Lang::En)));
+        }
+        s.trim_end().to_string()
+    })
+}
 
 /// One client for the life of the agent, its connections kept open between
 /// reviews: a fresh TLS handshake to Gemini takes about a quarter of a second
@@ -101,51 +222,21 @@ fn client() -> &'static Client {
     })
 }
 
-/// Unambiguous scam keywords: even a saved contact (whose number could be
-/// spoofed) falls back to `ScamOrSales` if the review call times out on these.
-const HARD_SCAM_HITS: &[&str] = &[
-    "atm", "驗證碼", "验证码", "監管帳戶", "监管账户", "偵查不公開", "侦查不公开",
-    "人頭帳戶", "警示戶", "點數卡", "禮品卡", "傳票", "拘票", "通緝", "鎖卡", "健保署",
-    "健保局", "海關扣留", "遠端操控", "穩賺不賠", "保證獲利", "飆股", "報明牌",
-    "verification code", "arrest warrant", "gift card", "safe account", "remote access",
-    "anydesk", "teamviewer", "guaranteed return",
-    "暗証番号", "認証コード", "逮捕", "遠隔操作",
-    "인증번호", "비밀번호", "보이스피싱", "안전계좌", "원격",
-    "código de verificación", "contraseña", "code de vérification", "mot de passe",
-    "bestätigungscode", "passwort", "senha",
-];
-
-fn has_hard_scam_hit(hits: &[String]) -> bool {
-    hits.iter().any(|h| {
-        let lower = h.trim().to_lowercase();
-        HARD_SCAM_HITS.iter().any(|m| lower == *m)
-    })
-}
-
-/// Ask the model whether a call the keywords flagged is a scam or sales call,
-/// a recording, an ordinary call or too early to tell. `dialogue` = the call so far (`對方：` /
-/// `接聽：` or `Caller:` / `AI:` lines), `hits` = the keywords that matched.
-/// Anything but a clear answer within [`REVIEW_TIMEOUT`] is
-/// [`Verdict::ScamOrSales`].
-pub async fn review(api_key: &str, dialogue: &str, hits: &[String], caller_id: &str) -> Verdict {
-    let ctx = CallerContext {
-        number: caller_id.to_string(),
-        saved_contact: None,
-    };
-    review_with_context(api_key, dialogue, hits, &ctx).await
-}
-
-/// [`review`] with caller contact information when available.
+/// Ask the model which kind of call this is (`purpose`: why it is asked).
+/// `dialogue` = the call so far (`對方：` / `接聽：` or `Caller:` / `AI:` lines),
+/// `hits` = the keywords that matched. Anything but a clear answer within
+/// [`REVIEW_TIMEOUT`] is [`Verdict::Unavailable`].
 pub async fn review_with_context(
     api_key: &str,
     dialogue: &str,
     hits: &[String],
     ctx: &CallerContext,
-) -> Verdict {
-    review_at_with_context(client(), GEMINI_BASE, api_key, dialogue, hits, ctx).await
+    purpose: Purpose,
+) -> Review {
+    review_at_with_context(client(), GEMINI_BASE, api_key, dialogue, hits, ctx, purpose).await
 }
 
-/// [`review`] against any server (tests run a local one).
+/// [`review_with_context`] against any server (tests run a local one): the verdict.
 #[cfg(test)]
 async fn review_at(
     http: &Client,
@@ -157,9 +248,11 @@ async fn review_at(
 ) -> Verdict {
     let ctx = CallerContext {
         number: caller_id.to_string(),
-        saved_contact: None,
+        ..CallerContext::default()
     };
-    review_at_with_context(http, base, api_key, dialogue, hits, &ctx).await
+    review_at_with_context(http, base, api_key, dialogue, hits, &ctx, Purpose::Keywords)
+        .await
+        .verdict
 }
 
 async fn review_at_with_context(
@@ -169,38 +262,37 @@ async fn review_at_with_context(
     dialogue: &str,
     hits: &[String],
     ctx: &CallerContext,
-) -> Verdict {
+    purpose: Purpose,
+) -> Review {
     let head = head_chars(dialogue.trim(), 80);
     let key = api_key.trim();
     let caller_id = ctx.number.as_str();
-    let fallback = if ctx.saved_contact.is_some() && !has_hard_scam_hit(hits) {
-        Verdict::Normal
-    } else {
-        Verdict::ScamOrSales
-    };
     if key.is_empty() {
-        warn!("stall review: no Gemini key, fallback={fallback:?} caller={caller_id} dialogue={head:?}");
-        return fallback;
+        warn!("stall review: no Gemini key ({purpose:?}) caller={caller_id} dialogue={head:?}");
+        return Review::unavailable(true);
     }
     let started = Instant::now();
-    match tokio::time::timeout(REVIEW_TIMEOUT, ask(http, base, key, dialogue, hits, ctx)).await {
-        Ok(Ok(verdict)) => {
+    match tokio::time::timeout(REVIEW_TIMEOUT, ask(http, base, key, dialogue, hits, ctx, purpose)).await {
+        Ok(Ok(review)) => {
             info!(
-                "stall review verdict={verdict:?} caller={caller_id} hits={hits:?} ms={} dialogue={head:?}",
+                "stall review ({purpose:?}) verdict={:?} typology={:?} confidence={} caller={caller_id} hits={hits:?} ms={} dialogue={head:?}",
+                review.verdict,
+                review.typology,
+                review.confidence.as_str(),
                 started.elapsed().as_millis()
             );
-            verdict
+            review
         }
         Ok(Err(e)) => {
-            warn!("stall review failed, fallback={fallback:?} caller={caller_id}: {e:#} dialogue={head:?}");
-            fallback
+            warn!("stall review ({purpose:?}) failed caller={caller_id}: {e:#} dialogue={head:?}");
+            Review::unavailable(false)
         }
         Err(_) => {
             warn!(
-                "stall review timed out after {} ms, fallback={fallback:?} caller={caller_id} dialogue={head:?}",
+                "stall review ({purpose:?}) timed out after {} ms caller={caller_id} dialogue={head:?}",
                 REVIEW_TIMEOUT.as_millis()
             );
-            fallback
+            Review::unavailable(false)
         }
     }
 }
@@ -212,11 +304,12 @@ async fn ask(
     dialogue: &str,
     hits: &[String],
     ctx: &CallerContext,
-) -> Result<Verdict> {
+    purpose: Purpose,
+) -> Result<Review> {
     let url = format!("{}/v1beta/models/{REVIEW_MODEL}:generateContent", base.trim_end_matches('/'));
     let mut strict = true;
     loop {
-        let body = request_body_with_context(dialogue, hits, ctx, strict);
+        let body = request_body_for(dialogue, hits, ctx, purpose, strict);
         let resp = http
             .post(&url)
             .header("x-goog-api-key", key)
@@ -236,7 +329,7 @@ async fn ask(
         if !status.is_success() {
             bail!("status {status}: {}", head_chars(&text, 80));
         }
-        return parse_verdict(&text).with_context(|| {
+        return parse_review(&text).with_context(|| {
             let finish = serde_json::from_str::<Value>(&text)
                 .ok()
                 .and_then(|v| v.pointer("/candidates/0/finishReason").and_then(Value::as_str).map(str::to_string))
@@ -246,74 +339,138 @@ async fn ask(
     }
 }
 
+/// The generateContent request for keyword-flagged calls (tests).
+#[cfg(test)]
+fn request_body(dialogue: &str, hits: &[String], caller_id: &str, strict: bool) -> Value {
+    let ctx = CallerContext {
+        number: caller_id.to_string(),
+        ..CallerContext::default()
+    };
+    request_body_for(dialogue, hits, &ctx, Purpose::Keywords, strict)
+}
+
+#[cfg(test)]
+fn request_body_with_context(dialogue: &str, hits: &[String], ctx: &CallerContext, strict: bool) -> Value {
+    request_body_for(dialogue, hits, ctx, Purpose::Keywords, strict)
+}
+
+/// What the request says about why the call is looked at.
+fn purpose_line(purpose: Purpose) -> &'static str {
+    match purpose {
+        Purpose::Keywords => "",
+        Purpose::Content => "No keyword flagged this call: it is looked at because the caller has now said what they want. Most such calls are ordinary; answer scam_or_sales only when the caller's own words show a pitch or a scam.\n",
+        Purpose::Confirm => "The AI is already keeping this caller talking (the call was judged a scam or sales call). Look again at everything the caller said: answer normal with high confidence only if it is clearly an ordinary call; the AI then goes back to talking normally.\n",
+    }
+}
+
+/// The dialogue without the carrier's recorded warning (it is not the caller).
+fn without_carrier_prompt(dialogue: &str) -> String {
+    dialogue
+        .lines()
+        .filter(|l| {
+            l.trim()
+                .strip_prefix("對方：")
+                .map_or(true, |t| !crate::gemini_live::looks_like_carrier_intl_prompt(t))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The kinds of call the keywords point to, heaviest first.
+fn hit_types(hits: &[String]) -> Vec<&'static str> {
+    let mut sums: Vec<(&'static str, u32)> = Vec::new();
+    for h in hits {
+        let Some(k) = crate::scam_db::keyword(&h.trim().to_lowercase()).or_else(|| crate::scam_db::keyword(h.trim())) else {
+            continue;
+        };
+        match sums.iter_mut().find(|(t, _)| *t == k.typology) {
+            Some((_, w)) => *w += k.weight,
+            None => sums.push((k.typology, k.weight)),
+        }
+    }
+    sums.sort_by_key(|&(_, w)| std::cmp::Reverse(w));
+    sums.into_iter().map(|(t, _)| t).collect()
+}
+
 /// The generateContent request. gemini-flash-lite-latest is a thinking model:
 /// on a long, unclear call it thinks before it answers, and the thoughts count
 /// against `maxOutputTokens` — a small cap cut the answer off (every review of
 /// a real call came back unreadable). Room for both, and the least thinking it
 /// takes (`thinkingLevel` minimal; a `thinkingBudget` is refused with a 400).
-/// `strict` holds the answer to the three labels; the retry after a 400 leaves
-/// that and the thinking setting out and reads the model's text.
-#[cfg(test)]
-fn request_body(dialogue: &str, hits: &[String], caller_id: &str, strict: bool) -> Value {
-    let ctx = CallerContext {
-        number: caller_id.to_string(),
-        saved_contact: None,
-    };
-    request_body_with_context(dialogue, hits, &ctx, strict)
-}
-
-fn request_body_with_context(
-    dialogue: &str,
-    hits: &[String],
-    ctx: &CallerContext,
-    strict: bool,
-) -> Value {
-    let dialogue = crate::deepseek::relabel_dialogue_en(dialogue.trim());
+/// `strict` holds the answer to the labels and known types; the retry after a 400
+/// leaves that and the thinking setting out and reads the model's text.
+fn request_body_for(dialogue: &str, hits: &[String], ctx: &CallerContext, purpose: Purpose, strict: bool) -> Value {
+    let dialogue = crate::deepseek::relabel_dialogue_en(&without_carrier_prompt(dialogue.trim()));
     let number = match ctx.number.trim() {
         "" => "hidden",
         n => n,
     };
-    let contact_line = ctx
-        .saved_contact
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|c| format!("Saved in owner's contacts: {c}\n"))
-        .unwrap_or_default();
-    let user = format!(
-        "Number: {number}\n{contact_line}Keywords that matched: {}\n\nDialogue so far:\n{}",
-        hits.join(", "),
-        tail_chars(&dialogue, MAX_DIALOGUE_CHARS)
-    );
+    let mut head = format!("Number: {number}\n");
+    if let Some(c) = ctx.saved_contact.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        head.push_str(&format!("Saved in owner's contacts: {c}\n"));
+    }
+    for n in ctx.number_notes.iter().map(|n| n.trim()).filter(|n| !n.is_empty()) {
+        head.push_str(&format!("About the number: {n}\n"));
+    }
+    head.push_str(&format!("Keywords that matched: {}\n", hits.join(", ")));
+    let types = hit_types(hits);
+    if !types.is_empty() {
+        head.push_str(&format!("Types they point to: {}\n", types.join(", ")));
+        head.push_str("Tell apart from the ordinary call each is mistaken for:\n");
+        for t in types.iter().take(MAX_DETAILED_TYPES).filter_map(|id| crate::scam_db::typology(id)) {
+            head.push_str(&format!("- {}: {} Ordinary: {}\n", t.id, t.signals, t.legit));
+        }
+    }
+    head.push_str(purpose_line(purpose));
+    let budget = MAX_DIALOGUE_CHARS.saturating_sub(head.chars().count()).max(MIN_DIALOGUE_CHARS);
+    let user = format!("{head}\nDialogue so far:\n{}", tail_chars(&dialogue, budget));
     let mut generation = json!({
         "temperature": 0,
         "maxOutputTokens": 512,
         "responseMimeType": "application/json",
     });
     if strict {
+        let mut ids: Vec<&str> = crate::scam_db::db().typologies.iter().map(|t| t.id.as_str()).collect();
+        ids.push("none");
         generation["thinkingConfig"] = json!({"thinkingLevel": "minimal"});
         generation["responseSchema"] = json!({
             "type": "OBJECT",
             "properties": {
-                "verdict": {"type": "STRING", "enum": ["scam_or_sales", "ivr_recording", "normal", "too_early"]}
+                "verdict": {"type": "STRING", "enum": ["scam_or_sales", "ivr_recording", "normal", "too_early"]},
+                "typology": {"type": "STRING", "enum": ids},
+                "confidence": {"type": "STRING", "enum": ["high", "medium", "low"]}
             },
-            "required": ["verdict"]
+            "required": ["verdict", "typology", "confidence"]
         });
     }
     json!({
-        "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "systemInstruction": {"parts": [{"text": system_instruction()}]},
         "contents": [{"role": "user", "parts": [{"text": user}]}],
         "generationConfig": generation,
     })
 }
 
-/// The verdict in a generateContent response, or in the model's own
-/// `{"verdict": …}` text (also when wrapped in a code fence).
-fn parse_verdict(body: &str) -> Option<Verdict> {
+/// The answer in a generateContent response, or in the model's own
+/// `{"verdict": …}` text (also when wrapped in a code fence). A type the database
+/// does not know is left out; a missing confidence is medium.
+fn parse_review(body: &str) -> Option<Review> {
     let body = body.trim();
     if let Ok(v) = serde_json::from_str::<Value>(body) {
         if let Some(label) = v.get("verdict").and_then(Value::as_str) {
-            return Verdict::from_label(label);
+            return Some(Review {
+                verdict: Verdict::from_label(label)?,
+                typology: v
+                    .get("typology")
+                    .and_then(Value::as_str)
+                    .and_then(|t| crate::scam_db::typology(t.trim()))
+                    .map(|t| t.id.as_str()),
+                confidence: v
+                    .get("confidence")
+                    .and_then(Value::as_str)
+                    .and_then(Confidence::from_label)
+                    .unwrap_or(Confidence::Medium),
+                no_key: false,
+            });
         }
         let parts = v.pointer("/candidates/0/content/parts")?.as_array()?;
         let text: String = parts
@@ -321,14 +478,19 @@ fn parse_verdict(body: &str) -> Option<Verdict> {
             .filter(|p| !p.get("thought").and_then(Value::as_bool).unwrap_or(false))
             .filter_map(|p| p.get("text").and_then(Value::as_str))
             .collect();
-        return parse_verdict(&text);
+        return parse_review(&text);
     }
     let start = body.find('{')?;
     let end = body.rfind('}')?;
     if end <= start || end + 1 - start == body.len() {
         return None;
     }
-    parse_verdict(&body[start..=end])
+    parse_review(&body[start..=end])
+}
+
+#[cfg(test)]
+fn parse_verdict(body: &str) -> Option<Verdict> {
+    parse_review(body).map(|r| r.verdict)
 }
 
 fn head_chars(s: &str, n: usize) -> String {
@@ -941,13 +1103,15 @@ mod tests {
         assert!(std::ptr::eq(client(), client()));
     }
 
+    /// No answer in time is no verdict: what it means for the call is the call
+    /// loop's rule (gemini_live), no longer "keep them talking" for everyone.
     #[tokio::test]
     async fn a_slow_answer_keeps_the_caller_talking() {
         let (base, server) = serve(vec![(200, NORMAL, Duration::from_millis(2500))]).await;
         let started = Instant::now();
         let v = review_at(&Client::new(), &base, "test-key", "對方：你的帳戶被盜用", &hits(), "").await;
         let took = started.elapsed();
-        assert_eq!(v, Verdict::ScamOrSales);
+        assert_eq!(v, Verdict::Unavailable);
         assert!(took >= REVIEW_TIMEOUT && took < Duration::from_millis(2300), "{took:?}");
         server.abort();
     }
@@ -956,7 +1120,7 @@ mod tests {
     async fn a_server_error_keeps_the_caller_talking() {
         let (base, server) = serve(vec![(500, r#"{"error":{"code":500}}"#, Duration::ZERO)]).await;
         let v = review_at(&Client::new(), &base, "test-key", "對方：保證獲利", &hits(), "").await;
-        assert_eq!(v, Verdict::ScamOrSales);
+        assert_eq!(v, Verdict::Unavailable);
         server.await.unwrap();
     }
 
@@ -980,14 +1144,16 @@ mod tests {
         ])
         .await;
         let v = review_at(&Client::new(), &base, "test-key", "對方：保證獲利", &hits(), "").await;
-        assert_eq!(v, Verdict::ScamOrSales);
+        assert_eq!(v, Verdict::Unavailable);
         assert_eq!(server.await.unwrap().len(), 2);
     }
 
     #[tokio::test]
     async fn no_key_keeps_the_caller_talking() {
-        let v = review_at(&Client::new(), "http://127.0.0.1:9", " ", "對方：信用卡", &hits(), "").await;
-        assert_eq!(v, Verdict::ScamOrSales);
+        let ctx = CallerContext::default();
+        let r = review_at_with_context(&Client::new(), "http://127.0.0.1:9", " ", "對方：信用卡", &hits(), &ctx, Purpose::Keywords).await;
+        assert_eq!(r.verdict, Verdict::Unavailable);
+        assert!(r.no_key, "asking again will not help: {r:?}");
     }
 
     /// Reviewer: things people say on an ordinary call. A menu verdict hangs up.
@@ -1039,31 +1205,33 @@ mod tests {
         let started = Instant::now();
         let v = review_at(&Client::new(), &base, "test-key", "對方：媽，我下午匯款給你", &hits(), "").await;
         let took = started.elapsed();
-        assert_eq!(v, Verdict::ScamOrSales);
+        assert_eq!(v, Verdict::Unavailable);
         assert!(took >= REVIEW_TIMEOUT && took < Duration::from_millis(1900), "{took:?}");
         server.abort();
     }
 
-    /// Reviewer: an unreadable 200 and a server that is not there both keep the stall.
+    /// Reviewer: an unreadable 200 and a server that is not there are no verdict either.
     #[tokio::test]
     async fn reviewer_garbage_and_unreachable_keep_the_caller_talking() {
         let (base, server) = serve(vec![(200, "<html>oops</html>", Duration::ZERO)]).await;
         let v = review_at(&Client::new(), &base, "test-key", "對方：保證獲利", &hits(), "").await;
-        assert_eq!(v, Verdict::ScamOrSales);
+        assert_eq!(v, Verdict::Unavailable);
         server.await.unwrap();
         let v = review_at(&Client::new(), "http://127.0.0.1:9", "test-key", "對方：保證獲利", &hits(), "").await;
-        assert_eq!(v, Verdict::ScamOrSales);
+        assert_eq!(v, Verdict::Unavailable);
     }
 
-    /// A saved contact talking about everyday money transfers is not turned into
-    /// a scam target when the review request fails or times out — unless hard
-    /// scam words (ATM, OTP, safe account, warrant, etc.) were spoken.
+    /// A saved contact is named to the model; when the review cannot answer, the
+    /// call loop leaves a contact alone unless hard scam words were spoken
+    /// (gemini_live: a_saved_contact_or_safe_number_is_left_alone_when_the_review_fails).
     #[tokio::test]
     async fn saved_contact_is_protected_on_timeout_unless_hard_scam_words_hit() {
         let mom = CallerContext {
             number: "+886912345678".into(),
             saved_contact: Some("媽媽 (note: 家裡)".into()),
+            ..CallerContext::default()
         };
+        assert!(mom.protected());
         let body = request_body_with_context(
             "對方：兒子，我剛去銀行匯款到你帳戶喔",
             &["銀行".into(), "匯款".into(), "帳戶".into()],
@@ -1072,29 +1240,94 @@ mod tests {
         );
         let user = body["contents"][0]["parts"][0]["text"].as_str().unwrap();
         assert!(user.contains("Saved in owner's contacts: 媽媽 (note: 家裡)"), "{user}");
-
-        // Unreachable / timed-out review on ordinary transfer words from Mom -> Normal.
-        let v = review_at_with_context(
+        let r = review_at_with_context(
             &Client::new(),
             "http://127.0.0.1:9",
             "test-key",
             "對方：兒子，我剛去銀行匯款到你帳戶喔",
             &["銀行".into(), "匯款".into(), "帳戶".into()],
             &mom,
+            Purpose::Keywords,
         )
         .await;
-        assert_eq!(v, Verdict::Normal);
+        assert_eq!((r.verdict, r.no_key), (Verdict::Unavailable, false));
+        let owner_safe = CallerContext {
+            owner_safe: true,
+            ..CallerContext::default()
+        };
+        assert!(owner_safe.protected() && !CallerContext::default().protected());
+    }
 
-        // Spoofed saved number asking for a verification code or ATM -> still ScamOrSales.
-        let spoof = review_at_with_context(
-            &Client::new(),
-            "http://127.0.0.1:9",
-            "test-key",
-            "對方：請去ATM輸入驗證碼解除設定",
-            &["銀行".into(), "atm".into(), "驗證碼".into()],
-            &mom,
-        )
-        .await;
-        assert_eq!(spoof, Verdict::ScamOrSales);
+    #[test]
+    fn a_typed_answer_carries_its_kind_and_how_sure_it_is() {
+        let r = parse_review(r#"{"verdict":"scam_or_sales","typology":"fake_official","confidence":"low"}"#).unwrap();
+        assert_eq!((r.verdict, r.typology, r.confidence), (Verdict::ScamOrSales, Some("fake_official"), Confidence::Low));
+        let r = parse_review(r#"{"candidates":[{"content":{"parts":[{"text":"{\"verdict\":\"normal\",\"typology\":\"none\",\"confidence\":\"high\"}"}]}}]}"#).unwrap();
+        assert_eq!((r.verdict, r.typology, r.confidence), (Verdict::Normal, None, Confidence::High));
+        // A type the database does not know is dropped; no confidence is medium.
+        let r = parse_review(r#"{"verdict":"scam_or_sales","typology":"made_up"}"#).unwrap();
+        assert_eq!((r.typology, r.confidence), (None, Confidence::Medium));
+        assert_eq!(Review::of(Verdict::Normal).confidence, Confidence::High);
+    }
+
+    #[tokio::test]
+    async fn a_typed_answer_comes_back_from_the_server() {
+        let typed = r#"{"candidates":[{"content":{"parts":[{"text":"{\"verdict\":\"scam_or_sales\",\"typology\":\"fake_bank_installment\",\"confidence\":\"high\"}"}]}}]}"#;
+        let (base, server) = serve(vec![(200, typed, Duration::ZERO)]).await;
+        let ctx = CallerContext::default();
+        let r = review_at_with_context(&Client::new(), &base, "test-key", "對方：請你去ATM解除分期", &["atm".into(), "分期".into()], &ctx, Purpose::Keywords).await;
+        assert_eq!((r.verdict, r.typology, r.confidence), (Verdict::ScamOrSales, Some("fake_bank_installment"), Confidence::High));
+        server.await.unwrap();
+    }
+
+    #[test]
+    fn the_request_names_the_types_their_look_alikes_and_the_number() {
+        let ctx = CallerContext {
+            number: "+886912345678".into(),
+            number_notes: vec![
+                "Earlier calls from this number were judged scam 2 times, last on 2026-11-10 (fake_bank_installment).".into(),
+                "Number hint (tw_shown_as_international): A Taiwanese number shown as +886 on a Taiwanese SIM.".into(),
+            ],
+            flagged_before: true,
+            ..CallerContext::default()
+        };
+        let long = format!("對方：{}\n對方：請你去 ATM 操作", "喂".repeat(4000));
+        let hits: Vec<String> = vec!["ATM".into(), "分期".into(), "銀行".into()];
+        let body = request_body_for(&long, &hits, &ctx, Purpose::Keywords, true);
+        let user = body["contents"][0]["parts"][0]["text"].as_str().unwrap();
+        assert!(user.contains("About the number: Earlier calls from this number were judged scam 2 times"), "{user}");
+        assert!(user.contains("About the number: Number hint (tw_shown_as_international)"), "{user}");
+        assert!(user.contains("Types they point to: fake_bank_installment, fake_bank_account_alert"), "{user}");
+        assert!(user.contains("- fake_bank_installment: Says a system error") && user.contains("Ordinary: A bank confirming a plan"), "{user}");
+        assert!(user.contains("Caller: 請你去 ATM 操作"), "{user}");
+        assert!(user.chars().count() < MAX_DIALOGUE_CHARS + 200, "{}", user.chars().count());
+        let schema = &body["generationConfig"]["responseSchema"];
+        let types = schema["properties"]["typology"]["enum"].as_array().unwrap();
+        assert!(types.contains(&json!("fake_official")) && types.contains(&json!("none")), "{schema}");
+        assert_eq!(schema["properties"]["confidence"]["enum"], json!(["high", "medium", "low"]));
+        let system = body["systemInstruction"]["parts"][0]["text"].as_str().unwrap();
+        assert!(system.starts_with(SYSTEM_PROMPT), "the rules come first");
+        assert!(system.contains("- fake_official (scam!): ") && system.contains("- insurance_sales (sales): Insurance sales"), "{system}");
+        assert!(system.contains("A low-confidence scam_or_sales changes nothing yet"), "{system}");
+        // The whole instruction stays small enough for a 1.5 s answer.
+        assert!(system.chars().count() < 9000, "{}", system.chars().count());
+    }
+
+    #[test]
+    fn the_carrier_warning_is_not_sent_as_the_caller() {
+        let body = request_body("對方：這是國際電話，請注意小心詐騙。\n接聽：喂？\n對方：喂，請問王先生在嗎", &[], "+15550100", true);
+        let user = body["contents"][0]["parts"][0]["text"].as_str().unwrap();
+        assert!(!user.contains("小心詐騙"), "{user}");
+        assert!(user.contains("Caller: 喂，請問王先生在嗎"), "{user}");
+    }
+
+    #[test]
+    fn content_and_confirm_looks_say_why_they_are_asked() {
+        let ctx = CallerContext::default();
+        let text = |p| request_body_for("對方：您好，我想跟您介紹一下", &[], &ctx, p, true)["contents"][0]["parts"][0]["text"].as_str().unwrap().to_string();
+        assert!(text(Purpose::Content).contains("No keyword flagged this call"));
+        assert!(text(Purpose::Confirm).contains("already keeping this caller talking"));
+        let plain = text(Purpose::Keywords);
+        assert!(!plain.contains("No keyword flagged") && !plain.contains("already keeping"), "{plain}");
     }
 }

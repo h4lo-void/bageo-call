@@ -1,11 +1,11 @@
-# Notifications: call summaries on Telegram, LINE, Discord, email and 12 more
+# Notifications: call summaries on Telegram, LINE, Discord, email and 28 more
 
 Your AI phone assistant answers the call; a few seconds after it hangs up, you
 get a short summary on your phone: who called, what they wanted, what the AI
 said and what you should do. Bageo can also tell you when a call comes in, when
 a blocked number or a second caller was turned away, and when an AI call-back
-or AI errand has finished. It sends to 16 services, from Telegram and LINE to
-WeCom, ntfy, email and your own webhook.
+or AI errand has finished. It sends to 32 services, from Telegram, LINE, Teams
+and Signal to WeCom, ntfy, Home Assistant, email and your own webhook.
 
 **Set it up in one minute:** *Settings → Notifications* → **Add channel** →
 choose the service → fill in its fields → **Send test** → **Save changes**.
@@ -29,6 +29,10 @@ choose the service → fill in its fields → **Send test** → **Save changes**
 > built from their public documentation and their requests are covered by unit
 > tests, but have seen little use with live accounts. If one fails, **Send
 > test** shows the service's answer; please report it.
+> The services added after 1.0 (Microsoft Teams, Google Chat, Rocket.Chat,
+> Zulip, Webex, Nextcloud Talk, Synology Chat, Signal, Pushbullet, PushPlus,
+> PushDeer, WxPusher, Chanify, SMTP email, Home Assistant and IFTTT) have not
+> been tried with live accounts at all yet.
 
 ## What a message looks like
 
@@ -202,18 +206,34 @@ Pick the app you already check every day:
 |---|---|---|
 | [Telegram](#telegram) | bot token, chat ID | anyone; best for appointments |
 | [Discord](#discord) | webhook URL | Discord servers |
-| [Slack / Mattermost](#slack--mattermost) | incoming webhook URL | work chats, Rocket.Chat |
+| [Slack / Mattermost](#slack--mattermost) | incoming webhook URL | work chats |
+| [Microsoft Teams](#microsoft-teams) | workflow webhook URL | Microsoft 365 workplaces |
+| [Google Chat](#google-chat) | webhook URL | Google Workspace |
+| [Rocket.Chat](#rocketchat) | webhook URL | self-hosted team chat |
+| [Zulip](#zulip) | server URL, bot email and API key, channel | open-source team chat |
+| [Webex](#webex) | bot access token, room ID or email | Cisco Webex |
+| [Nextcloud Talk](#nextcloud-talk) | server URL, user and app password, conversation token | Nextcloud self-hosters |
+| [Synology Chat](#synology-chat) | webhook URL | Synology NAS owners |
 | [LINE](#line) | channel access token, user or group ID | Taiwan, Japan, Thailand |
+| [Signal](#signal) | your own signal-cli-rest-api, sender number, recipients | Signal users |
 | [ntfy](#ntfy) | topic | self-hosters, Android push |
 | [Gotify](#gotify) | server URL, app token | self-hosters |
 | [Bark (iOS)](#bark-ios) | device key | iPhone push |
 | [Pushover](#pushover) | API token, user key | iOS and Android push |
+| [Pushbullet](#pushbullet) | access token | Android and desktop push |
 | [WeCom group bot](#wecom-group-bot) | webhook URL | 企业微信 |
 | [DingTalk bot](#dingtalk-bot) | webhook URL, signing secret | 钉钉 |
 | [Feishu / Lark bot](#feishu--lark-bot) | webhook URL | 飞书 / Lark |
 | [ServerChan](#serverchan) | SendKey | WeChat push (Server酱) |
+| [PushPlus](#pushplus) | token | WeChat push (推送加) |
+| [PushDeer](#pushdeer) | PushKey | iOS and Android push, self-hostable |
+| [WxPusher](#wxpusher) | SPT, or appToken and UIDs | WeChat push |
+| [Chanify](#chanify) | token | iOS and Android push, self-hostable |
 | [Matrix](#matrix) | homeserver URL, access token, room ID | Element and other Matrix apps |
 | [Email (Gmail)](#email-gmail) | Gmail address, app password | email |
+| [Email (SMTP)](#email-smtp) | SMTP URL, password | any other mail provider |
+| [Home Assistant](#home-assistant) | server URL, access token, notify service | smart homes, the Companion app |
+| [IFTTT Webhooks](#ifttt-webhooks) | Webhooks key, event name | IFTTT applets |
 | [Apprise API](#apprise-api) | notify URL | 100+ more services |
 | [Webhook (JSON)](#webhook-json) | URL | n8n, Zapier, Make, Home Assistant, your code |
 
@@ -236,6 +256,9 @@ For the appointment card with buttons, give the same bot through
 `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` as well; you will not get each
 message twice.
 
+To check calls, have the AI call someone or decide to-dos from this chat, see
+[Chat commands](CHAT_COMMANDS.md) (off until you switch it on for the chat).
+
 ### Discord
 
 Channel settings → *Integrations → Webhooks → New Webhook → Copy Webhook URL*.
@@ -248,12 +271,102 @@ Channel settings → *Integrations → Webhooks → New Webhook → Copy Webhook
 
 Slack: create an app at <https://api.slack.com/apps> → *Incoming Webhooks* →
 activate → *Add New Webhook to Workspace* → copy the URL. Mattermost:
-*Integrations → Incoming Webhooks*. Rocket.Chat incoming webhooks accept the
-same format.
+*Integrations → Incoming Webhooks*.
 
 | Field | Value |
 |---|---|
 | Incoming webhook URL | `https://hooks.slack.com/services/…` |
+
+### Microsoft Teams
+
+The old Office 365 connectors (the `webhook.office.com` addresses) are retired.
+This uses a **Workflows** webhook, which posts an Adaptive Card.
+
+1. In Teams, open the channel's **…** menu → *Workflows*.
+2. Choose *Post to a channel when a webhook request is received*, pick the
+   team and channel, and finish.
+3. Copy the URL it shows. It carries a signature, so keep it as private as a
+   password.
+
+| Field | Value |
+|---|---|
+| Workflow webhook URL | the URL from step 3 |
+
+Each line of the message becomes its own line on the card; the first one is
+bold.
+
+### Google Chat
+
+Needs a Google Workspace account; personal Google accounts cannot add
+webhooks. Open the space → its name → *Apps & integrations → Webhooks → Add
+webhook* → copy the URL.
+
+| Field | Value |
+|---|---|
+| Webhook URL | `https://chat.googleapis.com/v1/spaces/…/messages?key=…&token=…` |
+
+### Rocket.Chat
+
+*Administration → Workspace → Integrations → New → Incoming*: turn it on,
+choose the channel and the user it posts as, save, and copy the *Webhook URL*.
+
+| Field | Value |
+|---|---|
+| Webhook URL | `https://chat.example.org/hooks/…/…` |
+
+### Zulip
+
+Create a bot under *Personal settings → Bots → Add a new bot* (the *Incoming
+webhook* type is enough) and subscribe it to the channel. Its email and API
+key are on the bot's card.
+
+| Field | Value |
+|---|---|
+| Server URL | your organization, e.g. `https://example.zulipchat.com` |
+| Bot email:API key | the two joined by a colon: `calls-bot@example.zulipchat.com:abc123…` |
+| Channel > topic, or email | `calls > phone`; a channel alone (`calls`) posts to the topic "Bageo"; one or more emails, separated by commas, send a direct message |
+
+Messages are cut at 2,400 characters to stay inside Zulip's 10,000-byte limit.
+
+### Webex
+
+Create a bot at <https://developer.webex.com/my-apps> and copy its **bot
+access token** (it is shown once). Add the bot to a space. To find the room ID,
+sign in on developer.webex.com and run *List Rooms* with the bot's token; to
+message one person, enter their email instead.
+
+| Field | Value |
+|---|---|
+| Bot access token | the bot's token |
+| Room ID or email | `Y2lzY29zcGFyazovL3Vz…` or `someone@example.com` |
+
+Messages are cut at 1,800 characters (Webex takes at most 7,439 bytes).
+
+### Nextcloud Talk
+
+Posts as a Nextcloud user; a separate user just for Bageo keeps things tidy.
+Create an **app password** for it under *Personal settings → Security →
+Devices & sessions* and add the user to the conversation. The conversation
+token is the last part of the conversation's link
+(`https://cloud.example.org/call/abc123xy` → `abc123xy`).
+
+| Field | Value |
+|---|---|
+| Server URL | `https://cloud.example.org` |
+| User:app password | `bageo:xxxxx-xxxxx-xxxxx-xxxxx-xxxxx` |
+| Conversation token | `abc123xy` |
+
+### Synology Chat
+
+In Synology Chat: your profile picture → *Integration → Incoming Webhooks →
+Create*, pick the channel, save, and copy the webhook URL.
+
+| Field | Value |
+|---|---|
+| Webhook URL | `https://nas.example.org:5001/webapi/entry.cgi?api=SYNO.Chat.External&method=incoming&version=2&token=…` |
+
+The agent checks HTTPS certificates. If your NAS still has its self-signed
+certificate, use the `http://` address on port 5000 inside your own network.
 
 ### LINE
 
@@ -276,6 +389,21 @@ LINE Notify was shut down in 2025; this uses the **Messaging API**.
 
 The free plan of an official account includes a limited number of push
 messages per month.
+
+### Signal
+
+Signal has no bot API, so this goes through a
+[signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) server
+you run yourself (a Docker container). Link it as a second device of your own
+Signal account, or register it with a separate number.
+
+| Field | Value |
+|---|---|
+| API server URL | where the container listens, e.g. `http://signal-api:8080` |
+| Sender number | the number signal-cli uses, in international format (`+15550100`) |
+| Recipients | numbers (`+15550101`) or group IDs (`group.…`), separated by commas |
+
+Messages are cut at 2,000 characters.
 
 ### ntfy
 
@@ -316,6 +444,16 @@ Create an application at <https://pushover.net/apps/build>.
 | API token | the application's token |
 | User key | your user key from the Pushover dashboard |
 
+### Pushbullet
+
+pushbullet.com → *Settings → Account → Create Access Token*. Free accounts
+have a monthly push limit.
+
+| Field | Value |
+|---|---|
+| Access token | `o.…` |
+| Device ID or email (optional) | empty = all your devices; a device ID (`iden`) for one device; an email for another Pushbullet user |
+
 ### WeCom group bot
 
 企业微信: in the group, *Add group robot* → copy the webhook address.
@@ -355,6 +493,51 @@ Copy your SendKey from the ServerChan (Server酱) website.
 |---|---|
 | SendKey | `SCT…` for Turbo, `sctp…` for ServerChan³ |
 
+### PushPlus
+
+Log in at <https://www.pushplus.plus> with WeChat and copy your **token**.
+Messages arrive through the PushPlus WeChat official account.
+
+| Field | Value |
+|---|---|
+| Token | your token |
+| Group code (optional) | a group's code to send to that group; empty = only you |
+
+### PushDeer
+
+Install PushDeer, sign in, add a **key** under *Keys* and copy it.
+
+| Field | Value |
+|---|---|
+| Server | empty for `https://api2.pushdeer.com`, or your own PushDeer server |
+| PushKey | `PDU…` |
+
+### WxPusher
+
+Two ways, both on <https://wxpusher.zjiekou.com>:
+
+- **Simple push:** follow the QR code in WeChat to get your simple push token
+  (`SPT_…`). Leave the target empty.
+- **Application:** create an application to get its **appToken**
+  (`AT_…`). Everyone who scans its QR code gets a user ID (`UID_…`); topics
+  have numeric IDs.
+
+| Field | Value |
+|---|---|
+| appToken (AT_…) or SPT | `SPT_…` or `AT_…` |
+| UIDs or topic IDs | only with an appToken: `UID_…` values and topic numbers, separated by commas |
+
+WeChat shows the first 20 characters of the title as the summary.
+
+### Chanify
+
+In the Chanify app, create a **token** for a sender and copy it.
+
+| Field | Value |
+|---|---|
+| Server | empty for `https://api.chanify.net`, or your own Chanify node |
+| Token | the token from the app |
+
 ### Matrix
 
 Create a bot account, invite it to a room and join the room with it. The room
@@ -378,6 +561,67 @@ The sender name is "Bageo".
 | Gmail address | the sending account |
 | App password | the 16-character app password |
 | Send to (empty = yourself) | the recipient |
+
+### Email (SMTP)
+
+Any mail server that offers TLS: iCloud, Yahoo, Fastmail, QQ Mail, 163, your
+company's or your own. The server and login go into one field:
+
+```text
+smtp://you@example.com@smtp.example.com:587     STARTTLS (most providers)
+smtps://you@example.com@smtp.example.com:465    TLS from the start
+```
+
+The part before the last `@` is the login, which is also the sender
+address; `%40` works for the login's own `@`. Port 465 always means TLS
+from the start. Without a port, 587 is used (465 with `smtps://`). The sender
+name is "Bageo".
+
+| Field | Value |
+|---|---|
+| SMTP URL (smtp://login@host:port) | as above |
+| Password | the account's password, or the app password / authorization code your provider asks for (iCloud, Yahoo, Fastmail, QQ Mail and 163 do) |
+| Send to (empty = the login) | the recipient |
+
+Limits: the login must be an email address, the server must accept
+`AUTH LOGIN`, its certificate must come from a public certificate authority
+(self-signed certificates are refused), and connections without TLS are not
+supported. For Gmail, the [Gmail](#email-gmail) channel needs fewer fields.
+
+### Home Assistant
+
+Sends through a Home Assistant **notify** action, for example to the Companion
+app on your phone.
+
+1. In Home Assistant: your profile → *Security* → *Long-lived access tokens* →
+   *Create token*.
+2. Find the service under *Developer tools → Actions*: search for `notify.`
+   (the Companion app adds `notify.mobile_app_<phone name>`).
+
+| Field | Value |
+|---|---|
+| Server URL | empty for `http://homeassistant.local:8123`, or your address |
+| Long-lived access token | the token from step 1 |
+| Notify service | `mobile_app_pixel_9`, with or without `notify.` |
+
+Messages are cut at 1,000 characters because phone notifications carry only
+about 4 KB.
+
+### IFTTT Webhooks
+
+1. At <https://ifttt.com/maker_webhooks> connect Webhooks; *Documentation*
+   shows your **key**.
+2. Create an applet: *If* Webhooks → *Receive a web request* with an event
+   name such as `bageo_call`, *Then* whatever you like. `{{Value1}}` is the
+   title, `{{Value2}}` the message and `{{Value3}}` the event (`summary`,
+   `incoming`, …).
+
+| Field | Value |
+|---|---|
+| Webhooks key | the key from step 1 |
+| Event name | `bageo_call` |
+
+IFTTT may ask for a paid plan for applets that use Webhooks.
 
 ### Apprise API
 

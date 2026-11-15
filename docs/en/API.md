@@ -11,6 +11,7 @@ rooted Android phone speaks.
 | | |
 |---|---|
 | **Base address** | Where the agent listens, by default `http://127.0.0.1:8787`. API routes start with `/calls/api/`; the exceptions are `/health` and the phones' WebSocket. The console itself is `/calls/` (`/` redirects there). |
+| **AI agents** | `POST /mcp` is a Model Context Protocol server with its own token, off by default: see [MCP](MCP.md). |
 | **Format** | UTF-8 JSON unless a route says otherwise (WAV, CSV, vCard, iCalendar). Send JSON bodies with `Content-Type: application/json`. |
 | **Times** | Call records: RFC 3339 in UTC (`2026-11-14T07:02:11Z`). Appointments: local time (`TZ`) as `YYYY-MM-DDTHH:MM`. Errands: local time with its offset (`2026-11-15T19:00:00+08:00`). |
 | **Stability** | Field names come from the Rust structs in [`crates/agent/src`](../../crates/agent/src). Later versions may add fields, so ignore the ones you do not know. |
@@ -103,7 +104,8 @@ reachable from your network.
 | Method and path | What |
 |---|---|
 | `GET /calls/api/list` | Call records, newest first. Query: `limit` (up to 500; leave it out for the whole list), `offset`, `q` (free text over number, phone, events, transcript and summary), `caller`, `serial`, `status`, `has_transcript`, `has_voicemail`. Answer: `{ok, calls, total, limit, offset, tasks_by_call, contacts_by_number}`. `tasks_by_call` is `{<call id>: {id, status, summary}}`, the newest task of each call on the page; `contacts_by_number` is `{<caller_id>: {id, name}}` for the callers on the page who are contacts. |
-| `GET /calls/api/call/{id}` | One call: `{ok, call, notes, contact, calendar_link, calendar_links}`. `contact` is `{id, name, note}` or `null`. `calendar_links` = `{google, outlook, office365, yahoo}`: each web calendar's "new event" form, filled in with the call's calendar suggestion (`calendar_link` is the Google one, kept for older clients). |
+| `GET /calls/api/call/{id}` | One call: `{ok, call, notes, contact, calendar_link, calendar_links, scam_names}`. `contact` is `{id, name, note}` or `null`. `calendar_links` = `{google, outlook, office365, yahoo}`: each web calendar's "new event" form, filled in with the call's calendar suggestion (`calendar_link` is the Google one, kept for older clients). `scam_names`: the judged kind of call's name in each console language, or `null`. |
+| `POST /calls/api/call/{id}/scam-feedback` | Your mark for a call: JSON `{"verdict": "scam" \| "sales" \| "safe"}`, optionally with a built-in `typology`. Kept on the record (`scam_feedback`) and, unless the number is hidden, for the number: its next calls are judged with it. Answer `{ok, call, number}`; HTTP 400 `invalid_verdict` / `invalid_typology`. |
 | `GET /calls/api/call/{id}/event.ics` | The calendar suggestion as an iCalendar file; HTTP 404 `no_calendar` when the call has none. Opens with the console token, or with `?k=<key>`: an HMAC key that a notification link carries for this one file instead of the token. |
 | `GET /calls/api/audio/{id}/listen` | The call as you would have heard it (caller and AI mixed), WAV, with range requests for seeking. |
 | `GET /calls/api/audio/{id}/remote` · `/tts` · `/vm` · `/audio/{id}` | Caller only · AI only · the voicemail of the older menu mode · the raw mixed recording. HTTP 404 `no_audio` when that file does not exist. |
@@ -123,7 +125,9 @@ Each call record (`call`, and every entry of `calls`) carries, among others:
 | `started_at` / `ended_at` | RFC 3339, UTC. |
 | `duration_ms` | Length of the call. |
 | `status` | `ringing`, `active`, `ended`. Records from older versions may also show `blocked_spam`. |
-| `events` | What happened, in order. For example `active`, `persona_stall_spam` (judged a sales or scam call), `reject_list` (a blocked number), `call_waiting_rejected` (a second call declined during a call), `ai_callback` (the AI calling back about an appointment), `ai_errand` (an AI errand), `persona_ai_fail_hangup`, `ended`. |
+| `events` | What happened, in order. For example `active`, `persona_stall_spam` (judged a sales or scam call), `persona_scam_detected` (judged so with *Keep them talking* off), `persona_stall_released` (a later look let the caller go), `reject_list` (a blocked number), `call_waiting_rejected` (a second call declined during a call), `ai_callback` (the AI calling back about an appointment), `ai_errand` (an AI errand), `persona_ai_fail_hangup`, `ended`. |
+| `scam` | Set when the call was judged sales or scam: `{kind, typology, confidence, source, released}`. `kind` is `scam` or `sales`, `typology` the built-in kind of call; `source` is `review` (the second look), `hard_words` (it did not answer and scam-only words were said) or `keywords` (it kept failing); `released` = a later look let the caller go. |
+| `scam_feedback` | Your mark from the call's page: `scam`, `sales` or `safe`. |
 | `summary` | The summary text, once written. |
 | `appointment` | When the caller set a time with the AI: the appointment as the call left it (see [Appointments and tasks](#appointments-and-tasks)). Later changes (your decision, the text and call-back results) go to `notes.appointment`. |
 | `sim_country`, `sim_sub_id` | The SIM the call came in on, when the phone said. |
@@ -404,7 +408,7 @@ are told) and forgets that SIM on that phone until a call reports it again.
 | `record_id` | The call record of this try (`GET /calls/api/call/{id}`: transcript and recording). |
 | `follow_up_of` | An earlier errand this call follows up; its last 20 transcript lines go into the AI's script. |
 | `questions` | `[{id, text, options, answer, answered_by, asked_at}]`: what the AI asked you, with up to 4 options. `answered_by`: `owner` (you answered), `timeout` (you watched but did not answer in time), `absent` (nobody was watching); `null` while it waits. |
-| `result` | `null` or `{outcome, summary, details, follow_up, options, event}`. `outcome`: `done`, `partial`, `not_done`, `need_owner` (choices in `options`, up to 8), `no_answer`, `voicemail`, `failed`. `event`: `null` or `{start, end, title}` (local time with its offset; `end` left out when not agreed). |
+| `result` | `null` or `{outcome, summary, details, follow_up, options, event, unconfirmed}`. `outcome`: `done`, `partial`, `not_done`, `need_owner` (choices in `options`, up to 8), `no_answer`, `voicemail`, `failed`. `event`: `null` or `{start, end, title}` (local time with its offset; `end` left out when not agreed). `unconfirmed`: the times, dates, numbers or names in `details` or `event` the other side never clearly confirmed when the AI read them back (up to 8); left out when there are none. |
 | `history` | Earlier tries, `[{attempt, status, result, record_id, ended_at, questions}]`. |
 
 Errands are kept in `errands.json` in the data folder (the newest 500). An

@@ -156,7 +156,7 @@ The AI's voice, the built-in prompts, the web console, the phone app and the not
 ## How it works
 
 <p align="center">
-  <img src="docs/images/how-it-works.en.svg" width="900" alt="How Bageo works: the caller reaches your spare rooted phone over the mobile network; the phone passes the call audio over USB or Wi-Fi to the Bageo agent on your computer, which talks to Gemini Live. Recordings stay on your disk, notifications go to 16 channels, and you manage everything in the web console.">
+  <img src="docs/images/how-it-works.en.svg" width="900" alt="How Bageo works: the caller reaches your spare rooted phone over the mobile network; the phone passes the call audio over USB or Wi-Fi to the Bageo agent on your computer, which talks to Gemini Live. Recordings stay on your disk, notifications go to 32 channels, and you manage everything in the web console.">
 </p>
 
 The phone only carries the call; everything else runs on your own computer. The AI connects while the phone is still ringing, so its first word comes about **0.43 s** after pick-up (measured median). One call, step by step: [Architecture](docs/en/ARCHITECTURE.md).
@@ -198,7 +198,7 @@ The phone only carries the call; everything else runs on your own computer. The 
     </td>
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/notify.svg" width="56" height="56" alt=""><br>
-      <strong>16 notification channels</strong><br>
+      <strong>32 notification channels</strong><br>
       A summary after every call, on Telegram, Discord, Slack, LINE, ntfy, Gmail and more.
     </td>
     <td width="33%" align="center" valign="top">

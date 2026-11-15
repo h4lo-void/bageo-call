@@ -450,7 +450,7 @@ pub fn is_fallback_summary(text: &str) -> bool {
 /// How the summary prompt tells the model to mark a sales call and a likely
 /// scam on its "what they wanted" line (the Chinese prompt has its own:
 /// 「推銷電話：…」「疑似詐騙」).
-fn sales_labels(lang: Lang) -> (&'static str, &'static str) {
+pub(crate) fn sales_labels(lang: Lang) -> (&'static str, &'static str) {
     match lang {
         Lang::ZhTw => ("推銷電話", "疑似詐騙"),
         Lang::ZhCn => ("推销电话", "疑似诈骗"),

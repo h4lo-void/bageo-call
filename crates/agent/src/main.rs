@@ -30,6 +30,7 @@ mod calls;
 mod calls_http;
 mod config;
 mod contacts;
+mod control;
 mod debug_probe;
 mod deepseek;
 mod dtmf;
@@ -40,6 +41,7 @@ mod gemini_live;
 mod gmail;
 mod hold_music;
 mod locale;
+mod mcp;
 mod mdns;
 mod notify;
 mod openclaw;
@@ -47,6 +49,7 @@ mod phone_region;
 mod prompts;
 mod services;
 mod settings_store;
+mod scam_db;
 mod stall_review;
 mod tasks;
 mod tg_inbound;
@@ -99,7 +102,7 @@ use notify::{
 use services::{chat, ensure_ollama_model, synthesize_piper, transcribe_pcm16, ChatMessage};
 use settings_store::{RuntimeSettings, SettingsStore};
 use tasks::{draft_from_voicemail, ReplyMethod, TaskIntent, TaskPatch, TaskStore};
-use tg_inbound::{send_task_card, TgPoller};
+use tg_inbound::send_task_card;
 use trtc_bridge::TrtcBridge;
 use vad::{EnergyVad, RemoteVoiceGate};
 
@@ -1013,6 +1016,8 @@ async fn main() -> Result<()> {
     // The owner's contacts (names for caller IDs), next to the call records.
     let contacts = contacts::ContactStore::open(PathBuf::from(&settings.calls_data_dir).join("contacts.json"));
     contacts::install(contacts.clone());
+    // The scam database's owner file and number book live next to the settings.
+    scam_db::init(&PathBuf::from(&settings.calls_data_dir));
     // Calls the owner has the AI make (errands), and the SIMs each phone has
     // reported (an errand dials from a SIM of the number's country).
     let phone_sims = errands::SimBook::open(PathBuf::from(&settings.calls_data_dir).join("phone_sims.json"));
@@ -1208,8 +1213,15 @@ async fn main() -> Result<()> {
         );
     }
 
-    // Telegram inbound poller: confirm/ignore task cards (re-reads settings each loop).
-    // No spam-blocklist dependency. Backs off on poll errors (avoids tight CPU/API spin).
+    // Chat commands (crate::control): the chats that may operate the agent;
+    // the AI's questions during an errand call go there too.
+    let remote = control::Controller::new(calls_state.clone());
+    errand_store.set_question_hook(remote.question_hook());
+    // Telegram: every bot that serves a chat is long-polled
+    // (control::telegram). The to-do card buttons of the environment's bot
+    // come here and are handled as before. No spam-blocklist dependency.
+    let (card_tx, mut card_rx) = tokio::sync::mpsc::unbounded_channel::<tg_inbound::TgAction>();
+    control::telegram::spawn(remote.clone(), settings_store.clone(), http.clone(), card_tx);
     {
         let settings_store = settings_store.clone();
         let task_store = task_store.clone();
@@ -1218,24 +1230,13 @@ async fn main() -> Result<()> {
         let calls = state.calls.clone();
         let base = state.settings.clone();
         tokio::spawn(async move {
-            let mut poller = TgPoller::new();
-            loop {
-                let rt = settings_store.snapshot();
-                let token = rt.telegram_bot_token.trim().to_string();
-                let chat = rt.telegram_chat_id.trim().to_string();
-                if token.is_empty() || chat.is_empty() {
-                    tokio::time::sleep(Duration::from_secs(10)).await;
-                    continue;
+            while let Some(first) = card_rx.recv().await {
+                let token = settings_store.snapshot().telegram_bot_token.trim().to_string();
+                // Presses that came in one poll are handled in turn, as before.
+                let mut actions = vec![first];
+                while let Ok(more) = card_rx.try_recv() {
+                    actions.push(more);
                 }
-                poller.set_allowed_chat_id(&chat);
-                let actions = match poller.poll_once(&http, &token).await {
-                    Ok(a) => a,
-                    Err(e) => {
-                        warn!("telegram poll failed: {e:#}");
-                        tokio::time::sleep(Duration::from_secs(5)).await;
-                        continue;
-                    }
-                };
                 for action in actions {
                     let rt = settings_store.snapshot();
                     // Appointments: ✅ / ❌ on their card. On its own task — a text
@@ -1390,6 +1391,8 @@ async fn main() -> Result<()> {
         .route("/v1/turn", post(turn))
         .route("/v1/transfer", get(transfer_smoke).post(transfer_smoke))
         .route("/ws", get(ws_upgrade))
+        // MCP tool interface (crate::mcp): off and silent until enabled with a token.
+        .merge(mcp::router(remote.clone()))
         .nest_service("/calls", calls_router(calls_state))
         .layer(TraceLayer::new_for_http())
         .with_state(state);
@@ -1792,6 +1795,7 @@ async fn health(
         json!(rt.answer_unknown_callers),
     );
     body.insert("persona_stall_spam".into(), json!(rt.persona_stall_spam));
+    body.insert("scam_review_without_keywords".into(), json!(rt.scam_review_without_keywords));
     body.insert(
         "persona_stall_max_min".into(),
         json!(rt.persona_stall_max_secs() / 60),
@@ -6190,6 +6194,8 @@ struct GeminiSessionCore {
     delivered_bytes: Arc<AtomicU64>,
     play_head: Arc<gemini_live::DownlinkPlayHead>,
     stall_engaged: Arc<AtomicBool>,
+    /// How the call was judged as sales / scam (for the call record).
+    stall_judgement: Arc<std::sync::Mutex<Option<calls::ScamJudgement>>>,
     barge_in: Arc<AtomicBool>,
     /// What the caller agrees to on this call (appointments on), for the call record.
     appointments: Option<Arc<appointments::CallAppointments>>,
@@ -6224,14 +6230,16 @@ fn start_gemini_session_core(
     let callback_cfg = callback_script.map(|system| GeminiRetryCfg { system, ..cfg.clone() });
     let is_callback = callback_cfg.is_some();
     let cfg = callback_cfg.as_ref().unwrap_or(cfg);
-    // Persona mode has no fixed clock, only the call-length safety cap; sales / scam stalling
-    // swaps in its prompt once the caller scores as sales/scam.
+    // Persona mode has no fixed clock, only the call-length safety cap. Sales / scam
+    // calls are judged on every persona call (not AI call-backs); stalling (setting
+    // persona_stall_spam) swaps in its prompt once one is.
     let stall_engaged = Arc::new(AtomicBool::new(false));
+    let stall_judgement: Arc<std::sync::Mutex<Option<calls::ScamJudgement>>> = Default::default();
     let persona_max_secs = rt.persona_max_secs();
     let server_vad = rt.gemini_server_vad;
     let thinking_level = rt.gemini_thinking_level.clone();
     let caller_slot = Arc::new(std::sync::Mutex::new(cfg.caller_id.clone()));
-    let stall_cfg = (persona && rt.persona_stall_spam && !is_callback).then(|| {
+    let stall_cfg = (persona && !is_callback).then(|| {
         let serial_for_ctx = serial.to_string();
         let caller_slot_for_ctx = caller_slot.clone();
         gemini_live::StallCfg {
@@ -6239,6 +6247,9 @@ fn start_gemini_session_core(
             system_prompt: rt.persona_stall_system_prompt(),
             model: rt.gemini_stall_model.clone(),
             max_secs: rt.persona_stall_max_secs(),
+            play_along: rt.persona_stall_spam,
+            review_without_keywords: rt.scam_review_without_keywords,
+            judgement: stall_judgement.clone(),
             caller_context: Some(gemini_live::CallerContextFn(Arc::new(move || {
                 let caller = caller_slot_for_ctx
                     .lock()
@@ -6247,9 +6258,14 @@ fn start_gemini_session_core(
                 let sim = call_sim_country(&serial_for_ctx)
                     .or_else(|| phone_region::last_sim(&canonical_device_serial(&serial_for_ctx)));
                 let saved_contact = contacts::review_label(&caller, sim.as_deref());
+                // The owner's marks, earlier verdicts and number hints (scam database).
+                let facts = scam_db::caller_facts(&caller, sim.as_deref());
                 stall_review::CallerContext {
                     number: caller,
                     saved_contact,
+                    number_notes: facts.notes,
+                    owner_safe: facts.owner_safe,
+                    flagged_before: facts.flagged_before,
                 }
             }))),
         }
@@ -6405,6 +6421,7 @@ fn start_gemini_session_core(
         delivered_bytes,
         play_head,
         stall_engaged,
+        stall_judgement,
         barge_in,
         appointments: appointment_book,
         caller: caller_slot,
@@ -6442,6 +6459,7 @@ async fn run_gemini_session_to_end(
         delivered_bytes,
         play_head,
         stall_engaged,
+        stall_judgement,
         appointments,
         ..
     } = core;
@@ -6497,8 +6515,10 @@ async fn run_gemini_session_to_end(
         let play_head = play_head.clone();
         let media_call_guard = media_call_guard.clone();
         let stall_engaged = stall_engaged.clone();
+        let stall_judgement = stall_judgement.clone();
         tokio::spawn(async move {
             let mut stall_recorded = false;
+            let mut judged_seen: Option<calls::ScamJudgement> = None;
             loop {
                 if !media_call_guard.is_current() {
                     info!("Gemini hangup watcher invalidated serial={serial}");
@@ -6513,6 +6533,26 @@ async fn run_gemini_session_to_end(
                             c.push_event("persona_stall_spam");
                         }
                     }
+                }
+                // How it was judged (kind of call, let go again), and judged with
+                // stalling off: the record says so too.
+                let judged_now = stall_judgement.lock().ok().and_then(|g| g.clone());
+                if judged_now != judged_seen {
+                    if let Some(j) = judged_now.clone() {
+                        if let Some(_lease) = media_call_guard.lease_current().await {
+                            let mut slot = active_call.lock().await;
+                            if let Some(c) = slot.as_mut() {
+                                if !stall_engaged.load(Ordering::Relaxed) && !c.has_event("persona_scam_detected") {
+                                    c.push_event("persona_scam_detected");
+                                }
+                                if j.released && !c.has_event("persona_stall_released") {
+                                    c.push_event("persona_stall_released");
+                                }
+                                c.set_scam(j);
+                            }
+                        }
+                    }
+                    judged_seen = judged_now;
                 }
                 if force_hangup.load(Ordering::Relaxed) {
                     do_gemini_goodbye_hangup(
@@ -8647,7 +8687,7 @@ fn spawn_ai_talk_tg_summary(
     let ai_rel = record.ai_audio_path.clone();
     let remote_rel = record.remote_audio_path.clone();
     let duration_ms = record.duration_ms;
-    let end_hint = summary_end_hint(&record.events);
+    let end_hint = summary_end_hint(&record.events, record.scam.as_ref());
     // The AI's call-back with an appointment's answer: no appointment and no
     // calendar suggestion from it, its own title, its result for the task.
     let ai_callback = appointments::is_ai_callback(&record.events);
@@ -8657,7 +8697,23 @@ fn spawn_ai_talk_tg_summary(
     let errand_store = state.errands.clone();
     // A call-back nobody answered ends the AI's way too: no "AI failed".
     let ai_failed = record_had_ai_fail_hangup(&record.events) && !ai_callback;
-    let stalled = record.events.iter().any(|e| e == "persona_stall_spam");
+    // Stalled and not let go again by the later check.
+    let stalled = record.events.iter().any(|e| e == "persona_stall_spam")
+        && !record.events.iter().any(|e| e == "persona_stall_released");
+    // Judged sales / scam during the call (stalling on or off), not let go again.
+    let scam = record.scam.clone().filter(|j| j.stands());
+    let judged = scam.is_some();
+    // Remembered for the number's next calls (hidden numbers are not): the owner's
+    // own marks stand over this.
+    if let Some(j) = &scam {
+        let sim = record.sim_country.clone().or_else(|| phone_region::last_sim(&canonical_device_serial(&serial)));
+        if let Some(key) = scam_db::number_key(&caller, sim.as_deref()) {
+            match scam_db::numbers().record_auto(&key, &j.kind, &j.typology) {
+                Some(e) => info!("scam number remembered call_id={call_id} kind={} typology={} times={}", j.kind, j.typology, e.count),
+                None => info!("scam number already marked by the owner call_id={call_id}"),
+            }
+        }
+    }
     // Nothing from the AI reached the caller: Gemini's own transcript is text it
     // generated but never played (e.g. 「喂？你好。」 with 0 audio) — drop it.
     let ai_silent = record.tts_bytes == 0;
@@ -8677,12 +8733,14 @@ fn spawn_ai_talk_tg_summary(
         let (agreed, mut voided) = match &appointment_book {
             Some(book) => {
                 book.settled(appointments::TOOL_WAIT).await;
+                // A time sent back for the caller's yes that they hung up on is kept, marked unconfirmed.
+                book.seal_unconfirmed();
                 (book.outcome(), book.voided())
             }
             None => (recorded_appointment, Vec::new()),
         };
         let mut appointment = match agreed {
-            Some(a) if stalled || ai_failed => {
+            Some(a) if stalled || judged || ai_failed => {
                 voided.extend(appointments::all_events(&a));
                 None
             }
@@ -8857,7 +8915,7 @@ fn spawn_ai_talk_tg_summary(
             note_source = "fallback";
             if stalled {
                 // We know what it was without the summary model: say so instead of a quote.
-                body = stall_fallback_summary(&live_full, secs);
+                body = stall_fallback_summary(&live_full, secs, scam.as_ref());
             }
         }
         let ai_failed_line = locale::notify_phrases().s_ai_failed;
@@ -8879,6 +8937,7 @@ fn spawn_ai_talk_tg_summary(
         // call: no card, what it put in the calendar is deleted, and the
         // summary says so. Calls without an appointment are left as they were.
         let late_sales = !stalled
+            && !judged
             && appointment.is_some()
             && !gemini_live::dialogue_own_matter(&live_full)
             && (deepseek::summary_says_sales(locale::notify_lang(), &body)
@@ -8912,6 +8971,7 @@ fn spawn_ai_talk_tg_summary(
             && !ai_callback
             && note_source == "deepseek"
             && !stalled
+            && !judged
             && !late_sales
             && !ai_failed
         {
@@ -9140,8 +9200,9 @@ fn ai_fail_summary_body(secs: f64) -> String {
 }
 
 /// Notification lines for a stalled sales / scam call when the summary model is unavailable
-/// (e.g. repeated 503s) — topic from the caller's own keywords, no transcript quote.
-fn stall_fallback_summary(dialogue: &str, secs: f64) -> String {
+/// (e.g. repeated 503s): the kind of call it was judged ("疑似詐騙：假冒檢警要求監管帳戶"), or
+/// the topic from the caller's own keywords; no transcript quote.
+fn stall_fallback_summary(dialogue: &str, secs: f64, scam: Option<&calls::ScamJudgement>) -> String {
     let caller: String = dialogue
         .lines()
         .filter_map(|l| l.trim().strip_prefix("對方："))
@@ -9152,7 +9213,9 @@ fn stall_fallback_summary(dialogue: &str, secs: f64) -> String {
     let p = locale::phrases(lang);
     let sep = p.sep;
     let named: String = hits.iter().take(4).copied().collect::<Vec<_>>().join(p.list_sep);
-    let topic = if named.is_empty() {
+    let topic = if let Some(t) = scam.and_then(scam_topic) {
+        t
+    } else if named.is_empty() {
         p.s_stall_topic.to_string()
     } else {
         locale::fill(p.s_stall_topic_kw, &named)
@@ -9183,10 +9246,22 @@ fn clip_dialogue_for_summary(dialogue: &str) -> String {
     )
 }
 
+/// The kind of call a sales / scam judgement names, in the notification
+/// language and the summary's own words: 「疑似詐騙：假冒檢警要求監管帳戶」,
+/// "Sales call: Insurance sales". None when it named no kind.
+fn scam_topic(j: &calls::ScamJudgement) -> Option<String> {
+    let lang = locale::notify_lang();
+    let t = scam_db::typology(&j.typology)?;
+    let (sales, scam) = deepseek::sales_labels(lang);
+    let label = if t.category == scam_db::Category::Scam { scam } else { sales };
+    Some(format!("{label}{}{}", locale::phrases(lang).sep, t.name(lang)))
+}
+
 /// One short line for the summary model about how the call ended, from the
-/// record events (in the owner's language, like the summary).
-fn summary_end_hint(events: &[String]) -> String {
+/// record events and how the call was judged (in the owner's language, like the summary).
+fn summary_end_hint(events: &[String], scam: Option<&calls::ScamJudgement>) -> String {
     let has = |e: &str| events.iter().any(|x| x == e);
+    let topic = scam.and_then(scam_topic);
     if has("persona_ai_fail_hangup") {
         locale::notify_zh_or("AI 連不上，系統直接掛斷，對方沒聽到任何回應", "the AI could not connect; the system hung up and the caller heard nothing")
     } else if has("gemini_fail_to_voicemail") || has("gemini_zero_delivery_to_voicemail") {
@@ -9195,8 +9270,22 @@ fn summary_end_hint(events: &[String]) -> String {
         locale::notify_zh_or("未顯示號碼，播拒接語音後掛斷（AI 沒有接）", "hidden number: the refusal announcement was played, then hung up (the AI did not answer)")
     } else if has("reject_list") {
         locale::notify_zh_or("拒接號碼：播無法接通語音後掛斷（AI 沒有接）", "blocked number: the unavailable announcement was played, then hung up (the AI did not answer)")
+    } else if has("persona_stall_released") {
+        locale::notify_zh_or("系統一度以為是推銷／詐騙，再確認一次是正常電話，AI 回到正常應對", "the system first took it for a sales / scam call; a second check found an ordinary call and the AI went back to talking normally")
     } else if has("persona_stall_spam") {
-        locale::notify_zh_or("系統判斷像推銷／詐騙，AI 改成故意陪他聊、拖時間", "the system judged it a sales / scam call, so the AI deliberately kept the caller talking to waste their time")
+        match topic {
+            Some(t) => locale::notify_zh_or(
+                &format!("系統判斷是推銷／詐騙（{t}），AI 改成故意陪他聊、拖時間"),
+                &format!("the system judged it a sales / scam call ({t}), so the AI deliberately kept the caller talking to waste their time"),
+            ),
+            None => locale::notify_zh_or("系統判斷像推銷／詐騙，AI 改成故意陪他聊、拖時間", "the system judged it a sales / scam call, so the AI deliberately kept the caller talking to waste their time"),
+        }
+    } else if has("persona_scam_detected") {
+        let t = topic.unwrap_or_else(|| locale::notify_phrases().s_stall_topic.to_string());
+        locale::notify_zh_or(
+            &format!("系統判斷是推銷／詐騙（{t}）；陪聊功能關著，AI 照一般方式應對"),
+            &format!("the system judged it a sales / scam call ({t}); stalling is off, so the AI answered as usual"),
+        )
     } else if has("ai_segment_end") || has("gemini_unmute_after_greet") {
         locale::notify_zh_or("AI 接聽並對話後結束（AI 說掰掰掛斷，或對方先掛）", "the AI answered and talked; the call ended normally (the AI said goodbye and hung up, or the caller hung up first)")
     } else {
@@ -10674,6 +10763,7 @@ mod ring_prewarm_tests {
                 delivered_bytes: Arc::new(AtomicU64::new(0)),
                 play_head: gemini_live::DownlinkPlayHead::new(),
                 stall_engaged: Arc::new(AtomicBool::new(false)),
+                stall_judgement: Default::default(),
                 barge_in: Arc::new(AtomicBool::new(false)),
                 appointments: None,
                 caller: Arc::new(std::sync::Mutex::new(caller.to_string())),
@@ -11032,7 +11122,7 @@ mod unknown_caller_tests {
         assert_eq!(p.take("pixel-10111"), None);
         assert!(REJECT_PENDING_TTL >= Duration::from_secs(10));
         // The record says why there was no AI.
-        assert!(summary_end_hint(&["reject_list".to_string()]).contains("拒接號碼"));
+        assert!(summary_end_hint(&["reject_list".to_string()], None).contains("拒接號碼"));
     }
 
     #[test]
@@ -11262,10 +11352,36 @@ mod summary_fallback_tests {
     #[test]
     fn stall_fallback_names_the_pitch_not_the_carrier_prompt() {
         let dialogue = "接聽：喂？\n對方：是國際電話, 請注意小心詐騙\n對方：你有聽到嗎?\n接聽：有啊\n對方：我有一個保險想要推薦給你。";
-        let s = stall_fallback_summary(dialogue, 71.9);
+        let s = stall_fallback_summary(dialogue, 71.9, None);
         assert!(s.starts_with("事情：推銷／詐騙電話（提到：保險、推薦）"), "{s}");
         assert!(s.contains("約 72 秒") && s.ends_with("要處理：不用"), "{s}");
-        assert!(stall_fallback_summary("對方：你好", 600.0).contains("約 10 分鐘"));
+        assert!(stall_fallback_summary("對方：你好", 600.0, None).contains("約 10 分鐘"));
+    }
+
+    /// The kind of call the call was judged names the matter (2026-11: a fake
+    /// prosecutor's call read 「推銷／詐騙電話」 only).
+    #[test]
+    fn the_judged_kind_of_call_names_the_matter_and_the_end_hint() {
+        let judged = calls::ScamJudgement {
+            kind: "scam".into(),
+            typology: "fake_official".into(),
+            confidence: "high".into(),
+            source: "review".into(),
+            released: false,
+        };
+        let s = stall_fallback_summary("對方：這裡是地檢署，你的帳戶涉及洗錢", 90.0, Some(&judged));
+        assert!(s.starts_with("事情：疑似詐騙：假冒檢警要求監管帳戶"), "{s}");
+        let sales = calls::ScamJudgement { kind: "sales".into(), typology: "insurance_sales".into(), ..judged.clone() };
+        assert_eq!(scam_topic(&sales).as_deref(), Some("推銷電話：保險推銷"));
+        let hint = summary_end_hint(&["persona_stall_spam".to_string()], Some(&judged));
+        assert!(hint.contains("疑似詐騙：假冒檢警要求監管帳戶") && hint.contains("陪他聊"), "{hint}");
+        let off = summary_end_hint(&["persona_scam_detected".to_string()], Some(&judged));
+        assert!(off.contains("陪聊功能關著"), "{off}");
+        let let_go = summary_end_hint(&["persona_stall_spam".to_string(), "persona_stall_released".to_string()], Some(&judged));
+        assert!(let_go.contains("正常電話"), "{let_go}");
+        // A kind the database does not know: the old wording.
+        let unknown = calls::ScamJudgement { typology: String::new(), ..judged };
+        assert!(summary_end_hint(&["persona_stall_spam".to_string()], Some(&unknown)).contains("像推銷／詐騙"));
     }
 
     #[test]

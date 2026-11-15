@@ -91,9 +91,9 @@ AI 會一直問、故意把數字聽錯、聊一聊就岔題，就是不給任�
 
 在控制台「**系統**」頁或 Bageo App 裡，隨時把備用機切回普通手機、再切回來。一般手機模式下，Google 電話恢復成撥號程式、勿擾模式關閉、音量還原，來電照常響、由你自己接；重開機後模式不變。切換由 Magisk／KernelSU 模組的 root 小程式執行，所以 Bageo App 本身完全不需要 root 權限。詳見[一般手機模式](PHONE.md#一般手機模式)。
 
-## 16 種通知管道，資料存在自己的硬碟
+## 32 種通知管道，資料存在自己的硬碟
 
-Telegram（預約卡片附「同意／不同意」按鈕）、Discord、Slack／Mattermost、LINE Messaging API、ntfy、Gotify、Bark、Pushover、企業微信、釘釘（支援加簽）、飛書／Lark、Server醬、Matrix、Gmail、Apprise，以及給 n8n、Zapier、Home Assistant 用的 JSON Webhook。可以任意搭配，每則訊息都會送到全部管道。選用的[簡訊轉發器](../../tools/sms_forward/README.md)會把手機收到的簡訊也轉到同樣的管道。
+Telegram（預約卡片附「同意／不同意」按鈕）、Discord、Slack／Mattermost、Microsoft Teams、Google Chat、Rocket.Chat、Zulip、Webex、Nextcloud Talk、Synology Chat、LINE Messaging API、Signal（透過 signal-cli-rest-api）、ntfy、Gotify、Bark、Pushover、Pushbullet、企業微信、釘釘（支援加簽）、飛書／Lark、Server醬、PushPlus、PushDeer、WxPusher、Chanify、Matrix、Gmail、任何 SMTP 伺服器的電子郵件、Home Assistant、IFTTT、Apprise，以及給 n8n、Zapier 用的 JSON Webhook。可以任意搭配，每則訊息都會送到全部管道。選用的[簡訊轉發器](../../tools/sms_forward/README.md)會把手機收到的簡訊也轉到同樣的管道。
 
 會離開你電腦的有：即時通話音訊送到 Gemini，逐字稿送到摘要模型（預設是同一把金鑰的 Gemini Flash-Lite，也可以換成任何 OpenAI 相容服務，包括本機的 Ollama），摘要送到你設定的通知管道。詳見[隱私、安全與法律](PRIVACY_AND_LEGAL.md)。
 

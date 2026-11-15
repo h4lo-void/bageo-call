@@ -27,7 +27,7 @@ flowchart LR
     agent -- "文字记录、联系人文件、<br/>防诈复审" --> llm[("Gemini Flash-Lite<br/>或 OpenAI 兼容模型")]
     agent --> data
     ui <--> agent
-    agent -- "HTTPS" --> notify["16 种通知服务"]
+    agent -- "HTTPS" --> notify["32 种通知服务"]
 ```
 
 ## 各个部分
@@ -47,7 +47,8 @@ flowchart LR
 | `main.rs` | 启动、手机的 WebSocket 接口、来电状态机、响铃预热、通话结束后的处理流程。 |
 | `gemini_live.rs` | 每通电话一条 Live 连接：音频转发、回声检查、插话、挂断规则、推销检测与切换到陪聊模式、连接续接，以及拨出用的模式（等对方接起、回铃音过滤、工具调用）。 |
 | `prompts.rs`、`locale.rs` | 按语言和接听身份组装每通电话的系统提示词；每种语言要说和要听的语句。 |
-| `stall_review.rs` | 进入陪聊前的复审：`gemini-flash-lite-latest` 在 1.5 秒内把通话判为 `scam_or_sales`、`normal`、`ivr_recording` 或 `too_early`。 |
+| `stall_review.rs` | 进入陪聊前的复审：`gemini-flash-lite-latest` 在 1.5 秒内把通话判为 `scam_or_sales`、`normal`、`ivr_recording` 或 `too_early`，并说出是数据库里哪一种话术、有多确定。 |
+| `scam_db.rs` | 推销与诈骗数据库（`data/scam_db.json`：话术类型、19 种语言的关键词、号码提示）、你在 `config/scam_db.local.json` 加的内容，以及每个号码的标记。 |
 | `appointments.rs` | 普通通话的预约工具、由它们生成的待处理事项、同意／不同意、用短信或 AI 回拨告诉对方，以及共用的拨出队列。 |
 | `callback.rs` | 手机的控制连接：`place_call`、`send_sms` 及其结果，发到正确的手机。 |
 | `errands.rs` | AI 代打：号码检查、选择手机与 SIM 卡（`SimBook`）、代打脚本与 `ask_owner`、实时字幕、通话中你输入的内容、结构化结果。 |
@@ -56,7 +57,7 @@ flowchart LR
 | `calendar.rs` | 日历建议，以及 Google、Outlook.com、Microsoft 365、Yahoo、`.ics` 的“添加到日历”链接。 |
 | `deepseek.rs` | 通话后的摘要，走 Gemini 或任何 OpenAI 兼容 API（文件名是历史遗留）；其他语言句子的翻译；代打的结果。 |
 | `tasks.rs` | “待处理事项”背后的存储。 |
-| `notify.rs`、`gmail.rs`、`tg_inbound.rs` | 16 种通知渠道、通过 SMTP 发邮件、Telegram 按钮。 |
+| `notify.rs`、`gmail.rs`、`tg_inbound.rs` | 32 种通知渠道、通过 SMTP 发邮件、Telegram 按钮。 |
 | `calls.rs`、`calls_http.rs` | 通话记录、录音与文字记录；网页控制台的 REST API。 |
 | `settings_store.rs` | `.env` 加上控制台保存的设置，修改后无需重启。 |
 | `usb_bridge.rs` | 为每部 USB 手机维持 `adb reverse`，并启动应用的通话服务。 |
@@ -102,7 +103,7 @@ sequenceDiagram
 5. **挂断。** 对方最后一句是道别，或 AI 道别后线路安静 6 秒，主程序就发送 `hangup`。预录语音菜单不回应，安静 4 秒后挂断（最多 20 秒）。如果 AI 一直没出声（没有密钥、服务故障），就立即结束通话，不让对方对着一片安静。
 6. **之后**（`main.rs`、`deepseek.rs`、`appointments.rs`、`notify.rs`）。录音保存成三份（整通、只有对方、只有 AI）。文字记录发给摘要模型，四行摘要保存在通话旁边并发到每个通知渠道。对方提出的每一条预约都变成一项“**待处理事项**”（推销或诈骗电话不会产生）。其他语言的句子在后台翻译，译好再补进记录，通知不必等它。
 
-> **例子：一通挂不掉的推销电话。** 对方说要帮你做“免费保单体检”。关键词分数过线，`stall_review.rs` 返回 `scam_or_sales`，一条带着陪聊提示词的新 Live 连接接手：AI 装作有兴趣、追问保费怎么算，绝不给信息、不答应任何事。如果对方只报了自己是谁，复审返回 `too_early`，等他下一句说完再判一次。没有密钥、出错或返回太慢，一律当成 `scam_or_sales`。
+> **例子：一通挂不掉的推销电话。** 对方说要帮你做“免费保单体检”。关键词分数过线，`stall_review.rs` 返回 `scam_or_sales`，一条带着陪聊提示词的新 Live 连接接手：AI 装作有兴趣、追问保费怎么算，绝不给信息、不答应任何事。如果对方只报了自己是谁，复审返回 `too_early`，等他下一句说完再判一次。复审没在时限内回答时，只有不管谁说都是诈骗的话（验证码、操作 ATM、安全账户）会立刻开始陪聊；其他情况等下一句再看，连续失败两次才只靠关键词。陪聊开始后对方再说两句，会再看一次，误判的来电可以放回正常应对。
 
 ## 一通拨出：AI 代打或预约回拨
 
@@ -157,7 +158,7 @@ data/calls/
 - **语音对语音。** 同一个模型听也说，延迟和插话由模型处理，而不是靠语音转文字、LLM、文字转语音串起来的一条链。
 - **你的 SIM 卡、你的手机。** 不用 SIP 中继，也不用云通信服务。手机通信协议很小，写在 [API](API.md) 里，其他前端也可以取代手机。
 - **单一进程。** 没有其他东西要安装、保活或加固。
-- **有风险的路径一律保守。** 复审结果不确定就当成诈骗（继续陪聊，不放行）；SIM 卡不明的手机不接代打；预约一定等你决定。
+- **有风险的路径一律保守。** 听到不管谁说都是诈骗的话，复审答不出来也照样陪聊；SIM 卡不明的手机不接代打；预约一定等你决定。
 
 ## 旧代码路径
 

@@ -55,7 +55,7 @@ Bageo 1.0 这套开源 AI 电话助理已经做到了哪些、哪些只做到一
 |---|---|---|
 | 自带密钥，没有平台按分钟计费 | 已完成 | 一个 Gemini 密钥就覆盖全部；摘要可以改用任何 OpenAI 兼容服务或本地模型。 |
 | 数据都存在自己的电脑上 | 已完成 | 发给模型和通知服务的内容除外，见[隐私](PRIVACY_AND_LEGAL.md)。 |
-| 通知、webhook、n8n／Zapier | 已完成 | 16 种渠道，包括电子邮件和 [JSON webhook](NOTIFICATIONS.md#webhook-json)；其他用 REST API。 |
+| 通知、webhook、n8n／Zapier | 已完成 | 32 种渠道，包括电子邮件和 [JSON webhook](NOTIFICATIONS.md#webhook-json)；其他用 REST API。 |
 | 任何设备都能打开的网页控制台 | 已完成 | `bageo.local`、二维码、添加到主屏幕。 |
 | 一步启动 | 已完成 | Windows、macOS、Linux 启动脚本；Docker 镜像。 |
 | 备用机切回普通手机 | 已完成 | 控制台或应用一键切换；应用不需要 root。 |

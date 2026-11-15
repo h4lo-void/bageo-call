@@ -1,3 +1,46 @@
+# Unreleased
+
+- **16 more notification channels (32 in all).** Microsoft Teams (Workflows
+  webhook with an Adaptive Card), Google Chat, Rocket.Chat, Zulip, Webex,
+  Nextcloud Talk, Synology Chat, Signal (through signal-cli-rest-api),
+  Pushbullet, PushPlus, PushDeer, WxPusher, Chanify, Home Assistant notify
+  services, IFTTT Webhooks, and email through any SMTP server with TLS
+  (STARTTLS or port 465). Built from each service's public documentation and
+  covered by unit tests; not yet tried with live accounts. See
+  [Notifications](docs/en/NOTIFICATIONS.md).
+- **通知管道再加 16 種（共 32 種）。** Microsoft Teams（Workflows Webhook，送 Adaptive Card）、Google Chat、Rocket.Chat、Zulip、Webex、Nextcloud Talk、Synology Chat、Signal（透過 signal-cli-rest-api）、Pushbullet、PushPlus、PushDeer、WxPusher、Chanify、Home Assistant 通知服務、IFTTT Webhooks，以及任何支援 TLS 的 SMTP 郵件伺服器（STARTTLS 或 465 埠）。依各服務的公開文件實作並有單元測試，還沒有在真實帳號上試過。見[通知](docs/zh-TW/NOTIFICATIONS.md)。
+- **通知渠道再加 16 种（共 32 种）。** Microsoft Teams（Workflows Webhook，发送 Adaptive Card）、Google Chat、Rocket.Chat、Zulip、Webex、Nextcloud Talk、Synology Chat、Signal（通过 signal-cli-rest-api）、Pushbullet、PushPlus、PushDeer、WxPusher、Chanify、Home Assistant 通知服务、IFTTT Webhooks，以及任意支持 TLS 的 SMTP 邮件服务器（STARTTLS 或 465 端口）。按各服务的公开文档实现并有单元测试，还没有在真实账号上试过。见[通知](docs/zh-CN/NOTIFICATIONS.md)。
+- **Chat commands (Telegram).** From the chat your notifications go to, look up calls (`/calls`, `/call`), have the AI call someone (`/errand` or plain words), decide to-dos, answer the AI's questions during its call and switch a phone's mode. Off until switched on per chat; calls, mode switches and to-do decisions wait for your OK; other chats get no answer. See [docs/en/CHAT_COMMANDS.md](docs/en/CHAT_COMMANDS.md).
+- **在聊天室操作（Telegram）。** 在收通知的聊天室就能查通話紀錄（`/calls`、`/call`）、叫 AI 代打（`/errand` 或直接打字）、處理待辦、回答 AI 通話中的問題、切換手機模式。要在每個聊天室各自打開；撥電話、切換模式、處理待辦都會先問你確認；其他聊天室一律不回覆。見 [docs/zh-TW/CHAT_COMMANDS.md](docs/zh-TW/CHAT_COMMANDS.md)。
+- **在聊天室操作（Telegram）。** 在接收通知的聊天室就能查通话记录（`/calls`、`/call`）、让 AI 代打（`/errand` 或直接打字）、处理待办、回答 AI 通话中的问题、切换手机模式。要在每个聊天室各自打开；拨电话、切换模式、处理待办都会先问你确认；其他聊天室一律不回复。见 [docs/zh-CN/CHAT_COMMANDS.md](docs/zh-CN/CHAT_COMMANDS.md)。
+- **MCP server for AI agents.** Claude, ChatGPT, Grok, Gemini CLI, OpenClaw and any other agent that uses remote MCP servers can read your call log, calls, to-dos and AI calls, and, if you allow it, ask for an AI call (`mcp_calls`: `confirm` waits for your yes in your command chat, `direct` queues it). Off and silent until enabled with a token; browser origins must be allowed; same checks, limits and key scrubbing as chat commands. See [docs/en/MCP.md](docs/en/MCP.md).
+- **給 AI 代理用的 MCP 伺服器。** Claude、ChatGPT、Grok、Gemini CLI、OpenClaw（龍蝦）等能接遠端 MCP 的代理，都能查通話紀錄、單通內容、待辦和 AI 代打；你允許的話還能提出代打（`mcp_calls`：`confirm` 等你在聊天室按執行，`direct` 直接排入）。要設 token 才會開、之前完全不回應；網頁來源要列入允許清單；檢查、上限、遮掉金鑰都跟聊天室指令一樣。見 [docs/zh-TW/MCP.md](docs/zh-TW/MCP.md)。
+- **给 AI 代理用的 MCP 服务器。** Claude、ChatGPT、Grok、Gemini CLI、OpenClaw（龙虾）等能接远程 MCP 的代理，都能查通话记录、单通内容、待办和 AI 代打；你允许的话还能提出代打（`mcp_calls`：`confirm` 等你在聊天室按执行，`direct` 直接排入）。要设 token 才会开、之前完全不响应；网页来源要列入允许列表；检查、上限、遮掉密钥都跟聊天室指令一样。见 [docs/zh-CN/MCP.md](docs/zh-CN/MCP.md)。
+- **Sharper scam and sales detection, in 19 languages.** What sales and scam
+  calls sound like is now a database (42 kinds of call, keywords in 19
+  languages) instead of word lists in the code, and you can add your own words
+  and numbers in `config/scam_db.local.json`. Calls without known words are
+  looked at too, so new scripts are caught; an unsure answer waits for the
+  caller's next turn; a review that fails convicts nobody unless they asked for
+  scam-only things (a code, ATM steps, a safe account); a caller judged wrongly
+  is let go back to a normal conversation. Each call's page shows what the call
+  was judged and lets you mark it scam, sales or not; the number's next calls
+  are judged with your mark. See [Settings](docs/en/SETTINGS.md#sales--scam-calls).
+- **繁體中文：詐騙與推銷辨識更準，支援 19 種語言。** 推銷與詐騙的說法改成資料庫（42 種話術、19 種語言的關鍵字），不再寫死在程式裡，也可以在 `config/scam_db.local.json` 加自己的字眼和號碼。沒踩到已知字眼的電話也會檢查，新話術也抓得到；模型不確定時等對方下一句再看；複審失敗時，除非對方要驗證碼、操作 ATM、轉安全帳戶這類只有詐騙才會要的東西，不再一律當詐騙；誤判的來電會放回正常應對。通話頁會顯示判斷結果，可以標「是詐騙」「是推銷」「不是」，這個號碼之後打來會參考你的標記。
+- **简体中文：诈骗与推销识别更准，支持 19 种语言。** 推销与诈骗的说法改成数据库（42 种话术、19 种语言的关键词），不再写死在程序里，也可以在 `config/scam_db.local.json` 加自己的词和号码。没碰到已知词的电话也会检查，新话术也能抓到；模型不确定时等对方下一句再看；复审失败时，除非对方要验证码、操作 ATM、转安全账户这类只有诈骗才会要的东西，不再一律当诈骗；误判的来电会放回正常应对。通话页会显示判断结果，可以标“是诈骗”“是推销”“不是”，这个号码之后打来会参考你的标记。
+- **The AI asks times and dates back before it counts on them.** On AI errands
+  it reads every time, date, quantity, price, address, phone number or booking
+  name back as a question as soon as it comes up, and waits for a yes before
+  any thanks or goodbye; the result and the notification mark anything the
+  other side never clearly confirmed as ⚠️ *Not confirmed by the other side*.
+  An appointment request is recorded only after the caller said yes to the time
+  read back in full (`propose_appointment` gets `confirmed_by_caller`; without
+  it the AI is sent back once to ask, and a time the caller hangs up on before
+  that still goes to your to-do list, marked unconfirmed). On normal calls the AI asks a time, date,
+  amount or phone number back once as a question. Stall Mode is unchanged.
+- **繁體中文：時間、日期先問清楚再算數。** AI 代打時，對方一講到時間、日期、數量、金額、地址、電話號碼或訂位名字，AI 馬上用問句複誦、等對方說對，確認前不道謝、不道別；對方沒有明確確認的項目，結果和通知會標 ⚠️「未經對方確認」。行程預約要等來電者對完整複誦的時間說對才記下（`propose_appointment` 新增 `confirmed_by_caller`，沒帶會退回一次要 AI 先問；對方在補問前就掛斷的話，照樣放進待處理事項並標示未確認）。一般來電講到時間、日期、金額或電話號碼，AI 會用問句複誦一次。陪聊模式不變。
+- **简体中文：时间、日期先问清楚再算数。** AI 代打时，对方一说到时间、日期、数量、金额、地址、电话号码或订位名字，AI 马上用问句复诵、等对方说对，确认前不道谢、不道别；对方没有明确确认的项目，结果和通知会标 ⚠️“未经对方确认”。日程预约要等来电者对完整复诵的时间说对才记下（`propose_appointment` 新增 `confirmed_by_caller`，没带会退回一次让 AI 先问；对方在补问前就挂断的话，照样放进待办事项并标注未确认）。普通来电说到时间、日期、金额或电话号码，AI 会用问句复诵一次。陪聊模式不变。
+
 # Bageo v1.0.0
 
 **English** · [繁體中文](#繁體中文) · [简体中文](#简体中文)

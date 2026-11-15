@@ -580,6 +580,7 @@ pub struct Phrases {
     pub ap_sms_cannot: &'static str,
     pub ap_pending: &'static str,
     pub ap_replaced: &'static str,
+    pub ap_time_unconfirmed: &'static str,
     pub ap_confirmed: &'static str,
     pub ap_declined: &'static str,
     pub ap_already: &'static str,
@@ -613,10 +614,6 @@ pub struct Phrases {
     pub farewells: &'static [&'static str],
     /// The caller is done ("that's all") when it ends what they said.
     pub wrapups: &'static [&'static str],
-    /// Sales / scam words: weight 2 = clear on its own, 1 = needs company.
-    pub stall: &'static [(&'static str, u32)],
-    /// The caller is following up on something the owner raised.
-    pub own_matter: &'static [&'static str],
 }
 
 pub fn phrases(lang: Lang) -> &'static Phrases {
@@ -755,6 +752,7 @@ static ZH_TW: Phrases = Phrases {
     ap_sms_cannot: "對方號碼收不到簡訊，請自己回電",
     ap_pending: "預約待你確認",
     ap_replaced: "通話中改過時間，先排入的「{}」還在行事曆上，請自己刪掉",
+    ap_time_unconfirmed: "對方沒有確認過這個時間，回覆前請先跟對方確認",
     ap_confirmed: "✅ 已同意預約",
     ap_declined: "❌ 已婉拒預約",
     ap_already: "這個預約已經處理過了",
@@ -777,8 +775,6 @@ static ZH_TW: Phrases = Phrases {
     ap_web_label: "網頁確認",
     farewells: &[],
     wrapups: &[],
-    stall: &[],
-    own_matter: &[],
 };
 
 static ZH_CN: Phrases = Phrases {
@@ -901,6 +897,7 @@ static ZH_CN: Phrases = Phrases {
     ap_sms_cannot: "对方号码收不到短信，请自己回电",
     ap_pending: "预约待你确认",
     ap_replaced: "通话中改过时间，先排入的“{}”还在日历上，请自己删掉",
+    ap_time_unconfirmed: "对方没有确认过这个时间，回复前请先跟对方确认",
     ap_confirmed: "✅ 已同意预约",
     ap_declined: "❌ 已婉拒预约",
     ap_already: "这个预约已经处理过了",
@@ -923,8 +920,6 @@ static ZH_CN: Phrases = Phrases {
     ap_web_label: "网页确认",
     farewells: &[],
     wrapups: &[],
-    stall: &[],
-    own_matter: &[],
 };
 
 static EN: Phrases = Phrases {
@@ -1047,6 +1042,7 @@ static EN: Phrases = Phrases {
     ap_sms_cannot: "can't text this number, so call them back yourself",
     ap_pending: "Appointment to confirm",
     ap_replaced: "The time changed during the call; the earlier \"{}\" is still in your calendar. Please delete it.",
+    ap_time_unconfirmed: "The caller never confirmed this time read back; check it with them before you answer",
     ap_confirmed: "✅ Appointment accepted",
     ap_declined: "❌ Appointment declined",
     ap_already: "This appointment has already been handled",
@@ -1077,36 +1073,6 @@ static EN: Phrases = Phrases {
         "that's all", "that is all", "that's it", "that's everything", "nothing else",
         "i'll let you go", "won't keep you", "gotta go", "got to go", "have to go",
         "i'll call back", "call back later", "i'll try again later",
-    ],
-    stall: &[
-        ("insurance", 2), ("life insurance", 2), ("health insurance", 2), ("auto insurance", 2),
-        ("policy check", 2), ("coverage", 1), ("premium", 1), ("policy", 1),
-        ("loan", 2), ("mortgage", 2), ("refinanc", 2), ("credit card", 2), ("interest rate", 2),
-        ("debt", 2), ("debt relief", 2), ("tax debt", 2), ("consolidat", 2), ("past due", 2),
-        ("overdue", 2), ("final notice", 2),
-        ("collection", 1), ("investment", 2), ("invest", 1), ("crypto", 2), ("bitcoin", 2),
-        ("forex", 2), ("trading", 1), ("guaranteed return", 2), ("warranty", 2),
-        ("extended warranty", 2), ("car warranty", 2), ("auto warranty", 2),
-        ("social security", 2), ("arrest warrant", 2), ("gift card", 2), ("wire transfer", 2),
-        ("verification code", 2), ("safe account", 2), ("remote access", 2), ("anydesk", 2),
-        ("teamviewer", 2), ("tech support", 2), ("medicare", 2), ("prize", 2),
-        ("lottery", 2), ("sweepstakes", 2), ("timeshare", 2), ("solar", 2), ("special offer", 2),
-        ("limited time", 2), ("business listing", 2), ("duct cleaning", 2), ("promotion", 1),
-        // Software / service pitches that want a "quick demo".
-        ("demo", 2), ("free trial", 2), ("our platform", 2), ("our product", 2),
-        ("our solution", 2), ("software", 1), ("our service", 1), ("quick call", 1),
-        ("crm", 1), ("subscription", 1),
-        // "free" alone is "are you free tonight": only these phrases count.
-        ("free gift", 2), ("free consultation", 2), ("free quote", 2), ("free estimate", 2),
-        ("for free", 1), ("free of charge", 1),
-        ("discount", 1), ("survey", 1), ("upgrade", 1), ("refund", 1),
-        ("suspended", 1), ("donation", 1), ("offer", 1), ("account", 1), ("bank", 1),
-        ("customer service", 1), ("representative", 1), ("department", 1),
-    ],
-    own_matter: &[
-        "your complaint", "your inquiry", "your enquiry", "your request", "you reported",
-        "you contacted us", "following up on your", "regarding your case", "your claim",
-        "your ticket", "returning your call", "the issue you had", "you had with our",
     ],
 };
 
@@ -1230,6 +1196,7 @@ static JA: Phrases = Phrases {
     ap_sms_cannot: "相手の番号は SMS を受け取れません。折り返し電話してください",
     ap_pending: "予約の確認待ち",
     ap_replaced: "通話中に時間が変わりました。先に登録した「{}」がカレンダーに残っているので削除してください",
+    ap_time_unconfirmed: "相手はこの時間を確認していません。返事の前に相手に確認してください",
     ap_confirmed: "✅ 予約を承諾しました",
     ap_declined: "❌ 予約をお断りしました",
     ap_already: "この予約はすでに処理済みです",
@@ -1264,19 +1231,6 @@ static JA: Phrases = Phrases {
         // start of a business call: only after 「では」 does it close one.
         "ではよろしくお願いいたします", "ではよろしくお願いします", "じゃあよろしくお願いします",
     ],
-    stall: &[
-        ("保険", 2), ("医療保険", 2), ("保険見直し", 2), ("ローン", 2), ("融資", 2),
-        ("借入", 2), ("借り換え", 2), ("クレジットカード", 2),
-        ("金利", 2), ("返済", 2), ("滞納", 2), ("未納", 2), ("督促", 2), ("投資", 2),
-        ("資産運用", 2), ("仮想通貨", 2), ("暗号資産", 2), ("ビットコイン", 2), ("株", 1),
-        ("不動産", 2), ("マンション", 1), ("還付金", 2), ("振り込", 2), ("振込", 2),
-        ("暗証番号", 2), ("認証コード", 2), ("遠隔操作", 2), ("警察", 1), ("検察", 2), ("逮捕", 2),
-        ("当選", 2), ("キャンペーン", 2), ("お得", 1), ("無料", 1), ("割引", 1),
-        ("デモ", 2), ("無料体験", 2), ("無料トライアル", 2), ("導入", 1), ("弊社", 1),
-        ("アンケート", 1), ("光回線", 2), ("太陽光", 2), ("蓄電池", 2), ("電気料金", 1), ("プラン", 1), ("ご案内", 1),
-        ("口座", 1), ("銀行", 1), ("カスタマー", 1), ("担当", 1),
-    ],
-    own_matter: &["お問い合わせの件", "お問い合わせいただいた", "ご依頼の件", "ご連絡いただいた件", "折り返し"],
 };
 
 static KO: Phrases = Phrases {
@@ -1399,6 +1353,7 @@ static KO: Phrases = Phrases {
     ap_sms_cannot: "상대 번호는 문자를 받을 수 없습니다. 직접 전화해 주세요",
     ap_pending: "예약 확인 대기",
     ap_replaced: "통화 중에 시간이 바뀌었습니다. 먼저 등록한 \"{}\" 일정이 캘린더에 남아 있으니 직접 지워 주세요",
+    ap_time_unconfirmed: "상대방이 이 시간을 확인하지 않았습니다. 답하기 전에 먼저 확인해 주세요",
     ap_confirmed: "✅ 예약을 수락했습니다",
     ap_declined: "❌ 예약을 거절했습니다",
     ap_already: "이미 처리된 예약입니다",
@@ -1427,17 +1382,6 @@ static KO: Phrases = Phrases {
         "이상입니다", "그게 다예요", "다시 전화드릴게요", "다시 전화드리겠습니다",
         "다시 연락드릴게요", "다시 연락드리겠습니다",
     ],
-    stall: &[
-        ("보험", 2), ("대출", 2), ("대환", 2), ("저금리", 2), ("금리", 2), ("신용카드", 2), ("카드론", 2), ("연체", 2),
-        ("미납", 2), ("채무", 2), ("투자", 2), ("주식", 1), ("코인", 2), ("가상화폐", 2),
-        ("비트코인", 2), ("분양", 2), ("부동산", 1), ("검찰", 2), ("수사관", 2), ("금융감독원", 2),
-        ("보이스피싱", 2), ("안전계좌", 2), ("원격", 2),
-        ("계좌이체", 2), ("송금", 2), ("인증번호", 2), ("비밀번호", 2), ("당첨", 2),
-        ("이벤트", 1), ("할인", 1), ("무료", 1), ("혜택", 1), ("요금제", 1), ("설문", 1),
-        ("데모", 2), ("시연", 2), ("무료 체험", 2), ("무료체험", 2), ("솔루션", 1), ("도입", 1),
-        ("상담", 1), ("고객센터", 1), ("계좌", 1), ("은행", 1), ("안내", 1),
-    ],
-    own_matter: &["문의하신", "접수하신", "요청하신", "신고하신", "민원"],
 };
 
 static ES: Phrases = Phrases {
@@ -1560,6 +1504,7 @@ static ES: Phrases = Phrases {
     ap_sms_cannot: "ese número no puede recibir SMS; devuelve tú la llamada",
     ap_pending: "Cita por confirmar",
     ap_replaced: "La hora cambió durante la llamada; \"{}\" sigue en tu calendario, bórralo tú",
+    ap_time_unconfirmed: "Quien llamó no confirmó esta hora; compruébala con esa persona antes de responder",
     ap_confirmed: "✅ Cita aceptada",
     ap_declined: "❌ Cita rechazada",
     ap_already: "Esta cita ya se gestionó",
@@ -1589,22 +1534,6 @@ static ES: Phrases = Phrases {
         "eso es todo", "nada más", "eso sería todo", "le dejo", "te dejo", "tengo que irme",
         "me tengo que ir", "le llamo luego", "vuelvo a llamar",
     ],
-    stall: &[
-        ("seguro", 2), ("póliza", 2), ("préstamo", 2), ("prestamo", 2), ("hipoteca", 2),
-        ("crédito", 2), ("credito", 2), ("tarjeta", 1), ("interés", 1), ("deuda", 2),
-        ("impago", 2), ("morosidad", 2), ("inversión", 2), ("inversion", 2), ("invertir", 2),
-        ("criptomoneda", 2), ("bitcoin", 2), ("bolsa", 1), ("rentabilidad", 2), ("premio", 2),
-        ("sorteo", 2), ("lotería", 2), ("transferencia", 2), ("código de verificación", 2),
-        ("contraseña", 2), ("oferta", 1), ("promoción", 1), ("promocion", 1), ("descuento", 1),
-        ("gratis", 1), ("tarifa", 1), ("encuesta", 1), ("compañía", 1), ("luz", 1), ("fibra", 1),
-        ("demostración", 2), ("prueba gratuita", 2), ("nuestra plataforma", 2), ("nuestro producto", 2),
-        ("cuenta", 1), ("banco", 1), ("atención al cliente", 1), ("asesor", 1),
-        // Fake bank / card centre: go to an ATM to stop instalments, a frozen account.
-        ("cajero", 2), ("cajero automático", 2), ("cajero automatico", 2), ("cuotas", 2),
-        ("plan de pagos", 2), ("mensualidades", 2), ("cargo recurrente", 2), ("cargos automáticos", 2),
-        ("cuenta bloqueada", 2), ("cuenta congelada", 2), ("desbloquear", 2),
-    ],
-    own_matter: &["su reclamación", "su consulta", "su solicitud", "su incidencia", "su queja", "devolver su llamada"],
 };
 
 static FR: Phrases = Phrases {
@@ -1727,6 +1656,7 @@ static FR: Phrases = Phrases {
     ap_sms_cannot: "ce numéro ne reçoit pas de SMS, rappelez cette personne vous-même",
     ap_pending: "Rendez-vous à confirmer",
     ap_replaced: "L'heure a changé pendant l'appel ; « {} » est toujours dans votre agenda, supprimez-le vous-même",
+    ap_time_unconfirmed: "Le correspondant n'a pas confirmé cette heure ; vérifiez-la avec lui avant de répondre",
     ap_confirmed: "✅ Rendez-vous accepté",
     ap_declined: "❌ Rendez-vous refusé",
     ap_already: "Ce rendez-vous a déjà été traité",
@@ -1755,20 +1685,6 @@ static FR: Phrases = Phrases {
         "c'est tout", "rien d'autre", "je vous laisse", "je te laisse", "je dois y aller",
         "je rappellerai", "je vous rappelle",
     ],
-    stall: &[
-        ("assurance", 2), ("mutuelle", 2), ("prêt", 2), ("crédit", 2), ("credit", 2),
-        ("rachat de crédit", 2), ("hypothèque", 2), ("taux", 1), ("dette", 2), ("impayé", 2),
-        ("recouvrement", 2), ("investissement", 2), ("investir", 2), ("placement", 2),
-        ("crypto", 2), ("bitcoin", 2), ("bourse", 1), ("rendement", 2), ("gagné", 2),
-        ("tirage", 2), ("loterie", 2), ("virement", 2), ("code de vérification", 2),
-        ("mot de passe", 2), ("compte formation", 2), ("cpf", 2), ("panneaux solaires", 2),
-        ("pompe à chaleur", 2), ("isolation", 2), ("offre", 1), ("promotion", 1),
-        ("réduction", 1), ("gratuit", 1), ("forfait", 1), ("sondage", 1), ("enquête", 1),
-        ("démonstration", 2), ("démo", 2), ("essai gratuit", 2), ("logiciel", 1),
-        ("notre plateforme", 2), ("notre solution", 2),
-        ("compte", 1), ("banque", 1), ("service client", 1), ("conseiller", 1),
-    ],
-    own_matter: &["votre réclamation", "votre demande", "votre dossier", "votre signalement", "suite à votre appel"],
 };
 
 static DE: Phrases = Phrases {
@@ -1891,6 +1807,7 @@ static DE: Phrases = Phrases {
     ap_sms_cannot: "die Nummer kann keine SMS empfangen, ruf selbst zurück",
     ap_pending: "Termin zu bestätigen",
     ap_replaced: "Die Zeit hat sich im Gespräch geändert; „{}“ steht noch in deinem Kalender, lösch es selbst",
+    ap_time_unconfirmed: "Der Anrufer hat diese Uhrzeit nicht bestätigt; kläre sie mit ihm, bevor du antwortest",
     ap_confirmed: "✅ Termin zugesagt",
     ap_declined: "❌ Termin abgesagt",
     ap_already: "Dieser Termin wurde bereits bearbeitet",
@@ -1920,19 +1837,6 @@ static DE: Phrases = Phrases {
         "das war's", "das wars", "das wäre alles", "das ist alles", "sonst nichts",
         "ich muss los", "ich muss auflegen", "ich melde mich wieder", "ich rufe später an",
     ],
-    stall: &[
-        ("versicherung", 2), ("kredit", 2), ("darlehen", 2), ("finanzierung", 2), ("zins", 1),
-        ("schulden", 2), ("mahnung", 2), ("inkasso", 2), ("geldanlage", 2), ("investment", 2),
-        ("investier", 2), ("krypto", 2), ("bitcoin", 2), ("aktien", 1), ("rendite", 2),
-        ("gewinnspiel", 2), ("gewonnen", 2), ("lotterie", 2), ("überweisung", 2),
-        ("bestätigungscode", 2), ("passwort", 2), ("stromanbieter", 2), ("stromtarif", 2),
-        ("photovoltaik", 2), ("solaranlage", 2), ("angebot", 1), ("rabatt", 1), ("gratis", 1),
-        ("kostenlos", 1), ("tarif", 1), ("umfrage", 1), ("vertrag", 1), ("konto", 1),
-        ("vorführung", 2), ("testversion", 2), ("kostenlos testen", 2), ("unsere plattform", 2),
-        ("unsere lösung", 2),
-        ("bank", 1), ("kundenservice", 1), ("berater", 1),
-    ],
-    own_matter: &["ihre beschwerde", "ihre anfrage", "ihre reklamation", "ihr anliegen", "ihren rückruf"],
 };
 
 static PT: Phrases = Phrases {
@@ -2055,6 +1959,7 @@ static PT: Phrases = Phrases {
     ap_sms_cannot: "esse número não recebe SMS; ligue de volta você mesmo",
     ap_pending: "Compromisso a confirmar",
     ap_replaced: "O horário mudou durante a ligação; \"{}\" continua na sua agenda, apague você mesmo",
+    ap_time_unconfirmed: "Quem ligou não confirmou este horário; confirme com a pessoa antes de responder",
     ap_confirmed: "✅ Compromisso aceito",
     ap_declined: "❌ Compromisso recusado",
     ap_already: "Este compromisso já foi resolvido",
@@ -2083,19 +1988,6 @@ static PT: Phrases = Phrases {
         "é só isso", "só isso", "mais nada", "é tudo", "tenho que ir", "preciso desligar",
         "ligo depois", "volto a ligar",
     ],
-    stall: &[
-        ("seguro", 2), ("apólice", 2), ("empréstimo", 2), ("emprestimo", 2), ("consignado", 2),
-        ("financiamento", 2), ("crédito", 2), ("credito", 2), ("cartão", 1), ("juros", 1),
-        ("dívida", 2), ("divida", 2), ("cobrança", 2), ("atraso", 1), ("investimento", 2),
-        ("investir", 2), ("criptomoeda", 2), ("bitcoin", 2), ("rendimento", 2), ("prêmio", 2),
-        ("sorteio", 2), ("loteria", 2), ("transferência", 2), ("pix", 2),
-        ("código de verificação", 2), ("senha", 2), ("oferta", 1), ("promoção", 1),
-        ("desconto", 1), ("grátis", 1), ("plano", 1), ("pesquisa", 1), ("operadora", 1),
-        ("demonstração", 2), ("teste grátis", 2), ("avaliação gratuita", 2), ("nossa plataforma", 2),
-        ("nosso produto", 2),
-        ("conta", 1), ("banco", 1), ("atendimento", 1), ("consultor", 1),
-    ],
-    own_matter: &["sua reclamação", "sua solicitação", "seu pedido", "seu chamado", "retornando sua ligação"],
 };
 
 /// Languages whose word lists are matched as whole words (spaces between words).
@@ -2579,47 +2471,6 @@ const VI_THANKS_CLOSING: GreetingBye = GreetingBye {
     cues: &[],
 };
 
-/// Sales / scam keywords of the non-Chinese lists found in `text`.
-/// Word languages match at the start of a word ("loan" hits "loans").
-pub fn stall_hits(text: &str) -> Vec<(&'static str, u32)> {
-    let lower = text.to_lowercase();
-    let padded = format!(" {} ", words(text).join(" "));
-    let mut out: Vec<(&'static str, u32)> = Vec::new();
-    for l in WORD_LANGS {
-        for &(kw, w) in phrases(l).stall {
-            if !out.iter().any(|(k, _)| *k == kw) && padded.contains(&format!(" {kw}")) {
-                out.push((kw, w));
-            }
-        }
-    }
-    for l in RUN_LANGS {
-        for &(kw, w) in phrases(l).stall {
-            if !out.iter().any(|(k, _)| *k == kw) && lower.contains(kw) {
-                out.push((kw, w));
-            }
-        }
-    }
-    out
-}
-
-/// Weight of a sales / scam keyword from the non-Chinese lists.
-pub fn stall_weight(kw: &str) -> Option<u32> {
-    WORD_LANGS
-        .iter()
-        .chain(RUN_LANGS.iter())
-        .flat_map(|l| phrases(*l).stall.iter())
-        .find(|(k, _)| *k == kw)
-        .map(|(_, w)| *w)
-}
-
-/// The caller follows up on something the owner raised (non-Chinese lists).
-pub fn own_matter(text: &str) -> bool {
-    let lower = text.to_lowercase();
-    WORD_LANGS
-        .iter()
-        .chain(RUN_LANGS.iter())
-        .any(|l| phrases(*l).own_matter.iter().any(|m| lower.contains(m)))
-}
 
 #[cfg(test)]
 mod tests {
@@ -2995,14 +2846,15 @@ mod tests {
 
     #[test]
     fn stall_keywords_match_whole_words() {
-        let hits = stall_hits("Hi, I'm calling about your car's extended warranty and a low interest loan");
-        let kws: Vec<&str> = hits.iter().map(|(k, _)| *k).collect();
+        // The lists that lived here are in the scam database now, and match as they did.
+        let hits = crate::scam_db::keyword_hits("Hi, I'm calling about your car's extended warranty and a low interest loan");
+        let kws: Vec<&str> = hits.iter().map(|h| h.text).collect();
         assert!(kws.contains(&"warranty") && kws.contains(&"loan"), "{kws:?}");
         // Only the start of a word counts: "bank" does not hit "embankment".
-        assert!(stall_hits("the embankment by the river").is_empty());
-        assert!(!stall_hits("保険のご案内です").is_empty());
-        assert_eq!(stall_weight("warranty"), Some(2));
-        assert_eq!(stall_weight("nonsense"), None);
+        assert!(crate::scam_db::keyword_hits("the embankment by the river").is_empty());
+        assert!(!crate::scam_db::keyword_hits("保険のご案内です").is_empty());
+        assert_eq!(crate::scam_db::keyword("warranty").map(|h| h.weight), Some(2));
+        assert_eq!(crate::scam_db::keyword("nonsense"), None);
     }
 
     #[test]
@@ -3012,7 +2864,7 @@ mod tests {
             assert!(!p.hello.is_empty() && !p.bye.is_empty() && !p.unavailable.is_empty(), "{l:?}");
             assert!(p.n_blocked_done.contains("{}"), "{l:?}");
             if !l.is_zh() {
-                assert!(!p.farewells.is_empty() && !p.stall.is_empty(), "{l:?}");
+                assert!(!p.farewells.is_empty(), "{l:?}");
             }
         }
     }
