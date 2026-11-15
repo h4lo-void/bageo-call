@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 626" width="760" height="626" role="img" aria-labelledby="t" xml:lang="en" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">
+  <title id="t">A loan sales call. The caller says you are pre-approved for a low-interest loan; the AI asks whether the interest is monthly or yearly. The caller asks for an ID number; the AI asks more questions instead. 27 minutes later the caller wants to hang up and the AI says: wait, I have one more question. Result: 27 minutes stalled, no personal details given, recording and summary saved.</title>
+  <style>
+    .a0{animation:k0 17.4s ease-out infinite}
+    @keyframes k0{0%,4.6%{opacity:0;transform:translateY(10px)}7.2%,96%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    .a1{animation:k1 17.4s ease-out infinite}
+    @keyframes k1{0%,12.1%{opacity:0;transform:translateY(10px)}14.7%,96%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    .a2{animation:k2 17.4s ease-out infinite}
+    @keyframes k2{0%,19.5%{opacity:0;transform:translateY(10px)}22.1%,96%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    .a3{animation:k3 17.4s ease-out infinite}
+    @keyframes k3{0%,27%{opacity:0;transform:translateY(10px)}29.6%,96%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    .a4{animation:k4 17.4s ease-out infinite}
+    @keyframes k4{0%,34.5%{opacity:0;transform:translateY(10px)}37.1%,96%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    .a5{animation:k5 17.4s ease-out infinite}
+    @keyframes k5{0%,42%{opacity:0;transform:translateY(10px)}44.5%,96%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    .a6{animation:k6 17.4s ease-out infinite}
+    @keyframes k6{0%,49.4%{opacity:0;transform:translateY(10px)}52%,96%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    .a7{animation:k7 17.4s ease-out infinite}
+    @keyframes k7{0%,56.9%{opacity:0;transform:translateY(10px)}59.5%,96%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    @media (prefers-reduced-motion:reduce){[class^="a"]{animation:none}}
+  </style>
+  <clipPath id="card"><rect width="760" height="626" rx="24"/></clipPath>
+  <rect x=".75" y=".75" width="758.5" height="624.5" rx="24" fill="#1B1B1F" stroke="#3A3A44" stroke-width="1.5"/>
+  <circle cx="44" cy="32" r="17" fill="#0E8F8F"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="50" y1="26" x2="38" y2="38"/><polyline points="38,29 38,38 47,38"/></g>
+  <text x="74" y="38" font-size="18" font-weight="700" fill="#FFFFFF">Incoming call: Sunrise Finance</text>
+  <rect x="636" y="18" width="100" height="28" rx="14" fill="#FF8A1F"/>
+  <text x="686" y="37" text-anchor="middle" font-size="13.5" font-weight="700" fill="#1B1B1F">Stall Mode</text>
+  <line x1="0" y1="64" x2="760" y2="64" stroke="#34343B" stroke-width="1.5"/>
+  <g class="a0">
+    <circle cx="46" cy="105" r="18" fill="#3A3A44"/>
+    <circle cx="46" cy="100" r="5.5" fill="#B5B5C0"/>
+    <path d="M36 116 a10 9 0 0 1 20 0 z" fill="#B5B5C0"/>
+    <rect x="74" y="84" width="312" height="68" rx="18" fill="#2C2C34"/>
+    <text x="90" y="111.5" font-size="18" fill="#F2F2F5">Good news! You're pre-approved</text>
+    <text x="90" y="137.5" font-size="18" fill="#F2F2F5">for a low-interest loan.</text>
+  </g>
+  <g class="a1">
+    <circle cx="714" cy="187" r="18" fill="#FFCF4A"/>
+    <text x="714" y="192" text-anchor="middle" font-size="14" font-weight="800" fill="#1B1B1F">AI</text>
+    <rect x="408" y="166" width="278" height="68" rx="18" fill="#FFCF4A"/>
+    <text x="424" y="193.5" font-size="18" fill="#1B1B1F" font-weight="600">Oh, a loan? Is the interest</text>
+    <text x="424" y="219.5" font-size="18" fill="#1B1B1F" font-weight="600">by the month or by the year?</text>
+  </g>
+  <g class="a2">
+    <circle cx="46" cy="269" r="18" fill="#3A3A44"/>
+    <circle cx="46" cy="264" r="5.5" fill="#B5B5C0"/>
+    <path d="M36 280 a10 9 0 0 1 20 0 z" fill="#B5B5C0"/>
+    <rect x="74" y="248" width="290" height="68" rx="18" fill="#2C2C34"/>
+    <text x="90" y="275.5" font-size="18" fill="#F2F2F5">By the year, only 2.8%.</text>
+    <text x="90" y="301.5" font-size="18" fill="#F2F2F5">I just need your ID number…</text>
+  </g>
+  <g class="a3">
+    <circle cx="714" cy="351" r="18" fill="#FFCF4A"/>
+    <text x="714" y="356" text-anchor="middle" font-size="14" font-weight="800" fill="#1B1B1F">AI</text>
+    <rect x="291" y="330" width="395" height="68" rx="18" fill="#FFCF4A"/>
+    <text x="307" y="357.5" font-size="18" fill="#1B1B1F" font-weight="600">Hang on, 2.8% of what, the whole amount?</text>
+    <text x="307" y="383.5" font-size="18" fill="#1B1B1F" font-weight="600">And if I pay it back early, is that extra?</text>
+  </g>
+  <g class="a4">
+    <line x1="150" y1="424" x2="312.6" y2="424" stroke="#3A3A44" stroke-width="1.5"/>
+    <line x1="447.4" y1="424" x2="610" y2="424" stroke="#3A3A44" stroke-width="1.5"/>
+    <text x="380" y="429" text-anchor="middle" font-size="13.5" font-weight="700" fill="#9A9AA5">27 minutes later</text>
+  </g>
+  <g class="a5">
+    <circle cx="46" cy="471" r="18" fill="#3A3A44"/>
+    <circle cx="46" cy="466" r="5.5" fill="#B5B5C0"/>
+    <path d="M36 482 a10 9 0 0 1 20 0 z" fill="#B5B5C0"/>
+    <rect x="74" y="450" width="234" height="42" rx="18" fill="#2C2C34"/>
+    <text x="90" y="477.5" font-size="18" fill="#F2F2F5">Uh… I have to go now.</text>
+  </g>
+  <g class="a6">
+    <circle cx="714" cy="527" r="18" fill="#FFCF4A"/>
+    <text x="714" y="532" text-anchor="middle" font-size="14" font-weight="800" fill="#1B1B1F">AI</text>
+    <rect x="350" y="506" width="336" height="42" rx="18" fill="#FFCF4A"/>
+    <text x="366" y="533.5" font-size="18" fill="#1B1B1F" font-weight="600">Oh wait, I have one more question!</text>
+  </g>
+  <g class="a7">
+    <g clip-path="url(#card)"><rect x="0" y="570" width="760" height="56" fill="#0E8F8F"/></g>
+    <text x="380" y="603.6" text-anchor="middle" font-size="15.5" font-weight="700" fill="#FFFFFF">27 minutes stalled  ·  0 personal details given  ·  recording and summary saved</text>
+  </g>
+</svg>

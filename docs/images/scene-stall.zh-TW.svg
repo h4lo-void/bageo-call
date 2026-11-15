@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 548" width="760" height="548" role="img" aria-labelledby="t" xml:lang="zh-Hant" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang TC','Microsoft JhengHei','Noto Sans TC','Noto Sans CJK TC',sans-serif">
+  <title id="t">一通信貸推銷電話。對方說你有一筆低利信貸額度核准了，AI 問利息是月息還是年息；對方要核對身分證字號，AI 繼續問問題。27 分鐘後對方想掛電話，AI 說：欸等一下，我還有一個問題。結果：陪聊 27 分鐘，沒有給出任何個資，錄音與摘要已存檔。</title>
+  <style>
+    .a0{animation:k0 17.4s ease-out infinite}
+    @keyframes k0{0%,4.6%{opacity:0;transform:translateY(10px)}7.2%,96%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    .a1{animation:k1 17.4s ease-out infinite}
+    @keyframes k1{0%,12.1%{opacity:0;transform:translateY(10px)}14.7%,96%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    .a2{animation:k2 17.4s ease-out infinite}
+    @keyframes k2{0%,19.5%{opacity:0;transform:translateY(10px)}22.1%,96%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    .a3{animation:k3 17.4s ease-out infinite}
+    @keyframes k3{0%,27%{opacity:0;transform:translateY(10px)}29.6%,96%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    .a4{animation:k4 17.4s ease-out infinite}
+    @keyframes k4{0%,34.5%{opacity:0;transform:translateY(10px)}37.1%,96%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    .a5{animation:k5 17.4s ease-out infinite}
+    @keyframes k5{0%,42%{opacity:0;transform:translateY(10px)}44.5%,96%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    .a6{animation:k6 17.4s ease-out infinite}
+    @keyframes k6{0%,49.4%{opacity:0;transform:translateY(10px)}52%,96%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    .a7{animation:k7 17.4s ease-out infinite}
+    @keyframes k7{0%,56.9%{opacity:0;transform:translateY(10px)}59.5%,96%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+    @media (prefers-reduced-motion:reduce){[class^="a"]{animation:none}}
+  </style>
+  <clipPath id="card"><rect width="760" height="548" rx="24"/></clipPath>
+  <rect x=".75" y=".75" width="758.5" height="546.5" rx="24" fill="#1B1B1F" stroke="#3A3A44" stroke-width="1.5"/>
+  <circle cx="44" cy="32" r="17" fill="#0E8F8F"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="50" y1="26" x2="38" y2="38"/><polyline points="38,29 38,38 47,38"/></g>
+  <text x="74" y="38" font-size="18" font-weight="700" fill="#FFFFFF">來電：自稱「旭日財務」</text>
+  <rect x="650" y="18" width="86" height="28" rx="14" fill="#FF8A1F"/>
+  <text x="693" y="37" text-anchor="middle" font-size="13.5" font-weight="700" fill="#1B1B1F">陪聊模式</text>
+  <line x1="0" y1="64" x2="760" y2="64" stroke="#34343B" stroke-width="1.5"/>
+  <g class="a0">
+    <circle cx="46" cy="105" r="18" fill="#3A3A44"/>
+    <circle cx="46" cy="100" r="5.5" fill="#B5B5C0"/>
+    <path d="M36 116 a10 9 0 0 1 20 0 z" fill="#B5B5C0"/>
+    <rect x="74" y="84" width="380" height="42" rx="18" fill="#2C2C34"/>
+    <text x="90" y="111.5" font-size="18" fill="#F2F2F5">您好，您有一筆低利信貸額度已經核准了！</text>
+  </g>
+  <g class="a1">
+    <circle cx="714" cy="161" r="18" fill="#FFCF4A"/>
+    <text x="714" y="166" text-anchor="middle" font-size="14" font-weight="800" fill="#1B1B1F">AI</text>
+    <rect x="360" y="140" width="326" height="42" rx="18" fill="#FFCF4A"/>
+    <text x="376" y="167.5" font-size="18" fill="#1B1B1F" font-weight="600">喔？信貸喔？利息是月息還是年息？</text>
+  </g>
+  <g class="a2">
+    <circle cx="46" cy="217" r="18" fill="#3A3A44"/>
+    <circle cx="46" cy="212" r="5.5" fill="#B5B5C0"/>
+    <path d="M36 228 a10 9 0 0 1 20 0 z" fill="#B5B5C0"/>
+    <rect x="74" y="196" width="426" height="42" rx="18" fill="#2C2C34"/>
+    <text x="90" y="223.5" font-size="18" fill="#F2F2F5">年息只要 2.8%，先跟您核對一下身分證字號……</text>
+  </g>
+  <g class="a3">
+    <circle cx="714" cy="273" r="18" fill="#FFCF4A"/>
+    <text x="714" y="278" text-anchor="middle" font-size="14" font-weight="800" fill="#1B1B1F">AI</text>
+    <rect x="386" y="252" width="300" height="68" rx="18" fill="#FFCF4A"/>
+    <text x="402" y="279.5" font-size="18" fill="#1B1B1F" font-weight="600">欸等一下，2.8% 是整筆算的嗎？</text>
+    <text x="402" y="305.5" font-size="18" fill="#1B1B1F" font-weight="600">那我提早還，要不要另外付錢？</text>
+  </g>
+  <g class="a4">
+    <line x1="150" y1="346" x2="334.2" y2="346" stroke="#3A3A44" stroke-width="1.5"/>
+    <line x1="425.8" y1="346" x2="610" y2="346" stroke="#3A3A44" stroke-width="1.5"/>
+    <text x="380" y="351" text-anchor="middle" font-size="13.5" font-weight="700" fill="#9A9AA5">27 分鐘後</text>
+  </g>
+  <g class="a5">
+    <circle cx="46" cy="393" r="18" fill="#3A3A44"/>
+    <circle cx="46" cy="388" r="5.5" fill="#B5B5C0"/>
+    <path d="M36 404 a10 9 0 0 1 20 0 z" fill="#B5B5C0"/>
+    <rect x="74" y="372" width="200" height="42" rx="18" fill="#2C2C34"/>
+    <text x="90" y="399.5" font-size="18" fill="#F2F2F5">呃……那我先掛了。</text>
+  </g>
+  <g class="a6">
+    <circle cx="714" cy="449" r="18" fill="#FFCF4A"/>
+    <text x="714" y="454" text-anchor="middle" font-size="14" font-weight="800" fill="#1B1B1F">AI</text>
+    <rect x="414" y="428" width="272" height="42" rx="18" fill="#FFCF4A"/>
+    <text x="430" y="455.5" font-size="18" fill="#1B1B1F" font-weight="600">欸等一下，我還有一個問題！</text>
+  </g>
+  <g class="a7">
+    <g clip-path="url(#card)"><rect x="0" y="492" width="760" height="56" fill="#0E8F8F"/></g>
+    <text x="380" y="525.8" text-anchor="middle" font-size="16" font-weight="700" fill="#FFFFFF">陪聊 27 分鐘 ・ 給出的個資 0 筆 ・ 錄音與摘要已存檔</text>
+  </g>
+</svg>

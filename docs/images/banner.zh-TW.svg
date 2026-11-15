@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300" width="900" height="300" role="img" aria-labelledby="t" xml:lang="zh-Hant" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang TC','Microsoft JhengHei','Noto Sans TC','Noto Sans CJK TC',sans-serif">
+  <title id="t">Bageo（八哥）：你的門號，AI 幫你接。接電話、擋詐騙、代打電話。</title>
+  <style>
+    .hi{animation:hi 6s ease-in-out infinite;transform-box:fill-box;transform-origin:10% 100%}
+    @keyframes hi{0%,5%{opacity:0;transform:scale(.5)}12%,84%{opacity:1;transform:scale(1)}92%,100%{opacity:0;transform:scale(.9)}}
+    .w1{animation:wv 1.3s ease-in-out infinite}
+    .w2{animation:wv 1.3s ease-in-out .3s infinite}
+    @keyframes wv{0%,100%{opacity:.2}50%{opacity:1}}
+    @media (prefers-reduced-motion:reduce){.hi,.w1,.w2{animation:none}}
+  </style>
+  <rect width="900" height="300" rx="32" fill="#FFCF4A"/>
+  <circle cx="165" cy="152" r="122" fill="#FFDD7C"/>
+  <g transform="translate(40 26) scale(.98)">
+    <g fill="#0E8F8F"><rect x="52" y="204" width="136" height="16" rx="8"/><rect x="44" y="204" width="34" height="30" rx="11"/><rect x="162" y="204" width="34" height="30" rx="11"/></g>
+    <g stroke="#E08A00" stroke-width="7" stroke-linecap="round"><line x1="104" y1="186" x2="104" y2="203"/><line x1="128" y1="186" x2="128" y2="203"/></g>
+    <polygon points="70,150 22,176 30,192 84,176" fill="#1B1B1F"/>
+    <ellipse cx="112" cy="142" rx="56" ry="50" fill="#1B1B1F"/>
+    <circle cx="146" cy="88" r="38" fill="#1B1B1F"/>
+    <polygon points="158,60 166,30 172,56 184,36 184,64 198,50 190,76" fill="#1B1B1F"/>
+    <g transform="rotate(-24 100 150)"><ellipse cx="100" cy="150" rx="42" ry="25" fill="#34343B"/><ellipse cx="88" cy="160" rx="18" ry="7" fill="#FFFFFF"/></g>
+    <g fill="#FFF4D8" stroke="#1B1B1F" stroke-width="3" stroke-linejoin="round"><polygon points="178,74 216,84 180,92"/><polygon points="180,94 208,102 176,106"/></g>
+    <circle cx="158" cy="80" r="8" fill="#FF8A1F"/>
+    <circle cx="159" cy="80" r="3.5" fill="#1B1B1F"/>
+    <g fill="none" stroke="#1B1B1F" stroke-width="5" stroke-linecap="round"><path class="w1" d="M222 80 q7 13 0 26"/><path class="w2" d="M233 71 q13 22 0 44"/></g>
+  </g>
+  <g class="hi">
+    <polygon points="284,76 266,98 308,78" fill="#FFFFFF"/>
+    <rect x="268" y="26" width="98" height="56" rx="22" fill="#FFFFFF"/>
+    <text x="317" y="64.1" text-anchor="middle" font-size="28" font-weight="800" fill="#1B1B1F">喂？</text>
+  </g>
+  <text x="390" y="124" font-size="88" font-weight="800" fill="#1B1B1F" letter-spacing="-1">Bageo<tspan dx="18" font-size="46" font-weight="700">八哥</tspan></text>
+  <text x="392" y="172" font-size="30" font-weight="700" fill="#1B1B1F">你的門號，AI 幫你接。</text>
+  <rect x="392" y="198" width="94" height="40" rx="20" fill="#1B1B1F"/>
+  <text x="439" y="224.5" text-anchor="middle" font-size="18" font-weight="700" fill="#FFCF4A">接電話</text>
+  <rect x="496" y="198" width="94" height="40" rx="20" fill="#1B1B1F"/>
+  <text x="543" y="224.5" text-anchor="middle" font-size="18" font-weight="700" fill="#FFCF4A">擋詐騙</text>
+  <rect x="600" y="198" width="113" height="40" rx="20" fill="#1B1B1F"/>
+  <text x="656.5" y="224.5" text-anchor="middle" font-size="18" font-weight="700" fill="#FFCF4A">代打電話</text>
+</svg>
