@@ -35,7 +35,17 @@
 
 未取得 **h4lo-void** 事前簽署之有效書面商業授權而擅自進行閉源散布、閉源網路／電信營運或移除授權與免責聲明者，其依 `AGPL-3.0-only` 取得之一切權利將依第 8 條**自動終止**，構成侵害著作權；著作權人將依法請求停止侵害、銷毀侵權物及請求損害賠償。
 
-### 三、如何洽詢與取得商業授權
+### 三、商業授權可包含之內容
+
+商業授權之實際內容以雙方簽署之書面合約為準；本文件不構成要約或任何承諾。可洽談之項目包含：
+
+- **閉源使用權：** 於合約範圍內使用、修改及整合 Bageo，無須依 `AGPL-3.0-only` 公開你的原始碼。
+- **官方技術支援與服務水準（SLA）：** 由原作者提供之技術支援；回應時間、支援管道與服務範圍載明於合約。
+- **授權與智慧財產權之書面文件：** 供企業法遵、採購與稽核使用之授權證明，以及著作權人有權授予該授權之書面保證。外部貢獻之程式碼均依[貢獻者授權協議](CLA.md)取得授權，故整份程式碼皆可納入商業授權。
+
+商業授權不改變 [`LEGAL.md`](LEGAL.md) 之守法要求：部署是否符合當地電信、通話錄音與個人資料法規，仍由營運者自行負責；一旦將本軟體用於 `LEGAL.md` 第三條所列用途，商業授權立即終止。
+
+### 四、如何洽詢與取得商業授權
 
 請透過 GitHub 聯絡著作權人 **[@h4lo-void](https://github.com/h4lo-void)**（可透過個人頁面聯絡管道或於本專案建立商業授權洽詢聯繫），並附上：
 
@@ -74,6 +84,16 @@ A separate signed **Commercial License** from **h4lo-void** is mandatory prior t
 
 Unauthorized closed-source commercial deployment or removal of legal notices automatically terminates `AGPL-3.0-only` rights under Section 8 and constitutes copyright infringement. To inquire about a Commercial License, contact **[@h4lo-void](https://github.com/h4lo-void)** with your organization details, intended product model, and deployment scale. All deployments remain bound by [`LEGAL.md`](LEGAL.md).
 
+### 3. What a Commercial License Can Include
+
+The signed written agreement decides what a Commercial License contains; nothing in this file is an offer or a promise. Items that can be agreed include:
+
+- **Closed-source use:** Using, modifying, and integrating Bageo within the agreed scope without publishing your source code under `AGPL-3.0-only`.
+- **Official technical support with a service level (SLA):** Support from the original author, with response times, contact channels, and scope written into the agreement.
+- **Written license and intellectual-property assurances:** Proof of license for compliance, procurement, and audit reviews, and the copyright holder's written assurance of having the right to grant the license. Outside contributions come in under the [Contributor License Agreement](CLA.md), so the whole code base can be covered by a Commercial License.
+
+A Commercial License does not change what [`LEGAL.md`](LEGAL.md) requires: whether a deployment complies with local telecom, call-recording, and personal-data law remains the operator's responsibility, and a Commercial License ends at once if Bageo is put to any use prohibited in Section 3 of `LEGAL.md`.
+
 ---
 
 ## 简体中文
@@ -94,3 +114,13 @@ Unauthorized closed-source commercial deployment or removal of legal notices aut
 ### 二、取得商业授权
 
 如需闭源运营商业 SaaS／云总机／代接代打服务、闭源集成至商业软件或硬件设备销售，或获取 OEM 白牌授权，请事先通过 GitHub 联系版权人 **[@h4lo-void](https://github.com/h4lo-void)** 商谈书面商业授权（注明企业全称、应用场景及线路／设备规模）。未经书面商业授权擅自闭源商用的，其开源许可依 AGPL-3.0 第 8 条自动终止并构成侵权。任何授权均严禁用于违法犯罪或违规电信行为，详见 [`LEGAL.md`](LEGAL.md)。
+
+### 三、商业授权可以包含的内容
+
+商业授权的实际内容以双方签署的书面合同为准；本文件不构成要约或任何承诺。可以商谈的项目包括：
+
+- **闭源使用权：** 在合同范围内使用、修改及集成 Bageo，无须按 `AGPL-3.0-only` 公开你的源代码。
+- **官方技术支持与服务水平（SLA）：** 由原作者提供的技术支持；响应时间、支持渠道与服务范围写入合同。
+- **授权与知识产权的书面文件：** 供企业合规、采购与审计使用的授权证明，以及版权人有权授予该授权的书面保证。外部贡献的代码均依[贡献者许可协议](CLA.md)取得许可，因此整份代码都可以纳入商业授权。
+
+商业授权不改变 [`LEGAL.md`](LEGAL.md) 的守法要求：部署是否符合当地电信、通话录音与个人信息法规，仍由运营者自行负责；一旦将本软件用于 `LEGAL.md` 第三条所列用途，商业授权立即终止。

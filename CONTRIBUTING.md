@@ -129,6 +129,9 @@ Changes reach `main` only through a pull request, merged on GitHub. Keep one
 topic per pull request, and describe the problem and the resulting behaviour
 first.
 
+Your first pull request also needs your signature on the
+[Contributor License Agreement](#contributor-license-agreement).
+
 ## Style
 
 - Rust: `cargo fmt`; no new dependencies without a reason.
@@ -136,20 +139,25 @@ first.
   network addresses or deployment details in code, tests or docs.
 - User-facing text goes through the language tables.
 
-## Contributor License Grant
+## Contributor License Agreement
 
-Bageo is dual-licensed under `AGPL-3.0-only` and commercial licenses offered by
-the copyright holder (**h4lo-void**); see [`LICENSE`](LICENSE) and
-[`COMMERCIAL_LICENSE.md`](COMMERCIAL_LICENSE.md). By submitting a pull request,
-patch, or other contribution to this repository, you:
+Bageo is dual-licensed: `AGPL-3.0-only` for everyone, and commercial licenses
+from the copyright holder (**h4lo-void**) for those who cannot publish their
+source; see [`LICENSE`](LICENSE) and
+[`COMMERCIAL_LICENSE.md`](COMMERCIAL_LICENSE.md). That only works if the
+project may license every contribution both ways, so each contributor signs
+the [Contributor License Agreement](CLA.md) once.
 
-1. Represent that the contribution is your original work and that you have the
-   legal right to grant the rights below;
-2. Grant **h4lo-void** (and successors) a perpetual, worldwide, non-exclusive,
-   royalty-free, irrevocable, transferable, and sublicensable license (including
-   under any applicable copyrights and essential patent claims) to use,
-   reproduce, modify, distribute, and **relicense** your contribution as part of
-   Bageo under both `AGPL-3.0-only` and any commercial or proprietary licenses;
-   and
-3. Agree that your contribution is provided "AS IS" without warranties, subject
-   to [`LEGAL.md`](LEGAL.md).
+What it says: you keep the copyright in your work, and you give the copyright
+holder a permanent license to use it and to license it under any terms,
+open-source or commercial. [`CLA.md`](CLA.md) is the full text, and the text
+that counts.
+
+To sign, tick the CLA box in the description of your first pull request, or
+post this comment on it:
+
+> I have read the CLA Document and I hereby sign the CLA
+
+A pull request from a contributor who has not signed is not merged. Submitting
+a contribution means you accept the CLA for it, and that the contribution is
+provided "AS IS", subject to [`LEGAL.md`](LEGAL.md).
