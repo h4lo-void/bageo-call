@@ -1,0 +1,158 @@
+lang: pt
+name: Português
+regions: ["Brasil", "Portugal", "Angola/Moçambique (parcial)"]
+sources:
+  S1: {title: "FEBRABAN: Golpe da falsa central de atendimento", url: "https://portal.febraban.org.br/DetalheAntifraude/2/pt-br"}
+  S2: {title: "Ministério da Fazenda / FEBRABAN: Tentativas de fraudes e golpes mais comuns com o Pix (falso funcionário, mão fantasma, WhatsApp)", url: "https://www.gov.br/fazenda/pt-br/composicao/orgaos/orgaos-colegiados/crsfn/acesso-a-informacao/educacao-financeira/copy_of_noticias/tentativas-de-fraudes-e-golpes-mais-comuns-com-o-pix-conheca-quais-sao-e-saiba-como-evita-los"}
+  S3: {title: "Ministério da Justiça – Aliança Nacional de Combate a Fraudes Bancárias Digitais: Glossário de tipologias de fraudes e golpes", url: "https://www.gov.br/mj/pt-br/assuntos/alianca-nacional-de-combate-a-fraudes-bancarias-digitais/glossario_final_iniciativa_1-8_v10.pdf"}
+  S4: {title: "Polícia Militar de Rondônia: como enfrentar casos de falsos sequestros", url: "https://www.pm.ro.gov.br/policia-militar-de-rondonia-orienta-como-enfrentar-com-exito-casos-de-falsos-sequestros/"}
+  S5: {title: "Serasa: Golpe do falso sequestro – como identificar e agir", url: "https://www.serasa.com.br/premium/blog/como-funciona-o-golpe-do-falso-sequestro/"}
+  S6: {title: "Banco Central do Brasil: Golpes (Meu BC)", url: "https://www.bcb.gov.br/meubc/golpes"}
+  S7: {title: "SIC Notícias: Os nove métodos de burla por telefone mais utilizados, alerta a PSP (Portugal)", url: "https://sicnoticias.pt/pais/2024-11-24-os-nove-metodos-de-burla-por-telefone-mais-utilizados-alerta-a-psp-13ae5e7a"}
+  S8: {title: "Notícias ao Minuto: Do falso emprego ao MB Way – as 9 burlas em que os portugueses mais caem", url: "https://www.noticiasaominuto.com/pais/2676422/do-falso-emprego-ao-mb-way-as-9-burlas-em-que-os-portugueses-mais-caem"}
+  S9: {title: "Banco do Brasil: Como evitar o golpe da Mão Fantasma (acesso remoto)", url: "https://blog.bb.com.br/como-evitar-golpes-de-acesso-remoto/"}
+categories:
+  bank_card_alert:
+    sources: [S1, S2, S3, S6]
+    phrases:
+      - "!Sua conta foi invadida.｜您的帳戶被入侵了。"
+      - "Aqui é da central de segurança do banco; identificamos uma compra suspeita de 2.300 reais no seu cartão.｜這裡是銀行安全中心，發現您卡上一筆 2,300 雷亞爾的可疑消費。"
+      - "O senhor reconhece essa transação? Se não, vamos bloquear agora.｜您認得這筆交易嗎？不認得我們現在就封鎖。"
+      - "!Ligue para o número que aparece atrás do seu cartão.｜請撥打您卡片背面的號碼。（歹徒未斷線）"
+      - "Digite sua senha no teclado do telefone para confirmar a identidade.｜在電話鍵盤輸入密碼確認身分。"
+      - "Identificamos Pix de alto valor saindo da sua conta para pessoas que o senhor não conhece.｜我們發現有大額 Pix 從您帳戶轉給您不認識的人。"
+      - "Para estornar, o senhor precisa fazer um Pix para o mesmo destinatário.｜為了沖正，您需要再 Pix 給同一個收款人。"
+      - "Precisamos fazer um teste com o Pix para regularizar seu cadastro.｜我們需要做 Pix 測試來更新您的資料。"
+      - "Vamos transferir seu saldo para uma conta segura enquanto resolvemos.｜處理期間把餘額轉到安全帳戶。"
+      - "Um motoboy do banco vai passar para recolher seu cartão; corte-o ao meio, mas sem cortar o chip.｜銀行機車快遞會去收卡；剪成兩半但不要剪到晶片。"
+      - "Seu cartão foi clonado, informe o código de segurança de três dígitos.｜您的卡被盜錄，請告訴我三位數安全碼。"
+      - "Seu token precisa ser atualizado, me passe o código que chegou.｜您的 token 需要更新，給我收到的代碼。"
+    strong: [sua conta foi invadida, compra suspeita, conta segura, para estornar, teste com o pix, regularizar seu cadastro, motoboy, recolher seu cartão, cartão foi clonado, digite sua senha, código de segurança, central de segurança]
+    keywords: [banco, pix, ted, cartão, gerente, token, central de atendimento, 0800]
+    hard: [conta segura, teste com o pix, motoboy]
+    requests: ["fazer Pix para 'estornar'｜Pix 給收款人『沖正』", "digitar senha｜輸入密碼", "entregar cartão ao motoboy｜交卡給機車快遞", "passar token｜提供 token"]
+    tactics: ["simula a central quando a vítima liga｜受害者回撥時假裝客服", "cita extrato real｜說出真實交易明細"]
+  tech_support:
+    sources: [S2, S9]
+    phrases:
+      - "Vou mandar um link para instalar um aplicativo que resolve o problema da sua conta.｜我傳連結讓您安裝 App 解決帳戶問題。"
+      - "Baixe o aplicativo de segurança do banco que vou enviar por SMS.｜下載我用簡訊傳的銀行安全 App。"
+      - "Com o acesso remoto eu consigo cancelar as transações para o senhor.｜有遠端存取我就能幫您取消交易。"
+      - "Deixe o celular desbloqueado e não mexa, estamos fazendo a varredura.｜手機保持解鎖別動，我們正在掃描。"
+      - "Seu computador está infectado, instale o AnyDesk.｜您的電腦中毒了，請安裝 AnyDesk。"
+    strong: [mão fantasma, acesso remoto, instalar um aplicativo, aplicativo de segurança, anydesk, deixe o celular desbloqueado]
+    keywords: [link, aplicativo, varredura, computador infectado, teamviewer]
+    hard: [acesso remoto, anydesk]
+    requests: ["instalar app de acesso remoto｜安裝遠端 App"]
+    tactics: ["golpe da mão fantasma｜幽靈之手"]
+  virtual_kidnapping:
+    sources: [S4, S5]
+    phrases:
+      - "(choro) Mãe, socorro, me pegaram!｜（哭聲）媽，救命，他們抓了我！"
+      - "Estamos com seu filho. Se desligar ou chamar a polícia, ele morre.｜你兒子在我們手上，掛電話或報警他就死。"
+      - "Faz um Pix agora de 5 mil e não desliga o telefone.｜現在 Pix 五千，不要掛電話。"
+      - "Não fala com ninguém, a gente está vendo sua casa.｜不准跟任何人說，我們在看著你家。"
+      - "Vai até o caixa eletrônico e saca tudo que tiver.｜去提款機把所有錢領出來。"
+      - "Se quiser ver sua filha viva, faz o que eu mandar.｜想看到女兒活著就照我說的做。"
+    strong: [estamos com seu filho, estamos com sua filha, ele morre, não desliga o telefone, faz um pix agora, sequestro, socorro me pegaram]
+    keywords: [sequestrado, resgate, caixa eletrônico, polícia]
+    requests: ["Pix imediato｜立即 Pix", "manter a ligação｜保持通話"]
+    tactics: ["choro simulado｜模擬哭聲", "ameaça de morte｜死亡威脅", "ligação de dentro de presídio｜從監獄打出"]
+  family_emergency:
+    sources: [S2, S3, S8]
+    phrases:
+      - "Oi mãe, troquei de número, salva esse aqui.｜嗨媽，我換號碼了，存這個。"
+      - "Estou precisando fazer um pagamento urgente, consegue me mandar um Pix? Amanhã te devolvo.｜我急需付一筆款，可以 Pix 給我嗎？明天還你。"
+      - "Meu aplicativo do banco travou, paga esse boleto pra mim.｜我的銀行 App 當掉了，幫我付這張帳單。"
+      - "Pai, sofri um acidente e preciso pagar o guincho e o hospital.｜爸，我出車禍要付拖吊和醫院費。"
+      - "Aqui é o advogado do seu neto, ele foi preso e precisa pagar a fiança hoje.｜我是您孫子的律師，他被捕了今天要付保釋金。"
+      - "[PT] Olá pai, olá mãe, este é o meu novo número, o outro avariou.｜（葡萄牙）嗨爸媽，這是我的新號碼，舊的壞了。"
+      - "[PT] Podes fazer-me um MB WAY? Depois explico.｜（葡萄牙）可以 MB WAY 給我嗎？之後解釋。"
+    strong: [troquei de número, salva esse aqui, me mandar um pix, paga esse boleto, pagar a fiança, novo número, olá pai olá mãe, fazer-me um mb way]
+    keywords: [mãe, pai, neto, advogado, acidente, preso, mb way, boleto]
+    requests: ["Pix/MB WAY urgente｜緊急 Pix 或 MB WAY", "pagar boleto｜付帳單"]
+    tactics: ["novo número｜新號碼", "urgência emocional｜情感緊急"]
+  police_prosecutor:
+    sources: [S3]
+    phrases:
+      - "Aqui é o delegado Souza da Polícia Federal; seu CPF foi usado em um esquema de lavagem de dinheiro.｜我是聯邦警察 Souza 警長，您的 CPF 被用在洗錢案中。"
+      - "Para provar sua inocência, transfira o valor para uma conta judicial.｜為證明清白，請把錢轉到司法帳戶。"
+      - "Isso é sigiloso, não comente com o gerente do banco.｜這是機密，不要跟銀行經理說。"
+      - "Existe um mandado de prisão em seu nome.｜有一張以您為名的逮捕令。"
+      - "[PT] Fala da Polícia Judiciária, a sua conta está a ser investigada por branqueamento.｜（葡萄牙）這裡是司法警察，您的帳戶因洗錢被調查。"
+    strong: [lavagem de dinheiro, conta judicial, provar sua inocência, mandado de prisão, branqueamento, sigiloso]
+    keywords: [polícia federal, delegado, cpf, polícia judiciária, processo]
+    hard: [conta judicial]
+    requests: ["transferir para conta judicial｜轉到司法帳戶"]
+    tactics: ["sigilo｜保密"]
+  gov_subsidy:
+    sources: [S3, S6]
+    phrases:
+      - "Aqui é do INSS; seu benefício será bloqueado se não fizer a prova de vida hoje.｜這裡是 INSS，今天不做生存證明您的福利會被凍結。"
+      - "O senhor tem um valor a receber esquecido no banco, mas precisa pagar uma taxa para liberar.｜您在銀行有遺忘款項可領，但要付手續費才能解鎖。"
+      - "Tem uma revisão do seu benefício aprovada, só preciso do número do cartão e da senha.｜您的福利複審通過，只需要卡號和密碼。"
+      - "Vamos liberar o seu FGTS, confirme os seus dados bancários.｜我們要撥付您的 FGTS，請確認銀行資料。"
+    strong: [prova de vida, benefício será bloqueado, valor a receber, taxa para liberar, revisão do seu benefício, liberar o seu fgts]
+    keywords: [inss, aposentadoria, benefício, fgts, valores a receber, governo]
+    requests: ["pagar taxa｜付費", "dados bancários e senha｜銀行資料與密碼"]
+    tactics: ["ameaça de bloqueio｜凍結威脅"]
+  otp_password:
+    sources: [S2]
+    phrases:
+      - "É uma atualização, me passa o código de segurança que chegou por SMS.｜這是更新，把簡訊收到的安全碼給我。"
+      - "Para confirmar seu cadastro, me fala o código de seis dígitos do WhatsApp.｜為了確認資料，告訴我 WhatsApp 六位數代碼。"
+      - "Digite sua senha de quatro dígitos depois do sinal.｜聽到嗶聲後輸入四位數密碼。"
+    strong: [me passa o código, código de seis dígitos, código do whatsapp, digite sua senha]
+    keywords: [código, senha, token, sms]
+    hard: [me passa o código]
+    requests: ["passar OTP｜提供 OTP"]
+    tactics: ["clonagem de WhatsApp｜WhatsApp 盜用"]
+  loan_advance_fee:
+    sources: [S3]
+    phrases:
+      - "Seu empréstimo consignado foi aprovado, mas precisa pagar o seguro antes da liberação.｜您的薪資擔保貸款已核准，但撥款前要先付保險費。"
+      - "Para limpar seu nome e liberar o crédito, faça um depósito.｜為了清除不良紀錄並撥款，請先存款。"
+    strong: [antes da liberação, limpar seu nome, consignado aprovado]
+    keywords: [empréstimo, consignado, crédito, taxa]
+    requests: ["pagamento antecipado｜預付費用"]
+    tactics: ["crédito fácil｜輕鬆貸款"]
+  investment_crypto:
+    sources: [S3]
+    phrases:
+      - "Investimento garantido com retorno de 5% ao dia em criptomoedas.｜保證每天 5% 報酬的加密貨幣投資。"
+      - "Entra no nosso grupo de Telegram, o mentor passa as entradas.｜加入 Telegram 群組，導師會報進場點。"
+      - "Para sacar o lucro, precisa pagar o imposto antes.｜要提領獲利得先付稅。"
+    strong: [investimento garantido, retorno garantido, para sacar o lucro, grupo de telegram]
+    keywords: [criptomoedas, bitcoin, mentor, trader, plataforma]
+    hard: []
+    requests: ["depositar na plataforma｜入金"]
+    tactics: ["lucro rápido｜快速獲利"]
+  job_mule:
+    sources: [S8]
+    phrases:
+      - "Trabalho em casa avaliando produtos, ganhe 200 reais por dia.｜在家評價商品，一天賺 200 雷亞爾。"
+      - "Para liberar a próxima tarefa, faça um Pix de recarga.｜為了解鎖下一個任務，請 Pix 儲值。"
+      - "Empreste sua conta para receber uns pagamentos, você fica com 10%.｜借你的帳戶收幾筆款，你拿 10%。"
+    strong: [liberar a próxima tarefa, pix de recarga, empreste sua conta]
+    keywords: [trabalho em casa, tarefa, comissão, renda extra]
+    hard: [empreste sua conta]
+    requests: ["recarga｜儲值", "emprestar conta｜出借帳戶"]
+    tactics: ["ganho fácil｜輕鬆賺錢"]
+  prize_lottery:
+    sources: [S3]
+    phrases:
+      - "Parabéns, você foi sorteado e ganhou um carro zero!｜恭喜，你被抽中贏得一輛新車！"
+      - "Para receber o prêmio, pague a taxa de entrega por Pix.｜領獎請用 Pix 付運送費。"
+    strong: [você foi sorteado, taxa de entrega, receber o prêmio]
+    keywords: [parabéns, sorteio, prêmio, ganhou]
+    requests: ["pagar taxa｜付費"]
+    tactics: ["prêmio falso｜假獎品"]
+  parcel_customs:
+    sources: [S3]
+    phrases:
+      - "Sua encomenda está retida na alfândega, pague a taxa para liberar.｜您的包裹卡在海關，付費才能放行。"
+      - "[PT] Os CTT informam que a sua encomenda aguarda pagamento de portes.｜（葡萄牙）CTT 通知您的包裹待付運費。"
+    strong: [retida na alfândega, taxa para liberar, aguarda pagamento]
+    keywords: [encomenda, correios, ctt, alfândega]
+    requests: ["pagar taxa｜付費"]
+    tactics: ["urgência de entrega｜投遞緊急"]

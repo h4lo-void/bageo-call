@@ -1,0 +1,163 @@
+lang: de
+name: Deutsch
+regions: ["Deutschland", "Österreich", "Schweiz"]
+sources:
+  S1: {title: "Bayerische Polizei / PP München: Organisierter Callcenterbetrug – Falsche Polizeibeamte, Schockanruf", url: "https://www.polizei.bayern.de/schuetzen-und-vorbeugen/beratung/039355/index.html"}
+  S2: {title: "Polizeiliche Kriminalprävention (polizei-beratung.de): Schockanrufe", url: "https://www.polizei-beratung.de/themen-und-tipps/betrug/schockanrufe/"}
+  S3: {title: "polizei-beratung.de: Betrug durch falsche Polizisten", url: "https://www.polizei-beratung.de/themen-und-tipps/betrug/betrug-durch-falsche-polizisten/"}
+  S4: {title: "polizei-beratung.de: Enkeltrick", url: "https://www.polizei-beratung.de/themen-und-tipps/betrug/enkeltrick/"}
+  S5: {title: "polizei-beratung.de: Falsche Microsoft-Mitarbeiter am Telefon", url: "https://www.polizei-beratung.de/themen-und-tipps/betrug/falsche-microsoft-mitarbeiter/"}
+  S6: {title: "polizei-beratung.de: Falsche Gewinnversprechen", url: "https://www.polizei-beratung.de/themen-und-tipps/betrug/gewinnversprechen/"}
+  S7: {title: "polizei-beratung.de: Falsche Enkel, echte Gefahr – Telefonbetrug rechtzeitig durchschauen", url: "https://www.polizei-beratung.de/presse/detailseite/falsche-enkel-echte-gefahr-telefonbetrug-rechtzeitig-durchschauen/"}
+  S8: {title: "LKA Niedersachsen: Falsche Polizeibeamte", url: "https://www.lka.polizei-nds.de/startseite/kriminalitat/deliktsbereiche/betrugsdelikte/straftaten_zum_nachteil_alterer_menschen/falsche_polizeibeamte/"}
+  S9: {title: "polizei-beratung.de: Fake-Kundenservice (Support-Scams)", url: "https://www.polizei-beratung.de/themen-und-tipps/sicher-handeln/onlinebetrug-maschen/fake-kundenservice-support-scams/"}
+  S10: {title: "Cybercrimepolice.ch (Kantonspolizei Zürich)", url: "https://www.cybercrimepolice.ch/"}
+categories:
+  police_prosecutor:
+    sources: [S1, S3, S8]
+    phrases:
+      - "Hier ist die Kriminalpolizei, Hauptkommissar Weber. In Ihrer Nachbarschaft wurde eingebrochen.｜這裡是刑事警察 Weber 總警監，您附近發生竊案。"
+      - "Wir haben zwei Täter festgenommen und bei ihnen einen Zettel mit Ihrer Adresse gefunden.｜我們逮捕了兩名犯人，身上有寫著您地址的紙條。"
+      - "Ihr Geld und Ihr Schmuck sind zu Hause nicht mehr sicher.｜您的錢和珠寶在家裡已經不安全了。"
+      - "Zur Eigentumssicherung nehmen wir Ihre Wertsachen vorübergehend in Verwahrung.｜為了財產保全，我們暫時保管您的貴重物品。"
+      - "Das Geld muss auf Spuren und Falschgeld untersucht werden.｜這些錢必須檢驗痕跡和偽鈔。"
+      - "Mitarbeiter Ihrer Bank sind in die Sache verwickelt, sagen Sie dort nichts.｜您銀行的員工涉案，在那裡什麼都不要說。"
+      - "Wenn die Bank fragt, sagen Sie, das Geld ist für eine Renovierung.｜銀行問的話，就說錢是要裝修。"
+      - "Ein Kollege in Zivil kommt gleich vorbei und holt das Geld ab.｜一位便衣同事等一下過去拿錢。"
+      - "Legen Sie nicht auf, die Leitung muss offen bleiben.｜不要掛斷，線路必須保持暢通。"
+      - "Stellen Sie die Tasche mit dem Geld vor die Tür.｜把裝錢的袋子放在門口。"
+      - "Sie sehen ja die 110 auf Ihrem Display.｜您螢幕上不是顯示 110 嗎。"
+      - "Sie müssen absolutes Stillschweigen bewahren, sonst gefährden Sie die Ermittlungen.｜您必須絕對保密，否則會危害調查。"
+      - "Haben Sie Bargeld, Gold oder Schmuck im Haus?｜您家裡有現金、黃金或珠寶嗎？"
+      - "Das Geld bekommen Sie später bei der Polizeidienststelle zurück.｜錢之後可以在警局領回。"
+      - "Wir ermitteln gegen kriminelle Bankmitarbeiter und brauchen Ihre Unterstützung.｜我們在調查犯罪的銀行員工，需要您的協助。"
+      - "[AT] Hier spricht das Bundeskriminalamt, Ihr Konto wird für Geldwäsche missbraucht.｜（奧地利）這裡是聯邦刑事局，您的帳戶被用來洗錢。"
+    strong: [eigentumssicherung, in verwahrung, nicht mehr sicher, auf spuren untersucht, kollege in zivil, holt das geld ab, vor die tür, legen sie nicht auf, absolutes stillschweigen, kriminelle bankmitarbeiter, zettel mit ihrer adresse, spurensicherung, geldwäsche, falschgeld]
+    keywords: [kriminalpolizei, hauptkommissar, polizei, staatsanwalt, staatsanwaltschaft, einbruch, festgenommen, wertsachen, schmuck, bargeld, gold, bundeskriminalamt, ermittlungen]
+    hard: [eigentumssicherung, kollege in zivil]
+    requests: ["Bargeld/Gold/Schmuck an Abholer übergeben｜把現金黃金珠寶交給取件人", "Geld abheben und Bank anlügen｜提款並對銀行說謊", "Wertsachen vor die Tür stellen｜把貴重物品放門口", "Leitung offen halten｜保持通話"]
+    tactics: ["Call-ID-Spoofing mit 110｜偽造 110 來電", "stundenlang in der Leitung halten｜好幾小時不掛線", "Keiler/Abschließer/Abholer｜分工：開場／收尾／取款"]
+  family_emergency:
+    sources: [S1, S2, S4, S7]
+    phrases:
+      - "!Ich hat' nen schrecklichen Autounfall … Ich bin eben grad bei der Polizei. Ich wurd grad festgenommen. Ich hab' ne Frau überfahren … bitte hol mich hier raus – es tut mir leid!｜我出了可怕的車禍…我現在在警察局，剛被逮捕，我撞到一個女人…求你救我出去，對不起！"
+      - "Mama, ich bin's, ich hab einen Unfall gebaut, eine Frau ist tot.｜媽，是我，我出車禍了，有個女人死了。"
+      - "Hier ist Staatsanwalt Müller. Ihre Tochter hat einen tödlichen Unfall verursacht; mit einer Kaution kann sie die Untersuchungshaft vermeiden.｜我是 Müller 檢察官，您女兒造成致命車禍，交保釋金可避免羈押。"
+      - "Die Kaution beträgt 60.000 Euro und muss heute hinterlegt werden.｜保釋金 6 萬歐元，今天必須繳。"
+      - "Ihr Sohn braucht eine lebensrettende Operation, die Klinik verlangt eine Vorauszahlung.｜您兒子需要救命手術，醫院要求預付款。"
+      - "Ein Gerichtsbote kommt vorbei und holt das Geld ab.｜法院信差會過去拿錢。"
+      - "Sprechen Sie mit niemandem darüber.｜不要跟任何人說。"
+      - "Wie viel Bargeld haben Sie zu Hause?｜您家裡有多少現金？"
+      - "Ich bin heiser, deshalb klinge ich anders.｜我聲音沙啞，所以聽起來不一樣。"
+    strong: [kaution, untersuchungshaft, tödlichen unfall, frau überfahren, hol mich hier raus, lebensrettende operation, gerichtsbote, holt das geld ab, vorauszahlung]
+    keywords: [unfall, festgenommen, staatsanwalt, mama, papa, oma, opa, klinik, bargeld]
+    requests: ["Kaution in bar/Gold｜以現金或黃金交保", "Geld an Boten übergeben｜交錢給信差"]
+    tactics: ["Schock und Weinen｜驚嚇與哭聲", "Zeitdruck｜時間壓力", "Stillschweigen｜保密"]
+  guess_who:
+    sources: [S4, S7]
+    phrases:
+      - "!Rate mal, wer hier spricht?｜猜猜我是誰？"
+      - "Na, erkennst du mich nicht? Ich bin's, dein Enkel.｜怎麼，認不出我嗎？是我，你孫子。"
+      - "!Hallo Mama, hallo Papa, mein Handy ist kaputt, das ist meine neue Handynummer.｜嗨媽、嗨爸，我手機壞了，這是我的新號碼。"
+      - "Ich will eine Wohnung kaufen und brauche heute noch Bargeld für die Anzahlung.｜我要買房，今天就需要現金付訂金。"
+      - "Ich kann nicht selbst kommen, ein Freund holt das Geld ab.｜我不能自己來，朋友會去拿錢。"
+      - "Kannst du für mich eine Rechnung überweisen? Mein Online-Banking geht nicht.｜你能幫我轉帳付帳單嗎？我的網銀不能用。"
+    strong: [rate mal wer hier spricht, erkennst du mich nicht, neue handynummer, handy ist kaputt, ein freund holt das geld ab]
+    keywords: [enkel, ich bin's, anzahlung, rechnung überweisen]
+    requests: ["Bargeld an Freund｜現金交朋友", "Überweisung｜轉帳"]
+    tactics: ["Opfer nennt den Namen selbst｜讓被害人自己說出名字", "Taxi zur Bank｜叫計程車載去銀行"]
+  tech_support:
+    sources: [S5, S9]
+    phrases:
+      - "Hello, I am calling from Microsoft, your computer has a virus.｜（常以英語或破德語）你好，我是微軟，你的電腦有病毒。"
+      - "Ihr Rechner ist von Viren befallen und wurde gehackt.｜您的電腦被病毒感染、被駭了。"
+      - "Ihr Computer braucht ein neues Sicherheitszertifikat.｜您的電腦需要新的安全憑證。"
+      - "Bitte installieren Sie diese Fernwartungssoftware, damit ich das Problem lösen kann.｜請安裝這個遠端維護軟體，讓我解決問題。"
+      - "Ihre Lizenz ist abgelaufen, die Erneuerung kostet 199 Euro.｜您的授權過期了，續約費 199 歐元。"
+      - "Die Transaktion ist fehlgeschlagen, wir müssen es noch einmal versuchen.｜交易失敗，我們必須再試一次。"
+      - "Wir machen eine Testüberweisung, um die Hacker zu fangen.｜我們做一筆測試轉帳來抓駭客。"
+      - "Kaufen Sie an der Tankstelle Gutscheincodes, zum Beispiel iTunes.｜去加油站買禮品碼，例如 iTunes。"
+      - "Wenn Sie nicht zahlen, wird Ihr Rechner gesperrt und alle Daten gehen verloren.｜不付款電腦會被鎖，資料全沒。"
+    strong: [fernwartungssoftware, von viren befallen, sicherheitszertifikat, lizenz ist abgelaufen, testüberweisung, gutscheincodes, alle daten gehen verloren, anydesk, teamviewer]
+    keywords: [microsoft, rechner, computer, virus, gehackt, wartungsvertrag]
+    hard: [fernwartungssoftware, testüberweisung]
+    requests: ["Fernwartung installieren｜安裝遠端維護", "Gebühr/Gutscheincodes｜費用或禮品碼", "Testüberweisung｜測試轉帳"]
+    tactics: ["Drohung mit Datenverlust｜威脅資料遺失", "Provision versprechen｜承諾佣金"]
+  prize_lottery:
+    sources: [S6]
+    phrases:
+      - "!Sie haben gewonnen!｜您中獎了！"
+      - "Sie haben bei unserem Gewinnspiel 48.000 Euro und einen Mercedes gewonnen.｜您在我們的抽獎中贏得 4.8 萬歐元和一輛賓士。"
+      - "Vor der Gewinnübergabe fällt eine Bearbeitungsgebühr an.｜領獎前需付手續費。"
+      - "Ich rufe im Auftrag eines Notars an; die Notargebühren und Zollgebühren müssen vorab bezahlt werden.｜我代表公證人來電，公證費和關稅必須先付。"
+      - "Kaufen Sie paysafecard-Karten und nennen Sie mir die Codes.｜買 paysafecard 卡把代碼告訴我。"
+      - "Überweisen Sie die Gebühr per Bargeldtransfer in die Türkei.｜用現金匯款把費用匯到土耳其。"
+    strong: [sie haben gewonnen, bearbeitungsgebühr, gewinnübergabe, notargebühren, zollgebühren, paysafecard, gewinnspiel]
+    keywords: [gewinn, notar, rechtsanwalt, transportkosten, versicherungskosten]
+    requests: ["Gebühren vorab｜先付費", "paysafecard-Codes｜paysafecard 代碼"]
+    tactics: ["angeblicher Anwalt/Notar｜假律師公證人", "Rufnummern-Spoofing｜偽造號碼"]
+  bank_card_alert:
+    sources: [S9, S10]
+    phrases:
+      - "Guten Tag, hier ist die Sicherheitsabteilung Ihrer Bank. Wir haben verdächtige Abbuchungen festgestellt.｜您好，這是您銀行安全部門，我們發現可疑扣款。"
+      - "Um die Überweisung zu stoppen, nennen Sie mir bitte die TAN, die Sie gleich bekommen.｜為了停止轉帳，請告訴我您即將收到的 TAN 碼。"
+      - "Bestätigen Sie den Vorgang in Ihrer pushTAN-App.｜請在 pushTAN App 中確認此操作。"
+      - "Ihre Karte muss gesperrt werden, ein Kurier holt sie bei Ihnen ab.｜您的卡必須停用，信差會去取卡。"
+      - "Wir richten ein Sicherheitskonto ein, überweisen Sie Ihr Guthaben dorthin.｜我們設立一個安全帳戶，請把餘額轉過去。"
+      - "Ihre Daten müssen aktualisiert werden, sonst wird Ihr Konto gesperrt.｜您的資料必須更新，否則帳戶會被凍結。"
+    strong: [nennen sie mir die tan, pushtan, sicherheitskonto, verdächtige abbuchungen, kurier holt sie ab, konto wird gesperrt]
+    keywords: [sicherheitsabteilung, bank, sparkasse, karte sperren, tan, überweisung]
+    hard: [sicherheitskonto, nennen sie mir die tan]
+    requests: ["TAN nennen｜告知 TAN", "in App freigeben｜在 App 核准", "Karte an Kurier｜交卡給信差"]
+    tactics: ["Spoofing der Banknummer｜偽造銀行號碼"]
+  otp_password:
+    sources: [S9]
+    phrases:
+      - "Sie erhalten gleich einen Code per SMS, lesen Sie ihn mir bitte vor.｜您馬上會收到簡訊碼，請唸給我。"
+      - "Nennen Sie mir Ihre PIN zur Verifizierung.｜請告訴我您的 PIN 以驗證。"
+      - "Geben Sie mir Ihre Zugangsdaten, damit ich das Konto entsperren kann.｜給我您的登入資料，讓我解鎖帳戶。"
+    strong: [lesen sie ihn mir vor, nennen sie mir ihre pin, zugangsdaten]
+    keywords: [code, pin, passwort, tan]
+    hard: [lesen sie ihn mir vor]
+    requests: ["Code vorlesen｜唸代碼"]
+    tactics: ["Verifizierung als Vorwand｜以驗證為藉口"]
+  utility_cutoff:
+    sources: [S10]
+    phrases:
+      - "Hier sind Ihre Stadtwerke, wegen offener Rechnungen sperren wir heute den Strom.｜這是市政公用事業，因帳單未繳今天斷電。"
+      - "Ihr Stromzähler muss sofort getauscht werden.｜您的電表必須立刻更換。"
+    strong: [sperren wir heute den strom, offene rechnungen, stromzähler getauscht]
+    keywords: [stadtwerke, strom, gas, zähler]
+    requests: ["Sofortzahlung｜立即付款"]
+    tactics: ["Abschaltdrohung｜斷電威脅"]
+  investment_crypto:
+    sources: [S10]
+    phrases:
+      - "Mit Bitcoin können Sie in wenigen Wochen Ihr Geld verdoppeln, garantiert.｜用比特幣幾週內資金翻倍，保證。"
+      - "Ihr persönlicher Broker begleitet Sie auf unserer Trading-Plattform.｜您的個人經紀人會在交易平台陪您。"
+      - "Für die Auszahlung müssen Sie zuerst Steuern und Gebühren bezahlen.｜要出金得先付稅和費用。"
+    strong: [geld verdoppeln, garantiert, für die auszahlung zuerst steuern, persönlicher broker]
+    keywords: [bitcoin, krypto, trading, plattform, rendite]
+    hard: []
+    requests: ["einzahlen｜入金"]
+    tactics: ["Scheingewinne｜假獲利"]
+  parcel_customs:
+    sources: [S10]
+    phrases:
+      - "Ihr Paket liegt beim Zoll, es fallen Zollgebühren an.｜您的包裹在海關，需要付關稅。"
+      - "In einem Paket auf Ihren Namen wurden Drogen gefunden, ich verbinde Sie mit der Polizei.｜以您名義的包裹裡發現毒品，我幫您轉接警察。"
+    strong: [paket liegt beim zoll, verbinde sie mit der polizei, drogen gefunden]
+    keywords: [paket, zoll, dhl, sendung]
+    hard: [verbinde sie mit der polizei]
+    requests: ["Zollgebühr｜關稅"]
+    tactics: ["Weiterleitung an falsche Polizei｜轉接假警察"]
+  gift_card_payment:
+    sources: [S5, S6]
+    phrases:
+      - "Kaufen Sie Google-Play-Karten und lesen Sie mir die Codes vor.｜買 Google Play 卡，把代碼唸給我。"
+      - "An der Tankstelle bekommen Sie paysafecard-Gutscheine.｜加油站可以買到 paysafecard 禮券。"
+    strong: [lesen sie mir die codes vor, google-play-karten, paysafecard-gutscheine]
+    keywords: [gutschein, guthabenkarte, itunes-karte]
+    hard: [lesen sie mir die codes vor]
+    requests: ["Gutscheincodes nennen｜告知禮品碼"]
+    tactics: ["Zahlungsmittel nicht rückverfolgbar｜無法追蹤"]

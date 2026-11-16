@@ -1,0 +1,160 @@
+lang: fr
+name: Français
+regions: ["France", "Belgique", "Suisse", "Canada (Québec)", "Afrique francophone"]
+sources:
+  S1: {title: "Cybermalveillance.gouv.fr : Que faire en cas de fraude au faux conseiller bancaire ?", url: "https://www.cybermalveillance.gouv.fr/tous-nos-contenus/fiches-reflexes/fraude-faux-conseiller-bancaire"}
+  S2: {title: "Cybermalveillance.gouv.fr : Arnaques au faux support technique", url: "https://www.cybermalveillance.gouv.fr/tous-nos-contenus/fiches-reflexes/arnaques-au-faux-support-technique"}
+  S3: {title: "Cybermalveillance.gouv.fr : L'hameçonnage au faux numéro d'opposition bancaire", url: "https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/lhameconnage-au-faux-numero-dopposition-bancaire"}
+  S4: {title: "Centre antifraude du Canada : Fraude liée au besoin urgent d'argent – arnaque des grands-parents", url: "https://antifraudcentre-centreantifraude.ca/scams-fraudes/emergency-urgence-fra.htm"}
+  S5: {title: "La Presse : fraudes envers les aînés – « C'est un crime dégueulasse »", url: "https://www.lapresse.ca/actualites/fraudes-envers-les-aines/des-proies-faciles-de-plus-en-plus-ciblees/2024-09-07/c-est-un-crime-degueulasse.php"}
+  S6: {title: "Que Choisir : Comment repérer un faux conseiller bancaire ?", url: "https://www.quechoisir.org/conseils-arnaque-comment-reperer-un-faux-conseiller-bancaire-n116534/"}
+  S7: {title: "Cybercrimepolice.ch (Police cantonale zurichoise) : arnaques signalées en Suisse", url: "https://www.cybercrimepolice.ch/"}
+  S8: {title: "Gouvernement du Canada – ARC : Reconnaître une arnaque", url: "https://www.canada.ca/fr/agence-revenu/organisation/arnaques-fraudes/reconnaitre-arnaque.html"}
+  S9: {title: "INC – Institut national de la consommation : arnaque au faux conseiller bancaire avec Cybermalveillance", url: "https://www.inc-conso.fr/content/que-faire-en-cas-darnaque-au-faux-conseiller-bancaire-avec-cybermalveillance"}
+categories:
+  bank_card_alert:
+    sources: [S1, S3, S6, S9]
+    phrases:
+      - "Bonjour, je suis votre conseiller du service anti-fraude de votre banque. Nous avons détecté des opérations suspectes sur votre compte.｜您好，我是您銀行防詐部門的顧問，偵測到您帳戶有可疑交易。"
+      - "Un paiement de 1 480 euros est en cours chez un site de vente en ligne, est-ce bien vous ?｜一筆 1,480 歐元的網購付款正在進行，是您本人嗎？"
+      - "Pour bloquer l'opération, vous allez recevoir un code par SMS, il faut me le communiquer.｜為了阻擋交易，您會收到簡訊代碼，必須告訴我。"
+      - "Validez l'opération dans votre application, c'est pour l'annuler.｜請在 App 中確認這筆交易，這是為了取消它。"
+      - "Je vais ajouter un bénéficiaire de sécurité pour protéger vos fonds.｜我會新增一個安全受款人來保護您的資金。"
+      - "Votre carte est compromise ; un coursier va passer la récupérer pour la détruire.｜您的卡已外洩，快遞員會去收回銷毀。"
+      - "Découpez votre carte en deux et mettez-la dans une enveloppe avec votre code.｜把卡剪成兩半，連同密碼放進信封。"
+      - "Pour vérifier votre identité, donnez-moi le code secret de votre carte.｜為了驗證身分，請告訴我卡片密碼。"
+      - "Vous voyez bien le numéro de votre agence qui s'affiche.｜您看到顯示的是您分行的號碼。"
+      - "Ne raccrochez pas, je vous transfère au service sécurité.｜不要掛，我轉接安全部門。"
+      - "Il faut faire opposition tout de suite, je m'en occupe avec vous.｜必須立刻掛失止付，我陪您處理。"
+      - "Nous allons sécuriser votre épargne en la virant sur un compte temporaire.｜我們把您的儲蓄轉到臨時帳戶以保安全。"
+      - "[BE] Bonjour, ici Card Stop, votre carte a été piratée.｜（比利時）您好，這裡是 Card Stop，您的卡被盜用。"
+    strong: [opérations suspectes, service anti-fraude, code par sms, validez l'opération, pour l'annuler, bénéficiaire de sécurité, coursier va passer, récupérer votre carte, code secret de votre carte, compte temporaire, compte sécurisé, découpez votre carte]
+    keywords: [conseiller, banque, carte bancaire, opposition, virement, application bancaire, card stop]
+    hard: [compte sécurisé, bénéficiaire de sécurité]
+    requests: ["communiquer le code SMS｜提供簡訊碼", "valider dans l'appli｜在 App 確認", "remettre la carte à un coursier｜交卡給快遞員", "virer sur un compte sécurisé｜轉到安全帳戶"]
+    tactics: ["usurpation du numéro de la banque｜偽造銀行號碼", "infos personnelles déjà connues｜早已掌握個資", "urgence｜緊迫"]
+  otp_password:
+    sources: [S1]
+    phrases:
+      - "Vous allez recevoir un code à six chiffres, pouvez-vous me le lire ?｜您會收到六位數代碼，可以唸給我嗎？"
+      - "Ce code sert uniquement à annuler la transaction.｜這組代碼只是用來取消交易。"
+      - "Donnez-moi votre identifiant et votre mot de passe pour réinitialiser l'accès.｜給我您的帳號和密碼來重設存取。"
+    strong: [pouvez-vous me le lire, code à six chiffres, sert uniquement à annuler, votre mot de passe]
+    keywords: [code, identifiant, mot de passe, code de confirmation]
+    hard: [pouvez-vous me le lire]
+    requests: ["lire l'OTP｜唸 OTP"]
+    tactics: ["« c'est pour annuler »｜騙說是取消"]
+  tech_support:
+    sources: [S2, S7]
+    phrases:
+      - "Bonjour, je vous appelle du support technique Microsoft, votre ordinateur est infecté.｜您好，我是微軟技術支援，您的電腦被感染了。"
+      - "Votre adresse IP a été piratée, des hackers ont accès à vos comptes.｜您的 IP 被駭，駭客能存取您的帳戶。"
+      - "Installez le logiciel AnyDesk pour que je puisse prendre la main à distance.｜安裝 AnyDesk 讓我遠端接手。"
+      - "Votre licence Windows a expiré, le dépannage coûte 299 euros.｜您的 Windows 授權過期，維修費 299 歐元。"
+      - "Payez avec des cartes PCS ou Transcash achetées au bureau de tabac.｜用菸草店買的 PCS 或 Transcash 卡付款。"
+      - "Ne redémarrez surtout pas, vous perdriez toutes vos données.｜千萬不要重開機，否則資料全失。"
+    strong: [support technique microsoft, votre ordinateur est infecté, prendre la main à distance, installez anydesk, cartes pcs, transcash, licence windows a expiré]
+    keywords: [microsoft, virus, piraté, dépannage, teamviewer, adresse ip]
+    hard: [prendre la main à distance, installez anydesk]
+    requests: ["installer un logiciel de prise en main｜安裝遠端軟體", "payer en cartes prépayées｜用預付卡付款"]
+    tactics: ["fausse alerte écran｜假畫面警告", "peur de perte de données｜恐嚇資料遺失"]
+  family_emergency:
+    sources: [S4, S5]
+    phrases:
+      - "Grand-maman, c'est moi ! J'ai eu un accident et je suis en prison.｜奶奶，是我！我出了車禍在監獄。"
+      - "!Il s'est fait arrêter et a besoin d'argent pour payer sa caution.｜（CAFC）他被逮捕了，需要錢付保釋金。"
+      - "Je vous passe mon avocat, il va vous expliquer.｜我讓律師跟您說明。"
+      - "Ici maître Tremblay, votre petit-fils a besoin de 8 000 dollars pour sa caution.｜我是 Tremblay 律師，您孫子需要 8,000 元保釋金。"
+      - "Le juge a imposé un bâillon, vous ne pouvez en parler à personne.｜法官下了禁口令，您不能跟任何人說。"
+      - "Un huissier va passer chercher l'argent chez vous.｜一位執達員會到您家取錢。"
+      - "Ne dis rien à papa et maman, s'il te plaît.｜拜託不要跟爸媽說。"
+      - "J'ai le nez cassé, c'est pour ça que ma voix est bizarre.｜我鼻子斷了，所以聲音怪怪的。"
+      - "Maman, j'ai cassé mon téléphone, voici mon nouveau numéro.｜媽，我手機壞了，這是新號碼。"
+    strong: [payer sa caution, je suis en prison, bâillon, passer chercher l'argent, ne dis rien à papa, nouveau numéro, ma voix est bizarre]
+    keywords: [grand-maman, grand-papa, c'est moi, avocat, maître, accident, arrêté, huissier]
+    requests: ["remettre de l'argent comptant à un émissaire｜把現金交給來人", "envoyer de l'argent par la poste｜郵寄現金", "cryptomonnaie｜加密貨幣"]
+    tactics: ["urgence et menace｜緊急與威脅", "ordre de silence｜禁口令"]
+  police_prosecutor:
+    sources: [S7, S4]
+    phrases:
+      - "Bonjour, ici le commissaire Martin de la police judiciaire. Votre identité a été utilisée dans une affaire de blanchiment.｜您好，我是司法警察 Martin 局長，您的身分被用於洗錢案。"
+      - "Des employés de votre banque sont complices ; nous avons besoin de vous pour les confondre.｜您銀行的員工是共犯，我們需要您協助揭發。"
+      - "Retirez votre argent et remettez-le à un agent en civil qui passera chez vous.｜領出現金交給會到府的便衣警員。"
+      - "Vos bijoux et votre or ne sont plus en sécurité chez vous, nous allons les mettre sous scellés.｜您的珠寶和黃金在家不安全，我們要查封保管。"
+      - "C'est une enquête confidentielle, ne parlez à personne, même pas au guichetier.｜這是機密調查，不要跟任何人說，連櫃員也不行。"
+      - "[CH] Ici la police cantonale, des cambrioleurs ont une liste avec votre adresse.｜（瑞士）這裡是州警察，竊賊名單上有您的地址。"
+      - "[CA] Ici l'Agence du revenu du Canada ; un mandat d'arrêt a été émis contre vous.｜（加拿大）這裡是加拿大稅務局，已對您發出逮捕令。"
+    strong: [affaire de blanchiment, agent en civil, mettre sous scellés, enquête confidentielle, employés de votre banque sont complices, mandat d'arrêt, liste avec votre adresse]
+    keywords: [commissaire, police judiciaire, gendarmerie, police cantonale, procureur, agence du revenu]
+    hard: [mettre sous scellés]
+    requests: ["remettre argent/bijoux à un faux policier｜交現金珠寶給假警察", "payer une amende｜付罰款"]
+    tactics: ["usurpation du 17/117｜偽造報案號碼", "isolement｜隔離"]
+  training_fund:
+    sources: [S1]
+    phrases:
+      - "Bonjour, vos droits CPF vont expirer à la fin du mois, il faut les utiliser maintenant.｜您好，您的 CPF 職訓額度月底到期，現在必須使用。"
+      - "Nous vous proposons une formation gratuite financée par votre CPF.｜我們提供由 CPF 支付的免費課程。"
+      - "Donnez-moi votre numéro de sécurité sociale pour vérifier votre solde.｜給我您的社會保險號碼查詢餘額。"
+      - "Vous allez recevoir un code de FranceConnect, lisez-le-moi.｜您會收到 FranceConnect 代碼，唸給我。"
+    strong: [droits cpf vont expirer, formation gratuite financée, code de franceconnect]
+    keywords: [cpf, compte personnel de formation, formation, numéro de sécurité sociale]
+    requests: ["numéro de sécu｜社保號碼", "code FranceConnect｜FranceConnect 代碼"]
+    tactics: ["expiration imminente｜即將過期"]
+  medical_insurance_benefit:
+    sources: [S1]
+    phrases:
+      - "Ici l'Assurance maladie, votre carte Vitale doit être renouvelée.｜這裡是健康保險局，您的 Vitale 卡必須更新。"
+      - "Vous avez droit à un remboursement, confirmez vos coordonnées bancaires.｜您有退款權利，請確認銀行資料。"
+    strong: [carte vitale doit être renouvelée, droit à un remboursement]
+    keywords: [assurance maladie, ameli, carte vitale, mutuelle]
+    requests: ["coordonnées bancaires｜銀行資料"]
+    tactics: ["faux remboursement｜假退款"]
+  utility_cutoff:
+    sources: [S7]
+    phrases:
+      - "Bonjour, ici votre fournisseur d'électricité, une facture impayée entraînera la coupure aujourd'hui.｜您好，這是電力公司，未付帳單今天將導致斷電。"
+      - "Votre compteur doit être remplacé, réglez les frais d'intervention par carte.｜您的電表要更換，請刷卡支付施工費。"
+    strong: [coupure aujourd'hui, facture impayée, compteur doit être remplacé]
+    keywords: [électricité, edf, engie, compteur, gaz]
+    requests: ["paiement immédiat｜立即付款"]
+    tactics: ["menace de coupure｜斷電威脅"]
+  investment_crypto:
+    sources: [S7]
+    phrases:
+      - "Je vous propose un placement en cryptomonnaies avec un rendement garanti de 15 %.｜我推薦保證 15% 報酬的加密貨幣投資。"
+      - "Votre conseiller va vous accompagner sur notre plateforme de trading.｜您的顧問會在交易平台上陪您操作。"
+      - "Pour débloquer vos gains, il faut payer des frais de déblocage.｜要解鎖獲利，必須付解鎖費。"
+    strong: [rendement garanti, frais de déblocage, débloquer vos gains]
+    keywords: [cryptomonnaies, bitcoin, placement, trading, plateforme]
+    hard: []
+    requests: ["verser sur la plateforme｜入金"]
+    tactics: ["gains fictifs｜虛假獲利"]
+  parcel_customs:
+    sources: [S7]
+    phrases:
+      - "Votre colis est bloqué à la douane, il faut régler des frais de dédouanement.｜您的包裹卡在海關，必須付清關費。"
+      - "Un colis à votre nom contenait des stupéfiants, je vous passe la police.｜以您名義的包裹有毒品，我幫您轉警察。"
+    strong: [bloqué à la douane, frais de dédouanement, je vous passe la police]
+    keywords: [colis, douane, livraison, la poste, chronopost]
+    hard: [je vous passe la police]
+    requests: ["payer des frais｜付費"]
+    tactics: ["transfert vers fausse police｜轉接假警察"]
+  prize_lottery:
+    sources: [S7]
+    phrases:
+      - "Félicitations, vous avez gagné une voiture lors de notre tirage au sort !｜恭喜，您在抽獎中贏得一輛車！"
+      - "Il suffit de payer les frais de dossier pour recevoir votre gain.｜只要付文件費就能領獎。"
+    strong: [vous avez gagné, frais de dossier, recevoir votre gain]
+    keywords: [félicitations, tirage au sort, gagnant, lot]
+    requests: ["payer des frais｜付費"]
+    tactics: ["gain inattendu｜意外獎品"]
+  gift_card_payment:
+    sources: [S2]
+    phrases:
+      - "Achetez des coupons PCS ou Neosurf et donnez-moi les codes.｜買 PCS 或 Neosurf 券，把代碼給我。"
+      - "Allez au bureau de tabac et prenez des cartes Google Play.｜去菸草店買 Google Play 卡。"
+    strong: [donnez-moi les codes, coupons pcs, neosurf, cartes google play]
+    keywords: [paysafecard, transcash, coupon, carte cadeau]
+    hard: [donnez-moi les codes]
+    requests: ["acheter des coupons prépayés｜買預付券"]
+    tactics: ["paiement intraçable｜無法追蹤"]

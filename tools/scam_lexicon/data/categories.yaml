@@ -1,0 +1,441 @@
+# 共用分類定義（zh-Hant）。bageo_typology = 對應 bageo-call crates/agent/data/scam_db.json 的 typology id；null = 內建沒有對應類型（不匯出到 scam_db.local.json）。
+police_prosecutor:
+  name: 假冒檢警／公檢法／法院（監管帳戶、安全帳戶）
+  bageo_typology: fake_official
+  description: 冒充警察、檢察官、法官、金管會／金融監督院、內地公安等，聲稱你的身分或帳戶涉及洗錢、詐騙、毒品、人頭帳戶，要求「配合調查」、保密、視訊筆錄，最後把錢轉入「監管／安全帳戶」、交付現金或金條、或交出提款卡與密碼。常由前一通「假電信／假健保／假快遞／假銀行」電話轉接過來。
+  flow:
+    - 開場：常由語音或「前一個單位」轉接；自報單位、姓名、警員編號，說出你的身分證字號／地址取信
+    - 恐嚇：你的帳戶／身分涉及刑案、已被通緝或即將拘提、凍結資產
+    - 隔離：偵查不公開、不能告訴家人和銀行、不能掛電話、要你到旅館／安靜地方、改用 LINE／WhatsApp／Telegram 視訊
+    - 取信：傳假公文、假逮捕令、假警察證；叫你上網查假網站「案件查詢」
+    - 收割：資金清查／證明清白→轉入監管帳戶、臨櫃提領現金交給「專員」、買金條、交提款卡＋密碼、安裝 App
+    - 善後：教你怎麼回答行員（說是買房、裝修、借家人）
+  detection_signals:
+    - 公務機關在電話中說「你涉案」並談到錢、帳戶、資產清查
+    - 出現「監管帳戶／安全帳戶／保證金／公證帳戶」等詞
+    - 要求保密、不能掛電話、不能告訴家人或銀行行員
+    - 要求改用通訊軟體視訊做筆錄、出示證件照片
+    - 一通電話裡被「轉接」到另一個機關（電信→警察、快遞→公安）
+    - 來電顯示 + 開頭或結尾 0110／110 的號碼
+  legit_lookalike: 真的警察會寄書面通知或請你親自到派出所說明，不會在電話中做筆錄、不會要求轉帳、提款或交付提款卡，也不會要求保密。
+
+health_insurance_card:
+  name: 假健保署／健保卡遭盜用（轉接假警察）
+  bageo_typology: fake_health_insurance
+  description: 以語音或真人冒充健保署、醫院、診所，說你的健保卡被盜用、重複就醫、申請補助、即將鎖卡，接著「幫你轉接警察報案」，進入假檢警流程。
+  flow:
+    - 語音：「您的健保卡異常將於今日停用，請按 9 轉接專人」
+    - 真人：說你在某醫院領藥／申請補助，詢問是否本人
+    - 你否認後，說可能身分被冒用，主動幫你轉接到「刑事局／警察局」
+    - 進入假檢警流程（見 police_prosecutor）
+  detection_signals:
+    - 健保／醫療機構主動來電並要求按鍵轉接
+    - 「身分被冒用」＋「幫你轉接報案」
+    - 醫療單位談到帳戶、存款、監管
+  legit_lookalike: 健保署、醫院不會用語音要求按鍵轉接，也不會替你轉接警察。
+
+telecom_number:
+  name: 假電信公司（停話、門號被冒辦、欠費）
+  bageo_typology: fake_telecom
+  description: 冒充中華電信、電信業者、總務省、通信管理局等，說你的門號欠費、兩小時後停話、有人用你的身分辦門號發詐騙簡訊，再轉接假警察；也包括自動語音「按 1」。
+  flow:
+    - 語音或真人：你的電話將被停用／有未繳費用
+    - 說有人用你的身分在外地辦了門號從事犯罪
+    - 「幫你報警」→轉接假警察
+  detection_signals:
+    - 電信業者說「2 小時後停話」並要求按鍵
+    - 「門號被冒用辦理」＋「幫你轉接警方」
+  legit_lookalike: 電信業者會以帳單、簡訊通知欠費，不會轉接警察。
+
+utility_cutoff:
+  name: 假水電瓦斯公司（今天斷電斷水）
+  bageo_typology: fake_utility
+  description: 冒充電力、自來水、瓦斯公司，說帳單逾期、電表要更換，若不立刻付款今天就會斷電；要求以預付卡、禮品卡、轉帳或刷卡付款。
+  flow:
+    - 宣稱帳戶逾期或電表需更換
+    - 威脅數小時內斷電斷水
+    - 要求立即以特殊管道付款或提供卡號
+  detection_signals:
+    - 「今天／一小時內斷電」＋立即付款
+    - 付款方式為禮品卡、點數卡、加密貨幣、匯到個人帳戶
+  legit_lookalike: 水電公司會寄送停電／停水催繳通知，不會要求買禮品卡。
+
+tax_benefit_refund:
+  name: 假退稅／退費／還付金（到 ATM 領錢）
+  bageo_typology: tax_refund_scam
+  description: 冒充稅務機關、市區公所、年金機構、健保、保險公司，說你有退稅、醫療費退費、年金未付，要你帶手機到 ATM 照指示操作，其實是把錢轉給歹徒。
+  flow:
+    - 通知有退款／過付金，期限是今天
+    - 說之前寄過通知書你沒回覆
+    - 要你帶手機到 ATM 或開網銀
+    - 在 ATM 前一步步指示按鍵（實為轉帳）
+  detection_signals:
+    - 「退費」＋「ATM」同時出現
+    - 「今天是最後期限」
+    - 「到了 ATM 再打給我」
+  legit_lookalike: 公家機關退款會直接匯入帳戶或寄支票，ATM 無法「領退款」。
+
+tax_debt_ssa:
+  name: 假國稅局／社會安全局（欠稅、社安號碼停用、逮捕）
+  bageo_typology: irs_ssa_impersonation
+  description: 冒充 IRS、HMRC、CRA、ATO、社會安全局等，說你欠稅、社會安全號碼被暫停或涉及犯罪，威脅逮捕、驅逐出境，要求立即付款（禮品卡、比特幣 ATM、匯款）。
+  flow:
+    - 自動語音：「這是最後通知，對你的法律訴訟已提出，按 1」
+    - 真人：說出案件編號、官員姓名、警徽號碼
+    - 威脅：警察正在路上、逮捕令、驅逐出境
+    - 要求立即以禮品卡、比特幣 ATM、電匯付款，並保持通話
+  detection_signals:
+    - 「逮捕令」＋「立即付款」
+    - 「你的社會安全號碼被暫停」
+    - 付款方式為禮品卡、比特幣 ATM
+  legit_lookalike: 稅務機關通常先寄信，不會電話要求禮品卡或比特幣，也不會威脅立即逮捕。
+
+bank_card_alert:
+  name: 假銀行／信用卡盜刷警示（帳戶異常、派人取卡）
+  bageo_typology: fake_bank_account_alert
+  description: 冒充銀行防詐中心、信用卡公司、銀行公會、百貨公司，說你的卡被盜刷、帳戶被入侵或需更新資料，要求說出卡號、驗證碼、密碼、在 App 按「確認」、把錢轉到「安全帳戶」，或派快遞／專員到府收卡。
+  flow:
+    - 開場：說出你的姓名、部分卡號、近期交易取信
+    - 警示：有一筆可疑交易／帳戶被駭／卡片外洩
+    - 處理：要你提供驗證碼、密碼、在 App 核准，或把錢移到新帳戶
+    - 變形：派人到府收卡（courier fraud）、說行員內鬼不要相信櫃台
+  detection_signals:
+    - 銀行來電要求驗證碼、PIN、網銀密碼
+    - 要求把錢「移到安全帳戶」
+    - 要派人來收卡片、或要你把卡和密碼放在信封裡
+    - 說「不要相信分行行員」
+  legit_lookalike: 真正的銀行可能來電核對刷卡，但不會要密碼、驗證碼或要求轉帳；可自行回撥卡片背面電話。
+
+installment_order_error:
+  name: 解除分期付款／訂單設定錯誤（假客服＋假銀行）
+  bageo_typology: fake_bank_installment
+  description: 台灣最典型的詐騙之一。冒充電商、網拍、飯店、票務客服，說訂單被誤設為分期、批發商、VIP 會員或重複扣款，接著由「銀行客服」來電指導操作 ATM／網銀／買遊戲點數「解除設定」。
+  flow:
+    - 假客服：說出你的訂單明細，說系統錯誤設成每月扣款
+    - 轉給假銀行：說要配合「解除」或「驗證帳戶」
+    - 指示：到 ATM、開網銀、或用無卡存款、買點數
+    - 重複：說操作失敗要再做一次
+  detection_signals:
+    - 「解除分期」「誤設」「重複扣款」「升級 VIP」「批發商」
+    - 客服之後由銀行再打來
+    - 要求操作 ATM／網銀／買點數
+  legit_lookalike: 真的訂單問題只會在官方平台內處理；ATM 只能提款和轉帳，無法解除任何設定。
+
+ecommerce_refund:
+  name: 冒充電商／物流客服退款理賠（含機票改簽、百萬保障）
+  bageo_typology: fake_shop_order_error
+  description: 冒充淘寶、京東、拼多多、Amazon、航空公司、物流客服，以商品品質問題、快遞遺失、雙倍理賠、取消百萬保障、機票延誤改簽為由，要求加好友、開會議軟體分享螢幕、提供驗證碼、到網貸平台借款「解凍」。
+  flow:
+    - 準確說出購物或航班資訊
+    - 主動提出退款／理賠／改簽補償
+    - 要求下載 App、開螢幕分享、提供驗證碼
+    - 以「信用不足」「帳戶凍結」為由叫你借款或轉帳
+  detection_signals:
+    - 主動退款＋要求螢幕分享或驗證碼
+    - 「理賠失敗」「帳戶被凍結」「要刷流水」
+    - 要你在借貸 App 借錢
+  legit_lookalike: 正規退款原路退回，不需要你操作轉帳或借款。
+
+otp_password:
+  name: 索取簡訊驗證碼／密碼／PIN
+  bageo_typology: otp_theft
+  description: 不論自稱誰，要求唸出簡訊驗證碼、一次性密碼、網銀密碼、提款卡密碼、信用卡背面三碼、身分證影像。這一類本身就是 hard 訊號。
+  flow:
+    - 先說會傳一組簡訊碼「確認是本人」或「取消交易」
+    - 要你唸出來或在按鍵輸入
+    - 拿到後即盜用帳號或完成轉帳
+  detection_signals:
+    - 任何「請把簡訊上的數字唸給我」
+    - 要 PIN、密碼、背面三碼
+  legit_lookalike: 任何正規機構都不會在電話中要求驗證碼或密碼。
+
+parcel_customs:
+  name: 假快遞／海關（包裹內有違禁品、要繳費）
+  bageo_typology: fake_customs_parcel
+  description: 冒充 DHL、順豐、郵局、海關，說以你名義寄出的包裹內有護照、毒品、銀行卡，已被扣押，接著轉接「公安／警察」；或說需繳關稅、重新派送費用。
+  flow:
+    - 說有包裹被扣押／退回／待領
+    - 內容物違法（假護照、毒品、銀行卡）
+    - 你否認後「幫你轉接公安報案」或要你付費
+  detection_signals:
+    - 快遞公司轉接到警察／公安
+    - 包裹「涉及洗錢、毒品、假護照」
+    - 付關稅給個人帳戶
+  legit_lookalike: 快遞公司不會替你轉接執法機關。
+
+guess_who:
+  name: 猜猜我是誰／換新號碼的親友
+  bageo_typology: guess_who
+  description: 一開口就問「猜猜我是誰」「聽不出我的聲音嗎」，讓你自己說出親友名字，接著說換了新號碼、手機壞了，幾天後再以急用、周轉、投資、被罰款為由借錢，帳戶常是別人的名字。
+  flow:
+    - 「猜猜我是誰？」「是我啦」
+    - 認領你說出的名字，說換號碼請你存起來
+    - 隔幾天：臨時急用、貨款周轉、醫藥費
+    - 「錢匯到朋友／老闆的帳戶」
+  detection_signals:
+    - 對方不先報自己名字
+    - 換新號碼＋近期借錢
+    - 收款帳戶戶名不是本人
+  legit_lookalike: 真的親友可用舊號碼回撥確認。
+
+family_emergency:
+  name: 假親友出事急需用錢（車禍、被捕、住院、律師）
+  bageo_typology: fake_relative_money
+  description: 冒充兒孫、親友或替他們打電話的律師、警察、醫院，說發生車禍撞到人、被逮捕要交保、住院要手術費，要求立即匯款、交付現金給來拿的人，並要你保密、不要告訴爸媽。
+  flow:
+    - 哭腔或感冒聲：「媽，是我，我出事了」
+    - 交棒給「律師／警察／對方家屬」
+    - 要求和解金、保釋金、手術費，今天就要
+    - 派「同事／朋友／信差」來拿錢
+    - 「不要告訴別人」「銀行問就說是裝修」
+  detection_signals:
+    - 聲音怪說是感冒／受傷
+    - 保釋金、和解金、交保
+    - 派人上門取錢、要你保密
+  legit_lookalike: 刑事司法程序不會以現金或加密貨幣在電話上交保；可回撥家人原本的號碼確認。
+
+virtual_kidnapping:
+  name: 假綁架／虛擬綁架勒贖
+  bageo_typology: fake_relative_money
+  description: 播放小孩或女性哭喊聲（或 AI 合成聲），宣稱你的家人在他們手上，威脅傷害，要求立即匯款，不准掛電話或報警。
+  flow:
+    - 哭聲：「爸／媽救我」
+    - 綁匪：家人在我手上，不准報警
+    - 要求立即匯款／轉帳，保持通話
+    - 威脅「我看得到你」「你家地址我知道」
+  detection_signals:
+    - 哭喊聲＋勒贖
+    - 不准掛電話、不准報警
+    - 要求「邊講電話邊匯款」
+  legit_lookalike: （無正常對應）立即用其他電話聯絡家人與報警。
+
+ai_voice_clone:
+  name: AI 語音複製／換臉冒充親友
+  bageo_typology: fake_relative_money
+  description: 用社群影片中的聲音訓練 AI，模仿家人、主管的聲音打電話借錢、要求付款或轉帳，常結合綁架、車禍、主管要求匯款。
+  flow:
+    - 聲音與家人極像，但對話短、迴避問題
+    - 要求緊急匯款或購買點數
+    - 拒絕視訊或說訊號不好
+  detection_signals:
+    - 聲音像但無法回答只有本人才知道的事
+    - 拒絕回撥、拒絕使用家庭暗語
+  legit_lookalike: 與家人約定暗語、回撥原號碼確認。
+
+boss_acquaintance:
+  name: 冒充主管／老師／熟人要求代墊、轉帳
+  bageo_typology: fake_relative_money
+  description: 冒充公司主管、老闆、老師、親戚，說自己不方便出面，請你先幫忙轉帳給某人、買點數、代墊貨款，並傳假的轉帳截圖。
+  flow:
+    - 以主管口吻要求加新帳號
+    - 「我在開會不方便講電話」
+    - 「先幫我付這筆，晚點還你」
+  detection_signals:
+    - 主管用新號碼／新帳號聯絡
+    - 急件付款、不能打電話確認
+  legit_lookalike: 公司付款依內部流程，可當面或打原分機確認。
+
+investment_crypto:
+  name: 假投資／飆股群組／虛擬貨幣
+  bageo_typology: investment_group_scam
+  description: 冒充投顧老師、分析師、名人，推薦飆股、內線消息、虛擬貨幣平台，保證獲利，要加 LINE／WhatsApp 群組、下載 App；前期小額獲利後拒絕出金，要求繳稅金、保證金、解凍費。
+  flow:
+    - 免費報明牌／加群
+    - 下載平台 App、小額入金獲利
+    - 加碼投入
+    - 出金時要求繳稅、保證金、洗碼量不足
+  detection_signals:
+    - 保證獲利、穩賺不賠、內線消息
+    - 加 LINE／WhatsApp／Telegram 群組
+    - 出金要先繳費
+  legit_lookalike: 合法券商不會保證獲利，也不會要你加私人群組。
+
+romance:
+  name: 假交友／殺豬盤（電話階段）
+  bageo_typology: romance_scam
+  description: 透過交友軟體建立感情後轉為電話聯絡，以軍官、醫生、工程師身分，說要寄禮物需繳關稅、急需醫藥費、介紹你投資。bageo 內建沒有「感情詐騙」類型，故不匯出到 scam_db.local.json（建議新增 romance_scam typology）。
+  flow:
+    - 甜言蜜語、規劃未來
+    - 困境：包裹卡海關、帳戶被凍結、生病
+    - 引導投資或借錢
+  detection_signals:
+    - 從未見面卻談錢
+    - 包裹關稅、行李費、提前解約費
+  legit_lookalike: （無）
+
+prize_lottery:
+  name: 中獎／抽獎／彩票明牌
+  bageo_typology: prize_lottery
+  description: 說你中了大獎、汽車、旅遊，要先付手續費、稅金、律師或公證費、運費；或提供彩票明牌、賭博必勝法收取情報費。
+  flow:
+    - 恭喜中獎
+    - 領獎前要先繳費
+    - 指示以禮品卡、匯款、付費電話付款
+  detection_signals:
+    - 沒參加卻中獎
+    - 領獎要先付錢
+  legit_lookalike: 合法抽獎不會要中獎人先付費。
+
+loan_advance_fee:
+  name: 貸款詐騙（先收保證金／手續費、大換小）
+  bageo_typology: loan_advance_fee
+  description: 冒充銀行、融資公司、政府政策貸款，信用差也能借、低利率大額，但先要保證金、手續費、保險費、公證金、信用分數提升費，或要你先清償舊貸款到指定帳戶；常要求安裝「貸款 App」。
+  flow:
+    - 主動提供低利率／政策性貸款
+    - 審核「信用不足」需提升
+    - 先繳費或先還舊貸到非機構帳戶
+    - 要求刪除銀行 App、安裝新 App
+  detection_signals:
+    - 放款前要先付錢
+    - 「重複貸款違法」需先清償
+    - 帳戶戶名不是金融機構
+  legit_lookalike: 合法金融機構放款前不會收取任何保證金。
+
+credit_record:
+  name: 註銷校園貸／影響徵信／關閉金融服務
+  bageo_typology: credit_record_scam
+  description: 中國大陸常見：冒充支付寶、京東、微信客服，說你學生時期開通校園貸、百萬保障、金條未註銷，會影響徵信，要你開螢幕共享、在多個網貸平台借錢轉到指定帳戶「清空額度」。
+  flow:
+    - 說出你的個資
+    - 校園貸／白條未註銷→影響徵信
+    - 指導在多個平台借款
+    - 轉入指定帳戶「驗證」「清空」
+  detection_signals:
+    - 「註銷校園貸」「影響徵信」
+    - 要你借款再轉帳
+  legit_lookalike: 徵信只能透過人民銀行徵信中心查詢。
+
+debt_collection:
+  name: 假催收／假欠款／架空請求（不付就提告）
+  bageo_typology: fake_debt_collection
+  description: 冒充討債公司、法務、法院、網站營運商，說你有未繳的網站費、貸款或帳單，今天不付就提告、財產查封、到府訪問；要求買電子禮品卡、匯款。
+  flow:
+    - 你有未付款項（常是成人網站、包月、舊貸款）
+    - 不付就訴訟、扣押、通知公司
+    - 今天付可減免或退款
+    - 要求買電子禮品卡唸卡號
+  detection_signals:
+    - 「今天不付就提告」
+    - 電子禮品卡付款
+  legit_lookalike: 真正的法律程序會有法院正式文件，不會要求禮品卡。
+
+tech_support:
+  name: 假技術支援（電腦中毒、遠端控制）
+  bageo_typology: tech_support_remote
+  description: 冒充微軟、Apple、網路業者、防毒公司、銀行資安部，說你的電腦或手機中毒、被駭、IP 被盜用，要你安裝 AnyDesk、TeamViewer、QuickSupport，然後收服務費、操控網銀或要你買禮品卡。
+  flow:
+    - 你的電腦傳出病毒／被駭
+    - 安裝遠端軟體
+    - 打開網銀「檢查」，假裝退款太多要你退回
+    - 收費或要求禮品卡
+  detection_signals:
+    - 主動來電說電腦中毒
+    - AnyDesk / TeamViewer / 遠端協助
+    - 「退款打錯要你退回」
+  legit_lookalike: 微軟、Apple 不會主動打電話給一般使用者。
+
+job_mule:
+  name: 求職打工／刷單／出租帳戶（人頭帳戶）
+  bageo_typology: job_account_mule
+  description: 以在家兼職、按讚、刷單、代收款為名，要求先墊付、繳保證金，或借用、租用你的銀行帳戶與提款卡，或要你代收代轉款項。
+  flow:
+    - 高薪輕鬆工作、日結
+    - 小額返利取信
+    - 連單／卡單要追加墊付
+    - 或要求寄提款卡、提供網銀
+  detection_signals:
+    - 工作需先付錢
+    - 借用／租用帳戶、寄提款卡
+    - 幫忙收款再轉出
+  legit_lookalike: 正規雇主只需你的薪轉帳號，不會要提款卡和密碼。
+
+gift_card_payment:
+  name: 要求以禮品卡／點數卡付款
+  bageo_typology: gift_card_payment
+  description: 不論藉口，要求到超商買 Apple、Google Play、Steam、遊戲點數、電子禮品卡並唸出卡號，本身就是 hard 訊號。
+  flow:
+    - 說需付罰款、費用、稅金
+    - 指示到超商／藥妝店買卡
+    - 刮開背面唸出卡號
+  detection_signals:
+    - 「買點數卡」「唸卡號」
+  legit_lookalike: 沒有任何機關或企業以禮品卡收款。
+
+gov_subsidy:
+  name: 假政府補助／普發現金／紓困金
+  bageo_typology: fake_government_subsidy
+  description: 冒充政府、市府、社福單位，說你符合補助、普發現金、紓困金、物價津貼，要求提供帳戶、驗證碼、先付手續費或到 ATM 操作。
+  flow:
+    - 通知符合補助資格
+    - 要求核對帳戶、提供驗證碼
+    - 或先付手續費
+  detection_signals:
+    - 補助＋手續費／驗證碼／ATM
+  legit_lookalike: 政府補助透過官方網站或指定管道登記，不收手續費。
+
+medical_insurance_benefit:
+  name: 假醫療保險／長照／醫療補助（索取保險號碼）
+  bageo_typology: medicare_benefits
+  description: 冒充醫療保險（Medicare、保險公司、年金局），提供新卡、免費器材、檢查、保費退款，索取保險號碼、社安號碼或銀行資料。
+  flow:
+    - 提供新卡或免費服務
+    - 索取保險號碼、身分號碼
+    - 或說保費過繳要退款
+  detection_signals:
+    - 主動送新保險卡要你給號碼
+  legit_lookalike: 保險單位不會主動來電索取號碼。
+
+charity:
+  name: 假慈善募款
+  bageo_typology: fake_charity
+  description: 災難、戰爭、警察／消防協會名義募款，要求立即刷卡、轉帳或禮品卡。
+  flow:
+    - 情感訴求
+    - 立即捐款
+  detection_signals:
+    - 不能寄資料只要現在付款
+  legit_lookalike: 正規慈善機構接受你自行上官網捐款。
+
+training_fund:
+  name: 假職訓補助帳戶（法國 CPF 等）
+  bageo_typology: training_fund_scam
+  description: 冒充法國 CPF 或職訓單位，說你的訓練點數即將過期，要你提供帳號、社會保險號碼或接收的驗證碼。
+  flow:
+    - 你的 CPF 額度即將失效
+    - 推薦免費課程
+    - 要帳號、社保號碼、SMS 驗證碼
+  detection_signals:
+    - CPF + 驗證碼／帳號
+  legit_lookalike: 官方不會主動打電話推銷課程。
+
+columbarium:
+  name: 靈骨塔／塔位買賣詐騙
+  bageo_typology: columbarium_scam
+  description: 台灣常見：說有買家高價收購你的塔位、生前契約，要你先付稅金、規費、補足件數或購買更多塔位。
+  flow:
+    - 有人要高價收購你的塔位
+    - 先付費用或湊足數量
+  detection_signals:
+    - 塔位＋高價收購＋先付費
+  legit_lookalike: （無）
+
+robocall_ivr:
+  name: 自動語音／按鍵轉接（詐騙開場）
+  bageo_typology: null
+  description: 預錄語音冒充機構，要求按鍵轉接真人，是許多詐騙的開場。bageo 會把純語音判為 IVR，故此類只作參考不匯出；內容關鍵字已分散在對應分類。
+  flow:
+    - 預錄語音說明異常
+    - 「請按 9 / 按 1 轉接專人」
+  detection_signals:
+    - 機構語音要你按鍵轉接處理身分／帳戶問題
+  legit_lookalike: 正規語音通知多半只是提醒，不會要你按鍵處理刑事問題。
+
+yes_recording:
+  name: 「聽得到嗎？」錄音詐騙與試探
+  bageo_typology: null
+  description: 開場問「聽得到嗎？」誘你說「是」錄音，或確認號碼有人接聽。不匯出。
+  flow:
+    - 「Can you hear me?」
+  detection_signals:
+    - 一開始就重複要求你說「是」
+  legit_lookalike: 收訊差時也可能這樣問，需搭配其他訊號。

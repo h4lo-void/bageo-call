@@ -1,0 +1,294 @@
+lang: en
+name: English
+regions: ["United States", "United Kingdom", "Canada", "Australia", "Singapore", "India (English)"]
+sources:
+  S1: {title: "FTC Data Spotlight (Aug 2025): False alarm, real scam – how scammers are stealing older adults' life savings", url: "https://search.ftc.gov/system/files/ftc_gov/pdf/Imposter-Data-Spotlight-August-2025.pdf"}
+  S2: {title: "FTC Data Spotlight (Apr 2024): Impersonation scams – not what they used to be", url: "https://search.ftc.gov/system/files/ftc_gov/pdf/imposter-scams-spotlight-2024.pdf"}
+  S3: {title: "FCC: 'Grandparent' scams get more sophisticated (AI voice cloning, safe word)", url: "https://www.fcc.gov/consumers/scam-alert/grandparent-scams-get-more-sophisticated"}
+  S4: {title: "FCC Consumer Alert: 'Can you hear me' scams", url: "https://docs.fcc.gov/public/attachments/DOC-344083A1.pdf"}
+  S5: {title: "FCC Scam Glossary", url: "https://www.fcc.gov/scam-glossary"}
+  S6: {title: "Action Fraud / Report Fraud (UK police): Courier fraud", url: "https://www.actionfraud.police.uk/a-z-of-fraud/courier-fraud"}
+  S7: {title: "Scamwatch (Australia, ACCC/NASC): Phone scams", url: "https://www.scamwatch.gov.au/types-of-scams/phone-scams"}
+  S8: {title: "Canadian Anti-Fraud Centre: Emergency / grandparent scams", url: "https://antifraudcentre-centreantifraude.ca/scams-fraudes/emergency-urgence-eng.htm"}
+  S9: {title: "Canada Revenue Agency: Recognize a scam", url: "https://www.canada.ca/en/revenue-agency/corporate/scams-fraud/recognize-scam.html"}
+  S10: {title: "IRS: Tax scams / consumer alerts", url: "https://www.irs.gov/newsroom/tax-scams-consumer-alerts"}
+  S11: {title: "GOV.UK: HMRC scam warning (phone calls threatening arrest)", url: "https://www.gov.uk/government/news/hmrc-issues-scam-warning-to-tax-credits-customers"}
+  S12: {title: "FBI Washington Field Office: scammers spoofing FBI phone number in government impersonation fraud", url: "https://www.fbi.gov/contact-us/field-offices/washingtondc/news/press-releases/fbi-warns-of-scammers-spoofing-fbi-phone-number-in-government-impersonation-fraud"}
+  S13: {title: "FCC Consumer Guide: Caller ID spoofing", url: "https://www.fcc.gov/consumers/guides/spoofing"}
+  S14: {title: "ScamShield Singapore (government anti-scam portal)", url: "https://www.scamshield.gov.sg/"}
+  S15: {title: "Microsoft Support: Protect yourself from tech support scams", url: "https://support.microsoft.com/en-us/office/protect-yourself-from-tech-support-scams"}
+  S16: {title: "Michigan AG: Grandparent / family emergency scam", url: "https://www.michigan.gov/consumerprotection/protect-yourself/consumer-alerts/scams/grandparent-family-emergency-scam"}
+categories:
+  police_prosecutor:
+    sources: [S1, S2, S12, S7]
+    phrases:
+      - "This is Officer Daniels with the Federal Bureau of Investigation, badge number 4471.｜我是 FBI 的 Daniels 探員，警徽號碼 4471。"
+      - "Your Social Security number has been linked to a drug trafficking and money laundering case in Texas.｜你的社安號碼與德州一宗販毒洗錢案有關。"
+      - "A car rented in your name was found at the border with drugs and blood in it.｜一輛以你名義租的車在邊境被發現，車上有毒品和血跡。"
+      - "There is a federal warrant out for your arrest.｜聯邦已對你發出逮捕令。"
+      - "To protect your funds during the investigation, you need to move your money into a secure government account.｜為了在調查期間保護你的資金，你必須把錢移到安全的政府帳戶。"
+      - "!They called these Bitcoin ATMs 'safety lockers'.｜（FTC 報告）歹徒把比特幣 ATM 稱為『保險箱』。"
+      - "Do not discuss this with anyone, including your bank or your family. This is a confidential federal matter.｜不要跟任何人討論，包括銀行和家人，這是機密聯邦案件。"
+      - "If the bank asks why you're withdrawing, tell them it's for home renovations.｜銀行問你提款原因，就說是房屋裝修。"
+      - "Stay on the line with me while you drive to the bank.｜開車去銀行的路上不要掛斷電話。"
+      - "I'm going to transfer you to an agent at the FTC who will help you clear your name.｜我幫你轉接 FTC 的探員，他會幫你洗清嫌疑。"
+      - "A courier will come to your house to collect the cash as evidence; you'll get it back after the case closes.｜會有信差到府收取現金作為證物，結案後歸還。"
+      - "Withdraw the cash and buy gold bars; we will safeguard them for you.｜把現金領出來買金條，我們幫你保管。"
+      - "You can look me up online; my name is on the official website.｜你可以上網查我，官網上有我的名字。"
+      - "If you hang up, you will be considered uncooperative and the arrest will proceed today.｜如果你掛斷，就視為不配合，今天就執行逮捕。"
+      - "We need to verify that your money is not connected to criminal activity.｜我們要確認你的錢沒有涉及犯罪。"
+      - "Your identity was used to open accounts used for laundering.｜你的身分被用來開設洗錢帳戶。"
+      - "This is Sergeant Miller from the local sheriff's office. You missed jury duty.｜我是郡警長辦公室 Miller 警佐，你沒有出席陪審團義務。"
+      - "You can pay the fine now to avoid being taken into custody.｜你現在付罰款就可以避免被拘留。"
+      - "[UK] This is DC Thompson from the Metropolitan Police. We've arrested someone using your bank card.｜（英國）我是倫敦警察廳 Thompson 警員，我們逮捕了一名使用你銀行卡的人。"
+      - "[UK] We need your help with an undercover operation against corrupt staff at your bank branch.｜（英國）我們需要你協助調查你分行的內鬼行員。"
+      - "[SG] This is an officer from the Singapore Police Force. Your bank account is involved in a money laundering case.｜（新加坡）我是新加坡警察部隊的警官，你的銀行帳戶涉及洗錢案。"
+    strong: [safe account, secure account, safety locker, arrest warrant, warrant for your arrest, money laundering, drug trafficking, clear your name, protect your funds, confidential federal, stay on the line, don't tell your bank, bitcoin atm, gold bars, courier will collect, undercover operation, corrupt staff, missed jury duty]
+    keywords: [fbi, ftc, dea, federal agent, badge number, sheriff, investigation, case number, custody, evidence, metropolitan police, officer]
+    hard: [safe account, safety locker, courier will collect]
+    requests: ["move money to a safe account｜轉到安全帳戶", "deposit cash into a Bitcoin ATM｜存現金進比特幣 ATM", "hand cash or gold to a courier｜交現金或金條給信差", "buy gold bars｜買金條", "lie to the bank teller｜對行員說謊", "stay on the phone｜不要掛電話", "buy gift cards for the fine｜買禮品卡繳罰款"]
+    tactics: ["threat of immediate arrest｜立即逮捕威脅", "secrecy order｜保密令", "spoofed agency caller ID｜偽造機關來電顯示", "transfer between fake agencies｜在假機關之間轉接", "real staff names｜冒用真實員工姓名"]
+  tax_debt_ssa:
+    sources: [S1, S10, S11, S9]
+    phrases:
+      - "Your Social Security number has been suspended due to suspicious activity.｜你的社安號碼因可疑活動已被暫停。"
+      - "This is the final notice from the IRS. A lawsuit has been filed against you. Press 1 to speak to an officer.｜這是 IRS 最後通知，已對你提起訴訟，按 1 與官員通話。"
+      - "You owe back taxes of 4,800 dollars and must pay today to avoid arrest.｜你欠稅 4,800 美元，今天必須付清以免被逮捕。"
+      - "Local police are on their way to your address.｜當地警察正在前往你家的路上。"
+      - "To reactivate your Social Security number, confirm the last four digits.｜要重新啟用你的社安號碼，請確認後四碼。"
+      - "You can settle this with Google Play or Apple gift cards.｜你可以用 Google Play 或 Apple 禮品卡結清。"
+      - "[UK] This is HMRC. Your national insurance number has been compromised and used for fraudulent activity.｜（英國）這是 HMRC，你的國民保險號碼被盜用於詐欺。"
+      - "[UK] There is a tax fraud case against you; failure to pay will result in arrest.｜（英國）你有一件逃稅案，不付款會被逮捕。"
+      - "[CA] This is the Canada Revenue Agency. You owe taxes and there is a warrant for your arrest; pay with Bitcoin to cancel it.｜（加拿大）這是 CRA，你欠稅且有逮捕令，用比特幣付款可撤銷。"
+      - "[CA] If you don't pay, you will be deported.｜（加拿大）不付款你會被驅逐出境。"
+      - "[AU] This is the Australian Taxation Office. You have an unpaid tax debt and a warrant has been issued.｜（澳洲）這是 ATO，你有未繳稅款且已發出逮捕令。"
+    strong: [social security number has been suspended, ssn suspended, final notice, lawsuit has been filed, back taxes, national insurance number has been compromised, tax fraud case, pay with bitcoin, you will be deported, unpaid tax debt, reactivate your social security]
+    keywords: [irs, hmrc, cra, ato, social security, tax debt, owe taxes, press 1, lawsuit]
+    hard: [social security number has been suspended, national insurance number has been compromised]
+    requests: ["pay by gift card or Bitcoin｜禮品卡或比特幣付款", "confirm SSN｜確認社安號碼", "press 1｜按 1"]
+    tactics: ["arrest or deportation threat｜逮捕或驅逐威脅", "robocall opener｜自動語音開場"]
+  bank_card_alert:
+    sources: [S1, S2, S6, S7]
+    phrases:
+      - "This is the fraud department at your bank. We've detected a suspicious transaction of 1,950 dollars at an electronics store.｜這是你銀行的防詐部門，偵測到電器行一筆 1,950 美元的可疑交易。"
+      - "Did you authorize this purchase? If not, we need to secure your account right away.｜這筆是你授權的嗎？如果不是，我們要立刻保護你的帳戶。"
+      - "Your account has been compromised; someone is trying to wire money out right now.｜你的帳戶被入侵，有人正在把錢電匯出去。"
+      - "We'll open a new account for you; transfer your balance there so the hacker can't touch it.｜我們幫你開新帳戶，把餘額轉過去駭客就動不了。"
+      - "I'll send a code to your phone to verify your identity; please read it back to me.｜我傳驗證碼到你手機確認身分，請唸給我。"
+      - "Please confirm your card number and the three digits on the back.｜請確認卡號和背面三碼。"
+      - "This is Amazon. An iPhone was ordered on your account for 1,499 dollars. Press 1 if you did not make this purchase.｜這是 Amazon，你的帳戶訂了一支 1,499 美元的 iPhone，若非本人請按 1。"
+      - "[UK] Your card has been cloned; we're sending a courier to collect it. Please put it in an envelope with your PIN.｜（英國）你的卡被盜錄，我們派信差收卡，請和 PIN 一起放進信封。"
+      - "[UK] To be sure I'm genuine, hang up and call the number on the back of your card.｜（英國）為了證明我是真的，請掛斷再打卡片背面電話。（實際未斷線）"
+      - "Someone at your branch is involved, so don't speak to the staff there.｜你分行有人涉案，不要跟那邊的員工講。"
+      - "Your card is due to expire and needs replacing; a courier will bring the new one and collect the old one.｜你的卡快到期要更換，信差會送新卡並收回舊卡。"
+      - "Text back YES or NO to confirm this charge.｜回覆 YES 或 NO 確認這筆扣款。"
+    strong: [secure your account, transfer your balance, new account for you, read it back to me, courier to collect, put it in an envelope, your card has been cloned, don't speak to the staff, someone at your branch, three digits on the back]
+    keywords: [fraud department, suspicious transaction, unauthorized purchase, account compromised, amazon, card number, card expired, pin]
+    requests: ["read back OTP｜唸出驗證碼", "transfer balance to new account｜餘額轉新帳戶", "hand card and PIN to courier｜交卡與 PIN 給信差", "approve in app｜在 App 核准"]
+    tactics: ["knows your name and address｜知道你的姓名地址", "line kept open when you redial｜不斷線冒充回撥", "Amazon to bank to FTC chain｜Amazon→銀行→FTC 接力"]
+  otp_password:
+    sources: [S7, S1]
+    phrases:
+      - "You'll receive a six-digit code; can you read me the six digits?｜你會收到六位數代碼，可以唸給我嗎？"
+      - "That code is just to cancel the transaction, it's not for a payment.｜那組代碼只是取消交易，不是付款。"
+      - "Please key in your PIN on your phone so I can verify you.｜請在電話鍵盤輸入 PIN 讓我驗證。"
+      - "What's the one-time passcode we just sent you?｜我們剛傳的一次性密碼是多少？"
+      - "I need your online banking password to reset your security.｜我需要你的網銀密碼來重設安全設定。"
+      - "Can you tell me the verification code WhatsApp sent you?｜可以告訴我 WhatsApp 傳給你的驗證碼嗎？"
+    strong: [read me the code, read me the six digits, one-time passcode, key in your pin, verification code, online banking password]
+    keywords: [code, passcode, otp, pin, password]
+    hard: [read me the code, read me the six digits, key in your pin]
+    requests: ["read OTP｜唸 OTP", "type PIN｜輸入 PIN"]
+    tactics: ["code is only to cancel｜騙說只是取消用"]
+  family_emergency:
+    sources: [S3, S8, S16]
+    phrases:
+      - "Grandma? It's me. I'm in trouble.｜奶奶？是我，我惹麻煩了。"
+      - "I was in a car accident and the police arrested me. I need bail money.｜我出車禍被警察逮捕，需要保釋金。"
+      - "!Please don't let Mom and Dad know.｜拜託不要讓爸媽知道。"
+      - "My nose is broken, that's why I sound different.｜我鼻子斷了，所以聲音不一樣。"
+      - "I'm going to put my lawyer on; he'll explain what to do.｜我讓律師跟你講，他會說怎麼做。"
+      - "This is attorney Robert Klein representing your grandson. Bail is set at 9,000 dollars.｜我是代表你孫子的律師 Robert Klein，保釋金是 9,000 美元。"
+      - "There's a gag order, so you can't talk about this with anyone.｜有禁口令，你不能跟任何人提。"
+      - "A bondsman will come to your door to pick up the cash.｜保釋代理人會到你家門口拿現金。"
+      - "You can also send cash in the mail, wrapped in a magazine.｜你也可以把現金夾在雜誌裡郵寄。"
+      - "He hit a pregnant woman and needs to pay her hospital bills today.｜他撞到孕婦，今天要付她的醫藥費。"
+      - "I'm stuck abroad and my wallet was stolen; can you wire me money?｜我困在國外錢包被偷，能匯錢給我嗎？"
+    strong: [bail money, don't let mom and dad know, gag order, bondsman, pick up the cash, send cash in the mail, put my lawyer on, hit a pregnant woman]
+    keywords: [grandma, grandpa, it's me, in trouble, car accident, arrested, attorney, lawyer, hospital, jail]
+    requests: ["cash pickup at door｜到府收現金", "mail cash｜郵寄現金", "wire money｜電匯", "gift cards｜禮品卡"]
+    tactics: ["crying, sounds different｜哭腔聲音不同", "secrecy｜保密", "hand-off to fake lawyer｜交棒給假律師"]
+  virtual_kidnapping:
+    sources: [S3]
+    phrases:
+      - "We have your daughter. If you call the police, you'll never see her again.｜你女兒在我們手上，報警就再也見不到她。"
+      - "(screaming) Mom! Help me!｜（尖叫）媽！救我！"
+      - "Don't hang up. Go to the store and send the money by wire transfer now.｜不要掛斷，現在去店裡電匯。"
+      - "We're watching your house.｜我們在監視你家。"
+      - "You have one hour to send 5,000 dollars.｜你有一小時匯 5,000 美元。"
+    strong: [we have your daughter, we have your son, never see her again, we're watching your house, don't call the police, ransom]
+    keywords: [kidnapped, help me, one hour]
+    requests: ["wire ransom while on the line｜不掛線匯贖金"]
+    tactics: ["crying voice or AI clone｜哭聲或 AI 聲音", "isolation｜隔離"]
+  ai_voice_clone:
+    sources: [S3]
+    phrases:
+      - "Dad, it's me—I can't talk long, I need you to send money right now.｜爸，是我，不能講太久，現在要你匯錢。"
+      - "I can't video call, my camera's broken.｜我不能視訊，鏡頭壞了。"
+      - "Don't call my old number, the police took my phone.｜不要打我舊號碼，警察拿走我手機了。"
+      - "This is your CEO. I need you to process an urgent wire to a vendor before end of day.｜我是執行長，今天下班前要你處理一筆給廠商的緊急電匯。"
+    strong: [can't video call, don't call my old number, urgent wire to a vendor]
+    keywords: [can't talk long, send money right now]
+    requests: ["urgent transfer｜緊急轉帳"]
+    tactics: ["cloned voice｜複製聲音", "avoids verification｜迴避驗證"]
+  tech_support:
+    sources: [S1, S2, S15]
+    phrases:
+      - "Hello, I'm calling from Microsoft Windows technical department. Your computer is sending us error messages.｜你好，我是微軟 Windows 技術部，你的電腦一直傳錯誤訊息給我們。"
+      - "Your computer has been infected with a virus and hackers are accessing your bank account.｜你的電腦中毒了，駭客正在存取你的銀行帳戶。"
+      - "Please go to anydesk dot com and download the application.｜請到 anydesk.com 下載程式。"
+      - "Give me the nine-digit code on your screen so I can connect.｜把螢幕上的九位數碼給我，我才能連線。"
+      - "Your Geek Squad subscription will auto-renew for 399 dollars today.｜你的 Geek Squad 訂閱今天會自動續約 399 美元。"
+      - "To process your refund, log in to your online banking.｜為了處理退款，請登入網銀。"
+      - "Oh no, I accidentally refunded you 3,999 instead of 399. You need to send back the difference.｜糟了，我誤退了 3,999 而不是 399，你要退回差額。"
+      - "The bank won't let you send it, so buy gift cards and read me the numbers.｜銀行不讓你轉，所以買禮品卡把號碼唸給我。"
+      - "Your IP address has been used by hackers in another country.｜你的 IP 被國外駭客使用。"
+      - "This is Apple Support. Your iCloud has been hacked.｜這是 Apple 客服，你的 iCloud 被駭了。"
+    strong: [download anydesk, teamviewer, remote access, your computer has been infected, sending us error messages, accidentally refunded, send back the difference, auto-renew, geek squad, code on your screen]
+    keywords: [microsoft, windows technical, apple support, virus, hacked, ip address, refund, norton, mcafee]
+    hard: [download anydesk, remote access]
+    requests: ["install AnyDesk/TeamViewer｜安裝遠端軟體", "log into online banking｜登入網銀", "return 'over-refund' via gift cards｜用禮品卡退回多退款"]
+    tactics: ["fake pop-up then phone｜假彈窗後打電話", "refund overpayment trick｜假超額退款"]
+  utility_cutoff:
+    sources: [S5, S13]
+    phrases:
+      - "This is your electric company. Your account is past due and your power will be disconnected in 30 minutes.｜這是電力公司，你的帳戶逾期，30 分鐘後斷電。"
+      - "A technician is on the way to shut off your service unless you pay now.｜除非你現在付款，技師正在前往斷電。"
+      - "You can pay with a prepaid card from any store.｜你可以到任何商店買預付卡付款。"
+      - "Your meter is faulty and needs to be replaced; a deposit is required today.｜你的電表故障要換，今天要付押金。"
+    strong: [power will be disconnected, shut off your service, pay with a prepaid card, meter needs to be replaced]
+    keywords: [electric company, utility, past due, disconnection, gas company, water bill]
+    requests: ["pay by prepaid card｜預付卡付款"]
+    tactics: ["minutes-long deadline｜幾分鐘期限"]
+  medical_insurance_benefit:
+    sources: [S5]
+    phrases:
+      - "This is Medicare. We're issuing new plastic cards; I just need to verify your Medicare number.｜這是 Medicare，我們發新塑膠卡，只需確認你的 Medicare 號碼。"
+      - "You qualify for a free back brace and a genetic test at no cost.｜你符合資格可免費取得護腰和基因檢測。"
+      - "Your benefits will be cancelled unless you confirm your information.｜除非你確認資料，否則福利會被取消。"
+    strong: [new medicare card, verify your medicare number, free back brace, genetic test at no cost]
+    keywords: [medicare, medicaid, benefits, health plan]
+    requests: ["give Medicare number｜提供 Medicare 號碼"]
+    tactics: ["free offer｜免費誘惑"]
+  prize_lottery:
+    sources: [S2, S5]
+    phrases:
+      - "Congratulations! You've won 2.5 million dollars and a new Mercedes from Publishers Clearing House.｜恭喜！你贏得 PCH 的 250 萬美元和一輛新賓士。"
+      - "To release your prize, you need to pay the taxes and processing fee first.｜為了領獎，你得先付稅金和手續費。"
+      - "Buy gift cards to cover the shipping and insurance.｜買禮品卡支付運費和保險。"
+      - "You've been selected for a free cruise; just pay the port fees.｜你被選中免費遊輪，只要付港口費。"
+    strong: [you've won, release your prize, processing fee first, publishers clearing house, free cruise]
+    keywords: [congratulations, sweepstakes, lottery, prize, winner]
+    requests: ["pay fees before prize｜領獎前付費"]
+    tactics: ["windfall excitement｜意外之財"]
+  loan_advance_fee:
+    sources: [S5]
+    phrases:
+      - "You're pre-approved for a 10,000 dollar loan, no credit check.｜你已預先核准 1 萬美元貸款，不查信用。"
+      - "We just need an upfront insurance fee before we release the funds.｜放款前只需先付保險費。"
+      - "Your credit score is low, so you'll need to make a good-faith payment.｜你的信用分數低，需要先付一筆誠意金。"
+    strong: [pre-approved, no credit check, upfront fee, good-faith payment]
+    keywords: [loan, release the funds, credit score]
+    requests: ["pay upfront fee｜先付費"]
+    tactics: ["easy money｜輕鬆借錢"]
+  debt_collection:
+    sources: [S5]
+    phrases:
+      - "This is the legal department regarding an unpaid payday loan; a warrant will be issued if you don't pay today.｜這是法務部，關於你未還的發薪日貸款，今天不付會發出拘票。"
+      - "We'll contact your employer and garnish your wages.｜我們會聯絡你雇主扣你薪水。"
+    strong: [unpaid payday loan, garnish your wages, warrant will be issued]
+    keywords: [legal department, debt, collection, owe]
+    requests: ["pay immediately｜立即付款"]
+    tactics: ["arrest threat over debt｜以債務威脅逮捕"]
+  parcel_customs:
+    sources: [S2, S14]
+    phrases:
+      - "This is FedEx. A package in your name was intercepted at customs containing fake passports.｜這是 FedEx，你名下包裹在海關被攔截，內有假護照。"
+      - "Press 1 to speak to a customs officer.｜按 1 與海關官員通話。"
+      - "Your package couldn't be delivered; pay a 2 dollar redelivery fee.｜你的包裹無法投遞，請付 2 美元重新投遞費。"
+      - "[SG] This is DHL. Your parcel contains illegal items; I will transfer you to the police.｜（新加坡）這是 DHL，你的包裹有違禁品，我幫你轉接警察。"
+    strong: [intercepted at customs, fake passports, transfer you to the police, redelivery fee]
+    keywords: [fedex, ups, usps, dhl, package, parcel, customs]
+    hard: [transfer you to the police]
+    requests: ["pay redelivery fee｜付重新投遞費", "speak to 'police'｜轉接警察"]
+    tactics: ["courier to police hand-off｜快遞→警察"]
+  investment_crypto:
+    sources: [S2, S7]
+    phrases:
+      - "I'm calling about an exclusive crypto trading opportunity guaranteed to double your money.｜關於一個保證讓你資金翻倍的獨家加密貨幣交易機會。"
+      - "Join our WhatsApp group; our analyst shares signals every day.｜加入我們的 WhatsApp 群組，分析師每天分享訊號。"
+      - "To withdraw your profits, you must first pay a 15% tax.｜要提領獲利，必須先付 15% 稅金。"
+      - "This is a low-risk, high-return investment; spots are limited.｜這是低風險高報酬的投資，名額有限。"
+    strong: [guaranteed returns, double your money, withdraw your profits pay tax, whatsapp group, trading signals, low-risk high-return]
+    keywords: [crypto, bitcoin, usdt, trading platform, investment opportunity, analyst]
+    hard: []
+    requests: ["deposit to platform｜入金", "pay withdrawal tax｜付出金稅"]
+    tactics: ["quick, easy money｜快速賺錢"]
+  job_mule:
+    sources: [S7]
+    phrases:
+      - "We found your resume; you can earn 300 dollars a day rating products from home.｜我們看到你的履歷，在家評價商品一天賺 300 美元。"
+      - "You need to top up your account to unlock the next set of tasks.｜你要先儲值才能解鎖下一組任務。"
+      - "We just need you to receive payments into your account and forward them.｜只要你用帳戶收款再轉出。"
+    strong: [top up to unlock tasks, receive payments and forward, rating products from home]
+    keywords: [remote job, task, commission, daily pay]
+    hard: [receive payments and forward]
+    requests: ["top up｜儲值", "forward funds｜轉出款項"]
+    tactics: ["easy job｜輕鬆工作"]
+  gift_card_payment:
+    sources: [S1, S2]
+    phrases:
+      - "Go to Walmart and buy Target or Apple gift cards, then scratch off the back and read me the numbers.｜去 Walmart 買 Target 或 Apple 禮品卡，刮開背面唸號碼給我。"
+      - "If the cashier asks, say they're gifts for your grandkids.｜收銀員問的話，就說是給孫子的禮物。"
+      - "Take a picture of the back of the cards and send it to me.｜把卡片背面拍照傳給我。"
+    strong: [read me the numbers, scratch off the back, picture of the back of the cards, buy gift cards]
+    keywords: [gift card, google play, apple card, steam, target card, ebay card]
+    hard: [read me the numbers, scratch off the back]
+    requests: ["buy gift cards and read codes｜買禮品卡唸卡號"]
+    tactics: ["coach what to tell cashier｜教你對收銀員說謊"]
+  charity:
+    sources: [S5]
+    phrases:
+      - "I'm calling on behalf of the Police Officers' Benevolent Fund; can we count on your donation today?｜我代表警察互助基金來電，今天能捐款嗎？"
+      - "Families affected by the hurricane need your help right now; we take credit card over the phone.｜颶風災民現在需要你幫忙，可以電話刷卡。"
+    strong: [donation today, take credit card over the phone]
+    keywords: [charity, donation, relief fund, benevolent]
+    requests: ["card payment by phone｜電話刷卡"]
+    tactics: ["emotional appeal｜情感訴求"]
+  romance:
+    sources: [S2]
+    phrases:
+      - "Honey, I'm stuck on the oil rig and need money for the customs fee.｜親愛的，我困在鑽油平台，需要錢付海關費。"
+      - "I'm a surgeon with the UN; my accounts are frozen until I get home.｜我是聯合國的外科醫生，帳戶在回國前被凍結。"
+    strong: [stuck on the oil rig, accounts are frozen, customs fee]
+    keywords: [honey, darling, my love]
+    requests: ["send money｜匯錢"]
+    tactics: ["emotional dependence｜感情依賴"]
+  yes_recording:
+    sources: [S4]
+    phrases:
+      - "!Can you hear me?｜聽得到嗎？"
+      - "Is this the lady of the house?｜是女主人嗎？"
+    strong: []
+    keywords: [can you hear me]
+    requests: ["say yes｜說是"]
+    tactics: ["voice signature recording｜錄下聲音簽名"]
+  robocall_ivr:
+    sources: [S5, S11]
+    phrases:
+      - "This is an automated message from the Social Security Administration. Press 1 to speak to an officer.｜這是社安局自動訊息，按 1 與官員通話。"
+      - "Press 9 to be removed from our list.｜按 9 從名單移除。"
+    strong: []
+    keywords: [press 1, automated message]
+    requests: ["press a key｜按鍵"]
+    tactics: ["robocall｜自動語音"]

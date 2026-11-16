@@ -1,0 +1,179 @@
+lang: es
+name: Español
+regions: ["España", "México", "Argentina", "Colombia", "Chile", "EE. UU. (hispanohablantes)"]
+sources:
+  S1: {title: "Gobierno de Guanajuato – Efecto Prevención: Principales argumentos utilizados para una extorsión o fraude", url: "https://efectoprevencion.guanajuato.gob.mx/extorsion/principales-argumentos-utilizados-para-una-extorsion-o-fraude/"}
+  S2: {title: "Embajada de España en México: Protocolo de actuación ante intentos de extorsiones telefónicas", url: "https://www.exteriores.gob.es/Embajadas/mexico/es/ViajarA/Paginas/Prot%C3%B3colo-contra-extorsiones-telef%C3%B3nicas.aspx"}
+  S3: {title: "SSPC San Luis Potosí: campaña 'Colgar es ganar' contra el secuestro virtual (2026)", url: "https://seguridad.slp.gob.mx/noticias/2026/10/26/sspc-y-fge-refuerzan-la-prevenci%C3%B3n-del-secuestro-virtual-con-la-campa%C3%B1a-colgar-es-ganar/"}
+  S4: {title: "Fiscalía de Chihuahua: recomendaciones para evitar el secuestro virtual", url: "https://chihuahua.gob.mx/contenidos/emite-fge-recomendaciones-para-evitar-ser-victima-de-secuestro-virtual"}
+  S5: {title: "El Día / Policía Nacional (España): el 'spoofing', la estafa telefónica que suplanta el número del banco (2026)", url: "https://www.eldia.es/canarias/2026/01/09/policia-nacional-identifica-spoofing-dv-125511673.html"}
+  S6: {title: "El País: 'No es tu prima, es un estafador' – así funciona el vishing", url: "https://elpais.com/tecnologia/2024-08-17/no-es-tu-prima-es-un-estafador-y-quiere-vaciar-tu-cuenta-corriente-asi-funciona-el-vishing.html"}
+  S7: {title: "OSI/INCIBE: Vishing, llamadas telefónicas fraudulentas", url: "https://www.osi.es/es/actualidad/blog/2021/03/26/vishing-llamadas-telefonicas-fraudulentas"}
+  S8: {title: "Gobierno de Mendoza (Argentina): recomendaciones ante estafas telefónicas con el 'cuento del tío'", url: "https://www.mendoza.gov.ar/prensa/recomendaciones-ante-nuevas-estafas-telefonicas-mediante-el-cuento-del-tio/"}
+  S9: {title: "20minutos: el timo del 'hijo en apuros'", url: "https://www.20minutos.es/tecnologia/ciberseguridad/estafa-hijo-apuros-whatsapp_6241055_0.html"}
+  S10: {title: "El Confidencial: 'En 20 minutos me robaron 11.000 €' – estafas telefónicas y doble llamada", url: "https://www.elconfidencial.com/tecnologia/2024-02-21/estafas-telefonicas-sms-operadoras-doble-llamada-banca_3834514/"}
+  S11: {title: "FTC (EE. UU.) Data Spotlight sobre estafas de impostores (aplica a hispanohablantes en EE. UU.)", url: "https://search.ftc.gov/system/files/ftc_gov/pdf/Imposter-Data-Spotlight-August-2025.pdf"}
+categories:
+  virtual_kidnapping:
+    sources: [S1, S2, S3, S4]
+    phrases:
+      - "Tenemos a tu hijo. Si cuelgas o llamas a la policía, lo matamos.｜你兒子在我們手上，掛電話或報警就殺了他。"
+      - "(llanto) ¡Mamá, ayúdame, me tienen!｜（哭聲）媽，救我，我被抓了！"
+      - "Deposita de inmediato para liberarlo.｜立刻存錢才放人。"
+      - "Tienes que salir de casa y apagar el teléfono.｜（對被隔離者）你必須離開家並關掉手機。"
+      - "Tu familia y tu domicilio están vigilados.｜你的家人和住處都被監視。"
+      - "Somos del cártel, sabemos dónde vives y en qué carro andas.｜我們是販毒集團的，知道你住哪、開什麼車。"
+      - "Ve a una tienda de conveniencia y haz un depósito a esta cuenta; no cuelgues.｜去便利商店存款到這個帳戶，不要掛電話。"
+      - "Tienes una hora para juntar el dinero.｜你有一小時湊錢。"
+      - "No le digas a nadie o te va a ir mal.｜不准告訴任何人，否則你會倒楣。"
+      - "Hospédate en un hotel y no contestes a nadie, tu familia está amenazada.｜（隔離）去住飯店不要接任何人電話，你家人受到威脅。"
+      - "Ya tenemos a tu esposa, queremos 50 mil pesos.｜你太太在我們這，要五萬披索。"
+    strong: [tenemos a tu hijo, tenemos a tu hija, lo matamos, deposita de inmediato, están vigilados, apagar el teléfono, somos del cártel, no cuelgues, secuestrado, rescate]
+    keywords: [secuestro, liberarlo, depósito, oxxo, hotel, amenazada, cuenta]
+    requests: ["depósito inmediato｜立即存款", "no colgar｜不掛電話", "apagar el teléfono（víctima aislada）｜關手機（被隔離者）"]
+    tactics: ["grabación de llanto｜哭聲錄音", "amenaza de muerte｜死亡威脅", "aislamiento espejo｜鏡像隔離（兩邊同時騙）", "datos de redes sociales｜社群資料"]
+  family_emergency:
+    sources: [S1, S8, S9]
+    phrases:
+      - "Hola tía, ¿sabes quién soy? Soy tu sobrino.｜嗨阿姨，知道我是誰嗎？我是你外甥。"
+      - "Vengo del extranjero y me detuvieron en la aduana; necesito pagar para que me dejen pasar.｜我從國外回來在海關被扣，要付錢才能過。"
+      - "Mamá, tuve un accidente y estoy en la comisaría, necesito dinero para la fianza.｜媽，我出車禍在警察局，需要保釋金。"
+      - "Soy el abogado de su hijo; atropelló a una persona y hay que pagar hoy para que no vaya preso.｜我是您兒子的律師，他撞了人，今天要付錢才不會坐牢。"
+      - "[AR] Abuela, soy yo, tu nieto. Estoy en problemas, no le digas a papá.｜（阿根廷）奶奶，是我，你孫子，我有麻煩，別告訴爸爸。"
+      - "[AR] Va a pasar un amigo mío a buscar la plata, dásela a él.｜（阿根廷）我朋友會過去拿錢，交給他。"
+      - "[AR] Hay que cambiar los dólares porque van a sacar los billetes de circulación.｜（阿根廷）要換美金，因為那批鈔票要停止流通了。"
+      - "Hola mamá, se me rompió el móvil, este es mi nuevo número.｜嗨媽，我手機壞了，這是新號碼。"
+      - "Necesito que me hagas una transferencia urgente, luego te lo devuelvo.｜我需要你緊急轉帳，之後還你。"
+      - "No tengo acceso a la banca, ¿me pagas esta factura?｜我不能用網銀，你幫我付這張帳單？"
+    strong: [sabes quién soy, me detuvieron en la aduana, para la fianza, no vaya preso, no le digas a papá, pasar a buscar la plata, nuevo número, transferencia urgente, sacar los billetes de circulación]
+    keywords: [sobrino, nieto, abuela, comisaría, abogado, accidente, atropelló, aduana]
+    requests: ["transferencia urgente｜緊急轉帳", "entregar dinero a un 'amigo'｜把錢交給『朋友』", "pagar factura｜付帳單"]
+    tactics: ["cuento del tío｜阿根廷『叔叔故事』", "falso abogado｜假律師", "secreto｜保密"]
+  bank_card_alert:
+    sources: [S5, S6, S7, S10]
+    phrases:
+      - "Le llamamos del departamento de seguridad de su banco. Hemos detectado un cargo sospechoso de 1.200 euros.｜這裡是您銀行安全部門，偵測到一筆 1,200 歐元的可疑扣款。"
+      - "Su cuenta ha sido bloqueada por un intento de acceso no autorizado.｜您的帳戶因未經授權存取而被凍結。"
+      - "Para anular la operación le vamos a enviar un código por SMS, dígamelo por favor.｜為了取消交易我們會傳簡訊代碼，請告訴我。"
+      - "Tiene que traspasar su dinero a una cuenta segura mientras investigamos.｜調查期間您必須把錢轉到安全帳戶。"
+      - "Para verificar su identidad, confírmeme el número de la tarjeta y el CVV.｜為了驗證身分，請確認卡號與 CVV。"
+      - "Le hemos enviado una notificación a la app, acéptela para cancelar el pago.｜我們傳了通知到 App，請按接受以取消付款。"
+      - "Un mensajero pasará a recoger su tarjeta para destruirla.｜快遞員會去收您的卡片銷毀。"
+      - "Está viendo nuestro número oficial en la pantalla, puede comprobarlo.｜您螢幕上看到的就是我們官方號碼，可以核對。"
+      - "Hemos detectado una transferencia fraudulenta a su nombre.｜我們偵測到一筆以您名義的詐欺轉帳。"
+      - "No cuelgue, le paso con mi compañero del departamento de fraude.｜不要掛，我轉給防詐部同事。"
+      - "Le vamos a dar de alta un nuevo dispositivo, necesito el código que le llegará.｜我們幫您登記新裝置，需要您收到的代碼。"
+    strong: [cuenta segura, código por sms, dígame el código, anular la operación, cargo sospechoso, acceso no autorizado, acéptela para cancelar, recoger su tarjeta, transferencia fraudulenta, nuevo dispositivo]
+    keywords: [departamento de seguridad, departamento de fraude, banco, tarjeta, cvv, bloqueada, bizum, mensajero]
+    hard: [cuenta segura]
+    requests: ["dar el código SMS｜給簡訊碼", "aceptar en la app｜在 App 接受", "traspaso a cuenta segura｜轉安全帳戶", "entregar tarjeta｜交卡"]
+    tactics: ["spoofing del número del banco｜偽造銀行號碼", "urgencia｜緊迫"]
+  otp_password:
+    sources: [S5, S7]
+    phrases:
+      - "Le acaba de llegar un código de seis dígitos, ¿me lo puede leer?｜您剛收到六位數代碼，可以唸給我嗎？"
+      - "Ese código es solo para cancelar, no para pagar.｜那個代碼只是取消用的，不是付款。"
+      - "Dígame su PIN para verificar que es usted.｜告訴我 PIN 確認是本人。"
+      - "Por error le envié un código de WhatsApp, ¿me lo reenvía?｜我不小心把 WhatsApp 代碼傳給你，可以轉給我嗎？"
+    strong: [me lo puede leer, código de seis dígitos, dígame su pin, código de whatsapp]
+    keywords: [código, clave, pin, contraseña]
+    hard: [me lo puede leer]
+    requests: ["leer OTP｜唸 OTP"]
+    tactics: ["'solo para cancelar'｜騙說只是取消"]
+  police_prosecutor:
+    sources: [S2, S11, S8]
+    phrases:
+      - "Le habla el agente Ramírez de la Policía Nacional; su DNI se ha usado para blanquear dinero.｜我是國家警察 Ramírez 警員，您的身分證被用來洗錢。"
+      - "Hay una orden de detención contra usted.｜有一張對您的拘捕令。"
+      - "Para demostrar que es inocente debe transferir sus ahorros a una cuenta controlada por el juzgado.｜為了證明清白，您必須把存款轉到法院控管的帳戶。"
+      - "Es una investigación secreta; no puede comentarlo con su banco ni con su familia.｜這是秘密調查，不能跟銀行或家人說。"
+      - "Soy de la Fiscalía; tiene una demanda pendiente.｜我是檢察署的，您有一件未決訴訟。"
+      - "Un agente pasará por su domicilio a recoger el dinero y las joyas para custodiarlos.｜會有警員到府收取現金和珠寶代為保管。"
+      - "[MX] Habla el licenciado Pérez del Ministerio Público; su familiar está detenido.｜（墨西哥）我是檢察院 Pérez 律師，您的家人被拘留。"
+    strong: [orden de detención, blanquear dinero, demostrar que es inocente, cuenta controlada por el juzgado, investigación secreta, recoger el dinero y las joyas]
+    keywords: [policía nacional, guardia civil, fiscalía, juzgado, ministerio público, agente, detenido]
+    hard: [cuenta controlada por el juzgado]
+    requests: ["transferir ahorros｜轉移存款", "entregar dinero/joyas｜交出現金珠寶"]
+    tactics: ["secreto de sumario｜偵查保密", "amenaza de arresto｜逮捕威脅"]
+  debt_collection:
+    sources: [S1]
+    phrases:
+      - "Llamamos del departamento de cobranza; su domicilio está asociado a una deuda y si no se paga se dará un embargo.｜我們是催收部，你的住址有一筆債務，不付就查封。"
+      - "Su deuda con la tienda está vencida; hoy es el último día para negociar.｜你欠店家的款已逾期，今天是最後協商日。"
+      - "Si no paga hoy, mandamos a los abogados a su trabajo.｜今天不付，我們派律師去你公司。"
+    strong: [se dará un embargo, último día para negociar, mandamos a los abogados]
+    keywords: [cobranza, deuda, embargo, vencida, despacho jurídico]
+    requests: ["pago inmediato｜立即付款"]
+    tactics: ["amenaza legal｜法律威脅"]
+  prize_lottery:
+    sources: [S1]
+    phrases:
+      - "¡Felicidades! Usted ganó una camioneta en el sorteo de aniversario.｜恭喜！您在週年抽獎中贏得一輛休旅車。"
+      - "Para entregarle el premio debe hacer un depósito por los impuestos.｜為了交付獎品，您必須存一筆稅金。"
+      - "Compre tarjetas de recarga y dígame los números.｜買儲值卡告訴我號碼。"
+    strong: [usted ganó, para entregarle el premio, depósito por los impuestos, tarjetas de recarga]
+    keywords: [felicidades, sorteo, premio, ganador]
+    requests: ["depósito previo｜先存款", "tarjetas de recarga｜儲值卡"]
+    tactics: ["premio falso｜假獎品"]
+  tech_support:
+    sources: [S5, S7]
+    phrases:
+      - "Le llamo del soporte técnico de Microsoft; su ordenador tiene un virus.｜我是微軟技術支援，您的電腦有病毒。"
+      - "Descargue AnyDesk para que pueda solucionarlo en remoto.｜下載 AnyDesk 讓我遠端解決。"
+      - "Su licencia de Windows ha caducado y hay que renovarla hoy.｜您的 Windows 授權過期，今天要續約。"
+      - "Entre en su banca online para comprobar que no le han robado.｜登入網銀確認沒被偷。"
+    strong: [soporte técnico de microsoft, descargue anydesk, en remoto, licencia de windows ha caducado]
+    keywords: [microsoft, virus, ordenador, computadora, teamviewer]
+    hard: [descargue anydesk]
+    requests: ["instalar AnyDesk｜安裝 AnyDesk", "entrar en banca online｜登入網銀"]
+    tactics: ["miedo técnico｜技術恐慌"]
+  utility_cutoff:
+    sources: [S7, S10]
+    phrases:
+      - "Llamamos de la compañía eléctrica; tiene una factura pendiente y hoy le cortamos la luz.｜這裡是電力公司，您有未付帳單，今天斷電。"
+      - "Un técnico pasará a revisar el contador; debe pagar la revisión.｜技師會去檢查電表，您必須付檢查費。"
+      - "Le cambiamos de tarifa para que ahorre, solo necesito su IBAN.｜幫您換省錢方案，只需要您的 IBAN。"
+    strong: [le cortamos la luz, factura pendiente, revisar el contador, necesito su iban]
+    keywords: [compañía eléctrica, luz, gas, contador, tarifa]
+    requests: ["pago inmediato｜立即付款", "dar IBAN｜提供 IBAN"]
+    tactics: ["corte inminente｜即將斷電"]
+  investment_crypto:
+    sources: [S7]
+    phrases:
+      - "Le ofrecemos invertir en criptomonedas con rentabilidad garantizada del 20 % mensual.｜提供加密貨幣投資，保證每月 20% 報酬。"
+      - "Únase a nuestro grupo de WhatsApp de inversores.｜加入我們的 WhatsApp 投資群組。"
+      - "Para retirar sus ganancias primero debe pagar una comisión.｜要提領獲利得先付手續費。"
+    strong: [rentabilidad garantizada, retirar sus ganancias, grupo de whatsapp de inversores]
+    keywords: [criptomonedas, bitcoin, inversión, broker, trading]
+    hard: []
+    requests: ["depositar en plataforma｜入金"]
+    tactics: ["ganancia fácil｜輕鬆獲利"]
+  loan_advance_fee:
+    sources: [S1]
+    phrases:
+      - "Su préstamo está preaprobado sin buró de crédito, solo pague el seguro por adelantado.｜您的貸款已預核准不查信用，只需先付保險費。"
+      - "Necesitamos un anticipo para liberar el crédito.｜需要預付款才能撥款。"
+    strong: [preaprobado, sin buró, por adelantado, anticipo para liberar]
+    keywords: [préstamo, crédito, financiera]
+    requests: ["pago por adelantado｜先付費"]
+    tactics: ["crédito fácil｜輕鬆貸款"]
+  gift_card_payment:
+    sources: [S11]
+    phrases:
+      - "Vaya a la tienda, compre tarjetas de regalo de Google Play y léame los números de atrás.｜去商店買 Google Play 禮品卡，唸背面號碼給我。"
+      - "Puede pagar la multa con tarjetas de regalo.｜罰款可以用禮品卡付。"
+    strong: [léame los números, tarjetas de regalo]
+    keywords: [google play, tarjeta de regalo, itunes]
+    hard: [léame los números]
+    requests: ["comprar tarjetas de regalo｜買禮品卡"]
+    tactics: ["pago no rastreable｜不可追蹤付款"]
+  tax_debt_ssa:
+    sources: [S11]
+    phrases:
+      - "Le llamamos del IRS; debe impuestos atrasados y hay una orden de arresto.｜（美國）這是 IRS，您欠稅且有逮捕令。"
+      - "Su número de Seguro Social ha sido suspendido.｜您的社安號碼已被暫停。"
+      - "Si no paga hoy, inmigración lo va a deportar.｜今天不付，移民局會驅逐您。"
+    strong: [seguro social ha sido suspendido, impuestos atrasados, lo va a deportar]
+    keywords: [irs, seguro social, inmigración, hacienda]
+    requests: ["pago inmediato｜立即付款"]
+    tactics: ["deportación｜驅逐威脅"]

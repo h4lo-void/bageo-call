@@ -163,6 +163,14 @@ pub struct NumberRule {
 }
 
 #[derive(Debug, Clone, Default)]
+pub struct KeywordIndex {
+    han_first: HashMap<char, Vec<usize>>,
+    word_prefix: HashMap<(char, char), Vec<usize>>,
+    run_first: HashMap<char, Vec<usize>>,
+    compact_first: HashMap<char, Vec<usize>>,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct ScamDb {
     pub version: u32,
     pub typologies: Vec<Typology>,
@@ -172,6 +180,7 @@ pub struct ScamDb {
     pub number_rules: Vec<NumberRule>,
     by_text: HashMap<String, usize>,
     by_typology: HashMap<String, usize>,
+    index: KeywordIndex,
 }
 
 #[derive(Deserialize)]
@@ -259,6 +268,7 @@ fn compact(text: &str) -> String {
 /// The caller's words in every form the match modes read.
 struct Prepared {
     han: String,
+    words_list: Vec<String>,
     padded: String,
     lower: String,
     compact: String,
@@ -266,12 +276,88 @@ struct Prepared {
 
 impl Prepared {
     fn of(text: &str) -> Prepared {
+        let words_list = words(text);
+        let padded = format!(" {} ", words_list.join(" "));
         Prepared {
             han: han_text(text),
-            padded: format!(" {} ", words(text).join(" ")),
+            words_list,
+            padded,
             lower: text.to_lowercase(),
             compact: compact(text),
         }
+    }
+}
+
+impl KeywordIndex {
+    fn insert(&mut self, idx: usize, kw: &Keyword) {
+        match kw.mode {
+            Match::Han => {
+                if let Some(c0) = kw.needle.chars().next() {
+                    self.han_first.entry(c0).or_default().push(idx);
+                }
+            }
+            Match::Word => {
+                let first_word = kw.needle.trim_start_matches(' ').split(' ').next().unwrap_or("");
+                let mut chars = first_word.chars();
+                if let Some(c0) = chars.next() {
+                    let c1 = chars.next().unwrap_or('\0');
+                    self.word_prefix.entry((c0, c1)).or_default().push(idx);
+                }
+            }
+            Match::Run => {
+                if let Some(c0) = kw.needle.chars().next() {
+                    self.run_first.entry(c0).or_default().push(idx);
+                }
+            }
+            Match::Compact => {
+                if let Some(c0) = kw.needle.chars().next() {
+                    self.compact_first.entry(c0).or_default().push(idx);
+                }
+            }
+        }
+    }
+
+    fn candidates(&self, p: &Prepared) -> Vec<usize> {
+        let mut out = Vec::new();
+        if !self.han_first.is_empty() {
+            for c in p.han.chars() {
+                if let Some(list) = self.han_first.get(&c) {
+                    out.extend_from_slice(list);
+                }
+            }
+        }
+        if !self.word_prefix.is_empty() {
+            for w in &p.words_list {
+                let mut chars = w.chars();
+                if let Some(c0) = chars.next() {
+                    if let Some(list) = self.word_prefix.get(&(c0, '\0')) {
+                        out.extend_from_slice(list);
+                    }
+                    if let Some(c1) = chars.next() {
+                        if let Some(list) = self.word_prefix.get(&(c0, c1)) {
+                            out.extend_from_slice(list);
+                        }
+                    }
+                }
+            }
+        }
+        if !self.run_first.is_empty() {
+            for c in p.lower.chars() {
+                if let Some(list) = self.run_first.get(&c) {
+                    out.extend_from_slice(list);
+                }
+            }
+        }
+        if !self.compact_first.is_empty() {
+            for c in p.compact.chars() {
+                if let Some(list) = self.compact_first.get(&c) {
+                    out.extend_from_slice(list);
+                }
+            }
+        }
+        out.sort_unstable();
+        out.dedup();
+        out
     }
 }
 
@@ -404,7 +490,9 @@ pub fn parse(json: &str) -> Result<ScamDb, String> {
                 }
                 return Err(format!("{}: keyword {:?} listed twice", g.lang, kw.text));
             }
-            db.by_text.insert(kw.text.clone(), db.keywords.len());
+            let idx = db.keywords.len();
+            db.by_text.insert(kw.text.clone(), idx);
+            db.index.insert(idx, &kw);
             db.keywords.push(kw);
         }
     }
@@ -541,6 +629,7 @@ pub struct LocalDb {
     pub numbers: Vec<LocalNumber>,
     /// Entries left out, and why.
     pub skipped: Vec<String>,
+    index: KeywordIndex,
 }
 
 /// Local keywords live as long as the agent (hits are `&'static str`); the
@@ -578,7 +667,10 @@ pub fn parse_local(json: &str) -> Result<LocalDb, String> {
             out.skipped.push(format!("{}: already listed", kw.text));
             continue;
         }
-        out.keywords.push(intern(kw));
+        let idx = out.keywords.len();
+        let interned = intern(kw);
+        out.index.insert(idx, interned);
+        out.keywords.push(interned);
     }
     for n in raw.numbers {
         if !["scam", "sales", "safe"].contains(&n.verdict.as_str()) || number_key(&n.number, None).is_none() {
@@ -649,10 +741,21 @@ fn with_local<R>(f: impl FnOnce(&LocalDb) -> R) -> R {
 
 fn keyword_hits_in(text: &str, local: &LocalDb) -> Vec<Hit> {
     let p = Prepared::of(text);
-    let mut out: Vec<Hit> = db().keywords.iter().filter(|k| k.found_in(&p)).map(hit_of).collect();
-    for &k in &local.keywords {
-        if k.found_in(&p) && !out.iter().any(|h| h.text == k.text) {
-            out.push(hit_of(k));
+    let base = db();
+    let mut out: Vec<Hit> = base
+        .index
+        .candidates(&p)
+        .into_iter()
+        .map(|i| &base.keywords[i])
+        .filter(|k| k.found_in(&p))
+        .map(hit_of)
+        .collect();
+    if !local.keywords.is_empty() {
+        for i in local.index.candidates(&p) {
+            let k = local.keywords[i];
+            if k.found_in(&p) && !out.iter().any(|h| h.text == k.text) {
+                out.push(hit_of(k));
+            }
         }
     }
     out
@@ -1376,5 +1479,17 @@ mod tests {
         }
         // Taiwan STT homophones for marketplace scams normalize cleanly.
         assert!(keyword_hits("我是賣貨變客服，還有好賣加的訂單").iter().filter(|h| h.typology == "marketplace_escrow_scam").count() >= 2);
+    }
+
+    #[test]
+    fn indexed_keyword_hits_match_linear_scan_in_exact_order() {
+        let base = db();
+        for kw in &base.keywords {
+            let sample = format!("… {} …", kw.text);
+            let p = Prepared::of(&sample);
+            let linear: Vec<Hit> = base.keywords.iter().filter(|k| k.found_in(&p)).map(hit_of).collect();
+            let indexed = keyword_hits_in(&sample, &LocalDb::default());
+            assert_eq!(indexed, linear, "keyword sample mismatch for {:?}", kw.text);
+        }
     }
 }
