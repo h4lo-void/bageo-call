@@ -17,6 +17,7 @@
 
 1. **唯一行為人與資料控管者：** 任何下載、安裝、刷機、設定或運行本軟體之個人或法人（下稱「部署者」），即為該安裝環境唯一之實際行為人、門號使用人及個人資料保護法規下之「資料控管者（Data Controller）」。
 2. **行為歸屬切斷：** 本軟體於部署者設備上所執行之一切接聽、錄音、語音合成對話、防詐陪聊、簡訊發送與轉發、AI 回電及 AI 代打行為，在法律上均完全視為**部署者本人之獨立行為**。因部署者之設定、提示詞撰寫、操作或濫用所生之一切民事賠償、刑事責任、行政裁罰、稅捐、電信合約違約或第三方糾紛，概由部署者**百分之百自行承擔**，與原作者及貢獻者完全無涉。
+3. **軟體不回傳資料；隱私與錄音義務由部署者履行：** 本軟體不含遙測、使用統計或任何將資料傳回原作者之功能；通話音訊、錄音、逐字稿、簡訊、聯絡人與設定僅存放於部署者自己的設備，並僅傳送至部署者自行設定之第三方服務（見第四條第 3 款）。部署者須自行查明並遵守其所在地及通話對方所在地之個人資料與通訊法規（例如台灣《個人資料保護法》與《通訊保障及監察法》、歐盟 GDPR，以及要求通話各方均同意方得錄音之地區規定），包含錄音前之告知或取得同意、AI 身分之揭露、資料之保存期限與刪除，以及回應當事人就其資料提出之請求。
 
 ### 第三條　嚴格禁止之違法與不當用途
 
@@ -29,6 +30,8 @@
 5. **其他侵害行為：** 撥打或干擾緊急報案救難專線、恐嚇勒索、跟蹤騷擾、誹謗或侵害他人著作權、隱私權與人格權。
 
 任何使用者若從事上述違法行為，純屬其個人故意或過失之違法行為，概與本專案及原作者無關。
+
+**違法使用不受任何授權保護：** 任何授權均不使上述行為合法，亦不構成原作者對該行為之同意或背書。一旦將本軟體用於上述任一用途：(1) 著作權人簽發之商業授權，以及著作權人另行給予之任何書面許可（含商標或品牌使用與技術支援），立即終止，無須另行通知；(2) 依 `AGPL-3.0-only` 取得之權利，於該行為同時違反該授權條款時，依其第 8 條終止；(3) 著作權人得拒絕再向該行為人提供任何授權、支援或合作。
 
 ### 第四條　AI 模型幻覺、誤判、發言失誤與第三方服務免責
 
@@ -72,6 +75,10 @@ Bageo is strictly self-hosted source code and build artifacts provided for lawfu
 
 Any individual or entity installing, flashing, configuring, or running Bageo (the "Operator") is the sole legal actor, telephone subscriber of record, and **Data Controller** for their installation. Every call answered, recorded, stalled, or dialed, and every text message sent or forwarded by an Operator's instance is legally attributable **exclusively to the Operator**. The author and contributors bear zero vicarious, contributory, or joint liability for how any Operator configures or uses the software.
 
+**No data goes to the author; privacy and recording duties are the Operator's.** Bageo has no telemetry, usage statistics, or any other feature that sends data to the author. Call audio, recordings, transcripts, text messages, contacts, and settings stay on the Operator's own equipment and go only to the third-party services the Operator configures (such as Google Gemini and notification services).
+
+The Operator must find out and follow the personal-data and communications laws that apply where the Operator is and where the other party to a call is, for example Taiwan's Personal Data Protection Act and Communication Security and Surveillance Act, the EU GDPR, and the laws of places that require every party's consent before a call is recorded. This covers telling callers or getting their consent before recording, disclosing that an AI is speaking, how long data is kept and when it is deleted, and answering people's requests about their data.
+
 ### 3. Strictly Prohibited Unlawful & Abusive Uses
 
 You are strictly prohibited from using Bageo (or any derivative work) for any purpose that violates local, national, or international law or third-party rights, including without limitation:
@@ -81,6 +88,8 @@ You are strictly prohibited from using Bageo (or any derivative work) for any pu
 - **Illegal Robocalling, Unconsented AI Voices & Harassment:** Mass dialing, telemarketing, spam SMS, election/political robocalls, caller harassment, or failing to provide mandatory up-front AI/automated-voice disclosures where required by law (including the US TCPA and FCC AI-voice rules, the EU AI Act transparency obligations, California's Bot Disclosure Law, and national telecom statutes);
 - **Unauthorized Telecom Bypass:** Operating commercial SIM boxes, unlicensed VoIP-to-PSTN gateways, or violating mobile carrier Terms of Service;
 - **Emergency Interference:** Dialing, testing against, or interfering with emergency services.
+
+**Unlawful use is protected by no license.** No license to Bageo makes any of the uses above lawful, and none amounts to the author's consent to or endorsement of them. If Bageo is put to any of them: (1) any commercial license from the copyright holder, and any other written permission the copyright holder has given (including trademark or brand use and technical support), ends at once, without notice; (2) rights under `AGPL-3.0-only` end under its Section 8 whenever the same conduct also breaks that license's terms; and (3) the copyright holder may refuse that person or entity any further license, support, or cooperation.
 
 ### 4. AI Hallucinations, Misclassification & Third-Party API Disclaimer
 
@@ -114,9 +123,13 @@ Bageo 仅为供合法个人通信管理与技术研究使用的自托管开源�
 
 任何安装、刷机、配置或运行本软件的个人或机构（“部署者”），即为该实例唯一的实际行为人、号码使用人及个人信息控制者。本软件执行的一切接听、录音、AI 对话、防诈陪聊、短信收发、AI 回拨及 AI 代打行为，在法律上均完全归属于**部署者本人**；由此产生的一切民事、刑事、行政监管及第三方侵权责任，均由部署者独立承担，与原作者完全无关。
 
+**软件不回传数据；隐私与录音义务由部署者履行：** 本软件不含遥测、使用统计或任何把数据传回原作者的功能；通话音频、录音、文字记录、短信、联系人与设置只存放在部署者自己的设备上，并只发送到部署者自行配置的第三方服务（如 Google Gemini 与通知服务）。部署者须自行查明并遵守其所在地及通话对方所在地的个人信息与通信法规（例如台湾《个人资料保护法》与《通讯保障及监察法》、欧盟 GDPR，以及要求通话各方均同意才能录音的地区的规定），包括录音前的告知或取得同意、AI 身份的披露、数据的保存期限与删除，以及回应当事人就其数据提出的请求。
+
 ### 三、严格禁止的违法与不当用途
 
 严禁将本软件（或其修改版）用于任何违反部署者及通话对象所在地法律法规的行为，包括但不限于：电信网络诈骗、金融诈骗、冒充公检法／银行／他人身份；未经法定同意的非法窃听、秘密录音或散布他人隐私录音；违法自动群呼、骚扰营销电话、垃圾短信或违反 AI 合成语音强制披露规定的外呼；架设非法猫池（SIM Box）、违规语音落地转接或违反运营商服务协议的行为；以及干扰紧急报警救援线路。
+
+**违法使用不受任何授权保护：** 任何授权都不使上述行为合法，也不构成原作者对该行为的同意或背书。一旦将本软件用于上述任一用途：(1) 版权人签发的商业授权，以及版权人另行给予的任何书面许可（含商标或品牌使用与技术支持），立即终止，无须另行通知；(2) 依 `AGPL-3.0-only` 取得的权利，在该行为同时违反该许可证条款时，依其第 8 条终止；(3) 版权人可以拒绝再向该行为人提供任何授权、支持或合作。
 
 ### 四、AI 幻觉、误判、紧急通信排除与刷机资费风险自负
 
