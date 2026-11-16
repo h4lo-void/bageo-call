@@ -192,7 +192,7 @@ fn to_cn(text: &str) -> String {
     for (from, to) in ZH_CN_SWAPS {
         t = t.replace(from, to);
     }
-    zhconv::zhconv(&t, zhconv::Variant::ZhCN)
+    crate::zh_convert::to_cn(&t)
 }
 
 fn zh_tw_pack() -> Pack {

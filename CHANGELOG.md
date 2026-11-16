@@ -1,3 +1,9 @@
+# Unreleased
+
+- **OpenCC Chinese conversion and cleaner license files.** Chinese script conversion now uses pure-Rust OpenCC (`ver.1.4.2`, `Apache-2.0`) dictionaries instead of `zhconv`. [`LICENSE`](LICENSE) is now the verbatim GNU AGPL v3.0 text, dual-licensing and AGPL Section 7 additional terms live in [`LICENSING.md`](LICENSING.md), [`LEGAL.md`](LEGAL.md) is rewritten as a concise global disclaimer and usage notice, and [`NOTICE.md`](NOTICE.md) and [`LICENSES/Apache-2.0.txt`](LICENSES/Apache-2.0.txt) list OpenCC and the Gradle wrapper.
+- **簡繁轉換改用 OpenCC，並整理授權與免責文件。** 簡繁轉換改由純 Rust 讀取內建的 OpenCC（`ver.1.4.2`，`Apache-2.0`）字典，移除 `zhconv` 依賴。[`LICENSE`](LICENSE) 改放未刪改的 GNU AGPL v3.0 正式全文，雙重授權與第 7 條附加條款獨立至 [`LICENSING.md`](LICENSING.md)，[`LEGAL.md`](LEGAL.md) 重寫為精簡的免責聲明與使用須知，並在 [`NOTICE.md`](NOTICE.md) 與 [`LICENSES/Apache-2.0.txt`](LICENSES/Apache-2.0.txt) 補齊 OpenCC 與 Gradle wrapper 授權聲明。
+- **简繁转换改用 OpenCC，并整理许可证与免责文档。** 简繁转换改由纯 Rust 读取内置的 OpenCC（`ver.1.4.2`，`Apache-2.0`）字典，移除 `zhconv` 依赖。[`LICENSE`](LICENSE) 改放未删改的 GNU AGPL v3.0 正式全文，双重授权与第 7 条附加条款独立至 [`LICENSING.md`](LICENSING.md)，[`LEGAL.md`](LEGAL.md) 重写为精简的免责声明与使用须知，并在 [`NOTICE.md`](NOTICE.md) 与 [`LICENSES/Apache-2.0.txt`](LICENSES/Apache-2.0.txt) 补齐 OpenCC 与 Gradle wrapper 授权声明。
+
 # Bageo v1.3.0
 
 - **Chat commands now work in Discord, Slack and Matrix, as well as Telegram.** Check calls, have the AI call someone and decide pending items from any of the four. Slack and Matrix take commands as "@your bot /help". These three are only tested with simulated servers so far. See [Chat commands](docs/en/CHAT_COMMANDS.md).

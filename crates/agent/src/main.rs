@@ -1,3 +1,7 @@
+// Copyright (C) 2026 h4lo-void (https://github.com/h4lo-void)
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// See LICENSE, LICENSING.md (AGPL-3.0 Section 7 additional terms), and COMMERCIAL_LICENSE.md.
+
 //! Bageo agent.
 //!
 //! Phones connect by WebSocket (`/` or `/ws`): JSON text frames and raw s16le
@@ -62,6 +66,7 @@ mod usb_bridge;
 mod vad;
 mod voice_preview;
 mod wyoming;
+mod zh_convert;
 mod zh_tw;
 
 use std::collections::HashMap;
