@@ -1974,23 +1974,10 @@ impl std::fmt::Debug for UrgentTransferFn {
 }
 
 /// Whether a Whitelist caller's utterance expresses an urgent or emergency matter
-/// (across all 9 supported languages).
+/// (across all 9 supported languages): an emergency in context, not a bare word
+/// (see [`crate::urgency`]).
 pub fn is_urgent_whitelist_turn(text: &str) -> bool {
-    let lower = text.to_lowercase();
-    const CUES: &[&str] = &[
-        "緊急", "紧急", "急事", "很急", "非常急", "十萬火急", "十万火急", "馬上找", "马上找",
-        "立刻找", "快點接", "快点接", "醫院", "医院", "急診", "急诊", "車禍", "车祸", "意外",
-        "救命", "火災", "火灾", "報警", "报警", "住院", "出事了", "有急用",
-        "urgent", "emergency", "right now", "immediately", "asap", "hospital", "accident",
-        "ambulance", "life or death", "critical",
-        "急ぎ", "大至急", "至急", "病院", "救急", "事故", "大変", "すぐ繋いで",
-        "긴급", "급한", "급해요", "빨리", "병원", "응급실", "사고", "큰일",
-        "urgente", "emergencia", "hospital", "accidente", "ahora mismo", "de inmediato",
-        "urgence", "hôpital", "hopital", "immédiatement", "tout de suite",
-        "notfall", "dringend", "krankenhaus", "unfall", "sofort",
-        "urgência", "emergência", "acidente", "agora mesmo", "imediatamente",
-    ];
-    CUES.iter().any(|k| lower.contains(k))
+    crate::urgency::is_urgent(text)
 }
 
 /// Per-call sales / scam config (None = not persona mode, or an AI call-back).
@@ -2022,6 +2009,10 @@ pub struct StallCfg {
     pub judgement: Arc<std::sync::Mutex<Option<crate::calls::ScamJudgement>>>,
     /// Fired once if a Whitelist caller (`whitelist_mode == "emergency"`) states an emergency.
     pub urgent_transfer: Option<UrgentTransferFn>,
+    /// Whitelist urgent call (setting `whitelist_urgent_call`): the agent pauses the
+    /// AI while the phone dials the owner, ends the session once merged, or has the
+    /// AI say the owner did not answer.
+    pub urgent_call: Option<Arc<crate::urgent_call::CallCtl>>,
 }
 
 /// Same setup, another system prompt (the rotated stall session).
@@ -3118,6 +3109,9 @@ pub enum SessionEndReason {
     /// The caller was a recording or voice menu (persona mode with sales / scam
     /// stalling on): we hung up on it.
     IvrHangup,
+    /// Whitelist urgent call merged with the owner's phone: the AI leaves, the
+    /// call stays up (no hangup).
+    Handed,
 }
 
 impl SessionEndReason {
@@ -3137,6 +3131,7 @@ impl SessionEndReason {
             Self::CantCommunicate => "cant_communicate",
             Self::WsClosed => "ws_closed",
             Self::IvrHangup => "ivr_hangup",
+            Self::Handed => "handed_to_owner",
         }
     }
 }
@@ -5051,6 +5046,9 @@ pub async fn run_session(
         });
     let mut stall_release_now = false;
     let mut urgent_transfer_fired = false;
+    // Whitelist urgent call: what the AI said since the caller's urgent words (a line
+    // said twice there is its hold-on line even when the wording is not known).
+    let mut ai_after_urgent = String::new();
     // Judged sales / scam with stalling off: marked, and not looked at again.
     let mut stall_detected = false;
     // The live socket runs the stall prompt (a rotation went through while stalling).
@@ -5059,8 +5057,15 @@ pub async fn run_session(
     let mut ivr_enter: Option<&'static str> = None;
     let mut ivr_since: Option<tokio::time::Instant> = None;
 
+    // Whitelist urgent call: while the phone dials the owner, or once the owner is
+    // on, the session must not hang up the call.
+    let urgent_ctl = stall.as_ref().and_then(|c| c.urgent_call.clone());
     let signal_force_hangup = |hangup_signaled: &mut bool| {
         if *hangup_signaled {
+            return;
+        }
+        if urgent_ctl.as_ref().is_some_and(|c| c.blocks_hangup()) {
+            info!("Whitelist urgent call in progress serial={serial} — hangup not signaled");
             return;
         }
         if let Some(ref flag) = force_hangup {
@@ -5093,6 +5098,42 @@ pub async fn run_session(
                 );
             }
             break;
+        }
+
+        // Whitelist urgent call: the owner is on the call now (the AI leaves), the
+        // phone dials them (nothing from the AI meanwhile), or they did not answer
+        // and the AI tells the caller.
+        if let Some(ctl) = urgent_ctl.as_ref() {
+            if ctl.is_handed() {
+                end_reason = SessionEndReason::Handed;
+                info!("Whitelist urgent call merged serial={serial} — the AI leaves the call, no hangup");
+                break;
+            }
+            if let Some(turn) = ctl.take_say() {
+                model_turn_pending = true;
+                // In the language the caller speaks on this call, not the setting's.
+                let spoken = crate::urgency::caller_language(&caller_text_all);
+                info!(
+                    "Whitelist urgent call: line for the AI serial={serial} caller_language={}",
+                    spoken.map_or("unknown", |l| l.code())
+                );
+                let turn = crate::urgent_call::with_caller_language(&turn, spoken);
+                match send_text_before_deadline(
+                    &mut sink,
+                    turn,
+                    tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
+                    "gemini urgent call line send",
+                )
+                .await
+                {
+                    Ok(()) => info!("Whitelist urgent call not merged serial={serial} — the AI tells the caller"),
+                    Err(e) => warn!("Whitelist urgent call line failed serial={serial}: {e:#}"),
+                }
+                last_activity_at = tokio::time::Instant::now();
+            }
+            if ctl.is_paused() {
+                last_activity_at = tokio::time::Instant::now();
+            }
         }
 
         // An errand: the owner cancelled it, the carrier's recording answered,
@@ -5816,7 +5857,10 @@ pub async fn run_session(
         }
 
         // Wall-clock max talk time → agent will play goodbye WAV (persona: plain hangup).
-        if session_start.elapsed() >= Duration::from_secs(max_secs) {
+        // Not while the phone dials the owner for a whitelist urgent call.
+        if session_start.elapsed() >= Duration::from_secs(max_secs)
+            && !urgent_ctl.as_ref().is_some_and(|c| c.ai_quiet())
+        {
             end_reason = SessionEndReason::MaxDuration;
             let waited = let_the_phone_finish(&play_head, phone_sr, &cancel).await;
             signal_force_hangup(&mut hangup_signaled);
@@ -5988,6 +6032,7 @@ pub async fn run_session(
             && tool_open.is_empty()
             && !errand_asking
             && ivr_since.is_none()
+            && !urgent_ctl.as_ref().is_some_and(|c| c.ai_quiet())
             && (stall_quiet || plain_quiet)
         {
             idle_nudges += 1;
@@ -6398,6 +6443,56 @@ pub async fn run_session(
                                 for s in &out_tx {
                                     push_tx_window(&mut out_tx_window, s, 800);
                                     push_tx_window(&mut turn_out_text, s, 400);
+                                    // Whitelist urgent call: dialing is decided by the AI saying its hold-on
+                                    // line; the keyword table only lets weak hold-on phrases ("hold on",
+                                    // "ちょっと待って") and a repeated line count too.
+                                    if let Some(ctl) = urgent_ctl.as_ref() {
+                                        let caller_urgent = is_urgent_whitelist_turn(&in_tx_window);
+                                        let hold = if caller_urgent {
+                                            crate::urgent_call::is_hold_line(&turn_out_text)
+                                        } else {
+                                            crate::urgent_call::is_strong_hold_line(&turn_out_text)
+                                        };
+                                        if ctl.hold_said_at().is_none() && hold {
+                                            info!("Whitelist urgent call: the AI said its hold-on line serial={serial}");
+                                            ctl.note_hold_line();
+                                        }
+                                        if caller_urgent {
+                                            push_tx_window(&mut ai_after_urgent, s, 800);
+                                            if ctl.hold_said_at().is_none() && crate::urgent_call::repeats_a_line(&ai_after_urgent) {
+                                                info!(
+                                                    "Whitelist urgent call: the AI said the same line twice after the urgent words serial={serial} — taken as its hold-on line"
+                                                );
+                                                ctl.note_hold_line();
+                                            }
+                                        }
+                                        if ctl.hold_said_at().is_some() && !urgent_transfer_fired {
+                                            urgent_transfer_fired = true;
+                                            if let Some(ut) = stall.as_ref().and_then(|c| c.urgent_transfer.as_ref()) {
+                                                let said = if !in_tx_window.trim().is_empty() {
+                                                    in_tx_window.as_str()
+                                                } else {
+                                                    caller_text_all.as_str()
+                                                };
+                                                info!(
+                                                    "Whitelist urgent call: AI hold-on line triggered urgent transfer/alert serial={serial} text={said}"
+                                                );
+                                                (ut.0)(said);
+                                            }
+                                        }
+                                    } else if !urgent_transfer_fired {
+                                        // Alert-only mode (`whitelist_urgent_call` off): checked once the AI
+                                        // starts replying so the caller's full sentence is in `in_tx_window`.
+                                        if let Some(ut) = stall.as_ref().and_then(|c| c.urgent_transfer.as_ref()) {
+                                            if is_urgent_whitelist_turn(&in_tx_window) {
+                                                urgent_transfer_fired = true;
+                                                info!(
+                                                    "Whitelist caller reported an urgent matter serial={serial} text={in_tx_window} — triggering urgent transfer/alert"
+                                                );
+                                                (ut.0)(&in_tx_window);
+                                            }
+                                        }
+                                    }
                                     if cb_hold {
                                         // Its closing counts once it plays.
                                         if cb_floor.held.is_some() {
@@ -6534,14 +6629,18 @@ pub async fn run_session(
                                     push_tx_window(&mut in_tx_window, s, 800);
                                     push_tx_window(&mut caller_text_all, s, 400);
                                     push_tx_window(&mut caller_recent, s, 400);
-                                    if !urgent_transfer_fired {
-                                        if let Some(ut) = stall.as_ref().and_then(|c| c.urgent_transfer.as_ref()) {
-                                            if is_urgent_whitelist_turn(&in_tx_window) {
+                                    if let Some(ctl) = urgent_ctl.as_ref() {
+                                        if ctl.hold_said_at().is_none()
+                                            && is_urgent_whitelist_turn(&in_tx_window)
+                                            && crate::urgent_call::is_hold_line(&turn_out_text)
+                                        {
+                                            info!("Whitelist urgent call: the AI said its hold-on line serial={serial}");
+                                            ctl.note_hold_line();
+                                            if !urgent_transfer_fired {
                                                 urgent_transfer_fired = true;
-                                                info!(
-                                                    "Whitelist caller reported an urgent matter serial={serial} text={s} — triggering urgent transfer/alert"
-                                                );
-                                                (ut.0)(&in_tx_window);
+                                                if let Some(ut) = stall.as_ref().and_then(|c| c.urgent_transfer.as_ref()) {
+                                                    (ut.0)(&in_tx_window);
+                                                }
                                             }
                                         }
                                     }
@@ -7443,6 +7542,10 @@ pub async fn run_session(
                     break;
                 }
                 match up {
+                    Some(_) if urgent_ctl.as_ref().is_some_and(|c| c.ai_quiet()) => {
+                        // Whitelist urgent call: the phone is dialing the owner (or the
+                        // owner is on): what the line carries is not for the model.
+                    }
                     Some(_) if !opening_turn_complete => {
                         // Drop caller barge-in until the desk-status opening has been spoken.
                     }
@@ -7856,6 +7959,16 @@ pub async fn run_session(
     // Immediate close on hangup — stops Gemini Live token burn.
     let _ = sink.send(WsMessage::Close(None)).await;
     let _ = sink.close().await;
+    if urgent_ctl.is_none() && !urgent_transfer_fired {
+        if let Some(ut) = stall.as_ref().and_then(|c| c.urgent_transfer.as_ref()) {
+            if is_urgent_whitelist_turn(&in_tx_window) {
+                info!(
+                    "Whitelist caller reported an urgent matter before hangup serial={serial} text={in_tx_window} — triggering urgent transfer/alert"
+                );
+                (ut.0)(&in_tx_window);
+            }
+        }
+    }
     // An errand's question still waiting for the owner is not answered now.
     if let Some(e) = &errand {
         e.end_questions();

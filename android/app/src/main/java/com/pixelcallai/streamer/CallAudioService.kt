@@ -413,6 +413,10 @@ class CallAudioService : Service() {
 
     /** ACTIVE is an asynchronous service intent, never evidence that OFFHOOK still holds. */
     private fun handleExplicitCallActive(instanceId: Long) {
+        if (SilentInCallService.isAddCallActiveOrMerged()) {
+            keepMediaForAddCall("explicit ACTIVE instance=$instanceId")
+            return
+        }
         val live = SilentInCallService.isLiveCallInstance(instanceId)
         val selected = SilentInCallService.currentActiveCallInstanceId()
         val state = currentTelephonyCallState()
@@ -510,6 +514,20 @@ class CallAudioService : Service() {
             Log.i(TAG, "$reason keep media WS (session-dedup) instance=$current")
         }
         return true
+    }
+
+    /**
+     * Whitelist urgent call dialing or merged: calls the merge adds are the same call.
+     * Keep the media session as it is; never start another one (no bridge, no AI, no
+     * injected audio) and never switch it to another instance.
+     */
+    private fun keepMediaForAddCall(reason: String) {
+        val hasSession = synchronized(sessionOwnershipLock) { callActive || bridge != null || injector != null }
+        Log.i(
+            TAG,
+            "$reason: add_call dialing or merged — keep media instance=${mediaCallInstance.get()} " +
+                "has_session=$hasSession (no new session, no AI)",
+        )
     }
 
     private fun isSessionCurrent(generation: Long, callInstanceId: Long): Boolean =
@@ -630,6 +648,10 @@ class CallAudioService : Service() {
                 answerJob?.cancel()
                 answerJob = null
                 val callInstanceId = currentCallInstanceForTelephony()
+                if (SilentInCallService.isAddCallActiveOrMerged()) {
+                    keepMediaForAddCall("OFFHOOK instance=$callInstanceId")
+                    return
+                }
                 // Catch-up + callback can both fire OFFHOOK. Duplicate OFFHOOK/ACTIVE
                 // for the same PSTN call (instance still 0, then InCall publishes the
                 // real id) must keep the existing BridgeClient. A distinct live
@@ -1477,6 +1499,15 @@ class CallAudioService : Service() {
                     if (!isSessionCurrent(generation, callInstanceId)) return
                     handlePlaceCall(obj)
                 }
+                "add_call" -> {
+                    if (!isSessionCurrent(generation, callInstanceId)) return
+                    handleAddCall(obj, callInstanceId)
+                }
+                "add_call_abort" -> {
+                    val id = obj.optString("id").trim()
+                    Log.i(TAG, "add_call_abort received id=$id")
+                    mainHandler.post { SilentInCallService.abortAddCall(id) }
+                }
                 "tts_start" -> {
                     val source = obj.optString("source")
                     if (!isSessionCurrent(generation, callInstanceId)) return
@@ -1555,6 +1586,11 @@ class CallAudioService : Service() {
                 }
                 "hangup" -> {
                     if (!isSessionCurrent(generation, callInstanceId)) return
+                    // Whitelist urgent call: dialing the owner or merged — the caller's call stays up.
+                    if (SilentInCallService.isAddCallActiveOrMerged()) {
+                        Log.w(TAG, "agent hangup reason=${obj.optString("reason")} ignored: add_call dialing or merged")
+                        return
+                    }
                     Log.i(TAG, "agent hangup reason=${obj.optString("reason")}")
                     hangupFromAgent(generation, callInstanceId)
                 }
@@ -1563,12 +1599,57 @@ class CallAudioService : Service() {
         }
     }
 
+    /**
+     * Agent `add_call` (whitelist urgent call, media connection): dial the owner from
+     * this call's SIM and merge the two calls ([SilentInCallService.startAddCall]).
+     * Every step goes back as `add_call_result` on the media connection.
+     */
+    private fun handleAddCall(obj: org.json.JSONObject, callInstanceId: Long) {
+        val id = obj.optString("id").trim()
+        val number = obj.optString("number").trim()
+        val answerTimeoutMs = obj.optLong("answer_timeout_ms", 25_000L).coerceIn(5_000L, 60_000L)
+        Log.i(
+            TAG,
+            "add_call received id=$id number=${SilentInCallService.maskNumber(number)} " +
+                "merge=${obj.optBoolean("merge", true)} answer_timeout_ms=$answerTimeoutMs instance=$callInstanceId",
+        )
+        val report: (String, String) -> Unit = { status, reason ->
+            Log.i(TAG, "add_call_result id=$id status=$status reason=${reason.ifEmpty { "-" }}")
+            val client = bridge
+            if (client == null) {
+                Log.w(TAG, "add_call_result id=$id status=$status not sent: media connection gone")
+            } else {
+                client.sendJson(
+                    org.json.JSONObject()
+                        .put("type", "add_call_result")
+                        .put("id", id)
+                        .put("status", status)
+                        .put("reason", reason),
+                )
+            }
+        }
+        if (!Prefs.isAiCallEnabled(this)) {
+            report("failed", "ai_call_disabled")
+            return
+        }
+        if (id.isEmpty() || number.isEmpty()) {
+            report("failed", "missing_id_or_number")
+            return
+        }
+        mainHandler.post { SilentInCallService.startAddCall(this, id, number, answerTimeoutMs, report) }
+    }
+
     /** End the cellular call when the agent sends `{"type":"hangup"}`. */
     private fun hangupFromAgent(generation: Long, callInstanceId: Long) {
         scope.launch {
             // Small settle so last TTS frame flushes into the injector.
             delay(250)
             if (!isSessionCurrent(generation, callInstanceId)) return@launch
+            // Second guard: a whitelist urgent call is dialing the owner or merged.
+            if (SilentInCallService.isAddCallActiveOrMerged()) {
+                Log.w(TAG, "hangupFromAgent ignored: add_call dialing or merged — the caller's call stays up")
+                return@launch
+            }
             var ok = SilentInCallService.disconnectActive(callInstanceId)
             if (!ok) {
                 if (!isSessionCurrent(generation, callInstanceId)) return@launch
