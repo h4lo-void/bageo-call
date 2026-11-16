@@ -438,6 +438,45 @@ pub fn masked(number: &str) -> String {
     format!("***{tail}")
 }
 
+/// Longest a phone stays marked "owner on the call" without its idle status.
+pub const OWNER_ON_CALL_MAX: Duration = Duration::from_secs(3 * 60 * 60);
+
+fn owner_calls() -> &'static Mutex<HashMap<String, Instant>> {
+    static M: OnceLock<Mutex<HashMap<String, Instant>>> = OnceLock::new();
+    M.get_or_init(Default::default)
+}
+
+/// This phone (canonical serial) is dialing the owner or has the owner merged in: any
+/// new media hello or ring on it belongs to that call (the merge adds calls on the
+/// phone) and gets no AI, no speech and no hangup until the phone is idle again.
+pub fn mark_owner_on_call(phone: &str) {
+    if let Ok(mut g) = owner_calls().lock() {
+        g.insert(phone.to_string(), Instant::now());
+    }
+}
+
+/// The phone reported no call (idle), or the AI came back to the caller.
+pub fn clear_owner_on_call(phone: &str) -> bool {
+    owner_calls().lock().ok().is_some_and(|mut g| g.remove(phone).is_some())
+}
+
+pub fn owner_on_call(phone: &str) -> bool {
+    owner_on_call_at(phone, Instant::now())
+}
+
+fn owner_on_call_at(phone: &str, now: Instant) -> bool {
+    owner_calls()
+        .lock()
+        .ok()
+        .and_then(|g| g.get(phone).copied())
+        .is_some_and(|t| now.duration_since(t) < OWNER_ON_CALL_MAX)
+}
+
+/// A phone's control `status`: `in_call` false clears the mark.
+pub fn status_ends_owner_call(status: &Value) -> bool {
+    status.get("in_call").and_then(Value::as_bool) == Some(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -775,5 +814,21 @@ mod tests {
         c.pause();
         c.hand_over();
         assert_eq!(on_session_end(Some(&c)), SessionEnd::LeaveUp, "merged: leave it up");
+    }
+
+    #[test]
+    fn a_phone_with_the_owner_on_the_call_takes_no_new_ai_session_until_idle() {
+        let phone = "test-phone-owner-on";
+        assert!(!owner_on_call(phone));
+        mark_owner_on_call(phone);
+        assert!(owner_on_call(phone), "new hellos / rings on this phone are ignored");
+        assert!(!owner_on_call("test-phone-other"), "other phones are not affected");
+        assert!(!owner_on_call_at(phone, Instant::now() + OWNER_ON_CALL_MAX), "a lost idle status does not block forever");
+        assert!(!status_ends_owner_call(&json!({"type":"status","in_call":true})));
+        assert!(!status_ends_owner_call(&json!({"type":"status"})));
+        assert!(status_ends_owner_call(&json!({"type":"status","in_call":false})));
+        assert!(clear_owner_on_call(phone));
+        assert!(!owner_on_call(phone));
+        assert!(!clear_owner_on_call(phone));
     }
 }

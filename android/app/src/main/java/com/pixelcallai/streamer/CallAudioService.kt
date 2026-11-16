@@ -413,6 +413,10 @@ class CallAudioService : Service() {
 
     /** ACTIVE is an asynchronous service intent, never evidence that OFFHOOK still holds. */
     private fun handleExplicitCallActive(instanceId: Long) {
+        if (SilentInCallService.isAddCallActiveOrMerged()) {
+            keepMediaForAddCall("explicit ACTIVE instance=$instanceId")
+            return
+        }
         val live = SilentInCallService.isLiveCallInstance(instanceId)
         val selected = SilentInCallService.currentActiveCallInstanceId()
         val state = currentTelephonyCallState()
@@ -510,6 +514,20 @@ class CallAudioService : Service() {
             Log.i(TAG, "$reason keep media WS (session-dedup) instance=$current")
         }
         return true
+    }
+
+    /**
+     * Whitelist urgent call dialing or merged: calls the merge adds are the same call.
+     * Keep the media session as it is; never start another one (no bridge, no AI, no
+     * injected audio) and never switch it to another instance.
+     */
+    private fun keepMediaForAddCall(reason: String) {
+        val hasSession = synchronized(sessionOwnershipLock) { callActive || bridge != null || injector != null }
+        Log.i(
+            TAG,
+            "$reason: add_call dialing or merged — keep media instance=${mediaCallInstance.get()} " +
+                "has_session=$hasSession (no new session, no AI)",
+        )
     }
 
     private fun isSessionCurrent(generation: Long, callInstanceId: Long): Boolean =
@@ -630,6 +648,10 @@ class CallAudioService : Service() {
                 answerJob?.cancel()
                 answerJob = null
                 val callInstanceId = currentCallInstanceForTelephony()
+                if (SilentInCallService.isAddCallActiveOrMerged()) {
+                    keepMediaForAddCall("OFFHOOK instance=$callInstanceId")
+                    return
+                }
                 // Catch-up + callback can both fire OFFHOOK. Duplicate OFFHOOK/ACTIVE
                 // for the same PSTN call (instance still 0, then InCall publishes the
                 // real id) must keep the existing BridgeClient. A distinct live

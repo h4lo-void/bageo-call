@@ -150,8 +150,12 @@ class SilentInCallService : InCallService() {
         super.onCallRemoved(call)
         liveCalls.remove(call)
         val instanceId = callInstances.remove(call) ?: NO_CALL_INSTANCE
+        // Whitelist urgent call: while the merge runs (and after it) the original call's
+        // instance goes on in the calls the merge makes, even before they show up.
+        val job = addJob
+        val keepsOriginal = job != null && job.continuesCall() && instanceId == job.originalInstance
         // A merged conference keeps the original call's instance: keep its info too.
-        if (!callInstances.containsValue(instanceId)) callInfos.remove(instanceId)
+        if (!keepsOriginal && !callInstances.containsValue(instanceId)) callInfos.remove(instanceId)
         // Every mode (normal phone mode never reaches CallAudioService's cleanup): with
         // no call left, nothing stored may outlive it (number, SIM country, sub id).
         if (liveCalls.isEmpty()) Prefs.clearLastCallInfo(this)
@@ -161,7 +165,14 @@ class SilentInCallService : InCallService() {
         if (removedActiveCall) {
             // A call with the same instance (the merged conference) goes on as this call.
             val sameInstance = liveCalls.firstOrNull { callInstances[it] == instanceId }
-            (sameInstance ?: preferredLiveCall())?.let { replacement ->
+            if (keepsOriginal && sameInstance == null) {
+                // The merge ended the original call before its conference showed up: keep
+                // the instance (no CALL_ENDED, no media switch) — the conference takes it.
+                val stand = liveCalls.firstOrNull { it.state != Call.STATE_DISCONNECTED }
+                activeCall = stand
+                activeCallInstance.set(instanceId)
+                Log.i(TAG, "add_call id=${job?.id}: original call removed during the merge — instance=$instanceId kept for the conference")
+            } else (sameInstance ?: preferredLiveCall())?.let { replacement ->
                 selectActiveCall(replacement, callInstances[replacement] ?: NO_CALL_INSTANCE)
             } ?: run {
                 activeCall = null
@@ -187,37 +198,12 @@ class SilentInCallService : InCallService() {
      */
     private fun adoptForAddCall(call: Call, instanceId: Long): Boolean {
         val job = addJob ?: return false
-        if (call === job.original) return false
-        val isConference = try {
-            call.details.hasProperty(Call.Details.PROPERTY_CONFERENCE)
-        } catch (_: Exception) {
-            false
-        }
-        if (isConference && (job.merged || !job.done)) {
-            callInstances[call] = job.originalInstance
-            job.conference = call
-            Log.i(
-                TAG,
-                "add_call id=${job.id}: conference call added state=${stateName(call.state)} " +
-                    "children=${call.children.size} caps=[${capsOf(call)}] keeps instance=${job.originalInstance}",
-            )
-            forceMuteCall(call)
-            selectActiveCall(call, job.originalInstance)
-            call.registerCallback(object : Call.Callback() {
-                override fun onStateChanged(call: Call, state: Int) {
-                    Log.i(TAG, "add_call id=${job.id}: conference state -> ${stateName(state)} children=${call.children.size}")
-                    forceMuteCall(call)
-                }
-
-                override fun onChildrenChanged(call: Call, children: List<Call>) {
-                    job.peakChildren = maxOf(job.peakChildren, children.size)
-                    Log.i(TAG, "add_call id=${job.id}: conference children=${children.size} peak=${job.peakChildren}")
-                    if (job.merged && job.peakChildren >= 2 && children.size < 2) {
-                        endRestAfterMerge(job, "conference dropped to ${children.size} participant(s)")
-                    }
-                }
-            })
-            if (!job.done) onAddCallMerged(job, "conference call added")
+        if (call === job.original || call === job.leg) return false
+        // During the merge and after it, every new call is this call going on (Pixel 9 /
+        // Tello: the merge ends both calls and adds the caller and the owner as
+        // participants plus a PROPERTY_CONFERENCE host). Never a new call, never the AI.
+        if (job.continuesCall()) {
+            adoptContinuation(job, call, instanceId)
             return true
         }
         val outgoing = try {
@@ -273,6 +259,83 @@ class SilentInCallService : InCallService() {
         })
         onLegState(job, call, call.state)
         return true
+    }
+
+    /**
+     * A call the merge made (conference host or participant): mapped to the original
+     * call's instance (same media session, same call_end), muted, no RINGING flow, no
+     * answer gate, no AI. Merged once a conference host shows up or one of them is
+     * ACTIVE on the original call's phone account.
+     */
+    private fun adoptContinuation(job: AddCallJob, call: Call, instanceId: Long) {
+        callInstances[call] = job.originalInstance
+        job.adopted.add(call)
+        val details = call.details
+        val host = try {
+            details.hasProperty(Call.Details.PROPERTY_CONFERENCE)
+        } catch (_: Exception) {
+            false
+        }
+        val canLeaveConference = try {
+            details.can(Call.Details.CAPABILITY_DISCONNECT_FROM_CONFERENCE)
+        } catch (_: Exception) {
+            false
+        }
+        val participant = call.parent != null || canLeaveConference
+        val sameAccount = details.accountHandle == job.account
+        val role = when {
+            host -> "conference host"
+            participant -> "participant"
+            else -> "other"
+        }
+        val direction = try {
+            if (details.callDirection == Call.Details.DIRECTION_OUTGOING) "out" else "in"
+        } catch (_: Exception) {
+            "?"
+        }
+        Log.i(
+            TAG,
+            "add_call id=${job.id}: new call during/after the merge taken as the same call role=$role " +
+                "state=${stateName(call.state)} dir=$direction children=${call.children.size} same_account=$sameAccount " +
+                "caps=[${capsOf(call)}] props=[${propsOf(call)}] instance=$instanceId->${job.originalInstance} (no ringing, no AI)",
+        )
+        forceMuteCall(call)
+        val current = activeCall
+        if (host) {
+            job.conference = call
+            selectActiveCall(call, job.originalInstance)
+        } else if (current == null || current !in liveCalls) {
+            selectActiveCall(call, job.originalInstance)
+        }
+        call.registerCallback(object : Call.Callback() {
+            override fun onStateChanged(call: Call, state: Int) {
+                Log.i(TAG, "add_call id=${job.id}: $role state -> ${stateName(state)} children=${call.children.size}")
+                forceMuteCall(call)
+                if (!job.done && state == Call.STATE_ACTIVE && sameAccount) {
+                    onAddCallMerged(job, "$role ACTIVE on the original call's account")
+                }
+            }
+
+            override fun onChildrenChanged(call: Call, children: List<Call>) {
+                job.peakChildren = maxOf(job.peakChildren, children.size)
+                Log.i(TAG, "add_call id=${job.id}: $role children=${children.size} peak=${job.peakChildren}")
+                if (!job.done && children.isNotEmpty()) onAddCallMerged(job, "$role has ${children.size} children")
+                if (job.merged && job.peakChildren >= 2 && children.size < 2) {
+                    endRestAfterMerge(job, "conference dropped to ${children.size} participant(s)")
+                }
+            }
+
+            override fun onParentChanged(call: Call, parent: Call?) {
+                Log.i(TAG, "add_call id=${job.id}: $role parent=${parent != null}")
+            }
+        })
+        if (!job.done) {
+            when {
+                host -> onAddCallMerged(job, "conference host added (PROPERTY_CONFERENCE)")
+                call.children.isNotEmpty() -> onAddCallMerged(job, "$role added with ${call.children.size} children")
+                call.state == Call.STATE_ACTIVE && sameAccount -> onAddCallMerged(job, "$role added ACTIVE on the original call's account")
+            }
+        }
     }
 
     /** Incoming and ringing while another call is up (dialing, active or on hold). */
@@ -482,6 +545,11 @@ class SilentInCallService : InCallService() {
             var lateLegUntil = 0L
             /** Most children the merged conference had (2 = caller and owner both on it). */
             var peakChildren = 0
+            /** Calls the merge made (conference host, participants): the same call going on. */
+            val adopted: MutableSet<Call> = java.util.Collections.newSetFromMap(ConcurrentHashMap<Call, Boolean>())
+
+            /** Merge requested and not settled, or merged: new calls are this call going on. */
+            fun continuesCall(): Boolean = (mergeAttempts > 0 && !done) || merged
         }
 
         @Volatile
@@ -489,11 +557,11 @@ class SilentInCallService : InCallService() {
         private val addCallHandler = Handler(Looper.getMainLooper())
         private const val ADD_CALL_DIAL_TIMEOUT_MS = 10_000L
         private const val ADD_CALL_MERGE_RETRY_MS = 3_000L
-        private const val ADD_CALL_MERGE_TIMEOUT_MS = 10_000L
-        private const val ADD_CALL_LEG_GONE_GRACE_MS = 3_000L
         private const val ADD_CALL_UNHOLD_TRIES = 8
         private const val ADD_CALL_UNHOLD_EVERY_MS = 1_000L
         private const val ADD_CALL_REST_CHECK_MS = 1_500L
+        /** After the conference request: removed calls and new calls are the merge at work. */
+        private const val ADD_CALL_MERGE_WINDOW_MS = 15_000L
 
         /** Only the last four digits go to the log. */
         fun maskNumber(number: String): String = "***" + number.filter { it.isDigit() }.takeLast(4)
@@ -705,20 +773,13 @@ class SilentInCallService : InCallService() {
         private fun onLegGone(job: AddCallJob, leg: Call) {
             val reason = legEndReason(leg)
             if (job.mergeAttempts > 0) {
-                // An IMS merge can end both calls and go on in a new conference call.
+                // An IMS merge ends both calls and goes on in new ones (Pixel 9 / Tello:
+                // cause REMOTE, ImsReasonInfo 510 / 108). Decided when the merge window ends.
                 Log.i(
                     TAG,
-                    "add_call id=${job.id}: owner leg ended after a merge request cause=$reason — " +
-                        "looking for a conference for ${ADD_CALL_LEG_GONE_GRACE_MS}ms",
+                    "add_call id=${job.id}: owner leg ended during the merge cause=$reason — not a failure, " +
+                        "waiting for the conference (merge window)",
                 )
-                addCallHandler.postDelayed({
-                    if (job.done) return@postDelayed
-                    if (findConference(job) != null) {
-                        onAddCallMerged(job, "conference found after the owner leg ended")
-                    } else {
-                        failAddCall(job, reason)
-                    }
-                }, ADD_CALL_LEG_GONE_GRACE_MS)
                 return
             }
             Log.w(TAG, "add_call id=${job.id}: owner leg ended before a merge cause=$reason")
@@ -728,6 +789,7 @@ class SilentInCallService : InCallService() {
         private fun findConference(job: AddCallJob): Call? =
             job.conference?.takeIf { it in liveCalls }
                 ?: job.original.parent?.takeIf { it in liveCalls }
+                ?: job.adopted.firstOrNull { it in liveCalls && it.children.isNotEmpty() }
                 ?: liveCalls.firstOrNull {
                     it.state == Call.STATE_ACTIVE &&
                         try {
@@ -795,15 +857,37 @@ class SilentInCallService : InCallService() {
                 "error ${e.message}"
             }
             Log.i(TAG, "add_call id=${job.id}: merge requested via $how")
-            if (job.mergeAttempts < 2) {
-                addCallHandler.postDelayed({ if (!job.done) tryMerge(job) }, ADD_CALL_MERGE_RETRY_MS)
-            } else {
+            if (job.mergeAttempts == 1) {
+                addCallHandler.postDelayed({ mergeWindowEnded(job) }, ADD_CALL_MERGE_WINDOW_MS)
+                // A second try only while nothing moved (both calls up, no new calls yet).
                 addCallHandler.postDelayed({
-                    if (!job.done) {
-                        Log.w(TAG, "add_call id=${job.id}: no conference within ${ADD_CALL_MERGE_TIMEOUT_MS}ms")
-                        failAddCall(job, "merge_failed")
-                    }
-                }, ADD_CALL_MERGE_TIMEOUT_MS - ADD_CALL_MERGE_RETRY_MS)
+                    val legUp = job.leg?.let { it in liveCalls } == true
+                    if (!job.done && job.adopted.isEmpty() && job.original in liveCalls && legUp) tryMerge(job)
+                }, ADD_CALL_MERGE_RETRY_MS)
+            }
+        }
+
+        /**
+         * The merge window is over without a clear merge signal: judged by what is still up.
+         * Only "nothing left" counts as the caller gone.
+         */
+        private fun mergeWindowEnded(job: AddCallJob) {
+            if (job.done) return
+            val live = liveCalls.filter { it.state != Call.STATE_DISCONNECTED && it.state != Call.STATE_DISCONNECTING }
+            val origUp = job.original in live
+            val legUp = job.leg?.let { it in live } == true
+            val madeUp = job.adopted.count { it in live }
+            Log.i(
+                TAG,
+                "add_call id=${job.id}: merge window over live=${live.size} original_up=$origUp leg_up=$legUp merge_calls_up=$madeUp",
+            )
+            when {
+                live.isEmpty() -> failAddCall(job, "caller_left")
+                madeUp > 0 && !origUp -> onAddCallMerged(job, "merge window over: only calls the merge made are up ($madeUp)")
+                origUp && legUp -> failAddCall(job, "merge_failed")
+                origUp -> failAddCall(job, "leg_ended")
+                legUp -> failAddCall(job, "caller_left")
+                else -> onAddCallMerged(job, "merge window over: ${live.size} call(s) still up")
             }
         }
 
@@ -889,26 +973,33 @@ class SilentInCallService : InCallService() {
         private fun onAddCallRemoved(job: AddCallJob, call: Call) {
             if (!job.done) {
                 if (call === job.original) {
+                    if (job.mergeAttempts > 0) {
+                        val reason = try {
+                            call.details.disconnectCause?.reason.orEmpty()
+                        } catch (_: Exception) {
+                            ""
+                        }
+                        Log.i(
+                            TAG,
+                            "add_call id=${job.id}: original call removed during the merge cause=${legEndReason(call)} " +
+                                "reason=${reason.ifEmpty { "-" }} — not caller_left, waiting for the conference",
+                        )
+                        return
+                    }
                     Log.w(TAG, "add_call id=${job.id}: caller hung up while the owner was dialed")
                     failAddCall(job, "caller_left")
                 }
                 return
             }
-            if (job.merged && (call === job.leg || call === job.original || call === job.conference)) {
-                val which = when {
-                    call === job.leg -> "owner side"
-                    call === job.original -> "caller side"
-                    else -> "conference"
-                }
-                val reason = try {
-                    call.details.disconnectCause?.reason.orEmpty()
-                } catch (_: Exception) {
-                    ""
-                }
-                Log.i(TAG, "add_call id=${job.id}: after the merge the $which call was removed cause=${legEndReason(call)} reason=${reason.ifEmpty { "-" }}")
-                // An IMS merge ends the two calls into the conference: nobody left.
-                if (!reason.contains("MERGED", ignoreCase = true)) {
+            if (job.merged) {
+                // The original call and the owner leg end as part of the merge: not a leave.
+                // Who left is read from the calls the merge made (and the host's children).
+                if (call in job.adopted) {
+                    val which = if (call === job.conference) "conference host" else "participant"
+                    Log.i(TAG, "add_call id=${job.id}: after the merge the $which call was removed cause=${legEndReason(call)}")
                     endRestAfterMerge(job, "$which left (${legEndReason(call)})")
+                } else {
+                    Log.i(TAG, "add_call id=${job.id}: after the merge a pre-merge call was removed (part of the merge) cause=${legEndReason(call)}")
                 }
             }
             if (liveCalls.isEmpty() && addJob === job) addJob = null

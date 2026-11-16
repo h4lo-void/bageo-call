@@ -2033,6 +2033,12 @@ async fn handle_control_idle_ws(
                     }
                     // The phone's mode (AI / normal phone) or call state changed.
                     "status" => {
+                        // The phone has no call any more: a merged whitelist urgent call is over.
+                        if urgent_call::status_ends_owner_call(&parsed)
+                            && urgent_call::clear_owner_on_call(&canonical_device_serial(&serial))
+                        {
+                            info!("Whitelist urgent call: phone idle serial={serial} — owner-on-call mark cleared");
+                        }
                         state.phones.on_status(&serial, &parsed);
                         sync_normal_mode(&state, &serial).await;
                         errands::note_hello_sims(&canonical_device_serial(&serial), &parsed);
@@ -2045,6 +2051,12 @@ async fn handle_control_idle_ws(
                     // Phone rings (not answered yet): how long to ring, and the AI gets
                     // ready meanwhile (ring once before answering).
                     "incoming" => {
+                        // Whitelist urgent call dialing / merged on this phone: the merge adds
+                        // calls; none of them is a new call for the AI.
+                        if urgent_call::owner_on_call(&canonical_device_serial(&serial)) {
+                            info!("incoming serial={serial} ignored, owner is on the call (whitelist urgent call) — no AI, no answer plan");
+                            continue;
+                        }
                         let caller = extract_caller_id_from_msg(&parsed).unwrap_or_default();
                         note_call_sim(&serial, &parsed);
                         // A new call on this phone: a blocked call still waiting for its
@@ -2441,6 +2453,21 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                     }
                                     send_agent_info(&state, &sink).await;
                                     handle_control_idle_ws(state, serial, sink, stream).await;
+                                    return;
+                                }
+                                // Whitelist urgent call dialing / merged on this phone: a new media
+                                // connection is one of the calls the merge made. No Gemini, no
+                                // speech, no hangup: read it until it closes.
+                                if urgent_call::owner_on_call(&canonical_device_serial(&serial)) {
+                                    info!(
+                                        "session hello serial={serial} ignored, owner is on the call (whitelist urgent call) — no AI, no speech, no hangup"
+                                    );
+                                    while let Some(m) = stream.next().await {
+                                        if m.is_err() {
+                                            break;
+                                        }
+                                    }
+                                    info!("ignored media connection closed serial={serial}");
                                     return;
                                 }
                                 media_call_guard = media_call_guard.next().await;
@@ -6785,6 +6812,8 @@ async fn run_urgent_call(
         return;
     }
     ctl.pause();
+    // Any new media hello / ring on this phone is the merge at work, not a new call.
+    urgent_call::mark_owner_on_call(&canonical_device_serial(&serial));
     let id = format!("urgent-{}", chrono::Utc::now().timestamp_millis());
     let mut rx = urgent_call::register(&id);
     let mut tracker = urgent_call::Tracker::default();
@@ -6889,6 +6918,7 @@ async fn run_urgent_call(
                 return;
             }
             info!("Whitelist urgent call failed id={id} serial={serial} reason={reason} — the AI is back");
+            urgent_call::clear_owner_on_call(&canonical_device_serial(&serial));
             ctl.resume_with(if reason == "no_dial_ack" { on_callback } else { on_fail });
             // A merge the agent did not hear in time still hands the call over.
             if unsettled {
@@ -6896,6 +6926,7 @@ async fn run_urgent_call(
                 while let Ok(Some(report)) = tokio::time::timeout_at(until, rx.recv()).await {
                     if report == urgent_call::Report::Merged && media_call_guard.is_current() {
                         warn!("Whitelist urgent call: late merge id={id} serial={serial} — the AI leaves, the call stays up");
+                        urgent_call::mark_owner_on_call(&canonical_device_serial(&serial));
                         push_call_events(&active_call, &media_call_guard, &["whitelist_urgent_call_merged".to_string()]).await;
                         ctl.hand_over();
                         break;
