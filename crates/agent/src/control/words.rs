@@ -259,7 +259,10 @@ pub fn render(o: &Outcome, w: &Words) -> String {
             }
             s
         }
-        Outcome::Confirm { code, summary } => format!("{summary}\n\n{}", fmt(w.confirm_how, &[code])),
+        Outcome::Confirm { code, summary } => {
+            let shown: String = code.chars().take(super::confirm::CODE_SHOWN).collect();
+            format!("{summary}\n\n{}", fmt(w.confirm_how, &[&shown]))
+        }
         Outcome::Dropped => w.dropped.to_string(),
         Outcome::Expired => w.expired.to_string(),
         Outcome::TooMany { limit } => fmt(w.too_many, &[&limit.to_string()]),

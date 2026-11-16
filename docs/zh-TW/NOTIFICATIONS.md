@@ -249,6 +249,13 @@ Bageo 不連任何行事曆帳號。
 |---|---|
 | Webhook 網址 | `https://discord.com/api/webhooks/…` |
 
+要在 Discord 頻道裡下指令，還要填下面兩欄；只收通知不用填。步驟見[在聊天室操作](CHAT_COMMANDS.md#discord)。
+
+| 欄位 | 填什麼 |
+|---|---|
+| Bot 權杖（聊天室操作用） | 機器人的權杖 |
+| 頻道 ID（聊天室操作用） | 要下指令的那個頻道的 ID |
+
 ### Slack / Mattermost
 
 **Slack：**
@@ -263,6 +270,14 @@ Bageo 不連任何行事曆帳號。
 | 欄位 | 填什麼 |
 |---|---|
 | Incoming Webhook 網址 | `https://hooks.slack.com/services/…` |
+
+要在 Slack 頻道裡下指令（只限 Slack，Mattermost 不行），還要填下面三欄；只收通知不用填。步驟見[在聊天室操作](CHAT_COMMANDS.md#slack)。
+
+| 欄位 | 填什麼 |
+|---|---|
+| Bot 權杖（聊天室操作用） | `xoxb-` 開頭的權杖 |
+| App 層級權杖（聊天室操作用） | `xapp-` 開頭的權杖 |
+| 頻道 ID（聊天室操作用） | 要下指令的那個頻道的 ID |
 
 ### Microsoft Teams
 
@@ -553,6 +568,8 @@ Signal 沒有 Bot API，所以要透過你自己架的伺服器。
 | Homeserver 網址 | `https://matrix.example.org` |
 | 存取權杖 | 機器人帳號的 access token |
 | 聊天室 ID | `!…:example.org` |
+
+同一個管道也能下指令，見[在聊天室操作](CHAT_COMMANDS.md#matrix)。
 
 ### 電子郵件（Gmail）
 

@@ -1,7 +1,6 @@
-# Chat commands: run Bageo from Telegram
+# Chat commands: run Bageo from Telegram, Discord, Slack or Matrix
 
-Away from the console, you can run Bageo from the Telegram chat your
-notifications go to:
+Away from the console, you can run Bageo from the chat your notifications go to:
 
 - Look up calls.
 - Have the AI call someone.
@@ -9,12 +8,15 @@ notifications go to:
 - Answer the AI's questions during its call.
 - Switch a phone between AI answering and normal phone.
 
-Telegram is the first chat app supported. Other chat apps and AI agents can be
-added later (see [For developers](#for-developers)).
+Telegram, Discord, Slack and Matrix are supported. Other chat apps and AI agents
+can be added later (see [For developers](#for-developers)).
 
 ## Turn it on
 
-Chat commands are **off** until you switch them on for a chat.
+Chat commands are **off** until you switch them on for a chat. Follow the steps
+for your chat app: set up its notification channel, then turn on commands.
+
+### Telegram
 
 1. Set up the Telegram channel first ([Notifications → Telegram](NOTIFICATIONS.md#telegram)).
 2. *Settings → Notifications* → the Telegram channel → **Take commands from this chat**.
@@ -31,7 +33,55 @@ For the bot set by environment variables (`TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_
 In a group the bot only reacts to commands (`/calls`, or `/calls@your_bot`)
 and to replies to its own messages. Everything else people say is ignored.
 
+### Discord
+
+1. Open <https://discord.com/developers/applications>, press *New Application*, then open *Bot*.
+2. Under *Bot*, press *Reset Token* and copy the token.
+3. On the same page, turn on **Message Content Intent**. Without it the bot cannot read what you type.
+4. Invite the bot: *OAuth2 → URL Generator*, tick *bot*, then tick *View Channels*, *Send Messages* and *Read Message History*. Open the URL it makes and pick your server.
+5. For a private channel, also give the bot permission to read and write in that channel.
+6. Set up the Discord channel ([Notifications → Discord](NOTIFICATIONS.md#discord)). Fill in *Bot token (for chat commands)* and *Channel ID (for chat commands)*.
+7. To get the channel ID: turn on *User Settings → Advanced → Developer Mode*, right-click the channel → *Copy Channel ID*.
+8. Turn on **Take commands from this chat**.
+9. Optional: in **Who may give commands**, enter your Discord user ID (Developer Mode on, right-click your name → *Copy User ID*). Empty means anyone in that channel.
+10. **Save changes**, then send `/help` in the channel.
+
+### Slack
+
+Commands work with Slack only, not Mattermost.
+
+1. Create an app at <https://api.slack.com/apps> (*Create New App → From scratch*).
+2. Turn on *Socket Mode* and create an app-level token with the `connections:write` scope. It starts with `xapp-`; copy it.
+3. Open *Event Subscriptions*, turn it on, and under *Subscribe to bot events* add `message.channels` and `message.im`.
+4. Open *Interactivity & Shortcuts* and turn on *Interactivity*, so the buttons work.
+5. Open *OAuth & Permissions* and under *Bot Token Scopes* add `chat:write`, `channels:history` and `im:history`.
+6. Press *Install to Workspace* and copy the bot token (it starts with `xoxb-`).
+7. Add the app to the channel: in the channel, *Integrations → Add apps*.
+8. Set up the Slack channel ([Notifications → Slack / Mattermost](NOTIFICATIONS.md#slack--mattermost)). Fill in *Bot token (for chat commands)*, *App-level token (for chat commands)* and *Channel ID (for chat commands)*.
+9. To get the channel ID: open the channel's details; it is at the bottom and starts with `C`.
+10. Turn on **Take commands from this chat**.
+11. Optional: in **Who may give commands**, enter your Slack member ID (open your profile → ⋮ → *Copy member ID*). Empty means anyone in that channel.
+12. **Save changes**, then send `@your bot /help`. Slack takes a message that starts with `/` for its own commands, so start with the bot's name.
+
+### Matrix
+
+Only unencrypted rooms work. Element makes direct messages encrypted by default, so create a separate room instead.
+
+1. Create a Matrix account just for the bot.
+2. Log in to Element with it and copy the token: *All settings → Help & About → Advanced → Access Token*. Treat it like a password.
+3. With your own account, create a new room and turn off *Enable end-to-end encryption*. It cannot be turned off later.
+4. Invite the bot account to the room, then join with it.
+5. Find the room ID in *Room settings → Advanced* (it starts with `!`). The room's address (`#name:example.org`) works too.
+6. Set up the Matrix channel ([Notifications → Matrix](NOTIFICATIONS.md#matrix)). Fill in *Homeserver URL*, *Access token* and *Room ID*.
+7. Turn on **Take commands from this chat**.
+8. Optional: in **Who may give commands**, enter your Matrix ID, for example `@lee:example.org` (shown in your Element profile). Empty means anyone in that room.
+9. **Save changes**, then send `@your bot /help`. Element takes a message that starts with `/` for its own commands, so start with the bot's name.
+
+Matrix has no buttons. To confirm something, reply **1** or **2**.
+
 ## Commands
+
+In a Discord or Slack channel, and in a Matrix room with more than two people, the bot only reacts to commands that start with `/`, to messages that mention it, and to replies to its own messages. In Slack and Element, write `@your bot /calls`.
 
 Numbers like `1` or `#2` refer to the list the chat was shown last
 (`/calls`, `/tasks`, `/errands`, `/status`).
@@ -156,6 +206,10 @@ Beyond Telegram two-way chat, **all 32 notification channels** support interacti
    - `"reply": true` goes only to the one notification channel that is enabled and whose id, name or service type equals `channel_id`. With no `channel_id`, or one that matches nothing, nothing is sent.
    - Authenticate with the console password or the MCP token, in the `Authorization: Bearer` or `X-Calls-Token` header, or in the JSON `token` field. If neither is set, nothing is checked.
    - The JSON that comes back has `text` (the reply) and `pushed` (whether it was sent out).
+
+## How well tested
+
+Discord, Slack and Matrix have only been tested with simulated servers. They have not been tried on real accounts yet.
 
 ## For developers
 
