@@ -16,9 +16,9 @@ This page covers:
 Building the app, its permissions and its protocol are covered in
 [`android/README.md`](../../android/README.md).
 
-This page describes **Bageo 1.0**: the root module `v1.0.0` (versionCode 20)
-with the app `1.0.0` (versionCode 28) inside, installed from
-`pixelcallai_uplink-1.0.0.zip`. The app shows its version under *Advanced*,
+This page describes **Bageo 1.2**: the root module `v1.2.0` (versionCode 22)
+with the app `1.2.0` (versionCode 30) inside, installed from
+`pixelcallai_uplink-1.2.0.zip`. The app shows its version under *Advanced*,
 and the console under *System → Phones*.
 
 ## What the phone does
@@ -72,7 +72,7 @@ handset. All of this can be switched off from the app or the console (see
 1. **Root** the phone with Magisk or KernelSU (not covered here).
 2. If you ever installed the app as a plain APK, uninstall it. Never have both.
 3. Copy `pixelcallai_uplink-<version>.zip` to the phone (for this release
-   `pixelcallai_uplink-1.0.0.zip`). In the Magisk or KernelSU app: *Modules →
+   `pixelcallai_uplink-1.2.0.zip`). In the Magisk or KernelSU app: *Modules →
    Install from storage* → pick the zip → reboot.
 4. Open **Bageo**. The card at the top says in one sentence what the phone is
    doing right now. Below it, **Setup steps** lists what is still missing,

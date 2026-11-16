@@ -12,7 +12,7 @@
 
 构建应用、它的权限和通信协议，写在 [`android/README.md`](../../android/README.md)（英文）里。
 
-这一页说明的是 **Bageo 1.0**：root 模块 `v1.0.0`（versionCode 20），里面的应用是 `1.0.0`（versionCode 28），安装包是 `pixelcallai_uplink-1.0.0.zip`。应用的版本在它的“高级”页面能看到，控制台则在“系统 → 手机”里。
+这一页说明的是 **Bageo 1.2**：root 模块 `v1.2.0`（versionCode 22），里面的应用是 `1.2.0`（versionCode 30），安装包是 `pixelcallai_uplink-1.2.0.zip`。应用的版本在它的“高级”页面能看到，控制台则在“系统 → 手机”里。
 
 ## 手机会做哪些事
 
@@ -54,7 +54,7 @@
 
 1. 用 Magisk 或 KernelSU 给手机 **root**（这里不讲）。
 2. 如果你曾经把这个应用当作普通 APK 安装过，请先卸载。两种绝对不要同时存在。
-3. 把 `pixelcallai_uplink-<version>.zip` 复制到手机（这一版是 `pixelcallai_uplink-1.0.0.zip`）。在 Magisk 或 KernelSU 应用里：“模块”（Modules）→“从本地安装”（Install from storage）→ 选择那个 zip → 重启。
+3. 把 `pixelcallai_uplink-<version>.zip` 复制到手机（这一版是 `pixelcallai_uplink-1.2.0.zip`）。在 Magisk 或 KernelSU 应用里：“模块”（Modules）→“从本地安装”（Install from storage）→ 选择那个 zip → 重启。
 4. 打开 **Bageo**。最上面的卡片用一句话说明手机现在的状态。下面的“**设置步骤**”列出还没完成的事，每一步都有按钮：
 
    | 步骤 | 要做什么 |
