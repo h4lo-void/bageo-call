@@ -6455,6 +6455,20 @@ pub async fn run_session(
                                         if ctl.hold_said_at().is_none() && hold {
                                             info!("Whitelist urgent call: the AI said its hold-on line serial={serial}");
                                             ctl.note_hold_line();
+                                            if !urgent_transfer_fired {
+                                                urgent_transfer_fired = true;
+                                                if let Some(ut) = stall.as_ref().and_then(|c| c.urgent_transfer.as_ref()) {
+                                                    let said = if !in_tx_window.trim().is_empty() {
+                                                        in_tx_window.as_str()
+                                                    } else {
+                                                        caller_text_all.as_str()
+                                                    };
+                                                    info!(
+                                                        "Whitelist urgent call: AI hold-on line triggered urgent transfer/alert serial={serial} text={said}"
+                                                    );
+                                                    (ut.0)(said);
+                                                }
+                                            }
                                         }
                                         if urgent_transfer_fired {
                                             push_tx_window(&mut ai_after_urgent, s, 800);
@@ -6610,6 +6624,12 @@ pub async fn run_session(
                                                     "Whitelist caller reported an urgent matter serial={serial} text={s} — triggering urgent transfer/alert"
                                                 );
                                                 (ut.0)(&in_tx_window);
+                                                if let Some(ctl) = urgent_ctl.as_ref() {
+                                                    if ctl.hold_said_at().is_none() && crate::urgent_call::is_hold_line(&turn_out_text) {
+                                                        info!("Whitelist urgent call: the AI said its hold-on line serial={serial}");
+                                                        ctl.note_hold_line();
+                                                    }
+                                                }
                                             }
                                         }
                                     }

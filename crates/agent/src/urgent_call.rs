@@ -31,9 +31,6 @@ pub const HOLD_LINE_MAX_WAIT: Duration = Duration::from_secs(10);
 /// No `dialing` from the phone this soon after add_call: its app does not know the
 /// command (an older version); the AI comes back at once.
 pub const DIAL_ACK_WAIT: Duration = Duration::from_secs(5);
-/// The AI said the hold-on line but the caller's words never named an urgent
-/// matter within this long: no call, the AI says the owner will call back.
-pub const HOLD_LINE_WITHOUT_TRIGGER: Duration = Duration::from_secs(6);
 /// After add_call_abort: how long a final result may still come.
 pub const ABORT_WAIT: Duration = Duration::from_secs(8);
 /// After the attempt was given up: a late "merged" still hands the call over.
@@ -364,12 +361,6 @@ impl CallCtl {
     }
 }
 
-/// The hold-on line was said this long ago without the caller's words naming an
-/// urgent matter (and no call started): time for the "will call you back" line.
-pub fn hold_line_unbacked(ctl: &CallCtl, now: Instant) -> bool {
-    !ctl.dial_blocked() && ctl.hold_said_at().is_some_and(|t| now.duration_since(t) >= HOLD_LINE_WITHOUT_TRIGGER)
-}
-
 /// What the agent does when the Live session ends (any reason, any error).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionEnd {
@@ -428,28 +419,28 @@ pub fn deliver(msg: &Value) -> bool {
 pub fn not_answered_turn(lang: Lang, assistant: bool, owner: &str) -> String {
     let owner = crate::prompts::owner_label(lang, owner);
     let text = match (lang, assistant) {
-        (Lang::ZhTw, false) => "（系統：剛才沒有接通。現在用一句話跟對方說「抱歉，剛剛沒接通，我等一下馬上打給你。」這句話用對方這通電話講的語言說（對方講英文就說英文、講日文就說日文），不要預設中文。不要說已經接通，也不要說要轉給誰。）".to_string(),
-        (Lang::ZhTw, true) => format!("（系統：{owner}沒有接電話。現在用一句話跟對方說「{owner}現在沒接，我已經通知他了，請他馬上打給你。」這句話用對方這通電話講的語言說（對方講英文就說英文、講日文就說日文），不要預設中文。不要說已經接通。）"),
-        (Lang::ZhCn, false) => "（系统：刚才没有接通。现在用一句话跟对方说「抱歉，刚刚没接通，我等一下马上打给你。」这句话用对方这通电话讲的语言说（对方讲英文就说英文、讲日文就说日文），不要默认中文。不要说已经接通，也不要说要转给谁。）".to_string(),
-        (Lang::ZhCn, true) => format!("（系统：{owner}没有接电话。现在用一句话跟对方说「{owner}现在没接，我已经通知他了，请他马上打给你。」这句话用对方这通电话讲的语言说（对方讲英文就说英文、讲日文就说日文），不要默认中文。不要说已经接通。）"),
-        (_, false) => "(System: the call did not go through. Say in one sentence, in the language the caller is speaking on this call (not necessarily English): \"Sorry, that didn't go through. I'll call you right back.\" Do not say anyone is on the line.)".to_string(),
-        (_, true) => format!("(System: {owner} did not answer. Say in one sentence, in the language the caller is speaking on this call (not necessarily English): \"{owner} isn't picking up. I've let them know and asked them to call you straight back.\" Do not say anyone is on the line.)"),
+        (Lang::ZhTw, false) => "（系統：剛才沒有接通。不要再叫對方等或不要掛，現在用一句話跟對方說「抱歉，剛剛沒接通，我等一下馬上打給你。」這句話用對方這通電話講的語言說（對方講英文就說英文、講日文就說日文），不要預設中文。不要說已經接通，也不要說要轉給誰。）".to_string(),
+        (Lang::ZhTw, true) => format!("（系統：{owner}沒有接電話。不要再叫對方等或不要掛，現在用一句話跟對方說「{owner}現在沒接，我已經通知他了，請他馬上打給你。」這句話用對方這通電話講的語言說（對方講英文就說英文、講日文就說日文），不要預設中文。不要說已經接通。）"),
+        (Lang::ZhCn, false) => "（系统：刚才没有接通。不要再叫对方等或不要挂，现在用一句话跟对方说「抱歉，刚刚没接通，我等一下马上打给你。」这句话用对方这通电话讲的语言说（对方讲英文就说英文、讲日文就说日文），不要默认中文。不要说已经接通，也不要说要转给谁。）".to_string(),
+        (Lang::ZhCn, true) => format!("（系统：{owner}没有接电话。不要再叫对方等或不要挂，现在用一句话跟对方说「{owner}现在没接，我已经通知他了，请他马上打给你。」这句话用对方这通电话讲的语言说（对方讲英文就说英文、讲日文就说日文），不要默认中文。不要说已经接通。）"),
+        (_, false) => "(System: the call did not go through. Do not ask them to hold on or stay on the line any more. Say in one sentence, in the language the caller is speaking on this call (not necessarily English): \"Sorry, that didn't go through. I'll call you right back.\" Do not say anyone is on the line.)".to_string(),
+        (_, true) => format!("(System: {owner} did not answer. Do not ask them to hold on or stay on the line any more. Say in one sentence, in the language the caller is speaking on this call (not necessarily English): \"{owner} isn't picking up. I've let them know and asked them to call you straight back.\" Do not say anyone is on the line.)"),
     };
     crate::prompts::client_turn(&text)
 }
 
 /// The turn for when no call to the owner happens after the hold-on line (the
-/// caller's words did not say it is urgent, or the phone cannot dial): the AI
-/// says the owner will call back soon.
+/// phone cannot dial): the AI stops asking the caller to wait and says the
+/// owner will call back soon.
 pub fn callback_turn(lang: Lang, assistant: bool, owner: &str) -> String {
     let owner = crate::prompts::owner_label(lang, owner);
     let text = match (lang, assistant) {
-        (Lang::ZhTw, false) => "（系統：現在不轉接。用一句話跟對方說「好，我知道了，我等一下盡快打給你。」這句話用對方這通電話講的語言說（對方講英文就說英文、講日文就說日文），不要預設中文。不要說已經接通，也不要說要轉給誰。）".to_string(),
-        (Lang::ZhTw, true) => format!("（系統：現在不轉接。用一句話跟對方說「好，我會請{owner}盡快打給你。」這句話用對方這通電話講的語言說（對方講英文就說英文、講日文就說日文），不要預設中文。不要說已經接通。）"),
-        (Lang::ZhCn, false) => "（系统：现在不转接。用一句话跟对方说「好，我知道了，我等一下尽快打给你。」这句话用对方这通电话讲的语言说（对方讲英文就说英文、讲日文就说日文），不要默认中文。不要说已经接通，也不要说要转给谁。）".to_string(),
-        (Lang::ZhCn, true) => format!("（系统：现在不转接。用一句话跟对方说「好，我会请{owner}尽快打给你。」这句话用对方这通电话讲的语言说（对方讲英文就说英文、讲日文就说日文），不要默认中文。不要说已经接通。）"),
-        (_, false) => "(System: no call is put through now. Say in one sentence, in the language the caller is speaking on this call (not necessarily English): \"Okay, got it. I'll call you back as soon as I can.\" Do not say anyone is on the line.)".to_string(),
-        (_, true) => format!("(System: no call is put through now. Say in one sentence, in the language the caller is speaking on this call (not necessarily English): \"Okay, I'll ask {owner} to call you back as soon as possible.\" Do not say anyone is on the line.)"),
+        (Lang::ZhTw, false) => "（系統：現在不轉接。不要再叫對方等或不要掛，用一句話跟對方說「好，我知道了，我等一下盡快打給你。」這句話用對方這通電話講的語言說（對方講英文就說英文、講日文就說日文），不要預設中文。不要說已經接通，也不要說要轉給誰。）".to_string(),
+        (Lang::ZhTw, true) => format!("（系統：現在不轉接。不要再叫對方等或不要掛，用一句話跟對方說「好，我會請{owner}盡快打給你。」這句話用對方這通電話講的語言說（對方講英文就說英文、講日文就說日文），不要預設中文。不要說已經接通。）"),
+        (Lang::ZhCn, false) => "（系统：现在不转接。不要再叫对方等或不要挂，用一句话跟对方说「好，我知道了，我等一下尽快打给你。」这句话用对方这通电话讲的语言说（对方讲英文就说英文、讲日文就说日文），不要默认中文。不要说已经接通，也不要说要转给谁。）".to_string(),
+        (Lang::ZhCn, true) => format!("（系统：现在不转接。不要再叫对方等或不要挂，用一句话跟对方说「好，我会请{owner}尽快打给你。」这句话用对方这通电话讲的语言说（对方讲英文就说英文、讲日文就说日文），不要默认中文。不要说已经接通。）"),
+        (_, false) => "(System: no call is put through now. Do not ask them to hold on or stay on the line any more. Say in one sentence, in the language the caller is speaking on this call (not necessarily English): \"Okay, got it. I'll call you back as soon as I can.\" Do not say anyone is on the line.)".to_string(),
+        (_, true) => format!("(System: no call is put through now. Do not ask them to hold on or stay on the line any more. Say in one sentence, in the language the caller is speaking on this call (not necessarily English): \"Okay, I'll ask {owner} to call you back as soon as possible.\" Do not say anyone is on the line.)"),
     };
     crate::prompts::client_turn(&text)
 }
@@ -829,29 +820,33 @@ mod tests {
     }
 
     #[test]
-    fn a_hold_on_line_without_urgent_words_falls_back_after_six_seconds() {
+    fn the_hold_on_line_is_noted_once_and_dialing_is_blocked_once() {
         let c = CallCtl::default();
-        let t0 = Instant::now();
-        assert!(!hold_line_unbacked(&c, t0));
+        assert!(c.hold_said_at().is_none());
         c.note_hold_line();
         let said = c.hold_said_at().unwrap();
         c.note_hold_line();
         assert_eq!(c.hold_said_at(), Some(said), "the first time counts");
-        assert!(!hold_line_unbacked(&c, said + Duration::from_secs(5)));
-        assert!(hold_line_unbacked(&c, said + HOLD_LINE_WITHOUT_TRIGGER));
         assert!(c.block_dial());
         assert!(!c.block_dial(), "blocked once");
-        assert!(!hold_line_unbacked(&c, said + Duration::from_secs(30)), "no fallback once a call was tried or given up");
+        assert!(c.dial_blocked());
     }
 
     #[test]
     fn the_callback_line_promises_a_call_back_and_never_a_connection() {
         for lang in crate::locale::ALL {
             for assistant in [false, true] {
-                let t = callback_turn(lang, assistant, "Sam");
-                let v: Value = serde_json::from_str(&t).unwrap();
-                let text = v.pointer("/clientContent/turns/0/parts/0/text").and_then(|x| x.as_str()).unwrap();
-                assert!(text.contains("打給你") || text.contains("打给你") || text.contains("call you back"), "{text}");
+                for t in [callback_turn(lang, assistant, "Sam"), not_answered_turn(lang, assistant, "Sam")] {
+                    let v: Value = serde_json::from_str(&t).unwrap();
+                    let text = v.pointer("/clientContent/turns/0/parts/0/text").and_then(|x| x.as_str()).unwrap();
+                    assert!(text.contains("打給你") || text.contains("打给你") || text.contains("call you"), "{text}");
+                    assert!(
+                        text.contains("不要再叫對方等")
+                            || text.contains("不要再叫对方等")
+                            || text.contains("Do not ask them to hold on or stay on the line any more"),
+                        "{text}"
+                    );
+                }
             }
         }
     }

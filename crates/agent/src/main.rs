@@ -6764,24 +6764,8 @@ async fn run_urgent_call(
     on_fail: String,
     on_callback: String,
 ) {
-    let sim = call_sim_country(&serial);
-    let number = match urgent_call::check_owner_number(&number, sim.as_deref()) {
-        Ok(n) => n,
-        Err(why) => {
-            warn!(
-                "Whitelist urgent call: owner number {} not dialable ({why}) serial={serial} — alert only",
-                urgent_call::masked(&number)
-            );
-            ctl.block_dial();
-            push_call_events(&active_call, &media_call_guard, &urgent_call_failed_events("bad_number")).await;
-            // The prompt told the AI to wait for the next instruction after its
-            // hold-on line: it always gets one.
-            ctl.resume_with(on_callback);
-            return;
-        }
-    };
-    let t0 = tokio::time::Instant::now();
-    let before = delivered_bytes.load(Ordering::Relaxed);
+    // Wait until the AI has said its hold-on line (whenever in the call that happens),
+    // and that line has finished playing out on the phone.
     loop {
         tokio::time::sleep(Duration::from_millis(100)).await;
         if !media_call_guard.is_current() {
@@ -6792,30 +6776,44 @@ async fn run_urgent_call(
             info!("Whitelist urgent call: no call any more on this call serial={serial}");
             return;
         }
-        let waited = t0.elapsed();
-        if waited >= urgent_call::HOLD_LINE_MAX_WAIT {
-            let said = ctl.hold_said_at().is_some();
+        let Some(said_at) = ctl.hold_said_at() else {
+            continue;
+        };
+        let since_said = said_at.elapsed();
+        if since_said >= urgent_call::HOLD_LINE_MAX_WAIT {
             info!(
-                "Whitelist urgent call: hold-on line said={said} but not played out in {}s serial={serial} — no call, alert only",
-                waited.as_secs()
+                "Whitelist urgent call: hold-on line said {}s ago, dialing now serial={serial}",
+                since_said.as_secs()
             );
-            ctl.block_dial();
-            push_call_events(&active_call, &media_call_guard, &urgent_call_failed_events("no_hold_line")).await;
-            // Said or not (a wording the check does not know, a transcript that
-            // lost it), the AI waits for an instruction: it says the owner will
-            // call back instead of repeating its hold-on line.
-            ctl.resume_with(on_callback);
-            return;
+            break;
         }
-        if waited < Duration::from_millis(1000) || ctl.hold_said_at().is_none() {
+        if since_said < Duration::from_millis(600) {
             continue;
         }
-        let spoke = delivered_bytes.load(Ordering::Relaxed) > before;
+        let spoke = delivered_bytes.load(Ordering::Relaxed) > 0;
         if spoke && !play_head.generating() && !play_head.ai_audible(Duration::from_millis(400)) {
-            info!("Whitelist urgent call: hold-on line said and played ({}ms) serial={serial}", waited.as_millis());
+            info!(
+                "Whitelist urgent call: hold-on line said and played ({}ms after hold-on) serial={serial}",
+                since_said.as_millis()
+            );
             break;
         }
     }
+    let sim = call_sim_country(&serial);
+    let number = match urgent_call::check_owner_number(&number, sim.as_deref()) {
+        Ok(n) => n,
+        Err(why) => {
+            warn!(
+                "Whitelist urgent call: owner number {} not dialable ({why}) serial={serial} — alert only",
+                urgent_call::masked(&number)
+            );
+            ctl.block_dial();
+            push_call_events(&active_call, &media_call_guard, &urgent_call_failed_events("bad_number")).await;
+            // The AI said its hold-on line and is waiting for the next instruction.
+            ctl.resume_with(on_callback);
+            return;
+        }
+    };
     if !ctl.block_dial() {
         return;
     }
@@ -7051,27 +7049,22 @@ async fn run_gemini_session_to_end(
                     info!("Gemini hangup watcher invalidated serial={serial}");
                     break;
                 }
-                // Whitelist urgent call: the AI said its hold-on line but the caller's
-                // words never named an urgent matter: no call; the AI says the owner
-                // will call back, and the owner still gets the urgent alert.
+                // Whitelist urgent call: when the AI says its strong hold-on line, it
+                // triggers the urgent alert and dial even if the caller's phrasing was
+                // not in the keyword table.
                 if !urgent_recorded {
                     if let Some(ctl) = urgent_ctl.as_ref() {
-                        if urgent_call::hold_line_unbacked(ctl, std::time::Instant::now()) && ctl.block_dial() {
-                            info!(
-                                "Whitelist urgent call: hold-on line said, no urgent words in {}s serial={serial} — no call, the AI says the owner will call back",
-                                urgent_call::HOLD_LINE_WITHOUT_TRIGGER.as_secs()
-                            );
-                            push_call_events(&active_call, &media_call_guard, &urgent_call_failed_events("no_urgent_words")).await;
-                            let rt = state.settings_store.snapshot();
-                            ctl.resume_with(urgent_call::callback_turn(rt.lang(), rt.is_assistant_style(), &rt.owner_name));
+                        if ctl.hold_said_at().is_some() {
                             let said = transcript_w.lock().map(|g| g.clone()).unwrap_or_default();
                             let tail: String = {
                                 let chars: Vec<char> = said.trim().chars().collect();
                                 chars[chars.len().saturating_sub(200)..].iter().collect()
                             };
                             if let Ok(mut g) = urgent_reason.lock() {
-                                if g.is_none() {
+                                if g.as_deref().unwrap_or("").trim().is_empty() && !tail.is_empty() {
                                     *g = Some(tail);
+                                } else if g.is_none() {
+                                    *g = Some(String::new());
                                 }
                             }
                         }
@@ -7148,7 +7141,9 @@ async fn run_gemini_session_to_end(
                                 None => {
                                     info!("Whitelist urgent call turned off during the call serial={serial} — no call");
                                     ctl.block_dial();
-                                    ctl.resume_with(on_callback);
+                                    if ctl.hold_said_at().is_some() {
+                                        ctl.resume_with(on_callback);
+                                    }
                                 }
                             }
                         }

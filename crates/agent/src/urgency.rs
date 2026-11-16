@@ -42,18 +42,21 @@ const ZH: Cues = Cues {
         "送医", "送急诊", "去急诊", "进急诊", "在急诊", "急诊室", "被送进", "送到医院", "进医院了", "住院了", "急救", "抢救", "昏倒", "晕倒",
         "昏过去", "晕过去", "中风", "心脏病发", "没有呼吸", "没呼吸", "救护车", "加护病房", "重症监护", "紧急开刀", "摔倒了", "跌倒了",
         "车祸", "被车撞", "撞车", "出事了", "出事情了", "出大事", "发生意外", "出意外", "受重伤", "受伤", "摔伤", "撞伤", "烫伤",
-        "失火", "火灾", "着火", "烧起来", "瓦斯外泄", "瓦斯漏", "煤气泄漏", "燃气泄漏", "闻到瓦斯", "淹水", "淹大水", "水淹", "爆炸", "浓烟",
+        "失火", "火灾", "着火", "烧起来", "瓦斯外泄", "瓦斯漏", "瓦斯味", "煤气泄漏", "煤气味", "燃气泄漏", "燃气味", "闻到瓦斯", "消防队", "消防车", "消防员",
+        "淹水", "淹大水", "水淹", "爆炸", "浓烟",
         "走失", "走丢", "不见了", "失踪", "找不到他", "找不到她", "找不到人", "找不到孩子", "找不到小孩", "一直没回家", "到现在还没回家",
         "过世", "去世", "往生", "病危", "快不行了", "没有心跳", "断气",
         "被抢", "抢劫", "遭小偷", "被偷了", "闯空门", "有人闯进", "撬门", "报警了", "已经报警", "警察来了", "被打了", "绑架",
         "被困", "困在", "卡在电梯", "关在电梯", "受困", "迷路了", "下不了山",
         "护照丢", "护照不见", "护照被偷", "钱包丢", "钱包被偷", "都丢了", "全丢了", "回不了国", "回不了家", "被扣留",
-        "家里出事", "宕机", "当机", "系统挂了", "整个挂了", "系统崩溃", "服务器挂", "网站挂了", "停摆", "炸锅", "工安意外", "工安事故", "工地出事",
+        "家里出事", "宕机", "当机", "系统挂了", "整个挂了", "全挂了", "系统崩溃", "系统当", "服务器挂", "伺服器挂", "伺服器当", "网站挂了", "停摆", "瘫痪", "炸锅",
+        "工安意外", "工安事故", "工地出事", "工地意外", "工厂出事", "工厂意外", "工伤",
         "学校打来", "老师打来",
     ],
     urge: &[
         "紧急", "有急事", "急事", "十万火急", "救命", "快来", "快过来", "快点过来", "赶快过来", "赶紧过来", "快回来", "赶快回来",
-        "赶紧回来", "你马上回", "叫他马上", "要他马上", "请他马上", "让他马上", "叫他立刻", "请他立刻", "马上找他", "立刻找他", "马上叫他",
+        "赶紧回来", "你马上回", "你马上来", "你快点来", "现在需要你", "马上需要你", "需要你马上", "需要你立刻",
+        "叫他马上", "要他马上", "请他马上", "让他马上", "叫他立刻", "请他立刻", "马上找他", "立刻找他", "马上叫他",
         "马上接电话", "赶快接电话", "快点接", "快接电话", "马上联络他", "找本人",
     ],
     ask: &[],
@@ -62,58 +65,60 @@ const ZH: Cues = Cues {
         "不急", "不用急", "不着急", "不用着急", "不赶", "没急事", "没有急事", "没什么急事", "有空再", "有空的时候", "慢慢来",
         "哈哈", "笑死", "开玩笑", "饿死", "饿到", "饿得", "新闻", "报导", "报道", "演习", "演练", "电影", "电视剧",
     ],
-    fine: &["没事", "没什么事", "没啥事", "没什么大碍", "不严重", "已经好了", "已经出院", "出院了", "没出事", "还好没"],
-    past: &["上周", "上礼拜", "上星期", "上次", "上回", "去年", "前年", "以前", "之前", "小时候", "那时候", "几年前", "前几年", "忌日"],
-    now: &["刚刚", "刚才", "刚被", "现在", "正在"],
+    fine: &["没事", "没什么事", "没啥事", "没什么大碍", "不严重", "已经好了", "已经出院", "出院了", "没出事", "还好没", "挺好的", "撑得住"],
+    past: &["上周", "上礼拜", "上星期", "上个月", "上次", "上一回", "去年", "前年", "以前", "之前", "小时候", "那时候", "几年前", "前几年", "一年前", "一年了", "几个月前", "忌日"],
+    now: &["刚刚", "刚才", "刚被", "刚送", "刚出", "马上", "立刻"],
 };
 
 const JA: Cues = Cues {
     events: &[
         "倒れて", "倒れた", "倒れま", "救急車", "救急搬送", "搬送され", "病院に運ばれ", "意識がない", "意識不明", "脳卒中", "心筋梗塞", "心臓発作",
         "危篤", "集中治療室", "事故に遭", "事故にあ", "事故った", "交通事故", "はねられ", "ひかれ", "手術中", "緊急手術",
-        "火事", "燃えて", "ガス漏れ", "ガスが漏れ", "浸水", "水浸し", "爆発", "煙が",
+        "火事", "燃えて", "ガス漏れ", "ガスが漏れ", "ガス臭", "ガスの臭い", "消防車", "消防隊", "浸水", "水浸し", "爆発", "煙が",
         "行方不明", "迷子", "いなくなっ", "どこにもいない", "帰ってこな",
         "亡くなっ", "亡くなり", "死んだ", "もう長くない",
         "空き巣", "泥棒", "強盗", "ひったくり", "警察を呼", "警察に通報", "通報し",
         "閉じ込められ", "遭難", "道に迷", "取り残され", "盗まれ", "財布をなく", "財布を落と",
-        "大変なこと", "システムが落ち", "サーバーが落ち", "サーバーダウン", "システム障害", "障害が発生", "全部止まっ", "労災", "現場で事故",
+        "大変なこと", "システムが落ち", "サーバーが落ち", "サーバーダウン", "システム障害", "システムがクラッシュ", "サーバーがクラッシュ", "障害が発生", "全部止まっ",
+        "労災", "現場で事故", "工場で事故", "作業中に事故",
         "学校から電話", "けがをし", "ケガをし", "怪我をし", "骨折",
     ],
-    urge: &["緊急", "至急", "急ぎの用", "急用", "大至急", "すぐ繋いで", "すぐつないで", "すぐ来て", "すぐに来て", "今すぐ", "助けて"],
+    urge: &["緊急", "至急", "急ぎの用", "急用", "大至急", "すぐ繋いで", "すぐつないで", "すぐ来て", "すぐに来て", "今すぐ来て", "今すぐ必要", "今すぐ", "助けて"],
     ask: &[],
     at_once: &[],
     calm: &[
         "急ぎじゃない", "急ぎではない", "急がない", "急がなくて", "急ぎません", "時間あるとき", "時間がある時", "お手すきの", "暇なとき", "ゆっくりで",
         "ニュース", "訓練", "ドラマ", "映画", "冗談", "死にそう", "お腹すいて", "腹減",
     ],
-    fine: &["大丈夫", "大したことない", "たいしたことない", "退院し"],
-    past: &["先週", "去年", "昨年", "前に", "昔", "この前", "以前", "命日"],
-    now: &["さっき", "たった今", "今すぐ", "いま", "現在"],
+    fine: &["大丈夫", "大したことない", "たいしたことない", "退院し", "もう退院", "なんとかなっ"],
+    past: &["先週", "先月", "去年", "昨年", "一昨年", "前に", "昔", "この前", "以前", "命日", "一年前", "一年経", "1年経", "何年も前"],
+    now: &["さっき", "たった今", "今すぐ", "今さっき"],
 };
 
 const KO: Cues = Cues {
     events: &[
         "쓰러지", "쓰러졌", "구급차", "응급실", "실려갔", "실려 갔", "의식이 없", "뇌졸중", "심장마비", "중환자실", "위독",
         "교통사고", "사고가 났", "사고 났", "사고를 당", "차에 치", "수술 중",
-        "불이 났", "불났", "화재", "가스가 새", "가스 새", "가스 누출", "물에 잠겼", "침수", "폭발",
+        "불이 났", "불났", "화재", "가스가 새", "가스 새", "가스 누출", "가스 냄새", "소방차", "소방대", "물에 잠겼", "침수", "폭발",
         "실종", "길을 잃", "없어졌", "안 들어오", "찾을 수가 없", "어디에도 없",
         "돌아가셨", "돌아가시", "가망이 없",
         "도둑이 들", "도둑맞", "강도가", "강도를", "강도 당", "소매치기", "경찰에 신고", "신고했", "경찰 불렀",
         "갇혀", "갇혔", "고립", "조난",
         "여권이랑 지갑", "여권을 잃", "지갑을 잃", "다 잃어버", "도난", "돌아갈 방법이 없", "돌아갈 수가 없",
-        "큰일 났", "큰일이 났", "서버가 다운", "서버 다운", "시스템이 다운", "시스템 장애", "장애가 발생", "전부 멈췄", "산업재해", "현장에서 사고",
+        "큰일 났", "큰일이 났", "서버가 다운", "서버 다운", "시스템이 다운", "서버가 죽", "시스템이 죽", "시스템 장애", "장애가 발생", "전부 멈췄",
+        "산업재해", "현장에서 사고", "공장에서 사고", "작업 중 사고",
         "학교에서 전화", "다쳐서", "다쳤", "골절",
     ],
-    urge: &["긴급", "급한 일", "급한 용", "급합니다", "급해요", "응급", "빨리 바꿔", "빨리 와", "당장", "살려 주세요", "살려줘"],
+    urge: &["긴급", "급한 일", "급한 용", "급합니다", "급해요", "응급", "빨리 바꿔", "빨리 와", "지금 당장 와", "지금 바로 필요", "당장", "살려 주세요", "살려줘"],
     ask: &[],
     at_once: &[],
     calm: &[
         "급하지 않", "안 급해", "급한 거 아니", "급한 건 아니", "시간 날 때", "천천히", "편할 때",
         "뉴스", "훈련", "드라마", "영화", "농담", "배고파", "죽겠다",
     ],
-    fine: &["괜찮아", "괜찮습니다", "별일 아니", "별거 아니", "퇴원했"],
-    past: &["지난주", "작년", "예전에", "저번에", "지난번", "기일"],
-    now: &["방금", "지금", "아까", "당장"],
+    fine: &["괜찮아", "괜찮습니다", "별일 아니", "별거 아니", "퇴원했", "이미 퇴원", "잘 지내"],
+    past: &["지난주", "지난달", "작년", "재작년", "예전에", "저번에", "지난번", "기일", "1년 됐", "일년 됐", "1년 전", "몇 년 전"],
+    now: &["방금", "방금 전에", "당장"],
 };
 
 const EN: Cues = Cues {
@@ -121,27 +126,43 @@ const EN: Cues = Cues {
         "collapsed", "passed out", "ambulance", "to the er", "in the er", "the emergency room", "taken to the hospital", "rushed to the hospital",
         "had a stroke", "heart attack", "unconscious", "not breathing", "icu", "on life support",
         "car accident", "car crash", "in an accident", "been an accident", "hit by a car", "got hit by",
-        "on fire", "house is burning", "fire department", "smell gas", "gas leak", "flooding", "flooded", "explosion",
+        "on fire", "house is burning", "fire department", "fire trucks", "firefighters", "smell gas", "gas smell", "smells like gas", "gas leak", "flooding", "flooded", "explosion",
         "wandered off", "is missing", "went missing", "gone missing", "can't find her", "can't find him",
         "passed away", "just died", "has died", "is dying", "won't make it", "not going to make it",
         "broke into", "break in", "got robbed", "been robbed", "was robbed", "mugged", "called the police", "called the cops", "called 911", "calling 911",
         "stuck in an elevator", "stuck in the elevator", "trapped", "stranded", "lost on the",
         "got stolen", "was stolen", "were stolen", "lost my passport", "lost my wallet", "no way home",
         "something bad happened", "something terrible happened", "something happened at home",
-        "system is down", "system went down", "servers are down", "server is down", "site is down", "production is down", "production is stopped",
-        "production has stopped", "outage", "workplace accident", "accident at the site", "hurt at work",
+        "system is down", "system went down", "system just crashed", "system crashed", "systems crashed", "server crashed", "servers crashed", "everything crashed",
+        "servers are down", "server is down", "site is down", "production is down", "production is stopped", "production has stopped", "outage",
+        "workplace accident", "accident at the site", "accident at the factory", "accident at the plant", "accident at work", "hurt at work", "injured at work",
         "school called", "school just called", "nurse called", "hit his head", "hit her head", "broke his arm", "broke her arm", "hurt at school",
     ],
-    urge: &["emergency", "it's urgent", "it is urgent", "this is urgent", "very urgent", "urgently", "something urgent", "urgent matter", "life or death"],
-    ask: &["need him", "need to reach him", "need to talk to him", "need to speak to him", "get him", "put him on", "tell him to", "have him call", "find him", "reach him"],
+    urge: &[
+        "emergency", "it's urgent", "it is urgent", "this is urgent", "very urgent", "urgently", "something urgent", "urgent matter", "life or death",
+        "need you right now", "need you immediately", "need you right away", "come right now", "come immediately", "get here right now",
+    ],
+    ask: &[
+        "need him", "need to reach him", "need to talk to him", "need to speak to him", "get him", "put him on", "tell him to", "have him call", "find him", "reach him",
+        "need you", "need to talk to you", "need to speak to you", "come home", "come here", "get here",
+    ],
     at_once: &["right now", "right away", "immediately", "asap", "now"],
     calm: &[
         "not urgent", "no rush", "no hurry", "whenever you", "when you get a chance", "no big deal", "just kidding", "kidding", "lol", "haha",
         "news", "drill", "movie", "dying of hunger", "starving",
     ],
-    fine: &["nothing serious", "i'm fine", "all good", "doing fine", "doing ok", "discharged", "recovered"],
-    past: &["last week", "last year", "last month", "years ago", "a while ago", "the other day", "anniversary"],
-    now: &["just", "right now", "at the moment", "currently"],
+    fine: &[
+        "nothing serious", "i'm fine", "all good", "doing fine", "doing ok", "doing okay", "managing okay", "managing ok", "i'm okay", "i'm ok",
+        "already discharged", "discharged", "recovered",
+    ],
+    past: &[
+        "last week", "last year", "last month", "years ago", "a year ago", "a year since", "been a year", "years since",
+        "months ago", "a month ago", "a month since", "weeks ago", "a week ago", "a while ago", "the other day", "anniversary",
+    ],
+    now: &[
+        "just now", "just collapsed", "just died", "just passed", "just happened", "just had", "just got", "just been", "just called",
+        "just taken", "just rushed", "just hit", "just broke", "just fell", "just crashed", "right now",
+    ],
 };
 
 const ES: Cues = Cues {
@@ -150,105 +171,123 @@ const ES: Cues = Cues {
         "esta ingresado", "esta ingresada", "lo ingresaron", "la ingresaron", "un derrame", "un infarto", "no respira", "inconsciente", "en la uci", "terapia intensiva",
         "accidente de coche", "accidente de carro", "accidente de trafico", "tuvo un accidente", "hubo un accidente", "atropello", "atropellado", "atropellada", "choque",
         "lo estan operando", "la estan operando",
-        "se esta quemando", "se quema", "incendio", "bomberos", "fuga de gas", "huele a gas", "se inundo", "inundacion", "explosion",
+        "se esta quemando", "se quema", "incendio", "bomberos", "fuga de gas", "huele a gas", "olor a gas", "se inundo", "inundacion", "explosion",
         "no encontramos", "no lo encontramos", "no la encontramos", "se perdio", "desaparecido", "desaparecida", "desaparecio",
         "fallecio", "acaba de fallecer", "murio", "se esta muriendo", "muy grave", "esta grave",
         "nos robaron", "me robaron", "me asaltaron", "asalto", "entraron a robar", "llamamos a la policia", "llame a la policia",
         "atrapado", "atrapada", "encerrado", "encerrada", "nos perdimos",
         "perdi el pasaporte", "perdi la cartera", "no tengo como volver",
-        "algo muy grave", "algo grave", "se cayo todo", "se cayo el sistema", "se cayo el servidor", "sistema caido", "servidor caido",
-        "produccion parada", "produccion esta parada", "accidente laboral",
+        "algo muy grave", "algo grave", "se cayo todo", "se cayo el sistema", "se cayo el servidor", "colapso el sistema", "sistema caido", "servidor caido",
+        "produccion parada", "produccion esta parada", "accidente laboral", "accidente en la fabrica", "accidente en la planta", "herido en el trabajo",
         "llamaron del colegio", "llamaron de la escuela", "se rompio", "se golpeo la cabeza", "se lastimo", "se hizo dano",
     ],
-    urge: &["emergencia", "es urgente", "muy urgente", "urgentemente", "auxilio", "socorro"],
-    ask: &["dile que", "digale que", "que venga", "que se venga", "comuniquelo", "pasamelo", "pasemelo", "que me llame", "necesito hablar con el"],
+    urge: &["emergencia", "es urgente", "muy urgente", "urgentemente", "auxilio", "socorro", "te necesito ahora", "te necesito ya", "ven ahora mismo", "vente ya"],
+    ask: &[
+        "dile que", "digale que", "que venga", "que se venga", "comuniquelo", "pasamelo", "pasemelo", "que me llame", "necesito hablar con el",
+        "te necesito", "necesito que vengas", "necesito hablar contigo", "ven a", "vente",
+    ],
     at_once: &["ahora mismo", "ya", "enseguida", "inmediatamente", "urgente"],
     calm: &[
         "no es urgente", "nada urgente", "no hay prisa", "sin prisa", "no corre prisa", "cuando puedas", "cuando tengas tiempo", "cuando pueda",
         "noticias", "simulacro", "pelicula", "novela", "es broma", "jaja", "me muero de hambre",
     ],
-    fine: &["nada grave", "no es nada", "estoy bien", "ya esta bien", "ya salio", "le dieron el alta"],
-    past: &["la semana pasada", "el ano pasado", "el mes pasado", "hace anos", "el otro dia", "aniversario"],
-    now: &["acaba de", "acabo de", "ahora", "ahorita", "en este momento"],
+    fine: &["nada grave", "no es nada", "estoy bien", "ya esta bien", "ya salio", "le dieron el alta", "lo llevo bien"],
+    past: &["la semana pasada", "el ano pasado", "el mes pasado", "hace anos", "hace un ano", "hace meses", "ya paso un ano", "el otro dia", "aniversario"],
+    now: &["acaba de", "acabo de", "ahora mismo", "recien"],
 };
 
 const FR: Cues = Cues {
     events: &[
         "malaise", "aux urgences", "pompiers", "samu", "emmene a l hopital", "emmenee a l hopital", "l emmenent", "hospitalise", "hospitalisee",
         "avc", "crise cardiaque", "inconscient", "inconsciente", "respire plus", "reanimation",
-        "accident de voiture", "eu un accident", "il y a eu un accident", "renverse par", "renversee par", "au bloc",
-        "il y a le feu", "au feu", "pris feu", "prend feu", "incendie", "fuite de gaz", "sent le gaz", "inonde", "inondee", "inondation", "degat des eaux", "explosion",
+        "accident de voiture", "eu un accident", "il y a eu un accident", "grave accident", "accident grave", "renverse par", "renversee par", "au bloc",
+        "il y a le feu", "au feu", "pris feu", "prend feu", "incendie", "fuite de gaz", "sent le gaz", "odeur de gaz", "inonde", "inondee", "inondation", "degat des eaux", "explosion",
         "retrouve plus", "retrouve pas", "s est perdu", "s est perdue", "a disparu", "porte disparu",
         "vient de mourir", "est mort", "est morte", "decede", "decedee", "en train de mourir", "s en sortir",
         "cambriol*", "braque", "braques", "agresse", "agressee", "appele la police", "appele les flics",
         "coince*", "bloque dans", "bloquee dans", "perdus en montagne", "enferme*",
         "vole mon passeport", "vole mon portefeuille", "perdu mon passeport", "perdu mon portefeuille", "peux pas rentrer", "peux plus rentrer",
-        "quelque chose de grave", "a l arret", "en panne", "accident du travail",
+        "quelque chose de grave", "a l arret", "en panne", "serveur est tombe", "systeme est tombe", "systeme a plante", "tout a plante",
+        "accident du travail", "accident a l usine", "accident au travail", "blesse a l usine", "blesse au travail",
         "l ecole a appele", "l ecole vient d appeler", "s est casse", "s est cogne", "s est blesse*", "est tombee", "est tombe",
     ],
-    urge: &["c est urgent", "tres urgent", "une urgence", "c est une urgence", "urgence", "au secours", "a l aide"],
-    ask: &["passez le moi", "passe le moi", "dis lui de", "dites lui de", "qu il rentre", "qu il vienne", "qu il me rappelle", "j ai besoin de lui"],
+    urge: &[
+        "c est urgent", "tres urgent", "une urgence", "c est une urgence", "urgence", "au secours", "a l aide",
+        "viens tout de suite", "venez tout de suite", "rentre tout de suite", "besoin de toi maintenant", "besoin de toi tout de suite",
+    ],
+    ask: &[
+        "passez le moi", "passe le moi", "dis lui de", "dites lui de", "qu il rentre", "qu il vienne", "qu il me rappelle", "j ai besoin de lui",
+        "que tu viennes", "que vous veniez", "tu dois venir", "besoin de toi", "besoin de vous", "viens", "venez",
+    ],
     at_once: &["tout de suite", "immediatement", "maintenant", "vite", "d urgence"],
     calm: &[
         "pas urgent", "rien d urgent", "pas presse", "rien ne presse", "quand tu peux", "quand vous pouvez", "quand tu auras", "quand vous aurez",
         "infos", "journal", "exercice", "film", "je rigole", "je plaisante", "mdr", "meurs de faim",
     ],
-    fine: &["rien de grave", "je vais bien", "il va bien", "elle va bien", "est sorti de l hopital", "est sortie de l hopital"],
-    past: &["la semaine derniere", "l annee derniere", "l an dernier", "l an passe", "il y a des annees", "l autre jour", "anniversaire"],
-    now: &["vient de", "viens de", "maintenant", "en ce moment", "tout de suite"],
+    fine: &["rien de grave", "je vais bien", "il va bien", "elle va bien", "est sorti de l hopital", "est sortie de l hopital", "deja sorti", "je tiens le coup"],
+    past: &["la semaine derniere", "l annee derniere", "l an dernier", "l an passe", "le mois dernier", "il y a des annees", "il y a un an", "ca fait un an", "depuis un an", "l autre jour", "anniversaire"],
+    now: &["vient de", "viens de", "tout de suite", "a l instant"],
 };
 
 const DE: Cues = Cues {
     events: &[
         "umgekippt", "zusammengebrochen", "bewusstlos", "rettungswagen", "krankenwagen", "notaufnahme", "notarzt", "schlaganfall", "herzinfarkt",
         "atmet nicht", "intensivstation", "ins krankenhaus gebracht", "eingeliefert",
-        "autounfall", "unfall gehabt", "hatte einen unfall", "einen unfall", "angefahren", "wird operiert", "wird gerade operiert",
-        "brennt", "feuer", "feuerwehr", "riecht nach gas", "gasleck", "uberschwemmt", "unter wasser", "explosion",
+        "autounfall", "unfall gehabt", "hatte einen unfall", "einen unfall", "schwerer unfall", "angefahren", "wird operiert", "wird gerade operiert",
+        "brennt", "feuer", "feuerwehr", "riecht nach gas", "gasgeruch", "gasleck", "uberschwemmt", "unter wasser", "explosion",
         "verschwunden", "vermisst", "hat sich verlaufen", "haben uns verlaufen", "nicht nach hause gekommen",
         "gestorben", "verstorben", "im sterben", "stirbt",
         "eingebrochen", "einbruch", "uberfallen", "ausgeraubt", "beklaut", "polizei gerufen", "polizei angerufen",
         "im aufzug fest", "im fahrstuhl fest", "stecke fest", "stecken fest", "sitze fest", "sitzen fest", "eingesperrt", "eingeschlossen",
         "geklaut", "gestohlen", "pass verloren", "geldbeutel verloren", "nicht mehr nach hause",
         "was schlimmes passiert", "etwas schlimmes passiert", "ist was passiert",
-        "system ausgefallen", "system ist ausgefallen", "server ausgefallen", "server ist down", "system ist down", "produktion steht", "arbeitsunfall", "betriebsunfall",
+        "system ausgefallen", "system ist ausgefallen", "system abgesturzt", "system ist abgesturzt", "server ausgefallen", "server abgesturzt",
+        "server ist down", "system ist down", "produktion steht", "arbeitsunfall", "betriebsunfall", "unfall in der fabrik", "unfall im werk", "bei der arbeit verletzt",
         "schule hat angerufen", "verletzt", "gebrochen",
     ],
-    urge: &["notfall", "es ist dringend", "sehr dringend", "dringend sprechen", "dringend erreichen"],
-    ask: &["muss ihn", "muss mit ihm", "verbinden sie mich", "holen sie ihn", "sag ihm er soll", "sagen sie ihm er soll", "er soll", "er muss"],
+    urge: &["notfall", "es ist dringend", "sehr dringend", "dringend sprechen", "dringend erreichen", "brauche dich sofort", "brauche dich jetzt", "komm sofort"],
+    ask: &[
+        "muss ihn", "muss mit ihm", "verbinden sie mich", "holen sie ihn", "sag ihm er soll", "sagen sie ihm er soll", "er soll", "er muss",
+        "brauche dich", "muss dich", "du musst", "komm bitte", "kommen sie",
+    ],
     at_once: &["sofort", "jetzt", "dringend"],
     calm: &[
         "nicht dringend", "keine eile", "eilt nicht", "wenn du zeit hast", "wenn sie zeit haben", "in ruhe",
         "nachrichten", "ubung", "probealarm", "film", "serie", "spass", "sterbe vor hunger",
     ],
-    fine: &["nichts schlimmes", "alles gut", "geht mir gut", "geht ihm gut", "geht ihr gut", "entlassen"],
-    past: &["letzte woche", "letztes jahr", "letzten monat", "vor jahren", "neulich", "geburtstag", "todestag"],
-    now: &["gerade", "eben", "jetzt", "sofort"],
+    fine: &["nichts schlimmes", "alles gut", "geht mir gut", "geht ihm gut", "geht ihr gut", "entlassen", "schon entlassen", "komme klar"],
+    past: &["letzte woche", "letztes jahr", "letzten monat", "vor jahren", "vor einem jahr", "ein jahr her", "seit einem jahr", "vor monaten", "neulich", "geburtstag", "todestag", "jahrestag"],
+    now: &["gerade", "soeben", "sofort"],
 };
 
 const PT: Cues = Cues {
     events: &[
         "desmaiou", "ambulancia", "pronto socorro", "levado para o hospital", "levada para o hospital", "levado pro hospital", "levada pro hospital",
         "internado", "internada", "avc", "infarto", "nao esta respirando", "inconsciente", "uti",
-        "acidente de carro", "sofreu um acidente", "houve um acidente", "teve um acidente", "atropelado", "atropelada", "bateu o carro", "em cirurgia",
-        "pegando fogo", "pegou fogo", "incendio", "bombeiros", "vazamento de gas", "cheiro de gas", "alagou", "alagada", "enchente", "explosao",
+        "acidente de carro", "sofreu um acidente", "houve um acidente", "teve um acidente", "acidente grave", "grave acidente", "atropelado", "atropelada", "bateu o carro", "em cirurgia",
+        "pegando fogo", "pegou fogo", "incendio", "bombeiros", "vazamento de gas", "cheiro de gas", "cheiro forte de gas", "alagou", "alagada", "enchente", "explosao",
         "sumiu", "desaparecido", "desaparecida", "se perdeu", "nao achamos", "nao encontramos", "nao encontra",
         "faleceu", "acabou de falecer", "morreu", "esta morrendo", "ta morrendo", "nao vai resistir",
         "assaltaram", "assalto", "fomos assaltados", "roubaram", "arrombaram", "chamei a policia", "chamamos a policia",
         "preso no elevador", "presa no elevador", "presos no elevador", "ficou preso", "ficou presa", "perdidos na",
         "perdi o passaporte", "perdi a carteira", "nao tenho como voltar",
-        "coisa seria", "coisa grave", "algo grave", "caiu inteiro", "caiu tudo", "sistema caiu", "servidor caiu", "producao parou", "fora do ar", "acidente de trabalho",
+        "coisa seria", "coisa grave", "algo grave", "caiu inteiro", "caiu tudo", "sistema caiu", "sistema travou", "servidor caiu", "producao parou", "fora do ar",
+        "acidente de trabalho", "acidente na fabrica", "machucou no trabalho", "ferido no trabalho",
         "a escola ligou", "ligaram da escola", "quebrou o braco", "quebrou a perna", "se machucou", "bateu a cabeca",
     ],
-    urge: &["emergencia", "e urgente", "muito urgente", "urgencia", "socorro"],
-    ask: &["fala pra ele", "diz pra ele", "diga a ele", "pede pra ele", "preciso falar com ele", "chama ele"],
+    urge: &["emergencia", "e urgente", "muito urgente", "urgencia", "socorro", "preciso de voce agora", "preciso muito de voce", "vem agora", "venha agora"],
+    ask: &[
+        "fala pra ele", "diz pra ele", "diga a ele", "pede pra ele", "preciso falar com ele", "chama ele",
+        "preciso de voce", "preciso falar com voce", "vem pra ca", "venha", "precisa vir",
+    ],
     at_once: &["agora mesmo", "ja", "urgente", "imediatamente", "agora"],
     calm: &[
         "nao e urgente", "nada urgente", "sem pressa", "nao tem pressa", "quando puder", "quando der",
         "jornal", "noticia", "simulado", "simulacao", "filme", "novela", "brincadeira", "kkk", "morrendo de fome",
     ],
-    fine: &["nada grave", "nao foi nada", "to bem", "estou bem", "ta tudo bem", "teve alta", "recebeu alta"],
-    past: &["semana passada", "ano passado", "mes passado", "faz anos", "ha anos", "outro dia", "aniversario"],
-    now: &["acabou de", "agora", "neste momento"],
+    fine: &["nada grave", "nao foi nada", "to bem", "estou bem", "ta tudo bem", "teve alta", "recebeu alta", "ja teve alta", "levando bem"],
+    past: &["semana passada", "ano passado", "mes passado", "faz anos", "ha anos", "faz um ano", "ha um ano", "faz meses", "outro dia", "aniversario"],
+    now: &["acabou de", "acabei de", "agora mesmo"],
 };
 
 const ALL_CUES: [&Cues; 8] = [&ZH, &JA, &KO, &EN, &ES, &FR, &DE, &PT];
@@ -338,7 +377,8 @@ const T2S: &[(char, char)] = &[
     ('槍', '枪'), ('戰', '战'), ('獄', '狱'), ('違', '违'), ('規', '规'), ('視', '视'), ('劇', '剧'), ('書', '书'), ('寫', '写'), ('讀', '读'),
     ('紙', '纸'), ('畫', '画'), ('戲', '戏'), ('訊', '讯'), ('響', '响'), ('準', '准'), ('備', '备'), ('隨', '随'), ('題', '题'),
     ('撐', '撑'), ('鬧', '闹'), ('壞', '坏'), ('換', '换'), ('夠', '够'), ('嬰', '婴'), ('憂', '忧'), ('鐘', '钟'), ('島', '岛'), ('傳', '传'),
-    ('別', '别'), ('撥', '拨'), ('鑰', '钥'), ('頁', '页'), ('較', '较'),
+    ('別', '别'), ('撥', '拨'), ('鑰', '钥'), ('頁', '页'), ('較', '较'), ('隊', '队'), ('濃', '浓'), ('潰', '溃'), ('癱', '瘫'), ('瘓', '痪'),
+    ('壓', '压'), ('幾', '几'),
 ];
 
 fn t2s(c: char) -> char {
@@ -777,6 +817,26 @@ mod tests {
         assert!(is_urgent("我上週才去醫院拿藥。結果我爸剛剛又昏倒，送急診了！"));
         assert!(is_urgent("I saw him last week. Now Dad collapsed and the ambulance is here!"));
         assert!(!is_urgent("我奶奶去年過世了。今天只是想跟你聊聊。"));
+    }
+
+    #[test]
+    fn gas_smell_work_accidents_system_crashes_and_past_deaths_are_told_apart() {
+        for s in [
+            "你家門口瓦斯味超重，消防隊在路上了",
+            "grave accident à l'usine… il faut que tu viennes tout de suite",
+            "the whole system just crashed… I need you right now",
+            "Minha avó acabou de falecer… Preciso muito de você aqui agora",
+        ] {
+            assert!(is_urgent(s), "should be urgent: {s}");
+        }
+        for s in [
+            "it's been a year since my grandfather passed away, but I'm managing okay",
+            "It's been a year since my grandfather passed away.",
+            "我爺爺去年過世了，現在想起來還是有點難過。",
+            "他上禮拜已經出院了，現在在家休息。",
+        ] {
+            assert!(!is_urgent(s), "should not be urgent: {s}");
+        }
     }
 
     #[test]
