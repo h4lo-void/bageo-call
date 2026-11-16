@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 330" width="900" height="330" role="img" aria-labelledby="t" xml:lang="zh-Hans" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans SC','Noto Sans CJK SC',sans-serif">
-  <title id="t">Bageo 的工作原理：对方通过运营商网络打到你的备用手机（已 root、插着你的 SIM），手机用 USB 或 Wi-Fi 把通话声音交给你电脑上的 Bageo 主程序，主程序再和 Gemini Live 对话。录音留在你的硬盘，通知发到 16 种渠道，一切在网页控制台里管理。</title>
+  <title id="t">Bageo 的工作原理：对方通过运营商网络打到你的备用手机（已 root、插着你的 SIM），手机用 USB 或 Wi-Fi 把通话声音交给你电脑上的 Bageo 程序，再由它和 Gemini Live 对话。录音留在你的硬盘，通知发到 32 种渠道，一切在网页控制台里管理。</title>
   <style>
     .fr{animation:fr 1s linear infinite}
     .fl{animation:fl 1s linear infinite}
@@ -23,7 +23,7 @@
   <rect x="478" y="58" width="164" height="128" rx="18" fill="#FFCF4A" stroke="#FFCF4A" stroke-width="1.5"/>
   <g transform="translate(533 67) scale(.215)"><g fill="#0E8F8F"><rect x="52" y="204" width="136" height="16" rx="8"/><rect x="44" y="204" width="34" height="30" rx="11"/><rect x="162" y="204" width="34" height="30" rx="11"/></g><g stroke="#E08A00" stroke-width="7" stroke-linecap="round"><line x1="104" y1="186" x2="104" y2="203"/><line x1="128" y1="186" x2="128" y2="203"/></g><polygon points="70,150 22,176 30,192 84,176" fill="#1B1B1F"/><ellipse cx="112" cy="142" rx="56" ry="50" fill="#1B1B1F"/><circle cx="146" cy="88" r="38" fill="#1B1B1F"/><polygon points="158,60 166,30 172,56 184,36 184,64 198,50 190,76" fill="#1B1B1F"/><g transform="rotate(-24 100 150)"><ellipse cx="100" cy="150" rx="42" ry="25" fill="#34343B"/><ellipse cx="88" cy="160" rx="18" ry="7" fill="#FFFFFF"/></g><g fill="#FFF4D8" stroke="#1B1B1F" stroke-width="3" stroke-linejoin="round"><polygon points="178,74 216,84 180,92"/><polygon points="180,94 208,102 176,106"/></g><circle cx="158" cy="80" r="8" fill="#FF8A1F"/><circle cx="159" cy="80" r="3.5" fill="#1B1B1F"/></g>
   <text x="560" y="148" text-anchor="middle" font-size="17" font-weight="700" fill="#1B1B1F">你的电脑</text>
-  <text x="560" y="169" text-anchor="middle" font-size="12.5" fill="#4A3A00">Bageo 主程序</text>
+  <text x="560" y="169" text-anchor="middle" font-size="12.5" fill="#4A3A00">Bageo 程序</text>
   <rect x="698" y="58" width="164" height="128" rx="18" fill="#24242B" stroke="#3A3A44" stroke-width="1.5"/>
   <path transform="translate(780 96)" d="M-18 13 h34 a10 10 0 0 0 1 -19.9 a14 14 0 0 0 -27 -3.5 a11.5 11.5 0 0 0 -8 23.4 z" fill="none" stroke="#F2F2F5" stroke-width="3" stroke-linejoin="round"/>
   <g stroke="#FFCF4A" stroke-width="3" stroke-linecap="round"><line x1="772" y1="96" x2="772" y2="102"/><line x1="779" y1="92" x2="779" y2="104"/><line x1="786" y1="96" x2="786" y2="102"/></g>
@@ -44,7 +44,7 @@
   <text x="163" y="288" text-anchor="middle" font-size="12.5" fill="#B5B5C0">录音、文字记录、摘要都留在这里</text>
   <rect x="325" y="244" width="250" height="58" rx="14" fill="#24242B" stroke="#3A3A44" stroke-width="1.5"/>
   <text x="450" y="268" text-anchor="middle" font-size="14.5" font-weight="700" fill="#FFFFFF">通知</text>
-  <text x="450" y="288" text-anchor="middle" font-size="12.5" fill="#B5B5C0">Telegram、Discord、飞书等 16 种</text>
+  <text x="450" y="288" text-anchor="middle" font-size="12.5" fill="#B5B5C0">Telegram、Discord、飞书等 32 种</text>
   <rect x="612" y="244" width="250" height="58" rx="14" fill="#24242B" stroke="#3A3A44" stroke-width="1.5"/>
   <text x="737" y="268" text-anchor="middle" font-size="14.5" font-weight="700" fill="#FFFFFF">网页控制台</text>
   <text x="737" y="288" text-anchor="middle" font-size="12.5" fill="#B5B5C0">设置、通话记录、AI 代打</text>

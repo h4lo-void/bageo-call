@@ -338,6 +338,24 @@ pub struct RuntimeSettings {
     /// the phone reports itself.
     #[serde(default)]
     pub device_labels: std::collections::BTreeMap<String, String>,
+    /// What to do when a Whitelist contact (`kind == "whitelist"`) calls:
+    /// `off` (normal AI answering with known-contact prompt), `direct` (decline
+    /// on the AI phone so carrier conditional call forwarding rings the owner's
+    /// real number immediately, or bridge/notify), or `emergency` (AI answers first
+    /// and transfers / alerts the owner's real number only when the caller has an
+    /// urgent matter).
+    #[serde(default = "default_whitelist_mode")]
+    pub whitelist_mode: String,
+    /// The owner's real phone number for Whitelist forwarding / emergency call.
+    #[serde(default)]
+    pub whitelist_forward_number: String,
+    /// Password for accessing the web console (`?token=` or `Authorization: Bearer`);
+    /// overrides `CALLS_UI_TOKEN` when non-empty.
+    #[serde(default)]
+    pub ui_password: String,
+    /// Whether the first-time password setup prompt has already been shown/dismissed.
+    #[serde(default)]
+    pub ui_password_prompted: bool,
     /// Where calls, recordings and settings are kept (`CALLS_DATA_DIR`, from the
     /// env base). Not a setting: never shown or saved.
     #[serde(skip)]
@@ -486,6 +504,19 @@ pub fn sanitize_errand_identity(s: &str) -> String {
 
 fn default_reject_mode() -> String {
     "decline".to_string()
+}
+
+fn default_whitelist_mode() -> String {
+    "off".to_string()
+}
+
+/// `off` / `direct` / `emergency`; anything else is `off`.
+pub fn sanitize_whitelist_mode(s: &str) -> String {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "direct" => "direct".to_string(),
+        "emergency" | "urgent" => "emergency".to_string(),
+        _ => default_whitelist_mode(),
+    }
 }
 
 /// `decline` / `announce`; anything else is decline.
@@ -696,6 +727,10 @@ impl RuntimeSettings {
             mcp_allowed_origins: sanitize_origins(&[env_or("MCP_ALLOWED_ORIGINS", "")]),
             name_corrections: split_list(&env_or("NAME_CORRECTIONS", "")),
             device_labels: std::collections::BTreeMap::new(),
+            whitelist_mode: sanitize_whitelist_mode(&env_or("WHITELIST_MODE", "off")),
+            whitelist_forward_number: env_or("WHITELIST_FORWARD_NUMBER", ""),
+            ui_password: String::new(),
+            ui_password_prompted: false,
             calls_data_dir: base.calls_data_dir.clone(),
         }
     }
@@ -924,6 +959,9 @@ impl RuntimeSettings {
             mcp_token,
             mcp_calls,
             mcp_allowed_origins,
+            whitelist_mode,
+            whitelist_forward_number,
+            ui_password,
         );
         macro_rules! set_copy {
             ($($f:ident),+ $(,)?) => {$(
@@ -972,6 +1010,7 @@ impl RuntimeSettings {
             reply_in_caller_language,
             calendar_suggest,
             appointment_sms,
+            ui_password_prompted,
         );
         self.ivr_start_delay_ms = self
             .ivr_start_delay_ms
@@ -990,6 +1029,8 @@ impl RuntimeSettings {
         self.settle_summary_provider();
         self.answer_style = sanitize_answer_style(&self.answer_style);
         self.reject_mode = sanitize_reject_mode(&self.reject_mode);
+        self.whitelist_mode = sanitize_whitelist_mode(&self.whitelist_mode);
+        self.whitelist_forward_number = self.whitelist_forward_number.trim().chars().filter(|c| !c.is_control()).take(32).collect();
         self.country_code = digits_only(&self.country_code);
         self.mdns_name = crate::mdns::parse_name_setting(&self.mdns_name);
         self.appointment_mode = sanitize_appointment_mode(&self.appointment_mode);
@@ -1060,6 +1101,9 @@ impl RuntimeSettings {
         }
         // Empty is a choice here (mDNS off), so it always applies.
         s.mdns_name = self.mdns_name.clone();
+        if !self.ui_password.trim().is_empty() {
+            s.calls_ui_token = self.ui_password.trim().to_string();
+        }
         s
     }
 
@@ -1358,6 +1402,14 @@ struct Overrides {
     name_corrections: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     device_labels: Option<std::collections::BTreeMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    whitelist_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    whitelist_forward_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ui_password: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ui_password_prompted: Option<bool>,
 }
 
 struct StoreState {
@@ -1415,6 +1467,8 @@ impl SettingsStore {
         if older == "deepseek" {
             overrides.summary_api_base = Some(rt.summary_api_base.clone());
         }
+        set_active_ui_password(&rt.ui_password);
+        crate::calendar::set_link_secret(&active_ui_token(&base.calls_ui_token));
         Arc::new(Self {
             base,
             path,
@@ -1456,6 +1510,8 @@ impl SettingsStore {
             .with_context(|| format!("rename to {}", self.path.display()))?;
 
         st.overrides = ov;
+        set_active_ui_password(&rt.ui_password);
+        crate::calendar::set_link_secret(&active_ui_token(&self.base.calls_ui_token));
         st.current = Arc::new(rt);
         info!(
             "runtime settings updated path={} ai_live={} shaming={} blocklist_len={} callback_whitelist_len={} trtc_sdk_app_id={} trtc_configured={}",
@@ -1498,12 +1554,33 @@ impl SettingsStore {
     }
 }
 
-const SECRET_FIELDS: [&str; 12] = [
+static ACTIVE_UI_PASSWORD: std::sync::RwLock<String> = std::sync::RwLock::new(String::new());
+
+/// The active console password (`ui_password` from settings if set, else `env_token`).
+pub fn active_ui_token(env_token: &str) -> String {
+    let pw = ACTIVE_UI_PASSWORD
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    if !pw.trim().is_empty() {
+        return pw.trim().to_string();
+    }
+    env_token.trim().to_string()
+}
+
+fn set_active_ui_password(pw: &str) {
+    *ACTIVE_UI_PASSWORD
+        .write()
+        .unwrap_or_else(|e| e.into_inner()) = pw.trim().to_string();
+}
+
+const SECRET_FIELDS: [&str; 13] = [
     "openrouter_api_key",
     "telegram_bot_token",
     "gmail_app_password",
     "openclaw_token",
     "mcp_token",
+    "ui_password",
     "trtc_secret_key",
     "trtc_secret_id",
     "trtc_cloud_secret_key",
@@ -1921,6 +1998,19 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     if let Some(v) = patch.get("owner_status_text").and_then(|v| v.as_str()) {
         ov.owner_status_text = Some(crate::gemini_live::sanitize_owner_status(v));
     }
+    p_string(patch, "whitelist_mode", &mut ov.whitelist_mode);
+    if let Some(v) = ov.whitelist_mode.take() {
+        ov.whitelist_mode = Some(sanitize_whitelist_mode(&v));
+    }
+    p_string(patch, "whitelist_forward_number", &mut ov.whitelist_forward_number);
+    if let Some(v) = ov.whitelist_forward_number.take() {
+        ov.whitelist_forward_number = Some(v.chars().filter(|c| !c.is_control()).take(32).collect());
+    }
+    p_secret(patch, "ui_password", &mut ov.ui_password);
+    p_bool(patch, "ui_password_prompted", &mut ov.ui_password_prompted);
+    if ov.ui_password.as_ref().is_some_and(|s| !s.is_empty()) {
+        ov.ui_password_prompted = Some(true);
+    }
 }
 
 fn split_list(spec: &str) -> Vec<String> {
@@ -2085,17 +2175,35 @@ pub fn split_reject_entry(entry: &str) -> (&str, &str) {
 /// Shortest prefix a `…*` entry may have: `0*` / `02*` would turn whole areas away.
 const REJECT_PREFIX_MIN_DIGITS: usize = 4;
 
-/// The caller is on the blocked-numbers list: same national number, or it starts with
+/// The caller is on the blocked-numbers list (`reject_numbers` or Contacts
+/// Blacklist `kind == "blacklist"`): same national number, or it starts with
 /// an entry ending in `*`. Hidden / garbled numbers never match.
 pub fn reject_number_hit(list: &[RejectEntry], caller: &str) -> bool {
     reject_entry_for(list, caller).is_some()
+        || crate::contacts::is_blacklist(caller, None).is_some()
 }
 
 /// Why the caller's number is on the blocked-numbers list, when a reason was given.
 pub fn reject_reason(list: &[RejectEntry], caller: &str) -> Option<String> {
-    reject_entry_for(list, caller)
+    if let Some(r) = reject_entry_for(list, caller)
         .map(|e| e.reason.trim().to_string())
         .filter(|r| !r.is_empty())
+    {
+        return Some(r);
+    }
+    crate::contacts::is_blacklist(caller, None).and_then(|c| {
+        let note = c.note.trim();
+        let name = c.name.trim();
+        if !note.is_empty() && !name.is_empty() && name != caller.trim() {
+            Some(format!("{name} · {note}"))
+        } else if !note.is_empty() {
+            Some(note.to_string())
+        } else if !name.is_empty() && name != caller.trim() {
+            Some(name.to_string())
+        } else {
+            None
+        }
+    })
 }
 
 fn reject_entry_for<'a>(list: &'a [RejectEntry], caller: &str) -> Option<&'a RejectEntry> {

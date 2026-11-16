@@ -8,7 +8,7 @@ transcript stays in a folder on your disk. Plan for about an hour; most of it
 goes into preparing the phone.
 
 1. [What you need](#1-what-you-need)
-2. [Install and start the agent](#2-install-and-start-the-agent)
+2. [Install and start Bageo](#2-install-and-start-bageo)
 3. [Fill in the basics](#3-fill-in-the-basics)
 4. [Prepare the phone](#4-prepare-the-phone)
 5. [Make the first test call](#5-make-the-first-test-call)
@@ -24,11 +24,11 @@ goes into preparing the phone.
 | **A computer** | Windows 10/11, macOS (Apple Silicon or Intel) or Linux, switched on whenever calls should be answered, plus a USB cable to the phone. Docker works too, with the phone on Wi-Fi. |
 | **A Gemini API key** | Create one at <https://aistudio.google.com/apikey> and copy it. It is the only key Bageo needs: live calls, summaries, the scam review and contact import all use it. Google bills per use; set a budget in your Google account if you want a ceiling. |
 
-## 2. Install and start the agent
+## 2. Install and start Bageo
 
-The *agent* is the program on your computer. It talks to the phone and to
-Gemini, keeps the call records and serves the web console. It is a single
-program: no database, no other services to install.
+Bageo runs as one program on your computer. It talks to the phone and to
+Gemini, keeps the call records and serves the web console. There is no
+database and no other service to install.
 
 ### From a release (easiest)
 
@@ -38,31 +38,31 @@ program: no database, no other services to install.
 
    | System | Package |
    |---|---|
-   | Windows | `bageo-call-1.0.0-windows-x64.zip` |
-   | macOS, Apple Silicon | `bageo-call-1.0.0-macos-arm64.tar.gz` |
-   | macOS, Intel | `bageo-call-1.0.0-macos-x64.tar.gz` |
-   | Linux | `bageo-call-1.0.0-linux-x64.tar.gz` |
+   | Windows | `bageo-call-<version>-windows-x64.zip` |
+   | macOS, Apple Silicon | `bageo-call-<version>-macos-arm64.tar.gz` |
+   | macOS, Intel | `bageo-call-<version>-macos-x64.tar.gz` |
+   | Linux | `bageo-call-<version>-linux-x64.tar.gz` |
 
-   Each one holds the agent, the bundled sounds, the start scripts and the
+   Each one holds the program, the bundled sounds, the start scripts and the
    documents.
 2. Start it:
    - **Windows:** double-click `start.cmd`. If SmartScreen warns about an
      unknown publisher, choose *More info → Run anyway*.
    - **macOS:** double-click `start.command`. The program is not notarised, so
      the first time macOS may refuse: right-click `start.command` → *Open*, and
-     if the agent itself is blocked, allow it under *System Settings → Privacy &
-     Security*. Or run `xattr -dr com.apple.quarantine .` once in the folder.
+     if the Bageo program itself is blocked, allow it under *System Settings →
+     Privacy & Security*. Or run `xattr -dr com.apple.quarantine .` once in the
+     folder.
    - **Linux:** run `./start.sh` in a terminal.
 3. The script looks for `adb` (Google's Android platform-tools, needed for the
    USB link). If it is missing, the script offers to download it from Google
    into a `platform-tools` folder next to the program.
-4. Your browser opens the web console at <http://localhost:8787/>. Leave the
-   terminal window open: closing it stops the agent.
-5. The first time the agent answers, the script puts a **Bageo Console**
-   shortcut on the desktop (macOS: a `.webloc` file; Linux: an app menu entry,
-   also copied to the desktop folder). It is not created again while it
-   exists. To skip it, start with `-NoShortcut` (Windows) or `--no-shortcut`,
-   or set `BAGEO_NO_SHORTCUT=1` in `.env`.
+4. Your browser opens the web console at <http://localhost:8787/>. The first
+   time, it offers to set a console password; skip it if you only use the
+   console at home. Leave the terminal window open: closing it stops Bageo.
+5. After the first successful start there is a **Bageo Console** shortcut on
+   the desktop. To skip it, start with `-NoShortcut` (Windows) or
+   `--no-shortcut`, or set `BAGEO_NO_SHORTCUT=1` in `.env`.
 
 ### From source
 
@@ -72,8 +72,8 @@ cd bageo-call
 ./start.sh            # Windows: .\start.cmd
 ```
 
-With [Rust](https://rustup.rs) installed, the start script builds the agent the
-first time (a few minutes) and then starts it. After pulling new code, add
+With [Rust](https://rustup.rs) installed, the start script builds the program
+the first time (a few minutes) and then starts it. After pulling new code, add
 `--build` (PowerShell: `-Build`) to rebuild.
 
 ### With Docker
@@ -83,13 +83,17 @@ cp .env.example .env        # set CALLS_UI_TOKEN and DEVICE_TOKEN
 docker compose up -d --build
 ```
 
-In a container the agent is reachable from your network, so both tokens are
-required. The console is at `http://<host>:8787/?token=<CALLS_UI_TOKEN>`, and
-phones connect over Wi-Fi to `ws://<host>:8787/ws?token=<DEVICE_TOKEN>` (see
-[Phone setup → Wi-Fi](PHONE.md#wi-fi)). Inside a container the agent does not
-answer to `bageo.local` and cannot work out the console address for
-notification links, so set `PUBLIC_URL` in `.env` (for example
-`http://192.168.1.20:8787`). The comments in `docker-compose.yml` cover the time zone.
+In a container Bageo is reachable from your network, so two values in `.env`
+are required: `CALLS_UI_TOKEN` (the console password) and `DEVICE_TOKEN` (for
+the phone's connection).
+
+- The console is at `http://<host>:8787/`; type the `CALLS_UI_TOKEN` value
+  when it asks for the password.
+- Phones connect over Wi-Fi to `ws://<host>:8787/ws?token=<DEVICE_TOKEN>` (see
+  [Phone setup → Wi-Fi](PHONE.md#wi-fi)).
+- Set `PUBLIC_URL` in `.env` (for example `http://192.168.1.20:8787`) so the
+  links in notifications open. `bageo.local` does not work inside a container.
+- The comments in `docker-compose.yml` cover the time zone.
 
 ### Where your data lives
 
@@ -99,7 +103,7 @@ Everything stays in the folder you started from (`/data/calls` in Docker):
 |---|---|
 | `data/calls/` | call records, recordings, transcripts, contacts, to-do items, errands |
 | `data/calls/config/settings.json` | everything you set in the web console, **including your API keys** |
-| `.env` | optional start-up options (port, tokens); see [Settings reference](SETTINGS.md) |
+| `.env` | optional start-up options (port, passwords); see [Settings reference](SETTINGS.md) |
 
 Back up or delete `data/` as you like. Nothing is stored anywhere else.
 
@@ -107,14 +111,10 @@ Back up or delete `data/` as you like. Nothing is stored anywhere else.
 
 Open *Settings* in the web console.
 
-1. **Language**: the language the AI speaks. *Language of notifications and
-   summaries* can differ: the AI can answer in English while you read
-   繁體中文. (The console's own language is the switch in the header.)
+1. **Language**: the language the AI speaks. (The console's own language is
+   the switch in the header.)
 2. **Your name**: the way callers say it ("Alex", "Ms. Chen", "王先生").
-3. **Other names callers use for you**: one per line, up to 10. An English
-   name, a nickname, a short form ("Lex"). When the AI hears one, it knows the
-   caller means you.
-4. **Answer style**
+3. **Answer style**
    - *AI assistant*: "Hello, this is Alex's AI assistant, he can't take the
      call right now. What can I pass on?" Clear to the caller, and the safe
      choice legally.
@@ -122,13 +122,16 @@ Open *Settings* in the web console.
      never promises anything on your behalf and admits to being an AI when
      someone sincerely asks, but callers usually assume it is you. Read
      [Privacy, safety and the law](PRIVACY_AND_LEGAL.md) first.
-5. **Gemini API key**: paste it and save. Summaries use the same key by default
-   (Gemini's cheapest model). You need a second key only if you pick *Another
-   service* under *Summary service*, such as DeepSeek, OpenRouter or a local
-   Ollama.
-6. **Voice**: press ▶ next to the list to hear each voice say a few lines in
-   your language. The samples ship with the program, so listening costs
-   nothing.
+4. **Gemini API key**: paste it and save. Summaries use the same key by
+   default, so there is nothing else to set up.
+5. **Voice**: press **Preview** next to the list to hear the voice say a few
+   lines in your language. The samples ship with the program, so listening
+   costs nothing.
+
+**More options** holds two more you may want: *Other names callers use for
+you* (an English name, a nickname; the AI then knows the caller means you) and
+*Language of notifications and summaries* (the AI can answer in English while
+you read 繁體中文).
 
 Save. The checklist on the *System* page shows anything still missing.
 
@@ -148,9 +151,9 @@ The short version is below; details and rollback are in
 4. Plug the phone into the computer. On the phone, accept **"Allow USB
    debugging?"** and tick *Always allow from this computer*.
 
-Within about 15 seconds the agent sets up the USB link and starts the app's
-call service by itself. *System → Phones* in the web console lists the phone,
-first as plugged in, then as connected.
+Within about 15 seconds Bageo sets up the USB link and starts the app's call
+service by itself. *System → Phones* in the web console lists the phone; once
+it shows *Ready for calls*, you are done.
 
 > From now on the phone is a call box: it does not ring out loud, its own
 > phone app is hidden, and its microphone and speaker stay muted during calls,
@@ -183,19 +186,19 @@ page usually names the missing piece.
 
 ## 6. Get notified
 
-Go to *Settings → Notifications → Add channel*, pick a service, fill in the
-fields (each has a hint on where to find it) and press **Send test**. Add as
-many as you like; every message goes to all of them. There are 32 services,
-from Telegram (with Accept / Decline buttons for appointments) to a custom
-webhook. Setup for each one: [Notifications](NOTIFICATIONS.md).
+Go to *Settings → Notifications*, pick a service, press **Add channel**, fill
+in the fields (each has a hint on where to find it) and press **Send test**.
+Add as many as you like; every message goes to all of them. There are 32
+services; setup for each one is in [Notifications](NOTIFICATIONS.md).
 
-For the links in notifications to open the call, open the console to your
-network (see
+For the links in notifications to open the call, first open the console to
+your network (see
 [Using the console from other devices](SETTINGS.md#using-the-console-from-other-devices)).
-Links then point to `http://bageo.local:8787/` when the agent can answer that
-name, otherwise to the computer's network address; *System → About* shows
-which one, with a QR code. Fill in **Address of this console** only when you
-reach the computer some other way (a VPN name, a reverse proxy, Docker).
+Links then use `http://bageo.local:8787/` or the computer's network address
+by themselves; *System → About* shows which one, with a QR code.
+
+Fill in **Address of this console** under *Settings → Advanced* only when you
+reach the computer through a VPN, a reverse proxy or Docker.
 
 To get the console on your own phone, scan that QR code, then add the page to
 the home screen (iPhone: *Share → Add to Home Screen*; Android: Chrome menu ⋮ →
@@ -222,21 +225,29 @@ are merged or skipped. A note on a contact ("my sister", "the landlord") goes
 into the AI's prompt when that person calls. In a call's details, **Add to
 contacts** saves the caller.
 
+Each contact goes on one of four lists: ordinary contact, Whitelist (close
+family and friends, whose calls can be put through to you), Blacklist (turned
+away, no AI) or stall list (kept talking from the first second).
+
 ### Appointments
 
-Turn them on under *Settings → Summary & calendar → Appointments → Ask me
-first*. When a caller wants to fix a time, the AI says it will check and get
-back to them; after the call, the request waits under **To do** at the top of
-the *Calls* page. Pick how the caller hears your answer (**Text**, **AI
-call-back** or **Don't tell them**), then press **Accept** or **Decline**.
-Texts also need *Text the caller* switched on. The first time you press **Add
-to calendar** on an accepted appointment, pick your calendar (Google,
-Outlook.com, Microsoft 365, Apple, Yahoo or `.ics`); after that it goes
-straight there.
+Under *Settings → Summary & calendar*, set *Appointments* to *Ask me first*.
+From then on:
+
+1. When a caller wants to fix a time, the AI says it will check and get back
+   to them.
+2. After the call, the request waits under **To do** at the top of the
+   *Calls* page, and in the notification.
+3. Pick how the caller hears your answer (**Text**, **AI call-back** or
+   **Don't tell them**), then press **Accept** or **Decline**. Texts also need
+   *Text the caller* switched on in the settings.
+4. On an accepted appointment, press **Add to calendar**. The first time it
+   asks which calendar you use (Google, Outlook.com, Microsoft 365, Apple,
+   Yahoo or `.ics`); after that it goes straight there.
 
 ### Your first AI errand
 
-The phone must have taken at least one call first, so the agent knows which
+The phone must have taken at least one call first, so Bageo knows which
 SIMs it holds. Then open **Errands**:
 
 1. **Who to call**: a contact's name or a number. A number without `+` is
@@ -257,7 +268,7 @@ the AI call again.
 
 ## 8. Keep it running
 
-Calls are answered only while the agent runs.
+Calls are answered only while Bageo runs.
 
 - **Windows:** put a shortcut to `start.cmd` in the Startup folder (`Win+R` →
   `shell:startup`), or add a Task Scheduler task "at log on" that runs

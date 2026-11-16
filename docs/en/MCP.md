@@ -12,7 +12,9 @@ The MCP server is **off** by default and answers nothing until it has a token.
    - `off` (default): they can only look.
    - `confirm`: they may ask for a call; you get a card with **yes / no** in your command chat (see [Chat commands](CHAT_COMMANDS.md)) and the call is made only after your yes. This needs a chat with commands switched on.
    - `direct`: the call is queued at once. Use only with an agent you trust completely.
-4. Point your client at `http://<agent address>:8787/mcp` with the header `Authorization: Bearer <token>`.
+4. Point your client at `http://<Bageo address>:8787/mcp` with the header `Authorization: Bearer <token>`.
+
+You can also set all of this in the console under *Settings → Advanced*, in the *Let other AI tools connect (MCP)* fold: *Turn on MCP*, *Token*, *May it ask the AI to place calls?*, *Most AI calls per hour* and *Allowed websites*.
 
 Most clients take a JSON entry like this:
 
@@ -30,7 +32,7 @@ Most clients take a JSON entry like this:
 
 With Claude Code: `claude mcp add --transport http bageo http://bageo.local:8787/mcp --header "Authorization: Bearer YOUR_TOKEN"`.
 
-A client running on another network (a cloud chat app) needs an HTTPS address that reaches the agent, from your own reverse proxy or tunnel. Keep the token secret: whoever has it can read your calls.
+A client running on another network (a cloud chat app) needs an HTTPS address that reaches Bageo, from your own reverse proxy or tunnel. Keep the token secret: whoever has it can read your calls.
 
 ## Tools
 
@@ -57,7 +59,7 @@ Say times and dates exactly in the task ("4:30 pm", "Saturday 15 November"). On 
 - Off by default; silent (404) without a token. Every request needs the token, compared in constant time.
 - A request from a web page (it has an `Origin` header) is refused unless that origin is listed in `mcp_allowed_origins` exactly. This stops other web pages and DNS rebinding from reaching the server through your browser. Local clients send no Origin and are not affected.
 - Calls go through the same checks as the web console: never an emergency, short or premium-rate number, a SIM for the number's country, the same queue. Requests are limited per hour (`mcp_errands_per_hour`, default 3, at most 30, all clients together); each request counts, answered or not. In `confirm` mode the call also counts against the chat's own hourly limit.
-- Results never contain a key or token: everything the agent holds is cut out before sending.
+- Results never contain a key or token: everything Bageo holds is cut out before sending.
 - Summaries and transcripts are what callers said. The server tells the client model to treat them as data and never as instructions, and with `confirm` a call still needs your yes. Prefer `confirm` for any agent that also reads other people's content.
 - At most 60 requests per minute from all clients together; a request body may be 64 KB.
 

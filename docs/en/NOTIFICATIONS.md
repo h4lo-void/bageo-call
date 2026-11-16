@@ -1,34 +1,49 @@
 # Notifications: call summaries on Telegram, LINE, Discord, email and 28 more
 
-Your AI phone assistant answers the call; a few seconds after it hangs up, you
+Your AI phone assistant answers the call. A few seconds after it hangs up, you
 get a short summary on your phone: who called, what they wanted, what the AI
-said and what you should do. Bageo can also tell you when a call comes in, when
-a blocked number or a second caller was turned away, and when an AI call-back
-or AI errand has finished. It sends to 32 services, from Telegram, LINE, Teams
-and Signal to WeCom, ntfy, Home Assistant, email and your own webhook.
+said and what you should do.
 
-**Set it up in one minute:** *Settings → Notifications* → **Add channel** →
-choose the service → fill in its fields → **Send test** → **Save changes**.
+Bageo also tells you:
+
+- when a call comes in.
+- when a blocked number or a second caller was turned away.
+- when an AI call-back or AI errand has finished.
+
+It sends to 32 services, from Telegram, LINE, Teams and Signal to WeCom, ntfy,
+Home Assistant, email and your own webhook.
+
+**Set it up in one minute:**
+
+1. Open *Settings → Notifications*.
+2. Under *Channels*, choose a service and press **Add channel**.
+3. Fill in its fields. What each one needs is under [Services](#services).
+4. Press **Send test** and check that it arrives.
+5. Press **Save changes**.
+
+**Good to know:**
 
 - Add as many channels as you like. **Every message goes to every enabled
-  channel.** Give each a *Name* ("Family group") and switch it off with
-  *Enabled* without deleting it.
+  channel.**
+- Give each channel a *Name* (for example "Family group"). To pause one, switch
+  off *Enabled* instead of deleting it.
 - Addresses and tokens are stored in `data/calls/config/settings.json` on your
-  computer. The web console never shows them again in full, only a hint; leave
-  a field empty when editing to keep what is stored.
-- *Send notifications* at the top, switched off, stops call messages and
-  Telegram appointment cards but keeps your channels. Messages that scripts
-  send through the API (see [below](#sending-your-own-messages)), such as
-  forwarded texts, still go out.
+  computer. The web console only shows a hint after that; leave a field empty
+  when editing to keep what is stored.
+- With *Send notifications* at the top switched off, call messages and Telegram
+  appointment cards stop. Your channels stay.
+- Messages that scripts send through the API (see
+  [below](#sending-your-own-messages)), such as forwarded texts, still go out.
 - Messages are written in the *Language of notifications and summaries*
   (default: *Same as the AI's language*), whatever language the call was in.
 - Long messages are cut to fit each service (for example 1,000 characters on
   Pushover, 1,900 on Discord and WeCom).
 
 > **How well tested:** Telegram is the most used route. The other services are
-> built from their public documentation and their requests are covered by unit
-> tests, but have seen little use with live accounts. If one fails, **Send
-> test** shows the service's answer; please report it.
+> built from their public documentation and covered by unit tests, but have
+> seen little use with live accounts. If one fails, **Send test** shows the
+> service's answer; please report it.
+
 > The services added after 1.0 (Microsoft Teams, Google Chat, Rocket.Chat,
 > Zulip, Webex, Nextcloud Talk, Synology Chat, Signal, Pushbullet, PushPlus,
 > PushDeer, WxPusher, Chanify, SMTP email, Home Assistant and IFTTT) have not
@@ -39,7 +54,7 @@ choose the service → fill in its fields → **Send test** → **Save changes**
 A call summary from a caller saved in your contacts:
 
 ```text
-☎️ Call summary · Jay
+Call summary · Jay
 Number: 0912345678
 Phone: Pixel 8
 Time: Nov 12, 18:02
@@ -48,7 +63,7 @@ Caller: Jay (friend)
 About: lunch tomorrow at noon?
 AI said: sounded keen, did not fix the time
 To do: call Jay back to confirm
-📅 Calendar: Lunch with Jay (11/13 12:00)
+Calendar: Lunch with Jay (11/13 12:00)
 https://calendar.google.com/calendar/render?action=TEMPLATE&…
 Transcript / recording: http://192.0.2.10:8787/calls/#call=…
 ```
@@ -56,49 +71,52 @@ Transcript / recording: http://192.0.2.10:8787/calls/#call=…
 - **The title** gets the contact's name when the caller is in *Contacts*.
 - **The calendar lines** appear only when the call fixed a date and *Suggest
   calendar events* is on ([Settings reference](SETTINGS.md#summary--calendar)).
-  The link opens the calendar you chose the first time you pressed **Add to
-  calendar** (`calendar_app`). Until you choose, there is no calendar link:
+- **The calendar link** opens the calendar you chose the first time you pressed
+  **Add to calendar** (`calendar_app`). Until you choose, there is no link:
   open the call's page (the last line) and press **Add to calendar** to pick
   one. See [Add to calendar](#appointments) below.
-- **The last line** appears when the agent has an address other devices can
-  open: *Address of this console*, or the automatic one when the console is
-  open to your network (not inside Docker). See
-  [Using the console from other devices](SETTINGS.md#using-the-console-from-other-devices).
+- **The last line** links to the call's page. It appears only when Bageo has an
+  address other devices can open: *Address of this console* (under *Settings →
+  Advanced*), or the automatic one when the console is open to your network
+  (not inside Docker). See [Using the console from other
+  devices](SETTINGS.md#using-the-console-from-other-devices).
 
 ## Messages you get
 
-Each message starts with an icon, so you can tell them apart at a glance:
+You can receive these messages:
 
-| Icon and title | When | Webhook `event` |
+| Title | When | Webhook `event` |
 |---|---|---|
-| 📞 Incoming call | A call was picked up. | `incoming` |
-| ⛔ Blocked number called | A number on your blocked list called. Says whether it was declined while it rang or answered with the announcement, and your reason for blocking it. | `blocked` |
-| ☎️ Call summary | A few seconds after a call ended: who, what about, what the AI said, what you should do, and the links. | `summary` |
-| 📵 Missed while on another call | A second call rang during a call and the phone declined it (the caller heard busy). Call back if you know the number. | `call_waiting` |
-| 📞 AI call-back: <number> | The AI called a caller back with your answer to an appointment: how it went (answered, nobody answered, could not be placed, or the number cannot be called back) and the call's summary. | `ai_callback` |
-| 📞 AI errand call: <name or number> | An AI errand you started has ended: the result, details, your decision when one is needed, the next step, the time agreed and a link to the *Errands* page. | `ai_errand` |
-| 📅 Appointment to confirm | A caller set a time with the AI; with a Telegram bot set through `TELEGRAM_BOT_TOKEN` also as a card with buttons (see [Appointments](#appointments)). | part of `summary` |
-| ✅ Test notification | You pressed **Send test**. | `test` |
+| Incoming call | A call was picked up. | `incoming` |
+| Blocked number called | A blocked number called. The message says whether it was declined while it rang or answered with the announcement, and your reason for blocking it. | `blocked` |
+| Call summary | A few seconds after a call ended: who, what about, what the AI said, what you should do, and the links. | `summary` |
+| Missed while on another call | A second call rang during a call and the phone declined it (the caller heard busy). Call back if you know the number. | `call_waiting` |
+| AI call-back: <number> | The AI called a caller back with your answer to an appointment. The message gives how it went (answered, nobody answered, could not be placed, or the number cannot be called back) and the call's summary. | `ai_callback` |
+| AI errand call: <name or number> | An AI errand you started has ended. The message has the result, details, your decision when one is needed, the next step, the time agreed and a link to the *Errands* page. | `ai_errand` |
+| Appointment to confirm | A caller set a time with the AI. Telegram receives a card with buttons; every other channel receives signed one-tap **Accept / Decline** buttons or links (see [Appointments](#appointments)). | `appointment_pending` / `summary` |
+| Whitelist call forwarded | A whitelisted number called while *Transfer* is set to *Always: put through to your phone*. The phone declined the call to trigger carrier conditional call forwarding and sent an instant alert. | `whitelist_direct_transfer` |
+| Urgent call from Whitelist | A whitelisted caller had an urgent matter during the call; the AI shared your forwarding number and sent an urgent alert. | `whitelist_urgent_transfer` |
+| Test notification | You pressed **Send test**. | `test` |
 | New SMS | A text message passed on by the optional [SMS forwarder](../../tools/sms_forward/README.md). | `event` |
 
 A call-waiting message:
 
 ```text
-📵 Missed while on another call: 0912345678 (Pixel 9)
+Missed while on another call: 0912345678 (Pixel 9)
 Time: Nov 14, 18:02
 ```
 
 An errand's result, for example a restaurant booking the AI made for you:
 
 ```text
-📞 AI errand call: Din Tai Fung
+AI errand call: Din Tai Fung
 Number: 0223456789
 Phone: Pixel 9
 Time: Nov 14, 18:05
 
 Done: Table for 4 booked tomorrow 7:30 pm under Wang
 Details: They hold the table for 15 minutes.
-📅 Agreed time: Nov 15, 19:30 Dinner at Din Tai Fung
+Agreed time: Nov 15, 19:30 Dinner at Din Tai Fung
 http://bageo.local:8787/calls/#errands
 ```
 
@@ -113,25 +131,34 @@ a call where the caller set a time with the AI gets one line under the summary,
 in place of the calendar lines, on every channel:
 
 ```text
-📅 Appointment to confirm: Sat, Nov 14, 3:00 PM–4:00 PM House viewing — confirm in the web console: http://bageo.local/calls/#call=…
+Appointment to confirm: Sat, Nov 14, 3:00 PM–4:00 PM House viewing — confirm in the web console: http://bageo.local/calls/#call=…
 ```
 
-**Decide in the web console:** under **To do** at the top of the Calls page,
-or in the call's details, pick how the caller hears your answer (**Text**,
-**AI call-back** or **Don't tell them**) and press **Accept** or **Decline**.
-The link opens the call. Without an address other devices can open (*Address
-of this console*), the line ends with "confirm in the web console" instead.
-With no channel set up nothing is sent, and the appointment simply waits in
-the console. Nothing is ever written into a calendar by itself.
+**Decide in the web console:**
 
-**Decide in Telegram with one tap.** When a Telegram bot is given through
-`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` ([below](#set-through-the-environment-instead))
-and *Send notifications* is on, a waiting appointment also comes as a card. A
-Telegram channel added in the web console gets the reminder line above, but
+1. Open the *Calls* page and find *To do* at the top, or open the call's
+   details.
+2. Pick how the caller hears your answer: **Text**, **AI call-back** or **Don't
+   tell them**.
+3. Press **Accept** or **Decline**.
+
+- The link in a notification opens the call. Without an address other devices
+  can open (*Address of this console*), the line ends with "confirm in the web
+  console" instead.
+- With no channel set up nothing is sent, and the appointment simply waits in
+  the console.
+- Bageo never writes anything into a calendar by itself.
+
+**Decide in Telegram with one tap:** when a Telegram bot is given through
+`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
+([below](#set-through-the-environment-instead)) and *Send notifications* is on,
+a waiting appointment also comes as a card.
+
+A Telegram channel added in the web console gets the reminder line above, but
 not the card.
 
 ```text
-📅 Appointment to confirm
+Appointment to confirm
 
 Number: 0912345678
 Time: Sat, Nov 14, 3:00 PM–4:00 PM
@@ -144,58 +171,78 @@ Confirm on the web: http://bageo.local/calls/#call=…
 ```
 
 The *Text to caller* line follows *Default reply* for this number. It can also
-read "Reply: the AI calls them back once you tap Accept or Decline" (a
-landline, or texts turned off), "won't be sent ("Text the caller" is off in
-Settings)", "can't text this number, so call them back yourself", or "hidden
-number: the caller can't be told". A tap uses *Default reply*; to choose
-another way, decide in the web console.
+read:
+
+- "Reply: the AI calls them back once you tap Accept or Decline" (a landline,
+  or texts turned off).
+- "won't be sent ("Text the caller" is off in Settings)".
+- "can't text this number, so call them back yourself".
+- "hidden number: the caller can't be told".
+
+A tap uses *Default reply*; to choose another way, decide in the web console.
 
 After a tap the bot answers with what happened:
 
 ```text
-✅ Appointment accepted
+Appointment accepted
 Sat, Nov 14, 3:00 PM–4:00 PM House viewing
 Text sent to 0912345678
-📅 Add it to your calendar: https://calendar.google.com/calendar/render?action=TEMPLATE&…
+Add it to your calendar: https://calendar.google.com/calendar/render?action=TEMPLATE&…
 ```
 
-Other answers: "❌ Appointment declined", "The AI is calling 0912345678 back",
-"Text not sent: the phone is not connected" / "the phone app is too old to send
-texts" / "error code no_service". When a text did not go out, the appointment
-in the console gets **Send the text again**, from the same phone or another
-connected one.
+Other answers:
+
+- "Appointment declined"
+- "The AI is calling 0912345678 back"
+- "Text not sent: the phone is not connected", "the phone app is too old to
+  send texts" or "error code no_service"
+
+When a text did not go out, the appointment in the console gets **Send the text
+again**, from the same phone or another connected one.
 
 **Add to calendar works with any calendar.** The link in the bot's answer, in
 notifications and in the console opens the calendar you picked the first time
-you pressed **Add to calendar** (setting `calendar_app`): the filled-in "new
-event" form of Google Calendar, Outlook.com, Microsoft 365 or Yahoo Calendar,
-or, for Apple Calendar and plain `.ics`, the event's `.ics` file at *Address of
-this console*. Until you pick one, the bot's answer links the call's page in
-the console instead (no console address, no link), where **Add to calendar**
-asks which calendar and remembers it. That `.ics` link carries a key (an HMAC) that opens only this
-one file, never your console token, so it is safe to tap from a chat; without
-a console address there is no `.ics` link. The agent connects to no calendar
-account.
+you pressed **Add to calendar** (setting `calendar_app`):
+
+- Google Calendar, Outlook.com, Microsoft 365 or Yahoo Calendar: the filled-in
+  "new event" form.
+- Apple Calendar or plain `.ics`: the event's `.ics` file at *Address of this
+  console*.
+
+Until you pick one, the bot's answer links the call's page in the console
+instead (no console address, no link). There, **Add to calendar** asks which
+calendar and remembers it.
+
+The `.ics` link carries a key (an HMAC) that opens only this one file, never
+your console password, so it is safe to tap from a chat. Without a console
+address there is no `.ics` link.
+
+Bageo connects to no calendar account.
 
 **Only the first decision counts**, wherever it is made (console, card or
-[API](API.md#appointments-and-tasks)); a second one, even at the same moment,
-gets "This appointment has already been handled". When you decide in the
-console or through the API, the card's buttons are removed and the bot posts
-the same answer in the chat; a card that arrives after you decided comes
-without buttons. If Telegram cannot be reached, the decision still stands.
+[API](API.md#appointments-and-tasks)). A second one, even at the same moment,
+gets "This appointment has already been handled".
 
-The AI call-back with your answer speaks the call's language, waits for the
-callee to pick up and speak, says who is calling and your answer once, and
-says goodbye. Its notification is "📞 AI call-back: <number>"; a call-back
-that could not be placed is reported too.
+When you decide in the console or through the API, the card's buttons are
+removed and the bot posts the same answer in the chat. A card that arrives
+after you decided comes without buttons. If Telegram cannot be reached, the
+decision still stands.
 
-Sales and scam calls never leave an appointment. When a call turns out to be
-one only afterwards (its summary marks it "Sales call" or "Suspected scam"; a
-bank's fraud desk or the police calling about fraud does not count), the
-appointment is dropped, no card is sent, and the summary says so:
+The AI call-back speaks the call's language. It waits for the callee to pick up
+and speak, says who is calling and your answer once, and says goodbye.
+
+Its notification is "AI call-back: <number>". A call-back that could not be
+placed is reported too.
+
+Sales and scam calls never leave an appointment. A bank's fraud desk or the
+police calling about fraud does not count as one.
+
+When a call turns out to be a sales or scam call only afterwards (its summary
+marks it "Sales call" or "Suspected scam"), the appointment is dropped, no card
+is sent, and the summary says so:
 
 ```text
-📅 Judged a sales call, so the appointment booked during the call was canceled: Sat, Nov 14, 3:00 PM–4:00 PM House viewing
+Judged a sales call, so the appointment booked during the call was canceled: Sat, Nov 14, 3:00 PM–4:00 PM House viewing
 ```
 
 ## Services
@@ -239,13 +286,14 @@ Pick the app you already check every day:
 
 ### Telegram
 
-1. In Telegram, talk to **@BotFather**: `/newbot`, pick a name → you get a
-   **bot token** like `123456789:AA…`.
-2. Open a chat with your new bot and press **Start** (a bot cannot message you
+1. In Telegram, talk to **@BotFather** and send `/newbot`, then pick a name.
+2. You get a **bot token** like `123456789:AA…`. This is the *Bot token*.
+3. Open a chat with your new bot and press **Start** (a bot cannot message you
    first).
-3. Find your **chat ID**: talk to **@userinfobot**, which replies with your
-   numeric ID. For a group, add your bot to the group and use the group's ID
-   (a negative number, e.g. `-1001234567890`).
+4. Talk to **@userinfobot**. It replies with your numeric ID, which is the
+   *Chat ID*.
+5. To send to a group, add your bot to the group and use the group's ID (a
+   negative number, e.g. `-1001234567890`).
 
 | Field | Value |
 |---|---|
@@ -256,12 +304,15 @@ For the appointment card with buttons, give the same bot through
 `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` as well; you will not get each
 message twice.
 
-To check calls, have the AI call someone or decide to-dos from this chat, see
-[Chat commands](CHAT_COMMANDS.md) (off until you switch it on for the chat).
+To check calls, have the AI call someone or work through *To do* from this
+chat, see [Chat commands](CHAT_COMMANDS.md). Turn on *Take commands from this
+chat* for the channel first.
 
 ### Discord
 
-Channel settings → *Integrations → Webhooks → New Webhook → Copy Webhook URL*.
+1. Open the channel's settings → *Integrations → Webhooks*.
+2. Press *New Webhook*.
+3. Copy the webhook URL into *Webhook URL*.
 
 | Field | Value |
 |---|---|
@@ -269,9 +320,14 @@ Channel settings → *Integrations → Webhooks → New Webhook → Copy Webhook
 
 ### Slack / Mattermost
 
-Slack: create an app at <https://api.slack.com/apps> → *Incoming Webhooks* →
-activate → *Add New Webhook to Workspace* → copy the URL. Mattermost:
-*Integrations → Incoming Webhooks*.
+**Slack:**
+
+1. Create an app at <https://api.slack.com/apps>.
+2. Turn on *Incoming Webhooks*.
+3. Press *Add New Webhook to Workspace*.
+4. Copy the URL.
+
+**Mattermost:** go to *Integrations → Incoming Webhooks*.
 
 | Field | Value |
 |---|---|
@@ -285,8 +341,8 @@ This uses a **Workflows** webhook, which posts an Adaptive Card.
 1. In Teams, open the channel's **…** menu → *Workflows*.
 2. Choose *Post to a channel when a webhook request is received*, pick the
    team and channel, and finish.
-3. Copy the URL it shows. It carries a signature, so keep it as private as a
-   password.
+3. Copy the URL it shows (it carries a signature, so keep it as private as a
+   password).
 
 | Field | Value |
 |---|---|
@@ -297,9 +353,11 @@ bold.
 
 ### Google Chat
 
-Needs a Google Workspace account; personal Google accounts cannot add
-webhooks. Open the space → its name → *Apps & integrations → Webhooks → Add
-webhook* → copy the URL.
+Needs a Google Workspace account; personal Google accounts cannot add webhooks.
+
+1. Open the space and click its name.
+2. Choose *Apps & integrations → Webhooks → Add webhook*.
+3. Copy the URL.
 
 | Field | Value |
 |---|---|
@@ -307,8 +365,9 @@ webhook* → copy the URL.
 
 ### Rocket.Chat
 
-*Administration → Workspace → Integrations → New → Incoming*: turn it on,
-choose the channel and the user it posts as, save, and copy the *Webhook URL*.
+1. Go to *Administration → Workspace → Integrations → New → Incoming*.
+2. Turn it on, then choose the channel and the user it posts as.
+3. Save, and copy the *Webhook URL*.
 
 | Field | Value |
 |---|---|
@@ -316,9 +375,10 @@ choose the channel and the user it posts as, save, and copy the *Webhook URL*.
 
 ### Zulip
 
-Create a bot under *Personal settings → Bots → Add a new bot* (the *Incoming
-webhook* type is enough) and subscribe it to the channel. Its email and API
-key are on the bot's card.
+1. Under *Personal settings → Bots*, choose *Add a new bot* (the *Incoming
+   webhook* type is enough).
+2. Subscribe the bot to the channel.
+3. Find its email and API key on the bot's card.
 
 | Field | Value |
 |---|---|
@@ -330,10 +390,12 @@ Messages are cut at 2,400 characters to stay inside Zulip's 10,000-byte limit.
 
 ### Webex
 
-Create a bot at <https://developer.webex.com/my-apps> and copy its **bot
-access token** (it is shown once). Add the bot to a space. To find the room ID,
-sign in on developer.webex.com and run *List Rooms* with the bot's token; to
-message one person, enter their email instead.
+1. Create a bot at <https://developer.webex.com/my-apps>.
+2. Copy its **bot access token** (it is shown once).
+3. Add the bot to a space.
+4. Sign in on developer.webex.com and run *List Rooms* with the bot's token to
+   find the room ID.
+5. To message one person, enter their email instead.
 
 | Field | Value |
 |---|---|
@@ -345,10 +407,12 @@ Messages are cut at 1,800 characters (Webex takes at most 7,439 bytes).
 ### Nextcloud Talk
 
 Posts as a Nextcloud user; a separate user just for Bageo keeps things tidy.
-Create an **app password** for it under *Personal settings → Security →
-Devices & sessions* and add the user to the conversation. The conversation
-token is the last part of the conversation's link
-(`https://cloud.example.org/call/abc123xy` → `abc123xy`).
+
+1. Create an **app password** for that user under *Personal settings → Security
+   → Devices & sessions*.
+2. Add the user to the conversation.
+3. Use the last part of the conversation's link as the conversation token
+   (`https://cloud.example.org/call/abc123xy` → `abc123xy`).
 
 | Field | Value |
 |---|---|
@@ -358,14 +422,16 @@ token is the last part of the conversation's link
 
 ### Synology Chat
 
-In Synology Chat: your profile picture → *Integration → Incoming Webhooks →
-Create*, pick the channel, save, and copy the webhook URL.
+1. In Synology Chat, click your profile picture → *Integration → Incoming
+   Webhooks → Create*.
+2. Pick the channel and save.
+3. Copy the webhook URL.
 
 | Field | Value |
 |---|---|
 | Webhook URL | `https://nas.example.org:5001/webapi/entry.cgi?api=SYNO.Chat.External&method=incoming&version=2&token=…` |
 
-The agent checks HTTPS certificates. If your NAS still has its self-signed
+Bageo checks HTTPS certificates. If your NAS still has its self-signed
 certificate, use the `http://` address on port 5000 inside your own network.
 
 ### LINE
@@ -379,8 +445,9 @@ LINE Notify was shut down in 2025; this uses the **Messaging API**.
 3. Add the official account as a friend in your LINE app (QR code on the same
    tab).
 4. Your **user ID** (`U…`, 33 characters) is on the channel's *Basic settings*
-   tab under *Your user ID*. To send to a group, invite the account to the
-   group and use the group ID (`C…`), which you get from a webhook event.
+   tab under *Your user ID*.
+5. To send to a group, invite the account to the group and use the group ID
+   (`C…`), which you get from a webhook event.
 
 | Field | Value |
 |---|---|
@@ -392,10 +459,13 @@ messages per month.
 
 ### Signal
 
-Signal has no bot API, so this goes through a
-[signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) server
-you run yourself (a Docker container). Link it as a second device of your own
-Signal account, or register it with a separate number.
+Signal has no bot API, so this goes through a server you run yourself.
+
+1. Run a
+   [signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api)
+   server (a Docker container).
+2. Link it as a second device of your own Signal account, or register it with a
+   separate number.
 
 | Field | Value |
 |---|---|
@@ -407,8 +477,10 @@ Messages are cut at 2,000 characters.
 
 ### ntfy
 
-Install the ntfy app and subscribe to a topic with a **hard-to-guess name**:
-on the public server, anyone who knows the name can read the messages.
+1. Install the ntfy app.
+2. Subscribe to a topic with a **hard-to-guess name**.
+
+On the public server, anyone who knows the name can read the messages.
 
 | Field | Value |
 |---|---|
@@ -418,7 +490,8 @@ on the public server, anyone who knows the name can read the messages.
 
 ### Gotify
 
-In Gotify: *Apps → Create application* → copy its token.
+1. In Gotify, go to *Apps → Create application*.
+2. Copy its token.
 
 | Field | Value |
 |---|---|
@@ -427,8 +500,9 @@ In Gotify: *Apps → Create application* → copy its token.
 
 ### Bark (iOS)
 
-Open the Bark app on your iPhone; the sample URL it shows is
-`https://api.day.app/<device key>/…`.
+1. Open the Bark app on your iPhone.
+2. Copy the device key from the sample URL, which looks like
+   `https://api.day.app/<device key>/…`.
 
 | Field | Value |
 |---|---|
@@ -437,7 +511,9 @@ Open the Bark app on your iPhone; the sample URL it shows is
 
 ### Pushover
 
-Create an application at <https://pushover.net/apps/build>.
+1. Create an application at <https://pushover.net/apps/build>.
+2. Copy its API token.
+3. Copy your user key from the Pushover dashboard.
 
 | Field | Value |
 |---|---|
@@ -446,8 +522,10 @@ Create an application at <https://pushover.net/apps/build>.
 
 ### Pushbullet
 
-pushbullet.com → *Settings → Account → Create Access Token*. Free accounts
-have a monthly push limit.
+1. Go to pushbullet.com → *Settings → Account → Create Access Token*.
+2. Copy the access token.
+
+Free accounts have a monthly push limit.
 
 | Field | Value |
 |---|---|
@@ -456,7 +534,8 @@ have a monthly push limit.
 
 ### WeCom group bot
 
-企业微信: in the group, *Add group robot* → copy the webhook address.
+1. In the 企业微信 group, choose *Add group robot*.
+2. Copy the webhook address.
 
 | Field | Value |
 |---|---|
@@ -464,10 +543,12 @@ have a monthly push limit.
 
 ### DingTalk bot
 
-钉钉: group settings → *Bots* → *Custom* → choose **Sign** as the security
-setting and copy both the webhook and the secret (`SEC…`). A bot secured by
-keywords instead needs one of its keywords in every message; signing is
-simpler.
+1. Open the 钉钉 group settings → *Bots* → *Custom*.
+2. Choose **Sign** as the security setting.
+3. Copy both the webhook and the secret (`SEC…`).
+
+A bot secured by keywords instead needs one of its keywords in every message;
+signing is simpler.
 
 | Field | Value |
 |---|---|
@@ -476,10 +557,11 @@ simpler.
 
 ### Feishu / Lark bot
 
-飞书: group → *Settings → Bots → Add bot → Custom bot* → copy the webhook
-address (`open.feishu.cn` or `open.larksuite.com`). Do not turn on signature
-verification; it is not supported. A custom keyword or an IP allow-list is
-fine.
+1. Open the 飞书 group → *Settings → Bots → Add bot → Custom bot*.
+2. Copy the webhook address (`open.feishu.cn` or `open.larksuite.com`).
+
+Do not turn on signature verification; Bageo does not support it. A custom
+keyword or an IP allow-list is fine.
 
 | Field | Value |
 |---|---|
@@ -495,7 +577,9 @@ Copy your SendKey from the ServerChan (Server酱) website.
 
 ### PushPlus
 
-Log in at <https://www.pushplus.plus> with WeChat and copy your **token**.
+1. Log in at <https://www.pushplus.plus> with WeChat.
+2. Copy your **token**.
+
 Messages arrive through the PushPlus WeChat official account.
 
 | Field | Value |
@@ -505,7 +589,9 @@ Messages arrive through the PushPlus WeChat official account.
 
 ### PushDeer
 
-Install PushDeer, sign in, add a **key** under *Keys* and copy it.
+1. Install PushDeer and sign in.
+2. Add a **key** under *Keys*.
+3. Copy it.
 
 | Field | Value |
 |---|---|
@@ -514,13 +600,19 @@ Install PushDeer, sign in, add a **key** under *Keys* and copy it.
 
 ### WxPusher
 
-Two ways, both on <https://wxpusher.zjiekou.com>:
+Two ways, both on <https://wxpusher.zjiekou.com>.
 
-- **Simple push:** follow the QR code in WeChat to get your simple push token
-  (`SPT_…`). Leave the target empty.
-- **Application:** create an application to get its **appToken**
-  (`AT_…`). Everyone who scans its QR code gets a user ID (`UID_…`); topics
-  have numeric IDs.
+**Simple push:**
+
+1. Follow the QR code in WeChat.
+2. Get your simple push token (`SPT_…`).
+3. Leave *UIDs or topic IDs* empty.
+
+**Application:**
+
+1. Create an application to get its **appToken** (`AT_…`).
+2. Scan its QR code in WeChat; everyone who scans it gets a user ID (`UID_…`).
+3. For topics, use their numeric IDs.
 
 | Field | Value |
 |---|---|
@@ -531,7 +623,8 @@ WeChat shows the first 20 characters of the title as the summary.
 
 ### Chanify
 
-In the Chanify app, create a **token** for a sender and copy it.
+1. In the Chanify app, create a **token** for a sender.
+2. Copy it.
 
 | Field | Value |
 |---|---|
@@ -540,9 +633,11 @@ In the Chanify app, create a **token** for a sender and copy it.
 
 ### Matrix
 
-Create a bot account, invite it to a room and join the room with it. The room
-ID is under *Room settings → Advanced* (`!abc…:example.org`). The room must be
-unencrypted.
+1. Create a bot account.
+2. Invite it to a room and join the room with it.
+3. Find the room ID under *Room settings → Advanced* (`!abc…:example.org`).
+
+The room must be unencrypted.
 
 | Field | Value |
 |---|---|
@@ -552,9 +647,11 @@ unencrypted.
 
 ### Email (Gmail)
 
-Sends through Gmail's SMTP server with an **app password** (Google account →
-*Security → 2-Step Verification → App passwords*; needs 2-step verification).
-The sender name is "Bageo".
+Sends through Gmail's SMTP server. The sender name is "Bageo". It needs an
+**app password**:
+
+1. Turn on 2-step verification in your Google account.
+2. Go to *Security → 2-Step Verification → App passwords* and create one.
 
 | Field | Value |
 |---|---|
@@ -572,10 +669,11 @@ smtp://you@example.com@smtp.example.com:587     STARTTLS (most providers)
 smtps://you@example.com@smtp.example.com:465    TLS from the start
 ```
 
-The part before the last `@` is the login, which is also the sender
-address; `%40` works for the login's own `@`. Port 465 always means TLS
-from the start. Without a port, 587 is used (465 with `smtps://`). The sender
-name is "Bageo".
+- The part before the last `@` is the login, which is also the sender address.
+- `%40` works for the login's own `@`.
+- Port 465 always means TLS from the start.
+- Without a port, 587 is used (465 with `smtps://`).
+- The sender name is "Bageo".
 
 | Field | Value |
 |---|---|
@@ -583,10 +681,15 @@ name is "Bageo".
 | Password | the account's password, or the app password / authorization code your provider asks for (iCloud, Yahoo, Fastmail, QQ Mail and 163 do) |
 | Send to (empty = the login) | the recipient |
 
-Limits: the login must be an email address, the server must accept
-`AUTH LOGIN`, its certificate must come from a public certificate authority
-(self-signed certificates are refused), and connections without TLS are not
-supported. For Gmail, the [Gmail](#email-gmail) channel needs fewer fields.
+Limits:
+
+- The login must be an email address.
+- The server must accept `AUTH LOGIN`.
+- Its certificate must come from a public certificate authority (self-signed
+  certificates are refused).
+- Connections without TLS are not supported.
+
+For Gmail, the [Gmail](#email-gmail) channel needs fewer fields.
 
 ### Home Assistant
 
@@ -611,10 +714,11 @@ about 4 KB.
 
 1. At <https://ifttt.com/maker_webhooks> connect Webhooks; *Documentation*
    shows your **key**.
-2. Create an applet: *If* Webhooks → *Receive a web request* with an event
-   name such as `bageo_call`, *Then* whatever you like. `{{Value1}}` is the
-   title, `{{Value2}}` the message and `{{Value3}}` the event (`summary`,
-   `incoming`, …).
+2. Create an applet: *If* Webhooks → *Receive a web request* with an event name
+   such as `bageo_call`, *Then* whatever you like.
+
+In the applet, `{{Value1}}` is the title, `{{Value2}}` the message and
+`{{Value3}}` the event (`summary`, `incoming`, …).
 
 | Field | Value |
 |---|---|
@@ -635,15 +739,16 @@ reaches a hundred more services:
 
 ### Webhook (JSON)
 
-For n8n, Zapier, Make, Home Assistant, Node-RED or your own code. The agent
-`POST`s JSON to your URL; with a *Bearer token (optional)* set it adds
-`Authorization: Bearer <token>`.
+For n8n, Zapier, Make, Home Assistant, Node-RED or your own code. Bageo `POST`s
+JSON to your URL.
+
+With a *Bearer token (optional)* set, it adds `Authorization: Bearer <token>`.
 
 ```json
 {
   "event": "summary",
   "title": "Call summary 0912345678",
-  "body": "☎️ Call summary\nNumber: 0912345678\n…",
+  "body": "Call summary\nNumber: 0912345678\n…",
   "text": "(same as body)",
   "data": {
     "caller_id": "0912345678",
@@ -663,6 +768,9 @@ For n8n, Zapier, Make, Home Assistant, Node-RED or your own code. The agent
 | `call_waiting` | a second call rang during a call and was declined | `caller_id`, `device`, `time`, `sim_country` |
 | `ai_callback` | the AI's call-back for an appointment ended, or could not be placed | `caller_id`, `device`, `time`, `summary` |
 | `ai_errand` | an AI errand ended, or never got going | `number`, `device`, `time`, `summary` |
+| `appointment_pending` | a caller booked an appointment waiting for your decision | `task_id`, `caller_id`, `device`, `title`, `start_at`, `accept_url`, `decline_url` |
+| `whitelist_direct_transfer` | a whitelisted call was declined to trigger carrier forwarding | `caller_id`, `device`, `time`, `forward_to`, `contact` |
+| `whitelist_urgent_transfer` | the AI detected an urgent matter from a whitelisted caller and gave them your forwarding number | `caller_id`, `device`, `time`, `forward_to`, `reason`, `contact` |
 | `voicemail` | a voicemail was saved (older menu mode) | `caller_id`, `device`, `time`, `seconds` |
 | `event` | a message sent through the API (`/calls/api/notify/send`) | `null` |
 | `test` | **Send test** | `{}` |
@@ -679,11 +787,13 @@ sensor:
 POST /calls/api/notify/send        {"title": "Garage", "body": "Door left open"}
 ```
 
-It needs your console token like every API call (see [API](API.md)). `body` is
-required; `title` defaults to "Bageo". The answer is `{"ok": true}` when at
-least one channel took the message. These messages go out even with *Send
-notifications* off. The optional [SMS forwarder](../../tools/sms_forward/README.md)
-uses this route to pass on the phone's text messages.
+- It needs your console password like every API call (see [API](API.md)).
+- `body` is required; `title` defaults to "Bageo".
+- The answer is `{"ok": true}` when at least one channel took the message.
+- These messages go out even with *Send notifications* off.
+
+The optional [SMS forwarder](../../tools/sms_forward/README.md) uses this route
+to pass on the phone's text messages.
 
 ## Set through the environment instead
 

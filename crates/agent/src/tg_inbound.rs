@@ -387,7 +387,7 @@ pub async fn send_task_card(
     .map(|_| ())
 }
 
-/// [send_task_card] with its own button texts (appointments: "✅ 確定" / "❌ 婉拒").
+/// [send_task_card] with its own button texts (appointments: "確定" / "婉拒").
 /// The buttons carry the same confirm / ignore data. Returns the card's
 /// message_id (0 when Telegram did not say), so its buttons can be taken off
 /// when the owner decides somewhere else.
@@ -911,10 +911,10 @@ mod tests {
     #[test]
     fn appointment_card_buttons_carry_confirm_and_ignore() {
         let id = "550e8400-e29b-41d4-a716-446655440000";
-        let v = task_card_payload("42", "📅 預約待確認", id, "✅ 確定", "❌ 婉拒");
+        let v = task_card_payload("42", "預約待確認", id, "確定", "婉拒");
         let row = &v["reply_markup"]["inline_keyboard"][0];
-        assert_eq!(row[0]["text"], "✅ 確定");
-        assert_eq!(row[1]["text"], "❌ 婉拒");
+        assert_eq!(row[0]["text"], "確定");
+        assert_eq!(row[1]["text"], "婉拒");
         assert_eq!(decode_callback_data(row[0]["callback_data"].as_str().unwrap()), Some((id.to_string(), true)));
         assert_eq!(decode_callback_data(row[1]["callback_data"].as_str().unwrap()), Some((id.to_string(), false)));
     }
@@ -1000,8 +1000,8 @@ mod tests {
         let out = Outbound {
             text: "讓 AI 打給 0912345678".into(),
             buttons: vec![
-                Button { label: "✅ 執行".into(), data: "k:ABCDEF:y".into() },
-                Button { label: "✖ 取消".into(), data: "k:ABCDEF:n".into() },
+                Button { label: "執行".into(), data: "k:ABCDEF:y".into() },
+                Button { label: "取消".into(), data: "k:ABCDEF:n".into() },
             ],
             edit: None,
         };
