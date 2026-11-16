@@ -4,6 +4,7 @@ import android.util.Log
 import org.java_websocket.client.WebSocketClient
 import org.java_websocket.handshake.ServerHandshake
 import org.json.JSONObject
+import org.json.JSONArray
 import java.net.URI
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -24,12 +25,15 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * [describe] adds the phone's current state to the `hello` (`phone_mode`, `in_call`).
  * The phone mode is not called `mode`: that field says which connection this is.
+ * [sims] gives the phone's SIMs for the hello's `sims` list (null = leave it out), so the
+ * agent knows every SIM at once, not only the ones a call came in on.
  * [onOpened] runs right after the hello was sent (on the socket's thread).
  */
 class AgentControlClient(
     private val url: String,
     private val onCommand: (JSONObject) -> Unit,
     private val describe: (JSONObject) -> Unit = {},
+    private val sims: () -> JSONArray? = { null },
     private val onOpened: () -> Unit = {},
 ) {
     private var client: WebSocketClient? = null
@@ -62,6 +66,11 @@ class AgentControlClient(
                     describe(hello)
                 } catch (e: Exception) {
                     Log.w(TAG, "hello state failed: ${e.message}")
+                }
+                try {
+                    sims()?.let { hello.put("sims", it) }
+                } catch (e: Exception) {
+                    Log.w(TAG, "hello sims failed: ${e.message}")
                 }
                 send(hello.toString())
                 Log.i(TAG, "control WS open ${Prefs.redactUrl(url)} serial=$serial mode=CONTROL_IDLE")

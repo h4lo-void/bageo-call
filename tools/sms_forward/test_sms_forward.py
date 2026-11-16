@@ -249,6 +249,17 @@ class ParserTests(Base):
         self.assertEqual(sf.parse_inbox("No result found.\n"), [])
         self.assertIsNone(sf.parse_inbox("Error while accessing provider:sms\n"))
 
+    def test_inbox_rows_without_a_sim_are_kept_apart(self) -> None:
+        """A message the phone did not tie to a SIM prints sub_id=NULL: still a row of its own."""
+        out = ("Row: 0 _id=7, address=+15555550123, date=1700000000111, sub_id=10, body=first\n"
+               "Row: 1 _id=8, address=+15555550124, date=1700000000222, sub_id=NULL, body=second\n"
+               "Row: 2 _id=9, address=+15555550125, date=1700000000333, sub_id=10, body=third\n")
+        rows = sf.parse_inbox(out)
+        self.assertEqual([(r["id"], r["sub"], r["body"]) for r in rows],
+                         [(7, 10, "first"), (8, None, "second"), (9, 10, "third")])
+        only = sf.parse_inbox("Row: 0 _id=3, address=+15555550126, date=5, sub_id=NULL, body=only\n")
+        self.assertEqual([(r["id"], r["sub"], r["body"]) for r in only], [(3, None, "only")])
+
     def test_queue_listing(self) -> None:
         q = sf.parse_queue("@@FILE " + qname("a") + " 200\n{\"addr\":\"1\",\"body\":\"b\"}\n"
                            "@@FILE " + qname("b") + " 100\nnot json\n@@FILE ../x 5\n{}\n@@END\n")
@@ -701,6 +712,22 @@ class ForwarderTests(Base):
         self.assertEqual(len(phone.queue), 1)
         self.assertEqual(sf.read_json(sf.HEALTH)["phones"][P1]["queue"], "off")
 
+    def test_inbox_message_without_a_sim_is_forwarded(self) -> None:
+        phone = FakePhone("Pixel 7")
+        adb = FakeAdb({P1: phone})
+        fw, sent, _ = self.forwarder(adb)
+        tick(fw)
+        now_ms = int(time.time() * 1000)
+        phone.inbox.append({"id": 1, "addr": "+15555550170", "date": now_ms, "sub": "NULL", "body": "NO-SIM-A"})
+        phone.inbox.append({"id": 2, "addr": "+15555550171", "date": now_ms + 1, "sub": 10, "body": "WITH-SIM-B"})
+        tick(fw)
+        self.assertEqual(len(sent), 2)
+        self.assertIn("NO-SIM-A", sent[0][1])
+        self.assertNotIn("WITH-SIM-B", sent[0][1])
+        self.assertIn("WITH-SIM-B", sent[1][1])
+        self.assertEqual(fw.state["phones"][P1]["inbox_id"], 2)
+        self.assertEqual(sf.read_json(sf.HEALTH)["phones"][P1]["inbox"], "ok")
+
     def test_inbox_is_not_polled_during_a_call(self) -> None:
         phone = FakePhone("Pixel 7")
         adb = FakeAdb({P1: phone})
@@ -925,6 +952,38 @@ class AgentTests(Base):
             self.assertTrue(via.startswith("agent"), via)
         self.agent.notify = (401, {"error": "unauthorized"})
         self.assertIn("AGENT_TOKEN", sf.deliver("t", "b")[1])
+
+    def test_401_says_why(self) -> None:
+        self.agent.notify = (401, {"error": "unauthorized"})
+        ok, via = sf.deliver("t", "b")
+        self.assertFalse(ok)
+        self.assertIn("AGENT_TOKEN is not set", via)
+        self.patch("AGENT_TOKEN", "wrong-token-456")
+        ok, via = sf.deliver("t", "b")
+        self.assertFalse(ok)
+        self.assertIn("does not accept AGENT_TOKEN", via)
+        self.assertNotIn("wrong-token-456", via)
+
+    def test_401_reaches_the_log_and_health(self) -> None:
+        self.agent.health = (200, {"active_call_count": 0, "language": "en"})
+        self.agent.notify = (401, {"error": "unauthorized"})
+        phone = FakePhone("Pixel 7")
+        fw = sf.Forwarder(adb=FakeAdb({P1: phone}))
+        tick(fw)
+        phone.queue[qname("a")] = (int(time.time()), hook_json("+15555550123", "WAITS-FOR-THE-PASSWORD"))
+        tick(fw)
+        health = sf.read_json(sf.HEALTH)
+        self.assertIs(health["notify_ok"], False)
+        self.assertIs(health["agent_auth_rejected"], True)
+        self.assertIn("AGENT_TOKEN is not set", health["notify_error"])
+        self.assertIn("AGENT_TOKEN is not set", self.log_text())
+        self.assertEqual(len(phone.queue), 1)
+        # Once the agent accepts it, the message goes out and the warning clears.
+        self.agent.notify = (200, {"ok": True})
+        tick(fw)
+        health = sf.read_json(sf.HEALTH)
+        self.assertEqual((health["notify_ok"], health["notify_error"], health["agent_auth_rejected"]), (True, "", False))
+        self.assertEqual(phone.queue, {})
 
     def test_agent_down(self) -> None:
         with socket.socket() as s:

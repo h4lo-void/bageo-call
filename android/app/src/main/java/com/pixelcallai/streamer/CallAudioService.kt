@@ -1246,6 +1246,7 @@ class CallAudioService : Service() {
                 // The agent sends the console address again after this hello (if it has one).
                 Prefs.setConsoleUrl(this, null)
             },
+            sims = { SimList.read(this) },
             onOpened = {
                 // The mode the phone really ended up in, and a result lost with a restart.
                 sendStatus()
@@ -1365,12 +1366,16 @@ class CallAudioService : Service() {
 
     /** `status` on the control connection: the phone mode and whether a call is on. */
     private fun sendStatus(inCall: Boolean = isCallBusy()) {
-        controlClient?.sendJson(
-            org.json.JSONObject()
-                .put("type", "status")
-                .put("mode", Prefs.phoneMode(this))
-                .put("in_call", inCall),
-        )
+        val status = org.json.JSONObject()
+            .put("type", "status")
+            .put("mode", Prefs.phoneMode(this))
+            .put("in_call", inCall)
+        try {
+            SimList.read(this)?.let { status.put("sims", it) }
+        } catch (e: Exception) {
+            Log.w(TAG, "status sims failed: ${e.message}")
+        }
+        controlClient?.sendJson(status)
     }
 
     /**
@@ -1431,7 +1436,15 @@ class CallAudioService : Service() {
                 .put("call_id", callId)
                 .put("task_id", taskId)
                 .put("number", number)
-                .put("reason", if (ok) "" else "dial_helper_failed"),
+                .put(
+                    "reason",
+                    when {
+                        ok -> ""
+                        // The SIM the agent asked for is not in this phone: nothing was dialed.
+                        subId != null && OutboundCallHelper.phoneAccountFor(this, subId) == null -> "sim_not_found"
+                        else -> "dial_helper_failed"
+                    },
+                ),
         )
         if (!ok) {
             clearPendingOutbound(callId)

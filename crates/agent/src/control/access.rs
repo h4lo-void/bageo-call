@@ -3,8 +3,10 @@
 //! Off unless the owner switches it on for a chat: per notification channel
 //! (its "commands" switch and its chat as the channel's target), or for the
 //! environment's Telegram bot (setting telegram_control). A list of sender ids
-//! can narrow a group chat down to some of its members. Anything else gets no
-//! answer at all.
+//! narrows a chat down to some of its members. A group (any chat that is not
+//! known to be one-to-one with the bot) needs that list: without it nobody
+//! there may give commands ([Verdict::NeedsList]). A private chat needs none.
+//! Anything else gets no answer at all.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
@@ -24,9 +26,40 @@ pub fn chat_key(channel_id: &str, chat_id: &str) -> String {
     format!("{}|{}", channel_id.trim(), chat_id.trim())
 }
 
+/// What [check] decided for one message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Verdict {
+    Allow(Grant),
+    /// The chat's own, switched on, but a group with no list of who may give
+    /// commands: nobody may (the owner is told how to add their id).
+    NeedsList,
+    Deny,
+}
+
+/// A chat known to be one-to-one with the bot: a Telegram private chat (a
+/// user's id, positive; groups and channels are negative or @names) or a
+/// Slack direct message (D…). Discord and Matrix do not tell it by the chat's
+/// id: their messages say it themselves ([Inbound::direct]).
+pub fn direct_chat(kind: &str, chat: &str) -> bool {
+    let chat = chat.trim();
+    match kind {
+        "telegram" => chat.parse::<i64>().is_ok_and(|id| id > 0),
+        "slack" => chat.starts_with('D'),
+        _ => false,
+    }
+}
+
 /// Whether this sender in this chat may give commands. None: not allowed (the
 /// switch is off, another chat, a sender not on the list, an unknown channel).
 pub fn authorize(rt: &RuntimeSettings, m: &Inbound) -> Option<Grant> {
+    match check(rt, m) {
+        Verdict::Allow(g) => Some(g),
+        Verdict::NeedsList | Verdict::Deny => None,
+    }
+}
+
+/// [authorize], telling apart a group that has no list yet.
+pub fn check(rt: &RuntimeSettings, m: &Inbound) -> Verdict {
     let (on, kind, chat, token, users) = if m.channel_id == ENV_TELEGRAM {
         (
             rt.telegram_control && !rt.telegram_bot_token.trim().is_empty(),
@@ -36,7 +69,9 @@ pub fn authorize(rt: &RuntimeSettings, m: &Inbound) -> Option<Grant> {
             &rt.telegram_control_users,
         )
     } else {
-        let c = rt.notify_channels.iter().find(|c| !c.id.is_empty() && c.id == m.channel_id)?;
+        let Some(c) = rt.notify_channels.iter().find(|c| !c.id.is_empty() && c.id == m.channel_id) else {
+            return Verdict::Deny;
+        };
         (
             c.enabled && c.control && COMMAND_KINDS.contains(&c.kind.as_str()),
             c.kind.as_str(),
@@ -46,7 +81,7 @@ pub fn authorize(rt: &RuntimeSettings, m: &Inbound) -> Option<Grant> {
         )
     };
     if !on || kind != m.platform || chat.is_empty() || m.chat_id.trim() != chat {
-        return None;
+        return Verdict::Deny;
     }
     // Every list on the same bot and chat applies: one entry switched on
     // without a list must not undo another one's list.
@@ -54,9 +89,32 @@ pub fn authorize(rt: &RuntimeSettings, m: &Inbound) -> Option<Grant> {
     let mut lists = sender_lists(rt, kind, token, chat);
     lists.push(users);
     if !lists.iter().all(|l| l.is_empty() || (!sender.is_empty() && l.iter().any(|u| u.trim() == sender))) {
-        return None;
+        return Verdict::Deny;
     }
-    Some(Grant { chat: chat_key(&m.channel_id, chat) })
+    if lists.iter().all(|l| l.is_empty()) && !direct_chat(kind, chat) && !m.direct {
+        return Verdict::NeedsList;
+    }
+    Verdict::Allow(Grant { chat: chat_key(&m.channel_id, chat) })
+}
+
+/// A command sent through the API (`/calls/api/control/inbound`) naming a
+/// chat (`channel_id`: the channel's id, name or kind, or the environment's
+/// Telegram bot): every sender list of what it names applies to its sender.
+pub fn api_sender_ok(rt: &RuntimeSettings, channel: &str, sender: &str) -> bool {
+    let channel = channel.trim();
+    let sender = sender.trim();
+    let mut lists: Vec<&Vec<String>> = Vec::new();
+    if channel == ENV_TELEGRAM {
+        lists.push(&rt.telegram_control_users);
+    }
+    if !channel.is_empty() {
+        for c in &rt.notify_channels {
+            if c.id == channel || c.name.eq_ignore_ascii_case(channel) || c.kind.eq_ignore_ascii_case(channel) {
+                lists.push(&c.control_users);
+            }
+        }
+    }
+    lists.iter().all(|l| l.is_empty() || (!sender.is_empty() && l.iter().any(|u| u.trim() == sender)))
 }
 
 /// The sender lists of every entry switched on for one bot and chat: the

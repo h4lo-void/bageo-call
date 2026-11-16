@@ -41,7 +41,7 @@ pub const PROTOCOL_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26
 /// The chat key MCP clients share: their list numbers and limits.
 pub const MCP_CHAT: &str = "mcp";
 /// Requests per minute from all MCP clients together.
-const PER_MINUTE: u32 = 60;
+pub const PER_MINUTE: u32 = 60;
 const BODY_MAX: usize = 64 * 1024;
 
 const INSTRUCTIONS: &str = "Bageo answers the owner's phone with an AI voice. These tools read its call log, \
@@ -73,6 +73,10 @@ struct InboundCommandReq {
 
 /// Inbound command/NLU webhook for non-Telegram notification systems
 /// (Home Assistant, ntfy, Discord/Slack/Mattermost/Matrix/Teams bots, Shortcuts, Webhook).
+///
+/// The console password (or none set, with no MCP token either) runs it as the
+/// owner; the MCP token counts only while MCP is on, and then only for what an
+/// MCP client may do ([Controller::handle_external]).
 async fn post_control_inbound(
     State(ctrl): State<Arc<Controller>>,
     headers: HeaderMap,
@@ -81,8 +85,6 @@ async fn post_control_inbound(
     let rt = ctrl.settings();
     let env_tok = std::env::var("CALLS_UI_TOKEN").unwrap_or_default();
     let ui_tok = crate::settings_store::active_ui_token(&env_tok);
-    let mcp_tok = rt.mcp_token.trim();
-
     let given_header = headers
         .get("x-calls-token")
         .and_then(|v| v.to_str().ok())
@@ -99,19 +101,13 @@ async fn post_control_inbound(
         })
         .unwrap_or_else(|| req.token.trim());
 
-    let auth_ok = if ui_tok.is_empty() && mcp_tok.is_empty() {
-        true
-    } else {
-        (!ui_tok.is_empty() && same(given_header, &ui_tok))
-            || (!mcp_tok.is_empty() && same(given_header, mcp_tok))
-    };
-    if !auth_ok {
+    let Some(caller) = inbound_caller(&rt, &ui_tok, given_header) else {
         return (
             StatusCode::UNAUTHORIZED,
             Json(json!({ "ok": false, "error": "unauthorized" })),
         )
             .into_response();
-    }
+    };
 
     let text = req.text.trim();
     if text.is_empty() {
@@ -122,9 +118,18 @@ async fn post_control_inbound(
             .into_response();
     }
 
-    let out = ctrl
-        .handle_external(&req.channel_id, &req.sender_id, text)
-        .await;
+    let out = match ctrl
+        .handle_external(&req.channel_id, &req.sender_id, text, caller)
+        .await
+    {
+        Ok(out) => out,
+        Err(crate::control::ApiRefused::NotOnList) => {
+            return (StatusCode::FORBIDDEN, Json(json!({ "ok": false, "error": "not_allowed" }))).into_response();
+        }
+        Err(crate::control::ApiRefused::TooMany) => {
+            return (StatusCode::TOO_MANY_REQUESTS, Json(json!({ "ok": false, "error": "too_many" }))).into_response();
+        }
+    };
 
     let mut pushed = false;
     if req.reply && !out.text.trim().is_empty() {
@@ -145,7 +150,7 @@ async fn post_control_inbound(
             .iter()
             .find(|c| c.enabled && (c.id == ch_id || c.name.eq_ignore_ascii_case(ch_id) || c.kind.eq_ignore_ascii_case(ch_id)))
         {
-            let http = reqwest::Client::new();
+            let http = crate::calls_http::keyed_http_client();
             pushed = crate::notify::send_channel(&http, ch, &msg).await.is_ok();
         }
     }
@@ -166,6 +171,21 @@ async fn post_control_inbound(
         })),
     )
         .into_response()
+}
+
+/// Who an inbound API request is from, by the token it carries: the console
+/// password (or no password and no MCP token set at all) = the owner; the MCP
+/// token = an MCP client, only while MCP is on. None: refused.
+fn inbound_caller(rt: &RuntimeSettings, ui_tok: &str, given: &str) -> Option<crate::control::ApiCaller> {
+    let ui_tok = ui_tok.trim();
+    let mcp_tok = rt.mcp_token.trim();
+    if !ui_tok.is_empty() && same(given, ui_tok) {
+        return Some(crate::control::ApiCaller::Owner);
+    }
+    if !mcp_tok.is_empty() && same(given, mcp_tok) {
+        return rt.mcp_enabled.then_some(crate::control::ApiCaller::Mcp);
+    }
+    (ui_tok.is_empty() && mcp_tok.is_empty()).then_some(crate::control::ApiCaller::Owner)
 }
 
 /// No event stream and no sessions here.

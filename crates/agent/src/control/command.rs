@@ -128,7 +128,8 @@ fn ref_ok(r: &str) -> bool {
 
 fn mode_word(s: &str) -> Option<PhoneMode> {
     match s.trim().to_lowercase().as_str() {
-        "ai" | "a" => Some(PhoneMode::Ai),
+        // IA: how Spanish, French and Portuguese write AI; KI: German.
+        "ai" | "a" | "ia" | "ki" => Some(PhoneMode::Ai),
         "normal" | "n" | "一般" | "普通" | "通常" | "일반" => Some(PhoneMode::Normal),
         _ => None,
     }
@@ -323,8 +324,11 @@ pub fn day_word(w: &str) -> Option<Day> {
 
 pub fn only_word(w: &str) -> Option<Only> {
     match w.trim().to_lowercase().as_str() {
-        "missed" | "未接" | "未接來電" | "未接来电" => Some(Only::Missed),
-        "scam" | "spam" | "詐騙" | "诈骗" | "推銷" | "推销" => Some(Only::Scam),
+        "missed" | "未接" | "未接來電" | "未接来电" | "不在" | "不在着信" | "未応答" | "부재중" | "미응답" | "perdidas" | "perdida"
+        | "perdidos" | "manqués" | "manques" | "manquées" | "manque" | "verpasst" | "verpasste" => Some(Only::Missed),
+        "scam" | "spam" | "詐騙" | "诈骗" | "推銷" | "推销" | "詐欺" | "迷惑" | "勧誘" | "営業" | "사기" | "스팸" | "보이스피싱" | "영업"
+        | "estafa" | "estafas" | "fraude" | "arnaque" | "arnaques" | "démarchage" | "demarchage" | "betrug" | "werbung" | "golpe"
+        | "golpes" => Some(Only::Scam),
         _ => None,
     }
 }
@@ -456,6 +460,37 @@ mod tests {
         match parse_slash(text) {
             Parsed::Action(a) => a,
             other => panic!("{text}: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn mode_takes_ia_and_ki_for_the_ai() {
+        for w in ["ai", "IA", "ia", "KI", "ki"] {
+            assert_eq!(action(&format!("/mode Pixel 9 {w}")), Action::Mode { phone: "Pixel 9".into(), mode: PhoneMode::Ai }, "{w}");
+        }
+        assert_eq!(action("/mode Pixel normal"), Action::Mode { phone: "Pixel".into(), mode: PhoneMode::Normal });
+        // What the free-text model writes goes through the same check.
+        for w in ["ia", "ki"] {
+            let v = json!({"action": "mode", "phone": "pixel", "mode": w});
+            assert_eq!(from_model(&v), Some(Action::Mode { phone: "pixel".into(), mode: PhoneMode::Ai }), "{w}");
+        }
+    }
+
+    #[test]
+    fn calls_filters_read_missed_and_scam_in_every_language() {
+        for w in ["missed", "未接", "不在", "不在着信", "未応答", "부재중", "perdidas", "manqués", "verpasst"] {
+            assert_eq!(only_word(w), Some(Only::Missed), "{w}");
+        }
+        for w in ["scam", "詐騙", "詐欺", "迷惑", "勧誘", "사기", "스팸", "estafa", "arnaque", "betrug", "golpe", "fraude"] {
+            assert_eq!(only_word(w), Some(Only::Scam), "{w}");
+        }
+        assert_eq!(only_word("hello"), None);
+        // Typed in a command it is a filter, not a word to look for in the calls.
+        for (text, only) in [("/calls perdidas", Only::Missed), ("/calls 不在 today", Only::Missed), ("/calls arnaque", Only::Scam)] {
+            match action(text) {
+                Action::Calls(q) => assert_eq!((q.only, q.text.as_str()), (only, ""), "{text}"),
+                other => panic!("{text}: {other:?}"),
+            }
         }
     }
 

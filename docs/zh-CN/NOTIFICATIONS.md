@@ -190,8 +190,8 @@ Bageo 不连接任何日历账号。
 | 服务 | 需要准备 | 常见用途 |
 |---|---|---|
 | [Telegram](#telegram) | Bot 令牌、聊天 ID | 通用；预约卡片只有它有 |
-| [Discord](#discord) | Webhook 地址 | Discord 服务器 |
-| [Slack / Mattermost](#slack--mattermost) | Incoming Webhook 地址 | 工作群 |
+| [Discord](#discord) | Webhook 地址，或 Bot 令牌和频道 ID | Discord 服务器 |
+| [Slack / Mattermost](#slack--mattermost) | Incoming Webhook 地址，或 Bot 令牌和频道 ID | 工作群 |
 | [Microsoft Teams](#microsoft-teams) | Workflow Webhook 地址 | 用 Microsoft 365 的公司 |
 | [Google Chat](#google-chat) | Webhook 地址 | Google Workspace |
 | [Rocket.Chat](#rocketchat) | Webhook 地址 | 自建团队聊天 |
@@ -249,12 +249,12 @@ Bageo 不连接任何日历账号。
 |---|---|
 | Webhook 地址 | `https://discord.com/api/webhooks/…` |
 
-要在 Discord 频道里下指令，还要填下面两栏；只收通知不用填。步骤见[在聊天室操作](CHAT_COMMANDS.md#discord)。
+也可以不填 Webhook，改填 Bot 令牌和频道 ID，两种任选其一就能收通知。用机器人还能发私信给你：“频道 ID”填你自己的用户 ID。要下指令就填 Bot 令牌和频道 ID。步骤见[在聊天室操作](CHAT_COMMANDS.md#discord)。
 
 | 字段 | 填什么 |
 |---|---|
-| Bot 令牌（聊天室操作用） | 机器人的令牌 |
-| 频道 ID（聊天室操作用） | 要下指令的那个频道的 ID |
+| Bot 令牌 | 机器人的令牌 |
+| 频道 ID | 频道的 ID；要收私信就填你自己的用户 ID |
 
 ### Slack / Mattermost
 
@@ -271,13 +271,13 @@ Bageo 不连接任何日历账号。
 |---|---|
 | Incoming Webhook 地址 | `https://hooks.slack.com/services/…` |
 
-要在 Slack 频道里下指令（仅限 Slack，Mattermost 不行），还要填下面三栏；只收通知不用填。步骤见[在聊天室操作](CHAT_COMMANDS.md#slack)。
+也可以不填 Webhook，改填 Bot 令牌和频道 ID，两种任选其一就能收通知。要在 Slack 频道里下指令（仅限 Slack，Mattermost 不行），下面三栏都要填。步骤见[在聊天室操作](CHAT_COMMANDS.md#slack)。
 
 | 字段 | 填什么 |
 |---|---|
-| Bot 令牌（聊天室操作用） | `xoxb-` 开头的令牌 |
+| Bot 令牌 | `xoxb-` 开头的令牌 |
 | App 级令牌（聊天室操作用） | `xapp-` 开头的令牌 |
-| 频道 ID（聊天室操作用） | 要下指令的那个频道的 ID |
+| 频道 ID | 频道的 ID |
 
 ### Microsoft Teams
 
@@ -559,15 +559,15 @@ Signal 没有 Bot API，所以要通过你自己部署的服务。
 
 1. 创建一个机器人账号。
 2. 邀请它进房间，并让它加入。
-3. 在“Room settings → Advanced”找到房间 ID（`!abc…:example.org`）。
+3. 在“Room settings → Advanced”找到房间 ID（`!abc…:example.org`）。填房间别名（`#name:example.org`）也可以。
 
-房间必须是未加密的。
+房间必须是未加密的：Bageo 读不到加密的房间，设置里点测试时，房间有加密就会告诉你。请另外新建一个没有加密的房间。
 
 | 字段 | 填什么 |
 |---|---|
 | Homeserver 地址 | `https://matrix.example.org` |
 | 访问令牌 | 机器人账号的 access token |
-| 房间 ID | `!…:example.org` |
+| 房间 ID | `!…:example.org` 或 `#name:example.org` |
 
 同一个渠道也能下指令，见[在聊天室操作](CHAT_COMMANDS.md#matrix)。
 

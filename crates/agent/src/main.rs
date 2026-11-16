@@ -1007,6 +1007,9 @@ async fn main() -> Result<()> {
     let vm_beep_pcm = Arc::new(make_beep_pcm(settings.sample_rate, 1000.0, 700, 0.32));
     let http = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
+        // Keys go in request headers (Gemini's x-goog-api-key, Pushbullet's
+        // Access-Token…): a redirect to another host must not take them along.
+        .redirect(calls_http::same_host_redirects())
         .build()?;
     let calls = CallStore::new(
         PathBuf::from(&settings.calls_data_dir),
@@ -1421,31 +1424,42 @@ async fn main() -> Result<()> {
 async fn root(
     ws: Result<WebSocketUpgrade, axum::extract::ws::rejection::WebSocketUpgradeRejection>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
     Query(q): Query<HashMap<String, String>>,
     State(state): State<AppState>,
 ) -> axum::response::Response {
     match ws {
-        Ok(ws) => phone_ws(ws, peer, &q, state),
+        Ok(ws) => phone_ws(ws, peer, &headers, &q, state),
         Err(_) => Redirect::permanent("/calls/").into_response(),
     }
 }
 
 /// A phone may connect when it comes through this machine (the USB tunnel ends
 /// on loopback), or carries `?token=` matching `DEVICE_TOKEN`. Without a token
-/// set, anyone who can reach the port may connect.
-fn phone_allowed(peer: &SocketAddr, token: Option<&str>, required: &str) -> bool {
+/// set, anyone who can reach the port directly may connect (the phone bridges
+/// on the LAN connect so). A connection through a reverse proxy on this
+/// machine (`proxied`: it carries a forwarding header) is not this machine's
+/// own even from loopback: it needs `DEVICE_TOKEN`, and without one set it is
+/// refused.
+fn phone_allowed(peer: &SocketAddr, proxied: bool, token: Option<&str>, required: &str) -> bool {
     let required = required.trim();
-    peer.ip().is_loopback() || required.is_empty() || token.is_some_and(|t| t == required)
+    let token_ok = !required.is_empty() && token.is_some_and(|t| t == required);
+    if proxied {
+        return token_ok;
+    }
+    peer.ip().is_loopback() || required.is_empty() || token_ok
 }
 
 fn phone_ws(
     ws: WebSocketUpgrade,
     peer: SocketAddr,
+    headers: &axum::http::HeaderMap,
     q: &HashMap<String, String>,
     state: AppState,
 ) -> axum::response::Response {
-    if !phone_allowed(&peer, q.get("token").map(String::as_str), &state.settings.device_token) {
-        warn!("phone websocket refused from {peer}: missing or wrong token");
+    let proxied = calls_http::came_through_proxy(headers);
+    if !phone_allowed(&peer, proxied, q.get("token").map(String::as_str), &state.settings.device_token) {
+        warn!("phone websocket refused from {peer} (through a proxy: {proxied}): missing or wrong token");
         return (StatusCode::UNAUTHORIZED, "device token required").into_response();
     }
     ws.on_upgrade(move |socket| handle_ws(socket, state))
@@ -1896,7 +1910,19 @@ struct TurnBody {
     text: Option<String>,
 }
 
-async fn turn(State(state): State<AppState>, Json(body): Json<TurnBody>) -> impl IntoResponse {
+async fn turn(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Query(q): Query<HashMap<String, String>>,
+    Json(body): Json<TurnBody>,
+) -> impl IntoResponse {
+    // An old test route: the console password, like the console's own API.
+    if !calls_http::token_ok_parts(&state.settings, &headers, q.get("token").map(String::as_str)) {
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "unauthorized", "code": "unauthorized"})),
+        );
+    }
     if state.settings.agent_mode.is_transfer() {
         let reply = state.settings.ivr_prompt_text.clone();
         return (
@@ -1929,7 +1955,18 @@ async fn turn(State(state): State<AppState>, Json(body): Json<TurnBody>) -> impl
 }
 
 /// Smoke: IVR WAV (or Piper) prompt + hold-music PCM; confirms transfer/IVR audio path.
-async fn transfer_smoke(State(state): State<AppState>) -> impl IntoResponse {
+async fn transfer_smoke(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Query(q): Query<HashMap<String, String>>,
+) -> axum::response::Response {
+    if !calls_http::token_ok_parts(&state.settings, &headers, q.get("token").map(String::as_str)) {
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "unauthorized", "code": "unauthorized"})),
+        )
+            .into_response();
+    }
     let ivr = state.settings.ivr_prompt_text.clone();
     let (ivr_source, ivr_pcm_bytes) = if state.ivr_prompt_loaded() {
         ("ivr_wav_segments", state.ivr_prompt_pcm_bytes())
@@ -1987,6 +2024,7 @@ async fn transfer_smoke(State(state): State<AppState>) -> impl IntoResponse {
             "piper_url": state.settings.piper_url,
         })),
     )
+        .into_response()
 }
 
 async fn handle_control_idle_ws(
@@ -2084,25 +2122,35 @@ async fn handle_control_idle_ws(
                             let sim = call_sim_country(&serial);
                             if let Some(wc) = contacts::is_whitelist(&caller, sim.as_deref()) {
                                 let decline = state.control.supports_reject(&serial).await;
-                                record_whitelist_direct_transfer(
-                                    &state,
-                                    &serial,
-                                    &caller,
-                                    &wc.name,
-                                    sample_rate,
-                                    &rt,
-                                )
-                                .await;
-                                let _ = send_json(&sink, reject_answer_plan(decline)).await;
-                                info!(
-                                    "incoming serial={serial} caller={caller} on 白名單 ({}) whitelist_mode=direct → decline={decline} transfer to '{}'",
+                                if whitelist_direct_ready(&rt.whitelist_forward_number, decline) {
+                                    record_whitelist_direct_transfer(
+                                        &state,
+                                        &serial,
+                                        &caller,
+                                        &wc.name,
+                                        sample_rate,
+                                        &rt,
+                                    )
+                                    .await;
+                                    let _ = send_json(&sink, reject_answer_plan(true)).await;
+                                    info!(
+                                        "incoming serial={serial} caller={caller} on 白名單 ({}) whitelist_mode=direct → decline, transfer to '{}'",
+                                        wc.name,
+                                        rt.whitelist_forward_number
+                                    );
+                                    continue;
+                                }
+                                // Never hang up on a whitelisted caller: without a number to
+                                // forward to, or a phone that can decline, the AI answers.
+                                warn!(
+                                    "incoming serial={serial} caller={caller} on 白名單 ({}) whitelist_mode=direct but the transfer is not ready (number set={}, phone can decline={decline}) → the AI answers",
                                     wc.name,
-                                    rt.whitelist_forward_number
+                                    !rt.whitelist_forward_number.trim().is_empty()
                                 );
-                                continue;
                             }
                         }
-                        if settings_store::reject_number_hit(&rt.reject_numbers, &caller) {
+                        // A number without a country code reads as dialled on the SIM that rings.
+                        if reject_listed_on_line(&rt, &caller, &serial) {
                             // Blocked number: no Gemini. Decline (`reject_mode` decline and
                             // an app that can): the phone refuses the ringing call, so the
                             // record and the notification are made now. Otherwise pick up at
@@ -2189,10 +2237,11 @@ async fn send_agent_info(state: &AppState, sink: &WsSink) {
 async fn ws_upgrade(
     ws: WebSocketUpgrade,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
     Query(q): Query<HashMap<String, String>>,
     State(state): State<AppState>,
 ) -> axum::response::Response {
-    phone_ws(ws, peer, &q, state)
+    phone_ws(ws, peer, &headers, &q, state)
 }
 
 async fn handle_ws(socket: WebSocket, base_state: AppState) {
@@ -2566,10 +2615,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                     }
                                 }
                                 let reject_listed = rang_listed.is_some()
-                                    || settings_store::reject_number_hit(
-                                        &rt.reject_numbers,
-                                        &caller_id,
-                                    );
+                                    || reject_listed_on_line(&rt, &caller_id, &serial);
                                 call_reject_listed = reject_listed;
                                 // Declined while it rang, picked up anyway (the app said it
                                 // can decline, then did not): the caller gets the
@@ -2633,11 +2679,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         };
                                         let dedup_for_task = dedup.clone();
                                         let rejected = call_reject_listed;
-                                        let reject_note = settings_store::reject_reason(
-                                            &rt.reject_numbers,
-                                            &caller_id,
-                                        )
-                                        .unwrap_or_default();
+                                        let reject_note =
+                                            reject_reason_on_line(&rt, &caller_id, &serial).unwrap_or_default();
                                         tokio::spawn(async move {
                                             let ok = if rejected {
                                                 notify_rejected_call(
@@ -2909,7 +2952,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                 rt = base_state.settings_store.snapshot();
                                 state.settings = rt.effective(&base_state.settings);
                                 info!("session ringing serial={serial} caller={caller_id}");
-                                if settings_store::reject_number_hit(&rt.reject_numbers, &caller_id) {
+                                if reject_listed_on_line(&rt, &caller_id, &serial) {
                                     call_reject_listed = true;
                                 }
                                 // Late CID after empty media hello: resolve wait → greet or reject-only.
@@ -3071,11 +3114,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         };
                                         let dedup_for_task = dedup.clone();
                                         let rejected = call_reject_listed;
-                                        let reject_note = settings_store::reject_reason(
-                                            &rt.reject_numbers,
-                                            &caller_id,
-                                        )
-                                        .unwrap_or_default();
+                                        let reject_note =
+                                            reject_reason_on_line(&rt, &caller_id, &serial).unwrap_or_default();
                                         tokio::spawn(async move {
                                             let ok = if rejected {
                                                 notify_rejected_call(
@@ -4081,6 +4121,18 @@ fn call_sim_country(serial: &str) -> Option<String> {
         .cloned()
 }
 
+/// The caller is on the blocked-numbers list (or the Contacts Blacklist) as the
+/// SIM of the phone's current call reads the number: one without a country code
+/// is dialled in that SIM's country ([`settings_store::reject_number_hit_on`]).
+fn reject_listed_on_line(rt: &RuntimeSettings, caller: &str, serial: &str) -> bool {
+    settings_store::reject_number_hit_on(&rt.reject_numbers, caller, call_sim_country(serial).as_deref())
+}
+
+/// Why the caller is blocked, read as in [`reject_listed_on_line`].
+fn reject_reason_on_line(rt: &RuntimeSettings, caller: &str, serial: &str) -> Option<String> {
+    settings_store::reject_reason_on(&rt.reject_numbers, caller, call_sim_country(serial).as_deref())
+}
+
 /// Android subscription id of the SIM each phone's current call came in on
 /// (`sim_sub_id` on `incoming` / `hello`, newer phone apps): texts and call-backs
 /// for that call go out on the same SIM.
@@ -4634,6 +4686,15 @@ fn reject_answer_plan(decline: bool) -> Value {
     plan
 }
 
+/// `whitelist_mode` `direct` hands a whitelisted caller to the owner's own
+/// number only when that can work: the number to forward to is filled in and
+/// the phone's app can decline a ringing call (the carrier then forwards it).
+/// Otherwise the AI answers as for any whitelisted caller: declining anyway
+/// would hang up on them.
+fn whitelist_direct_ready(forward_number: &str, phone_can_decline: bool) -> bool {
+    phone_can_decline && forward_number.chars().filter(char::is_ascii_digit).count() >= 3
+}
+
 /// `reject_mode` `decline`: a declined call never gets a media hello, so its
 /// record (events `reject_list`, `reject_list_declined`) and the "blocked
 /// number" notification are made while it rings. Returns the record's id.
@@ -4664,7 +4725,7 @@ async fn record_declined_call(
     if dedup.claim(serial, caller).await {
         let http = state.http.clone();
         let settings = state.settings_store.snapshot().effective(&state.settings);
-        let reason = settings_store::reject_reason(&rt.reject_numbers, caller).unwrap_or_default();
+        let reason = reject_reason_on_line(rt, caller, serial).unwrap_or_default();
         let (caller, serial) = (caller.to_string(), serial.to_string());
         tokio::spawn(async move {
             if notify_rejected_call(&http, &settings, &caller, &serial, &reason, true).await {
@@ -4685,6 +4746,7 @@ async fn record_declined_call(
 /// declines the call so carrier conditional forwarding (`**67*<number>#`)
 /// transfers the caller directly to the owner's real phone number, while Bageo
 /// records the transfer and alerts all notification channels immediately.
+/// Only when it can: [`whitelist_direct_ready`].
 async fn record_whitelist_direct_transfer(
     state: &AppState,
     serial: &str,
@@ -4861,7 +4923,7 @@ fn save_reject_list_notes(state: &AppState, record: &CallRecord) {
     let rt = state.settings_store.snapshot();
     let number = display_caller_id(&record.caller_id).to_string();
     // Number and reason on lines of their own.
-    let reason = settings_store::reject_reason(&rt.reject_numbers, &record.caller_id);
+    let reason = settings_store::reject_reason_on(&rt.reject_numbers, &record.caller_id, record.sim_country.as_deref());
     // The record is the owner's; the announcement quoted is what the caller heard.
     let lang = locale::notify_lang();
     let p = locale::phrases(lang);
@@ -4998,10 +5060,15 @@ async fn start_ivr_prompt(
             }
         }
         // Honor latest web-console overrides (hot-swap) for this play cycle.
+        // A to-do's call-back, or an appointment's (or an errand's) call, going out
+        // on this phone is our call: no greeting for a call coming in, the AI
+        // follows its call-back script.
         let persona = {
             let rt = state.settings_store.snapshot();
             state.settings = rt.effective(&state.settings);
             rt.gemini_persona_mode
+                || fulfill::voicemail_callback_pending(&serial)
+                || appointments::callback_pending_on(&serial)
         };
         // Persona mode: no period greeting WAV, no post-greet wait — after the short
         // settle, hand the line straight to Gemini (it answers 「喂？」 itself).
@@ -5925,6 +5992,11 @@ fn start_ring_prewarm(
     rt: &RuntimeSettings,
     ring_ms: u32,
 ) -> bool {
+    // `incoming` often comes before the phone has looked up the SIM: the SIM of the
+    // phone's last call stands in, and the pickup checks the guess
+    // (`RingPrewarmRegistry::take`).
+    let sim = call_sim_country(serial)
+        .or_else(|| phone_region::last_sim(&canonical_device_serial(serial)));
     if !rt.gemini_ring_prewarm
         || !rt.gemini_persona_mode
         || !state.settings.agent_mode.is_transfer()
@@ -5934,21 +6006,17 @@ fn start_ring_prewarm(
             serial,
             caller_id,
             rt.answer_unknown_callers,
-            settings_store::reject_number_hit(&rt.reject_numbers, caller_id),
+            settings_store::reject_number_hit_on(&rt.reject_numbers, caller_id, sim.as_deref()),
         ) != CidRoute::Greet
     {
         return false;
     }
-    // `incoming` often comes before the phone has looked up the SIM: the SIM of the
-    // phone's last call stands in, and the pickup checks the guess
-    // (`RingPrewarmRegistry::take`).
-    let sim = call_sim_country(serial)
-        .or_else(|| phone_region::last_sim(&canonical_device_serial(serial)));
     let plan = caller_plan(rt, caller_id, sim.as_deref());
     let cfg = GeminiRetryCfg {
         api_key: rt.gemini_api_key.clone(),
         model: rt.gemini_live_model.clone(),
-        system: rt.gemini_system_prompt_for_call(),
+        // A SIM's own number in that SIM's language (setting `sim_languages`).
+        system: rt.gemini_system_prompt_for_call_in(plan.lang.prompt_lang),
         voice_name: if rt.gemini_voice_name.trim().is_empty() {
             gemini_live::default_voice_name().to_string()
         } else {
@@ -6313,7 +6381,11 @@ async fn spawn_gemini_session_tasks(
     // The AI's call-back with an appointment's answer: only the call this phone
     // reported dialing for it (`outbound_ready` with its task and number) —
     // never an incoming call or a ring prewarm (which starts elsewhere).
-    let callback = appointments::callback_for_call(&serial, &caller_id).await;
+    // A to-do's phone call-back (a voicemail answered by phone) the same way.
+    let callback = match appointments::callback_for_call(&serial, &caller_id).await {
+        Some(cb) => Some(cb),
+        None => fulfill::voicemail_callback_for_call(state.control.as_ref(), &serial, &caller_id).await,
+    };
     let mut errand = None;
     if let Some(cb) = &callback {
         info!("appointment call-back session serial={serial} task_id={} errand={}", cb.task_id, cb.errand);
@@ -6361,6 +6433,12 @@ async fn spawn_gemini_session_tasks(
     let lang = match callback.as_ref().filter(|c| !c.errand).and_then(|c| c.lang) {
         Some(spoken) => gemini_live::callback_lang_plan(spoken, rt.lang()),
         None => call_lang_plan(&rt, &caller_id, call_sim_country(&serial).as_deref()),
+    };
+    // A SIM's own number in that SIM's language (setting `sim_languages`): the
+    // call's prompt in it. A call-back follows its own script.
+    let system = match lang.prompt_lang {
+        Some(l) if callback.is_none() => rt.gemini_system_prompt_for_call_in(Some(l)),
+        _ => system,
     };
     let cfg = GeminiRetryCfg {
         api_key,
@@ -6497,7 +6575,7 @@ fn start_gemini_session_core(
         gemini_live::StallCfg {
             engaged: stall_engaged.clone(),
             force_start: force_stall,
-            system_prompt: rt.persona_stall_system_prompt(),
+            system_prompt: rt.persona_stall_system_prompt_in(cfg.lang.prompt_lang),
             model: rt.gemini_stall_model.clone(),
             max_secs: rt.persona_stall_max_secs(),
             play_along: rt.persona_stall_spam || force_stall,
@@ -6569,6 +6647,10 @@ fn start_gemini_session_core(
     } else {
         None
     };
+    // A SIM's own number in that SIM's language: the appointment part in it too.
+    if let Some(a) = appointments.as_mut() {
+        a.set_prompt_lang(cfg.lang.prompt_lang);
+    }
     // The SIM that took the call: a text back to the caller goes from it, and
     // its country reads a number without a country code. A ring prewarm sets it
     // again at pickup from the media hello.
@@ -6616,10 +6698,11 @@ fn start_gemini_session_core(
         // the call rings), so the contact is the one its plan checks at pickup.
         // An errand's script names whom it calls itself.
         let system = if force_stall && persona && errand.is_none() {
-            rt.persona_stall_system_prompt()
+            rt.persona_stall_system_prompt_in(cfg.lang.prompt_lang)
         } else if persona && errand.is_none() {
             let sim = call_sim_country(&serial).or_else(|| phone_region::last_sim(&canonical_device_serial(&serial)));
-            contacts::with_caller(&system, rt, &cfg.caller_id, sim.as_deref())
+            let lang = cfg.lang.prompt_lang.unwrap_or_else(|| rt.lang());
+            contacts::with_caller(&system, rt, &cfg.caller_id, sim.as_deref(), lang)
         } else {
             system
         };
@@ -6800,7 +6883,9 @@ async fn run_urgent_call(
         }
     }
     let sim = call_sim_country(&serial);
-    let number = match urgent_call::check_owner_number(&number, sim.as_deref()) {
+    // SIM unknown: a number without a country code reads as the owner's country's.
+    let home_code = state.settings_store.snapshot().effective_country_code();
+    let number = match urgent_call::check_owner_number(&number, sim.as_deref(), &home_code) {
         Ok(n) => n,
         Err(why) => {
             warn!(
@@ -6898,6 +6983,10 @@ async fn run_urgent_call(
         urgent_call::Step::Failed(r) => Some(r.clone()),
         urgent_call::Step::Wait => Some("unknown".to_string()),
     };
+    // Not merged (the caller hung up, the caller is still on hold, the AI's
+    // session is gone, or the AI is back): this phone's next calls are the AI's
+    // again, not the owner's call for up to three hours.
+    settle_owner_mark(&canonical_device_serial(&serial), reason.as_deref());
     match reason {
         None => {
             urgent_call::unregister(&id);
@@ -6924,7 +7013,6 @@ async fn run_urgent_call(
                 return;
             }
             info!("Whitelist urgent call failed id={id} serial={serial} reason={reason} — the AI is back");
-            urgent_call::clear_owner_on_call(&canonical_device_serial(&serial));
             ctl.resume_with(if reason == "no_dial_ack" { on_callback } else { on_fail });
             // A merge the agent did not hear in time still hands the call over.
             if unsettled {
@@ -6940,6 +7028,17 @@ async fn run_urgent_call(
                 }
             }
             urgent_call::unregister(&id);
+        }
+    }
+}
+
+/// After a whitelist urgent call settles on `phone`: merged (`reason` None)
+/// keeps the owner-on-call mark until the phone is idle; any other end clears
+/// it, so the phone's next ring goes to the AI again.
+fn settle_owner_mark(phone: &str, reason: Option<&str>) {
+    if let Some(reason) = reason {
+        if urgent_call::clear_owner_on_call(phone) {
+            info!("Whitelist urgent call over ({reason}) serial={phone} — owner-on-call mark cleared");
         }
     }
 }
@@ -9474,10 +9573,13 @@ fn spawn_ai_talk_tg_summary(
         };
         let live_full = live.clone();
         // The language the call was held in: the AI's call-back with the owner's
-        // answer speaks it.
+        // answer speaks it. One the AI has no setting for (Thai, Russian, Arabic,
+        // Hindi…): marked so, and the call-back speaks the callee's language.
         if let Some(a) = appointment.as_mut() {
             if let Some(spoken) = gemini_live::dialogue_lang(&live_full, locale::current()) {
                 a.set_call_lang(spoken);
+            } else if gemini_live::dialogue_in_other_language(&live_full, locale::current()) {
+                a.set_other_call_lang();
             }
         }
         let live = clip_dialogue_for_summary(&live);
@@ -11451,6 +11553,7 @@ mod ring_prewarm_tests {
         gemini_live::CallLangPlan {
             opening: None,
             caller_stt: Some(vec!["zh-TW", "en-US"]),
+            ..Default::default()
         }
     }
 
@@ -11532,6 +11635,7 @@ mod ring_prewarm_tests {
         let us = gemini_live::CallLangPlan {
             opening: Some(locale::Lang::En),
             caller_stt: Some(vec!["en-US", "zh-TW"]),
+            ..Default::default()
         };
         assert!(reg.take("pixel-1", "2025550143", 16_000, &plan_of(us)).is_none());
         assert!(cancel.load(Ordering::Relaxed));
@@ -11539,9 +11643,46 @@ mod ring_prewarm_tests {
         // Same opening, other hints: not handed over either.
         let (pw, cancel) = entry("+12025550143", live());
         reg.insert("pixel-1", pw);
-        let auto = gemini_live::CallLangPlan { opening: None, caller_stt: None };
+        let auto = gemini_live::CallLangPlan { opening: None, caller_stt: None, ..Default::default() };
         assert!(reg.take("pixel-1", "+12025550143", 16_000, &plan_of(auto)).is_none());
         assert!(cancel.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn a_sims_own_number_gets_its_whole_prompt_in_the_sims_language() {
+        // Taiwanese setup with a US SIM set to English (setting sim_languages).
+        let mut rt = tw_settings();
+        rt.gemini_persona_mode = true;
+        rt.owner_name = "林先生".into();
+        rt.sim_languages = [("us".to_string(), "en".to_string())].into_iter().collect();
+        let en_guard = crate::prompts::pack(locale::Lang::En).injection_guard.clone();
+        let tw_guard = crate::prompts::pack(locale::Lang::ZhTw).injection_guard.clone();
+        // A US number on the US SIM: English prompt, stalling prompt and guard.
+        let us = caller_plan(&rt, "(202) 555-0143", Some("us"));
+        assert_eq!(us.lang.prompt_lang, Some(locale::Lang::En));
+        let p = rt.gemini_system_prompt_for_call_in(us.lang.prompt_lang);
+        assert!(p.contains(en_guard.trim()) && !p.contains(tw_guard.trim()), "{p}");
+        let stall = rt.persona_stall_system_prompt_in(us.lang.prompt_lang);
+        assert!(stall.contains(en_guard.trim()) && !stall.contains(tw_guard.trim()), "{stall}");
+        // A Taiwanese number on the Taiwan SIM: unchanged, Chinese throughout.
+        let tw = caller_plan(&rt, "0912345678", Some("tw"));
+        assert_eq!(tw.lang.prompt_lang, None);
+        assert_eq!(rt.gemini_system_prompt_for_call_in(tw.lang.prompt_lang), rt.gemini_system_prompt_for_call());
+        assert!(rt.gemini_system_prompt_for_call().contains(tw_guard.trim()));
+        assert_eq!(rt.persona_stall_system_prompt_in(None), rt.persona_stall_system_prompt());
+        // A Taiwanese number on the US SIM is not the SIM's own: the setting's prompt.
+        assert_eq!(caller_plan(&rt, "+886912345678", Some("us")).lang.prompt_lang, None);
+    }
+
+    #[test]
+    fn a_ring_without_the_sim_serves_the_local_call_it_picks_up() {
+        // The SIM was not known while it rang (no earlier call): a local number plans
+        // the same session either way, so the held 「喂？」 is used.
+        let rt = tw_settings();
+        let rang = caller_plan(&rt, "0912345678", None);
+        let picked = caller_plan(&rt, "0912345678", Some("tw"));
+        assert_eq!((rang.lang.sim_local, picked.lang.sim_local), (None, Some(true)));
+        assert_eq!(rang.lang, picked.lang);
     }
 
     #[tokio::test]
@@ -11913,6 +12054,30 @@ mod unknown_caller_tests {
         // The phone's last reported SIM stays known apart (the ring prewarm's guess).
         assert_eq!(crate::phone_region::last_sim(serial).as_deref(), Some("tw"));
     }
+
+    #[test]
+    fn a_blocked_number_reads_as_dialled_on_the_sim_that_rings() {
+        use super::{reject_listed_on_line, reject_reason_on_line};
+        let serial = "TESTSIMREJ01";
+        let mut rt = crate::settings_store::RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        rt.country_code = "886".into();
+        rt.reject_numbers = vec![crate::settings_store::RejectEntry {
+            number: "+81 3 1234 5678".into(),
+            reason: "営業".into(),
+        }];
+        // A Japanese SIM rings: the national form is that Japanese number.
+        note_call_sim_country(serial, &json!({"type":"incoming","sim_country":"jp"}));
+        assert!(reject_listed_on_line(&rt, "03-1234-5678", serial));
+        assert_eq!(reject_reason_on_line(&rt, "0312345678", serial).as_deref(), Some("営業"));
+        assert!(!reject_listed_on_line(&rt, "03-1234-5679", serial));
+        // The same digits on the Taiwan SIM are a Taiwanese number: not blocked.
+        note_call_sim_country(serial, &json!({"type":"incoming","sim_country":"tw"}));
+        assert!(!reject_listed_on_line(&rt, "03-1234-5678", serial));
+        assert_eq!(reject_reason_on_line(&rt, "0312345678", serial), None);
+        // The full number is blocked on any SIM.
+        assert!(reject_listed_on_line(&rt, "+81312345678", serial));
+        note_call_sim_country(serial, &json!({"type":"incoming"}));
+    }
 }
 
 #[cfg(test)]
@@ -12265,5 +12430,53 @@ mod review_t4_tests {
         assert_eq!(plan["delay_ms"], 0);
         assert_eq!(plan["prewarm"], false);
         assert_eq!(plan["reject"], true);
+    }
+}
+
+#[cfg(test)]
+mod access_and_whitelist_tests {
+    use super::*;
+
+    /// The phone bridges on the LAN and the USB tunnel connect as before; a
+    /// connection through a reverse proxy on this machine is not let in for
+    /// coming from loopback.
+    #[test]
+    fn a_phone_through_a_reverse_proxy_needs_the_device_token() {
+        let lo: SocketAddr = "127.0.0.1:50000".parse().unwrap();
+        let lan: SocketAddr = "192.168.1.20:50000".parse().unwrap();
+        assert!(phone_allowed(&lan, false, None, ""), "a LAN bridge without DEVICE_TOKEN set");
+        assert!(phone_allowed(&lo, false, None, ""));
+        assert!(phone_allowed(&lo, false, None, "dev-test"), "the USB tunnel");
+        assert!(!phone_allowed(&lan, false, None, "dev-test"));
+        assert!(phone_allowed(&lan, false, Some("dev-test"), "dev-test"));
+        assert!(!phone_allowed(&lo, true, None, ""), "proxied, no token set");
+        assert!(!phone_allowed(&lo, true, None, "dev-test"));
+        assert!(!phone_allowed(&lo, true, Some("wrong"), "dev-test"));
+        assert!(phone_allowed(&lo, true, Some("dev-test"), "dev-test"));
+    }
+
+    #[test]
+    fn a_whitelisted_caller_is_declined_only_when_the_transfer_can_work() {
+        assert!(!whitelist_direct_ready("", true), "no number to forward to");
+        assert!(!whitelist_direct_ready("  ", true));
+        assert!(!whitelist_direct_ready("+886900000000", false), "the phone cannot decline");
+        assert!(whitelist_direct_ready("+886900000000", true));
+    }
+
+    /// The caller hung up, the caller is still on hold, or the AI's session is
+    /// gone: the phone's next call goes to the AI, not ignored for three hours.
+    #[test]
+    fn an_urgent_call_that_ends_early_frees_the_phone() {
+        for reason in ["call_ended", "unhold_failed", "no_result", "send_failed"] {
+            let phone = format!("test-phone-urgent-{reason}");
+            urgent_call::mark_owner_on_call(&phone);
+            settle_owner_mark(&phone, Some(reason));
+            assert!(!urgent_call::owner_on_call(&phone), "{reason}");
+        }
+        let phone = "test-phone-urgent-merged";
+        urgent_call::mark_owner_on_call(phone);
+        settle_owner_mark(phone, None);
+        assert!(urgent_call::owner_on_call(phone), "merged: the owner is on the call");
+        urgent_call::clear_owner_on_call(phone);
     }
 }

@@ -158,7 +158,8 @@ INBOX_QUERY = ("content query --uri content://sms/inbox --projection _id:address
 INBOX_MAX_QUERY = "content query --uri content://sms/inbox --projection _id:date"
 SIM_QUERY = ("content query --uri content://telephony/siminfo "
              "--projection _id:sim_id:icc_id:number:carrier_name")
-INBOX_ROW = re.compile(r"^Row: \d+ _id=(\d+), address=(.*?), date=(\d+), sub_id=(-?\d+), body=", re.M)
+# `sub_id` is NULL for a message the phone did not tie to a SIM.
+INBOX_ROW = re.compile(r"^Row: \d+ _id=(\d+), address=(.*?), date=(\d+), sub_id=(-?\d+|NULL), body=", re.M)
 SIM_ROW = re.compile(r"^Row: \d+ _id=(\d+), sim_id=(-?\d+), icc_id=(.*?), number=(.*?), carrier_name=(.*)$", re.M)
 
 # Labels of the forwarded message. The SMS text itself is never translated.
@@ -396,7 +397,11 @@ def deliver(title: str, body: str) -> tuple[bool, str]:
     if status == 200:
         return False, "agent: no notification channel accepted it (set one up in the web console)"
     if status == 401:
-        return False, "agent:401 (set AGENT_TOKEN to the agent's CALLS_UI_TOKEN)"
+        if AGENT_TOKEN:
+            return False, ("agent:401 (the agent does not accept AGENT_TOKEN: it must be the same as the "
+                           "console password, CALLS_UI_TOKEN)")
+        return False, ("agent:401 (the console has a password but AGENT_TOKEN is not set: "
+                       "set AGENT_TOKEN to that password, or no SMS are forwarded)")
     if status == 0:
         return False, "agent: no answer (is it running? check AGENT_URL)"
     return False, f"agent:{status}"
@@ -612,7 +617,7 @@ def parse_inbox(out: str) -> list[dict] | None:
             "id": int(m.group(1)),
             "addr": "" if addr == "NULL" else addr,
             "date": int(m.group(3)),
-            "sub": int(m.group(4)),
+            "sub": None if m.group(4) == "NULL" else int(m.group(4)),
             "body": "" if body == "NULL" else body,
         })
     return rows
@@ -765,6 +770,7 @@ class Forwarder:
         self.sent_total = 0
         self.last_forward = 0.0
         self.notify_ok: bool | None = None
+        self.notify_error = ""
 
     def warn(self, key: str, msg: str, every: float = 600) -> None:
         now = time.time()
@@ -823,9 +829,7 @@ class Forwarder:
         ok, via = self.deliver(title, text)
         self.last_send = time.time()
         self.sends += 1
-        self.notify_ok = ok
-        if not ok:
-            self.warn("deliver", f"ERROR deliver failed {serial} {src}={ref}: {via}; will retry", 120)
+        if not self.note_delivery(ok, via, f"{serial} {src}={ref}"):
             return False
         self.state["dedup"][key] = int(time.time())
         self.dirty = True
@@ -835,6 +839,14 @@ class Forwarder:
         age = int(time.time() - received_ms / 1000) if received_ms else -1
         log(f"forwarded {serial} {src}={ref} via={via} from={who} age_s={age}")
         return True
+
+    def note_delivery(self, ok: bool, via: str, what: str) -> bool:
+        """Remember how the last delivery went (health.json shows it) and say why when it failed."""
+        self.notify_ok = ok
+        self.notify_error = "" if ok else via
+        if not ok:
+            self.warn("deliver", f"ERROR deliver failed {what}: {via}; will retry", 120)
+        return ok
 
     def queue_items(self, serial: str) -> list[tuple[str, int, dict | None]] | None:
         """The phone's hook queue; None while it cannot be read (no root, no answer)."""
@@ -938,7 +950,8 @@ class Forwarder:
             ph["inbox_id"] = max([ph["inbox_id"]] + [r["id"] for r in rows])
             ph["inbox_date"] = max([ph.get("inbox_date", 0)] + [r["date"] for r in rows])
             self.dirty = True
-            self.deliver(*format_flood(lang or "en", serial, ph.get("model", ""), len(rows)))
+            ok, via = self.deliver(*format_flood(lang or "en", serial, ph.get("model", ""), len(rows)))
+            self.note_delivery(ok, via, f"flood notice {serial}")
             return
         for r in rows:
             if not self.forward(serial, "inbox", str(r["id"]), r["addr"], r["body"], r["date"], r["sub"]):
@@ -1022,6 +1035,9 @@ class Forwarder:
                 "sent_total": self.sent_total,
                 "last_forward_at": iso(self.last_forward) if self.last_forward else None,
                 "notify_ok": self.notify_ok, "phones": phones,
+                # Why the last delivery failed (empty when it did not), e.g. a 401 from a console password.
+                "notify_error": self.notify_error,
+                "agent_auth_rejected": self.notify_error.startswith("agent:401"),
             })
         except OSError:
             pass

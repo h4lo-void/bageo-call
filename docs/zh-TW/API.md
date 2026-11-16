@@ -245,7 +245,7 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 |---|---|
 | `POST /calls/api/notify/test` | 把測試訊息傳到那一個管道（已存的機密依 `id` 補上）。Body `{"channel": {kind, url, token, target, id?}}`。回應見下方。 |
 | `POST /calls/api/notify/send` | Body `{"title": "...", "body": "..."}`。把你的訊息傳到每一個啟用的管道。規則見下方。 |
-| `GET /calls/api/quick-action` · `POST /calls/api/quick-action` | 32 種通知管道內附的單次簽章互動按鈕路由（`?act=confirm\|ignore\|block\|stall\|white&target=<id或號碼>&sig=<hmac>`）。透過 HMAC-SHA256 驗證，在手機通知中點開即生效，支援全部 9 種語言。 |
+| `GET /calls/api/quick-action` · `POST /calls/api/quick-action` | 32 種通知管道內附的單次簽章互動按鈕路由（`?act=confirm\|ignore\|block\|stall\|white&target=<id或號碼>&sig=<hmac>`）。打開連結（`GET`）只會先顯示確認頁，按下頁面上的按鈕（`POST`）才會執行；連結 7 天後失效。透過 HMAC-SHA256 驗證，不用登入控制台，支援全部 9 種語言。 |
 | `POST /calls/api/control/inbound` | 跨平台通用指令 Webhook，用聊天指令控制 Bageo。Body 例如 `{"text": "清單 5", "user": "owner", "channel": "line"}`。 |
 | `GET /calls/api/auth-status` · `POST /calls/api/initial-password` | 查詢是否需要密碼與是否首次設定密碼（`{ok, password_required, needs_initial_password_setup}`），以及首次建立密碼（`{"password": "..."}`，僅在尚未設定任何密碼／Token 時可用）。 |
 
@@ -254,7 +254,7 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 - 200 `{ok: true}`：測試訊息已送出。
 - 400 `unknown_channel`。
 - 502 `{ok: false, code, field, kind, error}`：`code` 是出錯原因，`field` 是 `url`／`token`／`target` 哪一欄（或空白），`error` 是該服務的回應。
-- `code` 的值：`missing_field`、`bad_url`、`bad_value`、`auth_failed`、`service_not_found`、`http_error`、`service_error`、`network_error`、`send_failed`。
+- `code` 的值：`missing_field`、`bad_url`、`bad_value`、`auth_failed`、`service_not_found`、`http_error`、`service_error`、`network_error`、`send_failed`、`bot_problem`（Discord 不讓機器人連上）、`room_encrypted`（Matrix 聊天室有加密）、`blocked_address`（Bageo 不會送的位址）。
 
 `POST /calls/api/notify/send` 的規則：
 
@@ -266,6 +266,7 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 
 - 支援 Slack、Discord、LINE、企業微信、釘釘、飛書、Mattermost、Rocket.Chat、Zulip、Matrix、Nextcloud Talk、Synology Chat、Home Assistant、n8n 或 curl。
 - 可執行全部 18 個聊天指令（包含 `block`、`stall`、`white`、`unblock`），並以通知語言回傳 `{ok, text}`。
+- 用 MCP 的 token 打時，只能做 `mcp_calls` 允許的事（見 [MCP](MCP.md)）。設成 `off`（預設）時，只能查看，不能用指令改任何東西。
 
 你自己的 webhook 會收到的 JSON 和每一種事件，在[通知](NOTIFICATIONS.md#webhook-json)裡有說明。
 

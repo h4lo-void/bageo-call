@@ -63,8 +63,12 @@ pub struct Pack {
     pub kick_open_assistant: String,
     /// Opening of a call from abroad, in the language of the caller's country
     /// (`{caller_language}`, `{caller_hello}`, `{caller_hello_again}`; see [`kick_open`]).
+    /// `{abroad}` = [`Pack::kick_open_abroad`] for a number from another country
+    /// than the SIM's, else nothing.
     pub kick_open_persona_in: String,
     pub kick_open_assistant_in: String,
+    /// Says the number is from abroad, inside the two openings above.
+    pub kick_open_abroad: String,
     pub kick_wrap_up: String,
     pub kick_stall_wrap_up: String,
     /// `{lead}` = one of the two leads below.
@@ -91,11 +95,12 @@ const ZH_KICK_OPEN_PERSONA: &str = "【系統指令·不是對方說的話】電
 例如「喂？」或「喂，你好。」，說完就停，等對方開口。不要自我介紹，不要問有什麼事，不要說再見。";
 const ZH_KICK_OPEN_ASSISTANT: &str = "【系統指令·不是對方說的話】電話剛接起來。照【接起來】說的，用一句很短的話說明你是 AI 助理、本人現在不方便接電話，\
 問對方有什麼事要轉達（每次自己換說法），說完就停，等對方開口。不要說再見。";
-const ZH_KICK_OPEN_PERSONA_IN: &str = "【系統指令·不是對方說的話】電話剛接起來，這通是國外號碼打來的：開場這一句改用{caller_language}，不照【接起來】寫的開頭。\
+const ZH_KICK_OPEN_PERSONA_IN: &str = "【系統指令·不是對方說的話】電話剛接起來{abroad}：開場這一句改用{caller_language}，不照【接起來】寫的開頭。\
 像平常接電話一樣只說一句很短的開頭，例如「{caller_hello}」，說完就停，等對方開口。對方只回喂或聽起來不確定，就用{caller_language}再說一次，例如「{caller_hello_again}」。\
 之後對方講什麼語言，你就用什麼語言回。不要自我介紹，不要問有什麼事，不要說再見。";
-const ZH_KICK_OPEN_ASSISTANT_IN: &str = "【系統指令·不是對方說的話】電話剛接起來，這通是國外號碼打來的。照【接起來】說的，用一句很短的話說明你是 AI 助理、本人現在不方便接電話，\
+const ZH_KICK_OPEN_ASSISTANT_IN: &str = "【系統指令·不是對方說的話】電話剛接起來{abroad}。照【接起來】說的，用一句很短的話說明你是 AI 助理、本人現在不方便接電話，\
 問對方有什麼事要轉達（每次自己換說法），但這一句改用{caller_language}講，說完就停，等對方開口。之後對方講什麼語言，你就用什麼語言回。不要說再見。";
+const ZH_KICK_OPEN_ABROAD: &str = "，這通是國外號碼打來的";
 /// Ends every mid-call nudge: the model otherwise answers in the language of
 /// the instruction (a Vietnamese call's quiet line got 「喂？請問還在嗎？」).
 const ZH_IN_CALLER_LANGUAGE: &str = "用這通電話到目前為止對方講的語言說：他講中文就講中文，講別的語言（英文、越南文、泰文……）就用那種語言，\
@@ -227,6 +232,7 @@ fn zh_tw_pack() -> Pack {
         kick_open_assistant: ZH_KICK_OPEN_ASSISTANT.to_string(),
         kick_open_persona_in: ZH_KICK_OPEN_PERSONA_IN.to_string(),
         kick_open_assistant_in: ZH_KICK_OPEN_ASSISTANT_IN.to_string(),
+        kick_open_abroad: ZH_KICK_OPEN_ABROAD.to_string(),
         kick_wrap_up: in_caller_language(ZH_KICK_WRAP_UP),
         kick_stall_wrap_up: in_caller_language(ZH_KICK_STALL_WRAP_UP),
         kick_stall_keep: in_caller_language(ZH_KICK_STALL_KEEP),
@@ -277,6 +283,7 @@ fn zh_cn_pack() -> Pack {
         kick_open_assistant: to_cn(&p.kick_open_assistant),
         kick_open_persona_in: to_cn(&p.kick_open_persona_in),
         kick_open_assistant_in: to_cn(&p.kick_open_assistant_in),
+        kick_open_abroad: to_cn(&p.kick_open_abroad),
         kick_wrap_up: to_cn(&p.kick_wrap_up),
         kick_stall_wrap_up: to_cn(&p.kick_stall_wrap_up),
         kick_stall_keep: to_cn(&p.kick_stall_keep),
@@ -404,8 +411,9 @@ A bank, company, school, clinic, government office or courier explaining somethi
 
 const EN_KICK_OPEN_PERSONA: &str = "The call has just been picked up. Say one very short opening the way people answer the phone, such as \"{p_hello}\", then stop and wait for the caller. Do not introduce yourself, do not ask what the call is about, do not say goodbye.";
 const EN_KICK_OPEN_ASSISTANT: &str = "The call has just been picked up. As [Picking up] says, in one short line say that you are the AI assistant and that the person they are calling cannot take the call right now, and ask what you can pass on (your own words each time). Then stop and wait for the caller. Do not say goodbye.";
-const EN_KICK_OPEN_PERSONA_IN: &str = "The call has just been picked up, from a number abroad: open in {caller_language} this time, not with the [Picking up] line in {language}. Say one very short opening in {caller_language} the way people answer the phone, such as \"{caller_hello}\", then stop and wait for the caller. If they only say hello back or sound unsure, say \"{caller_hello_again}\" once more. From then on, answer in whatever language the caller speaks. Do not introduce yourself, do not ask what the call is about, do not say goodbye.";
-const EN_KICK_OPEN_ASSISTANT_IN: &str = "The call has just been picked up, from a number abroad. As [Picking up] says, in one short line say that you are the AI assistant and that the person they are calling cannot take the call right now, and ask what you can pass on (your own words each time) — but say it in {caller_language} this time, not in {language}. Then stop and wait for the caller. From then on, answer in whatever language the caller speaks. Do not say goodbye.";
+const EN_KICK_OPEN_PERSONA_IN: &str = "The call has just been picked up{abroad}: open in {caller_language} this time, not with the [Picking up] line in {language}. Say one very short opening in {caller_language} the way people answer the phone, such as \"{caller_hello}\", then stop and wait for the caller. If they only say hello back or sound unsure, say \"{caller_hello_again}\" once more. From then on, answer in whatever language the caller speaks. Do not introduce yourself, do not ask what the call is about, do not say goodbye.";
+const EN_KICK_OPEN_ASSISTANT_IN: &str = "The call has just been picked up{abroad}. As [Picking up] says, in one short line say that you are the AI assistant and that the person they are calling cannot take the call right now, and ask what you can pass on (your own words each time) — but say it in {caller_language} this time, not in {language}. Then stop and wait for the caller. From then on, answer in whatever language the caller speaks. Do not say goodbye.";
+const EN_KICK_OPEN_ABROAD: &str = ", from a number abroad";
 /// Ends every mid-call nudge (see [`ZH_IN_CALLER_LANGUAGE`]).
 const EN_IN_CALLER_LANGUAGE: &str = "Say it in the language the caller has been speaking on this call so far, even if that is not {language}; if they have not said anything yet, in the language you opened the call in.";
 const EN_KICK_WRAP_UP: &str = "This call has gone on for a long time and is close to its time limit: you need to wrap up. Respond in half a sentence to what the caller just said, then get across that you have something else to take care of now (in your own words), ask them to send a message or call again later if there is more, and finish with \"{p_bye}\". One or two sentences in all, then stop.";
@@ -478,6 +486,7 @@ fn generic_pack(lang: Lang) -> Pack {
         kick_open_assistant: sys(EN_KICK_OPEN_ASSISTANT),
         kick_open_persona_in: sys(EN_KICK_OPEN_PERSONA_IN),
         kick_open_assistant_in: sys(EN_KICK_OPEN_ASSISTANT_IN),
+        kick_open_abroad: EN_KICK_OPEN_ABROAD.to_string(),
         kick_wrap_up: in_caller_language(EN_KICK_WRAP_UP),
         kick_stall_wrap_up: in_caller_language(EN_KICK_STALL_WRAP_UP),
         kick_stall_keep: in_caller_language(EN_KICK_STALL_KEEP),
@@ -545,8 +554,16 @@ fn language_label(pack_lang: Lang, lang: Lang) -> &'static str {
 
 /// The instruction that opens a call, in the instructions of `lang`. `opening`:
 /// the call's opening language when it is not `lang` (`gemini_live::call_lang_plan`)
-/// — the first line is said in it; the system prompt stays `lang`'s.
+/// — the first line is said in it; the system prompt stays `lang`'s. Said to be
+/// a number from abroad ([`kick_open_call`] for a SIM's own number).
 pub fn kick_open(lang: Lang, assistant: bool, opening: Option<Lang>) -> String {
+    kick_open_call(lang, assistant, opening, true)
+}
+
+/// [`kick_open`]; `from_abroad`: the number is of another country than the SIM
+/// that took the call. A call in the SIM's own language (setting `sim_languages`)
+/// is not called foreign.
+pub fn kick_open_call(lang: Lang, assistant: bool, opening: Option<Lang>, from_abroad: bool) -> String {
     let p = pack(lang);
     match opening.filter(|o| *o != lang) {
         None if assistant => p.kick_open_assistant.clone(),
@@ -562,6 +579,7 @@ pub fn kick_open(lang: Lang, assistant: bool, opening: Option<Lang>) -> String {
                 .replace("{caller_language}", language_label(lang, o))
                 .replace("{caller_hello_again}", ph.hello_again)
                 .replace("{caller_hello}", ph.hello)
+                .replace("{abroad}", if from_abroad { p.kick_open_abroad.as_str() } else { "" })
         }
     }
 }
@@ -1176,6 +1194,26 @@ mod tests {
         assert!(k.contains("not with the [Picking up] line in English"), "{k}");
         let k = kick_open(Lang::ZhCn, true, Some(Lang::En));
         assert!(k.contains("改用英语讲") && k.contains("国外号码"), "{k}");
+    }
+
+    #[test]
+    fn a_sims_own_number_is_not_called_foreign() {
+        for lang in locale::ALL {
+            for assistant in [false, true] {
+                for other in locale::ALL.into_iter().filter(|o| *o != lang) {
+                    let home = kick_open_call(lang, assistant, Some(other), false);
+                    let abroad = kick_open_call(lang, assistant, Some(other), true);
+                    assert!(!home.contains('{') && !home.contains('}'), "{lang:?} {other:?}: {home}");
+                    assert!(home.contains(language_label(lang, other)), "{lang:?} {other:?}: {home}");
+                    assert!(abroad.contains(pack(lang).kick_open_abroad.as_str()), "{lang:?} {other:?}: {abroad}");
+                    assert!(!home.contains(pack(lang).kick_open_abroad.as_str()), "{lang:?} {other:?}: {home}");
+                }
+            }
+        }
+        let k = kick_open_call(Lang::ZhTw, false, Some(Lang::En), false);
+        assert!(k.starts_with("【系統指令·不是對方說的話】電話剛接起來：開場這一句改用英文") && !k.contains("國外"), "{k}");
+        let k = kick_open_call(Lang::Ja, false, Some(Lang::En), false);
+        assert!(k.contains("The call has just been picked up: open in English") && !k.contains("abroad"), "{k}");
     }
 
     #[test]

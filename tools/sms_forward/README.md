@@ -114,7 +114,7 @@ file. All are optional.
 | Variable | Default | Meaning |
 |---|---|---|
 | `AGENT_URL` | `http://127.0.0.1:8787` | Where the agent listens. |
-| `AGENT_TOKEN` | *(none)* | The agent's `CALLS_UI_TOKEN`, sent as `Authorization: Bearer <token>`. |
+| `AGENT_TOKEN` | *(none)* | The agent's `CALLS_UI_TOKEN` (the console password), sent as `Authorization: Bearer <token>`. Needed as soon as the console has a password. |
 | `SMS_LANG` | the agent's language | Label language: `en`, `zh-TW`, `zh-CN`, `ja`, `ko`, `es`, `fr`, `de`, `pt`. Unset: the agent's language, asked again every minute; until the agent has told it, messages wait (at most three minutes, then English). |
 | `ADB_BIN` | found automatically | Full path of `adb`. Unset: the adb an agent on this computer reports, then `adb` on the `PATH`, then the Android SDK (`ANDROID_HOME`, `ANDROID_SDK_ROOT`, the usual SDK folders), then a `platform-tools` folder in the repository root or the current folder. |
 | `SMS_SERIALS` | every phone | Only these serials (as in `adb devices`), comma separated. |
@@ -227,7 +227,7 @@ Look at `sms_forward.log` and `health.json` in `SMS_HOME` first.
 | `adb not found` | Install Android platform-tools, or set `ADB_BIN`. |
 | A phone is missing from `health.json`, or its `adb` is `unauthorized` / `offline` | Run `adb devices`. Unlock the phone and accept *Allow USB debugging*; try another cable or port. With `SMS_SERIALS` set, check the serial. |
 | `deliver failed … no answer` | The agent is not running, or `AGENT_URL` is wrong. Messages are kept and sent later. |
-| `deliver failed … 401` | The agent has a `CALLS_UI_TOKEN`; set the same value as `AGENT_TOKEN`. |
+| `deliver failed … 401` | The console has a password (`CALLS_UI_TOKEN`) and `AGENT_TOKEN` is not set or is not the same. Set it to the console password. Until then nothing is forwarded; `health.json` shows `notify_error` and `agent_auth_rejected: true`. |
 | `deliver failed … no notification channel accepted it` | No channel is set up, or every channel failed. Use the test button under *Settings → Notifications*. |
 | `inbox … unreadable` | Normal right after a restart: the inbox stays locked until the phone is unlocked once (*Direct Boot*). Unlock it; what arrived meanwhile follows. If it stays after unlocking, this phone does not let adb read SMS; a rooted phone is read through `su` instead. |
 | Texts arrive late after a power cut or an update | The phone restarted and waited, locked, for its PIN. Unlock it once; install the optional SMS hook to forward texts even before that. |

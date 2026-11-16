@@ -157,7 +157,12 @@ impl Event {
     /// When it is, for the notification line, as the agent's language writes it:
     /// "Nov 14, 14:30" / "11月14日 14:30" (the date alone for whole days).
     pub fn when(&self) -> String {
-        let lang = crate::locale::current();
+        self.when_in(crate::locale::notify_lang())
+    }
+
+    /// [`Event::when`] in `lang`: the owner reads it, so callers pass the
+    /// notification language (setting `notify_language`).
+    pub fn when_in(&self, lang: Lang) -> String {
         match self.times() {
             Some((s, _)) if self.all_day => crate::locale::date_only(lang, &s.date()),
             Some((s, _)) => crate::locale::date_time(lang, &s),
@@ -348,51 +353,121 @@ pub fn ics_url(public_url: &str, what: &str) -> String {
     ics_url_with(public_url, what, &link_secret())
 }
 
-/// HMAC signature for a one-tap notification action (`confirm_task`,
-/// `ignore_task`, `block`, `stall`, `white`, `unblock`).
-pub fn quick_action_sig(op: &str, target: &str) -> String {
-    use hmac::{Hmac, Mac};
-    let secret = link_secret();
-    let key_bytes: &[u8] = if secret.is_empty() {
-        b"bageo-local-quick-action-key"
+/// How long a one-tap notification link (`/calls/api/quick-action`) works.
+pub const QUICK_ACTION_TTL_SECS: i64 = 7 * 24 * 60 * 60;
+
+/// The key one-tap links are signed with while no console password is set:
+/// random, made once per run (never a constant anyone could read in the
+/// source). Links sent before a restart then stop working: their page says
+/// to open the console.
+fn run_key() -> &'static [u8] {
+    static KEY: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+    KEY.get_or_init(|| {
+        let mut k = Vec::with_capacity(64);
+        for _ in 0..4 {
+            k.extend_from_slice(uuid::Uuid::new_v4().as_bytes());
+        }
+        k
+    })
+}
+
+/// The key for one-tap links: the console password when one is set, else
+/// [`run_key`].
+fn quick_action_key_for(secret: &str) -> Vec<u8> {
+    let secret = secret.trim();
+    if secret.is_empty() {
+        run_key().to_vec()
     } else {
-        secret.as_bytes()
-    };
-    let Ok(mut mac) = Hmac::<sha2::Sha256>::new_from_slice(key_bytes) else {
+        secret.as_bytes().to_vec()
+    }
+}
+
+/// HMAC over every part of a one-tap link: the action (`confirm_task`,
+/// `ignore_task`, `block`, `stall`, `white`, `unblock`), its target, the
+/// name it writes and when it stops working (unix seconds). Each part goes in
+/// with its length, so no two links share a signature.
+fn quick_action_sig_with(key: &[u8], op: &str, target: &str, name: &str, exp: i64) -> String {
+    use hmac::{Hmac, Mac};
+    let Ok(mut mac) = Hmac::<sha2::Sha256>::new_from_slice(key) else {
         return String::new();
     };
-    mac.update(b"bageo-qa:");
-    mac.update(op.trim().as_bytes());
-    mac.update(b":");
-    mac.update(target.trim().as_bytes());
+    mac.update(b"bageo-qa2");
+    for part in [op.trim(), target.trim(), name.trim(), &exp.to_string()] {
+        mac.update(&(part.len() as u64).to_le_bytes());
+        mac.update(part.as_bytes());
+    }
     mac.finalize().into_bytes().iter().take(16).map(|b| format!("{b:02x}")).collect()
 }
 
-/// Constant-time check for a one-tap notification action signature.
-pub fn quick_action_sig_ok(op: &str, target: &str, sig: &str) -> bool {
-    let want = quick_action_sig(op, target);
-    !want.is_empty()
-        && want.len() == sig.len()
-        && want.bytes().zip(sig.bytes()).fold(0u8, |d, (a, b)| d | (a ^ b)) == 0
+/// What a one-tap link's signature and time say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QuickLink {
+    /// Signed by this agent and still within its time.
+    Valid,
+    /// Past its time, or an older link without one: nothing is done, the page
+    /// says to open the console.
+    Expired,
+    /// Not signed by this agent (or changed since).
+    Invalid,
 }
 
-/// Signed one-tap action URL for notification buttons/links outside Telegram.
-pub fn quick_action_url(public_url: &str, op: &str, target: &str, name: &str) -> String {
+fn check_quick_action_with(key: &[u8], op: &str, target: &str, name: &str, exp: &str, sig: &str, now: i64) -> QuickLink {
+    let exp = exp.trim();
+    // Links from before links had a time (and a name in their signature):
+    // never acted on.
+    if exp.is_empty() {
+        return QuickLink::Expired;
+    }
+    let Ok(exp) = exp.parse::<i64>() else {
+        return QuickLink::Invalid;
+    };
+    let want = quick_action_sig_with(key, op, target, name, exp);
+    let sig = sig.trim();
+    let same = !want.is_empty()
+        && want.len() == sig.len()
+        && want.bytes().zip(sig.bytes()).fold(0u8, |d, (a, b)| d | (a ^ b)) == 0;
+    if !same {
+        QuickLink::Invalid
+    } else if now > exp {
+        QuickLink::Expired
+    } else {
+        QuickLink::Valid
+    }
+}
+
+/// Check a one-tap link's parts as they came in the address (`exp`: empty for
+/// an older link).
+pub fn check_quick_action(op: &str, target: &str, name: &str, exp: &str, sig: &str) -> QuickLink {
+    let key = quick_action_key_for(&link_secret());
+    check_quick_action_with(&key, op, target, name, exp, sig, chrono::Utc::now().timestamp())
+}
+
+fn quick_action_url_with(key: &[u8], public_url: &str, op: &str, target: &str, name: &str, now: i64) -> String {
     let base = public_url.trim().trim_end_matches('/');
     if base.is_empty() || op.trim().is_empty() || target.trim().is_empty() {
         return String::new();
     }
     let base = base.strip_suffix("/calls").unwrap_or(base);
-    let sig = quick_action_sig(op.trim(), target.trim());
+    let exp = now + QUICK_ACTION_TTL_SECS;
+    let sig = quick_action_sig_with(key, op, target, name, exp);
     let mut u = format!(
-        "{base}/calls/api/quick-action?op={}&target={}&sig={sig}",
+        "{base}/calls/api/quick-action?op={}&target={}",
         pct(op.trim()),
         pct(target.trim()),
     );
     if !name.trim().is_empty() {
         u.push_str(&format!("&name={}", pct(name.trim())));
     }
+    u.push_str(&format!("&exp={exp}&sig={sig}"));
     u
+}
+
+/// Signed one-tap action URL for notification buttons/links outside
+/// Telegram. Opening it shows a page asking to confirm; only that page's
+/// button does the action, within [`QUICK_ACTION_TTL_SECS`].
+pub fn quick_action_url(public_url: &str, op: &str, target: &str, name: &str) -> String {
+    let key = quick_action_key_for(&link_secret());
+    quick_action_url_with(&key, public_url, op, target, name, chrono::Utc::now().timestamp())
 }
 
 fn ics_url_with(public_url: &str, what: &str, token: &str) -> String {
@@ -657,5 +732,55 @@ mod tests {
         let p = extraction_prompt(Lang::Ja, "田中", now());
         assert!(p.contains("2026-11-12 15:00 (Thursday)") && p.contains("in Japanese") && p.contains("田中"));
         assert!(p.contains(r#"{"event": null}"#));
+    }
+
+    /// The parts of a one-tap link as its page receives them (decoded).
+    fn parts(url: &str) -> std::collections::HashMap<String, String> {
+        let q = url.split_once('?').unwrap().1;
+        url::form_urlencoded::parse(q.as_bytes()).into_owned().collect()
+    }
+
+    #[test]
+    fn quick_links_without_a_password_are_not_signed_with_a_public_key() {
+        let key = quick_action_key_for("");
+        assert!(key.len() >= 32);
+        assert_ne!(key.as_slice(), b"bageo-local-quick-action-key".as_slice());
+        assert_eq!(key, quick_action_key_for("  "), "one key for the whole run");
+        assert_eq!(quick_action_key_for("pw-test"), b"pw-test".to_vec());
+        // A link made with someone else's key does not pass here.
+        let now = 1_800_000_000;
+        let forged = quick_action_url_with(b"bageo-local-quick-action-key", "http://bageo.local", "white", "0912000000", "", now);
+        let f = parts(&forged);
+        assert_eq!(
+            check_quick_action_with(&key, "white", "0912000000", "", &f["exp"], &f["sig"], now),
+            QuickLink::Invalid
+        );
+    }
+
+    #[test]
+    fn quick_links_sign_the_name_and_their_time_and_expire() {
+        let key = b"test-link-key".to_vec();
+        let now = 1_800_000_000;
+        let u = quick_action_url_with(&key, "http://bageo.local/calls/", "block", "0912000001", "測試 公司", now);
+        assert!(u.starts_with("http://bageo.local/calls/api/quick-action?op=block&target=0912000001&name="), "{u}");
+        let p = parts(&u);
+        let check = |name: &str, target: &str, exp: &str, at: i64| check_quick_action_with(&key, "block", target, name, exp, &p["sig"], at);
+        assert_eq!(check(&p["name"], "0912000001", &p["exp"], now), QuickLink::Valid);
+        // Another name, number or time with the same signature: refused.
+        assert_eq!(check("別的名字", "0912000001", &p["exp"], now), QuickLink::Invalid);
+        assert_eq!(check(&p["name"], "0912000002", &p["exp"], now), QuickLink::Invalid);
+        let later = (now + QUICK_ACTION_TTL_SECS * 10).to_string();
+        assert_eq!(check(&p["name"], "0912000001", &later, now), QuickLink::Invalid);
+        // Past its time: expired; an older link without a time: expired too.
+        assert_eq!(check(&p["name"], "0912000001", &p["exp"], now + QUICK_ACTION_TTL_SECS + 1), QuickLink::Expired);
+        assert_eq!(check(&p["name"], "0912000001", "", now), QuickLink::Expired);
+        assert_eq!(check(&p["name"], "0912000001", "soon", now), QuickLink::Invalid);
+    }
+
+    #[test]
+    fn the_event_time_is_written_in_the_language_asked_for() {
+        let ev = Event { title: "x".into(), start: "2026-11-20T10:30".into(), end: "2026-11-20T11:30".into(), all_day: false };
+        assert_eq!(ev.when_in(Lang::ZhTw), "11月20日 10:30");
+        assert_ne!(ev.when_in(Lang::En), ev.when_in(Lang::ZhTw));
     }
 }

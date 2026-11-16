@@ -86,6 +86,7 @@ fn msg(channel: &str, chat: &str, sender: &str, body: Body, reply_to_bot: bool) 
         body,
         message_id: "77".to_string(),
         reply_to_bot,
+        direct: false,
     }
 }
 
@@ -301,4 +302,81 @@ async fn sec_replies_go_out_as_plain_text() {
     crate::tg_inbound::send_outbound(&reqwest::Client::new(), &api, "123:TEST", "42", &out).await.unwrap();
     let sent = fake_api::sent(&seen, "sendMessage");
     assert!(sent[0].get("parse_mode").is_none(), "{}", sent[0]);
+}
+
+/// P1: a group switched on without a list of who may give commands let every
+/// member operate the agent. Now nobody there may; the first message gets how
+/// to add one (with the sender's id), then silence. A private chat is as before.
+#[tokio::test]
+async fn sec_a_group_without_a_sender_list_takes_no_commands() {
+    let rig = Rig::new();
+    rig.set(json!({"telegram_bot_token": "123:TESTTOKEN", "telegram_chat_id": "-1001", "telegram_control": true}));
+    let rt = rig.state.settings_store.snapshot();
+    let m = msg(ENV_TELEGRAM, "-1001", "666", text("/status"), false);
+    assert_eq!(access::authorize(&rt, &m), None, "a member of an unlisted group was let in");
+    assert_eq!(access::check(&rt, &m), access::Verdict::NeedsList);
+    let c = Controller::new(rig.state.clone());
+    let hint = c.handle(&m).await.expect("the group is told how to add its list");
+    assert!(hint.text.contains("666") && !hint.text.contains("Bageo 0.") && hint.buttons.is_empty(), "{}", hint.text);
+    assert_eq!(c.handle(&m).await, None, "told once, then silence");
+    // A button press in that group does nothing either.
+    assert_eq!(c.handle(&msg(ENV_TELEGRAM, "-1001", "666", Body::Button("k:x:y".into()), true)).await, None);
+    // Listed: the listed member only.
+    rig.set(json!({"telegram_control_users": ["42"]}));
+    assert!(c.handle(&msg(ENV_TELEGRAM, "-1001", "42", text("/status"), false)).await.is_some());
+    assert_eq!(c.handle(&msg(ENV_TELEGRAM, "-1001", "666", text("/status"), false)).await, None);
+    // A private chat with the bot needs no list.
+    rig.set(json!({"telegram_chat_id": "42", "telegram_control_users": []}));
+    let rt = rig.state.settings_store.snapshot();
+    assert!(access::authorize(&rt, &msg(ENV_TELEGRAM, "42", "42", text("/status"), false)).is_some());
+}
+
+#[test]
+fn sec_only_known_one_to_one_chats_count_as_private() {
+    assert!(access::direct_chat("telegram", "42"));
+    assert!(!access::direct_chat("telegram", "-1001"));
+    assert!(!access::direct_chat("telegram", "@somechannel"));
+    assert!(access::direct_chat("slack", "D0123ABCD"));
+    assert!(!access::direct_chat("slack", "C0123ABCD"));
+    assert!(!access::direct_chat("discord", "123456789012345678"));
+    assert!(!access::direct_chat("matrix", "!room:example.org"));
+}
+
+/// A Discord direct message or a Matrix room of only the owner and the bot is
+/// a private chat: no sender list needed. A server channel or a bigger room
+/// still needs one, and a list that is there still applies.
+#[test]
+fn sec_a_discord_or_matrix_private_chat_needs_no_sender_list() {
+    let base = Settings::from_env();
+    let mut rt = crate::settings_store::RuntimeSettings::from_base(&base);
+    rt.notify_channels = vec![
+        crate::notify::Channel { id: "d1".into(), kind: "discord".into(), enabled: true, token: "test-token-d".into(), target: "123".into(), control: true, ..Default::default() },
+        crate::notify::Channel { id: "m1".into(), kind: "matrix".into(), enabled: true, token: "test-token-m".into(), target: "!room:example.org".into(), control: true, ..Default::default() },
+    ];
+    let ask = |channel: &str, platform: &str, chat: &str, sender: &str, direct: bool| Inbound {
+        channel_id: channel.into(),
+        platform: platform.into(),
+        chat_id: chat.into(),
+        sender_id: sender.into(),
+        body: text("/status"),
+        message_id: "1".into(),
+        reply_to_bot: false,
+        direct,
+    };
+    for (channel, platform, chat, sender) in [("d1", "discord", "123", "111"), ("m1", "matrix", "!room:example.org", "@lee:example.org")] {
+        assert!(access::authorize(&rt, &ask(channel, platform, chat, sender, true)).is_some(), "{platform}: a private chat was refused");
+        assert_eq!(access::check(&rt, &ask(channel, platform, chat, sender, false)), access::Verdict::NeedsList, "{platform}: a group was let in");
+    }
+    // With a list, the private chat still honours it.
+    rt.notify_channels[0].control_users = vec!["111".into()];
+    assert!(access::authorize(&rt, &ask("d1", "discord", "123", "111", true)).is_some());
+    assert_eq!(access::authorize(&rt, &ask("d1", "discord", "123", "222", true)), None);
+}
+
+#[test]
+fn sec_the_list_hint_is_written_in_every_language() {
+    for l in crate::locale::ALL {
+        let t = list_hint_text(l);
+        assert!(t.contains("{id}") && t.contains("Bageo"), "{l:?}");
+    }
 }

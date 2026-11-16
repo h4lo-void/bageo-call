@@ -252,8 +252,8 @@ Pick the app you already check every day:
 | Service | You need | Popular with |
 |---|---|---|
 | [Telegram](#telegram) | bot token, chat ID | anyone; best for appointments |
-| [Discord](#discord) | webhook URL | Discord servers |
-| [Slack / Mattermost](#slack--mattermost) | incoming webhook URL | work chats |
+| [Discord](#discord) | webhook URL, or bot token and channel ID | Discord servers |
+| [Slack / Mattermost](#slack--mattermost) | incoming webhook URL, or bot token and channel ID | work chats |
 | [Microsoft Teams](#microsoft-teams) | workflow webhook URL | Microsoft 365 workplaces |
 | [Google Chat](#google-chat) | webhook URL | Google Workspace |
 | [Rocket.Chat](#rocketchat) | webhook URL | self-hosted team chat |
@@ -318,12 +318,12 @@ chat* for the channel first.
 |---|---|
 | Webhook URL | `https://discord.com/api/webhooks/…` |
 
-To take commands in a Discord channel, also fill in these two fields. Notifications alone do not need them. The steps are in [Chat commands](CHAT_COMMANDS.md#discord).
+Instead of a webhook you can fill in a bot token and a channel ID: one of the two is enough for notifications. With the bot, Bageo can also write to you in a private message: put your own user ID in *Channel ID*. To take commands, fill in the bot token and the channel ID. The steps are in [Chat commands](CHAT_COMMANDS.md#discord).
 
 | Field | Value |
 |---|---|
-| Bot token (for chat commands) | the bot's token |
-| Channel ID (for chat commands) | the ID of the channel to take commands from |
+| Bot token | the bot's token |
+| Channel ID | the ID of the channel, or your own user ID for private messages |
 
 ### Slack / Mattermost
 
@@ -340,13 +340,13 @@ To take commands in a Discord channel, also fill in these two fields. Notificati
 |---|---|
 | Incoming webhook URL | `https://hooks.slack.com/services/…` |
 
-To take commands in a Slack channel (Slack only, not Mattermost), also fill in these three fields. Notifications alone do not need them. The steps are in [Chat commands](CHAT_COMMANDS.md#slack).
+Instead of a webhook you can fill in a bot token and a channel ID: one of the two is enough for notifications. To take commands in a Slack channel (Slack only, not Mattermost), fill in all three fields below. The steps are in [Chat commands](CHAT_COMMANDS.md#slack).
 
 | Field | Value |
 |---|---|
-| Bot token (for chat commands) | the token that starts with `xoxb-` |
+| Bot token | the token that starts with `xoxb-` |
 | App-level token (for chat commands) | the token that starts with `xapp-` |
-| Channel ID (for chat commands) | the ID of the channel to take commands from |
+| Channel ID | the ID of the channel |
 
 ### Microsoft Teams
 
@@ -650,15 +650,15 @@ WeChat shows the first 20 characters of the title as the summary.
 
 1. Create a bot account.
 2. Invite it to a room and join the room with it.
-3. Find the room ID under *Room settings → Advanced* (`!abc…:example.org`).
+3. Find the room ID under *Room settings → Advanced* (`!abc…:example.org`). The room's address (`#name:example.org`) works too.
 
-The room must be unencrypted.
+The room must be unencrypted: Bageo cannot read encrypted rooms, and the test in the settings tells you when a room is encrypted. Create a new room with encryption turned off.
 
 | Field | Value |
 |---|---|
 | Homeserver URL | `https://matrix.example.org` |
 | Access token | the bot account's access token |
-| Room ID | `!…:example.org` |
+| Room ID | `!…:example.org` or `#name:example.org` |
 
 The same channel can also take commands. See [Chat commands](CHAT_COMMANDS.md#matrix).
 

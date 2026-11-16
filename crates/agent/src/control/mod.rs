@@ -134,6 +134,10 @@ pub struct Inbound {
     pub body: Body,
     pub message_id: String,
     pub reply_to_bot: bool,
+    /// Known to be a private chat with the bot (a Discord direct message, a
+    /// Matrix room of only the owner and the bot): it needs no list of who may
+    /// give commands. Telegram and Slack tell it by the chat's id instead.
+    pub direct: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -410,6 +414,46 @@ pub struct Controller {
     memory: Mutex<HashMap<String, Memory>>,
     pushes: broadcast::Sender<Push>,
     gemini_base: String,
+    /// Groups told how to add a sender list ([access::Verdict::NeedsList]): when.
+    hinted: Mutex<HashMap<String, Instant>>,
+}
+
+/// Who sent a command through the API (`POST /calls/api/control/inbound`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApiCaller {
+    /// With the console password (or none is set): the owner.
+    Owner,
+    /// With the MCP token (MCP switched on): what an MCP client may do
+    /// ([crate::mcp]), under its limits.
+    Mcp,
+}
+
+/// Why an API command got no answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApiRefused {
+    /// The sender is not on the list of who may give commands there.
+    NotOnList,
+    /// Over the messages-per-minute limit.
+    TooMany,
+}
+
+/// How often a group without a sender list is told how to add one.
+const LIST_HINT_EVERY: Duration = Duration::from_secs(10 * 60);
+
+/// What a group without a sender list is told (`{id}`: the sender's id).
+fn list_hint_text(lang: locale::Lang) -> &'static str {
+    use locale::Lang;
+    match lang {
+        Lang::ZhTw => "要在這裡下指令，請先到 Bageo 控制台的設定頁，在這個聊天室的「可以下指令的人」填上你的 ID。你的 ID：{id}",
+        Lang::ZhCn => "要在这里下指令，请先到 Bageo 控制台的设置页，在这个聊天室的“可以下指令的人”填上你的 ID。你的 ID：{id}",
+        Lang::Ja => "ここから操作するには、Bageo コンソールの設定ページで、このチャットの「操作できる人」にあなたの ID を入れてください。あなたの ID：{id}",
+        Lang::Ko => "여기서 명령하려면 Bageo 콘솔 설정 페이지에서 이 채팅의 '명령할 수 있는 사람'에 내 ID를 넣으세요. 내 ID: {id}",
+        Lang::Es => "Para dar comandos aquí, en la configuración de la consola de Bageo añade tu ID en «Quién puede dar comandos» de este chat. Tu ID: {id}",
+        Lang::Fr => "Pour donner des commandes ici, ajoutez votre ID dans « Qui peut donner des commandes » de ce chat, dans les réglages de la console Bageo. Votre ID : {id}",
+        Lang::De => "Um hier Befehle zu geben, trage in den Einstellungen der Bageo-Konsole deine ID unter „Wer Befehle geben darf“ für diesen Chat ein. Deine ID: {id}",
+        Lang::Pt => "Para dar comandos aqui, coloque seu ID em “Quem pode dar comandos” deste chat, nas configurações do console do Bageo. Seu ID: {id}",
+        Lang::En => "To give commands here, add your ID under “Who may give commands” for this chat in the Bageo console's settings. Your ID: {id}",
+    }
 }
 
 impl Controller {
@@ -427,6 +471,7 @@ impl Controller {
             memory: Mutex::new(HashMap::new()),
             pushes,
             gemini_base: gemini_base.trim_end_matches('/').to_string(),
+            hinted: Mutex::new(HashMap::new()),
         })
     }
 
@@ -448,15 +493,28 @@ impl Controller {
     /// The answer to one message, or None: send nothing (see the module documentation).
     pub async fn handle(&self, m: &Inbound) -> Option<Outbound> {
         let rt = self.settings();
-        let Some(grant) = access::authorize(&rt, m) else {
-            warn!(
-                channel = m.channel_id.as_str(),
-                platform = m.platform.as_str(),
-                chat = m.chat_id.as_str(),
-                sender = m.sender_id.as_str(),
-                "chat command from a chat or sender that may not give commands: no answer"
-            );
-            return None;
+        let grant = match access::check(&rt, m) {
+            access::Verdict::Allow(grant) => grant,
+            access::Verdict::NeedsList => {
+                warn!(
+                    channel = m.channel_id.as_str(),
+                    platform = m.platform.as_str(),
+                    chat = m.chat_id.as_str(),
+                    sender = m.sender_id.as_str(),
+                    "chat command in a group without a list of who may give commands: not run"
+                );
+                return self.list_hint(&rt, m);
+            }
+            access::Verdict::Deny => {
+                warn!(
+                    channel = m.channel_id.as_str(),
+                    platform = m.platform.as_str(),
+                    chat = m.chat_id.as_str(),
+                    sender = m.sender_id.as_str(),
+                    "chat command from a chat or sender that may not give commands: no answer"
+                );
+                return None;
+            }
         };
         if !self.limits.allow_message(&grant.chat, rt.control_commands_per_minute) {
             warn!(chat = grant.chat.as_str(), "chat over its messages-per-minute limit: no answer");
@@ -468,6 +526,26 @@ impl Controller {
             Body::Text(text) => self.on_text(&rt, &grant.chat, m, text, w).await?,
         };
         Some(self.scrub(&rt, out))
+    }
+
+    /// A group switched on without a list of who may give commands: say how
+    /// to add one (with the sender's id), at most once per [LIST_HINT_EVERY]
+    /// per chat, only for a typed message.
+    fn list_hint(&self, rt: &RuntimeSettings, m: &Inbound) -> Option<Outbound> {
+        if !matches!(m.body, Body::Text(_)) || m.sender_id.trim().is_empty() {
+            return None;
+        }
+        let key = access::chat_key(&m.channel_id, &m.chat_id);
+        {
+            let mut hinted = self.hinted.lock().unwrap_or_else(|e| e.into_inner());
+            if hinted.get(&key).is_some_and(|t| t.elapsed() < LIST_HINT_EVERY) {
+                return None;
+            }
+            hinted.insert(key, Instant::now());
+        }
+        let sender: String = m.sender_id.trim().chars().filter(|c| !c.is_control()).take(80).collect();
+        let text = list_hint_text(locale::notify_lang()).replace("{id}", &sender);
+        Some(self.scrub(rt, Outbound { text, ..Default::default() }))
     }
 
     async fn on_text(&self, rt: &RuntimeSettings, chat: &str, m: &Inbound, text: &str, w: &'static Words) -> Option<Outbound> {
@@ -596,10 +674,28 @@ impl Controller {
     }
 
     /// Execute a command or natural-language message from an authenticated API /
-    /// webhook client (`POST /calls/api/control/inbound`).
-    pub async fn handle_external(&self, chat: &str, sender: &str, text: &str) -> Outbound {
+    /// webhook client (`POST /calls/api/control/inbound`). The sender lists of
+    /// the chat it names apply, and the messages-per-minute limit: the owner's
+    /// under that chat's own key, an MCP client's under the MCP clients' one.
+    /// An MCP client does what MCP lets it ([Self::mcp_text]).
+    pub async fn handle_external(&self, chat: &str, sender: &str, text: &str, caller: ApiCaller) -> Result<Outbound, ApiRefused> {
         let rt = self.settings();
+        if !access::api_sender_ok(&rt, chat, sender) {
+            warn!(chat, sender, "API command from a sender not on the chat's list: refused");
+            return Err(ApiRefused::NotOnList);
+        }
+        let (key, per_minute) = match caller {
+            ApiCaller::Owner => (format!("api|{}", chat.trim()), rt.control_commands_per_minute),
+            ApiCaller::Mcp => (crate::mcp::MCP_CHAT.to_string(), crate::mcp::PER_MINUTE),
+        };
+        if !self.limits.allow_message(&key, per_minute) {
+            return Err(ApiRefused::TooMany);
+        }
         let w = words(locale::notify_lang());
+        if caller == ApiCaller::Mcp {
+            let out = self.mcp_text(&rt, text, w).await;
+            return Ok(self.scrub(&rt, out));
+        }
         let dummy = Inbound {
             channel_id: chat.to_string(),
             platform: "api".to_string(),
@@ -608,12 +704,62 @@ impl Controller {
             body: Body::Text(text.to_string()),
             message_id: String::new(),
             reply_to_bot: true,
+            direct: false,
         };
         let out = self
-            .on_text(&rt, chat, &dummy, text, w)
+            .on_text(&rt, &key, &dummy, text, w)
             .await
             .unwrap_or_else(|| reply(&Outcome::Hint, w));
-        self.scrub(&rt, out)
+        Ok(self.scrub(&rt, out))
+    }
+
+    /// A command from an MCP client through the API: what MCP's tools allow and
+    /// nothing more. Reading always; a call or stopping one only when MCP may
+    /// make calls (`mcp_calls` confirm / direct, a call then waiting for the
+    /// owner's yes unless direct, within `mcp_errands_per_hour`); a line for the
+    /// AI on a call only with direct, typed as a command. Never the phone's
+    /// mode, a to-do's decision, the contact lists, or a yes to a confirmation.
+    async fn mcp_text(&self, rt: &RuntimeSettings, text: &str, w: &'static Words) -> Outbound {
+        let text = text.trim();
+        if text.is_empty() {
+            return reply(&Outcome::Hint, w);
+        }
+        let typed = text.starts_with('/');
+        let action = if typed {
+            match command::parse_slash(text) {
+                Parsed::Action(a) => a,
+                Parsed::Usage(c) => return reply(&Outcome::Usage { command: c.to_string() }, w),
+                Parsed::Unknown => return reply(&Outcome::Hint, w),
+            }
+        } else {
+            match self.understand(rt, text).await {
+                Some(a) => a,
+                None => return reply(&Outcome::Hint, w),
+            }
+        };
+        let action = match command::validate(action) {
+            Ok(a) => a,
+            Err(code) => return reply(&Outcome::Failed { code: code.to_string() }, w),
+        };
+        let mode = rt.mcp_calls.as_str();
+        let calls = mode == "confirm" || mode == "direct";
+        info!(action = action_kind(&action), mcp_calls = mode, "API command with the MCP token");
+        let o = match action {
+            a @ (Action::Help
+            | Action::Status
+            | Action::Calls(_)
+            | Action::Call { .. }
+            | Action::Tasks
+            | Action::Errands
+            | Action::Contacts { .. }) => self.perform(rt, crate::mcp::MCP_CHAT, a).await,
+            Action::Errand { target, task } if calls => {
+                self.request_errand(rt, crate::mcp::MCP_CHAT, &target, &task, mode == "direct", rt.mcp_errands_per_hour).await
+            }
+            a @ Action::Cancel { .. } if calls => self.perform(rt, crate::mcp::MCP_CHAT, a).await,
+            a @ Action::Say { .. } if mode == "direct" && typed => self.perform(rt, crate::mcp::MCP_CHAT, a).await,
+            _ => Outcome::Failed { code: "not_allowed".to_string() },
+        };
+        reply(&o, w)
     }
 
     async fn set_contact_kind(&self, kind: &str, number: &str, name: &str) -> Outcome {

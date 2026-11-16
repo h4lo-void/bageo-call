@@ -765,11 +765,68 @@ fn csv_row(fields: &[&str]) -> String {
 }
 
 fn csv_escape(s: &str) -> String {
-    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
+    // A cell a spreadsheet would read as a formula (= + - @, or a tab / CR in
+    // front) gets a leading apostrophe: it shows as text, never runs.
+    let guarded;
+    let s = if s.starts_with(['=', '+', '-', '@', '\t', '\r']) {
+        guarded = format!("'{s}");
+        guarded.as_str()
+    } else {
+        s
+    };
+    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') || s.contains('\t') {
         format!("\"{}\"", s.replace('"', "\"\""))
     } else {
         s.to_string()
     }
+}
+
+/// A request that came through a reverse proxy on this machine (nginx, Caddy,
+/// a tunnel): it says so in one of these headers. Such a request is not this
+/// machine's own, even when it reaches the agent from 127.0.0.1.
+pub fn came_through_proxy(headers: &HeaderMap) -> bool {
+    ["x-forwarded-for", "forwarded", "x-real-ip", "cf-connecting-ip", "x-forwarded-host", "true-client-ip"]
+        .iter()
+        .any(|h| headers.contains_key(*h))
+}
+
+/// Redirects an outgoing request may follow: at most 10, and only on the same
+/// host and port (http may turn into https, never back). Keys sent in headers
+/// (`x-goog-api-key`, `Access-Token`, bot tokens) then never reach another
+/// server that a redirect points at.
+pub fn same_host_redirects() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() >= 10 {
+            return attempt.error("too many redirects");
+        }
+        let ok = attempt.previous().first().is_some_and(|first| redirect_stays(first, attempt.url()));
+        if ok {
+            attempt.follow()
+        } else {
+            attempt.stop()
+        }
+    })
+}
+
+fn redirect_stays(from: &reqwest::Url, to: &reqwest::Url) -> bool {
+    let scheme_ok = from.scheme() == to.scheme() || (from.scheme() == "http" && to.scheme() == "https");
+    let port = |u: &reqwest::Url| match (u.port(), u.scheme()) {
+        (Some(p), _) => Some(p),
+        // http → https on the default ports counts as the same place.
+        (None, "http") | (None, "https") => None,
+        (None, _) => u.port_or_known_default(),
+    };
+    scheme_ok
+        && from.host_str().is_some_and(|h| to.host_str().is_some_and(|t| t.eq_ignore_ascii_case(h)))
+        && port(from) == port(to)
+}
+
+/// An HTTP client for requests that carry a key: [`same_host_redirects`].
+pub fn keyed_http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .redirect(same_host_redirects())
+        .build()
+        .unwrap_or_default()
 }
 
 async fn audio(
@@ -2020,10 +2077,72 @@ struct QuickActionQuery {
     #[serde(default)]
     sig: String,
     #[serde(default)]
+    exp: String,
+    #[serde(default)]
     token: Option<String>,
 }
 
+/// The words of the one-tap link pages, in the owner's language.
+struct QuickWords {
+    ask_title: &'static str,
+    ask_button: &'static str,
+    expired_title: &'static str,
+    expired_detail: &'static str,
+    invalid_title: &'static str,
+    invalid_detail: &'static str,
+    block: &'static str,
+    stall: &'static str,
+    white: &'static str,
+    unblock: &'static str,
+}
+
+fn quick_words(lang: crate::locale::Lang) -> QuickWords {
+    use crate::locale::Lang;
+    let w = |ask_title, ask_button, expired_title, expired_detail, invalid_title, invalid_detail, block, stall, white, unblock| QuickWords {
+        ask_title,
+        ask_button,
+        expired_title,
+        expired_detail,
+        invalid_title,
+        invalid_detail,
+        block,
+        stall,
+        white,
+        unblock,
+    };
+    match lang {
+        Lang::ZhTw => w("確定要這樣做嗎？", "確定", "連結已過期", "請打開控制台處理。", "連結無效", "這個連結不能用，請打開控制台處理。", "加入黑名單", "設為陪聊", "加入白名單", "移出名單"),
+        Lang::ZhCn => w("确定要这样做吗？", "确定", "链接已过期", "请打开控制台处理。", "链接无效", "这个链接不能用，请打开控制台处理。", "加入黑名单", "设为陪聊", "加入白名单", "移出名单"),
+        Lang::Ja => w("この操作を実行しますか？", "実行する", "リンクの有効期限が切れています", "コンソールを開いて操作してください。", "このリンクは使えません", "コンソールを開いて操作してください。", "着信拒否", "引き延ばし", "ホワイトリスト", "リストから外す"),
+        Lang::Ko => w("이 작업을 실행할까요?", "실행", "링크가 만료되었습니다", "콘솔을 열어 처리하세요.", "사용할 수 없는 링크입니다", "콘솔을 열어 처리하세요.", "차단 목록", "시간 끌기", "화이트리스트", "목록에서 제외"),
+        Lang::Es => w("¿Hacer esto?", "Confirmar", "El enlace caducó", "Abre la consola para hacerlo allí.", "Este enlace no funciona", "Abre la consola para hacerlo allí.", "Lista negra", "Entretener", "Lista blanca", "Quitar de la lista"),
+        Lang::Fr => w("Faire ceci ?", "Confirmer", "Ce lien a expiré", "Ouvrez la console pour le faire.", "Ce lien ne fonctionne pas", "Ouvrez la console pour le faire.", "Liste noire", "Les faire parler", "Liste blanche", "Retirer de la liste"),
+        Lang::De => w("Wirklich ausführen?", "Bestätigen", "Dieser Link ist abgelaufen", "Öffne die Konsole und erledige es dort.", "Dieser Link funktioniert nicht", "Öffne die Konsole und erledige es dort.", "Sperrliste", "Hinhalten", "Whitelist", "Von der Liste nehmen"),
+        Lang::Pt => w("Fazer isto?", "Confirmar", "Este link expirou", "Abra o console para fazer por lá.", "Este link não funciona", "Abra o console para fazer por lá.", "Bloquear", "Manter falando", "Lista branca", "Tirar da lista"),
+        Lang::En => w("Do this?", "Confirm", "This link has expired", "Open the console to do it there.", "This link doesn't work", "Open the console to do it there.", "Block", "Stall", "Whitelist", "Remove from list"),
+    }
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
 fn quick_action_html(title: &str, detail: &str, ok: bool) -> Response {
+    quick_action_page(
+        title,
+        detail,
+        if ok { StatusCode::OK } else { StatusCode::BAD_REQUEST },
+        "",
+    )
+}
+
+/// One small page for a one-tap link. `form`: HTML put above the console
+/// button (the confirm form), already escaped.
+fn quick_action_page(title: &str, detail: &str, status: StatusCode, form: &str) -> Response {
     use crate::locale::Lang;
     let lang = crate::locale::notify_lang();
     let (html_lang, open_lbl) = match lang {
@@ -2037,13 +2156,8 @@ fn quick_action_html(title: &str, detail: &str, ok: bool) -> Response {
         Lang::Pt => ("pt-BR", "Abrir o console do Bageo"),
         Lang::En => ("en", "Open Bageo Console"),
     };
-    let tone = if ok { "" } else { " warn" };
-    let esc = |s: &str| {
-        s.replace('&', "&amp;")
-            .replace('<', "&lt;")
-            .replace('>', "&gt;")
-            .replace('"', "&quot;")
-    };
+    let tone = if status.is_success() { "" } else { " warn" };
+    let esc = html_escape;
     let html = format!(
         "<!doctype html><html lang=\"{html_lang}\"><head><meta charset=\"utf-8\">\
          <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
@@ -2052,38 +2166,135 @@ fn quick_action_html(title: &str, detail: &str, ok: bool) -> Response {
          .card{{background:#fff;border:1px solid #e6e1d6;border-radius:14px;max-width:420px;width:100%;padding:24px;box-shadow:0 4px 16px rgba(0,0,0,.05);text-align:center}}\
          h1{{font-size:18px;margin:0 0 8px}}.warn h1{{color:#b3261e}}p{{font-size:14px;color:#5c584f;margin:0 0 18px;word-break:break-word}}\
          a.btn{{display:inline-block;background:#2f5e4e;color:#fff;text-decoration:none;padding:9px 18px;border-radius:8px;font-size:14px;font-weight:600}}</style></head>\
-         <body><div class=\"card{tone}\"><h1>{}</h1><p>{}</p><a class=\"btn\" href=\"/calls/\">{open_lbl}</a></div></body></html>",
+         form{{margin:0 0 14px}}button{{background:#2f5e4e;color:#fff;border:0;padding:11px 26px;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer}}\
+         form+a.btn{{background:#fff;color:#2f5e4e;border:1px solid #2f5e4e}}</style></head>\
+         <body><div class=\"card{tone}\"><h1>{}</h1><p>{}</p>{form}<a class=\"btn\" href=\"/calls/\">{open_lbl}</a></div></body></html>",
         esc(title),
         esc(title),
         esc(detail)
     );
     Response::builder()
-        .status(if ok { StatusCode::OK } else { StatusCode::BAD_REQUEST })
+        .status(status)
         .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
         .header(header::CACHE_CONTROL, "no-store")
+        .header("x-frame-options", "DENY")
+        .header("content-security-policy", "frame-ancestors 'none'")
+        .header("referrer-policy", "no-referrer")
         .body(Body::from(html))
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
-/// Signed one-tap action endpoint (`GET/POST /calls/api/quick-action`) used by
-/// interactive buttons and links across all notification channels.
+/// Who may use a one-tap link: the console password (only when one is set),
+/// else the link's own signature and time ([`crate::calendar::check_quick_action`]).
+fn quick_action_access(settings: &Settings, headers: &HeaderMap, q: &QuickActionQuery) -> crate::calendar::QuickLink {
+    let has_password = !crate::settings_store::active_ui_token(&settings.calls_ui_token).trim().is_empty();
+    if has_password && token_ok_parts(settings, headers, q.token.as_deref()) {
+        return crate::calendar::QuickLink::Valid;
+    }
+    crate::calendar::check_quick_action(
+        &q.op,
+        &q.target,
+        q.name.as_deref().unwrap_or(""),
+        &q.exp,
+        &q.sig,
+    )
+}
+
+/// Signed one-tap action endpoint (`/calls/api/quick-action`) used by the
+/// buttons and links of every notification channel. Opening it (GET: a tap,
+/// a chat app's link preview, an image on another site) only shows what it
+/// would do and a button; that button (POST) does it.
 async fn quick_action(
     State(state): State<CallsState>,
+    method: axum::http::Method,
     headers: HeaderMap,
+    axum::extract::RawQuery(raw_query): axum::extract::RawQuery,
     Query(q): Query<QuickActionQuery>,
+) -> Response {
+    let access = quick_action_access(&state.settings, &headers, &q);
+    quick_action_run(state, method, headers, raw_query, q, access).await
+}
+
+/// [`quick_action`] once its access is known.
+async fn quick_action_run(
+    state: CallsState,
+    method: axum::http::Method,
+    headers: HeaderMap,
+    raw_query: Option<String>,
+    q: QuickActionQuery,
+    access: crate::calendar::QuickLink,
 ) -> Response {
     use crate::locale::Lang;
     let op = q.op.trim();
     let target = q.target.trim();
-    let authed = token_ok_parts(&state.settings, &headers, q.token.as_deref())
-        || crate::calendar::quick_action_sig_ok(op, target, q.sig.trim());
-    if !authed {
-        return unauthorized();
-    }
     let wants_json = headers
         .get(header::ACCEPT)
         .and_then(|v| v.to_str().ok())
         .is_some_and(|s| s.contains("application/json"));
+    let lang = crate::locale::notify_lang();
+    let qw = quick_words(lang);
+    match access {
+        crate::calendar::QuickLink::Valid => {}
+        crate::calendar::QuickLink::Expired => {
+            if wants_json {
+                return (
+                    StatusCode::GONE,
+                    Json(json!({"ok": false, "code": "link_expired", "title": qw.expired_title, "message": qw.expired_detail})),
+                )
+                    .into_response();
+            }
+            return quick_action_page(qw.expired_title, qw.expired_detail, StatusCode::GONE, "");
+        }
+        crate::calendar::QuickLink::Invalid => {
+            if wants_json {
+                return unauthorized();
+            }
+            return quick_action_page(qw.invalid_title, qw.invalid_detail, StatusCode::UNAUTHORIZED, "");
+        }
+    }
+    if method != axum::http::Method::POST {
+        let w = crate::control::words::words(lang);
+        let p = crate::locale::phrases(lang);
+        let name = q.name.as_deref().unwrap_or("").trim();
+        let detail = match op {
+            "confirm_task" | "ignore_task" => {
+                let label = if op == "confirm_task" { p.ap_confirm } else { p.ap_decline };
+                let about = match state.task_store.get(target).await {
+                    Some(t) => t.summary.lines().next().unwrap_or("").chars().take(200).collect::<String>(),
+                    None => String::new(),
+                };
+                if about.trim().is_empty() {
+                    label.to_string()
+                } else {
+                    format!("{label}{}{}", crate::locale::kv_sep(), about.trim())
+                }
+            }
+            "block" | "stall" | "white" | "unblock" => {
+                let label = match op {
+                    "block" => qw.block,
+                    "stall" => qw.stall,
+                    "white" => qw.white,
+                    _ => qw.unblock,
+                };
+                format!("{label}{}{}", crate::locale::kv_sep(), crate::control::words::person(w, name, target))
+            }
+            _ => op.to_string(),
+        };
+        if wants_json {
+            return (
+                StatusCode::OK,
+                Json(json!({"ok": true, "needs_confirmation": true, "title": qw.ask_title, "message": detail})),
+            )
+                .into_response();
+        }
+        let action = format!("?{}", raw_query.as_deref().unwrap_or(""));
+        let form = format!(
+            "<form method=\"post\" action=\"{}\"><button type=\"submit\">{}</button></form>",
+            html_escape(&action),
+            html_escape(qw.ask_button)
+        );
+        return quick_action_page(qw.ask_title, &detail, StatusCode::OK, &form);
+    }
     let reply_out = |ok: bool, title: &str, detail: &str| -> Response {
         if wants_json {
             (
@@ -2095,7 +2306,6 @@ async fn quick_action(
             quick_action_html(title, detail, ok)
         }
     };
-    let lang = crate::locale::notify_lang();
     let w = crate::control::words::words(lang);
     let rt = state.settings_store.snapshot();
     match op {
@@ -2210,6 +2420,172 @@ async fn quick_action(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn quick_state(root: &std::path::Path) -> CallsState {
+        let mut base = Settings::from_env();
+        base.calls_data_dir = root.to_string_lossy().into_owned();
+        base.telegram_bot_token = String::new();
+        base.telegram_chat_id = String::new();
+        CallsState {
+            settings: base.clone(),
+            store: crate::calls::CallStore::new(root.join("calls"), true, false, 30),
+            settings_store: SettingsStore::load(base),
+            task_store: TaskStore::new(root.join("tasks")),
+            http: reqwest::Client::new(),
+            control: ControlRegistry::new(),
+            ambience: Arc::new(crate::ambience::AmbienceLibrary::load(root, 16000)),
+            previews: Arc::new(crate::voice_preview::VoicePreviews::new(root.join("voice_preview"), root.join("voices"))),
+            phones: PhoneDevices::new(),
+            contacts: crate::contacts::ContactStore::open(root.join("contacts.json")),
+            errands: crate::errands::ErrandStore::open(root.join("errands.json"), crate::errands::SimBook::in_memory()),
+        }
+    }
+
+    fn quick_query(op: &str, target: &str) -> QuickActionQuery {
+        QuickActionQuery {
+            op: op.into(),
+            target: target.into(),
+            name: Some("測試店家".into()),
+            sig: "x".into(),
+            exp: "1".into(),
+            token: None,
+        }
+    }
+
+    async fn body_text(r: Response) -> String {
+        let b = axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap();
+        String::from_utf8_lossy(&b).into_owned()
+    }
+
+    /// Opening a one-tap link (a chat app's link preview, an image on another
+    /// site) only shows the question; the page's button (POST) does it.
+    #[tokio::test]
+    async fn quick_action_get_only_asks_and_post_does_it() {
+        let root = std::env::temp_dir().join(format!("bageo-qa-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let state = quick_state(&root);
+        let number = "0912000777";
+        let raw = Some("op=white&target=0912000777&exp=1&sig=x".to_string());
+        let r = quick_action_run(
+            state.clone(),
+            axum::http::Method::GET,
+            HeaderMap::new(),
+            raw.clone(),
+            quick_query("white", number),
+            crate::calendar::QuickLink::Valid,
+        )
+        .await;
+        assert_eq!(r.status(), StatusCode::OK);
+        let page = body_text(r).await;
+        assert!(page.contains("<form method=\"post\" action=\"?op=white&amp;target=0912000777&amp;exp=1&amp;sig=x\">"), "{page}");
+        assert!(state.contacts.lookup(number, None).is_none(), "a GET changed the list");
+        // Anything else than a valid link: nothing done, a clear page.
+        for access in [crate::calendar::QuickLink::Expired, crate::calendar::QuickLink::Invalid] {
+            let r = quick_action_run(
+                state.clone(),
+                axum::http::Method::POST,
+                HeaderMap::new(),
+                raw.clone(),
+                quick_query("white", number),
+                access,
+            )
+            .await;
+            assert!(r.status() == StatusCode::GONE || r.status() == StatusCode::UNAUTHORIZED, "{:?}", r.status());
+            assert!(state.contacts.lookup(number, None).is_none());
+        }
+        let r = quick_action_run(
+            state.clone(),
+            axum::http::Method::POST,
+            HeaderMap::new(),
+            raw,
+            quick_query("white", number),
+            crate::calendar::QuickLink::Valid,
+        )
+        .await;
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(state.contacts.lookup(number, None).map(|c| c.kind), Some("whitelist".to_string()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn quick_link_pages_have_words_in_every_language() {
+        for l in crate::locale::ALL {
+            let w = quick_words(l);
+            for s in [w.ask_title, w.ask_button, w.expired_title, w.expired_detail, w.invalid_title, w.invalid_detail, w.block, w.stall, w.white, w.unblock] {
+                assert!(!s.trim().is_empty(), "{l:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn csv_cells_that_look_like_formulas_stay_text() {
+        assert_eq!(csv_escape("=HYPERLINK(\"http://x\")"), "\"'=HYPERLINK(\"\"http://x\"\")\"");
+        assert_eq!(csv_escape("+886912000000"), "'+886912000000");
+        assert_eq!(csv_escape("-1+2"), "'-1+2");
+        assert_eq!(csv_escape("@SUM(A1)"), "'@SUM(A1)");
+        assert_eq!(csv_escape("\t=1"), "\"'\t=1\"");
+        assert_eq!(csv_escape("\r=1"), "\"'\r=1\"");
+        assert_eq!(csv_escape("0912000000"), "0912000000");
+        assert_eq!(csv_escape("a,b"), "\"a,b\"");
+    }
+
+    #[test]
+    fn a_proxied_request_is_recognized() {
+        assert!(!came_through_proxy(&HeaderMap::new()));
+        for h in ["x-forwarded-for", "forwarded", "x-real-ip", "cf-connecting-ip"] {
+            let mut m = HeaderMap::new();
+            m.insert(h, "203.0.113.5".parse().unwrap());
+            assert!(came_through_proxy(&m), "{h}");
+        }
+    }
+
+    #[test]
+    fn redirects_are_followed_only_on_the_same_host() {
+        let u = |s: &str| reqwest::Url::parse(s).unwrap();
+        assert!(redirect_stays(&u("https://api.example.org/v1/a"), &u("https://api.example.org/v1/b")));
+        assert!(redirect_stays(&u("http://api.example.org/a"), &u("https://API.example.org/a")));
+        assert!(!redirect_stays(&u("https://api.example.org/a"), &u("https://evil.example.net/a")));
+        assert!(!redirect_stays(&u("https://api.example.org/a"), &u("http://api.example.org/a")));
+        assert!(!redirect_stays(&u("https://api.example.org/a"), &u("https://api.example.org:8443/a")));
+    }
+
+    /// A key sent in a header never reaches the host a redirect points at.
+    #[tokio::test]
+    async fn a_redirect_to_another_host_does_not_get_the_key() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let other = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let other_port = other.local_addr().unwrap().port();
+        let hit = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let hit2 = hit.clone();
+        tokio::spawn(async move {
+            if let Ok((mut s, _)) = other.accept().await {
+                hit2.store(true, std::sync::atomic::Ordering::SeqCst);
+                let mut buf = [0u8; 2048];
+                let _ = s.read(&mut buf).await;
+                let _ = s.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n").await;
+            }
+        });
+        let first = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let first_port = first.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            if let Ok((mut s, _)) = first.accept().await {
+                let mut buf = [0u8; 2048];
+                let _ = s.read(&mut buf).await;
+                // "localhost" is another host name than 127.0.0.1.
+                let reply = format!("HTTP/1.1 307 Temporary Redirect\r\nlocation: http://localhost:{other_port}/steal\r\ncontent-length: 0\r\n\r\n");
+                let _ = s.write_all(reply.as_bytes()).await;
+            }
+        });
+        let r = keyed_http_client()
+            .get(format!("http://127.0.0.1:{first_port}/v1"))
+            .header("x-goog-api-key", "test-key-not-real")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status().as_u16(), 307, "the redirect was followed");
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(!hit.load(std::sync::atomic::Ordering::SeqCst));
+    }
 
     fn h(range: &str) -> HeaderMap {
         let mut m = HeaderMap::new();

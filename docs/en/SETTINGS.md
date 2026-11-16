@@ -72,7 +72,7 @@ With *Answer hidden numbers* off, the "not available" announcement uses your *La
 *Whitelist call transfer* works in one of three ways:
 
 - **Off: the AI answers** (`off`): the AI answers; nothing is transferred.
-- **Always: put through to your phone** (`direct`): the AI phone declines the call, your carrier's forward-when-busy rings your own phone, and you get a notification at once. Turn forwarding on first by dialing `**67*your number#` on the AI phone.
+- **Always: put through to your phone** (`direct`): the AI phone declines the call, your carrier's forward-when-busy rings your own phone, and you get a notification at once. Turn forwarding on first: switch the phone to normal phone, then dial `**67*your number#` on it.
 - **Only when it is urgent** (`emergency`): the AI answers and gives the caller your number only if they say it is urgent, and alerts you.
 
 **More options.** These three are folded under *More options* in How it answers, and most people never change them:
@@ -85,7 +85,7 @@ With *Answer hidden numbers* off, the "not available" announcement uses your *La
 
 *Get the AI ready while the phone rings* connects to Gemini and prepares the first words before pick-up. It costs one short Gemini session even when the caller hangs up while it rings.
 
-**The caller's language.** There is nothing to set: when a caller clearly speaks another language, or asks whether you speak one, the AI switches to it.
+**The caller's language.** *Reply in the caller's language* is on by default: when a caller clearly speaks another language, or asks whether you speak one, the AI switches to it. Turn it off to keep the AI in your *Language* on every call. It is saved as `reply_in_caller_language`.
 
 **Calls from abroad and the carrier's warning.** Taiwan's carriers play a recorded fraud warning at the start of every call from abroad. When a Taiwanese SIM takes a call from another country (a `+…` or `00…` number with another country code), the AI waits for that warning to end: it speaks once the line goes quiet, or after 7.5 seconds at most, and says its opening line only once.
 

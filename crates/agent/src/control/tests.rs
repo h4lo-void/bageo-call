@@ -103,6 +103,7 @@ fn from(channel: &str, chat: &str, sender: &str, body: Body) -> Inbound {
         body,
         message_id: "77".to_string(),
         reply_to_bot: false,
+        direct: false,
     }
 }
 
@@ -549,4 +550,19 @@ async fn review_a_question_is_not_counted_as_sent_to_a_chat_no_bot_can_reach() {
         wait: Duration::from_secs(40),
     };
     assert!(!(c.question_hook())(&q), "the AI would wait 40 s on the phone for an answer no chat can give");
+}
+
+/// The fixed word is Bageo (UI_TEXT_RULES), in every language.
+#[test]
+fn the_status_texts_say_bageo_and_not_the_agent() {
+    for lang in crate::locale::ALL {
+        let w = words(lang);
+        for t in w.menu.iter().map(|(_, what)| *what).chain([w.no_phones]) {
+            let low = t.to_lowercase();
+            assert!(!low.contains("agent") && !t.contains("エージェント") && !t.contains("에이전트"), "{lang:?}: {t}");
+        }
+        assert!(w.no_phones.contains("Bageo"), "{lang:?}: {}", w.no_phones);
+        let status = w.menu.iter().map(|(_, what)| *what).find(|what| what.contains("Bageo"));
+        assert!(status.is_some(), "{lang:?}: the status line names Bageo");
+    }
 }

@@ -278,19 +278,21 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 |---|---|
 | `POST /calls/api/notify/test` | Body `{"channel": {kind, url, token, target, id?}}`. Sends the test message to that one channel (stored secrets are filled in by `id`). |
 | `POST /calls/api/notify/send` | Body `{"title": "...", "body": "..."}`. Sends your message to every enabled channel (an empty `title` becomes "Bageo"; an empty `body` is HTTP 400 `empty_body`). `{ok: true}` when at least one channel accepted it. The [SMS forwarder](../../tools/sms_forward/README.md) uses this route. |
-| `GET /calls/api/quick-action` · `POST /calls/api/quick-action` | Signed one-tap action links included in notifications across all 32 channels (`?act=confirm\|ignore\|block\|stall\|white&target=<id_or_number>&sig=<hmac>`). Verified with HMAC-SHA256 so no console login is needed when tapped from a phone notification; localized in all 9 languages. |
+| `GET /calls/api/quick-action` · `POST /calls/api/quick-action` | Signed one-tap action links included in notifications across all 32 channels (`?act=confirm\|ignore\|block\|stall\|white&target=<id_or_number>&sig=<hmac>`). Opening a link (`GET`) only shows a confirmation page; the action runs when you press the button on that page (`POST`). A link stops working after 7 days. Verified with HMAC-SHA256 so no console login is needed; localized in all 9 languages. |
 | `POST /calls/api/control/inbound` | Universal chat command webhook, for example `{"text": "calls 5", "user": "owner", "channel": "line"}`. Runs a chat command and returns `{ok, text}` in your notification language. |
 | `GET /calls/api/auth-status` · `POST /calls/api/initial-password` | Public status check (`{ok, password_required, needs_initial_password_setup}`) and first-time password setup (`{"password": "..."}`, allowed only when no password is set yet). |
 
 Details for `POST /calls/api/notify/test`:
 
 - Answers HTTP 200 `{ok: true}`, 400 `unknown_channel`, or 502 `{ok: false, code, field, kind, error}`.
-- `code` says what went wrong: `missing_field`, `bad_url`, `bad_value`, `auth_failed`, `service_not_found`, `http_error`, `service_error`, `network_error`, `send_failed`.
+- `code` says what went wrong: `missing_field`, `bad_url`, `bad_value`, `auth_failed`, `service_not_found`, `http_error`, `service_error`, `network_error`, `send_failed`, `bot_problem` (Discord turned the bot away), `room_encrypted` (a Matrix room with encryption), `blocked_address` (an address Bageo does not send to).
 - `field` is `url`, `token` or `target` (or empty); `error` is the service's answer.
 
 `POST /calls/api/control/inbound` works with Slack, Discord, LINE, WeCom, DingTalk, Feishu/Lark, Mattermost, Rocket.Chat, Zulip, Matrix, Nextcloud Talk, Synology Chat, Home Assistant, n8n, or curl.
 
 Chat commands accepted by `POST /calls/api/control/inbound`: `status`, `calls`, `call`, `todos`, `accept`, `decline`, `errand`, `errands`, `say`, `cancel`, `phone`, `block`, `stall`, `white`, `unblock`, `help`.
+
+With the MCP token ([MCP](MCP.md)), this API does only what `mcp_calls` allows. While it is `off` (the default), the token can look things up but cannot change anything through a command.
 
 The JSON your own webhook receives, and every event type, is described in
 [Notifications](NOTIFICATIONS.md#webhook-json).

@@ -321,6 +321,34 @@ fn is_gemini(endpoint: &Endpoint) -> bool {
 /// ("Anliegen: Einladung zum Abendessen heute um"). It is asked to think
 /// little (`reasoning_effort` low, which every Gemini model takes).
 fn chat_payload(endpoint: &Endpoint, model: &str, system: &str, user: &str, max_tokens: u32) -> Value {
+    let mut payload = model_request(model, system, user, max_tokens);
+    if is_gemini(endpoint) {
+        payload["reasoning_effort"] = json!("low");
+    }
+    payload
+}
+
+/// Tokens an OpenAI reasoning model (o1, o3, o4-mini, gpt-5…) gets at least:
+/// its thinking counts against the limit, and with a few hundred the answer
+/// comes back empty.
+const OPENAI_REASONING_MIN_TOKENS: u32 = 4_000;
+/// Tokens `deepseek-reasoner` gets at least, for the same reason.
+const DEEPSEEK_REASONER_MIN_TOKENS: u32 = 8_000;
+
+/// OpenAI's reasoning models: they refuse `temperature` and `max_tokens`
+/// (HTTP 400) and take `max_completion_tokens` instead. A provider prefix
+/// (`openai/o3-mini`) is ignored.
+fn is_openai_reasoning(model: &str) -> bool {
+    let m = model.trim().to_ascii_lowercase();
+    let m = m.rsplit('/').next().unwrap_or("");
+    m.starts_with("gpt-5") || ["o1", "o3", "o4"].iter().any(|p| m == *p || m.strip_prefix(p).is_some_and(|rest| rest.starts_with('-')))
+}
+
+/// The chat request for `model`, whichever family it is: the usual
+/// `temperature` and `max_tokens`; for OpenAI's reasoning models
+/// `max_completion_tokens` and no `temperature`, with room to think; for
+/// `deepseek-reasoner` room to think as well.
+fn model_request(model: &str, system: &str, user: &str, max_tokens: u32) -> Value {
     let mut payload = json!({
         "model": model,
         "messages": [
@@ -328,11 +356,17 @@ fn chat_payload(endpoint: &Endpoint, model: &str, system: &str, user: &str, max_
             {"role": "user", "content": user},
         ],
         "stream": false,
-        "temperature": 0.2,
-        "max_tokens": max_tokens,
     });
-    if is_gemini(endpoint) {
-        payload["reasoning_effort"] = json!("low");
+    if is_openai_reasoning(model) {
+        payload["max_completion_tokens"] = json!(max_tokens.max(OPENAI_REASONING_MIN_TOKENS));
+    } else {
+        payload["temperature"] = json!(0.2);
+        let tokens = if model.to_ascii_lowercase().contains("reasoner") {
+            max_tokens.max(DEEPSEEK_REASONER_MIN_TOKENS)
+        } else {
+            max_tokens
+        };
+        payload["max_tokens"] = json!(tokens);
     }
     payload
 }
@@ -605,16 +639,7 @@ pub async fn chat_completions_model(
             m
         }
     };
-    let payload = json!({
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        "stream": false,
-        "temperature": 0.2,
-        "max_tokens": max_tokens,
-    });
+    let payload = model_request(model, system, user, max_tokens);
     let resp = http
         .post(DEEPSEEK_API_URL)
         .bearer_auth(api_key.trim())
@@ -883,6 +908,8 @@ pub fn overlay_summary_matter(summary: &str, transcript: &str) -> String {
                 || t.starts_with("来电:")
                 || t.starts_with("來電：")
                 || t.starts_with("對方：")
+                || t.starts_with("对方：")
+                || t.starts_with("对方:")
         }) {
             lines.insert(i + 1, format!("事情：{phrase}"));
         } else {
@@ -2070,5 +2097,49 @@ mod translate_tests {
             let sp = summary_system_prompt(lang, "Alex", &[]);
             assert!(!sp.contains('{') && !sp.contains('}'), "{lang:?}: placeholder in summary prompt");
         }
+    }
+
+    #[test]
+    fn openai_reasoning_models_take_max_completion_tokens_and_no_temperature() {
+        for m in ["o1", "o1-mini", "o3", "o3-mini", "o4-mini", "gpt-5", "gpt-5-mini", "gpt-5.1", "openai/o3-mini", " O4-mini "] {
+            let p = model_request(m, "sys", "call", 400);
+            assert!(p.get("temperature").is_none() && p.get("max_tokens").is_none(), "{m}: {p}");
+            // Thinking counts against the limit: room for it.
+            assert_eq!(p["max_completion_tokens"], 4_000, "{m}");
+            assert_eq!(p["messages"][1]["content"], "call");
+        }
+        assert_eq!(model_request("gpt-5", "s", "u", 6_000)["max_completion_tokens"], 6_000);
+        // Every other model is asked as before.
+        for m in ["gpt-4o", "gpt-4.1-mini", "deepseek-chat", "gemini-flash-latest", "omni-model", "o10", "llama-3-70b"] {
+            let p = model_request(m, "sys", "call", 400);
+            assert_eq!(p["temperature"], 0.2, "{m}");
+            assert_eq!(p["max_tokens"], 400, "{m}");
+            assert!(p.get("max_completion_tokens").is_none(), "{m}");
+        }
+        let openai = Endpoint { url: "https://api.openai.com/v1/chat/completions".into(), key: "k".into(), models: vec!["o3-mini".into()] };
+        let p = chat_payload(&openai, "o3-mini", "sys", "call", summary_max_tokens(&openai));
+        assert!(p.get("temperature").is_none() && p.get("max_tokens").is_none() && p.get("reasoning_effort").is_none());
+        assert_eq!(p["max_completion_tokens"], 4_000);
+    }
+
+    #[test]
+    fn the_deepseek_reasoner_fallback_gets_room_to_think() {
+        let p = model_request("deepseek-reasoner", "sys", "call", 400);
+        assert_eq!(p["max_tokens"], 8_000);
+        assert_eq!(p["temperature"], 0.2);
+        assert_eq!(model_request("deepseek-reasoner", "s", "u", 20_000)["max_tokens"], 20_000);
+        let deepseek = Endpoint { url: DEEPSEEK_API_URL.into(), key: "k".into(), models: vec![DEEPSEEK_MODEL.into(), "deepseek-reasoner".into()] };
+        let p = chat_payload(&deepseek, "deepseek-reasoner", "sys", "call", summary_max_tokens(&deepseek));
+        assert_eq!(p["max_tokens"], 8_000);
+        assert_eq!(chat_payload(&deepseek, DEEPSEEK_MODEL, "sys", "call", summary_max_tokens(&deepseek))["max_tokens"], 400);
+    }
+
+    #[test]
+    fn a_simplified_chinese_summary_gets_the_matter_after_its_caller_line() {
+        let out = overlay_summary_matter("对方：0900\nAI 回复：只有打招呼\n要处理：无", "對方：記得繳水費喔");
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines[0], "对方：0900", "{out}");
+        assert_eq!(lines[1], "事情：缴水费", "{out}");
+        assert_eq!(lines.len(), 4, "{out}");
     }
 }

@@ -232,7 +232,8 @@ pub struct RuntimeSettings {
     #[serde(default)]
     pub knowledge_notes: String,
     /// Switch to the caller's language when it is not the agent's.
-    #[serde(default)]
+    /// On unless the owner turned it off.
+    #[serde(default = "default_reply_in_caller_language")]
     pub reply_in_caller_language: bool,
     /// Country calling code of the phone's SIM, digits only (`886`, `1`, `81`):
     /// how blocked numbers written with `+…` match the national form.
@@ -418,6 +419,12 @@ fn default_answer_style() -> String {
 
 fn default_country_code() -> String {
     String::new()
+}
+
+/// A caller who speaks another language is answered in it: on unless the owner
+/// turned it off (the AI did so on every call before the setting existed).
+fn default_reply_in_caller_language() -> bool {
+    true
 }
 
 fn default_auto() -> String {
@@ -707,7 +714,7 @@ impl RuntimeSettings {
             owner_aliases: clean_owner_aliases(&split_list(&env_or("OWNER_ALIASES", "")), &env_or("OWNER_NAME", "")),
             answer_style: sanitize_answer_style(&env_or("ANSWER_STYLE", "assistant")),
             knowledge_notes: env_or("KNOWLEDGE_NOTES", ""),
-            reply_in_caller_language: env_bool("REPLY_IN_CALLER_LANGUAGE", false),
+            reply_in_caller_language: env_bool("REPLY_IN_CALLER_LANGUAGE", default_reply_in_caller_language()),
             country_code: digits_only(&env_or("COUNTRY_CODE", "")),
             summary_api_base: env_or("SUMMARY_API_BASE", ""),
             summary_model: env_or("SUMMARY_MODEL", ""),
@@ -796,16 +803,37 @@ impl RuntimeSettings {
         self.answer_style != "persona"
     }
 
-    /// Country calling code: the setting, else Taiwan's for zh-TW, else none.
+    /// Country calling code: the setting; else Taiwan's for zh-TW; else the
+    /// country of the SIMs the connected phones reported (the language's own
+    /// country when one of them is in it); else the language's own country.
     pub fn effective_country_code(&self) -> String {
+        self.effective_country_code_with(&crate::phone_region::seen_sims())
+    }
+
+    /// [`Self::effective_country_code`] with the SIM countries (ISO 3166
+    /// alpha-2, lowercase) the phones reported given.
+    pub fn effective_country_code_with(&self, sims: &[String]) -> String {
         let c = digits_only(&self.country_code);
         if !c.is_empty() {
-            c
-        } else if self.lang() == crate::locale::Lang::ZhTw {
-            "886".to_string()
-        } else {
-            String::new()
+            return c;
         }
+        let lang = self.lang();
+        if lang == crate::locale::Lang::ZhTw {
+            return "886".to_string();
+        }
+        let own = language_country(lang);
+        let iso = if sims.iter().any(|s| s == own) {
+            own
+        } else {
+            sims.iter().map(String::as_str).find(|s| crate::phone_region::calling_code(s).is_some()).unwrap_or(own)
+        };
+        crate::phone_region::calling_code(iso).unwrap_or("").to_string()
+    }
+
+    /// The country (ISO 3166 alpha-2, lowercase) a number without a country
+    /// code reads in when nothing else says: the language's own.
+    pub fn default_region(&self) -> &'static str {
+        language_country(self.lang())
     }
 
     /// What the Live session's helpers read (`locale::set_active`).
@@ -821,9 +849,13 @@ impl RuntimeSettings {
         }
     }
 
-    fn call_prompt(&self, stall: crate::gemini_live::StallPrompt) -> String {
+    /// A call's prompt in `lang` (None: the setting `language`). A call in a SIM's
+    /// own language (setting `sim_languages`, [`crate::gemini_live::CallLangPlan::prompt_lang`])
+    /// gets its prompt, its rules and the identity guard in that language.
+    fn call_prompt(&self, stall: crate::gemini_live::StallPrompt, lang: Option<crate::locale::Lang>) -> String {
+        let lang = lang.unwrap_or_else(|| self.lang());
         crate::prompts::build(&crate::prompts::Ctx {
-            lang: self.lang(),
+            lang,
             assistant: self.is_assistant_style(),
             owner: &self.owner_name,
             aliases: &self.owner_aliases,
@@ -831,7 +863,7 @@ impl RuntimeSettings {
             status: if self.owner_status_enabled { &self.owner_status_text } else { "" },
             stall,
             knowledge: &self.knowledge_notes,
-            carrier_note: self.lang() == crate::locale::Lang::ZhTw,
+            carrier_note: lang == crate::locale::Lang::ZhTw,
             auto_language: self.reply_in_caller_language,
         })
     }
@@ -844,7 +876,12 @@ impl RuntimeSettings {
 
     /// System prompt the session switches to once a call is judged sales / scam.
     pub fn persona_stall_system_prompt(&self) -> String {
-        self.call_prompt(crate::gemini_live::StallPrompt::Full)
+        self.persona_stall_system_prompt_in(None)
+    }
+
+    /// [`Self::persona_stall_system_prompt`] in `lang` (None: the setting's).
+    pub fn persona_stall_system_prompt_in(&self, lang: Option<crate::locale::Lang>) -> String {
+        self.call_prompt(crate::gemini_live::StallPrompt::Full, lang)
     }
 
     /// Persona-mode normal-call cap in seconds (setting clamped to 3–30 minutes).
@@ -873,13 +910,22 @@ impl RuntimeSettings {
 
     /// System prompt plus optional desk-status block for this call.
     pub fn gemini_system_prompt_for_call(&self) -> String {
+        self.gemini_system_prompt_for_call_in(None)
+    }
+
+    /// [`Self::gemini_system_prompt_for_call`]; persona mode builds it in `lang`
+    /// (None: the setting's).
+    pub fn gemini_system_prompt_for_call_in(&self, lang: Option<crate::locale::Lang>) -> String {
         if self.gemini_persona_mode {
             use crate::gemini_live::StallPrompt;
-            return self.call_prompt(if self.persona_stall_spam {
-                StallPrompt::ListenFirst
-            } else {
-                StallPrompt::Off
-            });
+            return self.call_prompt(
+                if self.persona_stall_spam {
+                    StallPrompt::ListenFirst
+                } else {
+                    StallPrompt::Off
+                },
+                lang,
+            );
         }
         let base = if self.gemini_system_prompt.trim().is_empty() {
             crate::gemini_live::default_system_prompt().to_string()
@@ -1039,6 +1085,7 @@ impl RuntimeSettings {
         self.whitelist_mode = sanitize_whitelist_mode(&self.whitelist_mode);
         self.whitelist_forward_number = self.whitelist_forward_number.trim().chars().filter(|c| !c.is_control()).take(32).collect();
         self.country_code = digits_only(&self.country_code);
+        self.public_url = sanitize_public_url(&self.public_url);
         self.mdns_name = crate::mdns::parse_name_setting(&self.mdns_name);
         self.appointment_mode = sanitize_appointment_mode(&self.appointment_mode);
         self.calendar_app = crate::calendar::sanitize_app(&self.calendar_app);
@@ -1177,9 +1224,9 @@ fn console_url(
     mdns_on: bool,
     lan_ip: impl FnOnce(std::net::IpAddr) -> Option<std::net::Ipv4Addr>,
 ) -> String {
-    let own = public_url.trim();
+    let own = sanitize_public_url(public_url);
     if !own.is_empty() {
-        return own.to_string();
+        return own;
     }
     let Some(listen) = listen.filter(|ip| !ip.is_loopback()) else {
         return String::new();
@@ -1939,6 +1986,9 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
         ov.summary_provider = Some(sanitize_summary_provider(&v));
     }
     p_string(patch, "public_url", &mut ov.public_url);
+    if let Some(v) = ov.public_url.take() {
+        ov.public_url = Some(sanitize_public_url(&v));
+    }
     p_string(patch, "mdns_name", &mut ov.mdns_name);
     if let Some(v) = ov.mdns_name.take() {
         ov.mdns_name = Some(crate::mdns::parse_name_setting(&v));
@@ -2043,6 +2093,38 @@ fn normalize_number(s: &str) -> String {
 /// Outbound dial gating uses `callback::callback_whitelist_allows`, not this.
 pub fn blocklist_hit(_list: &[String], _caller: &str) -> bool {
     false
+}
+
+/// The country each language is mainly spoken in (ISO 3166 alpha-2): where a
+/// number without a country code is dialled when no SIM or setting says.
+fn language_country(lang: crate::locale::Lang) -> &'static str {
+    use crate::locale::Lang;
+    match lang {
+        Lang::ZhTw => "tw",
+        Lang::ZhCn => "cn",
+        Lang::En => "us",
+        Lang::Ja => "jp",
+        Lang::Ko => "kr",
+        Lang::Es => "es",
+        Lang::Fr => "fr",
+        Lang::De => "de",
+        Lang::Pt => "pt",
+    }
+}
+
+/// `public_url` as stored: only a web address (`http://` or `https://`) is
+/// kept. Anything else (`javascript:`, `data:`, a bare host) is cleared, so the
+/// console never shows or opens a link that runs a script.
+pub fn sanitize_public_url(s: &str) -> String {
+    let t = s.trim();
+    let lower = t.to_ascii_lowercase();
+    let ok = (lower.starts_with("http://") && t.len() > "http://".len())
+        || (lower.starts_with("https://") && t.len() > "https://".len());
+    if ok && !t.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        t.to_string()
+    } else {
+        String::new()
+    }
 }
 
 /// A phone number as the national digits the phones report. With Taiwan's
@@ -2190,19 +2272,33 @@ const REJECT_PREFIX_MIN_DIGITS: usize = 4;
 /// Blacklist `kind == "blacklist"`): same national number, or it starts with
 /// an entry ending in `*`. Hidden / garbled numbers never match.
 pub fn reject_number_hit(list: &[RejectEntry], caller: &str) -> bool {
-    reject_entry_for(list, caller).is_some()
-        || crate::contacts::is_blacklist(caller, None).is_some()
+    reject_number_hit_on(list, caller, None)
+}
+
+/// [`reject_number_hit`] for a call that came in on the SIM of country `sim`
+/// (ISO 3166 alpha-2): a number without a country code reads as dialled there
+/// (`03-1234-5678` on a Japanese SIM is `+81 3 1234 5678`), as the Contacts
+/// Blacklist reads it too. None: the owner's country.
+pub fn reject_number_hit_on(list: &[RejectEntry], caller: &str, sim: Option<&str>) -> bool {
+    reject_entry_for(list, caller, sim).is_some()
+        || crate::contacts::is_blacklist(caller, sim).is_some()
 }
 
 /// Why the caller's number is on the blocked-numbers list, when a reason was given.
 pub fn reject_reason(list: &[RejectEntry], caller: &str) -> Option<String> {
-    if let Some(r) = reject_entry_for(list, caller)
+    reject_reason_on(list, caller, None)
+}
+
+/// [`reject_reason`] for a call that came in on the SIM of country `sim`
+/// ([`reject_number_hit_on`]).
+pub fn reject_reason_on(list: &[RejectEntry], caller: &str, sim: Option<&str>) -> Option<String> {
+    if let Some(r) = reject_entry_for(list, caller, sim)
         .map(|e| e.reason.trim().to_string())
         .filter(|r| !r.is_empty())
     {
         return Some(r);
     }
-    crate::contacts::is_blacklist(caller, None).and_then(|c| {
+    crate::contacts::is_blacklist(caller, sim).and_then(|c| {
         let note = c.note.trim();
         let name = c.name.trim();
         if !note.is_empty() && !name.is_empty() && name != caller.trim() {
@@ -2217,7 +2313,16 @@ pub fn reject_reason(list: &[RejectEntry], caller: &str) -> Option<String> {
     })
 }
 
-fn reject_entry_for<'a>(list: &'a [RejectEntry], caller: &str) -> Option<&'a RejectEntry> {
+fn reject_entry_for<'a>(list: &'a [RejectEntry], caller: &str, sim: Option<&str>) -> Option<&'a RejectEntry> {
+    // The SIM's country code reads the caller ID (and the owner's entries) the
+    // way that SIM does; without one, the owner's.
+    let cc = sim
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(crate::phone_region::calling_code)
+        .map(str::to_string)
+        .unwrap_or_else(crate::locale::country_code);
+    let national_digits = |s: &str| national_digits_for(s, &cc);
     let c = national_digits(caller);
     if c.len() < 5 {
         return None;
@@ -2877,6 +2982,36 @@ mod tests {
     }
 
     #[test]
+    fn reply_in_the_callers_language_is_on_unless_turned_off() {
+        let dir = std::env::temp_dir().join(format!("bageo-call-reply-lang-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(dir.join("config")).expect("temp settings dir");
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        // Never touched (no settings file, or one saved before the setting existed): on.
+        if std::env::var("REPLY_IN_CALLER_LANGUAGE").is_err() {
+            assert!(RuntimeSettings::from_base(&base).reply_in_caller_language);
+            assert!(SettingsStore::load(base.clone()).snapshot().reply_in_caller_language);
+            std::fs::write(dir.join("config").join("settings.json"), r#"{"language":"zh-TW"}"#).unwrap();
+            assert!(SettingsStore::load(base.clone()).snapshot().reply_in_caller_language);
+        }
+        // Turned off and saved: stays off, also after a restart; on again when turned on.
+        let store = SettingsStore::load(base.clone());
+        assert!(!store.apply_patch(&json!({ "reply_in_caller_language": false })).unwrap().reply_in_caller_language);
+        assert!(!SettingsStore::load(base.clone()).snapshot().reply_in_caller_language);
+        assert!(store.apply_patch(&json!({ "reply_in_caller_language": true })).unwrap().reply_in_caller_language);
+        assert!(SettingsStore::load(base).snapshot().reply_in_caller_language);
+        // The prompt of a call carries the note to switch exactly when it is on.
+        let mut rt = RuntimeSettings::from_base(&Settings::from_env());
+        rt.gemini_persona_mode = true;
+        rt.language = "zh-TW".into();
+        rt.reply_in_caller_language = true;
+        assert!(rt.gemini_system_prompt_for_call().contains("【對方講別的語言】"));
+        rt.reply_in_caller_language = false;
+        assert!(!rt.gemini_system_prompt_for_call().contains("【對方講別的語言】"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn summary_provider_defaults_gemini_and_resolves_older_values() {
         use crate::deepseek::{summary_endpoint_for, Provider, DEEPSEEK_API_URL};
         let dir = std::env::temp_dir().join(format!(
@@ -3127,5 +3262,83 @@ mod review_t4_tests {
             );
             let _ = std::fs::remove_dir_all(&dir);
         }
+    }
+
+    #[test]
+    fn the_default_country_is_the_sims_then_the_languages_own() {
+        let mut rt = RuntimeSettings::from_base(&Settings::from_env());
+        rt.country_code.clear();
+        let none: Vec<String> = Vec::new();
+        for (lang, want, region) in [
+            ("zh-TW", "886", "tw"),
+            ("zh-CN", "86", "cn"),
+            ("en", "1", "us"),
+            ("ja", "81", "jp"),
+            ("ko", "82", "kr"),
+            ("es", "34", "es"),
+            ("fr", "33", "fr"),
+            ("de", "49", "de"),
+            ("pt", "351", "pt"),
+        ] {
+            rt.language = lang.into();
+            assert_eq!(rt.effective_country_code_with(&none), want, "{lang}");
+            assert_eq!(rt.default_region(), region, "{lang}");
+        }
+        // A connected phone's SIM first; the language's own country when one
+        // of the SIMs is there; a SIM country nobody knows is left out.
+        rt.language = "ja".into();
+        assert_eq!(rt.effective_country_code_with(&["us".to_string()]), "1");
+        assert_eq!(rt.effective_country_code_with(&["gb".to_string(), "jp".to_string()]), "81");
+        assert_eq!(rt.effective_country_code_with(&["zz".to_string()]), "81");
+        // Traditional Chinese keeps Taiwan; the setting beats everything.
+        rt.language = "zh-TW".into();
+        assert_eq!(rt.effective_country_code_with(&["us".to_string()]), "886");
+        rt.language = "ja".into();
+        rt.country_code = "44".into();
+        assert_eq!(rt.effective_country_code_with(&["us".to_string()]), "44");
+    }
+
+    #[test]
+    fn a_blocked_number_is_read_the_way_the_calls_sim_reads_it() {
+        let blocked = |number: &str, reason: &str| RejectEntry { number: number.into(), reason: reason.into() };
+        let list = vec![blocked("+81 3 1234 5678", "")];
+        // A Japanese SIM reports the local form of a +81 number.
+        assert!(reject_number_hit_on(&list, "03-1234-5678", Some("jp")));
+        assert!(reject_number_hit_on(&list, "+81 3 1234 5678", Some("jp")));
+        assert!(!reject_number_hit_on(&list, "03-1234-5679", Some("jp")));
+        assert_eq!(reject_reason_on(&[blocked("+81 3 1234 5678", "営業")], "0312345678", Some("jp")).as_deref(), Some("営業"));
+    }
+
+    #[test]
+    fn the_public_address_is_a_web_address_or_nothing() {
+        for (given, kept) in [
+            ("https://bageo.example.com/", "https://bageo.example.com/"),
+            ("  HTTP://192.168.1.20:8787  ", "HTTP://192.168.1.20:8787"),
+            ("javascript:alert(1)", ""),
+            ("JaVaScRiPt:alert(1)", ""),
+            ("data:text/html,x", ""),
+            ("ftp://files.example.com", ""),
+            ("bageo.example.com", ""),
+            ("http://", ""),
+            ("https://a b", ""),
+            ("", ""),
+        ] {
+            assert_eq!(sanitize_public_url(given), kept, "{given}");
+        }
+        use std::net::{IpAddr, Ipv4Addr};
+        let any = Some(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+        let lan = |_: IpAddr| Some(Ipv4Addr::new(192, 168, 1, 20));
+        assert_eq!(console_url("javascript:alert(1)", any, 8787, "bageo", true, lan), "http://bageo.local:8787/");
+        // Saved through the settings page: cleared.
+        let dir = std::env::temp_dir().join(format!("bageo-call-public-url-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("temp settings dir");
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base);
+        let rt = store.apply_patch(&json!({ "public_url": "javascript:alert(1)" })).unwrap();
+        assert_eq!(rt.public_url, "");
+        let rt = store.apply_patch(&json!({ "public_url": "https://bageo.example.com" })).unwrap();
+        assert_eq!(rt.public_url, "https://bageo.example.com");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -112,6 +112,72 @@ const MIN_NATIONAL_DIGITS: usize = 4;
 /// E.164 numbers have at most 15 digits.
 const MAX_DIGITS: usize = 15;
 
+/// Countries whose numbers are dialled at home without a trunk prefix: calling
+/// code and the fewest digits a full number written that way has. A cut-off
+/// number (or a short code) is shorter. +1 and Italy have no floor here: their
+/// own length rules apply after this check.
+const NO_TRUNK_CODES: &[(&str, usize)] = &[
+    ("1", 0),
+    ("39", 0),
+    // Russia, Kazakhstan (trunk 8 or none), Belarus (trunk 8)
+    ("7", 10),
+    ("375", 9),
+    // Spain, Portugal
+    ("34", 9),
+    ("351", 9),
+    // China (mobiles and 400/800 lines; landlines carry the area code's 0)
+    ("86", 10),
+    // Singapore, Hong Kong, Macau, Brunei
+    ("65", 8),
+    ("852", 8),
+    ("853", 8),
+    ("673", 7),
+    // Poland, Norway, Denmark, Greece, Czechia, Luxembourg, Estonia, Latvia, Iceland, Cyprus, Malta
+    ("48", 9),
+    ("47", 8),
+    ("45", 8),
+    ("30", 10),
+    ("420", 9),
+    ("352", 8),
+    ("372", 7),
+    ("371", 8),
+    ("354", 7),
+    ("357", 8),
+    ("356", 8),
+    // Latin America: Mexico, Peru, Chile, Colombia, Brazil, Uruguay
+    ("52", 10),
+    ("51", 8),
+    ("56", 9),
+    ("57", 8),
+    ("55", 10),
+    ("598", 8),
+    // Gulf states
+    ("965", 8),
+    ("973", 8),
+    ("974", 8),
+    ("968", 8),
+];
+
+/// Whether `digits` (a number written without `+` or `00`) reads as a full
+/// number dialled at home in the country with calling code `code`: written
+/// with the trunk `0` (Taiwan, Japan, Germany, Korea, the United Kingdom…), with
+/// the country code but no plus, or, in the countries that have no trunk prefix
+/// (China `13800138000`, Spain `612345678`, Portugal, Singapore, Hong Kong,
+/// Russia, North America, Italy…), as a national number long enough to be a
+/// whole one. Anything else is a short code or a cut-off number.
+pub fn dialled_at_home(code: &str, digits: &str) -> bool {
+    if digits.starts_with('0') {
+        return true;
+    }
+    if digits.starts_with(code) && digits.len() >= code.len() + 8 {
+        return true;
+    }
+    NO_TRUNK_CODES
+        .iter()
+        .find(|&&(c, _)| c == code)
+        .is_some_and(|&(_, min)| digits.len() >= min)
+}
+
 /// Every country this module knows, ISO 3166 alpha-2, lowercase.
 pub fn countries() -> impl Iterator<Item = &'static str> {
     COUNTRIES.iter().map(|&(iso, _)| iso)
@@ -403,5 +469,43 @@ mod tests {
         let seen = seen_sims();
         assert!(seen.contains(&"tw".to_string()));
         assert!(seen.windows(2).all(|w| w[0] < w[1]));
+    }
+
+    #[test]
+    fn numbers_dialled_at_home_follow_each_countrys_own_rules() {
+        // No trunk prefix: the national number as it is.
+        for (code, digits) in [
+            ("86", "13800138000"),
+            ("34", "612345678"),
+            ("34", "915551234"),
+            ("351", "912345678"),
+            ("65", "91234567"),
+            ("852", "91234567"),
+            ("7", "89121234567"),
+            ("7", "9121234567"),
+            ("1", "2025550143"),
+            ("39", "3123456789"),
+        ] {
+            assert!(dialled_at_home(code, digits), "+{code} {digits}");
+        }
+        // The trunk 0, or the country code without its plus, anywhere.
+        for (code, digits) in [("886", "0912345678"), ("81", "09012345678"), ("49", "015112345678"), ("886", "886912345678"), ("86", "01012345678")] {
+            assert!(dialled_at_home(code, digits), "+{code} {digits}");
+        }
+        // Countries with a trunk 0 keep the rule: bare digits are cut off; so
+        // is a number too short to be a whole one where there is no trunk.
+        for (code, digits) in [
+            ("886", "912345678"),
+            ("886", "223456789"),
+            ("81", "9012345678"),
+            ("49", "15112345678"),
+            ("82", "1012345678"),
+            ("44", "7912345678"),
+            ("34", "1234"),
+            ("86", "138001"),
+            ("65", "9123"),
+        ] {
+            assert!(!dialled_at_home(code, digits), "+{code} {digits}");
+        }
     }
 }

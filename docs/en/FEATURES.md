@@ -196,7 +196,7 @@ Every contact can be assigned to one of four lists (from the Contacts page, via 
 - **Whitelist (`whitelist`)**: close friends, family and clients, with three ways to put them through (**Settings → How it answers**, *Transfer*; the Contacts page can set it too):
   1. *Off: the AI answers*: the AI knows who is calling and answers naturally.
   2. *Only when it is urgent*: the AI answers first. If the caller says it is urgent (in any of the 9 languages), the AI gives them your phone number and Bageo sends you an urgent alert at once.
-  3. *Always: put through to your phone*: the AI phone declines the call, your carrier's forward-when-busy rings your own phone, and you get a notification at once. Turn forwarding on first by dialing `**67*your number#` on the AI phone.
+  3. *Always: put through to your phone*: the AI phone declines the call, your carrier's forward-when-busy rings your own phone, and you get a notification at once. Turn forwarding on first: switch the phone to normal phone, then dial `**67*your number#` on it.
 - **Blacklist (`blacklist`)**: handled like blocked numbers: turned away while ringing, or after a short "not available" announcement, without using the AI.
 - **Stall list (`stall`)**: known debt collectors, sales callers or harassers. The AI starts wasting their time the moment the call connects, without waiting for keywords.
 
@@ -212,7 +212,8 @@ Every contact can be assigned to one of four lists (from the Contacts page, via 
 - **Abroad calls wait for the warning.** On a Taiwanese SIM, the AI waits out the
   carrier's international-call warning before speaking.
 - **It follows the caller**, switching mid-call when they speak another
-  language or ask whether the AI speaks one.
+  language or ask whether the AI speaks one. This is on by default; turn it
+  off with *Reply in the caller's language* under **Settings → How it answers**.
 - **Transcripts keep the original words**: lines said in another language stay
   as they were said, each with a translation into your notification language.
 - **Other names callers use for you** (`owner_aliases`), such as an English

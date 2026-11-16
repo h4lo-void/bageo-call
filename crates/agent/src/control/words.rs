@@ -296,7 +296,7 @@ pub fn ask_mode(w: &Words, phone: &str, mode: &str) -> String {
 const EN: Words = Words {
     menu: [
         ("", "List the commands"),
-        ("", "Agent version, phones and calls in progress"),
+        ("", "Bageo version, phones and calls in progress"),
         ("[n] [today|yesterday|YYYY-MM-DD] [missed|scam] [word or number]", "Recent calls"),
         ("<#>", "One call: summary, transcript excerpt, link"),
         ("", "To-dos waiting for you"),
@@ -319,7 +319,7 @@ const EN: Words = Words {
     hint: "I didn't get that. Send /help for the commands.",
     usage: "Use: {1}",
     phones: "Phones",
-    no_phones: "No phone has connected since the agent started.",
+    no_phones: "No phone has connected since Bageo started.",
     mode_ai: "AI answers",
     mode_normal: "normal phone",
     offline: "offline",
@@ -383,7 +383,7 @@ const EN: Words = Words {
 const ZH_TW: Words = Words {
     menu: [
         ("", "列出指令"),
-        ("", "agent 版本、手機狀態、進行中的通話"),
+        ("", "Bageo 版本、手機狀態、進行中的通話"),
         ("[筆數] [today|yesterday|YYYY-MM-DD] [missed|scam] [關鍵字或號碼]", "最近的通話"),
         ("<#>", "某一通：摘要、逐字稿節錄、連結"),
         ("", "等你處理的待辦"),
@@ -406,7 +406,7 @@ const ZH_TW: Words = Words {
     hint: "看不懂這句。傳 /help 看指令。",
     usage: "用法：{1}",
     phones: "手機",
-    no_phones: "agent 啟動後還沒有手機連上。",
+    no_phones: "Bageo 啟動後還沒有手機連上。",
     mode_ai: "AI 接聽",
     mode_normal: "一般手機",
     offline: "離線",
@@ -470,7 +470,7 @@ const ZH_TW: Words = Words {
 const ZH_CN: Words = Words {
     menu: [
         ("", "列出指令"),
-        ("", "agent 版本、手机状态、进行中的通话"),
+        ("", "Bageo 版本、手机状态、进行中的通话"),
         ("[条数] [today|yesterday|YYYY-MM-DD] [missed|scam] [关键字或号码]", "最近的通话"),
         ("<#>", "某一通：摘要、逐字稿节选、链接"),
         ("", "等你处理的待办"),
@@ -493,7 +493,7 @@ const ZH_CN: Words = Words {
     hint: "看不懂这句。发 /help 看指令。",
     usage: "用法：{1}",
     phones: "手机",
-    no_phones: "agent 启动后还没有手机连上。",
+    no_phones: "Bageo 启动后还没有手机连上。",
     mode_ai: "AI 接听",
     mode_normal: "普通手机",
     offline: "离线",
@@ -557,7 +557,7 @@ const ZH_CN: Words = Words {
 const JA: Words = Words {
     menu: [
         ("", "コマンド一覧"),
-        ("", "エージェントのバージョン、スマホ、通話中の電話"),
+        ("", "Bageo のバージョン、スマホ、通話中の電話"),
         ("[件数] [today|yesterday|YYYY-MM-DD] [missed|scam] [キーワードか番号]", "最近の通話"),
         ("<#>", "1 件の通話：要約、文字起こしの抜粋、リンク"),
         ("", "判断待ちの用件"),
@@ -580,7 +580,7 @@ const JA: Words = Words {
     hint: "よくわかりませんでした。/help でコマンドを確認してください。",
     usage: "使い方：{1}",
     phones: "スマホ",
-    no_phones: "エージェント起動後、まだスマホが接続していません。",
+    no_phones: "Bageo の起動後、まだスマホが接続していません。",
     mode_ai: "AI が応答",
     mode_normal: "通常の電話",
     offline: "オフライン",
@@ -644,7 +644,7 @@ const JA: Words = Words {
 const KO: Words = Words {
     menu: [
         ("", "명령어 목록"),
-        ("", "에이전트 버전, 휴대폰, 진행 중인 통화"),
+        ("", "Bageo 버전, 휴대폰, 진행 중인 통화"),
         ("[개수] [today|yesterday|YYYY-MM-DD] [missed|scam] [검색어 또는 번호]", "최근 통화"),
         ("<#>", "통화 하나: 요약, 녹취록 일부, 링크"),
         ("", "처리를 기다리는 할 일"),
@@ -667,7 +667,7 @@ const KO: Words = Words {
     hint: "이해하지 못했어요. /help 로 명령어를 확인하세요.",
     usage: "사용법: {1}",
     phones: "휴대폰",
-    no_phones: "에이전트가 시작된 뒤 연결된 휴대폰이 없습니다.",
+    no_phones: "Bageo가 시작된 뒤 연결된 휴대폰이 없습니다.",
     mode_ai: "AI 응답",
     mode_normal: "일반 휴대폰",
     offline: "오프라인",
@@ -731,7 +731,7 @@ const KO: Words = Words {
 const ES: Words = Words {
     menu: [
         ("", "Lista de comandos"),
-        ("", "Versión del agente, teléfonos y llamadas en curso"),
+        ("", "Versión de Bageo, teléfonos y llamadas en curso"),
         ("[n] [today|yesterday|AAAA-MM-DD] [missed|scam] [palabra o número]", "Llamadas recientes"),
         ("<#>", "Una llamada: resumen, extracto y enlace"),
         ("", "Pendientes que esperan tu decisión"),
@@ -754,7 +754,7 @@ const ES: Words = Words {
     hint: "No lo entendí. Envía /help para ver los comandos.",
     usage: "Uso: {1}",
     phones: "Teléfonos",
-    no_phones: "Ningún teléfono se ha conectado desde que arrancó el agente.",
+    no_phones: "Ningún teléfono se ha conectado desde que arrancó Bageo.",
     mode_ai: "contesta la IA",
     mode_normal: "teléfono normal",
     offline: "sin conexión",
@@ -818,7 +818,7 @@ const ES: Words = Words {
 const FR: Words = Words {
     menu: [
         ("", "Liste des commandes"),
-        ("", "Version de l'agent, téléphones et appels en cours"),
+        ("", "Version de Bageo, téléphones et appels en cours"),
         ("[n] [today|yesterday|AAAA-MM-JJ] [missed|scam] [mot ou numéro]", "Appels récents"),
         ("<#>", "Un appel : résumé, extrait, lien"),
         ("", "Tâches qui attendent ta décision"),
@@ -841,7 +841,7 @@ const FR: Words = Words {
     hint: "Je n'ai pas compris. Envoie /help pour les commandes.",
     usage: "Utilisation : {1}",
     phones: "Téléphones",
-    no_phones: "Aucun téléphone ne s'est connecté depuis le démarrage de l'agent.",
+    no_phones: "Aucun téléphone ne s'est connecté depuis le démarrage de Bageo.",
     mode_ai: "l'IA répond",
     mode_normal: "téléphone normal",
     offline: "hors ligne",
@@ -905,7 +905,7 @@ const FR: Words = Words {
 const DE: Words = Words {
     menu: [
         ("", "Befehle anzeigen"),
-        ("", "Agent-Version, Telefone und laufende Anrufe"),
+        ("", "Bageo-Version, Telefone und laufende Anrufe"),
         ("[n] [today|yesterday|JJJJ-MM-TT] [missed|scam] [Wort oder Nummer]", "Letzte Anrufe"),
         ("<#>", "Ein Anruf: Zusammenfassung, Auszug, Link"),
         ("", "Aufgaben, die auf dich warten"),
@@ -928,7 +928,7 @@ const DE: Words = Words {
     hint: "Das habe ich nicht verstanden. /help zeigt die Befehle.",
     usage: "Verwendung: {1}",
     phones: "Telefone",
-    no_phones: "Seit dem Start des Agents hat sich kein Telefon verbunden.",
+    no_phones: "Seit dem Start von Bageo hat sich kein Telefon verbunden.",
     mode_ai: "KI nimmt ab",
     mode_normal: "normales Telefon",
     offline: "offline",
@@ -992,7 +992,7 @@ const DE: Words = Words {
 const PT: Words = Words {
     menu: [
         ("", "Lista de comandos"),
-        ("", "Versão do agente, celulares e ligações em andamento"),
+        ("", "Versão do Bageo, celulares e ligações em andamento"),
         ("[n] [today|yesterday|AAAA-MM-DD] [missed|scam] [palavra ou número]", "Ligações recentes"),
         ("<#>", "Uma ligação: resumo, trecho e link"),
         ("", "Pendências esperando você"),
@@ -1015,7 +1015,7 @@ const PT: Words = Words {
     hint: "Não entendi. Envie /help para ver os comandos.",
     usage: "Uso: {1}",
     phones: "Celulares",
-    no_phones: "Nenhum celular se conectou desde que o agente iniciou.",
+    no_phones: "Nenhum celular se conectou desde que o Bageo iniciou.",
     mode_ai: "a IA atende",
     mode_normal: "celular normal",
     offline: "offline",
