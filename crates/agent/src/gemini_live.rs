@@ -2578,11 +2578,22 @@ impl StallReview {
         self.units_at_engage = units;
     }
 
+    /// Unmistakable scam-only words (`hard: true`) from a caller who is not a
+    /// saved contact or safe-marked number engage stalling at once without
+    /// waiting for an HTTP review round-trip.
+    fn engage_hard_at_once(&mut self, flagged: bool, hard: bool, protected: bool) -> bool {
+        if !flagged || !hard || protected {
+            return false;
+        }
+        self.why = EngageWhy::HardWords;
+        true
+    }
+
     /// Stalling, a caller turn just ended (`units` said so far): check now whether
-    /// they should be let go? Once a call.
+    /// they should be let go? Once a call, and only when the review judged it.
     fn should_ask_confirm(&mut self, units: usize) -> bool {
         self.stall_turns += 1;
-        if self.confirm_asked || self.pending {
+        if self.confirm_asked || self.pending || self.why != EngageWhy::Review {
             return false;
         }
         let said = units.saturating_sub(self.units_at_engage);
@@ -5126,6 +5137,9 @@ pub async fn run_session(
             .filter(|_| !stall_on && !stall_detected && (!own_matter || stall.as_ref().is_some_and(|c| c.force_start)) && ivr_since.is_none())
         {
             if let Some(c) = stall.as_ref() {
+                if let Some(a) = &appt {
+                    a.book.set_reviewed_normal(false);
+                }
                 if !c.play_along && !c.force_start {
                     stall_detected = true;
                     if let Ok(mut j) = c.judgement.lock() {
@@ -6588,12 +6602,24 @@ pub async fn run_session(
                                     if stall.is_some() && !stall_on && !stall_detected && !own_matter && ivr_since.is_none() {
                                         stall_score += stall_score_add(&in_tx_window, &mut stall_hits);
                                         let flagged = stall_engages(stall_score, &stall_hits);
-                                        if flagged && stall_review.keyword_rule && stall_engage_now.is_none() {
+                                        let hard = stall_hits.iter().any(|h| crate::scam_db::is_hard(h));
+                                        let protected = review_ctx().protected();
+                                        if stall_engage_now.is_none()
+                                            && stall_review.engage_hard_at_once(flagged, hard, protected)
+                                        {
+                                            stall_engage_now = Some(judgement_of(
+                                                &crate::stall_review::Review::of(crate::stall_review::Verdict::Unavailable),
+                                                &stall_hits,
+                                                EngageWhy::HardWords,
+                                            ));
+                                            info!(
+                                                "Persona stall by scam-only keywords at once serial={serial} score={stall_score} hits={stall_hits:?}"
+                                            );
+                                        } else if flagged && stall_review.keyword_rule && stall_engage_now.is_none() {
                                             // The look kept failing: the keywords decide alone, as
                                             // before it existed (a contact only on words only
                                             // scammers say).
-                                            let hard = stall_hits.iter().any(|h| crate::scam_db::is_hard(h));
-                                            if hard || !review_ctx().protected() {
+                                            if hard || !protected {
                                                 stall_engage_now = Some(judgement_of(
                                                     &crate::stall_review::Review::of(crate::stall_review::Verdict::Unavailable),
                                                     &stall_hits,
@@ -7342,6 +7368,14 @@ pub async fn run_session(
             }
             verdict = review_rx.recv() => {
                 let Some((score, review)) = verdict else { continue };
+                if (stall_on || stall_detected) && stall_review.origin != LookOrigin::Confirm {
+                    stall_review.pending = false;
+                    stall_review.turn_ended = false;
+                    if review.verdict == crate::stall_review::Verdict::IvrRecording && stall_play {
+                        ivr_enter.get_or_insert("review");
+                    }
+                    continue;
+                }
                 let ctx = review_ctx();
                 let facts = StallFacts {
                     flagged: stall_engages(stall_score, &stall_hits),
@@ -8599,6 +8633,15 @@ mod tests {
             assert!(r.should_ask_confirm(20 + CONFIRM_EARLY_UNITS));
             assert_eq!(r.decide(&review_of(verdict, confidence), 0, 0, StallFacts::default()), StallVerdictStep::Carry, "{verdict:?} {confidence:?}");
         }
+        // Unmistakable scam-only words from a non-protected caller engage at once
+        // without waiting for an HTTP review or spending a follow-up confirm call;
+        // a saved contact still gets a review first.
+        let mut r = StallReview::default();
+        assert!(!r.engage_hard_at_once(true, true, true));
+        assert!(r.engage_hard_at_once(true, true, false));
+        assert_eq!(r.why, EngageWhy::HardWords);
+        r.note_engaged(20);
+        assert!(!r.should_ask_confirm(80));
     }
 
     /// The card desk of 2026-11-14: 「這邊是XX銀行信用卡風險管控中心」 alone

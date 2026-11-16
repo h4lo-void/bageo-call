@@ -209,6 +209,14 @@ fn default_red_flag_weight() -> u32 {
 }
 
 #[derive(Debug, Clone, Default)]
+pub struct KeywordIndex {
+    han_first: HashMap<char, Vec<usize>>,
+    word_prefix: HashMap<(char, char), Vec<usize>>,
+    run_first: HashMap<char, Vec<usize>>,
+    compact_first: HashMap<char, Vec<usize>>,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct ScamDb {
     pub version: u32,
     pub typologies: Vec<Typology>,
@@ -220,6 +228,7 @@ pub struct ScamDb {
     pub countries: BTreeMap<String, CountryProfile>,
     by_text: HashMap<String, usize>,
     by_typology: HashMap<String, usize>,
+    index: KeywordIndex,
     /// Normalized keyword text → `(country_iso, scam_id)` pairs.
     country_kw_map: HashMap<String, Vec<(String, String)>>,
 }
@@ -309,6 +318,7 @@ fn compact(text: &str) -> String {
 /// The caller's words in every form the match modes read.
 struct Prepared {
     han: String,
+    words_list: Vec<String>,
     padded: String,
     lower: String,
     compact: String,
@@ -316,12 +326,88 @@ struct Prepared {
 
 impl Prepared {
     fn of(text: &str) -> Prepared {
+        let words_list = words(text);
+        let padded = format!(" {} ", words_list.join(" "));
         Prepared {
             han: han_text(text),
-            padded: format!(" {} ", words(text).join(" ")),
+            words_list,
+            padded,
             lower: text.to_lowercase(),
             compact: compact(text),
         }
+    }
+}
+
+impl KeywordIndex {
+    fn insert(&mut self, idx: usize, kw: &Keyword) {
+        match kw.mode {
+            Match::Han => {
+                if let Some(c0) = kw.needle.chars().next() {
+                    self.han_first.entry(c0).or_default().push(idx);
+                }
+            }
+            Match::Word => {
+                let first_word = kw.needle.trim_start_matches(' ').split(' ').next().unwrap_or("");
+                let mut chars = first_word.chars();
+                if let Some(c0) = chars.next() {
+                    let c1 = chars.next().unwrap_or('\0');
+                    self.word_prefix.entry((c0, c1)).or_default().push(idx);
+                }
+            }
+            Match::Run => {
+                if let Some(c0) = kw.needle.chars().next() {
+                    self.run_first.entry(c0).or_default().push(idx);
+                }
+            }
+            Match::Compact => {
+                if let Some(c0) = kw.needle.chars().next() {
+                    self.compact_first.entry(c0).or_default().push(idx);
+                }
+            }
+        }
+    }
+
+    fn candidates(&self, p: &Prepared) -> Vec<usize> {
+        let mut out = Vec::new();
+        if !self.han_first.is_empty() {
+            for c in p.han.chars() {
+                if let Some(list) = self.han_first.get(&c) {
+                    out.extend_from_slice(list);
+                }
+            }
+        }
+        if !self.word_prefix.is_empty() {
+            for w in &p.words_list {
+                let mut chars = w.chars();
+                if let Some(c0) = chars.next() {
+                    if let Some(list) = self.word_prefix.get(&(c0, '\0')) {
+                        out.extend_from_slice(list);
+                    }
+                    if let Some(c1) = chars.next() {
+                        if let Some(list) = self.word_prefix.get(&(c0, c1)) {
+                            out.extend_from_slice(list);
+                        }
+                    }
+                }
+            }
+        }
+        if !self.run_first.is_empty() {
+            for c in p.lower.chars() {
+                if let Some(list) = self.run_first.get(&c) {
+                    out.extend_from_slice(list);
+                }
+            }
+        }
+        if !self.compact_first.is_empty() {
+            for c in p.compact.chars() {
+                if let Some(list) = self.compact_first.get(&c) {
+                    out.extend_from_slice(list);
+                }
+            }
+        }
+        out.sort_unstable();
+        out.dedup();
+        out
     }
 }
 
@@ -454,7 +540,9 @@ pub fn parse(json: &str) -> Result<ScamDb, String> {
                 }
                 return Err(format!("{}: keyword {:?} listed twice", g.lang, kw.text));
             }
-            db.by_text.insert(kw.text.clone(), db.keywords.len());
+            let idx = db.keywords.len();
+            db.by_text.insert(kw.text.clone(), idx);
+            db.index.insert(idx, &kw);
             db.keywords.push(kw);
         }
     }
@@ -667,7 +755,9 @@ pub fn merge_countries(db: &mut ScamDb, json: &str) -> Result<(), String> {
                 }
                 let kw = Keyword::new(&cleaned, 1, &s.typology, false, &s.lang, mode);
                 if !db.by_text.contains_key(&kw.text) {
-                    db.by_text.insert(kw.text.clone(), db.keywords.len());
+                    let idx = db.keywords.len();
+                    db.by_text.insert(kw.text.clone(), idx);
+                    db.index.insert(idx, &kw);
                     db.keywords.push(kw.clone());
                 }
                 let entry = db.country_kw_map.entry(kw.text).or_default();
@@ -696,7 +786,9 @@ pub fn merge_countries(db: &mut ScamDb, json: &str) -> Result<(), String> {
                         db.keywords[idx].hard = true;
                     }
                 } else {
-                    db.by_text.insert(kw.text.clone(), db.keywords.len());
+                    let idx = db.keywords.len();
+                    db.by_text.insert(kw.text.clone(), idx);
+                    db.index.insert(idx, &kw);
                     db.keywords.push(kw.clone());
                 }
                 let entry = db.country_kw_map.entry(kw.text).or_default();
@@ -805,6 +897,7 @@ pub struct LocalDb {
     pub numbers: Vec<LocalNumber>,
     /// Entries left out, and why.
     pub skipped: Vec<String>,
+    index: KeywordIndex,
 }
 
 /// Local keywords live as long as the agent (hits are `&'static str`); the
@@ -842,7 +935,10 @@ pub fn parse_local(json: &str) -> Result<LocalDb, String> {
             out.skipped.push(format!("{}: already listed", kw.text));
             continue;
         }
-        out.keywords.push(intern(kw));
+        let idx = out.keywords.len();
+        let interned = intern(kw);
+        out.index.insert(idx, interned);
+        out.keywords.push(interned);
     }
     for n in raw.numbers {
         if !["scam", "sales", "safe"].contains(&n.verdict.as_str()) || number_key(&n.number, None).is_none() {
@@ -911,87 +1007,23 @@ fn with_local<R>(f: impl FnOnce(&LocalDb) -> R) -> R {
 
 // ---------------------------------------------------------------- keywords
 
-/// Two-character bigram index built once from [`db`] so scanning any utterance
-/// stays `O(utterance_len)` (microseconds) even as `country_scams.json` grows to
-/// thousands of multi-country keywords.
-struct KeywordIndex {
-    han: HashMap<(char, char), Vec<usize>>,
-    word: HashMap<(char, char), Vec<usize>>,
-    run: HashMap<(char, char), Vec<usize>>,
-    compact: HashMap<(char, char), Vec<usize>>,
-    short: Vec<usize>,
-}
-
-impl KeywordIndex {
-    fn build(base: &ScamDb) -> Self {
-        let mut idx = KeywordIndex {
-            han: HashMap::new(),
-            word: HashMap::new(),
-            run: HashMap::new(),
-            compact: HashMap::new(),
-            short: Vec::new(),
-        };
-        for (i, kw) in base.keywords.iter().enumerate() {
-            let s = kw.needle.trim_start_matches(' ');
-            let mut it = s.chars();
-            let Some((c0, c1)) = it.next().zip(it.next()) else {
-                idx.short.push(i);
-                continue;
-            };
-            let map = match kw.mode {
-                Match::Han => &mut idx.han,
-                Match::Word => &mut idx.word,
-                Match::Run => &mut idx.run,
-                Match::Compact => &mut idx.compact,
-            };
-            map.entry((c0, c1)).or_default().push(i);
-        }
-        idx
-    }
-
-    fn collect_from(s: &str, map: &HashMap<(char, char), Vec<usize>>, out: &mut Vec<usize>) {
-        let mut prev: Option<char> = None;
-        for c in s.chars() {
-            if let Some(p) = prev {
-                if let Some(list) = map.get(&(p, c)) {
-                    out.extend_from_slice(list);
-                }
-            }
-            prev = Some(c);
-        }
-    }
-
-    fn candidates(&self, p: &Prepared) -> Vec<usize> {
-        let mut cands = Vec::with_capacity(16);
-        cands.extend_from_slice(&self.short);
-        Self::collect_from(&p.han, &self.han, &mut cands);
-        Self::collect_from(&p.padded, &self.word, &mut cands);
-        Self::collect_from(&p.lower, &self.run, &mut cands);
-        Self::collect_from(&p.compact, &self.compact, &mut cands);
-        cands.sort_unstable();
-        cands.dedup();
-        cands
-    }
-}
-
-fn kw_index() -> &'static KeywordIndex {
-    static IDX: OnceLock<KeywordIndex> = OnceLock::new();
-    IDX.get_or_init(|| KeywordIndex::build(db()))
-}
-
 fn keyword_hits_in(text: &str, local: &LocalDb) -> Vec<Hit> {
     let p = Prepared::of(text);
     let base = db();
-    let mut out: Vec<Hit> = kw_index()
+    let mut out: Vec<Hit> = base
+        .index
         .candidates(&p)
         .into_iter()
         .map(|i| &base.keywords[i])
         .filter(|k| k.found_in(&p))
         .map(hit_of)
         .collect();
-    for &k in &local.keywords {
-        if k.found_in(&p) && !out.iter().any(|h| h.text == k.text) {
-            out.push(hit_of(k));
+    if !local.keywords.is_empty() {
+        for i in local.index.candidates(&p) {
+            let k = local.keywords[i];
+            if k.found_in(&p) && !out.iter().any(|h| h.text == k.text) {
+                out.push(hit_of(k));
+            }
         }
     }
     out
@@ -1669,7 +1701,7 @@ mod tests {
     }
 
     #[test]
-    fn bigram_keyword_index_matches_full_scan_and_runs_in_microseconds() {
+    fn keyword_index_matches_full_scan_and_runs_in_microseconds() {
         let base = db();
         let samples = [
             "您好，這裡是戶政事務所，您的證件遭冒用，請加LINE做視訊筆錄並匯入監管專戶",
@@ -1698,8 +1730,53 @@ mod tests {
             let fast = keyword_hits_in(&kw.text, &LocalDb::default());
             assert_eq!(fast, brute, "mismatch on keyword: {}", kw.text);
         }
+        // 1b. The owner's keywords go through their own index: same hits, same
+        // order as a full scan of the built-in list and then the owner's.
+        let local = parse_local(
+            r#"{"keywords":[
+                {"text":"紫色長頸鹿退款","weight":2,"typology":"fake_shop_order_error","lang":"zh-TW"},
+                {"text":"鵺","typology":"fake_shop_order_error","lang":"zh-TW"},
+                {"text":"qx7","typology":"fake_shop_order_error","lang":"zh-TW"},
+                {"text":"purple giraffe refund","weight":2,"typology":"fake_shop_order_error","lang":"en"},
+                {"text":"q","typology":"fake_shop_order_error","lang":"en"},
+                {"text":"jirafa morada","typology":"fake_shop_order_error","lang":"es"},
+                {"text":"むらさききりん","typology":"fake_shop_order_error","lang":"ja"},
+                {"text":"보라색기린","typology":"fake_shop_order_error","lang":"ko"},
+                {"text":"ยีราฟ สีม่วง","typology":"fake_shop_order_error","lang":"th"}
+            ]}"#,
+        )
+        .unwrap();
+        assert!(local.skipped.is_empty(), "{:?}", local.skipped);
+        assert_eq!(local.keywords.len(), 9);
+        let full_scan = |s: &str| -> Vec<Hit> {
+            let p = Prepared::of(s);
+            let mut out: Vec<Hit> = base.keywords.iter().filter(|k| k.found_in(&p)).map(hit_of).collect();
+            for &k in &local.keywords {
+                if k.found_in(&p) && !out.iter().any(|h| h.text == k.text) {
+                    out.push(hit_of(k));
+                }
+            }
+            out
+        };
+        let mut owner_samples: Vec<String> = samples.iter().map(|s| s.to_string()).collect();
+        owner_samples.push("Quick question: the purple giraffe refund, qx7 and 紫色長頸鹿退款 鵺 むらさききりん 보라색기린 ยีราฟสีม่วง jirafa morada".into());
+        for k in &local.keywords {
+            owner_samples.push(k.text.clone());
+            owner_samples.push(format!("… {} …", k.text));
+        }
+        for s in &owner_samples {
+            assert_eq!(keyword_hits_in(s, &local), full_scan(s), "owner keyword mismatch on sample: {s}");
+        }
+        for k in &local.keywords {
+            let sample = format!("… {} …", k.text);
+            assert!(
+                keyword_hits_in(&sample, &local).iter().any(|h| h.text == k.text),
+                "owner keyword {:?} not found in {sample:?}",
+                k.text
+            );
+        }
         // 2. Latency check: 1,000 full utterances must finish well under 250ms even in unoptimized debug builds (<0.25ms/call debug, <0.02ms/call release).
-        let _ = kw_index();
+        let _ = db();
         let t0 = Instant::now();
         let mut total_hits = 0usize;
         for i in 0..1000 {
@@ -1838,7 +1915,7 @@ mod tests {
         }
 
         // Microsecond benchmark across 5,000 calls to prove zero impact on live call audio/turn latency.
-        let _ = kw_index();
+        let _ = db();
         let iters = 5_000usize;
         let t_kw = Instant::now();
         let mut sink = 0usize;
@@ -2194,5 +2271,17 @@ mod tests {
         }
         // Taiwan STT homophones for marketplace scams normalize cleanly.
         assert!(keyword_hits("我是賣貨變客服，還有好賣加的訂單").iter().filter(|h| h.typology == "marketplace_escrow_scam").count() >= 2);
+    }
+
+    #[test]
+    fn indexed_keyword_hits_match_linear_scan_in_exact_order() {
+        let base = db();
+        for kw in &base.keywords {
+            let sample = format!("… {} …", kw.text);
+            let p = Prepared::of(&sample);
+            let linear: Vec<Hit> = base.keywords.iter().filter(|k| k.found_in(&p)).map(hit_of).collect();
+            let indexed = keyword_hits_in(&sample, &LocalDb::default());
+            assert_eq!(indexed, linear, "keyword sample mismatch for {:?}", kw.text);
+        }
     }
 }
