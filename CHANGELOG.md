@@ -1,3 +1,24 @@
+# Bageo v1.2.0
+
+- **Contacts in four lists, and whitelisted callers can reach you.** Each contact is a plain contact, whitelisted, blacklisted (rejected) or on the stall list (kept talking from the first second). For whitelisted callers you choose: the AI answers; the AI answers and gives them your number when they say it is urgent; or the call goes straight to your own phone through your carrier's forward-when-busy. See [Features](docs/en/FEATURES.md) and [Settings](docs/en/SETTINGS.md#blocked-numbers-and-contact-lists).
+- **聯絡人分四種名單，白名單來電可以轉給你。** 每位聯絡人可以是一般聯絡人、白名單、黑名單（拒接）或陪聊名單（一接起就陪聊）。白名單的人打來有三種做法：AI 接聽；AI 先接，對方說有急事才把你的號碼告訴他；或靠電信的忙線轉接直接轉到你的手機。見[功能](docs/zh-TW/FEATURES.md)與[設定](docs/zh-TW/SETTINGS.md)。
+- **联系人分四种名单，白名单来电可以转给你。** 每位联系人可以是普通联系人、白名单、黑名单（拒接）或陪聊名单（一接起就陪聊）。白名单的人打来有三种做法：AI 接听；AI 先接，对方说有急事才把你的号码告诉他；或靠运营商的遇忙转移直接转到你的手机。见[功能](docs/zh-CN/FEATURES.md)与[设置](docs/zh-CN/SETTINGS.md)。
+- **Console password.** Optional. Once set, the web console and the API ask for it (`ui_password`). See [Settings](docs/en/SETTINGS.md#advanced).
+- **控制台密碼。** 可設可不設。設了以後，打開控制台和呼叫 API 都要輸入密碼（`ui_password`）。見[設定](docs/zh-TW/SETTINGS.md)。
+- **控制台密码。** 可设可不设。设了以后，打开控制台和调用 API 都要输入密码（`ui_password`）。见[设置](docs/zh-CN/SETTINGS.md)。
+- **One-tap actions in every notification channel.** Under a call summary: block, stall or whitelist the caller. On an appointment: accept or decline. Telegram shows buttons; other channels get signed links. Notifications are plain text now, without emoji. See [Notifications](docs/en/NOTIFICATIONS.md).
+- **每個通知管道都能一鍵處理。** 通話摘要下方可以把對方加進黑名單、陪聊名單或白名單；預約可以接受或拒絕。Telegram 是按鈕，其他管道是簽章連結。通知改成純文字，不再有表情符號。見[通知](docs/zh-TW/NOTIFICATIONS.md)。
+- **每个通知渠道都能一键处理。** 通话摘要下方可以把对方加进黑名单、陪聊名单或白名单；预约可以接受或拒绝。Telegram 是按钮，其他渠道是签名链接。通知改成纯文本，不再有表情符号。见[通知](docs/zh-CN/NOTIFICATIONS.md)。
+- **Scam detection knows more and reacts sooner.** Local scam patterns for 12 countries; debt-collection and harassment calls are stalled too, while polite reminders from banks, clinics and couriers stay normal calls; a romance-scam category and about 800 more keywords in nine languages. When a caller asks for something only a scam asks for (a verification code, ATM steps, a "safe account", screen sharing, gift cards), stalling starts at once with no second check; saved contacts are still checked first. Keyword lookup uses an index and stays well under a millisecond per sentence.
+- **詐騙辨識懂得更多、反應更快。** 內建 12 個國家的在地詐騙話術；催收和騷擾電話也會陪聊，銀行、診所、物流的一般提醒照常應對；新增感情詐騙類別，九種語言再加約 800 個關鍵字。對方一要只有詐騙才會要的東西（驗證碼、操作 ATM、「安全帳戶」、螢幕分享、點數卡），馬上開始陪聊，不再等第二次檢查；已存的聯絡人仍會先檢查。關鍵字查找改用索引，一句話遠低於一毫秒。
+- **诈骗识别懂得更多、反应更快。** 内置 12 个国家的本地诈骗话术；催收和骚扰电话也会陪聊，银行、诊所、快递的普通提醒照常应对；新增感情诈骗类别，九种语言再加约 800 个关键词。对方一要只有诈骗才会要的东西（验证码、操作 ATM、“安全账户”、屏幕共享、礼品卡），马上开始陪聊，不再等第二次检查；已保存的联系人仍会先检查。关键词查找改用索引，一句话远低于一毫秒。
+- **AI errands stay in the right language.** The AI switches language only after the other side has said a whole sentence in it, and only to that language. The carrier's warning phrase is no longer in the speech-to-text vocabulary of calls the AI dials.
+- **AI 代打不再亂換語言。** 對方完整講了一句別的語言，AI 才會換過去，而且只換成那一種。AI 撥出去的電話，語音辨識詞彙不再帶電信的提示語。
+- **AI 代打不再乱换语言。** 对方完整说了一句别的语言，AI 才会换过去，而且只换成那一种。AI 拨出去的电话，语音识别词汇不再带运营商的提示语。
+- **Plainer console and guides.** Shorter hints in all nine console languages; rarely used settings sit under "More options" or Advanced. The guides in English, 繁體中文 and 简体中文 were rewritten to be read at a glance. Field names and saved values are unchanged.
+- **控制台和說明文件改成白話。** 控制台九種語言的說明都縮短了，少用的設定收進「更多選項」或「進階」。英文、繁體中文、簡體中文的說明文件整份重寫，一眼就能看到重點。欄位名稱和已存的設定值都沒變。
+- **控制台和说明文档改成白话。** 控制台九种语言的说明都缩短了，少用的设置收进“更多选项”或“高级”。英文、繁体中文、简体中文的说明文档整份重写，一眼就能看到重点。字段名称和已保存的设置值都没变。
+
 # Bageo v1.1.0
 
 - **16 more notification channels (32 in all).** Microsoft Teams (Workflows
