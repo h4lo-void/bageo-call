@@ -1,8 +1,35 @@
-# Unreleased
+# Bageo v1.3.0
 
 - **Chat commands now work in Discord, Slack and Matrix, as well as Telegram.** Check calls, have the AI call someone and decide pending items from any of the four. Slack and Matrix take commands as "@your bot /help". These three are only tested with simulated servers so far. See [Chat commands](docs/en/CHAT_COMMANDS.md).
 - **聊天室指令支援 Discord、Slack 和 Matrix，Telegram 也照舊可用。** 四種聊天軟體都能查通話、叫 AI 代打電話、處理待處理事項。Slack 和 Matrix 要寫成「@你的機器人 /help」。這三個目前只用模擬伺服器測試過。見[在聊天室操作](docs/zh-TW/CHAT_COMMANDS.md)。
 - **聊天室指令支持 Discord、Slack 和 Matrix，Telegram 也照常可用。** 四种聊天软件都能查通话、让 AI 代打电话、处理待处理事项。Slack 和 Matrix 要写成“@你的机器人 /help”。这三个目前只用模拟服务器测试过。见[在聊天室操作](docs/zh-CN/CHAT_COMMANDS.md)。
+- **Whitelisted callers with an emergency can bring you into the call (trial, off by default).** When a whitelisted caller says it is urgent, the AI asks them to stay on the line, calls your own phone and joins the two calls so you can talk. If you do not answer, the AI says you will call back. It understands urgency and the "please hold on" line in nine languages. It needs "Only when it is urgent" and your own number, and has been tested with simulated calls so far. See [Settings](docs/en/SETTINGS.md).
+- **白名單來電有急事，可以把你接進通話（試驗功能，預設關閉）。** 白名單的人說有急事時，AI 請他別掛，撥給你自己的手機，接通後把兩通電話合在一起，你就能直接跟他說話。你沒接的話，AI 會告訴對方你會回電。九種語言都聽得懂「急事」和「請別掛」。要先選「有急事才轉」並填好你的號碼；目前只用模擬通話測試過。見[設定](docs/zh-TW/SETTINGS.md)。
+- **白名单来电有急事，可以把你接进通话（试验功能，默认关闭）。** 白名单的人说有急事时，AI 请他别挂，拨给你自己的手机，接通后把两通电话合在一起，你就能直接跟他说话。你没接的话，AI 会告诉对方你会回电。九种语言都听得懂“急事”和“请别挂”。要先选“有急事才转”并填好你的号码；目前只用模拟通话测试过。见[设置](docs/zh-CN/SETTINGS.md)。
+- **The AI no longer says it will put the call through.** For an urgent whitelisted caller it used to say things like "I'll transfer you", which it cannot do. It now says it is on it and you will call back.
+- **AI 不再隨口說「幫你轉接」。** 白名單的人有急事時，AI 以前會說「我幫你轉接」這類做不到的話；現在只說馬上處理、會回電給他。
+- **AI 不再随口说“帮你转接”。** 白名单的人有急事时，AI 以前会说“我帮你转接”这类做不到的话；现在只说马上处理、会回电给他。
+- **Safer links and access.** One-tap links in notifications (accept, decline, block) now open a confirmation page and act only when you confirm; they expire after 7 days and are signed with a random key instead of your password. The console sends its password in a header, not in the web address. Chat commands, the MCP server and group chats are locked down further, and CSV exports and contact notes can no longer carry spreadsheet formulas or hidden instructions to the AI.
+- **連結與存取更安全。** 通知裡的一鍵連結（同意、婉拒、加入黑名單）改成先開確認頁，按下確認才會執行；連結 7 天後失效，並用隨機金鑰簽章，不再用你的密碼。控制台的密碼改放在標頭，不再出現在網址裡。聊天室指令、MCP 伺服器和群組聊天室的限制更嚴；CSV 匯出和聯絡人備註也不能再夾帶試算表公式或偷偷指示 AI 的內容。
+- **链接与访问更安全。** 通知里的一键链接（同意、婉拒、加入黑名单）改成先打开确认页，点击确认才会执行；链接 7 天后失效，并用随机密钥签名，不再用你的密码。控制台的密码改放在标头，不再出现在网址里。聊天室指令、MCP 服务器和群组聊天室的限制更严；CSV 导出和联系人备注也不能再夹带电子表格公式或偷偷指示 AI 的内容。
+- **Old notification links stop working.** The one-tap links and calendar links in notifications sent before this version no longer work. Use the console, or wait for the next notification.
+- **舊通知裡的連結會失效。** 這一版以前發出的通知，裡面的一鍵連結和行事曆連結都不能用了。請改在控制台操作，或等下一則通知。
+- **旧通知里的链接会失效。** 这一版以前发出的通知，里面的一键链接和日历链接都不能用了。请改在控制台操作，或等下一条通知。
+- **Numbers from any country work.** Numbers without a leading zero (China, Spain, Portugal, Singapore, Hong Kong, Russia and more) now work for call-backs, texts and AI errands. The default country comes from the SIM, then the language, and the blacklist reads a number the way the answering SIM dials it.
+- **各國的號碼都能用。** 沒有開頭 0 的號碼（中國、西班牙、葡萄牙、新加坡、香港、俄羅斯等）現在也能回電、發簡訊、用在 AI 代打。預設國別先看 SIM、再看語言；黑名單照接聽那張 SIM 的撥號方式讀號碼。
+- **各国的号码都能用。** 没有开头 0 的号码（中国、西班牙、葡萄牙、新加坡、香港、俄罗斯等）现在也能回电、发短信、用在 AI 代打。默认国别先看 SIM、再看语言；黑名单按接听那张 SIM 的拨号方式读号码。
+- **Fewer mistakes in other languages.** Japanese and Simplified Chinese lines are no longer turned into Traditional Chinese, and a Japanese "sorehadewa" no longer ends a call mid-sentence. Thai, Russian, Arabic and Hindi calls hang up after the goodbye, and call-backs use the caller's language. Scam keywords match whole words and ignore accents, and "Reply in the caller's language" is back in the console, on by default. Contact lists saved as Japanese Shift_JIS files import correctly.
+- **其他語言的錯誤變少。** 日文和簡體中文不會再被轉成繁體；日文的「それでは」不再把通話講到一半就掛掉。泰文、俄文、阿拉伯文、印地文的電話在道別後會掛斷，回電也用對方的語言。詐騙關鍵字改成整個字比對、忽略重音；「用對方的語言回答」回到控制台，預設開啟。日文 Shift_JIS 存的通訊錄也能正確匯入。
+- **其他语言的错误变少。** 日文和简体中文不会再被转成繁体；日文的“それでは”不再把通话讲到一半就挂掉。泰文、俄文、阿拉伯文、印地文的电话在道别后会挂断，回电也用对方的语言。诈骗关键词改成整个词比对、忽略重音；“用对方的语言回答”回到控制台，默认开启。日文 Shift_JIS 存的通讯录也能正确导入。
+- **Chat rooms and notifications.** Slack slash commands, Slack and Discord notifications with only a bot token, Discord private messages, Matrix auto-join with a warning for encrypted rooms, and room aliases. Group chats need a list of people allowed to give commands; private chats do not. Long notifications are cut to fit services that count bytes, and ntfy topic links work. See [Chat commands](docs/en/CHAT_COMMANDS.md).
+- **聊天室與通知。** 新增 Slack 斜線指令、只填 Bot 權杖也能發 Slack 和 Discord 通知、Discord 私訊、Matrix 自動進房（加密房會提醒）和房間別名。群組聊天室要先填可以下指令的人，私訊不用。太長的通知會依服務的計算方式裁短，ntfy 主題連結也能用。見[在聊天室操作](docs/zh-TW/CHAT_COMMANDS.md)。
+- **聊天室与通知。** 新增 Slack 斜杠指令、只填 Bot 令牌也能发 Slack 和 Discord 通知、Discord 私信、Matrix 自动进房（加密房会提醒）和房间别名。群组聊天室要先填可以下指令的人，私聊不用。太长的通知会按服务的计算方式裁短，ntfy 主题链接也能用。见[在聊天室操作](docs/zh-CN/CHAT_COMMANDS.md)。
+- **Phone and text forwarding fixes.** The phone module asks for call permission at boot, reports its SIM list, ends merged calls cleanly, refuses call waiting during a merge and does not dial when the chosen SIM is missing. An urgent call that ends early no longer locks the phone for hours. The text forwarder handles messages without a SIM and says why when its password is rejected. Update the phone module and the forwarder to get these.
+- **手機與簡訊轉發修正。** 手機模組開機就取得撥號權限、回報 SIM 清單、正確結束合併的通話、合併時拒絕插播，找不到指定的 SIM 就不撥。急事通話提早結束，不再把手機鎖上好幾個小時。簡訊轉發能處理沒有 SIM 資訊的簡訊，密碼被拒絕時會說明原因。要更新手機模組和簡訊轉發才會生效。
+- **手机与短信转发修正。** 手机模块开机就获得拨号权限、报告 SIM 列表、正确结束合并的通话、合并时拒绝插播，找不到指定的 SIM 就不拨。急事通话提前结束，不再把手机锁上好几个小时。短信转发能处理没有 SIM 信息的短信，密码被拒绝时会说明原因。要更新手机模块和短信转发才会生效。
+- **Contributor agreement and legal terms.** New [CLA.md](CLA.md) contributor license agreement. [LEGAL.md](LEGAL.md) now carries the privacy terms and the ban on illegal use, with the same eight articles in English, 繁體中文 and 简体中文; the Traditional Chinese text governs.
+- **新增貢獻者授權協議與法律條款。** 新增貢獻者授權協議 [CLA.md](CLA.md)。[LEGAL.md](LEGAL.md) 加入隱私條款和禁止違法使用的規定，英文、繁體中文、簡體中文的八條內容一致，以繁體中文為準。
+- **新增贡献者授权协议与法律条款。** 新增贡献者授权协议 [CLA.md](CLA.md)。[LEGAL.md](LEGAL.md) 加入隐私条款和禁止违法使用的规定，英文、繁体中文、简体中文的八条内容一致，以繁体中文为准。
 
 # Bageo v1.2.0
 
