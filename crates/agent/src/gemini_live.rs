@@ -5159,9 +5159,20 @@ pub async fn run_session(
                         output_goodbye_at = None;
                         end_reason = SessionEndReason::WsClosed;
                     }
-                    // Stall session: its prompt, and its own model (setting
-                    // `gemini_stall_model`) — same voice, so the caller hears no change.
-                    let next = stall_session_setup(&setup, &c.system_prompt, &c.model, thinking_level);
+                    // Stall session: its prompt (+ country-specific bait hooks when matched),
+                    // and its own model (setting `gemini_stall_model`) — same voice, so the caller hears no change.
+                    let ctx_now = review_ctx();
+                    let stall_prompt = match crate::scam_db::country_bait_addon(
+                        &ctx_now.number,
+                        &ctx_now.number_notes,
+                        &judged.typology,
+                        &stall_hits,
+                        &caller_text_all,
+                    ) {
+                        Some(addon) if !c.system_prompt.trim().is_empty() => format!("{}\n\n{addon}", c.system_prompt),
+                        _ => c.system_prompt.clone(),
+                    };
+                    let next = stall_session_setup(&setup, &stall_prompt, &c.model, thinking_level);
                     if next != setup {
                         rotate_setup = Some(next);
                         rotate_due = Some(
