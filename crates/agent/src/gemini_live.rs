@@ -1974,23 +1974,10 @@ impl std::fmt::Debug for UrgentTransferFn {
 }
 
 /// Whether a Whitelist caller's utterance expresses an urgent or emergency matter
-/// (across all 9 supported languages).
+/// (across all 9 supported languages): an emergency in context, not a bare word
+/// (see [`crate::urgency`]).
 pub fn is_urgent_whitelist_turn(text: &str) -> bool {
-    let lower = text.to_lowercase();
-    const CUES: &[&str] = &[
-        "緊急", "紧急", "急事", "很急", "非常急", "十萬火急", "十万火急", "馬上找", "马上找",
-        "立刻找", "快點接", "快点接", "醫院", "医院", "急診", "急诊", "車禍", "车祸", "意外",
-        "救命", "火災", "火灾", "報警", "报警", "住院", "出事了", "有急用",
-        "urgent", "emergency", "right now", "immediately", "asap", "hospital", "accident",
-        "ambulance", "life or death", "critical",
-        "急ぎ", "大至急", "至急", "病院", "救急", "事故", "大変", "すぐ繋いで",
-        "긴급", "급한", "급해요", "빨리", "병원", "응급실", "사고", "큰일",
-        "urgente", "emergencia", "hospital", "accidente", "ahora mismo", "de inmediato",
-        "urgence", "hôpital", "hopital", "immédiatement", "tout de suite",
-        "notfall", "dringend", "krankenhaus", "unfall", "sofort",
-        "urgência", "emergência", "acidente", "agora mesmo", "imediatamente",
-    ];
-    CUES.iter().any(|k| lower.contains(k))
+    crate::urgency::is_urgent(text)
 }
 
 /// Per-call sales / scam config (None = not persona mode, or an AI call-back).
@@ -5059,6 +5046,9 @@ pub async fn run_session(
         });
     let mut stall_release_now = false;
     let mut urgent_transfer_fired = false;
+    // Whitelist urgent call: what the AI said since the caller's urgent words (a line
+    // said twice there is its hold-on line even when the wording is not known).
+    let mut ai_after_urgent = String::new();
     // Judged sales / scam with stalling off: marked, and not looked at again.
     let mut stall_detected = false;
     // The live socket runs the stall prompt (a rotation went through while stalling).
@@ -5121,6 +5111,13 @@ pub async fn run_session(
             }
             if let Some(turn) = ctl.take_say() {
                 model_turn_pending = true;
+                // In the language the caller speaks on this call, not the setting's.
+                let spoken = crate::urgency::caller_language(&caller_text_all);
+                info!(
+                    "Whitelist urgent call: line for the AI serial={serial} caller_language={}",
+                    spoken.map_or("unknown", |l| l.code())
+                );
+                let turn = crate::urgent_call::with_caller_language(&turn, spoken);
                 match send_text_before_deadline(
                     &mut sink,
                     turn,
@@ -6448,9 +6445,25 @@ pub async fn run_session(
                                     push_tx_window(&mut turn_out_text, s, 400);
                                     // Whitelist urgent call: dialing waits for the AI's hold-on line.
                                     if let Some(ctl) = urgent_ctl.as_ref() {
-                                        if ctl.hold_said_at().is_none() && crate::urgent_call::is_hold_line(&turn_out_text) {
+                                        // Before the caller's urgent words only the wordings that clearly
+                                        // ask to stay on the line count ("hold on" is said in passing too).
+                                        let hold = if urgent_transfer_fired {
+                                            crate::urgent_call::is_hold_line(&turn_out_text)
+                                        } else {
+                                            crate::urgent_call::is_strong_hold_line(&turn_out_text)
+                                        };
+                                        if ctl.hold_said_at().is_none() && hold {
                                             info!("Whitelist urgent call: the AI said its hold-on line serial={serial}");
                                             ctl.note_hold_line();
+                                        }
+                                        if urgent_transfer_fired {
+                                            push_tx_window(&mut ai_after_urgent, s, 800);
+                                            if ctl.hold_said_at().is_none() && crate::urgent_call::repeats_a_line(&ai_after_urgent) {
+                                                info!(
+                                                    "Whitelist urgent call: the AI said the same line twice after the urgent words serial={serial} — taken as its hold-on line"
+                                                );
+                                                ctl.note_hold_line();
+                                            }
                                         }
                                     }
                                     if cb_hold {

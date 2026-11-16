@@ -85,17 +85,88 @@ pub fn abort_payload(id: &str) -> Value {
 }
 
 /// The AI's hold-on line (urgent_block with the call on) in what it said, in any
-/// of the nine languages. Dialing waits for it.
+/// of the nine languages. Dialing waits for it. Both sides are folded first (no
+/// spaces, punctuation or accents, one width, one case, simplified Chinese), so a
+/// transcript like "neraccroche pas" still reads as "ne raccroche pas".
 pub fn is_hold_line(ai_said: &str) -> bool {
-    let lower = ai_said.to_lowercase();
-    const CUES: &[&str] = &[
-        "不要掛", "不要挂", "別掛", "别挂", "先別掛", "先别挂",
-        "don't hang up", "do not hang up", "dont hang up", "stay on the line",
-        "切らないで", "끊지 마", "끊지 말",
-        "no cuelgue", "no cuelgues", "ne raccroche", "nicht auflegen", "leg nicht auf", "legen sie nicht auf",
-        "não desligue", "nao desligue",
+    hold_cues(false, ai_said)
+}
+
+/// [is_hold_line] with only the wordings that ask the caller not to hang up or to
+/// stay on the line ("hold on", "ちょっと待って" also say "one moment" in passing):
+/// what counts before the caller's words named an emergency.
+pub fn is_strong_hold_line(ai_said: &str) -> bool {
+    hold_cues(true, ai_said)
+}
+
+fn hold_cues(strong_only: bool, ai_said: &str) -> bool {
+    const STRONG: &[&str] = &[
+        // Chinese (folded to simplified)
+        "不要挂", "别挂", "先别走", "别走开", "不要走开",
+        // English
+        "don't hang up", "do not hang up", "stay on the line", "stay on the phone", "please hold", "hold the line", "don't go anywhere",
+        // Japanese
+        "切らないで", "切らずに", "そのままお待ち",
+        // Korean
+        "끊지 마", "끊지 말", "끊지 않",
+        // Spanish
+        "no cuelgue", "no cuelgues", "no cortes", "no corte", "quédese en la línea", "quédate en la línea", "siga en la línea", "sigue en la línea",
+        "no se vaya", "no te vayas",
+        // French
+        "ne raccroche", "ne quittez pas", "ne quitte pas", "restez en ligne", "reste en ligne",
+        // German
+        "nicht auflegen", "leg nicht auf", "legen sie nicht auf", "legt nicht auf", "bleib dran", "bleiben sie dran", "bleiben sie bitte dran",
+        "bleib bitte dran", "bleib am apparat", "bleiben sie am apparat",
+        // Portuguese
+        "não desligue", "não desliga", "não desliguem", "fique na linha", "fica na linha", "aguarde na linha",
     ];
-    CUES.iter().any(|k| lower.contains(k))
+    const WEAK: &[&str] = &[
+        "请稍候", "请稍等", "稍等一下", "hold on", "hang on", "少々お待ち", "お待ちください", "ちょっと待って", "待っててね",
+        "잠깐만 기다려", "잠시만 기다려", "기다려 주세요", "기다려 줘", "espera un momento", "espere un momento", "patientez",
+        "ne bougez pas", "ne bouge pas", "nicht weggehen", "aguarde um pouco", "espera um pouco", "espere um pouco",
+    ];
+    static FOLDED: std::sync::OnceLock<(Vec<String>, Vec<String>)> = std::sync::OnceLock::new();
+    let (strong, weak) = FOLDED.get_or_init(|| {
+        let fold = |l: &[&str]| l.iter().map(|c| crate::urgency::fold_compact(c)).collect::<Vec<_>>();
+        (fold(STRONG), fold(WEAK))
+    });
+    let said = crate::urgency::fold_compact(ai_said);
+    strong.iter().chain(if strong_only { [].iter() } else { weak.iter() }).any(|c| said.contains(c.as_str()))
+}
+
+/// The same sentence twice in what the AI said (a line it repeats while it waits:
+/// its hold-on line, whatever the wording). Sentences of fewer than six letters
+/// ("喂？", "Okay.") do not count.
+pub fn repeats_a_line(ai_said: &str) -> bool {
+    let mut seen = std::collections::HashSet::new();
+    ai_said
+        .split(['.', '!', '?', '。', '！', '？', '\n', '…', ';', '；', '，', ','])
+        .map(crate::urgency::fold_compact)
+        .filter(|s| s.chars().count() >= 6)
+        .any(|s| !seen.insert(s))
+}
+
+/// A turn for the model with the language it must say it in: the one the caller
+/// speaks on this call (`spoken`, from their words), whatever the language of the
+/// instruction; unknown: the caller's language all the same.
+pub fn with_caller_language(turn: &str, spoken: Option<Lang>) -> String {
+    let note = match spoken {
+        Some(l) => {
+            let name = crate::urgency::language_name(l);
+            format!(" [Language: the caller is speaking {name} on this call. Say it in {name}, whatever language this note is in.]")
+        }
+        None => " [Language: say it in the language the caller is speaking on this call, whatever language this note is in.]".to_string(),
+    };
+    let Ok(mut v) = serde_json::from_str::<Value>(turn) else {
+        return turn.to_string();
+    };
+    match v.pointer_mut("/clientContent/turns/0/parts/0/text") {
+        Some(Value::String(text)) => {
+            text.push_str(&note);
+            v.to_string()
+        }
+        _ => turn.to_string(),
+    }
 }
 
 /// One add_call_result from the phone.
@@ -357,12 +428,12 @@ pub fn deliver(msg: &Value) -> bool {
 pub fn not_answered_turn(lang: Lang, assistant: bool, owner: &str) -> String {
     let owner = crate::prompts::owner_label(lang, owner);
     let text = match (lang, assistant) {
-        (Lang::ZhTw, false) => "（系統：剛才沒有接通。現在用一句話跟對方說「抱歉，剛剛沒接通，我等一下馬上打給你。」不要說已經接通，也不要說要轉給誰。）".to_string(),
-        (Lang::ZhTw, true) => format!("（系統：{owner}沒有接電話。現在用一句話跟對方說「{owner}現在沒接，我已經通知他了，請他馬上打給你。」不要說已經接通。）"),
-        (Lang::ZhCn, false) => "（系统：刚才没有接通。现在用一句话跟对方说「抱歉，刚刚没接通，我等一下马上打给你。」不要说已经接通，也不要说要转给谁。）".to_string(),
-        (Lang::ZhCn, true) => format!("（系统：{owner}没有接电话。现在用一句话跟对方说「{owner}现在没接，我已经通知他了，请他马上打给你。」不要说已经接通。）"),
-        (_, false) => "(System: the call did not go through. Say in one sentence, in the caller's language: \"Sorry, that didn't go through. I'll call you right back.\" Do not say anyone is on the line.)".to_string(),
-        (_, true) => format!("(System: {owner} did not answer. Say in one sentence, in the caller's language: \"{owner} isn't picking up. I've let them know and asked them to call you straight back.\" Do not say anyone is on the line.)"),
+        (Lang::ZhTw, false) => "（系統：剛才沒有接通。現在用一句話跟對方說「抱歉，剛剛沒接通，我等一下馬上打給你。」這句話用對方這通電話講的語言說（對方講英文就說英文、講日文就說日文），不要預設中文。不要說已經接通，也不要說要轉給誰。）".to_string(),
+        (Lang::ZhTw, true) => format!("（系統：{owner}沒有接電話。現在用一句話跟對方說「{owner}現在沒接，我已經通知他了，請他馬上打給你。」這句話用對方這通電話講的語言說（對方講英文就說英文、講日文就說日文），不要預設中文。不要說已經接通。）"),
+        (Lang::ZhCn, false) => "（系统：刚才没有接通。现在用一句话跟对方说「抱歉，刚刚没接通，我等一下马上打给你。」这句话用对方这通电话讲的语言说（对方讲英文就说英文、讲日文就说日文），不要默认中文。不要说已经接通，也不要说要转给谁。）".to_string(),
+        (Lang::ZhCn, true) => format!("（系统：{owner}没有接电话。现在用一句话跟对方说「{owner}现在没接，我已经通知他了，请他马上打给你。」这句话用对方这通电话讲的语言说（对方讲英文就说英文、讲日文就说日文），不要默认中文。不要说已经接通。）"),
+        (_, false) => "(System: the call did not go through. Say in one sentence, in the language the caller is speaking on this call (not necessarily English): \"Sorry, that didn't go through. I'll call you right back.\" Do not say anyone is on the line.)".to_string(),
+        (_, true) => format!("(System: {owner} did not answer. Say in one sentence, in the language the caller is speaking on this call (not necessarily English): \"{owner} isn't picking up. I've let them know and asked them to call you straight back.\" Do not say anyone is on the line.)"),
     };
     crate::prompts::client_turn(&text)
 }
@@ -373,12 +444,12 @@ pub fn not_answered_turn(lang: Lang, assistant: bool, owner: &str) -> String {
 pub fn callback_turn(lang: Lang, assistant: bool, owner: &str) -> String {
     let owner = crate::prompts::owner_label(lang, owner);
     let text = match (lang, assistant) {
-        (Lang::ZhTw, false) => "（系統：現在不轉接。用一句話跟對方說「好，我知道了，我等一下盡快打給你。」不要說已經接通，也不要說要轉給誰。）".to_string(),
-        (Lang::ZhTw, true) => format!("（系統：現在不轉接。用一句話跟對方說「好，我會請{owner}盡快打給你。」不要說已經接通。）"),
-        (Lang::ZhCn, false) => "（系统：现在不转接。用一句话跟对方说「好，我知道了，我等一下尽快打给你。」不要说已经接通，也不要说要转给谁。）".to_string(),
-        (Lang::ZhCn, true) => format!("（系统：现在不转接。用一句话跟对方说「好，我会请{owner}尽快打给你。」不要说已经接通。）"),
-        (_, false) => "(System: no call is put through now. Say in one sentence, in the caller's language: \"Okay, got it. I'll call you back as soon as I can.\" Do not say anyone is on the line.)".to_string(),
-        (_, true) => format!("(System: no call is put through now. Say in one sentence, in the caller's language: \"Okay, I'll ask {owner} to call you back as soon as possible.\" Do not say anyone is on the line.)"),
+        (Lang::ZhTw, false) => "（系統：現在不轉接。用一句話跟對方說「好，我知道了，我等一下盡快打給你。」這句話用對方這通電話講的語言說（對方講英文就說英文、講日文就說日文），不要預設中文。不要說已經接通，也不要說要轉給誰。）".to_string(),
+        (Lang::ZhTw, true) => format!("（系統：現在不轉接。用一句話跟對方說「好，我會請{owner}盡快打給你。」這句話用對方這通電話講的語言說（對方講英文就說英文、講日文就說日文），不要預設中文。不要說已經接通。）"),
+        (Lang::ZhCn, false) => "（系统：现在不转接。用一句话跟对方说「好，我知道了，我等一下尽快打给你。」这句话用对方这通电话讲的语言说（对方讲英文就说英文、讲日文就说日文），不要默认中文。不要说已经接通，也不要说要转给谁。）".to_string(),
+        (Lang::ZhCn, true) => format!("（系统：现在不转接。用一句话跟对方说「好，我会请{owner}尽快打给你。」这句话用对方这通电话讲的语言说（对方讲英文就说英文、讲日文就说日文），不要默认中文。不要说已经接通。）"),
+        (_, false) => "(System: no call is put through now. Say in one sentence, in the language the caller is speaking on this call (not necessarily English): \"Okay, got it. I'll call you back as soon as I can.\" Do not say anyone is on the line.)".to_string(),
+        (_, true) => format!("(System: no call is put through now. Say in one sentence, in the language the caller is speaking on this call (not necessarily English): \"Okay, I'll ask {owner} to call you back as soon as possible.\" Do not say anyone is on the line.)"),
     };
     crate::prompts::client_turn(&text)
 }
@@ -830,5 +901,189 @@ mod tests {
         assert!(clear_owner_on_call(phone));
         assert!(!owner_on_call(phone));
         assert!(!clear_owner_on_call(phone));
+    }
+
+    // ---- Nine-language table: urgent turns and hold-on lines ----
+
+    /// (language, three real emergencies, three mentions that are not urgent)
+    const URGENT_TABLE: &[(&str, [&str; 3], [&str; 3])] = &[
+        ("zh-TW", ["我是他姐姐，我爸爸剛被送急診，請馬上找他。", "有急事，麻煩你叫他現在馬上接電話。", "他出車禍了，很急，我要馬上找本人。"],
+                  ["明天想約你吃飯，有空再回我。", "最近天氣變涼，記得多穿點。", "我只是打來問候一下，不用特地找他。"]),
+        ("zh-CN", ["我是他表哥，我妈妈刚被送去急诊，请马上找他。", "有紧急的事，请让他马上接电话。", "他出车祸了，很急，我要马上找本人。"],
+                  ["明天想约你吃饭，有空再回我。", "最近天气变凉，记得多穿点。", "我只是打来问候一下，不用特地找他。"]),
+        ("en", ["This is his sister, our dad was just taken to the hospital, I need to reach him right now.", "It's an emergency, please get him on the phone.", "There's been an accident and I need him immediately."],
+               ["Want to grab lunch tomorrow?", "Just wanted to say hi, no need to find him.", "Tell him the book he lent me was great."]),
+        ("ja", ["兄の友人です。母が事故に遭いました、至急本人につないでください。", "急ぎの用事なんです、すぐ繋いでください。", "父が病院に運ばれました、本人と話したいです。"],
+               ["明日ご飯でもどうですか。", "ご無沙汰しています、挨拶だけです。", "お借りした本、とても面白かったと伝えてください。"]),
+        ("ko", ["그의 누나인데요, 아버지가 응급실에 실려 갔어요. 지금 바로 연결해 주세요.", "긴급한 일이에요, 본인과 통화해야 해요.", "급한 일이 생겼어요, 빨리 바꿔 주세요."],
+               ["내일 밥 한번 먹어요.", "그냥 인사하려고 전화했어요.", "빌려준 책 재미있었다고 전해 주세요."]),
+        ("es", ["Soy su hermana, mi padre acaba de ingresar al hospital, necesito hablar con él.", "Es una emergencia, por favor comuníquelo ahora mismo.", "Hubo un accidente y es urgente que hable con él."],
+               ["¿Quieres comer mañana?", "Solo llamo para saludar.", "Dile que el libro que me prestó me encantó."]),
+        ("fr", ["C'est sa sœur, notre père vient d'être emmené à l'hôpital, je dois lui parler.", "C'est urgent, passez-le-moi tout de suite.", "Il y a eu une urgence, j'ai besoin de lui immédiatement."],
+               ["On déjeune demain ?", "J'appelais juste pour dire bonjour.", "Dis-lui que son livre m'a beaucoup plu."]),
+        ("de", ["Ich bin seine Schwester, unser Vater ist im Krankenhaus, ich muss ihn sofort sprechen.", "Es ist ein Notfall, bitte verbinden Sie mich.", "Es gab einen Unfall, es ist dringend."],
+               ["Hast du morgen Zeit zum Mittagessen?", "Ich rufe nur an, um Hallo zu sagen.", "Sag ihm, das Buch war richtig gut."]),
+        ("pt", ["Sou irmã dele, meu pai foi levado para o hospital, preciso falar com ele agora mesmo.", "É uma emergência, por favor chame-o.", "Houve um acidente, é urgente."],
+               ["Quer almoçar amanhã?", "Só liguei para dizer oi.", "Diga a ele que o livro emprestado era ótimo."]),
+    ];
+
+    /// Mentions of hospital / accident / "right now" with nothing urgent behind them.
+    /// `is_urgent_whitelist_turn` matches the bare word, so these come out true.
+    const MENTION_ONLY: &[(&str, &str)] = &[
+        ("zh-TW", "我上週去醫院拿藥，沒事了。"),
+        ("zh-TW", "好意外你還記得我，哈哈。"),
+        ("zh-CN", "我上周去医院拿药，没事了。"),
+        ("zh-CN", "好意外你还记得我，哈哈。"),
+        ("en", "I went to the hospital last week to pick up my meds, nothing serious."),
+        ("en", "Right now I'm just calling to say hi."),
+        ("ja", "先週、病院で薬をもらいましたが、大丈夫です。"),
+        ("ja", "最近は仕事が大変ですね。"),
+        ("ko", "지난주에 병원에서 약을 받았는데 괜찮아요."),
+        ("ko", "시간이 빨리 가네요, 벌써 가을이에요."),
+        ("es", "La semana pasada fui al hospital por mis medicinas, nada grave."),
+        ("fr", "La semaine dernière je suis allé à l'hôpital chercher mes médicaments, rien de grave."),
+        ("de", "Letzte Woche war ich im Krankenhaus wegen meiner Tabletten, nichts Schlimmes."),
+        ("pt", "Semana passada fui ao hospital buscar remédio, nada grave."),
+    ];
+
+    #[test]
+    fn urgent_turns_are_found_in_every_language() {
+        for (lang, urgent, _) in URGENT_TABLE {
+            for s in urgent {
+                assert!(crate::gemini_live::is_urgent_whitelist_turn(s), "{lang}: {s}");
+            }
+        }
+    }
+
+    #[test]
+    fn friendly_turns_without_an_emergency_are_not_urgent_in_every_language() {
+        for (lang, _, calm) in URGENT_TABLE {
+            for s in calm {
+                assert!(!crate::gemini_live::is_urgent_whitelist_turn(s), "{lang}: {s}");
+            }
+        }
+    }
+
+    #[test]
+    fn known_gap_mentioning_a_hospital_without_urgency_is_not_urgent() {
+        for (lang, s) in MENTION_ONLY {
+            assert!(!crate::gemini_live::is_urgent_whitelist_turn(s), "{lang}: {s}");
+        }
+    }
+
+    /// (language, the line of the owner's own voice, the line of the AI assistant)
+    const HOLD_TABLE: &[(&str, &str, &str)] = &[
+        ("zh-TW", "好，你等一下，先不要掛。", "我現在幫你打給他，請先不要掛。"),
+        ("zh-CN", "好，你等一下，先不要挂。", "我现在帮你打给他，请先不要挂。"),
+        ("en", "Okay, hold on a sec, don't hang up.", "I'm calling him for you now, please stay on the line."),
+        ("ja", "わかった、ちょっと待って、切らないでね。", "今おつなぎします、電話を切らないでください。"),
+        ("ko", "알겠어, 잠깐만, 끊지 말고 기다려.", "지금 연결해 드릴게요, 끊지 마세요."),
+        ("es", "Vale, espera un momento, no cuelgues.", "Ahora mismo le llamo, por favor no cuelgue."),
+        ("fr", "D'accord, une seconde, ne raccroche pas.", "Je l'appelle tout de suite, ne raccrochez pas, s'il vous plaît."),
+        ("de", "Okay, einen Moment, leg nicht auf.", "Ich rufe ihn jetzt an, bitte legen Sie nicht auf."),
+        ("pt", "Tá bom, espera um pouco, não desligue.", "Vou ligar para ele agora, por favor não desligue."),
+    ];
+
+    /// Ordinary lines of the AI that carry no hold-on request.
+    const NOT_HOLD: &[(&str, &str)] = &[
+        ("zh-TW", "好的，我知道了，請問是什麼事？"),
+        ("zh-CN", "好的，我知道了，请问是什么事？"),
+        ("en", "Sure, what is it about?"),
+        ("ja", "はい、どうなさいましたか。"),
+        ("ko", "네, 무슨 일이세요?"),
+        ("es", "Claro, ¿de qué se trata?"),
+        ("fr", "Bien sûr, de quoi s'agit-il ?"),
+        ("de", "Natürlich, worum geht es?"),
+        ("pt", "Claro, do que se trata?"),
+    ];
+
+    /// Other natural ways to ask the caller to stay on the line.
+    const HOLD_VARIANTS: &[(&str, &str)] = &[
+        ("en", "Please hold, I'm connecting you."),
+        ("ja", "このまま切らずにお待ちください。"),
+        ("fr", "Ne quittez pas, je vous le passe."),
+        ("de", "Bleiben Sie bitte dran, ich verbinde."),
+        ("pt", "Não desliga, já falo com ele."),
+        ("es", "Quédese en la línea, por favor."),
+        ("zh-TW", "請你先別走，我馬上處理。"),
+    ];
+
+    #[test]
+    fn the_hold_on_line_is_found_in_every_language_for_both_voices() {
+        for (lang, own, assistant) in HOLD_TABLE {
+            assert!(is_hold_line(own), "{lang} own voice: {own}");
+            assert!(is_hold_line(assistant), "{lang} assistant: {assistant}");
+        }
+    }
+
+    #[test]
+    fn ordinary_lines_are_not_a_hold_on_line_in_every_language() {
+        for (lang, s) in NOT_HOLD {
+            assert!(!is_hold_line(s), "{lang}: {s}");
+        }
+    }
+
+    #[test]
+    fn known_gap_other_hold_on_wordings_are_found() {
+        for (lang, s) in HOLD_VARIANTS {
+            assert!(is_hold_line(s), "{lang}: {s}");
+        }
+    }
+
+    #[test]
+    fn a_hold_on_line_reads_the_same_without_spaces_or_accents() {
+        for said in ["Attends un instant. Neraccroche pas.", "NE RACCROCHEZ PAS", "Nao desligue", "quedese en la linea", "bleibensiedran", "先 不 要 掛"] {
+            assert!(is_hold_line(said), "{said}");
+        }
+        for said in ["Hold on, what do you mean?", "ちょっと待って、何の話？"] {
+            assert!(is_hold_line(said) && !is_strong_hold_line(said), "weak wording, counted only after urgent words: {said}");
+        }
+        for said in ["Sure, what is it about?", "我知道了，等一下打給你。", "Bien sûr, de quoi s'agit-il ?", "掛號了嗎？"] {
+            assert!(!is_hold_line(said), "{said}");
+        }
+    }
+
+    #[test]
+    fn a_line_said_twice_is_found() {
+        assert!(repeats_a_line("Attends un instant. Ne raccroche pas. Attends un instant. Ne raccroche pas."));
+        assert!(repeats_a_line("Attends un instant. Neraccroche pas. Attends un instant, ne raccroche pas."));
+        assert!(!repeats_a_line("Okay. Okay. 喂？喂？"), "short lines do not count");
+        assert!(!repeats_a_line("Je comprends. Je préviens ton frère tout de suite."));
+    }
+
+    #[test]
+    fn every_line_for_the_ai_asks_for_the_callers_language() {
+        for lang in crate::locale::ALL {
+            for assistant in [false, true] {
+                for t in [not_answered_turn(lang, assistant, "Sam"), callback_turn(lang, assistant, "Sam")] {
+                    let v: Value = serde_json::from_str(&t).unwrap();
+                    let text = v.pointer("/clientContent/turns/0/parts/0/text").and_then(|x| x.as_str()).unwrap();
+                    assert!(
+                        text.contains("對方這通電話講的語言") || text.contains("对方这通电话讲的语言") || text.contains("language the caller is speaking"),
+                        "{lang:?} {assistant}: {text}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_callers_spoken_language_goes_into_the_line_whatever_the_setting() {
+        // Owner's setting is Chinese, the caller speaks German: the AI is told German.
+        let said = "Es gab einen Unfall, es ist dringend.";
+        let spoken = crate::urgency::caller_language(said);
+        assert_eq!(spoken, Some(Lang::De));
+        let t = with_caller_language(&callback_turn(Lang::ZhTw, false, "Sam"), spoken);
+        let v: Value = serde_json::from_str(&t).unwrap();
+        let text = v.pointer("/clientContent/turns/0/parts/0/text").and_then(|x| x.as_str()).unwrap();
+        assert!(text.contains("Say it in German"), "{text}");
+        assert!(text.contains("打給你"), "the instruction is kept: {text}");
+        for (said, name) in [("This is his sister, it's an emergency.", "English"), ("C'est urgent, passez-le-moi.", "French"), ("Es una emergencia.", "Spanish")] {
+            let t = with_caller_language(&not_answered_turn(Lang::ZhCn, true, "Sam"), crate::urgency::caller_language(said));
+            assert!(t.contains(&format!("Say it in {name}")), "{said}: {t}");
+        }
+        let t = with_caller_language(&callback_turn(Lang::En, true, "Sam"), None);
+        assert!(t.contains("language the caller is speaking on this call"), "{t}");
+        assert_eq!(with_caller_language("not json", Some(Lang::En)), "not json");
     }
 }

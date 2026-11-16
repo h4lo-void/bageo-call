@@ -1149,12 +1149,12 @@ pub fn urgent_block(lang: Lang, assistant: bool, owner: &str, will_call: bool) -
     let owner = crate::prompts::owner_label(lang, owner);
     if will_call {
         return match (lang, assistant) {
-            (Lang::ZhTw, false) => "\n【白名單：對方有急事】這位是你很重要的人。如果他說有急事、出意外、住院，或要你馬上處理，先安撫他，再明確說「好，你等一下，先不要掛。」說完就停，等系統接下來的指示。不要說已經接通，也不要說要轉給誰。".to_string(),
-            (Lang::ZhTw, true) => format!("\n【白名單：對方有急事】這位是{owner}很重要的人。如果他說有急事、出意外、住院，或要馬上找{owner}，先安撫他，再明確說「好，我現在幫你打給{owner}，請先不要掛。」說完就停，等系統接下來的指示。不要說已經接通，也不要說{owner}已經在線上。"),
-            (Lang::ZhCn, false) => "\n【白名单：对方有急事】这位是你很重要的人。如果他说有急事、出意外、住院，或要你马上处理，先安抚他，再明确说「好，你等一下，先不要挂。」说完就停，等系统接下来的指示。不要说已经接通，也不要说要转给谁。".to_string(),
-            (Lang::ZhCn, true) => format!("\n【白名单：对方有急事】这位是{owner}很重要的人。如果他说有急事、出意外、住院，或要马上找{owner}，先安抚他，再明确说「好，我现在帮你打给{owner}，请先不要挂。」说完就停，等系统接下来的指示。不要说已经接通，也不要说{owner}已经在线上。"),
-            (_, false) => "\n[Whitelist: something urgent] This person matters to you. If they say it is urgent, there was an accident, someone is in hospital, or they need you right away, calm them and say clearly: \"Okay, hold on a moment, don't hang up.\" Then stop and wait for the system's next instruction. Do not say anyone is on the line or that you are putting them through.".to_string(),
-            (_, true) => format!("\n[Whitelist: something urgent] This person matters to {owner}. If they say it is urgent, there was an accident, someone is in hospital, or they need {owner} right away, calm them and say clearly: \"Okay, I'm calling {owner} for you now. Please don't hang up.\" Then stop and wait for the system's next instruction. Do not say {owner} is on the line already."),
+            (Lang::ZhTw, false) => "\n【白名單：對方有急事】這位是你很重要的人。如果他說有急事、出意外、住院，或要你馬上處理，先安撫他，再明確說「好，你等一下，先不要掛。」這句話用對方這通電話講的語言說（對方講英文就說英文），不要預設中文。說完就停，等系統接下來的指示。不要說已經接通，也不要說要轉給誰。".to_string(),
+            (Lang::ZhTw, true) => format!("\n【白名單：對方有急事】這位是{owner}很重要的人。如果他說有急事、出意外、住院，或要馬上找{owner}，先安撫他，再明確說「好，我現在幫你打給{owner}，請先不要掛。」這句話用對方這通電話講的語言說（對方講英文就說英文），不要預設中文。說完就停，等系統接下來的指示。不要說已經接通，也不要說{owner}已經在線上。"),
+            (Lang::ZhCn, false) => "\n【白名单：对方有急事】这位是你很重要的人。如果他说有急事、出意外、住院，或要你马上处理，先安抚他，再明确说「好，你等一下，先不要挂。」这句话用对方这通电话讲的语言说（对方讲英文就说英文），不要默认中文。说完就停，等系统接下来的指示。不要说已经接通，也不要说要转给谁。".to_string(),
+            (Lang::ZhCn, true) => format!("\n【白名单：对方有急事】这位是{owner}很重要的人。如果他说有急事、出意外、住院，或要马上找{owner}，先安抚他，再明确说「好，我现在帮你打给{owner}，请先不要挂。」这句话用对方这通电话讲的语言说（对方讲英文就说英文），不要默认中文。说完就停，等系统接下来的指示。不要说已经接通，也不要说{owner}已经在线上。"),
+            (_, false) => "\n[Whitelist: something urgent] This person matters to you. If they say it is urgent, there was an accident, someone is in hospital, or they need you right away, calm them and say clearly: \"Okay, hold on a moment, don't hang up.\" Say it in the language the caller is speaking on this call (not necessarily English). Then stop and wait for the system's next instruction. Do not say anyone is on the line or that you are putting them through.".to_string(),
+            (_, true) => format!("\n[Whitelist: something urgent] This person matters to {owner}. If they say it is urgent, there was an accident, someone is in hospital, or they need {owner} right away, calm them and say clearly: \"Okay, I'm calling {owner} for you now. Please don't hang up.\" Say it in the language the caller is speaking on this call (not necessarily English). Then stop and wait for the system's next instruction. Do not say {owner} is on the line already."),
         };
     }
     match (lang, assistant) {

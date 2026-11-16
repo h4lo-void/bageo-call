@@ -57,6 +57,7 @@ mod trtc;
 mod trtc_api;
 mod trtc_bridge;
 mod urgent_call;
+mod urgency;
 mod usb_bridge;
 mod vad;
 mod voice_preview;
@@ -6773,9 +6774,9 @@ async fn run_urgent_call(
             );
             ctl.block_dial();
             push_call_events(&active_call, &media_call_guard, &urgent_call_failed_events("bad_number")).await;
-            if ctl.hold_said_at().is_some() {
-                ctl.resume_with(on_callback);
-            }
+            // The prompt told the AI to wait for the next instruction after its
+            // hold-on line: it always gets one.
+            ctl.resume_with(on_callback);
             return;
         }
     };
@@ -6800,9 +6801,10 @@ async fn run_urgent_call(
             );
             ctl.block_dial();
             push_call_events(&active_call, &media_call_guard, &urgent_call_failed_events("no_hold_line")).await;
-            if said {
-                ctl.resume_with(on_callback);
-            }
+            // Said or not (a wording the check does not know, a transcript that
+            // lost it), the AI waits for an instruction: it says the owner will
+            // call back instead of repeating its hold-on line.
+            ctl.resume_with(on_callback);
             return;
         }
         if waited < Duration::from_millis(1000) || ctl.hold_said_at().is_none() {
@@ -7146,9 +7148,7 @@ async fn run_gemini_session_to_end(
                                 None => {
                                     info!("Whitelist urgent call turned off during the call serial={serial} — no call");
                                     ctl.block_dial();
-                                    if ctl.hold_said_at().is_some() {
-                                        ctl.resume_with(on_callback);
-                                    }
+                                    ctl.resume_with(on_callback);
                                 }
                             }
                         }
