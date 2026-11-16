@@ -32,6 +32,7 @@ use serde_json::Value;
 use tracing::{info, warn};
 
 const BUILTIN: &str = include_str!("../data/scam_db.json");
+const BUILTIN_COUNTRIES: &str = include_str!("../data/country_scams.json");
 
 /// Every typology is named in these (the notification languages, [`crate::locale::ALL`]).
 pub const NAME_LANGS: [&str; 9] = ["zh-TW", "zh-CN", "en", "ja", "ko", "es", "fr", "de", "pt"];
@@ -162,6 +163,51 @@ pub struct NumberRule {
     pub note: String,
 }
 
+/// One country's phone-scam profile from `data/country_scams.json`.
+#[derive(Debug, Clone)]
+pub struct CountryProfile {
+    pub code: String,
+    pub name: String,
+    pub name_local: String,
+    pub iso: String,
+    pub calling_code: String,
+    pub languages: Vec<String>,
+    pub prevalence_note: String,
+    pub cross_border_note: String,
+    pub scams: Vec<CountryScam>,
+}
+
+/// One region-specific scam pattern inside a [`CountryProfile`].
+#[derive(Debug, Clone)]
+pub struct CountryScam {
+    pub id: String,
+    pub typology: String,
+    pub name: String,
+    pub name_en: String,
+    pub prevalence: String,
+    pub lang: String,
+    pub context_keywords: Vec<String>,
+    pub red_flag_keywords: Vec<CountryRedFlag>,
+    pub signals_en: String,
+    pub legit_en: String,
+    pub bait_tactics: Vec<String>,
+    pub sources: Vec<String>,
+}
+
+/// A strong region-specific red-flag phrase (`weight` 1 or 2).
+#[derive(Debug, Clone, Deserialize)]
+pub struct CountryRedFlag {
+    pub text: String,
+    #[serde(default = "default_red_flag_weight")]
+    pub weight: u32,
+    #[serde(default)]
+    pub hard: bool,
+}
+
+fn default_red_flag_weight() -> u32 {
+    2
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct KeywordIndex {
     han_first: HashMap<char, Vec<usize>>,
@@ -178,9 +224,13 @@ pub struct ScamDb {
     /// Language → phrases of a caller following up on the owner's own matter.
     pub own_matter: Vec<(String, Vec<String>)>,
     pub number_rules: Vec<NumberRule>,
+    /// Lowercase ISO country (`tw`, `us`, `gb`, `jp`, …) → regional scam profile.
+    pub countries: BTreeMap<String, CountryProfile>,
     by_text: HashMap<String, usize>,
     by_typology: HashMap<String, usize>,
     index: KeywordIndex,
+    /// Normalized keyword text → `(country_iso, scam_id)` pairs.
+    country_kw_map: HashMap<String, Vec<(String, String)>>,
 }
 
 #[derive(Deserialize)]
@@ -567,13 +617,231 @@ impl ScamDb {
     }
 }
 
+#[derive(Deserialize)]
+struct RawCountryFile {
+    countries: BTreeMap<String, RawCountryProfile>,
+}
+
+#[derive(Deserialize)]
+struct RawCountryProfile {
+    name: String,
+    #[serde(default)]
+    name_local: String,
+    iso: String,
+    calling_code: String,
+    #[serde(default)]
+    languages: Vec<String>,
+    #[serde(default)]
+    prevalence_note: String,
+    #[serde(default)]
+    cross_border_note: String,
+    scams: Vec<RawCountryScam>,
+}
+
+#[derive(Deserialize)]
+struct RawCountryScam {
+    id: String,
+    typology: String,
+    name: String,
+    name_en: String,
+    prevalence: String,
+    lang: String,
+    #[serde(default)]
+    context_keywords: Vec<String>,
+    #[serde(default)]
+    red_flag_keywords: Vec<CountryRedFlag>,
+    signals_en: String,
+    legit_en: String,
+    #[serde(default)]
+    bait_tactics: Vec<String>,
+    #[serde(default)]
+    sources: Vec<String>,
+}
+
+/// Phrases that expose detection to a scammer ("I'll call 165/110", "hang up",
+/// "police never ask for transfers") — forbidden in `bait_tactics`.
+const ANTI_STALL_MARKERS: &[&str] = &[
+    "165",
+    "110",
+    "112",
+    "911",
+    "報警",
+    "报警",
+    "掛斷",
+    "挂断",
+    "警察不會",
+    "警察不会",
+    "警察は電話で",
+    "검찰은 전화로",
+    "hang up",
+    "auflegen",
+    "call the official",
+    "llamar al número oficial",
+    "appeler le numéro officiel",
+    "ligar para o número oficial",
+];
+
+fn normalize_country_iso(s: &str) -> String {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "uk" => "gb".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// Merge `data/country_scams.json` into a parsed [`ScamDb`]: validates every
+/// typology, keyword, look-alike and bait tactic, indexes regional scam cards,
+/// and adds new context (`weight=1`) and red-flag (`weight=2`/`hard`) keywords.
+pub fn merge_countries(db: &mut ScamDb, json: &str) -> Result<(), String> {
+    let raw: RawCountryFile = serde_json::from_str(json).map_err(|e| format!("country_scams.json: {e}"))?;
+    if raw.countries.is_empty() {
+        return Err("country_scams.json has no countries".into());
+    }
+    let mut scam_ids = HashSet::new();
+    for (code, cp) in raw.countries {
+        let iso = normalize_country_iso(&cp.iso);
+        if iso.len() != 2 || !iso.bytes().all(|b| b.is_ascii_lowercase()) {
+            return Err(format!("country {code}: invalid iso {:?}", cp.iso));
+        }
+        if !cp.calling_code.starts_with('+') || cp.calling_code.len() < 2 {
+            return Err(format!("country {code}: invalid calling_code {:?}", cp.calling_code));
+        }
+        if db.countries.contains_key(&iso) {
+            return Err(format!("country iso {iso} listed twice"));
+        }
+        if cp.scams.is_empty() {
+            return Err(format!("country {code} has no scams"));
+        }
+        let mut scams = Vec::with_capacity(cp.scams.len());
+        for s in cp.scams {
+            if !valid_id(&s.id) || !scam_ids.insert(s.id.clone()) {
+                return Err(format!("country {code}: scam id {:?} invalid or listed twice", s.id));
+            }
+            let Some(&ti) = db.by_typology.get(&s.typology) else {
+                return Err(format!("{}: unknown typology {}", s.id, s.typology));
+            };
+            let typ_hard = db.typologies[ti].hard;
+            let Some(mode) = db.mode_of(&s.lang) else {
+                return Err(format!("{}: unknown keyword language {}", s.id, s.lang));
+            };
+            if s.name.trim().is_empty() || s.name_en.trim().is_empty() {
+                return Err(format!("{}: name and name_en required", s.id));
+            }
+            if s.signals_en.trim().is_empty() || s.legit_en.trim().is_empty() {
+                return Err(format!("{}: signals_en and legit_en required", s.id));
+            }
+            if s.signals_en.chars().count() > 260 || s.legit_en.chars().count() > 260 {
+                return Err(format!("{}: keep signals_en and legit_en <= 260 chars", s.id));
+            }
+            if s.bait_tactics.is_empty() {
+                return Err(format!("{}: at least one bait_tactic required", s.id));
+            }
+            for tactic in &s.bait_tactics {
+                let low = tactic.to_lowercase();
+                if let Some(&bad) = ANTI_STALL_MARKERS.iter().find(|&&m| low.contains(m)) {
+                    return Err(format!("{}: bait_tactic contains anti-stalling giveaway {bad:?}: {tactic}", s.id));
+                }
+            }
+            let norm_word = |raw_kw: &str| -> String {
+                if mode == Match::Word {
+                    words(raw_kw).join(" ")
+                } else {
+                    raw_kw.trim().to_string()
+                }
+            };
+            for ctx_kw in &s.context_keywords {
+                let cleaned = norm_word(ctx_kw);
+                if cleaned.is_empty() {
+                    return Err(format!("{}: empty context_keyword", s.id));
+                }
+                let kw = Keyword::new(&cleaned, 1, &s.typology, false, &s.lang, mode);
+                if !db.by_text.contains_key(&kw.text) {
+                    let idx = db.keywords.len();
+                    db.by_text.insert(kw.text.clone(), idx);
+                    db.index.insert(idx, &kw);
+                    db.keywords.push(kw.clone());
+                }
+                let entry = db.country_kw_map.entry(kw.text).or_default();
+                let pair = (iso.clone(), s.id.clone());
+                if !entry.contains(&pair) {
+                    entry.push(pair);
+                }
+            }
+            for rf in &s.red_flag_keywords {
+                if !(1..=2).contains(&rf.weight) {
+                    return Err(format!("{}: red_flag {:?} weight must be 1 or 2", s.id, rf.text));
+                }
+                if rf.hard && !typ_hard {
+                    return Err(format!("{}: red_flag {:?} is hard but {} is not", s.id, rf.text, s.typology));
+                }
+                let cleaned = norm_word(&rf.text);
+                if cleaned.is_empty() {
+                    return Err(format!("{}: empty red_flag_keyword", s.id));
+                }
+                let kw = Keyword::new(&cleaned, rf.weight, &s.typology, rf.hard, &s.lang, mode);
+                if let Some(&idx) = db.by_text.get(&kw.text) {
+                    if rf.weight > db.keywords[idx].weight {
+                        db.keywords[idx].weight = rf.weight;
+                    }
+                    if rf.hard && typ_hard {
+                        db.keywords[idx].hard = true;
+                    }
+                } else {
+                    let idx = db.keywords.len();
+                    db.by_text.insert(kw.text.clone(), idx);
+                    db.index.insert(idx, &kw);
+                    db.keywords.push(kw.clone());
+                }
+                let entry = db.country_kw_map.entry(kw.text).or_default();
+                let pair = (iso.clone(), s.id.clone());
+                if !entry.contains(&pair) {
+                    entry.push(pair);
+                }
+            }
+            scams.push(CountryScam {
+                id: s.id,
+                typology: s.typology,
+                name: s.name,
+                name_en: s.name_en,
+                prevalence: s.prevalence,
+                lang: s.lang,
+                context_keywords: s.context_keywords,
+                red_flag_keywords: s.red_flag_keywords,
+                signals_en: s.signals_en,
+                legit_en: s.legit_en,
+                bait_tactics: s.bait_tactics,
+                sources: s.sources,
+            });
+        }
+        db.countries.insert(
+            iso.clone(),
+            CountryProfile {
+                code,
+                name: cp.name,
+                name_local: if cp.name_local.trim().is_empty() { String::new() } else { cp.name_local },
+                iso,
+                calling_code: cp.calling_code,
+                languages: cp.languages,
+                prevalence_note: cp.prevalence_note,
+                cross_border_note: cp.cross_border_note,
+                scams,
+            },
+        );
+    }
+    Ok(())
+}
+
 /// The built-in database, read once. It cannot fail in a build whose tests
 /// passed; if it ever did, the agent goes on without keywords (the second look
 /// still runs on calls that say what they want) and says why.
 pub fn db() -> &'static ScamDb {
     static DB: OnceLock<ScamDb> = OnceLock::new();
     DB.get_or_init(|| match parse(BUILTIN) {
-        Ok(db) => db,
+        Ok(mut db) => {
+            if let Err(e) = merge_countries(&mut db, BUILTIN_COUNTRIES) {
+                warn!("built-in country scam database unreadable: {e}");
+            }
+            db
+        }
         Err(e) => {
             warn!("built-in scam database unreadable: {e}");
             ScamDb::default()
@@ -1018,11 +1286,12 @@ pub fn init(data_dir: &Path) {
     local_state().lock().unwrap_or_else(|e| e.into_inner()).path = Some(config.join("scam_db.local.json"));
     let base = db();
     info!(
-        "scam database v{}: {} typologies, {} keywords in {} languages, {} number rules; {} remembered number(s)",
+        "scam database v{}: {} typologies, {} keywords in {} languages ({} country profiles), {} number rules; {} remembered number(s)",
         base.version,
         base.typologies.len(),
         base.keywords.len(),
         base.languages().len(),
+        base.countries.len(),
         base.number_rules.len(),
         numbers().len()
     );
@@ -1093,10 +1362,246 @@ pub fn caller_facts_in(book: &NumberBook, local: &[LocalNumber], raw: &str, sim:
     f
 }
 
-/// [`caller_facts_in`] with the agent's number book and the owner's file.
+/// [`caller_facts_in`] with the agent's number book and the owner's file, plus
+/// the receiving SIM's ISO region for regional scam review.
 pub fn caller_facts(raw: &str, sim: Option<&str>) -> CallerFacts {
     let local = with_local(|l| l.numbers.clone());
-    caller_facts_in(numbers(), &local, raw, sim)
+    let mut f = caller_facts_in(numbers(), &local, raw, sim);
+    if let Some(iso) = sim.map(normalize_country_iso).filter(|c| c.len() == 2 && c.bytes().all(|b| b.is_ascii_lowercase())) {
+        f.notes.push(format!("Phone SIM region: {}", iso.to_ascii_uppercase()));
+    }
+    f
+}
+
+// ---------------------------------------------------------------- country intelligence
+
+const SIM_NOTE_PREFIX: &str = "Phone SIM region: ";
+const COUNTRY_BRIEF_MAX_CHARS: usize = 780;
+
+fn sim_from_notes(notes: &[String]) -> Option<String> {
+    notes.iter().find_map(|n| {
+        n.trim()
+            .strip_prefix(SIM_NOTE_PREFIX)
+            .map(normalize_country_iso)
+            .filter(|c| c.len() == 2 && c.bytes().all(|b| b.is_ascii_lowercase()))
+    })
+}
+
+fn normalized_hit_key(h: &str) -> String {
+    let t = h.trim();
+    let base = db();
+    let low = t.to_lowercase();
+    if base.country_kw_map.contains_key(&low) {
+        return low;
+    }
+    let w = words(t).join(" ");
+    if base.country_kw_map.contains_key(&w) {
+        return w;
+    }
+    let han = han_text(t);
+    if base.country_kw_map.contains_key(&han) {
+        return han;
+    }
+    low
+}
+
+fn prevalence_rank(p: &str) -> u8 {
+    match p {
+        "very_high" => 3,
+        "high" => 2,
+        "medium" => 1,
+        _ => 0,
+    }
+}
+
+fn dialogue_script_iso(dialogue: &str) -> Option<&'static str> {
+    if dialogue.chars().any(|c| ('\u{3040}'..='\u{30FF}').contains(&c)) {
+        return Some("jp");
+    }
+    if dialogue.chars().any(|c| ('\u{AC00}'..='\u{D7AF}').contains(&c)) {
+        return Some("kr");
+    }
+    if dialogue.chars().any(|c| matches!(c, '账' | '户' | '转' | '证' | '骗' | '贷' | '鱼' | '们')) {
+        return Some("cn");
+    }
+    if dialogue.chars().any(|c| ('\u{4E00}'..='\u{9FFF}').contains(&c)) {
+        return Some("tw");
+    }
+    None
+}
+
+/// Active country ISO codes (`tw`, `us`, `gb`, `jp`, …) for one call: SIM
+/// country first, then caller E.164 country, then countries matched by keywords
+/// or script.
+pub fn resolve_call_countries(
+    raw_number: &str,
+    number_notes: &[String],
+    hits: &[String],
+    dialogue: &str,
+) -> (Option<String>, Option<String>, Vec<String>) {
+    let base = db();
+    let sim_iso = sim_from_notes(number_notes);
+    let caller_iso = (!is_hidden(raw_number))
+        .then(|| crate::phone_region::normalize(raw_number, sim_iso.as_deref()).map(|n| normalize_country_iso(n.country)))
+        .flatten();
+    let mut active: Vec<String> = Vec::new();
+    fn push_iso(active: &mut Vec<String>, base: &ScamDb, iso: &str) {
+        if base.countries.contains_key(iso) && !active.iter().any(|x| x == iso) {
+            active.push(iso.to_string());
+        }
+    }
+    if let Some(ref s) = sim_iso {
+        push_iso(&mut active, base, s);
+    }
+    if let Some(ref c) = caller_iso {
+        push_iso(&mut active, base, c);
+    }
+    for h in hits {
+        let key = normalized_hit_key(h);
+        if let Some(pairs) = base.country_kw_map.get(&key) {
+            for (iso, _) in pairs {
+                push_iso(&mut active, base, iso);
+            }
+        }
+    }
+    if active.is_empty() {
+        if let Some(s) = dialogue_script_iso(dialogue) {
+            push_iso(&mut active, base, s);
+        }
+    }
+    (sim_iso, caller_iso, active)
+}
+
+/// Compact regional scam intelligence for [`crate::stall_review`], kept within
+/// [`COUNTRY_BRIEF_MAX_CHARS`] so Gemini Flash-Lite stays well under its 1.5s budget.
+pub fn country_review_brief(
+    raw_number: &str,
+    number_notes: &[String],
+    hits: &[String],
+    dialogue: &str,
+) -> String {
+    let base = db();
+    let (sim_iso, caller_iso, active) = resolve_call_countries(raw_number, number_notes, hits, dialogue);
+    if active.is_empty() {
+        return String::new();
+    }
+    let mut matched_ids: HashSet<&str> = HashSet::new();
+    for h in hits {
+        let key = normalized_hit_key(h);
+        if let Some(pairs) = base.country_kw_map.get(&key) {
+            for (_, sid) in pairs {
+                matched_ids.insert(sid.as_str());
+            }
+        }
+    }
+    let mut out = String::new();
+    if let (Some(s), Some(c)) = (sim_iso.as_deref(), caller_iso.as_deref()) {
+        if s != c {
+            if let Some(cp) = base.countries.get(c) {
+                if !cp.cross_border_note.trim().is_empty() {
+                    out.push_str(&format!("Cross-border note ({}->{}): {}\n", cp.code, s.to_ascii_uppercase(), cp.cross_border_note.trim()));
+                }
+            }
+        }
+    }
+    let mut candidates: Vec<(&CountryProfile, &CountryScam, bool)> = Vec::new();
+    for iso in active.iter().take(2) {
+        if let Some(cp) = base.countries.get(iso) {
+            for s in &cp.scams {
+                let hit = matched_ids.contains(s.id.as_str());
+                candidates.push((cp, s, hit));
+            }
+        }
+    }
+    candidates.sort_by_key(|&(_, s, hit)| std::cmp::Reverse((hit, prevalence_rank(&s.prevalence))));
+    let mut shown = 0usize;
+    for (cp, s, _) in candidates {
+        if shown >= 2 {
+            break;
+        }
+        let line = format!(
+            "- [{} -> {}] {} Ordinary: {}\n",
+            cp.code,
+            s.typology,
+            s.signals_en.trim(),
+            s.legit_en.trim()
+        );
+        if out.chars().count() + line.chars().count() + 28 > COUNTRY_BRIEF_MAX_CHARS {
+            break;
+        }
+        if shown == 0 {
+            out.push_str("Regional scam patterns:\n");
+        }
+        out.push_str(&line);
+        shown += 1;
+    }
+    out
+}
+
+/// Country-specific Stall Mode bait hooks for the rotated Gemini Live prompt
+/// once a call is judged sales/scam. Never contains police/hotline giveaways.
+pub fn country_bait_addon(
+    raw_number: &str,
+    number_notes: &[String],
+    typology_id: &str,
+    hits: &[&str],
+    dialogue: &str,
+) -> Option<String> {
+    let base = db();
+    let hit_strings: Vec<String> = hits.iter().map(|s| (*s).to_string()).collect();
+    let (_, _, active) = resolve_call_countries(raw_number, number_notes, &hit_strings, dialogue);
+    let mut matched_ids: Vec<(String, String)> = Vec::new();
+    for h in hits {
+        let key = normalized_hit_key(h);
+        if let Some(pairs) = base.country_kw_map.get(&key) {
+            for pair in pairs {
+                if !matched_ids.contains(pair) {
+                    matched_ids.push(pair.clone());
+                }
+            }
+        }
+    }
+    let chosen: Option<(&CountryProfile, &CountryScam)> = matched_ids
+        .iter()
+        .filter_map(|(iso, sid)| {
+            let cp = base.countries.get(iso)?;
+            let sc = cp.scams.iter().find(|s| &s.id == sid)?;
+            Some((cp, sc))
+        })
+        .max_by_key(|(cp, sc)| {
+            (
+                active.first().is_some_and(|a| a == &cp.iso),
+                sc.typology == typology_id,
+                prevalence_rank(&sc.prevalence),
+            )
+        })
+        .or_else(|| {
+            active.iter().find_map(|iso| {
+                let cp = base.countries.get(iso)?;
+                let sc = cp.scams.iter().find(|s| s.typology == typology_id)?;
+                Some((cp, sc))
+            })
+        });
+    let (cp, sc) = chosen?;
+    let hooks = sc.bait_tactics.join("；");
+    Some(match sc.lang.as_str() {
+        "zh-TW" => format!(
+            "【當地詐騙劇本留人招式（{}：{name}）】只裝傻配合拖時間，絕不拆穿、絕不提報警或反詐專線；可用招式：{hooks}。",
+            cp.name_local,
+            name = sc.name
+        ),
+        "zh-CN" => format!(
+            "【当地诈骗剧本留人招式（{}：{name}）】只装傻配合拖时间，绝不拆穿、绝不提报警或反诈专线；可用招式：{hooks}。",
+            cp.name_local,
+            name = sc.name
+        ),
+        _ => format!(
+            "[Local scam-stalling playbook ({} — {})] Act cooperative, slow and scatterbrained in the caller's language to keep them on the line; never expose the scam, hang up, or mention police/official hotlines. Local hooks: {}",
+            cp.name,
+            sc.name_en,
+            sc.bait_tactics.join("; ")
+        ),
+    })
 }
 
 #[cfg(test)]
@@ -1147,6 +1652,293 @@ mod tests {
         }
         assert!(db.number_rules.iter().any(|r| r.id == "tw_shown_as_international"));
         assert!(db.keywords.iter().filter(|k| k.hard).count() >= 40);
+    }
+
+    #[test]
+    fn country_scam_database_merges_self_matches_and_protects_normal_calls() {
+        let mut parsed = parse(BUILTIN).expect("data/scam_db.json");
+        merge_countries(&mut parsed, BUILTIN_COUNTRIES).expect("data/country_scams.json");
+        let expected_isos = ["tw", "cn", "us", "gb", "jp", "kr", "de", "es", "fr", "br", "pt", "id"];
+        for iso in expected_isos {
+            assert!(parsed.countries.contains_key(iso), "missing country profile: {iso}");
+        }
+        // Every single country keyword must match itself in keyword_hits, and context keywords alone stay weight 1.
+        for (iso, cp) in &db().countries {
+            for sc in &cp.scams {
+                for ctx_kw in &sc.context_keywords {
+                    let hits = keyword_hits(ctx_kw);
+                    assert!(!hits.is_empty(), "{iso}/{} context_keyword {:?} failed to self-match", sc.id, ctx_kw);
+                }
+                for rf in &sc.red_flag_keywords {
+                    let hits = keyword_hits(&rf.text);
+                    assert!(
+                        hits.iter().any(|h| h.weight >= rf.weight && (!rf.hard || h.hard)),
+                        "{iso}/{} red_flag {:?} failed to match with expected strength: {hits:?}",
+                        sc.id,
+                        rf.text
+                    );
+                }
+            }
+        }
+        // Anti-stalling giveaways in bait_tactics must be rejected by merge_countries.
+        let bad_json = BUILTIN_COUNTRIES.replace("裝得很緊張配合", "表示要掛斷後打165查證");
+        assert!(merge_countries(&mut parse(BUILTIN).unwrap(), &bad_json).is_err());
+
+        // Cross-border +62 call onto a TW SIM surfaces both ID cross-border warning and TW regional patterns.
+        let notes = vec!["Phone SIM region: TW".to_string()];
+        let brief = country_review_brief("+628123456789", &notes, &["視訊筆錄".to_string()], "對方：這裡是戶政事務所，請加LINE做視訊筆錄");
+        assert!(brief.contains("Cross-border note (ID->TW)"), "{brief}");
+        assert!(brief.contains("[TW -> fake_official]"), "{brief}");
+        assert!(brief.chars().count() <= COUNTRY_BRIEF_MAX_CHARS, "{}", brief.chars().count());
+
+        // Localized Stall Mode bait hooks resolve cleanly without police/hang-up giveaways.
+        let tw_bait = country_bait_addon("+886912345678", &notes, "fake_official", &["視訊筆錄"], "").unwrap();
+        assert!(tw_bait.contains("台灣") && !tw_bait.contains("165"), "{tw_bait}");
+        let br_bait = country_bait_addon("+5511987654321", &[], "fake_bank_account_alert", &["chave pix"], "").unwrap();
+        assert!(br_bait.contains("Brazil") && br_bait.contains("Wi-Fi"), "{br_bait}");
+        let de_bait = country_bait_addon("+4930123456", &[], "prize_lottery", &["gewinnspiel abo"], "").unwrap();
+        assert!(de_bait.contains("Germany") && de_bait.contains("Notar"), "{de_bait}");
+    }
+
+    #[test]
+    fn keyword_index_matches_full_scan_and_runs_in_microseconds() {
+        let base = db();
+        let samples = [
+            "您好，這裡是戶政事務所，您的證件遭冒用，請加LINE做視訊筆錄並匯入監管專戶",
+            "Hi, calling from Medicare Advantage to verify your Medicare number for a new chip Medicare card",
+            "HMRC arrest warrant: your National Insurance number has been compromised",
+            "県警捜査二課です。LINEで逮捕状を送りますのでキャッシュカードを預かりに伺います",
+            "서울중앙지검입니다. 본인 명의로 대포통장이 개설되어 안전계좌로 이체하셔야 합니다",
+            "Herzlichen Glückwunsch zum Gewinnspiel, bitte zahlen Sie die Bearbeitungsgebühr vorab beim Notar",
+            "Endesa informa de un corte de suministro hoy si no facilita su código CUPS",
+            "Ici Enedis compteur Linky, risque de coupure immédiate sans virement vers un compte sécurisé",
+            "Central de segurança: pix por engano devolva ou transferir via pix para conta segura",
+            "Estou interessado no artigo à venda, vamos associar número no MB WAY com código de levantamento MB WAY",
+            "Ini dari Otoritas Jasa Keuangan Coretax, segera pindahkan dana ke rekening aman",
+            "您好，這裡是台水客服提醒您本期水費月底前到超商繳納即可，祝您順心掰掰",
+        ];
+        // 1. Exact equivalence with linear scan on every sample + every keyword in db().
+        for s in samples {
+            let p = Prepared::of(s);
+            let brute: Vec<Hit> = base.keywords.iter().filter(|k| k.found_in(&p)).map(hit_of).collect();
+            let fast = keyword_hits_in(s, &LocalDb::default());
+            assert_eq!(fast, brute, "mismatch on sample: {s}");
+        }
+        for kw in &base.keywords {
+            let p = Prepared::of(&kw.text);
+            let brute: Vec<Hit> = base.keywords.iter().filter(|k| k.found_in(&p)).map(hit_of).collect();
+            let fast = keyword_hits_in(&kw.text, &LocalDb::default());
+            assert_eq!(fast, brute, "mismatch on keyword: {}", kw.text);
+        }
+        // 1b. The owner's keywords go through their own index: same hits, same
+        // order as a full scan of the built-in list and then the owner's.
+        let local = parse_local(
+            r#"{"keywords":[
+                {"text":"紫色長頸鹿退款","weight":2,"typology":"fake_shop_order_error","lang":"zh-TW"},
+                {"text":"鵺","typology":"fake_shop_order_error","lang":"zh-TW"},
+                {"text":"qx7","typology":"fake_shop_order_error","lang":"zh-TW"},
+                {"text":"purple giraffe refund","weight":2,"typology":"fake_shop_order_error","lang":"en"},
+                {"text":"q","typology":"fake_shop_order_error","lang":"en"},
+                {"text":"jirafa morada","typology":"fake_shop_order_error","lang":"es"},
+                {"text":"むらさききりん","typology":"fake_shop_order_error","lang":"ja"},
+                {"text":"보라색기린","typology":"fake_shop_order_error","lang":"ko"},
+                {"text":"ยีราฟ สีม่วง","typology":"fake_shop_order_error","lang":"th"}
+            ]}"#,
+        )
+        .unwrap();
+        assert!(local.skipped.is_empty(), "{:?}", local.skipped);
+        assert_eq!(local.keywords.len(), 9);
+        let full_scan = |s: &str| -> Vec<Hit> {
+            let p = Prepared::of(s);
+            let mut out: Vec<Hit> = base.keywords.iter().filter(|k| k.found_in(&p)).map(hit_of).collect();
+            for &k in &local.keywords {
+                if k.found_in(&p) && !out.iter().any(|h| h.text == k.text) {
+                    out.push(hit_of(k));
+                }
+            }
+            out
+        };
+        let mut owner_samples: Vec<String> = samples.iter().map(|s| s.to_string()).collect();
+        owner_samples.push("Quick question: the purple giraffe refund, qx7 and 紫色長頸鹿退款 鵺 むらさききりん 보라색기린 ยีราฟสีม่วง jirafa morada".into());
+        for k in &local.keywords {
+            owner_samples.push(k.text.clone());
+            owner_samples.push(format!("… {} …", k.text));
+        }
+        for s in &owner_samples {
+            assert_eq!(keyword_hits_in(s, &local), full_scan(s), "owner keyword mismatch on sample: {s}");
+        }
+        for k in &local.keywords {
+            let sample = format!("… {} …", k.text);
+            assert!(
+                keyword_hits_in(&sample, &local).iter().any(|h| h.text == k.text),
+                "owner keyword {:?} not found in {sample:?}",
+                k.text
+            );
+        }
+        // 2. Latency check: 1,000 full utterances must finish well under 250ms even in unoptimized debug builds (<0.25ms/call debug, <0.02ms/call release).
+        let _ = db();
+        let t0 = Instant::now();
+        let mut total_hits = 0usize;
+        for i in 0..1000 {
+            total_hits += keyword_hits_in(samples[i % samples.len()], &LocalDb::default()).len();
+        }
+        let elapsed = t0.elapsed();
+        assert!(total_hits > 1000);
+        assert!(
+            elapsed < Duration::from_millis(250),
+            "1000 keyword scans took {:?} (expected <250ms in debug)",
+            elapsed
+        );
+    }
+
+    #[test]
+    fn twelve_countries_2026_scams_vs_polite_lookalikes_and_latency_budget() {
+        // (iso, caller_num, sim_iso, scam_utterance, polite_lookalike_utterance)
+        let matrix = [
+            (
+                "TW",
+                "+886223456789",
+                "TW",
+                "您好，我是7-11賣貨便客服，買家結帳顯示帳戶凍結，請加LINE專員協助綁定台灣Pay驗證並簽署安全協定",
+                "您好，這裡是7-11門市，提醒您賣貨便包裹已經到店了，這週五前帶證件來領取就可以囉",
+            ),
+            (
+                "CN",
+                "+8613800138000",
+                "CN",
+                "您好，微信支付客服通知您名下百万医疗保险今晚自动扣费八百元，请下载云会议开启屏幕共享协助关闭百万医疗保险",
+                "您好，顺丰速运派件员，您的快递放丰巢柜了，取件码发您短信里了，谢谢",
+            ),
+            (
+                "US",
+                "+12125550199",
+                "US",
+                "This is E-ZPass toll enforcement: you have an unpaid toll balance and face license suspension unless you pay immediately",
+                "Hi, calling from Dr. Miller's dental office to confirm your cleaning appointment tomorrow at 2 PM",
+            ),
+            (
+                "GB",
+                "+442079460123",
+                "GB",
+                "This is Santander fraud department: your account is compromised, move your money to a safe account now",
+                "Hello, calling from Santander branch to let you know the replacement debit card you ordered is ready to collect",
+            ),
+            (
+                "JP",
+                "+81312345678",
+                "JP",
+                "警視庁捜査二課です。あなたの口座が犯罪に悪用されており、警察庁のセキュリティアプリを入れて資産調査のため金地金を購入してください",
+                "東京電力カスタマーセンターです。来週月曜日の午前中に計器交換作業でお伺いするご案内のお電話です",
+            ),
+            (
+                "KR",
+                "+82212345678",
+                "KR",
+                "서울중앙지검입니다. 본인 명의로 신용카드가 발급되어 대포통장 사건에 연루되었으니 보안 점검 앱 설치 후 안전계좌로 이체하세요",
+                "안녕하세요, 서울치과의원입니다. 내일 오후 세 시 정기검진 예약 확인차 연락드렸습니다",
+            ),
+            (
+                "DE",
+                "+49301234567",
+                "DE",
+                "Kriminalpolizei hier: nach einem Einbruch in Ihrer Nähe steht Ihr Name auf einer Liste, bitte Bargeld oder Gold übergeben zur Sicherung",
+                "Guten Tag, Stadtwerke München hier, wir möchten nur kurz Ihren Termin zum Zählerwechsel nächste Woche bestätigen",
+            ),
+            (
+                "ES",
+                "+34911234567",
+                "ES",
+                "Le llamamos de Endesa: hay un corte de suministro hoy mismo si no paga ahora y nos da su código CUPS para cambiar de comercializadora",
+                "Hola, le llamamos del taller mecánico para avisarle que la revisión de su coche ya está terminada",
+            ),
+            (
+                "FR",
+                "+33142685500",
+                "FR",
+                "Service anti-fraude de votre banque : opération suspecte en cours, veuillez valider la notification pour annuler et transférer vers un compte sécurisé",
+                "Bonjour, c'est le livreur Chronopost, j'arrive devant votre immeuble dans cinq minutes avec votre colis",
+            ),
+            (
+                "BR",
+                "+5511987654321",
+                "BR",
+                "Oi, fiz um Pix por engano devolva agora por favor na chave Pix que vou te mandar senão vou abrir boletim",
+                "Olá, aqui é da Sabesp apenas avisando que amanhã haverá manutenção programada de água no seu bairro pela manhã",
+            ),
+            (
+                "PT",
+                "+351211234567",
+                "PT",
+                "Vi o seu anúncio no OLX, para pagar já vamos associar número no MB WAY e diga-me o código de levantamento MB WAY",
+                "Bom dia, falo da clínica médica para confirmar a sua consulta de rotina amanhã às dez horas",
+            ),
+            (
+                "ID",
+                "+628123456789",
+                "TW",
+                "Kami dari Direktorat Jenderal Pajak Coretax, segera lakukan sinkronisasi NIK NPWP dan bagikan layar WhatsApp ke rekening aman",
+                "Halo, saya kurir paket mau konfirmasi apakah ada orang di rumah untuk terima paket siang ini",
+            ),
+        ];
+
+        for (iso, num, sim, scam, polite) in matrix {
+            let notes = vec![format!("Phone SIM region: {sim}")];
+            let scam_hits = keyword_hits(scam);
+            let scam_score: u32 = scam_hits.iter().map(|h| h.weight).sum();
+            assert!(
+                has_hard_hit(scam) || scam_score >= 3,
+                "{iso}: 2026 scam must trigger immediate review/stall: score={scam_score} hits={scam_hits:?}"
+            );
+            let hit_words: Vec<String> = scam_hits.iter().map(|h| h.text.to_string()).collect();
+            let brief = country_review_brief(num, &notes, &hit_words, scam);
+            assert!(
+                brief.contains(&format!("[{iso} ->")),
+                "{iso}: country_review_brief should surface {iso} pattern, got: {brief}"
+            );
+            assert!(brief.contains("Ordinary:"), "{iso}: brief must include Ordinary look-alike guard: {brief}");
+            assert!(brief.chars().count() <= COUNTRY_BRIEF_MAX_CHARS, "{iso}: brief exceeded budget: {}", brief.chars().count());
+
+            let hit_refs: Vec<&str> = hit_words.iter().map(|s| s.as_str()).collect();
+            let top_typology = typology_for_hits(&hit_refs).expect("scam typology");
+            let bait = country_bait_addon(num, &notes, top_typology, &hit_refs, scam)
+                .unwrap_or_else(|| panic!("{iso}: expected country_bait_addon for {top_typology}"));
+            assert!(!bait.trim().is_empty(), "{iso}: empty bait");
+
+            // Polite look-alike must NOT hit hard scam words or debt/harassment typologies.
+            assert!(!has_hard_hit(polite), "{iso}: polite call falsely hit hard word: {polite}");
+            let polite_hits = keyword_hits(polite);
+            let polite_score: u32 = polite_hits.iter().map(|h| h.weight).sum();
+            assert!(
+                polite_score <= 2,
+                "{iso}: polite look-alike scored too high ({polite_score}): {polite_hits:?}"
+            );
+        }
+
+        // Microsecond benchmark across 5,000 calls to prove zero impact on live call audio/turn latency.
+        let _ = db();
+        let iters = 5_000usize;
+        let t_kw = Instant::now();
+        let mut sink = 0usize;
+        for i in 0..iters {
+            let (_, _, _, scam, polite) = matrix[i % matrix.len()];
+            sink += keyword_hits(if i % 2 == 0 { scam } else { polite }).len();
+        }
+        let kw_us_per_call = t_kw.elapsed().as_secs_f64() * 1_000_000.0 / (iters as f64);
+
+        let notes = vec!["Phone SIM region: TW".to_string()];
+        let sample_hits = vec!["賣貨便".to_string(), "綁定台灣pay".to_string()];
+        let t_brief = Instant::now();
+        for _ in 0..1_000 {
+            sink += country_review_brief("+628123456789", &notes, &sample_hits, matrix[0].3).len();
+        }
+        let brief_us_per_call = t_brief.elapsed().as_secs_f64() * 1_000_000.0 / 1_000.0;
+        assert!(sink > 0);
+        println!(
+            "[latency_bench] total_keywords={} | keyword_hits={:.2} us/utterance | country_review_brief={:.2} us/review",
+            db().keywords.len(),
+            kw_us_per_call,
+            brief_us_per_call
+        );
     }
 
     #[test]

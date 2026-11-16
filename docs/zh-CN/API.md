@@ -1,18 +1,25 @@
 # API 参考：用程序控制你的 AI 电话助理
 
-Bageo 网页控制台做的每件事，都是通过你自己电脑上的一个小型 JSON API 完成的，所以写个脚本也能做到：读取通话记录、文字记录和摘要，修改设置，同意或婉拒来电者跟 AI 约的时间，管理联系人，把手机在“AI 接听”和普通手机之间切换，以及让 AI 替你打电话。这一页涵盖 Bageo 1.0 控制台和手机会用到的每一条路由，也包括已 root 的 Android 手机使用的 WebSocket 协议。
+Bageo 网页控制台做的每件事，都是通过你自己电脑上的一个小型 JSON API 完成的，所以写个脚本也能做到：
+
+- 读取通话记录、文字记录和摘要，修改设置。
+- 同意或婉拒来电者跟 AI 约的时间，管理联系人。
+- 把手机在“AI 接听”和一般手机之间切换。
+- 让 AI 替你打电话。
+
+这一页涵盖 Bageo 1.0 控制台和手机会用到的每一条路由，也包括已 root 的 Android 手机使用的 WebSocket 协议。
 
 | | |
 |---|---|
-| **基础地址** | 主程序监听的位置，默认 `http://127.0.0.1:8787`。API 路由都以 `/calls/api/` 开头，例外是 `/health` 和手机用的 WebSocket。控制台本身在 `/calls/`（`/` 会跳转过去）。 |
-| **AI 代理** | `POST /mcp` 是 Model Context Protocol 服务器，有自己的 token，默认关闭：见 [MCP](MCP.md)。 |
+| **基础地址** | Bageo 监听的位置，默认 `http://127.0.0.1:8787`。API 路由都以 `/calls/api/` 开头，例外是 `/health` 和手机用的 WebSocket。控制台本身在 `/calls/`（`/` 会跳转过去）。 |
+| **AI 代理** | `POST /mcp` 是 Model Context Protocol 服务器，有自己的 Token，默认关闭：见 [MCP](MCP.md)。 |
 | **格式** | UTF-8 的 JSON；路由另有说明的除外（WAV、CSV、vCard、iCalendar）。发送 JSON 请求体时请带 `Content-Type: application/json`。 |
 | **时间** | 通话记录：UTC 的 RFC 3339（`2026-11-14T07:02:11Z`）。日程预约：当地时间（`TZ`），格式 `YYYY-MM-DDTHH:MM`。AI 代打：带时差的当地时间（`2026-11-15T19:00:00+08:00`）。 |
 | **兼容性** | 字段名来自 [`crates/agent/src`](../../crates/agent/src) 里的 Rust 结构体。以后的版本可能新增字段，不认识的字段请直接忽略。 |
 
 ## 先试试看
 
-主程序在这台电脑上运行时，下面几行可以直接用：
+Bageo 在这台电脑上运行时，下面几行可以直接用：
 
 ```bash
 curl -s http://127.0.0.1:8787/health
@@ -20,7 +27,7 @@ curl -s "http://127.0.0.1:8787/calls/api/list?limit=5"
 curl -s http://127.0.0.1:8787/calls/api/stats
 ```
 
-设置了 `CALLS_UI_TOKEN` 的话，加上 `-H "Authorization: Bearer $CALLS_UI_TOKEN"`（见[访问](#访问)）。常见的用法：
+设置了控制台密码（`CALLS_UI_TOKEN`）的话，加上 `-H "Authorization: Bearer $CALLS_UI_TOKEN"`（见[访问](#访问)）。常见的用法：
 
 | 你想要 | 用这个 |
 |---|---|
@@ -29,11 +36,11 @@ curl -s http://127.0.0.1:8787/calls/api/stats
 | 用你自己的按钮同意预约 | `POST /calls/api/tasks/{id}/confirm` |
 | 在家时让手机照常响、自己接 | `POST /calls/api/devices/{serial}/mode`，请求体 `{"mode": "normal"}` |
 | 把任何消息转到你的通知渠道 | `POST /calls/api/notify/send` |
-| 监控主程序 | `GET /health`（不带令牌也能读） |
+| 监控 Bageo | `GET /health`（不带密码也能读） |
 
 ## 访问
 
-没有设置 `CALLS_UI_TOKEN` 时，任何能连到这个端口的人都能使用 API（默认只有这台电脑自己）。设置后，每个请求都要用下面其中一种方式带上令牌：
+没有设置 `CALLS_UI_TOKEN`（控制台密码）时，任何能连到这个端口的人都能使用 API（默认只有这台电脑自己）。设置后，每个请求都要用下面其中一种方式带上密码：
 
 ```text
 GET /calls/api/list?token=<token>
@@ -41,7 +48,7 @@ Authorization: Bearer <token>
 X-Calls-Token: <token>
 ```
 
-令牌错误或缺失会得到 HTTP 401，内容是 `{"error": "unauthorized", "code": "unauthorized", "hint": …}`。`/health` 不带令牌也会响应，但只返回监控用的几个字段（见[手机与健康状态](#手机与健康状态)）。
+密码错误或缺失会得到 HTTP 401，内容是 `{"error": "unauthorized", "code": "unauthorized", "hint": …}`。`/health` 不带密码也会响应，但只返回监控用的几个字段（见[手机与健康状态](#手机与健康状态)）。
 
 ```bash
 curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
@@ -56,16 +63,18 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 |---|---|---|
 | 200 | 完成。 | — |
 | 400 | 请求有误：不是 JSON、没带 `Content-Type: application/json`、id 或值不对。 | `bad_request`、`invalid_id`、`missing_field`、`invalid_contact`、AI 代打的代码 |
-| 401 | 缺少令牌或令牌错误。 | `unauthorized` |
-| 404 | 找不到这通电话、任务、联系人、代打，或找不到文件。 | `not_found`、`task_not_found`、`contact_not_found`、`no_audio`、`no_calendar` |
+| 401 | 缺少密码或密码错误。 | `unauthorized` |
+| 404 | 找不到这通电话、待处理事项、联系人、代打，或找不到文件。 | `not_found`、`task_not_found`、`contact_not_found`、`no_audio`、`no_calendar` |
 | 409 | 这个修改跟已保存的数据冲突。 | `contact_exists`、`sms_not_retryable` |
 | 413／415 | 导入的文件太大／格式不认识。 | `file_too_large`、`too_many_rows`、`unsupported_file` |
-| 500 | 主程序保存或读取自己的文件失败。 | `save_failed`、`contacts_save_failed`、`import_failed` |
+| 500 | Bageo 保存或读取自己的文件失败。 | `save_failed`、`contacts_save_failed`、`import_failed` |
 | 502 | 外部服务失败（通知渠道、Gemini）。 | `auth_failed`、`network_error`、`ai_failed`、`preview_failed` |
 
 ### 防止其他网页冒用
 
-控制台没有登录 Cookie，但你局域网里某台电脑的浏览器打开别的网页时，那个网页仍可能偷偷向它发请求。所以凡是会拨电话、发短信、做决定或修改已保存数据的路由，一律要求 `Content-Type: application/json`，缺少就返回 HTTP 400 `bad_request`。别的网站要发这个请求头必须先经过 CORS 预检，而主程序从不响应预检。适用的路由：
+控制台没有登录 Cookie，但你局域网里某台电脑的浏览器打开别的网页时，那个网页仍可能偷偷向它发请求。
+
+所以凡是会拨电话、发短信、做决定或修改已保存数据的路由，一律要求 `Content-Type: application/json`，缺少就返回 HTTP 400 `bad_request`。别的网站要发这个请求头必须先经过 CORS 预检，而 Bageo 从不响应预检。适用的路由：
 
 - `POST /calls/api/tasks/{id}/confirm` 和 `…/ignore`；
 - `POST /calls/api/appointments/{id}/retry-sms`；
@@ -73,21 +82,37 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - `POST /calls/api/contacts`、`PUT /calls/api/contacts/{id}`、`POST /calls/api/contacts/batch`（`POST /calls/api/contacts/import` 则改为要带 `X-Filename` 请求头）；
 - `POST /calls/api/errands`、`…/{id}/cancel`、`…/{id}/retry`、`…/{id}/say`。
 
-允许空请求体的路由，空请求体视为 `{}`。这是第二道防线；第一道是控制台对局域网开放时一定要设置 `CALLS_UI_TOKEN`。
+允许空请求体的路由，空请求体视为 `{}`。这是第二道防线；第一道是控制台对局域网开放时一定要设置密码（`CALLS_UI_TOKEN`）。
 
 ## 通话
 
 | 方法与路径 | 内容 |
 |---|---|
-| `GET /calls/api/list` | 通话记录，最新的在前。查询参数：`limit`（最多 500；不带就返回全部）、`offset`、`q`（对号码、手机、事件、文字记录和摘要做文本搜索）、`caller`、`serial`、`status`、`has_transcript`、`has_voicemail`。响应：`{ok, calls, total, limit, offset, tasks_by_call, contacts_by_number}`。`tasks_by_call` 是 `{<通话 id>: {id, status, summary}}`，这一页每通电话最新的一条任务；`contacts_by_number` 是 `{<caller_id>: {id, name}}`，这一页里是联系人的来电者。 |
-| `GET /calls/api/call/{id}` | 单个通话：`{ok, call, notes, contact, calendar_link, calendar_links, scam_names}`。`contact` 是 `{id, name, note}` 或 `null`。`calendar_links` = `{google, outlook, office365, yahoo}`：各网页日历已填好这通电话日历建议的“新建活动”表单（`calendar_link` 是 Google 那个，留给旧版用）。`scam_names`：判断出的话术类型在控制台各语言的名称，没有就是 `null`。 |
+| `GET /calls/api/list` | 通话记录，最新的在前。查询参数和响应格式见下方。 |
+| `GET /calls/api/call/{id}` | 单条通话：`{ok, call, notes, contact, calendar_link, calendar_links, scam_names}`。字段说明见下方。 |
 | `POST /calls/api/call/{id}/scam-feedback` | 你对这通的标记：JSON `{"verdict": "scam" \| "sales" \| "safe"}`，可另带内置的 `typology`。记在记录上（`scam_feedback`），号码没隐藏的话也记在这个号码上，它之后打来会参考。返回 `{ok, call, number}`；HTTP 400 `invalid_verdict`／`invalid_typology`。 |
-| `GET /calls/api/call/{id}/event.ics` | 日历建议的 iCalendar 文件；这通电话没有建议时返回 HTTP 404 `no_calendar`。用控制台令牌打开，或用 `?k=<密钥>`：通知链接里带的是只能打开这一个文件的 HMAC 密钥，不是令牌。 |
+| `GET /calls/api/call/{id}/event.ics` | 日历建议的 iCalendar 文件；这通电话没有建议时返回 HTTP 404 `no_calendar`。用控制台密码打开，或用 `?k=<密钥>`：通知链接里带的是只能打开这一个文件的 HMAC 密钥。 |
 | `GET /calls/api/audio/{id}/listen` | 你当时会听到的整通电话（对方和 AI 混在一起），WAV，支持 range 请求，可以拖动播放位置。 |
 | `GET /calls/api/audio/{id}/remote` · `/tts` · `/vm` · `/audio/{id}` | 只有对方 · 只有 AI · 旧版菜单模式的语音留言 · 原始混音录音。文件不存在时返回 HTTP 404 `no_audio`。 |
-| `GET /calls/api/live` | 进行中的通话和已连接的手机：`{ok, count, calls, control_idle_clients, control_idle_serials, normal_mode_serials}`。`normal_mode_serials` 是已连接、但切换成普通手机的手机；网页不把它们算作待命手机。 |
+| `GET /calls/api/live` | 进行中的通话和已连接的手机：`{ok, count, calls, control_idle_clients, control_idle_serials, normal_mode_serials}`。 |
 | `GET /calls/api/stats` | `{ok, stats: {total, today, voicemails, blocked}}`。 |
 | `GET /calls/api/export.csv` | 筛选后的列表，CSV 格式：查询参数同 `list`，最多 2000 行（`limit` 可以再调低）。响应头 `X-Calls-Export-Total` 和 `X-Calls-Export-Rows` 分别是符合多少条、写出多少条。 |
+
+`GET /calls/api/list` 的内容：
+
+- 查询参数：`limit`（最多 500；不带就返回全部）、`offset`、`q`（对号码、手机、事件、文字记录和摘要做文本搜索）、`caller`、`serial`、`status`、`has_transcript`、`has_voicemail`。
+- 响应：`{ok, calls, total, limit, offset, tasks_by_call, contacts_by_number}`。
+- `tasks_by_call` 是 `{<通话 id>: {id, status, summary}}`：这一页每通电话最新的一条待处理事项。
+- `contacts_by_number` 是 `{<caller_id>: {id, name}}`：这一页里是联系人的来电者。
+
+`GET /calls/api/call/{id}` 的内容：
+
+- `contact` 是 `{id, name, note}` 或 `null`。
+- `calendar_links` = `{google, outlook, office365, yahoo}`：各网页日历已填好这通电话日历建议的“新建活动”表单。
+- `calendar_link` 是 Google 那个，留给旧版使用。
+- `scam_names`：判断出的话术类型在控制台各语言里的名称，没有就是 `null`。
+
+`GET /calls/api/live`：`normal_mode_serials` 是已连接、但切换成一般手机的手机；网页不把它们算进待命手机。
 
 ### 通话记录
 
@@ -101,13 +126,31 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 | `started_at`／`ended_at` | RFC 3339，UTC。 |
 | `duration_ms` | 通话时长。 |
 | `status` | `ringing`、`active`、`ended`。旧版的记录可能还有 `blocked_spam`。 |
-| `events` | 依次发生的事，例如 `active`、`persona_stall_spam`（判定为推销或诈骗）、`persona_scam_detected`（陪聊关闭时判定为推销或诈骗）、`persona_stall_released`（之后确认是正常电话、改回正常应对）、`reject_list`（拦截号码）、`call_waiting_rejected`（通话中拒接的第二通）、`ai_callback`（日程预约的 AI 回拨）、`ai_errand`（AI 代打）、`persona_ai_fail_hangup`、`ended`。 |
-| `scam` | 判定为推销或诈骗时才有：`{kind, typology, confidence, source, released}`。`kind` 是 `scam` 或 `sales`，`typology` 是内置的话术类型；`source` 是 `review`（复审判的）、`hard_words`（复审没回答，但对方说了只有诈骗才会说的话）或 `keywords`（复审一直失败，只靠关键词）；`released` = 之后再看一次，放回正常应对。 |
+| `events` | 依次发生的事，例如 `active`、`ended`。事件名称和含义见下方。 |
+| `scam` | 判定是推销或诈骗时才有：`{kind, typology, confidence, source, released}`。各字段见下方。 |
 | `scam_feedback` | 你在通话页的标记：`scam`、`sales` 或 `safe`。 |
 | `summary` | 写好后的摘要文字。 |
-| `appointment` | 对方跟 AI 约了时间时：通话结束那一刻的预约（见[日程预约与任务](#日程预约与任务)）。之后的变化（你的决定、短信和回拨结果）更新到 `notes.appointment`。 |
+| `appointment` | 对方跟 AI 约了时间时：通话结束那一刻的预约（见[日程预约与待处理事项](#日程预约与任务)）。之后的变化（你的决定、短信和回拨结果）更新到 `notes.appointment`。 |
 | `sim_country`、`sim_sub_id` | 这通电话是哪张 SIM 卡接的（手机有上报时）。 |
 | `audio_path`、`remote_audio_path`、`tts_audio_path`、`voicemail_path` | 有哪些录音文件（数据文件夹里的路径）。 |
+
+`events` 的事件名称：
+
+- `persona_stall_spam`：判定是推销或诈骗。
+- `persona_scam_detected`：陪聊关闭时判定是推销或诈骗。
+- `persona_stall_released`：之后确认是正常电话、改回正常应对。
+- `reject_list`：拦截号码。
+- `call_waiting_rejected`：通话中拒接的第二通。
+- `ai_callback`：日程预约的 AI 回拨。
+- `ai_errand`：AI 代打。
+- 其他事件：`active`、`persona_ai_fail_hangup`、`ended`。
+
+`scam` 的字段：
+
+- `kind`：`scam` 或 `sales`。
+- `typology`：内置的话术类型。
+- `source`：`review`（复审判的）、`hard_words`（复审没回答，但对方说了只有诈骗才会说的话）或 `keywords`（复审一直失败，只靠关键词）。
+- `released`：之后再看一次，放回正常应对。
 
 ### 摘要、文字记录与翻译
 
@@ -116,12 +159,26 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 | 字段 | 含义 |
 |---|---|
 | `summary` | 用通知语言写的摘要。 |
-| `dialogue` | 文字记录，一行一次发言，开头是主程序语言的说话人标签：简体中文 `对方：`／`接听：`，繁体中文 `對方：`／`接聽：`，英文 `Caller: `／`AI: `，日文 `相手：`／`AI：`，韩文 `상대: `／`AI: `，西班牙文 `Llamante: `／`IA: `，法文 `Appelant : `／`IA : `，德文 `Anrufer: `／`KI: `，葡萄牙文 `Chamador: `／`IA: `。旧版保存的记录不论语言都是 `對方：`／`接聽：`。每一行保留当时说的语言。 |
+| `dialogue` | 文字记录，一行一次发言，开头是说话人标签。标签用 Bageo 设置的语言，对照见下方；每一行保留当时说的语言。 |
 | `dialogue_translations` | 有翻译时才出现：跟 `dialogue` 一行对一条（同样的索引）。用别的语言说的那一行，这里是翻成通知语言的译文；本来就是你的语言、太短或没翻译的是 `null`。网页控制台把译文显示在原文下面。 |
 | `recording_text` | 对方声音另外做的语音转文字，作为备份（AI 拖时间陪聊的推销、诈骗电话为空）。 |
 | `end_hint`、`source`、`updated_at` | 通话怎么结束、谁写的、什么时候写的。 |
 | `calendar` | 通话中约定了日期时：`{title, start, end, all_day}`（当地时间，`YYYY-MM-DDTHH:MM`）。 |
 | `appointment` | 预约目前的状态。 |
+
+`dialogue` 的说话人标签（按 Bageo 的语言）：
+
+- 简体中文：`对方：`／`接听：`
+- 繁体中文：`對方：`／`接聽：`
+- 英文：`Caller: `／`AI: `
+- 日文：`相手：`／`AI：`
+- 韩文：`상대: `／`AI: `
+- 西班牙文：`Llamante: `／`IA: `
+- 法文：`Appelant : `／`IA : `
+- 德文：`Anrufer: `／`KI: `
+- 葡萄牙文：`Chamador: `／`IA: `
+
+旧版保存的记录不论语言都是 `對方：`／`接聽：`。
 
 ```json
 {
@@ -136,8 +193,16 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 
 | 方法与路径 | 内容 |
 |---|---|
-| `GET /calls/api/settings` | `{ok, settings, storage_path, console_url, console_ip_url}`。`console_url` 是当前使用的控制台地址（你填的，或自动带入的；只有这台电脑能打开时为空），`console_ip_url` 是把 `.local` 名称换成局域网 IP 的同一个地址。机密字段以掩码返回（`"abc…wxyz"`），附一个 `<name>_set` 标志；通知渠道返回时 `url`／`token` 为空，另外附 `url_hint`、`token_hint`、`url_set`、`token_set`。只读的辅助字段：`default_prompt`、`voices`、`ambience_kinds`、`languages`、`countries`（“各 SIM 卡的主要语言”可选的国家代码）、`seen_sim_countries`（主程序启动后手机上报过的 SIM 卡国家）、`notify_kinds`、`sample_lines`、`summary_ready`。 |
+| `GET /calls/api/settings` | `{ok, settings, storage_path, console_url, console_ip_url}`。字段说明见下方。 |
 | `PUT /calls/api/settings` | 一个 JSON 对象，只放要修改的字段。响应同 `GET`。下一通电话就生效，不用重启。 |
+
+`GET /calls/api/settings` 响应里的字段：
+
+- `console_url`：当前使用的控制台地址（你填的，或自动带入的）；只有这台电脑能打开时是空的。
+- `console_ip_url`：把 `.local` 名称换成局域网 IP 的同一个地址。
+- 机密字段以掩码返回（`"abc…wxyz"`），附一个 `<name>_set` 标志。
+- 通知渠道返回时 `url`／`token` 是空的，另外附 `url_hint`、`token_hint`、`url_set`、`token_set`。
+- 只读的辅助字段：`default_prompt`、`voices`、`ambience_kinds`、`languages`、`countries`（“各 SIM 卡的主要语言”可选的国家代码）、`seen_sim_countries`（Bageo 启动后手机上报过的 SIM 卡国家）、`notify_kinds`、`sample_lines`、`summary_ready`。
 
 值得了解的字段（全部都在 [`settings_store.rs`](../../crates/agent/src/settings_store.rs) 的 `RuntimeSettings` 和[设置参考](SETTINGS.md)里）：
 
@@ -178,11 +243,29 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 
 | 方法与路径 | 内容 |
 |---|---|
-| `POST /calls/api/notify/test` | 请求体 `{"channel": {kind, url, token, target, id?}}`。把测试消息发到那一个渠道（已保存的机密按 `id` 补上）。返回 HTTP 200 `{ok: true}`、400 `unknown_channel`，或 502 `{ok: false, code, field, kind, error}`：`code` 是出错原因（`missing_field`、`bad_url`、`bad_value`、`auth_failed`、`service_not_found`、`http_error`、`service_error`、`network_error`、`send_failed`），`field` 是 `url`／`token`／`target` 哪一栏（或为空），`error` 是该服务的回应。 |
-| `POST /calls/api/notify/send` | 请求体 `{"title": "...", "body": "..."}`。把你的消息发到每个已启用的渠道（`title` 为空就用“Bageo”；`body` 为空返回 HTTP 400 `empty_body`）。只要有一个渠道接受就返回 `{ok: true}`。[短信转发工具](../../tools/sms_forward/README.md)（英文）用的就是这条路由。 |
+| `POST /calls/api/notify/test` | 把测试消息发到那一个渠道（已保存的机密按 `id` 补上）。请求体 `{"channel": {kind, url, token, target, id?}}`。响应见下方。 |
+| `POST /calls/api/notify/send` | 请求体 `{"title": "...", "body": "..."}`。把你的消息发到每一个已启用的渠道。规则见下方。 |
 | `GET /calls/api/quick-action` · `POST /calls/api/quick-action` | 32 种通知渠道内附的单次签名互动按钮路由（`?act=confirm\|ignore\|block\|stall\|white&target=<id或号码>&sig=<hmac>`）。通过 HMAC-SHA256 验证，在手机通知中点开即生效，支持全部 9 种语言。 |
-| `POST /calls/api/control/inbound` | 跨平台通用指令 Webhook（支持 Slack、Discord、LINE、企业微信、钉钉、飞书、Mattermost、Rocket.Chat、Zulip、Matrix、Nextcloud Talk、Synology Chat、Home Assistant、n8n 或 curl：`{"text": "记录 5", "user": "owner", "channel": "line"}`）。可执行全部 18 个聊天指令（含 `block`、`stall`、`white`、`unblock`）并以通知语言返回 `{ok, text}`。 |
-| `GET /calls/api/auth-status` · `POST /calls/api/initial-password` | 查询是否需要密码与是否首次设置密码（`{ok, password_required, needs_initial_password_setup}`），以及首次创建访问密码（`{"password": "..."}`，仅在尚未设置任何密码／Token 时可用）。 |
+| `POST /calls/api/control/inbound` | 跨平台通用指令 Webhook，用聊天指令控制 Bageo。请求体例如 `{"text": "记录 5", "user": "owner", "channel": "line"}`。 |
+| `GET /calls/api/auth-status` · `POST /calls/api/initial-password` | 查询是否需要密码与是否首次设置密码（`{ok, password_required, needs_initial_password_setup}`），以及首次创建密码（`{"password": "..."}`，仅在尚未设置任何密码／Token 时可用）。 |
+
+`POST /calls/api/notify/test` 的响应：
+
+- 200 `{ok: true}`：测试消息已发出。
+- 400 `unknown_channel`。
+- 502 `{ok: false, code, field, kind, error}`：`code` 是出错原因，`field` 是 `url`／`token`／`target` 哪一栏（或空白），`error` 是该服务的回复。
+- `code` 的值：`missing_field`、`bad_url`、`bad_value`、`auth_failed`、`service_not_found`、`http_error`、`service_error`、`network_error`、`send_failed`。
+
+`POST /calls/api/notify/send` 的规则：
+
+- `title` 为空就用“Bageo”；`body` 为空返回 HTTP 400 `empty_body`。
+- 只要有一个渠道接受就返回 `{ok: true}`。
+- [短信转发工具](../../tools/sms_forward/README.md)（英文）就是用这条路由。
+
+`POST /calls/api/control/inbound` 的规则：
+
+- 支持 Slack、Discord、LINE、企业微信、钉钉、飞书、Mattermost、Rocket.Chat、Zulip、Matrix、Nextcloud Talk、Synology Chat、Home Assistant、n8n 或 curl。
+- 可执行全部 18 个聊天指令（包含 `block`、`stall`、`white`、`unblock`），并以通知语言返回 `{ok, text}`。
 
 你自己的 webhook 会收到的 JSON 和每一种事件，在[通知](NOTIFICATIONS.md#webhook-json)里有说明。
 
@@ -199,11 +282,15 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 | `clip=reject` | 用这个声音念的拦截号码语音。 |
 | `lang` | `ja`、`zh-TW`… |
 
-内置的 30 个声音在 9 种语言下都已预先录好试听和拦截语音（`assets/voices/` 里共 1,080 段），所以试听不用连接 Gemini；只有 `regen=true` 或没有预录的声音才会开一次会话。错误：400 `unknown_voice`／`unknown_background`、404 `background_missing`（背景音文件没加载）、502 `preview_failed`。
+内置的 30 个声音在 9 种语言下都已预先录好试听和拒接语音（`assets/voices/` 里共 1,080 段），所以试听不用连接 Gemini。只有 `regen=true` 或没有预录的声音才会开一次连接。
+
+错误：400 `unknown_voice`／`unknown_background`、404 `background_missing`（背景音文件没加载）、502 `preview_failed`。
 
 ## 日程预约与任务
 
-有人打来说想约周六下午三点来看房。`appointment_mode` 设为 `confirm` 时（见[设置](SETTINGS.md#摘要与日历)），AI 会记下时间但不先答应，通话结束后留下一条任务（`intent` 为 `appointment`）等你同意或不同意。同一个 `appointment` 对象会出现在通话记录、它的 notes 和任务上：
+有人打来说想约周六下午三点来看房。`appointment_mode` 设为 `confirm` 时（见[设置](SETTINGS.md#摘要与日历)），AI 会记下时间但不先答应。
+
+通话结束后留下一条待处理事项（API 里叫 task，`intent` 为 `appointment`），等你同意或不同意。同一个 `appointment` 对象会出现在通话记录、它的 notes 和待处理事项上：
 
 ```json
 {
@@ -218,25 +305,62 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 
 | 字段 | 含义 |
 |---|---|
-| `start`、`end` | 当地时间（`TZ`）。对方只是顺口提的备选时间不会覆盖谈好的时间；同一通电话另外约的第二件事会成为另一条任务。 |
+| `start`、`end` | 当地时间（`TZ`）。对方只是顺口提的备选时间不会覆盖谈好的时间；同一通电话另外约的第二件事会成为另一条待处理事项。 |
 | `title`、`caller_name` | 约的是什么事、对方怎么自称（对方自己的说法）。 |
 | `status` | `pending`（等你决定）、`confirmed`、`declined`；`booked` 只出现在旧版的记录里。 |
 | `reply` | 怎么告诉对方：`sms`、`call` 或 `none`。 |
-| `sms` | `sent`，或短信没发出的原因：`offline`（手机没连接）、`old_app`（App 不能发短信）、`timeout`、`busy`（同一条短信正在发）、`no_number`（收不到短信的号码），或手机返回的代码：`no_permission`、`bad_request`、`no_service`、`radio_off`、`generic_failure`、`exception`。网页和 Telegram 回复会写成大白话。 |
-| `call` | AI 回拨：`queued`（排在打给同一个号码的前一通回拨后面）、`dialing`、`connected`（手机已拨号，AI 等对方接起来出声）、`answered`（对方已得知结果）、`no_answer`（70 秒内没人出声）、`failed`、`done`（通话结束、结果不明），或没拨出的原因：`no_phone`、`send_failed`、`no_number`、`not_callable`（国外、免费电话、增值付费或特殊短号）。手机的上报也记在任务的 `events`（`callback_place_call_ack`、`callback_place_call_failed`、`callback_outbound_ready`、`callback_done`、`callback_failed`）。 |
+| `sms` | `sent`，或短信没发出的原因。代码见下方。 |
+| `call` | AI 回拨的进度，或没拨出的原因。代码见下方。 |
 | `call_lang` | 那通电话说的语言（`zh-CN`、`en`…）。AI 回拨就说这个语言，等对方接起来出声后才说你的回复，只说一次。没有这个字段的旧记录按设置 `language`。 |
 | `tg_card` | 发给这条预约的 Telegram 卡片 `{chat_id, message_id}`；你在别处决定后，用来去掉卡片上的按钮。 |
 | `tag` | 这条预约固定的 id。 |
+
+`sms` 的值：
+
+- `sent`：已发出。
+- 没发出的原因：`offline`（手机没连接）、`old_app`（App 不能发短信）、`timeout`、`busy`（同一条短信正在发）、`no_number`（收不到短信的号码）。
+- 手机返回的代码：`no_permission`、`bad_request`、`no_service`、`radio_off`、`generic_failure`、`exception`。
+
+网页和 Telegram 回复会把这些写成白话。
+
+`call` 的值：
+
+- `queued`（排在打给同一个号码的前一通回拨后面）、`dialing`、`connected`（手机已拨号，AI 等对方接起来出声）。
+- `answered`（对方已得知结果）、`no_answer`（70 秒内没人出声）、`failed`、`done`（通话结束、结果不明）。
+- 没拨出的原因：`no_phone`、`send_failed`、`no_number`、`not_callable`（国外、免费电话、增值付费或特殊短号）。
+- 手机的上报也记在待处理事项的 `events`（`callback_place_call_ack`、`callback_place_call_failed`、`callback_outbound_ready`、`callback_done`、`callback_failed`）。
 
 空的字段不会出现。
 
 | 方法与路径 | 内容 |
 |---|---|
-| `GET /calls/api/tasks` | 任务，最新的在前（最多 200 条）：`{ok, tasks}`。预约任务另外带 `calendar_links`（`{google, outlook, office365, yahoo}`）；`reply` = `{sms, call, default}`（这位来电者能不能收短信、能不能回拨，以及“默认回复方式”会选哪个）；`sms_route` = `{serial, label}`，你没另选手机时短信从哪部手机发（接这通电话的手机；`label` 是它在 `device_labels` 里的名称，没有就是 id）；来电者是联系人时还有 `contact_name`。网页上的“待处理事项”就是 `appointment.status` 为 `pending` 的任务。 |
-| `GET /calls/api/tasks/{id}/event.ics` | 预约的 iCalendar 文件（Apple 日历和其他 App）。用控制台令牌或链接里的 `?k=<HMAC 密钥>` 打开；任务没有预约时返回 HTTP 404 `no_calendar`。 |
-| `POST /calls/api/tasks/{id}/confirm` | **同意**，跟在网页或 Telegram 卡片上点一样。请求体：空、`{}` 或 `{"reply": "sms" \| "call" \| "none"}`。没带 `reply` 时按“默认回复方式”；选了这位来电者用不了的方式就不通知。响应 `{ok, task, message}`：`message` 是大白话写的结果，跟 Telegram Bot 回复的同一段，附上你选的 `calendar_app` 的“添加到日历”链接（还没选时是这通电话在网页的页面，在那里按“添加到日历”选一家；没有控制台地址就不带）。发短信最多可能等 90 秒；回拨交给手机拨出（在 `appointment.call` 看进度）。 |
-| `POST /calls/api/tasks/{id}/ignore` | **不同意**：用同样的方式告诉对方，礼貌婉拒。请求体、响应和规则同上。 |
-| `POST /calls/api/appointments/{id}/retry-sms` | 已决定的预约短信没发出时再发一次。请求体：空、`{}` 或 `{"serial": "<手机>"}`（换另一部已连接的手机；不带就是接这通电话的那部）。响应 `{ok, sms, message}`：发出去了 `ok` 才是 true，`sms` 是新的代码。还在等、已经发出或本来就不能发（`no_number`）时返回 HTTP 409 `sms_not_retryable`（附当前的 `sms`）；404 `task_not_found`；400 `invalid_serial`／`bad_request`。 |
+| `GET /calls/api/tasks` | 待处理事项，最新的在前（最多 200 条）：`{ok, tasks}`。内容见下方。 |
+| `GET /calls/api/tasks/{id}/event.ics` | 预约的 iCalendar 文件（Apple 日历和其他 App）。用控制台密码或链接里的 `?k=<HMAC 密钥>` 打开；这条待处理事项没有预约时返回 HTTP 404 `no_calendar`。 |
+| `POST /calls/api/tasks/{id}/confirm` | **同意**，跟在网页或 Telegram 卡片上点一样。请求体：空的、`{}` 或 `{"reply": "sms" \| "call" \| "none"}`。响应 `{ok, task, message}`。 |
+| `POST /calls/api/tasks/{id}/ignore` | **不同意**：用同样的方式告诉对方，礼貌婉拒。请求体、响应和规则同 `…/confirm`。 |
+| `POST /calls/api/appointments/{id}/retry-sms` | 已决定的预约短信没发出时再发一次。请求体：空的、`{}` 或 `{"serial": "<手机>"}`。响应 `{ok, sms, message}`。 |
+
+`GET /calls/api/tasks` 的内容：
+
+- 预约的待处理事项另外带 `calendar_links`（`{google, outlook, office365, yahoo}`）。
+- `reply` = `{sms, call, default}`：这位来电者能不能收短信、能不能回拨，以及“默认回复方式”会选哪个。
+- `sms_route` = `{serial, label}`：你没另选手机时短信从哪部发（接这通电话的手机）；`label` 是它在 `device_labels` 里的名称，没有就是 id。
+- 来电者是联系人时还有 `contact_name`。
+- 网页上的“待处理事项”列的就是 `appointment.status` 为 `pending` 的项目。
+
+`POST /calls/api/tasks/{id}/confirm` 的内容：
+
+- 没带 `reply` 时按“默认回复方式”；选了这位来电者用不了的方式就不通知。
+- `message` 是用白话写的结果，跟 Telegram Bot 回的同一段，附上你选的 `calendar_app` 的“添加到日历”链接。
+- 还没选 `calendar_app` 时，附的是这通电话在网页里的页面，在那里点“添加到日历”选一家；没有控制台地址就不附。
+- 发短信最多可能等 90 秒；回拨交给手机拨出（在 `appointment.call` 看进度）。
+
+`POST /calls/api/appointments/{id}/retry-sms` 的内容：
+
+- `serial` 可以换另一部已连接的手机；没带就是接这通电话的那部。
+- 发出去了 `ok` 才是 true，`sms` 是新的代码。
+- 还在等、已经发出或本来就不能发（`no_number`）时，返回 HTTP 409 `sms_not_retryable`（附当前的 `sms`）。
+- 其他错误：404 `task_not_found`；400 `invalid_serial`／`bad_request`。
 
 决定的规则：
 
@@ -266,15 +390,33 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 4. 用 `POST …/errands/{id}/say` 回答，或打一句指示（“跟他说 8 点也可以”）。
 5. 通话结束后代打变成 `done` 并附上 `result`，你会收到一条通知。
 
-**通话中。** AI 遇到你的交代没说清楚的事，会跟对方说要确认一下，然后问你（`ask_owner` 函数）。你正在看这条代打时（6 秒内有人读过它的实时画面），问题会显示在那里，最多等 40 秒。没人在看、或你没来得及回答，AI 会问清楚哪些选项可行，说你确认后再回电，然后礼貌地结束通话。等答案的时候，AI 不会先替这个问题做决定；对方先说再见的话，问题就到此为止。你在通话中输入的文字会作为指示交给 AI。
+**通话中。**
+
+- AI 遇到你的交代没说清楚的事，会跟对方说要确认一下，然后问你（`ask_owner` 函数）。
+- 你正在看这条代打时（6 秒内有人读过它的实时画面），问题会显示在那里，最多等 40 秒。
+- 没人在看、或你没来得及回答，AI 会问清楚哪些选项可以，说你确认后再回电，然后礼貌地结束通话。
+- 等答案的时候，AI 不会先替这个问题做决定；对方先说再见的话，问题就到此为止。
+- 你在通话中输入的文字会当作指示交给 AI。
 
 **通话后。** 摘要模型会对照交代内容读这通电话，你会收到一条通知（标题“AI 代打电话：<名字或号码>”，用通知语言；webhook 事件 `ai_errand`）。AI 在你没回答的问题上自己答应的事，结果一定不是 `done`，而是 `need_owner`，提醒你确认，不合适就回电修改。
 
 **用谁的身份打。** 设置 `errand_identity`（默认 `assistant`，你的助理；或 `owner`，你本人），每条代打也可以单独指定。不论哪一种，被认真问到时 AI 都会承认自己是 AI，不透露交代内容以外的个人信息，也不答应任何付款、订金或转账。
 
-**能打哪些号码。** 不打紧急号码、短号（7 位以下）或增值付费号码（例如台湾 020x 如 0204、0209，+1 900／976，日本 0990，英国 09…）；免费电话可以打。没有加号的号码视为你所在国家的号码（`country_code`）。以国际冠码开头的号码（`00`、台湾的 `01x` 和 `00x`、北美的 `011`、日本的 `010`）一律 `not_allowed`：国外号码请用 `+` 写。台湾号码长途前缀 0 后面接 1 的也是 `not_allowed`。
+**能打哪些号码。**
 
-**用哪部手机、哪张卡。** 电话从一部已连接、处于 AI 模式、并且有该号码所属国家 SIM 卡的手机拨出。主程序从手机上报的来电学会每部手机有哪些 SIM（subscription id 和国家；来自 `incoming` 和 media `hello` 里的 `sim_sub_id`、`sim_country`），也可以从 control `hello` 里可选的 `sims: [{sub_id, country}]` 列表得知（1.0 版 App 还不会发）。这些保存在 `phone_sims.json`。主程序从没听说过 SIM 的手机不接代打（`sim_unknown`）：先给那部手机打一通电话。手机收到的是 E.164 格式的号码和要用的 SIM（`sub_id`）。那通电话自己的 media `hello` 显示用的是别的 SIM、或没有上报时，主程序会在 AI 开口前挂断（`failed`、`call_code` `wrong_sim`，会通知你），并把那张卡从这部手机的记录里去掉，等之后有来电上报它再加回来。
+- 不打紧急号码、短号（7 位以下）或增值付费号码（例如台湾 020x 如 0204、0209，+1 900／976，日本 0990，英国 09…）；免费电话可以打。
+- 没有加号的号码当作你所在国家的号码（`country_code`）。
+- 以国际冠码开头的号码（`00`、台湾的 `01x` 和 `00x`、北美的 `011`、日本的 `010`）一律 `not_allowed`：国外号码请用 `+` 写。
+- 台湾号码长途冠码 0 后面接 1 的也是 `not_allowed`。
+
+**用哪部手机、哪张卡。**
+
+- 电话从一部已连接、在 AI 模式、而且有该号码所属国家 SIM 卡的手机拨出。
+- Bageo 从手机上报的来电学会每部手机有哪些 SIM（subscription id 和国家；来自 `incoming` 和 media `hello` 里的 `sim_sub_id`、`sim_country`），也可以从 control `hello` 里选填的 `sims: [{sub_id, country}]` 列表得知（1.0 版 App 还不会发送）。
+- 这些记在 `phone_sims.json`。
+- Bageo 从没听说过 SIM 的手机不接代打（`sim_unknown`）：先给那部手机打一通电话。
+- 手机收到的是 E.164 格式的号码和要用的 SIM（`sub_id`）。
+- 那通电话自己的 media `hello` 显示用的是另一张 SIM、或没上报时，Bageo 会在 AI 开口前挂断（`failed`、`call_code` `wrong_sim`，会通知你），并把那张卡从这部手机的记录里去掉，等之后有来电上报它再加回来。
 
 **排队与上限。**
 
@@ -316,27 +458,49 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 | `identity` | `assistant` 或 `owner`。 |
 | `serial`、`device_label` | 拨出的手机和它的名称。 |
 | `status` | `queued`、`dialing`（电话在响，还没有人出声）、`on_call`（对方接起来出声了）、`done`、`no_answer`、`failed`、`cancelled`。后四个是最终状态。 |
-| `call_code` | 拨号进行到哪一步：`dialing`、`queued`、`answered`、`no_answer`、`failed`、`phone_busy`、`number_busy`、`no_phone`、`send_failed`、`keypad_menu`、`carrier_message`、`wrong_sim`、`agent_restarted`、`cancelled`。 |
+| `call_code` | 拨号进行到哪一步。值见下方。 |
 | `attempts` | 从 1 开始，每点一次“再打一次”加 1。 |
 | `record_id` | 这一次的通话记录（`GET /calls/api/call/{id}`：文字记录和录音）。 |
 | `follow_up_of` | 这通是接着哪一条之前的代打；那一条最后 20 行文字记录会放进 AI 的脚本。 |
-| `questions` | `[{id, text, options, answer, answered_by, asked_at}]`：AI 问过你的问题，选项最多 4 个。`answered_by`：`owner`（你回答了）、`timeout`（你在看但没来得及回答）、`absent`（没人在看）；还在等时为 `null`。 |
-| `result` | `null` 或 `{outcome, summary, details, follow_up, options, event, unconfirmed}`。`outcome`：`done`、`partial`、`not_done`、`need_owner`（选项在 `options`，最多 8 个）、`no_answer`、`voicemail`、`failed`。`event`：`null` 或 `{start, end, title}`（带时差的当地时间；没谈定结束时间就没有 `end`）。`unconfirmed`：`details` 或 `event` 里 AI 复诵时对方没有明确确认的时间、日期、号码或名字（最多 8 项）；没有就不出现。 |
+| `questions` | `[{id, text, options, answer, answered_by, asked_at}]`：AI 问过你的问题，选项最多 4 个。 |
+| `result` | `null` 或 `{outcome, summary, details, follow_up, options, event, unconfirmed}`。字段见下方。 |
 | `history` | 之前几次的尝试，`[{attempt, status, result, record_id, ended_at, questions}]`。 |
 
-代打保存在数据文件夹的 `errands.json`（保留最新 500 条）。主程序重启时还在进行中的代打会变成 `failed`（`call_code` `agent_restarted`）。
+`call_code` 的值：`dialing`、`queued`、`answered`、`no_answer`、`failed`、`phone_busy`、`number_busy`、`no_phone`、`send_failed`、`keypad_menu`、`carrier_message`、`wrong_sim`、`agent_restarted`、`cancelled`。
+
+`questions` 里的 `answered_by`：`owner`（你回答了）、`timeout`（你在看但没来得及回答）、`absent`（没人在看）；还在等时是 `null`。
+
+`result` 的字段：
+
+- `outcome`：`done`、`partial`、`not_done`、`need_owner`（选项在 `options`，最多 8 个）、`no_answer`、`voicemail`、`failed`。
+- `event`：`null` 或 `{start, end, title}`（带时差的当地时间；没谈定结束时间就没有 `end`）。
+- `unconfirmed`：`details` 或 `event` 里 AI 复述时对方没有明确确认的时间、日期、号码或名字（最多 8 项）；没有就不出现。
+
+代打保存在数据文件夹的 `errands.json`（保留最新 500 条）。Bageo 重启时还在进行中的代打会变成 `failed`（`call_code` `agent_restarted`）。
 
 ### 代打路由
 
 | 方法与路径 | 内容 |
 |---|---|
 | `GET /calls/api/errands` | `{ok, errands}`，最新的在前，最多 200 条。 |
-| `POST /calls/api/errands` | 开始一条。请求体 `{number, name, contact_id, task, identity, serial, follow_up_of}`。必填：`task`，以及号码（或给联系人、之前的代打，用它们的号码）。`identity` 留空就按 `errand_identity`；`serial` 留空就用任何合适的手机。响应 `{ok, errand}`，状态为 `dialing`，手机或号码忙时为 `queued`。 |
+| `POST /calls/api/errands` | 开始一条。请求体 `{number, name, contact_id, task, identity, serial, follow_up_of}`，响应 `{ok, errand}`。 |
 | `POST /calls/api/errands/{id}/cancel` | 排队中：取消。拨号中或通话中：挂断。已经结束的原样返回。`{ok, errand}`。 |
 | `POST /calls/api/errands/{id}/retry` | 同一条再打一次（`attempts` 加 1，上一次移到 `history`）。`{ok, errand}`。还在进行中（或上一通还没结束）：400 `busy`；手机相关的代码同新建。 |
 | `DELETE /calls/api/errands/{id}` | 从列表删除（通话记录会保留）。`{ok}`；拨号中或通话中：400 `busy`。 |
-| `GET /calls/api/errands/{id}/live?after=<seq>` | `{status, lines, question, watching}`。`lines`：`seq` 之后的字幕，`[{seq, who, text, at}]`，`who` 为 `ai`、`callee`、`owner` 或 `system`（保留最新 400 行；1.2 秒没有新字就算一行结束）。`question`：`null` 或 `{id, text, options, asked_at, expires_at}`，等你回答的问题。`watching`：你是否算正在看。每读一次就算你正在看 6 秒，所以跟着通话时每隔几秒读一次。 |
+| `GET /calls/api/errands/{id}/live?after=<seq>` | 实时字幕和等你回答的问题：`{status, lines, question, watching}`。内容见下方。 |
 | `POST /calls/api/errands/{id}/say` | 请求体 `{text, question_id}`（最多 300 字）。带 `question_id`：回答那个问题。不带：有问题在等就作为它的答案，否则作为给 AI 的指示（“跟他说 8 点也可以”）。`{ok}`。 |
+
+`POST /calls/api/errands` 的内容：
+
+- 必填：`task`，以及号码（或给联系人、之前的代打，用它们的号码）。
+- `identity` 留空就按 `errand_identity`；`serial` 留空就用任何合适的手机。
+- 响应里的状态是 `dialing`，手机或号码忙线时是 `queued`。
+
+`GET /calls/api/errands/{id}/live?after=<seq>` 的内容：
+
+- `lines`：`seq` 之后的字幕，`[{seq, who, text, at}]`；`who` 是 `ai`、`callee`、`owner` 或 `system`（保留最新 400 行；1.2 秒没有新字就算一行结束）。
+- `question`：`null` 或 `{id, text, options, asked_at, expires_at}`，等你回答的问题。
+- `watching`：你是否算正在看。每读一次就算你正在看 6 秒，所以跟着通话时每隔几秒读一次。
 
 错误代码（HTTP 400 `{ok: false, error, code}`，两者相同）：
 
@@ -348,7 +512,7 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 | `no_task` | 新建 | `task` 为空。 |
 | `task_too_long` | 新建 | `task` 超过 1,000 字。 |
 | `no_phone` | 新建、再打 | 没有已连接、处于 AI 模式的手机（或指定的 `serial` 不是这样的手机）。 |
-| `sim_unknown` | 新建、再打 | 没有合适的手机，而且至少有一部的 SIM 主程序还不知道：先给它打一通。 |
+| `sim_unknown` | 新建、再打 | 没有合适的手机，而且至少有一部的 SIM Bageo 还不知道：先给它打一通。 |
 | `no_sim_for_country` | 新建、再打 | 没有手机有该号码所属国家的 SIM。 |
 | `not_found` | 新建 | `contact_id` 或 `follow_up_of` 不存在（这里返回 400）。 |
 | `busy` | 再打、删除 | 这条还在拨号或通话中。 |
@@ -384,21 +548,51 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/errands/e3f1a29c0b7d4e55/say" \
 
 ## 联系人
 
-联系人给打来的号码配上名字，保存在通话记录文件夹（`CALLS_DATA_DIR`）的 `contacts.json`。号码不管怎么写都能对上：`+886912345678`、`0912-345-678`、`886912345678` 是同一个号码。没有国家代码的号码按你的国家（`country_code`）解读；来电则按接到这通电话的 SIM 卡所属国家。联系人也用在 AI 代打（选联系人就不用输号码）和推销判断：已保存的联系人谈到钱，不会被当成推销或诈骗。
+联系人给打来的号码配上名字，保存在通话记录文件夹（`CALLS_DATA_DIR`）的 `contacts.json`。
 
-一位联系人是 `{id, name, phones: [...], note, kind, source, updated_at}`，最多 10 个号码，名字最多 80 字、备注最多 500 字。`kind` 为 `contact`（默认普通联系人）、`whitelist`（白名单 VIP／家人，配合 `whitelist_mode` 使用）、`blacklist`（黑名单，来电直接拒接）或 `stall`（陪聊名单，来电直接进入 AI 陪聊反制模式）。`source` 为 `manual`、`vcf`、`csv`、`text` 或 `ai`（Gemini 读出来的）。一个号码只属于一位联系人；通讯录最多 10,000 位（`too_many_contacts`）。
+号码不管怎么写都能对上：`+886912345678`、`0912-345-678`、`886912345678` 是同一个号码。没有国码的号码按你的国家（`country_code`）解读；来电则按接到这通电话的 SIM 卡所属国家。
+
+联系人也用在 AI 代打（选联系人就不用输入号码）和推销判断：已保存的联系人说到钱，不会被当成推销或诈骗。
+
+一位联系人是 `{id, name, phones: [...], note, kind, source, updated_at}`。
+
+- 最多 10 个号码，名字最多 80 字、备注最多 500 字。
+- `kind`：`contact`（默认，一般联系人）、`whitelist`（白名单，家人或重要的人，配合 `whitelist_mode` 使用）、`blacklist`（黑名单，来电直接拒接）或 `stall`（陪聊名单，来电直接进入 AI 陪聊反制模式）。
+- `source`：`manual`、`vcf`、`csv`、`text` 或 `ai`（Gemini 读出来的）。
+- 一个号码只属于一位联系人；通讯录最多 10,000 位（`too_many_contacts`）。
 
 | 方法与路径 | 内容 |
 |---|---|
 | `GET /calls/api/contacts` | 查询参数 `q`（名字、备注或号码，号码怎么写都行）、`kind`（`contact` \| `whitelist` \| `blacklist` \| `stall`）、`limit`、`offset`。响应 `{ok, contacts, total, offset, count}`：符合的结果（共 `total` 条），以及全部联系人数（`count`）。 |
-| `POST /calls/api/contacts` | 请求体 `{name, phones: [...], note, kind?}`，响应 `{ok, contact}`。号码已经属于别的联系人：HTTP 409 `contact_exists`，附 `contact: {id, name}`。没有名字或没有号码：400 `invalid_contact`，附出问题的 `field`。 |
+| `POST /calls/api/contacts` | 请求体 `{name, phones: [...], note, kind?}`，响应 `{ok, contact}`。错误见下方。 |
 | `PUT /calls/api/contacts/{id}` | 同样的请求体，替换名字、号码、备注和名单分类 `kind`。404 `contact_not_found`，409、400 同上。 |
 | `DELETE /calls/api/contacts/{id}` | `{ok}`。 |
-| `POST /calls/api/contacts/import` | 请求体就是文件本身（最大 10 MB），文件名 URL 编码后放在 `X-Filename`（缺少返回 400 `bad_request`）。只读取、**不保存**（预览）：`{ok, file, format, ai, entries: [{name, phones, note, source, duplicate}], skipped}`。`format`：`vcf`、`csv`、`text`、`xlsx`、`docx`、`pdf` 或 `image`。`ai`：是 Gemini 读的。`duplicate`：`null`，或这一条重复的已保存联系人 `{id, name, by: "phone" \| "name"}`。`skipped`：没有名字或号码而跳过的条数。错误：400 `empty_file`、413 `file_too_large`／`too_many_rows`、415 `unsupported_file`、400 `need_gemini_key`、502 `ai_failed`（Gemini 的回复在 `error`）。 |
+| `POST /calls/api/contacts/import` | 请求体就是文件本身（最大 10 MB），文件名做 URL 编码后放在 `X-Filename`。只读、**不保存**（预览）。内容见下方。 |
 | `POST /calls/api/contacts/batch` | 请求体 `{contacts: [{name, phones, note, source}], duplicates: "merge" \| "skip"}`：导入时你要保留的那些。跟已保存联系人重复的，合并进去（补上新号码和备注；默认）或跳过。响应 `{ok, added, merged, skipped, count}`。 |
 | `GET /calls/api/contacts/export.vcf` | 全部联系人导出为 vCard 3.0 文件。 |
 
-主程序自己能读的格式：vCard 2.1、3.0、4.0（含 quoted-printable、各种 `CHARSET`）；有表头（Google 通讯录、Outlook，或列名像 *Name*、*Phone*、姓名、電話）或没有表头的 CSV、TSV，编码 UTF-8、UTF-16 或电脑的编码（Big5、GBK、Shift_JIS、EUC-KR、Windows-1252）；一行一个名字加号码的纯文本；`.xlsx`、`.docx` 里的表格。PDF、图片（打印出来的名单照片、通讯录截图）和读不出人的文件交给 Gemini 的视觉模型（`gemini-flash-lite-latest`，使用设置里的 Gemini 密钥）。
+`POST /calls/api/contacts` 的错误：
+
+- 号码已经是别的联系人的：HTTP 409 `contact_exists`，附 `contact: {id, name}`。
+- 没有名字或没有号码：400 `invalid_contact`，附出问题的 `field`。
+
+`POST /calls/api/contacts/import` 的内容：
+
+- 没带 `X-Filename` 返回 400 `bad_request`。
+- 预览响应：`{ok, file, format, ai, entries: [{name, phones, note, source, duplicate}], skipped}`。
+- `format`：`vcf`、`csv`、`text`、`xlsx`、`docx`、`pdf` 或 `image`。`ai`：是 Gemini 读的。
+- `duplicate`：`null`，或这条重复的已保存联系人 `{id, name, by: "phone" | "name"}`。
+- `skipped`：没有名字或号码而跳过的条数。
+- 错误：400 `empty_file`、413 `file_too_large`／`too_many_rows`、415 `unsupported_file`、400 `need_gemini_key`、502 `ai_failed`（Gemini 的回复在 `error`）。
+
+Bageo 自己能读懂的格式：
+
+- vCard 2.1、3.0、4.0（含 quoted-printable、各种 `CHARSET`）。
+- 有表头（Google 通讯录、Outlook，或列名像 *姓名*、*电话*、Name、Phone）或没有表头的 CSV、TSV，编码 UTF-8、UTF-16 或电脑的编码（Big5、GBK、Shift_JIS、EUC-KR、Windows-1252）。
+- 一行一个名字加号码的纯文本。
+- `.xlsx`、`.docx` 里的表格。
+
+PDF、图片（打印出来的名单照片、通讯录截图）和读不出人的文件，交给 Gemini 的视觉模型（`gemini-flash-lite-latest`，使用设置里的 Gemini 密钥）。
 
 ```bash
 curl -s -X POST "http://127.0.0.1:8787/calls/api/contacts/import" \
@@ -420,9 +614,22 @@ Content-Type: application/json
 
 | 方法与路径 | 内容 |
 |---|---|
-| `GET /calls/api/devices` | `{ok, usb: {enabled, adb_found, adb_path, error, phones: [{serial, state, model, reverse, app_installed}]}, connected: [...], labels: {<phone id>: <名称>}, calls_in_progress, phones: [...]}`。最外层的 `phones` 是主程序启动后在 control 连接上见过的每部手机：`{serial, connected, mode, supports_mode, model, app_version, in_call, last_seen_ms}`。`mode` 为 `ai`（AI 接听）或 `normal`（普通手机，见[手机设置](PHONE.md#普通手机模式)）；比这个功能旧的 App，`supports_mode` 为 false，始终是 `ai`。 |
+| `GET /calls/api/devices` | 手机列表和连接状态。响应格式见下方。 |
 | `POST /calls/api/devices/{serial}/mode` | 请求体 `{"mode": "ai" \| "normal"}`。让手机切换，最多等 15 秒等它回复。返回 `{ok, mode, error_code}`（400 时另附说明 `error`）。 |
-| `GET /health` | 一个很大的扁平 JSON 对象，排查问题用：版本、语言、哪些东西已配置、已连接的手机、进行中的通话；不含密钥或令牌。`control_idle_clients`／`control_idle_serials` 统计所有连上的手机；`normal_mode_serials` 列出切换成普通手机的那几部；`local_time` 是主程序按 `TZ` 的时钟。设置了控制台令牌、请求却没带时，只返回 `ok`、`version`、`language`、`notify_language`、`active_call_count` 和 `control_idle_clients`，监控用已经足够。 |
+| `GET /health` | 排查问题用的大型 JSON 对象：版本、语言、哪些东西已配置、已连接的手机、进行中的通话；不含密钥或密码。 |
+
+`GET /calls/api/devices` 的内容：
+
+- 响应：`{ok, usb: {enabled, adb_found, adb_path, error, phones: [{serial, state, model, reverse, app_installed}]}, connected: [...], labels: {<phone id>: <名称>}, calls_in_progress, phones: [...]}`。
+- 最外层的 `phones` 是 Bageo 启动后在 control 连接上见过的每部手机：`{serial, connected, mode, supports_mode, model, app_version, in_call, last_seen_ms}`。
+- `mode` 是 `ai`（AI 接听）或 `normal`（一般手机，见[手机设置](PHONE.md#普通手机模式)）。
+- 比这个功能旧的 App，`supports_mode` 是 false，永远是 `ai`。
+
+`GET /health` 的内容：
+
+- `control_idle_clients`／`control_idle_serials` 统计所有连上的手机；`normal_mode_serials` 列出切换成一般手机的那几部。
+- `local_time` 是 Bageo 按 `TZ` 的时钟。
+- 设置了控制台密码、请求却没带时，只返回 `ok`、`version`、`language`、`notify_language`、`active_call_count` 和 `control_idle_clients`，监控用已经足够。
 
 切换模式后，`mode` 是手机现在的模式（不知道时为 `null`）；成功时 `error_code` 为 `null`，否则是下面其中之一：
 
@@ -446,40 +653,67 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/devices/pixel-12345/mode" \
 
 ## 手机这一端（WebSocket）
 
-手机通过 WebSocket 连接到 `/` 或 `/ws`（两者相同）。每部手机保持一条长期的 *control* 连接，每通电话另开一条 *media* 连接。两种连接都双向传送 JSON 文本帧和原始的 16 kHz 单声道 16 位小端序 PCM 二进制帧（手机每 60 ms 发一帧）。来自这台电脑本身的连接（USB 通道）一律接受；其他连接在设置了 `DEVICE_TOKEN` 时必须带上 `?token=<DEVICE_TOKEN>`。
+手机通过 WebSocket 连接到 `/` 或 `/ws`（两者相同）。
 
-逐字段的完整消息列表在 [`android/README.md`](../../android/README.md#websocket-protocol)（英文）。任何会说这套协议的程序都能代替手机，所以要加上 SIP 或软电话前端，完全不用改动通话逻辑。双方都会忽略不认识的内容，所以旧 App、旧主程序照样能用。
+- 每部手机保持一条长期的 *control* 连接，每通电话另开一条 *media* 连接。
+- 两种连接都双向传送 JSON 文本帧和原始的 16 kHz 单声道 16 位小端序 PCM 二进制帧（手机每 60 ms 发一帧）。
+- 来自这台电脑本身的连接（USB 通道）一律接受；其他连接在设置了 `DEVICE_TOKEN` 时必须带上 `?token=<DEVICE_TOKEN>`。
+
+逐字段的完整消息列表在 [`android/README.md`](../../android/README.md#websocket-protocol)（英文）。任何会说这套协议的程序都能代替手机，所以要加上 SIP 或软电话前端，完全不用改动通话逻辑。双方都会忽略不认识的内容，所以旧 App、旧版 Bageo照样能用。
 
 ### Control 连接
 
 | 方向 | 消息 | 含义 |
 |---|---|---|
-| 手机 → 主程序 | `hello` | `serial`、`mode` = `CONTROL_IDLE`、`model`、`app_version`、`phone_mode`（`ai`／`normal`）、`in_call`、`supports_sms`、`supports_reject`。没有 `phone_mode`：比模式切换旧的 App（始终是 `ai`）。没有 `supports_sms`：不会让它发短信。没有 `supports_reject`：拦截号码改为接起来播放语音。 |
-| 手机 → 主程序 | `ping` | 每 15 秒一次。 |
-| 手机 → 主程序 | `status` | `{mode, in_call}`：模式或通话状态变了。 |
-| 手机 → 主程序 | `incoming`、`incoming_cancel` | 有电话在响（`caller_id`，隐藏号码时为空字符串；`sim_country`；知道时带 `sim_sub_id`）／接起来之前就结束了。 |
-| 主程序 → 手机 | `answer_plan` | `{delay_ms, prewarm, reject}`：响多久再接，或 `reject: true` 响铃中直接拒接（`reject_mode` 为 `decline` 的拦截号码）。 |
-| 手机 → 主程序 | `call_waiting_rejected` | `{serial, caller_id, sim_country, sim_sub_id}`：通话中又有第二通打进来，手机立刻拒接（AI 模式）。会留下通话记录并发出“通话中插播未接”通知。 |
-| 主程序 → 手机／手机 → 主程序 | `set_mode`／`set_mode_result` | `{mode, id}`／`{id, ok, mode, error}`：远程切换模式；`error` 用上面的代码。 |
-| 主程序 → 手机 | `agent_info` | `{console_url}`：给 App 的“**打开网页控制台**”按钮。主程序知道地址时才在 hello 之后发：`public_url`，或控制台对局域网开放时的局域网 IP 地址。 |
-| 主程序 → 手机 | `place_call` | `{number, call_id, task_id, sub_id}`：拨出电话（AI 回拨或 AI 代打），用 subscription id 为 `sub_id` 的 SIM 拨（找不到那张 SIM 就用手机默认的）。手机有电话在响或通话中时不拨，返回 `place_call_failed`，`reason` 为 `busy`。 |
-| 手机 → 主程序 | `place_call_ack`、`place_call_failed`、`outbound_ready`、`call_end` | 拨出的电话已拨号／拨不出去／接通／结束。 |
-| 主程序 → 手机 | `send_sms` | `{id, to, text, sub_id}`：给来电者发短信（日程预约）。`id` 1–64 字符；`to` 只有数字，开头可以有 `+`；`text` 最多 500 字符；`sub_id` 指定 SIM（手机上报的 `sim_sub_id`），没有就用默认的短信 SIM。已经发过的 id 再来一次只会再返回一次结果，不会重复发。 |
-| 手机 → 主程序 | `send_sms_result` | `{id, ok, error}`，每一段都回报后才发。手机最多等 60 秒（超时返回 `timeout`）；之后才收到回报，会再发一次真正的结果。`error`：`no_permission`、`bad_request`、`no_service`、`radio_off`、`generic_failure`、`timeout`、`exception`。主程序最多等 90 秒。重新连接后手机会把最近 20 个 id 的结果再发一次，主程序按 `id` 去重。 |
-| 手机 → 主程序 | `send_sms_delivered` | `{id, ok}`：运营商给出送达回执时才发（手机最多等一小时）。 |
+| 手机 → Bageo | `hello` | `serial`、`mode` = `CONTROL_IDLE`、`model`、`app_version`、`phone_mode`（`ai`／`normal`）、`in_call`、`supports_sms`、`supports_reject`。缺少字段的含义见下方。 |
+| 手机 → Bageo | `ping` | 每 15 秒一次。 |
+| 手机 → Bageo | `status` | `{mode, in_call}`：模式或通话状态变了。 |
+| 手机 → Bageo | `incoming`、`incoming_cancel` | 有电话在响（`caller_id`，隐藏号码时为空字符串；`sim_country`；知道时带 `sim_sub_id`）／接起来之前就结束了。 |
+| Bageo → 手机 | `answer_plan` | `{delay_ms, prewarm, reject}`：响多久再接，或 `reject: true` 响铃中直接拒接（`reject_mode` 为 `decline` 的拦截号码）。 |
+| 手机 → Bageo | `call_waiting_rejected` | `{serial, caller_id, sim_country, sim_sub_id}`：通话中又有第二通打进来，手机立刻拒接（AI 模式）。会留下通话记录并发出“通话中插播未接”通知。 |
+| Bageo → 手机／手机 → Bageo | `set_mode`／`set_mode_result` | `{mode, id}`／`{id, ok, mode, error}`：远程切换模式；`error` 用上面的代码。 |
+| Bageo → 手机 | `agent_info` | `{console_url}`：给 App 的“**打开网页控制台**”按钮。Bageo 知道地址时才在 hello 之后发：`public_url`，或控制台对局域网开放时的局域网 IP 地址。 |
+| Bageo → 手机 | `place_call` | `{number, call_id, task_id, sub_id}`：拨出电话（AI 回拨或 AI 代打），用 subscription id 为 `sub_id` 的 SIM 拨（找不到就用手机默认的）。忙线时见下方。 |
+| 手机 → Bageo | `place_call_ack`、`place_call_failed`、`outbound_ready`、`call_end` | 拨出的电话已拨号／拨不出去／接通／结束。 |
+| Bageo → 手机 | `send_sms` | `{id, to, text, sub_id}`：给来电者发短信（日程预约）。字段限制见下方。 |
+| 手机 → Bageo | `send_sms_result` | `{id, ok, error}`，每一段都上报后才发。超时和重发的规则见下方。 |
+| 手机 → Bageo | `send_sms_delivered` | `{id, ok}`：运营商给出送达回执时才发（手机最多等一小时）。 |
+
+`hello` 缺少字段时：
+
+- 没有 `phone_mode`：比模式切换旧的 App（永远是 `ai`）。
+- 没有 `supports_sms`：不会让它发短信。
+- 没有 `supports_reject`：拦截号码改成接起来播放语音。
+
+`place_call`：手机有电话在响或通话中时不拨，回复 `place_call_failed`，`reason` 为 `busy`。
+
+`send_sms` 的字段：
+
+- `id`：1–64 个字符。
+- `to`：只有数字，开头可以有 `+`。
+- `text`：最多 500 个字符。
+- `sub_id`：指定 SIM（手机上报的 `sim_sub_id`），没有就用默认的短信 SIM。
+- 已经发过的 id 再来一次，只会再回复一次结果，不会重复发送。
+
+`send_sms_result` 的规则：
+
+- 手机最多等 60 秒（超时回 `timeout`）；之后才收到回报，会再发一次真正的结果。
+- `error`：`no_permission`、`bad_request`、`no_service`、`radio_off`、`generic_failure`、`timeout`、`exception`。
+- Bageo 最多等 90 秒。
+- 重新连接后手机会把最近 20 个 id 的结果再发一次，Bageo 用 `id` 去掉重复的。
 
 ### Media 连接
 
 | 方向 | 消息 | 含义 |
 |---|---|---|
-| 手机 → 主程序 | `hello` | `serial`、`caller_id`、`sample_rate`（16000）、`mode` = `SILENT_LOCAL`、`sim_country`、`sim_sub_id`、`model`、`app_version`。拨出的电话，主程序会拿 `sim_sub_id` 比对它指定的 SIM（代打不符就是 `wrong_sim`）。 |
-| 手机 → 主程序 | `ringing`、`call_end` | 对方号码（之后才知道时会再发）／通话结束。 |
-| 主程序 → 手机 | `tts_start`、`tts_end`、`hangup` | 接下来有声音／声音结束／挂断。 |
-| 双向 | 二进制 | 对方的声音（手机 → 主程序）和 AI 的声音（主程序 → 手机），格式同上。 |
+| 手机 → Bageo | `hello` | `serial`、`caller_id`、`sample_rate`（16000）、`mode` = `SILENT_LOCAL`、`sim_country`、`sim_sub_id`、`model`、`app_version`。拨出电话的 SIM 比对见下方。 |
+| 手机 → Bageo | `ringing`、`call_end` | 对方号码（之后才知道时会再发）／通话结束。 |
+| Bageo → 手机 | `tts_start`、`tts_end`、`hangup` | 接下来有声音／声音结束／挂断。 |
+| 双向 | 二进制 | 对方的声音（手机 → Bageo）和 AI 的声音（Bageo → 手机），格式同上。 |
 
-主程序怎么处理边界情况：
+Bageo 怎么处理边界情况：
 
-- 短信结果在主程序不再等待之后才到，照样会记录；手机之后用同一个 `id` 发来的真正结果会取代 `timeout`。同样的结果再来、或已有确定结果的短信收到不同结果，都不会改。
+- 拨出的电话：Bageo 会拿 media `hello` 的 `sim_sub_id` 比对它指定的 SIM（代打不符就是 `wrong_sim`）。
+- 短信结果在 Bageo 不再等待之后才到，照样会记录；手机之后用同一个 `id` 发来的真正结果会取代 `timeout`。同样的结果再来、或已有确定结果的短信收到不同结果，都不会改。
 - 拦截号码只有在 `reject_mode` 为 `decline`、并且手机声明过 `supports_reject` 时才让手机拒接；否则接起来播放语音，通知会写清楚是哪一种。
 - AI 回拨和 AI 代打都带 `sub_id`，双卡手机会用正确的号码拨出。
-

@@ -121,9 +121,27 @@ jobs:
           ls dist/pixelcallai_uplink-*.zip dist/bageo-call-* > /dev/null
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS.txt
+      # The Release page shows only the short notes for this version from
+      # .github/RELEASE_NOTES.md (first line "# Bageo <tag>", dropped here
+      # because the Release already has that title). The full history stays
+      # in CHANGELOG.md. If the file is for another version, the page just
+      # links to CHANGELOG.md.
+      - name: Release notes
+        run: |
+          f=src/.github/RELEASE_NOTES.md
+          if [ -f "$f" ] && [ "$(head -n 1 "$f")" = "# Bageo ${GITHUB_REF_NAME}" ]; then
+            tail -n +2 "$f" > notes.md
+          else
+            echo "::warning::.github/RELEASE_NOTES.md is not for ${GITHUB_REF_NAME}; linking CHANGELOG.md instead"
+            echo "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md)." > notes.md
+          fi
+          lines=$(wc -l < notes.md)
+          if [ "$lines" -gt 30 ]; then
+            echo "::warning::Release notes are ${lines} lines; keep them short"
+          fi
       - uses: softprops/action-gh-release@v2
         with:
           name: Bageo ${{ github.ref_name }}
-          body_path: src/CHANGELOG.md
+          body_path: notes.md
           files: dist/*
-          generate_release_notes: true
+          generate_release_notes: false

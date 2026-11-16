@@ -421,6 +421,10 @@ fn request_body_for(dialogue: &str, hits: &[String], ctx: &CallerContext, purpos
             head.push_str(&format!("- {}: {} Ordinary: {}\n", t.id, t.signals, t.legit));
         }
     }
+    let regional = crate::scam_db::country_review_brief(&ctx.number, &ctx.number_notes, hits, &dialogue);
+    if !regional.is_empty() {
+        head.push_str(&regional);
+    }
     head.push_str(purpose_line(purpose));
     let budget = MAX_DIALOGUE_CHARS.saturating_sub(head.chars().count()).max(MIN_DIALOGUE_CHARS);
     let user = format!("{head}\nDialogue so far:\n{}", tail_chars(&dialogue, budget));
@@ -993,6 +997,19 @@ mod tests {
         assert!(plain["generationConfig"].get("responseSchema").is_none());
         assert!(plain["generationConfig"].get("thinkingConfig").is_none());
         assert!(plain["contents"][0]["parts"][0]["text"].as_str().unwrap().contains("Number: hidden"));
+    }
+
+    #[test]
+    fn request_includes_regional_scam_patterns_even_without_keywords() {
+        let ctx = CallerContext {
+            number: "+34911234567".into(),
+            number_notes: vec!["Phone SIM region: ES".into()],
+            ..CallerContext::default()
+        };
+        let body = request_body_for("對方：Hola, le llamo por una incidencia en su suministro eléctrico", &[], &ctx, Purpose::Content, true);
+        let user = body["contents"][0]["parts"][0]["text"].as_str().unwrap();
+        assert!(user.contains("Regional scam patterns:") && user.contains("[ES -> fake_utility]"), "{user}");
+        assert!(user.chars().count() < MAX_DIALOGUE_CHARS + 200, "{}", user.chars().count());
     }
 
     /// The real card desk was kept talking (2026-11-14): its opening line
