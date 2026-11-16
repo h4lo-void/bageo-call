@@ -1134,20 +1134,24 @@ pub fn with_caller(prompt: &str, rt: &RuntimeSettings, caller_id: &str, sim_coun
     info!(contact = c.id.as_str(), kind = c.kind.as_str(), "caller is in the contacts: the prompt says who it is");
     let mut blk = caller_block(lang, rt.is_assistant_style(), &rt.owner_name, &c.name, &c.note);
     if c.kind == "whitelist" && rt.whitelist_mode == "emergency" {
-        let emerg = match lang {
-            Lang::ZhTw => "\n【白名單緊急事件轉接】這位是白名單上的重要聯絡人。如果對方表示有緊急事件、急事、意外、住院、或需要立刻找本人，請馬上安撫對方並明確說「好，這件事很急，我現在馬上轉接／通知本人立刻聯繫你！」系統偵測到緊急事件後會立即通知本人並轉接至真實號碼。",
-            Lang::ZhCn => "\n【白名单紧急事件转接】这位是白名单上的重要联系人。如果对方表示有紧急事件、急事、意外、住院、或需要立刻找本人，请马上安抚对方并明确说「好，这件事很急，我现在马上转接／通知本人立刻联系你！」系统检测到紧急事件后会立即通知本人并转接至真实号码。",
-            Lang::Ja => "\n【ホワイトリスト緊急転送】この相手はホワイトリストの大切な連絡先です。緊急の用件、急用、事故、入院、または今すぐ本人と連絡を取りたいと伝えた場合は、すぐに安心させて「わかりました、急ぎの件ですね。今すぐ本人に転送・連絡します！」とはっきり伝えてください。システムが直ちに本人の実際の番号へ通知・転送します。",
-            Lang::Ko => "\n[화이트리스트 긴급 전환] 이 발신자는 화이트리스트의 중요한 연락처입니다. 긴급한 용무, 급한 일, 사고, 입원 또는 지금 당장 본인과 연락해야 한다고 말하면 즉시 안심시키고 “네, 급한 일이시군요. 지금 바로 본인에게 전환·알려 드리겠습니다!”라고 명확히 말하세요. 시스템이 즉시 본인의 실제 번호로 알림 및 전환을 수행합니다.",
-            Lang::Es => "\n[Transferencia de emergencia de lista blanca] Esta persona está en la lista blanca. Si indica una emergencia, asunto urgente, accidente, hospitalización o que necesita localizar al titular de inmediato, tranquilícela enseguida y diga claramente: «Entendido, es urgente; ahora mismo le paso o aviso para que se comunique con usted de inmediato». El sistema avisará y transferirá al número real de inmediato.",
-            Lang::Fr => "\n[Transfert d'urgence liste blanche] Cet appelant figure sur la liste blanche. S'il signale une urgence, un problème grave, un accident, une hospitalisation ou qu'il doit joindre la personne immédiatement, rassurez-le tout de suite et dites clairement : « Compris, c'est urgent — je vous transfère / je le préviens immédiatement ! » Le système alertera et transférera vers le vrai numéro.",
-            Lang::De => "\n[Whitelist-Notfallweiterleitung] Dieser Anrufer steht auf der Whitelist. Wenn er einen Notfall, eine dringende Angelegenheit, einen Unfall oder Krankenhausaufenthalt meldet oder die Person sofort erreichen muss, beruhige ihn sofort und sage klar: „Verstanden, das ist dringend — ich leite Sie sofort weiter bzw. gebe sofort Bescheid!“ Das System benachrichtigt und verbindet umgehend mit der echten Nummer.",
-            Lang::Pt => "\n[Transferência de emergência da lista branca] Este contato está na lista branca. Se informar uma emergência, assunto urgente, acidente, hospitalização ou precisar falar imediatamente, tranquilize-o na hora e diga claramente: \"Entendi, é urgente — vou transferir / avisar agora mesmo!\" O sistema enviará um alerta imediato e encaminhará para o número real.",
-            Lang::En => "\n[Whitelist Emergency Transfer] This caller is on the Whitelist. If they report an emergency, urgent matter, accident, or need to reach the owner immediately, reassure them right away and say clearly: \"Got it, this is urgent — I am notifying/transferring to them right now!\" The system will immediately alert and forward to the owner's real number.",
-        };
-        blk.push_str(emerg);
+        blk.push_str(&urgent_block(lang, rt.is_assistant_style(), &rt.owner_name));
     }
     with_caller_block(prompt, lang, &blk)
+}
+
+/// What the AI says when a whitelisted caller has something urgent
+/// (`whitelist_mode` emergency). Bageo does not put the call through: it
+/// alerts the owner, who calls back, and the AI says only that.
+pub fn urgent_block(lang: Lang, assistant: bool, owner: &str) -> String {
+    let owner = crate::prompts::owner_label(lang, owner);
+    match (lang, assistant) {
+        (Lang::ZhTw, false) => "\n【白名單：對方有急事】這位是你很重要的人。如果他說有急事、出意外、住院，或要你馬上處理，先安撫他，再明確說「好，我知道了，我馬上處理，等一下打給你。」不要說會把電話轉給誰，也不要說要通知誰。".to_string(),
+        (Lang::ZhTw, true) => format!("\n【白名單：對方有急事】這位是{owner}很重要的人。如果他說有急事、出意外、住院，或要馬上找{owner}，先安撫他，再明確說「好，這很急，我現在馬上通知{owner}，請他立刻打給你。」不要說會把電話轉過去，也不要說{owner}會馬上接起來。"),
+        (Lang::ZhCn, false) => "\n【白名单：对方有急事】这位是你很重要的人。如果他说有急事、出意外、住院，或要你马上处理，先安抚他，再明确说「好，我知道了，我马上处理，等一下打给你。」不要说会把电话转给谁，也不要说要通知谁。".to_string(),
+        (Lang::ZhCn, true) => format!("\n【白名单：对方有急事】这位是{owner}很重要的人。如果他说有急事、出意外、住院，或要马上找{owner}，先安抚他，再明确说「好，这很急，我现在马上通知{owner}，请他立刻打给你。」不要说会把电话转过去，也不要说{owner}会马上接起来。"),
+        (_, false) => "\n[Whitelist: something urgent] This person matters to you. If they say it is urgent, there was an accident, someone is in hospital, or they need you right away, calm them and say clearly: \"Okay, got it. I'm on it, I'll call you right back.\" Do not say you will put the call through to anyone or tell anyone.".to_string(),
+        (_, true) => format!("\n[Whitelist: something urgent] This person matters to {owner}. If they say it is urgent, there was an accident, someone is in hospital, or they need {owner} right away, calm them and say clearly: \"Okay, this is urgent. I'm letting {owner} know right now and asking them to call you straight back.\" Do not say you are putting the call through, and do not say {owner} will pick up now."),
+    }
 }
 
 /// Short, prompt-safe label for `stall_review` when `caller_id` is in the
@@ -3375,6 +3379,27 @@ mod tests {
         assert_eq!(caller_block(Lang::En, true, "Sam", " \n ", "x"), "");
         assert!(caller_block(Lang::En, true, "Sam", "Amy", "").contains("Sam's contacts as \"Amy\"."));
         assert!(caller_block(Lang::ZhCn, false, "", "王小明", "").contains("通讯录"));
+    }
+
+    #[test]
+    fn an_urgent_whitelist_caller_is_never_told_the_call_is_put_through() {
+        let langs = [Lang::ZhTw, Lang::ZhCn, Lang::En, Lang::Ja, Lang::Ko, Lang::Es, Lang::Fr, Lang::De, Lang::Pt];
+        for lang in langs {
+            for assistant in [false, true] {
+                let b = urgent_block(lang, assistant, "Sam");
+                // The line the AI is told to say, in 「…」 or "…".
+                let said = b
+                    .split('「')
+                    .nth(1)
+                    .and_then(|s| s.split('」').next())
+                    .or_else(|| b.split('"').nth(1))
+                    .unwrap_or_else(|| panic!("no line to say: {b}"));
+                for word in ["轉接", "转接", "轉給", "转给", "transfer", "put you through", "connect"] {
+                    assert!(!said.to_lowercase().contains(word), "{lang:?} {assistant}: {said}");
+                }
+                assert!(said.contains("打給你") || said.contains("打给你") || said.contains("call you"), "{lang:?} {assistant}: {said}");
+            }
+        }
     }
 
     #[test]
