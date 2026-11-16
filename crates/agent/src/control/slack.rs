@@ -5,7 +5,8 @@
 //! [Controller]; answers and pushes go back with chat.postMessage /
 //! chat.update. In a channel only what is addressed to the bot is passed on:
 //! a command ("/…"), a mention of the bot, a reply in a thread the bot
-//! started. A direct message is always for the bot.
+//! started. A direct message (a channel ID starting with D) is always for
+//! the bot.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -179,7 +180,9 @@ pub fn inbound_event(acct: &Account, me: &Me, ev: &Value) -> Option<Inbound> {
     let ts = text_at(ev, "/ts");
     let thread = text_at(ev, "/thread_ts");
     let reply_to_bot = !me.user_id.is_empty() && !thread.is_empty() && thread != ts && text_at(ev, "/parent_user_id") == me.user_id;
-    let direct = ev["channel_type"] == "im";
+    // Slack's direct message channels start with D; what the event itself
+    // says about the channel is not taken on trust.
+    let direct = chat.starts_with('D');
     if !direct && !text.starts_with('/') && !mentioned && !reply_to_bot {
         return None;
     }

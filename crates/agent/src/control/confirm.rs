@@ -38,9 +38,17 @@ pub struct Confirmations {
     open: Mutex<HashMap<String, Pending>>,
 }
 
-fn new_code() -> String {
-    uuid::Uuid::new_v4().simple().to_string()[..6].to_ascii_uppercase()
+/// 128 random bits as 32 hex digits: too many to guess. Two v4 UUIDs, the
+/// second turned half-way round, so the fixed version and variant bits of
+/// one fall on random bits of the other. A button's data ("k:" + code +
+/// ":y", 36 bytes) stays within BUTTON_DATA_MAX.
+pub fn new_code() -> String {
+    let bits = uuid::Uuid::new_v4().as_u128() ^ uuid::Uuid::new_v4().as_u128().rotate_left(64);
+    format!("{bits:032X}")
 }
+
+/// How many digits of a code the chat text shows (the button carries all).
+pub const CODE_SHOWN: usize = 6;
 
 /// The sender of a confirmation no one in the chat asked for (an MCP
 /// client's call): anyone allowed to give commands there may answer it.
@@ -121,10 +129,13 @@ mod tests {
     fn a_confirmation_works_once_for_the_one_who_asked() {
         let c = Confirmations::new(Duration::from_secs(120));
         let code = c.ask("chat", "42", job());
-        assert_eq!(code.len(), 6);
+        assert_eq!(code.len(), 32);
+        assert!(code.chars().all(|ch| ch.is_ascii_hexdigit()));
+        assert!(format!("k:{code}:y").len() <= super::super::BUTTON_DATA_MAX);
         assert_eq!(c.take("chat", "43", None), None, "another member of the chat");
         assert_eq!(c.take("other", "42", None), None, "another chat");
         assert_eq!(c.take("chat", "42", Some("ZZZZZZ")), None, "a stale button");
+        assert_eq!(c.take("chat", "42", Some(&code[..CODE_SHOWN])), None, "the digits the text shows are not enough");
         assert_eq!(c.take("chat", "42", Some(&code.to_lowercase())), Some(job()));
         assert_eq!(c.take("chat", "42", Some(&code)), None, "used already");
         assert!(!c.waiting("chat"));
@@ -132,6 +143,12 @@ mod tests {
 
     #[test]
     fn a_newer_request_replaces_the_older_one() {
+        // Codes do not repeat and use every bit position.
+        let codes: std::collections::HashSet<String> = (0..2000).map(|_| new_code()).collect();
+        assert_eq!(codes.len(), 2000);
+        let ored = codes.iter().fold(0u128, |acc, c| acc | u128::from_str_radix(c, 16).unwrap());
+        let anded = codes.iter().fold(u128::MAX, |acc, c| acc & u128::from_str_radix(c, 16).unwrap());
+        assert_eq!((ored, anded), (u128::MAX, 0), "a fixed bit in the code");
         let c = Confirmations::new(Duration::from_secs(120));
         let old = c.ask("chat", "42", job());
         let new = c.ask("chat", "42", Job::Decide { task_id: "t2".into(), confirm: false });

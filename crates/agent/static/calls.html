@@ -11813,7 +11813,7 @@ function chanControl(c) {
   who.hidden = !c.control;
   const box = h("input", { type: "checkbox", checked: !!c.control, onchange: () => { c.control = box.checked; who.hidden = !c.control; updateDirty(); } });
   return h("div", { class: "chan-ctl" },
-    h("label", { class: "sw" }, box, h("span", {}, h("b", { text: t("n_ctl") }), h("small", { text: t("n_ctl_h") }))),
+    h("label", { class: "sw" }, box, h("span", {}, h("b", { text: t("n_ctl") }), h("small", { text: tKind("n_ctl_h", c.kind) }))),
     who);
 }
 function chanInput(c, f, label, secret) {

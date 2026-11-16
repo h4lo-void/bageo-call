@@ -297,11 +297,32 @@ fn discord_messages_and_presses_become_inbounds() {
     r["referenced_message"] = json!({"id": "400", "author": {"id": "999", "bot": true}});
     assert!(discord::inbound_message(&a, "999", &r).unwrap().reply_to_bot);
     let press = json!({"type": 3, "id": "i1", "token": "itok", "channel_id": "123", "member": {"user": {"id": "111"}},
-        "data": {"custom_id": "ok:1"}, "message": {"id": "400"}});
-    let (m, (id, token)) = discord::inbound_press(&a, &press).unwrap();
+        "application_id": "app1", "data": {"custom_id": "ok:1"}, "message": {"id": "400", "author": {"id": "999"}}});
+    let (m, (id, token)) = discord::inbound_press(&a, "app1", "999", &press).unwrap();
     assert_eq!((m.body, m.message_id.as_str(), m.sender_id.as_str(), m.reply_to_bot), (Body::Button("ok:1".into()), "400", "111", true));
     assert_eq!((m.platform.as_str(), m.chat_id.as_str()), ("discord", "123"));
     assert_eq!((id.as_str(), token.as_str()), ("i1", "itok"));
+}
+
+/// A press that names another application, or sits under a message the bot
+/// did not send, is forged or not ours: dropped.
+#[test]
+fn discord_drops_presses_for_another_application_or_message() {
+    let a = acct("discord", "123");
+    let press = json!({"type": 3, "id": "i1", "token": "itok", "channel_id": "123", "member": {"user": {"id": "111"}},
+        "application_id": "app1", "data": {"custom_id": "k:X:y"}, "message": {"id": "400", "author": {"id": "999"}}});
+    assert!(discord::inbound_press(&a, "app1", "999", &press).is_some());
+    let mut other_app = press.clone();
+    other_app["application_id"] = json!("app2");
+    assert!(discord::inbound_press(&a, "app1", "999", &other_app).is_none());
+    let mut other_message = press.clone();
+    other_message["message"]["author"]["id"] = json!("888");
+    assert!(discord::inbound_press(&a, "app1", "999", &other_message).is_none());
+    let mut no_app = press.clone();
+    no_app.as_object_mut().unwrap().remove("application_id");
+    assert!(discord::inbound_press(&a, "app1", "999", &no_app).is_none());
+    // Before READY told the ids, nothing is taken.
+    assert!(discord::inbound_press(&a, "", "", &press).is_none());
 }
 
 #[test]
@@ -317,11 +338,13 @@ fn discord_ignores_the_bot_itself_other_bots_forwards_and_other_channels() {
     let mut elsewhere = discord_msg("111", "/status", false);
     elsewhere["channel_id"] = json!("456");
     assert!(discord::inbound_message(&a, "999", &elsewhere).is_none());
-    let mut bot_press = json!({"type": 3, "id": "i", "token": "t", "channel_id": "123", "user": {"id": "222", "bot": true}, "data": {"custom_id": "x"}});
-    assert!(discord::inbound_press(&a, &bot_press).is_none());
+    let mut bot_press = json!({"type": 3, "id": "i", "token": "t", "channel_id": "123", "user": {"id": "222", "bot": true}, "data": {"custom_id": "x"},
+        "application_id": "app1", "message": {"id": "400", "author": {"id": "999"}}});
+    assert!(discord::inbound_press(&a, "app1", "999", &bot_press).is_none());
     bot_press["user"]["bot"] = json!(false);
+    assert!(discord::inbound_press(&a, "app1", "999", &bot_press).is_some());
     bot_press["channel_id"] = json!("456");
-    assert!(discord::inbound_press(&a, &bot_press).is_none());
+    assert!(discord::inbound_press(&a, "app1", "999", &bot_press).is_none());
 }
 
 #[test]
@@ -357,6 +380,40 @@ async fn discord_connects_again_and_resumes_after_the_line_drops() {
     assert_eq!((resume["d"]["session_id"].as_str(), resume["d"]["seq"].as_u64()), (Some("s1"), Some(1)));
 }
 
+#[test]
+fn discord_resumes_only_at_discords_own_address_or_the_configured_one() {
+    let gw = discord::GATEWAY;
+    assert!(discord::trusted_resume("wss://gateway-us-east1-b.discord.gg", gw));
+    assert!(discord::trusted_resume("wss://discord.gg/?v=10", gw));
+    assert!(!discord::trusted_resume("ws://gateway.discord.gg", gw), "not encrypted");
+    assert!(!discord::trusted_resume("wss://discord.gg.evil.example", gw));
+    assert!(!discord::trusted_resume("wss://evil-discord.gg", gw));
+    assert!(!discord::trusted_resume("not a url", gw));
+    assert!(discord::trusted_resume("ws://127.0.0.1:4000/x", "ws://127.0.0.1:4000"));
+    assert!(!discord::trusted_resume("ws://127.0.0.1:4001", "ws://127.0.0.1:4000"));
+}
+
+/// READY names a resume address elsewhere: the token is never sent there;
+/// the next connection goes to the configured gateway and identifies afresh.
+#[tokio::test]
+async fn discord_ignores_a_foreign_resume_address_and_identifies_afresh() {
+    let rig = Rig::new();
+    let (url, mut conns) = ws_server().await;
+    let ep = discord::Endpoints { api: "http://127.0.0.1:9".into(), gateway: url.clone(), retry: FAST };
+    let task = tokio::spawn(discord::run(Controller::new(rig.state.clone()), reqwest::Client::new(), ep, acct("discord", "123")));
+    let mut ws = next_conn(&mut conns).await;
+    send_json(&mut ws, json!({"op": 10, "d": {"heartbeat_interval": 60000}})).await;
+    let _identify = recv_json(&mut ws).await;
+    send_json(&mut ws, json!({"op": 0, "s": 1, "t": "READY", "d": {"session_id": "s1", "resume_gateway_url": "wss://evil.example", "user": {"id": "999"}}})).await;
+    ws.close(None).await.unwrap();
+    drop(ws);
+    let mut again = next_conn(&mut conns).await;
+    send_json(&mut again, json!({"op": 10, "d": {"heartbeat_interval": 60000}})).await;
+    let first = recv_json(&mut again).await;
+    task.abort();
+    assert_eq!(first["op"], 2, "{first}");
+}
+
 async fn discord_live(rig: &Rig) -> (Reqs, Ws, tokio::task::JoinHandle<()>) {
     let (api, reqs) = http_server(|_, _| (200, "{}".into())).await;
     let (url, mut conns) = ws_server().await;
@@ -365,8 +422,13 @@ async fn discord_live(rig: &Rig) -> (Reqs, Ws, tokio::task::JoinHandle<()>) {
     let mut ws = next_conn(&mut conns).await;
     send_json(&mut ws, json!({"op": 10, "d": {"heartbeat_interval": 60000}})).await;
     let _identify = recv_json(&mut ws).await;
-    send_json(&mut ws, json!({"op": 0, "s": 1, "t": "READY", "d": {"session_id": "s1", "resume_gateway_url": "", "user": {"id": "999"}}})).await;
+    send_json(&mut ws, json!({"op": 0, "s": 1, "t": "READY", "d": {"session_id": "s1", "resume_gateway_url": "", "user": {"id": "999"}, "application": {"id": "app1"}}})).await;
     (reqs, ws, task)
+}
+
+fn press_event(sender: &str, app: &str) -> Value {
+    json!({"op": 0, "s": 3, "t": "INTERACTION_CREATE", "d": {"type": 3, "id": "i1", "token": "itok", "channel_id": "123", "application_id": app,
+        "member": {"user": {"id": sender}}, "data": {"custom_id": "x:1"}, "message": {"id": "500", "author": {"id": "999"}}}})
 }
 
 #[tokio::test]
@@ -376,8 +438,7 @@ async fn discord_answers_the_listed_sender_and_acknowledges_the_press() {
     let (reqs, mut ws, task) = discord_live(&rig).await;
     send_json(&mut ws, json!({"op": 0, "s": 2, "t": "MESSAGE_CREATE", "d": discord_msg("111", "/help", true)})).await;
     let posted = until(Duration::from_secs(5), || !hits(&reqs, |r| r.method == "POST" && r.path == "/channels/123/messages").is_empty()).await;
-    send_json(&mut ws, json!({"op": 0, "s": 3, "t": "INTERACTION_CREATE", "d": {"type": 3, "id": "i1", "token": "itok", "channel_id": "123",
-        "member": {"user": {"id": "111"}}, "data": {"custom_id": "x:1"}, "message": {"id": "500"}}})).await;
+    send_json(&mut ws, press_event("111", "app1")).await;
     let acked = until(Duration::from_secs(5), || !hits(&reqs, |r| r.path == "/interactions/i1/itok/callback").is_empty()).await;
     task.abort();
     assert!(posted, "no answer: {:?}", reqs.lock().unwrap());
@@ -461,7 +522,13 @@ fn slack_in_a_channel_passes_on_only_what_is_said_to_the_bot() {
     assert!(slack::inbound_event(&a, &slack_me(), &slack_msg("U111", "see you at 7", "channel")).is_none());
     assert!(slack::inbound_event(&a, &slack_me(), &slack_msg("U111", "<@U999> see you", "channel")).is_none());
     assert!(slack::inbound_event(&a, &slack_me(), &slack_msg("U111", "/status", "channel")).is_some());
-    assert!(slack::inbound_event(&a, &slack_me(), &slack_msg("U111", "see you at 7", "im")).is_some());
+    // The event's own word that it is a direct message is not trusted.
+    assert!(slack::inbound_event(&a, &slack_me(), &slack_msg("U111", "see you at 7", "im")).is_none());
+    // A direct message channel (D…) is for the bot.
+    let dm = acct("slack", "D123");
+    let mut m = slack_msg("U111", "see you at 7", "channel");
+    m["channel"] = json!("D123");
+    assert!(slack::inbound_event(&dm, &slack_me(), &m).is_some());
 }
 
 async fn slack_live(rig: &Rig) -> (Reqs, mpsc::UnboundedReceiver<Ws>, tokio::task::JoinHandle<()>) {
@@ -674,11 +741,12 @@ async fn sec_no_answer_at_all_when_commands_are_off_or_the_sender_is_not_listed(
     // Discord: a stranger's command and press.
     let (reqs, mut ws, task) = discord_live(&rig).await;
     send_json(&mut ws, json!({"op": 0, "s": 2, "t": "MESSAGE_CREATE", "d": discord_msg("666", "/help", true)})).await;
-    send_json(&mut ws, json!({"op": 0, "s": 3, "t": "INTERACTION_CREATE", "d": {"type": 3, "id": "i1", "token": "itok", "channel_id": "123",
-        "member": {"user": {"id": "666"}}, "data": {"custom_id": "x:1"}, "message": {"id": "500"}}})).await;
+    send_json(&mut ws, press_event("666", "app1")).await;
+    // The listed sender, but the press names another application: forged.
+    send_json(&mut ws, press_event("111", "app-forged")).await;
     tokio::time::sleep(Duration::from_millis(1500)).await;
     task.abort();
-    assert!(hits(&reqs, |_| true).is_empty(), "discord answered a stranger: {:?}", reqs.lock().unwrap());
+    assert!(hits(&reqs, |_| true).is_empty(), "discord answered a stranger or a forged press: {:?}", reqs.lock().unwrap());
 
     // Slack.
     let (reqs, mut conns, task) = slack_live(&rig).await;
@@ -699,4 +767,231 @@ async fn sec_no_answer_at_all_when_commands_are_off_or_the_sender_is_not_listed(
     task.abort();
     assert!(read, "the message was never read");
     assert!(hits(&reqs, |r| r.method == "PUT").is_empty(), "matrix answered a stranger");
+}
+
+/// Every press from someone allowed counts against the chat's limit, a
+/// wrong code too: past it nothing is answered, the right code neither.
+/// A stranger's presses are dropped before they count.
+#[tokio::test]
+async fn sec_wrong_confirmation_codes_count_against_the_limit_and_strangers_use_none_of_it() {
+    let rig = Rig::new();
+    rig.channels("https://matrix.example.org", true);
+    rig.set(json!({"control_commands_per_minute": 3}));
+    let c = Controller::new(rig.state.clone());
+    let press = |sender: &str, data: String| Inbound {
+        channel_id: "d1".into(), platform: "discord".into(), chat_id: "123".into(), sender_id: sender.into(),
+        body: Body::Button(data), message_id: "500".into(), reply_to_bot: true,
+    };
+    for _ in 0..10 {
+        assert_eq!(c.handle(&press("666", format!("k:{}:y", confirm::new_code()))).await, None);
+    }
+    for i in 0..3 {
+        assert!(c.handle(&press("111", format!("k:{}:y", confirm::new_code()))).await.is_some(), "press {i} within the limit");
+    }
+    assert_eq!(c.handle(&press("111", format!("k:{}:y", confirm::new_code()))).await, None, "a guess past the limit was answered");
+}
+// ------------------------------------------------------------ review additions
+
+/// Counts what the supervisor starts: how many tasks it started, how many are
+/// alive now, and the token each was started with.
+struct Lines {
+    started: Arc<std::sync::atomic::AtomicUsize>,
+    alive: Arc<std::sync::atomic::AtomicUsize>,
+    tokens: Arc<Mutex<Vec<String>>>,
+}
+
+struct Alive(Arc<std::sync::atomic::AtomicUsize>);
+
+impl Drop for Alive {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+fn supervise_counting(rig: &Rig, kind: &'static str) -> (Lines, tokio::task::JoinHandle<()>) {
+    let lines = Lines { started: Default::default(), alive: Default::default(), tokens: Default::default() };
+    let (s0, a0, t0) = (lines.started.clone(), lines.alive.clone(), lines.tokens.clone());
+    let handle = link::supervise(kind, rig.state.settings_store.clone(), move |acct: Account| {
+        let (s, a, t) = (s0.clone(), a0.clone(), t0.clone());
+        async move {
+            s.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            t.lock().unwrap().push(acct.token.clone());
+            a.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let _alive = Alive(a);
+            std::future::pending::<()>().await;
+        }
+    });
+    (lines, handle)
+}
+
+fn count(n: &Arc<std::sync::atomic::AtomicUsize>) -> usize {
+    n.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+fn discord_channel(token: &str, control: bool, users: Value) -> Value {
+    json!({"notify_channels": [
+        {"id": "d1", "kind": "discord", "enabled": true, "url": "https://discord.example/api/webhooks/1/x",
+         "token": token, "target": "123", "control": control, "control_users": users},
+    ]})
+}
+
+/// A changed bot token replaces the connection: the old one is stopped (its
+/// task dropped) and exactly one runs, so no message is read twice.
+#[tokio::test]
+async fn review_a_changed_token_replaces_the_connection_and_never_leaves_two() {
+    let rig = Rig::new();
+    rig.set(discord_channel("test-token-one", true, json!(["111"])));
+    let (lines, handle) = supervise_counting(&rig, "discord");
+    assert!(until(Duration::from_secs(5), || count(&lines.alive) == 1).await, "no connection started");
+    rig.set(discord_channel("test-token-two", true, json!(["111"])));
+    let swapped = until(Duration::from_secs(15), || count(&lines.started) == 2).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let (started, alive, tokens) = (count(&lines.started), count(&lines.alive), lines.tokens.lock().unwrap().clone());
+    handle.abort();
+    assert!(swapped, "the new token was never connected: {tokens:?}");
+    assert_eq!((started, alive), (2, 1), "old connection still alive: {tokens:?}");
+    assert_eq!(tokens, vec!["test-token-one".to_string(), "test-token-two".to_string()]);
+}
+
+/// Changing only who may give commands keeps the connection (no second one);
+/// switching commands off stops it.
+#[tokio::test]
+async fn review_the_connection_stays_for_a_sender_list_change_and_stops_when_commands_go_off() {
+    let rig = Rig::new();
+    rig.set(discord_channel("test-token-one", true, json!(["111"])));
+    let (lines, handle) = supervise_counting(&rig, "discord");
+    assert!(until(Duration::from_secs(5), || count(&lines.alive) == 1).await, "no connection started");
+    rig.set(discord_channel("test-token-one", true, json!(["111", "222"])));
+    tokio::time::sleep(Duration::from_secs(11)).await;
+    assert_eq!((count(&lines.started), count(&lines.alive)), (1, 1), "a sender list change reconnected");
+    rig.set(discord_channel("test-token-one", false, json!(["111", "222"])));
+    let stopped = until(Duration::from_secs(15), || count(&lines.alive) == 0).await;
+    let started = count(&lines.started);
+    handle.abort();
+    assert!(stopped, "the connection kept running with commands off");
+    assert_eq!(started, 1);
+}
+
+/// A webhook's message is no command, whether or not the payload says "bot".
+#[test]
+fn review_discord_ignores_webhook_messages() {
+    let a = acct("discord", "123");
+    let mut hook = discord_msg("333", "/status", false);
+    hook["webhook_id"] = json!("777");
+    assert!(discord::inbound_message(&a, "999", &hook).is_none(), "a webhook message was taken as a command");
+    let mut hook_in_server = discord_msg("333", "<@999> /status", true);
+    hook_in_server["webhook_id"] = json!("777");
+    hook_in_server["mentions"] = json!([{"id": "999"}]);
+    assert!(discord::inbound_message(&a, "999", &hook_in_server).is_none());
+}
+
+#[test]
+fn review_the_wait_doubles_to_a_ceiling_and_starts_over_after_a_steady_line() {
+    let r = Retry::LIVE;
+    let mut wait = r.first;
+    let mut seen = Vec::new();
+    for _ in 0..8 {
+        let pause = r.pause(wait, Duration::from_secs(1), false);
+        seen.push(pause.as_secs());
+        wait = r.after(pause);
+    }
+    assert_eq!(seen, vec![2, 4, 8, 16, 32, 64, 120, 120]);
+    assert_eq!(r.pause(Duration::from_secs(64), link::STEADY, false), r.first);
+    assert_eq!(r.pause(r.first, Duration::from_secs(1), true), r.max);
+}
+
+/// Answer every heartbeat: the line stays. Leave one unanswered: the bot
+/// connects again and resumes with the last sequence number it saw.
+#[tokio::test]
+async fn review_discord_heartbeats_carry_the_sequence_and_a_silent_server_means_reconnect() {
+    let rig = Rig::new();
+    let (url, mut conns) = ws_server().await;
+    let ep = discord::Endpoints { api: "http://127.0.0.1:9".into(), gateway: url.clone(), retry: FAST };
+    let task = tokio::spawn(discord::run(Controller::new(rig.state.clone()), reqwest::Client::new(), ep, acct("discord", "123")));
+    let mut ws = next_conn(&mut conns).await;
+    send_json(&mut ws, json!({"op": 10, "d": {"heartbeat_interval": 100}})).await;
+    let _identify = recv_json(&mut ws).await;
+    send_json(&mut ws, json!({"op": 0, "s": 1, "t": "READY", "d": {"session_id": "s1", "resume_gateway_url": url, "user": {"id": "999"}}})).await;
+    send_json(&mut ws, json!({"op": 0, "s": 5, "t": "PRESENCE_UPDATE", "d": {}})).await;
+    let beat = recv_json(&mut ws).await;
+    assert_eq!((beat["op"].as_u64(), beat["d"].as_u64()), (Some(1), Some(5)), "{beat}");
+    // No answer to that heartbeat: the next tick gives the line up.
+    let mut again = next_conn(&mut conns).await;
+    send_json(&mut again, json!({"op": 10, "d": {"heartbeat_interval": 100}})).await;
+    let resume = recv_json(&mut again).await;
+    assert_eq!((resume["op"].as_u64(), resume["d"]["seq"].as_u64(), resume["d"]["session_id"].as_str()), (Some(6), Some(5), Some("s1")), "{resume}");
+    // Answered heartbeats keep this line.
+    for _ in 0..4 {
+        let beat = recv_json(&mut again).await;
+        assert_eq!(beat["op"], 1, "{beat}");
+        send_json(&mut again, json!({"op": 11})).await;
+    }
+    let third = tokio::time::timeout(Duration::from_millis(300), conns.recv()).await;
+    task.abort();
+    assert!(third.is_err(), "reconnected although every heartbeat was answered");
+}
+
+/// Invalid session: not resumable -> identify afresh; resumable -> resume.
+#[tokio::test]
+async fn review_discord_invalid_session_identifies_afresh_unless_it_can_be_resumed() {
+    let rig = Rig::new();
+    let (url, mut conns) = ws_server().await;
+    let ep = discord::Endpoints { api: "http://127.0.0.1:9".into(), gateway: url.clone(), retry: FAST };
+    let task = tokio::spawn(discord::run(Controller::new(rig.state.clone()), reqwest::Client::new(), ep, acct("discord", "123")));
+    let mut ws = next_conn(&mut conns).await;
+    send_json(&mut ws, json!({"op": 10, "d": {"heartbeat_interval": 60000}})).await;
+    let _identify = recv_json(&mut ws).await;
+    send_json(&mut ws, json!({"op": 0, "s": 1, "t": "READY", "d": {"session_id": "s1", "resume_gateway_url": url, "user": {"id": "999"}}})).await;
+    send_json(&mut ws, json!({"op": 9, "d": false})).await;
+    let mut second = next_conn(&mut conns).await;
+    send_json(&mut second, json!({"op": 10, "d": {"heartbeat_interval": 60000}})).await;
+    let first_try = recv_json(&mut second).await;
+    send_json(&mut second, json!({"op": 0, "s": 1, "t": "READY", "d": {"session_id": "s2", "resume_gateway_url": url, "user": {"id": "999"}}})).await;
+    send_json(&mut second, json!({"op": 9, "d": true})).await;
+    let mut third = next_conn(&mut conns).await;
+    send_json(&mut third, json!({"op": 10, "d": {"heartbeat_interval": 60000}})).await;
+    let second_try = recv_json(&mut third).await;
+    task.abort();
+    assert_eq!(first_try["op"], 2, "not resumable, but it tried to resume: {first_try}");
+    assert_eq!((second_try["op"].as_u64(), second_try["d"]["session_id"].as_str()), (Some(6), Some("s2")), "{second_try}");
+}
+
+/// When the member count cannot be read the room counts as a group: only
+/// what is addressed to the bot is answered.
+#[tokio::test]
+async fn review_matrix_treats_a_room_as_a_group_when_the_member_count_is_unknown() {
+    let rig = Rig::new();
+    let (base, reqs) = http_server(|r, n| {
+        let p = bare(&r.path);
+        if p.ends_with("/account/whoami") {
+            (200, json!({"user_id": "@bot:example.org"}).to_string())
+        } else if p.ends_with("/displayname") {
+            (200, json!({"displayname": "Bageo"}).to_string())
+        } else if p.ends_with("/joined_members") {
+            (500, "{}".to_string())
+        } else if p.ends_with("/sync") {
+            if n == 0 {
+                (200, json!({"next_batch": "b1"}).to_string())
+            } else if n == 1 {
+                let ev = |id: &str, body: &str| json!({"type": "m.room.message", "event_id": id, "sender": "@lee:example.org",
+                    "content": {"msgtype": "m.text", "body": body}});
+                (200, json!({"next_batch": "b2", "rooms": {"join": {"!room:example.org": {"timeline": {"events": [
+                    ev("$e1", "see you at 7"), ev("$e2", "/help")
+                ]}}}}}).to_string())
+            } else {
+                (200, json!({"next_batch": "b3"}).to_string())
+            }
+        } else {
+            (200, json!({"event_id": "$bot1"}).to_string())
+        }
+    })
+    .await;
+    rig.channels(&base, true);
+    let ep = matrix::Endpoints { retry: FAST, poll: Duration::from_millis(100) };
+    let task = tokio::spawn(matrix::run(Controller::new(rig.state.clone()), reqwest::Client::new(), ep, rig.account("matrix")));
+    let answered = until(Duration::from_secs(5), || !hits(&reqs, |r| r.method == "PUT").is_empty()).await;
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    task.abort();
+    assert!(answered, "no answer: {:?}", reqs.lock().unwrap());
+    assert_eq!(hits(&reqs, |r| r.method == "PUT").len(), 1, "the plain chat line was answered too");
 }

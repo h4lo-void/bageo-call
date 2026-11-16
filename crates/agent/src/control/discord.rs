@@ -67,6 +67,8 @@ struct Session {
     resume_url: String,
     seq: Option<u64>,
     bot_id: String,
+    /// The bot's application: a button press names it.
+    app_id: String,
 }
 
 /// One bot: connect, answer, send the pushes for its chats, connect again when
@@ -143,7 +145,7 @@ async fn connect(ctrl: &Arc<Controller>, http: &Client, ep: &Endpoints, acct: &A
                     s.seq = Some(n);
                 }
                 match v["op"].as_u64() {
-                    Some(0) => dispatch(ctrl, http, &ep.api, acct, s, &v),
+                    Some(0) => dispatch(ctrl, http, ep, acct, s, &v),
                     Some(1) => tx.send(link::ws_json(&json!({"op": 1, "d": s.seq}))).await?,
                     Some(7) => return Ok(None),
                     Some(9) => {
@@ -169,13 +171,38 @@ fn gateway_url(base: &str) -> String {
     }
 }
 
-fn dispatch(ctrl: &Arc<Controller>, http: &Client, api: &str, acct: &Account, s: &mut Session, v: &Value) {
+/// Whether a resume address from READY may be used: Discord's own (wss, a
+/// discord.gg host), or the one configured (a stand-in in tests). Anything
+/// else would send the bot token elsewhere.
+pub fn trusted_resume(url: &str, gateway: &str) -> bool {
+    let Ok(u) = url::Url::parse(url.trim()) else {
+        return false;
+    };
+    let host = u.host_str().unwrap_or("").to_ascii_lowercase();
+    if u.scheme() == "wss" && (host == "discord.gg" || host.ends_with(".discord.gg")) {
+        return true;
+    }
+    match url::Url::parse(gateway.trim()) {
+        Ok(g) => g.scheme() == u.scheme() && g.host_str().is_some_and(|h| h.eq_ignore_ascii_case(&host)) && g.port_or_known_default() == u.port_or_known_default(),
+        Err(_) => false,
+    }
+}
+
+fn dispatch(ctrl: &Arc<Controller>, http: &Client, ep: &Endpoints, acct: &Account, s: &mut Session, v: &Value) {
     let d = &v["d"];
+    let api = ep.api.as_str();
     match v["t"].as_str().unwrap_or("") {
         "READY" => {
             s.id = text_at(d, "/session_id").to_string();
             s.resume_url = text_at(d, "/resume_gateway_url").to_string();
             s.bot_id = text_at(d, "/user/id").to_string();
+            s.app_id = text_at(d, "/application/id").to_string();
+            if !s.resume_url.is_empty() && !trusted_resume(&s.resume_url, &ep.gateway) {
+                warn!("discord gave a resume address that is not Discord's: the next connection starts afresh");
+                s.id.clear();
+                s.resume_url.clear();
+                s.seq = None;
+            }
             info!(chats = acct.chats.len(), "discord bot: connected");
         }
         "MESSAGE_CREATE" => {
@@ -184,7 +211,7 @@ fn dispatch(ctrl: &Arc<Controller>, http: &Client, api: &str, acct: &Account, s:
             }
         }
         "INTERACTION_CREATE" => {
-            if let Some((msg, press)) = inbound_press(acct, d) {
+            if let Some((msg, press)) = inbound_press(acct, &s.app_id, &s.bot_id, d) {
                 answer(ctrl, http, api, acct, msg, Some(press));
             }
         }
@@ -198,7 +225,9 @@ fn dispatch(ctrl: &Arc<Controller>, http: &Client, api: &str, acct: &Account, s:
 pub fn inbound_message(acct: &Account, bot_id: &str, d: &Value) -> Option<Inbound> {
     let author = &d["author"];
     let sender = author["id"].as_str()?;
-    if author["bot"].as_bool() == Some(true) || sender.is_empty() || sender == bot_id {
+    // A webhook's message is no person's, whatever its payload says.
+    let webhook = d.get("webhook_id").is_some_and(|w| !w.is_null());
+    if webhook || author["bot"].as_bool() == Some(true) || sender.is_empty() || sender == bot_id {
         return None;
     }
     // Message types: 0 a message, 19 a reply.
@@ -242,10 +271,15 @@ pub fn inbound_message(acct: &Account, bot_id: &str, d: &Value) -> Option<Inboun
 pub type Press = (String, String);
 
 /// The Inbound of a button pressed under a message in one of the account's
-/// channels, and the press to acknowledge.
-pub fn inbound_press(acct: &Account, d: &Value) -> Option<(Inbound, Press)> {
+/// channels, and the press to acknowledge. Only a press for this bot's
+/// application, on a message this bot sent: anything else is dropped
+/// unanswered.
+pub fn inbound_press(acct: &Account, app_id: &str, bot_id: &str, d: &Value) -> Option<(Inbound, Press)> {
     // 3: a message component (a button).
     if d["type"].as_u64() != Some(3) {
+        return None;
+    }
+    if app_id.is_empty() || bot_id.is_empty() || text_at(d, "/application_id") != app_id || text_at(d, "/message/author/id") != bot_id {
         return None;
     }
     let data = d.pointer("/data/custom_id")?.as_str()?;

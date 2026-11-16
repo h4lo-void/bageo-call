@@ -1,3 +1,9 @@
+# Unreleased
+
+- **Chat commands now work in Discord, Slack and Matrix, as well as Telegram.** Check calls, have the AI call someone and decide pending items from any of the four. Slack and Matrix take commands as "@your bot /help". These three are only tested with simulated servers so far. See [Chat commands](docs/en/CHAT_COMMANDS.md).
+- **聊天室指令支援 Discord、Slack 和 Matrix，Telegram 也照舊可用。** 四種聊天軟體都能查通話、叫 AI 代打電話、處理待處理事項。Slack 和 Matrix 要寫成「@你的機器人 /help」。這三個目前只用模擬伺服器測試過。見[在聊天室操作](docs/zh-TW/CHAT_COMMANDS.md)。
+- **聊天室指令支持 Discord、Slack 和 Matrix，Telegram 也照常可用。** 四种聊天软件都能查通话、让 AI 代打电话、处理待处理事项。Slack 和 Matrix 要写成“@你的机器人 /help”。这三个目前只用模拟服务器测试过。见[在聊天室操作](docs/zh-CN/CHAT_COMMANDS.md)。
+
 # Bageo v1.2.0
 
 - **Contacts in four lists, and whitelisted callers can reach you.** Each contact is a plain contact, whitelisted, blacklisted (rejected) or on the stall list (kept talking from the first second). For whitelisted callers you choose: the AI answers; the AI answers and gives them your number when they say it is urgent; or the call goes straight to your own phone through your carrier's forward-when-busy. See [Features](docs/en/FEATURES.md) and [Settings](docs/en/SETTINGS.md#blocked-numbers-and-contact-lists).
