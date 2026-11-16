@@ -103,7 +103,7 @@ fn hold_cues(strong_only: bool, ai_said: &str) -> bool {
         // English
         "don't hang up", "do not hang up", "stay on the line", "stay on the phone", "please hold", "hold the line", "don't go anywhere",
         // Japanese
-        "切らないで", "切らずに", "そのままお待ち",
+        "切らないで", "切らずに", "そのままお待ち", "そのまま待って", "そのままで待って",
         // Korean
         "끊지 마", "끊지 말", "끊지 않",
         // Spanish
@@ -118,7 +118,7 @@ fn hold_cues(strong_only: bool, ai_said: &str) -> bool {
         "não desligue", "não desliga", "não desliguem", "fique na linha", "fica na linha", "aguarde na linha",
     ];
     const WEAK: &[&str] = &[
-        "请稍候", "请稍等", "稍等一下", "你等一下", "等我一下", "先等一下", "hold on", "hang on", "少々お待ち", "お待ちください", "ちょっと待って", "待っててね",
+        "请稍候", "请稍等", "稍等一下", "你等一下", "等我一下", "先等一下", "hold on", "hang on", "少々お待ち", "お待ちください", "ちょっと待って", "待っててね", "待ってて",
         "잠깐만 기다려", "잠시만 기다려", "기다려 주세요", "기다려 줘", "espera un momento", "espere un momento", "patientez",
         "ne bougez pas", "ne bouge pas", "nicht weggehen", "aguarde um pouco", "espera um pouco", "espere um pouco",
     ];
@@ -818,6 +818,7 @@ mod tests {
             "Okay, hold on a moment, don't hang up.",
             "Please stay on the line.",
             "No cuelgues, por favor.",
+            "え、本当? 大変だね。わかった。ちょっとそのまま待ってて。",
         ] {
             assert!(is_hold_line(said) && is_strong_hold_line(said), "{said}");
         }
