@@ -12,11 +12,12 @@ use zhconv::{zhconv, Variant};
 
 use crate::locale::Lang;
 
-/// Text the owner reads: converted to zh-TW when the owner reads zh-TW.
-/// Line by line, and only lines that can be told from Japanese: a speech-to-text
-/// fragment such as 「失礼」 or 「番号」 (its 「します」 not come yet) reads the same
-/// in Japanese and in Simplified Chinese, and is left as it is
-/// ([`reading_form`]).
+/// A speech-to-text fragment the owner reads: converted to zh-TW when the owner
+/// reads zh-TW. Line by line, and only lines that can be told from Japanese: a
+/// fragment such as 「失礼」 or 「番号」 (its 「します」 not come yet) reads the
+/// same in Japanese and in Simplified Chinese, and is left as it is
+/// ([`reading_form`]). Finished text (a summary, a transcript, a whole line) goes
+/// through [`to_tw_whole`].
 pub fn to_tw(text: &str) -> String {
     to_tw_in(crate::locale::notify_lang(), text)
 }
@@ -27,6 +28,23 @@ pub fn to_tw_in(reader: Lang, text: &str) -> String {
         return text.to_string();
     }
     text.split_inclusive('\n').map(|line| reading_form(line, true)).collect()
+}
+
+/// Finished text the owner reads (summary, transcript, a whole line): converted
+/// to zh-TW when the owner reads zh-TW. Unlike [`to_tw`], a line made only of
+/// characters Simplified Chinese and Japanese share (「他会来」) is converted:
+/// nothing more is coming that could show it is Japanese. Lines with kana or
+/// hangul, or with kanji only Japanese writes, are left as they are.
+pub fn to_tw_whole(text: &str) -> String {
+    to_tw_whole_in(crate::locale::notify_lang(), text)
+}
+
+/// [`to_tw_whole`] for an owner who reads `reader`.
+pub fn to_tw_whole_in(reader: Lang, text: &str) -> String {
+    if reader != Lang::ZhTw {
+        return text.to_string();
+    }
+    for_reading(text)
 }
 
 /// Text a person reads (transcripts, summaries, notifications) in zh-TW, whole
@@ -160,5 +178,23 @@ mod tests {
         assert_eq!(to_tw_in(Lang::Ja, "失礼"), "失礼");
         assert_eq!(to_tw_in(Lang::En, "订位"), "订位");
         assert_eq!(to_tw_in(Lang::ZhTw, "软件下载好了"), norm("软件下载好了"));
+    }
+
+    #[test]
+    fn finished_text_is_converted_even_when_japanese_shares_its_characters() {
+        // A whole line has nothing more coming: 「会」「来」 alone are Chinese here.
+        assert_eq!(to_tw_whole_in(Lang::ZhTw, "他会来"), "他會來");
+        assert_eq!(to_tw_whole_in(Lang::ZhTw, "對方：会来"), "對方：會來");
+        assert_eq!(to_tw_whole_in(Lang::ZhTw, "对方：会来\n接聽：好"), "對方：會來\n接聽：好");
+        // The fragment mode of a live stream still waits.
+        assert_eq!(to_tw_in(Lang::ZhTw, "他会来"), "他会来");
+        // Japanese stays: kana, or kanji only Japanese writes.
+        assert_eq!(to_tw_whole_in(Lang::ZhTw, "失礼します"), "失礼します");
+        assert_eq!(to_tw_whole_in(Lang::ZhTw, "對方：駅に来ます"), "對方：駅に来ます");
+        assert_eq!(to_tw_whole_in(Lang::ZhTw, "对方是斉藤，说他会来"), "對方是斉藤，說他會來");
+        // A Simplified Chinese (or any other) reader gets the text as it is.
+        assert_eq!(to_tw_whole_in(Lang::ZhCn, "他会来"), "他会来");
+        assert_eq!(to_tw_whole_in(Lang::Ja, "他会来"), "他会来");
+        assert_eq!(to_tw_whole_in(Lang::En, "他会来"), "他会来");
     }
 }

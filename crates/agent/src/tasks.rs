@@ -223,8 +223,8 @@ impl TaskStore {
         if task.updated_at.is_empty() {
             task.updated_at = now;
         }
-        task.summary = crate::zh_tw::to_tw(&task.summary);
-        task.transcript = crate::zh_tw::to_tw(&task.transcript);
+        task.summary = crate::zh_tw::to_tw_whole(&task.summary);
+        task.transcript = crate::zh_tw::to_tw_whole(&task.transcript);
         self.persist(&task).await?;
         info!(
             "task create id={} call_id={} status={:?}",
@@ -271,10 +271,10 @@ impl TaskStore {
             .await
             .with_context(|| format!("task not found: {id}"))?;
         if let Some(v) = patch.summary {
-            task.summary = crate::zh_tw::to_tw(&v);
+            task.summary = crate::zh_tw::to_tw_whole(&v);
         }
         if let Some(v) = patch.transcript {
-            task.transcript = crate::zh_tw::to_tw(&v);
+            task.transcript = crate::zh_tw::to_tw_whole(&v);
         }
         if let Some(v) = patch.intent {
             task.intent = v;
@@ -500,6 +500,29 @@ mod tests {
             Some("2026-08-01/call-1_vm.wav")
         );
 
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn summary_and_transcript_are_read_in_traditional_chinese_whole() {
+        let root = temp_tasks_root();
+        let store = TaskStore::new(root.clone());
+        let mut draft = draft_from_voicemail("call-tw", "serial-a", "0900000000", "", ReplyMethod::Phone, None, false);
+        draft.summary = "他会来".into();
+        draft.transcript = "對方：会来".into();
+        let created = store.create(draft).await.expect("create");
+        assert_eq!(created.summary, "他會來");
+        assert_eq!(created.transcript, "對方：會來");
+        let patched = store
+            .patch(
+                &created.id,
+                TaskPatch { summary: Some("他会来".into()), transcript: Some("對方：失礼します".into()), ..Default::default() },
+            )
+            .await
+            .expect("patch");
+        assert_eq!(patched.summary, "他會來");
+        // Japanese stays as it is.
+        assert_eq!(patched.transcript, "對方：失礼します");
         let _ = fs::remove_dir_all(root);
     }
 }

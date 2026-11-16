@@ -41,7 +41,7 @@ pub async fn transcribe_pcm16(
     }
     let data: Value = resp.json().await.context("whisper json")?;
     // Whisper `zh` emits Simplified; the owner reads Traditional Chinese (Taiwan) everywhere.
-    Ok(crate::zh_tw::to_tw(
+    Ok(crate::zh_tw::to_tw_whole(
         data.get("text").and_then(|v| v.as_str()).unwrap_or("").trim(),
     ))
 }

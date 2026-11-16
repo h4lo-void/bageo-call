@@ -106,15 +106,38 @@ pub struct IcsQuery {
     pub k: Option<String>,
 }
 
+/// Who may download an `.ics`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IcsAccess {
+    Open,
+    /// A link's key that does not open this file (another file's, changed, or
+    /// an older link's): answered like a file that is not there.
+    BadKey,
+    /// Neither the console token nor a key.
+    NoAccess,
+}
+
 /// The console token opens it, or the key made for this one file (`what` =
-/// its path under `/calls/api/`).
-fn ics_access_ok(settings: &Settings, headers: &HeaderMap, query: &IcsQuery, what: &str) -> bool {
-    let active_tok = crate::settings_store::active_ui_token(&settings.calls_ui_token);
-    token_ok_parts(settings, headers, query.token.as_deref())
-        || query
-            .k
-            .as_deref()
-            .is_some_and(|k| crate::calendar::key_opens(&active_tok, what, k))
+/// its path under `/calls/api/`, [`crate::calendar::key_opens`]).
+fn ics_access(token_ok: bool, k: Option<&str>, what: &str) -> IcsAccess {
+    if token_ok {
+        return IcsAccess::Open;
+    }
+    match k.map(str::trim).filter(|k| !k.is_empty()) {
+        Some(k) if crate::calendar::key_opens(what, k) => IcsAccess::Open,
+        Some(_) => IcsAccess::BadKey,
+        None => IcsAccess::NoAccess,
+    }
+}
+
+/// [`ics_access`] for a request; `None` when it may download the file, else
+/// the answer (not found for a wrong key, nothing about the file).
+fn ics_access_denied(settings: &Settings, headers: &HeaderMap, query: &IcsQuery, what: &str) -> Option<Response> {
+    match ics_access(token_ok_parts(settings, headers, query.token.as_deref()), query.k.as_deref(), what) {
+        IcsAccess::Open => None,
+        IcsAccess::BadKey => Some(api_error(StatusCode::NOT_FOUND, "not_found", "not found")),
+        IcsAccess::NoAccess => Some(unauthorized()),
+    }
 }
 
 /// An event as an `.ics` file download.
@@ -607,8 +630,8 @@ async fn call_event_ics(
     if !task_id_safe(&id) {
         return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid call id");
     }
-    if !ics_access_ok(&state.settings, &headers, &query, &format!("call/{id}")) {
-        return unauthorized();
+    if let Some(denied) = ics_access_denied(&state.settings, &headers, &query, &format!("call/{id}")) {
+        return denied;
     }
     let Some(notes) = state.store.load_notes(&id).await else {
         return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
@@ -630,8 +653,8 @@ async fn task_event_ics(
     if !task_id_safe(&id) {
         return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid task id");
     }
-    if !ics_access_ok(&state.settings, &headers, &query, &format!("tasks/{id}")) {
-        return unauthorized();
+    if let Some(denied) = ics_access_denied(&state.settings, &headers, &query, &format!("tasks/{id}")) {
+        return denied;
     }
     let Some((task, appt)) = state
         .task_store
@@ -2505,6 +2528,21 @@ mod tests {
         assert_eq!(r.status(), StatusCode::OK);
         assert_eq!(state.contacts.lookup(number, None).map(|c| c.kind), Some("whitelist".to_string()));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_ics_link_with_a_wrong_or_old_key_is_answered_as_not_found() {
+        let what = "call/c1";
+        let good = crate::calendar::link_key(what);
+        assert_eq!(ics_access(false, Some(&good), what), IcsAccess::Open);
+        assert_eq!(ics_access(true, None, what), IcsAccess::Open);
+        // Another file's key, an older 16-byte key, a changed key: not found.
+        assert_eq!(ics_access(false, Some(&good), "call/c2"), IcsAccess::BadKey);
+        assert_eq!(ics_access(false, Some("0123456789abcdef0123456789abcdef"), what), IcsAccess::BadKey);
+        assert_eq!(ics_access(false, Some(&good[..63]), what), IcsAccess::BadKey);
+        // No key and no token: the console's own answer.
+        assert_eq!(ics_access(false, None, what), IcsAccess::NoAccess);
+        assert_eq!(ics_access(false, Some(" "), what), IcsAccess::NoAccess);
     }
 
     #[test]

@@ -999,6 +999,8 @@ impl Live {
     fn close(&mut self) {
         if let Some(o) = self.open.take() {
             let text = crate::gemini_live::strip_stt_markers(&o.text);
+            // The fragments are a whole line now: what reads the same in Japanese is Chinese here.
+            let text = crate::zh_tw::to_tw_whole(&text);
             self.push(o.who, &text, o.at);
         }
     }
@@ -1655,8 +1657,10 @@ pub fn carrier_message(text: &str) -> bool {
         "음성 사서함", "음성사서함", "메시지를 남겨", "삐 소리",
         // es
         "buzón de voz", "buzon de voz", "deje su mensaje", "deja tu mensaje", "después del tono", "despues del tono",
+        "después de la señal", "despues de la senal",
         // fr
         "messagerie vocale", "laissez votre message", "laissez un message", "après le bip", "apres le bip", "après le signal sonore",
+        "après le signal", "apres le signal",
         // de
         "mailbox", "anrufbeantworter", "hinterlassen sie eine nachricht", "nach dem signalton", "nach dem piepton",
         // pt
@@ -1665,22 +1669,61 @@ pub fn carrier_message(text: &str) -> bool {
     const CARRIER: &[&str] = &[
         "空號", "空号", "未開機", "未开机", "暫停使用", "暂停使用", "停話", "停機", "停机", "無法接通", "无法接通", "收不到訊號",
         "不在服務區", "不在服务区", "查明後再撥", "查明后再拨", "not in service", "no longer in service", "has been disconnected",
-        "cannot be reached", "can not be reached", "cannot be completed", "is not reachable", "is switched off", "is not available right now",
+        "cannot be completed",
         // ja
-        "現在使われておりません", "使われておりません", "おかけになった電話番号は", "電源が入っていないか", "電波の届かない", "お繋ぎできません", "おつなぎできません",
+        "現在使われておりません", "使われておりません", "おかけになった電話番号は", "電源が入っていないか", "電波の届かない",
         // ko
-        "없는 번호", "결번", "전원이 꺼져", "전파가 닿지 않는", "연결할 수 없습니다", "통화가 불가능",
+        "없는 번호", "결번", "전원이 꺼져", "전파가 닿지 않는",
         // es
-        "marcado no existe", "marcó no existe", "fuera de servicio", "no está disponible en este momento", "no esta disponible en este momento", "apagado o fuera de cobertura", "fuera del área de cobertura", "fuera del area de cobertura", "no puede ser atendida", "no se puede completar",
+        "marcado no existe", "marcó no existe", "apagado o fuera de cobertura", "fuera del área de cobertura", "fuera del area de cobertura", "no puede ser atendida", "no se puede completar",
         // fr
-        "n'est pas attribué", "n'est plus attribué", "n'est pas en service", "n'est plus en service", "hors service", "est éteint", "est eteint", "hors de portée", "hors de portee", "injoignable", "ne peut aboutir",
+        "n'est pas attribué", "n'est plus attribué", "n'est pas en service", "n'est plus en service", "ne peut aboutir",
         // de
-        "kein anschluss unter dieser nummer", "diese nummer ist nicht vergeben", "nicht erreichbar", "nicht in betrieb", "ist ausgeschaltet", "ist zurzeit nicht",
+        "kein anschluss unter dieser nummer", "diese nummer ist nicht vergeben",
         // pt
-        "número não existe", "numero nao existe", "discado não existe", "discado nao existe", "chamado não existe", "chamado nao existe", "não se encontra atribuído", "nao se encontra atribuido", "fora de serviço", "fora de servico", "desligado ou fora da área", "desligado ou fora da area", "não está disponível no momento", "nao esta disponivel no momento", "fora de área de cobertura", "fora de area de cobertura", "não pode ser completada", "nao pode ser completada",
+        "número não existe", "numero nao existe", "discado não existe", "discado nao existe", "chamado não existe", "chamado nao existe", "não se encontra atribuído", "nao se encontra atribuido", "desligado ou fora da área", "desligado ou fora da area", "fora de área de cobertura", "fora de area de cobertura", "não pode ser completada", "nao pode ser completada",
+    ];
+    // Phrases a person says as well (「Herr Müller ist zurzeit nicht erreichbar」,
+    // 「La señora García no está disponible en este momento」): the carrier's
+    // recording only when the same text also names the number, the subscriber or
+    // the caller's line.
+    const CARRIER_IF_NAMED: &[&str] = &[
+        "is not available", "cannot be reached", "can not be reached", "is not reachable", "is switched off", "is turned off",
+        // ja
+        "お繋ぎできません", "おつなぎできません",
+        // ko
+        "연결할 수 없습니다", "통화가 불가능",
+        // es
+        "no está disponible", "no esta disponible", "fuera de servicio",
+        // fr
+        "injoignable", "n'est pas joignable", "n'est pas disponible", "hors service", "hors de portée", "hors de portee", "est éteint", "est eteint",
+        // de
+        "nicht erreichbar", "nicht in betrieb", "ist ausgeschaltet", "ist zurzeit nicht", "ist derzeit nicht",
+        // pt
+        "não está disponível", "nao esta disponivel", "fora de serviço", "fora de servico",
+    ];
+    const NAMES_THE_LINE: &[&str] = &[
+        "number you", "you have dialed", "you have dialled", "you dialed", "you dialled", "number dialed", "number dialled", "subscriber",
+        "person you are trying", "party you", "customer you", "you are trying to reach", "you have called",
+        // ja
+        "おかけ", "電話番号", "契約者",
+        // ko
+        "걸으신", "거신", "전화번호", "고객님이", "고객이",
+        // es
+        "número marcado", "numero marcado", "número al que", "numero al que", "abonado", "al que llama", "al que usted llama", "cliente al que",
+        // fr
+        "numéro composé", "numero compose", "numéro que vous", "numero que vous", "correspondant", "abonné", "abonne",
+        // de
+        "teilnehmer", "diese nummer", "gewählte nummer",
+        // pt
+        "número que ligou", "numero que ligou", "número chamado", "numero chamado", "número discado", "numero discado", "telefone chamado", "assinante",
     ];
     let t = text.to_lowercase();
-    !VOICEMAIL.iter().any(|v| t.contains(v)) && CARRIER.iter().any(|c| t.contains(c))
+    if VOICEMAIL.iter().any(|v| t.contains(v)) {
+        return false;
+    }
+    CARRIER.iter().any(|c| t.contains(c))
+        || (CARRIER_IF_NAMED.iter().any(|c| t.contains(c)) && NAMES_THE_LINE.iter().any(|n| t.contains(n)))
 }
 
 // ---------------------------------------------------------------- the script
@@ -3598,6 +3641,22 @@ mod tests {
         assert!(rig.store.callee_spoke("e-cap"));
     }
 
+    #[tokio::test]
+    async fn a_caption_line_made_of_shared_characters_reads_as_chinese() {
+        let rig = Rig::new();
+        let hooks = rig.on_call("e-cap-tw");
+        let start = rig.store.live_view("e-cap-tw", 0).unwrap()["lines"].as_array().unwrap().len() as u64;
+        hooks.caption(true, "他会");
+        hooks.caption(true, "来");
+        hooks.turn_done();
+        hooks.caption(false, "失礼します");
+        hooks.turn_done();
+        let view = rig.store.live_view("e-cap-tw", start).unwrap();
+        let texts: Vec<String> = view["lines"].as_array().unwrap().iter().map(|l| l["text"].as_str().unwrap().to_string()).collect();
+        assert!(texts.contains(&"他會來".to_string()), "{texts:?}");
+        assert!(texts.contains(&"失礼します".to_string()), "{texts:?}");
+    }
+
     #[test]
     fn the_result_is_read_from_the_model_answer() {
         let r = parse_result("```json\n{\"outcome\": \"done\", \"summary\": \"訂好了\", \"details\": [\"11/15 19:30\", \"4 位，王先生\"], \"follow_up\": \"\", \"options\": [], \"event\": {\"start\": \"2026-11-15T19:30\", \"title\": \"鼎泰豐 4 位\"}}\n```").unwrap();
@@ -3995,6 +4054,33 @@ mod tests {
         ] {
             assert!(carrier_message(t), "{t}");
         }
+        // The same words as one sentence of a person, or of a voicemail: not the carrier.
+        for t in [
+            "Herr Müller ist zurzeit nicht im Büro",
+            "Herr Müller ist zurzeit nicht erreichbar, kann ich etwas ausrichten?",
+            "La señora García no está disponible en este momento, ¿quiere dejar un recado?",
+            "Madame Dupont est injoignable pour le moment, je prends un message ?",
+            "O senhor Silva não está disponível no momento, quer deixar recado?",
+            "Mr. Smith is not available right now, can I take a message?",
+            "田中は今席を外しておりまして、お繋ぎできません",
+            "김 부장님은 지금 통화가 불가능합니다",
+        ] {
+            assert!(!carrier_message(t), "{t}");
+        }
+        // The carrier's own wording of the same: the number or the subscriber is named.
+        for t in [
+            "Der Teilnehmer ist zurzeit nicht erreichbar",
+            "El número marcado no está disponible",
+            "Votre correspondant n'est pas joignable",
+            "O número que ligou não está disponível",
+            "The number you have dialed is not available right now",
+            "お客様がおかけになった電話は、お繋ぎできません",
+            "고객님이 거신 번호는 연결할 수 없습니다",
+        ] {
+            assert!(carrier_message(t), "{t}");
+        }
+        assert!(!carrier_message("O número que ligou não está disponível. Deixe sua mensagem após o sinal"));
+        assert!(!carrier_message("El número marcado no está disponible. Deje su mensaje después de la señal"));
         // A voicemail takes a message: not the carrier's own words.
         for t in [
             "El número no está disponible en este momento. Deje su mensaje después del tono",

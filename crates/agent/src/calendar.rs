@@ -308,9 +308,10 @@ fn details_text(details: &str) -> String {
 }
 
 /// The console token (`CALLS_UI_TOKEN` or `ui_password`), updated when settings
-/// change: links to an `.ics` or quick-action that leave the console
-/// (notifications, Telegram) carry a key made from it ([`link_key`]), never the
-/// token itself.
+/// change. Only whether one is set matters here: links to an `.ics` that leave
+/// the console (notifications, Telegram) then carry a key ([`link_key`]).
+/// Every link is signed with the random key in [`QUICK_LINK_KEY_FILE`]
+/// ([`quick_action_key`]), never with the token itself.
 static LINK_SECRET: std::sync::RwLock<String> = std::sync::RwLock::new(String::new());
 
 pub fn set_link_secret(token: &str) {
@@ -321,82 +322,176 @@ pub fn link_secret() -> String {
     LINK_SECRET.read().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
-/// The key that opens one `.ics` without the console token (`what` =
-/// `call/<id>` or `tasks/<id>`, its path under `/calls/api/`). Empty when no
-/// token is set: then the file opens without one.
-pub fn link_key(token: &str, what: &str) -> String {
+fn ics_mac(key: &[u8], what: &str) -> Option<hmac::Hmac<sha2::Sha256>> {
     use hmac::{Hmac, Mac};
-    let token = token.trim();
-    if token.is_empty() {
-        return String::new();
-    }
-    let Ok(mut mac) = Hmac::<sha2::Sha256>::new_from_slice(token.as_bytes()) else {
-        return String::new();
-    };
-    mac.update(b"bageo-ics:");
+    let mut mac = Hmac::<sha2::Sha256>::new_from_slice(key).ok()?;
+    mac.update(b"bageo-ics2");
+    mac.update(&(what.len() as u64).to_le_bytes());
     mac.update(what.as_bytes());
-    mac.finalize().into_bytes().iter().take(16).map(|b| format!("{b:02x}")).collect()
+    Some(mac)
 }
 
-/// `key` is the one [`link_key`] gives for `what` (compared in full).
-pub fn key_opens(token: &str, what: &str, key: &str) -> bool {
-    let want = link_key(token, what);
-    !want.is_empty()
-        && want.len() == key.len()
-        && want.bytes().zip(key.bytes()).fold(0u8, |d, (a, b)| d | (a ^ b)) == 0
+/// The key that opens one `.ics` without the console token (`what` =
+/// `call/<id>` or `tasks/<id>`, its path under `/calls/api/`): an HMAC with
+/// `key`, all 32 bytes in hex.
+fn link_key_with(key: &[u8], what: &str) -> String {
+    use hmac::Mac;
+    ics_mac(key, what).map_or_else(String::new, |m| to_hex(&m.finalize().into_bytes()))
+}
+
+/// [`link_key_with`] the link key ([`quick_action_key`]).
+pub fn link_key(what: &str) -> String {
+    link_key_with(quick_action_key(), what)
+}
+
+fn key_opens_with(key: &[u8], what: &str, k: &str) -> bool {
+    // Keys from before (16 bytes, made with the console password) or of any
+    // other length never open a file.
+    let Some(k) = hex_bytes(k).filter(|k| k.len() == QUICK_LINK_KEY_LEN) else {
+        return false;
+    };
+    // verify_slice compares in constant time.
+    ics_mac(key, what).is_some_and(|m| hmac::Mac::verify_slice(m, &k).is_ok())
+}
+
+/// `k` is the one [`link_key`] gives for `what`.
+pub fn key_opens(what: &str, k: &str) -> bool {
+    key_opens_with(quick_action_key(), what, k)
 }
 
 /// Address of an `.ics` for a link outside the console: `<public_url>/calls/api/
 /// <what>/event.ics`, with its key when the console has a token. Empty without
 /// `public_url`: no address other devices are known to open.
 pub fn ics_url(public_url: &str, what: &str) -> String {
-    ics_url_with(public_url, what, &link_secret())
+    let key = (!link_secret().trim().is_empty()).then(quick_action_key);
+    ics_url_with(public_url, what, key)
 }
 
 /// How long a one-tap notification link (`/calls/api/quick-action`) works.
 pub const QUICK_ACTION_TTL_SECS: i64 = 7 * 24 * 60 * 60;
 
-/// The key one-tap links are signed with while no console password is set:
-/// random, made once per run (never a constant anyone could read in the
-/// source). Links sent before a restart then stop working: their page says
-/// to open the console.
-fn run_key() -> &'static [u8] {
-    static KEY: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
-    KEY.get_or_init(|| {
-        let mut k = Vec::with_capacity(64);
-        for _ in 0..4 {
-            k.extend_from_slice(uuid::Uuid::new_v4().as_bytes());
+/// File in the data directory (`CALLS_DATA_DIR`, next to `settings.json`)
+/// holding the key one-tap links are signed with (64 hex digits, mode 600).
+const QUICK_LINK_KEY_FILE: &str = "quick-link.key";
+
+/// Bytes in a one-tap link's key and in its signature.
+const QUICK_LINK_KEY_LEN: usize = 32;
+
+/// Bytes in the signature of links from before [`QUICK_LINK_KEY_FILE`]
+/// (signed with the console password itself): never acted on.
+const OLD_QUICK_SIG_LEN: usize = 16;
+
+/// 32 random bytes (from the system's random source, through uuid v4).
+fn fresh_link_key() -> [u8; QUICK_LINK_KEY_LEN] {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    for _ in 0..4 {
+        h.update(uuid::Uuid::new_v4().as_bytes());
+    }
+    let mut out = [0u8; QUICK_LINK_KEY_LEN];
+    out.copy_from_slice(&h.finalize());
+    out
+}
+
+fn hex_bytes(s: &str) -> Option<Vec<u8>> {
+    let s = s.trim();
+    if s.len() % 2 != 0 || !s.is_ascii() {
+        return None;
+    }
+    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok()).collect()
+}
+
+fn to_hex(b: &[u8]) -> String {
+    b.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The key kept in `path`; made (and written there, mode 600) when the file
+/// is missing or does not hold one. An error when it can be neither read nor
+/// written.
+fn load_or_create_link_key(path: &std::path::Path) -> std::io::Result<[u8; QUICK_LINK_KEY_LEN]> {
+    match std::fs::read_to_string(path) {
+        Ok(s) => {
+            if let Some(k) = hex_bytes(&s).and_then(|b| <[u8; QUICK_LINK_KEY_LEN]>::try_from(b).ok()) {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+                }
+                return Ok(k);
+            }
         }
-        k
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    let key = fresh_link_key();
+    if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+        std::fs::create_dir_all(dir)?;
+    }
+    let tmp = path.with_extension("key.tmp");
+    {
+        use std::io::Write as _;
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
+        let mut f = opts.open(&tmp)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            f.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        }
+        f.write_all(to_hex(&key).as_bytes())?;
+        f.sync_all()?;
+    }
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    Ok(key)
+}
+
+/// The key every one-tap link is signed with: random, kept in
+/// [`QUICK_LINK_KEY_FILE`] so links still work after a restart. Never the
+/// console password: whoever sees a link cannot test password guesses
+/// against its signature. When the file can be neither read nor written, a
+/// key for this run only (links then stop working at a restart; their page
+/// says to open the console).
+fn quick_action_key() -> &'static [u8] {
+    static KEY: std::sync::OnceLock<[u8; QUICK_LINK_KEY_LEN]> = std::sync::OnceLock::new();
+    KEY.get_or_init(|| {
+        if cfg!(test) {
+            return fresh_link_key();
+        }
+        let default_dir = if std::path::Path::new("/data/calls").is_dir() { "/data/calls" } else { "data/calls" };
+        let path = std::path::PathBuf::from(crate::config::env_or("CALLS_DATA_DIR", default_dir)).join(QUICK_LINK_KEY_FILE);
+        load_or_create_link_key(&path).unwrap_or_else(|e| {
+            tracing::warn!("one-tap link key {}: {e}; using a key for this run only", path.display());
+            fresh_link_key()
+        })
     })
 }
 
-/// The key for one-tap links: the console password when one is set, else
-/// [`run_key`].
-fn quick_action_key_for(secret: &str) -> Vec<u8> {
-    let secret = secret.trim();
-    if secret.is_empty() {
-        run_key().to_vec()
-    } else {
-        secret.as_bytes().to_vec()
+fn quick_action_mac(key: &[u8], op: &str, target: &str, name: &str, exp: i64) -> Option<hmac::Hmac<sha2::Sha256>> {
+    use hmac::{Hmac, Mac};
+    let mut mac = Hmac::<sha2::Sha256>::new_from_slice(key).ok()?;
+    mac.update(b"bageo-qa3");
+    for part in [op.trim(), target.trim(), name.trim(), &exp.to_string()] {
+        mac.update(&(part.len() as u64).to_le_bytes());
+        mac.update(part.as_bytes());
     }
+    Some(mac)
 }
 
 /// HMAC over every part of a one-tap link: the action (`confirm_task`,
 /// `ignore_task`, `block`, `stall`, `white`, `unblock`), its target, the
 /// name it writes and when it stops working (unix seconds). Each part goes in
-/// with its length, so no two links share a signature.
+/// with its length, so no two links share a signature. All 32 bytes, in hex.
 fn quick_action_sig_with(key: &[u8], op: &str, target: &str, name: &str, exp: i64) -> String {
-    use hmac::{Hmac, Mac};
-    let Ok(mut mac) = Hmac::<sha2::Sha256>::new_from_slice(key) else {
-        return String::new();
-    };
-    mac.update(b"bageo-qa2");
-    for part in [op.trim(), target.trim(), name.trim(), &exp.to_string()] {
-        mac.update(&(part.len() as u64).to_le_bytes());
-        mac.update(part.as_bytes());
-    }
-    mac.finalize().into_bytes().iter().take(16).map(|b| format!("{b:02x}")).collect()
+    use hmac::Mac;
+    quick_action_mac(key, op, target, name, exp).map_or_else(String::new, |m| to_hex(&m.finalize().into_bytes()))
 }
 
 /// What a one-tap link's signature and time say.
@@ -421,11 +516,17 @@ fn check_quick_action_with(key: &[u8], op: &str, target: &str, name: &str, exp: 
     let Ok(exp) = exp.parse::<i64>() else {
         return QuickLink::Invalid;
     };
-    let want = quick_action_sig_with(key, op, target, name, exp);
-    let sig = sig.trim();
-    let same = !want.is_empty()
-        && want.len() == sig.len()
-        && want.bytes().zip(sig.bytes()).fold(0u8, |d, (a, b)| d | (a ^ b)) == 0;
+    let Some(sig) = hex_bytes(sig) else {
+        return QuickLink::Invalid;
+    };
+    // Links signed before the key file (with the console password): never
+    // acted on, whoever made them.
+    if sig.len() == OLD_QUICK_SIG_LEN {
+        return QuickLink::Expired;
+    }
+    // verify_slice compares in constant time.
+    let same = sig.len() == QUICK_LINK_KEY_LEN
+        && quick_action_mac(key, op, target, name, exp).is_some_and(|m| hmac::Mac::verify_slice(m, &sig).is_ok());
     if !same {
         QuickLink::Invalid
     } else if now > exp {
@@ -438,8 +539,7 @@ fn check_quick_action_with(key: &[u8], op: &str, target: &str, name: &str, exp: 
 /// Check a one-tap link's parts as they came in the address (`exp`: empty for
 /// an older link).
 pub fn check_quick_action(op: &str, target: &str, name: &str, exp: &str, sig: &str) -> QuickLink {
-    let key = quick_action_key_for(&link_secret());
-    check_quick_action_with(&key, op, target, name, exp, sig, chrono::Utc::now().timestamp())
+    check_quick_action_with(quick_action_key(), op, target, name, exp, sig, chrono::Utc::now().timestamp())
 }
 
 fn quick_action_url_with(key: &[u8], public_url: &str, op: &str, target: &str, name: &str, now: i64) -> String {
@@ -466,20 +566,22 @@ fn quick_action_url_with(key: &[u8], public_url: &str, op: &str, target: &str, n
 /// Telegram. Opening it shows a page asking to confirm; only that page's
 /// button does the action, within [`QUICK_ACTION_TTL_SECS`].
 pub fn quick_action_url(public_url: &str, op: &str, target: &str, name: &str) -> String {
-    let key = quick_action_key_for(&link_secret());
-    quick_action_url_with(&key, public_url, op, target, name, chrono::Utc::now().timestamp())
+    quick_action_url_with(quick_action_key(), public_url, op, target, name, chrono::Utc::now().timestamp())
 }
 
-fn ics_url_with(public_url: &str, what: &str, token: &str) -> String {
+/// `key`: the link key, when the console has a token.
+fn ics_url_with(public_url: &str, what: &str, key: Option<&[u8]>) -> String {
     let base = public_url.trim().trim_end_matches('/');
     if base.is_empty() {
         return String::new();
     }
     let base = base.strip_suffix("/calls").unwrap_or(base);
     let mut url = format!("{base}/calls/api/{what}/event.ics");
-    let key = link_key(token, what);
-    if !key.is_empty() {
-        url.push_str(&format!("?k={key}"));
+    if let Some(key) = key {
+        let k = link_key_with(key, what);
+        if !k.is_empty() {
+            url.push_str(&format!("?k={k}"));
+        }
     }
     url
 }
@@ -697,24 +799,46 @@ mod tests {
 
     #[test]
     fn ics_links_outside_the_console_carry_a_key_not_the_token() {
-        assert_eq!(ics_url_with("", "call/c1", "secret"), "");
-        assert_eq!(ics_url_with("http://bageo.local/", "call/c1", ""), "http://bageo.local/calls/api/call/c1/event.ics");
+        let key = [9u8; 32];
+        assert_eq!(ics_url_with("", "call/c1", Some(&key)), "");
+        assert_eq!(ics_url_with("http://bageo.local/", "call/c1", None), "http://bageo.local/calls/api/call/c1/event.ics");
         assert_eq!(
-            ics_url_with("https://phone.example.com/calls/", "tasks/t1", ""),
+            ics_url_with("https://phone.example.com/calls/", "tasks/t1", None),
             "https://phone.example.com/calls/api/tasks/t1/event.ics"
         );
-        let url = ics_url_with("http://bageo.local", "call/c1", "secret-token");
-        let key = link_key("secret-token", "call/c1");
-        assert_eq!(key.len(), 32);
-        assert_eq!(url, format!("http://bageo.local/calls/api/call/c1/event.ics?k={key}"));
-        assert!(!url.contains("secret"));
-        assert!(key_opens("secret-token", "call/c1", &key));
-        // Another file, another token, a cut key, no token: refused.
-        assert!(!key_opens("secret-token", "call/c2", &key));
-        assert!(!key_opens("other-token", "call/c1", &key));
-        assert!(!key_opens("secret-token", "call/c1", &key[..31]));
-        assert!(!key_opens("", "call/c1", ""));
-        assert_eq!(link_key(" ", "call/c1"), "");
+        let url = ics_url_with("http://bageo.local", "call/c1", Some(&key));
+        let k = link_key_with(&key, "call/c1");
+        assert_eq!(k.len(), 64);
+        assert_eq!(url, format!("http://bageo.local/calls/api/call/c1/event.ics?k={k}"));
+        assert!(key_opens_with(&key, "call/c1", &k));
+        // Another file, another key, a cut or changed key, no key: refused.
+        assert!(!key_opens_with(&key, "call/c2", &k));
+        assert!(!key_opens_with(&[8u8; 32], "call/c1", &k));
+        assert!(!key_opens_with(&key, "call/c1", &k[..62]));
+        let mut changed = k.clone();
+        changed.replace_range(..1, if k.starts_with('0') { "1" } else { "0" });
+        assert!(!key_opens_with(&key, "call/c1", &changed));
+        assert!(!key_opens_with(&key, "call/c1", ""));
+        assert!(!key_opens_with(&key, "call/c1", "not-hex"));
+        // The run's own key opens what it signs.
+        assert!(key_opens("tasks/t1", &link_key("tasks/t1")));
+    }
+
+    #[test]
+    fn old_ics_keys_made_with_the_password_never_open_a_file() {
+        // The format before: 16 bytes of an HMAC keyed with the console password.
+        let old = {
+            use hmac::{Hmac, Mac};
+            let mut mac = Hmac::<sha2::Sha256>::new_from_slice(b"pw-test").unwrap();
+            mac.update(b"bageo-ics:");
+            mac.update(b"call/c1");
+            to_hex(&mac.finalize().into_bytes()[..16])
+        };
+        assert_eq!(old.len(), 32);
+        assert!(!key_opens_with(b"pw-test", "call/c1", &old));
+        assert!(!key_opens("call/c1", &old));
+        // A link's key is not made from the password.
+        assert_ne!(&link_key_with(b"pw-test", "call/c1")[..32], old.as_str());
     }
 
     #[test]
@@ -741,20 +865,76 @@ mod tests {
     }
 
     #[test]
-    fn quick_links_without_a_password_are_not_signed_with_a_public_key() {
-        let key = quick_action_key_for("");
-        assert!(key.len() >= 32);
-        assert_ne!(key.as_slice(), b"bageo-local-quick-action-key".as_slice());
-        assert_eq!(key, quick_action_key_for("  "), "one key for the whole run");
-        assert_eq!(quick_action_key_for("pw-test"), b"pw-test".to_vec());
+    fn quick_links_are_never_signed_with_a_public_key_or_the_password() {
+        let key = quick_action_key();
+        assert_eq!(key.len(), 32);
+        assert_ne!(key, b"bageo-local-quick-action-key".as_slice());
+        assert_eq!(key, quick_action_key(), "one key for the whole run");
         // A link made with someone else's key does not pass here.
         let now = 1_800_000_000;
         let forged = quick_action_url_with(b"bageo-local-quick-action-key", "http://bageo.local", "white", "0912000000", "", now);
         let f = parts(&forged);
         assert_eq!(
-            check_quick_action_with(&key, "white", "0912000000", "", &f["exp"], &f["sig"], now),
+            check_quick_action_with(key, "white", "0912000000", "", &f["exp"], &f["sig"], now),
             QuickLink::Invalid
         );
+        let pw = quick_action_url_with(b"pw-test", "http://bageo.local", "white", "0912000000", "", now);
+        let p = parts(&pw);
+        assert_eq!(check_quick_action_with(key, "white", "0912000000", "", &p["exp"], &p["sig"], now), QuickLink::Invalid);
+    }
+
+    #[test]
+    fn quick_link_signatures_are_full_length_and_old_password_links_only_expire() {
+        let key = [7u8; 32];
+        let now = 1_800_000_000;
+        let u = quick_action_url_with(&key, "http://bageo.local", "block", "0912000003", "", now);
+        let p = parts(&u);
+        assert_eq!(p["sig"].len(), 64, "{u}");
+        assert_eq!(check_quick_action_with(&key, "block", "0912000003", "", &p["exp"], &p["sig"], now), QuickLink::Valid);
+        // Cut short, or one digit changed: refused.
+        assert_eq!(check_quick_action_with(&key, "block", "0912000003", "", &p["exp"], &p["sig"][..48], now), QuickLink::Invalid);
+        let mut flipped = p["sig"].clone();
+        let last = if flipped.ends_with('0') { "1" } else { "0" };
+        flipped.replace_range(63.., last);
+        assert_eq!(check_quick_action_with(&key, "block", "0912000003", "", &p["exp"], &flipped, now), QuickLink::Invalid);
+        // A link from before (16-byte signature made with the console password):
+        // the expired page, never the action, even when the signature was right then.
+        let old = {
+            use hmac::{Hmac, Mac};
+            let mut mac = Hmac::<sha2::Sha256>::new_from_slice(b"pw-test").unwrap();
+            mac.update(b"bageo-qa2");
+            let exp = (now + 60).to_string();
+            for part in ["block", "0912000003", "", exp.as_str()] {
+                mac.update(&(part.len() as u64).to_le_bytes());
+                mac.update(part.as_bytes());
+            }
+            to_hex(&mac.finalize().into_bytes()[..16])
+        };
+        assert_eq!(check_quick_action_with(b"pw-test", "block", "0912000003", "", &(now + 60).to_string(), &old, now), QuickLink::Expired);
+        assert_eq!(check_quick_action_with(&key, "block", "0912000003", "", &(now + 60).to_string(), &old, now), QuickLink::Expired);
+        assert_eq!(check_quick_action_with(&key, "block", "0912000003", "", &p["exp"], "not-hex", now), QuickLink::Invalid);
+    }
+
+    #[test]
+    fn the_quick_link_key_is_kept_in_the_data_directory() {
+        let dir = std::env::temp_dir().join(format!("bageo-qlk-{}", uuid::Uuid::new_v4()));
+        let path = dir.join(QUICK_LINK_KEY_FILE);
+        let first = load_or_create_link_key(&path).unwrap();
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(saved, to_hex(&first));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        // After a restart: the same key, so links sent before still work.
+        assert_eq!(load_or_create_link_key(&path).unwrap(), first);
+        // A file that does not hold a key is replaced with a new one.
+        std::fs::write(&path, "pw-test").unwrap();
+        let next = load_or_create_link_key(&path).unwrap();
+        assert_ne!(next, first);
+        assert_eq!(load_or_create_link_key(&path).unwrap(), next);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
