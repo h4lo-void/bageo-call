@@ -234,6 +234,7 @@ pub enum Outcome {
     ModeSet { phone: String, mode: String },
     ModeFailed { phone: String, reason: String },
     Contacts { contacts: Vec<ContactLine> },
+    ContactKindSet { list: String, number: String, name: String },
     Confirm { code: String, summary: String },
     Dropped,
     Expired,
@@ -390,6 +391,7 @@ fn action_kind(a: &Action) -> &'static str {
         Action::Answer { .. } => "answer",
         Action::Mode { .. } => "mode",
         Action::Contacts { .. } => "contacts",
+        Action::SetContactKind { .. } => "set_contact_kind",
     }
 }
 
@@ -579,9 +581,89 @@ impl Controller {
             },
             Action::Answer { text } => self.answer_with(chat, None, &text),
             Action::Contacts { query } => self.contacts(&query),
+            Action::SetContactKind { kind, number, name } => self.set_contact_kind(&kind, &number, &name).await,
             Action::Errand { .. } | Action::Mode { .. } | Action::Decide { .. } => {
                 Outcome::Failed { code: "needs_confirmation".to_string() }
             }
+        }
+    }
+
+    /// Execute a command or natural-language message from an authenticated API /
+    /// webhook client (`POST /calls/api/control/inbound`).
+    pub async fn handle_external(&self, chat: &str, sender: &str, text: &str) -> Outbound {
+        let rt = self.settings();
+        let w = words(locale::notify_lang());
+        let dummy = Inbound {
+            channel_id: chat.to_string(),
+            platform: "api".to_string(),
+            chat_id: chat.to_string(),
+            sender_id: sender.to_string(),
+            body: Body::Text(text.to_string()),
+            message_id: String::new(),
+            reply_to_bot: true,
+        };
+        let out = self
+            .on_text(&rt, chat, &dummy, text, w)
+            .await
+            .unwrap_or_else(|| reply(&Outcome::Hint, w));
+        self.scrub(&rt, out)
+    }
+
+    async fn set_contact_kind(&self, kind: &str, number: &str, name: &str) -> Outcome {
+        if kind == "unblock" {
+            let mut found_name = String::new();
+            if let Some(c) = self.state.contacts.lookup(number, None) {
+                found_name = c.name.clone();
+                if matches!(c.kind.as_str(), "blacklist" | "stall") {
+                    let _ = self
+                        .state
+                        .contacts
+                        .update(
+                            &c.id,
+                            &crate::contacts::Draft {
+                                name: c.name,
+                                phones: c.phones,
+                                note: c.note,
+                                source: c.source,
+                                kind: String::new(),
+                            },
+                        )
+                        .await;
+                }
+            }
+            let rt = self.state.settings_store.snapshot();
+            let key: String = number.chars().filter(char::is_ascii_digit).collect();
+            let suffix = if key.len() >= 8 { &key[key.len() - 8..] } else { key.as_str() };
+            if !suffix.is_empty() {
+                let kept: Vec<_> = rt
+                    .reject_numbers
+                    .iter()
+                    .filter(|e| {
+                        let d: String = e.number.chars().filter(char::is_ascii_digit).collect();
+                        !d.ends_with(suffix)
+                    })
+                    .cloned()
+                    .collect();
+                if kept.len() != rt.reject_numbers.len() {
+                    let _ = self
+                        .state
+                        .settings_store
+                        .apply_patch(&json!({ "reject_numbers": kept }));
+                }
+            }
+            return Outcome::ContactKindSet {
+                list: "unblock".to_string(),
+                number: number.to_string(),
+                name: found_name,
+            };
+        }
+        match self.state.contacts.upsert_by_number(number, name, "", kind).await {
+            Ok(c) => Outcome::ContactKindSet {
+                list: kind.to_string(),
+                number: c.phones.first().cloned().unwrap_or_else(|| number.to_string()),
+                name: c.name,
+            },
+            Err(_) => error_outcome("bad_number"),
         }
     }
 

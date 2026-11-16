@@ -10,9 +10,9 @@ use crate::calls_http::PhoneMode;
 use crate::errands::{SAY_MAX_CHARS, TASK_MAX_CHARS};
 
 /// Slash commands, in the order of the help text and the platform menus.
-pub const COMMANDS: [&str; 14] = [
+pub const COMMANDS: [&str; 18] = [
     "help", "status", "calls", "call", "tasks", "confirm", "ignore", "errand", "errands", "cancel", "say", "answer", "mode",
-    "contacts",
+    "contacts", "block", "stall", "white", "unblock",
 ];
 
 /// Calls a list shows when no number is given, and at most.
@@ -87,6 +87,9 @@ pub enum Action {
     Answer { text: String },
     Mode { phone: String, mode: PhoneMode },
     Contacts { query: String },
+    /// Add/move a number to Blacklist (`blacklist`), Force-Stall list (`stall`),
+    /// Whitelist (`whitelist`), or unblock it (`unblock`).
+    SetContactKind { kind: String, number: String, name: String },
 }
 
 impl Action {
@@ -219,6 +222,21 @@ pub fn validate(a: Action) -> Result<Action, &'static str> {
                 return Err("query_too_long");
             }
             Action::Contacts { query }
+        }
+        Action::SetContactKind { kind, number, name } => {
+            let kind = kind.trim().to_ascii_lowercase();
+            if !matches!(kind.as_str(), "blacklist" | "stall" | "whitelist" | "unblock") {
+                return Err("bad_kind");
+            }
+            let number = one_line(&clean(&number));
+            if digit_count(&number) < 3 || number.chars().count() > TARGET_MAX || !numberish(&number.replace(' ', "")) {
+                return Err("bad_number");
+            }
+            let name = one_line(&clean(&name));
+            if name.chars().count() > TARGET_MAX {
+                return Err("name_too_long");
+            }
+            Action::SetContactKind { kind, number, name }
         }
         other @ (Action::Help | Action::Status | Action::Tasks | Action::Errands) => other,
     })
@@ -354,13 +372,46 @@ pub fn parse_slash(text: &str) -> Parsed {
         "answer" => need(args).map(|text| Action::Answer { text }),
         "mode" => parse_mode(args),
         "contacts" => Some(Action::Contacts { query: args.trim().to_string() }),
+        "block" | "blacklist" => parse_contact_kind("blacklist", args),
+        "stall" | "stalls" => parse_contact_kind("stall", args),
+        "white" | "whitelist" => parse_contact_kind("whitelist", args),
+        "unblock" => parse_contact_kind("unblock", args),
         _ => return Parsed::Unknown,
     };
-    let command = COMMANDS.iter().copied().find(|c| *c == name).unwrap_or("help");
+    let command = match name.as_str() {
+        "block" | "blacklist" => "block",
+        "stall" | "stalls" => "stall",
+        "white" | "whitelist" => "white",
+        "unblock" => "unblock",
+        _ => COMMANDS.iter().copied().find(|c| *c == name).unwrap_or("help"),
+    };
     match action.map(validate) {
         Some(Ok(a)) => Parsed::Action(a),
         _ => Parsed::Usage(command),
     }
+}
+
+fn parse_contact_kind(kind: &str, args: &str) -> Option<Action> {
+    let (first, mut rest) = first_word(args.trim());
+    if first.is_empty() || !numberish(first) {
+        return None;
+    }
+    let mut number = first.to_string();
+    let mut digits = digit_count(first);
+    while digits < 10 {
+        let (next, after) = first_word(rest);
+        if !(numberish(next) && digit_count(next) >= 3) {
+            break;
+        }
+        number.push_str(next);
+        digits += digit_count(next);
+        rest = after;
+    }
+    Some(Action::SetContactKind {
+        kind: kind.to_string(),
+        number,
+        name: rest.trim().to_string(),
+    })
 }
 
 /// The free-text model's answer ({"action": …, fields}) as an action, through
@@ -387,6 +438,10 @@ pub fn from_model(v: &Value) -> Option<Action> {
         "answer" => Action::Answer { text: s("text") },
         "mode" => Action::Mode { phone: s("phone"), mode: mode_word(&s("mode"))? },
         "contacts" => Action::Contacts { query: s("query") },
+        "block" => Action::SetContactKind { kind: "blacklist".into(), number: s("target"), name: s("text") },
+        "stall" => Action::SetContactKind { kind: "stall".into(), number: s("target"), name: s("text") },
+        "white" => Action::SetContactKind { kind: "whitelist".into(), number: s("target"), name: s("text") },
+        "unblock" => Action::SetContactKind { kind: "unblock".into(), number: s("target"), name: String::new() },
         _ => return None,
     };
     validate(action).ok()

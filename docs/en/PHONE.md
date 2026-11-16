@@ -1,11 +1,17 @@
 # Phone setup: turn a rooted Android phone into an AI call answerer
 
 The phone is Bageo's line to the telephone network. It holds your SIM, picks
-up calls without a sound, streams the caller's voice to the agent on your
-computer and plays the AI's voice back into the call. The AI (Gemini Live) runs
-through the agent; the phone does no AI work itself. This page covers which
-phones work, installing the root module, connecting by USB or Wi-Fi, switching
-between AI answering and a normal phone, and undoing it all.
+up calls without a sound, streams the caller's voice to Bageo on your computer
+and plays the AI's voice back into the call. The AI (Gemini Live) runs through
+Bageo on the computer; the phone does no AI work itself.
+
+This page covers:
+
+- which phones work
+- installing the root module
+- connecting by USB or Wi-Fi
+- switching between AI answering and a normal phone
+- undoing it all
 
 Building the app, its permissions and its protocol are covered in
 [`android/README.md`](../../android/README.md).
@@ -13,20 +19,20 @@ Building the app, its permissions and its protocol are covered in
 This page describes **Bageo 1.0**: the root module `v1.0.0` (versionCode 20)
 with the app `1.0.0` (versionCode 28) inside, installed from
 `pixelcallai_uplink-1.0.0.zip`. The app shows its version under *Advanced*,
-and the web console under *System → Phones*.
+and the console under *System → Phones*.
 
 ## What the phone does
 
 | Job | How |
 |---|---|
-| Answers calls silently | Lets the call ring as long as the agent asks (3 s by default), picks up without a sound and carries both voices between the call and the agent. Nobody near the phone hears either side. |
-| Switches between AI and normal phone | One switch in the app, or one button in the web console. The module's root helper changes the system settings, so the app needs no root permission. See [Normal phone mode](#normal-phone-mode). |
-| Leaves your own calls alone | A call you dial by hand gets no AI, and the microphone and earpiece work normally; afterwards the phone goes silent again. Only incoming calls and calls the agent asks for (AI call-backs and errands) get the AI. |
+| Answers calls silently | Lets the call ring for as long as Bageo asks (3 s by default), picks up without a sound and carries both voices between the call and Bageo on the computer. Nobody near the phone hears either side. |
+| Switches between AI and normal phone | One switch in the app, or one button in the console. The app needs no root permission: the module's root helper changes the system settings. See [Normal phone mode](#normal-phone-mode). |
+| Leaves your own calls alone | A call you dial by hand gets no AI, and the microphone and earpiece work normally; afterwards the phone goes silent again. Only incoming calls and calls Bageo asks for (AI call-backs and errands) get the AI. |
 | Sends texts for you | When you answer an appointment by text, the phone that took the call sends it from its own number (`send_sms`). |
-| Places calls for the agent | AI call-backs with your answer to an appointment, and AI errands from the console's *Errands* page (`place_call`). It never dials while ringing or on a call: the new call waits (an errand up to 10 minutes). |
-| Picks the right SIM | On a dual-SIM phone, texts and outgoing calls use the SIM the agent names by its Android subscription id (`sub_id`): the SIM the original call came in on, or for an errand a SIM from the number's country. |
-| Takes one call at a time | A second call during a call is declined at once (the caller hears busy) and reported to the agent (`call_waiting_rejected`). It shows in the call list, and you get a "📵 Missed while on another call" notification. |
-| Fails safe | Agent unreachable while it rings: it does not answer, and the call goes to your carrier's missed call or voicemail. Link to the agent lost for 3 seconds during a call: it hangs up instead of leaving the caller in silence. |
+| Places calls for Bageo | AI call-backs with your answer to an appointment, and AI errands from the console's *Errands* page (`place_call`). It never dials while ringing or on a call: the new call waits (an errand up to 10 minutes). |
+| Picks the right SIM | On a dual-SIM phone, texts and outgoing calls use the SIM Bageo names by its Android subscription id (`sub_id`): the SIM the original call came in on, or for an errand a SIM from the number's country. |
+| Takes one call at a time | A second call during a call is declined at once (the caller hears busy) and reported to Bageo (`call_waiting_rejected`). It shows in the call list, and you get a "Missed while on another call" notification. |
+| Fails safe | Bageo unreachable while a call rings: the phone does not answer, and the call goes to your carrier's missed call or voicemail. Connection to Bageo lost for 3 seconds during a call: it hangs up instead of leaving the caller in silence. |
 
 ## Which phones
 
@@ -38,9 +44,8 @@ and the web console under *System → Phones*.
   call is answered but one side hears nothing. There is no list of other
   working models yet; if you try one, please report what happened.
 
-Phones also differ in one detail, which the agent measures by itself at the
-start of every call: whether the phone's call recording picks up the AI's own
-voice.
+Phones also differ in one detail, which Bageo measures by itself at the start
+of every call: whether the phone's call recording picks up the AI's own voice.
 
 | Call recording | What changes | Tested phones |
 |---|---|---|
@@ -58,7 +63,7 @@ Installing the module turns the phone into a dedicated call box:
   at its minimum: nothing in the room is picked up and nothing plays out loud.
 
 You can still dial out with another dialer app, but it is no longer an everyday
-handset. All of this can be switched off from the app or the web console (see
+handset. All of this can be switched off from the app or the console (see
 [Normal phone mode](#normal-phone-mode)) and removed for good (see
 [Rollback](#rollback)).
 
@@ -77,15 +82,18 @@ handset. All of this can be switched off from the app or the web console (see
    |---|---|
    | Install the Bageo module | Done after the reboot. If not, the module is not active. |
    | Allow Bageo to use the phone and microphone | **Allow** (microphone, phone, call log, notifications). |
-   | Make Bageo the default phone app / the call screening app | **Set**. |
+   | Make Bageo the default phone app | **Set**. |
+   | Make Bageo the call screening app | **Set**. |
    | Let Bageo control Do Not Disturb | **Open settings** and allow it. |
    | Do not let Android put Bageo to sleep | **Allow**, so Android does not stop the service. |
 
+   When every step is done the list folds away, and once the phone is
+   connected to the computer the card says *The AI is answering your calls*.
+   The connection address, the connection test and the detailed checks are
+   under **Advanced**.
+
    The app itself needs no root access (the module does the root work), so if
-   the root manager asks, either answer is fine. When every step is done the
-   list folds away, and once the phone is connected to the computer the card
-   says *The AI is answering your calls*. The connection address, the
-   connection test and the detailed checks are under **Advanced**.
+   the root manager asks, either answer is fine.
 
    You are not asked for the permission to send texts (`SEND_SMS`): the module
    grants it at boot and whenever the phone switches to AI mode. A dual-SIM
@@ -108,23 +116,25 @@ your own, remove the module and reboot first (see
 
 1. On the phone: *Settings → About phone*, tap *Build number* seven times,
    then *System → Developer options →* **USB debugging** on.
-2. Plug it into the computer running the agent.
+2. Plug it into the computer running Bageo.
 3. Accept **"Allow USB debugging?"** on the phone (tick *Always allow*).
 
-That is all. The agent finds the phone, maps the app's local address
-(`ws://127.0.0.1:8765`) through the cable to itself and starts the app's
-service. It checks again every 15 seconds, so unplugging and replugging, or
-restarting either side, heals by itself. USB also keeps the phone charged and
-works without Wi-Fi. One computer can take several phones; each answers its
-own number.
+That is all. Bageo finds the phone, maps the app's local address
+(`ws://127.0.0.1:8765`) through the cable to the computer and starts the
+app's service. It checks again every 15 seconds, so unplugging and replugging,
+or restarting either side, heals by itself.
+
+USB also keeps the phone charged and works without Wi-Fi. One computer can
+take several phones; each answers its own number.
 
 ### Wi-Fi
 
 Use this when the phone cannot be cabled to the computer.
 
-1. Start the agent so that it listens on the network and requires tokens: in
-   `.env` set `AGENT_HOST=0.0.0.0`, `DEVICE_TOKEN=<a long random string>` and
-   `CALLS_UI_TOKEN=<another one>` (see [Settings reference](SETTINGS.md)).
+1. Make Bageo reachable over the network and ask for a password: in `.env`
+   set `AGENT_HOST=0.0.0.0`, `DEVICE_TOKEN=<a long random string>` (for the
+   phone's connection) and `CALLS_UI_TOKEN=<another one>` (the console
+   password). See [Settings reference](SETTINGS.md).
 2. In the app, under *Advanced → Connection*, enter
    `ws://<computer's address>:8787/ws?token=<DEVICE_TOKEN>` and save.
    **Test connection** tells you whether it works and, if not, why in plain
@@ -139,18 +149,17 @@ USB.
 - While its service runs, the app shows a quiet permanent notification. It
   starts by itself after a reboot.
 - To use the phone yourself for a while, switch it to a
-  [normal phone](#normal-phone-mode). To stop the AI on every phone at once,
-  switch off *AI answers calls* in the web console's settings (calls are then
-  picked up and hung up).
-- With two SIMs, the agent knows which SIM each call came in on. It picks the
-  opening language from *Main language for each SIM* and sends texts and
-  call-backs from the same SIM.
-- AI errands need to know the phone's SIMs, which the agent learns from the
-  calls the phone reports. A newly set-up phone can run an errand once it has
-  taken one call; until then the console says *This phone hasn't taken a call
-  yet*.
-- The **Open the web console** button in the app appears once the agent has a
-  console address: *Address of this console* in the settings or, when that is
+  [normal phone](#normal-phone-mode).
+- To stop the AI on every phone at once, switch off *AI answers calls* under
+  *Basics* in the console (calls are then picked up and hung up).
+- With two SIMs, Bageo knows which SIM each call came in on. It picks the
+  opening language from *Main language for each SIM* (under *Basics → More
+  options*) and sends texts and call-backs from the same SIM.
+- AI errands need to know the phone's SIMs, which Bageo learns from the calls
+  the phone reports. A newly set-up phone can run an errand once it has taken
+  one call; until then the console says *This phone hasn't taken a call yet*.
+- The **Open the web console** button in the app appears once Bageo has a
+  console address: *Address of this console* under *Advanced* or, when that is
   empty and the console is open to your network, the computer's LAN address.
 
 ## Normal phone mode
@@ -166,7 +175,7 @@ The phone has two modes, and you can switch at any time except during a call:
 my calls**, off or on. Confirm; after a few seconds the card says *Normal
 phone: calls ring as usual*, or that the AI is answering again.
 
-**From the web console:** *System → Phones*. Each connected phone shows its
+**In the console:** *System → Phones*. Each connected phone shows its
 name, app version, mode and a button: **Switch to normal phone** (asks for
 confirmation first) or **Let the AI answer again**. A phone whose app predates
 this feature shows *Update the Bageo app on this phone to switch it from here*
@@ -195,7 +204,7 @@ Taking the phone-app role away from an app can make Android stop it; the
 helper keeps going regardless, which is why the phone app changes last.
 
 In normal mode Bageo's service keeps running and stays connected, so you can
-switch back from the web console, but it does not answer, silence or mute any
+switch back from the console, but it does not answer, silence or mute any
 call. The console shows the phone as a normal phone, and `/health` lists it in
 `normal_mode_serials`.
 
@@ -206,13 +215,13 @@ volumes go to zero.
 
 ### If a switch does not finish
 
-- The app and the web console name the step that failed (for example, *the
+- The app and the console name the step that failed (for example, *the
   phone could not change its default phone app*). Switching again repeats every
   step, and so does the next start of the app (after a reboot, say) while a
   switch is unfinished.
 - If the app says the Bageo module is not running, check in Magisk or KernelSU
   that **Bageo Uplink** is enabled, then reboot the phone.
-- When the web console gets no answer within 15 seconds, it says *Result not
+- When the console gets no answer within 15 seconds, it says *Result not
   confirmed yet*: refresh a little later to see the mode the phone reports.
 
 ### Where the mode is stored

@@ -743,7 +743,7 @@ static ZH_TW: Phrases = Phrases {
     ap_end_fmt: "%H:%M",
     ap_confirm: "同意",
     ap_decline: "不同意",
-    ap_card_title: "📅 預約待確認",
+    ap_card_title: "預約待確認",
     ap_what: "事由",
     ap_name: "稱呼",
     ap_sms: "簡訊",
@@ -753,8 +753,8 @@ static ZH_TW: Phrases = Phrases {
     ap_pending: "預約待你確認",
     ap_replaced: "通話中改過時間，先排入的「{}」還在行事曆上，請自己刪掉",
     ap_time_unconfirmed: "對方沒有確認過這個時間，回覆前請先跟對方確認",
-    ap_confirmed: "✅ 已同意預約",
-    ap_declined: "❌ 已婉拒預約",
+    ap_confirmed: "已同意預約",
+    ap_declined: "已婉拒預約",
     ap_already: "這個預約已經處理過了",
     ap_cal_link: "加入行事曆：{}",
     ap_sms_sent: "已傳簡訊給 {}",
@@ -888,7 +888,7 @@ static ZH_CN: Phrases = Phrases {
     ap_end_fmt: "%H:%M",
     ap_confirm: "同意",
     ap_decline: "不同意",
-    ap_card_title: "📅 预约待确认",
+    ap_card_title: "预约待确认",
     ap_what: "事由",
     ap_name: "称呼",
     ap_sms: "短信",
@@ -898,8 +898,8 @@ static ZH_CN: Phrases = Phrases {
     ap_pending: "预约待你确认",
     ap_replaced: "通话中改过时间，先排入的“{}”还在日历上，请自己删掉",
     ap_time_unconfirmed: "对方没有确认过这个时间，回复前请先跟对方确认",
-    ap_confirmed: "✅ 已同意预约",
-    ap_declined: "❌ 已婉拒预约",
+    ap_confirmed: "已同意预约",
+    ap_declined: "已婉拒预约",
     ap_already: "这个预约已经处理过了",
     ap_cal_link: "添加到日历：{}",
     ap_sms_sent: "已发短信给 {}",
@@ -1033,7 +1033,7 @@ static EN: Phrases = Phrases {
     ap_end_fmt: "%-I:%M %p",
     ap_confirm: "Accept",
     ap_decline: "Decline",
-    ap_card_title: "📅 Appointment to confirm",
+    ap_card_title: "Appointment to confirm",
     ap_what: "What",
     ap_name: "Name",
     ap_sms: "Text to caller",
@@ -1043,8 +1043,8 @@ static EN: Phrases = Phrases {
     ap_pending: "Appointment to confirm",
     ap_replaced: "The time changed during the call; the earlier \"{}\" is still in your calendar. Please delete it.",
     ap_time_unconfirmed: "The caller never confirmed this time read back; check it with them before you answer",
-    ap_confirmed: "✅ Appointment accepted",
-    ap_declined: "❌ Appointment declined",
+    ap_confirmed: "Appointment accepted",
+    ap_declined: "Appointment declined",
     ap_already: "This appointment has already been handled",
     ap_cal_link: "Add it to your calendar: {}",
     ap_sms_sent: "Text sent to {}",
@@ -1066,7 +1066,8 @@ static EN: Phrases = Phrases {
     farewells: &[
         "bye", "bye bye", "bye now", "goodbye", "good bye", "see you", "see ya", "see you later",
         "talk to you later", "talk later", "talk soon", "speak soon", "take care",
-        "have a good day", "have a nice day", "have a great day", "have a good one",
+        "have a good day", "have a nice day", "have a great day", "have a wonderful day",
+        "have a lovely day", "have a good one", "have a good evening", "have a great evening",
         "have a good night", "good night", "cheers",
     ],
     wrapups: &[
@@ -1187,7 +1188,7 @@ static JA: Phrases = Phrases {
     ap_end_fmt: "%H:%M",
     ap_confirm: "承諾",
     ap_decline: "お断り",
-    ap_card_title: "📅 予約の確認待ち",
+    ap_card_title: "予約の確認待ち",
     ap_what: "用件",
     ap_name: "お名前",
     ap_sms: "SMS",
@@ -1197,8 +1198,8 @@ static JA: Phrases = Phrases {
     ap_pending: "予約の確認待ち",
     ap_replaced: "通話中に時間が変わりました。先に登録した「{}」がカレンダーに残っているので削除してください",
     ap_time_unconfirmed: "相手はこの時間を確認していません。返事の前に相手に確認してください",
-    ap_confirmed: "✅ 予約を承諾しました",
-    ap_declined: "❌ 予約をお断りしました",
+    ap_confirmed: "予約を承諾しました",
+    ap_declined: "予約をお断りしました",
     ap_already: "この予約はすでに処理済みです",
     ap_cal_link: "カレンダーに追加：{}",
     ap_sms_sent: "{} に SMS を送りました",
@@ -1344,7 +1345,7 @@ static KO: Phrases = Phrases {
     ap_end_fmt: "%H:%M",
     ap_confirm: "수락",
     ap_decline: "거절",
-    ap_card_title: "📅 예약 확인 대기",
+    ap_card_title: "예약 확인 대기",
     ap_what: "용건",
     ap_name: "이름",
     ap_sms: "문자",
@@ -1354,8 +1355,8 @@ static KO: Phrases = Phrases {
     ap_pending: "예약 확인 대기",
     ap_replaced: "통화 중에 시간이 바뀌었습니다. 먼저 등록한 \"{}\" 일정이 캘린더에 남아 있으니 직접 지워 주세요",
     ap_time_unconfirmed: "상대방이 이 시간을 확인하지 않았습니다. 답하기 전에 먼저 확인해 주세요",
-    ap_confirmed: "✅ 예약을 수락했습니다",
-    ap_declined: "❌ 예약을 거절했습니다",
+    ap_confirmed: "예약을 수락했습니다",
+    ap_declined: "예약을 거절했습니다",
     ap_already: "이미 처리된 예약입니다",
     ap_cal_link: "캘린더에 추가: {}",
     ap_sms_sent: "{} 번호로 문자를 보냈습니다",
@@ -1376,7 +1377,7 @@ static KO: Phrases = Phrases {
     ap_web_label: "웹에서 확인",
     farewells: &[
         "안녕히 계세요", "안녕히계세요", "안녕히 가세요", "들어가세요", "끊을게요", "끊겠습니다",
-        "수고하세요", "바이바이", "다음에 봬요", "다음에 뵙겠습니다",
+        "수고하세요", "좋은 하루 되세요", "좋은 하루 보내세요", "바이바이", "다음에 봬요", "다음에 뵙겠습니다",
     ],
     wrapups: &[
         "이상입니다", "그게 다예요", "다시 전화드릴게요", "다시 전화드리겠습니다",
@@ -1495,7 +1496,7 @@ static ES: Phrases = Phrases {
     ap_end_fmt: "%H:%M",
     ap_confirm: "Aceptar",
     ap_decline: "Rechazar",
-    ap_card_title: "📅 Cita por confirmar",
+    ap_card_title: "Cita por confirmar",
     ap_what: "Motivo",
     ap_name: "Nombre",
     ap_sms: "SMS",
@@ -1505,8 +1506,8 @@ static ES: Phrases = Phrases {
     ap_pending: "Cita por confirmar",
     ap_replaced: "La hora cambió durante la llamada; \"{}\" sigue en tu calendario, bórralo tú",
     ap_time_unconfirmed: "Quien llamó no confirmó esta hora; compruébala con esa persona antes de responder",
-    ap_confirmed: "✅ Cita aceptada",
-    ap_declined: "❌ Cita rechazada",
+    ap_confirmed: "Cita aceptada",
+    ap_declined: "Cita rechazada",
     ap_already: "Esta cita ya se gestionó",
     ap_cal_link: "Añádela al calendario: {}",
     ap_sms_sent: "SMS enviado a {}",
@@ -1527,8 +1528,11 @@ static ES: Phrases = Phrases {
     ap_web_label: "Confirmar en la web",
     farewells: &[
         "adiós", "adios", "hasta luego", "hasta pronto", "hasta mañana", "nos vemos", "chao",
-        "chau", "que tenga buen día", "que tenga un buen día", "que tengas buen día", "cuídese",
-        "cuídate", "un saludo", "órale gracias", "orale gracias",
+        "chau", "que tenga buen día", "que tenga un buen día", "que tengas buen día",
+        "que tenga un excelente día", "que tengas un excelente día", "que tenga excelente día",
+        "que tenga un lindo día", "que tengas un lindo día", "que tenga un feliz día",
+        "que tengas un feliz día", "que tenga buena tarde", "que tenga una buena tarde",
+        "que tenga excelente tarde", "cuídese", "cuídate", "un saludo", "órale gracias", "orale gracias",
     ],
     wrapups: &[
         "eso es todo", "nada más", "eso sería todo", "le dejo", "te dejo", "tengo que irme",
@@ -1647,7 +1651,7 @@ static FR: Phrases = Phrases {
     ap_end_fmt: "%Hh%M",
     ap_confirm: "Accepter",
     ap_decline: "Refuser",
-    ap_card_title: "📅 Rendez-vous à confirmer",
+    ap_card_title: "Rendez-vous à confirmer",
     ap_what: "Objet",
     ap_name: "Nom",
     ap_sms: "SMS",
@@ -1657,8 +1661,8 @@ static FR: Phrases = Phrases {
     ap_pending: "Rendez-vous à confirmer",
     ap_replaced: "L'heure a changé pendant l'appel ; « {} » est toujours dans votre agenda, supprimez-le vous-même",
     ap_time_unconfirmed: "Le correspondant n'a pas confirmé cette heure ; vérifiez-la avec lui avant de répondre",
-    ap_confirmed: "✅ Rendez-vous accepté",
-    ap_declined: "❌ Rendez-vous refusé",
+    ap_confirmed: "Rendez-vous accepté",
+    ap_declined: "Rendez-vous refusé",
     ap_already: "Ce rendez-vous a déjà été traité",
     ap_cal_link: "Ajoutez-le à votre agenda : {}",
     ap_sms_sent: "SMS envoyé au {}",
@@ -1679,7 +1683,8 @@ static FR: Phrases = Phrases {
     ap_web_label: "Confirmer sur le web",
     farewells: &[
         "au revoir", "à bientôt", "a bientot", "à plus", "à plus tard", "à tout à l'heure",
-        "à demain", "bonne journée", "bonne journee", "bonne soirée", "bonne fin de journée", "ciao",
+        "à demain", "bonne journée", "bonne journee", "excellente journée", "très bonne journée",
+        "bonne soirée", "bonne fin de journée", "ciao",
     ],
     wrapups: &[
         "c'est tout", "rien d'autre", "je vous laisse", "je te laisse", "je dois y aller",
@@ -1798,7 +1803,7 @@ static DE: Phrases = Phrases {
     ap_end_fmt: "%H:%M",
     ap_confirm: "Zusagen",
     ap_decline: "Absagen",
-    ap_card_title: "📅 Termin zu bestätigen",
+    ap_card_title: "Termin zu bestätigen",
     ap_what: "Anlass",
     ap_name: "Name",
     ap_sms: "SMS",
@@ -1808,8 +1813,8 @@ static DE: Phrases = Phrases {
     ap_pending: "Termin zu bestätigen",
     ap_replaced: "Die Zeit hat sich im Gespräch geändert; „{}“ steht noch in deinem Kalender, lösch es selbst",
     ap_time_unconfirmed: "Der Anrufer hat diese Uhrzeit nicht bestätigt; kläre sie mit ihm, bevor du antwortest",
-    ap_confirmed: "✅ Termin zugesagt",
-    ap_declined: "❌ Termin abgesagt",
+    ap_confirmed: "Termin zugesagt",
+    ap_declined: "Termin abgesagt",
     ap_already: "Dieser Termin wurde bereits bearbeitet",
     ap_cal_link: "In den Kalender eintragen: {}",
     ap_sms_sent: "SMS an {} gesendet",
@@ -1830,8 +1835,8 @@ static DE: Phrases = Phrases {
     ap_web_label: "Im Web bestätigen",
     farewells: &[
         "tschüss", "tschüs", "tschuess", "auf wiederhören", "auf wiedersehen", "wiederhören",
-        "bis bald", "bis später", "bis dann", "schönen tag noch", "schönen tag", "schönen abend noch",
-        "mach's gut", "machs gut", "ciao",
+        "bis bald", "bis später", "bis dann", "schönen tag noch", "schönen tag", "einen schönen tag",
+        "schönen abend noch", "mach's gut", "machs gut", "ciao",
     ],
     wrapups: &[
         "das war's", "das wars", "das wäre alles", "das ist alles", "sonst nichts",
@@ -1950,7 +1955,7 @@ static PT: Phrases = Phrases {
     ap_end_fmt: "%H:%M",
     ap_confirm: "Aceitar",
     ap_decline: "Recusar",
-    ap_card_title: "📅 Compromisso a confirmar",
+    ap_card_title: "Compromisso a confirmar",
     ap_what: "Assunto",
     ap_name: "Nome",
     ap_sms: "SMS",
@@ -1960,8 +1965,8 @@ static PT: Phrases = Phrases {
     ap_pending: "Compromisso a confirmar",
     ap_replaced: "O horário mudou durante a ligação; \"{}\" continua na sua agenda, apague você mesmo",
     ap_time_unconfirmed: "Quem ligou não confirmou este horário; confirme com a pessoa antes de responder",
-    ap_confirmed: "✅ Compromisso aceito",
-    ap_declined: "❌ Compromisso recusado",
+    ap_confirmed: "Compromisso aceito",
+    ap_declined: "Compromisso recusado",
     ap_already: "Este compromisso já foi resolvido",
     ap_cal_link: "Adicione à agenda: {}",
     ap_sms_sent: "SMS enviado para {}",
@@ -1982,7 +1987,8 @@ static PT: Phrases = Phrases {
     ap_web_label: "Confirmar na web",
     farewells: &[
         "tchau", "adeus", "até logo", "até mais", "até breve", "até amanhã", "tenha um bom dia",
-        "tenha uma boa tarde", "um abraço", "falou", "valeu",
+        "tenha um ótimo dia", "tenha uma boa tarde", "tenha uma ótima tarde",
+        "tenha uma boa noite", "um abraço", "falou", "valeu",
     ],
     wrapups: &[
         "é só isso", "só isso", "mais nada", "é tudo", "tenho que ir", "preciso desligar",
@@ -2916,6 +2922,23 @@ mod tests {
             }
             assert!(p.sep.contains(':') || p.sep.contains('：'), "{l:?}");
             assert_eq!(fill(p.vm_call_back_to, "0912").matches("0912").count(), 1, "{l:?}");
+        }
+    }
+
+    #[test]
+    fn polite_service_farewells_close_without_matching_greetings() {
+        for s in [
+            "Thanks for your time and have a wonderful day.",
+            "Muchas gracias por su tiempo. Y que tenga un excelente día.",
+            "Merci beaucoup, excellente journée.",
+            "Vielen Dank und einen schönen Tag.",
+            "Obrigado, tenha um ótimo dia.",
+            "감사합니다, 좋은 하루 되세요.",
+        ] {
+            assert!(ends_with_farewell(s, 0), "expected farewell: {s}");
+        }
+        for open in ["Hola, buen día, hablo del banco.", "Olá, bom dia, tudo bem?"] {
+            assert!(!ends_with_farewell(open, 2), "greeting must not match farewell: {open}");
         }
     }
 }

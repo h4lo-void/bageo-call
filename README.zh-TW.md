@@ -156,7 +156,7 @@ AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種
 ## 運作方式
 
 <p align="center">
-  <img src="docs/images/how-it-works.zh-TW.svg" width="900" alt="Bageo 怎麼運作：對方透過電信網路打到你的備用手機（已 root、插著你的 SIM 卡），手機用 USB 或 Wi-Fi 把通話聲音交給你電腦上的 Bageo 主程式，主程式再跟 Gemini Live 對話。錄音留在你的硬碟，通知送到 32 種管道，一切在網頁控制台管理。">
+  <img src="docs/images/how-it-works.zh-TW.svg" width="900" alt="Bageo 怎麼運作：對方透過電信網路打到你的備用手機（已 root、插著你的 SIM 卡），手機用 USB 或 Wi-Fi 把通話聲音交給你電腦上的 Bageo 程式，再由它跟 Gemini Live 對話。錄音留在你的硬碟，通知送到 32 種管道，一切在網頁控制台管理。">
 </p>
 
 手機只負責接通電話，其他事都在你自己的電腦上處理。手機還在響，AI 就已經連上，所以接起後約 **0.43 秒**開口（實測中位數）。一通電話的完整過程：[架構](docs/zh-TW/ARCHITECTURE.md)。
@@ -182,7 +182,7 @@ AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/contacts.svg" width="56" height="56" alt=""><br>
       <strong>認得誰打來</strong><br>
-      通訊錄可以從 vCard、CSV、Excel、Word、PDF，甚至名片照片匯入。
+      通訊錄可以從 vCard、Excel、PDF、名片照片匯入。每個人可以分成一般聯絡人、白名單、黑名單或陪聊名單。
     </td>
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/switch.svg" width="56" height="56" alt=""><br>
@@ -199,7 +199,7 @@ AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/notify.svg" width="56" height="56" alt=""><br>
       <strong>32 種通知管道</strong><br>
-      每通電話結束，摘要送到 Telegram、LINE、Discord 等管道。
+      每通電話結束，摘要會送到 Telegram、LINE、Discord 等管道。可以直接在通知裡按按鈕處理，也能在聊天室下指令。
     </td>
     <td width="33%" align="center" valign="top">
       <img src="docs/images/icons/local.svg" width="56" height="56" alt=""><br>
@@ -233,7 +233,7 @@ AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種
 | | |
 |---|---|
 | **上手** | [開始使用](docs/zh-TW/GETTING_STARTED.md) · [手機設定](docs/zh-TW/PHONE.md) · [疑難排解與常見問題](docs/zh-TW/TROUBLESHOOTING.md) |
-| **使用** | [功能總覽](docs/zh-TW/FEATURES.md) · [撰寫提示詞](docs/zh-TW/PROMPTS.md) · [設定參考](docs/zh-TW/SETTINGS.md) · [通知](docs/zh-TW/NOTIFICATIONS.md) |
+| **使用** | [功能總覽](docs/zh-TW/FEATURES.md) · [聊天室指令與通知互動](docs/zh-TW/CHAT_COMMANDS.md) · [撰寫提示詞](docs/zh-TW/PROMPTS.md) · [設定參考](docs/zh-TW/SETTINGS.md) · [通知](docs/zh-TW/NOTIFICATIONS.md) |
 | **深入** | [架構](docs/zh-TW/ARCHITECTURE.md) · [API](docs/zh-TW/API.md) · [發展藍圖](docs/zh-TW/ROADMAP.md) · [v1.0 發行說明](CHANGELOG.md) · [`android/`（英文）](android/README.md) · [`tools/sms_forward/`（英文）](tools/sms_forward/README.md) |
 | **法律** | [隱私、安全與法律](docs/zh-TW/PRIVACY_AND_LEGAL.md) · [法律免責聲明與使用限制](LEGAL.md) · [雙重授權與商業授權](COMMERCIAL_LICENSE.md) · [全專案技術與資安審計報告](AUDIT_REPORT.md) |
 

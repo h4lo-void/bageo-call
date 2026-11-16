@@ -63,14 +63,14 @@ missing, with no date.
 |---|---|---|
 | Bring your own keys, no per-minute platform fee | Done | One Gemini key covers everything; summaries can use any OpenAI-compatible service or a local model. |
 | Everything stored on your own machine | Done | Except what goes to the models and the notification services; see [Privacy](PRIVACY_AND_LEGAL.md). |
-| Notifications, webhooks, n8n / Zapier | Done | Sixteen channel types, including e-mail and a [JSON webhook](NOTIFICATIONS.md#webhook-json); the REST API for the rest. |
+| Notifications, webhooks, n8n / Zapier | Done | 32 channel types, including e-mail and a [JSON webhook](NOTIFICATIONS.md#webhook-json); the REST API for the rest. |
 | Web console from any device | Done | `bageo.local`, QR code, add to home screen. |
 | One-step start | Done | Start scripts for Windows, macOS and Linux; Docker image. |
 | Use the spare phone as a normal phone again | Done | One switch in the console or the app; the app needs no root. |
 | REST API | Done | See the [API reference](API.md). |
-| MCP server | Not yet | |
+| MCP server | Done | See [MCP](MCP.md). |
 | Business hours, holidays | Not yet | The status note covers simple cases. |
-| VIP numbers straight to a person | Not yet | |
+| Whitelisted numbers straight to a person | Partly | A whitelisted caller can be put through to your phone with your carrier's forward-when-busy, or the AI can give the caller your number when they say it is urgent. The phone app cannot bridge calls directly yet. |
 | Transfer to a person with a summary | Not yet | The phone app cannot bridge calls yet. |
 | Emergency keyword handling | Not yet | Errands never dial emergency numbers. |
 | Spending caps, daily call limits | Not yet | Only the longest-call settings; set a budget with your API provider. |
@@ -88,8 +88,8 @@ Roughly in order of usefulness for the effort:
    This matters more than any new feature.
 2. **Caller memory**: the last summaries for the same number in the prompt,
    on top of the contact's name and note.
-3. **Per-number rules**: VIPs that always notify loudly, numbers that are never
-   stalled, a different prompt for certain contacts.
+3. **Per-number rules**: whitelisted numbers that always notify loudly, numbers
+   that are never stalled, a different prompt for certain contacts.
 4. **Business hours**, with a different prompt or an announcement outside them.
 5. **Clearer call states from the phone**: report the moment an outgoing call
    is answered, so *To do* and the errand page can tell "answered" from
@@ -98,6 +98,6 @@ Roughly in order of usefulness for the effort:
    over.
 7. **Other realtime models** behind the same call logic (OpenAI Realtime, and
    local speech-to-speech models as they mature).
-8. **Removing the older menu-based code paths** to make the agent easier to
+8. **Removing the older menu-based code paths** to make Bageo's code easier to
    read.
 9. **Signed, notarised releases** for macOS and Windows.

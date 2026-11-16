@@ -1,20 +1,20 @@
 # Settings reference
 
-Every option of Bageo, the self-hosted AI phone assistant that answers your real phone number with Gemini Live, on one page: how calls are picked up, which spam and scam calls get screened out or strung along, where call summaries go, and how the agent starts. Each table shows the default, so you can see at a glance what you have changed.
+Bageo is a self-hosted AI phone assistant that answers your real phone number with Gemini Live. This page lists every setting: how calls are picked up, how sales and scam calls are handled, where call summaries go, and how Bageo starts. Each table shows the default, so you can see at a glance what you changed.
 
 Settings live in two places:
 
 - **The web console** (the *Settings* tab): everything about answering calls. Saved to `data/calls/config/settings.json` and used from the next call on, with no restart.
-- **Start-up options**: where the agent listens, where data lives, the USB link. Read once at start from environment variables or from a `.env` file next to the start script (copy `.env.example`).
+- **Start-up options**: where Bageo listens, where data lives, the USB link. Read once at start from environment variables or from a `.env` file next to the start script (copy `.env.example`).
 
 ## Find it fast
 
 | I want to… | Go to |
 |---|---|
 | Have the AI answer as me instead of as my assistant | [Basics](#basics) → *Answer style* |
-| Answer calls on a US SIM in English while everything else stays in my language | [Basics](#basics) → *Main language for each SIM* |
+| Answer calls on a US SIM in English while everything else stays in my language | [Basics](#basics) → *More options* → *Main language for each SIM* |
 | Keep a scammer busy instead of hanging up | [Sales & scam calls](#sales--scam-calls) |
-| Never hear from one number again | [Blocked numbers](#blocked-numbers) |
+| Never hear from one number again | [Blocked numbers](#blocked-numbers-and-contact-lists) |
 | Have the AI call a restaurant and book a table | [AI errands](#ai-errands) |
 | Decide on meeting requests later and let the caller know | [Appointments](#appointments) |
 | Open the console from my phone | [Using the console from other devices](#using-the-console-from-other-devices) |
@@ -27,49 +27,97 @@ The few things the AI needs before it can answer your phone.
 
 | Setting | Default | What it does |
 |---|---|---|
-| Language | English | The language the AI speaks with callers: its words, its first line, the blocked-number announcement and the texts it sends callers. English, 繁體中文 (Taiwan), 简体中文, 日本語, 한국어, Español, Français, Deutsch, Português. |
-| Language of notifications and summaries | Same as the AI's language | The language you read: notifications, call summaries (also in the call list), appointment cards and their results, messages from the SMS forwarder. Handy abroad: the AI answers in English, your notifications stay in 繁體中文. Switching the console's display language (top right) sets this to the same language. |
-| Main language for each SIM | none | For a phone with SIMs from more than one country: pick a SIM's country and the language its calls start in, e.g. *United States (US)* → English while *Language* stays 繁體中文. A Japanese number calling the US SIM still hears Japanese. Needs phone app 1.0 or later, which reports the SIM of each call. Saved as `sim_languages`, e.g. `{"us": "en"}`. |
+| Language | English | The language the AI speaks with callers, including its first line, the blocked-number announcement and the texts it sends callers. |
 | Your name | empty | How callers refer to you. Fills `{owner}` wherever a prompt uses it. |
-| Other names callers use for you | empty | One per line, up to 10: an English name, a nickname, how colleagues address you. When the AI hears one, it knows they mean you, in both answer styles and with your own prompt too. Call summaries still write *Your name*. Saved as `owner_aliases` (a list). |
 | Answer style | AI assistant | **AI assistant**: says it is an AI answering for you and takes a message. **As me**: answers as you, and still admits to being an AI when sincerely asked. |
-| AI calls: call as | Your assistant | Who the AI says it is on the calls it makes for you from the **Errands** tab ([AI errands](#ai-errands)): **Your assistant** (it calls on your behalf) or **You in person** (it speaks as you). Each errand can pick its own, and either way it admits to being an AI when sincerely asked. Saved as `errand_identity` (`assistant` / `owner`; anything else reads as `assistant`). |
 | Gemini API key | empty | Your key from Google AI Studio; the AI voice needs it. Stored on your computer only. |
-| Live model | `gemini-3.8-live` | The Gemini Live model that talks on calls. Models with "thinking" in the name (such as `gemini-3.8-live-extended-thinking`) answer more carefully and a little slower; see *Thinking level* under [Advanced](#advanced). |
 | Voice | Charon | One of Gemini's built-in voices. **Preview** plays three sample lines in the language chosen above. |
-| AI answers calls | on | Master switch. Off: calls are still picked up and ended at once, with nothing said. To have a phone ring so you can answer it yourself, switch it to a [normal phone](PHONE.md#normal-phone-mode) instead. |
+| AI answers calls | on | Master switch. Off: calls are picked up and ended at once, with nothing said. To answer a phone yourself, switch it to a [normal phone](PHONE.md#normal-phone-mode) instead. |
+
+*Language* can be English, 繁體中文 (Taiwan), 简体中文, 日本語, 한국어, Español, Français, Deutsch or Português.
+
+**More options.** These five are folded under *More options* in Basics, and most people never change them:
+
+| Setting | Default | What it does |
+|---|---|---|
+| Other names callers use for you | empty | One per line, up to 10: an English name, a nickname, how colleagues address you. When the AI hears one, it knows they mean you. |
+| Language of notifications and summaries | Same as the AI's language | The language you read your notifications and summaries in. The AI keeps speaking the *Language* above with callers. |
+| Main language for each SIM | none | Only for a phone with SIMs from more than one country: pick a SIM's country and the language its calls start in. |
+| AI calls: call as | Your assistant | Who the AI says it is on calls it makes for you: **Your assistant** or **You in person**. Each errand can pick its own. |
+| Live model | `gemini-3.8-live` | The Gemini Live model that talks on calls; you rarely need to change it. Models with "thinking" in the name (such as `gemini-3.8-live-extended-thinking`) answer more carefully and a little slower; see *Thinking level* under [Advanced](#advanced). |
+
+Details for each:
+
+- **Other names callers use for you**: this works in both answer styles, and with your own prompt too. Call summaries still write *Your name*. Saved as `owner_aliases` (a list).
+- **Language of notifications and summaries**: notifications, call summaries (also in the call list), appointment cards and their results, and messages from the SMS forwarder use this language. Handy abroad: the AI answers in English, your notifications stay in 繁體中文. Switching the console's display language (top right) sets this to the same language.
+- **Main language for each SIM**: e.g. *United States (US)* → English while *Language* stays 繁體中文; a Japanese number calling the US SIM still hears Japanese. Needs phone app 1.0 or later, which reports the SIM of each call. Saved as `sim_languages`, e.g. `{"us": "en"}`.
+- **AI calls: call as**: who the AI says it is on the calls it makes from the **Errands** tab ([AI errands](#ai-errands)): **Your assistant** (it calls on your behalf) or **You in person** (it speaks as you). Either way it admits to being an AI when sincerely asked. Saved as `errand_identity` (`assistant` / `owner`; anything else reads as `assistant`).
 
 ### How it answers
 
 | Setting | Default | What it does |
 |---|---|---|
 | Ring before answering | 3 s | How long the caller hears ringing before the AI picks up: 0 (at once) to 8 seconds, in half seconds. The AI gets ready during the ring. |
-| Get the AI ready while the phone rings | on | Connects to Gemini and prepares the first words before pick-up, so the AI speaks the moment the call connects. Costs one short Gemini session even when the caller hangs up while it rings. Off: callers wait 1 to 3 seconds for the first word. |
-| Answer hidden numbers | on | On: callers without caller ID get the AI like anyone else. Off: they hear the same short "not available" announcement as blocked numbers (in your *Language* and the *Announcement voice*) and the call ends. The announcement comes recorded with the program, so no Gemini key is needed. |
-| Let the caller interrupt | on | The AI stops talking when the caller cuts in. Used only on phones that do not pick up the AI's own voice, checked at the start of every call (see [which phones](PHONE.md#which-phones)). |
-| Let Gemini decide when the caller has finished | on | Recommended: Gemini's own voice detection decides when it is the AI's turn. Off: a simpler loudness rule in the agent decides. |
+| Answer hidden numbers | on | On: callers without caller ID get the AI like anyone else. Off: they hear a short "not available" announcement and the call ends. |
 | Longest normal call | 5 min | 3 to 30 minutes. About 25 seconds before the limit the AI wraps up politely and hangs up. |
 | Status note | off | One line about right now, up to 400 characters ("Deliveries: please leave the parcel at the front desk"). The AI mentions it only when it fits the call. |
-| Background sound, Background volume | off, Medium | A quiet room tone under the AI's voice, so it sounds like someone picking up in a real place: Office, Home, Street, Hospital, Ambulance passing, Typhoon, Thunderstorm, Construction site, Metro / subway, Night market, Firecrackers / festival, Driving. Volume Quiet, Medium or Loud. **Voice + background** and **Background only** play a sample. |
+| Background sound, Background volume | off, Medium | A quiet room tone under the AI's voice, so it sounds like someone picking up in a real place. Volume Quiet, Medium or Loud. |
+| Whitelist call transfer: Transfer | Off: the AI answers | Whether a call from someone on the Whitelist is put through to your phone (`whitelist_mode`). The Whitelist tab on the **Contacts** page has the same setting. |
+| Whitelist call transfer: Your own phone number | empty | The number the AI gives an urgent caller; it also appears in the notification (`whitelist_forward_number`). |
+
+With *Answer hidden numbers* off, the "not available" announcement uses your *Language* and the *Announcement voice*, like blocked numbers. It comes recorded with Bageo, so no Gemini key is needed.
+
+*Background sound* can be Office, Home, Street, Hospital, Ambulance passing, Typhoon, Thunderstorm, Construction site, Metro / subway, Night market, Firecrackers / festival or Driving. **Voice + background** and **Background only** play a sample.
+
+*Whitelist call transfer* works in one of three ways:
+
+- **Off: the AI answers** (`off`): the AI answers; nothing is transferred.
+- **Always: put through to your phone** (`direct`): the AI phone declines the call, your carrier's forward-when-busy rings your own phone, and you get a notification at once. Turn forwarding on first by dialing `**67*your number#` on the AI phone.
+- **Only when it is urgent** (`emergency`): the AI answers and gives the caller your number only if they say it is urgent, and alerts you.
+
+**More options.** These three are folded under *More options* in How it answers, and most people never change them:
+
+| Setting | Default | What it does |
+|---|---|---|
+| Get the AI ready while the phone rings | on | Recommended: the AI speaks the moment the call connects. Off: callers wait 1 to 3 seconds for the first word. |
+| Let the caller interrupt | on | The AI stops talking when the caller cuts in. Used only on phones that do not pick up the AI's own voice, checked at the start of every call (see [which phones](PHONE.md#which-phones)). |
+| Let Gemini decide when the caller has finished | on | Recommended: Gemini's own voice detection decides when it is the AI's turn. Off: a simpler loudness rule built into Bageo decides. |
+
+*Get the AI ready while the phone rings* connects to Gemini and prepares the first words before pick-up. It costs one short Gemini session even when the caller hangs up while it rings.
 
 **The caller's language.** There is nothing to set: when a caller clearly speaks another language, or asks whether you speak one, the AI switches to it.
 
-**Calls from abroad and the carrier's warning.** Taiwan's carriers play a recorded fraud warning at the start of every call from abroad. When a Taiwanese SIM takes a call from another country (a `+…` or `00…` number with another country code), the AI waits for that warning to end: it speaks once the line goes quiet, or after 7.5 seconds at most, and says its opening line only once. Calls on any other SIM (say, the US SIM of a dual-SIM phone) carry no warning, so the AI answers at once. This is automatic. With a phone app older than 1.0, a call from abroad is a `+…` number whose country code is not yours ([`COUNTRY_CODE`](#country-calling-code)).
+**Calls from abroad and the carrier's warning.** Taiwan's carriers play a recorded fraud warning at the start of every call from abroad. When a Taiwanese SIM takes a call from another country (a `+…` or `00…` number with another country code), the AI waits for that warning to end: it speaks once the line goes quiet, or after 7.5 seconds at most, and says its opening line only once.
+
+Calls on any other SIM (say, the US SIM of a dual-SIM phone) carry no warning, so the AI answers at once. This is automatic.
+
+With a phone app older than 1.0, a call from abroad is a `+…` number whose country code is not yours ([`COUNTRY_CODE`](#country-calling-code)).
 
 ### Sales & scam calls
 
-A caller opens with a "pre-approved loan", or claims to be from your bank's security team and needs a code. As soon as the caller's words show a sales pitch or a scam, the AI turns into an interested but slow customer: it asks how everything works, one detail after another. It never gives out data and never agrees to anything, and it keeps them on the line until they hang up or the time limit is reached.
+As soon as the caller's words show a sales pitch or a scam, the AI turns into an interested but slow customer: it asks how everything works, one detail after another. It never gives out data and never agrees to anything, and it keeps them on the line until they hang up or the time limit is reached.
+
+For example, a caller opens with a "pre-approved loan", or claims to be from your bank's security team and needs a code.
 
 | Setting | Default | What it does |
 |---|---|---|
 | Keep them talking | on | The stalling described above. Off: the AI declines and ends the call. |
 | Longest such call | 30 min | 3 to 30 minutes. Longer calls use more of your Gemini quota. |
 | Model for these calls | `gemini-3.8-live` | The model a call switches to once it is judged sales or scam. Empty = keep the call's own model. |
-| Also check calls without sales or scam words | on | A low-cost model reads what the caller has said, at most three times a call, so new scripts, other languages and garbled words are caught as well. Off: only calls that use known sales or scam words are checked. |
+| Check every call for sales and scams | on | On: a low-cost model reads what the caller has said, so new scripts, other languages and garbled words are caught too. Off: only calls that use known sales or scam words are checked. |
 
-**How a call is judged.** Words from the built-in scam database (42 kinds of sales and scam calls, keywords in 19 languages) start a second look by a low-cost model; with the setting above, calls without such words get a look too. The model names the kind of call and how sure it is, and an unsure answer waits for the caller's next turn. When the model does not answer in time, only requests that are a scam whoever makes them (a verification code, ATM steps, gift cards, remote access, a "safe account") start the stalling at once; otherwise the next turn is looked at, and after two failures in a row the keywords decide alone. Two caller turns into the stalling, one more look can let a wrongly judged caller go back to a normal conversation. Saved contacts and numbers you marked *It was not* are left alone, unless they ask for those scam-only things.
+**How a call is judged.**
 
-On a call's page, *Sales / scam check* shows what the call was judged and which kind; *It was a scam*, *It was sales* and *It was not* mark the number, and its next calls are judged with your mark (hidden numbers are not remembered). Your own words and numbers go in `config/scam_db.local.json` in the data folder. It is read again when it changes, and a missing or broken file changes nothing:
+- Words from the built-in scam database (42 kinds of sales and scam calls, keywords in 19 languages) start a second look by a low-cost model.
+- With *Check every call for sales and scams* on, calls without such words get a look too, at most three times a call.
+- The model names the kind of call and how sure it is; an unsure answer waits for the caller's next turn.
+- When the model does not answer in time, only requests that are a scam whoever makes them (a verification code, ATM steps, gift cards, remote access, a "safe account") start the stalling at once. Otherwise the next turn is looked at, and after two failures in a row the keywords decide alone.
+- Two caller turns into the stalling, one more look can let a wrongly judged caller go back to a normal conversation.
+- Saved contacts and numbers you marked *It was not* are left alone, unless they ask for those scam-only things.
+
+On a call's page, *Sales / scam check* shows what the call was judged and which kind. *It was a scam*, *It was sales* and *It was not* mark the number, and its next calls are judged with your mark (hidden numbers are not remembered).
+
+Your own words and numbers go in `config/scam_db.local.json` in the data folder. It is read again when it changes, and a missing or broken file changes nothing:
 
 ```json
 {
@@ -84,23 +132,37 @@ On a call's page, *Sales / scam check* shows what the call was judged and which 
 }
 ```
 
-`weight` is 1 (counts only with other words) or 2 (clear on its own); `hard` counts only for a kind of call that is a scam whoever asks. `typology` must be one of the built-in kinds in `crates/agent/data/scam_db.json`; entries the agent cannot place are skipped and named in its log.
+`weight` is 1 (counts only with other words) or 2 (clear on its own); `hard` counts only for a kind of call that is a scam whoever asks. `typology` must be one of the built-in kinds in `crates/agent/data/scam_db.json`; entries Bageo cannot place are skipped and named in its log.
 
 ### Prompt
 
-How the AI talks; the built-in prompt works for most people. See [Writing the prompt](PROMPTS.md) for *Your own prompt* (empty = built-in; **Show the built-in prompt** shows it), *Notes the AI may answer from* (facts callers may ask about, one per line, up to 6,000 characters) and the interview prompt that lets ChatGPT, Claude or Gemini write a prompt with you.
+How the AI talks; the built-in prompt works for most people. To write your own, see [Writing the prompt](PROMPTS.md).
 
-### Blocked numbers
+- *Your own prompt*: empty = built-in; **Show the built-in prompt** shows it.
+- *Notes the AI may answer from*: facts callers may ask about, one per line, up to 6,000 characters.
+- The interview prompt: lets ChatGPT, Claude or Gemini write a prompt with you.
+
+### Blocked numbers and contact lists
 
 Call screening at its bluntest: calls from numbers on this list never reach the AI or Gemini. They still appear in the call list and send a "blocked number" notification.
 
+You can also manage **Contacts, Whitelist, Blacklist, and Stall list** in one place on the **Contacts** tab (`kind`: `contact`, `whitelist`, `blacklist`, `stall`).
+
 | Setting | Default | What it does |
 |---|---|---|
-| Number, Reason | empty | One number per row, with an optional reason. End a number with `*` to block every number that starts with those digits (at least four, e.g. `0800*`). Write numbers the way they show up in the call list; `+…` forms match too once your country calling code is known ([`COUNTRY_CODE`](#country-calling-code)). |
-| How blocked calls are turned away | Hang up while it rings | Saved as `reject_mode`. **Hang up while it rings** (`decline`): the call never connects. **Answer, play "not available", then hang up** (`announce`): a short "the number you have dialed is not available" in your *Language*; the caller sees the call connect for a few seconds. A phone app too old to decline picks up and announces either way. |
-| Announcement voice | Same as the AI's voice | The voice of that announcement (hidden numbers hear it too). Every voice comes recorded in every language, so it costs no Gemini quota. **Preview the announcement** plays it. |
+| Number, Reason | empty | One number per row, with an optional reason. End a number with `*` to block every number that starts with those digits, e.g. `0800*` (at least four). |
+| How blocked calls are turned away | Hang up while it rings | Hang up while it rings, or answer, play "not available" and hang up. |
+| Announcement voice | Same as the AI's voice | The voice of that announcement; hidden numbers hear it too. Every voice comes recorded in every language, so it costs no Gemini quota; **Preview the announcement** plays it. |
 
-Try it: open a call in the call list and press **Block this number** to add the caller in one step.
+Write numbers the way they show up in the call list; `+…` forms match too once your country calling code is known ([`COUNTRY_CODE`](#country-calling-code)).
+
+*How blocked calls are turned away* is saved as `reject_mode`:
+
+- **Hang up while it rings** (`decline`): the call never connects.
+- **Answer, play "not available", then hang up** (`announce`): a short "the number you have dialed is not available" in your *Language*; the caller sees the call connect for a few seconds.
+- A phone app too old to decline picks up and announces either way.
+
+Try it: open a call in the call list and press **Block this number**, or tap the signed **Block / Stall / Whitelist** buttons in any notification channel to classify the caller in one tap.
 
 ### AI errands
 
@@ -111,13 +173,17 @@ The **Errands** tab has the AI make a call for you. Booking a table for four loo
 3. Choose *Call as* and, if you like, the *Phone to call from*, then press **Start the call**.
 4. Follow the live captions. You can type an instruction for the AI, answer a question it asks you, or **Hang up**.
 
-Afterwards the errand shows the result (Done, Partly done, Not done, Your decision needed, No answer, Voicemail, Failed) with details, the next step, the time agreed, a link to the call record and **Call again**. When the other side offered choices, pick one and the AI calls back with it. You also get one notification. During the call the AI reads every time, date, number or name back as a question and waits for a yes; anything the other side never clearly confirmed is marked ⚠️ **Not confirmed by the other side** on the result and in the notification, so check it before you rely on it.
+Afterwards the errand shows the result (Done, Partly done, Not done, Your decision needed, No answer, Voicemail, Failed) with details, the next step, the time agreed, a link to the call record and **Call again**. When the other side offered choices, pick one and the AI calls back with it. You also get one notification.
+
+During the call the AI reads every time, date, number or name back as a question and waits for a yes. Anything the other side never clearly confirmed is marked **Not confirmed by the other side** on the result and in the notification, so check it before you rely on it.
 
 What it needs and how it behaves:
 
-- A connected phone in AI mode with a SIM of the number's country. The agent learns a phone's SIMs from the calls it takes, so a new phone must take one call first (*This phone hasn't taken a call yet*).
+- A connected phone in AI mode with a SIM of the number's country. Bageo learns a phone's SIMs from the calls it takes, so a new phone must take one call first (*This phone hasn't taken a call yet*).
 - It never dials an emergency number, a short code (7 digits or fewer) or a premium-rate number; toll-free numbers are fine. Write numbers abroad with `+`; a number without `+` is one of your country.
-- One call to a number at a time, shared with the AI call-backs of [appointments](#appointments). A busy phone makes the errand wait up to 10 minutes, and an earlier call to the same number up to 25 minutes. A call lasts 10 minutes at most (the AI wraps up at 9:30). The AI cannot press keys: it waits up to 90 seconds for a person in a voice menu, and hangs up at once on a carrier recording ("the number you dialed…").
+- One call to a number at a time, shared with the AI call-backs of [appointments](#appointments). A busy phone makes the errand wait up to 10 minutes, and an earlier call to the same number up to 25 minutes.
+- A call lasts 10 minutes at most (the AI wraps up at 9:30).
+- The AI cannot press keys: it waits up to 90 seconds for a person in a voice menu, and hangs up at once on a carrier recording ("the number you dialed…").
 - When something comes up that your instructions do not settle, the AI tells the other side it will check and asks you on the page (up to 40 seconds while you are watching). If you are not watching or do not answer, it agrees to nothing about it: it notes their options, says you will confirm and call back, and ends politely.
 - It agrees to no payment, deposit or transfer, gives out no personal details beyond the errand, and never redials on its own.
 
@@ -129,14 +195,9 @@ The default for *Call as* is *AI calls: call as* under [Basics](#basics). Every 
 |---|---|---|
 | Send notifications | on | Off: nothing is sent to any channel. |
 | Channels | none | Telegram, Discord, LINE, ntfy, email, webhooks and more; every enabled channel gets every message. Set-up for each is in [Notifications](NOTIFICATIONS.md). |
-| Commands from chat | off | Look up calls, have the AI call someone and decide to-dos from a Telegram chat (`telegram_control`, `telegram_control_users`, `control_errands_per_hour`, `control_commands_per_minute`). See [Chat commands](CHAT_COMMANDS.md). |
-| MCP for AI agents | off | Built-in Model Context Protocol server at `POST /mcp` (`mcp_enabled`, `mcp_token`, `mcp_calls`, `mcp_errands_per_hour`, `mcp_allowed_origins`). See [MCP](MCP.md). |
-| Address of this console | empty (automatic) | The address put into notification links, e.g. `http://192.0.2.10:8787`. |
-| Network name | `bageo` | The name phones and computers on your network can use instead of the IP: `http://bageo.local:8787/`. Letters, digits and hyphens; empty, `off`, `0`, `none` or `false` turns it off. |
+| Commands from chat | off | Look up calls, have the AI call someone and handle your *To do* items from a Telegram chat. See [Chat commands](CHAT_COMMANDS.md). |
 
-Left empty, *Address of this console* is filled in while the console is open to your network (`AGENT_HOST=0.0.0.0`): `http://<network name>.local:8787/` while the agent answers that name, else the computer's network address. With the console on this computer only, notifications carry no links; inside Docker, set it yourself. *System → About* shows the address in use.
-
-The agent answers the *Network name* itself (multicast DNS, UDP port 5353) while the console is open to your network, but not inside a container. If the system keeps that port to itself, the log shows a line starting with `mDNS:` and links use the IP address. Older Android phones that cannot open `.local` names can use the IP address or the QR code under *System → About*.
+*Commands from chat* is a fold-out section; its settings are saved as `telegram_control`, `telegram_control_users`, `control_errands_per_hour` and `control_commands_per_minute`.
 
 ### Summary & calendar
 
@@ -144,10 +205,38 @@ After each call the AI writes a short summary. It uses your Gemini key, so norma
 
 | Setting | Default | What it does |
 |---|---|---|
-| Summary service | Gemini | Saved as `summary_provider`. **Gemini** (`gemini`): your Gemini key on Gemini's lowest-cost model, `gemini-flash-lite-latest`, with `gemini-flash-latest` as the fallback. **Another service** (`custom`): any OpenAI-compatible service, set in the next row. Without a Gemini key, *Gemini* works like *Another service*. Calendar suggestions use the same service. Settings from older versions are converted automatically. |
-| Another service: API base URL, Model, API key | empty | **API base URL**: the service's OpenAI-compatible address, e.g. DeepSeek `https://api.deepseek.com/v1` (model `deepseek-chat`), OpenAI `https://api.openai.com/v1` (e.g. `gpt-4o-mini`), OpenRouter `https://openrouter.ai/api/v1`, or a local Ollama `http://127.0.0.1:11434/v1`. **Model**: required when a base URL is set. **API key**: shown only as a hint once saved; a local server needs none. With no base URL: DeepSeek when an API key is entered, else Gemini. Saved as `summary_api_base`, `summary_model` and `deepseek_api_key` (it holds the key of whatever service you use). |
-| Suggest calendar events | on | When a call fixes a date (a delivery window, an appointment, a time someone will call back), the summary gets an **Add to calendar** link. One extra request to the summary model per call. Nothing is ever added to a calendar by itself. |
-| Add to calendar | asked on first use | Not a field: the first press of **Add to calendar** asks which calendar (Google Calendar, Outlook.com, Microsoft 365, Apple Calendar, Yahoo Calendar or an `.ics` download) and remembers it (`calendar_app`); **Pick another calendar** next to the button picks another. Notifications and Telegram replies link the same calendar. For Apple Calendar or `.ics` the link points to *Address of this console* (no address, no link) and carries a key for that one file, never your access token. No calendar account is connected to the agent. |
+| Summary service | Gemini | Who writes the summaries and calendar suggestions: **Gemini** or **Another service**. |
+| Another service: API base URL, Model, API key | empty | Fill in when you pick *Another service*. A model is required once a base URL is set; a local server needs no API key. |
+| Suggest calendar events | on | When a call fixes a date (a delivery window, an appointment, a time someone will call back), the summary gets an **Add to calendar** link. Nothing is ever added to a calendar by itself. |
+| Add to calendar | asked on first use | Not a field: the first press of **Add to calendar** asks which calendar to use, and remembers it. |
+
+**Summary service**:
+
+- **Gemini** (`gemini`): your Gemini key on Gemini's lowest-cost model, `gemini-flash-lite-latest`, with `gemini-flash-latest` as the fallback.
+- **Another service** (`custom`): any OpenAI-compatible service, set in the next row.
+- Saved as `summary_provider`. Without a Gemini key, *Gemini* works like *Another service*. Settings from older versions are converted automatically.
+
+**Another service** fields:
+
+- **API base URL**: the service's OpenAI-compatible address; examples are below.
+- **Model**: required when a base URL is set.
+- **API key**: shown only as a hint once saved; a local server needs none.
+- With no base URL: DeepSeek when an API key is entered, else Gemini.
+- Saved as `summary_api_base`, `summary_model` and `deepseek_api_key` (it holds the key of whatever service you use).
+
+Base URL examples:
+
+- DeepSeek: `https://api.deepseek.com/v1` (model `deepseek-chat`)
+- OpenAI: `https://api.openai.com/v1` (e.g. `gpt-4o-mini`)
+- OpenRouter: `https://openrouter.ai/api/v1`
+- A local Ollama: `http://127.0.0.1:11434/v1`
+
+**Add to calendar**:
+
+- Choose Google Calendar, Outlook.com, Microsoft 365, Apple Calendar, Yahoo Calendar or an `.ics` download. The choice is remembered (`calendar_app`); **Pick another calendar** next to the button picks another.
+- Notifications and Telegram replies link the same calendar.
+- For Apple Calendar or `.ics` the link points to *Address of this console* (no address, no link) and carries a key for that one file, never your password. No calendar account is connected to Bageo.
+- With *Suggest calendar events* on, each call costs one extra request to the summary model.
 
 #### Appointments
 
@@ -156,15 +245,30 @@ When a caller wants to set a time with you (a meeting, a visit, a call at a set 
 | Setting | Default | What it does |
 |---|---|---|
 | Appointments | Off | **Ask me first** (`confirm`) turns the flow below on. |
-| Text the caller | off | Lets the phone that took the call text your answer, in your name, after you accept or decline, e.g. "Hi, it's Alex. Sat, Nov 14, 3:00 PM works for me. See you then!" Only the time goes in, never what it is about: those are the caller's own words and could carry a link. Texts go to mobile numbers only: Taiwan mobiles, +1 numbers (not toll-free or 900) and other countries' mobiles. Needs a phone app that can send texts. |
-| Default reply | Automatic | How the caller hears your answer unless you pick another way. **Automatic** follows the chart below; **Always a text** / **Always an AI call-back** use only that way, else nothing. It presets the choice under *To do*, is what a Telegram button press uses, and decides what the AI promises on the call. |
+| Text the caller | off | Lets the phone that took the call text your answer, in your name, after you accept or decline. Texts go to mobile numbers only. |
+| Default reply | Automatic | How the caller hears your answer unless you pick another way: **Automatic**, **Always a text** or **Always an AI call-back**. |
+
+*Text the caller*:
+
+- A text looks like this: "Hi, it's Alex. Sat, Nov 14, 3:00 PM works for me. See you then!"
+- Only the time goes in, never what it is about: those are the caller's own words and could carry a link.
+- Texts go to mobile numbers only: Taiwan mobiles, +1 numbers (not toll-free or 900) and other countries' mobiles. Needs a phone app that can send texts.
+
+*Default reply*:
+
+- **Automatic** follows the chart below.
+- **Always a text** / **Always an AI call-back** use only that way, else nothing.
+- It presets the choice under *To do*, is what a Telegram button press uses, and decides what the AI promises on the call.
 
 How a request plays out:
 
-1. **On the call.** The AI first asks the time back in full ("Thursday, November 19, at 4:30 pm, right?") and waits for a yes; a correction is asked back again. Then it says it will check and text them back, or "call you back later" when the answer goes by call-back, or only "get back to you" when neither can reach them. It never asks the caller to wait.
+1. **On the call.** The AI first asks the time back in full ("Thursday, November 19, at 4:30 pm, right?") and waits for a yes; a correction is asked back again. It never asks the caller to wait.
+   Then it says it will check and text them back, or "call you back later" when the answer goes by call-back, or only "get back to you" when neither can reach them.
 2. **After the call.** The request waits under **To do** at the top of the **Calls** tab (and in the call's details): who, what and when, how the caller hears your answer (**Text**, **AI call-back** or **Don't tell them**; a way that cannot reach the number is greyed out), and **Accept** / **Decline**.
 3. **You decide.** The entry says what happened, in words: "Accepted, and the caller got a text", why a text did not go out, or how far the call-back got. An accepted one gets **Add to calendar**; a text that did not go out gets **Send the text again**.
-4. **On the go.** With a Telegram bot given through `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (or `telegram_bot_token` / `telegram_chat_id` through `PUT /calls/api/settings`) and *Send notifications* on, you also get a card with **Accept** / **Decline**. A Telegram channel added in the console, like every other channel, gets a reminder with a link to the call.
+4. **On the go.** With a Telegram bot set up and *Send notifications* on, you also get a card with **Accept** / **Decline**.
+
+Set the Telegram bot with `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (or `telegram_bot_token` / `telegram_chat_id` through `PUT /calls/api/settings`). A Telegram channel added in the console, like every other channel, gets a reminder with a link to the call.
 
 ```mermaid
 flowchart TD
@@ -185,7 +289,12 @@ Rules that keep it safe:
 - It works with both answer styles, and replaces the calendar suggestion for that call.
 - A call-back only dials numbers of the answering SIM's own country with a real phone number's length (in Taiwan 8 to 9 digits after the 0): never toll-free (0800, +1 800 to 888), premium (0204, 0209, +1 900), short codes (165, 110) or numbers from abroad.
 
-**The AI call-back** goes out from the phone and SIM that took the call (when that phone is connected), only to that caller's own number, one call-back per number at a time. The AI waits until the callee picks up and speaks (nobody for 70 seconds: no answer), says who is calling, gives your answer in the language of the original call, says goodbye once and hangs up. It is listed as *AI call-back*. *To do* shows how it went; one that could not be placed is also sent to your notification channels. Texts also go out from the SIM the call came in on, so a dual-SIM phone answers from the right number.
+**How the AI call-back works:**
+
+- It goes out from the phone and SIM that took the call (when that phone is connected), only to that caller's own number, one call-back per number at a time.
+- The AI waits until the callee picks up and speaks (nobody for 70 seconds: no answer), says who is calling, gives your answer in the language of the original call, says goodbye once and hangs up.
+- It is listed as *AI call-back*. *To do* shows how it went; one that could not be placed is also sent to your notification channels.
+- Texts also go out from the SIM the call came in on, so a dual-SIM phone answers from the right number.
 
 Times are the computer's local time (see [Time zone](#time-zone)). Without any key for the summary, the notification carries the caller's first words instead; the transcript is always in the console. Every appointment field and route is in [API → Appointments and tasks](API.md#appointments-and-tasks).
 
@@ -194,6 +303,28 @@ Times are the computer's local time (see [Time zone](#time-zone)). Without any k
 | Setting | Default | What it does |
 |---|---|---|
 | Thinking level | Low | For Live models with "thinking" in their name only: Low, Medium or High. Low answers fastest. Saved as `gemini_thinking_level`. |
+| Console password | empty | Once set, the console and the API ask for the password (the browser remembers it). Saved as `ui_password`. |
+| Let other AI tools connect (MCP) | off | Lets AI tools such as Claude or ChatGPT look up your calls and *To do* items. Leave it off if you do not need it. |
+| Address of this console | empty (automatic) | The address put into notification links, e.g. `http://192.0.2.10:8787`. |
+| Network name | `bageo` | The name phones and computers on your network can use instead of the IP: `http://bageo.local:8787/`. Letters, digits and hyphens; empty, `off`, `0`, `none` or `false` turns it off. |
+
+The first time you open the console without a password, it offers to set one.
+
+*Let other AI tools connect (MCP)* is a fold-out section: a built-in Model Context Protocol server at `POST /mcp`. See [MCP](MCP.md). It has five fields:
+
+- *Turn on MCP* (`mcp_enabled`): turn it on and set the token below, or it does nothing. The address is the console's address plus `/mcp`.
+- *Token* (`mcp_token`): enter this token (a Bearer token) in the AI tool.
+- *May it ask the AI to place calls?* (`mcp_calls`): *No (look up only)*, *Yes, but ask me in a chat first* or *Yes, call right away*. Asking first needs a chat with commands turned on.
+- *Most AI calls per hour* (`mcp_errands_per_hour`): counted across all AI tools, 0 to 30.
+- *Allowed websites* (`mcp_allowed_origins`): needed only for web-based AI tools, one address per line, e.g. `https://app.example`. Otherwise leave it empty.
+
+Left empty, *Address of this console* is filled in while the console is open to your network (`AGENT_HOST=0.0.0.0`): `http://<network name>.local:8787/` while Bageo answers that name, else the computer's network address.
+
+With the console on this computer only, notifications carry no links; inside Docker, set it yourself. *System → About* shows the address in use.
+
+Bageo answers the *Network name* itself (multicast DNS, UDP port 5353) while the console is open to your network, but not inside a container.
+
+If the system keeps that port to itself, the log shows a line starting with `mDNS:` and links use the IP address. Older Android phones that cannot open `.local` names can use the IP address or the QR code under *System → About*.
 
 *Country calling code* is set at start-up; see [Country calling code](#country-calling-code).
 
@@ -211,7 +342,9 @@ A few settings have no field. Set them in `settings.json` or with `PUT /calls/ap
 
 Set as environment variables or in `.env`. All are optional; a real environment variable wins over the same line in `.env`.
 
-In Docker, only the variables listed under `environment:` in `docker-compose.yml` reach the agent (`CALLS_UI_TOKEN`, `DEVICE_TOKEN`, `PUBLIC_URL`, `CALLS_RETENTION_DAYS`, `TZ`), and the image sets `AGENT_HOST=0.0.0.0`, `ASSETS_DIR=/app/assets`, `CALLS_DATA_DIR=/data/calls` and `USB_BRIDGE=off`. Add a line there for any other variable you need.
+In Docker, only the variables listed under `environment:` in `docker-compose.yml` reach Bageo (`CALLS_UI_TOKEN`, `DEVICE_TOKEN`, `PUBLIC_URL`, `CALLS_RETENTION_DAYS`, `TZ`). Add a line there for any other variable you need.
+
+The image itself sets `AGENT_HOST=0.0.0.0`, `ASSETS_DIR=/app/assets`, `CALLS_DATA_DIR=/data/calls` and `USB_BRIDGE=off`.
 
 ### Network and access
 
@@ -220,9 +353,13 @@ In Docker, only the variables listed under `environment:` in `docker-compose.yml
 | `AGENT_HOST` | `127.0.0.1` | Address to listen on. `127.0.0.1` = this computer only. `0.0.0.0` = every network interface. |
 | `AGENT_PORT` | `8787` | Port of the web console and of the phones' connection. |
 | `CALLS_UI_TOKEN` | *(empty)* | Password for the web console and API. Send as `?token=…`, `Authorization: Bearer …` or `X-Calls-Token`. **Set it whenever `AGENT_HOST` is not `127.0.0.1`.** |
-| `DEVICE_TOKEN` | *(empty)* | Phones that do not come through USB must connect with `…/ws?token=<this>`. **Set it whenever `AGENT_HOST` is not `127.0.0.1`.** Phones on USB are exempt (the USB tunnel ends on the computer itself). |
-| `PUBLIC_URL` | *(empty)* | Same as *Address of this console*; the web console's value wins. Empty = automatic (see [Notifications](#notifications)). |
-| `MDNS_NAME` | `bageo` | Same as *Network name*: the console answers at `http://<this>.local:8787/` on your network. Empty, `off`, `0`, `none` or `false` = off; on Windows an empty value counts as not set, so write `MDNS_NAME=off`. The web console's value wins. |
+| `DEVICE_TOKEN` | *(empty)* | Phones that do not come through USB must connect with `…/ws?token=<this>`. **Set it whenever `AGENT_HOST` is not `127.0.0.1`.** |
+| `PUBLIC_URL` | *(empty)* | Same as *Address of this console*; the web console's value wins. Empty = automatic (see [Advanced](#advanced)). |
+| `MDNS_NAME` | `bageo` | Same as *Network name*: the console answers at `http://<this>.local:8787/` on your network. The web console's value wins. |
+
+Phones on USB are exempt from `DEVICE_TOKEN` (the USB tunnel ends on the computer itself).
+
+An empty `MDNS_NAME`, `off`, `0`, `none` or `false` turns it off. On Windows an empty value counts as not set, so write `MDNS_NAME=off`.
 
 ### Using the console from other devices
 
@@ -234,9 +371,11 @@ CALLS_UI_TOKEN=choose-a-long-random-string
 DEVICE_TOKEN=another-long-random-string
 ```
 
-Open `http://bageo.local:8787/?token=choose-a-long-random-string` (or the computer's IP, e.g. `http://192.0.2.10:8787/?token=…`) once; the page remembers the token. *System → About* shows the address with a QR code to scan with your phone, and how to add the console to your home screen.
+Open `http://bageo.local:8787/?token=choose-a-long-random-string` (or the computer's IP, e.g. `http://192.0.2.10:8787/?token=…`) once; the page remembers the password.
 
-If this computer is on a VPN that sends all traffic through the tunnel, the agent may take the VPN's address for the name and the links. Set `AGENT_HOST` to the computer's LAN IP (e.g. `AGENT_HOST=192.0.2.10`); the name and the links then use that address.
+*System → About* shows the address with a QR code to scan with your phone, and how to add the console to your home screen.
+
+If this computer is on a VPN that sends all traffic through the tunnel, Bageo may take the VPN's address for the name and the links. Set `AGENT_HOST` to the computer's LAN IP (e.g. `AGENT_HOST=192.0.2.10`); the name and the links then use that address.
 
 The connection is plain HTTP: fine on a home network you trust, not for the open internet. To reach the console from outside, use a VPN (WireGuard, Tailscale) or a reverse proxy with HTTPS and its own login; do not forward the port.
 
@@ -244,7 +383,7 @@ The connection is plain HTTP: fine on a home network you trust, not for the open
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `CALLS_DATA_DIR` | `data/calls` | Call records, recordings, settings and contacts. Relative to the folder the agent starts in; in the container `/data/calls`. |
+| `CALLS_DATA_DIR` | `data/calls` | Call records, recordings, settings and contacts. Relative to the folder Bageo starts in; in the container `/data/calls`. |
 | `CALLS_RETENTION_DAYS` | `7` | Calls older than this are deleted, records and audio (1–3650). |
 | `CALLS_RECORD` | `true` | `false`: no call records and no recordings are kept at all. |
 | `ASSETS_DIR` | *(searched)* | Folder with the bundled sounds. Otherwise `assets` next to the program is used; in the container `/app/assets`. |
@@ -253,27 +392,39 @@ The connection is plain HTTP: fine on a home network you trust, not for the open
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `TZ` | *(the computer's own)* | Time zone of the times in notifications (`Nov 13, 08:09`, written the way your language writes dates), of "today" in the call list and of calendar suggestions. A zone name such as `Asia/Taipei`, `Europe/Berlin` or `America/New_York`. Set it only when the computer the agent runs on is not in your zone. The current time is in `/health` as `local_time`. |
+| `TZ` | *(the computer's own)* | Time zone of the times in notifications, of "today" in the call list and of calendar suggestions. A zone name such as `Asia/Taipei`, `Europe/Berlin` or `America/New_York`. |
 
-In Docker the container takes the host's zone from the mounted `/etc/localtime` (Linux hosts); put `TZ=Asia/Taipei` in `.env` for another zone. On Docker Desktop for Windows or macOS, remove the `/etc/localtime` line from `docker-compose.yml` and set `TZ` in `.env`; otherwise the container runs on UTC. Leave `TZ` out rather than empty: an empty `TZ` means UTC.
+Times in notifications look like `Nov 13, 08:09`, written the way your language writes dates. Set `TZ` only when the computer Bageo runs on is not in your zone. The current time is in `/health` as `local_time`.
+
+In Docker the container takes the host's zone from the mounted `/etc/localtime` (Linux hosts); put `TZ=Asia/Taipei` in `.env` for another zone.
+
+On Docker Desktop for Windows or macOS, remove the `/etc/localtime` line from `docker-compose.yml` and set `TZ` in `.env`; otherwise the container runs on UTC. Leave `TZ` out rather than empty: an empty `TZ` means UTC.
 
 ### Phones on USB
 
-The agent keeps `adb reverse` up and starts the phone app by itself.
+Bageo keeps `adb reverse` up and starts the phone app by itself.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `USB_BRIDGE` | `on` | `off`: the agent does not run `adb` at all (Wi-Fi phones, containers, or another computer has the phones). |
-| `ADB_BIN` | *(searched)* | Full path of `adb`. Search order otherwise: `platform-tools/` next to the program, `ANDROID_HOME`, the usual SDK folders, then `adb` on the `PATH`. If several versions are installed, pin one here: different versions restart each other's server and drop the phones. |
+| `USB_BRIDGE` | `on` | `off`: Bageo does not run `adb` at all (Wi-Fi phones, containers, or another computer has the phones). |
+| `ADB_BIN` | *(searched)* | Full path of `adb`. Search order otherwise: `platform-tools/` next to the program, `ANDROID_HOME`, the usual SDK folders, then `adb` on the `PATH`. |
 | `ADB_SERIALS` | *(all)* | Only manage these phones (serials from `adb devices`, comma separated). |
 | `USB_PHONE_PORT` | `8765` | The port the app dials on the phone. Change it only together with the app's address. |
 | `USB_BRIDGE_INTERVAL_SEC` | `15` | How often the USB link is checked, in seconds (5–300). |
 
+If several versions of `adb` are installed, pin one with `ADB_BIN`: different versions restart each other's server and drop the phones.
+
 ### Country calling code
 
-`COUNTRY_CODE` is your own country's calling code, digits only, without `+` (`1`, `44`, `81`; up to four digits). The agent uses it to read a number written without a country code: blocked numbers (so `+44 20…` matches the national form the phone reports), contacts, and AI errands. A caller from another country is transcribed with their country's language first (or, when the AI does not speak it, with the language detected), so their goodbye is not lost.
+`COUNTRY_CODE` is your own country's calling code, digits only, without `+` (`1`, `44`, `81`; up to four digits). Bageo uses it to read a number written without a country code: blocked numbers (so `+44 20…` matches the national form the phone reports), contacts, and AI errands.
 
-Empty = `886` when *Language* is 繁體中文, else none. Set it only when your language does not point to a single country (English, Spanish, …). It is not in the web console; besides the environment variable, `country_code` in `settings.json` or `PUT /calls/api/settings` sets it. A `country_code` in `settings.json`, even an empty one, wins over `COUNTRY_CODE`; delete that line to use the environment variable again.
+A caller from another country is transcribed with their country's language first (or, when the AI does not speak it, with the language detected), so their goodbye is not lost.
+
+Empty = `886` when *Language* is 繁體中文, else none. Set it only when your language does not point to a single country (English, Spanish, …).
+
+It is not in the web console; besides the environment variable, `country_code` in `settings.json` or `PUT /calls/api/settings` sets it.
+
+A `country_code` in `settings.json`, even an empty one, wins over `COUNTRY_CODE`; delete that line to use the environment variable again.
 
 ### First-run defaults
 

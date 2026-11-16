@@ -21,8 +21,8 @@ own facts, or treat certain callers your way.
 
 ## What the AI is told on every call
 
-For each call the agent builds the system prompt for Gemini Live from these
-parts, in this order:
+For each call, Bageo builds the system prompt for Gemini Live from these parts,
+in this order:
 
 | # | Part | Added when |
 |---|---|---|
@@ -38,51 +38,53 @@ parts, in this order:
 | 10 | **Other names callers use for you** (`owner_aliases`), so "is Lex there?" means you | you set some |
 | 11 | **The fixed rules** of the answer style (see [What you cannot change](#what-you-cannot-change)) | always |
 
-Two more things change the prompt during a call. With *Keep them talking* on,
-while a suspicious call is still being checked, a "decline sales calls at
-once" line is swapped for "let them say what they want". With *Appointments*
-on, a normal call also gets the appointment rules and the
-`propose_appointment` tool; Stall Mode never does.
+Two more things change the prompt during a call:
+
+- With *Keep them talking* on, a suspicious call that is still being checked
+  gets "let them say what they want" in place of a "decline sales calls at
+  once" line.
+- With *Appointments* on, a normal call also gets the appointment rules and
+  the `propose_appointment` tool. Stall Mode never does.
 
 Every normal call, with the built-in prompt or your own, also gets one fixed
-rule after part 3: when the caller gives a time, date, amount or phone number
+rule after part 3. When the caller gives a time, date, amount or phone number
 you will need ("delivered tomorrow at 3 pm", "call back on 555-0100"), the AI
 asks that one item back as a question ("tomorrow at three in the afternoon,
-right?") and waits for the answer. A time is said in full, with morning or
-afternoon and the minutes; a correction is asked back again; something it did
-not catch is asked again, never guessed; and an item already confirmed is not
-asked twice. It is the stated exception to "do not repeat back what the caller
-said", and asking back is not agreeing. Speech recognition garbles fast
-speech ("four thirty" heard as "four"); the question gives the caller a chance
-to correct it. Stall Mode does not get this rule.
+right?") and waits for the answer.
+
+- A time is said in full, with morning or afternoon and the minutes.
+- A correction is asked back again.
+- Something the AI did not catch is asked again, never guessed.
+- An item already confirmed is not asked twice.
+
+Asking back is not agreeing. It is the stated exception to "do not repeat back
+what the caller said".
+
+Speech recognition garbles fast speech ("four thirty" heard as "four"), so the
+question gives the caller a chance to correct it. Stall Mode does not get this
+rule.
 
 `{owner}` anywhere in a prompt becomes the name in *Settings → Basics → Your
 name*. Changes apply from the next call; nothing needs restarting.
 
 To read the built-in prompt, open *Settings → Prompt → Show the built-in
 prompt*. It is shown for the saved language, answer style and name, so save
-first if you just changed them. **Copy into editor** gives you a starting
-point; **Back to built-in (clear)** empties the box again. A copy you save
-without editing still counts as the built-in prompt: switch the language and
-the AI uses that language's built-in prompt.
+first if you just changed them.
+
+- **Copy into editor** gives you a starting point.
+- **Back to built-in (clear)** empties the box again.
+
+A copy you save without editing still counts as the built-in prompt: switch the
+language and the AI uses that language's built-in prompt.
 
 ## The quick way: let an AI interview you
 
 You do not need to know how to write prompts. A chat AI can interview you and
 write one.
 
-1. In the web console open *Settings → Prompt*, find the card *Don't want to
+1. In the console open *Settings → Prompt*, find the card *Don't want to
    write it yourself?*, choose the language and press **Copy interview
-   prompt**. The same texts are in [`docs/prompts/`](../prompts/):
-   [English](../prompts/interview.en.txt),
-   [繁體中文](../prompts/interview.zh-TW.txt),
-   [简体中文](../prompts/interview.zh-CN.txt),
-   [日本語](../prompts/interview.ja.txt),
-   [한국어](../prompts/interview.ko.txt),
-   [Español](../prompts/interview.es.txt),
-   [Français](../prompts/interview.fr.txt),
-   [Deutsch](../prompts/interview.de.txt),
-   [Português](../prompts/interview.pt.txt).
+   prompt**.
 2. Paste it into a new chat in ChatGPT, Claude, Gemini or any other chat AI.
 3. It asks about ten questions, one at a time: the language callers use, the
    answer style, your name, how you talk and the exact words you say, words
@@ -101,6 +103,19 @@ write one.
 
 The interview applies the techniques below on its own and keeps the rules the
 call engine relies on.
+
+The same texts are in [`docs/prompts/`](../prompts/), if you would rather open
+a file:
+
+- [English](../prompts/interview.en.txt)
+- [繁體中文](../prompts/interview.zh-TW.txt)
+- [简体中文](../prompts/interview.zh-CN.txt)
+- [日本語](../prompts/interview.ja.txt)
+- [한국어](../prompts/interview.ko.txt)
+- [Español](../prompts/interview.es.txt)
+- [Français](../prompts/interview.fr.txt)
+- [Deutsch](../prompts/interview.de.txt)
+- [Português](../prompts/interview.pt.txt)
 
 ## Notes the AI may answer from
 
@@ -135,10 +150,10 @@ Two settings outside the prompt change what the AI knows:
   answering your phone: "my sister, call her Mei", "the landlord, usually
   about repairs". Saved contacts are also protected in the scam check: a
   relative talking about a transfer is not mistaken for a scammer.
-- **Other names callers use for you** (*Settings → Basics*): up to ten, one per
-  line. People who know you as "Lex" or by your English name are understood as
-  asking for you, in both answer styles and with your own prompt too.
-  Summaries still use *Your name*.
+- **Other names callers use for you** (*Settings → Basics → More options*): up
+  to ten, one per line. People who know you as "Lex" or by your English name are
+  understood as asking for you, in both answer styles and with your own prompt
+  too. Summaries still use *Your name*.
 
 ## Writing or editing it yourself
 
@@ -158,7 +173,7 @@ sections work better than one long paragraph. Cover these:
 | Ending | Wait until the caller is clearly done, then one closing line with your goodbye word. |
 
 Leave these **out** of the prompt: the facts from your notes, a rule about
-admitting to being an AI (the agent adds it), API or technical settings, and
+admitting to being an AI (Bageo adds it), API or technical settings, and
 long stalling scripts.
 
 ### A short example (AI assistant, English)
@@ -230,31 +245,38 @@ Keep these in your own words:
   | The call | Opens in |
   |---|---|
   | From a country other than the SIM's, and the AI speaks that country's language | That language: "Hello?" for `+1` or `+44`, 「もしもし？」 for `+81` |
-  | Any other call | The SIM's language in *Main language for each SIM*, else *Language* |
+  | Any other call | The SIM's language in *Main language for each SIM* (*Settings → Basics → More options*), else *Language* |
 
   Traditional and Simplified Chinese never switch to each other: a `+86`
-  caller to a 繁體中文 setup hears your setting's 「喂？」. A phone app older
-  than 1.0 does not report the SIM; then "from abroad" means a `+…` number
-  whose country code is not yours ([Country calling code](SETTINGS.md#country-calling-code),
-  `COUNTRY_CODE`; `886` by default for 繁體中文). Some phones report the
-  SIM only at pick-up; if that changes the language, the line prepared while
-  it rang is dropped and the AI answers a moment later in the right language.
+  caller to a 繁體中文 setup hears your setting's 「喂？」.
+
+  A phone app older than 1.0 does not report the SIM. Then "from abroad" means
+  a `+…` number whose country code is not yours
+  ([Country calling code](SETTINGS.md#country-calling-code), `COUNTRY_CODE`;
+  `886` by default for 繁體中文).
+
+  Some phones report the SIM only at pick-up. If that changes the language, the
+  line prepared while it rang is dropped and the AI answers a moment later in
+  the right language.
 - **Short spoken turns.** Long turns feel slow on a phone line and are hard to
   interrupt.
 - **Never make the caller wait.** An AI that says "let me check" has nothing to
   check and then goes quiet.
-- **Do not say goodbye first, and use a goodbye word when closing.** The agent
+- **Do not say goodbye first, and use a goodbye word when closing.** Bageo
   hangs up when the *caller's* last words are a goodbye or a wrap-up ("that's
   all, thanks, bye"), or when the caller stays silent for a few seconds after
-  the AI said goodbye. An AI that says "bye" mid-call makes the hang-up logic
-  think the call is ending. It listens for the goodbye words of every
-  supported language ("bye", "goodbye", "see you", 「掰掰」「再見」,
-  「失礼します」, "adiós", "au revoir", "tschüss", "tchau", …). Thanks after
-  them still count ("that's all, thank you so much"); a goodbye said to
-  someone else ("say bye to grandma") does not; one that turns into a question
-  ("so that's all… for today, right?") is taken back.
-- **No talk of time limits.** Close to the longest allowed call length, the
-  agent itself tells the AI to wrap up.
+  the AI said goodbye.
+
+  An AI that says "bye" mid-call makes the hang-up logic think the call is
+  ending. It listens for the goodbye words of every supported language ("bye",
+  "goodbye", "see you", 「掰掰」「再見」, 「失礼します」, "adiós", "au revoir",
+  "tschüss", "tchau", …).
+
+  Three details: thanks after a goodbye still count ("that's all, thank you so
+  much"); a goodbye said to someone else ("say bye to grandma") does not; one
+  that turns into a question ("so that's all… for today, right?") is taken back.
+- **No talk of time limits.** Close to the longest allowed call length, Bageo
+  itself tells the AI to wrap up.
 
 ## Sales and scam calls: Stall Mode
 
@@ -264,11 +286,14 @@ a call is confirmed as a sales pitch or a scam:
 - **Off:** the prompt's own line applies; by default one polite "no, thanks".
 - **On (Stall Mode):** the AI becomes an interested, slightly slow, easily
   distracted customer. It keeps asking how things work, mishears numbers and
-  runs into one problem after another. It gives no real data, moves no money
-  and agrees to nothing; when the caller wants payment, it plays along in
-  words while something keeps going wrong. If the caller tries to hang up, it
-  has "just one more question". The call ends when the caller gives up, the
-  line goes quiet, or after *Longest such call* (30 minutes by default).
+  runs into one problem after another.
+
+In Stall Mode the AI gives no real data, moves no money and agrees to nothing.
+When the caller wants payment, it plays along in words while something keeps
+going wrong. If the caller tries to hang up, it has "just one more question".
+
+The call ends when the caller gives up, the line goes quiet, or after *Longest
+such call* (30 minutes by default).
 
 A typical stalled call:
 
@@ -290,29 +315,39 @@ How a call gets flagged, in three layers:
    gift cards, safe accounts or "add me on LINE".
 3. **A second look:** when the score crosses the line, a small model
    (`gemini-flash-lite-latest`) reads the call so far, knowing whether the
-   caller is in your contacts, while the AI keeps talking (it has 1.5 s to
-   answer). These are left alone: saved contacts talking about transfers or
-   bills, a courier collecting cash on delivery, your card company checking a
-   purchase, a bank or insurer updating you on an existing claim or card
-   without pitching new plans or asking for ATM steps, codes, safe accounts or
-   chat apps. They are looked at again only when more such words come (three
-   times per call at most). A caller who has only said who they are ("this is
-   your bank's card risk-control centre") is `too_early` and is looked at
-   again once they say what they want. A recorded voice menu ("press 1 for…")
-   gets no answer: the AI stays quiet and the agent hangs up after 4 s of quiet
-   line, or after 20 s.
+   caller is in your contacts. The AI keeps talking meanwhile (it has 1.5 s to
+   answer).
+
+These are left alone and treated as normal calls:
+
+- saved contacts talking about transfers or bills;
+- a courier collecting cash on delivery;
+- your card company checking a purchase;
+- a bank or insurer updating you on an existing claim or card, without pitching
+  new plans or asking for ATM steps, codes, safe accounts or chat apps.
+
+They are looked at again only when more such words come (three times per call
+at most). A caller who has only said who they are ("this is your bank's card
+risk-control centre") is `too_early` and is looked at again once they say what
+they want.
+
+A recorded voice menu ("press 1 for…") gets no answer: the AI stays quiet and
+Bageo hangs up after 4 s of quiet line, or after 20 s.
 
 The switch to Stall Mode happens mid-call on a fresh session and replaces a few
-lines of the **built-in** prompt. It works with your own prompt too: while
-the call is being checked, a line that declines sales calls at once is
-overridden so the caller can say what they want, and once confirmed the full
-stalling instructions are added at the end and take priority. So keep long
-stalling scripts out of your prompt, and do not tell it to ask for the
-caller's staff ID or proof: scammers who feel found out hang up at once.
+lines of the **built-in** prompt. It works with your own prompt too:
+
+- While the call is being checked, a line that declines sales calls at once is
+  overridden so the caller can say what they want.
+- Once confirmed, the full stalling instructions are added at the end and take
+  priority.
+
+So keep long stalling scripts out of your prompt, and do not tell it to ask for
+the caller's staff ID or proof: scammers who feel found out hang up at once.
 
 ## What you cannot change
 
-The agent appends these to every prompt, built-in or your own:
+Bageo appends these to every prompt, built-in or your own:
 
 - **Honesty about being an AI.** *AI assistant*: never claims to be a person or
   to be you. *As me*: talks as you, but when someone sincerely asks whether
@@ -335,33 +370,49 @@ The agent appends these to every prompt, built-in or your own:
 
 ## Appointment, call-back and errand calls
 
-These calls follow scripts the agent writes, not your prompt:
+These calls follow scripts Bageo has built in, not your prompt.
 
-- **Appointments** (when switched on): on a normal call the AI does not agree
-  to a time. It first asks the time back in full ("Thursday, November 19, at
-  4:30 pm, right?") and waits for a yes, then says it will check and get back
-  to the caller by text or by phone (whichever can reach that number) and
-  records the request with `propose_appointment`. A request sent without the
-  caller's yes (`confirmed_by_caller`) is answered `confirm_first` and the AI
-  asks first; each time is sent back once, at most twice a call. If the caller
-  hangs up before the AI has asked, the time still goes to your to-do list,
-  marked as not confirmed by the caller. Your prompt's style still applies.
-- **AI call-backs** say who is calling, give your answer once in the language of
-  the original call, and say goodbye; they repeat it only when asked.
-- **AI errands** get the task you wrote, the identity you chose (your assistant
-  or you) and fixed rules: say nothing to recordings or voice menus and wait
-  for a person; settle only what the task allows and call `ask_owner` for
-  anything else; give out no personal details beyond the task; agree to no
-  payment or deposit; read every time, date, weekday, quantity, price,
-  address, phone number or booking name back as a question as soon as it
-  comes up ("today at 4:30 in the afternoon, right?") and wait for a yes
-  before any thanks or goodbye; leave a two-sentence message on voicemail;
-  admit to being an AI when sincerely asked. The AI speaks the task's
-  language and switches if the other side answers in another. After the call
-  the summary goes by what the other side last said and confirmed; a detail
-  they never clearly confirmed is marked *Not confirmed by the other side* in
-  the result and the notification. Here the task is the prompt: say what you
-  want and what you can accept ("7:30 to 8 is fine too").
+**Appointments** (when switched on): on a normal call the AI does not agree to
+a time.
+
+- It first asks the time back in full ("Thursday, November 19, at 4:30 pm,
+  right?") and waits for a yes.
+- Then it says it will check and get back to the caller by text or by phone
+  (whichever can reach that number), and records the request with
+  `propose_appointment`.
+- A request sent without the caller's yes (`confirmed_by_caller`) is answered
+  `confirm_first` and the AI asks first. Each time is sent back once, at most
+  twice a call.
+- If the caller hangs up before the AI has asked, the time still goes to *To do*
+  on the Calls page, marked as not confirmed by the caller.
+
+Your prompt's style still applies to how the AI talks.
+
+**AI call-backs** say who is calling, give your answer once in the language of
+the original call, and say goodbye. They repeat it only when asked.
+
+**AI errands** get the task you wrote, the identity you chose (your assistant
+or you) and these fixed rules:
+
+- Say nothing to recordings or voice menus; wait for a person.
+- Settle only what the task allows, and call `ask_owner` for anything else.
+- Give out no personal details beyond the task, and agree to no payment or
+  deposit.
+- Read every time, date, weekday, quantity, price, address, phone number or
+  booking name back as a question as soon as it comes up ("today at 4:30 in the
+  afternoon, right?"), and wait for a yes before any thanks or goodbye.
+- Leave a two-sentence message on voicemail.
+- Admit to being an AI when sincerely asked.
+
+The AI speaks the task's language and switches if the other side answers in
+another.
+
+After the call, the summary goes by what the other side last said and
+confirmed. A detail they never clearly confirmed is marked *Not confirmed by
+the other side* in the result and the notification.
+
+Here the task is the prompt: say what you want and what you can accept ("7:30
+to 8 is fine too").
 
 ## Test it with a real call
 
