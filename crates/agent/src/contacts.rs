@@ -1627,7 +1627,7 @@ fn legacy_score(text: &str, enc: &'static encoding_rs::Encoding) -> i64 {
                 }
             }
             '\u{ac00}'..='\u{d7af}' => {
-                if enc == encoding_rs::EUC_KR {
+                if enc == encoding_rs::EUC_KR && in_ks_x_1001(c) {
                     3
                 } else {
                     -3
@@ -1657,6 +1657,16 @@ fn legacy_score(text: &str, enc: &'static encoding_rs::Encoding) -> i64 {
         };
     }
     score
+}
+
+/// Whether `c` is one of the 2,350 hangul syllables of KS X 1001, the ones
+/// Korean text is written in. The other syllables of the Korean encoding
+/// (Windows-949) are what it makes of bytes from another encoding, such as a
+/// Shift_JIS file, so they must not count for it.
+fn in_ks_x_1001(c: char) -> bool {
+    let mut buf = [0u8; 4];
+    let (out, _, unmappable) = encoding_rs::EUC_KR.encode(c.encode_utf8(&mut buf));
+    !unmappable && out.len() == 2 && out[0] >= 0xA1 && out[1] >= 0xA1
 }
 
 /// The field separator of delimited text: tab, comma or semicolon, whichever
@@ -3925,6 +3935,12 @@ mod tests {
             (GBK, "姓名,手机,备注\r\n张伟,13800138000,同事\r\n"),
             (SHIFT_JIS, "氏名,電話,備考\r\n佐藤健一,03-1234-5678,取引先\r\n鈴木花子,090-0000-0001,友人\r\n"),
             (EUC_KR, "이름,전화,메모\r\n김민수,010-0000-0002,친구\r\n"),
+            // Short Japanese sheets whose bytes the Korean encoding also reads
+            // (as rare syllables): they stay Japanese.
+            (SHIFT_JIS, "名前,電話番号\r\n山田太郎,03-0000-0001\r\n高橋美奈子,090-0000-0002\r\n"),
+            (SHIFT_JIS, "名前,電話\r\n渡部真理,080-0000-0003\r\n"),
+            (SHIFT_JIS, "氏名,携帯,メモ\r\n小林誠,090-0000-0004,同僚\r\n中村恵子,090-0000-0005,隣人\r\n加藤翼,090-0000-0006,\r\n吉田優,090-0000-0007,\r\n"),
+            (EUC_KR, "이름,전화번호,메모\r\n이영희,010-0000-0008,회사 동료\r\n박지성,010-0000-0009,이웃\r\n"),
             (WINDOWS_1252, "Nom,Tel\r\nJosé Müller,+49 30 1234567\r\n"),
         ] {
             let (bytes, _, unmappable) = enc.encode(text);
