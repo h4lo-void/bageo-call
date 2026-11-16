@@ -44,6 +44,11 @@ pub struct Channel {
     pub token: String,
     #[serde(default)]
     pub target: String,
+    /// Slack: the app-level token chat commands connect with (Socket Mode).
+    /// A secret like token: masked for the settings page, kept when it comes
+    /// back empty.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub app_token: String,
     /// The owner may operate the agent from this chat ([crate::control]);
     /// kinds in control::COMMAND_KINDS only. Off by default.
     #[serde(default)]
@@ -70,8 +75,8 @@ pub struct Kind {
 
 pub const KINDS: &[Kind] = &[
     Kind { kind: "telegram", label: "Telegram", url: "", token: "Bot token", target: "Chat ID", url_default: "" },
-    Kind { kind: "discord", label: "Discord", url: "Webhook URL", token: "", target: "", url_default: "" },
-    Kind { kind: "slack", label: "Slack / Mattermost", url: "Incoming webhook URL", token: "", target: "", url_default: "" },
+    Kind { kind: "discord", label: "Discord", url: "Webhook URL", token: "Bot token (for chat commands)", target: "Channel ID (for chat commands)", url_default: "" },
+    Kind { kind: "slack", label: "Slack / Mattermost", url: "Incoming webhook URL", token: "Bot token (for chat commands)", target: "Channel ID (for chat commands)", url_default: "" },
     Kind { kind: "teams", label: "Microsoft Teams (Workflows)", url: "Workflow webhook URL", token: "", target: "", url_default: "" },
     Kind { kind: "googlechat", label: "Google Chat", url: "Webhook URL", token: "", target: "", url_default: "" },
     Kind { kind: "rocketchat", label: "Rocket.Chat", url: "Webhook URL", token: "", target: "", url_default: "" },
@@ -107,6 +112,16 @@ pub fn kind(name: &str) -> Option<&'static Kind> {
     KINDS.iter().find(|k| k.kind == name)
 }
 
+/// The fourth field, only Slack has it: the app-level token chat commands
+/// connect with. Empty: not used.
+pub fn app_token_label(kind: &str) -> &'static str {
+    if kind == "slack" {
+        "App-level token (for chat commands)"
+    } else {
+        ""
+    }
+}
+
 impl Channel {
     fn url_or_default(&self) -> String {
         let u = self.url.trim();
@@ -130,6 +145,9 @@ impl Channel {
             "token": "",
             "token_hint": mask_token(&self.token),
             "token_set": !self.token.trim().is_empty(),
+            "app_token": "",
+            "app_token_hint": mask_token(&self.app_token),
+            "app_token_set": !self.app_token.trim().is_empty(),
             "target": self.target,
             "control": self.control,
             "control_users": self.control_users,
@@ -186,12 +204,16 @@ pub fn merge_channels(stored: &[Channel], incoming: Vec<Channel>) -> Vec<Channel
         let old = stored.iter().find(|s| !c.id.is_empty() && s.id == c.id && s.kind == c.kind);
         c.url = c.url.trim().to_string();
         c.token = c.token.trim().to_string();
+        c.app_token = if app_token_label(&c.kind).is_empty() { String::new() } else { c.app_token.trim().to_string() };
         if let Some(old) = old {
             if c.url.is_empty() {
                 c.url = old.url.clone();
             }
             if c.token.is_empty() {
                 c.token = old.token.clone();
+            }
+            if c.app_token.is_empty() && !app_token_label(&c.kind).is_empty() {
+                c.app_token = old.app_token.clone();
             }
         }
         if c.id.is_empty() || out.iter().any(|o| o.id == c.id) {

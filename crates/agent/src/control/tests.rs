@@ -152,7 +152,7 @@ async fn a_settings_page_channel_takes_commands_only_from_its_own_chat_and_sende
     let rig = Rig::new();
     rig.set(json!({"notify_channels": [
         {"kind": "telegram", "name": "Family", "enabled": true, "token": "456:CHANNELTOKEN", "target": "-1001", "control": true, "control_users": ["7", "8"]},
-        {"kind": "discord", "enabled": true, "url": "https://discord.example/api/webhooks/1/x", "control": true},
+        {"kind": "ntfy", "enabled": true, "target": "calls", "control": true},
     ]}));
     let rt = rig.state.settings_store.snapshot();
     let tg = rt.notify_channels[0].clone();

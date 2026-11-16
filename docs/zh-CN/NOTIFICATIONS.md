@@ -249,6 +249,13 @@ Bageo 不连接任何日历账号。
 |---|---|
 | Webhook 地址 | `https://discord.com/api/webhooks/…` |
 
+要在 Discord 频道里下指令，还要填下面两栏；只收通知不用填。步骤见[在聊天室操作](CHAT_COMMANDS.md#discord)。
+
+| 字段 | 填什么 |
+|---|---|
+| Bot 令牌（聊天室操作用） | 机器人的令牌 |
+| 频道 ID（聊天室操作用） | 要下指令的那个频道的 ID |
+
 ### Slack / Mattermost
 
 **Slack：**
@@ -263,6 +270,14 @@ Bageo 不连接任何日历账号。
 | 字段 | 填什么 |
 |---|---|
 | Incoming Webhook 地址 | `https://hooks.slack.com/services/…` |
+
+要在 Slack 频道里下指令（仅限 Slack，Mattermost 不行），还要填下面三栏；只收通知不用填。步骤见[在聊天室操作](CHAT_COMMANDS.md#slack)。
+
+| 字段 | 填什么 |
+|---|---|
+| Bot 令牌（聊天室操作用） | `xoxb-` 开头的令牌 |
+| App 级令牌（聊天室操作用） | `xapp-` 开头的令牌 |
+| 频道 ID（聊天室操作用） | 要下指令的那个频道的 ID |
 
 ### Microsoft Teams
 
@@ -553,6 +568,8 @@ Signal 没有 Bot API，所以要通过你自己部署的服务。
 | Homeserver 地址 | `https://matrix.example.org` |
 | 访问令牌 | 机器人账号的 access token |
 | 房间 ID | `!…:example.org` |
+
+同一个渠道也能下指令，见[在聊天室操作](CHAT_COMMANDS.md#matrix)。
 
 ### 电子邮件（Gmail）
 

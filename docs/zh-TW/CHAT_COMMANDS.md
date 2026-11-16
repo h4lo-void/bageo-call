@@ -1,6 +1,6 @@
-# 在聊天室操作：用 Telegram 遙控 Bageo
+# 在聊天室操作：用 Telegram、Discord、Slack 或 Matrix 遙控 Bageo
 
-人不在控制台前面時，可以在收通知的 Telegram 聊天室裡操作 Bageo：
+人不在控制台前面時，可以在收通知的聊天室裡操作 Bageo：
 
 - 查通話紀錄。
 - 叫 AI 代打電話。
@@ -8,11 +8,13 @@
 - 回答 AI 通話中問你的問題。
 - 把手機切到 AI 接聽或一般手機。
 
-目前支援 Telegram。之後可以接其他聊天軟體和 AI 代理（見[給開發者](#給開發者)）。
+支援 Telegram、Discord、Slack 和 Matrix。之後可以接其他聊天軟體和 AI 代理（見[給開發者](#給開發者)）。
 
 ## 怎麼開
 
-聊天室指令預設**關閉**，要在每個聊天室各自打開。
+聊天室指令預設**關閉**，要在每個聊天室各自打開。請照你用的聊天軟體往下做：先設好它的通知管道，再打開指令。
+
+### Telegram
 
 1. 先設定好 Telegram 通知管道（[通知 → Telegram](NOTIFICATIONS.md#telegram)）。
 2. *設定 → 通知* → 那個 Telegram 管道 → 勾選**允許在這個聊天室下指令**。
@@ -26,7 +28,55 @@
 
 在群組裡，機器人只理會指令（`/calls` 或 `/calls@你的機器人`）和回覆它自己訊息的話，其他人聊天一律不理。
 
+### Discord
+
+1. 打開 <https://discord.com/developers/applications>，按「New Application」，再打開「Bot」。
+2. 在「Bot」頁面按「Reset Token」，複製權杖。
+3. 同一頁把 **Message Content Intent** 打開。沒打開的話，機器人讀不到你打的字。
+4. 邀請機器人：到「OAuth2 → URL Generator」，勾選「bot」，再勾選「View Channels」「Send Messages」「Read Message History」。打開它產生的網址，選你的伺服器。
+5. 如果是私人頻道，也要讓機器人在該頻道有讀寫權限。
+6. 設定好 Discord 通知管道（[通知 → Discord](NOTIFICATIONS.md#discord)），填「Bot 權杖（聊天室操作用）」和「頻道 ID（聊天室操作用）」。
+7. 找頻道 ID：先在「使用者設定 → 進階」打開開發者模式，再在頻道上按右鍵 →「複製頻道 ID」。
+8. 勾選**允許在這個聊天室下指令**。
+9. 可選：在**可以下指令的人**填你的 Discord 使用者 ID（開發者模式打開後，在自己的名字上按右鍵 →「複製使用者 ID」）。留空 = 這個頻道裡的人都可以。
+10. 按**儲存變更**，再在頻道裡傳 `/help`。
+
+### Slack
+
+只有 Slack 可以下指令，Mattermost 不行。
+
+1. 到 <https://api.slack.com/apps> 建立 App（「Create New App → From scratch」）。
+2. 打開「Socket Mode」，建立一組 App 層級權杖，權限選 `connections:write`。它以 `xapp-` 開頭，複製下來。
+3. 打開「Event Subscriptions」，在「Subscribe to bot events」加入 `message.channels` 和 `message.im`。
+4. 打開「Interactivity & Shortcuts」，把「Interactivity」打開，按鈕才按得動。
+5. 打開「OAuth & Permissions」，在「Bot Token Scopes」加入 `chat:write`、`channels:history`、`im:history`。
+6. 按「Install to Workspace」，複製 Bot 權杖（`xoxb-` 開頭）。
+7. 把 App 加進要用的頻道：在頻道裡打開「Integrations → Add apps」。
+8. 設定好 Slack 通知管道（[通知 → Slack / Mattermost](NOTIFICATIONS.md#slack--mattermost)），填「Bot 權杖（聊天室操作用）」「App 層級權杖（聊天室操作用）」和「頻道 ID（聊天室操作用）」。
+9. 找頻道 ID：打開頻道詳細資料，在最下面，`C` 開頭。
+10. 勾選**允許在這個聊天室下指令**。
+11. 可選：在**可以下指令的人**填你的 Slack 成員 ID（個人檔案 → ⋮ →「複製成員 ID」）。留空 = 這個頻道裡的人都可以。
+12. 按**儲存變更**，再傳「`@你的機器人 /help`」。Slack 會把 `/` 開頭的訊息當成它自己的指令，所以要先寫機器人的名字。
+
+### Matrix
+
+只能用未加密的聊天室。Element 的私訊預設是加密的，請另外開一個聊天室。
+
+1. 建立一個機器人專用的 Matrix 帳號。
+2. 用它登入 Element，複製權杖：「All settings → Help & About → Advanced → Access Token」。把它當密碼保管。
+3. 用你自己的帳號建立新聊天室，並關掉「Enable end-to-end encryption」。建立後就不能再關。
+4. 邀請機器人帳號進聊天室，再用機器人帳號加入。
+5. 在「Room settings → Advanced」找聊天室 ID（`!` 開頭）。填聊天室別名（`#名稱:example.org`）也可以。
+6. 設定好 Matrix 通知管道（[通知 → Matrix](NOTIFICATIONS.md#matrix)），填「Homeserver 網址」「存取權杖」和「聊天室 ID」。
+7. 勾選**允許在這個聊天室下指令**。
+8. 可選：在**可以下指令的人**填你的 Matrix ID，例如 `@lee:example.org`（在 Element 的個人資料看得到）。留空 = 這個聊天室裡的人都可以。
+9. 按**儲存變更**，再傳「`@你的機器人 /help`」。Element 會把 `/` 開頭的訊息當成它自己的指令，所以要先寫機器人的名字。
+
+Matrix 沒有按鈕。要確認時，直接回覆 **1** 或 **2**。
+
 ## 指令
+
+在 Discord 或 Slack 的頻道，以及超過兩個人的 Matrix 聊天室裡，機器人只理會 `/` 開頭的指令、提到它的訊息，和回覆它自己訊息的話。Slack 和 Element 請寫成 `@你的機器人 /calls`。
 
 `1`、`#2` 這種編號，指的是這個聊天室最近一次列出的清單（`/calls`、`/tasks`、`/errands`、`/status`）。
 
@@ -147,6 +197,10 @@ AI 代打的結果照舊用一般通知送出。
    - `"reply": true` 只會推到「已啟用、而且 id、名稱或服務種類等於 `channel_id`」的那一個通知管道；沒給 `channel_id` 或對不上就不推。
    - 驗證用控制台密碼或 MCP 的 token，放在 `Authorization: Bearer`、`X-Calls-Token` 標頭，或 JSON 的 `token` 欄位。兩個都沒設定時不檢查。
    - 回傳的 JSON 有 `text`（回覆內容）和 `pushed`（有沒有推出去）。
+
+## 測試程度
+
+Discord、Slack、Matrix 只用模擬的伺服器測試過，還沒在真實帳號上試過。
 
 ## 給開發者
 

@@ -1846,8 +1846,8 @@ I18N["en"] = {
   n_test_ok: "Sent. Check that it arrived.",
   n_test_fail: "Failed: {msg}",
   hint_telegram: "Create a bot with @BotFather and paste its token. Chat ID: @userinfobot tells you yours; for a group use the group's ID and add the bot to it. Send the bot a message once so it is allowed to write to you.",
-  hint_discord: "In Discord: channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL.",
-  hint_slack: "Slack: create an app with Incoming Webhooks and copy the webhook URL. Mattermost: Integrations → Incoming Webhooks.",
+  hint_discord: "Notifications: channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL. Chat commands: also fill in your bot's token and the channel ID, and turn on Message Content Intent for the bot.",
+  hint_slack: "Notifications: copy an Incoming Webhook URL (Mattermost too). Chat commands (Slack only): turn on Socket Mode, then fill in the bot token (xoxb-), the app-level token (xapp-) and the channel ID.",
   hint_line: "LINE Developers console → your Messaging API channel: issue a channel access token and copy your user ID (starts with U). Add the bot as a friend first. LINE Notify was shut down in 2025; this replaces it.",
   hint_ntfy: "Pick a topic name that is hard to guess and subscribe to it in the ntfy app. Leave the server empty for ntfy.sh. A token is only needed for protected topics.",
   hint_gotify: "In Gotify: Apps → Create application, then copy its token. The server URL is the address of your Gotify server.",
@@ -2293,6 +2293,19 @@ I18N["en"] = {
   g_region_d: "Most people never need these.",
   f_wl_call: "When it's urgent, call me and join us on one call (trial)",
   f_wl_call_h: "Needs \"Only when it is urgent\" and your number. If you don't answer, the AI tells the caller you'll call back.",
+  nf_discord_token: "Bot token (for chat commands)",
+  nf_discord_target: "Channel ID (for chat commands)",
+  nf_slack_token: "Bot token (for chat commands)",
+  nf_slack_target: "Channel ID (for chat commands)",
+  nf_slack_app_token: "App-level token (for chat commands)",
+  n_ctl_users_ph_discord: "Discord user IDs, e.g. 123456789012345678",
+  n_ctl_users_ph_slack: "Slack member IDs, e.g. U0123ABCD",
+  n_ctl_users_ph_matrix: "Matrix IDs, e.g. @lee:example.org",
+  n_ctl_users_h_discord: "Empty = anyone in this channel. To find your ID: turn on Developer Mode, then right-click your name → Copy User ID.",
+  n_ctl_users_h_slack: "Empty = anyone in this channel. Your member ID: open your profile → ⋮ → Copy member ID.",
+  n_ctl_users_h_matrix: "Empty = anyone in this room. A Matrix ID looks like @name:matrix.org.",
+  n_ctl_h_slack: "Check calls, have the AI call someone and handle to-dos right from this chat. Send \"@your bot /help\" for the commands.",
+  n_ctl_h_matrix: "Check calls, have the AI call someone and handle to-dos right from this chat. Send \"@your bot /help\" for the commands.",
 };
 
 I18N["zh-TW"] = {
@@ -2848,8 +2861,8 @@ I18N["zh-TW"] = {
   n_test_ok: "已送出，請確認有沒有收到。",
   n_test_fail: "失敗：{msg}",
   hint_telegram: "用 @BotFather 建立機器人，貼上它的 token。Chat ID：傳訊息給 @userinfobot 可以查到自己的；群組則填群組 ID，並把機器人加進群組。記得先傳一則訊息給機器人，它才能傳訊息給你。",
-  hint_discord: "Discord：頻道設定 → 整合 → Webhook → 新 Webhook → 複製 Webhook 網址。",
-  hint_slack: "Slack：建立 App 並開啟 Incoming Webhooks，複製 Webhook 網址。Mattermost：Integrations → Incoming Webhooks。",
+  hint_discord: "通知：頻道設定 → 整合 → Webhook → 新 Webhook → 複製 Webhook 網址。要在聊天室操作：另外填機器人的權杖和頻道 ID，並在開發者後台替機器人打開 Message Content Intent。",
+  hint_slack: "通知：複製 Incoming Webhook 網址（Mattermost 也一樣）。要在聊天室操作（只限 Slack）：打開 Socket Mode，再填 Bot 權杖（xoxb-）、App 層級權杖（xapp-）和頻道 ID。",
   hint_line: "LINE Developers 後台 → 你的 Messaging API channel：發行 channel access token，並複製你的使用者 ID（U 開頭）。要先把機器人加為好友。LINE Notify 已在 2025 年停止服務，請改用這個方式。",
   hint_ntfy: "取一個不容易被猜到的主題名稱，並在 ntfy App 裡訂閱。伺服器留空就是用 ntfy.sh。只有受保護的主題才需要 token。",
   hint_gotify: "在 Gotify：Apps → Create application，複製它的 token。伺服器網址就是你的 Gotify 位址。",
@@ -3262,6 +3275,19 @@ I18N["zh-TW"] = {
   g_region_d: "大部分的人用不到這裡的設定。",
   f_wl_call: "有急事時，打給你並把三方接在一起（試驗中）",
   f_wl_call_h: "要選「有急事才轉接」並填好你的號碼。你沒接的話，AI 會請對方等你回電。",
+  nf_discord_token: "Bot 權杖（聊天室操作用）",
+  nf_discord_target: "頻道 ID（聊天室操作用）",
+  nf_slack_token: "Bot 權杖（聊天室操作用）",
+  nf_slack_target: "頻道 ID（聊天室操作用）",
+  nf_slack_app_token: "App 層級權杖（聊天室操作用）",
+  n_ctl_users_ph_discord: "Discord 使用者 ID，例如 123456789012345678",
+  n_ctl_users_ph_slack: "Slack 成員 ID，例如 U0123ABCD",
+  n_ctl_users_ph_matrix: "Matrix ID，例如 @lee:example.org",
+  n_ctl_users_h_discord: "留空 = 這個頻道裡的人都可以。找自己的 ID：打開開發者模式，在名字上按右鍵 →「複製使用者 ID」。",
+  n_ctl_users_h_slack: "留空 = 這個頻道裡的人都可以。成員 ID 在個人檔案 → ⋮ →「複製成員 ID」。",
+  n_ctl_users_h_matrix: "留空 = 這個聊天室裡的人都可以。Matrix ID 長得像 @name:matrix.org。",
+  n_ctl_h_slack: "打開後，可以在這個聊天室查通話、叫 AI 代打電話、決定待處理事項。傳「@你的機器人 /help」看指令。",
+  n_ctl_h_matrix: "打開後，可以在這個聊天室查通話、叫 AI 代打電話、決定待處理事項。傳「@你的機器人 /help」看指令。",
 };
 
 I18N["zh-CN"] = {
@@ -3784,8 +3810,8 @@ I18N["zh-CN"] = {
   n_test_ok: "已发送，请确认是否收到。",
   n_test_fail: "失败：{msg}",
   hint_telegram: "用 @BotFather 创建机器人，粘贴它的 token。Chat ID：给 @userinfobot 发消息可以查到自己的；群组则填群组 ID，并把机器人拉进群。记得先给机器人发一条消息，它才能给你发消息。",
-  hint_discord: "Discord：频道设置 → 整合 → Webhook → 新建 Webhook → 复制 Webhook URL。",
-  hint_slack: "Slack：创建应用并开启 Incoming Webhooks，复制 Webhook 地址。Mattermost：Integrations → Incoming Webhooks。",
+  hint_discord: "通知：频道设置 → 整合 → Webhook → 新建 Webhook → 复制 Webhook URL。要在聊天室操作：另外填机器人的令牌和频道 ID，并在开发者后台为机器人打开 Message Content Intent。",
+  hint_slack: "通知：复制 Incoming Webhook 地址（Mattermost 也一样）。要在聊天室操作（仅限 Slack）：打开 Socket Mode，再填 Bot 令牌（xoxb-）、App 级令牌（xapp-）和频道 ID。",
   hint_line: "LINE Developers 后台 → 你的 Messaging API channel：签发 channel access token，并复制你的用户 ID（U 开头）。要先把机器人加为好友。LINE Notify 已在 2025 年停止服务，请改用这种方式。",
   hint_ntfy: "取一个不容易被猜到的主题名，并在 ntfy 应用里订阅。服务器留空就是用 ntfy.sh。只有受保护的主题才需要 token。",
   hint_gotify: "在 Gotify：Apps → Create application，复制它的 token。服务器地址就是你的 Gotify 地址。",
@@ -4231,6 +4257,19 @@ I18N["zh-CN"] = {
   g_region_d: "大部分人用不到这里的设置。",
   f_wl_call: "有急事时，打给你并把三方接在一起（试验中）",
   f_wl_call_h: "要选「有急事才转接」并填好你的号码。你没接的话，AI 会请对方等你回电。",
+  nf_discord_token: "Bot 令牌（聊天室操作用）",
+  nf_discord_target: "频道 ID（聊天室操作用）",
+  nf_slack_token: "Bot 令牌（聊天室操作用）",
+  nf_slack_target: "频道 ID（聊天室操作用）",
+  nf_slack_app_token: "App 级令牌（聊天室操作用）",
+  n_ctl_users_ph_discord: "Discord 用户 ID，例如 123456789012345678",
+  n_ctl_users_ph_slack: "Slack 成员 ID，例如 U0123ABCD",
+  n_ctl_users_ph_matrix: "Matrix ID，例如 @lee:example.org",
+  n_ctl_users_h_discord: "留空 = 这个频道里的人都可以。找自己的 ID：打开开发者模式，在名字上右键 →“复制用户 ID”。",
+  n_ctl_users_h_slack: "留空 = 这个频道里的人都可以。成员 ID 在个人资料 → ⋮ →“复制成员 ID”。",
+  n_ctl_users_h_matrix: "留空 = 这个房间里的人都可以。Matrix ID 形如 @name:matrix.org。",
+  n_ctl_h_slack: "打开后，可以在这个聊天室查通话、让 AI 代打电话、决定待处理事项。发“@你的机器人 /help”看指令。",
+  n_ctl_h_matrix: "打开后，可以在这个聊天室查通话、让 AI 代打电话、决定待处理事项。发“@你的机器人 /help”看指令。",
 };
 
 I18N["ja"] = {
@@ -4753,8 +4792,8 @@ I18N["ja"] = {
   n_test_ok: "送信しました。届いたか確認してください。",
   n_test_fail: "失敗：{msg}",
   hint_telegram: "@BotFather でボットを作り、そのトークンを貼り付けます。Chat ID は @userinfobot に話しかけると分かります。グループの場合はグループの ID を入れ、ボットをグループに追加してください。ボットがあなたに送信できるよう、先にボットへ一度メッセージを送っておきます。",
-  hint_discord: "Discord：チャンネルの設定 → 連携サービス → ウェブフック → 新しいウェブフック → ウェブフック URL をコピー。",
-  hint_slack: "Slack：アプリを作成して Incoming Webhooks を有効にし、Webhook URL をコピーします。Mattermost：Integrations → Incoming Webhooks。",
+  hint_discord: "通知：チャンネルの設定 → 連携サービス → ウェブフック → 新しいウェブフック → URL をコピー。チャットで操作するには、ボットのトークンとチャンネル ID も入力し、開発者ポータルで Message Content Intent をオンにします。",
+  hint_slack: "通知：Incoming Webhook の URL をコピー（Mattermost も同じ）。チャットで操作するには（Slack のみ）Socket Mode をオンにして、ボットトークン（xoxb-）、アプリレベルトークン（xapp-）、チャンネル ID を入力します。",
   hint_line: "LINE Developers コンソール → Messaging API チャネルでチャネルアクセストークンを発行し、あなたのユーザー ID（U で始まる）をコピーします。先にボットを友だち追加してください。LINE Notify は 2025 年に終了したため、こちらを使います。",
   hint_ntfy: "推測されにくいトピック名を決め、ntfy アプリで購読します。サーバーが空欄なら ntfy.sh を使います。トークンは保護されたトピックの場合だけ必要です。",
   hint_gotify: "Gotify で Apps → Create application を選び、そのトークンをコピーします。サーバー URL は Gotify サーバーのアドレスです。",
@@ -5200,6 +5239,19 @@ I18N["ja"] = {
   g_region_d: "ほとんどの人は変更不要です。",
   f_wl_call: "急ぎのとき、あなたに電話して三者通話にする（試験中）",
   f_wl_call_h: "「急ぎのときだけ転送」とあなたの番号が必要です。出られなかったときは、AI が折り返すと伝えます。",
+  nf_discord_token: "ボットトークン（チャット操作用）",
+  nf_discord_target: "チャンネル ID（チャット操作用）",
+  nf_slack_token: "ボットトークン（チャット操作用）",
+  nf_slack_target: "チャンネル ID（チャット操作用）",
+  nf_slack_app_token: "アプリレベルトークン（チャット操作用）",
+  n_ctl_users_ph_discord: "Discord のユーザー ID（例：123456789012345678）",
+  n_ctl_users_ph_slack: "Slack のメンバー ID（例：U0123ABCD）",
+  n_ctl_users_ph_matrix: "Matrix ID（例：@lee:example.org）",
+  n_ctl_users_h_discord: "空欄＝このチャンネルの全員が操作できます。自分の ID は、開発者モードをオンにして名前を右クリック →「ユーザー ID をコピー」。",
+  n_ctl_users_h_slack: "空欄＝このチャンネルの全員が操作できます。メンバー ID はプロフィール → ⋮ →「メンバー ID をコピー」。",
+  n_ctl_users_h_matrix: "空欄＝このルームの全員が操作できます。Matrix ID は @name:matrix.org の形です。",
+  n_ctl_h_slack: "オンにすると、このチャットから通話の確認、AI への電話の依頼、対応待ちの処理ができます。「@ボット名 /help」でコマンドを確認できます。",
+  n_ctl_h_matrix: "オンにすると、このチャットから通話の確認、AI への電話の依頼、対応待ちの処理ができます。「@ボット名 /help」でコマンドを確認できます。",
 };
 
 I18N["ko"] = {
@@ -5722,8 +5774,8 @@ I18N["ko"] = {
   n_test_ok: "보냈습니다. 도착했는지 확인해 주세요.",
   n_test_fail: "실패: {msg}",
   hint_telegram: "@BotFather로 봇을 만들고 토큰을 붙여 넣으세요. Chat ID는 @userinfobot에게 말을 걸면 알 수 있습니다. 그룹이라면 그룹 ID를 넣고 봇을 그룹에 추가하세요. 봇이 나에게 메시지를 보낼 수 있도록 먼저 봇에게 메시지를 한 번 보내 두세요.",
-  hint_discord: "Discord: 채널 설정 → 연동 → 웹후크 → 새 웹후크 → 웹후크 URL 복사.",
-  hint_slack: "Slack: 앱을 만들고 Incoming Webhooks를 켠 뒤 웹후크 URL을 복사합니다. Mattermost: Integrations → Incoming Webhooks.",
+  hint_discord: "알림: 채널 설정 → 연동 → 웹후크 → 새 웹후크 → URL 복사. 채팅으로 조작하려면 봇 토큰과 채널 ID도 입력하고, 개발자 포털에서 Message Content Intent를 켜세요.",
+  hint_slack: "알림: Incoming Webhook URL을 복사합니다(Mattermost도 같음). 채팅으로 조작하려면(Slack만) Socket Mode를 켜고 봇 토큰(xoxb-), 앱 수준 토큰(xapp-), 채널 ID를 입력하세요.",
   hint_line: "LINE Developers 콘솔 → Messaging API 채널에서 채널 액세스 토큰을 발급하고, 내 사용자 ID(U로 시작)를 복사합니다. 먼저 봇을 친구로 추가하세요. LINE Notify는 2025년에 종료되어 이 방식을 사용합니다.",
   hint_ntfy: "추측하기 어려운 토픽 이름을 정하고 ntfy 앱에서 구독하세요. 서버를 비워 두면 ntfy.sh를 사용합니다. 토큰은 보호된 토픽에만 필요합니다.",
   hint_gotify: "Gotify에서 Apps → Create application을 선택하고 토큰을 복사합니다. 서버 URL은 Gotify 서버의 주소입니다.",
@@ -6169,6 +6221,19 @@ I18N["ko"] = {
   g_region_d: "대부분은 바꿀 필요가 없습니다.",
   f_wl_call: "급할 때 나에게 전화해 3자 통화로 연결(시험 중)",
   f_wl_call_h: "‘급할 때만 전환’과 내 번호가 필요합니다. 받지 못하면 AI가 다시 전화할 거라고 알려 줍니다.",
+  nf_discord_token: "봇 토큰(채팅 조작용)",
+  nf_discord_target: "채널 ID(채팅 조작용)",
+  nf_slack_token: "봇 토큰(채팅 조작용)",
+  nf_slack_target: "채널 ID(채팅 조작용)",
+  nf_slack_app_token: "앱 수준 토큰(채팅 조작용)",
+  n_ctl_users_ph_discord: "Discord 사용자 ID, 예: 123456789012345678",
+  n_ctl_users_ph_slack: "Slack 멤버 ID, 예: U0123ABCD",
+  n_ctl_users_ph_matrix: "Matrix ID, 예: @lee:example.org",
+  n_ctl_users_h_discord: "비워 두면 이 채널의 누구나 쓸 수 있습니다. 내 ID: 개발자 모드를 켜고 이름을 우클릭 → 'ID 복사하기'.",
+  n_ctl_users_h_slack: "비워 두면 이 채널의 누구나 쓸 수 있습니다. 멤버 ID: 프로필 → ⋮ → '멤버 ID 복사'.",
+  n_ctl_users_h_matrix: "비워 두면 이 방의 누구나 쓸 수 있습니다. Matrix ID는 @name:matrix.org 형식입니다.",
+  n_ctl_h_slack: "켜면 이 채팅에서 통화 조회, AI 대리 전화 요청, 처리할 일 결정을 할 수 있습니다. '@봇 이름 /help'로 명령을 확인하세요.",
+  n_ctl_h_matrix: "켜면 이 채팅에서 통화 조회, AI 대리 전화 요청, 처리할 일 결정을 할 수 있습니다. '@봇 이름 /help'로 명령을 확인하세요.",
 };
 
 I18N["es"] = {
@@ -6691,8 +6756,8 @@ I18N["es"] = {
   n_test_ok: "Enviado. Comprueba que ha llegado.",
   n_test_fail: "Error: {msg}",
   hint_telegram: "Crea un bot con @BotFather y pega su token. Chat ID: @userinfobot te dice el tuyo; para un grupo usa el ID del grupo y añade el bot. Envíale antes un mensaje al bot para que pueda escribirte.",
-  hint_discord: "En Discord: ajustes del canal → Integraciones → Webhooks → Nuevo webhook → Copiar URL del webhook.",
-  hint_slack: "Slack: crea una app con Incoming Webhooks y copia la URL del webhook. Mattermost: Integrations → Incoming Webhooks.",
+  hint_discord: "Avisos: ajustes del canal → Integraciones → Webhooks → Nuevo webhook → Copiar URL del webhook. Para usar comandos en el chat, añade también el token del bot y el ID del canal, y activa Message Content Intent en el portal de desarrolladores.",
+  hint_slack: "Avisos: copia una URL de Incoming Webhook (también en Mattermost). Comandos en el chat (solo Slack): activa Socket Mode y añade el token del bot (xoxb-), el token de nivel de app (xapp-) y el ID del canal.",
   hint_line: "Consola de LINE Developers → tu canal de Messaging API: genera un channel access token y copia tu ID de usuario (empieza por U). Añade antes el bot como amigo. LINE Notify se cerró en 2025; esto lo sustituye.",
   hint_ntfy: "Elige un nombre de tema difícil de adivinar y suscríbete a él en la app de ntfy. Deja el servidor vacío para usar ntfy.sh. El token solo hace falta para temas protegidos.",
   hint_gotify: "En Gotify: Apps → Create application y copia su token. La URL del servidor es la dirección de tu servidor Gotify.",
@@ -7138,6 +7203,19 @@ I18N["es"] = {
   g_region_d: "Casi nadie necesita cambiar esto.",
   f_wl_call: "Si es urgente, llamarme y unirnos en una sola llamada (prueba)",
   f_wl_call_h: "Requiere \"Solo si es urgente\" y tu número. Si no contestas, la IA le dice que le devolverás la llamada.",
+  nf_discord_token: "Token del bot (para comandos en el chat)",
+  nf_discord_target: "ID del canal (para comandos en el chat)",
+  nf_slack_token: "Token del bot (para comandos en el chat)",
+  nf_slack_target: "ID del canal (para comandos en el chat)",
+  nf_slack_app_token: "Token de nivel de app (para comandos en el chat)",
+  n_ctl_users_ph_discord: "ID de usuario de Discord, p. ej. 123456789012345678",
+  n_ctl_users_ph_slack: "ID de miembro de Slack, p. ej. U0123ABCD",
+  n_ctl_users_ph_matrix: "ID de Matrix, p. ej. @lee:example.org",
+  n_ctl_users_h_discord: "Vacío = cualquiera en este canal. Tu ID: activa el modo desarrollador y haz clic derecho en tu nombre → «Copiar ID de usuario».",
+  n_ctl_users_h_slack: "Vacío = cualquiera en este canal. Tu ID de miembro: perfil → ⋮ → «Copiar ID de miembro».",
+  n_ctl_users_h_matrix: "Vacío = cualquiera en esta sala. Un ID de Matrix tiene la forma @nombre:matrix.org.",
+  n_ctl_h_slack: "Desde este chat puedes consultar llamadas, pedir a la IA que llame a alguien y resolver pendientes. Envía «@tu bot /help» para ver los comandos.",
+  n_ctl_h_matrix: "Desde este chat puedes consultar llamadas, pedir a la IA que llame a alguien y resolver pendientes. Envía «@tu bot /help» para ver los comandos.",
 };
 
 I18N["fr"] = {
@@ -7660,8 +7738,8 @@ I18N["fr"] = {
   n_test_ok: "Envoyé. Vérifiez qu'il est bien arrivé.",
   n_test_fail: "Échec : {msg}",
   hint_telegram: "Créez un bot avec @BotFather et collez son jeton. Chat ID : @userinfobot vous donne le vôtre ; pour un groupe, utilisez l'ID du groupe et ajoutez-y le bot. Envoyez d'abord un message au bot pour qu'il ait le droit de vous écrire.",
-  hint_discord: "Dans Discord : paramètres du salon → Intégrations → Webhooks → Nouveau webhook → Copier l'URL du webhook.",
-  hint_slack: "Slack : créez une application avec Incoming Webhooks et copiez l'URL du webhook. Mattermost : Integrations → Incoming Webhooks.",
+  hint_discord: "Notifications : paramètres du salon → Intégrations → Webhooks → Nouveau webhook → Copier l'URL du webhook. Pour les commandes, ajoutez aussi le jeton du bot et l'ID du salon, et activez Message Content Intent dans le portail développeur.",
+  hint_slack: "Notifications : copiez une URL Incoming Webhook (Mattermost aussi). Commandes (Slack uniquement) : activez Socket Mode, puis indiquez le jeton du bot (xoxb-), le jeton de niveau app (xapp-) et l'ID du canal.",
   hint_line: "Console LINE Developers → votre canal Messaging API : générez un channel access token et copiez votre identifiant utilisateur (il commence par U). Ajoutez d'abord le bot en ami. LINE Notify a fermé en 2025 ; ceci le remplace.",
   hint_ntfy: "Choisissez un nom de sujet difficile à deviner et abonnez-vous-y dans l'application ntfy. Laissez le serveur vide pour utiliser ntfy.sh. Un jeton n'est nécessaire que pour les sujets protégés.",
   hint_gotify: "Dans Gotify : Apps → Create application, puis copiez son jeton. L'URL du serveur est l'adresse de votre serveur Gotify.",
@@ -8107,6 +8185,19 @@ I18N["fr"] = {
   g_region_d: "La plupart des gens n'ont pas besoin de ces réglages.",
   f_wl_call: "En cas d'urgence, m'appeler et nous réunir dans un seul appel (essai)",
   f_wl_call_h: "Nécessite « Seulement si c'est urgent » et votre numéro. Si vous ne répondez pas, l'IA dit que vous rappellerez.",
+  nf_discord_token: "Jeton du bot (pour les commandes)",
+  nf_discord_target: "ID du salon (pour les commandes)",
+  nf_slack_token: "Jeton du bot (pour les commandes)",
+  nf_slack_target: "ID du canal (pour les commandes)",
+  nf_slack_app_token: "Jeton de niveau app (pour les commandes)",
+  n_ctl_users_ph_discord: "ID utilisateur Discord, ex. 123456789012345678",
+  n_ctl_users_ph_slack: "ID de membre Slack, ex. U0123ABCD",
+  n_ctl_users_ph_matrix: "ID Matrix, ex. @lee:example.org",
+  n_ctl_users_h_discord: "Vide = tout le monde dans ce salon. Votre ID : activez le mode développeur, puis clic droit sur votre nom → « Copier l'identifiant ».",
+  n_ctl_users_h_slack: "Vide = tout le monde dans ce canal. Votre ID de membre : profil → ⋮ → « Copier l'ID de membre ».",
+  n_ctl_users_h_matrix: "Vide = tout le monde dans ce salon. Un ID Matrix ressemble à @nom:matrix.org.",
+  n_ctl_h_slack: "Depuis ce chat, consultez les appels, demandez à l'IA d'appeler quelqu'un et traitez ce qui est en attente. Envoyez « @votre bot /help » pour voir les commandes.",
+  n_ctl_h_matrix: "Depuis ce chat, consultez les appels, demandez à l'IA d'appeler quelqu'un et traitez ce qui est en attente. Envoyez « @votre bot /help » pour voir les commandes.",
 };
 
 I18N["de"] = {
@@ -8629,8 +8720,8 @@ I18N["de"] = {
   n_test_ok: "Gesendet. Prüfe, ob die Nachricht angekommen ist.",
   n_test_fail: "Fehlgeschlagen: {msg}",
   hint_telegram: "Erstelle mit @BotFather einen Bot und füge sein Token ein. Chat-ID: @userinfobot nennt dir deine; für eine Gruppe nimm die ID der Gruppe und füge den Bot hinzu. Schreib dem Bot einmal, damit er dir schreiben darf.",
-  hint_discord: "In Discord: Kanaleinstellungen → Integrationen → Webhooks → Neuer Webhook → Webhook-URL kopieren.",
-  hint_slack: "Slack: Erstelle eine App mit Incoming Webhooks und kopiere die Webhook-URL. Mattermost: Integrations → Incoming Webhooks.",
+  hint_discord: "Benachrichtigungen: Kanaleinstellungen → Integrationen → Webhooks → Neuer Webhook → Webhook-URL kopieren. Für Chat-Befehle trag auch das Bot-Token und die Kanal-ID ein und schalte im Entwicklerportal Message Content Intent ein.",
+  hint_slack: "Benachrichtigungen: Incoming-Webhook-URL kopieren (auch Mattermost). Chat-Befehle (nur Slack): Socket Mode einschalten, dann Bot-Token (xoxb-), App-Token (xapp-) und Kanal-ID eintragen.",
   hint_line: "LINE-Developers-Konsole → dein Messaging-API-Kanal: Erzeuge ein Channel Access Token und kopiere deine Benutzer-ID (beginnt mit U). Füge den Bot vorher als Freund hinzu. LINE Notify wurde 2025 eingestellt; das hier ersetzt es.",
   hint_ntfy: "Wähle einen schwer zu erratenden Topic-Namen und abonniere ihn in der ntfy-App. Lass den Server leer, um ntfy.sh zu nutzen. Ein Token ist nur für geschützte Topics nötig.",
   hint_gotify: "In Gotify: Apps → Create application, dann das Token kopieren. Die Server-URL ist die Adresse deines Gotify-Servers.",
@@ -9076,6 +9167,19 @@ I18N["de"] = {
   g_region_d: "Die meisten brauchen diese Einstellungen nie.",
   f_wl_call: "Wenn es dringend ist, mich anrufen und alle in ein Gespräch holen (Test)",
   f_wl_call_h: "Braucht „Nur wenn es dringend ist“ und deine Nummer. Gehst du nicht ran, sagt die KI, dass du zurückrufst.",
+  nf_discord_token: "Bot-Token (für Chat-Befehle)",
+  nf_discord_target: "Kanal-ID (für Chat-Befehle)",
+  nf_slack_token: "Bot-Token (für Chat-Befehle)",
+  nf_slack_target: "Kanal-ID (für Chat-Befehle)",
+  nf_slack_app_token: "App-Token (für Chat-Befehle)",
+  n_ctl_users_ph_discord: "Discord-Nutzer-IDs, z. B. 123456789012345678",
+  n_ctl_users_ph_slack: "Slack-Mitglieds-IDs, z. B. U0123ABCD",
+  n_ctl_users_ph_matrix: "Matrix-IDs, z. B. @lee:example.org",
+  n_ctl_users_h_discord: "Leer = alle in diesem Kanal. Deine ID: Entwicklermodus einschalten, dann Rechtsklick auf deinen Namen → „Nutzer-ID kopieren“.",
+  n_ctl_users_h_slack: "Leer = alle in diesem Kanal. Deine Mitglieds-ID: Profil → ⋮ → „Mitglieds-ID kopieren“.",
+  n_ctl_users_h_matrix: "Leer = alle in diesem Raum. Eine Matrix-ID sieht so aus: @name:matrix.org.",
+  n_ctl_h_slack: "In diesem Chat kannst du Anrufe nachsehen, die KI jemanden anrufen lassen und Offenes erledigen. Sende „@dein Bot /help“ für die Befehle.",
+  n_ctl_h_matrix: "In diesem Chat kannst du Anrufe nachsehen, die KI jemanden anrufen lassen und Offenes erledigen. Sende „@dein Bot /help“ für die Befehle.",
 };
 
 I18N["pt"] = {
@@ -9598,8 +9702,8 @@ I18N["pt"] = {
   n_test_ok: "Enviado. Confira se chegou.",
   n_test_fail: "Falhou: {msg}",
   hint_telegram: "Crie um bot com o @BotFather e cole o token dele. Chat ID: o @userinfobot informa o seu; para um grupo, use o ID do grupo e adicione o bot a ele. Mande uma mensagem para o bot antes, para que ele possa escrever para você.",
-  hint_discord: "No Discord: configurações do canal → Integrações → Webhooks → Novo webhook → Copiar URL do webhook.",
-  hint_slack: "Slack: crie um app com Incoming Webhooks e copie a URL do webhook. Mattermost: Integrations → Incoming Webhooks.",
+  hint_discord: "Avisos: configurações do canal → Integrações → Webhooks → Novo webhook → Copiar URL do webhook. Para comandos no chat, preencha também o token do bot e o ID do canal, e ative Message Content Intent no portal de desenvolvedores.",
+  hint_slack: "Avisos: copie uma URL de Incoming Webhook (Mattermost também). Comandos no chat (só Slack): ative o Socket Mode e preencha o token do bot (xoxb-), o token de nível de app (xapp-) e o ID do canal.",
   hint_line: "Console do LINE Developers → seu canal da Messaging API: gere um channel access token e copie o seu ID de usuário (começa com U). Antes, adicione o bot como amigo. O LINE Notify foi encerrado em 2025; isto o substitui.",
   hint_ntfy: "Escolha um nome de tópico difícil de adivinhar e assine-o no app do ntfy. Deixe o servidor em branco para usar o ntfy.sh. O token só é necessário para tópicos protegidos.",
   hint_gotify: "No Gotify: Apps → Create application e copie o token. A URL do servidor é o endereço do seu servidor Gotify.",
@@ -10045,6 +10149,19 @@ I18N["pt"] = {
   g_region_d: "A maioria das pessoas nunca precisa mexer aqui.",
   f_wl_call: "Se for urgente, me ligar e juntar todos numa só ligação (teste)",
   f_wl_call_h: "Precisa de \"Só quando for urgente\" e do seu número. Se você não atender, a IA avisa que você vai retornar.",
+  nf_discord_token: "Token do bot (para comandos no chat)",
+  nf_discord_target: "ID do canal (para comandos no chat)",
+  nf_slack_token: "Token do bot (para comandos no chat)",
+  nf_slack_target: "ID do canal (para comandos no chat)",
+  nf_slack_app_token: "Token de nível de app (para comandos no chat)",
+  n_ctl_users_ph_discord: "IDs de usuário do Discord, ex.: 123456789012345678",
+  n_ctl_users_ph_slack: "IDs de membro do Slack, ex.: U0123ABCD",
+  n_ctl_users_ph_matrix: "IDs do Matrix, ex.: @lee:example.org",
+  n_ctl_users_h_discord: "Vazio = qualquer pessoa neste canal. Seu ID: ative o modo desenvolvedor e clique com o botão direito no seu nome → “Copiar ID do usuário”.",
+  n_ctl_users_h_slack: "Vazio = qualquer pessoa neste canal. Seu ID de membro: perfil → ⋮ → “Copiar ID de membro”.",
+  n_ctl_users_h_matrix: "Vazio = qualquer pessoa nesta sala. Um ID do Matrix tem a forma @nome:matrix.org.",
+  n_ctl_h_slack: "Neste chat você pode consultar chamadas, pedir para a IA ligar para alguém e resolver pendências. Envie “@seu bot /help” para ver os comandos.",
+  n_ctl_h_matrix: "Neste chat você pode consultar chamadas, pedir para a IA ligar para alguém e resolver pendências. Envie “@seu bot /help” para ver os comandos.",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word
@@ -11693,26 +11810,29 @@ function chansFromSettings() {
     key: ++chanSeq, id: c.id || "", kind: c.kind || "", name: c.name || "", enabled: c.enabled !== false,
     url: "", token: "", target: c.target || "",
     url_hint: c.url_hint || "", token_hint: c.token_hint || "", url_set: !!c.url_set, token_set: !!c.token_set,
+    app_token: "", app_token_hint: c.app_token_hint || "", app_token_set: !!c.app_token_set,
     control: !!c.control, control_users: Array.isArray(c.control_users) ? c.control_users.map(String) : [],
   }));
 }
-const chanPayload = (c) => ({ id: c.id, kind: c.kind, name: c.name.trim(), enabled: !!c.enabled, url: c.url.trim(), token: c.token.trim(), target: c.target.trim(), control: !!c.control, control_users: (c.control_users || []).slice() });
+const chanPayload = (c) => ({ id: c.id, kind: c.kind, name: c.name.trim(), enabled: !!c.enabled, url: c.url.trim(), token: c.token.trim(), app_token: (c.app_token || "").trim(), target: c.target.trim(), control: !!c.control, control_users: (c.control_users || []).slice() });
 const chanValue = () => chans.map(chanPayload);
-const chanOrig = (v) => (Array.isArray(v) ? v : []).map((c) => ({ id: c.id || "", kind: c.kind || "", name: String(c.name || "").trim(), enabled: c.enabled !== false, url: "", token: "", target: String(c.target || "").trim(), control: !!c.control, control_users: Array.isArray(c.control_users) ? c.control_users.map(String) : [] }));
+const chanOrig = (v) => (Array.isArray(v) ? v : []).map((c) => ({ id: c.id || "", kind: c.kind || "", name: String(c.name || "").trim(), enabled: c.enabled !== false, url: "", token: "", app_token: "", target: String(c.target || "").trim(), control: !!c.control, control_users: Array.isArray(c.control_users) ? c.control_users.map(String) : [] }));
 // Channel kinds the agent takes commands from (crate::control::COMMAND_KINDS).
-const CMD_KINDS = new Set(["telegram"]);
+const CMD_KINDS = new Set(["telegram", "discord", "slack", "matrix"]);
 const splitIds = (s) => s.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
+// Text that differs per chat service (n_ctl_users_ph_discord…), else the general one.
+const tKind = (key, kind) => { const v = tCode(key + "_", kind); return v === kind ? t(key) : v; };
 // "Take commands from this chat" and who may give them, for kinds that can.
 function chanControl(c) {
   if (!CMD_KINDS.has(c.kind)) return null;
   const id = `ch-${c.key}-users`;
-  const users = h("input", { type: "text", id, value: (c.control_users || []).join(", "), placeholder: t("n_ctl_users_ph"), autocomplete: "off",
+  const users = h("input", { type: "text", id, value: (c.control_users || []).join(", "), placeholder: tKind("n_ctl_users_ph", c.kind), autocomplete: "off",
     attr: { spellcheck: "false", maxlength: "600" }, oninput: () => { c.control_users = splitIds(users.value); updateDirty(); } });
-  const who = h("div", { class: "field" }, h("label", { for: id }, t("n_ctl_users")), users, h("div", { class: "help", text: t("n_ctl_users_h") }));
+  const who = h("div", { class: "field" }, h("label", { for: id }, t("n_ctl_users")), users, h("div", { class: "help", text: tKind("n_ctl_users_h", c.kind) }));
   who.hidden = !c.control;
   const box = h("input", { type: "checkbox", checked: !!c.control, onchange: () => { c.control = box.checked; who.hidden = !c.control; updateDirty(); } });
   return h("div", { class: "chan-ctl" },
-    h("label", { class: "sw" }, box, h("span", {}, h("b", { text: t("n_ctl") }), h("small", { text: t("n_ctl_h") }))),
+    h("label", { class: "sw" }, box, h("span", {}, h("b", { text: t("n_ctl") }), h("small", { text: tKind("n_ctl_h", c.kind) }))),
     who);
 }
 function chanInput(c, f, label, secret) {
@@ -11744,6 +11864,7 @@ function chanCard(c) {
   const fields = h("div", { class: "chan-fields" }, chanInput(c, "name", t("n_name"), false));
   if (info.url) fields.append(chanInput(c, "url", chanFieldLabel(c.kind, "url"), URL_IS_SECRET.has(c.kind)));
   if (info.token) fields.append(chanInput(c, "token", chanFieldLabel(c.kind, "token"), true));
+  if (info.app_token) fields.append(chanInput(c, "app_token", chanFieldLabel(c.kind, "app_token"), true));
   if (info.target) fields.append(chanInput(c, "target", chanFieldLabel(c.kind, "target"), false));
   const res = h("span", { class: "res", "aria-live": "polite" });
   const testBtn = h("button", { type: "button", class: "btn sm", onclick: async () => {
@@ -11786,7 +11907,7 @@ function renderChannels() {
 $("btnChanAdd").addEventListener("click", () => {
   const kind = $("chanKind").value;
   if (!kind) { $("chanKind").focus(); return; }
-  chans.push({ key: ++chanSeq, id: "", kind, name: "", enabled: true, url: "", token: "", target: "", url_hint: "", token_hint: "", url_set: false, token_set: false, control: false, control_users: [] });
+  chans.push({ key: ++chanSeq, id: "", kind, name: "", enabled: true, url: "", token: "", app_token: "", target: "", url_hint: "", token_hint: "", app_token_hint: "", url_set: false, token_set: false, app_token_set: false, control: false, control_users: [] });
   $("chanKind").value = "";
   renderChannels();
   updateDirty();

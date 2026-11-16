@@ -318,6 +318,13 @@ chat* for the channel first.
 |---|---|
 | Webhook URL | `https://discord.com/api/webhooks/…` |
 
+To take commands in a Discord channel, also fill in these two fields. Notifications alone do not need them. The steps are in [Chat commands](CHAT_COMMANDS.md#discord).
+
+| Field | Value |
+|---|---|
+| Bot token (for chat commands) | the bot's token |
+| Channel ID (for chat commands) | the ID of the channel to take commands from |
+
 ### Slack / Mattermost
 
 **Slack:**
@@ -332,6 +339,14 @@ chat* for the channel first.
 | Field | Value |
 |---|---|
 | Incoming webhook URL | `https://hooks.slack.com/services/…` |
+
+To take commands in a Slack channel (Slack only, not Mattermost), also fill in these three fields. Notifications alone do not need them. The steps are in [Chat commands](CHAT_COMMANDS.md#slack).
+
+| Field | Value |
+|---|---|
+| Bot token (for chat commands) | the token that starts with `xoxb-` |
+| App-level token (for chat commands) | the token that starts with `xapp-` |
+| Channel ID (for chat commands) | the ID of the channel to take commands from |
 
 ### Microsoft Teams
 
@@ -644,6 +659,8 @@ The room must be unencrypted.
 | Homeserver URL | `https://matrix.example.org` |
 | Access token | the bot account's access token |
 | Room ID | `!…:example.org` |
+
+The same channel can also take commands. See [Chat commands](CHAT_COMMANDS.md#matrix).
 
 ### Email (Gmail)
 

@@ -1223,6 +1223,12 @@ async fn main() -> Result<()> {
     // come here and are handled as before. No spam-blocklist dependency.
     let (card_tx, mut card_rx) = tokio::sync::mpsc::unbounded_channel::<tg_inbound::TgAction>();
     control::telegram::spawn(remote.clone(), settings_store.clone(), http.clone(), card_tx);
+    // Discord, Slack and Matrix: each channel switched on with "take commands"
+    // connects (control::discord / slack / matrix); settings changes apply
+    // within seconds, as for Telegram.
+    control::discord::spawn(remote.clone(), settings_store.clone(), http.clone());
+    control::slack::spawn(remote.clone(), settings_store.clone(), http.clone());
+    control::matrix::spawn(remote.clone(), settings_store.clone(), http.clone());
     {
         let settings_store = settings_store.clone();
         let task_store = task_store.clone();

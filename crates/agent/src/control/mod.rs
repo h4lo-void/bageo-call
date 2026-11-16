@@ -13,7 +13,8 @@
 //!   console's API calls (errands::create / cancel / say, the phone mode
 //!   switch, fulfill and appointments for to-dos, the call and contact
 //!   stores), with the same checks; nothing goes through HTTP.
-//! - Platform adapters, thin transports: [telegram] is the first.
+//! - Platform adapters, thin transports: [telegram], [discord] (Gateway),
+//!   [slack] (Socket Mode) and [matrix] (/sync); the last three share [link].
 //!
 //! # Writing an adapter (Discord Gateway, Slack Socket Mode, Matrix sync, ntfy, LINE, MCP)
 //!
@@ -62,13 +63,19 @@
 pub mod access;
 pub mod command;
 pub mod confirm;
+pub mod discord;
+pub mod link;
+pub mod matrix;
 pub mod nlu;
+pub mod slack;
 pub mod telegram;
 pub mod words;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod sec_tests;
+#[cfg(test)]
+mod chat_tests;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -95,7 +102,7 @@ use words::{words, Words};
 /// the notifications name it.
 pub const ENV_TELEGRAM: &str = "env-telegram";
 /// Channel kinds that can take commands (an adapter exists for them).
-pub const COMMAND_KINDS: &[&str] = &["telegram"];
+pub const COMMAND_KINDS: &[&str] = &["telegram", "discord", "slack", "matrix"];
 /// How long a confirmation waits for the owner.
 pub const CONFIRM_TTL: Duration = Duration::from_secs(120);
 /// At most this much of a call's transcript goes to a chat.
@@ -1087,6 +1094,7 @@ impl Controller {
         for c in &rt.notify_channels {
             secrets.push(c.token.clone());
             secrets.push(c.url.clone());
+            secrets.push(c.app_token.clone());
         }
         secrets.into_iter().map(|s| s.trim().to_string()).filter(|s| s.chars().count() >= 8).collect()
     }
