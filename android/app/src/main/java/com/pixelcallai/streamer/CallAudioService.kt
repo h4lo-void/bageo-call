@@ -1477,6 +1477,10 @@ class CallAudioService : Service() {
                     if (!isSessionCurrent(generation, callInstanceId)) return
                     handlePlaceCall(obj)
                 }
+                "add_call" -> {
+                    if (!isSessionCurrent(generation, callInstanceId)) return
+                    handleAddCall(obj, callInstanceId)
+                }
                 "tts_start" -> {
                     val source = obj.optString("source")
                     if (!isSessionCurrent(generation, callInstanceId)) return
@@ -1561,6 +1565,46 @@ class CallAudioService : Service() {
             }
         } catch (_: Exception) {
         }
+    }
+
+    /**
+     * Agent `add_call` (whitelist urgent call, media connection): dial the owner from
+     * this call's SIM and merge the two calls ([SilentInCallService.startAddCall]).
+     * Every step goes back as `add_call_result` on the media connection.
+     */
+    private fun handleAddCall(obj: org.json.JSONObject, callInstanceId: Long) {
+        val id = obj.optString("id").trim()
+        val number = obj.optString("number").trim()
+        val answerTimeoutMs = obj.optLong("answer_timeout_ms", 25_000L).coerceIn(5_000L, 60_000L)
+        Log.i(
+            TAG,
+            "add_call received id=$id number=${SilentInCallService.maskNumber(number)} " +
+                "merge=${obj.optBoolean("merge", true)} answer_timeout_ms=$answerTimeoutMs instance=$callInstanceId",
+        )
+        val report: (String, String) -> Unit = { status, reason ->
+            Log.i(TAG, "add_call_result id=$id status=$status reason=${reason.ifEmpty { "-" }}")
+            val client = bridge
+            if (client == null) {
+                Log.w(TAG, "add_call_result id=$id status=$status not sent: media connection gone")
+            } else {
+                client.sendJson(
+                    org.json.JSONObject()
+                        .put("type", "add_call_result")
+                        .put("id", id)
+                        .put("status", status)
+                        .put("reason", reason),
+                )
+            }
+        }
+        if (!Prefs.isAiCallEnabled(this)) {
+            report("failed", "ai_call_disabled")
+            return
+        }
+        if (id.isEmpty() || number.isEmpty()) {
+            report("failed", "missing_id_or_number")
+            return
+        }
+        mainHandler.post { SilentInCallService.startAddCall(this, id, number, answerTimeoutMs, report) }
     }
 
     /** End the cellular call when the agent sends `{"type":"hangup"}`. */

@@ -2022,6 +2022,10 @@ pub struct StallCfg {
     pub judgement: Arc<std::sync::Mutex<Option<crate::calls::ScamJudgement>>>,
     /// Fired once if a Whitelist caller (`whitelist_mode == "emergency"`) states an emergency.
     pub urgent_transfer: Option<UrgentTransferFn>,
+    /// Whitelist urgent call (setting `whitelist_urgent_call`): the agent pauses the
+    /// AI while the phone dials the owner, ends the session once merged, or has the
+    /// AI say the owner did not answer.
+    pub urgent_call: Option<Arc<crate::urgent_call::CallCtl>>,
 }
 
 /// Same setup, another system prompt (the rotated stall session).
@@ -3118,6 +3122,9 @@ pub enum SessionEndReason {
     /// The caller was a recording or voice menu (persona mode with sales / scam
     /// stalling on): we hung up on it.
     IvrHangup,
+    /// Whitelist urgent call merged with the owner's phone: the AI leaves, the
+    /// call stays up (no hangup).
+    Handed,
 }
 
 impl SessionEndReason {
@@ -3137,6 +3144,7 @@ impl SessionEndReason {
             Self::CantCommunicate => "cant_communicate",
             Self::WsClosed => "ws_closed",
             Self::IvrHangup => "ivr_hangup",
+            Self::Handed => "handed_to_owner",
         }
     }
 }
@@ -5059,8 +5067,15 @@ pub async fn run_session(
     let mut ivr_enter: Option<&'static str> = None;
     let mut ivr_since: Option<tokio::time::Instant> = None;
 
+    // Whitelist urgent call: while the phone dials the owner, or once the owner is
+    // on, the session must not hang up the call.
+    let urgent_ctl = stall.as_ref().and_then(|c| c.urgent_call.clone());
     let signal_force_hangup = |hangup_signaled: &mut bool| {
         if *hangup_signaled {
+            return;
+        }
+        if urgent_ctl.as_ref().is_some_and(|c| c.blocks_hangup()) {
+            info!("Whitelist urgent call in progress serial={serial} — hangup not signaled");
             return;
         }
         if let Some(ref flag) = force_hangup {
@@ -5093,6 +5108,35 @@ pub async fn run_session(
                 );
             }
             break;
+        }
+
+        // Whitelist urgent call: the owner is on the call now (the AI leaves), the
+        // phone dials them (nothing from the AI meanwhile), or they did not answer
+        // and the AI tells the caller.
+        if let Some(ctl) = urgent_ctl.as_ref() {
+            if ctl.is_handed() {
+                end_reason = SessionEndReason::Handed;
+                info!("Whitelist urgent call merged serial={serial} — the AI leaves the call, no hangup");
+                break;
+            }
+            if let Some(turn) = ctl.take_say() {
+                model_turn_pending = true;
+                match send_text_before_deadline(
+                    &mut sink,
+                    turn,
+                    tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
+                    "gemini urgent call line send",
+                )
+                .await
+                {
+                    Ok(()) => info!("Whitelist urgent call not merged serial={serial} — the AI tells the caller"),
+                    Err(e) => warn!("Whitelist urgent call line failed serial={serial}: {e:#}"),
+                }
+                last_activity_at = tokio::time::Instant::now();
+            }
+            if ctl.is_paused() {
+                last_activity_at = tokio::time::Instant::now();
+            }
         }
 
         // An errand: the owner cancelled it, the carrier's recording answered,
@@ -5988,6 +6032,7 @@ pub async fn run_session(
             && tool_open.is_empty()
             && !errand_asking
             && ivr_since.is_none()
+            && !urgent_ctl.as_ref().is_some_and(|c| c.ai_quiet())
             && (stall_quiet || plain_quiet)
         {
             idle_nudges += 1;
@@ -7443,6 +7488,10 @@ pub async fn run_session(
                     break;
                 }
                 match up {
+                    Some(_) if urgent_ctl.as_ref().is_some_and(|c| c.ai_quiet()) => {
+                        // Whitelist urgent call: the phone is dialing the owner (or the
+                        // owner is on): what the line carries is not for the model.
+                    }
                     Some(_) if !opening_turn_complete => {
                         // Drop caller barge-in until the desk-status opening has been spoken.
                     }

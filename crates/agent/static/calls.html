@@ -962,6 +962,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
                 <input type="tel" id="f-whitelist_forward_number" data-k="whitelist_forward_number" data-t="text" maxlength="40" autocomplete="off" data-i18n-ph="f_wl_num_ph" />
                 <div class="help" data-i18n="f_wl_num_h"></div></div>
             </div>
+            <label class="sw"><input type="checkbox" data-k="whitelist_urgent_call" data-t="bool" /><span><b data-i18n="f_wl_call"></b><small data-i18n="f_wl_call_h"></small></span></label>
           </div>
           <details class="fold more">
             <summary data-i18n="more_opts"></summary>
@@ -2272,10 +2273,10 @@ I18N["en"] = {
   wl_m_off: "Off: the AI answers",
   wl_m_direct: "Always: put through to your phone",
   wl_m_emergency: "Only when it is urgent",
-  f_wl_mode_h: "Always: first turn on forward-when-busy by dialing **67*your number# on the AI phone. Only when urgent: the AI gives the caller your number only if they say it is urgent. You are notified either way.",
+  f_wl_mode_h: "Always: first turn on forward-when-busy by dialing **67*your number# on the AI phone. Only when urgent: if the caller says it is urgent, the AI alerts you at once so you can call back. You are notified either way.",
   f_wl_num: "Your own phone number",
   f_wl_num_ph: "e.g. 0912345678",
-  f_wl_num_h: "The AI gives this number to a whitelisted caller with an urgent matter. It also appears in transfer notifications.",
+  f_wl_num_h: "The number to reach you when something is urgent. It appears in the alerts; with the trial switch below on, the phone dials it.",
   f_ui_pw: "Console password",
   f_ui_pw_h: "Once set, the console asks for it when opened (once per browser). You can skip it if you only use the console at home.",
   pw_setup_title: "Set a console password (optional)",
@@ -2290,6 +2291,8 @@ I18N["en"] = {
   ev_whitelist_urgent_transfer: "Whitelist: emergency transfer",
   more_opts: "More options",
   g_region_d: "Most people never need these.",
+  f_wl_call: "When it's urgent, call me and join us on one call (trial)",
+  f_wl_call_h: "Needs \"Only when it is urgent\" and your number. If you don't answer, the AI tells the caller you'll call back.",
 };
 
 I18N["zh-TW"] = {
@@ -2608,10 +2611,10 @@ I18N["zh-TW"] = {
   wl_m_off: "不轉接，由 AI 接聽",
   wl_m_direct: "直接轉接到你的手機",
   wl_m_emergency: "有急事才轉接",
-  f_wl_mode_h: "直接轉接：要先在 AI 手機撥 **67*你的號碼# 開啟忙線轉接。有急事才轉接：對方說有急事，AI 才把你的號碼告訴他。兩種都會通知你。",
+  f_wl_mode_h: "直接轉接：要先在 AI 手機撥 **67*你的號碼# 開啟忙線轉接。有急事才轉接：對方說有急事，AI 會馬上通知你回電。兩種都會通知你。",
   f_wl_num: "你自己的手機號碼",
   f_wl_num_ph: "例如：0912345678",
-  f_wl_num_h: "有急事時 AI 會把這個號碼告訴對方，通知裡也會顯示。",
+  f_wl_num_h: "有急事時要找你的號碼，會顯示在通知裡；打開下面的試驗開關，手機會直接撥這個號碼。",
   f_ui_pw: "控制台密碼",
   f_ui_pw_h: "設了以後，打開控制台要輸入密碼（每個瀏覽器只要輸入一次）。只在家裡的網路用可以不設。",
   pw_setup_title: "設定控制台密碼（可不設）",
@@ -3257,6 +3260,8 @@ I18N["zh-TW"] = {
   er_id_opt_owner: "本人",
   more_opts: "更多選項",
   g_region_d: "大部分的人用不到這裡的設定。",
+  f_wl_call: "有急事時，打給你並把三方接在一起（試驗中）",
+  f_wl_call_h: "要選「有急事才轉接」並填好你的號碼。你沒接的話，AI 會請對方等你回電。",
 };
 
 I18N["zh-CN"] = {
@@ -4206,10 +4211,10 @@ I18N["zh-CN"] = {
   wl_m_off: "不转接，由 AI 接听",
   wl_m_direct: "直接转接到你的手机",
   wl_m_emergency: "有急事才转接",
-  f_wl_mode_h: "直接转接：要先在 AI 手机上拨 **67*你的号码# 开启遇忙转移。有急事才转接：对方说有急事，AI 才把你的号码告诉他。两种都会通知你。",
+  f_wl_mode_h: "直接转接：要先在 AI 手机上拨 **67*你的号码# 开启遇忙转移。有急事才转接：对方说有急事，AI 会马上通知你回电。两种都会通知你。",
   f_wl_num: "你自己的手机号码",
   f_wl_num_ph: "例如：13800138000",
-  f_wl_num_h: "有急事时 AI 会把这个号码告诉对方，通知里也会显示。",
+  f_wl_num_h: "有急事时要找你的号码，会显示在通知里；打开下面的试验开关，手机会直接拨这个号码。",
   f_ui_pw: "控制台密码",
   f_ui_pw_h: "设置后，打开控制台要输入密码（每个浏览器只需输入一次）。只在家里的网络使用可以不设。",
   pw_setup_title: "设置控制台密码（选填）",
@@ -4224,6 +4229,8 @@ I18N["zh-CN"] = {
   ev_whitelist_urgent_transfer: "白名单紧急事件转接",
   more_opts: "更多选项",
   g_region_d: "大部分人用不到这里的设置。",
+  f_wl_call: "有急事时，打给你并把三方接在一起（试验中）",
+  f_wl_call_h: "要选「有急事才转接」并填好你的号码。你没接的话，AI 会请对方等你回电。",
 };
 
 I18N["ja"] = {
@@ -5173,10 +5180,10 @@ I18N["ja"] = {
   wl_m_off: "転送しない（AI が応答）",
   wl_m_direct: "直接転送（あなたのスマホへ）",
   wl_m_emergency: "急ぎのときだけ転送",
-  f_wl_mode_h: "直接転送：先に AI 用スマホで **67*あなたの番号# にかけ、話中転送を有効にしてください。急ぎのときだけ：相手が急用と言ったときだけ、AI があなたの番号を伝えます。どちらも通知が届きます。",
+  f_wl_mode_h: "直接転送：先に AI 用スマホで **67*あなたの番号# にかけ、話中転送を有効にしてください。急ぎのときだけ：相手が急用と言ったら、AI がすぐあなたに知らせるので折り返してください。どちらも通知が届きます。",
   f_wl_num: "あなたのスマホの番号",
   f_wl_num_ph: "例：09012345678",
-  f_wl_num_h: "急ぎの用件のとき、AI が相手にこの番号を伝えます。通知にも表示されます。",
+  f_wl_num_h: "急ぎのときにあなたへ連絡する番号です。通知に表示されます。下の試験スイッチをオンにすると、スマホがこの番号に発信します。",
   f_ui_pw: "コンソールのパスワード",
   f_ui_pw_h: "設定すると、コンソールを開くときにパスワードを求められます（ブラウザごとに一度だけ）。自宅のネットワークだけで使うなら不要です。",
   pw_setup_title: "コンソールのパスワードを設定（任意）",
@@ -5191,6 +5198,8 @@ I18N["ja"] = {
   ev_whitelist_urgent_transfer: "ホワイトリスト：緊急転送",
   more_opts: "その他の設定",
   g_region_d: "ほとんどの人は変更不要です。",
+  f_wl_call: "急ぎのとき、あなたに電話して三者通話にする（試験中）",
+  f_wl_call_h: "「急ぎのときだけ転送」とあなたの番号が必要です。出られなかったときは、AI が折り返すと伝えます。",
 };
 
 I18N["ko"] = {
@@ -6140,10 +6149,10 @@ I18N["ko"] = {
   wl_m_off: "전환 안 함 (AI가 응대)",
   wl_m_direct: "직접 전환 (내 휴대폰으로)",
   wl_m_emergency: "급할 때만 전환",
-  f_wl_mode_h: "직접 전환: 먼저 AI 휴대폰에서 **67*내 번호#를 눌러 통화 중 착신전환을 켜야 합니다. 급할 때만 전환: 상대방이 급하다고 할 때만 AI가 내 번호를 알려 줍니다. 두 경우 모두 알림을 보냅니다.",
+  f_wl_mode_h: "직접 전환: 먼저 AI 휴대폰에서 **67*내 번호#를 눌러 통화 중 착신전환을 켜야 합니다. 급할 때만 전환: 상대방이 급하다고 하면 AI가 바로 알려 주니 다시 전화해 주세요. 두 경우 모두 알림을 보냅니다.",
   f_wl_num: "내 휴대폰 번호",
   f_wl_num_ph: "예: 01012345678",
-  f_wl_num_h: "급한 용무일 때 AI가 상대에게 이 번호를 알려 주며, 알림에도 표시됩니다.",
+  f_wl_num_h: "급한 일이 있을 때 연락할 내 번호입니다. 알림에 표시되며, 아래 시험 스위치를 켜면 휴대폰이 이 번호로 전화합니다.",
   f_ui_pw: "콘솔 비밀번호",
   f_ui_pw_h: "설정하면 콘솔을 열 때 비밀번호를 묻습니다(브라우저마다 한 번). 집 네트워크에서만 쓴다면 설정하지 않아도 됩니다.",
   pw_setup_title: "콘솔 비밀번호 설정 (선택)",
@@ -6158,6 +6167,8 @@ I18N["ko"] = {
   ev_whitelist_urgent_transfer: "화이트리스트: 긴급 전환",
   more_opts: "추가 옵션",
   g_region_d: "대부분은 바꿀 필요가 없습니다.",
+  f_wl_call: "급할 때 나에게 전화해 3자 통화로 연결(시험 중)",
+  f_wl_call_h: "‘급할 때만 전환’과 내 번호가 필요합니다. 받지 못하면 AI가 다시 전화할 거라고 알려 줍니다.",
 };
 
 I18N["es"] = {
@@ -7107,10 +7118,10 @@ I18N["es"] = {
   wl_m_off: "Desactivada: contesta la IA",
   wl_m_direct: "Siempre: pasar a tu teléfono",
   wl_m_emergency: "Solo si es urgente",
-  f_wl_mode_h: "Siempre: primero activa el desvío si comunica marcando **67*tu número# en el teléfono de la IA. Solo si es urgente: la IA da tu número solo si quien llama dice que es urgente. En ambos casos recibes un aviso.",
+  f_wl_mode_h: "Siempre: primero activa el desvío si comunica marcando **67*tu número# en el teléfono de la IA. Solo si es urgente: si quien llama dice que es urgente, la IA te avisa al momento para que le devuelvas la llamada. En ambos casos recibes un aviso.",
   f_wl_num: "Tu propio número de teléfono",
   f_wl_num_ph: "p. ej. +34600123456",
-  f_wl_num_h: "La IA da este número a quien llama desde la lista blanca con un asunto urgente. También aparece en los avisos de transferencia.",
+  f_wl_num_h: "El número para localizarte si es urgente. Aparece en los avisos; con el interruptor de prueba de abajo activado, el teléfono lo marca.",
   f_ui_pw: "Contraseña de la consola",
   f_ui_pw_h: "Si la pones, la consola la pedirá al abrirla (una vez por navegador). No hace falta si solo la usas en casa.",
   pw_setup_title: "Configurar una contraseña de la consola (opcional)",
@@ -7125,6 +7136,8 @@ I18N["es"] = {
   ev_whitelist_urgent_transfer: "Lista blanca: transferencia de emergencia",
   more_opts: "Más opciones",
   g_region_d: "Casi nadie necesita cambiar esto.",
+  f_wl_call: "Si es urgente, llamarme y unirnos en una sola llamada (prueba)",
+  f_wl_call_h: "Requiere \"Solo si es urgente\" y tu número. Si no contestas, la IA le dice que le devolverás la llamada.",
 };
 
 I18N["fr"] = {
@@ -8074,10 +8087,10 @@ I18N["fr"] = {
   wl_m_off: "Désactivé : l'IA répond",
   wl_m_direct: "Toujours : transférer vers votre téléphone",
   wl_m_emergency: "Seulement si c'est urgent",
-  f_wl_mode_h: "Toujours : activez d'abord le renvoi sur occupation en composant **67*votre numéro# sur le téléphone de l'IA. Seulement si c'est urgent : l'IA ne donne votre numéro que si le correspondant dit que c'est urgent. Dans les deux cas, vous êtes prévenu.",
+  f_wl_mode_h: "Toujours : activez d'abord le renvoi sur occupation en composant **67*votre numéro# sur le téléphone de l'IA. Seulement si c'est urgent : si le correspondant dit que c'est urgent, l'IA vous prévient aussitôt pour que vous le rappeliez. Dans les deux cas, vous êtes prévenu.",
   f_wl_num: "Votre propre numéro de téléphone",
   f_wl_num_ph: "ex. +33612345678",
-  f_wl_num_h: "L'IA donne ce numéro à un appelant de la liste blanche qui a une urgence. Il apparaît aussi dans les notifications de transfert.",
+  f_wl_num_h: "Le numéro pour vous joindre en cas d'urgence. Il apparaît dans les notifications ; avec l'interrupteur d'essai ci-dessous activé, le téléphone l'appelle.",
   f_ui_pw: "Mot de passe de la console",
   f_ui_pw_h: "Une fois défini, la console le demande à l'ouverture (une fois par navigateur). Inutile si vous ne l'utilisez que chez vous.",
   pw_setup_title: "Définir un mot de passe de la console (facultatif)",
@@ -8092,6 +8105,8 @@ I18N["fr"] = {
   ev_whitelist_urgent_transfer: "Liste blanche : transfert d'urgence",
   more_opts: "Plus d'options",
   g_region_d: "La plupart des gens n'ont pas besoin de ces réglages.",
+  f_wl_call: "En cas d'urgence, m'appeler et nous réunir dans un seul appel (essai)",
+  f_wl_call_h: "Nécessite « Seulement si c'est urgent » et votre numéro. Si vous ne répondez pas, l'IA dit que vous rappellerez.",
 };
 
 I18N["de"] = {
@@ -9041,10 +9056,10 @@ I18N["de"] = {
   wl_m_off: "Aus: Die KI nimmt ab",
   wl_m_direct: "Immer: an dein Telefon weiterleiten",
   wl_m_emergency: "Nur wenn es dringend ist",
-  f_wl_mode_h: "Immer: Schalte zuerst die Rufumleitung bei Besetzt ein, indem du auf dem KI-Telefon **67*deine Nummer# wählst. Nur wenn es dringend ist: Die KI nennt deine Nummer nur, wenn der Anrufer sagt, dass es dringend ist. In beiden Fällen wirst du benachrichtigt.",
+  f_wl_mode_h: "Immer: Schalte zuerst die Rufumleitung bei Besetzt ein, indem du auf dem KI-Telefon **67*deine Nummer# wählst. Nur wenn es dringend ist: Sagt der Anrufer, dass es dringend ist, benachrichtigt dich die KI sofort, damit du zurückrufst. In beiden Fällen wirst du benachrichtigt.",
   f_wl_num: "Deine eigene Telefonnummer",
   f_wl_num_ph: "z. B. +491701234567",
-  f_wl_num_h: "Diese Nummer nennt die KI einem Whitelist-Anrufer mit einem dringenden Anliegen. Sie erscheint auch in Weiterleitungs-Benachrichtigungen.",
+  f_wl_num_h: "Die Nummer, unter der du bei Dringendem erreichbar bist. Sie steht in den Benachrichtigungen; ist der Testschalter unten an, wählt das Telefon sie.",
   f_ui_pw: "Konsolenpasswort",
   f_ui_pw_h: "Ist es gesetzt, fragt die Konsole beim Öffnen danach (einmal pro Browser). Nicht nötig, wenn du sie nur zu Hause nutzt.",
   pw_setup_title: "Konsolenpasswort festlegen (optional)",
@@ -9059,6 +9074,8 @@ I18N["de"] = {
   ev_whitelist_urgent_transfer: "Whitelist: Notfallweiterleitung",
   more_opts: "Weitere Optionen",
   g_region_d: "Die meisten brauchen diese Einstellungen nie.",
+  f_wl_call: "Wenn es dringend ist, mich anrufen und alle in ein Gespräch holen (Test)",
+  f_wl_call_h: "Braucht „Nur wenn es dringend ist“ und deine Nummer. Gehst du nicht ran, sagt die KI, dass du zurückrufst.",
 };
 
 I18N["pt"] = {
@@ -10008,10 +10025,10 @@ I18N["pt"] = {
   wl_m_off: "Desligada: a IA atende",
   wl_m_direct: "Sempre: passar para o seu celular",
   wl_m_emergency: "Só quando for urgente",
-  f_wl_mode_h: "Sempre: primeiro ative o desvio quando ocupado discando **67*seu número# no telefone da IA. Só quando for urgente: a IA só passa o seu número se a pessoa disser que é urgente. Nos dois casos você é avisado.",
+  f_wl_mode_h: "Sempre: primeiro ative o desvio quando ocupado discando **67*seu número# no telefone da IA. Só se for urgente: se quem liga disser que é urgente, a IA avisa você na hora para retornar a ligação. Nos dois casos você recebe um aviso.",
   f_wl_num: "Seu próprio número de celular",
   f_wl_num_ph: "ex.: 11987654321",
-  f_wl_num_h: "A IA informa este número a quem liga da lista branca com um assunto urgente. Ele também aparece nas notificações de transferência.",
+  f_wl_num_h: "O número para falar com você em caso de urgência. Aparece nos avisos; com o interruptor de teste abaixo ligado, o telefone liga para ele.",
   f_ui_pw: "Senha do console",
   f_ui_pw_h: "Depois de definida, o console pede a senha ao abrir (uma vez por navegador). Não precisa se você só usa em casa.",
   pw_setup_title: "Definir uma senha do console (opcional)",
@@ -10026,6 +10043,8 @@ I18N["pt"] = {
   ev_whitelist_urgent_transfer: "Lista branca: transferência de emergência",
   more_opts: "Mais opções",
   g_region_d: "A maioria das pessoas nunca precisa mexer aqui.",
+  f_wl_call: "Se for urgente, me ligar e juntar todos numa só ligação (teste)",
+  f_wl_call_h: "Precisa de \"Só quando for urgente\" e do seu número. Se você não atender, a IA avisa que você vai retornar.",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word

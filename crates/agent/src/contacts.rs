@@ -1134,16 +1134,29 @@ pub fn with_caller(prompt: &str, rt: &RuntimeSettings, caller_id: &str, sim_coun
     info!(contact = c.id.as_str(), kind = c.kind.as_str(), "caller is in the contacts: the prompt says who it is");
     let mut blk = caller_block(lang, rt.is_assistant_style(), &rt.owner_name, &c.name, &c.note);
     if c.kind == "whitelist" && rt.whitelist_mode == "emergency" {
-        blk.push_str(&urgent_block(lang, rt.is_assistant_style(), &rt.owner_name));
+        let will_call = crate::urgent_call::number_to_call(rt).is_some();
+        blk.push_str(&urgent_block(lang, rt.is_assistant_style(), &rt.owner_name, will_call));
     }
     with_caller_block(prompt, lang, &blk)
 }
 
 /// What the AI says when a whitelisted caller has something urgent
-/// (`whitelist_mode` emergency). Bageo does not put the call through: it
-/// alerts the owner, who calls back, and the AI says only that.
-pub fn urgent_block(lang: Lang, assistant: bool, owner: &str) -> String {
+/// (`whitelist_mode` emergency). Without `will_call` Bageo does not put the
+/// call through: it alerts the owner, who calls back, and the AI says only
+/// that. With `will_call` (setting `whitelist_urgent_call`) the phone dials the
+/// owner and merges the calls: the AI only asks the caller to hold on.
+pub fn urgent_block(lang: Lang, assistant: bool, owner: &str, will_call: bool) -> String {
     let owner = crate::prompts::owner_label(lang, owner);
+    if will_call {
+        return match (lang, assistant) {
+            (Lang::ZhTw, false) => "\n【白名單：對方有急事】這位是你很重要的人。如果他說有急事、出意外、住院，或要你馬上處理，先安撫他，再明確說「好，你等一下，先不要掛。」說完就停，等系統接下來的指示。不要說已經接通，也不要說要轉給誰。".to_string(),
+            (Lang::ZhTw, true) => format!("\n【白名單：對方有急事】這位是{owner}很重要的人。如果他說有急事、出意外、住院，或要馬上找{owner}，先安撫他，再明確說「好，我現在幫你打給{owner}，請先不要掛。」說完就停，等系統接下來的指示。不要說已經接通，也不要說{owner}已經在線上。"),
+            (Lang::ZhCn, false) => "\n【白名单：对方有急事】这位是你很重要的人。如果他说有急事、出意外、住院，或要你马上处理，先安抚他，再明确说「好，你等一下，先不要挂。」说完就停，等系统接下来的指示。不要说已经接通，也不要说要转给谁。".to_string(),
+            (Lang::ZhCn, true) => format!("\n【白名单：对方有急事】这位是{owner}很重要的人。如果他说有急事、出意外、住院，或要马上找{owner}，先安抚他，再明确说「好，我现在帮你打给{owner}，请先不要挂。」说完就停，等系统接下来的指示。不要说已经接通，也不要说{owner}已经在线上。"),
+            (_, false) => "\n[Whitelist: something urgent] This person matters to you. If they say it is urgent, there was an accident, someone is in hospital, or they need you right away, calm them and say clearly: \"Okay, hold on a moment, don't hang up.\" Then stop and wait for the system's next instruction. Do not say anyone is on the line or that you are putting them through.".to_string(),
+            (_, true) => format!("\n[Whitelist: something urgent] This person matters to {owner}. If they say it is urgent, there was an accident, someone is in hospital, or they need {owner} right away, calm them and say clearly: \"Okay, I'm calling {owner} for you now. Please don't hang up.\" Then stop and wait for the system's next instruction. Do not say {owner} is on the line already."),
+        };
+    }
     match (lang, assistant) {
         (Lang::ZhTw, false) => "\n【白名單：對方有急事】這位是你很重要的人。如果他說有急事、出意外、住院，或要你馬上處理，先安撫他，再明確說「好，我知道了，我馬上處理，等一下打給你。」不要說會把電話轉給誰，也不要說要通知誰。".to_string(),
         (Lang::ZhTw, true) => format!("\n【白名單：對方有急事】這位是{owner}很重要的人。如果他說有急事、出意外、住院，或要馬上找{owner}，先安撫他，再明確說「好，這很急，我現在馬上通知{owner}，請他立刻打給你。」不要說會把電話轉過去，也不要說{owner}會馬上接起來。"),
@@ -3386,7 +3399,7 @@ mod tests {
         let langs = [Lang::ZhTw, Lang::ZhCn, Lang::En, Lang::Ja, Lang::Ko, Lang::Es, Lang::Fr, Lang::De, Lang::Pt];
         for lang in langs {
             for assistant in [false, true] {
-                let b = urgent_block(lang, assistant, "Sam");
+                let b = urgent_block(lang, assistant, "Sam", false);
                 // The line the AI is told to say, in 「…」 or "…".
                 let said = b
                     .split('「')
@@ -3398,6 +3411,29 @@ mod tests {
                     assert!(!said.to_lowercase().contains(word), "{lang:?} {assistant}: {said}");
                 }
                 assert!(said.contains("打給你") || said.contains("打给你") || said.contains("call you"), "{lang:?} {assistant}: {said}");
+            }
+        }
+    }
+
+    #[test]
+    fn with_the_urgent_call_on_the_ai_only_asks_the_caller_to_hold_on() {
+        let langs = [Lang::ZhTw, Lang::ZhCn, Lang::En, Lang::Ja, Lang::Ko, Lang::Es, Lang::Fr, Lang::De, Lang::Pt];
+        for lang in langs {
+            for assistant in [false, true] {
+                let b = urgent_block(lang, assistant, "Sam", true);
+                let said = b
+                    .split('「')
+                    .nth(1)
+                    .and_then(|s| s.split('」').next())
+                    .or_else(|| b.split('"').nth(1))
+                    .unwrap_or_else(|| panic!("no line to say: {b}"));
+                assert!(
+                    said.contains("不要掛") || said.contains("不要挂") || said.contains("don't hang up"),
+                    "{lang:?} {assistant}: {said}"
+                );
+                for word in ["接通", "轉接", "转接", "put you through", "on the line", "connected"] {
+                    assert!(!said.to_lowercase().contains(word), "{lang:?} {assistant}: {said}");
+                }
             }
         }
     }

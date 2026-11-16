@@ -56,6 +56,7 @@ mod tg_inbound;
 mod trtc;
 mod trtc_api;
 mod trtc_bridge;
+mod urgent_call;
 mod usb_bridge;
 mod vad;
 mod voice_preview;
@@ -3232,6 +3233,16 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                             "call_waiting_rejected" => {
                                 on_call_waiting_rejected(&state, &serial, &parsed);
                             }
+                            // Whitelist urgent call: how the phone's second call goes.
+                            "add_call_result" => {
+                                let waited = urgent_call::deliver(&parsed);
+                                info!(
+                                    "add_call_result serial={serial} id={} status={} reason={} waited={waited}",
+                                    parsed.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                                    parsed.get("status").and_then(|v| v.as_str()).unwrap_or(""),
+                                    parsed.get("reason").and_then(|v| v.as_str()).unwrap_or("")
+                                );
+                            }
                             other => {
                                 let _ = send_json(
                                     &sink,
@@ -6396,6 +6407,8 @@ struct GeminiSessionCore {
     caller: Arc<std::sync::Mutex<String>>,
     /// Set once when a Whitelist caller (`whitelist_mode == "emergency"`) states an emergency.
     urgent_reason: Arc<std::sync::Mutex<Option<String>>>,
+    /// Whitelist urgent call (setting `whitelist_urgent_call`) on this call.
+    urgent_call: Option<Arc<urgent_call::CallCtl>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -6439,6 +6452,10 @@ fn start_gemini_session_core(
     let force_stall = contacts::is_force_stall(&cfg.caller_id, sim_init.as_deref()).is_some();
     let is_whitelist_emerg = rt.whitelist_mode == "emergency"
         && contacts::is_whitelist(&cfg.caller_id, sim_init.as_deref()).is_some();
+    // Whitelist urgent call: decided when the session starts (with the prompt that
+    // tells the AI to ask the caller to hold on).
+    let urgent_ctl = (is_whitelist_emerg && persona && !is_callback && urgent_call::number_to_call(rt).is_some())
+        .then(|| Arc::new(urgent_call::CallCtl::default()));
     let stall_cfg = (persona && !is_callback).then(|| {
         let serial_for_ctx = serial.to_string();
         let caller_slot_for_ctx = caller_slot.clone();
@@ -6479,6 +6496,7 @@ fn start_gemini_session_core(
                     }
                 }))
             }),
+            urgent_call: urgent_ctl.clone(),
         }
     });
     // Asked at pickup: by then the media hello has said which SIM took the call
@@ -6577,6 +6595,7 @@ fn start_gemini_session_core(
         let play_head_cb = play_head.clone();
         let guard_cb = guard_slot.clone();
         let barge_in = barge_in.clone();
+        let urgent_cb = urgent_ctl.clone();
         tokio::spawn(async move {
             gemini_live::run_session(
                 &api_key,
@@ -6586,10 +6605,13 @@ fn start_gemini_session_core(
                 up_rx,
                 move |pcm| {
                     // Double-gate: never inject before UnmuteAfterGreet.
+                    // Whitelist urgent call: nothing from the AI while the phone dials
+                    // the owner, or once the owner is on.
                     if cancel_for_cb.load(Ordering::Relaxed)
                         || pcm.is_empty()
                         || !audio_open_cb.load(Ordering::Relaxed)
                         || !guard_cb.get().is_some_and(MediaCallGuard::is_current)
+                        || urgent_cb.as_ref().is_some_and(|c| c.ai_quiet())
                     {
                         return;
                     }
@@ -6639,6 +6661,114 @@ fn start_gemini_session_core(
         appointments: appointment_book,
         caller: caller_slot,
         urgent_reason,
+        urgent_call: urgent_ctl,
+    }
+}
+
+/// Whitelist urgent call (setting `whitelist_urgent_call`): let the AI's "hold on"
+/// line play out (hold cuts this call's audio for the caller), have the phone dial
+/// the owner from this call's SIM and merge, then hand the call over or bring the
+/// AI back with the "did not answer" turn. Nothing here hangs the call up.
+#[allow(clippy::too_many_arguments)]
+async fn run_urgent_call(
+    sink: WsSink,
+    serial: String,
+    number: String,
+    ctl: Arc<urgent_call::CallCtl>,
+    active_call: ActiveCallSlot,
+    media_call_guard: MediaCallGuard,
+    play_head: Arc<gemini_live::DownlinkPlayHead>,
+    delivered_bytes: Arc<AtomicU64>,
+    on_fail: String,
+) {
+    let t0 = tokio::time::Instant::now();
+    let before = delivered_bytes.load(Ordering::Relaxed);
+    loop {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        if !media_call_guard.is_current() {
+            info!("Whitelist urgent call: call over before dialing serial={serial}");
+            return;
+        }
+        let waited = t0.elapsed();
+        if waited >= urgent_call::HOLD_LINE_MAX_WAIT {
+            info!("Whitelist urgent call: hold-on line not finished in {}s serial={serial} — dial anyway", waited.as_secs());
+            break;
+        }
+        if waited < Duration::from_millis(1500) {
+            continue;
+        }
+        let spoke = delivered_bytes.load(Ordering::Relaxed) > before;
+        if spoke && !play_head.generating() && !play_head.ai_audible(Duration::from_millis(400)) {
+            info!("Whitelist urgent call: hold-on line played ({}ms) serial={serial}", waited.as_millis());
+            break;
+        }
+    }
+    ctl.pause();
+    let id = format!("urgent-{}", chrono::Utc::now().timestamp_millis());
+    let mut rx = urgent_call::register(&id);
+    let mut tracker = urgent_call::Tracker::default();
+    info!(
+        "Whitelist urgent call: add_call id={id} serial={serial} number={} — AI paused",
+        urgent_call::masked(&number)
+    );
+    let step = match send_json(&sink, urgent_call::add_call_payload(&id, &number)).await {
+        Err(e) => {
+            warn!("Whitelist urgent call: add_call not sent id={id} serial={serial}: {e:#}");
+            urgent_call::Step::Failed("send_failed".to_string())
+        }
+        Ok(()) => {
+            let deadline = tokio::time::Instant::now() + urgent_call::RESULT_WAIT;
+            loop {
+                if !media_call_guard.is_current() {
+                    break urgent_call::Step::Failed("call_ended".to_string());
+                }
+                if tokio::time::Instant::now() >= deadline {
+                    break tracker.on_timeout();
+                }
+                match tokio::time::timeout(Duration::from_millis(500), rx.recv()).await {
+                    Ok(Some(report)) => {
+                        info!("Whitelist urgent call: id={id} serial={serial} phone says {report:?}");
+                        match tracker.on_report(report) {
+                            urgent_call::Step::Wait => {}
+                            settled => break settled,
+                        }
+                    }
+                    Ok(None) => break tracker.on_timeout(),
+                    Err(_) => {}
+                }
+            }
+        }
+    };
+    urgent_call::unregister(&id);
+    let events: Vec<String> = match &step {
+        urgent_call::Step::Merged => vec!["whitelist_urgent_call_merged".to_string()],
+        urgent_call::Step::Failed(reason) => vec![
+            "whitelist_urgent_call_failed".to_string(),
+            format!("whitelist_urgent_call_failed:{reason}"),
+        ],
+        urgent_call::Step::Wait => Vec::new(),
+    };
+    if let Some(_lease) = media_call_guard.lease_current().await {
+        if let Some(c) = active_call.lock().await.as_mut() {
+            for e in &events {
+                c.push_event(e);
+            }
+        }
+    }
+    match step {
+        urgent_call::Step::Merged => {
+            info!("Whitelist urgent call merged id={id} serial={serial} — the AI leaves, the call stays up");
+            ctl.hand_over();
+        }
+        urgent_call::Step::Failed(reason) => {
+            if reason == "call_ended" {
+                info!("Whitelist urgent call: call over id={id} serial={serial}");
+                return;
+            }
+            info!("Whitelist urgent call failed id={id} serial={serial} reason={reason} — the AI is back");
+            ctl.resume_with(on_fail);
+        }
+        urgent_call::Step::Wait => {}
     }
 }
 
@@ -6676,6 +6806,7 @@ async fn run_gemini_session_to_end(
         stall_judgement,
         appointments,
         urgent_reason,
+        urgent_call: urgent_ctl,
         caller,
         ..
     } = core;
@@ -6733,6 +6864,8 @@ async fn run_gemini_session_to_end(
         let stall_engaged = stall_engaged.clone();
         let stall_judgement = stall_judgement.clone();
         let urgent_reason = urgent_reason.clone();
+        let urgent_ctl = urgent_ctl.clone();
+        let delivered_bytes = delivered_bytes.clone();
         tokio::spawn(async move {
             let mut stall_recorded = false;
             let mut urgent_recorded = false;
@@ -6788,6 +6921,30 @@ async fn run_gemini_session_to_end(
                         tokio::spawn(async move {
                             let _ = notify::send_text_alert(&http, &settings, "whitelist_urgent_transfer", urg_title, &alert).await;
                         });
+                        // Trial (setting whitelist_urgent_call): the phone dials the owner
+                        // and merges the calls; the alert above goes out either way.
+                        if let Some(ctl) = urgent_ctl.clone() {
+                            let on_fail = urgent_call::not_answered_turn(rt.lang(), rt.is_assistant_style(), &rt.owner_name);
+                            match urgent_call::number_to_call(&rt) {
+                                Some(number) => {
+                                    tokio::spawn(run_urgent_call(
+                                        sink.clone(),
+                                        serial.clone(),
+                                        number,
+                                        ctl,
+                                        active_call.clone(),
+                                        media_call_guard.clone(),
+                                        play_head.clone(),
+                                        delivered_bytes.clone(),
+                                        on_fail,
+                                    ));
+                                }
+                                None => {
+                                    info!("Whitelist urgent call turned off during the call serial={serial} — the AI tells the caller");
+                                    ctl.resume_with(on_fail);
+                                }
+                            }
+                        }
                     }
                 }
                 // Record while the call is live: the summary notification is built at call_end.
@@ -6820,7 +6977,7 @@ async fn run_gemini_session_to_end(
                     }
                     judged_seen = judged_now;
                 }
-                if force_hangup.load(Ordering::Relaxed) {
+                if force_hangup.load(Ordering::Relaxed) && !urgent_ctl.as_ref().is_some_and(|c| c.blocks_hangup()) {
                     do_gemini_goodbye_hangup(
                         &sink,
                         &state,
@@ -6969,7 +7126,15 @@ async fn run_gemini_session_to_end(
             }
             // Always hangup on agent-initiated end — even if cancel raced mid-drain.
             // (Old gate `!cancel` skipped hangup after WS glitch during the goodbye, leaving line open.)
-            if reason.should_play_goodbye() {
+            // Whitelist urgent call: the owner is on (or being dialed): never hang up.
+            let urgent_hold = urgent_ctl.as_ref().is_some_and(|c| c.blocks_hangup());
+            if urgent_hold {
+                info!(
+                    "Gemini Live ended during a whitelist urgent call serial={serial} reason={} — call left up",
+                    reason.as_str()
+                );
+            }
+            if reason.should_play_goodbye() && !urgent_hold {
                 do_gemini_goodbye_hangup(
                     &sink,
                     &state,
@@ -11031,6 +11196,7 @@ mod ring_prewarm_tests {
                 stall_engaged: Arc::new(AtomicBool::new(false)),
                 stall_judgement: Default::default(),
                 urgent_reason: Default::default(),
+                urgent_call: None,
                 barge_in: Arc::new(AtomicBool::new(false)),
                 appointments: None,
                 caller: Arc::new(std::sync::Mutex::new(caller.to_string())),

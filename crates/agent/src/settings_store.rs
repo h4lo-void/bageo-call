@@ -349,6 +349,11 @@ pub struct RuntimeSettings {
     /// The owner's real phone number for Whitelist forwarding / emergency call.
     #[serde(default)]
     pub whitelist_forward_number: String,
+    /// Trial: with `whitelist_mode` emergency and a forwarding number, an urgent
+    /// Whitelist caller is put on hold, the phone dials that number from the
+    /// same SIM and merges the two calls (`crate::urgent_call`). Off: alert only.
+    #[serde(default)]
+    pub whitelist_urgent_call: bool,
     /// Password for accessing the web console (`?token=` or `Authorization: Bearer`);
     /// overrides `CALLS_UI_TOKEN` when non-empty.
     #[serde(default)]
@@ -729,6 +734,7 @@ impl RuntimeSettings {
             device_labels: std::collections::BTreeMap::new(),
             whitelist_mode: sanitize_whitelist_mode(&env_or("WHITELIST_MODE", "off")),
             whitelist_forward_number: env_or("WHITELIST_FORWARD_NUMBER", ""),
+            whitelist_urgent_call: env_bool("WHITELIST_URGENT_CALL", false),
             ui_password: String::new(),
             ui_password_prompted: false,
             calls_data_dir: base.calls_data_dir.clone(),
@@ -1000,6 +1006,7 @@ impl RuntimeSettings {
             answer_unknown_callers,
             persona_stall_spam,
             scam_review_without_keywords,
+            whitelist_urgent_call,
             persona_stall_max_min,
             persona_normal_max_min,
             gemini_server_vad,
@@ -1406,6 +1413,8 @@ struct Overrides {
     whitelist_mode: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     whitelist_forward_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    whitelist_urgent_call: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     ui_password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2006,6 +2015,7 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     if let Some(v) = ov.whitelist_forward_number.take() {
         ov.whitelist_forward_number = Some(v.chars().filter(|c| !c.is_control()).take(32).collect());
     }
+    p_bool(patch, "whitelist_urgent_call", &mut ov.whitelist_urgent_call);
     p_secret(patch, "ui_password", &mut ov.ui_password);
     p_bool(patch, "ui_password_prompted", &mut ov.ui_password_prompted);
     if ov.ui_password.as_ref().is_some_and(|s| !s.is_empty()) {
