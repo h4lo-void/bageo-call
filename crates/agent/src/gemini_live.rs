@@ -5860,7 +5860,10 @@ pub async fn run_session(
         }
 
         // Wall-clock max talk time → agent will play goodbye WAV (persona: plain hangup).
-        if session_start.elapsed() >= Duration::from_secs(max_secs) {
+        // Not while the phone dials the owner for a whitelist urgent call.
+        if session_start.elapsed() >= Duration::from_secs(max_secs)
+            && !urgent_ctl.as_ref().is_some_and(|c| c.ai_quiet())
+        {
             end_reason = SessionEndReason::MaxDuration;
             let waited = let_the_phone_finish(&play_head, phone_sr, &cancel).await;
             signal_force_hangup(&mut hangup_signaled);
@@ -6443,6 +6446,13 @@ pub async fn run_session(
                                 for s in &out_tx {
                                     push_tx_window(&mut out_tx_window, s, 800);
                                     push_tx_window(&mut turn_out_text, s, 400);
+                                    // Whitelist urgent call: dialing waits for the AI's hold-on line.
+                                    if let Some(ctl) = urgent_ctl.as_ref() {
+                                        if ctl.hold_said_at().is_none() && crate::urgent_call::is_hold_line(&turn_out_text) {
+                                            info!("Whitelist urgent call: the AI said its hold-on line serial={serial}");
+                                            ctl.note_hold_line();
+                                        }
+                                    }
                                     if cb_hold {
                                         // Its closing counts once it plays.
                                         if cb_floor.held.is_some() {

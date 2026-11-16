@@ -1481,6 +1481,11 @@ class CallAudioService : Service() {
                     if (!isSessionCurrent(generation, callInstanceId)) return
                     handleAddCall(obj, callInstanceId)
                 }
+                "add_call_abort" -> {
+                    val id = obj.optString("id").trim()
+                    Log.i(TAG, "add_call_abort received id=$id")
+                    mainHandler.post { SilentInCallService.abortAddCall(id) }
+                }
                 "tts_start" -> {
                     val source = obj.optString("source")
                     if (!isSessionCurrent(generation, callInstanceId)) return
@@ -1559,6 +1564,11 @@ class CallAudioService : Service() {
                 }
                 "hangup" -> {
                     if (!isSessionCurrent(generation, callInstanceId)) return
+                    // Whitelist urgent call: dialing the owner or merged — the caller's call stays up.
+                    if (SilentInCallService.isAddCallActiveOrMerged()) {
+                        Log.w(TAG, "agent hangup reason=${obj.optString("reason")} ignored: add_call dialing or merged")
+                        return
+                    }
                     Log.i(TAG, "agent hangup reason=${obj.optString("reason")}")
                     hangupFromAgent(generation, callInstanceId)
                 }
@@ -1613,6 +1623,11 @@ class CallAudioService : Service() {
             // Small settle so last TTS frame flushes into the injector.
             delay(250)
             if (!isSessionCurrent(generation, callInstanceId)) return@launch
+            // Second guard: a whitelist urgent call is dialing the owner or merged.
+            if (SilentInCallService.isAddCallActiveOrMerged()) {
+                Log.w(TAG, "hangupFromAgent ignored: add_call dialing or merged — the caller's call stays up")
+                return@launch
+            }
             var ok = SilentInCallService.disconnectActive(callInstanceId)
             if (!ok) {
                 if (!isSessionCurrent(generation, callInstanceId)) return@launch

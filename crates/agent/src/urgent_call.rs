@@ -9,6 +9,7 @@
 //! answer.
 //!
 //! Agent -> phone: {"type":"add_call","id":…,"number":…,"merge":true,"answer_timeout_ms":25000}
+//!                 {"type":"add_call_abort","id":…} (no final result in time)
 //! Phone -> agent: {"type":"add_call_result","id":…,"status":"dialing"|"active"|"merged"|"failed","reason":…}
 
 use crate::locale::Lang;
@@ -17,7 +18,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 /// How long the phone lets the owner's phone ring.
@@ -27,12 +28,43 @@ pub const OWNER_ANSWER_TIMEOUT: Duration = Duration::from_secs(25);
 pub const RESULT_WAIT: Duration = Duration::from_secs(50);
 /// Longest wait for the AI's "hold on" line to play before the phone dials.
 pub const HOLD_LINE_MAX_WAIT: Duration = Duration::from_secs(10);
+/// No `dialing` from the phone this soon after add_call: its app does not know the
+/// command (an older version); the AI comes back at once.
+pub const DIAL_ACK_WAIT: Duration = Duration::from_secs(5);
+/// The AI said the hold-on line but the caller's words never named an urgent
+/// matter within this long: no call, the AI says the owner will call back.
+pub const HOLD_LINE_WITHOUT_TRIGGER: Duration = Duration::from_secs(6);
+/// After add_call_abort: how long a final result may still come.
+pub const ABORT_WAIT: Duration = Duration::from_secs(8);
+/// After the attempt was given up: a late "merged" still hands the call over.
+pub const LATE_MERGE_WAIT: Duration = Duration::from_secs(90);
 
 /// The owner's number to dial, only when the trial is on: whitelist_mode
 /// emergency, whitelist_urgent_call on and whitelist_forward_number filled.
 pub fn number_to_call(rt: &RuntimeSettings) -> Option<String> {
     let number = rt.whitelist_forward_number.trim();
     (rt.whitelist_mode == "emergency" && rt.whitelist_urgent_call && !number.is_empty()).then(|| number.to_string())
+}
+
+/// The owner's number as the phone may dial it from the call's SIM (`sim`, ISO
+/// country; None when unknown): the errands check (no emergency, short,
+/// premium-rate or MMI codes, nothing that goes abroad from home). Unknown SIM:
+/// only a full +number is taken, checked against its own country.
+pub fn check_owner_number(number: &str, sim: Option<&str>) -> Result<String, &'static str> {
+    if number.contains('*') || number.contains('#') {
+        return Err("bad_number");
+    }
+    let region = match sim.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(s) => s.to_ascii_lowercase(),
+        None => {
+            let clean = crate::errands::clean_number(number).ok_or("bad_number")?;
+            if !clean.starts_with('+') {
+                return Err("bad_number");
+            }
+            crate::phone_region::normalize(&clean, None).ok_or("bad_number")?.country.to_string()
+        }
+    };
+    crate::errands::check_number(number, &region)
 }
 
 /// The phone's add_call command.
@@ -44,6 +76,26 @@ pub fn add_call_payload(id: &str, number: &str) -> Value {
         "merge": true,
         "answer_timeout_ms": OWNER_ANSWER_TIMEOUT.as_millis() as u64,
     })
+}
+
+/// The phone's add_call_abort: end the second call and take this one off hold
+/// (merged already: it answers "merged").
+pub fn abort_payload(id: &str) -> Value {
+    json!({ "type": "add_call_abort", "id": id })
+}
+
+/// The AI's hold-on line (urgent_block with the call on) in what it said, in any
+/// of the nine languages. Dialing waits for it.
+pub fn is_hold_line(ai_said: &str) -> bool {
+    let lower = ai_said.to_lowercase();
+    const CUES: &[&str] = &[
+        "不要掛", "不要挂", "別掛", "别挂", "先別掛", "先别挂",
+        "don't hang up", "do not hang up", "dont hang up", "stay on the line",
+        "切らないで", "끊지 마", "끊지 말",
+        "no cuelgue", "no cuelgues", "ne raccroche", "nicht auflegen", "leg nicht auf", "legen sie nicht auf",
+        "não desligue", "nao desligue",
+    ];
+    CUES.iter().any(|k| lower.contains(k))
 }
 
 /// One add_call_result from the phone.
@@ -165,6 +217,12 @@ pub struct CallCtl {
     handed: AtomicBool,
     /// A turn for the model (the "did not answer" line), sent once.
     say: Mutex<Option<String>>,
+    /// When the AI's output first held the hold-on line.
+    hold_said_at: Mutex<Option<Instant>>,
+    /// No phone call on this call any more (fallback taken, or tried once).
+    dial_blocked: AtomicBool,
+    /// The Live session ended while the AI was paused: nobody can talk to the caller.
+    session_gone: AtomicBool,
 }
 
 impl CallCtl {
@@ -204,6 +262,60 @@ impl CallCtl {
 
     pub fn take_say(&self) -> Option<String> {
         self.say.lock().ok().and_then(|mut g| g.take())
+    }
+
+    /// The AI's output held the hold-on line (first time counts).
+    pub fn note_hold_line(&self) {
+        if let Ok(mut g) = self.hold_said_at.lock() {
+            g.get_or_insert_with(Instant::now);
+        }
+    }
+
+    pub fn hold_said_at(&self) -> Option<Instant> {
+        self.hold_said_at.lock().ok().and_then(|g| *g)
+    }
+
+    /// No (further) phone call on this call. True the first time.
+    pub fn block_dial(&self) -> bool {
+        !self.dial_blocked.swap(true, Ordering::Relaxed)
+    }
+
+    pub fn dial_blocked(&self) -> bool {
+        self.dial_blocked.load(Ordering::Relaxed)
+    }
+
+    pub fn mark_session_gone(&self) {
+        self.session_gone.store(true, Ordering::Relaxed);
+    }
+
+    pub fn session_gone(&self) -> bool {
+        self.session_gone.load(Ordering::Relaxed)
+    }
+}
+
+/// The hold-on line was said this long ago without the caller's words naming an
+/// urgent matter (and no call started): time for the "will call you back" line.
+pub fn hold_line_unbacked(ctl: &CallCtl, now: Instant) -> bool {
+    !ctl.dial_blocked() && ctl.hold_said_at().is_some_and(|t| now.duration_since(t) >= HOLD_LINE_WITHOUT_TRIGGER)
+}
+
+/// What the agent does when the Live session ends (any reason, any error).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionEnd {
+    /// No urgent call in progress: the usual end (goodbye, retry, voicemail, hangup).
+    Usual,
+    /// The owner is merged in: leave the call up, nothing else.
+    LeaveUp,
+    /// The phone is dialing the owner (or the caller is stuck on hold): leave the
+    /// call up and alert the owner — nobody is left to talk to the caller.
+    LeaveUpAndAlert,
+}
+
+pub fn on_session_end(ctl: Option<&CallCtl>) -> SessionEnd {
+    match ctl {
+        Some(c) if c.is_handed() => SessionEnd::LeaveUp,
+        Some(c) if c.is_paused() => SessionEnd::LeaveUpAndAlert,
+        _ => SessionEnd::Usual,
     }
 }
 
@@ -253,6 +365,70 @@ pub fn not_answered_turn(lang: Lang, assistant: bool, owner: &str) -> String {
         (_, true) => format!("(System: {owner} did not answer. Say in one sentence, in the caller's language: \"{owner} isn't picking up. I've let them know and asked them to call you straight back.\" Do not say anyone is on the line.)"),
     };
     crate::prompts::client_turn(&text)
+}
+
+/// The turn for when no call to the owner happens after the hold-on line (the
+/// caller's words did not say it is urgent, or the phone cannot dial): the AI
+/// says the owner will call back soon.
+pub fn callback_turn(lang: Lang, assistant: bool, owner: &str) -> String {
+    let owner = crate::prompts::owner_label(lang, owner);
+    let text = match (lang, assistant) {
+        (Lang::ZhTw, false) => "（系統：現在不轉接。用一句話跟對方說「好，我知道了，我等一下盡快打給你。」不要說已經接通，也不要說要轉給誰。）".to_string(),
+        (Lang::ZhTw, true) => format!("（系統：現在不轉接。用一句話跟對方說「好，我會請{owner}盡快打給你。」不要說已經接通。）"),
+        (Lang::ZhCn, false) => "（系统：现在不转接。用一句话跟对方说「好，我知道了，我等一下尽快打给你。」不要说已经接通，也不要说要转给谁。）".to_string(),
+        (Lang::ZhCn, true) => format!("（系统：现在不转接。用一句话跟对方说「好，我会请{owner}尽快打给你。」不要说已经接通。）"),
+        (_, false) => "(System: no call is put through now. Say in one sentence, in the caller's language: \"Okay, got it. I'll call you back as soon as I can.\" Do not say anyone is on the line.)".to_string(),
+        (_, true) => format!("(System: no call is put through now. Say in one sentence, in the caller's language: \"Okay, I'll ask {owner} to call you back as soon as possible.\" Do not say anyone is on the line.)"),
+    };
+    crate::prompts::client_turn(&text)
+}
+
+/// What went wrong in a way the AI cannot fix: the owner is told at once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Alert {
+    /// The Live session ended while the phone dialed the owner.
+    AiEnded,
+    /// The phone could not take the caller's call off hold.
+    StillOnHold,
+}
+
+/// One line for the owner's urgent alert.
+pub fn alert_line(alert: Alert, lang: Lang) -> &'static str {
+    match (alert, lang) {
+        (Alert::AiEnded, Lang::ZhTw) => "AI 中途斷線，對方可能還在線上，請立刻回電。",
+        (Alert::AiEnded, Lang::ZhCn) => "AI 中途断线，对方可能还在线上，请立刻回电。",
+        (Alert::AiEnded, Lang::Ja) => "AI の通話が途中で切れました。相手はまだ待っているかもしれません。すぐに折り返してください。",
+        (Alert::AiEnded, Lang::Ko) => "AI 연결이 중간에 끊겼습니다. 상대가 아직 기다릴 수 있으니 바로 전화해 주세요.",
+        (Alert::AiEnded, Lang::Es) => "La IA se desconectó. Quien llama puede seguir en la línea: devuelve la llamada ya.",
+        (Alert::AiEnded, Lang::Fr) => "L'IA s'est coupée. L'appelant est peut-être encore en ligne : rappelez tout de suite.",
+        (Alert::AiEnded, Lang::De) => "Die KI ist ausgefallen. Der Anrufer ist vielleicht noch dran: Ruf sofort zurück.",
+        (Alert::AiEnded, Lang::Pt) => "A IA caiu. Quem ligou pode ainda estar na linha: retorne a ligação já.",
+        (Alert::AiEnded, Lang::En) => "The AI dropped off. The caller may still be on the line: call back now.",
+        (Alert::StillOnHold, Lang::ZhTw) => "對方的電話沒能從保留恢復，他可能還在等，請立刻回電。",
+        (Alert::StillOnHold, Lang::ZhCn) => "对方的电话没能从保留恢复，他可能还在等，请立刻回电。",
+        (Alert::StillOnHold, Lang::Ja) => "相手の通話を保留から戻せませんでした。まだ待っているかもしれません。すぐに折り返してください。",
+        (Alert::StillOnHold, Lang::Ko) => "상대 통화를 보류에서 되돌리지 못했습니다. 아직 기다릴 수 있으니 바로 전화해 주세요.",
+        (Alert::StillOnHold, Lang::Es) => "No se pudo quitar la espera de la llamada. Puede que siga esperando: devuelve la llamada ya.",
+        (Alert::StillOnHold, Lang::Fr) => "L'appel n'a pas pu être repris. L'appelant attend peut-être encore : rappelez tout de suite.",
+        (Alert::StillOnHold, Lang::De) => "Der Anruf konnte nicht aus dem Halten geholt werden. Ruf sofort zurück.",
+        (Alert::StillOnHold, Lang::Pt) => "Não deu para tirar a ligação da espera. A pessoa pode ainda estar esperando: retorne já.",
+        (Alert::StillOnHold, Lang::En) => "The call could not be taken off hold. The caller may still be waiting: call back now.",
+    }
+}
+
+/// Title of the owner's urgent alert (same as the urgent-matter alert).
+pub fn alert_title(lang: Lang) -> &'static str {
+    match lang {
+        Lang::ZhTw => "白名單緊急事件通知",
+        Lang::ZhCn => "白名单紧急事件通知",
+        Lang::Ja => "ホワイトリスト緊急通知",
+        Lang::Ko => "화이트리스트 긴급 알림",
+        Lang::Es => "Alerta de emergencia (Lista blanca)",
+        Lang::Fr => "Alerte d'urgence (Liste blanche)",
+        Lang::De => "Whitelist-Notfallalarm",
+        Lang::Pt => "Alerta de emergência (Lista branca)",
+        Lang::En => "Whitelist Emergency Alert",
+    }
 }
 
 /// Last four digits only, for logs.
@@ -384,5 +560,220 @@ mod tests {
     fn logs_show_only_the_last_four_digits() {
         assert_eq!(masked("+1 (555) 000-1111"), "***1111");
         assert_eq!(masked("12"), "***12");
+    }
+
+    // ---- reviewer additions ----
+
+    #[test]
+    fn reviewer_default_settings_never_dial() {
+        let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        rt.whitelist_mode = "emergency".to_string();
+        rt.whitelist_forward_number = "+15550001111".to_string();
+        assert!(!rt.whitelist_urgent_call, "the trial is off unless the owner turns it on");
+        assert_eq!(number_to_call(&rt), None);
+    }
+
+    #[test]
+    fn reviewer_only_one_settlement_whatever_the_order() {
+        let mut t = Tracker::default();
+        let steps: Vec<Step> = [Report::Merged, Report::Dialing, Report::Active, Report::Merged, Report::Failed("x".into())]
+            .into_iter()
+            .map(|r| t.on_report(r))
+            .collect();
+        assert_eq!(steps, vec![Step::Merged, Step::Wait, Step::Wait, Step::Wait, Step::Wait]);
+        assert_eq!(t.on_timeout(), Step::Wait);
+
+        let mut t = Tracker::default();
+        let steps: Vec<Step> = [
+            Report::Failed("no_answer".into()),
+            Report::Failed("no_answer".into()),
+            Report::Merged,
+            Report::Active,
+        ]
+        .into_iter()
+        .map(|r| t.on_report(r))
+        .collect();
+        assert_eq!(steps, vec![Step::Failed("no_answer".into()), Step::Wait, Step::Wait, Step::Wait]);
+        assert_eq!(t.on_timeout(), Step::Wait);
+
+        // Repeated progress reports never settle; the timeout names how far it got.
+        let mut t = Tracker::default();
+        for _ in 0..3 {
+            assert_eq!(t.on_report(Report::Active), Step::Wait);
+            assert_eq!(t.on_report(Report::Dialing), Step::Wait);
+        }
+        assert!(!t.settled());
+        assert_eq!(t.on_timeout(), Step::Failed("merge_timeout".into()));
+        assert_eq!(t.on_timeout(), Step::Wait);
+    }
+
+    #[test]
+    fn reviewer_repeated_and_late_results_over_the_channel_settle_once() {
+        let id = "u-rev-chan-1";
+        let mut rx = register(id);
+        for status in ["dialing", "active", "merged", "merged", "failed", "active"] {
+            // The phone pads the id with spaces: still this attempt.
+            assert!(deliver(&json!({"type":"add_call_result","id":format!(" {id} "),"status":status,"reason":"merge_failed"})));
+        }
+        let mut t = Tracker::default();
+        let mut settled = Vec::new();
+        while let Ok(report) = rx.try_recv() {
+            let step = t.on_report(report);
+            if step != Step::Wait {
+                settled.push(step);
+            }
+        }
+        assert_eq!(settled, vec![Step::Merged], "exactly one settlement, the first final result");
+        drop(rx);
+        assert!(!deliver(&json!({"type":"add_call_result","id":id,"status":"merged"})), "a dropped waiter takes nothing");
+        unregister(id);
+    }
+
+    #[test]
+    fn reviewer_a_late_merge_after_the_ai_came_back_stays_quiet_for_the_ai() {
+        // Handed after a resume still keeps the AI out and the hangup blocked.
+        let c = CallCtl::default();
+        c.pause();
+        c.hand_over();
+        c.resume_with("late".into());
+        assert!(c.ai_quiet() && c.blocks_hangup());
+        // A second resume overwrites, and the line is taken once.
+        let c = CallCtl::default();
+        c.pause();
+        c.resume_with("one".into());
+        c.resume_with("two".into());
+        assert_eq!(c.take_say().as_deref(), Some("two"));
+        assert_eq!(c.take_say(), None);
+        assert!(!c.blocks_hangup());
+    }
+
+    #[test]
+    fn reviewer_handing_over_never_ends_in_a_goodbye_hangup() {
+        use crate::gemini_live::SessionEndReason as R;
+        assert!(!R::Handed.should_play_goodbye());
+        assert_eq!(R::Handed.as_str(), "handed_to_owner");
+        // The reasons that do hang up are the ones the session-end code must hold back
+        // while CallCtl::blocks_hangup is true.
+        for r in [R::Goodbye, R::MaxDuration, R::CantCommunicate, R::WsClosed, R::IvrHangup] {
+            assert!(r.should_play_goodbye(), "{}", r.as_str());
+        }
+    }
+
+    #[test]
+    fn reviewer_the_agent_waits_longer_than_the_phone_needs() {
+        // Phone: owner answer timeout, 0.6 s before the merge, up to 10 s to merge, then
+        // up to about 5 s to take the original call off hold before it reports failed.
+        assert!(RESULT_WAIT >= OWNER_ANSWER_TIMEOUT + Duration::from_secs(20));
+        // The phone coerces answer_timeout_ms into 5 s..60 s.
+        assert!(OWNER_ANSWER_TIMEOUT >= Duration::from_secs(5) && OWNER_ANSWER_TIMEOUT <= Duration::from_secs(60));
+        assert!(HOLD_LINE_MAX_WAIT < RESULT_WAIT);
+    }
+
+    #[test]
+    fn reviewer_logs_never_carry_more_than_four_digits() {
+        for n in ["+1 (555) 000-1111", "0912-345-678", "+886 912 345 678", "tel:+15550001111;ext=22", "", "abc"] {
+            let m = masked(n);
+            assert!(m.starts_with("***"), "{m}");
+            assert!(m.chars().filter(|c| c.is_ascii_digit()).count() <= 4, "{m}");
+        }
+        assert_eq!(masked(""), "***");
+    }
+
+    #[test]
+    fn reviewer_the_not_answered_line_works_for_every_language_and_a_blank_owner() {
+        for lang in crate::locale::ALL {
+            for assistant in [false, true] {
+                for owner in ["Sam", "", "  ", "{x}\nSam"] {
+                    let t = not_answered_turn(lang, assistant, owner);
+                    let v: Value = serde_json::from_str(&t).unwrap();
+                    let text = v.pointer("/clientContent/turns/0/parts/0/text").and_then(|x| x.as_str()).unwrap();
+                    assert!(!text.is_empty());
+                    assert!(!text.contains("{x}") && !text.contains('{') && !text.contains('}'), "{lang:?} {assistant} {owner:?}: {text}");
+                    assert!(!text.contains("「」") && !text.contains("\"\""), "{lang:?} {assistant} {owner:?}: {text}");
+                    assert!(text.contains("打給你") || text.contains("打给你") || text.contains("call you") || text.contains("call you right back"), "{text}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn emergency_short_premium_and_mmi_numbers_are_never_dialed() {
+        for n in ["110", "911", "112", "119", "*67#", "**21*+15550001111#", "#31#+15550001111", "123", "+19005550123", "011886912345678", "abc"] {
+            assert!(check_owner_number(n, Some("us")).is_err(), "{n}");
+            assert!(check_owner_number(n, None).is_err(), "{n}");
+        }
+        assert_eq!(check_owner_number("+1 555 000 1111", Some("us")).as_deref(), Ok("+15550001111"));
+        assert_eq!(check_owner_number("+15550001111", None).as_deref(), Ok("+15550001111"));
+        // Unknown SIM: a number without its country code is not guessed at.
+        assert!(check_owner_number("5550001111", None).is_err());
+    }
+
+    #[test]
+    fn the_hold_on_line_is_found_in_the_ai_output() {
+        for said in ["好，你等一下，先不要掛。", "好，我现在帮你打给他，请先不要挂。", "Okay, hold on a moment, don't hang up.", "Please stay on the line.", "No cuelgues, por favor."] {
+            assert!(is_hold_line(said), "{said}");
+        }
+        for said in ["好，我知道了，我馬上處理，等一下打給你。", "I'll call you right back.", "掛號了嗎？"] {
+            assert!(!is_hold_line(said), "{said}");
+        }
+    }
+
+    #[test]
+    fn a_hold_on_line_without_urgent_words_falls_back_after_six_seconds() {
+        let c = CallCtl::default();
+        let t0 = Instant::now();
+        assert!(!hold_line_unbacked(&c, t0));
+        c.note_hold_line();
+        let said = c.hold_said_at().unwrap();
+        c.note_hold_line();
+        assert_eq!(c.hold_said_at(), Some(said), "the first time counts");
+        assert!(!hold_line_unbacked(&c, said + Duration::from_secs(5)));
+        assert!(hold_line_unbacked(&c, said + HOLD_LINE_WITHOUT_TRIGGER));
+        assert!(c.block_dial());
+        assert!(!c.block_dial(), "blocked once");
+        assert!(!hold_line_unbacked(&c, said + Duration::from_secs(30)), "no fallback once a call was tried or given up");
+    }
+
+    #[test]
+    fn the_callback_line_promises_a_call_back_and_never_a_connection() {
+        for lang in crate::locale::ALL {
+            for assistant in [false, true] {
+                let t = callback_turn(lang, assistant, "Sam");
+                let v: Value = serde_json::from_str(&t).unwrap();
+                let text = v.pointer("/clientContent/turns/0/parts/0/text").and_then(|x| x.as_str()).unwrap();
+                assert!(text.contains("打給你") || text.contains("打给你") || text.contains("call you back"), "{text}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_abort_names_the_attempt_and_alerts_exist_in_every_language() {
+        let v = abort_payload("u-9");
+        assert_eq!(v["type"], "add_call_abort");
+        assert_eq!(v["id"], "u-9");
+        for lang in crate::locale::ALL {
+            assert!(!alert_line(Alert::AiEnded, lang).is_empty());
+            assert!(!alert_line(Alert::StillOnHold, lang).is_empty());
+        }
+    }
+
+    #[test]
+    fn the_phone_gets_a_dialing_ack_window_shorter_than_the_hold_line_wait() {
+        assert!(DIAL_ACK_WAIT < OWNER_ANSWER_TIMEOUT);
+        assert!(ABORT_WAIT < RESULT_WAIT);
+    }
+
+    #[test]
+    fn a_session_that_ends_while_dialing_or_merged_never_reaches_the_hangup_path() {
+        assert_eq!(on_session_end(None), SessionEnd::Usual);
+        let c = CallCtl::default();
+        assert_eq!(on_session_end(Some(&c)), SessionEnd::Usual);
+        c.pause();
+        assert_eq!(on_session_end(Some(&c)), SessionEnd::LeaveUpAndAlert, "dialing: no voicemail, retry or hangup");
+        c.resume_with("x".into());
+        assert_eq!(on_session_end(Some(&c)), SessionEnd::Usual, "the AI is back: the usual end");
+        c.pause();
+        c.hand_over();
+        assert_eq!(on_session_end(Some(&c)), SessionEnd::LeaveUp, "merged: leave it up");
     }
 }

@@ -208,6 +208,14 @@ class SilentInCallService : InCallService() {
                     Log.i(TAG, "add_call id=${job.id}: conference state -> ${stateName(state)} children=${call.children.size}")
                     forceMuteCall(call)
                 }
+
+                override fun onChildrenChanged(call: Call, children: List<Call>) {
+                    job.peakChildren = maxOf(job.peakChildren, children.size)
+                    Log.i(TAG, "add_call id=${job.id}: conference children=${children.size} peak=${job.peakChildren}")
+                    if (job.merged && job.peakChildren >= 2 && children.size < 2) {
+                        endRestAfterMerge(job, "conference dropped to ${children.size} participant(s)")
+                    }
+                }
             })
             if (!job.done) onAddCallMerged(job, "conference call added")
             return true
@@ -467,11 +475,13 @@ class SilentInCallService : InCallService() {
             var dialingReported = false
             var answered = false
             var mergeAttempts = 0
-            var done = false
-            var merged = false
+            @Volatile var done = false
+            @Volatile var merged = false
             var failReported = false
             /** Failed before the owner leg showed up: until then a new outgoing call is that leg. */
             var lateLegUntil = 0L
+            /** Most children the merged conference had (2 = caller and owner both on it). */
+            var peakChildren = 0
         }
 
         @Volatile
@@ -481,10 +491,44 @@ class SilentInCallService : InCallService() {
         private const val ADD_CALL_MERGE_RETRY_MS = 3_000L
         private const val ADD_CALL_MERGE_TIMEOUT_MS = 10_000L
         private const val ADD_CALL_LEG_GONE_GRACE_MS = 3_000L
-        private const val ADD_CALL_UNHOLD_TRIES = 3
+        private const val ADD_CALL_UNHOLD_TRIES = 8
+        private const val ADD_CALL_UNHOLD_EVERY_MS = 1_000L
+        private const val ADD_CALL_REST_CHECK_MS = 1_500L
 
         /** Only the last four digits go to the log. */
         fun maskNumber(number: String): String = "***" + number.filter { it.isDigit() }.takeLast(4)
+
+        /**
+         * A whitelist urgent call is dialing the owner, or the owner is merged in: the
+         * agent's hangup must not end the caller's call now.
+         */
+        fun isAddCallActiveOrMerged(): Boolean {
+            val job = addJob ?: return false
+            return !job.done || job.merged
+        }
+
+        /**
+         * Agent `add_call_abort` (no final result in time, main thread): end the owner leg
+         * and take the caller's call off hold; merged already: say so again.
+         */
+        fun abortAddCall(id: String) {
+            val job = addJob
+            if (job == null || job.id != id) {
+                Log.i(TAG, "add_call_abort id=$id: no such add_call (current=${job?.id ?: "none"})")
+                return
+            }
+            when {
+                job.merged -> {
+                    Log.i(TAG, "add_call_abort id=$id: already merged — reporting merged again")
+                    job.report("merged", "")
+                }
+                !job.done -> {
+                    Log.w(TAG, "add_call_abort id=$id: agent gave up — ending the owner leg, taking the call off hold")
+                    failAddCall(job, "aborted")
+                }
+                else -> Log.i(TAG, "add_call_abort id=$id: already ended (failed, reported=${job.failReported})")
+            }
+        }
 
         private fun capsOf(call: Call): String = try {
             Call.Details.capabilitiesToString(call.details.callCapabilities)
@@ -526,6 +570,12 @@ class SilentInCallService : InCallService() {
             report: (String, String) -> Unit,
         ) {
             val masked = maskNumber(number)
+            // Never dial service codes (* #) or emergency / short numbers.
+            if (number.contains('*') || number.contains('#') || number.count { it.isDigit() } <= 3) {
+                Log.w(TAG, "add_call id=$id: number $masked refused (service code or too short) — not dialing")
+                report("failed", "bad_number")
+                return
+            }
             val svc = activeService
             if (svc == null) {
                 Log.w(TAG, "add_call id=$id: InCallService not bound")
@@ -793,17 +843,27 @@ class SilentInCallService : InCallService() {
             addCallHandler.postDelayed({ restoreOriginal(job, reason, 1) }, 500)
         }
 
+        /**
+         * Failed only once the caller's call is ACTIVE again (the AI would otherwise talk
+         * into a held call): unhold every second, at most [ADD_CALL_UNHOLD_TRIES] times,
+         * then report `unhold_failed` (the agent alerts the owner, the AI stays quiet).
+         */
         private fun restoreOriginal(job: AddCallJob, reason: String, attempt: Int) {
             val orig = job.original
             if (orig !in liveCalls) {
                 Log.w(TAG, "add_call id=${job.id}: original call is gone")
-                reportFailed(job, reason)
+                reportFailed(job, "caller_left")
                 return
             }
             val state = orig.state
             if (state == Call.STATE_ACTIVE) {
-                Log.i(TAG, "add_call id=${job.id}: original call active again (attempt=$attempt)")
+                Log.i(TAG, "add_call id=${job.id}: original call active again (attempt=$attempt) — reporting failed reason=$reason")
                 reportFailed(job, reason)
+                return
+            }
+            if (attempt > ADD_CALL_UNHOLD_TRIES) {
+                Log.w(TAG, "add_call id=${job.id}: original still ${stateName(state)} after $ADD_CALL_UNHOLD_TRIES unhold tries — unhold_failed")
+                reportFailed(job, "unhold_failed")
                 return
             }
             if (state == Call.STATE_HOLDING) {
@@ -816,14 +876,7 @@ class SilentInCallService : InCallService() {
             } else {
                 Log.i(TAG, "add_call id=${job.id}: original state=${stateName(state)} attempt=$attempt")
             }
-            if (attempt < ADD_CALL_UNHOLD_TRIES) {
-                addCallHandler.postDelayed({ restoreOriginal(job, reason, attempt + 1) }, 1_000)
-            } else {
-                addCallHandler.postDelayed({
-                    Log.i(TAG, "add_call id=${job.id}: original state after unhold=${stateName(job.original.state)}")
-                    reportFailed(job, reason)
-                }, 1_000)
-            }
+            addCallHandler.postDelayed({ restoreOriginal(job, reason, attempt + 1) }, ADD_CALL_UNHOLD_EVERY_MS)
         }
 
         private fun reportFailed(job: AddCallJob, reason: String) {
@@ -841,19 +894,55 @@ class SilentInCallService : InCallService() {
                 }
                 return
             }
-            if (job.merged) {
-                val leg = job.leg
-                val others = liveCalls.filter { it !== leg && it.state != Call.STATE_DISCONNECTED }
-                if (leg != null && leg in liveCalls && others.isEmpty()) {
-                    Log.i(TAG, "add_call id=${job.id}: caller side gone after the merge — ending the owner leg")
-                    try {
-                        leg.disconnect()
-                    } catch (e: Exception) {
-                        Log.w(TAG, "add_call id=${job.id}: owner leg disconnect failed: ${e.message}")
-                    }
+            if (job.merged && (call === job.leg || call === job.original || call === job.conference)) {
+                val which = when {
+                    call === job.leg -> "owner side"
+                    call === job.original -> "caller side"
+                    else -> "conference"
+                }
+                val reason = try {
+                    call.details.disconnectCause?.reason.orEmpty()
+                } catch (_: Exception) {
+                    ""
+                }
+                Log.i(TAG, "add_call id=${job.id}: after the merge the $which call was removed cause=${legEndReason(call)} reason=${reason.ifEmpty { "-" }}")
+                // An IMS merge ends the two calls into the conference: nobody left.
+                if (!reason.contains("MERGED", ignoreCase = true)) {
+                    endRestAfterMerge(job, "$which left (${legEndReason(call)})")
                 }
             }
             if (liveCalls.isEmpty() && addJob === job) addJob = null
+        }
+
+        /**
+         * After the merge one side left: the AI has left the call already, so whoever is
+         * still on would wait on an empty line. End what is left — the only case where
+         * the phone ends a call by itself. A conference still holding two people is kept.
+         */
+        private fun endRestAfterMerge(job: AddCallJob, why: String) {
+            addCallHandler.postDelayed({
+                val rest = liveCalls.filter { it.state != Call.STATE_DISCONNECTED && it.state != Call.STATE_DISCONNECTING }
+                if (rest.isEmpty()) return@postDelayed
+                val conf = findConference(job)
+                // A live conference that never listed its people (some IMS) cannot be
+                // judged: it is kept rather than ended by a guess.
+                if (conf != null && (conf.children.size >= 2 || job.peakChildren == 0)) {
+                    Log.i(
+                        TAG,
+                        "add_call id=${job.id}: $why but the conference is still up children=${conf.children.size} " +
+                            "peak=${job.peakChildren} — keeping it",
+                    )
+                    return@postDelayed
+                }
+                Log.i(TAG, "add_call id=${job.id}: after the merge the $why — the AI has left, ending the rest (${rest.size}) so nobody waits on an empty line")
+                for (c in rest) {
+                    try {
+                        c.disconnect()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "add_call id=${job.id}: disconnect after merge failed: ${e.message}")
+                    }
+                }
+            }, ADD_CALL_REST_CHECK_MS)
         }
 
 
