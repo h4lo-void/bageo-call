@@ -44,14 +44,15 @@ const ZH: Cues = Cues {
         "车祸", "被车撞", "撞车", "出事了", "出事情了", "出大事", "发生意外", "出意外", "受重伤", "受伤", "摔伤", "撞伤", "烫伤",
         "失火", "火灾", "着火", "烧起来", "瓦斯外泄", "瓦斯漏", "瓦斯味", "煤气泄漏", "煤气味", "燃气泄漏", "燃气味", "闻到瓦斯", "消防队", "消防车", "消防员",
         "淹水", "淹大水", "水淹", "爆炸", "浓烟",
-        "走失", "走丢", "不见了", "失踪", "找不到他", "找不到她", "找不到人", "找不到孩子", "找不到小孩", "一直没回家", "到现在还没回家",
+        "走失", "走丢", "人不见了", "孩子不见了", "小孩不见了", "失踪", "找不到他", "找不到她", "找不到人", "找不到孩子", "找不到小孩", "一直没回家", "到现在还没回家",
+        "妈妈不见了", "爸爸不见了", "奶奶不见了", "爷爷不见了", "外婆不见了", "外公不见了", "他不见了", "她不见了",
         "过世", "去世", "往生", "病危", "快不行了", "没有心跳", "断气",
         "被抢", "抢劫", "遭小偷", "被偷了", "闯空门", "有人闯进", "撬门", "报警了", "已经报警", "警察来了", "被打了", "绑架",
         "被困", "困在", "卡在电梯", "关在电梯", "受困", "迷路了", "下不了山",
         "护照丢", "护照不见", "护照被偷", "钱包丢", "钱包被偷", "都丢了", "全丢了", "回不了国", "回不了家", "被扣留",
         "家里出事", "宕机", "当机", "系统挂了", "整个挂了", "全挂了", "系统崩溃", "系统当", "服务器挂", "伺服器挂", "伺服器当", "网站挂了", "停摆", "瘫痪", "炸锅",
         "工安意外", "工安事故", "工地出事", "工地意外", "工厂出事", "工厂意外", "工伤",
-        "学校打来", "老师打来",
+        "学校打来",
     ],
     urge: &[
         "紧急", "有急事", "急事", "十万火急", "救命", "快来", "快过来", "快点过来", "赶快过来", "赶紧过来", "快回来", "赶快回来",
@@ -211,9 +212,11 @@ const FR: Cues = Cues {
         "cambriol*", "braque", "braques", "agresse", "agressee", "appele la police", "appele les flics",
         "coince*", "bloque dans", "bloquee dans", "perdus en montagne", "enferme*",
         "vole mon passeport", "vole mon portefeuille", "perdu mon passeport", "perdu mon portefeuille", "peux pas rentrer", "peux plus rentrer",
-        "quelque chose de grave", "a l arret", "en panne", "serveur est tombe", "systeme est tombe", "systeme a plante", "tout a plante",
+        "quelque chose de grave", "a l arret", "serveur en panne", "systeme en panne", "serveur est tombe", "systeme est tombe", "systeme a plante", "tout a plante",
+        "serveur est en panne", "systeme est en panne", "production en panne",
         "accident du travail", "accident a l usine", "accident au travail", "blesse a l usine", "blesse au travail",
-        "l ecole a appele", "l ecole vient d appeler", "s est casse", "s est cogne", "s est blesse*", "est tombee", "est tombe",
+        "l ecole a appele", "l ecole vient d appeler", "s est casse", "s est cogne", "s est blesse*",
+        "tombe dans l escalier", "tombee dans l escalier", "tombe dans les escaliers", "tombee dans les escaliers", "tombe dans les pommes", "tombee dans les pommes",
     ],
     urge: &[
         "c est urgent", "tres urgent", "une urgence", "c est une urgence", "urgence", "au secours", "a l aide",
@@ -238,7 +241,8 @@ const DE: Cues = Cues {
         "umgekippt", "zusammengebrochen", "bewusstlos", "rettungswagen", "krankenwagen", "notaufnahme", "notarzt", "schlaganfall", "herzinfarkt",
         "atmet nicht", "intensivstation", "ins krankenhaus gebracht", "eingeliefert",
         "autounfall", "unfall gehabt", "hatte einen unfall", "einen unfall", "schwerer unfall", "angefahren", "wird operiert", "wird gerade operiert",
-        "brennt", "feuer", "feuerwehr", "riecht nach gas", "gasgeruch", "gasleck", "uberschwemmt", "unter wasser", "explosion",
+        "brennt", "feuer ausgebrochen", "feuer gefangen", "feuerwehr", "riecht nach gas", "gasgeruch", "gasleck", "uberschwemmt", "unter wasser", "explosion",
+        "feuer im haus", "feuer in der", "feuer in meiner",
         "verschwunden", "vermisst", "hat sich verlaufen", "haben uns verlaufen", "nicht nach hause gekommen",
         "gestorben", "verstorben", "im sterben", "stirbt",
         "eingebrochen", "einbruch", "uberfallen", "ausgeraubt", "beklaut", "polizei gerufen", "polizei angerufen",
@@ -399,14 +403,23 @@ fn fold_char(c: char, out: &mut String) {
     };
     for c in c.to_lowercase() {
         let base = match c {
+            // A combining accent (e + U+0301) is no letter of its own: the text reads as without it.
+            '\u{0300}'..='\u{036F}' => continue,
             'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => "a",
+            'ă' | 'ạ' | 'ả' | 'ấ' | 'ầ' | 'ẩ' | 'ẫ' | 'ậ' | 'ắ' | 'ằ' | 'ẳ' | 'ẵ' | 'ặ' => "a",
             'ç' => "c",
+            'đ' => "d",
             'è' | 'é' | 'ê' | 'ë' => "e",
+            'ẹ' | 'ẻ' | 'ẽ' | 'ế' | 'ề' | 'ể' | 'ễ' | 'ệ' => "e",
             'ì' | 'í' | 'î' | 'ï' => "i",
+            'ĩ' | 'ỉ' | 'ị' => "i",
             'ñ' => "n",
             'ò' | 'ó' | 'ô' | 'õ' | 'ö' => "o",
+            'ơ' | 'ọ' | 'ỏ' | 'ố' | 'ồ' | 'ổ' | 'ỗ' | 'ộ' | 'ớ' | 'ờ' | 'ở' | 'ỡ' | 'ợ' => "o",
             'ù' | 'ú' | 'û' | 'ü' => "u",
+            'ũ' | 'ư' | 'ụ' | 'ủ' | 'ứ' | 'ừ' | 'ử' | 'ữ' | 'ự' => "u",
             'ý' | 'ÿ' => "y",
+            'ỳ' | 'ỵ' | 'ỷ' | 'ỹ' => "y",
             'ß' => "ss",
             'œ' => "oe",
             _ => {
@@ -871,5 +884,36 @@ mod tests {
         assert_eq!(fold_compact("請你先別走"), "请你先别走");
         assert_eq!(fold_compact("ＤＯＮ\u{2019}Ｔ HANG UP"), "donthangup");
         assert_eq!(fold_spaced("Don't hang-up!"), " don t hang up ");
+    }
+
+    #[test]
+    fn folding_drops_combining_accents_and_vietnamese_tone_marks() {
+        assert_eq!(fold_compact("Ne quitte\u{301} pas"), fold_compact("ne quitté pas"));
+        assert_eq!(fold_compact("Đừng cúp máy"), "dungcupmay");
+        assert_eq!(fold_compact("D\u{323}u\u{303}ng cu\u{301}p ma\u{301}y"), fold_compact("dung cup may"));
+    }
+
+    #[test]
+    fn everyday_words_alone_are_not_an_emergency() {
+        for said in [
+            "Le Wi-Fi est en panne chez moi, rappelle-moi plus tard.",
+            "Mon stylo est tombé derrière le canapé.",
+            "Kannst du mir kurz Feuer geben?",
+            "我的耳机不见了，你有看到吗？",
+            "老師打來說下週要交報名表。",
+            "老师打来问你下周有没有空。",
+        ] {
+            assert!(!is_urgent(said), "{said}");
+        }
+        // The emergencies those words belong to still are.
+        for said in [
+            "Mamie est tombée dans l'escalier, elle ne bouge plus !",
+            "Le serveur est en panne, toute la production est à l'arrêt.",
+            "In der Küche ist Feuer ausgebrochen, die Feuerwehr ist da!",
+            "小孩不见了，到处都找不到，你快回来！",
+            "我爸爸不見了，已經報警了。",
+        ] {
+            assert!(is_urgent(said), "{said}");
+        }
     }
 }

@@ -5,8 +5,10 @@
 //! [Controller]; answers and pushes go back with chat.postMessage /
 //! chat.update. In a channel only what is addressed to the bot is passed on:
 //! a command ("/…"), a mention of the bot, a reply in a thread the bot
-//! started. A direct message (a channel ID starting with D) is always for
-//! the bot.
+//! started, a typed 1 or 2 while a confirmation waits in the channel. A
+//! direct message (a channel ID starting with D) is always for the bot.
+//! Slack's own slash commands (set up in the app: /calls, /status …) come as
+//! their own kind of message in Socket Mode and are read the same way.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,7 +26,7 @@ use tracing::{debug, info, warn};
 use crate::settings_store::SettingsStore;
 
 use super::link::{self, text_at, AbortOnDrop, Account, Frame, Retry};
-use super::{Body, Button, Controller, Inbound, Outbound, Push, BUTTON_DATA_MAX};
+use super::{access, Body, Button, Controller, Inbound, Outbound, Push, BUTTON_DATA_MAX};
 
 pub const API: &str = "https://slack.com/api";
 /// Slack's limit for a section block's text (the message is one).
@@ -136,7 +138,13 @@ async fn serve(ctrl: &Arc<Controller>, http: &Client, ep: &Endpoints, acct: &Acc
                     "hello" => info!(chats = acct.chats.len(), "slack app: connected"),
                     "disconnect" => return Ok(()),
                     "events_api" => {
-                        if let Some(msg) = inbound_event(acct, me, &v["payload"]["event"]) {
+                        let waiting = |chat: &str| ctrl.confirms.waiting(chat);
+                        if let Some(msg) = inbound_event_with(acct, me, &v["payload"]["event"], waiting) {
+                            answer(ctrl, http, &ep.api, acct, msg);
+                        }
+                    }
+                    "slash_commands" => {
+                        if let Some(msg) = inbound_slash(acct, &v["payload"]) {
                             answer(ctrl, http, &ep.api, acct, msg);
                         }
                     }
@@ -160,7 +168,15 @@ fn unescape(s: &str) -> String {
 /// The Inbound of a message in one of the account's channels. None: not for
 /// the bot (its own, another bot's, an edit or other change, another channel,
 /// or in a channel neither a command nor a mention nor a reply in its thread).
+/// A typed 1 or 2 in a channel is not taken (see [inbound_event_with]).
 pub fn inbound_event(acct: &Account, me: &Me, ev: &Value) -> Option<Inbound> {
+    inbound_event_with(acct, me, ev, |_| false)
+}
+
+/// The same, where a bare 1 or 2 typed in a channel's main view also counts
+/// while waiting(chat key) says a confirmation is open there (it answers the
+/// bot's question, which Slack does not show as a thread reply).
+pub fn inbound_event_with(acct: &Account, me: &Me, ev: &Value, waiting: impl Fn(&str) -> bool) -> Option<Inbound> {
     if ev["type"] != "message" || ev.get("subtype").is_some_and(|s| !s.is_null()) {
         return None;
     }
@@ -183,7 +199,8 @@ pub fn inbound_event(acct: &Account, me: &Me, ev: &Value) -> Option<Inbound> {
     // Slack's direct message channels start with D; what the event itself
     // says about the channel is not taken on trust.
     let direct = chat.starts_with('D');
-    if !direct && !text.starts_with('/') && !mentioned && !reply_to_bot {
+    let answers_open_question = super::yes_no(&text).is_some() && waiting(&access::chat_key(&channel_id, &chat));
+    if !direct && !text.starts_with('/') && !mentioned && !reply_to_bot && !answers_open_question {
         return None;
     }
     Some(Inbound {
@@ -194,6 +211,7 @@ pub fn inbound_event(acct: &Account, me: &Me, ev: &Value) -> Option<Inbound> {
         body: Body::Text(text),
         message_id: ts.to_string(),
         reply_to_bot,
+        direct,
     })
 }
 
@@ -221,6 +239,31 @@ pub fn inbound_action(acct: &Account, me: &Me, p: &Value) -> Option<Inbound> {
         body: Body::Button(data.to_string()),
         message_id: message_id.to_string(),
         reply_to_bot: true,
+        direct: false,
+    })
+}
+
+/// The Inbound of a Slack slash command ("/calls today") typed in one of the
+/// account's channels. Slack takes every message that starts with a slash for
+/// a slash command of its own, so this is how a command reaches the bot there.
+pub fn inbound_slash(acct: &Account, p: &Value) -> Option<Inbound> {
+    let command = text_at(p, "/command").trim();
+    let sender = text_at(p, "/user_id").trim();
+    if !command.starts_with('/') || command.len() < 2 || sender.is_empty() {
+        return None;
+    }
+    let (channel_id, chat) = acct.channel_of(text_at(p, "/channel_id"))?.clone();
+    let args = text_at(p, "/text").trim();
+    let text = if args.is_empty() { command.to_string() } else { format!("{command} {args}") };
+    Some(Inbound {
+        channel_id,
+        platform: "slack".to_string(),
+        chat_id: chat,
+        sender_id: sender.to_string(),
+        body: Body::Text(text),
+        message_id: String::new(),
+        reply_to_bot: false,
+        direct: false,
     })
 }
 

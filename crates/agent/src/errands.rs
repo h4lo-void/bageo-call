@@ -102,8 +102,6 @@ const FOLLOW_UP_LINES: usize = 20;
 /// written in English for the model, and once it answered a Chinese callee in
 /// English after one.
 const CALL_LANGUAGE: &str = "Whatever you say to them, say it in the language of this call (the one you have been speaking with them), not in the language of this note.";
-/// Countries whose national numbers are dialled without a trunk 0.
-const NO_TRUNK_CODES: &[&str] = &["1", "39"];
 /// Premium-rate numbers (national number prefixes, after the trunk 0) an
 /// errand never dials. Toll-free numbers are fine: the owner may want a
 /// company's service line.
@@ -366,6 +364,7 @@ fn international_prefix(region: &str, code: &str, digits: &str) -> bool {
         || (region == "tw" && digits.starts_with("01"))
         || (code == "1" && digits.starts_with("011"))
         || (region == "jp" && digits.starts_with("010"))
+        || (code == "7" && digits.starts_with("810"))
 }
 
 /// `number` dialled on a SIM of country `sim` (ISO 3166 alpha-2): its E.164
@@ -386,9 +385,10 @@ pub fn check_number(number: &str, sim: &str) -> Result<String, &'static str> {
         if international_prefix(&region, code, digits) {
             return Err("not_allowed");
         }
-        // Dialled at home: with the trunk 0, or the country code without its plus.
-        let with_code = digits.starts_with(code) && digits.len() >= code.len() + 8;
-        if !NO_TRUNK_CODES.contains(&code) && !digits.starts_with('0') && !with_code {
+        // Dialled at home: a full number as that country writes it (with the
+        // trunk 0, the country code without its plus, or where there is no
+        // trunk prefix the whole national number).
+        if !crate::phone_region::dialled_at_home(code, digits) {
             return Err("bad_number");
         }
     }
@@ -430,10 +430,11 @@ pub fn check_number(number: &str, sim: &str) -> Result<String, &'static str> {
 }
 
 /// The owner's country (ISO 3166 alpha-2) from the country calling code
-/// setting; Taiwan when it says nothing.
+/// setting; else the country of a connected phone's SIM, else the language's
+/// own (never Taiwan unless that is the language, [`RuntimeSettings::effective_country_code`]).
 pub fn home_region(rt: &RuntimeSettings) -> String {
     crate::phone_region::country_of_code(&rt.effective_country_code())
-        .unwrap_or("tw")
+        .unwrap_or_else(|| rt.default_region())
         .to_string()
 }
 
@@ -998,6 +999,8 @@ impl Live {
     fn close(&mut self) {
         if let Some(o) = self.open.take() {
             let text = crate::gemini_live::strip_stt_markers(&o.text);
+            // The fragments are a whole line now: what reads the same in Japanese is Chinese here.
+            let text = crate::zh_tw::to_tw_whole(&text);
             self.push(o.who, &text, o.at);
         }
     }
@@ -1646,14 +1649,81 @@ pub fn owner_says_client_content(text: &str) -> String {
 /// service, the phone is off or out of reach. Not voicemail (that takes a
 /// message).
 pub fn carrier_message(text: &str) -> bool {
-    const VOICEMAIL: &[&str] = &["留言", "嗶聲", "哔声", "嘟聲", "语音信箱", "語音信箱", "voicemail", "voice mail", "leave a message", "after the tone", "after the beep"];
+    const VOICEMAIL: &[&str] = &[
+        "留言", "嗶聲", "哔声", "嘟聲", "语音信箱", "語音信箱", "voicemail", "voice mail", "leave a message", "after the tone", "after the beep",
+        // ja
+        "留守番電話", "留守電", "メッセージをどうぞ", "発信音の後", "ピーという音の後",
+        // ko
+        "음성 사서함", "음성사서함", "메시지를 남겨", "삐 소리",
+        // es
+        "buzón de voz", "buzon de voz", "deje su mensaje", "deja tu mensaje", "después del tono", "despues del tono",
+        "después de la señal", "despues de la senal",
+        // fr
+        "messagerie vocale", "laissez votre message", "laissez un message", "après le bip", "apres le bip", "après le signal sonore",
+        "après le signal", "apres le signal",
+        // de
+        "mailbox", "anrufbeantworter", "hinterlassen sie eine nachricht", "nach dem signalton", "nach dem piepton",
+        // pt
+        "caixa postal", "correio de voz", "deixe sua mensagem", "deixe a sua mensagem", "após o sinal", "apos o sinal",
+    ];
     const CARRIER: &[&str] = &[
         "空號", "空号", "未開機", "未开机", "暫停使用", "暂停使用", "停話", "停機", "停机", "無法接通", "无法接通", "收不到訊號",
         "不在服務區", "不在服务区", "查明後再撥", "查明后再拨", "not in service", "no longer in service", "has been disconnected",
-        "cannot be reached", "can not be reached", "cannot be completed", "is not reachable", "is switched off", "is not available right now",
+        "cannot be completed",
+        // ja
+        "現在使われておりません", "使われておりません", "おかけになった電話番号は", "電源が入っていないか", "電波の届かない",
+        // ko
+        "없는 번호", "결번", "전원이 꺼져", "전파가 닿지 않는",
+        // es
+        "marcado no existe", "marcó no existe", "apagado o fuera de cobertura", "fuera del área de cobertura", "fuera del area de cobertura", "no puede ser atendida", "no se puede completar",
+        // fr
+        "n'est pas attribué", "n'est plus attribué", "n'est pas en service", "n'est plus en service", "ne peut aboutir",
+        // de
+        "kein anschluss unter dieser nummer", "diese nummer ist nicht vergeben",
+        // pt
+        "número não existe", "numero nao existe", "discado não existe", "discado nao existe", "chamado não existe", "chamado nao existe", "não se encontra atribuído", "nao se encontra atribuido", "desligado ou fora da área", "desligado ou fora da area", "fora de área de cobertura", "fora de area de cobertura", "não pode ser completada", "nao pode ser completada",
+    ];
+    // Phrases a person says as well (「Herr Müller ist zurzeit nicht erreichbar」,
+    // 「La señora García no está disponible en este momento」): the carrier's
+    // recording only when the same text also names the number, the subscriber or
+    // the caller's line.
+    const CARRIER_IF_NAMED: &[&str] = &[
+        "is not available", "cannot be reached", "can not be reached", "is not reachable", "is switched off", "is turned off",
+        // ja
+        "お繋ぎできません", "おつなぎできません",
+        // ko
+        "연결할 수 없습니다", "통화가 불가능",
+        // es
+        "no está disponible", "no esta disponible", "fuera de servicio",
+        // fr
+        "injoignable", "n'est pas joignable", "n'est pas disponible", "hors service", "hors de portée", "hors de portee", "est éteint", "est eteint",
+        // de
+        "nicht erreichbar", "nicht in betrieb", "ist ausgeschaltet", "ist zurzeit nicht", "ist derzeit nicht",
+        // pt
+        "não está disponível", "nao esta disponivel", "fora de serviço", "fora de servico",
+    ];
+    const NAMES_THE_LINE: &[&str] = &[
+        "number you", "you have dialed", "you have dialled", "you dialed", "you dialled", "number dialed", "number dialled", "subscriber",
+        "person you are trying", "party you", "customer you", "you are trying to reach", "you have called",
+        // ja
+        "おかけ", "電話番号", "契約者",
+        // ko
+        "걸으신", "거신", "전화번호", "고객님이", "고객이",
+        // es
+        "número marcado", "numero marcado", "número al que", "numero al que", "abonado", "al que llama", "al que usted llama", "cliente al que",
+        // fr
+        "numéro composé", "numero compose", "numéro que vous", "numero que vous", "correspondant", "abonné", "abonne",
+        // de
+        "teilnehmer", "diese nummer", "gewählte nummer",
+        // pt
+        "número que ligou", "numero que ligou", "número chamado", "numero chamado", "número discado", "numero discado", "telefone chamado", "assinante",
     ];
     let t = text.to_lowercase();
-    !VOICEMAIL.iter().any(|v| t.contains(v)) && CARRIER.iter().any(|c| t.contains(c))
+    if VOICEMAIL.iter().any(|v| t.contains(v)) {
+        return false;
+    }
+    CARRIER.iter().any(|c| t.contains(c))
+        || (CARRIER_IF_NAMED.iter().any(|c| t.contains(c)) && NAMES_THE_LINE.iter().any(|n| t.contains(n)))
 }
 
 // ---------------------------------------------------------------- the script
@@ -2144,8 +2214,9 @@ async fn fail(cb: &CallbackCtx<'_>, store: &ErrandStore, id: &str, code: &str) {
 /// Errand `id`'s call went out on another SIM than its own (`sub_id`,
 /// `country`: what the phone reported) and was hung up before its AI started:
 /// failed (`wrong_sim`), the owner told. The SIM it asked for is forgotten on
-/// that phone when the phone did not use it (the app dials from its default
-/// SIM when that one is gone).
+/// that phone when the phone said it did not use it (the app dials from its
+/// default SIM when that one is gone). A phone that has not said which SIM the
+/// call is on yet (neither `sub_id` nor `country`) proves nothing: its SIMs stay.
 pub async fn wrong_sim(cb: &CallbackCtx<'_>, store: &ErrandStore, id: &str, sub_id: Option<i64>, country: Option<&str>) {
     let Some(e) = store.get(id) else {
         return;
@@ -2159,7 +2230,8 @@ pub async fn wrong_sim(cb: &CallbackCtx<'_>, store: &ErrandStore, id: &str, sub_
         country = ?country,
         "errand call went out on another SIM: hung up"
     );
-    if let Some(want) = e.sub_id.filter(|w| sub_id != Some(*w)) {
+    let reported = sub_id.is_some() || country.is_some_and(|c| !c.trim().is_empty());
+    if let Some(want) = e.sub_id.filter(|w| reported && sub_id != Some(*w)) {
         store.sims.forget(&e.serial, want);
     }
     fail(cb, store, id, "wrong_sim").await;
@@ -3569,6 +3641,22 @@ mod tests {
         assert!(rig.store.callee_spoke("e-cap"));
     }
 
+    #[tokio::test]
+    async fn a_caption_line_made_of_shared_characters_reads_as_chinese() {
+        let rig = Rig::new();
+        let hooks = rig.on_call("e-cap-tw");
+        let start = rig.store.live_view("e-cap-tw", 0).unwrap()["lines"].as_array().unwrap().len() as u64;
+        hooks.caption(true, "他会");
+        hooks.caption(true, "来");
+        hooks.turn_done();
+        hooks.caption(false, "失礼します");
+        hooks.turn_done();
+        let view = rig.store.live_view("e-cap-tw", start).unwrap();
+        let texts: Vec<String> = view["lines"].as_array().unwrap().iter().map(|l| l["text"].as_str().unwrap().to_string()).collect();
+        assert!(texts.contains(&"他會來".to_string()), "{texts:?}");
+        assert!(texts.contains(&"失礼します".to_string()), "{texts:?}");
+    }
+
     #[test]
     fn the_result_is_read_from_the_model_answer() {
         let r = parse_result("```json\n{\"outcome\": \"done\", \"summary\": \"訂好了\", \"details\": [\"11/15 19:30\", \"4 位，王先生\"], \"follow_up\": \"\", \"options\": [], \"event\": {\"start\": \"2026-11-15T19:30\", \"title\": \"鼎泰豐 4 位\"}}\n```").unwrap();
@@ -3919,5 +4007,118 @@ mod tests {
             assert!(all.iter().chain(w.outcomes.iter()).all(|t| !t.is_empty() && !t.contains('{')), "{l:?}");
             assert!(w.carrier.contains("{}") && w.asking.contains("{}"), "{l:?}");
         }
+    }
+
+    #[test]
+    fn numbers_without_a_trunk_zero_are_dialled_by_their_countrys_own_rules() {
+        for (n, sim, want) in [
+            ("13800138000", "cn", "+8613800138000"),
+            ("612345678", "es", "+34612345678"),
+            ("915551234", "es", "+34915551234"),
+            ("912345678", "pt", "+351912345678"),
+            ("91234567", "sg", "+6591234567"),
+            ("91234567", "hk", "+85291234567"),
+            ("89121234567", "ru", "+79121234567"),
+            ("9121234567", "ru", "+79121234567"),
+        ] {
+            assert_eq!(check_number(n, sim), Ok(want.to_string()), "{n} on a {sim} SIM");
+        }
+        // The owner's number for an urgent call reads the same way.
+        assert_eq!(crate::urgent_call::check_owner_number("612345678", Some("es"), ""), Ok("+34612345678".to_string()));
+        // Countries with a trunk 0 keep their rule: bare digits are cut off.
+        assert_eq!(check_number("912345678", "tw"), Err("bad_number"));
+        assert_eq!(check_number("9012345678", "jp"), Err("bad_number"));
+        assert_eq!(check_number("15112345678", "de"), Err("bad_number"));
+        assert_eq!(check_number("1012345678", "kr"), Err("bad_number"));
+        // Without a trunk, too few digits is a cut-off number as well.
+        assert_eq!(check_number("13800138", "cn"), Err("bad_number"));
+        // Russia's way abroad is 810.
+        assert_eq!(check_number("81012345678901", "ru"), Err("not_allowed"));
+        // The pick: a Spanish number finds the Spanish SIM, whatever the language.
+        let es = [phone("p-es", &[(3, "es")])];
+        assert_eq!(pick_phone(&es, "915551234", "", "es").unwrap().e164, "+34915551234");
+    }
+
+    #[test]
+    fn carriers_recordings_are_known_in_every_language() {
+        for t in [
+            "おかけになった電話番号は現在使われておりません",
+            "고객이 전원을 꺼 놓았거나 전파가 닿지 않는 곳에 있습니다. 전원이 꺼져 있습니다",
+            "El número marcado no existe",
+            "El teléfono móvil al que llama está apagado o fuera de cobertura",
+            "Le numéro que vous avez composé n'est pas attribué",
+            "Kein Anschluss unter dieser Nummer",
+            "Der gewünschte Teilnehmer ist zurzeit nicht erreichbar",
+            "O número discado não existe",
+            "O telefone chamado está desligado ou fora da área de cobertura",
+        ] {
+            assert!(carrier_message(t), "{t}");
+        }
+        // The same words as one sentence of a person, or of a voicemail: not the carrier.
+        for t in [
+            "Herr Müller ist zurzeit nicht im Büro",
+            "Herr Müller ist zurzeit nicht erreichbar, kann ich etwas ausrichten?",
+            "La señora García no está disponible en este momento, ¿quiere dejar un recado?",
+            "Madame Dupont est injoignable pour le moment, je prends un message ?",
+            "O senhor Silva não está disponível no momento, quer deixar recado?",
+            "Mr. Smith is not available right now, can I take a message?",
+            "田中は今席を外しておりまして、お繋ぎできません",
+            "김 부장님은 지금 통화가 불가능합니다",
+        ] {
+            assert!(!carrier_message(t), "{t}");
+        }
+        // The carrier's own wording of the same: the number or the subscriber is named.
+        for t in [
+            "Der Teilnehmer ist zurzeit nicht erreichbar",
+            "El número marcado no está disponible",
+            "Votre correspondant n'est pas joignable",
+            "O número que ligou não está disponível",
+            "The number you have dialed is not available right now",
+            "お客様がおかけになった電話は、お繋ぎできません",
+            "고객님이 거신 번호는 연결할 수 없습니다",
+        ] {
+            assert!(carrier_message(t), "{t}");
+        }
+        assert!(!carrier_message("O número que ligou não está disponível. Deixe sua mensagem após o sinal"));
+        assert!(!carrier_message("El número marcado no está disponible. Deje su mensaje después de la señal"));
+        // A voicemail takes a message: not the carrier's own words.
+        for t in [
+            "El número no está disponible en este momento. Deje su mensaje después del tono",
+            "Der Teilnehmer ist nicht erreichbar. Hinterlassen Sie eine Nachricht nach dem Signalton",
+            "Le numéro est hors service. Laissez votre message après le bip",
+            "ただいま電話に出ることができません。発信音の後にメッセージをどうぞ",
+            "Bonjour, restaurant Le Soleil, combien de personnes ?",
+            "Hallo, hier ist Müller, wie kann ich helfen?",
+        ] {
+            assert!(!carrier_message(t), "{t}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_call_that_reports_no_sim_yet_does_not_wipe_the_phones_sims() {
+        let rig = Rig::new();
+        rig.store.sims.note("pixel-errand-8", 1, "tw");
+        rig.store.sims.note("pixel-errand-8", 2, "us");
+        for id in ["e-sim-8a", "e-sim-8b"] {
+            rig.store.insert(Errand {
+                id: id.into(),
+                number: "0223456708".into(),
+                task: "訂位".into(),
+                status: DIALING.into(),
+                serial: "pixel-errand-8".into(),
+                sub_id: Some(1),
+                sim_country: "tw".into(),
+                attempts: 1,
+                ..Default::default()
+            });
+        }
+        let env = rig.env(vec![]);
+        // The media hello has said nothing about the SIM yet: it proves nothing.
+        gated_call(&env.cb(), &rig.store, "e-sim-8a", CallGate::WrongSim, None, None).await;
+        assert_eq!(rig.store.get("e-sim-8a").unwrap().call_code, "wrong_sim");
+        assert_eq!(rig.store.sims.of("pixel-errand-8"), vec![(1, "tw".to_string()), (2, "us".to_string())]);
+        // The phone says the call is on another SIM: the one asked for is gone.
+        gated_call(&env.cb(), &rig.store, "e-sim-8b", CallGate::WrongSim, Some(2), Some("us")).await;
+        assert_eq!(rig.store.sims.of("pixel-errand-8"), vec![(2, "us".to_string())]);
     }
 }

@@ -68,6 +68,7 @@ pub fn inbound(bot: &TelegramBot, inc: &TgIncoming) -> Option<Inbound> {
         body,
         message_id: if inc.message_id > 0 { inc.message_id.to_string() } else { String::new() },
         reply_to_bot: inc.reply_to_bot,
+        direct: false,
     })
 }
 

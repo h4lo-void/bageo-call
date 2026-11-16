@@ -189,7 +189,7 @@ pub async fn extract_intent(
         return Ok(heuristic_intent_with(trimmed, caller_id, spam_keywords));
     }
 
-    let user_body = intent_user_body(locale::current(), caller_id, trimmed);
+    let user_body = intent_user_body(locale::notify_lang(), caller_id, trimmed);
     let raw_text = chat_openrouter_intent(
         http,
         settings,
@@ -315,7 +315,7 @@ async fn chat_openrouter_intent(
         model
     };
     // Product path: deepseek-v4-flash via domestic API (same key as TRTC_LLM_CONFIG).
-    let system = intent_system_prompt(locale::current());
+    let system = intent_system_prompt(locale::notify_lang());
     if model.to_ascii_lowercase().contains("deepseek")
         || crate::deepseek::api_key_from_llm_config(settings.trtc_llm_config.as_ref()).is_some()
             && model == crate::deepseek::DEEPSEEK_MODEL

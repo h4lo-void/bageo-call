@@ -72,28 +72,49 @@ struct Session {
 }
 
 /// One bot: connect, answer, send the pushes for its chats, connect again when
-/// the line drops. Runs until aborted.
+/// the line drops. When Discord turns the bot away for good (a wrong token, an
+/// intent that is not switched on) it stops connecting, notes why for the
+/// notification settings' test ([link::gave_up]) and only keeps sending
+/// pushes. Runs until aborted.
 pub async fn run(ctrl: Arc<Controller>, http: Client, ep: Endpoints, acct: Account) {
     let _pushes = AbortOnDrop(tokio::spawn(send_pushes(ctrl.subscribe(), http.clone(), ep.api.clone(), acct.clone())));
+    link::set_gave_up("discord", &acct.token, None);
     let mut session = Session::default();
     let mut wait = ep.retry.first;
     loop {
         let started = Instant::now();
-        let hopeless = match connect(&ctrl, &http, &ep, &acct, &mut session).await {
-            Ok(None) => false,
+        let resumed = !session.id.is_empty();
+        match connect(&ctrl, &http, &ep, &acct, &mut session).await {
+            Ok(None) => {}
             Ok(Some(code)) => {
-                warn!(code, "discord refused the bot: check its token and that Message Content Intent is on");
+                warn!(code, "discord refused the bot: check its token and that Message Content Intent is on; not connecting again until the settings change");
                 session = Session::default();
-                true
+                link::set_gave_up("discord", &acct.token, Some(refusal(code)));
+                std::future::pending::<()>().await;
             }
             Err(e) => {
                 warn!("discord connection dropped: {}", acct.redact(&format!("{e:#}")));
-                false
+                // A resume that failed at once (a dead resume address, a session
+                // Discord forgot) must not be tried again: identify afresh.
+                if resumed && started.elapsed() < link::STEADY {
+                    session = Session::default();
+                }
             }
-        };
-        let pause = ep.retry.pause(wait, started.elapsed(), hopeless);
+        }
+        let pause = ep.retry.pause(wait, started.elapsed(), false);
         tokio::time::sleep(pause).await;
         wait = ep.retry.after(pause);
+    }
+}
+
+/// Why Discord turned a bot away, from its close code: 4014 / 4013 an intent
+/// that is not allowed (Message Content Intent is off), 4004 a token it does
+/// not accept.
+fn refusal(code: u16) -> &'static str {
+    match code {
+        4013 | 4014 => "discord_message_content",
+        4004 => "discord_bad_token",
+        _ => "discord_refused",
     }
 }
 
@@ -264,6 +285,7 @@ pub fn inbound_message(acct: &Account, bot_id: &str, d: &Value) -> Option<Inboun
         body: Body::Text(text),
         message_id: text_at(d, "/id").to_string(),
         reply_to_bot,
+        direct: !in_server,
     })
 }
 
@@ -302,6 +324,8 @@ pub fn inbound_press(acct: &Account, app_id: &str, bot_id: &str, d: &Value) -> O
         body: Body::Button(data.to_string()),
         message_id: text_at(d, "/message/id").to_string(),
         reply_to_bot: true,
+        // A press in a server carries the pressing member; in a direct message only the user.
+        direct: d.get("guild_id").map_or(true, Value::is_null) && d.get("member").map_or(true, Value::is_null),
     };
     Some((msg, (id.to_string(), token.to_string())))
 }

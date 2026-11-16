@@ -3,8 +3,9 @@
 //! stopping them as the settings change, the wait between retries, reading
 //! WebSocket frames, and keeping tokens out of the log.
 
+use std::collections::HashMap;
 use std::future::Future;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -214,4 +215,36 @@ pub fn ws_json(v: &Value) -> WsMessage {
 
 pub fn text_at<'a>(v: &'a Value, pointer: &str) -> &'a str {
     v.pointer(pointer).and_then(Value::as_str).unwrap_or("")
+}
+
+/// Bots whose connection ended for good (the service turned the bot away,
+/// and connecting again the same way cannot work), by kind and token: why, as
+/// a short code. The notification settings' test reads it to tell the owner.
+static GAVE_UP: Mutex<Option<HashMap<u64, &'static str>>> = Mutex::new(None);
+
+fn bot_key(kind: &str, token: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (kind, token.trim()).hash(&mut h);
+    h.finish()
+}
+
+/// Note why a bot's connection ended for good (None: it is fine again).
+pub fn set_gave_up(kind: &str, token: &str, why: Option<&'static str>) {
+    let mut all = GAVE_UP.lock().unwrap_or_else(|e| e.into_inner());
+    let map = all.get_or_insert_with(HashMap::new);
+    match why {
+        Some(w) => {
+            map.insert(bot_key(kind, token), w);
+        }
+        None => {
+            map.remove(&bot_key(kind, token));
+        }
+    }
+}
+
+/// Why this bot's connection ended for good, if it did.
+pub fn gave_up(kind: &str, token: &str) -> Option<&'static str> {
+    let all = GAVE_UP.lock().unwrap_or_else(|e| e.into_inner());
+    all.as_ref()?.get(&bot_key(kind, token)).copied()
 }

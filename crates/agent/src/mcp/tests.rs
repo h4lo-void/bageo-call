@@ -247,3 +247,65 @@ async fn tool_argument_and_cancel_validation_errors_are_reported() {
     let r = ask(&c, "tools/call", json!({"name": "no_such_tool", "arguments": {}})).await;
     assert_eq!(r["error"]["code"], -32602);
 }
+
+/// The inbound command API as an MCP client reaches it: the MCP token works only
+/// while MCP is on, and then only for what MCP allows.
+async fn inbound(c: &Arc<Controller>, token: &str, channel: &str, sender: &str, text: &str) -> (StatusCode, Value) {
+    let mut h = HeaderMap::new();
+    h.insert("authorization", HeaderValue::from_str(&format!("Bearer {token}")).unwrap());
+    let req = InboundCommandReq { text: text.into(), channel_id: channel.into(), sender_id: sender.into(), reply: false, token: String::new() };
+    let r = post_control_inbound(axum::extract::State(c.clone()), h, axum::Json(req)).await;
+    let status = r.status();
+    let b = axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap();
+    (status, serde_json::from_slice(&b).unwrap_or(Value::Null))
+}
+
+#[tokio::test]
+async fn the_mcp_token_cannot_change_anything_through_the_command_api_when_mcp_may_only_look() {
+    let rig = Rig::new();
+    let c = rig.controller();
+    // Looking is fine.
+    let (s, v) = inbound(&c, TOKEN, "home-assistant", "ha", "/status").await;
+    assert_eq!((s, v["ok"].clone()), (StatusCode::OK, json!(true)), "{v}");
+    // Lists, calls, the phone's mode and to-dos are not for it.
+    for cmd in ["/block 0912000555 推銷", "/white 0912000556", "/errand 0912000557 問營業時間", "/mode 1 normal", "/ignore 1", "1"] {
+        let (s, v) = inbound(&c, TOKEN, "home-assistant", "ha", cmd).await;
+        assert_eq!(s, StatusCode::OK, "{cmd}: {v}");
+        assert!(v["buttons"].as_array().map_or(true, |b| b.is_empty()), "{cmd} asked to confirm: {v}");
+    }
+    assert!(rig.state.contacts.lookup("0912000555", None).is_none(), "the MCP token changed the blacklist");
+    assert!(rig.state.contacts.lookup("0912000556", None).is_none(), "the MCP token changed the whitelist");
+    assert!(rig.state.errands.list().is_empty(), "the MCP token made a call");
+    // MCP switched off: the token opens nothing.
+    rig.set(json!({"mcp_enabled": false}));
+    let (s, _) = inbound(&c, TOKEN, "home-assistant", "ha", "/status").await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn the_command_api_keeps_a_chats_sender_list() {
+    let rig = Rig::new();
+    rig.set(json!({"notify_channels": [
+        {"kind": "telegram", "name": "Family", "enabled": true, "token": "456:CHANNELTOKEN", "target": "-1001", "control": true, "control_users": ["7"]},
+    ]}));
+    let c = rig.controller();
+    let (s, _) = inbound(&c, TOKEN, "Family", "9", "/status").await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "a sender not on the list");
+    let (s, _) = inbound(&c, TOKEN, "Family", "7", "/status").await;
+    assert_eq!(s, StatusCode::OK);
+}
+
+#[test]
+fn who_an_inbound_request_is_from() {
+    let rig = Rig::new();
+    let mut rt = (*rig.state.settings_store.snapshot()).clone();
+    use crate::control::ApiCaller;
+    assert_eq!(inbound_caller(&rt, "pw-test", "pw-test"), Some(ApiCaller::Owner));
+    assert_eq!(inbound_caller(&rt, "pw-test", TOKEN), Some(ApiCaller::Mcp));
+    assert_eq!(inbound_caller(&rt, "pw-test", "nope"), None);
+    assert_eq!(inbound_caller(&rt, "", ""), None, "an MCP token is set: no token, no entry");
+    rt.mcp_enabled = false;
+    assert_eq!(inbound_caller(&rt, "pw-test", TOKEN), None, "MCP off: its token opens nothing");
+    rt.mcp_token = String::new();
+    assert_eq!(inbound_caller(&rt, "", ""), Some(ApiCaller::Owner), "no password and no token: as open as the console");
+}

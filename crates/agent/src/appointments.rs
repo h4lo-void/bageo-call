@@ -170,10 +170,8 @@ pub fn callable_on(caller_id: &str, region: Option<&str>) -> bool {
     };
     let digits: String = t.chars().filter(char::is_ascii_digit).collect();
     if !t.starts_with('+') && !digits.starts_with("00") {
-        // Dialled at home: with the trunk 0, or the country code without its
-        // plus; bare digits are a short code or a cut-off number.
-        let with_code = digits.starts_with(code) && digits.len() >= code.len() + 8;
-        if !NO_TRUNK_CODES.contains(&code) && !digits.starts_with('0') && !with_code {
+        // Dialled at home: a full number as that country writes it.
+        if !crate::phone_region::dialled_at_home(code, &digits) {
             return false;
         }
     }
@@ -263,6 +261,10 @@ const SMS_TEXT_MAX: usize = 500;
 /// How a caller ID without a country code is read when the SIM that took the
 /// call is not known (records and apps from before the SIM was reported).
 const DEFAULT_SMS_REGION: &str = "tw";
+
+/// [`Appointment::call_lang`] of a call held in a language the AI has no
+/// setting for.
+const OTHER_CALL_LANG: &str = "other";
 
 /// Numbers proposals in the order they arrive (process-wide, from 1).
 fn next_seq() -> u64 {
@@ -478,9 +480,41 @@ impl Appointment {
         }
     }
 
+    /// The call was held in a language the AI has no setting for (Thai, Russian,
+    /// Arabic, Hindi…: [`crate::gemini_live::dialogue_in_other_language`]): marked
+    /// on this appointment and the others of the same call, so the call-back speaks
+    /// the language the callee answers in ([`Self::other_language`]).
+    pub fn set_other_call_lang(&mut self) {
+        self.call_lang = OTHER_CALL_LANG.to_string();
+        for m in &mut self.more {
+            m.call_lang = self.call_lang.clone();
+        }
+    }
+
     /// The language the call-back speaks ([`Self::call_lang`]), if known.
     pub fn spoken_lang(&self) -> Option<Lang> {
-        Some(self.call_lang.trim()).filter(|c| !c.is_empty()).map(Lang::parse)
+        Some(self.call_lang.trim())
+            .filter(|c| !c.is_empty() && !c.eq_ignore_ascii_case(OTHER_CALL_LANG))
+            .map(Lang::parse)
+    }
+
+    /// The call was held in a language the AI does not have a setting for (Thai,
+    /// Russian, Arabic…): [`Self::call_lang`] says `other`, or it is empty and
+    /// the SIM that took the call is in a country whose main language is not
+    /// one of the nine. The call-back then speaks the language the callee
+    /// answers in, not the owner's.
+    pub fn other_language(&self) -> bool {
+        let said = self.call_lang.trim();
+        if said.eq_ignore_ascii_case(OTHER_CALL_LANG) {
+            return true;
+        }
+        said.is_empty()
+            && self
+                .sim_country
+                .as_deref()
+                .map(str::trim)
+                .filter(|c| !c.is_empty())
+                .is_some_and(|c| locale::country_lang(c).is_none())
     }
 
     /// Two copies of the same appointment (the call's, its task's): the same
@@ -1076,6 +1110,9 @@ pub struct ApptSession {
     caller_id: String,
     /// This call's mark on the events it writes ([`Appointment::tag`]).
     tag: String,
+    /// The language of the call's prompt when it is not the setting's (a SIM's
+    /// own: setting `sim_languages`); the appointment part is in it too.
+    prompt_lang: Option<Lang>,
     /// What the caller agreed to.
     pub book: Arc<CallAppointments>,
 }
@@ -1102,8 +1139,15 @@ impl ApptSession {
             home,
             caller_id: caller_id.trim().to_string(),
             tag: uuid::Uuid::new_v4().to_string(),
+            prompt_lang: None,
             book: CallAppointments::new(),
         }
+    }
+
+    /// The call's prompt is in `lang` (None: the setting's,
+    /// [`crate::gemini_live::CallLangPlan::prompt_lang`]).
+    pub fn set_prompt_lang(&mut self, lang: Option<Lang>) {
+        self.prompt_lang = lang;
     }
 
     /// The line that took the call ([`CallAppointments::set_line`]): the SIM's
@@ -1123,9 +1167,13 @@ impl ApptSession {
 
     /// Added after the call's system instruction (the stored prompt is not touched).
     pub fn prompt_block(&self, now: chrono::DateTime<chrono::Local>) -> String {
+        let mut active = locale::active();
+        if let Some(l) = self.prompt_lang {
+            active.lang = l;
+        }
         prompt_block(
             self.reply,
-            &locale::active(),
+            &active,
             now.naive_local(),
             &now.format("%:z").to_string(),
         )
@@ -1592,10 +1640,14 @@ pub fn sms_number(caller_id: &str) -> Option<String> {
 }
 
 /// The owner's country (ISO 3166 alpha-2) from the country calling code setting
-/// (`country_code`; Taiwan's for zh-TW): how a caller ID without a country code
-/// reads when no SIM country is known, as everywhere else in the agent.
+/// (`country_code`; else the country of a connected phone's SIM or of the
+/// language, [`RuntimeSettings::effective_country_code`]): how a caller ID
+/// without a country code reads when no SIM country is known, as everywhere
+/// else in the agent.
 fn home_region(rt: &RuntimeSettings) -> Option<String> {
-    crate::phone_region::country_of_code(&rt.effective_country_code()).map(str::to_string)
+    crate::phone_region::country_of_code(&rt.effective_country_code())
+        .map(str::to_string)
+        .or_else(|| Some(rt.default_region().to_string()))
 }
 
 /// How a caller ID without a country code reads for this appointment: the SIM
@@ -1635,10 +1687,8 @@ const MOBILE_NUMBERS: &[(&str, &[&str], usize, usize)] = &[
     ("es", &["6", "7"], 9, 9),
     ("it", &["3"], 9, 10),
     ("nl", &["6"], 9, 9),
+    ("pt", &["9"], 9, 9),
 ];
-
-/// Calling codes whose numbers are dialled at home without a trunk `0`.
-const NO_TRUNK_CODES: &[&str] = &["1", "39"];
 
 /// +1 toll-free (800, 833…888) and premium (900) codes: business lines, not
 /// phones a text reaches.
@@ -1679,12 +1729,12 @@ pub fn sms_number_on(caller_id: &str, sim_country: Option<&str>) -> Option<Strin
         .unwrap_or(DEFAULT_SMS_REGION)
         .to_ascii_lowercase();
     if !t.starts_with('+') && !digits.starts_with("00") {
-        // Dialled at home: caller IDs carry the trunk 0 (`0912…`), or the
-        // country code without its plus (`886912…`). Bare national digits are
-        // a cut-off number, not one to text.
+        // Dialled at home: a full number as that country writes it (the trunk
+        // 0 of `0912…`, the country code without its plus, or where there is
+        // no trunk prefix the whole national number). Anything shorter is a
+        // cut-off number, not one to text.
         let code = crate::phone_region::calling_code(&region)?;
-        let with_code = digits.starts_with(code) && digits.len() >= code.len() + 8;
-        if !NO_TRUNK_CODES.contains(&code) && !digits.starts_with('0') && !with_code {
+        if !crate::phone_region::dialled_at_home(code, &digits) {
             return None;
         }
     }
@@ -1820,15 +1870,18 @@ fn phone_sms_code(lang: Lang, code: &str) -> Option<&'static str> {
 
 /// The link that adds an appointment to the owner's calendar: the calendar
 /// they chose (setting `calendar_app`) — its "new event" form filled in, or
-/// the task's `.ics` at `public_url`. Not chosen yet: the call's page in the
-/// web console (`console`, the address other devices open it at — the one the
-/// summary's call link uses), where "Add to calendar" asks which calendar and
-/// keeps the answer for the next ones. Empty when the address it needs is.
+/// the task's `.ics` at `console` (the address other devices open the web
+/// console at, `settings_store::effective_console_url` — `public_url` when it
+/// is filled in, else the one the agent finds, so a link goes out on every
+/// channel). Not chosen yet: the call's page in the web console, where "Add to
+/// calendar" asks which calendar and keeps the answer for the next ones. Empty
+/// when the address it needs is.
 pub fn calendar_link(rt: &RuntimeSettings, console: &str, task: &TaskRecord, appt: &Appointment) -> String {
     if crate::calendar::sanitize_app(&rt.calendar_app).is_empty() {
         return console_call_url(console, &task.call_id);
     }
-    let ics = crate::calendar::ics_url(&rt.public_url, &format!("tasks/{}", task.id));
+    let base = if console.trim().is_empty() { rt.public_url.as_str() } else { console };
+    let ics = crate::calendar::ics_url(base, &format!("tasks/{}", task.id));
     appt.calendar_event()
         .link_for(&rt.calendar_app, &event_description(&task.caller_id, appt), &ics)
 }
@@ -1847,6 +1900,13 @@ fn console_call_url(console: &str, call_id: &str) -> String {
     }
     let base = base.strip_suffix("/calls").unwrap_or(base);
     format!("{base}/calls/#call={id}")
+}
+
+/// The text to the caller, in the language the AI spoke with them
+/// ([`callback_lang`]; a language the AI has no setting for: English), not the
+/// owner's.
+fn caller_text(rt: &RuntimeSettings, appt: &Appointment, confirmed: bool) -> String {
+    sms_text(callback_lang(appt), &rt.owner_name, appt, confirmed)
 }
 
 /// Send the caller the text for this decision through the phone that took the
@@ -1874,8 +1934,7 @@ async fn text_caller(
         .unwrap_or(task.serial.as_str());
     // The SIM that took the call; another phone sends from its own default.
     let sub_id = if phone == task.serial { appt.sim_sub_id } else { None };
-    // To the caller: in the language the AI spoke with them.
-    let text = sms_text(locale::current(), &rt.owner_name, appt, confirmed);
+    let text = caller_text(rt, appt, confirmed);
     let out = control.send_sms_on(phone, sub_id, &task.id, &to, &text, SMS_RESULT_WAIT).await;
     info!(
         "appointment sms task_id={} serial={phone} sub_id={sub_id:?} outcome={out:?}",
@@ -1961,10 +2020,16 @@ async fn call_caller(
         return ("no_phone".to_string(), locale::fill(w.not_placed, w.no_phone));
     };
     // The script and the call's speech-to-text in one language: the call's.
+    let other = appt.other_language();
     let lang = callback_lang(appt);
-    let script = callback_prompt(&locale::active(), lang, appt, confirmed);
+    let script = if other {
+        callback_prompt_in(&locale::active(), None, appt, confirmed)
+    } else {
+        callback_prompt(&locale::active(), lang, appt, confirmed)
+    };
     let mut cb = PendingCallback::new(&task.id, &number, &task.serial, script);
-    cb.lang = Some(lang);
+    // No language of ours: the call plans its languages as any call does.
+    cb.lang = Some(lang).filter(|_| !other);
     if !callbacks_add(cb.clone()) {
         info!("appointment call-back task_id={} waits for an earlier call-back to the same number", task.id);
         return ("queued".to_string(), callback_words(lang).queued.to_string());
@@ -1978,9 +2043,15 @@ async fn call_caller(
 
 /// The language of an appointment's call-back — its script and its Live
 /// session alike: the one spoken on the call it answers
-/// ([`Appointment::call_lang`]); a record without it, the setting's.
+/// ([`Appointment::call_lang`]); a record without it, the setting's. A call
+/// held in a language the AI has no setting for ([`Appointment::other_language`]):
+/// English, for the texts that need one.
 pub fn callback_lang(appt: &Appointment) -> Lang {
-    appt.spoken_lang().unwrap_or_else(locale::current)
+    match appt.spoken_lang() {
+        Some(l) => l,
+        None if appt.other_language() => Lang::En,
+        None => locale::current(),
+    }
 }
 
 /// Ask a phone to place a call-back: `dialing`, or why it did not go out
@@ -2258,6 +2329,15 @@ fn callback_dialing_on(serial: &str, caller_id: &str) -> bool {
     let key = number_key(caller_id);
     callbacks().iter().any(|c| {
         c.stage == CallbackStage::Dialing && c.serial.eq_ignore_ascii_case(serial.trim()) && (key.is_empty() || c.key == key)
+    })
+}
+
+/// An appointment's call-back (or an errand's call) is going out on phone
+/// `serial` (`Dialing` or `Ready`): the call that connects is ours, so no
+/// greeting for a call coming in is played on it (assistant mode).
+pub fn callback_pending_on(serial: &str) -> bool {
+    callbacks().iter().any(|c| {
+        matches!(c.stage, CallbackStage::Dialing | CallbackStage::Ready) && c.serial.eq_ignore_ascii_case(serial.trim())
     })
 }
 
@@ -2681,8 +2761,19 @@ fn callback_words(lang: Lang) -> CallbackWords {
 /// answer — the time and what it is about, or a polite no — and one goodbye,
 /// all once; said again only when the callee asks.
 pub fn callback_prompt(active: &locale::Active, lang: Lang, appt: &Appointment, confirmed: bool) -> String {
+    callback_prompt_in(active, Some(lang), appt, confirmed)
+}
+
+/// [`callback_prompt`] for a call held in a language without a setting of its
+/// own (`lang` None): the AI speaks the language the callee answers in.
+pub fn callback_prompt_in(active: &locale::Active, lang: Option<Lang>, appt: &Appointment, confirmed: bool) -> String {
+    let lang_given = lang;
+    let lang = lang.unwrap_or(Lang::En);
     let owner = crate::prompts::owner_label(lang, &active.owner);
-    let language = locale::phrases(lang).name_en;
+    let language = match lang_given {
+        Some(l) => locale::phrases(l).name_en,
+        None => "the language they answer in",
+    };
     let when = appt.start_text(lang);
     let about = match appt.title.trim() {
         "" => String::new(),
@@ -3382,6 +3473,7 @@ mod tests {
             home: None,
             caller_id: "0912345678".into(),
             tag: "tag-test".into(),
+            prompt_lang: None,
             book: CallAppointments::new(),
         }
     }
@@ -3440,6 +3532,7 @@ mod tests {
     #[test]
     fn appointments_follow_the_setting_and_no_calendar_is_checked() {
         let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        rt.country_code = "886".into();
         rt.appointment_mode = "off".into();
         assert!(ApptSession::for_call(&rt, "0912345678").is_none());
         // "confirm", and an "auto" saved by an older agent: the owner decides,
@@ -4092,6 +4185,51 @@ mod tests {
     }
 
     #[test]
+    fn a_call_back_going_out_on_a_phone_is_known_there_only() {
+        assert!(!callback_pending_on("phone-pend"));
+        // Dialing: that phone's next call is ours; another phone's is not.
+        assert!(callbacks_add(PendingCallback::new("t-cb-p1", "0912000501", "phone-pend", "A".into())));
+        assert_eq!(callbacks_stage("t-cb-p1"), Some(CallbackStage::Dialing));
+        assert!(callback_pending_on("phone-pend"));
+        assert!(callback_pending_on(" PHONE-PEND "));
+        assert!(!callback_pending_on("phone-other"));
+        // Ready: still pending. On the call (its session took it): no longer.
+        assert!(callback_ready("t-cb-p1", "phone-pend", "0912000501"));
+        assert!(callback_pending_on("phone-pend"));
+        assert!(take_ready_callback("phone-pend", "0912000501").is_some());
+        assert!(!callback_pending_on("phone-pend"));
+        callbacks_remove("t-cb-p1");
+        // Queued behind another call to the same number: not dialing yet.
+        assert!(callbacks_add(PendingCallback::new("t-cb-p2", "0912000502", "phone-pend2", "A".into())));
+        assert!(!callbacks_add(PendingCallback::new("t-cb-p3", "0912000502", "phone-pend3", "B".into())));
+        assert!(!callback_pending_on("phone-pend3"));
+        callbacks_remove("t-cb-p2");
+        callbacks_remove("t-cb-p3");
+    }
+
+    #[test]
+    fn a_call_in_another_language_marks_all_its_appointments() {
+        let mut a = appt("2026-11-15T12:30", "2026-11-15T13:30", "x");
+        a.more.push(appt("2026-11-16T12:30", "2026-11-16T13:30", "y"));
+        a.set_other_call_lang();
+        assert!(a.other_language() && a.spoken_lang().is_none());
+        assert!(a.more.iter().all(|m| m.other_language()));
+    }
+
+    #[test]
+    fn the_appointment_part_follows_the_calls_prompt_language() {
+        let mut s = session(Mode::Confirm);
+        let now = chrono::Local::now();
+        let own = s.prompt_block(now);
+        s.set_prompt_lang(Some(Lang::En));
+        let en = s.prompt_block(now);
+        // A US SIM's own number in English: the title is asked for in English.
+        assert!(en.contains("in a few words in English"), "{en}");
+        s.set_prompt_lang(None);
+        assert_eq!(s.prompt_block(now), own);
+    }
+
+    #[test]
     fn an_errand_and_a_call_back_to_one_number_take_turns() {
         assert!(callbacks_add(PendingCallback::new("t-cb-e1", "0912000401", "phone-e", "APPT".into())));
         assert!(!callbacks_add(PendingCallback::errand("e-cb-e2", "+886912000401", "phone-e", Some(2), "ERRAND".into())));
@@ -4239,6 +4377,7 @@ mod tests {
     #[test]
     fn card_lists_time_reason_and_whether_a_text_can_go() {
         let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        rt.country_code = "886".into();
         rt.appointment_sms = true;
         rt.appointment_reply = "auto".into();
         let mut a = appt("2026-11-14T15:00", "2026-11-14T16:00", "看房");
@@ -4310,6 +4449,8 @@ mod tests {
 
     fn plain_settings() -> RuntimeSettings {
         let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        // Taiwanese numbers throughout: the home country is set, not guessed.
+        rt.country_code = "886".into();
         rt.appointment_sms = false;
         rt.appointment_reply = "sms".into();
         rt
@@ -4394,6 +4535,7 @@ mod tests {
         let store = TaskStore::new(root.join("tasks"));
         let calls = CallStore::new(root.join("calls"), false, false, 30);
         let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        rt.country_code = "886".into();
         rt.appointment_sms = false;
         rt.calendar_app = String::new();
         rt.appointment_reply = "sms".into();
@@ -4431,10 +4573,15 @@ mod tests {
         let t3 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
         let (_, text) = decide(&rt, "http://bageo.local/", &store, &calls, None, &t3.id, true).await.unwrap();
         assert!(text.ends_with(&format!("加入行事曆：http://bageo.local/calls/api/tasks/{}/event.ics", t3.id)), "{text}");
-        // …and without an address other devices can open: no link at all.
+        // `public_url` left empty: the console's address the agent found (as on
+        // every channel, not only Telegram)…
         rt.public_url = String::new();
         let t4 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
-        let (_, text) = decide(&rt, "http://bageo.local/", &store, &calls, None, &t4.id, true).await.unwrap();
+        let (_, text) = decide(&rt, "http://192.168.1.20:8787/", &store, &calls, None, &t4.id, true).await.unwrap();
+        assert!(text.ends_with(&format!("加入行事曆：http://192.168.1.20:8787/calls/api/tasks/{}/event.ics", t4.id)), "{text}");
+        // …and without an address other devices can open: no link at all.
+        let t5 = store.create(TaskRecord { id: String::new(), ..task_for("0912345678", &a) }).await.unwrap();
+        let (_, text) = decide(&rt, "", &store, &calls, None, &t5.id, true).await.unwrap();
         assert!(!text.contains("加入行事曆"), "{text}");
         // Declined, texts on, the phone is not connected: said so.
         rt.appointment_sms = true;
@@ -4607,7 +4754,8 @@ mod tests {
         let warn = locale::phrases(locale::notify_lang()).ap_time_unconfirmed;
         assert!(!warn.is_empty());
         assert!(summary_line(&a, "").contains(warn) && !summary_line(&old, "").contains(warn));
-        let rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        rt.country_code = "886".into();
         let task = task_for("0912345678", &a);
         assert!(card_text(&rt, &task, &a, "").1.contains(warn));
         assert!(!card_text(&rt, &task, &old, "").1.contains(warn));
@@ -5048,5 +5196,76 @@ mod tests {
         a.status = CONFIRMED.into();
         a.sms = "no_number".into();
         assert!(!sms_retryable(&a));
+    }
+
+    #[test]
+    fn numbers_without_a_trunk_zero_can_be_called_back_and_texted() {
+        for (n, sim) in [
+            ("13800138000", "cn"),
+            ("915551234", "es"),
+            ("612345678", "es"),
+            ("912345678", "pt"),
+            ("91234567", "sg"),
+            ("91234567", "hk"),
+            ("89121234567", "ru"),
+        ] {
+            assert!(callable_on(n, Some(sim)), "{n} on {sim}");
+        }
+        assert_eq!(sms_number_on("13800138000", Some("cn")).as_deref(), Some("+8613800138000"));
+        assert_eq!(sms_number_on("612345678", Some("es")).as_deref(), Some("+34612345678"));
+        // A Spanish landline takes no text.
+        assert_eq!(sms_number_on("915551234", Some("es")), None);
+        assert_eq!(sms_number_on("912345678", Some("pt")).as_deref(), Some("+351912345678"));
+        assert_eq!(sms_number_on("91234567", Some("sg")).as_deref(), Some("+6591234567"));
+        assert_eq!(sms_number_on("91234567", Some("hk")).as_deref(), Some("+85291234567"));
+        assert_eq!(sms_number_on("89121234567", Some("ru")).as_deref(), Some("+79121234567"));
+        // Where the trunk 0 is written, bare digits are still a cut-off number.
+        assert!(!callable_on("912345678", Some("tw")));
+        assert_eq!(sms_number_on("912345678", Some("tw")), None);
+        assert_eq!(sms_number_on("9012345678", Some("jp")), None);
+        assert_eq!(sms_number_on("15112345678", Some("de")), None);
+        // A cut-off number without a trunk is no number either.
+        assert!(!callable_on("1234567", Some("es")));
+        assert_eq!(sms_number_on("138001", Some("cn")), None);
+    }
+
+    #[test]
+    fn a_call_in_a_language_without_a_setting_is_called_back_in_the_callers_own() {
+        // Thai SIM, nothing detected: not the owner's language.
+        let mut thai = appt("2026-11-15T12:30", "2026-11-15T13:30", "約吃飯");
+        thai.sim_country = Some("th".into());
+        assert!(thai.other_language());
+        assert_eq!(thai.spoken_lang(), None);
+        assert_eq!(callback_lang(&thai), Lang::En);
+        let script = callback_prompt_in(&locale::Active::default(), None, &thai, true);
+        assert!(script.contains("speak the language they answer in"), "{script}");
+        assert!(!script.contains("Traditional Chinese"), "{script}");
+        // The same by what the call's record says.
+        let mut marked = appt("2026-11-15T12:30", "2026-11-15T13:30", "x");
+        marked.call_lang = "other".into();
+        assert!(marked.other_language() && marked.spoken_lang().is_none());
+        // A language the AI has: that one. A country it has none for but a
+        // detected language: the detected one. An older record: the setting's.
+        let mut ja = thai.clone();
+        ja.set_call_lang(Lang::Ja);
+        assert!(!ja.other_language());
+        assert_eq!(callback_lang(&ja), Lang::Ja);
+        let mut tw = appt("2026-11-15T12:30", "2026-11-15T13:30", "x");
+        tw.sim_country = Some("tw".into());
+        assert!(!tw.other_language());
+        assert_eq!(callback_lang(&tw), locale::current());
+        assert!(!appt("2026-11-15T12:30", "2026-11-15T13:30", "x").other_language());
+    }
+
+    #[test]
+    fn the_text_to_the_caller_is_in_the_language_of_the_call_not_the_owners() {
+        let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        rt.country_code = "886".into();
+        let mut a = appt("2026-11-14T15:00", "2026-11-14T16:00", "看房");
+        a.set_call_lang(Lang::Ja);
+        assert_eq!(caller_text(&rt, &a, true), sms_text(Lang::Ja, &rt.owner_name, &a, true));
+        assert_ne!(caller_text(&rt, &a, true), sms_text(Lang::ZhTw, &rt.owner_name, &a, true));
+        a.set_call_lang(Lang::En);
+        assert_eq!(caller_text(&rt, &a, false), sms_text(Lang::En, &rt.owner_name, &a, false));
     }
 }

@@ -290,6 +290,7 @@ fn discord_messages_and_presses_become_inbounds() {
         Inbound {
             channel_id: "c1".into(), platform: "discord".into(), chat_id: "123".into(), sender_id: "111".into(),
             body: Body::Text("calls today".into()), message_id: "500".into(), reply_to_bot: false,
+            direct: false,
         }
     );
     let mut r = discord_msg("111", "yes", true);
@@ -355,7 +356,16 @@ fn discord_in_a_server_passes_on_only_what_is_said_to_the_bot() {
     assert!(discord::inbound_message(&a, "999", &discord_msg("111", "/status", true)).is_some());
     assert!(discord::inbound_message(&a, "999", &discord_msg("111", "<@!999> status", true)).is_some());
     // A direct message is for the bot.
-    assert!(discord::inbound_message(&a, "999", &discord_msg("111", "see you at 7", false)).is_some());
+    let dm = discord::inbound_message(&a, "999", &discord_msg("111", "see you at 7", false)).unwrap();
+    assert!(dm.direct, "a direct message is a private chat");
+    assert!(!discord::inbound_message(&a, "999", &discord_msg("111", "/status", true)).unwrap().direct);
+    // The same in a press: a server's carries the member, a direct message's the user.
+    let mut press = json!({"type": 3, "id": "i1", "token": "itok", "channel_id": "123", "user": {"id": "111"},
+        "application_id": "app1", "data": {"custom_id": "ok:1"}, "message": {"id": "400", "author": {"id": "999"}}});
+    assert!(discord::inbound_press(&a, "app1", "999", &press).unwrap().0.direct);
+    press["guild_id"] = json!("1");
+    press["member"] = json!({"user": {"id": "111"}});
+    assert!(!discord::inbound_press(&a, "app1", "999", &press).unwrap().0.direct);
 }
 
 #[tokio::test]
@@ -487,6 +497,7 @@ fn slack_messages_and_presses_become_inbounds() {
         Inbound {
             channel_id: "c1".into(), platform: "slack".into(), chat_id: "C123".into(), sender_id: "U111".into(),
             body: Body::Text("calls <today>".into()), message_id: "1.1".into(), reply_to_bot: false,
+            direct: false,
         }
     );
     let mut r = slack_msg("U111", "yes", "channel");
@@ -606,12 +617,17 @@ fn matrix_messages_become_inbounds() {
         Inbound {
             channel_id: "c1".into(), platform: "matrix".into(), chat_id: "!room:example.org".into(), sender_id: "@lee:example.org".into(),
             body: Body::Text("calls today".into()), message_id: "$e1".into(), reply_to_bot: false,
+            direct: false,
         }
     );
     let mut reply = matrix_msg("@lee:example.org", "> <@bot:example.org> Call Lee?\n\n1");
     reply["content"]["m.relates_to"] = json!({"m.in_reply_to": {"event_id": "$bot1"}});
     let got = matrix::inbound_event(&room(false), &matrix_me(), |id| id == "$bot1", &reply).unwrap();
     assert_eq!((got.body, got.reply_to_bot), (Body::Text("1".into()), true));
+    // A room of only the owner and the bot is a private chat.
+    let dm = matrix::inbound_event(&room(true), &matrix_me(), |_| false, &matrix_msg("@lee:example.org", "hello")).unwrap();
+    assert!(dm.direct);
+    assert!(!matrix::inbound_event(&room(false), &matrix_me(), |_| false, &matrix_msg("@lee:example.org", "/status")).unwrap().direct);
 }
 
 #[test]
@@ -781,6 +797,7 @@ async fn sec_wrong_confirmation_codes_count_against_the_limit_and_strangers_use_
     let press = |sender: &str, data: String| Inbound {
         channel_id: "d1".into(), platform: "discord".into(), chat_id: "123".into(), sender_id: sender.into(),
         body: Body::Button(data), message_id: "500".into(), reply_to_bot: true,
+        direct: false,
     };
     for _ in 0..10 {
         assert_eq!(c.handle(&press("666", format!("k:{}:y", confirm::new_code()))).await, None);
@@ -994,4 +1011,347 @@ async fn review_matrix_treats_a_room_as_a_group_when_the_member_count_is_unknown
     task.abort();
     assert!(answered, "no answer: {:?}", reqs.lock().unwrap());
     assert_eq!(hits(&reqs, |r| r.method == "PUT").len(), 1, "the plain chat line was answered too");
+}
+
+// ------------------------------------------------------------ fixes from the audit
+
+#[test]
+fn slack_a_bare_1_or_2_in_a_channel_counts_only_while_a_confirmation_waits() {
+    let a = acct("slack", "C123");
+    let one = slack_msg("U111", "1", "channel");
+    assert!(slack::inbound_event(&a, &slack_me(), &one).is_none(), "nothing waits: not for the bot");
+    assert!(slack::inbound_event_with(&a, &slack_me(), &one, |_| false).is_none());
+    let m = slack::inbound_event_with(&a, &slack_me(), &one, |chat| chat == "c1|C123").unwrap();
+    assert_eq!((m.body, m.sender_id.as_str(), m.chat_id.as_str()), (Body::Text("1".into()), "U111", "C123"));
+    assert!(slack::inbound_event_with(&a, &slack_me(), &slack_msg("U111", "2", "channel"), |chat| chat == "c1|C123").is_some());
+    // Another chat's confirmation, or ordinary talk, is not an answer.
+    assert!(slack::inbound_event_with(&a, &slack_me(), &one, |chat| chat == "c1|C999").is_none());
+    assert!(slack::inbound_event_with(&a, &slack_me(), &slack_msg("U111", "hello", "channel"), |_| true).is_none());
+}
+
+#[test]
+fn slack_slash_commands_become_inbounds() {
+    let a = acct("slack", "C123");
+    let p = json!({"command": "/calls", "text": "today missed", "user_id": "U111", "channel_id": "C123", "response_url": "https://hooks.slack.example/x"});
+    let m = slack::inbound_slash(&a, &p).unwrap();
+    assert_eq!(
+        (m.body, m.sender_id.as_str(), m.chat_id.as_str(), m.platform.as_str(), m.reply_to_bot),
+        (Body::Text("/calls today missed".into()), "U111", "C123", "slack", false)
+    );
+    let bare_command = json!({"command": "/status", "text": "  ", "user_id": "U111", "channel_id": "C123"});
+    assert_eq!(slack::inbound_slash(&a, &bare_command).unwrap().body, Body::Text("/status".into()));
+    // Another channel, no sender, or no slash: nothing.
+    assert!(slack::inbound_slash(&a, &json!({"command": "/calls", "text": "", "user_id": "U111", "channel_id": "C999"})).is_none());
+    assert!(slack::inbound_slash(&a, &json!({"command": "/calls", "text": "", "user_id": "", "channel_id": "C123"})).is_none());
+    assert!(slack::inbound_slash(&a, &json!({"command": "calls", "text": "", "user_id": "U111", "channel_id": "C123"})).is_none());
+}
+
+#[tokio::test]
+async fn slack_acknowledges_and_answers_a_slash_command_envelope() {
+    let rig = Rig::new();
+    rig.channels("https://matrix.example.org", true);
+    let (reqs, mut conns, task) = slack_live(&rig).await;
+    let mut ws = next_conn(&mut conns).await;
+    send_json(&mut ws, json!({"type": "hello"})).await;
+    send_json(&mut ws, json!({"envelope_id": "e7", "type": "slash_commands",
+        "payload": {"command": "/help", "text": "", "user_id": "U111", "channel_id": "C123"}})).await;
+    let ack = recv_json(&mut ws).await;
+    let posted = until(Duration::from_secs(5), || !hits(&reqs, |r| r.path == "/chat.postMessage").is_empty()).await;
+    task.abort();
+    assert_eq!(ack, json!({"envelope_id": "e7"}));
+    assert!(posted, "no answer: {:?}", reqs.lock().unwrap());
+    assert_eq!(hits(&reqs, |r| r.path == "/chat.postMessage").remove(0).body["channel"], "C123");
+}
+
+fn close_with(code: u16) -> Option<tokio_tungstenite::tungstenite::protocol::CloseFrame> {
+    Some(tokio_tungstenite::tungstenite::protocol::CloseFrame {
+        code: tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode::from(code),
+        reason: "refused".into(),
+    })
+}
+
+/// Discord closes the line with 4014 when Message Content Intent is off: the
+/// bot stops connecting (it used to knock again every two minutes) and notes why.
+#[tokio::test]
+async fn discord_stops_connecting_when_message_content_is_not_allowed() {
+    let rig = Rig::new();
+    let (url, mut conns) = ws_server().await;
+    let ep = discord::Endpoints { api: "http://127.0.0.1:9".into(), gateway: url, retry: FAST };
+    let a = Account { token: "tok-4014-unique-a".into(), ..acct("discord", "123") };
+    let task = tokio::spawn(discord::run(Controller::new(rig.state.clone()), reqwest::Client::new(), ep, a));
+    let mut ws = next_conn(&mut conns).await;
+    send_json(&mut ws, json!({"op": 10, "d": {"heartbeat_interval": 60000}})).await;
+    let _identify = recv_json(&mut ws).await;
+    ws.close(close_with(4014)).await.unwrap();
+    drop(ws);
+    let again = tokio::time::timeout(Duration::from_millis(700), conns.recv()).await;
+    let why = link::gave_up("discord", "tok-4014-unique-a");
+    task.abort();
+    assert!(again.is_err(), "it connected again");
+    assert_eq!(why, Some("discord_message_content"));
+}
+
+#[tokio::test]
+async fn a_test_of_a_discord_channel_says_why_its_bot_cannot_connect() {
+    link::set_gave_up("discord", "tok-4014-unique-b", Some("discord_message_content"));
+    let (hook, _reqs) = http_server(|_, _| (200, "{}".into())).await;
+    let ch = crate::notify::Channel {
+        id: "d9".into(),
+        kind: "discord".into(),
+        enabled: true,
+        url: format!("{hook}/api/webhooks/1/x"),
+        token: "tok-4014-unique-b".into(),
+        target: "123".into(),
+        control: true,
+        ..Default::default()
+    };
+    let client = reqwest::Client::new();
+    let e = crate::notify::send_channel(&client, &ch, &crate::notify::test_message()).await.unwrap_err();
+    assert_eq!(crate::notify::channel_error(&e).map(|c| c.code), Some("bot_problem"), "{e:#}");
+    // A real notification still goes out; with commands off the note does not count.
+    let note = crate::notify::Message { event: "incoming".into(), body: "hi".into(), ..crate::notify::test_message() };
+    assert!(crate::notify::send_channel(&client, &ch, &note).await.is_ok());
+    let off = crate::notify::Channel { control: false, ..ch.clone() };
+    assert!(crate::notify::send_channel(&client, &off, &crate::notify::test_message()).await.is_ok());
+    link::set_gave_up("discord", "tok-4014-unique-b", None);
+    assert!(crate::notify::send_channel(&client, &ch, &crate::notify::test_message()).await.is_ok());
+}
+
+/// A resume that fails at once (Discord closes the line) is not tried again.
+#[tokio::test]
+async fn discord_identifies_afresh_after_a_resume_that_failed_at_once() {
+    let rig = Rig::new();
+    let (url, mut conns) = ws_server().await;
+    let ep = discord::Endpoints { api: "http://127.0.0.1:9".into(), gateway: url.clone(), retry: FAST };
+    let task = tokio::spawn(discord::run(Controller::new(rig.state.clone()), reqwest::Client::new(), ep, acct("discord", "123")));
+    let mut ws = next_conn(&mut conns).await;
+    send_json(&mut ws, json!({"op": 10, "d": {"heartbeat_interval": 60000}})).await;
+    let _identify = recv_json(&mut ws).await;
+    send_json(&mut ws, json!({"op": 0, "s": 1, "t": "READY", "d": {"session_id": "s1", "resume_gateway_url": url, "user": {"id": "999"}}})).await;
+    ws.close(None).await.unwrap();
+    drop(ws);
+    let mut second = next_conn(&mut conns).await;
+    send_json(&mut second, json!({"op": 10, "d": {"heartbeat_interval": 60000}})).await;
+    let resume = recv_json(&mut second).await;
+    second.close(None).await.unwrap();
+    drop(second);
+    let mut third = next_conn(&mut conns).await;
+    send_json(&mut third, json!({"op": 10, "d": {"heartbeat_interval": 60000}})).await;
+    let next = recv_json(&mut third).await;
+    task.abort();
+    assert_eq!(resume["op"], 6, "{resume}");
+    assert_eq!(next["op"], 2, "tried to resume a dead session again: {next}");
+}
+
+#[tokio::test]
+async fn a_discord_bot_without_a_webhook_sends_to_a_channel_or_opens_a_private_chat() {
+    let (api, reqs) = http_server(|r, _| match (r.method.as_str(), bare(&r.path)) {
+        ("POST", "/channels/777/messages") => (404, json!({"code": 10003, "message": "Unknown Channel"}).to_string()),
+        ("POST", "/channels/999/messages") => (404, json!({"code": 10003, "message": "Unknown Channel"}).to_string()),
+        ("POST", p) if p.starts_with("/users/") && p.ends_with("/channels") => {
+            if r.body["recipient_id"] == "999" {
+                (403, json!({"code": 50007, "message": "Cannot send messages to this user"}).to_string())
+            } else {
+                (200, json!({"id": "555"}).to_string())
+            }
+        }
+        ("POST", "/channels/555/messages") | ("POST", "/channels/888/messages") => (200, json!({"id": "1"}).to_string()),
+        _ => (404, "{}".into()),
+    })
+    .await;
+    let ch = |target: &str| crate::notify::Channel {
+        kind: "discord".into(),
+        token: "bot-tok-1234".into(),
+        target: target.into(),
+        ..Default::default()
+    };
+    let mut m = crate::notify::test_message();
+    m.actions = vec![crate::notify::NotifyAction { label: "Confirm".into(), url: "https://bageo.example/a".into() }];
+    let client = reqwest::Client::new();
+    crate::notify::send_discord_bot(&client, &api, &ch("888"), &m).await.unwrap();
+    assert!(hits(&reqs, |r| r.path.contains("/users/")).is_empty(), "a channel needs no private chat");
+    // 777 is no channel: it is a person, whose private chat the bot opens.
+    crate::notify::send_discord_bot(&client, &api, &ch("777"), &m).await.unwrap();
+    let open = hits(&reqs, |r| r.path.contains("/users/")).remove(0);
+    assert_eq!((open.body, open.auth.as_str()), (json!({"recipient_id": "777"}), "Bot bot-tok-1234"));
+    let sent = hits(&reqs, |r| r.path == "/channels/555/messages").remove(0);
+    assert_eq!(sent.body["components"][0]["components"][0]["url"], "https://bageo.example/a");
+    // A person that cannot be reached: the first answer is what is reported.
+    let e = crate::notify::send_discord_bot(&client, &api, &ch("999"), &m).await.unwrap_err();
+    assert!(crate::notify::channel_error(&e).is_some(), "{e:#}");
+}
+
+fn matrix_basics(p: &str) -> Option<(u16, String)> {
+    if p.ends_with("/account/whoami") {
+        Some((200, json!({"user_id": "@bot:example.org"}).to_string()))
+    } else if p.ends_with("/displayname") {
+        Some((200, json!({"displayname": "Bageo"}).to_string()))
+    } else {
+        None
+    }
+}
+
+fn joined(reqs: &Reqs) -> bool {
+    !hits(reqs, |r| r.method == "POST" && r.path.contains("/join/")).is_empty()
+}
+
+/// Not in the room yet (the member list is refused): the bot joins it, which
+/// works once it was invited.
+#[tokio::test]
+async fn matrix_joins_a_room_it_cannot_see_yet() {
+    let rig = Rig::new();
+    let (base, reqs) = http_server(|r, _| {
+        let p = bare(&r.path);
+        if let Some(a) = matrix_basics(p) {
+            a
+        } else if p.ends_with("/joined_members") {
+            (403, json!({"errcode": "M_FORBIDDEN"}).to_string())
+        } else if p.ends_with("/sync") {
+            (200, json!({"next_batch": "b1"}).to_string())
+        } else if p.contains("/join/") {
+            (200, json!({"room_id": "!room:example.org"}).to_string())
+        } else {
+            (404, json!({"errcode": "M_NOT_FOUND"}).to_string())
+        }
+    })
+    .await;
+    rig.channels(&base, true);
+    let ep = matrix::Endpoints { retry: FAST, poll: Duration::from_millis(100) };
+    let task = tokio::spawn(matrix::run(Controller::new(rig.state.clone()), reqwest::Client::new(), ep, rig.account("matrix")));
+    let done = until(Duration::from_secs(5), || joined(&reqs)).await;
+    task.abort();
+    assert!(done, "did not join: {:?}", reqs.lock().unwrap());
+}
+
+/// An invitation that comes while the bot polls is accepted; one to another room is not.
+#[tokio::test]
+async fn matrix_joins_when_an_invitation_comes_while_polling() {
+    let rig = Rig::new();
+    let (base, reqs) = http_server(|r, n| {
+        let p = bare(&r.path);
+        if let Some(a) = matrix_basics(p) {
+            a
+        } else if p.ends_with("/joined_members") {
+            (200, json!({"joined": {"@bot:example.org": {}, "@lee:example.org": {}}}).to_string())
+        } else if p.ends_with("/sync") {
+            match n {
+                0 => (200, json!({"next_batch": "b1"}).to_string()),
+                1 => (200, json!({"next_batch": "b2", "rooms": {"invite": {"!other:example.org": {}}}}).to_string()),
+                2 => (200, json!({"next_batch": "b3", "rooms": {"invite": {"!room:example.org": {}}}}).to_string()),
+                _ => (200, json!({"next_batch": "b4"}).to_string()),
+            }
+        } else if p.contains("/join/") {
+            (200, json!({"room_id": "!room:example.org"}).to_string())
+        } else {
+            (404, json!({"errcode": "M_NOT_FOUND"}).to_string())
+        }
+    })
+    .await;
+    rig.channels(&base, true);
+    let ep = matrix::Endpoints { retry: FAST, poll: Duration::from_millis(100) };
+    let task = tokio::spawn(matrix::run(Controller::new(rig.state.clone()), reqwest::Client::new(), ep, rig.account("matrix")));
+    let done = until(Duration::from_secs(5), || joined(&reqs)).await;
+    task.abort();
+    assert!(done, "did not join: {:?}", reqs.lock().unwrap());
+    let joins = hits(&reqs, |r| r.method == "POST" && r.path.contains("/join/"));
+    assert_eq!(joins.len(), 1, "only the room that is set up is joined: {joins:?}");
+    assert!(joins[0].path.contains("room"), "{}", joins[0].path);
+}
+
+/// A refusal (403) is retried soon, not after the longest wait.
+#[tokio::test]
+async fn matrix_tries_again_soon_after_a_refusal() {
+    let rig = Rig::new();
+    let (base, reqs) = http_server(|r, n| {
+        let p = bare(&r.path);
+        if p.ends_with("/account/whoami") && n == 0 {
+            (403, json!({"errcode": "M_FORBIDDEN"}).to_string())
+        } else if let Some(a) = matrix_basics(p) {
+            a
+        } else if p.ends_with("/joined_members") {
+            (200, json!({"joined": {"@bot:example.org": {}, "@lee:example.org": {}}}).to_string())
+        } else {
+            (200, json!({"next_batch": "b1"}).to_string())
+        }
+    })
+    .await;
+    rig.channels(&base, true);
+    let slow = Retry { first: Duration::from_millis(50), max: Duration::from_secs(60) };
+    let ep = matrix::Endpoints { retry: slow, poll: Duration::from_millis(100) };
+    let task = tokio::spawn(matrix::run(Controller::new(rig.state.clone()), reqwest::Client::new(), ep, rig.account("matrix")));
+    let again = until(Duration::from_secs(3), || hits(&reqs, |r| bare(&r.path).ends_with("/account/whoami")).len() >= 2).await;
+    task.abort();
+    assert!(again, "waited instead of trying again: {:?}", reqs.lock().unwrap());
+}
+
+#[test]
+fn matrix_sees_that_a_room_is_encrypted() {
+    let plain = [json!({"type": "m.room.message"}), json!({"type": "m.room.member"})];
+    assert!(!matrix::has_encrypted(plain.iter()));
+    let sealed = [json!({"type": "m.room.message"}), json!({"type": "m.room.encrypted", "content": {"algorithm": "m.megolm.v1.aes-sha2"}})];
+    assert!(matrix::has_encrypted(sealed.iter()));
+    assert!(matrix::has_encrypted([json!({"type": "m.room.encryption"})].iter()));
+}
+
+#[tokio::test]
+async fn a_matrix_test_refuses_an_encrypted_room_and_an_alias_is_looked_up_before_sending() {
+    let (base, reqs) = http_server(|r, _| {
+        let p = bare(&r.path);
+        if p.contains("/directory/room/") {
+            if p.contains("nowhere") {
+                (404, json!({"errcode": "M_NOT_FOUND"}).to_string())
+            } else {
+                (200, json!({"room_id": "!abc:example.org"}).to_string())
+            }
+        } else if p.ends_with("/state/m.room.encryption") {
+            if p.contains("%21enc%3A") {
+                (200, json!({"algorithm": "m.megolm.v1.aes-sha2"}).to_string())
+            } else {
+                (404, json!({"errcode": "M_NOT_FOUND"}).to_string())
+            }
+        } else {
+            (200, json!({"event_id": "$e1"}).to_string())
+        }
+    })
+    .await;
+    let client = reqwest::Client::new();
+    let room = |target: &str| crate::notify::Channel {
+        id: "m9".into(),
+        kind: "matrix".into(),
+        enabled: true,
+        url: base.clone(),
+        token: "tok-matrix-9".into(),
+        target: target.into(),
+        ..Default::default()
+    };
+    let note = crate::notify::Message { event: "summary".into(), body: "hi".into(), ..crate::notify::test_message() };
+    // An alias is looked up, and the message goes to the room it names.
+    crate::notify::send_channel(&client, &room("#calls:example.org"), &note).await.unwrap();
+    let put = hits(&reqs, |r| r.method == "PUT").remove(0);
+    assert!(put.path.contains("/rooms/%21abc%3Aexample.org/send/"), "{}", put.path);
+    // The test of an encrypted room says so, and sends nothing there.
+    let e = crate::notify::send_channel(&client, &room("!enc:example.org"), &crate::notify::test_message()).await.unwrap_err();
+    assert_eq!(crate::notify::channel_error(&e).map(|c| c.code), Some("room_encrypted"), "{e:#}");
+    assert_eq!(hits(&reqs, |r| r.method == "PUT").len(), 1, "nothing was sent to the encrypted room");
+    // An alias nobody has: the target is what is wrong.
+    let e = crate::notify::send_channel(&client, &room("#nowhere:example.org"), &note).await.unwrap_err();
+    let c = crate::notify::channel_error(&e).unwrap();
+    assert_eq!((c.code, c.field), ("bad_value", "target"));
+    // An unencrypted room passes its test.
+    crate::notify::send_channel(&client, &room("!plain:example.org"), &crate::notify::test_message()).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_failed_send_reports_none_of_the_channels_secrets() {
+    let (hook, _reqs) = http_server(|r, _| (400, json!({"error": format!("refused {}", r.auth)}).to_string())).await;
+    let ch = crate::notify::Channel {
+        kind: "webhook".into(),
+        url: format!("{hook}/hook"),
+        token: "tok_secretsecret99".into(),
+        ..Default::default()
+    };
+    let e = crate::notify::send_channel(&reqwest::Client::new(), &ch, &crate::notify::test_message()).await.unwrap_err();
+    let said = format!("{e:#}");
+    assert!(said.contains("HTTP 400") && said.contains("refused"), "{said}");
+    assert!(!said.contains("tok_secretsecret99"), "{said}");
 }

@@ -10,7 +10,8 @@
 //! The wording follows the agent's language ([`crate::locale`]).
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::net::{IpAddr, Ipv4Addr};
+use std::sync::{Mutex, OnceLock};
 
 use anyhow::{bail, Result};
 use base64::Engine;
@@ -278,6 +279,112 @@ fn clip(s: &str, max_chars: usize) -> String {
     out
 }
 
+/// At most max bytes of UTF-8, cut between characters, an ellipsis marking a
+/// cut (for services whose limit counts bytes: Chinese is three bytes a character).
+fn clip_bytes(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.to_string();
+    }
+    let mut end = max.saturating_sub('…'.len_utf8()).min(s.len());
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    let mut out = s[..end].to_string();
+    out.push('…');
+    out
+}
+
+/// Discord's REST API.
+const DISCORD_API: &str = "https://discord.com/api/v10";
+const DISCORD_AGENT: &str = concat!("DiscordBot (bageo, ", env!("CARGO_PKG_VERSION"), ")");
+
+fn link_ok(url: &str) -> bool {
+    let u = url.trim();
+    u.starts_with("https://") || u.starts_with("http://")
+}
+
+/// A message from the Discord bot itself (no webhook): to the channel in
+/// target, with the notification's actions as link buttons (five at most).
+fn discord_bot_prepared(api: &str, ch: &Channel, msg: &Message) -> Result<Prepared> {
+    let token = need("token", "bot token", &ch.token)?;
+    let channel = need("target", "channel ID", &ch.target)?;
+    if !channel.chars().all(|c| c.is_ascii_digit()) {
+        return Err(bad_value("target", "a Discord channel or user ID is made of digits"));
+    }
+    let mut payload = json!({ "content": clip(&msg.body, 1900), "allowed_mentions": { "parse": [] } });
+    let buttons: Vec<Value> = msg
+        .actions
+        .iter()
+        .filter(|a| link_ok(&a.url) && !a.label.trim().is_empty())
+        .take(5)
+        .map(|a| json!({ "type": 2, "style": 5, "label": clip(a.label.trim(), 80), "url": a.url.trim() }))
+        .collect();
+    if !buttons.is_empty() {
+        payload["components"] = json!([{ "type": 1, "components": buttons }]);
+    }
+    Ok(Prepared {
+        put: false,
+        url: format!("{}/channels/{channel}/messages", api.trim_end_matches('/')),
+        headers: vec![
+            ("Authorization".into(), format!("Bot {token}")),
+            ("User-Agent".into(), DISCORD_AGENT.into()),
+        ],
+        body: Body::Json(payload),
+    })
+}
+
+/// A message from the Slack bot itself (no webhook): chat.postMessage to the
+/// channel in target, with the notification's actions as link buttons.
+fn slack_bot_prepared(ch: &Channel, msg: &Message) -> Result<Prepared> {
+    let token = need("token", "bot token", &ch.token)?;
+    let channel = need("target", "channel ID", &ch.target)?;
+    let text = clip(&msg.body, 3000);
+    let mut payload = json!({ "channel": channel, "text": text, "unfurl_links": false, "unfurl_media": false });
+    let buttons: Vec<Value> = msg
+        .actions
+        .iter()
+        .filter(|a| link_ok(&a.url) && !a.label.trim().is_empty())
+        .take(25)
+        .enumerate()
+        .map(|(i, a)| {
+            json!({ "type": "button", "action_id": format!("bageo_link_{i}"), "url": a.url.trim(),
+                "text": { "type": "plain_text", "text": clip(a.label.trim(), 75), "emoji": false } })
+        })
+        .collect();
+    if !buttons.is_empty() {
+        payload["blocks"] = json!([
+            { "type": "section", "text": { "type": "mrkdwn", "text": text } },
+            { "type": "actions", "elements": buttons },
+        ]);
+    }
+    Ok(Prepared {
+        put: false,
+        url: "https://slack.com/api/chat.postMessage".to_string(),
+        headers: vec![("Authorization".into(), format!("Bearer {token}"))],
+        body: Body::Json(payload),
+    })
+}
+
+/// ntfy's server and topic. The server may be written with its topic
+/// ("https://ntfy.sh/mytopic", as the app shows it): the topic is then the last
+/// part of the address (or the same as the one in target) and the server
+/// the address without it, since a message is published to the server's root.
+fn ntfy_server_and_topic(base: &str, target: &str) -> Result<(String, String)> {
+    let server = need_http("url", "server", base)?;
+    let given = target.trim().trim_matches('/');
+    let host_at = server.find("://").map(|i| i + 3).unwrap_or(0);
+    if let Some(i) = server[host_at..].find('/') {
+        let (head, path) = server.split_at(host_at + i);
+        let cut = path.rfind('/').unwrap_or(0);
+        let (dir, last) = (&path[..cut], &path[cut + 1..]);
+        if !last.is_empty() && (given.is_empty() || last == given) {
+            return Ok((format!("{head}{dir}"), last.to_string()));
+        }
+    }
+    let topic = need("target", "topic", given)?;
+    Ok((server, topic.to_string()))
+}
+
 fn pct(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
@@ -456,10 +563,14 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
             }
             post_json(format!("https://api.telegram.org/bot{token}/sendMessage"), payload)
         }
+        // With a bot token and no webhook: the bot posts to the channel (and
+        // can carry link buttons, which a webhook cannot).
+        "discord" if base.is_empty() && !ch.token.trim().is_empty() => discord_bot_prepared(DISCORD_API, ch, msg)?,
         "discord" => post_json(
             need_http("url", "webhook URL", &base)?,
             json!({ "content": clip(body, 1900) }),
         ),
+        "slack" if base.is_empty() && !ch.token.trim().is_empty() => slack_bot_prepared(ch, msg)?,
         "slack" => post_json(need_http("url", "webhook URL", &base)?, json!({ "text": clip(body, 3500) })),
         // Microsoft Learn, "Create incoming webhooks with Workflows for Microsoft
         // Teams": the "Post to a channel when a webhook request is received"
@@ -579,8 +690,9 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
             if !ch.token.trim().is_empty() {
                 headers.push(("Authorization".to_string(), format!("Bearer {}", ch.token.trim())));
             }
+            let (server, topic) = ntfy_server_and_topic(&base, &ch.target)?;
             let mut payload = json!({
-                "topic": need("target", "topic", &ch.target)?,
+                "topic": topic,
                 "title": clip(title, 200),
                 "message": clip(body, 3500),
             });
@@ -597,7 +709,7 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
             }
             Prepared {
                 put: false,
-                url: need_http("url", "server", &base)?,
+                url: server,
                 headers,
                 body: Body::Json(payload),
             }
@@ -620,7 +732,8 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
             let mut payload = json!({
                 "device_key": need("token", "device key", &ch.token)?,
                 "title": clip(title, 200),
-                "body": clip(body, 3500),
+                // Apple's push service takes 4 KB in all: the text is cut by bytes.
+                "body": clip_bytes(body, 2800),
             });
             if let Some(u) = link {
                 payload["url"] = json!(u);
@@ -632,7 +745,8 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
                 ("token".into(), need("token", "API token", &ch.token)?.to_string()),
                 ("user".into(), need("target", "user key", &ch.target)?.to_string()),
                 ("title".into(), clip(title, 200)),
-                ("message".into(), clip(body, 1000)),
+                // Pushover's limit is 1,024 bytes, not characters.
+                ("message".into(), clip_bytes(body, 1024)),
             ];
             if let Some(u) = link {
                 form.push(("url".into(), u.to_string()));
@@ -661,7 +775,8 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
         }
         "wecom" => post_json(
             need_http("url", "webhook URL", &base)?,
-            json!({ "msgtype": "text", "text": { "content": clip(body, 1900) } }),
+            // WeCom takes at most 2,048 bytes of text.
+            json!({ "msgtype": "text", "text": { "content": clip_bytes(body, 2048) } }),
         ),
         "dingtalk" => {
             let mut url = need_http("url", "webhook URL", &base)?;
@@ -883,7 +998,41 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
     })
 }
 
-async fn send_prepared(http: &Client, p: &Prepared) -> Result<()> {
+/// The client notifications go out with. It follows a redirect only within the
+/// same host: a service that answers with a redirect to another host must not
+/// get the tokens in our headers (or the message).
+fn notify_client() -> &'static Client {
+    static CLIENT: OnceLock<Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        Client::builder()
+            .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                let same = attempt.previous().last().map_or(true, |from| same_host_redirect(from, attempt.url()));
+                if same && attempt.previous().len() < 5 {
+                    attempt.follow()
+                } else {
+                    attempt.stop()
+                }
+            }))
+            .build()
+            .unwrap_or_else(|_| Client::new())
+    })
+}
+
+/// A redirect that stays on the same host (and port); an http address may
+/// move to https on the standard port.
+fn same_host_redirect(from: &url::Url, to: &url::Url) -> bool {
+    let host = |u: &url::Url| u.host_str().map(str::to_ascii_lowercase);
+    if host(from) != host(to) {
+        return false;
+    }
+    if from.scheme() == to.scheme() {
+        return from.port_or_known_default() == to.port_or_known_default();
+    }
+    from.scheme() == "http" && to.scheme() == "https" && from.port().is_none() && to.port().is_none()
+}
+
+async fn send_prepared(_http: &Client, p: &Prepared) -> Result<()> {
+    let http = notify_client();
     let mut req = if p.put { http.put(&p.url) } else { http.post(&p.url) };
     for (k, v) in &p.headers {
         req = req.header(k, v);
@@ -931,6 +1080,12 @@ fn answer_error(text: &str) -> Option<ChannelError> {
 
 /// Send `msg` to one channel.
 pub async fn send_channel(http: &Client, ch: &Channel, msg: &Message) -> Result<()> {
+    send_channel_inner(http, ch, msg).await.map_err(|e| scrub_error(e, ch))
+}
+
+async fn send_channel_inner(http: &Client, ch: &Channel, msg: &Message) -> Result<()> {
+    // The settings page's test also looks up names and asks the service.
+    let testing = msg.event == "test";
     if ch.kind == "gmail" {
         let user = need("url", "Gmail address", &ch.url)?;
         let to = if ch.target.trim().is_empty() { user } else { ch.target.trim() };
@@ -947,6 +1102,7 @@ pub async fn send_channel(http: &Client, ch: &Channel, msg: &Message) -> Result<
     }
     if ch.kind == "smtp" {
         let (server, login) = crate::gmail::parse_smtp_url(&ch.url)?;
+        refuse_metadata_host(&server.host, server.port, testing).await?;
         let to = if ch.target.trim().is_empty() { login.as_str() } else { ch.target.trim() };
         return crate::gmail::send_mail_via(
             &server,
@@ -963,8 +1119,23 @@ pub async fn send_channel(http: &Client, ch: &Channel, msg: &Message) -> Result<
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
+    let matrix;
+    let ch = if ch.kind == "matrix" {
+        matrix = matrix_ready(ch, msg).await?;
+        &matrix
+    } else {
+        ch
+    };
+    if ch.kind == "discord" && ch.url.trim().is_empty() && !ch.token.trim().is_empty() {
+        let sent = send_discord_bot(http, DISCORD_API, ch, msg).await;
+        return match sent {
+            Ok(()) => discord_gave_up(ch, testing),
+            err => err,
+        };
+    }
     let prepared = prepare(ch, msg, now_ms)?;
-    match send_prepared(http, &prepared).await {
+    refuse_metadata(&prepared.url, testing).await?;
+    let sent = match send_prepared(http, &prepared).await {
         // Telegram refuses HTML it cannot parse: send the plain text instead.
         Err(e) if ch.kind == "telegram" && msg.html.is_some() => {
             warn!("notify telegram HTML refused ({e:#}); retrying as plain text");
@@ -972,6 +1143,311 @@ pub async fn send_channel(http: &Client, ch: &Channel, msg: &Message) -> Result<
             send_prepared(http, &prepare(ch, &plain, now_ms)?).await
         }
         other => other,
+    };
+    match sent {
+        Ok(()) if ch.kind == "discord" => discord_gave_up(ch, testing),
+        other => other,
+    }
+}
+
+/// A text in the owner's language: zh-TW, zh-CN, en, ja, ko, es, fr, de, pt.
+fn pick(t: [&str; 9]) -> String {
+    let i = match locale::notify_lang() {
+        locale::Lang::ZhTw => 0,
+        locale::Lang::ZhCn => 1,
+        locale::Lang::En => 2,
+        locale::Lang::Ja => 3,
+        locale::Lang::Ko => 4,
+        locale::Lang::Es => 5,
+        locale::Lang::Fr => 6,
+        locale::Lang::De => 7,
+        locale::Lang::Pt => 8,
+    };
+    t[i].to_string()
+}
+
+/// What a test tells the owner when the Discord bot was turned away.
+fn bot_problem_text(code: &str) -> String {
+    match code {
+        "discord_message_content" => pick([
+            "Discord 不讓 Bageo 機器人讀取訊息。請到 Discord 開發者後台，打開這個機器人的「Message Content Intent」，再把這個管道關掉後重新打開。",
+            "Discord 不让 Bageo 机器人读取消息。请到 Discord 开发者后台，打开这个机器人的“Message Content Intent”，再把这个渠道关掉后重新打开。",
+            "Discord is not letting the Bageo bot read messages. In the Discord Developer Portal, turn on \"Message Content Intent\" for your bot, then switch this channel off and on again.",
+            "Discord が Bageo のボットにメッセージの読み取りを許可していません。Discord Developer Portal でこのボットの「Message Content Intent」をオンにし、このチャンネルを一度オフにしてからオンに戻してください。",
+            "Discord가 Bageo 봇의 메시지 읽기를 허용하지 않습니다. Discord 개발자 포털에서 이 봇의 'Message Content Intent'를 켠 뒤, 이 채널을 껐다가 다시 켜 주세요.",
+            "Discord no deja que el bot de Bageo lea mensajes. En el Discord Developer Portal activa «Message Content Intent» de tu bot y luego apaga y vuelve a encender este canal.",
+            "Discord ne laisse pas le bot Bageo lire les messages. Dans le Discord Developer Portal, activez « Message Content Intent » pour votre bot, puis désactivez et réactivez ce canal.",
+            "Discord erlaubt dem Bageo-Bot nicht, Nachrichten zu lesen. Aktiviere im Discord Developer Portal für deinen Bot „Message Content Intent“ und schalte diesen Kanal dann aus und wieder ein.",
+            "O Discord não deixa o bot do Bageo ler mensagens. No Discord Developer Portal, ative «Message Content Intent» do seu bot e depois desligue e ligue este canal novamente.",
+        ]),
+        "discord_bad_token" => pick([
+            "Discord 不接受這個 Bot Token。請回 Discord 開發者後台重新複製，貼到這裡再儲存。",
+            "Discord 不接受这个 Bot Token。请回 Discord 开发者后台重新复制，粘贴到这里再保存。",
+            "Discord does not accept this bot token. Copy it again from the Discord Developer Portal and save it here.",
+            "Discord がこの Bot Token を受け付けません。Discord Developer Portal でもう一度コピーし、ここに貼り付けて保存してください。",
+            "Discord가 이 Bot Token을 받아들이지 않습니다. Discord 개발자 포털에서 다시 복사해 여기에 붙여넣고 저장해 주세요.",
+            "Discord no acepta este Bot Token. Cópialo de nuevo desde el Discord Developer Portal y guárdalo aquí.",
+            "Discord n'accepte pas ce Bot Token. Copiez-le à nouveau depuis le Discord Developer Portal et enregistrez-le ici.",
+            "Discord akzeptiert diesen Bot Token nicht. Kopiere ihn erneut aus dem Discord Developer Portal und speichere ihn hier.",
+            "O Discord não aceita este Bot Token. Copie-o novamente no Discord Developer Portal e salve aqui.",
+        ]),
+        _ => pick([
+            "Discord 不讓 Bageo 機器人連上。請檢查 Discord 開發者後台裡這個機器人的設定，再把這個管道關掉後重新打開。",
+            "Discord 不让 Bageo 机器人连上。请检查 Discord 开发者后台里这个机器人的设置，再把这个渠道关掉后重新打开。",
+            "Discord turned the Bageo bot away. Check the bot's settings in the Discord Developer Portal, then switch this channel off and on again.",
+            "Discord が Bageo のボットの接続を断りました。Discord Developer Portal でボットの設定を確認し、このチャンネルを一度オフにしてからオンに戻してください。",
+            "Discord가 Bageo 봇의 연결을 거부했습니다. Discord 개발자 포털에서 봇 설정을 확인한 뒤, 이 채널을 껐다가 다시 켜 주세요.",
+            "Discord rechazó al bot de Bageo. Revisa los ajustes del bot en el Discord Developer Portal y luego apaga y vuelve a encender este canal.",
+            "Discord a refusé le bot Bageo. Vérifiez les réglages du bot dans le Discord Developer Portal, puis désactivez et réactivez ce canal.",
+            "Discord hat den Bageo-Bot abgewiesen. Prüfe die Einstellungen des Bots im Discord Developer Portal und schalte diesen Kanal dann aus und wieder ein.",
+            "O Discord recusou o bot do Bageo. Verifique as configurações do bot no Discord Developer Portal e depois desligue e ligue este canal novamente.",
+        ]),
+    }
+}
+
+/// A test of a Discord channel whose bot cannot connect for commands (see
+/// [crate::control::link::gave_up]) says why instead of reporting success.
+fn discord_gave_up(ch: &Channel, testing: bool) -> Result<()> {
+    if testing && ch.control && !ch.token.trim().is_empty() {
+        if let Some(code) = crate::control::link::gave_up("discord", &ch.token) {
+            return Err(ChannelError::new("bot_problem", "token", bot_problem_text(code)).into());
+        }
+    }
+    Ok(())
+}
+
+/// A Discord bot's message. The target may be a channel or, when no such
+/// channel exists, a person's ID: the bot then opens the private chat with
+/// that person and sends it there.
+pub(crate) async fn send_discord_bot(http: &Client, api: &str, ch: &Channel, msg: &Message) -> Result<()> {
+    let first = discord_bot_prepared(api, ch, msg)?;
+    match send_prepared(http, &first).await {
+        Err(e) if channel_error(&e).is_some_and(|c| c.code == "service_not_found" || c.detail.contains("10003")) => {
+            let dm = match discord_dm_channel(api, &ch.token, ch.target.trim()).await {
+                Ok(id) => id,
+                Err(_) => return Err(e),
+            };
+            let second = Prepared { url: format!("{}/channels/{dm}/messages", api.trim_end_matches('/')), ..first };
+            send_prepared(http, &second).await
+        }
+        other => other,
+    }
+}
+
+/// The private chat of the bot with one person (Discord opens it if it is not there yet).
+async fn discord_dm_channel(api: &str, token: &str, user: &str) -> Result<String> {
+    let resp = notify_client()
+        .post(format!("{}/users/@me/channels", api.trim_end_matches('/')))
+        .header("Authorization", format!("Bot {}", token.trim()))
+        .header("User-Agent", DISCORD_AGENT)
+        .json(&json!({ "recipient_id": user }))
+        .timeout(std::time::Duration::from_secs(15))
+        .send()
+        .await
+        .map_err(|e| ChannelError::new("network_error", "", format!("request failed: {}", e.without_url())))?;
+    let status = resp.status();
+    let v: Value = resp.json().await.unwrap_or(Value::Null);
+    if !status.is_success() {
+        return Err(ChannelError::new("http_error", "", format!("HTTP {}: no private chat with that ID", status.as_u16())).into());
+    }
+    match v.get("id").and_then(Value::as_str).filter(|id| !id.is_empty()) {
+        Some(id) => Ok(id.to_string()),
+        None => Err(ChannelError::new("service_error", "", "Discord gave no private chat").into()),
+    }
+}
+
+/// What a test says about a Matrix room the bot cannot read.
+fn matrix_encrypted_text() -> String {
+    pick([
+        "這個聊天室有加密，Bageo 機器人讀不到加密的聊天室。請建立一個沒有加密的新聊天室，改用那一間。",
+        "这个聊天室开启了加密，Bageo 机器人读不到加密的聊天室。请新建一个没有加密的聊天室，改用那一间。",
+        "This room is encrypted, and the Bageo bot cannot read encrypted rooms. Create a new room with encryption turned off and use that one.",
+        "このルームは暗号化されていて、Bageo のボットは暗号化されたルームを読めません。暗号化なしの新しいルームを作って、そちらを使ってください。",
+        "이 방은 암호화되어 있어 Bageo 봇이 읽을 수 없습니다. 암호화를 끈 새 방을 만들어 그 방을 사용해 주세요.",
+        "Esta sala está cifrada y el bot de Bageo no puede leer salas cifradas. Crea una sala nueva sin cifrado y usa esa.",
+        "Ce salon est chiffré et le bot Bageo ne peut pas lire les salons chiffrés. Créez un nouveau salon sans chiffrement et utilisez-le.",
+        "Dieser Raum ist verschlüsselt, und der Bageo-Bot kann verschlüsselte Räume nicht lesen. Erstelle einen neuen Raum ohne Verschlüsselung und nutze ihn.",
+        "Esta sala é criptografada e o bot do Bageo não consegue ler salas criptografadas. Crie uma sala nova sem criptografia e use essa.",
+    ])
+}
+
+/// A Matrix channel ready to send: a room written as an alias (#room:server)
+/// is looked up and replaced by its room ID, which is what sending needs. In
+/// the settings page's test, a room with end-to-end encryption is refused:
+/// the bot cannot read it, so commands would never arrive. Anything missing
+/// or wrong is left for [prepare] to name.
+async fn matrix_ready(ch: &Channel, msg: &Message) -> Result<Channel> {
+    let mut out = ch.clone();
+    let (base, token, target) = (ch.url_or_default(), ch.token.trim(), ch.target.trim());
+    if token.is_empty() || target.is_empty() || !link_ok(&base) {
+        return Ok(out);
+    }
+    let testing = msg.event == "test";
+    refuse_metadata(&base, testing).await?;
+    let client = notify_client();
+    let ask = |url: String| client.get(url).bearer_auth(token).timeout(std::time::Duration::from_secs(15)).send();
+    if target.starts_with('#') {
+        let url = format!("{base}/_matrix/client/v3/directory/room/{}", pct(target));
+        let resp = ask(url)
+            .await
+            .map_err(|e| ChannelError::new("network_error", "", format!("request failed: {}", e.without_url())))?;
+        let status = resp.status();
+        let v: Value = resp.json().await.unwrap_or(Value::Null);
+        if !status.is_success() {
+            return Err(bad_value("target", format!("no room for that alias (HTTP {})", status.as_u16())));
+        }
+        match v.get("room_id").and_then(Value::as_str).filter(|id| !id.is_empty()) {
+            Some(id) => out.target = id.to_string(),
+            None => return Err(bad_value("target", "no room for that alias")),
+        }
+    }
+    if testing {
+        let url = format!("{base}/_matrix/client/v3/rooms/{}/state/m.room.encryption", pct(&out.target));
+        if let Ok(resp) = ask(url).await {
+            if resp.status().is_success() {
+                let v: Value = resp.json().await.unwrap_or(Value::Null);
+                if v.get("algorithm").and_then(Value::as_str).is_some_and(|a| !a.is_empty()) {
+                    return Err(ChannelError::new("room_encrypted", "target", matrix_encrypted_text()).into());
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// What a test says about an address that leads to a cloud server's private
+/// information service.
+fn blocked_address() -> anyhow::Error {
+    ChannelError::new(
+        "blocked_address",
+        "url",
+        pick([
+            "這個位址是雲端主機的內部資訊位址，Bageo 不會送到這裡。請填通知服務自己的位址。",
+            "这个地址是云主机的内部信息地址，Bageo 不会发送到这里。请填通知服务自己的地址。",
+            "Bageo will not send to this address because it is a cloud server's private information address. Enter your notification service's address instead.",
+            "このアドレスはクラウドサーバーの内部情報用なので、Bageo は送信しません。通知サービス自身のアドレスを入力してください。",
+            "이 주소는 클라우드 서버의 내부 정보용 주소라서 Bageo가 보내지 않습니다. 알림 서비스의 주소를 입력해 주세요.",
+            "Bageo no enviará a esta dirección porque es la dirección de información interna de un servidor en la nube. Escribe la dirección de tu servicio de notificaciones.",
+            "Bageo n'enverra rien à cette adresse, car c'est l'adresse d'information interne d'un serveur cloud. Saisissez l'adresse de votre service de notification.",
+            "Bageo sendet nicht an diese Adresse, denn sie ist die interne Infoadresse eines Cloud-Servers. Gib die Adresse deines Benachrichtigungsdienstes ein.",
+            "O Bageo não enviará para este endereço, pois ele é o endereço de informações internas de um servidor na nuvem. Digite o endereço do seu serviço de notificação.",
+        ]),
+    )
+    .into()
+}
+
+/// An address of a cloud server's metadata service: 169.254.0.0/16 (AWS,
+/// Google, Azure and others), Alibaba's 100.100.100.200 and AWS's IPv6 one.
+/// Addresses on this network or this computer (a self-hosted ntfy or
+/// Matrix) are not among them.
+fn is_metadata_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => v4.is_link_local() || v4 == Ipv4Addr::new(100, 100, 100, 200),
+        IpAddr::V6(v6) => {
+            v6.segments() == [0xfd00, 0x0ec2, 0, 0, 0, 0, 0, 0x0254] || v6.to_ipv4_mapped().is_some_and(|m| is_metadata_ip(IpAddr::V4(m)))
+        }
+    }
+}
+
+/// Refuse an address that leads to a metadata service. A name is also
+/// looked up when resolve is set (the settings page's test), so that a name
+/// pointing there is caught too.
+async fn refuse_metadata(url: &str, resolve: bool) -> Result<()> {
+    let Ok(u) = url::Url::parse(url.trim()) else {
+        return Ok(());
+    };
+    let port = u.port_or_known_default().unwrap_or(443);
+    match u.host() {
+        Some(url::Host::Ipv4(ip)) if is_metadata_ip(IpAddr::V4(ip)) => Err(blocked_address()),
+        Some(url::Host::Ipv6(ip)) if is_metadata_ip(IpAddr::V6(ip)) => Err(blocked_address()),
+        Some(url::Host::Domain(d)) => refuse_metadata_host(d, port, resolve).await,
+        _ => Ok(()),
+    }
+}
+
+async fn refuse_metadata_host(host: &str, port: u16, resolve: bool) -> Result<()> {
+    let h = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    if h.is_empty() {
+        return Ok(());
+    }
+    if let Ok(ip) = h.trim_matches(['[', ']']).parse::<IpAddr>() {
+        return if is_metadata_ip(ip) { Err(blocked_address()) } else { Ok(()) };
+    }
+    if matches!(h.as_str(), "metadata.google.internal" | "metadata" | "instance-data" | "instance-data.ec2.internal") {
+        return Err(blocked_address());
+    }
+    if resolve {
+        let lookup = tokio::net::lookup_host((h.as_str(), port));
+        if let Ok(Ok(addrs)) = tokio::time::timeout(std::time::Duration::from_secs(5), lookup).await {
+            if addrs.into_iter().any(|a| is_metadata_ip(a.ip())) {
+                return Err(blocked_address());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn add_secret(out: &mut Vec<String>, s: &str) {
+    let s = s.trim();
+    if s.len() < 4 || out.iter().any(|o| o == s) {
+        return;
+    }
+    out.push(s.to_string());
+    let encoded = pct(s);
+    if encoded != s {
+        out.push(encoded);
+    }
+}
+
+/// What in a channel's settings is secret: its token and app token (also
+/// the parts of `name:secret`) and the address (webhook addresses carry
+/// their secret in the path or the query).
+fn secrets_of(ch: &Channel) -> Vec<String> {
+    let mut out = Vec::new();
+    for t in [ch.token.as_str(), ch.app_token.as_str()] {
+        add_secret(&mut out, t);
+        if t.contains(':') {
+            for part in t.split(':') {
+                add_secret(&mut out, part);
+            }
+        }
+    }
+    add_secret(&mut out, &ch.url);
+    if let Ok(u) = url::Url::parse(ch.url.trim()) {
+        for seg in u.path_segments().into_iter().flatten().filter(|s| s.len() >= 12) {
+            add_secret(&mut out, seg);
+        }
+        for (_, v) in u.query_pairs().filter(|(_, v)| v.len() >= 8) {
+            add_secret(&mut out, &v);
+        }
+        if let Some(p) = u.password() {
+            add_secret(&mut out, p);
+        }
+    }
+    out
+}
+
+/// The text without any of the secrets (the longest first).
+fn redact(text: &str, secrets: &[String]) -> String {
+    let mut order: Vec<&String> = secrets.iter().collect();
+    order.sort_by_key(|s| std::cmp::Reverse(s.len()));
+    let mut out = text.to_string();
+    for s in order {
+        out = out.replace(s.as_str(), "***");
+    }
+    out
+}
+
+/// An error whose details (the other side's answer is in them) carry none
+/// of the channel's secrets: the settings page shows them.
+fn scrub_error(e: anyhow::Error, ch: &Channel) -> anyhow::Error {
+    let secrets = secrets_of(ch);
+    if secrets.is_empty() {
+        return e;
+    }
+    match channel_error(&e) {
+        Some(c) => ChannelError::new(c.code, c.field, redact(&c.detail, &secrets)).into(),
+        None => anyhow::anyhow!("{}", redact(&format!("{e:#}"), &secrets)),
     }
 }
 
@@ -1421,9 +1897,9 @@ pub async fn notify_pending_appointment_non_tg(
         return false;
     }
     let p = locale::notify_phrases();
-    let console = rt.public_url.trim();
-    let confirm_url = crate::calendar::quick_action_url(console, "confirm_task", task_id, "");
-    let ignore_url = crate::calendar::quick_action_url(console, "ignore_task", task_id, "");
+    let console = card_console_url(rt, &Settings::from_env());
+    let confirm_url = crate::calendar::quick_action_url(&console, "confirm_task", task_id, "");
+    let ignore_url = crate::calendar::quick_action_url(&console, "ignore_task", task_id, "");
     let mut actions = Vec::new();
     let mut full_body = format!("{title}\n{body}");
     if !confirm_url.is_empty() && !ignore_url.is_empty() {
@@ -1460,6 +1936,13 @@ pub async fn notify_pending_appointment_non_tg(
         }
     }
     any
+}
+
+/// The console's address for the links on a card: the one typed in the
+/// settings, else the one found (the computer's name or LAN address); empty
+/// when only this computer can open the console. base: the settings from the environment.
+fn card_console_url(rt: &crate::settings_store::RuntimeSettings, base: &Settings) -> String {
+    crate::settings_store::effective_console_url(&rt.effective(base))
 }
 
 /// A voicemail was saved (older menu flow): caller, length, how to reply.
@@ -2160,6 +2643,148 @@ mod tests {
         let p = prepare(&ch("synology", "https://nas.example.org/webapi/entry.cgi", "", ""), &long, 0).unwrap();
         let payload: Value = serde_json::from_str(&form_body(&p)["payload"]).unwrap();
         assert_eq!(payload["text"].as_str().unwrap().chars().count(), 2000);
+    }
+
+    #[test]
+    fn byte_limited_services_are_cut_by_bytes_between_characters() {
+        let long = Message { title: "標".repeat(500), body: "字".repeat(9000), html: None, ..msg() };
+        let p = prepare(&ch("wecom", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=k", "", ""), &long, 0).unwrap();
+        let c = field(&p, "/text/content");
+        assert!(c.len() <= 2048 && c.ends_with('…') && c.len() > 2000, "{}", c.len());
+        let p = prepare(&ch("pushover", "", "apptoken", "userkey"), &long, 0).unwrap();
+        let m = field(&p, "message");
+        assert!(m.len() <= 1024 && m.ends_with('…') && m.len() > 1000, "{}", m.len());
+        let p = prepare(&ch("bark", "", "devkey", ""), &long, 0).unwrap();
+        assert!(field(&p, "/body").len() <= 3000 && field(&p, "/body").ends_with('…'));
+        assert!(json_body(&p).to_string().len() < 4096, "Apple's push service takes 4 KB in all");
+        // Short texts stay whole; a cut never falls inside a character.
+        assert_eq!(clip_bytes("字字字", 9), "字字字");
+        assert_eq!(clip_bytes("字字字", 7), "字…");
+        assert_eq!(clip_bytes("😀😀😀", 8), "😀…");
+    }
+
+    #[test]
+    fn ntfy_takes_the_topic_from_an_address_that_holds_it() {
+        let m = msg();
+        let p = prepare(&ch("ntfy", "https://ntfy.sh/mytopic", "", ""), &m, 0).unwrap();
+        assert_eq!(p.url, "https://ntfy.sh");
+        assert_eq!(json_body(&p)["topic"], "mytopic");
+        let p = prepare(&ch("ntfy", "https://ntfy.sh/mytopic/", "", "mytopic"), &m, 0).unwrap();
+        assert_eq!((p.url.as_str(), json_body(&p)["topic"].as_str()), ("https://ntfy.sh", Some("mytopic")));
+        // A server under a path, with the topic written apart, stays as it is.
+        let p = prepare(&ch("ntfy", "https://host.example.org/ntfy", "", "calls"), &m, 0).unwrap();
+        assert_eq!((p.url.as_str(), json_body(&p)["topic"].as_str()), ("https://host.example.org/ntfy", Some("calls")));
+        let p = prepare(&ch("ntfy", "https://host.example.org/base/mytopic", "", ""), &m, 0).unwrap();
+        assert_eq!((p.url.as_str(), json_body(&p)["topic"].as_str()), ("https://host.example.org/base", Some("mytopic")));
+        let e = prepare(&ch("ntfy", "https://ntfy.sh", "", ""), &m, 0).unwrap_err();
+        assert_eq!(code_and_field(&e), Some(("missing_field", "target")));
+    }
+
+    #[test]
+    fn slack_and_discord_bots_send_without_a_webhook_and_carry_buttons() {
+        let mut m = msg();
+        m.actions = vec![
+            NotifyAction { label: "Confirm".into(), url: "https://bageo.example/a".into() },
+            NotifyAction { label: "Decline".into(), url: "https://bageo.example/b".into() },
+            NotifyAction { label: "Not a link".into(), url: "tel:123".into() },
+        ];
+        let p = prepare(&ch("slack", "", "xoxb-test", "C123"), &m, 0).unwrap();
+        assert_eq!(p.url, "https://slack.com/api/chat.postMessage");
+        assert_eq!(p.headers[0], ("Authorization".to_string(), "Bearer xoxb-test".to_string()));
+        assert_eq!(json_body(&p)["channel"], "C123");
+        let buttons = json_body(&p)["blocks"][1]["elements"].as_array().unwrap().clone();
+        assert_eq!(buttons.len(), 2);
+        assert_eq!((buttons[0]["url"].as_str(), buttons[1]["text"]["text"].as_str()), (Some("https://bageo.example/a"), Some("Decline")));
+        let e = prepare(&ch("slack", "", "xoxb-test", ""), &m, 0).unwrap_err();
+        assert_eq!(code_and_field(&e), Some(("missing_field", "target")));
+        // A webhook, when there is one, is still used.
+        let p = prepare(&ch("slack", "https://hooks.slack.com/services/T/B/x", "xoxb-test", "C123"), &m, 0).unwrap();
+        assert_eq!(p.url, "https://hooks.slack.com/services/T/B/x");
+
+        let p = prepare(&ch("discord", "", "bot-token", "123456789"), &m, 0).unwrap();
+        assert_eq!(p.url, "https://discord.com/api/v10/channels/123456789/messages");
+        assert_eq!(p.headers[0], ("Authorization".to_string(), "Bot bot-token".to_string()));
+        let row = &json_body(&p)["components"][0]["components"];
+        assert_eq!(row.as_array().unwrap().len(), 2);
+        assert_eq!((row[1]["label"].as_str(), row[1]["style"].as_u64(), row[1]["url"].as_str()), (Some("Decline"), Some(5), Some("https://bageo.example/b")));
+        let e = prepare(&ch("discord", "", "bot-token", "not-digits"), &m, 0).unwrap_err();
+        assert_eq!(code_and_field(&e), Some(("bad_value", "target")));
+        let p = prepare(&ch("discord", "https://discord.com/api/webhooks/1/x", "bot-token", "123"), &m, 0).unwrap();
+        assert_eq!(p.url, "https://discord.com/api/webhooks/1/x");
+    }
+
+    #[tokio::test]
+    async fn cloud_metadata_addresses_are_refused_and_lan_ones_are_not() {
+        for url in [
+            "http://169.254.169.254/latest/meta-data",
+            "http://[fd00:ec2::254]/x",
+            "http://metadata.google.internal/computeMetadata/v1",
+            "http://100.100.100.200/",
+            "http://[::ffff:169.254.169.254]/",
+        ] {
+            let e = refuse_metadata(url, false).await.unwrap_err();
+            assert_eq!(channel_error(&e).map(|c| c.code), Some("blocked_address"), "{url}");
+        }
+        for url in ["http://127.0.0.1:8080/x", "http://192.168.1.20/ntfy", "http://localhost:8787", "https://ntfy.sh", "http://[::1]:80/"] {
+            assert!(refuse_metadata(url, false).await.is_ok(), "{url}");
+        }
+        // The test message is refused before anything is sent.
+        let e = send_channel(&Client::new(), &ch("webhook", "http://169.254.169.254/latest", "", ""), &test_message()).await.unwrap_err();
+        assert_eq!(code_and_field(&e), Some(("blocked_address", "url")));
+        let e = send_channel(&Client::new(), &ch("smtp", "smtp://wang@example.org@169.254.169.254:25", "pw", ""), &test_message()).await.unwrap_err();
+        assert_eq!(code_and_field(&e), Some(("blocked_address", "url")));
+    }
+
+    #[test]
+    fn a_redirect_is_followed_only_within_the_same_host() {
+        let u = |s: &str| url::Url::parse(s).unwrap();
+        assert!(same_host_redirect(&u("https://ntfy.example.org/a"), &u("https://NTFY.example.org/b")));
+        assert!(same_host_redirect(&u("http://ntfy.example.org/a"), &u("https://ntfy.example.org/a")));
+        assert!(!same_host_redirect(&u("https://ntfy.example.org/a"), &u("https://evil.example.net/a")));
+        assert!(!same_host_redirect(&u("https://ntfy.example.org/a"), &u("http://ntfy.example.org/a")));
+        assert!(!same_host_redirect(&u("https://ntfy.example.org/a"), &u("https://ntfy.example.org:8443/a")));
+    }
+
+    #[test]
+    fn what_a_failed_send_reports_carries_none_of_the_channels_secrets() {
+        let c = Channel {
+            app_token: "xapp-1-secretvalue".into(),
+            ..ch("webhook", "https://hooks.example.org/services/T0000/B0000/abcdefghijklmnop?key=querysecret1", "tok_abcdef123456", "")
+        };
+        let said = "HTTP 400: bad Bearer tok_abcdef123456 at /services/T0000/B0000/abcdefghijklmnop with xapp-1-secretvalue and querysecret1";
+        let e = anyhow::Error::from(ChannelError::new("http_error", "", said));
+        let e = scrub_error(e, &c);
+        let s = format!("{e:#}");
+        for secret in ["tok_abcdef123456", "abcdefghijklmnop", "xapp-1-secretvalue", "querysecret1"] {
+            assert!(!s.contains(secret), "{secret} in {s}");
+        }
+        assert!(s.starts_with("HTTP 400: bad Bearer ***"), "{s}");
+        assert_eq!(code_and_field(&e), Some(("http_error", "")));
+        // Other errors lose theirs too.
+        let plain = scrub_error(anyhow::anyhow!("failed for tok_abcdef123456"), &c);
+        assert_eq!(format!("{plain:#}"), "failed for ***");
+    }
+
+    #[test]
+    fn cards_link_to_the_console_found_when_no_address_was_typed() {
+        let mut base = Settings::from_env();
+        base.host = "192.168.7.7".into();
+        base.port = 8787;
+        base.public_url = String::new();
+        let mut rt = crate::settings_store::RuntimeSettings::from_base(&base);
+        rt.public_url = String::new();
+        rt.mdns_name = String::new();
+        let found = card_console_url(&rt, &base);
+        if crate::settings_store::in_container() {
+            assert_eq!(found, "", "in a container no address can be found");
+        } else {
+            assert_eq!(found, "http://192.168.7.7:8787/");
+            let url = crate::calendar::quick_action_url(&found, "confirm_task", "t1", "");
+            assert!(url.starts_with("http://192.168.7.7:8787/calls/api/quick-action?op=confirm_task"), "{url}");
+        }
+        // An address typed in the settings wins.
+        rt.public_url = "https://calls.example.org/".into();
+        assert_eq!(card_console_url(&rt, &base), "https://calls.example.org/");
     }
 
     #[test]

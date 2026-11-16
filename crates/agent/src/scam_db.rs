@@ -130,6 +130,16 @@ pub struct Keyword {
     pub mode: Match,
     /// What is searched for: " text" for word languages.
     needle: String,
+    /// Korean: matched without spaces on both sides ("안전계좌로 이체" is also
+    /// heard as "안전계좌로이체").
+    squeeze: bool,
+    /// A short keyword in a language with word endings: the heard word must end
+    /// there, or after an ordinary ending.
+    word_end: bool,
+    /// Spelled like an earlier keyword of the same language once accents are
+    /// off (prestamo after préstamo): it is never matched itself, so one heard
+    /// word is not scored twice.
+    shadow: bool,
 }
 
 /// A keyword heard on the call.
@@ -315,6 +325,77 @@ fn compact(text: &str) -> String {
     text.to_lowercase().chars().filter(|c| !c.is_whitespace()).collect()
 }
 
+/// Lowercase with Latin accents taken off, whether the letter is one character
+/// (é) or a letter plus a combining mark (e + U+0301), and Vietnamese tone marks
+/// and đ folded to plain letters: "préstamo" and "prestamo", "prêt" and "pret",
+/// "đầu tư" and "dau tu" read the same. Other scripts are left as they are.
+fn fold_accents(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars().flat_map(char::to_lowercase) {
+        let base = match c {
+            // A combining mark only after a Latin letter (Cyrillic й is и + a mark).
+            '\u{0300}'..='\u{036F}' if out.chars().next_back().is_some_and(|p| p.is_ascii_alphabetic()) => continue,
+            'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'ā' | 'ă' | 'ą' | 'ạ' | 'ả' | 'ấ' | 'ầ' | 'ẩ' | 'ẫ' | 'ậ' | 'ắ' | 'ằ' | 'ẳ' | 'ẵ' | 'ặ' => 'a',
+            'ç' | 'ć' | 'č' => 'c',
+            'đ' | 'ď' => 'd',
+            'è' | 'é' | 'ê' | 'ë' | 'ē' | 'ę' | 'ě' | 'ẹ' | 'ẻ' | 'ẽ' | 'ế' | 'ề' | 'ể' | 'ễ' | 'ệ' => 'e',
+            'ğ' => 'g',
+            'ì' | 'í' | 'î' | 'ï' | 'ī' | 'ĩ' | 'ỉ' | 'ị' => 'i',
+            'ł' => 'l',
+            'ñ' | 'ń' | 'ň' => 'n',
+            'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' | 'ō' | 'ơ' | 'ọ' | 'ỏ' | 'ố' | 'ồ' | 'ổ' | 'ỗ' | 'ộ' | 'ớ' | 'ờ' | 'ở' | 'ỡ' | 'ợ' => 'o',
+            'ř' => 'r',
+            'ş' | 'ś' | 'š' => 's',
+            'ť' => 't',
+            'ù' | 'ú' | 'û' | 'ü' | 'ū' | 'ũ' | 'ů' | 'ư' | 'ụ' | 'ủ' | 'ứ' | 'ừ' | 'ử' | 'ữ' | 'ự' => 'u',
+            'ý' | 'ÿ' | 'ỳ' | 'ỵ' | 'ỷ' | 'ỹ' => 'y',
+            'ź' | 'ż' | 'ž' => 'z',
+            'ß' => {
+                out.push_str("ss");
+                continue;
+            }
+            'œ' => {
+                out.push_str("oe");
+                continue;
+            }
+            'æ' => {
+                out.push_str("ae");
+                continue;
+            }
+            _ => c,
+        };
+        out.push(base);
+    }
+    out
+}
+
+/// Hiragana, katakana and hangul letters (what a Japanese or Korean sentence has
+/// and a Chinese one does not), and ideographs.
+fn script_counts(text: &str) -> (usize, usize) {
+    let (mut own, mut han) = (0, 0);
+    for c in text.chars() {
+        match c as u32 {
+            0x3041..=0x309F | 0x30A1..=0x30FA | 0x30FD..=0x30FF | 0x1100..=0x11FF | 0x3130..=0x318F | 0xAC00..=0xD7AF => own += 1,
+            0x3400..=0x4DBF | 0x4E00..=0x9FFF => han += 1,
+            _ => {}
+        }
+    }
+    (own, han)
+}
+
+/// Endings an English, Spanish, French, Portuguese or Italian word may take
+/// after a short keyword ("loan" → loans, loaned, loaning; "conta" → contas).
+/// Anything longer is another word ("pix" is not "pixel", "demo" is not
+/// "demonstrate", "conta" is not "contacts").
+const SHORT_WORD_ENDINGS: &[&str] = &["", "s", "es", "e", "x", "d", "ed", "ing", "er", "ers", "'s", "ly", "n", "en", "i", "he"];
+
+/// Languages whose short keywords must end where the heard word ends. German
+/// (compounds), Turkish, Indonesian, Malay, Tagalog (affixes), Russian (cases)
+/// and Vietnamese keep matching word starts.
+fn needs_word_end(lang: &str) -> bool {
+    matches!(lang, "en" | "es" | "fr" | "pt" | "it")
+}
+
 /// The caller's words in every form the match modes read.
 struct Prepared {
     han: String,
@@ -322,18 +403,23 @@ struct Prepared {
     padded: String,
     lower: String,
     compact: String,
+    /// The text is Japanese or Korean (letters of those scripts outweigh the
+    /// ideographs): the Chinese keywords are not read in it.
+    skip_han: bool,
 }
 
 impl Prepared {
     fn of(text: &str) -> Prepared {
-        let words_list = words(text);
+        let words_list = words(&fold_accents(text));
         let padded = format!(" {} ", words_list.join(" "));
+        let (own, han) = script_counts(text);
         Prepared {
             han: han_text(text),
             words_list,
             padded,
             lower: text.to_lowercase(),
             compact: compact(text),
+            skip_han: own >= 2 && own * 2 >= han,
         }
     }
 }
@@ -370,7 +456,7 @@ impl KeywordIndex {
     fn candidates(&self, p: &Prepared) -> Vec<usize> {
         let mut out = Vec::new();
         if !self.han_first.is_empty() {
-            for c in p.han.chars() {
+            for c in p.han.chars().filter(|_| !p.skip_han) {
                 if let Some(list) = self.han_first.get(&c) {
                     out.extend_from_slice(list);
                 }
@@ -418,7 +504,14 @@ impl Keyword {
             Match::Word | Match::Run => text.trim().to_lowercase(),
             Match::Compact => compact(text),
         };
-        let needle = if mode == Match::Word { format!(" {text}") } else { text.clone() };
+        let squeeze = mode == Match::Run && lang.starts_with("ko");
+        let needle = match mode {
+            Match::Word => format!(" {}", fold_accents(&text)),
+            _ if squeeze => compact(&text),
+            _ => text.clone(),
+        };
+        let word_end =
+            mode == Match::Word && needs_word_end(lang) && needle.trim_start().rsplit(' ').next().is_some_and(|w| w.chars().count() <= 5);
         Keyword {
             text,
             weight,
@@ -427,13 +520,28 @@ impl Keyword {
             lang: lang.to_string(),
             mode,
             needle,
+            squeeze,
+            word_end,
+            shadow: false,
         }
     }
 
     fn found_in(&self, p: &Prepared) -> bool {
+        if self.shadow {
+            return false;
+        }
         match self.mode {
-            Match::Han => han_contains(&p.han, &self.needle),
-            Match::Word => p.padded.contains(&self.needle),
+            Match::Han => !p.skip_han && han_contains(&p.han, &self.needle),
+            Match::Word => {
+                if !self.word_end {
+                    return p.padded.contains(&self.needle);
+                }
+                p.padded.match_indices(&self.needle).any(|(i, m)| {
+                    let rest = &p.padded[i + m.len()..];
+                    SHORT_WORD_ENDINGS.contains(&rest.split(' ').next().unwrap_or(""))
+                })
+            }
+            Match::Run if self.squeeze => p.compact.contains(&self.needle),
             Match::Run => p.lower.contains(&self.needle),
             Match::Compact => p.compact.contains(&self.needle),
         }
@@ -512,6 +620,7 @@ pub fn parse(json: &str) -> Result<ScamDb, String> {
         });
     }
     let mut langs = HashSet::new();
+    let mut seen_needles: HashSet<(String, String, String, bool)> = HashSet::new();
     for g in raw.keywords {
         if g.lang.trim().is_empty() || !langs.insert(g.lang.clone()) {
             return Err(format!("keyword language {:?} missing or listed twice", g.lang));
@@ -532,6 +641,10 @@ pub fn parse(json: &str) -> Result<ScamDb, String> {
                 return Err(format!("{}: write {text:?} in lowercase", g.lang));
             }
             let kw = Keyword::new(&text, weight, &typology, hard, &g.lang, mode);
+            let mut kw = kw;
+            if mode == Match::Word && !seen_needles.insert((kw.lang.clone(), kw.needle.clone(), kw.typology.clone(), kw.hard)) {
+                kw.shadow = true;
+            }
             if db.by_text.contains_key(&kw.text) {
                 // 周轉 next to 週轉: a spelling the Chinese normaliser folds into
                 // one already listed matches the same words; it is not kept twice.
@@ -1068,6 +1181,12 @@ pub fn typology_for_hits(hits: &[&str]) -> Option<&'static str> {
     sums.into_iter().find(|&(_, w)| w == best).map(|(t, _)| t)
 }
 
+/// Phrases that scam and sales openers use as well ("your claim", "votre
+/// dossier", 折り返し, 민원, "seu pedido"): one of them alone is no proof of a
+/// follow-up on the owner's own matter; two different ones, or any other
+/// own-matter phrase, are.
+const WEAK_OWN_MATTER: &[&str] = &["折り返し", "민원", "votre dossier", "seu pedido", "your claim"];
+
 /// The caller follows up on something the owner raised (a complaint, a repair,
 /// an application): never a pitch, in any language of the database — unless the
 /// caller also makes a scam-only demand (OTP, ATM steps, safe account, screen
@@ -1078,10 +1197,30 @@ pub fn own_matter(text: &str) -> bool {
     }
     let han = crate::zh_tw::norm(text);
     let lower = text.to_lowercase();
-    db().own_matter.iter().any(|(lang, phrases)| {
-        let t = if lang.starts_with("zh") { &han } else { &lower };
-        phrases.iter().any(|p| t.contains(p.as_str()))
-    })
+    let folded = fold_accents(text);
+    let squeezed = compact(&folded);
+    let mut weak: Vec<&str> = Vec::new();
+    for (lang, phrases) in &db().own_matter {
+        for p in phrases {
+            let found = if lang.starts_with("zh") {
+                han.contains(p.as_str())
+            } else if lang.starts_with("ko") {
+                squeezed.contains(compact(p).as_str())
+            } else {
+                lower.contains(p.as_str()) || folded.contains(fold_accents(p).as_str())
+            };
+            if !found {
+                continue;
+            }
+            if !WEAK_OWN_MATTER.contains(&p.as_str()) {
+                return true;
+            }
+            if !weak.contains(&p.as_str()) {
+                weak.push(p.as_str());
+            }
+        }
+    }
+    weak.len() >= 2
 }
 
 // ---------------------------------------------------------------- numbers
@@ -2283,5 +2422,82 @@ mod tests {
             let indexed = keyword_hits_in(&sample, &LocalDb::default());
             assert_eq!(indexed, linear, "keyword sample mismatch for {:?}", kw.text);
         }
+    }
+
+    fn hit_texts(text: &str) -> Vec<&'static str> {
+        keyword_hits(text).into_iter().map(|h| h.text).collect()
+    }
+
+    #[test]
+    fn a_short_keyword_does_not_match_the_start_of_a_longer_word() {
+        // Portuguese "pix", "conta" and English "demo" are inside Pixel, contacts, demonstrate.
+        let said = "calling from your contacts to demonstrate the Pixel";
+        let hits = hit_texts(said);
+        for kw in ["pix", "conta", "demo"] {
+            assert!(!hits.contains(&kw), "{kw} in {said:?}: {hits:?}");
+        }
+        let weight: u32 = keyword_hits(said).iter().map(|h| h.weight).sum();
+        assert!(weight < 5, "{said:?} must not reach the scam threshold: {hits:?}");
+        // The word itself, with an ordinary ending, still counts.
+        assert!(hit_texts("we can book a demo for you").contains(&"demo"));
+        assert!(hit_texts("two demos this week").contains(&"demo"));
+        assert!(hit_texts("faz um pix agora").contains(&"pix"));
+        assert!(hit_texts("minhas contas").contains(&"conta"));
+        assert!(hit_texts("we have loans and refinancing").contains(&"loan"));
+        assert!(hit_texts("we have loans and refinancing").contains(&"refinanc"));
+    }
+
+    #[test]
+    fn a_japanese_sentence_is_not_read_with_the_chinese_keywords() {
+        let said = "保険証を持って銀行の前で待っています";
+        for h in keyword_hits(said) {
+            let lang = &db().keyword(h.text).map(|k| k.lang.clone()).unwrap_or_default();
+            assert!(!lang.starts_with("zh"), "{} ({lang}) read in a Japanese sentence", h.text);
+        }
+        // Chinese still reads them.
+        let zh = hit_texts("請帶保險證到銀行");
+        assert!(zh.contains(&"保險") && zh.contains(&"銀行"), "{zh:?}");
+        // A Chinese call with a few Japanese words in it keeps its Chinese reading.
+        let mixed = hit_texts("我們是保險公司，請問有興趣了解保險規劃嗎，ありがとう");
+        assert!(mixed.contains(&"保險"), "{mixed:?}");
+    }
+
+    #[test]
+    fn accents_and_korean_spaces_do_not_hide_a_keyword() {
+        // "código de verificación", "prêt", "empréstimo", "mã otp", "đầu tư", spoken or written bare.
+        assert!(hit_texts("dame el código de verificación").contains(&"código de verificación"));
+        assert!(hit_texts("dame el codigo de verificacion").contains(&"código de verificación"));
+        assert!(hit_texts("dame el co\u{301}digo de verificacio\u{301}n").contains(&"código de verificación"));
+        assert!(hit_texts("je vous propose un pret rapide").contains(&"prêt"));
+        assert!(hit_texts("je vous propose un pre\u{302}t rapide").contains(&"prêt"));
+        assert!(hit_texts("um emprestimo sem consulta").contains(&"empréstimo"));
+        assert!(hit_texts("cho tôi mã OTP").contains(&"mã otp"));
+        assert!(hit_texts("cho toi ma otp").contains(&"mã otp"));
+        assert!(hit_texts("cơ hội dau tu tốt").contains(&"đầu tư"));
+        // The folded short word still ends where the word ends.
+        assert!(!hit_texts("it is pretty good, we pretend nothing").contains(&"prêt"));
+        // Korean: a keyword with a space matches the text with or without spaces.
+        assert!(hit_texts("카드 배송 일정 안내").contains(&"카드 배송"));
+        assert!(hit_texts("카드배송 일정 안내").contains(&"카드 배송"));
+        assert!(hit_texts("카 드 배 송 일정").contains(&"카드 배송"));
+        assert!(hit_texts("화면공유 앱을 설치하세요").contains(&"화면 공유"));
+    }
+
+    #[test]
+    fn an_opener_that_scams_use_does_not_make_the_whole_call_the_owners_own_matter() {
+        for t in [
+            "折り返しお電話しました",
+            "민원 처리 결과를 알려드립니다",
+            "Nous appelons au sujet de votre dossier CPF",
+            "Estou ligando sobre seu pedido",
+            "We are calling about your claim",
+        ] {
+            assert!(!own_matter(t), "{t}");
+        }
+        // Two of them, or a clearer one, still make it a follow-up.
+        assert!(own_matter("Hello, about your claim, returning your call"));
+        assert!(own_matter("ご連絡いただいた件で折り返しました"));
+        assert!(own_matter("문의하신 민원 건입니다"));
+        assert!(own_matter("Llamo por su reclamacion"));
     }
 }

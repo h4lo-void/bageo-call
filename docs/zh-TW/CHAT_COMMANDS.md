@@ -18,13 +18,13 @@
 
 1. 先設定好 Telegram 通知管道（[通知 → Telegram](NOTIFICATIONS.md#telegram)）。
 2. *設定 → 通知* → 那個 Telegram 管道 → 勾選**允許在這個聊天室下指令**。
-3. 可選：在**可以下指令的人**填 Telegram 使用者 ID（問 **@userinfobot** 就知道自己的）。留空 = 這個聊天室裡的人都可以；群組請填你自己的 ID。
+3. 在**可以下指令的人**填 Telegram 使用者 ID（問 **@userinfobot** 就知道自己的）。群組一定要填：沒填就沒有人能下指令。和機器人的私訊可以留空。
 4. 按**儲存變更**，再傳 `/help` 給機器人。
 
 用環境變數設定的機器人（`TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`）：
 
 - 在*設定 → 通知*的「在聊天室操作」裡有自己的開關，或設 `TELEGRAM_CONTROL=true`。
-- 要限定可以下指令的人，設 `TELEGRAM_CONTROL_USERS=123456789,987654321`。
+- 要指定可以下指令的人，設 `TELEGRAM_CONTROL_USERS=123456789,987654321`。群組要設，私訊可以不設。
 
 在群組裡，機器人只理會指令（`/calls` 或 `/calls@你的機器人`）和回覆它自己訊息的話，其他人聊天一律不理。
 
@@ -35,10 +35,10 @@
 3. 同一頁把 **Message Content Intent** 打開。沒打開的話，機器人讀不到你打的字。
 4. 邀請機器人：到「OAuth2 → URL Generator」，勾選「bot」，再勾選「View Channels」「Send Messages」「Read Message History」。打開它產生的網址，選你的伺服器。
 5. 如果是私人頻道，也要讓機器人在該頻道有讀寫權限。
-6. 設定好 Discord 通知管道（[通知 → Discord](NOTIFICATIONS.md#discord)），填「Bot 權杖（聊天室操作用）」和「頻道 ID（聊天室操作用）」。
+6. 設定好 Discord 通知管道（[通知 → Discord](NOTIFICATIONS.md#discord)），填「Bot 權杖」和「頻道 ID」。
 7. 找頻道 ID：先在「使用者設定 → 進階」打開開發者模式，再在頻道上按右鍵 →「複製頻道 ID」。
 8. 勾選**允許在這個聊天室下指令**。
-9. 可選：在**可以下指令的人**填你的 Discord 使用者 ID（開發者模式打開後，在自己的名字上按右鍵 →「複製使用者 ID」）。留空 = 這個頻道裡的人都可以。
+9. 在**可以下指令的人**填你的 Discord 使用者 ID（開發者模式打開後，在自己的名字上按右鍵 →「複製使用者 ID」）。伺服器裡的頻道一定要填：沒填就沒有人能下指令。和機器人的私訊可以留空。
 10. 按**儲存變更**，再在頻道裡傳 `/help`。
 
 ### Slack
@@ -52,10 +52,10 @@
 5. 打開「OAuth & Permissions」，在「Bot Token Scopes」加入 `chat:write`、`channels:history`、`im:history`。
 6. 按「Install to Workspace」，複製 Bot 權杖（`xoxb-` 開頭）。
 7. 把 App 加進要用的頻道：在頻道裡打開「Integrations → Add apps」。
-8. 設定好 Slack 通知管道（[通知 → Slack / Mattermost](NOTIFICATIONS.md#slack--mattermost)），填「Bot 權杖（聊天室操作用）」「App 層級權杖（聊天室操作用）」和「頻道 ID（聊天室操作用）」。
+8. 設定好 Slack 通知管道（[通知 → Slack / Mattermost](NOTIFICATIONS.md#slack--mattermost)），填「Bot 權杖」「App 層級權杖（聊天室操作用）」和「頻道 ID」。
 9. 找頻道 ID：打開頻道詳細資料，在最下面，`C` 開頭。
 10. 勾選**允許在這個聊天室下指令**。
-11. 可選：在**可以下指令的人**填你的 Slack 成員 ID（個人檔案 → ⋮ →「複製成員 ID」）。留空 = 這個頻道裡的人都可以。
+11. 在**可以下指令的人**填你的 Slack 成員 ID（個人檔案 → ⋮ →「複製成員 ID」）。頻道一定要填：沒填就沒有人能下指令。和機器人的私訊可以留空。
 12. 按**儲存變更**，再傳「`@你的機器人 /help`」。Slack 會把 `/` 開頭的訊息當成它自己的指令，所以要先寫機器人的名字。
 
 ### Matrix
@@ -69,7 +69,7 @@
 5. 在「Room settings → Advanced」找聊天室 ID（`!` 開頭）。填聊天室別名（`#名稱:example.org`）也可以。
 6. 設定好 Matrix 通知管道（[通知 → Matrix](NOTIFICATIONS.md#matrix)），填「Homeserver 網址」「存取權杖」和「聊天室 ID」。
 7. 勾選**允許在這個聊天室下指令**。
-8. 可選：在**可以下指令的人**填你的 Matrix ID，例如 `@lee:example.org`（在 Element 的個人資料看得到）。留空 = 這個聊天室裡的人都可以。
+8. 在**可以下指令的人**填你的 Matrix ID，例如 `@lee:example.org`（在 Element 的個人資料看得到）。有其他人的聊天室一定要填：沒填就沒有人能下指令。只有你和機器人的聊天室可以留空。
 9. 按**儲存變更**，再傳「`@你的機器人 /help`」。Element 會把 `/` 開頭的訊息當成它自己的指令，所以要先寫機器人的名字。
 
 Matrix 沒有按鈕。要確認時，直接回覆 **1** 或 **2**。
@@ -146,9 +146,10 @@ AI 代打的結果照舊用一般通知送出。
 - 代打的號碼檢查、SIM 卡規則、排隊跟控制台建立的完全一樣。
 - 回覆絕不包含金鑰或密碼：Bageo 持有的任何金鑰都會在送出前被遮掉。逐字稿只給一小段。
 - 只有你自己傳的那句話會被當成指令。通話逐字稿、摘要、對方說的話都不會交給讀你訊息的模型，所以電話裡說的話不會變成指令。
-- 任何能在已開啟指令的聊天室裡發言的人都能用。請用你和機器人的私人聊天室，或填上允許的使用者 ID。
+- 在群組、頻道或有其他人的聊天室，只有**可以下指令的人**裡的人能用。沒填名單就沒有人能用，第一則訊息會收到一小段如何加入名單的提示。和機器人的私訊不用填名單：Telegram 私訊、Slack 私訊、Discord 私訊，或只有你和機器人的 Matrix 聊天室。
 - **可以下指令的人**填的不是 ID（例如名字）也會保留，只是對不上任何人，名單不會因此變成「所有人」。
 - 這份名單也套用在待處理事項卡片的按鈕上；同一個機器人和聊天室開了兩次時，兩邊的名單都要符合。
+- 用 MCP 的 token 打指令 API（`POST /calls/api/control/inbound`）時，只能做 `mcp_calls` 允許的事。設成 `off` 時只能查看，不能改任何東西。
 - 指令選單只設定在允許下指令的聊天室，陌生人打開機器人看不到。轉傳的訊息不會被當成指令。
 
 ## 設定
@@ -156,9 +157,9 @@ AI 代打的結果照舊用一般通知送出。
 | 設定 | 環境變數 | 預設 |
 |---|---|---|
 | 管道：*允許在這個聊天室下指令*（`control`） | — | 關 |
-| 管道：*可以下指令的人*（`control_users`） | — | 聊天室裡的人都可以 |
+| 管道：*可以下指令的人*（`control_users`） | — | 群組沒填就沒有人；私訊不用填 |
 | `telegram_control` | `TELEGRAM_CONTROL` | 關 |
-| `telegram_control_users` | `TELEGRAM_CONTROL_USERS` | 聊天室裡的人都可以 |
+| `telegram_control_users` | `TELEGRAM_CONTROL_USERS` | 群組沒填就沒有人；私訊不用填 |
 | `control_errands_per_hour` | `CONTROL_ERRANDS_PER_HOUR` | 5（0–30） |
 | `control_commands_per_minute` | `CONTROL_COMMANDS_PER_MINUTE` | 20（1–120） |
 
@@ -178,7 +179,7 @@ AI 代打的結果照舊用一般通知送出。
       - **Bark / Pushover / Gotify / Chanify**：點擊通知直接跳轉連結（`url` / `click` / `link`）
       - **Discord / Slack / LINE / Matrix / 企業微信 / 釘釘 / 飛書 / Email**：訊息內附帶可點擊的簽章連結
       - **Webhook（JSON）**：結構化的 `actions: [{ "label": "...", "url": "..." }]` 陣列
-   - 這些按鈕背後是 `GET/POST /calls/api/quick-action`。
+   - 點連結會先打開確認頁，按下頁面上的按鈕才會執行；連結 7 天後失效。背後是 `GET/POST /calls/api/quick-action`。
 
 2. **通用指令端點 `POST /calls/api/control/inbound`（讓任何管道都能下指令）**
    - Home Assistant、n8n、Make、Apple 捷徑（Shortcuts）、Discord／Slack／LINE／企業微信／飛書自架機器人等，都可以直接 POST 文字指令或自然語言到：

@@ -20,15 +20,16 @@ for your chat app: set up its notification channel, then turn on commands.
 
 1. Set up the Telegram channel first ([Notifications → Telegram](NOTIFICATIONS.md#telegram)).
 2. *Settings → Notifications* → the Telegram channel → **Take commands from this chat**.
-3. Optional: in **Who may give commands**, enter Telegram user IDs (ask
-   **@userinfobot** for yours). Empty means anyone in that chat. In a group,
-   enter your own ID.
+3. In **Who may give commands**, enter Telegram user IDs (ask
+   **@userinfobot** for yours). In a group this is required: with the list
+   empty, nobody there can give commands. In a private chat with the bot you
+   can leave it empty.
 4. **Save changes**, then send `/help` to the bot.
 
 For the bot set by environment variables (`TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`):
 
 - It has its own switch under *Settings → Notifications* → "Commands from chat", or set `TELEGRAM_CONTROL=true`.
-- To limit who may give commands, set `TELEGRAM_CONTROL_USERS=123456789,987654321`.
+- To say who may give commands, set `TELEGRAM_CONTROL_USERS=123456789,987654321`. A group needs it; a private chat does not.
 
 In a group the bot only reacts to commands (`/calls`, or `/calls@your_bot`)
 and to replies to its own messages. Everything else people say is ignored.
@@ -40,10 +41,10 @@ and to replies to its own messages. Everything else people say is ignored.
 3. On the same page, turn on **Message Content Intent**. Without it the bot cannot read what you type.
 4. Invite the bot: *OAuth2 → URL Generator*, tick *bot*, then tick *View Channels*, *Send Messages* and *Read Message History*. Open the URL it makes and pick your server.
 5. For a private channel, also give the bot permission to read and write in that channel.
-6. Set up the Discord channel ([Notifications → Discord](NOTIFICATIONS.md#discord)). Fill in *Bot token (for chat commands)* and *Channel ID (for chat commands)*.
+6. Set up the Discord channel ([Notifications → Discord](NOTIFICATIONS.md#discord)). Fill in *Bot token* and *Channel ID*.
 7. To get the channel ID: turn on *User Settings → Advanced → Developer Mode*, right-click the channel → *Copy Channel ID*.
 8. Turn on **Take commands from this chat**.
-9. Optional: in **Who may give commands**, enter your Discord user ID (Developer Mode on, right-click your name → *Copy User ID*). Empty means anyone in that channel.
+9. In **Who may give commands**, enter your Discord user ID (Developer Mode on, right-click your name → *Copy User ID*). For a channel in a server this is required: with the list empty, nobody there can give commands. In a private message with the bot you can leave it empty.
 10. **Save changes**, then send `/help` in the channel.
 
 ### Slack
@@ -57,10 +58,10 @@ Commands work with Slack only, not Mattermost.
 5. Open *OAuth & Permissions* and under *Bot Token Scopes* add `chat:write`, `channels:history` and `im:history`.
 6. Press *Install to Workspace* and copy the bot token (it starts with `xoxb-`).
 7. Add the app to the channel: in the channel, *Integrations → Add apps*.
-8. Set up the Slack channel ([Notifications → Slack / Mattermost](NOTIFICATIONS.md#slack--mattermost)). Fill in *Bot token (for chat commands)*, *App-level token (for chat commands)* and *Channel ID (for chat commands)*.
+8. Set up the Slack channel ([Notifications → Slack / Mattermost](NOTIFICATIONS.md#slack--mattermost)). Fill in *Bot token*, *App-level token (for chat commands)* and *Channel ID*.
 9. To get the channel ID: open the channel's details; it is at the bottom and starts with `C`.
 10. Turn on **Take commands from this chat**.
-11. Optional: in **Who may give commands**, enter your Slack member ID (open your profile → ⋮ → *Copy member ID*). Empty means anyone in that channel.
+11. In **Who may give commands**, enter your Slack member ID (open your profile → ⋮ → *Copy member ID*). For a channel this is required: with the list empty, nobody there can give commands. In a direct message with the bot you can leave it empty.
 12. **Save changes**, then send `@your bot /help`. Slack takes a message that starts with `/` for its own commands, so start with the bot's name.
 
 ### Matrix
@@ -74,7 +75,7 @@ Only unencrypted rooms work. Element makes direct messages encrypted by default,
 5. Find the room ID in *Room settings → Advanced* (it starts with `!`). The room's address (`#name:example.org`) works too.
 6. Set up the Matrix channel ([Notifications → Matrix](NOTIFICATIONS.md#matrix)). Fill in *Homeserver URL*, *Access token* and *Room ID*.
 7. Turn on **Take commands from this chat**.
-8. Optional: in **Who may give commands**, enter your Matrix ID, for example `@lee:example.org` (shown in your Element profile). Empty means anyone in that room.
+8. In **Who may give commands**, enter your Matrix ID, for example `@lee:example.org` (shown in your Element profile). For a room with other people this is required: with the list empty, nobody there can give commands. A room with only you and the bot can stay empty.
 9. **Save changes**, then send `@your bot /help`. Element takes a message that starts with `/` for its own commands, so start with the bot's name.
 
 Matrix has no buttons. To confirm something, reply **1** or **2**.
@@ -155,9 +156,10 @@ The result of an AI call still arrives as the usual notification.
 - Calls go through the same checks, SIM rules and queue as calls started on the console.
 - Replies never contain a key or password: any key Bageo holds is cut out before a message is sent. Transcript excerpts are short.
 - Only your own message is read as a command. Transcripts, summaries and what callers say are never given to the model that reads your messages, so words spoken on a call cannot become a command.
-- Anyone who can write in a chat with commands on can use them. Keep it a private chat with the bot, or list the allowed user IDs.
+- In a group, a channel or a room with other people, only the people in **Who may give commands** can use them. With the list empty, nobody can, and the first message there gets a short hint on how to add one. A private chat with the bot needs no list: a Telegram private chat, a Slack direct message, a Discord private message, or a Matrix room with only you and the bot.
 - Entries in **Who may give commands** that are no ID (a name) are kept and match nobody, so the list never turns into "everyone".
 - The list also applies to the buttons on pending-item cards. When the same bot and chat are switched on twice, both lists apply.
+- The command API (`POST /calls/api/control/inbound`) with the MCP token does only what `mcp_calls` allows. While it is `off`, it can look things up but changes nothing.
 - The command menu is set only for the chats that take commands; strangers who open the bot see none. Forwarded messages are never read as commands.
 
 ## Settings
@@ -165,9 +167,9 @@ The result of an AI call still arrives as the usual notification.
 | Setting | Environment | Default |
 |---|---|---|
 | Channel: *Take commands from this chat* (`control`) | — | off |
-| Channel: *Who may give commands* (`control_users`) | — | anyone in the chat |
+| Channel: *Who may give commands* (`control_users`) | — | nobody in a group; a private chat needs no list |
 | `telegram_control` | `TELEGRAM_CONTROL` | off |
-| `telegram_control_users` | `TELEGRAM_CONTROL_USERS` | anyone in the chat |
+| `telegram_control_users` | `TELEGRAM_CONTROL_USERS` | nobody in a group; a private chat needs no list |
 | `control_errands_per_hour` | `CONTROL_ERRANDS_PER_HOUR` | 5 (0–30) |
 | `control_commands_per_minute` | `CONTROL_COMMANDS_PER_MINUTE` | 20 (1–120) |
 
@@ -187,7 +189,7 @@ Beyond Telegram two-way chat, **all 32 notification channels** support interacti
       - **Bark / Pushover / Gotify / Chanify**: Native tap-to-open URLs (`url` / `click` / `link`)
       - **Discord / Slack / LINE / Matrix / WeCom / DingTalk / Feishu / Email**: Clickable signed action links appended to the message
       - **Webhook (JSON)**: Structured `actions: [{ "label": "...", "url": "..." }]` array
-   - The buttons call `GET/POST /calls/api/quick-action`.
+   - A link first opens a confirmation page, and the action runs only when you press the button on it. A link stops working after 7 days. Behind them is `GET/POST /calls/api/quick-action`.
 
 2. **Universal inbound command endpoint (`POST /calls/api/control/inbound`)**
    - Connect Home Assistant, n8n, Make, Apple Shortcuts, or custom Discord / Slack / LINE / WeCom / Feishu bots by POSTing any slash command or natural language message:

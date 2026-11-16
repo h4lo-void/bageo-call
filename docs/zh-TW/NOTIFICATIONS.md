@@ -190,8 +190,8 @@ Bageo 不連任何行事曆帳號。
 | 服務 | 需要準備 | 常見用途 |
 |---|---|---|
 | [Telegram](#telegram) | Bot 權杖、聊天 ID | 通用；預約卡片只有它有 |
-| [Discord](#discord) | Webhook 網址 | Discord 伺服器 |
-| [Slack / Mattermost](#slack--mattermost) | Incoming Webhook 網址 | 工作群組 |
+| [Discord](#discord) | Webhook 網址，或 Bot 權杖和頻道 ID | Discord 伺服器 |
+| [Slack / Mattermost](#slack--mattermost) | Incoming Webhook 網址，或 Bot 權杖和頻道 ID | 工作群組 |
 | [Microsoft Teams](#microsoft-teams) | Workflow Webhook 網址 | 用 Microsoft 365 的公司 |
 | [Google Chat](#google-chat) | Webhook 網址 | Google Workspace |
 | [Rocket.Chat](#rocketchat) | Webhook 網址 | 自架團隊聊天 |
@@ -249,12 +249,12 @@ Bageo 不連任何行事曆帳號。
 |---|---|
 | Webhook 網址 | `https://discord.com/api/webhooks/…` |
 
-要在 Discord 頻道裡下指令，還要填下面兩欄；只收通知不用填。步驟見[在聊天室操作](CHAT_COMMANDS.md#discord)。
+也可以不填 Webhook，改填 Bot 權杖和頻道 ID，兩種擇一就能收通知。用機器人還能傳私訊給你：「頻道 ID」填你自己的使用者 ID。要下指令就填 Bot 權杖和頻道 ID。步驟見[在聊天室操作](CHAT_COMMANDS.md#discord)。
 
 | 欄位 | 填什麼 |
 |---|---|
-| Bot 權杖（聊天室操作用） | 機器人的權杖 |
-| 頻道 ID（聊天室操作用） | 要下指令的那個頻道的 ID |
+| Bot 權杖 | 機器人的權杖 |
+| 頻道 ID | 頻道的 ID；要收私訊就填你自己的使用者 ID |
 
 ### Slack / Mattermost
 
@@ -271,13 +271,13 @@ Bageo 不連任何行事曆帳號。
 |---|---|
 | Incoming Webhook 網址 | `https://hooks.slack.com/services/…` |
 
-要在 Slack 頻道裡下指令（只限 Slack，Mattermost 不行），還要填下面三欄；只收通知不用填。步驟見[在聊天室操作](CHAT_COMMANDS.md#slack)。
+也可以不填 Webhook，改填 Bot 權杖和頻道 ID，兩種擇一就能收通知。要在 Slack 頻道裡下指令（只限 Slack，Mattermost 不行），下面三欄都要填。步驟見[在聊天室操作](CHAT_COMMANDS.md#slack)。
 
 | 欄位 | 填什麼 |
 |---|---|
-| Bot 權杖（聊天室操作用） | `xoxb-` 開頭的權杖 |
+| Bot 權杖 | `xoxb-` 開頭的權杖 |
 | App 層級權杖（聊天室操作用） | `xapp-` 開頭的權杖 |
-| 頻道 ID（聊天室操作用） | 要下指令的那個頻道的 ID |
+| 頻道 ID | 頻道的 ID |
 
 ### Microsoft Teams
 
@@ -559,15 +559,15 @@ Signal 沒有 Bot API，所以要透過你自己架的伺服器。
 
 1. 建立一個機器人帳號。
 2. 邀請它進聊天室，並讓它加入。
-3. 在「Room settings → Advanced」找到聊天室 ID（`!abc…:example.org`）。
+3. 在「Room settings → Advanced」找到聊天室 ID（`!abc…:example.org`）。填聊天室的別名（`#name:example.org`）也可以。
 
-聊天室必須是未加密的。
+聊天室必須是未加密的：Bageo 讀不到加密的聊天室，設定裡按測試時，聊天室有加密就會告訴你。請另外建立一個沒有加密的新聊天室。
 
 | 欄位 | 填什麼 |
 |---|---|
 | Homeserver 網址 | `https://matrix.example.org` |
 | 存取權杖 | 機器人帳號的 access token |
-| 聊天室 ID | `!…:example.org` |
+| 聊天室 ID | `!…:example.org` 或 `#name:example.org` |
 
 同一個管道也能下指令，見[在聊天室操作](CHAT_COMMANDS.md#matrix)。
 

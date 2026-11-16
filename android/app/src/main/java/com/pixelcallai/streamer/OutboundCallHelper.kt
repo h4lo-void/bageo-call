@@ -18,7 +18,8 @@ import androidx.core.content.ContextCompat
  * Prefers [TelecomManager.placeCall] when we hold ROLE_DIALER; falls back to
  * [Intent.ACTION_CALL] when [Manifest.permission.CALL_PHONE] is granted.
  * A `sub_id` picks the SIM ([TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE]); without one,
- * or when no call-capable account has that subscription, Android's default is used.
+ * Android's default SIM is used. A `sub_id` that no call-capable account has is refused:
+ * the call never goes out on another SIM (it could be a foreign, expensive line).
  */
 object OutboundCallHelper {
     private const val TAG = "OutboundCall"
@@ -35,8 +36,12 @@ object OutboundCallHelper {
         if (subId != null) {
             Log.i(
                 TAG,
-                "sub_id=$subId account=${if (account != null) "found" else "not found, default SIM"} call_id=$callId",
+                "sub_id=$subId account=${if (account != null) "found" else "not found"} call_id=$callId",
             )
+            if (account == null) {
+                Log.w(TAG, "placeCall: no phone account for sub_id=$subId — not dialing on the default SIM call_id=$callId")
+                return false
+            }
         }
 
         if (defaultDialer) {

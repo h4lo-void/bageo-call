@@ -18,13 +18,13 @@
 
 1. 先配置好 Telegram 通知渠道（[通知 → Telegram](NOTIFICATIONS.md#telegram)）。
 2. *设置 → 通知* → 那个 Telegram 渠道 → 勾选**允许在这个聊天室下指令**。
-3. 可选：在**可以下指令的人**填 Telegram 用户 ID（问 **@userinfobot** 就知道自己的）。留空 = 这个聊天室里的人都可以；群组请填你自己的 ID。
+3. 在**可以下指令的人**填 Telegram 用户 ID（问 **@userinfobot** 就知道自己的）。群组一定要填：没填就没有人能下指令。和机器人的私聊可以留空。
 4. 点**保存更改**，再给机器人发 `/help`。
 
 用环境变量配置的机器人（`TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`）：
 
 - 在*设置 → 通知*的“在聊天室操作”里有自己的开关，或设 `TELEGRAM_CONTROL=true`。
-- 要限定可以下指令的人，设 `TELEGRAM_CONTROL_USERS=123456789,987654321`。
+- 要指定可以下指令的人，设 `TELEGRAM_CONTROL_USERS=123456789,987654321`。群组要设，私聊可以不设。
 
 在群组里，机器人只理会指令（`/calls` 或 `/calls@你的机器人`）和回复它自己消息的话，其他人聊天一律不理。
 
@@ -35,10 +35,10 @@
 3. 同一页把 **Message Content Intent** 打开。没打开的话，机器人读不到你打的字。
 4. 邀请机器人：到“OAuth2 → URL Generator”，勾选“bot”，再勾选“View Channels”“Send Messages”“Read Message History”。打开它生成的链接，选你的服务器。
 5. 如果是私密频道，也要让机器人在该频道有读写权限。
-6. 配置好 Discord 通知渠道（[通知 → Discord](NOTIFICATIONS.md#discord)），填“Bot 令牌（聊天室操作用）”和“频道 ID（聊天室操作用）”。
+6. 配置好 Discord 通知渠道（[通知 → Discord](NOTIFICATIONS.md#discord)），填“Bot 令牌”和“频道 ID”。
 7. 找频道 ID：先在“用户设置 → 高级”打开开发者模式，再在频道上右键 →“复制频道 ID”。
 8. 勾选**允许在这个聊天室下指令**。
-9. 可选：在**可以下指令的人**填你的 Discord 用户 ID（开发者模式打开后，在自己的名字上右键 →“复制用户 ID”）。留空 = 这个频道里的人都可以。
+9. 在**可以下指令的人**填你的 Discord 用户 ID（开发者模式打开后，在自己的名字上右键 →“复制用户 ID”）。服务器里的频道一定要填：没填就没有人能下指令。和机器人的私信可以留空。
 10. 点**保存更改**，再在频道里发 `/help`。
 
 ### Slack
@@ -52,10 +52,10 @@
 5. 打开“OAuth & Permissions”，在“Bot Token Scopes”加入 `chat:write`、`channels:history`、`im:history`。
 6. 点“Install to Workspace”，复制 Bot 令牌（`xoxb-` 开头）。
 7. 把 App 加进要用的频道：在频道里打开“Integrations → Add apps”。
-8. 配置好 Slack 通知渠道（[通知 → Slack / Mattermost](NOTIFICATIONS.md#slack--mattermost)），填“Bot 令牌（聊天室操作用）”“App 级令牌（聊天室操作用）”和“频道 ID（聊天室操作用）”。
+8. 配置好 Slack 通知渠道（[通知 → Slack / Mattermost](NOTIFICATIONS.md#slack--mattermost)），填“Bot 令牌”“App 级令牌（聊天室操作用）”和“频道 ID”。
 9. 找频道 ID：打开频道详细信息，在最下面，`C` 开头。
 10. 勾选**允许在这个聊天室下指令**。
-11. 可选：在**可以下指令的人**填你的 Slack 成员 ID（个人资料 → ⋮ →“复制成员 ID”）。留空 = 这个频道里的人都可以。
+11. 在**可以下指令的人**填你的 Slack 成员 ID（个人资料 → ⋮ →“复制成员 ID”）。频道一定要填：没填就没有人能下指令。和机器人的私信可以留空。
 12. 点**保存更改**，再发“`@你的机器人 /help`”。Slack 会把 `/` 开头的消息当成它自己的指令，所以要先写机器人的名字。
 
 ### Matrix
@@ -69,7 +69,7 @@
 5. 在“Room settings → Advanced”找房间 ID（`!` 开头）。填房间别名（`#名称:example.org`）也可以。
 6. 配置好 Matrix 通知渠道（[通知 → Matrix](NOTIFICATIONS.md#matrix)），填“Homeserver 地址”“访问令牌”和“房间 ID”。
 7. 勾选**允许在这个聊天室下指令**。
-8. 可选：在**可以下指令的人**填你的 Matrix ID，例如 `@lee:example.org`（在 Element 的个人资料里看得到）。留空 = 这个房间里的人都可以。
+8. 在**可以下指令的人**填你的 Matrix ID，例如 `@lee:example.org`（在 Element 的个人资料里看得到）。有其他人的房间一定要填：没填就没有人能下指令。只有你和机器人的房间可以留空。
 9. 点**保存更改**，再发“`@你的机器人 /help`”。Element 会把 `/` 开头的消息当成它自己的指令，所以要先写机器人的名字。
 
 Matrix 没有按钮。要确认时，直接回复 **1** 或 **2**。
@@ -146,9 +146,10 @@ AI 代打的结果照旧用普通通知发出。
 - 代打的号码检查、SIM 卡规则、排队跟控制台发起的完全一样。
 - 回复绝不包含密钥或密码：Bageo 持有的任何密钥都会在发出前被遮掉。逐字稿只给一小段。
 - 只有你自己发的那句话会被当成指令。通话逐字稿、摘要、对方说的话都不会交给读你消息的模型，所以电话里说的话不会变成指令。
-- 任何能在已开启指令的聊天室里发言的人都能用。请用你和机器人的私聊，或填上允许的用户 ID。
+- 在群组、频道或有其他人的房间，只有**可以下指令的人**里的人能用。没填名单就没有人能用，第一条消息会收到一小段如何加入名单的提示。和机器人的私信不用填名单：Telegram 私聊、Slack 私信、Discord 私信，或只有你和机器人的 Matrix 房间。
 - **可以下指令的人**填的不是 ID（例如名字）也会保留，只是对不上任何人，名单不会因此变成“所有人”。
 - 这份名单也适用于待处理事项卡片的按钮；同一个机器人和聊天室开了两次时，两边的名单都要符合。
+- 用 MCP 的 token 调用指令 API（`POST /calls/api/control/inbound`）时，只能做 `mcp_calls` 允许的事。设为 `off` 时只能查看，不能改任何东西。
 - 指令菜单只设置在允许下指令的聊天室，陌生人打开机器人看不到。转发的消息不会被当成指令。
 
 ## 设置
@@ -156,9 +157,9 @@ AI 代打的结果照旧用普通通知发出。
 | 设置 | 环境变量 | 默认 |
 |---|---|---|
 | 渠道：*允许在这个聊天室下指令*（`control`） | — | 关 |
-| 渠道：*可以下指令的人*（`control_users`） | — | 聊天室里的人都可以 |
+| 渠道：*可以下指令的人*（`control_users`） | — | 群组没填就没有人；私信不用填 |
 | `telegram_control` | `TELEGRAM_CONTROL` | 关 |
-| `telegram_control_users` | `TELEGRAM_CONTROL_USERS` | 聊天室里的人都可以 |
+| `telegram_control_users` | `TELEGRAM_CONTROL_USERS` | 群组没填就没有人；私信不用填 |
 | `control_errands_per_hour` | `CONTROL_ERRANDS_PER_HOUR` | 5（0–30） |
 | `control_commands_per_minute` | `CONTROL_COMMANDS_PER_MINUTE` | 20（1–120） |
 
@@ -178,7 +179,7 @@ AI 代打的结果照旧用普通通知发出。
       - **Bark / Pushover / Gotify / Chanify**：点击通知直接跳转链接（`url` / `click` / `link`）
       - **Discord / Slack / LINE / Matrix / 企业微信 / 钉钉 / 飞书 / Email**：消息内附带可点击的签名链接
       - **Webhook（JSON）**：结构化的 `actions: [{ "label": "...", "url": "..." }]` 数组
-   - 这些按钮背后是 `GET/POST /calls/api/quick-action`。
+   - 点链接会先打开确认页，点页面上的按钮才会执行；链接 7 天后失效。背后是 `GET/POST /calls/api/quick-action`。
 
 2. **通用指令端点 `POST /calls/api/control/inbound`（让任何渠道都能下指令）**
    - Home Assistant、n8n、Make、Apple 快捷指令（Shortcuts）、Discord／Slack／LINE／企业微信／飞书自建机器人等，都可以直接 POST 文字指令或自然语言到：

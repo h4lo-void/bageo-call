@@ -46,8 +46,10 @@ pub fn number_to_call(rt: &RuntimeSettings) -> Option<String> {
 /// The owner's number as the phone may dial it from the call's SIM (`sim`, ISO
 /// country; None when unknown): the errands check (no emergency, short,
 /// premium-rate or MMI codes, nothing that goes abroad from home). Unknown SIM:
-/// only a full +number is taken, checked against its own country.
-pub fn check_owner_number(number: &str, sim: Option<&str>) -> Result<String, &'static str> {
+/// a full +number is checked against its own country; a number without a
+/// country code reads as the owner's country's (`home_code`, digits:
+/// `effective_country_code`), and is refused when that is not known either.
+pub fn check_owner_number(number: &str, sim: Option<&str>, home_code: &str) -> Result<String, &'static str> {
     if number.contains('*') || number.contains('#') {
         return Err("bad_number");
     }
@@ -55,10 +57,11 @@ pub fn check_owner_number(number: &str, sim: Option<&str>) -> Result<String, &'s
         Some(s) => s.to_ascii_lowercase(),
         None => {
             let clean = crate::errands::clean_number(number).ok_or("bad_number")?;
-            if !clean.starts_with('+') {
-                return Err("bad_number");
+            if clean.starts_with('+') {
+                crate::phone_region::normalize(&clean, None).ok_or("bad_number")?.country.to_string()
+            } else {
+                crate::phone_region::country_of_code(home_code.trim()).ok_or("bad_number")?.to_string()
             }
-            crate::phone_region::normalize(&clean, None).ok_or("bad_number")?.country.to_string()
         }
     };
     crate::errands::check_number(number, &region)
@@ -116,6 +119,22 @@ fn hold_cues(strong_only: bool, ai_said: &str) -> bool {
         "bleib bitte dran", "bleib am apparat", "bleiben sie am apparat",
         // Portuguese
         "não desligue", "não desliga", "não desliguem", "fique na linha", "fica na linha", "aguarde na linha",
+        // Cantonese (folded to simplified: 唔好掛線 and 唔好挂线 read the same)
+        "唔好挂", "唔好收线", "咪挂", "咪收线", "唔好走开", "咪走开", "唔好挂线", "咪挂线",
+        // Vietnamese (accents folded)
+        "đừng cúp máy", "đừng gác máy", "đừng cắt máy", "đừng ngắt máy", "đừng tắt máy", "đừng cúp điện thoại", "không được cúp máy",
+        "vui lòng giữ máy", "xin giữ máy", "giữ máy nhé", "giữ máy giúp", "giữ máy chút", "giữ máy một",
+        // Indonesian
+        "jangan tutup telepon", "jangan tutup telpon", "jangan ditutup telepon", "jangan ditutup telpon", "jangan menutup telepon",
+        "jangan matikan telepon", "jangan matikan telpon", "jangan dimatikan telepon", "jangan putus telepon",
+        "jangan tutup dulu", "jangan ditutup dulu", "jangan matikan dulu", "tetap di telepon", "tetap di saluran", "tetap di line", "tetap tersambung",
+        // Thai
+        "อย่าวางสาย", "อย่าเพิ่งวางสาย", "ห้ามวางสาย", "ถือสายไว้", "ถือสายรอ", "รออยู่ในสาย", "อยู่ในสายก่อน", "อยู่ในสายนะ", "กรุณารอสาย", "โปรดรอสาย",
+        // Filipino (Tagalog)
+        "huwag ibaba", "huwag mong ibaba", "huwag mo munang ibaba", "huwag munang ibaba", "huwag po munang ibaba", "huwag po ibaba",
+        "huwag po ninyong ibaba", "huwag po kayong magbaba", "huwag magbaba", "huwag mong patayin", "wag ibaba", "wag mong ibaba",
+        "wag mo munang ibaba", "wag munang ibaba", "wag po munang ibaba", "manatili sa linya", "manatili po sa linya",
+        "dito lang po kayo sa linya", "dito ka lang sa linya", "maghintay po sa linya",
     ];
     const WEAK: &[&str] = &[
         "请稍候", "请稍等", "稍等一下", "你等一下", "等我一下", "先等一下", "hold on", "hang on", "少々お待ち", "お待ちください", "ちょっと待って", "待っててね", "待ってて",
@@ -800,13 +819,28 @@ mod tests {
     #[test]
     fn emergency_short_premium_and_mmi_numbers_are_never_dialed() {
         for n in ["110", "911", "112", "119", "*67#", "**21*+15550001111#", "#31#+15550001111", "123", "+19005550123", "011886912345678", "abc"] {
-            assert!(check_owner_number(n, Some("us")).is_err(), "{n}");
-            assert!(check_owner_number(n, None).is_err(), "{n}");
+            assert!(check_owner_number(n, Some("us"), "").is_err(), "{n}");
+            assert!(check_owner_number(n, None, "").is_err(), "{n}");
+            assert!(check_owner_number(n, None, "1").is_err(), "{n}");
         }
-        assert_eq!(check_owner_number("+1 555 000 1111", Some("us")).as_deref(), Ok("+15550001111"));
-        assert_eq!(check_owner_number("+15550001111", None).as_deref(), Ok("+15550001111"));
-        // Unknown SIM: a number without its country code is not guessed at.
-        assert!(check_owner_number("5550001111", None).is_err());
+        assert_eq!(check_owner_number("+1 555 000 1111", Some("us"), "").as_deref(), Ok("+15550001111"));
+        assert_eq!(check_owner_number("+15550001111", None, "").as_deref(), Ok("+15550001111"));
+        // Unknown SIM and no country of the owner's: a number without its country
+        // code is not guessed at.
+        assert!(check_owner_number("5550001111", None, "").is_err());
+    }
+
+    #[test]
+    fn sim_unknown_a_national_number_reads_as_the_owners_country() {
+        // Taiwan (the owner's country, effective_country_code 886).
+        assert_eq!(check_owner_number("0912-345-678", None, "886").as_deref(), Ok("+886912345678"));
+        // The US: ten digits.
+        assert_eq!(check_owner_number("(555) 000-1111", None, "1").as_deref(), Ok("+15550001111"));
+        // A full +number still reads as its own country's.
+        assert_eq!(check_owner_number("+886912345678", None, "1").as_deref(), Ok("+886912345678"));
+        // Emergency and short numbers stay refused.
+        assert!(check_owner_number("119", None, "886").is_err());
+        assert!(check_owner_number("0912345678", None, "abc").is_err());
     }
 
     #[test]
@@ -1042,6 +1076,33 @@ mod tests {
             assert!(is_hold_line(said) && !is_strong_hold_line(said), "weak wording, counted only after urgent words: {said}");
         }
         for said in ["Sure, what is it about?", "我知道了，等一下打給你。", "Bien sûr, de quoi s'agit-il ?", "掛號了嗎？"] {
+            assert!(!is_hold_line(said), "{said}");
+        }
+    }
+
+    #[test]
+    fn the_hold_on_line_is_found_in_vietnamese_indonesian_thai_filipino_and_cantonese() {
+        for said in [
+            "Anh đừng cúp máy nhé, tôi liên lạc với ông ấy ngay.",
+            "Anh \u{111}u\u{31b}\u{300}ng cu\u{301}p ma\u{301}y nhe\u{301}, toi lien lac ngay.",
+            "dung cup may nhe, toi lien lac ngay",
+            "Tolong jangan tutup telepon, saya segera hubungi beliau.",
+            "Jangan matikan telepon ya, sebentar saya hubungi.",
+            "อย่าเพิ่งวางสายนะคะ เดี๋ยวติดต่อเจ้าของเบอร์ให้ทันที",
+            "Huwag po ninyong ibaba ang telepono, kokontakin ko na po siya.",
+            "Wag mo munang ibaba, tatawagan ko na siya.",
+            "唔好收線呀，我即刻聯絡佢。",
+            "唔好掛電話，我而家搵佢。",
+        ] {
+            assert!(is_hold_line(said) && is_strong_hold_line(said), "{said}");
+        }
+        for said in [
+            "Xin chào, tôi có thể giúp gì cho anh?",
+            "Halo, ada yang bisa saya bantu?",
+            "สวัสดีค่ะ มีอะไรให้ช่วยไหมคะ",
+            "Magandang araw po, ano po ang maitutulong ko?",
+            "你好，請問搵邊位呀？",
+        ] {
             assert!(!is_hold_line(said), "{said}");
         }
     }

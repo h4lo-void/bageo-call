@@ -307,6 +307,13 @@ impl TgPoller {
         }
 
         let sender = query.pointer("/from/id").map(json_chat_id_string).unwrap_or_default();
+        // A group (negative chat id) with no list of who may press: nobody may.
+        // A private chat is the owner's own.
+        if self.card_senders.is_empty() && chat_id.trim().parse::<i64>().is_ok_and(|id| id < 0) {
+            warn!("telegram callback rejected sender={sender} chat_id={chat_id} task_id={task_id}: a group with no sender list");
+            answer_callback_query(http, &self.api, bot_token, callback_id, None).await;
+            return Ok(None);
+        }
         if !self.card_senders.iter().all(|l| !sender.is_empty() && l.iter().any(|u| u.trim() == sender)) {
             warn!("telegram callback rejected sender={sender} chat_id={chat_id} task_id={task_id}: not on the sender list");
             answer_callback_query(http, &self.api, bot_token, callback_id, None).await;
@@ -486,6 +493,13 @@ fn clip_message(text: &str) -> String {
     out
 }
 
+/// The text of a plain follow-up: in the owner's script, within Telegram's
+/// limit. The limit counts characters (not bytes: Chinese is three bytes
+/// each), so only a text with more than that many characters is cut.
+fn plain_body(text: &str) -> String {
+    clip_message(&crate::locale::for_owner(text.trim()))
+}
+
 /// Best-effort plain follow-up after confirm/ignore (fulfill outcome).
 pub async fn send_plain_message(
     http: &Client,
@@ -495,17 +509,12 @@ pub async fn send_plain_message(
 ) -> Result<()> {
     let token = bot_token.trim();
     let chat = chat_id.trim();
-    let mut body = crate::locale::for_owner(text.trim());
+    let body = plain_body(text);
     if token.is_empty() || chat.is_empty() {
         anyhow::bail!("telegram bot token and chat id are required");
     }
     if body.is_empty() {
         return Ok(());
-    }
-    if body.len() > MAX_MESSAGE_TEXT {
-        let keep = MAX_MESSAGE_TEXT.saturating_sub(1);
-        body = body.chars().take(keep).collect();
-        body.push('…');
     }
 
     let url = bot_method_url(token, "sendMessage");
@@ -900,6 +909,19 @@ mod tests {
     }
 
     #[test]
+    fn a_long_chinese_follow_up_is_cut_by_characters_not_bytes() {
+        // 3000 characters are 9000 bytes: well within Telegram's limit, so no ellipsis.
+        let text = "字".repeat(3000);
+        let body = plain_body(&text);
+        assert_eq!(body.chars().count(), 3000);
+        assert!(!body.ends_with('…'));
+        // Over the limit: cut to it, an ellipsis marking the cut.
+        let body = plain_body(&"字".repeat(5000));
+        assert_eq!(body.chars().count(), MAX_MESSAGE_TEXT);
+        assert!(body.ends_with('…'));
+    }
+
+    #[test]
     fn task_card_ready_respects_call_notify() {
         assert!(task_card_ready(true, "tok", "1"));
         assert!(!task_card_ready(false, "tok", "1"));
@@ -991,6 +1013,35 @@ mod tests {
         let _ = poller.poll_once(&Client::new(), "123:TEST").await.unwrap();
         assert_eq!(fake_api::sent(&seen, "getUpdates")[1]["offset"], 19);
         assert_eq!(fake_api::sent(&seen, "getMe").len(), 1);
+    }
+
+    /// A to-do card's button in a group works only for someone on the sender
+    /// list; a group with no list refuses everyone. A private chat needs none.
+    #[tokio::test]
+    async fn a_card_button_in_a_group_needs_a_sender_list() {
+        let press = |from: i64, chat: i64| {
+            json!({"ok": true, "result": [update(30, json!({"callback_query": {"id": "cb", "from": {"id": from}, "data": "t:abc-123:c", "message": {"message_id": 9, "chat": {"id": chat}}}}))]})
+        };
+        let me = json!({"ok": true, "result": {"id": 777, "is_bot": true, "username": "bageo_test_bot"}});
+        let run = |chat: i64, from: i64, list: Vec<String>| {
+            let (updates, me) = (press(from, chat), me.clone());
+            async move {
+                let (api, seen) = fake_api::serve(vec![("getMe", me.to_string()), ("getUpdates", updates.to_string())]).await;
+                let mut poller = TgPoller::with_api(&api);
+                poller.set_allowed_chat_id(&chat.to_string());
+                poller.set_card_senders(vec![list]);
+                let polled = poller.poll_once(&Client::new(), "123:TEST").await.unwrap();
+                (polled.actions.len(), fake_api::sent(&seen, "editMessageReplyMarkup").len())
+            }
+        };
+        // A group, no list: refused, the card keeps its buttons.
+        assert_eq!(run(-100, 43, vec![]).await, (0, 0));
+        // A group, the sender is on the list: done.
+        assert_eq!(run(-100, 43, vec!["43".into()]).await, (1, 1));
+        // A group, another sender: refused.
+        assert_eq!(run(-100, 44, vec!["43".into()]).await, (0, 0));
+        // A private chat, no list: as before.
+        assert_eq!(run(42, 42, vec![]).await, (1, 1));
     }
 
     #[tokio::test]

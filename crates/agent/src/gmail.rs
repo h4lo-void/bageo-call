@@ -389,14 +389,21 @@ async fn tls_upgrade(stream: TcpStream, host: &str) -> Result<tokio_rustls::clie
         .context("smtp tls handshake")
 }
 
-/// Gmail address or app password not set, in the agent's language (also what a
-/// task follow-up shows). Never include credential values in an error.
+/// Gmail address or app password not set, in the language the owner reads
+/// (`notify_language`; also what a task follow-up shows). Never include
+/// credential values in an error.
 pub fn gmail_missing_cred_msg() -> &'static str {
-    locale::phrases(locale::current()).f_gmail_missing
+    texts().f_gmail_missing
 }
 
 fn texts() -> &'static locale::Phrases {
-    locale::phrases(locale::current())
+    owner_texts(&locale::active())
+}
+
+/// What the owner reads: the language of `notify_language`, which is the AI's
+/// own unless set apart.
+fn owner_texts(active: &locale::Active) -> &'static locale::Phrases {
+    locale::phrases(active.notify_lang)
 }
 
 fn validate_gmail_user(user: &str) -> Result<&str> {
@@ -748,5 +755,12 @@ mod tests {
         assert_eq!(seen[6], "DATA\r\n");
         assert!(data.contains("\r\n..dot line\r\n"), "{data:?}");
         assert_eq!(quit, "QUIT\r\n");
+    }
+
+    #[test]
+    fn gmail_messages_are_in_the_language_the_owner_reads_not_the_one_the_ai_speaks() {
+        let active = locale::Active { lang: locale::Lang::En, notify_lang: locale::Lang::Ja, ..Default::default() };
+        assert_eq!(owner_texts(&active).f_gmail_missing, locale::phrases(locale::Lang::Ja).f_gmail_missing);
+        assert_ne!(owner_texts(&active).f_gmail_missing, locale::phrases(locale::Lang::En).f_gmail_missing);
     }
 }

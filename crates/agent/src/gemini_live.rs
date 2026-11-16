@@ -987,7 +987,7 @@ fn opening_lang_for(
 /// How a call's languages are set up ([`call_lang_plan`]): the opening line and
 /// the hints for transcribing the caller. Fixed for the whole call (its Live
 /// session, a fresh retry, the rotated and the stall sessions).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default)]
 pub struct CallLangPlan {
     /// Persona mode opens in this language, and the prompt gets the note to answer
     /// in the caller's language; `None` = the setting `language`.
@@ -995,7 +995,36 @@ pub struct CallLangPlan {
     /// `languageCodes` for the caller's speech-to-text; `None` = none, it
     /// detects the language itself.
     pub caller_stt: Option<Vec<&'static str>>,
+    /// The number is of the country of the SIM that took the call (read the way
+    /// that SIM reads it); `None` = the SIM or the number is not known. The
+    /// opening calls the number foreign only when this says another country.
+    pub sim_local: Option<bool>,
+    /// The SIM's own language (setting `sim_languages`) for a number of that SIM's
+    /// country, when it is not the setting `language`: the call's prompt, its
+    /// identity guard, the stalling prompt, the contact and appointment parts are
+    /// in it. `None` = the setting's.
+    pub prompt_lang: Option<crate::locale::Lang>,
+    /// Speech-to-text code of the language of the caller's country when the AI has
+    /// no setting for it (Thai, Russian, Arabic, Hindi: [`other_lang_stt_of_country`]):
+    /// added to the hints for the AI's own voice, which answers the caller in it.
+    pub caller_other_stt: Option<&'static str>,
 }
+
+/// Two plans set a session up the same way (a ring prewarm serves the call it
+/// picks up): the same opening, hints and prompt language. Whether the number
+/// is the SIM's own counts only with an opening in another language — only then
+/// does the opening line say so (a hidden number and a local one are the same).
+impl PartialEq for CallLangPlan {
+    fn eq(&self, other: &Self) -> bool {
+        self.opening == other.opening
+            && self.caller_stt == other.caller_stt
+            && self.prompt_lang == other.prompt_lang
+            && self.caller_other_stt == other.caller_other_stt
+            && (self.opening.is_none() || self.sim_local == other.sim_local)
+    }
+}
+
+impl Eq for CallLangPlan {}
 
 /// A call's languages, from the caller ID, the country of the SIM that took the
 /// call (`sim`, ISO 3166 alpha-2; `None` = the phone app does not say), the
@@ -1062,7 +1091,66 @@ pub fn call_lang_plan(
         Some(l) if l == lang || (l.is_zh() && lang.is_zh()) => Some(usual()),
         _ => None,
     };
-    CallLangPlan { opening, caller_stt }
+    let sim_local = match (sim, number.as_ref()) {
+        (Some(s), Some(n)) => Some(n.country == s),
+        _ => None,
+    };
+    let prompt_lang = sim_lang.filter(|l| sim_local == Some(true) && *l != lang);
+    let caller_other_stt = number
+        .as_ref()
+        .filter(|n| country_lang(n.country).is_none())
+        .and_then(|n| other_lang_stt_of_country(n.country));
+    CallLangPlan { opening, caller_stt, sim_local, prompt_lang, caller_other_stt }
+}
+
+/// Speech-to-text codes of languages the AI has no setting for but answers a
+/// caller in, written in a script of their own: Thai, Russian, Arabic, Hindi.
+const OTHER_LANG_STT: [&str; 4] = ["th-TH", "ru-RU", "ar-EG", "hi-IN"];
+
+/// The speech-to-text code of a country's main language among
+/// [`OTHER_LANG_STT`] (ISO 3166 alpha-2, any case); None for any other country.
+pub fn other_lang_stt_of_country(iso: &str) -> Option<&'static str> {
+    const ARABIC: &[&str] = &[
+        "sa", "ae", "eg", "jo", "kw", "qa", "bh", "om", "lb", "iq", "sy", "ye", "ly", "dz", "ma", "tn", "sd", "ps",
+    ];
+    let iso = iso.trim().to_ascii_lowercase();
+    match iso.as_str() {
+        "th" => Some(OTHER_LANG_STT[0]),
+        "ru" | "by" | "kz" | "kg" => Some(OTHER_LANG_STT[1]),
+        c if ARABIC.contains(&c) => Some(OTHER_LANG_STT[2]),
+        "in" => Some(OTHER_LANG_STT[3]),
+        _ => None,
+    }
+}
+
+/// Which of [`OTHER_LANG_STT`] `text` is written in, by its letters: Thai,
+/// Cyrillic, Arabic or Devanagari, the one with the most letters and at least
+/// [`OTHER_SCRIPT_MIN_LETTERS`] of them (one stray word of a speech-to-text slip,
+/// 「सात」 for 「七」, is not enough). None for anything else.
+pub fn other_script_lang(text: &str) -> Option<&'static str> {
+    let mut counts = [0usize; 4];
+    for c in text.chars().filter(|c| c.is_alphabetic()) {
+        let i = match c {
+            '\u{0E00}'..='\u{0E7F}' => 0,
+            '\u{0400}'..='\u{04FF}' => 1,
+            '\u{0600}'..='\u{06FF}' | '\u{0750}'..='\u{077F}' => 2,
+            '\u{0900}'..='\u{097F}' => 3,
+            _ => continue,
+        };
+        counts[i] += 1;
+    }
+    let (i, n) = counts.iter().copied().enumerate().max_by_key(|&(_, n)| n)?;
+    (n >= OTHER_SCRIPT_MIN_LETTERS).then(|| OTHER_LANG_STT[i])
+}
+
+/// Fewest letters of one script for [`other_script_lang`].
+const OTHER_SCRIPT_MIN_LETTERS: usize = 6;
+
+/// The call was held in a language the AI has no setting for: its dialogue
+/// tells no language of the nine ([`dialogue_lang`] is None) but is written in
+/// Thai, Cyrillic, Arabic or Devanagari ([`other_script_lang`]).
+pub(crate) fn dialogue_in_other_language(dialogue: &str, owner: crate::locale::Lang) -> bool {
+    dialogue_lang(dialogue, owner).is_none() && other_script_lang(dialogue).is_some()
 }
 
 /// Speech-to-text codes of `langs`, in order, each once.
@@ -1208,10 +1296,24 @@ fn without_other_script(text: &str) -> Option<String> {
 }
 
 /// The opening instruction; `opening` = the call's opening language when it is
-/// not the setting's ([`call_lang_plan`]).
-fn persona_kick_client_content(opening: Option<crate::locale::Lang>) -> String {
+/// not the setting's ([`call_lang_plan`]). `from_abroad`: the number is from
+/// another country than the SIM that took the call — only then does the
+/// instruction say so (a US number on a US SIM set to English is a local call).
+fn persona_kick_client_content(opening: Option<crate::locale::Lang>, from_abroad: bool) -> String {
     let active = crate::locale::active();
-    crate::prompts::client_turn(&crate::prompts::kick_open(active.lang, active.assistant, opening))
+    crate::prompts::client_turn(&crate::prompts::kick_open_call(active.lang, active.assistant, opening, from_abroad))
+}
+
+/// Whether the opening line calls the number foreign: only with an opening in
+/// another language than the setting's, and only for a number of another
+/// country than the SIM's ([`CallLangPlan::sim_local`]). SIM or number unknown:
+/// `carrier_warning` (the carrier's international-call warning is due).
+fn opening_from_abroad(
+    opening: Option<crate::locale::Lang>,
+    sim_local: Option<bool>,
+    carrier_warning: impl FnOnce() -> bool,
+) -> bool {
+    opening.is_some() && sim_local.map_or_else(carrier_warning, |local| !local)
 }
 
 /// The AI's own call-back (an appointment's answer): nothing is asked for while
@@ -1699,6 +1801,7 @@ pub fn callback_lang_plan(spoken: crate::locale::Lang, setting: crate::locale::L
     CallLangPlan {
         opening: Some(spoken).filter(|l| *l != setting),
         caller_stt: Some(stt_codes(&[spoken, crate::locale::Lang::En])),
+        ..Default::default()
     }
 }
 
@@ -1946,11 +2049,38 @@ fn stt_errand_config(opening: Option<crate::locale::Lang>, active: &crate::local
 /// each. Fixed, whatever the caller's side does: left to detect the language
 /// itself, a short 「掰掰」 of ours came out in Latin letters or as Korean, and
 /// the AI's own goodbye went unnoticed.
-fn stt_ai_config(opening: Option<crate::locale::Lang>) -> Value {
+/// `extra`: a language the AI has no setting for that the caller speaks
+/// ([`CallLangPlan::caller_other_stt`]): the AI answers in it, and its goodbye in
+/// Thai, Russian, Arabic or Hindi must come back in that script to be noticed.
+fn stt_ai_config(opening: Option<crate::locale::Lang>, extra: Option<&'static str>) -> Value {
+    json!({ "languageCodes": stt_ai_codes(opening, extra) })
+}
+
+/// The codes of [`stt_ai_config`].
+fn stt_ai_codes(opening: Option<crate::locale::Lang>, extra: Option<&'static str>) -> Vec<&'static str> {
     let own = crate::locale::current();
     let langs: Vec<crate::locale::Lang> = opening.into_iter().chain([own]).collect();
-    json!({ "languageCodes": stt_codes(&langs) })
+    let mut codes = stt_codes(&langs);
+    if let Some(e) = extra.filter(|e| !codes.contains(e)) {
+        codes.push(e);
+    }
+    codes
 }
+
+/// `setup` with `codes` as the hints for the AI's own voice (a rotated session,
+/// once the caller turned out to speak another language).
+fn with_ai_stt_codes(setup: &Value, codes: &[&'static str]) -> Value {
+    let mut s = setup.clone();
+    if let Some(o) = s.pointer_mut("/setup").and_then(|x| x.as_object_mut()) {
+        o.insert("outputAudioTranscription".into(), json!({ "languageCodes": codes }));
+    }
+    s
+}
+
+/// The caller turned out to speak Thai, Russian, Arabic or Hindi
+/// ([`other_script_lang`]) and the AI's hints lack it: the session rotates at
+/// the next pause to add it, at the latest this long after.
+const AI_STT_ROTATE_FORCE: Duration = Duration::from_secs(30);
 
 /// Live lookup of the caller's number and saved-contact label for `stall_review`.
 #[derive(Clone)]
@@ -2107,12 +2237,18 @@ fn call_system_prompt(
     }
 }
 
-/// The system prompt a Live session gets: the stored one plus the note to answer
-/// in the caller's language, on every call (not only on calls that open in
-/// another language): a foreign caller on a local or hidden number was answered
-/// in Chinese. Unchanged when the note is there already.
-fn session_prompt(prompt: &str) -> String {
-    crate::prompts::with_caller_language_note(prompt, crate::locale::current())
+/// The system prompt a Live session gets. A call that came in keeps its own
+/// prompt: it has the note to answer in the caller's language exactly when the
+/// setting `reply_in_caller_language` is on (`prompts::build`), so switching it
+/// off takes the note away. The calls the phone dials (an errand, a call-back)
+/// get the note on every call, as before. Unchanged when the note is there already.
+fn session_prompt(prompt: &str, outbound: Outbound) -> String {
+    match outbound {
+        Outbound::Incoming => prompt.to_string(),
+        Outbound::CallBack | Outbound::Errand => {
+            crate::prompts::with_caller_language_note(prompt, crate::locale::current())
+        }
+    }
 }
 
 /// Distinct caller keywords → score; ≥ this marks the call as sales/scam…
@@ -2921,8 +3057,10 @@ pub(crate) fn merge_dialogue_fragments(transcript: &str) -> String {
             _ => runs.push((label, text.trim_start().to_string())),
         }
     }
+    // Put into the owner's reading form once the line is whole: a Japanese
+    // 「失礼」 fragment is only known to be Japanese once its 「します」 has joined it.
     runs.into_iter()
-        .map(|(l, t)| (l, strip_stt_markers(&t)))
+        .map(|(l, t)| (l, crate::locale::for_owner(&strip_stt_markers(&t))))
         .filter(|(_, t)| !t.is_empty())
         .map(|(l, t)| format!("{l}：{t}"))
         .collect::<Vec<_>>()
@@ -3460,8 +3598,7 @@ fn ends_as_question(text: &str) -> bool {
 }
 
 /// The caller's words with the piece that just came at their end. The window
-/// skips a short piece it already holds (`push_tx_window`): 「嗎？」 after an
-/// earlier question never got to its end.
+/// skips a longer piece it already ends with (`push_tx_window`).
 fn with_latest<'a>(window: &'a str, latest: &str) -> std::borrow::Cow<'a, str> {
     let piece = latest.trim();
     if piece.is_empty() || window.trim_end().ends_with(piece) {
@@ -4138,11 +4275,13 @@ fn push_tx_window(window: &mut String, piece: &str, cap: usize) {
     if piece.is_empty() {
         return;
     }
-    // Cumulative full-text updates often re-send the same prefix — avoid dup bloat.
-    if window.ends_with(piece) || window.contains(piece) && piece.chars().count() < 4 {
+    // A longer piece sent again whole is a re-send. A short one is new words,
+    // even when the same: 「掰」+「掰」, 「爸」+「爸」, 「…失礼し」+「ます」.
+    if piece.chars().count() >= 4 && window.ends_with(piece) {
         return;
     }
-    if piece.contains(window.as_str()) && !window.is_empty() {
+    // A cumulative update (longer, holding all so far) replaces the window.
+    if piece.len() > window.len() && piece.contains(window.as_str()) && !window.is_empty() {
         *window = piece.to_string();
         return;
     }
@@ -4355,7 +4494,7 @@ pub async fn run_session(
     let outbound = Outbound::of(callback, errand.is_some());
     let opening_lang = lang_plan.opening.filter(|_| persona);
     let stall = stall.filter(|_| persona).map(|mut c| {
-        c.system_prompt = session_prompt(c.system_prompt.as_str());
+        c.system_prompt = session_prompt(c.system_prompt.as_str(), outbound);
         c
     });
     // Appointments: persona calls only (setting `appointment_mode`).
@@ -4398,7 +4537,7 @@ pub async fn run_session(
     let hangup_delay_ms = goodbye_hangup_delay_ms.clamp(200, 15_000);
     // The stored prompt stays as it is; appointments add their part after it
     // (with the current local time), and the tools.
-    let base_prompt = session_prompt(system_prompt);
+    let base_prompt = session_prompt(system_prompt, outbound);
     let system_prompt = call_system_prompt(&base_prompt, appt.as_ref(), chrono::Local::now());
     let thinking = live_thinking_level(model, thinking_level);
     // Low-latency turn-taking: high EOU sensitivity + short silence.
@@ -4425,7 +4564,7 @@ pub async fn run_session(
                 // from abroad gets their own language first (or auto-detect).
                 // An appointment's call-back: no vocabulary for its callee (Outbound::other_side_stt).
                 "inputAudioTranscription": outbound.other_side_stt(lang_plan.caller_stt.as_deref(), lang_plan.opening, &crate::locale::active()),
-                "outputAudioTranscription": stt_ai_config(opening_lang),
+                "outputAudioTranscription": stt_ai_config(opening_lang, lang_plan.caller_other_stt),
                 "realtimeInputConfig": realtime_input_config(server_vad)
             }
         });
@@ -4567,7 +4706,12 @@ pub async fn run_session(
     } else if callback {
         callback_kick_client_content()
     } else if persona {
-        persona_kick_client_content(opening_lang)
+        // Said to be from abroad only when the number is of another country than
+        // the SIM's (CallLangPlan::sim_local); a SIM's own language is no foreign
+        // call. SIM unknown: when the carrier's international-call warning is due
+        // (expects_carrier_intl_prompt).
+        let from_abroad = opening_from_abroad(opening_lang, lang_plan.sim_local, || intl_caller());
+        persona_kick_client_content(opening_lang, from_abroad)
     } else {
         greets_kick_client_content_for(&owner_status)
     };
@@ -4916,6 +5060,10 @@ pub async fn run_session(
     };
     // Everything the caller said (input STT), for the carrier-prompt check.
     let mut caller_text_all = String::new();
+    // Hints for the AI's own voice. A caller found to speak Thai, Russian, Arabic or
+    // Hindi adds theirs; the next rotated session carries it (`ai_stt_grown`).
+    let mut ai_stt_codes = stt_ai_codes(opening_lang, lang_plan.caller_other_stt);
+    let mut ai_stt_grown = false;
     // An errand call: the other side has spoken a script none of the AI's
     // languages use (then the AI may speak it too).
     let mut caller_other_script = false;
@@ -5379,6 +5527,14 @@ pub async fn run_session(
                         &fresh_setup
                     }
                     (None, None) => &setup,
+                };
+                // The caller's language the AI's hints lacked (ai_stt_codes).
+                let stt_setup;
+                let next_setup = if ai_stt_grown {
+                    stt_setup = with_ai_stt_codes(next_setup, &ai_stt_codes);
+                    &stt_setup
+                } else {
+                    next_setup
                 };
                 let opened = match tokio::time::timeout(
                     Duration::from_secs(10),
@@ -6629,6 +6785,22 @@ pub async fn run_session(
                                     push_tx_window(&mut in_tx_window, s, 800);
                                     push_tx_window(&mut caller_text_all, s, 400);
                                     push_tx_window(&mut caller_recent, s, 400);
+                                    // The caller speaks a language the AI's own
+                                    // speech-to-text has no hint for: its goodbye in
+                                    // it would go unnoticed. Added at the next pause.
+                                    if persona && !callback {
+                                        if let Some(code) = other_script_lang(&caller_text_all).filter(|c| !ai_stt_codes.contains(c)) {
+                                            ai_stt_codes.push(code);
+                                            ai_stt_grown = true;
+                                            if rotate_due.is_none() {
+                                                rotate_due = Some(tokio::time::Instant::now() + AI_STT_ROTATE_FORCE);
+                                            }
+                                            info!(
+                                                "Caller speaks {code} serial={serial} — the AI's speech-to-text gets it at the next pause (now {})",
+                                                ai_stt_codes.join(",")
+                                            );
+                                        }
+                                    }
                                     if let Some(ctl) = urgent_ctl.as_ref() {
                                         if ctl.hold_said_at().is_none()
                                             && is_urgent_whitelist_turn(&in_tx_window)
@@ -8035,10 +8207,9 @@ fn append_transcriptions(v: &Value, transcript_out: &Option<Arc<std::sync::Mutex
             // The STT starts a new word with a space; it is kept so the merged
             // line keeps word spaces (Korean, accented Latin): see join_fragment.
             let gap = if lead && t.chars().next().is_some_and(|c| !is_cjk(c)) { " " } else { "" };
-            pieces.push(format!(
-                "{label}：{gap}{}",
-                crate::zh_tw::to_tw(&t)
-            ));
+            // As heard: the owner's reading form is applied once the fragments
+            // are joined into lines (merge_dialogue_fragments).
+            pieces.push(format!("{label}：{gap}{t}"));
         }
     }
     if pieces.is_empty() {
@@ -8544,8 +8715,8 @@ mod tests {
         assert!(caller_withdraws_bye("那就先這樣嗎？", "嗎？"));
         assert!(caller_wraps_up("Okay, that's all"));
         assert!(caller_withdraws_bye("Okay, that's all for today, right?", " for today, right?"));
-        assert!(caller_wraps_up("それでは"));
-        assert!(caller_withdraws_bye("それではよろしいでしょうか？", "よろしいでしょうか？"));
+        assert!(caller_wraps_up("以上です"));
+        assert!(caller_withdraws_bye("以上ですよね？", "よね？"));
         // An "mm" after the goodbye, or more goodbye words, take nothing back.
         assert!(!caller_withdraws_bye("好，那就先這樣，謝謝。好的", "好的"));
         assert!(!caller_withdraws_bye("Okay, that's all. Mm", "Mm"));
@@ -8959,22 +9130,102 @@ mod tests {
 
     #[test]
     fn every_call_may_switch_to_the_callers_language() {
-        // A foreign caller on a local or hidden number got Chinese: the note goes into
-        // every session's prompt, not only calls that open in another language.
+        // The setting `reply_in_caller_language` on: the call's prompt carries the note
+        // (prompts::build), once.
         let p = persona_system_prompt("", false, "", StallPrompt::Off);
-        let s = session_prompt(&p);
+        let s = crate::prompts::with_caller_language_note(&p, crate::locale::Lang::ZhTw);
         assert!(s.contains("【對方講別的語言】") && s.contains("問你能不能講某種語言"), "{s}");
-        assert_eq!(session_prompt(&s), s, "once");
+        assert_eq!(session_prompt(&s, Outbound::Incoming), s, "once");
+        // The calls the phone dials still get it on every call.
+        assert_eq!(session_prompt(&p, Outbound::Errand), s);
+        assert_eq!(session_prompt(&s, Outbound::CallBack), s, "once");
         let base = default_persona_prompt();
         assert!(!base.contains("不要講英文") && base.contains("對方講中文時不要夾英文"));
         assert!(base.contains(PERSONA_LANGUAGE_LINE));
         // A custom prompt keeps its words; the note goes before the fixed guard.
-        let c = session_prompt(&persona_system_prompt("你是我，只講中文。", false, "", StallPrompt::Off));
+        let c = session_prompt(&persona_system_prompt("你是我，只講中文。", false, "", StallPrompt::Off), Outbound::Errand);
         assert!(c.starts_with("你是我，只講中文。") && c.contains("【對方講別的語言】"));
         assert!(c.ends_with(&PERSONA_GUARD.replace("{owner}", "機主")));
         // Asked for personal details or a code: none given, none made up.
         assert!(c.contains("身分證字號") && c.contains("驗證碼") && c.contains("不要給、也不要編"));
         assert!(!c.contains("我這邊先幫他接"));
+    }
+
+    #[test]
+    fn reply_in_callers_language_off_adds_no_switch_note_to_a_call_that_came_in() {
+        // Setting off: the prompt built for the call has no note, and the session
+        // does not add one (it did on every call, so the switch could not be turned off).
+        let off = persona_system_prompt("", false, "", StallPrompt::Off);
+        assert!(!off.contains("【對方講別的語言】"));
+        assert_eq!(session_prompt(&off, Outbound::Incoming), off);
+        let custom = persona_system_prompt("你是我，只講中文。", false, "", StallPrompt::Off);
+        assert!(!session_prompt(&custom, Outbound::Incoming).contains("【對方講別的語言】"));
+        let stall = persona_system_prompt("", false, "", StallPrompt::Full);
+        assert!(!session_prompt(&stall, Outbound::Incoming).contains("【對方講別的語言】"));
+    }
+
+    #[test]
+    fn short_repeated_pieces_are_kept_in_the_window() {
+        let mut w = String::new();
+        push_tx_window(&mut w, "掰", 400);
+        push_tx_window(&mut w, "掰", 400);
+        assert_eq!(w, "掰掰");
+        let mut w = String::new();
+        push_tx_window(&mut w, "爸", 400);
+        push_tx_window(&mut w, "爸", 400);
+        assert_eq!(w, "爸爸");
+        let mut w = String::new();
+        push_tx_window(&mut w, "お願いします。", 400);
+        push_tx_window(&mut w, "それでは失礼し", 400);
+        push_tx_window(&mut w, "ます", 400);
+        assert!(w.ends_with("それでは失礼します"), "{w}");
+        assert!(crate::locale::ends_with_farewell(&w, 2), "{w}");
+        // A longer piece sent again whole is not doubled; a cumulative update replaces.
+        let mut w = String::new();
+        push_tx_window(&mut w, "好，那就先這樣", 400);
+        push_tx_window(&mut w, "好，那就先這樣", 400);
+        assert_eq!(w, "好，那就先這樣");
+        push_tx_window(&mut w, "好，那就先這樣，掰掰", 400);
+        assert_eq!(w, "好，那就先這樣，掰掰");
+    }
+
+    #[test]
+    fn transcript_lines_are_put_into_traditional_only_once_whole() {
+        // Unset settings (tests): the owner reads Traditional Chinese.
+        let t = Some(Arc::new(std::sync::Mutex::new(String::new())));
+        for piece in ["失礼", "します"] {
+            append_transcriptions(&json!({"serverContent": {"inputTranscription": {"text": piece}}}), &t);
+        }
+        for piece in ["电话", "番号"] {
+            append_transcriptions(&json!({"serverContent": {"outputTranscription": {"text": piece}}}), &t);
+        }
+        let merged = merge_dialogue_fragments(&t.as_ref().unwrap().lock().unwrap());
+        assert_eq!(merged, "對方：失礼します\n接聽：電話番號");
+        assert_eq!(merge_dialogue_fragments("對方：我这边\n對方：是管理室"), "對方：我這邊是管理室");
+    }
+
+    #[test]
+    fn the_opening_says_from_abroad_only_for_a_number_from_another_country() {
+        // The plan says whether the number is of the SIM's country; with an opening
+        // in another language, only a number of another country is called foreign.
+        use crate::locale::Lang;
+        let never = || -> bool { panic!("the SIM is known: no carrier check") };
+        assert!(!opening_from_abroad(Some(Lang::En), Some(true), never));
+        assert!(opening_from_abroad(Some(Lang::En), Some(false), never));
+        assert!(!opening_from_abroad(None, Some(false), never));
+        // SIM unknown: the carrier's warning decides, as before.
+        assert!(opening_from_abroad(Some(Lang::En), None, || true));
+        assert!(!opening_from_abroad(Some(Lang::En), None, || false));
+        let text = |opening, abroad| -> String {
+            let k: Value = serde_json::from_str(&persona_kick_client_content(opening, abroad)).unwrap();
+            k.pointer("/clientContent/turns/0/parts/0/text").unwrap().as_str().unwrap().to_string()
+        };
+        // A US number on a US SIM set to English: English, not a foreign call.
+        let home = text(Some(crate::locale::Lang::En), false);
+        assert!(home.contains("改用英文") && home.contains("「Hello?」") && !home.contains("國外號碼"), "{home}");
+        let abroad = text(Some(crate::locale::Lang::En), true);
+        assert!(abroad.contains("改用英文") && abroad.contains("國外號碼"), "{abroad}");
+        assert_eq!(text(None, true), text(None, false));
     }
 
     #[test]
@@ -9807,6 +10058,12 @@ mod tests {
         let plan = |opening: Option<Lang>, caller_stt: Option<Vec<&'static str>>| CallLangPlan {
             opening,
             caller_stt,
+            ..Default::default()
+        };
+        // The opening and the caller's hints only (the other parts: own test).
+        let call_lang_plan = |caller: &str, sim: Option<&str>, lang: Lang, home: &str, langs: &BTreeMap<String, String>| {
+            let p = super::call_lang_plan(caller, sim, lang, home, langs);
+            CallLangPlan { opening: p.opening, caller_stt: p.caller_stt, ..Default::default() }
         };
         let usual_tw = || hints(&["zh-TW", "en-US"]);
         // Taiwan SIM, Traditional Chinese. A US number (as reported in a real call that
@@ -9902,15 +10159,80 @@ mod tests {
     }
 
     #[test]
+    fn the_ais_own_voice_gets_the_callers_other_language() {
+        // A caller of a country whose language the AI has no setting for: the AI's
+        // own voice gets that language too, once.
+        assert_eq!(stt_ai_config(None, Some("th-TH"))["languageCodes"], json!(["zh-TW", "th-TH"]));
+        assert_eq!(stt_ai_config(None, Some("zh-TW"))["languageCodes"], json!(["zh-TW"]));
+        let s = with_ai_stt_codes(&json!({"setup": {"model": "m"}}), &["zh-TW", "ru-RU"]);
+        assert_eq!(s.pointer("/setup/outputAudioTranscription/languageCodes"), Some(&json!(["zh-TW", "ru-RU"])));
+        assert_eq!(s.pointer("/setup/model"), Some(&json!("m")));
+    }
+
+    #[test]
+    fn call_plan_knows_a_sims_own_number_its_language_and_other_languages() {
+        use crate::locale::Lang;
+        use std::collections::BTreeMap;
+        let none: BTreeMap<String, String> = BTreeMap::new();
+        let us_en: BTreeMap<String, String> = [("us".to_string(), "en".to_string())].into_iter().collect();
+        // A US SIM set to English in a Chinese setup: a US number is the SIM's own
+        // and the whole call's prompt is in English…
+        let us = call_lang_plan("(202) 555-0143", Some("us"), Lang::ZhTw, "886", &us_en);
+        assert_eq!((us.sim_local, us.prompt_lang), (Some(true), Some(Lang::En)));
+        // …a Japanese number on it is not (its own opening, the setting's prompt).
+        let jp = call_lang_plan("+81312345678", Some("us"), Lang::ZhTw, "886", &us_en);
+        assert_eq!((jp.sim_local, jp.prompt_lang), (Some(false), None));
+        // No language for the SIM, or the setting's own: the setting's prompt.
+        let tw = call_lang_plan("0912345678", Some("tw"), Lang::ZhTw, "886", &none);
+        assert_eq!((tw.sim_local, tw.prompt_lang, tw.caller_other_stt), (Some(true), None, None));
+        assert_eq!(call_lang_plan("2025550143", Some("us"), Lang::En, "1", &us_en).prompt_lang, None);
+        // SIM or number unknown: not known to be local.
+        assert_eq!(call_lang_plan("0912345678", None, Lang::ZhTw, "886", &none).sim_local, None);
+        assert_eq!(call_lang_plan("", Some("us"), Lang::ZhTw, "886", &us_en).prompt_lang, None);
+        // Thai, Russian, Arabic and Indian numbers: their language for the AI's own voice.
+        for (n, code) in [
+            ("+66812345678", Some("th-TH")),
+            ("+79161234567", Some("ru-RU")),
+            ("+966501234567", Some("ar-EG")),
+            ("+201001234567", Some("ar-EG")),
+            ("+919812345678", Some("hi-IN")),
+            ("+84912345678", None),
+            ("+12025550143", None),
+            ("+81312345678", None),
+        ] {
+            assert_eq!(call_lang_plan(n, Some("tw"), Lang::ZhTw, "886", &none).caller_other_stt, code, "{n}");
+        }
+        // An AI call-back keeps none of it.
+        let cb = callback_lang_plan(Lang::Ja, Lang::ZhTw);
+        assert_eq!((cb.sim_local, cb.prompt_lang, cb.caller_other_stt), (None, None, None));
+    }
+
+    #[test]
+    fn thai_russian_arabic_and_hindi_are_told_by_their_letters() {
+        assert_eq!(other_script_lang("สวัสดีค่ะ อยากจองโต๊ะค่ะ"), Some("th-TH"));
+        assert_eq!(other_script_lang("Здравствуйте, я хотел бы записаться"), Some("ru-RU"));
+        assert_eq!(other_script_lang("مرحبا، أريد حجز موعد"), Some("ar-EG"));
+        assert_eq!(other_script_lang("नमस्ते, मुझे अपॉइंटमेंट चाहिए"), Some("hi-IN"));
+        // A stray word of a speech-to-text slip is not enough; the nine are none of them.
+        assert_eq!(other_script_lang("我們訂सात點"), None);
+        assert_eq!(other_script_lang("喂？你好，請問哪位？ Hello, bonjour, 네, はい"), None);
+        // A dialogue in one of them with no line of the nine.
+        let thai = "對方：สวัสดีค่ะ อยากจองโต๊ะพรุ่งนี้ค่ะ\n接聽：ได้ค่ะ กี่โมงคะ";
+        assert!(dialogue_in_other_language(thai, crate::locale::Lang::ZhTw));
+        assert!(!dialogue_in_other_language("對方：你好，我想預約明天下午\n接聽：好，幾點？", crate::locale::Lang::ZhTw));
+        assert!(!dialogue_in_other_language("對方：喂？\n接聽：喂？", crate::locale::Lang::ZhTw));
+    }
+
+    #[test]
     fn caller_stt_hints_or_auto_detect() {
         // The AI's own voice: the opening language and the setting's (unset in tests:
         // zh-TW), once each — never left to detect, whatever the caller's side does
         // (a short 「掰掰」 of ours came out in Latin letters or Korean).
         use crate::locale::Lang;
-        assert_eq!(stt_ai_config(None)["languageCodes"], json!(["zh-TW"]));
-        assert_eq!(stt_ai_config(Some(Lang::En))["languageCodes"], json!(["en-US", "zh-TW"]));
-        assert_eq!(stt_ai_config(Some(Lang::Ja))["languageCodes"], json!(["ja-JP", "zh-TW"]));
-        assert_eq!(stt_ai_config(Some(Lang::ZhTw))["languageCodes"], json!(["zh-TW"]));
+        assert_eq!(stt_ai_config(None, None)["languageCodes"], json!(["zh-TW"]));
+        assert_eq!(stt_ai_config(Some(Lang::En), None)["languageCodes"], json!(["en-US", "zh-TW"]));
+        assert_eq!(stt_ai_config(Some(Lang::Ja), None)["languageCodes"], json!(["ja-JP", "zh-TW"]));
+        assert_eq!(stt_ai_config(Some(Lang::ZhTw), None)["languageCodes"], json!(["zh-TW"]));
         let codes: &[&'static str] = &["en-US", "zh-TW"];
         let hinted = stt_caller_config(Some(codes));
         assert_eq!(hinted["languageCodes"], json!(["en-US", "zh-TW"]));
@@ -10223,13 +10545,13 @@ mod tests {
 
     #[test]
     fn persona_kick_and_wrap_up_payloads() {
-        let k: Value = serde_json::from_str(&persona_kick_client_content(None)).unwrap();
+        let k: Value = serde_json::from_str(&persona_kick_client_content(None, false)).unwrap();
         let t = k.pointer("/clientContent/turns/0/parts/0/text").unwrap().as_str().unwrap();
         assert!(t.contains("喂"));
         assert!(!t.contains("AI 助理"));
         // A caller from the US: 「Hello?」, with the instruction still in Chinese.
         let k: Value =
-            serde_json::from_str(&persona_kick_client_content(Some(crate::locale::Lang::En))).unwrap();
+            serde_json::from_str(&persona_kick_client_content(Some(crate::locale::Lang::En), true)).unwrap();
         let t = k.pointer("/clientContent/turns/0/parts/0/text").unwrap().as_str().unwrap();
         assert!(t.contains("「Hello?」") && t.contains("改用英文") && t.contains("國外號碼"), "{t}");
         let w: Value = serde_json::from_str(&persona_wrap_up_client_content()).unwrap();

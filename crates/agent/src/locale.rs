@@ -190,14 +190,53 @@ pub fn parse_name_fixes(lines: &[String]) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Apply name corrections to a text.
+/// Apply name corrections to a text. In a language written with spaces a name
+/// is replaced as a whole word only ("Jon" → "John" leaves "Jones" alone);
+/// Chinese, Japanese and Korean, whose names run into the next word, as before.
 pub fn fix_names_with(text: &str, fixes: &[(String, String)]) -> String {
     let mut out = text.to_string();
     for (wrong, right) in fixes {
         if out.contains(wrong.as_str()) {
-            out = out.replace(wrong.as_str(), right);
+            out = replace_name(&out, wrong, right);
         }
     }
+    out
+}
+
+/// Han, kana or Hangul: no word boundary is needed around a name in them.
+fn runs_into_words(c: char) -> bool {
+    matches!(c as u32,
+        0x1100..=0x11FF | 0x3040..=0x30FF | 0x3130..=0x318F | 0x31F0..=0x31FF
+        | 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xAC00..=0xD7AF | 0xF900..=0xFAFF)
+}
+
+/// A letter or digit of a language written with spaces between words.
+fn word_char(c: char) -> bool {
+    c.is_alphanumeric() && !runs_into_words(c)
+}
+
+/// `text` with `wrong` replaced by `right` where it is a whole word: its first
+/// (last) letter, when of a spaced language, may not follow (precede) another one.
+fn replace_name(text: &str, wrong: &str, right: &str) -> String {
+    let check_start = wrong.chars().next().is_some_and(word_char);
+    let check_end = wrong.chars().next_back().is_some_and(word_char);
+    if !check_start && !check_end {
+        return text.replace(wrong, right);
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut last = 0;
+    for (i, _) in text.match_indices(wrong) {
+        let end = i + wrong.len();
+        let joined_before = check_start && text[..i].chars().next_back().is_some_and(word_char);
+        let joined_after = check_end && text[end..].chars().next().is_some_and(word_char);
+        if joined_before || joined_after {
+            continue;
+        }
+        out.push_str(&text[last..i]);
+        out.push_str(right);
+        last = end;
+    }
+    out.push_str(&text[last..]);
     out
 }
 
@@ -1226,8 +1265,8 @@ static JA: Phrases = Phrases {
     wrapups: &[
         "以上です", "それだけです", "また連絡します", "またご連絡します", "またかけます",
         "かけ直します", "掛け直します",
-        // 「それでは」 also opens the AI's own sentences: the caller's side only.
-        "それでは",
+        // Not 「それでは」 alone: it opens what comes next too (「それでは伝言です」).
+        // 「それでは失礼します」「それではまた」 end on their own farewells.
         // Alone, 「よろしくお願いします」 also ends a caller's introduction at the
         // start of a business call: only after 「では」 does it close one.
         "ではよろしくお願いいたします", "ではよろしくお願いします", "じゃあよろしくお願いします",
@@ -2080,6 +2119,9 @@ const THANKS: &[&str] = &[
     "謝謝您", "謝謝你", "謝謝妳", "謝謝", "谢谢您", "谢谢你", "谢谢", "感謝您", "感謝你", "感謝",
     "感谢您", "感谢你", "感谢", "多謝", "多谢",
     "cảm ơn", "cám ơn", "terima kasih", "makasih",
+    "большое спасибо", "спасибо",
+    "شكرا جزيلا", "شكراً جزيلاً", "شكرا لك", "شكراً لك", "شكرا", "شكراً",
+    "बहुत धन्यवाद", "बहुत शुक्रिया", "धन्यवाद", "शुक्रिया",
 ];
 
 fn is_latin_letter(c: char) -> bool {
@@ -2178,18 +2220,31 @@ fn zh_asks_to_hold(text: &str) -> bool {
     })
 }
 
-// Goodbyes of callers who speak a language the AI has no phrase set for:
-// Vietnamese, Thai, Indonesian. [`ends_with_farewell`] checks them next to the
-// nine languages' own lists.
+// Goodbyes in languages the AI has no phrase set for but answers a caller in:
+// Vietnamese, Thai, Indonesian, Russian, Arabic, Hindi. [`ends_with_farewell`]
+// checks them next to the nine languages' own lists — for the caller's words and
+// for the AI's own (its goodbye in the caller's language starts the wait to hang up).
 
-/// Vietnamese and Indonesian goodbyes, whole words near the end. Vietnamese
-/// also without its tone marks: speech-to-text sometimes drops them.
+/// Vietnamese, Indonesian, Russian, Arabic and Hindi goodbyes, whole words near
+/// the end. Vietnamese also without its tone marks: speech-to-text sometimes
+/// drops them. Arabic with and without its hamza and tanween, as speech-to-text
+/// writes it either way.
 const EXTRA_WORD_FAREWELLS: &[&str] = &[
     "tạm biệt", "tam biet", "hẹn gặp lại", "hen gap lai", "chào nhé", "chao nhe",
     // "That's it then": how many Vietnamese calls end.
     "thế nhé", "vậy nhé", "thôi nhé", "thoi nhe", "bye nhé", "bye nhe",
     "sampai jumpa", "sampai ketemu", "selamat tinggal", "dadah", "daah",
     "sampai nanti", "sudah dulu ya", "udah dulu ya", "segitu dulu ya",
+    // Russian: "goodbye", "all the best", "have a good day", "see you", "bye-bye".
+    "до свидания", "до свиданья", "всего доброго", "всего хорошего", "хорошего дня",
+    "хорошего вечера", "до встречи", "до связи", "пока пока",
+    // Arabic: "with safety", "until we meet", "in God's safety", "farewell", "a happy day".
+    "مع السلامة", "مع السلامه", "إلى اللقاء", "الى اللقاء", "إلي اللقاء", "في أمان الله",
+    "في امان الله", "وداعا", "وداعاً", "يوما سعيدا", "يوماً سعيداً", "باي باي",
+    // Hindi: "farewell", "we'll meet again", "talk later", "have a good day", "bye-bye"
+    // (also in Latin letters, as speech-to-text writes it at times).
+    "अलविदा", "फिर मिलेंगे", "फिर मिलते हैं", "फिर बात करते हैं", "बाद में बात करते हैं",
+    "आपका दिन शुभ हो", "बाय बाय", "alvida", "phir milenge", "phir milte hain",
 ];
 
 /// A goodbye that also opens calls: "chào anh", "selamat pagi", "sawasdee ka".
@@ -2250,6 +2305,28 @@ const GREETING_BYES: &[GreetingBye] = &[
             "thank you",
         ],
     },
+    // Russian "bye" (пока) is also "while / for now" (「Я пока не знаю」): only as
+    // the last words, right after a closing cue ("Ладно, спасибо, пока!").
+    GreetingBye {
+        heads: &["пока"],
+        tail: &["всем", "тебе", "вам"],
+        closing_tail: &[],
+        cues: &[
+            "спасибо", "всё", "все", "ладно", "хорошо", "давай", "давайте", "ну", "ок", "окей", "ok",
+            "okay", "thanks", "thank you",
+        ],
+    },
+    // Hindi "hello / goodbye" (नमस्ते, नमस्कार) and "bye" (बाय): a goodbye only
+    // right after thanks or "okay" ("धन्यवाद, नमस्ते").
+    GreetingBye {
+        heads: &["नमस्ते", "नमस्कार", "बाय"],
+        tail: &["जी"],
+        closing_tail: &[],
+        cues: &[
+            "धन्यवाद", "शुक्रिया", "ठीक है", "अच्छा", "ok", "okay", "thanks", "thank you", "dhanyavaad",
+            "shukriya",
+        ],
+    },
 ];
 
 impl GreetingBye {
@@ -2308,7 +2385,9 @@ fn has_cue(ws: &[String], cue: &str) -> bool {
 const TH_FAREWELLS: &[&str] = &[
     "ลาก่อน", "บ๊ายบาย", "บายบาย", "บ๊ายบ๊าย",
     // "Talk again later", "that's all for now".
-    "ไว้คุยกันใหม่", "ไว้ค่อยคุยกัน", "แค่นี้ก่อน",
+    "ไว้คุยกันใหม่", "ไว้ค่อยคุยกัน", "แค่นี้ก่อน", "แล้วคุยกันใหม่", "แล้วค่อยคุยกัน",
+    // "Good luck", "have a good day": how the AI's own Thai calls end.
+    "โชคดี", "ขอให้มีวันที่ดี",
 ];
 /// Thai "hello / goodbye" (สวัสดีค่ะ), also as Chinese speech-to-text writes it:
 /// a goodbye only right after one of [`TH_CUES`] (see [`thai_cue_window`]).
@@ -2483,6 +2562,53 @@ mod tests {
     use super::*;
 
     #[test]
+    fn goodbyes_in_thai_russian_arabic_and_hindi_end_the_call() {
+        // The AI's own goodbye (no words may follow it) and the caller's.
+        for bye in [
+            "ขอบคุณมากค่ะ สวัสดีค่ะ",
+            "โชคดีนะคะ",
+            "แล้วคุยกันใหม่นะคะ",
+            "ลาก่อนครับ",
+            "Спасибо за звонок, до свидания!",
+            "Всего доброго.",
+            "Хорошо, пока!",
+            "До свидания, спасибо!",
+            "Хорошего дня!",
+            "شكراً لك، مع السلامة.",
+            "إلى اللقاء",
+            "مع السلامة، شكرا",
+            "धन्यवाद, नमस्ते।",
+            "ठीक है, फिर मिलेंगे।",
+            "अलविदा",
+            "फिर बात करते हैं, धन्यवाद",
+        ] {
+            assert!(ends_with_farewell(bye, 0), "{bye}");
+            assert!(caller_wraps_up(bye), "{bye}");
+        }
+        // Not goodbyes: "I don't know yet", "while you wait, I'll check", a Hindi
+        // and an Arabic hello, Thai "give me a moment first".
+        for not_yet in [
+            "Я пока не знаю.",
+            "Пока вы ждёте, я проверю.",
+            "Пока",
+            "नमस्ते, मैं राहुल बोल रहा हूँ",
+            "नमस्ते",
+            "السلام عليكم",
+            "ขอเวลาก่อน",
+            "ฉันโชคดีมาก",
+        ] {
+            assert!(!ends_with_farewell(not_yet, 0), "{not_yet}");
+        }
+        // Vietnamese and Indonesian as before.
+        assert!(ends_with_farewell("Cảm ơn anh, chào anh.", 0));
+        assert!(ends_with_farewell("Baik, terima kasih, sampai jumpa.", 0));
+        // Their thanks alone are no goodbye.
+        for thanks in ["Спасибо!", "شكرا", "धन्यवाद"] {
+            assert!(!caller_wraps_up(thanks), "{thanks}");
+        }
+    }
+
+    #[test]
     fn a_negated_goodbye_phrase_does_not_end_the_call() {
         assert!(!caller_wraps_up("¡Hola! ¿Qué tal? Hace tiempo que no nos vemos."));
         assert!(caller_wraps_up("Vale, perfecto. Nos vemos."));
@@ -2502,6 +2628,15 @@ mod tests {
         assert_eq!(fix_names_with("請轉告黃先生明天開會", &fixes), "請轉告王先生明天開會");
         assert_eq!(fix_names_with("Is Jon Smith there?", &fixes), "Is John Smith there?");
         assert_eq!(fix_names_with("從黃山寄來的包裹", &fixes), "從黃山寄來的包裹");
+        // A name in a spaced language is a whole word; Chinese, Japanese, Korean run on.
+        let jon = vec![("Jon".to_string(), "John".to_string())];
+        assert_eq!(fix_names_with("Mr. Jones asked for Jon, Jon's brother.", &jon), "Mr. Jones asked for John, John's brother.");
+        assert_eq!(fix_names_with("Jon", &jon), "John");
+        assert_eq!(fix_names_with("找Jon先生", &jon), "找John先生");
+        let kr = vec![("민수".to_string(), "민호".to_string())];
+        assert_eq!(fix_names_with("민수씨 계세요?", &kr), "민호씨 계세요?");
+        let ja = vec![("斉藤".to_string(), "斎藤".to_string())];
+        assert_eq!(fix_names_with("斉藤さんからです", &ja), "斎藤さんからです");
         // Nothing set (the default): text is untouched.
         assert_eq!(fix_names("請轉告黃先生"), "請轉告黃先生");
     }
@@ -2597,12 +2732,25 @@ mod tests {
         assert!(caller_wraps_up("Alright, that's all, thank you so much"));
         assert!(caller_wraps_up("Okay, bye to you"));
         assert!(caller_wraps_up("以上です。"));
-        assert!(caller_wraps_up("それでは。"));
+        assert!(caller_wraps_up("それでは失礼します。"));
         assert!(caller_wraps_up("では、よろしくお願いいたします。"));
         // The same words turned into a question: not leaving yet.
         assert!(!caller_wraps_up("それではよろしいでしょうか？"));
         assert!(!caller_wraps_up("Okay, that's all for today, right?"));
         assert!(!caller_wraps_up("Bye?"));
+    }
+
+    #[test]
+    fn words_that_open_a_sentence_do_not_end_the_call() {
+        // 「それでは」「그만」「이만」 also start what comes next: up to four letters
+        // after them used to count as the end and hung up on the caller.
+        for t in ["はい、それでは伝言です。", "それでは質問です", "それでは", "그만 울어요", "이만 원이에요", "그만해요"] {
+            assert!(!caller_wraps_up(t), "{t}");
+        }
+        // Real closings still end it.
+        for t in ["それでは失礼します。", "はい、それではまた。", "それでは失礼いたします", "이만 끊을게요", "그럼 이만 들어가세요"] {
+            assert!(caller_wraps_up(t), "{t}");
+        }
     }
 
     #[test]

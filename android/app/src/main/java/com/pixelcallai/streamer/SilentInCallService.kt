@@ -74,12 +74,17 @@ class SilentInCallService : InCallService() {
         super.onCallAdded(call)
         liveCalls.add(call)
         val instanceId = callInstances.computeIfAbsent(call) { nextCallInstance.incrementAndGet() }
-        // Whitelist urgent call: the owner leg and the merged conference are handled apart.
-        if (adoptForAddCall(call, instanceId)) return
-        if (Prefs.isAiCallEnabled(this) && isWaitingCall(call)) {
+        // A call that rings while another is up is declined first, also during a whitelist
+        // urgent call's merge: it is never taken as a part of that call (the owner is
+        // talking on it). Calls the merge itself makes are told apart by isMergeMadeCall.
+        val job = addJob
+        val madeByMerge = job != null && job.continuesCall() && isMergeMadeCall(call)
+        if (!madeByMerge && Prefs.isAiCallEnabled(this) && isWaitingCall(call)) {
             rejectWaitingCall(call, instanceId)
             return
         }
+        // Whitelist urgent call: the owner leg and the merged conference are handled apart.
+        if (adoptForAddCall(call, instanceId)) return
         val current = activeCall
         if (current == null || current !in liveCalls || !isEstablishedCall(current)) {
             selectActiveCall(call, instanceId)
@@ -329,6 +334,10 @@ class SilentInCallService : InCallService() {
                 Log.i(TAG, "add_call id=${job.id}: $role parent=${parent != null}")
             }
         })
+        // Ordinary GSM / VoLTE networks: the original call and the owner leg are already the
+        // conference's children when the host shows up, so no later change reports "2". Count
+        // them now, or the drop to one person after the owner hangs up would never be noticed.
+        job.peakChildren = maxOf(job.peakChildren, call.children.size, call.parent?.children?.size ?: 0)
         if (!job.done) {
             when {
                 host -> onAddCallMerged(job, "conference host added (PROPERTY_CONFERENCE)")
@@ -336,6 +345,30 @@ class SilentInCallService : InCallService() {
                 call.state == Call.STATE_ACTIVE && sameAccount -> onAddCallMerged(job, "$role added ACTIVE on the original call's account")
             }
         }
+    }
+
+    /**
+     * A call the conference merge made: the host, a participant of a conference, or a call
+     * that is not ringing at all. A new call that rings is none of these: it stays a waiting call.
+     */
+    private fun isMergeMadeCall(call: Call): Boolean {
+        if (call.state != Call.STATE_RINGING) return true
+        val details = try {
+            call.details
+        } catch (_: Exception) {
+            null
+        }
+        val host = try {
+            details?.hasProperty(Call.Details.PROPERTY_CONFERENCE) == true
+        } catch (_: Exception) {
+            false
+        }
+        val participant = try {
+            call.parent != null || details?.can(Call.Details.CAPABILITY_DISCONNECT_FROM_CONFERENCE) == true
+        } catch (_: Exception) {
+            false
+        }
+        return host || participant
     }
 
     /** Incoming and ringing while another call is up (dialing, active or on hold). */

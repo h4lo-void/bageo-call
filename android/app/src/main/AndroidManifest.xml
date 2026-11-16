@@ -82,17 +82,17 @@
             </intent-filter>
         </activity>
 
+        <!--
+          Only the app itself, root (Magisk scripts) and adb shell may start or stop this
+          service: other apps do not hold DUMP (signature level), so they are refused.
+          Every caller names the component (no intent filter), so none is needed.
+        -->
         <service
             android:name=".CallAudioService"
             android:exported="true"
+            android:permission="android.permission.DUMP"
             android:directBootAware="true"
-            android:foregroundServiceType="microphone|phoneCall">
-            <intent-filter>
-                <action android:name="com.pixelcallai.streamer.START" />
-                <action android:name="com.pixelcallai.streamer.STOP" />
-                <action android:name="com.pixelcallai.streamer.SMOKE_CONNECT" />
-            </intent-filter>
-        </service>
+            android:foregroundServiceType="microphone|phoneCall" />
 
         <!-- Invisible in-call UI while we hold ROLE_DIALER; never starts an Activity. -->
         <service
