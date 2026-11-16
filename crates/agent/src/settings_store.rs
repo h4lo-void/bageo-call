@@ -1637,6 +1637,7 @@ fn masked(rt: &RuntimeSettings) -> Value {
                 "token": k.token,
                 "target": k.target,
                 "url_default": k.url_default,
+                "app_token": crate::notify::app_token_label(k.kind),
             }))
             .collect::<Vec<_>>()),
     );
