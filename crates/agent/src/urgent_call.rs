@@ -118,7 +118,7 @@ fn hold_cues(strong_only: bool, ai_said: &str) -> bool {
         "não desligue", "não desliga", "não desliguem", "fique na linha", "fica na linha", "aguarde na linha",
     ];
     const WEAK: &[&str] = &[
-        "请稍候", "请稍等", "稍等一下", "hold on", "hang on", "少々お待ち", "お待ちください", "ちょっと待って", "待っててね",
+        "请稍候", "请稍等", "稍等一下", "你等一下", "等我一下", "先等一下", "hold on", "hang on", "少々お待ち", "お待ちください", "ちょっと待って", "待っててね",
         "잠깐만 기다려", "잠시만 기다려", "기다려 주세요", "기다려 줘", "espera un momento", "espere un momento", "patientez",
         "ne bougez pas", "ne bouge pas", "nicht weggehen", "aguarde um pouco", "espera um pouco", "espere um pouco",
     ];
@@ -811,8 +811,15 @@ mod tests {
 
     #[test]
     fn the_hold_on_line_is_found_in_the_ai_output() {
-        for said in ["好，你等一下，先不要掛。", "好，我现在帮你打给他，请先不要挂。", "Okay, hold on a moment, don't hang up.", "Please stay on the line.", "No cuelgues, por favor."] {
-            assert!(is_hold_line(said), "{said}");
+        for said in [
+            "好，你等一下，先不要掛。",
+            "好，你等一下，先不要卦。",
+            "好，我现在帮你打给他，请先不要挂。",
+            "Okay, hold on a moment, don't hang up.",
+            "Please stay on the line.",
+            "No cuelgues, por favor.",
+        ] {
+            assert!(is_hold_line(said) && is_strong_hold_line(said), "{said}");
         }
         for said in ["好，我知道了，我馬上處理，等一下打給你。", "I'll call you right back.", "掛號了嗎？"] {
             assert!(!is_hold_line(said), "{said}");

@@ -66,7 +66,10 @@ const ZH: Cues = Cues {
         "哈哈", "笑死", "开玩笑", "饿死", "饿到", "饿得", "新闻", "报导", "报道", "演习", "演练", "电影", "电视剧",
     ],
     fine: &["没事", "没什么事", "没啥事", "没什么大碍", "不严重", "已经好了", "已经出院", "出院了", "没出事", "还好没", "挺好的", "撑得住"],
-    past: &["上周", "上礼拜", "上星期", "上个月", "上次", "上一回", "去年", "前年", "以前", "之前", "小时候", "那时候", "几年前", "前几年", "一年前", "一年了", "几个月前", "忌日"],
+    past: &[
+        "昨天", "昨日", "前天", "上周", "上礼拜", "上星期", "上个月", "上次", "上一回", "去年", "前年", "以前", "之前", "小时候", "那时候",
+        "几年前", "前几年", "一年前", "一年了", "一周年", "周年", "几个月前", "忌日",
+    ],
     now: &["刚刚", "刚才", "刚被", "刚送", "刚出", "马上", "立刻"],
 };
 
@@ -87,11 +90,12 @@ const JA: Cues = Cues {
     ask: &[],
     at_once: &[],
     calm: &[
-        "急ぎじゃない", "急ぎではない", "急がない", "急がなくて", "急ぎません", "時間あるとき", "時間がある時", "お手すきの", "暇なとき", "ゆっくりで",
+        "急ぎじゃない", "急ぎではない", "急がない", "急がなくて", "急ぎません", "緊急じゃない", "緊急ではない", "緊急ってわけじゃない", "緊急という", "緊急じゃなく",
+        "時間あるとき", "時間がある時", "お手すきの", "暇なとき", "ゆっくりで",
         "ニュース", "訓練", "ドラマ", "映画", "冗談", "死にそう", "お腹すいて", "腹減",
     ],
     fine: &["大丈夫", "大したことない", "たいしたことない", "退院し", "もう退院", "なんとかなっ"],
-    past: &["先週", "先月", "去年", "昨年", "一昨年", "前に", "昔", "この前", "以前", "命日", "一年前", "一年経", "1年経", "何年も前"],
+    past: &["昨日", "きのう", "一昨日", "先週", "先月", "去年", "昨年", "一昨年", "前に", "昔", "この前", "以前", "命日", "一周忌", "一年前", "一年経", "1年経", "何年も前"],
     now: &["さっき", "たった今", "今すぐ", "今さっき"],
 };
 
@@ -113,11 +117,11 @@ const KO: Cues = Cues {
     ask: &[],
     at_once: &[],
     calm: &[
-        "급하지 않", "안 급해", "급한 거 아니", "급한 건 아니", "시간 날 때", "천천히", "편할 때",
+        "급하지 않", "안 급해", "급한 거 아니", "급한 건 아니", "긴급한 거 아니", "긴급한 건 아니", "긴급하지 않", "시간 날 때", "천천히", "편할 때",
         "뉴스", "훈련", "드라마", "영화", "농담", "배고파", "죽겠다",
     ],
     fine: &["괜찮아", "괜찮습니다", "별일 아니", "별거 아니", "퇴원했", "이미 퇴원", "잘 지내"],
-    past: &["지난주", "지난달", "작년", "재작년", "예전에", "저번에", "지난번", "기일", "1년 됐", "일년 됐", "1년 전", "몇 년 전"],
+    past: &["어제", "그저께", "지난주", "지난달", "작년", "재작년", "예전에", "저번에", "지난번", "기일", "1주기", "1년 됐", "일년 됐", "1년 전", "몇 년 전"],
     now: &["방금", "방금 전에", "당장"],
 };
 
@@ -148,16 +152,16 @@ const EN: Cues = Cues {
     ],
     at_once: &["right now", "right away", "immediately", "asap", "now"],
     calm: &[
-        "not urgent", "no rush", "no hurry", "whenever you", "when you get a chance", "no big deal", "just kidding", "kidding", "lol", "haha",
-        "news", "drill", "movie", "dying of hunger", "starving",
+        "not urgent", "not an emergency", "no emergency", "nothing urgent", "no rush", "no hurry", "whenever you", "when you get a chance", "no big deal",
+        "just kidding", "kidding", "lol", "haha", "news", "drill", "fire alarm", "false alarm", "movie", "dying of hunger", "starving",
     ],
     fine: &[
         "nothing serious", "i'm fine", "all good", "doing fine", "doing ok", "doing okay", "managing okay", "managing ok", "i'm okay", "i'm ok",
         "already discharged", "discharged", "recovered",
     ],
     past: &[
-        "last week", "last year", "last month", "years ago", "a year ago", "a year since", "been a year", "years since",
-        "months ago", "a month ago", "a month since", "weeks ago", "a week ago", "a while ago", "the other day", "anniversary",
+        "yesterday", "last week", "last year", "last month", "years ago", "a year ago", "a year since", "been a year", "years since",
+        "months ago", "a month ago", "a month since", "weeks ago", "a week ago", "days ago", "a while ago", "the other day", "anniversary",
     ],
     now: &[
         "just now", "just collapsed", "just died", "just passed", "just happened", "just had", "just got", "just been", "just called",
@@ -188,11 +192,11 @@ const ES: Cues = Cues {
     ],
     at_once: &["ahora mismo", "ya", "enseguida", "inmediatamente", "urgente"],
     calm: &[
-        "no es urgente", "nada urgente", "no hay prisa", "sin prisa", "no corre prisa", "cuando puedas", "cuando tengas tiempo", "cuando pueda",
-        "noticias", "simulacro", "pelicula", "novela", "es broma", "jaja", "me muero de hambre",
+        "no es urgente", "no es una emergencia", "nada urgente", "no hay prisa", "sin prisa", "no corre prisa", "cuando puedas", "cuando tengas tiempo", "cuando pueda",
+        "noticias", "simulacro", "alarma de incendio", "falsa alarma", "pelicula", "novela", "es broma", "jaja", "me muero de hambre",
     ],
     fine: &["nada grave", "no es nada", "estoy bien", "ya esta bien", "ya salio", "le dieron el alta", "lo llevo bien"],
-    past: &["la semana pasada", "el ano pasado", "el mes pasado", "hace anos", "hace un ano", "hace meses", "ya paso un ano", "el otro dia", "aniversario"],
+    past: &["ayer", "anteayer", "la semana pasada", "el ano pasado", "el mes pasado", "hace anos", "hace un ano", "hace meses", "ya paso un ano", "el otro dia", "aniversario"],
     now: &["acaba de", "acabo de", "ahora mismo", "recien"],
 };
 
@@ -221,11 +225,11 @@ const FR: Cues = Cues {
     ],
     at_once: &["tout de suite", "immediatement", "maintenant", "vite", "d urgence"],
     calm: &[
-        "pas urgent", "rien d urgent", "pas presse", "rien ne presse", "quand tu peux", "quand vous pouvez", "quand tu auras", "quand vous aurez",
-        "infos", "journal", "exercice", "film", "je rigole", "je plaisante", "mdr", "meurs de faim",
+        "pas urgent", "pas une urgence", "non urgent", "rien d urgent", "pas presse", "rien ne presse", "quand tu peux", "quand vous pouvez", "quand tu auras", "quand vous aurez",
+        "infos", "journal", "exercice", "alarme incendie", "fausse alerte", "film", "je rigole", "je plaisante", "mdr", "meurs de faim",
     ],
     fine: &["rien de grave", "je vais bien", "il va bien", "elle va bien", "est sorti de l hopital", "est sortie de l hopital", "deja sorti", "je tiens le coup"],
-    past: &["la semaine derniere", "l annee derniere", "l an dernier", "l an passe", "le mois dernier", "il y a des annees", "il y a un an", "ca fait un an", "depuis un an", "l autre jour", "anniversaire"],
+    past: &["hier", "avant hier", "la semaine derniere", "l annee derniere", "l an dernier", "l an passe", "le mois dernier", "il y a des annees", "il y a un an", "ca fait un an", "depuis un an", "un an apres", "ans apres", "l autre jour", "anniversaire"],
     now: &["vient de", "viens de", "tout de suite", "a l instant"],
 };
 
@@ -252,11 +256,11 @@ const DE: Cues = Cues {
     ],
     at_once: &["sofort", "jetzt", "dringend"],
     calm: &[
-        "nicht dringend", "keine eile", "eilt nicht", "wenn du zeit hast", "wenn sie zeit haben", "in ruhe",
-        "nachrichten", "ubung", "probealarm", "film", "serie", "spass", "sterbe vor hunger",
+        "nicht dringend", "kein notfall", "nichts dringendes", "keine eile", "eilt nicht", "wenn du zeit hast", "wenn sie zeit haben", "in ruhe",
+        "nachrichten", "ubung", "probealarm", "feueralarm", "fehlalarm", "film", "serie", "spass", "sterbe vor hunger",
     ],
     fine: &["nichts schlimmes", "alles gut", "geht mir gut", "geht ihm gut", "geht ihr gut", "entlassen", "schon entlassen", "komme klar"],
-    past: &["letzte woche", "letztes jahr", "letzten monat", "vor jahren", "vor einem jahr", "ein jahr her", "seit einem jahr", "vor monaten", "neulich", "geburtstag", "todestag", "jahrestag"],
+    past: &["gestern", "vorgestern", "letzte woche", "letztes jahr", "letzten monat", "vor jahren", "vor einem jahr", "ein jahr her", "seit einem jahr", "vor monaten", "neulich", "geburtstag", "todestag", "jahrestag"],
     now: &["gerade", "soeben", "sofort"],
 };
 
@@ -282,11 +286,11 @@ const PT: Cues = Cues {
     ],
     at_once: &["agora mesmo", "ja", "urgente", "imediatamente", "agora"],
     calm: &[
-        "nao e urgente", "nada urgente", "sem pressa", "nao tem pressa", "quando puder", "quando der",
-        "jornal", "noticia", "simulado", "simulacao", "filme", "novela", "brincadeira", "kkk", "morrendo de fome",
+        "nao e urgente", "nao e uma emergencia", "nada urgente", "sem pressa", "nao tem pressa", "quando puder", "quando der",
+        "jornal", "noticia", "simulado", "simulacao", "alarme de incendio", "alarme falso", "filme", "novela", "brincadeira", "kkk", "morrendo de fome",
     ],
     fine: &["nada grave", "nao foi nada", "to bem", "estou bem", "ta tudo bem", "teve alta", "recebeu alta", "ja teve alta", "levando bem"],
-    past: &["semana passada", "ano passado", "mes passado", "faz anos", "ha anos", "faz um ano", "ha um ano", "faz meses", "outro dia", "aniversario"],
+    past: &["ontem", "anteontem", "semana passada", "ano passado", "mes passado", "faz anos", "ha anos", "faz um ano", "ha um ano", "faz meses", "outro dia", "aniversario"],
     now: &["acabou de", "acabei de", "agora mesmo"],
 };
 
@@ -378,7 +382,7 @@ const T2S: &[(char, char)] = &[
     ('紙', '纸'), ('畫', '画'), ('戲', '戏'), ('訊', '讯'), ('響', '响'), ('準', '准'), ('備', '备'), ('隨', '随'), ('題', '题'),
     ('撐', '撑'), ('鬧', '闹'), ('壞', '坏'), ('換', '换'), ('夠', '够'), ('嬰', '婴'), ('憂', '忧'), ('鐘', '钟'), ('島', '岛'), ('傳', '传'),
     ('別', '别'), ('撥', '拨'), ('鑰', '钥'), ('頁', '页'), ('較', '较'), ('隊', '队'), ('濃', '浓'), ('潰', '溃'), ('癱', '瘫'), ('瘓', '痪'),
-    ('壓', '压'), ('幾', '几'),
+    ('壓', '压'), ('幾', '几'), ('卦', '挂'), ('褂', '挂'),
 ];
 
 fn t2s(c: char) -> char {
@@ -833,7 +837,11 @@ mod tests {
             "it's been a year since my grandfather passed away, but I'm managing okay",
             "It's been a year since my grandfather passed away.",
             "我爺爺去年過世了，現在想起來還是有點難過。",
+            "其实今天是外奶奶去世一周年。的日子,我心里有点感触。",
             "他上禮拜已經出院了，現在在家休息。",
+            "Écoute, c'est pas une urgence, mais c'est juste que je pensais à ma grand-mère. C'est son anniversaire aujourd'hui. Un an après son décès.",
+            "なんか急ぎの仕事ばっかりって感じで慌ただしいけど。どれも緊急ってわけじゃないんだよね。",
+            "Cara, ontem teve um alarme de incêndio lá no seu prédio, né?",
         ] {
             assert!(!is_urgent(s), "should not be urgent: {s}");
         }
