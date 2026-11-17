@@ -52,4 +52,4 @@ phone module together.
 
 Found a way around any of these? Please report it privately, as above.
 
-See also [Privacy, safety and the law](docs/en/PRIVACY_AND_LEGAL.md), [Legal disclaimer & operator terms](LEGAL.md) and the [v1.0 project security & compliance audit report (`gemini-4-carbon`)](AUDIT_REPORT.md).
+See also [Privacy, safety and the law](docs/en/PRIVACY_AND_LEGAL.md), [Legal disclaimer & usage notice](LEGAL.md) and the [v1.0 AI-assisted internal security review note (`gemini-4-carbon`)](AUDIT_REPORT.md).

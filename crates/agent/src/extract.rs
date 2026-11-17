@@ -139,9 +139,8 @@ If reply_method is phone and the caller left no contact, reply_contact may be th
 pub fn intent_system_prompt(lang: Lang) -> String {
     match lang {
         Lang::ZhTw => INTENT_SYSTEM_PROMPT.to_string(),
-        Lang::ZhCn => zhconv::zhconv(
+        Lang::ZhCn => crate::zh_convert::to_cn(
             &INTENT_SYSTEM_PROMPT.replace("一句話繁體中文摘要", "一句話簡體中文摘要"),
-            zhconv::Variant::ZhCN,
         ),
         other => INTENT_SYSTEM_PROMPT_EN.replace("{language}", locale::phrases(other).name_en),
     }

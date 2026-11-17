@@ -156,7 +156,7 @@ pub fn notify_zh_or(zh_tw: &str, en: &str) -> String {
 pub fn zh_or_in(lang: Lang, zh_tw: &str, en: &str) -> String {
     match lang {
         Lang::ZhTw => zh_tw.to_string(),
-        Lang::ZhCn => zhconv::zhconv(zh_tw, zhconv::Variant::ZhCN),
+        Lang::ZhCn => crate::zh_convert::to_cn(zh_tw),
         _ => en.to_string(),
     }
 }
@@ -421,7 +421,7 @@ pub fn country_lang(iso: &str) -> Option<Lang> {
 pub fn zh_or(zh_tw: &str, en: &str) -> String {
     match current() {
         Lang::ZhTw => zh_tw.to_string(),
-        Lang::ZhCn => zhconv::zhconv(zh_tw, zhconv::Variant::ZhCN),
+        Lang::ZhCn => crate::zh_convert::to_cn(zh_tw),
         _ => en.to_string(),
     }
 }

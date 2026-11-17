@@ -292,9 +292,9 @@ AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種
 
 ## 授權與法律責任聲明
 
-本專案採用<strong>雙重授權（Dual Licensing）</strong>模式發佈（著作權所有 © 2026 **h4lo-void**）：
+本專案採用<strong>雙重授權（Dual Licensing）</strong>模式發佈（著作權所有 © 2026 **h4lo-void**，見 [LICENSING.md](LICENSING.md)）：
 
-- **社群開源授權：** [GNU Affero 通用公共授權條款第 3.0 版（僅限 `AGPL-3.0-only`）](LICENSE)——個人與開源社群免費使用；惟任何修改版本只要供他人透過網路或電話線路互動，即須依第 13 條免費公開完整衍生原始碼。
-- **取得商業授權：** 若企業、電信／雲端總機營運商、客服中心或硬體廠商不願依 `AGPL-3.0-only` 開源，可向原作者購買專有／商業授權，詳見 [**雙重授權與商業授權條款（COMMERCIAL_LICENSE.md）**](COMMERCIAL_LICENSE.md)。
+- **社群開源授權：** [GNU Affero 通用公共授權條款第 3.0 版（僅限 `AGPL-3.0-only`）](LICENSE) 及 [LICENSING.md](LICENSING.md) 所列第 7 條附加條款——個人與開源社群免費使用；任何修改版本只要供他人透過網路或電話線路互動，即須依第 13 條免費公開完整衍生原始碼。
+- **取得商業授權：** 若企業、電信／雲端總機營運商、客服中心或硬體廠商不願依 `AGPL-3.0-only` 開源，可向原作者洽購書面商業授權，詳見 [**雙重授權與商業授權條款（COMMERCIAL_LICENSE.md）**](COMMERCIAL_LICENSE.md)。
 
-**法律責任切斷與風險自負：** 本專案僅為純自架開源程式碼，按「現狀（AS IS）」提供且不附帶任何擔保。部署者本人為唯一之實際行為人與資料控管者，須完全獨立承擔當地通話錄音、AI 身分揭露、自動撥號、手機 Root 破保與資費帳單之一切民刑事與行政責任，嚴禁任何違法詐騙、竊聽或騷擾用途。使用前請務必詳閱 [**法律免責聲明（LEGAL.md）**](LEGAL.md)、[隱私、安全與法律](docs/zh-TW/PRIVACY_AND_LEGAL.md) 及 [`gemini-4-carbon` 具名全專案審計報告](AUDIT_REPORT.md)。第三方授權聲明見 [NOTICE.md](NOTICE.md)。本專案與 Google LLC 無關；Pixel、Android 與 Gemini 為 Google LLC 之商標。
+**免責聲明與使用須知：** 本專案為自架軟體，按「現狀（AS IS）」提供且不附任何擔保；作者不維運任何服務，軟體也不會將資料傳回給作者。部署者須自行負責遵守當地通話錄音、AI 揭露與自動撥號相關法律，並自負手機 Root 與資費帳單風險。使用前請詳閱 [**法律免責聲明與使用須知（LEGAL.md）**](LEGAL.md)、[隱私、安全與法律](docs/zh-TW/PRIVACY_AND_LEGAL.md) 及 [v1.0 AI 輔助內部審查筆記](AUDIT_REPORT.md)（`gemini-4-carbon`，非第三方審計）。第三方授權聲明（含 OpenCC `Apache-2.0` 字典）見 [NOTICE.md](NOTICE.md)。本專案與 Google LLC 無關；Pixel、Android 與 Gemini 為 Google LLC 之商標。
