@@ -140,7 +140,7 @@ Save. The checklist on the *System* page shows anything still missing.
 The short version is below; details and rollback are in
 [Phone setup](PHONE.md).
 
-1. Copy `pixelcallai_uplink-<version>.zip` from the release to the phone and
+1. Copy `bageo-phone-module-<version>.zip` from the release to the phone and
    install it as a module in the Magisk or KernelSU app. Reboot.
 2. Open the **Bageo** app and work through **Setup steps** until every step
    is done: permissions, default phone app, call screening, Do Not Disturb

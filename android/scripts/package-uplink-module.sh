@@ -3,7 +3,7 @@
 #
 #   ./scripts/package-uplink-module.sh
 #
-# Output: android/magisk/dist/pixelcallai_uplink-<versionName>.zip
+# Output: android/magisk/dist/bageo-phone-module-<versionName>.zip
 # Module layout: system/priv-app/com.pixelcallai.streamer/base.apk + privapp-permissions XML.
 set -euo pipefail
 
@@ -20,7 +20,7 @@ if [ -z "$VERSION" ]; then
     echo "versionName not found in app/build.gradle.kts" >&2
     exit 1
 fi
-ZIP_OUT="$OUT_DIR/pixelcallai_uplink-$VERSION.zip"
+ZIP_OUT="$OUT_DIR/bageo-phone-module-$VERSION.zip"
 
 echo "Building debug APK $VERSION ..."
 (cd "$ANDROID_DIR" && sh ./gradlew :app:assembleDebug --quiet)
