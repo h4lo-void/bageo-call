@@ -567,6 +567,39 @@ const EXTRA_THANKS: &[&str] = &[
     "grazie mille", "grazie",
 ];
 
+/// Thanks for something, at the very end ("Thanks for your help", "thank you
+/// for calling", "gracias por su ayuda"): thanks as well, with up to
+/// [THANKS_FOR_MAX_WORDS] words after it.
+const THANKS_FOR: &[&str] = &[
+    "thank you so much for", "thank you very much for", "thanks so much for", "thanks again for", "thank you for",
+    "thanks for", "many thanks for", "muchas gracias por", "gracias por", "merci beaucoup pour", "merci pour",
+    "vielen dank für", "danke für", "obrigado pela", "obrigada pela", "obrigado pelo", "obrigada pelo",
+    "obrigado por", "obrigada por",
+];
+const THANKS_FOR_MAX_WORDS: usize = 4;
+
+/// `t` (normalized) without the thanks for something at its end.
+fn strip_thanks_for(t: &str) -> Option<&str> {
+    THANKS_FOR.iter().find_map(|p| {
+        let i = t.rfind(&format!("{p} "))?;
+        if i > 0 && !t[..i].ends_with(' ') {
+            return None;
+        }
+        let what: Vec<&str> = t[i + p.len() + 1..].split(' ').collect();
+        let latin_words = what.iter().all(|w| !w.is_empty() && w.chars().all(|c| is_latin_letter(c) || c == '\''));
+        (latin_words && what.len() <= THANKS_FOR_MAX_WORDS).then(|| t[..i].trim_end())
+    })
+}
+
+/// A 「拜」 of its own at the end (speech-to-text's "Bye!": 「…等你電話咯。拜。」);
+/// only as a word by itself, 「下禮拜」 ends on it too. Returns what comes before it.
+fn lone_bai(t: &str) -> Option<&str> {
+    if t == "拜" {
+        return Some("");
+    }
+    t.strip_suffix(" 拜").map(str::trim_end)
+}
+
 /// Whom thanks or a goodbye is said to, after it (「唔該晒王生」「謝謝王先生」
 /// 「再見陳小姐」): a title, with up to two letters of a name before it.
 const ADDRESS_TITLES: &[&str] = &[
@@ -736,6 +769,9 @@ fn peel(t: &str) -> Option<(&str, Peel)> {
     if rest.len() < t.len() {
         return Some((rest.trim_end(), Peel::Thanks));
     }
+    if let Some(rest) = strip_thanks_for(t) {
+        return Some((rest, Peel::Thanks));
+    }
     let (head, last) = t.rsplit_once(' ').unwrap_or(("", t));
     if TAIL_WORDS.contains(&last) {
         return Some((head.trim_end(), Peel::Word));
@@ -782,6 +818,7 @@ fn classify(text: &str) -> Option<Hit> {
         }
         let found = ends_with_any(t, FAREWELLS)
             .map(|(l, b)| (Kind::Farewell, l, b, false))
+            .or_else(|| lone_bai(t).map(|b| (Kind::Farewell, "zh-TW", b, false)))
             .or_else(|| ends_with_any(t, GREETING_BYES).map(|(l, b)| (Kind::Farewell, l, b, true)))
             .or_else(|| ends_with_any(t, PRE_CLOSINGS).map(|(l, b)| (Kind::PreClosing, l, b, false)));
         if let Some((kind, lang, before, ambiguous)) = found {
@@ -1255,6 +1292,38 @@ mod tests {
         m.on_caller("好的，沒問題，那我再考慮，謝謝", "好的，沒問題，那我再考慮，謝謝", false, true);
         assert_eq!(m.on_ai_turn("好，掰掰", true, true), ClosingEvent::None);
         assert!(!m.may_hang_up(true));
+    }
+
+    /// Thanks for something is thanks (hidden_us_en: «…Thanks for your help.»
+    /// went unseen, and the call waited out the quiet after the AI's bye).
+    #[test]
+    fn thanks_for_something_is_thanks() {
+        let mut m = ClosingMachine::new("en");
+        let latest = "Got it. I'll leave the package with the building management tomorrow afternoon. Thanks for your help.";
+        let heard = format!("Hi, I have a package for you. Will someone be home tomorrow afternoon? Or maybe I can leave it with building management. {latest}");
+        let step = m.on_caller(&heard, latest, false, false);
+        assert_eq!(step.event, ClosingEvent::CallerThanksWrap);
+        assert_eq!(m.on_ai_turn("Sounds good,bye.", true, false), ClosingEvent::FarewellsExchanged);
+        assert!(m.may_hang_up(false));
+        for t in ["Thank you for calling!", "Thanks so much for your time", "Muchas gracias por su ayuda", "Obrigado pela atenção"] {
+            assert!(is_fluff(t), "{t}");
+        }
+        assert!(matches!(classify("Okay, bye, thanks for calling."), Some(Hit { kind: Kind::Farewell, .. })));
+        // More than a few words after it: something else is said.
+        assert!(!is_fluff("Thanks for the package, it is the wrong one"));
+    }
+
+    /// Speech-to-text writes a caller's "Bye!" as 「拜」 (d_sg_nan_dinner).
+    #[test]
+    fn a_lone_bai_is_a_bye_but_next_week_is_not() {
+        let mut m = mid_call("zh-TW");
+        let step = caller(&mut m, "好,按呢我等你的電話咯。拜。");
+        assert_eq!(step.event, ClosingEvent::CallerFarewell);
+        assert!(step.ends_call);
+        for t in ["那我們下禮拜。", "好，下個禮拜", "好，那就約下禮拜"] {
+            let mut m = mid_call("zh-TW");
+            assert_ne!(caller(&mut m, t).event, ClosingEvent::CallerFarewell, "{t}");
+        }
     }
 
     /// What the caller heard so far may still hold their question of the turn

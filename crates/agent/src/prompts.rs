@@ -1013,7 +1013,7 @@ pub fn dialect_block(region: Region, lang: Lang) -> String {
             let loans = if loans.is_empty() { "一兩個詞".to_string() } else { format!("{}這類詞", quoted(lang, &loans)) };
             out.push_str(&zh_text(
                 lang,
-                format!("\n【方言】對方整句用{names}講（像{examples}）、連兩句都這樣，或叫你講，就跟著整句用那種話，之後一直用到他改回來；只夾{loans}是平常講法，照原本的講。"),
+                format!("\n【方言】對方講一整句{names}（像{examples}，夾些華語或英文也算），或連兩句帶它的詞，或叫你講，有一樣就跟著整句用那種話回，之後一直用到他改回來；只夾{loans}是平常講法，照原本的講。"),
             ));
         } else {
             let loans = if loans.is_empty() {
@@ -1022,7 +1022,7 @@ pub fn dialect_block(region: Region, lang: Lang) -> String {
                 format!("a borrowed word like {}", quoted(lang, &loans))
             };
             out.push_str(&format!(
-                "\n[Dialects] People here may speak {names} (like {examples}). If the caller says a whole sentence in it, uses it two turns in a row or asks you to, answer in it from then on; {loans} is just everyday speech."
+                "\n[Dialects] People here may speak {names} (like {examples}). If the caller says a whole sentence in it (some standard or English words mixed in still count), uses it two turns in a row or asks you to, any one of these, answer in it from then on; {loans} is just everyday speech."
             ));
         }
     }

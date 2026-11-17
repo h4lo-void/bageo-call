@@ -4411,6 +4411,18 @@ fn awaits_caller_bye(caller_end_signal: bool, quiet_after_bye: bool) -> bool {
     !caller_end_signal && !quiet_after_bye
 }
 
+/// The hangup delay left once the clock may run. It counts from our last words:
+/// after our own farewell and [`PERSONA_BYE_SILENCE`] of quiet both ways, that
+/// long has passed already (the clock used to start only then: 6 s + the
+/// regional 1.5 s after our bye, hidden_us_en 8.2 s after the caller's thanks).
+fn hangup_delay_left(hangup_delay: Duration, quiet_after_our_bye: bool) -> Duration {
+    if quiet_after_our_bye {
+        hangup_delay.saturating_sub(PERSONA_BYE_SILENCE)
+    } else {
+        hangup_delay
+    }
+}
+
 /// Arm (intent) is independent of play. Only start the hangup delay once the
 /// player has drained the current turn; new downlink resets the clock.
 fn tick_goodbye_play_clock(
@@ -6205,15 +6217,13 @@ pub async fn run_session(
         // Persona: our own 掰掰 does not end the call — hold the line until the
         // caller says bye / wraps up, or stays quiet PERSONA_BYE_SILENCE after it.
         // An errand call is ours: the AI's own goodbye ends it.
+        let quiet_after_bye = play_head.drained_for(PERSONA_BYE_SILENCE, PLAYER_DRAIN_SLACK_BYTES)
+            && last_caller_voice_at.map_or(true, |t| t.elapsed() >= PERSONA_BYE_SILENCE);
         let awaiting_caller_bye = persona
             && errand.is_none()
             && goodbye_pending
             && !wrap_up_sent
-            && awaits_caller_bye(
-                caller_end_signal,
-                play_head.drained_for(PERSONA_BYE_SILENCE, PLAYER_DRAIN_SLACK_BYTES)
-                    && last_caller_voice_at.map_or(true, |t| t.elapsed() >= PERSONA_BYE_SILENCE),
-            );
+            && awaits_caller_bye(caller_end_signal, quiet_after_bye);
         if awaiting_caller_bye && !await_bye_logged {
             await_bye_logged = true;
             info!(
@@ -6249,17 +6259,22 @@ pub async fn run_session(
         );
         let now = tokio::time::Instant::now();
         let clock_was = output_goodbye_at.is_some();
+        // Our own bye ending the call on the quiet after it: that quiet counts.
+        let hangup_delay = hangup_delay_left(
+            Duration::from_millis(hangup_delay_ms),
+            persona && errand.is_none() && !wrap_up_sent && !caller_end_signal && !bye_from_caller && quiet_after_bye,
+        );
         let fire_wav = tick_goodbye_play_clock(
             goodbye_pending,
             player_idle,
-            Duration::from_millis(hangup_delay_ms),
+            hangup_delay,
             now,
             &mut output_goodbye_at,
         );
         if goodbye_pending && !clock_was && output_goodbye_at.is_some() {
             info!(
-                "Goodbye play clock start (player drained) serial={serial} queued={} — wait {hangup_delay_ms}ms then WAV"
-            , play_head.queued());
+                "Goodbye play clock start (player drained) serial={serial} queued={} — wait {}ms then WAV"
+            , play_head.queued(), hangup_delay.as_millis());
             if let Some(t) = &hangup_timer {
                 info!("closing_hangup_timer ms={} region={}", t.ms, t.region);
                 if t.from_setting {
@@ -9308,6 +9323,11 @@ mod tests {
         assert!(!awaits_caller_bye(true, false));
         assert!(!awaits_caller_bye(false, true));
         assert!(PERSONA_BYE_SILENCE >= Duration::from_secs(5));
+        // That quiet is past our last words already: the regional delay has run.
+        assert_eq!(hangup_delay_left(Duration::from_millis(1_500), true), Duration::ZERO);
+        assert_eq!(hangup_delay_left(Duration::from_millis(1_500), false), Duration::from_millis(1_500));
+        // An owner's longer delay keeps what the quiet did not cover.
+        assert_eq!(hangup_delay_left(Duration::from_millis(8_000), true), Duration::from_millis(2_000));
     }
 
     /// The closing state machine only adds hangups: whatever the older check
