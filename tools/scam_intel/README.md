@@ -29,3 +29,5 @@ Updates and validates [`crates/agent/data/country_scams.json`](../../crates/agen
 - **Anti-False-Positive Guard**: Bare company/utility names (`台電`, `Amazon`, `Endesa`, `Enedis`, `PIX`, etc.) are restricted to `context_keywords` (`weight=1`), and every `red_flag_keyword` is tested against a multi-language normal-call corpus.
 - **Stall-Safe Bait Sanitizer**: Rejects tactics mentioning anti-fraud hotlines (`165`, `110`, `112`, `911`) or hanging up so scammers are kept on the line instead of hanging up early.
 - **Automatic Rollback**: Restores the previous `country_scams.json` if `cargo test -p agent` fails.
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

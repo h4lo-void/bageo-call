@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
   <rect x="2" y="2" width="60" height="60" rx="15" fill="#FFCF4A"/>
   <g fill="#1B1B1F"><rect x="15" y="41" width="34" height="6" rx="3"/><rect x="12" y="41" width="12" height="11" rx="4"/><rect x="40" y="41" width="12" height="11" rx="4"/></g>
   <polygon points="24,29 20,37 31,30" fill="#FFFFFF" stroke="#1B1B1F" stroke-width="3.2" stroke-linejoin="round"/>

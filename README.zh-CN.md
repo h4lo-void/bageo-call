@@ -298,3 +298,5 @@ AI 的语音、内置提示词、网页控制台、手机应用和通知，九�
 - **取得商业授权：** 若企业、电信／云总机运营商、呼叫中心或硬件厂商不愿按 `AGPL-3.0-only` 开源，可向原作者洽购书面商业授权，详见 [**双重授权与商业授权条款（COMMERCIAL_LICENSE.md）**](COMMERCIAL_LICENSE.md)。
 
 **免责声明与使用须知：** 本项目为自托管软件，按“现状（AS IS）”提供且不附任何担保；作者不运维任何服务，软件也不会把数据传回给作者。部署者须自行负责遵守当地通话录音、AI 披露与自动拨号相关法律，并自负手机 Root 与资费账单风险。使用前请详阅 [**法律免责声明与使用须知（LEGAL.md）**](LEGAL.md)、[隐私、安全与法律](docs/zh-CN/PRIVACY_AND_LEGAL.md) 及 [v1.0 AI 辅助内部审查笔记](AUDIT_REPORT.md)（`gemini-4-carbon`，非第三方审计）。第三方声明（含 OpenCC `Apache-2.0` 字典）见 [NOTICE.md](NOTICE.md)。本项目与 Google LLC 无关；Pixel、Android 与 Gemini 是 Google LLC 的商标。
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

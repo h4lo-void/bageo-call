@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Remote control from a chat: away from the web console, the owner looks up
 //! calls, has the AI make a call, decides to-dos and answers the AI's
 //! questions from the chat the notifications go to.

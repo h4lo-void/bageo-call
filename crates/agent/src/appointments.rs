@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Appointments: when a caller wants to set a time, the AI takes it down and
 //! tells them it will check and text them back later (only "get back to you"
 //! when no text can reach them). No calendar is connected: after the call the
@@ -2550,7 +2553,9 @@ pub async fn on_callback_event(ctx: &CallbackCtx<'_>, serial: &str, msg: &Value)
         "call_end" => match stage {
             CallbackStage::OnCall => callbacks_set_stage(&task_id, CallbackStage::Ended),
             CallbackStage::Ended | CallbackStage::Queued => {}
-            CallbackStage::Dialing | CallbackStage::Ready => finish_callback(ctx, &task_id, "failed").await,
+            // An errand's call that ended before it was connected (a busy
+            // line, declined) may be dialed again ("Redial until answered").
+            CallbackStage::Dialing | CallbackStage::Ready => finish_callback(ctx, &task_id, if errand { "ended_early" } else { "failed" }).await,
         },
         _ => {}
     }

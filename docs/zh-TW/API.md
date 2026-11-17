@@ -431,7 +431,8 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 | 通話長度 | 最長 10 分鐘；9 分半開始收尾。 |
 | 語音選單 | AI 最多等 90 秒等真人來接；它不能按鍵（`keypad_menu`）。 |
 | 電信錄音（「您撥的號碼是空號」） | 直接掛斷（`carrier_message`）。 |
-| 沒人接或失敗 | 不會自己重撥：要不要「再打一次」由你決定。 |
+| 沒人接或失敗 | 不會自己重撥：要不要「再打一次」由你決定。打開 `redial` 見下一列。 |
+| 「撥到通」（`redial`） | 沒人接、忙線、對方關機或進語音信箱（不留言）：代打排隊（`queued`，`call_code` 是 `redial_wait`，時間在 `redial_at`），一分鐘後再撥，總共最多 30 次。有人接起來、打滿 30 次（`no_answer`）、號碼不通、語音選單或手機出問題就停。只在最後通知一次。 |
 | 撥號中你按了取消 | 手機和號碼立刻放出來給下一通；萬一電話還是接通了，會在 AI 開口前掛斷。 |
 
 ### 代打物件
@@ -463,14 +464,17 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 | `serial`、`device_label` | 撥出的手機和它的名稱。 |
 | `status` | `queued`、`dialing`（電話在響，還沒有人出聲）、`on_call`（對方接起來出聲了）、`done`、`no_answer`、`failed`、`cancelled`。後四個是最終狀態。 |
 | `call_code` | 撥號進行到哪裡。值見下方。 |
-| `attempts` | 從 1 開始，每按一次「再打一次」加 1。 |
+| `attempts` | 從 1 開始，每按一次「再打一次」或每重撥一次加 1。 |
+| `redial` | 打開了「撥到通」。沒打開就不出現。 |
+| `redial_at` | 下一次什麼時候撥（`call_code` 是 `redial_wait` 時）。其他時候不出現。 |
+| `redial_start` | 這一輪重撥從第幾次開始（按「再打一次」會重新算 30 次）。是 0 就不出現。 |
 | `record_id` | 這一次的通話紀錄（`GET /calls/api/call/{id}`：逐字稿和錄音）。 |
 | `follow_up_of` | 這通是接續哪一筆先前的代打；那一筆最後 20 行逐字稿會放進 AI 的腳本。 |
 | `questions` | `[{id, text, options, answer, answered_by, asked_at}]`：AI 問過你的問題，選項最多 4 個。 |
 | `result` | `null` 或 `{outcome, summary, details, follow_up, options, event, unconfirmed}`。欄位見下方。 |
 | `history` | 先前幾次的嘗試，`[{attempt, status, result, record_id, ended_at, questions}]`。 |
 
-`call_code` 的值：`dialing`、`queued`、`answered`、`no_answer`、`failed`、`phone_busy`、`number_busy`、`no_phone`、`send_failed`、`keypad_menu`、`carrier_message`、`wrong_sim`、`agent_restarted`、`cancelled`。
+`call_code` 的值：`dialing`、`queued`、`answered`、`no_answer`、`failed`、`phone_busy`、`number_busy`、`no_phone`、`send_failed`、`keypad_menu`、`carrier_message`、`wrong_sim`、`agent_restarted`、`cancelled`、`redial_wait`、`voicemail`。
 
 `questions` 裡的 `answered_by`：`owner`（你回答了）、`timeout`（你在看但沒來得及回答）、`absent`（沒人在看）；還在等時是 `null`。
 
@@ -480,14 +484,14 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 - `event`：`null` 或 `{start, end, title}`（帶時差的當地時間；沒談定結束時間就沒有 `end`）。
 - `unconfirmed`：`details` 或 `event` 裡 AI 複誦時對方沒有明確確認的時間、日期、號碼或名字（最多 8 項）；沒有就不出現。
 
-代打存在資料夾裡的 `errands.json`（保留最新 500 筆）。Bageo 重新啟動時還在進行中的代打會變成 `failed`（`call_code` `agent_restarted`）。
+代打存在資料夾裡的 `errands.json`（保留最新 500 筆）。Bageo 重新啟動時還在進行中的代打會變成 `failed`（`call_code` `agent_restarted`）；打開「撥到通」的會接著撥，除非對方已經接起來過。
 
 ### 代打路由
 
 | 方法與路徑 | 內容 |
 |---|---|
 | `GET /calls/api/errands` | `{ok, errands}`，最新的在前，最多 200 筆。 |
-| `POST /calls/api/errands` | 開始一筆。Body `{number, name, contact_id, task, identity, serial, follow_up_of}`，回應 `{ok, errand}`。 |
+| `POST /calls/api/errands` | 開始一筆。Body `{number, name, contact_id, task, identity, serial, follow_up_of, redial}`（`redial` 是 `true` 就打開「撥到通」，預設 `false`），回應 `{ok, errand}`。 |
 | `POST /calls/api/errands/{id}/cancel` | 排隊中：取消。撥號中或通話中：掛斷。已經結束的原樣回傳。`{ok, errand}`。 |
 | `POST /calls/api/errands/{id}/retry` | 同一筆再打一次（`attempts` 加 1，上一次移到 `history`）。`{ok, errand}`。還在進行中（或上一通還沒結束）：400 `busy`；手機相關的代碼同新增。 |
 | `DELETE /calls/api/errands/{id}` | 從清單刪掉（通話紀錄會留著）。`{ok}`；撥號中或通話中：400 `busy`。 |
@@ -723,3 +727,5 @@ Bageo 怎麼處理邊界情況：
 - 簡訊結果在 Bageo 不再等之後才到，照樣會記下來；手機之後用同一個 `id` 送來的真正結果會取代 `timeout`。同樣的結果再來、或已有確定結果的簡訊收到不同結果，都不會改。
 - 拒接號碼只有在 `reject_mode` 是 `decline`、而且手機說過 `supports_reject` 時才叫手機拒接；否則接起來播語音，通知會寫清楚是哪一種。
 - AI 回電和 AI 代打都帶 `sub_id`，雙卡手機會用對的號碼撥出。
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

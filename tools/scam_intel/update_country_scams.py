@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+# SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 """Update and validate Bageo's country-specific phone scam database.
 
 Uses the Gemini API with Google Search grounding (`google_search`) to look up

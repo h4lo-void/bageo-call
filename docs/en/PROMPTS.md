@@ -422,3 +422,5 @@ to 8 is fine too").
 - Change one thing at a time, then call again.
 - If the AI does something odd, find the sentence in the prompt that allowed it
   rather than adding a new "never do X" line.
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

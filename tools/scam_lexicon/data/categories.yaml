@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+# SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 # 共用分類定義（zh-Hant）。bageo_typology = 對應 bageo-call crates/agent/data/scam_db.json 的 typology id；null = 內建沒有對應類型（不匯出到 scam_db.local.json）。
 police_prosecutor:
   name: 假冒檢警／公檢法／法院（監管帳戶、安全帳戶）

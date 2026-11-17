@@ -208,3 +208,5 @@ Discord、Slack、Matrix 只用模擬的伺服器測試過，還沒在真實帳�
 指令、檢查、確認和上限都在 `crates/agent/src/control/`。要接新的聊天軟體，只要寫一層薄薄的轉接：把訊息轉成 `control::Inbound` 交給 `Controller::handle`，或直接呼叫 `POST /calls/api/control/inbound`。
 
 AI 代理（Claude、ChatGPT、Grok、OpenClaw（龍蝦）…）可以透過內建的 MCP 伺服器使用同一組動作：見 [MCP](MCP.md)。
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

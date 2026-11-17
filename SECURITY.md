@@ -45,7 +45,8 @@ phone module together.
 - **Calendar links carry no token.** A notification's `event.ics` link opens with
   a key (an HMAC) valid for that one file only.
 - **What the AI may dial is limited.** Errands never dial emergency numbers,
-  short codes or premium-rate numbers, call each errand once, and hang up before
+  short codes or premium-rate numbers, call each errand once (with Redial until
+  answered on, at most 30 times, a minute apart), and hang up before
   the AI speaks when the phone used another SIM than the one asked for.
 - **Secrets stay hidden.** The settings API returns keys and notification tokens
   masked; `/health` without the token returns only a short status.
@@ -53,3 +54,5 @@ phone module together.
 Found a way around any of these? Please report it privately, as above.
 
 See also [Privacy, safety and the law](docs/en/PRIVACY_AND_LEGAL.md), [Legal disclaimer & usage notice](LEGAL.md) and the [v1.0 AI-assisted internal security review note (`gemini-4-carbon`)](AUDIT_REPORT.md).
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

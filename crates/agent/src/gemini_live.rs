@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Google Gemini Live API (WebSocket) for DTMF-1 realtime voice.
 //!
 //! Protocol: BidiGenerateContent over WSS (AI Studio / Gemini API key).
@@ -5124,6 +5127,8 @@ pub async fn run_session(
     let mut errand_menu_since: Option<tokio::time::Instant> = None;
     let mut errand_menu_chunks: u64 = 0;
     let mut errand_carrier: Option<String> = None;
+    // "Redial until answered": voicemail picked up (hung up, no message).
+    let mut errand_voicemail = false;
     // Testing only: rotate once after N s so it is testable without ~8 min.
     let test_rotate_after: Option<u64> = std::env::var("GEMINI_TEST_ROTATE_AFTER_SECS")
         .ok()
@@ -5298,6 +5303,13 @@ pub async fn run_session(
                 end_reason = SessionEndReason::IvrHangup;
                 signal_force_hangup(&mut hangup_signaled);
                 info!("Errand call reached the carrier's recording serial={serial} — hang up");
+                break;
+            }
+            if errand_voicemail {
+                e.note_voicemail();
+                end_reason = SessionEndReason::IvrHangup;
+                signal_force_hangup(&mut hangup_signaled);
+                info!("Errand call reached voicemail serial={serial} — hang up, dialed again later");
                 break;
             }
             if let Some(t0) = errand_menu_since {
@@ -6833,6 +6845,15 @@ pub async fn run_session(
                                             && crate::errands::carrier_message(&in_tx_window)
                                         {
                                             errand_carrier = Some(in_tx_window.clone());
+                                        }
+                                        // "Redial until answered": a busy line's recording, or
+                                        // voicemail, ends the call too (it is dialed again).
+                                        if errand_carrier.is_none() && !errand_voicemail && first_downlink_at.is_none() && e.redial() {
+                                            if crate::errands::voicemail_message(&in_tx_window) {
+                                                errand_voicemail = true;
+                                            } else if crate::errands::busy_message(&in_tx_window) {
+                                                errand_carrier = Some(in_tx_window.clone());
+                                            }
                                         }
                                     }
                                     let hold = crate::locale::asks_to_hold(&caller_recent);

@@ -823,3 +823,5 @@ channels:
 | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` | a Telegram bot; also the one that sends appointment cards. Not sent twice when the same bot and chat are also a console channel. |
 | `NOTIFY_WEBHOOK_URL` | the [JSON webhook](#webhook-json) above, without a token |
 | `NOTIFY_GATEWAY_URL` + `NOTIFY_GATEWAY_TAG` | an Apprise API base address; messages go to `<URL>/notify/<tag>`, tag `normal` when empty |
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

@@ -1,4 +1,7 @@
 #!/system/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+# SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 # Bageo: switches the phone between "ai" and "normal" for the app, as root.
 #
 # The app cannot use su itself (KernelSU only offers it to apps on its allow list),

@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 626" width="760" height="626" role="img" aria-labelledby="t" xml:lang="en" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
   <title id="t">A loan sales call. The caller says you are pre-approved for a low-interest loan; the AI asks whether the interest is monthly or yearly. The caller asks for an ID number; the AI asks more questions instead. 27 minutes later the caller wants to hang up and the AI says: wait, I have one more question. Result: 27 minutes stalled, no personal details given, recording and summary saved.</title>
   <style>
     .a0{animation:k0 17.4s ease-out infinite}

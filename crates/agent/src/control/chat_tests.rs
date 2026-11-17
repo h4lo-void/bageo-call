@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! The Discord, Slack and Matrix adapters against stand-ins on this machine:
 //! what becomes an Inbound, what is ignored, reconnecting, limits, secrets,
 //! and no answer at all where commands are off. All ids and tokens are made up.

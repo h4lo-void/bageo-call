@@ -82,3 +82,5 @@ Streamable HTTP 傳輸、無狀態：每個 `POST /mcp` 一則 JSON-RPC 訊息�
 方法：`initialize`、`ping`、`tools/list`、`tools/call`；通知回 `202 Accepted`。支援協定版本 `2025-11-25`、`2025-06-18`、`2025-03-26`；不認得的 `MCP-Protocol-Version` 標頭回 400。
 
 程式在 `crates/agent/src/mcp.rs`，工具執行的是聊天室指令的同一組動作（`crates/agent/src/control/`）。
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

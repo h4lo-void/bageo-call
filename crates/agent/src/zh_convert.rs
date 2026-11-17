@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Pure-Rust Chinese script conversion backed by OpenCC (`ver.1.4.2`, Apache-2.0)
 //! dictionaries embedded at compile time.
 //!

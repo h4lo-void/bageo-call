@@ -1,5 +1,6 @@
 // Copyright (C) 2026 h4lo-void (https://github.com/h4lo-void)
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
 // See LICENSE, LICENSING.md (AGPL-3.0 Section 7 additional terms), and COMMERCIAL_LICENSE.md.
 
 //! Bageo agent.
@@ -1411,6 +1412,7 @@ async fn main() -> Result<()> {
         .merge(mcp::router(remote.clone()))
         .nest_service("/calls", calls_router(calls_state))
         .layer(TraceLayer::new_for_http())
+        .layer(axum::middleware::map_response(add_source_header))
         .with_state(state);
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -1422,6 +1424,19 @@ async fn main() -> Result<()> {
     )
     .await?;
     Ok(())
+}
+
+/// Authorship marker that stays in the compiled program (LICENSING.md, Section 7(b)).
+#[used]
+pub static BAGEO_SOURCE: &str = "bageo-call by h4lo-void https://github.com/h4lo-void/bageo-call";
+
+/// Adds `X-Bageo-Source` to every HTTP response the agent sends.
+async fn add_source_header(mut res: axum::response::Response) -> axum::response::Response {
+    res.headers_mut().insert(
+        "x-bageo-source",
+        axum::http::HeaderValue::from_static("h4lo-void/bageo-call"),
+    );
+    res
 }
 
 /// `/`: a phone over the USB tunnel opens its WebSocket here (the app's default

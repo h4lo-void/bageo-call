@@ -166,3 +166,5 @@ AI 代打是你在“AI 代打”页交代、由 AI 替你拨出的电话，例�
 ## 反馈问题
 
 提一个 issue，写上：你的系统（Windows、macOS 或 Linux）、手机型号和 Android 版本、Bageo 版本（“系统”页最下方）、你做了什么、你预期会怎样，以及 Bageo 终端输出里相关的几行。先把电话号码和密钥去掉，绝对不要贴出 `settings.json`。
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

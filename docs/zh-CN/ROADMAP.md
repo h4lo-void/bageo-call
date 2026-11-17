@@ -84,3 +84,5 @@ Bageo 1.4 这套开源 AI 电话助理已经做到了哪些、哪些只做到一
 7. **同一套通话逻辑换用其他实时模型**（OpenAI Realtime，以及逐渐成熟的本地语音对语音模型）。
 8. **移除旧的菜单式代码路径**，让 Bageo 的代码更易读。
 9. **macOS 与 Windows 的签名、公证发布版**。
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

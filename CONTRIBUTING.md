@@ -161,3 +161,5 @@ post this comment on it:
 A pull request from a contributor who has not signed is not merged. Submitting
 a contribution means you accept the CLA for it, and that the contribution is
 provided "AS IS", subject to [`LEGAL.md`](LEGAL.md).
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

@@ -1,7 +1,12 @@
 <!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial -->
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<meta name="author" content="h4lo-void" />
+<meta name="generator" content="bageo-call (h4lo-void)" />
+<!-- Bageo web console by h4lo-void, https://github.com/h4lo-void/bageo-call -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="color-scheme" content="light dark" />
 <meta name="theme-color" content="#191a1d" />
@@ -706,6 +711,8 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
       <div class="field"><label for="erPhone" data-i18n="er_phone"></label>
         <select id="erPhone" style="max-width:28rem"></select>
         <div class="help" id="erPhoneHelp" data-i18n="er_phone_h" hidden></div></div>
+      <div class="field">
+        <label class="sw"><input type="checkbox" id="erRedial" /><span><b data-i18n="er_redial"></b><small data-i18n="er_redial_h"></small></span></label></div>
       <p class="dlg-err" id="erErr" role="alert" hidden></p>
       <div class="row" style="margin-top:16px">
         <button type="submit" class="btn primary" id="erGo"><span data-i18n="er_start"></span></button>
@@ -1185,6 +1192,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
         </div>
       </div>
     </div>
+    <p class="help" style="text-align:center;margin-top:18px">Bageo · <a href="https://github.com/h4lo-void/bageo-call" target="_blank" rel="noopener">h4lo-void</a></p>
   </section>
 </main>
 
@@ -2165,6 +2173,9 @@ I18N["en"] = {
   er_oc_voicemail: "Voicemail",
   er_oc_failed: "Failed",
   er_attempt: "Attempt {n}",
+  er_redial: "Redial until answered",
+  er_redial_h: "If nobody picks up or the line is busy, it calls again every minute, up to 30 times.",
+  er_redial_wait: "Redial until answered: try {n} got no answer, calling again at {time}",
   er_via: "From {phone}",
   er_as_assistant: "As assistant",
   er_as_owner: "As you",
@@ -3222,6 +3233,9 @@ I18N["zh-TW"] = {
   er_oc_voicemail: "語音信箱",
   er_oc_failed: "失敗",
   er_attempt: "第 {n} 次撥",
+  er_redial: "撥到通",
+  er_redial_h: "沒人接或忙線就每分鐘重撥，最多 30 次。",
+  er_redial_wait: "撥到通：第 {n} 次沒接，{time} 再撥",
   er_via: "用 {phone}",
   er_as_assistant: "助理身分",
   er_as_owner: "本人身分",
@@ -4213,6 +4227,9 @@ I18N["zh-CN"] = {
   er_oc_voicemail: "语音信箱",
   er_oc_failed: "失败",
   er_attempt: "第 {n} 次拨",
+  er_redial: "拨到通",
+  er_redial_h: "没人接或占线就每分钟重拨，最多 30 次。",
+  er_redial_wait: "拨到通：第 {n} 次没接，{time} 再拨",
   er_via: "用 {phone}",
   er_as_assistant: "助理身份",
   er_as_owner: "本人身份",
@@ -5237,6 +5254,9 @@ I18N["ja"] = {
   er_oc_voicemail: "留守番電話",
   er_oc_failed: "失敗",
   er_attempt: "{n} 回目の発信",
+  er_redial: "つながるまでかけ直す",
+  er_redial_h: "出ない・話し中なら 1 分ごとにかけ直します（最大 30 回）。",
+  er_redial_wait: "つながるまでかけ直す：{n} 回目も出ませんでした。{time} にかけ直します",
   er_via: "{phone} から",
   er_as_assistant: "アシスタントとして",
   er_as_owner: "本人として",
@@ -6261,6 +6281,9 @@ I18N["ko"] = {
   er_oc_voicemail: "음성사서함",
   er_oc_failed: "실패",
   er_attempt: "{n}번째 시도",
+  er_redial: "연결될 때까지 다시 걸기",
+  er_redial_h: "받지 않거나 통화 중이면 1분마다 다시 겁니다(최대 30번).",
+  er_redial_wait: "연결될 때까지 다시 걸기: {n}번째도 받지 않아 {time}에 다시 겁니다",
   er_via: "{phone}(으)로",
   er_as_assistant: "비서로",
   er_as_owner: "본인으로",
@@ -7285,6 +7308,9 @@ I18N["es"] = {
   er_oc_voicemail: "Buzón de voz",
   er_oc_failed: "Falló",
   er_attempt: "Intento {n}",
+  er_redial: "Llamar hasta que contesten",
+  er_redial_h: "Si nadie contesta o está ocupado, vuelve a llamar cada minuto, hasta 30 veces.",
+  er_redial_wait: "Llamar hasta que contesten: intento {n} sin respuesta, vuelve a llamar a las {time}",
   er_via: "Desde {phone}",
   er_as_assistant: "Como asistente",
   er_as_owner: "Como tú",
@@ -8309,6 +8335,9 @@ I18N["fr"] = {
   er_oc_voicemail: "Messagerie",
   er_oc_failed: "Échec",
   er_attempt: "Essai {n}",
+  er_redial: "Rappeler jusqu’à ce qu’on décroche",
+  er_redial_h: "Si personne ne répond ou si c’est occupé, Bageo rappelle chaque minute, jusqu’à 30 fois.",
+  er_redial_wait: "Rappeler jusqu’à ce qu’on décroche : essai {n} sans réponse, nouvel appel à {time}",
   er_via: "Depuis {phone}",
   er_as_assistant: "En assistant",
   er_as_owner: "En votre nom",
@@ -9333,6 +9362,9 @@ I18N["de"] = {
   er_oc_voicemail: "Mailbox",
   er_oc_failed: "Fehlgeschlagen",
   er_attempt: "Versuch {n}",
+  er_redial: "Anrufen, bis jemand abnimmt",
+  er_redial_h: "Wenn niemand abnimmt oder besetzt ist, ruft Bageo jede Minute erneut an, höchstens 30-mal.",
+  er_redial_wait: "Anrufen, bis jemand abnimmt: Versuch {n} ohne Antwort, nächster Anruf um {time}",
   er_via: "Über {phone}",
   er_as_assistant: "Als Assistenz",
   er_as_owner: "Als du",
@@ -10357,6 +10389,9 @@ I18N["pt"] = {
   er_oc_voicemail: "Caixa postal",
   er_oc_failed: "Falhou",
   er_attempt: "Tentativa {n}",
+  er_redial: "Ligar até atenderem",
+  er_redial_h: "Se ninguém atender ou estiver ocupado, liga de novo a cada minuto, até 30 vezes.",
+  er_redial_wait: "Ligar até atenderem: tentativa {n} sem resposta, liga de novo às {time}",
   er_via: "Pelo {phone}",
   er_as_assistant: "Como assistente",
   er_as_owner: "Como você",
@@ -13693,6 +13728,7 @@ function erResetForm() {
   erIdTouched = false;
   erSetIdentity(erDefaultIdentity());
   $("erPhone").value = "";
+  $("erRedial").checked = false;
   erRenderPick();
   erHideSugg();
 }
@@ -13775,6 +13811,7 @@ $("erForm").addEventListener("submit", async (ev) => {
   if (!task) return erFormErr(t("er_err_no_task"), $("erTask"));
   body.task = task;
   body.identity = erIdentity();
+  body.redial = $("erRedial").checked;
   const pickedLine = $("erPhone").value;
   const colon = pickedLine.indexOf(":");
   if (colon > 0) {
@@ -13807,7 +13844,7 @@ function erReveal(id) {
 
 // ---- the list: one card per errand, kept (with its captions and what is typed) while unchanged
 function erSig(e) {
-  return JSON.stringify([lang, calApp(), e.updated_at, e.status, e.attempts, e.result, e.questions, e.history, e.record_id,
+  return JSON.stringify([lang, calApp(), e.updated_at, e.status, e.attempts, e.redial, e.redial_at, e.result, e.questions, e.history, e.record_id,
     e.device_label, e.serial, e.sub_id, e.sub_id_asked, e.sim_country, e.name, e.number, e.task, e.identity, er.busy.has(e.id), erExpanded.has(e.id), erFollow.has(e.id),
     phoneLineLabel(e.serial, e.sub_id ?? e.sub_id_asked, e.sim_country)]);
 }
@@ -13864,6 +13901,7 @@ function errandCard(e) {
       h("div", { class: "sub" },
         String(e.name || "").trim() && e.number ? h("span", { class: "mono", text: e.number }) : null,
         h("span", { class: "tag", text: t(e.identity === "owner" ? "er_as_owner" : "er_as_assistant") }),
+        e.redial ? h("span", { class: "tag", text: t("er_redial") }) : null,
         phone ? h("span", { text: t("er_via", { phone }) }) : null)),
     h("div", { class: "er-side" },
       h("span", { class: "tag " + (ER_ST_TAG[st] || "") }, active ? h("span", { class: "pulse" }) : null, h("span", { text: tCode("er_st_", st || "queued") })),
@@ -13877,6 +13915,7 @@ function errandCard(e) {
     card.append(h("button", { type: "button", class: "btn sm ghost er-more", attr: { "aria-expanded": String(open) }, text: t(open ? "er_less" : "er_more"),
       onclick: () => { if (open) erExpanded.delete(e.id); else erExpanded.add(e.id); renderErrands(); } }));
   }
+  if (st === "queued" && e.redial_at) card.append(h("p", { class: "small muted", text: erRedialLine(e) }));
   if (active) card.append(erLiveBox(e));
   if (!erOpen(e)) {
     const res = erResult(e);
@@ -13887,6 +13926,12 @@ function errandCard(e) {
   if (Array.isArray(e.history) && e.history.length) card.append(erHistory(e));
   card.append(erActions(e, busy));
   return card;
+}
+// "Redial until answered", waiting: how many tries got no answer and when the next one goes.
+function erRedialLine(e) {
+  const at = parseStamp(e.redial_at);
+  const done = Math.max(1, Number(e.attempts) - Math.max(1, Number(e.redial_start) || 0));
+  return t("er_redial_wait", { n: done, time: at ? fmtClockTime(at) : "" });
 }
 
 // ---- while the call is on: captions, the AI's question, "Tell the AI"

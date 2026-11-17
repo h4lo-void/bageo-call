@@ -298,3 +298,5 @@ AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種
 - **取得商業授權：** 若企業、電信／雲端總機營運商、客服中心或硬體廠商不願依 `AGPL-3.0-only` 開源，可向原作者洽購書面商業授權，詳見 [**雙重授權與商業授權條款（COMMERCIAL_LICENSE.md）**](COMMERCIAL_LICENSE.md)。
 
 **免責聲明與使用須知：** 本專案為自架軟體，按「現狀（AS IS）」提供且不附任何擔保；作者不維運任何服務，軟體也不會將資料傳回給作者。部署者須自行負責遵守當地通話錄音、AI 揭露與自動撥號相關法律，並自負手機 Root 與資費帳單風險。使用前請詳閱 [**法律免責聲明與使用須知（LEGAL.md）**](LEGAL.md)、[隱私、安全與法律](docs/zh-TW/PRIVACY_AND_LEGAL.md) 及 [v1.0 AI 輔助內部審查筆記](AUDIT_REPORT.md)（`gemini-4-carbon`，非第三方審計）。第三方授權聲明（含 OpenCC `Apache-2.0` 字典）見 [NOTICE.md](NOTICE.md)。本專案與 Google LLC 無關；Pixel、Android 與 Gemini 為 Google LLC 之商標。
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

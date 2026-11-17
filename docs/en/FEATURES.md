@@ -97,6 +97,10 @@ default) or as **You in person**.
 - **A clear result, one notification.** *Done*, *Partly done*, *Not done*,
   *Your decision needed*, *No answer*, *Voicemail* or *Failed*, with the
   details, the options offered and any agreed time, ready for your calendar.
+- **Redial until answered.** For a restaurant or shop whose line is always
+  busy, turn this on when you start the errand. If nobody picks up or the line
+  is busy, the AI calls again every minute, up to 30 times. It leaves no
+  voicemail message, and you get one notification at the end.
 - **Safe dialing.** Emergency numbers, short codes, premium-rate numbers and
   numbers written after an international call prefix are refused, so an errand
   never turns into an international call by mistake.
@@ -105,9 +109,10 @@ default) or as **You in person**.
   country. If the phone reports a different SIM as the call starts, Bageo hangs
   up before it connects (`wrong_sim`).
 - **Sensible limits.** One call to a number at a time; at most 10 minutes per
-  call, with a wrap-up at 9:30; no automatic redials (**Call again** is your
-  button); voice menus waited out for up to 90 seconds; a carrier's "not in
-  service" recording ends the call at once.
+  call, with a wrap-up at 9:30; no automatic redials unless you turn on
+  **Redial until answered** (otherwise **Call again** is your button); voice
+  menus waited out for up to 90 seconds; a carrier's "not in service"
+  recording ends the call at once.
 
 ## Spam and scam call blocker, with Stall Mode
 
@@ -284,3 +289,5 @@ More, including the techniques that make the biggest difference:
 
 Reports from other phones and languages help the most: see
 [CONTRIBUTING.md](../../CONTRIBUTING.md).
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

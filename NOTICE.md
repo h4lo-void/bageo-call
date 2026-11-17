@@ -59,3 +59,5 @@ the notification services you add. Their terms and prices are strictly between
 you and them. This project is not affiliated with or endorsed by Google LLC or
 any of those services. "Pixel", "Android" and "Gemini" are trademarks of
 Google LLC and are used here solely to identify compatible hardware and APIs.
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

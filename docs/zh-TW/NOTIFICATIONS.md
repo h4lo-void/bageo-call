@@ -715,3 +715,5 @@ POST /calls/api/notify/send        {"title": "Garage", "body": "Door left open"}
 | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` | Telegram Bot；預約卡片也是由它送出。控制台裡有同一個 Bot 和聊天時，不會重複送。 |
 | `NOTIFY_WEBHOOK_URL` | 上面的 [JSON Webhook](#webhook-json)，不帶權杖 |
 | `NOTIFY_GATEWAY_URL` + `NOTIFY_GATEWAY_TAG` | Apprise API 的基底網址；訊息送到 `<URL>/notify/<tag>`，標籤留空時是 `normal` |
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Confirmation of what has side effects (a call, a phone's mode, a to-do).
 //!
 //! The chat gets a summary and a code; only the person who asked, in the same

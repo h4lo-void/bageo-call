@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! A second look before the AI starts keeping a caller busy.
 //!
 //! The keyword score in `gemini_live` trips on words that honest calls use as

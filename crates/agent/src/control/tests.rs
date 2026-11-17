@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! The chat commands end to end: who gets an answer, the confirmation, the
 //! limits, what the replies say, and the Telegram bot against a stand-in.
 

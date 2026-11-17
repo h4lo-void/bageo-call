@@ -194,3 +194,5 @@ USB 还能让手机一直充电，没有 Wi-Fi 也能用。一台电脑可以插
 
 请看[故障排查](TROUBLESHOOTING.md)，以及 [`android/README.md`](../../android/README.md#troubleshooting)（英文）末尾的表格。
 
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

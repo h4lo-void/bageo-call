@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! The owner's contacts: who a number belongs to.
 //!
 //! Kept in `contacts.json` next to the call records (`CALLS_DATA_DIR`), written

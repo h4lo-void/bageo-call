@@ -339,3 +339,5 @@ music, voicemail, a Tencent TRTC bridge, a Whisper / LLM / Piper pipeline).
 That code is still in `main.rs` and its own modules, off by default and
 without its recordings. It stays for now because it is interleaved with the
 live path; removing it cleanly is on the [roadmap](ROADMAP.md).
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Runtime-editable settings: env defaults + JSON overrides, hot-swappable.
 //!
 //! Merge order: `config::Settings::from_env()` (compose env) is always the

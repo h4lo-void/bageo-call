@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Decode hold-music / IVR audio (mp3/wav/…) to 16 kHz s16le mono PCM.
 //! Prefers a tiny native PCM-WAV path (no ffmpeg) so 48 kHz menu WAVs resample cleanly;
 //! falls back to ffmpeg for mp3 / odd containers.

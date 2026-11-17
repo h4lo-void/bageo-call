@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Free text from the owner ("call 0912345678 and book a table", "who called
 //! yesterday?") read into one command by Gemini's lowest-cost model, asked the
 //! way the stall review asks it (crate::stall_review): one generateContent
