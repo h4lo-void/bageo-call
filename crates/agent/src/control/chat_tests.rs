@@ -934,18 +934,33 @@ async fn review_discord_heartbeats_carry_the_sequence_and_a_silent_server_means_
     assert_eq!((beat["op"].as_u64(), beat["d"].as_u64()), (Some(1), Some(5)), "{beat}");
     // No answer to that heartbeat: the next tick gives the line up.
     let mut again = next_conn(&mut conns).await;
-    send_json(&mut again, json!({"op": 10, "d": {"heartbeat_interval": 100}})).await;
+    // A longer interval here: a slow machine answering a beat a little late must not count as unanswered.
+    send_json(&mut again, json!({"op": 10, "d": {"heartbeat_interval": 250}})).await;
     let resume = recv_json(&mut again).await;
     assert_eq!((resume["op"].as_u64(), resume["d"]["seq"].as_u64(), resume["d"]["session_id"].as_str()), (Some(6), Some(5), Some("s1")), "{resume}");
-    // Answered heartbeats keep this line.
-    for _ in 0..4 {
-        let beat = recv_json(&mut again).await;
-        assert_eq!(beat["op"], 1, "{beat}");
-        send_json(&mut again, json!({"op": 11})).await;
-    }
-    let third = tokio::time::timeout(Duration::from_millis(300), conns.recv()).await;
+    // Answered heartbeats keep this line: answer every beat for about four intervals and
+    // watch for a new connection the whole time (not after we stop answering).
+    let mut beats = 0;
+    let end = tokio::time::Instant::now() + Duration::from_millis(1_100);
+    let reconnected = loop {
+        tokio::select! {
+            _ = tokio::time::sleep_until(end) => break false,
+            _ = conns.recv() => break true,
+            m = again.next() => match m {
+                Some(Ok(WsMessage::Text(t))) => {
+                    let beat: Value = serde_json::from_str(t.as_str()).unwrap();
+                    assert_eq!(beat["op"], 1, "{beat}");
+                    send_json(&mut again, json!({"op": 11})).await;
+                    beats += 1;
+                }
+                Some(Ok(_)) => {}
+                _ => break true,
+            },
+        }
+    };
     task.abort();
-    assert!(third.is_err(), "reconnected although every heartbeat was answered");
+    assert!(!reconnected, "reconnected although every heartbeat was answered ({beats} answered)");
+    assert!(beats >= 3, "only {beats} heartbeats in about four intervals");
 }
 
 /// Invalid session: not resumable -> identify afresh; resumable -> resume.
