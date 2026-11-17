@@ -63,6 +63,7 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&…
 | 标题 | 什么时候 | Webhook `event` |
 |---|---|---|
 | 来电 | 电话被接起来。 | `incoming` |
+| 去电 | Bageo 自己拨出电话：AI 代打、预约回电或待办回电。代打设成“拨到通”时，只有第一次拨号会通知。 | `outgoing` |
 | 拒接号码来电 | 拦截号码打来。消息会写明是响铃时直接拒接，还是接起来播放语音，以及你当初填的原因。 | `blocked` |
 | 通话摘要 | 通话结束几秒后：谁、什么事、AI 怎么回复、你要处理什么，以及链接。 | `summary` |
 | 通话中插播未接 | 通话中又有第二通打进来，手机把它拒接了（对方听到忙音）。知道号码的话记得回电。 | `call_waiting` |
@@ -677,6 +678,7 @@ smtps://you@example.com@smtp.example.com:465    一连接就走 TLS
 | `event` | 什么时候 | `data` |
 |---|---|---|
 | `incoming` | 电话被接起来 | `caller_id`、`device`、`time` |
+| `outgoing` | Bageo 自己拨出的电话开始响铃 | `caller_id`（拨出的号码）、`device`、`time` |
 | `blocked` | 拦截号码打来 | `caller_id`、`device`、`time`、`reason`、`declined`（`true`：响铃时拒接；`false`：接起来播放语音） |
 | `summary` | 通话结束几秒后 | `caller_id`、`device`、`time`、`summary`、`contact`（联系人名字，不是联系人就是空字符串） |
 | `call_waiting` | 通话中第二通打进来被拒接 | `caller_id`、`device`、`time`、`sim_country` |

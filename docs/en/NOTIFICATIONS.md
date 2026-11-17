@@ -88,6 +88,7 @@ You can receive these messages:
 | Title | When | Webhook `event` |
 |---|---|---|
 | Incoming call | A call was picked up. | `incoming` |
+| Outgoing call | Bageo placed a call itself: an AI errand, an appointment call-back or a to-do call-back. An errand set to redial until answered tells you on its first try only. | `outgoing` |
 | Blocked number called | A blocked number called. The message says whether it was declined while it rang or answered with the announcement, and your reason for blocking it. | `blocked` |
 | Call summary | A few seconds after a call ended: who, what about, what the AI said, what you should do, and the links. | `summary` |
 | Missed while on another call | A second call rang during a call and the phone declined it (the caller heard busy). Call back if you know the number. | `call_waiting` |
@@ -780,6 +781,7 @@ With a *Bearer token (optional)* set, it adds `Authorization: Bearer <token>`.
 | `event` | When | `data` |
 |---|---|---|
 | `incoming` | a call was picked up | `caller_id`, `device`, `time` |
+| `outgoing` | Bageo's own call started ringing | `caller_id` (the number called), `device`, `time` |
 | `blocked` | a blocked number called | `caller_id`, `device`, `time`, `reason`, `declined` (`true`: refused while it rang; `false`: answered with the announcement) |
 | `summary` | a few seconds after a call ended | `caller_id`, `device`, `time`, `summary`, `contact` (the contact's name, or empty) |
 | `call_waiting` | a second call rang during a call and was declined | `caller_id`, `device`, `time`, `sim_country` |

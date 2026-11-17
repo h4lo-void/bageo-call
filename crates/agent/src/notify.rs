@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
 // SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
 
-//! Notifications: incoming call, blocked call, voicemail and the post-call summary.
+//! Notifications: incoming call, outgoing call, blocked call, voicemail and the post-call summary.
 //!
 //! Every enabled channel on the settings page gets every message ([`Channel`],
 //! [`KINDS`]). Three older routes still work when set through the environment:
@@ -243,7 +243,7 @@ pub struct NotifyAction {
 /// What is sent.
 #[derive(Debug, Clone, Default)]
 pub struct Message {
-    /// `incoming` / `blocked` / `voicemail` / `summary` / `test` / `sms`.
+    /// `incoming` / `outgoing` / `blocked` / `voicemail` / `summary` / `test` / `sms`.
     pub event: String,
     pub title: String,
     /// Plain text; its first line is the headline.
@@ -1684,6 +1684,24 @@ impl Card {
     }
 }
 
+/// The card of a call that rings on a phone: number, phone and time. `event`
+/// is `incoming` (a call came in) or `outgoing` (Bageo placed it itself).
+fn ring_message(event: &str, title: &str, caller_id: &str, serial: &str) -> Message {
+    let p = locale::notify_phrases();
+    let caller = display_or_hidden(caller_id);
+    let device = device_label(serial);
+    let when = now_stamp();
+    Card::new(title)
+        .code(p.n_number, &caller)
+        .row(p.n_phone, &device)
+        .row(p.n_time, &when)
+        .message(
+            event,
+            format!("{title} {caller}"),
+            json!({ "caller_id": caller_id.trim(), "device": device, "time": when }),
+        )
+}
+
 /// A call came in. Returns true when at least one channel took the message.
 pub async fn notify_incoming_call(
     http: &Client,
@@ -1694,19 +1712,24 @@ pub async fn notify_incoming_call(
     if !settings.call_notify {
         return false;
     }
-    let p = locale::notify_phrases();
-    let caller = display_or_hidden(caller_id);
-    let device = device_label(serial);
-    let when = now_stamp();
-    let msg = Card::new(p.n_incoming)
-        .code(p.n_number, &caller)
-        .row(p.n_phone, &device)
-        .row(p.n_time, &when)
-        .message(
-            "incoming",
-            format!("{} {caller}", p.n_incoming),
-            json!({ "caller_id": caller_id.trim(), "device": device, "time": when }),
-        );
+    let msg = ring_message("incoming", locale::notify_phrases().n_incoming, caller_id, serial);
+    deliver(http, settings, &msg).await
+}
+
+/// Bageo's own call rings on the other side (an AI errand, an appointment's
+/// call-back, a to-do's call-back): the owner is told it is going out, not that
+/// a call came in. Same switch as [`notify_incoming_call`]. `caller_id` is
+/// the number dialed.
+pub async fn notify_outgoing_call(
+    http: &Client,
+    settings: &Settings,
+    caller_id: &str,
+    serial: &str,
+) -> bool {
+    if !settings.call_notify {
+        return false;
+    }
+    let msg = ring_message("outgoing", locale::notify_phrases().n_outgoing, caller_id, serial);
     deliver(http, settings, &msg).await
 }
 
@@ -2932,6 +2955,32 @@ mod tests {
             card.html(),
             "<b>Incoming call</b>\nNumber：<code>&lt;0912&gt;</code>\nPhone：Pixel 8 &amp; co\n\ndone"
         );
+    }
+
+    /// A call Bageo places itself is an `outgoing` card with the number dialed,
+    /// never the `incoming` one; both carry the same fields.
+    #[test]
+    fn an_own_call_is_an_outgoing_card_not_an_incoming_one() {
+        let p = locale::notify_phrases();
+        let out = ring_message("outgoing", p.n_outgoing, "0223456701", "pixel-test-77011");
+        let inc = ring_message("incoming", p.n_incoming, "0223456701", "pixel-test-77011");
+        assert_eq!((out.event.as_str(), inc.event.as_str()), ("outgoing", "incoming"));
+        assert!(out.title.starts_with(p.n_outgoing) && out.title.contains("0223456701"), "{}", out.title);
+        assert!(out.body.starts_with(p.n_outgoing) && !out.body.contains(p.n_incoming), "{}", out.body);
+        assert_eq!(out.data["caller_id"], "0223456701");
+        assert!(out.data["device"].is_string() && out.data["time"].is_string());
+        assert!(inc.title.starts_with(p.n_incoming) && inc.body.starts_with(p.n_incoming));
+    }
+
+    #[test]
+    fn the_outgoing_title_is_written_in_all_nine_languages() {
+        for lang in locale::ALL {
+            let p = locale::phrases(lang);
+            assert!(!p.n_outgoing.trim().is_empty(), "{lang:?}");
+            assert_ne!(p.n_outgoing, p.n_incoming, "{lang:?}");
+        }
+        assert_eq!(locale::phrases(locale::Lang::ZhTw).n_outgoing, "去電");
+        assert_eq!(locale::phrases(locale::Lang::En).n_outgoing, "Outgoing call");
     }
 
     #[test]

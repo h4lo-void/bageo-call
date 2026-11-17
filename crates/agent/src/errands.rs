@@ -276,6 +276,41 @@ fn is_zero(n: &u32) -> bool {
     *n == 0
 }
 
+/// What the owner is told when a call starts ringing on a phone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CallNotice {
+    /// A call came in.
+    Incoming,
+    /// Our own call is going out: an errand, an appointment's call-back or a
+    /// to-do's call-back.
+    Outgoing,
+    /// Nothing: a "Redial until answered" errand's second or later try of a run
+    /// (the first one told the owner), or the call of an errand that is over
+    /// or deleted, which is hung up.
+    Silent,
+}
+
+/// Which notification the ring of a call on `serial` for `caller_id` gets.
+/// Our own calls are told from the state `place_call` left
+/// ([`appointments::outgoing_call_on`], [`crate::fulfill::voicemail_callback_dialing`]),
+/// so it holds at the first ring, whether or not the phone has reported the call
+/// ready yet; any other call is one coming in.
+pub async fn call_notice(control: &ControlRegistry, store: &ErrandStore, serial: &str, caller_id: &str) -> CallNotice {
+    if let Some(call) = appointments::outgoing_call_on(serial, caller_id) {
+        if call.errand {
+            let again = store.get(&call.task_id).is_none_or(|e| e.is_final() || (e.redial && e.redial_try() > 1));
+            if again {
+                return CallNotice::Silent;
+            }
+        }
+        return CallNotice::Outgoing;
+    }
+    if crate::fulfill::voicemail_callback_dialing(control, serial, caller_id).await {
+        return CallNotice::Outgoing;
+    }
+    CallNotice::Incoming
+}
+
 /// The try errand `e` is on is over with `result` and nobody picked up: kept
 /// in `history`, and the next try waits until `at`.
 fn next_try(e: &mut Errand, result: Outcome, at: chrono::DateTime<chrono::Local>) {
@@ -3938,6 +3973,89 @@ mod tests {
         assert_eq!(next_json(&mut ph, QUIET).await, None);
         assert_eq!(rig.store.get(&e.id).unwrap().status, DONE);
     }
+
+    async fn ring(rig: &Rig, serial: &str, number: &str) -> CallNotice {
+        call_notice(&rig.control, &rig.store, serial, number).await
+    }
+
+    /// An errand's call ringing is our own call going out, known from the moment
+    /// the phone is asked to dial (before it reports the call ready); a call
+    /// from anyone else, or from that number once it is over, is one coming in.
+    #[tokio::test]
+    async fn an_errand_ringing_is_an_outgoing_call_and_any_other_call_is_incoming() {
+        let rig = Rig::new();
+        let (sink, mut ph) = phone_socket().await;
+        rig.control.register_client("pixel-notice-1".into(), sink).await;
+        let phones = vec![phone("pixel-notice-1", &[(1, "tw")])];
+        let e = create(&rig.env(phones), &json!({"number": "0223456791", "task": "訂明晚 7 點 2 位"})).await.unwrap();
+        let first = next_json(&mut ph, Duration::from_secs(2)).await.expect("place_call");
+        // Dialing, the phone has said nothing yet: the first ring is already ours.
+        assert_eq!(ring(&rig, "pixel-notice-1", "0223456791").await, CallNotice::Outgoing);
+        assert_eq!(ring(&rig, "pixel-notice-1", "+886 2 2345 6791").await, CallNotice::Outgoing);
+        assert_eq!(ring(&rig, "pixel-notice-1", "0223456799").await, CallNotice::Incoming, "another number");
+        assert_eq!(ring(&rig, "pixel-notice-2", "0223456791").await, CallNotice::Incoming, "another phone");
+        assert_eq!(ring(&rig, "pixel-notice-1", "").await, CallNotice::Incoming, "a hidden number");
+        // Ready, then its session took the script: still ours.
+        let cb_env = rig.env(vec![]);
+        let cb = cb_env.cb();
+        appointments::on_callback_event(&cb, "pixel-notice-1", &json!({"type": "outbound_ready", "call_id": first["call_id"], "task_id": e.id, "number": "0223456791"})).await;
+        assert_eq!(ring(&rig, "pixel-notice-1", "0223456791").await, CallNotice::Outgoing);
+        assert!(appointments::callback_for_call("pixel-notice-1", "0223456791").await.is_some());
+        assert_eq!(ring(&rig, "pixel-notice-1", "0223456791").await, CallNotice::Outgoing);
+        // Not set to redial: a later try (the owner's "Call again") is told as well.
+        rig.store.update(&e.id, |e| e.attempts = 3);
+        assert_eq!(ring(&rig, "pixel-notice-1", "0223456791").await, CallNotice::Outgoing);
+        // Over: the number calling us is a call coming in.
+        appointments::on_callback_event(&cb, "pixel-notice-1", &json!({"type": "call_end", "call_id": first["call_id"], "task_id": e.id})).await;
+        rig.store.attach_call(&e.id, "rec-notice-1");
+        after_call(&cb, &rig.store, &e.id, "rec-notice-1", "", "", false).await;
+        appointments::callback_call_over(&cb, &e.id, false).await;
+        assert_eq!(ring(&rig, "pixel-notice-1", "0223456791").await, CallNotice::Incoming);
+    }
+
+    /// "Redial until answered": only the first try of a run tells the owner the
+    /// call is going out; the tries after it ring without a notice, and the
+    /// owner's "Call again" (a new run) tells once more.
+    #[tokio::test]
+    async fn a_redial_errand_tells_the_first_try_only() {
+        let rig = Rig::new();
+        let (sink, mut ph) = phone_socket().await;
+        rig.control.register_client("pixel-notice-3".into(), sink).await;
+        let phones = vec![phone("pixel-notice-3", &[(1, "tw")])];
+        let e = create(&rig.env(phones.clone()), &json!({"number": "0223456792", "task": "訂明晚 7 點 2 位", "redial": true})).await.unwrap();
+        let cb_env = rig.env(vec![]);
+        let cb = cb_env.cb();
+        let notice = || call_notice(&rig.control, &rig.store, "pixel-notice-3", "0223456792");
+        // Try 1 rings out.
+        let first = next_json(&mut ph, Duration::from_secs(2)).await.expect("place_call");
+        assert_eq!(notice().await, CallNotice::Outgoing);
+        appointments::on_callback_event(&cb, "pixel-notice-3", &json!({"type": "outbound_ready", "call_id": first["call_id"], "task_id": e.id, "number": "0223456792"})).await;
+        assert!(appointments::callback_for_call("pixel-notice-3", "0223456792").await.is_some());
+        assert_eq!(notice().await, CallNotice::Outgoing);
+        rig.store.attach_call(&e.id, "rec-notice-3");
+        appointments::on_callback_event(&cb, "pixel-notice-3", &json!({"type": "call_end", "call_id": first["call_id"], "task_id": e.id})).await;
+        after_call(&cb, &rig.store, &e.id, "rec-notice-3", "", "", false).await;
+        appointments::callback_call_over(&cb, &e.id, false).await;
+        // Try 2 is dialed a minute later: no notice, from the first ring on.
+        rig.store.update(&e.id, |e| e.redial_at = (chrono::Local::now() - chrono::Duration::seconds(1)).to_rfc3339());
+        sweep(&rig.env(phones.clone())).await;
+        let second = next_json(&mut ph, Duration::from_secs(2)).await.expect("the second place_call");
+        assert_eq!(rig.store.get(&e.id).unwrap().attempts, 2);
+        assert_eq!(notice().await, CallNotice::Silent);
+        appointments::on_callback_event(&cb, "pixel-notice-3", &json!({"type": "outbound_ready", "call_id": second["call_id"], "task_id": e.id, "number": "0223456792"})).await;
+        assert!(appointments::callback_for_call("pixel-notice-3", "0223456792").await.is_some());
+        assert_eq!(notice().await, CallNotice::Silent);
+        // The owner's "Call again" starts a new run: its first try tells.
+        rig.store.update(&e.id, |e| e.redial_start = e.attempts);
+        assert_eq!(notice().await, CallNotice::Outgoing);
+        rig.store.update(&e.id, |e| e.attempts += 1);
+        assert_eq!(notice().await, CallNotice::Silent);
+        // Over: a call from that number is a call coming in.
+        appointments::on_callback_event(&cb, "pixel-notice-3", &json!({"type": "call_end", "call_id": second["call_id"], "task_id": e.id})).await;
+        appointments::callback_call_over(&cb, &e.id, false).await;
+        assert_eq!(notice().await, CallNotice::Incoming);
+    }
+
 
     #[tokio::test]
     async fn redial_gives_up_after_thirty_tries_with_one_notification() {

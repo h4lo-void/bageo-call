@@ -507,6 +507,22 @@ pub async fn voicemail_callback_for_call(
     }
 }
 
+/// Whether a call ringing on `serial` for `caller_id` (the number dialed) is a
+/// to-do's phone call-back that is going out: the phone was asked to dial that
+/// number and the call has not failed or ended. Takes nothing (the call-back is
+/// handed its script by [`voicemail_callback_for_call`]), so it can be asked at
+/// the first ring, before the phone says the call connected.
+pub async fn voicemail_callback_dialing(control: &ControlRegistry, serial: &str, caller_id: &str) -> bool {
+    use crate::callback::CallbackPhase;
+    let Some(task_id) = pending_call_back(serial, caller_id) else {
+        return false;
+    };
+    matches!(
+        control.callback_session_for(&task_id, "").await.map(|s| s.phase),
+        Some(CallbackPhase::Queued | CallbackPhase::Dialing | CallbackPhase::Ringing | CallbackPhase::Connected)
+    )
+}
+
 /// What the AI follows on a to-do's phone call-back: we call them back about
 /// the message they left; it greets them once they speak, says who calls and
 /// why, listens, agrees to nothing.
@@ -667,5 +683,19 @@ mod tests {
         let control = ControlRegistry::new();
         assert!(voicemail_callback_for_call(&control, "pixel-vm-test-c", "0912000883").await.is_none());
         assert!(!voicemail_callback_pending("pixel-vm-test-c"));
+    }
+
+    /// A ring is told as our own call only for a call-back whose dial is
+    /// live: another number, another phone, or a session that is gone is a
+    /// call coming in, and asking takes nothing.
+    #[tokio::test]
+    async fn a_todo_call_back_is_ours_only_while_its_dial_is_live() {
+        register_voicemail_callback("t-vm-4", "0912000884", "pixel-vm-test-d", "S4".into(), Lang::ZhTw);
+        let control = ControlRegistry::new();
+        assert!(!voicemail_callback_dialing(&control, "pixel-vm-test-d", "0912000999").await, "another number");
+        assert!(!voicemail_callback_dialing(&control, "pixel-vm-test-e", "0912000884").await, "another phone");
+        assert!(!voicemail_callback_dialing(&control, "pixel-vm-test-d", "0912000884").await, "no live session");
+        assert_eq!(pending_call_back("pixel-vm-test-d", "0912000884").as_deref(), Some("t-vm-4"), "nothing taken");
+        take_call_back("t-vm-4");
     }
 }
