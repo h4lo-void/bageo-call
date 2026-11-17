@@ -143,7 +143,7 @@ Your first pull request also needs your signature on the
 
 Bageo is dual-licensed: `AGPL-3.0-only` for everyone, and commercial licenses
 from the copyright holder (**h4lo-void**) for those who cannot publish their
-source; see [`LICENSE`](LICENSE) and
+source; see [`LICENSE`](LICENSE), [`LICENSING.md`](LICENSING.md) and
 [`COMMERCIAL_LICENSE.md`](COMMERCIAL_LICENSE.md). That only works if the
 project may license every contribution both ways, so each contributor signs
 the [Contributor License Agreement](CLA.md) once.

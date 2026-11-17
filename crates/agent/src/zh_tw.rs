@@ -8,9 +8,8 @@
 //! corrections still match). Japanese and Korean are never converted: their
 //! kanji / hanja are not Simplified Chinese.
 
-use zhconv::{zhconv, Variant};
-
 use crate::locale::Lang;
+use crate::zh_convert;
 
 /// A speech-to-text fragment the owner reads: converted to zh-TW when the owner
 /// reads zh-TW. Line by line, and only lines that can be told from Japanese: a
@@ -104,7 +103,7 @@ fn has_simplified_only(line: &str) -> bool {
         .any(|c| {
             let mut buf = [0u8; 4];
             let s: &str = c.encode_utf8(&mut buf);
-            zhconv(s, Variant::ZhTW).as_str() != s
+            zh_convert::to_tw(s).as_str() != s
         })
 }
 
@@ -124,13 +123,13 @@ fn has_kana_or_hangul(line: &str) -> bool {
     })
 }
 
-/// Always convert to zh-TW (OpenCC + MediaWiki tables; includes 软件→軟體-style
-/// phrases): what the keyword matching reads, whatever the agent's language.
+/// Always convert to zh-TW (OpenCC s2tw tables): what the keyword matching
+/// reads, whatever the agent's language.
 pub fn norm(text: &str) -> String {
     if text.is_empty() || !text.chars().any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c)) {
         return text.to_string();
     }
-    zhconv(text, Variant::ZhTW)
+    zh_convert::to_tw(text)
 }
 
 #[cfg(test)]

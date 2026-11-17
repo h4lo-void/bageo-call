@@ -180,6 +180,6 @@ sends for you are billed by your plan like any other.
 
 ## Operator liability, disclaimer and licensing
 
-Bageo is unhosted source code provided strictly "AS IS" without warranty of any kind. The original author (**h4lo-void**) operates no servers or call relays and never touches your calls, recordings, messages or keys. **You alone are the operator, subscriber of record and data controller of your installation**, and you bear 100% of all civil, criminal, regulatory, telecom and billing responsibilities arising from your use or misuse of the software.
+Bageo is self-hosted software provided "AS IS" without warranty of any kind. The author (**h4lo-void**) operates no servers or call relays, and the software sends no call audio, recordings, messages or keys back to the author. Whoever deploys Bageo is solely responsible for complying with local laws on call recording, AI disclosure, telemarketing and personal data, as well as hardware rooting and carrier or API charges.
 
-Before running Bageo, read the binding [**Legal Disclaimer, Prohibited Uses & Assumption of Risk (`LEGAL.md`)**](../../LEGAL.md), the [**Dual & Commercial License Terms (`COMMERCIAL_LICENSE.md`)**](../../COMMERCIAL_LICENSE.md) (`AGPL-3.0-only` / Commercial License), and the [**v1.0 Project Audit Report (`AUDIT_REPORT.md`)**](../../AUDIT_REPORT.md).
+Before running Bageo, read the [**Legal Disclaimer & Usage Notice (`LEGAL.md`)**](../../LEGAL.md), the [**Dual Licensing & Section 7 Terms (`LICENSING.md`)**](../../LICENSING.md) ([`AGPL-3.0-only`](../../LICENSE) / [**Commercial License (`COMMERCIAL_LICENSE.md`)**](../../COMMERCIAL_LICENSE.md)), and the AI-assisted internal review note [**`AUDIT_REPORT.md`**](../../AUDIT_REPORT.md) (for `v1.0`, not a third-party audit).
