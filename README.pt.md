@@ -223,7 +223,7 @@ Todos os recursos em detalhes: [Recursos](docs/en/FEATURES.md).
 1. **Baixe** o pacote para o seu sistema em [Releases](https://github.com/h4lo-void/bageo-call/releases) e descompacte.
 2. **Inicie.** Windows: clique duas vezes em `start.cmd`. macOS: clique duas vezes em `start.command`. Linux: `./start.sh`. O console abre em <http://localhost:8787/>.
 3. **Preencha o básico** em **Configurações**: sua chave de API do Gemini, seu nome e o idioma. Toque em ▶ para ouvir as vozes e escolha uma.
-4. **Prepare o celular** uma única vez: instale `pixelcallai_uplink-<version>.zip` como módulo no Magisk ou KernelSU, reinicie, abra o app **Bageo**, siga as etapas de configuração dele e conecte o celular.
+4. **Prepare o celular** uma única vez: instale `bageo-phone-module-<version>.zip` como módulo no Magisk ou KernelSU, reinicie, abra o app **Bageo**, siga as etapas de configuração dele e conecte o celular.
 5. **Ligue para ele** de outro telefone: um toque e a IA atende.
 
 Travou? Cada passo em detalhes: [Primeiros passos](docs/en/GETTING_STARTED.md) · [Configurar o celular](docs/en/PHONE.md).
