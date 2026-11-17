@@ -417,7 +417,7 @@ fn reading_time(line: &str) -> (f32, f32) {
 /// their own way.
 fn says_the_line(line: &str, heard: &str) -> bool {
     let norm = |s: &str| -> Vec<char> {
-        zhconv::zhconv(s, zhconv::Variant::ZhCN)
+        crate::zh_convert::to_cn(s)
             .to_lowercase()
             .chars()
             .filter(|c| c.is_alphanumeric())

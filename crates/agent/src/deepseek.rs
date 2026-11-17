@@ -99,14 +99,13 @@ pub fn summary_system_prompt(lang: Lang, owner: &str, aliases: &[String]) -> Str
     let rule = |r: &str| if names.is_empty() { String::new() } else { r.to_string() };
     let prompt = match lang {
         Lang::ZhTw => format!("{TG_SUMMARY_SYSTEM_PROMPT}{}", rule(TG_SUMMARY_ALIASES_RULE)).replace("{owner}", &owner),
-        Lang::ZhCn => zhconv::zhconv(
+        Lang::ZhCn => crate::zh_convert::to_cn(
             &format!(
                 "{}{}",
                 TG_SUMMARY_SYSTEM_PROMPT.replace("一律繁體中文、台灣用語", "一律簡體中文"),
                 rule(TG_SUMMARY_ALIASES_RULE)
             )
             .replace("{owner}", &owner),
-            zhconv::Variant::ZhCN,
         ),
         other => {
             let p = locale::phrases(other);
@@ -436,7 +435,7 @@ fn empty_transcript_summary(lang: Lang) -> String {
     const TW: &str = "對方：沒說是誰\n事情：（沒有逐字稿，請聽錄音）\nAI 回覆：不明\n要處理：請聽錄音確認";
     match lang {
         Lang::ZhTw => TW.to_string(),
-        Lang::ZhCn => zhconv::zhconv(TW, zhconv::Variant::ZhCN),
+        Lang::ZhCn => crate::zh_convert::to_cn(TW),
         _ => {
             let p = locale::phrases(lang);
             format!("{}{}{}", p.s_matter, p.sep, p.s_no_summary)
@@ -450,7 +449,7 @@ fn fallback_summary_in(lang: Lang, caller: &str, transcript: &str) -> String {
     match lang {
         Lang::ZhTw => return fallback_summary(caller, transcript),
         // The same Chinese lines (the input is labelled 對方／接聽 too), in Simplified.
-        Lang::ZhCn => return zhconv::zhconv(&fallback_summary(caller, transcript), zhconv::Variant::ZhCN),
+        Lang::ZhCn => return crate::zh_convert::to_cn(&fallback_summary(caller, transcript)),
         _ => {}
     }
     let p = locale::phrases(lang);

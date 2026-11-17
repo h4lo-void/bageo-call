@@ -1,5 +1,7 @@
 # Bageo (`bageo-call`) v1.0 全專案技術、資安、架構與法遵審計報告
 
+> **說明 / Note：** 本文件為 AI 輔助產生的內部審查筆記（對應 `v1.0`），不是獨立第三方審計，也不構成任何安全性、合規性或無瑕疵保證。最新授權與免責條款請以 [`LICENSE`](LICENSE)、[`LICENSING.md`](LICENSING.md)、[`NOTICE.md`](NOTICE.md) 與 [`LEGAL.md`](LEGAL.md) 為準。（AI-assisted internal review note for `v1.0`; not a third-party audit and provides no warranty or guarantee of any kind.）
+
 | 審計欄位 | 內容 |
 |---|---|
 | **受審專案** | **Bageo（八哥）** — `<https://github.com/h4lo-void/bageo-call>` |
@@ -95,7 +97,7 @@
 
 | 組件範圍 | 包含項目 | 授權條款 | 與 `AGPL-3.0-only` 相容 | 與閉源商業授權相容 |
 |---|---|---|---|---|
-| **Rust 主程式依賴** | `tokio`, `axum`, `reqwest`, `rustls`, `ring`, `serde`, `serde_json`, `chrono`, `hmac`, `sha2`, `base64`, `flate2`, `url`, `uuid`, `zhconv`, `encoding_rs`, `socket2` 等（見 `Cargo.toml`） | MIT / Apache-2.0 / ISC / BSD | 是（完全相容） | **是**（無外部 GPL/AGPL 傳染性依賴） |
+| **Rust 主程式依賴** | `tokio`, `axum`, `reqwest`, `rustls`, `ring`, `serde`, `serde_json`, `chrono`, `hmac`, `sha2`, `base64`, `flate2`, `url`, `uuid`, `encoding_rs`, `socket2` 等（見 `Cargo.toml`；註：`v1.0` 時曾含 `zhconv` `GPL-2.0-or-later`，後續已移除並改為內建 `Apache-2.0` 之 OpenCC 字典） | 各依賴自有開源授權（見 `Cargo.lock` 與 `NOTICE.md`） | 是 | **是**（移除 `zhconv` 後無外部 GPL/AGPL 連結依賴） |
 | **Android App 依賴** | `androidx.core:core-ktx`、`kotlinx-coroutines-android`、`Java-WebSocket`、`xposed-stub`（`compileOnly`） | Apache-2.0 / MIT | 是（完全相容） | **是**（僅需保留第三方版權聲明） |
 | **Magisk 模組安裝器** | `android/magisk/.../update-binary`（Andrew Gunnerson） | `GPL-3.0-only` | 是（獨立安裝腳本聚合散布，且 AGPLv3 §13 相容 GPLv3） | **是**（屬獨立安裝程式未連結入 App／Agent；商業授權包亦可由客戶自備安裝器） |
 | **內建背景音與試聽音檔** | `assets/ambience_*.wav`（12 組）、`assets/voices/`（1,080 段預錄語音） | Freesound `CC0` 公有領域＋專案自製合成音／Gemini 生成音檔 | 是 | **是** |
