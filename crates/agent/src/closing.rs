@@ -1373,7 +1373,10 @@ mod tests {
             std::hint::black_box(is_backchannel(t));
         }
         let took = start.elapsed();
-        assert!(took < std::time::Duration::from_millis(200), "1000 judgements took {took:?}");
+        // Microseconds in a release build; an unoptimised test build on a slow CI
+        // machine (Windows) is many times slower, so the bound here is loose:
+        // still well under a millisecond a judgement.
+        assert!(took < std::time::Duration::from_millis(800), "1000 judgements took {took:?}");
     }
 }
 
