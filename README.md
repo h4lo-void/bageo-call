@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v1.3.0"><img src="https://img.shields.io/badge/release-v1.3.0-brightgreen.svg" alt="Release v1.3.0"></a>
+  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v1.4.0"><img src="https://img.shields.io/badge/release-v1.4.0-brightgreen.svg" alt="Release v1.4.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="License: AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/commercial-dual%20license-gold.svg" alt="Commercial License Available"></a>
 </p>

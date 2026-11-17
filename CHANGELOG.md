@@ -1,4 +1,4 @@
-# Unreleased
+# Bageo v1.4.0
 
 - **Refined low-glare console, SIM line numbers, recording download, call deletion and offline phone removal.** The console now uses a calm low-contrast look with clean text controls instead of decorative icons. Each phone's SIM numbers are shown on the System page (and can be entered manually when a SIM card does not expose its number), incoming calls show which line was called, and AI errands let you pick which number to call from. You can also download any call's WAV recording, delete individual calls or all finished call history, and remove offline phones. See [API](docs/en/API.md).
 - **柔和低對比控制台介面、顯示與設定手機門號、錄音下載、刪除通話紀錄與移除離線手機。** 控制台改成柔和耐看的低對比配色並拿掉裝飾圖示；「系統」頁可查看每支手機各張 SIM 的門號（讀不到時可直接手動輸入），來電會顯示打給哪支門號，「AI 代打」也能直接選要用哪台手機的哪個號碼撥出；另可下載通話錄音 WAV、單筆或全部刪除通話紀錄、刪除離線舊手機。見 [API](docs/zh-TW/API.md)。
