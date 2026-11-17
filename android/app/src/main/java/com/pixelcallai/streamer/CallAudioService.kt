@@ -1380,12 +1380,16 @@ class CallAudioService : Service() {
             sendStatus()
         }
     }
+    private val simRecheck = Runnable { simChangedReport.run() }
 
     /**
      * A SIM card put in, taken out or swapped while the phone stays connected: tell the
      * agent (a `status` with the new `sims` list) so the console and errands follow.
      * The system calls this several times while a card comes up, so wait a few seconds
      * and only send when the list really changed.
+     * Also look again 1 and 3 minutes after start: at boot the module grants the
+     * phone-number permission after this service is already up, so the first list
+     * has no numbers.
      */
     private fun watchSimChanges() {
         val subs = getSystemService(SubscriptionManager::class.java) ?: return
@@ -1394,6 +1398,8 @@ class CallAudioService : Service() {
         } catch (e: Exception) {
             null
         }
+        mainHandler.postDelayed(simRecheck, 60_000)
+        mainHandler.postDelayed(simRecheck, 180_000)
         val listener = object : SubscriptionManager.OnSubscriptionsChangedListener() {
             override fun onSubscriptionsChanged() {
                 mainHandler.removeCallbacks(simChangedReport)
@@ -1415,6 +1421,7 @@ class CallAudioService : Service() {
 
     private fun stopWatchingSimChanges() {
         mainHandler.removeCallbacks(simChangedReport)
+        mainHandler.removeCallbacks(simRecheck)
         val listener = simListener ?: return
         simListener = null
         try {
