@@ -152,7 +152,7 @@ categories:
     phrases:
       - "Sua encomenda está retida na alfândega, pague a taxa para liberar.｜您的包裹卡在海關，付費才能放行。"
       - "[PT] Os CTT informam que a sua encomenda aguarda pagamento de portes.｜（葡萄牙）CTT 通知您的包裹待付運費。"
-    strong: [retida na alfândega, taxa para liberar, aguarda pagamento]
+    strong: [retida na alfândega, taxa para liberar, aguarda pagamento, pagar a taxa de importação pelo link, taxa de importação pendente]
     keywords: [encomenda, correios, ctt, alfândega]
     requests: ["pagar taxa｜付費"]
     tactics: ["urgência de entrega｜投遞緊急"]

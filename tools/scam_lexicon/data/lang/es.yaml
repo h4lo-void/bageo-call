@@ -177,3 +177,10 @@ categories:
     keywords: [irs, seguro social, inmigración, hacienda]
     requests: ["pago inmediato｜立即付款"]
     tactics: ["deportación｜驅逐威脅"]
+  parcel_customs:
+    phrases:
+      - "Su paquete está retenido; pague las tasas de importación con el enlace que le enviamos.｜您的包裹被扣，請用我們傳的連結付進口稅費。"
+    strong: [tasas de importación por enlace, pagar los aranceles con el enlace, paquete retenido en aduanas]
+    keywords: [aranceles]
+    requests: ["pago por enlace｜連結付款"]
+    tactics: ["urgencia de entrega｜急著送件"]

@@ -32,11 +32,14 @@ mod calendar;
 mod callback;
 mod calls;
 mod calls_http;
+mod closing;
 mod config;
 mod contacts;
 mod control;
+mod country_profile;
 mod debug_probe;
 mod deepseek;
+mod dialect;
 mod dtmf;
 mod errands;
 mod extract;
@@ -50,11 +53,14 @@ mod mdns;
 mod notify;
 mod openclaw;
 mod phone_region;
+mod preflight;
 mod prompts;
 mod services;
 mod settings_store;
 mod scam_db;
+mod scenario;
 mod stall_review;
+mod stall_script;
 mod tasks;
 mod tg_inbound;
 mod trtc;
@@ -6677,6 +6683,13 @@ fn start_gemini_session_core(
         );
     }
     let appointment_book = appointments.as_ref().map(|a| a.book.clone());
+    // For the `persona_prompt` log: how much of the prompt is the persona text
+    // (the owner's or the built-in one; an errand's or a call-back's script has none).
+    let user_prompt_chars = if persona && !is_callback && errand.is_none() {
+        rt.persona_user_chars(cfg.lang.prompt_lang)
+    } else {
+        0
+    };
     let force_hangup = Arc::new(AtomicBool::new(false));
     let delivered_bytes = Arc::new(AtomicU64::new(0));
     let play_head = gemini_live::DownlinkPlayHead::new();
@@ -6766,6 +6779,7 @@ fn start_gemini_session_core(
                 lang_plan,
                 is_callback,
                 errand,
+                user_prompt_chars,
             )
             .await
         })

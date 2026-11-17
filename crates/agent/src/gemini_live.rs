@@ -1008,18 +1008,27 @@ pub struct CallLangPlan {
     /// no setting for it (Thai, Russian, Arabic, Hindi: [`other_lang_stt_of_country`]):
     /// added to the hints for the AI's own voice, which answers the caller in it.
     pub caller_other_stt: Option<&'static str>,
+    /// The SIM that took the call (ISO 3166 alpha-2, lowercase); None = not known.
+    pub sim_country: Option<String>,
+    /// Where the call is ([`crate::country_profile::resolve`]: the SIM's region, else
+    /// the language setting's): the prompt gets that region's dialects and local
+    /// rules only ([`crate::prompts::scope_to_region`]).
+    pub region: Option<crate::country_profile::Region>,
 }
 
 /// Two plans set a session up the same way (a ring prewarm serves the call it
 /// picks up): the same opening, hints and prompt language. Whether the number
 /// is the SIM's own counts only with an opening in another language — only then
 /// does the opening line say so (a hidden number and a local one are the same).
+/// The region counts (its dialects are in the prompt); the SIM itself does not
+/// (a ring that guessed the SIM from the language's region still serves the call).
 impl PartialEq for CallLangPlan {
     fn eq(&self, other: &Self) -> bool {
         self.opening == other.opening
             && self.caller_stt == other.caller_stt
             && self.prompt_lang == other.prompt_lang
             && self.caller_other_stt == other.caller_other_stt
+            && self.region == other.region
             && (self.opening.is_none() || self.sim_local == other.sim_local)
     }
 }
@@ -1035,7 +1044,8 @@ impl Eq for CallLangPlan {}
 /// Opening: the number is read the way that SIM reads it
 /// ([`crate::phone_region::normalize`]). From another country than the SIM's,
 /// whose language the AI speaks ([`crate::locale::country_lang`]): that
-/// language. Otherwise the SIM's main language (`sim_languages`), else
+/// language. Otherwise the SIM's main language (`sim_languages`), else the
+/// language of the SIM's country (a Japanese SIM opens in Japanese), else
 /// `language`. Chinese never switches between its two variants. SIM unknown: a
 /// `+…` number of another country code than `home_code` ([`opening_lang_for`]).
 ///
@@ -1063,9 +1073,12 @@ pub fn call_lang_plan(
     let sim_lang = sim
         .and_then(|s| sim_langs.get(s))
         .map(|code| Lang::parse(code));
+    // For the opening only: with no language set for the SIM, its country's.
+    // The prompt stays in the setting's language (`prompt_lang` below).
+    let sim_main = sim_lang.or_else(|| sim.and_then(country_lang));
     let opening = match sim {
         Some(sim) => {
-            let main = sim_lang.unwrap_or(lang);
+            let main = sim_main.filter(|l| !(l.is_zh() && lang.is_zh())).unwrap_or(lang);
             let caller = number
                 .as_ref()
                 .filter(|n| n.country != sim)
@@ -1100,7 +1113,16 @@ pub fn call_lang_plan(
         .as_ref()
         .filter(|n| country_lang(n.country).is_none())
         .and_then(|n| other_lang_stt_of_country(n.country));
-    CallLangPlan { opening, caller_stt, sim_local, prompt_lang, caller_other_stt }
+    let region = crate::country_profile::resolve(sim, lang);
+    CallLangPlan {
+        opening,
+        caller_stt,
+        sim_local,
+        prompt_lang,
+        caller_other_stt,
+        sim_country: sim.map(str::to_string),
+        region,
+    }
 }
 
 /// Speech-to-text codes of languages the AI has no setting for but answers a
@@ -2225,14 +2247,17 @@ fn non_blocking_refused(why: &str) -> bool {
 }
 
 /// The call's system instruction: the stored prompt, then — appointments on —
-/// their part with the current local time (the stored prompt is not changed).
+/// their short part, or (`full`: times came up on the call) the whole one with
+/// the current local time (the stored prompt is not changed).
 fn call_system_prompt(
     base: &str,
     appt: Option<&crate::appointments::ApptSession>,
     now: chrono::DateTime<chrono::Local>,
+    full: bool,
 ) -> String {
     match appt {
-        Some(a) => format!("{base}{}", a.prompt_block(now)),
+        Some(a) if full => format!("{base}{}", a.prompt_block(now)),
+        Some(a) => format!("{base}{}", a.prompt_stub()),
         None => base.to_string(),
     }
 }
@@ -2249,6 +2274,86 @@ fn session_prompt(prompt: &str, outbound: Outbound) -> String {
             crate::prompts::with_caller_language_note(prompt, crate::locale::current())
         }
     }
+}
+
+/// The call can hear the Taiwan carriers' international-call warning, so its
+/// prompt keeps the note on it: a number from abroad on a SIM whose carrier plays
+/// it (as [`expects_carrier_intl_prompt`] reads the number), or the SIM not known.
+fn carrier_note_due(plan: &CallLangPlan) -> bool {
+    match plan.sim_country.as_deref() {
+        Some(sim) => CARRIER_INTL_PROMPT_SIMS.contains(&sim) && plan.sim_local == Some(false),
+        None => true,
+    }
+}
+
+/// The `persona_prompt` log line of each Live session a call opens (the first,
+/// a ring prewarm's, a rotation): the prompt's size and what it was scoped to.
+struct PromptLog {
+    sim: String,
+    lang: &'static str,
+    dialects: String,
+    /// Characters of its persona text (the owner's own or the built-in one).
+    user_chars: usize,
+}
+
+impl PromptLog {
+    fn new(
+        plan: &CallLangPlan,
+        lang: crate::locale::Lang,
+        region: Option<crate::country_profile::Region>,
+        user_chars: usize,
+    ) -> Self {
+        let dialects: Vec<&str> = region
+            .map(|r| crate::country_profile::dialects(r).iter().map(|d| d.code()).collect())
+            .unwrap_or_default();
+        Self {
+            sim: plan.sim_country.as_deref().map_or_else(|| "-".to_string(), str::to_ascii_uppercase),
+            lang: lang.code(),
+            dialects: if dialects.is_empty() { "-".to_string() } else { dialects.join(",") },
+            user_chars,
+        }
+    }
+
+    fn log(&self, chars: usize, rotate: bool) {
+        info!(
+            "persona_prompt chars={chars} user_chars={} sim_country={} lang={} dialects={} rotate={}",
+            self.user_chars,
+            self.sim,
+            self.lang,
+            self.dialects,
+            u8::from(rotate)
+        );
+    }
+}
+
+/// The `dialect_switch` log line (from = the call's language before its first switch).
+fn log_dialect_switch(sw: crate::dialect::Switch, lang: crate::locale::Lang) {
+    info!(
+        "dialect_switch from={} to={} reason={}",
+        sw.from.map_or(lang.code(), |d| d.code()),
+        sw.to.code(),
+        sw.reason.as_str()
+    );
+}
+
+/// The system prompt a setup carries.
+fn setup_system_prompt(setup: &Value) -> &str {
+    setup
+        .pointer("/setup/systemInstruction/parts/0/text")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+}
+
+/// `setup` for the next session of a call in `dialect`: its prompt says so
+/// ([`crate::prompts::with_active_dialect`]), so a rotation keeps the dialect.
+fn setup_in_dialect(
+    setup: &Value,
+    dialect: crate::dialect::Dialect,
+    region: crate::country_profile::Region,
+    lang: crate::locale::Lang,
+) -> Value {
+    let prompt = crate::prompts::with_active_dialect(setup_system_prompt(setup), dialect, region, lang);
+    setup_with_system_prompt(setup, &prompt)
 }
 
 /// Distinct caller keywords → score; ≥ this marks the call as sales/scam…
@@ -2425,6 +2530,34 @@ fn persona_stall_keep_client_content(we_said_bye: bool) -> String {
         &p.kick_stall_keep_lead
     };
     crate::prompts::client_turn(&p.kick_stall_keep.replace("{lead}", lead))
+}
+
+/// [persona_stall_keep_client_content] with the stalling engine's last bait
+/// line (crate::stall_script) when the call has one: the caller is leaving or
+/// the AI started a farewell, so the retain stage's cue goes with the nudge.
+fn persona_stall_keep_with_retain(
+    we_said_bye: bool,
+    engine: &mut Option<crate::stall_script::StallEngine>,
+    serial: &str,
+) -> String {
+    let Some(e) = engine.as_mut() else {
+        return persona_stall_keep_client_content(we_said_bye);
+    };
+    let cue = e.take_retain();
+    info!(
+        "stall_stage stage={} tactic={} typology={} turn={} via=keep_nudge serial={serial}",
+        cue.stage.name(),
+        cue.tactic,
+        e.typology(),
+        cue.turn
+    );
+    let p = crate::prompts::current();
+    let lead = if we_said_bye {
+        &p.kick_stall_keep_lead_bye
+    } else {
+        &p.kick_stall_keep_lead
+    };
+    crate::prompts::client_turn(&format!("{} {}", p.kick_stall_keep.replace("{lead}", lead), cue.text))
 }
 
 /// Stalling: after the caller's bye, give the model this long to answer on its own
@@ -3618,6 +3751,10 @@ fn caller_withdraws_bye(window: &str, latest: &str) -> bool {
     if ends_as_question(&heard) {
         return true;
     }
+    // A backchannel or thanks in any language ("Genau", 「네네」) takes nothing back.
+    if crate::closing::is_fluff(latest) {
+        return false;
+    }
     !caller_wraps_up(strip_trailing_fluff(&heard)) && !strip_trailing_fluff(latest).trim().is_empty()
 }
 
@@ -3957,7 +4094,8 @@ fn looks_like_backchannel(text: &str) -> bool {
         "好的", "好", "嗯", "喔", "哦", "啊", "了解", "收到", "嗯哼", "好喔", "好哦",
         "ok", "OK", "Okay", "okay",
     ];
-    if MARKS.iter().any(|m| t.eq_ignore_ascii_case(m)) {
+    // Other languages' backchannels too ("Vale, vale", 「なるほど」, "Genau").
+    if MARKS.iter().any(|m| t.eq_ignore_ascii_case(m)) || crate::closing::is_backchannel(t) {
         return true;
     }
     t.chars().count() <= 4 && !looks_like_clarifying_question(t)
@@ -4490,11 +4628,30 @@ pub async fn run_session(
     lang_plan: CallLangPlan,
     callback: bool,
     errand: Option<Arc<crate::errands::CallHooks>>,
+    user_prompt_chars: usize,
 ) -> Result<SessionEndReason> {
     let outbound = Outbound::of(callback, errand.is_some());
     let opening_lang = lang_plan.opening.filter(|_| persona);
+    // The language the call's prompts are written in, and — a persona call that
+    // came in — what they are scoped to: the SIM's region, decided before pickup
+    // (a table lookup; the ring prewarm has it too).
+    let prompt_lang = lang_plan.prompt_lang.unwrap_or_else(crate::locale::current);
+    let scope = (persona && outbound == Outbound::Incoming).then(|| crate::prompts::Scope {
+        region: lang_plan.region,
+        carrier_note: carrier_note_due(&lang_plan),
+    });
+    let scoped = |p: &str| -> String {
+        match scope {
+            Some(s) => crate::prompts::scope_to_region(p, prompt_lang, s),
+            None => p.to_string(),
+        }
+    };
+    let scope_region = scope.and_then(|s| s.region);
+    let prompt_log = PromptLog::new(&lang_plan, prompt_lang, scope_region, user_prompt_chars);
+    // The dialect the caller speaks, from finished turns only (see crate::dialect).
+    let mut dialect_gate = crate::dialect::Gate::new(scope_region);
     let stall = stall.filter(|_| persona).map(|mut c| {
-        c.system_prompt = session_prompt(c.system_prompt.as_str(), outbound);
+        c.system_prompt = scoped(&session_prompt(c.system_prompt.as_str(), outbound));
         c
     });
     // Appointments: persona calls only (setting `appointment_mode`).
@@ -4534,11 +4691,24 @@ pub async fn run_session(
             v
         }
     };
-    let hangup_delay_ms = goodbye_hangup_delay_ms.clamp(200, 15_000);
+    // Persona: the hangup timer of the call's region — the SIM's country, then the
+    // call's language ([`crate::closing::hangup_timer`]); the owner's setting wins.
+    let call_lang = lang_plan
+        .opening
+        .or(lang_plan.prompt_lang)
+        .unwrap_or_else(crate::locale::current)
+        .code();
+    // AI errands keep the old timer (the regional one is for answered calls).
+    let hangup_timer = (persona && errand.is_none()).then(|| {
+        crate::closing::hangup_timer(goodbye_hangup_delay_ms, crate::call_sim_country(serial).as_deref(), call_lang)
+    });
+    let hangup_delay_ms = hangup_timer
+        .as_ref()
+        .map_or_else(|| goodbye_hangup_delay_ms.clamp(200, 15_000), |t| t.ms);
     // The stored prompt stays as it is; appointments add their part after it
     // (with the current local time), and the tools.
-    let base_prompt = session_prompt(system_prompt, outbound);
-    let system_prompt = call_system_prompt(&base_prompt, appt.as_ref(), chrono::Local::now());
+    let base_prompt = scoped(&session_prompt(system_prompt, outbound));
+    let system_prompt = call_system_prompt(&base_prompt, appt.as_ref(), chrono::Local::now(), false);
     let thinking = live_thinking_level(model, thinking_level);
     // Low-latency turn-taking: high EOU sensitivity + short silence.
     let build_setup = |non_blocking: bool| -> Value {
@@ -4618,6 +4788,7 @@ pub async fn run_session(
             thinking.unwrap_or("-"),
             appt.as_ref().map_or("off", |a| a.mode.as_str())
         );
+        prompt_log.log(system_prompt.chars().count(), false);
         let conn_opened_at = tokio::time::Instant::now();
 
         let setup_deadline = tokio::time::Instant::now() + SETUP_TIMEOUT;
@@ -5017,6 +5188,9 @@ pub async fn run_session(
     let mut post_arm_talk = false;
     // Persona: the caller's latest words end the call (bye / wrap-up), see caller_wraps_up.
     let mut caller_end_signal = false;
+    // Persona: Talking → PreClosing → Closing → Hangup, judged from each transcript
+    // piece in memory (crate::closing); logs closing_state.
+    let mut closing_sm = crate::closing::ClosingMachine::new(call_lang);
     // Logged once per arm: AI said bye, line held for the caller's.
     let mut await_bye_logged = false;
     // Stalling: caller keyword hits so far; once engaged the stall prompt loads.
@@ -5154,6 +5328,17 @@ pub async fn run_session(
     // stalling at the top of the loop. The session is not told the caller's
     // number, only whether it is from abroad.
     let mut stall_review = StallReview::default();
+    // Sales / scam stalling under way: the call's kind and pace (stall_script) —
+    // bait, one move per AI turn, the last bait when the caller leaves.
+    let mut stall_engine: Option<crate::stall_script::StallEngine> = None;
+    // Ordinary calls: what the second look says the call is about (scenario),
+    // its one short cue owed for the pause after the AI's turn.
+    let mut scenario_router =
+        crate::scenario::Router::new(crate::locale::Lang::parse(call_lang), scope_region, appt.is_some());
+    // Appointments: the call's prompt has their short part; the whole one goes in
+    // as a note in the pause after the AI's turn once the caller talks times.
+    let mut appt_block_due = false;
+    let mut appt_block_sent = false;
     let (review_tx, mut review_rx) = mpsc::unbounded_channel::<(u32, crate::stall_review::Review)>();
     let review_key = key.to_string();
     let fallback_review_number: &'static str = if intl_call { "unknown (from abroad)" } else { "unknown" };
@@ -5365,7 +5550,7 @@ pub async fn run_session(
                     // Stall session: its prompt (+ country-specific bait hooks when matched),
                     // and its own model (setting `gemini_stall_model`) — same voice, so the caller hears no change.
                     let ctx_now = review_ctx();
-                    let stall_prompt = match crate::scam_db::country_bait_addon(
+                    let full_prompt = match crate::scam_db::country_bait_addon(
                         &ctx_now.number,
                         &ctx_now.number_notes,
                         &judged.typology,
@@ -5375,6 +5560,23 @@ pub async fn run_session(
                         Some(addon) if !c.system_prompt.trim().is_empty() => format!("{}\n\n{addon}", c.system_prompt),
                         _ => c.system_prompt.clone(),
                     };
+                    // Only this kind of call's script (stall_script): the stall block's
+                    // lists of every move and topic give way to it.
+                    let (stall_prompt, script_lang) =
+                        crate::stall_script::slim_stall_prompt(&full_prompt, &judged.typology);
+                    let engine = crate::stall_script::StallEngine::new(
+                        &judged.typology,
+                        script_lang.unwrap_or_else(|| crate::locale::Lang::parse(call_lang)),
+                    );
+                    info!(
+                        "stall_stage stage=bait tactic=script:{} typology={} turn=0 prompt_chars={}->{} serial={serial}",
+                        engine.family.id(),
+                        engine.typology(),
+                        full_prompt.chars().count(),
+                        stall_prompt.chars().count()
+                    );
+                    stall_engine = Some(engine);
+                    scenario_router.drop_pending();
                     let next = stall_session_setup(&setup, &stall_prompt, &c.model, thinking_level);
                     if next != setup {
                         rotate_setup = Some(next);
@@ -5412,6 +5614,7 @@ pub async fn run_session(
         {
             if let Some(c) = stall.as_ref() {
                 stall_on = false;
+                stall_engine = None;
                 if let Ok(mut j) = c.judgement.lock() {
                     if let Some(j) = j.as_mut() {
                         j.released = true;
@@ -5424,7 +5627,7 @@ pub async fn run_session(
                 stall_nudge_at = None;
                 repeat_guard.clear();
                 rotate_setup = appt.as_ref().map(|_| {
-                    let mut s = setup_with_system_prompt(&setup, &call_system_prompt(&base_prompt, None, chrono::Local::now()));
+                    let mut s = setup_with_system_prompt(&setup, &call_system_prompt(&base_prompt, None, chrono::Local::now(), false));
                     with_appointment_tools(&mut s, false, false);
                     s
                 });
@@ -5522,7 +5725,7 @@ pub async fn run_session(
                     (None, Some(a)) => {
                         fresh_setup = setup_with_system_prompt(
                             &setup,
-                            &call_system_prompt(&base_prompt, Some(a), chrono::Local::now()),
+                            &call_system_prompt(&base_prompt, Some(a), chrono::Local::now(), appt_block_sent),
                         );
                         &fresh_setup
                     }
@@ -5536,6 +5739,16 @@ pub async fn run_session(
                 } else {
                     next_setup
                 };
+                // The dialect the call is in: the new session keeps answering in it.
+                let dialect_setup;
+                let next_setup = match (dialect_gate.active(), scope_region) {
+                    (Some(d), Some(r)) => {
+                        dialect_setup = setup_in_dialect(next_setup, d, r, prompt_lang);
+                        &dialect_setup
+                    }
+                    _ => next_setup,
+                };
+                let next_prompt_chars = setup_system_prompt(next_setup).chars().count();
                 let opened = match tokio::time::timeout(
                     Duration::from_secs(10),
                     open_live_with_history(&url, next_setup, &history, serial),
@@ -5549,6 +5762,7 @@ pub async fn run_session(
                     Ok((new_sink, new_stream)) => {
                         rotations = n;
                         rotate_fails = 0;
+                        prompt_log.log(next_prompt_chars, true);
                         // What the new socket runs (the release check switches back from it).
                         live_is_stall = stall_on;
                         let _ = tokio::time::timeout(Duration::from_millis(500), sink.close()).await;
@@ -5606,7 +5820,7 @@ pub async fn run_session(
                             stall_turn_kept = true;
                             match send_text_before_deadline(
                                 &mut sink,
-                                persona_stall_keep_client_content(true),
+                                persona_stall_keep_with_retain(true, &mut stall_engine, serial),
                                 tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                 "gemini rotate stall keep send",
                             )
@@ -5948,6 +6162,12 @@ pub async fn run_session(
             info!(
                 "Goodbye play clock start (player drained) serial={serial} queued={} — wait {hangup_delay_ms}ms then WAV"
             , play_head.queued());
+            if let Some(t) = &hangup_timer {
+                info!("closing_hangup_timer ms={} region={}", t.ms, t.region);
+                if t.from_setting {
+                    info!("Hangup timer is the owner's setting goodbye_hangup_delay_ms serial={serial} — the regional default is not used");
+                }
+            }
         } else if goodbye_pending && clock_was && output_goodbye_at.is_none() {
             info!(
                 "Goodbye play clock reset (downlink playing / caller talking) serial={serial} queued={} outbound={} activity_open={activity_open}"
@@ -5996,6 +6216,9 @@ pub async fn run_session(
             );
         } else if fire_wav {
             end_reason = SessionEndReason::Goodbye;
+            if persona {
+                closing_sm.hangup(if caller_end_signal || bye_from_caller { "caller_closed_timer" } else { "ai_bye_quiet_timer" });
+            }
             signal_force_hangup(&mut hangup_signaled);
             info!(
                 "Gemini Live goodbye play clock elapsed serial={serial} queued={} outbound={} — hangup after player drain"
@@ -6083,7 +6306,7 @@ pub async fn run_session(
                     stall_tx.clear();
                     match send_text_before_deadline(
                         &mut sink,
-                        persona_stall_keep_client_content(false),
+                        persona_stall_keep_with_retain(false, &mut stall_engine, serial),
                         tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                         "gemini persona stall keep send",
                     )
@@ -6705,7 +6928,7 @@ pub async fn run_session(
                                                     model_turn_pending = true;
                                                     if let Err(e) = send_text_before_deadline(
                                                         &mut sink,
-                                                        persona_stall_keep_client_content(true),
+                                                        persona_stall_keep_with_retain(true, &mut stall_engine, serial),
                                                         tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                                         "gemini persona stall keep send",
                                                     )
@@ -6920,9 +7143,45 @@ pub async fn run_session(
                                     }
                                     // Persona: only how the caller's latest words END counts
                                     // (bye / wrap-up); assistant (relay) mode keeps the old window match.
+                                    let mut stall_retain_event = false;
+                                    if appt.is_some() && !appt_block_sent && errand.is_none() && crate::appointments::time_talk(s) {
+                                        appt_block_due = true;
+                                    }
                                     let caller_closing = if persona {
                                         // With this piece at the end even when the window skipped it.
-                                        caller_end_signal = caller_wraps_up(&with_latest(&in_tx_window, s));
+                                        // The closing state machine adds the other languages'
+                                        // goodbyes and keeps opening greetings from closing.
+                                        let heard = with_latest(&in_tx_window, s);
+                                        // AI errands keep the old rule (only caller_wraps_up).
+                                        let step = errand
+                                            .is_none()
+                                            .then(|| closing_sm.on_caller(&heard, s, caller_wraps_up(&heard), stall_on));
+                                        caller_end_signal = match &step {
+                                            Some(step) => step.ends_call,
+                                            None => caller_wraps_up(&heard),
+                                        };
+                                        // Stalling: their pre-closing or bye is the moment for the
+                                        // last bait (stall_script's retain stage); nothing hangs up.
+                                        let retain_event = step.as_ref().map(|st| st.event).filter(|ev| {
+                                            matches!(
+                                                ev,
+                                                crate::closing::ClosingEvent::CallerPreClosing
+                                                    | crate::closing::ClosingEvent::CallerFarewell
+                                            )
+                                        });
+                                        if let Some(event) = retain_event.filter(|_| stall_on) {
+                                            stall_retain_event = true;
+                                            if let Some(e) = stall_engine.as_mut() {
+                                                if e.on_caller_closing() {
+                                                    info!(
+                                                        "stall_stage stage=retain tactic=pending typology={} turn={} trigger={:?} serial={serial}",
+                                                        e.typology(),
+                                                        e.turns(),
+                                                        event
+                                                    );
+                                                }
+                                            }
+                                        }
                                         caller_end_signal
                                     } else {
                                         looks_like_goodbye(s) || looks_like_goodbye(&in_tx_window)
@@ -6945,7 +7204,7 @@ pub async fn run_session(
                                             "Persona caller's goodbye taken back (more words followed) serial={serial} text={s}"
                                         );
                                     }
-                                    if caller_closing && persona && stall_on && !wrap_up_sent {
+                                    if (caller_closing || stall_retain_event) && persona && stall_on && !wrap_up_sent {
                                         // A sales / scam caller saying bye
                                         // is not let go — the AI keeps asking.
                                         if stall_keep_due.is_none() {
@@ -7086,6 +7345,10 @@ pub async fn run_session(
                                     {
                                         out_tx_window.clear();
                                         stall_tx.clear();
+                                        // The caller's finished words: does the call speak a dialect now?
+                                        if let Some(sw) = dialect_gate.caller_turn(&caller_recent) {
+                                            log_dialect_switch(sw, prompt_lang);
+                                        }
                                         // The caller's next words start a new utterance.
                                         caller_recent.clear();
                                         info!(
@@ -7252,6 +7515,9 @@ pub async fn run_session(
                                     );
                                 } else if turn_complete {
                                     model_turn_pending = false;
+                                    if let Some(sw) = dialect_gate.ai_turn(&turn_out_text) {
+                                        log_dialect_switch(sw, prompt_lang);
+                                    }
                                     // Heard (or no drop at all): nothing is owed any more.
                                     repeat_guard.turn_complete();
                                     if let Some(c0) = post_rotate_chunks {
@@ -7314,6 +7580,24 @@ pub async fn run_session(
                                     // generation is over, the model holds the caller — or the
                                     // reply ended on a closing the transcript check missed
                                     // (「先這樣」): have the model take that back. Once per turn.
+                                    if persona && errand.is_none() {
+                                        let ev = closing_sm.on_ai_turn(
+                                            &turn_out_text,
+                                            turn_ends_with_closing(&turn_out_text),
+                                            stall_on && !wrap_up_sent,
+                                        );
+                                        // The caller announced the end, the AI answered with its
+                                        // farewell: their latest words close the call now.
+                                        if ev == crate::closing::ClosingEvent::FarewellsExchanged
+                                            && goodbye_pending
+                                            && !caller_end_signal
+                                        {
+                                            caller_end_signal = true;
+                                            info!(
+                                                "Persona farewells exchanged after the caller's pre-closing serial={serial} — hang up once our words have played"
+                                            );
+                                        }
+                                    }
                                     let keep = stall_keep_at_turn_end(
                                         stall_keep_after_turn,
                                         stall_turn_kept,
@@ -7335,7 +7619,7 @@ pub async fn run_session(
                                         stall_tx.clear();
                                         match send_text_before_deadline(
                                             &mut sink,
-                                            persona_stall_keep_client_content(true),
+                                            persona_stall_keep_with_retain(true, &mut stall_engine, serial),
                                             tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                             "gemini persona stall keep send",
                                         )
@@ -7347,6 +7631,105 @@ pub async fn run_session(
                                             Err(e) => warn!(
                                                 "Persona stall keep send failed serial={serial}: {e:#}"
                                             ),
+                                        }
+                                    }
+                                    // Stalling: the move for the AI's next reply, sent in this pause
+                                    // as a note that asks for no reply (stall_script; nothing waits).
+                                    if keep.is_none()
+                                        && persona
+                                        && stall_on
+                                        && !wrap_up_sent
+                                        && ivr_since.is_none()
+                                        && !model_turn_pending
+                                        && errand.is_none()
+                                    {
+                                        if let Some(e) = stall_engine.as_mut() {
+                                            if let Some(cue) = e.on_ai_turn(&turn_out_text) {
+                                                let typology = e.typology().to_string();
+                                                match send_text_before_deadline(
+                                                    &mut sink,
+                                                    crate::stall_script::client_note(&cue.text),
+                                                    tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
+                                                    "gemini persona stall cue send",
+                                                )
+                                                .await
+                                                {
+                                                    Ok(()) => info!(
+                                                        "stall_stage stage={} tactic={} typology={typology} turn={} loop={} serial={serial}",
+                                                        cue.stage.name(),
+                                                        cue.tactic,
+                                                        cue.turn,
+                                                        cue.looped
+                                                    ),
+                                                    Err(e) => warn!("Persona stall cue send failed serial={serial}: {e:#}"),
+                                                }
+                                            }
+                                        }
+                                    }
+                                    // An ordinary call's scenario cue (crate::scenario), once, in this
+                                    // pause: a note that asks for no reply; never while stalling.
+                                    if keep.is_none()
+                                        && persona
+                                        && errand.is_none()
+                                        && !stall_on
+                                        && !stall_detected
+                                        && !wrap_up_sent
+                                        && ivr_since.is_none()
+                                        && !model_turn_pending
+                                    {
+                                        // In the caller's language, read from their words (memory only).
+                                        let spoken = crate::urgency::caller_language(&caller_text_all);
+                                        if let Some((scenario, cue)) = scenario_router.take_pending(stall_engage_now.is_some(), spoken) {
+                                            if scenario == crate::scenario::Scenario::ScheduleInvite && !appt_block_sent {
+                                                appt_block_due = appt.is_some();
+                                            }
+                                            match send_text_before_deadline(
+                                                &mut sink,
+                                                crate::stall_script::client_note(&cue),
+                                                tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
+                                                "gemini persona scenario cue send",
+                                            )
+                                            .await
+                                            {
+                                                Ok(()) => info!(
+                                                    "scenario_route scenario={} action=injected turn={turns_done} chars={} serial={serial}",
+                                                    scenario.as_str(),
+                                                    cue.chars().count()
+                                                ),
+                                                Err(e) => warn!("Persona scenario cue send failed serial={serial}: {e:#}"),
+                                            }
+                                        }
+                                    }
+                                    // Appointments: times came up — their whole part (dates, the
+                                    // function's details), once, as a note in this pause.
+                                    if appt_block_due
+                                        && !appt_block_sent
+                                        && keep.is_none()
+                                        && persona
+                                        && errand.is_none()
+                                        && !stall_on
+                                        && !stall_detected
+                                        && !wrap_up_sent
+                                        && ivr_since.is_none()
+                                        && !model_turn_pending
+                                    {
+                                        if let Some(a) = appt.as_ref() {
+                                            appt_block_sent = true;
+                                            let block = a.prompt_block(chrono::Local::now());
+                                            match send_text_before_deadline(
+                                                &mut sink,
+                                                crate::stall_script::client_note(block.trim_start()),
+                                                tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
+                                                "gemini appointment note send",
+                                            )
+                                            .await
+                                            {
+                                                Ok(()) => info!(
+                                                    "appointment_note sent chars={} turn={turns_done} serial={serial}",
+                                                    block.chars().count()
+                                                ),
+                                                Err(e) => warn!("Appointment note send failed serial={serial}: {e:#}"),
+                                            }
                                         }
                                     }
                                     turn_out_text.clear();
@@ -7639,6 +8022,27 @@ pub async fn run_session(
             }
             verdict = review_rx.recv() => {
                 let Some((score, review)) = verdict else { continue };
+                if persona && errand.is_none() {
+                    let action = scenario_router.on_review(
+                        review.scenario,
+                        review.verdict,
+                        review.confidence,
+                        stall_on || stall_detected || stall_engage_now.is_some(),
+                    );
+                    info!(
+                        "scenario_route scenario={} confidence={} ms={} verdict={:?} action={} serial={serial}",
+                        // A sales / scam verdict reads as its own scenario in the log.
+                        if review.verdict == crate::stall_review::Verdict::ScamOrSales {
+                            "scam"
+                        } else {
+                            review.scenario.as_str()
+                        },
+                        review.confidence.as_str(),
+                        review.ms,
+                        review.verdict,
+                        action.as_str()
+                    );
+                }
                 if (stall_on || stall_detected) && stall_review.origin != LookOrigin::Confirm {
                     stall_review.pending = false;
                     stall_review.turn_ended = false;
@@ -7666,6 +8070,7 @@ pub async fn run_session(
                         if let Some(a) = &appt {
                             a.book.set_reviewed_normal(false);
                         }
+                        scenario_router.drop_pending();
                         stall_engage_now = Some(judgement_of(&review, &stall_hits, stall_review.why));
                     }
                     StallVerdictStep::Release => stall_release_now = true,
@@ -8232,6 +8637,53 @@ mod tests {
     use std::task::{Context, Poll};
 
     #[test]
+    fn the_plan_knows_the_calls_region_before_pickup() {
+        use crate::country_profile::Region;
+        use crate::locale::Lang;
+        let none = std::collections::BTreeMap::new();
+        let local = call_lang_plan("0912345678", Some("tw"), Lang::ZhTw, "886", &none);
+        assert_eq!(local.region, Some(Region::Tw));
+        assert_eq!(local.sim_country.as_deref(), Some("tw"));
+        // A local number never hears the carrier's warning: its note goes.
+        assert!(!carrier_note_due(&local));
+        let abroad = call_lang_plan("+12025550143", Some("tw"), Lang::ZhTw, "886", &none);
+        assert!(carrier_note_due(&abroad));
+        let hk = call_lang_plan("+85291234567", Some("hk"), Lang::ZhTw, "886", &none);
+        assert_eq!(hk.region, Some(Region::HkMo));
+        assert!(!carrier_note_due(&hk));
+        // SIM not known (older app): the language's region, the note kept as before.
+        let unknown = call_lang_plan("0912345678", None, Lang::ZhTw, "886", &none);
+        assert_eq!(unknown.region, Some(Region::Tw));
+        assert!(carrier_note_due(&unknown));
+        // A ring that guessed no SIM still serves the local call it picks up.
+        assert_eq!(unknown, local);
+        // Another region is another prompt.
+        let mut other = local.clone();
+        other.region = Some(Region::HkMo);
+        assert_ne!(other, local);
+    }
+
+    #[test]
+    fn a_rotation_keeps_the_calls_dialect() {
+        use crate::country_profile::Region;
+        use crate::dialect::Dialect;
+        use crate::locale::Lang;
+        let prompt = persona_system_prompt("", false, "", StallPrompt::Off);
+        let setup = json!({ "setup": { "systemInstruction": { "parts": [{ "text": prompt }] } } });
+        let next = setup_in_dialect(&setup, Dialect::Hokkien, Region::Tw, Lang::ZhTw);
+        let p = setup_system_prompt(&next).to_string();
+        assert!(p.contains("【現在用的話】") && p.contains("用台語講"), "{p}");
+        // Before the injection guard, the identity guard still last.
+        let guard = crate::prompts::pack(Lang::ZhTw).injection_guard.as_str();
+        assert!(p.find("【現在用的話】").unwrap() < p.find(guard).unwrap());
+        assert!(p.ends_with(&crate::prompts::pack(Lang::ZhTw).guard_persona.replace("{owner}", "機主")), "{p}");
+        // Rotating again does not add it twice.
+        assert_eq!(setup_system_prompt(&setup_in_dialect(&next, Dialect::Hokkien, Region::Tw, Lang::ZhTw)), p);
+        let en = setup_in_dialect(&setup, Dialect::Cantonese, Region::HkMo, Lang::En);
+        assert!(setup_system_prompt(&en).contains("keep answering in Cantonese"));
+    }
+
+    #[test]
     fn an_errand_ai_transcript_keeps_only_scripts_its_languages_use() {
         assert_eq!(without_other_script("我們訂सात點").as_deref(), Some("我們訂點"));
         assert_eq!(without_other_script(" सात"), None);
@@ -8707,6 +9159,49 @@ mod tests {
         assert!(PERSONA_BYE_SILENCE >= Duration::from_secs(5));
     }
 
+    /// The closing state machine only adds hangups: whatever the older check
+    /// closes on, it ends the call too (opening greetings aside), on the first
+    /// turn and after some talk.
+    #[test]
+    fn the_closing_machine_ends_the_call_whenever_the_older_check_does() {
+        let wraps = [
+            "掰掰", "多謝，掰掰", "那就先這樣", "那我跟你說掰掰喔", "好，先咁啦", "唔該你，再見", "Okay, that's all",
+            "Okay, bye to you", "Alright, that's all, thank you so much", "以上です", "それでは失礼します。",
+            "では、よろしくお願いいたします。", "Vale, perfecto. Nos vemos.", "Bueno, adiós.",
+            "かしこまりました。それでは、管理室の方にお預けしておきますね。ご利用ありがとうございました。",
+            "お忙しいところありがとうございました",
+        ];
+        for t in wraps {
+            assert!(caller_wraps_up(t), "{t}");
+            let mut first = crate::closing::ClosingMachine::new("zh-TW");
+            assert!(first.on_caller(t, t, caller_wraps_up(t), false).ends_call, "first turn: {t}");
+            let mut later = crate::closing::ClosingMachine::new("zh-TW");
+            let talk = "我是宅配司機，明天下午有個包裹要送過去給王先生";
+            later.on_caller(talk, talk, caller_wraps_up(talk), false);
+            assert!(later.on_caller(t, t, caller_wraps_up(t), false).ends_call, "after talk: {t}");
+        }
+    }
+
+    /// Keyword stage of the sales / scam check ([stall_score_add], [stall_engages]
+    /// or a hard hit): a bank asking to approve a transfer in its app is no scam;
+    /// an "expiring Medicare card" asking for the number is.
+    #[test]
+    fn bank_app_approval_is_ordinary_and_an_expiring_medicare_card_is_a_scam() {
+        let engages = |said: &str| {
+            let mut hits = Vec::new();
+            let score = stall_score_add(said, &mut hits);
+            stall_engages(score, &hits) || crate::scam_db::has_hard_hit(said)
+        };
+        assert!(!engages(
+            "Guten Tag, hier ist Ihre Bank. Bitte bestätigen Sie die Freigabe in der App, wenn die Überweisung von Ihnen stammt"
+        ));
+        assert!(!engages("ATMで手続きできます。銀行の窓口でも大丈夫です。"));
+        assert!(engages("Your Medicare card is expiring, please give your Medicare number"));
+        for kw in ["到atm前面操作解除", "검찰청 안전계좌", "pay the irs in gift cards", "irs agent will arrest you", "medicare card is expiring"] {
+            assert!(crate::scam_db::keyword(kw).is_some(), "{kw} not in the scam database");
+        }
+    }
+
     #[test]
     fn a_goodbye_that_turns_into_a_question_is_taken_back() {
         // 「那就先這樣」 came in first and armed the caller's goodbye…
@@ -8785,7 +9280,7 @@ mod tests {
     }
 
     fn review_of(verdict: crate::stall_review::Verdict, confidence: crate::stall_review::Confidence) -> crate::stall_review::Review {
-        crate::stall_review::Review { verdict, typology: None, confidence, no_key: false }
+        crate::stall_review::Review { confidence, ..crate::stall_review::Review::of(verdict) }
     }
 
     /// A look that does not answer (timeout, error) convicts nobody on its own:
@@ -10120,8 +10615,15 @@ mod tests {
         // caller's language is detected.
         assert_eq!(
             call_lang_plan("2025550143", Some("us"), Lang::ZhTw, "886", &none),
-            plan(None, None)
+            plan(Some(Lang::En), None)
         );
+        // A Japanese SIM with no language set opens a Japanese number in Japanese;
+        // a Hong Kong SIM stays on the setting's Chinese.
+        assert_eq!(call_lang_plan("0312345678", Some("jp"), Lang::ZhTw, "886", &none).opening, Some(Lang::Ja));
+        assert_eq!(call_lang_plan("+81312345006", Some("jp"), Lang::ZhTw, "886", &none).opening, Some(Lang::Ja));
+        assert_eq!(call_lang_plan("+85291230002", Some("hk"), Lang::ZhTw, "886", &none).opening, None);
+        // The prompt language still comes from the setting only.
+        assert_eq!(super::call_lang_plan("0312345678", Some("jp"), Lang::ZhTw, "886", &none).prompt_lang, None);
         // Canadian SIM set to French, English setting, owner's code +1: a Montreal
         // number hears French; a US number is from another country than the SIM's
         // and hears English, which is the setting.
@@ -10391,15 +10893,19 @@ mod tests {
         assert!(r.pointer("/setup/tools/0/functionDeclarations").is_some());
         // The prompt: unchanged when off, the appointment part after it when on.
         let now = chrono::Local::now();
-        assert_eq!(call_system_prompt("你是我。", None, now), "你是我。");
+        assert_eq!(call_system_prompt("你是我。", None, now, false), "你是我。");
         let mut rt = crate::settings_store::RuntimeSettings::from_base(&crate::config::Settings::from_env());
         rt.appointment_mode = "off".into();
         assert!(crate::appointments::ApptSession::for_call(&rt, "0912345678").is_none());
         rt.appointment_mode = "confirm".into();
         let a = crate::appointments::ApptSession::for_call(&rt, "0912345678").unwrap();
-        let p = call_system_prompt("你是我。", Some(&a), now);
+        let p = call_system_prompt("你是我。", Some(&a), now, true);
         assert!(p.starts_with("你是我。\n\n[Appointments") && p.contains(&now.format("%Y-%m-%d").to_string()), "{p}");
         assert!(p.contains("do not repeat what you have just told the caller"), "{p}");
+        // The call starts with the short part only.
+        let stub = call_system_prompt("你是我。", Some(&a), now, false);
+        assert!(stub.starts_with("你是我。\n[Appointments") && stub.contains("never free or booked"), "{stub}");
+        assert!(stub.chars().count() < 450, "{}", stub.chars().count());
     }
 
     #[test]

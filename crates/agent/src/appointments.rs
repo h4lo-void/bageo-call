@@ -1167,16 +1167,21 @@ impl ApptSession {
 
     /// Added after the call's system instruction (the stored prompt is not touched).
     pub fn prompt_block(&self, now: chrono::DateTime<chrono::Local>) -> String {
+        prompt_block(self.reply, &self.active(), now.naive_local(), &now.format("%:z").to_string())
+    }
+
+    /// The short part a call's system instruction starts with ([`prompt_stub`]);
+    /// the whole [`Self::prompt_block`] goes in as a note once times come up.
+    pub fn prompt_stub(&self) -> String {
+        prompt_stub(self.reply, &self.active())
+    }
+
+    fn active(&self) -> locale::Active {
         let mut active = locale::active();
         if let Some(l) = self.prompt_lang {
             active.lang = l;
         }
-        prompt_block(
-            self.reply,
-            &active,
-            now.naive_local(),
-            &now.format("%:z").to_string(),
-        )
+        active
     }
 
     /// Answer one function call (runs on its own task; at most [`TOOL_WAIT`]).
@@ -1627,6 +1632,48 @@ pub fn prompt_block(
     s.push_str("- After calling propose_appointment do not repeat what you have just told the caller: if you already said it, simply go on with the conversation.\n");
     s.push_str("- Never make an appointment with a sales, insurance, loan, investment or scam caller.");
     s
+}
+
+/// What a call's system prompt carries of appointments from the start: the few
+/// rules for the first time asked about. The dates, the function's details and
+/// its errors ([`prompt_block`]) go in as a note when times come up
+/// ([`time_talk`]): ~4,900 characters in every call slowed every reply.
+pub fn prompt_stub(reply: Reply, active: &locale::Active) -> String {
+    let owner = crate::prompts::owner_label(active.lang, &active.owner);
+    let said = check_back_said(active, reply);
+    format!(
+        "\n[Appointments] A time with {owner}: ask it back in full, call propose_appointment, then say {said}; never free or booked."
+    )
+}
+
+/// Words of a caller setting a time or asking whether the owner is free: the
+/// whole [`prompt_block`] is due. Memory only; a stray hit only sends the note
+/// every call used to start with.
+pub fn time_talk(text: &str) -> bool {
+    // Not bare 約／幾點／何時 / "meet" / "available": couriers ask those too
+    // (「大約十分鐘」, "nice to meet you", "be available to sign").
+    const RUNS: &[&str] = &[
+        "約好", "約個", "約一下", "約時間", "相約", "有約", "邀約", "约好", "约个", "约一下", "约时间", "相约", "有约",
+        "邀约", "有空", "有沒有空", "有没有空", "在不在", "見面", "见面", "碰面", "聚一下", "聚聚", "拜訪", "拜访", "開會",
+        "开会", "會議", "会议", "預約", "预约", "改天", "改期", "改到", "改成", "行程", "吃飯", "吃饭", "吃個飯", "吃个饭",
+        "喝咖啡", "予約", "打ち合わせ", "ご都合", "空いて", "お時間", "お会い", "会いませんか", "日程", "お食事", "飲みに",
+        "伺い", "약속", "예약", "미팅", "회의", "방문", "시간 있", "시간있", "만날", "밥 먹", "밥먹",
+    ];
+    const WORDS: &[&str] = &[
+        "appointment", "meeting", "meet up", "schedule", "reschedule", "you available", "are you free", "you free",
+        "free on", "free at", "free this", "free tomorrow", "have time", "get together", "dinner", "lunch", "grab a",
+        "come by", "visit", "cita", "reunión", "reunion", "quedar", "rendez-vous", "réunion", "termin", "treffen",
+        "besprechung", "marcar", "reunião", "horário", "consulta",
+    ];
+    let low = text.to_lowercase();
+    if RUNS.iter().any(|r| low.contains(r)) {
+        return true;
+    }
+    let spaced: String = format!(
+        " {} ",
+        low.chars().map(|c| if c.is_alphanumeric() || c == '-' { c } else { ' ' }).collect::<String>()
+    );
+    WORDS.iter().any(|w| spaced.contains(&format!(" {w} ")))
 }
 
 // ---------------------------------------------------------------------------
@@ -5267,5 +5314,42 @@ mod tests {
         assert_ne!(caller_text(&rt, &a, true), sms_text(Lang::ZhTw, &rt.owner_name, &a, true));
         a.set_call_lang(Lang::En);
         assert_eq!(caller_text(&rt, &a, false), sms_text(Lang::En, &rt.owner_name, &a, false));
+    }
+}
+
+#[cfg(test)]
+mod time_talk_edges {
+    use super::time_talk;
+
+    #[test]
+    fn plans_to_meet_bring_the_appointment_rules() {
+        for t in [
+            "Are you free tomorrow?",
+            "Are you free this weekend?",
+            "Do you have time on Friday?",
+            "How about dinner next Friday?",
+            "你明天在不在",
+            "要不要一起吃個飯",
+            "可以改到後天下午嗎",
+            "日程を変更できますか",
+            "来週お会いできますか",
+            "明日お時間ありますか",
+            "明日、お食事に行きませんか",
+        ] {
+            assert!(time_talk(t), "{t}");
+        }
+    }
+
+    #[test]
+    fn a_courier_asking_times_does_not() {
+        for t in [
+            "我是宅配司機，明天下午大概幾點有人在家？",
+            "我大約十分鐘後到樓下",
+            "Will someone be available to sign for a package?",
+            "Nice to meet you, I have a parcel for you",
+            "お荷物を何時ごろお届けしましょうか",
+        ] {
+            assert!(!time_talk(t), "{t}");
+        }
     }
 }

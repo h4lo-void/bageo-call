@@ -250,3 +250,11 @@ categories:
     keywords: [中奖, 公证费, 奖品]
     requests: [先交费]
     tactics: [意外之喜]
+  marketplace_escrow:
+    phrases:
+      - "买家说下不了单，要你点保证金认证链接做卖家实名认证。"
+    strong: [卖家实名认证链接, 保证金认证链接, 签署交易保障, 开通担保交易服务]
+    keywords: [买家无法下单, 店铺被冻结]
+    hard: [卖家实名认证链接, 保证金认证链接, 签署交易保障]
+    requests: [点链接填卡号验证码]
+    tactics: [假买家→假客服接力]

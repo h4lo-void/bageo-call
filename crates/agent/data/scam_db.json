@@ -1135,7 +1135,12 @@
       ["MyCard",1,"gift_card_payment"],
       ["GASH",1,"gift_card_payment"],
       ["Google Play",1,"gift_card_payment"],
-      ["津貼重新認證",2,"fake_government_subsidy"]
+      ["津貼重新認證",2,"fake_government_subsidy"],
+      ["賣場金流連結",2,"marketplace_escrow_scam","hard"],
+      ["簽署金流保障",2,"marketplace_escrow_scam","hard"],
+      ["開通金流服務",2,"marketplace_escrow_scam"],
+      ["買家無法下單",1,"marketplace_escrow_scam"],
+      ["到atm前面操作解除",2,"fake_bank_installment","hard"]
     ]
     },
     {
@@ -1282,7 +1287,13 @@
       ["领取补贴核实银行卡",2,"fake_government_subsidy"],
       ["个税退税",2,"fake_government_subsidy"],
       ["助学金先交手续费",2,"fake_government_subsidy"],
-      ["社保中心",1,"fake_government_subsidy"]
+      ["社保中心",1,"fake_government_subsidy"],
+      ["卖家实名认证链接",2,"marketplace_escrow_scam","hard"],
+      ["保证金认证链接",2,"marketplace_escrow_scam","hard"],
+      ["签署交易保障",2,"marketplace_escrow_scam","hard"],
+      ["开通担保交易服务",2,"marketplace_escrow_scam"],
+      ["买家无法下单",1,"marketplace_escrow_scam"],
+      ["店铺被冻结",1,"marketplace_escrow_scam"]
     ]
     },
     {
@@ -1551,7 +1562,13 @@
       ["health plan",1,"medicare_benefits"],
       ["charity",1,"fake_charity"],
       ["relief fund",1,"fake_charity"],
-      ["benevolent",1,"fake_charity"]
+      ["benevolent",1,"fake_charity"],
+      ["canada revenue agency",2,"irs_ssa_impersonation"],
+      ["cra will arrest you",2,"irs_ssa_impersonation"],
+      ["irs agent will arrest you",2,"irs_ssa_impersonation"],
+      ["pay the irs in gift cards",2,"irs_ssa_impersonation","hard"],
+      ["medicare card is expiring",2,"medicare_benefits"],
+      ["medicare number",1,"medicare_benefits"]
     ]
     },
     {
@@ -1713,7 +1730,9 @@
       ["licencia de windows ha caducado",2,"tech_support_remote"],
       ["ordenador",1,"tech_support_remote"],
       ["computadora",1,"tech_support_remote"],
-      ["léame los números",2,"gift_card_payment","hard"]
+      ["léame los números",2,"gift_card_payment","hard"],
+      ["tasas de importación por enlace",2,"fake_customs_parcel"],
+      ["pagar los aranceles con el enlace",2,"fake_customs_parcel"]
     ]
     },
     {
@@ -1850,7 +1869,10 @@
       ["carte cadeau",1,"gift_card_payment"],
       ["ameli",1,"medicare_benefits"],
       ["code de franceconnect",2,"training_fund_scam"],
-      ["numéro de sécurité sociale",1,"training_fund_scam"]
+      ["numéro de sécurité sociale",1,"training_fund_scam"],
+      ["l'arc va vous arrêter",2,"irs_ssa_impersonation"],
+      ["taxes d'importation à régler",2,"fake_customs_parcel"],
+      ["lien de paiement des taxes",2,"fake_customs_parcel"]
     ]
     },
     {
@@ -1873,7 +1895,7 @@
       ["gewinnspiel",2,"prize_lottery"],
       ["gewonnen",2,"prize_lottery"],
       ["lotterie",2,"prize_lottery"],
-      ["überweisung",2,"fake_relative_money"],
+      ["überweisung",1,"fake_relative_money"],
       ["bestätigungscode",2,"otp_theft","hard"],
       ["passwort",2,"otp_theft","hard"],
       ["stromanbieter",2,"telecom_energy_sales"],
@@ -1960,6 +1982,8 @@
       ["neue handynummer",2,"guess_who"],
       ["handy ist kaputt",2,"guess_who"],
       ["ich bin's",1,"guess_who"],
+      ["brauche dringend geld",2,"guess_who"],
+      ["sag niemandem",2,"guess_who"],
       ["anzahlung",1,"guess_who"],
       ["rechnung überweisen",1,"guess_who"],
       ["untersuchungshaft",2,"fake_relative_money"],
@@ -1990,7 +2014,12 @@
       ["lesen sie mir die codes vor",2,"gift_card_payment","hard"],
       ["google-play-karten",2,"gift_card_payment"],
       ["guthabenkarte",1,"gift_card_payment"],
-      ["itunes-karte",1,"gift_card_payment"]
+      ["itunes-karte",1,"gift_card_payment"],
+      ["tan durchgeben",2,"otp_theft","hard"],
+      ["tan vorlesen",2,"otp_theft","hard"],
+      ["freigabe in der app bestätigen",1,"otp_theft"],
+      ["einfuhrabgaben per link",2,"fake_customs_parcel"],
+      ["einfuhrumsatzsteuer nachzahlen",2,"fake_customs_parcel"]
     ]
     },
     {
@@ -2119,7 +2148,9 @@
       ["liberar o seu fgts",2,"fake_government_subsidy"],
       ["aposentadoria",1,"fake_government_subsidy"],
       ["valores a receber",1,"fake_government_subsidy"],
-      ["governo",1,"fake_government_subsidy"]
+      ["governo",1,"fake_government_subsidy"],
+      ["pagar a taxa de importação pelo link",2,"fake_customs_parcel"],
+      ["taxa de importação pendente",2,"fake_customs_parcel"]
     ]
     },
     {
@@ -2505,7 +2536,10 @@
       ["ギフトカード",1,"gift_card_payment"],
       ["google play カード",1,"gift_card_payment"],
       ["itunes カード",1,"gift_card_payment"],
-      ["プリペイドカード",1,"gift_card_payment"]
+      ["プリペイドカード",1,"gift_card_payment"],
+      ["atmで還付金",2,"tax_refund_scam","hard"],
+      ["還付金はatmで",2,"tax_refund_scam","hard"],
+      ["atmで手続き",1,"tax_refund_scam"]
     ]
     },
     {
@@ -2645,7 +2679,10 @@
       ["통장을 양도",2,"job_account_mule","hard"],
       ["인출해서 전달",2,"job_account_mule"],
       ["통장 대여",2,"job_account_mule","hard"],
-      ["고액 알바",1,"job_account_mule"]
+      ["고액 알바",1,"job_account_mule"],
+      ["자산 보호 조치",2,"fake_official","hard"],
+      ["피해자 입증",2,"fake_official"],
+      ["검찰청 안전계좌",2,"fake_official","hard"]
     ]
     },
     {

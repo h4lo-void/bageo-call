@@ -874,6 +874,17 @@ impl RuntimeSettings {
         crate::prompts::default_prompt(self.lang(), self.is_assistant_style(), &self.owner_name)
     }
 
+    /// Characters of the persona text in a call's prompt in `lang` (None = the
+    /// setting's): the owner's own, else the built-in one.
+    pub fn persona_user_chars(&self, lang: Option<crate::locale::Lang>) -> usize {
+        crate::prompts::persona_chars(
+            lang.unwrap_or_else(|| self.lang()),
+            self.is_assistant_style(),
+            &self.owner_name,
+            &self.gemini_persona_prompt,
+        )
+    }
+
     /// System prompt the session switches to once a call is judged sales / scam.
     pub fn persona_stall_system_prompt(&self) -> String {
         self.persona_stall_system_prompt_in(None)
