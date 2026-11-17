@@ -7864,9 +7864,24 @@ pub async fn run_session(
                                             }
                                             _ => None,
                                         };
+                                        // The caller switched to a dialect and the AI kept to the
+                                        // call's language: one short direction, once per call (the
+                                        // model hears the caller and decides); not while closing.
+                                        let dialect_note = if !goodbye_pending
+                                            && closing_sm.state() == crate::closing::ClosingState::Talking
+                                        {
+                                            scope_region.and_then(|r| {
+                                                dialect_gate
+                                                    .take_cue()
+                                                    .map(|d| (d, crate::prompts::dialect_cue(d, r, prompt_lang)))
+                                            })
+                                        } else {
+                                            None
+                                        };
                                         let note = scenario_cue
                                             .iter()
                                             .map(|(_, cue)| cue.as_str())
+                                            .chain(dialect_note.as_ref().map(|(_, cue)| cue.as_str()))
                                             .chain(appt_note.as_deref())
                                             .collect::<Vec<_>>()
                                             .join("\n");
@@ -7891,6 +7906,13 @@ pub async fn run_session(
                                                         info!(
                                                             "appointment_note sent chars={} turn={turns_done} serial={serial}",
                                                             n.chars().count()
+                                                        );
+                                                    }
+                                                    if let Some((d, cue)) = &dialect_note {
+                                                        info!(
+                                                            "dialect_cue sent to={} chars={} turn={turns_done} serial={serial}",
+                                                            d.code(),
+                                                            cue.chars().count()
                                                         );
                                                     }
                                                 }

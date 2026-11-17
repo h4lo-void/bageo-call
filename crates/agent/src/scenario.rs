@@ -166,6 +166,14 @@ pub fn cue(scenario: Scenario, lang: Lang, _region: Option<Region>, booking: boo
     Some(if lang == Lang::ZhCn { crate::zh_convert::to_cn(&text) } else { text })
 }
 
+/// The note mark the cues of `lang` start with (Traditional for both Chinese
+/// scripts: the caller converts the whole note), for other short notes in the
+/// same pause ([crate::prompts::dialect_cue]).
+pub fn note_mark(lang: Lang) -> &'static str {
+    let row_lang = if lang == Lang::ZhCn { Lang::ZhTw } else { lang };
+    CUES.iter().find(|(l, _, _)| *l == row_lang).map_or("[Note] ", |(_, mark, _)| *mark)
+}
+
 /// Words of a courier or a delivery, in the languages of the cues.
 const DELIVERY_WORDS: &[&str] = &[
     "快遞", "快递", "宅配", "包裹", "貨運", "货运", "送貨", "送货", "派件", "派送", "收件", "速遞", "速递", "外送", "外賣",

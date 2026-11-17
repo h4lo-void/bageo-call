@@ -220,6 +220,10 @@ const SCENARIO_HINT: &str = "What an ordinary call is about: delivery = courier 
 
 /// Opens and closes the dialogue in the request (the rules say what is between them is material, not instructions).
 const DIALOGUE_OPEN: &str = "<dialogue>";
+
+/// In the request of a call whose caller's words show Hokkien or Hakka
+/// ([crate::dialect::hokkien_or_hakka_words]): speech-to-text garbles those.
+const DIALECT_STT_NOTE: &str = "The caller's lines are speech-to-text of Hokkien or Hakka, which often comes out as odd Mandarin: a garbled phrase that only sounds like a pitch or a demo is no pitch.\n";
 const DIALOGUE_CLOSE: &str = "</dialogue>";
 
 /// Opens and closes the saved contact's name and note (imported data, so
@@ -350,6 +354,13 @@ async fn review_at_with_context(
     match tokio::time::timeout(REVIEW_TIMEOUT, ask(http, base, key, dialogue, hits, ctx, purpose)).await {
         Ok(Ok(mut review)) => {
             review.ms = u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX);
+            if let Some(unsure) = unsure_on_dialect(review, dialogue, hits) {
+                info!(
+                    "stall review ({purpose:?}) sales answer on Hokkien / Hakka words, no keyword: confidence {} → low caller={caller_id}",
+                    review.confidence.as_str()
+                );
+                review = unsure;
+            }
             info!(
                 "stall review ({purpose:?}) verdict={:?} typology={:?} confidence={} scenario={} caller={caller_id} hits={hits:?} ms={} dialogue={head:?}",
                 review.verdict,
@@ -388,6 +399,29 @@ fn local_or_unavailable(dialogue: &str, hits: &[String], purpose: Purpose, calle
         }
         None => Review::unavailable(false),
     }
+}
+
+/// A sure sales answer with no keyword heard, on a caller whose words show
+/// Taiwanese / Hokkien or Hakka: speech-to-text writes those as odd Mandarin
+/// (a Singapore friend's 「來阮兜食飯好無」 came out as 「來軟都示範好無」, read as
+/// a demo pitch), so the answer may rest on words never said. Some(the same
+/// answer, unsure): the call is looked at again after the caller's next turn,
+/// and twice unsure with no keyword it is left alone. Scam kinds, words only
+/// scammers say and calls with keywords keep the answer (None).
+fn unsure_on_dialect(review: Review, dialogue: &str, hits: &[String]) -> Option<Review> {
+    if review.verdict != Verdict::ScamOrSales || review.confidence == Confidence::Low || !hits.is_empty() {
+        return None;
+    }
+    if let Some(t) = review.typology.and_then(crate::scam_db::typology) {
+        if t.hard || t.category != crate::scam_db::Category::Sales {
+            return None;
+        }
+    }
+    let caller = caller_text(dialogue);
+    if crate::scam_db::has_hard_hit(&caller) || !crate::dialect::hokkien_or_hakka_words(&caller) {
+        return None;
+    }
+    Some(Review { confidence: Confidence::Low, ..review })
 }
 
 /// The caller's lines of the dialogue (`對方：` / `Caller:`), one per line.
@@ -575,6 +609,9 @@ fn request_body_for(dialogue: &str, hits: &[String], ctx: &CallerContext, purpos
     let regional = crate::scam_db::country_review_brief(&ctx.number, &ctx.number_notes, hits, &dialogue);
     if !regional.is_empty() {
         head.push_str(&regional);
+    }
+    if crate::dialect::hokkien_or_hakka_words(&caller_text(&dialogue)) {
+        head.push_str(DIALECT_STT_NOTE);
     }
     head.push_str(purpose_line(purpose));
     let fence = DIALOGUE_OPEN.len() + DIALOGUE_CLOSE.len() + 2;
@@ -1692,5 +1729,45 @@ mod tests {
         assert!(sys.contains("- debt_collection_harassment (scam): "), "{sys}");
         assert!(sys.contains("- harassment_intimidation (scam): "), "{sys}");
         assert!(sys.chars().count() < 9000, "{}", sys.chars().count());
+    }
+}
+
+#[cfg(test)]
+mod dialect_garble {
+    use super::*;
+
+    fn sales(confidence: Confidence, typology: Option<&'static str>) -> Review {
+        Review { typology, confidence, ..Review::of(Verdict::ScamOrSales) }
+    }
+
+    /// 2026-11-17 bench d_sg_nan_dinner: a friend's dinner invite in Hokkien, as
+    /// speech-to-text wrote it, read as a course demo with no keyword.
+    #[test]
+    fn a_garbled_hokkien_invite_is_only_unsure() {
+        let d = "接聽：Hello?\n對方：喂,王先生啊。你加方位。\n接聽：對,我是。\n對方：今晚得空無。來軟都示範好無。";
+        let r = unsure_on_dialect(sales(Confidence::High, Some("course_trial_sales")), d, &[]).unwrap();
+        assert_eq!((r.verdict, r.confidence, r.typology), (Verdict::ScamOrSales, Confidence::Low, Some("course_trial_sales")));
+        assert!(unsure_on_dialect(sales(Confidence::Medium, None), d, &[]).is_some());
+    }
+
+    #[test]
+    fn keywords_scam_kinds_and_mandarin_keep_the_answer() {
+        let d = "對方：今晚得空無？來阮兜坐，我共你講一个投資機會。";
+        assert!(unsure_on_dialect(sales(Confidence::High, Some("course_trial_sales")), d, &["投資".to_string()]).is_none());
+        assert!(unsure_on_dialect(sales(Confidence::High, Some("fake_official")), d, &[]).is_none());
+        assert!(unsure_on_dialect(sales(Confidence::Low, None), d, &[]).is_none());
+        let code = "對方：你好無？共我講你的驗證碼。";
+        assert!(unsure_on_dialect(sales(Confidence::High, None), code, &[]).is_none());
+        let mandarin = "對方：您好，我們有免費的體驗課程，想邀請您週末來試上。";
+        assert!(unsure_on_dialect(sales(Confidence::High, Some("course_trial_sales")), mandarin, &[]).is_none());
+        assert!(unsure_on_dialect(Review::of(Verdict::Normal), d, &[]).is_none());
+    }
+
+    #[test]
+    fn the_request_warns_of_garbled_dialect_only_when_the_caller_shows_one() {
+        let ctx = CallerContext::default();
+        let text = |d: &str| request_body_for(d, &[], &ctx, Purpose::Content, true).to_string();
+        assert!(text("對方：今晚得空無。來軟都示範好無。").contains("speech-to-text of Hokkien or Hakka"));
+        assert!(!text("對方：您好，我們有免費的體驗課程。").contains("speech-to-text of Hokkien"));
     }
 }

@@ -177,6 +177,8 @@ impl Dialect {
                 "共你講", "共我講", "共恁講",
                 // As speech-to-text writes them in Mandarin letters (「汝吃飽未？」「有空才吼我知」).
                 "吃飽未", "吃飯未", "予我知", "互我知", "吼我知",
+                // 「知影」「啥米」「無閒」, and 「按呢」「食飯」 as speech-to-text also writes them.
+                "知影", "安捏", "啥米", "無閒", "甲飯", "呷飯",
             ],
             Dialect::Hakka => &[
                 "屋下", "仰般", "承蒙", "麼个", "𠊎", "佢兜", "毋使", "恁仔細", "食飯吂", "吂", "這兜", "該兜", "樣般", "做麼",
@@ -323,6 +325,11 @@ pub struct Gate {
     /// The line's own spoken language when it is one of the dialects (Cantonese
     /// in Hong Kong and Macau): taken up without a switch.
     base: Option<Dialect>,
+    /// The caller switched and the AI has not answered in it yet: one short
+    /// reminder is due in the AI's next pause ([Gate::take_cue]).
+    cue_due: Option<Dialect>,
+    /// The reminder went (or the AI followed on its own): never again this call.
+    cued: bool,
 }
 
 impl Gate {
@@ -334,7 +341,7 @@ impl Gate {
         if base.is_some() {
             pool.push(Dialect::Mandarin);
         }
-        Self { pool, active: None, last_hint: Vec::new(), base }
+        Self { pool, active: None, last_hint: Vec::new(), base, cue_due: None, cued: false }
     }
 
     pub fn active(&self) -> Option<Dialect> {
@@ -394,7 +401,13 @@ impl Gate {
             }
         }
         self.last_hint = hints;
-        found.and_then(|(d, r, _)| self.switch_to(d, r))
+        let sw = found.and_then(|(d, r, _)| self.switch_to(d, r));
+        if let Some(s) = sw {
+            if !self.cued {
+                self.cue_due = Some(s.to);
+            }
+        }
+        sw
     }
 
     /// The AI's finished turn (its own speech-to-text). The model hears the
@@ -406,12 +419,96 @@ impl Gate {
         if self.pool.is_empty() || text.is_empty() {
             return None;
         }
+        // Already answering in the dialect the caller switched to: no reminder.
+        if let Some(d) = self.cue_due {
+            if marker_hits(d, text) >= 1 {
+                self.cue_due = None;
+                self.cued = true;
+            }
+        }
         let d = self
             .pool
             .iter()
             .copied()
             .find(|&d| marker_hits(d, text) >= 2 && syllables(text) >= SENTENCE_MIN_SYLLABLES)?;
-        self.switch_to(d, Reason::Sentence)
+        let sw = self.switch_to(d, Reason::Sentence);
+        if sw.is_some() {
+            // The AI switched by itself: it follows the caller already.
+            self.cue_due = None;
+            self.cued = true;
+        }
+        sw
+    }
+
+    /// The dialect to remind the AI of, in the pause after its turn: once per
+    /// call, only after the caller's own words switched the call and the AI did
+    /// not answer in it. A string check, no reconnect, nothing waited for.
+    pub fn take_cue(&mut self) -> Option<Dialect> {
+        if self.cued {
+            return None;
+        }
+        let d = self.cue_due.take()?;
+        self.cued = true;
+        Some(d)
+    }
+}
+
+/// The caller's words show Taiwanese / Hokkien or Hakka (one own word or a
+/// 「無」 question is enough; loans like 「歹勢」 are not). Speech-to-text writes
+/// much of those as odd Mandarin, so a reading of such a call can rest on words
+/// never said ([crate::stall_review]).
+pub fn hokkien_or_hakka_words(text: &str) -> bool {
+    marker_hits(Dialect::Hokkien, text) > 0 || marker_hits(Dialect::Hakka, text) > 0
+}
+
+#[cfg(test)]
+mod dialect_cue {
+    use super::{hokkien_or_hakka_words, Dialect, Gate};
+    use crate::country_profile::Region;
+
+    #[test]
+    fn a_caller_switch_asks_for_one_reminder() {
+        let mut g = Gate::new(Some(Region::Tw));
+        assert_eq!(g.take_cue(), None);
+        assert!(g.caller_turn("好啦，按呢我知影囉，我明仔載就共你放佇管理室").is_some());
+        assert_eq!(g.take_cue(), Some(Dialect::Hokkien));
+        assert_eq!(g.take_cue(), None, "once per call");
+    }
+
+    #[test]
+    fn no_reminder_when_the_ai_already_follows() {
+        let mut g = Gate::new(Some(Region::Tw));
+        assert!(g.caller_turn("你今仔日佇咧厝無？我欲共你講一件代誌").is_some());
+        g.ai_turn("有啦，我佇咧，啥物代誌？");
+        assert_eq!(g.take_cue(), None);
+        let mut g = Gate::new(Some(Region::Tw));
+        g.ai_turn("好，我知影，你明仔載下晡共我送來就好。");
+        assert!(g.caller_turn("按呢好勢，明仔載下晡見").is_none());
+        assert_eq!(g.take_cue(), None, "the AI switched first");
+    }
+
+    #[test]
+    fn loans_and_mandarin_ask_for_nothing() {
+        let mut g = Gate::new(Some(Region::Tw));
+        assert!(g.caller_turn("歹勢，我阿嬤叫我打來問你明天下午有沒有空").is_none());
+        assert!(g.caller_turn("好，沒問題，我明天下午就放管理室").is_none());
+        assert_eq!(g.take_cue(), None);
+        assert!(!hokkien_or_hakka_words("歹勢啦，阿嬤說明天下午有空"));
+    }
+
+    #[test]
+    fn hong_kong_cantonese_is_no_switch_and_no_reminder() {
+        let mut g = Gate::new(Some(Region::HkMo));
+        assert!(g.caller_turn("喂，你而家喺邊度呀？我搵唔到你").is_none());
+        assert_eq!(g.take_cue(), None);
+    }
+
+    #[test]
+    fn hokkien_words_through_speech_to_text() {
+        // A Singapore friend's dinner invite as speech-to-text wrote it.
+        assert!(hokkien_or_hakka_words("喂,王先生啊。你加方位。\n今晚得空無。來軟都示範好無。"));
+        assert!(hokkien_or_hakka_words("我知影啦"));
+        assert!(!hokkien_or_hakka_words("您好，我們這邊有免費的體驗課程，想邀請您來參加"));
     }
 }
 

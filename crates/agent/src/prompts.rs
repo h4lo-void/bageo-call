@@ -1013,7 +1013,7 @@ pub fn dialect_block(region: Region, lang: Lang) -> String {
             let loans = if loans.is_empty() { "一兩個詞".to_string() } else { format!("{}這類詞", quoted(lang, &loans)) };
             out.push_str(&zh_text(
                 lang,
-                format!("\n【方言】對方講一整句{names}（像{examples}，夾些華語或英文也算），或連兩句帶它的詞，或叫你講，有一樣就跟著整句用那種話回，之後一直用到他改回來；只夾{loans}是平常講法，照原本的講。"),
+                format!("\n【方言】這裡常有人講{names}（像{examples}）。對方整句這樣講（夾些華語或英文也算）、連兩句帶它的詞或叫你講，就跟著整句用那種話回（比上面講中文的說法優先），之後一直用到他改回來；只夾{loans}照原本的講。"),
             ));
         } else {
             let loans = if loans.is_empty() {
@@ -1131,6 +1131,21 @@ pub fn with_active_dialect(prompt: &str, dialect: Dialect, region: Region, lang:
         return prompt.to_string();
     }
     insert_before_guard(prompt, lang, &note)
+}
+
+/// The one reminder of a call whose caller switched to `dialect` while the AI
+/// kept to the call's language ([crate::dialect::Gate::take_cue]): sent in the
+/// pause after the AI's turn, a direction only (the model hears the caller and
+/// decides), at most [crate::scenario::MAX_CUE_CHARS] characters.
+pub fn dialect_cue(dialect: Dialect, region: Region, lang: Lang) -> String {
+    let zh = zh_ins(lang);
+    let name = dialect.name(region, zh);
+    let mark = crate::scenario::note_mark(lang);
+    if zh {
+        zh_text(lang, format!("{mark}對方像在講{name}：他整句這樣講，你也整句用{name}自然回；他換回別的話再跟著換。"))
+    } else {
+        format!("{mark}Caller seems to speak {name}: if they keep on, answer in it; follow them back.")
+    }
 }
 
 /// A system-instruction turn for the Live model.
@@ -1857,5 +1872,34 @@ mod tests {
         c.auto_language = true;
         let with_note = scope_to_region(&build(&c), Lang::ZhTw, Scope { region: Some(Region::Tw), carrier_note: false });
         assert!(!with_note.contains(ZH_FOLLOW_LANGUAGE) && with_note.contains("【對方講別的語言】"));
+    }
+}
+
+#[cfg(test)]
+mod dialect_cue_tests {
+    use super::dialect_cue;
+    use crate::country_profile::{dialects, Region};
+    use crate::locale::Lang;
+
+    /// The reminder names the dialect, gives a direction only and fits a cue.
+    #[test]
+    fn the_dialect_reminder_is_short_and_names_the_dialect() {
+        for region in [Region::Tw, Region::HkMo, Region::Cn, Region::MySg] {
+            for &d in dialects(region).iter().filter(|d| d.switches()) {
+                for lang in crate::locale::ALL {
+                    let c = dialect_cue(d, region, lang);
+                    let n = c.chars().count();
+                    assert!(n <= crate::scenario::MAX_CUE_CHARS, "{region:?} {d:?} {lang:?} {n}: {c}");
+                    assert!(c.contains(d.name(region, lang.is_zh())) || lang == Lang::ZhCn, "{c}");
+                    assert!(!c.contains('「') && !c.contains('"'), "no line to recite: {c}");
+                }
+            }
+        }
+        let tw = dialect_cue(crate::dialect::Dialect::Hokkien, Region::Tw, Lang::ZhTw);
+        assert!(tw.starts_with("【系統小抄") && tw.contains("台語") && tw.contains("換回"), "{tw}");
+        let cn = dialect_cue(crate::dialect::Dialect::Hokkien, Region::Cn, Lang::ZhCn);
+        assert!(cn.contains("闽南话") && cn.contains("系统小抄"), "{cn}");
+        let en = dialect_cue(crate::dialect::Dialect::Hokkien, Region::MySg, Lang::En);
+        assert!(en.starts_with("[Note] ") && en.contains("Hokkien"), "{en}");
     }
 }
