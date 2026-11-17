@@ -170,7 +170,7 @@ The **Errands** tab has the AI make a call for you. Booking a table for four loo
 
 1. Pick a contact or type a number.
 2. Write what to get done and what you can accept: "book a table for 4 tomorrow at 7 pm; 7:30 to 8 is fine too".
-3. Choose *Call as* and, if you like, the *Phone to call from*, then press **Start the call**.
+3. Choose *Call as* and, if you like, the *Number to call from*, then press **Start the call**.
 4. Follow the live captions. You can type an instruction for the AI, answer a question it asks you, or **Hang up**.
 
 Afterwards the errand shows the result (Done, Partly done, Not done, Your decision needed, No answer, Voicemail, Failed) with details, the next step, the time agreed, a link to the call record and **Call again**. When the other side offered choices, pick one and the AI calls back with it. You also get one notification.

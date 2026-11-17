@@ -83,7 +83,7 @@ Two route groups use their own shape: the phone mode switch answers
 | 400 | The request is wrong: not JSON, no `Content-Type: application/json`, a bad id or value. | `bad_request`, `invalid_id`, `missing_field`, `invalid_contact`, an errand code |
 | 401 | Password missing or wrong. | `unauthorized` |
 | 404 | No such call, task, contact or errand, or no such file. | `not_found`, `task_not_found`, `contact_not_found`, `no_audio`, `no_calendar` |
-| 409 | The change conflicts with what is stored. | `contact_exists`, `sms_not_retryable` |
+| 409 | The change conflicts with what is stored. | `contact_exists`, `sms_not_retryable`, `call_in_progress`, `device_online`, `device_in_call` |
 | 413 / 415 | An import file too large / of an unknown type. | `file_too_large`, `too_many_rows`, `unsupported_file` |
 | 500 | Bageo could not save or read its own files. | `save_failed`, `contacts_save_failed`, `import_failed` |
 | 502 | An outside service failed (a notification channel, Gemini). | `auth_failed`, `network_error`, `ai_failed`, `preview_failed` |
@@ -101,6 +101,7 @@ Bageo never answers preflights. This covers:
 
 - `POST /calls/api/tasks/{id}/confirm` and `…/ignore`;
 - `POST /calls/api/appointments/{id}/retry-sms`;
+- `POST /calls/api/calls/clear`;
 - `POST /calls/api/devices/{serial}/mode`;
 - `POST /calls/api/contacts`, `PUT /calls/api/contacts/{id}`, `POST /calls/api/contacts/batch`
   (`POST /calls/api/contacts/import` needs an `X-Filename` header instead);
@@ -116,9 +117,11 @@ network can reach the console.
 |---|---|
 | `GET /calls/api/list` | Call records, newest first. Filter with the query parameters listed below the table. Answer: `{ok, calls, total, limit, offset, tasks_by_call, contacts_by_number}`. |
 | `GET /calls/api/call/{id}` | One call: `{ok, call, notes, contact, calendar_link, calendar_links, scam_names}`. The fields are explained below the table. |
+| `DELETE /calls/api/call/{id}` | Deletes a finished call record, its WAV files, `_notes.json` and associated tasks: `{ok, id, tasks_deleted}`. HTTP 409 `call_in_progress` if the call is still ringing or active. |
+| `POST /calls/api/calls/clear` | Deletes all finished call records, their WAV files, `_notes.json` and associated tasks while keeping any call in progress: `{ok, deleted, tasks_deleted}`. |
 | `POST /calls/api/call/{id}/scam-feedback` | Your mark for a call: JSON `{"verdict": "scam" \| "sales" \| "safe"}`, optionally with a built-in `typology`. Answer `{ok, call, number}`; HTTP 400 `invalid_verdict` / `invalid_typology`. |
 | `GET /calls/api/call/{id}/event.ics` | The calendar suggestion as an iCalendar file; HTTP 404 `no_calendar` when the call has none. Opens with the console password or with `?k=<key>`. |
-| `GET /calls/api/audio/{id}/listen` | The call as you would have heard it (caller and AI mixed), WAV, with range requests for seeking. |
+| `GET /calls/api/audio/{id}/listen` | The call as you would have heard it (caller and AI mixed), WAV, with range requests for seeking (`?download=1` adds `Content-Disposition: attachment`). |
 | `GET /calls/api/audio/{id}/remote` · `/tts` · `/vm` · `/audio/{id}` | Caller only · AI only · the voicemail of the older menu mode · the raw mixed recording. HTTP 404 `no_audio` when that file does not exist. |
 | `GET /calls/api/live` | Calls in progress and the phones connected: `{ok, count, calls, control_idle_clients, control_idle_serials, normal_mode_serials}`. `normal_mode_serials` are connected phones switched to a normal phone; the page does not count them as ready. |
 | `GET /calls/api/stats` | `{ok, stats: {total, today, voicemails, blocked}}`. |
@@ -667,6 +670,8 @@ Content-Type: application/json
 |---|---|
 | `GET /calls/api/devices` | `{ok, usb: {enabled, adb_found, adb_path, error, phones: [{serial, state, model, reverse, app_installed}]}, connected: [...], labels: {<phone id>: <name>}, calls_in_progress, phones: [...]}`. Details are below the table. |
 | `POST /calls/api/devices/{serial}/mode` | Body `{"mode": "ai" \| "normal"}`. Asks the phone to switch and waits up to 15 seconds for its answer. Answers `{ok, mode, error_code}` (a 400 adds `error`, a description). |
+| `DELETE /calls/api/devices/{serial}` | Removes an offline phone from the phone list, saved device labels and recorded SIMs while keeping past call records: `{ok, serial}`. HTTP 409 `device_online` / `device_in_call` if the phone is connected or in a call. |
+| `PUT /calls/api/devices/{serial}/sim-number` | Body `{"sub_id": <int>, "number": "..."}`. Saves (or clears when empty) the phone number for a SIM on that phone so calls and AI errands show and pick by number: `{ok, serial, sims}`. |
 | `GET /health` | A large flat JSON object for troubleshooting: version, language, what is configured, connected phones, calls in progress; no keys or tokens. Details are below the table. |
 
 Details for these routes:

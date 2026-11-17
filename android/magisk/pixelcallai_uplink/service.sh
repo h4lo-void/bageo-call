@@ -64,6 +64,7 @@ rm -f /data/adb/pixelcallai/daemon.pid 2>/dev/null || true
 
   pm grant "$PKG" android.permission.RECORD_AUDIO >/dev/null 2>&1 || true
   pm grant "$PKG" android.permission.READ_PHONE_STATE >/dev/null 2>&1 || true
+  pm grant "$PKG" android.permission.READ_PHONE_NUMBERS >/dev/null 2>&1 || true
   pm grant "$PKG" android.permission.ANSWER_PHONE_CALLS >/dev/null 2>&1 || true
   pm grant "$PKG" android.permission.SEND_SMS >/dev/null 2>&1 || true
   pm grant "$PKG" android.permission.CALL_PHONE >/dev/null 2>&1 || true

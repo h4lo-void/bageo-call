@@ -1608,6 +1608,25 @@ impl SettingsStore {
         list.push(trimmed.to_string());
         self.apply_patch(&json!({ "spam_blocklist": list }))
     }
+
+    /// Remove one phone's saved label from `device_labels` (`settings.json`) and
+    /// refresh the in-memory device label table. Returns `Ok(true)` when a saved
+    /// label was present and removed.
+    pub fn remove_device_label(&self, serial: &str) -> Result<bool> {
+        let s = serial.trim();
+        if s.is_empty() {
+            return Ok(false);
+        }
+        let current = self.snapshot();
+        if !current.device_labels.contains_key(s) {
+            return Ok(false);
+        }
+        let mut labels = current.device_labels.clone();
+        labels.remove(s);
+        self.apply_patch(&json!({ "device_labels": labels }))?;
+        crate::notify::forget_device_override(s);
+        Ok(true)
+    }
 }
 
 static ACTIVE_UI_PASSWORD: std::sync::RwLock<String> = std::sync::RwLock::new(String::new());

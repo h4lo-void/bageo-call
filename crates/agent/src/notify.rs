@@ -1484,6 +1484,34 @@ pub fn remember_device(serial: &str, model: &str) {
         .insert(serial.to_string(), label);
 }
 
+/// Remove one phone's saved label override from the in-memory table.
+pub fn forget_device_override(serial: &str) -> bool {
+    let s = serial.trim();
+    if s.is_empty() {
+        return false;
+    }
+    DEVICE_OVERRIDES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_mut()
+        .is_some_and(|m| m.remove(s).is_some())
+}
+
+/// Forget an offline phone's remembered model name and label override.
+pub fn forget_device(serial: &str) -> bool {
+    let s = serial.trim();
+    if s.is_empty() {
+        return false;
+    }
+    let a = DEVICES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_mut()
+        .is_some_and(|m| m.remove(s).is_some());
+    let b = forget_device_override(s);
+    a || b
+}
+
 pub fn known_devices() -> Vec<(String, String)> {
     let mut v: Vec<(String, String)> = DEVICES
         .lock()

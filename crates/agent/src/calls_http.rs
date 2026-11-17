@@ -459,11 +459,13 @@ async fn live(
         return unauthorized();
     }
     let calls = state.store.live_calls().await;
+    let contacts_by_number = crate::contacts::names_for(&state.contacts, &calls);
     let control_serials = state.control.connected_serials().await;
     Json(json!({
         "ok": true,
         "count": calls.len(),
         "calls": calls,
+        "contacts_by_number": contacts_by_number,
         "control_idle_clients": control_serials.len(),
         "control_idle_serials": control_serials,
         // Connected phones switched to "normal phone": the page does not count them as
@@ -616,6 +618,55 @@ async fn call_scam_feedback(
         Ok(v) => Json(v).into_response(),
         Err((status, code)) => api_error(status, code, "call not found"),
     }
+}
+
+/// `DELETE /api/call/{id}`: remove a single finished call record, its WAV
+/// files, `_notes.json`, and any associated task records.
+async fn call_delete(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+    Path(id): Path<String>,
+) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    if !task_id_safe(&id) {
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid call id");
+    }
+    match state.store.delete_call(&id).await {
+        Ok(true) => {
+            let mut ids = std::collections::HashSet::with_capacity(1);
+            ids.insert(id.clone());
+            let tasks_deleted = state.task_store.delete_by_call_ids(&ids).await;
+            Json(json!({"ok": true, "id": id, "tasks_deleted": tasks_deleted})).into_response()
+        }
+        Ok(false) => api_error(StatusCode::NOT_FOUND, "not_found", "call not found"),
+        Err("call_in_progress") => api_error(
+            StatusCode::CONFLICT,
+            "call_in_progress",
+            "cannot delete a call while it is in progress",
+        ),
+        Err(code) => api_error(StatusCode::BAD_REQUEST, code, "cannot delete call"),
+    }
+}
+
+/// `POST /api/calls/clear`: remove all finished call records, their WAV files,
+/// `_notes.json`, and associated task records (preserving any live call).
+async fn calls_clear(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    if !is_json_request(&headers) {
+        return json_required();
+    }
+    let (deleted, ids) = state.store.delete_all_finished().await;
+    let tasks_deleted = state.task_store.delete_by_call_ids(&ids).await;
+    Json(json!({"ok": true, "deleted": deleted, "tasks_deleted": tasks_deleted})).into_response()
 }
 
 
@@ -852,14 +903,47 @@ pub fn keyed_http_client() -> reqwest::Client {
         .unwrap_or_default()
 }
 
+#[derive(Deserialize)]
+struct AudioQuery {
+    pub token: Option<String>,
+    pub download: Option<String>,
+}
+
+impl AudioQuery {
+    fn as_token(&self) -> TokenQuery {
+        TokenQuery {
+            token: self.token.clone(),
+        }
+    }
+
+    fn wants_download(&self) -> bool {
+        matches!(
+            self.download.as_deref().map(str::trim),
+            Some("1" | "true" | "yes")
+        )
+    }
+}
+
+fn attach_download(mut resp: Response, wants_download: bool, filename: &str) -> Response {
+    if wants_download && (resp.status() == StatusCode::OK || resp.status() == StatusCode::PARTIAL_CONTENT) {
+        if let Ok(val) = header::HeaderValue::from_str(&format!("attachment; filename=\"{filename}\"")) {
+            resp.headers_mut().insert(header::CONTENT_DISPOSITION, val);
+        }
+    }
+    resp
+}
+
 async fn audio(
     State(state): State<CallsState>,
     headers: HeaderMap,
-    Query(query): Query<TokenQuery>,
+    Query(query): Query<AudioQuery>,
     Path(id): Path<String>,
 ) -> Response {
-    if !token_ok(&state.settings, &headers, &query) {
+    if !token_ok(&state.settings, &headers, &query.as_token()) {
         return unauthorized();
+    }
+    if !task_id_safe(&id) {
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid call id");
     }
     let Some(rec) = state.store.get(&id).await else {
         return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
@@ -867,18 +951,22 @@ async fn audio(
     let Some(rel) = rec.audio_path.as_deref() else {
         return api_error(StatusCode::NOT_FOUND, "no_audio", "no audio");
     };
-    stream_wav(&state.store, rel, &headers).await
+    let resp = stream_wav(&state.store, rel, &headers).await;
+    attach_download(resp, query.wants_download(), &format!("call-{id}.wav"))
 }
 
 /// Page-listen WAV: ducked mix rebuilt from remote+tts (works for old additive files).
 async fn audio_listen(
     State(state): State<CallsState>,
     headers: HeaderMap,
-    Query(query): Query<TokenQuery>,
+    Query(query): Query<AudioQuery>,
     Path(id): Path<String>,
 ) -> Response {
-    if !token_ok(&state.settings, &headers, &query) {
+    if !token_ok(&state.settings, &headers, &query.as_token()) {
         return unauthorized();
+    }
+    if !task_id_safe(&id) {
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid call id");
     }
     let Some(rec) = state.store.get(&id).await else {
         return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
@@ -889,7 +977,11 @@ async fn audio_listen(
         .ok()
         .flatten();
     match built {
-        Some(bytes) => ranged_response(&headers, bytes),
+        Some(bytes) => attach_download(
+            ranged_response(&headers, bytes),
+            query.wants_download(),
+            &format!("call-{id}.wav"),
+        ),
         None => api_error(StatusCode::NOT_FOUND, "no_audio", "no listen audio"),
     }
 }
@@ -943,11 +1035,14 @@ fn ranged_response(headers: &HeaderMap, bytes: bytes::Bytes) -> Response {
 async fn audio_tts(
     State(state): State<CallsState>,
     headers: HeaderMap,
-    Query(query): Query<TokenQuery>,
+    Query(query): Query<AudioQuery>,
     Path(id): Path<String>,
 ) -> Response {
-    if !token_ok(&state.settings, &headers, &query) {
+    if !token_ok(&state.settings, &headers, &query.as_token()) {
         return unauthorized();
+    }
+    if !task_id_safe(&id) {
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid call id");
     }
     let Some(rec) = state.store.get(&id).await else {
         return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
@@ -955,18 +1050,22 @@ async fn audio_tts(
     let Some(rel) = rec.tts_audio_path.as_deref() else {
         return api_error(StatusCode::NOT_FOUND, "no_audio", "no tts audio");
     };
-    stream_wav(&state.store, rel, &headers).await
+    let resp = stream_wav(&state.store, rel, &headers).await;
+    attach_download(resp, query.wants_download(), &format!("call-{id}-ai.wav"))
 }
 
 /// Message-only voicemail WAV (`<id>_vm.wav`), mirrors the full-call handler.
 async fn audio_vm(
     State(state): State<CallsState>,
     headers: HeaderMap,
-    Query(query): Query<TokenQuery>,
+    Query(query): Query<AudioQuery>,
     Path(id): Path<String>,
 ) -> Response {
-    if !token_ok(&state.settings, &headers, &query) {
+    if !token_ok(&state.settings, &headers, &query.as_token()) {
         return unauthorized();
+    }
+    if !task_id_safe(&id) {
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid call id");
     }
     let Some(rec) = state.store.get(&id).await else {
         return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
@@ -974,18 +1073,22 @@ async fn audio_vm(
     let Some(rel) = rec.voicemail_path.as_deref() else {
         return api_error(StatusCode::NOT_FOUND, "no_audio", "no voicemail");
     };
-    stream_wav(&state.store, rel, &headers).await
+    let resp = stream_wav(&state.store, rel, &headers).await;
+    attach_download(resp, query.wants_download(), &format!("call-{id}-voicemail.wav"))
 }
 
 /// Whole-call remote/caller uplink WAV (`<id>_remote.wav`) - greeting/AI/VM/goodbye.
 async fn audio_remote(
     State(state): State<CallsState>,
     headers: HeaderMap,
-    Query(query): Query<TokenQuery>,
+    Query(query): Query<AudioQuery>,
     Path(id): Path<String>,
 ) -> Response {
-    if !token_ok(&state.settings, &headers, &query) {
+    if !token_ok(&state.settings, &headers, &query.as_token()) {
         return unauthorized();
+    }
+    if !task_id_safe(&id) {
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid call id");
     }
     let Some(rec) = state.store.get(&id).await else {
         return api_error(StatusCode::NOT_FOUND, "not_found", "not found");
@@ -1000,7 +1103,11 @@ async fn audio_remote(
         .ok()
         .flatten()
     {
-        Some(bytes) => ranged_response(&headers, bytes),
+        Some(bytes) => attach_download(
+            ranged_response(&headers, bytes),
+            query.wants_download(),
+            &format!("call-{id}-caller.wav"),
+        ),
         None => api_error(StatusCode::NOT_FOUND, "open_failed", "open failed"),
     }
 }
@@ -1296,6 +1403,8 @@ async fn devices(
         "calls_in_progress": live.len(),
         // One object per phone: mode, model, app_version, in_call, supports_mode.
         "phones": state.phones.list_json(&agent_calls),
+        // Known SIMs per phone: sub_id, country, slot, carrier, auto_number, number, effective_number.
+        "sims": state.errands.sims.all_json(),
     }))
     .into_response()
 }
@@ -1616,6 +1725,24 @@ impl PhoneDevices {
             .is_some_and(|p| p.sink.is_some() && p.hello.in_call)
     }
 
+    /// Whether the phone currently holds an open control connection here.
+    pub fn is_connected(&self, serial: &str) -> bool {
+        self.phones()
+            .get(serial)
+            .is_some_and(|p| p.sink.is_some())
+    }
+
+    /// Forget an offline phone from `PhoneDevices`. Returns `Err("online")` if
+    /// its control connection is still open, `Ok(true)` if removed, `Ok(false)`
+    /// if not present.
+    pub fn forget(&self, serial: &str) -> Result<bool, &'static str> {
+        let mut phones = self.phones();
+        if phones.get(serial).is_some_and(|p| p.sink.is_some()) {
+            return Err("online");
+        }
+        Ok(phones.remove(serial).is_some())
+    }
+
     /// Connected phones in normal-phone mode: the AI does not answer their calls.
     pub fn normal_mode_serials(&self) -> Vec<String> {
         let mut v: Vec<String> = self
@@ -1760,6 +1887,115 @@ async fn device_mode(
         "phone mode switch"
     );
     Json(mode_reply_json(&reply)).into_response()
+}
+
+/// `DELETE /api/devices/{serial}`: forget an offline phone from `PhoneDevices`,
+/// `notify` labels, `phone_sims.json`, and `settings.json` (`device_labels`),
+/// keeping past call records intact. Connected or busy phones are refused.
+async fn device_delete(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+    Path(serial): Path<String>,
+) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    if !task_id_safe(&serial) {
+        return api_error(StatusCode::BAD_REQUEST, "invalid_serial", "invalid phone serial");
+    }
+    let connected = state.control.connected_serials().await;
+    if connected.iter().any(|s| s == &serial) || state.phones.is_connected(&serial) {
+        return api_error(
+            StatusCode::CONFLICT,
+            "device_online",
+            "cannot remove a connected phone",
+        );
+    }
+    let in_call = state
+        .store
+        .live_calls()
+        .await
+        .iter()
+        .any(|c| c.serial == serial)
+        || state.phones.in_call(&serial)
+        || crate::appointments::outbound_busy_on(&serial);
+    if in_call {
+        return api_error(
+            StatusCode::CONFLICT,
+            "device_in_call",
+            "cannot remove a phone while a call is in progress",
+        );
+    }
+    let from_phones = match state.phones.forget(&serial) {
+        Ok(v) => v,
+        Err(_) => {
+            return api_error(
+                StatusCode::CONFLICT,
+                "device_online",
+                "cannot remove a connected phone",
+            )
+        }
+    };
+    let from_label = match state.settings_store.remove_device_label(&serial) {
+        Ok(v) => v,
+        Err(e) => {
+            return api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "save_failed",
+                format!("{e:#}"),
+            )
+        }
+    };
+    let from_notify = crate::notify::forget_device(&serial);
+    let from_sims =
+        state.errands.sims.forget_phone(&serial) | crate::errands::forget_phone_sims(&serial);
+    if !(from_phones || from_label || from_notify || from_sims) {
+        return api_error(StatusCode::NOT_FOUND, "not_found", "phone not found");
+    }
+    info!(serial = serial.as_str(), "offline phone forgotten");
+    Json(json!({"ok": true, "serial": serial})).into_response()
+}
+
+/// `PUT /api/devices/{serial}/sim-number`: save (or clear when `number` is empty)
+/// the owner-entered phone number for a SIM on `serial` (`sub_id >= 0`, or `-1`
+/// when the phone has not reported a SIM list yet).
+async fn device_sim_number(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+    Path(serial): Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    if !is_json_request(&headers) {
+        return json_required();
+    }
+    if !task_id_safe(&serial) {
+        return api_error(StatusCode::BAD_REQUEST, "invalid_serial", "invalid phone serial");
+    }
+    let Ok(v) = serde_json::from_slice::<Value>(&body) else {
+        return api_error(StatusCode::BAD_REQUEST, "bad_request", "invalid JSON body");
+    };
+    let sub_id = v.get("sub_id").and_then(Value::as_i64).unwrap_or(-1);
+    let number = match v.get("number") {
+        None | Some(Value::Null) => "",
+        Some(Value::String(s)) => s.as_str(),
+        Some(_) => return api_error(StatusCode::BAD_REQUEST, "bad_number", "number must be a string"),
+    };
+    let country_hint = v.get("country").and_then(Value::as_str);
+    let default_country = state.settings_store.snapshot().default_region().to_string();
+    let hint = country_hint.unwrap_or(&default_country);
+    match state.errands.sims.set_number(&serial, sub_id, Some(hint), number) {
+        Ok(sims) => {
+            info!(serial = serial.as_str(), sub_id, cleared = number.trim().is_empty(), "phone SIM number updated");
+            Json(json!({"ok": true, "serial": serial, "sims": sims})).into_response()
+        }
+        Err("sim_not_found") => api_error(StatusCode::NOT_FOUND, "sim_not_found", "SIM not found on this phone"),
+        Err(code) => api_error(StatusCode::BAD_REQUEST, code, "invalid phone number"),
+    }
 }
 
 /// Tasks tab: prefer TaskStore (canonical); snake_case status. An appointment's
@@ -2862,6 +3098,270 @@ mod tests {
             }
         }
     }
+
+    async fn spawn_router(state: CallsState) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let app = router(state);
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        format!("http://127.0.0.1:{port}")
+    }
+
+    #[tokio::test]
+    async fn delete_single_call_and_clear_finished_calls_preserve_live_and_clean_files() {
+        let root = std::env::temp_dir().join(format!("bageo-cdel-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let state = quick_state(&root);
+        let base = spawn_router(state.clone()).await;
+        let client = reqwest::Client::new();
+
+        // Finished call #1 with WAV, notes, and a task.
+        let mut c1 = state.store.start("pixel-test-1", "0900000111", 16000, "active").await.unwrap();
+        c1.write_uplink(&vec![42u8; 3200]);
+        let r1 = state.store.finalize(c1, "ended").await;
+        state
+            .store
+            .save_notes(
+                &r1.id,
+                &crate::calls::CallNotes {
+                    summary: "對方：測試".into(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let t1 = state
+            .task_store
+            .create(crate::tasks::TaskRecord {
+                id: String::new(),
+                created_at: String::new(),
+                updated_at: String::new(),
+                call_id: r1.id.clone(),
+                serial: "pixel-test-1".into(),
+                caller_id: "0900000111".into(),
+                status: crate::tasks::TaskStatus::Pending,
+                intent: crate::tasks::TaskIntent::Message,
+                summary: "測試待辦".into(),
+                transcript: String::new(),
+                datetime_hint: None,
+                reply_method: crate::tasks::ReplyMethod::None,
+                reply_contact: None,
+                contact_verified: false,
+                voicemail_path: None,
+                calendar_event_id: None,
+                fulfill_error: None,
+                openclaw_ref: None,
+                events: Vec::new(),
+                appointment: None,
+            })
+            .await
+            .unwrap();
+
+        // Download header check on /api/audio/{id}/listen?download=1.
+        let dl_resp = client
+            .get(format!("{base}/api/audio/{}/listen?download=1", r1.id))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(dl_resp.status().as_u16(), 200);
+        assert_eq!(
+            dl_resp.headers().get(header::CONTENT_DISPOSITION).and_then(|v| v.to_str().ok()),
+            Some(format!("attachment; filename=\"call-{}.wav\"", r1.id).as_str())
+        );
+
+        let wav_abs = state.store.audio_abs(r1.audio_path.as_deref().unwrap()).unwrap();
+        assert!(wav_abs.is_file());
+        assert!(state.store.load_notes(&r1.id).await.is_some());
+
+        // Delete finished call #1 via DELETE /api/call/{id}.
+        let del_resp = client
+            .delete(format!("{base}/api/call/{}", r1.id))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(del_resp.status().as_u16(), 200);
+        assert!(state.store.get(&r1.id).await.is_none());
+        assert!(!wav_abs.exists(), "WAV must be removed from disk");
+        assert!(state.store.load_notes(&r1.id).await.is_none(), "notes must be removed");
+        assert!(state.task_store.get(&t1.id).await.is_none(), "associated task must be removed");
+
+        // Finished call #2 + live call #3: live call cannot be deleted individually,
+        // and POST /api/calls/clear deletes #2 while keeping #3.
+        let mut c2 = state.store.start("pixel-test-1", "0900000222", 16000, "active").await.unwrap();
+        c2.write_uplink(&vec![11u8; 3200]);
+        let r2 = state.store.finalize(c2, "ended").await;
+        let live_call = state.store.start("pixel-test-1", "0900000333", 16000, "active").await.unwrap();
+
+        let live_del = client
+            .delete(format!("{base}/api/call/{}", live_call.id))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(live_del.status().as_u16(), 409);
+
+        // Missing Content-Type: application/json on POST /api/calls/clear is rejected.
+        let no_json = client
+            .post(format!("{base}/api/calls/clear"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(no_json.status().as_u16(), 400);
+
+        let clear_resp = client
+            .post(format!("{base}/api/calls/clear"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body("{}")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(clear_resp.status().as_u16(), 200);
+        let clear_json: Value = clear_resp.json().await.unwrap();
+        assert_eq!(clear_json["deleted"], json!(1));
+        assert!(state.store.get(&r2.id).await.is_none());
+        assert!(state.store.get(&live_call.id).await.is_some(), "live call must remain");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn delete_offline_device_cleans_all_stores_and_keeps_call_history() {
+        let root = std::env::temp_dir().join(format!("bageo-ddel-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut state = quick_state(&root);
+        let sims_path = root.join("phone_sims.json");
+        let sims = crate::errands::SimBook::open(sims_path.clone());
+        state.errands = crate::errands::ErrandStore::open(root.join("errands.json"), sims.clone());
+
+        let serial = "pixel-old-999";
+        // Seed all 4 places + a finished call record on that device.
+        state.phones.phones().insert(
+            serial.to_string(),
+            PhoneEntry {
+                sink: None,
+                hello: parse_phone_hello(&json!({"model": "Pixel Old", "phone_mode": "ai"})),
+                last_seen_ms: 12345,
+            },
+        );
+        crate::notify::remember_device(serial, "Pixel Old");
+        state
+            .settings_store
+            .apply_patch(&json!({"device_labels": {serial: "Old Desk Phone"}}))
+            .unwrap();
+        sims.note(serial, 1, "tw");
+        assert_eq!(sims.of(serial), vec![(1, "tw".to_string())]);
+
+        let c = state.store.start(serial, "0900000444", 16000, "active").await.unwrap();
+        let finished = state.store.finalize(c, "ended").await;
+
+        let base = spawn_router(state.clone()).await;
+        let client = reqwest::Client::new();
+
+        // While a live call is open on another serial, deleting THAT busy serial is 409.
+        let busy_serial = "pixel-busy-888";
+        let _live = state.store.start(busy_serial, "0900000555", 16000, "ringing").await.unwrap();
+        let busy_resp = client
+            .delete(format!("{base}/api/devices/{busy_serial}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(busy_resp.status().as_u16(), 409);
+
+        // Deleting the offline device succeeds and cleans all 4 stores while keeping call history.
+        let ok_resp = client
+            .delete(format!("{base}/api/devices/{serial}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(ok_resp.status().as_u16(), 200);
+        assert!(state.phones.list_json(&[]).iter().all(|p| p["serial"] != serial));
+        assert!(!state.settings_store.snapshot().device_labels.contains_key(serial));
+        assert!(crate::notify::known_devices().iter().all(|(id, _)| id != serial));
+        assert!(sims.of(serial).is_empty());
+        assert!(crate::errands::SimBook::open(sims_path).of(serial).is_empty());
+        assert!(state.store.get(&finished.id).await.is_some(), "call history must stay intact");
+
+        // Deleting again returns 404.
+        let again = client
+            .delete(format!("{base}/api/devices/{serial}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(again.status().as_u16(), 404);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn sim_number_entry_survives_hello_and_errand_picks_chosen_sim() {
+        let root = std::env::temp_dir().join(format!("bageo-simnum-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut state = quick_state(&root);
+        let sims_path = root.join("phone_sims.json");
+        let sims = crate::errands::SimBook::open(sims_path.clone());
+        state.errands = crate::errands::ErrandStore::open(root.join("errands.json"), sims.clone());
+
+        let serial = "pixel-dual-777";
+        sims.note_list(
+            serial,
+            &json!([
+                {"sub_id": 20, "country": "us", "slot": 1, "carrier": "Example US", "number": "+1 202-555-0101"},
+                {"sub_id": 21, "country": "tw", "slot": 0, "carrier": "Example TW"}
+            ]),
+        );
+
+        let base = spawn_router(state.clone()).await;
+        let client = reqwest::Client::new();
+
+        // Owner sets the missing TW SIM number via PUT /api/devices/{serial}/sim-number.
+        let put_resp = client
+            .put(format!("{base}/api/devices/{serial}/sim-number"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(r#"{"sub_id": 21, "number": "0900-123-456"}"#)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(put_resp.status().as_u16(), 200);
+
+        // Phone reconnects with a bare hello (no number on SIM 21): owner's saved number stays!
+        sims.note_list(
+            serial,
+            &json!([
+                {"sub_id": 20, "country": "us"},
+                {"sub_id": 21, "country": "tw"}
+            ]),
+        );
+
+        let dev_resp: Value = client
+            .get(format!("{base}/api/devices"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let list = dev_resp["sims"][serial].as_array().unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0]["effective_number"], "+12025550101");
+        assert_eq!(list[1]["effective_number"], "0900123456");
+
+        // `pick_phone_sim` honors a specific SIM sub_id (both when two SIMs share a country
+        // and when dialing a US local number on the US SIM while home is "tw").
+        let phones = vec![crate::errands::PhoneView {
+            serial: serial.into(),
+            normal: false,
+            busy: false,
+            sims: vec![(11, "tw".into()), (20, "us".into()), (21, "tw".into())],
+        }];
+        let pick_tw2 = crate::errands::pick_phone_sim(&phones, "0900888999", serial, Some(21), "tw").unwrap();
+        assert_eq!(pick_tw2.sub_id, Some(21));
+        let pick_us = crate::errands::pick_phone_sim(&phones, "202-555-0199", serial, Some(20), "tw").unwrap();
+        assert_eq!(pick_us.sub_id, Some(20));
+        assert_eq!(pick_us.e164, "+12025550199");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 pub fn router(state: CallsState) -> Router {
@@ -2878,7 +3378,8 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/quick-action", get(quick_action).post(quick_action))
         .route("/api/stats", get(stats))
         .route("/api/live", get(live))
-        .route("/api/call/{id}", get(call_get))
+        .route("/api/call/{id}", get(call_get).delete(call_delete))
+        .route("/api/calls/clear", post(calls_clear))
         .route("/api/call/{id}/event.ics", get(call_event_ics))
         .route("/api/call/{id}/scam-feedback", post(call_scam_feedback))
         .route("/api/export.csv", get(export_csv))
@@ -2892,7 +3393,9 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/notify/test", post(notify_test))
         .route("/api/notify/send", post(notify_send))
         .route("/api/devices", get(devices))
+        .route("/api/devices/{serial}", axum::routing::delete(device_delete))
         .route("/api/devices/{serial}/mode", post(device_mode))
+        .route("/api/devices/{serial}/sim-number", axum::routing::put(device_sim_number))
         .route("/api/tasks", get(tasks_list))
         .route("/api/tasks/{id}/confirm", post(tasks_confirm))
         .route("/api/tasks/{id}/ignore", post(tasks_ignore))
