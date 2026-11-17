@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>English</strong> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.zh-CN.md">简体中文</a>
+  <strong>English</strong> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.de.md">Deutsch</a> · <a href="README.pt.md">Português</a>
 </p>
 
 <p align="center">
@@ -38,7 +38,7 @@
     <td width="25%" align="center" valign="top">
       <img src="docs/images/icons/languages.svg" width="56" height="56" alt=""><br>
       <strong>Speaks nine languages</strong><br>
-      English, Chinese, Japanese, Korean, Spanish, French, German and Portuguese. It switches when the caller does.
+      English, Traditional and Simplified Chinese, Japanese, Korean, Spanish, French, German and Portuguese. It switches when the caller does.
     </td>
   </tr>
 </table>
