@@ -333,3 +333,5 @@ Gemini 키가 필요합니다. 요약은 Ollama를 통한 로컬 모델로 돌�
 - **상용 라이선스 취득:** 사업자, 기업, SaaS·콜센터 사업자, 하드웨어 제조사가 `AGPL-3.0-only`에 따른 소스 코드 공개 없이 Bageo를 배포, 내장 또는 호스팅하려는 경우, 별도의 서면 독점(proprietary) 라이선스를 취득할 수 있습니다. [**상용 라이선스 약관**](COMMERCIAL_LICENSE.md)을 참조하시기 바랍니다.
 
 **면책 및 현지 법률:** Bageo는 직접 설치해서 쓰는 소프트웨어이며, 어떠한 보증도 없이 “있는 그대로(AS IS)” 제공됩니다. 작성자는 서비스를 운영하지 않으며 사용자 데이터를 받지 않습니다. 이를 설치해 운영하는 사람은 통화 녹음, AI 사실 고지, 자동 발신에 관한 현지 법률을 준수할 책임과, 기기 root 화 및 통신사·API 요금에 대한 책임을 집니다. 사용하기 전에 [**LEGAL.md**](LEGAL.md), [개인정보, 안전, 법률](docs/en/PRIVACY_AND_LEGAL.md), [v1.0 AI 지원 내부 검토 노트](AUDIT_REPORT.md)(`gemini-4-carbon`, 제3자 감사가 아님)를 읽어 보시기 바랍니다. 서드파티 고지(OpenCC `Apache-2.0` 사전 포함)는 [NOTICE.md](NOTICE.md)에 있습니다. Google LLC와는 제휴 관계가 없습니다. Pixel, Android, Gemini는 Google LLC의 상표입니다.
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

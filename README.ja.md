@@ -336,3 +336,5 @@ Google アカウントで予算を設定してください。
 - **商用ライセンスの取得：** 事業者、企業、SaaS／コールセンター事業者、ハードウェアベンダーが、`AGPL-3.0-only` によるソースコード開示なしに Bageo を導入、組み込み、またはホスティングしたい場合は、別途、書面によるプロプライエタリライセンスを取得できます。[**商用ライセンス条件**](COMMERCIAL_LICENSE.md) をご覧ください。
 
 **免責事項と各地の法律：** Bageo はセルフホスト型のソフトウェアで、「現状有姿（AS IS）」で、いかなる保証もなく提供されます。作者はサービスを運営せず、利用者のデータも受け取りません。導入した人が、通話録音、AI であることの開示、自動発信に関する各地の法律の遵守、端末の root 化、携帯会社や API の料金について責任を負います。ご利用の前に、[**LEGAL.md**](LEGAL.md)、[プライバシー・安全・法律](docs/en/PRIVACY_AND_LEGAL.md)、および [v1.0 AI 支援による社内レビューの注記](AUDIT_REPORT.md)（`gemini-4-carbon`。第三者による監査ではありません）をお読みください。サードパーティの表示（OpenCC の `Apache-2.0` 辞書を含む）は [NOTICE.md](NOTICE.md) にあります。Google LLC とは無関係です。Pixel、Android、Gemini は Google LLC の商標です。
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
