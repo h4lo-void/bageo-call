@@ -210,6 +210,9 @@ const SCAM_ASK_WORDS: &[&str] = &[
     "身份證", "身分证", "出生", "生日", "有效期", "帳號", "帐号", "帳戶", "账户", "連結", "链接", "網址", "网址", "點擊",
     "点击", "運費", "运费", "關稅", "关税", "click", "link", "date of birth", "birthday", "expiry", "expiration",
     "account number", "delivery fee", "customs", "生年月日", "口座", "リンク", "생년월일", "계좌", "링크",
+    "繳費", "缴费", "付款", "付費", "付费", "繳款", "缴款", "證件", "证件", "送金", "お支払い", "支払って", "송금", "결제",
+    "pay a", "pay the", "pay us", "to pay", "fee", "your id", "id card", "photo of your", "pagar", "payer", "zahlen",
+    "pagamento",
 ];
 
 /// Letters of words in Latin script (the rest are compared as they are).
@@ -308,11 +311,17 @@ pub fn local_guess(caller: &str) -> Scenario {
     if w.any(DELIVERY_WORDS) {
         return Scenario::Delivery;
     }
-    if w.any(NOTICE_FROM_WORDS) && w.any(NOTICE_WHAT_WORDS) {
+    // A bank is no notice desk here (「銀行櫃檯…期限快到了，請回電」): left to the review.
+    if w.any(NOTICE_FROM_WORDS) && w.any(NOTICE_WHAT_WORDS) && !w.any(BANK_WORDS) {
         return Scenario::ImportantNotice;
     }
     Scenario::None
 }
+
+/// A bank or card company calling.
+const BANK_WORDS: &[&str] = &[
+    "銀行", "银行", "信用卡", "卡片中心", "カード会社", "은행", "카드사", "bank", "credit card", "banco", "banque", "sparkasse",
+];
 
 /// What a review did to the call's routing (for the log).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -630,6 +639,25 @@ mod no_answer_fallback_scams {
             "I'm calling about the meeting tomorrow at three",
         ] {
             assert_eq!(local_guess(t), Scenario::None, "{t}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod notice_fallback_edges {
+    use super::{local_guess, Scenario};
+
+    #[test]
+    fn a_bank_desk_or_a_payment_ask_is_no_notice() {
+        for t in [
+            "這裡是銀行櫃檯，您的貸款期限快到了，請回電",
+            "銀行の受付です。お手続きの期限が変更になりました",
+            "This is the clinic, your results are ready, please pay a 200 dollar fee by today",
+            "This is the clinic, please send us a photo of your ID",
+            "診所通知您檢查結果出來了，需要先繳費五千元",
+            "クリニックの受付です。先にお金を送金してください",
+        ] {
+            assert_ne!(local_guess(t), Scenario::ImportantNotice, "{t}");
         }
     }
 }
