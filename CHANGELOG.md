@@ -1,5 +1,8 @@
 # Bageo v1.4.0
 
+- **SIM changes show up right away.** When you put in, take out or swap a SIM card, the phone tells Bageo within a few seconds, so the System page and AI errands show the new card. The app can now read the card's own number when the carrier provides it (needs the new phone module).
+- **換 SIM 卡後馬上更新。** 插卡、拔卡或換卡後，手機幾秒內就會告訴 Bageo，「系統」頁和「AI 代打」會顯示新的卡；電信公司有提供門號時，App 也能直接讀到這張卡的號碼（要更新手機模組）。
+- **换 SIM 卡后马上更新。** 插卡、拔卡或换卡后，手机几秒内就会告诉 Bageo，“系统”页和“AI 代打”会显示新的卡；运营商有提供号码时，App 也能直接读到这张卡的号码（要更新手机模块）。
 - **Refined low-glare console, SIM line numbers, recording download, call deletion and offline phone removal.** The console now uses a calm low-contrast look with clean text controls instead of decorative icons. Each phone's SIM numbers are shown on the System page (and can be entered manually when a SIM card does not expose its number), incoming calls show which line was called, and AI errands let you pick which number to call from. You can also download any call's WAV recording, delete individual calls or all finished call history, and remove offline phones. See [API](docs/en/API.md).
 - **柔和低對比控制台介面、顯示與設定手機門號、錄音下載、刪除通話紀錄與移除離線手機。** 控制台改成柔和耐看的低對比配色並拿掉裝飾圖示；「系統」頁可查看每支手機各張 SIM 的門號（讀不到時可直接手動輸入），來電會顯示打給哪支門號，「AI 代打」也能直接選要用哪台手機的哪個號碼撥出；另可下載通話錄音 WAV、單筆或全部刪除通話紀錄、刪除離線舊手機。見 [API](docs/zh-TW/API.md)。
 - **柔和低对比度控制台界面、显示与设置手机号码、录音下载、删除通话记录与移除离线手机。** 控制台改成柔和耐看的低对比度配色并去掉装饰图标；“系统”页可查看每部手机各张 SIM 的号码（读不到时可直接手动输入），来电会显示打给哪个号码，“AI 代打”也能直接选要用哪部手机的哪个号码拨出；另可下载通话录音 WAV、单条或全部删除通话记录、删除离线旧手机。见 [API](docs/zh-CN/API.md)。

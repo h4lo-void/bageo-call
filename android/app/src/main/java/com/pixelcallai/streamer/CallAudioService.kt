@@ -17,6 +17,7 @@ import android.os.Process
 import android.os.SystemClock
 import android.telecom.TelecomManager
 import android.telephony.PhoneStateListener
+import android.telephony.SubscriptionManager
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
 import android.util.Log
@@ -136,6 +137,7 @@ class CallAudioService : Service() {
         audioGuard = LocalAudioGuard(this)
         smsSender = SmsSender(this) { msg -> controlClient?.sendJson(msg) }
         telephonyManager = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
+        watchSimChanges()
         PhoneModeManager.addListener(modeListener)
         if (Prefs.legacyAiSwitchOff(this) && !Prefs.hasPhoneModeFile(this)) {
             Log.w(
@@ -1364,6 +1366,63 @@ class CallAudioService : Service() {
         sendStatus(inCall)
     }
 
+    private var simListener: SubscriptionManager.OnSubscriptionsChangedListener? = null
+    private var lastSims: String? = null
+    private val simChangedReport = Runnable {
+        val now = try {
+            SimList.read(this)?.toString()
+        } catch (e: Exception) {
+            null
+        }
+        if (now != null && now != lastSims) {
+            lastSims = now
+            Log.i(TAG, "SIM cards changed: reporting them to the agent")
+            sendStatus()
+        }
+    }
+
+    /**
+     * A SIM card put in, taken out or swapped while the phone stays connected: tell the
+     * agent (a `status` with the new `sims` list) so the console and errands follow.
+     * The system calls this several times while a card comes up, so wait a few seconds
+     * and only send when the list really changed.
+     */
+    private fun watchSimChanges() {
+        val subs = getSystemService(SubscriptionManager::class.java) ?: return
+        lastSims = try {
+            SimList.read(this)?.toString()
+        } catch (e: Exception) {
+            null
+        }
+        val listener = object : SubscriptionManager.OnSubscriptionsChangedListener() {
+            override fun onSubscriptionsChanged() {
+                mainHandler.removeCallbacks(simChangedReport)
+                mainHandler.postDelayed(simChangedReport, 5_000)
+            }
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                subs.addOnSubscriptionsChangedListener(mainExecutor, listener)
+            } else {
+                @Suppress("DEPRECATION")
+                subs.addOnSubscriptionsChangedListener(listener) // onCreate runs on the main looper
+            }
+            simListener = listener
+        } catch (e: Exception) {
+            Log.w(TAG, "cannot watch SIM changes: ${e.message}")
+        }
+    }
+
+    private fun stopWatchingSimChanges() {
+        mainHandler.removeCallbacks(simChangedReport)
+        val listener = simListener ?: return
+        simListener = null
+        try {
+            getSystemService(SubscriptionManager::class.java)?.removeOnSubscriptionsChangedListener(listener)
+        } catch (_: Exception) {
+        }
+    }
+
     /** `status` on the control connection: the phone mode and whether a call is on. */
     private fun sendStatus(inCall: Boolean = isCallBusy()) {
         val status = org.json.JSONObject()
@@ -1942,6 +2001,7 @@ class CallAudioService : Service() {
     }
 
     override fun onDestroy() {
+        stopWatchingSimChanges()
         PhoneModeManager.removeListener(modeListener)
         smsSender?.close()
         smsSender = null
