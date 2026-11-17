@@ -345,29 +345,16 @@ lines of the **built-in** prompt. It works with your own prompt too:
 So keep long stalling scripts out of your prompt, and do not tell it to ask for
 the caller's staff ID or proof: scammers who feel found out hang up at once.
 
-## Shorter prompts by region, dialects and call situations
+## Shorter prompts by region, languages and call situations
 
 Bageo trims what the AI is told on each call, so replies stay as fast. None of this needs a setting.
 
-**By SIM region.** Each call carries only the rules for the region of the SIM that took it (the *Language* setting when the SIM is not known): the language rules, two or three local dialects and a few local habits, such as where couriers leave parcels, how times and numbers are repeated back and which scams are common there. The region is looked up from a table while the phone rings, so nothing waits.
+**By SIM region.** Each call carries only the local habits of the region of the SIM that took it (the *Language* setting when the SIM is not known), such as where couriers leave parcels, how times and numbers are repeated back and which scams are common there. The region is looked up from a table while the phone rings, so nothing waits. The region only sets the language the AI opens in; it never limits the language the caller can speak.
 
-| SIM from | Dialects the AI understands |
-|---|---|
-| Taiwan | Taiwanese, Hakka |
-| Hong Kong, Macau | Cantonese |
-| Mainland China | Cantonese, Hokkien, Sichuanese |
-| Malaysia, Singapore | Hokkien, Cantonese, Singlish |
-| Japan | Kansai |
-| Korea | Gyeongsang |
-| Canada | Quebec French |
-| UK, Ireland | Regional British English |
-| Australia, New Zealand | Australian English |
-| India | Indian English |
+**Only languages Gemini supports.** The AI speaks only the [languages Gemini Live supports](https://firebase.google.com/docs/ai-logic/live-api/limits-and-specs).
 
-Spanish, French, German and Portuguese regions have their own local ways too.
-
-- The AI switches only when the caller says a whole sentence in a dialect. One or two dialect words never switch it. When a long call moves to a fresh connection, the new one is told which language the call is in.
-- A caller who speaks another language is answered in that language, whatever your *Language* setting says.
+- A caller who speaks another supported language (English, Japanese, Thai…) is answered in it, whatever the SIM or your *Language* setting.
+- Its Chinese is always Mandarin. A caller in Taiwanese, Hakka, Cantonese or another dialect Gemini does not speak is understood as far as the model can and answered in Mandarin; the AI never puts on the dialect. Hong Kong and Macau SIMs answer in Mandarin too.
 - The appointment rules start short. The full steps are added once the caller brings up a time.
 
 **By what the call is about.** For an ordinary call Bageo works out what it is about and gives the AI one short hint in the pause after it finishes a sentence, so nothing slows down. A hint is sent once per kind of call per call, and never while a sales or scam caller is being stalled.
@@ -391,7 +378,7 @@ Spanish, French, German and Portuguese regions have their own local ways too.
 
 It sounds keen at first, then makes one move per turn and never the same one twice in a row. When the caller says the call is ending or says goodbye, it throws out one last line: "wait, one more question". The scam word list also covers Taiwan "cancel the installment" ATM calls, Japan ATM tax refunds, Korean prosecutor "safe account" calls, US IRS and Medicare gift-card calls, and European customs fee links and TAN codes.
 
-**Ending a call.** Bageo knows how people announce the end ("I won't keep you") and say goodbye in the nine languages plus Cantonese, Thai, Vietnamese and Indonesian, and hangs up only when the caller's latest words close the call.
+**Ending a call.** Bageo knows how people announce the end ("I won't keep you") and say goodbye in the nine languages plus Cantonese, Thai, Vietnamese and Indonesian, and hangs up only when the caller's latest words close the call (Cantonese is only listened for; the AI answers in Mandarin).
 
 - A greeting that also means goodbye (Korean 수고하십니다, Thai สวัสดีค่ะ) never ends a call at the start. Later it counts only once the business is done.
 - Short agreements in any language (なるほど, Genau, Vale) do not interrupt the AI.

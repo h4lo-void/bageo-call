@@ -730,7 +730,7 @@ mod tests {
     /// line to recite.
     #[test]
     fn no_call_text_hands_the_ai_a_line_to_recite() {
-        use crate::country_profile::{dialects, Region};
+        use crate::country_profile::Region;
         use crate::scenario::Scenario;
         const REGIONS: [Region; 21] = [
             Region::Tw, Region::HkMo, Region::Cn, Region::MySg, Region::Us, Region::Ca, Region::GbIe,
@@ -749,10 +749,7 @@ mod tests {
             }
             for r in REGIONS {
                 texts.push(crate::country_profile::block(r, lang, false));
-                texts.push(crate::prompts::dialect_block(r, lang));
-                for d in dialects(r) {
-                    texts.push(crate::prompts::active_dialect_note(*d, r, lang));
-                }
+                texts.push(crate::prompts::dialect_note(r, lang));
             }
             let answers = [("phone".to_string(), "0912345678".to_string())];
             texts.push(crate::preflight::prompt_block("Book at 7 pm, otherwise 8:30 pm", &answers, lang));

@@ -1012,8 +1012,9 @@ pub struct CallLangPlan {
     /// The SIM that took the call (ISO 3166 alpha-2, lowercase); None = not known.
     pub sim_country: Option<String>,
     /// Where the call is ([`crate::country_profile::resolve`]: the SIM's region, else
-    /// the language setting's): the prompt gets that region's dialects and local
-    /// rules only ([`crate::prompts::scope_to_region`]).
+    /// the language setting's): the prompt gets that region's local rules only
+    /// ([`crate::prompts::scope_to_region`]); the caller's language is followed
+    /// whatever the region.
     pub region: Option<crate::country_profile::Region>,
     /// No opening language, but a country that answers the phone its own way
     /// ([`crate::prompts::local_hello`]: a SIM of Italy, a number from Thailand):
@@ -1025,7 +1026,7 @@ pub struct CallLangPlan {
 /// picks up): the same opening, hints and prompt language. Whether the number
 /// is the SIM's own counts only with an opening in another language — only then
 /// does the opening line say so (a hidden number and a local one are the same).
-/// The region counts (its dialects are in the prompt); the SIM itself does not
+/// The region counts (its local rules are in the prompt); the SIM itself does not
 /// (a ring that guessed the SIM from the language's region still serves the call).
 impl PartialEq for CallLangPlan {
     fn eq(&self, other: &Self) -> bool {
@@ -2358,7 +2359,7 @@ fn carrier_note_due(plan: &CallLangPlan) -> bool {
 struct PromptLog {
     sim: String,
     lang: &'static str,
-    dialects: String,
+    region: String,
     /// Characters of its persona text (the owner's own or the built-in one).
     user_chars: usize,
 }
@@ -2370,37 +2371,24 @@ impl PromptLog {
         region: Option<crate::country_profile::Region>,
         user_chars: usize,
     ) -> Self {
-        let dialects: Vec<&str> = region
-            .map(|r| crate::country_profile::dialects(r).iter().map(|d| d.code()).collect())
-            .unwrap_or_default();
         Self {
             sim: plan.sim_country.as_deref().map_or_else(|| "-".to_string(), str::to_ascii_uppercase),
             lang: lang.code(),
-            dialects: if dialects.is_empty() { "-".to_string() } else { dialects.join(",") },
+            region: region.map_or_else(|| "-".to_string(), |r| format!("{r:?}")),
             user_chars,
         }
     }
 
     fn log(&self, chars: usize, rotate: bool) {
         info!(
-            "persona_prompt chars={chars} user_chars={} sim_country={} lang={} dialects={} rotate={}",
+            "persona_prompt chars={chars} user_chars={} sim_country={} lang={} region={} rotate={}",
             self.user_chars,
             self.sim,
             self.lang,
-            self.dialects,
+            self.region,
             u8::from(rotate)
         );
     }
-}
-
-/// The `dialect_switch` log line (from = the call's language before its first switch).
-fn log_dialect_switch(sw: crate::dialect::Switch, lang: crate::locale::Lang) {
-    info!(
-        "dialect_switch from={} to={} reason={}",
-        sw.from.map_or(lang.code(), |d| d.code()),
-        sw.to.code(),
-        sw.reason.as_str()
-    );
 }
 
 /// The system prompt a setup carries.
@@ -2409,18 +2397,6 @@ fn setup_system_prompt(setup: &Value) -> &str {
         .pointer("/setup/systemInstruction/parts/0/text")
         .and_then(Value::as_str)
         .unwrap_or("")
-}
-
-/// `setup` for the next session of a call in `dialect`: its prompt says so
-/// ([`crate::prompts::with_active_dialect`]), so a rotation keeps the dialect.
-fn setup_in_dialect(
-    setup: &Value,
-    dialect: crate::dialect::Dialect,
-    region: crate::country_profile::Region,
-    lang: crate::locale::Lang,
-) -> Value {
-    let prompt = crate::prompts::with_active_dialect(setup_system_prompt(setup), dialect, region, lang);
-    setup_with_system_prompt(setup, &prompt)
 }
 
 /// Distinct caller keywords → score; ≥ this marks the call as sales/scam…
@@ -4727,8 +4703,6 @@ pub async fn run_session(
     };
     let scope_region = scope.and_then(|s| s.region);
     let prompt_log = PromptLog::new(&lang_plan, prompt_lang, scope_region, user_prompt_chars);
-    // The dialect the caller speaks, from finished turns only (see crate::dialect).
-    let mut dialect_gate = crate::dialect::Gate::new(scope_region);
     let stall = stall.filter(|_| persona).map(|mut c| {
         c.system_prompt = scoped(&session_prompt(c.system_prompt.as_str(), outbound));
         c
@@ -5310,6 +5284,9 @@ pub async fn run_session(
     // The caller's words since the AI last answered them, and whether those asked
     // us to hold on ("等一下，我去拿", "one moment"): a long quiet line is expected.
     let mut caller_recent = String::new();
+    // The caller's last finished words (memory only): a scenario cue goes in the
+    // language they speak now.
+    let mut caller_last_turn = String::new();
     let mut caller_hold = false;
     // An errand call: wrapped up at 9:30, ended at 10 minutes.
     let (mut wrap_secs, mut wrap_force_secs, mut max_secs) = if errand.is_some() {
@@ -5831,15 +5808,6 @@ pub async fn run_session(
                     &stt_setup
                 } else {
                     next_setup
-                };
-                // The dialect the call is in: the new session keeps answering in it.
-                let dialect_setup;
-                let next_setup = match (dialect_gate.active(), scope_region) {
-                    (Some(d), Some(r)) => {
-                        dialect_setup = setup_in_dialect(next_setup, d, r, prompt_lang);
-                        &dialect_setup
-                    }
-                    _ => next_setup,
                 };
                 let next_prompt_chars = setup_system_prompt(next_setup).chars().count();
                 let opened = match tokio::time::timeout(
@@ -7489,12 +7457,8 @@ pub async fn run_session(
                                     {
                                         out_tx_window.clear();
                                         stall_tx.clear();
-                                        // The caller's finished words: does the call speak a dialect now?
-                                        if let Some(sw) = dialect_gate.caller_turn(&caller_recent) {
-                                            log_dialect_switch(sw, prompt_lang);
-                                        }
                                         // The caller's next words start a new utterance.
-                                        caller_recent.clear();
+                                        caller_last_turn = std::mem::take(&mut caller_recent);
                                         info!(
                                             "Gemini Live new model turn after caller serial={serial} (clear recap STT window)"
                                         );
@@ -7659,9 +7623,6 @@ pub async fn run_session(
                                     );
                                 } else if turn_complete {
                                     model_turn_pending = false;
-                                    if let Some(sw) = dialect_gate.ai_turn(&turn_out_text) {
-                                        log_dialect_switch(sw, prompt_lang);
-                                    }
                                     // Heard (or no drop at all): nothing is owed any more.
                                     repeat_guard.turn_complete();
                                     if let Some(c0) = post_rotate_chunks {
@@ -7849,9 +7810,13 @@ pub async fn run_session(
                                         && !model_turn_pending
                                         && !activity_open
                                     {
-                                        // In the caller's language, read from their words (memory only).
+                                        // In the caller's language, read from their words (memory only);
+                                        // a language without a setting (Thai, Italian…) gets the note in
+                                        // English, marked to be said in theirs.
                                         let spoken = crate::urgency::caller_language(&caller_text_all);
-                                        let scenario_cue = scenario_router.take_pending(stall_engage_now.is_some(), spoken);
+                                        let other = crate::urgency::unlisted_language(&caller_last_turn);
+                                        let scenario_cue =
+                                            scenario_router.take_pending(stall_engage_now.is_some(), spoken, other);
                                         if let Some((scenario, _)) = &scenario_cue {
                                             if *scenario == crate::scenario::Scenario::ScheduleInvite && !appt_block_sent {
                                                 appt_block_due = appt.is_some();
@@ -7864,24 +7829,9 @@ pub async fn run_session(
                                             }
                                             _ => None,
                                         };
-                                        // The caller switched to a dialect and the AI kept to the
-                                        // call's language: one short direction, once per call (the
-                                        // model hears the caller and decides); not while closing.
-                                        let dialect_note = if !goodbye_pending
-                                            && closing_sm.state() == crate::closing::ClosingState::Talking
-                                        {
-                                            scope_region.and_then(|r| {
-                                                dialect_gate
-                                                    .take_cue()
-                                                    .map(|d| (d, crate::prompts::dialect_cue(d, r, prompt_lang)))
-                                            })
-                                        } else {
-                                            None
-                                        };
                                         let note = scenario_cue
                                             .iter()
                                             .map(|(_, cue)| cue.as_str())
-                                            .chain(dialect_note.as_ref().map(|(_, cue)| cue.as_str()))
                                             .chain(appt_note.as_deref())
                                             .collect::<Vec<_>>()
                                             .join("\n");
@@ -7906,13 +7856,6 @@ pub async fn run_session(
                                                         info!(
                                                             "appointment_note sent chars={} turn={turns_done} serial={serial}",
                                                             n.chars().count()
-                                                        );
-                                                    }
-                                                    if let Some((d, cue)) = &dialect_note {
-                                                        info!(
-                                                            "dialect_cue sent to={} chars={} turn={turns_done} serial={serial}",
-                                                            d.code(),
-                                                            cue.chars().count()
                                                         );
                                                     }
                                                 }
@@ -8849,26 +8792,6 @@ mod tests {
         let mut other = local.clone();
         other.region = Some(Region::HkMo);
         assert_ne!(other, local);
-    }
-
-    #[test]
-    fn a_rotation_keeps_the_calls_dialect() {
-        use crate::country_profile::Region;
-        use crate::dialect::Dialect;
-        use crate::locale::Lang;
-        let prompt = persona_system_prompt("", false, "", StallPrompt::Off);
-        let setup = json!({ "setup": { "systemInstruction": { "parts": [{ "text": prompt }] } } });
-        let next = setup_in_dialect(&setup, Dialect::Hokkien, Region::Tw, Lang::ZhTw);
-        let p = setup_system_prompt(&next).to_string();
-        assert!(p.contains("【現在用的話】") && p.contains("用台語講"), "{p}");
-        // Before the injection guard, the identity guard still last.
-        let guard = crate::prompts::pack(Lang::ZhTw).injection_guard.as_str();
-        assert!(p.find("【現在用的話】").unwrap() < p.find(guard).unwrap());
-        assert!(p.ends_with(&crate::prompts::pack(Lang::ZhTw).guard_persona.replace("{owner}", "機主")), "{p}");
-        // Rotating again does not add it twice.
-        assert_eq!(setup_system_prompt(&setup_in_dialect(&next, Dialect::Hokkien, Region::Tw, Lang::ZhTw)), p);
-        let en = setup_in_dialect(&setup, Dialect::Cantonese, Region::HkMo, Lang::En);
-        assert!(setup_system_prompt(&en).contains("keep answering in Cantonese"));
     }
 
     #[test]

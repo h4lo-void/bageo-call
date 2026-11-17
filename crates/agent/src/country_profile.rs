@@ -1,7 +1,9 @@
 //! Where a call is: the region of the SIM that took it (else of the language
-//! setting), its candidate dialects ([`crate::dialect`]) and the few local rules
-//! that go into that call's prompt (scenario plan, module 6): where couriers
-//! leave parcels, times and numbers said the local way, and the local scams.
+//! setting) and the few local rules that go into that call's prompt (scenario
+//! plan, module 6): where couriers leave parcels, times and numbers said the
+//! local way, and the local scams. A region never limits the languages a call
+//! may speak: the caller is followed into any language Gemini Live supports
+//! ([`crate::prompts`]).
 //!
 //! Decided from memory before the call is picked up (the ring prewarm has the
 //! SIM): a table lookup, no I/O. Each region's part is one short paragraph,
@@ -10,7 +12,6 @@
 //! two Chinese settings, English for the others (as every other part of those
 //! prompts, [`crate::prompts`]); local words stay in the local script.
 
-use crate::dialect::Dialect;
 use crate::locale::Lang;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -97,32 +98,11 @@ pub fn resolve(sim: Option<&str>, lang: Lang) -> Option<Region> {
     }
 }
 
-/// The candidate dialects and local ways of speaking of a region (two or three
-/// at most; the general English and the auto-language rule cover the rest).
-pub fn dialects(region: Region) -> &'static [Dialect] {
-    use Dialect::*;
-    match region {
-        Region::Tw => &[Hokkien, Hakka],
-        Region::HkMo => &[Cantonese],
-        Region::Cn => &[Cantonese, Hokkien, Sichuanese],
-        Region::MySg => &[Hokkien, Cantonese, Singlish],
-        Region::Us => &[],
-        Region::Ca => &[Quebec],
-        Region::GbIe => &[BritishRegional],
-        Region::AuNz => &[Aussie],
-        Region::In => &[IndianEnglish],
-        Region::Jp => &[Kansai],
-        Region::Kr => &[Gyeongsang],
-        Region::EsEu => &[PeninsularSpanish],
-        Region::EsAm => &[LatinSpanish],
-        Region::EsRp => &[Rioplatense],
-        Region::Fr | Region::Be => &[BelgianSwissFrench],
-        Region::De => &[Bavarian, SwissGerman],
-        Region::At => &[Bavarian],
-        Region::Ch => &[SwissGerman],
-        Region::Br => &[BrazilianPortuguese],
-        Region::Pt => &[EuropeanPortuguese],
-    }
+/// Regions where callers may speak a Chinese dialect Gemini Live does not
+/// speak (Taiwanese / Hokkien, Hakka, Cantonese): the AI answers them in
+/// Mandarin ([`crate::prompts::scope_to_region`]).
+pub fn chinese_dialects_heard(region: Region) -> bool {
+    matches!(region, Region::Tw | Region::HkMo | Region::Cn | Region::MySg)
 }
 
 /// The kinds of local rule a region has.
@@ -292,7 +272,6 @@ mod tests {
                 assert!(n > 0 && n <= max, "{r:?} {lang:?}: {n} {b}");
                 assert!(!b.contains('{'), "{r:?} {lang:?}");
             }
-            assert!(dialects(r).len() <= 3, "{r:?}");
         }
     }
 

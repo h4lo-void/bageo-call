@@ -528,6 +528,28 @@ pub fn caller_language(said: &str) -> Option<Lang> {
     latin_language(&tail)
 }
 
+/// The caller's words are in a language without a setting of its own (Thai,
+/// Russian, Italian, Vietnamese…): no Chinese, Japanese or Korean letters, none
+/// of the setting languages [caller_language] tells, and more than an "OK" —
+/// four letters of another script, or three words of Latin letters.
+pub fn unlisted_language(said: &str) -> bool {
+    let said = said.trim();
+    if said.is_empty() || caller_language(said).is_some() {
+        return false;
+    }
+    let (mut cjk, mut latin, mut other) = (0, 0, 0);
+    for c in said.chars() {
+        match c as u32 {
+            0x3040..=0x30FF | 0x4E00..=0x9FFF | 0xAC00..=0xD7AF | 0x1100..=0x11FF | 0x3130..=0x318F => cjk += 1,
+            0x41..=0x5A | 0x61..=0x7A | 0xC0..=0x24F | 0x1E00..=0x1EFF => latin += 1,
+            _ if c.is_alphabetic() => other += 1,
+            _ => {}
+        }
+    }
+    let words = said.split_whitespace().filter(|w| w.chars().any(char::is_alphabetic)).count();
+    cjk == 0 && (other >= 4 || (latin >= 12 && words >= 3))
+}
+
 fn latin_language(text: &str) -> Option<Lang> {
     const WORDS: [(Lang, &[&str]); 5] = [
         (Lang::En, &["the", "and", "is", "are", "was", "i", "i'm", "you", "he", "she", "it", "to", "my", "his", "her", "in", "on", "at", "of", "just", "there", "has", "been", "have", "need", "we", "our", "someone", "with", "for", "they're", "it's", "get", "back", "call", "whenever", "so", "what", "this", "that", "your", "can", "will"]),
@@ -586,6 +608,16 @@ pub fn language_name(lang: Lang) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_language_without_a_setting_is_told_apart() {
+        for t in ["สวัสดีครับ ผมเป็นคนส่งของ", "Алло, это курьер, вы дома?", "Halo, saya kurir paket, bapak ada di rumah?", "مرحبا، أنا من شركة التوصيل"] {
+            assert!(unlisted_language(t), "{t}");
+        }
+        for t in ["", "OK OK", "喂，你好", "Hello, I'm the courier, where should I leave it?", "もしもし", "여보세요 택배입니다", "OK，那我放管理室"] {
+            assert!(!unlisted_language(t), "{t}");
+        }
+    }
 
     const LANGS: [&str; 9] = ["zh-TW", "zh-CN", "en", "ja", "ko", "es", "fr", "de", "pt"];
 

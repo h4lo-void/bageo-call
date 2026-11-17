@@ -167,8 +167,7 @@ pub fn cue(scenario: Scenario, lang: Lang, _region: Option<Region>, booking: boo
 }
 
 /// The note mark the cues of `lang` start with (Traditional for both Chinese
-/// scripts: the caller converts the whole note), for other short notes in the
-/// same pause ([crate::prompts::dialect_cue]).
+/// scripts: the caller converts the whole note).
 pub fn note_mark(lang: Lang) -> &'static str {
     let row_lang = if lang == Lang::ZhCn { Lang::ZhTw } else { lang };
     CUES.iter().find(|(l, _, _)| *l == row_lang).map_or("[Note] ", |(_, mark, _)| *mark)
@@ -405,13 +404,20 @@ impl Router {
 
     /// The pause after the AI's turn: the owed cue, once (none while stalling), in
     /// the language the caller speaks (`spoken`, when told) — a Chinese cue on a
-    /// Japanese call pulled the AI's next line into Chinese.
-    pub fn take_pending(&mut self, stalling: bool, spoken: Option<Lang>) -> Option<(Scenario, String)> {
+    /// Japanese call pulled the AI's next line into Chinese. `other`: the caller's
+    /// last words are in a language without a setting (Thai, Italian…): the cue
+    /// in English, marked to be said in theirs.
+    pub fn take_pending(&mut self, stalling: bool, spoken: Option<Lang>, other: bool) -> Option<(Scenario, String)> {
         let s = self.pending.take()?;
         if stalling || self.sent.contains(&s) {
             return None;
         }
         self.sent.push(s);
+        if other {
+            let en = cue(s, Lang::En, self.region, self.booking)?;
+            let text = en.strip_prefix(note_mark(Lang::En)).unwrap_or(&en);
+            return Some((s, format!("{OTHER_LANGUAGE_MARK}{text}")));
+        }
         let lang = match spoken {
             Some(l) if !(l.is_zh() && self.lang.is_zh()) => l,
             _ => self.lang,
@@ -419,6 +425,9 @@ impl Router {
         Some((s, cue(s, lang, self.region, self.booking)?))
     }
 }
+
+/// The mark of a cue for a caller in a language without a setting.
+const OTHER_LANGUAGE_MARK: &str = "[Note, in caller's language] ";
 
 #[cfg(test)]
 mod tests {
@@ -567,22 +576,22 @@ mod tests {
         assert_eq!(r.on_review(Scenario::None, Verdict::Normal, Confidence::High, false), RouteAction::None);
         assert_eq!(r.on_review(Scenario::Delivery, Verdict::ScamOrSales, Confidence::High, false), RouteAction::NotNormal);
         assert_eq!(r.on_review(Scenario::Delivery, Verdict::Normal, Confidence::Low, false), RouteAction::LowConfidence);
-        assert!(r.take_pending(false, None).is_none());
+        assert!(r.take_pending(false, None, false).is_none());
         assert_eq!(r.on_review(Scenario::Delivery, Verdict::Normal, Confidence::High, false), RouteAction::Queued);
-        let (s, text) = r.take_pending(false, None).unwrap();
+        let (s, text) = r.take_pending(false, None, false).unwrap();
         assert_eq!(s, Scenario::Delivery);
         assert!(text.contains("快遞"));
-        assert!(r.take_pending(false, None).is_none(), "once");
+        assert!(r.take_pending(false, None, false).is_none(), "once");
         assert_eq!(r.on_review(Scenario::Delivery, Verdict::Normal, Confidence::High, false), RouteAction::AlreadySent);
         // A card desk's first words (too early) may already be the bank scenario.
         assert_eq!(r.on_review(Scenario::BankVerify, Verdict::TooEarly, Confidence::Medium, false), RouteAction::Queued);
         // Stalling starts before the pause: the ordinary cue stays out.
-        assert!(r.take_pending(true, None).is_none());
+        assert!(r.take_pending(true, None, false).is_none());
         assert_eq!(r.on_review(Scenario::BankVerify, Verdict::Normal, Confidence::High, true), RouteAction::Stalling);
-        assert!(r.take_pending(false, None).is_none());
+        assert!(r.take_pending(false, None, false).is_none());
         assert_eq!(r.on_review(Scenario::CasualChat, Verdict::Normal, Confidence::High, false), RouteAction::Queued);
         r.drop_pending();
-        assert!(r.take_pending(false, None).is_none());
+        assert!(r.take_pending(false, None, false).is_none());
     }
 
     #[test]
@@ -590,17 +599,24 @@ mod tests {
         // A Chinese-set call where the caller speaks Japanese: the cue is Japanese.
         let mut r = Router::new(Lang::ZhTw, Some(Region::Jp), false);
         r.on_review(Scenario::Delivery, Verdict::Normal, Confidence::High, false);
-        let (_, text) = r.take_pending(false, Some(Lang::Ja)).unwrap();
+        let (_, text) = r.take_pending(false, Some(Lang::Ja), false).unwrap();
         assert!(text.starts_with("[メモ]") && text.contains("宅配"), "{text}");
         // Chinese of the other script keeps the call's own.
         let mut r = Router::new(Lang::ZhTw, Some(Region::Tw), false);
         r.on_review(Scenario::WrongNumber, Verdict::Normal, Confidence::High, false);
-        let (_, text) = r.take_pending(false, Some(Lang::ZhCn)).unwrap();
+        let (_, text) = r.take_pending(false, Some(Lang::ZhCn), false).unwrap();
         assert!(text.contains("打錯"), "{text}");
         // An English caller on the same call: English.
         let mut r = Router::new(Lang::ZhTw, Some(Region::Tw), false);
         r.on_review(Scenario::Delivery, Verdict::Normal, Confidence::High, false);
-        assert!(r.take_pending(false, Some(Lang::En)).unwrap().1.starts_with("[Note]"));
+        assert!(r.take_pending(false, Some(Lang::En), false).unwrap().1.starts_with("[Note]"));
+        // A Thai caller on a Taiwan SIM's Chinese call (their earlier Chinese still
+        // in the transcript): the cue in English, said in Thai.
+        let mut r = Router::new(Lang::ZhTw, Some(Region::Tw), false);
+        r.on_review(Scenario::Delivery, Verdict::Normal, Confidence::High, false);
+        let (_, text) = r.take_pending(false, Some(Lang::ZhTw), true).unwrap();
+        assert!(text.starts_with(OTHER_LANGUAGE_MARK) && !text.contains("系統小抄") && !text.contains("[Note] "), "{text}");
+        assert!(text.chars().count() <= MAX_CUE_CHARS + OTHER_LANGUAGE_MARK.len(), "{text}");
     }
 }
 
