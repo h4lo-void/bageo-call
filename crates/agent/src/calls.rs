@@ -1884,6 +1884,81 @@ impl CallStore {
             .collect()
     }
 
+    /// Delete a single finished call record, its WAV files, and its `_notes.json`.
+    /// Returns `Err("call_in_progress")` if the call is still `ringing` or `active`,
+    /// `Ok(false)` if not found, and `Ok(true)` when deleted.
+    pub async fn delete_call(&self, id: &str) -> std::result::Result<bool, &'static str> {
+        let (removed, snap) = {
+            let mut idx = self.index.lock().await;
+            let Some(pos) = idx.calls.iter().position(|c| c.id == id) else {
+                return Ok(false);
+            };
+            let st = idx.calls[pos].status.as_str();
+            if st == "ringing" || st == "active" {
+                return Err("call_in_progress");
+            }
+            let rec = idx.calls.remove(pos);
+            let snap = self.snapshot_index(&idx);
+            (rec, snap)
+        };
+        {
+            let remote_key = format!("{id}:remote");
+            let mut cache = self.listen_cache.lock().unwrap_or_else(|e| e.into_inner());
+            cache.retain(|(k, _)| k != id && k != &remote_key);
+        }
+        self.write_index_snapshot(snap).await;
+        let root = self.root.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            remove_record_artifacts(&root, &removed);
+        })
+        .await;
+        info!(call_id = id, "call record deleted");
+        Ok(true)
+    }
+
+    /// Delete all finished call records (preserving any `ringing` / `active` call),
+    /// their WAV files, and their `_notes.json`. Returns `(deleted_count, deleted_ids)`.
+    pub async fn delete_all_finished(&self) -> (usize, std::collections::HashSet<String>) {
+        let (removed, snap) = {
+            let mut idx = self.index.lock().await;
+            let mut removed = Vec::new();
+            idx.calls.retain(|c| {
+                let st = c.status.as_str();
+                if st == "ringing" || st == "active" {
+                    true
+                } else {
+                    removed.push(c.clone());
+                    false
+                }
+            });
+            if removed.is_empty() {
+                return (0, std::collections::HashSet::new());
+            }
+            let snap = self.snapshot_index(&idx);
+            (removed, snap)
+        };
+        let ids: std::collections::HashSet<String> =
+            removed.iter().map(|c| c.id.clone()).collect();
+        {
+            let mut cache = self.listen_cache.lock().unwrap_or_else(|e| e.into_inner());
+            cache.retain(|(k, _)| {
+                let base = k.strip_suffix(":remote").unwrap_or(k.as_str());
+                !ids.contains(base)
+            });
+        }
+        self.write_index_snapshot(snap).await;
+        let count = removed.len();
+        let root = self.root.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            for rec in &removed {
+                remove_record_artifacts(&root, rec);
+            }
+        })
+        .await;
+        info!(deleted = count, "finished call records cleared");
+        (count, ids)
+    }
+
     pub fn audio_abs(&self, rel: &str) -> Option<PathBuf> {
         let p = self.root.join(rel);
         if p.is_file() {
@@ -2087,6 +2162,37 @@ fn remove_record_file(root: &Path, rel: &str) {
                 "expired recording remove failed path={}: {e}",
                 path.display()
             );
+        }
+    }
+}
+
+fn remove_record_artifacts(root: &Path, record: &CallRecord) {
+    let mut dirs = std::collections::BTreeSet::new();
+    for rel in [
+        record.audio_path.as_deref(),
+        record.tts_audio_path.as_deref(),
+        record.remote_audio_path.as_deref(),
+        record.ai_audio_path.as_deref(),
+        record.voicemail_path.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if let Some((d, _)) = rel.split_once('/') {
+            if NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok() {
+                dirs.insert(d.to_string());
+            }
+        }
+        remove_record_file(root, rel);
+    }
+    if let Some(dir) = record_date_dir(record) {
+        remove_record_file(root, &format!("{dir}/{}_notes.json", record.id));
+        dirs.insert(dir);
+    }
+    for dir in dirs {
+        let p = root.join(&dir);
+        if p.starts_with(root) {
+            let _ = fs::remove_dir(&p);
         }
     }
 }

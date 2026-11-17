@@ -211,6 +211,9 @@ pub struct Errand {
     pub history: Vec<Attempt>,
     /// The phone the owner picked (empty: any).
     pub phone_asked: String,
+    /// The specific SIM line the owner picked on `phone_asked` (`None`: any SIM matching the destination country).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sub_id_asked: Option<i64>,
     /// The SIM it dials from (Android subscription id; None: the phone's default).
     pub sub_id: Option<i64>,
     /// That SIM's country (the number's): the call's own report must say it.
@@ -473,32 +476,57 @@ pub struct Pick {
 /// (no phone fits, and one of them has SIMs nobody knows yet: a call to it
 /// tells), `no_sim_for_country`.
 pub fn pick_phone(phones: &[PhoneView], number: &str, asked: &str, home: &str) -> Result<Pick, &'static str> {
+    pick_phone_sim(phones, number, asked, None, home)
+}
+
+/// [`pick_phone`] with an optional specific SIM subscription id (`asked_sub_id`).
+pub fn pick_phone_sim(
+    phones: &[PhoneView],
+    number: &str,
+    asked: &str,
+    asked_sub_id: Option<i64>,
+    home: &str,
+) -> Result<Pick, &'static str> {
     let n = clean_number(number).ok_or("bad_number")?;
     if short_code(&n) {
         return Err("not_allowed");
     }
-    let country = if n.starts_with('+') {
-        crate::phone_region::normalize(&n, None)
-            .map(|p| p.country.to_string())
-            .ok_or("bad_number")?
-    } else {
-        home.trim().to_ascii_lowercase()
-    };
-    let e164 = check_number(&n, &country)?;
     let asked = asked.trim();
-    let usable: Vec<&PhoneView> = phones
+    let usable_for_region: Vec<&PhoneView> = phones
         .iter()
         .filter(|p| !p.normal)
         .filter(|p| asked.is_empty() || p.serial.eq_ignore_ascii_case(asked))
         .collect();
-    if usable.is_empty() {
+    // When the owner explicitly picked a SIM line and typed a local number without '+',
+    // interpret that national number in the chosen SIM's country rather than `home`.
+    let picked_sim_country = asked_sub_id.and_then(|want_sub| {
+        usable_for_region
+            .iter()
+            .find_map(|p| p.sims.iter().find(|(sub, _)| *sub == want_sub).map(|(_, c)| c.clone()))
+    });
+    let country = if n.starts_with('+') {
+        crate::phone_region::normalize(&n, None)
+            .map(|p| p.country.to_string())
+            .ok_or("bad_number")?
+    } else if let Some(sim_c) = picked_sim_country {
+        sim_c
+    } else {
+        home.trim().to_ascii_lowercase()
+    };
+    let e164 = check_number(&n, &country)?;
+    if usable_for_region.is_empty() {
         return Err("no_phone");
     }
-    let unknown = usable.iter().any(|p| p.sims.is_empty());
-    let mut found: Vec<Pick> = usable
+    let unknown = usable_for_region.iter().any(|p| p.sims.is_empty());
+    let mut found: Vec<Pick> = usable_for_region
         .into_iter()
         .filter_map(|p| {
-            let sub_id = Some(p.sims.iter().find(|(_, c)| *c == country)?.0);
+            let sub_id = Some(
+                p.sims
+                    .iter()
+                    .find(|(sub, c)| *c == country && asked_sub_id.is_none_or(|want| *sub == want))?
+                    .0,
+            );
             Some(Pick { serial: p.serial.clone(), sub_id, country: country.clone(), e164: e164.clone(), busy: p.busy })
         })
         .collect();
@@ -526,20 +554,53 @@ pub async fn phone_view(control: &ControlRegistry, devices: &PhoneDevices, calls
 
 // ---------------------------------------------------------------- SIMs
 
-/// One SIM a phone reported.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// One SIM a phone reported (plus optional owner-entered phone number).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SimLine {
     pub sub_id: i64,
     /// ISO 3166 alpha-2, lowercase.
     pub country: String,
+    /// Physical / logical SIM slot (`0`, `1`, …) when the phone reported it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slot: Option<i32>,
+    /// Carrier display name reported by the phone, when available.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub carrier: String,
+    /// Line number reported by the SIM itself, when readable.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub auto_number: String,
+    /// Line number entered by the owner on the System page (takes precedence over `auto_number`).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub number: String,
 }
 
-/// Which SIMs each phone has (subscription id → country): from every call the
-/// phone reported (`incoming` and the media `hello`: `sim_sub_id` with
-/// `sim_country`) and from a control hello that lists them (`sims`, which
-/// replaces what is known). Kept on disk. A SIM an errand's call did not go
-/// out on (the phone used another: the SIM may be gone) is forgotten
-/// ([`SimBook::forget`]) until a call on it reports it again.
+impl SimLine {
+    pub fn effective_number(&self) -> &str {
+        if !self.number.is_empty() {
+            &self.number
+        } else {
+            &self.auto_number
+        }
+    }
+
+    pub fn to_api_json(&self) -> Value {
+        json!({
+            "sub_id": self.sub_id,
+            "country": self.country,
+            "slot": self.slot,
+            "carrier": self.carrier,
+            "auto_number": self.auto_number,
+            "number": self.number,
+            "effective_number": self.effective_number(),
+        })
+    }
+}
+
+/// Which SIMs each phone has (subscription id → country & number): from every call
+/// the phone reported (`incoming` and the media `hello`: `sim_sub_id` with
+/// `sim_country`) and from a control hello that lists them (`sims`, which updates
+/// active SIMs while keeping any owner-entered `number`). Kept on disk.
 pub struct SimBook {
     path: Option<PathBuf>,
     map: Mutex<BTreeMap<String, Vec<SimLine>>>,
@@ -592,7 +653,14 @@ impl SimBook {
         match lines.iter_mut().find(|l| l.sub_id == sub_id) {
             Some(l) if l.country == country => return,
             Some(l) => l.country = country,
-            None => lines.push(SimLine { sub_id, country }),
+            None => {
+                let carry_manual = lines
+                    .iter()
+                    .position(|l| l.sub_id < 0 && (l.country.is_empty() || l.country == country))
+                    .map(|idx| lines.remove(idx).number)
+                    .unwrap_or_default();
+                lines.push(SimLine { sub_id, country, number: carry_manual, ..Default::default() });
+            }
         }
         lines.sort_by_key(|l| l.sub_id);
         info!(serial, sub_id, "phone SIM noted");
@@ -601,8 +669,8 @@ impl SimBook {
         self.save(&snapshot);
     }
 
-    /// A control hello's `sims` (`[{sub_id, country, …}]`): what it lists is what the
-    /// phone has. A list with no readable SIM changes nothing.
+    /// A control hello's `sims` (`[{sub_id, country, slot?, carrier?, number?}]`): what
+    /// it lists is what the phone has, preserving any owner-entered `number`.
     pub fn note_list(&self, serial: &str, list: &Value) {
         let Some(items) = list.as_array() else {
             return;
@@ -612,7 +680,22 @@ impl SimBook {
             .filter_map(|s| {
                 let sub_id = s.get("sub_id")?.as_i64().filter(|n| *n >= 0)?;
                 let country = iso2(s.get("country")?.as_str()?)?;
-                Some(SimLine { sub_id, country })
+                let slot = s
+                    .get("slot")
+                    .and_then(Value::as_i64)
+                    .filter(|n| (0..=7).contains(n))
+                    .map(|n| n as i32);
+                let carrier = s
+                    .get("carrier")
+                    .and_then(Value::as_str)
+                    .map(|v| one_line(v, 40))
+                    .unwrap_or_default();
+                let auto_number = s
+                    .get("number")
+                    .and_then(Value::as_str)
+                    .and_then(clean_number)
+                    .unwrap_or_default();
+                Some(SimLine { sub_id, country, slot, carrier, auto_number, number: String::new() })
             })
             .collect();
         let serial = serial.trim();
@@ -622,6 +705,33 @@ impl SimBook {
         lines.sort_by_key(|l| l.sub_id);
         lines.dedup_by_key(|l| l.sub_id);
         let mut map = self.guard();
+        if let Some(prev) = map.get(serial) {
+            let fallback_manual = if lines.len() == 1 {
+                prev.iter().find(|p| p.sub_id < 0 && !p.number.is_empty()).map(|p| p.number.clone())
+            } else {
+                None
+            };
+            for line in &mut lines {
+                if let Some(old) = prev.iter().find(|p| p.sub_id == line.sub_id) {
+                    line.number = old.number.clone();
+                    if line.carrier.is_empty() {
+                        line.carrier = old.carrier.clone();
+                    }
+                    if line.auto_number.is_empty() {
+                        line.auto_number = old.auto_number.clone();
+                    }
+                    if line.slot.is_none() {
+                        line.slot = old.slot;
+                    }
+                } else if line.number.is_empty() {
+                    if let Some(m) = &fallback_manual {
+                        line.number = m.clone();
+                    } else if let Some(old_m) = prev.iter().find(|p| p.sub_id < 0 && p.country == line.country && !p.number.is_empty()) {
+                        line.number = old_m.number.clone();
+                    }
+                }
+            }
+        }
         if map.get(serial) == Some(&lines) {
             return;
         }
@@ -630,6 +740,82 @@ impl SimBook {
         let snapshot = map.clone();
         drop(map);
         self.save(&snapshot);
+    }
+
+    /// Save (or clear when `raw_number` is blank) the owner-entered phone number for
+    /// one SIM on `serial`. `sub_id < 0` attaches a manual number when the phone has not
+    /// reported a SIM list yet.
+    pub fn set_number(
+        &self,
+        serial: &str,
+        sub_id: i64,
+        country_hint: Option<&str>,
+        raw_number: &str,
+    ) -> Result<Vec<Value>, &'static str> {
+        let serial = serial.trim();
+        if serial.is_empty() {
+            return Err("invalid_serial");
+        }
+        let cleaned = if raw_number.trim().is_empty() {
+            String::new()
+        } else {
+            let c = clean_number(raw_number).ok_or("bad_number")?;
+            if c.trim_start_matches('+').len() < 4 {
+                return Err("bad_number");
+            }
+            c
+        };
+        let inferred_country = if cleaned.starts_with('+') {
+            crate::phone_region::normalize(&cleaned, None).map(|p| p.country.to_string())
+        } else {
+            None
+        }
+        .or_else(|| country_hint.and_then(iso2))
+        .unwrap_or_default();
+
+        let mut map = self.guard();
+        let lines = map.entry(serial.to_string()).or_default();
+        if sub_id >= 0 {
+            let Some(line) = lines.iter_mut().find(|l| l.sub_id == sub_id) else {
+                if lines.is_empty() {
+                    map.remove(serial);
+                }
+                return Err("sim_not_found");
+            };
+            line.number = cleaned;
+        } else if cleaned.is_empty() {
+            lines.retain(|l| l.sub_id >= 0);
+        } else if lines.len() == 1 && lines[0].sub_id >= 0 {
+            lines[0].number = cleaned;
+        } else if let Some(manual) = lines.iter_mut().find(|l| l.sub_id < 0) {
+            manual.number = cleaned;
+            if !inferred_country.is_empty() {
+                manual.country = inferred_country;
+            }
+        } else {
+            lines.push(SimLine {
+                sub_id: -1,
+                country: inferred_country,
+                number: cleaned,
+                ..Default::default()
+            });
+        }
+        let out: Vec<Value> = lines.iter().map(SimLine::to_api_json).collect();
+        if lines.is_empty() {
+            map.remove(serial);
+        }
+        let snapshot = map.clone();
+        drop(map);
+        self.save(&snapshot);
+        Ok(out)
+    }
+
+    /// JSON map of `serial -> [SimLine API JSON]` for the System & Errands UI.
+    pub fn all_json(&self) -> serde_json::Map<String, Value> {
+        self.guard()
+            .iter()
+            .map(|(k, v)| (k.clone(), Value::Array(v.iter().map(SimLine::to_api_json).collect())))
+            .collect()
     }
 
     /// The phone `serial` did not dial from its SIM `sub_id` when asked to: no
@@ -656,12 +842,34 @@ impl SimBook {
         true
     }
 
-    /// The phone's SIMs: (subscription id, country).
+    /// The phone's SIMs: (subscription id, country) for real reported SIMs (`sub_id >= 0`).
     pub fn of(&self, serial: &str) -> Vec<(i64, String)> {
         self.guard()
             .get(serial.trim())
-            .map(|l| l.iter().map(|s| (s.sub_id, s.country.clone())).collect())
+            .map(|l| {
+                l.iter()
+                    .filter(|s| s.sub_id >= 0 && !s.country.is_empty())
+                    .map(|s| (s.sub_id, s.country.clone()))
+                    .collect()
+            })
             .unwrap_or_default()
+    }
+
+    /// Remove every recorded SIM for an offline phone (`phone_sims.json`).
+    pub fn forget_phone(&self, serial: &str) -> bool {
+        let serial = serial.trim();
+        if serial.is_empty() {
+            return false;
+        }
+        let mut map = self.guard();
+        if map.remove(serial).is_none() {
+            return false;
+        }
+        info!(serial, "phone SIMs forgotten");
+        let snapshot = map.clone();
+        drop(map);
+        self.save(&snapshot);
+        true
     }
 }
 
@@ -670,6 +878,11 @@ static SIMS: OnceLock<Arc<SimBook>> = OnceLock::new();
 /// Make `book` the one the call handling notes SIMs in (once, at start).
 pub fn install_sims(book: Arc<SimBook>) {
     let _ = SIMS.set(book);
+}
+
+/// Remove every recorded SIM for `serial` from the global [`SimBook`].
+pub fn forget_phone_sims(serial: &str) -> bool {
+    SIMS.get().is_some_and(|book| book.forget_phone(serial))
 }
 
 /// A call's SIM fields (`incoming` / media `hello`) on the phone `serial`.
@@ -2519,11 +2732,23 @@ pub async fn create(env: &Env<'_>, body: &Value) -> Result<Errand, &'static str>
         "owner" => "owner".to_string(),
         _ => crate::settings_store::sanitize_errand_identity(&env.rt.errand_identity),
     };
-    let asked = body_str(body, "serial").trim().to_string();
+    let raw_serial = body_str(body, "serial").trim().to_string();
+    let (asked, sub_from_serial) = match raw_serial.split_once(':') {
+        Some((s, sub)) => (
+            s.trim().to_string(),
+            Some(sub.trim().parse::<i64>().ok().filter(|n| *n >= 0).ok_or("no_phone")?),
+        ),
+        None => (raw_serial, None),
+    };
+    let asked_sub_id = body
+        .get("sub_id")
+        .and_then(Value::as_i64)
+        .filter(|n| *n >= 0)
+        .or(sub_from_serial);
     if !asked.is_empty() && !id_safe(&asked) {
         return Err("no_phone");
     }
-    let pick = pick_phone(&env.phones, &number, &asked, &home_region(env.rt))?;
+    let pick = pick_phone_sim(&env.phones, &number, &asked, asked_sub_id, &home_region(env.rt))?;
     let now = now_stamp();
     let e = Errand {
         id: new_id(),
@@ -2538,6 +2763,7 @@ pub async fn create(env: &Env<'_>, body: &Value) -> Result<Errand, &'static str>
         attempts: 1,
         follow_up_of,
         phone_asked: asked,
+        sub_id_asked: asked_sub_id,
         ..Default::default()
     };
     let id = e.id.clone();
@@ -2587,7 +2813,7 @@ pub async fn retry(env: &Env<'_>, id: &str) -> Result<Errand, &'static str> {
     if !e.is_final() || appointments::errand_call_known(id) {
         return Err("busy");
     }
-    let pick = pick_phone(&env.phones, &e.number, &e.phone_asked, &home_region(env.rt))?;
+    let pick = pick_phone_sim(&env.phones, &e.number, &e.phone_asked, e.sub_id_asked, &home_region(env.rt))?;
     env.store.update(id, |e| {
         e.history.push(Attempt {
             attempt: e.attempts,
@@ -2693,7 +2919,7 @@ pub async fn sweep(env: &Env<'_>) {
         if behind {
             continue;
         }
-        if let Ok(pick) = pick_phone(&env.phones, &e.number, &e.phone_asked, &home) {
+        if let Ok(pick) = pick_phone_sim(&env.phones, &e.number, &e.phone_asked, e.sub_id_asked, &home) {
             if !pick.busy {
                 dial(env, &e.id, &pick).await;
             }

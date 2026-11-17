@@ -65,7 +65,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 | 400 | 請求有誤：不是 JSON、沒帶 `Content-Type: application/json`、id 或值不對。 | `bad_request`、`invalid_id`、`missing_field`、`invalid_contact`、AI 代打的代碼 |
 | 401 | 沒帶密碼或密碼錯誤。 | `unauthorized` |
 | 404 | 找不到這通電話、待處理事項、聯絡人、代打，或找不到檔案。 | `not_found`、`task_not_found`、`contact_not_found`、`no_audio`、`no_calendar` |
-| 409 | 這個變更跟已存的資料衝突。 | `contact_exists`、`sms_not_retryable` |
+| 409 | 這個變更跟已存的資料衝突。 | `contact_exists`、`sms_not_retryable`、`call_in_progress`、`device_online`、`device_in_call` |
 | 413／415 | 匯入的檔案太大／格式不認得。 | `file_too_large`、`too_many_rows`、`unsupported_file` |
 | 500 | Bageo 存不了或讀不了自己的檔案。 | `save_failed`、`contacts_save_failed`、`import_failed` |
 | 502 | 外部服務失敗（通知管道、Gemini）。 | `auth_failed`、`network_error`、`ai_failed`、`preview_failed` |
@@ -78,6 +78,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 
 - `POST /calls/api/tasks/{id}/confirm` 和 `…/ignore`；
 - `POST /calls/api/appointments/{id}/retry-sms`；
+- `POST /calls/api/calls/clear`；
 - `POST /calls/api/devices/{serial}/mode`；
 - `POST /calls/api/contacts`、`PUT /calls/api/contacts/{id}`、`POST /calls/api/contacts/batch`（`POST /calls/api/contacts/import` 則改成要帶 `X-Filename` 標頭）；
 - `POST /calls/api/errands`、`…/{id}/cancel`、`…/{id}/retry`、`…/{id}/say`。
@@ -90,9 +91,11 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 |---|---|
 | `GET /calls/api/list` | 通話紀錄，最新的在前。查詢參數和回應格式見下方。 |
 | `GET /calls/api/call/{id}` | 單一通話：`{ok, call, notes, contact, calendar_link, calendar_links, scam_names}`。欄位說明見下方。 |
+| `DELETE /calls/api/call/{id}` | 刪除一筆已結束的通話紀錄、錄音 WAV、`_notes.json` 和相關待處理事項：`{ok, id, tasks_deleted}`。還在響鈴或通話中回 HTTP 409 `call_in_progress`。 |
+| `POST /calls/api/calls/clear` | 刪除所有已結束的通話紀錄、錄音 WAV、`_notes.json` 和相關待處理事項（進行中的通話會保留）：`{ok, deleted, tasks_deleted}`。 |
 | `POST /calls/api/call/{id}/scam-feedback` | 你對這通的標記：JSON `{"verdict": "scam" \| "sales" \| "safe"}`，可另帶內建的 `typology`。記在紀錄上（`scam_feedback`），號碼沒隱藏的話也記在這個號碼上，它之後打來會參考。回 `{ok, call, number}`；HTTP 400 `invalid_verdict`／`invalid_typology`。 |
 | `GET /calls/api/call/{id}/event.ics` | 行事曆建議的 iCalendar 檔；這通電話沒有建議時回 HTTP 404 `no_calendar`。用控制台密碼開，或用 `?k=<金鑰>`：通知連結裡帶的是只能開這一個檔案的 HMAC 金鑰。 |
-| `GET /calls/api/audio/{id}/listen` | 你當時會聽到的整通電話（對方和 AI 混在一起），WAV，支援 range 請求，可以拖動播放位置。 |
+| `GET /calls/api/audio/{id}/listen` | 你當時會聽到的整通電話（對方和 AI 混在一起），WAV，支援 range 請求，可以拖動播放位置（加 `?download=1` 會附上 `Content-Disposition: attachment`）。 |
 | `GET /calls/api/audio/{id}/remote` · `/tts` · `/vm` · `/audio/{id}` | 只有對方 · 只有 AI · 舊版選單模式的語音留言 · 原始的混音錄音。檔案不存在時回 HTTP 404 `no_audio`。 |
 | `GET /calls/api/live` | 進行中的通話和已連線的手機：`{ok, count, calls, control_idle_clients, control_idle_serials, normal_mode_serials}`。 |
 | `GET /calls/api/stats` | `{ok, stats: {total, today, voicemails, blocked}}`。 |
@@ -617,6 +620,8 @@ Content-Type: application/json
 |---|---|
 | `GET /calls/api/devices` | 手機清單和連線狀態。回應格式見下方。 |
 | `POST /calls/api/devices/{serial}/mode` | Body `{"mode": "ai" \| "normal"}`。叫手機切換，最多等 15 秒等它回覆。回 `{ok, mode, error_code}`（400 時另附說明 `error`）。 |
+| `DELETE /calls/api/devices/{serial}` | 移除一支沒連線的舊手機（同時清除手機清單、已存名稱與 SIM 紀錄，保留過往通話紀錄）：`{ok, serial}`。手機還在線或通話中回 HTTP 409 `device_online`／`device_in_call`。 |
+| `PUT /calls/api/devices/{serial}/sim-number` | Body `{"sub_id": <整數>, "number": "..."}`。設定（空白代表清除）這支手機某張 SIM 的門號，讓來電與 AI 代打直接顯示並依門號挑選：`{ok, serial, sims}`。 |
 | `GET /health` | 排查問題用的大型 JSON 物件：版本、語言、哪些東西已設定、已連線的手機、進行中的通話；不含金鑰或密碼。 |
 
 `GET /calls/api/devices` 的內容：

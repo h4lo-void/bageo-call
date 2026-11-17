@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="color-scheme" content="light dark" />
-<meta name="theme-color" content="#0d7a6f" />
+<meta name="theme-color" content="#191a1d" />
 <meta name="referrer" content="no-referrer" />
 <title>Bageo</title>
 <link rel="icon" href="favicon.ico" sizes="32x32" />
@@ -25,118 +25,124 @@
 <style>
 :root{
   color-scheme:light;
-  --bg:#f6f7f5;--surface:#ffffff;--surface2:#f0f2ef;--line:#dfe3de;--line-strong:#c5cbc4;
-  --text:#18211d;--muted:#5c6962;
-  --accent:#0d7a6f;--accent-ink:#0a5f56;--on-accent:#ffffff;--accent-soft:#dcf1ed;
-  --ok:#17803d;--ok-soft:#dff5e6;--warn:#a45a06;--warn-soft:#fdf0d2;--bad:#b3261e;--bad-soft:#fde4e1;
-  --info:#2456c4;--info-soft:#dfe8fb;
-  --bubble-ai:#dcf1ed;--bubble-caller:#eef0ed;
-  --radius:14px;--radius-sm:10px;
+  --bg:#f6f5f1;--surface:#ffffff;--surface2:#eeede8;--line:#e6e4dd;--line-strong:#d1cec4;
+  --text:#1c1d20;--muted:#6d6f76;
+  --accent:#177571;--accent-ink:#11615d;--on-accent:#ffffff;--accent-soft:#e6f2f1;
+  --focus:#177571;
+  --nav-active-bg:#e8e6df;--nav-active-fg:#1c1d20;
+  --primary-bg:#1f2024;--primary-border:#1f2024;--primary-fg:#ffffff;
+  --ok:#1b7a43;--ok-soft:#e6f4ec;--warn:#9a5b13;--warn-soft:#f8eedb;--bad:#b4342c;--bad-soft:#fbe9e7;
+  --info:#2a58b5;--info-soft:#e7eefb;
+  --bubble-ai:#eaf2f1;--bubble-caller:#eeede8;
+  --card-shadow:0 1px 2px rgba(24,25,28,.035);
+  --radius:12px;--radius-sm:8px;
   --font:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue","Noto Sans","PingFang TC","PingFang SC","Hiragino Sans","Microsoft JhengHei","Microsoft YaHei","Yu Gothic UI","Malgun Gothic","Noto Sans CJK TC","Noto Sans TC",sans-serif;
   --mono:ui-monospace,"Cascadia Mono","SF Mono",Consolas,"Liberation Mono",monospace;
-  --top-h:60px;
+  --top-h:58px;
 }
 :root[data-theme=dark]{
   color-scheme:dark;
-  --bg:#0f1412;--surface:#171e1b;--surface2:#1e2723;--line:#2a3530;--line-strong:#3b4942;
-  --text:#e7edea;--muted:#96a69e;
-  --accent:#3ecfbd;--accent-ink:#6fe0d1;--on-accent:#04201c;--accent-soft:#13352f;
-  --ok:#5bd68a;--ok-soft:#143323;--warn:#f2b84b;--warn-soft:#3a2c0f;--bad:#f58a80;--bad-soft:#401a17;
-  --info:#9bbcff;--info-soft:#182a4a;
-  --bubble-ai:#13352f;--bubble-caller:#232d29;
+  --bg:#141518;--surface:#1b1d21;--surface2:#24272d;--line:#2a2d34;--line-strong:#393d46;
+  --text:#e6e7eb;--muted:#8c909a;
+  --accent:#45a5a1;--accent-ink:#6cc0bc;--on-accent:#091f1e;--accent-soft:#192b2c;
+  --focus:#45a5a1;
+  --nav-active-bg:#262930;--nav-active-fg:#eef0f4;
+  --primary-bg:#e6e7eb;--primary-border:#e6e7eb;--primary-fg:#151619;
+  --ok:#55c282;--ok-soft:#162d21;--warn:#dca44c;--warn-soft:#312614;--bad:#e07a72;--bad-soft:#341b19;
+  --info:#8eb0f2;--info-soft:#1a2740;
+  --bubble-ai:#1c2d2e;--bubble-caller:#24272d;
+  --card-shadow:none;
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%;scroll-padding-top:calc(var(--top-h) + 16px)}
-html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 var(--font)}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 var(--font);-webkit-font-smoothing:antialiased}
 body{min-height:100vh;overflow-wrap:break-word}
 button,input,select,textarea{font:inherit;color:inherit}
-a{color:var(--accent-ink)}
+a{color:var(--accent-ink);text-underline-offset:2px}
 [hidden]{display:none!important}
 h1,h2,h3,p{margin:0}
-svg.i{width:20px;height:20px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-svg.i.sm{width:16px;height:16px}
-svg.i.lg{width:26px;height:26px}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+:focus-visible{outline:2px solid color-mix(in srgb,var(--focus) 70%,transparent);outline-offset:2px;border-radius:6px}
 .skip{position:absolute;left:-999px;top:8px;z-index:100;background:var(--surface);padding:8px 12px;border-radius:8px;border:1px solid var(--line)}
 .skip:focus{left:8px}
 .muted{color:var(--muted)}
-.small{font-size:.87rem}
+.small{font-size:.86rem}
 .mono{font-family:var(--mono);font-size:.86em}
 .grow{flex:1 1 auto;min-width:0}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .nowrap{white-space:nowrap}
 
 /* ---------- top bar + navigation ---------- */
-.top{position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--line)}
-.top-in{max-width:1200px;margin:0 auto;padding:0 20px;height:var(--top-h);display:flex;align-items:center;gap:12px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--text);text-decoration:none;letter-spacing:.01em;white-space:nowrap}
-.brand .logo{width:32px;height:32px;border-radius:10px;background:var(--accent);color:var(--on-accent);display:grid;place-items:center}
+.top{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.top-in{max-width:1180px;margin:0 auto;padding:0 20px;height:var(--top-h);display:flex;align-items:center;gap:12px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:1.08rem;color:var(--text);text-decoration:none;letter-spacing:-.015em;white-space:nowrap}
+.brand .logo{width:30px;height:30px;flex:0 0 auto;display:block}
+.brand .logo svg{width:100%;height:100%;display:block}
 .nav{display:flex;gap:4px;margin:0 auto 0 16px}
-.nav a{position:relative;display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;color:var(--muted);font-weight:600;text-decoration:none;white-space:nowrap}
+.nav a{position:relative;display:flex;align-items:center;gap:6px;padding:6px 13px;border-radius:var(--radius-sm);color:var(--muted);font-weight:500;font-size:.92rem;text-decoration:none;white-space:nowrap;transition:background .14s,color .14s}
 .nav a:hover{background:var(--surface2);color:var(--text)}
-.nav a[aria-current=page]{background:var(--accent-soft);color:var(--accent-ink)}
-.nav .dot{position:absolute;top:6px;right:6px;width:8px;height:8px;border-radius:50%;background:var(--warn)}
+.nav a[aria-current=page]{background:var(--nav-active-bg);color:var(--nav-active-fg);font-weight:600}
+.nav .dot{position:absolute;top:5px;right:5px;width:6px;height:6px;border-radius:50%;background:var(--warn)}
 .top-right{display:flex;align-items:center;gap:8px;margin-left:auto;min-width:0}
-.pill{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;font-size:.85rem;font-weight:600;background:var(--surface2);color:var(--muted);border:1px solid var(--line);white-space:nowrap;cursor:pointer;min-width:0;flex:0 1 auto;overflow:hidden}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;font-size:.82rem;font-weight:500;background:var(--surface);color:var(--muted);border:1px solid var(--line);white-space:nowrap;cursor:pointer;min-width:0;flex:0 1 auto;overflow:hidden;transition:border-color .14s}
+.pill:hover{border-color:var(--line-strong);color:var(--text)}
 #pillText{overflow:hidden;text-overflow:ellipsis}
-.pill .led{width:8px;height:8px;border-radius:50%;background:currentColor;flex:0 0 auto}
-.pill.ok{background:var(--ok-soft);color:var(--ok);border-color:transparent}
-.pill.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent}
-.pill.bad{background:var(--bad-soft);color:var(--bad);border-color:transparent}
-.lang{width:auto;min-height:36px;padding:4px 28px 4px 10px;font-size:.87rem;max-width:9.5rem}
-.icon-btn{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--muted);cursor:pointer;flex:0 0 auto;text-decoration:none}
-.icon-btn:hover{background:var(--surface2);color:var(--text)}
-.icon-btn.bordered{border-color:var(--line);background:var(--surface)}
-:root[data-theme=dark] .i-sun{display:block}
-:root[data-theme=dark] .i-moon{display:none}
-.i-sun{display:none}
+.pill .led{width:7px;height:7px;border-radius:50%;background:var(--line-strong);flex:0 0 auto}
+.pill.ok{color:var(--text)}
+.pill.ok .led{background:var(--ok)}
+.pill.warn .led{background:var(--warn)}
+.pill.bad .led{background:var(--bad)}
+.lang{width:auto;min-height:33px;padding:4px 28px 4px 10px;font-size:.85rem;max-width:9.5rem;border-radius:var(--radius-sm)}
 
-main{max-width:1200px;margin:0 auto;padding:20px}
-.view-title{font-size:1.35rem;font-weight:700;letter-spacing:-.01em;margin-bottom:14px}
+main{max-width:1180px;margin:0 auto;padding:24px 20px}
+.view-title{font-size:1.3rem;font-weight:700;letter-spacing:-.015em;margin-bottom:14px}
 
 /* ---------- generic pieces ---------- */
-.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
-.pad{padding:18px 20px}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:8px 14px;min-height:40px;border-radius:var(--radius-sm);border:1px solid var(--line-strong);background:var(--surface);cursor:pointer;font-weight:600;text-decoration:none;color:var(--text);text-align:center}
-.btn:hover{background:var(--surface2)}
-.btn:disabled{opacity:.55;cursor:default}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
-.btn.primary:hover{filter:brightness(1.08)}
-.btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,var(--line))}
-.btn.sm{min-height:34px;padding:5px 11px;font-size:.88rem}
-.btn.ghost{border-color:transparent;background:transparent;color:var(--accent-ink)}
-.btn.ghost:hover{background:var(--surface2)}
-input[type=text],input[type=search],input[type=password],input[type=number],input[type=url],input[type=tel],select,textarea{width:100%;padding:8px 12px;min-height:42px;border-radius:var(--radius-sm);border:1px solid var(--line-strong);background:var(--surface);color:var(--text)}
-input::placeholder,textarea::placeholder{color:var(--muted);opacity:.75}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--card-shadow)}
+.pad{padding:20px 22px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 14px;min-height:38px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--surface);cursor:pointer;font-weight:500;text-decoration:none;color:var(--text);text-align:center;transition:background .14s,border-color .14s,color .14s}
+.btn:hover{background:var(--surface2);border-color:var(--line-strong)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.primary{background:var(--primary-bg);border-color:var(--primary-border);color:var(--primary-fg);font-weight:600}
+.btn.primary:hover{opacity:.9;background:var(--primary-bg);border-color:var(--primary-border)}
+.btn.danger{color:var(--muted);border-color:var(--line);background:transparent}
+.btn.danger:hover,.btn.danger:focus-visible{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 38%,var(--line));background:var(--bad-soft)}
+dialog .btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 38%,var(--line));background:var(--bad-soft);font-weight:600}
+.btn.sm{min-height:32px;padding:4px 11px;font-size:.85rem}
+.btn.xs{min-height:27px;padding:2px 9px;font-size:.8rem}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btn.ghost:hover{background:var(--surface2);color:var(--text)}
+input[type=text],input[type=search],input[type=password],input[type=number],input[type=url],input[type=tel],select,textarea{width:100%;padding:8px 12px;min-height:40px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--surface);color:var(--text);transition:border-color .14s}
+input:hover,select:hover,textarea:hover{border-color:var(--line-strong)}
+input::placeholder,textarea::placeholder{color:var(--muted);opacity:.72}
 textarea{resize:vertical;min-height:96px;line-height:1.5}
-select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237a8780' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;background-size:16px;padding-right:30px;text-overflow:ellipsis}
-input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:0;border-color:var(--accent);border-radius:var(--radius-sm)}
-.tag{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:.78rem;font-weight:600;background:var(--surface2);color:var(--muted);white-space:nowrap}
+select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888b94' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 9px center;background-size:14px;padding-right:28px;text-overflow:ellipsis}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid color-mix(in srgb,var(--focus) 35%,transparent);outline-offset:0;border-color:var(--focus);border-radius:var(--radius-sm)}
+.tag{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:6px;font-size:.76rem;font-weight:500;background:var(--surface2);color:var(--muted);white-space:nowrap}
 .tag.ok{background:var(--ok-soft);color:var(--ok)}
 .tag.warn{background:var(--warn-soft);color:var(--warn)}
 .tag.bad{background:var(--bad-soft);color:var(--bad)}
 .tag.info{background:var(--info-soft);color:var(--info)}
 .tag.accent{background:var(--accent-soft);color:var(--accent-ink)}
-.banner{display:flex;gap:12px;align-items:center;padding:12px 16px;border-radius:var(--radius);margin-bottom:16px;border:1px solid transparent}
-.banner.bad{background:var(--bad-soft);color:var(--bad)}
-.banner.info{background:var(--info-soft);color:var(--info)}
-.banner.live{background:var(--accent-soft);color:var(--accent-ink);cursor:pointer;width:100%;text-align:left;font-weight:600}
+.banner{display:flex;gap:12px;align-items:center;padding:12px 16px;border-radius:var(--radius);margin-bottom:16px;border:1px solid var(--line)}
+.banner.bad{background:var(--bad-soft);color:var(--bad);border-color:color-mix(in srgb,var(--bad) 22%,transparent)}
+.banner.info{background:var(--surface);color:var(--text)}
+.banner.live{background:var(--accent-soft);color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent) 25%,transparent);cursor:pointer;width:100%;text-align:left;font-weight:600}
 .banner .btn{flex:0 0 auto}
-.pulse{width:10px;height:10px;border-radius:50%;background:currentColor;flex:0 0 auto;animation:pulse 1.4s ease-in-out infinite}
-@keyframes pulse{50%{opacity:.25;transform:scale(.8)}}
-.empty{padding:44px 20px;text-align:center;color:var(--muted)}
-.empty svg{width:40px;height:40px;margin-bottom:10px;opacity:.7}
-.empty h3{color:var(--text);font-size:1.05rem;margin-bottom:6px}
-.empty p{max-width:34rem;margin:0 auto}
-.skel{height:74px;border-radius:var(--radius);background:linear-gradient(90deg,var(--surface2),var(--line),var(--surface2));background-size:200% 100%;animation:sk 1.3s linear infinite;margin-bottom:8px}
+.pulse{width:8px;height:8px;border-radius:50%;background:currentColor;flex:0 0 auto;animation:pulse 1.5s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.28;transform:scale(.85)}}
+.empty{padding:46px 22px;text-align:center;color:var(--muted)}
+.empty h3{color:var(--text);font-size:1.02rem;font-weight:600;margin-bottom:6px}
+.empty p{max-width:34rem;margin:0 auto;font-size:.92rem}
+.skel{height:72px;border-radius:var(--radius);background:linear-gradient(90deg,var(--surface2),var(--line),var(--surface2));background-size:200% 100%;animation:sk 1.3s linear infinite;margin-bottom:8px}
 @keyframes sk{to{background-position:-200% 0}}
-.spin{width:16px;height:16px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .8s linear infinite;display:inline-block;flex:0 0 auto}
+.spin{width:15px;height:15px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .8s linear infinite;display:inline-block;flex:0 0 auto}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){*{animation-duration:0s!important;transition-duration:0s!important;scroll-behavior:auto!important}}
 details>summary{cursor:pointer}
-details.fold>summary{list-style:none;display:flex;align-items:center;gap:8px;font-weight:600;color:var(--accent-ink);padding:6px 0;width:fit-content}
+details.fold>summary{list-style:none;display:flex;align-items:center;gap:8px;font-weight:500;color:var(--muted);padding:6px 0;width:fit-content}
+details.fold>summary:hover{color:var(--text)}
 details.fold>summary::-webkit-details-marker{display:none}
-details.fold>summary::before{content:"";width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform .15s;margin:0 4px 0 2px}
+details.fold>summary::before{content:"";width:6px;height:6px;border-right:1.75px solid currentColor;border-bottom:1.75px solid currentColor;transform:rotate(-45deg);transition:transform .15s;margin:0 4px 0 2px}
 details.fold[open]>summary::before{transform:rotate(45deg)}
 details.fold.more{margin-top:16px;padding-top:6px;border-top:1px solid var(--line)}
 pre.block{margin:8px 0 0;max-height:340px;overflow:auto;background:var(--surface2);border:1px solid var(--line);padding:12px 14px;border-radius:var(--radius-sm);font:12.5px/1.55 var(--mono);white-space:pre-wrap;word-break:break-word}
@@ -144,77 +150,72 @@ pre.block.prose{font:inherit;font-size:.9rem}
 
 /* switch */
 .sw{display:flex;gap:14px;align-items:flex-start;padding:10px 0;cursor:pointer}
-.sw input{appearance:none;-webkit-appearance:none;flex:0 0 auto;width:44px;height:26px;border-radius:999px;background:var(--line-strong);position:relative;cursor:pointer;margin:1px 0 0;transition:background .15s;border:0;min-height:0;padding:0}
-.sw input::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.sw input{appearance:none;-webkit-appearance:none;flex:0 0 auto;width:42px;height:24px;border-radius:999px;background:var(--line-strong);position:relative;cursor:pointer;margin:2px 0 0;transition:background .15s;border:0;min-height:0;padding:0}
+.sw input::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
 .sw input:checked{background:var(--accent)}
 .sw input:checked::after{left:21px}
-.sw input:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:999px}
+.sw input:focus-visible{outline:2px solid color-mix(in srgb,var(--focus) 65%,transparent);outline-offset:2px;border-radius:999px}
 .sw b{display:block;font-weight:600}
 .sw small{display:block;color:var(--muted);font-size:.87rem;margin-top:2px}
 
 /* ---------- calls view ---------- */
-.setup{margin-bottom:16px;border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
-.setup h2{font-size:1.1rem;margin-bottom:12px}
-.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-.step{display:flex;gap:12px;align-items:flex-start;padding:14px;border-radius:var(--radius-sm);background:var(--surface2);text-decoration:none;color:var(--text);border:1px solid transparent}
-.step:hover{border-color:var(--accent)}
-.step .num{width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-weight:700;flex:0 0 auto}
-.step.done .num{background:var(--ok-soft);color:var(--ok)}
-.step b{display:block}
-.step span.d{display:block;color:var(--muted);font-size:.87rem}
-.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.setup{margin-bottom:16px}
+.setup h2{font-size:1.02rem;font-weight:600;margin-bottom:12px}
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.step{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;border-radius:var(--radius-sm);background:var(--bg);text-decoration:none;color:var(--text);border:1px solid var(--line);transition:border-color .14s,background .14s}
+.step:hover{border-color:var(--line-strong);background:var(--surface2)}
+.step .num{width:24px;height:24px;border-radius:999px;background:var(--surface2);border:1px solid var(--line);color:var(--muted);display:grid;place-items:center;font-weight:600;font-size:.8rem;flex:0 0 auto;margin-top:1px}
+.step.done .num{background:var(--ok-soft);border-color:transparent;color:var(--ok)}
+.step b{display:block;font-weight:600;font-size:.93rem}
+.step span.d{display:block;color:var(--muted);font-size:.85rem;margin-top:2px}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}
 .stat{padding:14px 16px}
-.stat b{display:block;font-size:1.6rem;line-height:1.15;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
-.stat span{color:var(--muted);font-size:.85rem}
-.calls-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:20px;align-items:start}
-.calls-grid.has-detail{grid-template-columns:minmax(0,1fr) minmax(380px,460px)}
+.stat b{display:block;font-size:1.5rem;font-weight:650;line-height:1.2;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.stat span{color:var(--muted);font-size:.83rem;font-weight:500}
+.calls-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;align-items:start}
+.calls-grid.has-detail{grid-template-columns:minmax(0,1fr) minmax(380px,450px)}
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
-.search{position:relative;flex:1 1 220px;min-width:0}
-.search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
-.search input{padding-left:38px}
-.filters select{width:auto;flex:0 1 auto;max-width:100%}
-.list{display:flex;flex-direction:column;gap:8px}
-.call{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center;padding:12px 14px;border-radius:var(--radius);background:var(--surface);border:1px solid var(--line);cursor:pointer;text-align:left;width:100%}
+.search{flex:1 1 220px;min-width:0}
+.filters select{width:auto;flex:0 1 auto;max-width:100%;min-height:32px;padding-top:4px;padding-bottom:4px;font-size:.86rem}
+.list{display:flex;flex-direction:column;gap:6px}
+.call{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;padding:13px 16px;border-radius:var(--radius);background:var(--surface);border:1px solid var(--line);cursor:pointer;text-align:left;width:100%;box-shadow:var(--card-shadow);transition:border-color .14s,background .14s}
 .call:hover{border-color:var(--line-strong);background:color-mix(in srgb,var(--surface) 70%,var(--surface2))}
-.call.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-.kico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--surface2);color:var(--muted);flex:0 0 auto}
-.kico.ai{background:var(--accent-soft);color:var(--accent-ink)}
-.kico.spam{background:var(--info-soft);color:var(--info)}
-.kico.blocked,.kico.failed{background:var(--bad-soft);color:var(--bad)}
-.kico.live{background:var(--accent);color:var(--on-accent)}
-.call .who{font-weight:700;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1.02rem}
-.call .sub{display:flex;gap:8px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:.85rem;margin-top:2px}
-.call .gist{color:var(--muted);font-size:.9rem;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.call .when{text-align:right;font-size:.85rem;color:var(--muted);display:flex;flex-direction:column;align-items:flex-end;gap:2px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.call.sel{background:var(--surface2);border-color:var(--line-strong)}
+.call .who{font-weight:600;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.98rem}
+.call .sub{display:flex;gap:8px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:.84rem;margin-top:3px}
+.call .gist{color:var(--muted);font-size:.89rem;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.call .when{text-align:right;font-size:.82rem;color:var(--muted);display:flex;flex-direction:column;align-items:flex-end;gap:2px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.call .call-acts{display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;justify-content:flex-end}
+.call .call-acts .btn{border-color:transparent;background:transparent;color:var(--muted);min-height:25px;padding:1px 8px;font-size:.79rem}
+.call .call-acts .btn:hover{background:var(--surface);border-color:var(--line);color:var(--text)}
+.call .call-acts .btn.danger:hover{background:var(--bad-soft);border-color:color-mix(in srgb,var(--bad) 32%,var(--line));color:var(--bad)}
 .more{display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 0}
 
 /* detail */
 .detail{position:sticky;top:calc(var(--top-h) + 20px);max-height:calc(100vh - var(--top-h) - 40px);overflow:auto;overscroll-behavior:contain}
-.d-head{position:sticky;top:0;z-index:2;background:var(--surface);display:flex;align-items:center;gap:8px;padding:14px 12px 12px 18px;border-bottom:1px solid var(--line);border-radius:var(--radius) var(--radius) 0 0}
-.d-head h2{font-size:1.25rem;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.d-head{position:sticky;top:0;z-index:2;background:var(--surface);display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line);border-radius:var(--radius) var(--radius) 0 0;flex-wrap:wrap}
+.d-head h2{font-size:1.12rem;font-weight:650;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .d-head .back{display:none}
 .d-sec{padding:16px 18px;border-bottom:1px solid var(--line)}
 .d-sec:last-child{border-bottom:0}
-.d-sec>h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px;font-weight:700}
-.d-meta{display:flex;gap:8px 12px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:.9rem}
+.d-sec>h3{font-size:.78rem;letter-spacing:.03em;color:var(--muted);margin-bottom:10px;font-weight:600}
+.d-meta{display:flex;gap:8px 12px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:.88rem}
 .sum{display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);gap:8px 16px}
-.sum>b{color:var(--muted);font-weight:600;font-size:.87rem;padding-top:2px;max-width:9.5rem}
+.sum>b{color:var(--muted);font-weight:500;font-size:.87rem;padding-top:2px;max-width:9.5rem}
 .sum .plain{grid-column:1/-1;white-space:pre-wrap}
-.note{font-size:.87rem;color:var(--muted);margin-top:10px;display:flex;gap:8px;align-items:flex-start}
-.note svg{margin-top:2px}
-.cal{display:flex;gap:14px;align-items:flex-start;padding:14px;border-radius:var(--radius-sm);background:var(--accent-soft);color:var(--text)}
-.cal .ci{color:var(--accent-ink);margin-top:2px}
+.note{font-size:.87rem;color:var(--muted);margin-top:10px;padding-left:10px;border-left:2px solid var(--line-strong)}
+.cal{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;border-radius:var(--radius-sm);background:var(--surface2);border:1px solid var(--line);color:var(--text)}
 .cal b{display:block}
 .cal .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 /* Appointments waiting for the owner, top of the Calls page */
-.appts{padding:14px 16px;margin-bottom:16px;border-left:4px solid var(--warn)}
-.appts-head{display:flex;gap:10px;align-items:center;color:var(--warn)}
-.appts-head h2{font-size:1rem;margin:0;color:var(--text)}
+.appts{padding:14px 18px;margin-bottom:16px}
+.appts-head{display:flex;gap:10px;align-items:center}
+.appts-head h2{font-size:1rem;font-weight:650;margin:0;color:var(--text)}
 .appts-result{margin:10px 0 0;white-space:pre-wrap}
 .appt{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--line)}
 .appt:first-child{border-top:0}
 .appt>.grow{min-width:0;flex:1 1 220px}
-.appt-when{font-weight:700}
+.appt-when{font-weight:600}
 .appt-sub{color:var(--muted);font-size:.85rem;margin-top:2px}
 .appt .btns{display:flex;gap:8px;flex-wrap:wrap}
 .appt-wait{flex-basis:100%;font-size:.85rem;color:var(--muted)}
@@ -231,32 +232,33 @@ pre.block.prose{font:inherit;font-size:.9rem}
 .appt-msg.bad{color:var(--bad)}
 .cal-add{display:inline-flex;gap:6px;flex-wrap:wrap}
 .cal-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
-.cal-list .btn{justify-content:flex-start;text-align:left;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:48px;height:auto;padding:8px 14px}
+.cal-list .btn{justify-content:flex-start;text-align:left;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:48px;height:auto;padding:10px 16px;border-radius:var(--radius-sm)}
 .cal-list .btn small{color:var(--muted);font-weight:400;font-size:.8rem}
-.cal-list .btn.on{box-shadow:0 0 0 2px var(--accent)}
-.seg{display:inline-flex;background:var(--surface2);border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}
-.seg button{border:0;background:transparent;padding:6px 14px;border-radius:8px;cursor:pointer;font-weight:600;color:var(--muted);min-height:34px}
-.seg button[aria-selected=true]{background:var(--surface);color:var(--text);box-shadow:0 0 0 1px var(--line)}
-audio{width:100%;height:42px;margin-top:10px;display:block}
+.cal-list .btn.on{box-shadow:0 0 0 2px var(--focus)}
+.seg{display:inline-flex;background:var(--surface2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:2px;gap:2px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;padding:5px 12px;border-radius:6px;cursor:pointer;font-weight:500;color:var(--muted);min-height:30px;font-size:.86rem;transition:background .12s,color .12s}
+.seg button:hover{color:var(--text)}
+.seg button[aria-selected=true]{background:var(--surface);color:var(--text);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.1)}
+audio{width:100%;height:40px;margin-top:10px;display:block}
 .chat{display:flex;flex-direction:column;gap:8px}
 .msg{max-width:86%;display:flex;flex-direction:column;gap:2px}
-.msg .who2{font-size:.75rem;color:var(--muted);font-weight:600;padding:0 6px}
-.msg .bub{padding:8px 12px;border-radius:14px;background:var(--bubble-caller);white-space:pre-wrap;border-top-left-radius:4px}
+.msg .who2{font-size:.75rem;color:var(--muted);font-weight:500;padding:0 6px}
+.msg .bub{padding:8px 13px;border-radius:12px;background:var(--bubble-caller);white-space:pre-wrap;border-top-left-radius:4px}
 .msg.ai{align-self:flex-end;align-items:flex-end}
-.msg.ai .bub{background:var(--bubble-ai);border-top-left-radius:14px;border-top-right-radius:4px}
+.msg.ai .bub{background:var(--bubble-ai);border-top-left-radius:12px;border-top-right-radius:4px}
 .msg.sys{align-self:center;max-width:100%;align-items:center}
-.msg.sys .bub{background:transparent;border:1px dashed var(--line-strong);color:var(--muted);font-size:.87rem;border-radius:10px}
+.msg.sys .bub{background:transparent;border:1px dashed var(--line-strong);color:var(--muted);font-size:.86rem;border-radius:8px}
 /* A line said in another language: its translation under it, in the bubble */
 .msg .bub .tr{display:block;margin-top:4px;font-size:.85em;color:var(--muted)}
-.d-sec>h3.h3row{display:flex;align-items:center;gap:8px}
-.h3row .icon-btn{width:30px;height:30px;margin:-6px 0 -6px auto}
+.d-sec>h3.h3row{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.h3row .btn{text-transform:none;letter-spacing:0;margin:-4px 0 -4px auto}
 /* "Show translation" switch in the call's header */
 .trsw{display:inline-flex;align-items:center;gap:6px;font-size:.85rem;color:var(--muted);white-space:nowrap;cursor:pointer;flex:0 0 auto}
 .trsw input{appearance:none;-webkit-appearance:none;flex:0 0 auto;width:34px;height:20px;border-radius:999px;background:var(--line-strong);position:relative;cursor:pointer;margin:0;transition:background .15s;border:0;min-height:0;padding:0}
 .trsw input::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.3)}
 .trsw input:checked{background:var(--accent)}
 .trsw input:checked::after{left:16px}
-.trsw input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.trsw input:focus-visible{outline:2px solid color-mix(in srgb,var(--focus) 65%,transparent);outline-offset:2px}
 .kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 16px;font-size:.9rem;margin:8px 0 0}
 .kv dt{color:var(--muted)}
 .kv dd{margin:0;word-break:break-word}
@@ -264,31 +266,32 @@ audio{width:100%;height:42px;margin-top:10px;display:block}
 .actions{display:flex;gap:8px;flex-wrap:wrap}
 
 /* ---------- settings ---------- */
-.set-grid{display:grid;grid-template-columns:210px minmax(0,1fr);gap:24px;align-items:start}
+.set-grid{display:grid;grid-template-columns:196px minmax(0,1fr);gap:24px;align-items:start}
 .snav{position:sticky;top:calc(var(--top-h) + 20px);display:flex;flex-direction:column;gap:2px}
-.snav a{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;text-decoration:none;color:var(--muted);font-weight:600}
+.snav a{display:flex;align-items:center;padding:8px 12px;border-radius:var(--radius-sm);text-decoration:none;color:var(--muted);font-weight:500;font-size:.93rem}
 .snav a:hover{background:var(--surface2);color:var(--text)}
-.snav a.on{background:var(--accent-soft);color:var(--accent-ink)}
-.group{margin-bottom:18px}
-.group>.pad>h2{font-size:1.12rem;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.group>.pad>p.desc{color:var(--muted);margin:4px 0 8px}
+.snav a.on{background:var(--nav-active-bg);color:var(--nav-active-fg);font-weight:600}
+.group{margin-bottom:16px}
+.group>.pad>h2{font-size:1.06rem;font-weight:650;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.group>.pad>p.desc{color:var(--muted);margin:4px 0 8px;font-size:.92rem}
 .field{margin:16px 0 0}
-.field>label,.field>.lbl{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:600;margin-bottom:6px;min-height:26px}
-.help{color:var(--muted);font-size:.87rem;margin-top:6px}
-.dirty>label::after,.dirty>.lbl::after,.sw.dirty b::after{content:"";width:7px;height:7px;border-radius:50%;background:var(--warn);display:inline-block;margin-left:6px;vertical-align:middle}
+.field>label,.field>.lbl{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:550;margin-bottom:6px;min-height:24px}
+.help{color:var(--muted);font-size:.86rem;margin-top:6px}
+.dirty>label::after,.dirty>.lbl::after,.sw.dirty b::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--warn);display:inline-block;margin-left:6px;vertical-align:middle}
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 20px}
 .inline{display:flex;gap:8px;align-items:center}
 .inline input[type=number]{width:7.5rem;flex:0 0 auto}
 .with-btn{display:flex;gap:8px;align-items:stretch}
 .with-btn>input,.with-btn>select{flex:1 1 auto;min-width:0}
-.with-btn>.btn,.with-btn>.icon-btn{flex:0 0 auto;height:42px}
+.with-btn>.btn{flex:0 0 auto;min-height:40px}
 .choice{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.choice label{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line-strong);border-radius:var(--radius-sm);cursor:pointer;background:var(--surface)}
-.choice label:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:var(--accent-soft)}
+.choice label{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius-sm);cursor:pointer;background:var(--surface);transition:border-color .14s,background .14s}
+.choice label:hover{border-color:var(--line-strong)}
+.choice label:has(input:checked){border-color:var(--accent);background:color-mix(in srgb,var(--accent-soft) 55%,var(--surface))}
 .choice input{margin:4px 0 0;accent-color:var(--accent);width:16px;height:16px;flex:0 0 auto}
-.choice b{display:block}
-.choice small{display:block;color:var(--muted);font-size:.87rem}
-.subbox{border:1px solid var(--line);border-radius:var(--radius-sm);padding:4px 16px 16px;margin-top:16px;background:color-mix(in srgb,var(--surface2) 55%,var(--surface))}
+.choice b{display:block;font-weight:600}
+.choice small{display:block;color:var(--muted);font-size:.86rem}
+.subbox{border:1px solid var(--line);border-radius:var(--radius-sm);padding:4px 16px 16px;margin-top:16px;background:color-mix(in srgb,var(--surface2) 45%,var(--surface))}
 .hr{height:1px;background:var(--line);margin:18px 0 6px}
 .pv{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
 .pv-status{font-size:.87rem;color:var(--muted);flex:1 1 12rem;min-width:0}
@@ -299,7 +302,7 @@ audio{width:100%;height:42px;margin-top:10px;display:block}
 .chan{border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px;background:var(--surface)}
 .chan.offc{opacity:.75}
 .chan-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.chan-head .kind{font-weight:700}
+.chan-head .kind{font-weight:600}
 .chan-head .sw{padding:0;margin-left:auto;align-items:center;gap:8px}
 .chan-head .sw span{font-size:.87rem;color:var(--muted)}
 .chan-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}
@@ -313,43 +316,47 @@ audio{width:100%;height:42px;margin-top:10px;display:block}
 .chan-ctl .field{margin-top:8px}
 .addrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .addrow select{width:auto;flex:1 1 14rem;max-width:22rem}
-.savebar{position:fixed;left:50%;bottom:20px;transform:translate(-50%,180%);visibility:hidden;transition:transform .2s,visibility .2s;z-index:45;display:flex;gap:10px;align-items:center;padding:10px 10px 10px 18px;border-radius:14px;background:var(--text);color:var(--bg);box-shadow:0 10px 30px rgba(0,0,0,.25);max-width:calc(100vw - 24px);font-weight:600}
+.savebar{position:fixed;left:50%;bottom:20px;transform:translate(-50%,180%);visibility:hidden;transition:transform .2s,visibility .2s;z-index:45;display:flex;gap:10px;align-items:center;padding:9px 11px 9px 16px;border-radius:var(--radius);background:var(--surface);color:var(--text);border:1px solid var(--line-strong);box-shadow:0 10px 28px rgba(0,0,0,.22);max-width:calc(100vw - 24px);font-weight:500}
 .savebar.show{transform:translate(-50%,0);visibility:visible}
-.savebar .btn{border-color:transparent}
-.savebar .btn.plain{background:transparent;color:inherit;border-color:color-mix(in srgb,var(--bg) 35%,transparent)}
+.savebar .btn.plain{background:transparent;color:var(--muted);border-color:var(--line)}
 
 /* ---------- system ---------- */
-.sys-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
-.sys-grid h2{font-size:1.08rem;margin-bottom:10px;display:flex;align-items:center;gap:10px}
-.sys-grid h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:16px 0 4px;font-weight:700}
-.item{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}
+.sys-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+.sys-col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.sys-grid h2{font-size:1.04rem;font-weight:650;margin-bottom:10px;display:flex;align-items:center;gap:10px}
+.sys-grid h3{font-size:.78rem;letter-spacing:.03em;color:var(--muted);margin:16px 0 4px;font-weight:600}
+.item{display:flex;gap:11px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--line)}
 .item:last-child{border-bottom:0}
-.item .ic{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;background:var(--surface2);color:var(--muted)}
-.item .ic.ok{background:var(--ok-soft);color:var(--ok)}
-.item .ic.warn{background:var(--warn-soft);color:var(--warn)}
-.item .ic.bad{background:var(--bad-soft);color:var(--bad)}
+.item .sdot{width:8px;height:8px;border-radius:50%;margin-top:8px;flex:0 0 auto;background:var(--line-strong)}
+.item .sdot.ok{background:var(--ok)}
+.item .sdot.warn{background:var(--warn)}
+.item .sdot.bad{background:var(--bad)}
 .item b{display:block;font-weight:600}
-.item .d{color:var(--muted);font-size:.87rem}
+.item .d{color:var(--muted);font-size:.86rem}
+.sim-list{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.sim-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:.86rem}
+.sim-row .sim-badge{font-size:.73rem;font-weight:600;padding:1px 6px;border-radius:5px;background:var(--surface2);color:var(--muted);letter-spacing:.02em;white-space:nowrap}
+.sim-row .sim-num{font-family:var(--mono);color:var(--text);font-size:.88rem}
+.sim-row .sim-in{width:auto;flex:1 1 10.5rem;max-width:14rem;min-height:30px;padding:3px 9px;font-family:var(--mono);font-size:.85rem}
 .wide{grid-column:1/-1}
-.cu{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;padding-bottom:14px;margin-bottom:4px;border-bottom:1px solid var(--line)}
-.cu .qr{width:148px;height:148px;image-rendering:pixelated;border-radius:8px;flex:0 0 auto}
+.cu{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;padding-bottom:14px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+.cu .qr{width:120px;height:120px;image-rendering:pixelated;border-radius:8px;flex:0 0 auto;border:1px solid var(--line)}
 .cu .lbl{font-weight:600;margin-bottom:4px}
 .cu-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .cu-row a{font-size:1rem;word-break:break-all}
 .a2hs{margin-top:14px}
-.a2hs b{display:block}
+.a2hs b{display:block;font-weight:600}
 .a2hs ul{margin:6px 0 0;padding-left:20px}
 .a2hs .btn{margin-top:8px}
 
 /* ---------- toast + dialog ---------- */
-#toast{position:fixed;left:50%;top:16px;transform:translate(-50%,-200%);visibility:hidden;transition:transform .2s,visibility .2s;z-index:90;padding:10px 16px;border-radius:12px;background:var(--text);color:var(--bg);font-weight:600;max-width:calc(100vw - 24px);box-shadow:0 8px 24px rgba(0,0,0,.2)}
+#toast{position:fixed;left:50%;top:16px;transform:translate(-50%,-200%);visibility:hidden;transition:transform .2s,visibility .2s;z-index:90;padding:9px 16px;border-radius:var(--radius-sm);background:var(--surface);color:var(--text);border:1px solid var(--line-strong);font-weight:500;font-size:.9rem;max-width:calc(100vw - 24px);box-shadow:0 8px 24px rgba(0,0,0,.2)}
 #toast.show{transform:translate(-50%,0);visibility:visible}
-#toast.err{background:var(--bad);color:#fff}
-:root[data-theme=dark] #toast.err{background:#b3261e}
-dialog{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);color:var(--text);padding:0;width:min(440px,calc(100vw - 32px));box-shadow:0 20px 60px rgba(0,0,0,.3)}
-dialog::backdrop{background:rgba(10,15,13,.5)}
-dialog form{padding:20px}
-dialog h2{font-size:1.1rem;margin-bottom:8px}
+#toast.err{background:var(--bad-soft);color:var(--bad);border-color:color-mix(in srgb,var(--bad) 35%,var(--line))}
+dialog{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);color:var(--text);padding:0;width:min(440px,calc(100vw - 32px));box-shadow:0 20px 60px rgba(0,0,0,.28)}
+dialog::backdrop{background:rgba(12,13,16,.5)}
+dialog form{padding:22px}
+dialog h2{font-size:1.08rem;font-weight:650;margin-bottom:8px}
 dialog p{color:var(--muted)}
 dialog .field{margin-top:14px}
 dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;flex-wrap:wrap}
@@ -357,22 +364,22 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
 
 /* ---------- contacts ---------- */
 .ct-bar .btn{flex:0 0 auto}
-.ct-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center;padding:12px 14px;border-radius:var(--radius);background:var(--surface);border:1px solid var(--line);cursor:pointer;text-align:left;width:100%}
+.ct-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center;padding:13px 16px;border-radius:var(--radius);background:var(--surface);border:1px solid var(--line);cursor:pointer;text-align:left;width:100%;box-shadow:var(--card-shadow);transition:border-color .14s,background .14s}
 .ct-row:hover{border-color:var(--line-strong);background:color-mix(in srgb,var(--surface) 70%,var(--surface2))}
-.ct-av{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent-ink);font-weight:700}
-.ct-row .who{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ct-av{width:36px;height:36px;border-radius:999px;display:grid;place-items:center;background:var(--surface2);color:var(--muted);font-weight:600;font-size:.9rem}
+.ct-row .who{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ct-row .nums{font-family:var(--mono);font-size:.86rem;color:var(--muted);overflow-wrap:anywhere}
 .ct-row .gist{color:var(--muted);font-size:.88rem;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ct-imp{margin-bottom:16px}
-.ct-imp h2{font-size:1.05rem}
-.ct-drop{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding:22px 16px;margin-top:12px;border:2px dashed var(--line-strong);border-radius:var(--radius-sm);cursor:pointer;color:var(--muted)}
-.ct-drop b{color:var(--text)}
+.ct-imp h2{font-size:1.02rem;font-weight:650}
+.ct-drop{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding:24px 16px;margin-top:12px;border:1.5px dashed var(--line-strong);border-radius:var(--radius-sm);cursor:pointer;color:var(--muted)}
+.ct-drop b{color:var(--text);font-weight:600}
 .ct-drop:hover,.ct-drop.over{border-color:var(--accent);background:var(--accent-soft)}
 .ct-imp-status{margin-top:12px;display:flex;gap:8px;align-items:center}
 .ct-imp-status.err{color:var(--bad)}
 .ct-prev-bar{display:flex;gap:10px 16px;align-items:center;flex-wrap:wrap;margin-top:14px}
-.ct-chk{display:flex;gap:8px;align-items:center;font-weight:600;cursor:pointer}
-.ct-chk input,.ct-tbl input{width:18px;height:18px;accent-color:var(--accent);margin:0}
+.ct-chk{display:flex;gap:8px;align-items:center;font-weight:500;cursor:pointer}
+.ct-chk input,.ct-tbl input{width:17px;height:17px;accent-color:var(--accent);margin:0}
 .ct-dup{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto}
 .ct-dup select{width:auto;min-height:36px}
 .ct-tbl-wrap{overflow:auto;max-height:60vh;margin-top:10px;border:1px solid var(--line);border-radius:var(--radius-sm)}
@@ -380,7 +387,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
 .ct-tbl th{position:sticky;top:0;background:var(--surface2);text-align:left;font-weight:600;color:var(--muted);padding:8px 10px;white-space:nowrap}
 .ct-tbl td{padding:8px 10px;border-top:1px solid var(--line);vertical-align:top}
 .ct-tbl td.mono{font-family:var(--mono);font-size:.85rem}
-.ct-tbl td .tag{margin-top:4px;white-space:normal;border-radius:8px}
+.ct-tbl td .tag{margin-top:4px;white-space:normal;border-radius:6px}
 .ct-tbl tr.off td{opacity:.5}
 .ct-prev-foot{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
 #ctDlg .ct-del{margin-right:auto}
@@ -393,26 +400,27 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
 
 /* ---------- AI errands ---------- */
 .er-form{margin-bottom:18px}
-.er-form>h2{font-size:1.1rem}
-.er-form>.desc{color:var(--muted);margin:4px 0 0}
+.er-form>h2{font-size:1.05rem;font-weight:650}
+.er-form>.desc{color:var(--muted);margin:4px 0 0;font-size:.92rem}
 .er-to{position:relative}
 .er-sugg{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:25;background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius-sm);box-shadow:0 10px 30px rgba(0,0,0,.18);max-height:300px;overflow:auto;padding:4px}
-.er-sugg button{display:flex;gap:10px;align-items:baseline;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:8px;background:transparent;color:var(--text);cursor:pointer}
+.er-sugg button{display:flex;gap:10px;align-items:baseline;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:6px;background:transparent;color:var(--text);cursor:pointer}
 .er-sugg button:hover,.er-sugg button:focus-visible{background:var(--surface2)}
 .er-sugg button b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .er-sugg .mono{color:var(--muted);margin-left:auto;white-space:nowrap}
 .er-sugg .none{padding:8px 10px;color:var(--muted);font-size:.9rem}
 .er-pick{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:.92rem;color:var(--muted)}
 .er-pick b{color:var(--text)}
-.er-pick select{width:auto;min-height:34px;padding:4px 30px 4px 10px}
+.er-pick select{width:auto;min-height:34px;padding:4px 28px 4px 10px}
 .er-pick .btn{min-height:30px}
 .er-count{font-variant-numeric:tabular-nums;white-space:nowrap}
 .er-list-head{margin:6px 0 10px}
-.er-list-head h2{font-size:1.08rem}
-.er-card{padding:14px 16px}
-.er-card.er-flash{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-.er-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center}
-.er-head .who{font-weight:700;font-size:1.02rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.er-list-head h2{font-size:1.04rem;font-weight:650}
+.er-card{padding:15px 18px}
+.er-card.er-live-card{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+.er-card.er-flash{border-color:var(--accent)}
+.er-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center}
+.er-head .who{font-weight:600;font-size:1rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .er-head .sub{display:flex;gap:8px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:.85rem;margin-top:2px}
 .er-side{display:flex;flex-direction:column;align-items:flex-end;gap:3px;color:var(--muted);font-size:.85rem;white-space:nowrap;font-variant-numeric:tabular-nums}
 .er-side .pulse,.er-live>h3 .pulse{width:8px;height:8px}
@@ -420,17 +428,17 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
 .er-task.clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .er-more{padding-left:0;min-height:30px}
 .er-sec{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
-.er-sec>h3{display:flex;gap:8px;align-items:center;font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;font-weight:700}
+.er-sec>h3{display:flex;gap:8px;align-items:center;font-size:.78rem;letter-spacing:.03em;color:var(--muted);margin-bottom:8px;font-weight:600}
 .er-live>h3 .pulse{color:var(--accent)}
 .er-watch{text-transform:none;letter-spacing:0;font-weight:500;margin-left:auto;text-align:right}
 .er-lines{max-height:320px;overflow:auto;overscroll-behavior:contain;padding:10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg)}
 .er-lines .er-empty{text-align:center;padding:6px 0}
 .msg.owner{align-self:flex-end;align-items:flex-end}
-.msg.owner .bub{background:var(--info-soft);border-top-left-radius:14px;border-top-right-radius:4px}
-.er-q{margin-top:10px;padding:12px 14px;border-radius:var(--radius-sm);background:var(--warn-soft);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent)}
-.er-q-h{display:flex;gap:6px;align-items:center;color:var(--warn);font-weight:700;font-size:.9rem}
-.er-q-left{color:var(--warn);font-weight:600;font-size:.85rem;font-variant-numeric:tabular-nums;white-space:nowrap}
-.er-q>b{display:block;margin-top:6px;font-size:1.02rem;white-space:pre-wrap}
+.msg.owner .bub{background:var(--info-soft);border-top-left-radius:12px;border-top-right-radius:4px}
+.er-q{margin-top:10px;padding:12px 14px;border-radius:var(--radius-sm);background:var(--warn-soft);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent)}
+.er-q-h{display:flex;gap:6px;align-items:center;color:var(--warn);font-weight:600;font-size:.9rem}
+.er-q-left{color:var(--warn);font-weight:500;font-size:.85rem;font-variant-numeric:tabular-nums;white-space:nowrap}
+.er-q>b{display:block;margin-top:6px;font-size:1rem;white-space:pre-wrap}
 .er-q .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .er-say{display:flex;gap:8px;margin-top:10px;align-items:stretch}
 .er-say input{flex:1 1 auto;min-width:0}
@@ -456,10 +464,9 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
 .ct-item>.ct-row{flex:1 1 auto;min-width:0}
 .ct-call{flex:0 0 auto}
 @media (max-width:720px){
-  .er-head{grid-template-columns:auto minmax(0,1fr);gap:12px}
-  .er-side{grid-column:1/-1;flex-direction:row;flex-wrap:wrap;align-items:center;gap:4px 10px}
+  .er-head{grid-template-columns:minmax(0,1fr);gap:6px}
+  .er-side{flex-direction:row;flex-wrap:wrap;align-items:center;gap:4px 10px}
   .er-lines{max-height:260px}
-  .ct-call span{display:none}
   .ct-call{padding:5px 10px}
 }
 
@@ -467,8 +474,8 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
 @media (max-width:1000px){
   .calls-grid.has-detail{grid-template-columns:minmax(0,1fr)}
   .detail{position:fixed;inset:0;z-index:60;max-height:none;border-radius:0;border:0;top:0}
-  .d-head{border-radius:0;padding-left:8px}
-  .d-head .back{display:inline-grid}
+  .d-head{border-radius:0;padding-left:12px}
+  .d-head .back{display:inline-flex}
   .d-head .closex{display:none}
   body.detail-open{overflow:hidden}
   .detail-inner{max-width:720px;margin:0 auto}
@@ -477,8 +484,8 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
   .set-grid{grid-template-columns:minmax(0,1fr);gap:12px}
   .snav{position:sticky;top:var(--top-h);z-index:20;flex-direction:row;overflow-x:auto;background:var(--bg);margin:-8px -20px 0;padding:8px 20px;scrollbar-width:none;border-bottom:1px solid var(--line)}
   .snav::-webkit-scrollbar{display:none}
-  .snav a{white-space:nowrap;padding:6px 12px;border:1px solid var(--line);background:var(--surface)}
-  .snav a svg{display:none}
+  .snav a{white-space:nowrap;padding:6px 13px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--surface)}
+  .snav a.on{box-shadow:none;border-color:var(--line-strong);background:var(--nav-active-bg);color:var(--nav-active-fg)}
   html{scroll-padding-top:calc(var(--top-h) + 64px)}
   .sys-grid{grid-template-columns:minmax(0,1fr)}
 }
@@ -486,100 +493,59 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
   :root{--top-h:54px}
   html,body{font-size:15.5px}
   .top-in{padding:0 12px;gap:8px}
-  .brand span{display:none}
-  .nav{position:fixed;left:0;right:0;bottom:0;z-index:40;margin:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom));gap:4px}
-  .nav a{flex:1 1 0;flex-direction:column;gap:2px;font-size:.75rem;padding:6px 4px;justify-content:center;min-width:0}
+  .brand span.word{font-size:1.02rem}
+  .nav{position:fixed;left:0;right:0;bottom:0;z-index:40;margin:0;background:var(--surface);border-top:1px solid var(--line);padding:8px 8px calc(8px + env(safe-area-inset-bottom));gap:4px}
+  .nav a{flex:1 1 0;font-size:.82rem;padding:8px 6px;justify-content:center;min-width:0;text-align:center}
   .nav a span{overflow:hidden;text-overflow:ellipsis;max-width:100%}
-  .nav .dot{right:calc(50% - 20px)}
+  .nav .dot{right:6px;top:6px}
   main{padding:14px 12px calc(96px + env(safe-area-inset-bottom))}
-  .view-title{font-size:1.2rem;margin-bottom:10px}
+  .view-title{font-size:1.18rem;margin-bottom:10px}
   .pad{padding:16px}
   .stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
   .steps{grid-template-columns:minmax(0,1fr)}
   .two,.choice,.chan-fields{grid-template-columns:minmax(0,1fr)}
-  .call{grid-template-columns:auto minmax(0,1fr);gap:12px}
-  .call .when{grid-column:2;flex-direction:row;gap:10px;align-items:center;justify-content:flex-start;margin-top:-6px}
+  .call{grid-template-columns:minmax(0,1fr);gap:8px}
+  .call .when{flex-direction:row;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;text-align:left}
+  .call .call-acts{margin-top:0;margin-left:auto}
   .snav{margin:-4px -12px 0;padding:8px 12px}
   .brow{grid-template-columns:minmax(0,1fr) auto}
   .brow .b-why{grid-column:1;grid-row:2}
   .brow .sl-lang{grid-column:1;grid-row:2}
-  .brow .icon-btn{grid-row:1/3;align-self:center}
+  .brow .btn{grid-row:1/3;align-self:center}
   .savebar{bottom:calc(74px + env(safe-area-inset-bottom));width:calc(100vw - 24px);padding-left:14px}
   .savebar .grow{font-size:.9rem}
   .lang{max-width:7rem}
-  .pill{font-size:.8rem;padding:6px 10px}
+  .pill{font-size:.79rem;padding:5px 10px}
   #toast{top:10px}
 }
 </style>
 </head>
 <body>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
-  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></symbol>
-  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
-  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
-  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
-  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
-  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></symbol>
-  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4"/></symbol>
-  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
-  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></symbol>
-  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
-  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
-  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"/></symbol>
-  <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></symbol>
-  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></symbol>
-  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
-  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></symbol>
-  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
-  <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.5 6.6A16.6 16.6 0 0 0 2 12s3.6 7 10 7a10 10 0 0 0 4.3-1M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
-  <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
-  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
-  <symbol id="i-bot" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 4v4M9 13v1.5M15 13v1.5M2 13v2M22 13v2"/></symbol>
-  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
-  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
-  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
-  <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/></symbol>
-  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></symbol>
-  <symbol id="i-device" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></symbol>
-  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21a2 2 0 0 0 4 0"/></symbol>
-  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></symbol>
-  <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 4h14v12l-4 4H5zM15 20v-4h4"/></symbol>
-  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
-  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
-  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h0M4 12h0M4 18h0"/></symbol>
-  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
-  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M15.5 4.7a3.5 3.5 0 0 1 0 6.6M17.5 14.2a6.5 6.5 0 0 1 4 5.8"/></symbol>
-  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></symbol>
-  <symbol id="i-phone-out" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/><path d="M15 3h6v6M21 3l-6 6"/></symbol>
-</svg>
 
 <a class="skip" href="#main" data-i18n="skip"></a>
 
 <header class="top">
   <div class="top-in">
     <a class="brand" href="#calls" aria-label="Bageo">
-      <span class="logo"><svg class="i"><use href="#i-phone"/></svg></span><span>Bageo</span>
+      <span class="logo" aria-hidden="true"><svg viewBox="0 0 256 256"><rect x="8" y="8" width="240" height="240" rx="56" fill="#ECC354"/><g fill="#177571"><rect x="52" y="204" width="136" height="16" rx="8"/><rect x="44" y="204" width="34" height="30" rx="11"/><rect x="162" y="204" width="34" height="30" rx="11"/></g><g stroke="#C97B10" stroke-width="7" stroke-linecap="round"><line x1="104" y1="186" x2="104" y2="203"/><line x1="128" y1="186" x2="128" y2="203"/></g><polygon points="70,150 22,176 30,192 84,176" fill="#1C1D20"/><ellipse cx="112" cy="142" rx="56" ry="50" fill="#1C1D20"/><circle cx="146" cy="88" r="38" fill="#1C1D20"/><polygon points="158,60 166,30 172,56 184,36 184,64 198,50 190,76" fill="#1C1D20"/><g transform="rotate(-24 100 150)"><ellipse cx="100" cy="150" rx="42" ry="25" fill="#34363D"/><ellipse cx="88" cy="160" rx="18" ry="7" fill="#F2F2F4"/></g><g fill="#FAF2DC" stroke="#1C1D20" stroke-width="3" stroke-linejoin="round"><polygon points="178,74 216,84 180,92"/><polygon points="180,94 208,102 176,106"/></g><circle cx="158" cy="80" r="8" fill="#E57E25"/><circle cx="159" cy="80" r="3.5" fill="#1C1D20"/><g fill="none" stroke="#1C1D20" stroke-width="5" stroke-linecap="round"><path d="M222 80 q7 13 0 26"/><path d="M233 71 q13 22 0 44"/></g></svg></span><span class="word">Bageo</span>
     </a>
     <nav class="nav" id="nav" data-i18n-aria="nav_main">
-      <a href="#calls" data-tab="calls"><svg class="i"><use href="#i-phone"/></svg><span data-i18n="tab_calls"></span></a>
-      <a href="#errands" data-tab="errands"><svg class="i"><use href="#i-phone-out"/></svg><span data-i18n="tab_errands"></span></a>
-      <a href="#contacts" data-tab="contacts"><svg class="i"><use href="#i-users"/></svg><span data-i18n="tab_contacts"></span></a>
-      <a href="#settings" data-tab="settings"><svg class="i"><use href="#i-sliders"/></svg><span data-i18n="tab_settings"></span><i class="dot" id="navDirty" hidden></i></a>
-      <a href="#system" data-tab="system"><svg class="i"><use href="#i-activity"/></svg><span data-i18n="tab_system"></span></a>
+      <a href="#calls" data-tab="calls"><span data-i18n="tab_calls"></span></a>
+      <a href="#errands" data-tab="errands"><span data-i18n="tab_errands"></span></a>
+      <a href="#contacts" data-tab="contacts"><span data-i18n="tab_contacts"></span></a>
+      <a href="#settings" data-tab="settings"><span data-i18n="tab_settings"></span><i class="dot" id="navDirty" hidden></i></a>
+      <a href="#system" data-tab="system"><span data-i18n="tab_system"></span></a>
     </nav>
     <div class="top-right">
       <button type="button" class="pill" id="pillLine" data-i18n-title="pill_title" aria-live="polite"><span class="led"></span><span id="pillText">…</span></button>
       <select class="lang" id="langSel" data-i18n-aria="lang_label"></select>
-      <button type="button" class="icon-btn" id="themeBtn" data-i18n-aria="theme_toggle" data-i18n-title="theme_toggle">
-        <svg class="i i-moon"><use href="#i-moon"/></svg><svg class="i i-sun"><use href="#i-sun"/></svg>
-      </button>
+      <button type="button" class="btn sm" id="themeBtn" data-i18n-aria="theme_toggle" data-i18n-title="theme_toggle"></button>
     </div>
   </div>
 </header>
 
 <main id="main" tabindex="-1">
   <div class="banner bad" id="netBanner" hidden role="alert">
-    <svg class="i"><use href="#i-alert"/></svg>
     <span class="grow" id="netBannerText"></span>
     <button type="button" class="btn sm" id="netRetry" data-i18n="retry"></button>
   </div>
@@ -589,10 +555,10 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
     <!-- To do: appointments the AI took, waiting for the owner's Accept / Decline,
          and the ones decided here with how the caller was told (hidden when none) -->
     <div class="card appts" id="apptBox" hidden>
-      <div class="appts-head"><svg class="i"><use href="#i-calendar"/></svg><h2 class="grow" id="apptTitle"></h2></div>
+      <div class="appts-head"><h2 class="grow" id="apptTitle"></h2></div>
       <div class="banner info appts-result" id="apptResult" hidden role="status">
         <span class="grow" id="apptResultText"></span>
-        <button type="button" class="icon-btn" id="apptResultClose" data-i18n-aria="close" data-i18n-title="close"><svg class="i"><use href="#i-x"/></svg></button>
+        <button type="button" class="btn sm ghost" id="apptResultClose" data-i18n="close"></button>
       </div>
       <div id="apptList"></div>
     </div>
@@ -611,7 +577,6 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
     </button>
 
     <div class="banner info" id="noteBanner" hidden>
-      <svg class="i"><use href="#i-note"/></svg>
       <span class="grow"><b data-i18n="note_on"></b> <span id="noteText"></span></span>
       <a class="btn sm" href="#settings/answer" data-i18n="note_edit"></a>
     </div>
@@ -626,7 +591,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
     <div class="calls-grid" id="callsGrid">
       <div>
         <div class="filters">
-          <label class="search"><svg class="i sm"><use href="#i-search"/></svg>
+          <label class="search">
             <input type="search" id="fQ" autocomplete="off" data-i18n-ph="search_ph" data-i18n-aria="search_ph" /></label>
           <select id="fKind" data-i18n-aria="filter_label">
             <option value="" data-i18n="f_all"></option>
@@ -637,8 +602,9 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <option value="hidden" data-i18n="f_hidden"></option>
             <option value="live" data-i18n="f_live"></option>
           </select>
-          <button type="button" class="icon-btn bordered" id="btnRefresh" data-i18n-aria="refresh" data-i18n-title="refresh"><svg class="i"><use href="#i-refresh"/></svg></button>
-          <a class="icon-btn bordered" id="btnCsv" href="#" download="calls-export.csv" data-i18n-aria="export_csv" data-i18n-title="export_csv"><svg class="i"><use href="#i-download"/></svg></a>
+          <button type="button" class="btn sm" id="btnRefresh" data-i18n="refresh"></button>
+          <a class="btn sm" id="btnCsv" href="#" download="calls-export.csv" data-i18n="export_csv"></a>
+          <button type="button" class="btn sm danger" id="btnClearCalls" hidden data-i18n="calls_clear_all"></button>
         </div>
         <div class="list" id="callList"></div>
         <div class="more" id="moreWrap" hidden>
@@ -650,11 +616,11 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
       <aside class="card detail" id="detail" hidden data-i18n-aria="d_label">
         <div class="detail-inner">
           <div class="d-head">
-            <button type="button" class="icon-btn back" id="btnBack" data-i18n-aria="back"><svg class="i"><use href="#i-back"/></svg></button>
+            <button type="button" class="btn sm back" id="btnBack" data-i18n="back"></button>
             <h2 class="grow" id="dTitle"></h2>
             <label class="trsw" id="dTrSw" hidden><input type="checkbox" id="dTrToggle" /><span data-i18n="d_show_tr"></span></label>
-            <button type="button" class="icon-btn" id="btnCopyNum" data-i18n-aria="d_copy_number" data-i18n-title="d_copy_number"><svg class="i"><use href="#i-copy"/></svg></button>
-            <button type="button" class="icon-btn closex" id="btnCloseDetail" data-i18n-aria="close" data-i18n-title="close"><svg class="i"><use href="#i-x"/></svg></button>
+            <button type="button" class="btn sm" id="btnCopyNum" data-i18n="d_copy_number"></button>
+            <button type="button" class="btn sm closex" id="btnCloseDetail" data-i18n="close"></button>
           </div>
           <div class="d-sec"><div class="d-meta" id="dMeta"></div></div>
           <div class="d-sec" id="dSumSec">
@@ -664,7 +630,6 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
           </div>
           <div class="d-sec" id="dCalSec" hidden>
             <div class="cal">
-              <svg class="i ci"><use href="#i-calendar"/></svg>
               <div class="grow">
                 <span class="small muted" id="dCalLabel" data-i18n="d_cal"></span>
                 <b id="dCalTitle"></b>
@@ -677,14 +642,14 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             </div>
           </div>
           <div class="d-sec" id="dRecSec">
-            <h3 data-i18n="d_rec"></h3>
+            <h3 class="h3row"><span data-i18n="d_rec"></span><button type="button" class="btn sm" id="btnDlRec" hidden data-i18n="d_dl_rec"></button></h3>
             <div class="seg" id="dTracks" role="tablist"></div>
             <audio id="dAudio" controls preload="none"></audio>
             <p class="help" id="dTrackHint"></p>
             <p class="muted" id="dNoRec" data-i18n="d_norec" hidden></p>
           </div>
           <div class="d-sec" id="dDlgSec" hidden>
-            <h3 class="h3row"><span data-i18n="d_dialogue"></span><button type="button" class="icon-btn" id="btnCopyDlg" data-i18n-aria="d_copy_dlg" data-i18n-title="d_copy_dlg"><svg class="i sm"><use href="#i-copy"/></svg></button></h3>
+            <h3 class="h3row"><span data-i18n="d_dialogue"></span><button type="button" class="btn sm" id="btnCopyDlg" data-i18n="d_copy_dlg"></button></h3>
             <div class="chat" id="dDialogue"></div>
           </div>
           <div class="d-sec" id="dEndSec" hidden>
@@ -699,10 +664,11 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
           </div>
           <div class="d-sec">
             <div class="actions">
-              <button type="button" class="btn sm" id="btnAddContact" hidden><svg class="i sm"><use href="#i-plus"/></svg><span data-i18n="ct_add_from_call"></span></button>
-              <button type="button" class="btn sm danger" id="btnBlock"><svg class="i sm"><use href="#i-ban"/></svg><span data-i18n="d_block"></span></button>
-              <button type="button" class="btn sm" id="btnCopyLink"><svg class="i sm"><use href="#i-link"/></svg><span data-i18n="d_copy_link"></span></button>
-              <button type="button" class="btn sm" id="btnJson"><svg class="i sm"><use href="#i-download"/></svg><span data-i18n="d_json"></span></button>
+              <button type="button" class="btn sm" id="btnAddContact" hidden data-i18n="ct_add_from_call"></button>
+              <button type="button" class="btn sm danger" id="btnBlock" data-i18n="d_block"></button>
+              <button type="button" class="btn sm" id="btnCopyLink" data-i18n="d_copy_link"></button>
+              <button type="button" class="btn sm" id="btnJson" data-i18n="d_json"></button>
+              <button type="button" class="btn sm danger" id="btnDeleteCall" hidden data-i18n="d_del_call"></button>
             </div>
             <details class="fold" style="margin-top:12px">
               <summary data-i18n="d_tech"></summary>
@@ -742,12 +708,12 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
         <div class="help" id="erPhoneHelp" data-i18n="er_phone_h" hidden></div></div>
       <p class="dlg-err" id="erErr" role="alert" hidden></p>
       <div class="row" style="margin-top:16px">
-        <button type="submit" class="btn primary" id="erGo"><svg class="i sm"><use href="#i-phone-out"/></svg><span data-i18n="er_start"></span></button>
+        <button type="submit" class="btn primary" id="erGo"><span data-i18n="er_start"></span></button>
       </div>
     </form>
     <div class="row er-list-head">
       <h2 class="grow" data-i18n="er_list"></h2>
-      <button type="button" class="icon-btn bordered" id="erRefresh" data-i18n-aria="refresh" data-i18n-title="refresh"><svg class="i"><use href="#i-refresh"/></svg></button>
+      <button type="button" class="btn sm" id="erRefresh" data-i18n="refresh"></button>
     </div>
     <div class="list" id="erList"></div>
   </section>
@@ -785,21 +751,20 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
       </div>
     </div>
     <div class="filters ct-bar">
-      <label class="search"><svg class="i sm"><use href="#i-search"/></svg>
+      <label class="search">
         <input type="search" id="ctQ" autocomplete="off" data-i18n-ph="ct_search_ph" data-i18n-aria="ct_search_ph" /></label>
-      <button type="button" class="btn primary" id="ctAdd"><svg class="i sm"><use href="#i-plus"/></svg><span data-i18n="ct_add"></span></button>
-      <button type="button" class="btn" id="ctImport"><svg class="i sm"><use href="#i-upload"/></svg><span data-i18n="ct_import"></span></button>
-      <a class="btn" id="ctExport" href="#" download="contacts.vcf"><svg class="i sm"><use href="#i-download"/></svg><span data-i18n="ct_export"></span></a>
+      <button type="button" class="btn primary" id="ctAdd" data-i18n="ct_add"></button>
+      <button type="button" class="btn" id="ctImport" data-i18n="ct_import"></button>
+      <a class="btn" id="ctExport" href="#" download="contacts.vcf" data-i18n="ct_export"></a>
     </div>
     <!-- Import: a file, what was found in it (tick, merge or skip), then saved -->
     <div class="card pad ct-imp" id="ctImp" hidden>
       <div class="row">
         <h2 class="grow" data-i18n="ct_imp_title"></h2>
-        <button type="button" class="icon-btn" id="ctImpClose" data-i18n-aria="close" data-i18n-title="close"><svg class="i"><use href="#i-x"/></svg></button>
+        <button type="button" class="btn sm ghost" id="ctImpClose" data-i18n="close"></button>
       </div>
       <label class="ct-drop" id="ctDrop" tabindex="0">
         <input type="file" id="ctFile" hidden accept=".vcf,.vcard,.csv,.tsv,.txt,.xlsx,.docx,.pdf,image/*,text/*" />
-        <svg class="i lg"><use href="#i-upload"/></svg>
         <b data-i18n="ct_imp_drop"></b>
         <span class="help" data-i18n="ct_imp_formats"></span>
       </label>
@@ -832,20 +797,20 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
   <section id="view-settings" data-view="settings" hidden>
     <h1 class="view-title" data-i18n="tab_settings"></h1>
     <div class="banner bad" id="setError" hidden role="alert">
-      <svg class="i"><use href="#i-alert"/></svg><span class="grow" id="setErrorText"></span>
+      <span class="grow" id="setErrorText"></span>
       <button type="button" class="btn sm" id="setRetry" data-i18n="retry"></button>
     </div>
     <div id="setLoading"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
     <div class="set-grid" id="setGrid" hidden>
       <nav class="snav" id="snav" data-i18n-aria="s_nav">
-        <a href="#settings/basics" data-jump="basics"><svg class="i sm"><use href="#i-user"/></svg><span data-i18n="g_basics"></span></a>
-        <a href="#settings/answer" data-jump="answer"><svg class="i sm"><use href="#i-phone"/></svg><span data-i18n="g_answer"></span></a>
-        <a href="#settings/spam" data-jump="spam"><svg class="i sm"><use href="#i-shield"/></svg><span data-i18n="g_spam"></span></a>
-        <a href="#settings/prompt" data-jump="prompt"><svg class="i sm"><use href="#i-chat"/></svg><span data-i18n="g_prompt"></span></a>
-        <a href="#settings/blocked" data-jump="blocked"><svg class="i sm"><use href="#i-ban"/></svg><span data-i18n="g_blocked"></span></a>
-        <a href="#settings/notify" data-jump="notify"><svg class="i sm"><use href="#i-bell"/></svg><span data-i18n="g_notify"></span></a>
-        <a href="#settings/summary" data-jump="summary"><svg class="i sm"><use href="#i-list"/></svg><span data-i18n="g_summary"></span></a>
-        <a href="#settings/region" data-jump="region"><svg class="i sm"><use href="#i-sliders"/></svg><span data-i18n="g_region"></span></a>
+        <a href="#settings/basics" data-jump="basics"><span data-i18n="g_basics"></span></a>
+        <a href="#settings/answer" data-jump="answer"><span data-i18n="g_answer"></span></a>
+        <a href="#settings/spam" data-jump="spam"><span data-i18n="g_spam"></span></a>
+        <a href="#settings/prompt" data-jump="prompt"><span data-i18n="g_prompt"></span></a>
+        <a href="#settings/blocked" data-jump="blocked"><span data-i18n="g_blocked"></span></a>
+        <a href="#settings/notify" data-jump="notify"><span data-i18n="g_notify"></span></a>
+        <a href="#settings/summary" data-jump="summary"><span data-i18n="g_summary"></span></a>
+        <a href="#settings/region" data-jump="region"><span data-i18n="g_region"></span></a>
       </nav>
 
       <form id="setForm" autocomplete="off" novalidate>
@@ -874,7 +839,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
           <div class="field"><label for="f-gemini_voice_name" data-i18n="f_voice"></label>
             <div class="with-btn" style="max-width:28rem">
               <select id="f-gemini_voice_name" data-k="gemini_voice_name" data-t="text"></select>
-              <button type="button" class="btn" id="btnPvVoice"><svg class="i sm"><use href="#i-play"/></svg><span data-i18n="pv_voice"></span></button>
+              <button type="button" class="btn" id="btnPvVoice" data-i18n="pv_voice"></button>
             </div>
             <div class="help" data-i18n="f_voice_h"></div></div>
           <div class="pv" id="pvVoiceBox" hidden>
@@ -894,7 +859,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <div class="field" id="simLangField"><div class="lbl" id="lbl-simlang" data-i18n="f_simlang"></div>
               <div class="rows" id="simLangRows" data-k="sim_languages" data-t="simlangs" role="group" aria-labelledby="lbl-simlang"></div>
               <div class="pv" style="margin-top:0">
-                <button type="button" class="btn sm" id="btnSimLangAdd"><svg class="i sm"><use href="#i-plus"/></svg><span data-i18n="sl_add"></span></button>
+                <button type="button" class="btn sm" id="btnSimLangAdd" data-i18n="sl_add"></button>
               </div>
               <div class="help" data-i18n="f_simlang_h"></div></div>
             <div class="field"><label for="f-errand_identity" data-i18n="f_er_identity"></label>
@@ -941,8 +906,8 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             </div>
             <div class="help" data-i18n="f_amb_h"></div>
             <div class="pv">
-              <button type="button" class="btn sm" id="btnPvBoth"><svg class="i sm"><use href="#i-play"/></svg><span data-i18n="pv_both"></span></button>
-              <button type="button" class="btn sm" id="btnPvBed"><svg class="i sm"><use href="#i-play"/></svg><span data-i18n="pv_bed"></span></button>
+              <button type="button" class="btn sm" id="btnPvBoth" data-i18n="pv_both"></button>
+              <button type="button" class="btn sm" id="btnPvBed" data-i18n="pv_bed"></button>
               <span class="pv-status" id="pvAmbStatus" aria-live="polite"></span>
             </div>
             <audio id="pvAmbAudio" controls preload="none" hidden></audio>
@@ -1014,7 +979,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <p class="help" data-i18n="h_body"></p>
             <div class="addrow" style="margin-top:12px">
               <select id="helperLang" data-i18n-aria="h_lang"></select>
-              <button type="button" class="btn primary" id="btnHelperCopy"><svg class="i sm"><use href="#i-copy"/></svg><span data-i18n="h_copy"></span></button>
+              <button type="button" class="btn primary" id="btnHelperCopy" data-i18n="h_copy"></button>
             </div>
             <details class="fold" style="margin-top:8px">
               <summary data-i18n="h_read"></summary>
@@ -1034,13 +999,13 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
               </select></div>
             <div class="rows" id="blockRows" data-k="reject_numbers" data-t="rejects"></div>
             <div class="pv" style="margin-top:0">
-              <button type="button" class="btn sm" id="btnBlockAdd"><svg class="i sm"><use href="#i-plus"/></svg><span data-i18n="b_add"></span></button>
+              <button type="button" class="btn sm" id="btnBlockAdd" data-i18n="b_add"></button>
             </div>
             <div class="help" data-i18n="b_help"></div>
             <div class="field" style="margin-top:14px"><label for="f-reject_voice_name" data-i18n="f_reject_voice"></label>
               <div class="with-btn">
                 <select id="f-reject_voice_name" data-k="reject_voice_name" data-t="text"></select>
-                <button type="button" class="btn" id="btnPvReject"><svg class="i sm"><use href="#i-play"/></svg><span data-i18n="b_preview"></span></button>
+                <button type="button" class="btn" id="btnPvReject" data-i18n="b_preview"></button>
               </div>
               <div class="help" data-i18n="f_reject_voice_h"></div>
               <div class="pv"><span class="pv-status" id="pvRejectStatus" aria-live="polite"></span></div>
@@ -1058,7 +1023,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <div class="rows" id="chanRows" data-k="notify_channels" data-t="channels" style="margin-top:0"></div>
             <div class="addrow">
               <select id="chanKind" data-i18n-aria="n_pick"></select>
-              <button type="button" class="btn" id="btnChanAdd"><svg class="i sm"><use href="#i-plus"/></svg><span data-i18n="n_add"></span></button>
+              <button type="button" class="btn" id="btnChanAdd" data-i18n="n_add"></button>
             </div>
           </div>
           <details class="fold more" id="ctlField">
@@ -1175,45 +1140,49 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
     <div class="row" style="margin-bottom:14px">
       <h1 class="view-title grow" style="margin:0" data-i18n="tab_system"></h1>
       <span class="muted small" id="sysMeta"></span>
-      <button type="button" class="icon-btn bordered" id="btnSysRefresh" data-i18n-aria="refresh" data-i18n-title="refresh"><svg class="i"><use href="#i-refresh"/></svg></button>
+      <button type="button" class="btn sm" id="btnSysRefresh" data-i18n="refresh"></button>
     </div>
     <div class="sys-grid">
-      <div class="card pad">
-        <h2><svg class="i"><use href="#i-check"/></svg><span data-i18n="chk_title"></span></h2>
-        <div id="sysCheck"><div class="skel"></div></div>
-      </div>
-      <div class="card pad">
-        <h2><svg class="i"><use href="#i-device"/></svg><span data-i18n="sys_phones"></span></h2>
-        <div id="sysPhones"><div class="skel"></div></div>
-      </div>
-      <div class="card pad wide">
-        <h2><svg class="i"><use href="#i-info"/></svg><span data-i18n="about"></span></h2>
-        <div class="cu">
-          <canvas id="sysQr" class="qr" role="img" data-i18n-aria="cu_qr_alt" hidden></canvas>
-          <div class="grow">
-            <div class="lbl" data-i18n="cu_title"></div>
-            <div class="cu-row">
-              <a id="sysUrl" class="mono" target="_blank" rel="noopener"></a>
-              <button type="button" class="btn sm" id="btnCopyUrl"><svg class="i sm"><use href="#i-copy"/></svg><span data-i18n="cu_copy"></span></button>
-            </div>
-            <p class="help" id="sysUrlHelp"></p>
-            <p class="help" id="sysUrlIp" hidden><span data-i18n="cu_ip"></span> <a id="sysUrlIpLink" class="mono" target="_blank" rel="noopener"></a></p>
-            <div class="a2hs" id="a2hs">
-              <b data-i18n="a2hs_title"></b>
-              <button type="button" class="btn sm primary" id="btnInstall" hidden><svg class="i sm"><use href="#i-download"/></svg><span data-i18n="a2hs_install"></span></button>
-              <ul class="help" id="a2hsHow">
-                <li data-i18n="a2hs_ios"></li>
-                <li data-i18n="a2hs_android"></li>
-                <li data-i18n="a2hs_desktop"></li>
-              </ul>
+      <div class="sys-col">
+        <div class="card pad">
+          <h2 data-i18n="chk_title"></h2>
+          <div id="sysCheck"><div class="skel"></div></div>
+        </div>
+        <div class="card pad">
+          <h2 data-i18n="about"></h2>
+          <div class="cu">
+            <canvas id="sysQr" class="qr" role="img" data-i18n-aria="cu_qr_alt" hidden></canvas>
+            <div class="grow">
+              <div class="lbl" data-i18n="cu_title"></div>
+              <div class="cu-row">
+                <a id="sysUrl" class="mono" target="_blank" rel="noopener"></a>
+                <button type="button" class="btn sm" id="btnCopyUrl" data-i18n="cu_copy"></button>
+              </div>
+              <p class="help" id="sysUrlHelp"></p>
+              <p class="help" id="sysUrlIp" hidden><span data-i18n="cu_ip"></span> <a id="sysUrlIpLink" class="mono" target="_blank" rel="noopener"></a></p>
+              <div class="a2hs" id="a2hs">
+                <b data-i18n="a2hs_title"></b>
+                <button type="button" class="btn sm primary" id="btnInstall" hidden data-i18n="a2hs_install"></button>
+                <ul class="help" id="a2hsHow">
+                  <li data-i18n="a2hs_ios"></li>
+                  <li data-i18n="a2hs_android"></li>
+                  <li data-i18n="a2hs_desktop"></li>
+                </ul>
+              </div>
             </div>
           </div>
+          <dl class="kv" id="sysAbout"></dl>
+          <details class="fold" style="margin-top:14px">
+            <summary data-i18n="raw_health"></summary>
+            <pre class="block" id="sysRaw" tabindex="0"></pre>
+          </details>
         </div>
-        <dl class="kv" id="sysAbout"></dl>
-        <details class="fold" style="margin-top:14px">
-          <summary data-i18n="raw_health"></summary>
-          <pre class="block" id="sysRaw" tabindex="0"></pre>
-        </details>
+      </div>
+      <div class="sys-col">
+        <div class="card pad">
+          <h2 data-i18n="sys_phones"></h2>
+          <div id="sysPhones"><div class="skel"></div></div>
+        </div>
       </div>
     </div>
   </section>
@@ -1262,7 +1231,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
     </div>
     <div class="dlg-err" id="ctErr" hidden></div>
     <div class="dlg-btns">
-      <button type="button" class="btn danger ct-del" id="ctDel"><svg class="i sm"><use href="#i-trash"/></svg><span data-i18n="ct_delete"></span></button>
+      <button type="button" class="btn danger ct-del" id="ctDel" data-i18n="ct_delete"></button>
       <button type="button" class="btn" id="ctCancel" data-i18n="cancel"></button>
       <button type="submit" class="btn primary" id="ctSave" data-i18n="ct_save"></button>
     </div>
@@ -1930,7 +1899,7 @@ I18N["en"] = {
   ph_link_ok: "USB link is up and the app is installed",
   ph_link_bad: "The USB link is not set up yet. Wait a few seconds.",
   usb_off: "The USB helper is turned off",
-  usb_off_d: "USB_BRIDGE=off: phones have to reach Bageo another way.",
+  usb_off_d: "Phones connect to Bageo over the network instead.",
   usb_noadb: "adb was not found",
   usb_noadb_d: "Phones on USB cannot be set up automatically. Install the Android platform-tools or set ADB_BIN.",
   usb_error: "USB problem",
@@ -2170,8 +2139,8 @@ I18N["en"] = {
   er_id_owner_anon: "You in person",
   er_id_assistant_d: "The AI says it is calling for you, as your assistant.",
   er_id_owner_d: "The AI speaks as you.",
-  er_phone: "Phone to call from",
-  er_phone_auto: "Automatic (a free phone that can call this number)",
+  er_phone: "Number to call from",
+  er_phone_auto: "Automatic (a free line that can call this number)",
   er_phone_normal: "{name} (normal phone mode, the AI can't use it)",
   er_phone_h: "A phone in normal phone mode can't make AI calls. Switch it back to AI answering on the System page.",
   er_start: "Start the call",
@@ -2324,6 +2293,31 @@ I18N["en"] = {
   er_err_empty_text: "Write what you want to say.",
   er_err_text_too_long: "That's too long. Please shorten it.",
   er_err_question_closed: "That question was already answered or has timed out.",
+  theme_dark: "Dark",
+  theme_light: "Light",
+  d_dl_rec: "Download recording",
+  d_del_call: "Delete",
+  d_del_call_t: "Delete this call?",
+  d_del_call_b: "Its summary, transcript, and recording will be permanently deleted.",
+  d_del_call_done: "Call deleted",
+  calls_clear_all: "Delete all",
+  calls_clear_t: "Delete all call history?",
+  calls_clear_b: "All finished calls and their recordings will be permanently deleted. Calls in progress will stay.",
+  calls_cleared: "Deleted {n} calls",
+  err_call_in_progress: "Wait until the call ends before deleting it.",
+  ph_forget: "Delete",
+  ph_forget_t: "Delete “{name}”?",
+  ph_forget_b: "Removes this offline phone from the list. Past call records stay.",
+  ph_forgot: "Deleted “{name}”",
+  err_device_online: "Disconnect this phone first before deleting it.",
+  err_device_in_call: "Wait until the call on this phone ends.",
+  ph_sim_num_ph: "Enter this SIM's number",
+  ph_sim_save: "Save",
+  ph_sim_edit: "Edit",
+  ph_sim_saved: "Number saved",
+  ph_sim_unset: "number not set",
+  er_line_unset: "{name} · {region} (number not set)",
+  live_to: "to {line}",
 };
 
 I18N["zh-TW"] = {
@@ -2962,7 +2956,7 @@ I18N["zh-TW"] = {
   ph_link_ok: "USB 連線正常，App 已安裝",
   ph_link_bad: "USB 連線還沒建立好，請等幾秒。",
   usb_off: "USB 輔助功能已關閉",
-  usb_off_d: "USB_BRIDGE=off：手機要用其他方式連到 Bageo。",
+  usb_off_d: "手機改由網路或其他連線連到 Bageo。",
   usb_noadb: "找不到 adb",
   usb_noadb_d: "無法自動設定 USB 上的手機。請安裝 Android platform-tools，或設定 ADB_BIN。",
   usb_error: "USB 發生問題",
@@ -3202,8 +3196,8 @@ I18N["zh-TW"] = {
   er_id_owner_anon: "以你本人身分打",
   er_id_assistant_d: "AI 會說自己是助理，替你打這通電話。",
   er_id_owner_d: "AI 直接用你的身分講話。",
-  er_phone: "用哪支手機打",
-  er_phone_auto: "自動（挑有空、能打這個號碼的手機）",
+  er_phone: "用哪個號碼打",
+  er_phone_auto: "自動（挑有空、能打這個號碼的門號）",
   er_phone_normal: "{name}（一般手機模式，AI 不能用）",
   er_phone_h: "一般手機模式的手機不能讓 AI 打電話，要先到系統頁切回 AI 接聽。",
   er_start: "開始打",
@@ -3323,6 +3317,31 @@ I18N["zh-TW"] = {
   er_err_empty_text: "請寫要說的話。",
   er_err_text_too_long: "太長了，請縮短。",
   er_err_question_closed: "這個問題已經回答過，或已逾時。",
+  theme_dark: "深色",
+  theme_light: "淺色",
+  d_dl_rec: "下載錄音",
+  d_del_call: "刪除",
+  d_del_call_t: "要刪除這筆通話紀錄嗎？",
+  d_del_call_b: "摘要、逐字稿和錄音檔都會一併刪除，無法復原。",
+  d_del_call_done: "已刪除通話紀錄",
+  calls_clear_all: "全部刪除",
+  calls_clear_t: "要刪除全部通話紀錄嗎？",
+  calls_clear_b: "所有已結束的通話紀錄和錄音檔都會刪除，無法復原；進行中的通話會保留。",
+  calls_cleared: "已刪除 {n} 筆通話紀錄",
+  err_call_in_progress: "這通電話還在進行中，結束後才能刪除。",
+  ph_forget: "刪除",
+  ph_forget_t: "要刪除「{name}」嗎？",
+  ph_forget_b: "會從清單移除這支沒連線的手機；之前的通話紀錄會保留。",
+  ph_forgot: "已刪除「{name}」",
+  err_device_online: "這支手機還在線，請先拔除連線再刪除。",
+  err_device_in_call: "這支手機正在通話中，結束後才能刪除。",
+  ph_sim_num_ph: "輸入這張卡的號碼",
+  ph_sim_save: "儲存",
+  ph_sim_edit: "修改",
+  ph_sim_saved: "號碼已儲存",
+  ph_sim_unset: "未填號碼",
+  er_line_unset: "{name} · {region}（未填號碼）",
+  live_to: "打給 {line}",
 };
 
 I18N["zh-CN"] = {
@@ -3928,7 +3947,7 @@ I18N["zh-CN"] = {
   ph_link_ok: "USB 连接正常，应用已安装",
   ph_link_bad: "USB 连接还没建立好，请等几秒。",
   usb_off: "USB 辅助功能已关闭",
-  usb_off_d: "USB_BRIDGE=off：手机要用其他方式连到 Bageo。",
+  usb_off_d: "手机改由网络或其他连接连到 Bageo。",
   usb_noadb: "找不到 adb",
   usb_noadb_d: "无法自动设置 USB 上的手机。请安装 Android platform-tools，或设置 ADB_BIN。",
   usb_error: "USB 出现问题",
@@ -4168,8 +4187,8 @@ I18N["zh-CN"] = {
   er_id_owner_anon: "以你本人身份打",
   er_id_assistant_d: "AI 会说自己是助理，替你打这通电话。",
   er_id_owner_d: "AI 直接以你的身份说话。",
-  er_phone: "用哪部手机打",
-  er_phone_auto: "自动（挑空闲、能打这个号码的手机）",
+  er_phone: "用哪个号码打",
+  er_phone_auto: "自动（挑空闲、能打这个号码的门号）",
   er_phone_normal: "{name}（普通手机模式，AI 不能用）",
   er_phone_h: "普通手机模式的手机不能让 AI 打电话，要先到系统页切回 AI 接听。",
   er_start: "开始打",
@@ -4322,6 +4341,31 @@ I18N["zh-CN"] = {
   er_err_empty_text: "请写要说的话。",
   er_err_text_too_long: "太长了，请缩短。",
   er_err_question_closed: "这个问题已经回答过，或已超时。",
+  theme_dark: "深色",
+  theme_light: "浅色",
+  d_dl_rec: "下载录音",
+  d_del_call: "删除",
+  d_del_call_t: "要删除这笔通话记录吗？",
+  d_del_call_b: "摘要、逐字稿和录音文件都会一并删除，无法恢复。",
+  d_del_call_done: "已删除通话记录",
+  calls_clear_all: "全部删除",
+  calls_clear_t: "要删除全部通话记录吗？",
+  calls_clear_b: "所有已结束的通话记录和录音文件都会删除，无法恢复；进行中的通话会保留。",
+  calls_cleared: "已删除 {n} 笔通话记录",
+  err_call_in_progress: "这通电话还在进行中，结束后才能删除。",
+  ph_forget: "删除",
+  ph_forget_t: "要删除「{name}」吗？",
+  ph_forget_b: "会从列表移除这台未连接的手机；之前的通话记录会保留。",
+  ph_forgot: "已删除「{name}」",
+  err_device_online: "这台手机还在线，请先断开连接再删除。",
+  err_device_in_call: "这台手机正在通话中，结束后才能删除。",
+  ph_sim_num_ph: "输入这张卡的号码",
+  ph_sim_save: "保存",
+  ph_sim_edit: "修改",
+  ph_sim_saved: "号码已保存",
+  ph_sim_unset: "未填号码",
+  er_line_unset: "{name} · {region}（未填号码）",
+  live_to: "打给 {line}",
 };
 
 I18N["ja"] = {
@@ -4927,7 +4971,7 @@ I18N["ja"] = {
   ph_link_ok: "USB 接続は正常で、アプリも入っています",
   ph_link_bad: "USB 接続の準備がまだできていません。数秒お待ちください。",
   usb_off: "USB ヘルパーはオフです",
-  usb_off_d: "USB_BRIDGE=off：スマホは別の方法で Bageo に接続する必要があります。",
+  usb_off_d: "スマホはネットワーク経由で Bageo に接続します。",
   usb_noadb: "adb が見つかりません",
   usb_noadb_d: "USB のスマホを自動で設定できません。Android platform-tools をインストールするか、ADB_BIN を設定してください。",
   usb_error: "USB で問題が発生しました",
@@ -5167,8 +5211,8 @@ I18N["ja"] = {
   er_id_owner_anon: "あなた本人としてかける",
   er_id_assistant_d: "AI はアシスタントとして代わりに電話していると伝えます。",
   er_id_owner_d: "AI があなた本人として話します。",
-  er_phone: "発信に使うスマホ",
-  er_phone_auto: "自動（空いていて、この番号にかけられるスマホ）",
+  er_phone: "発信に使う番号",
+  er_phone_auto: "自動（空いていて、この番号にかけられる回線）",
   er_phone_normal: "{name}（通常のスマホモードのため AI は使えません）",
   er_phone_h: "通常のスマホモードのスマホでは AI は発信できません。システム画面で AI 応答に戻してください。",
   er_start: "発信する",
@@ -5321,6 +5365,31 @@ I18N["ja"] = {
   er_err_empty_text: "伝えたい内容を書いてください。",
   er_err_text_too_long: "長すぎます。短くしてください。",
   er_err_question_closed: "この質問はすでに回答済みか、時間切れです。",
+  theme_dark: "ダーク",
+  theme_light: "ライト",
+  d_dl_rec: "録音を保存",
+  d_del_call: "削除",
+  d_del_call_t: "この通話履歴を削除しますか？",
+  d_del_call_b: "要約・文字起こし・録音ファイルもすべて削除され、元に戻せません。",
+  d_del_call_done: "通話履歴を削除しました",
+  calls_clear_all: "すべて削除",
+  calls_clear_t: "通話履歴をすべて削除しますか？",
+  calls_clear_b: "終了した通話履歴と録音ファイルがすべて削除されます。通話中のものは残ります。",
+  calls_cleared: "{n} 件の通話履歴を削除しました",
+  err_call_in_progress: "通話中は削除できません。終了してからやり直してください。",
+  ph_forget: "削除",
+  ph_forget_t: "「{name}」を削除しますか？",
+  ph_forget_b: "接続されていないこのスマホを一覧から外します。これまでの通話履歴は残ります。",
+  ph_forgot: "「{name}」を削除しました",
+  err_device_online: "接続中のスマホは削除できません。先に接続を外してください。",
+  err_device_in_call: "通話中のため削除できません。終了してからやり直してください。",
+  ph_sim_num_ph: "この SIM の電話番号を入力",
+  ph_sim_save: "保存",
+  ph_sim_edit: "編集",
+  ph_sim_saved: "番号を保存しました",
+  ph_sim_unset: "番号未設定",
+  er_line_unset: "{name} · {region}（番号未設定）",
+  live_to: "{line} 宛て",
 };
 
 I18N["ko"] = {
@@ -5926,7 +5995,7 @@ I18N["ko"] = {
   ph_link_ok: "USB 연결이 정상이고 앱이 설치되어 있습니다",
   ph_link_bad: "USB 연결이 아직 준비되지 않았습니다. 몇 초만 기다려 주세요.",
   usb_off: "USB 도우미가 꺼져 있습니다",
-  usb_off_d: "USB_BRIDGE=off: 휴대폰은 다른 방법으로 Bageo에 연결해야 합니다.",
+  usb_off_d: "휴대폰은 네트워크를 통해 Bageo에 연결됩니다.",
   usb_noadb: "adb를 찾을 수 없습니다",
   usb_noadb_d: "USB에 연결된 휴대폰을 자동으로 설정할 수 없습니다. Android platform-tools를 설치하거나 ADB_BIN을 설정해 주세요.",
   usb_error: "USB 문제가 발생했습니다",
@@ -6166,8 +6235,8 @@ I18N["ko"] = {
   er_id_owner_anon: "나 본인으로 전화",
   er_id_assistant_d: "AI가 비서라고 밝히고 대신 전화합니다.",
   er_id_owner_d: "AI가 본인으로서 말합니다.",
-  er_phone: "전화할 휴대폰",
-  er_phone_auto: "자동 (비어 있고 이 번호로 걸 수 있는 휴대폰)",
+  er_phone: "전화할 번호",
+  er_phone_auto: "자동 (비어 있고 이 번호로 걸 수 있는 회선)",
   er_phone_normal: "{name} (일반 휴대폰 모드라 AI가 쓸 수 없음)",
   er_phone_h: "일반 휴대폰 모드인 휴대폰으로는 AI가 전화할 수 없습니다. 시스템 화면에서 AI 응답으로 바꾸세요.",
   er_start: "전화 걸기",
@@ -6320,6 +6389,31 @@ I18N["ko"] = {
   er_err_empty_text: "전할 말을 적어 주세요.",
   er_err_text_too_long: "너무 깁니다. 줄여 주세요.",
   er_err_question_closed: "이 질문은 이미 답변되었거나 시간이 지났습니다.",
+  theme_dark: "어둡게",
+  theme_light: "밝게",
+  d_dl_rec: "녹음 다운로드",
+  d_del_call: "삭제",
+  d_del_call_t: "이 통화 기록을 삭제할까요?",
+  d_del_call_b: "요약, 대화 내용, 녹음 파일이 모두 삭제되며 복구할 수 없습니다.",
+  d_del_call_done: "통화 기록을 삭제했습니다",
+  calls_clear_all: "전체 삭제",
+  calls_clear_t: "통화 기록을 모두 삭제할까요?",
+  calls_clear_b: "종료된 모든 통화 기록과 녹음 파일이 삭제되며 복구할 수 없습니다. 진행 중인 통화는 유지됩니다.",
+  calls_cleared: "통화 기록 {n}건을 삭제했습니다",
+  err_call_in_progress: "통화 중에는 삭제할 수 없습니다. 통화가 끝난 뒤 다시 시도하세요.",
+  ph_forget: "삭제",
+  ph_forget_t: "'{name}' 기기를 삭제할까요?",
+  ph_forget_b: "연결되지 않은 이 휴대폰을 목록에서 지웁니다. 이전 통화 기록은 그대로 남습니다.",
+  ph_forgot: "'{name}' 기기를 삭제했습니다",
+  err_device_online: "연결된 휴대폰은 삭제할 수 없습니다. 먼저 연결을 해제하세요.",
+  err_device_in_call: "통화 중인 휴대폰은 삭제할 수 없습니다. 통화가 끝난 뒤 다시 시도하세요.",
+  ph_sim_num_ph: "이 유심의 전화번호 입력",
+  ph_sim_save: "저장",
+  ph_sim_edit: "수정",
+  ph_sim_saved: "번호가 저장되었습니다",
+  ph_sim_unset: "번호 미입력",
+  er_line_unset: "{name} · {region} (번호 미입력)",
+  live_to: "{line} 수신",
 };
 
 I18N["es"] = {
@@ -6925,7 +7019,7 @@ I18N["es"] = {
   ph_link_ok: "La conexión USB funciona y la aplicación está instalada",
   ph_link_bad: "La conexión USB aún no está lista. Espera unos segundos.",
   usb_off: "El asistente USB está desactivado",
-  usb_off_d: "USB_BRIDGE=off: los teléfonos tienen que conectarse a Bageo de otra forma.",
+  usb_off_d: "Los teléfonos se conectan a Bageo por la red.",
   usb_noadb: "No se encontró adb",
   usb_noadb_d: "Los teléfonos conectados por USB no se pueden configurar automáticamente. Instala las platform-tools de Android o define ADB_BIN.",
   usb_error: "Problema con el USB",
@@ -7165,8 +7259,8 @@ I18N["es"] = {
   er_id_owner_anon: "Tú en persona",
   er_id_assistant_d: "La IA dice que llama de tu parte, como tu asistente.",
   er_id_owner_d: "La IA habla como si fueras tú.",
-  er_phone: "Teléfono para llamar",
-  er_phone_auto: "Automático (uno libre que pueda llamar a este número)",
+  er_phone: "Número desde el que llamar",
+  er_phone_auto: "Automático (una línea libre que pueda llamar a este número)",
   er_phone_normal: "{name} (modo teléfono normal, la IA no puede usarlo)",
   er_phone_h: "Un teléfono en modo normal no puede hacer llamadas de la IA. Vuelve a ponerlo en respuesta con IA en la página Sistema.",
   er_start: "Llamar",
@@ -7319,6 +7413,31 @@ I18N["es"] = {
   er_err_empty_text: "Escribe lo que quieres decir.",
   er_err_text_too_long: "Es demasiado largo. Acórtalo.",
   er_err_question_closed: "Esa pregunta ya se respondió o caducó.",
+  theme_dark: "Oscuro",
+  theme_light: "Claro",
+  d_dl_rec: "Descargar grabación",
+  d_del_call: "Eliminar",
+  d_del_call_t: "¿Eliminar esta llamada?",
+  d_del_call_b: "Se borrarán también el resumen, la transcripción y la grabación.",
+  d_del_call_done: "Llamada eliminada",
+  calls_clear_all: "Eliminar todo",
+  calls_clear_t: "¿Eliminar todo el historial?",
+  calls_clear_b: "Se borrarán todas las llamadas terminadas y sus grabaciones. Las llamadas en curso se mantienen.",
+  calls_cleared: "Se eliminaron {n} llamadas",
+  err_call_in_progress: "Espera a que termine la llamada para eliminarla.",
+  ph_forget: "Eliminar",
+  ph_forget_t: "¿Eliminar «{name}»?",
+  ph_forget_b: "Quita este teléfono desconectado de la lista. El historial de llamadas se conserva.",
+  ph_forgot: "Se eliminó «{name}»",
+  err_device_online: "Desconecta este teléfono antes de eliminarlo.",
+  err_device_in_call: "Espera a que termine la llamada en este teléfono.",
+  ph_sim_num_ph: "Escribe el número de esta SIM",
+  ph_sim_save: "Guardar",
+  ph_sim_edit: "Editar",
+  ph_sim_saved: "Número guardado",
+  ph_sim_unset: "sin número",
+  er_line_unset: "{name} · {region} (sin número)",
+  live_to: "a {line}",
 };
 
 I18N["fr"] = {
@@ -7924,7 +8043,7 @@ I18N["fr"] = {
   ph_link_ok: "La liaison USB fonctionne et l'application est installée",
   ph_link_bad: "La liaison USB n'est pas encore prête. Patientez quelques secondes.",
   usb_off: "L'assistant USB est désactivé",
-  usb_off_d: "USB_BRIDGE=off : les téléphones doivent joindre Bageo autrement.",
+  usb_off_d: "Les téléphones se connectent à Bageo par le réseau.",
   usb_noadb: "adb est introuvable",
   usb_noadb_d: "Les téléphones branchés en USB ne peuvent pas être configurés automatiquement. Installez les platform-tools Android ou définissez ADB_BIN.",
   usb_error: "Problème USB",
@@ -8164,8 +8283,8 @@ I18N["fr"] = {
   er_id_owner_anon: "Vous en personne",
   er_id_assistant_d: "L'IA dit qu'elle appelle de votre part, comme votre assistant.",
   er_id_owner_d: "L'IA parle comme si c'était vous.",
-  er_phone: "Téléphone pour appeler",
-  er_phone_auto: "Automatique (un téléphone libre qui peut appeler ce numéro)",
+  er_phone: "Numéro utilisé pour appeler",
+  er_phone_auto: "Automatique (une ligne libre qui peut appeler ce numéro)",
   er_phone_normal: "{name} (mode téléphone normal, l'IA ne peut pas l'utiliser)",
   er_phone_h: "Un téléphone en mode normal ne peut pas passer d'appels IA. Remettez-le en réponse par l'IA dans la page Système.",
   er_start: "Lancer l'appel",
@@ -8318,6 +8437,31 @@ I18N["fr"] = {
   er_err_empty_text: "Écrivez ce que vous voulez dire.",
   er_err_text_too_long: "C'est trop long. Raccourcissez-le.",
   er_err_question_closed: "Cette question a déjà reçu une réponse ou a expiré.",
+  theme_dark: "Sombre",
+  theme_light: "Clair",
+  d_dl_rec: "Télécharger l’audio",
+  d_del_call: "Supprimer",
+  d_del_call_t: "Supprimer cet appel ?",
+  d_del_call_b: "Le résumé, la transcription et l’enregistrement seront aussi supprimés.",
+  d_del_call_done: "Appel supprimé",
+  calls_clear_all: "Tout supprimer",
+  calls_clear_t: "Supprimer tout l’historique ?",
+  calls_clear_b: "Tous les appels terminés et leurs enregistrements seront supprimés. Les appels en cours restent.",
+  calls_cleared: "{n} appels supprimés",
+  err_call_in_progress: "Attendez la fin de l’appel avant de le supprimer.",
+  ph_forget: "Supprimer",
+  ph_forget_t: "Supprimer « {name} » ?",
+  ph_forget_b: "Retire ce téléphone hors ligne de la liste. L’historique des appels est conservé.",
+  ph_forgot: "« {name} » supprimé",
+  err_device_online: "Débranchez d’abord ce téléphone avant de le supprimer.",
+  err_device_in_call: "Attendez la fin de l’appel sur ce téléphone.",
+  ph_sim_num_ph: "Saisir le numéro de cette carte SIM",
+  ph_sim_save: "Enregistrer",
+  ph_sim_edit: "Modifier",
+  ph_sim_saved: "Numéro enregistré",
+  ph_sim_unset: "numéro non renseigné",
+  er_line_unset: "{name} · {region} (numéro non renseigné)",
+  live_to: "vers {line}",
 };
 
 I18N["de"] = {
@@ -8923,7 +9067,7 @@ I18N["de"] = {
   ph_link_ok: "USB-Verbindung steht und die App ist installiert",
   ph_link_bad: "Die USB-Verbindung ist noch nicht eingerichtet. Warte ein paar Sekunden.",
   usb_off: "Der USB-Helfer ist ausgeschaltet",
-  usb_off_d: "USB_BRIDGE=off: Telefone müssen Bageo auf anderem Weg erreichen.",
+  usb_off_d: "Telefone verbinden sich über das Netzwerk mit Bageo.",
   usb_noadb: "adb wurde nicht gefunden",
   usb_noadb_d: "Telefone am USB können nicht automatisch eingerichtet werden. Installiere die Android platform-tools oder setze ADB_BIN.",
   usb_error: "USB-Problem",
@@ -9163,8 +9307,8 @@ I18N["de"] = {
   er_id_owner_anon: "Du persönlich",
   er_id_assistant_d: "Die KI sagt, dass sie als deine Assistenz in deinem Auftrag anruft.",
   er_id_owner_d: "Die KI spricht als du.",
-  er_phone: "Telefon zum Anrufen",
-  er_phone_auto: "Automatisch (ein freies Telefon, das diese Nummer anrufen kann)",
+  er_phone: "Nummer zum Anrufen",
+  er_phone_auto: "Automatisch (eine freie Leitung für diese Nummer)",
   er_phone_normal: "{name} (normaler Telefonmodus, die KI kann es nicht nutzen)",
   er_phone_h: "Ein Telefon im normalen Modus kann keine KI-Anrufe machen. Stell es auf der Seite System wieder auf KI-Annahme.",
   er_start: "Anruf starten",
@@ -9317,6 +9461,31 @@ I18N["de"] = {
   er_err_empty_text: "Schreib, was du sagen möchtest.",
   er_err_text_too_long: "Das ist zu lang. Bitte kürzen.",
   er_err_question_closed: "Diese Frage wurde schon beantwortet oder ist abgelaufen.",
+  theme_dark: "Dunkel",
+  theme_light: "Hell",
+  d_dl_rec: "Aufnahme laden",
+  d_del_call: "Löschen",
+  d_del_call_t: "Diesen Anruf löschen?",
+  d_del_call_b: "Zusammenfassung, Transkript und Aufnahme werden ebenfalls endgültig gelöscht.",
+  d_del_call_done: "Anruf gelöscht",
+  calls_clear_all: "Alle löschen",
+  calls_clear_t: "Gesamten Anrufverlauf löschen?",
+  calls_clear_b: "Alle beendeten Anrufe samt Aufnahmen werden endgültig gelöscht. Laufende Anrufe bleiben erhalten.",
+  calls_cleared: "{n} Anrufe gelöscht",
+  err_call_in_progress: "Bitte warte bis zum Ende des Anrufs, bevor du ihn löschst.",
+  ph_forget: "Löschen",
+  ph_forget_t: "„{name}“ löschen?",
+  ph_forget_b: "Entfernt dieses getrennte Telefon aus der Liste. Bisherige Anrufe bleiben erhalten.",
+  ph_forgot: "„{name}“ gelöscht",
+  err_device_online: "Trenne dieses Telefon zuerst, bevor du es löschst.",
+  err_device_in_call: "Bitte warte, bis das Gespräch auf diesem Telefon beendet ist.",
+  ph_sim_num_ph: "Nummer dieser SIM eingeben",
+  ph_sim_save: "Speichern",
+  ph_sim_edit: "Bearbeiten",
+  ph_sim_saved: "Nummer gespeichert",
+  ph_sim_unset: "keine Nummer",
+  er_line_unset: "{name} · {region} (keine Nummer)",
+  live_to: "an {line}",
 };
 
 I18N["pt"] = {
@@ -9922,7 +10091,7 @@ I18N["pt"] = {
   ph_link_ok: "A conexão USB está funcionando e o app está instalado",
   ph_link_bad: "A conexão USB ainda não está pronta. Aguarde alguns segundos.",
   usb_off: "O assistente de USB está desligado",
-  usb_off_d: "USB_BRIDGE=off: os telefones precisam se conectar ao Bageo de outro jeito.",
+  usb_off_d: "Os telefones conectam-se ao Bageo pela rede.",
   usb_noadb: "O adb não foi encontrado",
   usb_noadb_d: "Os telefones conectados por USB não podem ser configurados automaticamente. Instale as platform-tools do Android ou defina ADB_BIN.",
   usb_error: "Problema no USB",
@@ -10162,8 +10331,8 @@ I18N["pt"] = {
   er_id_owner_anon: "Você em pessoa",
   er_id_assistant_d: "A IA diz que está ligando em seu nome, como seu assistente.",
   er_id_owner_d: "A IA fala como se fosse você.",
-  er_phone: "Telefone para ligar",
-  er_phone_auto: "Automático (um livre que consiga ligar para este número)",
+  er_phone: "Número para ligar",
+  er_phone_auto: "Automático (uma linha livre para este número)",
   er_phone_normal: "{name} (modo telefone normal, a IA não pode usar)",
   er_phone_h: "Um telefone no modo normal não faz ligações da IA. Volte-o para atendimento por IA na página Sistema.",
   er_start: "Ligar",
@@ -10316,6 +10485,31 @@ I18N["pt"] = {
   er_err_empty_text: "Escreva o que você quer dizer.",
   er_err_text_too_long: "Ficou longo demais. Encurte.",
   er_err_question_closed: "Essa pergunta já foi respondida ou expirou.",
+  theme_dark: "Escuro",
+  theme_light: "Claro",
+  d_dl_rec: "Baixar gravação",
+  d_del_call: "Excluir",
+  d_del_call_t: "Excluir esta chamada?",
+  d_del_call_b: "O resumo, a transcrição e a gravação também serão excluídos sem volta.",
+  d_del_call_done: "Chamada excluída",
+  calls_clear_all: "Excluir tudo",
+  calls_clear_t: "Excluir todo o histórico?",
+  calls_clear_b: "Todas as chamadas encerradas e suas gravações serão excluídas. Chamadas em andamento permanecem.",
+  calls_cleared: "{n} chamadas excluídas",
+  err_call_in_progress: "Aguarde o fim da chamada antes de excluí-la.",
+  ph_forget: "Excluir",
+  ph_forget_t: "Excluir “{name}”?",
+  ph_forget_b: "Remove este celular desconectado da lista. O histórico de chamadas permanece.",
+  ph_forgot: "“{name}” excluído",
+  err_device_online: "Desconecte este celular antes de excluí-lo.",
+  err_device_in_call: "Aguarde o fim da chamada neste celular.",
+  ph_sim_num_ph: "Digite o número deste chip",
+  ph_sim_save: "Salvar",
+  ph_sim_edit: "Editar",
+  ph_sim_saved: "Número salvo",
+  ph_sim_unset: "sem número",
+  er_line_unset: "{name} · {region} (sem número)",
+  live_to: "para {line}",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word
@@ -10343,7 +10537,6 @@ const HTML_LANG = { "zh-TW": "zh-Hant-TW", "zh-CN": "zh-Hans-CN", pt: "pt-BR" };
 const INTL_LOCALE = { pt: "pt-BR" };
 
 const $ = (id) => document.getElementById(id);
-const SVGNS = "http://www.w3.org/2000/svg";
 const qs = new URLSearchParams(location.search);
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch (_) { return null; } },
@@ -10454,15 +10647,6 @@ function h(tag, attrs, ...kids) {
   // Strings become text nodes: nothing from a call or a setting is parsed as HTML.
   for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid);
   return el;
-}
-function icon(name, cls) {
-  const s = document.createElementNS(SVGNS, "svg");
-  s.setAttribute("class", "i" + (cls ? " " + cls : ""));
-  s.setAttribute("aria-hidden", "true");
-  const u = document.createElementNS(SVGNS, "use");
-  u.setAttribute("href", "#i-" + name);
-  s.append(u);
-  return s;
 }
 function clear(el) { el.textContent = ""; return el; }
 
@@ -10655,15 +10839,23 @@ $("netRetry").addEventListener("click", () => {
 });
 
 // ---------------------------------------------------------------- theme + language switchers
+function renderThemeBtn() {
+  const dark = document.documentElement.dataset.theme === "dark";
+  $("themeBtn").textContent = t(dark ? "theme_light" : "theme_dark");
+}
 $("themeBtn").addEventListener("click", () => {
   const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
   document.documentElement.dataset.theme = next;
   store.set("pca.theme", next);
+  renderThemeBtn();
 });
 const darkQuery = matchMedia("(prefers-color-scheme: dark)");
 if (darkQuery.addEventListener) {
   darkQuery.addEventListener("change", (e) => {
-    if (!store.get("pca.theme") && !qs.get("theme")) document.documentElement.dataset.theme = e.matches ? "dark" : "light";
+    if (!store.get("pca.theme") && !qs.get("theme")) {
+      document.documentElement.dataset.theme = e.matches ? "dark" : "light";
+      renderThemeBtn();
+    }
   });
 }
 function setLang(l) {
@@ -10671,6 +10863,7 @@ function setLang(l) {
   document.documentElement.lang = HTML_LANG[lang] || lang;
   $("langSel").value = lang;
   applyI18n();
+  renderThemeBtn();
   setTitle();
   renderPill();
   renderLive();
@@ -10799,6 +10992,23 @@ window.addEventListener("scroll", () => {
 let live = { ok: null, count: 0, calls: [], idle: 0, serials: [], normal: [] };
 let labels = {};
 const devName = (serial) => labels[serial] || serial || "";
+function phoneSims(serial) {
+  return (serial && devices && devices.sims && Array.isArray(devices.sims[serial])) ? devices.sims[serial] : [];
+}
+// Phone name + the SIM's own number (or country badge on dual-SIM when unset).
+function phoneLineLabel(serial, subId, country) {
+  const name = devName(serial);
+  const sims = phoneSims(serial);
+  let sim = null;
+  if (subId != null) sim = sims.find((x) => x.sub_id === subId);
+  if (!sim && country) sim = sims.find((x) => x.country === country);
+  if (!sim && sims.length === 1) sim = sims[0];
+  const num = sim && sim.effective_number ? String(sim.effective_number).trim() : "";
+  if (num) return name ? `${name} · ${num}` : num;
+  const iso = String((sim && sim.country) || country || "").trim().toUpperCase();
+  if (iso && sims.length > 1) return name ? `${name} · ${iso}` : iso;
+  return name;
+}
 const isLive = (c) => c.status === "ringing" || c.status === "active";
 let liveSig = null;
 let askedLabels = "";
@@ -10806,6 +11016,7 @@ async function pollLive() {
   try {
     const d = await api("/live");
     live = { ok: true, count: Number(d.count || 0), calls: d.calls || [], idle: Number(d.control_idle_clients || 0), serials: d.control_idle_serials || [], normal: d.normal_mode_serials || [] };
+    if (d.contacts_by_number) contactsByNumber = { ...contactsByNumber, ...d.contacts_by_number };
     if (!tokenDeclined) $("netBanner").hidden = true;
     const sig = live.calls.map((c) => c.id + c.status).join(",");
     if (liveSig !== null && sig !== liveSig) {
@@ -10849,8 +11060,11 @@ function renderLive() {
   const c = live.calls[0];
   if (live.count > 1) $("liveText").textContent = t("live_n", { n: live.count });
   else {
-    const parts = [t(c.status === "ringing" ? "k_ringing" : "live_active"), c.caller_id || t("hidden_number")];
-    if (devName(c.serial)) parts.push(devName(c.serial));
+    const who = contactOf(c);
+    const caller = who ? `${who.name}（${c.caller_id}）` : (c.caller_id || t("hidden_number"));
+    const parts = [t(c.status === "ringing" ? "k_ringing" : "live_active"), caller];
+    const line = phoneLineLabel(c.serial, c.sim_sub_id, c.sim_country);
+    if (line) parts.push(t("live_to", { line }));
     $("liveText").textContent = parts.join(" · ");
   }
   tickLiveClock();
@@ -11028,26 +11242,87 @@ async function refreshCalls(o) {
   }
   loadAppts();
 }
+function wavFileName(c, trackId) {
+  const d = c && c.started_at ? new Date(c.started_at) : null;
+  const p2 = (n) => String(n).padStart(2, "0");
+  const stamp = d && !isNaN(d)
+    ? `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}`
+    : String((c && c.id) || "call").slice(0, 8);
+  const suf = trackId && trackId !== "listen" ? `-${trackId}` : "";
+  return `bageo-${stamp}${suf}.wav`;
+}
+function downloadCallWav(c, tr) {
+  if (!c || !tr) return;
+  saveApiFile(`${apiBase}/audio/${encodeURIComponent(c.id)}${tr.path}?download=1`, wavFileName(c, tr.id));
+}
+async function deleteCallRecord(c) {
+  if (!c || isLive(c)) return;
+  const yes = await ask({ title: t("d_del_call_t"), body: t("d_del_call_b"), ok: t("d_del_call"), danger: true });
+  if (!yes) return;
+  try {
+    await api("/call/" + encodeURIComponent(c.id), { method: "DELETE" });
+    calls = calls.filter((x) => x.id !== c.id);
+    if (callsTotal > 0) callsTotal--;
+    if (detail.id === c.id) setHash("calls", true);
+    else renderCalls();
+    loadStats();
+    loadAppts();
+    toast(t("d_del_call_done"));
+  } catch (e) {
+    if (e.status !== 401) toast(e.message, true);
+  }
+}
+async function clearAllCalls() {
+  if (!calls.some((c) => !isLive(c))) return;
+  const yes = await ask({ title: t("calls_clear_t"), body: t("calls_clear_b"), ok: t("calls_clear_all"), danger: true });
+  if (!yes) return;
+  $("btnClearCalls").disabled = true;
+  try {
+    const d = await api("/calls/clear", jsonBody("POST", {}));
+    if (detail.call && !isLive(detail.call)) setHash("calls", true);
+    await refreshCalls();
+    toast(t("calls_cleared", { n: d.deleted ?? 0 }));
+  } catch (e) {
+    if (e.status !== 401) toast(e.message, true);
+  } finally {
+    $("btnClearCalls").disabled = false;
+  }
+}
 function callRow(c) {
   const k = callKind(c);
   const gist = gistOf(c);
   const who = contactOf(c);
-  return h("button", { type: "button", class: "call" + (c.id === detail.id ? " sel" : ""), dataset: { id: c.id } },
-    h("span", { class: "kico " + (k.k || "") }, icon(k.icon)),
+  const liveNow = isLive(c);
+  const tracks = liveNow ? [] : tracksFor(c);
+  const acts = h("span", { class: "call-acts" },
+    tracks.length ? h("button", {
+      type: "button", class: "btn xs", text: t("d_dl_rec"),
+      onclick: (ev) => { ev.stopPropagation(); downloadCallWav(c, tracks[0]); },
+    }) : null,
+    !liveNow ? h("button", {
+      type: "button", class: "btn xs danger", text: t("d_del_call"),
+      onclick: (ev) => { ev.stopPropagation(); deleteCallRecord(c); },
+    }) : null);
+  return h("div", {
+    class: "call" + (k.k ? " k-" + k.k : "") + (c.id === detail.id ? " sel" : ""),
+    dataset: { id: c.id }, attr: { role: "button", tabindex: "0" },
+  },
     h("span", { style: "min-width:0" },
       h("div", { class: "who", text: who ? who.name : c.caller_id || t("hidden_number") }),
       h("div", { class: "sub" },
         who ? h("span", { class: "mono", text: c.caller_id }) : null,
         h("span", { class: "tag " + k.tag, text: t(k.label) }),
-        devName(c.serial) ? h("span", { text: devName(c.serial) }) : null),
+        phoneLineLabel(c.serial, c.sim_sub_id, c.sim_country) ? h("span", { text: phoneLineLabel(c.serial, c.sim_sub_id, c.sim_country) }) : null),
       gist ? h("div", { class: "gist", text: gist }) : null),
     h("span", { class: "when" },
       h("span", { text: fmtWhen(c.started_at) }),
-      h("span", { text: isLive(c) ? "" : c.duration_ms ? fmtDur(c.duration_ms) : "" })));
+      liveNow ? null : c.duration_ms ? h("span", { text: fmtDur(c.duration_ms) }) : null,
+      acts.childElementCount ? acts : null));
 }
 function renderCalls() {
   const box = clear($("callList"));
   const q = $("fQ").value.trim();
+  $("btnClearCalls").hidden = listState !== "ok" || !calls.some((c) => !isLive(c));
   if (listState === "loading") {
     for (let i = 0; i < 4; i++) box.append(h("div", { class: "skel" }));
     $("moreWrap").hidden = true;
@@ -11055,7 +11330,7 @@ function renderCalls() {
     return;
   }
   if (listState === "error") {
-    box.append(h("div", { class: "card empty" }, icon("alert"),
+    box.append(h("div", { class: "card empty" },
       h("h3", { text: t("err_load", { msg: listError }) }),
       h("p", {}, h("button", { type: "button", class: "btn", style: "margin-top:12px", onclick: () => refreshCalls(), text: t("retry") }))));
     $("moreWrap").hidden = true;
@@ -11067,11 +11342,11 @@ function renderCalls() {
   const total = clientMode() ? all.length : callsTotal;
   if (!rows.length) {
     if (q || kindFilter()) {
-      box.append(h("div", { class: "card empty" }, icon("search"),
+      box.append(h("div", { class: "card empty" },
         h("h3", { text: t("empty_filtered") }),
         h("p", {}, h("button", { type: "button", class: "btn", style: "margin-top:12px", text: t("empty_clear"), onclick: () => { $("fQ").value = ""; $("fKind").value = ""; refreshCalls(); } }))));
     } else {
-      box.append(h("div", { class: "card empty" }, icon("phone"), h("h3", { text: t("empty_title") }), h("p", { text: t("empty_body") })));
+      box.append(h("div", { class: "card empty" }, h("h3", { text: t("empty_title") }), h("p", { text: t("empty_body") })));
     }
   } else {
     for (const c of rows) box.append(callRow(c));
@@ -11080,13 +11355,20 @@ function renderCalls() {
   $("listMeta").textContent = rows.length && total > rows.length ? t("list_count", { a: rows.length, b: total }) : "";
 }
 $("callList").addEventListener("click", (e) => {
+  if (e.target.closest(".call-acts")) return;
   const b = e.target.closest(".call");
   if (b) setHash("call=" + b.dataset.id, !!detail.id);
+});
+$("callList").addEventListener("keydown", (e) => {
+  if ((e.key !== "Enter" && e.key !== " ") || e.target.closest(".call-acts")) return;
+  const b = e.target.closest(".call");
+  if (b) { e.preventDefault(); setHash("call=" + b.dataset.id, !!detail.id); }
 });
 $("btnMore").addEventListener("click", () => {
   if (clientMode()) { shown += PAGE; renderCalls(); } else refreshCalls({ append: true });
 });
 $("btnRefresh").addEventListener("click", () => refreshCalls());
+$("btnClearCalls").addEventListener("click", clearAllCalls);
 let qTimer = 0;
 $("fQ").addEventListener("input", () => { clearTimeout(qTimer); qTimer = setTimeout(() => refreshCalls(), 300); });
 $("fKind").addEventListener("change", () => refreshCalls());
@@ -11260,10 +11542,11 @@ function renderDetail() {
   $("btnCopyNum").hidden = !String(c.caller_id || "").trim();
   const meta = clear($("dMeta"));
   if (who) meta.append(h("span", { class: "mono", text: c.caller_id }));
-  meta.append(h("span", { class: "tag " + k.tag }, icon(k.icon, "sm"), t(k.label)));
+  meta.append(h("span", { class: "tag " + k.tag, text: t(k.label) }));
   meta.append(h("span", { text: fmtFull(c.started_at) }));
   if (!isLive(c) && c.duration_ms) meta.append(h("span", {}, "· ", fmtDur(c.duration_ms)));
-  if (devName(c.serial)) meta.append(h("span", {}, "· ", devName(c.serial)));
+  const detailLine = phoneLineLabel(c.serial, c.sim_sub_id, c.sim_country);
+  if (detailLine) meta.append(h("span", {}, "· ", detailLine));
 
   // Summary
   const sum = clear($("dSummary"));
@@ -11276,7 +11559,7 @@ function renderDetail() {
       else sum.append(h("div", { class: "plain", text: l.text }));
     }
     const src = n && n.source;
-    if (src === "fallback" || src === "no_key") sumNotes.append(h("p", { class: "note" }, icon("info", "sm"), h("span", { text: t(src === "fallback" ? "d_src_fallback" : "d_src_nokey") })));
+    if (src === "fallback" || src === "no_key") sumNotes.append(h("p", { class: "note", text: t(src === "fallback" ? "d_src_fallback" : "d_src_nokey") }));
   } else if (isLive(c)) {
     sum.append(h("p", { class: "plain muted", text: t("d_live") }));
   } else if (n === undefined || (n === null && endedRecently(c))) {
@@ -11309,7 +11592,7 @@ function renderDetail() {
 
   // Recording: keep the player where it is when only the text around it changed.
   const tracks = tracksFor(c);
-  $("dTracks").hidden = $("dAudio").hidden = $("dTrackHint").hidden = !tracks.length;
+  $("dTracks").hidden = $("dAudio").hidden = $("dTrackHint").hidden = $("btnDlRec").hidden = !tracks.length;
   $("dNoRec").hidden = !!tracks.length || isLive(c);
   $("dRecSec").hidden = !tracks.length && isLive(c);
   const want = tracks.some((x) => x.id === detail.track) ? detail.track : (tracks[0] || {}).id || "";
@@ -11353,6 +11636,7 @@ function renderDetail() {
   // Actions + technical details
   $("btnBlock").hidden = String(c.caller_id || "").replace(/\D/g, "").length < 5;
   $("btnAddContact").hidden = !!who || String(c.caller_id || "").replace(/\D/g, "").length < 5;
+  $("btnDeleteCall").hidden = isLive(c);
   const kv = clear($("dKv"));
   const row = (label, value, mono) => { kv.append(h("dt", { text: label }), h("dd", { class: mono ? "mono" : "", text: value })); };
   row(t("d_phone"), devName(c.serial) === c.serial ? c.serial : `${devName(c.serial)} (${c.serial})`);
@@ -11363,6 +11647,14 @@ function renderDetail() {
   for (const e of eventTags(c.events)) evs.append(h("span", { class: "tag", title: e.code, text: e.text }));
 }
 $("btnCopyNum").addEventListener("click", () => { if (detail.call) copyWithToast(detail.call.caller_id || ""); });
+$("btnDlRec").addEventListener("click", () => {
+  const c = detail.call;
+  if (!c) return;
+  const tracks = tracksFor(c);
+  const tr = tracks.find((x) => x.id === detail.track) || tracks[0];
+  downloadCallWav(c, tr);
+});
+$("btnDeleteCall").addEventListener("click", () => { if (detail.call) deleteCallRecord(detail.call); });
 $("dScamFb").addEventListener("click", async (e) => {
   const b = e.target.closest("button[data-fb]");
   const c = detail.call;
@@ -11475,8 +11767,7 @@ function contactRow(c) {
   const phones = (c.phones || []).filter(Boolean);
   if (!phones.length || c.kind === "blacklist") return row;
   return h("div", { class: "ct-item" }, row,
-    h("button", { type: "button", class: "btn sm ct-call", title: t("er_ct_call"), "aria-label": t("er_ct_call") + " · " + c.name, onclick: () => errandFromContact(c) },
-      icon("phone-out", "sm"), h("span", { text: t("er_ct_call") })));
+    h("button", { type: "button", class: "btn sm ct-call", title: t("er_ct_call"), "aria-label": t("er_ct_call") + " · " + c.name, onclick: () => errandFromContact(c), text: t("er_ct_call") }));
 }
 function renderContacts() {
   const box = clear($("ctList"));
@@ -11500,14 +11791,14 @@ function renderContacts() {
     return;
   }
   if (cts.state === "error") {
-    box.append(h("div", { class: "card empty" }, icon("alert"),
+    box.append(h("div", { class: "card empty" },
       h("h3", { text: t("err_load", { msg: cts.error }) }),
       h("p", {}, h("button", { type: "button", class: "btn", style: "margin-top:12px", onclick: () => loadContacts(), text: t("retry") }))));
     return;
   }
   if (!cts.list.length) {
-    if ($("ctQ").value.trim() || cts.kind !== "all") box.append(h("div", { class: "card empty" }, icon("search"), h("h3", { text: t("ct_empty_filtered") })));
-    else box.append(h("div", { class: "card empty" }, icon("users"), h("h3", { text: t("ct_empty_title") }), h("p", { text: t("ct_empty_body") })));
+    if ($("ctQ").value.trim() || cts.kind !== "all") box.append(h("div", { class: "card empty" }, h("h3", { text: t("ct_empty_filtered") })));
+    else box.append(h("div", { class: "card empty" }, h("h3", { text: t("ct_empty_title") }), h("p", { text: t("ct_empty_body") })));
     return;
   }
   for (const c of cts.list) box.append(contactRow(c));
@@ -11668,7 +11959,6 @@ function impStatus(msg, kind) {
   el.className = "ct-imp-status" + (kind === "err" ? " err" : "");
   if (!msg) return;
   if (kind === "busy") el.append(h("span", { class: "spin" }));
-  else if (kind === "err") el.append(icon("alert", "sm"));
   el.append(h("span", { class: "grow", text: msg }));
 }
 // What Gemini answered is worth showing (a quota, a refusal).
@@ -11832,12 +12122,12 @@ function buildSecrets() {
   document.querySelectorAll("[data-secret]").forEach((box) => {
     const key = box.dataset.secret;
     const input = h("input", { type: "password", id: "f-" + key, autocomplete: "new-password", attr: { spellcheck: "false" }, dataset: { k: key, t: "secret" } });
-    const eye = h("button", { type: "button", class: "icon-btn bordered", dataset: { i18nAria: "show" }, onclick: () => {
+    const eye = h("button", { type: "button", class: "btn sm", dataset: { i18n: "show" }, onclick: () => {
       const showing = input.type === "text";
       input.type = showing ? "password" : "text";
-      clear(eye).append(icon(showing ? "eye" : "eye-off"));
-      eye.setAttribute("aria-label", t(showing ? "show" : "hide"));
-    } }, icon("eye"));
+      eye.dataset.i18n = showing ? "show" : "hide";
+      eye.textContent = t(eye.dataset.i18n);
+    } });
     const removeBtn = h("button", { type: "button", class: "btn sm ghost", style: "padding-left:0", dataset: { i18n: "sec_remove" }, onclick: () => { input.dataset.clear = "1"; input.value = ""; refreshSecret(key); updateDirty(); } });
     const pending = h("span", { class: "help", hidden: true },
       h("span", { dataset: { i18n: "sec_will_remove" } }), " ",
@@ -11916,7 +12206,7 @@ function rejectRow(e) {
   return h("div", { class: "brow" },
     h("input", { type: "tel", class: "b-num", value: e.number, autocomplete: "off", placeholder: t("b_number_ph"), "aria-label": t("b_number") }),
     h("input", { type: "text", class: "b-why", value: e.reason, attr: { maxlength: "80" }, placeholder: t("b_reason_ph"), "aria-label": t("b_reason") }),
-    h("button", { type: "button", class: "icon-btn b-del", title: t("b_remove"), "aria-label": t("b_remove") }, icon("trash")));
+    h("button", { type: "button", class: "btn sm ghost b-del", title: t("b_remove"), "aria-label": t("b_remove"), text: t("ct_delete") }));
 }
 function renderRejectRows(list) {
   const box = clear($("blockRows"));
@@ -11974,7 +12264,7 @@ function simLangRow(e) {
   for (const code of (S && S.languages) || LANGS) lg.append(h("option", { value: code, text: LANG_NAMES[code] || code }));
   lg.value = e.lang || "";
   return h("div", { class: "brow slrow" }, cc, lg,
-    h("button", { type: "button", class: "icon-btn sl-del", title: t("sl_remove"), "aria-label": t("sl_remove") }, icon("trash")));
+    h("button", { type: "button", class: "btn sm ghost sl-del", title: t("sl_remove"), "aria-label": t("sl_remove"), text: t("ct_delete") }));
 }
 function renderSimLangRows(list) {
   const box = clear($("simLangRows"));
@@ -12064,12 +12354,11 @@ function chanInput(c, f, label, secret) {
     attr: { spellcheck: "false", maxlength: f === "name" ? "60" : "2000" }, oninput: () => { c[f] = input.value; updateDirty(); } });
   let control = input;
   if (secret) {
-    const eye = h("button", { type: "button", class: "icon-btn bordered", "aria-label": t("show"), onclick: () => {
+    const eye = h("button", { type: "button", class: "btn sm", text: t("show"), onclick: () => {
       const showing = input.type === "text";
       input.type = showing ? "password" : "text";
-      clear(eye).append(icon(showing ? "eye" : "eye-off"));
-      eye.setAttribute("aria-label", t(showing ? "show" : "hide"));
-    } }, icon("eye"));
+      eye.textContent = t(showing ? "show" : "hide");
+    } });
     control = h("div", { class: "with-btn" }, input, eye);
   }
   return h("div", { class: "field" },
@@ -12084,7 +12373,7 @@ function chanCard(c) {
   if (info.app_token) fields.append(chanInput(c, "app_token", chanFieldLabel(c.kind, "app_token"), true));
   if (info.target) fields.append(chanInput(c, "target", chanFieldLabel(c.kind, "target"), false));
   const res = h("span", { class: "res", "aria-live": "polite" });
-  const testBtn = h("button", { type: "button", class: "btn sm", onclick: async () => {
+  const testBtn = h("button", { type: "button", class: "btn sm", text: t("n_test"), onclick: async () => {
     testBtn.disabled = true;
     res.className = "res muted";
     res.title = "";
@@ -12098,20 +12387,19 @@ function chanCard(c) {
       res.textContent = t("n_test_fail", { msg: e.message });
       res.title = e.detail && e.detail !== e.message ? e.detail : "";
     } finally { testBtn.disabled = false; }
-  } }, icon("send", "sm"), t("n_test"));
+  } });
   const card = h("div", { class: "chan" + (c.enabled ? "" : " offc") });
   const sw = h("input", { type: "checkbox", checked: !!c.enabled, "aria-label": t("n_enabled"), onchange: () => { c.enabled = sw.checked; card.classList.toggle("offc", !c.enabled); updateDirty(); } });
   const hint = tCode("hint_", c.kind);
   card.append(
     h("div", { class: "chan-head" },
-      icon("bell"),
       h("span", { class: "kind", text: kindLabel(c.kind) }),
       c.id ? null : h("span", { class: "tag warn", text: t("n_new") }),
       h("label", { class: "sw" }, h("span", { text: t("n_enabled") }), sw),
-      h("button", { type: "button", class: "icon-btn", title: t("n_delete"), "aria-label": t("n_delete"), onclick: () => { chans = chans.filter((x) => x !== c); renderChannels(); updateDirty(); } }, icon("trash"))),
-    fields,
-    hint !== c.kind ? h("p", { class: "help", text: hint }) : null,
-    h("div", { class: "chan-foot" }, testBtn, res));
+      h("button", { type: "button", class: "btn sm ghost", title: t("n_delete"), "aria-label": t("n_delete"), text: t("ct_delete"), onclick: () => { chans = chans.filter((x) => x !== c); renderChannels(); updateDirty(); } })),
+    fields);
+  if (hint !== c.kind) card.append(h("p", { class: "help", text: hint }));
+  card.append(h("div", { class: "chan-foot" }, testBtn, res));
   const ctl = chanControl(c);
   if (ctl) fields.after(ctl);
   return card;
@@ -12379,9 +12667,7 @@ function renderSetup() {
   const mark = (id, done) => {
     const el = $(id);
     el.classList.toggle("done", done);
-    const num = el.querySelector(".num");
-    clear(num);
-    if (done) num.append(icon("check", "sm")); else num.textContent = id.slice(-1);
+    el.querySelector(".num").textContent = id.slice(-1);
   };
   mark("step1", basics);
   mark("step2", live.idle > 0 || live.count > 0);
@@ -12638,53 +12924,157 @@ async function loadSystem() {
   if (!S) loadSettings();
   renderSystem();
 }
-function sysItem(level, ic, title, lines, action) {
+function sysItem(level, title, lines, action, extra) {
   return h("div", { class: "item" },
-    h("span", { class: "ic " + level }, icon(ic, "sm")),
-    h("div", { class: "grow" }, h("b", { text: title }), (lines || []).filter(Boolean).map((l) => h("div", { class: "d", text: l }))),
+    h("span", { class: "sdot" + (level ? " " + level : ""), attr: { "aria-hidden": "true" } }),
+    h("div", { class: "grow" }, h("b", { text: title }), (lines || []).filter(Boolean).map((l) => h("div", { class: "d", text: l })), extra || null),
     action || null);
+}
+const simEdit = {};
+const simDraft = {};
+const simBusy = {};
+async function saveSimNumber(serial, subId, country, rawVal) {
+  const key = `${serial}:${subId}`;
+  if (simBusy[key]) return;
+  simBusy[key] = true;
+  renderSystem();
+  try {
+    const r = await api("/devices/" + encodeURIComponent(serial) + "/sim-number",
+      jsonBody("PUT", { sub_id: subId, country: country || "", number: String(rawVal || "").trim() }));
+    if (devices) {
+      if (!devices.sims) devices.sims = {};
+      devices.sims[serial] = r.sims || [];
+    }
+    delete simEdit[key];
+    delete simDraft[key];
+    toast(t("ph_sim_saved"));
+    erRenderPhones();
+    if (view === "calls") { renderCalls(); renderLive(); if (detail.call) renderDetail(); }
+  } catch (e) {
+    if (e.status !== 401) toast(e.message, true);
+  } finally {
+    delete simBusy[key];
+    renderSystem();
+  }
+}
+function phoneSimBlock(serial) {
+  const rawSims = phoneSims(serial);
+  const rows = rawSims.length ? rawSims : [{ sub_id: -1, country: "", carrier: "", effective_number: "" }];
+  const wrap = h("div", { class: "sim-list" });
+  for (const sim of rows) {
+    const subId = Number.isFinite(sim.sub_id) ? sim.sub_id : -1;
+    const key = `${serial}:${subId}`;
+    const eff = String(sim.effective_number || "").trim();
+    const editing = !!simEdit[key] || !eff;
+    const tagParts = [];
+    if (sim.country) tagParts.push(String(sim.country).toUpperCase());
+    if (sim.carrier) tagParts.push(String(sim.carrier));
+    const badge = tagParts.length ? h("span", { class: "sim-badge", text: tagParts.join(" · ") }) : null;
+    if (!editing) {
+      wrap.append(h("div", { class: "sim-row" },
+        badge,
+        h("span", { class: "sim-num", text: eff }),
+        h("button", {
+          type: "button", class: "btn xs ghost", text: t("ph_sim_edit"),
+          onclick: () => { simEdit[key] = true; simDraft[key] = eff; renderSystem(); },
+        })));
+    } else {
+      const inp = h("input", {
+        type: "tel", class: "sim-in", maxlength: "24", autocomplete: "off", spellcheck: "false",
+        placeholder: t("ph_sim_num_ph"), value: key in simDraft ? simDraft[key] : eff,
+        oninput: (ev) => { simDraft[key] = ev.target.value; },
+        onkeydown: (ev) => {
+          if (ev.key === "Enter") { ev.preventDefault(); saveSimNumber(serial, subId, sim.country, inp.value); }
+          else if (ev.key === "Escape" && eff) { delete simEdit[key]; delete simDraft[key]; renderSystem(); }
+        },
+      });
+      wrap.append(h("div", { class: "sim-row" },
+        badge,
+        inp,
+        h("button", {
+          type: "button", class: "btn xs", disabled: !!simBusy[key], text: t("ph_sim_save"),
+          onclick: () => saveSimNumber(serial, subId, sim.country, inp.value),
+        }),
+        eff ? h("button", {
+          type: "button", class: "btn xs ghost", text: t("cancel"),
+          onclick: () => { delete simEdit[key]; delete simDraft[key]; renderSystem(); },
+        }) : null));
+    }
+  }
+  return wrap;
+}
+const forgetBusy = {};
+async function forgetPhone(serial, name) {
+  if (forgetBusy[serial]) return;
+  const yes = await ask({ title: t("ph_forget_t", { name }), body: t("ph_forget_b"), ok: t("ph_forget"), danger: true });
+  if (!yes) return;
+  forgetBusy[serial] = true;
+  renderSystem();
+  try {
+    await api("/devices/" + encodeURIComponent(serial), { method: "DELETE" });
+    delete labels[serial];
+    if (devices && devices.labels) delete devices.labels[serial];
+    if (S && S.device_labels) delete S.device_labels[serial];
+    toast(t("ph_forgot", { name }));
+  } catch (e) {
+    if (e.status !== 401) toast(e.message, true);
+  } finally {
+    delete forgetBusy[serial];
+  }
+  await loadSystem();
+  loadSettings();
 }
 function renderSystem() {
   $("sysMeta").textContent = t("sys_updated", { time: new Intl.DateTimeFormat(loc(), { timeStyle: "medium" }).format(new Date()) });
   // Phones
   const box = clear($("sysPhones"));
   if (sysError && !devices) {
-    box.append(sysItem("bad", "alert", t("err_load", { msg: sysError }), []));
+    box.append(sysItem("bad", t("err_load", { msg: sysError }), []));
   } else if (devices) {
     const usb = devices.usb || {};
     const connected = devices.connected || [];
     const busy = new Map(live.calls.map((c) => [c.serial, c]));
     const phoneInfo = new Map((devices.phones || []).map((p) => [p.serial, p]));
     box.append(h("h3", { style: "margin-top:0", text: t("sys_connected") }));
-    if (!connected.length) box.append(sysItem("bad", "x", t("pill_none"), [t("ph_none")]));
+    if (!connected.length) box.append(sysItem("bad", t("pill_none"), [t("ph_none")]));
     for (const s of connected) box.append(phoneItem(s, busy.get(s), phoneInfo.get(s)));
-    for (const s of Object.keys(devices.labels || {})) {
-      if (connected.includes(s)) continue;
+    const offlineSet = new Set([
+      ...Object.keys(devices.labels || {}),
+      ...(devices.phones || []).filter((p) => !p.connected).map((p) => p.serial),
+    ].filter((s) => s && !connected.includes(s)));
+    for (const s of Array.from(offlineSet).sort()) {
       const seen = phoneInfo.get(s);
-      box.append(sysItem("", "device", devName(s), [t("ph_seen"),
-        seen && seen.last_seen_ms ? t("ph_last_seen", { time: fmtWhen(new Date(seen.last_seen_ms).toISOString()) }) : "", s]));
+      const name = devName(s) !== s ? devName(s) : (seen && seen.model) || s;
+      const lines = [
+        t("ph_seen"),
+        seen && seen.last_seen_ms ? t("ph_last_seen", { time: fmtWhen(new Date(seen.last_seen_ms).toISOString()) }) : "",
+        name !== s ? s : "",
+      ];
+      const act = h("button", {
+        type: "button", class: "btn sm danger", disabled: !!forgetBusy[s],
+        text: t("ph_forget"), onclick: () => forgetPhone(s, name),
+      });
+      box.append(sysItem("", name, lines, act));
     }
-    box.append(h("h3", { text: t("sys_usb") }));
-    if (!usb.enabled) box.append(sysItem("", "info", t("usb_off"), [t("usb_off_d")]));
-    else {
-      if (!usb.adb_found) box.append(sysItem("warn", "alert", t("usb_noadb"), [t("usb_noadb_d")]));
-      if (usb.error) box.append(sysItem("bad", "alert", t("usb_error"), [usb.error]));
+    if (usb.enabled) {
+      box.append(h("h3", { text: t("sys_usb") }));
+      if (!usb.adb_found) box.append(sysItem("warn", t("usb_noadb"), [t("usb_noadb_d")]));
+      if (usb.error) box.append(sysItem("bad", t("usb_error"), [usb.error]));
       const phones = usb.phones || [];
-      if (usb.adb_found && !phones.length) box.append(sysItem("", "device", t("usb_none"), [t("ph_none")]));
+      if (usb.adb_found && !phones.length) box.append(sysItem("", t("usb_none"), [t("ph_none")]));
       for (const p of phones) {
-        let level = "ok", ic = "check", lines = [];
-        if (p.state === "unauthorized") { level = "warn"; ic = "alert"; lines = [t("ph_unauth")]; }
-        else if (p.state === "offline") { level = "warn"; ic = "alert"; lines = [t("ph_offline")]; }
-        else if (p.state !== "device") { level = "warn"; ic = "alert"; lines = [t("ph_state", { state: p.state || "?" })]; }
-        else if (p.app_installed === false) { level = "bad"; ic = "x"; lines = [t("ph_noapp")]; }
-        else if (!p.reverse) { level = "warn"; ic = "alert"; lines = [t("ph_link_bad")]; }
+        let level = "ok", lines = [];
+        if (p.state === "unauthorized") { level = "warn"; lines = [t("ph_unauth")]; }
+        else if (p.state === "offline") { level = "warn"; lines = [t("ph_offline")]; }
+        else if (p.state !== "device") { level = "warn"; lines = [t("ph_state", { state: p.state || "?" })]; }
+        else if (p.app_installed === false) { level = "bad"; lines = [t("ph_noapp")]; }
+        else if (!p.reverse) { level = "warn"; lines = [t("ph_link_bad")]; }
         else lines = [t("ph_link_ok")];
         if (p.model) lines.push(p.serial);
-        box.append(sysItem(level, ic, p.model || p.serial, lines));
+        box.append(sysItem(level, p.model || p.serial, lines));
       }
       if (usb.adb_path) box.append(h("p", { class: "help mono", text: "adb: " + usb.adb_path }));
     }
-    box.append(h("p", { class: "help", text: t("sys_calls_now", { n: devices.calls_in_progress ?? live.count }) }));
   }
 
   // Checklist
@@ -12700,7 +13090,7 @@ function renderSystem() {
     ];
     if (S.gemini_live_enabled === false) items.unshift({ ok: false, label: t("chk_ai_off"), bad: t("chk_ai_off_bad"), href: "#settings/basics" });
     for (const it of items) {
-      chk.append(sysItem(it.ok ? "ok" : "bad", it.ok ? "check" : "x", it.label, it.ok ? [] : [it.bad],
+      chk.append(sysItem(it.ok ? "ok" : "bad", it.label, it.ok ? [] : [it.bad],
         !it.ok && it.href ? h("a", { class: "btn sm", href: it.href, text: t("chk_fix") }) : null));
     }
     if (items.every((it) => it.ok)) chk.append(h("p", { class: "help", text: t("chk_all") }));
@@ -12727,8 +13117,12 @@ function phoneItem(s, call, ph) {
   const normal = !!ph && ph.mode === "normal";
   const inCall = !!call || !!(ph && ph.in_call);
   const lines = [];
-  if (call) lines.push(`${t("ph_incall")} · ${call.caller_id || t("hidden_number")}`);
-  else if (inCall) lines.push(t("ph_incall"));
+  if (call) {
+    const calledLine = phoneLineLabel(s, call.sim_sub_id, call.sim_country);
+    const incParts = [t("ph_incall"), call.caller_id || t("hidden_number")];
+    if (calledLine && calledLine !== devName(s)) incParts.push(calledLine);
+    lines.push(incParts.join(" · "));
+  } else if (inCall) lines.push(t("ph_incall"));
   else lines.push(normal ? t("ph_mode_normal") : t("ph_ready"));
   if (ph && ph.app_version) lines.push(t("ph_app", { v: ph.app_version }));
   if (ph && !ph.supports_mode) lines.push(t("ph_need_update"));
@@ -12745,7 +13139,7 @@ function phoneItem(s, call, ph) {
     h("span", { text: switching ? t("ph_switching") : t(normal ? "ph_to_ai" : "ph_to_normal") }));
   }
   const name = devName(s) !== s ? devName(s) : (ph && ph.model) || s;
-  return sysItem(inCall ? "warn" : normal ? "" : "ok", inCall ? "phone" : normal ? "device" : "check", name, lines, action);
+  return sysItem(inCall ? "warn" : normal ? "" : "ok", name, lines, action, phoneSimBlock(s));
 }
 function modeErrText(code) {
   const key = "pm_err_" + String(code || "").toLowerCase().replace(/[^a-z0-9]+/g, "_");
@@ -12931,8 +13325,8 @@ function apptBlock(callId, ap, named) {
   box.append(h("div", { class: "btns" },
     h("span", { class: "tag " + (st === "declined" ? "bad" : st === "pending" ? "warn" : "ok"), text: t("d_appt_" + st) })));
   // An Accept the calendar did not take (the agent's own words): it still waits.
-  if (st === "pending" && cur.write_error) box.append(h("p", { class: "note" }, icon("alert", "sm"), h("span", { text: cur.write_error })));
-  if (st === "pending" && cur.time_unconfirmed) box.append(h("p", { class: "note" }, icon("alert", "sm"), h("span", { text: t("ap_time_unconfirmed") })));
+  if (st === "pending" && cur.write_error) box.append(h("p", { class: "note", text: cur.write_error }));
+  if (st === "pending" && cur.time_unconfirmed) box.append(h("p", { class: "note", text: t("ap_time_unconfirmed") }));
   if (st === "pending" && tk) box.append(apptActions(tk, busy));
   if (st !== "pending" && tk) box.append(apptDone(tk, cur, st, busy));
   box.append(...apptStatus(tk, busy));
@@ -12993,15 +13387,15 @@ function renderAppts() {
           h("dt", { text: t("ap_k_when") }), h("dd", { text: apptWhen(a) })),
         h("div", { class: "appt-sub" }, h("a", { href: "#call=" + encodeURIComponent(tk.call_id), text: t("ap_open_call") })),
         // An Accept the calendar did not take: it still waits, press again.
-        st === "pending" && a.write_error ? h("p", { class: "note" }, icon("alert", "sm"), h("span", { text: a.write_error })) : null,
+        st === "pending" && a.write_error ? h("p", { class: "note", text: a.write_error }) : null,
         // Kept without the caller's yes to the time read back: check it with them first.
-        st === "pending" && a.time_unconfirmed ? h("p", { class: "note" }, icon("alert", "sm"), h("span", { text: t("ap_time_unconfirmed") })) : null,
+        st === "pending" && a.time_unconfirmed ? h("p", { class: "note", text: t("ap_time_unconfirmed") }) : null,
         st === "pending" ? apptActions(tk, busy) : apptDone(tk, a, st, busy),
         ...apptStatus(tk, busy)),
       st === "pending" ? null : h("button", {
-        type: "button", class: "icon-btn", title: t("close"), "aria-label": t("close"),
+        type: "button", class: "btn sm ghost", title: t("close"), "aria-label": t("close"), text: t("close"),
         onclick: () => { apptShown.delete(tk.id); if (apptResult && apptResult.id === tk.id) apptResult = null; renderAppts(); },
-      }, icon("x"))));
+      })));
   }
 }
 // Accept / Decline: the agent tells the caller the way picked (a text may take
@@ -13130,9 +13524,9 @@ function choseCal(app) {
 function calButton(links, icsPath) {
   const app = calApp();
   const go = h("button", {
-    type: "button", class: "btn sm primary",
+    type: "button", class: "btn sm primary", text: app ? t("cal_do_" + app) : t("cal_add"),
     onclick: () => { const cur = calApp(); if (cur) openCal(cur, links, icsPath); else pickCal(links, icsPath); },
-  }, icon(app === "ics" ? "download" : "calendar", "sm"), h("span", { text: app ? t("cal_do_" + app) : t("cal_add") }));
+  });
   return h("span", { class: "cal-add" }, go,
     app ? h("button", { type: "button", class: "btn sm", title: t("cal_change"), "aria-label": t("cal_change"), onclick: () => pickCal(links, icsPath), text: t("cal_change_short") }) : null);
 }
@@ -13223,23 +13617,53 @@ function erPhones() {
   const all = new Set([...((devices && devices.connected) || []), ...live.serials]);
   return Array.from(all).map((s) => ({ serial: s, normal: (info.has(s) && info.get(s).mode === "normal") || live.normal.includes(s) }));
 }
-function erRenderPhones() {
+function erLineOptions() {
   const list = erPhones();
-  const sig = JSON.stringify([lang, list, list.map((p) => devName(p.serial))]);
+  const out = [];
+  for (const p of list) {
+    const name = devName(p.serial);
+    const allSims = phoneSims(p.serial);
+    const realSims = allSims.filter((x) => x.sub_id >= 0);
+    if (realSims.length) {
+      for (const sim of realSims) {
+        const eff = String(sim.effective_number || "").trim();
+        const region = [String(sim.country || "").toUpperCase(), String(sim.carrier || "").trim()].filter(Boolean).join(" ");
+        const base = eff ? `${name} · ${eff}` : t("er_line_unset", { name, region: region || "?" });
+        out.push({
+          value: `${p.serial}:${sim.sub_id}`,
+          normal: p.normal,
+          text: p.normal ? t("er_phone_normal", { name: base }) : base,
+        });
+      }
+    } else {
+      const manual = allSims[0] && String(allSims[0].effective_number || "").trim();
+      const base = manual ? `${name} · ${manual}` : name;
+      out.push({
+        value: p.serial,
+        normal: p.normal,
+        text: p.normal ? t("er_phone_normal", { name: base }) : base,
+      });
+    }
+  }
+  return { phones: list, opts: out };
+}
+function erRenderPhones() {
+  const { phones, opts } = erLineOptions();
+  const sig = JSON.stringify([lang, opts]);
   if (sig === erPhonesSig) return;
   erPhonesSig = sig;
   const sel = $("erPhone");
   const keep = sel.value;
   clear(sel).append(h("option", { value: "", text: t("er_phone_auto") }));
-  for (const p of list) sel.append(h("option", { value: p.serial, disabled: p.normal, text: p.normal ? t("er_phone_normal", { name: devName(p.serial) }) : devName(p.serial) }));
-  sel.value = list.some((p) => p.serial === keep && !p.normal) ? keep : "";
-  $("erPhoneHelp").hidden = !list.some((p) => p.normal);
+  for (const o of opts) sel.append(h("option", { value: o.value, disabled: o.normal, text: o.text }));
+  sel.value = opts.some((o) => o.value === keep && !o.normal) ? keep : "";
+  $("erPhoneHelp").hidden = !phones.some((p) => p.normal);
 }
 function erRenderPick() {
   const box = clear($("erPick"));
   box.hidden = !erPick;
   if (!erPick) return;
-  box.append(icon("user", "sm"), h("span", { text: t("er_will_call") }));
+  box.append(h("span", { text: t("er_will_call") }));
   if (erPick.phones.length > 1) {
     const sel = h("select", { "aria-label": t("er_will_call"), onchange: (ev) => { erPick.number = ev.target.value; } },
       erPick.phones.map((p) => h("option", { value: p, text: p })));
@@ -13256,9 +13680,10 @@ function erFormErr(msg, el) {
 }
 function erSending(on) {
   er.sending = on;
-  const b = $("erGo");
+  const b = clear($("erGo"));
   b.disabled = on;
-  clear(b).append(on ? h("span", { class: "spin", attr: { "aria-hidden": "true" } }) : icon("phone-out", "sm"), h("span", { text: t(on ? "er_starting" : "er_start") }));
+  if (on) b.append(h("span", { class: "spin", attr: { "aria-hidden": "true" } }));
+  b.append(h("span", { text: t(on ? "er_starting" : "er_start") }));
 }
 function erResetForm() {
   erPick = null;
@@ -13350,7 +13775,15 @@ $("erForm").addEventListener("submit", async (ev) => {
   if (!task) return erFormErr(t("er_err_no_task"), $("erTask"));
   body.task = task;
   body.identity = erIdentity();
-  body.serial = $("erPhone").value;
+  const pickedLine = $("erPhone").value;
+  const colon = pickedLine.indexOf(":");
+  if (colon > 0) {
+    body.serial = pickedLine.slice(0, colon);
+    const sid = parseInt(pickedLine.slice(colon + 1), 10);
+    if (Number.isFinite(sid) && sid >= 0) body.sub_id = sid;
+  } else {
+    body.serial = pickedLine;
+  }
   erSending(true);
   try {
     const d = await erApi("", jsonBody("POST", body));
@@ -13375,7 +13808,8 @@ function erReveal(id) {
 // ---- the list: one card per errand, kept (with its captions and what is typed) while unchanged
 function erSig(e) {
   return JSON.stringify([lang, calApp(), e.updated_at, e.status, e.attempts, e.result, e.questions, e.history, e.record_id,
-    e.device_label, e.serial, e.name, e.number, e.task, e.identity, er.busy.has(e.id), erExpanded.has(e.id), erFollow.has(e.id), devName(e.serial)]);
+    e.device_label, e.serial, e.sub_id, e.sub_id_asked, e.sim_country, e.name, e.number, e.task, e.identity, er.busy.has(e.id), erExpanded.has(e.id), erFollow.has(e.id),
+    phoneLineLabel(e.serial, e.sub_id ?? e.sub_id_asked, e.sim_country)]);
 }
 function renderErrands() {
   renderErrandForm();
@@ -13386,9 +13820,9 @@ function renderErrands() {
     erLive.clear();
     if (er.state === "idle" || er.state === "loading") for (let i = 0; i < 2; i++) box.append(h("div", { class: "skel" }));
     else if (er.state === "error") {
-      box.append(h("div", { class: "card empty" }, icon("alert"), h("h3", { text: t("err_load", { msg: er.error }) }),
+      box.append(h("div", { class: "card empty" }, h("h3", { text: t("err_load", { msg: er.error }) }),
         h("p", {}, h("button", { type: "button", class: "btn", style: "margin-top:12px", onclick: () => loadErrands(), text: t("retry") }))));
-    } else box.append(h("div", { class: "card empty" }, icon("phone-out"), h("h3", { text: t("er_empty_title") }), h("p", { text: t("er_empty_body") })));
+    } else box.append(h("div", { class: "card empty" }, h("h3", { text: t("er_empty_title") }), h("p", { text: t("er_empty_body") })));
     return;
   }
   for (const n of Array.from(box.children)) if (!n.classList.contains("er-card")) n.remove();
@@ -13420,10 +13854,11 @@ function errandCard(e) {
   const st = e.status;
   const active = ER_ACTIVE.includes(st);
   const busy = er.busy.has(e.id);
-  const card = h("article", { class: "card er-card", dataset: { id: e.id } });
-  const phone = String(e.device_label || "").trim() || (e.serial ? devName(e.serial) : "");
+  const cardCls = active ? " er-live-card" : st === "done" ? " er-done-card" : st === "failed" ? " er-fail-card" : "";
+  const card = h("article", { class: "card er-card" + cardCls, dataset: { id: e.id } });
+  const lineLabel = e.serial ? phoneLineLabel(e.serial, e.sub_id ?? e.sub_id_asked, e.sim_country) : "";
+  const phone = lineLabel || String(e.device_label || "").trim();
   card.append(h("div", { class: "er-head" },
-    h("span", { class: "kico " + (active ? "live" : st === "done" ? "ai" : st === "failed" ? "failed" : "") }, icon("phone-out")),
     h("div", { style: "min-width:0" },
       h("div", { class: "who", text: erTitle(e) }),
       h("div", { class: "sub" },
@@ -13493,7 +13928,7 @@ function erLiveBox(e) {
   const watch = h("span", { class: "er-watch", hidden: true });
   const q = h("div", { class: "er-q", hidden: true });
   const sayIn = h("input", { type: "text", maxLength: 300, autocomplete: "off", placeholder: t("er_tell_ph"), "aria-label": t("er_tell") });
-  const sayBtn = h("button", { type: "submit", class: "btn" }, icon("send", "sm"), h("span", { text: t("er_send") }));
+  const sayBtn = h("button", { type: "submit", class: "btn", text: t("er_send") });
   const say = h("form", { class: "er-say", onsubmit: async (ev) => {
     ev.preventDefault();
     const text = sayIn.value.trim();
@@ -13526,10 +13961,10 @@ function erRenderQ(id, st) {
   const send = h("button", { type: "submit", class: "btn sm primary", text: t("er_send") });
   const opts = (Array.isArray(q.options) ? q.options : []).filter((o) => String(o || "").trim());
   box.append(
-    h("div", { class: "row" }, h("span", { class: "grow er-q-h" }, icon("alert", "sm"), h("span", { text: t("er_q_title") })), left),
-    h("b", { text: String(q.text || "") }),
-    opts.length ? h("div", { class: "btns" }, opts.map((o) => h("button", { type: "button", class: "btn sm", text: String(o), onclick: (ev) => erAnswer(id, q.id, String(o), ev.currentTarget) }))) : null,
-    h("form", { class: "er-say", onsubmit: (ev) => { ev.preventDefault(); const v = inp.value.trim(); if (v) erAnswer(id, q.id, v, send); } }, inp, send));
+    h("div", { class: "row" }, h("span", { class: "grow er-q-h", text: t("er_q_title") }), left),
+    h("b", { text: String(q.text || "") }));
+  if (opts.length) box.append(h("div", { class: "btns" }, opts.map((o) => h("button", { type: "button", class: "btn sm", text: String(o), onclick: (ev) => erAnswer(id, q.id, String(o), ev.currentTarget) }))));
+  box.append(h("form", { class: "er-say", onsubmit: (ev) => { ev.preventDefault(); const v = inp.value.trim(); if (v) erAnswer(id, q.id, v, send); } }, inp, send));
   st.els.qLeft = left;
   box.hidden = false;
   erTickQ(st);
@@ -13623,7 +14058,7 @@ function erResult(e) {
   if (kv.childElementCount) sec.append(kv);
   const ev = r.event;
   if (ev && ev.start && parseStamp(ev.start)) {
-    sec.append(h("div", { class: "cal" }, icon("calendar", "ci"),
+    sec.append(h("div", { class: "cal" },
       h("div", { class: "grow" },
         h("b", { text: String(ev.title || erTitle(e)) }),
         h("span", { text: apptWhen(ev) }),
@@ -13661,7 +14096,7 @@ function erOpenFollow(id, text) {
 // "Reply, and have the AI call again": a new errand to the same number, as the same person.
 function erFollowForm(e) {
   const ta = h("textarea", { rows: 3, maxLength: 1000, value: erFollow.get(e.id) || "", "aria-label": t("er_fu_title"), oninput: (ev) => erFollow.set(e.id, ev.target.value) });
-  const go = h("button", { type: "submit", class: "btn sm primary" }, icon("phone-out", "sm"), h("span", { text: t("er_fu_go") }));
+  const go = h("button", { type: "submit", class: "btn sm primary", text: t("er_fu_go") });
   return h("form", { class: "er-fu", onsubmit: async (ev) => {
     ev.preventDefault();
     const task = ta.value.trim();
@@ -13707,13 +14142,13 @@ function erActions(e, busy) {
   const row = h("div", { class: "er-acts" });
   const st = e.status;
   const oc = e.result && e.result.outcome;
-  if (ER_ACTIVE.includes(st)) row.append(h("button", { type: "button", class: "btn sm danger", disabled: busy, onclick: () => erHangup(e) }, icon("x", "sm"), h("span", { text: t("er_hangup") })));
+  if (ER_ACTIVE.includes(st)) row.append(h("button", { type: "button", class: "btn sm danger", disabled: busy, onclick: () => erHangup(e), text: t("er_hangup") }));
   if (st === "queued") row.append(h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => erAct(e, "/cancel", "er_cancelled"), text: t("er_cancel_q") }));
   if (ER_RETRY.includes(st) || (st === "done" && ["no_answer", "voicemail", "failed"].includes(oc))) {
-    row.append(h("button", { type: "button", class: "btn sm primary", disabled: busy, onclick: () => erAct(e, "/retry", "er_retried") }, icon("refresh", "sm"), h("span", { text: t("er_retry") })));
+    row.append(h("button", { type: "button", class: "btn sm primary", disabled: busy, onclick: () => erAct(e, "/retry", "er_retried"), text: t("er_retry") }));
   }
-  if (e.record_id) row.append(h("a", { class: "btn sm", href: "#call=" + encodeURIComponent(e.record_id) }, icon("list", "sm"), h("span", { text: t("er_open_call") })));
-  if (!erOpen(e)) row.append(h("button", { type: "button", class: "btn sm ghost er-del", disabled: busy, onclick: () => erDelete(e) }, icon("trash", "sm"), h("span", { text: t("er_delete") })));
+  if (e.record_id) row.append(h("a", { class: "btn sm", href: "#call=" + encodeURIComponent(e.record_id), text: t("er_open_call") }));
+  if (!erOpen(e)) row.append(h("button", { type: "button", class: "btn sm ghost er-del", disabled: busy, onclick: () => erDelete(e), text: t("er_delete") }));
   if (busy) row.append(h("span", { class: "spin", attr: { "aria-hidden": "true" } }));
   return row;
 }
@@ -13820,7 +14255,7 @@ setInterval(() => {
   if (ticks % 4 === 0) pollLive();
   // Decided on Telegram or elsewhere: the panel follows within half a minute.
   if (ticks % 30 === 0 && view === "calls") loadAppts();
-  if (ticks % 8 === 0 && view === "system") loadSystem();
+  if (ticks % 8 === 0 && view === "system" && !(document.activeElement && document.activeElement.closest("#sysPhones .sim-in"))) loadSystem();
   if (view === "errands") errandTick();
 }, 1000);
 document.addEventListener("visibilitychange", () => {
@@ -13875,7 +14310,6 @@ async function checkInitialPassword() {
 
 // ---------------------------------------------------------------- start
 (function boot() {
-  document.querySelectorAll("svg.i").forEach((s) => s.setAttribute("aria-hidden", "true"));
   buildSecrets();
   // ?lang= (for links and testing) > chosen here before > the agent's language > the browser's.
   lang = matchLang(qs.get("lang")) || matchLang(store.get("pca.lang")) || matchLang(store.get("pca.srvlang"))

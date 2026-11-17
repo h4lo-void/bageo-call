@@ -211,6 +211,43 @@ impl TaskStore {
         }
     }
 
+    /// Delete every task belonging to any of `call_ids` (used when call history
+    /// is deleted from the console). Returns the number of removed tasks.
+    pub async fn delete_by_call_ids(
+        &self,
+        call_ids: &std::collections::HashSet<String>,
+    ) -> usize {
+        if call_ids.is_empty() {
+            return 0;
+        }
+        let mut removed = Vec::new();
+        {
+            let mut idx = self.index.lock().await;
+            idx.tasks.retain(|task| {
+                if call_ids.contains(&task.call_id) {
+                    removed.push(task.id.clone());
+                    false
+                } else {
+                    true
+                }
+            });
+            if !removed.is_empty() {
+                if let Err(e) = save_index(&self.root, &idx) {
+                    warn!("task index save after call delete failed: {e:#}");
+                }
+            }
+        }
+        for id in &removed {
+            let path = self.root.join(format!("{id}.json"));
+            if let Err(e) = fs::remove_file(&path) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    warn!("task file remove failed path={}: {e}", path.display());
+                }
+            }
+        }
+        removed.len()
+    }
+
     /// Persist a new task (assigns `id` and timestamps when empty).
     pub async fn create(&self, mut task: TaskRecord) -> Result<TaskRecord> {
         let now = now_rfc3339();
