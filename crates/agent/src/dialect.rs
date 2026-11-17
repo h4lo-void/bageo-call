@@ -42,6 +42,11 @@ pub enum Dialect {
     SwissGerman,
     EuropeanPortuguese,
     BrazilianPortuguese,
+    /// Standard Mandarin (普通話), on a line whose own language is Cantonese
+    /// (Hong Kong, Macau): switched to only when the caller asks for it —
+    /// speech-to-text writes Cantonese as standard Chinese, so a sentence of it
+    /// tells nothing.
+    Mandarin,
 }
 
 impl Dialect {
@@ -67,6 +72,7 @@ impl Dialect {
             Dialect::SwissGerman => "gsw",
             Dialect::EuropeanPortuguese => "pt-pt",
             Dialect::BrazilianPortuguese => "pt-br",
+            Dialect::Mandarin => "cmn",
         }
     }
 
@@ -74,7 +80,7 @@ impl Dialect {
     /// once the gate holds. The others are ways of speaking the call's language:
     /// understood and followed in wording, never put on.
     pub fn switches(self) -> bool {
-        matches!(self, Dialect::Hokkien | Dialect::Hakka | Dialect::Cantonese | Dialect::Sichuanese)
+        matches!(self, Dialect::Hokkien | Dialect::Hakka | Dialect::Cantonese | Dialect::Sichuanese | Dialect::Mandarin)
     }
 
     /// Its name in Chinese instructions (Traditional; converted for Simplified)
@@ -127,6 +133,8 @@ impl Dialect {
             (Dialect::EuropeanPortuguese, false) => "European Portuguese",
             (Dialect::BrazilianPortuguese, true) => "巴西葡語",
             (Dialect::BrazilianPortuguese, false) => "Brazilian Portuguese",
+            (Dialect::Mandarin, true) => "普通話",
+            (Dialect::Mandarin, false) => "Mandarin",
         }
     }
 
@@ -152,17 +160,21 @@ impl Dialect {
             Dialect::SwissGerman => &["Grüezi"],
             Dialect::EuropeanPortuguese => &["pois", "tu"],
             Dialect::BrazilianPortuguese => &["você", "tá bom"],
+            Dialect::Mandarin => &["是不是", "什麼"],
         }
     }
 
     /// Words of the dialect alone (its grammar and core words), as speech-to-text
-    /// writes them. One of them is a hint; two in a sentence is the sentence.
+    /// writes them (in Traditional script: see [marker_hits]). One of them is a
+    /// hint; two in a sentence is the sentence. Hokkien also counts a question
+    /// ending on 「無」 ([bo_question]).
     fn markers(self) -> &'static [&'static str] {
         match self {
             Dialect::Hokkien => &[
                 "佇咧", "啥物", "按怎", "無要緊", "毋是", "毋免", "毋知", "袂", "欲", "恁", "阮", "汝", "遮", "遐", "攏",
                 "閣", "厝", "明仔載", "下晡", "足感謝", "免客氣", "免煩惱", "按呢", "阿捏", "食飽", "好勢", "敢有", "有影",
-                "真濟", "今嘛", "這馬", "哪會", "佮",
+                "真濟", "今嘛", "這馬", "哪會", "佮", "今暗", "暗時", "阮兜", "恁兜", "食飽未", "呷飽未", "食飯未", "好料",
+                "共你講", "共我講", "共恁講",
             ],
             Dialect::Hakka => &[
                 "屋下", "仰般", "承蒙", "麼个", "𠊎", "佢兜", "毋使", "恁仔細", "食飯吂", "吂", "這兜", "該兜", "樣般", "做麼",
@@ -195,9 +207,23 @@ impl Dialect {
             Dialect::Hakka => &["客語", "客语", "客家話", "客家话", "hakka"],
             Dialect::Cantonese => &["廣東話", "广东话", "粵語", "粤语", "cantonese"],
             Dialect::Sichuanese => &["四川話", "四川话", "sichuanese"],
+            Dialect::Mandarin => &["普通話", "普通话", "國語", "国语", "mandarin"],
             _ => &[],
         }
     }
+}
+
+/// A question ending on 「無」 (「你佇咧無？」「今暗愛來食飯無？」「好無？」): Hokkien
+/// (and Hakka) asks so, Mandarin does not (「有無」「毫無」 are left out).
+fn bo_question(text: &str) -> bool {
+    let chars: Vec<char> = text.chars().collect();
+    chars.iter().enumerate().any(|(i, &c)| {
+        c == '無'
+            && i > 0
+            && ('\u{4E00}'..='\u{9FFF}').contains(&chars[i - 1])
+            && !"有毫虛虚並并絕绝別别從从全空若一".contains(chars[i - 1])
+            && chars.get(i + 1).map_or(true, |n| "？?，,。！!～~ 啦喔咧".contains(*n))
+    })
 }
 
 /// Why the call switched to a dialect (`dialect_switch reason=`).
@@ -232,20 +258,30 @@ pub struct Switch {
 /// Fewest syllables (Han characters) of a sentence that counts as one in the dialect.
 const SENTENCE_MIN_SYLLABLES: usize = 5;
 
+/// The dialect a region's lines speak as their own language (Cantonese in Hong
+/// Kong and Macau): taken up without a switch.
+pub fn base(region: Region) -> Option<Dialect> {
+    matches!(region, Region::HkMo).then_some(Dialect::Cantonese)
+}
+
 /// Distinct own words of `d` in `text`, loans left out (a word inside a longer
-/// one found already is not counted again).
+/// one found already is not counted again). Speech-to-text writes Chinese in
+/// either script (a Singapore caller's 「来阮兜…好无？」): read in Traditional.
 fn marker_hits(d: Dialect, text: &str) -> usize {
-    let mut t = text.to_string();
+    let mut t = crate::zh_tw::norm(text);
     for l in d.loans() {
-        t = t.replace(l, "");
+        t = t.replace(&crate::zh_tw::norm(l), "");
     }
-    let mut seen: Vec<&str> = Vec::new();
+    // The lists hold some simplified or variant forms (麼个, 巴适): compared
+    // the way the caller's words are, after the same conversion.
+    let mut seen: Vec<String> = Vec::new();
     for m in d.markers() {
-        if t.contains(m) && !seen.iter().any(|s| s.contains(m) || m.contains(s)) {
+        let m = crate::zh_tw::norm(m);
+        if t.contains(&m) && !seen.iter().any(|s| s.contains(&m) || m.contains(s.as_str())) {
             seen.push(m);
         }
     }
-    seen.len()
+    seen.len() + usize::from(d == Dialect::Hokkien && bo_question(&t))
 }
 
 fn syllables(text: &str) -> usize {
@@ -272,20 +308,30 @@ fn asks_for(d: Dialect, text: &str) -> bool {
 
 /// One call's dialect state: the candidates of its region, the one it is in,
 /// and the caller's last turn (for two turns in a row). Fed whole turns only.
+/// Hong Kong and Macau lines speak Cantonese of their own: a Cantonese caller
+/// there is noted (for a rotated session) but is no switch; asking for
+/// Mandarin is.
 #[derive(Debug, Clone, Default)]
 pub struct Gate {
     pool: Vec<Dialect>,
     active: Option<Dialect>,
     /// Dialects with at least one own word in the caller's previous turn.
     last_hint: Vec<Dialect>,
+    /// The line's own spoken language when it is one of the dialects (Cantonese
+    /// in Hong Kong and Macau): taken up without a switch.
+    base: Option<Dialect>,
 }
 
 impl Gate {
     pub fn new(region: Option<Region>) -> Self {
-        let pool = region
+        let mut pool: Vec<Dialect> = region
             .map(|r| crate::country_profile::dialects(r).iter().copied().filter(|d| d.switches()).collect())
             .unwrap_or_default();
-        Self { pool, active: None, last_hint: Vec::new() }
+        let base = region.and_then(base);
+        if base.is_some() {
+            pool.push(Dialect::Mandarin);
+        }
+        Self { pool, active: None, last_hint: Vec::new(), base }
     }
 
     pub fn active(&self) -> Option<Dialect> {
@@ -294,6 +340,11 @@ impl Gate {
 
     fn switch_to(&mut self, to: Dialect, reason: Reason) -> Option<Switch> {
         if self.active == Some(to) {
+            return None;
+        }
+        if self.active.is_none() && self.base == Some(to) {
+            // The line's own language: kept for a rotated session, no switch.
+            self.active = Some(to);
             return None;
         }
         let from = self.active.replace(to);
@@ -380,7 +431,8 @@ mod tests {
         assert_eq!(g.active(), Some(Dialect::Hokkien));
         // Already in it: no second switch.
         assert_eq!(g.caller_turn("按呢好勢，無要緊啦"), None);
-        let mut g = Gate::new(Some(Region::HkMo));
+        // Cantonese where it is not the line's own language (mainland China SIM).
+        let mut g = Gate::new(Some(Region::Cn));
         let s = g.caller_turn("喂，唔該你，係咪王生呀？我喺速遞公司打嚟嘅").unwrap();
         assert_eq!((s.to, s.reason), (Dialect::Cantonese, Reason::Sentence));
         let mut g = tw();
@@ -405,9 +457,9 @@ mod tests {
         let mut g = tw();
         let s = g.caller_turn("你會曉講台語無？").unwrap();
         assert_eq!((s.to, s.reason), (Dialect::Hokkien, Reason::Explicit));
-        let mut g = Gate::new(Some(Region::HkMo));
+        let mut g = Gate::new(Some(Region::Cn));
         assert_eq!(g.caller_turn("Can you speak Cantonese please?").map(|s| s.reason), Some(Reason::Explicit));
-        let mut g = Gate::new(Some(Region::HkMo));
+        let mut g = Gate::new(Some(Region::MySg));
         assert_eq!(g.caller_turn("講廣東話得唔得？").map(|s| s.to), Some(Dialect::Cantonese));
         // Saying someone speaks it is not asking.
         let mut g = tw();
@@ -437,5 +489,82 @@ mod tests {
         // A Mandarin reply with one Taiwanese word does not.
         let mut g = tw();
         assert_eq!(g.ai_turn("好啊，歹勢喔，你先放管理室就好"), None);
+    }
+
+    /// 2026-11-17 bench: a Hong Kong courier speaking Cantonese on a Hong Kong
+    /// SIM was logged as a switch — the line's own language, not a dialect.
+    #[test]
+    fn cantonese_on_a_hong_kong_line_is_no_switch_but_mandarin_asked_for_is() {
+        let mut g = Gate::new(Some(Region::HkMo));
+        assert_eq!(g.caller_turn("OK,沒問題。咁我放喺管理室啦。唔該曬王先生。"), None);
+        assert_eq!(g.active(), Some(Dialect::Cantonese), "kept for a rotated session");
+        assert_eq!(g.ai_turn("唔該晒，我而家喺屋企，你放喺管理處得喇"), None);
+        assert_eq!(g.caller_turn("講廣東話得唔得？"), None);
+        let s = g.caller_turn("唔好意思，可以講普通話嗎？").unwrap();
+        assert_eq!((s.from, s.to, s.reason), (Some(Dialect::Cantonese), Dialect::Mandarin, Reason::Explicit));
+        assert_eq!(s.to.code(), "cmn");
+        // Mandarin from the start, asked in English.
+        let mut g = Gate::new(Some(Region::HkMo));
+        let s = g.caller_turn("Hello, can you speak Mandarin?").unwrap();
+        assert_eq!((s.from, s.to), (None, Dialect::Mandarin));
+        // A Mandarin sentence alone (speech-to-text writes Cantonese so too) switches nothing.
+        let mut g = Gate::new(Some(Region::HkMo));
+        assert_eq!(g.caller_turn("喂，你好，請問是不是王先生啊？我是順豐派件的。"), None);
+        assert_eq!(g.active(), None);
+        // Mandarin is no candidate elsewhere.
+        let mut g = tw();
+        assert_eq!(g.caller_turn("你可以講普通話嗎？"), None);
+    }
+
+    #[test]
+    fn a_hokkien_question_ending_on_bo_counts() {
+        // Singapore: 「今暗愛來捧場無？」 is two of its own words.
+        let mut g = Gate::new(Some(Region::MySg));
+        let s = g.caller_turn("我某煮幾道好料理。今暗你愛來捧場無？").unwrap();
+        assert_eq!((s.to, s.reason), (Dialect::Hokkien, Reason::Sentence));
+        assert!(bo_question("你佇咧無？") && bo_question("好無") && bo_question("有人無，我等一下再來"));
+        // Mandarin 無 is no question.
+        for t in ["有無問題都可以", "這樣毫無意義", "無論如何你先來", "這是有無的問題", "一無所有"] {
+            assert!(!bo_question(t), "{t}");
+        }
+        // Loan words and Taiwanese Mandarin still do not switch.
+        let mut g = tw();
+        assert_eq!(g.caller_turn("歹勢啦，我是你阿嬤隔壁的，想問她今天下午有沒有空？"), None);
+        assert_eq!(g.caller_turn("好啦好啦，那我們就訂那間義大利餐廳，你覺得可以嗎？"), None);
+        assert_eq!(g.caller_turn("夭壽喔，今天塞車塞了一個小時，你有沒有遇到？"), None);
+        assert_eq!(g.active(), None);
+    }
+
+    /// 2026-11-17 bench d_sg_nan_dinner: the Singapore caller's 「你甲飯未？今晚來阮兜
+    /// 食飯好無？」 came in from speech-to-text in Simplified, its 「無」 as 「无」 —
+    /// one own word left, no switch.
+    #[test]
+    fn simplified_speech_to_text_counts_too() {
+        let mut g = Gate::new(Some(Region::MySg));
+        let s = g.caller_turn("喂,王先生啊。你家饭围。今晚来阮都是饭好无?").unwrap();
+        assert_eq!((s.to, s.reason), (Dialect::Hokkien, Reason::Sentence));
+        let mut g = Gate::new(Some(Region::Cn));
+        let s = g.caller_turn("喂，唔该你，系咪王生呀？我喺速递公司打嚟嘅").unwrap();
+        assert_eq!(s.to, Dialect::Cantonese);
+        // Simplified Mandarin is still no dialect.
+        let mut g = Gate::new(Some(Region::MySg));
+        assert_eq!(g.caller_turn("喂，王先生，今晚来我家吃饭好吗？"), None);
+        assert_eq!(g.caller_turn("有无问题都可以，你check好schedule再跟我讲"), None);
+        assert_eq!(g.active(), None);
+        // The AI's reply in Hokkien stands for the caller's sentence.
+        let s = Gate::new(Some(Region::MySg)).ai_turn("好啊，等咧再共你讲，阮兜今暗有闲").unwrap();
+        assert_eq!(s.to, Dialect::Hokkien);
+    }
+}
+
+#[cfg(test)]
+mod norm_markers {
+    use super::{Dialect, Gate};
+    use crate::country_profile::Region;
+
+    #[test]
+    fn simplified_or_variant_markers_still_count() {
+        let s = Gate::new(Some(Region::Cn)).caller_turn("这个巴适得很，咋个办嘛，安逸");
+        assert_eq!(s.map(|s| s.to), Some(Dialect::Sichuanese));
     }
 }

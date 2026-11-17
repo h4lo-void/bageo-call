@@ -835,7 +835,7 @@ pub const PERSONA_GUARD: &str = "\n【底線（固定）】平常就以{owner}�
 對方要你提供或核對個資（身分證字號、生日、卡號、帳號、驗證碼、密碼、地址）時：不要給、也不要編，輕鬆帶過，例如「這個我不方便在電話裡講，我再自己打去問」；這一條優先於上面任何要你像本人一樣配合的說法。對方只是問是不是{owner}，照平常回答就好。\
 銀行、信用卡中心打來問某一筆刷卡或交易是不是你本人刷的：你其實不知道{owner}有沒有刷，所以不要說是、也不要說不是（不要說「是我刷的」「應該是我」「我那時在睡覺」「我沒買東西」這類），也不要說「沒印象」「想不起來」「不記得」——對銀行來說那聽起來就是不是本人刷的（這條優先於上面「被問有沒有付過某筆錢就說沒印象」的說法）；也不要答應停卡、掛失、取消或爭議這筆交易、報案。\
 把金額、商店、時間聽清楚，可以跟他複述確認一次，然後含糊帶過，例如「喔…這筆喔，我要再想一下耶，我晚點自己打卡片背面的客服確認好了」；他再問要不要先幫你停卡或處理，也一樣帶過、不要答應。一兩句就好，語氣自然。\
-不要替{owner}做任何承諾。";
+不要真的答應付錢、轉帳、匯款或去 ATM，也不要替{owner}做任何承諾。";
 
 /// Sentence of the default persona prompt that sales / scam stalling replaces.
 pub(crate) const PERSONA_SALES_REJECT_LINE: &str = "推銷、廣告、詐騙：一句「喔不用了，謝謝」就收尾，不用解釋。";
@@ -869,8 +869,9 @@ pub const PERSONA_STALL_BLOCK: &str = "\n【推銷、保險、貸款、投資、
 可以用的招（自己挑、混著用、每次換）：嚇一跳（「蛤？三萬二？有那麼多喔」）；故意聽錯、算錯讓他糾正；把他剛講的用自己的話講錯一遍；請他舉個例子或把流程講一次；碎念一下自己的事、跟他抱怨兩句再繞回來；問他的看法（「你們自己也有買嗎？」）；扯到一件有點相關的小事；突然想到一個新問題。\
 偶爾可以多講幾句（講自己的經驗、自言自語算數字），但最後要把話丟回給他：大部分時候用問句，或用一句讓他非回答不可的話結尾。\
 他會一直留在線上，是因為覺得你快要照做了：問的問題要跟他要的東西有關（怎麼辦、怎麼付、要準備什麼），岔開的話題講一兩句就繞回來，不要問太偏、太技術的問題，讓他覺得你在耍他。\
-不要懷疑他、不要質問他、不要提「詐騙」，不要問他叫什麼名字、員工編號、分機、案號，也不要問怎麼證明他是真的——他會覺得被識破，馬上就掛。\
+不要懷疑他、不要質問他、不要提「詐騙」；問題都問他賣的東西和怎麼辦，不問他這個人：不要問他是誰、叫什麼名字、員工編號、分機、案號、之後誰會聯絡你，也不要問怎麼證明他是真的——他會覺得被識破，馬上就掛。\
 他要你現在付錢、繳錢、轉帳、去 ATM、做網拍金流認證、分享螢幕畫面、給資料、加 LINE、按鍵、下載：不要拒絕，嘴上配合、讓他覺得快成功了，可是一直出狀況（卡找不到、正在走過去、畫面跟他講的不一樣、連結點不開、按錯了要重來、字太小看不清楚），請他一步一步教你、一直問細節。\
+配合是「想照做卻一直卡住」：卡住就直接講卡在哪，不叫他等你；不說「我現在就轉」「帳號給我我匯過去」這種承諾，不說已經轉了、加了、按了，也不自己提要轉帳或要他的帳號。他說要傳資料給你、叫你之後自己弄，就說你現在就想弄好卻卡住了，請他在電話上帶你做，不要停在「等你訊息」。\
 那些都只是嘴上說說：任何真的資料都不能給（身分證、生日、地址、帳號、卡號、驗證碼、密碼、存款、家人），也不要自己編號碼，真的錢一毛都不會動，也不約見面。閒聊的內容可以隨口編，無傷大雅就好。\
 可以聊的方向（參考就好）：保險的保障範圍、保費一個月多少、要繳幾年、等待期、哪些情況不賠、理賠要什麼文件、解約會不會虧；\
 貸款、信用卡、分期、催繳的總共欠多少、本金跟利息怎麼算、是哪一張卡哪一筆、從什麼時候開始的、每個月繳多少要繳幾期、提早還清會怎樣、不繳會怎樣、要怎麼繳；\
@@ -1910,6 +1911,36 @@ const PERSONA_POST_ARM_VOICE_MS: u32 = 600;
 /// after it the line stays open until the caller says bye / wraps up, or stays
 /// silent this long (they may be waiting for us to hang up first).
 const PERSONA_BYE_SILENCE: Duration = Duration::from_secs(6);
+/// Farewells exchanged on the caller's announced end (「係咁先啦」, then our
+/// 「好，拜拜」): how long the line stays open for their own bye, which usually
+/// follows at once. Quiet that long, the call ends.
+const PERSONA_EXCHANGE_BYE_WAIT: Duration = Duration::from_millis(2_500);
+
+/// The caller announced the end and the AI answered with its farewell
+/// ([`crate::closing::ClosingEvent::FarewellsExchanged`]): the caller's latest
+/// words close the call. Armed here too when the AI's farewell is one the
+/// transcript check does not arm on (「我確認一下，晚點再打給你」) — not on an
+/// appointment call-back (`may_arm` false), whose replies are held before they
+/// play. True when something changed.
+fn arm_on_farewells_exchanged(
+    may_arm: bool,
+    goodbye_pending: &mut bool,
+    caller_end_signal: &mut bool,
+    end_reason: &mut SessionEndReason,
+) -> bool {
+    if *goodbye_pending && *caller_end_signal {
+        return false;
+    }
+    if !*goodbye_pending {
+        if !may_arm {
+            return false;
+        }
+        *goodbye_pending = true;
+        *end_reason = SessionEndReason::Goodbye;
+    }
+    *caller_end_signal = true;
+    true
+}
 
 /// The caller's latest words end the call: a goodbye or a wrap-up phrase at the
 /// very end of what they said (「…謝謝您，好，拜拜。」「好，那就先這樣囉」
@@ -2247,8 +2278,9 @@ fn non_blocking_refused(why: &str) -> bool {
 }
 
 /// The call's system instruction: the stored prompt, then — appointments on —
-/// their short part, or (`full`: times came up on the call) the whole one with
-/// the current local time (the stored prompt is not changed).
+/// their short part, or (`full`: times came up on the call) the note with the
+/// dates and the function's details that went in then, at the current local
+/// time (the stored prompt is not changed).
 fn call_system_prompt(
     base: &str,
     appt: Option<&crate::appointments::ApptSession>,
@@ -2256,7 +2288,7 @@ fn call_system_prompt(
     full: bool,
 ) -> String {
     match appt {
-        Some(a) if full => format!("{base}{}", a.prompt_block(now)),
+        Some(a) if full => format!("{base}\n\n{}", a.prompt_note(now)),
         Some(a) => format!("{base}{}", a.prompt_stub()),
         None => base.to_string(),
     }
@@ -5193,6 +5225,7 @@ pub async fn run_session(
     let mut closing_sm = crate::closing::ClosingMachine::new(call_lang);
     // Logged once per arm: AI said bye, line held for the caller's.
     let mut await_bye_logged = false;
+    let mut await_exchange_bye_logged = false;
     // Stalling: caller keyword hits so far; once engaged the stall prompt loads.
     let mut stall_hits: Vec<&'static str> = Vec::new();
     let mut stall_score: u32 = 0;
@@ -5569,7 +5602,7 @@ pub async fn run_session(
                         script_lang.unwrap_or_else(|| crate::locale::Lang::parse(call_lang)),
                     );
                     info!(
-                        "stall_stage stage=bait tactic=script:{} typology={} turn=0 prompt_chars={}->{} serial={serial}",
+                        "stall_stage stage=free tactic=script:{} typology={} turn=0 prompt_chars={}->{} serial={serial}",
                         engine.family.id(),
                         engine.typology(),
                         full_prompt.chars().count(),
@@ -5577,6 +5610,14 @@ pub async fn run_session(
                     );
                     stall_engine = Some(engine);
                     scenario_router.drop_pending();
+                    // Judged by the words alone (no look answered): the call's scenario is a
+                    // scam all the same, logged like a look's (a look logs its own line).
+                    if judged.source != EngageWhy::Review.as_str() {
+                        info!(
+                            "scenario_route scenario=scam confidence=- ms=0 verdict=ScamOrSales action=stalling source={} serial={serial}",
+                            judged.source
+                        );
+                    }
                     let next = stall_session_setup(&setup, &stall_prompt, &c.model, thinking_level);
                     if next != setup {
                         rotate_setup = Some(next);
@@ -6140,6 +6181,23 @@ pub async fn run_session(
                 PERSONA_BYE_SILENCE.as_secs()
             );
         }
+        // Farewells exchanged on the caller's announced end: their own bye
+        // usually follows — the line stays open a moment for it, then the call
+        // ends on the quiet (it used to end while their 「拜拜」 was on its way).
+        let awaiting_exchange_bye = persona
+            && errand.is_none()
+            && goodbye_pending
+            && !wrap_up_sent
+            && closing_sm.awaits_caller_bye()
+            && !(play_head.drained_for(PERSONA_EXCHANGE_BYE_WAIT, PLAYER_DRAIN_SLACK_BYTES)
+                && last_caller_voice_at.map_or(true, |t| t.elapsed() >= PERSONA_EXCHANGE_BYE_WAIT));
+        if awaiting_exchange_bye && !await_exchange_bye_logged {
+            await_exchange_bye_logged = true;
+            info!(
+                "Persona: farewells exchanged, the caller's own bye not yet — hold the line up to {}ms of quiet for it serial={serial}",
+                PERSONA_EXCHANGE_BYE_WAIT.as_millis()
+            );
+        }
         let player_idle = goodbye_clock_may_run(
             play_head.drained_for(
                 Duration::from_millis(RELAY_AUDIO_IDLE_MS),
@@ -6147,7 +6205,7 @@ pub async fn run_session(
             ),
             activity_open,
             // A function call open: the model still has something to say.
-            waiting_model_reply || awaiting_caller_bye || !tool_open.is_empty() || errand_asking,
+            waiting_model_reply || awaiting_caller_bye || awaiting_exchange_bye || !tool_open.is_empty() || errand_asking,
         );
         let now = tokio::time::Instant::now();
         let clock_was = output_goodbye_at.is_some();
@@ -6232,6 +6290,7 @@ pub async fn run_session(
             if !goodbye_pending {
                 post_arm_talk = false;
                 await_bye_logged = false;
+                await_exchange_bye_logged = false;
             }
         }
 
@@ -6880,6 +6939,32 @@ pub async fn run_session(
                                         continue;
                                     }
                                     if persona {
+                                        // Words of a turn already over (the transcript lags the
+                                        // audio): judged as that turn — the AI's 「晚點再打給你」
+                                        // after the caller's wrap-up closes the call.
+                                        if errand.is_none() && !model_generating {
+                                            let ev = closing_sm.on_ai_late(s, turn_ends_with_closing, stall_on && !wrap_up_sent);
+                                            if ev == crate::closing::ClosingEvent::Withdrawn && goodbye_pending {
+                                                goodbye_pending = false;
+                                                caller_end_signal = false;
+                                                output_goodbye_at = None;
+                                                end_reason = SessionEndReason::WsClosed;
+                                                info!(
+                                                    "Persona closing withdrawn (the AI asked something after its closing words) serial={serial}"
+                                                );
+                                            } else if ev == crate::closing::ClosingEvent::FarewellsExchanged
+                                                && arm_on_farewells_exchanged(
+                                                    !callback,
+                                                    &mut goodbye_pending,
+                                                    &mut caller_end_signal,
+                                                    &mut end_reason,
+                                                )
+                                            {
+                                                info!(
+                                                    "Persona farewells exchanged after the caller's pre-closing (AI words came after its turn) serial={serial} text={s} — hang up once our words have played"
+                                                );
+                                            }
+                                        }
                                         // Natural closing from the model ends the call; no recap gate.
                                         // Never on the opening line (caller has not spoken yet).
                                         let closing = looks_like_persona_closing(s)
@@ -7279,6 +7364,10 @@ pub async fn run_session(
                                     }
                                 }
                                 if has_audio {
+                                    if !model_generating {
+                                        // A new turn: words coming in now are its own.
+                                        closing_sm.ai_started();
+                                    }
                                     model_generating = true;
                                     play_head.set_generating(
                                         !mute_model_audio && !repeat_drop && !intl_hold && !intl_drop && !cb_hold,
@@ -7559,7 +7648,13 @@ pub async fn run_session(
                                     if post_arm_talk && audio_chunks_out > chunks_at_last_caller_eou {
                                         post_arm_talk = false;
                                         let preview: String = turn_out_text.chars().take(40).collect();
-                                        if looks_like_persona_closing(&turn_out_text) {
+                                        if turn_out_text.trim().is_empty() {
+                                            // No transcript of the reply (it lags or never came):
+                                            // nothing says the caller added anything — keep the close.
+                                            info!(
+                                                "Persona closing kept (reply had no transcript) serial={serial}"
+                                            );
+                                        } else if looks_like_persona_closing(&turn_out_text) {
                                             info!(
                                                 "Persona closing kept (model closed again) serial={serial} text={preview}"
                                             );
@@ -7589,10 +7684,13 @@ pub async fn run_session(
                                         // The caller announced the end, the AI answered with its
                                         // farewell: their latest words close the call now.
                                         if ev == crate::closing::ClosingEvent::FarewellsExchanged
-                                            && goodbye_pending
-                                            && !caller_end_signal
+                                            && arm_on_farewells_exchanged(
+                                                !callback,
+                                                &mut goodbye_pending,
+                                                &mut caller_end_signal,
+                                                &mut end_reason,
+                                            )
                                         {
-                                            caller_end_signal = true;
                                             info!(
                                                 "Persona farewells exchanged after the caller's pre-closing serial={serial} — hang up once our words have played"
                                             );
@@ -7633,8 +7731,13 @@ pub async fn run_session(
                                             ),
                                         }
                                     }
-                                    // Stalling: the move for the AI's next reply, sent in this pause
-                                    // as a note that asks for no reply (stall_script; nothing waits).
+                                    // Stalling: the call's situation is in the stall prompt and the AI
+                                    // finds its own way, so a hint (stall_script, asks for no reply)
+                                    // goes in only to change course: the AI going round in circles, or
+                                    // a leaving caller to keep. A note every turn slowed every stalled
+                                    // reply. The caller already talking: a course hint waits (a note
+                                    // mid-utterance holds up the reply to it); the keep hint goes out
+                                    // regardless.
                                     if keep.is_none()
                                         && persona
                                         && stall_on
@@ -7646,28 +7749,41 @@ pub async fn run_session(
                                         if let Some(e) = stall_engine.as_mut() {
                                             if let Some(cue) = e.on_ai_turn(&turn_out_text) {
                                                 let typology = e.typology().to_string();
-                                                match send_text_before_deadline(
-                                                    &mut sink,
-                                                    crate::stall_script::client_note(&cue.text),
-                                                    tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
-                                                    "gemini persona stall cue send",
-                                                )
-                                                .await
-                                                {
-                                                    Ok(()) => info!(
-                                                        "stall_stage stage={} tactic={} typology={typology} turn={} loop={} serial={serial}",
+                                                let retain = cue.stage == crate::stall_script::Stage::Retain;
+                                                if !(cue.looped || retain) || (activity_open && !retain) {
+                                                    info!(
+                                                        "stall_stage stage={} tactic={} typology={typology} turn={} held={} serial={serial}",
                                                         cue.stage.name(),
                                                         cue.tactic,
                                                         cue.turn,
-                                                        cue.looped
-                                                    ),
-                                                    Err(e) => warn!("Persona stall cue send failed serial={serial}: {e:#}"),
+                                                        if cue.looped || retain { "caller_talking" } else { "script_in_prompt" }
+                                                    );
+                                                } else {
+                                                    match send_text_before_deadline(
+                                                        &mut sink,
+                                                        crate::stall_script::client_note(&cue.text),
+                                                        tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
+                                                        "gemini persona stall cue send",
+                                                    )
+                                                    .await
+                                                    {
+                                                        Ok(()) => info!(
+                                                            "stall_stage stage={} tactic={} typology={typology} turn={} loop={} serial={serial}",
+                                                            cue.stage.name(),
+                                                            cue.tactic,
+                                                            cue.turn,
+                                                            cue.looped
+                                                        ),
+                                                        Err(e) => warn!("Persona stall cue send failed serial={serial}: {e:#}"),
+                                                    }
                                                 }
                                             }
                                         }
                                     }
-                                    // An ordinary call's scenario cue (crate::scenario), once, in this
-                                    // pause: a note that asks for no reply; never while stalling.
+                                    // An ordinary call's scenario cue (crate::scenario), once, and —
+                                    // times came up — the appointment rules, once: one note that asks
+                                    // for no reply, in this pause while the caller is quiet (a note
+                                    // mid-utterance holds up the reply to it); never while stalling.
                                     if keep.is_none()
                                         && persona
                                         && errand.is_none()
@@ -7676,59 +7792,54 @@ pub async fn run_session(
                                         && !wrap_up_sent
                                         && ivr_since.is_none()
                                         && !model_turn_pending
+                                        && !activity_open
                                     {
                                         // In the caller's language, read from their words (memory only).
                                         let spoken = crate::urgency::caller_language(&caller_text_all);
-                                        if let Some((scenario, cue)) = scenario_router.take_pending(stall_engage_now.is_some(), spoken) {
-                                            if scenario == crate::scenario::Scenario::ScheduleInvite && !appt_block_sent {
+                                        let scenario_cue = scenario_router.take_pending(stall_engage_now.is_some(), spoken);
+                                        if let Some((scenario, _)) = &scenario_cue {
+                                            if *scenario == crate::scenario::Scenario::ScheduleInvite && !appt_block_sent {
                                                 appt_block_due = appt.is_some();
                                             }
-                                            match send_text_before_deadline(
-                                                &mut sink,
-                                                crate::stall_script::client_note(&cue),
-                                                tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
-                                                "gemini persona scenario cue send",
-                                            )
-                                            .await
-                                            {
-                                                Ok(()) => info!(
-                                                    "scenario_route scenario={} action=injected turn={turns_done} chars={} serial={serial}",
-                                                    scenario.as_str(),
-                                                    cue.chars().count()
-                                                ),
-                                                Err(e) => warn!("Persona scenario cue send failed serial={serial}: {e:#}"),
-                                            }
                                         }
-                                    }
-                                    // Appointments: times came up — their whole part (dates, the
-                                    // function's details), once, as a note in this pause.
-                                    if appt_block_due
-                                        && !appt_block_sent
-                                        && keep.is_none()
-                                        && persona
-                                        && errand.is_none()
-                                        && !stall_on
-                                        && !stall_detected
-                                        && !wrap_up_sent
-                                        && ivr_since.is_none()
-                                        && !model_turn_pending
-                                    {
-                                        if let Some(a) = appt.as_ref() {
-                                            appt_block_sent = true;
-                                            let block = a.prompt_block(chrono::Local::now());
+                                        let appt_note = match appt.as_ref() {
+                                            Some(a) if appt_block_due && !appt_block_sent => {
+                                                appt_block_sent = true;
+                                                Some(a.prompt_note(chrono::Local::now()))
+                                            }
+                                            _ => None,
+                                        };
+                                        let note = scenario_cue
+                                            .iter()
+                                            .map(|(_, cue)| cue.as_str())
+                                            .chain(appt_note.as_deref())
+                                            .collect::<Vec<_>>()
+                                            .join("\n");
+                                        if !note.is_empty() {
                                             match send_text_before_deadline(
                                                 &mut sink,
-                                                crate::stall_script::client_note(block.trim_start()),
+                                                crate::stall_script::client_note(&note),
                                                 tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
-                                                "gemini appointment note send",
+                                                "gemini persona scenario / appointment note send",
                                             )
                                             .await
                                             {
-                                                Ok(()) => info!(
-                                                    "appointment_note sent chars={} turn={turns_done} serial={serial}",
-                                                    block.chars().count()
-                                                ),
-                                                Err(e) => warn!("Appointment note send failed serial={serial}: {e:#}"),
+                                                Ok(()) => {
+                                                    if let Some((scenario, cue)) = &scenario_cue {
+                                                        info!(
+                                                            "scenario_route scenario={} action=injected turn={turns_done} chars={} serial={serial}",
+                                                            scenario.as_str(),
+                                                            cue.chars().count()
+                                                        );
+                                                    }
+                                                    if let Some(n) = &appt_note {
+                                                        info!(
+                                                            "appointment_note sent chars={} turn={turns_done} serial={serial}",
+                                                            n.chars().count()
+                                                        );
+                                                    }
+                                                }
+                                                Err(e) => warn!("Persona scenario / appointment note send failed serial={serial}: {e:#}"),
                                             }
                                         }
                                     }
@@ -9276,7 +9387,7 @@ mod tests {
         assert!(r.should_ask(true, 3));
         assert_eq!(r.verdict(IvrRecording, 3), StallVerdictStep::Ivr);
         // The stalling starts at most this late (no answer in time = scam / sales).
-        assert_eq!(crate::stall_review::REVIEW_TIMEOUT, Duration::from_millis(1_500));
+        assert_eq!(crate::stall_review::REVIEW_TIMEOUT, Duration::from_millis(3_000));
     }
 
     fn review_of(verdict: crate::stall_review::Verdict, confidence: crate::stall_review::Confidence) -> crate::stall_review::Review {
@@ -10062,6 +10173,25 @@ mod tests {
         s += stall_score_add("繳款有中斷一段時間欸。沒有,我是想說你安信的賬戶有在。流動齁。", &mut hits);
         assert!(stall_engages(s, &hits), "{s} {hits:?}");
         assert!(hits.contains(&"帳戶") && hits.contains(&"繳款"));
+    }
+
+    /// A Japanese investment pitch scored only ご案内 and 口座 (投資 is in the
+    /// Chinese list, which kana text skips; a keyword is listed once) and was never stalled; a promised
+    /// profit is what only a scammer says, as 保證獲利 is in Chinese.
+    #[test]
+    fn a_japanese_investment_pitch_is_stalled() {
+        let mut hits = Vec::new();
+        let s = stall_score_add("投資コンサルのものですが、王さんはいらっしゃいますでしょうか", &mut hits);
+        assert!(hits.contains(&"投資コンサル"), "{hits:?}");
+        let s = s + stall_score_add("実は毎月8%の利益を保証する投資グループのご案内なんです", &mut hits);
+        assert!(stall_engages(s, &hits), "{s} {hits:?}");
+        assert!(hits.iter().any(|h| crate::scam_db::is_hard(h)), "{hits:?}");
+        // A clinic or a courier stays below the line.
+        for t in ["成田クリニックの受付ですが、健診の日程が変更になりました", "お届け物の件で、明日の午前中はご在宅でしょうか"] {
+            let mut hits = Vec::new();
+            let s = stall_score_add(t, &mut hits);
+            assert!(!stall_engages(s, &hits), "{t} {s} {hits:?}");
+        }
     }
 
     #[test]
@@ -10901,7 +11031,9 @@ mod tests {
         let a = crate::appointments::ApptSession::for_call(&rt, "0912345678").unwrap();
         let p = call_system_prompt("你是我。", Some(&a), now, true);
         assert!(p.starts_with("你是我。\n\n[Appointments") && p.contains(&now.format("%Y-%m-%d").to_string()), "{p}");
-        assert!(p.contains("do not repeat what you have just told the caller"), "{p}");
+        assert!(p.contains("Do not repeat what you just said") && p.contains("confirmed_by_caller = true"), "{p}");
+        // A later session keeps the note that went in, never the whole part.
+        assert!(p.chars().count() < "你是我。".chars().count() + crate::appointments::PROMPT_NOTE_MAX_CHARS + 3, "{p}");
         // The call starts with the short part only.
         let stub = call_system_prompt("你是我。", Some(&a), now, false);
         assert!(stub.starts_with("你是我。\n[Appointments") && stub.contains("never free or booked"), "{stub}");

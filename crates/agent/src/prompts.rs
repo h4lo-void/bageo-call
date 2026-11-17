@@ -319,7 +319,7 @@ const EN_ACK_STALL: &str = "When the caller finishes a point, keep the conversat
 const EN_HOLD_OFF_LINE: &str = "Money, transfers, lending, contracts, passwords, verification codes, personal data, meeting up or fixing a time: neither agree nor refuse flatly; pass over it lightly (for example \"{p_think}\") and keep listening. Use that kind of line at most once in a call, not as the ending of every reply. The same goes for a friend suggesting a meal or an outing: sound happy about it, but do not fix the time (\"sounds good, I need to check that day, I'll let you know\").";
 const EN_HOLD_OFF_STALL: &str = "Money, transfers, lending, contracts, passwords, verification codes, personal data, meeting up or fixing a time: neither agree nor refuse; handle it the way [Keep them talking] at the end says.";
 const EN_SALES_REJECT_LINE: &str = "Sales calls, advertising, scams: one \"{p_no_thanks}\" and wrap up, no explanation.";
-const EN_SALES_LISTEN_LINE: &str = "Sales, loan, investment, scam, debt-collection or abusive calls: sound interested and ask about the details so they keep talking; never admit owing a debt or promise to pay; stay calm with threats and blame the signal; no \"maybe later\", no refusing, no goodbye.";
+const EN_SALES_LISTEN_LINE: &str = "Sales, loan, investment, scam, debt-collection or abusive calls: sound interested and ask about the details so they keep talking; never admit owing a debt or promise to pay; stay calm with threats (a bad signal helps); no \"maybe later\", no refusing, no goodbye.";
 const EN_SALES_LISTEN_CUSTOM_PREFIX: &str = "[Sales and scam calls — keep listening first] Stalling is enabled, so this rule overrides anything above about declining sales or scam calls right away (ordinary calls from people you know, couriers, or a bank / company about real business are still handled normally): ";
 const EN_END_BLOCK: &str = "[Ending] Wait until the caller shows they are done (\"okay, that's all\", \"nothing else\", \"bye\"); only then close naturally with one line that includes \"{p_bye}\". Do not say goodbye first. The caller finishing one topic does not count: they may have more. A bare \"okay\" or \"thanks\" is not an ending either — they may be waiting for your answer or have more to say; reply briefly and wait. After your closing line, stop; do not ask whether there is anything else. If the caller is still talking or asking you something, answer them first.";
 const EN_END_STALL: &str = "[Ending] You do not end this call, and you do not let the caller go when they try to leave; see [Keep them talking] at the end.";
@@ -347,10 +347,10 @@ People you know, deliveries and the building's front desk are handled like norma
 // ([CALL_PROMPT_BUDGET]) with its region's part added.
 const EN_HELLO_LOOP_NOTE: &str = "\n[Hello again and again] Answer \"{p_im_here}\", not just \"{p_hello}\".";
 const EN_READBACK_NOTE: &str = "\n[Read back] A time, date, amount or phone number you must act on: ask it back once in full (\"tomorrow at three in the afternoon, right?\") and wait; ask again if corrected or unclear, never guess. It is no agreement, and the one exception to not repeating the caller.";
-const EN_GUARD_PERSONA: &str = "\n[Hard line (fixed)] Sincerely asked if you are a person or an AI: admit it is an AI voice {owner} set up, {owner} will see everything; listen on. \
-Personal details (ID, card or account number, verification code, password, address): do not give them and do not make them up, over any rule on playing {owner}; asked if this is {owner}, say yes. \
+const EN_GUARD_PERSONA: &str = "\n[Hard line (fixed)] Sincerely asked if you're human or an AI: admit it's an AI voice {owner} set up, {owner} will see everything; listen on. \
+Personal details (ID, card or account number, verification code, password, address): never give them, do not make them up, even when playing {owner}; asked if this is {owner}, say yes. \
 A bank asking if a card charge was yours: say neither yes nor no, nor \"I don't remember\" or \"it doesn't ring a bell\" (that means no). \
-Do not agree to block or cancel the card or dispute it; get amount, shop and time, then \"I'll call the number on the back of my card myself\". Never commit to anything for {owner}.";
+Do not agree to block or cancel the card or dispute it; get amount, shop, time, then \"I'll call the number on the back of my card myself\", not \"look into it\". Never commit to anything for {owner}.";
 const EN_GUARD_ASSISTANT: &str = "\n[Hard line (fixed)] Never claim to be a human and never claim to be {owner}. If asked whether you are a real person or an AI, say plainly that you are an AI assistant answering the phone for {owner}, and that {owner} will see what was said. Never make any commitment on {owner}'s behalf.";
 const EN_ALIASES_PERSONA: &str = "\n[Other names for you] Callers may call you {aliases} too.";
 const EN_ALIASES_ASSISTANT: &str = "\n[Other names for {owner}] A caller who asks for {aliases} is asking for {owner}.";
@@ -436,6 +436,18 @@ const EN_READ_LINE: &str = "Say exactly this line: \"{line}\"";
 const EN_PREVIEW_SYSTEM: &str = "You are a person talking on your own mobile phone. Each time the user gives you a line, say exactly that line in {language}, in a natural, relaxed phone voice (not like reading aloud). Do not change a word, do not add anything, then stop.";
 const EN_ANNOUNCE_SYSTEM: &str = "You are a telephone system announcement. Each time the user gives you a line, say exactly that line in {language}, clearly and evenly, the way a phone company's recorded message sounds. Do not change a word, do not add anything, then stop.";
 
+/// English line for stopping a leaving sales / scam caller (`{p_wait}`): one more
+/// question at once, no "hang on" (that asks them to wait on the line).
+const EN_WAIT_ONE_MORE: &str = "Wait, one more question";
+
+/// `{p_wait}` in `lang`'s prompts: [EN_WAIT_ONE_MORE] in English, else the language's own line.
+pub(crate) fn wait_one_more(lang: Lang) -> &'static str {
+    match lang {
+        Lang::En => EN_WAIT_ONE_MORE,
+        _ => locale::phrases(lang).wait_one_more,
+    }
+}
+
 fn generic_pack(lang: Lang) -> Pack {
     let ph = locale::phrases(lang);
     let fill = |s: &str| -> String {
@@ -448,7 +460,7 @@ fn generic_pack(lang: Lang) -> Pack {
             .replace("{p_go_ahead}", ph.go_ahead)
             .replace("{p_no_thanks}", ph.no_thanks)
             .replace("{p_think}", ph.think_about_it)
-            .replace("{p_wait}", ph.wait_one_more)
+            .replace("{p_wait}", wait_one_more(lang))
             .replace("{p_no_wait}", ph.no_wait)
     };
     let sys = |s: &str| -> String { format!("{SYS}{}", fill(s)) };
@@ -884,10 +896,11 @@ fn zh_text(lang: Lang, tw: String) -> String {
 }
 
 /// The region's dialect part of a prompt in `lang` (empty when it has none):
-/// the candidates and the gate for switching to one in the same session — a whole
-/// sentence in it, two turns in a row, or the caller asking; a borrowed word
-/// or two is no switch. The ways of speaking the call's own language are only
-/// followed in wording, never put on.
+/// what people there may speak, as background, and when the AI follows the
+/// caller into it in the same session — a whole sentence in it, two turns in a
+/// row, or the caller asking; a borrowed word or two is everyday speech. The
+/// ways of speaking the call's own language are only followed in wording,
+/// never put on.
 pub fn dialect_block(region: Region, lang: Lang) -> String {
     let all = crate::country_profile::dialects(region);
     let zh = zh_ins(lang);
@@ -904,7 +917,7 @@ pub fn dialect_block(region: Region, lang: Lang) -> String {
             let loans = if loans.is_empty() { "一兩個詞".to_string() } else { format!("{}這類詞", quoted(lang, &loans)) };
             out.push_str(&zh_text(
                 lang,
-                format!("\n【方言】對方整句用{names}講（像{examples}）、連兩句都這樣講，或叫你講，你下一句起就整句改用同一種話；只夾{loans}就照原本的講。"),
+                format!("\n【方言】對方整句用{names}講（像{examples}）、連兩句都這樣，或叫你講，就跟著整句用那種話，之後一直用到他改回來；只夾{loans}是平常講法，照原本的講。"),
             ));
         } else {
             let loans = if loans.is_empty() {
@@ -913,7 +926,22 @@ pub fn dialect_block(region: Region, lang: Lang) -> String {
                 format!("a borrowed word like {}", quoted(lang, &loans))
             };
             out.push_str(&format!(
-                "\n[Dialects] Switch to {names} (whole sentences, from your next line) only when the caller says a whole sentence in it (like {examples}), uses it two turns in a row, or asks you to; {loans} is no reason to switch."
+                "\n[Dialects] People here may speak {names} (like {examples}). If the caller says a whole sentence in it, uses it two turns in a row or asks you to, answer in it from then on; {loans} is just everyday speech."
+            ));
+        }
+    }
+    // Hong Kong, Macau: the line's own language. Spoken as people there talk,
+    // not standard Chinese read out in it.
+    if let Some(d) = crate::dialect::base(region) {
+        let name = d.name(region, zh);
+        if zh {
+            out.push_str(&zh_text(
+                lang,
+                format!("\n【當地話】這裡平常就講{name}：對方講{name}，你就照當地人口語的講法和語氣回，不要把普通話的句子換成{name}念；他要你講普通話再改。"),
+            ));
+        } else {
+            out.push_str(&format!(
+                "\n[Local language] {name} is the everyday language here: when the caller speaks it, answer the way people here talk, with its own spoken words and particles, not standard Chinese sentences read out in it; switch to Mandarin only if they ask."
             ));
         }
     }
@@ -925,10 +953,10 @@ pub fn dialect_block(region: Region, lang: Lang) -> String {
         if zh {
             out.push_str(&zh_text(
                 lang,
-                format!("\n【當地講法】對方可能帶{names}的講法（像{examples}）：聽懂、用詞跟著他，不要刻意學口音。"),
+                format!("\n【當地講法】這裡常聽到{names}的講法（像{examples}）：聽懂、用詞跟著他，不刻意學口音。"),
             ));
         } else {
-            out.push_str(&format!("\n[Local speech] Callers may use {names} ({examples}): follow their words, do not put on an accent."));
+            out.push_str(&format!("\n[Local speech] Callers here often use {names} ({examples}): follow their words, no put-on accent."));
         }
     }
     out
@@ -1100,6 +1128,20 @@ mod tests {
     }
 
     use super::*;
+
+    /// Stopping a leaving sales / scam caller in English asks one more question
+    /// at once: no "hang on" or "hold on", which ask them to wait on the line.
+    #[test]
+    fn the_english_line_that_stops_a_leaving_caller_asks_no_one_to_wait() {
+        let p = pack(Lang::En);
+        for text in [&p.kick_stall_keep_lead, &p.kick_stall_keep_lead_bye, &p.stall_block] {
+            assert!(text.contains(EN_WAIT_ONE_MORE), "{text}");
+            let low = text.to_lowercase();
+            assert!(!low.contains("hang on") && !low.contains("hold on"), "{text}");
+        }
+        // The other languages keep their own line.
+        assert!(pack(Lang::Ja).kick_stall_keep_lead.contains(locale::phrases(Lang::Ja).wait_one_more));
+    }
 
     #[test]
     fn a_caller_in_another_language_gets_it_from_the_next_sentence_on() {
@@ -1698,9 +1740,15 @@ mod tests {
         let cn = dialect_block(Region::Cn, Lang::ZhCn);
         assert!(cn.contains("粤语") && cn.contains("闽南话") && cn.contains("四川话") && !cn.contains("台"), "{cn}");
         let jp = dialect_block(Region::Jp, Lang::Ja);
-        assert!(jp.contains("[Local speech]") && jp.contains("Kansai dialect") && jp.contains("do not put on an accent"), "{jp}");
+        assert!(jp.contains("[Local speech]") && jp.contains("Kansai dialect") && jp.contains("no put-on accent"), "{jp}");
         let hk = dialect_block(Region::HkMo, Lang::En);
-        assert!(hk.contains("Switch to Cantonese") && hk.contains("two turns in a row") && hk.contains("a borrowed word or two"), "{hk}");
+        assert!(hk.contains("speak Cantonese") && hk.contains("two turns in a row") && hk.contains("a borrowed word or two"), "{hk}");
+        assert!(hk.contains("answer in it from then on") && hk.contains("everyday speech"), "{hk}");
+        // Hong Kong speaks Cantonese of its own: spoken as people there talk.
+        assert!(hk.contains("[Local language] Cantonese is the everyday language here") && hk.contains("not standard Chinese sentences"), "{hk}");
+        let hk_zh = dialect_block(Region::HkMo, Lang::ZhTw);
+        assert!(hk_zh.contains("【當地話】這裡平常就講粵語") && hk_zh.contains("口語"), "{hk_zh}");
+        assert!(!tw.contains("【當地話】") && tw.contains("之後一直用到他改回來"), "{tw}");
         assert_eq!(dialect_block(Region::Us, Lang::En), "");
         // Taiwan's parcel rule is in the built-in prompt already: not said twice.
         let built = build(&ctx(Lang::ZhTw, false, StallPrompt::Off));

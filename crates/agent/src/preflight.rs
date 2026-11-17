@@ -804,8 +804,9 @@ pub fn card_text(lang: Lang, keys: &[&str]) -> String {
 
 // ---------------------------------------------------------------- the script's block
 
-/// What the AI says after its greeting on a business call, in the call's
-/// language (a polite opening: no casual phone greeting).
+/// An example of the polite opener a business call starts with after the
+/// greeting, in the call's language: the AI words its own (no casual phone
+/// greeting) and then says why it calls.
 pub fn opening(lang: Lang) -> &'static str {
     match lang {
         Lang::ZhTw => "您好，不好意思打擾一下",
@@ -860,13 +861,13 @@ const DETAIL_LABELS: [(&str, &str); 12] = [
 fn assemble(ladder: &[String], details: &[String], lang: Lang) -> String {
     let mut lines: Vec<String> = Vec::new();
     if ladder.len() >= 2 {
-        lines.push(format!("[NEGOTIATION LADDER] {} (best first; only a time past the last needs ask_owner; nothing free: end politely)", ladder.join(" > ")));
+        lines.push(format!("[NEGOTIATION LADDER] {} (best first; only a time past the last needs ask_owner; none free: end politely)", ladder.join(" > ")));
     }
     if !details.is_empty() {
         lines.push(format!("[AUTHORIZED DETAILS] you may say: {}", details.join("; ")));
     }
-    let casual = if lang == Lang::Ja { " (a business call: never the casual もしもし)" } else { "" };
-    lines.push(format!("[BUSINESS OPENING] after the greeting use: {}{casual}", opening(lang)));
+    let local = if lang == Lang::Ja { " (no もしもし)" } else { "" };
+    lines.push(format!("[BUSINESS OPENING] greet, {} or similar, then say for whom and why you call{local}", opening(lang)));
     lines.join("
 ")
 }
@@ -1114,7 +1115,11 @@ mod tests {
         assert!(opening(Lang::Ja).contains("お忙しいところ恐れ入りますが"));
         assert!(opening(Lang::Fr).contains("Excusez-moi, je ne vous dérange pas ?"));
         let ja = prompt_block("予約したい", &[], Lang::Ja);
-        assert!(ja.contains("お忙しいところ恐れ入りますが") && ja.contains("never the casual"), "{ja}");
+        assert!(ja.contains("お忙しいところ恐れ入りますが") && ja.contains("(no もしもし)"), "{ja}");
+        // An example to word its own opener on, then the reason for the call.
+        // An example to word its own opener on, then whose call it is and why:
+        // a French booking opened on the polite line and went straight to the table.
+        assert!(ja.contains("or similar, then say for whom and why you call"), "{ja}");
     }
 
     #[test]
@@ -1123,7 +1128,7 @@ mod tests {
         let b = prompt_block("訂餐廳 7 點半，不行就 8 點半", &answers, Lang::ZhTw);
         assert!(b.contains("[NEGOTIATION LADDER] 19:30 > 20:30"), "{b}");
         assert!(b.contains("[AUTHORIZED DETAILS] you may say: phone 0912345678; booking name Alex"), "{b}");
-        assert!(b.contains("[BUSINESS OPENING] after the greeting use: 您好，不好意思打擾一下"), "{b}");
+        assert!(b.contains("[BUSINESS OPENING] greet, 您好，不好意思打擾一下"), "{b}");
         // Nothing to say beyond the opening when nothing was added.
         assert_eq!(prompt_block("幫我打給媽媽說晚點回家", &[], Lang::En).lines().count(), 1);
         let long = "x".repeat(200);

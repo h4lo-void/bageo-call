@@ -1142,6 +1142,26 @@ fn keyword_hits_in(text: &str, local: &LocalDb) -> Vec<Hit> {
     out
 }
 
+/// The hits without an accented keyword that only matched as part of a longer
+/// hit of another language ("crédit" of the French list inside "credit card"
+/// heard in English): one word heard, kept as the longer keyword. Same-language
+/// pairs ("bearbeitungsgebühr" in "bearbeitungsgebühr vorab") and hard words stay.
+pub fn without_folded_repeats(hits: &[String]) -> Vec<String> {
+    let folded: Vec<String> = hits.iter().map(|h| fold_accents(h.trim())).collect();
+    hits.iter()
+        .enumerate()
+        .filter(|(i, h)| {
+            let h = h.trim();
+            let accented = folded[*i] != h.to_lowercase();
+            let inside_other = hits.iter().enumerate().any(|(j, o)| {
+                j != *i && !o.contains(h) && folded[j].len() > folded[*i].len() && folded[j].contains(folded[*i].as_str())
+            });
+            !(accented && inside_other && !is_hard(h))
+        })
+        .map(|(_, h)| h.clone())
+        .collect()
+}
+
 /// Distinct keywords (built-in, then the owner's) found in `text`, in database order.
 pub fn keyword_hits(text: &str) -> Vec<Hit> {
     with_local(|local| keyword_hits_in(text, local))
@@ -2501,5 +2521,22 @@ mod tests {
         assert!(own_matter("ご連絡いただいた件で折り返しました"));
         assert!(own_matter("문의하신 민원 건입니다"));
         assert!(own_matter("Llamo por su reclamacion"));
+    }
+
+    /// "credit card" heard in English also matched the French 「crédit」 (accents
+    /// folded): a loan pitch read into a card desk's words.
+    #[test]
+    fn an_accented_word_inside_a_longer_hit_counts_once() {
+        let texts = |t: &str| keyword_hits(t).iter().map(|h| h.text.to_string()).collect::<Vec<_>>();
+        let en = texts("This is the credit card risk-control center at First National Bank");
+        assert!(en.iter().any(|h| h == "crédit"), "the scan itself still reports it: {en:?}");
+        let kept = without_folded_repeats(&en);
+        assert!(kept.iter().any(|h| h == "credit card") && !kept.iter().any(|h| h == "crédit"), "{kept:?}");
+        // Alone it still counts.
+        let fr = without_folded_repeats(&texts("Je vous propose un crédit à taux réduit"));
+        assert!(fr.iter().any(|h| h == "crédit"), "{fr:?}");
+        // The same language's longer phrase keeps both.
+        let de = without_folded_repeats(&texts("bitte zahlen Sie die Bearbeitungsgebühr vorab beim Notar"));
+        assert!(de.iter().any(|h| h == "bearbeitungsgebühr") && de.iter().any(|h| h == "bearbeitungsgebühr vorab"), "{de:?}");
     }
 }

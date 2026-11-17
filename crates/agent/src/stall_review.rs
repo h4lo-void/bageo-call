@@ -25,6 +25,14 @@
 //! that alone, the model was unsure and the real card desk was kept talking. So
 //! a caller who has only said who they are is [`Verdict::TooEarly`]: the call
 //! is looked at again once their next turn has ended (`gemini_live`).
+//!
+//! The model does not always answer in time (a busy hour: most answers over a
+//! second, some 503s). Two misses in a row hand a keyword-flagged call to the
+//! keywords alone, and a real card desk — 「信用卡」「銀行」 — was kept talking
+//! as a scam. So when there is no answer, what the caller plainly said still
+//! counts ([`local_fallback`]): a card desk checking a purchase or a courier,
+//! with nothing only a scammer asks for, is an ordinary call (medium
+//! confidence). A quick 5xx is asked once more inside the same deadline.
 
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -163,8 +171,14 @@ impl CallerContext {
     }
 }
 
-/// How long the caller may wait for the verdict.
-pub const REVIEW_TIMEOUT: Duration = Duration::from_millis(1500);
+/// How long the verdict may take. Nobody waits for it: the AI talks on and the
+/// verdict changes the call when it comes. At 1.5 s most answers were cut off
+/// (the acceptance run: 127 of 150 looks timed out, the answers that came took
+/// 1.05–1.49 s), so clinic notices went unrouted and scam calls unjudged.
+pub const REVIEW_TIMEOUT: Duration = Duration::from_millis(3000);
+
+/// A 5xx that came this soon is asked once more (inside [`REVIEW_TIMEOUT`]).
+const RETRY_5XX_BEFORE: Duration = Duration::from_millis(900);
 
 /// Gemini's lowest-cost model: the question is short and the answer one word.
 pub const REVIEW_MODEL: &str = "gemini-flash-lite-latest";
@@ -348,16 +362,81 @@ async fn review_at_with_context(
         }
         Ok(Err(e)) => {
             warn!("stall review ({purpose:?}) failed caller={caller_id}: {e:#} dialogue={head:?}");
-            Review::unavailable(false)
+            local_or_unavailable(dialogue, hits, purpose, caller_id)
         }
         Err(_) => {
             warn!(
                 "stall review ({purpose:?}) timed out after {} ms caller={caller_id} dialogue={head:?}",
                 REVIEW_TIMEOUT.as_millis()
             );
-            Review::unavailable(false)
+            local_or_unavailable(dialogue, hits, purpose, caller_id)
         }
     }
+}
+
+/// No answer from the model: [`local_fallback`], else no verdict.
+fn local_or_unavailable(dialogue: &str, hits: &[String], purpose: Purpose, caller_id: &str) -> Review {
+    match local_fallback(dialogue, hits) {
+        Some(r) => {
+            info!(
+                "stall review ({purpose:?}) no answer → local verdict={:?} confidence={} scenario={} caller={caller_id} hits={hits:?}",
+                r.verdict,
+                r.confidence.as_str(),
+                r.scenario.as_str()
+            );
+            r
+        }
+        None => Review::unavailable(false),
+    }
+}
+
+/// The caller's lines of the dialogue (`對方：` / `Caller:`), one per line.
+fn caller_text(dialogue: &str) -> String {
+    dialogue
+        .lines()
+        .filter_map(|l| {
+            let l = l.trim();
+            l.strip_prefix("對方：").or_else(|| l.strip_prefix("Caller:")).or_else(|| l.strip_prefix("Caller："))
+        })
+        .filter(|t| !crate::gemini_live::looks_like_carrier_intl_prompt(t))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Names of a card among the keywords (「信用卡」, "credit card"): a card desk says them.
+const CARD_NAMES: &[&str] = &["卡", "card", "カード", "카드", "tarjeta", "carte", "karte", "cartão", "kredit"];
+
+/// What the caller's own words show for sure when the model did not answer: a
+/// card desk checking one purchase ([`crate::scenario::card_check`]) or a
+/// courier ([`crate::scenario::local_guess`]) is an ordinary call — "normal",
+/// medium confidence, with its scenario. Not when they said a word only
+/// scammers say, nor when a keyword that is clear on its own was heard (only the
+/// card's own name is allowed for the card desk). Anything else: None, the call
+/// loop's rules decide. String checks only.
+fn local_fallback(dialogue: &str, hits: &[String]) -> Option<Review> {
+    let caller = caller_text(dialogue);
+    if caller.trim().is_empty() || crate::scam_db::has_hard_hit(&caller) {
+        return None;
+    }
+    let scenario = crate::scenario::local_guess(&caller);
+    let strong: Vec<crate::scam_db::Hit> = crate::scam_db::without_folded_repeats(hits)
+        .iter()
+        .filter_map(|h| crate::scam_db::keyword(h.trim()).or_else(|| crate::scam_db::keyword(&h.trim().to_lowercase())))
+        .filter(|k| k.weight >= 2 || k.hard)
+        .collect();
+    let allowed = match scenario {
+        crate::scenario::Scenario::BankVerify => strong.iter().all(|k| {
+            !k.hard && k.typology == "bank_card_sales" && CARD_NAMES.iter().any(|c| k.text.contains(c))
+        }),
+        crate::scenario::Scenario::Delivery => strong.is_empty(),
+        crate::scenario::Scenario::ImportantNotice => strong.is_empty(),
+        _ => false,
+    };
+    allowed.then(|| Review {
+        confidence: Confidence::Medium,
+        scenario,
+        ..Review::of(Verdict::Normal)
+    })
 }
 
 async fn ask(
@@ -371,6 +450,8 @@ async fn ask(
 ) -> Result<Review> {
     let url = format!("{}/v1beta/models/{REVIEW_MODEL}:generateContent", base.trim_end_matches('/'));
     let mut strict = true;
+    let started = Instant::now();
+    let mut asked_again = false;
     loop {
         let body = request_body_for(dialogue, hits, ctx, purpose, strict);
         let resp = http
@@ -387,6 +468,11 @@ async fn ask(
             // INVALID_ARGUMENT that does not name it. One more try without the
             // answer schema, inside the same deadline.
             strict = false;
+            continue;
+        }
+        if status.is_server_error() && !asked_again && started.elapsed() < RETRY_5XX_BEFORE {
+            // A busy model answers 503 at once; another try often gets through.
+            asked_again = true;
             continue;
         }
         if !status.is_success() {
@@ -463,6 +549,8 @@ fn hit_types(hits: &[String]) -> Vec<&'static str> {
 /// `strict` holds the answer to the labels and known types; the retry after a 400
 /// leaves that and the thinking setting out and reads the model's text.
 fn request_body_for(dialogue: &str, hits: &[String], ctx: &CallerContext, purpose: Purpose, strict: bool) -> Value {
+    // "crédit" read into "credit card" is no loan pitch: not named to the model.
+    let hits = &crate::scam_db::without_folded_repeats(hits);
     let dialogue = crate::deepseek::relabel_dialogue_en(&without_carrier_prompt(dialogue.trim()));
     let number = match ctx.number.trim() {
         "" => "hidden",
@@ -1234,16 +1322,89 @@ mod tests {
         assert!(std::ptr::eq(client(), client()));
     }
 
+    /// 2026-11-17 bench: the model timed out twice on a real card desk
+    /// (「信用卡」「銀行」) and the keywords alone kept it talking as a scam; a
+    /// courier's call was left without its scenario. With no answer, what the
+    /// caller plainly said decides those two — and nothing else.
+    #[tokio::test]
+    async fn no_answer_still_knows_a_card_desk_and_a_courier() {
+        use crate::scenario::Scenario;
+        let ctx = CallerContext::default();
+        let none = "http://127.0.0.1:9";
+        let desk = "接聽：Hello?\n對方：喂您好，這邊是大愛銀行信用卡風險管控中心。\n接聽：你好，請說。\n對方：我們看到您的卡片昨天晚上11點左右在網路電器商店有一筆3280元的消費。想跟您確認是您本人刷的嗎?";
+        let hits = vec!["信用卡".to_string(), "銀行".to_string()];
+        let r = review_at_with_context(&Client::new(), none, "test-key", desk, &hits, &ctx, Purpose::Keywords).await;
+        assert_eq!((r.verdict, r.confidence, r.scenario), (Verdict::Normal, Confidence::Medium, Scenario::BankVerify));
+        let en = "接聽：Hello?\n對方：Hello, Mr. Lee. This is the credit card risk-control center at First National Bank. I'm calling to verify a purchase on your account for about a hundred dollars.";
+        // As the call loop collects them: the French 「crédit」 matched inside "credit card".
+        let en_hits = vec!["credit card".to_string(), "account".to_string(), "bank".to_string(), "crédit".to_string()];
+        let r = review_at_with_context(&Client::new(), none, "test-key", en, &en_hits, &ctx, Purpose::Keywords).await;
+        assert_eq!((r.verdict, r.scenario), (Verdict::Normal, Scenario::BankVerify));
+        let body = request_body(en, &en_hits, "", true);
+        let user = body["contents"][0]["parts"][0]["text"].as_str().unwrap();
+        let types = user.lines().find(|l| l.starts_with("Types they point to:")).unwrap_or("");
+        assert!(!user.contains("crédit") && types.contains("bank_card_sales") && !types.contains("loan_sales"), "{user}");
+        // Only the introduction: no purchase asked about yet, no verdict.
+        let intro = "接聽：Hello?\n對方：喂您好，這邊是大愛銀行信用卡風險管控中心。";
+        let r = review_at_with_context(&Client::new(), none, "test-key", intro, &hits, &ctx, Purpose::Keywords).await;
+        assert_eq!(r.verdict, Verdict::Unavailable);
+        // The fake bank of the installment story: still no verdict here, the
+        // call loop's rules (hard words stall at once) decide.
+        let fake = format!("{desk}\n對方：系統把您設成分期付款，要請您現在去ATM解除分期。");
+        let fake_hits = vec!["信用卡".to_string(), "銀行".to_string(), "分期".to_string(), "atm".to_string()];
+        let r = review_at_with_context(&Client::new(), none, "test-key", &fake, &fake_hits, &ctx, Purpose::Keywords).await;
+        assert_eq!(r.verdict, Verdict::Unavailable);
+        // A courier, no keyword: ordinary, with its scenario…
+        let courier = "接聽：喂？\n對方：喂，你好，請問是不是王先生啊?我是順豐派件的。";
+        let r = review_at_with_context(&Client::new(), none, "test-key", courier, &[], &ctx, Purpose::Content).await;
+        assert_eq!((r.verdict, r.scenario), (Verdict::Normal, Scenario::Delivery));
+        // A clinic moving a checkup, no keyword: an important notice all the same.
+        let clinic = "接聽：喂，你好。\n對方：王先生您好,我是健檢中心的櫃檯,您原本預約的健檢時間有做調整。幫您改到下週三上午10點。";
+        let r = review_at_with_context(&Client::new(), none, "test-key", clinic, &[], &ctx, Purpose::Content).await;
+        assert_eq!((r.verdict, r.confidence, r.scenario), (Verdict::Normal, Confidence::Medium, Scenario::ImportantNotice));
+        // …but not with a keyword that is clear on its own.
+        let r = review_at_with_context(&Client::new(), none, "test-key", courier, &["匯款".to_string()], &ctx, Purpose::Content).await;
+        assert_eq!(r.verdict, Verdict::Unavailable);
+        // Anything else stays unanswered.
+        let chat = "接聽：喂？\n對方：王先生，禮拜六有空嗎？一起吃飯。";
+        let r = review_at_with_context(&Client::new(), none, "test-key", chat, &[], &ctx, Purpose::Content).await;
+        assert_eq!(r.verdict, Verdict::Unavailable);
+    }
+
+    #[tokio::test]
+    async fn a_quick_server_error_is_asked_once_more() {
+        let busy = r#"{"error":{"code":503,"status":"UNAVAILABLE"}}"#;
+        let (base, server) = serve(vec![(503, busy, Duration::ZERO), (200, NORMAL, Duration::ZERO)]).await;
+        let v = review_at(&Client::new(), &base, "test-key", "對方：媽，我下午匯款給你", &hits(), "").await;
+        assert_eq!(v, Verdict::Normal);
+        assert_eq!(server.await.unwrap().len(), 2);
+        // Twice busy: no third try.
+        let (base, server) = serve(vec![(503, busy, Duration::ZERO), (503, busy, Duration::ZERO)]).await;
+        let v = review_at(&Client::new(), &base, "test-key", "對方：保證獲利", &hits(), "").await;
+        assert_eq!(v, Verdict::Unavailable);
+        assert_eq!(server.await.unwrap().len(), 2);
+    }
+
     /// No answer in time is no verdict: what it means for the call is the call
     /// loop's rule (gemini_live), no longer "keep them talking" for everyone.
     #[tokio::test]
     async fn a_slow_answer_keeps_the_caller_talking() {
-        let (base, server) = serve(vec![(200, NORMAL, Duration::from_millis(2500))]).await;
+        let (base, server) = serve(vec![(200, NORMAL, Duration::from_millis(4500))]).await;
         let started = Instant::now();
         let v = review_at(&Client::new(), &base, "test-key", "對方：你的帳戶被盜用", &hits(), "").await;
         let took = started.elapsed();
         assert_eq!(v, Verdict::Unavailable);
-        assert!(took >= REVIEW_TIMEOUT && took < Duration::from_millis(2300), "{took:?}");
+        assert!(took >= REVIEW_TIMEOUT && took < REVIEW_TIMEOUT + Duration::from_millis(800), "{took:?}");
+        server.abort();
+    }
+
+    /// The model's usual answer (1–2 s) is a verdict: at 1.5 s most of them
+    /// were thrown away and the call went unjudged.
+    #[tokio::test]
+    async fn a_two_second_answer_still_counts() {
+        let (base, server) = serve(vec![(200, NORMAL, Duration::from_millis(2000))]).await;
+        let v = review_at(&Client::new(), &base, "test-key", "對方：媽，我下午匯款給你", &hits(), "").await;
+        assert_eq!(v, Verdict::Normal);
         server.abort();
     }
 
@@ -1324,20 +1485,20 @@ mod tests {
         assert!(hit.is_empty(), "everyday sentences read as a menu ({} of {}): {hit:#?}", hit.len(), cases.len());
     }
 
-    /// Reviewer: the 400-then-retry path is inside the same 1.5 s budget.
+    /// Reviewer: the 400-then-retry path is inside the same budget.
     #[tokio::test]
     async fn reviewer_retry_after_400_stays_within_the_timeout() {
         let refused = r#"{"error":{"code":400,"message":"thinking budget is not supported by this model"}}"#;
         let (base, server) = serve(vec![
-            (400, refused, Duration::from_millis(1000)),
-            (200, NORMAL, Duration::from_millis(1000)),
+            (400, refused, Duration::from_millis(1800)),
+            (200, NORMAL, Duration::from_millis(1800)),
         ])
         .await;
         let started = Instant::now();
         let v = review_at(&Client::new(), &base, "test-key", "對方：媽，我下午匯款給你", &hits(), "").await;
         let took = started.elapsed();
         assert_eq!(v, Verdict::Unavailable);
-        assert!(took >= REVIEW_TIMEOUT && took < Duration::from_millis(1900), "{took:?}");
+        assert!(took >= REVIEW_TIMEOUT && took < REVIEW_TIMEOUT + Duration::from_millis(400), "{took:?}");
         server.abort();
     }
 
@@ -1420,7 +1581,8 @@ mod tests {
         assert!(schema["required"].as_array().unwrap().contains(&json!("scenario")));
         let hint = schema["properties"]["scenario"]["description"].as_str().unwrap();
         assert!(hint.contains("bank_verify = a card or bank desk") && hint.contains("wrong_number"), "{hint}");
-        assert_eq!(REVIEW_TIMEOUT, Duration::from_millis(1500), "no longer wait");
+        // Long enough for the model's usual 1–2 s answer; the call never waits on it.
+        assert_eq!(REVIEW_TIMEOUT, Duration::from_millis(3000));
     }
 
     #[tokio::test]

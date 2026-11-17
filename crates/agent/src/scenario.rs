@@ -7,7 +7,10 @@
 //! at once, and once the scenario is known one short cue for it (at most
 //! [`MAX_CUE_CHARS`] characters) goes in the pause after the AI's turn, once per
 //! scenario per call, never while a sales / scam caller is being stalled.
-//! Pure in-memory work.
+//! When that look gets no answer in time, the caller's own words still name the
+//! scenarios plain words show ([local_guess]: a courier, a card desk checking
+//! a purchase, a clinic, school or office with a change, a deadline or a number
+//! to call back). Pure in-memory work.
 
 use crate::country_profile::Region;
 use crate::locale::Lang;
@@ -62,79 +65,81 @@ pub const MAX_CUE_CHARS: usize = 100;
 
 /// Per language: note mark, then delivery, bank_verify, important_notice,
 /// schedule_invite (no booking), schedule_invite (booking on), casual_chat,
-/// wrong_number. Simplified Chinese is converted from Traditional.
+/// wrong_number — each a colleague's short reminder of what kind of call it is
+/// and where to take it, with the lines not to cross; never a line to say.
+/// Simplified Chinese is converted from Traditional.
 const CUES: [(Lang, &str, [&str; 7]); 8] = [
     (Lang::ZhTw, "【系統小抄·不是對方說的】", [
-        "快遞外送：貨到付款先問金額和寄件人，不代墊大筆錢；他說好、道謝收尾時，回一句帶掰掰的道別。",
-        "銀行核對交易：複誦金額、商店、時間；不說是你刷的、也不說沒印象；停卡、卡控都不答應，只說「晚點我自己打卡片背面的客服確認」。",
-        "正事通知：認真聽完，不推說在忙；一次補問一項缺的（單位、期限、回電號碼），關鍵數字完整複誦。",
-        "約時間：開心接住，說「我先確認那天的安排再回你」，不把時間說死。",
-        "約時間：開心接住，照預約流程記下日期時間並複誦確認。",
-        "親友閒聊：放鬆跟著聊，不要一條一條追問，不要客服腔。",
-        "打錯電話：簡短說他打錯了，不要報出你的名字或身分。",
+        "是快遞，照這裡的習慣讓他把東西放好就好；貨到付款先問金額和寄件人，他道謝收尾就自然說掰掰。",
+        "像銀行在核對刷卡：聽清楚金額、商店、時間，不說是不是你刷的、沒印象或要再想想，也不答應停卡或卡控，說你晚點自己打卡片背面的客服確認。",
+        "是正事通知，認真聽完，別推說在忙或說要確認一下；缺什麼（單位、期限、回電號碼）一次問一項，重要數字複誦。",
+        "有人約時間，開心接住，說那天晚點回他，時間先不說死，也別說要確認或查一下。",
+        "有人約時間，開心接住，照預約流程記下時間，複誦一次。",
+        "親友來聊天，放鬆跟著聊就好，不用一直問、不用客服腔。",
+        "像是打錯了，簡短跟他說就好，別報出你的名字或身分。",
     ]),
     (Lang::En, "[Note] ", [
-        "Courier: COD: amount, sender; they wrap up or thank you: say bye.",
-        "Bank: repeat amount, shop, time; don't confirm or deny; no block or hold; call them later.",
+        "Courier: leave it as usual; COD: amount, sender; they thank you: say bye.",
+        "Bank checking a charge: note amount, shop, time; neither yes nor no, no block; you'll call.",
         "Notice: hear it all; ask what's missing (who, deadline, callback no.); repeat key figures.",
-        "Scheduling: welcome it; say you'll confirm the day later; don't fix a time.",
-        "Scheduling: welcome it, book the date and time with the booking steps and repeat them.",
-        "Family or friend chat: relaxed and natural, no list of questions, no service tone.",
+        "Scheduling: welcome it; you'll get back to them later; no time fixed yet.",
+        "Scheduling: welcome it, book the date and time with the booking steps, repeat them.",
+        "Family or friend chat: relax, talk as usual, no list of questions, no service tone.",
         "Wrong number: say so briefly; never give the owner's name or identity.",
     ]),
     (Lang::Ja, "[メモ] ", [
-        "宅配：代引きは金額と差出人を確認。お礼で締められたら挨拶を返す。",
-        "カード会社の確認：金額・店名・時刻を復唱。本人利用とも違うとも覚えがないとも言わず、停止や一時停止にも同意せず「後で公式窓口に確認します」で締める。",
-        "大事な連絡：最後まで聞き、足りない点（部署・期限・折り返し番号）を一つずつ確認し、数字は復唱。",
-        "日程の相談：明るく受け「後で確定して連絡します」と言い、日時は確定しない。",
-        "日程の相談：明るく受け、予約の手順で日時を記録して復唱する。",
-        "家族・友人との雑談：肩の力を抜いて合わせる。質問攻めや事務的な口調はしない。",
-        "間違い電話：間違いだと短く伝え、持ち主の名前や身元は言わない。",
+        "宅配：いつもの置き方で。代引きは金額と差出人、お礼で締められたら挨拶を返す。",
+        "カード会社の確認らしい：金額・店名・時刻を聞き、本人利用とも違うとも覚えがないとも言わず、停止にも同意せず、後で公式窓口に確認すると伝える。",
+        "大事な連絡：最後まで聞き、足りない点（部署・期限・折り返し番号）を一つずつ聞き、数字は復唱。",
+        "日程の誘い：明るく受け、後で連絡すると伝え、日時はまだ決めない。",
+        "日程の誘い：明るく受け、予約の手順で日時を記録し復唱。",
+        "家族・友人との雑談：いつも通り気楽に。質問攻めや事務的な口調はなし。",
+        "間違い電話らしい：短く伝え、持ち主の名前や身元は言わない。",
     ]),
     (Lang::Ko, "[메모] ", [
-        "택배: 착불이면 금액과 보낸 사람 확인. 감사 인사로 마무리하면 인사로 답하기.",
-        "카드사 확인: 금액·가맹점·시간 복창. 본인 사용 여부도, 기억 안 난다고도 말하지 말고 정지·일시정지 동의 없이 '나중에 공식 고객센터에 확인할게요'로 마무리.",
+        "택배: 평소처럼 두게 하고, 착불이면 금액·보낸 사람 확인, 감사 인사엔 인사로 답하기.",
+        "카드사 확인 같아요: 금액·가맹점·시간을 듣고, 본인 사용 여부도 기억 안 난다고도 말하지 말고 정지 동의 없이 나중에 직접 고객센터에 확인한다고 하기.",
         "중요한 연락: 끝까지 듣고 빠진 것(부서·기한·회신 번호)을 하나씩 묻고 숫자는 복창.",
-        "일정 약속: 반갑게 받고 '나중에 확정해서 연락드릴게요'라고 하며 시간은 확정하지 않기.",
+        "일정 약속: 반갑게 받고 나중에 연락하겠다고 하며 시간은 아직 정하지 않기.",
         "일정 약속: 반갑게 받고 예약 절차대로 날짜와 시간을 기록하고 복창.",
-        "가족·친구와 수다: 편하게 맞장구, 캐묻거나 상담원 말투는 쓰지 않기.",
-        "잘못 걸린 전화: 짧게 알려 주고 주인의 이름이나 신원은 말하지 않기.",
+        "가족·친구와 수다: 평소처럼 편하게, 캐묻거나 상담원 말투 없이.",
+        "잘못 걸린 전화: 짧게 알려 주고 주인 이름이나 신원은 말하지 않기.",
     ]),
     (Lang::Es, "[Nota] ", [
-        "Envío: cobro: importe, remitente; si cierra o agradece, despídete.",
-        "Banco: repite importe, comercio, hora; ni sí ni no; sin bloqueo ni retención; llamarás tú.",
-        "Aviso importante: escucha todo; pide lo que falte (área, plazo, número) y repite las cifras.",
-        "Cita: acéptala con gusto; di que la confirmas más tarde; no fijes la hora.",
+        "Envío: como se suele; contra reembolso: importe, remitente; si agradece, despídete.",
+        "Banco revisando un cargo: anota importe, comercio, hora; ni sí ni no; sin bloqueo; llamas tú.",
+        "Aviso importante: escucha todo, pide lo que falte (área, plazo, número) y repite las cifras.",
+        "Cita: acéptala con gusto; di que lo confirmas luego; sin fijar hora.",
         "Cita: acéptala con gusto, anota fecha y hora con la reserva y repítelas.",
-        "Familia o amigos: relajado y natural, sin interrogar ni tono de operador.",
-        "Número equivocado: dilo en breve; no digas el nombre ni datos del titular.",
+        "Familia o amigos: charla relajada, como siempre, sin interrogar.",
+        "Número equivocado: dilo en breve, sin el nombre ni datos del titular.",
     ]),
     (Lang::Fr, "[Note] ", [
-        "Colis: à payer: combien, de qui; s'il conclut, dis au revoir.",
-        "Banque : répète montant, commerce, heure ; ni oui ni non ; aucun blocage ; tu rappelleras.",
-        "Avis : écoute tout ; demande ce qui manque (service, délai, numéro) ; répète les chiffres.",
-        "Rendez-vous : accueille-le, dis que tu confirmeras plus tard ; rien de fixé.",
-        "Rendez-vous : accueille-le, note date et heure avec la réservation et répète-les.",
-        "Proche ou ami : détendu et naturel, pas d'interrogatoire ni de ton de standard.",
-        "Faux numéro : dis-le brièvement, sans le nom ni l'identité du titulaire.",
+        "Colis : comme d'habitude ; à payer : combien, de qui ; s'il remercie, au revoir.",
+        "Banque, un achat : montant, commerce, heure ; ni oui ni non ; aucun blocage ; tu rappelles.",
+        "Avis : écoute tout, demande ce qui manque (service, délai, numéro), répète les chiffres.",
+        "Rendez-vous : accueille-le, tu confirmeras plus tard ; rien de fixé.",
+        "Rendez-vous : accueille-le, note date et heure avec la réservation, répète-les.",
+        "Proche ou ami : discute tranquille, comme d'habitude, sans interroger.",
+        "Faux numéro : dis-le simplement, sans le nom ni l'identité du titulaire.",
     ]),
     (Lang::De, "[Note] ", [
-        "Paket: Nachnahme: Betrag, Absender; dankt er zum Schluss, verabschiede dich.",
-        "Bank: Betrag, Händler, Zeit wiederholen; weder ja noch nein; nichts sperren; selbst anrufen.",
-        "Mitteilung: zuhören; Fehlendes (Stelle, Frist, Rückrufnummer) erfragen; Zahlen wiederholen.",
-        "Termin: gern annehmen; sagen, du bestätigst ihn später; nichts fest zusagen.",
+        "Paket: wie üblich abgeben lassen; Nachnahme: Betrag, Absender; dankt er, verabschiede dich.",
+        "Bank prüft Kauf: Betrag, Händler, Zeit; weder ja noch nein; nichts sperren; selbst anrufen.",
+        "Mitteilung: zuhören, Fehlendes (Stelle, Frist, Rückrufnummer) erfragen, Zahlen wiederholen.",
+        "Termin: gern annehmen, du meldest dich später dazu; noch nichts festlegen.",
         "Termin: gern annehmen, Datum und Uhrzeit per Buchung notieren und wiederholen.",
-        "Familie oder Freunde: locker mitreden, nicht ausfragen, kein Hotline-Ton.",
-        "Falsch verbunden: kurz sagen; keinen Namen und keine Angaben des Inhabers nennen.",
+        "Familie oder Freunde: locker plaudern wie immer, nicht ausfragen.",
+        "Falsch verbunden: kurz sagen; keinen Namen, keine Angaben des Inhabers.",
     ]),
     (Lang::Pt, "[Nota] ", [
-        "Entrega: pagar: valor, remetente; se ele encerrar, despeça-se.",
-        "Banco: repita valor, loja, hora; nem sim nem não; sem bloqueio ou suspensão; ligue depois.",
-        "Aviso importante: ouça tudo; pergunte o que falta (setor, prazo, número) e repita os números.",
-        "Marcação: aceite com alegria; diga que confirma mais tarde; não feche o horário.",
+        "Entrega: como de costume; a pagar: valor, remetente; se ele agradecer, despeça-se.",
+        "Banco conferindo compra: valor, loja, hora; nem sim nem não; sem bloqueio; você liga depois.",
+        "Aviso importante: ouça tudo, pergunte o que falta (setor, prazo, número), repita os números.",
+        "Marcação: aceite com alegria, diga que confirma depois; sem fechar horário.",
         "Marcação: aceite com alegria, registre data e hora pela reserva e repita.",
-        "Família ou amigos: descontraído e natural, sem interrogar nem tom de atendente.",
-        "Número errado: diga em breve; não diga o nome nem dados do titular.",
+        "Família ou amigos: conversa leve, como sempre, sem interrogar.",
+        "Número errado: diga em breve, sem o nome nem dados do titular.",
     ]),
 ];
 
@@ -159,6 +164,154 @@ pub fn cue(scenario: Scenario, lang: Lang, _region: Option<Region>, booking: boo
     let (_, mark, texts) = CUES.iter().find(|(l, _, _)| *l == row_lang)?;
     let text = format!("{mark}{}", texts[i]);
     Some(if lang == Lang::ZhCn { crate::zh_convert::to_cn(&text) } else { text })
+}
+
+/// Words of a courier or a delivery, in the languages of the cues.
+const DELIVERY_WORDS: &[&str] = &[
+    "快遞", "快递", "宅配", "包裹", "貨運", "货运", "送貨", "送货", "派件", "派送", "收件", "速遞", "速递", "外送", "外賣",
+    "外卖", "順豐", "顺丰", "物流", "簽收", "签收", "送件", "お届け", "配達", "荷物", "置き配", "택배", "배송", "배달",
+    "courier", "parcel", "package", "delivery", "deliver", "paquete", "envío", "envio", "repartidor", "mensajería",
+    "colis", "livraison", "livreur", "paket", "lieferung", "zusteller", "sendung", "encomenda", "entregador", "pacote",
+];
+
+/// A card or the bank it belongs to.
+const CARD_WORDS: &[&str] = &[
+    "卡", "銀行", "银行", "カード", "카드", "card", "bank", "tarjeta", "banco", "carte", "banque", "karte", "cartão",
+    "cartao",
+];
+
+/// One purchase or charge on it.
+const CHARGE_WORDS: &[&str] = &[
+    "刷卡", "消費", "消费", "交易", "簽賬", "签账", "簽帳", "扣款", "一筆", "一笔", "ご利用", "決済", "取引", "결제", "거래",
+    "승인", "purchase", "charge", "transaction", "compra", "cargo", "transacción", "transaccion", "movimiento", "achat",
+    "paiement", "débit", "kauf", "zahlung", "umsatz", "transaktion", "abbuchung", "transação", "transacao", "cobrança",
+    "cobranca",
+];
+
+/// Asking whether it was the owner's.
+const OWNER_CHECK_WORDS: &[&str] = &[
+    "本人", "是不是您", "是不是你", "是您", "確認", "确认", "係咪你", "係唔係你", "ご本人", "본인", "확인", "verify",
+    "confirm", "did you", "was it you", "yourself", "recognize", "recognise", "authorize", "confirmar", "verificar",
+    "usted mismo", "reconoce", "confirmer", "vérifier", "verifier", "vous même", "bestätigen", "bestatigen",
+    "sie selbst", "verifizieren", "você mesmo", "voce mesmo", "reconhece",
+];
+
+/// What only a scammer asks a card holder for (or a step a real card desk never
+/// takes): any of it and the call is no plain card check. Kept wide: a miss here
+/// only leaves the decision to the call loop's rules.
+const SCAM_ASK_WORDS: &[&str] = &[
+    "密碼", "密码", "驗證碼", "验证码", "認證碼", "认证码", "簡訊碼", "卡號", "卡号", "安全碼", "安全码", "背面三碼", "身分證",
+    "身份证", "atm", "提款機", "提款机", "轉帳", "转账", "匯款", "汇款", "分期", "解除", "監管", "监管", "安全帳戶", "安全账户",
+    "加line", "加 line", "line", "下載", "下载", "遠端", "远程", "螢幕", "屏幕", "禮物卡", "礼品卡", "點數卡", "保密", "警察",
+    "檢察", "检察", "法院", "password", "pin", "code", "otp", "card number", "cvv", "social security", "transfer",
+    "wire", "gift card", "remote", "screen", "download", "install", "app", "whatsapp", "telegram", "police",
+    "暗証番号", "認証", "振込", "振り込", "비밀번호", "인증", "이체", "contraseña", "código", "codigo",
+    "transferencia", "mot de passe", "virement", "passwort", "überweisung", "senha", "transferência", "pix",
+    "身份證", "身分证", "出生", "生日", "有效期", "帳號", "帐号", "帳戶", "账户", "連結", "链接", "網址", "网址", "點擊",
+    "点击", "運費", "运费", "關稅", "关税", "click", "link", "date of birth", "birthday", "expiry", "expiration",
+    "account number", "delivery fee", "customs", "生年月日", "口座", "リンク", "생년월일", "계좌", "링크",
+];
+
+/// Letters of words in Latin script (the rest are compared as they are).
+fn latin_letter(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '\'' || ('\u{00C0}'..='\u{024F}').contains(&c)
+}
+
+/// The text lower case: as it is (for Chinese, Japanese and Korean words) and
+/// as its Latin words only, one space apart and around ("online" is not "line",
+/// "appliance" not "app").
+struct Words {
+    lower: String,
+    latin: String,
+}
+
+impl Words {
+    fn of(text: &str) -> Words {
+        let lower = text.to_lowercase();
+        let mut latin = String::from(" ");
+        for c in lower.chars() {
+            if latin_letter(c) {
+                latin.push(c);
+            } else if !latin.ends_with(' ') {
+                latin.push(' ');
+            }
+        }
+        if !latin.ends_with(' ') {
+            latin.push(' ');
+        }
+        Words { lower, latin }
+    }
+
+    /// A Latin word or phrase whole (plural and past endings allowed); others anywhere.
+    fn has(&self, w: &str) -> bool {
+        if !w.chars().any(|c| c.is_ascii_alphabetic()) {
+            return self.lower.contains(w);
+        }
+        let needle = format!(" {w}");
+        self.latin.match_indices(&needle).any(|(i, m)| {
+            let tail = self.latin[i + m.len()..].split(' ').next().unwrap_or("");
+            matches!(tail, "" | "s" | "es" | "d" | "ed" | "ing" | "y")
+        })
+    }
+
+    fn any(&self, words: &[&str]) -> bool {
+        words.iter().any(|w| self.has(w))
+    }
+}
+
+/// The caller asks whether one purchase on a card was the owner's, and asks for
+/// nothing a scammer asks for: how a real card desk checks a charge
+/// (「想跟您確認昨天晚上一筆線上刷卡的消費，是您本人刷的嗎」, "verify a purchase on
+/// your card… did you make it yourself?").
+pub fn card_check(caller: &str) -> bool {
+    let w = Words::of(caller);
+    w.any(CARD_WORDS) && w.any(CHARGE_WORDS) && w.any(OWNER_CHECK_WORDS) && !w.any(SCAM_ASK_WORDS)
+}
+
+/// Who sends an important notice, or what it is about: a clinic, a hospital, a
+/// checkup, a school, an office's front desk.
+const NOTICE_FROM_WORDS: &[&str] = &[
+    "診所", "诊所", "醫院", "医院", "健檢", "健检", "體檢", "体检", "學校", "学校", "區公所", "区公所", "戶政", "户政",
+    "事務所", "事务所", "櫃檯", "柜台", "前臺", "前台", "健康檢查", "健康检查", "クリニック", "病院", "健診", "検診",
+    "健康診断", "人間ドック", "区役所", "市役所", "受付", "병원", "의원", "검진", "건강검진", "학교", "주민센터", "clinic",
+    "hospital", "checkup", "check up", "dentist", "dental office", "doctor's office",
+    "school", "city hall", "clínica", "consultorio", "escuela", "colegio", "clinique", "hôpital", "cabinet médical",
+    "école", "mairie", "praxis", "klinik", "krankenhaus", "schule", "rathaus", "escola", "consultório", "prefeitura",
+];
+
+/// What it tells: a change, a deadline, results, a number or extension to call back.
+const NOTICE_WHAT_WORDS: &[&str] = &[
+    "改到", "改期", "改時間", "改时间", "調整", "调整", "變更", "变更", "延期", "期限", "截止", "回電", "回电", "分機",
+    "分机", "複診", "复诊", "報告", "报告", "結果", "结果", "通知", "変更", "締切", "折り返し", "内線", "변경", "기한",
+    "마감", "회신", "내선", "결과", "reschedule", "moved", "changed", "deadline", "call back", "call us back",
+    "extension", "results", "reprogramado", "cambiado", "cambio", "plazo", "fecha límite", "extensión", "resultados",
+    "déplacé", "décalé", "modifié", "date limite", "rappeler", "poste", "résultats", "verschoben", "geändert", "frist",
+    "zurückrufen", "durchwahl", "ergebnis", "remarcado", "alterado", "prazo", "ramal", "resultado",
+];
+
+/// What an ordinary call is about, from the caller's own words alone, for when
+/// the second look did not answer in time ([crate::stall_review]): a card desk
+/// checking a purchase ([card_check]), a courier, or a clinic, school or office
+/// telling of a change, a deadline or a number to call back (the acceptance run's
+/// clinic notices went unrouted when every look timed out). None of them when
+/// the caller asks for anything a scammer asks for. Anything else is none — the
+/// model names the rest. Microseconds; string checks only.
+pub fn local_guess(caller: &str) -> Scenario {
+    if card_check(caller) {
+        return Scenario::BankVerify;
+    }
+    // A courier who asks for a code, an account, a link or a fee is no plain courier.
+    let w = Words::of(caller);
+    if w.any(SCAM_ASK_WORDS) {
+        return Scenario::None;
+    }
+    if w.any(DELIVERY_WORDS) {
+        return Scenario::Delivery;
+    }
+    if w.any(NOTICE_FROM_WORDS) && w.any(NOTICE_WHAT_WORDS) {
+        return Scenario::ImportantNotice;
+    }
+    Scenario::None
 }
 
 /// What a review did to the call's routing (for the log).
@@ -305,16 +458,73 @@ mod tests {
         assert!(cn.contains("快递"), "{cn}");
     }
 
+    /// The schedule, notice and bank cues no longer hand the AI a "let me
+    /// check" line (「我先確認那天的安排」 came back as 「我確認一下」).
+    #[test]
+    fn no_cue_puts_a_checking_line_in_the_ais_mouth() {
+        let sched = cue(Scenario::ScheduleInvite, Lang::ZhTw, None, false).unwrap();
+        assert!(!sched.contains("我先確認") && sched.contains("晚點回他") && sched.contains("別說要確認"), "{sched}");
+        let notice = cue(Scenario::ImportantNotice, Lang::ZhTw, None, false).unwrap();
+        assert!(notice.contains("別推說在忙") && notice.contains("說要確認一下"), "{notice}");
+        let bank = cue(Scenario::BankVerify, Lang::ZhTw, None, false).unwrap();
+        assert!(bank.contains("要再想想"), "{bank}");
+        let en = cue(Scenario::ScheduleInvite, Lang::En, None, false).unwrap();
+        assert!(!en.contains("confirm") && en.contains("get back to them"), "{en}");
+    }
+
+    #[test]
+    fn a_card_desk_checking_a_purchase_is_seen_without_the_model() {
+        for t in [
+            "喂您好，這邊是大愛銀行信用卡風險管控中心。我們看到您的卡片昨天晚上11點左右在網路電器商店有一筆3280元的消費。想跟您確認是您本人刷的嗎?",
+            "Hello, this is the credit card risk-control center at First National Bank. I'm calling to verify a purchase on your account for about a hundred dollars at an online appliance store.",
+            "カード会社です。昨夜のオンラインストアでのご利用について、ご本人様かどうか確認させてください。",
+            "Hola, le llamamos del banco por un cargo en su tarjeta de anoche, ¿podría confirmar si fue usted?",
+        ] {
+            assert!(card_check(t), "{t}");
+            assert_eq!(local_guess(t), Scenario::BankVerify, "{t}");
+        }
+        // What only a scammer asks for: no plain card check, whatever the rest.
+        for t in [
+            "這邊是銀行信用卡中心，您昨天一筆消費被設成分期，要請您到ATM解除，跟您確認一下。",
+            "We need to verify the purchase on your card, please read me the code we just texted you.",
+            "銀行通知您卡片有一筆異常消費，請您加LINE跟專員確認。",
+            "To confirm the charge on your card, please install our app so we can see your screen.",
+        ] {
+            assert!(!card_check(t), "{t}");
+        }
+        // A bank that only says who it is, or sells something, is no card check.
+        assert!(!card_check("喂您好，這邊是大愛銀行信用卡風險管控中心。"));
+        assert!(!card_check("您好，我們銀行信用卡現在有新的卡友專案，額度可以幫您提高"));
+    }
+
+    #[test]
+    fn a_courier_is_seen_without_the_model() {
+        for t in [
+            "喂，你好，請問是不是王先生啊?我是順豐派件的。",
+            "喂王生你好呀，我係送速遞嘅，我想確認聽日下晝大約咩時間有人喺屋企收件呀？",
+            "G'day, Mr. Wang. It's the courier here. Just ringing to check if someone'll be home tomorrow arvo to sign for a parcel?",
+            "ヤマト運輸です。お荷物のお届けについてお電話しました。",
+            "Bonjour, c'est le livreur, j'ai un colis pour vous.",
+        ] {
+            assert_eq!(local_guess(t), Scenario::Delivery, "{t}");
+        }
+        for t in ["王先生，禮拜六有空嗎？一起吃飯", "I'm calling about the meeting tomorrow at three", "我在線上看到你的貼文"] {
+            assert_eq!(local_guess(t), Scenario::None, "{t}");
+        }
+        // Whole words in Latin script: "online" is no LINE, "appliance" no app.
+        assert!(!Words::of("an online appliance store").any(&["card", "line", "app"]));
+    }
+
     #[test]
     fn the_bank_and_wrong_number_cues_hold_the_lines() {
         let bank = cue(Scenario::BankVerify, Lang::ZhTw, None, false).unwrap();
-        for must in ["複誦金額、商店、時間", "不說是你刷的", "停卡、卡控都不答應", "客服確認"] {
+        for must in ["金額、商店、時間", "不說是不是你刷的", "沒印象", "不答應停卡或卡控", "客服確認"] {
             assert!(bank.contains(must), "{must}");
         }
         let en = cue(Scenario::BankVerify, Lang::En, None, false).unwrap();
-        assert!(en.contains("don't confirm or deny") && en.contains("no block or hold"), "{en}");
+        assert!(en.contains("neither yes nor no") && en.contains("no block"), "{en}");
         let wrong = cue(Scenario::WrongNumber, Lang::ZhTw, None, false).unwrap();
-        assert!(wrong.contains("不要報出你的名字"), "{wrong}");
+        assert!(wrong.contains("別報出你的名字"), "{wrong}");
         assert!(cue(Scenario::WrongNumber, Lang::En, None, false).unwrap().contains("never give the owner's name"));
         // No cue tells the AI to make the caller wait.
         for lang in crate::locale::ALL {
@@ -327,7 +537,11 @@ mod tests {
         }
         let book = cue(Scenario::ScheduleInvite, Lang::ZhTw, None, true).unwrap();
         let no_book = cue(Scenario::ScheduleInvite, Lang::ZhTw, None, false).unwrap();
-        assert!(book.contains("預約") && no_book.contains("不把時間說死"));
+        assert!(book.contains("預約") && no_book.contains("不說死"));
+        // Each cue names the kind of call first, as a colleague would.
+        let delivery = cue(Scenario::Delivery, Lang::ZhTw, None, false).unwrap();
+        assert!(delivery.contains("是快遞") && delivery.contains("照這裡的習慣"), "{delivery}");
+        assert!(bank.starts_with("【系統小抄·不是對方說的】像銀行在核對刷卡"), "{bank}");
     }
 
     #[test]
@@ -365,10 +579,57 @@ mod tests {
         let mut r = Router::new(Lang::ZhTw, Some(Region::Tw), false);
         r.on_review(Scenario::WrongNumber, Verdict::Normal, Confidence::High, false);
         let (_, text) = r.take_pending(false, Some(Lang::ZhCn)).unwrap();
-        assert!(text.contains("打錯電話"), "{text}");
+        assert!(text.contains("打錯"), "{text}");
         // An English caller on the same call: English.
         let mut r = Router::new(Lang::ZhTw, Some(Region::Tw), false);
         r.on_review(Scenario::Delivery, Verdict::Normal, Confidence::High, false);
         assert!(r.take_pending(false, Some(Lang::En)).unwrap().1.starts_with("[Note]"));
+    }
+}
+
+
+#[cfg(test)]
+mod no_answer_fallback_scams {
+    use super::{local_guess, Scenario};
+
+    #[test]
+    fn a_courier_or_card_desk_asking_for_scam_things_is_not_ordinary() {
+        for t in [
+            "我是順豐，您有一個包裹，請加LINE提供地址並付運費",
+            "我是快遞，請提供您的身份證字號和銀行帳號",
+            "快遞包裹有問題，請點擊連結",
+            "Courier here, your parcel is held, click the link and pay the delivery fee",
+            "銀行信用卡中心，一筆消費確認是不是您本人，請提供您的身份證字號",
+            "銀行信用卡中心，一筆消費確認是不是您本人，請提供您的出生年月日和卡片有效期限",
+        ] {
+            assert_eq!(local_guess(t), Scenario::None, "{t}");
+        }
+        assert_eq!(local_guess("您好，黑貓宅急便，您的包裹明天下午送到，家裡有人嗎"), Scenario::Delivery);
+    }
+
+    /// A clinic, school or office with a change, a deadline or a callback number
+    /// is an important notice without the model; the same desk asking for an
+    /// account, an ID or a link is not.
+    #[test]
+    fn a_clinic_or_office_notice_is_known_without_the_model() {
+        for t in [
+            "王先生您好,我是健檢中心的櫃檯,您原本預約的健檢時間有做調整。幫您改到下週三上午10點。可以嗎?",
+            "再請您撥打分機一二回電確認，這裡是仁愛診所",
+            "まるまるクリニックの受付です。健康診断の日程が変更になりまして来週水曜日の午前10時となりました。",
+            "先日の健康診断の予約なんですが、来週の水曜日の午前10時変更になりました。",
+            "Hi, this is the clinic calling. Your appointment has been rescheduled to next Wednesday, please call us back at extension 12.",
+            "안녕하세요, 서울병원입니다. 검진 일정이 변경되었습니다.",
+            "Bonjour, ici la clinique, votre rendez-vous est déplacé à mercredi.",
+        ] {
+            assert_eq!(local_guess(t), Scenario::ImportantNotice, "{t}");
+        }
+        for t in [
+            "這裡是醫院，你的資料外洩了，請提供帳號和密碼",
+            "Hi, this is the clinic, your results are ready, click the link to pay the fee",
+            "我在醫院附近，等一下一起吃飯",
+            "I'm calling about the meeting tomorrow at three",
+        ] {
+            assert_eq!(local_guess(t), Scenario::None, "{t}");
+        }
     }
 }

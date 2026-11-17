@@ -4047,7 +4047,7 @@ mod tests {
         let ja = script(Lang::Ja, &answers);
         assert!(ja.contains("[NEGOTIATION LADDER] 19:00 > 20:30"), "{ja}");
         assert!(ja.contains("[AUTHORIZED DETAILS] you may say: phone 0912345678; booking name Alex"), "{ja}");
-        assert!(ja.contains("[BUSINESS OPENING] after the greeting use: お忙しいところ恐れ入りますが"), "{ja}");
+        assert!(ja.contains("[BUSINESS OPENING] greet, お忙しいところ恐れ入りますが"), "{ja}");
         assert!(ja.find("[NEGOTIATION LADDER]").unwrap() < ja.find("Fixed rules").unwrap());
         assert!(ja.contains("beyond what the matter itself and the AUTHORIZED DETAILS contain"));
         let block: Vec<&str> = ja.lines().filter(|l| l.starts_with("[NEGOTIATION") || l.starts_with("[AUTHORIZED") || l.starts_with("[BUSINESS")).collect();

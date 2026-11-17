@@ -145,24 +145,24 @@ fn text(region: Region, kind: Kind) -> Option<(&'static str, &'static str)> {
     const FR_PARCEL: (&str, &str) = ("包裹放 point relais 或交給鄰居", "Parcels: a point relais or a neighbour");
     const FR_FRAUD: (&str, &str) = ("要簡訊驗證碼、補繳包裹費的都是詐騙", "SMS codes or parcel fees asked for are scams");
     const ES_FRAUD: (&str, &str) = ("要你付海關費、給簡訊驗證碼的都是詐騙", "customs fees or SMS codes asked for are scams");
-    const US_PARCEL: (&str, &str) = ("包裹請他放 front porch 或門口，不要編門禁密碼", "Parcels: front porch or door, no made-up gate code");
+    const US_PARCEL: (&str, &str) = ("包裹常放 front porch 或門口，門禁密碼不用編", "Parcels: front porch or door, no made-up gate code");
     Some(match (region, kind) {
-        (Tw, Delivery) => ("快遞請他放管理室或門口", "Parcels: the building's management desk or the door"),
+        (Tw, Delivery) => ("快遞常放管理室或門口", "Parcels: the building's management desk or the door"),
         (Tw, Fraud) => (
             "說要解除分期、去 ATM 操作、做賣場金流認證的都是詐騙",
             "cancelling an instalment plan, ATM steps or a shop's payment check are scams",
         ),
-        (HkMo, Delivery) => ("快遞請他放管理處或門口", "Parcels: the building's management office or the door"),
+        (HkMo, Delivery) => ("快遞常放管理處或門口", "Parcels: the building's management office or the door"),
         (HkMo, Fraud) => (
             "自稱入境處、公安或速遞公司要你轉帳、給驗證碼的都是詐騙",
             "\"Immigration\", mainland police or couriers asking for transfers or codes are scams",
         ),
-        (Cn, Delivery) => ("快遞放快遞櫃、驛站或門口", "Parcels: a parcel locker, pickup station or the door"),
+        (Cn, Delivery) => ("快遞常放快遞櫃、驛站或門口", "Parcels: a parcel locker, pickup station or the door"),
         (Cn, Fraud) => (
             "自稱公檢法要你轉到安全帳戶、刷流水的都是詐騙",
             "\"police or prosecutors\" moving money to a \"safe account\" are scams",
         ),
-        (MySg, Delivery) => ("快遞放門口或保安亭", "Parcels: the door or the guardhouse"),
+        (MySg, Delivery) => ("快遞常放門口或保安亭", "Parcels: the door or the guardhouse"),
         (MySg, Fraud) => (
             "自稱警察、銀行或政府部門要你轉帳的都是詐騙",
             "\"police\", bank or government officers asking for transfers are scams",
@@ -170,27 +170,27 @@ fn text(region: Region, kind: Kind) -> Option<(&'static str, &'static str)> {
         (Us, Delivery) | (Ca, Delivery) => US_PARCEL,
         (Us, Fraud) => ("拿 IRS、Medicare 威脅或要你用禮品卡付款的都是詐騙", "IRS, Medicare or gift-card demands are scams"),
         (Ca, Fraud) => ("拿 CRA 稅務威脅或要你用禮品卡付款的都是詐騙", "CRA or gift-card demands are scams"),
-        (GbIe, Delivery) => ("包裹放 safe place 或交給鄰居", "Parcels: a safe place or a neighbour"),
+        (GbIe, Delivery) => ("包裹常放 safe place 或交給鄰居", "Parcels: a safe place or a neighbour"),
         (GbIe, Fraud) => (
             "自稱 HMRC 或銀行要你轉到 safe account 的都是詐騙",
             "HMRC or a bank moving money to a \"safe account\" are scams",
         ),
-        (AuNz, Delivery) => ("包裹請他 leave at the front door", "Parcels: leave at the front door"),
+        (AuNz, Delivery) => ("包裹常 leave at the front door", "Parcels: left at the front door"),
         (AuNz, Fraud) => ("自稱 ATO、銀行或 myGov 要你付款的都是詐騙", "ATO, bank or myGov payment demands are scams"),
-        (In, Delivery) => ("包裹交給 security 或放門口", "Parcels: with security or at the door"),
+        (In, Delivery) => ("包裹常交給 security 或放門口", "Parcels: with security or at the door"),
         (In, Fraud) => ("說要更新 KYC、付包裹海關費的都是詐騙", "KYC updates and customs fees for a parcel are scams"),
         (Jp, Delivery) => (
-            "包裹請他置き配、放宅配ボックス或留不在票再送",
+            "包裹常置き配、放宅配ボックス或留不在票再送",
             "Parcels: 置き配, the 宅配ボックス or a 不在票 for redelivery",
         ),
         (Jp, Fraud) => ("叫你去 ATM 領還付金的都是詐騙", "being sent to an ATM for a 還付金 refund is a scam"),
-        (Kr, Delivery) => ("包裹放문 앞或경비실", "Parcels: 문 앞 or the 경비실"),
+        (Kr, Delivery) => ("包裹常放문 앞或경비실", "Parcels: 문 앞 or the 경비실"),
         (Kr, Fraud) => (
             "自稱檢察廳要你把錢移到安全帳戶的都是詐騙",
             "\"prosecutors\" asking to move money to a safe account are scams",
         ),
-        (EsEu, Delivery) => ("包裹交給門房（conserje）或鄰居", "Parcels: the conserje or a neighbour"),
-        (EsAm, Delivery) | (EsRp, Delivery) => ("包裹交給門房（portería）或鄰居", "Parcels: the portería or a neighbour"),
+        (EsEu, Delivery) => ("包裹常交給門房（conserje）或鄰居", "Parcels: the conserje or a neighbour"),
+        (EsAm, Delivery) | (EsRp, Delivery) => ("包裹常交給門房（portería）或鄰居", "Parcels: the portería or a neighbour"),
         (EsEu, Fraud) | (EsAm, Fraud) | (EsRp, Fraud) => ES_FRAUD,
         (Fr, Delivery) | (Be, Delivery) => FR_PARCEL,
         (Be, Readback) => ("septante=70、nonante=90，數字要複誦", "septante = 70, nonante = 90: read numbers back"),
@@ -199,15 +199,16 @@ fn text(region: Region, kind: Kind) -> Option<(&'static str, &'static str)> {
         (De, Readback) | (At, Readback) => ("halb acht 是 7:30，複誦成 19 Uhr 30", "halb acht means 7:30: read it back as 19 Uhr 30"),
         (Ch, Readback) => ("halb acht=7:30、huitante=80，要複誦", "halb acht = 7:30, huitante = 80: read times and numbers back"),
         (De, Fraud) | (At, Fraud) | (Ch, Fraud) => DE_FRAUD,
-        (Br, Delivery) => ("包裹留在 portaria", "Parcels: the portaria"),
+        (Br, Delivery) => ("包裹常留在 portaria", "Parcels: the portaria"),
         (Br, Fraud) => ("要你用 PIX 轉帳、付中獎手續費的都是詐騙", "PIX transfers or fees for a \"prize\" are scams"),
-        (Pt, Delivery) => ("包裹留 portaria 或交給鄰居", "Parcels: the portaria or a neighbour"),
+        (Pt, Delivery) => ("包裹常留 portaria 或交給鄰居", "Parcels: the portaria or a neighbour"),
         (Pt, Fraud) => ("要你用 MB WAY 操作或給驗證碼的都是詐騙", "MB WAY steps or codes asked for are scams"),
         _ => return None,
     })
 }
 
-/// One local rule of a region in the instruction language of `lang`'s prompts,
+/// One local fact of a region (how things are done there, said as background,
+/// never as an order or a line) in the instruction language of `lang`'s prompts,
 /// without the paragraph's heading — e.g. the delivery line a scenario hint uses.
 pub fn line(region: Region, kind: Kind, lang: Lang) -> Option<String> {
     let (zh, en) = text(region, kind)?;
@@ -309,7 +310,7 @@ mod tests {
 
     #[test]
     fn a_line_is_in_the_prompts_instruction_language() {
-        assert_eq!(line(Region::Tw, Kind::Delivery, Lang::ZhTw).as_deref(), Some("快遞請他放管理室或門口"));
+        assert_eq!(line(Region::Tw, Kind::Delivery, Lang::ZhTw).as_deref(), Some("快遞常放管理室或門口"));
         let cn = line(Region::Cn, Kind::Fraud, Lang::ZhCn).unwrap();
         assert!(cn.contains("安全账户") || cn.contains("安全帐户"), "{cn}");
         assert!(line(Region::Jp, Kind::Delivery, Lang::Ja).unwrap().starts_with("Parcels:"));
