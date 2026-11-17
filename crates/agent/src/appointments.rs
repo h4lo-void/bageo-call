@@ -1213,7 +1213,7 @@ impl ApptSession {
         json!({
             "status": "pending_owner_confirmation",
             "tell_caller": format!(
-                "Not settled yet. If you have not said it already, say {}, in the language of the call; never say it is booked.",
+                "Not settled yet. If you have not said it already, say {}, in the language of the call; never say it is booked, and do not ask them to wait.",
                 check_back_said(&locale::active(), self.reply)
             ),
         })
@@ -4106,6 +4106,8 @@ mod tests {
         let mut s = session(Mode::Confirm);
         s.reply = Reply::Call;
         assert!(s.pending_answer()["tell_caller"].as_str().unwrap().contains("call them back later"));
+        // e_close_kr: 「확인하고 연락드릴게요. 조금만 기다려 주세요.」 kept the caller waiting.
+        assert!(s.pending_answer()["tell_caller"].as_str().unwrap().contains("do not ask them to wait"));
     }
 
     #[test]

@@ -175,10 +175,12 @@ impl Dialect {
                 "閣", "厝", "明仔載", "下晡", "足感謝", "免客氣", "免煩惱", "按呢", "阿捏", "食飽", "好勢", "敢有", "有影",
                 "真濟", "今嘛", "這馬", "哪會", "佮", "今暗", "暗時", "阮兜", "恁兜", "食飽未", "呷飽未", "食飯未", "好料",
                 "共你講", "共我講", "共恁講",
+                // As speech-to-text writes them in Mandarin letters (「汝吃飽未？」「有空才吼我知」).
+                "吃飽未", "吃飯未", "予我知", "互我知", "吼我知",
             ],
             Dialect::Hakka => &[
                 "屋下", "仰般", "承蒙", "麼个", "𠊎", "佢兜", "毋使", "恁仔細", "食飯吂", "吂", "這兜", "該兜", "樣般", "做麼",
-                "恁靚", "毋會",
+                "恁靚", "毋會", "今晡日",
             ],
             Dialect::Cantonese => &[
                 "邊位", "唔該", "係咪", "陣間", "點樣", "嘅", "咗", "冇", "喺", "佢", "嘢", "啲", "乜嘢", "咩", "唔係", "唔使",
@@ -281,7 +283,8 @@ fn marker_hits(d: Dialect, text: &str) -> usize {
             seen.push(m);
         }
     }
-    seen.len() + usize::from(d == Dialect::Hokkien && bo_question(&t))
+    // Hakka asks with 「無」 too (「你屋下今晡日有人無？」).
+    seen.len() + usize::from(matches!(d, Dialect::Hokkien | Dialect::Hakka) && bo_question(&t))
 }
 
 fn syllables(text: &str) -> usize {
@@ -357,7 +360,7 @@ impl Gate {
         if self.pool.is_empty() || text.is_empty() {
             return None;
         }
-        let mut found: Option<(Dialect, Reason)> = None;
+        let mut found: Option<(Dialect, Reason, usize)> = None;
         let mut hints = Vec::new();
         for &d in &self.pool {
             let hits = marker_hits(d, text);
@@ -374,14 +377,24 @@ impl Gate {
                 None
             };
             if let Some(r) = reason {
-                // An explicit request wins over another dialect's words.
-                if found.map_or(true, |(_, fr)| r == Reason::Explicit && fr != Reason::Explicit) {
-                    found = Some((d, r));
+                // An explicit request wins over another dialect's words; otherwise
+                // the dialect with more of its own words (a Hakka sentence with
+                // 「屋下」 and a 「無」 question is no Hokkien one); a tie keeps the
+                // region's order.
+                let better = match found {
+                    None => true,
+                    Some((_, fr, fh)) => {
+                        (r == Reason::Explicit && fr != Reason::Explicit)
+                            || (fr != Reason::Explicit && r != Reason::Explicit && hits > fh)
+                    }
+                };
+                if better {
+                    found = Some((d, r, hits));
                 }
             }
         }
         self.last_hint = hints;
-        found.and_then(|(d, r)| self.switch_to(d, r))
+        found.and_then(|(d, r, _)| self.switch_to(d, r))
     }
 
     /// The AI's finished turn (its own speech-to-text). The model hears the
@@ -566,5 +579,41 @@ mod norm_markers {
     fn simplified_or_variant_markers_still_count() {
         let s = Gate::new(Some(Region::Cn)).caller_turn("这个巴适得很，咋个办嘛，安逸");
         assert_eq!(s.map(|s| s.to), Some(Dialect::Sichuanese));
+    }
+}
+
+/// 2026-11-17 acceptance run (9832627): d_tw_hak_parcel and d_sg_nan_dinner.
+#[cfg(test)]
+mod acceptance_dialects {
+    use super::{Dialect, Gate, Reason};
+    use crate::country_profile::Region;
+
+    /// A Hakka courier asks with 「無」 as Hokkien does: its own words decide.
+    #[test]
+    fn a_hakka_question_with_bo_is_hakka() {
+        let mut g = Gate::new(Some(Region::Tw));
+        let s = g.caller_turn("喂，王先生，我是送貨个，請問你屋下今晡日有人收包裹無？");
+        assert_eq!(s.map(|s| (s.to, s.reason)), Some((Dialect::Hakka, Reason::Sentence)));
+        // A Hokkien sentence with a 「無」 question stays Hokkien.
+        let mut g = Gate::new(Some(Region::Tw));
+        let s = g.caller_turn("你明仔載下晡佇咧無？");
+        assert_eq!(s.map(|s| s.to), Some(Dialect::Hokkien));
+        // A bare 「無」 question in two turns: the region's first dialect, as before.
+        let mut g = Gate::new(Some(Region::Tw));
+        assert_eq!(g.caller_turn("你好無？"), None);
+        assert_eq!(g.caller_turn("今仔日有閒無？").map(|s| s.to), Some(Dialect::Hokkien));
+    }
+
+    /// Speech-to-text writes Singapore Hokkien in Mandarin letters: 吃飽未, 吼我知.
+    #[test]
+    fn hokkien_in_mandarin_letters() {
+        let mut g = Gate::new(Some(Region::MySg));
+        assert_eq!(g.caller_turn("Hello, 王先生 ah! 你吃飽未？Today come my house dine together, okay?"), None);
+        let s = g.caller_turn("好啦，你先 check，有空才吼我知。");
+        assert_eq!(s.map(|s| (s.to, s.reason)), Some((Dialect::Hokkien, Reason::TwoTurns)));
+        // Mandarin asking whether you have eaten is no Hokkien.
+        let mut g = Gate::new(Some(Region::MySg));
+        assert_eq!(g.caller_turn("你吃飽了沒？要不要一起吃飯"), None);
+        assert_eq!(g.caller_turn("那你吃過飯了嗎"), None);
     }
 }

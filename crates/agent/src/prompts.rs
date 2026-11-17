@@ -600,6 +600,102 @@ pub fn kick_open_call(lang: Lang, assistant: bool, opening: Option<Lang>, from_a
     }
 }
 
+/// How a country whose language the AI has no setting for answers the phone
+/// (Italy, Russia, Indonesia, Thailand, Vietnam; English in India and the
+/// Philippines): a SIM there, or a number from there, opens this way instead of
+/// in the setting's language (the acceptance run's Italian, Russian, Indonesian
+/// and Filipino couriers heard 「喂，你好」 first).
+#[derive(Debug, PartialEq, Eq)]
+pub struct LocalHello {
+    /// For the logs.
+    pub code: &'static str,
+    /// The language's name in Traditional and Simplified Chinese instructions, and in English ones.
+    pub name_tw: &'static str,
+    pub name_cn: &'static str,
+    pub name_en: &'static str,
+    pub hello: &'static str,
+    pub hello_again: &'static str,
+}
+
+const ITALIAN: LocalHello = LocalHello {
+    code: "it",
+    name_tw: "義大利文",
+    name_cn: "意大利语",
+    name_en: "Italian",
+    hello: "Pronto?",
+    hello_again: "Pronto, mi sente?",
+};
+const RUSSIAN: LocalHello = LocalHello {
+    code: "ru",
+    name_tw: "俄文",
+    name_cn: "俄语",
+    name_en: "Russian",
+    hello: "Алло?",
+    hello_again: "Алло, вы меня слышите?",
+};
+const INDONESIAN: LocalHello = LocalHello {
+    code: "id",
+    name_tw: "印尼文",
+    name_cn: "印尼语",
+    name_en: "Indonesian",
+    hello: "Halo?",
+    hello_again: "Halo, bisa dengar?",
+};
+const THAI: LocalHello = LocalHello {
+    code: "th",
+    name_tw: "泰文",
+    name_cn: "泰语",
+    name_en: "Thai",
+    hello: "ฮัลโหล",
+    hello_again: "ฮัลโหล ได้ยินไหม",
+};
+const VIETNAMESE: LocalHello = LocalHello {
+    code: "vi",
+    name_tw: "越南文",
+    name_cn: "越南语",
+    name_en: "Vietnamese",
+    hello: "A lô?",
+    hello_again: "A lô, nghe rõ không?",
+};
+const ENGLISH: LocalHello = LocalHello {
+    code: "en",
+    name_tw: "英文",
+    name_cn: "英语",
+    name_en: "English",
+    hello: "Hello?",
+    hello_again: "Hello, can you hear me?",
+};
+
+/// [LocalHello] of a country (ISO 3166 alpha-2, any case); None where the AI
+/// speaks the language or no local way is listed.
+pub fn local_hello(country: &str) -> Option<&'static LocalHello> {
+    Some(match country.trim().to_ascii_lowercase().as_str() {
+        "it" | "sm" | "va" => &ITALIAN,
+        "ru" | "by" | "kz" | "kg" => &RUSSIAN,
+        "id" => &INDONESIAN,
+        "th" => &THAI,
+        "vn" => &VIETNAMESE,
+        "in" | "ph" => &ENGLISH,
+        _ => return None,
+    })
+}
+
+/// [kick_open_call] for a call that opens the local way ([local_hello]).
+pub fn kick_open_local(lang: Lang, assistant: bool, hello: &LocalHello, from_abroad: bool) -> String {
+    let p = pack(lang);
+    let template = if assistant { &p.kick_open_assistant_in } else { &p.kick_open_persona_in };
+    let name = match lang {
+        Lang::ZhTw => hello.name_tw,
+        Lang::ZhCn => hello.name_cn,
+        _ => hello.name_en,
+    };
+    template
+        .replace("{caller_language}", name)
+        .replace("{caller_hello_again}", hello.hello_again)
+        .replace("{caller_hello}", hello.hello)
+        .replace("{abroad}", if from_abroad { p.kick_open_abroad.as_str() } else { "" })
+}
+
 /// A call's system prompt ([`build`] with `lang`) plus the note to answer in the
 /// caller's language, where [`build`] puts it: for a call that opens in the
 /// caller's language. Unchanged when the note is there already (setting

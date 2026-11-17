@@ -433,8 +433,15 @@ const PRE_CLOSINGS: Lexicon = &[
         "以上となりますが", "以上となります", "それではよろしくお願いいたします",
         "それではよろしくお願いします", "そろそろ切るね", "そろそろ切ります", "そろそろ失礼します",
         "折り返しご連絡いたします", "折り返しご連絡します", "折り返しお電話いたします", "折り返しお電話します",
+        // A booking or a visit settled: 「それでは、当日はよろしくお願いいたします」 closes it.
+        "当日はよろしくお願いいたします", "当日はよろしくお願いします",
+        // Getting back to them later, as 折り返し does: 「また後ほどこちらからご連絡いたしますね」.
+        "後ほどご連絡いたします", "後ほどご連絡します", "こちらからご連絡いたします", "こちらからご連絡します",
+        "改めてご連絡いたします", "改めてご連絡します", "またご連絡いたします", "また連絡します",
     ]),
-    ("ko", &["나중에다시연락드릴게요", "다시연락드릴게요", "나끊는다", "그럼이만", "이만줄일게요"]),
+    ("ko", &[
+        "나중에다시연락드릴게요", "다시연락드릴게요", "연락드릴게요", "연락드리겠습니다", "나끊는다", "그럼이만", "이만줄일게요",
+    ]),
     ("es", &[
         "bueno te dejo", "te dejo", "le dejo", "nada era solo eso", "era solo eso", "hablamos luego",
         "hablamos después", "hablamos despues",
@@ -451,6 +458,7 @@ const PRE_CLOSINGS: Lexicon = &[
     ("th", &["งั้นแค่นี้", "แค่นี้ก่อน", "แค่นี้"]),
     ("vi", &["dạ vậy nhé", "vậy nhé", "vay nhe", "thế nhé", "the nhe", "thôi nhé"]),
     ("id", &["oke sudah dulu ya", "sudah dulu ya", "sudah dulu", "udah dulu ya", "udah dulu", "segitu dulu ya", "itu saja"]),
+    ("it", &["allora ti lascio", "ti lascio", "la lascio", "non ti disturbo più", "non la disturbo più"]),
 ];
 
 /// Goodbyes said only at the end.
@@ -475,6 +483,8 @@ const FAREWELLS: Lexicon = &[
     ("ko", &[
         "들어가세요", "수고하세요", "끊겠습니다", "끊을게요", "응끊어", "어끊어", "그래끊어", "안녕히계세요",
         "안녕히가세요", "다음에봬요",
+        // 「그럼 수요일에 뵙겠습니다」: seeing them on the day ends the call (처음 뵙겠습니다 opens one).
+        "에뵙겠습니다", "그때뵙겠습니다", "그럼뵙겠습니다", "또뵙겠습니다", "에봬요", "그때봬요",
     ]),
     ("es", &[
         "chao", "chau", "hasta luego", "hasta pronto", "cuídate", "cuidate", "cuídese", "cuidese",
@@ -491,10 +501,17 @@ const FAREWELLS: Lexicon = &[
     ("pt", &[
         "tchau tchau", "tchau", "até logo", "ate logo", "até mais", "um abraço", "um abraco", "beijos",
         "beijo", "fica com deus", "vai com deus",
+        // Portugal: 「…e continuação de um bom dia」.
+        "continuação de um bom dia", "continuação de bom dia", "continuacao de um bom dia", "tenha um bom dia",
+        "boa continuação",
     ]),
     ("th", &["บ๊ายบาย", "บายบาย", "ไว้คุยกันใหม่", "แล้วคุยกันใหม่"]),
     ("vi", &["tạm biệt", "tam biet", "hẹn gặp lại", "hen gap lai", "chào nhé", "chao nhe"]),
     ("id", &["sampai jumpa", "sampai ketemu", "dadah"]),
+    ("it", &[
+        "arrivederci", "arrivederla", "buona giornata", "buona serata", "buona continuazione", "a presto",
+        "ci sentiamo", "ciao ciao",
+    ]),
 ];
 
 /// Greetings that also say goodbye: farewells only once the business is done
@@ -517,7 +534,7 @@ const OPENING_GREETINGS: &[&str] = &[
     "good afternoon", "good evening", "hola", "diga", "bueno", "aló", "alo", "allo", "allô", "buenos días",
     "buenos dias", "buenas", "bonjour", "hallo", "guten tag", "guten morgen", "grüß gott", "grüss gott",
     "gruss gott", "grüezi", "moin", "alô", "oi", "olá", "ola", "bom dia", "tudo bem", "ฮัลโหล", "a lô",
-    "xin chào", "halo",
+    "xin chào", "halo", "pronto", "salve",
 ];
 
 /// Short replies to someone still talking (aizuchi): not a turn of their own,
@@ -547,6 +564,7 @@ const BACKCHANNELS: Lexicon = &[
 const EXTRA_THANKS: &[&str] = &[
     "ขอบคุณมาก", "ขอบคุณ", "唔該晒", "唔该晒", "唔該曬", "唔該哂", "唔该哂", "唔該", "唔该", "多謝晒", "多谢晒", "多謝曬",
     "多謝哂", "多谢哂", "多謝", "多谢", "cảm ơn anh", "cảm ơn chị", "cám ơn anh", "terima kasih banyak",
+    "grazie mille", "grazie",
 ];
 
 /// Whom thanks or a goodbye is said to, after it (「唔該晒王生」「謝謝王先生」
@@ -559,6 +577,8 @@ const ADDRESS_TITLES: &[&str] = &[
 /// Particles after the last word: 「先這樣囉」, 「นะคะ」.
 const ZH_PARTICLES: &str = "喔哦囉啰啦呢吧耶齁欸啊喇嘞呀噢";
 const TH_PARTICLES: &[&str] = &["ค่ะ", "คะ", "ครับ", "นะ", "จ้ะ", "จ้า", "จ๊ะ", "ฮะ"];
+/// Japanese sentence-end particles after a closing: 「ご連絡いたしますね」.
+const JA_PARTICLES: &[&str] = &["よね", "ねー", "ね", "よ"];
 
 /// Words that may follow a goodbye: whom it is said to, a particle.
 const TAIL_WORDS: &[&str] = &[
@@ -699,6 +719,11 @@ fn peel(t: &str) -> Option<(&str, Peel)> {
     }
     for p in TH_PARTICLES {
         if let Some(rest) = t.strip_suffix(*p) {
+            return Some((rest.trim_end(), Peel::Particle));
+        }
+    }
+    for p in JA_PARTICLES {
+        if let Some(rest) = t.strip_suffix(*p).filter(|r| r.ends_with(|c: char| ('\u{3040}'..='\u{30FF}').contains(&c))) {
             return Some((rest.trim_end(), Peel::Particle));
         }
     }
@@ -1079,6 +1104,13 @@ mod tests {
             bye: ["Terima kasih, selamat siang", "Sampai jumpa"],
             opening: "Halo, selamat siang",
             follow_up: "Oh iya, satu lagi, paketnya sampai jam berapa",
+        },
+        Case {
+            lang: "it",
+            pre: ["Va bene, allora ti lascio", "Non la disturbo più"],
+            bye: ["Grazie mille, arrivederci!", "Buona giornata, a presto"],
+            opening: "Pronto?",
+            follow_up: "Ah, un'altra cosa, quando arriva il pacco",
         },
     ];
 
@@ -1635,5 +1667,73 @@ mod late_words_and_the_callers_bye {
         assert!(caller(&mut m, "好，那先這樣，掰掰").ends_call);
         m.on_ai_turn("好，掰掰。", true, false);
         assert!(m.may_hang_up(false) && !m.awaits_caller_bye());
+    }
+}
+
+/// 2026-11-17 acceptance run (9832627): closings the lists did not have.
+#[cfg(test)]
+mod acceptance_closings {
+    use super::*;
+
+    fn caller(m: &mut ClosingMachine, text: &str) -> ClosingStep {
+        m.on_caller(text, text, false, false)
+    }
+
+    fn talking(lang: &'static str, first: &str) -> ClosingMachine {
+        let mut m = ClosingMachine::new(lang);
+        caller(&mut m, first);
+        assert_eq!(m.state(), ClosingState::Talking, "{first}");
+        m
+    }
+
+    /// f_aizuchi_kr_e0 and parcel_pt_pt: the caller's goodbye was not heard as one
+    /// and the line waited for the AI's bye and 6 s of quiet, or for nobody.
+    #[test]
+    fn seeing_them_on_the_day_and_a_good_rest_of_the_day_are_goodbyes() {
+        let mut m = talking("ko", "다음 주 수요일 오전 10시로 건강검진 일정이 변경되었습니다.");
+        let step = caller(&mut m, "네, 정확히 확인하셨네요. 그럼 수요일에 뵙겠습니다. 감사합니다.");
+        assert_eq!(step.event, ClosingEvent::CallerFarewell);
+        assert!(step.ends_call);
+        // Meeting someone for the first time opens a call.
+        let mut m = ClosingMachine::new("ko");
+        assert!(!caller(&mut m, "안녕하세요, 처음 뵙겠습니다").ends_call);
+        let mut m = talking("pt", "Boa tarde, estou a falar com o Senhor Wang? Tenho aqui uma encomenda para si.");
+        let t = "Claro que sim, eu deixo na portaria. Muito obrigado pela ajuda e continuação de um bom dia.";
+        assert_eq!(caller(&mut m, t).event, ClosingEvent::CallerFarewell);
+    }
+
+    /// e_close_jp_biz and hold_ja: a Japanese business call closes on the day's
+    /// 「よろしくお願いいたします」, and the AI's 「後ほどこちらからご連絡いたしますね」
+    /// answers the caller's closing the way 折り返し does.
+    #[test]
+    fn japanese_business_closings() {
+        let mut m = talking("ja", "来週の月曜日の午前九時から十二時の間に技術者が伺えます");
+        let step = caller(&mut m, "はい、その時間帯であればお伺いできます。それでは、当日はよろしくお願いいたします。");
+        assert_eq!(step.event, ClosingEvent::CallerPreClosing);
+        assert_eq!(
+            m.on_ai_turn("分かりました。それではまた後ほどこちらからご連絡いたしますね。", false, false),
+            ClosingEvent::FarewellsExchanged
+        );
+        assert!(m.may_hang_up(false) && m.awaits_caller_bye());
+        // The same words as a question ask for an answer.
+        assert!(classify("後ほどご連絡いたしますか？").is_none());
+        // 「そうですね」 stays a reply.
+        assert!(classify("そうですね").is_none());
+    }
+
+    /// parcel_it: no Italian goodbye was known; the line stayed open after 「Arrivederci!」.
+    #[test]
+    fn italian_goodbyes() {
+        let mut m = talking("it", "Pronto, parlo con il signor Wang? Sono il corriere.");
+        let step = caller(&mut m, "Perfetto, allora lascerò il pacco in portineria. Grazie mille e buona giornata!");
+        assert_eq!(step.event, ClosingEvent::CallerFarewell);
+        let mut m = talking("it", "Pronto, parlo con il signor Wang? Sono il corriere.");
+        assert!(caller(&mut m, "Arrivederci!").ends_call);
+        // Thanks alone is still thanks.
+        let mut m = talking("it", "Pronto, parlo con il signor Wang? Sono il corriere.");
+        assert!(!caller(&mut m, "Grazie").ends_call);
+        // 「Pronto?」 opens a call.
+        let mut m = ClosingMachine::new("it");
+        assert!(!m.on_caller("Pronto?", "Pronto?", true, false).ends_call);
     }
 }

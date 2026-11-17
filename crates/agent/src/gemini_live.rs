@@ -1015,6 +1015,10 @@ pub struct CallLangPlan {
     /// the language setting's): the prompt gets that region's dialects and local
     /// rules only ([`crate::prompts::scope_to_region`]).
     pub region: Option<crate::country_profile::Region>,
+    /// No opening language, but a country that answers the phone its own way
+    /// ([`crate::prompts::local_hello`]: a SIM of Italy, a number from Thailand):
+    /// persona mode opens that way instead of in the setting's language.
+    pub local_hello: Option<&'static crate::prompts::LocalHello>,
 }
 
 /// Two plans set a session up the same way (a ring prewarm serves the call it
@@ -1030,7 +1034,8 @@ impl PartialEq for CallLangPlan {
             && self.prompt_lang == other.prompt_lang
             && self.caller_other_stt == other.caller_other_stt
             && self.region == other.region
-            && (self.opening.is_none() || self.sim_local == other.sim_local)
+            && self.local_hello == other.local_hello
+            && ((self.opening.is_none() && self.local_hello.is_none()) || self.sim_local == other.sim_local)
     }
 }
 
@@ -1089,6 +1094,21 @@ pub fn call_lang_plan(
         }
         None => opening_lang_for(caller_id, home_code, lang),
     };
+    // A country whose language the AI has no setting for (Italy, Thailand…): its
+    // way of answering, not the setting's language. A number from another country
+    // than the SIM's counts first, as for an opening language; a local or hidden
+    // one takes the SIM's country, unless the owner set a language for that SIM.
+    let local_hello = match sim {
+        Some(sim) if opening.is_none() => {
+            match number.as_ref().map(|n| n.country).filter(|c| *c != sim) {
+                Some(c) if country_lang(c).is_some() => None,
+                Some(c) => crate::prompts::local_hello(c),
+                None if sim_main.is_none() => crate::prompts::local_hello(sim),
+                None => None,
+            }
+        }
+        _ => None,
+    };
     // What the caller most likely speaks: the SIM's main language for a number of
     // the SIM's own country, else the language of the number's country.
     let caller_lang = number.as_ref().and_then(|n| match sim_lang {
@@ -1123,6 +1143,7 @@ pub fn call_lang_plan(
         caller_other_stt,
         sim_country: sim.map(str::to_string),
         region,
+        local_hello,
     }
 }
 
@@ -1323,8 +1344,22 @@ fn without_other_script(text: &str) -> Option<String> {
 /// another country than the SIM that took the call — only then does the
 /// instruction say so (a US number on a US SIM set to English is a local call).
 fn persona_kick_client_content(opening: Option<crate::locale::Lang>, from_abroad: bool) -> String {
+    persona_kick_with_local(opening, None, from_abroad)
+}
+
+/// [persona_kick_client_content], or the local way of answering when the call has
+/// no opening language ([`CallLangPlan::local_hello`]).
+fn persona_kick_with_local(
+    opening: Option<crate::locale::Lang>,
+    local: Option<&crate::prompts::LocalHello>,
+    from_abroad: bool,
+) -> String {
     let active = crate::locale::active();
-    crate::prompts::client_turn(&crate::prompts::kick_open_call(active.lang, active.assistant, opening, from_abroad))
+    let text = match (opening, local) {
+        (None, Some(h)) => crate::prompts::kick_open_local(active.lang, active.assistant, h, from_abroad),
+        _ => crate::prompts::kick_open_call(active.lang, active.assistant, opening, from_abroad),
+    };
+    crate::prompts::client_turn(&text)
 }
 
 /// Whether the opening line calls the number foreign: only with an opening in
@@ -4914,14 +4949,19 @@ pub async fn run_session(
         // call. SIM unknown: when the carrier's international-call warning is due
         // (expects_carrier_intl_prompt).
         let from_abroad = opening_from_abroad(opening_lang, lang_plan.sim_local, || intl_caller());
-        persona_kick_client_content(opening_lang, from_abroad)
+        let local = lang_plan.local_hello.filter(|_| opening_lang.is_none());
+        let from_abroad = from_abroad || (local.is_some() && lang_plan.sim_local == Some(false));
+        persona_kick_with_local(opening_lang, local, from_abroad)
     } else {
         greets_kick_client_content_for(&owner_status)
     };
     info!(
         "Gemini Live greets kick ready serial={serial} persona={persona} owner_status_chars={} opening_lang={}",
         owner_status.chars().count(),
-        opening_lang.map_or("-", |l| l.code())
+        opening_lang
+            .map(|l| l.code())
+            .or(lang_plan.local_hello.filter(|_| persona).map(|h| h.code))
+            .unwrap_or("-")
     );
     // Max ~12s of 16 kHz mono s16le held until UnmuteAfterGreet (never inject mid-IVR).
     const PREBUF_CAP_BYTES: usize = 16_000 * 2 * 12;
@@ -12157,4 +12197,58 @@ fn handle_server_msg(v: &Value, phone_sr: u32, on_downlink: &mut impl FnMut(Vec<
         }
     }
     bytes
+}
+
+/// 2026-11-17 acceptance run (9832627): Italian, Russian, Indonesian, Filipino and
+/// Indian couriers on their own SIMs heard 「喂，你好」 first.
+#[cfg(test)]
+mod local_hello_opening {
+    use super::call_lang_plan;
+    use crate::locale::Lang;
+    use std::collections::BTreeMap;
+
+    fn hello_of(caller: &str, sim: &str, langs: &BTreeMap<String, String>) -> Option<&'static str> {
+        let p = call_lang_plan(caller, Some(sim), Lang::ZhTw, "886", langs);
+        p.local_hello.map(|h| h.hello)
+    }
+
+    #[test]
+    fn a_country_without_a_language_setting_answers_its_own_way() {
+        let none = BTreeMap::new();
+        assert_eq!(hello_of("+390612345678", "it", &none), Some("Pronto?"));
+        assert_eq!(hello_of("+74951234567", "ru", &none), Some("Алло?"));
+        assert_eq!(hello_of("+62812345678", "id", &none), Some("Halo?"));
+        assert_eq!(hello_of("+66812345678", "th", &none), Some("ฮัลโหล"));
+        assert_eq!(hello_of("+84912345678", "vn", &none), Some("A lô?"));
+        assert_eq!(hello_of("+639171234567", "ph", &none), Some("Hello?"));
+        assert_eq!(hello_of("+919812345678", "in", &none), Some("Hello?"));
+        // A hidden number on that SIM too.
+        assert_eq!(hello_of("", "it", &none), Some("Pronto?"));
+        // A Thai number on a Taiwan SIM, as a Japanese one opens in Japanese.
+        assert_eq!(hello_of("+66812345678", "tw", &none), Some("ฮัลโหล"));
+        // A Taiwanese number on the Italian SIM keeps Chinese.
+        assert_eq!(hello_of("+886912345678", "it", &none), None);
+        // The owner set a language for that SIM: theirs.
+        let it_en: BTreeMap<String, String> = [("it".to_string(), "en".to_string())].into_iter().collect();
+        let p = call_lang_plan("+390612345678", Some("it"), Lang::ZhTw, "886", &it_en);
+        assert_eq!((p.opening, p.local_hello), (Some(Lang::En), None));
+        // Countries with a language of the AI's, and Malaysia (Chinese callers), are as before.
+        assert_eq!(hello_of("+81312345678", "jp", &none), None);
+        assert_eq!(hello_of("0912345678", "tw", &none), None);
+        assert_eq!(hello_of("+60123456789", "my", &none), None);
+        // Unknown SIM: no guess.
+        assert_eq!(call_lang_plan("+390612345678", None, Lang::ZhTw, "886", &none).local_hello, None);
+    }
+
+    #[test]
+    fn the_opening_instruction_names_the_local_way() {
+        let it = crate::prompts::local_hello("it").unwrap();
+        let zh = crate::prompts::kick_open_local(Lang::ZhTw, false, it, false);
+        assert!(zh.contains("義大利文") && zh.contains("Pronto?") && zh.contains("Pronto, mi sente?"), "{zh}");
+        assert!(!zh.contains('{'), "{zh}");
+        let en = crate::prompts::kick_open_local(Lang::En, false, it, true);
+        assert!(en.contains("Italian") && en.contains("Pronto?") && !en.contains('{'), "{en}");
+        let cn = crate::prompts::kick_open_local(Lang::ZhCn, true, it, false);
+        assert!(cn.contains("意大利语") && !cn.contains('{'), "{cn}");
+    }
 }

@@ -6671,11 +6671,16 @@ fn start_gemini_session_core(
     // The opening language and the caller's speech-to-text hints, decided with the
     // call's config (a ring prewarm's is checked again at pickup).
     let lang_plan = cfg.lang.clone();
-    if (persona && lang_plan.opening.is_some()) || lang_plan.caller_stt.is_none() {
+    if (persona && (lang_plan.opening.is_some() || lang_plan.local_hello.is_some())) || lang_plan.caller_stt.is_none() {
         info!(
             "caller languages serial={serial} caller={} opening={} caller_stt={}",
             cfg.caller_id,
-            lang_plan.opening.filter(|_| persona).map_or("-", |l| l.code()),
+            lang_plan
+                .opening
+                .map(|l| l.code())
+                .or(lang_plan.local_hello.map(|h| h.code))
+                .filter(|_| persona)
+                .unwrap_or("-"),
             lang_plan
                 .caller_stt
                 .as_ref()
