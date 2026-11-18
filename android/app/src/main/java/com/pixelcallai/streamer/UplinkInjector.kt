@@ -172,6 +172,7 @@ class TelephonyUplinkInjector(
     private var readyLatch = CountDownLatch(1)
     private var dropWarnLogged = AtomicBoolean(false)
     private var savedMode: Int = AudioManager.MODE_NORMAL
+    private var modeChanged: Boolean = false
     private val unavailableNotified = AtomicBoolean(false)
     /** Last sample written — used to soften frame joins after queue pressure. */
     @Volatile private var lastSample: Short = 0
@@ -213,6 +214,7 @@ class TelephonyUplinkInjector(
         readyLatch = CountDownLatch(1)
         dropWarnLogged.set(false)
         try {
+            modeChanged = false
             savedMode = am.mode
             // During real OFFHOOK, mode is already MODE_IN_CALL — do not override.
             // Only nudge for idle smoke probes. A real call must not ask AudioFlinger
@@ -220,6 +222,7 @@ class TelephonyUplinkInjector(
             // from MODE_NORMAL; Android 16 can block createTrack and abort audioserver.
             if (!requireInCallMode && savedMode == AudioManager.MODE_NORMAL) {
                 am.mode = AudioManager.MODE_IN_COMMUNICATION
+                modeChanged = true
             }
             Log.i(TAG, "start with audioMode=${am.mode} (saved=$savedMode)")
         } catch (e: Exception) {
@@ -364,9 +367,12 @@ class TelephonyUplinkInjector(
         readyLatch.countDown()
         abortLogged.set(false)
         dropWarnLogged.set(false)
-        try {
-            am.mode = savedMode
-        } catch (_: Exception) {
+        if (modeChanged) {
+            try {
+                am.mode = savedMode
+            } catch (_: Exception) {
+            }
+            modeChanged = false
         }
         if (worker != null) {
             Log.e(TAG, "TelephonyUplinkInjector stop timed out; restart held until worker exits")

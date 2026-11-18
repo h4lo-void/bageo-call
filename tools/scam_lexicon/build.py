@@ -14,6 +14,7 @@ import glob
 import json
 import os
 import re
+import subprocess
 import sys
 import yaml
 
@@ -21,9 +22,11 @@ try:
     from opencc import OpenCC
     _s2t = OpenCC("s2t").convert
     _s2twp = OpenCC("s2twp").convert
+    _HAS_OPENCC = True
 except ImportError:
     _s2t = lambda s: s
     _s2twp = lambda s: s
+    _HAS_OPENCC = False
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_REPO = os.path.abspath(os.path.join(ROOT, "..", ".."))
@@ -173,7 +176,12 @@ def format_scam_db(db):
 def main():
     parser = argparse.ArgumentParser(description="Build and sync the Bageo scam lexicon.")
     parser.add_argument("--sync-db", action="store_true", help="Merge curated keywords into crates/agent/data/scam_db.json")
+    parser.add_argument("--skip-cargo-test", action="store_true", help="Skip running cargo test -p agent scam_db after --sync-db")
     args = parser.parse_args()
+
+    if args.sync_db and not _HAS_OPENCC:
+        print("ERROR: OpenCC is required for --sync-db so Traditional/Simplified deduplication works cleanly.", file=sys.stderr)
+        sys.exit(1)
 
     os.makedirs(OUT, exist_ok=True)
     with open(os.path.join(ROOT, "data", "categories.yaml"), encoding="utf-8") as f:
@@ -326,6 +334,14 @@ def main():
         json.dump(lexicon, f, ensure_ascii=False, indent=1)
 
     if args.sync_db:
+        expected_keys = {"version", "about", "name_languages", "typologies", "keywords", "own_matter", "number_rules"}
+        if set(db.keys()) != expected_keys:
+            print(f"ERROR: unexpected top-level scam_db.json keys: {sorted(db.keys())}", file=sys.stderr)
+            sys.exit(1)
+
+        with open(db_path, "rb") as f:
+            orig_bytes = f.read()
+
         lang_groups = {g["lang"]: g for g in db["keywords"]}
         global_seen = set(builtin)
         mode_existing = {"han": [], "word": [], "run": [], "compact": []}
@@ -380,8 +396,37 @@ def main():
                     mode_existing[gm].append((nk, w, is_hard))
                     added += 1
 
-        with open(db_path, "w", encoding="utf-8", newline="\n") as f:
-            f.write(format_scam_db(db))
+        formatted = format_scam_db(db)
+        parsed = json.loads(formatted)
+        if set(parsed.keys()) != expected_keys:
+            print("ERROR: formatted scam_db.json keys mismatch", file=sys.stderr)
+            sys.exit(1)
+
+        bak_path = db_path + ".bak"
+        tmp_path = db_path + ".tmp"
+        with open(bak_path, "wb") as f:
+            f.write(orig_bytes)
+        try:
+            with open(tmp_path, "w", encoding="utf-8", newline="\n") as f:
+                f.write(formatted)
+            json.loads(open(tmp_path, encoding="utf-8").read())
+            os.replace(tmp_path, db_path)
+            if not args.skip_cargo_test:
+                cmd = ["cargo", "test", "-p", "agent", "--manifest-path", os.path.join(REPO, "Cargo.toml"), "scam_db"]
+                proc = subprocess.run(cmd, cwd=REPO, check=False)
+                if proc.returncode != 0:
+                    raise RuntimeError(f"cargo test exited {proc.returncode}")
+        except Exception as e:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            with open(db_path, "wb") as f:
+                f.write(orig_bytes)
+            print(f"ERROR: --sync-db rolled back from backup: {e}", file=sys.stderr)
+            if os.path.exists(bak_path):
+                os.remove(bak_path)
+            sys.exit(1)
+        if os.path.exists(bak_path):
+            os.remove(bak_path)
         print(f"Synced {added} new keywords into {db_path}")
 
     print("Lexicon built:", json.dumps(counts, ensure_ascii=False))

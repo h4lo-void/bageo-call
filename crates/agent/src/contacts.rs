@@ -547,7 +547,7 @@ struct Book {
     keys: Vec<Vec<NumKey>>,
     exact: HashMap<String, Vec<usize>>,
     tails: HashMap<String, Vec<usize>>,
-    names: HashMap<String, usize>,
+    names: HashMap<String, Vec<usize>>,
     region: Option<String>,
 }
 
@@ -571,7 +571,7 @@ impl Book {
         }
         let n = name_key(name);
         if !n.is_empty() {
-            self.names.entry(n).or_insert(i);
+            add_to(&mut self.names, n, i);
         }
     }
 
@@ -593,8 +593,8 @@ impl Book {
             }
         }
         let old = name_key(&self.contacts[i].name);
-        if self.names.get(&old) == Some(&i) {
-            self.names.remove(&old);
+        if !old.is_empty() {
+            take_from(&mut self.names, &old, i);
         }
         let keys = phone_keys(&c.phones, self.region.as_deref());
         self.index(i, &keys, &c.name);
@@ -632,6 +632,71 @@ impl Book {
             .filter(|&i| Some(i) != except)
             .take(LIKELY_SCAN)
             .find(|&i| self.keys[i].iter().any(|k| match_level(key, k) > 0))
+    }
+
+    /// Match `key` against contacts whose numbers were saved in local format
+    /// when the call's SIM `sim_region` differs from the book's home region.
+    fn find_in_region(&self, key: &NumKey, sim_region: &str) -> Option<usize> {
+        let mut likely: Option<usize> = None;
+        for (i, c) in self.contacts.iter().enumerate() {
+            for p in &c.phones {
+                if is_prefix(p) {
+                    continue;
+                }
+                let Some(pk) = num_key(p, Some(sim_region)) else { continue };
+                match match_level(key, &pk) {
+                    2 => return Some(i),
+                    1 if likely.is_none() => likely = Some(i),
+                    _ => {}
+                }
+            }
+        }
+        likely
+    }
+
+    /// All contact indices matching `key`, considering both the book's home
+    /// index and an optional call SIM `sim_region` when it differs.
+    fn find_all_matches(&self, key: &NumKey, sim_region: Option<&str>) -> Vec<usize> {
+        fn push_unique(out: &mut Vec<usize>, i: usize) {
+            if !out.contains(&i) {
+                out.push(i);
+            }
+        }
+        let mut out = Vec::new();
+        for e in exact_keys(key) {
+            if let Some(v) = self.exact.get(&e) {
+                for &i in v {
+                    push_unique(&mut out, i);
+                }
+            }
+        }
+        if let Some(t) = tail8(&key.digits) {
+            if let Some(v) = self.tails.get(&t) {
+                for &i in v.iter().take(LIKELY_SCAN) {
+                    if self.keys[i].iter().any(|k| match_level(key, k) > 0) {
+                        push_unique(&mut out, i);
+                    }
+                }
+            }
+        }
+        if let Some(sim_reg) = sim_region {
+            if !self.region.as_deref().is_some_and(|r| r.eq_ignore_ascii_case(sim_reg)) {
+                for (i, c) in self.contacts.iter().enumerate() {
+                    if out.contains(&i) {
+                        continue;
+                    }
+                    if c.phones
+                        .iter()
+                        .filter(|p| !is_prefix(p))
+                        .filter_map(|p| num_key(p, Some(sim_reg)))
+                        .any(|pk| match_level(key, &pk) > 0)
+                    {
+                        out.push(i);
+                    }
+                }
+            }
+        }
+        out
     }
 
     /// The contact (other than `except`) that has one of `phones` already
@@ -716,7 +781,10 @@ impl Book {
                 return Some((i, "phone"));
             }
         }
-        self.names.get(&name_key(&d.name)).map(|&i| (i, "name"))
+        self.names
+            .get(&name_key(&d.name))
+            .and_then(|v| v.first().copied())
+            .map(|i| (i, "name"))
     }
 
     fn position(&self, id: &str) -> Option<usize> {
@@ -862,28 +930,83 @@ impl ContactStore {
         if is_prefix(number) {
             return self.with_book(|b| b.find_prefix(number, None).map(|i| b.contacts[i].clone()));
         }
-        let region = region.map(str::trim).filter(|r| !r.is_empty()).map(str::to_string).or_else(|| (self.region)());
-        let key = num_key(number, region.as_deref())?;
-        self.with_book(|b| b.find(&key).map(|i| b.contacts[i].clone()))
+        let call_region = region
+            .map(str::trim)
+            .filter(|r| !r.is_empty())
+            .map(|r| r.to_ascii_lowercase());
+        let effective_region = call_region.clone().or_else(|| (self.region)());
+        let key = num_key(number, effective_region.as_deref())?;
+        self.with_book(|b| {
+            if let Some(i) = b.find(&key) {
+                return Some(b.contacts[i].clone());
+            }
+            if let Some(sim_reg) = call_region.as_deref() {
+                if !b.region.as_deref().is_some_and(|r| r.eq_ignore_ascii_case(sim_reg)) {
+                    if let Some(i) = b.find_in_region(&key, sim_reg) {
+                        return Some(b.contacts[i].clone());
+                    }
+                }
+            }
+            None
+        })
     }
 
     /// The Blacklist contact a caller ID is turned away by: its number, or a
     /// prefix entry it starts with, read as dialled on the SIM of country
     /// `region` (None: the owner's country) the way blocked numbers always
     /// were ([`crate::settings_store::reject_entry_hit`]).
+    ///
+    /// Exact Whitelist contacts are never blocked by wildcard Blacklist prefix
+    /// rules (nor by duplicate Blacklist entries).
     pub fn blacklisted(&self, number: &str, region: Option<&str>) -> Option<Contact> {
-        if let Some(c) = self.lookup(number, region).filter(|c| c.kind == "blacklist") {
-            return Some(c);
+        if is_prefix(number) {
+            return self.lookup(number, region).filter(|c| c.kind == "blacklist");
         }
-        let region = region.map(str::trim).filter(|r| !r.is_empty());
+        let call_region = region
+            .map(str::trim)
+            .filter(|r| !r.is_empty())
+            .map(|r| r.to_ascii_lowercase());
+        let effective_region = call_region.clone().or_else(|| (self.region)());
+        let key = num_key(number, effective_region.as_deref());
         self.with_book(|b| {
+            if let Some(ref k) = key {
+                let matches = b.find_all_matches(k, call_region.as_deref());
+                if matches.iter().any(|&i| b.contacts[i].kind == "whitelist") {
+                    return None;
+                }
+                if let Some(&i) = matches.iter().find(|&&i| b.contacts[i].kind == "blacklist") {
+                    return Some(b.contacts[i].clone());
+                }
+            }
             b.contacts
                 .iter()
                 .find(|c| {
                     c.kind == "blacklist"
-                        && c.phones.iter().any(|p| is_prefix(p) && crate::settings_store::reject_entry_hit(p, number, region))
+                        && c.phones
+                            .iter()
+                            .any(|p| is_prefix(p) && crate::settings_store::reject_entry_hit(p, number, effective_region.as_deref()))
                 })
                 .cloned()
+        })
+    }
+
+    /// Whether `number` matches a Whitelist contact (`kind == "whitelist"`),
+    /// preferring exact whitelist entries over conflicting entries.
+    pub fn is_whitelist(&self, number: &str, region: Option<&str>) -> Option<Contact> {
+        if is_prefix(number) {
+            return self.lookup(number, region).filter(|c| c.kind == "whitelist");
+        }
+        let call_region = region
+            .map(str::trim)
+            .filter(|r| !r.is_empty())
+            .map(|r| r.to_ascii_lowercase());
+        let effective_region = call_region.clone().or_else(|| (self.region)());
+        let key = num_key(number, effective_region.as_deref())?;
+        self.with_book(|b| {
+            b.find_all_matches(&key, call_region.as_deref())
+                .into_iter()
+                .find(|&i| b.contacts[i].kind == "whitelist")
+                .map(|i| b.contacts[i].clone())
         })
     }
 
@@ -1255,7 +1378,7 @@ pub fn by_id(id: &str) -> Option<Contact> {
 
 /// Whether `number` is on the Whitelist (`kind == "whitelist"`).
 pub fn is_whitelist(number: &str, region: Option<&str>) -> Option<Contact> {
-    lookup(number, region).filter(|c| c.kind == "whitelist")
+    STORE.get()?.is_whitelist(number, region)
 }
 
 /// Whether `number` is on the Blacklist (`kind == "blacklist"`), itself or
@@ -4640,6 +4763,80 @@ mod tests {
         // Nothing on a list: nothing changes.
         assert_eq!(s.unblock("0223456789", &["blacklist"]).await.unwrap(), None);
         assert_eq!(s.len(), 1);
+        let _ = std::fs::remove_dir_all(s.path.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn whitelist_exact_match_is_not_blocked_by_prefix_or_duplicate_blacklist() {
+        let s = temp_store();
+        // P0-5: exact whitelist contact vs wildcard prefix blacklist across TW / JP / DE.
+        s.add(&black("0800廣告", &["0800*", "+81 3 5550*", "+49 800 555*"])).await.unwrap();
+        s.add(&Draft { kind: "whitelist".into(), ..draft("專屬銀行", &["0800-000-123"], "") }).await.unwrap();
+        s.add(&Draft { kind: "whitelist".into(), ..draft("Tokyo Clinic", &["+81 3 5550 0199"], "") }).await.unwrap();
+        s.add(&Draft { kind: "whitelist".into(), ..draft("Berlin Support", &["+49 800 555 0100"], "") }).await.unwrap();
+
+        for caller in ["0800000123", "+886 800 000 123"] {
+            assert!(s.blacklisted(caller, TW).is_none(), "whitelist must beat prefix {caller}");
+        }
+        assert!(s.blacklisted("0800-999-888", TW).is_some());
+        assert!(s.blacklisted("03-5550-0199", Some("jp")).is_none());
+        assert!(s.blacklisted("03-5550-9999", Some("jp")).is_some());
+        assert!(s.blacklisted("0800 555 0100", Some("de")).is_none());
+        assert!(s.blacklisted("0800 555 0199", Some("de")).is_some());
+        let _ = std::fs::remove_dir_all(s.path.parent().unwrap());
+
+        // Exact whitelist + exact blacklist (e.g. hand-edited file) keeps whitelist regardless of order.
+        for blacklist_first in [true, false] {
+            let dir = temp_dir();
+            std::fs::create_dir_all(&dir).unwrap();
+            let path = dir.join("contacts.json");
+            let black_c = json!({"id": "b1", "name": "Blocked", "phones": ["0912-000-777"], "kind": "blacklist"});
+            let white_c = json!({"id": "w1", "name": "VIP", "phones": ["+886912000777"], "kind": "whitelist"});
+            let list = if blacklist_first { vec![black_c, white_c] } else { vec![white_c, black_c] };
+            std::fs::write(&path, json!({ "contacts": list }).to_string()).unwrap();
+            let store = ContactStore::open_with(path, Box::new(|| Some("tw".to_string())));
+            assert!(store.blacklisted("0912000777", TW).is_none(), "blacklist_first={blacklist_first}");
+            assert!(store.blacklisted("+886 912 000 777", TW).is_none(), "blacklist_first={blacklist_first}");
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    #[tokio::test]
+    async fn cross_country_sim_lookup_and_blacklist_match_local_and_intl_formats() {
+        // Home region is TW, while calls arrive on JP, SG, US, and FR SIMs.
+        let s = temp_store();
+        s.add(&draft("Sato Ken", &["03-5550-1111"], "")).await.unwrap();
+        s.add(&draft("Tan Wei", &["9123-0001"], "")).await.unwrap();
+        s.add(&draft("Pat Taylor", &["(202) 555-0143"], "")).await.unwrap();
+        s.add(&black("JP Spam", &["03-5550-2222"])).await.unwrap();
+        s.add(&black("FR Prefix", &["+33 1 5550*"])).await.unwrap();
+        s.add(&Draft { kind: "whitelist".into(), ..draft("Paris Clinic", &["01 55 50 01 99"], "") }).await.unwrap();
+
+        // International caller on matching SIM finds locally stored contact.
+        assert_eq!(s.lookup("+81 3 5550 1111", Some("jp")).map(|c| c.name).as_deref(), Some("Sato Ken"));
+        assert_eq!(s.lookup("+65 9123 0001", Some("sg")).map(|c| c.name).as_deref(), Some("Tan Wei"));
+        assert_eq!(s.lookup("+1 202 555 0143", Some("us")).map(|c| c.name).as_deref(), Some("Pat Taylor"));
+        // Same international number on home TW SIM must NOT match a local TW-indexed entry.
+        assert!(s.lookup("+81 3 5550 1111", TW).is_none());
+        assert!(s.lookup("+65 9123 0001", TW).is_none());
+
+        // Cross-country blacklist & whitelist prefix exemption work on SIM region.
+        assert_eq!(s.blacklisted("+81 3 5550 2222", Some("jp")).map(|c| c.name).as_deref(), Some("JP Spam"));
+        assert!(s.blacklisted("+81 3 5550 2222", TW).is_none());
+        assert!(s.blacklisted("+33 1 5550 0199", Some("fr")).is_none());
+        assert!(s.blacklisted("+33 1 5550 9999", Some("fr")).is_some());
+        let _ = std::fs::remove_dir_all(s.path.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn renaming_one_same_named_contact_keeps_other_name_indexed() {
+        let s = temp_store();
+        let a = s.add(&draft("Alex", &["0912000101"], "")).await.unwrap();
+        let b = s.add(&draft("Alex", &["0912000102"], "")).await.unwrap();
+        s.update(&a.id, &draft("Alex Lin", &["0912000101"], "")).await.unwrap();
+        let preview = s.preview(vec![draft("Alex", &["0912000999"], "")]);
+        assert_eq!(preview.len(), 1);
+        assert_eq!(preview[0].duplicate.as_ref().and_then(|d| d["id"].as_str()), Some(b.id.as_str()));
         let _ = std::fs::remove_dir_all(s.path.parent().unwrap());
     }
 }

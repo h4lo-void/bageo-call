@@ -7,7 +7,7 @@ Bageo has a built-in [Model Context Protocol](https://modelcontextprotocol.io) s
 The MCP server is **off** by default and answers nothing until it has a token.
 
 1. Pick a long random token (for example `openssl rand -hex 32`).
-2. Set `mcp_enabled` to `true` and `mcp_token` to that token (environment: `MCP_ENABLED=true`, `MCP_TOKEN=…`, or `PATCH /calls/api/settings`).
+2. Set `mcp_enabled` to `true` and `mcp_token` to that token (environment: `MCP_ENABLED=true`, `MCP_TOKEN=…`, or `PUT /calls/api/settings`).
 3. Choose what clients may do about calls with `mcp_calls`:
    - `off` (default): they can only look.
    - `confirm`: they may ask for a call; you get a card with **yes / no** in your command chat (see [Chat commands](CHAT_COMMANDS.md)) and the call is made only after your yes. This needs a chat with commands switched on.

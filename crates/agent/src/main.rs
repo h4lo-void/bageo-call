@@ -412,17 +412,20 @@ impl RingPrewarmRegistry {
             // hello's number, which the session takes over at adoption.
             if !same_ringing_caller(&e.caller_id, caller_id) {
                 info!(
-                    "Ring prewarm caller differs serial={serial} id={} rang_caller={} hello_caller={caller_id} — still the ringing call, adopt",
-                    e.id, e.caller_id
+                    "Ring prewarm caller differs serial={serial} id={} rang_caller={} hello_caller={} — still the ringing call, adopt",
+                    e.id,
+                    urgent_call::masked(&e.caller_id),
+                    urgent_call::masked(caller_id)
                 );
             }
             return Some(e);
         };
         e.cancel.store(true, Ordering::Relaxed);
         warn!(
-            "Ring prewarm not used serial={serial} id={} why={why} rang_caller={} hello_caller={caller_id} age_ms={}",
+            "Ring prewarm not used serial={serial} id={} why={why} rang_caller={} hello_caller={} age_ms={}",
             e.id,
-            e.caller_id,
+            urgent_call::masked(&e.caller_id),
+            urgent_call::masked(caller_id),
             e.started.elapsed().as_millis()
         );
         None
@@ -731,6 +734,116 @@ fn cid_route_on_hello(serial: &str, caller: &str, answer_unknown: bool, listed: 
     CidRoute::Greet
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct HelloRoutePlan {
+    outbound: bool,
+    reject_listed: bool,
+    route: CidRoute,
+    allow_ring_prewarm: bool,
+}
+
+/// Decide media-hello routing while giving active outbound calls (appointments
+/// callbacks, errands, to-do callbacks) priority over incoming-call blocking
+/// and ring prewarm adoption.
+fn plan_hello_routing(
+    serial: &str,
+    caller: &str,
+    answer_unknown: bool,
+    outbound: bool,
+    is_reject_listed: impl FnOnce() -> bool,
+) -> HelloRoutePlan {
+    if is_isolated_screening_serial(serial) {
+        return HelloRoutePlan {
+            outbound,
+            reject_listed: false,
+            route: CidRoute::IgnoreIsolated,
+            allow_ring_prewarm: false,
+        };
+    }
+    if outbound {
+        return HelloRoutePlan {
+            outbound: true,
+            reject_listed: false,
+            route: CidRoute::Greet,
+            allow_ring_prewarm: false,
+        };
+    }
+    let reject_listed = is_reject_listed();
+    let route = cid_route_on_hello(serial, caller, answer_unknown, reject_listed);
+    HelloRoutePlan {
+        outbound: false,
+        reject_listed,
+        route,
+        allow_ring_prewarm: route == CidRoute::Greet,
+    }
+}
+
+/// Whether this media `hello` / `ringing` matches an active outbound call
+/// placed by the agent (appointment callback, errand, or to-do voicemail callback).
+async fn hello_is_outbound(
+    state: &AppState,
+    serial: &str,
+    caller_id: &str,
+    parsed: &Value,
+) -> bool {
+    hello_is_outbound_with(state.control.as_ref(), state.errands.as_ref(), serial, caller_id, parsed).await
+}
+
+async fn hello_is_outbound_with(
+    control: &callback::ControlRegistry,
+    errands: &errands::ErrandStore,
+    serial: &str,
+    caller_id: &str,
+    parsed: &Value,
+) -> bool {
+    let task_id = parsed
+        .get("task_id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let call_id = parsed
+        .get("call_id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    if !task_id.is_empty() || !call_id.is_empty() {
+        if let Some(session) = control.callback_session_for(task_id, call_id).await {
+            let same_phone = session.serial.eq_ignore_ascii_case(serial.trim())
+                || canonical_device_serial(&session.serial)
+                    .eq_ignore_ascii_case(&canonical_device_serial(serial));
+            if same_phone
+                && !matches!(
+                    session.phase,
+                    callback::CallbackPhase::Failed | callback::CallbackPhase::Done
+                )
+            {
+                return true;
+            }
+        }
+    }
+    if appointments::outgoing_call_on(serial, caller_id).is_some() {
+        return true;
+    }
+    if fulfill::voicemail_callback_dialing(control, serial, caller_id).await {
+        return true;
+    }
+    if caller_id.trim().is_empty()
+        && (appointments::callback_pending_on(serial) || fulfill::voicemail_callback_pending(serial))
+    {
+        return true;
+    }
+    errands.list().into_iter().any(|e| {
+        e.status == "dialing"
+            && e.serial.eq_ignore_ascii_case(serial.trim())
+            && (caller_id.trim().is_empty()
+                || contacts::same_number(
+                    &e.number,
+                    caller_id,
+                    (!e.sim_country.is_empty()).then_some(e.sim_country.as_str()),
+                ))
+    })
+}
+
 fn cid_route_after_wait(caller: &str, answer_unknown: bool, listed: bool) -> CidRoute {
     if listed {
         CidRoute::RejectList
@@ -798,8 +911,9 @@ impl RejectPending {
             Some(ring)
         } else {
             info!(
-                "拒接號碼 ring left over serial={serial} rang={} hello={hello_caller} — not this call",
-                ring.caller
+                "拒接號碼 ring left over serial={serial} rang={} hello={} — not this call",
+                urgent_call::masked(&ring.caller),
+                urgent_call::masked(hello_caller)
             );
             None
         }
@@ -1046,7 +1160,7 @@ async fn main() -> Result<()> {
     // reported (an errand dials from a SIM of the number's country).
     let phone_sims = errands::SimBook::open(PathBuf::from(&settings.calls_data_dir).join("phone_sims.json"));
     errands::install_sims(phone_sims.clone());
-    let errand_store = errands::ErrandStore::open(PathBuf::from(&settings.calls_data_dir).join("errands.json"), phone_sims);
+    let errand_store = errands::ErrandStore::open(PathBuf::from(&settings.calls_data_dir).join("errands.json"), phone_sims.clone());
     // Text messages the SMS forwarder hands over, for the console's SMS page.
     let sms_store = sms_store::SmsStore::open(
         PathBuf::from(&settings.calls_data_dir).join("sms"),
@@ -1070,6 +1184,7 @@ async fn main() -> Result<()> {
         });
     }
     let control = ControlRegistry::new();
+    control.set_sim_book(phone_sims);
     let phones = calls_http::PhoneDevices::new();
     let state = AppState {
         settings: settings.clone(),
@@ -1274,6 +1389,7 @@ async fn main() -> Result<()> {
                 while let Ok(more) = card_rx.try_recv() {
                     actions.push(more);
                 }
+                let mut pending_replies: Vec<(String, String, String)> = Vec::new();
                 for action in actions {
                     let rt = settings_store.snapshot();
                     // Appointments: ✅ / ❌ on their card. On its own task — a text
@@ -1366,15 +1482,24 @@ async fn main() -> Result<()> {
                             }
                         }
                     };
-                    if let Err(e) =
-                        tg_inbound::send_plain_message(&http, &token, &action.chat_id, &result_text)
-                            .await
-                    {
-                        warn!(
-                            "tg fulfill result notify failed task_id={}: {e:#}",
-                            action.task_id
-                        );
-                    }
+                    pending_replies.push((action.chat_id, result_text, action.task_id));
+                }
+                if !pending_replies.is_empty() {
+                    let http = http.clone();
+                    tokio::spawn(async move {
+                        let futs = pending_replies.into_iter().map(|(chat_id, text, task_id)| {
+                            let http = http.clone();
+                            let token = token.clone();
+                            async move {
+                                if let Err(e) =
+                                    tg_inbound::send_plain_message(&http, &token, &chat_id, &text).await
+                                {
+                                    warn!("tg fulfill result notify failed task_id={task_id}: {e:#}");
+                                }
+                            }
+                        });
+                        futures_util::future::join_all(futs).await;
+                    });
                 }
             }
         });
@@ -1496,7 +1621,7 @@ async fn root(
 /// refused. The pairing key ([`phone_wifi`]) is checked apart, in [`phone_ws`].
 fn phone_allowed(peer: &SocketAddr, proxied: bool, token: Option<&str>, required: &str) -> bool {
     let required = required.trim();
-    let token_ok = !required.is_empty() && token.is_some_and(|t| t == required);
+    let token_ok = !required.is_empty() && token.is_some_and(|t| crate::mcp::same(t, required));
     if proxied {
         return token_ok;
     }
@@ -1801,6 +1926,7 @@ async fn health(
         return Json(json!({
             "ok": true,
             "version": env!("CARGO_PKG_VERSION"),
+            "local_time": chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
             "language": rt.language,
             // What the owner reads (the SMS forwarder labels its messages with it).
             "notify_language": rt.notify_lang().code(),
@@ -2229,7 +2355,7 @@ async fn health(
             .map(|c| json!({
                 "id": c.id,
                 "status": c.status,
-                "caller_id": c.caller_id,
+                "caller_id": urgent_call::masked(&c.caller_id),
                 "serial": c.serial,
                 "started_at": c.started_at,
             }))
@@ -2458,7 +2584,7 @@ async fn handle_control_idle_ws(
                         if let Some(old) = state.reject_pending.take(&serial) {
                             info!(
                                 "incoming serial={serial} drops the earlier 拒接號碼 ring caller={}",
-                                old.caller
+                                urgent_call::masked(&old.caller)
                             );
                         }
                         let sample_rate = parsed
@@ -2483,16 +2609,18 @@ async fn handle_control_idle_ws(
                                     .await;
                                     let _ = send_json(&sink, reject_answer_plan(true)).await;
                                     info!(
-                                        "incoming serial={serial} caller={caller} on 白名單 ({}) whitelist_mode=direct → decline, transfer to '{}'",
+                                        "incoming serial={serial} caller={} on 白名單 ({}) whitelist_mode=direct → decline, transfer to '{}'",
+                                        urgent_call::masked(&caller),
                                         wc.name,
-                                        rt.whitelist_forward_number
+                                        urgent_call::masked(&rt.whitelist_forward_number)
                                     );
                                     continue;
                                 }
                                 // Never hang up on a whitelisted caller: without a number to
                                 // forward to, or a phone that can decline, the AI answers.
                                 warn!(
-                                    "incoming serial={serial} caller={caller} on 白名單 ({}) whitelist_mode=direct but the transfer is not ready (number set={}, phone can decline={decline}) → the AI answers",
+                                    "incoming serial={serial} caller={} on 白名單 ({}) whitelist_mode=direct but the transfer is not ready (number set={}, phone can decline={decline}) → the AI answers",
+                                    urgent_call::masked(&caller),
                                     wc.name,
                                     !rt.whitelist_forward_number.trim().is_empty()
                                 );
@@ -2521,7 +2649,8 @@ async fn handle_control_idle_ws(
                             );
                             let _ = send_json(&sink, reject_answer_plan(decline)).await;
                             info!(
-                                "incoming serial={serial} caller={caller} on 拒接號碼 → {} (no AI)",
+                                "incoming serial={serial} caller={} on 拒接號碼 → {} (no AI)",
+                                urgent_call::masked(&caller),
                                 if decline { "decline while ringing" } else { "pick up, announce, hang up" }
                             );
                             continue;
@@ -2535,7 +2664,8 @@ async fn handle_control_idle_ws(
                         )
                         .await;
                         info!(
-                            "incoming serial={serial} caller={caller} answer_ring_ms={ring_ms} prewarm={prewarm}"
+                            "incoming serial={serial} caller={} answer_ring_ms={ring_ms} prewarm={prewarm}",
+                            urgent_call::masked(&caller)
                         );
                     }
                     "incoming_cancel" => {
@@ -2926,7 +3056,13 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                 }
                                 *ivr_phase.lock().unwrap_or_else(|e| e.into_inner()) =
                                     IvrPhase::WaitDtmf;
-                                if let Some(c) = extract_caller_id_from_msg(&parsed) {
+                                if active_call.lock().await.is_none() {
+                                    call_notified = false;
+                                    call_reject_listed = false;
+                                    vm_saved = false;
+                                    vm_notified.store(false, Ordering::Relaxed);
+                                    caller_id = extract_caller_id_from_msg(&parsed).unwrap_or_default();
+                                } else if let Some(c) = extract_caller_id_from_msg(&parsed) {
                                     caller_id = c;
                                 }
                                 note_call_sim(&serial, &parsed);
@@ -2956,7 +3092,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                     .map(|d| d.as_millis())
                                     .unwrap_or(0);
                                 info!(
-                                    "session hello serial={serial} caller={caller_id} mode={} ivr_prompt={:?} ivr_loop={} t0_unix_ms={session_hello_t0_ms}",
+                                    "session hello serial={serial} caller={} mode={} ivr_prompt={:?} ivr_loop={} t0_unix_ms={session_hello_t0_ms}",
+                                    urgent_call::masked(&caller_id),
                                     state.settings.agent_mode.as_str(),
                                     state.settings.ivr_prompt_text,
                                     state.settings.ivr_loop
@@ -2972,10 +3109,20 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         "pcm_codec": "s16le_raw_no_opus",
                                     }),
                                 );
+                                // Active outbound calls (appointment callbacks, errands, to-do
+                                // callbacks) must be recognized BEFORE incoming reject-list /
+                                // ring-prewarm logic runs.
+                                let is_outbound =
+                                    hello_is_outbound(&state, &serial, &caller_id, &parsed).await;
                                 // Blocked numbers: this number, or the phone's ringing call was on
                                 // it (the hello may come before Telecom publishes the CID).
-                                let rang_listed = state.reject_pending.take_for_hello(&serial, &caller_id);
-                                if caller_id.trim().is_empty() {
+                                let rang_listed = if is_outbound {
+                                    let _ = state.reject_pending.take(&serial);
+                                    None
+                                } else {
+                                    state.reject_pending.take_for_hello(&serial, &caller_id)
+                                };
+                                if !is_outbound && caller_id.trim().is_empty() {
                                     if let Some(c) = rang_listed
                                         .as_ref()
                                         .map(|r| r.caller.as_str())
@@ -2984,8 +3131,17 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         caller_id = c.to_string();
                                     }
                                 }
-                                let reject_listed = rang_listed.is_some()
-                                    || reject_listed_on_line(&rt, &caller_id, &serial);
+                                let hello_plan = plan_hello_routing(
+                                    &serial,
+                                    &caller_id,
+                                    rt.answer_unknown_callers,
+                                    is_outbound,
+                                    || {
+                                        rang_listed.is_some()
+                                            || reject_listed_on_line(&rt, &caller_id, &serial)
+                                    },
+                                );
+                                let reject_listed = hello_plan.reject_listed;
                                 call_reject_listed = reject_listed;
                                 // Declined while it rang, picked up anyway (the app said it
                                 // can decline, then did not): the caller gets the
@@ -2998,7 +3154,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         .release(&serial, &ring.caller)
                                         .await;
                                     info!(
-                                        "declined 拒接號碼 picked up anyway serial={serial} caller={caller_id} record={:?} → announcement",
+                                        "declined 拒接號碼 picked up anyway serial={serial} caller={} record={:?} → announcement",
+                                        urgent_call::masked(&caller_id),
                                         ring.record_id
                                     );
                                     if let Some(id) = ring.record_id.as_deref() {
@@ -3032,7 +3189,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                 }
                                 if ensured == EnsureCall::Reattached {
                                     info!(
-                                        "session hello reattached existing call_id serial={serial} caller={caller_id}"
+                                        "session hello reattached existing call_id serial={serial} caller={}",
+                                        urgent_call::masked(&caller_id)
                                     );
                                 }
                                 if !call_notified {
@@ -3042,7 +3200,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                     let ser = serial.clone();
                                     let notice = ring_notice(&state, call_reject_listed, &ser, &caller).await;
                                     if notice == errands::CallNotice::Silent {
-                                        info!("call notify skipped (redial try after the first) serial={ser} caller={caller}");
+                                        info!("call notify skipped (redial try after the first) serial={ser} caller={}", urgent_call::masked(&caller));
                                     } else if dedup.claim(&ser, &caller).await {
                                         let http = state.http.clone();
                                         // Fresh snapshot: honor hot-swapped call_notify + gateway URL.
@@ -3070,12 +3228,14 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                             let what = if notice == errands::CallNotice::Outgoing { "outgoing" } else { "incoming" };
                                             if ok {
                                                 info!(
-                                                    "{what} call notify ok serial={ser} caller={caller}"
+                                                    "{what} call notify ok serial={ser} caller={}",
+                                                    urgent_call::masked(&caller)
                                                 );
                                             } else {
                                                 dedup_for_task.release(&ser, &caller).await;
                                                 warn!(
-                                                    "{what} call notify FAILED serial={ser} caller={caller} call_notify={} gateway_set={}",
+                                                    "{what} call notify FAILED serial={ser} caller={} call_notify={} gateway_set={}",
+                                                    urgent_call::masked(&caller),
                                                     settings.call_notify,
                                                     !settings.notify_gateway_url.trim().is_empty()
                                                 );
@@ -3083,7 +3243,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         });
                                     } else {
                                         info!(
-                                            "incoming call notify dedup serial={ser} caller={caller} window_s={}",
+                                            "incoming call notify dedup serial={ser} caller={} window_s={}",
+                                            urgent_call::masked(&caller),
                                             INCOMING_NOTIFY_DEDUP_WINDOW.as_secs()
                                         );
                                     }
@@ -3139,10 +3300,11 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                     let answer_unknown = rt.answer_unknown_callers;
                                     if answer_unknown && is_unknown_or_hidden_caller(&caller_id) {
                                         info!(
-                                            "unknown/hidden caller serial={serial} caller={caller_id:?} → answer like a normal call (answer_unknown_callers=on)"
+                                            "unknown/hidden caller serial={serial} caller={:?} → answer like a normal call (answer_unknown_callers=on)",
+                                            urgent_call::masked(&caller_id)
                                         );
                                     }
-                                    match cid_route_on_hello(&serial, &caller_id, answer_unknown, reject_listed) {
+                                    match hello_plan.route {
                                         CidRoute::IgnoreIsolated => {
                                             // Park the twin as finished so no later path (DTMF decode of
                                             // overheard audio, legacy menu timeout, auto-AI) can start
@@ -3153,7 +3315,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                             *ivr_phase.lock().unwrap_or_else(|e| e.into_inner()) =
                                                 IvrPhase::Done;
                                             info!(
-                                                "IVR skip isolated screening serial={serial} caller={caller_id:?} → phase Done (no greet/reject/VM/AI inject)"
+                                                "IVR skip isolated screening serial={serial} caller={:?} → phase Done (no greet/reject/VM/AI inject)",
+                                                urgent_call::masked(&caller_id)
                                             );
                                         }
                                         CidRoute::Wait => {
@@ -3186,7 +3349,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         CidRoute::Reject => {
                                             cid_wait_pending.store(false, Ordering::SeqCst);
                                             info!(
-                                                "unknown/private caller serial={serial} caller={caller_id:?} → reject WAV + hangup (skip greet/AI)"
+                                                "unknown/private caller serial={serial} caller={:?} → reject WAV + hangup (skip greet/AI)",
+                                                urgent_call::masked(&caller_id)
                                             );
                                             if let Some(c) = active_call.lock().await.as_mut() {
                                                 c.push_event("reject_unknown_caller");
@@ -3237,36 +3401,46 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                             .await;
                                             // The session started while the phone rang (「喂？」
                                             // ready), else ConnectAtAnswer: warm Gemini now (silent).
-                                            let adopted = match take_ring_prewarm(
-                                                &state,
-                                                &rt,
-                                                &serial,
-                                                &caller_id,
-                                                sample_rate,
-                                            ) {
-                                                Some(pw) => {
-                                                    adopt_ring_prewarm(
-                                                        pw,
-                                                        &sink,
-                                                        &state,
-                                                        &serial,
-                                                        &caller_id,
-                                                        &ivr_phase,
-                                                        &busy,
-                                                        &mut hold_cancel,
-                                                        &active_call,
-                                                        &mut gemini_transcript,
-                                                        &gemini_uplink_tx,
-                                                        &mut gemini_audio_open,
-                                                        &mut gemini_audio_opened_at,
-                                                        &mut gemini_setup_ready,
-                                                        &mut gemini_connect_failed,
-                                                        &mut gemini_prewarmed,
-                                                        &media_call_guard,
-                                                    )
-                                                    .await
+                                            // Active outbound calls never adopt an incoming ring prewarm.
+                                            let adopted = if !hello_plan.allow_ring_prewarm {
+                                                state.ring_prewarm.cancel(
+                                                    &serial,
+                                                    None,
+                                                    "outbound call",
+                                                );
+                                                false
+                                            } else {
+                                                match take_ring_prewarm(
+                                                    &state,
+                                                    &rt,
+                                                    &serial,
+                                                    &caller_id,
+                                                    sample_rate,
+                                                ) {
+                                                    Some(pw) => {
+                                                        adopt_ring_prewarm(
+                                                            pw,
+                                                            &sink,
+                                                            &state,
+                                                            &serial,
+                                                            &caller_id,
+                                                            &ivr_phase,
+                                                            &busy,
+                                                            &mut hold_cancel,
+                                                            &active_call,
+                                                            &mut gemini_transcript,
+                                                            &gemini_uplink_tx,
+                                                            &mut gemini_audio_open,
+                                                            &mut gemini_audio_opened_at,
+                                                            &mut gemini_setup_ready,
+                                                            &mut gemini_connect_failed,
+                                                            &mut gemini_prewarmed,
+                                                            &media_call_guard,
+                                                        )
+                                                        .await
+                                                    }
+                                                    None => false,
                                                 }
-                                                None => false,
                                             };
                                             if !adopted {
                                                 start_gemini_connect_at_answer(
@@ -3328,8 +3502,10 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                 // Hot-swap boundary: refresh runtime settings at call start.
                                 rt = base_state.settings_store.snapshot();
                                 state.settings = rt.effective(&base_state.settings);
-                                info!("session ringing serial={serial} caller={caller_id}");
-                                if reject_listed_on_line(&rt, &caller_id, &serial) {
+                                info!("session ringing serial={serial} caller={}", urgent_call::masked(&caller_id));
+                                let is_outbound =
+                                    hello_is_outbound(&state, &serial, &caller_id, &parsed).await;
+                                if !is_outbound && reject_listed_on_line(&rt, &caller_id, &serial) {
                                     call_reject_listed = true;
                                 }
                                 // Late CID after empty media hello: resolve wait → greet or reject-only.
@@ -3343,14 +3519,20 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         )
                                         .is_ok()
                                 {
-                                    match cid_route_after_wait(
-                                        &caller_id,
-                                        rt.answer_unknown_callers,
-                                        call_reject_listed,
-                                    ) {
+                                    let wait_route = if is_outbound {
+                                        CidRoute::Greet
+                                    } else {
+                                        cid_route_after_wait(
+                                            &caller_id,
+                                            rt.answer_unknown_callers,
+                                            call_reject_listed,
+                                        )
+                                    };
+                                    match wait_route {
                                         CidRoute::Reject => {
                                             info!(
-                                                "late hidden CID on ringing serial={serial} caller={caller_id:?} → reject-only"
+                                                "late hidden CID on ringing serial={serial} caller={:?} → reject-only",
+                                                urgent_call::masked(&caller_id)
                                             );
                                             if let Some(c) = active_call.lock().await.as_mut() {
                                                 c.push_event("reject_unknown_caller");
@@ -3369,7 +3551,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         }
                                         CidRoute::RejectList => {
                                             info!(
-                                                "late CID on ringing serial={serial} caller={caller_id:?} → 拒接號碼"
+                                                "late CID on ringing serial={serial} caller={:?} → 拒接號碼",
+                                                urgent_call::masked(&caller_id)
                                             );
                                             start_reject_list_announce(
                                                 &sink,
@@ -3386,7 +3569,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         }
                                         CidRoute::Greet => {
                                             info!(
-                                                "late visible CID on ringing serial={serial} caller={caller_id:?} → period greet"
+                                                "late visible CID on ringing serial={serial} caller={:?} → period greet",
+                                                urgent_call::masked(&caller_id)
                                             );
                                             start_ivr_prompt(
                                                 &sink,
@@ -3403,36 +3587,46 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                                 Some(dtmf_ignore_until.clone()),
                                             )
                                             .await;
-                                            let adopted = match take_ring_prewarm(
-                                                &state,
-                                                &rt,
-                                                &serial,
-                                                &caller_id,
-                                                sample_rate,
-                                            ) {
-                                                Some(pw) => {
-                                                    adopt_ring_prewarm(
-                                                        pw,
-                                                        &sink,
-                                                        &state,
-                                                        &serial,
-                                                        &caller_id,
-                                                        &ivr_phase,
-                                                        &busy,
-                                                        &mut hold_cancel,
-                                                        &active_call,
-                                                        &mut gemini_transcript,
-                                                        &gemini_uplink_tx,
-                                                        &mut gemini_audio_open,
-                                                        &mut gemini_audio_opened_at,
-                                                        &mut gemini_setup_ready,
-                                                        &mut gemini_connect_failed,
-                                                        &mut gemini_prewarmed,
-                                                        &media_call_guard,
-                                                    )
-                                                    .await
+                                            // Active outbound calls never adopt an incoming ring prewarm.
+                                            let adopted = if is_outbound {
+                                                state.ring_prewarm.cancel(
+                                                    &serial,
+                                                    None,
+                                                    "outbound call",
+                                                );
+                                                false
+                                            } else {
+                                                match take_ring_prewarm(
+                                                    &state,
+                                                    &rt,
+                                                    &serial,
+                                                    &caller_id,
+                                                    sample_rate,
+                                                ) {
+                                                    Some(pw) => {
+                                                        adopt_ring_prewarm(
+                                                            pw,
+                                                            &sink,
+                                                            &state,
+                                                            &serial,
+                                                            &caller_id,
+                                                            &ivr_phase,
+                                                            &busy,
+                                                            &mut hold_cancel,
+                                                            &active_call,
+                                                            &mut gemini_transcript,
+                                                            &gemini_uplink_tx,
+                                                            &mut gemini_audio_open,
+                                                            &mut gemini_audio_opened_at,
+                                                            &mut gemini_setup_ready,
+                                                            &mut gemini_connect_failed,
+                                                            &mut gemini_prewarmed,
+                                                            &media_call_guard,
+                                                        )
+                                                        .await
+                                                    }
+                                                    None => false,
                                                 }
-                                                None => false,
                                             };
                                             if !adopted {
                                                 start_gemini_connect_at_answer(
@@ -3485,7 +3679,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                     let dedup = base_state.incoming_notify_dedup.clone();
                                     let notice = ring_notice(&state, call_reject_listed, &ser, &caller).await;
                                     if notice == errands::CallNotice::Silent {
-                                        info!("call notify skipped (redial try after the first) serial={ser} caller={caller}");
+                                        info!("call notify skipped (redial try after the first) serial={ser} caller={}", urgent_call::masked(&caller));
                                     } else if dedup.claim(&ser, &caller).await {
                                         let http = state.http.clone();
                                         let settings = {
@@ -3512,12 +3706,14 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                             let what = if notice == errands::CallNotice::Outgoing { "outgoing" } else { "incoming" };
                                             if ok {
                                                 info!(
-                                                    "{what} call notify ok serial={ser} caller={caller}"
+                                                    "{what} call notify ok serial={ser} caller={}",
+                                                    urgent_call::masked(&caller)
                                                 );
                                             } else {
                                                 dedup_for_task.release(&ser, &caller).await;
                                                 warn!(
-                                                    "{what} call notify FAILED serial={ser} caller={caller} call_notify={} gateway_set={}",
+                                                    "{what} call notify FAILED serial={ser} caller={} call_notify={} gateway_set={}",
+                                                    urgent_call::masked(&caller),
                                                     settings.call_notify,
                                                     !settings.notify_gateway_url.trim().is_empty()
                                                 );
@@ -3525,7 +3721,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         });
                                     } else {
                                         info!(
-                                            "incoming call notify dedup serial={ser} caller={caller} window_s={}",
+                                            "incoming call notify dedup serial={ser} caller={} window_s={}",
+                                            urgent_call::masked(&caller),
                                             INCOMING_NOTIFY_DEDUP_WINDOW.as_secs()
                                         );
                                     }
@@ -3543,7 +3740,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         caller_id = c.to_string();
                                     }
                                 }
-                                info!("session call_end serial={serial} caller={caller_id}");
+                                info!("session call_end serial={serial} caller={}", urgent_call::masked(&caller_id));
                                 // Capture phase before Done — press-1 AI needs the summary notification.
                                 let phase_at_end = *ivr_phase
                                     .lock()
@@ -3573,11 +3770,11 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                 trtc_turn = None;
                                 // Stop TRTC AI / Chromium immediately — do not wait for WS drop
                                 // (leftover StartAIConversation burns Tencent voice minutes).
-                                trtc_bridge::make_bridge(
-                                    &state.settings.trtc(),
-                                    state.http.clone(),
-                                )
-                                .leave(&serial, "remote_call_end");
+                                let trtc_cfg = state.settings.trtc();
+                                if trtc_cfg.configured() || trtc_bridge::peek_ai_task_id(&serial).is_some() {
+                                    trtc_bridge::make_bridge(&trtc_cfg, state.http.clone())
+                                        .leave(&serial, "remote_call_end");
+                                }
                                 *ivr_phase.lock().unwrap_or_else(|e| e.into_inner()) =
                                     IvrPhase::Done;
                                 if let Some(mut call) = active_call.lock().await.take() {
@@ -3601,7 +3798,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                     // Press-1 Gemini/TRTC: notification with full transcript (brief delay for last STT).
                                     // A persona-mode AI-fail hangup already set phase=Done, but the owner
                                     // still needs a card (else a silent few-second call leaves no notification).
-                                    if was_ai_talk || record_had_ai_fail_hangup(&record.events) {
+                                    // AI callbacks also finalize state here even if dropped before unmute (400ms settle).
+                                    if should_run_ai_call_summary(was_ai_talk, &record.events) {
                                         spawn_ai_talk_tg_summary(
                                             &state,
                                             &record,
@@ -3610,6 +3808,13 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         );
                                     }
                                 }
+                                clear_call_sim(&serial);
+                                caller_id.clear();
+                                call_notified = false;
+                                call_reject_listed = false;
+                                vm_saved = false;
+                                vm_notified.store(false, Ordering::Relaxed);
+                                vm_buf.clear();
                                 let _ = send_json(
                                     &sink,
                                     json!({"type":"call_end_ack","serial": serial}),
@@ -3863,11 +4068,11 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                             vm_voiced = false;
                                             // Exit TRTC AI/menu path before local voicemail.
                                             stop_hold_loop(&mut hold_cancel);
-                                            trtc_bridge::make_bridge(
-                                                &state.settings.trtc(),
-                                                state.http.clone(),
-                                            )
-                                            .leave(&serial, "dtmf_voicemail");
+                                            let trtc_cfg = state.settings.trtc();
+                                            if trtc_cfg.configured() || trtc_bridge::peek_ai_task_id(&serial).is_some() {
+                                                trtc_bridge::make_bridge(&trtc_cfg, state.http.clone())
+                                                    .leave(&serial, "dtmf_voicemail");
+                                            }
                                             start_voicemail_intro(
                                                 &sink,
                                                 &state,
@@ -4007,9 +4212,10 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                             .await;
                                         });
                                     } else if !skip_uplink_to_trtc
+                                        && state.settings.trtc().configured()
                                         && uplink_bytes % 320_000 < bin.len() as u64
                                     {
-                                        info!(
+                                        tracing::debug!(
                                             "IVR trtc uplink pending serial={serial} phase={phase:?} live=false bytes={uplink_bytes}"
                                         );
                                     }
@@ -4197,7 +4403,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                             deadline = None;
                                             prompt_cancel.store(true, Ordering::Relaxed);
                                             info!(
-                                                "VM callback confirmed serial={serial} caller={caller_id:?}"
+                                                "VM callback confirmed serial={serial} caller={:?}",
+                                                urgent_call::masked(&caller_id)
                                             );
                                             {
                                                 let mut g = active_call.lock().await;
@@ -4366,7 +4573,9 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
     // Always tear down TRTC room/AI task on disconnect — menu may have opened a
     // sidecar session / StartAIConversation; skipping leave left a "task already exists" error
     // and stale room_media_live → silent ServerPush next call.
+    let trtc_cfg = state.settings.trtc();
     if state.settings.agent_mode.is_transfer()
+        && (trtc_cfg.configured() || trtc_bridge::peek_ai_task_id(&serial).is_some())
         && matches!(
             phase,
             IvrPhase::PlayPrompt
@@ -4376,10 +4585,10 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                 | IvrPhase::LiveAi
         )
     {
-        trtc_bridge::make_bridge(&state.settings.trtc(), state.http.clone())
+        trtc_bridge::make_bridge(&trtc_cfg, state.http.clone())
             .leave(&serial, "ivr_disconnect");
-    } else if trtc_ai_ended {
-        trtc_bridge::make_bridge(&state.settings.trtc(), state.http.clone())
+    } else if trtc_ai_ended && (trtc_cfg.configured() || trtc_bridge::peek_ai_task_id(&serial).is_some()) {
+        trtc_bridge::make_bridge(&trtc_cfg, state.http.clone())
             .leave(&serial, "trtc_ai_disconnect");
     }
     if let Some(mut call) = active_call.lock().await.take() {
@@ -4409,7 +4618,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                 let appointment_book = call.appointment_book();
                 let record = store.finalize(call, "ended").await;
                 save_reject_list_notes(&notify_state, &record);
-                if trtc_ai_ended || record_had_ai_fail_hangup(&record.events) {
+                if should_run_ai_call_summary(trtc_ai_ended, &record.events) {
                     spawn_ai_talk_tg_summary(&notify_state, &record, transcript, appointment_book);
                 }
             }
@@ -4439,7 +4648,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
     cid_wait_pending.store(false, Ordering::SeqCst);
     state.media_play.release(&serial).await;
     info!(
-        "client disconnected serial={serial} caller={caller_id} uplink_bytes={uplink_bytes} phase={phase:?} hold_started={hold_started}"
+        "client disconnected serial={serial} caller={} uplink_bytes={uplink_bytes} phase={phase:?} hold_started={hold_started}",
+        urgent_call::masked(&caller_id)
     );
     let pacing_started_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -4480,6 +4690,10 @@ fn sim_country_from_msg(parsed: &Value) -> Option<String> {
 /// Every `incoming` / `hello` replaces what is known about the phone's SIM, so a
 /// value never outlives its call (nor a downgrade to an app that does not send it).
 /// The last SIM a phone reported is also kept apart ([`phone_region::last_sim`]).
+fn is_incoming_sim_msg(parsed: &Value) -> bool {
+    parsed.get("type").and_then(Value::as_str) == Some("incoming")
+}
+
 fn note_call_sim_country(serial: &str, parsed: &Value) {
     let sim = sim_country_from_msg(parsed);
     let key = canonical_device_serial(serial);
@@ -4491,9 +4705,10 @@ fn note_call_sim_country(serial: &str, parsed: &Value) {
         Some(iso) => {
             m.insert(key, iso);
         }
-        None => {
+        None if is_incoming_sim_msg(parsed) => {
             m.remove(&key);
         }
+        None => {}
     }
 }
 
@@ -4505,16 +4720,57 @@ fn call_sim_country(serial: &str) -> Option<String> {
         .cloned()
 }
 
+fn whitelist_exempts_reject(
+    rt: &RuntimeSettings,
+    caller: &str,
+    sim: Option<&str>,
+    contacts_store: Option<&contacts::ContactStore>,
+) -> bool {
+    if caller.trim().is_empty()
+        || !matches!(rt.whitelist_mode.as_str(), "direct" | "emergency" | "urgent")
+    {
+        return false;
+    }
+    match contacts_store {
+        Some(store) => store.is_whitelist(caller, sim).is_some(),
+        None => contacts::is_whitelist(caller, sim).is_some(),
+    }
+}
+
+fn reject_listed_on_sim(
+    rt: &RuntimeSettings,
+    caller: &str,
+    sim: Option<&str>,
+    contacts_store: Option<&contacts::ContactStore>,
+) -> bool {
+    if whitelist_exempts_reject(rt, caller, sim, contacts_store) {
+        return false;
+    }
+    settings_store::reject_number_hit_on(rt.pending_rejects(), caller, sim)
+}
+
+fn reject_reason_on_sim(
+    rt: &RuntimeSettings,
+    caller: &str,
+    sim: Option<&str>,
+    contacts_store: Option<&contacts::ContactStore>,
+) -> Option<String> {
+    if whitelist_exempts_reject(rt, caller, sim, contacts_store) {
+        return None;
+    }
+    settings_store::reject_reason_on(rt.pending_rejects(), caller, sim)
+}
+
 /// The caller is on the blocked-numbers list (or the Contacts Blacklist) as the
 /// SIM of the phone's current call reads the number: one without a country code
 /// is dialled in that SIM's country ([`settings_store::reject_number_hit_on`]).
 fn reject_listed_on_line(rt: &RuntimeSettings, caller: &str, serial: &str) -> bool {
-    settings_store::reject_number_hit_on(rt.pending_rejects(), caller, call_sim_country(serial).as_deref())
+    reject_listed_on_sim(rt, caller, call_sim_country(serial).as_deref(), None)
 }
 
 /// Why the caller is blocked, read as in [`reject_listed_on_line`].
 fn reject_reason_on_line(rt: &RuntimeSettings, caller: &str, serial: &str) -> Option<String> {
-    settings_store::reject_reason_on(rt.pending_rejects(), caller, call_sim_country(serial).as_deref())
+    reject_reason_on_sim(rt, caller, call_sim_country(serial).as_deref(), None)
 }
 
 /// Android subscription id of the SIM each phone's current call came in on
@@ -4541,10 +4797,23 @@ fn note_call_sim_sub_id(serial: &str, parsed: &Value) {
         Some(id) => {
             m.insert(key, id);
         }
-        None => {
+        None if is_incoming_sim_msg(parsed) => {
             m.remove(&key);
         }
+        None => {}
     }
+}
+
+fn clear_call_sim(serial: &str) {
+    let key = canonical_device_serial(serial);
+    call_sim_countries()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&key);
+    call_sim_sub_ids()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&key);
 }
 
 /// The SIM (subscription id) the phone's current call came in on.
@@ -4629,7 +4898,8 @@ fn on_call_waiting_rejected(state: &AppState, conn_serial: &str, parsed: &Value)
         return;
     }
     info!(
-        "call waiting rejected serial={serial} caller={caller} sim_country={}",
+        "call waiting rejected serial={serial} caller={} sim_country={}",
+        urgent_call::masked(&caller),
         sim_country.as_deref().unwrap_or("?")
     );
     let state = state.clone();
@@ -4665,7 +4935,7 @@ fn on_call_waiting_rejected(state: &AppState, conn_serial: &str, parsed: &Value)
             sim_country.as_deref(),
         )
         .await;
-        info!("call waiting notify serial={serial} caller={caller} ok={ok}");
+        info!("call waiting notify serial={serial} caller={} ok={ok}", urgent_call::masked(&caller));
     });
 }
 
@@ -4828,6 +5098,12 @@ fn spawn_empty_cid_wait(
         {
             return;
         }
+        if *phase.lock().unwrap_or_else(|e| e.into_inner()) != IvrPhase::WaitDtmf {
+            info!(
+                "empty caller_id wait elapsed but call already left WaitDtmf serial={serial} — skip reject"
+            );
+            return;
+        }
         info!(
             "empty caller_id still empty after {}ms serial={serial} → reject-only (no greet)",
             EMPTY_CID_WAIT.as_millis()
@@ -4870,6 +5146,9 @@ async fn start_unknown_caller_reject(
         return;
     }
     prompt_cancel.store(true, Ordering::Relaxed);
+    if matches!(*phase.lock().unwrap_or_else(|e| e.into_inner()), IvrPhase::Goodbye | IvrPhase::Done) {
+        return;
+    }
     if !state
         .media_play
         .claim(serial, MediaPlayKind::Reject, prompt_cancel)
@@ -4878,15 +5157,22 @@ async fn start_unknown_caller_reject(
         warn!("unknown-caller reject skipped exclusive serial={serial}");
         return;
     }
-    {
+    let already_ended = {
         let mut p = phase.lock().unwrap_or_else(|e| e.into_inner());
         if matches!(*p, IvrPhase::Goodbye | IvrPhase::Done) {
-            return;
+            true
+        } else {
+            *p = IvrPhase::Goodbye;
+            false
         }
-        *p = IvrPhase::Goodbye;
+    };
+    if already_ended {
+        state.media_play.release(serial).await;
+        return;
     }
     stop_hold_loop(hold_cancel);
     if busy.try_lock().is_err() {
+        state.media_play.release(serial).await;
         warn!("unknown-caller reject skipped busy serial={serial}");
         return;
     }
@@ -5033,7 +5319,8 @@ async fn start_reject_list_announce(
         {
             Some(pcm) => {
                 info!(
-                    "拒接號碼 serial={serial} caller={caller} → 「{}」 voice={voice} audio_ms={} (no AI)",
+                    "拒接號碼 serial={serial} caller={} → 「{}」 voice={voice} audio_ms={} (no AI)",
+                    urgent_call::masked(&caller),
                     voice_preview::reject_announce_text(),
                     pcm.len() * 1000 / (state.settings.sample_rate as usize * 2).max(1)
                 );
@@ -5046,7 +5333,8 @@ async fn start_reject_list_announce(
             }
             None => {
                 warn!(
-                    "拒接號碼 serial={serial} caller={caller} announcement not ready voice={voice} — hang up without it"
+                    "拒接號碼 serial={serial} caller={} announcement not ready voice={voice} — hang up without it",
+                    urgent_call::masked(&caller)
                 );
                 let st = state.clone();
                 tokio::spawn(async move {
@@ -5113,11 +5401,12 @@ async fn record_declined_call(
         let (caller, serial) = (caller.to_string(), serial.to_string());
         tokio::spawn(async move {
             if notify_rejected_call(&http, &settings, &caller, &serial, &reason, true).await {
-                info!("declined call notify ok serial={serial} caller={caller}");
+                info!("declined call notify ok serial={serial} caller={}", urgent_call::masked(&caller));
             } else {
                 dedup.release(&serial, &caller).await;
                 warn!(
-                    "declined call notify FAILED serial={serial} caller={caller} call_notify={}",
+                    "declined call notify FAILED serial={serial} caller={} call_notify={}",
+                    urgent_call::masked(&caller),
                     settings.call_notify
                 );
             }
@@ -5411,6 +5700,9 @@ async fn start_ivr_prompt(
         info!("IVR prompt skipped isolated screening serial={serial}");
         return;
     }
+    if *phase.lock().unwrap_or_else(|e| e.into_inner()) != IvrPhase::WaitDtmf {
+        return;
+    }
     if !state
         .media_play
         .claim(serial, MediaPlayKind::Greet, prompt_cancel)
@@ -5419,16 +5711,23 @@ async fn start_ivr_prompt(
         warn!("IVR prompt skipped exclusive serial={serial} (reject/twin already playing)");
         return;
     }
-    {
+    let not_wait = {
         let mut p = phase.lock().unwrap_or_else(|e| e.into_inner());
         // Greeting may only start from idle wait (not during voicemail/hold/goodbye).
         if *p != IvrPhase::WaitDtmf {
-            return;
+            true
+        } else {
+            *p = IvrPhase::PlayPrompt;
+            false
         }
-        *p = IvrPhase::PlayPrompt;
+    };
+    if not_wait {
+        state.media_play.release(serial).await;
+        return;
     }
     if busy.try_lock().is_err() {
         *phase.lock().unwrap_or_else(|e| e.into_inner()) = IvrPhase::WaitDtmf;
+        state.media_play.release(serial).await;
         warn!("IVR prompt skipped busy serial={serial}");
         return;
     }
@@ -6401,7 +6700,7 @@ fn start_ring_prewarm(
             serial,
             caller_id,
             rt.answer_unknown_callers,
-            settings_store::reject_number_hit_on(rt.pending_rejects(), caller_id, sim.as_deref()),
+            reject_listed_on_sim(rt, caller_id, sim.as_deref(), None),
         ) != CidRoute::Greet
     {
         return false;
@@ -6428,7 +6727,8 @@ fn start_ring_prewarm(
     let (up_tx, up_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
     let goodbye_hangup_delay_ms = u64::from(rt.goodbye_hangup_delay_ms);
     info!(
-        "Ring prewarm Gemini start serial={serial} caller={caller_id} model={} voice={} phone_sr={sample_rate} answer_ring_ms={ring_ms} (「喂？」 held until pickup)",
+        "Ring prewarm Gemini start serial={serial} caller={} model={} voice={} phone_sr={sample_rate} answer_ring_ms={ring_ms} (「喂？」 held until pickup)",
+        urgent_call::masked(caller_id),
         if cfg.model.trim().is_empty() {
             gemini_live::default_model()
         } else {
@@ -6541,8 +6841,9 @@ async fn adopt_ring_prewarm(
     let rang_caller = cfg.caller_id.clone();
     if take_hello_caller(&core, &mut cfg, caller_id) {
         info!(
-            "Ring prewarm caller updated serial={serial} id={id} rang_caller={rang_caller} hello_caller={}",
-            cfg.caller_id
+            "Ring prewarm caller updated serial={serial} id={id} rang_caller={} hello_caller={}",
+            urgent_call::masked(&rang_caller),
+            urgent_call::masked(&cfg.caller_id)
         );
     }
     // The media hello says which SIM took the call: appointments text back from it.
@@ -7027,9 +7328,10 @@ fn start_gemini_session_core(
                 let number = sim
                     .as_deref()
                     .and_then(|s| phone_region::normalize(&caller, Some(s)))
-                    .map_or_else(|| "?".to_string(), |n| format!("{} ({})", n.e164, n.country));
+                    .map_or_else(|| "?".to_string(), |n| format!("{} ({})", urgent_call::masked(&n.e164), n.country));
                 info!(
-                    "intl caller serial={serial} caller={caller} number={number} sim_country={} → hold opening for carrier prompt={hold}",
+                    "intl caller serial={serial} caller={} number={number} sim_country={} → hold opening for carrier prompt={hold}",
+                    urgent_call::masked(&caller),
                     sim.as_deref().unwrap_or("?")
                 );
             }
@@ -7058,7 +7360,7 @@ fn start_gemini_session_core(
     if (persona && (lang_plan.opening.is_some() || lang_plan.local_hello.is_some())) || lang_plan.caller_stt.is_none() {
         info!(
             "caller languages serial={serial} caller={} opening={} caller_stt={}",
-            cfg.caller_id,
+            urgent_call::masked(&cfg.caller_id),
             lang_plan
                 .opening
                 .map(|l| l.code())
@@ -7239,6 +7541,144 @@ async fn send_urgent_call_alert(state: &AppState, serial: &str, caller_num: &str
 /// errands check. Then the phone dials from this call's SIM and merges; the call
 /// is handed over, or the AI comes back (the owner did not answer / will call
 /// back), or the owner is alerted when the AI cannot talk. Nothing here hangs the
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum UrgentCallOutcome {
+    Pending,
+    Merged,
+    StillOnHold,
+    Failed,
+}
+
+#[derive(Clone)]
+struct UrgentCallCoord {
+    tx: tokio::sync::watch::Sender<UrgentCallOutcome>,
+}
+
+impl UrgentCallCoord {
+    fn new() -> Self {
+        let (tx, _) = tokio::sync::watch::channel(UrgentCallOutcome::Pending);
+        Self { tx }
+    }
+
+    fn set(&self, outcome: UrgentCallOutcome) {
+        self.tx.send_if_modified(|cur| {
+            if *cur == outcome {
+                false
+            } else {
+                *cur = outcome;
+                true
+            }
+        });
+    }
+
+    #[cfg(test)]
+    fn outcome(&self) -> UrgentCallOutcome {
+        *self.tx.borrow()
+    }
+
+    fn subscribe(&self) -> tokio::sync::watch::Receiver<UrgentCallOutcome> {
+        self.tx.subscribe()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum UrgentEndAction {
+    Usual,
+    Handed,
+    StillOnHold,
+    AlertAiEnded,
+}
+
+const URGENT_END_MERGE_GRACE: Duration = Duration::from_millis(500);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum UrgentFailureDisposition {
+    StillOnHold,
+    SessionGoneHangup,
+    ResumeAi,
+}
+
+async fn handle_urgent_call_failure_disposition(
+    sink: &WsSink,
+    serial: &str,
+    reason: &str,
+    ctl: &urgent_call::CallCtl,
+    cancel: &AtomicBool,
+    urgent_coord: &UrgentCallCoord,
+    media_call_guard: &MediaCallGuard,
+) -> UrgentFailureDisposition {
+    if reason == "unhold_failed" {
+        urgent_coord.set(UrgentCallOutcome::StillOnHold);
+        cancel.store(true, Ordering::Relaxed);
+        return UrgentFailureDisposition::StillOnHold;
+    }
+    if ctl.session_gone() && reason != "call_ended" {
+        urgent_coord.set(UrgentCallOutcome::Failed);
+        cancel.store(true, Ordering::Relaxed);
+        send_hangup_with_retries(
+            sink,
+            serial,
+            "urgent_call_ai_gone",
+            2,
+            Some(media_call_guard),
+        )
+        .await;
+        return UrgentFailureDisposition::SessionGoneHangup;
+    }
+    UrgentFailureDisposition::ResumeAi
+}
+
+async fn finish_urgent_session_end(
+    ctl: Option<&urgent_call::CallCtl>,
+    urgent_coord: &UrgentCallCoord,
+    grace: Duration,
+) -> UrgentEndAction {
+    let Some(ctl) = ctl else {
+        return UrgentEndAction::Usual;
+    };
+    let end = urgent_call::on_session_end(Some(ctl));
+    if end == urgent_call::SessionEnd::Usual {
+        return UrgentEndAction::Usual;
+    }
+    if end == urgent_call::SessionEnd::LeaveUp {
+        return UrgentEndAction::Handed;
+    }
+    let mut rx = urgent_coord.subscribe();
+    let deadline = tokio::time::Instant::now() + grace;
+    loop {
+        if ctl.is_handed() || *rx.borrow() == UrgentCallOutcome::Merged {
+            ctl.hand_over();
+            return UrgentEndAction::Handed;
+        }
+        if *rx.borrow() == UrgentCallOutcome::StillOnHold {
+            return UrgentEndAction::StillOnHold;
+        }
+        match urgent_call::on_session_end(Some(ctl)) {
+            urgent_call::SessionEnd::Usual => return UrgentEndAction::Usual,
+            urgent_call::SessionEnd::LeaveUp => return UrgentEndAction::Handed,
+            urgent_call::SessionEnd::LeaveUpAndAlert => {}
+        }
+        if *rx.borrow() == UrgentCallOutcome::Failed || tokio::time::Instant::now() >= deadline {
+            break;
+        }
+        if tokio::time::timeout_at(deadline, rx.changed()).await.is_err() {
+            break;
+        }
+    }
+    if ctl.is_handed() || *rx.borrow() == UrgentCallOutcome::Merged {
+        ctl.hand_over();
+        return UrgentEndAction::Handed;
+    }
+    if *rx.borrow() == UrgentCallOutcome::StillOnHold {
+        return UrgentEndAction::StillOnHold;
+    }
+    if urgent_call::on_session_end(Some(ctl)) == urgent_call::SessionEnd::Usual {
+        return UrgentEndAction::Usual;
+    }
+    ctl.mark_session_gone();
+    UrgentEndAction::AlertAiEnded
+}
+
 /// call up.
 #[allow(clippy::too_many_arguments)]
 async fn run_urgent_call(
@@ -7254,20 +7694,24 @@ async fn run_urgent_call(
     delivered_bytes: Arc<AtomicU64>,
     on_fail: String,
     on_callback: String,
+    cancel: Arc<AtomicBool>,
+    urgent_coord: UrgentCallCoord,
 ) {
     // Wait until the AI has said its hold-on line (whenever in the call that happens),
     // and that line has finished playing out on the phone.
     loop {
         tokio::time::sleep(Duration::from_millis(100)).await;
         if !media_call_guard.is_current() {
+            urgent_coord.set(UrgentCallOutcome::Failed);
             info!("Whitelist urgent call: call over before dialing serial={serial}");
             return;
         }
         if ctl.dial_blocked() {
+            urgent_coord.set(UrgentCallOutcome::Failed);
             info!("Whitelist urgent call: no call any more on this call serial={serial}");
             return;
         }
-        let Some(said_at) = ctl.hold_said_at() else {
+        let Some((said_at, base_bytes)) = ctl.hold_said() else {
             continue;
         };
         let since_said = said_at.elapsed();
@@ -7281,7 +7725,7 @@ async fn run_urgent_call(
         if since_said < Duration::from_millis(600) {
             continue;
         }
-        let spoke = delivered_bytes.load(Ordering::Relaxed) > 0;
+        let spoke = delivered_bytes.load(Ordering::Relaxed) > base_bytes;
         if spoke && !play_head.generating() && !play_head.ai_audible(Duration::from_millis(400)) {
             info!(
                 "Whitelist urgent call: hold-on line said and played ({}ms after hold-on) serial={serial}",
@@ -7301,6 +7745,7 @@ async fn run_urgent_call(
                 urgent_call::masked(&number)
             );
             ctl.block_dial();
+            urgent_coord.set(UrgentCallOutcome::Failed);
             push_call_events(&active_call, &media_call_guard, &urgent_call_failed_events("bad_number")).await;
             // The AI said its hold-on line and is waiting for the next instruction.
             ctl.resume_with(on_callback);
@@ -7308,6 +7753,7 @@ async fn run_urgent_call(
         }
     };
     if !ctl.block_dial() {
+        urgent_coord.set(UrgentCallOutcome::Failed);
         return;
     }
     ctl.pause();
@@ -7397,40 +7843,63 @@ async fn run_urgent_call(
     settle_owner_mark(&canonical_device_serial(&serial), reason.as_deref());
     match reason {
         None => {
+            // Mark handed/merged before any .await so a concurrent Gemini WS close
+            // cannot emit a false Alert::AiEnded.
+            ctl.hand_over();
+            urgent_coord.set(UrgentCallOutcome::Merged);
             urgent_call::unregister(&id);
             push_call_events(&active_call, &media_call_guard, &["whitelist_urgent_call_merged".to_string()]).await;
             info!("Whitelist urgent call merged id={id} serial={serial} — the AI leaves, the call stays up");
-            ctl.hand_over();
         }
         Some(reason) if reason == "call_ended" => {
+            urgent_coord.set(UrgentCallOutcome::Failed);
             urgent_call::unregister(&id);
             info!("Whitelist urgent call: call over id={id} serial={serial}");
         }
         Some(reason) => {
-            push_call_events(&active_call, &media_call_guard, &urgent_call_failed_events(&reason)).await;
             if reason == "unhold_failed" {
-                // The AI would talk into a held call: it stays quiet, the owner is told.
-                urgent_call::unregister(&id);
-                warn!("Whitelist urgent call: caller still on hold id={id} serial={serial} — owner alerted, AI stays quiet");
-                send_urgent_call_alert(&state, &serial, &caller_num, urgent_call::Alert::StillOnHold).await;
-                return;
+                urgent_coord.set(UrgentCallOutcome::StillOnHold);
+                cancel.store(true, Ordering::Relaxed);
             }
-            if ctl.session_gone() {
-                urgent_call::unregister(&id);
-                info!("Whitelist urgent call failed id={id} serial={serial} reason={reason} — no AI left (owner was alerted)");
-                return;
+            push_call_events(&active_call, &media_call_guard, &urgent_call_failed_events(&reason)).await;
+            match handle_urgent_call_failure_disposition(
+                &sink,
+                &serial,
+                &reason,
+                &ctl,
+                &cancel,
+                &urgent_coord,
+                &media_call_guard,
+            )
+            .await
+            {
+                UrgentFailureDisposition::StillOnHold => {
+                    // The AI would talk into a held call: it stays quiet, the owner is told.
+                    urgent_call::unregister(&id);
+                    warn!("Whitelist urgent call: caller still on hold id={id} serial={serial} — owner alerted, AI stays quiet");
+                    send_urgent_call_alert(&state, &serial, &caller_num, urgent_call::Alert::StillOnHold).await;
+                    return;
+                }
+                UrgentFailureDisposition::SessionGoneHangup => {
+                    urgent_call::unregister(&id);
+                    info!("Whitelist urgent call failed id={id} serial={serial} reason={reason} — no AI left (owner was alerted), sent hangup");
+                    return;
+                }
+                UrgentFailureDisposition::ResumeAi => {}
             }
             info!("Whitelist urgent call failed id={id} serial={serial} reason={reason} — the AI is back");
             ctl.resume_with(if reason == "no_dial_ack" { on_callback } else { on_fail });
+            urgent_coord.set(UrgentCallOutcome::Failed);
             // A merge the agent did not hear in time still hands the call over.
             if unsettled {
                 let until = tokio::time::Instant::now() + urgent_call::LATE_MERGE_WAIT;
                 while let Ok(Some(report)) = tokio::time::timeout_at(until, rx.recv()).await {
                     if report == urgent_call::Report::Merged && media_call_guard.is_current() {
                         warn!("Whitelist urgent call: late merge id={id} serial={serial} — the AI leaves, the call stays up");
+                        ctl.hand_over();
+                        urgent_coord.set(UrgentCallOutcome::Merged);
                         urgent_call::mark_owner_on_call(&canonical_device_serial(&serial));
                         push_call_events(&active_call, &media_call_guard, &["whitelist_urgent_call_merged".to_string()]).await;
-                        ctl.hand_over();
                         break;
                     }
                 }
@@ -7528,6 +7997,8 @@ async fn run_gemini_session_to_end(
         })
     };
 
+    let urgent_coord = UrgentCallCoord::new();
+
     // Concurrent hangup watcher: fire WS hangup after gemini arms force_hangup
     // (player already drained). Does not wait for Live WS fully closed / cancel race.
     let hangup_watch = {
@@ -7545,6 +8016,7 @@ async fn run_gemini_session_to_end(
         let stall_judgement = stall_judgement.clone();
         let urgent_reason = urgent_reason.clone();
         let urgent_ctl = urgent_ctl.clone();
+        let urgent_coord_w = urgent_coord.clone();
         let delivered_bytes = delivered_bytes.clone();
         let transcript_w = gemini_transcript.clone();
         tokio::spawn(async move {
@@ -7643,6 +8115,8 @@ async fn run_gemini_session_to_end(
                                         delivered_bytes.clone(),
                                         on_fail,
                                         on_callback,
+                                        cancel.clone(),
+                                        urgent_coord_w.clone(),
                                     ));
                                 }
                                 None => {
@@ -7730,24 +8204,45 @@ async fn run_gemini_session_to_end(
     }
     // Whitelist urgent call: the phone dials the owner (or the owner is on). No
     // voicemail, fresh retry or hangup may touch this call now; a session that
-    // ended while dialing leaves nobody to talk to the caller: the owner is told.
-    let urgent_end = urgent_call::on_session_end(urgent_ctl.as_deref());
-    if let (Some(ctl), true) = (urgent_ctl.as_ref(), urgent_end != urgent_call::SessionEnd::Usual) {
-        let handed = urgent_end == urgent_call::SessionEnd::LeaveUp;
-        let reason = match &result {
-            Ok(r) => r.as_str().to_string(),
-            Err(e) => format!("{e:#}"),
-        };
-        info!(
-            "Gemini Live ended during a whitelist urgent call serial={serial} handed={handed} reason={reason} — no hangup, voicemail or retry"
-        );
-        if !handed {
-            ctl.mark_session_gone();
+    // ended while dialing leaves nobody to talk to the caller: the owner is told,
+    // except when a concurrent merge or StillOnHold already resolved it.
+    match finish_urgent_session_end(
+        urgent_ctl.as_deref(),
+        &urgent_coord,
+        URGENT_END_MERGE_GRACE,
+    )
+    .await
+    {
+        UrgentEndAction::Usual => {}
+        UrgentEndAction::Handed => {
+            let reason = match &result {
+                Ok(r) => r.as_str().to_string(),
+                Err(e) => format!("{e:#}"),
+            };
+            info!(
+                "Gemini Live ended during a whitelist urgent call serial={serial} handed=true reason={reason} — no hangup, voicemail or retry"
+            );
+            return;
+        }
+        UrgentEndAction::StillOnHold => {
+            info!(
+                "Gemini Live ended after unhold_failed during a whitelist urgent call serial={serial} — owner already alerted (StillOnHold), no duplicate AiEnded"
+            );
+            return;
+        }
+        UrgentEndAction::AlertAiEnded => {
+            let reason = match &result {
+                Ok(r) => r.as_str().to_string(),
+                Err(e) => format!("{e:#}"),
+            };
+            info!(
+                "Gemini Live ended during a whitelist urgent call serial={serial} handed=false reason={reason} — no hangup, voicemail or retry"
+            );
             push_call_events(&active_call, &media_call_guard, &["whitelist_urgent_call_ai_ended".to_string()]).await;
             let caller_num = caller_at_end.lock().map(|g| g.clone()).unwrap_or_default();
             send_urgent_call_alert(&state, &serial, &caller_num, urgent_call::Alert::AiEnded).await;
+            return;
         }
-        return;
     }
     match (result, delivery) {
         (_, Err(e)) => {
@@ -8800,7 +9295,10 @@ fn start_ivr_stub_hangup(
     stop_hold_loop(hold_cancel);
     // Stop TRTC AI / Chromium before goodbye audio — remote hangup and local
     // goodbye must not leave StartAIConversation billing until max idle.
-    trtc_bridge::make_bridge(&state.settings.trtc(), state.http.clone()).leave(serial, reason);
+    let trtc_cfg = state.settings.trtc();
+    if trtc_cfg.configured() || trtc_bridge::peek_ai_task_id(serial).is_some() {
+        trtc_bridge::make_bridge(&trtc_cfg, state.http.clone()).leave(serial, reason);
+    }
     if busy.try_lock().is_err() {
         warn!("IVR hangup stub skipped busy serial={serial} reason={reason}");
         return;
@@ -9994,7 +10492,16 @@ fn spawn_ai_talk_tg_summary(
         let spoken_contact = if stalled || ai_failed || ai_callback {
             None
         } else {
-            extract::extract_spoken_contact(&caller_side_text(&live_full, &remote_tx), &caller)
+            let region = call_record
+                .sim_country
+                .clone()
+                .or_else(|| phone_region::country_of_code(&rt.effective_country_code()).map(str::to_string))
+                .unwrap_or_else(|| rt.default_region().to_string());
+            extract::extract_spoken_contact_in(
+                &caller_side_text(&live_full, &remote_tx),
+                &caller,
+                Some(&region),
+            )
         };
         if let Some(c) = &spoken_contact {
             let kept = calls.set_reply_contact(&call_id, &c.method, &c.contact).await;
@@ -10037,11 +10544,9 @@ fn spawn_ai_talk_tg_summary(
 
         let mut body = if !transcript.trim().is_empty() {
             if summary::summary_endpoint(&eff).is_some() {
-                let preview: String = transcript.chars().take(180).collect();
                 info!(
-                    "ai talk summarize serial={serial} tx_chars={} preview={}",
-                    transcript.chars().count(),
-                    preview.replace('\n', " | ")
+                    "ai talk summarize serial={serial} tx_chars={}",
+                    transcript.chars().count()
                 );
                 source = "llm_summary";
                 summary::summarize(&http, &eff, &caller, &transcript).await
@@ -10328,6 +10833,12 @@ fn record_had_ai_fail_hangup(events: &[String]) -> bool {
     events.iter().any(|e| e == "persona_ai_fail_hangup")
 }
 
+/// Whether call teardown must invoke [`spawn_ai_talk_tg_summary`] (which also completes
+/// active AI callback/errand state even if the call dropped during the 400ms settle wait).
+fn should_run_ai_call_summary(was_ai_talk: bool, events: &[String]) -> bool {
+    was_ai_talk || record_had_ai_fail_hangup(events) || appointments::is_ai_callback(events)
+}
+
 /// What the caller said, without the AI's lines: the caller's lines of the
 /// merged Live dialogue, else the speech-to-text of the caller's own track.
 fn caller_side_text(dialogue: &str, caller_track: &str) -> String {
@@ -10528,7 +11039,8 @@ async fn ensure_active_call(
             .mark_live(serial, caller_id, &id, active_call.clone())
             .await;
         info!(
-            "call reattach id={id} serial={serial} caller={caller_id} status={status}"
+            "call reattach id={id} serial={serial} caller={} status={status}",
+            urgent_call::masked(caller_id)
         );
         return EnsureCall::Reattached;
     }
@@ -13013,5 +13525,309 @@ mod access_and_whitelist_tests {
         settle_owner_mark(phone, None);
         assert!(urgent_call::owner_on_call(phone), "merged: the owner is on the call");
         urgent_call::clear_owner_on_call(phone);
+    }
+}
+
+#[cfg(test)]
+mod audit_a_tests {
+    use super::*;
+
+    fn unique_tmp(name: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        std::env::temp_dir().join(format!("bageo-audit-a-{name}-{}-{nanos}.json", std::process::id()))
+    }
+
+    #[tokio::test]
+    async fn p0_4_outbound_hello_bypasses_reject_list_and_ring_prewarm() {
+        let numbers = [
+            "+886900111222",
+            "+81300001111",
+            "+493000001111",
+            "+33100001111",
+            "+82200001111",
+            "+12025550101",
+            "+5511900001111",
+            "+34910001111",
+            "",
+        ];
+        for caller in numbers {
+            let mut reject_checked = false;
+            let plan = plan_hello_routing("pixel-out-1", caller, false, true, || {
+                reject_checked = true;
+                true
+            });
+            assert!(!reject_checked, "outbound hello must not consult reject list for {caller:?}");
+            assert_eq!(plan.route, CidRoute::Greet, "{caller:?}");
+            assert!(!plan.reject_listed, "{caller:?}");
+            assert!(!plan.allow_ring_prewarm, "{caller:?}");
+
+            let isolated = plan_hello_routing("pixel-1010123", caller, false, true, || true);
+            assert_eq!(isolated.route, CidRoute::IgnoreIsolated);
+            assert!(!isolated.allow_ring_prewarm);
+        }
+
+        let incoming_rejected = plan_hello_routing("pixel-out-1", "+81300001111", true, false, || true);
+        assert_eq!(incoming_rejected.route, CidRoute::RejectList);
+        assert!(!incoming_rejected.allow_ring_prewarm);
+
+        let incoming_ok = plan_hello_routing("pixel-out-1", "+493000001111", false, false, || false);
+        assert_eq!(incoming_ok.route, CidRoute::Greet);
+        assert!(incoming_ok.allow_ring_prewarm);
+
+        // Verify ControlRegistry active callback session matches outbound hello.
+        let control = callback::ControlRegistry::new();
+        let (sink, _sock) = callback::test_socket::phone_socket().await;
+        control.register_client("pixel-cb-match".into(), sink).await;
+        let errands_path = unique_tmp("errands");
+        let sims_path = unique_tmp("sims");
+        let sims = errands::SimBook::open(sims_path.clone());
+        let errands = errands::ErrandStore::open(errands_path.clone(), sims);
+        let dispatched = control
+            .try_dispatch_phone_callback(
+                "task-out-match",
+                "+81300001111",
+                "pixel-cb-match",
+                &["+81300001111".to_string()],
+            )
+            .await
+            .unwrap();
+        assert!(dispatched);
+        assert!(
+            hello_is_outbound_with(
+                &control,
+                &errands,
+                "pixel-cb-match",
+                "+81300001111",
+                &json!({"type": "hello", "task_id": "task-out-match"}),
+            )
+            .await
+        );
+        assert!(
+            !hello_is_outbound_with(
+                &control,
+                &errands,
+                "pixel-other-phone",
+                "+81300001111",
+                &json!({"type": "hello", "caller_id": "+81300001111"}),
+            )
+            .await
+        );
+        let _ = std::fs::remove_file(&errands_path);
+        let _ = std::fs::remove_file(&sims_path);
+    }
+
+    #[tokio::test]
+    async fn p0_5_whitelist_urgent_and_emergency_not_dropped_by_reject_list() {
+        let path = unique_tmp("contacts-p05");
+        let store = contacts::ContactStore::open(path.clone());
+        store
+            .add(&contacts::Draft {
+                name: "田中花子 / Clínica Sol / Alice".into(),
+                phones: vec!["0800123456".into(), "+81312340009".into(), "+493012340009".into()],
+                note: String::new(),
+                source: "test".into(),
+                kind: "whitelist".into(),
+            })
+            .await
+            .unwrap();
+
+        let mut rt = crate::settings_store::RuntimeSettings::from_base(
+            &crate::config::Settings::from_env(),
+        );
+        rt.country_code = "886".into();
+        rt.reject_numbers = vec![
+            crate::settings_store::RejectEntry {
+                number: "0800*".into(),
+                reason: "廣告推銷".into(),
+            },
+            crate::settings_store::RejectEntry {
+                number: "+81312340009".into(),
+                reason: "営業".into(),
+            },
+            crate::settings_store::RejectEntry {
+                number: "+493012340009".into(),
+                reason: "Werbung".into(),
+            },
+        ];
+
+        for mode in ["urgent", "emergency", "direct"] {
+            rt.whitelist_mode = mode.into();
+            assert!(!reject_listed_on_sim(&rt, "0800123456", Some("tw"), Some(&store)), "mode={mode}");
+            assert_eq!(reject_reason_on_sim(&rt, "0800123456", Some("tw"), Some(&store)), None, "mode={mode}");
+            assert!(!reject_listed_on_sim(&rt, "03-1234-0009", Some("jp"), Some(&store)), "mode={mode}");
+            assert!(!reject_listed_on_sim(&rt, "03012340009", Some("de"), Some(&store)), "mode={mode}");
+        }
+
+        // Non-whitelisted prefix match is still blocked.
+        rt.whitelist_mode = "urgent".into();
+        assert!(reject_listed_on_sim(&rt, "0800999888", Some("tw"), Some(&store)));
+        assert_eq!(
+            reject_reason_on_sim(&rt, "0800999888", Some("tw"), Some(&store)).as_deref(),
+            Some("廣告推銷")
+        );
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn p0_7_unhold_failed_session_gone_and_late_merge_coordination() {
+        // 1. unhold_failed stops audio tasks (`cancel`) and suppresses Alert::AiEnded.
+        let (sink, _sock) = callback::test_socket::phone_socket().await;
+        let guard = MediaCallGuard::inactive().next().await;
+        let ctl_hold = urgent_call::CallCtl::default();
+        ctl_hold.pause();
+        let cancel_hold = AtomicBool::new(false);
+        let coord_hold = UrgentCallCoord::new();
+        let disp = handle_urgent_call_failure_disposition(
+            &sink,
+            "pixel-p07-1",
+            "unhold_failed",
+            &ctl_hold,
+            &cancel_hold,
+            &coord_hold,
+            &guard,
+        )
+        .await;
+        assert_eq!(disp, UrgentFailureDisposition::StillOnHold);
+        assert!(cancel_hold.load(Ordering::Relaxed));
+        assert_eq!(coord_hold.outcome(), UrgentCallOutcome::StillOnHold);
+        assert_eq!(
+            finish_urgent_session_end(Some(&ctl_hold), &coord_hold, Duration::from_millis(50)).await,
+            UrgentEndAction::StillOnHold
+        );
+        assert!(!ctl_hold.session_gone());
+
+        // 2. ctl.session_gone() on failure (`reason != "call_ended"`) sends hangup JSON.
+        let (sink2, mut sock2) = callback::test_socket::phone_socket().await;
+        let ctl_gone = urgent_call::CallCtl::default();
+        ctl_gone.pause();
+        ctl_gone.mark_session_gone();
+        let cancel_gone = AtomicBool::new(false);
+        let coord_gone = UrgentCallCoord::new();
+        let disp_gone = handle_urgent_call_failure_disposition(
+            &sink2,
+            "pixel-p07-2",
+            "dial_failed",
+            &ctl_gone,
+            &cancel_gone,
+            &coord_gone,
+            &guard,
+        )
+        .await;
+        assert_eq!(disp_gone, UrgentFailureDisposition::SessionGoneHangup);
+        assert!(cancel_gone.load(Ordering::Relaxed));
+        let frame = callback::test_socket::next_json(&mut sock2, Duration::from_millis(500))
+            .await
+            .expect("hangup frame sent when session_gone on failure");
+        assert_eq!(frame["type"], "hangup");
+        assert_eq!(frame["reason"], "urgent_call_ai_gone");
+
+        // 3. call_ended must NOT send extra hangup.
+        let (sink3, mut sock3) = callback::test_socket::phone_socket().await;
+        let cancel_ended = AtomicBool::new(false);
+        let coord_ended = UrgentCallCoord::new();
+        let disp_ended = handle_urgent_call_failure_disposition(
+            &sink3,
+            "pixel-p07-3",
+            "call_ended",
+            &ctl_gone,
+            &cancel_ended,
+            &coord_ended,
+            &guard,
+        )
+        .await;
+        assert_eq!(disp_ended, UrgentFailureDisposition::ResumeAi);
+        assert!(callback::test_socket::next_json(&mut sock3, Duration::from_millis(60)).await.is_none());
+
+        // 4. Late Report::Merged completing concurrently with Gemini WS close suppresses false Alert::AiEnded.
+        let ctl_merge = Arc::new(urgent_call::CallCtl::default());
+        ctl_merge.pause();
+        let coord_merge = UrgentCallCoord::new();
+        let ctl_spawn = ctl_merge.clone();
+        let coord_spawn = coord_merge.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(35)).await;
+            ctl_spawn.hand_over();
+            coord_spawn.set(UrgentCallOutcome::Merged);
+        });
+        let action = finish_urgent_session_end(
+            Some(ctl_merge.as_ref()),
+            &coord_merge,
+            URGENT_END_MERGE_GRACE,
+        )
+        .await;
+        assert_eq!(action, UrgentEndAction::Handed);
+        assert!(!ctl_merge.session_gone());
+
+        // 5. Real unexpected Gemini end without merge still marks session_gone and triggers Alert::AiEnded.
+        let ctl_alert = urgent_call::CallCtl::default();
+        ctl_alert.pause();
+        let coord_alert = UrgentCallCoord::new();
+        let action_alert = finish_urgent_session_end(
+            Some(&ctl_alert),
+            &coord_alert,
+            Duration::from_millis(30),
+        )
+        .await;
+        assert_eq!(action_alert, UrgentEndAction::AlertAiEnded);
+        assert!(ctl_alert.session_gone());
+    }
+
+    #[test]
+    fn p1_9_early_callback_teardown_and_reconnect_sim_preservation() {
+        // 1. Callback dropped during 400ms settle (`was_ai_talk == false`) still runs summary/completion.
+        assert!(!should_run_ai_call_summary(false, &[]));
+        assert!(should_run_ai_call_summary(true, &[]));
+        assert!(should_run_ai_call_summary(false, &["persona_ai_fail_hangup".to_string()]));
+        assert!(should_run_ai_call_summary(
+            false,
+            &[appointments::AI_CALLBACK_EVENT.to_string()],
+        ));
+
+        // 2. Reconnect / status / hello omitting SIM fields must preserve cached SIM country & sub_id.
+        let serial = "TESTP19SIM01";
+        clear_call_sim(serial);
+        note_call_sim(
+            serial,
+            &json!({"type": "incoming", "sim_country": "jp", "sim_sub_id": 2}),
+        );
+        assert_eq!(call_sim_country(serial).as_deref(), Some("jp"));
+        assert_eq!(call_sim_sub_id(serial), Some(2));
+
+        // Reconnect status/hello missing SIM fields -> preserve existing values (no WrongSim wipe).
+        note_call_sim(serial, &json!({"type": "status"}));
+        assert_eq!(call_sim_country(serial).as_deref(), Some("jp"));
+        assert_eq!(call_sim_sub_id(serial), Some(2));
+
+        note_call_sim(serial, &json!({"type": "hello", "caller_id": "+81300001111"}));
+        assert_eq!(call_sim_country(serial).as_deref(), Some("jp"));
+        assert_eq!(call_sim_sub_id(serial), Some(2));
+
+        // call_end clears cached SIM.
+        clear_call_sim(serial);
+        assert_eq!(call_sim_country(serial), None);
+        assert_eq!(call_sim_sub_id(serial), None);
+    }
+
+    #[tokio::test]
+    async fn phone_allowed_and_media_play_gate_behave_safely() {
+        let lan: SocketAddr = "203.0.113.10:1234".parse().unwrap();
+        let lo: SocketAddr = "127.0.0.1:1234".parse().unwrap();
+        assert!(phone_allowed(&lan, false, Some("dev-tok-1"), "dev-tok-1"));
+        assert!(!phone_allowed(&lan, false, Some("dev-tok-2"), "dev-tok-1"));
+        assert!(phone_allowed(&lo, true, Some("dev-tok-1"), "dev-tok-1"));
+        assert!(!phone_allowed(&lo, true, None, ""));
+        assert_eq!(urgent_call::masked("0912345678"), "***5678");
+
+        let gate = MediaPlayGate::default();
+        let c1 = Arc::new(AtomicBool::new(false));
+        let c2 = Arc::new(AtomicBool::new(false));
+        assert!(gate.claim("pixel-10111", MediaPlayKind::Greet, &c1).await);
+        assert!(!gate.claim("pixel-1010111", MediaPlayKind::Greet, &c2).await);
+        gate.release("pixel-10111").await;
+        assert!(gate.claim("pixel-1010111", MediaPlayKind::Greet, &c2).await);
     }
 }

@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
 // SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
 
-//! Taiwanese / Hokkien and Hakka in the caller's words. Gemini Live speaks only
-//! the languages on its list, and its Chinese is Mandarin (cmn): the AI never
-//! switches to these, never opens or answers in them; it understands what it can
-//! and answers in Mandarin ([crate::prompts]). This module only reads
-//! speech-to-text, which writes much of those dialects as odd Mandarin, so a
-//! review of such a call does not rest on words never said
+//! Taiwanese / Hokkien, Hakka, and passive Cantonese speech-to-text markers.
+//! Gemini Live speaks only the languages on its list, and its Chinese is
+//! Mandarin (cmn): the AI never switches to these, never opens or answers in
+//! them; it understands what it can and answers in Mandarin ([crate::prompts]).
+//! This module only reads speech-to-text, which writes much of those dialects
+//! as odd Mandarin, so a review of such a call does not rest on words never said
 //! ([crate::stall_review]). Pure string checks on finished text, never on the
 //! audio path.
 
 /// Words of Hokkien alone (its grammar and core words), as speech-to-text
 /// writes them (in Traditional script: see [marker_hits]).
 const HOKKIEN: &[&str] = &[
-    "佇咧", "啥物", "按怎", "無要緊", "毋是", "毋免", "毋知", "袂", "欲", "恁", "阮", "汝", "遮", "遐", "攏",
+    "佇咧", "啥物", "按怎", "無要緊", "毋是", "毋免", "毋知", "袂", "恁", "阮", "汝", "遐", "攏",
     "閣", "厝", "明仔載", "下晡", "足感謝", "免客氣", "免煩惱", "按呢", "阿捏", "食飽", "好勢", "敢有", "有影",
-    "真濟", "今嘛", "這馬", "哪會", "佮", "今暗", "暗時", "阮兜", "恁兜", "食飽未", "呷飽未", "食飯未", "好料",
+    "真濟", "今嘛", "這馬", "佮", "今暗", "暗時", "阮兜", "恁兜", "食飽未", "呷飽未", "食飯未", "好料",
     "共你講", "共我講", "共恁講",
     // As speech-to-text writes them in Mandarin letters (「汝吃飽未？」「有空才吼我知」).
     "吃飽未", "吃飯未", "予我知", "互我知", "吼我知",
@@ -26,6 +26,11 @@ const HOKKIEN: &[&str] = &[
 const HAKKA: &[&str] = &[
     "屋下", "仰般", "承蒙", "麼个", "𠊎", "佢兜", "毋使", "恁仔細", "食飯吂", "吂", "這兜", "該兜", "樣般", "做麼",
     "恁靚", "毋會", "今晡日",
+];
+
+/// Passive Cantonese markers (STT only; never spoken or switched to).
+const CANTONESE: &[&str] = &[
+    "唔該", "係咪", "點解", "邊度", "邊個", "咁樣", "冇問題", "唔係", "唔知", "收線", "得閒",
 ];
 
 /// Hokkien words everyone mixes into Mandarin (「歹勢」「阿嬤」 in Taiwan):
@@ -64,10 +69,10 @@ fn marker_hits(markers: &[&str], text: &str) -> usize {
     seen.len() + usize::from(bo_question(&t))
 }
 
-/// The caller's words show Taiwanese / Hokkien or Hakka (one own word or a
-/// 「無」 question is enough; loans like 「歹勢」 are not).
+/// The caller's words show Taiwanese / Hokkien, Hakka, or Cantonese markers
+/// (one own word or a 「無」 question is enough; loans like 「歹勢」 are not).
 pub fn hokkien_or_hakka_words(text: &str) -> bool {
-    marker_hits(HOKKIEN, text) > 0 || marker_hits(HAKKA, text) > 0
+    marker_hits(HOKKIEN, text) > 0 || marker_hits(HAKKA, text) > 0 || marker_hits(CANTONESE, text) > 0
 }
 
 #[cfg(test)]
@@ -100,9 +105,12 @@ mod tests {
             "那個 meeting 改到下週二下午兩點，你 OK 嗎？",
             "你吃飽了沒？要不要一起吃飯",
             "有無問題都可以，你check好schedule再跟我講",
+            "你到底欲怎樣才好，這遮住視線哪會這樣",
         ] {
             assert!(!hokkien_or_hakka_words(t), "{t}");
         }
+        assert!(hokkien_or_hakka_words("唔該，請問你係咪王生？"));
+        assert!(hokkien_or_hakka_words("冇問題，得閒再傾，我收線先"));
     }
 
     #[test]

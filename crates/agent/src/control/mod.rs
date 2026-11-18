@@ -573,6 +573,13 @@ impl Controller {
         if text.is_empty() {
             return None;
         }
+        // A reply to the bot while a live call question waits answers that call
+        // first, ahead of confirmation/cancel shortcuts (e.g. "1", "2", "no", "cancel").
+        if !text.starts_with('/') && m.reply_to_bot {
+            if let Some(q) = self.open_question(chat) {
+                return Some(reply(&self.answer_with(chat, Some(q), text), w));
+            }
+        }
         if let Some(yes) = yes_no(text) {
             if self.confirms.waiting(chat) {
                 return Some(reply(&self.settle(rt, chat, &m.sender_id, None, yes).await, w));
@@ -583,15 +590,10 @@ impl Controller {
         if !text.starts_with('/') && m.reply_to_bot && self.confirms.has_gapped_errand(chat) && looks_like_cancel(text) {
             return Some(reply(&self.settle(rt, chat, &m.sender_id, None, false).await, w));
         }
-        if !text.starts_with('/') && m.reply_to_bot && self.open_question(chat).is_none() {
+        if !text.starts_with('/') && m.reply_to_bot {
             if let Some(Job::Errand { mut body }) = self.confirms.take_gapped_errand(chat, &m.sender_id) {
                 body["answers"] = json!({ "note": text });
                 return Some(reply(&self.execute(rt, chat, Job::Errand { body }).await, w));
-            }
-        }
-        if !text.starts_with('/') && m.reply_to_bot {
-            if let Some(q) = self.open_question(chat) {
-                return Some(reply(&self.answer_with(chat, Some(q), text), w));
             }
         }
         let action = if text.starts_with('/') {
@@ -734,7 +736,7 @@ impl Controller {
             sender_id: sender.to_string(),
             body: Body::Text(text.to_string()),
             message_id: String::new(),
-            reply_to_bot: true,
+            reply_to_bot: false,
             direct: false,
         };
         let out = self
@@ -1225,7 +1227,7 @@ impl Controller {
         }
     }
 
-    /// Every key and token the agent holds (8 characters or more).
+    /// Every key, token and password the agent holds.
     fn secrets(&self, rt: &RuntimeSettings) -> Vec<String> {
         let mut secrets: Vec<String> = vec![
             rt.telegram_bot_token.clone(),
@@ -1235,6 +1237,10 @@ impl Controller {
             rt.gmail_app_password.clone(),
             rt.openclaw_token.clone(),
             rt.mcp_token.clone(),
+            rt.trtc_secret_key.clone(),
+            rt.trtc_secret_id.clone(),
+            rt.trtc_cloud_secret_key.clone(),
+            self.state.settings.notify_webhook_url.clone(),
             self.state.settings.calls_ui_token.clone(),
             crate::settings_store::active_ui_token(&self.state.settings.calls_ui_token),
             self.state.settings.device_token.clone(),
@@ -1246,7 +1252,32 @@ impl Controller {
             secrets.push(c.url.clone());
             secrets.push(c.app_token.clone());
         }
-        secrets.into_iter().map(|s| s.trim().to_string()).filter(|s| s.chars().count() >= 8).collect()
+        let mut out: Vec<String> = secrets
+            .into_iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| {
+                let n = s.chars().count();
+                if s.contains("://") {
+                    n >= 8
+                } else {
+                    n >= 6
+                }
+            })
+            .collect();
+        // UI passwords/tokens may be as short as 4 characters, but avoid
+        // scrubbing pure 4-5 digit strings like years ("2026") from summaries.
+        for pw in [
+            rt.ui_password.as_str(),
+            self.state.settings.calls_ui_token.as_str(),
+            &crate::settings_store::active_ui_token(&self.state.settings.calls_ui_token),
+        ] {
+            let s = pw.trim();
+            let n = s.chars().count();
+            if n >= 6 || (n >= 4 && !s.chars().all(|c| c.is_ascii_digit())) {
+                out.push(s.to_string());
+            }
+        }
+        out
     }
 
     /// Cut every key and token the agent holds out of a reply.
@@ -1430,6 +1461,235 @@ mod cancel_reply_tests {
         for t in ["4 位，王先生", "不要吧台的位子", "0912345678", "two adults", "7 點半可以"] {
             assert!(!looks_like_cancel(t), "{t}");
         }
+    }
+}
+
+#[cfg(test)]
+mod p1_11_tests {
+    use super::*;
+    use crate::calls_http::PhoneDevices;
+    use crate::config::Settings;
+    use crate::settings_store::SettingsStore;
+
+    struct LocalRig {
+        root: std::path::PathBuf,
+        state: CallsState,
+    }
+
+    impl LocalRig {
+        fn new() -> Self {
+            let root = std::env::temp_dir().join(format!("bageo-p111-{}", uuid::Uuid::new_v4().simple()));
+            std::fs::create_dir_all(&root).unwrap();
+            let mut base = Settings::from_env();
+            base.calls_data_dir = root.to_string_lossy().into_owned();
+            base.telegram_bot_token = "123:TESTTOKEN".into();
+            base.telegram_chat_id = "42".into();
+            base.gemini_api_key = "".into();
+            base.calls_ui_token = "console-secret-token".into();
+            let state = CallsState {
+                settings: base.clone(),
+                store: crate::calls::CallStore::new(root.join("calls"), true, false),
+                settings_store: SettingsStore::load(base),
+                task_store: crate::tasks::TaskStore::new(root.join("tasks")),
+                http: reqwest::Client::new(),
+                control: crate::callback::ControlRegistry::new(),
+                ambience: Arc::new(crate::ambience::AmbienceLibrary::load(&root, 16000)),
+                previews: Arc::new(crate::voice_preview::VoicePreviews::new(root.join("voice_preview"), root.join("voices"))),
+                phones: PhoneDevices::new(),
+                contacts: crate::contacts::ContactStore::open(root.join("contacts.json")),
+                errands: crate::errands::ErrandStore::open(root.join("errands.json"), crate::errands::SimBook::in_memory()),
+                sms: crate::sms_store::SmsStore::open(root.join("sms"), crate::sms_store::now_ms(), 15),
+            };
+            let _ = state.settings_store.apply_patch(&json!({"telegram_control": true, "gemini_api_key_clear": true, "country_code": "886"}));
+            Self { root, state }
+        }
+    }
+
+    impl Drop for LocalRig {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    fn reply_msg(text: &str) -> Inbound {
+        Inbound {
+            channel_id: ENV_TELEGRAM.into(),
+            platform: "telegram".into(),
+            chat_id: "42".into(),
+            sender_id: "42".into(),
+            body: Body::Text(text.into()),
+            message_id: "99".into(),
+            reply_to_bot: true,
+            direct: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn open_question_reply_beats_confirm_yes_no_and_gapped_cancel_shortcuts() {
+        let rig = LocalRig::new();
+        let c = Controller::new(rig.state.clone());
+        let _rx = c.subscribe();
+        let chat_key = access::chat_key(ENV_TELEGRAM, "42");
+
+        // Keep an active errand call alive so `errands::say` routes answers to the open question.
+        let (sink, mut ph) = crate::callback::test_socket::phone_socket().await;
+        rig.state.control.register_client("pixel-ctrl-q".into(), sink).await;
+        let now = errands::now_of(&rig.state).await;
+        let env = errands::Env {
+            phones: vec![errands::PhoneView {
+                serial: "pixel-ctrl-q".into(),
+                normal: false,
+                busy: false,
+                sims: vec![(1, "tw".into())],
+            }],
+            ..errands::env_of(&rig.state, &now)
+        };
+        let created = errands::create(&env, &json!({"number": "0223459201", "task": "訂位"})).await.unwrap();
+        let _ = crate::callback::test_socket::next_json(&mut ph, Duration::from_secs(2)).await.unwrap();
+        let hooks = rig.state.errands.attach_call(&created.id, "rec-ctrl-q");
+        hooks.picked_up();
+        rig.state.errands.live_view(&created.id, 0).unwrap();
+        let errand_id = created.id;
+
+        // Add a pending task confirmation in Confirmations AND test "1", "2", "對".
+        let task: TaskRecord = serde_json::from_value(json!({
+            "id": "task-p111",
+            "created_at": "2026-11-18T10:00:00+08:00",
+            "updated_at": "2026-11-18T10:00:00+08:00",
+            "call_id": "",
+            "serial": "pixel-test",
+            "caller_id": "0912345678",
+            "status": "pending",
+            "intent": "message",
+            "summary": "回電",
+            "transcript": "",
+            "reply_method": "other"
+        }))
+        .unwrap();
+        rig.state.task_store.create(task).await.unwrap();
+        let _code = c.confirms.ask(&chat_key, "42", Job::Decide { task_id: "task-p111".into(), confirm: false });
+        assert!(c.confirms.waiting(&chat_key));
+
+        for reply_text in ["1", "2", "對"] {
+            let h = hooks.clone();
+            let ask = tokio::spawn(async move {
+                h.ask_within(&json!({"question": "要坐窗邊嗎？", "options": ["1", "2"]}), Duration::from_secs(5)).await
+            });
+            let mut qid = None;
+            for _ in 0..100 {
+                let v = rig.state.errands.live_view(&errand_id, 0).unwrap();
+                if let Some(id) = v["question"]["id"].as_str().map(str::to_string) {
+                    qid = Some(id);
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            let qid = qid.unwrap();
+            assert!((c.question_hook())(&errands::OwnerQuestion {
+                errand_id: errand_id.clone(),
+                question_id: qid,
+                who: "餐廳".into(),
+                text: "要坐窗邊嗎？".into(),
+                options: vec![],
+                wait: Duration::from_secs(5),
+            }));
+
+            let out = c.handle(&reply_msg(reply_text)).await.unwrap();
+            let res = ask.await.unwrap();
+            assert_eq!(res["answer"].as_str(), Some(reply_text), "out={out:?}");
+            assert!(c.confirms.waiting(&chat_key), "pending confirmation must stay untouched on {reply_text}");
+            assert!(matches!(rig.state.task_store.get("task-p111").await.unwrap().status, TaskStatus::Pending));
+        }
+
+        // Now add a gapped errand confirmation and verify "no" / "cancel" go to an active open_question first.
+        c.confirms.ask(
+            &chat_key,
+            "42",
+            Job::Errand { body: json!({"number": "0912345678", "task": "訂餐廳", "preflight_gaps": true}) },
+        );
+        assert!(c.confirms.has_gapped_errand(&chat_key));
+
+        for reply_text in ["no", "cancel"] {
+            let h = hooks.clone();
+            let ask = tokio::spawn(async move {
+                h.ask_within(&json!({"question": "需要兒童椅嗎？"}), Duration::from_secs(5)).await
+            });
+            let mut qid = None;
+            for _ in 0..100 {
+                let v = rig.state.errands.live_view(&errand_id, 0).unwrap();
+                if let Some(id) = v["question"]["id"].as_str().map(str::to_string) {
+                    qid = Some(id);
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            let qid = qid.unwrap();
+            assert!((c.question_hook())(&errands::OwnerQuestion {
+                errand_id: errand_id.clone(),
+                question_id: qid,
+                who: "餐廳".into(),
+                text: "需要兒童椅嗎？".into(),
+                options: vec![],
+                wait: Duration::from_secs(5),
+            }));
+
+            let _out = c.handle(&reply_msg(reply_text)).await.unwrap();
+            let res = ask.await.unwrap();
+            assert_eq!(res["answer"].as_str(), Some(reply_text));
+            assert!(c.confirms.has_gapped_errand(&chat_key), "gapped errand must stay untouched on {reply_text}");
+        }
+
+        // Once no open question exists, replying "cancel" drops the gapped errand cleanly.
+        let _dropped = c.handle(&reply_msg("cancel")).await.unwrap();
+        assert!(!c.confirms.has_gapped_errand(&chat_key));
+    }
+
+    #[tokio::test]
+    async fn handle_external_does_not_treat_stateless_api_calls_as_replies() {
+        let rig = LocalRig::new();
+        let c = Controller::new(rig.state.clone());
+        let api_chat = "api|42";
+        c.confirms.ask(
+            api_chat,
+            "42",
+            Job::Errand { body: json!({"number": "0912345678", "task": "訂餐廳", "preflight_gaps": true}) },
+        );
+        assert!(c.confirms.has_gapped_errand(api_chat));
+
+        // Stateless follow-up calls must not hijack or cancel the earlier gapped errand via reply_to_bot.
+        let cancel_try = c.handle_external("42", "42", "取消", ApiCaller::Owner).await.unwrap();
+        assert!(!cancel_try.text.is_empty());
+        assert!(c.confirms.has_gapped_errand(api_chat));
+
+        let note_try = c.handle_external("42", "42", "昨天有誰打來", ApiCaller::Owner).await.unwrap();
+        assert!(!note_try.text.is_empty());
+        assert!(c.confirms.has_gapped_errand(api_chat));
+    }
+
+    #[test]
+    fn secrets_and_scrub_redact_runtime_ui_password() {
+        let rig = LocalRig::new();
+        let c = Controller::new(rig.state.clone());
+        let mut rt = (*c.settings()).clone();
+        rt.ui_password = "runtime-ui-secret-99".into();
+
+        let scrubbed = c.scrub(
+            &rt,
+            Outbound {
+                text: "token=runtime-ui-secret-99 and console-secret-token".into(),
+                buttons: vec![Button { label: "pw: runtime-ui-secret-99".into(), data: "x".into() }],
+                edit: None,
+            },
+        );
+        assert!(!scrubbed.text.contains("runtime-ui-secret-99"), "{}", scrubbed.text);
+        assert!(!scrubbed.text.contains("console-secret-token"), "{}", scrubbed.text);
+        assert!(!scrubbed.buttons[0].label.contains("runtime-ui-secret-99"), "{:?}", scrubbed.buttons);
+
+        let json_out = c.outcome_json(
+            &rt,
+            &Outcome::Failed { code: "err_runtime-ui-secret-99".into() },
+        );
+        assert!(!json_out.to_string().contains("runtime-ui-secret-99"), "{json_out}");
     }
 }
 

@@ -65,13 +65,10 @@ rm -f /data/adb/pixelcallai/daemon.pid 2>/dev/null || true
     MODE=normal
   fi
 
-  pm grant "$PKG" android.permission.RECORD_AUDIO >/dev/null 2>&1 || true
-  pm grant "$PKG" android.permission.READ_PHONE_STATE >/dev/null 2>&1 || true
-  pm grant "$PKG" android.permission.READ_PHONE_NUMBERS >/dev/null 2>&1 || true
-  pm grant "$PKG" android.permission.ANSWER_PHONE_CALLS >/dev/null 2>&1 || true
-  pm grant "$PKG" android.permission.SEND_SMS >/dev/null 2>&1 || true
-  pm grant "$PKG" android.permission.CALL_PHONE >/dev/null 2>&1 || true
-  pm grant "$PKG" android.permission.ACCESS_NOTIFICATION_POLICY >/dev/null 2>&1 || true
+  for p in RECORD_AUDIO READ_PHONE_STATE READ_PHONE_NUMBERS ANSWER_PHONE_CALLS ACCESS_NOTIFICATION_POLICY \
+      POST_NOTIFICATIONS READ_CALL_LOG CALL_PHONE SEND_SMS; do
+    pm grant "$PKG" "android.permission.$p" >/dev/null 2>&1 || true
+  done
   cmd appops set "$PKG" ACCESS_NOTIFICATION_POLICY allow >/dev/null 2>&1 || true
 
   if [ "$MODE" = "normal" ]; then

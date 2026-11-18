@@ -59,11 +59,11 @@ pub fn for_reading(text: &str) -> String {
 
 /// Kanji only Japanese writes this way (neither Simplified nor Traditional
 /// Chinese): 「駅」「営業」「斉藤」「沢田」.
-const JAPANESE_ONLY: &str = "駅営沢斉広図売読険円気様辺変鉄県関対応発総済桜薬楽転伝帰単権検験経続実価処拡雑剣恵黒渋塩銭戦歳歴継覚観譲豊頼顔駆騒齢霊絵栄蔵縄両亜悪圧囲穏仮";
+const JAPANESE_ONLY: &str = "駅営沢斉広図売読険円気様辺変鉄県関対応発総済桜薬楽転伝帰単権検験経続実価処拡雑剣恵黒渋塩銭戦歳歴継覚観譲豊頼顔駆騒齢霊絵栄蔵縄両亜悪圧囲穏仮帯";
 
 /// Written the same in Simplified Chinese and in Japanese, another way in
 /// Traditional Chinese: 「失礼」「番号」「会社」 alone may be either.
-const SHARED_WITH_JAPANESE: &str = "会号礼体国学声区当写旧万与乱争党画担胆恋双参来麦点断辞献尽属数楼状将条窃誉宝灯炉虫励践浅残径茎痴届";
+const SHARED_WITH_JAPANESE: &str = "会号礼体国学声区当写旧万与乱争党画担胆恋双参来麦点断辞献尽属数楼状将条窃誉宝灯炉虫励践浅残径茎痴届内携医寝盗湿";
 
 /// One line as the zh-TW owner reads it. `fragment`: the line may be a piece of
 /// one still coming in, so Chinese that reads the same in Japanese waits.
@@ -198,5 +198,15 @@ mod tests {
         assert_eq!(to_tw_whole_in(Lang::ZhCn, "他会来"), "他会来");
         assert_eq!(to_tw_whole_in(Lang::Ja, "他会来"), "他会来");
         assert_eq!(to_tw_whole_in(Lang::En, "他会来"), "他会来");
+    }
+
+    #[test]
+    fn newly_protected_japanese_kanji_and_band_stay_intact() {
+        assert_eq!(for_reading("ご案内"), "ご案内");
+        assert_eq!(for_reading("携帯"), "携帯");
+        assert_eq!(to_tw_whole_in(Lang::ZhTw, "携帯でお願いします"), "携帯でお願いします");
+        assert_eq!(to_tw_in(Lang::ZhTw, "案内"), "案内");
+        assert_eq!(to_tw_whole_in(Lang::ZhTw, "手机"), "手機");
+        assert_eq!(to_tw_whole_in(Lang::ZhTw, "帯"), "帯");
     }
 }

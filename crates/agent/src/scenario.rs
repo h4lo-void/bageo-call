@@ -182,12 +182,15 @@ const DELIVERY_WORDS: &[&str] = &[
     "外卖", "順豐", "顺丰", "物流", "簽收", "签收", "送件", "お届け", "配達", "荷物", "置き配", "택배", "배송", "배달",
     "courier", "parcel", "package", "delivery", "deliver", "paquete", "envío", "envio", "repartidor", "mensajería",
     "colis", "livraison", "livreur", "paket", "lieferung", "zusteller", "sendung", "encomenda", "entregador", "pacote",
+    "corriere", "consegna", "pacco", "курьер", "посылка", "доставка", "giao hàng", "bưu kiện", "người giao hàng",
+    "kurir", "pengiriman", "ส่งของ", "พัสดุ", "ขนส่ง", "डिलीवरी", "पार्सल", "कूरियर", "مندوب التوصيل", "شحنة", "توصيل",
 ];
 
 /// A card or the bank it belongs to.
 const CARD_WORDS: &[&str] = &[
     "卡", "銀行", "银行", "カード", "카드", "card", "bank", "tarjeta", "banco", "carte", "banque", "karte", "cartão",
-    "cartao",
+    "cartao", "carta", "banca", "карта", "банк", "thẻ", "ngân hàng", "kartu", "บัตร", "ธนาคาร", "कार्ड", "बैंक",
+    "بطاقة", "البنك",
 ];
 
 /// One purchase or charge on it.
@@ -195,7 +198,8 @@ const CHARGE_WORDS: &[&str] = &[
     "刷卡", "消費", "消费", "交易", "簽賬", "签账", "簽帳", "扣款", "一筆", "一笔", "ご利用", "決済", "取引", "결제", "거래",
     "승인", "purchase", "charge", "transaction", "compra", "cargo", "transacción", "transaccion", "movimiento", "achat",
     "paiement", "débit", "kauf", "zahlung", "umsatz", "transaktion", "abbuchung", "transação", "transacao", "cobrança",
-    "cobranca",
+    "cobranca", "acquisto", "addebito", "transazione", "покупка", "списание", "транзакция", "giao dịch", "thanh toán",
+    "transaksi", "pembayaran", "รูดบัตร", "รายการใช้จ่าย", "काटने", "लेनदेन", "सौदा", "عملية شراء", "خصم", "معاملة",
 ];
 
 /// Asking whether it was the owner's.
@@ -203,7 +207,9 @@ const OWNER_CHECK_WORDS: &[&str] = &[
     "本人", "是不是您", "是不是你", "是您", "確認", "确认", "係咪你", "係唔係你", "ご本人", "본인", "확인", "verify",
     "confirm", "did you", "was it you", "yourself", "recognize", "recognise", "authorize", "confirmar", "verificar",
     "usted mismo", "reconoce", "confirmer", "vérifier", "verifier", "vous même", "bestätigen", "bestatigen",
-    "sie selbst", "verifizieren", "você mesmo", "voce mesmo", "reconhece",
+    "sie selbst", "verifizieren", "você mesmo", "voce mesmo", "reconhece", "confermare", "lei stesso", "riconosce",
+    "подтвердить", "вы сами", "xác nhận", "chính chủ", "konfirmasi", "anda sendiri", "ยืนยัน", "ด้วยตัวเอง",
+    "पुष्टि", "खुद", "क्या आपने", "تأكيد", "بنفسك",
 ];
 
 /// What only a scammer asks a card holder for (or a step a real card desk never
@@ -212,11 +218,15 @@ const OWNER_CHECK_WORDS: &[&str] = &[
 const SCAM_ASK_WORDS: &[&str] = &[
     "密碼", "密码", "驗證碼", "验证码", "認證碼", "认证码", "簡訊碼", "卡號", "卡号", "安全碼", "安全码", "背面三碼", "身分證",
     "身份证", "atm", "提款機", "提款机", "轉帳", "转账", "匯款", "汇款", "分期", "解除", "監管", "监管", "安全帳戶", "安全账户",
-    "加line", "加 line", "line", "下載", "下载", "遠端", "远程", "螢幕", "屏幕", "禮物卡", "礼品卡", "點數卡", "保密", "警察",
+    "加line", "加 line", "add line", "add me on line", "line id", "on line", "下載", "下载", "遠端", "远程", "螢幕", "屏幕",
+    "禮物卡", "礼品卡", "點數卡", "保密", "警察",
     "檢察", "检察", "法院", "password", "pin", "code", "otp", "card number", "cvv", "social security", "transfer",
     "wire", "gift card", "remote", "screen", "download", "install", "app", "whatsapp", "telegram", "police",
     "暗証番号", "認証", "振込", "振り込", "비밀번호", "인증", "이체", "contraseña", "código", "codigo",
     "transferencia", "mot de passe", "virement", "passwort", "überweisung", "senha", "transferência", "pix",
+    "codice", "bonifico", "polizia", "conto sicuro", "пароль", "перевод", "полиция", "безопасный счет", "безопасный счёт",
+    "mật khẩu", "chuyển khoản", "công an", "kata sandi", "pinjaman", "polisi", "รหัสผ่าน", "โอนเงิน", "ตำรวจ",
+    "पासवर्ड", "ओटीपी", "पुलिस", "ट्रांसफर", "كلمة المرور", "رمز التحقق", "تحويل", "الشرطة",
     "身份證", "身分证", "出生", "生日", "有效期", "帳號", "帐号", "帳戶", "账户", "連結", "链接", "網址", "网址", "點擊",
     "点击", "運費", "运费", "關稅", "关税", "click", "link", "date of birth", "birthday", "expiry", "expiration",
     "account number", "delivery fee", "customs", "生年月日", "口座", "リンク", "생년월일", "계좌", "링크",
@@ -227,7 +237,10 @@ const SCAM_ASK_WORDS: &[&str] = &[
 
 /// Letters of words in Latin script (the rest are compared as they are).
 fn latin_letter(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '\'' || ('\u{00C0}'..='\u{024F}').contains(&c)
+    c.is_ascii_alphanumeric()
+        || c == '\''
+        || ('\u{00C0}'..='\u{024F}').contains(&c)
+        || ('\u{1E00}'..='\u{1EFF}').contains(&c)
 }
 
 /// The text lower case: as it is (for Chinese, Japanese and Korean words) and
@@ -257,7 +270,7 @@ impl Words {
 
     /// A Latin word or phrase whole (plural and past endings allowed); others anywhere.
     fn has(&self, w: &str) -> bool {
-        if !w.chars().any(|c| c.is_ascii_alphabetic()) {
+        if !w.is_ascii() || !w.chars().any(|c| c.is_ascii_alphabetic()) {
             return self.lower.contains(w);
         }
         let needle = format!(" {w}");
@@ -685,6 +698,24 @@ mod notice_fallback_edges {
             "クリニックの受付です。先にお金を送金してください",
         ] {
             assert_ne!(local_guess(t), Scenario::ImportantNotice, "{t}");
+        }
+    }
+
+    #[test]
+    fn line_wording_and_extended_languages_classify_cleanly() {
+        assert_eq!(local_guess("Courier here, delivery on the line waiting downstairs"), Scenario::Delivery);
+        assert_eq!(local_guess("Delivery here, please add me on line for the address"), Scenario::None);
+        for (sample, want) in [
+            ("Corriere espresso, ho una consegna e un pacco per lei", Scenario::Delivery),
+            ("Xin chào, tôi là người giao hàng có bưu kiện gửi anh", Scenario::Delivery),
+            ("Halo, saya kurir pengiriman paket", Scenario::Delivery),
+            ("มีพัสดุมาส่งครับ", Scenario::Delivery),
+            ("Здравствуйте, курьер доставки, у меня посылка для вас", Scenario::Delivery),
+            ("नमस्ते, मैं डिलीवरी और पार्सल लेकर आया हूँ", Scenario::Delivery),
+            ("مرحبا، معك مندوب التوصيل وعندي شحنة لك", Scenario::Delivery),
+            ("La sua banca per confermare un acquisto con carta, lo riconosce?", Scenario::BankVerify),
+        ] {
+            assert_eq!(local_guess(sample), want, "{sample}");
         }
     }
 }

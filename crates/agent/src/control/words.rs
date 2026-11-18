@@ -84,9 +84,27 @@ pub struct Words {
 
 /// {1}, {2}, {3} of a template, in order.
 pub fn fmt(template: &str, args: &[&str]) -> String {
-    let mut out = template.to_string();
-    for (i, a) in args.iter().enumerate() {
-        out = out.replace(&format!("{{{}}}", i + 1), a);
+    let mut out = String::with_capacity(template.len());
+    let bytes = template.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'{' {
+            if let Some(rel_end) = bytes[i + 1..].iter().position(|&b| b == b'}') {
+                let inner = &template[i + 1..i + 1 + rel_end];
+                if !inner.is_empty() && inner.bytes().all(|b| b.is_ascii_digit()) {
+                    if let Ok(idx) = inner.parse::<usize>() {
+                        if let Some(arg) = idx.checked_sub(1).and_then(|k| args.get(k)) {
+                            out.push_str(arg);
+                            i += rel_end + 2;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+        let ch = template[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
     }
     out
 }

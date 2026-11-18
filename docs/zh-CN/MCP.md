@@ -9,7 +9,7 @@ Bageo 内置 [Model Context Protocol](https://modelcontextprotocol.io)（MCP）�
 MCP 服务器默认**关闭**，没设 token 之前什么都不响应。
 
 1. 准备一组足够长的随机 token（例如 `openssl rand -hex 32`）。
-2. 把 `mcp_enabled` 设成 `true`、`mcp_token` 设成那组 token（环境变量 `MCP_ENABLED=true`、`MCP_TOKEN=…`，或用 `PATCH /calls/api/settings`）。
+2. 把 `mcp_enabled` 设成 `true`、`mcp_token` 设成那组 token（环境变量 `MCP_ENABLED=true`、`MCP_TOKEN=…`，或用 `PUT /calls/api/settings`）。
 3. 用 `mcp_calls` 决定代理能不能让 AI 打电话：
    - `off`（默认）：只能查。
    - `confirm`：可以提出代打；你会在下指令的聊天室收到一张带 **执行／取消** 按钮的卡片（见[在聊天室操作](CHAT_COMMANDS.md)），你按了执行才会拨。需要先开一个允许下指令的聊天室。

@@ -163,9 +163,14 @@ impl ClosingMachine {
             self.late_ai = None;
         }
         let opening_only = !self.substance && greeting_only(heard);
-        let hit = classify(heard).filter(|h| !h.ambiguous || self.greeting_bye_counts(h));
-        // Opening greetings never close: 수고하십니다, Servus, สวัสดีค่ะ at the start.
-        let old_rules = old_rules && !opening_only;
+        let raw_hit = classify(heard);
+        let suppressed_ambiguous = raw_hit
+            .as_ref()
+            .is_some_and(|h| h.ambiguous && !self.greeting_bye_counts(h));
+        let hit = raw_hit.filter(|h| !h.ambiguous || self.greeting_bye_counts(h));
+        // Opening greetings and guarded greeting-byes (e.g. Turn 1 "ciao" or
+        // "お忙しいところ失礼いたします") never close even if the older check fires.
+        let old_rules = old_rules && !opening_only && !suppressed_ambiguous;
         let kind = match (&hit, old_rules) {
             (Some(h), _) => Some(h.kind),
             (None, true) if crate::locale::ends_with_farewell(heard, 2) => Some(Kind::Farewell),
@@ -307,8 +312,12 @@ impl ClosingMachine {
 
     /// A greeting that is also a goodbye ends the call only after real talk, and
     /// once the business is done: a closing already under way, or thanks / a
-    /// closing cue / a short "ok" right before it.
+    /// closing cue / a short "ok" right before it. Japanese opening apologies
+    /// (「お忙しいところ失礼いたします」「夜分に失礼します」「恐れ入りますが」) never close.
     fn greeting_bye_counts(&self, h: &Hit) -> bool {
+        if h.lang == "ja" && ja_opening_apology(&h.before) && !cue_before(&h.before) {
+            return false;
+        }
         (self.substance || !greeting_only(&h.before))
             && (self.state != ClosingState::Talking || cue_before(&h.before))
     }
@@ -430,7 +439,7 @@ const PRE_CLOSINGS: Lexicon = &[
     ]),
     ("yue", &[
         "係咁先", "系咁先", "就咁先", "唔阻你", "唔阻你啦", "唔阻你喇", "再打俾你", "再打畀你", "再覆你", "覆返你",
-        "短訊覆你", "短讯覆你",
+        "短訊覆你", "短讯覆你", "收線先", "收线先", "得閒再傾", "得闲再倾",
     ]),
     ("ja", &[
         "以上となりますが", "以上となります", "それではよろしくお願いいたします",
@@ -444,6 +453,7 @@ const PRE_CLOSINGS: Lexicon = &[
     ]),
     ("ko", &[
         "나중에다시연락드릴게요", "다시연락드릴게요", "연락드릴게요", "연락드리겠습니다", "나끊는다", "그럼이만", "이만줄일게요",
+        "이제끊을게요", "먼저끊을게요",
     ]),
     ("es", &[
         "bueno te dejo", "te dejo", "le dejo", "nada era solo eso", "era solo eso", "hablamos luego",
@@ -458,10 +468,21 @@ const PRE_CLOSINGS: Lexicon = &[
         "alles klar dann weiß ich bescheid", "dann weiß ich bescheid", "dann weiss ich bescheid",
     ]),
     ("pt", &["então tá bom", "entao ta bom", "combinado então", "combinado entao", "a gente se fala"]),
-    ("th", &["งั้นแค่นี้", "แค่นี้ก่อน", "แค่นี้"]),
+    ("th", &["งั้นแค่นี้", "งั้นแค่นี้นะ", "แค่นี้นะ", "แค่นี้ก่อน", "แค่นี้", "เอาไว้คุยกันใหม่", "คุยกันแค่นี้ก่อน"]),
     ("vi", &["dạ vậy nhé", "vậy nhé", "vay nhe", "thế nhé", "the nhe", "thôi nhé"]),
     ("id", &["oke sudah dulu ya", "sudah dulu ya", "sudah dulu", "udah dulu ya", "udah dulu", "segitu dulu ya", "itu saja"]),
-    ("it", &["allora ti lascio", "ti lascio", "la lascio", "non ti disturbo più", "non la disturbo più"]),
+    ("it", &["allora ti lascio", "ti lascio", "la lascio", "non ti disturbo più", "non ti disturbo piu", "non la disturbo più", "non la disturbo piu"]),
+    ("ru", &["хорошо тогда до свидания", "ладно мне пора", "мне пора", "я перезвоню", "поговорим позже", "тогда пока", "всего вам доброго"]),
+    ("ar", &["حسنا سأغلق الآن", "حسنا ساغلق الان", "لنتحدث لاحقا", "سأتصل بك لاحقا", "ساتصل بك لاحقا", "سأتركك الآن", "هذا كل شيء"]),
+    ("hi", &["ठीक है अब रखता हूँ", "बाद में बात करते हैं", "मैं बाद में कॉल करूँगा", "बस इतना ही", "अच्छा चलता हूँ"]),
+    ("nl", &["ik houd u niet langer op", "ik hou je niet langer op", "dan spreken we later", "ik bel u later terug", "tot later"]),
+    ("pl", &["nie zatrzymuję już", "nie zatrzymuje juz", "odezwę się później", "odezwe sie pozniej", "zadzwonię później", "zadzwonie pozniej", "to tyle na teraz"]),
+    ("ro", &["nu vă mai rețin", "nu va mai retin", "nu te mai rețin", "nu te mai retin", "vorbim mai târziu", "vorbim mai tarziu"]),
+    ("uk", &["добре тоді до побачення", "мені вже пора", "передзвоню пізніше", "поговоримо пізніше", "на все добре"]),
+    ("bn", &["তাহলে এখন রাখছি", "পরে আবার কথা হবে", "আমি পরে ফোন করব", "আজ এই পর্যন্তই"]),
+    ("mr", &["ठीक आहे आता ठेवतो", "नंतर बोलूया", "मी नंतर फोन करतो", "इतकेच होते"]),
+    ("ta", &["சரி நான் வைக்கிறேன்", "பிறகு பேசலாம்", "நான் பிறகு அழைக்கிறேன்"]),
+    ("te", &["సరే నేను పెడుతున్నాను", "తర్వాత మాట్లాడుదాం", "నేను తర్వాత ఫోన్ చేస్తాను"]),
 ];
 
 /// Goodbyes said only at the end.
@@ -476,68 +497,105 @@ const FAREWELLS: Lexicon = &[
         "那掛了",
     ]),
     ("zh-CN", &["再见", "再会", "挂了啊", "先挂了", "我挂了", "那挂了", "好嘞拜拜", "挂啰", "挂咯", "挂啦", "那我挂了"]),
-    ("yue", &["得啦唔該晒", "得啦唔该晒", "得啦唔該曬", "先掛啦", "拜拜啦", "byebye"]),
+    ("yue", &["得啦唔該晒", "得啦唔该晒", "得啦唔該曬", "先掛啦", "拜拜啦", "byebye", "收線啦", "收线啦", "得閒再傾", "得闲再倾", "遲啲再傾", "迟啲再倾"]),
     ("ja", &[
         // A bare 「ありがとうございました」 is thanks, like 謝謝 elsewhere; with 本日は／今日は it closes.
-        "失礼いたします", "失礼致します", "失礼します", "本日はありがとうございました", "今日はありがとうございました", "じゃあね", "じゃあまた",
+        // 「失礼いたします／します」 is in GREETING_BYES so opening phrases never close on Turn 1.
+        "本日はありがとうございました", "今日はありがとうございました", "じゃあね", "じゃあまた",
         "またね", "さようなら", "お疲れ様でした", "お疲れさまでした", "ではまた", "それではまた", "バイバイ",
-        "ばいばい",
+        "ばいばい", "切るね", "切ります", "じゃあ切るね", "おやすみなさい",
     ]),
     ("ko", &[
-        "들어가세요", "수고하세요", "끊겠습니다", "끊을게요", "응끊어", "어끊어", "그래끊어", "안녕히계세요",
-        "안녕히가세요", "다음에봬요",
+        "들어가세요", "수고하세요", "끊겠습니다", "끊을게요", "끊을게", "먼저끊을게", "잘가", "잘가요", "잘가세요",
+        "응끊어", "어끊어", "그래끊어", "안녕히계세요", "안녕히가세요", "다음에봬요",
         // 「그럼 수요일에 뵙겠습니다」: seeing them on the day ends the call (처음 뵙겠습니다 opens one).
         "에뵙겠습니다", "그때뵙겠습니다", "그럼뵙겠습니다", "또뵙겠습니다", "에봬요", "그때봬요",
     ]),
     ("es", &[
         "chao", "chau", "hasta luego", "hasta pronto", "cuídate", "cuidate", "cuídese", "cuidese",
         "un abrazo", "un beso", "besos", "adiós", "adios", "nos vemos",
+        "que le vaya bien", "que te vaya bien", "que tenga buen día", "que tenga buen dia", "que tengas buen día", "que tengas buen dia",
     ]),
     ("fr", &[
         "au revoir", "bonne journée", "bonne journee", "bonne soirée", "bonne soiree", "à bientôt",
-        "a bientot", "bisous", "bises", "à plus",
+        "a bientot", "bisous", "bises", "à plus", "je raccroche", "bonne continuation", "à tout à l'heure", "a tout a l heure",
     ]),
     ("de", &[
         "auf wiederhören", "auf wiederhoren", "wiederhören", "schönen tag noch", "schönen tag", "tschüss",
-        "tschüs", "tschuss", "baba", "ciao", "pfiat di", "pfiat eich",
+        "tschüs", "tschuss", "baba", "pfiat di", "pfiat eich", "gute nacht", "schönen abend noch", "schonen abend noch",
+        "machs gut", "machen sie es gut",
     ]),
     ("pt", &[
-        "tchau tchau", "tchau", "até logo", "ate logo", "até mais", "um abraço", "um abraco", "beijos",
-        "beijo", "fica com deus", "vai com deus",
+        "tchau tchau", "tchau", "até logo", "ate logo", "até mais", "um abraço", "um abraco", "abraço", "abraco", "beijos",
+        "beijo", "fica com deus", "vai com deus", "fique bem", "bom trabalho",
         // Portugal: 「…e continuação de um bom dia」.
         "continuação de um bom dia", "continuação de bom dia", "continuacao de um bom dia", "tenha um bom dia",
         "boa continuação",
     ]),
-    ("th", &["บ๊ายบาย", "บายบาย", "ไว้คุยกันใหม่", "แล้วคุยกันใหม่"]),
+    ("th", &["บ๊ายบาย", "บายบาย", "ไว้คุยกันใหม่", "แล้วคุยกันใหม่", "แล้วพบกันใหม่", "พบกันใหม่", "ไปก่อนนะ", "วางสายนะ"]),
     ("vi", &["tạm biệt", "tam biet", "hẹn gặp lại", "hen gap lai", "chào nhé", "chao nhe"]),
     ("id", &["sampai jumpa", "sampai ketemu", "dadah"]),
     ("it", &[
-        "arrivederci", "arrivederla", "buona giornata", "buona serata", "buona continuazione", "a presto",
-        "ci sentiamo", "ciao ciao",
+        "arrivederci", "arrivederla", "buona giornata", "buongiornata", "buona serata", "buonanotte",
+        "buona continuazione", "grazie a lei", "stammi bene", "stia bene", "a presto", "a domani",
+        "ci vediamo", "ci sentiamo", "ciao ciao",
     ]),
+    ("ru", &[
+        "до свидания", "до свиданья", "всего доброго", "всего хорошего", "хорошего дня", "хорошего вечера",
+        "до встречи", "до связи", "пока пока",
+    ]),
+    ("ar", &[
+        "مع السلامة", "مع السلامه", "إلى اللقاء", "الى اللقاء", "في أمان الله", "في امان الله", "وداعاً",
+        "وداعا", "باي باي",
+    ]),
+    ("hi", &[
+        "अलविदा", "फिर मिलेंगे", "फिर मिलते हैं", "फिर बात करते हैं", "बाद में बात करते हैं",
+        "आपका दिन शुभ हो", "बाय बाय",
+    ]),
+    ("nl", &["tot ziens", "tot spreeks", "doei", "dag hoor", "fijne dag nog", "fijne avond"]),
+    ("pl", &["do widzenia", "na razie", "do usłyszenia", "do uslyszenia", "dobrego dnia", "miłego dnia", "milego dnia"]),
+    ("ro", &["la revedere", "pa pa", "o zi bună", "o zi buna", "toate cele bune", "pe curând", "pe curand"]),
+    ("uk", &["до побачення", "на все добре", "гарного дня", "бувайте", "до зустрічі", "до зв'язку"]),
+    ("bn", &["বিদায়", "আল্লাহ হাফেজ", "ভালো থাকবেন", "আবার কথা হবে", "রাখছি তাহলে", "শুভ দিন"]),
+    ("mr", &["नमस्कार पुन्हा बोलू", "काळजी घ्या", "शुभ दिवस", "आता ठेवतो", "बाय बाय"]),
+    ("ta", &["வருகிறேன்", "பை பை", "பிறகு பேசலாம்", "நல்ல நாள்", "கவனமாக இருங்கள்"]),
+    ("te", &["వస్తాను", "బై బై", "మళ్ళీ మాట్లాడుదాం", "శుభ దినం", "జాగ్రత్త"]),
 ];
 
 /// Greetings that also say goodbye: farewells only once the business is done
 /// ([`ClosingMachine::greeting_bye_counts`]).
 const GREETING_BYES: Lexicon = &[
-    ("ko", &["수고하십니다", "수고하셨습니다"]),
+    ("ja", &["失礼いたします", "失礼致します", "失礼します"]),
+    ("ko", &["수고하십니다", "수고하셨습니다", "안녕"]),
     ("th", &["สวัสดีค่ะ", "สวัสดีครับ", "สวัสดี"]),
     ("vi", &["chào anh ạ", "chào chị ạ", "chào anh", "chào chị", "chào em", "chào bạn", "chao anh"]),
     ("id", &["selamat siang", "selamat pagi", "selamat sore", "selamat malam"]),
+    ("it", &["ciao"]),
     ("de", &["servus"]),
     ("fr", &["salut", "bonsoir"]),
-    ("es", &["buenas noches", "buenas tardes"]),
+    ("es", &["buenas noches", "buenas tardes", "buen día", "buen dia", "buenos días", "buenos dias"]),
     ("pt", &["boa noite", "boa tarde"]),
+    ("ru", &["пока"]),
+    ("hi", &["नमस्ते", "नमस्कार"]),
+    ("nl", &["goedendag", "dag"]),
+    ("pl", &["cześć", "czesc"]),
+    ("ro", &["bună ziua", "buna ziua"]),
+    ("uk", &["бувай", "па па"]),
+    ("mr", &["नमस्कार"]),
+    ("ta", &["வணக்கம்"]),
+    ("te", &["నమస్కారం"]),
 ];
 
 /// How calls are answered and opened; never a goodbye by themselves.
 const OPENING_GREETINGS: &[&str] = &[
     "喂", "你好", "您好", "哈囉", "哈啰", "もしもし", "お世話になっております", "お世話になります",
-    "お疲れ様です", "こんにちは", "여보세요", "안녕하세요", "hello", "hi", "hey", "hiya", "good morning",
-    "good afternoon", "good evening", "hola", "diga", "bueno", "aló", "alo", "allo", "allô", "buenos días",
-    "buenos dias", "buenas", "bonjour", "hallo", "guten tag", "guten morgen", "grüß gott", "grüss gott",
-    "gruss gott", "grüezi", "moin", "alô", "oi", "olá", "ola", "bom dia", "tudo bem", "ฮัลโหล", "a lô",
-    "xin chào", "halo", "pronto", "salve",
+    "お疲れ様です", "お忙しいところ失礼いたします", "お忙しいところ失礼します", "夜分に失礼します",
+    "夜分に失礼いたします", "恐れ入りますが", "こんにちは", "여보세요", "안녕하세요", "hello", "hi", "hey",
+    "hiya", "good morning", "good afternoon", "good evening", "hola", "diga", "bueno", "aló", "alo",
+    "allo", "allô", "buenos días", "buenos dias", "buenas", "bonjour", "hallo", "guten tag", "guten morgen",
+    "grüß gott", "grüss gott", "gruss gott", "grüezi", "moin", "alô", "oi", "olá", "ola", "bom dia",
+    "tudo bem", "ฮัลโหล", "a lô", "xin chào", "halo", "pronto", "salve", "ciao", "алло", "здравствуйте",
+    "привет", "مرحباً", "مرحبا", "أهلاً", "أهلا", "السلام عليكم", "हेलो",
 ];
 
 /// Short replies to someone still talking (aizuchi): not a turn of their own,
@@ -549,7 +607,7 @@ const BACKCHANNELS: Lexicon = &[
         "ok la", "okay lah",
     ]),
     ("ja", &["はい", "はいはい", "ええ", "なるほど", "そうですね", "うん", "うんうん", "そうそう", "はーい"]),
-    ("ko", &["네", "네네", "예", "어", "응", "맞아요", "그렇죠", "네에"]),
+    ("ko", &["네", "네네", "예", "어", "응", "맞아요", "그렇죠", "네에", "그래요", "네알겠습니다", "알겠습니다"]),
     ("en", &[
         "uh huh", "mhm", "mm", "hmm", "right", "gotcha", "yeah", "yep", "yes", "okay", "ok", "sure", "i see",
         "got it",
@@ -558,16 +616,28 @@ const BACKCHANNELS: Lexicon = &[
     ("fr", &["d'accord", "tout à fait", "tout a fait", "oui", "ouais", "entendu", "bien sûr"]),
     ("de", &["genau", "alles klar", "ja", "jawohl", "stimmt"]),
     ("pt", &["entendi", "tá bom", "ta bom", "tá", "pois", "pois é", "sim", "uhum", "certo", "beleza"]),
-    ("th", &["ค่ะ", "ครับ", "อืม", "ใช่"]),
-    ("vi", &["vâng", "dạ", "ừ", "ờ", "dạ vâng"]),
+    ("it", &["va bene", "d'accordo", "capito", "certo", "perfetto", "ok grazie", "sì", "si"]),
+    ("th", &["ค่ะ", "ครับ", "อืม", "ใช่", "โอเคค่ะ", "โอเคครับ", "ได้ค่ะ", "ได้ครับ"]),
+    ("vi", &["vâng", "dạ", "ừ", "ờ", "dạ vâng", "ừ nhé", "u nhe", "vâng ạ", "vang a", "ok nhé", "oke nhé"]),
     ("id", &["iya", "oke"]),
+    ("ru", &["да", "ага", "понятно", "хорошо", "ладно"]),
+    ("ar", &["نعم", "أيوه", "أيوة", "تمام", "طيب"]),
+    ("hi", &["हाँ", "हां", "जी", "अच्छा"]),
 ];
 
 /// Thanks the shared list ([`crate::locale::strip_trailing_thanks`]) does not have.
 const EXTRA_THANKS: &[&str] = &[
-    "ขอบคุณมาก", "ขอบคุณ", "唔該晒", "唔该晒", "唔該曬", "唔該哂", "唔该哂", "唔該", "唔该", "多謝晒", "多谢晒", "多謝曬",
-    "多謝哂", "多谢哂", "多謝", "多谢", "cảm ơn anh", "cảm ơn chị", "cám ơn anh", "terima kasih banyak",
-    "grazie mille", "grazie",
+    "ขอบคุณมาก", "ขอบคุณ", "ขอบพระคุณมาก", "ขอบพระคุณ", "ขอบใจมาก", "ขอบใจ",
+    "唔該晒", "唔该晒", "唔該曬", "唔該哂", "唔该哂", "唔該", "唔该", "多謝晒", "多谢晒", "多謝曬",
+    "多謝哂", "多谢哂", "多謝", "多谢",
+    "cảm ơn anh nhiều", "cảm ơn chị nhiều", "cảm ơn anh", "cảm ơn chị", "cảm ơn em", "cảm ơn bạn",
+    "cảm ơn nhiều", "cảm ơn", "cám ơn anh", "cám ơn chị", "cám ơn nhiều", "cám ơn",
+    "cam on anh", "cam on chi", "cam on",
+    "terima kasih banyak", "terima kasih", "makasih banyak", "makasih",
+    "grazie mille", "molte grazie", "grazie tante", "grazie",
+    "большое спасибо", "спасибо большое", "спасибо вам", "благодарю", "спасибо",
+    "شكراً جزيلاً", "شكرا جزيلا", "شكراً لك", "شكرا لك", "شكراً", "شكرا", "يعطيك العافية",
+    "बहुत बहुत धन्यवाद", "बहुत धन्यवाद", "बहुत शुक्रिया", "धन्यवाद", "शुक्रिया",
 ];
 
 /// Thanks for something, at the very end ("Thanks for your help", "thank you
@@ -577,7 +647,7 @@ const THANKS_FOR: &[&str] = &[
     "thank you so much for", "thank you very much for", "thanks so much for", "thanks again for", "thank you for",
     "thanks for", "many thanks for", "muchas gracias por", "gracias por", "merci beaucoup pour", "merci pour",
     "vielen dank für", "danke für", "obrigado pela", "obrigada pela", "obrigado pelo", "obrigada pelo",
-    "obrigado por", "obrigada por",
+    "obrigado por", "obrigada por", "grazie mille per", "grazie per",
 ];
 const THANKS_FOR_MAX_WORDS: usize = 4;
 
@@ -612,7 +682,7 @@ const ADDRESS_TITLES: &[&str] = &[
 
 /// Particles after the last word: 「先這樣囉」, 「นะคะ」.
 const ZH_PARTICLES: &str = "喔哦囉啰啦呢吧耶齁欸啊喇嘞呀噢";
-const TH_PARTICLES: &[&str] = &["ค่ะ", "คะ", "ครับ", "นะ", "จ้ะ", "จ้า", "จ๊ะ", "ฮะ"];
+const TH_PARTICLES: &[&str] = &["ค่ะ", "คะ", "ครับ", "คับ", "นะ", "จ้ะ", "จ้า", "จ๊ะ", "ฮะ"];
 /// Japanese sentence-end particles after a closing: 「ご連絡いたしますね」.
 const JA_PARTICLES: &[&str] = &["よね", "ねー", "ね", "よ"];
 
@@ -620,7 +690,7 @@ const JA_PARTICLES: &[&str] = &["よね", "ねー", "ね", "よ"];
 const TAIL_WORDS: &[&str] = &[
     "mate", "then", "now", "too", "again", "dear", "sir", "madam", "ma'am", "anh", "chị", "chi", "em", "ạ",
     "pak", "bu", "bapak", "ibu", "kak", "señor", "señora", "senhor", "senhora", "monsieur", "madame",
-    "mucho", "ya", "you",
+    "signore", "signora", "lei", "mucho", "ya", "you", "जी", "nhé", "nhe",
 ];
 
 /// Only the end of a long window is looked at.
@@ -632,20 +702,29 @@ fn is_latin_letter(c: char) -> bool {
     c.is_ascii_alphabetic() || ('\u{00C0}'..='\u{024F}').contains(&c) || ('\u{1E00}'..='\u{1EFF}').contains(&c)
 }
 
-fn is_latin(p: &str) -> bool {
-    p.chars().any(is_latin_letter)
+fn is_cjk_or_unspaced(c: char) -> bool {
+    matches!(
+        c as u32,
+        0x3040..=0x30FF | 0x31F0..=0x31FF | 0x3400..=0x9FFF | 0xAC00..=0xD7AF
+            | 0x1100..=0x11FF | 0x3130..=0x318F | 0x0E00..=0x0EFF | 0x1000..=0x109F | 0x1780..=0x17FF
+    )
+}
+
+/// Scripts whose words are separated by spaces (Latin, Cyrillic, Arabic, Devanagari…).
+fn is_spaced(p: &str) -> bool {
+    p.chars().any(char::is_alphabetic) && !p.chars().any(is_cjk_or_unspaced)
 }
 
 /// Ends a sentence: the speech-to-text's own full stop, question or exclamation mark.
 fn ends_sentence(text: &str) -> bool {
-    text.trim_end().ends_with(|c: char| "。！？!?.…～~".contains(c))
+    text.trim_end().ends_with(|c: char| "。！？!?.…～~।؟".contains(c))
 }
 
 fn is_punct(c: char) -> bool {
     if c.is_ascii() {
         return !(c.is_ascii_alphanumeric() || c == '\'');
     }
-    c.is_whitespace() || "，。！？、～〜…．；：「」『』（）【】《》〈〉·・—–“”‘¡¿«»｡｢｣".contains(c)
+    c.is_whitespace() || "，。！？、～〜…．；：「」『』（）【】《》〈〉·・—–“”‘¡¿«»｡｢｣،؛؟।॥".contains(c)
 }
 
 /// Lower case, the end of it only, punctuation as single spaces.
@@ -671,10 +750,10 @@ fn norm(text: &str) -> String {
     out
 }
 
-/// `t` (normalized) ends with `p`: whole words in Latin script, spaces ignored
-/// otherwise. Returns what comes before it.
+/// `t` (normalized) ends with `p`: whole words in space-separated scripts,
+/// spaces ignored otherwise. Returns what comes before it.
 fn ends_with_phrase<'a>(t: &'a str, p: &str) -> Option<&'a str> {
-    if is_latin(p) {
+    if is_spaced(p) {
         let head = t.strip_suffix(p)?;
         return (head.is_empty() || head.ends_with(' ')).then(|| head.trim_end());
     }
@@ -787,7 +866,7 @@ fn peel(t: &str) -> Option<(&str, Peel)> {
 
 fn ends_as_question(text: &str) -> bool {
     let t = text.trim_end();
-    if t.ends_with(['?', '？']) || t.ends_with("까요") || t.ends_with("か。") {
+    if t.ends_with(['?', '？', '؟']) || t.ends_with("까요") || t.ends_with("か。") {
         return true;
     }
     let core = t
@@ -822,8 +901,8 @@ fn classify(text: &str) -> Option<Hit> {
         let found = ends_with_any(t, FAREWELLS)
             .map(|(l, b)| (Kind::Farewell, l, b, false))
             .or_else(|| lone_bai(t).map(|b| (Kind::Farewell, "zh-TW", b, false)))
-            .or_else(|| ends_with_any(t, GREETING_BYES).map(|(l, b)| (Kind::Farewell, l, b, true)))
-            .or_else(|| ends_with_any(t, PRE_CLOSINGS).map(|(l, b)| (Kind::PreClosing, l, b, false)));
+            .or_else(|| ends_with_any(t, PRE_CLOSINGS).map(|(l, b)| (Kind::PreClosing, l, b, false)))
+            .or_else(|| ends_with_any(t, GREETING_BYES).map(|(l, b)| (Kind::Farewell, l, b, true)));
         if let Some((kind, lang, before, ambiguous)) = found {
             // 「你先不要掛啦」「請別掛囉」: a hang-up word after "don't" asks to stay on.
             if kind == Kind::Farewell && asks_to_stay(before, &t[before.len()..]) {
@@ -846,14 +925,48 @@ fn asks_to_stay(before: &str, word: &str) -> bool {
     ["不要", "別", "别", "不要先", "別先", "别先", "先不要", "先別", "先别", "唔好", "咪", "勿"].iter().any(|n| b.ends_with(n))
 }
 
-/// Right before a greeting-goodbye: thanks, a short "ok" or a pre-closing.
+/// Japanese opening apologies before 「失礼します／失礼いたします」: not a farewell.
+fn ja_opening_apology(before: &str) -> bool {
+    const OPENERS: &[&str] = &[
+        "お忙しいところ", "お忙しい中", "夜分に", "夜分遅く", "夜遅く", "朝早く", "朝から", "突然",
+        "恐れ入りますが", "おそれいりますが", "初めてお電話", "初めてご連絡", "お取り込み中",
+        "お電話口で", "何度も失礼", "度々失礼", "たびたび失礼",
+    ];
+    let compact: String = before.chars().filter(|c| !c.is_whitespace()).collect();
+    OPENERS.iter().any(|p| compact.contains(p))
+}
+
+fn ends_with_ja_wrap_cue(t: &str) -> bool {
+    const UNCONDITIONAL: &[&str] = &[
+        "それでは", "それじゃあ", "それじゃ", "じゃあ", "ではでは", "以上です", "以上となります",
+        "以上になります", "そろそろ", "よろしくお願いいたします", "よろしくお願いします",
+        "よろしくおねがいいたします", "またあとで", "また後で", "また明日", "お先に",
+    ];
+    if UNCONDITIONAL.iter().any(|c| t.ends_with(c)) {
+        return true;
+    }
+    ["では", "じゃ"].iter().any(|c| {
+        t.strip_suffix(c).is_some_and(|rest| {
+            let rest = rest.trim_end();
+            rest.is_empty()
+                || ends_with_any(rest, PRE_CLOSINGS).is_some()
+                || ends_with_any(rest, FAREWELLS).is_some()
+                || matches!(peel(rest), Some((_, Peel::Thanks | Peel::Backchannel)))
+        })
+    })
+}
+
+/// Right before a greeting-goodbye: thanks, a short "ok", a pre-closing or a Japanese wrap cue.
 fn cue_before(before: &str) -> bool {
     let mut t = before.trim_end();
     for _ in 0..MAX_PEEL {
         if t.is_empty() {
             return false;
         }
-        if ends_with_any(t, PRE_CLOSINGS).is_some() {
+        if ends_with_any(t, PRE_CLOSINGS).is_some()
+            || ends_with_any(t, FAREWELLS).is_some()
+            || ends_with_ja_wrap_cue(t)
+        {
             return true;
         }
         match peel(t) {
@@ -866,8 +979,8 @@ fn cue_before(before: &str) -> bool {
 }
 
 /// Words that settle a matter before closing thanks: agreement, "got it", an
-/// apology for a wrong number. Latin ones are whole words; the others are
-/// compared without spaces.
+/// apology for a wrong number. Space-separated scripts are matched as whole words;
+/// the others are compared without spaces.
 const SETTLED: &[&str] = &[
     "好的", "好喔", "好哦", "好啊", "好啦", "好呀", "好嘞", "沒問題", "没问题", "冇問題", "冇问题", "無問題", "无问题", "沒錯",
     "没错", "就是這樣", "就是这样", "了解", "明白", "知道了", "收到", "那就", "那我就", "打錯", "打错", "不好意思", "抱歉",
@@ -878,23 +991,34 @@ const SETTLED: &[&str] = &[
     "entendu", "très bien", "désolé", "désolée", "pardon", "alles klar", "in ordnung", "verstanden", "perfekt",
     "entschuldigung", "falsch verbunden", "certo", "perfeito", "combinado", "entendi", "tá bom", "ta bom",
     "desculpa", "desculpe", "beleza",
+    "va bene", "perfetto", "d'accordo", "ho capito", "capito", "nessun problema", "mi scusi", "scusi", "numero sbagliato",
+    "dạ vâng", "vâng", "được rồi", "hiểu rồi", "không sao", "xin lỗi", "nhầm số", "gọi nhầm",
+    "baik", "siap", "mengerti", "paham", "tidak masalah", "maaf", "salah sambung", "salah nomor",
+    "โอเค", "ตกลง", "ได้เลย", "รับทราบ", "เข้าใจแล้ว", "ไม่มีปัญหา", "ขอโทษ", "โทรผิด",
+    "хорошо", "ладно", "понял", "поняла", "понятно", "договорились", "без проблем", "извините", "не туда попал", "ошибся номером",
+    "حسناً", "حسنا", "تمام", "طيب", "فهمت", "لا مشكلة", "آسف", "الرقم غلط", "رقم غلط",
+    "ठीक है", "अच्छा", "समझ गया", "समझ गई", "कोई बात नहीं", "माफ़ कीजिए", "माफ कीजिए", "गलत नंबर",
 ];
 
 /// Settling words that close a call with nothing more said: a wrong number.
-const SETTLED_ALONE: &[&str] =
-    &["打錯", "打错", "wrong number", "잘못걸", "número equivocado", "falsch verbunden", "失礼しました"];
+const SETTLED_ALONE: &[&str] = &[
+    "打錯", "打错", "wrong number", "잘못걸", "número equivocado", "falsch verbunden", "失礼しました",
+    "numero sbagliato", "nhầm số", "gọi nhầm", "salah sambung", "salah nomor", "โทรผิด",
+    "не туда попал", "ошибся номером", "الرقم غلط", "رقم غلط", "गलत नंबर",
+];
 
 /// Words that ask something even without a question mark (「那明天幾點到」,
 /// "what time tomorrow", 「何時ですか」): such words before thanks are no wrap-up.
 const ASKS_RUNS: &[&str] = &[
     "幾點", "几点", "什麼", "什么", "哪裡", "哪里", "哪天", "多少", "怎麼", "怎么", "為什麼", "为什么", "是不是",
     "有沒有", "有没有", "可不可以", "能不能", "要不要", "何時", "いつ", "どこ", "何で", "なぜ", "ですか", "ますか",
-    "언제", "어디", "몇", "뭐", "왜",
+    "언제", "어디", "몇", "뭐", "왜", "กี่โมง", "เมื่อไหร่", "ที่ไหน", "เท่าไหร่",
 ];
 const ASKS_WORDS: &[&str] = &[
     "what", "when", "where", "which", "how", "who", "why", "can you", "could you", "is there", "are you", "do you",
     "will you", "qué", "cuándo", "dónde", "cómo", "quand", "où", "comment", "quel", "quelle", "wann", "wo", "wie",
-    "was", "welche", "quando", "onde", "como", "qual",
+    "was", "welche", "quando", "onde", "como", "qual", "dove", "che ora", "bao giờ", "mấy giờ", "ở đâu",
+    "jam berapa", "kapan", "di mana", "когда", "где", "сколько", "почему", "متى", "أين", "كم", "कब", "कहाँ", "कितना",
 ];
 
 fn asks(t: &str) -> bool {
@@ -903,22 +1027,33 @@ fn asks(t: &str) -> bool {
 }
 
 /// Something said besides the settling words ("great" and thanks is only
-/// thanks): three or more CJK letters, or two or more other words.
+/// thanks): three or more CJK / spaceless-script letters, or two or more
+/// alphabetic words (Latin, Cyrillic, Arabic, Devanagari…).
 fn has_matter(t: &str) -> bool {
     let mut s = format!(" {t} ");
     for w in SETTLED {
-        s = if is_latin(w) { s.replace(&format!(" {w} "), "  ") } else { s.replace(w, " ") };
+        s = if is_spaced(w) { s.replace(&format!(" {w} "), "  ") } else { s.replace(w, " ") };
     }
-    let cjk = s
+    for p in TH_PARTICLES {
+        s = s.replace(p, " ");
+    }
+    let unspaced = s
         .chars()
-        .filter(|c| matches!(*c as u32, 0x3040..=0x30FF | 0x3400..=0x9FFF | 0xAC00..=0xD7AF) && !ZH_PARTICLES.contains(*c))
+        .filter(|c| {
+            (matches!(*c as u32, 0x3040..=0x30FF | 0x3400..=0x9FFF | 0xAC00..=0xD7AF) && !ZH_PARTICLES.contains(*c))
+                || (matches!(*c as u32, 0x0E00..=0x0EFF | 0x1000..=0x109F | 0x1780..=0x17FF) && c.is_alphabetic())
+        })
         .count();
     const FILLER: &[&str] = &["oh", "ah", "um", "uh", "so", "and", "then", "well", "yes", "yeah", "thanks", "thank", "you"];
     let words = s
         .split_whitespace()
-        .filter(|w| w.chars().any(is_latin_letter) && w.chars().count() >= 2 && !FILLER.contains(w))
+        .filter(|w| {
+            w.chars().any(|c| c.is_alphabetic() && !is_cjk_or_unspaced(c))
+                && w.chars().count() >= 2
+                && !FILLER.contains(w)
+        })
         .count();
-    cjk >= 3 || words >= 2
+    unspaced >= 3 || words >= 2
 }
 
 /// The caller's words since their last question settle the matter and end on
@@ -927,7 +1062,7 @@ fn has_matter(t: &str) -> bool {
 /// only what follows it counts. Thanks after nothing but short replies (「好，謝謝」)
 /// is not one.
 fn thanks_wrap(text: &str) -> bool {
-    let text = text.rsplit(['?', '？']).next().unwrap_or("");
+    let text = text.rsplit(['?', '？', '؟']).next().unwrap_or("");
     if ends_as_question(text) {
         return false;
     }
@@ -950,10 +1085,10 @@ fn thanks_wrap(text: &str) -> bool {
     let spaced = format!(" {t} ");
     let bare: String = t.chars().filter(|c| *c != ' ').collect();
     let has = |list: &[&str]| {
-        list.iter().any(|w| if is_latin(w) { spaced.contains(&format!(" {w} ")) } else { bare.contains(w) })
+        list.iter().any(|w| if is_spaced(w) { spaced.contains(&format!(" {w} ")) } else { bare.contains(w) })
     };
     has(SETTLED_ALONE) || (has_matter(t) && SETTLED.iter().any(|w| {
-        if is_latin(w) {
+        if is_spaced(w) {
             spaced.contains(&format!(" {w} "))
         } else {
             bare.contains(w)
@@ -1085,7 +1220,7 @@ mod tests {
         Case {
             lang: "ja",
             pre: ["以上となりますが…", "それでは、よろしくお願いいたします"],
-            bye: ["失礼いたします", "本日はありがとうございました"],
+            bye: ["ありがとうございました、では失礼いたします", "本日はありがとうございました"],
             opening: "もしもし、お世話になっております",
             follow_up: "あ、もう一つだけ、配達は何時ごろになりますか",
         },
@@ -1452,7 +1587,7 @@ mod tests {
             for (_, list) in lex {
                 for p in *list {
                     assert_eq!(norm(p), *p, "not normalized: {p}");
-                    assert!(is_latin(p) || !p.contains(' '), "spaces in a non-Latin phrase: {p}");
+                    assert!(is_spaced(p) || !p.contains(' '), "spaces in a non-spaced phrase: {p}");
                 }
             }
         }
@@ -1807,5 +1942,164 @@ mod acceptance_closings {
         // 「Pronto?」 opens a call.
         let mut m = ClosingMachine::new("it");
         assert!(!m.on_caller("Pronto?", "Pronto?", true, false).ends_call);
+    }
+}
+
+/// P0-1 & P1-1: Italian "ciao", Japanese opening "失礼します／失礼いたします",
+/// and non-CJK / non-Latin `has_matter` + `thanks_wrap` across all official languages.
+#[cfg(test)]
+mod p0_p1_multilingual_closing_tests {
+    use super::*;
+
+    #[test]
+    fn italian_ciao_never_closes_opening_but_closes_after_substance_and_cue() {
+        let t1 = "Ciao, sono Marco, ho un pacco per lei";
+        let t1_old = crate::locale::caller_wraps_up(t1);
+        assert!(!t1_old);
+        for old_rules in [false, true] {
+            let mut m = ClosingMachine::new("it");
+            let step1 = m.on_caller(t1, t1, t1_old, false);
+            assert!(!step1.ends_call, "Turn 1 must not end: old_rules={old_rules}");
+            assert_eq!(step1.event, ClosingEvent::None);
+            assert_eq!(m.state(), ClosingState::Talking);
+
+            // Bare "Ciao!" or "Pronto, ciao!" or trailing "ciao" on Turn 1 must not close even when old_rules=true.
+            for opener in ["Ciao!", "Pronto, ciao!", "Ciao, sono Marco, ciao"] {
+                for check_old in [false, true, crate::locale::caller_wraps_up(opener)] {
+                    let mut m2 = ClosingMachine::new("it");
+                    let step = m2.on_caller(opener, opener, check_old, false);
+                    assert!(!step.ends_call, "Opener {opener:?} must not end (old_rules={check_old})");
+                    assert_eq!(m2.state(), ClosingState::Talking, "{opener}");
+                }
+            }
+
+            // Real closing "Grazie mille, ciao!" after substance MUST end the call.
+            let step2 = m.on_caller("Grazie mille, ciao!", "Grazie mille, ciao!", old_rules, false);
+            assert_eq!(step2.event, ClosingEvent::CallerFarewell, "old_rules={old_rules}");
+            assert!(step2.ends_call);
+            assert_eq!(m.state(), ClosingState::Closing);
+            assert!(m.may_hang_up(false));
+        }
+    }
+
+    #[test]
+    fn japanese_opening_shitsurei_never_closes_while_real_closing_does() {
+        let openings = [
+            "お忙しいところ失礼いたします",
+            "夜分に失礼します",
+            "恐れ入りますが、失礼します",
+            "失礼いたします",
+        ];
+        for old_rules in [false, true] {
+            // Turn 1 / before substance: never closes (even when old_rules=true from locale.rs).
+            for t in openings {
+                for check_old in [old_rules, crate::locale::caller_wraps_up(t)] {
+                    let mut m = ClosingMachine::new("ja");
+                    let step = m.on_caller(t, t, check_old, false);
+                    assert!(!step.ends_call, "Turn 1 {t:?} must not close (old_rules={check_old})");
+                    assert_ne!(m.state(), ClosingState::Closing, "{t}");
+                }
+            }
+            // Opening with apology + company name on Turn 1 never closes either.
+            let intro = "お忙しいところ失礼いたします、山田運送です";
+            let mut m_intro = ClosingMachine::new("ja");
+            let step_intro = m_intro.on_caller(intro, intro, crate::locale::caller_wraps_up(intro), false);
+            assert!(!step_intro.ends_call);
+            assert_eq!(m_intro.state(), ClosingState::Talking);
+            // After substance, without wrap cue (or with opening apology): still never closes.
+            for t in ["お忙しいところ失礼いたします", "夜分に失礼します", "恐れ入りますが、失礼します", "失礼いたします"] {
+                let mut m = ClosingMachine::new("ja");
+                m.on_caller("もしもし、山田運送の田中と申します。", "もしもし、山田運送の田中と申します。", false, false);
+                let step = m.on_caller(t, t, old_rules, false);
+                assert!(!step.ends_call, "Mid-call {t:?} without wrap cue must not close (old_rules={old_rules})");
+                assert_eq!(m.state(), ClosingState::Talking, "{t}");
+            }
+            // After substance, real closing with wrap cue MUST end the call.
+            for real_bye in [
+                "ありがとうございました、では失礼します",
+                "ありがとうございました、では失礼いたします",
+                "それでは失礼します。",
+            ] {
+                let mut m = ClosingMachine::new("ja");
+                m.on_caller("山田運送の田中です、お荷物は宅配ボックスに入れました。", "山田運送の田中です、お荷物は宅配ボックスに入れました。", false, false);
+                let step = m.on_caller(real_bye, real_bye, old_rules, false);
+                assert_eq!(step.event, ClosingEvent::CallerFarewell, "{real_bye}");
+                assert!(step.ends_call, "{real_bye}");
+                assert_eq!(m.state(), ClosingState::Closing, "{real_bye}");
+                assert!(m.may_hang_up(false));
+            }
+        }
+    }
+
+    #[test]
+    fn non_cjk_non_latin_and_all_languages_trigger_thanks_wrap_and_reject_bare_thanks() {
+        // (lang, wrap_up_with_matter, ai_bye, bare_agreement_thanks)
+        let cases: &[(&str, &str, &str, &str)] = &[
+            ("zh-TW", "好的，沒問題，那我放管理室，謝謝！", "好，掰掰。", "好，謝謝"),
+            ("zh-CN", "好的，没问题，那我放门卫处，谢谢！", "好，再见。", "好的，谢谢"),
+            ("en", "Okay, I'll leave the parcel at reception, thank you!", "Okay, bye!", "Okay, thanks"),
+            ("ja", "かしこまりました、宅配ボックスに入れておきます、ありがとうございます。", "はい、失礼します。", "わかりました、ありがとうございます"),
+            ("ko", "알겠습니다, 경비실에 맡겨 둘게요, 감사합니다.", "네, 들어가세요.", "알겠습니다, 감사합니다"),
+            ("es", "Vale, dejo el paquete en portería, muchas gracias.", "Vale, adiós.", "Vale, gracias"),
+            ("fr", "D'accord, je laisse le colis au gardien, merci beaucoup.", "D'accord, au revoir.", "D'accord, merci"),
+            ("de", "Alles klar, ich gebe das Paket beim Nachbarn ab, vielen Dank.", "Alles klar, tschüss.", "Alles klar, danke"),
+            ("pt", "Tá bom, vou deixar o pacote na portaria, muito obrigado.", "Tá bom, tchau.", "Tá bom, obrigado"),
+            ("it", "Perfetto, lascerò il pacco in portineria, grazie mille!", "Va bene, arrivederci!", "Va bene, grazie"),
+            ("th", "โอเคค่ะ เดี๋ยวฝากพัสดุไว้ที่นิติบุคคลนะคะ ขอบคุณมากค่ะ", "ค่ะ บ๊ายบายค่ะ", "โอเคค่ะ ขอบคุณค่ะ"),
+            ("ru", "Хорошо, я оставлю посылку на ресепшене, большое спасибо.", "Хорошо, до свидания.", "Хорошо, спасибо"),
+            ("ar", "حسناً، سأترك الطرد في الاستقبال، شكراً جزيلاً.", "حسناً، مع السلامة.", "تمام، شكراً"),
+            ("hi", "ठीक है, मैं पार्सल रिसेप्शन पर रख दूँगा, बहुत धन्यवाद।", "ठीक है, नमस्ते।", "ठीक है, धन्यवाद"),
+            ("vi", "Dạ vâng, em gửi hàng ở quầy lễ tân nhé, cảm ơn anh nhiều.", "Vâng, tạm biệt.", "Dạ vâng, cảm ơn anh"),
+            ("id", "Baik, saya titip paketnya di resepsionis ya, terima kasih banyak.", "Baik, sampai jumpa.", "Baik, terima kasih"),
+        ];
+        for &(lang, wrap, ai_bye, bare) in cases {
+            assert!(thanks_wrap(wrap), "{lang}: wrap should trigger thanks_wrap: {wrap}");
+            assert!(!thanks_wrap(bare), "{lang}: bare agreement+thanks must NOT trigger thanks_wrap: {bare}");
+
+            let mut m = ClosingMachine::new(lang);
+            m.on_caller("Parcel delivery info", "Parcel delivery info", false, false);
+            let step = m.on_caller(wrap, wrap, false, false);
+            assert_eq!(step.event, ClosingEvent::CallerThanksWrap, "{lang}: {wrap}");
+            assert!(!step.ends_call);
+            assert_eq!(m.state(), ClosingState::PreClosing);
+            assert_eq!(m.on_ai_turn(ai_bye, true, false), ClosingEvent::FarewellsExchanged, "{lang}: {ai_bye}");
+            assert!(m.may_hang_up(false), "{lang}");
+        }
+    }
+
+    #[test]
+    fn ambiguous_greetings_and_extended_official_languages_behave_safely() {
+        // TRAP check: KO "안녕" and ES "buen día" only in GREETING_BYES, never FAREWELLS.
+        assert!(!FAREWELLS.iter().any(|(_, list)| list.contains(&"안녕") || list.contains(&"buen día") || list.contains(&"buen dia")));
+        for (lang, opener, cue_bye) in [
+            ("ko", "안녕", "알겠습니다, 감사합니다. 안녕!"),
+            ("es", "Hola, buen día", "Muchas gracias por avisar, buen día."),
+        ] {
+            let mut m1 = ClosingMachine::new(lang);
+            let s1 = m1.on_caller(opener, opener, crate::locale::caller_wraps_up(opener), false);
+            assert!(!s1.ends_call, "Turn 1 {opener:?} must not close");
+            m1.on_caller("Tengo un paquete para entregar", "Tengo un paquete para entregar", false, false);
+            let s2 = m1.on_caller(cue_bye, cue_bye, false, false);
+            assert!(s2.ends_call, "Post-cue {cue_bye:?} should close");
+        }
+
+        // nl/pl/ro/uk/bn/mr/ta/te + it/th farewells close cleanly after substance.
+        for (lang, bye) in [
+            ("nl", "Bedankt, tot ziens!"),
+            ("pl", "Dziękuję, do widzenia!"),
+            ("ro", "Mulțumesc, la revedere!"),
+            ("uk", "Дякую, до побачення!"),
+            ("bn", "ধন্যবাদ, বিদায়!"),
+            ("mr", "धन्यवाद, बाय बाय!"),
+            ("ta", "நன்றி, வருகிறேன்!"),
+            ("te", "ధన్యవాదాలు, వస్తాను!"),
+            ("it", "Perfetto, buongiornata!"),
+            ("th", "ขอบคุณค่ะ แล้วพบกันใหม่นะคะ"),
+        ] {
+            let mut m = ClosingMachine::new(lang);
+            m.on_caller("Parcel delivery info", "Parcel delivery info", false, false);
+            let step = m.on_caller(bye, bye, false, false);
+            assert!(step.ends_call, "{lang}: {bye:?} did not close");
+        }
     }
 }

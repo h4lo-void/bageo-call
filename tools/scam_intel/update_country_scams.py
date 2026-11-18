@@ -101,6 +101,22 @@ POLITE_NORMAL_CORPUS: list[str] = [
 ]
 
 VALID_ID_RE = re.compile(r"^[a-z0-9_]+$")
+YEAR_RANGE_RE = re.compile(r"\b(?:19|20)\d{2}\s*[-–/]\s*(?:19|20)\d{2}\b")
+PHONE_NUMBER_RE = re.compile(r"(?:\+?\d[\d\s\-()]{5,}\d)")
+EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+MAX_CONTEXT_KEYWORDS = 24
+MAX_RED_FLAG_KEYWORDS = 16
+
+
+def has_pii_or_phone(text: str) -> bool:
+    """Reject phone-like sequences (>= 7 digits, excluding year ranges) and email addresses."""
+    cleaned = YEAR_RANGE_RE.sub(" ", text)
+    if EMAIL_RE.search(cleaned):
+        return True
+    for m in PHONE_NUMBER_RE.finditer(cleaned):
+        if sum(ch.isdigit() for ch in m.group(0)) >= 7:
+            return True
+    return False
 
 
 def normalize_word_kw(text: str) -> str:
@@ -154,14 +170,22 @@ def sanitize_scam_entry(
     name_en = str(scam.get("name_en", "")).strip()
     if not (signals_en and legit_en and name and name_en):
         return None, [f"{sid}: missing required descriptive fields"]
+    for field_name, val in (("name", name), ("name_en", name_en), ("signals_en", signals_en), ("legit_en", legit_en)):
+        if has_pii_or_phone(val):
+            return None, [f"{sid}: dropped because {field_name} contains phone/email PII"]
 
     ctx_out: list[str] = []
     seen_kw: set[str] = set()
 
     def add_ctx(raw_kw: str) -> None:
+        if len(ctx_out) >= MAX_CONTEXT_KEYWORDS:
+            return
         val = normalize_word_kw(raw_kw) if mode == "word" else raw_kw.strip()
         if mode in ("word", "run"):
             val = val.lower()
+        if has_pii_or_phone(val):
+            notes.append(f"{sid}: dropped context_keyword containing phone/email PII")
+            return
         min_len = 3 if mode == "word" else 2
         if len(val) >= min_len and val not in seen_kw:
             seen_kw.add(val)
@@ -173,12 +197,17 @@ def sanitize_scam_entry(
 
     rf_out: list[dict[str, Any]] = []
     for rf in scam.get("red_flag_keywords", []):
+        if len(rf_out) >= MAX_RED_FLAG_KEYWORDS:
+            break
         if not isinstance(rf, dict):
             continue
         raw_text = str(rf.get("text", "")).strip()
         val = normalize_word_kw(raw_text) if mode == "word" else raw_text
         if mode in ("word", "run"):
             val = val.lower()
+        if has_pii_or_phone(val):
+            notes.append(f"{sid}: dropped red_flag containing phone/email PII")
+            continue
         min_len = 5 if mode == "word" else 3
         if len(val) < min_len:
             notes.append(f"{sid}: downgraded short red_flag {val!r} -> context")
@@ -204,6 +233,9 @@ def sanitize_scam_entry(
         t = str(bt).strip()
         if not t:
             continue
+        if has_pii_or_phone(t):
+            notes.append(f"{sid}: stripped bait_tactic containing phone/email PII")
+            continue
         low = t.lower()
         if any(m in low for m in ANTI_STALL_MARKERS):
             notes.append(f"{sid}: stripped anti-stalling giveaway tactic: {t!r}")
@@ -217,7 +249,7 @@ def sanitize_scam_entry(
     if prevalence not in ("very_high", "high", "medium"):
         prevalence = "high"
 
-    sources = [str(s).strip() for s in scam.get("sources", []) if str(s).strip()][:6]
+    sources = [str(s).strip() for s in scam.get("sources", []) if str(s).strip() and not has_pii_or_phone(str(s))][:6]
 
     return {
         "id": sid,
@@ -336,10 +368,12 @@ def query_country_updates(
 def merge_scam_into_country(profile: dict[str, Any], clean: dict[str, Any]) -> str:
     for existing in profile["scams"]:
         if existing["id"] == clean["id"]:
-            added_ctx = [k for k in clean["context_keywords"] if k not in existing["context_keywords"]]
+            ctx_room = max(0, MAX_CONTEXT_KEYWORDS - len(existing["context_keywords"]))
+            added_ctx = [k for k in clean["context_keywords"] if k not in existing["context_keywords"]][:ctx_room]
             existing["context_keywords"].extend(added_ctx)
             existing_rf = {r["text"] for r in existing["red_flag_keywords"]}
-            added_rf = [r for r in clean["red_flag_keywords"] if r["text"] not in existing_rf]
+            rf_room = max(0, MAX_RED_FLAG_KEYWORDS - len(existing["red_flag_keywords"]))
+            added_rf = [r for r in clean["red_flag_keywords"] if r["text"] not in existing_rf][:rf_room]
             existing["red_flag_keywords"].extend(added_rf)
             for bt in clean["bait_tactics"]:
                 if bt not in existing["bait_tactics"] and len(existing["bait_tactics"]) < 5:
@@ -356,6 +390,9 @@ def validate_database(db: dict[str, Any], typologies: dict[str, bool], lang_mode
     errors: list[str] = []
     seen_ids: set[str] = set()
     for code, cp in db.get("countries", {}).items():
+        for field_name in ("prevalence_note", "cross_border_note"):
+            if has_pii_or_phone(cp.get(field_name, "")):
+                errors.append(f"{code}: {field_name} contains phone/email PII")
         for sc in cp.get("scams", []):
             sid = sc.get("id", "")
             if sid in seen_ids:
@@ -371,24 +408,41 @@ def validate_database(db: dict[str, Any], typologies: dict[str, bool], lang_mode
                 continue
             if len(sc.get("signals_en", "")) > 260 or len(sc.get("legit_en", "")) > 260:
                 errors.append(f"{sid}: signals_en and legit_en must be <= 260 chars")
+            for field_name in ("name", "name_en", "signals_en", "legit_en"):
+                if has_pii_or_phone(sc.get(field_name, "")):
+                    errors.append(f"{sid}: {field_name} contains phone/email PII")
             mode = lang_modes[lang]
+            for ck in sc.get("context_keywords", []):
+                if has_pii_or_phone(ck):
+                    errors.append(f"{sid}: context_keyword {ck!r} contains phone/email PII")
             for rf in sc.get("red_flag_keywords", []):
+                if has_pii_or_phone(rf.get("text", "")):
+                    errors.append(f"{sid}: red_flag {rf.get('text')!r} contains phone/email PII")
                 if rf.get("hard") and not typologies[typ]:
                     errors.append(f"{sid}: red_flag {rf.get('text')!r} is hard on non-hard typology {typ}")
                 if hits_normal_corpus(rf.get("text", ""), mode):
                     errors.append(f"{sid}: red_flag {rf.get('text')!r} false-positives normal call corpus")
             for bt in sc.get("bait_tactics", []):
+                if has_pii_or_phone(bt):
+                    errors.append(f"{sid}: bait_tactic contains phone/email PII: {bt!r}")
                 low = bt.lower()
                 if any(m in low for m in ANTI_STALL_MARKERS):
                     errors.append(f"{sid}: bait_tactic contains anti-stalling giveaway: {bt!r}")
+            for src in sc.get("sources", []):
+                if has_pii_or_phone(src):
+                    errors.append(f"{sid}: source {src!r} contains phone/email PII")
     return errors
 
 
 def run_cargo_tests() -> bool:
     cmd = ["cargo", "test", "-p", "agent", "--manifest-path", str(REPO_ROOT / "Cargo.toml"), "scam_db"]
     print(f"[test] Running: {' '.join(cmd)}")
-    proc = subprocess.run(cmd, cwd=str(REPO_ROOT), check=False)
-    return proc.returncode == 0
+    try:
+        proc = subprocess.run(cmd, cwd=str(REPO_ROOT), check=False)
+        return proc.returncode == 0
+    except OSError as e:
+        print(f"[ERROR] Failed to launch cargo test: {e}", file=sys.stderr)
+        return False
 
 
 def main() -> int:
@@ -498,11 +552,16 @@ def main() -> int:
         return 0
 
     db["last_updated"] = dt.date.today().isoformat()
-    COUNTRY_DB_PATH.write_text(json.dumps(db, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"[write] Updated {COUNTRY_DB_PATH.relative_to(REPO_ROOT)} ({len(changes)} merge action(s)).")
+    try:
+        COUNTRY_DB_PATH.write_text(json.dumps(db, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        print(f"[write] Updated {COUNTRY_DB_PATH.relative_to(REPO_ROOT)} ({len(changes)} merge action(s)).")
 
-    if not args.skip_cargo_test and not run_cargo_tests():
-        print("[rollback] cargo test failed; restoring previous country_scams.json!", file=sys.stderr)
+        if not args.skip_cargo_test and not run_cargo_tests():
+            print("[rollback] cargo test failed; restoring previous country_scams.json!", file=sys.stderr)
+            COUNTRY_DB_PATH.write_bytes(original_bytes)
+            return 1
+    except Exception as e:
+        print(f"[rollback] error during write/verify ({e}); restoring previous country_scams.json!", file=sys.stderr)
         COUNTRY_DB_PATH.write_bytes(original_bytes)
         return 1
 

@@ -86,8 +86,12 @@ impl EnergyVad {
             let need = (self.sample_rate as u64 * self.silence_ms as u64 / 1000) as usize;
             let min_samples =
                 (self.sample_rate as u64 * self.min_utterance_ms as u64 / 1000) as usize;
-            if self.silence_samples >= need && self.speech_samples >= min_samples {
-                return Some(self.flush());
+            if self.silence_samples >= need {
+                if self.speech_samples >= min_samples {
+                    return Some(self.flush());
+                }
+                // Discard short noise/backchannel bursts once silence confirms the utterance ended.
+                self.reset();
             }
         }
         None
@@ -225,5 +229,32 @@ impl RemoteVoiceGate {
             self.speech_samples = 0;
         }
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EnergyVad;
+
+    fn chunk_i16(val: i16, nsamples: usize) -> Vec<u8> {
+        let mut out = Vec::with_capacity(nsamples * 2);
+        for _ in 0..nsamples {
+            out.extend_from_slice(&val.to_le_bytes());
+        }
+        out
+    }
+
+    #[test]
+    fn energy_vad_resets_short_subthreshold_burst_after_silence() {
+        let mut vad = EnergyVad::new(16_000, 300.0, 400, 300, 15_000);
+        // 150ms loud (< 300ms min_utterance_ms) followed by 500ms silence (> 400ms silence_ms).
+        assert!(vad.feed(&chunk_i16(2_000, 2_400)).is_none());
+        assert!(vad.feed(&chunk_i16(0, 8_000)).is_none());
+        // A second short 150ms burst must not combine with the stale first burst to fire.
+        assert!(vad.feed(&chunk_i16(2_000, 2_400)).is_none());
+        assert!(vad.feed(&chunk_i16(0, 8_000)).is_none());
+        // A real >= 300ms utterance afterwards still flushes normally.
+        assert!(vad.feed(&chunk_i16(2_000, 5_600)).is_none());
+        assert!(vad.feed(&chunk_i16(0, 8_000)).is_some());
     }
 }

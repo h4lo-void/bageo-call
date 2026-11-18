@@ -148,11 +148,21 @@ async fn post_control_inbound(
             link: None,
             actions: Vec::new(),
         };
-        if let Some(ch) = rt
-            .notify_channels
+        let enabled: Vec<_> = rt.notify_channels.iter().filter(|c| c.enabled).collect();
+        let picked = enabled
             .iter()
-            .find(|c| c.enabled && (c.id == ch_id || c.name.eq_ignore_ascii_case(ch_id) || c.kind.eq_ignore_ascii_case(ch_id)))
-        {
+            .copied()
+            .find(|c| c.id == ch_id)
+            .or_else(|| {
+                let by_name: Vec<_> = enabled.iter().copied().filter(|c| c.name.eq_ignore_ascii_case(ch_id)).collect();
+                if !by_name.is_empty() {
+                    (by_name.len() == 1).then_some(by_name[0])
+                } else {
+                    let by_kind: Vec<_> = enabled.iter().copied().filter(|c| c.kind.eq_ignore_ascii_case(ch_id)).collect();
+                    (by_kind.len() == 1).then_some(by_kind[0])
+                }
+            });
+        if let Some(ch) = picked {
             let http = crate::calls_http::keyed_http_client();
             pushed = crate::notify::send_channel(&http, ch, &msg).await.is_ok();
         }
@@ -211,7 +221,7 @@ async fn post_mcp(State(ctrl): State<Arc<Controller>>, headers: HeaderMap, body:
 }
 
 /// Equal without telling by its timing how much of it matched.
-fn same(a: &str, b: &str) -> bool {
+pub(crate) fn same(a: &str, b: &str) -> bool {
     let (x, y) = (Sha256::digest(a.as_bytes()), Sha256::digest(b.as_bytes()));
     x.iter().zip(y.iter()).fold(0u8, |acc, (p, q)| acc | (p ^ q)) == 0
 }

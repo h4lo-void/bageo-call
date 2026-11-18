@@ -215,6 +215,7 @@ enum OverlapEnd {
 
 impl OverlapHold {
     fn reset(&mut self) {
+        self.held.clear();
         self.run_ms = 0;
         self.quiet_ms = 0;
         self.best_ms = 0;
@@ -255,8 +256,9 @@ impl OverlapHold {
             return None;
         }
         let voiced_ms = self.run_ms;
+        let held = std::mem::take(&mut self.held);
         self.reset();
-        Some((std::mem::take(&mut self.held), voiced_ms))
+        Some((held, voiced_ms))
     }
 
     /// Our reply is over (or the caller's turn is open anyway).
@@ -1182,11 +1184,17 @@ pub fn call_lang_plan(
 }
 
 /// Speech-to-text codes of languages the AI has no setting for but answers a
-/// caller in, written in a script of their own: Thai, Russian, Arabic, Hindi.
-const OTHER_LANG_STT: [&str; 4] = ["th-TH", "ru-RU", "ar-EG", "hi-IN"];
+/// caller in, written in a script of their own: Thai, Russian, Arabic, Hindi,
+/// Bengali, Tamil, Telugu.
+const OTHER_LANG_STT: [&str; 7] = ["th-TH", "ru-RU", "ar-EG", "hi-IN", "bn-BD", "ta-IN", "te-IN"];
 
-/// The speech-to-text code of a country's main language among
-/// [`OTHER_LANG_STT`] (ISO 3166 alpha-2, any case); None for any other country.
+fn has_ukrainian_letters(text: &str) -> bool {
+    text.chars()
+        .any(|c| matches!(c, 'і' | 'ї' | 'є' | 'ґ' | 'І' | 'Ї' | 'Є' | 'Ґ'))
+}
+
+/// The speech-to-text code of a country's main language when the AI has no
+/// setting for it (ISO 3166 alpha-2, any case); None for any other country.
 pub fn other_lang_stt_of_country(iso: &str) -> Option<&'static str> {
     const ARABIC: &[&str] = &[
         "sa", "ae", "eg", "jo", "kw", "qa", "bh", "om", "lb", "iq", "sy", "ye", "ly", "dz", "ma", "tn", "sd", "ps",
@@ -1195,30 +1203,48 @@ pub fn other_lang_stt_of_country(iso: &str) -> Option<&'static str> {
     match iso.as_str() {
         "th" => Some(OTHER_LANG_STT[0]),
         "ru" | "by" | "kz" | "kg" => Some(OTHER_LANG_STT[1]),
+        "ua" => Some("uk-UA"),
         c if ARABIC.contains(&c) => Some(OTHER_LANG_STT[2]),
         "in" => Some(OTHER_LANG_STT[3]),
+        "bd" => Some(OTHER_LANG_STT[4]),
+        "it" | "sm" | "va" => Some("it-IT"),
+        "id" => Some("id-ID"),
+        "vn" => Some("vi-VN"),
+        "nl" => Some("nl-NL"),
+        "pl" => Some("pl-PL"),
+        "ro" | "md" => Some("ro-RO"),
         _ => None,
     }
 }
 
-/// Which of [`OTHER_LANG_STT`] `text` is written in, by its letters: Thai,
-/// Cyrillic, Arabic or Devanagari, the one with the most letters and at least
+/// Which non-Latin script language `text` is written in, by its letters:
+/// Thai, Cyrillic (Ukrainian or Russian), Arabic, Devanagari (Hindi), Bengali,
+/// Tamil, or Telugu — the one with the most letters and at least
 /// [`OTHER_SCRIPT_MIN_LETTERS`] of them (one stray word of a speech-to-text slip,
 /// 「सात」 for 「七」, is not enough). None for anything else.
 pub fn other_script_lang(text: &str) -> Option<&'static str> {
-    let mut counts = [0usize; 4];
+    let mut counts = [0usize; 7];
     for c in text.chars().filter(|c| c.is_alphabetic()) {
         let i = match c {
             '\u{0E00}'..='\u{0E7F}' => 0,
             '\u{0400}'..='\u{04FF}' => 1,
             '\u{0600}'..='\u{06FF}' | '\u{0750}'..='\u{077F}' => 2,
             '\u{0900}'..='\u{097F}' => 3,
+            '\u{0980}'..='\u{09FF}' => 4,
+            '\u{0B80}'..='\u{0BFF}' => 5,
+            '\u{0C00}'..='\u{0C7F}' => 6,
             _ => continue,
         };
         counts[i] += 1;
     }
     let (i, n) = counts.iter().copied().enumerate().max_by_key(|&(_, n)| n)?;
-    (n >= OTHER_SCRIPT_MIN_LETTERS).then(|| OTHER_LANG_STT[i])
+    if n < OTHER_SCRIPT_MIN_LETTERS {
+        return None;
+    }
+    if i == 1 && has_ukrainian_letters(text) {
+        return Some("uk-UA");
+    }
+    Some(OTHER_LANG_STT[i])
 }
 
 /// Fewest letters of one script for [`other_script_lang`].
@@ -1535,8 +1561,11 @@ fn callee_asks_again(text: &str) -> bool {
     let t = crate::zh_tw::norm(text).to_lowercase();
     [
         "什麼", "蛤", "啥", "再說", "再講", "沒聽", "聽不", "what", "sorry", "pardon", "again", "repeat",
-        "もう一度", "なんて", "뭐라고", "다시", "qué", "perdón", "repite", "quoi", "répét", "wie bitte",
-        "nochmal", "noch mal", "o quê", "desculpa", "repete",
+        "もう一度", "なんて", "뭐라고", "다시", "qué", "perdón", "repite", "quoi", "comment", "répét",
+        "vous pouvez répéter", "wie bitte", "nochmal", "noch mal", "o quê", "desculpa", "repete",
+        "come scusi", "come prego", "come ha detto", "come?", "può ripetere", "non ho capito",
+        "sao ạ", "nói lại", "không nghe rõ", "gimana", "bisa ulangi", "kurang jelas",
+        "อะไรนะ", "พูดอีกที", "ไม่ได้ยิน",
     ]
     .iter()
     .any(|w| t.contains(w))
@@ -1944,9 +1973,19 @@ impl Outbound {
         opening: Option<crate::locale::Lang>,
         active: &crate::locale::Active,
     ) -> Value {
+        self.other_side_stt_for(langs, opening, None, active)
+    }
+
+    fn other_side_stt_for(
+        self,
+        langs: Option<&[&'static str]>,
+        opening: Option<crate::locale::Lang>,
+        extra_other: Option<&'static str>,
+        active: &crate::locale::Active,
+    ) -> Value {
         match self {
             Self::CallBack => stt_callee_config(langs),
-            Self::Errand => stt_errand_config(opening, active),
+            Self::Errand => stt_errand_config_with(opening, extra_other, active),
             Self::Incoming => stt_caller_config_for(langs, active),
         }
     }
@@ -1972,6 +2011,14 @@ fn talk_limits(persona: bool, persona_max_secs: u64) -> (u64, u64, u64) {
     }
     let cap = persona_max_secs.max(WRAP_UP_LEAD_SECS + 60);
     (cap - WRAP_UP_LEAD_SECS, cap - WRAP_UP_FORCE_LEAD_SECS, cap)
+}
+
+/// The limits of a call that stalling was released from (the check found an ordinary
+/// call): the normal call's cap, but at least a minute past `elapsed_secs`, so a call
+/// that already talked longer than that cap gets its wrap-up and a normal goodbye
+/// instead of being cut at once.
+fn released_talk_limits(persona: bool, persona_max_secs: u64, elapsed_secs: u64) -> (u64, u64, u64) {
+    talk_limits(persona, persona_max_secs.max(elapsed_secs + 60))
 }
 
 /// Persona: caller speech after a closing this long is either a farewell or new
@@ -2160,7 +2207,20 @@ fn stt_callee_config(langs: Option<&[&'static str]>) -> Value {
 /// 「國際電話」 is what a callee's English sentence came out as on a real
 /// errand, which the AI then answered in Chinese.
 fn stt_errand_config(opening: Option<crate::locale::Lang>, active: &crate::locale::Active) -> Value {
-    let langs = stt_codes(&[opening.unwrap_or(active.lang), active.notify_lang]);
+    stt_errand_config_with(opening, None, active)
+}
+
+fn stt_errand_config_with(
+    opening: Option<crate::locale::Lang>,
+    extra_other: Option<&'static str>,
+    active: &crate::locale::Active,
+) -> Value {
+    let mut langs = stt_codes(&[opening.unwrap_or(active.lang), active.notify_lang]);
+    if let Some(code) = extra_other {
+        if !langs.contains(&code) {
+            langs.push(code);
+        }
+    }
     let mut cfg = json!({ "languageCodes": langs });
     let owner = active.owner.trim();
     if !owner.is_empty() && langs.contains(&crate::locale::phrases(active.lang).stt) {
@@ -2349,6 +2409,29 @@ fn non_blocking_refused(why: &str) -> bool {
         .any(|k| w.contains(k))
 }
 
+/// What the session rotation state becomes when stalling is released (`Release`):
+/// - already rotated to the stall session (`live_is_stall`): build a normal
+///   setup (`Some(...)`) even when `appt` is `None`, re-enabling appointment
+///   tools when `appt` is `Some`, and ask for a rotation back;
+/// - still on the normal session (`!live_is_stall`): clear any pending stall
+///   `rotate_setup` and `rotate_due` so no stale rotation fires.
+fn release_rotation(
+    live_is_stall: bool,
+    setup: &Value,
+    base_prompt: &str,
+    appt: Option<&crate::appointments::ApptSession>,
+    now: chrono::DateTime<chrono::Local>,
+    appt_block_sent: bool,
+    non_blocking: bool,
+) -> (Option<Value>, bool) {
+    if !live_is_stall {
+        return (None, false);
+    }
+    let mut s = setup_with_system_prompt(setup, &call_system_prompt(base_prompt, appt, now, appt_block_sent));
+    with_appointment_tools(&mut s, appt.is_some(), non_blocking);
+    (Some(s), true)
+}
+
 /// The call's system instruction: the stored prompt, then — appointments on —
 /// their short part, or (`full`: times came up on the call) the note with the
 /// dates and the function's details that went in then, at the current local
@@ -2385,7 +2468,7 @@ fn session_prompt(prompt: &str, outbound: Outbound) -> String {
 /// it (as [`expects_carrier_intl_prompt`] reads the number), or the SIM not known.
 fn carrier_note_due(plan: &CallLangPlan) -> bool {
     match plan.sim_country.as_deref() {
-        Some(sim) => CARRIER_INTL_PROMPT_SIMS.contains(&sim) && plan.sim_local == Some(false),
+        Some(sim) => CARRIER_INTL_PROMPT_SIMS.contains(&sim) && plan.sim_local != Some(true),
         None => true,
     }
 }
@@ -2578,7 +2661,23 @@ fn ends_with_farewell(text: &str) -> bool {
         })
         .trim_end_matches(|c: char| "喔哦囉啦呢吧耶齁欸啊".contains(c))
         .to_ascii_lowercase();
-    ["掰", "拜拜", "再見", "再见"].iter().any(|m| t.ends_with(m))
+    [
+        "掰",
+        "拜拜",
+        "再見",
+        "再见",
+        "arrivederci",
+        "buona giornata",
+        "buongiornata",
+        "buonanotte",
+        "a presto",
+        "a domani",
+        "ci vediamo",
+        "stammi bene",
+        "grazie a lei",
+    ]
+    .iter()
+    .any(|m| t.ends_with(m))
         || crate::locale::ends_with_farewell(text, 0)
 }
 
@@ -3218,15 +3317,18 @@ fn persona_idle_nudge_client_content() -> String {
     crate::prompts::client_turn(&crate::prompts::current().kick_idle)
 }
 
-/// A mid-call instruction turn or note (`clientContent`) with the call's
-/// language named after its last text ([`crate::prompts::call_language_note`],
-/// in the instructions' language): the model holds the call's language
-/// ([`crate::lang_lock`]) instead of taking the instruction's or a stray word's.
-/// None (a language without a setting) or anything else: unchanged.
-fn in_call_language(payload: String, call: Option<crate::locale::Lang>) -> String {
-    let Some(call) = call else {
-        return payload;
-    };
+fn in_spoken_language(payload: String, spoken: Option<crate::lang_lock::Spoken>) -> String {
+    match spoken {
+        None => payload,
+        Some(crate::lang_lock::Spoken::Lang(call)) => in_call_language(payload, Some(call)),
+        Some(crate::lang_lock::Spoken::Other) => append_language_note(
+            payload,
+            &crate::prompts::other_call_language_note(crate::locale::current()),
+        ),
+    }
+}
+
+fn append_language_note(payload: String, note: &str) -> String {
     let Ok(mut v) = serde_json::from_str::<Value>(&payload) else {
         return payload;
     };
@@ -3240,15 +3342,29 @@ fn in_call_language(payload: String, call: Option<crate::locale::Lang>) -> Strin
         .and_then(|p| p.get_mut("text"));
     match text {
         Some(Value::String(text)) => {
-            let note = crate::prompts::call_language_note(crate::locale::current(), call);
             if text.contains(note.trim()) {
                 return payload;
             }
-            text.push_str(&note);
+            text.push_str(note);
             v.to_string()
         }
         _ => payload,
     }
+}
+
+/// A mid-call instruction turn or note (`clientContent`) with the call's
+/// language named after its last text ([`crate::prompts::call_language_note`],
+/// in the instructions' language): the model holds the call's language
+/// ([`crate::lang_lock`]) instead of taking the instruction's or a stray word's.
+/// None (a language without a setting) or anything else: unchanged.
+fn in_call_language(payload: String, call: Option<crate::locale::Lang>) -> String {
+    let Some(call) = call else {
+        return payload;
+    };
+    append_language_note(
+        payload,
+        &crate::prompts::call_language_note(crate::locale::current(), call),
+    )
 }
 
 /// Drop STT placeholders such as `<no speech detected>` (the AI's silent turn
@@ -4861,7 +4977,12 @@ pub async fn run_session(
                 // and stall / carrier-prompt / bye detection all read this STT; a caller
                 // from abroad gets their own language first (or auto-detect).
                 // An appointment's call-back: no vocabulary for its callee (Outbound::other_side_stt).
-                "inputAudioTranscription": outbound.other_side_stt(lang_plan.caller_stt.as_deref(), lang_plan.opening, &crate::locale::active()),
+                "inputAudioTranscription": outbound.other_side_stt_for(
+                    lang_plan.caller_stt.as_deref(),
+                    lang_plan.opening,
+                    lang_plan.caller_other_stt,
+                    &crate::locale::active(),
+                ),
                 "outputAudioTranscription": stt_ai_config(opening_lang, lang_plan.caller_other_stt),
                 "realtimeInputConfig": realtime_input_config(server_vad)
             }
@@ -5306,6 +5427,7 @@ pub async fn run_session(
     let mut chunks_at_last_caller_eou: u64 = 0;
     let mut downlink_pcm_bytes: u64 = prebuf_flushed_bytes;
     let mut bytes_at_last_caller_eou: u64 = 0;
+    let mut turn_base_bytes: u64 = prebuf_flushed_bytes;
     let mut out_tx_window = String::with_capacity(512);
     let mut in_tx_window = String::with_capacity(512);
     let mut end_reason = SessionEndReason::WsClosed;
@@ -5758,11 +5880,11 @@ pub async fn run_session(
                 }
             }
         }
-        // The check after stalling started says an ordinary call, and is sure: the
-        // AI goes back to the normal prompt and model at the next pause (the
-        // rotation carries the call so far without the stalling note) and to the
-        // normal call's cap. Appointments were dropped when stalling started: the
-        // normal session goes on without them.
+        // The check after stalling started says an ordinary call, and is sure: if
+        // the session already rotated to stalling, switch back to the normal
+        // prompt, model and (when enabled) appointment tools at the next pause;
+        // if not, cancel any pending stall rotation. Either way, restore the
+        // normal call's cap without cutting an already longer call at once.
         if std::mem::take(&mut stall_release_now)
             && stall_on
             && !stall.as_ref().is_some_and(|c| c.force_start)
@@ -5781,15 +5903,22 @@ pub async fn run_session(
                 stall_nudge_chunks = None;
                 stall_nudge_at = None;
                 repeat_guard.clear();
-                rotate_setup = appt.as_ref().map(|_| {
-                    let mut s = setup_with_system_prompt(&setup, &call_system_prompt(&base_prompt, None, chrono::Local::now(), false));
-                    with_appointment_tools(&mut s, false, false);
-                    s
-                });
-                if live_is_stall {
-                    rotate_due = Some(tokio::time::Instant::now() + Duration::from_secs(STALL_PROMPT_SWITCH_FORCE_SECS));
-                }
-                (wrap_secs, wrap_force_secs, max_secs) = talk_limits(persona, persona_max_secs);
+                let (next_setup, need_rotate) = release_rotation(
+                    live_is_stall,
+                    &setup,
+                    &base_prompt,
+                    appt.as_ref(),
+                    chrono::Local::now(),
+                    appt_block_sent,
+                    non_blocking,
+                );
+                rotate_setup = next_setup;
+                rotate_due = need_rotate
+                    .then(|| tokio::time::Instant::now() + Duration::from_secs(STALL_PROMPT_SWITCH_FORCE_SECS));
+                // The call may have talked past the normal cap while it was thought a stall:
+                // it gets a normal wrap-up and goodbye, not an instant cut.
+                (wrap_secs, wrap_force_secs, max_secs) =
+                    released_talk_limits(persona, persona_max_secs, session_start.elapsed().as_secs());
                 info!(
                     "Persona stall released serial={serial} talk_s={} switch_back={live_is_stall} cap_s={max_secs} — the check found an ordinary call",
                     session_start.elapsed().as_secs()
@@ -5895,14 +6024,24 @@ pub async fn run_session(
                     next_setup
                 };
                 let next_prompt_chars = setup_system_prompt(next_setup).chars().count();
-                let opened = match tokio::time::timeout(
-                    Duration::from_secs(10),
-                    open_live_with_history(&url, next_setup, &history, serial),
-                )
-                .await
-                {
-                    Ok(r) => r,
-                    Err(_) => Err(anyhow::anyhow!("gemini rotate timed out after 10s")),
+                let opened = {
+                    let rotate_fut = open_live_with_history(&url, next_setup, &history, serial);
+                    tokio::pin!(rotate_fut);
+                    let deadline = tokio::time::sleep(Duration::from_secs(10));
+                    tokio::pin!(deadline);
+                    loop {
+                        if cancel.load(Ordering::Relaxed) {
+                            info!("Gemini Live rotate aborted (hangup) serial={serial}");
+                            let _ = sink.send(WsMessage::Close(None)).await;
+                            let _ = sink.close().await;
+                            return Ok(resolve_cancel(goodbye_pending));
+                        }
+                        tokio::select! {
+                            r = &mut rotate_fut => break r,
+                            _ = &mut deadline => break Err(anyhow::anyhow!("gemini rotate timed out after 10s")),
+                            _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+                        }
+                    }
                 };
                 match opened {
                     Ok((new_sink, new_stream)) => {
@@ -5922,6 +6061,7 @@ pub async fn run_session(
                         post_rotate_chunks = Some(audio_chunks_out);
                         post_rotate_rekicked = false;
                         turn_out_text.clear();
+                        turn_base_bytes = delivered_bytes.load(Ordering::Relaxed);
                         // Calls asked on the old socket cannot be answered on this one.
                         live_gen += 1;
                         repeat_guard.interrupted();
@@ -5966,7 +6106,7 @@ pub async fn run_session(
                             stall_turn_kept = true;
                             match send_text_before_deadline(
                                 &mut sink,
-                                in_call_language(persona_stall_keep_with_retain(true, &mut stall_engine, serial), call_language.lang()),
+                                in_spoken_language(persona_stall_keep_with_retain(true, &mut stall_engine, serial), Some(call_language.spoken())),
                                 tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                 "gemini rotate stall keep send",
                             )
@@ -5981,7 +6121,7 @@ pub async fn run_session(
                             // Forced switch while a reply was owed: ask for it on the new socket.
                             let _ = send_text_before_deadline(
                                 &mut sink,
-                                in_call_language(persona_resume_reply_client_content(), call_language.lang().filter(|_| errand.is_none())),
+                                in_spoken_language(persona_resume_reply_client_content(), errand.is_none().then(|| call_language.spoken())),
                                 tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                 "gemini rotate reply kick send",
                             )
@@ -5998,6 +6138,9 @@ pub async fn run_session(
                                 .and_then(|m| m.as_str())
                                 .unwrap_or("?")
                         );
+                        if !stall_on {
+                            rotate_setup = None;
+                        }
                     }
                     Err(e) => {
                         rotate_fails += 1;
@@ -6042,6 +6185,7 @@ pub async fn run_session(
                         .unwrap_or_default();
                     out_tx_window.clear();
                     turn_out_text.clear();
+                    turn_base_bytes = delivered_bytes.load(Ordering::Relaxed);
                     first_delivery_deadline = first_delivery_deadline.max(now + FIRST_DELIVERY_TIMEOUT);
                     info!(
                         "Gemini Live intl caller serial={serial} — line talking before our opening (carrier prompt): dropped it ({dropped_ms}ms {dropped:?}); the model answers after the prompt"
@@ -6138,6 +6282,7 @@ pub async fn run_session(
                     };
                     out_tx_window.clear();
                     turn_out_text.clear();
+                    turn_base_bytes = delivered_bytes.load(Ordering::Relaxed);
                     cb_held_text.clear();
                     // The model is told nobody heard it, so it does not count it as said.
                     let told = send_text_before_deadline(
@@ -6218,8 +6363,14 @@ pub async fn run_session(
             }
         }
         fd_tick = fd_now;
-        // An errand on a voice menu: the AI stays quiet on purpose.
-        let fd_action = if intl_gate != IntlGate::Open || callback_waiting || errand_menu_since.is_some() {
+        // An errand on a voice menu, or a caller talking continuously: pause first-delivery kicks/timeouts.
+        let caller_talking = activity_open
+            || last_caller_voice_at.is_some_and(|t| t.elapsed() < FIRST_DELIVERY_CALLER_HOLD);
+        let fd_action = if intl_gate != IntlGate::Open
+            || callback_waiting
+            || errand_menu_since.is_some()
+            || (delivered_bytes.load(Ordering::Relaxed) == 0 && caller_talking)
+        {
             FirstDeliveryAction::Wait
         } else {
             first_delivery_action(
@@ -6421,7 +6572,7 @@ pub async fn run_session(
         // Persona: near the safety cap, tell the model to say it has other things
         // to do. Wait for a gap (caller not talking, model audio drained) unless
         // forced.
-        if persona && !wrap_up_sent && !goodbye_pending {
+        if (persona || errand.is_some()) && !wrap_up_sent && !goodbye_pending {
             let talk = session_start.elapsed();
             let gap = !activity_open
                 && play_head.drained_for(Duration::from_millis(300), PLAYER_DRAIN_SLACK_BYTES);
@@ -6431,11 +6582,11 @@ pub async fn run_session(
                 wrap_up_sent = true;
                 repeat_guard.clear();
                 let nudge = if stall_on {
-                    in_call_language(persona_stall_wrap_up_client_content(), call_language.lang())
+                    in_spoken_language(persona_stall_wrap_up_client_content(), Some(call_language.spoken()))
                 } else if errand.is_some() {
                     crate::errands::wrap_up_client_content()
                 } else {
-                    in_call_language(persona_wrap_up_client_content(), call_language.lang())
+                    in_spoken_language(persona_wrap_up_client_content(), Some(call_language.spoken()))
                 };
                 model_turn_pending = true;
                 match send_text_before_deadline(
@@ -6473,7 +6624,7 @@ pub async fn run_session(
                     stall_tx.clear();
                     match send_text_before_deadline(
                         &mut sink,
-                        in_call_language(persona_stall_keep_with_retain(false, &mut stall_engine, serial), call_language.lang()),
+                        in_spoken_language(persona_stall_keep_with_retain(false, &mut stall_engine, serial), Some(call_language.spoken())),
                         tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                         "gemini persona stall keep send",
                     )
@@ -6589,9 +6740,9 @@ pub async fn run_session(
             let nudge = if stall_quiet {
                 stall_nudge_chunks = Some(audio_chunks_out);
                 stall_nudge_at = Some(tokio::time::Instant::now());
-                in_call_language(persona_stall_idle_nudge_client_content(), call_language.lang().filter(|_| errand.is_none()))
+                in_spoken_language(persona_stall_idle_nudge_client_content(), errand.is_none().then(|| call_language.spoken()))
             } else {
-                in_call_language(persona_idle_nudge_client_content(), call_language.lang().filter(|_| errand.is_none()))
+                in_spoken_language(persona_idle_nudge_client_content(), errand.is_none().then(|| call_language.spoken()))
             };
             match send_text_before_deadline(
                 &mut sink,
@@ -7001,7 +7152,7 @@ pub async fn run_session(
                                         };
                                         if ctl.hold_said_at().is_none() && hold {
                                             info!("Whitelist urgent call: the AI said its hold-on line serial={serial}");
-                                            ctl.note_hold_line();
+                                            ctl.note_hold_line_from(turn_base_bytes);
                                         }
                                         if caller_urgent {
                                             push_tx_window(&mut ai_after_urgent, s, 800);
@@ -7009,7 +7160,7 @@ pub async fn run_session(
                                                 info!(
                                                     "Whitelist urgent call: the AI said the same line twice after the urgent words serial={serial} — taken as its hold-on line"
                                                 );
-                                                ctl.note_hold_line();
+                                                ctl.note_hold_line_from(turn_base_bytes);
                                             }
                                         }
                                         if ctl.hold_said_at().is_some() && !urgent_transfer_fired {
@@ -7021,7 +7172,8 @@ pub async fn run_session(
                                                     caller_text_all.as_str()
                                                 };
                                                 info!(
-                                                    "Whitelist urgent call: AI hold-on line triggered urgent transfer/alert serial={serial} text={said}"
+                                                    "Whitelist urgent call: AI hold-on line triggered urgent transfer/alert serial={serial} chars={}",
+                                                    said.chars().count()
                                                 );
                                                 (ut.0)(said);
                                             }
@@ -7033,7 +7185,8 @@ pub async fn run_session(
                                             if is_urgent_whitelist_turn(&in_tx_window) {
                                                 urgent_transfer_fired = true;
                                                 info!(
-                                                    "Whitelist caller reported an urgent matter serial={serial} text={in_tx_window} — triggering urgent transfer/alert"
+                                                    "Whitelist caller reported an urgent matter serial={serial} chars={} — triggering urgent transfer/alert",
+                                                    in_tx_window.chars().count()
                                                 );
                                                 (ut.0)(&in_tx_window);
                                             }
@@ -7121,7 +7274,7 @@ pub async fn run_session(
                                                     model_turn_pending = true;
                                                     if let Err(e) = send_text_before_deadline(
                                                         &mut sink,
-                                                        in_call_language(persona_stall_keep_with_retain(true, &mut stall_engine, serial), call_language.lang()),
+                                                        in_spoken_language(persona_stall_keep_with_retain(true, &mut stall_engine, serial), Some(call_language.spoken())),
                                                         tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                                         "gemini persona stall keep send",
                                                     )
@@ -7223,7 +7376,7 @@ pub async fn run_session(
                                             && crate::urgent_call::is_hold_line(&turn_out_text)
                                         {
                                             info!("Whitelist urgent call: the AI said its hold-on line serial={serial}");
-                                            ctl.note_hold_line();
+                                            ctl.note_hold_line_from(turn_base_bytes);
                                             if !urgent_transfer_fired {
                                                 urgent_transfer_fired = true;
                                                 if let Some(ut) = stall.as_ref().and_then(|c| c.urgent_transfer.as_ref()) {
@@ -7688,13 +7841,14 @@ pub async fn run_session(
                                     repeat_guard.turn_complete();
                                     model_turn_pending = owed;
                                     turn_out_text.clear();
+                                    turn_base_bytes = delivered_bytes.load(Ordering::Relaxed);
                                     out_leak_turn = false;
                                     if owed {
                                         // The caller spoke during it: it may have been their
                                         // answer — ask for the reply again, as after a switch.
                                         match send_text_before_deadline(
                                             &mut sink,
-                                            in_call_language(persona_resume_reply_client_content(), call_language.lang().filter(|_| errand.is_none())),
+                                            in_spoken_language(persona_resume_reply_client_content(), errand.is_none().then(|| call_language.spoken())),
                                             tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                             "gemini dropped-turn reply kick send",
                                         )
@@ -7715,6 +7869,7 @@ pub async fn run_session(
                                 } else if gated_turn {
                                     intl_gated_turn = false;
                                     turn_out_text.clear();
+                                    turn_base_bytes = delivered_bytes.load(Ordering::Relaxed);
                                     out_leak_turn = false;
                                     info!(
                                         "Gemini Live turnComplete of a turn kept off the line serial={serial} gate={intl_gate:?} voice_menu={} — turn checks skipped",
@@ -7743,7 +7898,7 @@ pub async fn run_session(
                                                     turn_out_text.chars().take(60).collect();
                                                 match send_text_before_deadline(
                                                     &mut sink,
-                                                    in_call_language(persona_repeat_line_client_content(), call_language.lang().filter(|_| errand.is_none())),
+                                                    in_spoken_language(persona_repeat_line_client_content(), errand.is_none().then(|| call_language.spoken())),
                                                     tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                                     "gemini post-rotate re-kick send",
                                                 )
@@ -7837,7 +7992,7 @@ pub async fn run_session(
                                         stall_tx.clear();
                                         match send_text_before_deadline(
                                             &mut sink,
-                                            in_call_language(persona_stall_keep_with_retain(true, &mut stall_engine, serial), call_language.lang()),
+                                            in_spoken_language(persona_stall_keep_with_retain(true, &mut stall_engine, serial), Some(call_language.spoken())),
                                             tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                             "gemini persona stall keep send",
                                         )
@@ -7881,7 +8036,7 @@ pub async fn run_session(
                                                 } else {
                                                     match send_text_before_deadline(
                                                         &mut sink,
-                                                        in_call_language(crate::stall_script::client_note(&cue.text), call_language.lang()),
+                                                        in_spoken_language(crate::stall_script::client_note(&cue.text), Some(call_language.spoken())),
                                                         tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                                         "gemini persona stall cue send",
                                                     )
@@ -7942,7 +8097,7 @@ pub async fn run_session(
                                         if !note.is_empty() {
                                             match send_text_before_deadline(
                                                 &mut sink,
-                                                in_call_language(crate::stall_script::client_note(&note), call_language.lang()),
+                                                in_spoken_language(crate::stall_script::client_note(&note), Some(call_language.spoken())),
                                                 tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                                 "gemini persona scenario / appointment note send",
                                             )
@@ -7997,6 +8152,7 @@ pub async fn run_session(
                                         }
                                     }
                                     turn_out_text.clear();
+                                    turn_base_bytes = delivered_bytes.load(Ordering::Relaxed);
                                     out_leak_turn = false;
                                 }
                                 if is_transcript_only_turn(
@@ -8252,6 +8408,26 @@ pub async fn run_session(
                     tool_answer_at = Some(now);
                     tool_answer_chunks = audio_chunks_out;
                 }
+                if done.name == crate::appointments::PROPOSE && !appt_block_sent {
+                    if let Some(a) = appt.as_ref() {
+                        appt_block_sent = true;
+                        let note = a.prompt_note(chrono::Local::now());
+                        let payload = in_spoken_language(
+                            crate::stall_script::client_note(&note),
+                            Some(call_language.spoken()),
+                        );
+                        if let Err(e) = send_text_before_deadline(
+                            &mut sink,
+                            payload,
+                            tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
+                            "gemini propose_appointment fallback note send",
+                        )
+                        .await
+                        {
+                            warn!("Persona propose_appointment fallback note failed serial={serial}: {e:#}");
+                        }
+                    }
+                }
             }
             // An errand: what the owner typed on the web console during the call.
             said = async {
@@ -8503,6 +8679,7 @@ pub async fn run_session(
                                                 model_turn_pending = true;
                                                 chunks_at_last_caller_eou = audio_chunks_out;
                                                 bytes_at_last_caller_eou = downlink_pcm_bytes;
+                                                turn_base_bytes = delivered_bytes.load(Ordering::Relaxed);
                                                 last_caller_eou_at = Some(now);
                                             }
                                             info!(
@@ -8772,6 +8949,7 @@ pub async fn run_session(
                                 model_turn_pending = true;
                                 chunks_at_last_caller_eou = audio_chunks_out;
                                 bytes_at_last_caller_eou = downlink_pcm_bytes;
+                                turn_base_bytes = delivered_bytes.load(Ordering::Relaxed);
                                 last_caller_eou_at = Some(tokio::time::Instant::now());
                                 info!(
                                     "Gemini Live {} serial={serial} silence_ms={silence_ms} voiced_ms={voiced_ms} activity_ms={activity_ms} forced={force_end} short={} raw_max={turn_raw_max:.0} floor={:.0} n={local_eou_sent} chunks_out={audio_chunks_out}",
@@ -8919,6 +9097,9 @@ mod tests {
         let unknown = call_lang_plan("0912345678", None, Lang::ZhTw, "886", &none);
         assert_eq!(unknown.region, Some(Region::Tw));
         assert!(carrier_note_due(&unknown));
+        // Hidden caller on a Taiwan SIM still keeps the carrier prompt note.
+        let hidden_tw = call_lang_plan("", Some("tw"), Lang::ZhTw, "886", &none);
+        assert!(carrier_note_due(&hidden_tw));
         // A ring that guessed no SIM still serves the local call it picks up.
         assert_eq!(unknown, local);
         // Another region is another prompt.
@@ -9250,6 +9431,9 @@ mod tests {
         let cfg = Outbound::Errand.other_side_stt(None, Some(Lang::En), &en_only);
         assert_eq!(cfg["languageCodes"], json!(stt_codes(&[Lang::En])));
         assert!(cfg.get("customVocabulary").is_none(), "{cfg}");
+        // Non-setting target country adds its BCP-47 hint for the callee side.
+        let in_cfg = Outbound::Errand.other_side_stt_for(None, None, Some("hi-IN"), &me);
+        assert_eq!(in_cfg["languageCodes"], json!(["zh-TW", "hi-IN"]));
     }
 
     #[test]
@@ -10320,8 +10504,12 @@ mod tests {
             // Once only.
             let twice = in_call_language(in_call_language(k.clone(), call.lang()), call.lang());
             assert_eq!(text_of(&twice).matches("這通電話對方講").count(), 1);
-            // A language without a setting: left as it is.
+            // A language without a setting: in_call_language keeps it unchanged (for
+            // callers expecting None), while in_spoken_language adds the generic note.
             assert_eq!(in_call_language(k.clone(), None), *k);
+            let other_t = text_of(&in_spoken_language(k.clone(), Some(crate::lang_lock::Spoken::Other)));
+            assert!(other_t.contains("對方正在講的語言"), "{other_t}");
+            assert_eq!(in_spoken_language(k.clone(), None), *k);
         }
         // The caller really switched to English (two whole turns): English from then on.
         call.caller_turn("Sorry, can you speak English? I don't understand.");
@@ -10712,6 +10900,64 @@ mod tests {
     }
 
     #[test]
+    fn a_call_released_from_stalling_after_the_normal_cap_still_gets_a_wrap_up() {
+        // Early release: the normal cap as before.
+        assert_eq!(released_talk_limits(true, 5 * 60, 90), talk_limits(true, 5 * 60));
+        // Released at 8 minutes with a 5-minute normal cap: a minute left, wrap-up inside it.
+        let (w, f, m) = released_talk_limits(true, 5 * 60, 8 * 60);
+        assert_eq!(m, 8 * 60 + 60);
+        assert!(w > 8 * 60 && w < f && f < m, "{w} {f} {m}");
+        // A cap never shrinks below what was already talked, at any length.
+        for elapsed in [0, 299, 300, 301, 1500, 1800] {
+            let (w, f, m) = released_talk_limits(true, 5 * 60, elapsed);
+            assert!(m >= elapsed + 60 && w < f && f < m, "{elapsed}: {w} {f} {m}");
+        }
+    }
+
+    #[test]
+    fn release_rotation_switches_back_only_when_already_on_stall_session() {
+        let now = chrono::Local::now();
+        let think = "gemini-3.8-live-extended-thinking";
+        let setup = json!({"setup": {
+            "model": format!("models/{think}"),
+            "generationConfig": {"responseModalities": ["AUDIO"], "thinkingConfig": {"thinkingLevel": "low"}},
+            "systemInstruction": {"parts": [{"text": "一般"}]}
+        }});
+        let mut rt = crate::settings_store::RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        rt.appointment_mode = "confirm".into();
+        let appt = crate::appointments::ApptSession::for_call(&rt, "0912345678").unwrap();
+
+        // Still on the normal session (!live_is_stall): cancel pending stall rotation, whether appt is off or on.
+        assert_eq!(release_rotation(false, &setup, "一般", None, now, false, false), (None, false));
+        assert_eq!(release_rotation(false, &setup, "一般", Some(&appt), now, false, true), (None, false));
+
+        // Already on the stall session (live_is_stall) without appointments: ALWAYS Some(...) to revert model/prompt, no tools.
+        let (back_plain, need_rotate) = release_rotation(true, &setup, "一般", None, now, false, false);
+        assert!(need_rotate);
+        let back_plain = back_plain.expect("must rotate back even with appt=None");
+        assert_eq!(back_plain.pointer("/setup/model"), Some(&json!(format!("models/{think}"))));
+        assert_eq!(back_plain.pointer("/setup/generationConfig/thinkingConfig/thinkingLevel"), Some(&json!("low")));
+        assert_eq!(back_plain.pointer("/setup/systemInstruction/parts/0/text"), Some(&json!("一般")));
+        assert!(back_plain.pointer("/setup/tools").is_none());
+
+        // Already on the stall session (live_is_stall) with appointments: revert prompt/model AND re-enable appointment tools.
+        let (back_appt, need_rotate) = release_rotation(true, &setup, "一般", Some(&appt), now, false, true);
+        assert!(need_rotate);
+        let back_appt = back_appt.expect("must rotate back with appt=Some");
+        assert_eq!(back_appt.pointer("/setup/model"), Some(&json!(format!("models/{think}"))));
+        assert!(setup_system_prompt(&back_appt).starts_with("一般\n[Appointments"));
+        assert_eq!(back_appt.pointer("/setup/tools/0/functionDeclarations/1/behavior"), Some(&json!("NON_BLOCKING")));
+
+        // Blocking fallback and full appointment note when appt_block_sent was true.
+        let (back_blocking, need_rotate) = release_rotation(true, &setup, "一般", Some(&appt), now, true, false);
+        assert!(need_rotate);
+        let back_blocking = back_blocking.unwrap();
+        assert!(setup_system_prompt(&back_blocking).starts_with("一般\n\n[Appointments"));
+        assert!(!back_blocking.to_string().contains("NON_BLOCKING"));
+        assert!(back_blocking.pointer("/setup/tools/0/functionDeclarations/0/name").is_some());
+    }
+
+    #[test]
     fn persona_prompt_hears_matters_out() {
         let base = default_persona_prompt();
         // Deflection replies came from these example lines.
@@ -11026,14 +11272,21 @@ mod tests {
         // SIM or number unknown: not known to be local.
         assert_eq!(call_lang_plan("0912345678", None, Lang::ZhTw, "886", &none).sim_local, None);
         assert_eq!(call_lang_plan("", Some("us"), Lang::ZhTw, "886", &us_en).prompt_lang, None);
-        // Thai, Russian, Arabic and Indian numbers: their language for the AI's own voice.
+        // Thai, Russian, Arabic, Hindi, Italian, Indonesian, Vietnamese, etc.: their language for the AI's own voice.
         for (n, code) in [
             ("+66812345678", Some("th-TH")),
             ("+79161234567", Some("ru-RU")),
             ("+966501234567", Some("ar-EG")),
             ("+201001234567", Some("ar-EG")),
             ("+919812345678", Some("hi-IN")),
-            ("+84912345678", None),
+            ("+390612345678", Some("it-IT")),
+            ("+62812345678", Some("id-ID")),
+            ("+84912345678", Some("vi-VN")),
+            ("+8801712345678", Some("bn-BD")),
+            ("+380501234567", Some("uk-UA")),
+            ("+31201234567", Some("nl-NL")),
+            ("+48221234567", Some("pl-PL")),
+            ("+40211234567", Some("ro-RO")),
             ("+12025550143", None),
             ("+81312345678", None),
         ] {
@@ -11048,8 +11301,12 @@ mod tests {
     fn thai_russian_arabic_and_hindi_are_told_by_their_letters() {
         assert_eq!(other_script_lang("สวัสดีค่ะ อยากจองโต๊ะค่ะ"), Some("th-TH"));
         assert_eq!(other_script_lang("Здравствуйте, я хотел бы записаться"), Some("ru-RU"));
+        assert_eq!(other_script_lang("Добрий день, підкажіть будь ласка"), Some("uk-UA"));
         assert_eq!(other_script_lang("مرحبا، أريد حجز موعد"), Some("ar-EG"));
         assert_eq!(other_script_lang("नमस्ते, मुझे अपॉइंटमेंट चाहिए"), Some("hi-IN"));
+        assert_eq!(other_script_lang("হ্যালো, আমি কথা বলতে চাই"), Some("bn-BD"));
+        assert_eq!(other_script_lang("வணக்கம், நான் பேச வேண்டும்"), Some("ta-IN"));
+        assert_eq!(other_script_lang("నమస్కారం, నేను మాట్లాడాలి"), Some("te-IN"));
         // A stray word of a speech-to-text slip is not enough; the nine are none of them.
         assert_eq!(other_script_lang("我們訂सात點"), None);
         assert_eq!(other_script_lang("喂？你好，請問哪位？ Hello, bonjour, 네, はい"), None);
@@ -11919,6 +12176,12 @@ mod tests {
             hold.end(t),
             OverlapEnd::Answer { voiced_ms: 300, open: Some((300, 0)), .. }
         ));
+        // Forced reset clears held audio so stale caller syllables cannot bleed across sessions.
+        assert!(overlap_feed(&mut hold, &mut t, &[1, 1, 1]).is_none());
+        assert!(!hold.held.is_empty());
+        hold.reset();
+        assert!(hold.held.is_empty());
+        assert!(hold.is_idle());
     }
 
     #[test]

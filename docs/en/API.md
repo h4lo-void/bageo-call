@@ -293,7 +293,7 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 | `DELETE /calls/api/sms/thread?number=<number or key>` | Deletes one conversation: `{ok: true, removed: N}`. |
 | `GET /calls/api/quick-action` · `POST /calls/api/quick-action` | Signed one-tap action links included in notifications across all 32 channels (`?act=confirm\|ignore\|block\|stall\|white&target=<id_or_number>&sig=<hmac>`). Opening a link (`GET`) only shows a confirmation page; the action runs when you press the button on that page (`POST`). A link stops working after 7 days. Verified with HMAC-SHA256 so no console login is needed; localized in all 9 languages. |
 | `POST /calls/api/control/inbound` | Universal chat command webhook, for example `{"text": "calls 5", "user": "owner", "channel": "line"}`. Runs a chat command and returns `{ok, text}` in your notification language. |
-| `GET /calls/api/auth-status` · `POST /calls/api/initial-password` | Public status check (`{ok, password_required, needs_initial_password_setup}`) and first-time password setup (`{"password": "..."}`, allowed only when no password is set yet). |
+| `GET /calls/api/auth-status` · `POST /calls/api/initial-password` | Public status check (`{ok, password_set, authenticated, prompt_initial, language}`) and first-time password setup (`{"password": "..."}` or `{"skip": true}`, allowed before any password/token is set). |
 
 Details for `POST /calls/api/notify/test`:
 
@@ -303,7 +303,7 @@ Details for `POST /calls/api/notify/test`:
 
 `POST /calls/api/control/inbound` works with Slack, Discord, LINE, WeCom, DingTalk, Feishu/Lark, Mattermost, Rocket.Chat, Zulip, Matrix, Nextcloud Talk, Synology Chat, Home Assistant, n8n, or curl.
 
-Chat commands accepted by `POST /calls/api/control/inbound`: `status`, `calls`, `call`, `todos`, `accept`, `decline`, `errand`, `errands`, `say`, `cancel`, `phone`, `block`, `stall`, `white`, `unblock`, `help`.
+Chat commands accepted by `POST /calls/api/control/inbound`: `help`, `status`, `calls`, `call`, `tasks`, `confirm`, `ignore`, `errand`, `errands`, `cancel`, `say`, `answer`, `mode`, `contacts`, `block`, `stall`, `white`, `unblock` (see [Chat commands](CHAT_COMMANDS.md#commands)).
 
 With the MCP token ([MCP](MCP.md)), this API does only what `mcp_calls` allows. While it is `off` (the default), the token can look things up but cannot change anything through a command.
 

@@ -313,3 +313,40 @@ fn who_an_inbound_request_is_from() {
     rt.mcp_token = String::new();
     assert_eq!(inbound_caller(&rt, "", ""), Some(ApiCaller::Owner), "no password and no token: as open as the console");
 }
+
+#[tokio::test]
+async fn inbound_reply_push_skips_ambiguous_kind_and_matches_id_or_unique_name() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        while let Ok((mut sock, _)) = listener.accept().await {
+            let mut buf = [0u8; 2048];
+            let _ = sock.read(&mut buf).await;
+            let _ = sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok").await;
+        }
+    });
+    let url = format!("http://{addr}/hook");
+    let rig = Rig::new();
+    rig.set(json!({"notify_channels": [
+        {"id": "wh-1", "kind": "webhook", "name": "Ops", "enabled": true, "url": url},
+        {"id": "wh-2", "kind": "webhook", "name": "Alerts", "enabled": true, "url": url},
+    ]}));
+    let c = rig.controller();
+    let call_reply = |ch: &str| {
+        let mut h = HeaderMap::new();
+        h.insert("authorization", HeaderValue::from_str(&format!("Bearer {TOKEN}")).unwrap());
+        let req = InboundCommandReq { text: "/status".into(), channel_id: ch.into(), sender_id: "".into(), reply: true, token: String::new() };
+        post_control_inbound(axum::extract::State(c.clone()), h, axum::Json(req))
+    };
+    let body_of = |r: axum::response::Response| async move {
+        let b = axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap();
+        serde_json::from_slice::<Value>(&b).unwrap()
+    };
+
+    // Ambiguous kind across 2 enabled webhooks must not push blindly.
+    assert_eq!(body_of(call_reply("webhook").await).await["pushed"], false);
+    // Unique name and exact id both push cleanly.
+    assert_eq!(body_of(call_reply("Alerts").await).await["pushed"], true);
+    assert_eq!(body_of(call_reply("wh-1").await).await["pushed"], true);
+}

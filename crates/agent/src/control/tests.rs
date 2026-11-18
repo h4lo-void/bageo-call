@@ -570,3 +570,8 @@ fn the_status_texts_say_bageo_and_not_the_agent() {
         assert!(status.is_some(), "{lang:?}: the status line names Bageo");
     }
 }
+
+#[test]
+fn words_fmt_does_not_reexpand_placeholders_inside_earlier_arguments() {
+    assert_eq!(words::fmt("{1}: {2}", &["literal {2}", "real"]), "literal {2}: real");
+}

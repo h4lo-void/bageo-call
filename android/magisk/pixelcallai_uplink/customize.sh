@@ -11,6 +11,11 @@
 
 ui_print "- pixelcallai_uplink: priv-app + telephony uplink permissions"
 
+if pm path com.pixelcallai.streamer 2>/dev/null | grep -q '^package:/data/app/'; then
+  ui_print "! FATAL: user-installed com.pixelcallai.streamer detected"
+  abort "! Uninstall user-installed com.pixelcallai.streamer before flashing module"
+fi
+
 if [ -f "$MODPATH/inject" ]; then
   chmod 755 "$MODPATH/inject"
 fi
@@ -38,7 +43,8 @@ if [ -f "$PERM" ]; then
   chcon u:object_r:system_file:s0 "$PERM" 2>/dev/null || true
   ui_print "- privapp-permissions XML present"
 else
-  ui_print "! WARNING: privapp-permissions XML missing"
+  ui_print "! FATAL: privapp-permissions XML missing — aborting module install"
+  abort "! privapp-permissions XML missing"
 fi
 
 ui_print "- priv-app APK: ${APK_SIZE} bytes"

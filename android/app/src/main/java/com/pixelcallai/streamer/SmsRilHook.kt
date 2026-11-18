@@ -58,20 +58,43 @@ class SmsRilHook : IXposedHookLoadPackage {
     private fun captureIntent(intent: Intent) {
         val pdus = intent.getSerializableExtra("pdus") as? Array<*> ?: return
         val format = intent.getStringExtra("format")
-        decode(pdus, format)
+        decode(pdus, format, subIdOf(intent))
     }
 
     private fun captureTracker(tracker: Any) {
         try {
+            // One part of a longer message: the assembled message is captured when it is
+            // dispatched, and the inbox holds it whole. A part alone would go out as a
+            // text of its own and then again as the full message.
+            val parts = try {
+                XposedHelpers.callMethod(tracker, "getMessageCount") as? Int ?: 1
+            } catch (_: Throwable) {
+                1
+            }
+            if (parts > 1) return
+            val sub = try {
+                XposedHelpers.callMethod(tracker, "getSubId") as? Int ?: -1
+            } catch (_: Throwable) {
+                -1
+            }
             val pdus = XposedHelpers.callMethod(tracker, "getPdus") as? Array<*> ?: return
             val format = XposedHelpers.callMethod(tracker, "getFormat") as? String
-            decode(pdus, format)
+            decode(pdus, format, sub)
         } catch (t: Throwable) {
             XposedBridge.log("SmsRil: tracker fail ${t.javaClass.simpleName}")
         }
     }
 
-    private fun decode(pdus: Array<*>, format: String?) {
+    /** The SIM (subscription id) the framework tied the message to, or -1. */
+    private fun subIdOf(intent: Intent): Int {
+        for (key in arrayOf("android.telephony.extra.SUBSCRIPTION_INDEX", "subscription")) {
+            val v = intent.getIntExtra(key, -1)
+            if (v >= 0) return v
+        }
+        return -1
+    }
+
+    private fun decode(pdus: Array<*>, format: String?, sub: Int) {
         val body = StringBuilder()
         var addr: String? = null
         var ts = 0L
@@ -93,10 +116,10 @@ class SmsRilHook : IXposedHookLoadPackage {
             if (msg.timestampMillis > ts) ts = msg.timestampMillis
         }
         if (addr.isNullOrBlank() || body.isEmpty()) return
-        drop(addr, body.toString(), if (ts > 0L) ts else System.currentTimeMillis(), raw.toString())
+        drop(addr, body.toString(), if (ts > 0L) ts else System.currentTimeMillis(), raw.toString(), sub)
     }
 
-    private fun drop(addr: String, body: String, ts: Long, pduKey: String) {
+    private fun drop(addr: String, body: String, ts: Long, pduKey: String, sub: Int) {
         try {
             val app = currentApp() ?: return
             val dir = File(app.createDeviceProtectedStorageContext().cacheDir, "pixel-sms-push")
@@ -109,11 +132,12 @@ class SmsRilHook : IXposedHookLoadPackage {
                 .put("addr", addr)
                 .put("body", body)
                 .put("ts", ts)
-                .toString()
+            if (sub >= 0) json.put("sub", sub)
+            val text = json.toString()
             val tmp = File(dir, "$id.json.tmp")
-            tmp.writeText(json, Charsets.UTF_8)
+            tmp.writeText(text, Charsets.UTF_8)
             if (!tmp.renameTo(out)) {
-                out.writeText(json, Charsets.UTF_8)
+                out.writeText(text, Charsets.UTF_8)
                 tmp.delete()
             }
             XposedBridge.log("SmsRil: drop len=${body.length}")

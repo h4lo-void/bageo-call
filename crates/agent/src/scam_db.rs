@@ -239,7 +239,8 @@ pub struct ScamDb {
     pub number_rules: Vec<NumberRule>,
     /// Lowercase ISO country (`tw`, `us`, `gb`, `jp`, …) → regional scam profile.
     pub countries: BTreeMap<String, CountryProfile>,
-    by_text: HashMap<String, usize>,
+    by_text: HashMap<(String, String), usize>,
+    by_text_any: HashMap<String, usize>,
     by_typology: HashMap<String, usize>,
     index: KeywordIndex,
     /// Normalized keyword text → `(country_iso, scam_id)` pairs.
@@ -334,40 +335,47 @@ fn compact(text: &str) -> String {
 /// "đầu tư" and "dau tu" read the same. Other scripts are left as they are.
 fn fold_accents(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
-    for c in text.chars().flat_map(char::to_lowercase) {
-        let base = match c {
-            // A combining mark only after a Latin letter (Cyrillic й is и + a mark).
-            '\u{0300}'..='\u{036F}' if out.chars().next_back().is_some_and(|p| p.is_ascii_alphabetic()) => continue,
-            'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'ā' | 'ă' | 'ą' | 'ạ' | 'ả' | 'ấ' | 'ầ' | 'ẩ' | 'ẫ' | 'ậ' | 'ắ' | 'ằ' | 'ẳ' | 'ẵ' | 'ặ' => 'a',
-            'ç' | 'ć' | 'č' => 'c',
-            'đ' | 'ď' => 'd',
-            'è' | 'é' | 'ê' | 'ë' | 'ē' | 'ę' | 'ě' | 'ẹ' | 'ẻ' | 'ẽ' | 'ế' | 'ề' | 'ể' | 'ễ' | 'ệ' => 'e',
-            'ğ' => 'g',
-            'ì' | 'í' | 'î' | 'ï' | 'ī' | 'ĩ' | 'ỉ' | 'ị' => 'i',
-            'ł' => 'l',
-            'ñ' | 'ń' | 'ň' => 'n',
-            'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' | 'ō' | 'ơ' | 'ọ' | 'ỏ' | 'ố' | 'ồ' | 'ổ' | 'ỗ' | 'ộ' | 'ớ' | 'ờ' | 'ở' | 'ỡ' | 'ợ' => 'o',
-            'ř' => 'r',
-            'ş' | 'ś' | 'š' => 's',
-            'ť' => 't',
-            'ù' | 'ú' | 'û' | 'ü' | 'ū' | 'ũ' | 'ů' | 'ư' | 'ụ' | 'ủ' | 'ứ' | 'ừ' | 'ử' | 'ữ' | 'ự' => 'u',
-            'ý' | 'ÿ' | 'ỳ' | 'ỵ' | 'ỷ' | 'ỹ' => 'y',
-            'ź' | 'ż' | 'ž' => 'z',
-            'ß' => {
-                out.push_str("ss");
-                continue;
-            }
-            'œ' => {
-                out.push_str("oe");
-                continue;
-            }
-            'æ' => {
-                out.push_str("ae");
-                continue;
-            }
-            _ => c,
+    for raw in text.chars() {
+        let raw = match raw {
+            '\u{FF01}'..='\u{FF5E}' => char::from_u32(raw as u32 - 0xFEE0).unwrap_or(raw),
+            '\u{3000}' => ' ',
+            _ => raw,
         };
-        out.push(base);
+        for c in raw.to_lowercase() {
+            let base = match c {
+                // A combining mark only after a Latin letter (Cyrillic й is и + a mark).
+                '\u{0300}'..='\u{036F}' if out.chars().next_back().is_some_and(|p| p.is_ascii_alphabetic()) => continue,
+                'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'ā' | 'ă' | 'ą' | 'ạ' | 'ả' | 'ấ' | 'ầ' | 'ẩ' | 'ẫ' | 'ậ' | 'ắ' | 'ằ' | 'ẳ' | 'ẵ' | 'ặ' => 'a',
+                'ç' | 'ć' | 'č' => 'c',
+                'đ' | 'ď' => 'd',
+                'è' | 'é' | 'ê' | 'ë' | 'ē' | 'ę' | 'ě' | 'ẹ' | 'ẻ' | 'ẽ' | 'ế' | 'ề' | 'ể' | 'ễ' | 'ệ' => 'e',
+                'ğ' => 'g',
+                'ì' | 'í' | 'î' | 'ï' | 'ī' | 'ĩ' | 'ỉ' | 'ị' => 'i',
+                'ł' => 'l',
+                'ñ' | 'ń' | 'ň' => 'n',
+                'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' | 'ō' | 'ơ' | 'ọ' | 'ỏ' | 'ố' | 'ồ' | 'ổ' | 'ỗ' | 'ộ' | 'ớ' | 'ờ' | 'ở' | 'ỡ' | 'ợ' => 'o',
+                'ř' => 'r',
+                'ş' | 'ś' | 'š' | 'ș' => 's',
+                'ť' | 'ț' | 'ţ' => 't',
+                'ù' | 'ú' | 'û' | 'ü' | 'ū' | 'ũ' | 'ů' | 'ư' | 'ụ' | 'ủ' | 'ứ' | 'ừ' | 'ử' | 'ữ' | 'ự' => 'u',
+                'ý' | 'ÿ' | 'ỳ' | 'ỵ' | 'ỷ' | 'ỹ' => 'y',
+                'ź' | 'ż' | 'ž' => 'z',
+                'ß' => {
+                    out.push_str("ss");
+                    continue;
+                }
+                'œ' => {
+                    out.push_str("oe");
+                    continue;
+                }
+                'æ' => {
+                    out.push_str("ae");
+                    continue;
+                }
+                _ => c,
+            };
+            out.push(base);
+        }
     }
     out
 }
@@ -422,7 +430,7 @@ impl Prepared {
             padded,
             lower: text.to_lowercase(),
             compact: compact(text),
-            skip_han: own >= 2 && own * 2 >= han,
+            skip_han: own >= 3 && own * 4 >= own + han,
         }
     }
 }
@@ -648,7 +656,7 @@ pub fn parse(json: &str) -> Result<ScamDb, String> {
             if mode == Match::Word && !seen_needles.insert((kw.lang.clone(), kw.needle.clone(), kw.typology.clone(), kw.hard)) {
                 kw.shadow = true;
             }
-            if db.by_text.contains_key(&kw.text) {
+            if db.by_text.contains_key(&(kw.lang.clone(), kw.text.clone())) {
                 // 周轉 next to 週轉: a spelling the Chinese normaliser folds into
                 // one already listed matches the same words; it is not kept twice.
                 if mode == Match::Han && text.trim() != kw.text {
@@ -656,10 +664,7 @@ pub fn parse(json: &str) -> Result<ScamDb, String> {
                 }
                 return Err(format!("{}: keyword {:?} listed twice", g.lang, kw.text));
             }
-            let idx = db.keywords.len();
-            db.by_text.insert(kw.text.clone(), idx);
-            db.index.insert(idx, &kw);
-            db.keywords.push(kw);
+            db.insert_keyword(kw);
         }
     }
     for o in raw.own_matter {
@@ -713,7 +718,35 @@ impl ScamDb {
     }
 
     pub fn keyword(&self, text: &str) -> Option<&Keyword> {
-        self.by_text.get(text).map(|&i| &self.keywords[i])
+        self.by_text_any.get(text).map(|&i| &self.keywords[i])
+    }
+
+    pub fn keyword_in(&self, lang: &str, text: &str) -> Option<&Keyword> {
+        self.by_text
+            .get(&(lang.to_string(), text.to_string()))
+            .map(|&i| &self.keywords[i])
+    }
+
+    fn sync_any(&mut self, idx: usize) {
+        let kw = &self.keywords[idx];
+        self.by_text_any
+            .entry(kw.text.clone())
+            .and_modify(|existing| {
+                let prev = &self.keywords[*existing];
+                if kw.weight > prev.weight || (kw.weight == prev.weight && kw.hard && !prev.hard) {
+                    *existing = idx;
+                }
+            })
+            .or_insert(idx);
+    }
+
+    fn insert_keyword(&mut self, kw: Keyword) -> usize {
+        let idx = self.keywords.len();
+        self.by_text.insert((kw.lang.clone(), kw.text.clone()), idx);
+        self.index.insert(idx, &kw);
+        self.keywords.push(kw);
+        self.sync_any(idx);
+        idx
     }
 
     /// The match mode of a language's keywords.
@@ -870,11 +903,8 @@ pub fn merge_countries(db: &mut ScamDb, json: &str) -> Result<(), String> {
                     return Err(format!("{}: empty context_keyword", s.id));
                 }
                 let kw = Keyword::new(&cleaned, 1, &s.typology, false, &s.lang, mode);
-                if !db.by_text.contains_key(&kw.text) {
-                    let idx = db.keywords.len();
-                    db.by_text.insert(kw.text.clone(), idx);
-                    db.index.insert(idx, &kw);
-                    db.keywords.push(kw.clone());
+                if !db.by_text.contains_key(&(kw.lang.clone(), kw.text.clone())) {
+                    db.insert_keyword(kw.clone());
                 }
                 let entry = db.country_kw_map.entry(kw.text).or_default();
                 let pair = (iso.clone(), s.id.clone());
@@ -894,18 +924,22 @@ pub fn merge_countries(db: &mut ScamDb, json: &str) -> Result<(), String> {
                     return Err(format!("{}: empty red_flag_keyword", s.id));
                 }
                 let kw = Keyword::new(&cleaned, rf.weight, &s.typology, rf.hard, &s.lang, mode);
-                if let Some(&idx) = db.by_text.get(&kw.text) {
+                if let Some(&idx) = db.by_text.get(&(kw.lang.clone(), kw.text.clone())) {
+                    if rf.hard && typ_hard && db.keywords[idx].typology != s.typology {
+                        return Err(format!(
+                            "{}: hard red_flag {:?} conflicts with typology {}",
+                            s.id, rf.text, db.keywords[idx].typology
+                        ));
+                    }
                     if rf.weight > db.keywords[idx].weight {
                         db.keywords[idx].weight = rf.weight;
                     }
                     if rf.hard && typ_hard {
                         db.keywords[idx].hard = true;
                     }
+                    db.sync_any(idx);
                 } else {
-                    let idx = db.keywords.len();
-                    db.by_text.insert(kw.text.clone(), idx);
-                    db.index.insert(idx, &kw);
-                    db.keywords.push(kw.clone());
+                    db.insert_keyword(kw.clone());
                 }
                 let entry = db.country_kw_map.entry(kw.text).or_default();
                 let pair = (iso.clone(), s.id.clone());
@@ -1019,20 +1053,22 @@ pub struct LocalDb {
 /// Local keywords live as long as the agent (hits are `&'static str`); the
 /// same entry read again after the file changed is not stored twice.
 fn intern(kw: Keyword) -> &'static Keyword {
-    static SEEN: OnceLock<Mutex<HashMap<(String, u32, String, bool), &'static Keyword>>> = OnceLock::new();
+    static SEEN: OnceLock<Mutex<HashMap<(String, String, u32, String, bool), &'static Keyword>>> = OnceLock::new();
     let mut seen = SEEN.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
-    let key = (kw.text.clone(), kw.weight, kw.typology.clone(), kw.hard);
+    let key = (kw.lang.clone(), kw.text.clone(), kw.weight, kw.typology.clone(), kw.hard);
     seen.entry(key).or_insert_with(|| Box::leak(Box::new(kw)))
 }
 
 /// Read the owner's file. Entries the built-in database cannot place (an
-/// unknown typology or language, a weight other than 1 or 2, a keyword it has
-/// already, a verdict other than scam / sales / safe) are left out and named.
+/// unknown typology or language, a weight other than 1 or 2, a keyword identical
+/// to what is already listed, or a verdict other than scam / sales / safe) are
+/// left out and named; an entry with the same `(lang, text)` but changed
+/// weight, typology, or hard flag overrides the prior definition.
 pub fn parse_local(json: &str) -> Result<LocalDb, String> {
     let raw: RawLocal = serde_json::from_str(json).map_err(|e| format!("scam_db.local.json: {e}"))?;
     let base = db();
     let mut out = LocalDb::default();
-    let mut texts = HashSet::new();
+    let mut seen: HashMap<(String, String), usize> = HashMap::new();
     for k in raw.keywords {
         let Some(t) = base.typology(&k.typology) else {
             out.skipped.push(format!("{}: unknown typology {}", k.text, k.typology));
@@ -1047,11 +1083,24 @@ pub fn parse_local(json: &str) -> Result<LocalDb, String> {
             continue;
         }
         let kw = Keyword::new(&k.text, k.weight, &t.id, k.hard && t.hard, &k.lang, mode);
-        if base.keyword(&kw.text).is_some() || !texts.insert(kw.text.clone()) {
+        let key = (kw.lang.clone(), kw.text.clone());
+        if let Some(&prev_idx) = seen.get(&key) {
+            let prev = out.keywords[prev_idx];
+            if prev.weight == kw.weight && prev.typology == kw.typology && prev.hard == kw.hard {
+                out.skipped.push(format!("{}: already listed", kw.text));
+            } else {
+                out.keywords[prev_idx] = intern(kw);
+            }
+            continue;
+        }
+        if base.keyword_in(&kw.lang, &kw.text).is_some_and(|b| {
+            b.weight == kw.weight && b.typology == kw.typology && b.hard == kw.hard
+        }) {
             out.skipped.push(format!("{}: already listed", kw.text));
             continue;
         }
         let idx = out.keywords.len();
+        seen.insert(key, idx);
         let interned = intern(kw);
         out.index.insert(idx, interned);
         out.keywords.push(interned);
@@ -1126,23 +1175,31 @@ fn with_local<R>(f: impl FnOnce(&LocalDb) -> R) -> R {
 fn keyword_hits_in(text: &str, local: &LocalDb) -> Vec<Hit> {
     let p = Prepared::of(text);
     let base = db();
-    let mut out: Vec<Hit> = base
+    let mut tagged: Vec<(&str, Hit)> = base
         .index
         .candidates(&p)
         .into_iter()
         .map(|i| &base.keywords[i])
         .filter(|k| k.found_in(&p))
-        .map(hit_of)
+        .map(|k| (k.lang.as_str(), hit_of(k)))
         .collect();
     if !local.keywords.is_empty() {
         for i in local.index.candidates(&p) {
             let k = local.keywords[i];
-            if k.found_in(&p) && !out.iter().any(|h| h.text == k.text) {
-                out.push(hit_of(k));
+            if !k.found_in(&p) {
+                continue;
+            }
+            if let Some(slot) = tagged
+                .iter_mut()
+                .find(|(lang, h)| *lang == k.lang.as_str() && h.text == k.text)
+            {
+                slot.1 = hit_of(k);
+            } else {
+                tagged.push((k.lang.as_str(), hit_of(k)));
             }
         }
     }
-    out
+    tagged.into_iter().map(|(_, h)| h).collect()
 }
 
 /// The hits without an accented keyword that only matched as part of a longer
@@ -1170,13 +1227,12 @@ pub fn keyword_hits(text: &str) -> Vec<Hit> {
     with_local(|local| keyword_hits_in(text, local))
 }
 
-/// A keyword by the text a hit reports.
+/// A keyword by the text a hit reports (owner overrides take precedence).
 pub fn keyword(text: &str) -> Option<Hit> {
-    let base = db();
-    if let Some(&i) = base.by_text.get(text) {
-        return Some(hit_of(&base.keywords[i]));
+    if let Some(hit) = with_local(|local| local.keywords.iter().find(|k| k.text == text).map(|&k| hit_of(k))) {
+        return Some(hit);
     }
-    with_local(|local| local.keywords.iter().find(|k| k.text == text).map(|&k| hit_of(k)))
+    db().keyword(text).map(hit_of)
 }
 
 /// A hit asks for something only scammers ask for (a code, ATM steps, gift
@@ -1213,9 +1269,10 @@ const WEAK_OWN_MATTER: &[&str] = &["折り返し", "민원", "votre dossier", "s
 /// The caller follows up on something the owner raised (a complaint, a repair,
 /// an application): never a pitch, in any language of the database — unless the
 /// caller also makes a scam-only demand (OTP, ATM steps, safe account, screen
-/// sharing, marketplace escrow verification), which spoofs a follow-up.
+/// sharing, marketplace escrow verification) or an advance-fee loan pitch,
+/// which spoofs a follow-up.
 pub fn own_matter(text: &str) -> bool {
-    if has_hard_hit(text) {
+    if keyword_hits(text).iter().any(|h| h.hard || h.typology == "loan_advance_fee") {
         return false;
     }
     let han = crate::zh_tw::norm(text);
@@ -1771,9 +1828,10 @@ mod tests {
     use super::*;
     use crate::locale::Lang;
 
-    /// The 19 languages the database covers.
-    const LANGS: [&str; 19] = [
+    /// The 27 languages the database covers.
+    const LANGS: [&str; 27] = [
         "zh-TW", "zh-CN", "en", "es", "fr", "de", "pt", "it", "vi", "id", "ms", "tl", "tr", "ru", "ja", "ko", "hi", "ar", "th",
+        "nl", "pl", "ro", "uk", "bn", "mr", "ta", "te",
     ];
 
     fn temp_dir(tag: &str) -> PathBuf {
@@ -1799,7 +1857,7 @@ mod tests {
         }
         let mut seen = HashSet::new();
         for k in &db.keywords {
-            assert!(seen.insert(k.text.as_str()), "{} twice", k.text);
+            assert!(seen.insert((k.lang.as_str(), k.text.as_str())), "{} / {} twice", k.lang, k.text);
             assert!(db.typology(&k.typology).is_some(), "{}", k.text);
             assert!((1..=2).contains(&k.weight), "{}", k.text);
             assert!(!k.hard || db.typology(&k.typology).unwrap().hard, "{}", k.text);
@@ -1820,7 +1878,7 @@ mod tests {
     fn country_scam_database_merges_self_matches_and_protects_normal_calls() {
         let mut parsed = parse(BUILTIN).expect("data/scam_db.json");
         merge_countries(&mut parsed, BUILTIN_COUNTRIES).expect("data/country_scams.json");
-        let expected_isos = ["tw", "cn", "us", "gb", "jp", "kr", "de", "es", "fr", "br", "pt", "id"];
+        let expected_isos = ["tw", "cn", "us", "gb", "jp", "kr", "de", "es", "fr", "br", "pt", "id", "it", "in"];
         for iso in expected_isos {
             assert!(parsed.countries.contains_key(iso), "missing country profile: {iso}");
         }
@@ -2541,5 +2599,134 @@ mod tests {
         // The same language's longer phrase keeps both.
         let de = without_folded_repeats(&texts("bitte zahlen Sie die Bearbeitungsgebühr vorab beim Notar"));
         assert!(de.iter().any(|h| h == "bearbeitungsgebühr") && de.iter().any(|h| h == "bearbeitungsgebühr vorab"), "{de:?}");
+    }
+
+    #[test]
+    fn tightened_skip_han_keeps_scam_hits_with_few_kana_and_skips_real_japanese() {
+        // Two stray kana STT artifacts, or 3 kana across a longer Chinese line, must NOT suppress Han scam keywords.
+        assert!(!Prepared::of("の安全帳戶す").skip_han);
+        assert!(!Prepared::of("の請問您的帳戶安全嗎，需要安全帳戶轉帳です").skip_han);
+        let hits = keyword_hits("の請問您的帳戶安全嗎，需要安全帳戶轉帳です");
+        assert!(hits.iter().any(|h| h.text == "安全帳戶"), "{hits:?}");
+        // Genuine Japanese text (own >= 3 and own * 4 >= own + han) sets skip_han.
+        let jp = Prepared::of("お振込みのご確認をお願いいたします");
+        assert!(jp.skip_han);
+    }
+
+    #[test]
+    fn db_keys_keywords_by_lang_and_text_and_local_allows_updates() {
+        let json = r#"{
+            "version": 1,
+            "typologies": [
+                {
+                    "id": "bank_impersonation",
+                    "category": "scam",
+                    "hard": true,
+                    "names": {"zh-TW":"假冒銀行","zh-CN":"假冒银行","en":"Bank","ja":"銀行","ko":"은행","es":"Banco","fr":"Banque","de":"Bank","pt":"Banco"},
+                    "signals": "Asks for account verification",
+                    "legit": "Official app notification"
+                },
+                {
+                    "id": "insurance_sales",
+                    "category": "sales",
+                    "hard": false,
+                    "names": {"zh-TW":"推銷保險","zh-CN":"推销保险","en":"Insurance","ja":"保険","ko":"보험","es":"Seguro","fr":"Assurance","de":"Versicherung","pt":"Seguro"},
+                    "signals": "Cold insurance pitch",
+                    "legit": "Existing policy renewal"
+                }
+            ],
+            "keywords": [
+                {"lang": "en", "match": "word", "words": [["bank", 1, "bank_impersonation"]]},
+                {"lang": "id", "match": "word", "words": [["bank", 2, "bank_impersonation", "hard"]]}
+            ],
+            "own_matter": [],
+            "number_rules": []
+        }"#;
+        let db = parse(json).expect("cross-language same keyword text must parse");
+        assert_eq!(db.keyword_in("en", "bank").map(|k| (k.weight, k.hard)), Some((1, false)));
+        assert_eq!(db.keyword_in("id", "bank").map(|k| (k.weight, k.hard)), Some((2, true)));
+        assert_eq!(db.keyword("bank").map(|k| (k.weight, k.hard)), Some((2, true)));
+
+        // parse_local allows updating an already-listed builtin keyword (weight/typology/hard)
+        // as well as cross-language same text and updating duplicate entries in local JSON.
+        let local = parse_local(
+            r#"{"keywords": [
+                {"text": "保險", "weight": 1, "typology": "insurance_sales", "lang": "zh-TW"},
+                {"text": "custom keyword", "weight": 1, "typology": "insurance_sales", "lang": "en"},
+                {"text": "custom keyword", "weight": 2, "typology": "fake_official", "hard": true, "lang": "en"},
+                {"text": "custom keyword", "weight": 2, "typology": "insurance_sales", "lang": "es"}
+            ]}"#,
+        )
+        .expect("local updates");
+        assert!(local.skipped.is_empty(), "{:?}", local.skipped);
+        let updated = keyword_hits_in("請問是保險公司嗎", &local);
+        assert_eq!(updated.iter().find(|h| h.text == "保險").map(|h| h.weight), Some(1), "{updated:?}");
+        let custom_en = local.keywords.iter().find(|k| k.lang == "en" && k.text == "custom keyword").unwrap();
+        assert_eq!((custom_en.weight, custom_en.typology.as_str(), custom_en.hard), (2, "fake_official", true));
+        assert!(local.keywords.iter().any(|k| k.lang == "es" && k.text == "custom keyword"));
+    }
+
+    #[test]
+    fn fullwidth_folding_cross_typology_conflict_soft_advance_fee_and_extended_languages_work() {
+        // N-L23: fullwidth ASCII folds into plain ASCII words.
+        assert_eq!(fold_accents("ＡＴＭ　ＯＴＰ"), "atm otp");
+        assert!(has_hard_hit("Please tell me your ＯＴＰ right now"));
+
+        // NL15: hard red_flag in country_scams colliding with a different typology errors.
+        let mut base = parse(BUILTIN).unwrap();
+        let conflict_json = r#"{
+            "countries": {
+                "XX": {
+                    "name": "Test",
+                    "iso": "xx",
+                    "calling_code": "+99",
+                    "languages": ["en"],
+                    "scams": [{
+                        "id": "xx_conflict",
+                        "typology": "otp_theft",
+                        "name": "Test conflict",
+                        "name_en": "Test conflict",
+                        "prevalence": "high",
+                        "lang": "en",
+                        "red_flag_keywords": [{"text": "anydesk", "weight": 2, "hard": true}],
+                        "bait_tactics": ["Look for reading glasses"],
+                        "signals_en": "Asks to install remote desktop.",
+                        "legit_en": "Ordinary call."
+                    }]
+                }
+            }
+        }"#;
+        let err = merge_countries(&mut base, conflict_json).unwrap_err();
+        assert!(err.contains("conflicts with typology"), "{err}");
+
+        // N1: soft advance-fee loan openers do not bypass detection, while real complaints stay protected.
+        for scam_opener in [
+            "您申請的信貸已通過，先付保證金美化帳戶",
+            "Llamo por su solicitud de préstamo preaprobado, pague por adelantado",
+            "Nous appelons au sujet de votre demande de financement, payez les frais",
+        ] {
+            assert!(!own_matter(scam_opener), "soft scam opener must not bypass: {scam_opener}");
+        }
+        for genuine in [
+            "Llamo por su reclamación de la semana pasada",
+            "關於您反映的客訴問題已經處理完成",
+        ] {
+            assert!(own_matter(genuine), "real follow-up must stay protected: {genuine}");
+        }
+
+        // N2: extended official Live languages detect hard scams and protect own_matter.
+        for (lang, hard_phrase, genuine) in [
+            ("nl", "Maak uw geld over naar een veilige rekening", "Wij bellen terug over uw klacht van gisteren"),
+            ("pl", "Proszę przelać środki na bezpieczne konto prokuratury", "Dzwonimy w sprawie pani reklamacja jest gotowa"),
+            ("ro", "Transferați banii într-un cont sigur și spuneți codul", "Vă sunăm pentru reclamația dumneavoastră rezolvată"),
+            ("uk", "Терміново перекажіть кошти на безпечний рахунок", "Телефонуємо щодо ваше звернення вже опрацьовано"),
+            ("bn", "আপনি ডিজিটাল অ্যারেস্ট হয়েছেন এখনই সেফ অ্যাকাউন্ট পাঠান", "আপনার অভিযোগ যাচাই করে আমরা কল করছি"),
+            ("mr", "तुम्ही डिजिटल अरेस्ट मध्ये आहात तुमचा ओटीपी कोड सांगा", "तुमची तक्रार सोडवण्यात आली आहे"),
+            ("ta", "உங்கள் மீது டிஜிட்டல் கைது உள்ளது ஓடிபி எண் சொல்லுங்கள்", "உங்கள் புகார் குறித்து பேசுகிறோம்"),
+            ("te", "మీపై డిజిటల్ అరెస్ట్ ఉంది వెంటనే ఓటీపీ కోడ్ చెప్పండి", "మీ ఫిర్యాదు పరిష్కరించబడింది"),
+        ] {
+            assert!(has_hard_hit(hard_phrase), "{lang}: expected hard hit on {hard_phrase}");
+            assert!(own_matter(genuine), "{lang}: expected own_matter on {genuine}");
+        }
     }
 }

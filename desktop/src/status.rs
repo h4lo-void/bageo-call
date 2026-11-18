@@ -163,25 +163,29 @@ pub fn is_web_url(s: &str) -> bool {
 }
 
 /// Turns what the user typed into a base address with a trailing slash.
+/// A pasted console link ("…/calls/", with or without "?…" or "#…") is cut back to the
+/// address in front of "/calls", because every request adds "calls/…" itself.
 /// Returns None when it is empty or does not start with http:// or https://.
 pub fn normalize_address(raw: &str) -> Option<String> {
     let t = raw.trim();
+    let t = t.split(['?', '#']).next().unwrap_or("");
     let lower = t.to_lowercase();
-    let rest_len = if lower.starts_with("http://") {
-        t.len() - 7
+    let scheme_len = if lower.starts_with("http://") {
+        7
     } else if lower.starts_with("https://") {
-        t.len() - 8
+        8
     } else {
         return None;
     };
-    if rest_len == 0 {
+    let (scheme, rest) = t.split_at(scheme_len);
+    let mut rest = rest.trim_end_matches('/');
+    if rest.len() > 6 && rest[rest.len() - 6..].eq_ignore_ascii_case("/calls") {
+        rest = &rest[..rest.len() - 6];
+    }
+    if rest.is_empty() || rest.starts_with('/') {
         return None;
     }
-    let mut out = t.to_string();
-    if !out.ends_with('/') {
-        out.push('/');
-    }
-    Some(out)
+    Some(format!("{scheme}{rest}/"))
 }
 
 pub fn count(v: Option<&Value>) -> u32 {
@@ -617,7 +621,15 @@ mod tests {
     #[test]
     fn address_normalisation() {
         assert_eq!(normalize_address("http://192.168.1.20:8787").as_deref(), Some("http://192.168.1.20:8787/"));
-        assert_eq!(normalize_address("  https://bageo.example/calls/  ").as_deref(), Some("https://bageo.example/calls/"));
+        assert_eq!(normalize_address("  https://bageo.example/calls/  ").as_deref(), Some("https://bageo.example/"));
+        assert_eq!(normalize_address("http://192.168.1.20:8787/calls").as_deref(), Some("http://192.168.1.20:8787/"));
+        assert_eq!(normalize_address("http://host:8787/calls/?token=x#call=1").as_deref(), Some("http://host:8787/"));
+        assert_eq!(normalize_address("http://host:8787?a=b").as_deref(), Some("http://host:8787/"));
+        assert_eq!(normalize_address("https://example.test/bageo/CALLS/").as_deref(), Some("https://example.test/bageo/"));
+        assert_eq!(normalize_address("https://example.test/bageo/").as_deref(), Some("https://example.test/bageo/"));
+        assert_eq!(normalize_address("http://calls").as_deref(), Some("http://calls/"));
+        assert_eq!(normalize_address("http:///calls"), None);
+        assert_eq!(normalize_address("http://?x=1"), None);
         assert_eq!(normalize_address("HTTP://host").as_deref(), Some("HTTP://host/"));
         assert_eq!(normalize_address("192.168.1.20:8787"), None);
         assert_eq!(normalize_address("ftp://host"), None);

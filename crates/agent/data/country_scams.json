@@ -14,7 +14,9 @@
     "FR",
     "BR",
     "PT",
-    "ID"
+    "ID",
+    "IT",
+    "IN"
   ],
   "countries": {
     "TW": {
@@ -162,12 +164,12 @@
             {
               "text": "美化帳戶",
               "weight": 2,
-              "hard": false
+              "hard": true
             },
             {
               "text": "包裝金流",
               "weight": 2,
-              "hard": false
+              "hard": true
             },
             {
               "text": "免保人免聯徵",
@@ -177,7 +179,7 @@
             {
               "text": "寄金融卡審核",
               "weight": 2,
-              "hard": false
+              "hard": true
             }
           ],
           "signals_en": "Promises guaranteed no-credit-check loan or debt consolidation, then asks to add LINE, pay an upfront guarantee/unlock fee, or mail ATM cards/passbooks to 'beautify cashflow'.",
@@ -1501,6 +1503,169 @@
           "sources": [
             "Komdigi",
             "OJK"
+          ]
+        }
+      ]
+    },
+    "IT": {
+      "name": "Italy",
+      "name_local": "Italia",
+      "iso": "it",
+      "calling_code": "+39",
+      "languages": [
+        "it"
+      ],
+      "prevalence_note": "Polizia Postale & CERTFin 2025-2026: fake PostePay/bank anti-fraud alerts (spoofed SMS codes, bonifico istantaneo) and finto maresciallo / Carabinieri relative-accident bail or safe-account scams dominate.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "it_finto_maresciallo_postepay",
+          "typology": "fake_official",
+          "name": "Finto Maresciallo dei Carabinieri / Polizia Postale (Conto Sicuro o Cauzione)",
+          "name_en": "Fake Italian Carabinieri / Polizia Postale demanding bail or safe-account transfer",
+          "prevalence": "very_high",
+          "lang": "it",
+          "context_keywords": [
+            "postepay",
+            "polizia postale",
+            "agenzia delle entrate"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "spostare i soldi su conto sicuro",
+              "weight": 2,
+              "hard": true
+            },
+            {
+              "text": "cauzione urgente in contanti",
+              "weight": 2,
+              "hard": true
+            }
+          ],
+          "signals_en": "Claims a relative caused an accident or an investigation found cloned accounts; demands immediate cash/jewelry handover for bail or wire to a safe account.",
+          "legit_en": "Real Carabinieri or Polizia Postale never ask for cash bail, PostePay codes, or transfers to safe accounts over the phone.",
+          "bait_tactics": [
+            "Chiedere di ripetere lentamente il numero di protocollo perché non si trovano gli occhiali da lettura",
+            "Dire che l'app della banca non si apre per mancanza di campo e chiedere di spiegare tutto con calma"
+          ],
+          "sources": [
+            "Polizia Postale",
+            "CERTFin Italia"
+          ]
+        },
+        {
+          "id": "it_finta_banca_otp",
+          "typology": "fake_bank_account_alert",
+          "name": "Finto Servizio Antifrode / PostePay (Bonifico Istantaneo & OTP)",
+          "name_en": "Fake Italian bank or PostePay fraud desk asking for OTP or instant transfer",
+          "prevalence": "high",
+          "lang": "it",
+          "context_keywords": [
+            "servizio antifrode",
+            "blocco carta"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "confermare il bonifico istantaneo",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "comunicare il codice dispositivo",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Impersonates bank or Poste Italiane anti-fraud team warning of an unauthorized debit; pressures user to read a one-time code or authorize an instant transfer.",
+          "legit_en": "Real Italian banks block a card directly without ever asking for SMS OTPs or instant transfers to cancel a charge.",
+          "bait_tactics": [
+            "Chiedere di leggere cifra per cifra la data e l'importo dell'operazione sospetta mentre si cerca la carta nel cassetto"
+          ],
+          "sources": [
+            "CERTFin Italia",
+            "Banca d'Italia"
+          ]
+        }
+      ]
+    },
+    "IN": {
+      "name": "India",
+      "name_local": "भारत",
+      "iso": "in",
+      "calling_code": "+91",
+      "languages": [
+        "hi",
+        "en"
+      ],
+      "prevalence_note": "I4C / RBI & TRAI 2025-2026: 'Digital arrest' impersonation of CBI/customs/narcotics over video call, TRAI SIM-block threats, and bank KYC update APK/OTP scams dominate.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "in_digital_arrest_customs",
+          "typology": "fake_official",
+          "name": "डिजिटल अरेस्ट / नकली सीबीआई व कस्टम पार्सल धमकी",
+          "name_en": "Fake Indian CBI / customs digital arrest and parcel seizure scam",
+          "prevalence": "very_high",
+          "lang": "hi",
+          "context_keywords": [
+            "नारकोटिक्स विभाग",
+            "कूरियर पार्सल"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "वीडियो कॉल पर जांच",
+              "weight": 2,
+              "hard": true
+            },
+            {
+              "text": "जमानत की रकम ट्रांसफर",
+              "weight": 2,
+              "hard": true
+            }
+          ],
+          "signals_en": "Impersonates CBI, police, narcotics or customs claiming an illegal parcel in the victim's name; threatens 'digital arrest' and demands bail/verification transfer.",
+          "legit_en": "Indian law enforcement never conducts video-call arrests or asks for bail/verification money transfers over a call.",
+          "bait_tactics": [
+            "बोलें कि फोन का नेटवर्क बहुत कमजोर है और आवाज कट रही है, धीरे से दोबारा पूरी बात समझाइए",
+            "कहें कि चश्मा दूसरे कमरे में रखा है और कागज-कलम ढूंढकर सब नोट करना है"
+          ],
+          "sources": [
+            "I4C MHA",
+            "TRAI",
+            "RBI Sachet"
+          ]
+        },
+        {
+          "id": "in_bank_kyc_apk",
+          "typology": "fake_bank_account_alert",
+          "name": "बैंक केवाईसी अपडेट व एनीडेस्क / ओटीपी ठगी",
+          "name_en": "Indian bank KYC block threat demanding OTP or remote APK install",
+          "prevalence": "high",
+          "lang": "hi",
+          "context_keywords": [
+            "केवाईसी अपडेट",
+            "पैन कार्ड लिंक"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "व्हाट्सएप पर एपीके डाउनलोड",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "केवाईसी के लिए ओटीपी बताएं",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Claims bank account or SIM will be blocked tonight unless KYC/PAN is updated via a WhatsApp APK link or spoken OTP.",
+          "legit_en": "Genuine banks conduct KYC updates in-branch or via their official portal without requesting OTPs or WhatsApp APKs.",
+          "bait_tactics": [
+            "बोलें कि फोन हैंग हो गया है और स्क्रीन खुलने में बहुत समय लग रहा है"
+          ],
+          "sources": [
+            "RBI",
+            "CERT-In"
           ]
         }
       ]

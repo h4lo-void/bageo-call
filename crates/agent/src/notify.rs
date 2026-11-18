@@ -354,12 +354,14 @@ fn slack_bot_prepared(ch: &Channel, msg: &Message) -> Result<Prepared> {
                 "text": { "type": "plain_text", "text": clip(a.label.trim(), 75), "emoji": false } })
         })
         .collect();
+    let mut blocks = vec![json!({
+        "type": "section",
+        "text": { "type": "plain_text", "text": text, "emoji": false },
+    })];
     if !buttons.is_empty() {
-        payload["blocks"] = json!([
-            { "type": "section", "text": { "type": "mrkdwn", "text": text } },
-            { "type": "actions", "elements": buttons },
-        ]);
+        blocks.push(json!({ "type": "actions", "elements": buttons }));
     }
+    payload["blocks"] = Value::Array(blocks);
     Ok(Prepared {
         put: false,
         url: "https://slack.com/api/chat.postMessage".to_string(),
@@ -1081,6 +1083,22 @@ fn answer_error(text: &str) -> Option<ChannelError> {
     failed.then(|| ChannelError::new("service_error", "", format!("service answered: {}", clip(text.trim(), 200))))
 }
 
+/// Errors worth a short retry when delivering urgent / non-Telegram alerts.
+fn is_transient_send_error(e: &anyhow::Error) -> bool {
+    if let Some(ce) = channel_error(e) {
+        return ce.code == "network_error"
+            || (ce.code == "http_error"
+                && (ce.detail.starts_with("HTTP 429:")
+                    || ce.detail.starts_with("HTTP 408:")
+                    || ce.detail.starts_with("HTTP 5")));
+    }
+    if e.chain().any(|c| c.downcast_ref::<reqwest::Error>().is_some()) {
+        return true;
+    }
+    let msg = e.to_string();
+    msg.contains("HTTP 429") || msg.contains("HTTP 5")
+}
+
 /// Send `msg` to one channel.
 pub async fn send_channel(http: &Client, ch: &Channel, msg: &Message) -> Result<()> {
     send_channel_inner(http, ch, msg).await.map_err(|e| scrub_error(e, ch))
@@ -1139,11 +1157,20 @@ async fn send_channel_inner(http: &Client, ch: &Channel, msg: &Message) -> Resul
     let prepared = prepare(ch, msg, now_ms)?;
     refuse_metadata(&prepared.url, testing).await?;
     let sent = match send_prepared(http, &prepared).await {
-        // Telegram refuses HTML it cannot parse: send the plain text instead.
-        Err(e) if ch.kind == "telegram" && msg.html.is_some() => {
-            warn!("notify telegram HTML refused ({e:#}); retrying as plain text");
-            let plain = Message { html: None, ..msg.clone() };
-            send_prepared(http, &prepare(ch, &plain, now_ms)?).await
+        // Telegram refuses HTML it cannot parse, and buttons whose address it will not
+        // open (a `.local` name): send the plain text, then the plain text without the
+        // buttons (their links go into the text).
+        Err(e) if ch.kind == "telegram" && (msg.html.is_some() || !msg.actions.is_empty()) => {
+            warn!("notify telegram message refused ({e:#}); retrying as plain text");
+            let mut result = Err(e);
+            if msg.html.is_some() {
+                let plain = Message { html: None, ..msg.clone() };
+                result = send_prepared(http, &prepare(ch, &plain, now_ms)?).await;
+            }
+            if result.is_err() && !msg.actions.is_empty() {
+                result = send_prepared(http, &prepare(ch, &telegram_without_buttons(msg), now_ms)?).await;
+            }
+            result
         }
         other => other,
     };
@@ -1151,6 +1178,15 @@ async fn send_channel_inner(http: &Client, ch: &Channel, msg: &Message) -> Resul
         Ok(()) if ch.kind == "discord" => discord_gave_up(ch, testing),
         other => other,
     }
+}
+
+/// The message as plain text with no buttons: each button's link follows the text.
+fn telegram_without_buttons(msg: &Message) -> Message {
+    let mut body = msg.body.clone();
+    for a in &msg.actions {
+        body.push_str(&format!("\n{}: {}", a.label, a.url));
+    }
+    Message { html: None, body, actions: Vec::new(), ..msg.clone() }
 }
 
 /// A text in the owner's language: zh-TW, zh-CN, en, ja, ko, es, fr, de, pt.
@@ -1977,7 +2013,21 @@ pub async fn notify_pending_appointment_non_tg(
     };
     let sends = non_tg.iter().map(|ch| {
         let msg = &msg;
-        async move { (ch, send_channel(http, ch, msg).await) }
+        async move {
+            let delays = [std::time::Duration::from_millis(1500), std::time::Duration::from_millis(3000)];
+            let mut attempt = 0usize;
+            loop {
+                match send_channel(http, ch, msg).await {
+                    Ok(()) => return (ch, Ok(())),
+                    Err(e) if attempt < delays.len() && is_transient_send_error(&e) => {
+                        warn!(channel = %ch.name, kind = %ch.kind, attempt = attempt + 1, "notify pending appointment transient failure, retrying: {e:#}");
+                        tokio::time::sleep(delays[attempt]).await;
+                        attempt += 1;
+                    }
+                    Err(e) => return (ch, Err(e)),
+                }
+            }
+        }
     });
     let mut any = false;
     for (ch, result) in futures_util::future::join_all(sends).await {
@@ -2365,6 +2415,28 @@ mod tests {
         let p = prepare(&c, &plain, 0).unwrap();
         assert!(json_body(&p).get("parse_mode").is_none());
         assert!(json_body(&p)["text"].as_str().unwrap().starts_with("Call summary"));
+    }
+
+    #[test]
+    fn telegram_retry_without_buttons_keeps_the_links_in_the_text() {
+        let c = ch("telegram", "", "123:ABC", "-100200");
+        let with_buttons = Message {
+            actions: vec![
+                NotifyAction { label: "Confirm".into(), url: "http://bageo.local/a".into() },
+                NotifyAction { label: "確認".into(), url: "http://bageo.local/b".into() },
+            ],
+            ..msg()
+        };
+        let p = prepare(&c, &with_buttons, 0).unwrap();
+        assert!(json_body(&p).get("reply_markup").is_some());
+        let retry = telegram_without_buttons(&with_buttons);
+        assert!(retry.html.is_none() && retry.actions.is_empty());
+        let p = prepare(&c, &retry, 0).unwrap();
+        assert!(json_body(&p).get("reply_markup").is_none());
+        assert!(json_body(&p).get("parse_mode").is_none());
+        let text = json_body(&p)["text"].as_str().unwrap();
+        assert!(text.starts_with("Call summary"), "{text}");
+        assert!(text.contains("Confirm: http://bageo.local/a") && text.contains("確認: http://bageo.local/b"), "{text}");
     }
 
     #[test]
@@ -3002,5 +3074,29 @@ mod tests {
         assert!(known.contains(&("pixel-test-77009".to_string(), "Spare".to_string())));
         set_device_labels(&std::collections::BTreeMap::new());
         assert_eq!(device_label("pixel-test-77001"), "Pixel 8");
+    }
+
+    #[test]
+    fn slack_bot_messages_always_use_plain_text_blocks_and_classify_transient_errors() {
+        let mut m = msg();
+        m.body = "Caller said <!here> <https://evil.example|click>".into();
+        let no_btn = prepare(&ch("slack", "", "xoxb-test", "C123"), &m, 0).unwrap();
+        let b0 = &json_body(&no_btn)["blocks"][0];
+        assert_eq!(b0["type"], "section");
+        assert_eq!(b0["text"]["type"], "plain_text");
+        assert_eq!(b0["text"]["emoji"], false);
+        assert_eq!(b0["text"]["text"], "Caller said <!here> <https://evil.example|click>");
+
+        m.actions = vec![NotifyAction { label: "Open".into(), url: "https://bageo.example/x".into() }];
+        let with_btn = prepare(&ch("slack", "", "xoxb-test", "C123"), &m, 0).unwrap();
+        assert_eq!(json_body(&with_btn)["blocks"][0]["text"]["type"], "plain_text");
+        assert_eq!(json_body(&with_btn)["blocks"][0]["text"]["emoji"], false);
+
+        assert!(is_transient_send_error(&ChannelError::new("network_error", "", "timeout").into()));
+        assert!(is_transient_send_error(&ChannelError::new("http_error", "", "HTTP 502: bad gateway").into()));
+        assert!(is_transient_send_error(&ChannelError::new("http_error", "", "HTTP 429: slow down").into()));
+        assert!(!is_transient_send_error(&ChannelError::new("auth_failed", "", "HTTP 401: nope").into()));
+        assert!(!is_transient_send_error(&ChannelError::new("http_error", "", "HTTP 400: bad json").into()));
+        assert!(!is_transient_send_error(&ChannelError::new("missing_field", "url", "empty").into()));
     }
 }
