@@ -222,12 +222,11 @@ AI 要能替你接电话，先把这几项填好。
 - **API 地址**：服务兼容 OpenAI 的地址，例子在下面。
 - **模型**：填了 API 地址就必须填。
 - **API 密钥**：保存后只显示提示；本机服务器不需要。
-- 不填 API 地址时：填了 API 密钥就用 DeepSeek，否则用 Gemini。
-- 保存为 `summary_api_base`、`summary_model` 和 `deepseek_api_key`（存的是你所用服务的密钥）。
+- 不填 API 地址时没有自己的服务：有 Gemini 密钥就由 Gemini 写摘要。
+- 保存为 `summary_api_base`、`summary_model` 和 `summary_api_key`（存的是你所用服务的密钥）。
 
 API 地址的例子：
 
-- DeepSeek：`https://api.deepseek.com/v1`（模型 `deepseek-chat`）
 - OpenAI：`https://api.openai.com/v1`（例如 `gpt-4o-mini`）
 - OpenRouter：`https://openrouter.ai/api/v1`
 - 本机的 Ollama：`http://127.0.0.1:11434/v1`
@@ -303,6 +302,7 @@ flowchart TD
 
 | 设置 | 默认 | 作用 |
 |---|---|---|
+| 记录保留几天 | 15 | 通话和录音、短信、AI 代打和待处理事项，超过这个天数就自动删除（1 到 365），改了立刻生效。保存为 `retention_days`；`CALLS_RETENTION_DAYS` 只决定默认值。 |
 | 思考程度 | 低 | 只适用于名称里有“thinking”的 Live 模型：低、中、高。“低”回话最快。保存为 `gemini_thinking_level`。 |
 | 控制台密码 | 空 | 设置后，打开控制台和调用 API 都要输入密码（浏览器会记住）。保存为 `ui_password`。 |
 | 让其他 AI 工具连进来（MCP） | 关 | 让 Claude、ChatGPT 这类 AI 工具查你的通话和待处理事项。用不到就不用开。 |
@@ -386,7 +386,7 @@ DEVICE_TOKEN=another-long-random-string
 | 变量 | 默认值 | 含义 |
 |---|---|---|
 | `CALLS_DATA_DIR` | `data/calls` | 通话记录、录音、设置和通讯录。相对于 Bageo 启动时所在的文件夹；容器里是 `/data/calls`。 |
-| `CALLS_RETENTION_DAYS` | `7` | 超过这个天数的通话会被删除，记录和音频都删（1–3650）。 |
+| `CALLS_RETENTION_DAYS` | `15` | 记录保留天数的默认值（1–365），控制台的“高级”可改。 |
 | `CALLS_RECORD` | `true` | `false`：完全不保留通话记录和录音。 |
 | `ASSETS_DIR` | *（自动查找）* | 存放附带音效的文件夹。没设置时用程序旁边的 `assets`；容器里是 `/app/assets`。 |
 
@@ -435,6 +435,7 @@ Bageo 会自己维持 `adb reverse`，并启动手机上的 App。
 | 变量 | 控制台设置 | 默认值 |
 |---|---|---|
 | `GEMINI_API_KEY` | Gemini API 密钥 | *（空）* |
+| `SUMMARY_API_KEY` | 其他服务（摘要）的 API 密钥 | *（空；旧名 `DEEPSEEK_API_KEY` 仍可读）* |
 | `APP_LANGUAGE` | 语言 | `en`（还有 `zh-TW`、`zh-CN`、`ja`、`ko`、`es`、`fr`、`de`、`pt`） |
 | `NOTIFY_LANGUAGE` | 通知和摘要的语言 | *（空 = 与 `APP_LANGUAGE` 相同）* |
 | `OWNER_NAME` | 你的名字 | *（空）* |

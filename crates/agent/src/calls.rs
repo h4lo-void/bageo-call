@@ -156,7 +156,7 @@ pub struct CallNotes {
     /// How the call ended (same hint the summary model gets).
     #[serde(default)]
     pub end_hint: String,
-    /// `deepseek` | `fallback` | `no_key` | `ai_fail` | `none`.
+    /// `model` (the summary service wrote it) | `fallback` | `no_key` | `ai_fail` | `none`.
     #[serde(default)]
     pub source: String,
     #[serde(default)]
@@ -1266,7 +1266,6 @@ pub struct CallStore {
     root: PathBuf,
     record_enabled: bool,
     record_tts: bool,
-    retention_days: u32,
     index: Mutex<CallIndex>,
     /// Monotonic snapshot counter: bumped under the index lock for every save.
     index_seq: std::sync::atomic::AtomicU64,
@@ -1284,7 +1283,6 @@ impl CallStore {
         root: PathBuf,
         record_enabled: bool,
         record_tts: bool,
-        retention_days: u32,
     ) -> Arc<Self> {
         if record_enabled {
             if let Err(e) = fs::create_dir_all(&root) {
@@ -1306,7 +1304,6 @@ impl CallStore {
             root,
             record_enabled,
             record_tts,
-            retention_days: retention_days.clamp(1, 3650),
             index: Mutex::new(index),
             index_seq: std::sync::atomic::AtomicU64::new(0),
             index_written: Arc::new(std::sync::Mutex::new(0)),
@@ -1359,20 +1356,16 @@ impl CallStore {
         &self.root
     }
 
-    pub fn retention_days(&self) -> u32 {
-        self.retention_days
-    }
-
-    /// Remove metadata and every recording older than the configured retention window.
+    /// Remove the calls older than retention_days (the setting as it is now):
+    /// their rows and every file they have.
     ///
     /// Date directories are also pruned so orphaned WAV/PCM files cannot bypass the
     /// index-based cleanup. Only strict `YYYY-MM-DD` children of the calls root are
-    /// eligible for directory removal.
-    pub async fn purge_expired(&self) {
-        if !self.record_enabled {
-            return;
-        }
-        let cutoff = Utc::now() - Duration::days(i64::from(self.retention_days));
+    /// eligible for directory removal. With recording off nothing new is
+    /// written, but the calls kept while it was on still go when they are old.
+    pub async fn purge_expired(&self, retention_days: u32) {
+        let retention_days = retention_days.clamp(1, 3650);
+        let cutoff = Utc::now() - Duration::days(i64::from(retention_days));
         let cutoff_date = cutoff.date_naive();
         let mut expired = Vec::new();
         let mut changed = false;
@@ -1421,7 +1414,7 @@ impl CallStore {
         if changed {
             info!(
                 "expired call data purged records={} retention_days={}",
-                expired_count, self.retention_days
+                expired_count, retention_days
             );
         }
     }
@@ -2879,9 +2872,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn retention_cleans_old_calls_even_with_recording_off() {
+        let dir = std::env::temp_dir().join(format!("bageo-retention-calls-{}", Uuid::new_v4()));
+        let ids = {
+            let store = CallStore::new(dir.clone(), true, false);
+            let mut ids = Vec::new();
+            for caller in ["+15555550123", "+15555550124"] {
+                let call = store.start("pixel-1", caller, 16000, "active").await.unwrap();
+                ids.push(call.id.clone());
+                store.finalize(call, "ended").await;
+            }
+            ids
+        };
+        // The first call 20 days old, with a recording of its own; the second 3 days old.
+        let today = Utc::now().format("%Y-%m-%d").to_string();
+        let old_file = format!("{today}/retention-old-test.wav");
+        std::fs::create_dir_all(dir.join(&today)).unwrap();
+        std::fs::write(dir.join(&old_file), b"RIFF").unwrap();
+        let path = dir.join("index.json");
+        let mut index: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        for row in index["calls"].as_array_mut().unwrap() {
+            let old = row["id"] == ids[0].as_str();
+            row["started_at"] = serde_json::json!((Utc::now() - chrono::Duration::days(if old { 20 } else { 3 })).to_rfc3339());
+            if old {
+                row["audio_path"] = serde_json::json!(old_file);
+            }
+        }
+        std::fs::write(&path, serde_json::to_vec(&index).unwrap()).unwrap();
+        // Recording is off now: the calls kept while it was on still go when they are old.
+        let store = CallStore::new(dir.clone(), false, false);
+        store.purge_expired(15).await;
+        assert!(store.get(&ids[0]).await.is_none());
+        assert!(store.get(&ids[1]).await.is_some());
+        assert!(!dir.join(&old_file).exists(), "its recording went with it");
+        // Fewer days: the second one goes too, also from the file.
+        store.purge_expired(2).await;
+        assert!(store.get(&ids[1]).await.is_none());
+        assert!(CallStore::new(dir.clone(), false, false).get(&ids[1]).await.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
     async fn notes_round_trip_and_summary_on_row() {
         let dir = std::env::temp_dir().join(format!("pixel-call-notes-{}", Uuid::new_v4()));
-        let store = CallStore::new(dir.clone(), true, false, 7);
+        let store = CallStore::new(dir.clone(), true, false);
         let call = store
             .start("pixel-1", "0911111111", 16000, "active")
             .await
@@ -2893,7 +2927,7 @@ mod tests {
         let notes = CallNotes {
             summary: "對方：林專員（銀行）\n事情：推銷信貸".into(),
             dialogue: "接聽：喂？\n對方：您好，我是林專員".into(),
-            source: "deepseek".into(),
+            source: "model".into(),
             ..Default::default()
         };
         store.save_notes(&id, &notes).await.unwrap();
@@ -2901,7 +2935,7 @@ mod tests {
         assert_eq!(row.summary.as_deref(), Some(notes.summary.as_str()));
         let back = store.load_notes(&id).await.unwrap();
         assert_eq!(back.dialogue, notes.dialogue);
-        assert_eq!(back.source, "deepseek");
+        assert_eq!(back.source, "model");
         // Search hits the summary.
         assert!(call_matches(
             &row,
@@ -2916,7 +2950,7 @@ mod tests {
     async fn notes_keep_line_translations_and_old_notes_still_read() {
         // A record from before translations: no field, nothing translated.
         let old: CallNotes = serde_json::from_str(
-            r#"{"summary":"對方：Tom","dialogue":"接聽：Hello?\n對方：Hello. Do you speak English?","recording_text":"","end_hint":"","source":"deepseek","updated_at":"2026-11-14T05:17:08Z"}"#,
+            r#"{"summary":"對方：Tom","dialogue":"接聽：Hello?\n對方：Hello. Do you speak English?","recording_text":"","end_hint":"","source":"model","updated_at":"2026-11-14T05:17:08Z"}"#,
         )
         .unwrap();
         assert!(old.dialogue_translations.is_empty());
@@ -2924,7 +2958,7 @@ mod tests {
         assert!(!serde_json::to_string(&old).unwrap().contains("dialogue_translations"));
 
         let dir = std::env::temp_dir().join(format!("bageo-calls-tr-{}", Uuid::new_v4()));
-        let store = CallStore::new(dir.clone(), true, false, 7);
+        let store = CallStore::new(dir.clone(), true, false);
         let call = store.start("pixel-1", "+12025550143", 16000, "active").await.unwrap();
         let id = call.id.clone();
         store.finalize(call, "ended").await;
@@ -2942,7 +2976,7 @@ mod tests {
     #[tokio::test]
     async fn the_record_carries_what_the_caller_agreed_to() {
         let dir = std::env::temp_dir().join(format!("bageo-calls-appt-{}", Uuid::new_v4()));
-        let store = CallStore::new(dir.clone(), true, false, 7);
+        let store = CallStore::new(dir.clone(), true, false);
         let mut call = store.start("pixel-1", "0911111111", 16000, "active").await.unwrap();
         let book = crate::appointments::CallAppointments::new();
         call.set_appointments(book.clone());
@@ -2968,7 +3002,7 @@ mod tests {
     #[tokio::test]
     async fn a_declined_call_picked_up_after_all_keeps_one_record() {
         let dir = std::env::temp_dir().join(format!("bageo-calls-resume-{}", Uuid::new_v4()));
-        let store = CallStore::new(dir.clone(), true, false, 7);
+        let store = CallStore::new(dir.clone(), true, false);
         let mut call = store.start("pixel-1", "0912345678", 16000, "reject_list").await.unwrap();
         call.push_event("reject_list_declined");
         call.set_sim(Some("tw".into()), Some(2));
@@ -3107,7 +3141,7 @@ mod review_t4_tests {
     #[tokio::test]
     async fn declined_and_call_waiting_records_never_count_as_live() {
         let dir = std::env::temp_dir().join(format!("bageo-review-t4-{}", Uuid::new_v4()));
-        let store = CallStore::new(dir.clone(), true, false, 7);
+        let store = CallStore::new(dir.clone(), true, false);
         for status in ["reject_list", "reject_list", "call_waiting_rejected"] {
             let mut call = store.start("pixel-1", "0912345678", 16000, status).await.unwrap();
             assert!(store.live_calls().await.is_empty(), "{status} counted live while open");

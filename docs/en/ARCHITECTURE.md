@@ -64,7 +64,7 @@ flowchart LR
 | `contacts.rs` | The contact list; number matching however a number is written; import from vCard, CSV, TSV, text, `.xlsx` and `.docx`, and through Gemini for PDFs and pictures; vCard export. |
 | `phone_region.rs` | Which country a number belongs to, read the way the answering SIM reads it; the SIM country each phone reported. |
 | `calendar.rs` | Calendar suggestions and "add to calendar" links for Google, Outlook.com, Microsoft 365, Yahoo and `.ics`. |
-| `deepseek.rs` | The after-call summary over Gemini or any OpenAI-compatible API (the file name is historical), translations of lines said in another language, the result of an errand. |
+| `summary.rs` | The after-call summary over Gemini or any OpenAI-compatible API, translations of lines said in another language, the result of an errand. |
 | `tasks.rs` | The store behind **To do**. |
 | `notify.rs`, `gmail.rs`, `tg_inbound.rs` | The 32 notification channels, e-mail over SMTP, Telegram button presses. |
 | `calls.rs`, `calls_http.rs` | Call records, recordings and transcripts; the web console's REST API. |
@@ -151,7 +151,7 @@ sequenceDiagram
      (20 s at most).
    - If the AI never produced audio (no key, service down), the call is ended
      at once instead of leaving the caller in silence.
-6. **Afterwards** (`main.rs`, `deepseek.rs`, `appointments.rs`,
+6. **Afterwards** (`main.rs`, `summary.rs`, `appointments.rs`,
    `notify.rs`).
    - The recording is saved three ways (mixed, caller only, AI only).
    - The transcript goes to the summary model, and the four-line summary is

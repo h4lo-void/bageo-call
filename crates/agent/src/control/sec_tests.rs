@@ -35,7 +35,7 @@ impl Rig {
         base.calls_ui_token = "console-secret-token".into();
         let state = CallsState {
             settings: base.clone(),
-            store: crate::calls::CallStore::new(root.join("calls"), true, false, 30),
+            store: crate::calls::CallStore::new(root.join("calls"), true, false),
             settings_store: SettingsStore::load(base),
             task_store: crate::tasks::TaskStore::new(root.join("tasks")),
             http: reqwest::Client::new(),
@@ -45,6 +45,7 @@ impl Rig {
             phones: PhoneDevices::new(),
             contacts: crate::contacts::ContactStore::open(root.join("contacts.json")),
             errands: crate::errands::ErrandStore::open(root.join("errands.json"), crate::errands::SimBook::in_memory()),
+            sms: crate::sms_store::SmsStore::open(root.join("sms"), crate::sms_store::now_ms(), 15),
         };
         let rig = Rig { root, state };
         rig.set(json!({"gemini_api_key_clear": true}));

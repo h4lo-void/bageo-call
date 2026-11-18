@@ -215,7 +215,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 | `owner_aliases` | 别人怎么称呼你，最多 10 个，每个最多 40 字。空白的、重复的和跟 `owner_name` 相同的会被去掉。 |
 | `answer_style` | `assistant`／`persona`（AI 以你本人身份接听）。 |
 | `errand_identity` | `assistant`（默认）／`owner`：AI 代打时说自己是谁。其他值存为 `assistant`。 |
-| `summary_provider` | `gemini`（默认）／`custom`。`custom` 使用 `summary_api_base`、`summary_model`（填了地址就必填）和 `deepseek_api_key`（那家服务的密钥）。旧的 `auto`／`deepseek` 会在设置加载时转换一次。 |
+| `summary_provider` | `gemini`（默认）／`custom`。`custom` 使用 `summary_api_base`、`summary_model`（填了地址就必填）和 `summary_api_key`（那家服务的密钥）。旧版的值和旧的设置名称会在设置加载时转换一次。 |
 | `calendar_app` | `google`、`outlook`、`office365`、`apple`、`yahoo`、`ics` 或空（还没选）。其他值存为空。 |
 | `appointment_mode` | `off`（默认）／`confirm`。旧的 `auto` 视为 `confirm`。 |
 | `appointment_sms` | `true`／`false`：要不要发短信告诉对方你的决定。 |
@@ -230,7 +230,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 
 `PUT` 的规则：
 
-- 机密字段（`gemini_api_key`、`deepseek_api_key`）没带或是 `""` 时，保留原来保存的值；`"<name>_clear": true` 会清空它。
+- 机密字段（`gemini_api_key`、`summary_api_key`）没带或是 `""` 时，保留原来保存的值；`"<name>_clear": true` 会清空它。
 - `notify_channels` 整体替换。一行 `{id, kind, name, enabled, url, token, target}` 的 `url` 或 `token` 为空时，保留 `id` 和 `kind` 相同那一行原来保存的值；没有 `id` 的行是新增的；没列出来的行会被删除。
 - 旧版保存的、这一版已经没有的字段，读入时忽略，下次保存就消失：Google 日历凭据（`gcal_*`）、`calendar_auto_add`、`intl_carrier_prompt`，以及其他在 1.0 移除的设置。
 - 写入磁盘失败时返回 HTTP 500 `save_failed`。
@@ -247,7 +247,16 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 | 方法与路径 | 内容 |
 |---|---|
 | `POST /calls/api/notify/test` | 把测试消息发到那一个渠道（已保存的机密按 `id` 补上）。请求体 `{"channel": {kind, url, token, target, id?}}`。响应见下方。 |
-| `POST /calls/api/notify/send` | 请求体 `{"title": "...", "body": "..."}`。把你的消息发到每一个已启用的渠道。规则见下方。 |
+| `POST /calls/api/notify/send` | 请求体 `{"title": "...", "body": "..."}`。把你的消息发到每一个已启用的渠道。可另外带 `"kind": "sms"` 与短信的字段：Bageo 会把短信存进控制台的“短信”页，桌面状态小程序也用它显示短信通知。规则见下方。 |
+| `GET /calls/api/notify/recent?after=<id>` | 由旧到新列出发过 `notify/send` 的消息：`{ok, last_id, events: [{id, at_ms, kind, title, from, text}]}`。`events` 只放 `id` 大于 `after` 的；没带 `after` 或不是数字时 `events` 是空的，`last_id` 让客户端知道从哪里开始。只留最近 50 条，只放在内存里，重启就清空。 |
+| `GET /calls/api/sms?q=&before=<id>&limit=<n>` | 由新到旧列出存下来的短信：`{ok, total, retention_days, has_more, messages: [{id, at_ms, dir, from, from_name, to, text, serial, device, status}]}`。`q` 搜索发件人、联系人名称与内容；`before` 只列比这个 `id` 旧的；`limit` 是 1 到 200（默认 50）。`total` 是全部短信的数目，不受搜索影响。超过“记录保留几天”的短信会删掉，最多留 5000 条。 |
+| `DELETE /calls/api/sms/{id}` | 删除一条短信：`{ok: true}`，找不到返回 HTTP 404 `not_found`。 |
+| `POST /calls/api/sms/clear` | 删除全部短信：`{ok: true, removed: N}`。 |
+| `GET /calls/api/sms/threads?q=` | 由新到旧列出对话，一个号码一条：`{ok, total, retention_days, threads: [{key, number, name, last_at, last_text, last_dir, last_status, count, last_in_at, can_reply}], lines: [{serial, sub_id, device, number, carrier, slot, can_send}]}`。`0912…` 与 `+886912…` 算同一条对话（号码按收到它的那张 SIM 卡的国家判读）。`q` 搜索名称、号码与每一条内容。发件人是“BankInfo”这种名称时 `can_reply` 是 false。`lines` 是可以用来发短信的 SIM 卡；`can_send` 表示那台手机连着、App 也能发短信。 |
+| `GET /calls/api/sms/thread?number=<号码或 key>&before=<id>&limit=<n>` | 由旧到新列出一条对话：`{ok, key, number, name, can_reply, has_more, reply, messages: [{id, at_ms, dir, from, to, text, serial, sub_id, device, status, error}]}`。`dir` 是 `in` 或 `out`；发出的短信 `status` 是 `sending`、`sent`、`failed`（`error` 是手机返回的代码）或 `timeout`。`reply`（`{serial, sub_id}` 或 `null`）是回复默认用的号码：收到最近一条短信的那台手机与 SIM 卡，不能用时改用第一个能发的。还没有对话的号码返回空的对话。 |
+| `POST /calls/api/sms/send` | 请求体 `{"to", "text", "serial", "sub_id"}`（`lines` 其中一条；`text` 1 到 500 个字）。让那台手机发出，最多等 30 秒它的回复：`{ok, message}`，发出才是 `ok`。HTTP 400 `bad_number`、`bad_line` 或 `bad_text`。这条短信会留在对话里，不会发到通知渠道。 |
+| `POST /calls/api/sms/{id}/retry` | 用同一个号码重发 `failed` 或 `timeout` 的短信，响应同 `send`。其他短信返回 HTTP 409 `not_retryable`。 |
+| `DELETE /calls/api/sms/thread?number=<号码或 key>` | 删除一条对话：`{ok: true, removed: N}`。 |
 | `GET /calls/api/quick-action` · `POST /calls/api/quick-action` | 32 种通知渠道内附的单次签名互动按钮路由（`?act=confirm\|ignore\|block\|stall\|white&target=<id或号码>&sig=<hmac>`）。打开链接（`GET`）只会先显示确认页，点页面上的按钮（`POST`）才会执行；链接 7 天后失效。通过 HMAC-SHA256 验证，不用登录控制台，支持全部 9 种语言。 |
 | `POST /calls/api/control/inbound` | 跨平台通用指令 Webhook，用聊天指令控制 Bageo。请求体例如 `{"text": "记录 5", "user": "owner", "channel": "line"}`。 |
 | `GET /calls/api/auth-status` · `POST /calls/api/initial-password` | 查询是否需要密码与是否首次设置密码（`{ok, password_required, needs_initial_password_setup}`），以及首次创建密码（`{"password": "..."}`，仅在尚未设置任何密码／Token 时可用）。 |
@@ -263,6 +272,7 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 
 - `title` 为空就用“Bageo”；`body` 为空返回 HTTP 400 `empty_body`。
 - 只要有一个渠道接受就返回 `{ok: true}`。
+- 短信可另外带 `"kind": "sms"`、`"from"`（发件人）、`"text"`（短信内容）、`"to"`（收件号码）、`"serial"` 与 `"device"`（手机）、`"received_ms"`（收到的时间，Unix 毫秒）、`"ref"`（你自己给这条短信的标识）、`"sub_id"`（收到它的 SIM 卡）。Bageo 会把它存进控制台的“短信”页，同一个 `ref` 只存一次；桌面状态小程序用它显示短信通知。旧的请求照常运作。
 - [短信转发工具](../../tools/sms_forward/README.md)（英文）就是用这条路由。
 
 `POST /calls/api/control/inbound` 的规则：
@@ -653,6 +663,7 @@ Content-Type: application/json
 
 - `control_idle_clients`／`control_idle_serials` 统计所有连上的手机；`normal_mode_serials` 列出切换成一般手机的那几部。
 - `local_time` 是 Bageo 按 `TZ` 的时钟。
+- `summary_ready`（`summary_api_key_set` 是同一个值）表示有没有设置摘要服务。
 - 设置了控制台密码、请求却没带时，只返回 `ok`、`version`、`language`、`notify_language`、`active_call_count` 和 `control_idle_clients`，监控用已经足够。
 
 切换模式后，`mode` 是手机现在的模式（不知道时为 `null`）；成功时 `error_code` 为 `null`，否则是下面其中之一：

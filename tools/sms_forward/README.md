@@ -5,6 +5,9 @@ to the notification channels set up in the Bageo web console (*Settings →
 Notifications*): Telegram, Discord, a webhook and the others the agent supports. It is
 optional and experimental. The agent works without it, and nothing starts it for you.
 
+A newer Bageo also keeps every forwarded text on the console's **SMS** page, where you
+can read, search and delete it.
+
 It runs on the computer the phones are plugged into, reads them over `adb` and uses
 only the Python standard library (Python 3.10 or newer; tested with 3.12 on Windows).
 It works with Bageo 1.0: it needs only the agent's

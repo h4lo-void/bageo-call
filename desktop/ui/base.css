@@ -1,0 +1,38 @@
+/* SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial */
+/* SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> */
+/* Shared by the status window and the notification card.
+   Same palette and type as the web console (crates/agent/static/calls.html). */
+:root{
+  color-scheme:light;
+  --surface:#ffffff;--surface2:#eeede8;--line:#e6e4dd;--line-strong:#d1cec4;
+  --text:#1c1d20;--muted:#6d6f76;
+  --accent:#177571;--focus:#177571;
+  --primary-bg:#1f2024;--primary-fg:#ffffff;
+  --ok:#1b7a43;--warn:#9a5b13;--bad:#b4342c;
+  --shadow:0 10px 28px rgba(24,25,28,.16),0 1px 3px rgba(24,25,28,.08);
+  /* The frame around the logo: the same colours as the tray icon. */
+  --st-ok:#2fa463;--st-warn:#e39a1f;--st-bad:#d8473d;--st-unknown:#8c909a;
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue","Noto Sans","PingFang TC","PingFang SC","Hiragino Sans","Microsoft JhengHei","Microsoft YaHei","Yu Gothic UI","Malgun Gothic","Noto Sans CJK TC","Noto Sans TC",sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    color-scheme:dark;
+    --surface:#1b1d21;--surface2:#24272d;--line:#2a2d34;--line-strong:#393d46;
+    --text:#e6e7eb;--muted:#8c909a;
+    --accent:#45a5a1;--focus:#45a5a1;
+    --primary-bg:#e6e7eb;--primary-fg:#151619;
+    --ok:#55c282;--warn:#dca44c;--bad:#e07a72;
+    --shadow:0 10px 28px rgba(0,0,0,.42),0 1px 3px rgba(0,0,0,.3);
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:transparent;color:var(--text);font:14px/1.5 var(--font);-webkit-font-smoothing:antialiased;overflow:hidden;cursor:default;user-select:none;-webkit-user-select:none}
+button,input{font:inherit;color:inherit}
+h1,p,ul{margin:0;padding:0}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid color-mix(in srgb,var(--focus) 70%,transparent);outline-offset:2px;border-radius:6px}
+.grow{flex:1 1 auto;min-width:0}
+
+/* The windows are see-through; this card is what the eye reads as the window. */
+.card{margin:10px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+@media (prefers-reduced-motion:reduce){*{transition-duration:0s!important;animation-duration:0s!important}}

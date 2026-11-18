@@ -41,6 +41,8 @@ pub struct CallsState {
     pub contacts: Arc<crate::contacts::ContactStore>,
     /// Calls the owner has the AI make ([`crate::errands`]), and their API.
     pub errands: Arc<crate::errands::ErrandStore>,
+    /// Text messages the SMS forwarder handed over ([`crate::sms_store`]), for the SMS page.
+    pub sms: Arc<crate::sms_store::SmsStore>,
 }
 
 const UI_HTML: &str = include_str!("../static/calls.html");
@@ -1274,6 +1276,7 @@ async fn settings_put(
     if !patch.is_object() {
         return api_error(StatusCode::BAD_REQUEST, "bad_request", "JSON object body required");
     }
+    let days_before = state.settings_store.snapshot().retention_days;
     // Blocked numbers sent the old way go onto the Blacklist (the settings do
     // not keep them); nothing is saved when the contacts cannot be.
     if let Some(v) = patch.get("reject_numbers") {
@@ -1285,6 +1288,7 @@ async fn settings_put(
     }
     match state.settings_store.apply_patch(&patch) {
         Ok(rt) => {
+            purge_after_fewer_days(&state, days_before, rt.retention_days);
             // Language, answer style, owner name: what the next call's helpers read.
             rt.apply_globals();
             // Blocked numbers / hidden numbers / voice / model changed: have the "cannot be
@@ -1368,6 +1372,52 @@ pub struct NotifySendBody {
     #[serde(default)]
     pub title: String,
     pub body: String,
+    /// `"sms"` marks a forwarded text message; anything else is a plain message.
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub from: String,
+    #[serde(default)]
+    pub text: String,
+    /// Only for `"kind": "sms"`: the number of the SIM that received it,
+    /// the phone (serial and name), when the phone received it (Unix
+    /// milliseconds) and the sender's own key for the message. A second
+    /// request with the same `ref` is not stored again.
+    #[serde(default)]
+    pub to: String,
+    #[serde(default)]
+    pub serial: String,
+    #[serde(default)]
+    pub device: String,
+    #[serde(default, deserialize_with = "lenient_u64")]
+    pub received_ms: u64,
+    #[serde(default, rename = "ref")]
+    pub reference: String,
+    /// Only for a text message: the SIM (Android subscription id) that received it.
+    #[serde(default, deserialize_with = "lenient_i64")]
+    pub sub_id: Option<i64>,
+}
+
+/// A whole number given as a number or as text; anything else counts as 0
+/// (the field is optional, a script's odd value must not fail the request).
+fn lenient_u64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
+    Ok(match Value::deserialize(d)? {
+        Value::Number(n) => n
+            .as_u64()
+            .or_else(|| n.as_f64().filter(|f| f.is_finite() && *f > 0.0).map(|f| f as u64))
+            .unwrap_or(0),
+        Value::String(s) => s.trim().parse().unwrap_or(0),
+        _ => 0,
+    })
+}
+
+/// A whole number given as a number or as text; anything else is None.
+fn lenient_i64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<i64>, D::Error> {
+    Ok(match Value::deserialize(d)? {
+        Value::Number(n) => n.as_i64(),
+        Value::String(s) => s.trim().parse().ok(),
+        _ => None,
+    })
 }
 
 /// Send a message of your own to every notification channel (for scripts
@@ -1384,10 +1434,686 @@ async fn notify_send(
     if body.body.trim().is_empty() {
         return api_error(StatusCode::BAD_REQUEST, "empty_body", "body is empty");
     }
-    let eff = state.settings_store.snapshot().effective(&state.settings);
+    let rt = state.settings_store.snapshot();
+    let eff = rt.effective(&state.settings);
     let title = if body.title.trim().is_empty() { "Bageo" } else { body.title.trim() };
+    // A text message is kept for the console's SMS page. The forwarder sends
+    // one again until a channel took it: the same ref is stored only once.
+    let is_sms = body.kind.trim().eq_ignore_ascii_case("sms");
+    let repeated = is_sms
+        && (!body.from.trim().is_empty() || !body.text.trim().is_empty())
+        && state.sms.push(
+            crate::sms_store::now_ms(),
+            rt.retention_days,
+            crate::sms_store::NewSms {
+                received_ms: body.received_ms,
+                from: &body.from,
+                to: &body.to,
+                text: &body.text,
+                serial: &body.serial,
+                device: &body.device,
+                reference: &body.reference,
+                sub_id: body.sub_id,
+            },
+        ) == crate::sms_store::Pushed::Duplicate;
+    // Remember it for the desktop status app whether or not a channel works.
+    if !repeated {
+        crate::recent_notices::record(&body.kind, title, &body.from, &body.text, &body.body);
+    }
     let ok = crate::notify::notify_event(&state.http, &eff, title, &body.body).await;
     Json(json!({"ok": ok})).into_response()
+}
+
+#[derive(Deserialize)]
+struct RecentQuery {
+    token: Option<String>,
+    after: Option<String>,
+}
+
+/// The last messages sent through `notify/send` (memory only, newest 50), so
+/// a desktop app can poll. Without a numeric `after` only `last_id` is useful:
+/// the client uses it as its starting point.
+async fn notify_recent(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<RecentQuery>,
+) -> Response {
+    if !token_ok_parts(&state.settings, &headers, query.token.as_deref()) {
+        return unauthorized();
+    }
+    let after = query.after.as_deref().and_then(|s| s.trim().parse::<u64>().ok());
+    let (last_id, events) = crate::recent_notices::snapshot(after.unwrap_or(u64::MAX));
+    Json(json!({"ok": true, "last_id": last_id, "events": events})).into_response()
+}
+
+#[derive(Deserialize)]
+struct SmsListQuery {
+    token: Option<String>,
+    q: Option<String>,
+    before: Option<String>,
+    limit: Option<String>,
+}
+
+/// The stored text messages, newest first: `q` searches sender, contact name
+/// and text; `before` (an id) gives the next page.
+async fn sms_list(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<SmsListQuery>,
+) -> Response {
+    if !token_ok_parts(&state.settings, &headers, query.token.as_deref()) {
+        return unauthorized();
+    }
+    let keep_days = state.settings_store.snapshot().retention_days;
+    let before = query.before.as_deref().and_then(|s| s.trim().parse::<u64>().ok()).filter(|id| *id > 0);
+    let limit = query
+        .limit
+        .as_deref()
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .unwrap_or(crate::sms_store::PAGE_DEFAULT)
+        .clamp(1, crate::sms_store::PAGE_MAX);
+    let name_of = |from: &str| -> String {
+        if from.trim().is_empty() {
+            return String::new();
+        }
+        state.contacts.lookup(from, None).map(|c| c.name).unwrap_or_default()
+    };
+    let page = state.sms.list(
+        crate::sms_store::now_ms(),
+        keep_days,
+        query.q.as_deref().unwrap_or(""),
+        before,
+        limit,
+        &name_of,
+    );
+    let labels: HashMap<String, String> = crate::notify::known_devices().into_iter().collect();
+    let messages: Vec<Value> = page
+        .messages
+        .iter()
+        .map(|m| {
+            // The name this Bageo knows the phone by, else the model the forwarder sent.
+            let device = labels.get(&m.serial).filter(|l| !l.trim().is_empty()).cloned().unwrap_or_else(|| m.device.clone());
+            json!({
+                "id": m.id,
+                "at_ms": m.at_ms,
+                "dir": m.dir,
+                "from": m.from,
+                "from_name": name_of(&m.from),
+                "to": m.to,
+                "text": m.text,
+                "serial": m.serial,
+                "device": device,
+                "status": m.status,
+            })
+        })
+        .collect();
+    Json(json!({
+        "ok": true,
+        "total": page.total,
+        "retention_days": keep_days,
+        "has_more": page.has_more,
+        "messages": messages,
+    }))
+    .into_response()
+}
+
+async fn sms_delete(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Query(query): Query<TokenQuery>,
+) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    match id.trim().parse::<u64>() {
+        Ok(id) if state.sms.delete(id) => Json(json!({"ok": true})).into_response(),
+        _ => api_error(StatusCode::NOT_FOUND, "not_found", "text message not found"),
+    }
+}
+
+async fn sms_clear(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    // Like clearing the calls: a JSON request cannot come from another site's form.
+    if !is_json_request(&headers) {
+        return json_required();
+    }
+    Json(json!({"ok": true, "removed": state.sms.clear()})).into_response()
+}
+
+/// The owner now keeps fewer days: what is too old goes right away (in the
+/// background; the hourly cleanup would only get to it later).
+fn purge_after_fewer_days(state: &CallsState, days_before: u32, days_now: u32) {
+    if days_now >= days_before {
+        return;
+    }
+    let (calls, tasks, errands, sms) = (state.store.clone(), state.task_store.clone(), state.errands.clone(), state.sms.clone());
+    tokio::spawn(async move { purge_expired_records(&calls, &tasks, &errands, &sms, days_now).await });
+}
+
+/// Delete what is older than retention_days (the setting as it is now):
+/// calls and their recordings, to-do items, AI errands that are over, text
+/// messages. Run every hour and right after the owner keeps fewer days.
+pub async fn purge_expired_records(
+    calls: &CallStore,
+    tasks: &TaskStore,
+    errands: &crate::errands::ErrandStore,
+    sms: &crate::sms_store::SmsStore,
+    retention_days: u32,
+) {
+    calls.purge_expired(retention_days).await;
+    tasks.purge_expired(retention_days).await;
+    errands.purge_expired(retention_days).await;
+    sms.purge(crate::sms_store::now_ms(), retention_days);
+}
+
+/// How long sending a text from the console waits for the phone's answer.
+#[cfg(not(test))]
+const SMS_SEND_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+#[cfg(test)]
+const SMS_SEND_WAIT: std::time::Duration = std::time::Duration::from_millis(800);
+/// Longest text the console sends, in characters (what the phone app takes).
+const SMS_SEND_MAX_CHARS: usize = 500;
+
+/// A SIM a text can go out from: every SIM the phones reported, and a phone
+/// that is connected without a SIM list (its default SIM, sub_id None).
+#[derive(Clone, Debug, Default, PartialEq)]
+struct SmsLine {
+    serial: String,
+    sub_id: Option<i64>,
+    device: String,
+    number: String,
+    carrier: String,
+    slot: Option<i64>,
+    country: String,
+    can_send: bool,
+}
+
+impl SmsLine {
+    fn json(&self) -> Value {
+        json!({
+            "serial": self.serial,
+            "sub_id": self.sub_id,
+            "device": self.device,
+            "number": self.number,
+            "carrier": self.carrier,
+            "slot": self.slot,
+            "can_send": self.can_send,
+        })
+    }
+}
+
+/// The name of a phone: the owner's (or its app's) label, else the model it
+/// reported, else its serial.
+fn sms_device_name(state: &CallsState, labels: &HashMap<String, String>, serial: &str) -> String {
+    labels
+        .get(serial)
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .or_else(|| state.phones.model_of(serial))
+        .unwrap_or_else(|| serial.to_string())
+}
+
+async fn sms_lines(state: &CallsState) -> Vec<SmsLine> {
+    let labels: HashMap<String, String> = crate::notify::known_devices().into_iter().collect();
+    let mut lines: Vec<SmsLine> = Vec::new();
+    for (serial, list) in state.errands.sims.all_json() {
+        for v in list.as_array().into_iter().flatten() {
+            let sub_id = v.get("sub_id").and_then(Value::as_i64).filter(|s| *s >= 0);
+            // A number saved before the phone listed its SIMs stands for its default SIM.
+            if sub_id.is_none() && lines.iter().any(|l| l.serial == serial && l.sub_id.is_none()) {
+                continue;
+            }
+            let text = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").trim().to_string();
+            lines.push(SmsLine {
+                serial: serial.clone(),
+                sub_id,
+                number: text("effective_number"),
+                carrier: text("carrier"),
+                country: text("country"),
+                slot: v.get("slot").and_then(Value::as_i64),
+                ..Default::default()
+            });
+        }
+    }
+    for serial in state.control.connected_serials().await {
+        if !lines.iter().any(|l| l.serial == serial) {
+            lines.push(SmsLine { serial, ..Default::default() });
+        }
+    }
+    for line in &mut lines {
+        line.can_send = state.control.can_send_sms(&line.serial).await;
+        line.device = sms_device_name(state, &labels, &line.serial);
+    }
+    lines
+}
+
+/// The owner's country, for numbers without a known SIM.
+fn sms_home_region() -> Option<String> {
+    crate::phone_region::country_of_code(&crate::locale::country_code()).map(str::to_string)
+}
+
+/// The country a message's numbers are read in: its SIM's, else the one its
+/// phone's SIMs share, else the owner's.
+fn sms_region(lines: &[SmsLine], m: &crate::sms_store::SmsMessage, home: Option<&str>) -> Option<String> {
+    let phone: Vec<&SmsLine> = lines.iter().filter(|l| l.serial == m.serial && !l.country.is_empty()).collect();
+    if let Some(l) = m.sub_id.and_then(|s| phone.iter().find(|l| l.sub_id == Some(s))) {
+        return Some(l.country.clone());
+    }
+    match phone.first() {
+        Some(first) if phone.iter().all(|l| l.country == first.country) => Some(first.country.clone()),
+        _ => home.map(str::to_string),
+    }
+}
+
+fn sms_key_of(lines: &[SmsLine], m: &crate::sms_store::SmsMessage, home: Option<&str>) -> String {
+    crate::sms_store::thread_key(m.peer(), sms_region(lines, m, home).as_deref())
+}
+
+/// The contact name of a message's other party, or "".
+fn sms_name_of(state: &CallsState, lines: &[SmsLine], m: &crate::sms_store::SmsMessage, home: Option<&str>) -> String {
+    let peer = m.peer().trim();
+    if peer.is_empty() {
+        return String::new();
+    }
+    state.contacts.lookup(peer, sms_region(lines, m, home).as_deref()).map(|c| c.name).unwrap_or_default()
+}
+
+/// The line a reply goes out on by default: the phone and SIM of the newest
+/// message received in the conversation (its SIM found by the number it was
+/// sent to when the forwarder did not say, else the phone's first SIM); with
+/// none received, the line of the newest message sent. When that line cannot
+/// send now, or the conversation is new: the first line that can.
+fn sms_reply_line<'a>(
+    msgs: &[crate::sms_store::SmsMessage],
+    lines: &'a [SmsLine],
+    region_of: &dyn Fn(&crate::sms_store::SmsMessage) -> Option<String>,
+) -> Option<&'a SmsLine> {
+    let first_can = || lines.iter().find(|l| l.can_send);
+    let basis = msgs.iter().rev().find(|m| !m.is_out()).or_else(|| msgs.iter().rev().find(|m| m.is_out()));
+    let Some(m) = basis else { return first_can() };
+    let phone: Vec<&SmsLine> = lines.iter().filter(|l| l.serial == m.serial).collect();
+    let picked = match m.sub_id {
+        Some(sub) => phone.iter().find(|l| l.sub_id == Some(sub)).copied(),
+        None => {
+            let region = region_of(m);
+            let by_number = (!m.is_out() && !m.to.trim().is_empty())
+                .then(|| {
+                    phone.iter().find(|l| {
+                        !l.number.is_empty() && crate::contacts::same_number(&m.to, &l.number, region.as_deref())
+                    })
+                })
+                .flatten()
+                .copied();
+            by_number.or_else(|| phone.iter().find(|l| l.sub_id.is_none()).copied())
+        }
+    }
+    .or_else(|| phone.first().copied());
+    match picked {
+        Some(l) if l.can_send => Some(l),
+        _ => first_can(),
+    }
+}
+
+/// A message for the SMS page.
+fn sms_message_json(state: &CallsState, labels: &HashMap<String, String>, m: &crate::sms_store::SmsMessage) -> Value {
+    let device = labels
+        .get(&m.serial)
+        .filter(|l| !l.trim().is_empty())
+        .cloned()
+        .or_else(|| (!m.device.is_empty()).then(|| m.device.clone()))
+        .or_else(|| state.phones.model_of(&m.serial))
+        .unwrap_or_default();
+    json!({
+        "id": m.id,
+        "at_ms": m.at_ms,
+        "dir": m.dir,
+        "from": m.from,
+        "to": m.to,
+        "text": m.text,
+        "serial": m.serial,
+        "sub_id": m.sub_id,
+        "device": device,
+        "status": m.status,
+        "error": m.error,
+    })
+}
+
+#[derive(Deserialize)]
+struct SmsThreadsQuery {
+    token: Option<String>,
+    q: Option<String>,
+}
+
+/// The conversations (one per number), newest first, and the lines a text can go out on.
+async fn sms_threads(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<SmsThreadsQuery>,
+) -> Response {
+    if !token_ok_parts(&state.settings, &headers, query.token.as_deref()) {
+        return unauthorized();
+    }
+    let keep_days = state.settings_store.snapshot().retention_days;
+    let lines = sms_lines(&state).await;
+    let home = sms_home_region();
+    let key_of = |m: &crate::sms_store::SmsMessage| sms_key_of(&lines, m, home.as_deref());
+    let name_of = |m: &crate::sms_store::SmsMessage| sms_name_of(&state, &lines, m, home.as_deref());
+    let (total, threads) = state.sms.threads(
+        crate::sms_store::now_ms(),
+        keep_days,
+        query.q.as_deref().unwrap_or(""),
+        &key_of,
+        &name_of,
+    );
+    let threads: Vec<Value> = threads
+        .iter()
+        .map(|t| {
+            json!({
+                "key": t.key,
+                "number": t.number,
+                "name": name_of(&t.last),
+                "last_at": t.last.at_ms,
+                "last_text": t.last.text,
+                "last_dir": t.last.dir,
+                "last_status": t.last.status,
+                "count": t.count,
+                "last_in_at": t.last_in_at,
+                "can_reply": crate::sms_store::sendable_number(&t.number).is_some(),
+            })
+        })
+        .collect();
+    let lines: Vec<Value> = lines.iter().map(SmsLine::json).collect();
+    Json(json!({
+        "ok": true,
+        "total": total,
+        "retention_days": keep_days,
+        "threads": threads,
+        "lines": lines,
+    }))
+    .into_response()
+}
+
+/// The conversation a number (as written, or a conversation key) names: the
+/// one with its key, else with that exact key, else the only one whose number
+/// ends with the same (at least eight) digits. None: no conversation yet.
+fn sms_find_thread(keys: &[String], raw: &str, home: Option<&str>) -> Option<String> {
+    let key = crate::sms_store::thread_key(raw, home);
+    if keys.contains(&key) {
+        return Some(key);
+    }
+    let lower = raw.trim().to_lowercase();
+    if keys.contains(&lower) {
+        return Some(lower);
+    }
+    let digits: String = raw.chars().filter(char::is_ascii_digit).collect();
+    let digits = digits.trim_start_matches('0');
+    if digits.len() < 8 || raw.chars().any(char::is_alphabetic) {
+        return None;
+    }
+    let mut hits = keys.iter().filter(|k| {
+        let kd: String = k.chars().filter(char::is_ascii_digit).collect();
+        !k.chars().any(char::is_alphabetic) && kd.ends_with(digits)
+    });
+    match (hits.next(), hits.next()) {
+        (Some(k), None) => Some(k.clone()),
+        _ => None,
+    }
+}
+
+#[derive(Deserialize)]
+struct SmsThreadQuery {
+    token: Option<String>,
+    number: Option<String>,
+    before: Option<String>,
+    limit: Option<String>,
+}
+
+/// One conversation, oldest first, a page at a time (before: an id), and the
+/// line a reply goes out on by default. A number with no conversation yet
+/// gives an empty one (a new message).
+async fn sms_thread(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<SmsThreadQuery>,
+) -> Response {
+    if !token_ok_parts(&state.settings, &headers, query.token.as_deref()) {
+        return unauthorized();
+    }
+    let keep_days = state.settings_store.snapshot().retention_days;
+    let raw = query.number.as_deref().unwrap_or("").trim().to_string();
+    let before = query.before.as_deref().and_then(|s| s.trim().parse::<u64>().ok()).filter(|id| *id > 0);
+    let limit = query
+        .limit
+        .as_deref()
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .unwrap_or(crate::sms_store::PAGE_DEFAULT)
+        .clamp(1, crate::sms_store::PAGE_MAX);
+    let lines = sms_lines(&state).await;
+    let home = sms_home_region();
+    let key_of = |m: &crate::sms_store::SmsMessage| sms_key_of(&lines, m, home.as_deref());
+    let now = crate::sms_store::now_ms();
+    let (_, threads) = state.sms.threads(now, keep_days, "", &key_of, &|_: &crate::sms_store::SmsMessage| String::new());
+    let keys: Vec<String> = threads.iter().map(|t| t.key.clone()).collect();
+    let key = sms_find_thread(&keys, &raw, home.as_deref()).unwrap_or_else(|| crate::sms_store::thread_key(&raw, home.as_deref()));
+    let mut all = state.sms.thread(now, keep_days, &key, &key_of);
+    // A text the wait gave up on may have been reported since.
+    for m in all.iter_mut().filter(|m| {
+        m.is_out() && (m.status == crate::sms_store::STATUS_TIMEOUT || m.status == crate::sms_store::STATUS_SENDING)
+    }) {
+        if let Some((true, _)) = state.control.sms_outcome(&format!("sms-{}", m.id)).await {
+            if let Some(now_sent) = state.sms.set_status(m.id, crate::sms_store::STATUS_SENT, "") {
+                *m = now_sent;
+            }
+        }
+    }
+    let (number, name) = match all.last() {
+        Some(m) => (m.peer().to_string(), sms_name_of(&state, &lines, m, home.as_deref())),
+        None => {
+            let number = crate::sms_store::sendable_number(&raw).unwrap_or_else(|| raw.clone());
+            let name = if number.is_empty() {
+                String::new()
+            } else {
+                state.contacts.lookup(&number, home.as_deref()).map(|c| c.name).unwrap_or_default()
+            };
+            (number, name)
+        }
+    };
+    let region_of = |m: &crate::sms_store::SmsMessage| sms_region(&lines, m, home.as_deref());
+    let reply = sms_reply_line(&all, &lines, &region_of).map(|l| json!({"serial": l.serial, "sub_id": l.sub_id}));
+    let older: Vec<&crate::sms_store::SmsMessage> = all.iter().filter(|m| before.map_or(true, |b| m.id < b)).collect();
+    let start = older.len().saturating_sub(limit);
+    let labels: HashMap<String, String> = crate::notify::known_devices().into_iter().collect();
+    let messages: Vec<Value> = older[start..].iter().map(|m| sms_message_json(&state, &labels, m)).collect();
+    Json(json!({
+        "ok": true,
+        "key": key,
+        "number": number,
+        "name": name,
+        "can_reply": crate::sms_store::sendable_number(&number).is_some(),
+        "has_more": start > 0,
+        "reply": reply,
+        "messages": messages,
+    }))
+    .into_response()
+}
+
+/// Remove one conversation.
+async fn sms_thread_delete(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<SmsThreadQuery>,
+) -> Response {
+    if !token_ok_parts(&state.settings, &headers, query.token.as_deref()) {
+        return unauthorized();
+    }
+    if !is_json_request(&headers) {
+        return json_required();
+    }
+    let keep_days = state.settings_store.snapshot().retention_days;
+    let raw = query.number.as_deref().unwrap_or("").trim().to_string();
+    let lines = sms_lines(&state).await;
+    let home = sms_home_region();
+    let key_of = |m: &crate::sms_store::SmsMessage| sms_key_of(&lines, m, home.as_deref());
+    let (_, threads) = state.sms.threads(
+        crate::sms_store::now_ms(),
+        keep_days,
+        "",
+        &key_of,
+        &|_: &crate::sms_store::SmsMessage| String::new(),
+    );
+    let keys: Vec<String> = threads.iter().map(|t| t.key.clone()).collect();
+    // Deleting takes the conversation's own key (or the number it stands for)
+    // only: the "same last digits" guess of opening a conversation is left out.
+    let exact = crate::sms_store::thread_key(&raw, home.as_deref());
+    let lower = raw.to_lowercase();
+    let removed = [exact, lower]
+        .into_iter()
+        .find(|k| keys.contains(k))
+        .map(|key| state.sms.delete_thread(&key, &key_of))
+        .unwrap_or(0);
+    Json(json!({"ok": true, "removed": removed})).into_response()
+}
+
+#[derive(Deserialize)]
+struct SmsSendBody {
+    #[serde(default)]
+    to: String,
+    #[serde(default)]
+    text: String,
+    #[serde(default)]
+    serial: String,
+    #[serde(default)]
+    sub_id: Option<i64>,
+}
+
+/// Have the phone send a stored "sending" message and record what came of it,
+/// in a task of its own: a browser that goes away while the phone works on it
+/// does not leave the message "sending".
+async fn sms_deliver_detached(state: &CallsState, msg: crate::sms_store::SmsMessage) -> crate::sms_store::SmsMessage {
+    let before = msg.clone();
+    let task_state = state.clone();
+    match tokio::spawn(async move { sms_deliver(&task_state, msg).await }).await {
+        Ok(done) => done,
+        Err(_) => state.sms.get(before.id).unwrap_or(before),
+    }
+}
+
+/// Have the phone send a stored "sending" message and record what came of it.
+async fn sms_deliver(state: &CallsState, msg: crate::sms_store::SmsMessage) -> crate::sms_store::SmsMessage {
+    use crate::callback::SmsOutcome;
+    use crate::sms_store::{STATUS_FAILED, STATUS_SENT, STATUS_TIMEOUT};
+    let outcome = state
+        .control
+        .send_sms_on(&msg.serial, msg.sub_id, &format!("sms-{}", msg.id), &msg.to, &msg.text, SMS_SEND_WAIT)
+        .await;
+    let (status, error) = match &outcome {
+        SmsOutcome::Sent => (STATUS_SENT, ""),
+        SmsOutcome::Timeout => (STATUS_TIMEOUT, ""),
+        SmsOutcome::Offline => (STATUS_FAILED, "offline"),
+        SmsOutcome::Unsupported => (STATUS_FAILED, "unsupported"),
+        // The same message is already on its way: it stays "sending".
+        SmsOutcome::Busy => {
+            info!(serial = msg.serial.as_str(), "console text message already being sent");
+            return state.sms.get(msg.id).unwrap_or(msg);
+        }
+        SmsOutcome::Failed(code) => (STATUS_FAILED, code.as_str()),
+    };
+    info!(
+        serial = msg.serial.as_str(),
+        to = crate::urgent_call::masked(&msg.to).as_str(),
+        status,
+        error,
+        "console text message"
+    );
+    state.sms.set_status(msg.id, status, error).unwrap_or(msg)
+}
+
+/// Send a text from a phone's SIM and wait for the phone's answer (up to 30 s).
+async fn sms_send(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+    body: axum::body::Bytes,
+) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    if !is_json_request(&headers) {
+        return json_required();
+    }
+    let req = serde_json::from_slice::<Value>(&body)
+        .ok()
+        .filter(Value::is_object)
+        .and_then(|v| serde_json::from_value::<SmsSendBody>(v).ok());
+    let Some(req) = req else {
+        return api_error(StatusCode::BAD_REQUEST, "bad_request", "the body must be {to, text, serial, sub_id}");
+    };
+    let text = req.text.trim();
+    if text.is_empty() || text.chars().count() > SMS_SEND_MAX_CHARS {
+        return api_error(StatusCode::BAD_REQUEST, "bad_text", "the text must have 1 to 500 characters");
+    }
+    let Some(to) = crate::sms_store::sendable_number(&req.to) else {
+        return api_error(StatusCode::BAD_REQUEST, "bad_number", "not a number a text can go to");
+    };
+    let lines = sms_lines(&state).await;
+    let serial = req.serial.trim();
+    let Some(line) = lines.iter().find(|l| l.serial == serial && l.sub_id == req.sub_id) else {
+        return api_error(StatusCode::BAD_REQUEST, "bad_line", "no such phone and SIM");
+    };
+    let keep_days = state.settings_store.snapshot().retention_days;
+    let msg = state.sms.push_out(
+        crate::sms_store::now_ms(),
+        keep_days,
+        crate::sms_store::NewOut {
+            to: &to,
+            text,
+            from: &line.number,
+            serial: &line.serial,
+            device: &line.device,
+            sub_id: line.sub_id,
+        },
+    );
+    let msg = sms_deliver_detached(&state, msg).await;
+    let labels: HashMap<String, String> = crate::notify::known_devices().into_iter().collect();
+    Json(json!({"ok": msg.status == crate::sms_store::STATUS_SENT, "message": sms_message_json(&state, &labels, &msg)}))
+        .into_response()
+}
+
+/// Send a text that failed (or whose result never came) again, on the same line.
+async fn sms_retry(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Query(query): Query<TokenQuery>,
+) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    if !is_json_request(&headers) {
+        return json_required();
+    }
+    let Some(msg) = id.trim().parse::<u64>().ok().and_then(|id| state.sms.get(id)) else {
+        return api_error(StatusCode::NOT_FOUND, "not_found", "text message not found");
+    };
+    let retryable = msg.is_out()
+        && (msg.status == crate::sms_store::STATUS_FAILED || msg.status == crate::sms_store::STATUS_TIMEOUT);
+    if !retryable {
+        return api_error(StatusCode::CONFLICT, "not_retryable", "only a text that was not sent can be sent again");
+    }
+    let Some(msg) = state.sms.set_status(msg.id, crate::sms_store::STATUS_SENDING, "") else {
+        return api_error(StatusCode::NOT_FOUND, "not_found", "text message not found");
+    };
+    let msg = sms_deliver_detached(&state, msg).await;
+    let labels: HashMap<String, String> = crate::notify::known_devices().into_iter().collect();
+    Json(json!({"ok": msg.status == crate::sms_store::STATUS_SENT, "message": sms_message_json(&state, &labels, &msg)}))
+        .into_response()
 }
 
 /// Phones: what is plugged in (USB), what is connected to the agent, and the
@@ -1742,6 +2468,14 @@ impl PhoneDevices {
         self.phones()
             .get(serial)
             .is_some_and(|p| p.sink.is_some())
+    }
+
+    /// The model the phone reported in its last hello, when it did.
+    pub fn model_of(&self, serial: &str) -> Option<String> {
+        self.phones()
+            .get(serial)
+            .map(|p| p.hello.model.trim().to_string())
+            .filter(|m| !m.is_empty())
     }
 
     /// Forget an offline phone from `PhoneDevices`. Returns `Err("online")` if
@@ -2683,7 +3417,7 @@ mod tests {
         base.telegram_chat_id = String::new();
         CallsState {
             settings: base.clone(),
-            store: crate::calls::CallStore::new(root.join("calls"), true, false, 30),
+            store: crate::calls::CallStore::new(root.join("calls"), true, false),
             settings_store: SettingsStore::load(base),
             task_store: TaskStore::new(root.join("tasks")),
             http: reqwest::Client::new(),
@@ -2693,6 +3427,7 @@ mod tests {
             phones: PhoneDevices::new(),
             contacts: crate::contacts::ContactStore::open(root.join("contacts.json")),
             errands: crate::errands::ErrandStore::open(root.join("errands.json"), crate::errands::SimBook::in_memory()),
+            sms: crate::sms_store::SmsStore::open(root.join("sms"), crate::sms_store::now_ms(), 15),
         }
     }
 
@@ -2967,6 +3702,783 @@ mod tests {
         // Errors without a code fall back to a generic one.
         let plain = anyhow::anyhow!("boom");
         assert_eq!(channel_error_body("ntfy", &plain)["code"], "send_failed");
+    }
+
+    async fn recent_send(state: &CallsState, token: Option<&str>, body: Value) -> Response {
+        let mut headers = HeaderMap::new();
+        if let Some(t) = token {
+            headers.insert("x-calls-token", t.parse().unwrap());
+        }
+        notify_send(
+            State(state.clone()),
+            headers,
+            Query(TokenQuery { token: None }),
+            Json(serde_json::from_value(body).unwrap()),
+        )
+        .await
+    }
+
+    async fn recent_get(state: &CallsState, token: Option<&str>, after: Option<&str>) -> Response {
+        let mut headers = HeaderMap::new();
+        if let Some(t) = token {
+            headers.insert("x-calls-token", t.parse().unwrap());
+        }
+        notify_recent(
+            State(state.clone()),
+            headers,
+            Query(RecentQuery { token: None, after: after.map(str::to_string) }),
+        )
+        .await
+    }
+
+    async fn recent_json(r: Response) -> Value {
+        assert_eq!(r.status(), StatusCode::OK);
+        serde_json::from_str(&body_text(r).await).unwrap()
+    }
+
+    fn recent_state(tag: &str) -> CallsState {
+        let root = std::env::temp_dir().join(format!("bageo-{tag}-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        quick_state(&root)
+    }
+
+    fn recent_marker(tag: &str) -> String {
+        format!("{tag}-{}", uuid::Uuid::new_v4().simple())
+    }
+
+    #[tokio::test]
+    async fn recent_route_needs_the_password() {
+        let mut state = recent_state("recent-auth");
+        state.settings.calls_ui_token = "recent-test-pw".into();
+        let marker = recent_marker("auth");
+        let r = recent_get(&state, None, None).await;
+        assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+        // Sending without the password is refused and leaves nothing behind.
+        let r = recent_send(&state, None, json!({"body": marker, "kind": "sms"})).await;
+        assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+        let ok = recent_json(recent_get(&state, Some("recent-test-pw"), Some("0")).await).await;
+        assert_eq!(ok["ok"], true);
+        assert!(ok["events"].as_array().unwrap().iter().all(|e| e["text"] != marker.as_str()));
+    }
+
+    #[tokio::test]
+    async fn recent_route_without_after_only_gives_last_id() {
+        let state = recent_state("recent-noafter");
+        let _ = recent_send(&state, None, json!({"body": recent_marker("noafter")})).await;
+        for after in [None, Some(""), Some("abc"), Some("-1"), Some("1.5")] {
+            let v = recent_json(recent_get(&state, None, after).await).await;
+            assert_eq!(v["ok"], true, "after {after:?}");
+            assert!(v["last_id"].as_u64().unwrap() > 0, "after {after:?}");
+            assert_eq!(v["events"], json!([]), "after {after:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn recent_route_shows_what_notify_send_got() {
+        let state = recent_state("recent-send");
+        let start = recent_json(recent_get(&state, None, None).await).await["last_id"].as_u64().unwrap();
+        let sms = recent_marker("sms");
+        let plain = recent_marker("plain");
+        let r = recent_send(
+            &state,
+            None,
+            json!({"title": "Texts", "body": format!("Texts\n{sms}"), "kind": "SMS", "from": "+15555550123", "text": format!("  {sms}\n 簡訊內容 ")}),
+        )
+        .await;
+        assert_eq!(r.status(), StatusCode::OK);
+        assert!(recent_json(r).await.get("ok").is_some());
+        // An old-style request (no kind, from, text) still works.
+        let r = recent_send(&state, None, json!({"body": format!("{plain}\nsecond line")})).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        // An empty body is refused and not recorded.
+        let r = recent_send(&state, None, json!({"body": "  ", "kind": "sms", "text": "x"})).await;
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+
+        let v = recent_json(recent_get(&state, None, Some(&start.to_string())).await).await;
+        let events = v["events"].as_array().unwrap();
+        let first = events.iter().find(|e| e["text"].as_str().is_some_and(|t| t.contains(&sms))).expect("sms event");
+        assert_eq!(first["kind"], "sms");
+        assert_eq!(first["title"], "Texts");
+        assert_eq!(first["from"], "+15555550123");
+        assert_eq!(first["text"], format!("{sms} 簡訊內容"));
+        let second = events.iter().find(|e| e["text"] == plain.as_str()).expect("plain event");
+        assert_eq!(second["kind"], "message");
+        assert_eq!(second["title"], "Bageo");
+        assert_eq!(second["from"], "");
+        let (a, b) = (first["id"].as_u64().unwrap(), second["id"].as_u64().unwrap());
+        assert!(a < b && b <= v["last_id"].as_u64().unwrap());
+        assert!(events.windows(2).all(|w| w[0]["id"].as_u64() < w[1]["id"].as_u64()));
+        assert!(events.iter().all(|e| e["at_ms"].as_u64().unwrap() > 0));
+        // Asking from the first event's id leaves only the later ones.
+        let v = recent_json(recent_get(&state, None, Some(&a.to_string())).await).await;
+        let events = v["events"].as_array().unwrap();
+        assert!(events.iter().all(|e| e["id"].as_u64().unwrap() > a));
+        assert!(events.iter().any(|e| e["id"].as_u64() == Some(b)));
+    }
+
+    fn sms_headers(token: Option<&str>) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        if let Some(t) = token {
+            headers.insert("x-calls-token", t.parse().unwrap());
+        }
+        headers
+    }
+
+    async fn sms_get(state: &CallsState, token: Option<&str>, q: &str, before: Option<u64>, limit: Option<&str>) -> Response {
+        let query = SmsListQuery {
+            token: None,
+            q: Some(q.to_string()),
+            before: before.map(|b| b.to_string()),
+            limit: limit.map(str::to_string),
+        };
+        sms_list(State(state.clone()), sms_headers(token), Query(query)).await
+    }
+
+    async fn sms_del(state: &CallsState, token: Option<&str>, id: &str) -> Response {
+        sms_delete(State(state.clone()), sms_headers(token), Path(id.to_string()), Query(TokenQuery { token: None })).await
+    }
+
+    async fn sms_wipe(state: &CallsState, token: Option<&str>) -> Response {
+        let mut headers = sms_headers(token);
+        headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+        sms_clear(State(state.clone()), headers, Query(TokenQuery { token: None })).await
+    }
+
+    fn sms_texts(v: &Value) -> Vec<String> {
+        v["messages"].as_array().unwrap().iter().map(|m| m["text"].as_str().unwrap().to_string()).collect()
+    }
+
+    #[tokio::test]
+    async fn sms_routes_need_the_password() {
+        let mut state = recent_state("sms-auth");
+        state.settings.calls_ui_token = "sms-test-pw".into();
+        let pw = Some("sms-test-pw");
+        let sms = json!({"body": "New SMS", "kind": "sms", "from": "+15555550123", "text": "kept"});
+        assert_eq!(recent_send(&state, pw, sms.clone()).await.status(), StatusCode::OK);
+        // Without the password nothing is stored, shown or removed.
+        assert_eq!(recent_send(&state, None, sms).await.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(sms_get(&state, None, "", None, None).await.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(sms_get(&state, Some("wrong-pw"), "", None, None).await.status(), StatusCode::UNAUTHORIZED);
+        let id = recent_json(sms_get(&state, pw, "", None, None).await).await["messages"][0]["id"].as_u64().unwrap();
+        assert_eq!(sms_del(&state, None, &id.to_string()).await.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(sms_wipe(&state, None).await.status(), StatusCode::UNAUTHORIZED);
+        let v = recent_json(sms_get(&state, pw, "", None, None).await).await;
+        assert_eq!((v["ok"].as_bool(), v["total"].as_u64()), (Some(true), Some(1)));
+        assert_eq!(sms_texts(&v), vec!["kept"]);
+    }
+
+    #[tokio::test]
+    async fn sms_from_notify_send_is_listed_and_one_ref_is_one_message() {
+        let state = recent_state("sms-send");
+        let start = recent_json(recent_get(&state, None, None).await).await["last_id"].as_u64().unwrap();
+        let marker = recent_marker("sms-once");
+        let received = crate::sms_store::now_ms() - 4_000;
+        let sms = json!({
+            "title": "New SMS",
+            "body": format!("From: +15555550123\nMessage: {marker}"),
+            "kind": "SMS",
+            "from": " +15555550123 ",
+            "to": "+15555550100",
+            "text": format!("{marker}\n第二行 ✓"),
+            "serial": "TESTSERIAL01",
+            "device": "Pixel Test",
+            "received_ms": received,
+            "ref": format!("ref-{marker}"),
+        });
+        // The forwarder sends a message again until a channel took it.
+        for _ in 0..3 {
+            assert_eq!(recent_send(&state, None, sms.clone()).await.status(), StatusCode::OK);
+        }
+        let v = recent_json(sms_get(&state, None, "", None, None).await).await;
+        assert_eq!((v["total"].as_u64(), v["has_more"].as_bool()), (Some(1), Some(false)));
+        assert_eq!(v["retention_days"], 15);
+        let m = &v["messages"][0];
+        assert_eq!(m["from"], "+15555550123");
+        assert_eq!(m["from_name"], "");
+        assert_eq!(m["to"], "+15555550100");
+        assert_eq!(m["text"], format!("{marker}\n第二行 ✓"));
+        assert_eq!((m["serial"].as_str(), m["device"].as_str()), (Some("TESTSERIAL01"), Some("Pixel Test")));
+        assert_eq!(m["at_ms"].as_u64(), Some(received));
+        assert!(m["id"].as_u64().unwrap() > 0);
+        assert!(m.get("ref").is_none(), "the forwarder's key stays inside");
+        // The desktop program hears of it once as well.
+        let recent = recent_json(recent_get(&state, None, Some(&start.to_string())).await).await;
+        let heard = recent["events"].as_array().unwrap().iter().filter(|e| e["text"].as_str().is_some_and(|t| t.contains(&marker))).count();
+        assert_eq!(heard, 1);
+
+        // Not a text message: not stored. Without a ref: every request is one.
+        assert_eq!(recent_send(&state, None, json!({"body": "plain notice", "from": "x", "text": "y"})).await.status(), StatusCode::OK);
+        assert_eq!(recent_send(&state, None, json!({"body": "b", "kind": "sms"})).await.status(), StatusCode::OK);
+        for _ in 0..2 {
+            let old_style = json!({"body": "b", "kind": "sms", "from": "+15555550124", "text": "no ref", "received_ms": "soon"});
+            assert_eq!(recent_send(&state, None, old_style).await.status(), StatusCode::OK);
+        }
+        let v = recent_json(sms_get(&state, None, "", None, None).await).await;
+        assert_eq!(v["total"], 3);
+        assert_eq!(sms_texts(&v), vec!["no ref".to_string(), "no ref".to_string(), format!("{marker}\n第二行 ✓")]);
+        // The settings decide how long they are kept.
+        state.settings_store.apply_patch(&json!({"retention_days": 40})).unwrap();
+        assert_eq!(recent_json(sms_get(&state, None, "", None, None).await).await["retention_days"], 40);
+    }
+
+    #[tokio::test]
+    async fn sms_route_searches_pages_and_names_senders() {
+        let state = recent_state("sms-list");
+        let serial = format!("SMSTEST{}", uuid::Uuid::new_v4().simple());
+        crate::notify::remember_device(&serial, "Pixel Label");
+        state.contacts.upsert_by_number("+15555550123", "王小明", "", "").await.unwrap();
+        let rows = [
+            ("+15555550123", "Your code is 123456"),
+            ("+15555550124", "您的驗證碼是 654321"),
+            ("+15555550125", "認証コードは 111222 です"),
+            ("+15555550126", "인증번호는 333444 입니다"),
+            ("+15555550127", "رمز التحقق هو 555666"),
+            ("+15555550128", "รหัสยืนยันของคุณคือ 777888"),
+            ("+15555550129", "Votre code est 999000 😀"),
+        ];
+        for (from, text) in rows {
+            let sms = json!({"body": "New SMS", "kind": "sms", "from": from, "text": text, "serial": serial});
+            assert_eq!(recent_send(&state, None, sms).await.status(), StatusCode::OK);
+        }
+        // Newest first, a page at a time.
+        let first = recent_json(sms_get(&state, None, "", None, Some("3")).await).await;
+        assert_eq!((first["total"].as_u64(), first["has_more"].as_bool()), (Some(7), Some(true)));
+        assert_eq!(sms_texts(&first), vec![rows[6].1, rows[5].1, rows[4].1]);
+        let last_id = first["messages"][2]["id"].as_u64().unwrap();
+        let second = recent_json(sms_get(&state, None, "", Some(last_id), Some("10")).await).await;
+        assert_eq!(sms_texts(&second), vec![rows[3].1, rows[2].1, rows[1].1, rows[0].1]);
+        assert_eq!(second["has_more"], false);
+        // An odd limit falls back; it never goes past the range.
+        assert_eq!(sms_texts(&recent_json(sms_get(&state, None, "", None, Some("abc")).await).await).len(), 7);
+        assert_eq!(sms_texts(&recent_json(sms_get(&state, None, "", None, Some("0")).await).await).len(), 1);
+        assert_eq!(sms_texts(&recent_json(sms_get(&state, None, "", None, Some("9999")).await).await).len(), 7);
+        // The contact's name and the phone's name are filled in.
+        let named = &second["messages"][3];
+        assert_eq!((named["from"].as_str(), named["from_name"].as_str()), (Some("+15555550123"), Some("王小明")));
+        assert_eq!(named["device"], "Pixel Label");
+        assert_eq!(second["messages"][2]["from_name"], "");
+        // Search: text in several languages, the sender, the contact's name.
+        for (q, want) in [
+            ("YOUR CODE", rows[0].1),
+            ("驗證碼", rows[1].1),
+            ("認証コード", rows[2].1),
+            ("인증번호", rows[3].1),
+            ("التحقق", rows[4].1),
+            ("รหัสยืนยัน", rows[5].1),
+            ("😀", rows[6].1),
+            ("5550127", rows[4].1),
+            ("王小明", rows[0].1),
+        ] {
+            let v = recent_json(sms_get(&state, None, q, None, None).await).await;
+            assert_eq!(sms_texts(&v), vec![want], "q {q:?}");
+            assert_eq!(v["total"], 7, "q {q:?}");
+        }
+        let none = recent_json(sms_get(&state, None, "no such text", None, None).await).await;
+        assert_eq!((sms_texts(&none).len(), none["total"].as_u64(), none["has_more"].as_bool()), (0, Some(7), Some(false)));
+        crate::notify::forget_device(&serial);
+    }
+
+    #[tokio::test]
+    async fn sms_route_deletes_one_and_clears_all() {
+        let state = recent_state("sms-del");
+        for text in ["one", "two", "three"] {
+            let sms = json!({"body": "New SMS", "kind": "sms", "from": "+15555550123", "text": text});
+            assert_eq!(recent_send(&state, None, sms).await.status(), StatusCode::OK);
+        }
+        let v = recent_json(sms_get(&state, None, "", None, None).await).await;
+        let two = v["messages"][1]["id"].as_u64().unwrap().to_string();
+        assert_eq!(recent_json(sms_del(&state, None, &two).await).await, json!({"ok": true}));
+        for missing in [two.as_str(), "0", "abc", "-1"] {
+            let r = sms_del(&state, None, missing).await;
+            assert_eq!(r.status(), StatusCode::NOT_FOUND, "{missing}");
+            assert_eq!(serde_json::from_str::<Value>(&body_text(r).await).unwrap()["code"], "not_found");
+        }
+        assert_eq!(sms_texts(&recent_json(sms_get(&state, None, "", None, None).await).await), vec!["three", "one"]);
+        // Without a JSON content type (a form on another site) nothing is removed.
+        let r = sms_clear(State(state.clone()), sms_headers(None), Query(TokenQuery { token: None })).await;
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(recent_json(sms_get(&state, None, "", None, None).await).await["total"], 2);
+        assert_eq!(recent_json(sms_wipe(&state, None).await).await, json!({"ok": true, "removed": 2}));
+        assert_eq!(recent_json(sms_wipe(&state, None).await).await, json!({"ok": true, "removed": 0}));
+        assert_eq!(recent_json(sms_get(&state, None, "", None, None).await).await["total"], 0);
+    }
+
+    #[tokio::test]
+    async fn retention_change_in_settings_cleans_everything_at_once() {
+        let root = std::env::temp_dir().join(format!("bageo-retention-all-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let ago = |days: i64| (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
+        // Kept before this start: a call 10 days old and one 1 day old, AI errands that are over.
+        let (old_call, new_call) = {
+            let calls = crate::calls::CallStore::new(root.join("calls"), true, false);
+            let a = calls.start("pixel-1", "+15555550123", 16000, "active").await.unwrap();
+            let b = calls.start("pixel-1", "+15555550124", 16000, "active").await.unwrap();
+            let ids = (a.id.clone(), b.id.clone());
+            calls.finalize(a, "ended").await;
+            calls.finalize(b, "ended").await;
+            ids
+        };
+        let index = root.join("calls").join("index.json");
+        let mut v: Value = serde_json::from_slice(&std::fs::read(&index).unwrap()).unwrap();
+        for row in v["calls"].as_array_mut().unwrap() {
+            let days = if row["id"] == old_call.as_str() { 10 } else { 1 };
+            row["started_at"] = json!(ago(days));
+        }
+        std::fs::write(&index, serde_json::to_vec(&v).unwrap()).unwrap();
+        let errands = json!({"errands": [
+            {"id": "e-old", "status": "done", "created_at": ago(11), "updated_at": ago(10)},
+            {"id": "e-new", "status": "done", "created_at": ago(2), "updated_at": ago(1)}
+        ]});
+        std::fs::write(root.join("errands.json"), serde_json::to_vec(&errands).unwrap()).unwrap();
+        let state = quick_state(&root);
+        state.settings_store.apply_patch(&json!({"retention_days": 15})).unwrap();
+        // To-do items and text messages, 10 days old and recent.
+        let task = |created: String| crate::tasks::TaskRecord {
+            id: String::new(),
+            created_at: created,
+            updated_at: String::new(),
+            call_id: "c".into(),
+            serial: "pixel-1".into(),
+            caller_id: "+15555550123".into(),
+            status: crate::tasks::TaskStatus::Pending,
+            intent: crate::tasks::TaskIntent::Appointment,
+            summary: String::new(),
+            transcript: String::new(),
+            datetime_hint: None,
+            reply_method: crate::tasks::ReplyMethod::None,
+            reply_contact: None,
+            contact_verified: false,
+            voicemail_path: None,
+            calendar_event_id: None,
+            fulfill_error: None,
+            openclaw_ref: None,
+            events: vec![],
+            appointment: None,
+        };
+        let old_task = state.task_store.create(task(ago(10))).await.unwrap().id;
+        let new_task = state.task_store.create(task(ago(1))).await.unwrap().id;
+        let now = crate::sms_store::now_ms();
+        for (age_ms, text) in [(10 * 86_400_000u64, "十日前のメッセージ"), (43_200_000, "Mensaje de hoy")] {
+            state.sms.push(now, 15, crate::sms_store::NewSms { received_ms: now - age_ms, from: "+15555550123", text, ..Default::default() });
+        }
+        let texts = || state.sms.list(now, 365, "", None, 50, &|_: &str| String::new()).messages.into_iter().map(|m| m.text).collect::<Vec<_>>();
+        // What saving the settings does with the days (the handler itself also
+        // sets the language for the whole program, which other tests read).
+        let put = |patch: Value| {
+            let before = state.settings_store.snapshot().retention_days;
+            let rt = state.settings_store.apply_patch(&patch).unwrap();
+            purge_after_fewer_days(&state, before, rt.retention_days);
+        };
+        // More days: nothing goes.
+        put(json!({"retention_days": 30}));
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(state.store.get(&old_call).await.is_some());
+        assert_eq!(texts().len(), 2);
+        // Fewer days: everything older goes right away.
+        put(json!({"retention_days": 5}));
+        assert_eq!(state.settings_store.snapshot().retention_days, 5);
+        let mut gone = false;
+        for _ in 0..60 {
+            if state.store.get(&old_call).await.is_none()
+                && state.task_store.get(&old_task).await.is_none()
+                && state.errands.get("e-old").is_none()
+                && texts().len() == 1
+            {
+                gone = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert!(gone, "the calls, to-do items, errands and texts older than 5 days went");
+        assert!(state.store.get(&new_call).await.is_some());
+        assert!(state.task_store.get(&new_task).await.is_some());
+        assert!(state.errands.get("e-new").is_some());
+        assert_eq!(texts(), vec!["Mensaje de hoy".to_string()]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // ---- SMS conversations: a simulated phone on the control connection, never a real one.
+
+    fn sms_serial(tag: &str) -> String {
+        format!("SMSCHAT{tag}{}", &uuid::Uuid::new_v4().simple().to_string()[..8])
+    }
+
+    /// A phone connected over a test socket (its end is returned), with these SIMs.
+    async fn sms_phone(state: &CallsState, serial: &str, sims: Value, texts: bool) -> crate::callback::test_socket::PhoneEnd {
+        let (sink, phone) = crate::callback::test_socket::phone_socket().await;
+        state.control.register_client(serial.to_string(), sink).await;
+        state.control.set_supports_sms(serial, texts).await;
+        state.errands.sims.note_list(serial, &sims);
+        phone
+    }
+
+    async fn sms_receive(state: &CallsState, from: &str, text: &str, serial: &str, sub_id: Option<i64>, to: &str) {
+        let body = json!({"body": "New SMS", "kind": "sms", "from": from, "text": text, "serial": serial, "sub_id": sub_id, "to": to});
+        assert_eq!(recent_send(state, None, body).await.status(), StatusCode::OK);
+    }
+
+    fn sms_json_headers(token: Option<&str>) -> HeaderMap {
+        let mut h = sms_headers(token);
+        h.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+        h
+    }
+
+    async fn sms_post_send(state: CallsState, headers: HeaderMap, body: Value) -> Response {
+        sms_send(State(state), headers, Query(TokenQuery { token: None }), axum::body::Bytes::from(body.to_string())).await
+    }
+
+    async fn sms_post_retry(state: CallsState, headers: HeaderMap, id: u64) -> Response {
+        sms_retry(State(state), headers, Path(id.to_string()), Query(TokenQuery { token: None })).await
+    }
+
+    async fn sms_threads_get(state: &CallsState, token: Option<&str>, q: &str) -> Response {
+        sms_threads(State(state.clone()), sms_headers(token), Query(SmsThreadsQuery { token: None, q: Some(q.to_string()) })).await
+    }
+
+    fn sms_thread_query(number: &str, before: Option<u64>, limit: Option<&str>) -> SmsThreadQuery {
+        SmsThreadQuery {
+            token: None,
+            number: Some(number.to_string()),
+            before: before.map(|b| b.to_string()),
+            limit: limit.map(str::to_string),
+        }
+    }
+
+    async fn sms_thread_get(state: &CallsState, number: &str, before: Option<u64>, limit: Option<&str>) -> Value {
+        recent_json(sms_thread(State(state.clone()), sms_headers(None), Query(sms_thread_query(number, before, limit))).await).await
+    }
+
+    async fn sms_phone_gets(phone: &mut crate::callback::test_socket::PhoneEnd) -> Value {
+        crate::callback::test_socket::next_json(phone, std::time::Duration::from_secs(3)).await.expect("the phone gets send_sms")
+    }
+
+    fn sms_thread_keys(v: &Value) -> Vec<String> {
+        v["threads"].as_array().unwrap().iter().map(|t| t["key"].as_str().unwrap().to_string()).collect()
+    }
+
+    #[tokio::test]
+    async fn sms_threads_route_groups_numbers_and_lists_lines() {
+        let state = recent_state("sms-threads");
+        let a = sms_serial("A");
+        let b = sms_serial("B");
+        let _phone = sms_phone(
+            &state,
+            &a,
+            json!([{"sub_id": 1, "country": "tw", "slot": 0, "number": "0912000111"}, {"sub_id": 2, "country": "us", "slot": 1, "number": "+16505550100"}]),
+            true,
+        )
+        .await;
+        state.errands.sims.note_list(&b, &json!([{"sub_id": 5, "country": "jp", "slot": 0}]));
+        let rows: [(&str, &str, &str, i64); 10] = [
+            ("0912345678", "您的包裹已送達", a.as_str(), 1),
+            ("(650) 555-0142", "See you at three", a.as_str(), 2),
+            ("BankInfo", "Your statement is ready", a.as_str(), 1),
+            ("090-1234-5678", "明日の予定を確認してください", b.as_str(), 5),
+            ("+821012345678", "내일 회의는 오후 3시입니다", a.as_str(), 1),
+            ("+966500000000", "موعدك غدا الساعة العاشرة", a.as_str(), 1),
+            ("+66812345678", "พรุ่งนี้เจอกันที่ร้านกาแฟ", a.as_str(), 1),
+            ("+34600000000", "¿Nos vemos mañana en la estación?", a.as_str(), 1),
+            ("", "no sender at all", a.as_str(), 1),
+            ("+886912345678", "第二則：明天見", a.as_str(), 1),
+        ];
+        for (from, text, serial, sub) in rows {
+            sms_receive(&state, from, text, serial, Some(sub), "").await;
+        }
+        let v = recent_json(sms_threads_get(&state, None, "").await).await;
+        assert_eq!((v["ok"].as_bool(), v["total"].as_u64(), v["retention_days"].as_u64()), (Some(true), Some(10), Some(15)));
+        let keys = sms_thread_keys(&v);
+        assert_eq!(keys.len(), 9, "0912… and +886912… are one conversation: {keys:?}");
+        assert_eq!(keys[0], "+886912345678", "newest first");
+        let t = &v["threads"][0];
+        assert_eq!((t["count"].as_u64(), t["number"].as_str(), t["last_text"].as_str()), (Some(2), Some("+886912345678"), Some("第二則：明天見")));
+        assert_eq!((t["last_dir"].as_str(), t["last_status"].as_str(), t["can_reply"].as_bool()), (Some("in"), Some(""), Some(true)));
+        assert_eq!(t["last_in_at"], t["last_at"]);
+        // Numbers are read in the country of the SIM that got them.
+        assert!(keys.contains(&"+16505550142".to_string()), "{keys:?}");
+        assert!(keys.contains(&"+819012345678".to_string()), "{keys:?}");
+        let bank = v["threads"].as_array().unwrap().iter().find(|t| t["key"] == "bankinfo").unwrap();
+        assert_eq!((bank["number"].as_str(), bank["can_reply"].as_bool()), (Some("BankInfo"), Some(false)));
+        let nobody = v["threads"].as_array().unwrap().iter().find(|t| t["key"] == "~").unwrap();
+        assert_eq!((nobody["number"].as_str(), nobody["can_reply"].as_bool()), (Some(""), Some(false)));
+        // Every SIM is a line; only the connected phone that texts can send.
+        let lines = v["lines"].as_array().unwrap();
+        assert_eq!(lines.len(), 3, "{lines:?}");
+        let line = |serial: &str, sub: i64| lines.iter().find(|l| l["serial"] == serial && l["sub_id"] == sub).unwrap().clone();
+        let a1 = line(&a, 1);
+        assert_eq!((a1["number"].as_str(), a1["slot"].as_i64(), a1["can_send"].as_bool()), (Some("0912000111"), Some(0), Some(true)));
+        assert_eq!(a1["device"], a.as_str(), "no name or model known: the serial");
+        assert_eq!(line(&a, 2)["number"], "+16505550100");
+        assert_eq!(line(&b, 5)["can_send"], false);
+        // Search: contact name, number, text in several languages.
+        state.contacts.upsert_by_number("+886912345678", "王小明", "", "").await.unwrap();
+        for (q, key) in [
+            ("包裹", "+886912345678"),
+            ("王小明", "+886912345678"),
+            ("0912345678", "+886912345678"),
+            ("予定", "+819012345678"),
+            ("회의는", "+821012345678"),
+            ("الساعة", "+966500000000"),
+            ("ร้านกาแฟ", "+66812345678"),
+            ("MAÑANA", "+34600000000"),
+            ("statement", "bankinfo"),
+        ] {
+            let v = recent_json(sms_threads_get(&state, None, q).await).await;
+            assert_eq!(sms_thread_keys(&v), vec![key.to_string()], "q {q:?}");
+            assert_eq!(v["total"], 10, "q {q:?}");
+        }
+        let named = recent_json(sms_threads_get(&state, None, "").await).await;
+        assert_eq!(named["threads"][0]["name"], "王小明");
+        assert!(sms_thread_keys(&recent_json(sms_threads_get(&state, None, "no such text").await).await).is_empty());
+    }
+
+    #[tokio::test]
+    async fn sms_thread_route_finds_the_conversation_and_pages() {
+        let state = recent_state("sms-thread");
+        let a = sms_serial("A");
+        let _phone = sms_phone(
+            &state,
+            &a,
+            json!([{"sub_id": 1, "country": "tw", "number": "0912000111"}, {"sub_id": 2, "country": "tw", "number": "0912000222"}]),
+            true,
+        )
+        .await;
+        // The forwarder did not say which SIM: the number it was sent to tells.
+        sms_receive(&state, "0912345678", "第一則", &a, None, "+886912000222").await;
+        for i in 2..=6 {
+            sms_receive(&state, "+886912345678", &format!("第{i}則"), &a, Some(1), "").await;
+        }
+        let texts = |v: &Value| v["messages"].as_array().unwrap().iter().map(|m| m["text"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        for number in ["0912345678", "+886912345678", "0912-345-678", "+886 912 345 678", "912345678"] {
+            let v = sms_thread_get(&state, number, None, None).await;
+            assert_eq!((v["key"].as_str(), v["messages"].as_array().unwrap().len()), (Some("+886912345678"), 6), "{number}");
+        }
+        let v = sms_thread_get(&state, "0912345678", None, Some("2")).await;
+        assert_eq!((texts(&v), v["has_more"].as_bool()), (vec!["第5則".to_string(), "第6則".to_string()], Some(true)), "oldest first");
+        assert_eq!((v["number"].as_str(), v["can_reply"].as_bool()), (Some("+886912345678"), Some(true)));
+        let m = &v["messages"][1];
+        assert_eq!((m["dir"].as_str(), m["status"].as_str(), m["error"].as_str(), m["sub_id"].as_i64()), (Some("in"), Some(""), Some(""), Some(1)));
+        assert_eq!(v["reply"], json!({"serial": a, "sub_id": 1}), "the newest received one came on SIM 1");
+        let first_id = v["messages"][0]["id"].as_u64().unwrap();
+        let older = sms_thread_get(&state, "0912345678", Some(first_id), Some("10")).await;
+        assert_eq!((texts(&older).len(), older["has_more"].as_bool()), (4, Some(false)));
+        assert_eq!(texts(&older)[0], "第一則");
+        // A number with no conversation yet: empty, and a line to start one.
+        let new = sms_thread_get(&state, "0987-654-321", None, None).await;
+        assert_eq!((new["messages"].as_array().unwrap().len(), new["has_more"].as_bool()), (0, Some(false)));
+        assert_eq!((new["number"].as_str(), new["can_reply"].as_bool()), (Some("0987654321"), Some(true)));
+        assert_eq!(new["reply"], json!({"serial": a, "sub_id": 1}));
+        // A sender name cannot be answered.
+        sms_receive(&state, "BankInfo", "Your code is 123456", &a, Some(1), "").await;
+        let bank = sms_thread_get(&state, "bankinfo", None, None).await;
+        assert_eq!((bank["number"].as_str(), bank["can_reply"].as_bool(), texts(&bank).len()), (Some("BankInfo"), Some(false), 1));
+        // Without the password: nothing.
+        let mut locked = state.clone();
+        locked.settings.calls_ui_token = "sms-thread-pw".into();
+        let r = sms_thread(State(locked), sms_headers(None), Query(sms_thread_query("0912345678", None, None))).await;
+        assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn sms_reply_line_follows_the_received_message() {
+        use crate::sms_store::SmsMessage;
+        let line = |serial: &str, sub: Option<i64>, number: &str, can: bool| SmsLine {
+            serial: serial.into(),
+            sub_id: sub,
+            number: number.into(),
+            country: "tw".into(),
+            can_send: can,
+            ..Default::default()
+        };
+        let lines = vec![
+            line("A", Some(1), "0912000111", true),
+            line("A", Some(2), "0912000222", true),
+            line("B", Some(1), "", false),
+            line("C", None, "", true),
+        ];
+        let msg = |dir: &str, serial: &str, sub: Option<i64>, to: &str| SmsMessage {
+            id: 1,
+            at_ms: 1,
+            from: "0912345678".into(),
+            to: to.into(),
+            text: "x".into(),
+            serial: serial.into(),
+            device: String::new(),
+            reference: String::new(),
+            dir: dir.into(),
+            sub_id: sub,
+            status: String::new(),
+            error: String::new(),
+        };
+        let region = |_: &SmsMessage| Some("tw".to_string());
+        let pick = |msgs: &[SmsMessage], lines: &[SmsLine]| sms_reply_line(msgs, lines, &region).map(|l| (l.serial.clone(), l.sub_id));
+        let a = |sub: i64| Some(("A".to_string(), Some(sub)));
+        // The SIM the newest received message came on.
+        assert_eq!(pick(&[msg("in", "A", Some(2), "")], &lines), a(2));
+        // No SIM given: the one whose number it was sent to.
+        assert_eq!(pick(&[msg("in", "A", None, "+886912000222")], &lines), a(2));
+        // No SIM and no number that matches: the phone's first SIM.
+        assert_eq!(pick(&[msg("in", "A", None, "")], &lines), a(1));
+        assert_eq!(pick(&[msg("in", "A", None, "0933000999")], &lines), a(1));
+        assert_eq!(pick(&[msg("in", "A", Some(9), "")], &lines), a(1), "a SIM the phone no longer lists");
+        // That phone cannot send now: the first line that can.
+        assert_eq!(pick(&[msg("in", "B", Some(1), "")], &lines), a(1));
+        assert_eq!(pick(&[msg("in", "Z", Some(1), "")], &lines), a(1), "an unknown phone");
+        // A phone without a SIM list sends from its default SIM.
+        assert_eq!(pick(&[msg("in", "C", None, "")], &lines), Some(("C".to_string(), None)));
+        // Received ones win over sent ones; with none received, the newest sent one.
+        let both = [msg("in", "A", Some(2), ""), msg("out", "C", None, "0912345678")];
+        assert_eq!(pick(&both, &lines), a(2));
+        assert_eq!(pick(&[msg("out", "C", None, "0912345678")], &lines), Some(("C".to_string(), None)));
+        assert_eq!(pick(&[msg("out", "A", Some(2), "0912345678")], &lines), a(2));
+        // A new conversation: the first line that can.
+        assert_eq!(pick(&[], &lines), a(1));
+        // No line can send: none.
+        let offline: Vec<SmsLine> = lines.iter().map(|l| SmsLine { can_send: false, ..l.clone() }).collect();
+        assert_eq!(pick(&[msg("in", "A", Some(2), "")], &offline), None);
+        assert_eq!(pick(&[], &[]), None);
+    }
+
+    #[tokio::test]
+    async fn sms_send_route_reports_what_the_phone_did() {
+        let state = recent_state("sms-send-route");
+        let a = sms_serial("A");
+        let b = sms_serial("B");
+        let c = sms_serial("C");
+        let mut phone = sms_phone(&state, &a, json!([{"sub_id": 1, "country": "tw", "number": "0912000111"}]), true).await;
+        let _old_app = sms_phone(&state, &b, json!([{"sub_id": 3, "country": "jp"}]), false).await;
+        state.errands.sims.note_list(&c, &json!([{"sub_id": 4, "country": "tw"}]));
+        let send = |to: &str, text: &str, serial: &str, sub: i64| {
+            tokio::spawn(sms_post_send(state.clone(), sms_json_headers(None), json!({"to": to, "text": text, "serial": serial, "sub_id": sub})))
+        };
+
+        // Sent: the phone gets the number, the text and the SIM.
+        let task = send("0912-345-678", "  你好，明天見  ", &a, 1);
+        let got = sms_phone_gets(&mut phone).await;
+        assert_eq!((got["type"].as_str(), got["to"].as_str(), got["text"].as_str(), got["sub_id"].as_i64()), (Some("send_sms"), Some("0912345678"), Some("你好，明天見"), Some(1)));
+        let id = got["id"].as_str().unwrap().to_string();
+        assert!(id.starts_with("sms-"));
+        assert!(state.control.handle_sms_result(&json!({"type": "send_sms_result", "id": id, "ok": true})).await);
+        let v = recent_json(task.await.unwrap()).await;
+        let m = &v["message"];
+        assert_eq!((v["ok"].as_bool(), m["status"].as_str(), m["error"].as_str(), m["dir"].as_str()), (Some(true), Some("sent"), Some(""), Some("out")));
+        assert_eq!((m["from"].as_str(), m["to"].as_str(), m["text"].as_str(), m["sub_id"].as_i64()), (Some("0912000111"), Some("0912345678"), Some("你好，明天見"), Some(1)));
+        assert_eq!(format!("sms-{}", m["id"]), id);
+
+        // The phone answers with an error code.
+        let task = send("+886912345678", "Hola, ¿qué tal?", &a, 1);
+        let got = sms_phone_gets(&mut phone).await;
+        state.control.handle_sms_result(&json!({"type": "send_sms_result", "id": got["id"], "ok": false, "error": "no_service"})).await;
+        let v = recent_json(task.await.unwrap()).await;
+        assert_eq!((v["ok"].as_bool(), v["message"]["status"].as_str(), v["message"]["error"].as_str()), (Some(false), Some("failed"), Some("no_service")));
+
+        // No answer in time: not known yet. A late answer shows up in the conversation.
+        let task = send("0912345678", "また明日", &a, 1);
+        let late = sms_phone_gets(&mut phone).await;
+        let v = recent_json(task.await.unwrap()).await;
+        assert_eq!((v["ok"].as_bool(), v["message"]["status"].as_str()), (Some(false), Some("timeout")));
+        let timed_out = v["message"]["id"].as_u64().unwrap();
+        state.control.handle_sms_result(&json!({"type": "send_sms_result", "id": late["id"], "ok": true})).await;
+        let thread = sms_thread_get(&state, "0912345678", None, None).await;
+        let statuses: Vec<(u64, String)> = thread["messages"].as_array().unwrap().iter().map(|m| (m["id"].as_u64().unwrap(), m["status"].as_str().unwrap().to_string())).collect();
+        assert_eq!(statuses.len(), 3, "all three went to the same person");
+        assert_eq!(statuses.iter().find(|(i, _)| *i == timed_out).unwrap().1, "sent");
+        assert_eq!(thread["reply"], json!({"serial": a, "sub_id": 1}), "only sent ones: the line they went on");
+
+        // A phone whose app does not send texts, a phone that is not connected.
+        let v = recent_json(send("0912345678", "안녕하세요", &b, 3).await.unwrap()).await;
+        assert_eq!((v["message"]["status"].as_str(), v["message"]["error"].as_str()), (Some("failed"), Some("unsupported")));
+        let v = recent_json(send("0912345678", "مرحبا", &c, 4).await.unwrap()).await;
+        assert_eq!((v["message"]["status"].as_str(), v["message"]["error"].as_str()), (Some("failed"), Some("offline")));
+
+        // Refused before anything is stored.
+        let total = || async { recent_json(sms_threads_get(&state, None, "").await).await["total"].as_u64().unwrap() };
+        let before = total().await;
+        for (body, code) in [
+            (json!({"to": "BankInfo", "text": "hi", "serial": a, "sub_id": 1}), "bad_number"),
+            (json!({"to": "12", "text": "hi", "serial": a, "sub_id": 1}), "bad_number"),
+            (json!({"to": "0912345678", "text": "hi", "serial": a, "sub_id": 9}), "bad_line"),
+            (json!({"to": "0912345678", "text": "hi", "serial": "pixel-none", "sub_id": 1}), "bad_line"),
+            (json!({"to": "0912345678", "text": "hi", "serial": a}), "bad_line"),
+            (json!({"to": "0912345678", "text": "   ", "serial": a, "sub_id": 1}), "bad_text"),
+            (json!({"to": "0912345678", "text": "字".repeat(501), "serial": a, "sub_id": 1}), "bad_text"),
+            (json!(["not", "an", "object"]), "bad_request"),
+        ] {
+            let r = sms_post_send(state.clone(), sms_json_headers(None), body.clone()).await;
+            assert_eq!(r.status(), StatusCode::BAD_REQUEST, "{body}");
+            assert_eq!(serde_json::from_str::<Value>(&body_text(r).await).unwrap()["code"], code, "{body}");
+        }
+        // 500 characters is fine (and is sent).
+        let task = send("0912345678", &"字".repeat(500), &a, 1);
+        let got = sms_phone_gets(&mut phone).await;
+        assert_eq!(got["text"].as_str().unwrap().chars().count(), 500);
+        state.control.handle_sms_result(&json!({"type": "send_sms_result", "id": got["id"], "ok": true})).await;
+        assert_eq!(task.await.unwrap().status(), StatusCode::OK);
+        let before = before + 1;
+        // Not JSON (another site's form) or no password: refused, nothing stored or sent.
+        let r = sms_post_send(state.clone(), sms_headers(None), json!({"to": "0912345678", "text": "hi", "serial": a, "sub_id": 1})).await;
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        let mut locked = state.clone();
+        locked.settings.calls_ui_token = "sms-send-pw".into();
+        let r = sms_post_send(locked.clone(), sms_json_headers(None), json!({"to": "0912345678", "text": "hi", "serial": a, "sub_id": 1})).await;
+        assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(sms_threads_get(&locked, None, "").await.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(total().await, before);
+        assert!(crate::callback::test_socket::next_json(&mut phone, std::time::Duration::from_millis(200)).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn sms_retry_route_only_sends_failed_ones_again() {
+        let state = recent_state("sms-retry");
+        let a = sms_serial("A");
+        let mut phone = sms_phone(&state, &a, json!([{"sub_id": 1, "country": "tw", "number": "0912000111"}]), true).await;
+        let task = tokio::spawn(sms_post_send(state.clone(), sms_json_headers(None), json!({"to": "0912345678", "text": "Ciao!", "serial": a, "sub_id": 1})));
+        let got = sms_phone_gets(&mut phone).await;
+        state.control.handle_sms_result(&json!({"type": "send_sms_result", "id": got["id"], "ok": false, "error": "radio_off"})).await;
+        let failed = recent_json(task.await.unwrap()).await["message"]["id"].as_u64().unwrap();
+
+        // Without JSON: refused, still failed.
+        let r = sms_post_retry(state.clone(), sms_headers(None), failed).await;
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(state.sms.get(failed).unwrap().status, "failed");
+        // Sent again on the same line, as the same message.
+        let task = tokio::spawn(sms_post_retry(state.clone(), sms_json_headers(None), failed));
+        let again = sms_phone_gets(&mut phone).await;
+        assert_eq!((again["id"].clone(), again["text"].as_str(), again["sub_id"].as_i64()), (got["id"].clone(), Some("Ciao!"), Some(1)));
+        state.control.handle_sms_result(&json!({"type": "send_sms_result", "id": again["id"], "ok": true})).await;
+        let v = recent_json(task.await.unwrap()).await;
+        assert_eq!((v["ok"].as_bool(), v["message"]["id"].as_u64(), v["message"]["status"].as_str()), (Some(true), Some(failed), Some("sent")));
+        // A sent one, a received one, an unknown one.
+        let r = sms_post_retry(state.clone(), sms_json_headers(None), failed).await;
+        assert_eq!(r.status(), StatusCode::CONFLICT);
+        assert_eq!(serde_json::from_str::<Value>(&body_text(r).await).unwrap()["code"], "not_retryable");
+        sms_receive(&state, "0912345678", "收到了", &a, Some(1), "").await;
+        let received = state.sms.list(crate::sms_store::now_ms(), 15, "收到了", None, 1, &|_: &str| String::new()).messages[0].id;
+        assert_eq!(sms_post_retry(state.clone(), sms_json_headers(None), received).await.status(), StatusCode::CONFLICT);
+        assert_eq!(sms_post_retry(state.clone(), sms_json_headers(None), 42).await.status(), StatusCode::NOT_FOUND);
+        assert!(crate::callback::test_socket::next_json(&mut phone, std::time::Duration::from_millis(200)).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn sms_thread_delete_route_removes_one_conversation() {
+        let state = recent_state("sms-del-thread");
+        let a = sms_serial("A");
+        state.errands.sims.note_list(&a, &json!([{"sub_id": 1, "country": "tw"}]));
+        sms_receive(&state, "0912345678", "第一則", &a, Some(1), "").await;
+        sms_receive(&state, "+886912345678", "第二則", &a, Some(1), "").await;
+        sms_receive(&state, "+16505550142", "other person", &a, Some(1), "").await;
+        let del = |headers: HeaderMap, number: &str| {
+            sms_thread_delete(State(state.clone()), headers, Query(sms_thread_query(number, None, None)))
+        };
+        assert_eq!(del(sms_headers(None), "0912345678").await.status(), StatusCode::BAD_REQUEST);
+        let mut locked = state.clone();
+        locked.settings.calls_ui_token = "sms-del-pw".into();
+        let r = sms_thread_delete(State(locked), sms_json_headers(None), Query(sms_thread_query("0912345678", None, None))).await;
+        assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(recent_json(sms_threads_get(&state, None, "").await).await["total"], 3);
+        assert_eq!(recent_json(del(sms_json_headers(None), "0912345678").await).await, json!({"ok": true, "removed": 2}));
+        assert_eq!(recent_json(del(sms_json_headers(None), "0912345678").await).await, json!({"ok": true, "removed": 0}));
+        let v = recent_json(sms_threads_get(&state, None, "").await).await;
+        assert_eq!((sms_thread_keys(&v), v["total"].as_u64()), (vec!["+16505550142".to_string()], Some(1)));
     }
 
     #[test]
@@ -3388,6 +4900,14 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/preview", get(preview))
         .route("/api/notify/test", post(notify_test))
         .route("/api/notify/send", post(notify_send))
+        .route("/api/notify/recent", get(notify_recent))
+        .route("/api/sms", get(sms_list))
+        .route("/api/sms/clear", post(sms_clear))
+        .route("/api/sms/threads", get(sms_threads))
+        .route("/api/sms/thread", get(sms_thread).delete(sms_thread_delete))
+        .route("/api/sms/send", post(sms_send))
+        .route("/api/sms/{id}/retry", post(sms_retry))
+        .route("/api/sms/{id}", axum::routing::delete(sms_delete))
         .route("/api/devices", get(devices))
         .route("/api/devices/{serial}", axum::routing::delete(device_delete))
         .route("/api/devices/{serial}/mode", post(device_mode))

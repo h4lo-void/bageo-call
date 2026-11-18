@@ -222,12 +222,11 @@ After each call the AI writes a short summary. It uses your Gemini key, so norma
 - **API base URL**: the service's OpenAI-compatible address; examples are below.
 - **Model**: required when a base URL is set.
 - **API key**: shown only as a hint once saved; a local server needs none.
-- With no base URL: DeepSeek when an API key is entered, else Gemini.
-- Saved as `summary_api_base`, `summary_model` and `deepseek_api_key` (it holds the key of whatever service you use).
+- With no base URL there is no service of its own: Gemini writes the summary when you have a Gemini key.
+- Saved as `summary_api_base`, `summary_model` and `summary_api_key` (it holds the key of whatever service you use).
 
 Base URL examples:
 
-- DeepSeek: `https://api.deepseek.com/v1` (model `deepseek-chat`)
 - OpenAI: `https://api.openai.com/v1` (e.g. `gpt-4o-mini`)
 - OpenRouter: `https://openrouter.ai/api/v1`
 - A local Ollama: `http://127.0.0.1:11434/v1`
@@ -303,6 +302,7 @@ Times are the computer's local time (see [Time zone](#time-zone)). Without any k
 
 | Setting | Default | What it does |
 |---|---|---|
+| Days to keep records | 15 | Calls and their recordings, text messages, AI errands and *To do* items older than this are deleted automatically (1 to 365). A change takes effect at once. Saved as `retention_days`; `CALLS_RETENTION_DAYS` only sets the default. |
 | Thinking level | Low | For Live models with "thinking" in their name only: Low, Medium or High. Low answers fastest. Saved as `gemini_thinking_level`. |
 | Console password | empty | Once set, the console and the API ask for the password (the browser remembers it). Saved as `ui_password`. |
 | Let other AI tools connect (MCP) | off | Lets AI tools such as Claude or ChatGPT look up your calls and *To do* items. Leave it off if you do not need it. |
@@ -386,7 +386,7 @@ The connection is plain HTTP: fine on a home network you trust, not for the open
 | Variable | Default | Meaning |
 |---|---|---|
 | `CALLS_DATA_DIR` | `data/calls` | Call records, recordings, settings and contacts. Relative to the folder Bageo starts in; in the container `/data/calls`. |
-| `CALLS_RETENTION_DAYS` | `7` | Calls older than this are deleted, records and audio (1–3650). |
+| `CALLS_RETENTION_DAYS` | `15` | Default for the days records are kept (1–365); change it in the console under *Advanced*. |
 | `CALLS_RECORD` | `true` | `false`: no call records and no recordings are kept at all. |
 | `ASSETS_DIR` | *(searched)* | Folder with the bundled sounds. Otherwise `assets` next to the program is used; in the container `/app/assets`. |
 
@@ -435,6 +435,7 @@ To pre-fill a fresh install from `.env` or Docker, these set the starting value 
 | Variable | Console setting | Default |
 |---|---|---|
 | `GEMINI_API_KEY` | Gemini API key | *(empty)* |
+| `SUMMARY_API_KEY` | API key of *Another service* (summary) | *(empty; its older name `DEEPSEEK_API_KEY` is still read)* |
 | `APP_LANGUAGE` | Language | `en` (also `zh-TW`, `zh-CN`, `ja`, `ko`, `es`, `fr`, `de`, `pt`) |
 | `NOTIFY_LANGUAGE` | Language of notifications and summaries | *(empty = same as `APP_LANGUAGE`)* |
 | `OWNER_NAME` | Your name | *(empty)* |

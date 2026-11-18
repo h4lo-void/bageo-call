@@ -55,7 +55,7 @@ flowchart LR
 | `contacts.rs` | 通訊錄；不管號碼怎麼寫都能比對；從 vCard、CSV、TSV、純文字、`.xlsx`、`.docx` 匯入，PDF 與圖片交給 Gemini 讀；匯出 vCard。 |
 | `phone_region.rs` | 判斷號碼屬於哪個國家（照接這通電話的 SIM 卡的讀法）；每支手機回報的 SIM 卡國家。 |
 | `calendar.rs` | 行事曆建議，以及 Google、Outlook.com、Microsoft 365、Yahoo、`.ics` 的「加入行事曆」連結。 |
-| `deepseek.rs` | 通話後的摘要，走 Gemini 或任何 OpenAI 相容 API（檔名是歷史遺留）；其他語言句子的翻譯；代打的結果。 |
+| `summary.rs` | 通話後的摘要，走 Gemini 或任何 OpenAI 相容 API；其他語言句子的翻譯；代打的結果。 |
 | `tasks.rs` | 「待處理事項」背後的儲存。 |
 | `notify.rs`、`gmail.rs`、`tg_inbound.rs` | 32 種通知管道、透過 SMTP 寄信、Telegram 按鈕。 |
 | `calls.rs`、`calls_http.rs` | 通話紀錄、錄音與逐字稿；網頁控制台的 REST API。 |
@@ -113,7 +113,7 @@ sequenceDiagram
    - 對方最後一句是道別，或 AI 道別後線上安靜 6 秒，Bageo 就送出 `hangup`。
    - 預錄語音選單不回應，安靜 4 秒後掛斷（最多 20 秒）。
    - 如果 AI 一直沒出聲（沒有金鑰、服務掛了），就立刻結束通話，不讓對方對著一片安靜。
-6. **之後**（`main.rs`、`deepseek.rs`、`appointments.rs`、`notify.rs`）。
+6. **之後**（`main.rs`、`summary.rs`、`appointments.rs`、`notify.rs`）。
    - 錄音存成三份（整通、只有對方、只有 AI）。
    - 逐字稿送到摘要模型，四行摘要存在通話旁邊並送到每個通知管道。
    - 對方提出的每一筆預約都變成一項「**待處理事項**」（推銷或詐騙電話不會產生）。

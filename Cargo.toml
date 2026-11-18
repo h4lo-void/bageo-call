@@ -6,6 +6,7 @@ resolver = "2"
 members = [
     "crates/agent",
 ]
+exclude = ["desktop"]
 
 [workspace.package]
 version = "1.4.0"

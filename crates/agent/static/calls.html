@@ -99,7 +99,8 @@ h1,h2,h3,p{margin:0}
 .lang{width:auto;min-height:33px;padding:4px 28px 4px 10px;font-size:.85rem;max-width:9.5rem;border-radius:var(--radius-sm)}
 
 main{max-width:1180px;margin:0 auto;padding:24px 20px}
-.view-title{font-size:1.3rem;font-weight:700;letter-spacing:-.015em;margin-bottom:14px}
+/* The navigation already says which page this is: the page's own title is for screen readers only. */
+.view-title{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 
 /* ---------- generic pieces ---------- */
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--card-shadow)}
@@ -194,6 +195,79 @@ pre.block.prose{font:inherit;font-size:.9rem}
 .call .call-acts .btn{border-color:transparent;background:transparent;color:var(--muted);min-height:25px;padding:1px 8px;font-size:.79rem}
 .call .call-acts .btn:hover{background:var(--surface);border-color:var(--line);color:var(--text)}
 .call .call-acts .btn.danger:hover{background:var(--bad-soft);border-color:color-mix(in srgb,var(--bad) 32%,var(--line));color:var(--bad)}
+/* SMS page: one conversation per number, like a phone's messages app (scoped: .chat and .note mean other things elsewhere on this page) */
+#view-sms .chat{display:grid;grid-template-columns:300px minmax(0,1fr);height:calc(100vh - var(--top-h) - 150px);min-height:460px;overflow:hidden;padding:0}
+#view-sms .chat-list{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
+#view-sms .chat-search{padding:12px 12px 8px}
+#view-sms .chat-search input{min-height:36px}
+#view-sms .threads{flex:1 1 auto;overflow-y:auto;padding:0 6px 6px}
+#view-sms .th{display:grid;grid-template-columns:36px minmax(0,1fr);gap:11px;align-items:center;width:100%;padding:9px 10px;border:0;border-radius:var(--radius-sm);background:transparent;text-align:left;cursor:pointer;color:var(--text);font:inherit}
+#view-sms .th:hover{background:var(--surface2)}
+#view-sms .th[aria-current=true]{background:var(--nav-active-bg)}
+#view-sms .th .th-top{display:flex;gap:8px;align-items:baseline;min-width:0}
+#view-sms .threads,#view-sms .msgs{scrollbar-width:thin;scrollbar-color:var(--line-strong) transparent}
+#view-sms .b .acts .btn{white-space:nowrap}
+#view-sms .th .name{flex:1 1 auto;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
+#view-sms .th .time{flex:0 0 auto;font-size:.76rem;color:var(--muted);font-variant-numeric:tabular-nums}
+#view-sms .th .prev{display:flex;gap:6px;align-items:center;min-width:0;color:var(--muted);font-size:.86rem;margin-top:1px}
+#view-sms .th .prev span{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#view-sms .th.unread .name{font-weight:700}
+#view-sms .th.unread .prev{color:var(--text)}
+#view-sms .th .new{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:0 0 auto}
+#view-sms .th-empty{padding:28px 14px;text-align:center;color:var(--muted);font-size:.88rem}
+#view-sms .th-empty b{display:block;color:var(--text);font-weight:600;margin-bottom:4px}
+#view-sms .av{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--surface2);color:var(--muted);font-weight:600;font-size:.9rem;flex:0 0 auto}
+#view-sms .av svg{width:18px;height:18px;display:block}
+#view-sms .chat-list-foot{padding:6px 10px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;min-height:40px}
+#view-sms .convo{display:flex;flex-direction:column;min-width:0;min-height:0}
+#view-sms .chat-pick{flex:1 1 auto;display:grid;place-items:center;padding:24px;text-align:center;color:var(--muted);font-size:.92rem}
+#view-sms .convo-head{display:flex;align-items:center;gap:10px;padding:10px 14px 10px 18px;border-bottom:1px solid var(--line);min-height:58px}
+#view-sms .convo-head .who{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
+#view-sms .convo-head .num{font-family:var(--mono);font-size:.8rem;color:var(--muted)}
+#view-sms .convo-head .back{display:none}
+#view-sms .convo-to{display:flex;align-items:center;gap:10px}
+#view-sms .convo-to label{color:var(--muted);font-size:.9rem;flex:0 0 auto}
+#view-sms .convo-to input{max-width:17rem;min-height:36px}
+#view-sms .msgs{flex:1 1 auto;overflow-y:auto;padding:14px 18px 10px;display:flex;flex-direction:column;gap:3px}
+#view-sms .msgs .earlier{align-self:center;margin:2px 0 8px}
+#view-sms .day{align-self:center;margin:12px 0 6px;font-size:.75rem;font-weight:500;color:var(--muted)}
+#view-sms .b{display:flex;align-items:center;gap:4px;max-width:min(78%,560px)}
+#view-sms .b.in{align-self:flex-start}
+#view-sms .b.out{align-self:flex-end;flex-direction:row-reverse}
+#view-sms .b .bub{padding:8px 13px;border-radius:17px;background:var(--bubble-caller);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;user-select:text}
+#view-sms .b.out .bub{background:var(--bubble-ai)}
+#view-sms .b.in.last .bub{border-bottom-left-radius:6px}
+#view-sms .b.out.last .bub{border-bottom-right-radius:6px}
+#view-sms .b.out.sending .bub{opacity:.6}
+#view-sms .b.out.failed .bub{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--bad) 45%,transparent)}
+#view-sms .b .acts{display:flex;gap:2px;opacity:0;transition:opacity .14s}
+#view-sms .b:hover .acts,#view-sms .b:focus-within .acts{opacity:1}
+#view-sms .b .acts .btn{border-color:transparent;background:transparent;color:var(--muted);min-height:24px;padding:1px 7px;font-size:.76rem}
+#view-sms .b .acts .btn:hover{background:var(--surface2);color:var(--text)}
+#view-sms .b .acts .btn.danger:hover{background:var(--bad-soft);color:var(--bad)}
+#view-sms .meta{font-size:.74rem;color:var(--muted);margin:2px 6px 9px;font-variant-numeric:tabular-nums;max-width:min(78%,560px)}
+#view-sms .meta.in{align-self:flex-start}
+#view-sms .meta.out{align-self:flex-end;text-align:right}
+#view-sms .meta .bad{color:var(--bad)}
+#view-sms .meta .link{border:0;background:none;padding:0;margin-left:4px;color:var(--accent-ink);font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+#view-sms .composer{border-top:1px solid var(--line);padding:9px 14px 12px}
+#view-sms .composer .from{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:.84rem;color:var(--muted)}
+#view-sms .composer .from select{width:auto;max-width:100%;min-height:30px;padding:2px 26px 2px 9px;font-size:.84rem;border-radius:7px}
+#view-sms .composer .crow{display:flex;gap:8px;align-items:flex-end}
+#view-sms .composer textarea{flex:1 1 auto;min-height:40px;height:40px;max-height:150px;resize:none;overflow-y:hidden;border-radius:20px;padding:9px 15px;line-height:1.45}
+#view-sms .composer .btn.primary{flex:0 0 auto;white-space:nowrap;border-radius:20px;min-height:40px;padding:7px 18px}
+#view-sms .composer .count{font-size:.74rem;color:var(--muted);text-align:right;margin-top:4px;font-variant-numeric:tabular-nums}
+#view-sms .composer .note{font-size:.84rem;color:var(--muted);margin-top:6px;padding-left:0;border-left:0}
+.nav .dot.sms{background:var(--accent)}
+@media (max-width:760px){
+  #view-sms .chat{grid-template-columns:minmax(0,1fr);height:calc(100dvh - var(--top-h) - 200px - env(safe-area-inset-bottom));min-height:380px}
+  #view-sms .chat.open .chat-list{display:none}
+  #view-sms .chat:not(.open) .convo{display:none}
+  #view-sms .chat-list{border-right:0}
+  #view-sms .convo-head{padding-left:8px}
+  #view-sms .convo-head .back{display:inline-flex}
+  #view-sms .b,#view-sms .meta{max-width:88%}
+}
 .more{display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 0}
 
 /* detail */
@@ -508,7 +582,6 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
   .nav a span{overflow:hidden;text-overflow:ellipsis;max-width:100%}
   .nav .dot{right:6px;top:6px}
   main{padding:14px 12px calc(96px + env(safe-area-inset-bottom))}
-  .view-title{font-size:1.18rem;margin-bottom:10px}
   .pad{padding:16px}
   .stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
   .steps{grid-template-columns:minmax(0,1fr)}
@@ -539,6 +612,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
     </a>
     <nav class="nav" id="nav" data-i18n-aria="nav_main">
       <a href="#calls" data-tab="calls"><span data-i18n="tab_calls"></span></a>
+      <a href="#sms" data-tab="sms"><span data-i18n="tab_sms"></span><i class="dot sms" id="navSms" hidden></i></a>
       <a href="#errands" data-tab="errands"><span data-i18n="tab_errands"></span></a>
       <a href="#contacts" data-tab="contacts"><span data-i18n="tab_contacts"></span></a>
       <a href="#settings" data-tab="settings"><span data-i18n="tab_settings"></span><i class="dot" id="navDirty" hidden></i></a>
@@ -689,6 +763,41 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
     </div>
   </section>
 
+  <!-- ======================= SMS ======================= -->
+  <!-- Text messages as conversations (one per number): what the phones received
+       (handed over by the SMS forwarder) and the replies sent from here -->
+  <section id="view-sms" data-view="sms" hidden>
+    <h1 class="view-title" data-i18n="tab_sms"></h1>
+    <div class="row" style="margin-bottom:14px">
+      <p class="muted small grow" id="smsKeepBox" hidden><span id="smsKeep"></span> <a href="#settings/region" id="smsKeepLink" data-i18n="sms_keep_link"></a></p>
+      <span class="muted small" id="smsMeta" style="margin-left:auto"></span>
+      <button type="button" class="btn sm" id="smsNew" data-i18n="sms_new"></button>
+    </div>
+    <div class="card chat" id="smsChat">
+      <aside class="chat-list">
+        <div class="chat-search"><input type="search" id="smsQ" autocomplete="off" data-i18n-ph="sms_search_ph" /></div>
+        <div class="threads" id="smsThreads"></div>
+        <div class="chat-list-foot"><button type="button" class="btn xs ghost danger" id="smsClear" data-i18n="sms_clear" hidden></button></div>
+      </aside>
+      <section class="convo" id="smsConvo">
+        <div class="chat-pick" id="smsPick" data-i18n="sms_pick"></div>
+        <header class="convo-head" id="smsHead" hidden>
+          <button type="button" class="btn xs ghost back" id="smsBack" data-i18n="sms_back"></button>
+          <div class="grow" id="smsWho"><div class="who" id="smsName"></div><div class="num" id="smsNum"></div></div>
+          <div class="convo-to grow" id="smsToRow" hidden><label for="smsTo" data-i18n="sms_to"></label><input type="tel" id="smsTo" autocomplete="off" data-i18n-ph="sms_to_ph" /></div>
+          <button type="button" class="btn xs ghost danger" id="smsDelThread" data-i18n="sms_del_thread"></button>
+        </header>
+        <div class="msgs" id="smsMsgs" hidden></div>
+        <form class="composer" id="smsForm" hidden>
+          <div class="from"><label for="smsFrom" data-i18n="sms_from"></label><select id="smsFrom"></select></div>
+          <div class="crow"><textarea id="smsText" rows="1" maxlength="500" data-i18n-ph="sms_input_ph"></textarea><button type="submit" class="btn primary" id="smsSend" data-i18n="sms_send"></button></div>
+          <div class="count" id="smsCount" hidden></div>
+          <div class="note" id="smsNote" hidden></div>
+        </form>
+      </section>
+    </div>
+  </section>
+
   <!-- ======================= Errands ======================= -->
   <!-- The owner asks the AI to call someone and take care of something; the
        calls it makes (live captions while on), and what came of them -->
@@ -739,10 +848,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
 
   <!-- ======================= Contacts ======================= -->
   <section id="view-contacts" data-view="contacts" hidden>
-    <div class="row" style="margin-bottom:14px">
-      <h1 class="view-title grow" style="margin:0" data-i18n="tab_contacts"></h1>
-      <span class="muted small" id="ctMeta"></span>
-    </div>
+    <h1 class="view-title" data-i18n="tab_contacts"></h1>
     <div class="seg" id="ctTabs" role="tablist" style="margin-bottom:14px;flex-wrap:wrap">
       <button type="button" role="tab" data-kind="all" aria-selected="true"><span data-i18n="ct_tab_all"></span> <span class="muted small" id="ctCntAll"></span></button>
       <button type="button" role="tab" data-kind="contact" aria-selected="false"><span data-i18n="ct_tab_contact"></span> <span class="muted small" id="ctCntContact"></span></button>
@@ -1074,8 +1180,8 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
               <div class="field"><label for="f-summary_model" data-i18n="f_sum_model"></label>
                 <input type="text" id="f-summary_model" data-k="summary_model" data-t="text" spellcheck="false" />
                 <div class="help" data-i18n="f_sum_model_h"></div></div>
-              <div class="field"><label for="f-deepseek_api_key"><span data-i18n="f_sum_key"></span><span class="tag" data-flag="deepseek_api_key"></span></label>
-                <div data-secret="deepseek_api_key"></div></div>
+              <div class="field"><label for="f-summary_api_key"><span data-i18n="f_sum_key"></span><span class="tag" data-flag="summary_api_key"></span></label>
+                <div data-secret="summary_api_key"></div></div>
             </div>
           </div>
           <div class="hr"></div>
@@ -1098,6 +1204,10 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
         <div class="card group" id="g-region"><div class="pad">
           <h2><span data-i18n="g_region"></span></h2>
           <p class="desc" data-i18n="g_region_d"></p>
+          <div class="field"><label for="f-retention_days" data-i18n="f_keep"></label>
+            <div class="inline"><input type="number" id="f-retention_days" data-k="retention_days" data-t="int" min="1" max="365" step="1" inputmode="numeric" /><span class="muted" data-i18n="unit_days"></span></div>
+            <div class="help" data-i18n="f_keep_h"></div></div>
+          <div class="hr"></div>
           <div class="field"><label for="f-ui_password"><span data-i18n="f_ui_pw"></span><span class="tag" data-flag="ui_password"></span></label>
             <div data-secret="ui_password"></div>
             <div class="help" data-i18n="f_ui_pw_h"></div></div>
@@ -1153,9 +1263,9 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
 
   <!-- ======================= System ======================= -->
   <section id="view-system" data-view="system" hidden>
+    <h1 class="view-title" data-i18n="tab_system"></h1>
     <div class="row" style="margin-bottom:14px">
-      <h1 class="view-title grow" style="margin:0" data-i18n="tab_system"></h1>
-      <span class="muted small" id="sysMeta"></span>
+      <span class="muted small" id="sysMeta" style="margin-left:auto"></span>
       <button type="button" class="btn sm" id="btnSysRefresh" data-i18n="refresh"></button>
     </div>
     <div class="sys-grid">
@@ -1290,7 +1400,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
  * JSON API under /calls/api/.
  *
  * LINKS
- *   #calls  #settings  #settings/<section>  #system  #call=<call id>
+ *   #calls  #sms  #sms/<number>  #sms/new  #settings  #settings/<section>  #system  #call=<call id>
  *   ?lang=<code>  ?theme=light|dark  ?token=<CALLS_UI_TOKEN>
  *
  * TRANSLATIONS
@@ -1557,7 +1667,6 @@ I18N["en"] = {
   ct_add: "Add",
   ct_import: "Import",
   ct_export: "Export vCard",
-  ct_count: "{n} contacts",
   ct_empty_title: "No contacts yet",
   ct_empty_body: "Add people yourself, or import contacts from your phone, Google or Outlook. When they call you see their name, and the AI knows who it is.",
   ct_empty_filtered: "No contact matches",
@@ -1867,12 +1976,12 @@ I18N["en"] = {
   sum_ready: "Ready",
   sum_notready: "Needs a Gemini key",
   f_sum_base: "API base URL",
-  f_sum_base_h: "Any OpenAI-compatible service works, e.g. https://api.deepseek.com/v1 for DeepSeek.",
+  f_sum_base_h: "Any OpenAI-compatible service works, e.g. https://api.openai.com/v1.",
   f_sum_model: "Model",
-  f_sum_model_h: "e.g. deepseek-chat or gpt-4o-mini.",
+  f_sum_model_h: "e.g. gpt-4o-mini.",
   f_sum_key: "API key",
   f_sum_provider: "Summary service",
-  f_sum_provider_h: "Uses your Gemini key by default. To use DeepSeek, OpenAI or others, choose “Another service”.",
+  f_sum_provider_h: "Uses your Gemini key by default. To use another service, choose “Another service”.",
   sp_gemini: "Gemini",
   sp_custom: "Another service",
   f_cal_suggest: "Suggest calendar events",
@@ -1936,7 +2045,7 @@ I18N["en"] = {
   ab_model: "Live model",
   ab_data: "Data folder",
   ab_settings: "Settings file",
-  ab_retention: "Recordings kept",
+  ab_retention: "Records kept",
   ab_days: "{n} days",
   raw_health: "Raw /health data (for troubleshooting)",
   // ---- call events, notification services, error codes (from the agent)
@@ -2342,6 +2451,50 @@ I18N["en"] = {
   bl_mode: "When someone on the Blacklist calls:",
   bl_voice_link: "Choose the announcement voice",
   ct_bad_prefix: "Only Blacklist numbers can end with *, with at least 3 digits before it, not counting leading zeros.",
+  tab_sms: "SMS",
+  sms_count: "{n} messages",
+  sms_keep: "Records are kept for {n} days.",
+  sms_keep_link: "Change",
+  sms_search_ph: "Search sender or text",
+  sms_clear: "Delete all",
+  sms_clear_t: "Delete all text messages?",
+  sms_clear_b: "This cannot be undone.",
+  sms_del: "Delete",
+  sms_del_t: "Delete this text message?",
+  sms_copy: "Copy",
+  sms_empty_t: "No text messages yet",
+  sms_empty_d: "Texts your phones receive show up here once the SMS forwarder is running.",
+  sms_none_found: "No text message matches.",
+  sms_unknown: "Unknown sender",
+  unit_days: "days",
+  sms_new: "New message",
+  sms_pick: "Pick a conversation, or press “New message”.",
+  sms_to: "To",
+  sms_to_ph: "Phone number",
+  sms_from: "From",
+  sms_input_ph: "Text message",
+  sms_send: "Send",
+  sms_sending: "Sending…",
+  sms_sent: "Sent",
+  sms_failed: "Not sent",
+  sms_unsure: "Not confirmed yet",
+  sms_retry: "Retry",
+  sms_you: "You: ",
+  sms_no_line: "No phone can send texts right now.",
+  sms_no_reply: "You can't reply to this sender.",
+  sms_del_thread: "Delete conversation",
+  sms_del_thread_t: "Delete all messages with {name}?",
+  sms_back: "Back",
+  sms_earlier: "Show earlier messages",
+  sms_sim_n: "SIM {n}",
+  sms_err_offline: "The phone is not connected.",
+  sms_err_old_app: "This phone's app is too old to send texts.",
+  sms_err_permission: "The phone's app may not send texts. Allow it on the phone.",
+  sms_err_no_service: "The phone has no signal.",
+  sms_err_generic: "The phone could not send it.",
+  sms_err_number: "Check the number and try again.",
+  f_keep: "Days to keep records",
+  f_keep_h: "Calls and recordings, texts, errands and to-dos older than this are deleted automatically.",
 };
 
 I18N["zh-TW"] = {
@@ -2587,7 +2740,6 @@ I18N["zh-TW"] = {
   ct_add: "新增",
   ct_import: "匯入",
   ct_export: "匯出 vCard",
-  ct_count: "共 {n} 位",
   ct_empty_title: "還沒有聯絡人",
   ct_empty_body: "自己新增，或匯入手機、Google、Outlook 的通訊錄。他們打來時會顯示名字，AI 也知道是誰。",
   ct_empty_filtered: "找不到符合的聯絡人",
@@ -2930,12 +3082,12 @@ I18N["zh-TW"] = {
   sum_ready: "已就緒",
   sum_notready: "需要 Gemini 金鑰",
   f_sum_base: "API 網址",
-  f_sum_base_h: "相容 OpenAI 格式的服務都可以，例如 DeepSeek 填 https://api.deepseek.com/v1。",
+  f_sum_base_h: "相容 OpenAI 格式的服務都可以，例如 https://api.openai.com/v1。",
   f_sum_model: "模型",
-  f_sum_model_h: "例如 deepseek-chat、gpt-4o-mini。",
+  f_sum_model_h: "例如 gpt-4o-mini。",
   f_sum_key: "API 金鑰",
   f_sum_provider: "摘要服務",
-  f_sum_provider_h: "預設用你的 Gemini 金鑰。想用 DeepSeek、OpenAI 等服務，選「其他服務」。",
+  f_sum_provider_h: "預設用你的 Gemini 金鑰。想用別的服務，選「其他服務」。",
   sp_gemini: "Gemini",
   sp_custom: "其他服務",
   f_cal_suggest: "建議行事曆活動",
@@ -2999,7 +3151,7 @@ I18N["zh-TW"] = {
   ab_model: "Live 模型",
   ab_data: "資料夾",
   ab_settings: "設定檔",
-  ab_retention: "錄音保留",
+  ab_retention: "紀錄保留",
   ab_days: "{n} 天",
   raw_health: "原始 /health 資料（除錯用）",
   // ---- call events, notification services, error codes (from the agent)
@@ -3372,6 +3524,50 @@ I18N["zh-TW"] = {
   bl_mode: "黑名單打來時：",
   bl_voice_link: "選拒接語音的聲音",
   ct_bad_prefix: "結尾加 * 只能用在黑名單，而且 * 前面除了開頭的 0 至少要 3 碼。",
+  tab_sms: "簡訊",
+  sms_count: "{n} 則",
+  sms_keep: "紀錄保留 {n} 天。",
+  sms_keep_link: "調整",
+  sms_search_ph: "搜尋寄件人或內容",
+  sms_clear: "全部刪除",
+  sms_clear_t: "刪除全部簡訊？",
+  sms_clear_b: "刪除後無法復原。",
+  sms_del: "刪除",
+  sms_del_t: "刪除這則簡訊？",
+  sms_copy: "複製",
+  sms_empty_t: "還沒有簡訊",
+  sms_empty_d: "簡訊轉發開始運作後，手機收到的簡訊會出現在這裡。",
+  sms_none_found: "找不到符合的簡訊。",
+  sms_unknown: "未知寄件人",
+  unit_days: "天",
+  sms_new: "新簡訊",
+  sms_pick: "選一則對話，或按「新簡訊」。",
+  sms_to: "收件人",
+  sms_to_ph: "輸入電話號碼",
+  sms_from: "從",
+  sms_input_ph: "輸入簡訊",
+  sms_send: "傳送",
+  sms_sending: "傳送中…",
+  sms_sent: "已送出",
+  sms_failed: "沒有送出",
+  sms_unsure: "還不確定有沒有送出",
+  sms_retry: "重試",
+  sms_you: "你：",
+  sms_no_line: "現在沒有可以傳簡訊的手機。",
+  sms_no_reply: "這個寄件人不能回覆。",
+  sms_del_thread: "刪除對話",
+  sms_del_thread_t: "刪除跟 {name} 的所有簡訊？",
+  sms_back: "返回",
+  sms_earlier: "顯示更早的簡訊",
+  sms_sim_n: "SIM {n}",
+  sms_err_offline: "手機沒有連線。",
+  sms_err_old_app: "這支手機的 App 太舊，不能傳簡訊。",
+  sms_err_permission: "手機的 App 沒有傳簡訊的權限，請在手機上允許。",
+  sms_err_no_service: "手機沒有訊號。",
+  sms_err_generic: "手機沒有送出這則簡訊。",
+  sms_err_number: "請檢查號碼後再試一次。",
+  f_keep: "紀錄保留幾天",
+  f_keep_h: "通話和錄音、簡訊、AI 代打和待處理事項，超過天數就自動刪除。",
 };
 
 I18N["zh-CN"] = {
@@ -3617,7 +3813,6 @@ I18N["zh-CN"] = {
   ct_add: "新增",
   ct_import: "导入",
   ct_export: "导出 vCard",
-  ct_count: "共 {n} 位",
   ct_empty_title: "还没有联系人",
   ct_empty_body: "自己添加，或导入手机、Google、Outlook 的通讯录。他们打来时会显示名字，AI 也知道是谁。",
   ct_empty_filtered: "找不到符合的联系人",
@@ -3927,12 +4122,12 @@ I18N["zh-CN"] = {
   sum_ready: "已就绪",
   sum_notready: "需要 Gemini 密钥",
   f_sum_base: "API 地址",
-  f_sum_base_h: "兼容 OpenAI 格式的服务都可以，例如 DeepSeek 填 https://api.deepseek.com/v1。",
+  f_sum_base_h: "兼容 OpenAI 格式的服务都可以，例如 https://api.openai.com/v1。",
   f_sum_model: "模型",
-  f_sum_model_h: "例如 deepseek-chat、gpt-4o-mini。",
+  f_sum_model_h: "例如 gpt-4o-mini。",
   f_sum_key: "API 密钥",
   f_sum_provider: "摘要服务",
-  f_sum_provider_h: "默认用你的 Gemini 密钥。想用 DeepSeek、OpenAI 等服务，选“其他服务”。",
+  f_sum_provider_h: "默认用你的 Gemini 密钥。想用别的服务，选“其他服务”。",
   sp_gemini: "Gemini",
   sp_custom: "其他服务",
   f_cal_suggest: "建议日历日程",
@@ -3996,7 +4191,7 @@ I18N["zh-CN"] = {
   ab_model: "Live 模型",
   ab_data: "数据文件夹",
   ab_settings: "设置文件",
-  ab_retention: "录音保留",
+  ab_retention: "记录保留",
   ab_days: "{n} 天",
   raw_health: "原始 /health 数据（排查问题用）",
   // ---- call events, notification services, error codes (from the agent)
@@ -4402,6 +4597,50 @@ I18N["zh-CN"] = {
   bl_mode: "黑名单打来时：",
   bl_voice_link: "选择拒接语音的声音",
   ct_bad_prefix: "结尾加 * 只能用在黑名单，而且 * 前面除了开头的 0 至少要 3 位。",
+  tab_sms: "短信",
+  sms_count: "{n} 条",
+  sms_keep: "记录保留 {n} 天。",
+  sms_keep_link: "调整",
+  sms_search_ph: "搜索发件人或内容",
+  sms_clear: "全部删除",
+  sms_clear_t: "删除全部短信？",
+  sms_clear_b: "删除后无法恢复。",
+  sms_del: "删除",
+  sms_del_t: "删除这条短信？",
+  sms_copy: "复制",
+  sms_empty_t: "还没有短信",
+  sms_empty_d: "短信转发开始运行后，手机收到的短信会出现在这里。",
+  sms_none_found: "找不到符合的短信。",
+  sms_unknown: "未知发件人",
+  unit_days: "天",
+  sms_new: "新短信",
+  sms_pick: "选一个对话，或点“新短信”。",
+  sms_to: "收件人",
+  sms_to_ph: "输入电话号码",
+  sms_from: "从",
+  sms_input_ph: "输入短信",
+  sms_send: "发送",
+  sms_sending: "发送中…",
+  sms_sent: "已发送",
+  sms_failed: "没有发出",
+  sms_unsure: "还不确定有没有发出",
+  sms_retry: "重试",
+  sms_you: "你：",
+  sms_no_line: "现在没有可以发短信的手机。",
+  sms_no_reply: "这个发件人不能回复。",
+  sms_del_thread: "删除对话",
+  sms_del_thread_t: "删除和 {name} 的所有短信？",
+  sms_back: "返回",
+  sms_earlier: "显示更早的短信",
+  sms_sim_n: "SIM {n}",
+  sms_err_offline: "手机没有连接。",
+  sms_err_old_app: "这部手机的 App 太旧，不能发短信。",
+  sms_err_permission: "手机的 App 没有发短信的权限，请在手机上允许。",
+  sms_err_no_service: "手机没有信号。",
+  sms_err_generic: "手机没有发出这条短信。",
+  sms_err_number: "请检查号码后再试一次。",
+  f_keep: "记录保留几天",
+  f_keep_h: "通话和录音、短信、AI 代打和待处理事项，超过天数就自动删除。",
 };
 
 I18N["ja"] = {
@@ -4647,7 +4886,6 @@ I18N["ja"] = {
   ct_add: "追加",
   ct_import: "インポート",
   ct_export: "vCard で書き出し",
-  ct_count: "{n} 件",
   ct_empty_title: "連絡先はまだありません",
   ct_empty_body: "自分で追加するか、スマホ・Google・Outlook の連絡先を取り込めます。登録した人からの電話には名前が表示され、AI にも誰からか伝わります。",
   ct_empty_filtered: "一致する連絡先はありません",
@@ -4957,12 +5195,12 @@ I18N["ja"] = {
   sum_ready: "準備完了",
   sum_notready: "Gemini キーが必要",
   f_sum_base: "API のベース URL",
-  f_sum_base_h: "OpenAI 互換のサービスなら使えます。例：DeepSeek は https://api.deepseek.com/v1。",
+  f_sum_base_h: "OpenAI 互換のサービスなら使えます。例：https://api.openai.com/v1。",
   f_sum_model: "モデル",
-  f_sum_model_h: "例：deepseek-chat、gpt-4o-mini。",
+  f_sum_model_h: "例：gpt-4o-mini。",
   f_sum_key: "API キー",
   f_sum_provider: "要約サービス",
-  f_sum_provider_h: "標準ではあなたの Gemini キーを使います。DeepSeek や OpenAI などを使うなら「その他のサービス」を選びます。",
+  f_sum_provider_h: "標準ではあなたの Gemini キーを使います。ほかのサービスを使うなら「その他のサービス」を選びます。",
   sp_gemini: "Gemini",
   sp_custom: "その他のサービス",
   f_cal_suggest: "カレンダーの予定を提案する",
@@ -5026,7 +5264,7 @@ I18N["ja"] = {
   ab_model: "Live モデル",
   ab_data: "データフォルダー",
   ab_settings: "設定ファイル",
-  ab_retention: "録音の保存期間",
+  ab_retention: "記録の保存期間",
   ab_days: "{n} 日",
   raw_health: "/health の生データ（トラブルシューティング用）",
   // ---- call events, notification services, error codes (from the agent)
@@ -5432,6 +5670,50 @@ I18N["ja"] = {
   bl_mode: "着信拒否の相手から電話が来たとき：",
   bl_voice_link: "アナウンスの声を選ぶ",
   ct_bad_prefix: "末尾の * は着信拒否の番号だけに使えます（* の前に、先頭の 0 を除いて 3 桁以上）。",
+  tab_sms: "SMS",
+  sms_count: "{n} 件",
+  sms_keep: "記録は {n} 日間保存されます。",
+  sms_keep_link: "変更",
+  sms_search_ph: "差出人や本文を検索",
+  sms_clear: "すべて削除",
+  sms_clear_t: "SMS をすべて削除しますか？",
+  sms_clear_b: "削除すると元に戻せません。",
+  sms_del: "削除",
+  sms_del_t: "この SMS を削除しますか？",
+  sms_copy: "コピー",
+  sms_empty_t: "SMS はまだありません",
+  sms_empty_d: "SMS 転送が動き始めると、スマホに届いた SMS がここに表示されます。",
+  sms_none_found: "一致する SMS がありません。",
+  sms_unknown: "差出人不明",
+  unit_days: "日",
+  sms_new: "新規 SMS",
+  sms_pick: "会話を選ぶか、「新規 SMS」を押してください。",
+  sms_to: "宛先",
+  sms_to_ph: "電話番号",
+  sms_from: "送信元",
+  sms_input_ph: "メッセージを入力",
+  sms_send: "送信",
+  sms_sending: "送信中…",
+  sms_sent: "送信済み",
+  sms_failed: "送信できませんでした",
+  sms_unsure: "送信できたか未確認",
+  sms_retry: "再送信",
+  sms_you: "あなた：",
+  sms_no_line: "いま SMS を送れるスマホがありません。",
+  sms_no_reply: "この差出人には返信できません。",
+  sms_del_thread: "会話を削除",
+  sms_del_thread_t: "{name} とのメッセージをすべて削除しますか？",
+  sms_back: "戻る",
+  sms_earlier: "以前のメッセージを表示",
+  sms_sim_n: "SIM {n}",
+  sms_err_offline: "スマホが接続されていません。",
+  sms_err_old_app: "このスマホのアプリは古いため SMS を送れません。",
+  sms_err_permission: "スマホのアプリに SMS 送信の権限がありません。スマホで許可してください。",
+  sms_err_no_service: "スマホが圏外です。",
+  sms_err_generic: "スマホが送信できませんでした。",
+  sms_err_number: "番号を確認して、もう一度お試しください。",
+  f_keep: "記録を保存する日数",
+  f_keep_h: "通話と録音、SMS、AI 代理電話、対応待ちは、日数を過ぎると自動で削除されます。",
 };
 
 I18N["ko"] = {
@@ -5677,7 +5959,6 @@ I18N["ko"] = {
   ct_add: "추가",
   ct_import: "가져오기",
   ct_export: "vCard로 내보내기",
-  ct_count: "{n}명",
   ct_empty_title: "아직 연락처가 없습니다",
   ct_empty_body: "직접 추가하거나 휴대폰, Google, Outlook 연락처를 가져올 수 있습니다. 등록된 사람이 전화하면 이름이 표시되고 AI도 누구인지 압니다.",
   ct_empty_filtered: "일치하는 연락처가 없습니다",
@@ -5987,12 +6268,12 @@ I18N["ko"] = {
   sum_ready: "준비됨",
   sum_notready: "Gemini 키 필요",
   f_sum_base: "API 기본 URL",
-  f_sum_base_h: "OpenAI 호환 서비스면 됩니다. 예: DeepSeek는 https://api.deepseek.com/v1.",
+  f_sum_base_h: "OpenAI 호환 서비스면 됩니다. 예: https://api.openai.com/v1.",
   f_sum_model: "모델",
-  f_sum_model_h: "예: deepseek-chat, gpt-4o-mini.",
+  f_sum_model_h: "예: gpt-4o-mini.",
   f_sum_key: "API 키",
   f_sum_provider: "요약 서비스",
-  f_sum_provider_h: "기본으로 내 Gemini 키를 사용합니다. DeepSeek, OpenAI 등을 쓰려면 '다른 서비스'를 선택하세요.",
+  f_sum_provider_h: "기본으로 내 Gemini 키를 사용합니다. 다른 서비스를 쓰려면 '다른 서비스'를 선택하세요.",
   sp_gemini: "Gemini",
   sp_custom: "다른 서비스",
   f_cal_suggest: "캘린더 일정 제안",
@@ -6056,7 +6337,7 @@ I18N["ko"] = {
   ab_model: "Live 모델",
   ab_data: "데이터 폴더",
   ab_settings: "설정 파일",
-  ab_retention: "녹음 보관 기간",
+  ab_retention: "기록 보관 기간",
   ab_days: "{n}일",
   raw_health: "/health 원본 데이터(문제 해결용)",
   // ---- call events, notification services, error codes (from the agent)
@@ -6462,6 +6743,50 @@ I18N["ko"] = {
   bl_mode: "차단 목록의 번호가 전화하면:",
   bl_voice_link: "안내 음성 목소리 고르기",
   ct_bad_prefix: "끝의 *는 차단 목록 번호에만 쓸 수 있습니다(* 앞에 앞의 0을 빼고 3자리 이상).",
+  tab_sms: "문자",
+  sms_count: "{n}건",
+  sms_keep: "기록은 {n}일 동안 보관됩니다.",
+  sms_keep_link: "변경",
+  sms_search_ph: "보낸 사람 또는 내용 검색",
+  sms_clear: "모두 삭제",
+  sms_clear_t: "문자를 모두 삭제할까요?",
+  sms_clear_b: "삭제하면 되돌릴 수 없습니다.",
+  sms_del: "삭제",
+  sms_del_t: "이 문자를 삭제할까요?",
+  sms_copy: "복사",
+  sms_empty_t: "아직 문자가 없습니다",
+  sms_empty_d: "문자 전달이 작동하면 휴대폰이 받은 문자가 여기에 표시됩니다.",
+  sms_none_found: "일치하는 문자가 없습니다.",
+  sms_unknown: "알 수 없는 발신자",
+  unit_days: "일",
+  sms_new: "새 문자",
+  sms_pick: "대화를 고르거나 \"새 문자\"를 누르세요.",
+  sms_to: "받는 사람",
+  sms_to_ph: "전화번호",
+  sms_from: "보내는 번호",
+  sms_input_ph: "문자 입력",
+  sms_send: "보내기",
+  sms_sending: "보내는 중…",
+  sms_sent: "보냄",
+  sms_failed: "보내지 못함",
+  sms_unsure: "전송 여부 확인 전",
+  sms_retry: "다시 보내기",
+  sms_you: "나: ",
+  sms_no_line: "지금 문자를 보낼 수 있는 휴대폰이 없습니다.",
+  sms_no_reply: "이 발신자에게는 답장할 수 없습니다.",
+  sms_del_thread: "대화 삭제",
+  sms_del_thread_t: "{name}님과의 문자를 모두 삭제할까요?",
+  sms_back: "뒤로",
+  sms_earlier: "이전 문자 보기",
+  sms_sim_n: "SIM {n}",
+  sms_err_offline: "휴대폰이 연결되어 있지 않습니다.",
+  sms_err_old_app: "이 휴대폰의 앱이 오래되어 문자를 보낼 수 없습니다.",
+  sms_err_permission: "휴대폰 앱에 문자 전송 권한이 없습니다. 휴대폰에서 허용해 주세요.",
+  sms_err_no_service: "휴대폰에 신호가 없습니다.",
+  sms_err_generic: "휴대폰이 문자를 보내지 못했습니다.",
+  sms_err_number: "번호를 확인하고 다시 시도해 주세요.",
+  f_keep: "기록 보관 일수",
+  f_keep_h: "통화와 녹음, 문자, AI 대리 전화, 처리할 일은 기간이 지나면 자동으로 삭제됩니다.",
 };
 
 I18N["es"] = {
@@ -6707,7 +7032,6 @@ I18N["es"] = {
   ct_add: "Añadir",
   ct_import: "Importar",
   ct_export: "Exportar vCard",
-  ct_count: "{n} contactos",
   ct_empty_title: "Todavía no hay contactos",
   ct_empty_body: "Añade personas a mano o importa los contactos de tu teléfono, Google u Outlook. Cuando llamen verás su nombre y la IA sabrá quién es.",
   ct_empty_filtered: "Ningún contacto coincide",
@@ -7017,12 +7341,12 @@ I18N["es"] = {
   sum_ready: "Listo",
   sum_notready: "Falta la clave de Gemini",
   f_sum_base: "URL base de la API",
-  f_sum_base_h: "Sirve cualquier servicio compatible con OpenAI, p. ej. https://api.deepseek.com/v1 para DeepSeek.",
+  f_sum_base_h: "Sirve cualquier servicio compatible con OpenAI, p. ej. https://api.openai.com/v1.",
   f_sum_model: "Modelo",
-  f_sum_model_h: "P. ej. deepseek-chat o gpt-4o-mini.",
+  f_sum_model_h: "P. ej. gpt-4o-mini.",
   f_sum_key: "Clave de API",
   f_sum_provider: "Servicio de resúmenes",
-  f_sum_provider_h: "Por defecto usa tu clave de Gemini. Para usar DeepSeek, OpenAI u otros, elige «Otro servicio».",
+  f_sum_provider_h: "Por defecto usa tu clave de Gemini. Para usar otro servicio, elige «Otro servicio».",
   sp_gemini: "Gemini",
   sp_custom: "Otro servicio",
   f_cal_suggest: "Sugerir eventos para el calendario",
@@ -7086,7 +7410,7 @@ I18N["es"] = {
   ab_model: "Modelo Live",
   ab_data: "Carpeta de datos",
   ab_settings: "Archivo de ajustes",
-  ab_retention: "Las grabaciones se guardan",
+  ab_retention: "Los registros se guardan",
   ab_days: "{n} días",
   raw_health: "Datos sin procesar de /health (para resolver problemas)",
   // ---- call events, notification services, error codes (from the agent)
@@ -7492,6 +7816,50 @@ I18N["es"] = {
   bl_mode: "Cuando llama alguien de la Lista negra:",
   bl_voice_link: "Elegir la voz del aviso",
   ct_bad_prefix: "Solo los números de la Lista negra pueden terminar en *, con al menos 3 cifras antes sin contar los ceros iniciales.",
+  tab_sms: "SMS",
+  sms_count: "{n} mensajes",
+  sms_keep: "Los registros se guardan {n} días.",
+  sms_keep_link: "Cambiar",
+  sms_search_ph: "Buscar remitente o texto",
+  sms_clear: "Borrar todo",
+  sms_clear_t: "¿Borrar todos los SMS?",
+  sms_clear_b: "No se puede deshacer.",
+  sms_del: "Borrar",
+  sms_del_t: "¿Borrar este SMS?",
+  sms_copy: "Copiar",
+  sms_empty_t: "Aún no hay SMS",
+  sms_empty_d: "Cuando el reenvío de SMS esté en marcha, los SMS que reciban tus teléfonos aparecerán aquí.",
+  sms_none_found: "Ningún SMS coincide.",
+  sms_unknown: "Remitente desconocido",
+  unit_days: "días",
+  sms_new: "Nuevo mensaje",
+  sms_pick: "Elige una conversación o pulsa «Nuevo mensaje».",
+  sms_to: "Para",
+  sms_to_ph: "Número de teléfono",
+  sms_from: "Desde",
+  sms_input_ph: "Escribe un SMS",
+  sms_send: "Enviar",
+  sms_sending: "Enviando…",
+  sms_sent: "Enviado",
+  sms_failed: "No enviado",
+  sms_unsure: "Sin confirmar",
+  sms_retry: "Reintentar",
+  sms_you: "Tú: ",
+  sms_no_line: "Ahora no hay ningún teléfono que pueda enviar SMS.",
+  sms_no_reply: "No puedes responder a este remitente.",
+  sms_del_thread: "Borrar conversación",
+  sms_del_thread_t: "¿Borrar todos los mensajes con {name}?",
+  sms_back: "Atrás",
+  sms_earlier: "Ver mensajes anteriores",
+  sms_sim_n: "SIM {n}",
+  sms_err_offline: "El teléfono no está conectado.",
+  sms_err_old_app: "La app de este teléfono es demasiado antigua para enviar SMS.",
+  sms_err_permission: "La app del teléfono no tiene permiso para enviar SMS. Permítelo en el teléfono.",
+  sms_err_no_service: "El teléfono no tiene señal.",
+  sms_err_generic: "El teléfono no pudo enviarlo.",
+  sms_err_number: "Revisa el número e inténtalo de nuevo.",
+  f_keep: "Días que se guardan los registros",
+  f_keep_h: "Las llamadas y grabaciones, los SMS, los encargos y los pendientes más antiguos se borran solos.",
 };
 
 I18N["fr"] = {
@@ -7737,7 +8105,6 @@ I18N["fr"] = {
   ct_add: "Ajouter",
   ct_import: "Importer",
   ct_export: "Exporter en vCard",
-  ct_count: "{n} contacts",
   ct_empty_title: "Aucun contact pour l'instant",
   ct_empty_body: "Ajoutez des personnes vous-même ou importez les contacts de votre téléphone, de Google ou d'Outlook. Quand elles appellent, leur nom s'affiche et l'IA sait qui c'est.",
   ct_empty_filtered: "Aucun contact ne correspond",
@@ -8047,12 +8414,12 @@ I18N["fr"] = {
   sum_ready: "Prêt",
   sum_notready: "Clé Gemini requise",
   f_sum_base: "URL de base de l'API",
-  f_sum_base_h: "Tout service compatible OpenAI convient, p. ex. https://api.deepseek.com/v1 pour DeepSeek.",
+  f_sum_base_h: "Tout service compatible OpenAI convient, p. ex. https://api.openai.com/v1.",
   f_sum_model: "Modèle",
-  f_sum_model_h: "P. ex. deepseek-chat ou gpt-4o-mini.",
+  f_sum_model_h: "P. ex. gpt-4o-mini.",
   f_sum_key: "Clé API",
   f_sum_provider: "Service de résumé",
-  f_sum_provider_h: "Utilise votre clé Gemini par défaut. Pour DeepSeek, OpenAI ou un autre, choisissez « Autre service ».",
+  f_sum_provider_h: "Utilise votre clé Gemini par défaut. Pour un autre service, choisissez « Autre service ».",
   sp_gemini: "Gemini",
   sp_custom: "Autre service",
   f_cal_suggest: "Suggérer des événements d'agenda",
@@ -8116,7 +8483,7 @@ I18N["fr"] = {
   ab_model: "Modèle Live",
   ab_data: "Dossier des données",
   ab_settings: "Fichier de réglages",
-  ab_retention: "Conservation des enregistrements",
+  ab_retention: "Conservation des données",
   ab_days: "{n} jours",
   raw_health: "Données brutes de /health (pour le dépannage)",
   // ---- call events, notification services, error codes (from the agent)
@@ -8522,6 +8889,50 @@ I18N["fr"] = {
   bl_mode: "Quand quelqu'un de la Liste noire appelle :",
   bl_voice_link: "Choisir la voix de l'annonce",
   ct_bad_prefix: "Seuls les numéros de la Liste noire peuvent finir par *, avec au moins 3 chiffres avant, sans compter les zéros du début.",
+  tab_sms: "SMS",
+  sms_count: "{n} messages",
+  sms_keep: "Les données sont conservées {n} jours.",
+  sms_keep_link: "Modifier",
+  sms_search_ph: "Rechercher un expéditeur ou un texte",
+  sms_clear: "Tout supprimer",
+  sms_clear_t: "Supprimer tous les SMS ?",
+  sms_clear_b: "Cette action est définitive.",
+  sms_del: "Supprimer",
+  sms_del_t: "Supprimer ce SMS ?",
+  sms_copy: "Copier",
+  sms_empty_t: "Pas encore de SMS",
+  sms_empty_d: "Une fois le transfert de SMS lancé, les SMS reçus par vos téléphones s'affichent ici.",
+  sms_none_found: "Aucun SMS ne correspond.",
+  sms_unknown: "Expéditeur inconnu",
+  unit_days: "jours",
+  sms_new: "Nouveau message",
+  sms_pick: "Choisissez une conversation ou appuyez sur « Nouveau message ».",
+  sms_to: "À",
+  sms_to_ph: "Numéro de téléphone",
+  sms_from: "Depuis",
+  sms_input_ph: "Écrire un SMS",
+  sms_send: "Envoyer",
+  sms_sending: "Envoi…",
+  sms_sent: "Envoyé",
+  sms_failed: "Non envoyé",
+  sms_unsure: "Pas encore confirmé",
+  sms_retry: "Réessayer",
+  sms_you: "Vous : ",
+  sms_no_line: "Aucun téléphone ne peut envoyer de SMS pour le moment.",
+  sms_no_reply: "Vous ne pouvez pas répondre à cet expéditeur.",
+  sms_del_thread: "Supprimer la conversation",
+  sms_del_thread_t: "Supprimer tous les messages avec {name} ?",
+  sms_back: "Retour",
+  sms_earlier: "Afficher les messages précédents",
+  sms_sim_n: "SIM {n}",
+  sms_err_offline: "Le téléphone n'est pas connecté.",
+  sms_err_old_app: "L'app de ce téléphone est trop ancienne pour envoyer des SMS.",
+  sms_err_permission: "L'app du téléphone n'a pas le droit d'envoyer des SMS. Autorisez-la sur le téléphone.",
+  sms_err_no_service: "Le téléphone n'a pas de réseau.",
+  sms_err_generic: "Le téléphone n'a pas pu l'envoyer.",
+  sms_err_number: "Vérifiez le numéro et réessayez.",
+  f_keep: "Nombre de jours de conservation",
+  f_keep_h: "Les appels et enregistrements, les SMS, les appels IA et les éléments à traiter plus anciens sont supprimés automatiquement.",
 };
 
 I18N["de"] = {
@@ -8767,7 +9178,6 @@ I18N["de"] = {
   ct_add: "Hinzufügen",
   ct_import: "Importieren",
   ct_export: "Als vCard exportieren",
-  ct_count: "{n} Kontakte",
   ct_empty_title: "Noch keine Kontakte",
   ct_empty_body: "Füge Personen selbst hinzu oder importiere die Kontakte von deinem Telefon, aus Google oder Outlook. Ruft jemand davon an, siehst du den Namen, und die KI weiß, wer es ist.",
   ct_empty_filtered: "Kein Kontakt passt",
@@ -9077,12 +9487,12 @@ I18N["de"] = {
   sum_ready: "Bereit",
   sum_notready: "Gemini-Schlüssel fehlt",
   f_sum_base: "Basis-URL der API",
-  f_sum_base_h: "Jeder OpenAI-kompatible Dienst funktioniert, z. B. https://api.deepseek.com/v1 für DeepSeek.",
+  f_sum_base_h: "Jeder OpenAI-kompatible Dienst funktioniert, z. B. https://api.openai.com/v1.",
   f_sum_model: "Modell",
-  f_sum_model_h: "Z. B. deepseek-chat oder gpt-4o-mini.",
+  f_sum_model_h: "Z. B. gpt-4o-mini.",
   f_sum_key: "API-Schlüssel",
   f_sum_provider: "Dienst für Zusammenfassungen",
-  f_sum_provider_h: "Nutzt standardmäßig deinen Gemini-Schlüssel. Für DeepSeek, OpenAI oder andere wähle „Anderer Dienst“.",
+  f_sum_provider_h: "Nutzt standardmäßig deinen Gemini-Schlüssel. Für einen anderen Dienst wähle „Anderer Dienst“.",
   sp_gemini: "Gemini",
   sp_custom: "Anderer Dienst",
   f_cal_suggest: "Kalendereinträge vorschlagen",
@@ -9146,7 +9556,7 @@ I18N["de"] = {
   ab_model: "Live-Modell",
   ab_data: "Datenordner",
   ab_settings: "Einstellungsdatei",
-  ab_retention: "Aufnahmen werden aufbewahrt",
+  ab_retention: "Daten werden aufbewahrt",
   ab_days: "{n} Tage",
   raw_health: "Rohdaten von /health (zur Fehlersuche)",
   // ---- call events, notification services, error codes (from the agent)
@@ -9552,6 +9962,50 @@ I18N["de"] = {
   bl_mode: "Wenn jemand von der Sperrliste anruft:",
   bl_voice_link: "Stimme der Ansage wählen",
   ct_bad_prefix: "Nur Nummern auf der Sperrliste dürfen mit * enden, mit mindestens 3 Ziffern davor, führende Nullen nicht mitgezählt.",
+  tab_sms: "SMS",
+  sms_count: "{n} Nachrichten",
+  sms_keep: "Daten werden {n} Tage aufbewahrt.",
+  sms_keep_link: "Ändern",
+  sms_search_ph: "Absender oder Text suchen",
+  sms_clear: "Alle löschen",
+  sms_clear_t: "Alle SMS löschen?",
+  sms_clear_b: "Das lässt sich nicht rückgängig machen.",
+  sms_del: "Löschen",
+  sms_del_t: "Diese SMS löschen?",
+  sms_copy: "Kopieren",
+  sms_empty_t: "Noch keine SMS",
+  sms_empty_d: "Sobald die SMS-Weiterleitung läuft, erscheinen hier die SMS, die deine Telefone empfangen.",
+  sms_none_found: "Keine passende SMS.",
+  sms_unknown: "Unbekannter Absender",
+  unit_days: "Tage",
+  sms_new: "Neue Nachricht",
+  sms_pick: "Wähl eine Unterhaltung oder tipp auf „Neue Nachricht“.",
+  sms_to: "An",
+  sms_to_ph: "Telefonnummer",
+  sms_from: "Von",
+  sms_input_ph: "SMS schreiben",
+  sms_send: "Senden",
+  sms_sending: "Wird gesendet …",
+  sms_sent: "Gesendet",
+  sms_failed: "Nicht gesendet",
+  sms_unsure: "Noch nicht bestätigt",
+  sms_retry: "Erneut senden",
+  sms_you: "Du: ",
+  sms_no_line: "Gerade kann kein Telefon SMS senden.",
+  sms_no_reply: "Diesem Absender kannst du nicht antworten.",
+  sms_del_thread: "Unterhaltung löschen",
+  sms_del_thread_t: "Alle Nachrichten mit {name} löschen?",
+  sms_back: "Zurück",
+  sms_earlier: "Ältere Nachrichten anzeigen",
+  sms_sim_n: "SIM {n}",
+  sms_err_offline: "Das Telefon ist nicht verbunden.",
+  sms_err_old_app: "Die App auf diesem Telefon ist zu alt, um SMS zu senden.",
+  sms_err_permission: "Die App darf keine SMS senden. Erlaub es auf dem Telefon.",
+  sms_err_no_service: "Das Telefon hat keinen Empfang.",
+  sms_err_generic: "Das Telefon konnte sie nicht senden.",
+  sms_err_number: "Prüf die Nummer und versuch es noch einmal.",
+  f_keep: "So viele Tage bleiben Daten gespeichert",
+  f_keep_h: "Ältere Anrufe und Aufnahmen, SMS, KI-Anrufe und offene Punkte werden automatisch gelöscht.",
 };
 
 I18N["pt"] = {
@@ -9797,7 +10251,6 @@ I18N["pt"] = {
   ct_add: "Adicionar",
   ct_import: "Importar",
   ct_export: "Exportar vCard",
-  ct_count: "{n} contatos",
   ct_empty_title: "Ainda não há contatos",
   ct_empty_body: "Adicione pessoas você mesmo ou importe os contatos do celular, do Google ou do Outlook. Quando elas ligarem, o nome aparece e a IA sabe quem é.",
   ct_empty_filtered: "Nenhum contato encontrado",
@@ -10107,12 +10560,12 @@ I18N["pt"] = {
   sum_ready: "Pronto",
   sum_notready: "Falta a chave do Gemini",
   f_sum_base: "URL base da API",
-  f_sum_base_h: "Qualquer serviço compatível com a OpenAI funciona, p. ex. https://api.deepseek.com/v1 para o DeepSeek.",
+  f_sum_base_h: "Qualquer serviço compatível com a OpenAI funciona, p. ex. https://api.openai.com/v1.",
   f_sum_model: "Modelo",
-  f_sum_model_h: "P. ex. deepseek-chat ou gpt-4o-mini.",
+  f_sum_model_h: "P. ex. gpt-4o-mini.",
   f_sum_key: "Chave de API",
   f_sum_provider: "Serviço de resumos",
-  f_sum_provider_h: "Por padrão usa sua chave do Gemini. Para usar DeepSeek, OpenAI ou outro, escolha “Outro serviço”.",
+  f_sum_provider_h: "Por padrão usa sua chave do Gemini. Para usar outro serviço, escolha “Outro serviço”.",
   sp_gemini: "Gemini",
   sp_custom: "Outro serviço",
   f_cal_suggest: "Sugerir eventos para a agenda",
@@ -10176,7 +10629,7 @@ I18N["pt"] = {
   ab_model: "Modelo Live",
   ab_data: "Pasta de dados",
   ab_settings: "Arquivo de configurações",
-  ab_retention: "Gravações mantidas por",
+  ab_retention: "Registros mantidos por",
   ab_days: "{n} dias",
   raw_health: "Dados brutos de /health (para solução de problemas)",
   // ---- call events, notification services, error codes (from the agent)
@@ -10582,6 +11035,50 @@ I18N["pt"] = {
   bl_mode: "Quando alguém da Lista de bloqueio ligar:",
   bl_voice_link: "Escolher a voz do aviso",
   ct_bad_prefix: "Só números da Lista de bloqueio podem terminar com *, com pelo menos 3 dígitos antes, sem contar os zeros iniciais.",
+  tab_sms: "SMS",
+  sms_count: "{n} mensagens",
+  sms_keep: "Os registros ficam guardados por {n} dias.",
+  sms_keep_link: "Alterar",
+  sms_search_ph: "Buscar remetente ou texto",
+  sms_clear: "Apagar tudo",
+  sms_clear_t: "Apagar todos os SMS?",
+  sms_clear_b: "Não dá para desfazer.",
+  sms_del: "Apagar",
+  sms_del_t: "Apagar este SMS?",
+  sms_copy: "Copiar",
+  sms_empty_t: "Ainda não há SMS",
+  sms_empty_d: "Quando o encaminhamento de SMS estiver funcionando, os SMS que seus telefones receberem aparecerão aqui.",
+  sms_none_found: "Nenhum SMS corresponde.",
+  sms_unknown: "Remetente desconhecido",
+  unit_days: "dias",
+  sms_new: "Nova mensagem",
+  sms_pick: "Escolha uma conversa ou toque em “Nova mensagem”.",
+  sms_to: "Para",
+  sms_to_ph: "Número de telefone",
+  sms_from: "De",
+  sms_input_ph: "Escreva um SMS",
+  sms_send: "Enviar",
+  sms_sending: "Enviando…",
+  sms_sent: "Enviado",
+  sms_failed: "Não enviado",
+  sms_unsure: "Ainda não confirmado",
+  sms_retry: "Tentar de novo",
+  sms_you: "Você: ",
+  sms_no_line: "Agora nenhum telefone pode enviar SMS.",
+  sms_no_reply: "Não é possível responder a este remetente.",
+  sms_del_thread: "Apagar conversa",
+  sms_del_thread_t: "Apagar todas as mensagens com {name}?",
+  sms_back: "Voltar",
+  sms_earlier: "Ver mensagens anteriores",
+  sms_sim_n: "SIM {n}",
+  sms_err_offline: "O telefone não está conectado.",
+  sms_err_old_app: "O app deste telefone é antigo demais para enviar SMS.",
+  sms_err_permission: "O app do telefone não tem permissão para enviar SMS. Permita no telefone.",
+  sms_err_no_service: "O telefone está sem sinal.",
+  sms_err_generic: "O telefone não conseguiu enviar.",
+  sms_err_number: "Confira o número e tente novamente.",
+  f_keep: "Dias para guardar os registros",
+  f_keep_h: "Chamadas e gravações, SMS, ligações IA e pendências mais antigas são apagadas automaticamente.",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word
@@ -10908,6 +11405,7 @@ $("netRetry").addEventListener("click", () => {
   loadDevices();
   if (!S) loadSettings();
   if (view === "system") loadSystem();
+  if (view === "sms") loadSms();
 });
 
 // ---------------------------------------------------------------- theme + language switchers
@@ -10947,6 +11445,7 @@ function setLang(l) {
   renderErrands();
   renderContacts();
   renderImport();
+  renderSms();
   if (view === "system") renderSystem();
 }
 (function fillLangSel() {
@@ -10977,7 +11476,7 @@ async function followNotifyLang(l) {
 }
 
 // ---------------------------------------------------------------- views / routing
-const VIEWS = ["calls", "errands", "contacts", "settings", "system"];
+const VIEWS = ["calls", "sms", "errands", "contacts", "settings", "system"];
 let view = "calls";
 let pendingJump = "";
 function setTitle() {
@@ -10995,6 +11494,7 @@ function showView(name) {
   if (name === "system") loadSystem();
   if (name === "contacts") loadContacts();
   if (name === "errands") showErrands();
+  if (name === "sms") showSms();
   if (changed) window.scrollTo(0, 0);
 }
 function setHash(hash, replace) {
@@ -11003,6 +11503,15 @@ function setHash(hash, replace) {
   else location.hash = hash;
 }
 function route() {
+  // A text conversation: everything after "sms/" is the number (it may hold a "/").
+  const raw = location.hash.slice(1);
+  if (raw === "sms" || raw.startsWith("sms/")) {
+    let arg = raw.slice(4);
+    try { arg = decodeURIComponent(arg); } catch (_) { /* keep raw */ }
+    showView("sms");
+    smsApplyRoute(arg.trim());
+    return;
+  }
   let hash = location.hash.slice(1);
   try { hash = decodeURIComponent(hash); } catch (_) { /* keep raw */ }
   const m = hash.match(/^call=([A-Za-z0-9_-]{1,128})$/);
@@ -11778,6 +12287,528 @@ $("btnBlock").addEventListener("click", async () => {
   } catch (e) { if (e.status !== 401) toast(t("save_failed", { msg: contactErrText(e) }), true); }
 });
 
+// ---------------------------------------------------------------- text messages (SMS)
+// Conversations, one per number, like a phone's messages app: what the phones
+// received (the SMS forwarder hands them over) and the replies sent from here.
+const SMS_PAGE = 50;
+const SMS_MAX_PAGE = 200; // the most one request returns
+const SMS_SEEN = "pca.smsSeen"; // conversation key → when it was last looked at (ms)
+const SMS_GROUP_MS = 5 * 60 * 1000; // bubbles this close together share one time line
+const sms = {
+  threads: [], total: 0, keep: 0, lines: [], q: "", state: "idle", error: "", seq: 0,
+  open: null, // null: the list only; {isNew: true}: a new message; {number}: one conversation
+  convo: null, // the agent's answer for the open conversation
+  msgs: [], more: false, cseq: 0,
+  pending: [], // texts on their way, shown until the agent's answer replaces them
+  sending: 0,
+  pick: {}, // conversation key → the line picked for it (this page only)
+};
+let smsTicks = 0;
+
+// ---- read and unread
+function smsSeen() {
+  try {
+    const v = JSON.parse(store.get(SMS_SEEN) || "null");
+    return v && typeof v === "object" ? v : null;
+  } catch (_) { return null; }
+}
+const smsSaveSeen = (seen) => store.set(SMS_SEEN, JSON.stringify(seen));
+const smsUnread = (th, seen) => !!seen && Number(th.last_in_at || 0) > Number(seen[th.key] || 0);
+function smsMarkSeen(key, at) {
+  const seen = smsSeen();
+  if (!seen) return; // the first list marks everything as read
+  if (Number(seen[key] || 0) >= Number(at || 0)) return;
+  // The time of the newest message seen (the phone's clock, like last_in_at).
+  seen[key] = Number(at) || 0;
+  smsSaveSeen(seen);
+}
+function smsDot() {
+  if (sms.state !== "ok" || sms.q) return; // a search shows only part of the list
+  const seen = smsSeen();
+  $("navSms").hidden = !sms.threads.some((th) => smsUnread(th, seen));
+}
+
+// ---- the list of conversations
+async function loadSmsThreads() {
+  const seq = ++sms.seq;
+  const q = $("smsQ").value.trim();
+  if (sms.state !== "ok") { sms.state = "loading"; if (view === "sms") smsRenderThreads(); }
+  try {
+    const d = await api("/sms/threads" + (q ? "?q=" + encodeURIComponent(q) : ""));
+    if (seq !== sms.seq) return;
+    sms.threads = Array.isArray(d.threads) ? d.threads : [];
+    sms.lines = Array.isArray(d.lines) ? d.lines : [];
+    sms.total = Number(d.total) || 0;
+    sms.keep = Number(d.retention_days) || 0;
+    sms.q = q;
+    sms.state = "ok";
+    if (!q) {
+      let seen = smsSeen();
+      if (!seen) {
+        // The first time: what is there already counts as read.
+        seen = {};
+        for (const th of sms.threads) seen[th.key] = Number(th.last_in_at) || 0;
+        smsSaveSeen(seen);
+      } else {
+        const keys = new Set(sms.threads.map((th) => th.key));
+        const gone = Object.keys(seen).filter((k) => !keys.has(k));
+        if (gone.length) { for (const k of gone) delete seen[k]; smsSaveSeen(seen); }
+      }
+    }
+    // The conversation in front is read.
+    const cur = sms.convo && view === "sms" && visible() ? sms.threads.find((th) => th.key === sms.convo.key) : null;
+    if (cur) smsMarkSeen(cur.key, cur.last_in_at);
+  } catch (e) {
+    if (seq !== sms.seq || sms.state === "ok") return; // keep what is shown
+    sms.state = "error";
+    sms.error = e.message;
+  }
+  smsDot();
+  if (view === "sms") { smsRenderThreads(); smsRenderComposer(); }
+}
+// The time of a conversation's newest message: only the time for today.
+function smsListTime(ms) {
+  const d = new Date(Number(ms) || 0);
+  if (!Number(ms) || isNaN(d)) return "";
+  // The list keeps it short: the time today, "yesterday", then only the date.
+  const now = new Date();
+  const days = Math.round((dayStart(now) - dayStart(d)) / 86400000);
+  if (days === 0) return fmtClockTime(d);
+  if (days === 1) return relDay(-1);
+  const opt = { month: "numeric", day: "numeric" };
+  if (d.getFullYear() !== now.getFullYear()) opt.year = "numeric";
+  return new Intl.DateTimeFormat(loc(), opt).format(d);
+}
+function smsDayLabel(d) {
+  if (isNaN(d)) return "";
+  const now = new Date();
+  const days = Math.round((dayStart(now) - dayStart(d)) / 86400000);
+  if (days === 0 || days === 1) return relDay(-days);
+  const opt = { weekday: "short", month: "short", day: "numeric" };
+  if (d.getFullYear() !== now.getFullYear()) opt.year = "numeric";
+  return new Intl.DateTimeFormat(loc(), opt).format(d);
+}
+function smsPersonIcon() {
+  const ns = "http://www.w3.org/2000/svg";
+  const el = (tag, attrs) => {
+    const e = document.createElementNS(ns, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    return e;
+  };
+  const svg = el("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.8", "stroke-linecap": "round", "aria-hidden": "true" });
+  svg.append(el("circle", { cx: "12", cy: "8.5", r: "3.6" }), el("path", { d: "M5 19.5c1.3-3.4 4-5 7-5s5.7 1.6 7 5" }));
+  return svg;
+}
+// A contact's first letter, else a person.
+function smsAvatar(name) {
+  const first = Array.from(String(name || "").trim())[0];
+  const av = h("span", { class: "av", attr: { "aria-hidden": "true" } });
+  if (first) av.textContent = first.toLocaleUpperCase(loc());
+  else av.append(smsPersonIcon());
+  return av;
+}
+const smsOneLine = (s) => String(s || "").replace(/\s+/g, " ").trim();
+const smsWhoOf = (o) => String(o.name || "").trim() || String(o.number || "").trim() || t("sms_unknown");
+function smsRenderThreads() {
+  const box = clear($("smsThreads"));
+  const ok = sms.state === "ok";
+  const keep = sms.keep || Number(S && S.retention_days) || 0;
+  $("smsKeep").textContent = keep ? t("sms_keep", { n: keep }) : "";
+  // Without a number of days (Bageo not reached yet) the line would only say "Change".
+  $("smsKeepBox").hidden = !keep;
+  $("smsMeta").textContent = ok && sms.total ? t("sms_count", { n: sms.total }) : "";
+  $("smsClear").hidden = !(ok && sms.total);
+  if (sms.state === "idle" || sms.state === "loading") {
+    for (let i = 0; i < 3; i++) box.append(h("div", { class: "skel" }));
+    return;
+  }
+  if (sms.state === "error") {
+    box.append(h("div", { class: "th-empty" },
+      h("b", { text: t("err_load", { msg: sms.error }) }),
+      h("button", { type: "button", class: "btn sm", style: "margin-top:8px", onclick: () => loadSmsThreads(), text: t("retry") })));
+    return;
+  }
+  if (!sms.threads.length) {
+    box.append(sms.total
+      ? h("div", { class: "th-empty", text: t("sms_none_found") })
+      : h("div", { class: "th-empty" }, h("b", { text: t("sms_empty_t") }), t("sms_empty_d")));
+    return;
+  }
+  const seen = smsSeen();
+  const cur = sms.open && !sms.open.isNew && sms.convo ? sms.convo.key : "";
+  for (const th of sms.threads) {
+    const unread = th.key !== cur && smsUnread(th, seen);
+    const prev = (th.last_dir === "out" ? t("sms_you") : "") + smsOneLine(th.last_text);
+    box.append(h("button", {
+      type: "button", class: "th" + (unread ? " unread" : ""),
+      attr: th.key === cur ? { "aria-current": "true" } : null,
+      onclick: () => setHash("sms/" + encodeURIComponent(th.key)),
+    },
+      smsAvatar(th.name),
+      h("span", { style: "display:block;min-width:0" },
+        h("div", { class: "th-top" }, h("span", { class: "name", text: smsWhoOf(th) }), h("span", { class: "time", text: smsListTime(th.last_at) })),
+        h("div", { class: "prev" }, h("span", { text: prev }), unread ? h("i", { class: "new" }) : null))));
+  }
+}
+
+// ---- lines (a phone and its SIM)
+const smsLineValue = (l) => l.serial + "|" + (l.sub_id == null ? "" : l.sub_id);
+const smsSendLines = () => sms.lines.filter((l) => l.can_send);
+const smsLineOf = (serial, sub) => sms.lines.find((l) => l.serial === serial && (l.sub_id ?? null) === (sub ?? null)) || null;
+// "Pixel 9 · 0912 000 111", or "Pixel 9 · SIM 2" without a number.
+function smsLineLabel(serial, sub, number, device) {
+  const line = smsLineOf(serial, sub);
+  const dev = devName(serial) !== serial ? devName(serial) : String(device || (line && line.device) || serial || "");
+  const num = String(number || (line && line.number) || "").trim();
+  if (num) return dev ? dev + " · " + num : num;
+  const slot = line && line.slot != null ? Number(line.slot) : null;
+  return slot != null && dev ? dev + " · " + t("sms_sim_n", { n: slot + 1 }) : dev;
+}
+
+// ---- one conversation
+// What the address names: "" the list, "new" a new message, else a number.
+function smsApplyRoute(arg) {
+  const before = sms.open && !sms.open.isNew ? sms.open.number : sms.open ? "new" : "";
+  const same = before === arg;
+  if (!arg) sms.open = null;
+  else if (!same) sms.open = arg === "new" ? { isNew: true } : { number: arg };
+  if (!same) {
+    sms.convo = null;
+    sms.msgs = [];
+    sms.more = false;
+    sms.pending = [];
+    sms.cseq++;
+    $("smsText").value = "";
+    $("smsTo").value = "";
+    smsGrow();
+  }
+  smsRenderConvo(true, "bottom");
+  smsRenderThreads();
+  if (sms.open && !sms.open.isNew) smsLoadConvo({ scroll: same ? "" : "bottom" });
+  if (sms.open && sms.open.isNew && !same) setTimeout(() => $("smsTo").focus(), 0);
+}
+// Requests overlap (timer, after sending): only the answer to the latest is used.
+async function smsLoadConvo(o) {
+  const op = sms.open;
+  if (!op || op.isNew) return;
+  const older = !!(o && o.older);
+  const seq = ++sms.cseq;
+  const p = new URLSearchParams({ number: op.number });
+  if (older && sms.msgs.length) {
+    p.set("before", String(sms.msgs[0].id));
+    p.set("limit", String(SMS_PAGE));
+  } else {
+    p.set("limit", String(Math.min(SMS_MAX_PAGE, Math.max(SMS_PAGE, sms.msgs.length))));
+  }
+  try {
+    const d = await api("/sms/thread?" + p.toString());
+    if (seq !== sms.cseq || sms.open !== op) return;
+    const got = Array.isArray(d.messages) ? d.messages : [];
+    if (older) {
+      sms.msgs = got.concat(sms.msgs);
+      sms.more = !!d.has_more;
+    } else {
+      // Older messages shown beyond what one request carries stay as they are.
+      const head = got.length && d.has_more ? sms.msgs.filter((m) => m.id < got[0].id) : [];
+      sms.more = head.length ? sms.more : !!d.has_more;
+      sms.msgs = head.concat(got);
+    }
+    sms.convo = d;
+    if (view === "sms" && visible()) {
+      const newest = sms.msgs.reduce((a, m) => (m.dir === "in" ? Math.max(a, Number(m.at_ms) || 0) : a), 0);
+      smsMarkSeen(d.key, newest);
+      smsDot();
+    }
+    smsRenderConvo(false, older ? "keep" : o && o.scroll);
+    smsRenderThreads();
+  } catch (e) {
+    if (seq !== sms.cseq || e.status === 401) return;
+    if (!sms.convo) toast(t("err_load", { msg: e.message }), true);
+  }
+}
+function smsSelectingIn(el) {
+  const s = window.getSelection ? window.getSelection() : null;
+  return !!s && !s.isCollapsed && el.contains(s.anchorNode);
+}
+function smsRenderConvo(force, scroll) {
+  const op = sms.open;
+  $("smsChat").classList.toggle("open", !!op);
+  $("smsPick").hidden = !!op;
+  $("smsHead").hidden = !op;
+  $("smsMsgs").hidden = !op;
+  $("smsForm").hidden = !op;
+  if (!op) return;
+  const c = sms.convo;
+  $("smsWho").hidden = !!op.isNew;
+  $("smsToRow").hidden = !op.isNew;
+  $("smsDelThread").hidden = !!op.isNew || !c || !sms.msgs.length;
+  const number = c ? String(c.number || "").trim() : op.isNew ? "" : op.number;
+  const name = c ? String(c.name || "").trim() : "";
+  $("smsName").textContent = name || number || t("sms_unknown");
+  $("smsNum").textContent = name ? number : "";
+  $("smsNum").hidden = !name || !number;
+  smsRenderMsgs(force, scroll);
+  smsRenderComposer();
+}
+const SMS_ERR = {
+  offline: "sms_err_offline", unsupported: "sms_err_old_app", no_permission: "sms_err_permission",
+  no_service: "sms_err_no_service", radio_off: "sms_err_no_service", bad_number: "sms_err_number",
+};
+const smsErrText = (code) => t(SMS_ERR[code] || "sms_err_generic");
+function smsFailedText(code) {
+  const why = smsErrText(code).replace(/[。．.!！]\s*$/, "");
+  return /^(zh|ja)/.test(lang) ? t("sms_failed") + "（" + why + "）" : t("sms_failed") + " (" + why + ")";
+}
+// The line under the last bubble of a run: time · line, or how sending went.
+function smsMeta(m, lastOut) {
+  const out = m.dir === "out";
+  const meta = h("div", { class: "meta " + (out ? "out" : "in") });
+  if (out && m.status === "sending") { meta.textContent = t("sms_sending"); return meta; }
+  if (out && m.status === "failed") {
+    meta.append(h("span", { class: "bad", text: smsFailedText(m.error) }),
+      h("button", { type: "button", class: "link", text: t("sms_retry"), onclick: () => smsRetry(m) }));
+    return meta;
+  }
+  const at = new Date(Number(m.at_ms) || 0);
+  const parts = [isNaN(at) ? "" : fmtClockTime(at), smsLineLabel(m.serial, m.sub_id, out ? m.from : m.to, m.device)];
+  if (out && m.status === "timeout") parts.push(t("sms_unsure"));
+  else if (out && m.status === "sent" && lastOut) parts.push(t("sms_sent"));
+  meta.textContent = parts.filter(Boolean).join(" · ");
+  return meta;
+}
+function smsRenderMsgs(force, scroll) {
+  const box = $("smsMsgs");
+  if (!force && smsSelectingIn(box)) return; // a redraw would drop the selection
+  const top = box.scrollTop;
+  const fromBottom = box.scrollHeight - box.scrollTop - box.clientHeight;
+  const fromEnd = box.scrollHeight - box.scrollTop;
+  clear(box);
+  if (sms.more && sms.msgs.length) {
+    box.append(h("button", { type: "button", class: "btn xs ghost earlier", text: t("sms_earlier"), onclick: () => smsLoadConvo({ older: true }) }));
+  }
+  // A text the agent already lists as "sending" is not shown twice.
+  const pending = sms.pending.filter((p) => !sms.msgs.some((m) => m.dir === "out" && m.status === "sending" && m.text === p.text));
+  const shown = sms.msgs.concat(pending);
+  let lastOut = null;
+  for (const m of shown) if (m.dir === "out") lastOut = m;
+  let prevDay = null;
+  shown.forEach((m, i) => {
+    const at = new Date(Number(m.at_ms) || 0);
+    const day = dayStart(at);
+    if (day !== prevDay) { box.append(h("div", { class: "day", text: smsDayLabel(at) })); prevDay = day; }
+    const out = m.dir === "out";
+    const next = shown[i + 1];
+    const flagged = out && !!m.status && m.status !== "sent";
+    const last = flagged || !next || next.dir !== m.dir || Number(next.at_ms) - Number(m.at_ms) > SMS_GROUP_MS
+      || dayStart(new Date(Number(next.at_ms) || 0)) !== day;
+    const cls = "b " + (out ? "out" : "in") + (last ? " last" : "")
+      + (out && m.status === "sending" ? " sending" : "") + (out && m.status === "failed" ? " failed" : "");
+    const acts = m.local ? null : h("div", { class: "acts" },
+      h("button", { type: "button", class: "btn xs", text: t("sms_copy"), onclick: () => copyWithToast(String(m.text || "")) }),
+      h("button", { type: "button", class: "btn xs danger", text: t("sms_del"), onclick: () => smsDeleteMessage(m) }));
+    box.append(h("div", { class: cls }, h("div", { class: "bub", text: String(m.text || "") }), acts));
+    if (last) box.append(smsMeta(m, m === lastOut));
+  });
+  // Opened, sent, or already near the end: stay at the end. Earlier ones
+  // added: keep the same message in view. Otherwise: where the owner was.
+  if (scroll === "bottom" || fromBottom <= 80) box.scrollTop = box.scrollHeight;
+  else if (scroll === "keep") box.scrollTop = box.scrollHeight - fromEnd;
+  else box.scrollTop = top;
+}
+
+// ---- writing
+function smsGrow() {
+  const ta = $("smsText");
+  ta.style.height = "auto";
+  const want = ta.scrollHeight + 2;
+  ta.style.height = Math.max(40, Math.min(want, 150)) + "px";
+  // A scroll bar only once the box stops growing.
+  ta.style.overflowY = want > 150 ? "auto" : "hidden";
+}
+const smsPickKey = () => (sms.open && !sms.open.isNew ? (sms.convo ? sms.convo.key : sms.open.number) : "");
+function smsRenderComposer() {
+  const op = sms.open;
+  if (!op) return;
+  const c = sms.convo;
+  const form = $("smsForm");
+  const canReply = !!op.isNew || !c || !!c.can_reply;
+  form.querySelector(".from").hidden = !canReply;
+  form.querySelector(".crow").hidden = !canReply;
+  const note = $("smsNote");
+  if (!canReply) {
+    note.textContent = t("sms_no_reply");
+    note.hidden = false;
+    $("smsCount").hidden = true;
+    return;
+  }
+  const lines = smsSendLines();
+  const sel = $("smsFrom");
+  const values = lines.map(smsLineValue);
+  const picked = sms.pick[smsPickKey()];
+  const reply = c && c.reply ? smsLineValue(c.reply) : "";
+  const want = values.includes(picked) ? picked : values.includes(reply) ? reply : values[0] || "";
+  const labels = lines.map((l) => smsLineLabel(l.serial, l.sub_id, l.number, l.device));
+  const same = sel.options.length === lines.length && [...sel.options].every((o, i) => o.value === values[i] && o.textContent === labels[i]);
+  if (!same) {
+    clear(sel);
+    lines.forEach((l, i) => sel.append(h("option", { value: values[i], text: labels[i] })));
+  }
+  if (sel.value !== want) sel.value = want;
+  sel.disabled = !lines.length;
+  note.textContent = lines.length ? "" : t("sms_no_line");
+  note.hidden = !!lines.length;
+  smsUpdateSend();
+}
+function smsUpdateSend() {
+  const op = sms.open;
+  const n = $("smsText").value.length;
+  $("smsCount").textContent = n + "/500";
+  $("smsCount").hidden = n <= 400;
+  const noTo = !!(op && op.isNew) && !$("smsTo").value.trim();
+  $("smsSend").disabled = sms.sending > 0 || !smsSendLines().length || noTo;
+}
+async function smsSubmit() {
+  const op = sms.open;
+  if (!op || sms.sending > 0) return;
+  const text = $("smsText").value.trim();
+  const to = op.isNew ? $("smsTo").value.trim() : String((sms.convo && sms.convo.number) || op.number).trim();
+  const line = smsSendLines().find((l) => smsLineValue(l) === $("smsFrom").value);
+  if (!text || !to || !line) return;
+  const temp = {
+    id: 0, local: true, dir: "out", status: "sending", text, at_ms: Date.now(),
+    serial: line.serial, sub_id: line.sub_id ?? null, from: line.number || "", to, device: line.device || "",
+  };
+  sms.pending.push(temp);
+  sms.sending++;
+  $("smsText").value = "";
+  smsGrow();
+  smsRenderConvo(true, "bottom");
+  try {
+    const d = await api("/sms/send", jsonBody("POST", { to, text, serial: line.serial, sub_id: line.sub_id ?? null }));
+    sms.pending = sms.pending.filter((p) => p !== temp);
+    const m = d.message;
+    if (op.isNew && m && m.to) {
+      if (sms.open === op) setHash("sms/" + encodeURIComponent(m.to), true);
+    } else if (m && sms.open === op) {
+      const i = sms.msgs.findIndex((x) => x.id === m.id);
+      if (i >= 0) sms.msgs[i] = m; else sms.msgs.push(m);
+      smsRenderConvo(true, "bottom");
+      smsLoadConvo();
+    }
+    loadSmsThreads();
+  } catch (e) {
+    sms.pending = sms.pending.filter((p) => p !== temp);
+    if (sms.open === op && !$("smsText").value) { $("smsText").value = text; smsGrow(); }
+    if (e.status !== 401) toast(e.data && e.data.code === "bad_number" ? t("sms_err_number") : e.message, true);
+    if (sms.open === op) smsRenderConvo(true);
+  } finally {
+    sms.sending--;
+    smsUpdateSend();
+  }
+}
+async function smsRetry(m) {
+  const op = sms.open;
+  m.status = "sending";
+  m.error = "";
+  smsRenderConvo(true);
+  try {
+    const d = await api("/sms/" + encodeURIComponent(m.id) + "/retry", jsonBody("POST", {}));
+    if (d.message) Object.assign(m, d.message);
+  } catch (e) {
+    if (e.status !== 401) toast(e.message, true);
+  }
+  if (sms.open === op) { smsRenderConvo(true); smsLoadConvo(); }
+  loadSmsThreads();
+}
+async function smsDeleteMessage(m) {
+  const yes = await ask({ title: t("sms_del_t"), ok: t("sms_del"), danger: true });
+  if (!yes) return;
+  try {
+    await api("/sms/" + encodeURIComponent(m.id), jsonBody("DELETE", {}));
+  } catch (e) {
+    if (e.status === 401) return;
+    // Already gone (deleted elsewhere, or too old by now): the page just catches up.
+    if (e.status !== 404) { toast(e.message, true); return; }
+  }
+  sms.msgs = sms.msgs.filter((x) => x.id !== m.id);
+  smsRenderConvo(true);
+  smsLoadConvo();
+  loadSmsThreads();
+}
+async function smsDeleteThread() {
+  const c = sms.convo;
+  if (!c) return;
+  const yes = await ask({ title: t("sms_del_thread_t", { name: smsWhoOf(c) }), ok: t("sms_del_thread"), danger: true });
+  if (!yes) return;
+  try {
+    await api("/sms/thread?number=" + encodeURIComponent(c.key), jsonBody("DELETE", {}));
+  } catch (e) {
+    if (e.status !== 401) toast(e.message, true);
+    return;
+  }
+  setHash("sms");
+  loadSmsThreads();
+}
+async function clearSms() {
+  const yes = await ask({ title: t("sms_clear_t"), body: t("sms_clear_b"), ok: t("sms_clear"), danger: true });
+  if (!yes) return;
+  $("smsClear").disabled = true;
+  try {
+    await api("/sms/clear", jsonBody("POST", {}));
+    $("smsQ").value = "";
+    setHash("sms");
+    await loadSmsThreads();
+  } catch (e) {
+    if (e.status !== 401) toast(e.message, true);
+  } finally {
+    $("smsClear").disabled = false;
+  }
+}
+
+// ---- the view
+function showSms() {
+  smsTicks = 0;
+  loadSmsThreads();
+}
+function loadSms() {
+  loadSmsThreads();
+  smsLoadConvo();
+}
+function renderSms() {
+  smsRenderThreads();
+  smsRenderConvo(true);
+}
+// Every second while the SMS view is in front (the page timer skips hidden tabs).
+function smsTick() {
+  smsTicks++;
+  if (smsTicks % 10 === 0) loadSms();
+}
+let smsQTimer = 0;
+$("smsQ").addEventListener("input", () => { clearTimeout(smsQTimer); smsQTimer = setTimeout(() => loadSmsThreads(), 300); });
+$("smsNew").addEventListener("click", () => setHash("sms/new"));
+$("smsBack").addEventListener("click", () => setHash("sms"));
+$("smsDelThread").addEventListener("click", smsDeleteThread);
+$("smsClear").addEventListener("click", clearSms);
+$("smsForm").addEventListener("submit", (e) => { e.preventDefault(); smsSubmit(); });
+$("smsText").addEventListener("keydown", (e) => {
+  // Enter sends, Shift+Enter starts a new line; not while an input method is choosing characters.
+  if (e.key !== "Enter" || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+  e.preventDefault();
+  smsSubmit();
+});
+$("smsText").addEventListener("input", () => { smsGrow(); smsUpdateSend(); });
+$("smsTo").addEventListener("input", smsUpdateSend);
+$("smsFrom").addEventListener("change", () => { sms.pick[smsPickKey()] = $("smsFrom").value; });
+
+// "Change" goes to the setting itself (Advanced): bring it into view.
+$("smsKeepLink").addEventListener("click", () => {
+  setTimeout(() => {
+    const field = $("f-retention_days");
+    field.scrollIntoView({ block: "center" });
+    field.focus({ preventScroll: true });
+  }, 120);
+});
+
 // ---------------------------------------------------------------- contacts
 // Caller ID → {id, name} for the calls on the list (the agent matches a number
 // however it is written).
@@ -11840,7 +12871,6 @@ function contactRow(c) {
 function renderContacts() {
   const box = clear($("ctList"));
   $("ctExport").hidden = cts.state === "ok" && !cts.count;
-  $("ctMeta").textContent = cts.state === "ok" && cts.count ? t("ct_count", { n: cts.count }) : "";
   $("ctMoreWrap").hidden = true;
   const cnt = cts.counts || {};
   const setCnt = (id, n) => { const el = $(id); if (el) el.textContent = n != null ? `(${n})` : ""; };
@@ -13164,7 +14194,8 @@ function renderSystem() {
     row(t("ab_model"), health.gemini_live_model, true);
     row(t("ab_data"), health.calls_data_dir, true);
     row(t("ab_settings"), storagePath, true);
-    if (health.calls_retention_days != null) row(t("ab_retention"), t("ab_days", { n: health.calls_retention_days }));
+    const keepDays = health.retention_days ?? health.calls_retention_days;
+    if (keepDays != null) row(t("ab_retention"), t("ab_days", { n: keepDays }));
   } else row(t("ab_settings"), storagePath, true);
   $("sysRaw").textContent = health ? JSON.stringify(health, null, 2) : t("err_network");
 }
@@ -14405,12 +15436,16 @@ setInterval(() => {
   if (ticks % 30 === 0 && view === "calls") loadAppts();
   if (ticks % 8 === 0 && view === "system" && !(document.activeElement && document.activeElement.closest("#sysPhones .sim-in"))) loadSystem();
   if (view === "errands") errandTick();
+  if (view === "sms") smsTick();
+  // Elsewhere: the dot on the SMS tab follows new texts every half minute.
+  else if (ticks % 30 === 2) loadSmsThreads();
 }, 1000);
 document.addEventListener("visibilitychange", () => {
   if (!visible()) return;
   pollLive();
   refreshCalls({ keep: true });
   if (view === "errands") loadErrands();
+  if (view === "sms") loadSms();
 });
 
 // ---------------------------------------------------------------- first-time password prompt

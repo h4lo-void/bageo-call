@@ -28,6 +28,45 @@ jobs:
       - name: Build
         run: cargo build --release -p agent
 
+  desktop:
+    name: desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+      - name: Test
+        # The tests are plain logic; one system is enough. (A test program
+        # built on Windows does not get the manifest the window toolkit needs.)
+        if: runner.os == 'macOS'
+        run: cargo test
+      - name: Build
+        run: cargo build --release
+      - name: Package app (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          sh scripts/package-macos.sh target/release/bageo-status dist
+          tar -C dist -czf bageo-status-macos-arm64.tar.gz "Bageo Status.app"
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: bageo-status-windows-x64
+          path: desktop/target/release/bageo-status.exe
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'macOS'
+        with:
+          name: bageo-status-macos-arm64
+          path: desktop/bageo-status-macos-arm64.tar.gz
+
   android:
     name: android app
     runs-on: ubuntu-latest

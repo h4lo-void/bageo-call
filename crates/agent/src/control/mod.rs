@@ -1231,7 +1231,7 @@ impl Controller {
             rt.telegram_bot_token.clone(),
             rt.gemini_api_key.clone(),
             rt.openrouter_api_key.clone(),
-            rt.deepseek_api_key.clone(),
+            rt.summary_api_key.clone(),
             rt.gmail_app_password.clone(),
             rt.openclaw_token.clone(),
             rt.mcp_token.clone(),

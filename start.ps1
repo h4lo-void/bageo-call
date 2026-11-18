@@ -6,7 +6,13 @@
 #   Right-click > "Run with PowerShell", or double-click start.cmd, or:
 #   powershell -ExecutionPolicy Bypass -File .\start.ps1
 #
-# What it does, in order:
+# In a downloaded release (agent.exe and bageo-status.exe next to this script)
+# it starts Bageo Status and ends. Bageo then runs in the background, with an
+# icon in the system tray and no window. Bageo Status reads .env, offers the adb
+# download and opens the web console the first time. Use -Console to run Bageo
+# in this window instead.
+#
+# With -Console or -Build, or when Bageo Status is not there, in order:
 #   1. reads settings from .env next to this script (optional, see .env.example)
 #   2. finds the agent program (a downloaded release, or builds it with Rust)
 #   3. makes sure adb (Android platform-tools) is there, offering to download it
@@ -14,6 +20,7 @@
 #   5. the first time the agent answers, puts a "Bageo Console" shortcut to the
 #      web console on the desktop (-NoShortcut or BAGEO_NO_SHORTCUT=1: don't)
 param(
+    [switch]$Console,        # run Bageo in this window, not in the background
     [switch]$NoBrowser,      # do not open the web console
     [switch]$Yes,            # answer "yes" to the platform-tools download
     [switch]$Build,          # build from source even when a program is already there
@@ -24,6 +31,14 @@ $root = $PSScriptRoot
 Set-Location $root
 
 function Say($msg) { Write-Host "[bageo] $msg" }
+
+# A downloaded release: hand over to Bageo Status, which runs Bageo in the background.
+$statusApp = Join-Path $root "bageo-status.exe"
+if (-not $Console -and -not $Build -and (Test-Path (Join-Path $root "agent.exe")) -and (Test-Path $statusApp)) {
+    Say "Bageo runs in the background. Its icon is in the system tray, next to the clock (-Console: run it in this window)."
+    Start-Process -FilePath $statusApp -WorkingDirectory $root
+    exit 0
+}
 
 # 1. .env -> environment (real environment variables win)
 $envFile = Join-Path $root ".env"

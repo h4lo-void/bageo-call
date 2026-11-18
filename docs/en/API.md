@@ -240,7 +240,7 @@ Fields worth knowing (all of them are in `RuntimeSettings` in
 | `owner_aliases` | Up to 10 other names callers use for you, each up to 40 characters. Blanks, repeats and your own `owner_name` are dropped. |
 | `answer_style` | `assistant` / `persona` (the AI answers as you). |
 | `errand_identity` | `assistant` (default) / `owner`: who the AI says it is on an AI errand. Anything else is stored as `assistant`. |
-| `summary_provider` | `gemini` (default) / `custom`. `custom` uses `summary_api_base`, `summary_model` (required with a base URL) and `deepseek_api_key` (the key of that service). |
+| `summary_provider` | `gemini` (default) / `custom`. `custom` uses `summary_api_base`, `summary_model` (required with a base URL) and `summary_api_key` (the key of that service). |
 | `calendar_app` | `google`, `outlook`, `office365`, `apple`, `yahoo`, `ics`, or empty (not chosen yet). Anything else is stored as empty. |
 | `appointment_mode` | `off` (default) / `confirm`. An older `auto` reads as `confirm`. |
 | `appointment_sms` | `true` / `false`: text the caller your decision. |
@@ -255,7 +255,7 @@ Fields worth knowing (all of them are in `RuntimeSettings` in
 
 Rules for `PUT`:
 
-- A secret field (`gemini_api_key`, `deepseek_api_key`) that is absent or `""`
+- A secret field (`gemini_api_key`, `summary_api_key`) that is absent or `""`
   keeps its stored value; `"<name>_clear": true` empties it.
 - `notify_channels` is replaced as a whole. In a row
   `{id, kind, name, enabled, url, token, target}`, an empty `url` or `token` keeps
@@ -266,7 +266,7 @@ Rules for `PUT`:
   `calendar_auto_add`, `intl_carrier_prompt`, and other settings removed in
   1.0.
 - A save that fails on disk answers HTTP 500 `save_failed`.
-- An older `summary_provider` value (`auto` / `deepseek`) is converted once when the settings load.
+- Values and setting names of older versions (an older `summary_provider`, the summary key's former name) are converted once when the settings load.
 
 ```bash
 curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
@@ -280,7 +280,16 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 | Method and path | What |
 |---|---|
 | `POST /calls/api/notify/test` | Body `{"channel": {kind, url, token, target, id?}}`. Sends the test message to that one channel (stored secrets are filled in by `id`). |
-| `POST /calls/api/notify/send` | Body `{"title": "...", "body": "..."}`. Sends your message to every enabled channel (an empty `title` becomes "Bageo"; an empty `body` is HTTP 400 `empty_body`). `{ok: true}` when at least one channel accepted it. The [SMS forwarder](../../tools/sms_forward/README.md) uses this route. |
+| `POST /calls/api/notify/send` | Body `{"title": "...", "body": "..."}`. Sends your message to every enabled channel (an empty `title` becomes "Bageo"; an empty `body` is HTTP 400 `empty_body`). `{ok: true}` when at least one channel accepted it. For a text message, add `"kind": "sms"` with `"from"` (sender), `"text"`, `"to"` (the number that received it), `"serial"` and `"device"` (the phone), `"received_ms"` (when it arrived, Unix milliseconds) and `"ref"` (your own key for the message), `"sub_id"` (the SIM that received it): Bageo keeps it for the console's **SMS** page, stores the same `ref` only once, and the desktop status app shows a notification. The [SMS forwarder](../../tools/sms_forward/README.md) uses this route. |
+| `GET /calls/api/notify/recent?after=<id>` | The messages sent through `notify/send`, oldest first: `{ok, last_id, events: [{id, at_ms, kind, title, from, text}]}`. `events` holds only those with an `id` above `after`; without a number for `after` it is empty and `last_id` tells the client where to start. Only the latest 50 are kept, in memory only, so a restart empties the list. |
+| `GET /calls/api/sms?q=&before=<id>&limit=<n>` | The stored text messages, newest first: `{ok, total, retention_days, has_more, messages: [{id, at_ms, dir, from, from_name, to, text, serial, device, status}]}`. `q` searches sender, contact name and text; `before` gives the messages older than that `id`; `limit` is 1 to 200 (default 50). `total` counts every stored message, whatever the search. Messages older than the *Days to keep records* setting are deleted, and at most 5000 are kept. |
+| `DELETE /calls/api/sms/{id}` | Deletes one text message: `{ok: true}`, or HTTP 404 `not_found`. |
+| `POST /calls/api/sms/clear` | Deletes every stored text message: `{ok: true, removed: N}`. |
+| `GET /calls/api/sms/threads?q=` | The conversations, one per number, newest first: `{ok, total, retention_days, threads: [{key, number, name, last_at, last_text, last_dir, last_status, count, last_in_at, can_reply}], lines: [{serial, sub_id, device, number, carrier, slot, can_send}]}`. `0912…` and `+886912…` are one conversation (numbers are read in the country of the SIM that got them). `q` searches names, numbers and every message. `can_reply` is false for a sender name such as "BankInfo". `lines` are the SIMs texts can go out from; `can_send` means the phone is connected and its app sends texts. |
+| `GET /calls/api/sms/thread?number=<number or key>&before=<id>&limit=<n>` | One conversation, oldest first: `{ok, key, number, name, can_reply, has_more, reply, messages: [{id, at_ms, dir, from, to, text, serial, sub_id, device, status, error}]}`. `dir` is `in` or `out`; a sent message has `status` `sending`, `sent`, `failed` (with `error`, the phone's code) or `timeout`. `reply` (`{serial, sub_id}` or `null`) is the line a reply uses by default: the phone and SIM that received the newest message, else the first line that can send. A number without a conversation gives an empty one. |
+| `POST /calls/api/sms/send` | Body `{"to", "text", "serial", "sub_id"}` (one of `lines`; `text` 1 to 500 characters). Has that phone send the text and waits up to 30 seconds for its answer: `{ok, message}`, `ok` when it was sent. HTTP 400 `bad_number`, `bad_line` or `bad_text`. The text is kept in the conversation and is not sent to notification channels. |
+| `POST /calls/api/sms/{id}/retry` | Sends a text that `failed` or `timeout` again, on the same line: answer as for `send`. HTTP 409 `not_retryable` for any other message. |
+| `DELETE /calls/api/sms/thread?number=<number or key>` | Deletes one conversation: `{ok: true, removed: N}`. |
 | `GET /calls/api/quick-action` · `POST /calls/api/quick-action` | Signed one-tap action links included in notifications across all 32 channels (`?act=confirm\|ignore\|block\|stall\|white&target=<id_or_number>&sig=<hmac>`). Opening a link (`GET`) only shows a confirmation page; the action runs when you press the button on that page (`POST`). A link stops working after 7 days. Verified with HMAC-SHA256 so no console login is needed; localized in all 9 languages. |
 | `POST /calls/api/control/inbound` | Universal chat command webhook, for example `{"text": "calls 5", "user": "owner", "channel": "line"}`. Runs a chat command and returns `{ok, text}` in your notification language. |
 | `GET /calls/api/auth-status` · `POST /calls/api/initial-password` | Public status check (`{ok, password_required, needs_initial_password_setup}`) and first-time password setup (`{"password": "..."}`, allowed only when no password is set yet). |
@@ -694,7 +703,7 @@ Details for these routes:
 - Each entry of the top-level `phones` is a phone seen on its control connection since Bageo started: `{serial, connected, mode, supports_mode, model, app_version, in_call, last_seen_ms}`.
 - `mode` is `ai` (the AI answers) or `normal` (an ordinary phone, see [Phone setup](PHONE.md#normal-phone-mode)).
 - `supports_mode` is false for apps older than the switch, which always run as `ai`.
-- `GET /health`: `control_idle_clients` / `control_idle_serials` count every connected phone; `normal_mode_serials` lists those switched to a normal phone; `local_time` is Bageo's clock in its `TZ`.
+- `GET /health`: `control_idle_clients` / `control_idle_serials` count every connected phone; `normal_mode_serials` lists those switched to a normal phone; `local_time` is Bageo's clock in its `TZ`; `summary_ready` (and `summary_api_key_set`, the same value) says whether a summary service is set.
 - Without the console password (when one is set), `GET /health` returns only `ok`, `version`, `language`, `notify_language`, `active_call_count` and `control_idle_clients`, enough for monitoring.
 
 After a mode switch, `mode` is the phone's mode (`null` when unknown) and

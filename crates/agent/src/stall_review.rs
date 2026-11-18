@@ -588,7 +588,7 @@ fn hit_types(hits: &[String]) -> Vec<&'static str> {
 fn request_body_for(dialogue: &str, hits: &[String], ctx: &CallerContext, purpose: Purpose, strict: bool) -> Value {
     // "crédit" read into "credit card" is no loan pitch: not named to the model.
     let hits = &crate::scam_db::without_folded_repeats(hits);
-    let dialogue = crate::deepseek::relabel_dialogue_en(&without_carrier_prompt(dialogue.trim()));
+    let dialogue = crate::summary::relabel_dialogue_en(&without_carrier_prompt(dialogue.trim()));
     let number = match ctx.number.trim() {
         "" => "hidden",
         n => n,

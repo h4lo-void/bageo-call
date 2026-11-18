@@ -258,6 +258,13 @@ message goes to all of them. Bageo supports these 32:
 The optional [SMS forwarder](../../tools/sms_forward/README.md) sends the phone's
 incoming text messages to the same channels.
 
+While the forwarder runs, those texts also show up on the console's **SMS** page, one
+conversation per number like your phone's messages app (with the contact's name when
+you have one). You can reply right there: by default the reply goes out from the phone
+and SIM that received the text, and you can pick another number. You can search, copy
+and delete them. Like the other records they are kept for 15 days; change that with
+*Days to keep records* in the settings.
+
 Only three things leave your computer:
 
 - **Live call audio** goes to Gemini.

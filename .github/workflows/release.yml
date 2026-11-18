@@ -46,6 +46,11 @@ jobs:
         run: cargo test -p agent
       - name: Build
         run: cargo build --release -p agent
+      # The tray / menu bar status program (desktop/), for Windows and macOS.
+      - name: Build the status program
+        if: runner.os != 'Linux'
+        working-directory: desktop
+        run: cargo build --release
       - name: Package
         shell: bash
         run: |
@@ -57,10 +62,14 @@ jobs:
           cp README*.md CHANGELOG.md LICENSE LICENSING.md COMMERCIAL_LICENSE.md CLA.md LEGAL.md AUDIT_REPORT.md NOTICE.md SECURITY.md .env.example "dist/$dir/"
           if [ "${{ runner.os }}" = "Windows" ]; then
             cp start.ps1 start.cmd "dist/$dir/"
+            cp desktop/target/release/bageo-status.exe "dist/$dir/"
             (cd dist && 7z a -tzip "$dir.zip" "$dir" > /dev/null)
           else
             cp start.sh start.command "dist/$dir/"
             chmod +x "dist/$dir/agent" "dist/$dir/start.sh" "dist/$dir/start.command"
+            if [ "${{ runner.os }}" = "macOS" ]; then
+              sh desktop/scripts/package-macos.sh desktop/target/release/bageo-status "dist/$dir"
+            fi
             tar -C dist -czf "dist/$dir.tar.gz" "$dir"
           fi
       - uses: actions/upload-artifact@v4

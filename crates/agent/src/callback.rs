@@ -402,6 +402,19 @@ impl ControlRegistry {
         }
     }
 
+    /// Whether a text can go out on serial now: its app is connected (under
+    /// its own serial or its main app's) and said it sends text messages.
+    pub async fn can_send_sms(&self, serial: &str) -> bool {
+        let picked = {
+            let clients = self.clients.lock().await;
+            control_serials(serial).into_iter().find(|s| clients.contains_key(s))
+        };
+        match picked {
+            Some(s) => self.sms_capable.lock().await.contains(&s),
+            None => false,
+        }
+    }
+
     /// Record whether the phone's app can refuse a ringing call (from its control hello).
     pub async fn set_supports_reject(&self, serial: &str, on: bool) {
         let mut set = self.reject_capable.lock().await;

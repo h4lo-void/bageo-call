@@ -12,7 +12,7 @@
 //!
 //! For a call the agent runs a Gemini Live session ([`gemini_live`]), records
 //! it ([`calls`]), writes the summary and the calendar suggestion
-//! ([`deepseek`], [`calendar`]) and sends the notifications ([`notify`]). The
+//! ([`summary`], [`calendar`]) and sends the notifications ([`notify`]). The
 //! web console and its API are in [`calls_http`], the settings in
 //! [`settings_store`], languages in [`locale`] and [`prompts`], and the USB
 //! link to the phones in [`usb_bridge`].
@@ -39,8 +39,8 @@ mod contacts;
 mod control;
 mod country_profile;
 mod debug_probe;
-mod deepseek;
 mod dialect;
+mod summary;
 mod dtmf;
 mod errands;
 mod extract;
@@ -57,8 +57,10 @@ mod openclaw;
 mod phone_region;
 mod preflight;
 mod prompts;
+mod recent_notices;
 mod services;
 mod settings_store;
+mod sms_store;
 mod scam_db;
 mod scenario;
 mod stall_review;
@@ -1028,7 +1030,6 @@ async fn main() -> Result<()> {
         PathBuf::from(&settings.calls_data_dir),
         settings.calls_record,
         settings.calls_record_tts,
-        settings.calls_retention_days,
     );
     let task_store = TaskStore::new(PathBuf::from(&settings.calls_data_dir).join("tasks"));
     // The owner's contacts (names for caller IDs), next to the call records.
@@ -1043,19 +1044,25 @@ async fn main() -> Result<()> {
     let phone_sims = errands::SimBook::open(PathBuf::from(&settings.calls_data_dir).join("phone_sims.json"));
     errands::install_sims(phone_sims.clone());
     let errand_store = errands::ErrandStore::open(PathBuf::from(&settings.calls_data_dir).join("errands.json"), phone_sims);
+    // Text messages the SMS forwarder hands over, for the console's SMS page.
+    let sms_store = sms_store::SmsStore::open(
+        PathBuf::from(&settings.calls_data_dir).join("sms"),
+        sms_store::now_ms(),
+        settings_store.snapshot().retention_days,
+    );
     {
         let calls = calls.clone();
         let task_store = task_store.clone();
-        let retention_days = settings.calls_retention_days;
+        let errands = errand_store.clone();
+        let sms = sms_store.clone();
+        let settings_store = settings_store.clone();
         tokio::spawn(async move {
-            calls.purge_expired().await;
-            task_store.purge_expired(retention_days).await;
+            // Every hour (the first right away), with the days the settings say now.
             let mut ticker = tokio::time::interval(std::time::Duration::from_secs(3600));
-            ticker.tick().await;
             loop {
                 ticker.tick().await;
-                calls.purge_expired().await;
-                task_store.purge_expired(retention_days).await;
+                let days = settings_store.snapshot().retention_days;
+                calls_http::purge_expired_records(&calls, &task_store, &errands, &sms, days).await;
             }
         });
     }
@@ -1173,6 +1180,7 @@ async fn main() -> Result<()> {
         phones: phones.clone(),
         contacts: contacts.clone(),
         errands: errand_store.clone(),
+        sms: sms_store,
     };
     let addr: SocketAddr = format!("{}:{}", settings.host, settings.port).parse()?;
     let mode = settings.agent_mode.as_str();
@@ -1499,6 +1507,12 @@ async fn redirect_to_calls() -> Redirect {
     Redirect::permanent("/calls/")
 }
 
+/// How long records are kept, for /health: retention_days, and the older
+/// name calls_retention_days (same value) that other tools still read.
+fn health_retention(rt: &settings_store::RuntimeSettings) -> [(&'static str, Value); 2] {
+    [("retention_days", json!(rt.retention_days)), ("calls_retention_days", json!(rt.retention_days))]
+}
+
 async fn health(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
@@ -1758,7 +1772,9 @@ async fn health(
     body.insert("calls_data_dir".into(), json!(s.calls_data_dir));
     body.insert("calls_record".into(), json!(s.calls_record));
     body.insert("calls_record_tts".into(), json!(s.calls_record_tts));
-    body.insert("calls_retention_days".into(), json!(s.calls_retention_days));
+    for (k, v) in health_retention(&rt) {
+        body.insert(k.into(), v);
+    }
     body.insert(
         "calls_ui_token_set".into(),
         json!(!settings_store::active_ui_token(&s.calls_ui_token).is_empty()),
@@ -1820,7 +1836,7 @@ async fn health(
             .map(|g| g.clone())
             .unwrap_or_default()),
     );
-    // Gemini Live / DeepSeek readiness (keys filled in /calls/ settings; never expose secrets).
+    // Gemini Live / summary readiness (keys filled in /calls/ settings; never expose secrets).
     let rt = state.settings_store.snapshot();
     body.insert("gemini_live_enabled".into(), json!(rt.gemini_live_enabled));
     body.insert(
@@ -1907,10 +1923,10 @@ async fn health(
         json!(!owner_note.is_empty()),
     );
     body.insert("owner_status_text".into(), json!(owner_note));
-    // Effective view (env DEEPSEEK_API_KEY + UI override) — same as post-call summarize.
-    let deepseek_ready = deepseek::summary_endpoint(&eff).is_some();
-    body.insert("deepseek_api_key_set".into(), json!(deepseek_ready));
-    body.insert("deepseek_summary_ready".into(), json!(deepseek_ready));
+    // Effective view (env SUMMARY_API_KEY + UI override) — same as post-call summarize.
+    let summary_ready = summary::summary_endpoint(&eff).is_some();
+    body.insert("summary_api_key_set".into(), json!(summary_ready));
+    body.insert("summary_ready".into(), json!(summary_ready));
     body.insert(
         "callback_sessions".into(),
         json!(state.control.session_count().await),
@@ -9221,7 +9237,7 @@ fn maybe_notify_voicemail(state: &AppState, call: &ActiveCall, notified: &Arc<At
         let lang = locale::notify_lang();
         let p = locale::phrases(lang);
         let sep = p.sep;
-        let mut deepseek_block = String::new();
+        let mut summary_block = String::new();
         let mut whisper_chars = 0usize;
         if let Some(rel) = vm_rel.as_deref() {
             let abs = calls_root.join(rel);
@@ -9235,17 +9251,17 @@ fn maybe_notify_voicemail(state: &AppState, call: &ActiveCall, notified: &Arc<At
                     info!(
                         "voicemail whisper ok serial={serial} call_id={call_id} chars={whisper_chars}"
                     );
-                    if deepseek::summary_endpoint(&eff).is_some() {
-                        deepseek_block = deepseek::summarize(&http, &eff, &caller, &tx).await;
+                    if summary::summary_endpoint(&eff).is_some() {
+                        summary_block = summary::summarize(&http, &eff, &caller, &tx).await;
                         info!(
-                            "voicemail deepseek summary ok serial={serial} call_id={call_id} chars={}",
-                            deepseek_block.chars().count()
+                            "voicemail summary ok serial={serial} call_id={call_id} chars={}",
+                            summary_block.chars().count()
                         );
                     } else {
                         warn!(
-                            "voicemail deepseek skipped (no API key in trtc_llm_config) serial={serial} call_id={call_id}"
+                            "voicemail summary skipped (no summary service) serial={serial} call_id={call_id}"
                         );
-                        deepseek_block = format!(
+                        summary_block = format!(
                             "{}{sep}{}\n{}{sep}{}",
                             p.s_matter,
                             tx.chars().take(400).collect::<String>(),
@@ -9266,8 +9282,8 @@ fn maybe_notify_voicemail(state: &AppState, call: &ActiveCall, notified: &Arc<At
             warn!("voicemail TG no vm path serial={serial} call_id={call_id}");
         }
         // Prefer the summary card; fall back to classic voicemail notify.
-        let ok = if !deepseek_block.trim().is_empty() {
-            let mut body = deepseek_block;
+        let ok = if !summary_block.trim().is_empty() {
+            let mut body = summary_block;
             body.push_str(&format!("\n{reply_line}"));
             body.push_str(&format!(
                 "\n{}",
@@ -9296,7 +9312,8 @@ fn maybe_notify_voicemail(state: &AppState, call: &ActiveCall, notified: &Arc<At
 }
 
 /// Create a pending task from a saved voicemail; Whisper transcribe always;
-/// DeepSeek (TRTC_LLM_CONFIG) or OpenRouter intent when key set, else heuristic;
+/// the intent from OpenRouter (its own slot) or the summary service when one is
+/// set, else a heuristic;
 /// Telegram task card when bot+chat set. On-page STT snippets are not shown in calls UI.
 fn spawn_voicemail_task(state: &AppState, call: &ActiveCall) {
     let Some(rel) = call.voicemail_path().map(str::to_string) else {
@@ -9346,13 +9363,9 @@ fn spawn_voicemail_task(state: &AppState, call: &ActiveCall) {
         let rt = settings_store.snapshot();
         let eff = rt.effective(&settings);
 
-        // Prefer DeepSeek key from TRTC_LLM_CONFIG; fall back to legacy OpenRouter slot.
-        let (llm_key, llm_model) =
-            if let Some(k) = deepseek::api_key_from_llm_config(rt.trtc_llm_config.as_ref()) {
-                (k, deepseek::DEEPSEEK_MODEL.to_string())
-            } else {
-                (rt.openrouter_api_key.clone(), rt.openrouter_model.clone())
-            };
+        // The OpenRouter slot when it has a key, else the summary service
+        // ([extract::extract_intent]).
+        let (llm_key, llm_model) = (rt.openrouter_api_key.clone(), rt.openrouter_model.clone());
 
         let task = match process_voicemail_file(
             &http,
@@ -9600,7 +9613,7 @@ fn spawn_ai_talk_tg_summary(
             let eff = eff.clone();
             let dialogue = live.clone();
             let owner = locale::notify_lang();
-            tokio::spawn(async move { deepseek::translate_dialogue(&http, &eff, &dialogue, owner).await })
+            tokio::spawn(async move { summary::translate_dialogue(&http, &eff, &dialogue, owner).await })
         };
         // A call-back: did the callee say anything (else nobody answered)?
         let callee_answered = ai_callback
@@ -9671,7 +9684,7 @@ fn spawn_ai_talk_tg_summary(
         // in `TG_SUMMARY_SYSTEM_PROMPT`.
         let have_any = !live.is_empty() || !whisper.is_empty() || !remote_tx.is_empty();
         let transcript = if have_any {
-            deepseek::build_summary_input(
+            summary::build_summary_input(
                 &caller,
                 duration_ms,
                 &end_hint,
@@ -9683,7 +9696,7 @@ fn spawn_ai_talk_tg_summary(
             String::new()
         };
         let mut source = match (!live.is_empty(), !whisper.is_empty() || !remote_tx.is_empty()) {
-            (true, true) => "deepseek_input=gemini+whisper",
+            (true, true) => "summary_input=gemini+whisper",
             (true, false) => "gemini_live_stt",
             (false, true) => "whisper_only",
             (false, false) => "none",
@@ -9695,10 +9708,10 @@ fn spawn_ai_talk_tg_summary(
             caller.trim()
         };
         let secs = duration_ms as f64 / 1000.0;
-        let mut note_source = "deepseek";
+        let mut note_source = "model";
 
         let mut body = if !transcript.trim().is_empty() {
-            if deepseek::summary_endpoint(&eff).is_some() {
+            if summary::summary_endpoint(&eff).is_some() {
                 let preview: String = transcript.chars().take(180).collect();
                 info!(
                     "ai talk summarize serial={serial} tx_chars={} preview={}",
@@ -9706,9 +9719,9 @@ fn spawn_ai_talk_tg_summary(
                     preview.replace('\n', " | ")
                 );
                 source = "llm_summary";
-                deepseek::summarize(&http, &eff, &caller, &transcript).await
+                summary::summarize(&http, &eff, &caller, &transcript).await
             } else {
-                warn!("ai talk summary skipped serial={serial}: no summary service (set a Gemini, DeepSeek or OpenAI-compatible key)");
+                warn!("ai talk summary skipped serial={serial}: no summary service (set a Gemini key or another OpenAI-compatible service)");
                 let _ = caller_disp;
                 note_source = "no_key";
                 let p = locale::notify_phrases();
@@ -9734,7 +9747,7 @@ fn spawn_ai_talk_tg_summary(
                 p.s_listen_recording
             )
         };
-        if note_source == "deepseek" && deepseek::is_fallback_summary(&body) {
+        if note_source == "model" && summary::is_fallback_summary(&body) {
             note_source = "fallback";
             if stalled {
                 // We know what it was without the summary model: say so instead of a quote.
@@ -9763,8 +9776,8 @@ fn spawn_ai_talk_tg_summary(
             && !judged
             && appointment.is_some()
             && !gemini_live::dialogue_own_matter(&live_full)
-            && (deepseek::summary_says_sales(locale::notify_lang(), &body)
-                || (note_source != "deepseek"
+            && (summary::summary_says_sales(locale::notify_lang(), &body)
+                || (note_source != "model"
                     && !appointment_book.as_ref().is_some_and(|b| b.was_reviewed_normal())
                     && gemini_live::dialogue_is_sales(&live_full)));
         let mut sales_voided: Vec<appointments::Earlier> = Vec::new();
@@ -9792,7 +9805,7 @@ fn spawn_ai_talk_tg_summary(
         if rt.calendar_suggest
             && appointment.is_none()
             && !ai_callback
-            && note_source == "deepseek"
+            && note_source == "model"
             && !stalled
             && !judged
             && !late_sales
@@ -10075,7 +10088,7 @@ fn clip_dialogue_for_summary(dialogue: &str) -> String {
 fn scam_topic(j: &calls::ScamJudgement) -> Option<String> {
     let lang = locale::notify_lang();
     let t = scam_db::typology(&j.typology)?;
-    let (sales, scam) = deepseek::sales_labels(lang);
+    let (sales, scam) = summary::sales_labels(lang);
     let label = if t.category == scam_db::Category::Scam { scam } else { sales };
     Some(format!("{label}{}{}", locale::phrases(lang).sep, t.name(lang)))
 }
@@ -12148,6 +12161,19 @@ mod unknown_caller_tests {
 }
 
 #[cfg(test)]
+mod retention_health_tests {
+    use super::*;
+
+    #[test]
+    fn retention_shows_in_health_under_both_names() {
+        let mut rt = RuntimeSettings::from_base(&Settings::from_env());
+        rt.retention_days = 21;
+        let got: HashMap<&str, Value> = health_retention(&rt).into_iter().collect();
+        assert_eq!((got["retention_days"].as_u64(), got["calls_retention_days"].as_u64()), (Some(21), Some(21)));
+    }
+}
+
+#[cfg(test)]
 mod call_reattach_tests {
     use super::{
         ActiveCallSlot, CallReattachRegistry, CALL_REATTACH_WINDOW, INCOMING_NOTIFY_DEDUP_WINDOW,
@@ -12163,7 +12189,7 @@ mod call_reattach_tests {
             .expect("time")
             .as_nanos();
         let dir = std::env::temp_dir().join(format!("pixel-call-reattach-{nanos}"));
-        CallStore::new(dir, true, false, 7)
+        CallStore::new(dir, true, false)
     }
 
     #[tokio::test]

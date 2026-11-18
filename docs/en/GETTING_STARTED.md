@@ -46,23 +46,37 @@ database and no other service to install.
    Each one holds the program, the bundled sounds, the start scripts and the
    documents.
 2. Start it:
-   - **Windows:** double-click `start.cmd`. If SmartScreen warns about an
-     unknown publisher, choose *More info → Run anyway*.
-   - **macOS:** double-click `start.command`. The program is not notarised, so
-     the first time macOS may refuse: right-click `start.command` → *Open*, and
-     if the Bageo program itself is blocked, allow it under *System Settings →
-     Privacy & Security*. Or run `xattr -dr com.apple.quarantine .` once in the
-     folder.
+   - **Windows:** double-click `bageo-status.exe` (or `start.cmd`). If
+     SmartScreen warns about an unknown publisher, choose *More info → Run
+     anyway*.
+   - **macOS:** the first time, double-click `start.command`. It opens Bageo
+     Status and shows it where Bageo is; you can close the Terminal window
+     afterwards. From then on, open `Bageo Status.app` directly. The program
+     is not notarised, so the first time macOS may refuse: right-click the
+     file → *Open*. If the icon shows up but Bageo does not start, allow the
+     Bageo program under *System Settings → Privacy & Security*, or run
+     `xattr -dr com.apple.quarantine .` once in the folder, then start again.
    - **Linux:** run `./start.sh` in a terminal.
-3. The script looks for `adb` (Google's Android platform-tools, needed for the
-   USB link). If it is missing, the script offers to download it from Google
-   into a `platform-tools` folder next to the program.
-4. Your browser opens the web console at <http://localhost:8787/>. The first
-   time, it offers to set a console password; skip it if you only use the
-   console at home. Leave the terminal window open: closing it stops Bageo.
-5. After the first successful start there is a **Bageo Console** shortcut on
-   the desktop. To skip it, start with `-NoShortcut` (Windows) or
-   `--no-shortcut`, or set `BAGEO_NO_SHORTCUT=1` in `.env`.
+3. On Windows and macOS there is no command window. An icon appears in the
+   system tray (Windows) or the menu bar (macOS), and Bageo runs in the
+   background with it. Bageo stops only when you choose "Quit Bageo" from the
+   icon's menu.
+4. The first time, your browser opens the web console. It offers to set a
+   console password; skip it if you only use the console at home. Later, click
+   the icon to open the console, or go to <http://localhost:8787/>.
+5. The USB link needs `adb` (Google's Android platform-tools). If it is
+   missing, click the icon and press "Download". It goes into a
+   `platform-tools` folder next to the program.
+6. Bageo writes its log to `bageo.log` in the same folder. To see the output
+   in a terminal as before, start with `start.cmd -Console` (Windows) or
+   `./start.sh --console` (macOS).
+
+On Linux, and with `-Console` or `--console`, the start script does the same
+work in the terminal: it offers the `adb` download, opens the web console and
+puts a **Bageo Console** shortcut on the desktop (to skip the shortcut, start
+with `-NoShortcut` on Windows or `--no-shortcut`, or set
+`BAGEO_NO_SHORTCUT=1` in `.env`). Leave that terminal open: closing it stops
+Bageo.
 
 ### From source
 
@@ -270,11 +284,10 @@ the AI call again.
 
 Calls are answered only while Bageo runs.
 
-- **Windows:** put a shortcut to `start.cmd` in the Startup folder (`Win+R` →
-  `shell:startup`), or add a Task Scheduler task "at log on" that runs
-  `start.cmd -NoBrowser`. Turn off sleep while plugged in.
-- **macOS:** *System Settings → General → Login Items* → add
-  `start.command`, and prevent sleep (*Battery / Energy → Prevent automatic
+- **Windows:** click the Bageo Status icon, open "Settings" and turn on "Start
+  when I log in". Turn off sleep while plugged in.
+- **macOS:** click the Bageo Status icon, open "Settings" and turn on "Start
+  when I log in". Prevent sleep (*Battery / Energy → Prevent automatic
   sleeping*).
 - **Linux:** a systemd user unit:
 
@@ -300,6 +313,33 @@ Calls are answered only while Bageo runs.
 
 Keep the phone on a charger. If the phone or the computer restarts, both sides
 reconnect by themselves.
+
+### See the status in the system tray or menu bar
+
+On Windows and macOS, **Bageo Status** is the program you start Bageo with. It
+sits in the system tray (Windows) or the menu bar (macOS). The frame around
+its icon is green when everything works, yellow when something needs a look
+(for example a phone is not connected, or the Android tools are missing) and
+red when Bageo cannot be reached or no phone is connected.
+
+- **Windows:** Windows puts new icons behind the `^` next to the clock; drag
+  the icon onto the taskbar to keep it in view.
+- **macOS:** the icon is on the right side of the menu bar.
+
+Click the icon to see the console address and your phones, and to open the
+console. Right-click it and choose "Quit Bageo" to stop Bageo and remove the
+icon.
+
+Under "Settings" you can type the address, enter the console password, turn on
+"Start when I log in", and turn on small notifications for incoming calls and
+text messages. They are off by default; click one to open the console. Text
+message notifications need the
+[SMS forwarder](../../tools/sms_forward/README.md) from the same version.
+
+Bageo Status can also watch a Bageo that runs somewhere else, such as another
+computer or Docker. Copy `bageo-status.exe` or `Bageo Status.app` to the
+computer you sit at and start it there. It finds Bageo on your network by
+itself and never stops that Bageo.
 
 ## Next
 

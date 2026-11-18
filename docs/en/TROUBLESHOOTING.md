@@ -193,8 +193,8 @@ Not yet. The AI takes a message or gets the errand done, and you call back.
 Yes: plug several phones into the same computer. They share the settings.
 
 **Where are my recordings, and how do I delete them?**
-In `data/calls/<date>/`. They are deleted after `CALLS_RETENTION_DAYS`
-(default 7); delete the folder to remove everything at once.
+In `data/calls/<date>/`. They are deleted after *Days to keep records*
+(*Settings → Advanced*, default 15 days); delete the folder to remove everything at once.
 
 **Is the caller told it is an AI?**
 With the *AI assistant* style, in the first sentence. With *As me*, only when

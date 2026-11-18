@@ -36,12 +36,15 @@
 
    每個套件都包含 Bageo 程式、內建音檔、啟動腳本和文件。
 2. 啟動：
-   - **Windows：** 按兩下 `start.cmd`。如果 SmartScreen 警告發行者不明，請選「其他資訊 → 仍要執行」。
-   - **macOS：** 按兩下 `start.command`。程式沒有經過公證（notarize），第一次 macOS 可能會擋：在 `start.command` 上按右鍵 →「打開」；如果被擋的是Bageo 程式本身，到「系統設定 → 隱私權與安全性」允許它。也可以在該資料夾的終端機執行一次 `xattr -dr com.apple.quarantine .`。
+   - **Windows：** 點兩下 `bageo-status.exe`（或 `start.cmd`）。如果 SmartScreen 警告發行者不明，請選「其他資訊 → 仍要執行」。
+   - **macOS：** 第一次請點兩下 `start.command`，它會打開 Bageo Status 並告訴它 Bageo 在哪裡，之後終端機視窗可以關掉。以後直接打開 `Bageo Status.app` 就好。程式沒有經過公證（notarize），第一次 macOS 可能會擋：在檔案上按右鍵 →「打開」。如果圖示出現了但 Bageo 沒有啟動，到「系統設定 → 隱私權與安全性」允許 Bageo 程式，或在該資料夾的終端機執行一次 `xattr -dr com.apple.quarantine .`，再重新啟動。
    - **Linux：** 在終端機執行 `./start.sh`。
-3. 腳本會找 `adb`（Google 的 Android platform-tools，USB 連線要用）。沒裝的話，腳本會問要不要從 Google 下載到程式旁邊的 `platform-tools` 資料夾。
-4. 瀏覽器會打開網頁控制台 <http://localhost:8787/>。第一次打開會問要不要設控制台密碼，只在家裡用可以先不設。終端機視窗請保持開著：關掉它，Bageo 就停了。
-5. 第一次啟動成功後，桌面會多一個「**Bageo 控制台**」捷徑。不想要的話，啟動時加 `-NoShortcut`（Windows）或 `--no-shortcut`，或在 `.env` 設 `BAGEO_NO_SHORTCUT=1`。
+3. Windows 和 macOS 不會出現命令視窗。系統匣（Windows）或選單列（macOS）會多一個圖示，Bageo 跟著它在背景執行。在圖示的選單按「結束 Bageo」才會停。
+4. 第一次會自動用瀏覽器打開網頁控制台，並問要不要設控制台密碼，只在家裡用可以先不設。之後點圖示就能開控制台，或直接開 <http://localhost:8787/>。
+5. USB 連線要用 `adb`（Google 的 Android platform-tools）。沒裝的話，點圖示後按「下載」，它會放進程式旁邊的 `platform-tools` 資料夾。
+6. Bageo 的紀錄寫在同一個資料夾的 `bageo.log`。想照舊在終端機看輸出，用 `start.cmd -Console`（Windows）或 `./start.sh --console`（macOS）啟動。
+
+Linux，以及加了 `-Console` 或 `--console` 的時候，啟動腳本會在終端機裡做同樣的事：詢問要不要下載 `adb`、打開網頁控制台，並在桌面放一個「**Bageo 控制台**」捷徑（不想要捷徑的話，Windows 加 `-NoShortcut`、其他系統加 `--no-shortcut`，或在 `.env` 設 `BAGEO_NO_SHORTCUT=1`）。那個終端機視窗請保持開著：關掉它，Bageo 就停了。
 
 ### 從原始碼
 
@@ -171,8 +174,8 @@ docker compose up -d --build
 
 Bageo 在跑，才接得到電話。
 
-- **Windows：** 把 `start.cmd` 的捷徑放進「啟動」資料夾（`Win+R` → `shell:startup`），或在「工作排程器」建立一個「登入時」執行 `start.cmd -NoBrowser` 的工作。插電時關閉睡眠。
-- **macOS：** 「系統設定 → 一般 → 登入項目」→ 加入 `start.command`，並防止睡眠（「電池／能源 → 防止自動進入睡眠」）。
+- **Windows：** 點 Bageo Status 的圖示，在「設定」打開「開機時自動啟動」。插電時關閉睡眠。
+- **macOS：** 點 Bageo Status 的圖示，在「設定」打開「開機時自動啟動」，並防止睡眠（「電池／能源 → 防止自動進入睡眠」）。
 - **Linux：** 建立一個 systemd 使用者服務：
 
   ```ini
@@ -194,6 +197,19 @@ Bageo 在跑，才接得到電話。
 - **Docker：** `docker-compose.yml` 裡的 `restart: unless-stopped` 已經會在重開機後把它帶起來。
 
 手機請一直接著充電器。手機或電腦重新開機後，兩邊都會自己重新連上。
+
+### 在系統匣或選單列看狀態
+
+在 Windows 和 macOS，**Bageo Status** 就是用來啟動 Bageo 的程式，它待在系統匣（Windows）或選單列（macOS）。圖示外框是綠色代表一切正常，黃色代表有地方要留意（例如有手機沒連線，或缺 Android 工具），紅色代表連不上 Bageo 或沒有手機連線。
+
+- **Windows：** 新圖示會先收在時鐘旁的 `^` 裡，把它拖到工作列上就會一直看得到。
+- **macOS：** 圖示在選單列右邊。
+
+點圖示可以看到控制台網址和手機，也可以直接開啟控制台。在圖示上按右鍵選「結束 Bageo」，Bageo 會停止，圖示也會消失。
+
+在「設定」可以填網址、輸入控制台的密碼、打開「開機時自動啟動」，以及打開來電和簡訊的小通知。通知預設關閉，點一下就開啟控制台。簡訊通知要搭配同一版的[簡訊轉發](../../tools/sms_forward/README.md)。
+
+Bageo 在別的地方執行（例如另一台電腦或 Docker）時，也可以用 Bageo Status 看狀態：把 `bageo-status.exe` 或 `Bageo Status.app` 複製到你平常用的電腦上打開。它會自己找區域網路上的 Bageo，而且不會把那個 Bageo 停掉。
 
 ## 接下來
 
