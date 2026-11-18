@@ -184,6 +184,8 @@ const DELIVERY_WORDS: &[&str] = &[
     "colis", "livraison", "livreur", "paket", "lieferung", "zusteller", "sendung", "encomenda", "entregador", "pacote",
     "corriere", "consegna", "pacco", "курьер", "посылка", "доставка", "giao hàng", "bưu kiện", "người giao hàng",
     "kurir", "pengiriman", "ส่งของ", "พัสดุ", "ขนส่ง", "डिलीवरी", "पार्सल", "कूरियर", "مندوب التوصيل", "شحنة", "توصيل",
+    // tr (a trailing * is a stem: the endings pile up, "kargonuz")
+    "kargo*", "kurye*", "teslimat*", "gönderi*", "sipariş*",
 ];
 
 /// A card or the bank it belongs to.
@@ -191,6 +193,7 @@ const CARD_WORDS: &[&str] = &[
     "卡", "銀行", "银行", "カード", "카드", "card", "bank", "tarjeta", "banco", "carte", "banque", "karte", "cartão",
     "cartao", "carta", "banca", "карта", "банк", "thẻ", "ngân hàng", "kartu", "บัตร", "ธนาคาร", "कार्ड", "बैंक",
     "بطاقة", "البنك",
+    "kart*", "banka*",
 ];
 
 /// One purchase or charge on it.
@@ -200,6 +203,7 @@ const CHARGE_WORDS: &[&str] = &[
     "paiement", "débit", "kauf", "zahlung", "umsatz", "transaktion", "abbuchung", "transação", "transacao", "cobrança",
     "cobranca", "acquisto", "addebito", "transazione", "покупка", "списание", "транзакция", "giao dịch", "thanh toán",
     "transaksi", "pembayaran", "รูดบัตร", "รายการใช้จ่าย", "काटने", "लेनदेन", "सौदा", "عملية شراء", "خصم", "معاملة",
+    "işlem*", "harcama*", "alışveriş*", "ödeme*", "çekim*", "tahsilat*",
 ];
 
 /// Asking whether it was the owner's.
@@ -210,6 +214,7 @@ const OWNER_CHECK_WORDS: &[&str] = &[
     "sie selbst", "verifizieren", "você mesmo", "voce mesmo", "reconhece", "confermare", "lei stesso", "riconosce",
     "подтвердить", "вы сами", "xác nhận", "chính chủ", "konfirmasi", "anda sendiri", "ยืนยัน", "ด้วยตัวเอง",
     "पुष्टि", "खुद", "क्या आपने", "تأكيد", "بنفسك",
+    "doğrula*", "onayla*", "siz mi", "sizin mi", "kendiniz*", "yaptınız mı", "tanıyor musunuz",
 ];
 
 /// What only a scammer asks a card holder for (or a step a real card desk never
@@ -233,6 +238,11 @@ const SCAM_ASK_WORDS: &[&str] = &[
     "繳費", "缴费", "付款", "付費", "付费", "繳款", "缴款", "證件", "证件", "送金", "お支払い", "支払って", "송금", "결제",
     "pay a", "pay the", "pay us", "to pay", "fee", "your id", "id card", "photo of your", "pagar", "payer", "zahlen",
     "pagamento",
+    // Not "parola": Italian says it for any "word".
+    "şifre*", "parolanız*", "parolanizi", "doğrulama kodu*", "güvenlik kodu*", "sms kodu*", "kart numara*", "son kullanma", "doğum tarihi", "tc kimlik*",
+    "kimlik numara*", "iban*", "havale*", "eft", "güvenli hesap*", "polis*", "savcı*", "uzaktan", "uzak masaüstü", "bağlantı*", "tıkla*",
+    "uygulama indir*", "uygulamayı indir*", "ödeme yapın", "ödeme yapmanız", "gümrük*", "kargo ücreti*", "teslimat ücreti*", "para gönder*",
+    "para yatır*", "hesaba para",
 ];
 
 /// Letters of words in Latin script (the rest are compared as they are).
@@ -253,7 +263,8 @@ struct Words {
 
 impl Words {
     fn of(text: &str) -> Words {
-        let lower = text.to_lowercase();
+        // Turkish İ lower-cases to "i" plus U+0307; the dot goes, so "İŞLEM" reads as "işlem".
+        let lower = text.to_lowercase().replace('\u{307}', "");
         let mut latin = String::from(" ");
         for c in lower.chars() {
             if latin_letter(c) {
@@ -268,8 +279,12 @@ impl Words {
         Words { lower, latin }
     }
 
-    /// A Latin word or phrase whole (plural and past endings allowed); others anywhere.
+    /// A Latin word or phrase whole (plural and past endings allowed); others
+    /// anywhere. A word ending in * is a stem: any word that starts with it.
     fn has(&self, w: &str) -> bool {
+        if let Some(stem) = w.strip_suffix('*') {
+            return self.latin.contains(&format!(" {stem}"));
+        }
         if !w.is_ascii() || !w.chars().any(|c| c.is_ascii_alphabetic()) {
             return self.lower.contains(w);
         }
@@ -449,10 +464,10 @@ const OTHER_LANGUAGE_MARK: &str = "[Note, in caller's language] ";
 mod tests {
     use super::*;
 
-    const REGIONS: [Region; 21] = [
+    const REGIONS: [Region; 22] = [
         Region::Tw, Region::HkMo, Region::Cn, Region::MySg, Region::Us, Region::Ca, Region::GbIe,
         Region::AuNz, Region::In, Region::Jp, Region::Kr, Region::EsEu, Region::EsAm, Region::EsRp,
-        Region::Fr, Region::Be, Region::De, Region::At, Region::Ch, Region::Br, Region::Pt,
+        Region::Fr, Region::Be, Region::De, Region::At, Region::Ch, Region::Br, Region::Pt, Region::Tr,
     ];
 
     #[test]
@@ -714,8 +729,23 @@ mod notice_fallback_edges {
             ("नमस्ते, मैं डिलीवरी और पार्सल लेकर आया हूँ", Scenario::Delivery),
             ("مرحبا، معك مندوب التوصيل وعندي شحنة لك", Scenario::Delivery),
             ("La sua banca per confermare un acquisto con carta, lo riconosce?", Scenario::BankVerify),
+            ("Merhaba, kurye geldi, kargonuz için kapınızdayım", Scenario::Delivery),
+            ("Merhaba, bankanızdan arıyorum. Kartınızla dün yapılan alışveriş işlemini doğrulamak istiyorum, siz mi yaptınız?", Scenario::BankVerify),
+            ("Merhaba, bankanızdan arıyorum. Kartınızla yapılan işlemi doğrulamak için SMS kodunu söyler misiniz?", Scenario::None),
+            ("Merhaba, kargo şirketinden arıyorum, kargo ücretini ödemeniz gerekiyor", Scenario::None),
         ] {
             assert_eq!(local_guess(sample), want, "{sample}");
         }
+    }
+
+    #[test]
+    fn turkish_stems_take_endings_and_the_capital_dotted_i() {
+        // A stem is any word that starts with it; a whole Latin word is not.
+        use super::Words;
+        assert!(Words::of("Kargonuz geldi").has("kargo*"));
+        assert!(!Words::of("Bu bir karga").has("kargo*"));
+        // İ lower-cases to i plus a combining dot, which would split the word.
+        assert!(Words::of("İŞLEMİ onaylayın").has("işlem*"));
+        assert_eq!(local_guess("İYİ GÜNLER, KURYE GELDİ"), Scenario::Delivery);
     }
 }

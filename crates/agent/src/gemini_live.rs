@@ -1210,6 +1210,7 @@ pub fn other_lang_stt_of_country(iso: &str) -> Option<&'static str> {
         "it" | "sm" | "va" => Some("it-IT"),
         "id" => Some("id-ID"),
         "vn" => Some("vi-VN"),
+        "tr" => Some("tr-TR"),
         "nl" => Some("nl-NL"),
         "pl" => Some("pl-PL"),
         "ro" | "md" => Some("ro-RO"),
@@ -1251,10 +1252,16 @@ pub fn other_script_lang(text: &str) -> Option<&'static str> {
 const OTHER_SCRIPT_MIN_LETTERS: usize = 6;
 
 /// The call was held in a language the AI has no setting for: its dialogue
-/// tells no language of the nine ([`dialogue_lang`] is None) but is written in
-/// Thai, Cyrillic, Arabic or Devanagari ([`other_script_lang`]).
+/// tells no language of the nine ([`dialogue_lang`] is None) and is either written
+/// in Latin letters of a language without a setting (Italian, Turkish…,
+/// [`crate::urgency::unlisted_language`]) or in Thai, Cyrillic, Arabic or
+/// Devanagari ([`other_script_lang`]).
 pub(crate) fn dialogue_in_other_language(dialogue: &str, owner: crate::locale::Lang) -> bool {
-    dialogue_lang(dialogue, owner).is_none() && other_script_lang(dialogue).is_some()
+    match dialogue_verdict(dialogue, owner) {
+        DialogueVerdict::Lang(_) => false,
+        DialogueVerdict::Unlisted => true,
+        DialogueVerdict::Unknown => other_script_lang(dialogue).is_some(),
+    }
 }
 
 /// Speech-to-text codes of `langs`, in order, each once.
@@ -1897,24 +1904,45 @@ fn line_lang(text: &str, zh: crate::locale::Lang) -> Option<(crate::locale::Lang
 /// language, whatever its opening line was — or, when no line of the AI's tells,
 /// what the caller said. The language with the most said in it ([`line_lang`]);
 /// None when no line tells. Chinese is the owner's variant when `owner` is
-/// Chinese, else Traditional.
+/// Chinese, else Traditional. None too when the side that decides spoke a
+/// language without a setting ([`dialogue_in_other_language`]): Latin letters
+/// alone would otherwise pass as English.
 pub(crate) fn dialogue_lang(dialogue: &str, owner: crate::locale::Lang) -> Option<crate::locale::Lang> {
+    match dialogue_verdict(dialogue, owner) {
+        DialogueVerdict::Lang(l) => Some(l),
+        _ => None,
+    }
+}
+
+enum DialogueVerdict {
+    Lang(crate::locale::Lang),
+    /// The deciding side spoke Latin letters of a language without a setting.
+    Unlisted,
+    Unknown,
+}
+
+fn dialogue_verdict(dialogue: &str, owner: crate::locale::Lang) -> DialogueVerdict {
     let zh = if owner.is_zh() { owner } else { crate::locale::Lang::ZhTw };
-    let tally = |label: &str| {
+    let side = |label: &str| {
         let mut totals: Vec<(crate::locale::Lang, usize)> = Vec::new();
-        for (l, n) in dialogue
-            .lines()
-            .filter_map(|line| line.trim().strip_prefix(label))
-            .filter_map(|text| line_lang(text, zh))
-        {
+        let texts: Vec<&str> = dialogue.lines().filter_map(|line| line.trim().strip_prefix(label)).collect();
+        for (l, n) in texts.iter().filter_map(|text| line_lang(text, zh)) {
             match totals.iter_mut().find(|(x, _)| *x == l) {
                 Some(t) => t.1 += n,
                 None => totals.push((l, n)),
             }
         }
-        totals.into_iter().max_by_key(|(_, n)| *n).map(|(l, _)| l)
+        let unlisted = crate::urgency::unlisted_language(&texts.join(" "));
+        (unlisted, totals.into_iter().max_by_key(|(_, n)| *n).map(|(l, _)| l))
     };
-    tally("接聽：").or_else(|| tally("對方："))
+    for label in ["接聽：", "對方："] {
+        match side(label) {
+            (true, _) => return DialogueVerdict::Unlisted,
+            (false, Some(l)) => return DialogueVerdict::Lang(l),
+            (false, None) => {}
+        }
+    }
+    DialogueVerdict::Unknown
 }
 
 /// The languages of an AI call-back: the one spoken on the call it answers
@@ -1965,8 +1993,8 @@ impl Outbound {
     /// Speech-to-text for the other side: a call-back's callee without any
     /// vocabulary ([`stt_callee_config`]); an errand's callee with the call's
     /// own languages and the owner's name ([`stt_errand_config`], `opening` =
-    /// [`CallLangPlan::opening`]); a caller with the caller's (the owner's
-    /// name, the call logic's words: [`stt_caller_config_for`]).
+    /// [`CallLangPlan::opening`]); a caller with the caller's language hints
+    /// and no vocabulary ([`stt_caller_config_for`]).
     fn other_side_stt(
         self,
         langs: Option<&[&'static str]>,
@@ -2094,8 +2122,13 @@ fn caller_wraps_up(text: &str) -> bool {
         t.rfind(m)
             .is_some_and(|i| t[i + m.len()..].chars().count() <= slack && !bye_to_someone_else(&t[..i]))
     };
+    // 「掰／拜拜」 count only said as a goodbye (「我們在拜拜」「你不要瞎掰」 are not),
+    // and not to someone else (「跟阿嬤說掰掰」).
+    if zh_bye_said_to_us(text) {
+        return true;
+    }
     [
-        "掰", "拜拜", "再見", "bye", "先這樣", "就這樣", "沒事了", "沒別的事", "不打擾", "先掛",
+        "再見", "bye", "先這樣", "就這樣", "沒事了", "沒別的事", "不打擾", "先掛",
         "結束電話", "再聯絡", "再聯繫", "改天聊", "先不聊", "再跟你聯絡", "再跟您聯絡", "再跟你聯繫",
         "再跟您聯繫", "改天再聊", "下次再聊", "下次聊", "麻煩你了", "麻煩您了",
         // Cantonese (a +852 caller): 唔該晒、先咁啦、冇嘢喇.
@@ -2104,6 +2137,28 @@ fn caller_wraps_up(text: &str) -> bool {
     .iter()
     .any(|m| near_end(m, 2))
         || ["祝您", "祝你"].iter().any(|m| near_end(m, 7))
+}
+
+/// A Chinese 「拜拜／掰掰／掰」 ends `text` as a goodbye ([`crate::closing::zh_bye_ends`]),
+/// not one said to someone else ([`bye_to_someone_else`]).
+fn zh_bye_said_to_us(text: &str) -> bool {
+    crate::closing::zh_bye_ends(text).is_some_and(|before| {
+        let letters: String = before.chars().filter(|c| c.is_alphanumeric()).collect();
+        !bye_to_someone_else(&letters)
+    })
+}
+
+/// A Chinese goodbye ends `text` or one of its clauses (「好，掰掰，下週見」):
+/// the words up to each punctuation mark are tried as the end.
+fn zh_bye_in(text: &str) -> bool {
+    if !text.contains('掰') && !text.contains("拜拜") {
+        return false;
+    }
+    text.char_indices()
+        .filter(|(_, c)| "，。！？、；：,.!?;:~～…\n".contains(*c))
+        .map(|(i, _)| &text[..i])
+        .chain(std::iter::once(text))
+        .any(|p| crate::closing::zh_bye_ends(p).is_some())
 }
 
 /// What comes before a goodbye says it is meant for someone on the caller's
@@ -2133,59 +2188,35 @@ fn bye_to_someone_else(before: &str) -> bool {
 fn looks_like_persona_closing(text: &str) -> bool {
     looks_like_goodbye(text)
         || crate::locale::ends_with_farewell(text, 2)
-        // Single 「掰」 is a common short sign-off; 「拜」 alone is not (拜託).
-        || ["掰", "先這樣", "先这样", "先掛", "先挂", "先不聊", "不聊了"]
+        // 「掰」 alone is a common short sign-off (looks_like_goodbye reads it
+        // as one when said as a goodbye); 「拜」 alone is not (拜託).
+        || ["先這樣", "先这样", "先掛", "先挂", "先不聊", "不聊了"]
             .iter()
             .any(|m| text.contains(m))
 }
 
-/// Words the call logic keys on (stall keywords, carrier prompt), Taiwan Mandarin.
-const STT_CALLER_VOCAB_ZH_TW: [&str; 9] = [
-    "保險", "保單", "貸款", "信貸", "信用卡", "投資", "國際電話", "管理室", "包裹",
-];
-
-/// Taiwan carriers' warning on calls from abroad: the one word kept as
-/// vocabulary when the caller's language is left to detect.
-const STT_CARRIER_VOCAB_ZH_TW: &str = "國際電話";
-
 /// Speech-to-text config for the caller's side: `langs` as language hints
-/// ([`CallLangPlan::caller_stt`]; `None` = it detects the language itself), the
-/// owner's name and (Taiwan) the call logic's key words as vocabulary.
+/// ([`CallLangPlan::caller_stt`]; `None` = it detects the language itself) and
+/// no vocabulary.
 fn stt_caller_config(langs: Option<&[&'static str]>) -> Value {
     stt_caller_config_for(langs, &crate::locale::active())
 }
 
-/// [`stt_caller_config`] for given settings. The vocabulary in the owner's
-/// language (the owner's name as the settings write it, the call logic's key
-/// words) goes in only when the hints include that language. A caller left to
-/// language detection is expected to speak another one, and the vocabulary
-/// pulled the transcript into it: an English caller's line about a parcel came
-/// out as a Chinese translation with 包裹 in it, a Japanese もしもし as 摩西摩西.
-/// The carrier's warning stays: it plays on calls from abroad whatever the
-/// caller speaks.
-fn stt_caller_config_for(langs: Option<&[&'static str]>, active: &crate::locale::Active) -> Value {
-    let langs = langs.filter(|l| !l.is_empty());
-    let own_hint = langs.is_some_and(|l| l.contains(&crate::locale::phrases(active.lang).stt));
-    let mut vocab: Vec<String> = Vec::new();
-    if own_hint {
-        let owner = active.owner.trim();
-        if !owner.is_empty() {
-            vocab.push(owner.chars().take(40).collect());
-        }
-        if active.lang == crate::locale::Lang::ZhTw {
-            vocab.extend(STT_CALLER_VOCAB_ZH_TW.iter().map(|w| w.to_string()));
-        }
-    } else if active.lang == crate::locale::Lang::ZhTw {
-        vocab.push(STT_CARRIER_VOCAB_ZH_TW.to_string());
+/// [`stt_caller_config`] for given settings: the language hints only. The
+/// owner's name and the call logic's key words (保險, 管理室, 包裹, 國際電話…) used
+/// to go in as vocabulary. A caller on a local number may speak any language,
+/// and the vocabulary pulled what they said into the owner's: measured on
+/// phone-quality audio, a Turkish courier's sentence came out as 「你好。我 Cargo
+/// 管理室。包裹。」 and a short Vietnamese one as Chinese, with the same hints
+/// and no vocabulary both came out right. The Chinese key words and the
+/// carrier's 「這是國際電話，請注意小心詐騙」 were written right without it too,
+/// also on a noisy line. A single word did it as well (a caller's "Alo" came
+/// out as the owner's name), so nothing is sent.
+fn stt_caller_config_for(langs: Option<&[&'static str]>, _active: &crate::locale::Active) -> Value {
+    match langs.filter(|l| !l.is_empty()) {
+        Some(l) => json!({ "languageCodes": l }),
+        None => json!({}),
     }
-    let mut cfg = json!({});
-    if let Some(langs) = langs {
-        cfg["languageCodes"] = json!(langs);
-    }
-    if !vocab.is_empty() {
-        cfg["customVocabulary"] = json!(vocab);
-    }
-    cfg
 }
 
 /// Speech-to-text config for the callee of an AI call-back: language hints
@@ -2661,9 +2692,10 @@ fn ends_with_farewell(text: &str) -> bool {
         })
         .trim_end_matches(|c: char| "喔哦囉啦呢吧耶齁欸啊".contains(c))
         .to_ascii_lowercase();
+    if crate::closing::zh_bye_ends(text).is_some() {
+        return true;
+    }
     [
-        "掰",
-        "拜拜",
         "再見",
         "再见",
         "arrivederci",
@@ -2687,9 +2719,10 @@ fn turn_ends_with_closing(text: &str) -> bool {
     let t = crate::locale::strip_trailing_thanks(text);
     let tail: Vec<char> = t.chars().rev().take(5).collect();
     let tail: String = tail.into_iter().rev().collect::<String>().to_ascii_lowercase();
-    ["掰", "拜拜", "再見", "再见", "不聊", "先掛", "先挂", "先這樣", "先这样"]
-        .iter()
-        .any(|m| tail.contains(m))
+    crate::closing::zh_bye_ends(&t).is_some()
+        || ["再見", "再见", "不聊", "先掛", "先挂", "先這樣", "先这样"]
+            .iter()
+            .any(|m| tail.contains(m))
         || crate::locale::ends_with_farewell(text, 1)
 }
 
@@ -3384,20 +3417,29 @@ pub(crate) fn strip_stt_markers(s: &str) -> String {
 }
 
 /// Append an STT fragment: Chinese joins directly, Latin words keep a space.
+/// The STT puts the break between two words either at the start of the next
+/// fragment (" bye") or at the end of this one ("Okay "): both make a space. A
+/// fragment's trailing space is kept at the end of `acc` (a later fragment
+/// adds no second one); whoever reads the line trims it.
 pub(crate) fn join_fragment(acc: &mut String, next: &str) {
     // A fragment the STT began with a space starts a new word (Korean, accented
     // Latin); Chinese and Japanese join directly; two ASCII words always get one.
     let spaced = next.starts_with(char::is_whitespace);
-    let next = next.trim_start();
-    let (Some(a), Some(b)) = (acc.chars().last(), next.chars().next()) else {
-        acc.push_str(next);
+    let trailing = next.ends_with(char::is_whitespace);
+    let next = next.trim();
+    let Some(b) = next.chars().next() else {
         return;
     };
-    let word = |c: char| !c.is_whitespace() && !is_cjk(c);
-    if (spaced && word(a) && word(b)) || (a.is_ascii_alphanumeric() && b.is_ascii_alphanumeric()) {
-        acc.push(' ');
+    if let Some(a) = acc.chars().last() {
+        let word = |c: char| !c.is_whitespace() && !is_cjk(c);
+        if (spaced && word(a) && word(b)) || (a.is_ascii_alphanumeric() && b.is_ascii_alphanumeric()) {
+            acc.push(' ');
+        }
     }
     acc.push_str(next);
+    if trailing && next.chars().next_back().is_some_and(|c| !is_cjk(c)) {
+        acc.push(' ');
+    }
 }
 
 /// The labelled transcript (one STT fragment per line) as one line per speaker
@@ -3405,14 +3447,14 @@ pub(crate) fn join_fragment(acc: &mut String, next: &str) {
 pub(crate) fn merge_dialogue_fragments(transcript: &str) -> String {
     let mut runs: Vec<(&str, String)> = Vec::new();
     for line in transcript.lines() {
-        let line = line.trim();
+        // A fragment's trailing space is a word break (join_fragment).
+        let line = line.trim_start();
         let Some((label, text)) = line.split_once('：') else {
             continue;
         };
         if label != "對方" && label != "接聽" {
             continue;
         }
-        let text = text.trim_end();
         match runs.last_mut() {
             Some((l, acc)) if *l == label => join_fragment(acc, text),
             _ => runs.push((label, text.trim_start().to_string())),
@@ -3971,7 +4013,7 @@ fn with_latest<'a>(window: &'a str, latest: &str) -> std::borrow::Cow<'a, str> {
     if piece.is_empty() || window.trim_end().ends_with(piece) {
         std::borrow::Cow::Borrowed(window)
     } else {
-        std::borrow::Cow::Owned(format!("{window}{piece}"))
+        std::borrow::Cow::Owned(format!("{window}{}{piece}", tx_gap(window, latest)))
     }
 }
 
@@ -4058,8 +4100,8 @@ fn looks_like_goodbye(text: &str) -> bool {
     let t = text.to_ascii_lowercase();
     // Only clear farewells — do NOT treat "hang up" / "bad line" phrases as end (model used to
     // bail too early on noisy lines and hang up mid-message).
-    const MARKS: &[&str] = &["再见", "再見", "掰掰", "拜拜", "拜了", "再会", "再會"];
-    if MARKS.iter().any(|m| t.contains(m)) || crate::locale::ends_with_farewell(text, 3) {
+    const MARKS: &[&str] = &["再见", "再見", "拜了", "再会", "再會"];
+    if MARKS.iter().any(|m| t.contains(m)) || zh_bye_in(text) || crate::locale::ends_with_farewell(text, 3) {
         return true;
     }
     // AI wrap-up lines often end with 感謝您的來電 / 感谢来电 without 再見.
@@ -4637,13 +4679,11 @@ fn tidy_cjk_spaces(s: &str) -> String {
 fn extract_transcription_snippets(v: &Value) -> (Vec<String>, Vec<String>) {
     let mut input = Vec::new();
     let mut output = Vec::new();
+    // A snippet that starts a new word keeps one leading space (the STT sends
+    // " bye" after "Okay"): push_tx_window and join_fragment read it. Callers
+    // that log or match a snippet on its own trim it.
     let push = |dest: &mut Vec<String>, path: &str| {
-        if let Some(t) = v
-            .pointer(path)
-            .and_then(|x| x.as_str())
-            .map(tidy_cjk_spaces)
-            .filter(|s| !s.is_empty())
-        {
+        if let Some(t) = v.pointer(path).and_then(|x| x.as_str()).and_then(spaced_snippet) {
             dest.push(t);
         }
     };
@@ -4654,22 +4694,100 @@ fn extract_transcription_snippets(v: &Value) -> (Vec<String>, Vec<String>) {
     (input, output)
 }
 
-/// Rolling window so streaming partials still match 再見 across chunks.
-fn push_tx_window(window: &mut String, piece: &str, cap: usize) {
+/// A transcription fragment tidied ([`tidy_cjk_spaces`]) that keeps the space
+/// the STT put at its start (" bye") and at its end ("Okay ") as one space, as
+/// long as the letter next to it is not Chinese or Japanese: the break between
+/// two words is at the end of one fragment or the start of the next. None for
+/// a blank fragment.
+fn spaced_snippet(raw: &str) -> Option<String> {
+    let t = tidy_cjk_spaces(raw);
+    let (first, last) = (t.chars().next()?, t.chars().next_back()?);
+    let lead = if raw.starts_with(char::is_whitespace) && !is_cjk(first) { " " } else { "" };
+    let trail = if raw.ends_with(char::is_whitespace) && !is_cjk(last) { " " } else { "" };
+    Some(format!("{lead}{t}{trail}"))
+}
+
+/// A snippet for the session's windows: the space its stream's previous
+/// snippet ended with (`held`) becomes this one's leading space, and its own
+/// trailing space is held back, so no window ends with a space for the checks
+/// that read its end.
+fn tx_carry(held: &mut bool, raw: &str) -> String {
+    let piece = raw.trim_end();
     if piece.is_empty() {
+        return String::new();
+    }
+    let lead = if *held && !piece.starts_with(char::is_whitespace) { " " } else { "" };
+    *held = raw.ends_with(char::is_whitespace);
+    format!("{lead}{piece}")
+}
+
+/// The space to put between a window and the piece that follows it. The STT
+/// sends words in pieces and puts the break between two words at the start of
+/// the next piece (" bye") or at the end of the window (a trailing space, see
+/// [`push_tx_window`]): one space unless a side is Chinese or Japanese. A piece
+/// that starts a word right after punctuation gets one too: a letter after a
+/// comma, a capital (or a letter of a script without capitals) after the end of
+/// a sentence ("for you." + "Cheers."). Never a digit ("3." + "5", "1," + "000")
+/// nor a small letter after a full stop ("example." + "com"). A piece without a
+/// leading space after a letter continues its word ("Hal" + "lo").
+fn tx_gap(window: &str, piece: &str) -> &'static str {
+    let Some(first) = piece.trim_start().chars().next() else {
+        return "";
+    };
+    let Some(last) = window.chars().next_back() else {
+        return "";
+    };
+    if last.is_whitespace() || is_cjk(first) || is_cjk(last) {
+        return "";
+    }
+    let lead = piece.starts_with(char::is_whitespace);
+    let after_mark = match last {
+        ',' | ';' | ':' => first.is_alphabetic(),
+        '.' | '!' | '?' | '…' => first.is_alphabetic() && !first.is_lowercase(),
+        _ => false,
+    };
+    if lead || after_mark {
+        " "
+    } else {
+        ""
+    }
+}
+
+/// Rolling window so streaming partials still match 再見 across chunks.
+/// `piece` may start with a space (a new word) or end with one (the next piece
+/// is a new word): it is compared and added trimmed, with [`tx_gap`] between,
+/// and a trailing space (not after Chinese or Japanese) is left at the end of
+/// the window for that next piece. Session windows are fed through
+/// [`tx_carry`] instead, so none of them ends with a space.
+fn push_tx_window(window: &mut String, piece: &str, cap: usize) {
+    let gap = tx_gap(window, piece);
+    let trailing = piece.ends_with(char::is_whitespace);
+    let piece = piece.trim();
+    if piece.is_empty() {
+        if trailing && window.chars().next_back().is_some_and(|c| !c.is_whitespace() && !is_cjk(c)) {
+            window.push(' ');
+        }
         return;
     }
     // A longer piece sent again whole is a re-send. A short one is new words,
     // even when the same: 「掰」+「掰」, 「爸」+「爸」, 「…失礼し」+「ます」.
-    if piece.chars().count() >= 4 && window.ends_with(piece) {
+    if piece.chars().count() >= 4 && window.trim_end().ends_with(piece) {
         return;
     }
     // A cumulative update (longer, holding all so far) replaces the window.
-    if piece.len() > window.len() && piece.contains(window.as_str()) && !window.is_empty() {
+    let held = window.trim_end();
+    if piece.len() > held.len() && piece.contains(held) && !held.is_empty() {
         *window = piece.to_string();
+        if trailing && !piece.chars().next_back().is_some_and(is_cjk) {
+            window.push(' ');
+        }
         return;
     }
+    window.push_str(gap);
     window.push_str(piece);
+    if trailing && !piece.chars().next_back().is_some_and(is_cjk) {
+        window.push(' ');
+    }
     if window.len() > cap {
         // Byte cap on CJK text: never cut inside a character (a long
         // stall call panicked on `is_char_boundary` here).
@@ -5430,6 +5548,8 @@ pub async fn run_session(
     let mut turn_base_bytes: u64 = prebuf_flushed_bytes;
     let mut out_tx_window = String::with_capacity(512);
     let mut in_tx_window = String::with_capacity(512);
+    // Whether the last output / input snippet ended with a space ([`tx_carry`]).
+    let (mut out_space_held, mut in_space_held) = (false, false);
     let mut end_reason = SessionEndReason::WsClosed;
     let mut hangup_signaled = false;
     // Desk-status opening must finish before caller barge-in can skip it.
@@ -7137,9 +7257,14 @@ pub async fn run_session(
                                 // Greeting 「我幫您轉達」 and trailing 「關於」 must not arm.
                                 // Arm as soon as STT shows a complete recap — do not wait for a
                                 // later turnComplete (Live STT often arrives after generationComplete).
-                                for s in &out_tx {
-                                    push_tx_window(&mut out_tx_window, s, 800);
-                                    push_tx_window(&mut turn_out_text, s, 400);
+                                for s_raw in &out_tx {
+                                    // The snippet as it came (a new word starts with a space) goes into
+                                    // the windows; everything else reads it trimmed.
+                                    let s = s_raw.trim();
+                                    let s_raw = tx_carry(&mut out_space_held, s_raw);
+                                    let s_raw = s_raw.as_str();
+                                    push_tx_window(&mut out_tx_window, s_raw, 800);
+                                    push_tx_window(&mut turn_out_text, s_raw, 400);
                                     // Whitelist urgent call: dialing is decided by the AI saying its hold-on
                                     // line; the keyword table only lets weak hold-on phrases ("hold on",
                                     // "ちょっと待って") and a repeated line count too.
@@ -7155,7 +7280,7 @@ pub async fn run_session(
                                             ctl.note_hold_line_from(turn_base_bytes);
                                         }
                                         if caller_urgent {
-                                            push_tx_window(&mut ai_after_urgent, s, 800);
+                                            push_tx_window(&mut ai_after_urgent, s_raw, 800);
                                             if ctl.hold_said_at().is_none() && crate::urgent_call::repeats_a_line(&ai_after_urgent) {
                                                 info!(
                                                     "Whitelist urgent call: the AI said the same line twice after the urgent words serial={serial} — taken as its hold-on line"
@@ -7195,7 +7320,7 @@ pub async fn run_session(
                                     if cb_hold {
                                         // Its closing counts once it plays.
                                         if cb_floor.held.is_some() {
-                                            push_tx_window(&mut cb_held_text, s, 400);
+                                            push_tx_window(&mut cb_held_text, s_raw, 400);
                                         }
                                         continue;
                                     }
@@ -7251,7 +7376,7 @@ pub async fn run_session(
                                         // so the rest of this reply (the farewell) is dropped
                                         // and the model is told to hold them with a question.
                                         if stall_on && !wrap_up_sent {
-                                            push_tx_window(&mut stall_tx, s, 200);
+                                            push_tx_window(&mut stall_tx, s_raw, 200);
                                             if ends_with_farewell(&stall_tx)
                                                 && !stall_keep_after_turn
                                                 && !stall_turn_kept
@@ -7347,13 +7472,16 @@ pub async fn run_session(
                                     }
                                 }
                                 // Caller farewell also arms hangup (after model turn / idle).
-                                for s in &in_tx {
+                                for s_raw in &in_tx {
+                                    let s = s_raw.trim();
+                                    let s_raw = tx_carry(&mut in_space_held, s_raw);
+                                    let s_raw = s_raw.as_str();
                                     if cb_once {
-                                        cb_floor.callee.words(s);
+                                        cb_floor.callee.words(s_raw);
                                     }
-                                    push_tx_window(&mut in_tx_window, s, 800);
-                                    push_tx_window(&mut caller_text_all, s, 400);
-                                    push_tx_window(&mut caller_recent, s, 400);
+                                    push_tx_window(&mut in_tx_window, s_raw, 800);
+                                    push_tx_window(&mut caller_text_all, s_raw, 400);
+                                    push_tx_window(&mut caller_recent, s_raw, 400);
                                     // The caller speaks a language the AI's own
                                     // speech-to-text has no hint for: its goodbye in
                                     // it would go unnoticed. Added at the next pause.
@@ -9047,16 +9175,14 @@ fn append_transcriptions(v: &Value, transcript_out: &Option<Arc<std::sync::Mutex
         if let Some(t) = v
             .pointer(path)
             .and_then(|x| x.as_str())
-            .map(|raw| (raw.starts_with(char::is_whitespace), tidy_cjk_spaces(raw)))
-            .filter(|(_, s)| !s.is_empty())
+            .and_then(spaced_snippet)
         {
-            let (lead, t) = t;
-            // The STT starts a new word with a space; it is kept so the merged
+            // The STT puts the break between two words at the end of one
+            // fragment or the start of the next; kept as one space so the merged
             // line keeps word spaces (Korean, accented Latin): see join_fragment.
-            let gap = if lead && t.chars().next().is_some_and(|c| !is_cjk(c)) { " " } else { "" };
             // As heard: the owner's reading form is applied once the fragments
             // are joined into lines (merge_dialogue_fragments).
-            pieces.push(format!("{label}：{gap}{t}"));
+            pieces.push(format!("{label}：{t}"));
         }
     }
     if pieces.is_empty() {
@@ -9393,9 +9519,8 @@ mod tests {
         // the quiet hang-up) is the appointment call-back's alone.
         assert!(call_back.answers_once());
         assert!(!errand.answers_once() && !Outbound::Incoming.answers_once());
-        // Speech-to-text: a call-back's callee gets no vocabulary; an errand's other
-        // side gets the call's languages and the owner's name, a caller the call
-        // logic's words as well.
+        // Speech-to-text: a call-back's callee and a caller get no vocabulary; an
+        // errand's other side gets the call's languages and the owner's name.
         let me = Active { owner: "王先生".into(), lang: Lang::ZhTw, ..Default::default() };
         let langs = stt_codes(&[Lang::ZhTw, Lang::En]);
         assert_eq!(call_back.other_side_stt(Some(&langs), None, &me), stt_callee_config(Some(&langs)));
@@ -11317,6 +11442,294 @@ mod tests {
         assert!(!dialogue_in_other_language("對方：喂？\n接聽：喂？", crate::locale::Lang::ZhTw));
     }
 
+    fn windowed(pieces: &[&str]) -> String {
+        let mut w = String::new();
+        for p in pieces {
+            push_tx_window(&mut w, p, 800);
+        }
+        w
+    }
+
+    #[test]
+    fn tx_pieces_keep_the_words_apart() {
+        // The STT starts a new word with a space; the window keeps one space.
+        assert_eq!(windowed(&["Okay", " bye"]), "Okay bye");
+        assert!(caller_wraps_up(&windowed(&["Okay", " bye"])));
+        assert_eq!(windowed(&["Hasta", " luego."]), "Hasta luego.");
+        assert!(caller_wraps_up(&windowed(&["Hasta", " luego."])));
+        assert_eq!(windowed(&["Sí, está", " bien."]), "Sí, está bien.");
+        let thanks = windowed(&["Thanks for", " the reminder.", " Talk", " soon!"]);
+        assert_eq!(thanks, "Thanks for the reminder. Talk soon!");
+        assert!(turn_ends_with_closing(&thanks));
+        // A word starting right after sentence punctuation is a new word.
+        assert_eq!(windowed(&["for you.", "Cheers."]), "for you. Cheers.");
+        let ru = windowed(&[" до", " свидания"]);
+        assert_eq!(ru, "до свидания");
+        assert!(crate::locale::ends_with_farewell(&ru, 1));
+        // No space next to Chinese or Japanese, nor inside a word the STT cut in two.
+        assert_eq!(windowed(&["好，那就先這樣", "嗎？"]), "好，那就先這樣嗎？");
+        assert_eq!(windowed(&["好，那就先這樣", " 嗎？"]), "好，那就先這樣嗎？");
+        assert_eq!(windowed(&["それでは失礼し", "ます"]), "それでは失礼します");
+        assert_eq!(windowed(&["민준아, 나", " 지훈인데."]), "민준아, 나 지훈인데.");
+        assert_eq!(windowed(&["Hal", "lo"]), "Hallo");
+        // Numbers and addresses the STT cut at a mark stay whole.
+        assert_eq!(windowed(&["3.", "5"]), "3.5");
+        assert_eq!(windowed(&["1,", "000"]), "1,000");
+        assert_eq!(windowed(&["example", ".", "com"]), "example.com");
+        assert_eq!(windowed(&["okay,", "bye"]), "okay, bye");
+        assert_eq!(windowed(&["Спасибо.", "До свидания."]), "Спасибо. До свидания.");
+        // with_latest joins the same way.
+        assert_eq!(with_latest("Okay", " bye"), "Okay bye");
+        assert_eq!(with_latest("Okay bye", " bye"), "Okay bye");
+        assert_eq!(with_latest("Hal", "lo"), "Hallo");
+        assert_eq!(with_latest("for you.", "Cheers."), "for you. Cheers.");
+    }
+
+    #[test]
+    fn tx_window_rules_compare_without_the_leading_space() {
+        // A longer piece sent again is skipped, spaced or not.
+        assert_eq!(windowed(&["See you tomorrow", " See you tomorrow"]), "See you tomorrow");
+        // A short one is new words again.
+        assert_eq!(windowed(&["Bye", " bye"]), "Bye bye");
+        // A cumulative update replaces the window.
+        assert_eq!(windowed(&["Okay", " bye", "Okay bye now"]), "Okay bye now");
+    }
+
+    #[test]
+    fn snippets_keep_a_leading_space_for_a_new_word() {
+        let v = json!({"serverContent": {
+            "inputTranscription": {"text": " bye"},
+            "outputTranscription": {"text": " 好的"}
+        }});
+        let (heard, said) = extract_transcription_snippets(&v);
+        assert_eq!(heard, vec![" bye".to_string()]);
+        assert_eq!(said, vec!["好的".to_string()]);
+        let v = json!({"serverContent": {"inputTranscription": {"text": "Okay"}}});
+        assert_eq!(extract_transcription_snippets(&v).0, vec!["Okay".to_string()]);
+    }
+
+    #[test]
+    fn a_call_in_a_latin_language_without_a_setting_is_another_language() {
+        use crate::locale::Lang;
+        let calls = [
+            (
+                "Italian",
+                "對方：Buongiorno, ho un pacco per il signor Wang, può scendere a ritirarlo alla portineria?\n接聽：Certo, grazie mille, scendo subito a prenderlo.",
+            ),
+            (
+                "Vietnamese",
+                "對方：Xin chào, tôi là nhân viên giao hàng, tôi có một gói hàng cho anh Wang ở dưới sảnh.\n接聽：Vâng, cảm ơn anh, tôi xuống lấy ngay bây giờ.",
+            ),
+            (
+                "Indonesian",
+                "對方：Selamat siang, saya kurir, ada paket untuk Bapak Wang di pos satpam.\n接聽：Baik, terima kasih banyak, saya segera turun untuk mengambilnya.",
+            ),
+            (
+                "Dutch",
+                "對方：Goedemiddag, ik ben de bezorger, ik heb een pakket voor meneer Wang bij de receptie.\n接聽：Dank u wel, ik kom het zo meteen ophalen.",
+            ),
+            (
+                "Polish",
+                "對方：Dzień dobry, jestem kurierem, mam paczkę dla pana Wanga w recepcji budynku.\n接聽：Dziękuję bardzo, zaraz zejdę po odbiór.",
+            ),
+            (
+                "Romanian",
+                "對方：Bună ziua, sunt curierul, am un colet pentru domnul Wang la recepția clădirii.\n接聽：Mulțumesc frumos, cobor imediat să îl ridic.",
+            ),
+            (
+                "Turkish",
+                "對方：Merhaba, ben kuryeyim, Wang Bey için bir paketim var, binanın girişinde bekliyorum.\n接聽：Teşekkür ederim, hemen inip alıyorum.",
+            ),
+        ];
+        for (name, d) in calls {
+            assert_eq!(dialogue_lang(d, Lang::ZhTw), None, "{name}");
+            assert!(dialogue_in_other_language(d, Lang::ZhTw), "{name}");
+            // Only the caller's side (the AI's line told nothing).
+            let caller_only = d.lines().next().unwrap();
+            assert_eq!(dialogue_lang(caller_only, Lang::ZhTw), None, "{name} caller");
+            assert!(dialogue_in_other_language(caller_only, Lang::ZhTw), "{name} caller");
+        }
+        // The nine keep their language and are not "another language".
+        let nine = [
+            (Lang::En, "對方：Hello, I have a package for Mr. Wang at the front desk.\n接聽：Okay, thank you very much, I will come down and get it now."),
+            (Lang::Es, "對方：Hola, tengo un paquete para el señor Wang en la portería.\n接聽：Muy bien, muchas gracias, ahora mismo bajo a recogerlo."),
+            (Lang::Fr, "對方：Bonjour, j'ai un colis pour monsieur Wang à la loge.\n接聽：Très bien, merci beaucoup, je descends le chercher tout de suite."),
+            (Lang::De, "對方：Guten Tag, ich habe ein Paket für Herrn Wang an der Pforte.\n接聽：Sehr gut, vielen Dank, ich komme sofort runter und hole es ab."),
+            (Lang::Pt, "對方：Olá, sou o entregador, tenho uma encomenda para o senhor Wang na portaria.\n接聽：Muito bem, obrigado, eu já vou descer para buscar a encomenda, você pode deixar com o porteiro."),
+            (Lang::ZhTw, "對方：你好，王先生的包裹放在管理室，麻煩您下來拿。\n接聽：好的，謝謝你，我馬上下去拿。"),
+            (Lang::Ja, "對方：こんにちは、王さんの荷物が管理室にあります。\n接聽：はい、ありがとうございます、すぐに取りに行きます。"),
+            (Lang::Ko, "對方：안녕하세요, 왕 선생님 택배가 관리실에 있습니다.\n接聽：네, 감사합니다, 지금 바로 가지러 내려가겠습니다."),
+        ];
+        for (l, d) in nine {
+            assert_eq!(dialogue_lang(d, Lang::ZhTw), Some(l), "{l:?}");
+            assert!(!dialogue_in_other_language(d, Lang::ZhTw), "{l:?}");
+        }
+        // Other scripts stay as they were.
+        for d in [
+            "對方：สวัสดีค่ะ มีพัสดุของคุณหวางอยู่ที่ห้องนิติบุคคลค่ะ\n接聽：ได้ค่ะ ขอบคุณค่ะ เดี๋ยวลงไปรับค่ะ",
+            "對方：Здравствуйте, для господина Вана есть посылка в консьерже.\n接聽：Хорошо, спасибо большое, сейчас спущусь и заберу.",
+            "對方：مرحبا، لدي طرد للسيد وانغ في مكتب الاستقبال.\n接聽：حسنا، شكرا جزيلا، سأنزل لأخذه الآن.",
+            "對方：नमस्ते, श्री वांग के लिए रिसेप्शन पर एक पार्सल रखा है।\n接聽：ठीक है, बहुत धन्यवाद, मैं अभी लेने आता हूँ।",
+        ] {
+            assert_eq!(dialogue_lang(d, Lang::ZhTw), None, "{d}");
+            assert!(dialogue_in_other_language(d, Lang::ZhTw), "{d}");
+        }
+    }
+
+    #[test]
+    fn turkish_calls_get_their_speech_to_text_code() {
+        assert_eq!(other_lang_stt_of_country("tr"), Some("tr-TR"));
+        assert_eq!(other_lang_stt_of_country("TR"), Some("tr-TR"));
+        assert_eq!(other_lang_stt_of_country("vn"), Some("vi-VN"));
+        assert_eq!(other_lang_stt_of_country("us"), None);
+    }
+
+    /// The raw pieces Gemini's output transcription was seen to send, with the
+    /// word break at the end of one piece or at the start of the next, and the
+    /// text each makes.
+    const RAW_PIECES: [(&[&str], &str); 6] = [
+        (&["Cảm ơn bạn, tôi ", "sẽ nhắn lại với", " anh Vương."], "Cảm ơn bạn, tôi sẽ nhắn lại với anh Vương."),
+        (&["Cảm ơn bạn, ", "tôi sẽ xuống", " lấy ngay."], "Cảm ơn bạn, tôi sẽ xuống lấy ngay."),
+        (&["Teşekkürler, Sayın Wang'a ", "bilgi vereceğim."], "Teşekkürler, Sayın Wang'a bilgi vereceğim."),
+        (&["Bilgi verdiğiniz ", "için teşekkürler."], "Bilgi verdiğiniz için teşekkürler."),
+        (&["ขอบคุณครับ ", "เดี๋ยวผมจะแจ้งให้คุณหวัง", "ทราบนะครับ"], "ขอบคุณครับ เดี๋ยวผมจะแจ้งให้คุณหวังทราบนะครับ"),
+        (&["承知いたしました、ありがとう", "ございます。"], "承知いたしました、ありがとうございます。"),
+    ];
+
+    fn through_the_log(pieces: &[&str]) -> String {
+        let buf = Arc::new(std::sync::Mutex::new(String::new()));
+        for p in pieces {
+            let v = json!({"serverContent": {"outputTranscription": {"text": p}}});
+            append_transcriptions(&v, &Some(buf.clone()));
+        }
+        let log = buf.lock().unwrap().clone();
+        merge_dialogue_fragments(&log)
+    }
+
+    #[test]
+    fn a_space_at_the_end_of_a_piece_is_a_word_break_in_the_window() {
+        for (pieces, text) in RAW_PIECES {
+            assert_eq!(windowed(pieces), text, "{pieces:?}");
+            // As the session feeds its windows: never a space at their end.
+            let (mut w, mut held) = (String::new(), false);
+            for p in pieces {
+                push_tx_window(&mut w, &tx_carry(&mut held, p), 800);
+                assert!(!w.ends_with(' '), "{w:?}");
+            }
+            assert_eq!(w, text, "{pieces:?}");
+        }
+        assert_eq!(windowed(&["спасибо ", "вам"]), "спасибо вам");
+        let okay = windowed(&["Okay ", "bye"]);
+        assert_eq!(okay, "Okay bye");
+        assert!(caller_wraps_up(&okay));
+        assert_eq!(windowed(&["好，那就先這樣 ", "嗎？"]), "好，那就先這樣嗎？");
+        // The snippets a message yields keep the space on either side.
+        let v = json!({"serverContent": {"outputTranscription": {"text": "Okay "}}});
+        assert_eq!(extract_transcription_snippets(&v).1, vec!["Okay ".to_string()]);
+        let v = json!({"serverContent": {"outputTranscription": {"text": "好，那就先這樣 "}}});
+        assert_eq!(extract_transcription_snippets(&v).1, vec!["好，那就先這樣".to_string()]);
+        // A cumulative update still replaces a window that ends with a space.
+        assert_eq!(windowed(&["Okay ", "Okay bye now"]), "Okay bye now");
+    }
+
+    #[test]
+    fn a_space_at_the_end_of_a_fragment_is_a_word_break_in_the_record() {
+        for (pieces, text) in RAW_PIECES {
+            assert_eq!(through_the_log(pieces), format!("接聽：{text}"), "{pieces:?}");
+        }
+        assert_eq!(through_the_log(&["спасибо ", "вам"]), "接聽：спасибо вам");
+        // The merged line never ends with a space, and an errand caption's joins match.
+        assert_eq!(through_the_log(&["Okay "]), "接聽：Okay");
+        let mut acc = String::new();
+        for p in ["спасибо ", "вам"] {
+            join_fragment(&mut acc, p);
+        }
+        assert_eq!(acc, "спасибо вам");
+        let mut acc = "好，那就先這樣".to_string();
+        join_fragment(&mut acc, " 嗎？");
+        assert_eq!(acc, "好，那就先這樣嗎？");
+    }
+
+    /// The closing machine on a caller line after some business, fed the way the
+    /// session does (the older check, [`caller_wraps_up`], as `old_rules`).
+    fn closing_step_for(line: &str) -> crate::closing::ClosingStep {
+        let mut m = crate::closing::ClosingMachine::new("zh-TW");
+        let first = "我要寄一個包裹給王先生 0912345678";
+        m.on_caller(first, first, false, false);
+        m.on_caller(line, line, caller_wraps_up(line), false)
+    }
+
+    #[test]
+    fn worshipping_and_nonsense_are_not_the_callers_goodbye() {
+        for t in [
+            "我明天要去拜拜",
+            "我們在拜拜",
+            "等一下要拜拜",
+            "我媽叫我回去拜拜",
+            "今天公司拜拜",
+            "初一十五都要拜拜",
+            "我明天要去拜拜喔",
+            "你不要瞎掰",
+            "他在亂掰啦",
+            "把它掰開",
+            "我们在拜拜呢",
+            "拜拜的時候再說",
+        ] {
+            assert!(!caller_wraps_up(t), "{t}");
+            let step = closing_step_for(t);
+            assert!(!step.ends_call, "{t}");
+            assert_ne!(step.event, crate::closing::ClosingEvent::CallerFarewell, "{t}");
+        }
+    }
+
+    #[test]
+    fn a_bye_said_is_the_callers_goodbye() {
+        for t in [
+            "好，拜拜",
+            "好拜拜",
+            "那拜拜囉",
+            "謝謝，拜拜",
+            "嗯嗯拜拜",
+            "OK拜拜",
+            "拜拜",
+            "掰掰",
+            "好喔掰",
+            "那先這樣，拜拜",
+            "我要去拜拜了，拜拜",
+            "好的謝謝你掰掰",
+            "先這樣囉掰掰",
+            "沒問題拜拜",
+            "辛苦了拜拜",
+            "跟你說拜拜",
+            "喂,不好意思,那也不打擾您,祝您事事順心,謝謝您哦,好,拜拜。",
+        ] {
+            assert!(caller_wraps_up(t), "{t}");
+            let step = closing_step_for(t);
+            assert_eq!(step.event, crate::closing::ClosingEvent::CallerFarewell, "{t}");
+            assert!(step.ends_call, "{t}");
+        }
+        // A goodbye said to someone else is still not the caller's own.
+        assert!(!caller_wraps_up("來，跟阿嬤說掰掰"));
+    }
+
+    #[test]
+    fn worshipping_and_nonsense_are_not_the_ais_goodbye() {
+        for t in ["喔你們今天要拜拜喔", "你在瞎掰吧", "那你們去拜拜", "我們在拜拜"] {
+            assert!(!looks_like_persona_closing(t), "{t}");
+            assert!(!turn_ends_with_closing(t), "{t}");
+            assert!(!looks_like_goodbye(t), "{t}");
+            assert!(!ends_with_farewell(t), "{t}");
+        }
+        for t in ["好，掰掰", "那先這樣，拜拜喔", "好，那我再想一下，掰", "好喔，拜拜", "好，掰掰，謝謝你"] {
+            assert!(looks_like_persona_closing(t), "{t}");
+            assert!(looks_like_goodbye(t), "{t}");
+        }
+        for t in ["好，掰掰", "那先這樣，拜拜喔"] {
+            assert!(turn_ends_with_closing(t), "{t}");
+        }
+        assert!(ends_with_farewell("好喔，拜拜"));
+    }
+
     #[test]
     fn caller_stt_hints_or_auto_detect() {
         // The AI's own voice: the opening language and the setting's (unset in tests:
@@ -11334,50 +11747,43 @@ mod tests {
         assert!(auto.get("languageCodes").is_none());
         let empty: &[&'static str] = &[];
         assert!(stt_caller_config(Some(empty)).get("languageCodes").is_none());
-        // Unset settings (tests) are Taiwan's: the carrier's warning stays as
-        // vocabulary either way.
+        // No vocabulary either way: it pulled other languages into the owner's.
         for cfg in [&hinted, &auto] {
-            assert!(cfg["customVocabulary"]
-                .as_array()
-                .is_some_and(|v| v.iter().any(|w| w.as_str() == Some("國際電話"))));
+            assert!(cfg.get("customVocabulary").is_none(), "{cfg}");
         }
     }
 
     #[test]
-    fn caller_left_to_detect_gets_no_owner_vocabulary() {
-        // A US number on a US SIM, owner in Taiwan: no hints, the language is
-        // detected. The owner's name and the Chinese key words stayed in the
-        // vocabulary, and an English line about a parcel came out in Chinese
-        // (「…一個給你的包裹被送到我家門口了」), a Japanese もしもし as 摩西摩西.
+    fn a_caller_s_speech_to_text_gets_no_vocabulary() {
+        // The owner's name and the Chinese key words as vocabulary pulled other
+        // languages into Chinese: an English line about a parcel
+        // (「…一個給你的包裹被送到我家門口了」), a Japanese もしもし as 摩西摩西, and on
+        // phone-quality audio a Turkish courier's sentence as 「你好。我 Cargo 管理室。
+        // 包裹。」 — also on a local number, where the hints include the owner's
+        // language. The key words came out right without it.
         use crate::locale::{Active, Lang};
         let tw = Active { owner: "林先生".into(), ..Default::default() };
-        let words = |cfg: &Value| -> Vec<String> {
-            cfg["customVocabulary"]
-                .as_array()
-                .map(|v| v.iter().filter_map(|w| w.as_str().map(String::from)).collect())
-                .unwrap_or_default()
-        };
         let us: std::collections::BTreeMap<String, String> = [("us".to_string(), "en".to_string())].into();
+        // A US number on a US SIM, owner in Taiwan: no hints, the language is detected.
         let plan = call_lang_plan("+12025550143", Some("us"), Lang::ZhTw, "886", &us);
         assert_eq!(plan.caller_stt, None);
-        let auto = stt_caller_config_for(plan.caller_stt.as_deref(), &tw);
-        assert!(auto.get("languageCodes").is_none());
-        assert_eq!(words(&auto), vec!["國際電話".to_string()]);
-        // A Taiwanese caller: hints with the owner's language, the whole vocabulary.
+        assert_eq!(stt_caller_config_for(plan.caller_stt.as_deref(), &tw), json!({}));
+        // A Taiwanese number: the hints, and nothing else — its caller may speak
+        // Vietnamese, Thai, Japanese or Turkish.
         let local = call_lang_plan("0912000000", Some("tw"), Lang::ZhTw, "886", &Default::default());
         let hinted = stt_caller_config_for(local.caller_stt.as_deref(), &tw);
-        assert_eq!(hinted["languageCodes"], json!(["zh-TW", "en-US"]));
-        let w = words(&hinted);
-        assert!(w.contains(&"林先生".to_string()) && w.contains(&"包裹".to_string()), "{w:?}");
-        // Hints without the owner's language: none of the owner's words either.
-        let ja_only: &[&'static str] = &["ja-JP"];
-        let w = words(&stt_caller_config_for(Some(ja_only), &tw));
-        assert!(!w.iter().any(|x| x == "林先生" || x == "包裹" || x == "管理室"), "{w:?}");
-        // Another owner language: no Taiwan words, the name only with its hint.
-        let en = Active { lang: Lang::En, notify_lang: Lang::En, owner: "Alex".into(), ..Default::default() };
-        let en_hint: &[&'static str] = &["en-US"];
-        assert_eq!(words(&stt_caller_config_for(Some(en_hint), &en)), vec!["Alex".to_string()]);
-        assert!(stt_caller_config_for(None, &en).get("customVocabulary").is_none());
+        assert_eq!(hinted, json!({ "languageCodes": ["zh-TW", "en-US"] }));
+        // Every owner language and every hint: never a vocabulary.
+        for lang in crate::locale::ALL {
+            let me = Active { lang, notify_lang: lang, owner: "Alex".into(), ..Default::default() };
+            let own: &[&'static str] = &[crate::locale::phrases(lang).stt, "en-US"];
+            let ja_only: &[&'static str] = &["ja-JP"];
+            for hints in [Some(own), Some(ja_only), None] {
+                let cfg = stt_caller_config_for(hints, &me);
+                assert!(cfg.get("customVocabulary").is_none(), "{lang:?} {cfg}");
+                assert!(!cfg.to_string().contains("Alex"), "{lang:?} {cfg}");
+            }
+        }
     }
 
     #[test]

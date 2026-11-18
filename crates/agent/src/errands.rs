@@ -1434,7 +1434,9 @@ impl Live {
             }
         } else {
             self.close();
-            self.open = Some(OpenLine { who, text: frag.trim().to_string(), at: now_stamp(), last: now });
+            // The space the speech-to-text ends a word with stays: the next
+            // fragment joins after it (join_fragment). The line is trimmed when it closes.
+            self.open = Some(OpenLine { who, text: frag.trim_start().to_string(), at: now_stamp(), last: now });
         }
         if self.open.as_ref().is_some_and(|o| o.text.chars().count() >= 80 && ends_sentence(&o.text)) {
             self.close();
@@ -2117,6 +2119,9 @@ pub fn owner_says_client_content(text: &str) -> String {
 }
 
 /// What voicemail says: it takes a message.
+///
+/// Turkish İ lower-cases to "i" plus U+0307: [`fold`] drops the dot, so the
+/// Turkish entries below are written with a plain i.
 const VOICEMAIL: &[&str] = &[
     // zh-TW / zh-CN
     "請留言", "请留言", "請在嗶聲後", "请在哔声后", "請在嘟聲後", "请在嘟声后", "嗶聲後留言", "哔声后留言",
@@ -2159,7 +2164,17 @@ const VOICEMAIL: &[&str] = &[
     "वॉइसमेल", "वॉयसमेल", "संदेश छोड़ें", "अपना संदेश छोड़ें", "बीप के बाद", "टोन के बाद",
     // ar
     "البريد الصوتي", "رسالة صوتية", "اترك رسالة", "اترك رسالتك", "بعد سماع الصافرة", "بعد النغمة", "بعد الصافرة",
+    // tr
+    "sesli mesaj kutusu", "sesli mesaj bırak", "sesli posta", "telesekreter", "mesajınızı bırakın", "mesajınızı bırakınız", "mesajinizi birakin",
+    "mesaj bırakın", "mesaj bırakınız", "mesaj birakin", "sinyal sesinden sonra", "sinyal sesinin ardından", "bip sesinden sonra",
+    "bip sesinin ardından", "ton sesinden sonra",
 ];
+
+/// Text lower case for matching: Turkish İ comes out as "i" plus U+0307, and
+/// the dot goes ("İyi" reads as "iyi").
+fn fold(text: &str) -> String {
+    text.to_lowercase().replace('\u{307}', "")
+}
 
 /// The carrier's recording instead of a person: the number is not in
 /// service, the phone is off or out of reach. Not voicemail (that takes a
@@ -2209,6 +2224,9 @@ pub fn carrier_message(text: &str) -> bool {
         // ar
         "الرقم الذي طلبته غير صحيح", "الرقم غير صحيح", "غير موجود في الخدمة", "الرقم غير مستعمل",
         "مغلق أو خارج نطاق التغطية", "خارج نطاق التغطية", "الهاتف مغلق",
+        // tr
+        "kullanılmamaktadır", "kullanilmamaktadir", "kullanılmıyor", "numara mevcut değil", "böyle bir numara yok", "hizmet dışı",
+        "kapsama alanı dışında", "kapsama alani disinda", "kapalı veya kapsama", "kapali veya kapsama",
     ];
     // Phrases a person says as well (「Herr Müller ist zurzeit nicht erreichbar」,
     // 「La señora García no está disponible en este momento」): the carrier's
@@ -2245,6 +2263,8 @@ pub fn carrier_message(text: &str) -> bool {
         "उपलब्ध नहीं है", "बंद है", "संपर्क नहीं हो सकता",
         // ar
         "غير متاح", "مغلق", "خارج الخدمة", "لا يمكن الوصول",
+        // tr
+        "ulaşılamıyor", "ulaşılamamaktadır", "ulasilamiyor", "erişilemiyor", "müsait değil", "telefonu kapalı", "telefon kapalı", "kapalıdır",
     ];
     const NAMES_THE_LINE: &[&str] = &[
         // zh-TW / zh-CN
@@ -2278,8 +2298,10 @@ pub fn carrier_message(text: &str) -> bool {
         "डायल किया गया नंबर", "आपके द्वारा डायल", "उपभोक्ता", "ग्राहक",
         // ar
         "الرقم الذي", "المشترك", "الهاتف المطلوب",
+        // tr
+        "aradığınız", "aradiginiz", "çevirdiğiniz", "aranan", "abone", "arama yaptığınız", "ulaşmaya çalıştığınız",
     ];
-    let t = text.to_lowercase();
+    let t = fold(text);
     if VOICEMAIL.iter().any(|v| t.contains(v)) {
         return false;
     }
@@ -2289,7 +2311,7 @@ pub fn carrier_message(text: &str) -> bool {
 
 /// Voicemail or an answering machine asking for a message.
 pub fn voicemail_message(text: &str) -> bool {
-    let t = text.to_lowercase();
+    let t = fold(text);
     VOICEMAIL.iter().any(|v| t.contains(v))
 }
 
@@ -2315,6 +2337,8 @@ pub fn busy_message(text: &str) -> bool {
         "लाइन व्यस्त है", "नंबर व्यस्त है",
         // ar
         "الخط مشغول", "الهاتف مشغول",
+        // tr
+        "hat meşgul", "hattı meşgul", "hat mesgul", "başka bir görüşme yapıyor", "baska bir gorusme yapiyor", "başka bir görüşmede",
     ];
     const BUSY_IF_NAMED: &[&str] = &[
         "通話中", "通话中", "is busy", "통화 중", "통화중", "ocupado", "comunicando", "occupé", "occupe", "besetzt",
@@ -2332,6 +2356,8 @@ pub fn busy_message(text: &str) -> bool {
         "व्यस्त है",
         // ar
         "مشغول",
+        // tr
+        "meşgul", "mesgul",
     ];
     const THE_LINE: &[&str] = &[
         "您撥的", "您拨的", "您所撥", "您所拨", "撥打的", "拨打的", "用戶", "用户", "number you", "you have dialed", "you dialed", "you are calling",
@@ -2351,8 +2377,10 @@ pub fn busy_message(text: &str) -> bool {
         "डायल किया गया नंबर", "आपके द्वारा डायल", "ग्राहक",
         // ar
         "الرقم الذي", "المشترك", "الخط",
+        // tr
+        "aradığınız", "aradiginiz", "çevirdiğiniz", "aranan", "abone", "arama yaptığınız",
     ];
-    let t = text.to_lowercase();
+    let t = fold(text);
     const HOLD: &[&str] = &[
         "請稍候", "请稍候", "請勿掛斷", "请勿挂断", "please hold", "stay on the line", "remain on the line", "お待ちください", "잠시만 기다려",
         "끊지 말고", "espere", "no cuelgue", "patientez", "restez en ligne", "bleiben sie dran", "bitte warten", "aguarde", "não desligue",
@@ -2370,6 +2398,8 @@ pub fn busy_message(text: &str) -> bool {
         "कृपया लाइन पर बने रहें", "प्रतीक्षा करें",
         // ar
         "يرجى الانتظار", "ابق على الخط",
+        // tr
+        "hatta kalın", "hatta kalınız", "lütfen bekleyin", "lütfen bekleyiniz", "kapatmayın",
     ];
     // 「稍後」 (later), not 「稍候」 (a moment).
     const CALL_LATER: &[&str] = &[
@@ -2389,6 +2419,8 @@ pub fn busy_message(text: &str) -> bool {
         "बाद में पुनः प्रयास करें", "बाद में कॉल करें",
         // ar
         "عاود الاتصال لاحقا", "حاول مرة أخرى لاحقا",
+        // tr
+        "daha sonra tekrar", "daha sonra arayın", "daha sonra deneyin", "tekrar deneyin",
     ];
     let hold = crate::locale::asks_to_hold(text) || HOLD.iter().any(|h| t.contains(h));
     if hold && !CALL_LATER.iter().any(|c| t.contains(c)) {
@@ -2432,8 +2464,10 @@ pub fn carrier_worth_redialing(said: &str) -> bool {
         "नंबर अमान्य है", "सेवा में नहीं है", "डायल किया गया नंबर अमान्य",
         // ar
         "الرقم الذي طلبته غير صحيح", "الرقم غير صحيح", "الرقم غير مستعمل", "غير موجود في الخدمة", "خارج الخدمة",
+        // tr
+        "kullanılmamaktadır", "kullanilmamaktadir", "kullanılmıyor", "numara mevcut değil", "böyle bir numara yok", "hizmet dışı",
     ];
-    let t = said.to_lowercase();
+    let t = fold(said);
     busy_message(said) || !GONE.iter().any(|g| t.contains(g))
 }
 
@@ -4983,6 +5017,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn caption_fragments_keep_the_space_between_words() {
+        let rig = Rig::new();
+        let hooks = rig.on_call("e-cap-sp");
+        let start = rig.store.live_view("e-cap-sp", 0).unwrap()["lines"].as_array().unwrap().len() as u64;
+        // The speech-to-text ends a word with a space, or starts the next one with it.
+        hooks.caption(true, "спасибо ");
+        hooks.caption(true, "вам");
+        hooks.caption(false, "Cảm ơn bạn, tôi ");
+        hooks.caption(false, "sẽ nhắn lại với");
+        hooks.caption(false, " anh Vương.");
+        hooks.turn_done();
+        hooks.caption(true, "Teşekkürler, Sayın Wang'a ");
+        hooks.caption(true, "bilgi vereceğim.");
+        hooks.caption(false, "好的，");
+        let view = rig.store.live_view("e-cap-sp", start).unwrap();
+        let lines: Vec<String> =
+            view["lines"].as_array().unwrap().iter().map(|l| l["text"].as_str().unwrap().to_string()).collect();
+        assert_eq!(
+            lines,
+            vec![
+                "спасибо вам".to_string(),
+                "Cảm ơn bạn, tôi sẽ nhắn lại với anh Vương.".to_string(),
+                "Teşekkürler, Sayın Wang'a bilgi vereceğim.".to_string(),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn a_caption_line_made_of_shared_characters_reads_as_chinese() {
         let rig = Rig::new();
         let hooks = rig.on_call("e-cap-tw");
@@ -5448,6 +5510,8 @@ mod tests {
             "Der gewünschte Teilnehmer ist zurzeit nicht erreichbar",
             "O número discado não existe",
             "O telefone chamado está desligado ou fora da área de cobertura",
+            "Aradığınız numara kullanılmamaktadır",
+            "Aradığınız numara şu anda kapsama alanı dışındadır",
         ] {
             assert!(carrier_message(t), "{t}");
         }
@@ -5461,6 +5525,8 @@ mod tests {
             "Mr. Smith is not available right now, can I take a message?",
             "田中は今席を外しておりまして、お繋ぎできません",
             "김 부장님은 지금 통화가 불가능합니다",
+            "Ahmet Bey şu anda müsait değil, mesaj bırakmak ister misiniz?",
+            "Bugün restoranımız kapalıdır, yarın bekleriz",
         ] {
             assert!(!carrier_message(t), "{t}");
         }
@@ -5473,11 +5539,13 @@ mod tests {
             "The number you have dialed is not available right now",
             "お客様がおかけになった電話は、お繋ぎできません",
             "고객님이 거신 번호는 연결할 수 없습니다",
+            "Aradığınız kişiye şu anda ulaşılamıyor",
         ] {
             assert!(carrier_message(t), "{t}");
         }
         assert!(!carrier_message("O número que ligou não está disponível. Deixe sua mensagem após o sinal"));
         assert!(!carrier_message("El número marcado no está disponible. Deje su mensaje después de la señal"));
+        assert!(!carrier_message("Aradığınız kişiye şu anda ulaşılamıyor. Sinyal sesinden sonra mesajınızı bırakın"));
         // A voicemail takes a message: not the carrier's own words.
         for t in [
             "El número no está disponible en este momento. Deje su mensaje después del tono",
@@ -5539,6 +5607,8 @@ mod tests {
             "Silakan tinggalkan pesan suara setelah nada bip.",
             "कृपया बीप के बाद अपना संदेश छोड़ें।",
             "يرجى ترك رسالة بعد سماع الصافرة في البريد الصوتي.",
+            "Aradığınız kişiye şu anda ulaşılamıyor, lütfen sinyal sesinden sonra mesajınızı bırakın.",
+            "İYİ GÜNLER, SİNYAL SESİNDEN SONRA MESAJINIZI BIRAKIN.",
         ] {
             assert!(voicemail_message(prompt), "expected voicemail: {prompt}");
             assert!(!carrier_message(prompt), "voicemail must not flag carrier: {prompt}");
@@ -5551,6 +5621,8 @@ mod tests {
             "Hi, Mailboxes Etc. speaking, how can I help?",
             "Could you check your mailbox for our package?",
             "Buongiorno, segreteria dell'ospedale, come posso aiutarla?",
+            "Merhaba, hastane sekreterliği, size nasıl yardımcı olabilirim?",
+            "Sesli mesajınızı aldık, şimdi sizi geri arıyoruz",
             "你好，我們餐廳已經幫您保留位子囉",
         ] {
             assert!(!voicemail_message(human), "false positive voicemail: {human}");
@@ -5583,6 +5655,10 @@ mod tests {
             ("डायल किया गया नंबर इस समय पहुंच से बाहर है, कृपया बाद में प्रयास करें।", true),
             ("الرقم الذي طلبته غير صحيح، يرجى التأكد.", false),
             ("الهاتف المطلوب مغلق أو خارج نطاق التغطية.", true),
+            ("Aradığınız numara kullanılmamaktadır.", false),
+            ("Aradığınız numara hizmet dışıdır.", false),
+            ("Aradığınız numaraya şu anda ulaşılamıyor, lütfen daha sonra tekrar deneyiniz.", true),
+            ("Aradığınız numara şu anda kapsama alanı dışında.", true),
         ] {
             assert!(carrier_message(prompt), "expected carrier: {prompt}");
             assert_eq!(carrier_worth_redialing(prompt), redial_worth, "redial_worth mismatch: {prompt}");
@@ -5595,6 +5671,7 @@ mod tests {
             "Buongiorno, il direttore non è disponibile al momento",
             "Chúng tôi kiểm tra lại thông tin không đúng lắm nhưng sẽ giữ bàn cho anh",
             "Das Zimmer ist zurzeit nicht frei",
+            "Ahmet Bey şu anda müsait değil, mesaj bırakmak ister misiniz?",
         ] {
             assert!(!carrier_message(human), "false positive carrier: {human}");
         }
@@ -5610,6 +5687,8 @@ mod tests {
             "Nomor yang anda tuju sedang sibuk, coba lagi nanti.",
             "लाइन व्यस्त है, कृपया बाद में पुनः प्रयास करें।",
             "الخط مشغول، يرجى معاودة الاتصال لاحقاً.",
+            "Aradığınız kişi şu anda başka bir görüşme yapıyor, lütfen daha sonra tekrar deneyiniz.",
+            "Aradığınız numara meşgul.",
         ] {
             assert!(busy_message(prompt), "expected busy: {prompt}");
         }
@@ -5622,9 +5701,11 @@ mod tests {
             "Semua agen sedang sibuk, mohon tunggu sebentar.",
             "हमारे सभी प्रतिनिधि व्यस्त हैं, कृपया लाइन पर बने रहें।",
             "جميع الموظفين مشغولون، يرجى الانتظار على الخط.",
+            "Tüm temsilcilerimiz meşgul, lütfen hatta kalın.",
         ] {
             assert!(!busy_message(hold), "hold queue must not trigger busy hangup: {hold}");
         }
+        assert!(!busy_message("Şu an meşgulüz, biraz sonra arar mısınız?"));
     }
 
     #[tokio::test]

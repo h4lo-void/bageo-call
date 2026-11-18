@@ -8,7 +8,9 @@
 //! speech-to-text wrote into Chinese or a noise change nothing. Every mid-call
 //! instruction names it ([crate::prompts::call_language_note]), and when the AI
 //! drifts into another language on its own it is told, at most
-//! [DRIFT_NOTES_MAX] times a call. Memory only; a few string scans per turn.
+//! [DRIFT_NOTES_MAX] times a call, and, when the call is no longer in its
+//! opening language, only once the caller has clearly spoken the call's language
+//! in [DRIFT_CALLER_TURNS] turns. Memory only; a few string scans per turn.
 
 use crate::locale::Lang;
 
@@ -24,6 +26,11 @@ pub enum Spoken {
 /// Drift reminders per call.
 pub const DRIFT_NOTES_MAX: u32 = 2;
 
+/// Clear caller turns in the call's language before the AI is told it drifted
+/// away from it, when that language is not the one the call opened in: one
+/// misread turn must not turn the AI back.
+pub const DRIFT_CALLER_TURNS: u32 = 2;
+
 /// The AI's turn came out in another language than the call's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Drift {
@@ -36,6 +43,10 @@ pub struct Drift {
 #[derive(Debug, Clone)]
 pub struct CallLanguage {
     now: Spoken,
+    /// The language the call opened in.
+    opening: Spoken,
+    /// The caller's clear turns in `now`.
+    now_clear_turns: u32,
     /// The caller has said something clear in some language.
     settled: bool,
     /// The other language of the caller's last clear turn, waiting for a second one.
@@ -63,6 +74,8 @@ impl CallLanguage {
         let opening = if opening.is_zh() { zh } else { opening };
         Self {
             now: Spoken::Lang(opening),
+            opening: Spoken::Lang(opening),
+            now_clear_turns: 0,
             settled: false,
             pending: None,
             caller_last: None,
@@ -123,9 +136,12 @@ impl CallLanguage {
         if heard == self.now {
             self.settled = true;
             self.pending = None;
+            self.now_clear_turns += 1;
             return None;
         }
         if !self.settled || self.pending == Some(heard) {
+            // The turn that waited for a second one counts too.
+            self.now_clear_turns = if self.pending == Some(heard) { 2 } else { 1 };
             self.settled = true;
             self.pending = None;
             self.now = heard;
@@ -159,6 +175,9 @@ impl CallLanguage {
             return None;
         }
         if !can_tell || self.drift_notes >= DRIFT_NOTES_MAX {
+            return None;
+        }
+        if self.now != self.opening && self.now_clear_turns < DRIFT_CALLER_TURNS {
             return None;
         }
         self.drift_notes += 1;
@@ -269,6 +288,39 @@ mod tests {
         // Now Chinese from the AI is the drift.
         let d = c.ai_turn("好，謝謝你，那就麻煩你放管理室了。", true).unwrap();
         assert_eq!((d.ai, d.call), (Lang::ZhTw, Lang::En));
+    }
+
+    #[test]
+    fn a_call_that_left_its_opening_language_needs_two_clear_caller_turns_before_the_ai_is_told() {
+        // A Chinese call whose caller's first turn reads as clear Portuguese.
+        let mut c = zh_call();
+        assert_eq!(
+            c.caller_turn("Olá, tenho uma encomenda para você, está em casa?"),
+            Some(Spoken::Lang(Lang::Pt))
+        );
+        // One turn is not enough to send the AI back to Portuguese.
+        assert_eq!(c.ai_turn("Okay, just leave it at the front desk, thank you so much.", true), None);
+        // The caller says Portuguese again: now the English turn is a drift.
+        assert_eq!(c.caller_turn("Sim, tudo bem, obrigado, pode deixar com o porteiro."), None);
+        let d = c.ai_turn("Okay, just leave it at the front desk, thank you so much.", true).unwrap();
+        assert_eq!((d.ai, d.call), (Lang::En, Lang::Pt));
+        // A call still in its opening language is told at once, as before.
+        let mut c = zh_call();
+        c.caller_turn("你好，我是快遞，你的包裹要放哪裡？");
+        assert!(c.ai_turn("Okay, just leave it at the front desk, thank you so much.", true).is_some());
+    }
+
+    #[test]
+    fn latin_words_of_a_language_without_a_word_list_lock_the_call_as_other() {
+        for s in [
+            "Hän on töissä ja minä olen kotona, se on ihan hyvä.",
+            "Jag är i stan och kommer hem i kväll, det är inte så långt.",
+            "Dobrý den, mám pro vás balík, jste doma?",
+        ] {
+            let mut c = CallLanguage::new(Lang::En, Lang::En);
+            assert_eq!(c.caller_turn(s), Some(Spoken::Other), "{s}");
+            assert_eq!(c.ai_turn("Sure, just leave it with the front desk, thank you.", true), None, "{s}");
+        }
     }
 }
 

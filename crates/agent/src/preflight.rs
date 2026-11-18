@@ -152,6 +152,12 @@ fn contains_any(low: &str, words: &[&str]) -> bool {
     words.iter().any(|w| low.contains(w))
 }
 
+/// A request lower case for reading: Turkish İ comes out as "i" plus U+0307,
+/// and the dot goes ("İptal" reads as "iptal").
+fn fold(text: &str) -> String {
+    text.to_lowercase().replace('\u{307}', "")
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum Marker {
     /// A written "am" (or 凌晨, 午前, 오전): 12 is midnight.
@@ -182,6 +188,21 @@ fn marker_before(c: &[char], i: usize) -> Option<Marker> {
     } else if contains_any(&pre, &["凌晨", "午前", "오전"]) {
         Some(Marker::Am)
     } else if contains_any(&pre, &["上午", "早上", "早晨", "清晨", "아침", "朝"]) {
+        Some(Marker::Morning)
+    } else {
+        tr_marker_before(c, i)
+    }
+}
+
+/// Turkish names the part of the day before the time ("akşam saat 8'de",
+/// "öğleden sonra saat 3'te"), farther back than the four characters above.
+fn tr_marker_before(c: &[char], i: usize) -> Option<Marker> {
+    let pre: String = c[i.saturating_sub(15)..i].iter().collect();
+    if pre.contains("öğleden sonra") || pre.contains("akşam") {
+        Some(Marker::Pm)
+    } else if pre.contains("öğlen") || pre.contains("öğle ") {
+        Some(Marker::Noon)
+    } else if pre.contains("sabah") {
         Some(Marker::Morning)
     } else {
         None
@@ -221,11 +242,11 @@ fn hour_unit_end(c: &[char], after: usize) -> Option<usize> {
     None
 }
 
-/// A number written after the word for "at" in Italian, Spanish, Portuguese and
-/// Indonesian ("alle 20", "a las 8", "pukul 19.30").
+/// A number written after the word for "at" in Italian, Spanish, Portuguese,
+/// Indonesian and Turkish ("alle 20", "a las 8", "pukul 19.30", "saat 20.30").
 fn after_at_word(c: &[char], i: usize) -> bool {
     let pre: Vec<char> = c[i.saturating_sub(8)..i].iter().copied().collect();
-    ["alle ", "ore ", "pukul ", "jam ", "a las ", "a la ", "às "].iter().any(|w| {
+    ["alle ", "ore ", "pukul ", "jam ", "a las ", "a la ", "às ", "saat "].iter().any(|w| {
         let w: Vec<char> = w.chars().collect();
         pre.ends_with(&w) && !(pre.len() > w.len() && pre[pre.len() - w.len() - 1].is_alphabetic())
     })
@@ -542,6 +563,7 @@ fn foreign_script(low: &str) -> bool {
 const OTHER_LATIN_WORDS: &[&str] = &[
     "prenot", "ristorante", "tavolo", "appuntamento", "stasera", "domani", "ordinare", "pesan", "meja", "restoran", "reservasi", "janji temu", "dokter",
     "besok", "reserveer", "tafel", "afspraak", "stolik", "rezerwac", "wizyt", "rezervasyon", "randevu", "akşam", "yarın",
+    "ayırt", "kişilik", "sipariş", "bugün", "doktor", "kuaför", "berber", "iptal", "ertele", "öğleden sonra",
 ];
 
 const CHANGE_WORDS: &[&str] = &[
@@ -647,7 +669,7 @@ pub struct Local {
 /// owner knows, and a request that already says what the call needs, have
 /// nothing missing.
 pub fn local(task: &str) -> Local {
-    let low = task.to_lowercase();
+    let low = fold(task);
     let c: Vec<char> = low.chars().collect();
     let kind = classify(&low, &c);
     let clocks = clocks_of(&c, kind);
@@ -713,7 +735,7 @@ pub fn local(task: &str) -> Local {
 /// The times the owner would accept, best first ("19:30", "20:30"); empty
 /// unless two or more are named.
 pub fn ladder_of(task: &str, kind: Kind) -> Vec<String> {
-    let c: Vec<char> = task.to_lowercase().chars().collect();
+    let c: Vec<char> = fold(task).chars().collect();
     let times = clocks_of(&c, kind);
     if times.len() < 2 {
         return Vec::new();
@@ -1282,6 +1304,27 @@ mod tests {
         assert_eq!(ladder("預約剪頭髮 上午11點，不行就12點"), ["11:00", "12:00"]);
         assert_eq!(ladder("Book a table at 11 pm, otherwise 12 am"), ["23:00", "00:00"]);
         assert_eq!(ladder("Quiero reservar una mesa a las 11 de la mañana o a las 12"), ["11:00", "12:00"]);
+    }
+
+    #[test]
+    fn times_written_the_turkish_way_are_read() {
+        let ladder = |t: &str| ladder_of(t, classify(&fold(t), &fold(t).chars().collect::<Vec<_>>()));
+        assert_eq!(ladder("Yarın akşam saat 8'de bir masa ayırtın, olmazsa saat 9'da"), ["20:00", "21:00"]);
+        assert_eq!(ladder("Randevu saat 14.30'da veya saat 15'te olsun"), ["14:30", "15:00"]);
+        let at = |t: &str| clocks_of(&fold(t).chars().collect::<Vec<_>>(), Kind::Appointment);
+        assert_eq!(at("Öğleden sonra saat 3'te"), [(15, 0)]);
+        assert_eq!(at("Sabah saat 9'da"), [(9, 0)]);
+        assert_eq!(at("Öğlen saat 1'de"), [(13, 0)]);
+        // A number of people is not a time.
+        assert!(at("Yarın akşam 5 kişilik masa").is_empty());
+        assert!(ladder("Yarın akşam 5 kişilik masa").is_empty());
+    }
+
+    #[test]
+    fn turkish_requests_go_to_the_model_with_the_capital_dotted_i() {
+        assert!(local("İptal etmek istiyorum").unsure);
+        assert!(local("Yarına iki kişilik masa ayırtın, İyi akşamlar").unsure);
+        assert!(!local("Ask Sam if he is coming to dinner").unsure);
     }
 
     #[test]

@@ -1747,6 +1747,10 @@ pub fn time_talk(text: &str) -> bool {
         "موعد", "ميعاد", "اجتماع", "نتقابل", "مقابلة", "لقاء", "متفرغ", "فاضي", "فاضية", "عندك وقت", "لديك وقت", "نحدد وقت", "تغيير الموعد", "تأجيل الموعد", "عشاء", "غداء",
         // bn, mr, ta, te (Indic vowel matras split in is_alphanumeric)
         "অ্যাপয়েন্টমেন্ট", "দেখা কর", "मीटिंग", "भेट", "சந்திப்பு", "நேரம்", "అపాయింట్‌మెంట్", "కలుద్దాం",
+        // tr (Turkish: suffixes pile onto the stem, so stems and whole phrases)
+        "randevu", "rezervasyon", "toplantı", "toplanti", "görüşelim", "görüşebilir miyiz", "buluşalım", "buluşalim", "buluşma", "buluşabilir",
+        "müsait misiniz", "müsait misin", "müsait mi", "müsaitseniz", "vaktiniz var", "vaktin var", "boş musunuz", "boş musun", "yemeğe çık",
+        "akşam yemeği", "öğle yemeği", "kahve içelim", "ertele",
     ];
     const WORDS: &[&str] = &[
         "appointment", "meeting", "meet up", "schedule", "reschedule", "you available", "are you free", "you free",
@@ -1776,7 +1780,8 @@ pub fn time_talk(text: &str) -> bool {
         // nl, pl, ro, uk
         "afspraak", "vergadering", "spotkanie", "umówić", "umowic", "întâlnire", "intalnire", "programare", "зустріч", "домовитися",
     ];
-    let low = text.to_lowercase();
+    // Turkish İ lower-cases to "i" plus U+0307; the dot goes, so "İyi" reads as "iyi".
+    let low = text.to_lowercase().replace('\u{307}', "");
     if RUNS.iter().any(|r| low.contains(r)) {
         return true;
     }
@@ -1845,6 +1850,7 @@ const MOBILE_NUMBERS: &[(&str, &[&str], usize, usize)] = &[
     ("es", &["6", "7"], 9, 9),
     ("it", &["3"], 9, 10),
     ("nl", &["6"], 9, 9),
+    ("tr", &["5"], 10, 10),
     ("pt", &["9"], 9, 9),
 ];
 
@@ -3973,6 +3979,10 @@ mod tests {
         assert_eq!(sms_number_on("+33 1 23 45 67 89", None), None);
         assert_eq!(sms_number_on("+41 79 123 45 67", None).as_deref(), Some("+41791234567"));
         assert_eq!(sms_number_on("+41 123", None), None);
+        // Turkey: a mobile (5xx) is texted, an Istanbul landline is called back.
+        assert_eq!(sms_number_on("+90 555 123 45 67", None).as_deref(), Some("+905551234567"));
+        assert_eq!(sms_number_on("0555 123 45 67", Some("tr")).as_deref(), Some("+905551234567"));
+        assert_eq!(sms_number_on("+90 212 123 45 67", None), None);
         // Hidden, cut off or read the wrong way: nothing.
         for (n, sim) in [("", Some("us")), ("private", None), ("Unknown", Some("tw")), ("5550143", Some("us")), ("0912345678", Some("us"))] {
             assert_eq!(sms_number_on(n, sim), None, "{n} {sim:?}");
@@ -5746,6 +5756,13 @@ mod time_talk_edges {
             "शुक्रवार को मीटिंग रख सकते हैं?",
             "هل أنت متفرغ غداً لنحدد موعد؟",
             "نتقابل للعشاء يوم الجمعة؟",
+            // tr
+            "Yarın akşam yemeğe çıkalım mı?",
+            "Cuma günü bir randevu ayarlayabilir miyiz?",
+            "Toplantıyı perşembeye ertelesek olur mu?",
+            "Hafta sonu müsait misiniz?",
+            "İyi günler, salı günü buluşalım mı?",
+            "İŞ TOPLANTISI İÇİN YARIN GÖRÜŞELİM",
         ] {
             assert!(time_talk(t), "{t}");
         }
@@ -5766,6 +5783,8 @@ mod time_talk_edges {
             "Xin chào, tôi là shipper giao hàng ạ",
             "नमस्ते, मैं डिलीवरी लेकर आया हूँ",
             "مرحباً، أنا مندوب التوصيل وعندي طرد",
+            "Merhaba, kargo şirketinden arıyorum, paketiniz kapınızda",
+            "İyi günler, kurye geldi, kapıyı açar mısınız?",
         ] {
             assert!(!time_talk(t), "{t}");
         }

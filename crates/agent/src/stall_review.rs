@@ -724,7 +724,8 @@ fn tail_chars(s: &str, n: usize) -> &str {
 /// Strict on purpose: a menu verdict hangs up, and people on ordinary calls
 /// say 按 5 樓, 語音信箱 or "press one button".
 pub fn ivr_cue(text: &str) -> bool {
-    let lower = text.to_lowercase();
+    // Turkish İ lower-cases to "i" plus U+0307; the dot goes, so "İÇİN" reads as "için".
+    let lower = text.to_lowercase().replace('\u{307}', "");
     let chars: Vec<char> = lower.chars().collect();
     let squeezed: Vec<char> = chars.iter().copied().filter(|c| !c.is_whitespace()).collect();
     let mut p = Presses::default();
@@ -734,6 +735,7 @@ pub fn ivr_cue(text: &str) -> bool {
         ko_presses(&squeezed),
         th_presses(&squeezed),
         word_presses(&lower),
+        tr_presses(&lower),
     ] {
         p.keys += q.keys;
         p.purposed |= q.purposed;
@@ -1091,11 +1093,108 @@ fn word_presses(lower: &str) -> Presses {
     p
 }
 
+/// Turkish press verbs, folded (see [`tr_fold`]): "basın", "tuşlayın", "seçin".
+const TR_VERBS: &[&str] = &["basin", "basiniz", "tuslayin", "tuslayiniz", "secin", "seciniz"];
+/// The ending a key takes ("1'e", "2'ye", "1'i"); the apostrophe splits it off.
+const TR_KEY_ENDINGS: &[&str] = &["e", "a", "i", "u", "ye", "ya", "yi", "yu"];
+/// "tuşuna basın" (press the key): the key noun with its ending.
+const TR_KEY_NOUNS: &[&str] = &["tusuna", "tusa", "tusu", "tusunu", "tusun"];
+const TR_KEY_WORDS: &[&str] =
+    &["sifir", "bir", "iki", "uc", "dort", "bes", "alti", "yedi", "sekiz", "dokuz", "yildiz", "kare", "diyez"];
+/// What an option is for comes first in Turkish: "fatura için 1'e basın".
+const TR_PURPOSE: &[&str] = &["icin", "isterseniz"];
+
+/// A word without Turkish letters, so capitals (the dotless I lower-cases to
+/// "i") and text without accents read the same.
+fn tr_fold(w: &str) -> String {
+    w.chars()
+        .map(|c| match c {
+            'ı' | 'î' => 'i',
+            'ş' => 's',
+            'ğ' => 'g',
+            'ç' => 'c',
+            'ö' => 'o',
+            'ü' | 'û' => 'u',
+            'â' => 'a',
+            c => c,
+        })
+        .collect()
+}
+
+/// Turkish menus put the key before the verb: "fatura için 1'e basın", "yıldız
+/// tuşuna basın". "basın" is also "press" (the media), so a verb counts only
+/// right after a key that has its ending or its noun.
+fn tr_presses(lower: &str) -> Presses {
+    let ws: Vec<String> = tokens(lower).iter().map(|w| tr_fold(w)).collect();
+    let mut p = Presses::default();
+    let mut floor = 0;
+    for v in 0..ws.len() {
+        if v < floor || !TR_VERBS.contains(&ws[v].as_str()) {
+            continue;
+        }
+        let is = |k: usize, list: &[&str]| k > floor && list.contains(&ws[k - 1].as_str());
+        let mut k = v;
+        if is(k, TR_KEY_NOUNS) {
+            k -= 1;
+            if is(k, &["numarali"]) {
+                k -= 1;
+            }
+        } else if is(k, TR_KEY_ENDINGS) {
+            k -= 1;
+        } else {
+            continue;
+        }
+        if k <= floor {
+            continue;
+        }
+        let key = &ws[k - 1];
+        let is_key = (key.len() == 1 && key.chars().all(|c| c.is_ascii_digit()))
+            || key == "#"
+            || key == "*"
+            || TR_KEY_WORDS.contains(&key.as_str());
+        if !is_key {
+            continue;
+        }
+        let key_at = k - 1;
+        let start = clause_start(&ws, key_at);
+        let has_purpose = |from: usize, to: usize| ws[from..to].iter().any(|w| TR_PURPOSE.contains(&w.as_str()));
+        let purposed = has_purpose(start, key_at)
+            || (start == key_at && start > 0 && ws[start - 1] == "," && has_purpose(clause_start(&ws, start - 1), start - 1));
+        p.add(purposed);
+        floor = v + 1;
+    }
+    p
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
+
+    #[test]
+    fn turkish_menus_put_the_key_before_the_verb() {
+        for text in [
+            "Müşteri hizmetleri için 1'e basın",
+            "Fatura işlemleri için 1'i, teknik destek için 2'yi tuşlayın",
+            "Satış için bir'e, destek için iki'ye basın",
+            "Yıldız tuşuna basın, ana menüye dönmek için kare tuşuna basın",
+            "Tekrar dinlemek için 1 numaralı tuşa basınız",
+            "Türkçe için 1'e basın",
+            "FATURA İŞLEMLERİ İÇİN 1'E BASIN",
+        ] {
+            assert!(ivr_cue(text), "{text}");
+        }
+        for text in [
+            "Asansörde 5'e basın",
+            "Bir basın açıklaması yapacağız",
+            "Zile iki kere basın",
+            "İyi günler, sizi daha sonra arayacağım",
+            "Yarın 5'e kadar ararım",
+        ] {
+            assert!(!ivr_cue(text), "{text}");
+        }
+    }
 
     #[test]
     fn menus_in_every_language() {

@@ -703,8 +703,42 @@ const TE: Cues = Cues {
     now: &["ఇప్పుడే", "కొద్దిసేపటి క్రితం", "ఈ క్షణమే"],
 };
 
-const ALL_CUES: [&Cues; 23] = [
-    &ZH, &JA, &KO, &EN, &ES, &FR, &DE, &PT, &IT, &RU, &ID, &TH, &VI, &HI, &AR, &NL, &PL, &RO, &UK, &BN, &MR, &TA, &TE,
+const TR: Cues = Cues {
+    events: &[
+        "bayıldı*", "bayildi*", "bayılmış", "bilinci kapalı", "ambulans*", "acil servis*", "acile götür*", "acile kaldır*", "hastaneye kaldır*",
+        "hastaneye götür*", "yoğun bakım*", "kalp krizi", "felç geçir*", "nefes almıyor",
+        "trafik kazası", "kaza yaptı", "kaza geçir*", "araba kazası", "ameliyata alın*", "ameliyatta", "ameliyat oluyor",
+        "yangın*", "yangin*", "itfaiye*", "gaz kaçağı", "gaz kokusu", "su bastı", "patlama",
+        "kayboldu*", "bulamıyoruz", "eve dönmedi", "yolunu kaybetti",
+        "öldü", "vefat et*", "hayatını kaybet*", "can çekişiyor", "ölüm döşeğinde", "durumu kritik",
+        "hırsız girdi", "soygun", "soyuldum", "soyulduk", "polisi aradı*", "polis çağır*", "polise haber ver*",
+        "asansörde mahsur", "asansörde kal*", "mahsur kal*", "dağda kaybol*", "dağda mahsur",
+        "pasaportum çalındı", "pasaportumu kaybettim", "cüzdanım çalındı", "cüzdanımı kaybettim", "cüzdanımı çaldırdım", "eve dönemiyorum", "geri dönemiyorum",
+        "çok kötü bir şey", "kötü bir şey oldu", "sistem çöktü", "sistemi çöktü", "sistemler çöktü", "sunucu çöktü", "sunucular çöktü",
+        "üretim durdu", "üretim durmuş", "iş kazası", "fabrikada kaza", "işte kaza",
+        "okuldan aradı*", "okuldan telefon", "kafasını çarptı", "kafasını vurdu", "kolu kırıldı", "bacağı kırıldı", "kolunu kırdı", "bacağını kırdı", "yaralandı",
+    ],
+    urge: &[
+        "acil durum", "acil bir durum", "çok acil", "son derece acil", "acil yardım", "imdat", "yardım edin", "yardım et", "yetişin",
+        "hemen gel", "hemen gelin", "derhal gel", "çabuk gel", "çabuk gelin", "hemen eve gel",
+    ],
+    ask: &["ona söyle*", "telefonu ona ver*", "ona ver*", "konuşmam lazım", "konuşmam gerek", "ona ihtiyacım var", "eve gel*", "gel", "gelin"],
+    at_once: &["hemen", "derhal", "şimdi", "acilen", "acil", "çabuk", "bir an önce"],
+    calm: &[
+        "acil değil", "acil degil", "acil durum değil", "acil bir durum değil", "acil bir şey değil", "acelesi yok", "acelem yok", "acele yok", "acele etme*",
+        "vaktin olunca", "müsait olunca", "uygun olunca", "haberler*", "tatbikat*", "yanlış alarm", "yalan alarm", "film", "şaka", "şaka yapıyorum", "şakası",
+        "açlıktan ölüyorum", "açlıktan geberiyorum", "açlıktan ölecek*", "önemli değil",
+    ],
+    fine: &["ciddi bir şey değil", "önemli bir şey değil", "bir şeyi yok", "durumu iyi", "iyi durumda", "iyiyim", "taburcu*", "her şey yolunda", "sorun yok"],
+    past: &[
+        "dün", "evvelsi gün", "geçen hafta", "geçen yıl", "geçen sene", "geçen ay", "yıllar önce", "bir yıl önce", "aylar önce", "geçenlerde",
+        "yıl dönümü", "doğum günü", "anma günü",
+    ],
+    now: &["az önce", "az evvel", "biraz önce", "demin", "şu an", "şimdi", "hemen"],
+};
+
+const ALL_CUES: [&Cues; 24] = [
+    &ZH, &JA, &KO, &EN, &ES, &FR, &DE, &PT, &IT, &RU, &ID, &TH, &VI, &HI, &AR, &NL, &PL, &RO, &UK, &BN, &MR, &TA, &TE, &TR,
 ];
 
 /// One cue, folded like the text it is matched against.
@@ -908,11 +942,16 @@ pub fn is_urgent(text: &str) -> bool {
 /// script for Chinese, Japanese and Korean, by common words and letters for the
 /// others ([read_language]).
 pub fn caller_language(said: &str) -> Option<Lang> {
+    recent_reading(said).map(|r| r.lang)
+}
+
+/// [read_language] of the caller's recent words.
+fn recent_reading(said: &str) -> Option<Reading> {
     let tail: String = {
         let chars: Vec<char> = said.chars().collect();
         chars[chars.len().saturating_sub(300)..].iter().collect()
     };
-    read_language(&tail).map(|r| r.lang)
+    read_language(&tail)
 }
 
 /// What a stretch of speech is in ([read_language]).
@@ -962,10 +1001,14 @@ fn zh_variant(said: &str) -> Lang {
 /// them (speech-to-text writes a stray kana or two into Chinese, Taiwanese or a
 /// noise); Chinese, Japanese or Korean only when its characters outweigh the
 /// Latin words (an English sentence with a Chinese name stays English, a
-/// Chinese one with "OK" or "LINE" stays Chinese); a Latin language only with
-/// two of its common words, or one in two words or more, and not when stronger
-/// markers of an unlisted Latin language (Vietnamese, Italian, Indonesian,
-/// Turkish, Polish, Dutch) outweigh it.
+/// Chinese one with "OK" or "LINE" stays Chinese); a Latin language is read
+/// from two of its common words, or one in two words or more, and not when
+/// stronger markers of an unlisted Latin language (Vietnamese, Italian,
+/// Indonesian, Turkish, Polish, Dutch) outweigh it. A Latin reading is clear
+/// only when at least two common words of the language lead the next language
+/// by two and make up a quarter of the words: a tie or a short lead between
+/// close languages ("No, I do not." shares words with Spanish and Portuguese)
+/// is no clear language.
 pub fn read_language(said: &str) -> Option<Reading> {
     let (mut hangul, mut kana, mut han) = (0usize, 0usize, 0usize);
     for c in said.chars() {
@@ -1003,9 +1046,9 @@ pub fn read_language(said: &str) -> Option<Reading> {
         }
     }
     if !is_strong_other_latin(said) {
-        if let Some((lang, top)) = latin_scores(said) {
-            if top >= 2 || (top == 1 && words >= 2) {
-                return Some(Reading { lang, clear: top >= 2 && words >= 3 && clear_share(2 * words) });
+        if let Some(l) = latin_scores(said) {
+            if l.top >= 2 || (l.top == 1 && words >= 2) {
+                return Some(Reading { lang: l.lang, clear: words >= 3 && clear_share(2 * words) && l.is_clear(words) });
             }
         }
     }
@@ -1014,15 +1057,14 @@ pub fn read_language(said: &str) -> Option<Reading> {
 
 /// The caller's words are in a language without a setting of its own (Thai,
 /// Russian, Italian, Vietnamese, Indonesian…): no Chinese, Japanese or Korean
-/// letters, none of the setting languages [caller_language] tells, and more
-/// than an "OK" — four letters of another script, or three words of Latin letters.
+/// letters, none of the setting languages [read_language] reads clearly, and
+/// more than an "OK" — four letters of another script, or three words of Latin
+/// letters. Five Latin words that no setting language explains (Finnish,
+/// Swedish, Czech…: under a third of them are common words of the best
+/// setting language) are another language too.
 pub fn unlisted_language(said: &str) -> bool {
     let said = said.trim();
-    if said.is_empty() || caller_language(said).is_some() {
-        return false;
-    }
-    let other_latin = is_strong_other_latin(said);
-    if !other_latin && latin_scores(said).is_some() {
+    if said.is_empty() {
         return false;
     }
     let (mut cjk, mut latin, mut other) = (0, 0, 0);
@@ -1032,6 +1074,16 @@ pub fn unlisted_language(said: &str) -> bool {
             0x41..=0x5A | 0x61..=0x7A | 0xC0..=0x24F | 0x1E00..=0x1EFF => latin += 1,
             _ if c.is_alphabetic() => other += 1,
             _ => {}
+        }
+    }
+    if recent_reading(said).is_some_and(|r| r.clear || cjk > 0) {
+        return false;
+    }
+    let other_latin = is_strong_other_latin(said);
+    if !other_latin {
+        if let Some(l) = latin_scores(said) {
+            let latin_words = said.split_whitespace().filter(|w| w.chars().any(is_latin)).count() as i32;
+            return other == 0 && latin_words >= 5 && l.max_hits * 3 < latin_words;
         }
     }
     let words = said.split_whitespace().filter(|w| w.chars().any(char::is_alphabetic)).count();
@@ -1100,6 +1152,8 @@ fn other_latin_stats(text: &str) -> OtherLatin {
         "lascerò", "parlo", "parlare", "per", "più", "già", "così", "cioè", "ospedale", "ambulanza", "incidente",
         "polizia", "emergenza", "fuoco", "successo", "svenuto", "svenuta", "mamma", "papà", "fratello", "sorella",
         "bambino", "bambina",
+        "non", "che", "di", "il", "gli", "ho", "hai", "ha", "cosa", "sì", "lo", "mi", "ti", "ci", "dica", "so", "problema", "lei", "noi", "voi",
+        "loro", "bene", "dove", "quando", "come", "fatto", "fare", "vuole", "voglio", "dimmi", "mia", "mio", "qui", "là",
     ];
     const ID_WORDS: &[&str] = &[
         "saya", "anda", "bapak", "ibu", "tolong", "terima", "kasih", "makasih", "paket", "paketnya", "sudah", "udah",
@@ -1114,6 +1168,7 @@ fn other_latin_stats(text: &str) -> OtherLatin {
         "kargonuz", "evde", "misiniz", "arıyorum", "ariyorum", "benim", "sizin", "acil", "hastane", "ambulans",
         "kaza", "yangın", "yangin", "polis", "şimdi", "simdi", "yok", "değil", "degil", "günler", "gunler", "iyi",
         "tamam", "efendim", "kapıda", "kapida", "bayıldı", "bayildi",
+        "ve", "bir", "bu", "için", "icin", "çok", "cok", "ama", "hemen", "gel", "ona", "onu", "bana", "size", "acilen",
     ];
     const PL_WORDS: &[&str] = &[
         "dzień", "dzien", "dobry", "cześć", "czesc", "dziękuję", "dziekuje", "proszę", "prosze", "paczka", "paczkę",
@@ -1232,12 +1287,38 @@ pub(crate) fn unlisted_latin_best_score(text: &str) -> i32 {
     }
 }
 
-/// The Latin language with the most common words and letters in `text`, and
-/// its score; None when no language scores.
-fn latin_scores(text: &str) -> Option<(Lang, i32)> {
-    let (langs, score) = latin_score_table(text);
+/// How the five setting Latin languages score on a text.
+struct LatinRead {
+    /// The language with the most common words and letters.
+    lang: Lang,
+    /// Its score (common words and letters).
+    top: i32,
+    /// Its common words.
+    hits: i32,
+    /// Its score over the next language's.
+    margin: i32,
+    /// The most common words any of the five has.
+    max_hits: i32,
+}
+
+impl LatinRead {
+    /// At least two common words, two points ahead of the next language, and
+    /// a quarter of the `words` of the text.
+    fn is_clear(&self, words: usize) -> bool {
+        self.top >= 2 && self.hits >= 2 && self.margin >= 2 && self.hits as usize * 4 >= words
+    }
+}
+
+/// The Latin language with the most common words and letters in `text`; None
+/// when no language scores.
+fn latin_scores(text: &str) -> Option<LatinRead> {
+    let (langs, score, hits) = latin_word_and_total_scores(text);
     let (best, top) = score.iter().enumerate().max_by_key(|(_, s)| **s)?;
-    (*top > 0).then_some((langs[best], *top))
+    if *top <= 0 {
+        return None;
+    }
+    let next = score.iter().enumerate().filter(|(i, _)| *i != best).map(|(_, s)| *s).max().unwrap_or(0);
+    Some(LatinRead { lang: langs[best], top: *top, hits: hits[best], margin: *top - next, max_hits: hits.into_iter().max().unwrap_or(0) })
 }
 
 /// How much more a text reads as `lang` than as `other` (their common words
@@ -1262,11 +1343,11 @@ fn latin_score_table(text: &str) -> ([Lang; 5], [i32; 5]) {
 
 fn latin_word_and_total_scores(text: &str) -> ([Lang; 5], [i32; 5], [i32; 5]) {
     const WORDS: [(Lang, &[&str]); 5] = [
-        (Lang::En, &["the", "and", "is", "are", "was", "i", "i'm", "you", "he", "she", "it", "to", "my", "his", "her", "in", "on", "at", "of", "just", "there", "has", "been", "have", "need", "we", "our", "someone", "with", "for", "they're", "it's", "get", "back", "call", "whenever", "so", "what", "this", "that", "your", "can", "will"]),
-        (Lang::Es, &["el", "la", "los", "las", "y", "en", "se", "mi", "me", "es", "está", "por", "una", "un", "lo", "le", "ya", "hay", "del", "al", "muy", "con", "no", "estoy", "nos"]),
-        (Lang::Fr, &["le", "la", "les", "est", "et", "je", "il", "elle", "on", "du", "des", "une", "un", "pas", "dans", "à", "au", "aux", "s'est", "c'est", "j'ai", "mon", "ma", "ne", "qu'il", "depuis", "suis"]),
-        (Lang::De, &["der", "die", "das", "ist", "ich", "und", "nicht", "er", "sie", "es", "ein", "eine", "einen", "im", "zu", "mit", "hat", "wir", "mein", "meine", "bei", "uns", "sich", "sofort", "schon", "vom", "seit", "wurde", "wurden", "hab"]),
-        (Lang::Pt, &["o", "os", "as", "e", "em", "do", "da", "no", "na", "meu", "minha", "um", "uma", "não", "tá", "tô", "pra", "pro", "com", "ele", "ela", "já", "foi", "é", "eu", "tão", "ao", "hoje", "teve", "você", "gente", "isso", "bora", "ontem", "dela", "dele"]),
+        (Lang::En, &["the", "and", "is", "are", "was", "were", "i", "i'm", "i'll", "you", "he", "she", "it", "we", "they", "to", "my", "his", "her", "in", "on", "at", "of", "just", "there", "has", "have", "had", "been", "need", "our", "someone", "with", "for", "they're", "it's", "get", "back", "call", "whenever", "so", "what", "this", "that", "your", "can", "will", "a", "an", "not", "no", "do", "don't", "yes", "okay", "thanks", "thank", "please", "hello", "hi", "me", "too", "be", "but", "if", "as", "soon", "from", "about", "would", "could", "here", "am", "how", "where", "who", "when", "know", "tell", "sure", "fine", "good", "very", "much", "package", "delivery"]),
+        (Lang::Es, &["el", "la", "los", "las", "y", "en", "se", "mi", "me", "es", "está", "por", "una", "un", "lo", "le", "ya", "hay", "del", "al", "muy", "con", "no", "estoy", "nos", "que", "para", "sí", "si", "gracias", "hola", "buenos", "buenas", "días", "tardes", "bien", "usted", "ustedes", "yo", "tengo", "tiene", "soy", "eres", "son", "están", "como", "cómo", "pero", "más", "también", "ahora", "aquí", "mucho", "muchas", "claro", "vale", "bueno", "entonces", "necesito", "puedo", "puede", "quiero", "su", "sus", "mis", "tu", "te", "sin", "sobre", "este", "esta", "eso", "qué", "paquete"]),
+        (Lang::Fr, &["le", "la", "les", "est", "et", "je", "il", "elle", "on", "du", "des", "une", "un", "pas", "dans", "à", "au", "aux", "s'est", "c'est", "j'ai", "mon", "ma", "ne", "qu'il", "depuis", "suis", "que", "qui", "vous", "nous", "tu", "ça", "oui", "non", "merci", "bonjour", "bonsoir", "salut", "d'accord", "bien", "très", "beaucoup", "pour", "avec", "sur", "mais", "ou", "où", "ce", "cette", "ces", "avez", "ai", "êtes", "es", "sont", "se", "moi", "toi", "lui", "ici", "maintenant", "peux", "peut", "pouvez", "colis", "chez", "plaît", "si", "tout", "son", "te", "me", "y"]),
+        (Lang::De, &["der", "die", "das", "ist", "ich", "und", "nicht", "er", "sie", "es", "ein", "eine", "einen", "im", "zu", "mit", "hat", "wir", "mein", "meine", "bei", "uns", "sich", "sofort", "schon", "vom", "seit", "wurde", "wurden", "hab", "ja", "nein", "danke", "bitte", "vielen", "dank", "guten", "tag", "morgen", "abend", "hallo", "tschüss", "gut", "genau", "sind", "bin", "haben", "habe", "für", "auf", "an", "aus", "nach", "von", "den", "dem", "des", "auch", "aber", "oder", "wie", "was", "wo", "hier", "jetzt", "kein", "keine", "mir", "mich", "dir", "ihr", "ihnen", "paket", "noch", "nur", "sehr", "kann", "können", "wenn", "dann", "da", "um", "in", "so"]),
+        (Lang::Pt, &["o", "os", "as", "e", "em", "do", "da", "no", "na", "meu", "minha", "um", "uma", "não", "tá", "tô", "pra", "pro", "com", "ele", "ela", "já", "foi", "é", "eu", "tão", "ao", "hoje", "teve", "você", "gente", "isso", "bora", "ontem", "dela", "dele", "que", "para", "por", "se", "sim", "obrigado", "obrigada", "olá", "oi", "bom", "boa", "dia", "tarde", "noite", "bem", "tudo", "está", "estou", "são", "sou", "tem", "tenho", "vocês", "nós", "mas", "mais", "também", "agora", "aqui", "muito", "claro", "então", "preciso", "posso", "pode", "quero", "seu", "sua", "me", "te", "nas", "dos", "das", "num", "numa", "esse", "essa", "este", "esta", "como", "onde", "quando", "encomenda", "pacote", "entregador"]),
     ];
     let lower = text.to_lowercase().replace(['\u{2019}', '\u{2018}', '\u{60}'], "'");
     let mut word_score = [0i32; 5];
@@ -1359,10 +1440,10 @@ mod tests {
         }
     }
 
-    const LANGS: [&str; 24] = [
+    const LANGS: [&str; 25] = [
         "zh-TW", "zh-CN", "en", "ja", "ko", "es", "fr", "de", "pt",
         "it", "ru", "id", "th", "vi", "hi", "ar",
-        "nl", "pl", "ro", "uk", "bn", "mr", "ta", "te",
+        "nl", "pl", "ro", "uk", "bn", "mr", "ta", "te", "tr",
     ];
 
     /// The emergencies every language is tested with.
@@ -1603,6 +1684,17 @@ mod tests {
         ("ro", 8, "S-a întâmplat ceva grav acasă, spune-i să vină acasă imediat!"),
         ("ro", 9, "Sistemul a picat și producția e oprită, trebuie să rezolve de urgență acum!"),
         ("ro", 10, "Au sunat de la școală că fetița s-a lovit la cap și o duc la spital!"),
+        ("tr", 0, "Annem evde bayıldı, ambulans onu hastaneye götürüyor, hemen gel!"),
+        ("tr", 1, "Kardeşim trafik kazası geçirdi ve şimdi ameliyatta, hemen hastaneye gel!"),
+        ("tr", 2, "Mutfakta yangın çıktı, itfaiye evimize geliyor!"),
+        ("tr", 3, "Çocuğumuz çarşıda kayboldu, her yerde arıyoruz ama bulamıyoruz, yardım edin!"),
+        ("tr", 4, "Dedem az önce vefat etti, hastane şimdi ailenin hemen gelmesini istiyor."),
+        ("tr", 5, "Eve hırsız girdi, polisi aradım, lütfen hemen eve gel!"),
+        ("tr", 6, "Asansörde mahsur kaldım, neredeyse bir saattir kimse beni duymuyor!"),
+        ("tr", 7, "Yurt dışındayım, pasaportum ve cüzdanım çalındı, hiç param yok ve eve dönemiyorum!"),
+        ("tr", 8, "Evde çok kötü bir şey oldu, ona söyle hemen eve gelsin!"),
+        ("tr", 9, "Müşterinin sistemi çöktü, üretim durdu, ona söyle acilen arasın!"),
+        ("tr", 10, "Okuldan aradılar, oğlum düşüp kafasını çarptı, hastaneye götürüyorlar."),
         ("uk", 0, "Мама щойно знепритомніла вдома, швидка допомога вже везе її до лікарні!"),
         ("uk", 1, "Брат потрапив у ДТП, його вже забрали на операцію!"),
         ("uk", 2, "У нас пожежа на кухні, все горить, пожежники вже їдуть!"),
@@ -1814,6 +1906,14 @@ mod tests {
         ("ro", 5, "Mor de foame acum, mergem la cină diseară împreună?"),
         ("ro", 6, "Nu e urgent deloc, sună-mă când ai timp liber."),
         ("ro", 7, "Chiar acum sunt la magazin cu familia."),
+        ("tr", 0, "Geçen hafta ilaç almak için hastaneye gittim, ciddi bir şey değil, şimdi iyiyim."),
+        ("tr", 1, "Bu sabah işyerinde yangın tatbikatı yapıldı, her şey yolunda."),
+        ("tr", 2, "Haberlerde dün yolda bir kaza olduğunu söylediler, dikkatli ol."),
+        ("tr", 3, "Büyükannem geçen yıl vefat etti, bugün onun yıl dönümü, çok özledim."),
+        ("tr", 4, "Bu günlerde işyerinde her şey çok yoğun, hiç vaktim yok."),
+        ("tr", 5, "Açlıktan ölüyorum, bu akşam birlikte yemek yiyelim mi?"),
+        ("tr", 6, "Acil değil, müsait olunca beni geri ara."),
+        ("tr", 7, "Şu an markette alışveriş yapıyorum, birazdan seni ararım."),
         ("uk", 0, "Минулого тижня я ходив до лікарні по ліки, нічого серйозного."),
         ("uk", 1, "Сьогодні вранці на роботі була навчальна тривога і навчання, все добре."),
         ("uk", 2, "У новинах казали, що вчора на трасі була аварія, будь обережним."),
@@ -1994,6 +2094,86 @@ mod tests {
             assert!(!unlisted_language(sample), "expected unlisted=false for {lang:?}: {sample}");
             assert_eq!(caller_language(sample), Some(lang), "expected {lang:?}: {sample}");
         }
+    }
+
+    /// What `read_language` is sure of in `s`.
+    fn clear_reading(s: &str) -> Option<Lang> {
+        read_language(s).filter(|r| r.clear).map(|r| r.lang)
+    }
+
+    #[test]
+    fn words_that_close_languages_share_never_make_a_clear_other_language() {
+        for s in [
+            "No, I do not.",
+            "No problem, me too.",
+            "As soon as possible, no rush.",
+            "What do you do?",
+            "No, tell me.",
+            "Do you do delivery?",
+            "As far as I know, no.",
+        ] {
+            assert!(matches!(clear_reading(s), None | Some(Lang::En)), "{s}: {:?}", read_language(s));
+            assert!(!unlisted_language(s), "{s}");
+        }
+        // A tie is no clear language, whatever the order of the word lists.
+        assert!(!read_language("No, tell me.").is_some_and(|r| r.clear));
+    }
+
+    #[test]
+    fn italian_is_never_a_clear_setting_language() {
+        for s in ["Sì, non c'è problema.", "Non lo so, mi dica.", "No, non lo so."] {
+            assert_eq!(clear_reading(s), None, "{s}");
+        }
+    }
+
+    #[test]
+    fn latin_languages_without_a_word_list_are_unlisted_and_never_clear() {
+        for s in [
+            "Hän on töissä ja minä olen kotona, se on ihan hyvä.",
+            "Jag är i stan och kommer hem i kväll, det är inte så långt.",
+            "Jeg er i byen for å hente en pakke til deg.",
+            "Jeg har en pakke til dig, er du hjemme i dag?",
+            "Dobrý den, mám pro vás balík, jste doma?",
+            "Jó napot kívánok, csomagot hoztam önnek.",
+            "Magandang araw po, may padala po ako para sa inyo.",
+            "Habari, nina kifurushi chako, uko nyumbani?",
+        ] {
+            assert!(unlisted_language(s), "{s}");
+            assert!(!read_language(s).is_some_and(|r| r.clear), "{s}: {:?}", read_language(s));
+        }
+        // Catalan is neither clear Spanish nor clear French.
+        let catalan = "Bon dia, tinc un paquet per a vostè, és a casa?";
+        assert!(!matches!(clear_reading(catalan), Some(Lang::Es | Lang::Fr)), "{:?}", read_language(catalan));
+    }
+
+    #[test]
+    fn plain_sentences_in_each_setting_language_stay_clear_and_right() {
+        for (lang, s) in [
+            (Lang::En, "Hello, I have a package for you, are you at home?"),
+            (Lang::En, "Yes, that is fine, thank you."),
+            (Lang::Es, "Hola, tengo un paquete para usted, ¿está en casa?"),
+            (Lang::Es, "Sí, está bien, gracias."),
+            (Lang::Fr, "Bonjour, j'ai un colis pour vous, vous êtes à la maison ?"),
+            (Lang::Fr, "Oui, d'accord, merci beaucoup."),
+            (Lang::De, "Guten Tag, ich habe ein Paket für Sie, sind Sie zu Hause?"),
+            (Lang::De, "Ja, genau, vielen Dank."),
+            (Lang::Pt, "Olá, tenho uma encomenda para você, está em casa?"),
+            (Lang::Pt, "Sim, tudo bem, obrigado."),
+        ] {
+            assert_eq!(clear_reading(s), Some(lang), "{s}: {:?}", read_language(s));
+            assert!(!unlisted_language(s), "{s}");
+        }
+    }
+
+    #[test]
+    fn turkish_is_told_apart_and_its_dotted_and_dotless_i_read_naturally() {
+        assert!(unlisted_language("Merhaba efendim, kargonuz kapıda bekliyor, evde misiniz?"));
+        assert!(is_urgent("Annem bayıldı, hemen gel!"));
+        assert!(is_urgent("ANNEM BAYILDI, AMBULANS GELDİ!"));
+        assert!(!is_urgent("Acil değil, müsait olunca ara."));
+        assert!(!is_urgent("ACİL DEĞİL, müsait olunca ara."));
+        assert!(!is_urgent("Geçen yıl dedem vefat etti, bugün yıl dönümü."));
+        assert!(is_urgent("Dedem az önce vefat etti, hemen gel."));
     }
 
     #[test]
