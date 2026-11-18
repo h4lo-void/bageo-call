@@ -28,7 +28,7 @@
 1. **Rust 核心語音與控制台伺服器（`crates/agent/`）**：
    - 網路與儲存層：`main.rs`、`calls_http.rs`、`config.rs`、`settings_store.rs`、`calls.rs`、`tasks.rs`、`mdns.rs`、`usb_bridge.rs`。預設僅綁定 `127.0.0.1:8787`，以本機 JSON／WAV 檔案儲存於 `data/calls/`，無外部資料庫依賴，預設 7 天自動清理過期通話與任務（`purge_expired` 每小時定時執行）。
    - 即時語音與防詐核心：`gemini_live.rs`、`prompts.rs`、`stall_review.rs`、`vad.rs`、`ambience.rs`、`voice_preview.rs`、`adpcm.rs`、`locale.rs`。負責 16 kHz／24 kHz 音訊串流、自動增益（AGC）、2.4 秒滑動視窗底噪追蹤、600 ms Pre-roll、上行回音閘門（`uplink_is_echo`）與離線去回音（`suppress_echo_s16le`）、800 ms 插話打斷（Barge-in）、長通話自動換線續聊，以及三階段推銷／詐騙辨識與陪聊控制。
-   - 雙向外撥、預約與周邊整合：`errands.rs`（AI 代打）、`appointments.rs` 與 `callback.rs`（待處理預約、簡訊回覆、AI 回電與單一號碼外撥排隊佇列）、`contacts.rs`（多格式本地解析與 AI 輔助名片匯入）、`deepseek.rs`（相容 OpenAI 格式之通話摘要與跨語翻譯，預設走 Gemini Flash-Lite）、`notify.rs`／`gmail.rs`／`tg_inbound.rs`（16 種通知管道與 Telegram 互動按鈕）、`calendar.rs`（免帳號行事曆表單連結與單檔 HMAC `.ics` 下載）。
+   - 雙向外撥、預約與周邊整合：`errands.rs`（AI 代打）、`appointments.rs` 與 `callback.rs`（待處理預約、簡訊回覆、AI 回電與單一號碼外撥排隊佇列）、`contacts.rs`（多格式本地解析與 AI 輔助名片匯入）、`summary.rs`（相容 OpenAI 格式之通話摘要與跨語翻譯，預設走 Gemini Flash-Lite）、`notify.rs`／`gmail.rs`／`tg_inbound.rs`（16 種通知管道與 Telegram 互動按鈕）、`calendar.rs`（免帳號行事曆表單連結與單檔 HMAC `.ics` 下載）。
 2. **Android 特權通話應用與 Magisk／KernelSU 模組（`android/`）**：
    - 套件 `com.pixelcallai.streamer`（`minSdk 29`、`targetSdk 35`、`versionName 1.0.0`、`versionCode 28`），透過模組掛載至 `/system/priv-app` 並授予 `CAPTURE_AUDIO_OUTPUT`、`MODIFY_PHONE_STATE`、`CONTROL_INCALL_EXPERIENCE` 等系統特權，實現 `VOICE_DOWNLINK` 擷取與 `TYPE_TELEPHONY` 上行語音注入。
    - 權限分離設計：`SilentCallScreeningService` 運行於獨立 `:screening` 程序以防崩潰波及音訊服務；Bageo App 本身**不呼叫通用 Root 權限執行切換**，改由模組內建之 `mode_daemon.sh` 與 `apply_mode.sh` 在 Root 端輪詢並執行「AI 接聽 ↔ 一般手機」原子切換。

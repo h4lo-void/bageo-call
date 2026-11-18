@@ -171,7 +171,8 @@ pub async fn transcribe_voicemail_wav(
     transcribe_pcm16(http, settings, &pcm, sample_rate).await
 }
 
-/// Extract structured intent from a transcript (OpenRouter or keyword heuristic).
+/// Extract structured intent from a transcript: OpenRouter when its key is
+/// given, else the summary service when one is set, else a keyword heuristic.
 ///
 /// `spam_keywords` empty → built-in ZH defaults (no OpenRouter required for spam label).
 pub async fn extract_intent(
@@ -184,24 +185,28 @@ pub async fn extract_intent(
     spam_keywords: &[String],
 ) -> Result<ExtractedIntent> {
     let trimmed = transcript.trim();
-    if openrouter_key.trim().is_empty() {
-        return Ok(heuristic_intent_with(trimmed, caller_id, spam_keywords));
-    }
-
     let user_body = intent_user_body(locale::notify_lang(), caller_id, trimmed);
-    let raw_text = chat_openrouter_intent(
-        http,
-        settings,
-        openrouter_key.trim(),
-        openrouter_model.trim(),
-        user_body,
-    )
-    .await?;
+    let raw_text = if !openrouter_key.trim().is_empty() {
+        chat_openrouter_intent(http, settings, openrouter_key.trim(), openrouter_model.trim(), user_body).await?
+    } else if let Some(endpoint) = crate::summary::summary_endpoint(settings) {
+        let system = intent_system_prompt(locale::notify_lang());
+        let model = endpoint.models.first().cloned().unwrap_or_default();
+        match crate::summary::chat_at(http, &endpoint, &model, &system, &user_body, 256).await {
+            Ok(text) => text,
+            // The service is busy or unreachable: the keywords still give an answer.
+            Err(e) => {
+                warn!("voicemail intent: summary service failed ({e:#}); using heuristic");
+                return Ok(heuristic_intent_with(trimmed, caller_id, spam_keywords));
+            }
+        }
+    } else {
+        return Ok(heuristic_intent_with(trimmed, caller_id, spam_keywords));
+    };
 
     match parse_intent_json(&raw_text, caller_id) {
         Ok(intent) => Ok(intent),
         Err(e) => {
-            warn!("OpenRouter intent JSON parse failed ({e:#}); using heuristic");
+            warn!("intent JSON parse failed ({e:#}); using heuristic");
             Ok(heuristic_intent_with(trimmed, caller_id, spam_keywords))
         }
     }
@@ -209,8 +214,9 @@ pub async fn extract_intent(
 
 /// Transcribe a voicemail WAV (Whisper) then extract intent.
 ///
-/// OpenRouter key set → LLM intent; empty key → keyword heuristic with transcript
-/// excerpt as summary. Whisper must be reachable for transcription to succeed.
+/// The intent as [extract_intent] reads it (a keyword heuristic with the
+/// transcript excerpt as summary when no model is set). Whisper must be
+/// reachable for transcription to succeed.
 pub async fn process_voicemail_file(
     http: &Client,
     settings: &Settings,
@@ -226,21 +232,16 @@ pub async fn process_voicemail_file(
         wav_path.display(),
         transcript.len()
     );
-    let intent = if openrouter_key.trim().is_empty() {
-        info!("voicemail intent=heuristic (no OpenRouter key) caller={caller_id}");
-        heuristic_intent_with(transcript.trim(), caller_id, spam_keywords)
-    } else {
-        extract_intent(
-            http,
-            settings,
-            openrouter_key,
-            openrouter_model,
-            &transcript,
-            caller_id,
-            spam_keywords,
-        )
-        .await?
-    };
+    let intent = extract_intent(
+        http,
+        settings,
+        openrouter_key,
+        openrouter_model,
+        &transcript,
+        caller_id,
+        spam_keywords,
+    )
+    .await?;
     info!(
         "voicemail intent={} reply_method={:?} confidence={}",
         intent.intent, intent.reply_method, intent.confidence
@@ -313,15 +314,7 @@ async fn chat_openrouter_intent(
     } else {
         model
     };
-    // Product path: deepseek-v4-flash via domestic API (same key as TRTC_LLM_CONFIG).
     let system = intent_system_prompt(locale::notify_lang());
-    if model.to_ascii_lowercase().contains("deepseek")
-        || crate::deepseek::api_key_from_llm_config(settings.trtc_llm_config.as_ref()).is_some()
-            && model == crate::deepseek::DEEPSEEK_MODEL
-    {
-        return crate::deepseek::chat_completions(http, key, &system, &user_text, 256)
-            .await;
-    }
     let payload = json!({
         "model": model,
         "messages": [

@@ -2333,12 +2333,12 @@ pub fn parse_result(reply: &str) -> Option<Outcome> {
 /// transcript" when none answers.
 pub async fn read_result(http: &Client, settings: &Settings, e: &Errand, dialogue: &str, call_summary: &str) -> Outcome {
     let lang = locale::notify_lang();
-    if let Some(endpoint) = crate::deepseek::summary_endpoint(settings) {
+    if let Some(endpoint) = crate::summary::summary_endpoint(settings) {
         let owner = crate::prompts::owner_label(lang, &locale::active().owner);
         let system = result_prompt(&owner, lang, chrono::Local::now());
         let user = result_input(e, dialogue);
         for model in &endpoint.models {
-            match crate::deepseek::chat_at(http, &endpoint, model, &system, &user, 1500).await {
+            match crate::summary::chat_at(http, &endpoint, model, &system, &user, 1500).await {
                 Ok(reply) => match parse_result(&reply) {
                     Some(mut o) => {
                         o.summary = locale::for_owner(&o.summary);
@@ -3192,7 +3192,7 @@ mod tests {
             let root = temp_dir();
             let mut eff = Settings::from_env();
             eff.call_notify = false;
-            eff.deepseek_api_key.clear();
+            eff.summary_api_key.clear();
             eff.openrouter_api_key.clear();
             eff.summary_api_base.clear();
             eff.gemini_api_key = "".into();

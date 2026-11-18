@@ -614,18 +614,18 @@ fn fold(line: &str) -> String {
 }
 
 /// Ask the summary model whether the call fixed a date. `call` = what the
-/// summary was written from ([`crate::deepseek::build_summary_input`]).
+/// summary was written from ([`crate::summary::build_summary_input`]).
 pub async fn suggest(
     http: &reqwest::Client,
     settings: &crate::config::Settings,
     call: &str,
 ) -> Option<Event> {
-    let endpoint = crate::deepseek::summary_endpoint(settings)?;
+    let endpoint = crate::summary::summary_endpoint(settings)?;
     let active = locale::active();
     let now = chrono::Local::now().naive_local();
     let system = extraction_prompt(active.lang, &active.owner, now);
     for model in &endpoint.models {
-        match crate::deepseek::chat_at(http, &endpoint, model, &system, call, 200).await {
+        match crate::summary::chat_at(http, &endpoint, model, &system, call, 200).await {
             Ok(reply) if !reply.trim().is_empty() => return parse_event(&reply, now),
             Ok(_) => tracing::warn!("calendar suggestion empty model={model}"),
             Err(e) => tracing::warn!("calendar suggestion failed model={model}: {e:#}"),

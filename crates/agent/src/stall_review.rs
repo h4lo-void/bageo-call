@@ -450,7 +450,7 @@ fn hit_types(hits: &[String]) -> Vec<&'static str> {
 /// `strict` holds the answer to the labels and known types; the retry after a 400
 /// leaves that and the thinking setting out and reads the model's text.
 fn request_body_for(dialogue: &str, hits: &[String], ctx: &CallerContext, purpose: Purpose, strict: bool) -> Value {
-    let dialogue = crate::deepseek::relabel_dialogue_en(&without_carrier_prompt(dialogue.trim()));
+    let dialogue = crate::summary::relabel_dialogue_en(&without_carrier_prompt(dialogue.trim()));
     let number = match ctx.number.trim() {
         "" => "hidden",
         n => n,

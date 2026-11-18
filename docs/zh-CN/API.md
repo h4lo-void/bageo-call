@@ -215,7 +215,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 | `owner_aliases` | 别人怎么称呼你，最多 10 个，每个最多 40 字。空白的、重复的和跟 `owner_name` 相同的会被去掉。 |
 | `answer_style` | `assistant`／`persona`（AI 以你本人身份接听）。 |
 | `errand_identity` | `assistant`（默认）／`owner`：AI 代打时说自己是谁。其他值存为 `assistant`。 |
-| `summary_provider` | `gemini`（默认）／`custom`。`custom` 使用 `summary_api_base`、`summary_model`（填了地址就必填）和 `deepseek_api_key`（那家服务的密钥）。旧的 `auto`／`deepseek` 会在设置加载时转换一次。 |
+| `summary_provider` | `gemini`（默认）／`custom`。`custom` 使用 `summary_api_base`、`summary_model`（填了地址就必填）和 `summary_api_key`（那家服务的密钥）。旧版的值和旧的设置名称会在设置加载时转换一次。 |
 | `calendar_app` | `google`、`outlook`、`office365`、`apple`、`yahoo`、`ics` 或空（还没选）。其他值存为空。 |
 | `appointment_mode` | `off`（默认）／`confirm`。旧的 `auto` 视为 `confirm`。 |
 | `appointment_sms` | `true`／`false`：要不要发短信告诉对方你的决定。 |
@@ -230,7 +230,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 
 `PUT` 的规则：
 
-- 机密字段（`gemini_api_key`、`deepseek_api_key`）没带或是 `""` 时，保留原来保存的值；`"<name>_clear": true` 会清空它。
+- 机密字段（`gemini_api_key`、`summary_api_key`）没带或是 `""` 时，保留原来保存的值；`"<name>_clear": true` 会清空它。
 - `notify_channels` 整体替换。一行 `{id, kind, name, enabled, url, token, target}` 的 `url` 或 `token` 为空时，保留 `id` 和 `kind` 相同那一行原来保存的值；没有 `id` 的行是新增的；没列出来的行会被删除。
 - 旧版保存的、这一版已经没有的字段，读入时忽略，下次保存就消失：Google 日历凭据（`gcal_*`）、`calendar_auto_add`、`intl_carrier_prompt`，以及其他在 1.0 移除的设置。
 - 写入磁盘失败时返回 HTTP 500 `save_failed`。
@@ -647,6 +647,7 @@ Content-Type: application/json
 
 - `control_idle_clients`／`control_idle_serials` 统计所有连上的手机；`normal_mode_serials` 列出切换成一般手机的那几部。
 - `local_time` 是 Bageo 按 `TZ` 的时钟。
+- `summary_ready`（`summary_api_key_set` 是同一个值）表示有没有设置摘要服务。
 - 设置了控制台密码、请求却没带时，只返回 `ok`、`version`、`language`、`notify_language`、`active_call_count` 和 `control_idle_clients`，监控用已经足够。
 
 切换模式后，`mode` 是手机现在的模式（不知道时为 `null`）；成功时 `error_code` 为 `null`，否则是下面其中之一：

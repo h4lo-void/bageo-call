@@ -222,12 +222,11 @@ After each call the AI writes a short summary. It uses your Gemini key, so norma
 - **API base URL**: the service's OpenAI-compatible address; examples are below.
 - **Model**: required when a base URL is set.
 - **API key**: shown only as a hint once saved; a local server needs none.
-- With no base URL: DeepSeek when an API key is entered, else Gemini.
-- Saved as `summary_api_base`, `summary_model` and `deepseek_api_key` (it holds the key of whatever service you use).
+- With no base URL there is no service of its own: Gemini writes the summary when you have a Gemini key.
+- Saved as `summary_api_base`, `summary_model` and `summary_api_key` (it holds the key of whatever service you use).
 
 Base URL examples:
 
-- DeepSeek: `https://api.deepseek.com/v1` (model `deepseek-chat`)
 - OpenAI: `https://api.openai.com/v1` (e.g. `gpt-4o-mini`)
 - OpenRouter: `https://openrouter.ai/api/v1`
 - A local Ollama: `http://127.0.0.1:11434/v1`
@@ -435,6 +434,7 @@ To pre-fill a fresh install from `.env` or Docker, these set the starting value 
 | Variable | Console setting | Default |
 |---|---|---|
 | `GEMINI_API_KEY` | Gemini API key | *(empty)* |
+| `SUMMARY_API_KEY` | API key of *Another service* (summary) | *(empty; its older name `DEEPSEEK_API_KEY` is still read)* |
 | `APP_LANGUAGE` | Language | `en` (also `zh-TW`, `zh-CN`, `ja`, `ko`, `es`, `fr`, `de`, `pt`) |
 | `NOTIFY_LANGUAGE` | Language of notifications and summaries | *(empty = same as `APP_LANGUAGE`)* |
 | `OWNER_NAME` | Your name | *(empty)* |

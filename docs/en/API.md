@@ -240,7 +240,7 @@ Fields worth knowing (all of them are in `RuntimeSettings` in
 | `owner_aliases` | Up to 10 other names callers use for you, each up to 40 characters. Blanks, repeats and your own `owner_name` are dropped. |
 | `answer_style` | `assistant` / `persona` (the AI answers as you). |
 | `errand_identity` | `assistant` (default) / `owner`: who the AI says it is on an AI errand. Anything else is stored as `assistant`. |
-| `summary_provider` | `gemini` (default) / `custom`. `custom` uses `summary_api_base`, `summary_model` (required with a base URL) and `deepseek_api_key` (the key of that service). |
+| `summary_provider` | `gemini` (default) / `custom`. `custom` uses `summary_api_base`, `summary_model` (required with a base URL) and `summary_api_key` (the key of that service). |
 | `calendar_app` | `google`, `outlook`, `office365`, `apple`, `yahoo`, `ics`, or empty (not chosen yet). Anything else is stored as empty. |
 | `appointment_mode` | `off` (default) / `confirm`. An older `auto` reads as `confirm`. |
 | `appointment_sms` | `true` / `false`: text the caller your decision. |
@@ -255,7 +255,7 @@ Fields worth knowing (all of them are in `RuntimeSettings` in
 
 Rules for `PUT`:
 
-- A secret field (`gemini_api_key`, `deepseek_api_key`) that is absent or `""`
+- A secret field (`gemini_api_key`, `summary_api_key`) that is absent or `""`
   keeps its stored value; `"<name>_clear": true` empties it.
 - `notify_channels` is replaced as a whole. In a row
   `{id, kind, name, enabled, url, token, target}`, an empty `url` or `token` keeps
@@ -266,7 +266,7 @@ Rules for `PUT`:
   `calendar_auto_add`, `intl_carrier_prompt`, and other settings removed in
   1.0.
 - A save that fails on disk answers HTTP 500 `save_failed`.
-- An older `summary_provider` value (`auto` / `deepseek`) is converted once when the settings load.
+- Values and setting names of older versions (an older `summary_provider`, the summary key's former name) are converted once when the settings load.
 
 ```bash
 curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
@@ -689,7 +689,7 @@ Details for these routes:
 - Each entry of the top-level `phones` is a phone seen on its control connection since Bageo started: `{serial, connected, mode, supports_mode, model, app_version, in_call, last_seen_ms}`.
 - `mode` is `ai` (the AI answers) or `normal` (an ordinary phone, see [Phone setup](PHONE.md#normal-phone-mode)).
 - `supports_mode` is false for apps older than the switch, which always run as `ai`.
-- `GET /health`: `control_idle_clients` / `control_idle_serials` count every connected phone; `normal_mode_serials` lists those switched to a normal phone; `local_time` is Bageo's clock in its `TZ`.
+- `GET /health`: `control_idle_clients` / `control_idle_serials` count every connected phone; `normal_mode_serials` lists those switched to a normal phone; `local_time` is Bageo's clock in its `TZ`; `summary_ready` (and `summary_api_key_set`, the same value) says whether a summary service is set.
 - Without the console password (when one is set), `GET /health` returns only `ok`, `version`, `language`, `notify_language`, `active_call_count` and `control_idle_clients`, enough for monitoring.
 
 After a mode switch, `mode` is the phone's mode (`null` when unknown) and

@@ -113,8 +113,13 @@ pub struct RuntimeSettings {
     pub gemini_system_prompt: String,
     /// Gemini Live prebuilt voice name (Aoede, Kore, Puck, Charon, Fenrir, Zephyr, …).
     pub gemini_voice_name: String,
-    /// DeepSeek key for the post-call notification summary only.
-    pub deepseek_api_key: String,
+    /// Key of the service that writes the post-call summary when
+    /// summary_provider is custom (not live talk).
+    pub summary_api_key: String,
+    /// The summary key (or a TRTC LLM config with a key) comes from
+    /// settings.json, not from the environment.
+    #[serde(skip)]
+    pub summary_key_saved: bool,
     /// Desk note spoken in the AI opening (next call).
     pub owner_status_enabled: bool,
     pub owner_status_text: String,
@@ -251,8 +256,7 @@ pub struct RuntimeSettings {
     pub country_code: String,
     /// OpenAI-compatible chat endpoint for the post-call summary when
     /// `summary_provider` is `custom`, e.g. `https://api.openai.com/v1`.
-    /// Empty = DeepSeek when `deepseek_api_key` is set, else Gemini with the
-    /// Live API key.
+    /// Empty = Gemini with the Live API key, else OpenRouter.
     #[serde(default)]
     pub summary_api_base: String,
     /// Model for the post-call summary; empty = the endpoint's default.
@@ -260,8 +264,8 @@ pub struct RuntimeSettings {
     pub summary_model: String,
     /// Which service writes the post-call summary: `gemini` (Gemini's
     /// lowest-cost model with the Live API key) or `custom` (the endpoint
-    /// above, else DeepSeek, else Gemini, else OpenRouter). Gemini without its
-    /// key works like `custom` ([`crate::deepseek::summary_endpoint_for`]).
+    /// above, else Gemini, else OpenRouter). Gemini without its
+    /// key works like `custom` ([`crate::summary::summary_endpoint_for`]).
     /// Older values are turned into one of the two when the settings load.
     #[serde(default = "default_auto")]
     pub summary_provider: String,
@@ -596,14 +600,65 @@ fn sanitize_sim_languages<'a>(
         .collect()
 }
 
-/// `gemini` / `custom`, or a value from before there were only these two:
-/// `deepseek`, else `auto` (resolved when the settings load).
+/// `gemini` / `custom`, or a value from before there were only these two
+/// (resolved when the settings load): the old name of `custom`, else `auto`.
 fn sanitize_summary_provider(s: &str) -> String {
     let v = s.trim().to_ascii_lowercase();
     match v.as_str() {
+        // Reading settings of older versions: "deepseek" was "custom".
         "gemini" | "custom" | "deepseek" => v,
         _ => default_auto(),
     }
+}
+
+// Reading settings of older versions: there, "another service" with a key and
+// no address went to DeepSeek. That address and model are written down once
+// ([fill_old_summary_service]), so nothing else needs to know.
+const OLD_SUMMARY_API_BASE: &str = "https://api.deepseek.com/v1";
+const OLD_SUMMARY_MODEL: &str = "deepseek-chat";
+
+/// For a setup from an older version: "another service" (custom) with a key and
+/// no address gets the address (and, when none is set, the model) its
+/// summaries went to. True when it changed something.
+fn fill_old_summary_service(provider: &str, has_key: bool, base: &mut String, model: &mut String) -> bool {
+    if provider != "custom" || !has_key || !base.trim().is_empty() {
+        return false;
+    }
+    *base = OLD_SUMMARY_API_BASE.to_string();
+    if model.trim().is_empty() {
+        *model = OLD_SUMMARY_MODEL.to_string();
+    }
+    true
+}
+
+/// settings.json as it is read: the summary key of older versions moves to its
+/// new name. True when the file had it.
+fn read_overrides(text: &str) -> serde_json::Result<(Overrides, bool)> {
+    let mut v: Value = serde_json::from_str(text)?;
+    let mut moved = false;
+    if let Some(m) = v.as_object_mut() {
+        // Reading settings of older versions: the summary key was "deepseek_api_key".
+        if let Some(old) = m.remove("deepseek_api_key") {
+            moved = true;
+            let unset = m.get("summary_api_key").and_then(Value::as_str).map_or(true, |s| s.trim().is_empty());
+            if unset {
+                m.insert("summary_api_key".into(), old);
+            }
+        }
+    }
+    Ok((serde_json::from_value(v)?, moved))
+}
+
+/// Write settings.json whole: to a temporary file, then renamed over it.
+fn write_overrides(path: &Path, ov: &Overrides) -> Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
+    }
+    let data = serde_json::to_vec_pretty(ov)?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, &data).with_context(|| format!("write {}", tmp.display()))?;
+    std::fs::rename(&tmp, path).with_context(|| format!("rename to {}", path.display()))?;
+    Ok(())
 }
 
 fn sanitize_answer_style(s: &str) -> String {
@@ -696,7 +751,8 @@ impl RuntimeSettings {
                 "GEMINI_VOICE_NAME",
                 crate::gemini_live::default_voice_name(),
             ),
-            deepseek_api_key: env_or("DEEPSEEK_API_KEY", &base.deepseek_api_key),
+            summary_api_key: base.summary_api_key.clone(),
+            summary_key_saved: false,
             owner_status_enabled: env_bool("OWNER_STATUS_ENABLED", false),
             owner_status_text: env_or("OWNER_STATUS_TEXT", ""),
             gemini_persona_mode: env_bool("GEMINI_PERSONA_MODE", true),
@@ -771,7 +827,7 @@ impl RuntimeSettings {
     /// (start-up and every save).
     pub fn apply_globals(&self) {
         crate::locale::set_active(self.locale_active());
-        crate::deepseek::set_provider(self.summary_provider());
+        crate::summary::set_provider(self.summary_provider());
         crate::notify::set_device_labels(&self.device_labels);
     }
 
@@ -788,24 +844,25 @@ impl RuntimeSettings {
     }
 
     /// Which service writes the post-call summary.
-    pub fn summary_provider(&self) -> crate::deepseek::Provider {
-        crate::deepseek::Provider::parse(&self.summary_provider)
+    pub fn summary_provider(&self) -> crate::summary::Provider {
+        crate::summary::Provider::parse(&self.summary_provider)
     }
 
     /// `summary_provider` as `gemini` or `custom`. A value from before keeps
-    /// the summary going where it went: `deepseek` is `custom`, and when a
-    /// DeepSeek key is set the address it passed over is set aside; `auto`
-    /// (or none) is `custom` when an address or a summary key of its own is
-    /// set, else `gemini`.
+    /// the summary going where it went: its old name for `custom` is `custom`
+    /// (with a key, the address it passed over is set aside, and
+    /// [fill_old_summary_service] writes down the one it used); `auto` (or none)
+    /// is `custom` when an address or a summary key of its own is set, else
+    /// `gemini`.
     fn settle_summary_provider(&mut self) {
         let v = sanitize_summary_provider(&self.summary_provider);
         if v == "gemini" || v == "custom" {
             self.summary_provider = v;
             return;
         }
-        let summary_key = !self.deepseek_api_key.trim().is_empty()
-            || !env_or("DEEPSEEK_API_KEY", "").trim().is_empty()
-            || crate::deepseek::api_key_from_llm_config(&self.trtc_llm_config).is_some();
+        let summary_key = !self.summary_api_key.trim().is_empty()
+            || crate::summary::api_key_from_llm_config(&self.trtc_llm_config).is_some();
+        // Reading settings of older versions: "deepseek" was "custom".
         if v == "deepseek" && summary_key {
             self.summary_api_base.clear();
         }
@@ -1011,7 +1068,7 @@ impl RuntimeSettings {
             gemini_live_model,
             gemini_system_prompt,
             gemini_voice_name,
-            deepseek_api_key,
+            summary_api_key,
             owner_status_text,
             gemini_persona_prompt,
             ambience_kind,
@@ -1096,6 +1153,8 @@ impl RuntimeSettings {
             appointment_sms,
             ui_password_prompted,
         );
+        self.summary_key_saved = ov.summary_api_key.as_deref().is_some_and(|k| !k.trim().is_empty())
+            || ov.trtc_llm_config.as_deref().is_some_and(|c| crate::summary::api_key_from_llm_config(c).is_some());
         self.ivr_start_delay_ms = self
             .ivr_start_delay_ms
             .min(crate::config::IVR_FIRST_AUDIO_DELAY_CAP_MS);
@@ -1177,12 +1236,26 @@ impl RuntimeSettings {
         s.trtc_ai_max_idle_secs = self.trtc_ai_max_idle_secs.clamp(60, 259_200);
         s.trtc_bridge_enabled = self.trtc_bridge_enabled;
         s.trtc_bridge_url = self.trtc_bridge_url.clone();
-        if !self.deepseek_api_key.trim().is_empty() {
-            s.deepseek_api_key = self.deepseek_api_key.clone();
+        if !self.summary_api_key.trim().is_empty() {
+            s.summary_api_key = self.summary_api_key.clone();
         }
         s.notify_channels = self.notify_channels.clone();
         s.summary_api_base = self.summary_api_base.clone();
         s.summary_model = self.summary_model.clone();
+        // A key only in the environment, under the variable's former name (or in
+        // a TRTC LLM config there): an older setup, its summaries go where they went.
+        let old_env_key = base.summary_api_key_old_env
+            || (base.summary_api_key.trim().is_empty()
+                && crate::summary::api_key_from_llm_config(base.trtc_llm_config.as_ref()).is_some());
+        if !self.summary_key_saved && old_env_key {
+            let filled = fill_old_summary_service(&self.summary_provider, true, &mut s.summary_api_base, &mut s.summary_model);
+            // Only a TRTC LLM config key: it becomes the summary key of that service.
+            if filled && s.summary_api_key.trim().is_empty() {
+                if let Some(k) = crate::summary::api_key_from_llm_config(base.trtc_llm_config.as_ref()) {
+                    s.summary_api_key = k;
+                }
+            }
+        }
         s.gemini_api_key = self.gemini_api_key.clone().into();
         if !self.public_url.trim().is_empty() {
             s.public_url = self.public_url.clone();
@@ -1393,7 +1466,7 @@ struct Overrides {
     #[serde(skip_serializing_if = "Option::is_none")]
     gemini_voice_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    deepseek_api_key: Option<String>,
+    summary_api_key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     owner_status_enabled: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1523,10 +1596,12 @@ impl SettingsStore {
         let path = Path::new(&base.calls_data_dir)
             .join("config")
             .join("settings.json");
+        let mut old_key_moved = false;
         let mut overrides = match std::fs::read_to_string(&path) {
-            Ok(text) => match serde_json::from_str::<Overrides>(&text) {
-                Ok(o) => {
+            Ok(text) => match read_overrides(&text) {
+                Ok((o, moved)) => {
                     info!("runtime settings overrides loaded path={}", path.display());
+                    old_key_moved = moved;
                     o
                 }
                 Err(e) => {
@@ -1550,6 +1625,7 @@ impl SettingsStore {
             .clone()
             .unwrap_or_else(|| rt.summary_provider.clone());
         rt.apply(&overrides);
+        // Reading settings of older versions:
         // A value from before the summary service was Gemini or custom (`auto`,
         // none, `deepseek`) is resolved once, here, and saved so: a key saved
         // later does not move a summary the console shows on Gemini. `deepseek`
@@ -1560,6 +1636,33 @@ impl SettingsStore {
         }
         if older == "deepseek" {
             overrides.summary_api_base = Some(rt.summary_api_base.clone());
+        }
+        // A settings file from an older version (its summary key under the old
+        // name, a provider value from before, or only a TRTC LLM config key):
+        // "another service" without an address gets the one it used, saved now.
+        let llm_key_only = rt.summary_api_key.trim().is_empty()
+            && crate::summary::api_key_from_llm_config(&rt.trtc_llm_config).is_some();
+        let from_older = old_key_moved || (older != "gemini" && older != "custom") || llm_key_only;
+        let filled = rt.summary_key_saved
+            && from_older
+            && fill_old_summary_service(&rt.summary_provider, true, &mut rt.summary_api_base, &mut rt.summary_model);
+        if filled {
+            overrides.summary_api_base = Some(rt.summary_api_base.clone());
+            overrides.summary_model = Some(rt.summary_model.clone());
+            // Only a TRTC LLM config key: it is written down as the summary key,
+            // so it goes to this service and nowhere else.
+            if llm_key_only {
+                if let Some(k) = crate::summary::api_key_from_llm_config(&rt.trtc_llm_config) {
+                    rt.summary_api_key = k.clone();
+                    overrides.summary_api_key = Some(k);
+                }
+            }
+            info!("summary service of an older version written down path={}", path.display());
+        }
+        if old_key_moved || filled {
+            if let Err(e) = write_overrides(&path, &overrides) {
+                warn!("settings from an older version not saved yet: {e:#}");
+            }
         }
         set_active_ui_password(&rt.ui_password);
         crate::calendar::set_link_secret(&active_ui_token(&base.calls_ui_token));
@@ -1593,15 +1696,7 @@ impl SettingsStore {
         patch_overrides(&mut ov, patch);
         let mut rt = RuntimeSettings::from_base(&self.base);
         rt.apply(&ov);
-
-        if let Some(dir) = self.path.parent() {
-            std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
-        }
-        let data = serde_json::to_vec_pretty(&ov)?;
-        let tmp = self.path.with_extension("json.tmp");
-        std::fs::write(&tmp, &data).with_context(|| format!("write {}", tmp.display()))?;
-        std::fs::rename(&tmp, &self.path)
-            .with_context(|| format!("rename to {}", self.path.display()))?;
+        write_overrides(&self.path, &ov)?;
 
         st.overrides = ov;
         set_active_ui_password(&rt.ui_password);
@@ -1700,7 +1795,7 @@ const SECRET_FIELDS: [&str; 13] = [
     "trtc_llm_config",
     "trtc_tts_config",
     "gemini_api_key",
-    "deepseek_api_key",
+    "summary_api_key",
 ];
 
 fn masked(rt: &RuntimeSettings) -> Value {
@@ -1729,10 +1824,6 @@ fn masked(rt: &RuntimeSettings) -> Value {
     m.insert(
         "gemini_live_ready".into(),
         json!(rt.gemini_live_enabled && !rt.gemini_api_key.trim().is_empty()),
-    );
-    m.insert(
-        "deepseek_summary_ready".into(),
-        json!(!rt.deepseek_api_key.trim().is_empty()),
     );
     // Channels: addresses and tokens never leave the server in full.
     m.insert(
@@ -1788,7 +1879,7 @@ fn masked(rt: &RuntimeSettings) -> Value {
         "summary_ready".into(),
         json!(
             !rt.summary_api_base.trim().is_empty()
-                || !rt.deepseek_api_key.trim().is_empty()
+                || !rt.summary_api_key.trim().is_empty()
                 || !rt.gemini_api_key.trim().is_empty()
         ),
     );
@@ -1954,7 +2045,11 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     if let Some(v) = ov.reject_mode.take() {
         ov.reject_mode = Some(sanitize_reject_mode(&v));
     }
-    p_secret(patch, "deepseek_api_key", &mut ov.deepseek_api_key);
+    p_secret(patch, "summary_api_key", &mut ov.summary_api_key);
+    // Reading requests of older versions: the key's former name.
+    if patch.get("summary_api_key").is_none() && patch.get("summary_api_key_clear").is_none() {
+        p_secret(patch, "deepseek_api_key", &mut ov.summary_api_key);
+    }
     p_bool(patch, "owner_status_enabled", &mut ov.owner_status_enabled);
     p_bool(patch, "gemini_persona_mode", &mut ov.gemini_persona_mode);
     p_string(patch, "gemini_persona_prompt", &mut ov.gemini_persona_prompt);
@@ -3179,7 +3274,7 @@ mod tests {
 
     #[test]
     fn summary_provider_defaults_gemini_and_resolves_older_values() {
-        use crate::deepseek::{summary_endpoint_for, Provider, DEEPSEEK_API_URL};
+        use crate::summary::{summary_endpoint_for, Provider};
         let dir = std::env::temp_dir().join(format!(
             "bageo-call-summary-provider-{}",
             uuid::Uuid::new_v4()
@@ -3187,6 +3282,9 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("temp settings dir");
         let mut base = Settings::from_env();
         base.calls_data_dir = dir.to_string_lossy().to_string();
+        base.summary_api_key = String::new();
+        base.summary_api_key_old_env = false;
+        base.trtc_llm_config = "".into();
         let store = SettingsStore::load(base.clone());
         assert_eq!(store.snapshot().summary_provider, "gemini");
         assert_eq!(store.snapshot().summary_provider(), Provider::Gemini);
@@ -3200,30 +3298,38 @@ mod tests {
         assert_eq!(rt.summary_provider, "custom");
         let rt = again.apply_patch(&json!({ "summary_provider": "openai" })).unwrap();
         assert_eq!(rt.summary_provider, "gemini");
-        assert_eq!(SettingsStore::load(base).snapshot().summary_provider, "gemini");
+        assert_eq!(SettingsStore::load(base.clone()).snapshot().summary_provider, "gemini");
         // Settings files from before: the service and address they end up with,
-        // after loading and after saving something else.
+        // after loading, after saving something else and after a restart.
         let own = "http://127.0.0.1:11434/v1";
         let older = [
-            (r#"{"language":"fr","summary_model":"deepseek-chat"}"#.to_string(), "gemini", ""),
+            (r#"{"language":"fr","summary_model":"gpt-4o-mini"}"#.to_string(), "gemini", ""),
             (r#"{"summary_provider":"auto","gemini_api_key":"AIzaTEST"}"#.to_string(), "gemini", ""),
-            (r#"{"summary_provider":"auto","deepseek_api_key":"sk-ds"}"#.to_string(), "custom", ""),
+            (r#"{"summary_provider":"auto","deepseek_api_key":"sk-test"}"#.to_string(), "custom", OLD_SUMMARY_API_BASE),
             (format!(r#"{{"summary_api_base":"{own}"}}"#), "custom", own),
-            (r#"{"summary_provider":"openai","trtc_llm_config":"{\"APIKey\":\"sk-cfg\"}"}"#.to_string(), "custom", ""),
-            (r#"{"summary_provider":"gemini","deepseek_api_key":"sk-ds"}"#.to_string(), "gemini", ""),
+            (r#"{"summary_provider":"openai","trtc_llm_config":"{\"APIKey\":\"sk-cfg\"}"}"#.to_string(), "custom", OLD_SUMMARY_API_BASE),
+            (r#"{"summary_provider":"gemini","deepseek_api_key":"sk-test"}"#.to_string(), "gemini", ""),
             (r#"{"summary_provider":"deepseek"}"#.to_string(), "custom", ""),
             (format!(r#"{{"summary_provider":"deepseek","summary_api_base":"{own}"}}"#), "custom", own),
             (
-                format!(r#"{{"summary_provider":"deepseek","summary_api_base":"{own}","deepseek_api_key":"sk-ds"}}"#),
+                format!(r#"{{"summary_provider":"deepseek","summary_api_base":"{own}","deepseek_api_key":"sk-test"}}"#),
                 "custom",
-                "",
+                OLD_SUMMARY_API_BASE,
             ),
+            (
+                format!(r#"{{"summary_provider":"custom","summary_api_base":"{own}","summary_model":"llama3","deepseek_api_key":"sk-test"}}"#),
+                "custom",
+                own,
+            ),
+            // Saved by this version: a key without an address stays without one.
+            (r#"{"summary_provider":"custom","summary_api_key":"sk-test"}"#.to_string(), "custom", ""),
         ];
         for (i, (file, provider, api_base)) in older.iter().enumerate() {
             let old_dir = dir.join(format!("old{i}"));
             std::fs::create_dir_all(old_dir.join("config")).expect("old settings dir");
-            std::fs::write(old_dir.join("config").join("settings.json"), file).expect("old settings.json");
-            let mut old_base = Settings::from_env();
+            let path = old_dir.join("config").join("settings.json");
+            std::fs::write(&path, file).expect("old settings.json");
+            let mut old_base = base.clone();
             old_base.calls_data_dir = old_dir.to_string_lossy().to_string();
             let old = SettingsStore::load(old_base.clone());
             let rt = old.snapshot();
@@ -3232,28 +3338,100 @@ mod tests {
             assert_eq!((rt.summary_provider.as_str(), rt.summary_api_base.as_str()), (*provider, *api_base), "{file}");
             let rt = SettingsStore::load(old_base.clone()).snapshot();
             assert_eq!((rt.summary_provider.as_str(), rt.summary_api_base.as_str()), (*provider, *api_base), "{file}");
+            // The key's old name is gone from the file once it is read.
+            let saved = std::fs::read_to_string(&path).unwrap();
+            assert!(!saved.contains("deepseek_api_key"), "{file} -> {saved}");
+            if file.contains("deepseek_api_key") {
+                assert_eq!(rt.summary_api_key, "sk-test", "{file}");
+                assert!(saved.contains("summary_api_key"), "{saved}");
+            }
             if i == 0 {
                 // Written before either key existed: the notifications in the AI's language.
-                assert_eq!((rt.summary_model.as_str(), rt.notify_language.as_str()), ("deepseek-chat", ""));
+                assert_eq!((rt.summary_model.as_str(), rt.notify_language.as_str()), ("gpt-4o-mini", ""));
                 assert_eq!(rt.notify_lang(), crate::locale::Lang::Fr);
             }
-            if i == older.len() - 1 {
-                // DeepSeek went past the address before, and still does.
+            if *api_base == OLD_SUMMARY_API_BASE {
+                // The summaries still go where they went, now written down.
                 let e = summary_endpoint_for(&rt.effective(&old_base), rt.summary_provider()).unwrap();
-                assert_eq!((e.url.as_str(), e.key.as_str()), (DEEPSEEK_API_URL, "sk-ds"));
+                let key = if i == 4 { "sk-cfg" } else { "sk-test" };
+                assert_eq!((e.url.as_str(), e.key.as_str()), ("https://api.deepseek.com/v1/chat/completions", key), "{file}");
+                assert_eq!(e.models, vec![OLD_SUMMARY_MODEL.to_string()], "{file}");
+                assert!(saved.contains(OLD_SUMMARY_API_BASE), "{saved}");
+            }
+            if i == 9 {
+                assert_eq!(rt.summary_model, "llama3", "a model already set is kept");
+            }
+            if i == older.len() - 1 {
+                assert_eq!(summary_endpoint_for(&rt.effective(&old_base), rt.summary_provider()), None);
             }
         }
         // Left on Gemini, it stays Gemini when a summary key is saved later.
         let fresh_dir = dir.join("fresh");
         std::fs::create_dir_all(&fresh_dir).expect("fresh settings dir");
-        let mut fresh_base = Settings::from_env();
+        let mut fresh_base = base.clone();
         fresh_base.calls_data_dir = fresh_dir.to_string_lossy().to_string();
         let fresh = SettingsStore::load(fresh_base.clone());
-        let rt = fresh.apply_patch(&json!({ "deepseek_api_key": "sk-ds" })).unwrap();
+        let rt = fresh.apply_patch(&json!({ "summary_api_key": "sk-test" })).unwrap();
         assert_eq!(rt.summary_provider, "gemini");
         let rt = fresh.apply_patch(&json!({ "trtc_llm_config": "{\"APIKey\":\"sk-cfg\"}" })).unwrap();
         assert_eq!(rt.summary_provider, "gemini");
-        assert_eq!(SettingsStore::load(fresh_base).snapshot().summary_provider, "gemini");
+        let rt = SettingsStore::load(fresh_base).snapshot();
+        assert_eq!((rt.summary_provider.as_str(), rt.summary_api_base.as_str()), ("gemini", ""), "Gemini: the address is left alone");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn summary_key_under_its_old_name_is_taken_and_saved_under_the_new_one() {
+        let dir = std::env::temp_dir().join(format!("bageo-summary-key-{}", uuid::Uuid::new_v4()));
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        base.summary_api_key = String::new();
+        base.summary_api_key_old_env = false;
+        base.trtc_llm_config = "".into();
+        let store = SettingsStore::load(base.clone());
+        // A request of an older console sends the old name.
+        let rt = store.apply_patch(&json!({ "deepseek_api_key": "sk-test" })).unwrap();
+        assert_eq!(rt.summary_api_key, "sk-test");
+        // The new name wins when a request has both.
+        let rt = store.apply_patch(&json!({ "deepseek_api_key": "sk-a", "summary_api_key": "sk-b" })).unwrap();
+        assert_eq!(rt.summary_api_key, "sk-b");
+        let saved = std::fs::read_to_string(store.storage_path()).unwrap();
+        assert!(saved.contains("summary_api_key") && !saved.contains("deepseek"), "{saved}");
+        let masked = store.masked_json();
+        assert_eq!((masked["summary_api_key_set"].as_bool(), masked.get("deepseek_api_key").is_none()), (Some(true), true));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn summary_key_only_in_the_environment_keeps_its_old_service_without_saving() {
+        use crate::summary::{summary_endpoint_for, Provider};
+        let dir = std::env::temp_dir().join(format!("bageo-summary-env-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(dir.join("config")).unwrap();
+        let path = dir.join("config").join("settings.json");
+        std::fs::write(&path, r#"{"summary_provider":"custom"}"#).unwrap();
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        base.trtc_llm_config = "".into();
+        base.gemini_api_key = "".into();
+        base.openrouter_api_key = String::new();
+        base.summary_api_key = "sk-test".into();
+        // Under the variable's former name: an older setup.
+        base.summary_api_key_old_env = true;
+        let rt = SettingsStore::load(base.clone()).snapshot();
+        assert_eq!(rt.summary_api_base, "", "nothing is written for a key in the environment");
+        let e = summary_endpoint_for(&rt.effective(&base), Provider::Custom).unwrap();
+        assert_eq!((e.url.as_str(), e.key.as_str()), ("https://api.deepseek.com/v1/chat/completions", "sk-test"));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), r#"{"summary_provider":"custom"}"#);
+        // An address of its own wins.
+        let mut own = (*rt).clone();
+        own.summary_api_base = "https://api.openai.com/v1".into();
+        own.summary_model = "gpt-4o-mini".into();
+        let e = summary_endpoint_for(&own.effective(&base), Provider::Custom).unwrap();
+        assert_eq!(e.url, "https://api.openai.com/v1/chat/completions");
+        // Under the new name: no service of its own without an address.
+        base.summary_api_key_old_env = false;
+        let rt = SettingsStore::load(base.clone()).snapshot();
+        assert_eq!(summary_endpoint_for(&rt.effective(&base), Provider::Custom), None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -68,7 +68,7 @@ Everything lives in `crates/agent/src`. The files you are most likely to touch:
 | `stall_review.rs` | A second look before the AI starts keeping a caller busy: a cheap model reads the call so far, together with whether the caller is a contact, within a short timeout; no answer counts as sales / scam. |
 | `appointments.rs` | Appointments: the Live tools, *To do* tasks, decisions from the console, the API and Telegram, texts to callers, the AI call-back (`call_lang`), and the outbound queue it shares with errands (one call to a number at a time). |
 | `callback.rs` | The phones' control connections as seen by the outbound side: `place_call` and `send_sms` to one phone, and its answers. |
-| `deepseek.rs` | The post-call summary and transcript translation over an OpenAI-compatible API (Gemini by default; the name is historical). |
+| `summary.rs` | The post-call summary and transcript translation over an OpenAI-compatible API (Gemini by default). |
 | `notify.rs` | Notification channels and every message (summary, blocked, call waiting, AI call-back, AI errand). |
 | `settings_store.rs` | `RuntimeSettings`: every console setting, its default, its environment variable, and the migration of keys from older versions. |
 | `calls_http.rs` | The web console's API (calls, settings, tasks, devices, previews) and the `Content-Type` checks. |

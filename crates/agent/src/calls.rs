@@ -153,7 +153,7 @@ pub struct CallNotes {
     /// How the call ended (same hint the summary model gets).
     #[serde(default)]
     pub end_hint: String,
-    /// `deepseek` | `fallback` | `no_key` | `ai_fail` | `none`.
+    /// `model` (the summary service wrote it) | `fallback` | `no_key` | `ai_fail` | `none`.
     #[serde(default)]
     pub source: String,
     #[serde(default)]
@@ -2924,7 +2924,7 @@ mod tests {
         let notes = CallNotes {
             summary: "對方：林專員（銀行）\n事情：推銷信貸".into(),
             dialogue: "接聽：喂？\n對方：您好，我是林專員".into(),
-            source: "deepseek".into(),
+            source: "model".into(),
             ..Default::default()
         };
         store.save_notes(&id, &notes).await.unwrap();
@@ -2932,7 +2932,7 @@ mod tests {
         assert_eq!(row.summary.as_deref(), Some(notes.summary.as_str()));
         let back = store.load_notes(&id).await.unwrap();
         assert_eq!(back.dialogue, notes.dialogue);
-        assert_eq!(back.source, "deepseek");
+        assert_eq!(back.source, "model");
         // Search hits the summary.
         assert!(call_matches(
             &row,
@@ -2947,7 +2947,7 @@ mod tests {
     async fn notes_keep_line_translations_and_old_notes_still_read() {
         // A record from before translations: no field, nothing translated.
         let old: CallNotes = serde_json::from_str(
-            r#"{"summary":"對方：Tom","dialogue":"接聽：Hello?\n對方：Hello. Do you speak English?","recording_text":"","end_hint":"","source":"deepseek","updated_at":"2026-11-14T05:17:08Z"}"#,
+            r#"{"summary":"對方：Tom","dialogue":"接聽：Hello?\n對方：Hello. Do you speak English?","recording_text":"","end_hint":"","source":"model","updated_at":"2026-11-14T05:17:08Z"}"#,
         )
         .unwrap();
         assert!(old.dialogue_translations.is_empty());

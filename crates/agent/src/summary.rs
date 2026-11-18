@@ -3,15 +3,11 @@
 //!
 //! Which service ([`Provider`]): Gemini on its lowest-cost model with the Live
 //! API key — so one Gemini key is enough to get going — or another service the
-//! owner sets up: their own endpoint (`summary_api_base`, e.g. DeepSeek,
-//! OpenAI, OpenRouter or a local Ollama), else DeepSeek when its key is set,
-//! else Gemini, else OpenRouter.
+//! owner sets up: their own endpoint (`summary_api_base`, e.g. OpenAI,
+//! OpenRouter or a local Ollama), else Gemini, else OpenRouter.
 //!
 //! The summary is written in the language the owner reads
 //! ([`locale::notify_lang`]), whatever language the call was in.
-//!
-//! The module keeps its first name: DeepSeek was the only service it knew, and
-//! the older voicemail / TRTC paths still call it directly.
 
 use anyhow::{Context, Result};
 use reqwest::Client;
@@ -20,10 +16,6 @@ use tracing::{info, warn};
 
 use crate::config::Settings;
 use crate::locale::{self, Lang};
-
-/// Stable default for summarize (TRTC config may use a realtime-only model id).
-pub const DEEPSEEK_MODEL: &str = "deepseek-chat";
-pub const DEEPSEEK_API_URL: &str = "https://api.deepseek.com/v1/chat/completions";
 
 /// System prompt for short notification-ready Chinese summaries.
 ///
@@ -148,8 +140,8 @@ pub const GEMINI_SUMMARY_LITE_MODEL: &str = "gemini-flash-lite-latest";
 pub enum Provider {
     /// Gemini with the Live API key, on its lowest-cost model.
     Gemini,
-    /// Another service: the settings' own endpoint, else DeepSeek, else
-    /// Gemini, else OpenRouter.
+    /// Another service: the settings' own endpoint, else Gemini, else
+    /// OpenRouter.
     Custom,
 }
 
@@ -218,22 +210,9 @@ pub fn summary_endpoint_for(settings: &Settings, provider: Provider) -> Option<E
         }
         m
     };
-    let deepseek_endpoint = || -> Option<Endpoint> {
-        let deepseek = settings.deepseek_api_key.trim();
-        let key = if deepseek.is_empty() {
-            api_key_from_llm_config(settings.trtc_llm_config.as_ref())?
-        } else {
-            deepseek.to_string()
-        };
-        Some(Endpoint {
-            url: DEEPSEEK_API_URL.to_string(),
-            key,
-            models: own_models(&[DEEPSEEK_MODEL, "deepseek-reasoner"]),
-        })
-    };
     let gemini = settings.gemini_api_key.trim();
     if provider == Provider::Gemini && !gemini.is_empty() {
-        // A model name left over from another service (e.g. deepseek-chat) would
+        // A model name left over from another service (e.g. gpt-4o-mini) would
         // fail on every summary before the lite model is tried: skip it.
         let mut models: Vec<String> = Vec::new();
         let own = settings.summary_model.trim();
@@ -255,13 +234,10 @@ pub fn summary_endpoint_for(settings: &Settings, provider: Provider) -> Option<E
     if !base.is_empty() {
         return Some(Endpoint {
             url: chat_url(base),
-            key: settings.deepseek_api_key.trim().to_string(),
+            key: settings.summary_api_key.trim().to_string(),
             models: own_models(&[]),
         })
         .filter(|e| !e.models.is_empty());
-    }
-    if let Some(e) = deepseek_endpoint() {
-        return Some(e);
     }
     if !gemini.is_empty() {
         return Some(Endpoint {
@@ -331,8 +307,8 @@ fn chat_payload(endpoint: &Endpoint, model: &str, system: &str, user: &str, max_
 /// its thinking counts against the limit, and with a few hundred the answer
 /// comes back empty.
 const OPENAI_REASONING_MIN_TOKENS: u32 = 4_000;
-/// Tokens `deepseek-reasoner` gets at least, for the same reason.
-const DEEPSEEK_REASONER_MIN_TOKENS: u32 = 8_000;
+/// Tokens a model named `…-reasoner` gets at least, for the same reason.
+const REASONER_MIN_TOKENS: u32 = 8_000;
 
 /// OpenAI's reasoning models: they refuse `temperature` and `max_tokens`
 /// (HTTP 400) and take `max_completion_tokens` instead. A provider prefix
@@ -346,7 +322,7 @@ fn is_openai_reasoning(model: &str) -> bool {
 /// The chat request for `model`, whichever family it is: the usual
 /// `temperature` and `max_tokens`; for OpenAI's reasoning models
 /// `max_completion_tokens` and no `temperature`, with room to think; for
-/// `deepseek-reasoner` room to think as well.
+/// models named `…-reasoner` room to think as well.
 fn model_request(model: &str, system: &str, user: &str, max_tokens: u32) -> Value {
     let mut payload = json!({
         "model": model,
@@ -361,7 +337,7 @@ fn model_request(model: &str, system: &str, user: &str, max_tokens: u32) -> Valu
     } else {
         payload["temperature"] = json!(0.2);
         let tokens = if model.to_ascii_lowercase().contains("reasoner") {
-            max_tokens.max(DEEPSEEK_REASONER_MIN_TOKENS)
+            max_tokens.max(REASONER_MIN_TOKENS)
         } else {
             max_tokens
         };
@@ -570,179 +546,6 @@ pub fn api_key_from_llm_config(llm_config: &str) -> Option<String> {
         .map(str::trim)
         .filter(|s| !s.is_empty())?;
     Some(key.to_string())
-}
-
-pub fn model_from_llm_config(llm_config: &str) -> Option<String> {
-    let raw = llm_config.trim();
-    if raw.is_empty() {
-        return None;
-    }
-    let v: Value = serde_json::from_str(raw).ok()?;
-    v.get("Model")
-        .or_else(|| v.get("model"))
-        .and_then(|x| x.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-}
-
-/// Prefer dedicated DeepSeek key; then TRTC_LLM_CONFIG.APIKey; then OpenRouter key.
-pub fn resolve_summarize_key(settings: &Settings) -> Option<String> {
-    let direct = settings.deepseek_api_key.trim();
-    if !direct.is_empty() {
-        return Some(direct.to_string());
-    }
-    if let Some(k) = api_key_from_llm_config(settings.trtc_llm_config.as_ref()) {
-        return Some(k);
-    }
-    let legacy = settings.openrouter_api_key.trim();
-    if legacy.is_empty() {
-        None
-    } else {
-        Some(legacy.to_string())
-    }
-}
-
-/// True when key should hit DeepSeek API (LLMConfig present, or model name looks like deepseek).
-pub fn should_use_deepseek_endpoint(settings: &Settings) -> bool {
-    if api_key_from_llm_config(settings.trtc_llm_config.as_ref()).is_some() {
-        return true;
-    }
-    let model = settings.openrouter_model.to_ascii_lowercase();
-    model.contains("deepseek")
-}
-
-pub async fn chat_completions(
-    http: &Client,
-    api_key: &str,
-    system: &str,
-    user: &str,
-    max_tokens: u32,
-) -> Result<String> {
-    chat_completions_model(http, api_key, DEEPSEEK_MODEL, system, user, max_tokens).await
-}
-
-pub async fn chat_completions_model(
-    http: &Client,
-    api_key: &str,
-    model: &str,
-    system: &str,
-    user: &str,
-    max_tokens: u32,
-) -> Result<String> {
-    let model = {
-        let m = model.trim();
-        if m.is_empty() {
-            DEEPSEEK_MODEL
-        } else {
-            m
-        }
-    };
-    let payload = model_request(model, system, user, max_tokens);
-    let resp = http
-        .post(DEEPSEEK_API_URL)
-        .bearer_auth(api_key.trim())
-        .json(&payload)
-        .send()
-        .await
-        .context("deepseek chat")?;
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("deepseek model={model} status {status}: {body}");
-    }
-    let data: Value = resp.json().await.context("deepseek json")?;
-    let text = data
-        .pointer("/choices/0/message/content")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    if text.is_empty() {
-        warn!("deepseek empty content model={model}");
-    }
-    Ok(text)
-}
-
-/// Organize caller needs into short lines for the notification, in the
-/// language the owner reads (DeepSeek only).
-pub async fn summarize_for_telegram(
-    http: &Client,
-    api_key: &str,
-    caller_id: &str,
-    transcript: &str,
-) -> String {
-    summarize_for_telegram_with_llm_config(http, api_key, "", caller_id, transcript).await
-}
-
-/// Same as [`summarize_for_telegram`], optionally trying `Model` from TRTC_LLM_CONFIG first.
-pub async fn summarize_for_telegram_with_llm_config(
-    http: &Client,
-    api_key: &str,
-    llm_config: &str,
-    caller_id: &str,
-    transcript: &str,
-) -> String {
-    let lang = locale::notify_lang();
-    let caller = caller_id.trim();
-    let trimmed = transcript.trim().to_string();
-    if trimmed.is_empty() {
-        return empty_transcript_summary(lang);
-    }
-    // Caller already carries the 【…】 / […] sections ([`build_summary_input`]).
-    let sectioned = ["【對話】", "【通話資訊】", "[Dialogue]", "[Call facts]"]
-        .iter()
-        .any(|m| trimmed.contains(m));
-    let user = if sectioned {
-        trimmed.clone()
-    } else if lang.is_zh() {
-        let number = if caller.is_empty() { "未知" } else { caller };
-        format!("【通話資訊】\n號碼：{number}\n\n【錄音轉寫】\n{trimmed}")
-    } else {
-        let number = if caller.is_empty() { "unknown" } else { caller };
-        format!("[Call facts]\nNumber: {number}\n\n[Recording transcript]\n{trimmed}")
-    };
-
-    let mut models: Vec<String> = Vec::new();
-    if let Some(m) = model_from_llm_config(llm_config) {
-        // Skip realtime-only looking ids that often return empty on chat API.
-        let ml = m.to_ascii_lowercase();
-        if !ml.contains("realtime") && !ml.contains("native-audio") {
-            models.push(m);
-        }
-    }
-    for m in [DEEPSEEK_MODEL, "deepseek-chat", "deepseek-reasoner"] {
-        if !models.iter().any(|x| x == m) {
-            models.push(m.to_string());
-        }
-    }
-
-    // Both models may answer 503 "Service is too busy" → one
-    // more round a few seconds later before falling back to the raw dialogue.
-    for round in 0..2 {
-        if round > 0 {
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-            info!("deepseek tg summary retry caller={caller}");
-        }
-        for model in &models {
-            let active = locale::active();
-            let system = summary_system_prompt(lang, &active.owner, &active.owner_aliases);
-            match chat_completions_model(http, api_key, model, &system, &user, 320).await {
-                Ok(text) if !text.trim().is_empty() => {
-                    let text = polish_summary(lang, &text, &trimmed);
-                    info!(
-                        "deepseek tg summary ok caller={caller} model={model} chars={}",
-                        text.chars().count()
-                    );
-                    return text;
-                }
-                Ok(_) => warn!("deepseek tg summary empty model={model}"),
-                Err(e) => warn!("deepseek tg summary failed model={model}: {e:#}"),
-            }
-        }
-    }
-    warn!("deepseek tg summary all models failed; using transcript excerpt");
-    fallback_summary_in(lang, caller, &trimmed)
 }
 
 /// The notification stays short: without the summary model, one gist line —
@@ -1434,7 +1237,7 @@ mod tests {
         let mut s = Settings::from_env();
         s.summary_api_base = String::new();
         s.summary_model = String::new();
-        s.deepseek_api_key = String::new();
+        s.summary_api_key = String::new();
         s.openrouter_api_key = String::new();
         s.trtc_llm_config = "".into();
         s.gemini_api_key = "".into();
@@ -1450,11 +1253,10 @@ mod tests {
         assert_eq!(e.url, GEMINI_OPENAI_URL);
         assert_eq!(e.key, "AIzaTEST");
         assert_eq!(e.models, vec![GEMINI_SUMMARY_MODEL.to_string()]);
-        // A DeepSeek key wins over the Gemini fallback.
-        s.deepseek_api_key = "sk-ds".into();
+        // A key without an address is not sent anywhere of its own.
+        s.summary_api_key = "sk-test".into();
         let e = summary_endpoint(&s).unwrap();
-        assert_eq!(e.url, DEEPSEEK_API_URL);
-        assert_eq!(e.models[0], DEEPSEEK_MODEL);
+        assert_eq!((e.url.as_str(), e.key.as_str()), (GEMINI_OPENAI_URL, "AIzaTEST"));
         // The settings' own endpoint wins over both and uses the same key field.
         s.summary_api_base = "http://127.0.0.1:11434/v1/".into();
         assert_eq!(summary_endpoint(&s), None, "an own endpoint needs a model");
@@ -1462,7 +1264,7 @@ mod tests {
         let e = summary_endpoint(&s).unwrap();
         assert_eq!(e.url, "http://127.0.0.1:11434/v1/chat/completions");
         assert_eq!(e.models, vec!["qwen2.5:7b".to_string()]);
-        assert_eq!(e.key, "sk-ds");
+        assert_eq!(e.key, "sk-test");
         assert_eq!(chat_url("https://api.openai.com/v1/chat/completions"), "https://api.openai.com/v1/chat/completions");
     }
 
@@ -1473,10 +1275,10 @@ mod tests {
         }
         let mut s = settings();
         s.gemini_api_key = "AIzaTEST".into();
-        s.deepseek_api_key = "sk-ds".into();
+        s.summary_api_key = "sk-test".into();
         s.summary_api_base = "http://127.0.0.1:11434/v1".into();
         // Gemini: its lowest-cost model, then the regular one; the own endpoint
-        // and the DeepSeek key are passed over.
+        // and its key are passed over.
         let e = summary_endpoint_for(&s, Provider::Gemini).unwrap();
         assert_eq!((e.url.as_str(), e.key.as_str()), (GEMINI_OPENAI_URL, "AIzaTEST"));
         assert_eq!(models(&e), vec![GEMINI_SUMMARY_LITE_MODEL, GEMINI_SUMMARY_MODEL]);
@@ -1486,7 +1288,7 @@ mod tests {
         let e = summary_endpoint_for(&s, Provider::Gemini).unwrap();
         assert_eq!(models(&e), vec!["gemini-2.5-flash", GEMINI_SUMMARY_LITE_MODEL, GEMINI_SUMMARY_MODEL]);
         // A model from another service is not sent to Gemini.
-        s.summary_model = "deepseek-chat".into();
+        s.summary_model = "gpt-4o-mini".into();
         let e = summary_endpoint_for(&s, Provider::Gemini).unwrap();
         assert_eq!(models(&e), vec![GEMINI_SUMMARY_LITE_MODEL, GEMINI_SUMMARY_MODEL]);
         s.summary_model = "gemini-2.5-flash".into();
@@ -1497,17 +1299,20 @@ mod tests {
         // Gemini without its key works like custom.
         s.gemini_api_key = "".into();
         assert_eq!(summary_endpoint_for(&s, Provider::Gemini), summary_endpoint_for(&s, Provider::Custom));
-        // Custom without an address: DeepSeek with its key…
+        // Custom without an address: a key alone goes nowhere…
         s.summary_api_base = String::new();
         s.summary_model = String::new();
-        let e = summary_endpoint_for(&s, Provider::Custom).unwrap();
-        assert_eq!((e.url.as_str(), e.key.as_str()), (DEEPSEEK_API_URL, "sk-ds"));
-        assert_eq!(models(&e), vec![DEEPSEEK_MODEL, "deepseek-reasoner"]);
-        // …which may come from the older TRTC LLM config…
-        s.deepseek_api_key = String::new();
+        assert_eq!(summary_endpoint_for(&s, Provider::Custom), None);
+        // …an address without a key of its own goes without one: a key in an older
+        // TRTC LLM config is never sent to an address the owner typed…
+        s.summary_api_base = "https://api.openai.com/v1".into();
+        s.summary_model = "gpt-4o-mini".into();
+        s.summary_api_key = String::new();
         s.trtc_llm_config = r#"{"APIKey":"sk-cfg"}"#.into();
         let e = summary_endpoint_for(&s, Provider::Custom).unwrap();
-        assert_eq!((e.url.as_str(), e.key.as_str()), (DEEPSEEK_API_URL, "sk-cfg"));
+        assert_eq!((e.url.as_str(), e.key.as_str(), models(&e)), ("https://api.openai.com/v1/chat/completions", "", vec!["gpt-4o-mini"]));
+        s.summary_api_base = String::new();
+        s.summary_model = String::new();
         // …else Gemini, else OpenRouter.
         s.trtc_llm_config = "".into();
         s.gemini_api_key = "AIzaTEST".into();
@@ -1607,15 +1412,15 @@ mod tests {
 
     #[test]
     fn parses_api_key_from_llm_config() {
-        let cfg = r#"{"LLMType":"openai","Model":"deepseek-chat","APIKey":"sk-test","APIUrl":"https://api.deepseek.com/v1/chat/completions"}"#;
+        let cfg = r#"{"LLMType":"openai","Model":"gpt-4o-mini","APIKey":"sk-test","APIUrl":"https://api.openai.com/v1/chat/completions"}"#;
         assert_eq!(api_key_from_llm_config(cfg).as_deref(), Some("sk-test"));
-        assert_eq!(model_from_llm_config(cfg).as_deref(), Some("deepseek-chat"));
+        assert_eq!(api_key_from_llm_config(r#"{"api_key":" sk-test2 "}"#).as_deref(), Some("sk-test2"));
         assert!(api_key_from_llm_config("").is_none());
         assert!(api_key_from_llm_config("{bad").is_none());
     }
 
     #[test]
-    fn fallback_shows_dialogue_not_deepseek_scaffolding() {
+    fn fallback_shows_dialogue_not_the_summary_scaffolding() {
         let input = build_summary_input(
             "+12025550143",
             11_965,
@@ -1671,7 +1476,7 @@ mod tests {
     }
 
     #[test]
-    fn summary_input_labels_sources_for_deepseek() {
+    fn summary_input_labels_its_sources() {
         let s = build_summary_input(
             "",
             27_074,
@@ -1812,13 +1617,13 @@ mod tests {
     }
 
     #[test]
-    fn gemini_summaries_think_little_and_get_room_deepseek_is_unchanged() {
+    fn gemini_summaries_think_little_and_get_room_other_services_are_unchanged() {
         let gemini = Endpoint { url: GEMINI_OPENAI_URL.into(), key: "k".into(), models: vec![GEMINI_SUMMARY_MODEL.into()] };
-        let deepseek = Endpoint { url: DEEPSEEK_API_URL.into(), key: "k".into(), models: vec![DEEPSEEK_MODEL.into()] };
+        let other = Endpoint { url: "https://api.openai.com/v1/chat/completions".into(), key: "k".into(), models: vec!["gpt-4o-mini".into()] };
         let g = chat_payload(&gemini, GEMINI_SUMMARY_MODEL, "sys", "call", summary_max_tokens(&gemini));
         assert_eq!(g["reasoning_effort"], "low");
         assert_eq!(g["max_tokens"], 1500);
-        let d = chat_payload(&deepseek, DEEPSEEK_MODEL, "sys", "call", summary_max_tokens(&deepseek));
+        let d = chat_payload(&other, "gpt-4o-mini", "sys", "call", summary_max_tokens(&other));
         assert!(d.get("reasoning_effort").is_none());
         assert_eq!(d["max_tokens"], 400);
         assert_eq!(d["messages"][1]["content"], "call");
@@ -1877,7 +1682,7 @@ mod translate_tests {
         let mut s = Settings::from_env();
         s.summary_api_base = String::new();
         s.summary_model = String::new();
-        s.deepseek_api_key = String::new();
+        s.summary_api_key = String::new();
         s.openrouter_api_key = String::new();
         s.trtc_llm_config = "".into();
         s.gemini_api_key = "".into();
@@ -2109,7 +1914,7 @@ mod translate_tests {
         }
         assert_eq!(model_request("gpt-5", "s", "u", 6_000)["max_completion_tokens"], 6_000);
         // Every other model is asked as before.
-        for m in ["gpt-4o", "gpt-4.1-mini", "deepseek-chat", "gemini-flash-latest", "omni-model", "o10", "llama-3-70b"] {
+        for m in ["gpt-4o", "gpt-4.1-mini", "mistral-small", "gemini-flash-latest", "omni-model", "o10", "llama-3-70b"] {
             let p = model_request(m, "sys", "call", 400);
             assert_eq!(p["temperature"], 0.2, "{m}");
             assert_eq!(p["max_tokens"], 400, "{m}");
@@ -2122,15 +1927,15 @@ mod translate_tests {
     }
 
     #[test]
-    fn the_deepseek_reasoner_fallback_gets_room_to_think() {
-        let p = model_request("deepseek-reasoner", "sys", "call", 400);
+    fn reasoner_models_get_room_to_think() {
+        let p = model_request("example-reasoner", "sys", "call", 400);
         assert_eq!(p["max_tokens"], 8_000);
         assert_eq!(p["temperature"], 0.2);
-        assert_eq!(model_request("deepseek-reasoner", "s", "u", 20_000)["max_tokens"], 20_000);
-        let deepseek = Endpoint { url: DEEPSEEK_API_URL.into(), key: "k".into(), models: vec![DEEPSEEK_MODEL.into(), "deepseek-reasoner".into()] };
-        let p = chat_payload(&deepseek, "deepseek-reasoner", "sys", "call", summary_max_tokens(&deepseek));
+        assert_eq!(model_request("example-reasoner", "s", "u", 20_000)["max_tokens"], 20_000);
+        let other = Endpoint { url: "https://api.example/v1/chat/completions".into(), key: "k".into(), models: vec!["example-chat".into(), "example-reasoner".into()] };
+        let p = chat_payload(&other, "example-reasoner", "sys", "call", summary_max_tokens(&other));
         assert_eq!(p["max_tokens"], 8_000);
-        assert_eq!(chat_payload(&deepseek, DEEPSEEK_MODEL, "sys", "call", summary_max_tokens(&deepseek))["max_tokens"], 400);
+        assert_eq!(chat_payload(&other, "example-chat", "sys", "call", summary_max_tokens(&other))["max_tokens"], 400);
     }
 
     #[test]

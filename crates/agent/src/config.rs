@@ -262,8 +262,12 @@ pub struct Settings {
     pub openrouter_base_url: String,
     pub openrouter_http_referer: String,
     pub openrouter_app_title: String,
-    /// DeepSeek API key for the post-call notification summary only (not live talk).
-    pub deepseek_api_key: String,
+    /// Key of the service that writes the post-call summary ("another
+    /// service" in the console; not live talk).
+    pub summary_api_key: String,
+    /// The summary key came from the variable's former name (an older setup,
+    /// [crate::settings_store::RuntimeSettings::effective]).
+    pub summary_api_key_old_env: bool,
     pub piper_url: String,
     pub whisper_url: String,
     pub whisper_model: String,
@@ -429,7 +433,10 @@ impl Settings {
                 "https://github.com/h4lo-void/bageo-call",
             ),
             openrouter_app_title: env_or("OPENROUTER_APP_TITLE", "bageo-call"),
-            deepseek_api_key: env_or("DEEPSEEK_API_KEY", ""),
+            // Reading older setups: the variable's former name still works.
+            summary_api_key: env_or("SUMMARY_API_KEY", &env_or("DEEPSEEK_API_KEY", "")),
+            summary_api_key_old_env: env_or("SUMMARY_API_KEY", "").trim().is_empty()
+                && !env_or("DEEPSEEK_API_KEY", "").trim().is_empty(),
             piper_url: env_or("PIPER_URL", "http://127.0.0.1:10200"),
             whisper_url: env_or("WHISPER_URL", ""),
             whisper_model: env_or("WHISPER_MODEL", "base"),

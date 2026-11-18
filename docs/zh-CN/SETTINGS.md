@@ -222,12 +222,11 @@ AI 要能替你接电话，先把这几项填好。
 - **API 地址**：服务兼容 OpenAI 的地址，例子在下面。
 - **模型**：填了 API 地址就必须填。
 - **API 密钥**：保存后只显示提示；本机服务器不需要。
-- 不填 API 地址时：填了 API 密钥就用 DeepSeek，否则用 Gemini。
-- 保存为 `summary_api_base`、`summary_model` 和 `deepseek_api_key`（存的是你所用服务的密钥）。
+- 不填 API 地址时没有自己的服务：有 Gemini 密钥就由 Gemini 写摘要。
+- 保存为 `summary_api_base`、`summary_model` 和 `summary_api_key`（存的是你所用服务的密钥）。
 
 API 地址的例子：
 
-- DeepSeek：`https://api.deepseek.com/v1`（模型 `deepseek-chat`）
 - OpenAI：`https://api.openai.com/v1`（例如 `gpt-4o-mini`）
 - OpenRouter：`https://openrouter.ai/api/v1`
 - 本机的 Ollama：`http://127.0.0.1:11434/v1`
@@ -435,6 +434,7 @@ Bageo 会自己维持 `adb reverse`，并启动手机上的 App。
 | 变量 | 控制台设置 | 默认值 |
 |---|---|---|
 | `GEMINI_API_KEY` | Gemini API 密钥 | *（空）* |
+| `SUMMARY_API_KEY` | 其他服务（摘要）的 API 密钥 | *（空；旧名 `DEEPSEEK_API_KEY` 仍可读）* |
 | `APP_LANGUAGE` | 语言 | `en`（还有 `zh-TW`、`zh-CN`、`ja`、`ko`、`es`、`fr`、`de`、`pt`） |
 | `NOTIFY_LANGUAGE` | 通知和摘要的语言 | *（空 = 与 `APP_LANGUAGE` 相同）* |
 | `OWNER_NAME` | 你的名字 | *（空）* |
