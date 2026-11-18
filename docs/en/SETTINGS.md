@@ -136,7 +136,7 @@ Your own words and numbers go in `config/scam_db.local.json` in the data folder.
 
 ### Prompt
 
-How the AI talks; the built-in prompt works for most people. To write your own, see [Writing the prompt](PROMPTS.md).
+How the AI talks. The built-in prompt is a short general baseline; add your own situation and style so the AI sounds more like you. To write your own, see [Writing the prompt](PROMPTS.md).
 
 - *Your own prompt*: empty = built-in; **Show the built-in prompt** shows it.
 - *Notes the AI may answer from*: facts callers may ask about, one per line, up to 6,000 characters.

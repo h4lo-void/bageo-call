@@ -2830,10 +2830,11 @@ mod tests {
         assert_eq!(rt.persona_max_secs(), 5 * 60);
         assert_eq!(rt.persona_stall_max_secs(), 30 * 60);
         assert_eq!(rt.gemini_stall_model, "gemini-3.8-live");
+        let pk = crate::prompts::pack(crate::locale::Lang::ZhTw);
         // Every call starts short; the full stall block only after the switch.
         let first = rt.gemini_system_prompt_for_call();
-        assert!(first.contains("讓他繼續講") && !first.contains("陪他繞"));
-        assert!(!first.contains("喔不用了，謝謝"));
+        assert!(first.contains(&pk.sales_listen_line) && first.contains("讓他繼續講") && !first.contains("陪他繞"));
+        assert!(!first.contains(&pk.sales_reject_default));
         let full = rt.persona_stall_system_prompt();
         assert!(full.contains("陪他繞") && !full.contains("讓他繼續講"));
         assert!(full.len() > first.len());
@@ -2859,8 +2860,8 @@ mod tests {
             .apply_patch(&json!({ "persona_stall_spam": false }))
             .unwrap();
         let p = off.gemini_system_prompt_for_call();
-        assert!(!p.contains("陪他繞"));
-        assert!(p.contains("喔不用了，謝謝"));
+        assert!(!p.contains("陪他繞") && !p.contains(&pk.sales_listen_line));
+        assert!(p.contains(&pk.sales_reject_default));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

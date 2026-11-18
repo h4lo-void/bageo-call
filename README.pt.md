@@ -151,7 +151,7 @@ Reservar uma mesa, remarcar um horário, perguntar a uma loja sobre estoque ou h
   <img src="docs/images/languages.en.svg" width="900" alt="O Bageo fala nove idiomas: inglês, chinês tradicional, chinês simplificado, japonês, coreano, espanhol, francês, alemão e português. Cada um atende com o seu próprio olá.">
 </p>
 
-A voz da IA, as instruções embutidas, o console web, o app do celular e as notificações existem em nove idiomas. Em um celular com dois SIMs, cada SIM abre as ligações no seu próprio idioma; quem liga do exterior ouve o idioma do seu país e, se a pessoa trocar de idioma no meio da ligação, a IA acompanha. As transcrições guardam as palavras originais, cada linha com uma tradução para o idioma das suas notificações. [Mais sobre idiomas e dois SIMs](docs/en/FEATURES.md#nine-languages-dual-sim-translated-transcripts)
+A voz da IA, as instruções embutidas (uma base curta e geral que você pode adaptar à sua situação e ao seu estilo), o console web, o app do celular e as notificações existem em nove idiomas. Em um celular com dois SIMs, cada SIM abre as ligações no seu próprio idioma; quem liga do exterior ouve o idioma do seu país e, se a pessoa trocar de idioma no meio da ligação, a IA acompanha. As transcrições guardam as palavras originais, cada linha com uma tradução para o idioma das suas notificações. [Mais sobre idiomas e dois SIMs](docs/en/FEATURES.md#nine-languages-dual-sim-translated-transcripts)
 
 ## Como funciona
 
