@@ -400,8 +400,11 @@ pub fn tg_result_text(task: &TaskRecord, confirmed: bool) -> String {
 #[derive(Debug, Clone)]
 struct PendingCallBack {
     task_id: String,
-    /// The last nine digits of the number dialed.
+    number: String,
+    /// Canonical E.164 key (or raw digits when unplaceable).
     key: String,
+    /// Country of the SIM / number used to interpret national forms.
+    region: Option<String>,
     /// The phone asked to dial it.
     serial: String,
     script: String,
@@ -420,17 +423,55 @@ fn call_backs() -> std::sync::MutexGuard<'static, Vec<PendingCallBack>> {
     CALL_BACKS.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-fn number_key(number: &str) -> String {
-    let digits: Vec<char> = number.chars().filter(char::is_ascii_digit).collect();
-    digits[digits.len().saturating_sub(9)..].iter().collect()
+fn callback_region(serial: &str) -> Option<String> {
+    crate::phone_region::last_sim(serial.trim())
+        .or_else(|| crate::phone_region::country_of_code(&crate::locale::country_code()).map(str::to_string))
+}
+
+fn number_key_for(serial: &str, number: &str, region_hint: Option<&str>) -> (String, Option<String>) {
+    let region = region_hint
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty())
+        .or_else(|| callback_region(serial));
+    let parsed = crate::phone_region::normalize(number, region.as_deref());
+    let key = crate::phone_region::canonical_e164(number, region.as_deref())
+        .unwrap_or_else(|| number.chars().filter(char::is_ascii_digit).collect());
+    let resolved_region = parsed.map(|n| n.country.to_string()).or(region);
+    (key, resolved_region)
+}
+
+fn same_callback_number(c: &PendingCallBack, caller_id: &str, serial: &str) -> bool {
+    let trimmed = caller_id.trim();
+    let digits: String = trimmed.chars().filter(char::is_ascii_digit).collect();
+    if digits.is_empty() {
+        return false;
+    }
+    let (incoming_key, _) = number_key_for(serial, trimmed, None);
+    if !c.key.is_empty() && !incoming_key.is_empty() && c.key == incoming_key {
+        return true;
+    }
+    if !trimmed.starts_with('+') && !digits.starts_with("00") {
+        if let Some(ref reg) = c.region {
+            if !(digits.starts_with('0') && crate::phone_region::no_trunk_without_zero(reg))
+                && crate::phone_region::canonical_e164(trimmed, Some(reg)).as_deref() == Some(c.key.as_str())
+            {
+                return true;
+            }
+        }
+    }
+    let sim = callback_region(serial).or_else(|| c.region.clone());
+    crate::contacts::same_number(&c.number, trimmed, sim.as_deref())
 }
 
 fn register_voicemail_callback(task_id: &str, number: &str, serial: &str, script: String, lang: Lang) {
+    let (key, region) = number_key_for(serial, number, None);
     let mut list = call_backs();
     list.retain(|c| c.task_id != task_id && c.since.elapsed() < CALL_BACK_MAX_AGE);
     list.push(PendingCallBack {
         task_id: task_id.to_string(),
-        key: number_key(number),
+        number: number.trim().to_string(),
+        key,
+        region,
         serial: serial.trim().to_string(),
         script,
         lang,
@@ -443,16 +484,18 @@ fn register_voicemail_callback(task_id: &str, number: &str, serial: &str, script
 /// (empty: the app does not say the number; then only when it is the one on
 /// that phone). Its task id.
 fn pending_call_back(serial: &str, caller_id: &str) -> Option<String> {
-    let key = number_key(caller_id);
+    let digits: String = caller_id.chars().filter(char::is_ascii_digit).collect();
     let list = call_backs();
     let mut on_phone = list
         .iter()
         .filter(|c| c.serial.eq_ignore_ascii_case(serial.trim()) && c.since.elapsed() < CALL_BACK_MAX_AGE);
-    if key.is_empty() {
+    if digits.is_empty() {
         let first = on_phone.next()?;
         return on_phone.next().is_none().then(|| first.task_id.clone());
     }
-    on_phone.find(|c| c.key == key).map(|c| c.task_id.clone())
+    on_phone
+        .find(|c| same_callback_number(c, caller_id, serial))
+        .map(|c| c.task_id.clone())
 }
 
 /// A to-do's call-back is going out on phone `serial`: its call is ours (no
@@ -697,5 +740,39 @@ mod tests {
         assert!(!voicemail_callback_dialing(&control, "pixel-vm-test-d", "0912000884").await, "no live session");
         assert_eq!(pending_call_back("pixel-vm-test-d", "0912000884").as_deref(), Some("t-vm-4"), "nothing taken");
         take_call_back("t-vm-4");
+    }
+
+    #[test]
+    fn eight_digit_countries_and_taiwan_landlines_match_and_stay_distinct() {
+        // Taiwan 8-digit landline (07-234-5678 vs +88672345678).
+        register_voicemail_callback("t-vm-tw-ll", "07-234-5678", "pixel-vm-tw-ll", "S".into(), Lang::ZhTw);
+        assert_eq!(pending_call_back("pixel-vm-tw-ll", "+88672345678").as_deref(), Some("t-vm-tw-ll"));
+        assert_eq!(pending_call_back("pixel-vm-tw-ll", "0272345678"), None);
+        take_call_back("t-vm-tw-ll");
+
+        // 8-digit countries (+852 HK, +65 SG, +45 DK, +47 NO) match local vs +CC
+        // and never collide across country codes or against TW 9-digit numbers.
+        for (id, e164, local, iso, foreign) in [
+            ("t-vm-hk", "+852 9123 4567", "91234567", "hk", "+6591234567"),
+            ("t-vm-sg", "+65 9123 4567", "91234567", "sg", "+886291234567"),
+            ("t-vm-dk", "+45 45 12 34 56", "45123456", "dk", "+4745123456"),
+            ("t-vm-no", "+47 47 12 34 56", "47123456", "no", "+4547123456"),
+        ] {
+            let serial = format!("pixel-vm-{iso}");
+            crate::phone_region::note_sim(&serial, iso);
+            register_voicemail_callback(id, e164, &serial, "S".into(), Lang::En);
+            assert_eq!(pending_call_back(&serial, local).as_deref(), Some(id), "{iso} local");
+            assert_eq!(pending_call_back(&serial, e164).as_deref(), Some(id), "{iso} e164");
+            assert_eq!(pending_call_back(&serial, foreign), None, "{iso} foreign {foreign}");
+            take_call_back(id);
+        }
+
+        // Even before note_sim is called on a dual-SIM/unseen phone, an E.164 callback
+        // still recognizes its own country's bare 8-digit local form without matching others.
+        register_voicemail_callback("t-vm-hk-nosim", "+85291234567", "pixel-vm-nosim", "S".into(), Lang::En);
+        assert_eq!(pending_call_back("pixel-vm-nosim", "91234567").as_deref(), Some("t-vm-hk-nosim"));
+        assert_eq!(pending_call_back("pixel-vm-nosim", "+6591234567"), None);
+        assert_eq!(pending_call_back("pixel-vm-nosim", "091234567"), None);
+        take_call_back("t-vm-hk-nosim");
     }
 }

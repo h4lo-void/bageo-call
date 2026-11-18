@@ -329,11 +329,69 @@ pub struct ControlRegistry {
     /// The phone and SIM (subscription id) of the call each recent task came
     /// from, so its call-back dials out on the SIM the caller called.
     task_sims: Arc<Mutex<Recent<(String, i64)>>>,
+    /// SIM book (from `errands`) so call-back phone selection knows each phone's
+    /// SIM countries.
+    sim_book: Arc<std::sync::Mutex<Option<Arc<crate::errands::SimBook>>>>,
+    /// Per-phone SIM countries (ISO 3166 alpha-2) registered directly (e.g. tests).
+    phone_sims: Arc<Mutex<HashMap<String, Vec<String>>>>,
 }
 
 impl ControlRegistry {
     pub fn new() -> Arc<Self> {
         Arc::new(Self::default())
+    }
+
+    /// Attach the shared [`crate::errands::SimBook`] so call-backs can prefer a
+    /// phone with a SIM in the destination number's country.
+    pub fn set_sim_book(&self, book: Arc<crate::errands::SimBook>) {
+        *self.sim_book.lock().unwrap_or_else(|e| e.into_inner()) = Some(book);
+    }
+
+    /// Record the SIM countries (`iso` codes) available on `serial` (used when
+    /// no [`crate::errands::SimBook`] entry exists yet).
+    pub async fn set_phone_sim_countries(&self, serial: &str, countries: Vec<String>) {
+        let mut clean: Vec<String> = countries
+            .into_iter()
+            .map(|c| c.trim().to_ascii_lowercase())
+            .filter(|c| c.len() == 2 && c.bytes().all(|b| b.is_ascii_lowercase()))
+            .collect();
+        clean.sort();
+        clean.dedup();
+        self.phone_sims
+            .lock()
+            .await
+            .insert(serial.trim().to_string(), clean);
+    }
+
+    async fn sim_countries_for(&self, serial: &str) -> Vec<String> {
+        let canonical = crate::canonical_device_serial(serial);
+        let mut out: Vec<String> = Vec::new();
+        if let Some(book) = self.sim_book.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+            for (_, c) in book.of(&canonical) {
+                let c = c.trim().to_ascii_lowercase();
+                if !c.is_empty() && !out.contains(&c) {
+                    out.push(c);
+                }
+            }
+        }
+        if out.is_empty() {
+            let map = self.phone_sims.lock().await;
+            for key in [serial.trim(), canonical.as_str()] {
+                if let Some(list) = map.get(key) {
+                    for c in list {
+                        if !c.is_empty() && !out.contains(c) {
+                            out.push(c.clone());
+                        }
+                    }
+                }
+            }
+        }
+        if out.is_empty() {
+            if let Some(last) = crate::phone_region::last_sim(&canonical) {
+                out.push(last);
+            }
+        }
+        out
     }
 
     /// Record whether `serial` is a normal phone (from its control hello and status).
@@ -609,7 +667,7 @@ impl ControlRegistry {
         let (serial, sub) = sims.get(task_id)?;
         control_serials(serial)
             .iter()
-            .any(|s| s == dialing_serial)
+            .any(|s| s.eq_ignore_ascii_case(dialing_serial.trim()))
             .then_some(*sub)
     }
 
@@ -719,13 +777,36 @@ impl ControlRegistry {
             anyhow::bail!("callback number not on whitelist");
         }
 
+        let serials: Vec<String> = {
+            let clients = self.clients.lock().await;
+            if clients.is_empty() {
+                return Ok(false);
+            }
+            clients.keys().cloned().collect()
+        };
+        let mut sim_map: HashMap<String, Vec<String>> = HashMap::with_capacity(serials.len());
+        for s in &serials {
+            sim_map.insert(s.clone(), self.sim_countries_for(s).await);
+        }
+        let home = crate::phone_region::country_of_code(&crate::locale::country_code());
+        let target_country = crate::phone_region::normalize(number, home).map(|n| n.country.to_string());
+        let normal = self.normal_mode.lock().await.clone();
         let clients = self.clients.lock().await;
         if clients.is_empty() {
             return Ok(false);
         }
-        let normal = self.normal_mode.lock().await.clone();
-        let picked = pick_callback_phone(clients.keys(), prefer_serial, &normal)
-            .and_then(|serial| clients.get(&serial).map(|sink| (serial, sink.clone())));
+        let picked = pick_callback_phone(
+            clients.keys(),
+            prefer_serial,
+            &normal,
+            target_country.as_deref(),
+            |serial, target| {
+                sim_map
+                    .get(serial)
+                    .is_some_and(|list| list.iter().any(|c| c.eq_ignore_ascii_case(target)))
+            },
+        )
+        .and_then(|serial| clients.get(&serial).map(|sink| (serial, sink.clone())));
         let Some((serial, sink)) = picked else {
             info!(task_id, "callback: every connected phone is a normal phone");
             return Ok(false);
@@ -892,14 +973,32 @@ impl ControlRegistry {
     }
 }
 
-/// The phone for a call-back: `prefer` when it is connected and not a normal phone,
-/// else the first such phone by serial (a stable choice). None: no phone can call.
+/// The phone for a call-back: skips normal-mode phones, prefers connected AI-mode
+/// phones whose SIM country matches `target_country` (preferring `prefer` among
+/// matching phones, else first by serial), and falls back to `prefer` / first by
+/// serial when none is known to match. None: no phone can call.
 fn pick_callback_phone<'a>(
     connected: impl Iterator<Item = &'a String>,
     prefer: &str,
     normal: &HashSet<String>,
+    target_country: Option<&str>,
+    has_sim: impl Fn(&str, &str) -> bool,
 ) -> Option<String> {
     let mut usable: Vec<&String> = connected.filter(|s| !normal.contains(s.as_str())).collect();
+    if let Some(target) = target_country.map(str::trim).filter(|t| !t.is_empty()) {
+        let mut matching: Vec<&String> = usable
+            .iter()
+            .copied()
+            .filter(|s| has_sim(s.as_str(), target))
+            .collect();
+        if !matching.is_empty() {
+            if matching.iter().any(|s| s.as_str() == prefer) {
+                return Some(prefer.to_string());
+            }
+            matching.sort();
+            return matching.first().map(|s| (*s).clone());
+        }
+    }
     if usable.iter().any(|s| s.as_str() == prefer) {
         return Some(prefer.to_string());
     }
@@ -1014,6 +1113,10 @@ fn strip_tw_mobile_core(digits: &str) -> String {
     }
 }
 
+/// Minimum normalized digit length required for a suffix match between two
+/// numbers so short codes like `"123"` cannot collide with full numbers.
+const MIN_EQUIV_SUFFIX_DIGITS: usize = 7;
+
 fn numbers_equivalent(a: &str, b: &str) -> bool {
     if a.is_empty() || b.is_empty() {
         return false;
@@ -1023,7 +1126,11 @@ fn numbers_equivalent(a: &str, b: &str) -> bool {
     }
     let ca = strip_tw_mobile_core(a);
     let cb = strip_tw_mobile_core(b);
-    !ca.is_empty() && !cb.is_empty() && (ca == cb || ca.ends_with(&cb) || cb.ends_with(&ca))
+    !ca.is_empty()
+        && !cb.is_empty()
+        && (ca == cb
+            || (ca.len().min(cb.len()) >= MIN_EQUIV_SUFFIX_DIGITS
+                && (ca.ends_with(&cb) || cb.ends_with(&ca))))
 }
 
 /// Outbound dial allow-list. **Fail-closed:** empty `whitelist` denies every number.
@@ -1074,12 +1181,100 @@ mod tests {
     fn callback_skips_normal_phones() {
         let phones = vec!["pixel-1".to_string(), "pixel-2".to_string(), "pixel-3".to_string()];
         let normal: HashSet<String> = ["pixel-2".to_string()].into_iter().collect();
-        assert_eq!(pick_callback_phone(phones.iter(), "pixel-3", &normal).as_deref(), Some("pixel-3"));
+        assert_eq!(pick_callback_phone(phones.iter(), "pixel-3", &normal, None, |_, _| false).as_deref(), Some("pixel-3"));
         // The preferred phone is a normal phone: another one calls.
-        assert_eq!(pick_callback_phone(phones.iter(), "pixel-2", &normal).as_deref(), Some("pixel-1"));
+        assert_eq!(pick_callback_phone(phones.iter(), "pixel-2", &normal, None, |_, _| false).as_deref(), Some("pixel-1"));
         let all: HashSet<String> = phones.iter().cloned().collect();
-        assert_eq!(pick_callback_phone(phones.iter(), "pixel-1", &all), None);
-        assert_eq!(pick_callback_phone(std::iter::empty::<&String>(), "", &normal), None);
+        assert_eq!(pick_callback_phone(phones.iter(), "pixel-1", &all, None, |_, _| false), None);
+        assert_eq!(pick_callback_phone(std::iter::empty::<&String>(), "", &normal, None, |_, _| false), None);
+    }
+
+    #[test]
+    fn pick_callback_phone_prefers_matching_sim_country() {
+        let phones = vec![
+            "pixel-1".to_string(),
+            "pixel-2".to_string(),
+            "pixel-3".to_string(),
+            "pixel-4".to_string(),
+        ];
+        let normal: HashSet<String> = ["pixel-4".to_string()].into_iter().collect();
+        let has_sim = |serial: &str, country: &str| match serial {
+            "pixel-1" => country == "us",
+            "pixel-2" => country == "tw",
+            "pixel-3" => country == "jp",
+            "pixel-4" => country == "tw", // normal phone must stay skipped
+            _ => false,
+        };
+        // Even when prefer is pixel-1 (US), a TW destination prefers pixel-2 (TW).
+        assert_eq!(
+            pick_callback_phone(phones.iter(), "pixel-1", &normal, Some("tw"), has_sim).as_deref(),
+            Some("pixel-2")
+        );
+        // JP destination picks pixel-3 (JP).
+        assert_eq!(
+            pick_callback_phone(phones.iter(), "pixel-1", &normal, Some("jp"), has_sim).as_deref(),
+            Some("pixel-3")
+        );
+        // Unknown target country (or no matching SIM) falls back to prefer, then sorted usable.
+        assert_eq!(
+            pick_callback_phone(phones.iter(), "pixel-1", &normal, Some("de"), has_sim).as_deref(),
+            Some("pixel-1")
+        );
+        assert_eq!(
+            pick_callback_phone(phones.iter(), "pixel-4", &normal, Some("de"), has_sim).as_deref(),
+            Some("pixel-1")
+        );
+    }
+
+    #[tokio::test]
+    async fn try_dispatch_switches_phone_by_sim_and_drops_old_sub_id() {
+        let reg = ControlRegistry::default();
+        let (s1, mut phone1) = test_socket::phone_socket().await;
+        let (s2, mut phone2) = test_socket::phone_socket().await;
+        reg.register_client("pixel-us-1".into(), s1).await;
+        reg.register_client("pixel-tw-2".into(), s2).await;
+        reg.set_phone_sim_countries("pixel-us-1", vec!["us".into()]).await;
+        reg.set_phone_sim_countries("pixel-tw-2", vec!["tw".into()]).await;
+        reg.remember_task_sim("task-tw", "pixel-us-1", 7).await;
+        reg.remember_task_sim("task-us", "pixel-us-1", 7).await;
+
+        let wl = vec!["+886912345678".to_string(), "+12025550143".to_string()];
+        assert!(reg
+            .try_dispatch_phone_callback("task-tw", "+886912345678", "pixel-us-1", &wl)
+            .await
+            .unwrap());
+        let msg2 = test_socket::next_json(&mut phone2, Duration::from_secs(2))
+            .await
+            .expect("tw phone should receive place_call");
+        assert_eq!(msg2["task_id"], "task-tw");
+        assert!(msg2.get("sub_id").is_none(), "sub_id from pixel-us-1 must not be reused on pixel-tw-2");
+        assert!(test_socket::next_json(&mut phone1, Duration::from_millis(80)).await.is_none());
+
+        // Same phone as original: sub_id IS preserved.
+        assert!(reg
+            .try_dispatch_phone_callback("task-us", "+12025550143", "pixel-us-1", &wl)
+            .await
+            .unwrap());
+        let msg1 = test_socket::next_json(&mut phone1, Duration::from_secs(2))
+            .await
+            .expect("us phone should receive place_call");
+        assert_eq!(msg1["task_id"], "task-us");
+        assert_eq!(msg1["sub_id"], 7);
+    }
+
+    #[test]
+    fn numbers_equivalent_requires_min_suffix_len() {
+        assert!(!numbers_equivalent("0912345123", "123"));
+        assert!(!numbers_equivalent("123", "0912345123"));
+        assert!(!numbers_equivalent("+886912345911", "911"));
+        assert!(!numbers_equivalent("0912123456", "123456"));
+        assert!(!callback_whitelist_allows("0912345123", &["123".to_string()]));
+        // Exact short code still matches itself.
+        assert!(numbers_equivalent("123", "123"));
+        // Full numbers with >=7 core digits match across formats.
+        assert!(numbers_equivalent("0912345678", "886912345678"));
+        assert!(numbers_equivalent("2025550143", "12025550143"));
+        assert!(numbers_equivalent("0312345678", "81312345678"));
     }
 
     #[test]

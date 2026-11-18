@@ -27,7 +27,8 @@ pub const MODEL_TIMEOUT: Duration = Duration::from_millis(900);
 pub const BLOCK_MAX_CHARS: usize = 300;
 /// The most questions asked.
 pub const MISSING_MAX: usize = 3;
-const ANSWERS_MAX: usize = 6;
+/// Every known key and the note: the owner may answer all the questions.
+const ANSWERS_MAX: usize = KEYS.len() + 1;
 const ANSWER_MAX_CHARS: usize = 80;
 const NOTE_MAX_CHARS: usize = 120;
 const LADDER_MAX: usize = 4;
@@ -153,7 +154,10 @@ fn contains_any(low: &str, words: &[&str]) -> bool {
 
 #[derive(Clone, Copy, PartialEq)]
 enum Marker {
+    /// A written "am" (or 凌晨, 午前, 오전): 12 is midnight.
     Am,
+    /// A part of the morning named in words (上午, 早上, de la mañana): 12 is noon.
+    Morning,
     Pm,
     Noon,
 }
@@ -175,11 +179,56 @@ fn marker_before(c: &[char], i: usize) -> Option<Marker> {
         Some(Marker::Noon)
     } else if contains_any(&pre, &["下午", "晚上", "晚間", "傍晚", "今晚", "明晚", "夜", "午後", "오후", "저녁", "밤"]) {
         Some(Marker::Pm)
-    } else if contains_any(&pre, &["上午", "早上", "早晨", "凌晨", "清晨", "午前", "오전", "아침", "朝"]) {
+    } else if contains_any(&pre, &["凌晨", "午前", "오전"]) {
         Some(Marker::Am)
+    } else if contains_any(&pre, &["上午", "早上", "早晨", "清晨", "아침", "朝"]) {
+        Some(Marker::Morning)
     } else {
         None
     }
+}
+
+/// The part of the day written after a time ("20h de la noche", "8 Uhr abends",
+/// "7 giờ tối"): the marker, skipping spaces.
+fn marker_after(c: &[char], at: usize) -> Option<Marker> {
+    const PM: &[&str] = &[
+        "de la tarde", "de la noche", "du soir", "de l'après-midi", "de l'apres-midi", "nachmittags", "abends", "da tarde", "da noite", "della sera",
+        "di sera", "di pomeriggio", "tối", "chiều", "malam", "sore",
+    ];
+    const MORNING: &[&str] = &["de la mañana", "du matin", "morgens", "vormittags", "da manhã", "da manha", "di mattina", "sáng", "pagi"];
+    let j = skip_spaces(c, at);
+    let word: String = c[j.min(c.len())..].iter().take(16).collect();
+    if PM.iter().any(|p| word.starts_with(p)) {
+        Some(Marker::Pm)
+    } else if MORNING.iter().any(|p| word.starts_with(p)) {
+        Some(Marker::Morning)
+    } else {
+        None
+    }
+}
+
+/// Where the hour's unit ends when a number at `after` is followed by "h", "Uhr"
+/// or "giờ" ("19h30", "20 Uhr 30"); not "2 hours".
+fn hour_unit_end(c: &[char], after: usize) -> Option<usize> {
+    let j = skip_spaces(c, after);
+    for unit in ["uhr", "giờ", "h"] {
+        let n = unit.chars().count();
+        let word: String = c[j.min(c.len())..].iter().take(n).collect();
+        if word == unit && !c.get(j + n).is_some_and(|x| x.is_alphabetic()) {
+            return Some(j + n);
+        }
+    }
+    None
+}
+
+/// A number written after the word for "at" in Italian, Spanish, Portuguese and
+/// Indonesian ("alle 20", "a las 8", "pukul 19.30").
+fn after_at_word(c: &[char], i: usize) -> bool {
+    let pre: Vec<char> = c[i.saturating_sub(8)..i].iter().copied().collect();
+    ["alle ", "ore ", "pukul ", "jam ", "a las ", "a la ", "às "].iter().any(|w| {
+        let w: Vec<char> = w.chars().collect();
+        pre.ends_with(&w) && !(pre.len() > w.len() && pre[pre.len() - w.len() - 1].is_alphabetic())
+    })
 }
 
 /// The hour on a 24-hour clock. Without am/pm, a dinner is in the evening and
@@ -199,6 +248,7 @@ fn to_24(h: u32, marker: Option<Marker>, kind: Kind) -> u32 {
                 h
             }
         }
+        Some(Marker::Morning) => h,
         Some(Marker::Pm) => {
             if h < 12 {
                 h + 12
@@ -236,6 +286,7 @@ fn clocks_of(c: &[char], kind: Kind) -> Vec<(u32, u32)> {
         let after = i + len;
         let a2 = skip_spaces(c, after);
         let ascii = digit_of(c[i]).is_some();
+        let unit_end = if ascii && len <= 2 && h <= 24 { hour_unit_end(c, after) } else { None };
         // (minute, where it ends, am/pm written after it)
         let mut found: Option<(u32, usize, Option<Marker>)> = None;
         if ascii && len <= 2 && h <= 24 && after < c.len() && matches!(c[after], ':' | '：') {
@@ -266,6 +317,34 @@ fn clocks_of(c: &[char], kind: Kind) -> Vec<(u32, u32)> {
                 }
             }
             found = Some((m, j, None));
+        } else if let Some(unit_end) = unit_end {
+            // 19h30, 20h, 19 Uhr 30, 19 giờ 30
+            let k = skip_spaces(c, unit_end);
+            let d1 = c.get(k).and_then(|x| digit_of(*x));
+            let d2 = c.get(k + 1).and_then(|x| digit_of(*x));
+            let mut m = 0;
+            let mut j = unit_end;
+            if let (Some(d1), Some(d2)) = (d1, d2) {
+                if c.get(k + 2).and_then(|x| digit_of(*x)).is_none() && d1 * 10 + d2 < 60 {
+                    m = d1 * 10 + d2;
+                    j = k + 2;
+                }
+            }
+            found = Some((m, j, None));
+        } else if ascii && len <= 2 && h <= 24 && after_at_word(c, i) {
+            // alle 20, a las 8, pukul 19.30
+            let d1 = c.get(after + 1).and_then(|x| digit_of(*x));
+            let d2 = c.get(after + 2).and_then(|x| digit_of(*x));
+            let mut m = 0;
+            let mut j = after;
+            if let (true, Some(d1), Some(d2)) = (matches!(c.get(after), Some('.')), d1, d2) {
+                if c.get(after + 3).and_then(|x| digit_of(*x)).is_none() && d1 * 10 + d2 < 60 {
+                    m = d1 * 10 + d2;
+                    j = after + 3;
+                }
+            }
+            let (suffix, end) = ampm_after(c, j);
+            found = Some((m, end, suffix));
         } else if ascii && len <= 2 && (1..=12).contains(&h) {
             let (suffix, end) = ampm_after(c, after);
             if end > after {
@@ -274,8 +353,10 @@ fn clocks_of(c: &[char], kind: Kind) -> Vec<(u32, u32)> {
         }
         match found {
             Some((m, end, suffix)) => {
-                let explicit = suffix.or_else(|| marker_before(c, i));
-                let marker = explicit.or(last_marker);
+                let explicit = suffix.or_else(|| marker_after(c, end)).or_else(|| marker_before(c, i));
+                // A time after "11 am" with no marker of its own is the same part of the day,
+                // but "12:30" after it is the noon hour, not midnight.
+                let marker = explicit.or(last_marker.map(|m| if m == Marker::Am { Marker::Morning } else { m }));
                 if explicit.is_some() {
                     last_marker = explicit;
                 }
@@ -445,9 +526,23 @@ fn has_qty(low: &str, c: &[char]) -> bool {
 
 fn foreign_script(low: &str) -> bool {
     low.chars().any(|c| {
-        matches!(c as u32, 0x0400..=0x04FF | 0x0590..=0x05FF | 0x0600..=0x06FF | 0x0900..=0x097F | 0x0E00..=0x0E7F)
-    })
+        // Cyrillic, Hebrew, Arabic, Devanagari, Thai, and the letters only Vietnamese writes
+        // (đ, ơ, ư, and the stacked-accent block).
+        matches!(
+            c as u32,
+            0x0400..=0x04FF | 0x0590..=0x05FF | 0x0600..=0x06FF | 0x0900..=0x097F | 0x0E00..=0x0E7F | 0x0110..=0x0111 | 0x01A0..=0x01A1 | 0x01AF..=0x01B0 | 0x1EA0..=0x1EF9
+        )
+    }) || contains_any(low, OTHER_LATIN_WORDS)
 }
+
+/// Words of booking, eating and ordering in Latin-script languages the word lists
+/// above do not read (Italian, Indonesian, Dutch, Polish, Turkish, ...). Matching
+/// one only sends the request to the model, which is cheap; missing one asks the
+/// owner questions the request already answered.
+const OTHER_LATIN_WORDS: &[&str] = &[
+    "prenot", "ristorante", "tavolo", "appuntamento", "stasera", "domani", "ordinare", "pesan", "meja", "restoran", "reservasi", "janji temu", "dokter",
+    "besok", "reserveer", "tafel", "afspraak", "stolik", "rezerwac", "wizyt", "rezervasyon", "randevu", "akşam", "yarın",
+];
 
 const CHANGE_WORDS: &[&str] = &[
     "改期", "改時間", "改时间", "改到", "取消", "延期", "改約", "改约", "換時間", "换时间", "reschedule", "cancel", "postpone", "rebook",
@@ -1159,5 +1254,63 @@ mod tests {
         assert_eq!(a["note"].chars().count(), NOTE_MAX_CHARS);
         assert!(sanitize_answers(Some(&json!("text"))).is_empty());
         assert!(sanitize_answers(None).is_empty());
+    }
+
+    #[test]
+    fn times_written_the_way_europe_and_vietnam_write_them_are_read() {
+        let ladder = |t: &str| ladder_of(t, classify(&t.to_lowercase(), &t.to_lowercase().chars().collect::<Vec<_>>()));
+        // fr, de, pt, es, vi, it, id
+        assert_eq!(ladder("Réservation à 19h30, sinon 20h"), ["19:30", "20:00"]);
+        assert_eq!(ladder("Reservierung um 19 Uhr 30, sonst 20 Uhr"), ["19:30", "20:00"]);
+        assert_eq!(ladder("Reservar uma mesa às 19h30 ou às 20h"), ["19:30", "20:00"]);
+        assert_eq!(ladder("Quiero reservar una mesa a las 8 de la tarde o a las 9 de la noche"), ["20:00", "21:00"]);
+        assert_eq!(ladder("Đặt bàn lúc 19 giờ 30 hoặc 20 giờ"), ["19:30", "20:00"]);
+        assert_eq!(ladder("Prenota un tavolo alle 20.30 oppure alle 21"), ["20:30", "21:00"]);
+        assert_eq!(ladder("Pesan meja pukul 19.30 atau jam 8 malam"), ["19:30", "20:00"]);
+        assert_eq!(ladder("Reservar a las 8 pm o a las 9 pm"), ["20:00", "21:00"]);
+        // A quantity of hours is not a time.
+        assert!(ladder("Rappelle-moi dans 2 hours or 3 hours").is_empty());
+        // The local look finds the time and no longer asks for it.
+        assert!(!local("Réservation d'une table pour 4 personnes à 19h30 au nom de Dupont").missing.contains(&"time"));
+        assert!(!local("Reservierung für 4 Personen um 20 Uhr 30 unter dem Namen Schmidt").missing.contains(&"time"));
+    }
+
+    #[test]
+    fn twelve_after_a_morning_time_is_noon_and_a_written_12_am_is_midnight() {
+        let ladder = |t: &str| ladder_of(t, classify(&t.to_lowercase(), &t.to_lowercase().chars().collect::<Vec<_>>()));
+        assert_eq!(ladder("Book a table at 11 am, otherwise 12:30"), ["11:00", "12:30"]);
+        assert_eq!(ladder("預約剪頭髮 上午11點，不行就12點"), ["11:00", "12:00"]);
+        assert_eq!(ladder("Book a table at 11 pm, otherwise 12 am"), ["23:00", "00:00"]);
+        assert_eq!(ladder("Quiero reservar una mesa a las 11 de la mañana o a las 12"), ["11:00", "12:00"]);
+    }
+
+    #[test]
+    fn a_delegation_without_digits_in_a_language_the_look_cannot_read_goes_to_the_model() {
+        let unreadable = [
+            "Đặt bàn cho hai người tối nay ở nhà hàng",
+            "Prenota un tavolo per due persone stasera al ristorante",
+            "Tolong pesan meja untuk dua orang malam ini di restoran",
+            "Reserveer een tafel voor twee personen vanavond",
+            "Zarezerwuj stolik dla dwóch osób na dzisiaj",
+            "Bu akşam için masa ayırtır mısın",
+            "आज रात के लिए मेज़ बुक करें",
+            "จองโต๊ะสำหรับสองคนคืนนี้",
+            "احجز طاولة لشخصين الليلة",
+        ];
+        for t in unreadable {
+            assert!(local(t).unsure, "{t}");
+        }
+        for t in ["Ask Sam if he is coming to dinner", "幫我打給媽媽說晚點回家", "Call mum about the ordinary plan", "Llama a mamá y dile que llego tarde"] {
+            assert!(!local(t).unsure, "{t}");
+        }
+    }
+
+    #[test]
+    fn the_script_block_carries_when_and_note_and_all_twelve_answers_are_kept() {
+        let answers = vec![("time".to_string(), "tomorrow 7".to_string()), ("note".to_string(), "window seat".to_string())];
+        let b = prompt_block("Book a table", &answers, Lang::En);
+        assert!(b.contains("when tomorrow 7") && b.contains("note window seat"), "{b}");
+        let all: serde_json::Map<String, Value> = KEYS.iter().chain(&["note"]).map(|k| (k.to_string(), json!("v"))).collect();
+        assert_eq!(sanitize_answers(Some(&Value::Object(all))).len(), KEYS.len() + 1);
     }
 }

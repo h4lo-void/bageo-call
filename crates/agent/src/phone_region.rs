@@ -128,6 +128,8 @@ const NO_TRUNK_CODES: &[(&str, usize)] = &[
     // Spain, Portugal
     ("34", 9),
     ("351", 9),
+    // India (mobiles have 10 digits without trunk 0; landlines carry 0)
+    ("91", 10),
     // China (mobiles and 400/800 lines; landlines carry the area code's 0)
     ("86", 10),
     // Singapore, Hong Kong, Macau, Brunei
@@ -147,18 +149,33 @@ const NO_TRUNK_CODES: &[(&str, usize)] = &[
     ("354", 7),
     ("357", 8),
     ("356", 8),
-    // Latin America: Mexico, Peru, Chile, Colombia, Brazil, Uruguay
+    // Gibraltar, Andorra, Monaco, San Marino, Liechtenstein
+    ("350", 8),
+    ("376", 6),
+    ("377", 8),
+    ("378", 6),
+    ("423", 7),
+    // Latin America: Mexico, Peru, Chile, Colombia, Brazil, Uruguay, Central America
     ("52", 10),
     ("51", 8),
     ("56", 9),
     ("57", 8),
     ("55", 10),
     ("598", 8),
-    // Gulf states
+    ("502", 8),
+    ("503", 8),
+    ("504", 8),
+    ("505", 8),
+    ("506", 8),
+    ("507", 7),
+    // Gulf states & Tunisia, Maldives, Bhutan
     ("965", 8),
     ("973", 8),
     ("974", 8),
     ("968", 8),
+    ("216", 8),
+    ("960", 7),
+    ("975", 8),
 ];
 
 /// Whether `digits` (a number written without `+` or `00`) reads as a full
@@ -240,11 +257,81 @@ fn country_in_code(code: &str, national: &str) -> Option<&'static str> {
     }
 }
 
+/// Known domestic number length bounds `(min, max)` (without trunk prefix)
+/// for countries where numbers are commonly written without a leading `0`.
+/// Prevents stripping a leading country-code prefix from a valid domestic
+/// number (e.g. Italian `392…`, Indian `912…`, Brazilian `55…`, Kazakh `701…`).
+fn domestic_length_bounds(code: &str) -> Option<(usize, usize)> {
+    match code {
+        "1" => Some((10, 10)),
+        "7" => Some((10, 10)),
+        "30" => Some((10, 10)),
+        "34" => Some((9, 9)),
+        "39" => Some((9, 10)),
+        "45" => Some((8, 8)),
+        "47" => Some((8, 8)),
+        "48" => Some((9, 9)),
+        "51" => Some((8, 9)),
+        "52" => Some((10, 10)),
+        "55" => Some((10, 11)),
+        "56" => Some((9, 9)),
+        "57" => Some((8, 10)),
+        "65" => Some((8, 8)),
+        "86" => Some((10, 11)),
+        "91" => Some((10, 10)),
+        "216" => Some((8, 8)),
+        "350" => Some((8, 8)),
+        "351" => Some((9, 9)),
+        "352" => Some((8, 9)),
+        "354" => Some((7, 7)),
+        "356" => Some((8, 8)),
+        "357" => Some((8, 8)),
+        "371" => Some((8, 8)),
+        "372" => Some((7, 8)),
+        "375" => Some((9, 9)),
+        "376" => Some((6, 9)),
+        "377" => Some((8, 9)),
+        "378" => Some((6, 10)),
+        "420" => Some((9, 9)),
+        "423" => Some((7, 7)),
+        "502" | "503" | "504" | "505" | "506" => Some((8, 8)),
+        "507" => Some((7, 8)),
+        "598" => Some((8, 8)),
+        "673" => Some((7, 7)),
+        "852" | "853" => Some((8, 8)),
+        "960" => Some((7, 7)),
+        "965" | "968" | "973" | "974" | "975" => Some((8, 8)),
+        _ => None,
+    }
+}
+
+fn trunk_prefix(iso: &str) -> &'static str {
+    match iso {
+        "it" | "sm" | "va" => "",
+        "ru" | "kz" | "by" => "8",
+        "hu" => "06",
+        _ => "0",
+    }
+}
+
+/// Whether calling code `code` never uses a leading `0` trunk prefix on
+/// domestic numbers (excludes countries like IT, CN, IN, BR where `0` starts
+/// landlines or STD codes).
+pub(crate) fn no_trunk_without_zero(iso: &str) -> bool {
+    let Some(code) = calling_code(iso) else {
+        return false;
+    };
+    !matches!(code, "39" | "86" | "91" | "55")
+        && NO_TRUNK_CODES.iter().any(|&(c, _)| c == code)
+}
+
 /// The national significant number of digits dialled inside country `iso`
 /// (calling code `code`): without the trunk prefix (`0` in most countries, `8`
 /// in Russia, Kazakhstan and Belarus, `06` in Hungary, kept in Italy), and for
 /// +1 without the leading `1` of eleven digits. Digits that already start with
-/// the country code and are long enough for it are read as international.
+/// the country code are stripped only when they exceed domestic length bounds
+/// (or, where domestic lengths are not bounded here, are long enough to carry
+/// the code).
 fn national_number<'a>(code: &str, iso: &str, digits: &'a str) -> &'a str {
     if code == "1" {
         return match digits.strip_prefix('1') {
@@ -252,21 +339,51 @@ fn national_number<'a>(code: &str, iso: &str, digits: &'a str) -> &'a str {
             _ => digits,
         };
     }
-    if !digits.starts_with('0') && digits.len() >= code.len() + 8 {
+    let trunk = trunk_prefix(iso);
+    if !digits.starts_with('0') {
         if let Some(rest) = digits.strip_prefix(code) {
-            return rest;
+            let should_strip = match domestic_length_bounds(code) {
+                Some((min, max)) => {
+                    let unstripped_ok = (min..=max).contains(&digits.len());
+                    let stripped_ok = (min..=max).contains(&rest.len())
+                        || (iso == "it" && rest.starts_with('0') && (6..=11).contains(&rest.len()))
+                        || (code == "52" && rest.starts_with('1') && rest.len() == 11)
+                        || (code == "86" && rest.starts_with('0') && (10..=12).contains(&rest.len()))
+                        || (trunk == "0"
+                            && rest.starts_with('0')
+                            && (min..=max).contains(&rest.trim_start_matches('0').len()));
+                    (digits.len() > max && stripped_ok) || (!unstripped_ok && stripped_ok)
+                }
+                None => digits.len() >= code.len() + 8,
+            };
+            if should_strip {
+                return if trunk == "0" && rest.starts_with('0') {
+                    rest.strip_prefix('0').unwrap_or(rest)
+                } else {
+                    rest
+                };
+            }
         }
     }
-    let trunk = match iso {
-        "it" | "sm" | "va" => "",
-        "ru" | "kz" | "by" => "8",
-        "hu" => "06",
-        _ => "0",
-    };
     if trunk.is_empty() {
         return digits;
     }
     digits.strip_prefix(trunk).unwrap_or(digits)
+}
+
+/// Normalized E.164 string with any stray trunk `0` after the calling code
+/// removed (except Italy, which keeps leading `0` on landlines).
+pub(crate) fn canonical_e164(raw: &str, region: Option<&str>) -> Option<String> {
+    normalize(raw, region).map(|n| {
+        let split = calling_code(n.country)
+            .and_then(|code| n.e164.strip_prefix('+')?.strip_prefix(code).map(|national| (code, national)));
+        match split {
+            Some((code, national)) if code != "39" && national.starts_with('0') => {
+                format!("+{code}{}", national.trim_start_matches('0'))
+            }
+            _ => n.e164,
+        }
+    })
 }
 
 /// A caller ID in international form and its country. `+…` and `00…` carry
@@ -507,8 +624,102 @@ mod tests {
             ("34", "1234"),
             ("86", "138001"),
             ("65", "9123"),
+            ("91", "987654321"),
+            ("91", "912345678"),
         ] {
             assert!(!dialled_at_home(code, digits), "+{code} {digits}");
+        }
+        assert!(dialled_at_home("91", "9876543210"));
+        assert!(dialled_at_home("91", "9123456789"));
+        assert!(dialled_at_home("91", "01123456789"));
+        assert!(dialled_at_home("45", "45123456"));
+        assert!(dialled_at_home("47", "47123456"));
+        for &(code, _) in NO_TRUNK_CODES {
+            assert!(country_of_code(code).is_some(), "unknown no-trunk code {code}");
+        }
+    }
+
+    #[test]
+    fn table_driven_international_and_domestic_prefix_cases() {
+        let cases: &[(&str, Option<&str>, Option<(&str, &str)>)] = &[
+            // Taiwan: mobile, 9-digit Taipei landline (02), 8-digit Kaohsiung (07) / Miaoli (037)
+            ("0912-345-678", Some("tw"), Some(("+886912345678", "tw"))),
+            ("+886 912 345 678", None, Some(("+886912345678", "tw"))),
+            ("00886912345678", Some("jp"), Some(("+886912345678", "tw"))),
+            ("02-2345-6789", Some("tw"), Some(("+886223456789", "tw"))),
+            ("+886 2 2345 6789", None, Some(("+886223456789", "tw"))),
+            ("00886223456789", Some("us"), Some(("+886223456789", "tw"))),
+            ("07-234-5678", Some("tw"), Some(("+88672345678", "tw"))),
+            ("+88672345678", None, Some(("+88672345678", "tw"))),
+            ("0088672345678", Some("us"), Some(("+88672345678", "tw"))),
+            ("88672345678", Some("tw"), Some(("+88672345678", "tw"))),
+            ("037-123456", Some("tw"), Some(("+88637123456", "tw"))),
+            ("+88637123456", None, Some(("+88637123456", "tw"))),
+            ("0088637123456", Some("us"), Some(("+88637123456", "tw"))),
+            // US (+1)
+            ("2025550143", Some("us"), Some(("+12025550143", "us"))),
+            ("1-202-555-0143", Some("us"), Some(("+12025550143", "us"))),
+            ("+12025550143", None, Some(("+12025550143", "us"))),
+            ("0012025550143", Some("tw"), Some(("+12025550143", "us"))),
+            // Japan (+81)
+            ("090-1234-5678", Some("jp"), Some(("+819012345678", "jp"))),
+            ("+819012345678", None, Some(("+819012345678", "jp"))),
+            ("00819012345678", Some("tw"), Some(("+819012345678", "jp"))),
+            ("81312345678", Some("jp"), Some(("+81312345678", "jp"))),
+            // UK (+44)
+            ("07700 900123", Some("gb"), Some(("+447700900123", "gb"))),
+            ("+447700900123", None, Some(("+447700900123", "gb"))),
+            ("00447700900123", Some("tw"), Some(("+447700900123", "gb"))),
+            ("442079460018", Some("gb"), Some(("+442079460018", "gb"))),
+            // Italy (+39): 9-10 digit mobiles starting 39x must NOT strip 39; 11-12 digit unplussed international DOES strip 39; landline keeps leading 0
+            ("3921234567", Some("it"), Some(("+393921234567", "it"))),
+            ("392123456", Some("it"), Some(("+39392123456", "it"))),
+            ("393921234567", Some("it"), Some(("+393921234567", "it"))),
+            ("39312345678", Some("it"), Some(("+39312345678", "it"))),
+            ("0612345678", Some("it"), Some(("+390612345678", "it"))),
+            ("390612345678", Some("it"), Some(("+390612345678", "it"))),
+            ("+393921234567", None, Some(("+393921234567", "it"))),
+            ("00390612345678", Some("tw"), Some(("+390612345678", "it"))),
+            // India (+91): 10-digit mobile starting 91 must NOT strip 91; 12-digit unplussed DOES strip 91
+            ("9123456789", Some("in"), Some(("+919123456789", "in"))),
+            ("9876543210", Some("in"), Some(("+919876543210", "in"))),
+            ("919123456789", Some("in"), Some(("+919123456789", "in"))),
+            ("01123456789", Some("in"), Some(("+911123456789", "in"))),
+            ("+919123456789", None, Some(("+919123456789", "in"))),
+            ("00919876543210", Some("tw"), Some(("+919876543210", "in"))),
+            // Brazil (+55): 10-11 digit domestic with area code 55 must NOT strip 55; 12-13 digit unplussed DOES strip 55
+            ("55991234567", Some("br"), Some(("+5555991234567", "br"))),
+            ("5532123456", Some("br"), Some(("+555532123456", "br"))),
+            ("5555991234567", Some("br"), Some(("+5555991234567", "br"))),
+            ("+5555991234567", None, Some(("+5555991234567", "br"))),
+            ("005511991234567", Some("tw"), Some(("+5511991234567", "br"))),
+            // Kazakhstan (+7): 10-digit domestic starting 7 must NOT strip 7; 11-digit DOES strip 7
+            ("7012345678", Some("kz"), Some(("+77012345678", "kz"))),
+            ("87012345678", Some("kz"), Some(("+77012345678", "kz"))),
+            ("77012345678", Some("kz"), Some(("+77012345678", "kz"))),
+            ("+77012345678", None, Some(("+77012345678", "kz"))),
+            ("0077012345678", Some("tw"), Some(("+77012345678", "kz"))),
+            // Singapore (+65)
+            ("65123456", Some("sg"), Some(("+6565123456", "sg"))),
+            ("6565123456", Some("sg"), Some(("+6565123456", "sg"))),
+            ("+6591234567", None, Some(("+6591234567", "sg"))),
+            ("006591234567", Some("tw"), Some(("+6591234567", "sg"))),
+            // Hong Kong (+852)
+            ("85212345", Some("hk"), Some(("+85285212345", "hk"))),
+            ("91234567", Some("hk"), Some(("+85291234567", "hk"))),
+            ("85291234567", Some("hk"), Some(("+85291234567", "hk"))),
+            ("+85291234567", None, Some(("+85291234567", "hk"))),
+            ("0085291234567", Some("tw"), Some(("+85291234567", "hk"))),
+            // Denmark (+45)
+            ("45123456", Some("dk"), Some(("+4545123456", "dk"))),
+            ("4545123456", Some("dk"), Some(("+4545123456", "dk"))),
+            ("+4545123456", None, Some(("+4545123456", "dk"))),
+            ("004545123456", Some("tw"), Some(("+4545123456", "dk"))),
+        ];
+        for &(raw, region, want) in cases {
+            let got = normalize(raw, region);
+            let want = want.map(|(e, c)| CallerNumber { e164: e.to_string(), country: c });
+            assert_eq!(got, want, "raw={raw:?} region={region:?}");
         }
     }
 }

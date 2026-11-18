@@ -1944,6 +1944,14 @@ fn talk_limits(persona: bool, persona_max_secs: u64) -> (u64, u64, u64) {
     (cap - WRAP_UP_LEAD_SECS, cap - WRAP_UP_FORCE_LEAD_SECS, cap)
 }
 
+/// The limits of a call that stalling was released from (the check found an ordinary
+/// call): the normal call's cap, but at least a minute past `elapsed_secs`, so a call
+/// that already talked longer than that cap gets its wrap-up and a normal goodbye
+/// instead of being cut at once.
+fn released_talk_limits(persona: bool, persona_max_secs: u64, elapsed_secs: u64) -> (u64, u64, u64) {
+    talk_limits(persona, persona_max_secs.max(elapsed_secs + 60))
+}
+
 /// Persona: caller speech after a closing this long is either a farewell or new
 /// content — their words / the model's next turn decide which.
 const PERSONA_POST_ARM_VOICE_MS: u32 = 600;
@@ -2317,6 +2325,29 @@ fn non_blocking_refused(why: &str) -> bool {
     ["behavior", "non_blocking", "function_declarations", "functiondeclarations", "invalid argument", "invalid json", "unknown name"]
         .iter()
         .any(|k| w.contains(k))
+}
+
+/// What the session rotation state becomes when stalling is released (`Release`):
+/// - already rotated to the stall session (`live_is_stall`): build a normal
+///   setup (`Some(...)`) even when `appt` is `None`, re-enabling appointment
+///   tools when `appt` is `Some`, and ask for a rotation back;
+/// - still on the normal session (`!live_is_stall`): clear any pending stall
+///   `rotate_setup` and `rotate_due` so no stale rotation fires.
+fn release_rotation(
+    live_is_stall: bool,
+    setup: &Value,
+    base_prompt: &str,
+    appt: Option<&crate::appointments::ApptSession>,
+    now: chrono::DateTime<chrono::Local>,
+    appt_block_sent: bool,
+    non_blocking: bool,
+) -> (Option<Value>, bool) {
+    if !live_is_stall {
+        return (None, false);
+    }
+    let mut s = setup_with_system_prompt(setup, &call_system_prompt(base_prompt, appt, now, appt_block_sent));
+    with_appointment_tools(&mut s, appt.is_some(), non_blocking);
+    (Some(s), true)
 }
 
 /// The call's system instruction: the stored prompt, then — appointments on —
@@ -5728,11 +5759,11 @@ pub async fn run_session(
                 }
             }
         }
-        // The check after stalling started says an ordinary call, and is sure: the
-        // AI goes back to the normal prompt and model at the next pause (the
-        // rotation carries the call so far without the stalling note) and to the
-        // normal call's cap. Appointments were dropped when stalling started: the
-        // normal session goes on without them.
+        // The check after stalling started says an ordinary call, and is sure: if
+        // the session already rotated to stalling, switch back to the normal
+        // prompt, model and (when enabled) appointment tools at the next pause;
+        // if not, cancel any pending stall rotation. Either way, restore the
+        // normal call's cap without cutting an already longer call at once.
         if std::mem::take(&mut stall_release_now)
             && stall_on
             && !stall.as_ref().is_some_and(|c| c.force_start)
@@ -5751,15 +5782,22 @@ pub async fn run_session(
                 stall_nudge_chunks = None;
                 stall_nudge_at = None;
                 repeat_guard.clear();
-                rotate_setup = appt.as_ref().map(|_| {
-                    let mut s = setup_with_system_prompt(&setup, &call_system_prompt(&base_prompt, None, chrono::Local::now(), false));
-                    with_appointment_tools(&mut s, false, false);
-                    s
-                });
-                if live_is_stall {
-                    rotate_due = Some(tokio::time::Instant::now() + Duration::from_secs(STALL_PROMPT_SWITCH_FORCE_SECS));
-                }
-                (wrap_secs, wrap_force_secs, max_secs) = talk_limits(persona, persona_max_secs);
+                let (next_setup, need_rotate) = release_rotation(
+                    live_is_stall,
+                    &setup,
+                    &base_prompt,
+                    appt.as_ref(),
+                    chrono::Local::now(),
+                    appt_block_sent,
+                    non_blocking,
+                );
+                rotate_setup = next_setup;
+                rotate_due = need_rotate
+                    .then(|| tokio::time::Instant::now() + Duration::from_secs(STALL_PROMPT_SWITCH_FORCE_SECS));
+                // The call may have talked past the normal cap while it was thought a stall:
+                // it gets a normal wrap-up and goodbye, not an instant cut.
+                (wrap_secs, wrap_force_secs, max_secs) =
+                    released_talk_limits(persona, persona_max_secs, session_start.elapsed().as_secs());
                 info!(
                     "Persona stall released serial={serial} talk_s={} switch_back={live_is_stall} cap_s={max_secs} — the check found an ordinary call",
                     session_start.elapsed().as_secs()
@@ -5968,6 +6006,9 @@ pub async fn run_session(
                                 .and_then(|m| m.as_str())
                                 .unwrap_or("?")
                         );
+                        if !stall_on {
+                            rotate_setup = None;
+                        }
                     }
                     Err(e) => {
                         rotate_fails += 1;
@@ -10663,6 +10704,64 @@ mod tests {
         assert!(w < f && f < m && w >= 60, "{w} {f} {m}");
         // Assistant (relay) mode keeps its old cap.
         assert_eq!(talk_limits(false, 30 * 60).2, LIVE_MAX_SECS);
+    }
+
+    #[test]
+    fn a_call_released_from_stalling_after_the_normal_cap_still_gets_a_wrap_up() {
+        // Early release: the normal cap as before.
+        assert_eq!(released_talk_limits(true, 5 * 60, 90), talk_limits(true, 5 * 60));
+        // Released at 8 minutes with a 5-minute normal cap: a minute left, wrap-up inside it.
+        let (w, f, m) = released_talk_limits(true, 5 * 60, 8 * 60);
+        assert_eq!(m, 8 * 60 + 60);
+        assert!(w > 8 * 60 && w < f && f < m, "{w} {f} {m}");
+        // A cap never shrinks below what was already talked, at any length.
+        for elapsed in [0, 299, 300, 301, 1500, 1800] {
+            let (w, f, m) = released_talk_limits(true, 5 * 60, elapsed);
+            assert!(m >= elapsed + 60 && w < f && f < m, "{elapsed}: {w} {f} {m}");
+        }
+    }
+
+    #[test]
+    fn release_rotation_switches_back_only_when_already_on_stall_session() {
+        let now = chrono::Local::now();
+        let think = "gemini-3.8-live-extended-thinking";
+        let setup = json!({"setup": {
+            "model": format!("models/{think}"),
+            "generationConfig": {"responseModalities": ["AUDIO"], "thinkingConfig": {"thinkingLevel": "low"}},
+            "systemInstruction": {"parts": [{"text": "一般"}]}
+        }});
+        let mut rt = crate::settings_store::RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        rt.appointment_mode = "confirm".into();
+        let appt = crate::appointments::ApptSession::for_call(&rt, "0912345678").unwrap();
+
+        // Still on the normal session (!live_is_stall): cancel pending stall rotation, whether appt is off or on.
+        assert_eq!(release_rotation(false, &setup, "一般", None, now, false, false), (None, false));
+        assert_eq!(release_rotation(false, &setup, "一般", Some(&appt), now, false, true), (None, false));
+
+        // Already on the stall session (live_is_stall) without appointments: ALWAYS Some(...) to revert model/prompt, no tools.
+        let (back_plain, need_rotate) = release_rotation(true, &setup, "一般", None, now, false, false);
+        assert!(need_rotate);
+        let back_plain = back_plain.expect("must rotate back even with appt=None");
+        assert_eq!(back_plain.pointer("/setup/model"), Some(&json!(format!("models/{think}"))));
+        assert_eq!(back_plain.pointer("/setup/generationConfig/thinkingConfig/thinkingLevel"), Some(&json!("low")));
+        assert_eq!(back_plain.pointer("/setup/systemInstruction/parts/0/text"), Some(&json!("一般")));
+        assert!(back_plain.pointer("/setup/tools").is_none());
+
+        // Already on the stall session (live_is_stall) with appointments: revert prompt/model AND re-enable appointment tools.
+        let (back_appt, need_rotate) = release_rotation(true, &setup, "一般", Some(&appt), now, false, true);
+        assert!(need_rotate);
+        let back_appt = back_appt.expect("must rotate back with appt=Some");
+        assert_eq!(back_appt.pointer("/setup/model"), Some(&json!(format!("models/{think}"))));
+        assert!(setup_system_prompt(&back_appt).starts_with("一般\n[Appointments"));
+        assert_eq!(back_appt.pointer("/setup/tools/0/functionDeclarations/1/behavior"), Some(&json!("NON_BLOCKING")));
+
+        // Blocking fallback and full appointment note when appt_block_sent was true.
+        let (back_blocking, need_rotate) = release_rotation(true, &setup, "一般", Some(&appt), now, true, false);
+        assert!(need_rotate);
+        let back_blocking = back_blocking.unwrap();
+        assert!(setup_system_prompt(&back_blocking).starts_with("一般\n\n[Appointments"));
+        assert!(!back_blocking.to_string().contains("NON_BLOCKING"));
+        assert!(back_blocking.pointer("/setup/tools/0/functionDeclarations/0/name").is_some());
     }
 
     #[test]

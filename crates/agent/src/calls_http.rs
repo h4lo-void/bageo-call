@@ -503,10 +503,11 @@ async fn call_get(
     let calendar_link = notes
         .as_ref()
         .and_then(|n| n.calendar.as_ref().map(|ev| ev.google_link(&n.summary)));
-    // The caller's contact, when the number is one (null otherwise).
+    // The caller's contact, when the number is one (else any matching blacklist prefix).
     let contact = state
         .contacts
         .lookup(&rec.caller_id, rec.sim_country.as_deref())
+        .or_else(|| state.contacts.blacklisted(&rec.caller_id, rec.sim_country.as_deref()))
         .map(|c| {
             json!({
                 "id": c.id,
@@ -1815,6 +1816,7 @@ async fn sms_threads(
     let threads: Vec<Value> = threads
         .iter()
         .map(|t| {
+            let region = sms_region(&lines, &t.last, home.as_deref());
             json!({
                 "key": t.key,
                 "number": t.number,
@@ -1825,7 +1827,7 @@ async fn sms_threads(
                 "last_status": t.last.status,
                 "count": t.count,
                 "last_in_at": t.last_in_at,
-                "can_reply": crate::sms_store::sendable_number(&t.number).is_some(),
+                "can_reply": crate::sms_store::check_send_number(&t.number, region.as_deref()).is_ok(),
             })
         })
         .collect();
@@ -1926,6 +1928,7 @@ async fn sms_thread(
         }
     };
     let region_of = |m: &crate::sms_store::SmsMessage| sms_region(&lines, m, home.as_deref());
+    let reply_region = all.last().map(region_of).unwrap_or_else(|| home.clone());
     let reply = sms_reply_line(&all, &lines, &region_of).map(|l| json!({"serial": l.serial, "sub_id": l.sub_id}));
     let older: Vec<&crate::sms_store::SmsMessage> = all.iter().filter(|m| before.map_or(true, |b| m.id < b)).collect();
     let start = older.len().saturating_sub(limit);
@@ -1936,7 +1939,7 @@ async fn sms_thread(
         "key": key,
         "number": number,
         "name": name,
-        "can_reply": crate::sms_store::sendable_number(&number).is_some(),
+        "can_reply": crate::sms_store::check_send_number(&number, reply_region.as_deref()).is_ok(),
         "has_more": start > 0,
         "reply": reply,
         "messages": messages,
@@ -2062,11 +2065,27 @@ async fn sms_send(
     let Some(to) = crate::sms_store::sendable_number(&req.to) else {
         return api_error(StatusCode::BAD_REQUEST, "bad_number", "not a number a text can go to");
     };
+    if to.trim_start_matches('+').len() <= 7 {
+        return api_error(StatusCode::BAD_REQUEST, "not_allowed", "cannot text emergency, short or premium-rate numbers");
+    }
     let lines = sms_lines(&state).await;
     let serial = req.serial.trim();
     let Some(line) = lines.iter().find(|l| l.serial == serial && l.sub_id == req.sub_id) else {
         return api_error(StatusCode::BAD_REQUEST, "bad_line", "no such phone and SIM");
     };
+    if !line.can_send {
+        return api_error(StatusCode::CONFLICT, "line_unavailable", "that phone cannot send texts right now");
+    }
+    let home = sms_home_region();
+    let region = (!line.country.trim().is_empty()).then_some(line.country.as_str()).or(home.as_deref());
+    if let Err(code) = crate::sms_store::check_send_number(&to, region) {
+        let msg = if code == "not_allowed" {
+            "cannot text emergency, short or premium-rate numbers"
+        } else {
+            "not a number a text can go to"
+        };
+        return api_error(StatusCode::BAD_REQUEST, code, msg);
+    }
     let keep_days = state.settings_store.snapshot().retention_days;
     let msg = state.sms.push_out(
         crate::sms_store::now_ms(),
@@ -3170,7 +3189,7 @@ fn quick_action_page(title: &str, detail: &str, status: StatusCode, form: &str) 
          <style>body{{font-family:system-ui,-apple-system,sans-serif;background:#faf8f5;color:#1f1e1b;display:flex;align-items:center;justify-content:center;min-height:90vh;margin:0;padding:16px}}\
          .card{{background:#fff;border:1px solid #e6e1d6;border-radius:14px;max-width:420px;width:100%;padding:24px;box-shadow:0 4px 16px rgba(0,0,0,.05);text-align:center}}\
          h1{{font-size:18px;margin:0 0 8px}}.warn h1{{color:#b3261e}}p{{font-size:14px;color:#5c584f;margin:0 0 18px;word-break:break-word}}\
-         a.btn{{display:inline-block;background:#2f5e4e;color:#fff;text-decoration:none;padding:9px 18px;border-radius:8px;font-size:14px;font-weight:600}}</style></head>\
+         a.btn{{display:inline-block;background:#2f5e4e;color:#fff;text-decoration:none;padding:9px 18px;border-radius:8px;font-size:14px;font-weight:600}}\
          form{{margin:0 0 14px}}button{{background:#2f5e4e;color:#fff;border:0;padding:11px 26px;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer}}\
          form+a.btn{{background:#fff;color:#2f5e4e;border:1px solid #2f5e4e}}</style></head>\
          <body><div class=\"card{tone}\"><h1>{}</h1><p>{}</p>{form}<a class=\"btn\" href=\"/calls/\">{open_lbl}</a></div></body></html>",
@@ -3445,6 +3464,19 @@ mod tests {
     async fn body_text(r: Response) -> String {
         let b = axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap();
         String::from_utf8_lossy(&b).into_owned()
+    }
+
+    /// The page's style sheet is one block closed once: no CSS text shows on the page, and the
+    /// button's rules are inside it.
+    #[tokio::test]
+    async fn the_one_tap_page_closes_its_style_block_once_after_all_the_rules() {
+        let html = body_text(quick_action_page("Done", "ok", StatusCode::OK, "<form></form>")).await;
+        assert_eq!(html.matches("</style>").count(), 1, "{html}");
+        assert_eq!(html.matches("</head>").count(), 1, "{html}");
+        let style_end = html.find("</style>").unwrap();
+        assert!(html.find("form+a.btn{").unwrap() < style_end, "{html}");
+        assert!(html.find("button{background").unwrap() < style_end, "{html}");
+        assert!(html[style_end..].starts_with("</style></head><body>"), "{html}");
     }
 
     /// Opening a one-tap link (a chat app's link preview, an image on another
@@ -4384,16 +4416,24 @@ mod tests {
         assert_eq!(statuses.iter().find(|(i, _)| *i == timed_out).unwrap().1, "sent");
         assert_eq!(thread["reply"], json!({"serial": a, "sub_id": 1}), "only sent ones: the line they went on");
 
-        // A phone whose app does not send texts, a phone that is not connected.
-        let v = recent_json(send("0912345678", "안녕하세요", &b, 3).await.unwrap()).await;
-        assert_eq!((v["message"]["status"].as_str(), v["message"]["error"].as_str()), (Some("failed"), Some("unsupported")));
-        let v = recent_json(send("0912345678", "مرحبا", &c, 4).await.unwrap()).await;
-        assert_eq!((v["message"]["status"].as_str(), v["message"]["error"].as_str()), (Some("failed"), Some("offline")));
-
-        // Refused before anything is stored.
+        // Refused before anything is stored: lines that cannot send right now (409).
         let total = || async { recent_json(sms_threads_get(&state, None, "").await).await["total"].as_u64().unwrap() };
         let before = total().await;
+        for (serial, sub, text) in [(&b, 3, "안녕하세요"), (&c, 4, "مرحبا")] {
+            let r = send("0912345678", text, serial, sub).await.unwrap();
+            assert_eq!(r.status(), StatusCode::CONFLICT, "{serial}");
+            assert_eq!(serde_json::from_str::<Value>(&body_text(r).await).unwrap()["code"], "line_unavailable");
+        }
+        assert_eq!(total().await, before, "unavailable lines must not save outgoing records");
+
+        // Refused before anything is stored: emergency, short, premium and invalid targets.
         for (body, code) in [
+            (json!({"to": "110", "text": "hi", "serial": a, "sub_id": 1}), "not_allowed"),
+            (json!({"to": "119", "text": "hi", "serial": a, "sub_id": 1}), "not_allowed"),
+            (json!({"to": "911", "text": "hi", "serial": a, "sub_id": 1}), "not_allowed"),
+            (json!({"to": "112", "text": "hi", "serial": a, "sub_id": 1}), "not_allowed"),
+            (json!({"to": "0204-123-456", "text": "hi", "serial": a, "sub_id": 1}), "not_allowed"),
+            (json!({"to": "+1 900-555-0100", "text": "hi", "serial": a, "sub_id": 1}), "not_allowed"),
             (json!({"to": "BankInfo", "text": "hi", "serial": a, "sub_id": 1}), "bad_number"),
             (json!({"to": "12", "text": "hi", "serial": a, "sub_id": 1}), "bad_number"),
             (json!({"to": "0912345678", "text": "hi", "serial": a, "sub_id": 9}), "bad_line"),
@@ -4407,6 +4447,14 @@ mod tests {
             assert_eq!(r.status(), StatusCode::BAD_REQUEST, "{body}");
             assert_eq!(serde_json::from_str::<Value>(&body_text(r).await).unwrap()["code"], code, "{body}");
         }
+        assert_eq!(total().await, before, "rejected numbers must not save outgoing records");
+        // International valid number from a TW SIM is allowed.
+        let task = send("+1 (650) 555-0142", "See you soon", &a, 1);
+        let got = sms_phone_gets(&mut phone).await;
+        assert_eq!(got["to"], "+16505550142");
+        state.control.handle_sms_result(&json!({"type": "send_sms_result", "id": got["id"], "ok": true})).await;
+        assert_eq!(task.await.unwrap().status(), StatusCode::OK);
+        let before = before + 1;
         // 500 characters is fine (and is sent).
         let task = send("0912345678", &"字".repeat(500), &a, 1);
         let got = sms_phone_gets(&mut phone).await;
@@ -4479,6 +4527,101 @@ mod tests {
         assert_eq!(recent_json(del(sms_json_headers(None), "0912345678").await).await, json!({"ok": true, "removed": 0}));
         let v = recent_json(sms_threads_get(&state, None, "").await).await;
         assert_eq!((sms_thread_keys(&v), v["total"].as_u64()), (vec!["+16505550142".to_string()], Some(1)));
+    }
+
+    #[tokio::test]
+    async fn call_get_includes_blacklist_prefix_matches_and_prefers_exact_contacts() {
+        let state = recent_state("call-get-bl");
+        state
+            .contacts
+            .upsert_by_number("0800*", "Toll-free spam prefix", "sales prefix", "blacklist")
+            .await
+            .unwrap();
+        state
+            .contacts
+            .upsert_by_number("0800111222", "Friendly Airline", "vip support", "whitelist")
+            .await
+            .unwrap();
+
+        let mut c1 = state.store.start("pixel-test-1", "0800999888", 16000, "active").await.unwrap();
+        c1.set_sim(Some("tw".into()), None);
+        let r1 = state.store.finalize(c1, "ended").await;
+
+        let mut c2 = state.store.start("pixel-test-1", "0800111222", 16000, "active").await.unwrap();
+        c2.set_sim(Some("tw".into()), None);
+        let r2 = state.store.finalize(c2, "ended").await;
+
+        let v1 = recent_json(
+            call_get(State(state.clone()), HeaderMap::new(), Query(TokenQuery { token: None }), Path(r1.id)).await,
+        )
+        .await;
+        assert_eq!(v1["contact"]["name"], "Toll-free spam prefix");
+        assert_eq!(v1["contact"]["note"], "sales prefix");
+        assert_eq!(v1["contact"]["kind"], "blacklist");
+
+        let v2 = recent_json(
+            call_get(State(state), HeaderMap::new(), Query(TokenQuery { token: None }), Path(r2.id)).await,
+        )
+        .await;
+        assert_eq!(v2["contact"]["name"], "Friendly Airline");
+        assert_eq!(v2["contact"]["kind"], "whitelist");
+    }
+
+    #[tokio::test]
+    async fn initial_password_enforces_active_token_and_validates_payload() {
+        let mut locked = recent_state("init-pw-locked");
+        locked.settings.calls_ui_token = "env-secret".into();
+        let st_resp = recent_json(
+            auth_status(State(locked.clone()), HeaderMap::new(), Query(TokenQuery { token: None })).await,
+        )
+        .await;
+        assert_eq!((st_resp["password_set"].clone(), st_resp["prompt_initial"].clone()), (json!(true), json!(false)));
+
+        let r = initial_password(
+            State(locked.clone()),
+            sms_json_headers(None),
+            Query(TokenQuery { token: None }),
+            axum::body::Bytes::from_static(br#"{"password":"new-pw"}"#),
+        )
+        .await;
+        assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+
+        let open = recent_state("init-pw-open");
+        let empty = initial_password(
+            State(open.clone()),
+            sms_json_headers(None),
+            Query(TokenQuery { token: None }),
+            axum::body::Bytes::from_static(br#"{"password":"   "}"#),
+        )
+        .await;
+        assert_eq!(empty.status(), StatusCode::BAD_REQUEST);
+
+        let skipped = initial_password(
+            State(open.clone()),
+            sms_json_headers(None),
+            Query(TokenQuery { token: None }),
+            axum::body::Bytes::from_static(br#"{"skip":true}"#),
+        )
+        .await;
+        assert_eq!(skipped.status(), StatusCode::OK);
+        let skipped_json = recent_json(skipped).await;
+        assert_eq!((skipped_json["ok"].clone(), skipped_json["password_set"].clone()), (json!(true), json!(false)));
+        assert!(open.settings_store.snapshot().ui_password_prompted);
+    }
+
+    #[tokio::test]
+    async fn sms_threads_mark_short_and_premium_numbers_unreplyable() {
+        let state = recent_state("sms-unreplyable");
+        let a = sms_serial("A");
+        let _phone = sms_phone(&state, &a, json!([{"sub_id": 1, "country": "tw"}]), true).await;
+        sms_receive(&state, "110", "short notice", &a, Some(1), "").await;
+        sms_receive(&state, "0204123456", "premium notice", &a, Some(1), "").await;
+        let list = recent_json(sms_threads_get(&state, None, "").await).await;
+        for row in list["threads"].as_array().unwrap() {
+            assert_eq!(row["can_reply"].as_bool(), Some(false), "{row}");
+        }
+        assert_eq!(sms_thread_get(&state, "110", None, None).await["can_reply"].as_bool(), Some(false));
+        assert_eq!(sms_thread_get(&state, "0204123456", None, None).await["can_reply"].as_bool(), Some(false));
     }
 
     #[test]

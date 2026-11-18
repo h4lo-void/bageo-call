@@ -263,8 +263,8 @@ impl TaskStore {
         if task.updated_at.is_empty() {
             task.updated_at = now;
         }
-        task.summary = crate::zh_tw::to_tw_whole(&task.summary);
-        task.transcript = crate::zh_tw::to_tw_whole(&task.transcript);
+        task.summary = normalize_task_text(&task.summary);
+        task.transcript = normalize_task_text(&task.transcript);
         self.persist(&task).await?;
         info!(
             "task create id={} call_id={} status={:?}",
@@ -311,10 +311,10 @@ impl TaskStore {
             .await
             .with_context(|| format!("task not found: {id}"))?;
         if let Some(v) = patch.summary {
-            task.summary = crate::zh_tw::to_tw_whole(&v);
+            task.summary = normalize_task_text(&v);
         }
         if let Some(v) = patch.transcript {
-            task.transcript = crate::zh_tw::to_tw_whole(&v);
+            task.transcript = normalize_task_text(&v);
         }
         if let Some(v) = patch.intent {
             task.intent = v;
@@ -502,6 +502,22 @@ fn load_or_rebuild_index(root: &Path) -> Result<TaskIndex> {
     Ok(TaskIndex { tasks })
 }
 
+fn has_japanese_kana(text: &str) -> bool {
+    text.chars().any(|c| ('\u{3040}'..='\u{30FF}').contains(&c))
+}
+
+fn normalize_task_text_in(lang: crate::locale::Lang, text: &str) -> String {
+    if lang == crate::locale::Lang::ZhTw && !has_japanese_kana(text) {
+        crate::zh_tw::to_tw_whole_in(lang, text)
+    } else {
+        text.to_string()
+    }
+}
+
+fn normalize_task_text(text: &str) -> String {
+    normalize_task_text_in(crate::locale::notify_lang(), text)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -563,6 +579,34 @@ mod tests {
         assert_eq!(patched.summary, "他會來");
         // Japanese stays as it is.
         assert_eq!(patched.transcript, "對方：失礼します");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn preserves_multiline_japanese_kanji_and_simplified_chinese_by_notify_lang() {
+        // Multi-line Japanese with a pure-kanji line ("会社説明会") + kana line must NOT convert "会" -> "會".
+        let ja_multiline = "会社説明会\nお電話ください";
+        assert_eq!(normalize_task_text_in(crate::locale::Lang::ZhTw, ja_multiline), ja_multiline);
+
+        let root = temp_tasks_root();
+        let store = TaskStore::new(root.clone());
+        let mut draft = draft_from_voicemail("call-ja", "serial-b", "0900000001", "", ReplyMethod::Phone, None, false);
+        draft.summary = ja_multiline.into();
+        draft.transcript = "電話番号\nお電話ください".into();
+        let created = store.create(draft).await.expect("create");
+        assert_eq!(created.summary, ja_multiline);
+        assert_eq!(created.transcript, "電話番号\nお電話ください");
+
+        // Simplified Chinese converts ONLY for Lang::ZhTw; preserved for ZhCn and all non-ZhTw UI langs.
+        for lang in crate::locale::ALL {
+            let input = "明天开会请回电";
+            let out = normalize_task_text_in(lang, input);
+            if lang == crate::locale::Lang::ZhTw {
+                assert_eq!(out, "明天開會請回電");
+            } else {
+                assert_eq!(out, input, "{lang:?} must preserve Simplified Chinese");
+            }
+        }
         let _ = fs::remove_dir_all(root);
     }
 }

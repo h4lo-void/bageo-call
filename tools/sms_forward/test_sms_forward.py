@@ -186,8 +186,11 @@ class FakeAgent:
         self.thread.join(5)
 
 
-def hook_json(addr: str, body: str) -> str:
-    return json.dumps({"v": 1, "addr": addr, "body": body, "ts": 1}, ensure_ascii=False)
+def hook_json(addr: str, body: str, sub: int | None = None) -> str:
+    obj = {"v": 1, "addr": addr, "body": body, "ts": 1}
+    if sub is not None:
+        obj["sub"] = sub
+    return json.dumps(obj, ensure_ascii=False)
 
 
 def qname(ch: str) -> str:
@@ -743,6 +746,27 @@ class ForwarderTests(Base):
         self.assertIn("WITH-SIM-B", sent[1][1])
         self.assertEqual(fw.state["phones"][P1]["inbox_id"], 2)
         self.assertEqual(sf.read_json(sf.HEALTH)["phones"][P1]["inbox"], "ok")
+
+    def test_hook_message_names_its_sim_and_is_not_sent_again_from_the_inbox(self) -> None:
+        phone = FakePhone("Pixel 7")
+        adb = FakeAdb({P1: phone})
+        fw, sent, up = self.forwarder(adb)
+        tick(fw)
+        # The hook says which SIM took the message: the notice names that one line.
+        phone.queue[qname("4")] = (int(time.time()), hook_json("+15555550130", "HOOK-WITH-SUB", 3))
+        phone.queue[qname("5")] = (int(time.time()), hook_json("+15555550131", "HOOK-NO-SUB"))
+        phone.queue[qname("6")] = (int(time.time()), json.dumps({"v": 1, "addr": "+15555550132", "body": "HOOK-BAD-SUB", "sub": "x"}))
+        tick(fw, inbox=False)
+        self.assertEqual(len(sent), 3)
+        self.assertIn("To: +15555550190", sent[0][1])
+        self.assertEqual(up["parts"][0]["sub_id"], 3)
+        self.assertEqual(up["parts"][1]["sub_id"], None)
+        self.assertEqual(up["parts"][2]["sub_id"], None)
+        # The same text arriving later in the inbox is the same message: no second notice.
+        now_ms = int(time.time() * 1000)
+        phone.inbox.append({"id": 1, "addr": "5555550130", "date": now_ms, "sub": 3, "body": "HOOK-WITH-SUB"})
+        tick(fw)
+        self.assertEqual(len(sent), 3)
 
     def test_inbox_is_not_polled_during_a_call(self) -> None:
         phone = FakePhone("Pixel 7")

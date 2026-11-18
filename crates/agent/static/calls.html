@@ -14536,8 +14536,8 @@ async function saveCalApp(app) {
 function openCal(app, links, icsPath) {
   if (app === "apple" || app === "ics") {
     // An errand's event: its .ics made on this page (a data: link).
-    if (app === "ics" && !/^data:/.test(icsPath)) { saveApiFile(apiBase + icsPath, "event.ics"); return; }
-    const a = h("a", { href: /^data:/.test(icsPath) ? icsPath : withTok(apiBase + icsPath) });
+    if (!/^data:/.test(icsPath)) { saveApiFile(apiBase + icsPath, "event.ics"); return; }
+    const a = h("a", { href: icsPath });
     if (app === "ics") a.download = "event.ics";
     document.body.append(a);
     a.click();

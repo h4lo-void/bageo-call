@@ -193,7 +193,7 @@ bageo_dialer() { [ "$(dialer)" = "$PKG" ]; }
 dnd_on() { z=$(zen); [ -n "$z" ] && [ "$z" != "0" ]; }
 
 apply_ai() {
-  for p in RECORD_AUDIO READ_PHONE_STATE ANSWER_PHONE_CALLS ACCESS_NOTIFICATION_POLICY \
+  for p in RECORD_AUDIO READ_PHONE_STATE READ_PHONE_NUMBERS ANSWER_PHONE_CALLS ACCESS_NOTIFICATION_POLICY \
       POST_NOTIFICATIONS READ_CALL_LOG CALL_PHONE SEND_SMS; do
     q pm grant "$PKG" "android.permission.$p"
   done

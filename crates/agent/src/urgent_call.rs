@@ -46,25 +46,28 @@ pub fn number_to_call(rt: &RuntimeSettings) -> Option<String> {
     (rt.whitelist_mode == "emergency" && rt.whitelist_urgent_call && !number.is_empty()).then(|| number.to_string())
 }
 
-/// The owner's number as the phone may dial it from the call's SIM (`sim`, ISO
-/// country; None when unknown): the errands check (no emergency, short,
-/// premium-rate or MMI codes, nothing that goes abroad from home). Unknown SIM:
-/// a full +number is checked against its own country; a number without a
-/// country code reads as the owner's country's (`home_code`, digits:
-/// `effective_country_code`), and is refused when that is not known either.
+/// The owner's number as the phone may dial it: full `+` numbers are checked
+/// against their own country (`phone_region::normalize`), even when the incoming
+/// phone carries another country's SIM (`sim`); numbers without `+` use the
+/// incoming phone's SIM (`sim`, ISO country) or fall back to the owner's
+/// country (`home_code`, `effective_country_code`). Emergency, short,
+/// premium-rate, MMI codes, and non-`+` international prefixes are rejected.
 pub fn check_owner_number(number: &str, sim: Option<&str>, home_code: &str) -> Result<String, &'static str> {
     if number.contains('*') || number.contains('#') {
         return Err("bad_number");
     }
-    let region = match sim.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(s) => s.to_ascii_lowercase(),
-        None => {
-            let clean = crate::errands::clean_number(number).ok_or("bad_number")?;
-            if clean.starts_with('+') {
-                crate::phone_region::normalize(&clean, None).ok_or("bad_number")?.country.to_string()
-            } else {
-                crate::phone_region::country_of_code(home_code.trim()).ok_or("bad_number")?.to_string()
-            }
+    let clean = crate::errands::clean_number(number).ok_or("bad_number")?;
+    let region = if clean.starts_with('+') {
+        crate::phone_region::normalize(&clean, None)
+            .ok_or("bad_number")?
+            .country
+            .to_string()
+    } else {
+        match sim.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(s) => s.to_ascii_lowercase(),
+            None => crate::phone_region::country_of_code(home_code.trim())
+                .ok_or("bad_number")?
+                .to_string(),
         }
     };
     crate::errands::check_number(number, &region)
@@ -437,32 +440,32 @@ pub fn deliver(msg: &Value) -> bool {
     }
 }
 
-/// The turn that tells the model the owner did not come on, and what to say.
+/// The turn that tells the model the owner did not come on, and the direction for how to respond naturally.
 pub fn not_answered_turn(lang: Lang, assistant: bool, owner: &str) -> String {
     let owner = crate::prompts::owner_label(lang, owner);
     let text = match (lang, assistant) {
-        (Lang::ZhTw, false) => "（系統：剛才沒有接通。不要再叫對方等或不要掛，現在用一句話跟對方說「抱歉，剛剛沒接通，我等一下馬上打給你。」這句話用對方這通電話講的語言說（對方講英文就說英文、講日文就說日文），不要預設中文。不要說已經接通，也不要說要轉給誰。）".to_string(),
-        (Lang::ZhTw, true) => format!("（系統：{owner}沒有接電話。不要再叫對方等或不要掛，現在用一句話跟對方說「{owner}現在沒接，我已經通知他了，請他馬上打給你。」這句話用對方這通電話講的語言說（對方講英文就說英文、講日文就說日文），不要預設中文。不要說已經接通。）"),
-        (Lang::ZhCn, false) => "（系统：刚才没有接通。不要再叫对方等或不要挂，现在用一句话跟对方说「抱歉，刚刚没接通，我等一下马上打给你。」这句话用对方这通电话讲的语言说（对方讲英文就说英文、讲日文就说日文），不要默认中文。不要说已经接通，也不要说要转给谁。）".to_string(),
-        (Lang::ZhCn, true) => format!("（系统：{owner}没有接电话。不要再叫对方等或不要挂，现在用一句话跟对方说「{owner}现在没接，我已经通知他了，请他马上打给你。」这句话用对方这通电话讲的语言说（对方讲英文就说英文、讲日文就说日文），不要默认中文。不要说已经接通。）"),
-        (_, false) => "(System: the call did not go through. Do not ask them to hold on or stay on the line any more. Say in one sentence, in the language the caller is speaking on this call (not necessarily English): \"Sorry, that didn't go through. I'll call you right back.\" Do not say anyone is on the line.)".to_string(),
-        (_, true) => format!("(System: {owner} did not answer. Do not ask them to hold on or stay on the line any more. Say in one sentence, in the language the caller is speaking on this call (not necessarily English): \"{owner} isn't picking up. I've let them know and asked them to call you straight back.\" Do not say anyone is on the line.)"),
+        (Lang::ZhTw, false) => "（系統：剛才沒有接通。不要再叫對方等或不要掛，自然地向對方致歉、說明剛才沒接通並表示會馬上回電打給你，請用對方這通電話講的語言自然說話，不要預設中文。不要說已經接通，也不要說要轉給誰。）".to_string(),
+        (Lang::ZhTw, true) => format!("（系統：{owner}沒有接電話。不要再叫對方等或不要掛，自然地告訴對方{owner}現在沒接，你已經通知他請他馬上打給你，請用對方這通電話講的語言自然說話，不要預設中文。不要說已經接通。）"),
+        (Lang::ZhCn, false) => "（系统：刚才没有接通。不要再叫对方等或不要挂，自然地向对方致歉、说明刚才没接通并表示会马上回电打给你，请用对方这通电话讲的语言自然说话，不要默认中文。不要说已经接通，也不要说要转给谁。）".to_string(),
+        (Lang::ZhCn, true) => format!("（系统：{owner}没有接电话。不要再叫对方等或不要挂，自然地告诉对方{owner}现在没接，你已经通知他请他马上打给你，请用对方这通电话讲的语言自然说话，不要默认中文。不要说已经接通。）"),
+        (_, false) => "(System: the call did not go through. Do not ask them to hold on or stay on the line any more. Briefly explain in your own words that it didn't connect and let them know you'll call them back right away, speaking in the language the caller is speaking on this call, not necessarily English. Do not say anyone is on the line.)".to_string(),
+        (_, true) => format!("(System: {owner} did not answer. Do not ask them to hold on or stay on the line any more. Briefly tell them in your own words that {owner} isn't picking up and you've asked them to call them back straight away, speaking in the language the caller is speaking on this call, not necessarily English. Do not say anyone is on the line.)"),
     };
     crate::prompts::client_turn(&text)
 }
 
 /// The turn for when no call to the owner happens after the hold-on line (the
-/// phone cannot dial): the AI stops asking the caller to wait and says the
-/// owner will call back soon.
+/// phone cannot dial): the AI stops asking the caller to wait and says in its
+/// own words that the owner will call back soon.
 pub fn callback_turn(lang: Lang, assistant: bool, owner: &str) -> String {
     let owner = crate::prompts::owner_label(lang, owner);
     let text = match (lang, assistant) {
-        (Lang::ZhTw, false) => "（系統：現在不轉接。不要再叫對方等或不要掛，用一句話跟對方說「好，我知道了，我等一下盡快打給你。」這句話用對方這通電話講的語言說（對方講英文就說英文、講日文就說日文），不要預設中文。不要說已經接通，也不要說要轉給誰。）".to_string(),
-        (Lang::ZhTw, true) => format!("（系統：現在不轉接。不要再叫對方等或不要掛，用一句話跟對方說「好，我會請{owner}盡快打給你。」這句話用對方這通電話講的語言說（對方講英文就說英文、講日文就說日文），不要預設中文。不要說已經接通。）"),
-        (Lang::ZhCn, false) => "（系统：现在不转接。不要再叫对方等或不要挂，用一句话跟对方说「好，我知道了，我等一下尽快打给你。」这句话用对方这通电话讲的语言说（对方讲英文就说英文、讲日文就说日文），不要默认中文。不要说已经接通，也不要说要转给谁。）".to_string(),
-        (Lang::ZhCn, true) => format!("（系统：现在不转接。不要再叫对方等或不要挂，用一句话跟对方说「好，我会请{owner}尽快打给你。」这句话用对方这通电话讲的语言说（对方讲英文就说英文、讲日文就说日文），不要默认中文。不要说已经接通。）"),
-        (_, false) => "(System: no call is put through now. Do not ask them to hold on or stay on the line any more. Say in one sentence, in the language the caller is speaking on this call (not necessarily English): \"Okay, got it. I'll call you back as soon as I can.\" Do not say anyone is on the line.)".to_string(),
-        (_, true) => format!("(System: no call is put through now. Do not ask them to hold on or stay on the line any more. Say in one sentence, in the language the caller is speaking on this call (not necessarily English): \"Okay, I'll ask {owner} to call you back as soon as possible.\" Do not say anyone is on the line.)"),
+        (Lang::ZhTw, false) => "（系統：現在不轉接。不要再叫對方等或不要掛，自然地表示已經瞭解情況，等一下會盡快回電打給你，請用對方這通電話講的語言自然說話，不要預設中文。不要說已經接通，也不要說要轉給誰。）".to_string(),
+        (Lang::ZhTw, true) => format!("（系統：現在不轉接。不要再叫對方等或不要掛，自然地告訴對方你會請{owner}盡快回電打給你，請用對方這通電話講的語言自然說話，不要預設中文。不要說已經接通。）"),
+        (Lang::ZhCn, false) => "（系统：现在不转接。不要再叫对方等或不要挂，自然地表示已经了解情况，等一下会尽快回电打给你，请用对方这通电话讲的语言自然说话，不要默认中文。不要说已经接通，也不要说要转给谁。）".to_string(),
+        (Lang::ZhCn, true) => format!("（系统：现在不转接。不要再叫对方等或不要挂，自然地告诉对方你会请{owner}尽快回电打给你，请用对方这通电话讲的语言自然说话，不要默认中文。不要说已经接通。）"),
+        (_, false) => "(System: no call is put through now. Do not ask them to hold on or stay on the line any more. Briefly confirm you've got it and let them know in your own words that you'll call them back as soon as you can, speaking in the language the caller is speaking on this call, not necessarily English. Do not say anyone is on the line.)".to_string(),
+        (_, true) => format!("(System: no call is put through now. Do not ask them to hold on or stay on the line any more. Briefly let them know in your own words that you'll ask {owner} to call them back as soon as possible, speaking in the language the caller is speaking on this call, not necessarily English. Do not say anyone is on the line.)"),
     };
     crate::prompts::client_turn(&text)
 }
@@ -674,7 +677,7 @@ mod tests {
                 let t = not_answered_turn(lang, assistant, "Sam");
                 let v: Value = serde_json::from_str(&t).unwrap();
                 let text = v.pointer("/clientContent/turns/0/parts/0/text").and_then(|x| x.as_str()).unwrap();
-                assert!(text.contains("打給你") || text.contains("打给你") || text.contains("call you"), "{text}");
+                assert!(text.contains("打給你") || text.contains("打给你") || text.contains("call them back"), "{text}");
             }
         }
     }
@@ -812,8 +815,8 @@ mod tests {
                     let text = v.pointer("/clientContent/turns/0/parts/0/text").and_then(|x| x.as_str()).unwrap();
                     assert!(!text.is_empty());
                     assert!(!text.contains("{x}") && !text.contains('{') && !text.contains('}'), "{lang:?} {assistant} {owner:?}: {text}");
-                    assert!(!text.contains("「」") && !text.contains("\"\""), "{lang:?} {assistant} {owner:?}: {text}");
-                    assert!(text.contains("打給你") || text.contains("打给你") || text.contains("call you") || text.contains("call you right back"), "{text}");
+                    assert!(!text.contains('「') && !text.contains('」') && !text.contains('"'), "{lang:?} {assistant} must not contain quoted scripts: {text}");
+                    assert!(text.contains("打給你") || text.contains("打给你") || text.contains("call them back"), "{text}");
                 }
             }
         }
@@ -841,6 +844,14 @@ mod tests {
         assert_eq!(check_owner_number("(555) 000-1111", None, "1").as_deref(), Ok("+15550001111"));
         // A full +number still reads as its own country's.
         assert_eq!(check_owner_number("+886912345678", None, "1").as_deref(), Ok("+886912345678"));
+        // Full +international owner numbers validate against their own country
+        // even when the incoming line carries a SIM from another country.
+        assert_eq!(check_owner_number("+1 555 000 1111", Some("tw"), "886").as_deref(), Ok("+15550001111"));
+        assert_eq!(check_owner_number("+81 90 1234 5678", Some("tw"), "886").as_deref(), Ok("+819012345678"));
+        assert_eq!(check_owner_number("+44 7700 900123", Some("tw"), "886").as_deref(), Ok("+447700900123"));
+        assert_eq!(check_owner_number("+886 912 345 678", Some("us"), "1").as_deref(), Ok("+886912345678"));
+        assert!(check_owner_number("+19005550123", Some("tw"), "886").is_err());
+        assert!(check_owner_number("+81110", Some("tw"), "886").is_err());
         // Emergency and short numbers stay refused.
         assert!(check_owner_number("119", None, "886").is_err());
         assert!(check_owner_number("0912345678", None, "abc").is_err());
@@ -884,7 +895,8 @@ mod tests {
                 for t in [callback_turn(lang, assistant, "Sam"), not_answered_turn(lang, assistant, "Sam")] {
                     let v: Value = serde_json::from_str(&t).unwrap();
                     let text = v.pointer("/clientContent/turns/0/parts/0/text").and_then(|x| x.as_str()).unwrap();
-                    assert!(text.contains("打給你") || text.contains("打给你") || text.contains("call you"), "{text}");
+                    assert!(!text.contains('「') && !text.contains('」') && !text.contains('"'), "{lang:?} {assistant} must not contain quoted scripts: {text}");
+                    assert!(text.contains("打給你") || text.contains("打给你") || text.contains("call them back"), "{text}");
                     assert!(
                         text.contains("不要再叫對方等")
                             || text.contains("不要再叫对方等")

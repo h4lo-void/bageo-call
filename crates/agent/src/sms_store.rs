@@ -422,6 +422,30 @@ pub fn sendable_number(raw: &str) -> Option<String> {
     ((3..=20).contains(&digits.len()) && digits.chars().all(|c| c.is_ascii_digit())).then_some(plain)
 }
 
+/// Validate a recipient number before sending a text or offering a reply:
+/// rejects short codes (`<= 7` digits such as emergency `110`/`119`/`911`/`112`)
+/// and, via [`crate::errands::check_number`], premium-rate or malformed numbers.
+///
+/// `+...` numbers are checked against their destination country (`phone_region::normalize`)
+/// so international texts remain allowed; local numbers are checked against `region`.
+pub fn check_send_number(raw: &str, region: Option<&str>) -> Result<String, &'static str> {
+    let to = sendable_number(raw).ok_or("bad_number")?;
+    if to.trim_start_matches('+').len() <= 7 {
+        return Err("not_allowed");
+    }
+    let dest_region = if to.starts_with('+') {
+        crate::phone_region::normalize(&to, None)
+            .map(|p| p.country.to_string())
+            .ok_or("bad_number")?
+    } else {
+        match region.map(str::trim).filter(|r| !r.is_empty()) {
+            Some(r) => r.to_ascii_lowercase(),
+            None => return Ok(to),
+        }
+    };
+    crate::errands::check_number(&to, &dest_region).map(|_| to)
+}
+
 /// The conversation a message with the other party peer belongs to. A phone
 /// number in international form when it reads as one (its digits taken in
 /// region, the country of the SIM, when it has no country code), so 0912…
@@ -774,6 +798,28 @@ mod tests {
         for bad in ["", "BankInfo", "12", "#123", "++886912", "0912 345 678 ext 5", "1".repeat(21).as_str()] {
             assert_eq!(sendable_number(bad), None, "{bad:?}");
         }
+    }
+
+    #[test]
+    fn sms_check_send_number_blocks_emergency_short_and_premium_numbers() {
+        for bad in ["110", "119", "911", "112", "113", "165", "1999", "+110", "１１９", "1234567"] {
+            assert_eq!(check_send_number(bad, Some("tw")), Err("not_allowed"), "{bad}");
+            assert_eq!(check_send_number(bad, None), Err("not_allowed"), "{bad}");
+        }
+        assert_eq!(check_send_number("0204-123-456", Some("tw")), Err("not_allowed"));
+        assert_eq!(check_send_number("+886204123456", Some("tw")), Err("not_allowed"));
+        assert_eq!(check_send_number("0196834567", Some("tw")), Err("not_allowed"));
+        assert_eq!(check_send_number("+1 900-555-0100", Some("tw")), Err("not_allowed"));
+        assert_eq!(check_send_number("900-555-0100", Some("us")), Err("not_allowed"));
+        assert_eq!(check_send_number("+81-990-123-456", Some("tw")), Err("not_allowed"));
+        assert_eq!(check_send_number("00886912345678", Some("tw")), Err("not_allowed"));
+        assert_eq!(check_send_number("BankInfo", Some("tw")), Err("bad_number"));
+        assert_eq!(check_send_number("912345678", Some("tw")), Err("bad_number"));
+        // Normal local, toll-free, and international numbers remain allowed.
+        assert_eq!(check_send_number("0912-345-678", Some("tw")).as_deref(), Ok("0912345678"));
+        assert_eq!(check_send_number("0800-123-456", Some("tw")).as_deref(), Ok("0800123456"));
+        assert_eq!(check_send_number("+1 (650) 555-0142", Some("tw")).as_deref(), Ok("+16505550142"));
+        assert_eq!(check_send_number("+81 90-1234-5678", Some("tw")).as_deref(), Ok("+819012345678"));
     }
 
     #[test]

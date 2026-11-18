@@ -56,17 +56,24 @@ class VoiceCallCapture(private val sampleRate: Int) {
                     continue
                 }
                 r.startRecording()
+                // VOICE_DOWNLINK is far-end only. Callers are usually silent in the
+                // first 200 ms after answer, so a quiet read is normal, and it is always
+                // taken (never fall through to VOICE_CALL, which adds our own inject on top
+                // of the caller). Take it right away: probing would drop the first 300 ms.
+                if (src.id == MediaRecorder.AudioSource.VOICE_DOWNLINK) {
+                    recorder = r
+                    activeSource = src.id
+                    activeSourceName = src.name
+                    Log.i(TAG, "AudioRecord started source=${src.name} id=${src.id} rate=$sampleRate (live downlink)")
+                    return
+                }
                 val probe = probeRms(r)
                 Log.i(
                     TAG,
                     "probe source=${src.name} id=${src.id} maxRms=${"%.1f".format(probe.maxRms)} " +
                         "avgRms=${"%.1f".format(probe.avgRms)} frames=${probe.frames} ok=${probe.maxRms >= MIN_LIVE_RMS}",
                 )
-                // VOICE_DOWNLINK is far-end only. Callers are usually silent in the
-                // first 200 ms after answer, so a quiet probe is normal — never fall
-                // through to VOICE_CALL (adds our own inject on top of the caller).
-                if (probe.maxRms >= MIN_LIVE_RMS || src.id == MediaRecorder.AudioSource.VOICE_DOWNLINK) {
-                    // Prefer first live downlink source.
+                if (probe.maxRms >= MIN_LIVE_RMS) {
                     bestSilent?.first?.let { releaseQuiet(it) }
                     recorder = r
                     activeSource = src.id

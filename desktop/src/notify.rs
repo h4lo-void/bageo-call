@@ -109,6 +109,14 @@ fn phone_label(serial: &str, phones: &[Phone]) -> String {
         .unwrap_or_else(|| serial.to_string())
 }
 
+/// True for calls Bageo placed itself (AI call-backs and errands) or turned away because the
+/// number is on the reject list: nobody is calling the owner, so there is nothing to announce.
+fn is_ours(call: &Value) -> bool {
+    call.get("events")
+        .and_then(Value::as_array)
+        .is_some_and(|ev| ev.iter().filter_map(Value::as_str).any(|e| matches!(e, "ai_callback" | "ai_errand" | "reject_list")))
+}
+
 /// Watches the live call list for calls it has not seen before.
 #[derive(Default)]
 pub struct CallWatch {
@@ -133,7 +141,7 @@ impl CallWatch {
                 continue;
             }
             current.push(id.to_string());
-            if self.seen.insert(id.to_string()) && self.live_primed {
+            if self.seen.insert(id.to_string()) && self.live_primed && !is_ours(c) {
                 out.push(Notice {
                     kind: Kind::Call,
                     who: caller_name(text_of(c.get("caller_id")), contacts),
@@ -326,6 +334,23 @@ mod tests {
         let n = w.on_live(&body, &two_phones(), ADDR);
         assert_eq!(n.len(), 1);
         assert!(n[0].url.ends_with("#call=c2"));
+    }
+
+    #[test]
+    fn calls_placed_or_turned_away_by_bageo_do_not_notify() {
+        let mut w = CallWatch::default();
+        w.on_live(&live(json!([])), &[], ADDR);
+        let body = live(json!([
+            {"id": "cb", "caller_id": "+15550100", "serial": "A1", "events": ["ringing", "ai_callback"]},
+            {"id": "er", "caller_id": "+15550101", "serial": "A1", "events": ["ai_callback", "ai_errand"]},
+            {"id": "rj", "caller_id": "+15550102", "serial": "A1", "status": "ringing", "events": ["reject_list"]},
+            {"id": "in", "caller_id": "+15550103", "serial": "A1", "events": ["ringing", "reject_list_declined"]}
+        ]));
+        let n = w.on_live(&body, &[], ADDR);
+        assert_eq!(n.len(), 1);
+        assert!(n[0].url.ends_with("#call=in"));
+        // A call that was skipped once never comes back as a notice.
+        assert!(w.on_live(&body, &[], ADDR).is_empty());
     }
 
     #[test]
