@@ -3,7 +3,13 @@
 #
 #   ./start.sh            (macOS: or double-click start.command)
 #
-# What it does, in order:
+# On macOS in a downloaded release (agent and "Bageo Status.app" next to this
+# script) it opens Bageo Status and ends. Bageo then runs in the background,
+# with an icon in the menu bar. Bageo Status reads .env, offers the adb download
+# and opens the web console the first time. Use --console to run Bageo in this
+# terminal instead.
+#
+# With --console or --build, on Linux, or when Bageo Status is not there, in order:
 #   1. reads settings from .env next to this script (optional, see .env.example)
 #   2. finds the agent program (a downloaded release, or builds it with Rust)
 #   3. makes sure adb (Android platform-tools) is there, offering to download it
@@ -12,7 +18,8 @@
 #      web console on the desktop (macOS: .webloc; Linux: an app menu entry,
 #      copied to the desktop folder when there is one)
 #
-# Options: --no-browser   do not open the web console
+# Options: --console      run Bageo in this terminal, not in the background
+#          --no-browser   do not open the web console
 #          --yes          answer "yes" to the platform-tools download
 #          --build        build from source even when a program is already there
 #          --no-shortcut  no desktop shortcut (or BAGEO_NO_SHORTCUT=1)
@@ -21,9 +28,10 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$root"
 
-no_browser=0; yes=0; build=0; no_shortcut=0
+console=0; no_browser=0; yes=0; build=0; no_shortcut=0
 for arg in "$@"; do
   case "$arg" in
+    --console) console=1 ;;
     --no-browser) no_browser=1 ;;
     --yes) yes=1 ;;
     --build) build=1 ;;
@@ -33,6 +41,15 @@ for arg in "$@"; do
 done
 
 say() { printf '[bageo] %s\n' "$*"; }
+
+# A downloaded release on macOS: hand over to Bageo Status, which runs Bageo in the background.
+if [ "$console" -eq 0 ] && [ "$build" -eq 0 ] && [ "$(uname -s)" = Darwin ] \
+  && [ -x "$root/agent" ] && [ -d "$root/Bageo Status.app" ]; then
+  say "Bageo runs in the background. Its icon is in the menu bar (--console: run it in this terminal)."
+  # macOS may run a downloaded app from a temporary copy: say where Bageo is.
+  open "$root/Bageo Status.app" --env "BAGEO_AGENT=$root/agent"
+  exit 0
+fi
 
 # 1. .env -> environment (real environment variables win)
 if [ -f .env ]; then

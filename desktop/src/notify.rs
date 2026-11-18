@@ -65,6 +65,16 @@ pub fn call_url(address: &str, id: &str) -> String {
     format!("{base}/calls/#call={id}")
 }
 
+/// Link that opens the console on the text messages.
+pub fn sms_url(address: &str) -> String {
+    if address.is_empty() {
+        return String::new();
+    }
+    let base = address.trim_end_matches('/');
+    let base = base.strip_suffix("/calls").unwrap_or(base);
+    format!("{base}/calls/#sms")
+}
+
 /// Phone name for a call, only worth showing when more than one phone is known.
 fn phone_label(serial: &str, phones: &[Phone]) -> String {
     if phones.len() < 2 || serial.is_empty() {
@@ -189,7 +199,7 @@ impl SmsWatch {
                 who: text_of(e.get("from")).to_string(),
                 text: e.get("text").and_then(Value::as_str).unwrap_or("").to_string(),
                 phone: String::new(),
-                url: address.to_string(),
+                url: sms_url(address),
             })
             .collect()
     }
@@ -384,10 +394,19 @@ mod tests {
         ]});
         let n = s.on_response(&body, ADDR);
         assert_eq!(n.len(), 2);
-        assert_eq!((n[0].kind, n[0].who.as_str(), n[0].text.as_str(), n[0].url.as_str()), (Kind::Sms, "+15550100", "hello", ADDR));
+        assert_eq!((n[0].kind, n[0].who.as_str(), n[0].text.as_str()), (Kind::Sms, "+15550100", "hello"));
+        assert_eq!(n[0].url, "http://192.168.1.20:8787/calls/#sms");
         assert_eq!(n[1].text, "again");
         assert_eq!(s.after(), Some(13));
         assert!(s.on_response(&json!({"ok": true, "last_id": 13, "events": []}), ADDR).is_empty());
+    }
+
+    #[test]
+    fn sms_link_opens_the_text_messages() {
+        assert_eq!(sms_url(ADDR), "http://192.168.1.20:8787/calls/#sms");
+        assert_eq!(sms_url("http://192.168.1.20:8787"), "http://192.168.1.20:8787/calls/#sms");
+        assert_eq!(sms_url("http://192.168.1.20:8787/calls/"), "http://192.168.1.20:8787/calls/#sms");
+        assert_eq!(sms_url(""), "");
     }
 
     #[test]

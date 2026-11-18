@@ -46,7 +46,15 @@
     "set_notify_calls": "When a call comes in",
     "set_notify_sms": "When a text message arrives",
     "set_notify_sms_old": "Update Bageo and the SMS forwarder to get these.",
-    "err_save": "Some settings could not be saved. Please try again."
+    "err_save": "Some settings could not be saved. Please try again.",
+    "r_launching": "Starting Bageo…",
+    "r_launch_failed": "Bageo did not start. See bageo.log in its folder.",
+    "r_need_adb": "Android tools are missing",
+    "adb_need": "Phones on USB need Android tools (about 7 MB, from Google).",
+    "adb_get": "Download",
+    "adb_getting": "Downloading…",
+    "adb_failed": "The download failed. Check your connection and try again.",
+    "quit_all": "Quit Bageo"
   },
   "zh-TW": {
     "h_ok": "一切正常",
@@ -95,7 +103,15 @@
     "set_notify_calls": "有來電時",
     "set_notify_sms": "收到簡訊時",
     "set_notify_sms_old": "要先更新 Bageo 和簡訊轉發才收得到。",
-    "err_save": "有些設定沒有存到，請再試一次。"
+    "err_save": "有些設定沒有存到，請再試一次。",
+    "r_launching": "正在啟動 Bageo…",
+    "r_launch_failed": "Bageo 沒有啟動成功，詳情在資料夾裡的 bageo.log。",
+    "r_need_adb": "還沒有 Android 工具",
+    "adb_need": "接 USB 手機需要 Android 工具（約 7 MB，由 Google 提供）。",
+    "adb_get": "下載",
+    "adb_getting": "下載中…",
+    "adb_failed": "下載失敗，請確認網路後再試一次。",
+    "quit_all": "結束 Bageo"
   },
   "zh-CN": {
     "h_ok": "一切正常",
@@ -144,7 +160,15 @@
     "set_notify_calls": "有来电时",
     "set_notify_sms": "收到短信时",
     "set_notify_sms_old": "要先更新 Bageo 和短信转发才能收到。",
-    "err_save": "有些设置没有保存，请再试一次。"
+    "err_save": "有些设置没有保存，请再试一次。",
+    "r_launching": "正在启动 Bageo…",
+    "r_launch_failed": "Bageo 没有启动成功，详情在文件夹里的 bageo.log。",
+    "r_need_adb": "还没有 Android 工具",
+    "adb_need": "连接 USB 手机需要 Android 工具（约 7 MB，由 Google 提供）。",
+    "adb_get": "下载",
+    "adb_getting": "下载中…",
+    "adb_failed": "下载失败，请确认网络后再试一次。",
+    "quit_all": "退出 Bageo"
   },
   "ja": {
     "h_ok": "すべて正常",
@@ -193,7 +217,15 @@
     "set_notify_calls": "着信があったとき",
     "set_notify_sms": "SMSを受信したとき",
     "set_notify_sms_old": "Bageo と SMS 転送を更新すると届きます。",
-    "err_save": "保存できなかった設定があります。もう一度お試しください。"
+    "err_save": "保存できなかった設定があります。もう一度お試しください。",
+    "r_launching": "Bageo を起動しています…",
+    "r_launch_failed": "Bageo を起動できませんでした。フォルダ内の bageo.log を確認してください。",
+    "r_need_adb": "Android ツールがありません",
+    "adb_need": "USB のスマホには Android ツールが必要です（約 7 MB、Google 提供）。",
+    "adb_get": "ダウンロード",
+    "adb_getting": "ダウンロード中…",
+    "adb_failed": "ダウンロードできませんでした。接続を確認して、もう一度お試しください。",
+    "quit_all": "Bageo を終了"
   },
   "ko": {
     "h_ok": "모두 정상",
@@ -242,7 +274,15 @@
     "set_notify_calls": "전화가 올 때",
     "set_notify_sms": "문자를 받을 때",
     "set_notify_sms_old": "Bageo와 문자 전달 도구를 업데이트해야 받을 수 있습니다.",
-    "err_save": "일부 설정을 저장하지 못했습니다. 다시 시도해 주세요."
+    "err_save": "일부 설정을 저장하지 못했습니다. 다시 시도해 주세요.",
+    "r_launching": "Bageo를 시작하는 중…",
+    "r_launch_failed": "Bageo가 시작되지 않았습니다. 폴더의 bageo.log를 확인해 주세요.",
+    "r_need_adb": "Android 도구가 없습니다",
+    "adb_need": "USB 휴대폰을 연결하려면 Android 도구가 필요합니다(약 7 MB, Google 제공).",
+    "adb_get": "다운로드",
+    "adb_getting": "다운로드 중…",
+    "adb_failed": "다운로드하지 못했습니다. 연결을 확인하고 다시 시도해 주세요.",
+    "quit_all": "Bageo 종료"
   },
   "es": {
     "h_ok": "Todo en orden",
@@ -291,7 +331,15 @@
     "set_notify_calls": "Cuando entra una llamada",
     "set_notify_sms": "Cuando llega un SMS",
     "set_notify_sms_old": "Actualiza Bageo y el reenvío de SMS para recibirlos.",
-    "err_save": "Algunos ajustes no se pudieron guardar. Inténtalo de nuevo."
+    "err_save": "Algunos ajustes no se pudieron guardar. Inténtalo de nuevo.",
+    "r_launching": "Iniciando Bageo…",
+    "r_launch_failed": "Bageo no se pudo iniciar. Mira bageo.log en su carpeta.",
+    "r_need_adb": "Faltan las herramientas de Android",
+    "adb_need": "Los teléfonos por USB necesitan las herramientas de Android (unos 7 MB, de Google).",
+    "adb_get": "Descargar",
+    "adb_getting": "Descargando…",
+    "adb_failed": "La descarga falló. Revisa tu conexión e inténtalo de nuevo.",
+    "quit_all": "Salir de Bageo"
   },
   "fr": {
     "h_ok": "Tout va bien",
@@ -340,7 +388,15 @@
     "set_notify_calls": "À l'arrivée d'un appel",
     "set_notify_sms": "À l'arrivée d'un SMS",
     "set_notify_sms_old": "Mettez à jour Bageo et le transfert de SMS pour les recevoir.",
-    "err_save": "Certains réglages n'ont pas pu être enregistrés. Veuillez réessayer."
+    "err_save": "Certains réglages n'ont pas pu être enregistrés. Veuillez réessayer.",
+    "r_launching": "Démarrage de Bageo…",
+    "r_launch_failed": "Bageo n'a pas démarré. Consultez bageo.log dans son dossier.",
+    "r_need_adb": "Les outils Android sont absents",
+    "adb_need": "Les téléphones en USB ont besoin des outils Android (environ 7 Mo, fournis par Google).",
+    "adb_get": "Télécharger",
+    "adb_getting": "Téléchargement…",
+    "adb_failed": "Le téléchargement a échoué. Vérifiez votre connexion et réessayez.",
+    "quit_all": "Quitter Bageo"
   },
   "de": {
     "h_ok": "Alles in Ordnung",
@@ -389,7 +445,15 @@
     "set_notify_calls": "Wenn ein Anruf eingeht",
     "set_notify_sms": "Wenn eine SMS ankommt",
     "set_notify_sms_old": "Aktualisiere Bageo und die SMS-Weiterleitung, um sie zu erhalten.",
-    "err_save": "Einige Einstellungen konnten nicht gespeichert werden. Bitte versuch es noch einmal."
+    "err_save": "Einige Einstellungen konnten nicht gespeichert werden. Bitte versuch es noch einmal.",
+    "r_launching": "Bageo wird gestartet …",
+    "r_launch_failed": "Bageo ist nicht gestartet. Sieh in bageo.log im Ordner nach.",
+    "r_need_adb": "Android-Tools fehlen",
+    "adb_need": "Für Telefone am USB-Kabel werden die Android-Tools gebraucht (etwa 7 MB, von Google).",
+    "adb_get": "Herunterladen",
+    "adb_getting": "Wird heruntergeladen …",
+    "adb_failed": "Der Download ist fehlgeschlagen. Prüf deine Verbindung und versuch es noch einmal.",
+    "quit_all": "Bageo beenden"
   },
   "pt": {
     "h_ok": "Tudo certo",
@@ -438,6 +502,14 @@
     "set_notify_calls": "Quando chegar uma chamada",
     "set_notify_sms": "Quando chegar um SMS",
     "set_notify_sms_old": "Atualize o Bageo e o encaminhamento de SMS para receber.",
-    "err_save": "Alguns ajustes não foram salvos. Tente novamente."
+    "err_save": "Alguns ajustes não foram salvos. Tente novamente.",
+    "r_launching": "Iniciando o Bageo…",
+    "r_launch_failed": "O Bageo não iniciou. Veja o bageo.log na pasta dele.",
+    "r_need_adb": "Faltam as ferramentas do Android",
+    "adb_need": "Telefones por USB precisam das ferramentas do Android (cerca de 7 MB, do Google).",
+    "adb_get": "Baixar",
+    "adb_getting": "Baixando…",
+    "adb_failed": "O download falhou. Verifique sua conexão e tente novamente.",
+    "quit_all": "Sair do Bageo"
   }
 }

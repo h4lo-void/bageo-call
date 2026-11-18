@@ -6,19 +6,21 @@ use std::time::Duration;
 use reqwest::Client;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_opener::OpenerExt as _;
 
 use crate::notify::{CallWatch, Notice, SmsWatch};
 use crate::state::{lock, Shared};
 use crate::status::{self, DevicesResult, Snapshot};
-use crate::{config, toast, tray};
+use crate::{config, local, toast, tray};
 
 const INTERVAL: Duration = Duration::from_secs(5);
+/// Used while waiting for a Bageo this program has just started.
+const LAUNCH_INTERVAL: Duration = Duration::from_secs(1);
 const TIMEOUT: Duration = Duration::from_secs(4);
 /// The console address is re-read from /health once per this many rounds.
 const UI_URL_EVERY: u64 = 12;
 /// Failed rounds before automatic discovery starts over.
 const REDISCOVER_AFTER: u32 = 3;
-const CANDIDATES: [&str; 3] = ["http://127.0.0.1:8787/", "http://bageo.local/", "http://bageo.local:8787/"];
 const TOKEN_HEADER: &str = "x-calls-token";
 
 async fn get(client: &Client, url: &str, token: Option<&str>) -> Option<(u16, Option<Value>)> {
@@ -49,10 +51,10 @@ async fn devices(client: &Client, base: &str, token: Option<&str>) -> DevicesRes
     }
 }
 
-async fn discover(client: &Client) -> Option<(String, Value)> {
-    for base in CANDIDATES {
+async fn discover(client: &Client, candidates: &[String]) -> Option<(String, Value)> {
+    for base in candidates {
         if let Some(h) = health(client, base, None).await {
-            return Some((base.to_string(), h));
+            return Some((base.clone(), h));
         }
     }
     None
@@ -188,11 +190,18 @@ impl Poller {
         let round = self.round;
         self.round += 1;
 
+        // Bageo next to this program, and whether this program is the one running it.
+        let local_base = shared.local.as_ref().map(|l| l.base.as_str());
+        let (managed, gave_up, connected, since_launch) = {
+            let sup = lock(&shared.sup);
+            (sup.managed, sup.gave_up, sup.connected, sup.since_launch())
+        };
+
         // Step 1: is Bageo there?
         let found: Option<(String, Value)> = match (&configured, &self.found) {
             (Some(base), _) => health(&self.client, base, None).await.map(|h| (base.clone(), h)),
             (None, Some(base)) => health(&self.client, base, None).await.map(|h| (base.clone(), h)),
-            (None, None) => discover(&self.client).await,
+            (None, None) => discover(&self.client, &local::discovery_candidates(local_base, managed)).await,
         };
 
         let Some((base, health_json)) = found else {
@@ -202,9 +211,18 @@ impl Poller {
             }
             let base_for_address = configured.clone().or_else(|| self.found.clone());
             let address = self.address(base_for_address.as_deref());
-            return status::after_failure(self.last_good.as_ref(), self.failures, &self.lang, has_password, &address);
+            let mut snap = match local::launch_reason(managed, gave_up, connected, since_launch) {
+                Some((level, reason)) => Snapshot::blank(level, reason, &self.lang, has_password, &address),
+                None => status::after_failure(self.last_good.as_ref(), self.failures, &self.lang, has_password, &address),
+            };
+            snap.local = managed;
+            snap.adb = local::adb_state(local_base.is_some(), false, true, *lock(&shared.adb_job)).to_string();
+            return snap;
         };
         self.failures = 0;
+        if managed {
+            lock(&shared.sup).connected = true;
+        }
         if configured.is_none() {
             self.found = Some(base.clone());
         }
@@ -223,6 +241,26 @@ impl Poller {
         let mut snap = status::build_snapshot(&health_json, &detail, has_password, &address, &self.system_locale);
         self.lang = snap.lang.clone();
 
+        // Android tools on this computer, and whether quitting also stops Bageo.
+        let (usb_enabled, adb_found) = status::usb_flags(&detail);
+        let adb = {
+            let mut job = lock(&shared.adb_job);
+            if *job == local::AdbJob::Failed && (!usb_enabled || adb_found) {
+                *job = local::AdbJob::Idle;
+            }
+            local::adb_state(local_base.is_some(), usb_enabled, adb_found, *job)
+        };
+        status::apply_adb(&mut snap, adb);
+        snap.local = managed;
+
+        // The first time Bageo answers on this computer, show the console once.
+        if local_base.is_some() && !cfg.opened_console && status::is_web_url(&snap.address) {
+            let _ = app.opener().open_url(snap.address.clone(), None::<&str>);
+            let mut saved = lock(&shared.config);
+            saved.opened_console = true;
+            let _ = config::save(app, &saved);
+        }
+
         // Calls and text messages for desktop notifications.
         let notices = self.collect_notices(&cfg, &base, password.as_deref(), &health_json, &mut snap).await;
         self.last_good = Some(snap.clone());
@@ -236,17 +274,24 @@ impl Poller {
 /// Stores the snapshot and, when it differs from the current one, tells the window and the tray.
 pub fn publish(app: &AppHandle, snap: Snapshot) {
     let shared = app.state::<Shared>();
-    let (level_changed, lang_changed) = {
+    let (level_changed, menu_changed) = {
         let mut cur = lock(&shared.snapshot);
         if *cur == snap {
             return;
         }
-        let flags = (cur.level != snap.level, cur.lang != snap.lang);
+        let flags = (cur.level != snap.level, cur.lang != snap.lang || cur.local != snap.local);
         *cur = snap.clone();
         flags
     };
     let _ = app.emit_to("main", "snapshot", &snap);
-    tray::update(app, &snap, level_changed, lang_changed);
+    tray::update(app, &snap, level_changed, menu_changed);
+}
+
+/// Changes the current snapshot in place and announces it (used between polling rounds).
+pub fn patch(app: &AppHandle, change: impl FnOnce(&mut Snapshot)) {
+    let mut snap = lock(&app.state::<Shared>().snapshot).clone();
+    change(&mut snap);
+    publish(app, snap);
 }
 
 pub fn spawn(app: AppHandle) {
@@ -254,14 +299,18 @@ pub fn spawn(app: AppHandle) {
         let stored = tauri::async_runtime::spawn_blocking(config::read_password).await.ok().flatten();
         *lock(&app.state::<Shared>().password) = stored;
 
+        // With Bageo next to this program: start it unless it already runs.
+        local::start(&app).await;
+
         let locale = sys_locale::get_locale().unwrap_or_default();
         let Some(mut poller) = Poller::new(locale) else { return };
         loop {
             let snap = poller.run_round(&app).await;
             publish(&app, snap);
             let shared = app.state::<Shared>();
+            let wait = if lock(&shared.sup).launching() { LAUNCH_INTERVAL } else { INTERVAL };
             tokio::select! {
-                _ = tokio::time::sleep(INTERVAL) => {}
+                _ = tokio::time::sleep(wait) => {}
                 _ = shared.notify.notified() => {}
             }
         }

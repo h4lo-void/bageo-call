@@ -3,6 +3,7 @@
 mod config;
 mod i18n;
 mod icon;
+mod local;
 mod notify;
 mod poll;
 mod state;
@@ -77,7 +78,11 @@ async fn save_config(
         failed = Some("autostart");
     }
 
-    let cfg = Config { address, autostart: autostart_on, notify_calls, notify_sms };
+    let (opened_console, agent_path) = {
+        let old = lock(&state.config);
+        (old.opened_console, old.agent_path.clone())
+    };
+    let cfg = Config { address, autostart: autostart_on, notify_calls, notify_sms, opened_console, agent_path };
     if config::save(&app, &cfg).is_err() {
         failed = failed.or(Some("config"));
     }
@@ -155,9 +160,24 @@ fn hide(app: AppHandle) {
     window::hide(&app);
 }
 
+/// Quits. When this program started Bageo, Bageo is stopped first.
+pub fn quit_app(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        local::stop(&app);
+        app.exit(0);
+    });
+}
+
 #[tauri::command]
 fn quit(app: AppHandle) {
-    app.exit(0);
+    quit_app(&app);
+}
+
+/// Downloads the Android tools into the program folder. Progress shows in the snapshot's `adb` field.
+#[tauri::command]
+fn install_adb(app: AppHandle) {
+    tauri::async_runtime::spawn(local::install_adb(app));
 }
 
 #[tauri::command]
@@ -183,6 +203,7 @@ fn main() {
             refresh,
             hide,
             quit,
+            install_adb,
             fit
         ])
         .setup(|app| {
@@ -190,14 +211,20 @@ fn main() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             let handle = app.handle().clone();
-            let (cfg, existed) = config::load(&handle);
-            if !existed {
+            let (mut cfg, existed) = config::load(&handle);
+            let local = local::detect(&cfg.agent_path);
+            let found = local.as_ref().map(|l| l.agent_path()).unwrap_or_default();
+            let remember = !found.is_empty() && found != cfg.agent_path;
+            if remember {
+                cfg.agent_path = found;
+            }
+            if !existed || remember {
                 let _ = config::save(&handle, &cfg);
             }
             let locale = sys_locale::get_locale().unwrap_or_default();
             let lang = status::resolve_lang(None, &locale);
             let first = Snapshot::blank(status::Level::Unknown, status::Reason::Starting, lang, false, "");
-            app.manage(Shared::new(cfg, first.clone()));
+            app.manage(Shared::new(cfg, first.clone(), local));
 
             tray::build(&handle, &first)?;
 
@@ -219,6 +246,12 @@ fn main() {
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("failed to run Bageo Status");
+        .build(tauri::generate_context!())
+        .expect("failed to run Bageo Status")
+        .run(|app, event| {
+            // Whatever ends this program, a Bageo it started must not be left behind.
+            if let tauri::RunEvent::Exit = event {
+                local::stop(app);
+            }
+        });
 }

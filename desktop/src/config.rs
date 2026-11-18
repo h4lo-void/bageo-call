@@ -19,6 +19,11 @@ pub struct Config {
     pub notify_calls: bool,
     /// Show a desktop notification when a text message arrives.
     pub notify_sms: bool,
+    /// The console was opened once after Bageo first answered on this computer.
+    pub opened_console: bool,
+    /// Where the Bageo program was last found. macOS can run a downloaded app
+    /// from a temporary copy, away from the folder Bageo is in.
+    pub agent_path: String,
 }
 
 fn path(app: &AppHandle) -> Option<PathBuf> {
@@ -89,5 +94,16 @@ mod tests {
         assert!(!c.notify_sms);
         let c: Config = serde_json::from_str(r#"{"notify_calls": true, "notify_sms": true}"#).unwrap();
         assert!(c.notify_calls && c.notify_sms);
+    }
+
+    #[test]
+    fn old_config_file_without_opened_console_still_loads() {
+        let old = r#"{"address": "", "autostart": false, "notify_calls": true, "notify_sms": false}"#;
+        let c: Config = serde_json::from_str(old).unwrap();
+        assert!(c.notify_calls);
+        assert!(!c.opened_console);
+        let c: Config = serde_json::from_str(r#"{"opened_console": true}"#).unwrap();
+        assert!(c.opened_console);
+        assert!(serde_json::to_string(&c).unwrap().contains("\"opened_console\":true"));
     }
 }

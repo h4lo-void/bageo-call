@@ -7,6 +7,7 @@ use std::time::Instant;
 use tokio::sync::Notify;
 
 use crate::config::Config;
+use crate::local::{AdbJob, Local, Supervisor};
 use crate::notify::ToastState;
 use crate::status::Snapshot;
 use crate::window::Anchor;
@@ -27,10 +28,16 @@ pub struct Shared {
     pub hidden_at: Mutex<Option<Instant>>,
     /// The notification window's current content.
     pub toast: Mutex<ToastState>,
+    /// Bageo found next to this program, if any. Set once at start.
+    pub local: Option<Local>,
+    /// The Bageo process this program started.
+    pub sup: Mutex<Supervisor>,
+    /// The Android tools download.
+    pub adb_job: Mutex<AdbJob>,
 }
 
 impl Shared {
-    pub fn new(config: Config, snapshot: Snapshot) -> Self {
+    pub fn new(config: Config, snapshot: Snapshot, local: Option<Local>) -> Self {
         Shared {
             snapshot: Mutex::new(snapshot),
             config: Mutex::new(config),
@@ -41,6 +48,9 @@ impl Shared {
             height: Mutex::new(crate::window::DEFAULT_HEIGHT),
             hidden_at: Mutex::new(None),
             toast: Mutex::new(ToastState::default()),
+            local,
+            sup: Mutex::new(Supervisor::new()),
+            adb_job: Mutex::new(AdbJob::default()),
         }
     }
 }

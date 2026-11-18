@@ -41,6 +41,9 @@ pub fn reason_text(s: &Snapshot) -> String {
         Reason::NoPhone => t(lang, "r_no_phone"),
         Reason::Offline => t(lang, "r_offline"),
         Reason::Starting => t(lang, "r_starting"),
+        Reason::Launching => t(lang, "r_launching"),
+        Reason::LaunchFailed => t(lang, "r_launch_failed"),
+        Reason::NeedAdb => t(lang, "r_need_adb"),
     }
 }
 
@@ -49,7 +52,7 @@ mod tests {
     use super::*;
     use crate::status::{Level, LANGS};
 
-    const KEYS: [&str; 11] = [
+    const KEYS: [&str; 15] = [
         "r_ready",
         "r_busy",
         "r_phone_offline",
@@ -58,9 +61,13 @@ mod tests {
         "r_no_phone",
         "r_offline",
         "r_starting",
+        "r_launching",
+        "r_launch_failed",
+        "r_need_adb",
         "menu_show",
         "open",
         "quit",
+        "quit_all",
     ];
 
     #[test]

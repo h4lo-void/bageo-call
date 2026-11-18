@@ -14,11 +14,13 @@ const TRAY_ID: &str = "main";
 /// Windows cuts tooltips at 127 characters.
 const TOOLTIP_MAX: usize = 120;
 
-fn menu(app: &AppHandle, lang: &str) -> tauri::Result<Menu<tauri::Wry>> {
+/// `local`: this program also runs Bageo, so quitting stops both.
+fn menu(app: &AppHandle, lang: &str, local: bool) -> tauri::Result<Menu<tauri::Wry>> {
     let show = MenuItem::with_id(app, "menu_show", i18n::t(lang, "menu_show"), true, None::<&str>)?;
     let open = MenuItem::with_id(app, "open", i18n::t(lang, "open"), true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
-    let quit = MenuItem::with_id(app, "quit", i18n::t(lang, "quit"), true, None::<&str>)?;
+    let quit_key = if local { "quit_all" } else { "quit" };
+    let quit = MenuItem::with_id(app, "quit", i18n::t(lang, quit_key), true, None::<&str>)?;
     Menu::with_items(app, &[&show, &open, &sep, &quit])
 }
 
@@ -36,12 +38,12 @@ pub fn build(app: &AppHandle, snap: &Snapshot) -> tauri::Result<()> {
     let builder = TrayIconBuilder::with_id(TRAY_ID)
         .icon(image(snap.level))
         .tooltip(tooltip(snap))
-        .menu(&menu(app, &snap.lang)?)
+        .menu(&menu(app, &snap.lang, snap.local)?)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "menu_show" => window::show(app, None),
             "open" => crate::launch_console(app),
-            "quit" => app.exit(0),
+            "quit" => crate::quit_app(app),
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -57,8 +59,8 @@ pub fn build(app: &AppHandle, snap: &Snapshot) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Refreshes the icon (only when the level changed), the tooltip, and the menu (only when the language changed).
-pub fn update(app: &AppHandle, snap: &Snapshot, level_changed: bool, lang_changed: bool) {
+/// Refreshes the icon (only when the level changed), the tooltip, and the menu (only when its texts changed).
+pub fn update(app: &AppHandle, snap: &Snapshot, level_changed: bool, menu_changed: bool) {
     let Some(tray) = app.tray_by_id(TRAY_ID) else { return };
     if level_changed {
         let _ = tray.set_icon(Some(image(snap.level)));
@@ -66,8 +68,8 @@ pub fn update(app: &AppHandle, snap: &Snapshot, level_changed: bool, lang_change
         let _ = tray.set_icon_as_template(false);
     }
     let _ = tray.set_tooltip(Some(tooltip(snap)));
-    if lang_changed {
-        if let Ok(m) = menu(app, &snap.lang) {
+    if menu_changed {
+        if let Ok(m) = menu(app, &snap.lang, snap.local) {
             let _ = tray.set_menu(Some(m));
         }
     }

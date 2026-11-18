@@ -35,6 +35,7 @@
 .ph.offline .st{color:var(--warn)}
 .note{color:var(--muted);font-size:.9rem}
 .note .btn{margin-top:8px}
+.btn:disabled{opacity:.5;cursor:default}
 
 .foot{display:flex;align-items:center;gap:2px;padding:7px 8px 7px 16px;border-top:1px solid var(--line)}
 .ver{color:var(--muted);font-size:.8rem}
@@ -99,13 +100,14 @@
       <div class="note" id="note" hidden>
         <div id="noteText"></div>
         <button type="button" class="btn" id="btnPw" data-i18n="enter_pw" hidden></button>
+        <button type="button" class="btn" id="btnAdb" hidden></button>
       </div>
     </div>
 
     <footer class="foot">
       <span class="ver grow" id="ver">Bageo</span>
       <button type="button" class="btn ghost" id="btnSet" data-i18n="settings"></button>
-      <button type="button" class="btn ghost" id="btnQuit" data-i18n="quit"></button>
+      <button type="button" class="btn ghost" id="btnQuit"></button>
     </footer>
   </section>
 
@@ -190,6 +192,9 @@
       case "all_normal": return t("r_all_normal");
       case "no_phone": return t("r_no_phone");
       case "offline": return t("r_offline");
+      case "launching": return t("r_launching");
+      case "launch_failed": return t("r_launch_failed");
+      case "need_adb": return t("r_need_adb");
       default: return t("r_starting");
     }
   }
@@ -209,7 +214,7 @@
     $("addr").textContent = shortAddr(s.address);
     $("addr").title = s.address || "";
 
-    const reached = s.reason !== "offline" && s.reason !== "starting" && !!snap;
+    const reached = !["offline", "starting", "launching", "launch_failed"].includes(s.reason) && !!snap;
     const phones = Array.isArray(s.phones) ? s.phones : [];
     const list = $("phones");
     list.textContent = "";
@@ -229,15 +234,23 @@
       list.append(li);
     }
     let note = "";
+    // Android tools, only when this program runs Bageo on this computer.
+    const adb = ["missing", "downloading", "failed"].includes(s.adb) ? s.adb : "";
     if (reached && s.locked) note = t(s.has_password ? "pw_wrong" : "locked");
+    else if (reached && adb) note = t(adb === "failed" ? "adb_failed" : "adb_need");
     else if (reached && !phones.length && !s.ready && !s.calls) note = t("no_phone_hint");
     $("noteText").textContent = note;
     $("note").hidden = !note;
     $("btnPw").hidden = !(reached && s.locked);
+    $("btnAdb").hidden = !(reached && adb && !s.locked);
+    $("btnAdb").textContent = t(adb === "downloading" ? "adb_getting" : "adb_get");
+    $("btnAdb").disabled = adb === "downloading";
     list.hidden = !phones.length;
     $("secPhones").hidden = !reached || (!phones.length && !note);
 
     $("ver").textContent = s.version ? "Bageo " + s.version : "Bageo";
+    // Quitting also stops Bageo when this program started it.
+    $("btnQuit").textContent = t(s.local ? "quit_all" : "quit");
   }
 
   // Keep the window exactly as tall as the card (plus the room its shadow needs).
@@ -297,6 +310,7 @@
   });
   $("btnSet").addEventListener("click", showSettings);
   $("btnPw").addEventListener("click", showSettings);
+  $("btnAdb").addEventListener("click", () => invoke("install_adb").catch(() => {}));
   $("btnQuit").addEventListener("click", () => invoke("quit"));
   $("btnCancel").addEventListener("click", showMain);
   $("btnPwClear").addEventListener("click", () => {
