@@ -1755,7 +1755,7 @@ I18N["en"] = {
   b_reason: "Reason (optional)",
   b_reason_ph: "e.g. bank verification calls",
   b_preview: "Preview the announcement",
-  b_help: "End a number with * to block every number that starts the same way, e.g. 0800* (at least 4 digits).",
+  b_help: "End a number with * to block every number that starts the same way, e.g. 0800* (at least 3 digits, not counting leading zeros).",
   reject_decline: "Hang up while it rings (the call never connects)",
   reject_announce: "Answer, play “not available”, then hang up",
   f_reject_voice: "Announcement voice",
@@ -2311,7 +2311,7 @@ I18N["en"] = {
   live_to: "to {line}",
   bl_mode: "When someone on the Blacklist calls:",
   bl_voice_link: "Choose the announcement voice",
-  ct_bad_prefix: "Only Blacklist numbers can end with *, with at least 4 digits before it.",
+  ct_bad_prefix: "Only Blacklist numbers can end with *, with at least 3 digits before it, not counting leading zeros.",
 };
 
 I18N["zh-TW"] = {
@@ -2809,7 +2809,7 @@ I18N["zh-TW"] = {
   b_reason: "原因（可不填）",
   b_reason_ph: "例如：銀行確認電話",
   b_preview: "試聽語音",
-  b_help: "結尾加 * 可以拒接同一個開頭的所有號碼，例如 0800*（至少 4 碼）。",
+  b_help: "結尾加 * 可以拒接同一個開頭的所有號碼，例如 0800*（開頭的 0 不算，至少 3 碼）。",
   reject_decline: "響鈴時直接掛斷（不接通）",
   reject_announce: "接起播「無法接通」再掛斷",
   f_reject_voice: "拒接語音的聲音",
@@ -3332,7 +3332,7 @@ I18N["zh-TW"] = {
   live_to: "打給 {line}",
   bl_mode: "黑名單打來時：",
   bl_voice_link: "選拒接語音的聲音",
-  ct_bad_prefix: "結尾加 * 只能用在黑名單，而且 * 前面至少要 4 碼。",
+  ct_bad_prefix: "結尾加 * 只能用在黑名單，而且 * 前面除了開頭的 0 至少要 3 碼。",
 };
 
 I18N["zh-CN"] = {
@@ -3797,7 +3797,7 @@ I18N["zh-CN"] = {
   b_reason: "原因（可不填）",
   b_reason_ph: "例如：银行核实电话",
   b_preview: "试听语音",
-  b_help: "结尾加 * 可以拦截同一个开头的所有号码，例如 0800*（至少 4 位）。",
+  b_help: "结尾加 * 可以拦截同一个开头的所有号码，例如 0800*（开头的 0 不算，至少 3 位）。",
   reject_decline: "响铃时直接挂断（不接通）",
   reject_announce: "接起播“无法接通”再挂断",
   f_reject_voice: "拒接语音的声音",
@@ -4353,7 +4353,7 @@ I18N["zh-CN"] = {
   live_to: "打给 {line}",
   bl_mode: "黑名单打来时：",
   bl_voice_link: "选择拒接语音的声音",
-  ct_bad_prefix: "结尾加 * 只能用在黑名单，而且 * 前面至少要 4 位。",
+  ct_bad_prefix: "结尾加 * 只能用在黑名单，而且 * 前面除了开头的 0 至少要 3 位。",
 };
 
 I18N["ja"] = {
@@ -4818,7 +4818,7 @@ I18N["ja"] = {
   b_reason: "理由（任意）",
   b_reason_ph: "例：銀行の確認電話",
   b_preview: "アナウンスを試聴",
-  b_help: "末尾に * を付けると、同じ番号で始まる電話をすべて拒否します（例：0800*、4 桁以上）。",
+  b_help: "末尾に * を付けると、同じ番号で始まる電話をすべて拒否します（例：0800*、先頭の 0 を除いて 3 桁以上）。",
   reject_decline: "鳴っているうちに切る（つながらない）",
   reject_announce: "応答して「おつなぎできません」を流してから切る",
   f_reject_voice: "アナウンスの声",
@@ -5374,7 +5374,7 @@ I18N["ja"] = {
   live_to: "{line} 宛て",
   bl_mode: "着信拒否の相手から電話が来たとき：",
   bl_voice_link: "アナウンスの声を選ぶ",
-  ct_bad_prefix: "末尾の * は着信拒否の番号だけに使えます（* の前に 4 桁以上）。",
+  ct_bad_prefix: "末尾の * は着信拒否の番号だけに使えます（* の前に、先頭の 0 を除いて 3 桁以上）。",
 };
 
 I18N["ko"] = {
@@ -5839,7 +5839,7 @@ I18N["ko"] = {
   b_reason: "이유(선택)",
   b_reason_ph: "예: 은행 확인 전화",
   b_preview: "안내 음성 미리 듣기",
-  b_help: "끝에 *를 붙이면 같은 숫자로 시작하는 번호를 모두 차단합니다(예: 0800*, 4자리 이상).",
+  b_help: "끝에 *를 붙이면 같은 숫자로 시작하는 번호를 모두 차단합니다(예: 0800*, 앞의 0을 빼고 3자리 이상).",
   reject_decline: "울리는 동안 바로 끊기 (연결 안 됨)",
   reject_announce: "받아서 “연결할 수 없습니다” 안내 후 끊기",
   f_reject_voice: "안내 음성 목소리",
@@ -6395,7 +6395,7 @@ I18N["ko"] = {
   live_to: "{line} 수신",
   bl_mode: "차단 목록의 번호가 전화하면:",
   bl_voice_link: "안내 음성 목소리 고르기",
-  ct_bad_prefix: "끝의 *는 차단 목록 번호에만 쓸 수 있습니다(* 앞에 4자리 이상).",
+  ct_bad_prefix: "끝의 *는 차단 목록 번호에만 쓸 수 있습니다(* 앞에 앞의 0을 빼고 3자리 이상).",
 };
 
 I18N["es"] = {
@@ -6860,7 +6860,7 @@ I18N["es"] = {
   b_reason: "Motivo (opcional)",
   b_reason_ph: "p. ej. llamadas de verificación del banco",
   b_preview: "Escuchar el aviso",
-  b_help: "Termina un número con * para bloquear todos los que empiecen igual, p. ej. 0800* (mínimo 4 cifras).",
+  b_help: "Termina un número con * para bloquear todos los que empiecen igual, p. ej. 0800* (mínimo 3 cifras sin contar los ceros iniciales).",
   reject_decline: "Colgar mientras suena (la llamada no se conecta)",
   reject_announce: "Contestar, poner el aviso de «no disponible» y colgar",
   f_reject_voice: "Voz del aviso",
@@ -7416,7 +7416,7 @@ I18N["es"] = {
   live_to: "a {line}",
   bl_mode: "Cuando llama alguien de la Lista negra:",
   bl_voice_link: "Elegir la voz del aviso",
-  ct_bad_prefix: "Solo los números de la Lista negra pueden terminar en *, con al menos 4 cifras antes.",
+  ct_bad_prefix: "Solo los números de la Lista negra pueden terminar en *, con al menos 3 cifras antes sin contar los ceros iniciales.",
 };
 
 I18N["fr"] = {
@@ -7881,7 +7881,7 @@ I18N["fr"] = {
   b_reason: "Raison (facultatif)",
   b_reason_ph: "ex. appels de vérification de la banque",
   b_preview: "Écouter l'annonce",
-  b_help: "Terminez un numéro par * pour bloquer tous ceux qui commencent pareil, p. ex. 0800* (4 chiffres au minimum).",
+  b_help: "Terminez un numéro par * pour bloquer tous ceux qui commencent pareil, p. ex. 0800* (3 chiffres au minimum, sans compter les zéros du début).",
   reject_decline: "Raccrocher pendant la sonnerie (l'appel n'aboutit pas)",
   reject_announce: "Décrocher, annoncer « non disponible », puis raccrocher",
   f_reject_voice: "Voix de l'annonce",
@@ -8437,7 +8437,7 @@ I18N["fr"] = {
   live_to: "vers {line}",
   bl_mode: "Quand quelqu'un de la Liste noire appelle :",
   bl_voice_link: "Choisir la voix de l'annonce",
-  ct_bad_prefix: "Seuls les numéros de la Liste noire peuvent finir par *, avec au moins 4 chiffres avant.",
+  ct_bad_prefix: "Seuls les numéros de la Liste noire peuvent finir par *, avec au moins 3 chiffres avant, sans compter les zéros du début.",
 };
 
 I18N["de"] = {
@@ -8902,7 +8902,7 @@ I18N["de"] = {
   b_reason: "Grund (optional)",
   b_reason_ph: "z. B. Rückfragen der Bank",
   b_preview: "Ansage anhören",
-  b_help: "Beende eine Nummer mit *, um alle Nummern mit demselben Anfang zu blockieren, z. B. 0800* (mindestens 4 Ziffern).",
+  b_help: "Beende eine Nummer mit *, um alle Nummern mit demselben Anfang zu blockieren, z. B. 0800* (mindestens 3 Ziffern ohne führende Nullen).",
   reject_decline: "Beim Klingeln auflegen (der Anruf kommt nicht zustande)",
   reject_announce: "Annehmen, „nicht erreichbar“ ansagen, dann auflegen",
   f_reject_voice: "Stimme der Ansage",
@@ -9458,7 +9458,7 @@ I18N["de"] = {
   live_to: "an {line}",
   bl_mode: "Wenn jemand von der Sperrliste anruft:",
   bl_voice_link: "Stimme der Ansage wählen",
-  ct_bad_prefix: "Nur Nummern auf der Sperrliste dürfen mit * enden, mit mindestens 4 Ziffern davor.",
+  ct_bad_prefix: "Nur Nummern auf der Sperrliste dürfen mit * enden, mit mindestens 3 Ziffern davor, führende Nullen nicht mitgezählt.",
 };
 
 I18N["pt"] = {
@@ -9923,7 +9923,7 @@ I18N["pt"] = {
   b_reason: "Motivo (opcional)",
   b_reason_ph: "ex.: ligações de confirmação do banco",
   b_preview: "Ouvir o aviso",
-  b_help: "Termine um número com * para bloquear todos os que começam igual, p. ex. 0800* (no mínimo 4 dígitos).",
+  b_help: "Termine um número com * para bloquear todos os que começam igual, p. ex. 0800* (no mínimo 3 dígitos, sem contar os zeros iniciais).",
   reject_decline: "Desligar enquanto toca (a chamada não completa)",
   reject_announce: "Atender, tocar o aviso de “indisponível” e desligar",
   f_reject_voice: "Voz do aviso",
@@ -10479,7 +10479,7 @@ I18N["pt"] = {
   live_to: "para {line}",
   bl_mode: "Quando alguém da Lista de bloqueio ligar:",
   bl_voice_link: "Escolher a voz do aviso",
-  ct_bad_prefix: "Só números da Lista de bloqueio podem terminar com *, com pelo menos 4 dígitos antes.",
+  ct_bad_prefix: "Só números da Lista de bloqueio podem terminar com *, com pelo menos 3 dígitos antes, sem contar os zeros iniciais.",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word

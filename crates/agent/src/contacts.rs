@@ -257,9 +257,9 @@ fn is_prefix(s: &str) -> bool {
 }
 
 /// A prefix entry as it is kept: the number before the `*` cleaned like any
-/// number, then `*`. None when it has fewer than 4 digits
-/// ([`crate::settings_store::reject_prefix_ok`]: `02*` would turn a whole
-/// area away).
+/// number, then `*`. None with fewer than 3 digits after its leading zeros
+/// ([`crate::settings_store::reject_prefix_ok`]: `080*` would turn a whole
+/// area away, `0000*` everyone).
 fn clean_prefix(raw: &str) -> Option<String> {
     let p = clean_phone(raw.trim().trim_end_matches('*'))?;
     let p = format!("{p}*");
@@ -456,7 +456,8 @@ pub struct PreviewEntry {
 
 /// A draft as it is kept: one-line name and note, clean numbers (each once,
 /// at most [`MAX_PHONES`]), a known source (`default_source` otherwise).
-/// Only a Blacklist contact may have a prefix (`0800*`, at least 4 digits);
+/// Only a Blacklist contact may have a prefix (`0800*`, at least 3 digits
+/// after its leading zeros);
 /// any other prefix: [`ContactError::Invalid`] `prefix`.
 fn tidy(d: &Draft, default_source: &str, region: Option<&str>) -> Result<Draft, ContactError> {
     let name = one_line(&d.name, NAME_MAX_CHARS);
@@ -656,8 +657,9 @@ impl Book {
     /// contact that has it becomes a Blacklist one (its note, when empty, set
     /// to `reason`); else a new contact named `reason` (the number without
     /// one) with `reason` as its note. Also: whether it was on the Blacklist
-    /// already.
-    fn block(&mut self, number: &str, reason: &str) -> Result<(Contact, bool), ContactError> {
+    /// already. `keep_lists`: a contact on the Whitelist or the Stall list
+    /// stays there (None).
+    fn block(&mut self, number: &str, reason: &str, keep_lists: bool) -> Result<Option<(Contact, bool)>, ContactError> {
         let reason = one_line(reason, NOTE_MAX_CHARS);
         let (phone, found) = if is_prefix(number) {
             let p = clean_prefix(number).ok_or(ContactError::Invalid("prefix"))?;
@@ -672,9 +674,12 @@ impl Book {
         if let Some(i) = found {
             let mut c = self.contacts[i].clone();
             let was = c.kind == "blacklist";
+            if keep_lists && matches!(c.kind.as_str(), "whitelist" | "stall") {
+                return Ok(None);
+            }
             let fill_note = c.note.trim().is_empty() && !reason.is_empty();
             if was && !fill_note {
-                return Ok((c, true));
+                return Ok(Some((c, true)));
             }
             c.kind = "blacklist".into();
             if fill_note {
@@ -682,7 +687,7 @@ impl Book {
             }
             c.updated_at = now();
             self.set(i, c.clone());
-            return Ok((c, was));
+            return Ok(Some((c, was)));
         }
         if self.contacts.len() >= MAX_CONTACTS {
             return Err(ContactError::TooMany);
@@ -698,7 +703,7 @@ impl Book {
             updated_at: now(),
         };
         self.push(c.clone());
-        Ok((c, false))
+        Ok(Some((c, false)))
     }
 
     /// The contact `d` repeats: by one of its numbers, else by its name.
@@ -885,25 +890,86 @@ impl ContactStore {
     }
 
     /// Put one number (or prefix) on the Blacklist ([`Book::block`]): the
-    /// contact, and whether it was on the Blacklist already.
+    /// contact, and whether it was on the Blacklist already. A contact on
+    /// another list moves to the Blacklist too (the owner asked for it).
     pub async fn block(&self, number: &str, reason: &str) -> Result<(Contact, bool), ContactError> {
-        self.change(|b| b.block(number, reason)).await
+        self.change(|b| b.block(number, reason, false)?.ok_or(ContactError::Invalid("phones"))).await
     }
 
-    /// Put `(number, reason)` pairs on the Blacklist in one save. One that is
-    /// no number (or a prefix under 4 digits, which never turned anyone away)
-    /// is left out; any other failure saves nothing. How many are on it.
+    /// Put `(number, reason)` pairs from an older version's blocked numbers
+    /// on the Blacklist in one save. Left out, and logged: one that is no
+    /// number or a prefix too short to stand
+    /// ([`crate::settings_store::reject_prefix_ok`]), and one that is the
+    /// number of a contact on the Whitelist or the Stall list (it stays
+    /// there). Any other failure saves nothing. How many are on the Blacklist.
     pub async fn block_many(&self, entries: &[(String, String)]) -> Result<usize, ContactError> {
         self.change(|b| {
             let mut n = 0;
+            let mut bad: Vec<String> = Vec::new();
+            let mut kept: Vec<String> = Vec::new();
             for (number, reason) in entries {
-                match b.block(number, reason) {
-                    Ok(_) => n += 1,
-                    Err(ContactError::Invalid(_)) => {}
+                match b.block(number, reason, true) {
+                    Ok(Some(_)) => n += 1,
+                    Ok(None) => {
+                        let name = b.contacts.iter().find(|c| c.phones.iter().any(|p| same_number(p, number, b.region.as_deref()))).map(|c| c.name.clone()).unwrap_or_default();
+                        kept.push(format!("{name} ({})", crate::urgent_call::masked(number)));
+                    }
+                    Err(ContactError::Invalid(_)) => bad.push(crate::urgent_call::masked(number)),
                     Err(e) => return Err(e),
                 }
             }
+            if !bad.is_empty() {
+                warn!("contacts: {} blocked numbers left out, not a number or a prefix too short: {}", bad.len(), bad.join(", "));
+            }
+            if !kept.is_empty() {
+                warn!("contacts: {} blocked numbers left on the Whitelist / Stall list: {}", kept.len(), kept.join(", "));
+            }
             Ok(n)
+        })
+        .await
+    }
+
+    /// Take `number` off the lists in `kinds`: the contact with that number
+    /// becomes an ordinary contact again (its prefix entries, which only the
+    /// Blacklist may have, dropped). A Blacklist prefix with the same digits
+    /// (`0800` or `0800*` for `0800*`) is removed too, and a contact left
+    /// without numbers deleted. The name of the first contact changed.
+    pub async fn unblock(&self, number: &str, kinds: &[&str]) -> Result<Option<String>, ContactError> {
+        let number = number.trim().to_string();
+        self.change(|b| {
+            let mut changed: Option<String> = None;
+            if let Some(i) = num_key(&number, b.region.as_deref()).and_then(|k| b.find(&k)) {
+                if kinds.contains(&b.contacts[i].kind.as_str()) {
+                    let mut c = b.contacts[i].clone();
+                    c.kind = String::new();
+                    c.phones.retain(|p| !is_prefix(p));
+                    c.updated_at = now();
+                    changed = Some(c.name.clone());
+                    b.set(i, c);
+                }
+            }
+            if kinds.contains(&"blacklist") {
+                let prefix = if is_prefix(&number) { number.clone() } else { format!("{number}*") };
+                let hits: Vec<usize> = b
+                    .contacts
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| c.kind == "blacklist" && c.phones.iter().any(|p| same_prefix(p, &prefix)))
+                    .map(|(i, _)| i)
+                    .collect();
+                for &i in hits.iter().rev() {
+                    let mut c = b.contacts[i].clone();
+                    changed.get_or_insert_with(|| c.name.clone());
+                    c.phones.retain(|p| !same_prefix(p, &prefix));
+                    if c.phones.is_empty() {
+                        b.remove(i);
+                    } else {
+                        c.updated_at = now();
+                        b.set(i, c);
+                    }
+                }
+            }
+            Ok(changed)
         })
         .await
     }
@@ -1000,7 +1066,7 @@ impl ContactStore {
                 if kind != "blacklist" {
                     return Err(ContactError::Invalid("prefix"));
                 }
-                let (mut c, _) = b.block(&number, &note)?;
+                let (mut c, _) = b.block(&number, &note, false)?.ok_or(ContactError::Invalid("phones"))?;
                 if !name.is_empty() {
                     if let Some(i) = b.position(&c.id) {
                         c.name = one_line(&name, NAME_MAX_CHARS);
@@ -1200,32 +1266,32 @@ pub fn blacklist_len() -> usize {
     STORE.get().map_or(0, |s| s.blacklist_len())
 }
 
-/// Move the blocked numbers older versions kept in the settings
-/// (`reject_numbers`) onto the Blacklist ([`Book::block`]: a number that is a
-/// contact's makes that contact a Blacklist one, its note filled with the
-/// reason when empty; else a new contact named after the reason, or the
-/// number). The settings list is emptied only once the contacts are saved;
-/// when they cannot be, it stays (still turned away) and the next start or
-/// save tries again. Moving the same numbers again adds nothing. How many
-/// were moved.
+/// Copy the blocked numbers older versions kept in the settings
+/// (`reject_numbers`) onto the Blacklist ([`ContactStore::block_many`]: a
+/// number that is an ordinary contact's makes that contact a Blacklist one,
+/// its note filled with the reason when empty; one on the Whitelist or the
+/// Stall list stays there; else a new contact named after the reason, or the
+/// number). Once the contacts are saved, `reject_numbers_moved` is set and
+/// the old list (left as it was, for an older version) counts no more; when
+/// they cannot be saved it still turns callers away and the next start tries
+/// again. Moving the same numbers again adds nothing. How many are on the
+/// Blacklist.
 pub async fn absorb_reject_numbers(settings: &crate::settings_store::SettingsStore, contacts: &ContactStore) -> usize {
-    let pending = settings.snapshot().reject_numbers.clone();
-    if pending.is_empty() {
+    let rt = settings.snapshot();
+    if rt.reject_numbers_moved || rt.reject_numbers.is_empty() {
         return 0;
     }
-    let entries: Vec<(String, String)> = pending.iter().map(|e| (e.number.clone(), e.reason.clone())).collect();
+    let entries: Vec<(String, String)> = rt.reject_numbers.iter().map(|e| (e.number.clone(), e.reason.clone())).collect();
     let moved = match contacts.block_many(&entries).await {
         Ok(n) => n,
         Err(e) => {
-            warn!("contacts: {} blocked numbers not moved to the Blacklist, kept in the settings until the next try: {e:?}", pending.len());
+            warn!("contacts: {} blocked numbers not moved to the Blacklist, still turned away from the settings until the next try: {e:?}", entries.len());
             return 0;
         }
     };
-    // Entries saved meanwhile stay for the next time.
-    let left: Vec<_> = settings.snapshot().reject_numbers.iter().filter(|e| !pending.contains(e)).cloned().collect();
-    match settings.apply_patch(&json!({ "reject_numbers": left })) {
-        Ok(_) => info!("contacts: {moved} blocked numbers moved to the Blacklist ({} in the settings)", pending.len()),
-        Err(e) => warn!("contacts: blocked numbers are on the Blacklist but the settings were not emptied (next try at start): {e:#}"),
+    match settings.apply_patch(&json!({ "reject_numbers_moved": true })) {
+        Ok(_) => info!("contacts: {moved} of {} blocked numbers on the Blacklist; the old list counts no more", entries.len()),
+        Err(e) => warn!("contacts: blocked numbers are on the Blacklist but the settings could not record it (next try at start): {e:#}"),
     }
     moved
 }
@@ -4314,12 +4380,14 @@ mod tests {
         assert!(decode_text(&sjis).starts_with("氏名,電話番号\r\n佐藤健一,"));
     }
 
-    /// Settings of their own (in `dir`) with `reject_numbers` sent the old way.
+    /// Settings of their own (in `dir`) saved by an older version with these
+    /// `reject_numbers`.
     fn settings_with_rejects(dir: &Path, list: Value) -> (crate::config::Settings, Arc<crate::settings_store::SettingsStore>) {
+        std::fs::create_dir_all(dir.join("config")).unwrap();
+        std::fs::write(dir.join("config").join("settings.json"), json!({ "reject_numbers": list }).to_string()).unwrap();
         let mut base = crate::config::Settings::from_env();
         base.calls_data_dir = dir.to_string_lossy().into_owned();
         let store = crate::settings_store::SettingsStore::load(base.clone());
-        store.apply_patch(&json!({ "reject_numbers": list })).unwrap();
         (base, store)
     }
 
@@ -4334,23 +4402,36 @@ mod tests {
         let s = ContactStore::open_with(dir.join("contacts.json"), Box::new(|| Some("tw".to_string())));
         let friend = s.add(&draft("王小明", &["02-2345-6789"], "")).await.unwrap();
         let noted = s.add(&draft("李大華", &["0933123456"], "老同學")).await.unwrap();
+        let mom = s.add(&Draft { kind: "whitelist".into(), ..draft("媽媽", &["0911000111"], "") }).await.unwrap();
+        let pest = s.add(&Draft { kind: "stall".into(), ..draft("推銷王", &["0911000222"], "") }).await.unwrap();
         let list = json!([
             { "number": "02-5550-1234", "reason": "推銷電話" },
             { "number": "0800*", "reason": "" },
             { "number": "(02) 2345-6789", "reason": "其實是推銷" },
             { "number": "0933123456", "reason": "借錢" },
             "0912345678",
-            { "number": "02*", "reason": "太短，從來沒擋過人" }
+            { "number": "02*", "reason": "太短，從來沒擋過人" },
+            { "number": "0000*", "reason": "會擋掉所有人" },
+            { "number": "0911000111", "reason": "按錯" },
+            { "number": "0911000222", "reason": "" }
         ]);
-        let (base, settings) = settings_with_rejects(&dir, list.clone());
-        assert_eq!(settings.snapshot().reject_numbers.len(), 6);
-        // The prefix under 4 digits never turned anyone away: left out.
+        let (base, settings) = settings_with_rejects(&dir, list);
+        assert_eq!(settings.snapshot().reject_numbers.len(), 9);
+        // Prefixes too short to stand are left out; the Whitelist and Stall
+        // list keep their contacts.
         assert_eq!(absorb_reject_numbers(&settings, &s).await, 5);
-        // The settings list is empty, also after a restart.
-        assert!(settings.snapshot().reject_numbers.is_empty());
-        assert!(crate::settings_store::SettingsStore::load(base).snapshot().reject_numbers.is_empty());
-        assert_eq!(s.len(), 5);
+        // The old list stays as it was (an older version still has it) but
+        // counts no more, also after a restart.
+        let rt = settings.snapshot();
+        assert!(rt.reject_numbers_moved && rt.pending_rejects().is_empty());
+        assert_eq!(rt.reject_numbers.len(), 9);
+        let again = crate::settings_store::SettingsStore::load(base).snapshot();
+        assert!(again.reject_numbers_moved && again.reject_numbers.len() == 9);
+        assert_eq!(s.len(), 7);
         assert_eq!(s.blacklist_len(), 5);
+        assert_eq!(s.get(&mom.id).unwrap().kind, "whitelist");
+        assert_eq!(s.get(&pest.id).unwrap().kind, "stall");
+        assert!(s.blacklisted("0911000111", TW).is_none());
         // A number that was a contact's: that contact on the Blacklist, its
         // name kept, its note filled only when it had none.
         let f = s.get(&friend.id).unwrap();
@@ -4362,13 +4443,15 @@ mod tests {
         assert_eq!((sales.name.as_str(), sales.note.as_str(), sales.kind.as_str()), ("推銷電話", "推銷電話", "blacklist"));
         assert_eq!(s.lookup("+886 912 345 678", TW).unwrap().name, "0912345678");
         assert_eq!(s.lookup("0800*", None).unwrap().phones, vec!["0800*".to_string()]);
-        // The old settings API: the same list again adds nobody.
-        settings.apply_patch(&json!({ "reject_numbers": list })).unwrap();
-        assert_eq!(absorb_reject_numbers(&settings, &s).await, 5);
-        assert_eq!(s.len(), 5);
-        assert!(settings.snapshot().reject_numbers.is_empty());
-        // Nothing waiting: nothing done.
+        // Moved once: not again.
         assert_eq!(absorb_reject_numbers(&settings, &s).await, 0);
+        // The same numbers again (the old settings API): nobody new.
+        let entries: Vec<(String, String)> = crate::settings_store::reject_entries(&json!(["0255501234 推銷電話", "0800*", "0912345678"]))
+            .into_iter()
+            .map(|e| (e.number, e.reason))
+            .collect();
+        assert_eq!(s.block_many(&entries).await.unwrap(), 3);
+        assert_eq!(s.len(), 7);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -4382,10 +4465,10 @@ mod tests {
         let s = ContactStore::open_with(not_a_folder.join("contacts.json"), Box::new(|| Some("tw".to_string())));
         let (base, settings) = settings_with_rejects(&dir, json!([{ "number": "0255501234", "reason": "推銷" }]));
         assert_eq!(absorb_reject_numbers(&settings, &s).await, 0);
-        assert_eq!(settings.snapshot().reject_numbers.len(), 1);
-        assert_eq!(crate::settings_store::SettingsStore::load(base).snapshot().reject_numbers.len(), 1);
+        assert!(!settings.snapshot().reject_numbers_moved);
+        assert!(!crate::settings_store::SettingsStore::load(base).snapshot().reject_numbers_moved);
         // Meanwhile the number is still turned away.
-        assert!(crate::settings_store::reject_number_hit_on(&settings.snapshot().reject_numbers, "02-5550-1234", TW));
+        assert!(crate::settings_store::reject_number_hit_on(settings.snapshot().pending_rejects(), "02-5550-1234", TW));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -4422,7 +4505,7 @@ mod tests {
             let d = Draft { kind: kind.into(), ..draft("王小明", &["0912345678", "0800*"], "") };
             assert!(matches!(s.add(&d).await, Err(ContactError::Invalid("prefix"))), "{kind:?}");
         }
-        // At least 4 digits before the *.
+        // At least 3 digits before the *, leading zeros not counted.
         assert!(matches!(s.add(&black("太短", &["02*"])).await, Err(ContactError::Invalid("prefix"))));
         assert!(matches!(s.block("02*", "").await, Err(ContactError::Invalid("prefix"))));
         assert!(matches!(s.upsert_by_number("0800*", "", "", "whitelist").await, Err(ContactError::Invalid("prefix"))));
@@ -4435,6 +4518,124 @@ mod tests {
         assert_eq!(s.upsert_by_number("0800*", "", "", "blacklist").await.unwrap().id, c.id);
         let (again, already) = s.block("0800 *", "推銷").await.unwrap();
         assert_eq!((again.id.as_str(), already, again.note.as_str()), (c.id.as_str(), true, "推銷"));
+        assert_eq!(s.len(), 1);
+        let _ = std::fs::remove_dir_all(s.path.parent().unwrap());
+    }
+
+    // ---- QA (reviewer) tests for the one-place Blacklist ----
+
+    #[tokio::test]
+    async fn qa_old_settings_json_without_reject_mode_loads_and_moves() {
+        let dir = temp_dir();
+        std::fs::create_dir_all(dir.join("config")).unwrap();
+        std::fs::write(
+            dir.join("config").join("settings.json"),
+            r#"{"reject_numbers":["0255501234 銀行","0800*",{"number":"0912345678","reason":"騙"}]}"#,
+        )
+        .unwrap();
+        let mut base = crate::config::Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().into_owned();
+        let settings = crate::settings_store::SettingsStore::load(base);
+        let rt = settings.snapshot();
+        assert_eq!(rt.reject_numbers.len(), 3);
+        assert_eq!(rt.reject_mode, "decline");
+        // Unmoved old list still turns people away.
+        assert!(crate::settings_store::reject_number_hit_on(&rt.reject_numbers, "0800123456", TW));
+        assert!(crate::settings_store::reject_number_hit_on(&rt.reject_numbers, "+886255501234", TW));
+        let s = ContactStore::open_with(dir.join("contacts.json"), Box::new(|| Some("tw".to_string())));
+        assert_eq!(absorb_reject_numbers(&settings, &s).await, 3);
+        assert!(settings.snapshot().reject_numbers_moved);
+        assert_eq!(settings.snapshot().reject_numbers.len(), 3);
+        assert_eq!(settings.snapshot().reject_mode, "decline");
+        assert_eq!(s.blacklist_len(), 3);
+        assert!(s.blacklisted("0800765432", TW).is_some());
+        assert_eq!(s.blacklisted("0255501234", TW).map(|c| c.note).as_deref(), Some("銀行"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn qa_every_kind_of_existing_contact_becomes_blacklist() {
+        let s = temp_store();
+        let white = s.add(&Draft { kind: "whitelist".into(), ..draft("媽媽", &["0911000111"], "") }).await.unwrap();
+        let stall = s.add(&Draft { kind: "stall".into(), ..draft("推銷王", &["0911000222"], "") }).await.unwrap();
+        for (num, id) in [("0911000111", &white.id), ("0911000222", &stall.id)] {
+            let (c, was) = s.block(num, "擋").await.unwrap();
+            assert_eq!((c.id.as_str(), c.kind.as_str(), was), (id.as_str(), "blacklist", false));
+        }
+        assert_eq!(s.len(), 2);
+        // Already blacklisted: no change, reported as already.
+        let (_, was) = s.block("0911000111", "擋").await.unwrap();
+        assert!(was);
+        let _ = std::fs::remove_dir_all(s.path.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn qa_prefix_edges() {
+        let s = temp_store();
+        s.add(&black("免付費", &["0800*"])).await.unwrap();
+        for caller in ["0800123456", "+886800123456", "+886 800 123 456", "0800-123-456", "+886-800-123456"] {
+            assert!(s.blacklisted(caller, TW).is_some(), "should hit {caller}");
+        }
+        for caller in ["unknown", "anonymous", "private", "Private Number", "-1", "-2", "", "   ", "0", "080", "0800"] {
+            assert!(s.blacklisted(caller, TW).is_none(), "must not hit {caller:?}");
+        }
+        for p in ["080*", "0*", "02*", "+88*", " 08 *", "0000*", "0008*", "000*"] {
+            assert!(matches!(s.block(p, "").await, Err(ContactError::Invalid("prefix"))), "{p}");
+            assert!(matches!(s.add(&black("x", &[p])).await, Err(ContactError::Invalid("prefix"))), "{p}");
+        }
+        for kind in ["", "whitelist", "stall"] {
+            let d = Draft { kind: kind.into(), ..draft("甲", &["0800*"], "") };
+            assert!(matches!(s.add(&d).await, Err(ContactError::Invalid("prefix"))), "{kind:?}");
+        }
+        assert_eq!(s.len(), 1);
+        let _ = std::fs::remove_dir_all(s.path.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn qa_migrated_reason_shows_once_and_hit_works_without_old_list() {
+        let s = STORE
+            .get_or_init(|| Arc::new(ContactStore::open_with(temp_dir().join("contacts.json"), Box::new(|| Some("tw".to_string())))))
+            .clone();
+        let dir = temp_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let (_, settings) = settings_with_rejects(
+            &dir,
+            json!([{ "number": "0255507777", "reason": "推銷電話" }, { "number": "0255508888", "reason": "" }]),
+        );
+        assert_eq!(absorb_reject_numbers(&settings, &s).await, 2);
+        assert!(settings.snapshot().reject_numbers_moved);
+        // The old list counts no more; the Blacklist alone turns the caller away.
+        assert!(crate::settings_store::reject_number_hit_on(&[], "+886255507777", TW));
+        assert!(crate::settings_store::reject_number_hit_on(&[], "0255508888", TW));
+        // The reason shown on the call record: what the owner typed, once.
+        let with = crate::settings_store::reject_reason_on(&[], "0255507777", TW);
+        // No reason typed: nothing to show (not the number as its own reason).
+        let without = crate::settings_store::reject_reason_on(&[], "+886255508888", TW);
+        assert_eq!((with.as_deref(), without.as_deref()), (Some("推銷電話"), None));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn unblock_lifts_the_number_and_a_prefix_with_its_digits() {
+        let s = temp_store();
+        let free = s.add(&black("免付費", &["0800*"])).await.unwrap();
+        let mixed = s.add(&black("推銷", &["0912345678", "0809*"])).await.unwrap();
+        let other = s.add(&black("另一個", &["0807*"])).await.unwrap();
+        // `/unblock 0800` lifts `0800*`; a contact left without numbers goes.
+        assert_eq!(s.unblock("0800", &["blacklist", "stall"]).await.unwrap().as_deref(), Some("免付費"));
+        assert!(s.get(&free.id).is_none());
+        assert!(s.blacklisted("0800123456", TW).is_none());
+        // The number itself: an ordinary contact again, its prefix dropped.
+        assert_eq!(s.unblock("+886 912 345 678", &["blacklist", "stall"]).await.unwrap().as_deref(), Some("推銷"));
+        let m = s.get(&mixed.id).unwrap();
+        assert_eq!((m.kind.as_str(), m.phones.clone()), ("", vec!["0912345678".to_string()]));
+        assert!(s.blacklisted("0809123456", TW).is_none());
+        // Written with its *, and other prefixes stay.
+        assert!(s.blacklisted("0807123456", TW).is_some());
+        assert_eq!(s.unblock("0807*", &["blacklist"]).await.unwrap().as_deref(), Some("另一個"));
+        assert!(s.get(&other.id).is_none());
+        // Nothing on a list: nothing changes.
+        assert_eq!(s.unblock("0223456789", &["blacklist"]).await.unwrap(), None);
         assert_eq!(s.len(), 1);
         let _ = std::fs::remove_dir_all(s.path.parent().unwrap());
     }

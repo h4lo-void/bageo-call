@@ -146,7 +146,7 @@ How the AI talks; the built-in prompt works for most people. To write your own, 
 
 Call screening at its bluntest: calls from numbers on the **Blacklist** never reach the AI or Gemini. They still appear in the call list and send a "blocked number" notification.
 
-The Blacklist is one of the lists on the **Contacts** tab, with **Contacts, Whitelist, and Stall list** (`kind`: `contact`, `whitelist`, `blacklist`, `stall`). Add a contact and set its list to Blacklist; the note is your reason. Only a Blacklist number may end with `*`, which blocks every number that starts with those digits, e.g. `0800*` (at least four).
+The Blacklist is one of the lists on the **Contacts** tab, with **Contacts, Whitelist, and Stall list** (`kind`: `contact`, `whitelist`, `blacklist`, `stall`). Add a contact and set its list to Blacklist; the note is your reason. Only a Blacklist number may end with `*`, which blocks every number that starts with those digits, e.g. `0800*` (at least three digits, not counting leading zeros).
 
 | Setting | Default | What it does |
 |---|---|---|
@@ -155,7 +155,7 @@ The Blacklist is one of the lists on the **Contacts** tab, with **Contacts, Whit
 
 Write numbers the way they show up in the call list; `+…` forms match too once your country calling code is known ([`COUNTRY_CODE`](#country-calling-code)).
 
-Blocked numbers saved by older versions (`reject_numbers`) move onto the Blacklist the first time Bageo starts. A number that is already a contact's makes that contact a Blacklist one (its note gets the reason when it has none); the others become new contacts named after the reason, or after the number.
+Blocked numbers saved by older versions (`reject_numbers`) move onto the Blacklist the first time Bageo starts. A number that is already an ordinary contact's makes that contact a Blacklist one (its note gets the reason when it has none); one on the Whitelist or Stall list stays there; the others become new contacts named after the reason, or after the number. The old list stays in the settings file as it was, so an older version still has it, but Bageo no longer reads it once the move is saved.
 
 *When someone on the Blacklist calls* is saved as `reject_mode`:
 

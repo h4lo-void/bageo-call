@@ -220,7 +220,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 | `appointment_mode` | `off`（默认）／`confirm`。旧的 `auto` 视为 `confirm`。 |
 | `appointment_sms` | `true`／`false`：要不要发短信告诉对方你的决定。 |
 | `appointment_reply` | `auto`（默认）、`sms` 或 `call`。 |
-| `reject_numbers` | 旧版的黑名单写法，`PUT` 仍然接受：`{number, reason}` 的列表。号码会加进黑名单（跟 `POST /calls/api/contacts/block` 一样），读回来是空的。 |
+| `reject_numbers` | 旧版的黑名单写法，`PUT` 仍然接受：`{number, reason}` 的列表。号码会加进黑名单（普通联系人改成黑名单；白名单、陪聊名单上的保持原样），不保存进设置。读回来的是旧版保存的列表，`reject_numbers_moved` 为 `true` 后就不再生效。 |
 | `reject_mode` | 黑名单来电怎么拒接：`decline`（默认：响铃时直接拒接）或 `announce`（接起来播放语音）。 |
 | `whitelist_mode` | `off`（默认：照常由 AI 接听）、`direct`（直接挂断触发运营商遇忙转移并推送通知）或 `emergency`（AI 接听并在侦测到紧急事件时告知 `whitelist_forward_number` 并发送紧急警报）。 |
 | `whitelist_forward_number` | 白名单直接转接或紧急事件转接时使用的真实电话号码。 |
@@ -563,7 +563,7 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/errands/e3f1a29c0b7d4e55/say" \
 - 最多 10 个号码，名字最多 80 字、备注最多 500 字。
 - `kind`：`contact`（默认，一般联系人）、`whitelist`（白名单，家人或重要的人，配合 `whitelist_mode` 使用）、`blacklist`（黑名单，来电直接拒接）或 `stall`（陪聊名单，来电直接进入 AI 陪聊反制模式）。
 - `source`：`manual`、`vcf`、`csv`、`text` 或 `ai`（Gemini 读出来的）。
-- 只有黑名单的号码可以在结尾加 `*`（`0800*`，至少四位），拦下同一个开头的所有号码；其他名单用 `*` 会返回 400 `invalid_contact`，`field` 是 `prefix`。
+- 只有黑名单的号码可以在结尾加 `*`（`0800*`；开头的 0 不算，至少三位，所以 `080*`、`0000*` 不行），拦下同一个开头的所有号码；其他名单用 `*` 会返回 400 `invalid_contact`，`field` 是 `prefix`。
 - 一个号码只属于一位联系人；通讯录最多 10,000 位（`too_many_contacts`）。
 
 | 方法与路径 | 内容 |

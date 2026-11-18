@@ -245,7 +245,7 @@ Fields worth knowing (all of them are in `RuntimeSettings` in
 | `appointment_mode` | `off` (default) / `confirm`. An older `auto` reads as `confirm`. |
 | `appointment_sms` | `true` / `false`: text the caller your decision. |
 | `appointment_reply` | `auto` (default), `sms` or `call`. |
-| `reject_numbers` | Older form of the Blacklist, still taken by `PUT`: a list of `{number, reason}`. The numbers join the Blacklist (as with `POST /calls/api/contacts/block`) and the list reads back empty. |
+| `reject_numbers` | Older form of the Blacklist, still taken by `PUT`: a list of `{number, reason}`. The numbers join the Blacklist (an ordinary contact moves there; one on the Whitelist or Stall list stays) and are not stored in the settings. Reads back what an older version saved, which counts no more once `reject_numbers_moved` is `true`. |
 | `reject_mode` | How Blacklist calls are turned away: `decline` (default: refuse while it rings) or `announce` (answer and play the announcement). |
 | `whitelist_mode` | `off` (default: AI answers normally), `direct` (decline to trigger carrier call forwarding and alert), or `emergency` (AI answers and gives out `whitelist_forward_number` if the caller has an urgent matter). |
 | `whitelist_forward_number` | Your real forwarding phone number used by Whitelist direct/emergency transfer. |
@@ -616,7 +616,7 @@ contact only, and the book holds up to 10,000 contacts (`too_many_contacts`).
 
 - `contact` (default).
 - `whitelist`: family and other people you trust, used with `whitelist_mode`.
-- `blacklist`: turned away at once, without the AI (`reject_mode`). Only a Blacklist number may end with `*` (`0800*`, at least four digits); it covers every number that starts that way. A `*` anywhere else: 400 `invalid_contact` with `field` `prefix`.
+- `blacklist`: turned away at once, without the AI (`reject_mode`). Only a Blacklist number may end with `*` (`0800*`, at least three digits not counting leading zeros, so not `080*` or `0000*`); it covers every number that starts that way. A `*` anywhere else: 400 `invalid_contact` with `field` `prefix`.
 - `stall`: the AI starts stalling at once (anti-scam and anti-harassment).
 
 `source` is `manual`, `vcf`, `csv`, `text` or `ai` (read by Gemini).

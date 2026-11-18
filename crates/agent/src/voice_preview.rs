@@ -275,7 +275,7 @@ pub async fn prepare_reject_clip(
     rt: &crate::settings_store::RuntimeSettings,
     sample_rate: u32,
 ) -> bool {
-    let needed = crate::contacts::blacklist_len() > 0 || !rt.reject_numbers.is_empty() || !rt.answer_unknown_callers;
+    let needed = crate::contacts::blacklist_len() > 0 || !rt.pending_rejects().is_empty() || !rt.answer_unknown_callers;
     if !needed || rt.gemini_api_key.trim().is_empty() {
         return true;
     }
