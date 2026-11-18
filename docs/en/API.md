@@ -164,7 +164,7 @@ Each call record (`call`, and every entry of `calls`) carries, among others:
 - `persona_stall_spam`: judged a sales or scam call
 - `persona_scam_detected`: judged so with *Keep them talking* off
 - `persona_stall_released`: a later look let the caller go
-- `reject_list`: a blocked number
+- `reject_list`: a number on the Blacklist
 - `call_waiting_rejected`: a second call declined during a call
 - `ai_callback`: the AI calling back about an appointment
 - `ai_errand`: an AI errand
@@ -245,8 +245,8 @@ Fields worth knowing (all of them are in `RuntimeSettings` in
 | `appointment_mode` | `off` (default) / `confirm`. An older `auto` reads as `confirm`. |
 | `appointment_sms` | `true` / `false`: text the caller your decision. |
 | `appointment_reply` | `auto` (default), `sms` or `call`. |
-| `reject_numbers` | A list of `{number, reason}`. |
-| `reject_mode` | `decline` (default: refuse while it rings) or `announce` (answer and play the announcement). |
+| `reject_numbers` | Older form of the Blacklist, still taken by `PUT`: a list of `{number, reason}`. The numbers join the Blacklist (an ordinary contact moves there; one on the Whitelist or Stall list stays) and are not stored in the settings. Reads back what an older version saved, which counts no more once `reject_numbers_moved` is `true`. |
+| `reject_mode` | How Blacklist calls are turned away: `decline` (default: refuse while it rings) or `announce` (answer and play the announcement). |
 | `whitelist_mode` | `off` (default: AI answers normally), `direct` (decline to trigger carrier call forwarding and alert), or `emergency` (AI answers and gives out `whitelist_forward_number` if the caller has an urgent matter). |
 | `whitelist_forward_number` | Your real forwarding phone number used by Whitelist direct/emergency transfer. |
 | `ui_password` | Password for external console/API access (masked on read; `"ui_password_clear": true` clears it). |
@@ -617,7 +617,7 @@ contact only, and the book holds up to 10,000 contacts (`too_many_contacts`).
 
 - `contact` (default).
 - `whitelist`: family and other people you trust, used with `whitelist_mode`.
-- `blacklist`: rejected at once, like `reject_numbers`.
+- `blacklist`: turned away at once, without the AI (`reject_mode`). Only a Blacklist number may end with `*` (`0800*`, at least three digits not counting leading zeros, so not `080*` or `0000*`); it covers every number that starts that way. A `*` anywhere else: 400 `invalid_contact` with `field` `prefix`.
 - `stall`: the AI starts stalling at once (anti-scam and anti-harassment).
 
 `source` is `manual`, `vcf`, `csv`, `text` or `ai` (read by Gemini).
@@ -626,6 +626,7 @@ contact only, and the book holds up to 10,000 contacts (`too_many_contacts`).
 |---|---|
 | `GET /calls/api/contacts` | Query `q` (name, note, or a number written any way), `kind` (`contact` \| `whitelist` \| `blacklist` \| `stall`), `limit`, `offset`. `{ok, contacts, total, offset, count}`: the matches (`total` of them) and how many contacts there are in all (`count`). |
 | `POST /calls/api/contacts` | Body `{name, phones: [...], note, kind?}`: `{ok, contact}`. A number that is another contact's: HTTP 409 `contact_exists` with `contact: {id, name}`. No name or no number: 400 `invalid_contact` with the `field` at fault. |
+| `POST /calls/api/contacts/block` | Body `{number, reason?}`: puts the number (or a `*` prefix) on the Blacklist. The contact that has it moves there (its note gets `reason` when it has none); else a new contact named after `reason`, or the number. `{ok, contact, already}`; `already`: it was on the Blacklist before. |
 | `PUT /calls/api/contacts/{id}` | The same body; replaces the name, numbers, note and kind. 404 `contact_not_found`, 409 and 400 as above. |
 | `DELETE /calls/api/contacts/{id}` | `{ok}`. |
 | `POST /calls/api/contacts/import` | The file itself as the body (up to 10 MB), its name URL-encoded in `X-Filename` (missing: 400 `bad_request`). Reads it and **saves nothing** (a preview): `{ok, file, format, ai, entries: [{name, phones, note, source, duplicate}], skipped}`. Details are below the table. |
@@ -727,11 +728,11 @@ ignore what they do not know, so old apps and older Bageo versions keep working.
 
 | Direction | Message | Meaning |
 |---|---|---|
-| phone → Bageo | `hello` | `serial`, `mode` = `CONTROL_IDLE`, `model`, `app_version`, `phone_mode` (`ai` / `normal`), `in_call`, `supports_sms`, `supports_reject`. No `phone_mode`: an app older than the mode switch (always `ai`). No `supports_sms`: no texts are asked of it. No `supports_reject`: blocked numbers are answered and get the announcement instead. |
+| phone → Bageo | `hello` | `serial`, `mode` = `CONTROL_IDLE`, `model`, `app_version`, `phone_mode` (`ai` / `normal`), `in_call`, `supports_sms`, `supports_reject`. No `phone_mode`: an app older than the mode switch (always `ai`). No `supports_sms`: no texts are asked of it. No `supports_reject`: Blacklist numbers are answered and get the announcement instead. |
 | phone → Bageo | `ping` | Every 15 s. |
 | phone → Bageo | `status` | `{mode, in_call}`: the mode or the call state changed. |
 | phone → Bageo | `incoming`, `incoming_cancel` | A call rings (`caller_id`, empty for a hidden number; `sim_country`; `sim_sub_id` when known) / it ended before it was answered. |
-| Bageo → phone | `answer_plan` | `{delay_ms, prewarm, reject}`: how long to ring before answering, or `reject: true` to decline the ringing call (blocked numbers with `reject_mode` `decline`). |
+| Bageo → phone | `answer_plan` | `{delay_ms, prewarm, reject}`: how long to ring before answering, or `reject: true` to decline the ringing call (Blacklist numbers with `reject_mode` `decline`). |
 | phone → Bageo | `call_waiting_rejected` | `{serial, caller_id, sim_country, sim_sub_id}`: a second call rang during a call and the phone declined it at once (AI mode). Becomes a call record and a "Missed while on a call" notification. |
 | Bageo → phone / phone → Bageo | `set_mode` / `set_mode_result` | `{mode, id}` / `{id, ok, mode, error}`: the remote mode switch; `error` uses the codes above. |
 | Bageo → phone | `agent_info` | `{console_url}` for the app's **Open the web console** button. Sent after the hello when Bageo knows an address: `public_url`, or the LAN IP address when the console is open to your network. |
@@ -764,7 +765,7 @@ How Bageo handles the edge cases:
   recorded, and the phone's later real result under the same `id` replaces a
   `timeout`. The same result again, or a different one for a text already
   settled, changes nothing.
-- A blocked number is declined only when `reject_mode` is `decline` and the
+- A Blacklist number is declined only when `reject_mode` is `decline` and the
   phone said `supports_reject`. Otherwise it is picked up and gets the
   announcement, and the notification says which happened.
 - Call-backs and errands carry `sub_id`, so a dual-SIM phone calls from the
