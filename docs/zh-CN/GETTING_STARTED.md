@@ -25,26 +25,26 @@
 
 ### 下载发布版（最简单）
 
-1. 到 [Releases](https://github.com/h4lo-void/bageo-call/releases) 页面下载适合你系统的安装包，解压到任意位置（例如 `Documents/bageo-call`）：
+1. 到 [Releases](https://github.com/h4lo-void/bageo-call/releases) 页面下载适合你系统的文件：
 
-   | 系统 | 安装包 |
+   | 系统 | 文件 |
    |---|---|
-   | Windows | `bageo-call-<版本>-windows-x64.zip` |
-   | macOS（Apple Silicon） | `bageo-call-<版本>-macos-arm64.tar.gz` |
-   | macOS（Intel） | `bageo-call-<版本>-macos-x64.tar.gz` |
+   | Windows | `bageo-call-<版本>-windows-x64-setup.exe` |
+   | macOS（Apple 芯片） | `bageo-call-<版本>-macos-arm64.dmg` |
+   | macOS（Intel） | `bageo-call-<版本>-macos-x64.dmg` |
    | Linux | `bageo-call-<版本>-linux-x64.tar.gz` |
 
-   每个安装包都包含 Bageo 程序、内置音频、启动脚本和文档。
-2. 启动：
-   - **Windows：** 双击 `bageo-status.exe`（或 `start.cmd`）。如果 SmartScreen 提示发布者未知，请选“更多信息 → 仍要运行”。
-   - **macOS：** 第一次请双击 `start.command`，它会打开 Bageo Status 并告诉它 Bageo 在哪里，之后终端窗口可以关掉。以后直接打开 `Bageo Status.app` 就行。程序没有经过公证（notarize），第一次运行时 macOS 可能会拦下：在文件上点右键 →“打开”。如果图标出现了但 Bageo 没有启动，到“系统设置 → 隐私与安全性”里允许 Bageo 程序，或在该文件夹的终端里执行一次 `xattr -dr com.apple.quarantine .`，再重新启动。
-   - **Linux：** 在终端运行 `./start.sh`。
+   显示 Bageo 状态的小图标（Bageo Status）已经包在安装文件里，不用另外下载。
+2. 安装并启动：
+   - **Windows：** 双击 `setup.exe`。不需要管理员权限，会装到 `%LOCALAPPDATA%\Programs\Bageo`。再点桌面或开始菜单里的“Bageo”快捷方式。如果弹出“Windows 已保护你的电脑”，点“更多信息 → 仍要运行”（程序没有付费签名）。通话、录音和设置存在安装文件夹里的 `data`，卸载程序不会删掉它。
+   - **macOS：** 打开 `.dmg`，把 **Bageo** 拖进“应用程序”，再点一下它。通话、录音和设置存在 `~/Library/Application Support/Bageo`，更新 App 不会动到。第一次如果 macOS 说无法验证开发者：在 Finder 里对 Bageo 点右键 →“打开”，或到“系统设置 → 隐私与安全性”点“仍要打开”。
+   - **Linux：** 解压后，在终端运行 `./start.sh`。
 3. Windows 和 macOS 不会出现命令窗口。系统托盘（Windows）或菜单栏（macOS）会多一个图标，Bageo 跟着它在后台运行。在图标的菜单里点“退出 Bageo”才会停。
 4. 第一次会自动用浏览器打开网页控制台，并问要不要设置控制台密码，只在家里用可以先不设。之后点图标就能打开控制台，或直接打开 <http://localhost:8787/>。
 5. USB 连接要用 `adb`（Google 的 Android platform-tools）。没装的话，点图标后按“下载”，它会放进程序旁边的 `platform-tools` 文件夹。
-6. Bageo 的记录写在同一个文件夹的 `bageo.log`。想照旧在终端里看输出，用 `start.cmd -Console`（Windows）或 `./start.sh --console`（macOS）启动。
+6. 进阶：想用 `.env` 的话，Windows 放在安装文件夹，macOS 放在 `~/Library/Application Support/Bageo/.env`。Windows 安装文件夹里另有 `start.cmd` 和 `start.ps1`，可以用命令行启动 Bageo；Mac 的 App 里没有启动脚本。想在终端里看输出，用 `start.cmd -Console`（Windows）或 `./start.sh --console`（Linux）。
 
-Linux，以及加了 `-Console` 或 `--console` 的时候，启动脚本会在终端里做同样的事：询问是否下载 `adb`、打开网页控制台，并在桌面放一个“**Bageo 控制台**”快捷方式（不想要快捷方式的话，Windows 加 `-NoShortcut`、其他系统加 `--no-shortcut`，或在 `.env` 里设置 `BAGEO_NO_SHORTCUT=1`）。那个终端窗口请保持打开：关掉它，Bageo 就停了。
+Linux，以及 Windows 加了 `-Console` 的时候，启动脚本会在终端里做同样的事：询问是否下载 `adb`、打开网页控制台，并在桌面放一个“**Bageo 控制台**”快捷方式（不想要快捷方式的话，Windows 加 `-NoShortcut`、其他系统加 `--no-shortcut`，或在 `.env` 里设置 `BAGEO_NO_SHORTCUT=1`）。那个终端窗口请保持打开：关掉它，Bageo 就停了。
 
 ### 从源码
 
@@ -174,8 +174,8 @@ docker compose up -d --build
 
 Bageo 在运行，才接得到电话。
 
-- **Windows：** 点 Bageo Status 的图标，在“设置”里打开“开机时自动启动”。插电时关闭睡眠。
-- **macOS：** 点 Bageo Status 的图标，在“设置”里打开“开机时自动启动”，并防止睡眠（“电池／节能 → 防止自动进入睡眠”）。
+- **Windows：** 点 Bageo 的图标，在“设置”里打开“开机时自动启动”。插电时关闭睡眠。
+- **macOS：** 点 Bageo 的图标，在“设置”里打开“开机时自动启动”，并防止睡眠（“电池／节能 → 防止自动进入睡眠”）。
 - **Linux：** 创建一个 systemd 用户服务：
 
   ```ini
@@ -200,7 +200,7 @@ Bageo 在运行，才接得到电话。
 
 ### 在系统托盘或菜单栏看状态
 
-在 Windows 和 macOS，**Bageo Status** 就是用来启动 Bageo 的程序，它待在系统托盘（Windows）或菜单栏（macOS）。图标外框是绿色表示一切正常，黄色表示有地方需要留意（例如有手机没有连接，或缺 Android 工具），红色表示连接不上 Bageo 或没有手机连接。
+在 Windows 和 macOS，Bageo 的图标（叫 **Bageo Status**）会跟着 Bageo 一起启动，待在系统托盘（Windows）或菜单栏（macOS）。图标外框是绿色表示一切正常，黄色表示有地方需要留意（例如有手机没有连接，或缺 Android 工具），红色表示连接不上 Bageo 或没有手机连接。
 
 - **Windows：** 新图标会先收在时钟旁的 `^` 里，把它拖到任务栏上就能一直看到。
 - **macOS：** 图标在菜单栏右边。
@@ -208,8 +208,6 @@ Bageo 在运行，才接得到电话。
 点图标可以看到控制台地址和手机，也可以直接打开控制台。在图标上点右键选“退出 Bageo”，Bageo 会停止，图标也会消失。
 
 在“设置”里可以填地址、输入控制台的密码、打开“开机时自动启动”，以及打开来电和短信的小通知。通知默认关闭，点一下就打开控制台。短信通知要搭配同一版的[短信转发](../../tools/sms_forward/README.md)。
-
-Bageo 在别的地方运行（例如另一台电脑或 Docker）时，也可以用 Bageo Status 看状态：把 `bageo-status.exe` 或 `Bageo Status.app` 复制到你平常用的电脑上打开。它会自己查找局域网里的 Bageo，而且不会把那个 Bageo 停掉。
 
 ## 接下来
 
