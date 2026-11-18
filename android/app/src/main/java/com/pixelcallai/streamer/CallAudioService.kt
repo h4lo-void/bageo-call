@@ -1068,7 +1068,8 @@ class CallAudioService : Service() {
             }
 
             val client = BridgeClient(
-                url = Prefs.agentUrl(this@CallAudioService),
+                // The address the control connection got through on (USB or Wi-Fi).
+                url = AgentControlClient.activeUrl(Prefs.connectionCandidates(this@CallAudioService)),
                 onBinary = { pcm ->
                     if (!isSessionCurrent(generation, callInstanceId)) return@BridgeClient
                     // Never inject agent audio during local menu/wait (double-play root cause).
@@ -1239,10 +1240,10 @@ class CallAudioService : Service() {
 
     private fun startControlClient() {
         if (controlClient != null) return
-        val agentUrl = Prefs.agentUrl(this)
         val client = AgentControlClient(
-            url = agentUrl,
+            candidates = { Prefs.connectionCandidates(this) },
             onCommand = { obj -> handleControlCommand(obj) },
+            isBusy = { isCallBusy() },
             describe = { hello ->
                 val busy = isCallBusy()
                 reportedInCall = busy
@@ -1263,7 +1264,10 @@ class CallAudioService : Service() {
         )
         controlClient = client
         client.connect(deviceSerial())
-        Log.i(TAG, "control client started url=${Prefs.redactUrl(agentUrl)}")
+        Log.i(
+            TAG,
+            "control client started urls=${Prefs.connectionCandidates(this).map { Prefs.redactUrl(it) }}",
+        )
     }
 
     private fun stopControlClient() {
@@ -1293,7 +1297,13 @@ class CallAudioService : Service() {
             "send_sms" -> smsSender?.handle(obj)
             "agent_info" -> {
                 Prefs.setConsoleUrl(this, obj.optString("console_url"))
-                Log.i(TAG, "agent_info console_url_set=${Prefs.consoleUrl(this) != null}")
+                // `wifi` missing (older agent): keep the stored addresses. `urls` empty: forget them.
+                val urls = obj.optJSONObject("wifi")?.optJSONArray("urls")
+                Prefs.applyAgentWifi(this, urls?.let { a -> (0 until a.length()).map { a.optString(it) } })
+                Log.i(
+                    TAG,
+                    "agent_info console_url_set=${Prefs.consoleUrl(this) != null} wifi_field=${urls != null} wifi_paired=${Prefs.wifiUrls(this).isNotEmpty()}",
+                )
             }
             else -> Log.i(TAG, "control cmd type=${obj.optString("type")}")
         }

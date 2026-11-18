@@ -140,4 +140,12 @@
     <string name="about_dedicated">AI モードでは、モジュールが電話アプリを引き継ぎ、着信音を消してサイレント モードをオンにします。予備のスマホでの利用をおすすめします。しばらく普通に使いたいときは、一番上のスイッチをオフにしてください。</string>
     <string name="about_rollback">Bageo を完全に外すには、まず一番上のスイッチをオフにして（通常のスマホに戻す）、Magisk か KernelSU でモジュールを無効化または削除し、再起動してください。</string>
     <string name="about_legal">通話の録音や、相手が AI と話していることを知らせる義務に関する法律は、国や地域によって異なります。法令の遵守は利用者ご自身の責任です。</string>
+    <!-- Connection route and Wi-Fi backup -->
+    <string name="route_usb">USB で接続しています。</string>
+    <string name="route_wifi">Wi-Fi で接続しています。</string>
+    <string name="route_custom">入力したアドレスに接続しています。</string>
+    <string name="wifi_ready">Wi-Fi の予備接続は準備できています。USB ケーブルを抜いても通話は続けられます。</string>
+    <string name="wifi_not_ready">Wi-Fi の予備接続はまだ設定されていません。USB ケーブルで一度つなぐと設定されます。</string>
+    <string name="btn_forget_wifi">Wi-Fi 接続を削除</string>
+    <string name="msg_wifi_forgotten">Wi-Fi 接続を削除しました。もう一度使うには、USB ケーブルで一度つないでください。</string>
 </resources>

@@ -169,6 +169,10 @@ Within about 15 seconds Bageo sets up the USB link and starts the app's call
 service by itself. *System → Phones* in the web console lists the phone; once
 it shows *Ready for calls*, you are done.
 
+After that you can unplug the cable: on the same network the phone switches to
+Wi-Fi by itself (see [Phone setup → Wi-Fi](PHONE.md#wi-fi)). On Windows, allow
+Bageo on private networks when the firewall asks.
+
 > From now on the phone is a call box: it does not ring out loud, its own
 > phone app is hidden, and its microphone and speaker stay muted during calls,
 > so nothing in the room is heard. That is by design. To use it as an ordinary

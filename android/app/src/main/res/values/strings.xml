@@ -140,4 +140,12 @@
     <string name="about_dedicated">In AI mode the module takes over the phone app, silences the ringer and turns on Do Not Disturb, so a spare phone works best. To use the phone normally for a while, turn off the switch at the top.</string>
     <string name="about_rollback">To remove Bageo completely, first turn off the switch at the top (back to a normal phone), then disable or remove the module in Magisk or KernelSU and restart the phone.</string>
     <string name="about_legal">Laws on recording calls and on telling callers that they are talking to an AI differ from place to place. Following them is your responsibility.</string>
+    <!-- Connection route and Wi-Fi backup -->
+    <string name="route_usb">Connected by USB cable.</string>
+    <string name="route_wifi">Connected by Wi-Fi.</string>
+    <string name="route_custom">Connected to the address you entered.</string>
+    <string name="wifi_ready">Wi-Fi backup is ready. Calls keep working if the USB cable comes out.</string>
+    <string name="wifi_not_ready">Wi-Fi backup is not set up. Connect the USB cable once to set it up.</string>
+    <string name="btn_forget_wifi">Forget Wi-Fi connection</string>
+    <string name="msg_wifi_forgotten">Wi-Fi connection forgotten. Connect the USB cable once to set it up again.</string>
 </resources>

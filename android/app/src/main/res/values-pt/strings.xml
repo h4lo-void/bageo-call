@@ -140,4 +140,12 @@
     <string name="about_dedicated">No modo IA, o módulo assume o app de telefone, silencia o toque e ativa o Não perturbe; por isso, o ideal é um telefone reserva. Para usá-lo normalmente por um tempo, desative o botão no topo.</string>
     <string name="about_rollback">Para remover o Bageo de vez, primeiro desative o botão no topo (volta a ser um telefone normal), depois desative ou remova o módulo no Magisk ou KernelSU e reinicie.</string>
     <string name="about_legal">As leis sobre gravação de chamadas e sobre avisar que a pessoa está falando com uma IA variam de um lugar para outro. Cumpri-las é sua responsabilidade.</string>
+    <!-- Connection route and Wi-Fi backup -->
+    <string name="route_usb">Conectado por USB.</string>
+    <string name="route_wifi">Conectado por Wi-Fi.</string>
+    <string name="route_custom">Conectado ao endereço que você digitou.</string>
+    <string name="wifi_ready">A conexão Wi-Fi reserva está pronta. As chamadas continuam se o cabo USB for removido.</string>
+    <string name="wifi_not_ready">A conexão Wi-Fi reserva não está configurada. Conecte o cabo USB uma vez para configurá-la.</string>
+    <string name="btn_forget_wifi">Esquecer conexão Wi-Fi</string>
+    <string name="msg_wifi_forgotten">Conexão Wi-Fi esquecida. Para usar de novo, conecte o cabo USB uma vez.</string>
 </resources>

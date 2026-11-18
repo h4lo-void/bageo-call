@@ -140,4 +140,12 @@
     <string name="about_dedicated">Im KI-Modus übernimmt das Modul die Telefon-App, schaltet den Klingelton stumm und aktiviert „Bitte nicht stören“. Am besten nimmst du ein Zweittelefon. Um es eine Zeit lang normal zu nutzen, schalte den Schalter oben aus.</string>
     <string name="about_rollback">Um Bageo ganz zu entfernen, schalte zuerst den Schalter oben aus (zurück zum normalen Telefon), deaktiviere oder entferne dann das Modul in Magisk oder KernelSU und starte neu.</string>
     <string name="about_legal">Die Gesetze zum Aufzeichnen von Anrufen und zur Pflicht, Anrufer auf eine KI hinzuweisen, unterscheiden sich je nach Land. Für die Einhaltung bist du selbst verantwortlich.</string>
+    <!-- Connection route and Wi-Fi backup -->
+    <string name="route_usb">Über USB verbunden.</string>
+    <string name="route_wifi">Über WLAN verbunden.</string>
+    <string name="route_custom">Mit der Adresse verbunden, die du eingegeben hast.</string>
+    <string name="wifi_ready">Die WLAN-Reserve ist bereit. Anrufe laufen weiter, wenn du das USB-Kabel abziehst.</string>
+    <string name="wifi_not_ready">Die WLAN-Reserve ist noch nicht eingerichtet. Verbinde das USB-Kabel einmal, dann ist sie eingerichtet.</string>
+    <string name="btn_forget_wifi">WLAN-Verbindung vergessen</string>
+    <string name="msg_wifi_forgotten">WLAN-Verbindung vergessen. Zum erneuten Einrichten das USB-Kabel einmal anschließen.</string>
 </resources>

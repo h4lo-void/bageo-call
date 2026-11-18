@@ -140,4 +140,12 @@
     <string name="about_dedicated">En mode IA, le module prend la place de l\'application Téléphone, coupe la sonnerie et active Ne pas déranger : mieux vaut un téléphone de secours. Pour l\'utiliser normalement un moment, désactivez l\'interrupteur en haut.</string>
     <string name="about_rollback">Pour retirer complètement Bageo, désactivez d\'abord l\'interrupteur en haut (retour au téléphone normal), puis désactivez ou supprimez le module dans Magisk ou KernelSU et redémarrez.</string>
     <string name="about_legal">Les lois sur l\'enregistrement des appels et sur l\'obligation d\'informer l\'interlocuteur qu\'il parle à une IA varient selon les pays. Leur respect relève de votre responsabilité.</string>
+    <!-- Connection route and Wi-Fi backup -->
+    <string name="route_usb">Connecté par USB.</string>
+    <string name="route_wifi">Connecté par Wi-Fi.</string>
+    <string name="route_custom">Connecté à l\'adresse que vous avez saisie.</string>
+    <string name="wifi_ready">La connexion Wi-Fi de secours est prête. Les appels continuent si vous débranchez le câble USB.</string>
+    <string name="wifi_not_ready">La connexion Wi-Fi de secours n\'est pas configurée. Branchez le câble USB une fois pour la configurer.</string>
+    <string name="btn_forget_wifi">Oublier la connexion Wi-Fi</string>
+    <string name="msg_wifi_forgotten">Connexion Wi-Fi oubliée. Pour la réutiliser, branchez le câble USB une fois.</string>
 </resources>
