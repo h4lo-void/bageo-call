@@ -1034,11 +1034,12 @@ mod tests {
                     n.fetch_add(1, Ordering::SeqCst);
                     let model = body["model"].as_str().unwrap_or("");
                     let content = if model == "first-null" {
-                        r#"{"event": null}"#
+                        r#"{"event": null}"#.to_string()
                     } else if model == "first-truncated" {
-                        r#"{"event": {"title": "Cut"#
+                        r#"{"event": {"title": "Cut"#.to_string()
                     } else {
-                        r#"{"event": {"title": "Dentist", "start": "2099-05-01T10:00", "end": "", "all_day": false}}"#
+                        let tomorrow = (chrono::Local::now().date_naive() + chrono::Duration::days(1)).format("%Y-%m-%d");
+                        format!(r#"{{"event": {{"title": "Dentist", "start": "{tomorrow}T10:00", "end": "", "all_day": false}}}}"#)
                     };
                     Json(serde_json::json!({ "choices": [{ "message": { "content": content } }] }))
                 }),

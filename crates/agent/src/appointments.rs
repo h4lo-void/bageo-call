@@ -2011,17 +2011,97 @@ pub fn sms_code_text(lang: Lang, code: &str) -> Option<&'static str> {
 
 /// The codes a phone answers a text with ([`crate::callback::SMS_ERROR_CODES`]).
 fn phone_sms_code(lang: Lang, code: &str) -> Option<&'static str> {
-    const CODES: [&str; 6] = ["no_permission", "bad_request", "no_service", "radio_off", "generic_failure", "exception"];
-    let words: [&'static str; 6] = match lang {
-        Lang::ZhTw => ["手機 App 沒有傳簡訊的權限", "號碼或內容不被接受", "手機沒有訊號", "手機的行動網路關閉（飛航模式）", "電信端沒有收下這則簡訊", "手機 App 發生錯誤"],
-        Lang::ZhCn => ["手机 App 没有发短信的权限", "号码或内容不被接受", "手机没有信号", "手机的移动网络关闭（飞行模式）", "运营商没有接收这条短信", "手机 App 出错了"],
-        Lang::En => ["the phone app may not send texts", "the number or the text was not accepted", "no mobile signal", "the phone's radio is off (airplane mode)", "the carrier did not take the text", "the phone app ran into an error"],
-        Lang::Ja => ["アプリに SMS 送信の権限がありません", "番号か本文が受け付けられませんでした", "圏外です", "機内モードなどで電波がオフです", "通信事業者が SMS を受け付けませんでした", "スマホのアプリでエラーが起きました"],
-        Lang::Ko => ["앱에 문자 전송 권한이 없음", "번호나 내용이 받아들여지지 않음", "휴대폰 신호 없음", "비행기 모드 등으로 전파가 꺼짐", "통신사가 문자를 받지 않음", "휴대폰 앱에서 오류 발생"],
-        Lang::Es => ["la app no tiene permiso para enviar SMS", "no se aceptó el número o el texto", "sin cobertura", "la radio del teléfono está apagada (modo avión)", "el operador no aceptó el SMS", "la app del teléfono tuvo un error"],
-        Lang::Fr => ["l'application n'a pas le droit d'envoyer des SMS", "le numéro ou le texte n'a pas été accepté", "pas de réseau mobile", "la radio du téléphone est coupée (mode avion)", "l'opérateur n'a pas accepté le SMS", "l'application du téléphone a rencontré une erreur"],
-        Lang::De => ["die App darf keine SMS senden", "Nummer oder Text wurde nicht angenommen", "kein Mobilfunknetz", "Funk am Telefon aus (Flugmodus)", "der Netzbetreiber hat die SMS nicht angenommen", "in der App auf dem Telefon ist ein Fehler aufgetreten"],
-        Lang::Pt => ["o app não tem permissão para enviar SMS", "o número ou o texto não foi aceito", "sem sinal de celular", "o rádio do telefone está desligado (modo avião)", "a operadora não aceitou o SMS", "o app do telefone teve um erro"],
+    const CODES: [&str; 7] = [
+        "no_permission",
+        "bad_request",
+        "no_service",
+        "radio_off",
+        "generic_failure",
+        "exception",
+        "sim_not_found",
+    ];
+    let words: [&'static str; 7] = match lang {
+        Lang::ZhTw => [
+            "手機 App 沒有傳簡訊的權限",
+            "號碼或內容不被接受",
+            "手機沒有訊號",
+            "手機的行動網路關閉（飛航模式）",
+            "電信端沒有收下這則簡訊",
+            "手機 App 發生錯誤",
+            "找不到指定的 SIM 卡",
+        ],
+        Lang::ZhCn => [
+            "手机 App 没有发短信的权限",
+            "号码或内容不被接受",
+            "手机没有信号",
+            "手机的移动网络关闭（飞行模式）",
+            "运营商没有接收这条短信",
+            "手机 App 出错了",
+            "找不到指定的 SIM 卡",
+        ],
+        Lang::En => [
+            "the phone app may not send texts",
+            "the number or the text was not accepted",
+            "no mobile signal",
+            "the phone's radio is off (airplane mode)",
+            "the carrier did not take the text",
+            "the phone app ran into an error",
+            "the chosen SIM card is not in the phone",
+        ],
+        Lang::Ja => [
+            "アプリに SMS 送信の権限がありません",
+            "番号か本文が受け付けられませんでした",
+            "圏外です",
+            "機内モードなどで電波がオフです",
+            "通信事業者が SMS を受け付けませんでした",
+            "スマホのアプリでエラーが起きました",
+            "指定された SIM カードが見つかりません",
+        ],
+        Lang::Ko => [
+            "앱에 문자 전송 권한이 없음",
+            "번호나 내용이 받아들여지지 않음",
+            "휴대폰 신호 없음",
+            "비행기 모드 등으로 전파가 꺼짐",
+            "통신사가 문자를 받지 않음",
+            "휴대폰 앱에서 오류 발생",
+            "지정한 유심을 찾을 수 없음",
+        ],
+        Lang::Es => [
+            "la app no tiene permiso para enviar SMS",
+            "no se aceptó el número o el texto",
+            "sin cobertura",
+            "la radio del teléfono está apagada (modo avión)",
+            "el operador no aceptó el SMS",
+            "la app del teléfono tuvo un error",
+            "no se encontró la tarjeta SIM elegida",
+        ],
+        Lang::Fr => [
+            "l'application n'a pas le droit d'envoyer des SMS",
+            "le numéro ou le texte n'a pas été accepté",
+            "pas de réseau mobile",
+            "la radio du téléphone est coupée (mode avion)",
+            "l'opérateur n'a pas accepté le SMS",
+            "l'application du téléphone a rencontré une erreur",
+            "la carte SIM choisie est introuvable",
+        ],
+        Lang::De => [
+            "die App darf keine SMS senden",
+            "Nummer oder Text wurde nicht angenommen",
+            "kein Mobilfunknetz",
+            "Funk am Telefon aus (Flugmodus)",
+            "der Netzbetreiber hat die SMS nicht angenommen",
+            "in der App auf dem Telefon ist ein Fehler aufgetreten",
+            "die gewählte SIM-Karte wurde nicht gefunden",
+        ],
+        Lang::Pt => [
+            "o app não tem permissão para enviar SMS",
+            "o número ou o texto não foi aceito",
+            "sem sinal de celular",
+            "o rádio do telefone está desligado (modo avião)",
+            "a operadora não aceitou o SMS",
+            "o app do telefone teve um erro",
+            "o chip SIM escolhido não foi encontrado",
+        ],
     };
     CODES.iter().position(|c| *c == code).map(|i| words[i])
 }
@@ -4760,7 +4840,7 @@ mod tests {
     fn text_result_codes_read_as_words_in_every_language() {
         let codes = [
             "offline", "old_app", "timeout", "busy", "no_number", "no_permission", "bad_request", "no_service",
-            "radio_off", "generic_failure", "exception",
+            "radio_off", "generic_failure", "exception", "sim_not_found",
         ];
         for l in locale::ALL {
             for code in codes {

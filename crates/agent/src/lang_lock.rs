@@ -404,6 +404,8 @@ mod close_latin_languages {
         assert!(other.is_other());
         assert_eq!(other.spoken(), Spoken::Other);
 
+        // Settle call on the initial language before switching.
+        assert_eq!(call.caller_turn("喂你好，請問包裹放哪裡？"), None);
         // First English turn sets pending.
         assert_eq!(call.caller_turn("Hello, I am calling about your parcel delivery"), None);
         // Short neutral acknowledgement does not wipe pending.

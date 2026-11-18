@@ -270,7 +270,7 @@ impl Words {
 
     /// A Latin word or phrase whole (plural and past endings allowed); others anywhere.
     fn has(&self, w: &str) -> bool {
-        if !w.chars().any(|c| c.is_ascii_alphabetic()) {
+        if !w.is_ascii() || !w.chars().any(|c| c.is_ascii_alphabetic()) {
             return self.lower.contains(w);
         }
         let needle = format!(" {w}");

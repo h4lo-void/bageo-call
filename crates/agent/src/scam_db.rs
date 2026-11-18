@@ -1264,33 +1264,15 @@ pub fn typology_for_hits(hits: &[&str]) -> Option<&'static str> {
 /// dossier", 折り返し, 민원, "seu pedido"): one of them alone is no proof of a
 /// follow-up on the owner's own matter; two different ones, or any other
 /// own-matter phrase, are.
-const WEAK_OWN_MATTER: &[&str] = &[
-    "折り返し",
-    "민원",
-    "votre dossier",
-    "seu pedido",
-    "your claim",
-    "您申請的",
-    "你申請的",
-    "調查結果",
-    "調查的結果",
-    "your request",
-    "su solicitud",
-    "votre demande",
-    "ihr anliegen",
-    "ihrem anliegen",
-    "ihres anliegens",
-    "sua solicitação",
-    "la sua richiesta",
-    "la sua pratica",
-];
+const WEAK_OWN_MATTER: &[&str] = &["折り返し", "민원", "votre dossier", "seu pedido", "your claim"];
 
 /// The caller follows up on something the owner raised (a complaint, a repair,
 /// an application): never a pitch, in any language of the database — unless the
 /// caller also makes a scam-only demand (OTP, ATM steps, safe account, screen
-/// sharing, marketplace escrow verification), which spoofs a follow-up.
+/// sharing, marketplace escrow verification) or an advance-fee loan pitch,
+/// which spoofs a follow-up.
 pub fn own_matter(text: &str) -> bool {
-    if has_hard_hit(text) {
+    if keyword_hits(text).iter().any(|h| h.hard || h.typology == "loan_advance_fee") {
         return false;
     }
     let han = crate::zh_tw::norm(text);
@@ -2707,6 +2689,7 @@ mod tests {
                         "prevalence": "high",
                         "lang": "en",
                         "red_flag_keywords": [{"text": "install anydesk", "weight": 2, "hard": true}],
+                        "bait_tactics": ["Look for reading glasses"],
                         "signals_en": "Asks to install remote desktop.",
                         "legit_en": "Ordinary call."
                     }]

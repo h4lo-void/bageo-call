@@ -414,7 +414,7 @@ fn sec_api_sender_ok_filters_disabled_and_resolves_hierarchically() {
             name: "Home".into(),
             enabled: true,
             control: false,
-            control_users: vec!["u2".into()],
+            control_users: vec!["u1".into(), "u2".into()],
             ..Default::default()
         },
     ];
@@ -425,6 +425,7 @@ fn sec_api_sender_ok_filters_disabled_and_resolves_hierarchically() {
     // Disabled channel's list does not leak into kind lookup.
     assert!(!access::api_sender_ok(&rt, "line", "only-disabled"));
     assert!(access::api_sender_ok(&rt, "line", "u1"));
+    assert!(!access::api_sender_ok(&rt, "line", "u2"));
 }
 
 #[test]

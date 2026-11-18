@@ -1129,7 +1129,9 @@ fn other_latin_stats(text: &str) -> OtherLatin {
         "pakketje", "bezorger", "bezorging", "bellen", "bel", "maar", "naar", "ook", "nog", "geen", "ziekenhuis",
         "ongeluk", "spoed", "dringend", "meteen", "politie", "brandweer", "flauwgevallen", "gisteren", "vorige",
         "vorig", "nieuws", "oefening", "grapje", "honger", "ernstigs", "haast", "lift", "paspoort", "portemonnee",
-        "productie", "school",
+        "productie", "school", "keuken", "staat", "onderweg", "ons", "huis", "bij", "ingebroken", "hebben",
+        "gebeld", "snel", "zit", "bijna", "uur", "vast", "niemand", "hoort", "mij", "jaar", "overleden",
+        "vandaag", "haar", "sterfdag", "graag", "jullie", "onze", "waarom", "wanneer", "omdat",
     ];
     const RO_WORDS: &[&str] = &[
         "bună", "buna", "ziua", "salut", "sunt", "este", "vă", "va", "rog", "mulțumesc", "multumesc", "curier",

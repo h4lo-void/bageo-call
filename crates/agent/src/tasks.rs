@@ -220,9 +220,6 @@ impl TaskStore {
         local_now: chrono::NaiveDateTime,
         retention_days: i64,
     ) -> bool {
-        if matches!(task.status, TaskStatus::Pending | TaskStatus::Confirmed) {
-            return true;
-        }
         if let Some(appt) = task.appointment.as_ref() {
             if appt.status == crate::appointments::PENDING {
                 return true;
@@ -289,10 +286,10 @@ impl TaskStore {
             task.id = Uuid::new_v4().to_string();
         }
         if task.created_at.is_empty() {
-            task.created_at = now.clone();
+            task.created_at = now;
         }
         if task.updated_at.is_empty() {
-            task.updated_at = now;
+            task.updated_at = task.created_at.clone();
         }
         task.summary = normalize_task_text(&task.summary);
         task.transcript = normalize_task_text(&task.transcript);

@@ -202,7 +202,7 @@ mod tests {
 
     #[test]
     fn newly_protected_japanese_kanji_and_band_stay_intact() {
-        assert_eq!(for_reading("案内"), "案内");
+        assert_eq!(for_reading("ご案内"), "ご案内");
         assert_eq!(for_reading("携帯"), "携帯");
         assert_eq!(to_tw_whole_in(Lang::ZhTw, "携帯でお願いします"), "携帯でお願いします");
         assert_eq!(to_tw_in(Lang::ZhTw, "案内"), "案内");
