@@ -296,7 +296,16 @@ fn without_quote<'a>(body: &'a str, me: &str) -> (bool, &'a str) {
     let quotes_bot = body.starts_with(&format!("> <{me}>"));
     match body.find("\n\n") {
         Some(i) => (quotes_bot, body[i + 2..].trim()),
-        None => (quotes_bot, body),
+        None => {
+            let mut rest = body;
+            while rest.trim_start_matches([' ', '\t']).starts_with('>') {
+                match rest.find('\n') {
+                    Some(i) => rest = &rest[i + 1..],
+                    None => return (quotes_bot, ""),
+                }
+            }
+            (quotes_bot, rest.trim())
+        }
     }
 }
 
@@ -425,7 +434,7 @@ pub async fn send(http: &Client, acct: &Account, target: &str, out: &Outbound, s
 fn endpoint(acct: &Account, path: &[&str], query: &[(&str, &str)]) -> Result<url::Url> {
     let mut u = url::Url::parse(acct.url.trim()).context("the homeserver URL")?;
     if !matches!(u.scheme(), "http" | "https") {
-        bail!("the homeserver URL must start with https://");
+        bail!("the homeserver URL must start with http:// or https://");
     }
     u.path_segments_mut()
         .map_err(|_| anyhow!("the homeserver URL"))?
@@ -455,4 +464,26 @@ async fn call_for(req: RequestBuilder, token: &str, wait: Duration) -> Result<Va
         bail!("HTTP {} {}", status.as_u16(), link::fit(text_at(&v, "/errcode"), 60));
     }
     Ok(v)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn without_quote_strips_single_newline_matrix_fallback_quote() {
+        let (quotes_bot, text) = without_quote("> <@bot:example.org> Confirm call?\ncancel", "@bot:example.org");
+        assert!(quotes_bot);
+        assert_eq!(text, "cancel");
+
+        let (quotes_bot2, text2) = without_quote("> line one\n> line two\nyes", "@bot:example.org");
+        assert!(!quotes_bot2);
+        assert_eq!(text2, "yes");
+    }
+
+    #[test]
+    fn endpoint_rejects_non_http_with_accurate_scheme_message() {
+        let err = endpoint("ftp://matrix.example.org", "/sync").unwrap_err().to_string();
+        assert!(err.contains("http:// or https://"), "{err}");
+    }
 }

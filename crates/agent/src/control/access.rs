@@ -111,10 +111,22 @@ pub fn api_sender_ok(rt: &RuntimeSettings, channel: &str, sender: &str) -> bool 
         lists.push(&rt.telegram_control_users);
     }
     if !channel.is_empty() {
-        for c in &rt.notify_channels {
-            if c.id == channel || c.name.eq_ignore_ascii_case(channel) || c.kind.eq_ignore_ascii_case(channel) {
-                lists.push(&c.control_users);
+        let enabled: Vec<_> = rt.notify_channels.iter().filter(|c| c.enabled).collect();
+        let picked: Vec<_> = {
+            let by_id: Vec<_> = enabled.iter().copied().filter(|c| c.id == channel).collect();
+            if !by_id.is_empty() {
+                by_id
+            } else {
+                let by_name: Vec<_> = enabled.iter().copied().filter(|c| c.name.eq_ignore_ascii_case(channel)).collect();
+                if !by_name.is_empty() {
+                    by_name
+                } else {
+                    enabled.iter().copied().filter(|c| c.kind.eq_ignore_ascii_case(channel)).collect()
+                }
             }
+        };
+        for c in picked {
+            lists.push(&c.control_users);
         }
     }
     lists.iter().all(|l| l.is_empty() || (!sender.is_empty() && l.iter().any(|u| u.trim() == sender)))

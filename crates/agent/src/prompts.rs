@@ -667,6 +667,14 @@ const ENGLISH: LocalHello = LocalHello {
     hello: "Hello?",
     hello_again: "Hello, can you hear me?",
 };
+const ARABIC: LocalHello = LocalHello {
+    code: "ar",
+    name_tw: "阿拉伯文",
+    name_cn: "阿拉伯语",
+    name_en: "Arabic",
+    hello: "ألو؟",
+    hello_again: "ألو، هل تسمعني؟",
+};
 
 /// [LocalHello] of a country (ISO 3166 alpha-2, any case); None where the AI
 /// speaks the language or no local way is listed.
@@ -678,6 +686,7 @@ pub fn local_hello(country: &str) -> Option<&'static LocalHello> {
         "th" => &THAI,
         "vn" => &VIETNAMESE,
         "in" | "ph" => &ENGLISH,
+        "sa" | "ae" | "eg" | "jo" | "kw" | "qa" | "bh" | "om" | "lb" | "iq" | "sy" | "ye" | "ly" | "dz" | "ma" | "tn" | "sd" | "ps" => &ARABIC,
         _ => return None,
     })
 }
@@ -734,6 +743,17 @@ pub fn call_language_note(pack_lang: Lang, call: Lang) -> String {
     } else {
         let l = crate::urgency::language_name(call);
         format!(" (The caller is speaking {l} on this call: say it in {l}, without switching to another language.)")
+    }
+}
+
+/// Companion to [`call_language_note`] when the call is in an unlisted language
+/// (`Spoken::Other`): keeps the AI speaking the caller's language instead of
+/// falling back to the owner's setting language.
+pub fn other_call_language_note(pack_lang: Lang) -> String {
+    if zh_ins(pack_lang) {
+        zh_text(pack_lang, "（用對方正在講的語言說這句。）".to_string())
+    } else {
+        " (Say this in the language the caller is speaking.)".to_string()
     }
 }
 
@@ -1850,4 +1870,14 @@ mod tests {
         "only in English",
         "Speak only",
     ];
+
+    #[test]
+    fn local_hello_covers_arabic_countries() {
+        let eg = local_hello("eg").expect("Egypt should have local hello");
+        let sa = local_hello("SA").expect("Saudi Arabia should have local hello");
+        assert_eq!(eg, sa);
+        assert_eq!(eg.code, "ar");
+        assert!(!eg.hello.is_empty() && !eg.hello_again.is_empty());
+        assert!(local_hello("zz").is_none());
+    }
 }

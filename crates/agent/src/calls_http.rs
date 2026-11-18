@@ -254,7 +254,7 @@ pub fn token_ok_parts(settings: &Settings, headers: &HeaderMap, query_token: Opt
     if expected.is_empty() {
         return true;
     }
-    if query_token == Some(expected) {
+    if query_token.is_some_and(|q| crate::mcp::same(q, expected)) {
         return true;
     }
     if let Some(auth) = headers
@@ -262,13 +262,13 @@ pub fn token_ok_parts(settings: &Settings, headers: &HeaderMap, query_token: Opt
         .and_then(|v| v.to_str().ok())
     {
         if let Some(rest) = auth.strip_prefix("Bearer ") {
-            if rest == expected {
+            if crate::mcp::same(rest, expected) {
                 return true;
             }
         }
     }
     if let Some(t) = headers.get("x-calls-token").and_then(|v| v.to_str().ok()) {
-        if t == expected {
+        if crate::mcp::same(t, expected) {
             return true;
         }
     }

@@ -384,3 +384,81 @@ fn sec_the_list_hint_is_written_in_every_language() {
         assert!(t.contains("{id}") && t.contains("Bageo"), "{l:?}");
     }
 }
+
+#[test]
+fn sec_api_sender_ok_filters_disabled_and_resolves_hierarchically() {
+    let base = Settings::from_env();
+    let mut rt = crate::settings_store::RuntimeSettings::from_base(&base);
+    rt.notify_channels = vec![
+        crate::notify::Channel {
+            id: "off1".into(),
+            kind: "line".into(),
+            name: "Disabled".into(),
+            enabled: false,
+            control: false,
+            control_users: vec!["only-disabled".into()],
+            ..Default::default()
+        },
+        crate::notify::Channel {
+            id: "id-a".into(),
+            kind: "line".into(),
+            name: "Work".into(),
+            enabled: true,
+            control: false,
+            control_users: vec!["u1".into()],
+            ..Default::default()
+        },
+        crate::notify::Channel {
+            id: "id-b".into(),
+            kind: "line".into(),
+            name: "Home".into(),
+            enabled: true,
+            control: false,
+            control_users: vec!["u2".into()],
+            ..Default::default()
+        },
+    ];
+    // Enabled non-control notification channels retain their control_users.
+    assert!(access::api_sender_ok(&rt, "Work", "u1"));
+    assert!(!access::api_sender_ok(&rt, "Work", "u2"));
+    assert!(access::api_sender_ok(&rt, "id-b", "u2"));
+    // Disabled channel's list does not leak into kind lookup.
+    assert!(!access::api_sender_ok(&rt, "line", "only-disabled"));
+    assert!(access::api_sender_ok(&rt, "line", "u1"));
+}
+
+#[test]
+fn sec_scrub_redacts_trtc_webhook_and_short_alphanumeric_passwords() {
+    let rig = Rig::new();
+    let mut base = (*rig.state.settings).clone();
+    base.notify_webhook_url = "https://hooks.example.org/secret-hook".into();
+    base.calls_ui_token = String::new();
+    let mut st = rig.state.clone();
+    st.settings = Arc::new(base);
+    st.settings_store = SettingsStore::load((*st.settings).clone());
+    let c = Controller::new(st);
+    let mut rt = (*c.settings()).clone();
+    rt.trtc_secret_key = "trtc-key-xyz".into();
+    rt.trtc_secret_id = "trtc-id-123".into();
+    rt.trtc_cloud_secret_key = "trtc-cloud-456".into();
+    rt.ui_password = "ab12".into();
+    let scrubbed = c.scrub(
+        &rt,
+        Outbound {
+            text: "2026 trtc=trtc-key-xyz id=trtc-id-123 cloud=trtc-cloud-456 hook=https://hooks.example.org/secret-hook pw=ab12".into(),
+            buttons: vec![],
+            edit: None,
+        },
+    );
+    assert!(scrubbed.text.contains("2026"));
+    assert!(!scrubbed.text.contains("trtc-key-xyz"), "{}", scrubbed.text);
+    assert!(!scrubbed.text.contains("trtc-id-123"), "{}", scrubbed.text);
+    assert!(!scrubbed.text.contains("trtc-cloud-456"), "{}", scrubbed.text);
+    assert!(!scrubbed.text.contains("hooks.example.org"), "{}", scrubbed.text);
+    assert!(!scrubbed.text.contains("ab12"), "{}", scrubbed.text);
+
+    // Numeric 4-digit year password must not scrub dates like "2026".
+    rt.ui_password = "2026".into();
+    let keep_year = c.scrub(&rt, Outbound { text: "date 2026-11-18".into(), buttons: vec![], edit: None });
+    assert!(keep_year.text.contains("2026-11-18"), "{}", keep_year.text);
+}

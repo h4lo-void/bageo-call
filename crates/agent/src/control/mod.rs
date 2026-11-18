@@ -1227,7 +1227,7 @@ impl Controller {
         }
     }
 
-    /// Every key and token the agent holds (8 characters or more).
+    /// Every key, token and password the agent holds.
     fn secrets(&self, rt: &RuntimeSettings) -> Vec<String> {
         let mut secrets: Vec<String> = vec![
             rt.telegram_bot_token.clone(),
@@ -1237,9 +1237,10 @@ impl Controller {
             rt.gmail_app_password.clone(),
             rt.openclaw_token.clone(),
             rt.mcp_token.clone(),
-            rt.ui_password.clone(),
-            self.state.settings.calls_ui_token.clone(),
-            crate::settings_store::active_ui_token(&self.state.settings.calls_ui_token),
+            rt.trtc_secret_key.clone(),
+            rt.trtc_secret_id.clone(),
+            rt.trtc_cloud_secret_key.clone(),
+            self.state.settings.notify_webhook_url.clone(),
             self.state.settings.device_token.clone(),
         ];
         for c in &rt.notify_channels {
@@ -1247,7 +1248,32 @@ impl Controller {
             secrets.push(c.url.clone());
             secrets.push(c.app_token.clone());
         }
-        secrets.into_iter().map(|s| s.trim().to_string()).filter(|s| s.chars().count() >= 8).collect()
+        let mut out: Vec<String> = secrets
+            .into_iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| {
+                let n = s.chars().count();
+                if s.contains("://") {
+                    n >= 8
+                } else {
+                    n >= 6
+                }
+            })
+            .collect();
+        // UI passwords/tokens may be as short as 4 characters, but avoid
+        // scrubbing pure 4-5 digit strings like years ("2026") from summaries.
+        for pw in [
+            rt.ui_password.as_str(),
+            self.state.settings.calls_ui_token.as_str(),
+            &crate::settings_store::active_ui_token(&self.state.settings.calls_ui_token),
+        ] {
+            let s = pw.trim();
+            let n = s.chars().count();
+            if n >= 6 || (n >= 4 && !s.chars().all(|c| c.is_ascii_digit())) {
+                out.push(s.to_string());
+            }
+        }
+        out
     }
 
     /// Cut every key and token the agent holds out of a reply.

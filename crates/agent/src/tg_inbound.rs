@@ -412,6 +412,32 @@ pub async fn send_task_card_labeled(
     confirm_label: &str,
     ignore_label: &str,
 ) -> Result<i64> {
+    send_task_card_labeled_at(
+        http,
+        TELEGRAM_API,
+        bot_token,
+        chat_id,
+        task_summary_title,
+        task_id,
+        body_text,
+        confirm_label,
+        ignore_label,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn send_task_card_labeled_at(
+    http: &Client,
+    api: &str,
+    bot_token: &str,
+    chat_id: &str,
+    task_summary_title: &str,
+    task_id: &str,
+    body_text: &str,
+    confirm_label: &str,
+    ignore_label: &str,
+) -> Result<i64> {
     let token = bot_token.trim();
     let chat = chat_id.trim();
     if token.is_empty() || chat.is_empty() {
@@ -427,26 +453,49 @@ pub async fn send_task_card_labeled(
     } else {
         format!("{title}\n\n{body}")
     };
-    let text = crate::locale::for_owner(&text);
+    let text = clip_message(&crate::locale::for_owner(&text));
 
-    let url = bot_method_url(token, "sendMessage");
-    let resp = http
-        .post(&url)
-        .json(&task_card_payload(chat, &text, task_id, confirm_label, ignore_label))
-        .send()
-        .await
-        .context("telegram sendMessage task card")?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let err_body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("telegram sendMessage HTTP {status}: {err_body}");
-    }
-
-    let body_json: Value = resp
-        .json()
-        .await
-        .context("telegram sendMessage response JSON")?;
+    let url = method_url(api, token, "sendMessage");
+    let payload = task_card_payload(chat, &text, task_id, confirm_label, ignore_label);
+    let delays = [std::time::Duration::from_millis(1500), std::time::Duration::from_millis(3000)];
+    let mut attempt = 0usize;
+    let body_json: Value = loop {
+        let send_res = http.post(&url).json(&payload).send().await;
+        let retry_delay = match send_res {
+            Ok(resp) => {
+                let status = resp.status();
+                if status.is_success() {
+                    break resp
+                        .json()
+                        .await
+                        .context("telegram sendMessage response JSON")?;
+                }
+                let err_body = resp.text().await.unwrap_or_default();
+                let transient = status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error();
+                if !transient || attempt >= delays.len() {
+                    anyhow::bail!("telegram sendMessage HTTP {status}: {err_body}");
+                }
+                let retry_after = (status == reqwest::StatusCode::TOO_MANY_REQUESTS)
+                    .then(|| {
+                        serde_json::from_str::<Value>(&err_body)
+                            .ok()
+                            .and_then(|v| v.pointer("/parameters/retry_after").and_then(Value::as_u64))
+                    })
+                    .flatten()
+                    .map(|s| std::time::Duration::from_secs(s.min(5)));
+                retry_after.unwrap_or(delays[attempt])
+            }
+            Err(e) => {
+                if attempt >= delays.len() {
+                    return Err(e).context("telegram sendMessage task card");
+                }
+                delays[attempt]
+            }
+        };
+        warn!("telegram task card send transient error (attempt {}), retrying in {}ms", attempt + 1, retry_delay.as_millis());
+        tokio::time::sleep(retry_delay).await;
+        attempt += 1;
+    };
 
     if body_json.get("ok").and_then(Value::as_bool) != Some(true) {
         let desc = body_json
@@ -488,10 +537,29 @@ fn task_card_payload(chat: &str, text: &str, task_id: &str, confirm_label: &str,
 const MAX_MESSAGE_TEXT: usize = 4096;
 
 fn clip_message(text: &str) -> String {
-    if text.chars().count() <= MAX_MESSAGE_TEXT {
+    let mut utf16 = 0usize;
+    let mut exceeded = false;
+    for c in text.chars() {
+        utf16 += c.len_utf16();
+        if utf16 > MAX_MESSAGE_TEXT {
+            exceeded = true;
+            break;
+        }
+    }
+    if !exceeded {
         return text.to_string();
     }
-    let mut out: String = text.chars().take(MAX_MESSAGE_TEXT - 1).collect();
+    let mut out = String::new();
+    let mut used = 0usize;
+    let limit = MAX_MESSAGE_TEXT - 1;
+    for c in text.chars() {
+        let w = c.len_utf16();
+        if used + w > limit {
+            break;
+        }
+        out.push(c);
+        used += w;
+    }
     out.push('…');
     out
 }
@@ -1076,5 +1144,58 @@ mod tests {
         // Only for the chat that takes commands, never for every chat.
         assert_eq!(fake_api::sent(&seen, "setMyCommands")[0]["scope"], json!({"type": "chat", "chat_id": 42}));
         assert!(fake_api::methods(&seen).last().is_some_and(|m| m.eq_ignore_ascii_case("deleteMyCommands")));
+    }
+
+    #[test]
+    fn clip_message_counts_utf16_code_units() {
+        let exact = "😀".repeat(2048); // 4096 UTF-16 code units
+        assert_eq!(clip_message(&exact), exact);
+
+        let over = "😀".repeat(2049); // 4098 UTF-16 code units
+        let clipped = clip_message(&over);
+        let units: usize = clipped.chars().map(char::len_utf16).sum();
+        assert!(units <= MAX_MESSAGE_TEXT, "utf16={units}");
+        assert!(clipped.ends_with('…'));
+    }
+
+    #[tokio::test]
+    async fn send_task_card_retries_transient_500_and_clips_long_body() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let hits = Arc::new(AtomicUsize::new(0));
+        let hits_bg = hits.clone();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let mut buf = [0u8; 4096];
+                let _ = sock.read(&mut buf).await;
+                let n = hits_bg.fetch_add(1, Ordering::Relaxed);
+                let resp = if n == 0 {
+                    "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 4\r\nConnection: close\r\n\r\nbusy".to_string()
+                } else {
+                    let b = r#"{"ok":true,"result":{"message_id":99}}"#;
+                    format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{b}", b.len())
+                };
+                let _ = sock.write_all(resp.as_bytes()).await;
+            }
+        });
+        let mid = send_task_card_labeled_at(
+            &Client::new(),
+            &format!("http://{addr}"),
+            "123:TEST",
+            "42",
+            "Title",
+            "task-1",
+            &"😀".repeat(2050),
+            "Confirm",
+            "Ignore",
+        )
+        .await
+        .unwrap();
+        assert_eq!(mid, 99);
+        assert_eq!(hits.load(Ordering::Relaxed), 2);
     }
 }

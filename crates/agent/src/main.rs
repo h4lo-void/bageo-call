@@ -411,17 +411,20 @@ impl RingPrewarmRegistry {
             // hello's number, which the session takes over at adoption.
             if !same_ringing_caller(&e.caller_id, caller_id) {
                 info!(
-                    "Ring prewarm caller differs serial={serial} id={} rang_caller={} hello_caller={caller_id} — still the ringing call, adopt",
-                    e.id, e.caller_id
+                    "Ring prewarm caller differs serial={serial} id={} rang_caller={} hello_caller={} — still the ringing call, adopt",
+                    e.id,
+                    urgent_call::masked(&e.caller_id),
+                    urgent_call::masked(caller_id)
                 );
             }
             return Some(e);
         };
         e.cancel.store(true, Ordering::Relaxed);
         warn!(
-            "Ring prewarm not used serial={serial} id={} why={why} rang_caller={} hello_caller={caller_id} age_ms={}",
+            "Ring prewarm not used serial={serial} id={} why={why} rang_caller={} hello_caller={} age_ms={}",
             e.id,
-            e.caller_id,
+            urgent_call::masked(&e.caller_id),
+            urgent_call::masked(caller_id),
             e.started.elapsed().as_millis()
         );
         None
@@ -907,8 +910,9 @@ impl RejectPending {
             Some(ring)
         } else {
             info!(
-                "拒接號碼 ring left over serial={serial} rang={} hello={hello_caller} — not this call",
-                ring.caller
+                "拒接號碼 ring left over serial={serial} rang={} hello={} — not this call",
+                urgent_call::masked(&ring.caller),
+                urgent_call::masked(hello_caller)
             );
             None
         }
@@ -1382,6 +1386,7 @@ async fn main() -> Result<()> {
                 while let Ok(more) = card_rx.try_recv() {
                     actions.push(more);
                 }
+                let mut pending_replies: Vec<(String, String, String)> = Vec::new();
                 for action in actions {
                     let rt = settings_store.snapshot();
                     // Appointments: ✅ / ❌ on their card. On its own task — a text
@@ -1474,15 +1479,24 @@ async fn main() -> Result<()> {
                             }
                         }
                     };
-                    if let Err(e) =
-                        tg_inbound::send_plain_message(&http, &token, &action.chat_id, &result_text)
-                            .await
-                    {
-                        warn!(
-                            "tg fulfill result notify failed task_id={}: {e:#}",
-                            action.task_id
-                        );
-                    }
+                    pending_replies.push((action.chat_id, result_text, action.task_id));
+                }
+                if !pending_replies.is_empty() {
+                    let http = http.clone();
+                    tokio::spawn(async move {
+                        let futs = pending_replies.into_iter().map(|(chat_id, text, task_id)| {
+                            let http = http.clone();
+                            let token = token.clone();
+                            async move {
+                                if let Err(e) =
+                                    tg_inbound::send_plain_message(&http, &token, &chat_id, &text).await
+                                {
+                                    warn!("tg fulfill result notify failed task_id={task_id}: {e:#}");
+                                }
+                            }
+                        });
+                        futures_util::future::join_all(futs).await;
+                    });
                 }
             }
         });
@@ -1591,7 +1605,7 @@ async fn root(
 /// refused.
 fn phone_allowed(peer: &SocketAddr, proxied: bool, token: Option<&str>, required: &str) -> bool {
     let required = required.trim();
-    let token_ok = !required.is_empty() && token.is_some_and(|t| t == required);
+    let token_ok = !required.is_empty() && token.is_some_and(|t| crate::mcp::same(t, required));
     if proxied {
         return token_ok;
     }
@@ -1659,6 +1673,7 @@ async fn health(
         return Json(json!({
             "ok": true,
             "version": env!("CARGO_PKG_VERSION"),
+            "local_time": chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
             "language": rt.language,
             // What the owner reads (the SMS forwarder labels its messages with it).
             "notify_language": rt.notify_lang().code(),
@@ -2077,7 +2092,7 @@ async fn health(
             .map(|c| json!({
                 "id": c.id,
                 "status": c.status,
-                "caller_id": c.caller_id,
+                "caller_id": urgent_call::masked(&c.caller_id),
                 "serial": c.serial,
                 "started_at": c.started_at,
             }))
@@ -2291,7 +2306,7 @@ async fn handle_control_idle_ws(
                         if let Some(old) = state.reject_pending.take(&serial) {
                             info!(
                                 "incoming serial={serial} drops the earlier 拒接號碼 ring caller={}",
-                                old.caller
+                                urgent_call::masked(&old.caller)
                             );
                         }
                         let sample_rate = parsed
@@ -2316,16 +2331,18 @@ async fn handle_control_idle_ws(
                                     .await;
                                     let _ = send_json(&sink, reject_answer_plan(true)).await;
                                     info!(
-                                        "incoming serial={serial} caller={caller} on 白名單 ({}) whitelist_mode=direct → decline, transfer to '{}'",
+                                        "incoming serial={serial} caller={} on 白名單 ({}) whitelist_mode=direct → decline, transfer to '{}'",
+                                        urgent_call::masked(&caller),
                                         wc.name,
-                                        rt.whitelist_forward_number
+                                        urgent_call::masked(&rt.whitelist_forward_number)
                                     );
                                     continue;
                                 }
                                 // Never hang up on a whitelisted caller: without a number to
                                 // forward to, or a phone that can decline, the AI answers.
                                 warn!(
-                                    "incoming serial={serial} caller={caller} on 白名單 ({}) whitelist_mode=direct but the transfer is not ready (number set={}, phone can decline={decline}) → the AI answers",
+                                    "incoming serial={serial} caller={} on 白名單 ({}) whitelist_mode=direct but the transfer is not ready (number set={}, phone can decline={decline}) → the AI answers",
+                                    urgent_call::masked(&caller),
                                     wc.name,
                                     !rt.whitelist_forward_number.trim().is_empty()
                                 );
@@ -2354,7 +2371,8 @@ async fn handle_control_idle_ws(
                             );
                             let _ = send_json(&sink, reject_answer_plan(decline)).await;
                             info!(
-                                "incoming serial={serial} caller={caller} on 拒接號碼 → {} (no AI)",
+                                "incoming serial={serial} caller={} on 拒接號碼 → {} (no AI)",
+                                urgent_call::masked(&caller),
                                 if decline { "decline while ringing" } else { "pick up, announce, hang up" }
                             );
                             continue;
@@ -2368,7 +2386,8 @@ async fn handle_control_idle_ws(
                         )
                         .await;
                         info!(
-                            "incoming serial={serial} caller={caller} answer_ring_ms={ring_ms} prewarm={prewarm}"
+                            "incoming serial={serial} caller={} answer_ring_ms={ring_ms} prewarm={prewarm}",
+                            urgent_call::masked(&caller)
                         );
                     }
                     "incoming_cancel" => {
@@ -2738,7 +2757,13 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                 }
                                 *ivr_phase.lock().unwrap_or_else(|e| e.into_inner()) =
                                     IvrPhase::WaitDtmf;
-                                if let Some(c) = extract_caller_id_from_msg(&parsed) {
+                                if active_call.lock().await.is_none() {
+                                    call_notified = false;
+                                    call_reject_listed = false;
+                                    vm_saved = false;
+                                    vm_notified.store(false, Ordering::Relaxed);
+                                    caller_id = extract_caller_id_from_msg(&parsed).unwrap_or_default();
+                                } else if let Some(c) = extract_caller_id_from_msg(&parsed) {
                                     caller_id = c;
                                 }
                                 note_call_sim(&serial, &parsed);
@@ -2768,7 +2793,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                     .map(|d| d.as_millis())
                                     .unwrap_or(0);
                                 info!(
-                                    "session hello serial={serial} caller={caller_id} mode={} ivr_prompt={:?} ivr_loop={} t0_unix_ms={session_hello_t0_ms}",
+                                    "session hello serial={serial} caller={} mode={} ivr_prompt={:?} ivr_loop={} t0_unix_ms={session_hello_t0_ms}",
+                                    urgent_call::masked(&caller_id),
                                     state.settings.agent_mode.as_str(),
                                     state.settings.ivr_prompt_text,
                                     state.settings.ivr_loop
@@ -2829,7 +2855,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         .release(&serial, &ring.caller)
                                         .await;
                                     info!(
-                                        "declined 拒接號碼 picked up anyway serial={serial} caller={caller_id} record={:?} → announcement",
+                                        "declined 拒接號碼 picked up anyway serial={serial} caller={} record={:?} → announcement",
+                                        urgent_call::masked(&caller_id),
                                         ring.record_id
                                     );
                                     if let Some(id) = ring.record_id.as_deref() {
@@ -2863,7 +2890,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                 }
                                 if ensured == EnsureCall::Reattached {
                                     info!(
-                                        "session hello reattached existing call_id serial={serial} caller={caller_id}"
+                                        "session hello reattached existing call_id serial={serial} caller={}",
+                                        urgent_call::masked(&caller_id)
                                     );
                                 }
                                 if !call_notified {
@@ -2873,7 +2901,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                     let ser = serial.clone();
                                     let notice = ring_notice(&state, call_reject_listed, &ser, &caller).await;
                                     if notice == errands::CallNotice::Silent {
-                                        info!("call notify skipped (redial try after the first) serial={ser} caller={caller}");
+                                        info!("call notify skipped (redial try after the first) serial={ser} caller={}", urgent_call::masked(&caller));
                                     } else if dedup.claim(&ser, &caller).await {
                                         let http = state.http.clone();
                                         // Fresh snapshot: honor hot-swapped call_notify + gateway URL.
@@ -2901,12 +2929,14 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                             let what = if notice == errands::CallNotice::Outgoing { "outgoing" } else { "incoming" };
                                             if ok {
                                                 info!(
-                                                    "{what} call notify ok serial={ser} caller={caller}"
+                                                    "{what} call notify ok serial={ser} caller={}",
+                                                    urgent_call::masked(&caller)
                                                 );
                                             } else {
                                                 dedup_for_task.release(&ser, &caller).await;
                                                 warn!(
-                                                    "{what} call notify FAILED serial={ser} caller={caller} call_notify={} gateway_set={}",
+                                                    "{what} call notify FAILED serial={ser} caller={} call_notify={} gateway_set={}",
+                                                    urgent_call::masked(&caller),
                                                     settings.call_notify,
                                                     !settings.notify_gateway_url.trim().is_empty()
                                                 );
@@ -2914,7 +2944,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         });
                                     } else {
                                         info!(
-                                            "incoming call notify dedup serial={ser} caller={caller} window_s={}",
+                                            "incoming call notify dedup serial={ser} caller={} window_s={}",
+                                            urgent_call::masked(&caller),
                                             INCOMING_NOTIFY_DEDUP_WINDOW.as_secs()
                                         );
                                     }
@@ -2970,7 +3001,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                     let answer_unknown = rt.answer_unknown_callers;
                                     if answer_unknown && is_unknown_or_hidden_caller(&caller_id) {
                                         info!(
-                                            "unknown/hidden caller serial={serial} caller={caller_id:?} → answer like a normal call (answer_unknown_callers=on)"
+                                            "unknown/hidden caller serial={serial} caller={:?} → answer like a normal call (answer_unknown_callers=on)",
+                                            urgent_call::masked(&caller_id)
                                         );
                                     }
                                     match hello_plan.route {
@@ -2984,7 +3016,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                             *ivr_phase.lock().unwrap_or_else(|e| e.into_inner()) =
                                                 IvrPhase::Done;
                                             info!(
-                                                "IVR skip isolated screening serial={serial} caller={caller_id:?} → phase Done (no greet/reject/VM/AI inject)"
+                                                "IVR skip isolated screening serial={serial} caller={:?} → phase Done (no greet/reject/VM/AI inject)",
+                                                urgent_call::masked(&caller_id)
                                             );
                                         }
                                         CidRoute::Wait => {
@@ -3017,7 +3050,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         CidRoute::Reject => {
                                             cid_wait_pending.store(false, Ordering::SeqCst);
                                             info!(
-                                                "unknown/private caller serial={serial} caller={caller_id:?} → reject WAV + hangup (skip greet/AI)"
+                                                "unknown/private caller serial={serial} caller={:?} → reject WAV + hangup (skip greet/AI)",
+                                                urgent_call::masked(&caller_id)
                                             );
                                             if let Some(c) = active_call.lock().await.as_mut() {
                                                 c.push_event("reject_unknown_caller");
@@ -3169,7 +3203,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                 // Hot-swap boundary: refresh runtime settings at call start.
                                 rt = base_state.settings_store.snapshot();
                                 state.settings = rt.effective(&base_state.settings);
-                                info!("session ringing serial={serial} caller={caller_id}");
+                                info!("session ringing serial={serial} caller={}", urgent_call::masked(&caller_id));
                                 let is_outbound =
                                     hello_is_outbound(&state, &serial, &caller_id, &parsed).await;
                                 if !is_outbound && reject_listed_on_line(&rt, &caller_id, &serial) {
@@ -3198,7 +3232,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                     match wait_route {
                                         CidRoute::Reject => {
                                             info!(
-                                                "late hidden CID on ringing serial={serial} caller={caller_id:?} → reject-only"
+                                                "late hidden CID on ringing serial={serial} caller={:?} → reject-only",
+                                                urgent_call::masked(&caller_id)
                                             );
                                             if let Some(c) = active_call.lock().await.as_mut() {
                                                 c.push_event("reject_unknown_caller");
@@ -3217,7 +3252,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         }
                                         CidRoute::RejectList => {
                                             info!(
-                                                "late CID on ringing serial={serial} caller={caller_id:?} → 拒接號碼"
+                                                "late CID on ringing serial={serial} caller={:?} → 拒接號碼",
+                                                urgent_call::masked(&caller_id)
                                             );
                                             start_reject_list_announce(
                                                 &sink,
@@ -3234,7 +3270,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         }
                                         CidRoute::Greet => {
                                             info!(
-                                                "late visible CID on ringing serial={serial} caller={caller_id:?} → period greet"
+                                                "late visible CID on ringing serial={serial} caller={:?} → period greet",
+                                                urgent_call::masked(&caller_id)
                                             );
                                             start_ivr_prompt(
                                                 &sink,
@@ -3343,7 +3380,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                     let dedup = base_state.incoming_notify_dedup.clone();
                                     let notice = ring_notice(&state, call_reject_listed, &ser, &caller).await;
                                     if notice == errands::CallNotice::Silent {
-                                        info!("call notify skipped (redial try after the first) serial={ser} caller={caller}");
+                                        info!("call notify skipped (redial try after the first) serial={ser} caller={}", urgent_call::masked(&caller));
                                     } else if dedup.claim(&ser, &caller).await {
                                         let http = state.http.clone();
                                         let settings = {
@@ -3370,12 +3407,14 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                             let what = if notice == errands::CallNotice::Outgoing { "outgoing" } else { "incoming" };
                                             if ok {
                                                 info!(
-                                                    "{what} call notify ok serial={ser} caller={caller}"
+                                                    "{what} call notify ok serial={ser} caller={}",
+                                                    urgent_call::masked(&caller)
                                                 );
                                             } else {
                                                 dedup_for_task.release(&ser, &caller).await;
                                                 warn!(
-                                                    "{what} call notify FAILED serial={ser} caller={caller} call_notify={} gateway_set={}",
+                                                    "{what} call notify FAILED serial={ser} caller={} call_notify={} gateway_set={}",
+                                                    urgent_call::masked(&caller),
                                                     settings.call_notify,
                                                     !settings.notify_gateway_url.trim().is_empty()
                                                 );
@@ -3383,7 +3422,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         });
                                     } else {
                                         info!(
-                                            "incoming call notify dedup serial={ser} caller={caller} window_s={}",
+                                            "incoming call notify dedup serial={ser} caller={} window_s={}",
+                                            urgent_call::masked(&caller),
                                             INCOMING_NOTIFY_DEDUP_WINDOW.as_secs()
                                         );
                                     }
@@ -3401,7 +3441,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         caller_id = c.to_string();
                                     }
                                 }
-                                info!("session call_end serial={serial} caller={caller_id}");
+                                info!("session call_end serial={serial} caller={}", urgent_call::masked(&caller_id));
                                 // Capture phase before Done — press-1 AI needs the summary notification.
                                 let phase_at_end = *ivr_phase
                                     .lock()
@@ -3431,11 +3471,11 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                 trtc_turn = None;
                                 // Stop TRTC AI / Chromium immediately — do not wait for WS drop
                                 // (leftover StartAIConversation burns Tencent voice minutes).
-                                trtc_bridge::make_bridge(
-                                    &state.settings.trtc(),
-                                    state.http.clone(),
-                                )
-                                .leave(&serial, "remote_call_end");
+                                let trtc_cfg = state.settings.trtc();
+                                if trtc_cfg.configured() || trtc_bridge::peek_ai_task_id(&serial).is_some() {
+                                    trtc_bridge::make_bridge(&trtc_cfg, state.http.clone())
+                                        .leave(&serial, "remote_call_end");
+                                }
                                 *ivr_phase.lock().unwrap_or_else(|e| e.into_inner()) =
                                     IvrPhase::Done;
                                 if let Some(mut call) = active_call.lock().await.take() {
@@ -3470,6 +3510,12 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                     }
                                 }
                                 clear_call_sim(&serial);
+                                caller_id.clear();
+                                call_notified = false;
+                                call_reject_listed = false;
+                                vm_saved = false;
+                                vm_notified.store(false, Ordering::Relaxed);
+                                vm_buf.clear();
                                 let _ = send_json(
                                     &sink,
                                     json!({"type":"call_end_ack","serial": serial}),
@@ -3723,11 +3769,11 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                             vm_voiced = false;
                                             // Exit TRTC AI/menu path before local voicemail.
                                             stop_hold_loop(&mut hold_cancel);
-                                            trtc_bridge::make_bridge(
-                                                &state.settings.trtc(),
-                                                state.http.clone(),
-                                            )
-                                            .leave(&serial, "dtmf_voicemail");
+                                            let trtc_cfg = state.settings.trtc();
+                                            if trtc_cfg.configured() || trtc_bridge::peek_ai_task_id(&serial).is_some() {
+                                                trtc_bridge::make_bridge(&trtc_cfg, state.http.clone())
+                                                    .leave(&serial, "dtmf_voicemail");
+                                            }
                                             start_voicemail_intro(
                                                 &sink,
                                                 &state,
@@ -3867,9 +3913,10 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                             .await;
                                         });
                                     } else if !skip_uplink_to_trtc
+                                        && state.settings.trtc().configured()
                                         && uplink_bytes % 320_000 < bin.len() as u64
                                     {
-                                        info!(
+                                        debug!(
                                             "IVR trtc uplink pending serial={serial} phase={phase:?} live=false bytes={uplink_bytes}"
                                         );
                                     }
@@ -4057,7 +4104,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                             deadline = None;
                                             prompt_cancel.store(true, Ordering::Relaxed);
                                             info!(
-                                                "VM callback confirmed serial={serial} caller={caller_id:?}"
+                                                "VM callback confirmed serial={serial} caller={:?}",
+                                                urgent_call::masked(&caller_id)
                                             );
                                             {
                                                 let mut g = active_call.lock().await;
@@ -4226,7 +4274,9 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
     // Always tear down TRTC room/AI task on disconnect — menu may have opened a
     // sidecar session / StartAIConversation; skipping leave left a "task already exists" error
     // and stale room_media_live → silent ServerPush next call.
+    let trtc_cfg = state.settings.trtc();
     if state.settings.agent_mode.is_transfer()
+        && (trtc_cfg.configured() || trtc_bridge::peek_ai_task_id(&serial).is_some())
         && matches!(
             phase,
             IvrPhase::PlayPrompt
@@ -4236,10 +4286,10 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                 | IvrPhase::LiveAi
         )
     {
-        trtc_bridge::make_bridge(&state.settings.trtc(), state.http.clone())
+        trtc_bridge::make_bridge(&trtc_cfg, state.http.clone())
             .leave(&serial, "ivr_disconnect");
-    } else if trtc_ai_ended {
-        trtc_bridge::make_bridge(&state.settings.trtc(), state.http.clone())
+    } else if trtc_ai_ended && (trtc_cfg.configured() || trtc_bridge::peek_ai_task_id(&serial).is_some()) {
+        trtc_bridge::make_bridge(&trtc_cfg, state.http.clone())
             .leave(&serial, "trtc_ai_disconnect");
     }
     if let Some(mut call) = active_call.lock().await.take() {
@@ -4299,7 +4349,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
     cid_wait_pending.store(false, Ordering::SeqCst);
     state.media_play.release(&serial).await;
     info!(
-        "client disconnected serial={serial} caller={caller_id} uplink_bytes={uplink_bytes} phase={phase:?} hold_started={hold_started}"
+        "client disconnected serial={serial} caller={} uplink_bytes={uplink_bytes} phase={phase:?} hold_started={hold_started}",
+        urgent_call::masked(&caller_id)
     );
     let pacing_started_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -4548,7 +4599,8 @@ fn on_call_waiting_rejected(state: &AppState, conn_serial: &str, parsed: &Value)
         return;
     }
     info!(
-        "call waiting rejected serial={serial} caller={caller} sim_country={}",
+        "call waiting rejected serial={serial} caller={} sim_country={}",
+        urgent_call::masked(&caller),
         sim_country.as_deref().unwrap_or("?")
     );
     let state = state.clone();
@@ -4584,7 +4636,7 @@ fn on_call_waiting_rejected(state: &AppState, conn_serial: &str, parsed: &Value)
             sim_country.as_deref(),
         )
         .await;
-        info!("call waiting notify serial={serial} caller={caller} ok={ok}");
+        info!("call waiting notify serial={serial} caller={} ok={ok}", urgent_call::masked(&caller));
     });
 }
 
@@ -4747,6 +4799,12 @@ fn spawn_empty_cid_wait(
         {
             return;
         }
+        if *phase.lock().unwrap_or_else(|e| e.into_inner()) != IvrPhase::WaitDtmf {
+            info!(
+                "empty caller_id wait elapsed but call already left WaitDtmf serial={serial} — skip reject"
+            );
+            return;
+        }
         info!(
             "empty caller_id still empty after {}ms serial={serial} → reject-only (no greet)",
             EMPTY_CID_WAIT.as_millis()
@@ -4789,6 +4847,9 @@ async fn start_unknown_caller_reject(
         return;
     }
     prompt_cancel.store(true, Ordering::Relaxed);
+    if matches!(*phase.lock().unwrap_or_else(|e| e.into_inner()), IvrPhase::Goodbye | IvrPhase::Done) {
+        return;
+    }
     if !state
         .media_play
         .claim(serial, MediaPlayKind::Reject, prompt_cancel)
@@ -4800,12 +4861,15 @@ async fn start_unknown_caller_reject(
     {
         let mut p = phase.lock().unwrap_or_else(|e| e.into_inner());
         if matches!(*p, IvrPhase::Goodbye | IvrPhase::Done) {
+            drop(p);
+            state.media_play.release(serial).await;
             return;
         }
         *p = IvrPhase::Goodbye;
     }
     stop_hold_loop(hold_cancel);
     if busy.try_lock().is_err() {
+        state.media_play.release(serial).await;
         warn!("unknown-caller reject skipped busy serial={serial}");
         return;
     }
@@ -4952,7 +5016,8 @@ async fn start_reject_list_announce(
         {
             Some(pcm) => {
                 info!(
-                    "拒接號碼 serial={serial} caller={caller} → 「{}」 voice={voice} audio_ms={} (no AI)",
+                    "拒接號碼 serial={serial} caller={} → 「{}」 voice={voice} audio_ms={} (no AI)",
+                    urgent_call::masked(&caller),
                     voice_preview::reject_announce_text(),
                     pcm.len() * 1000 / (state.settings.sample_rate as usize * 2).max(1)
                 );
@@ -4965,7 +5030,8 @@ async fn start_reject_list_announce(
             }
             None => {
                 warn!(
-                    "拒接號碼 serial={serial} caller={caller} announcement not ready voice={voice} — hang up without it"
+                    "拒接號碼 serial={serial} caller={} announcement not ready voice={voice} — hang up without it",
+                    urgent_call::masked(&caller)
                 );
                 let st = state.clone();
                 tokio::spawn(async move {
@@ -5032,11 +5098,12 @@ async fn record_declined_call(
         let (caller, serial) = (caller.to_string(), serial.to_string());
         tokio::spawn(async move {
             if notify_rejected_call(&http, &settings, &caller, &serial, &reason, true).await {
-                info!("declined call notify ok serial={serial} caller={caller}");
+                info!("declined call notify ok serial={serial} caller={}", urgent_call::masked(&caller));
             } else {
                 dedup.release(&serial, &caller).await;
                 warn!(
-                    "declined call notify FAILED serial={serial} caller={caller} call_notify={}",
+                    "declined call notify FAILED serial={serial} caller={} call_notify={}",
+                    urgent_call::masked(&caller),
                     settings.call_notify
                 );
             }
@@ -5330,6 +5397,9 @@ async fn start_ivr_prompt(
         info!("IVR prompt skipped isolated screening serial={serial}");
         return;
     }
+    if *phase.lock().unwrap_or_else(|e| e.into_inner()) != IvrPhase::WaitDtmf {
+        return;
+    }
     if !state
         .media_play
         .claim(serial, MediaPlayKind::Greet, prompt_cancel)
@@ -5342,12 +5412,15 @@ async fn start_ivr_prompt(
         let mut p = phase.lock().unwrap_or_else(|e| e.into_inner());
         // Greeting may only start from idle wait (not during voicemail/hold/goodbye).
         if *p != IvrPhase::WaitDtmf {
+            drop(p);
+            state.media_play.release(serial).await;
             return;
         }
         *p = IvrPhase::PlayPrompt;
     }
     if busy.try_lock().is_err() {
         *phase.lock().unwrap_or_else(|e| e.into_inner()) = IvrPhase::WaitDtmf;
+        state.media_play.release(serial).await;
         warn!("IVR prompt skipped busy serial={serial}");
         return;
     }
@@ -6347,7 +6420,8 @@ fn start_ring_prewarm(
     let (up_tx, up_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
     let goodbye_hangup_delay_ms = u64::from(rt.goodbye_hangup_delay_ms);
     info!(
-        "Ring prewarm Gemini start serial={serial} caller={caller_id} model={} voice={} phone_sr={sample_rate} answer_ring_ms={ring_ms} (「喂？」 held until pickup)",
+        "Ring prewarm Gemini start serial={serial} caller={} model={} voice={} phone_sr={sample_rate} answer_ring_ms={ring_ms} (「喂？」 held until pickup)",
+        urgent_call::masked(caller_id),
         if cfg.model.trim().is_empty() {
             gemini_live::default_model()
         } else {
@@ -6460,8 +6534,9 @@ async fn adopt_ring_prewarm(
     let rang_caller = cfg.caller_id.clone();
     if take_hello_caller(&core, &mut cfg, caller_id) {
         info!(
-            "Ring prewarm caller updated serial={serial} id={id} rang_caller={rang_caller} hello_caller={}",
-            cfg.caller_id
+            "Ring prewarm caller updated serial={serial} id={id} rang_caller={} hello_caller={}",
+            urgent_call::masked(&rang_caller),
+            urgent_call::masked(&cfg.caller_id)
         );
     }
     // The media hello says which SIM took the call: appointments text back from it.
@@ -6946,9 +7021,10 @@ fn start_gemini_session_core(
                 let number = sim
                     .as_deref()
                     .and_then(|s| phone_region::normalize(&caller, Some(s)))
-                    .map_or_else(|| "?".to_string(), |n| format!("{} ({})", n.e164, n.country));
+                    .map_or_else(|| "?".to_string(), |n| format!("{} ({})", urgent_call::masked(&n.e164), n.country));
                 info!(
-                    "intl caller serial={serial} caller={caller} number={number} sim_country={} → hold opening for carrier prompt={hold}",
+                    "intl caller serial={serial} caller={} number={number} sim_country={} → hold opening for carrier prompt={hold}",
+                    urgent_call::masked(&caller),
                     sim.as_deref().unwrap_or("?")
                 );
             }
@@ -6977,7 +7053,7 @@ fn start_gemini_session_core(
     if (persona && (lang_plan.opening.is_some() || lang_plan.local_hello.is_some())) || lang_plan.caller_stt.is_none() {
         info!(
             "caller languages serial={serial} caller={} opening={} caller_stt={}",
-            cfg.caller_id,
+            urgent_call::masked(&cfg.caller_id),
             lang_plan
                 .opening
                 .map(|l| l.code())
@@ -7328,7 +7404,7 @@ async fn run_urgent_call(
             info!("Whitelist urgent call: no call any more on this call serial={serial}");
             return;
         }
-        let Some(said_at) = ctl.hold_said_at() else {
+        let Some((said_at, base_bytes)) = ctl.hold_said() else {
             continue;
         };
         let since_said = said_at.elapsed();
@@ -7342,7 +7418,7 @@ async fn run_urgent_call(
         if since_said < Duration::from_millis(600) {
             continue;
         }
-        let spoke = delivered_bytes.load(Ordering::Relaxed) > 0;
+        let spoke = delivered_bytes.load(Ordering::Relaxed) > base_bytes;
         if spoke && !play_head.generating() && !play_head.ai_audible(Duration::from_millis(400)) {
             info!(
                 "Whitelist urgent call: hold-on line said and played ({}ms after hold-on) serial={serial}",
@@ -8912,7 +8988,10 @@ fn start_ivr_stub_hangup(
     stop_hold_loop(hold_cancel);
     // Stop TRTC AI / Chromium before goodbye audio — remote hangup and local
     // goodbye must not leave StartAIConversation billing until max idle.
-    trtc_bridge::make_bridge(&state.settings.trtc(), state.http.clone()).leave(serial, reason);
+    let trtc_cfg = state.settings.trtc();
+    if trtc_cfg.configured() || trtc_bridge::peek_ai_task_id(serial).is_some() {
+        trtc_bridge::make_bridge(&trtc_cfg, state.http.clone()).leave(serial, reason);
+    }
     if busy.try_lock().is_err() {
         warn!("IVR hangup stub skipped busy serial={serial} reason={reason}");
         return;
@@ -10158,11 +10237,9 @@ fn spawn_ai_talk_tg_summary(
 
         let mut body = if !transcript.trim().is_empty() {
             if summary::summary_endpoint(&eff).is_some() {
-                let preview: String = transcript.chars().take(180).collect();
                 info!(
-                    "ai talk summarize serial={serial} tx_chars={} preview={}",
-                    transcript.chars().count(),
-                    preview.replace('\n', " | ")
+                    "ai talk summarize serial={serial} tx_chars={}",
+                    transcript.chars().count()
                 );
                 source = "llm_summary";
                 summary::summarize(&http, &eff, &caller, &transcript).await
@@ -10655,7 +10732,8 @@ async fn ensure_active_call(
             .mark_live(serial, caller_id, &id, active_call.clone())
             .await;
         info!(
-            "call reattach id={id} serial={serial} caller={caller_id} status={status}"
+            "call reattach id={id} serial={serial} caller={} status={status}",
+            urgent_call::masked(caller_id)
         );
         return EnsureCall::Reattached;
     }
@@ -13329,5 +13407,24 @@ mod audit_a_tests {
         clear_call_sim(serial);
         assert_eq!(call_sim_country(serial), None);
         assert_eq!(call_sim_sub_id(serial), None);
+    }
+
+    #[tokio::test]
+    async fn phone_allowed_and_media_play_gate_behave_safely() {
+        let lan: SocketAddr = "203.0.113.10:1234".parse().unwrap();
+        let lo: SocketAddr = "127.0.0.1:1234".parse().unwrap();
+        assert!(phone_allowed(&lan, false, Some("dev-tok-1"), "dev-tok-1"));
+        assert!(!phone_allowed(&lan, false, Some("dev-tok-2"), "dev-tok-1"));
+        assert!(phone_allowed(&lo, true, Some("dev-tok-1"), "dev-tok-1"));
+        assert!(!phone_allowed(&lo, true, None, ""));
+        assert_eq!(urgent_call::masked("0912345678"), "***5678");
+
+        let gate = MediaPlayGate::default();
+        let c1 = Arc::new(AtomicBool::new(false));
+        let c2 = Arc::new(AtomicBool::new(false));
+        assert!(gate.claim("pixel-10111", MediaPlayKind::Greet, &c1).await);
+        assert!(!gate.claim("pixel-1010111", MediaPlayKind::Greet, &c2).await);
+        gate.release("pixel-10111").await;
+        assert!(gate.claim("pixel-1010111", MediaPlayKind::Greet, &c2).await);
     }
 }

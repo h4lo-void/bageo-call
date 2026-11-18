@@ -310,8 +310,9 @@ pub struct CallCtl {
     handed: AtomicBool,
     /// A turn for the model (the "did not answer" line), sent once.
     say: Mutex<Option<String>>,
-    /// When the AI's output first held the hold-on line.
-    hold_said_at: Mutex<Option<Instant>>,
+    /// When the AI's output first held the hold-on line and `delivered_bytes` at
+    /// the start of that turn (so only bytes from that turn onward count).
+    hold_said_at: Mutex<Option<(Instant, u64)>>,
     /// No phone call on this call any more (fallback taken, or tried once).
     dial_blocked: AtomicBool,
     /// The Live session ended while the AI was paused: nobody can talk to the caller.
@@ -359,13 +360,23 @@ impl CallCtl {
 
     /// The AI's output held the hold-on line (first time counts).
     pub fn note_hold_line(&self) {
+        self.note_hold_line_from(0);
+    }
+
+    /// Record when the hold-on line was spoken along with `base_bytes` of
+    /// `delivered_bytes` at the start of the turn (first time counts).
+    pub fn note_hold_line_from(&self, base_bytes: u64) {
         if let Ok(mut g) = self.hold_said_at.lock() {
-            g.get_or_insert_with(Instant::now);
+            g.get_or_insert_with(|| (Instant::now(), base_bytes));
         }
     }
 
-    pub fn hold_said_at(&self) -> Option<Instant> {
+    pub fn hold_said(&self) -> Option<(Instant, u64)> {
         self.hold_said_at.lock().ok().and_then(|g| *g)
+    }
+
+    pub fn hold_said_at(&self) -> Option<Instant> {
+        self.hold_said().map(|(t, _)| t)
     }
 
     /// No (further) phone call on this call. True the first time.
@@ -879,10 +890,12 @@ mod tests {
     fn the_hold_on_line_is_noted_once_and_dialing_is_blocked_once() {
         let c = CallCtl::default();
         assert!(c.hold_said_at().is_none());
-        c.note_hold_line();
-        let said = c.hold_said_at().unwrap();
-        c.note_hold_line();
-        assert_eq!(c.hold_said_at(), Some(said), "the first time counts");
+        c.note_hold_line_from(1280);
+        let (said, base) = c.hold_said().unwrap();
+        assert_eq!(base, 1280);
+        c.note_hold_line_from(4096);
+        assert_eq!(c.hold_said(), Some((said, 1280)), "the first time counts");
+        assert_eq!(c.hold_said_at(), Some(said));
         assert!(c.block_dial());
         assert!(!c.block_dial(), "blocked once");
         assert!(c.dial_blocked());

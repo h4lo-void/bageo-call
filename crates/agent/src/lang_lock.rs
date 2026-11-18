@@ -84,6 +84,10 @@ impl CallLanguage {
         self.now == Spoken::Other
     }
 
+    pub fn spoken(&self) -> Spoken {
+        self.now
+    }
+
     fn same_variant(&self, lang: Lang) -> Lang {
         if lang.is_zh() {
             self.zh
@@ -105,7 +109,16 @@ impl CallLanguage {
     /// A finished turn of the caller's. Returns the call's new language when it
     /// changed.
     pub fn caller_turn(&mut self, said: &str) -> Option<Spoken> {
-        let heard = self.clear(said)?;
+        let Some(heard) = self.clear(said) else {
+            if let Some(pending) = self.pending {
+                if let Some(r) = crate::urgency::read_language(said) {
+                    if Spoken::Lang(self.same_variant(r.lang)) != pending {
+                        self.pending = None;
+                    }
+                }
+            }
+            return None;
+        };
         self.caller_last = Some(heard);
         if heard == self.now {
             self.settled = true;
@@ -379,5 +392,29 @@ mod close_latin_languages {
             assert_eq!(call.caller_turn(nt2), Some(Spoken::Lang(next)), "{lang:?} -> {next:?} switches on turn2");
             assert_eq!(call.lang(), Some(next));
         }
+    }
+
+    #[test]
+    fn spoken_reports_variant_and_pending_survives_neutral_turn_only() {
+        let mut call = CallLanguage::new(Lang::ZhTw, Lang::ZhTw);
+        assert_eq!(call.spoken(), Spoken::Lang(Lang::ZhTw));
+
+        let mut other = CallLanguage::open_other(Lang::ZhTw);
+        assert!(other.is_other());
+        assert_eq!(other.spoken(), Spoken::Other);
+
+        // First English turn sets pending.
+        assert_eq!(call.caller_turn("Hello, I am calling about your parcel delivery"), None);
+        // Short neutral acknowledgement does not wipe pending.
+        assert_eq!(call.caller_turn("Okay"), None);
+        // Second English turn still promotes the pending language switch.
+        assert_eq!(call.caller_turn("Where should I leave the package?"), Some(Spoken::Lang(Lang::En)));
+
+        // Different-language short turn between two Spanish turns clears pending.
+        let mut call2 = CallLanguage::new(Lang::En, Lang::En);
+        assert_eq!(call2.caller_turn("Buenos días, llamo por su cita de mañana"), None);
+        assert_eq!(call2.caller_turn("こんにちは"), None);
+        assert_eq!(call2.caller_turn("Confirmamos el horario de mañana"), None);
+        assert_eq!(call2.lang(), Some(Lang::En));
     }
 }

@@ -1479,7 +1479,8 @@ impl CallStore {
             });
         }
         info!(
-            "call record start id={id} serial={serial} caller={caller_id} status={initial_status} continuous_mix=true remote_track=true"
+            "call record start id={id} serial={serial} caller={} status={initial_status} continuous_mix=true remote_track=true",
+            crate::urgent_call::masked(caller_id)
         );
         Some(call)
     }
@@ -1713,7 +1714,7 @@ impl CallStore {
             "call record end id={} serial={} caller={} dur_ms={} mix_s={:.1} uplink={} tts={} audio={:?} remote={:?}",
             final_record.id,
             final_record.serial,
-            final_record.caller_id,
+            crate::urgent_call::masked(&final_record.caller_id),
             final_record.duration_ms,
             mix_secs,
             final_record.uplink_bytes,
