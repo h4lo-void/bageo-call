@@ -324,8 +324,9 @@ reconnect by themselves.
 On Windows and macOS, the Bageo icon (called **Bageo Status**) starts together
 with Bageo. It sits in the system tray (Windows) or the menu bar (macOS). The frame around
 its icon is green when everything works, yellow when something needs a look
-(for example a phone is not connected, or the Android tools are missing) and
-red when Bageo cannot be reached or no phone is connected.
+(for example the console still lists settings to fill in, a phone is not
+connected, or the Android tools are missing) and red when Bageo cannot be
+reached or no phone is connected.
 
 - **Windows:** Windows puts new icons behind the `^` next to the clock; drag
   the icon onto the taskbar to keep it in view.

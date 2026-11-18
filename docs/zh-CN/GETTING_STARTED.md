@@ -200,7 +200,7 @@ Bageo 在运行，才接得到电话。
 
 ### 在系统托盘或菜单栏看状态
 
-在 Windows 和 macOS，Bageo 的图标（叫 **Bageo Status**）会跟着 Bageo 一起启动，待在系统托盘（Windows）或菜单栏（macOS）。图标外框是绿色表示一切正常，黄色表示有地方需要留意（例如有手机没有连接，或缺 Android 工具），红色表示连接不上 Bageo 或没有手机连接。
+在 Windows 和 macOS，Bageo 的图标（叫 **Bageo Status**）会跟着 Bageo 一起启动，待在系统托盘（Windows）或菜单栏（macOS）。图标外框是绿色表示一切正常，黄色表示有地方需要留意（例如控制台还有项目没设置、有手机没有连接，或缺 Android 工具），红色表示连接不上 Bageo 或没有手机连接。
 
 - **Windows：** 新图标会先收在时钟旁的 `^` 里，把它拖到任务栏上就能一直看到。
 - **macOS：** 图标在菜单栏右边。
