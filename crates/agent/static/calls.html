@@ -509,7 +509,6 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
   .call .call-acts{margin-top:0;margin-left:auto}
   .snav{margin:-4px -12px 0;padding:8px 12px}
   .brow{grid-template-columns:minmax(0,1fr) auto}
-  .brow .b-why{grid-column:1;grid-row:2}
   .brow .sl-lang{grid-column:1;grid-row:2}
   .brow .btn{grid-row:1/3;align-self:center}
   .savebar{bottom:calc(74px + env(safe-area-inset-bottom));width:calc(100vw - 24px);padding-left:14px}
@@ -750,6 +749,14 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
           <div class="help" data-i18n="f_wl_num_h"></div></div>
       </div>
     </div>
+    <div class="card pad" id="ctBlackCard" style="margin-bottom:14px" hidden>
+      <div class="field" style="margin:0"><label for="blQuickMode" data-i18n="bl_mode"></label>
+        <select id="blQuickMode" style="max-width:24rem">
+          <option value="decline" data-i18n="reject_decline"></option>
+          <option value="announce" data-i18n="reject_announce"></option>
+        </select>
+        <div class="help" id="blVoiceHelp" hidden><a href="#settings/blocked" data-i18n="bl_voice_link"></a></div></div>
+    </div>
     <div class="filters ct-bar">
       <label class="search">
         <input type="search" id="ctQ" autocomplete="off" data-i18n-ph="ct_search_ph" data-i18n-aria="ct_search_ph" /></label>
@@ -988,29 +995,18 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
           </div>
         </div></div>
 
-        <!-- Blocked numbers -->
+        <!-- Announcement for turned-away calls (the Blacklist is in Contacts) -->
         <div class="card group" id="g-blocked"><div class="pad">
           <h2><span data-i18n="g_blocked"></span></h2>
           <p class="desc" data-i18n="g_blocked_d"></p>
-          <div id="blockedField">
-            <div class="field"><label for="f-reject_mode" data-i18n="f_reject_mode"></label>
-              <select id="f-reject_mode" data-k="reject_mode" data-t="text" style="max-width:24rem">
-                <option value="decline" data-i18n="reject_decline"></option><option value="announce" data-i18n="reject_announce"></option>
-              </select></div>
-            <div class="rows" id="blockRows" data-k="reject_numbers" data-t="rejects"></div>
-            <div class="pv" style="margin-top:0">
-              <button type="button" class="btn sm" id="btnBlockAdd" data-i18n="b_add"></button>
+          <div class="field"><label for="f-reject_voice_name" data-i18n="f_reject_voice"></label>
+            <div class="with-btn">
+              <select id="f-reject_voice_name" data-k="reject_voice_name" data-t="text"></select>
+              <button type="button" class="btn" id="btnPvReject" data-i18n="b_preview"></button>
             </div>
-            <div class="help" data-i18n="b_help"></div>
-            <div class="field" style="margin-top:14px"><label for="f-reject_voice_name" data-i18n="f_reject_voice"></label>
-              <div class="with-btn">
-                <select id="f-reject_voice_name" data-k="reject_voice_name" data-t="text"></select>
-                <button type="button" class="btn" id="btnPvReject" data-i18n="b_preview"></button>
-              </div>
-              <div class="help" data-i18n="f_reject_voice_h"></div>
-              <div class="pv"><span class="pv-status" id="pvRejectStatus" aria-live="polite"></span></div>
-              <audio id="pvRejectAudio" controls preload="none" hidden></audio>
-            </div>
+            <div class="help" data-i18n="f_reject_voice_h"></div>
+            <div class="pv"><span class="pv-status" id="pvRejectStatus" aria-live="polite"></span></div>
+            <audio id="pvRejectAudio" controls preload="none" hidden></audio>
           </div>
         </div></div>
 
@@ -1223,6 +1219,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
       <label for="ctPhones" data-i18n="ct_phones"></label>
       <textarea id="ctPhones" rows="3" autocomplete="off" spellcheck="false" inputmode="tel"></textarea>
       <p class="help" data-i18n="ct_phones_help"></p>
+      <p class="help" id="ctPhonesStar" data-i18n="b_help" hidden></p>
     </div>
     <div class="field">
       <label for="ctNote" data-i18n="ct_note"></label>
@@ -1492,9 +1489,9 @@ I18N["en"] = {
   d_block: "Block this number",
   d_block_title: "Block {num}?",
   d_block_body: "Calls from this number will be turned away. The AI will not answer them.",
-  d_block_ok: "Block number",
-  d_block_done: "{num} is now blocked",
-  d_blocked_already: "{num} is already blocked",
+  d_block_ok: "Add to Blacklist",
+  d_block_done: "{num} is now on the Blacklist",
+  d_blocked_already: "{num} is already on the Blacklist",
   d_copy_link: "Copy link",
   d_json: "Download JSON",
   d_tech: "Technical details",
@@ -1614,7 +1611,7 @@ I18N["en"] = {
   g_answer: "How it answers",
   g_spam: "Sales & scam calls",
   g_prompt: "Prompt",
-  g_blocked: "Blocked numbers",
+  g_blocked: "Blocked-call announcement",
   g_notify: "Notifications",
   g_summary: "Summary & calendar",
   g_region: "Advanced",
@@ -1754,17 +1751,11 @@ I18N["en"] = {
   h_copy: "Copy interview prompt",
   h_read: "Read the interview prompt",
   // ---- settings: blocked numbers
-  g_blocked_d: "The AI never answers these numbers, or anyone on the Blacklist in Contacts. The calls still show up in the list.",
-  b_number: "Number",
-  b_number_ph: "e.g. 0255501234 or 0800*",
+  g_blocked_d: "Played when a call from the Blacklist or a hidden number is turned away. Manage the Blacklist in “Contacts”.",
   b_reason: "Reason (optional)",
   b_reason_ph: "e.g. bank verification calls",
-  b_add: "Add number",
-  b_remove: "Remove this number",
-  b_empty: "No blocked numbers.",
   b_preview: "Preview the announcement",
-  b_help: "End a number with * to block every number that starts the same way, e.g. 0800* (at least 4 digits).",
-  f_reject_mode: "How blocked calls are turned away",
+  b_help: "End a number with * to block every number that starts the same way, e.g. 0800* (at least 3 digits, not counting leading zeros).",
   reject_decline: "Hang up while it rings (the call never connects)",
   reject_announce: "Answer, play “not available”, then hang up",
   f_reject_voice: "Announcement voice",
@@ -2318,6 +2309,9 @@ I18N["en"] = {
   ph_sim_unset: "number not set",
   er_line_unset: "{name} · {region} (number not set)",
   live_to: "to {line}",
+  bl_mode: "When someone on the Blacklist calls:",
+  bl_voice_link: "Choose the announcement voice",
+  ct_bad_prefix: "Only Blacklist numbers can end with *, with at least 3 digits before it, not counting leading zeros.",
 };
 
 I18N["zh-TW"] = {
@@ -2509,16 +2503,16 @@ I18N["zh-TW"] = {
   end_ai_fail: "AI 連不上，系統直接掛斷，對方沒有聽到任何聲音。",
   end_voicemail: "AI 失敗，改成語音留言。",
   end_hidden: "未顯示號碼：播放拒接語音後掛斷，AI 沒有接。",
-  end_blocked: "拒接號碼：播放「無法接通」語音後掛斷，AI 沒有接。",
+  end_blocked: "黑名單：播放「無法接通」語音後掛斷，AI 沒有接。",
   end_spam: "判斷是推銷或詐騙電話，AI 故意陪對方聊、拖時間。",
   end_normal: "AI 接聽並對話後，正常結束。",
   end_call_waiting: "通話中插播，手機忙線拒接（沒有用 AI）。",
   d_block: "拒接這個號碼",
   d_block_title: "要拒接 {num} 嗎？",
   d_block_body: "這個號碼之後打來會被拒接，AI 不會接。",
-  d_block_ok: "加入拒接",
-  d_block_done: "已將 {num} 加入拒接號碼",
-  d_blocked_already: "{num} 已經在拒接號碼裡",
+  d_block_ok: "加入黑名單",
+  d_block_done: "已將 {num} 加入黑名單",
+  d_blocked_already: "{num} 已經在黑名單裡",
   d_copy_link: "複製連結",
   d_json: "下載 JSON",
   d_tech: "技術細節",
@@ -2531,7 +2525,7 @@ I18N["zh-TW"] = {
   ev_active: "接聽",
   ev_ended: "結束",
   ev_hello: "手機連線",
-  ev_reject_list: "拒接號碼",
+  ev_reject_list: "黑名單",
   ev_reject_unknown_caller: "未顯示號碼，已拒接",
   ev_reject_unknown_play: "播放拒接語音",
   ev_gemini_ring_prewarm: "響鈴時 AI 先準備",
@@ -2671,7 +2665,7 @@ I18N["zh-TW"] = {
   g_answer: "接聽方式",
   g_spam: "推銷與詐騙電話",
   g_prompt: "提示詞",
-  g_blocked: "拒接號碼",
+  g_blocked: "拒接語音",
   g_notify: "通知",
   g_summary: "摘要與行事曆",
   g_region: "進階",
@@ -2811,17 +2805,11 @@ I18N["zh-TW"] = {
   h_copy: "複製訪談提示詞",
   h_read: "查看訪談提示詞",
   // ---- settings: blocked numbers
-  g_blocked_d: "這些號碼和聯絡人裡的黑名單打來，AI 都不會接。通話紀錄還是會留著。",
-  b_number: "號碼",
-  b_number_ph: "例如 0255501234 或 0800*",
+  g_blocked_d: "拒接黑名單或未顯示號碼時播的語音。黑名單在「聯絡人」管理。",
   b_reason: "原因（可不填）",
   b_reason_ph: "例如：銀行確認電話",
-  b_add: "新增號碼",
-  b_remove: "移除這個號碼",
-  b_empty: "沒有拒接號碼。",
   b_preview: "試聽語音",
-  b_help: "結尾加 * 可以拒接同一個開頭的所有號碼，例如 0800*（至少 4 碼）。",
-  f_reject_mode: "拒接方式",
+  b_help: "結尾加 * 可以拒接同一個開頭的所有號碼，例如 0800*（開頭的 0 不算，至少 3 碼）。",
   reject_decline: "響鈴時直接掛斷（不接通）",
   reject_announce: "接起播「無法接通」再掛斷",
   f_reject_voice: "拒接語音的聲音",
@@ -3342,6 +3330,9 @@ I18N["zh-TW"] = {
   ph_sim_unset: "未填號碼",
   er_line_unset: "{name} · {region}（未填號碼）",
   live_to: "打給 {line}",
+  bl_mode: "黑名單打來時：",
+  bl_voice_link: "選拒接語音的聲音",
+  ct_bad_prefix: "結尾加 * 只能用在黑名單，而且 * 前面除了開頭的 0 至少要 3 碼。",
 };
 
 I18N["zh-CN"] = {
@@ -3533,16 +3524,16 @@ I18N["zh-CN"] = {
   end_ai_fail: "AI 连接不上，系统直接挂断，对方没有听到任何声音。",
   end_voicemail: "AI 失败，转为语音留言。",
   end_hidden: "未显示号码：播放拒接语音后挂断，AI 没有接听。",
-  end_blocked: "拦截号码：播放“无法接通”语音后挂断，AI 没有接听。",
+  end_blocked: "黑名单：播放“无法接通”语音后挂断，AI 没有接听。",
   end_spam: "判断为推销或诈骗电话，AI 故意陪对方聊、拖时间。",
   end_normal: "AI 接听并对话后，正常结束。",
   end_call_waiting: "通话中插播，手机占线拒接（没有用 AI）。",
   d_block: "拦截这个号码",
   d_block_title: "要拦截 {num} 吗？",
   d_block_body: "这个号码以后打来会被拦截，AI 不会接听。",
-  d_block_ok: "拦截号码",
-  d_block_done: "已拦截 {num}",
-  d_blocked_already: "{num} 已经在拦截名单里",
+  d_block_ok: "加入黑名单",
+  d_block_done: "已将 {num} 加入黑名单",
+  d_blocked_already: "{num} 已经在黑名单里",
   d_copy_link: "复制链接",
   d_json: "下载 JSON",
   d_tech: "技术细节",
@@ -3555,7 +3546,7 @@ I18N["zh-CN"] = {
   ev_active: "接听",
   ev_ended: "结束",
   ev_hello: "手机已连接",
-  ev_reject_list: "拦截号码",
+  ev_reject_list: "黑名单",
   ev_reject_unknown_caller: "未显示号码，已拒接",
   ev_reject_unknown_play: "播放拒接语音",
   ev_gemini_ring_prewarm: "响铃时 AI 预先准备",
@@ -3662,7 +3653,7 @@ I18N["zh-CN"] = {
   g_answer: "接听方式",
   g_spam: "推销与诈骗电话",
   g_prompt: "提示词",
-  g_blocked: "拦截号码",
+  g_blocked: "拒接语音",
   g_notify: "通知",
   g_summary: "摘要与日历",
   g_region: "高级",
@@ -3802,17 +3793,11 @@ I18N["zh-CN"] = {
   h_copy: "复制访谈提示词",
   h_read: "查看访谈提示词",
   // ---- settings: blocked numbers
-  g_blocked_d: "这些号码和联系人里的黑名单打来，AI 都不会接。通话记录还是会保留。",
-  b_number: "号码",
-  b_number_ph: "例如 0255501234 或 0800*",
+  g_blocked_d: "拒接黑名单或未显示号码时播放的语音。黑名单在“联系人”里管理。",
   b_reason: "原因（可不填）",
   b_reason_ph: "例如：银行核实电话",
-  b_add: "添加号码",
-  b_remove: "移除这个号码",
-  b_empty: "没有拦截号码。",
   b_preview: "试听语音",
-  b_help: "结尾加 * 可以拦截同一个开头的所有号码，例如 0800*（至少 4 位）。",
-  f_reject_mode: "拒接方式",
+  b_help: "结尾加 * 可以拦截同一个开头的所有号码，例如 0800*（开头的 0 不算，至少 3 位）。",
   reject_decline: "响铃时直接挂断（不接通）",
   reject_announce: "接起播“无法接通”再挂断",
   f_reject_voice: "拒接语音的声音",
@@ -4366,6 +4351,9 @@ I18N["zh-CN"] = {
   ph_sim_unset: "未填号码",
   er_line_unset: "{name} · {region}（未填号码）",
   live_to: "打给 {line}",
+  bl_mode: "黑名单打来时：",
+  bl_voice_link: "选择拒接语音的声音",
+  ct_bad_prefix: "结尾加 * 只能用在黑名单，而且 * 前面除了开头的 0 至少要 3 位。",
 };
 
 I18N["ja"] = {
@@ -4686,7 +4674,7 @@ I18N["ja"] = {
   g_answer: "応答のしかた",
   g_spam: "営業・詐欺の電話",
   g_prompt: "プロンプト",
-  g_blocked: "着信拒否の番号",
+  g_blocked: "着信拒否のアナウンス",
   g_notify: "通知",
   g_summary: "要約とカレンダー",
   g_region: "詳細設定",
@@ -4826,17 +4814,11 @@ I18N["ja"] = {
   h_copy: "インタビュー用プロンプトをコピー",
   h_read: "インタビュー用プロンプトを読む",
   // ---- settings: blocked numbers
-  g_blocked_d: "ここの番号と、連絡先の「着信拒否」に入れた人からの電話には AI は出ません。通話の記録は残ります。",
-  b_number: "番号",
-  b_number_ph: "例：0255501234、0800*",
+  g_blocked_d: "着信拒否の相手や非通知の電話を断るときに流れます。着信拒否の相手は「連絡先」で管理します。",
   b_reason: "理由（任意）",
   b_reason_ph: "例：銀行の確認電話",
-  b_add: "番号を追加",
-  b_remove: "この番号を削除",
-  b_empty: "着信拒否の番号はありません。",
   b_preview: "アナウンスを試聴",
-  b_help: "末尾に * を付けると、同じ番号で始まる電話をすべて拒否します（例：0800*、4 桁以上）。",
-  f_reject_mode: "着信拒否のしかた",
+  b_help: "末尾に * を付けると、同じ番号で始まる電話をすべて拒否します（例：0800*、先頭の 0 を除いて 3 桁以上）。",
   reject_decline: "鳴っているうちに切る（つながらない）",
   reject_announce: "応答して「おつなぎできません」を流してから切る",
   f_reject_voice: "アナウンスの声",
@@ -5390,6 +5372,9 @@ I18N["ja"] = {
   ph_sim_unset: "番号未設定",
   er_line_unset: "{name} · {region}（番号未設定）",
   live_to: "{line} 宛て",
+  bl_mode: "着信拒否の相手から電話が来たとき：",
+  bl_voice_link: "アナウンスの声を選ぶ",
+  ct_bad_prefix: "末尾の * は着信拒否の番号だけに使えます（* の前に、先頭の 0 を除いて 3 桁以上）。",
 };
 
 I18N["ko"] = {
@@ -5588,9 +5573,9 @@ I18N["ko"] = {
   d_block: "이 번호 차단",
   d_block_title: "{num} 번호를 차단할까요?",
   d_block_body: "앞으로 이 번호의 전화는 차단되며 AI가 받지 않습니다.",
-  d_block_ok: "번호 차단",
-  d_block_done: "{num} 번호를 차단했습니다",
-  d_blocked_already: "{num} 번호는 이미 차단되어 있습니다",
+  d_block_ok: "차단 목록에 추가",
+  d_block_done: "{num} 번호를 차단 목록에 추가했습니다",
+  d_blocked_already: "{num} 번호는 이미 차단 목록에 있습니다",
   d_copy_link: "링크 복사",
   d_json: "JSON 내려받기",
   d_tech: "기술 정보",
@@ -5710,7 +5695,7 @@ I18N["ko"] = {
   g_answer: "전화 받는 방식",
   g_spam: "영업·사기 전화",
   g_prompt: "프롬프트",
-  g_blocked: "차단 번호",
+  g_blocked: "차단 안내 음성",
   g_notify: "알림",
   g_summary: "요약과 캘린더",
   g_region: "고급 설정",
@@ -5850,17 +5835,11 @@ I18N["ko"] = {
   h_copy: "인터뷰 프롬프트 복사",
   h_read: "인터뷰 프롬프트 읽기",
   // ---- settings: blocked numbers
-  g_blocked_d: "여기의 번호와 연락처의 차단 목록에 있는 사람의 전화는 AI가 받지 않습니다. 통화 기록은 남습니다.",
-  b_number: "번호",
-  b_number_ph: "예: 0255501234 또는 0800*",
+  g_blocked_d: "차단 목록이나 발신번호 표시 제한 전화를 거절할 때 나옵니다. 차단 목록은 “연락처”에서 관리합니다.",
   b_reason: "이유(선택)",
   b_reason_ph: "예: 은행 확인 전화",
-  b_add: "번호 추가",
-  b_remove: "이 번호 지우기",
-  b_empty: "차단한 번호가 없습니다.",
   b_preview: "안내 음성 미리 듣기",
-  b_help: "끝에 *를 붙이면 같은 숫자로 시작하는 번호를 모두 차단합니다(예: 0800*, 4자리 이상).",
-  f_reject_mode: "차단 방법",
+  b_help: "끝에 *를 붙이면 같은 숫자로 시작하는 번호를 모두 차단합니다(예: 0800*, 앞의 0을 빼고 3자리 이상).",
   reject_decline: "울리는 동안 바로 끊기 (연결 안 됨)",
   reject_announce: "받아서 “연결할 수 없습니다” 안내 후 끊기",
   f_reject_voice: "안내 음성 목소리",
@@ -6414,6 +6393,9 @@ I18N["ko"] = {
   ph_sim_unset: "번호 미입력",
   er_line_unset: "{name} · {region} (번호 미입력)",
   live_to: "{line} 수신",
+  bl_mode: "차단 목록의 번호가 전화하면:",
+  bl_voice_link: "안내 음성 목소리 고르기",
+  ct_bad_prefix: "끝의 *는 차단 목록 번호에만 쓸 수 있습니다(* 앞에 앞의 0을 빼고 3자리 이상).",
 };
 
 I18N["es"] = {
@@ -6612,9 +6594,9 @@ I18N["es"] = {
   d_block: "Bloquear este número",
   d_block_title: "¿Bloquear {num}?",
   d_block_body: "Las llamadas de este número se rechazarán. La IA no las contestará.",
-  d_block_ok: "Bloquear número",
-  d_block_done: "{num} ha quedado bloqueado",
-  d_blocked_already: "{num} ya está bloqueado",
+  d_block_ok: "Añadir a la Lista negra",
+  d_block_done: "{num} está ahora en la Lista negra",
+  d_blocked_already: "{num} ya está en la Lista negra",
   d_copy_link: "Copiar enlace",
   d_json: "Descargar JSON",
   d_tech: "Detalles técnicos",
@@ -6734,7 +6716,7 @@ I18N["es"] = {
   g_answer: "Cómo contesta",
   g_spam: "Ventas y estafas",
   g_prompt: "Prompt",
-  g_blocked: "Números bloqueados",
+  g_blocked: "Aviso de llamada rechazada",
   g_notify: "Notificaciones",
   g_summary: "Resumen y calendario",
   g_region: "Avanzado",
@@ -6874,17 +6856,11 @@ I18N["es"] = {
   h_copy: "Copiar el prompt de entrevista",
   h_read: "Leer el prompt de entrevista",
   // ---- settings: blocked numbers
-  g_blocked_d: "La IA nunca contesta a estos números ni a quienes estén en la Lista negra de Contactos. Las llamadas siguen apareciendo en la lista.",
-  b_number: "Número",
-  b_number_ph: "p. ej. 0255501234 o 0800*",
+  g_blocked_d: "Se oye al rechazar una llamada de la Lista negra o de un número oculto. La Lista negra se gestiona en «Contactos».",
   b_reason: "Motivo (opcional)",
   b_reason_ph: "p. ej. llamadas de verificación del banco",
-  b_add: "Añadir número",
-  b_remove: "Quitar este número",
-  b_empty: "No hay números bloqueados.",
   b_preview: "Escuchar el aviso",
-  b_help: "Termina un número con * para bloquear todos los que empiecen igual, p. ej. 0800* (mínimo 4 cifras).",
-  f_reject_mode: "Cómo se rechazan",
+  b_help: "Termina un número con * para bloquear todos los que empiecen igual, p. ej. 0800* (mínimo 3 cifras sin contar los ceros iniciales).",
   reject_decline: "Colgar mientras suena (la llamada no se conecta)",
   reject_announce: "Contestar, poner el aviso de «no disponible» y colgar",
   f_reject_voice: "Voz del aviso",
@@ -7438,6 +7414,9 @@ I18N["es"] = {
   ph_sim_unset: "sin número",
   er_line_unset: "{name} · {region} (sin número)",
   live_to: "a {line}",
+  bl_mode: "Cuando llama alguien de la Lista negra:",
+  bl_voice_link: "Elegir la voz del aviso",
+  ct_bad_prefix: "Solo los números de la Lista negra pueden terminar en *, con al menos 3 cifras antes sin contar los ceros iniciales.",
 };
 
 I18N["fr"] = {
@@ -7636,9 +7615,9 @@ I18N["fr"] = {
   d_block: "Bloquer ce numéro",
   d_block_title: "Bloquer le {num} ?",
   d_block_body: "Les appels de ce numéro seront refusés. L'IA n'y répondra pas.",
-  d_block_ok: "Bloquer le numéro",
-  d_block_done: "Le {num} est maintenant bloqué",
-  d_blocked_already: "Le {num} est déjà bloqué",
+  d_block_ok: "Ajouter à la Liste noire",
+  d_block_done: "Le {num} est maintenant sur la Liste noire",
+  d_blocked_already: "Le {num} est déjà sur la Liste noire",
   d_copy_link: "Copier le lien",
   d_json: "Télécharger le JSON",
   d_tech: "Détails techniques",
@@ -7758,7 +7737,7 @@ I18N["fr"] = {
   g_answer: "Façon de répondre",
   g_spam: "Démarchage et arnaques",
   g_prompt: "Prompt",
-  g_blocked: "Numéros bloqués",
+  g_blocked: "Annonce d'appel refusé",
   g_notify: "Notifications",
   g_summary: "Résumé et agenda",
   g_region: "Options avancées",
@@ -7898,17 +7877,11 @@ I18N["fr"] = {
   h_copy: "Copier le prompt d'entretien",
   h_read: "Lire le prompt d'entretien",
   // ---- settings: blocked numbers
-  g_blocked_d: "L'IA ne répond jamais à ces numéros, ni aux personnes de la Liste noire dans Contacts. Les appels restent visibles dans la liste.",
-  b_number: "Numéro",
-  b_number_ph: "ex. 0255501234 ou 0800*",
+  g_blocked_d: "Diffusée quand un appel de la Liste noire ou d'un numéro masqué est refusé. La Liste noire se gère dans « Contacts ».",
   b_reason: "Raison (facultatif)",
   b_reason_ph: "ex. appels de vérification de la banque",
-  b_add: "Ajouter un numéro",
-  b_remove: "Retirer ce numéro",
-  b_empty: "Aucun numéro bloqué.",
   b_preview: "Écouter l'annonce",
-  b_help: "Terminez un numéro par * pour bloquer tous ceux qui commencent pareil, p. ex. 0800* (4 chiffres au minimum).",
-  f_reject_mode: "Comment refuser ces appels",
+  b_help: "Terminez un numéro par * pour bloquer tous ceux qui commencent pareil, p. ex. 0800* (3 chiffres au minimum, sans compter les zéros du début).",
   reject_decline: "Raccrocher pendant la sonnerie (l'appel n'aboutit pas)",
   reject_announce: "Décrocher, annoncer « non disponible », puis raccrocher",
   f_reject_voice: "Voix de l'annonce",
@@ -8462,6 +8435,9 @@ I18N["fr"] = {
   ph_sim_unset: "numéro non renseigné",
   er_line_unset: "{name} · {region} (numéro non renseigné)",
   live_to: "vers {line}",
+  bl_mode: "Quand quelqu'un de la Liste noire appelle :",
+  bl_voice_link: "Choisir la voix de l'annonce",
+  ct_bad_prefix: "Seuls les numéros de la Liste noire peuvent finir par *, avec au moins 3 chiffres avant, sans compter les zéros du début.",
 };
 
 I18N["de"] = {
@@ -8660,9 +8636,9 @@ I18N["de"] = {
   d_block: "Diese Nummer blockieren",
   d_block_title: "{num} blockieren?",
   d_block_body: "Anrufe von dieser Nummer werden abgewiesen. Die KI nimmt sie nicht an.",
-  d_block_ok: "Nummer blockieren",
-  d_block_done: "{num} ist jetzt blockiert",
-  d_blocked_already: "{num} ist bereits blockiert",
+  d_block_ok: "Zur Sperrliste hinzufügen",
+  d_block_done: "{num} steht jetzt auf der Sperrliste",
+  d_blocked_already: "{num} steht bereits auf der Sperrliste",
   d_copy_link: "Link kopieren",
   d_json: "JSON herunterladen",
   d_tech: "Technische Details",
@@ -8782,7 +8758,7 @@ I18N["de"] = {
   g_answer: "So nimmt die KI ab",
   g_spam: "Werbe- und Betrugsanrufe",
   g_prompt: "Prompt",
-  g_blocked: "Blockierte Nummern",
+  g_blocked: "Ansage bei Abweisung",
   g_notify: "Benachrichtigungen",
   g_summary: "Zusammenfassung und Kalender",
   g_region: "Erweitert",
@@ -8922,17 +8898,11 @@ I18N["de"] = {
   h_copy: "Interview-Prompt kopieren",
   h_read: "Interview-Prompt lesen",
   // ---- settings: blocked numbers
-  g_blocked_d: "Diese Nummern und alle auf der Sperrliste in Kontakte nimmt die KI nie an. Die Anrufe erscheinen trotzdem in der Liste.",
-  b_number: "Nummer",
-  b_number_ph: "z. B. 0255501234 oder 0800*",
+  g_blocked_d: "Läuft, wenn ein Anruf von der Sperrliste oder einer unterdrückten Nummer abgewiesen wird. Die Sperrliste verwaltest du unter „Kontakte“.",
   b_reason: "Grund (optional)",
   b_reason_ph: "z. B. Rückfragen der Bank",
-  b_add: "Nummer hinzufügen",
-  b_remove: "Diese Nummer entfernen",
-  b_empty: "Keine blockierten Nummern.",
   b_preview: "Ansage anhören",
-  b_help: "Beende eine Nummer mit *, um alle Nummern mit demselben Anfang zu blockieren, z. B. 0800* (mindestens 4 Ziffern).",
-  f_reject_mode: "So werden sie abgewiesen",
+  b_help: "Beende eine Nummer mit *, um alle Nummern mit demselben Anfang zu blockieren, z. B. 0800* (mindestens 3 Ziffern ohne führende Nullen).",
   reject_decline: "Beim Klingeln auflegen (der Anruf kommt nicht zustande)",
   reject_announce: "Annehmen, „nicht erreichbar“ ansagen, dann auflegen",
   f_reject_voice: "Stimme der Ansage",
@@ -9486,6 +9456,9 @@ I18N["de"] = {
   ph_sim_unset: "keine Nummer",
   er_line_unset: "{name} · {region} (keine Nummer)",
   live_to: "an {line}",
+  bl_mode: "Wenn jemand von der Sperrliste anruft:",
+  bl_voice_link: "Stimme der Ansage wählen",
+  ct_bad_prefix: "Nur Nummern auf der Sperrliste dürfen mit * enden, mit mindestens 3 Ziffern davor, führende Nullen nicht mitgezählt.",
 };
 
 I18N["pt"] = {
@@ -9684,9 +9657,9 @@ I18N["pt"] = {
   d_block: "Bloquear este número",
   d_block_title: "Bloquear {num}?",
   d_block_body: "As ligações deste número serão recusadas. A IA não vai atendê-las.",
-  d_block_ok: "Bloquear número",
-  d_block_done: "{num} agora está bloqueado",
-  d_blocked_already: "{num} já está bloqueado",
+  d_block_ok: "Adicionar à Lista de bloqueio",
+  d_block_done: "{num} agora está na Lista de bloqueio",
+  d_blocked_already: "{num} já está na Lista de bloqueio",
   d_copy_link: "Copiar link",
   d_json: "Baixar JSON",
   d_tech: "Detalhes técnicos",
@@ -9806,7 +9779,7 @@ I18N["pt"] = {
   g_answer: "Como atende",
   g_spam: "Vendas e golpes",
   g_prompt: "Prompt",
-  g_blocked: "Números bloqueados",
+  g_blocked: "Aviso de chamada recusada",
   g_notify: "Notificações",
   g_summary: "Resumo e agenda",
   g_region: "Avançado",
@@ -9946,17 +9919,11 @@ I18N["pt"] = {
   h_copy: "Copiar o prompt de entrevista",
   h_read: "Ler o prompt de entrevista",
   // ---- settings: blocked numbers
-  g_blocked_d: "A IA nunca atende estes números nem quem está na Lista de bloqueio em Contatos. As ligações continuam aparecendo na lista.",
-  b_number: "Número",
-  b_number_ph: "ex.: 0255501234 ou 0800*",
+  g_blocked_d: "Toca quando uma ligação da Lista de bloqueio ou de um número oculto é recusada. A Lista de bloqueio fica em “Contatos”.",
   b_reason: "Motivo (opcional)",
   b_reason_ph: "ex.: ligações de confirmação do banco",
-  b_add: "Adicionar número",
-  b_remove: "Remover este número",
-  b_empty: "Nenhum número bloqueado.",
   b_preview: "Ouvir o aviso",
-  b_help: "Termine um número com * para bloquear todos os que começam igual, p. ex. 0800* (no mínimo 4 dígitos).",
-  f_reject_mode: "Como recusar",
+  b_help: "Termine um número com * para bloquear todos os que começam igual, p. ex. 0800* (no mínimo 3 dígitos, sem contar os zeros iniciais).",
   reject_decline: "Desligar enquanto toca (a chamada não completa)",
   reject_announce: "Atender, tocar o aviso de “indisponível” e desligar",
   f_reject_voice: "Voz do aviso",
@@ -10510,6 +10477,9 @@ I18N["pt"] = {
   ph_sim_unset: "sem número",
   er_line_unset: "{name} · {region} (sem número)",
   live_to: "para {line}",
+  bl_mode: "Quando alguém da Lista de bloqueio ligar:",
+  bl_voice_link: "Escolher a voz do aviso",
+  ct_bad_prefix: "Só números da Lista de bloqueio podem terminar com *, com pelo menos 3 dígitos antes, sem contar os zeros iniciais.",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word
@@ -11690,24 +11660,20 @@ $("btnJson").addEventListener("click", async () => {
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   } catch (e) { toast(t("err_load", { msg: e.message }), true); }
 });
-const digitsKey = (s) => String(s || "").replace(/\D/g, "").replace(/^0+/, "");
 $("btnBlock").addEventListener("click", async () => {
   const c = detail.call;
   const num = String((c && c.caller_id) || "").trim();
   if (!num) return;
+  const known = contactOf(c);
+  if (known && known.kind === "blacklist") return toast(t("d_blocked_already", { num }));
+  const reason = await ask({ title: t("d_block_title", { num }), body: t("d_block_body"), label: t("b_reason"), placeholder: t("b_reason_ph"), ok: t("d_block_ok"), danger: true, maxLength: 80 });
+  if (reason == null) return;
   try {
-    const cur = rejectNorm((await api("/settings")).settings.reject_numbers);
-    if (cur.some((e) => digitsKey(e.number) === digitsKey(num))) return toast(t("d_blocked_already", { num }));
-    const reason = await ask({ title: t("d_block_title", { num }), body: t("d_block_body"), label: t("b_reason"), placeholder: t("b_reason_ph"), ok: t("d_block_ok"), danger: true, maxLength: 80 });
-    if (reason == null) return;
-    const d = await api("/settings", jsonBody("PUT", { reject_numbers: [...cur, { number: num, reason: String(reason).trim() }] }));
-    const grew = rejectNorm(d.settings.reject_numbers).length > cur.length;
-    // Other unsaved edits on the Settings view stay as they are; only this list is replaced.
-    const wasDirty = dirtyCount() > 0;
-    S = d.settings;
-    if (wasDirty) { renderRejectRows(); updateDirty(); } else populate();
-    toast(grew ? t("d_block_done", { num }) : t("d_blocked_already", { num }));
-  } catch (e) { if (e.status !== 401) toast(t("save_failed", { msg: e.message }), true); }
+    // On the Blacklist in Contacts: the contact with this number, else a new one.
+    const d = await api("/contacts/block", jsonBody("POST", { number: num, reason: String(reason).trim() }));
+    toast(t(d.already ? "d_blocked_already" : "d_block_done", { num }));
+    contactsChanged();
+  } catch (e) { if (e.status !== 401) toast(t("save_failed", { msg: contactErrText(e) }), true); }
 });
 
 // ---------------------------------------------------------------- contacts
@@ -11786,6 +11752,9 @@ function renderContacts() {
     $("wlQuickMode").value = S.whitelist_mode || "off";
     $("wlQuickNum").value = S.whitelist_forward_number || "";
   }
+  $("ctBlackCard").hidden = cts.kind !== "blacklist";
+  if (cts.kind === "blacklist" && S) $("blQuickMode").value = S.reject_mode === "announce" ? "announce" : "decline";
+  $("blVoiceHelp").hidden = $("blQuickMode").value !== "announce";
   if (cts.state === "idle" || cts.state === "loading") {
     for (let i = 0; i < 3; i++) box.append(h("div", { class: "skel" }));
     return;
@@ -11831,6 +11800,27 @@ $("wlQuickSave").addEventListener("click", async () => {
     $("wlQuickSave").disabled = false;
   }
 });
+// How Blacklist calls are turned away: saved as soon as it is picked.
+$("blQuickMode").addEventListener("change", async () => {
+  const sel = $("blQuickMode");
+  const mode = sel.value === "announce" ? "announce" : "decline";
+  $("blVoiceHelp").hidden = mode !== "announce";
+  sel.disabled = true;
+  try {
+    const d = await api("/settings", jsonBody("PUT", { reject_mode: mode }));
+    // Unsaved edits on the Settings view stay as they are.
+    const wasDirty = dirtyCount() > 0;
+    S = d.settings || S;
+    if (wasDirty) updateDirty(); else populate();
+    toast(t("saved"));
+  } catch (e) {
+    sel.value = S && S.reject_mode === "announce" ? "announce" : "decline";
+    $("blVoiceHelp").hidden = sel.value !== "announce";
+    if (e.status !== 401) toast(t("save_failed", { msg: e.message }), true);
+  } finally {
+    sel.disabled = false;
+  }
+});
 // After a change: this list, and the names on the calls.
 function contactsChanged() {
   loadContacts();
@@ -11846,9 +11836,13 @@ function ctErr(msg, el) {
 }
 // A number that is someone else's already names them.
 function contactErrText(e) {
+  if (e.data && e.data.code === "invalid_contact" && e.data.field === "prefix") return t("ct_bad_prefix");
   const other = e.data && e.data.code === "contact_exists" && e.data.contact;
   return other ? t("ct_exists", { name: other.name }) : e.message;
 }
+// "End with *" is explained for the Blacklist only (the only list that takes it).
+const ctStarHelp = () => { $("ctPhonesStar").hidden = $("ctKind").value !== "blacklist"; };
+$("ctKind").addEventListener("change", ctStarHelp);
 // Resolves to the saved contact, "deleted", or null (closed without saving).
 function editContact(c, preset) {
   return new Promise((resolve) => {
@@ -11857,6 +11851,7 @@ function editContact(c, preset) {
     $("ctDlgTitle").textContent = t(c ? "ct_edit_title" : "ct_new_title");
     const defKind = src.kind !== undefined ? src.kind : (cts.kind !== "all" && cts.kind !== "contact" ? cts.kind : "");
     $("ctKind").value = defKind || "";
+    ctStarHelp();
     $("ctName").value = src.name || "";
     $("ctPhones").value = (src.phones || []).join("\n");
     $("ctNote").value = src.note || "";
@@ -12199,39 +12194,6 @@ function buildMenus() {
   });
 }
 
-// ----- blocked numbers: rows of {number, reason}
-const rejectNorm = (v) => (Array.isArray(v) ? v : []).map((e) =>
-  typeof e === "string" ? { number: e, reason: "" } : { number: String((e && e.number) || ""), reason: String((e && e.reason) || "") });
-function rejectRow(e) {
-  return h("div", { class: "brow" },
-    h("input", { type: "tel", class: "b-num", value: e.number, autocomplete: "off", placeholder: t("b_number_ph"), "aria-label": t("b_number") }),
-    h("input", { type: "text", class: "b-why", value: e.reason, attr: { maxlength: "80" }, placeholder: t("b_reason_ph"), "aria-label": t("b_reason") }),
-    h("button", { type: "button", class: "btn sm ghost b-del", title: t("b_remove"), "aria-label": t("b_remove"), text: t("ct_delete") }));
-}
-function renderRejectRows(list) {
-  const box = clear($("blockRows"));
-  const rows = list || rejectNorm(S && S.reject_numbers);
-  if (!rows.length) box.append(h("p", { class: "muted b-empty", text: t("b_empty") }));
-  for (const e of rows) box.append(rejectRow(e));
-}
-const rejectRowsNow = () => Array.from(document.querySelectorAll("#blockRows .brow")).map((r) => ({ number: r.querySelector(".b-num").value.trim(), reason: r.querySelector(".b-why").value.trim() }));
-const rejectValue = () => rejectRowsNow().filter((e) => e.number);
-$("btnBlockAdd").addEventListener("click", () => {
-  const box = $("blockRows");
-  const empty = box.querySelector(".b-empty");
-  if (empty) empty.remove();
-  const row = rejectRow({ number: "", reason: "" });
-  box.append(row);
-  row.querySelector(".b-num").focus();
-});
-$("blockRows").addEventListener("click", (e) => {
-  const del = e.target.closest(".b-del");
-  if (!del) return;
-  del.closest(".brow").remove();
-  if (!$("blockRows").querySelector(".brow")) renderRejectRows([]);
-  updateDirty();
-});
-
 // ----- main language of each SIM: rows of {country, lang}, saved as {country: lang}
 const regionNames = {};
 // A country in the language of this page ("United States", "美國"); the code
@@ -12427,7 +12389,6 @@ function curValue(el) {
     case "int": { const v = parseInt(el.value, 10); return Number.isFinite(v) ? v : null; }
     case "sec2ms": { const v = parseFloat(el.value); return Number.isFinite(v) ? Math.round(v * 1000) : null; }
     case "radio": { const r = el.querySelector("input:checked"); return r ? r.value : ""; }
-    case "rejects": return rejectValue();
     case "simlangs": return simLangValue();
     case "channels": return chanValue();
     case "lines": return el.value.split("\n").map((s) => s.trim()).filter(Boolean);
@@ -12439,7 +12400,6 @@ function origValue(el) {
   switch (el.dataset.t) {
     case "bool": return !!v;
     case "int": case "sec2ms": return v == null ? null : Number(v);
-    case "rejects": return rejectNorm(v);
     case "simlangs": return simLangObj(simLangNorm(v));
     case "channels": return chanOrig(v);
     case "lines": return Array.isArray(v) ? v.map((s) => String(s).trim()).filter(Boolean) : [];
@@ -12484,7 +12444,6 @@ function populate() {
       case "bool": el.checked = !!v; break;
       case "sec2ms": el.value = v == null ? "" : String(Number(v) / 1000); break;
       case "radio": el.querySelectorAll("input").forEach((r) => { r.checked = r.value === String(v); }); break;
-      case "rejects": renderRejectRows(); break;
       case "simlangs": renderSimLangRows(); break;
       case "channels": chansFromSettings(); renderChannels(); break;
       case "lines": el.value = Array.isArray(v) ? v.join("\n") : ""; break;
@@ -12506,8 +12465,6 @@ function relabelSettings(skipRows) {
   if (!S) return;
   if (!skipRows) {
     buildMenus();
-    const rows = rejectRowsNow();
-    renderRejectRows(rows);
     renderSimLangRows(simLangRowsNow());
     renderChannels();
     document.querySelectorAll("[data-secret]").forEach((b) => { applyI18n(b); refreshSecret(b.dataset.secret); });

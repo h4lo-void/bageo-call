@@ -81,7 +81,7 @@ the table:
 
 | Symptom | Why | Fix |
 |---|---|---|
-| A prefix such as `080*` blocks nothing | A `*` pattern needs at least four digits before the star (`0800*`), so one short line cannot block a whole region or every mobile. | Lengthen the prefix. Write numbers the way the call list shows them; `+…` forms match only when your country code is known. |
+| A prefix such as `080*` blocks nothing | A `*` pattern needs at least three digits before the star, not counting leading zeros (`0800*`), so one short line cannot block a whole region or every caller. | Lengthen the prefix. Write numbers the way the call list shows them; `+…` forms match only when your country code is known. |
 | A real call was treated as sales or scam | The check starts from keywords, which honest callers sometimes use too, and a low-cost model takes a second look. The terminal names the words: `stall engaged … hits=[…]`. | On the call's page press *It was not* under *Sales / scam check*: the number is treated like a saved contact from then on. You can also switch off *Keep them talking*. |
 | A friend or family member was kept talking | They are not saved as a contact. | Save them under *Contacts*. |
 

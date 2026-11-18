@@ -14,7 +14,7 @@ Settings live in two places:
 | Have the AI answer as me instead of as my assistant | [Basics](#basics) → *Answer style* |
 | Answer calls on a US SIM in English while everything else stays in my language | [Basics](#basics) → *More options* → *Main language for each SIM* |
 | Keep a scammer busy instead of hanging up | [Sales & scam calls](#sales--scam-calls) |
-| Never hear from one number again | [Blocked numbers](#blocked-numbers-and-contact-lists) |
+| Never hear from one number again | [Blacklist](#blocked-numbers-and-contact-lists) |
 | Have the AI call a restaurant and book a table | [AI errands](#ai-errands) |
 | Decide on meeting requests later and let the caller know | [Appointments](#appointments) |
 | Open the console from my phone | [Using the console from other devices](#using-the-console-from-other-devices) |
@@ -65,7 +65,7 @@ Details for each:
 | Whitelist call transfer: Transfer | Off: the AI answers | Whether a call from someone on the Whitelist is put through to your phone (`whitelist_mode`). The Whitelist tab on the **Contacts** page has the same setting. |
 | Whitelist call transfer: Your own phone number | empty | The number the AI gives an urgent caller; it also appears in the notification (`whitelist_forward_number`). |
 
-With *Answer hidden numbers* off, the "not available" announcement uses your *Language* and the *Announcement voice*, like blocked numbers. It comes recorded with Bageo, so no Gemini key is needed.
+With *Answer hidden numbers* off, the "not available" announcement uses your *Language* and the *Announcement voice*, like Blacklist calls. It comes recorded with Bageo, so no Gemini key is needed.
 
 *Background sound* can be Office, Home, Street, Hospital, Ambulance passing, Typhoon, Thunderstorm, Construction site, Metro / subway, Night market, Firecrackers / festival or Driving. **Voice + background** and **Background only** play a sample.
 
@@ -144,25 +144,26 @@ How the AI talks; the built-in prompt works for most people. To write your own, 
 
 ### Blocked numbers and contact lists
 
-Call screening at its bluntest: calls from numbers on this list never reach the AI or Gemini. They still appear in the call list and send a "blocked number" notification.
+Call screening at its bluntest: calls from numbers on the **Blacklist** never reach the AI or Gemini. They still appear in the call list and send a "blocked number" notification.
 
-You can also manage **Contacts, Whitelist, Blacklist, and Stall list** in one place on the **Contacts** tab (`kind`: `contact`, `whitelist`, `blacklist`, `stall`).
+The Blacklist is one of the lists on the **Contacts** tab, with **Contacts, Whitelist, and Stall list** (`kind`: `contact`, `whitelist`, `blacklist`, `stall`). Add a contact and set its list to Blacklist; the note is your reason. Only a Blacklist number may end with `*`, which blocks every number that starts with those digits, e.g. `0800*` (at least three digits, not counting leading zeros).
 
 | Setting | Default | What it does |
 |---|---|---|
-| Number, Reason | empty | One number per row, with an optional reason. End a number with `*` to block every number that starts with those digits, e.g. `0800*` (at least four). |
-| How blocked calls are turned away | Hang up while it rings | Hang up while it rings, or answer, play "not available" and hang up. |
-| Announcement voice | Same as the AI's voice | The voice of that announcement; hidden numbers hear it too. Every voice comes recorded in every language, so it costs no Gemini quota; **Preview the announcement** plays it. |
+| When someone on the Blacklist calls | Hang up while it rings | On the **Blacklist** tab of **Contacts**, saved as soon as you pick it: hang up while it rings, or answer, play "not available" and hang up. |
+| Announcement voice | Same as the AI's voice | Under **Settings → Blocked-call announcement**: the voice of that announcement; hidden numbers hear it too. Every voice comes recorded in every language, so it costs no Gemini quota; **Preview the announcement** plays it. |
 
 Write numbers the way they show up in the call list; `+…` forms match too once your country calling code is known ([`COUNTRY_CODE`](#country-calling-code)).
 
-*How blocked calls are turned away* is saved as `reject_mode`:
+Blocked numbers saved by older versions (`reject_numbers`) move onto the Blacklist the first time Bageo starts. A number that is already an ordinary contact's makes that contact a Blacklist one (its note gets the reason when it has none); one on the Whitelist or Stall list stays there; the others become new contacts named after the reason, or after the number. The old list stays in the settings file as it was, so an older version still has it, but Bageo no longer reads it once the move is saved.
+
+*When someone on the Blacklist calls* is saved as `reject_mode`:
 
 - **Hang up while it rings** (`decline`): the call never connects.
 - **Answer, play "not available", then hang up** (`announce`): a short "the number you have dialed is not available" in your *Language*; the caller sees the call connect for a few seconds.
 - A phone app too old to decline picks up and announces either way.
 
-Try it: open a call in the call list and press **Block this number**, or tap the signed **Block / Stall / Whitelist** buttons in any notification channel to classify the caller in one tap.
+Try it: open a call in the call list and press **Block this number** (it joins the Blacklist), or tap the signed **Block / Stall / Whitelist** buttons in any notification channel to classify the caller in one tap.
 
 ### AI errands
 
@@ -416,7 +417,7 @@ If several versions of `adb` are installed, pin one with `ADB_BIN`: different ve
 
 ### Country calling code
 
-`COUNTRY_CODE` is your own country's calling code, digits only, without `+` (`1`, `44`, `81`; up to four digits). Bageo uses it to read a number written without a country code: blocked numbers (so `+44 20…` matches the national form the phone reports), contacts, and AI errands.
+`COUNTRY_CODE` is your own country's calling code, digits only, without `+` (`1`, `44`, `81`; up to four digits). Bageo uses it to read a number written without a country code: the Blacklist (so `+44 20…` matches the national form the phone reports), contacts, and AI errands.
 
 A caller from another country is transcribed with their country's language first (or, when the AI does not speak it, with the language detected), so their goodbye is not lost.
 

@@ -5,7 +5,7 @@ AI 電話助理接完電話，掛斷幾秒後，你的手機就會收到一則�
 Bageo 也會在這些時候通知你：
 
 - 來電的時候。
-- 拒接號碼或通話中插播被擋下的時候。
+- 黑名單號碼或通話中插播被擋下的時候。
 - AI 回電或 AI 代打結束的時候。
 
 支援 32 種服務，從 Telegram、LINE、Teams、Signal 到企業微信、ntfy、Home Assistant、Email，以及你自己的 Webhook。
@@ -63,7 +63,7 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&…
 | 標題 | 什麼時候 | Webhook `event` |
 |---|---|---|
 | 來電 | 電話被接起來。 | `incoming` |
-| 拒接號碼來電 | 拒接號碼打來。訊息會寫是響鈴時直接拒接，還是接起來播語音，以及你當初填的原因。 | `blocked` |
+| 黑名單來電 | 黑名單上的號碼打來。訊息會寫是響鈴時直接拒接，還是接起來播語音，以及你當初填的原因。 | `blocked` |
 | 通話摘要 | 通話結束幾秒後：誰、什麼事、AI 怎麼回、你要處理什麼，以及連結。 | `summary` |
 | 通話中插播未接 | 通話中又有第二通打進來，手機把它拒接了（對方聽到忙線）。知道號碼的話記得回電。 | `call_waiting` |
 | AI 回電：〈號碼〉 | AI 打給來電者告知預約結果。訊息會寫結果（接通並告知、沒人接、撥不出去，或這個號碼不能回電）和那通電話的摘要。 | `ai_callback` |
@@ -677,7 +677,7 @@ smtps://you@example.com@smtp.example.com:465    一連線就走 TLS
 | `event` | 什麼時候 | `data` |
 |---|---|---|
 | `incoming` | 電話被接起來 | `caller_id`、`device`、`time` |
-| `blocked` | 拒接號碼打來 | `caller_id`、`device`、`time`、`reason`、`declined`（`true`：響鈴時拒接；`false`：接起來播語音） |
+| `blocked` | 黑名單上的號碼打來 | `caller_id`、`device`、`time`、`reason`、`declined`（`true`：響鈴時拒接；`false`：接起來播語音） |
 | `summary` | 通話結束幾秒後 | `caller_id`、`device`、`time`、`summary`、`contact`（聯絡人名字，不是聯絡人就是空字串） |
 | `call_waiting` | 通話中第二通打進來被拒接 | `caller_id`、`device`、`time`、`sim_country` |
 | `ai_callback` | 行程預約的 AI 回電結束，或撥不出去 | `caller_id`、`device`、`time`、`summary` |
