@@ -293,7 +293,7 @@ se quiser um limite.
 Depende de onde você e a outra pessoa estão. Gravação de ligações, aviso de que
 é uma IA e ligações automáticas têm cada uma as suas regras. O estilo
 *Assistente de IA* diz que é uma IA já na primeira frase; *Como se fosse eu*
-diz isso quando perguntam a sério. Leia
+fala como você sem dizer que é uma IA. Leia
 [Privacidade, segurança e a lei](docs/en/PRIVACY_AND_LEGAL.md) antes de
 ligá-lo.
 
@@ -315,8 +315,8 @@ voz totalmente local não faz parte da configuração com suporte
 - **As leis variam.** Gravar ligações, e deixar uma IA falar com pessoas sem
   avisar, é restrito em muitos lugares. O estilo de atendimento *Assistente de
   IA* diz de cara que é uma IA; as ligações feitas a seu pedido como **Seu
-  assistente** apresentam a IA como seu assistente; toda ligação admite ser
-  uma IA quando perguntam a sério. Descubra o que vale onde você e a outra
+  assistente** apresentam a IA como seu assistente; *Como se fosse eu* e **Você
+  em pessoa** falam como você sem avisar. Descubra o que vale onde você e a outra
   pessoa estão.
 - **A IA não assume compromissos.** Nunca concorda com pagamentos, depósitos,
   contratos, senhas ou códigos, e os compromissos esperam a sua decisão. Ainda

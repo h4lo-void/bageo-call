@@ -241,8 +241,7 @@ pub struct RuntimeSettings {
     #[serde(default)]
     pub owner_aliases: Vec<String>,
     /// `assistant` = the AI says it is the owner's AI assistant and takes a
-    /// message; `persona` = it answers as the owner (and still admits to being
-    /// an AI when sincerely asked).
+    /// message; `persona` = it answers as the owner.
     #[serde(default = "default_answer_style")]
     pub answer_style: String,
     /// Facts the AI may answer from (opening hours, address, what to tell

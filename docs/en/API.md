@@ -464,9 +464,10 @@ something on a question you did not answer, the result is never `done`: it is
 `need_owner`, telling you to confirm or call back to change it.
 
 **Who calls.** `errand_identity` (setting: `assistant`, your assistant, by
-default, or `owner`, as you); each errand may pick its own. Either way the AI
-admits it is an AI when sincerely asked, gives out no personal details beyond
-the errand, and agrees to no payment, deposit or transfer.
+default, or `owner`, as you); each errand may pick its own. As `assistant` the
+AI admits to being an AI when sincerely asked; either way it gives out no
+personal details beyond the errand, and agrees to no payment, deposit or
+transfer.
 
 **Which numbers.**
 

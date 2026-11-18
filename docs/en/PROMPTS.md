@@ -86,17 +86,14 @@ write one.
    write it yourself?*, choose the language and press **Copy interview
    prompt**.
 2. Paste it into a new chat in ChatGPT, Claude, Gemini or any other chat AI.
-3. It asks about ten questions, one at a time: the language callers use, the
-   answer style, your name, how you talk and the exact words you say, words
-   you never use, who calls you, what callers ask, what must never be agreed
-   to, what to do with sales calls, and how you say goodbye. Answer in your own
+3. It asks about eight questions, one at a time: the answer style and language,
+   general context, your personality and phone manner, everyday phrasing and
+   phrases you never use, who calls you, how to handle important calls, your
+   boundaries, and how you brush off unwanted sales calls. Answer in your own
    words; say "skip" to take a default.
-4. You get three things back:
-   - **the prompt** in a code block → paste it into *Settings → Prompt → Your
-     own prompt*;
-   - **Notes** → paste them into *Notes the AI may answer from*;
-   - **which answer style and sales setting to pick** → set *Settings → Basics
-     → Answer style* and *Settings → Sales & scam calls → Keep them talking*.
+4. It gives you **the finished prompt** in one code block → paste it into
+   *Settings → Prompt → Your own prompt*. (Facts for callers, your answer style
+   and *Keep them talking* are set directly on the Settings page.)
 5. Save, call your number, listen. If something is off, tell the chat AI what
    happened ("it talks too much", "it asked my caller for their name twice")
    and ask for a corrected prompt.
@@ -172,9 +169,8 @@ sections work better than one long paragraph. Cover these:
 | Sales and scam calls | Decline in one line, or see [Stall Mode](#sales-and-scam-calls-stall-mode). |
 | Ending | Wait until the caller is clearly done, then one closing line with your goodbye word. |
 
-Leave these **out** of the prompt: the facts from your notes, a rule about
-admitting to being an AI (Bageo adds it), API or technical settings, and
-long stalling scripts.
+Leave these **out** of the prompt: the facts from your notes, API or technical
+settings, and long stalling scripts.
 
 ### A short example (AI assistant, English)
 
@@ -401,10 +397,9 @@ A wait you set yourself wins; see `goodbye_hangup_delay_ms` in [Settings](SETTIN
 
 Bageo appends these to every prompt, built-in or your own:
 
-- **Honesty about being an AI.** *AI assistant*: never claims to be a person or
-  to be you. *As me*: talks as you, but when someone sincerely asks whether
-  they are talking to a real person, says it is an AI voice you set up. Either
-  way it makes no commitments for you.
+- **Identity and commitments.** *AI assistant*: never claims to be a person or
+  to be you. *As me*: speaks as you without claiming to be an AI. Either way it
+  makes no commitments for you.
 - **No personal details, no codes.** *As me*: asked for an ID number, date of
   birth, card or account number, verification code, password or address, the
   AI gives none and makes none up; it brushes it off ("I'd rather not do that
@@ -454,7 +449,7 @@ or you) and these fixed rules:
   booking name back as a question as soon as it comes up ("today at 4:30 in the
   afternoon, right?"), and wait for a yes before any thanks or goodbye.
 - Leave a two-sentence message on voicemail.
-- Admit to being an AI when sincerely asked.
+- Admit to being an AI when sincerely asked (when calling as your assistant).
 
 The AI speaks the task's language and switches if the other side answers in
 another.

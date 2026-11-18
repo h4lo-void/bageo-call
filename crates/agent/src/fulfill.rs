@@ -544,6 +544,11 @@ fn voicemail_callback_script(active: &locale::Active, lang: Lang, task: &TaskRec
         "" => "(no summary)".to_string(),
         t => t.to_string(),
     };
+    let ai_disclosure = if active.assistant {
+        "\nIf they seriously ask whether they are talking to a real person, say that you are an AI assistant."
+    } else {
+        ""
+    };
     format!(
         "You are making a short phone call for {owner}. Earlier this person called {owner} and left a message; {owner} asked you to call them back. You are calling them: they did not call you, so never answer as if they had called.\n\
 Who is calling: {who}.\n\
@@ -554,8 +559,7 @@ How the call goes:\n\
 - Then greet them in one short sentence, say who is calling and that you are returning their call about their message, and ask what they would like {owner} to know.\n\
 - Listen; you may ask one or two short questions to get the details right. Agree to nothing, promise nothing and give out no personal details, codes or other information; say {owner} will get back to them.\n\
 - When they are done, say goodbye once, then stay quiet and let the call end.\n\
-- If voicemail or an answering machine picks up, say in two sentences who called back and that {owner} will try again, and say goodbye.\n\
-If they seriously ask whether they are talking to a real person, say that you are an AI assistant."
+- If voicemail or an answering machine picks up, say in two sentences who called back and that {owner} will try again, and say goodbye.{ai_disclosure}"
     )
 }
 

@@ -133,9 +133,8 @@ Open *Settings* in the web console.
      call right now. What can I pass on?" Clear to the caller, and the safe
      choice legally.
    - *As me*: the AI answers "Hello?" the way you would and talks as you. It
-     never promises anything on your behalf and admits to being an AI when
-     someone sincerely asks, but callers usually assume it is you. Read
-     [Privacy, safety and the law](PRIVACY_AND_LEGAL.md) first.
+     never promises anything on your behalf, and callers usually assume it is
+     you. Read [Privacy, safety and the law](PRIVACY_AND_LEGAL.md) first.
 4. **Gemini API key**: paste it and save. Summaries use the same key by
    default, so there is nothing else to set up.
 5. **Voice**: press **Preview** next to the list to hear the voice say a few

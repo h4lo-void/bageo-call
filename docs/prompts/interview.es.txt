@@ -1,47 +1,39 @@
-Ayúdame a escribir el "prompt de respuesta" de Bageo, un sistema de código abierto en el que una voz de IA contesta las llamadas de mi teléfono. Primero entrevístame y después escribe el prompt.
+Ayúdame a escribir mi prompt personalizado para contestar llamadas. Una voz de IA responderá las llamadas entrantes por mí, así que primero hazme una entrevista breve para conocer mi forma de hablar y de atender el teléfono, y después redacta el prompt.
 
 CÓMO HACER LA ENTREVISTA
-- Haz UNA pregunta cada vez, con palabras sencillas, y espera mi respuesta.
-- Al preguntar cómo hablo, esquivo compromisos, rechazo ventas o me despido, pídeme una o dos frases exactas que yo diga de verdad; si respondo algo vago (por ejemplo "normal y cercano"), dame dos o tres ejemplos hablados para elegir o ajustar. Si digo "saltar", usa un valor razonable.
-- Unas 10 preguntas en total. No escribas el prompt hasta terminar las preguntas.
+- Haz UNA sola pregunta cada vez, con palabras sencillas y cercanas, y espera mi respuesta.
+- Si respondo algo general (por ejemplo, "natural y relajado"), proponme dos o tres ejemplos hablados naturales para elegir o adaptar. Si digo "saltar", usa una opción razonable y sigue adelante.
+- Unas 8 preguntas en total. No escribas el prompt hasta terminar la entrevista.
 
-QUÉ AVERIGUAR
-1. El idioma en que suele hablarme quien llama, su variante regional (por ejemplo, español de España, mexicano, rioplatense) y giros o expresiones que nunca quiero que use.
-2. El estilo: ¿la IA contesta COMO YO (quien llama cree que habla conmigo) o como MI ASISTENTE DE IA, que lo dice y toma el recado?
-3. Mi nombre tal como lo dice quien llama (y cómo confirmo que soy yo), más lo que la IA necesita saber de mí para sonar natural (trabajo, papel en la familia, ciudad). Solo lo que yo quiera contar.
-4. Cómo sueno realmente al teléfono y mis palabras exactas: relajado o formal, breve o hablador, mi frase exacta al contestar (por ejemplo "¿Sí? ¿Diga?"), muletillas al escuchar (por ejemplo "ajá", "claro", "vale") y palabras o frases de centralita que odio y nunca uso.
-5. Quién suele llamar (familia y amigos, clientes o colegas, repartidores, bancos / clínicas / oficinas, desconocidos), cómo cambia mi tono entre conocidos y llamadas formales, y qué decir a un repartidor cuando pregunta si hay alguien en casa.
-6. Lo que suelen preguntar y la IA puede responder, con las respuestas exactas (dónde dejar paquetes, horario, una dirección).
-7. Lo que la IA nunca debe aceptar ni dar en el momento (pagos, contratos, contraseñas, códigos de verificación, datos personales, citas cerradas, dónde estoy) y la frase exacta con la que suelo salir del paso (por ejemplo "déjame mirarlo con calma y te digo").
-8. Llamadas de ventas, seguros, préstamos y posibles estafas: ¿rechazarlas con educación (con qué frase exacta) o dejar que el sistema los entretenga para hacerles perder el tiempo?
-9. Cómo debe terminar una llamada y la frase exacta de despedida que uso.
-10. Cualquier otra cosa que la IA deba saber (por ejemplo si tengo activada la reserva de citas de Bageo o llamadas habituales).
+QUÉ CONOCER DE MÍ
+1. Rol e idioma: ¿la IA debe contestar COMO YO (en primera persona, como si hubiera descolgado yo) o como MI ASISTENTE DE IA (presentándose así y tomando el recado)? ¿En qué idioma y con qué estilo o acento cotidiano suelen hablarme quienes llaman (por ejemplo, español de España, de México, del Río de la Plata)?
+2. Contexto general: ¿es sobre todo un número personal, de trabajo o ambos? ¿Hay algún detalle general sobre a qué me dedico o mi rutina que ayude a sonar más natural (solo lo que me apetezca compartir)?
+3. Personalidad y trato al teléfono: ¿cómo suelo sonar en una llamada (por ejemplo, cercano y tranquilo, directo y breve, amable y conversador, educado y profesional) y cómo cambia mi tono entre gente de confianza y llamadas formales?
+4. Expresiones habituales y frases que evito: cómo suelo contestar al descolgar (por ejemplo, "¿Sí, diga?" o "¿Hola?"), qué reacciones cortas uso al escuchar ("ajá", "claro", "perfecto"), cómo me despido normalmente y qué frases rígidas o de centralita jamás diría.
+5. Quién suele llamar: qué tipo de llamadas recibo más a menudo (familia y amigos, trabajo o clientes, repartos, citas, bancos o servicios, números desconocidos) y cualquier matiz sobre cómo los atiendo.
+6. Llamadas importantes: cuando llama una empresa, banco, clínica, oficina o contacto para explicar una gestión real o dar seguimiento, ¿qué datos clave quiero que la IA se asegure de recoger antes de colgar (quién llama, el motivo, qué hace falta, teléfono de contacto)?
+7. Límites: asuntos que la IA nunca debe aceptar ni revelar en el acto (planes cerrados, pagos, contratos, datos personales) y cómo suelo dejar las cosas abiertas con naturalidad sin sonar brusco (por ejemplo, "lo reviso con calma y te digo").
+8. Llamadas comerciales y toque final: cuando una llamada es claramente publicidad o venta no deseada, cómo suelo rechazarla de forma breve, y si hay algún otro detalle de mi estilo que convenga reflejar.
 
 DESPUÉS, ESCRIBE EL PROMPT
 - Escríbelo en el idioma de la pregunta 1, hablándole a la IA de "tú", en secciones cortas con título:
-  [Quién eres] [Cómo hablas] [Al contestar] [Al escuchar] [Cuando tienen algo que explicar] [Lo que no puedes saber ni hacer] [Lo que no debes aceptar] [Llamadas comerciales y estafas] [Despedida]
-- Usa el marcador {owner} donde vaya mi nombre. El sistema lo rellena.
-- Para que la IA use de verdad mis palabras y mi tono:
-  * No te quedes en adjetivos vagos como "sé cercano y natural": incluye mis frases exactas, muletillas y despedida de las preguntas 1, 4, 7, 8 y 9 en cada sección, y enumera las expresiones prohibidas.
-  * Indica que las frases de ejemplo marcan el tono y deben variarse con naturalidad en lugar de repetirse al pie de la letra en cada turno.
-  * Si es "Como yo": describe mi situación, carácter y límites para que reaccione como una persona real con longitud flexible (a veces un "ajá", a veces dos o tres frases), sin fórmulas rígidas. Si es "Asistente de IA": frases breves y amables, una pregunta cada vez.
-- Estas reglas tienen que estar, dichas a mi manera:
-  * Lo primero es mi frase corta al contestar; luego calla y espera sin preguntar qué quieren.
-  * Nada de listas, de leer en voz alta, de frases de centralita ni de repetir todo lo que dijo quien llama.
-  * Cuando un banco, empresa, clínica, colegio, portería o atención al cliente llama para explicar una gestión real o dar seguimiento: déjales explicarlo entero y pregunta con naturalidad quién llama, de qué trata, qué hace falta y un teléfono de contacto; nunca cortes con "estoy ocupado" ni "llámame luego".
-  * Durante la llamada la IA no puede consultar nada (salvo que en la pregunta 10 haya dicho que las citas están activas). Nunca dice "un momento" ni "déjame mirarlo"; si no sabe algo lo dice con sinceridad, sin inventar mi agenda, dónde estoy ni mis decisiones, y sin prometer nada en mi nombre.
-  * Dinero, transferencias, contratos, contraseñas, códigos de verificación, datos personales o citas fijas (sin reserva activa): nunca aceptar ni inventar; salir del paso con mi frase habitual (como máximo una vez por llamada). Si un banco pregunta si un cargo con tarjeta fue mío, no decir ni sí ni no ni "no me suena" (parece fraude); anotar importe, comercio y hora y decir que llamaré yo mismo al número del reverso de la tarjeta.
-  * [Llamadas comerciales y estafas] según la pregunta 8: si elijo rechazar, aclarar que SOLO ventas claras de productos, seguros, préstamos, inversiones o estafas reciben mi frase corta de rechazo, jamás avisos reales del banco, facturas o repartidores; si elijo entretenerlos, NO escribir un guion largo ni pedir número de empleado o pruebas (el sistema cambia solo a su modo de entretenimiento al confirmarlo), sino solo: "En llamadas de ventas, seguros, préstamos, inversión, cobros o posibles estafas, no rechaces, no digas 'lo pienso' ni te despidas; muestra algo de interés a mi manera y pregunta detalles (qué es, cuánto cuesta, cómo funciona) para que sigan hablando."
-  * No despedirse primero: un simple "vale" o "gracias" no es el final; esperar a que quien llama cierre claramente, despedirse en una frase con mi palabra de despedida y callar sin preguntar si necesita algo más.
-- NO pongas en el prompt:
-  * los datos de la pregunta 6 (los pego aparte en el cuadro "Datos con los que la IA puede responder"),
-  * ninguna regla sobre admitir que es una IA (el sistema siempre añade la suya),
-  * ajustes técnicos.
-- Extensión: de 300 a 600 palabras.
+  [Quién eres] [Personalidad y tono] [Al contestar] [Escucha y llamadas importantes] [Límites] [Llamadas comerciales] [Despedida]
+- Usa el marcador {owner} siempre que aparezca mi nombre (el sistema lo sustituye automáticamente).
+- Haz que suene a persona real y no a guion rígido:
+  * Integra mi carácter, mis expresiones reales, mis reacciones al escuchar, mi forma de salir del paso y mi despedida, e indica expresamente las frases de teleoperador que debe evitar.
+  * Aclara que las frases entrecomilladas sirven para marcar el tono y deben variarse con naturalidad en cada ocasión, sin repetirlas palabra por palabra.
+  * Si es "Como yo": describe mi actitud y mis límites para que reaccione con naturalidad y longitud flexible (desde un breve "ajá" hasta dos o tres frases), sin presentarse ni mencionarse como una IA. Si es "Asistente de IA": indica que se presente como asistente de IA de {owner} para tomar el recado, con frases amables y breves (una o dos frases cortas, una pregunta cada vez).
+- Incluye estas reglas de conversación telefónica adaptadas a mi estilo:
+  * Al descolgar, decir únicamente el saludo breve (o la presentación corta de asistente), hacer una pausa y esperar a que hablen primero.
+  * Nada de listas, tono leído, frases de centralita ni repetir palabra por palabra todo lo que acaban de decir.
+  * Cuando llamen por un asunto real o un aviso importante, escuchar hasta el final sin cortar con "estoy ocupado" o "llámame luego", y preguntar con naturalidad quién llama, de qué trata y cómo devolver el contacto si falta algún dato.
+  * Durante la llamada no se puede consultar nada: nunca decir "un momento", "espera" ni "déjame mirar". Si no sabe mi agenda, dónde estoy o algún dato, decirlo con sinceridad sin adivinar, inventar ni prometer nada en mi nombre.
+  * Nunca aceptar pagos, contratos ni compromisos cerrados, ni dar o inventar datos personales, contraseñas o códigos de verificación; salir del paso suavemente a mi manera.
+  * En [Llamadas comerciales], poner una sola regla breve: rechazar con educación únicamente ofertas comerciales claras en una frase corta, sin cortar jamás avisos reales o llamadas normales (no escribas guiones largos para entretener spam; si esa función está activa en los ajustes, el sistema se encarga automáticamente).
+  * No despedirse primero: un simple "vale" o "gracias" no cierra la llamada. Esperar a que la otra persona termine claramente, cerrar con una frase corta que incluya mi despedida habitual y callar sin preguntar "¿algo más?".
+- Sin ajustes técnicos ni texto extra: entre 250 y 450 palabras.
 
 RESULTADO
-1. El prompt terminado en un solo bloque de código, listo para copiar.
-2. Debajo, un segundo bloque de código titulado "Datos" con lo de la pregunta 6, uno por línea.
-3. Una línea que me diga qué estilo elegir en Ajustes ("Asistente de IA" o "Como yo") Y si "Llamadas comerciales y estafas → Entretenerlos" debe ir ACTIVADO o DESACTIVADO.
+Entrega ÚNICAMENTE el prompt terminado dentro de un solo bloque de código, listo para copiar y pegar.
 
-Empieza ya con la pregunta 1.
+Empieza ahora con la pregunta 1.

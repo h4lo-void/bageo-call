@@ -44,9 +44,9 @@ have asked you on the console first.
   **Settings → How it answers**; *Get the AI ready while the phone rings* sits
   under *More options* there.
 - **Two answer styles.** *AI assistant* (the default) says it is an AI
-  answering for you and takes a message. *As me* answers the way you would; it
-  still admits to being an AI when someone sincerely asks. Choose it under
-  **Settings → Basics** (*Answer style*).
+  answering for you and takes a message. *As me* answers the way you would,
+  without agreeing to anything for you. Choose it under **Settings → Basics**
+  (*Answer style*).
 - **Callers can cut in.** At the start of every call Bageo checks whether the
   phone's capture contains the AI's own voice. Where it does not (the Pixel 9 in
   testing), about 0.8 seconds of speech stops the AI; a quick "mm" or "OK" does
@@ -282,12 +282,12 @@ let another AI interview you:
 1. Open **Settings → Prompt**, find *Don't want to write it yourself?*, choose
    a language and press **Copy interview prompt** (the same texts, in all nine
    languages, are in [`docs/prompts/`](../prompts/)).
-2. Paste it into ChatGPT, Claude, Gemini or any chat AI. It asks about ten
-   questions, one at a time: how you talk, the words you actually say and the
-   ones you never would, who calls you, what must never be agreed to, how to
-   treat sales calls.
-3. It returns a prompt in your own phrases, your notes, and which answer style
-   and sales setting to pick. Paste, save, and the next call uses it.
+2. Paste it into ChatGPT, Claude, Gemini or any chat AI. It asks about eight
+   questions, one at a time: your personality and phone manner, everyday
+   phrases and ones you never use, who calls you, your boundaries, and how you
+   brush off unwanted sales calls.
+3. It returns a finished prompt in your own style, ready to paste into *Your
+   own prompt*. Save, and the next call uses it.
 
 More, including the techniques that make the biggest difference:
 [Writing the prompt](PROMPTS.md).
