@@ -5,6 +5,8 @@ package com.pixelcallai.streamer
 
 import android.content.Context
 import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.telecom.TelecomManager
 import android.telephony.TelephonyManager
@@ -82,6 +84,7 @@ object PhoneModeManager {
     /** The helper looks every 2 seconds: a request still there by then means it is not running. */
     private const val SCRIPT_START_MS = 10_000L
     private const val SCRIPT_MAX_MS = 90_000L
+    private const val RETRY_DELAY_MS = 15_000L
     /** The module's helper starts about this long after boot at the latest. */
     private const val BOOT_GRACE_MS = 180_000L
     private const val POLL_MS = 400L
@@ -111,6 +114,25 @@ object PhoneModeManager {
     }
     private val busy = AtomicBoolean(false)
     private val listeners = CopyOnWriteArraySet<Listener>()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var retryRunnable: Runnable? = null
+
+    private fun clearRetry() {
+        retryRunnable?.let { mainHandler.removeCallbacks(it) }
+        retryRunnable = null
+    }
+
+    private fun scheduleRetry(ctx: Context, target: String) {
+        clearRetry()
+        val task = Runnable {
+            retryRunnable = null
+            if (!isPhoneIdle(ctx) || isSwitching()) return@Runnable
+            Log.i(TAG, "retrying failed mode switch to $target")
+            enqueueSwitch(ctx, target, callBusy = false, id = newLocalId(), allowRetry = false) {}
+        }
+        retryRunnable = task
+        mainHandler.postDelayed(task, RETRY_DELAY_MS)
+    }
 
     fun addListener(listener: Listener) {
         listeners.add(listener)
@@ -144,6 +166,18 @@ object PhoneModeManager {
         id: String = newLocalId(),
         onDone: (Result) -> Unit,
     ) {
+        clearRetry()
+        enqueueSwitch(context, target, callBusy, id, allowRetry = true, onDone = onDone)
+    }
+
+    private fun enqueueSwitch(
+        context: Context,
+        target: String,
+        callBusy: Boolean,
+        id: String,
+        allowRetry: Boolean,
+        onDone: (Result) -> Unit,
+    ) {
         val ctx = context.applicationContext
         val current = Prefs.phoneMode(ctx)
         val runId = safeId(id).ifEmpty { newLocalId() }
@@ -160,7 +194,7 @@ object PhoneModeManager {
         }
         executor.execute {
             val result = try {
-                switchBlocking(ctx, target, runId)
+                switchBlocking(ctx, target, runId, allowRetry)
             } catch (t: Throwable) {
                 Log.e(TAG, "switch to $target crashed", t)
                 Result(false, Prefs.phoneMode(ctx), ERR_FAILED)
@@ -281,7 +315,7 @@ object PhoneModeManager {
     /** The module's mode file (no file = ai) as the helper last reported it; null without a state. */
     private fun readRootMode(ctx: Context): String? = readRootState(ctx)?.mode
 
-    private fun switchBlocking(ctx: Context, target: String, id: String): Result {
+    private fun switchBlocking(ctx: Context, target: String, id: String, allowRetry: Boolean = false): Result {
         val before = Prefs.phoneMode(ctx)
         if (!isPhoneIdle(ctx)) return Result(false, before, ERR_IN_CALL)
         if (scriptRunning(ctx)) return Result(false, before, ERR_BUSY)
@@ -312,7 +346,11 @@ object PhoneModeManager {
         val mode = readRootMode(ctx) ?: Prefs.phoneMode(ctx)
         Prefs.setPhoneMode(ctx, mode)
         notifyListeners(mode)
-        if (!log.ok) return Result(false, mode, log.error.ifEmpty { ERR_FAILED })
+        if (!log.ok) {
+            if (allowRetry) scheduleRetry(ctx, target)
+            return Result(false, mode, log.error.ifEmpty { ERR_FAILED })
+        }
+        clearRetry()
         Prefs.clearLegacyAiSwitch(ctx)
         return Result(true, mode, "")
     }

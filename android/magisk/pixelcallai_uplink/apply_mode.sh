@@ -60,8 +60,27 @@ if command -v timeout >/dev/null 2>&1; then T="timeout 15"; else T=""; fi
 q() { $T "$@" >/dev/null 2>&1; }
 o() { $T "$@" 2>/dev/null; }
 note() { echo "$1" >> "$LOG"; }
+IN_REVERT=0
+IN_NORMAL=0
+PREV_MODE=$(tr -d "$STRIP" < "$DIR/mode" 2>/dev/null || echo ai)
+[ "$PREV_MODE" = normal ] || PREV_MODE=ai
 step() { note "step_$1=$2"; }
-fail() { step "$1" fail; note "error=$2"; note "finished=$(date +%s)"; note "done=1"; exit 1; }
+fail() {
+  step "$1" fail
+  if [ "$MODE" = normal ] && [ "$IN_NORMAL" -eq 1 ] && [ "$IN_REVERT" -eq 0 ]; then
+    IN_REVERT=1
+    note "revert=ai"
+    echo ai > "$DIR/mode"
+    apply_ai || true
+    rm -f "$DIR/pending"
+  elif [ "$IN_REVERT" -eq 0 ]; then
+    echo "$PREV_MODE" > "$DIR/mode"
+  fi
+  note "error=$2"
+  note "finished=$(date +%s)"
+  note "done=1"
+  exit 1
+}
 # Retry a check for about 8 seconds (roles and settings take a moment).
 until_ok() {
   n=0
@@ -87,8 +106,7 @@ note "id=$ID"
 note "mode=$MODE"
 note "started=$(date +%s)"
 echo "$MODE" > "$DIR/pending"
-echo "$MODE" > "$DIR/mode"
-if [ "$(tr -d "$STRIP" < "$DIR/mode")" = "$MODE" ]; then step save ok; else fail save save_failed; fi
+(: > "$DIR/.mode.test" && rm -f "$DIR/.mode.test") || fail save save_failed
 
 # ---------------------------------------------------------------- normal phone
 set_volume() { # stream index setting
@@ -119,10 +137,11 @@ other_ready() {
 # The phone app step failed: never leave the phone without a phone app. Go back to AI
 # mode (Bageo is the phone app again and answers), then report the failure.
 dialer_fail() {
+  IN_REVERT=1
   step dialer fail
   note "revert=ai"
   echo ai > "$DIR/mode"
-  apply_ai
+  apply_ai || true
   rm -f "$DIR/pending"
   note "error=dialer_failed"
   note "finished=$(date +%s)"
@@ -131,6 +150,7 @@ dialer_fail() {
 }
 
 apply_normal() {
+  IN_NORMAL=1
   # 1. Bageo no longer screens (silences) incoming calls.
   remove_holder android.app.role.CALL_SCREENING "$PKG"
   holds android.app.role.CALL_SCREENING "$PKG"
@@ -227,6 +247,8 @@ apply_ai() {
 }
 
 if [ "$MODE" = normal ]; then apply_normal "$@"; else apply_ai; fi
+echo "$MODE" > "$DIR/mode"
+if [ "$(tr -d "$STRIP" < "$DIR/mode")" = "$MODE" ]; then step save ok; else fail save save_failed; fi
 rm -f "$DIR/pending"
 note "result=ok"
 note "finished=$(date +%s)"

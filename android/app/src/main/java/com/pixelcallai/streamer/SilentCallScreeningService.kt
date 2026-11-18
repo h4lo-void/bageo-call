@@ -48,8 +48,7 @@ class SilentCallScreeningService : CallScreeningService() {
             val handle = callDetails.handle?.schemeSpecificPart
             if (!handle.isNullOrBlank()) {
                 caller = handle
-                Prefs.setLastCallerId(this, handle)
-                Log.i(TAG, "stashed caller_id from screening len=${handle.length}")
+                Log.i(TAG, "extracted caller_id from screening len=${handle.length}")
             }
         } catch (_: Exception) {
         }

@@ -60,7 +60,7 @@ class CallAudioService : Service() {
     private var captureJob: Job? = null
     private var sessionJob: Job? = null
     private var bridge: BridgeClient? = null
-    private var controlClient: AgentControlClient? = null
+    @Volatile private var controlClient: AgentControlClient? = null
     /** Agent `send_sms`; answers on the control connection. */
     private var smsSender: SmsSender? = null
     private var injector: UplinkInjector? = null
@@ -138,7 +138,7 @@ class CallAudioService : Service() {
     override fun onCreate() {
         super.onCreate()
         audioGuard = LocalAudioGuard(this)
-        smsSender = SmsSender(this) { msg -> controlClient?.sendJson(msg) }
+        smsSender = SmsSender(this) { msg -> sendControlOrQueue(msg) }
         telephonyManager = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
         watchSimChanges()
         PhoneModeManager.addListener(modeListener)
@@ -267,7 +267,7 @@ class CallAudioService : Service() {
             return
         }
         audioGuard?.applyHardMute()
-        DialerRoleHelper.ensureRoles(this)
+        scope.launch(Dispatchers.IO) { DialerRoleHelper.ensureRoles(applicationContext) }
         registerPhoneCallbacks()
         // After crash restart, TelephonyCallback may never re-deliver the state edge
         // (RINGING/OFFHOOK already sticky). Poll and fire handleCallState now so
@@ -558,6 +558,10 @@ class CallAudioService : Service() {
     }
 
     private fun handleCallState(state: Int) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post { handleCallState(state) }
+            return
+        }
         reportCallState(state != TelephonyManager.CALL_STATE_IDLE)
         if (!Prefs.isAiCallEnabled(this)) {
             Log.i(TAG, "normal phone mode; leave call state=$state alone")
@@ -715,7 +719,7 @@ class CallAudioService : Service() {
                 TAG,
                 "onOutboundReady call_id=$outboundId number_len=${pendingOutboundNumber?.length ?: 0}",
             )
-            controlClient?.sendJson(
+            sendControlOrQueue(
                 org.json.JSONObject()
                     .put("type", "outbound_ready")
                     .put("call_id", outboundId)
@@ -768,11 +772,14 @@ class CallAudioService : Service() {
         when (classifyOffhook(pendingOutboundCallId != null, answeredRing, ownCall)) {
             OffhookKind.AI -> startOffhookSession(currentCallInstanceForTelephony())
             OffhookKind.OWN -> onOwnCallOffhook()
-            OffhookKind.UNKNOWN -> Log.w(
-                TAG,
-                "OFFHOOK direction still unknown after ${OUTGOING_CHECK_ATTEMPTS * OUTGOING_CHECK_RETRY_MS}ms — " +
-                    "AI not attached",
-            )
+            OffhookKind.UNKNOWN -> {
+                Log.w(
+                    TAG,
+                    "OFFHOOK direction still unknown after ${OUTGOING_CHECK_ATTEMPTS * OUTGOING_CHECK_RETRY_MS}ms — " +
+                        "restoring audio for own call",
+                )
+                onOwnCallOffhook()
+            }
         }
     }
 
@@ -795,10 +802,10 @@ class CallAudioService : Service() {
             Log.i(TAG, "answer via SilentInCallService")
             return
         }
-        try {
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 5"))
-        } catch (_: Exception) {
-            Log.w(TAG, "root answer fallback unavailable")
+        scope.launch(Dispatchers.IO) {
+            if (!RootShell.run("input keyevent 5", 5).ok) {
+                Log.w(TAG, "root answer fallback unavailable")
+            }
         }
     }
 
@@ -832,7 +839,7 @@ class CallAudioService : Service() {
     }
 
     /** Agent `answer_plan` `reject`: decline the ringing call; IDLE then sends `incoming_cancel`. */
-    private fun rejectRingingCall() {
+    private fun rejectRingingCall(retryOnFail: Boolean = true) {
         var ok = SilentInCallService.rejectRinging()
         if (!ok) {
             try {
@@ -844,6 +851,23 @@ class CallAudioService : Service() {
             }
         }
         Log.i(TAG, "answer_plan reject: ringing call declined ok=$ok (not answered)")
+        if (!ok) {
+            sendControlOrQueue(
+                org.json.JSONObject()
+                    .put("type", "reject_failed")
+                    .put("serial", deviceSerial()),
+            )
+            if (retryOnFail) {
+                mainHandler.postDelayed(
+                    {
+                        if (!callActive && currentTelephonyCallState() == TelephonyManager.CALL_STATE_RINGING) {
+                            rejectRingingCall(retryOnFail = false)
+                        }
+                    },
+                    REJECT_RETRY_MS,
+                )
+            }
+        }
     }
 
     /**
@@ -923,7 +947,7 @@ class CallAudioService : Service() {
 
     /** The call ended while it rang (never answered): the agent drops the AI session it warmed up. */
     private fun sendIncomingCancel() {
-        controlClient?.sendJson(
+        sendControlOrQueue(
             org.json.JSONObject()
                 .put("type", "incoming_cancel")
                 .put("serial", deviceSerial()),
@@ -1468,7 +1492,7 @@ class CallAudioService : Service() {
         val taskId = obj.optString("task_id").trim()
         fun fail(reason: String) {
             Log.w(TAG, "place_call failed reason=$reason call_id=$callId")
-            controlClient?.sendJson(
+            sendControlOrQueue(
                 org.json.JSONObject()
                     .put("type", "place_call_failed")
                     .put("call_id", callId)
@@ -1499,7 +1523,7 @@ class CallAudioService : Service() {
         setPendingOutbound(callId, number, taskId.ifEmpty { null })
         Prefs.setLastCallerId(this, number)
         val ok = OutboundCallHelper.placeCall(this, number, callId, subId)
-        controlClient?.sendJson(
+        sendControlOrQueue(
             org.json.JSONObject()
                 .put("type", if (ok) "place_call_ack" else "place_call_failed")
                 .put("call_id", callId)
@@ -1749,17 +1773,16 @@ class CallAudioService : Service() {
             if (!ok) {
                 // Retry root ENDCALL a few times — some Pixel builds ignore a single event.
                 for (i in 1..3) {
-                    try {
-                        Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 6")).waitFor()
-                        Log.i(TAG, "root KEYCODE_ENDCALL attempt=$i")
-                        delay(350)
-                        if (!isSessionCurrent(generation, callInstanceId)) return@launch
-                        if (!callActive) {
-                            ok = true
-                            break
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "root hangup fallback unavailable: ${e.message}")
+                    val res = RootShell.run("input keyevent 6", 5)
+                    Log.i(TAG, "root KEYCODE_ENDCALL attempt=$i exit=${res.exit}")
+                    delay(350)
+                    if (!isSessionCurrent(generation, callInstanceId)) return@launch
+                    if (!callActive) {
+                        ok = true
+                        break
+                    }
+                    if (!res.ok) {
+                        Log.w(TAG, "root hangup fallback unavailable: exit=${res.exit}")
                         break
                     }
                 }
@@ -1836,11 +1859,18 @@ class CallAudioService : Service() {
         var oldOutboundExpiry: Runnable? = null
         var outboundCallId: String? = null
         var outboundTaskId: String? = null
+        var capturedCaller = ""
         var wasIdle = false
         var rangUnanswered = false
         val invalidatedGeneration = synchronized(sessionOwnershipLock) {
             val invalidated = sessionGeneration.incrementAndGet()
             endingInstance = mediaCallInstance.getAndSet(NO_CALL_INSTANCE)
+            capturedCaller = (if (endingInstance != NO_CALL_INSTANCE) {
+                callDetailsFor(endingInstance).callerId
+            } else {
+                ""
+            }).ifBlank { pendingOutboundNumber.orEmpty() }
+                .ifBlank { currentCallerId() }
             wasIdle = !callActive && bridge == null && injector == null &&
                 answerJob == null && localMenuJob == null && localWaitJob == null &&
                 captureJob == null && sessionJob == null && pendingOutboundCallId == null
@@ -1901,7 +1931,7 @@ class CallAudioService : Service() {
         // stuck AudioTrack cannot delay call_end or block the service main thread.
         // The next session waits for this stop before creating a fresh AudioTrack.
         val serial = deviceSerial()
-        val caller = currentCallerId()
+        val caller = capturedCaller
         val client = oldBridge
         // Close WS off critical path but without waiting for hangup race.
         scope.launch {
@@ -1910,7 +1940,7 @@ class CallAudioService : Service() {
                 client?.sendCallEnd(serial, caller)
                 // CONTROL_IDLE path: agent callback state machine needs call_id/task_id.
                 if (outboundCallId != null) {
-                    controlClient?.sendJson(
+                    sendControlOrQueue(
                         org.json.JSONObject()
                             .put("type", "call_end")
                             .put("call_id", outboundCallId)
@@ -2115,6 +2145,7 @@ class CallAudioService : Service() {
         private const val OUTBOUND_DIAL_TIMEOUT_MS = 30_000L
         /** Media connection down this long during a call → the call is ended. */
         private const val MEDIA_LOST_HANGUP_MS = 3_000L
+        private const val REJECT_RETRY_MS = 3_000L
         private const val MAX_PENDING_CONTROL_MESSAGES = 10
         /** Minimal settle after OFFHOOK before inject open (the agent owns any greeting delay). */
         private const val OFFHOOK_SETTLE_MS = 50L

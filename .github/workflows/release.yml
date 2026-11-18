@@ -98,6 +98,18 @@ jobs:
       # update installs over the previous release. Without the secrets the APK
       # is signed with a throw-away debug key (fine for a first install; to
       # move between differently signed builds remove the module first).
+      - name: Require release signing secrets on tags
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          K_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          K_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          K_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          K_KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$K_B64" ] || [ -z "$K_PW" ] || [ -z "$K_ALIAS" ] || [ -z "$K_KEY_PW" ]; then
+            echo "Release signing secrets are required for tag builds." >&2
+            exit 1
+          fi
       - name: Signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -112,6 +124,35 @@ jobs:
           PCA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           PCA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: bash scripts/package-uplink-module.sh
+      - name: Verify APK signing
+        env:
+          PCA_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          PCA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          APKSIGNER=$(find "$SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+          if [ -z "$APKSIGNER" ]; then
+            echo "apksigner not found under $SDK_ROOT/build-tools" >&2
+            exit 1
+          fi
+          TMP_APK=$(mktemp -d)
+          trap 'rm -rf "$TMP_APK"' EXIT
+          ZIP=$(ls android/magisk/dist/bageo-phone-module-*.zip | head -n 1)
+          unzip -p "$ZIP" system/priv-app/com.pixelcallai.streamer/base.apk > "$TMP_APK/base.apk"
+          CERTS=$("$APKSIGNER" verify --print-certs "$TMP_APK/base.apk")
+          echo "$CERTS"
+          if [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
+            if echo "$CERTS" | grep -qi "CN=Android Debug"; then
+              echo "Tag build APK must not use Android Debug signing key" >&2
+              exit 1
+            fi
+            EXPECTED_SHA=$(keytool -list -v -keystore "$PCA_KEYSTORE_FILE" -storepass "$PCA_KEYSTORE_PASSWORD" -alias "$PCA_KEY_ALIAS" | awk -F'SHA256: ' '/SHA256:/{gsub(/:/,"",$2); print tolower($2); exit}')
+            ACTUAL_SHA=$(echo "$CERTS" | awk -F'SHA-256 digest: ' '/SHA-256 digest:/{print tolower($2); exit}')
+            if [ -z "$EXPECTED_SHA" ] || [ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]; then
+              echo "APK SHA-256 ($ACTUAL_SHA) does not match release keystore ($EXPECTED_SHA)" >&2
+              exit 1
+            fi
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: phone-module

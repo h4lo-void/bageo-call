@@ -19,6 +19,19 @@ $gradleFile = Join-Path $android "app\build.gradle.kts"
 $versionMatch = Select-String -Path $gradleFile -Pattern 'versionName\s*=\s*"([^"]+)"' | Select-Object -First 1
 if (-not $versionMatch) { throw "versionName not found in $gradleFile" }
 $version = $versionMatch.Matches[0].Groups[1].Value
+$apkVcodeMatch = Select-String -Path $gradleFile -Pattern 'versionCode\s*=\s*(\d+)' | Select-Object -First 1
+if (-not $apkVcodeMatch -or [int]$apkVcodeMatch.Matches[0].Groups[1].Value -le 0) {
+    throw "valid positive versionCode not found in $gradleFile"
+}
+$propFile = Join-Path $mod "module.prop"
+$propVerMatch = Select-String -Path $propFile -Pattern '^version=(.+)$' | Select-Object -First 1
+if (-not $propVerMatch -or $propVerMatch.Matches[0].Groups[1].Value.Trim() -ne "v$version") {
+    throw "module.prop version does not match v$version"
+}
+$propVcodeMatch = Select-String -Path $propFile -Pattern '^versionCode=(\d+)' | Select-Object -First 1
+if (-not $propVcodeMatch -or [int]$propVcodeMatch.Matches[0].Groups[1].Value -le 0) {
+    throw "valid positive versionCode not found in $propFile"
+}
 $zipOut = Join-Path $outDir "bageo-phone-module-$version.zip"
 
 Write-Host "Building debug APK $version ..."
@@ -49,8 +62,8 @@ try {
         $entryName = ($rel -replace '\\', '/')
         $entry = $zip.CreateEntry($entryName, [System.IO.Compression.CompressionLevel]::Optimal)
         $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
-        # Everything except the APK is text (sh, prop, xml, update-binary, inject).
-        if ($entryName -notmatch '\.apk$') {
+        # Normalize LF only on known text files (keep APK and binaries intact).
+        if ($entryName -match '(^|/)(update-binary|updater-script|inject)$' -or $entryName -match '\.(sh|prop|xml|txt|md|json)$') {
             $text = [System.Text.Encoding]::UTF8.GetString($bytes) -replace "`r`n", "`n" -replace "`r", "`n"
             $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes($text.TrimStart([char]0xFEFF))
         }

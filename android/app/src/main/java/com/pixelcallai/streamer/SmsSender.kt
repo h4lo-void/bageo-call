@@ -16,6 +16,7 @@ import android.os.Handler
 import android.os.Looper
 import android.telephony.SmsManager
 import android.telephony.SmsMessage
+import android.telephony.SubscriptionManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
@@ -147,6 +148,11 @@ class SmsSender(
             return
         }
         try {
+            if (subId != null && !hasActiveSubscription(subId)) {
+                Log.w(TAG, "send_sms id=$id: sub_id=$subId not found among active SIMs")
+                answer(id, "sim_not_found")
+                return
+            }
             val sms = smsManager(subId)
             if (sms == null) {
                 Log.w(TAG, "send_sms id=$id: no SmsManager")
@@ -384,6 +390,25 @@ class SmsSender(
             null
         } ?: return null
         return deliveryOutcome(status, format)
+    }
+
+    /** True unless READ_PHONE_STATE is granted and the active SIM list omits [subId]. */
+    @Suppress("DEPRECATION")
+    private fun hasActiveSubscription(subId: Int): Boolean {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            return true
+        }
+        return try {
+            val subs = context.getSystemService(SubscriptionManager::class.java) ?: return true
+            val active = subs.activeSubscriptionInfoList ?: return true
+            active.any { it.subscriptionId == subId }
+        } catch (_: SecurityException) {
+            true
+        } catch (_: Exception) {
+            true
+        }
     }
 
     /** The SIM [subId] names, or the default SMS SIM. */
