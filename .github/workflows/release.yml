@@ -5,7 +5,7 @@ name: Release
 #   bageo-call-<version>-windows-x64.zip
 #   bageo-call-<version>-macos-arm64.tar.gz / -macos-x64.tar.gz
 #   bageo-call-<version>-linux-x64.tar.gz
-#   pixelcallai_uplink-<version>.zip          (phone module, flash in Magisk / KernelSU)
+#   bageo-phone-module-<version>.zip          (phone module, flash in Magisk / KernelSU)
 #
 # Each desktop download holds the agent program, the bundled sounds, the start
 # scripts and the documents: unpack and run the start script.
@@ -118,7 +118,7 @@ jobs:
       - name: Check what was built
         run: |
           ls -l dist
-          ls dist/pixelcallai_uplink-*.zip dist/bageo-call-* > /dev/null
+          ls dist/bageo-phone-module-*.zip dist/bageo-call-* > /dev/null
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS.txt
       # The Release page shows only the short notes for this version from

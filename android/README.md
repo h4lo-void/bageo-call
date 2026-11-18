@@ -78,7 +78,7 @@ Both scripts run `:app:assembleDebug`, copy the APK into the module as
 `system/priv-app/com.pixelcallai.streamer/base.apk`, and write
 
 ```text
-magisk/dist/pixelcallai_uplink-<versionName>.zip
+magisk/dist/bageo-phone-module-<versionName>.zip
 ```
 
 To build only the APK, run `.\gradlew.bat :app:assembleDebug` (Windows) or
@@ -106,7 +106,7 @@ start-up.
 
 1. If you ever installed the APK as a normal app (`adb install`), uninstall it.
    Never have a normal install and the module at the same time.
-2. Copy `pixelcallai_uplink-<version>.zip` to the phone.
+2. Copy `bageo-phone-module-<version>.zip` to the phone.
 3. In the Magisk or KernelSU app, install the zip as a module, then reboot.
 4. Open **Bageo**. The card at the top says in one sentence what the phone does right
    now. Work through **Setup steps** until every step shows OK:

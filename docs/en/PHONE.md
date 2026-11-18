@@ -71,7 +71,7 @@ handset. All of this can be switched off from the app or the console (see
 
 1. **Root** the phone with Magisk or KernelSU (not covered here).
 2. If you ever installed the app as a plain APK, uninstall it. Never have both.
-3. Copy `pixelcallai_uplink-<version>.zip` to the phone (for this release
+3. Copy `bageo-phone-module-<version>.zip` to the phone (for this release
    `pixelcallai_uplink-1.4.0.zip`). In the Magisk or KernelSU app: *Modules →
    Install from storage* → pick the zip → reboot.
 4. Open **Bageo**. The card at the top says in one sentence what the phone is
