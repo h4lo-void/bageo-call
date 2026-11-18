@@ -11,7 +11,7 @@ not legal advice; check the rules where you and your callers live.
 
 | What | Where it is | Who else sees it |
 |---|---|---|
-| Call recordings, transcripts, summaries | `data/calls/` on your computer, deleted after 7 days by default (`CALLS_RETENTION_DAYS`). | Nobody, unless you open the console to others. |
+| Call recordings, transcripts, summaries | `data/calls/` on your computer, deleted after 15 days by default (*Days to keep records* under *Settings → Advanced*). | Nobody, unless you open the console to others. |
 | Settings, API keys, notification tokens | `data/calls/config/settings.json`, **in plain text**. | Anyone who can read that file. Protect the computer and never share the file. |
 | The live audio of each call, both directions, plus the prompt (with your *Notes the AI may answer from*) | Sent to **Google's Gemini Live API** while the call lasts. | Google, under the Gemini API terms for your key and region. |
 | A call the keywords flag as sales or scam | Before the AI starts stalling, part of the call goes to Gemini (`gemini-flash-lite-latest`) for a second look. Details are below the table. | Google. |
@@ -20,7 +20,7 @@ not legal advice; check the rules where you and your callers live.
 | The summary and the caller's number | Sent to **every notification channel** you set up. | Those services, and everyone in those chats. |
 | Voice previews and the "not available" announcement | **Shipped with the program** and played from your computer. Details are below the table. | Nobody. |
 | Contacts | `contacts.json` in the data folder. How imports are read is below the table. | Google, for the files sent to Gemini. |
-| Text messages handed over by the SMS forwarder | `sms/messages.json` in the data folder, deleted after 15 days by default (*Days to keep text messages* in the settings). | Every notification channel you set up gets each text as well. |
+| Text messages handed over by the SMS forwarder | `sms/messages.json` in the data folder, deleted after 15 days by default (*Days to keep records*). | Every notification channel you set up gets each text as well. |
 | AI errands | What you ask the AI to do (`errands.json`, the newest 500), the SIMs each phone has (`phone_sims.json`), and the call's record and recording in `data/calls/`. | Google and your summary service; the person called hears the AI. |
 | Appointment replies | A **text** from your phone to the caller with only the time (and your name), never what the appointment is about; or an **AI call-back**. | Your carrier and the caller. |
 | Calendars | **No calendar account is connected.** *Add to calendar* opens a filled-in "new event" form of the calendar you chose, in your own browser, or downloads an `.ics` file from the console. | Only the calendar you open the link with. |
@@ -75,7 +75,7 @@ Broadly:
 Not sure silent recording is allowed for you? Use the *AI assistant* answer
 style and add a recording notice to the opening in your prompt ("…this call is
 recorded so that I can pass on your message"), or set
-`CALLS_RETENTION_DAYS=1`.
+*Days to keep records* to 1.
 
 Business use has its own rules.
 

@@ -279,7 +279,8 @@ pub struct Settings {
     pub calls_record: bool,
     /// Also save TTS/hold PCM we stream to the phone.
     pub calls_record_tts: bool,
-    /// Retain call metadata and audio for this many days (default 7).
+    /// The default of the records' retention (retention_days in the settings,
+    /// which the console changes): CALLS_RETENTION_DAYS (1–365), else 15.
     pub calls_retention_days: u32,
     /// Optional token for `/calls` UI/API. Empty = LAN-only open (compose binds LAN IP).
     pub calls_ui_token: String,
@@ -445,7 +446,7 @@ impl Settings {
             calls_data_dir: env_or("CALLS_DATA_DIR", &default_data_dir()),
             calls_record: env_bool("CALLS_RECORD", true),
             calls_record_tts: env_bool("CALLS_RECORD_TTS", true),
-            calls_retention_days: env_parse("CALLS_RETENTION_DAYS", 7u32).clamp(1, 3650),
+            calls_retention_days: retention_days_default(env::var("CALLS_RETENTION_DAYS").ok().as_deref()),
             calls_ui_token: env_or("CALLS_UI_TOKEN", ""),
             call_notify: env_bool("CALL_NOTIFY", true),
             notify_gateway_url: env_or("NOTIFY_GATEWAY_URL", ""),
@@ -586,6 +587,15 @@ pub(crate) fn env_parse<T: std::str::FromStr>(key: &str, default: T) -> T {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(default)
+}
+
+/// The days records are kept by default: CALLS_RETENTION_DAYS (a whole
+/// number, held to 1–365), else 15.
+pub fn retention_days_default(raw: Option<&str>) -> u32 {
+    use crate::settings_store::{RETENTION_DAYS_DEFAULT, RETENTION_DAYS_MAX, RETENTION_DAYS_MIN};
+    raw.and_then(|v| v.trim().parse::<u32>().ok())
+        .map(|d| d.clamp(RETENTION_DAYS_MIN, RETENTION_DAYS_MAX))
+        .unwrap_or(RETENTION_DAYS_DEFAULT)
 }
 
 fn env_parse_first<T: std::str::FromStr>(keys: &[&str], default: T) -> T {

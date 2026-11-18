@@ -1273,6 +1273,7 @@ async fn settings_put(
     if !patch.is_object() {
         return api_error(StatusCode::BAD_REQUEST, "bad_request", "JSON object body required");
     }
+    let days_before = state.settings_store.snapshot().retention_days;
     // Blocked numbers sent the old way go onto the Blacklist (the settings do
     // not keep them); nothing is saved when the contacts cannot be.
     if let Some(v) = patch.get("reject_numbers") {
@@ -1284,6 +1285,7 @@ async fn settings_put(
     }
     match state.settings_store.apply_patch(&patch) {
         Ok(rt) => {
+            purge_after_fewer_days(&state, days_before, rt.retention_days);
             // Language, answer style, owner name: what the next call's helpers read.
             rt.apply_globals();
             // Blocked numbers / hidden numbers / voice / model changed: have the "cannot be
@@ -1439,7 +1441,7 @@ async fn notify_send(
         && (!body.from.trim().is_empty() || !body.text.trim().is_empty())
         && state.sms.push(
             crate::sms_store::now_ms(),
-            rt.sms_retention_days,
+            rt.retention_days,
             crate::sms_store::NewSms {
                 received_ms: body.received_ms,
                 from: &body.from,
@@ -1499,7 +1501,7 @@ async fn sms_list(
     if !token_ok_parts(&state.settings, &headers, query.token.as_deref()) {
         return unauthorized();
     }
-    let keep_days = state.settings_store.snapshot().sms_retention_days;
+    let keep_days = state.settings_store.snapshot().retention_days;
     let before = query.before.as_deref().and_then(|s| s.trim().parse::<u64>().ok()).filter(|id| *id > 0);
     let limit = query
         .limit
@@ -1580,6 +1582,32 @@ async fn sms_clear(
         return json_required();
     }
     Json(json!({"ok": true, "removed": state.sms.clear()})).into_response()
+}
+
+/// The owner now keeps fewer days: what is too old goes right away (in the
+/// background; the hourly cleanup would only get to it later).
+fn purge_after_fewer_days(state: &CallsState, days_before: u32, days_now: u32) {
+    if days_now >= days_before {
+        return;
+    }
+    let (calls, tasks, errands, sms) = (state.store.clone(), state.task_store.clone(), state.errands.clone(), state.sms.clone());
+    tokio::spawn(async move { purge_expired_records(&calls, &tasks, &errands, &sms, days_now).await });
+}
+
+/// Delete what is older than retention_days (the setting as it is now):
+/// calls and their recordings, to-do items, AI errands that are over, text
+/// messages. Run every hour and right after the owner keeps fewer days.
+pub async fn purge_expired_records(
+    calls: &CallStore,
+    tasks: &TaskStore,
+    errands: &crate::errands::ErrandStore,
+    sms: &crate::sms_store::SmsStore,
+    retention_days: u32,
+) {
+    calls.purge_expired(retention_days).await;
+    tasks.purge_expired(retention_days).await;
+    errands.purge_expired(retention_days).await;
+    sms.purge(crate::sms_store::now_ms(), retention_days);
 }
 
 /// How long sending a text from the console waits for the phone's answer.
@@ -1769,7 +1797,7 @@ async fn sms_threads(
     if !token_ok_parts(&state.settings, &headers, query.token.as_deref()) {
         return unauthorized();
     }
-    let keep_days = state.settings_store.snapshot().sms_retention_days;
+    let keep_days = state.settings_store.snapshot().retention_days;
     let lines = sms_lines(&state).await;
     let home = sms_home_region();
     let key_of = |m: &crate::sms_store::SmsMessage| sms_key_of(&lines, m, home.as_deref());
@@ -1855,7 +1883,7 @@ async fn sms_thread(
     if !token_ok_parts(&state.settings, &headers, query.token.as_deref()) {
         return unauthorized();
     }
-    let keep_days = state.settings_store.snapshot().sms_retention_days;
+    let keep_days = state.settings_store.snapshot().retention_days;
     let raw = query.number.as_deref().unwrap_or("").trim().to_string();
     let before = query.before.as_deref().and_then(|s| s.trim().parse::<u64>().ok()).filter(|id| *id > 0);
     let limit = query
@@ -1925,7 +1953,7 @@ async fn sms_thread_delete(
     if !is_json_request(&headers) {
         return json_required();
     }
-    let keep_days = state.settings_store.snapshot().sms_retention_days;
+    let keep_days = state.settings_store.snapshot().retention_days;
     let raw = query.number.as_deref().unwrap_or("").trim().to_string();
     let lines = sms_lines(&state).await;
     let home = sms_home_region();
@@ -2036,7 +2064,7 @@ async fn sms_send(
     let Some(line) = lines.iter().find(|l| l.serial == serial && l.sub_id == req.sub_id) else {
         return api_error(StatusCode::BAD_REQUEST, "bad_line", "no such phone and SIM");
     };
-    let keep_days = state.settings_store.snapshot().sms_retention_days;
+    let keep_days = state.settings_store.snapshot().retention_days;
     let msg = state.sms.push_out(
         crate::sms_store::now_ms(),
         keep_days,
@@ -3386,7 +3414,7 @@ mod tests {
         base.telegram_chat_id = String::new();
         CallsState {
             settings: base.clone(),
-            store: crate::calls::CallStore::new(root.join("calls"), true, false, 30),
+            store: crate::calls::CallStore::new(root.join("calls"), true, false),
             settings_store: SettingsStore::load(base),
             task_store: TaskStore::new(root.join("tasks")),
             http: reqwest::Client::new(),
@@ -3886,7 +3914,7 @@ mod tests {
         assert_eq!(v["total"], 3);
         assert_eq!(sms_texts(&v), vec!["no ref".to_string(), "no ref".to_string(), format!("{marker}\n第二行 ✓")]);
         // The settings decide how long they are kept.
-        state.settings_store.apply_patch(&json!({"sms_retention_days": 40})).unwrap();
+        state.settings_store.apply_patch(&json!({"retention_days": 40})).unwrap();
         assert_eq!(recent_json(sms_get(&state, None, "", None, None).await).await["retention_days"], 40);
     }
 
@@ -3970,6 +3998,100 @@ mod tests {
         assert_eq!(recent_json(sms_wipe(&state, None).await).await, json!({"ok": true, "removed": 2}));
         assert_eq!(recent_json(sms_wipe(&state, None).await).await, json!({"ok": true, "removed": 0}));
         assert_eq!(recent_json(sms_get(&state, None, "", None, None).await).await["total"], 0);
+    }
+
+    #[tokio::test]
+    async fn retention_change_in_settings_cleans_everything_at_once() {
+        let root = std::env::temp_dir().join(format!("bageo-retention-all-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let ago = |days: i64| (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
+        // Kept before this start: a call 10 days old and one 1 day old, AI errands that are over.
+        let (old_call, new_call) = {
+            let calls = crate::calls::CallStore::new(root.join("calls"), true, false);
+            let a = calls.start("pixel-1", "+15555550123", 16000, "active").await.unwrap();
+            let b = calls.start("pixel-1", "+15555550124", 16000, "active").await.unwrap();
+            let ids = (a.id.clone(), b.id.clone());
+            calls.finalize(a, "ended").await;
+            calls.finalize(b, "ended").await;
+            ids
+        };
+        let index = root.join("calls").join("index.json");
+        let mut v: Value = serde_json::from_slice(&std::fs::read(&index).unwrap()).unwrap();
+        for row in v["calls"].as_array_mut().unwrap() {
+            let days = if row["id"] == old_call.as_str() { 10 } else { 1 };
+            row["started_at"] = json!(ago(days));
+        }
+        std::fs::write(&index, serde_json::to_vec(&v).unwrap()).unwrap();
+        let errands = json!({"errands": [
+            {"id": "e-old", "status": "done", "created_at": ago(11), "updated_at": ago(10)},
+            {"id": "e-new", "status": "done", "created_at": ago(2), "updated_at": ago(1)}
+        ]});
+        std::fs::write(root.join("errands.json"), serde_json::to_vec(&errands).unwrap()).unwrap();
+        let state = quick_state(&root);
+        state.settings_store.apply_patch(&json!({"retention_days": 15})).unwrap();
+        // To-do items and text messages, 10 days old and recent.
+        let task = |created: String| crate::tasks::TaskRecord {
+            id: String::new(),
+            created_at: created,
+            updated_at: String::new(),
+            call_id: "c".into(),
+            serial: "pixel-1".into(),
+            caller_id: "+15555550123".into(),
+            status: crate::tasks::TaskStatus::Pending,
+            intent: crate::tasks::TaskIntent::Appointment,
+            summary: String::new(),
+            transcript: String::new(),
+            datetime_hint: None,
+            reply_method: crate::tasks::ReplyMethod::None,
+            reply_contact: None,
+            contact_verified: false,
+            voicemail_path: None,
+            calendar_event_id: None,
+            fulfill_error: None,
+            openclaw_ref: None,
+            events: vec![],
+            appointment: None,
+        };
+        let old_task = state.task_store.create(task(ago(10))).await.unwrap().id;
+        let new_task = state.task_store.create(task(ago(1))).await.unwrap().id;
+        let now = crate::sms_store::now_ms();
+        for (age_ms, text) in [(10 * 86_400_000u64, "十日前のメッセージ"), (43_200_000, "Mensaje de hoy")] {
+            state.sms.push(now, 15, crate::sms_store::NewSms { received_ms: now - age_ms, from: "+15555550123", text, ..Default::default() });
+        }
+        let texts = || state.sms.list(now, 365, "", None, 50, &|_: &str| String::new()).messages.into_iter().map(|m| m.text).collect::<Vec<_>>();
+        // What saving the settings does with the days (the handler itself also
+        // sets the language for the whole program, which other tests read).
+        let put = |patch: Value| {
+            let before = state.settings_store.snapshot().retention_days;
+            let rt = state.settings_store.apply_patch(&patch).unwrap();
+            purge_after_fewer_days(&state, before, rt.retention_days);
+        };
+        // More days: nothing goes.
+        put(json!({"retention_days": 30}));
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(state.store.get(&old_call).await.is_some());
+        assert_eq!(texts().len(), 2);
+        // Fewer days: everything older goes right away.
+        put(json!({"retention_days": 5}));
+        assert_eq!(state.settings_store.snapshot().retention_days, 5);
+        let mut gone = false;
+        for _ in 0..60 {
+            if state.store.get(&old_call).await.is_none()
+                && state.task_store.get(&old_task).await.is_none()
+                && state.errands.get("e-old").is_none()
+                && texts().len() == 1
+            {
+                gone = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert!(gone, "the calls, to-do items, errands and texts older than 5 days went");
+        assert!(state.store.get(&new_call).await.is_some());
+        assert!(state.task_store.get(&new_task).await.is_some());
+        assert!(state.errands.get("e-new").is_some());
+        assert_eq!(texts(), vec!["Mensaje de hoy".to_string()]);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     // ---- SMS conversations: a simulated phone on the control connection, never a real one.

@@ -32,7 +32,7 @@ impl Rig {
         base.calls_ui_token = "console-secret-token".into();
         let state = CallsState {
             settings: base.clone(),
-            store: crate::calls::CallStore::new(root.join("calls"), true, false, 30),
+            store: crate::calls::CallStore::new(root.join("calls"), true, false),
             settings_store: SettingsStore::load(base),
             task_store: crate::tasks::TaskStore::new(root.join("tasks")),
             http: reqwest::Client::new(),

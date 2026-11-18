@@ -1022,7 +1022,6 @@ async fn main() -> Result<()> {
         PathBuf::from(&settings.calls_data_dir),
         settings.calls_record,
         settings.calls_record_tts,
-        settings.calls_retention_days,
     );
     let task_store = TaskStore::new(PathBuf::from(&settings.calls_data_dir).join("tasks"));
     // The owner's contacts (names for caller IDs), next to the call records.
@@ -1041,21 +1040,21 @@ async fn main() -> Result<()> {
     let sms_store = sms_store::SmsStore::open(
         PathBuf::from(&settings.calls_data_dir).join("sms"),
         sms_store::now_ms(),
-        settings_store.snapshot().sms_retention_days,
+        settings_store.snapshot().retention_days,
     );
     {
         let calls = calls.clone();
         let task_store = task_store.clone();
-        let retention_days = settings.calls_retention_days;
+        let errands = errand_store.clone();
+        let sms = sms_store.clone();
+        let settings_store = settings_store.clone();
         tokio::spawn(async move {
-            calls.purge_expired().await;
-            task_store.purge_expired(retention_days).await;
+            // Every hour (the first right away), with the days the settings say now.
             let mut ticker = tokio::time::interval(std::time::Duration::from_secs(3600));
-            ticker.tick().await;
             loop {
                 ticker.tick().await;
-                calls.purge_expired().await;
-                task_store.purge_expired(retention_days).await;
+                let days = settings_store.snapshot().retention_days;
+                calls_http::purge_expired_records(&calls, &task_store, &errands, &sms, days).await;
             }
         });
     }
@@ -1486,6 +1485,12 @@ async fn redirect_to_calls() -> Redirect {
     Redirect::permanent("/calls/")
 }
 
+/// How long records are kept, for /health: retention_days, and the older
+/// name calls_retention_days (same value) that other tools still read.
+fn health_retention(rt: &settings_store::RuntimeSettings) -> [(&'static str, Value); 2] {
+    [("retention_days", json!(rt.retention_days)), ("calls_retention_days", json!(rt.retention_days))]
+}
+
 async fn health(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
@@ -1745,7 +1750,9 @@ async fn health(
     body.insert("calls_data_dir".into(), json!(s.calls_data_dir));
     body.insert("calls_record".into(), json!(s.calls_record));
     body.insert("calls_record_tts".into(), json!(s.calls_record_tts));
-    body.insert("calls_retention_days".into(), json!(s.calls_retention_days));
+    for (k, v) in health_retention(&rt) {
+        body.insert(k.into(), v);
+    }
     body.insert(
         "calls_ui_token_set".into(),
         json!(!settings_store::active_ui_token(&s.calls_ui_token).is_empty()),
@@ -12097,6 +12104,19 @@ mod unknown_caller_tests {
 }
 
 #[cfg(test)]
+mod retention_health_tests {
+    use super::*;
+
+    #[test]
+    fn retention_shows_in_health_under_both_names() {
+        let mut rt = RuntimeSettings::from_base(&Settings::from_env());
+        rt.retention_days = 21;
+        let got: HashMap<&str, Value> = health_retention(&rt).into_iter().collect();
+        assert_eq!((got["retention_days"].as_u64(), got["calls_retention_days"].as_u64()), (Some(21), Some(21)));
+    }
+}
+
+#[cfg(test)]
 mod call_reattach_tests {
     use super::{
         ActiveCallSlot, CallReattachRegistry, CALL_REATTACH_WINDOW, INCOMING_NOTIFY_DEDUP_WINDOW,
@@ -12112,7 +12132,7 @@ mod call_reattach_tests {
             .expect("time")
             .as_nanos();
         let dir = std::env::temp_dir().join(format!("pixel-call-reattach-{nanos}"));
-        CallStore::new(dir, true, false, 7)
+        CallStore::new(dir, true, false)
     }
 
     #[tokio::test]

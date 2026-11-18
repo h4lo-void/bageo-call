@@ -200,8 +200,6 @@ The default for *Call as* is *AI calls: call as* under [Basics](#basics). Every 
 
 *Commands from chat* is a fold-out section; its settings are saved as `telegram_control`, `telegram_control_users`, `control_errands_per_hour` and `control_commands_per_minute`.
 
-**More options.** *Days to keep text messages* (default 15, from 1 to 365) is folded under *More options* in Notifications. Text messages on the **SMS** page that are older are deleted automatically. It is saved as `sms_retention_days`.
-
 ### Summary & calendar
 
 After each call the AI writes a short summary. It uses your Gemini key, so normally there is nothing to set up.
@@ -305,6 +303,7 @@ Times are the computer's local time (see [Time zone](#time-zone)). Without any k
 
 | Setting | Default | What it does |
 |---|---|---|
+| Days to keep records | 15 | Calls and their recordings, text messages, AI errands and *To do* items older than this are deleted automatically (1 to 365). A change takes effect at once. Saved as `retention_days`; `CALLS_RETENTION_DAYS` only sets the default. |
 | Thinking level | Low | For Live models with "thinking" in their name only: Low, Medium or High. Low answers fastest. Saved as `gemini_thinking_level`. |
 | Console password | empty | Once set, the console and the API ask for the password (the browser remembers it). Saved as `ui_password`. |
 | Let other AI tools connect (MCP) | off | Lets AI tools such as Claude or ChatGPT look up your calls and *To do* items. Leave it off if you do not need it. |
@@ -387,7 +386,7 @@ The connection is plain HTTP: fine on a home network you trust, not for the open
 | Variable | Default | Meaning |
 |---|---|---|
 | `CALLS_DATA_DIR` | `data/calls` | Call records, recordings, settings and contacts. Relative to the folder Bageo starts in; in the container `/data/calls`. |
-| `CALLS_RETENTION_DAYS` | `7` | Calls older than this are deleted, records and audio (1–3650). |
+| `CALLS_RETENTION_DAYS` | `15` | Default for the days records are kept (1–365); change it in the console under *Advanced*. |
 | `CALLS_RECORD` | `true` | `false`: no call records and no recordings are kept at all. |
 | `ASSETS_DIR` | *(searched)* | Folder with the bundled sounds. Otherwise `assets` next to the program is used; in the container `/app/assets`. |
 

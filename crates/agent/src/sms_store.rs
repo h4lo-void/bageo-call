@@ -5,7 +5,7 @@
 //!
 //! One JSON file (sms/messages.json under the calls data folder), written
 //! whole on every change: to a temporary file first, then renamed over the old
-//! one. Messages older than the sms_retention_days setting are dropped, and at
+//! one. Messages older than the retention_days setting are dropped, and at
 //! most [MAX_MESSAGES] are kept.
 
 use serde::{Deserialize, Serialize};
@@ -534,6 +534,20 @@ impl SmsStore {
         self.lock().get(id).cloned()
     }
 
+    /// Drop the messages older than keep_days (the setting as it is now), and
+    /// the old copies of a file that could not be read; how many messages went.
+    pub fn purge(&self, now_ms: u64, keep_days: u32) -> usize {
+        let mut book = self.lock();
+        let before = book.len();
+        if book.prune(now_ms, keep_days) {
+            self.save(&book);
+        }
+        if let Some(dir) = self.path.parent() {
+            drop_old_unreadable(dir, now_ms, keep_days);
+        }
+        before - book.len()
+    }
+
     /// Record what became of a sent message; None when it is gone.
     pub fn set_status(&self, id: u64, status: &str, error: &str) -> Option<SmsMessage> {
         let mut book = self.lock();
@@ -700,6 +714,22 @@ mod tests {
 
     fn out_to<'a>(to: &'a str, text: &'a str) -> NewOut<'a> {
         NewOut { to, text, from: "0912000111", serial: "TESTSERIAL01", device: "Pixel Test", sub_id: Some(1) }
+    }
+
+    #[test]
+    fn sms_retention_purge_follows_the_setting() {
+        let dir = temp_dir("retention");
+        let store = SmsStore::open(dir.clone(), NOW, KEEP);
+        store.push_out(NOW - 10 * DAY_MS, KEEP, out_to("+15555550123", "sent ten days ago"));
+        for (received_ms, text) in [(NOW - 10 * DAY_MS, "ten days old"), (NOW - DAY_MS / 2, "today")] {
+            store.push(NOW, KEEP, NewSms { received_ms, from: "+15555550123", text, ..Default::default() });
+        }
+        assert_eq!(store.purge(NOW, 15), 0);
+        assert_eq!(store.purge(NOW, 5), 2, "received and sent ones alike");
+        let left = |s: &SmsStore| s.list(NOW, 365, "", None, PAGE_MAX, &no_name).messages.into_iter().map(|m| m.text).collect::<Vec<_>>();
+        assert_eq!(left(&store), vec!["today".to_string()]);
+        assert_eq!(left(&SmsStore::open(dir.clone(), NOW, 365)), vec!["today".to_string()], "saved");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

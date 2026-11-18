@@ -1436,6 +1436,38 @@ impl ErrandStore {
         list.len() != before
     }
 
+    /// Remove the errands that are over (done, no answer, failed, cancelled)
+    /// and last changed more than retention_days ago (the setting as it is
+    /// now); one under way or waiting for a phone stays. How many went.
+    pub async fn purge_expired(&self, retention_days: u32) -> usize {
+        let keep = Duration::from_secs(u64::from(retention_days.clamp(1, 3650)) * 86_400);
+        let gone: Vec<String> = {
+            let mut list = self.guard();
+            let mut gone = Vec::new();
+            list.retain(|e| {
+                let stamp = if e.updated_at.trim().is_empty() { &e.created_at } else { &e.updated_at };
+                let old = e.is_final() && age(stamp).is_some_and(|a| a > keep);
+                if old {
+                    gone.push(e.id.clone());
+                }
+                !old
+            });
+            gone
+        };
+        if gone.is_empty() {
+            return 0;
+        }
+        {
+            let mut live = self.live();
+            for id in &gone {
+                live.remove(id);
+            }
+        }
+        self.persist().await;
+        info!(records = gone.len(), retention_days, "expired errands purged");
+        gone.len()
+    }
+
     /// Write `errands.json` as it is now.
     pub async fn persist(&self) {
         if !self.writable {
@@ -3173,7 +3205,7 @@ mod tests {
             Rig {
                 store: ErrandStore::open(root.join("errands.json"), SimBook::in_memory()),
                 tasks: TaskStore::new(root.join("tasks")),
-                calls: CallStore::new(root.join("calls"), false, false, 30),
+                calls: CallStore::new(root.join("calls"), false, false),
                 root,
                 rt,
                 eff,
@@ -3681,6 +3713,38 @@ mod tests {
         assert_eq!((e.number.as_str(), e.sim_country.as_str()), ("886223456713", "tw"));
         let msg = next_json(&mut ph, Duration::from_secs(2)).await.expect("place_call");
         assert_eq!(msg["number"].as_str(), Some("+886223456713"));
+    }
+
+    #[tokio::test]
+    async fn retention_drops_errands_that_are_over_not_ones_under_way() {
+        let root = temp_dir();
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("errands.json");
+        let store = ErrandStore::open(path.clone(), SimBook::in_memory());
+        let ago = |days: i64| (chrono::Local::now() - chrono::Duration::days(days)).to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
+        for (id, status, days) in [
+            ("done-old", DONE, 20),
+            ("no-answer-old", NO_ANSWER, 20),
+            ("failed-old", FAILED, 20),
+            ("cancelled-old", CANCELLED, 20),
+            ("dialing-old", DIALING, 20),
+            ("queued-old", QUEUED, 20),
+            ("done-new", DONE, 3),
+        ] {
+            store.insert(Errand { id: id.into(), status: status.into(), created_at: ago(days + 1), updated_at: ago(days), ..Default::default() });
+        }
+        let ids = |s: &ErrandStore| {
+            let mut v: Vec<String> = s.all().into_iter().map(|e| e.id).collect();
+            v.sort();
+            v
+        };
+        assert_eq!(store.purge_expired(15).await, 4);
+        assert_eq!(ids(&store), vec!["dialing-old", "done-new", "queued-old"], "under way or waiting: kept");
+        assert_eq!(store.purge_expired(15).await, 0);
+        // Fewer days: the recent one that is over goes; the ones under way still stay.
+        assert_eq!(store.purge_expired(2).await, 1);
+        assert_eq!(ids(&ErrandStore::open(path, SimBook::in_memory())), vec!["dialing-old", "queued-old"], "saved");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[tokio::test]

@@ -4443,7 +4443,7 @@ mod tests {
     fn stores() -> (std::path::PathBuf, Arc<TaskStore>, Arc<CallStore>) {
         let root = std::env::temp_dir().join(format!("bageo-appt-{}", uuid::Uuid::new_v4()));
         let tasks = TaskStore::new(root.join("tasks"));
-        let calls = CallStore::new(root.join("calls"), false, false, 30);
+        let calls = CallStore::new(root.join("calls"), false, false);
         (root, tasks, calls)
     }
 
@@ -4533,7 +4533,7 @@ mod tests {
     async fn owner_decision_without_calendar_or_texts_updates_the_task() {
         let root = std::env::temp_dir().join(format!("bageo-appt-{}", uuid::Uuid::new_v4()));
         let store = TaskStore::new(root.join("tasks"));
-        let calls = CallStore::new(root.join("calls"), false, false, 30);
+        let calls = CallStore::new(root.join("calls"), false, false);
         let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
         rt.country_code = "886".into();
         rt.appointment_sms = false;
@@ -4845,7 +4845,7 @@ mod tests {
         // The call's record and notes carry both.
         let root = std::env::temp_dir().join(format!("bageo-appt-{}", uuid::Uuid::new_v4()));
         let tasks = TaskStore::new(root.join("tasks"));
-        let calls = CallStore::new(root.join("calls"), true, false, 7);
+        let calls = CallStore::new(root.join("calls"), true, false);
         let mut call = calls.start("pixel-1", "0912345678", 16000, "active").await.unwrap();
         call.set_appointments(s.book.clone());
         let rec = calls.finalize(call, "ended").await;

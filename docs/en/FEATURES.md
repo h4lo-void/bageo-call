@@ -251,8 +251,8 @@ While the forwarder runs, those texts also show up on the console's **SMS** page
 conversation per number like your phone's messages app (with the contact's name when
 you have one). You can reply right there: by default the reply goes out from the phone
 and SIM that received the text, and you can pick another number. You can search, copy
-and delete them. They are kept for 15 days; change that with *Days to keep text
-messages* in the settings.
+and delete them. Like the other records they are kept for 15 days; change that with
+*Days to keep records* in the settings.
 
 Only three things leave your computer:
 

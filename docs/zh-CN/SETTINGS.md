@@ -200,8 +200,6 @@ AI 要能替你接电话，先把这几项填好。
 
 “在聊天室操作”是一个折叠区块，里面的细项保存为 `telegram_control`、`telegram_control_users`、`control_errands_per_hour`、`control_commands_per_minute`。
 
-**更多选项。** “短信记录保留几天”（默认 15，1 到 365）收在“通知”的“更多选项”里。“短信”页上超过天数的短信会自动删除。保存为 `sms_retention_days`。
-
 ### 摘要与日历
 
 每通电话结束后，AI 会写一段简短摘要。它用你的 Gemini 密钥，通常什么都不用设置。
@@ -305,6 +303,7 @@ flowchart TD
 
 | 设置 | 默认 | 作用 |
 |---|---|---|
+| 记录保留几天 | 15 | 通话和录音、短信、AI 代打和待处理事项，超过这个天数就自动删除（1 到 365），改了立刻生效。保存为 `retention_days`；`CALLS_RETENTION_DAYS` 只决定默认值。 |
 | 思考程度 | 低 | 只适用于名称里有“thinking”的 Live 模型：低、中、高。“低”回话最快。保存为 `gemini_thinking_level`。 |
 | 控制台密码 | 空 | 设置后，打开控制台和调用 API 都要输入密码（浏览器会记住）。保存为 `ui_password`。 |
 | 让其他 AI 工具连进来（MCP） | 关 | 让 Claude、ChatGPT 这类 AI 工具查你的通话和待处理事项。用不到就不用开。 |
@@ -387,7 +386,7 @@ DEVICE_TOKEN=another-long-random-string
 | 变量 | 默认值 | 含义 |
 |---|---|---|
 | `CALLS_DATA_DIR` | `data/calls` | 通话记录、录音、设置和通讯录。相对于 Bageo 启动时所在的文件夹；容器里是 `/data/calls`。 |
-| `CALLS_RETENTION_DAYS` | `7` | 超过这个天数的通话会被删除，记录和音频都删（1–3650）。 |
+| `CALLS_RETENTION_DAYS` | `15` | 记录保留天数的默认值（1–365），控制台的“高级”可改。 |
 | `CALLS_RECORD` | `true` | `false`：完全不保留通话记录和录音。 |
 | `ASSETS_DIR` | *（自动查找）* | 存放附带音效的文件夹。没设置时用程序旁边的 `assets`；容器里是 `/app/assets`。 |
 
