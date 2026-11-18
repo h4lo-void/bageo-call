@@ -232,3 +232,5 @@ data/calls/
 ## 舊程式路徑
 
 Bageo 是從一套選單式系統演變來的（預錄問候、DTMF、保留音樂、語音留言、騰訊 TRTC 橋接、Whisper／LLM／Piper 流程）。那些程式碼還在 `main.rs` 和各自的模組裡，預設關閉，也不附錄音。暫時保留是因為它和現行路徑交錯在一起；乾淨地移除它列在[發展藍圖](ROADMAP.md)上。
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

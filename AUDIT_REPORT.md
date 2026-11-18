@@ -121,3 +121,5 @@
 - **Signed by Model:** `gemini-4-carbon`
 - **Audit Timestamp:** `2026-11-15 (UTC+8)`
 - **Target Project:** `Bageo (h4lo-void/bageo-call) v1.0.0`
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

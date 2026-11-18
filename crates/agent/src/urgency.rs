@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Whether a Whitelist caller's words name a real emergency (the urgent alert,
 //! and the urgent call when that is on), and in which language they speak, for
 //! the nine languages.

@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 330" width="900" height="330" role="img" aria-labelledby="t" xml:lang="en" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
   <title id="t">How Bageo works: the caller reaches your spare rooted phone over the mobile network; the phone passes call audio over USB or Wi-Fi to the Bageo program on your computer, which talks to Gemini Live. Recordings stay on your disk, notifications go to 32 channels, and you manage everything in the web console.</title>
   <style>
     .fr{animation:fr 1s linear infinite}

@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 318" width="900" height="318" role="img" aria-labelledby="t" xml:lang="zh-Hans" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans SC','Noto Sans CJK SC',sans-serif">
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
   <title id="t">Bageo 会说九种语言：英语、繁体中文、简体中文、日语、韩语、西班牙语、法语、德语、葡萄牙语，各用自己的方式说“喂？”。</title>
   <style>
     .p{animation:p 10.8s linear infinite}

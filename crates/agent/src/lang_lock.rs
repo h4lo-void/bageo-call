@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! The language a call is held in. It starts as the call's opening language;
 //! the caller's first clear words set it, and after that it changes only when
 //! the caller says two turns in a row clearly in another language

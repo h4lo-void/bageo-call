@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Preview on the settings page: a few phone lines in a Gemini voice with the
 //! chosen background sound under them — what a caller hears. A voice's lines come from
 //! the samples that come with the program (every voice in every language, recorded

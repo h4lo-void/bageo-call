@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Ordinary calls, by what they are about (scenario plan, module 2).
 //!
 //! The second look at a call ([`crate::stall_review`]) also names what an

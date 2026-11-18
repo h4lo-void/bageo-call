@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! AI errands: the owner has the AI make a phone call for them — book a
 //! table, fix a time with a friend, ask a shop something — from the web console.
 //!
@@ -94,6 +97,12 @@ pub const CALL_MAX_SECS: u64 = 600;
 pub const WRAP_UP_AT_SECS: u64 = 570;
 /// A voice menu: this long for a person to come on.
 pub const MENU_WAIT: Duration = Duration::from_secs(90);
+/// "Redial until answered": at most this many tries in a row (the first included)…
+pub const REDIAL_MAX: u32 = 30;
+/// …one this long after the last one nobody picked up.
+pub const REDIAL_GAP: Duration = Duration::from_secs(60);
+/// The `call_code` of an errand waiting for its next try.
+pub const REDIAL_WAIT: &str = "redial_wait";
 /// A caption line nobody added to for this long is complete.
 const LINE_QUIET: Duration = Duration::from_millis(1200);
 /// Lines of the earlier call a follow-up's script carries.
@@ -220,6 +229,18 @@ pub struct Errand {
     pub sim_country: String,
     /// Since when it waits for a phone (empty when it does not).
     pub queued_at: String,
+    /// "Redial until answered": a try nobody picked up (no answer, a busy line,
+    /// the phone off, voicemail) is dialed again [`REDIAL_GAP`] later, at most
+    /// [`REDIAL_MAX`] tries.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub redial: bool,
+    /// The try this run of redials started at (0: the first): the owner's
+    /// "Call again" starts a new run.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub redial_start: u32,
+    /// When its next try is dialed (empty when none waits).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub redial_at: String,
     /// What the owner added before the call, under the keys of
     /// [crate::preflight::KEYS] (and note): clean one-line values.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -229,6 +250,16 @@ pub struct Errand {
 impl Errand {
     pub fn is_final(&self) -> bool {
         is_final(&self.status)
+    }
+
+    /// Which try of this run of redials it is on (1: the first).
+    fn redial_try(&self) -> u32 {
+        self.attempts.saturating_sub(self.redial_start.max(1)) + 1
+    }
+
+    /// Waiting for its next try ("Redial until answered").
+    fn redial_waits(&self) -> bool {
+        self.status == QUEUED && !self.redial_at.is_empty()
     }
 
     /// The name, else the number.
@@ -243,6 +274,94 @@ impl Errand {
 
 fn is_final(status: &str) -> bool {
     matches!(status, DONE | NO_ANSWER | FAILED | CANCELLED)
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+/// What the owner is told when a call starts ringing on a phone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CallNotice {
+    /// A call came in.
+    Incoming,
+    /// Our own call is going out: an errand, an appointment's call-back or a
+    /// to-do's call-back.
+    Outgoing,
+    /// Nothing: a "Redial until answered" errand's second or later try of a run
+    /// (the first one told the owner), or the call of an errand that is over
+    /// or deleted, which is hung up.
+    Silent,
+}
+
+/// Which notification the ring of a call on `serial` for `caller_id` gets.
+/// Our own calls are told from the state `place_call` left
+/// ([`appointments::outgoing_call_on`], [`crate::fulfill::voicemail_callback_dialing`]),
+/// so it holds at the first ring, whether or not the phone has reported the call
+/// ready yet; any other call is one coming in.
+pub async fn call_notice(control: &ControlRegistry, store: &ErrandStore, serial: &str, caller_id: &str) -> CallNotice {
+    if let Some(call) = appointments::outgoing_call_on(serial, caller_id) {
+        if call.errand {
+            let again = store.get(&call.task_id).is_none_or(|e| e.is_final() || (e.redial && e.redial_try() > 1));
+            if again {
+                return CallNotice::Silent;
+            }
+        }
+        return CallNotice::Outgoing;
+    }
+    if crate::fulfill::voicemail_callback_dialing(control, serial, caller_id).await {
+        return CallNotice::Outgoing;
+    }
+    CallNotice::Incoming
+}
+
+/// The try errand `e` is on is over with `result` and nobody picked up: kept
+/// in `history`, and the next try waits until `at`.
+fn next_try(e: &mut Errand, result: Outcome, at: chrono::DateTime<chrono::Local>) {
+    let status = if result.outcome == "failed" { FAILED } else { NO_ANSWER };
+    for q in e.questions.iter_mut().filter(|q| q.answered_by.is_none()) {
+        q.answered_by = Some("timeout".to_string());
+    }
+    e.history.push(Attempt {
+        attempt: e.attempts,
+        status: status.to_string(),
+        result: Some(result),
+        record_id: std::mem::take(&mut e.record_id),
+        ended_at: now_stamp(),
+        questions: std::mem::take(&mut e.questions),
+    });
+    e.attempts += 1;
+    e.status = QUEUED.to_string();
+    e.call_code = REDIAL_WAIT.to_string();
+    e.queued_at.clear();
+    e.result = None;
+    e.redial_at = at.to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
+}
+
+/// A "Redial until answered" errand under way when the agent stopped goes on
+/// (true): one waiting for its next try still waits; one waiting for a phone
+/// or for an earlier call to its number (its try never went out) is dialed
+/// now; one dialing lost that try and the next one waits. One the other side
+/// picked up is not dialed again (false).
+fn resume_redial(e: &mut Errand, w: &Words) -> bool {
+    match e.status.as_str() {
+        QUEUED if !e.redial_at.is_empty() => true,
+        QUEUED => {
+            e.call_code = REDIAL_WAIT.to_string();
+            e.queued_at.clear();
+            e.redial_at = now_stamp();
+            e.updated_at = now_stamp();
+            true
+        }
+        DIALING if e.redial_try() < REDIAL_MAX => {
+            let lost = Outcome { outcome: "failed".to_string(), summary: w.restarted.to_string(), ..Default::default() };
+            let gap = chrono::Duration::from_std(REDIAL_GAP).unwrap_or_else(|_| chrono::Duration::seconds(60));
+            next_try(e, lost, chrono::Local::now() + gap);
+            e.updated_at = now_stamp();
+            true
+        }
+        _ => false,
+    }
 }
 
 /// A call record that was an errand.
@@ -1093,6 +1212,41 @@ fn words(lang: Lang) -> Words {
     }
 }
 
+/// What the owner reads about "Redial until answered": {n} tries got no answer,
+/// the next at {time}; {n} tries and nobody answered; voicemail, no message.
+struct RedialWords {
+    wait: &'static str,
+    gave_up: &'static str,
+    voicemail: &'static str,
+}
+
+fn redial_words(lang: Lang) -> RedialWords {
+    let (wait, gave_up, voicemail) = match lang {
+        Lang::ZhTw => ("撥到通：第 {n} 次沒接，{time} 再撥", "撥了 {n} 次都沒人接", "進了語音信箱，沒留言"),
+        Lang::ZhCn => ("拨到通：第 {n} 次没接，{time} 再拨", "拨了 {n} 次都没人接", "进了语音信箱，没留言"),
+        Lang::En => ("Redial until answered: try {n} got no answer, calling again at {time}", "Called {n} times, nobody answered", "Voicemail: no message left"),
+        Lang::Ja => ("つながるまでかけ直す：{n} 回目も出ませんでした。{time} にかけ直します", "{n} 回かけましたが、誰も出ませんでした", "留守電でした（メッセージは残していません）"),
+        Lang::Ko => ("연결될 때까지 다시 걸기: {n}번째도 받지 않아 {time}에 다시 겁니다", "{n}번 걸었지만 아무도 받지 않았습니다", "음성사서함이라 메시지를 남기지 않았습니다"),
+        Lang::Es => ("Llamar hasta que contesten: intento {n} sin respuesta, vuelve a llamar a las {time}", "Llamó {n} veces y nadie contestó", "Buzón de voz: no se dejó mensaje"),
+        Lang::Fr => ("Rappeler jusqu’à ce qu’on décroche : essai {n} sans réponse, nouvel appel à {time}", "{n} appels, personne n’a répondu", "Messagerie : aucun message laissé"),
+        Lang::De => ("Anrufen, bis jemand abnimmt: Versuch {n} ohne Antwort, nächster Anruf um {time}", "{n}-mal angerufen, niemand hat abgenommen", "Mailbox: keine Nachricht hinterlassen"),
+        Lang::Pt => ("Ligar até atenderem: tentativa {n} sem resposta, liga de novo às {time}", "Ligou {n} vezes e ninguém atendeu", "Caixa postal: nenhum recado deixado"),
+    };
+    RedialWords { wait, gave_up, voicemail }
+}
+
+/// "Redial until answered: try 3 got no answer, calling again at 13:05" for
+/// an errand waiting for its next try.
+fn redial_wait_line(lang: Lang, e: &Errand) -> String {
+    let time = chrono::DateTime::parse_from_rfc3339(e.redial_at.trim())
+        .map(|t| t.with_timezone(&chrono::Local).format("%H:%M").to_string())
+        .unwrap_or_default();
+    redial_words(lang)
+        .wait
+        .replace("{n}", &e.redial_try().saturating_sub(1).max(1).to_string())
+        .replace("{time}", &time)
+}
+
 /// Where an errand stands, in the owner's words: its result, else its state
 /// (the chats that take commands list errands with it, [crate::control]).
 pub fn owner_status(e: &Errand) -> String {
@@ -1101,6 +1255,9 @@ pub fn owner_status(e: &Errand) -> String {
         let label = outcome_label(&w, &r.outcome);
         let summary = one_line(&r.summary, 160);
         return if summary.is_empty() { label.to_string() } else { format!("{label}{}{summary}", locale::notify_kv_sep()) };
+    }
+    if e.redial_waits() {
+        return redial_wait_line(locale::notify_lang(), e);
     }
     match e.status.as_str() {
         QUEUED => w.queued.to_string(),
@@ -1177,6 +1334,8 @@ enum EndCause {
     Menu,
     /// The carrier's recording (number not in service, phone off…).
     Carrier(String),
+    /// Voicemail picked up on a "Redial until answered" errand: hung up, no message.
+    Voicemail,
 }
 
 /// What only lives while the agent runs: captions, the open question, what the
@@ -1326,7 +1485,12 @@ impl ErrandStore {
         let mut list = file.unwrap_or_default().errands;
         let w = words(locale::notify_lang());
         let mut stopped = 0;
+        let mut resumed = 0;
         for e in list.iter_mut().filter(|e| !e.is_final()) {
+            if e.redial && resume_redial(e, &w) {
+                resumed += 1;
+                continue;
+            }
             e.status = FAILED.to_string();
             e.call_code = "agent_restarted".to_string();
             e.queued_at.clear();
@@ -1337,6 +1501,9 @@ impl ErrandStore {
             e.result = Some(Outcome { outcome: "failed".to_string(), summary: w.restarted.to_string(), ..Default::default() });
             stopped += 1;
         }
+        if resumed > 0 {
+            info!("redialing errands when the agent stopped: {resumed}, they go on");
+        }
         let store = Arc::new(Self {
             path,
             writable,
@@ -1346,8 +1513,10 @@ impl ErrandStore {
             sims,
             question_hook: Mutex::new(None),
         });
-        if stopped > 0 && store.writable {
-            warn!("errands under way when the agent stopped: {stopped}, marked failed (agent_restarted)");
+        if stopped + resumed > 0 && store.writable {
+            if stopped > 0 {
+                warn!("errands under way when the agent stopped: {stopped}, marked failed (agent_restarted)");
+            }
             let body = serde_json::to_vec_pretty(&ErrandFileRef { errands: &store.guard() }).unwrap_or_default();
             if let Err(e) = write_atomic(&store.path, &body) {
                 warn!("errands not saved: {e:#}");
@@ -1639,6 +1808,18 @@ impl CallHooks {
         all.entry(self.errand_id.clone()).or_default().cause = Some(EndCause::Carrier(one_line(text, 120)));
     }
 
+    /// The errand is set to "Redial until answered".
+    pub fn redial(&self) -> bool {
+        self.store.get(&self.errand_id).is_some_and(|e| e.redial)
+    }
+
+    /// Voicemail picked up on a "Redial until answered" errand: hung up
+    /// without a message, and dialed again later.
+    pub fn note_voicemail(&self) {
+        let mut all = self.store.live();
+        all.entry(self.errand_id.clone()).or_default().cause = Some(EndCause::Voicemail);
+    }
+
     /// The call is ending: a question still waiting is not answered now.
     pub fn end_questions(&self) {
         let mut all = self.store.live();
@@ -1862,11 +2043,8 @@ pub fn owner_says_client_content(text: &str) -> String {
     ))
 }
 
-/// The carrier's recording instead of a person: the number is not in
-/// service, the phone is off or out of reach. Not voicemail (that takes a
-/// message).
-pub fn carrier_message(text: &str) -> bool {
-    const VOICEMAIL: &[&str] = &[
+/// What voicemail says: it takes a message.
+const VOICEMAIL: &[&str] = &[
         "留言", "嗶聲", "哔声", "嘟聲", "语音信箱", "語音信箱", "voicemail", "voice mail", "leave a message", "after the tone", "after the beep",
         // ja
         "留守番電話", "留守電", "メッセージをどうぞ", "発信音の後", "ピーという音の後",
@@ -1883,6 +2061,11 @@ pub fn carrier_message(text: &str) -> bool {
         // pt
         "caixa postal", "correio de voz", "deixe sua mensagem", "deixe a sua mensagem", "após o sinal", "apos o sinal",
     ];
+
+/// The carrier's recording instead of a person: the number is not in
+/// service, the phone is off or out of reach. Not voicemail (that takes a
+/// message).
+pub fn carrier_message(text: &str) -> bool {
     const CARRIER: &[&str] = &[
         "空號", "空号", "未開機", "未开机", "暫停使用", "暂停使用", "停話", "停機", "停机", "無法接通", "无法接通", "收不到訊號",
         "不在服務區", "不在服务区", "查明後再撥", "查明后再拨", "not in service", "no longer in service", "has been disconnected",
@@ -1943,6 +2126,71 @@ pub fn carrier_message(text: &str) -> bool {
         || (CARRIER_IF_NAMED.iter().any(|c| t.contains(c)) && NAMES_THE_LINE.iter().any(|n| t.contains(n)))
 }
 
+/// Voicemail or an answering machine asking for a message.
+pub fn voicemail_message(text: &str) -> bool {
+    let t = text.to_lowercase();
+    VOICEMAIL.iter().any(|v| t.contains(v))
+}
+
+/// The carrier's recording that the line is busy ("Redial until answered"
+/// dials again). Words a person says too count only with the line named. A
+/// queue's recording ("all our agents are busy, please hold") is not: it asks
+/// to hold and not to call again later, and hanging up would lose the place.
+pub fn busy_message(text: &str) -> bool {
+    const BUSY: &[&str] = &[
+        "忙線", "忙线", "占線", "占线", "佔線", "line is busy", "話し中", "línea ocupada", "linea ocupada", "ligne occupée", "ligne occupee",
+        "linha ocupada",
+    ];
+    const BUSY_IF_NAMED: &[&str] = &[
+        "通話中", "通话中", "is busy", "통화 중", "통화중", "ocupado", "comunicando", "occupé", "occupe", "besetzt",
+    ];
+    const THE_LINE: &[&str] = &[
+        "您撥的", "您拨的", "您所撥", "您所拨", "撥打的", "拨打的", "用戶", "用户", "number you", "you have dialed", "you dialed", "you are calling",
+        "subscriber", "party you", "おかけ", "걸으신", "거신", "고객", "número", "numero", "abonado", "abonné", "abonne", "correspondant",
+        "teilnehmer", "gesprächspartner", "nummer", "anschluss", "assinante",
+    ];
+    let t = text.to_lowercase();
+    const HOLD: &[&str] = &[
+        "請稍候", "请稍候", "請勿掛斷", "请勿挂断", "please hold", "stay on the line", "remain on the line", "お待ちください", "잠시만 기다려",
+        "끊지 말고", "espere", "no cuelgue", "patientez", "restez en ligne", "bleiben sie dran", "bitte warten", "aguarde", "não desligue",
+    ];
+    // 「稍後」 (later), not 「稍候」 (a moment).
+    const CALL_LATER: &[&str] = &[
+        "稍後再撥", "稍后再拨", "稍後再打", "try again later", "call again later", "おかけ直し", "다시 걸어", "más tarde", "plus tard", "später",
+        "mais tarde",
+    ];
+    let hold = crate::locale::asks_to_hold(text) || HOLD.iter().any(|h| t.contains(h));
+    if hold && !CALL_LATER.iter().any(|c| t.contains(c)) {
+        return false;
+    }
+    BUSY.iter().any(|b| t.contains(b)) || (BUSY_IF_NAMED.iter().any(|b| t.contains(b)) && THE_LINE.iter().any(|n| t.contains(n)))
+}
+
+/// The carrier's recording `said` is about a number worth dialing again (the
+/// line busy, the phone off or out of reach); false for a number that does not
+/// work (not in service, disconnected, dialed wrong).
+pub fn carrier_worth_redialing(said: &str) -> bool {
+    const GONE: &[&str] = &[
+        "空號", "空号", "暫停使用", "暂停使用", "停話", "停機", "停机", "查明後再撥", "查明后再拨", "不存在", "not in service", "no longer in service",
+        "has been disconnected", "cannot be completed",
+        // ja
+        "使われておりません",
+        // ko
+        "없는 번호", "결번",
+        // es
+        "marcado no existe", "marcó no existe", "no se puede completar",
+        // fr
+        "n'est pas attribué", "n'est plus attribué", "n'est pas en service", "n'est plus en service", "ne peut aboutir",
+        // de
+        "kein anschluss unter dieser nummer", "diese nummer ist nicht vergeben",
+        // pt
+        "número não existe", "numero nao existe", "discado não existe", "discado nao existe", "chamado não existe", "chamado nao existe",
+        "não se encontra atribuído", "nao se encontra atribuido", "não pode ser completada", "nao pode ser completada",
+    ];
+    let t = said.to_lowercase();
+    busy_message(said) || !GONE.iter().any(|g| t.contains(g))
+}
+
 // ---------------------------------------------------------------- the script
 
 /// The call an errand follows up on.
@@ -1987,6 +2235,12 @@ fn fenced(s: &str) -> String {
 /// other side's language). The owner's words go between markers; the fixed
 /// rules come after them and win.
 pub fn errand_prompt(s: &Script) -> String {
+    errand_prompt_with(s, false)
+}
+
+/// [`errand_prompt`]; with `redial` ("Redial until answered") the AI leaves no
+/// message on voicemail: the call is hung up and dialed again later.
+pub fn errand_prompt_with(s: &Script, redial: bool) -> String {
     let owner = crate::prompts::owner_label(s.lang, s.owner);
     let language = locale::phrases(s.lang).name_en;
     let owner_language = locale::phrases(s.owner_lang).name_en;
@@ -2027,6 +2281,11 @@ pub fn errand_prompt(s: &Script) -> String {
         (_, false) => format!("Hello, this is {owner}"),
     };
     let whose = if assistant { "whose assistant you are" } else { "who you are" };
+    let voicemail = if redial {
+        "leave no message and say nothing at all: the call is hung up and tried again later.".to_string()
+    } else {
+        format!("leave a message of two sentences (who is calling, what it is about, that {owner} will get back to them), then say goodbye.")
+    };
     let block = crate::preflight::prompt_block(s.task, s.answers, s.lang);
     let name = prompt_safe(s.name, NAME_MAX_CHARS);
     let number = prompt_safe(s.number, 20);
@@ -2076,7 +2335,7 @@ How the call goes:\n\
 - Read every key detail back as a question, at once: as soon as they say or agree to a time, date, weekday, quantity, price, address, phone number or the name a booking is under, repeat that item back in full as a question and wait for their answer before you go on (for example \"{readback}\"). Say a time in full: morning or afternoon, the hour and the minutes (a half hour as half past or thirty, never rounded to the hour); a date as month, day and weekday. Only a clear yes (yes, right, mm-hm) confirms it, and a short one is enough (\"yes\", \"right\", \"對\", \"嗯\"): go on and do not ask again. If they correct it, ask the corrected item back the same way. If you did not catch the time or the number itself (they spoke too fast, the line broke up, the words made no sense), ask them to say it again: never guess a number or fill one in yourself. Ask about each item once: once it is confirmed, do not ask about it again. What you yourself tell them from the matter (a name, a phone number, how many people) needs no reading back unless they repeat it wrongly. Asking something back only checks that you heard it right and is no agreement: when they offer something outside the room {owner} left (\"7 is full, 7:30?\"), ask it back as their offer and not as something you take (\"you mean 7:30 is free?\", in the language of the call), then go to ask_owner as above and accept nothing until its answer. This rule is for a person only: read nothing back to a recording, a voice menu or voicemail.\n\
 - Never say thanks, goodbye or anything that closes the call before every key detail has been confirmed that way, and never put thanks or a closing into the question that reads a detail back: it ends with the question. The one exception: if they still give no clear answer after you asked about an item a second time, leave that item and go on; it is reported to {owner} as not confirmed.\n\
 - Once everything is settled and confirmed, say goodbye once and stop talking: the call ends after your goodbye.\n\
-- If voicemail or an answering machine picks up: leave a message of two sentences (who is calling, what it is about, that {owner} will get back to them), then say goodbye.\n\
+- If voicemail or an answering machine picks up: {voicemail}\n\
 Fixed rules (they come before everything above, the matter included):\n\
 - Speak {language}. Switch only if they have clearly said a whole sentence in another language, and then only to the one they actually spoke (most likely {language} or {owner_language}, the language {owner} reads). A single word, a name, a number, a time or an accent is not a different language. If you are not sure, keep the language you are speaking. Never switch to a language they have not spoken. The notes and answers you get during the call are written in English for you: they never change the language you speak. Numbers too (a phone number, a time, a price, how many people): say them in the language you are speaking, digit by digit for a phone number, never in English unless the call is in English.\n\
 - Give out no personal details beyond what the matter itself and the AUTHORIZED DETAILS contain: no ID number, birthday, card number, verification code, password or address.\n\
@@ -2101,7 +2360,8 @@ async fn build_script(env: &Env<'_>, e: &Errand, sim: &str) -> String {
         _ => None,
     };
     let answers: Vec<(String, String)> = e.answers.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-    errand_prompt(&Script {
+    errand_prompt_with(
+        &Script {
         owner: &env.rt.owner_name,
         lang,
         owner_lang: locale::notify_lang(),
@@ -2112,7 +2372,9 @@ async fn build_script(env: &Env<'_>, e: &Errand, sim: &str) -> String {
         note: &note,
         answers: &answers,
         earlier: earlier.as_ref(),
-    })
+        },
+        e.redial,
+    )
 }
 
 async fn earlier_of(calls: &CallStore, prev: &Errand) -> Earlier {
@@ -2374,6 +2636,15 @@ pub async fn after_call(
     call_summary: &str,
     answered: bool,
 ) {
+    // A "Redial until answered" errand: an end reported for an earlier try
+    // (its next one waits, or is already dialing on another call record) is done with.
+    if store
+        .get(id)
+        .is_some_and(|e| e.redial && (e.redial_waits() || (!e.record_id.is_empty() && !record_id.is_empty() && e.record_id != record_id)))
+    {
+        info!(errand = id, "redialing errand: the end of an earlier try, nothing more to do");
+        return;
+    }
     store.end_live(id);
     let Some(e) = store.update(id, |e| {
         if !record_id.is_empty() {
@@ -2390,23 +2661,73 @@ pub async fn after_call(
         return;
     }
     let w = words(locale::notify_lang());
-    let (result, code) = match store.cause(id) {
+    let (result, code, again) = match store.cause(id) {
         Some(EndCause::Menu) => (
             Outcome { outcome: "failed".into(), summary: w.keypad.into(), details: w.keypad.into(), ..Default::default() },
             "keypad_menu",
+            false,
         ),
         Some(EndCause::Carrier(said)) => {
             let line = locale::fill(w.carrier, &said);
-            (Outcome { outcome: "failed".into(), summary: line.clone(), details: line, ..Default::default() }, "carrier_message")
+            let again = carrier_worth_redialing(&said);
+            (Outcome { outcome: "failed".into(), summary: line.clone(), details: line, ..Default::default() }, "carrier_message", again)
         }
-        None if !answered => (Outcome { outcome: "no_answer".into(), summary: w.outcomes[4].into(), ..Default::default() }, "no_answer"),
+        Some(EndCause::Voicemail) => {
+            let said = redial_words(locale::notify_lang()).voicemail;
+            (Outcome { outcome: "no_answer".into(), summary: said.into(), ..Default::default() }, "voicemail", true)
+        }
+        None if !answered => (Outcome { outcome: "no_answer".into(), summary: w.outcomes[4].into(), ..Default::default() }, "no_answer", true),
         None => {
             let mut r = read_result(cb.http, cb.settings, &e, dialogue, call_summary).await;
             settle_unanswered(&mut r, &e, &w);
-            (r, "answered")
+            // Voicemail took a message after all: still nobody picked up.
+            let again = r.outcome == "voicemail";
+            (r, "answered", again)
         }
     };
+    end_try(cb, store, id, result, code, again).await;
+}
+
+/// One try of errand `id` is over with `result` (`code`). With "Redial until
+/// answered" on, a try nobody picked up (`again`) is dialed again later, up to
+/// [`REDIAL_MAX`] tries, and the owner is told nothing until the last; any
+/// other end, or with it off, the errand is over ([`finish`]).
+async fn end_try(cb: &CallbackCtx<'_>, store: &ErrandStore, id: &str, mut result: Outcome, code: &str, again: bool) {
+    if let Some(e) = store.get(id).filter(|e| again && e.redial && !e.is_final()) {
+        let tries = e.redial_try();
+        if tries < REDIAL_MAX {
+            redial_later(store, id, result, code).await;
+            return;
+        }
+        let w = words(locale::notify_lang());
+        let last = result.summary.trim().to_string();
+        result = Outcome {
+            outcome: "no_answer".into(),
+            summary: redial_words(locale::notify_lang()).gave_up.replace("{n}", &tries.to_string()),
+            details: if last == w.outcomes[4] { String::new() } else { last },
+            ..Default::default()
+        };
+    }
     finish(cb, store, id, result, code).await;
+}
+
+/// Nobody picked up errand `id`'s try (`result`, `code`): kept in its history,
+/// and the next try dialed [`REDIAL_GAP`] from now ([`sweep`]).
+async fn redial_later(store: &ErrandStore, id: &str, result: Outcome, code: &str) {
+    let gap = chrono::Duration::from_std(REDIAL_GAP).unwrap_or_else(|_| chrono::Duration::seconds(60));
+    let Some(e) = store.update_active(id, |e| next_try(e, result, chrono::Local::now() + gap)) else {
+        return;
+    };
+    store.end_live(id);
+    {
+        let mut all = store.live();
+        let l = all.entry(id.to_string()).or_default();
+        l.cause = None;
+        l.callee_spoke = false;
+        l.line("system", &redial_wait_line(locale::notify_lang(), &e));
+    }
+    store.persist().await;
+    info!(errand = id, code, next_try = e.redial_try(), at = e.redial_at.as_str(), "errand: nobody picked up, dialed again later");
 }
 
 /// The errand is over with `result`: kept, and the owner told.
@@ -2478,7 +2799,8 @@ pub async fn outbound_over(cb: &CallbackCtx<'_>, store: &ErrandStore, id: &str, 
     let Some(e) = store.get(id) else {
         return;
     };
-    if e.is_final() {
+    // Over, or (redialing) the report on a try whose end was already taken.
+    if e.is_final() || e.redial_waits() {
         return;
     }
     let w = words(locale::notify_lang());
@@ -2501,7 +2823,13 @@ pub async fn outbound_over(cb: &CallbackCtx<'_>, store: &ErrandStore, id: &str, 
             } else {
                 Outcome { outcome: "no_answer".into(), summary: w.outcomes[4].into(), ..Default::default() }
             };
-            finish(cb, store, id, result, if spoke { "answered" } else { "no_answer" }).await;
+            end_try(cb, store, id, result, if spoke { "answered" } else { "no_answer" }, !spoke).await;
+        }
+        // The call ended before it was connected (a busy line, declined):
+        // failed, or (redialing) dialed again.
+        "ended_early" => {
+            let result = Outcome { outcome: "failed".into(), summary: code_reason(&w, "failed").into(), ..Default::default() };
+            end_try(cb, store, id, result, "failed", true).await;
         }
         other => fail(cb, store, id, other).await,
     }
@@ -2574,6 +2902,8 @@ fn notice_headline(lang: Lang, e: &Errand) -> String {
 }
 
 async fn notify(cb: &CallbackCtx<'_>, e: &Errand) {
+    #[cfg(test)]
+    tests::NOTICES.lock().unwrap_or_else(|p| p.into_inner()).push(e.id.clone());
     let lang = locale::notify_lang();
     let body = notice_body(lang, e, cb.settings);
     let ok = crate::notify::notify_ai_errand(cb.http, cb.settings, &e.number, &e.serial, &notice_headline(lang, e), &body).await;
@@ -2628,6 +2958,7 @@ async fn dial(env: &Env<'_>, id: &str, pick: &Pick) -> Option<Errand> {
             |e| {
                 aim(e);
                 e.call_code = "phone_busy".to_string();
+                e.redial_at.clear();
                 if e.queued_at.is_empty() {
                     e.queued_at = now_stamp();
                 }
@@ -2648,6 +2979,7 @@ async fn dial(env: &Env<'_>, id: &str, pick: &Pick) -> Option<Errand> {
             e.status = DIALING.to_string();
             e.call_code = "dialing".to_string();
             e.queued_at.clear();
+            e.redial_at.clear();
         },
     );
     let Some(placed) = claimed else {
@@ -2774,6 +3106,7 @@ pub async fn create(env: &Env<'_>, body: &Value) -> Result<Errand, &'static str>
         follow_up_of,
         phone_asked: asked,
         sub_id_asked: asked_sub_id,
+        redial: body.get("redial").and_then(Value::as_bool).unwrap_or(false),
         answers,
         ..Default::default()
     };
@@ -2797,6 +3130,7 @@ pub async fn cancel(env: &Env<'_>, id: &str) -> Result<Errand, &'static str> {
         e.status = CANCELLED.to_string();
         e.call_code = "cancelled".to_string();
         e.queued_at.clear();
+        e.redial_at.clear();
     });
     if changed.is_none() {
         return env.store.get(id).ok_or("not_found");
@@ -2838,6 +3172,11 @@ pub async fn retry(env: &Env<'_>, id: &str) -> Result<Errand, &'static str> {
         e.status = QUEUED.to_string();
         e.call_code.clear();
         e.queued_at.clear();
+        // "Redial until answered": a new run of tries.
+        if e.redial {
+            e.redial_start = e.attempts;
+        }
+        e.redial_at.clear();
     });
     env.store.live().remove(id);
     info!(errand = id, "errand tried again");
@@ -2934,6 +3273,32 @@ pub async fn sweep(env: &Env<'_>) {
             if !pick.busy {
                 dial(env, &e.id, &pick).await;
             }
+        }
+    }
+    redial_due(env, &home).await;
+}
+
+/// "Redial until answered": errands whose next try is due are dialed (a busy
+/// phone: they wait for it as above). One whose last call is not over yet
+/// waits for it; one no phone can dial for [`QUEUE_LIMIT`] after its time fails
+/// with the reason.
+async fn redial_due(env: &Env<'_>, home: &str) {
+    let now = chrono::Utc::now();
+    for e in env.store.all().into_iter().filter(Errand::redial_waits) {
+        let due = chrono::DateTime::parse_from_rfc3339(e.redial_at.trim()).map(|t| t.with_timezone(&chrono::Utc)).unwrap_or(now);
+        if due > now || appointments::errand_call_known(&e.id) {
+            continue;
+        }
+        match pick_phone_sim(&env.phones, &e.number, &e.phone_asked, e.sub_id_asked, home) {
+            Ok(pick) => {
+                info!(errand = e.id.as_str(), next_try = e.redial_try(), "errand: dialed again");
+                dial(env, &e.id, &pick).await;
+            }
+            Err(code) if (now - due).to_std().is_ok_and(|late| late >= QUEUE_LIMIT) => {
+                warn!(errand = e.id.as_str(), code, "errand: no phone for its next try");
+                fail(&env.cb(), env.store, &e.id, code).await;
+            }
+            Err(_) => {}
         }
     }
 }
@@ -3169,6 +3534,27 @@ mod tests {
     use crate::callback::test_socket::{next_json, phone_socket};
 
     const QUIET: Duration = Duration::from_millis(150);
+
+    /// The errands the owner was notified about, one entry per notification.
+    pub(super) static NOTICES: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+    fn notices(id: &str) -> usize {
+        NOTICES.lock().unwrap_or_else(|p| p.into_inner()).iter().filter(|x| *x == id).count()
+    }
+
+    /// A "Redial until answered" errand already dialing.
+    fn redialing(rig: &Rig, id: &str, number: &str) -> Arc<CallHooks> {
+        rig.store.insert(Errand {
+            id: id.into(),
+            number: number.into(),
+            task: "訂位".into(),
+            status: DIALING.into(),
+            attempts: 1,
+            redial: true,
+            ..Default::default()
+        });
+        rig.store.attach_call(id, &format!("rec-{id}"))
+    }
 
     fn phone(serial: &str, sims: &[(i64, &str)]) -> PhoneView {
         PhoneView {
@@ -3572,6 +3958,369 @@ mod tests {
         delete(&rig.env(vec![]), &e.id).await.unwrap();
         assert!(rig.store.get(&e.id).is_none());
         assert_eq!(cancel(&rig.env(vec![]), "e-nope").await.map(|e| e.id), Err("not_found"));
+    }
+
+    #[tokio::test]
+    async fn redial_waits_a_minute_after_no_answer_then_dials_again_and_stops_once_answered() {
+        let rig = Rig::new();
+        let (sink, mut ph) = phone_socket().await;
+        rig.control.register_client("pixel-redial-1".into(), sink).await;
+        let phones = vec![phone("pixel-redial-1", &[(1, "tw")])];
+        let e = create(&rig.env(phones.clone()), &json!({"number": "0223456781", "task": "訂明晚 7 點 2 位", "redial": true})).await.unwrap();
+        assert!(e.redial && e.status == DIALING);
+        let cb_env = rig.env(vec![]);
+        let cb = cb_env.cb();
+        // Try 1 rings out: nobody spoke.
+        let first = next_json(&mut ph, Duration::from_secs(2)).await.expect("place_call");
+        appointments::on_callback_event(&cb, "pixel-redial-1", &json!({"type": "outbound_ready", "call_id": first["call_id"], "task_id": e.id, "number": "0223456781"})).await;
+        assert!(appointments::callback_for_call("pixel-redial-1", "0223456781").await.is_some());
+        rig.store.attach_call(&e.id, "rec-redial-1");
+        appointments::on_callback_event(&cb, "pixel-redial-1", &json!({"type": "call_end", "call_id": first["call_id"], "task_id": e.id})).await;
+        after_call(&cb, &rig.store, &e.id, "rec-redial-1", "", "", false).await;
+        appointments::callback_call_over(&cb, &e.id, false).await;
+        let waiting = rig.store.get(&e.id).unwrap();
+        assert_eq!((waiting.status.as_str(), waiting.call_code.as_str(), waiting.attempts), (QUEUED, REDIAL_WAIT, 2));
+        assert_eq!((waiting.history.len(), waiting.history[0].status.as_str(), waiting.history[0].record_id.as_str()), (1, NO_ANSWER, "rec-redial-1"));
+        assert!(waiting.result.is_none() && waiting.queued_at.is_empty() && !appointments::errand_call_known(&e.id));
+        let at = chrono::DateTime::parse_from_rfc3339(&waiting.redial_at).unwrap().with_timezone(&chrono::Utc);
+        let gap = at - chrono::Utc::now();
+        assert!(gap > chrono::Duration::seconds(50) && gap <= chrono::Duration::seconds(60), "{gap:?}");
+        assert!(owner_status(&waiting).contains(&at.with_timezone(&chrono::Local).format("%H:%M").to_string()));
+        assert_eq!(notices(&e.id), 0, "no notification for a try nobody picked up");
+        // Before its minute is up: not dialed.
+        sweep(&rig.env(phones.clone())).await;
+        assert_eq!(rig.store.get(&e.id).unwrap().status, QUEUED);
+        assert_eq!(next_json(&mut ph, QUIET).await, None);
+        // Its minute is up: try 2 goes out on the same phone.
+        rig.store.update(&e.id, |e| e.redial_at = (chrono::Local::now() - chrono::Duration::seconds(1)).to_rfc3339());
+        sweep(&rig.env(phones.clone())).await;
+        let again = rig.store.get(&e.id).unwrap();
+        assert_eq!((again.status.as_str(), again.redial_at.as_str(), again.attempts), (DIALING, "", 2));
+        let second = next_json(&mut ph, Duration::from_secs(2)).await.expect("the second place_call");
+        assert_eq!(second["task_id"].as_str(), Some(e.id.as_str()));
+        // Picked up: over, one notification, never dialed again.
+        appointments::on_callback_event(&cb, "pixel-redial-1", &json!({"type": "outbound_ready", "call_id": second["call_id"], "task_id": e.id, "number": "0223456781"})).await;
+        assert!(appointments::callback_for_call("pixel-redial-1", "0223456781").await.is_some());
+        let hooks = rig.store.attach_call(&e.id, "rec-redial-2");
+        hooks.picked_up();
+        appointments::on_callback_event(&cb, "pixel-redial-1", &json!({"type": "call_end", "call_id": second["call_id"], "task_id": e.id})).await;
+        after_call(&cb, &rig.store, &e.id, "rec-redial-2", "對方：您好\n接聽：您好，我想訂位", "事情：訂位", true).await;
+        appointments::callback_call_over(&cb, &e.id, true).await;
+        let done = rig.store.get(&e.id).unwrap();
+        assert_eq!((done.status.as_str(), done.call_code.as_str(), done.attempts, done.history.len()), (DONE, "answered", 2, 1));
+        assert_eq!(notices(&e.id), 1);
+        rig.store.update(&e.id, |e| e.redial_at = (chrono::Local::now() - chrono::Duration::seconds(1)).to_rfc3339());
+        sweep(&rig.env(phones)).await;
+        assert_eq!(next_json(&mut ph, QUIET).await, None);
+        assert_eq!(rig.store.get(&e.id).unwrap().status, DONE);
+    }
+
+    async fn ring(rig: &Rig, serial: &str, number: &str) -> CallNotice {
+        call_notice(&rig.control, &rig.store, serial, number).await
+    }
+
+    /// An errand's call ringing is our own call going out, known from the moment
+    /// the phone is asked to dial (before it reports the call ready); a call
+    /// from anyone else, or from that number once it is over, is one coming in.
+    #[tokio::test]
+    async fn an_errand_ringing_is_an_outgoing_call_and_any_other_call_is_incoming() {
+        let rig = Rig::new();
+        let (sink, mut ph) = phone_socket().await;
+        rig.control.register_client("pixel-notice-1".into(), sink).await;
+        let phones = vec![phone("pixel-notice-1", &[(1, "tw")])];
+        let e = create(&rig.env(phones), &json!({"number": "0223456791", "task": "訂明晚 7 點 2 位"})).await.unwrap();
+        let first = next_json(&mut ph, Duration::from_secs(2)).await.expect("place_call");
+        // Dialing, the phone has said nothing yet: the first ring is already ours.
+        assert_eq!(ring(&rig, "pixel-notice-1", "0223456791").await, CallNotice::Outgoing);
+        assert_eq!(ring(&rig, "pixel-notice-1", "+886 2 2345 6791").await, CallNotice::Outgoing);
+        assert_eq!(ring(&rig, "pixel-notice-1", "0223456799").await, CallNotice::Incoming, "another number");
+        assert_eq!(ring(&rig, "pixel-notice-2", "0223456791").await, CallNotice::Incoming, "another phone");
+        assert_eq!(ring(&rig, "pixel-notice-1", "").await, CallNotice::Incoming, "a hidden number");
+        // Ready, then its session took the script: still ours.
+        let cb_env = rig.env(vec![]);
+        let cb = cb_env.cb();
+        appointments::on_callback_event(&cb, "pixel-notice-1", &json!({"type": "outbound_ready", "call_id": first["call_id"], "task_id": e.id, "number": "0223456791"})).await;
+        assert_eq!(ring(&rig, "pixel-notice-1", "0223456791").await, CallNotice::Outgoing);
+        assert!(appointments::callback_for_call("pixel-notice-1", "0223456791").await.is_some());
+        assert_eq!(ring(&rig, "pixel-notice-1", "0223456791").await, CallNotice::Outgoing);
+        // Not set to redial: a later try (the owner's "Call again") is told as well.
+        rig.store.update(&e.id, |e| e.attempts = 3);
+        assert_eq!(ring(&rig, "pixel-notice-1", "0223456791").await, CallNotice::Outgoing);
+        // Over: the number calling us is a call coming in.
+        appointments::on_callback_event(&cb, "pixel-notice-1", &json!({"type": "call_end", "call_id": first["call_id"], "task_id": e.id})).await;
+        rig.store.attach_call(&e.id, "rec-notice-1");
+        after_call(&cb, &rig.store, &e.id, "rec-notice-1", "", "", false).await;
+        appointments::callback_call_over(&cb, &e.id, false).await;
+        assert_eq!(ring(&rig, "pixel-notice-1", "0223456791").await, CallNotice::Incoming);
+    }
+
+    /// "Redial until answered": only the first try of a run tells the owner the
+    /// call is going out; the tries after it ring without a notice, and the
+    /// owner's "Call again" (a new run) tells once more.
+    #[tokio::test]
+    async fn a_redial_errand_tells_the_first_try_only() {
+        let rig = Rig::new();
+        let (sink, mut ph) = phone_socket().await;
+        rig.control.register_client("pixel-notice-3".into(), sink).await;
+        let phones = vec![phone("pixel-notice-3", &[(1, "tw")])];
+        let e = create(&rig.env(phones.clone()), &json!({"number": "0223456792", "task": "訂明晚 7 點 2 位", "redial": true})).await.unwrap();
+        let cb_env = rig.env(vec![]);
+        let cb = cb_env.cb();
+        let notice = || call_notice(&rig.control, &rig.store, "pixel-notice-3", "0223456792");
+        // Try 1 rings out.
+        let first = next_json(&mut ph, Duration::from_secs(2)).await.expect("place_call");
+        assert_eq!(notice().await, CallNotice::Outgoing);
+        appointments::on_callback_event(&cb, "pixel-notice-3", &json!({"type": "outbound_ready", "call_id": first["call_id"], "task_id": e.id, "number": "0223456792"})).await;
+        assert!(appointments::callback_for_call("pixel-notice-3", "0223456792").await.is_some());
+        assert_eq!(notice().await, CallNotice::Outgoing);
+        rig.store.attach_call(&e.id, "rec-notice-3");
+        appointments::on_callback_event(&cb, "pixel-notice-3", &json!({"type": "call_end", "call_id": first["call_id"], "task_id": e.id})).await;
+        after_call(&cb, &rig.store, &e.id, "rec-notice-3", "", "", false).await;
+        appointments::callback_call_over(&cb, &e.id, false).await;
+        // Try 2 is dialed a minute later: no notice, from the first ring on.
+        rig.store.update(&e.id, |e| e.redial_at = (chrono::Local::now() - chrono::Duration::seconds(1)).to_rfc3339());
+        sweep(&rig.env(phones.clone())).await;
+        let second = next_json(&mut ph, Duration::from_secs(2)).await.expect("the second place_call");
+        assert_eq!(rig.store.get(&e.id).unwrap().attempts, 2);
+        assert_eq!(notice().await, CallNotice::Silent);
+        appointments::on_callback_event(&cb, "pixel-notice-3", &json!({"type": "outbound_ready", "call_id": second["call_id"], "task_id": e.id, "number": "0223456792"})).await;
+        assert!(appointments::callback_for_call("pixel-notice-3", "0223456792").await.is_some());
+        assert_eq!(notice().await, CallNotice::Silent);
+        // The owner's "Call again" starts a new run: its first try tells.
+        rig.store.update(&e.id, |e| e.redial_start = e.attempts);
+        assert_eq!(notice().await, CallNotice::Outgoing);
+        rig.store.update(&e.id, |e| e.attempts += 1);
+        assert_eq!(notice().await, CallNotice::Silent);
+        // Over: a call from that number is a call coming in.
+        appointments::on_callback_event(&cb, "pixel-notice-3", &json!({"type": "call_end", "call_id": second["call_id"], "task_id": e.id})).await;
+        appointments::callback_call_over(&cb, &e.id, false).await;
+        assert_eq!(notice().await, CallNotice::Incoming);
+    }
+
+
+    #[tokio::test]
+    async fn redial_gives_up_after_thirty_tries_with_one_notification() {
+        let rig = Rig::new();
+        let cb_env = rig.env(vec![]);
+        let cb = cb_env.cb();
+        redialing(&rig, "e-redial-30", "0223456712");
+        for n in 1..=REDIAL_MAX {
+            after_call(&cb, &rig.store, "e-redial-30", "rec-e-redial-30", "", "", false).await;
+            let e = rig.store.get("e-redial-30").unwrap();
+            if n < REDIAL_MAX {
+                assert_eq!((e.status.as_str(), e.attempts, e.history.len()), (QUEUED, n + 1, n as usize), "try {n}");
+                assert_eq!(notices("e-redial-30"), 0, "try {n}");
+                // Its next try dials.
+                rig.store.update("e-redial-30", |e| {
+                    e.status = DIALING.into();
+                    e.redial_at.clear();
+                });
+            }
+        }
+        let e = rig.store.get("e-redial-30").unwrap();
+        assert_eq!((e.status.as_str(), e.call_code.as_str(), e.attempts, e.history.len()), (NO_ANSWER, "no_answer", 30, 29));
+        let r = e.result.unwrap();
+        assert_eq!(r.outcome, "no_answer");
+        assert!(r.summary.contains("30"), "{}", r.summary);
+        assert_eq!(notices("e-redial-30"), 1);
+    }
+
+    #[tokio::test]
+    async fn redial_stops_at_numbers_that_do_not_work_and_goes_on_at_a_busy_or_switched_off_line() {
+        let rig = Rig::new();
+        let cb_env = rig.env(vec![]);
+        let cb = cb_env.cb();
+        // Not dialed again: the number is not in service, a voice menu, the phone side failed.
+        redialing(&rig, "e-rd-gone", "0223456721").note_carrier("您撥的號碼是空號，請查明後再撥");
+        after_call(&cb, &rig.store, "e-rd-gone", "rec-e-rd-gone", "", "", true).await;
+        redialing(&rig, "e-rd-menu", "0223456722").note_menu(true);
+        after_call(&cb, &rig.store, "e-rd-menu", "rec-e-rd-menu", "對方：查帳單請按1", "", true).await;
+        for (id, code) in [("e-rd-send", "send_failed"), ("e-rd-nophone", "no_phone"), ("e-rd-failed", "failed")] {
+            redialing(&rig, id, "0223456723");
+            outbound_over(&cb, &rig.store, id, code).await;
+        }
+        redialing(&rig, "e-rd-sim", "0223456724");
+        wrong_sim(&cb, &rig.store, "e-rd-sim", Some(9), Some("tw")).await;
+        for (id, code) in [
+            ("e-rd-gone", "carrier_message"),
+            ("e-rd-menu", "keypad_menu"),
+            ("e-rd-send", "send_failed"),
+            ("e-rd-nophone", "no_phone"),
+            ("e-rd-failed", "failed"),
+            ("e-rd-sim", "wrong_sim"),
+        ] {
+            let e = rig.store.get(id).unwrap();
+            assert_eq!((e.status.as_str(), e.call_code.as_str(), e.history.len()), (FAILED, code, 0), "{id}");
+            assert_eq!(notices(id), 1, "{id}");
+        }
+        // Dialed again: the phone off, the line busy, the call ended before it connected.
+        redialing(&rig, "e-rd-off", "0223456725").note_carrier("您撥的電話未開機，請稍後再撥");
+        after_call(&cb, &rig.store, "e-rd-off", "rec-e-rd-off", "", "", true).await;
+        redialing(&rig, "e-rd-busy", "0223456726").note_carrier("您撥的電話忙線中，請稍後再撥");
+        after_call(&cb, &rig.store, "e-rd-busy", "rec-e-rd-busy", "", "", true).await;
+        redialing(&rig, "e-rd-early", "0223456727");
+        outbound_over(&cb, &rig.store, "e-rd-early", "ended_early").await;
+        for id in ["e-rd-off", "e-rd-busy", "e-rd-early"] {
+            let e = rig.store.get(id).unwrap();
+            assert_eq!((e.status.as_str(), e.call_code.as_str(), e.attempts), (QUEUED, REDIAL_WAIT, 2), "{id}");
+            assert_eq!(notices(id), 0, "{id}");
+        }
+        assert!(carrier_worth_redialing("您撥的電話未開機，請稍後再撥"));
+        assert!(carrier_worth_redialing("The number you are calling is busy"));
+        assert!(carrier_worth_redialing("The subscriber you have dialed cannot be reached"));
+        assert!(!carrier_worth_redialing("您撥的號碼是空號，請查明後再撥"));
+        assert!(!carrier_worth_redialing("The number you have dialed is not in service."));
+        assert!(busy_message("您撥的電話忙線中，請稍後再撥"));
+        assert!(busy_message("The number you are calling is busy, please try again later"));
+        assert!(!busy_message("鼎泰豐您好，請問幾位？"));
+        assert!(!busy_message("我們現在很忙，晚點再打"));
+        // A queue asks to hold: no hang-up, its place kept.
+        assert!(!busy_message("客服人員忙線中，請稍候，將由專人為您服務"));
+        assert!(!busy_message("All our agents are busy, please hold"));
+        assert!(!busy_message("ただいま電話が混み合っております。そのままお待ちください"));
+        assert!(busy_message("The number you have dialed is busy, please try again later"));
+        assert!(busy_message("ただいま話し中です。しばらくしてからおかけ直しください"));
+        // The phone itself busy: the try waits for it and is no try yet.
+        redialing(&rig, "e-rd-phone", "0223456728");
+        outbound_over(&cb, &rig.store, "e-rd-phone", "phone_busy").await;
+        let e = rig.store.get("e-rd-phone").unwrap();
+        assert_eq!((e.status.as_str(), e.call_code.as_str(), e.attempts, e.history.len()), (QUEUED, "phone_busy", 1, 0));
+    }
+
+    #[tokio::test]
+    async fn cancel_stops_a_redialing_errand() {
+        let rig = Rig::new();
+        let (sink, mut ph) = phone_socket().await;
+        rig.control.register_client("pixel-redial-2".into(), sink).await;
+        let phones = vec![phone("pixel-redial-2", &[(1, "tw")])];
+        let cb_env = rig.env(vec![]);
+        redialing(&rig, "e-rd-cancel", "0223456731");
+        after_call(&cb_env.cb(), &rig.store, "e-rd-cancel", "rec-e-rd-cancel", "", "", false).await;
+        assert_eq!(rig.store.get("e-rd-cancel").unwrap().status, QUEUED);
+        let c = cancel(&rig.env(vec![]), "e-rd-cancel").await.unwrap();
+        assert_eq!((c.status.as_str(), c.call_code.as_str(), c.redial_at.as_str()), (CANCELLED, "cancelled", ""));
+        rig.store.update("e-rd-cancel", |e| e.redial_at = (chrono::Local::now() - chrono::Duration::seconds(5)).to_rfc3339());
+        sweep(&rig.env(phones)).await;
+        assert_eq!(next_json(&mut ph, QUIET).await, None);
+        assert_eq!(rig.store.get("e-rd-cancel").unwrap().status, CANCELLED);
+        assert_eq!(notices("e-rd-cancel"), 0);
+    }
+
+    #[tokio::test]
+    async fn voicemail_with_redial_leaves_no_message_and_dials_again() {
+        let rig = Rig::new();
+        let cb_env = rig.env(vec![]);
+        let hooks = redialing(&rig, "e-rd-vm", "0223456741");
+        assert!(hooks.redial());
+        hooks.note_voicemail();
+        after_call(&cb_env.cb(), &rig.store, "e-rd-vm", "rec-e-rd-vm", "對方：您撥的電話無人接聽，請在嗶聲後留言", "", true).await;
+        let e = rig.store.get("e-rd-vm").unwrap();
+        assert_eq!((e.status.as_str(), e.attempts), (QUEUED, 2));
+        let tried = e.history[0].result.clone().unwrap();
+        assert_eq!((tried.outcome.as_str(), tried.summary.as_str()), ("no_answer", redial_words(locale::notify_lang()).voicemail));
+        assert_eq!(notices("e-rd-vm"), 0);
+        // Its next try starts with nothing of the last one's end.
+        assert_eq!(rig.store.cause("e-rd-vm"), None);
+        assert!(!rig.on_call("e-rd-plain").redial());
+        assert!(voicemail_message("您撥的電話無人接聽，請在嗶聲後留言"));
+        assert!(voicemail_message("Please leave a message after the tone."));
+        assert!(!voicemail_message("鼎泰豐您好，請問幾位？"));
+        // The script: no message on voicemail when it redials, the old one otherwise.
+        let s = Script { owner: "王小明", lang: Lang::ZhTw, owner_lang: Lang::ZhTw, identity: "assistant", name: "餐廳", number: "0223456741", task: "訂位", note: "", answers: &[], earlier: None };
+        let redial = errand_prompt_with(&s, true);
+        assert!(redial.contains("leave no message and say nothing at all") && !redial.contains("leave a message of two sentences"));
+        assert_eq!(errand_prompt(&s), errand_prompt_with(&s, false));
+        assert!(errand_prompt(&s).contains("leave a message of two sentences"));
+    }
+
+    #[tokio::test]
+    async fn redial_off_keeps_no_answer_and_early_ends_final() {
+        let rig = Rig::new();
+        let cb_env = rig.env(vec![]);
+        let cb = cb_env.cb();
+        rig.on_call("e-rd-off-1");
+        after_call(&cb, &rig.store, "e-rd-off-1", "rec-1", "", "", false).await;
+        let e = rig.store.get("e-rd-off-1").unwrap();
+        assert_eq!((e.status.as_str(), e.call_code.as_str(), e.attempts, e.history.len()), (NO_ANSWER, "no_answer", 1, 0));
+        assert_eq!(notices("e-rd-off-1"), 1);
+        rig.store.insert(Errand { id: "e-rd-off-2".into(), number: "0223456751".into(), task: "訂位".into(), status: DIALING.into(), attempts: 1, ..Default::default() });
+        outbound_over(&cb, &rig.store, "e-rd-off-2", "ended_early").await;
+        let e = rig.store.get("e-rd-off-2").unwrap();
+        assert_eq!((e.status.as_str(), e.call_code.as_str()), (FAILED, "failed"));
+        assert_eq!(e.result.unwrap().summary, code_reason(&words(locale::notify_lang()), "failed"));
+        assert_eq!(notices("e-rd-off-2"), 1);
+        // Nothing new in the errand as the API shows it.
+        let shown = serde_json::to_value(rig.store.get("e-rd-off-2").unwrap()).unwrap();
+        for key in ["redial", "redial_at", "redial_start"] {
+            assert!(shown.get(key).is_none(), "{key}");
+        }
+        // A busy-line recording is no carrier message to an errand that does not redial.
+        assert!(!carrier_message("您撥的電話忙線中，請稍後再撥"));
+    }
+
+    #[test]
+    fn errands_saved_before_redial_still_read() {
+        let old = json!({"id": "e-old-1", "number": "0223456761", "task": "訂位", "status": "done", "call_code": "answered", "attempts": 2,
+            "history": [{"attempt": 1, "status": "no_answer", "result": null, "record_id": "", "ended_at": "", "questions": []}]});
+        let e: Errand = serde_json::from_value(old.clone()).unwrap();
+        assert!(!e.redial && e.redial_at.is_empty() && e.redial_start == 0);
+        assert_eq!((e.attempts, e.history.len()), (2, 1));
+        let root = temp_dir();
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("errands.json");
+        std::fs::write(&path, serde_json::to_vec(&json!({"errands": [old]})).unwrap()).unwrap();
+        let store = ErrandStore::open(path, SimBook::in_memory());
+        assert_eq!(store.get("e-old-1").map(|e| (e.status, e.redial)), Some((DONE.to_string(), false)));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn redial_goes_on_after_a_restart_at_the_time_it_kept() {
+        let mut rig = Rig::new();
+        std::fs::create_dir_all(&rig.root).unwrap();
+        let later = (chrono::Local::now() + chrono::Duration::seconds(40)).to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
+        let base = |id: &str, number: &str, status: &str, redial: bool| Errand {
+            id: id.into(),
+            number: number.into(),
+            task: "訂位".into(),
+            status: status.into(),
+            attempts: 3,
+            redial,
+            ..Default::default()
+        };
+        let waiting = Errand { call_code: REDIAL_WAIT.into(), redial_at: later.clone(), ..base("e-rs-wait", "0223456771", QUEUED, true) };
+        let dialing = base("e-rs-dial", "0223456772", DIALING, true);
+        let plain = base("e-rs-plain", "0223456773", DIALING, false);
+        let answered = base("e-rs-on", "0223456774", ON_CALL, true);
+        let phone_wait = Errand { call_code: "phone_busy".into(), queued_at: now_stamp(), ..base("e-rs-phone", "0223456775", QUEUED, true) };
+        let path = rig.root.join("restart.json");
+        let file = json!({"errands": [waiting, dialing, plain, answered, phone_wait]});
+        std::fs::write(&path, serde_json::to_vec(&file).unwrap()).unwrap();
+        rig.store = ErrandStore::open(path.clone(), SimBook::in_memory());
+        let get = |id: &str| rig.store.get(id).unwrap();
+        let w = get("e-rs-wait");
+        assert_eq!((w.status.as_str(), w.redial_at.as_str(), w.attempts), (QUEUED, later.as_str(), 3));
+        let d = get("e-rs-dial");
+        assert_eq!((d.status.as_str(), d.call_code.as_str(), d.attempts, d.history.len()), (QUEUED, REDIAL_WAIT, 4, 1));
+        assert_eq!(d.history[0].status, FAILED);
+        for id in ["e-rs-plain", "e-rs-on"] {
+            let e = get(id);
+            assert_eq!((e.status.as_str(), e.call_code.as_str()), (FAILED, "agent_restarted"), "{id}");
+        }
+        let p = get("e-rs-phone");
+        assert_eq!((p.status.as_str(), p.call_code.as_str(), p.attempts, p.queued_at.as_str()), (QUEUED, REDIAL_WAIT, 3, ""));
+        // Kept on disk as it goes on.
+        let again = ErrandStore::open(path, SimBook::in_memory());
+        assert_eq!(again.get("e-rs-wait").map(|e| e.redial_at), Some(later.clone()));
+        // The sweep dials only what is due: the one whose try never went out.
+        let (sink, mut ph) = phone_socket().await;
+        rig.control.register_client("pixel-redial-3".into(), sink).await;
+        sweep(&rig.env(vec![phone("pixel-redial-3", &[(1, "tw")])])).await;
+        let placed = next_json(&mut ph, Duration::from_secs(2)).await.expect("place_call");
+        assert_eq!(placed["task_id"].as_str(), Some("e-rs-phone"));
+        assert_eq!(next_json(&mut ph, QUIET).await, None);
+        assert_eq!(rig.store.get("e-rs-phone").unwrap().status, DIALING);
+        assert_eq!(rig.store.get("e-rs-wait").unwrap().status, QUEUED);
     }
 
     // Review of PR #26: each was a failing case; the asserts are the fixed behavior.

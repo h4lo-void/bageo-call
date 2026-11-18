@@ -84,3 +84,5 @@ The agent also looks here for `ivr_*.wav` and `hold_transfer.wav`: greeting,
 voicemail and hold-music clips of the older menu-based modes. None are shipped. The
 default mode, an AI voice answering directly, does not use them, and the agent runs
 without them.
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

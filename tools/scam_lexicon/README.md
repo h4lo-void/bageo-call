@@ -22,3 +22,5 @@
    cargo test --manifest-path crates/agent/Cargo.toml scam_db
    cargo test --manifest-path crates/agent/Cargo.toml stall
    ```
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

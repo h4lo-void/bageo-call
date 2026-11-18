@@ -307,3 +307,5 @@ reconnect by themselves.
 - Everything you can change: [Settings reference](SETTINGS.md)
 - How it works inside: [Architecture](ARCHITECTURE.md)
 
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

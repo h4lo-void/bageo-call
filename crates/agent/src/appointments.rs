@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Appointments: when a caller wants to set a time, the AI takes it down and
 //! tells them it will check and text them back later (only "get back to you"
 //! when no text can reach them). No calendar is connected: after the call the
@@ -2418,6 +2421,37 @@ pub fn callback_pending_on(serial: &str) -> bool {
     })
 }
 
+/// One of our own calls (an appointment's call-back or an errand) going out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutgoingCall {
+    /// The appointment task's id, or the errand's.
+    pub task_id: String,
+    /// An errand's call ([`crate::errands`]).
+    pub errand: bool,
+}
+
+/// Whether a call ringing on phone `serial` for `caller_id` (the number
+/// dialed) is a call we placed ourselves: a call-back or errand that was sent
+/// to that very phone for that number (`Dialing`, `Ready` or `OnCall`). It
+/// reads the state `place_call` left, so it holds from the moment the phone is
+/// asked to dial, before its `outbound_ready` or the Live session's start, and
+/// it takes nothing ([`callback_for_call`] hands the script over once). With no
+/// number, only the one call the phone reported ready (`Ready` / `OnCall`).
+pub fn outgoing_call_on(serial: &str, caller_id: &str) -> Option<OutgoingCall> {
+    let key = number_key(caller_id);
+    let list = callbacks();
+    let mut mine = list.iter().filter(|c| c.serial.eq_ignore_ascii_case(serial.trim()));
+    let found: Option<&PendingCallback> = if key.is_empty() {
+        let mut ready = mine.filter(|c| matches!(c.stage, CallbackStage::Ready | CallbackStage::OnCall));
+        let first = ready.next()?;
+        ready.next().is_none().then_some(first)
+    } else {
+        mine.find(|c| c.key == key && matches!(c.stage, CallbackStage::Dialing | CallbackStage::Ready | CallbackStage::OnCall))
+    };
+    let found = found?;
+    Some(OutgoingCall { task_id: found.task_id.clone(), errand: found.kind == CallbackKind::Errand })
+}
+
 /// Whether the Live session starting for a call on `serial` with `caller_id`
 /// is an appointment's call-back, and its script. Only the call the phone
 /// reported dialing for it (`outbound_ready` with its task, call and number,
@@ -2627,7 +2661,9 @@ pub async fn on_callback_event(ctx: &CallbackCtx<'_>, serial: &str, msg: &Value)
         "call_end" => match stage {
             CallbackStage::OnCall => callbacks_set_stage(&task_id, CallbackStage::Ended),
             CallbackStage::Ended | CallbackStage::Queued => {}
-            CallbackStage::Dialing | CallbackStage::Ready => finish_callback(ctx, &task_id, "failed").await,
+            // An errand's call that ended before it was connected (a busy
+            // line, declined) may be dialed again ("Redial until answered").
+            CallbackStage::Dialing | CallbackStage::Ready => finish_callback(ctx, &task_id, if errand { "ended_early" } else { "failed" }).await,
         },
         _ => {}
     }
@@ -4208,6 +4244,33 @@ mod tests {
         // The AI waits for the callee: the ringing is no one to talk to.
         assert!(yes.contains("say nothing until you are told they have picked up and spoken"), "{yes}");
     }
+
+    #[test]
+    fn our_own_call_is_known_from_the_moment_the_phone_is_asked_to_dial() {
+        // An appointment's call-back, dialing: the first ring is already ours.
+        assert!(callbacks_add(PendingCallback::new("t-cb-o1", "0912000301", "phone-o1", "S".into())));
+        let own = outgoing_call_on("phone-o1", "+886 912 000 301").expect("dialing");
+        assert_eq!((own.task_id.as_str(), own.errand), ("t-cb-o1", false));
+        // Another number, another phone, or no number with only a dial out: a call coming in.
+        assert!(outgoing_call_on("phone-o1", "0912000399").is_none());
+        assert!(outgoing_call_on("phone-o2", "0912000301").is_none());
+        assert!(outgoing_call_on("phone-o1", "").is_none());
+        // Asking takes nothing: the session that follows still gets the script.
+        assert_eq!(callbacks_stage("t-cb-o1"), Some(CallbackStage::Dialing));
+        assert!(callback_ready("t-cb-o1", "phone-o1", "0912000301"));
+        assert_eq!(outgoing_call_on("phone-o1", "").map(|c| c.task_id), Some("t-cb-o1".to_string()), "the only ready one");
+        assert!(outgoing_call_on("phone-o1", "0912000301").is_some());
+        assert_eq!(take_ready_callback("phone-o1", "0912000301").map(|c| c.script), Some("S".to_string()));
+        assert!(outgoing_call_on("phone-o1", "0912000301").is_some(), "still our call once its session took the script");
+        // An errand's call says so.
+        callbacks_remove("t-cb-o1");
+        assert!(callbacks_add(PendingCallback::errand("e-cb-o2", "0912000302", "phone-o1", None, "S".into())));
+        assert_eq!(outgoing_call_on("phone-o1", "0912000302"), Some(OutgoingCall { task_id: "e-cb-o2".into(), errand: true }));
+        // Over: a call from that number is an ordinary one again.
+        callbacks_remove("e-cb-o2");
+        assert!(outgoing_call_on("phone-o1", "0912000302").is_none());
+    }
+
 
     #[test]
     fn a_call_back_script_goes_only_to_the_call_its_phone_reported() {

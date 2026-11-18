@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! What the chat replies say, in the owner's notification language (all nine).
 //!
 //! [render] turns an action's structured result ([super::Outcome]) into the

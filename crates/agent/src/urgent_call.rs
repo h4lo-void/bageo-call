@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Whitelist urgent call (setting `whitelist_urgent_call`, trial).
 //!
 //! A Whitelist caller (whitelist_mode emergency) says it is urgent: the AI asks

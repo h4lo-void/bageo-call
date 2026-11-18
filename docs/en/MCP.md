@@ -76,3 +76,5 @@ Say times and dates exactly in the task ("4:30 pm", "Saturday 15 November"). On 
 ## Protocol details
 
 Streamable HTTP transport, stateless: one JSON-RPC message per `POST /mcp`, answered with one JSON body. No event stream (`GET` returns 405), no session id, no batches. Methods: `initialize`, `ping`, `tools/list`, `tools/call`; notifications get `202 Accepted`. Protocol versions `2025-11-25`, `2025-06-18` and `2025-03-26`; an unknown `MCP-Protocol-Version` header gets 400. The code is in `crates/agent/src/mcp.rs`; the tools run the chat commands' actions (`crates/agent/src/control/`).
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

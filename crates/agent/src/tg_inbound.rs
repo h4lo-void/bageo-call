@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Telegram Bot API: the to-do cards' buttons, and the messages and button
 //! presses of the chats that take commands ([crate::control]).
 //!

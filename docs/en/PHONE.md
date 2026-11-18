@@ -287,3 +287,5 @@ To remove Bageo:
 See [Troubleshooting](TROUBLESHOOTING.md) and the table at the end of
 [`android/README.md`](../../android/README.md#troubleshooting).
 
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

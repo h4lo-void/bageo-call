@@ -1,4 +1,7 @@
 #!/system/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+# SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 MODDIR=${0%/*}
 PKG=com.pixelcallai.streamer
 APK="$MODDIR/system/priv-app/$PKG/base.apk"

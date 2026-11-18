@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Languages: which one the AI speaks, the phrases the call logic listens for,
 //! and the words used in notifications.
 //!
@@ -497,6 +500,7 @@ pub struct Phrases {
     pub preview: [&'static str; 3],
     // Notifications
     pub n_incoming: &'static str,
+    pub n_outgoing: &'static str,
     pub n_summary: &'static str,
     pub n_blocked: &'static str,
     pub n_voicemail: &'static str,
@@ -694,6 +698,7 @@ static ZH_TW: Phrases = Phrases {
         "好，掰掰。",
     ],
     n_incoming: "來電",
+    n_outgoing: "去電",
     n_summary: "通話摘要",
     n_blocked: "黑名單來電",
     n_voicemail: "語音留言",
@@ -839,6 +844,7 @@ static ZH_CN: Phrases = Phrases {
         "好，拜拜。",
     ],
     n_incoming: "来电",
+    n_outgoing: "去电",
     n_summary: "通话摘要",
     n_blocked: "黑名单来电",
     n_voicemail: "语音留言",
@@ -984,6 +990,7 @@ static EN: Phrases = Phrases {
         "Okay, bye.",
     ],
     n_incoming: "Incoming call",
+    n_outgoing: "Outgoing call",
     n_summary: "Call summary",
     n_blocked: "Blocked number called",
     n_voicemail: "Voicemail",
@@ -1139,6 +1146,7 @@ static JA: Phrases = Phrases {
         "はい、失礼します。",
     ],
     n_incoming: "着信",
+    n_outgoing: "発信",
     n_summary: "通話の要約",
     n_blocked: "拒否リストの番号から着信",
     n_voicemail: "留守番電話",
@@ -1296,6 +1304,7 @@ static KO: Phrases = Phrases {
         "네, 들어가세요.",
     ],
     n_incoming: "수신 전화",
+    n_outgoing: "발신 전화",
     n_summary: "통화 요약",
     n_blocked: "차단 번호에서 전화",
     n_voicemail: "음성 메시지",
@@ -1447,6 +1456,7 @@ static ES: Phrases = Phrases {
         "Vale, adiós.",
     ],
     n_incoming: "Llamada entrante",
+    n_outgoing: "Llamada saliente",
     n_summary: "Resumen de la llamada",
     n_blocked: "Llamada de un número bloqueado",
     n_voicemail: "Mensaje de voz",
@@ -1602,6 +1612,7 @@ static FR: Phrases = Phrases {
         "D'accord, au revoir.",
     ],
     n_incoming: "Appel entrant",
+    n_outgoing: "Appel sortant",
     n_summary: "Résumé de l'appel",
     n_blocked: "Appel d'un numéro bloqué",
     n_voicemail: "Message vocal",
@@ -1754,6 +1765,7 @@ static DE: Phrases = Phrases {
         "Okay, tschüss.",
     ],
     n_incoming: "Eingehender Anruf",
+    n_outgoing: "Ausgehender Anruf",
     n_summary: "Anrufzusammenfassung",
     n_blocked: "Anruf von gesperrter Nummer",
     n_voicemail: "Sprachnachricht",
@@ -1906,6 +1918,7 @@ static PT: Phrases = Phrases {
         "Tá bom, tchau.",
     ],
     n_incoming: "Chamada recebida",
+    n_outgoing: "Chamada efetuada",
     n_summary: "Resumo da chamada",
     n_blocked: "Chamada de número bloqueado",
     n_voicemail: "Mensagem de voz",

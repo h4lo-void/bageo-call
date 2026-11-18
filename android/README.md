@@ -565,3 +565,5 @@ are responsible for how you use it.
 
 `magisk/pixelcallai_uplink/META-INF/com/google/android/update-binary` carries its own
 copyright and license header (GPL-3.0-only).
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

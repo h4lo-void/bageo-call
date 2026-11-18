@@ -222,3 +222,5 @@ and shows the `Outbound` it gets back — or simply calls `POST /calls/api/contr
 
 An AI agent (Claude, ChatGPT, Grok, OpenClaw…) can use the same actions
 through the built-in MCP server: see [MCP](MCP.md).
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

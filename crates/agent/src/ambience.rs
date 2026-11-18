@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Background sound (ambience): a looped room ambience — office, home or
 //! street — under the AI's voice, so the caller hears a place, not a studio.
 //!

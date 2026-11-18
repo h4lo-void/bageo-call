@@ -201,3 +201,5 @@ Bageo 在跑，才接得到電話。
 - 所有可以調整的東西：[設定參考](SETTINGS.md)
 - 內部怎麼運作：[架構](ARCHITECTURE.md)
 
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

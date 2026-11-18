@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! The MCP interface end to end: off and silent by default, the token and
 //! the browser origin, the protocol's methods, which tools each mode offers,
 //! and that results carry no key or token.

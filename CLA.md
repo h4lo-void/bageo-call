@@ -242,3 +242,5 @@ Bageo 以 `AGPL-3.0-only` 发布，版权人另外提供商业授权（见 [`COM
 维护者可以发布本协议的新版本。新版本只适用于它在项目中发布之后你提交的贡献；之前的贡献仍适用你提交当时的版本。
 
 中文段落是方便阅读的翻译；与英文内容不一致时，以英文为准。
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

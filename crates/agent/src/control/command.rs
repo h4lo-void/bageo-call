@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! What the owner can ask for from a chat ([Action]), read from a slash
 //! command or from the free-text model's answer ([from_model]). Both end in
 //! [validate]: the model's answer is untrusted input and gets no more room

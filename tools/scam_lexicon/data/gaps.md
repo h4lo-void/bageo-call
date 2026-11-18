@@ -54,3 +54,5 @@
 | pt | 55% | 94% |
 
 注意：這些關鍵字是從同一批例句整理出來的，所以這個數字是**樣本內**的上限，不代表實際通話的命中率。另外，`out/scam_db.local.json` 已經用 bageo 自己的 `scam_db::parse_local` 實際載入測試過：1246 個詞全部成功載入，0 個被跳過，其中 74 個是 hard。
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

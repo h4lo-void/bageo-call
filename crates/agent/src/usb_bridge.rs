@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! USB link to the phones: keeps `adb reverse` up so the app's
 //! `ws://127.0.0.1:8765` reaches this agent through the USB cable, and starts
 //! the app's call service when a phone is plugged in but not connected.

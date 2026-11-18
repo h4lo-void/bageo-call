@@ -1,4 +1,7 @@
 #!/system/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+# SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 # Safe flash checklist:
 # 1) Uninstall user /data/app com.pixelcallai.streamer FIRST (never dual-install).
 # 2) magisk --install-module this zip → reboot.

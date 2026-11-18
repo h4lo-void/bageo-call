@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! How a call ends, judged locally: the closing state machine and the words of
 //! twelve languages it keys on. Pure in-memory work on each final transcript
 //! piece — no I/O, no model call — so it never delays the audio loop.

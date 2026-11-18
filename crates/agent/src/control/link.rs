@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! What the Discord, Slack and Matrix adapters share: the accounts to connect
 //! (one connection per bot, serving every chat set up with it), starting and
 //! stopping them as the settings change, the wait between retries, reading

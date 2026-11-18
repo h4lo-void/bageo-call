@@ -97,3 +97,5 @@ The Traditional Chinese text of this document governs; the English and Simplifie
 开源许可证（[`LICENSE`](LICENSE)）仅授予著作权与专利上的软件权利，并不豁免任何使用者遵守当地刑法、电信法与隐私法规的义务。商业授权（[`COMMERCIAL_LICENSE.md`](COMMERCIAL_LICENSE.md)）另受双方签署的书面合同约束。
 
 本文件以繁体中文版为准；英文版与简体中文版为翻译参考。
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

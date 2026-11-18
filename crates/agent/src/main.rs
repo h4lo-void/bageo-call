@@ -1,5 +1,6 @@
 // Copyright (C) 2026 h4lo-void (https://github.com/h4lo-void)
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
 // See LICENSE, LICENSING.md (AGPL-3.0 Section 7 additional terms), and COMMERCIAL_LICENSE.md.
 
 //! Bageo agent.
@@ -111,7 +112,7 @@ use hold_music::{
 };
 use notify::{
     call_detail_line, listen_recording_line, notify_ai_request, notify_configured,
-    notify_incoming_call, notify_primary_backend, notify_rejected_call, notify_voicemail,
+    notify_incoming_call, notify_outgoing_call, notify_primary_backend, notify_rejected_call, notify_voicemail,
 };
 use services::{chat, ensure_ollama_model, synthesize_piper, transcribe_pcm16, ChatMessage};
 use settings_store::{RuntimeSettings, SettingsStore};
@@ -1420,6 +1421,7 @@ async fn main() -> Result<()> {
         .merge(mcp::router(remote.clone()))
         .nest_service("/calls", calls_router(calls_state))
         .layer(TraceLayer::new_for_http())
+        .layer(axum::middleware::map_response(add_source_header))
         .with_state(state);
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -1431,6 +1433,19 @@ async fn main() -> Result<()> {
     )
     .await?;
     Ok(())
+}
+
+/// Authorship marker that stays in the compiled program (LICENSING.md, Section 7(b)).
+#[used]
+pub static BAGEO_SOURCE: &str = "bageo-call by h4lo-void https://github.com/h4lo-void/bageo-call";
+
+/// Adds `X-Bageo-Source` to every HTTP response the agent sends.
+async fn add_source_header(mut res: axum::response::Response) -> axum::response::Response {
+    res.headers_mut().insert(
+        "x-bageo-source",
+        axum::http::HeaderValue::from_static("h4lo-void/bageo-call"),
+    );
+    res
 }
 
 /// `/`: a phone over the USB tunnel opens its WebSocket here (the app's default
@@ -2684,7 +2699,10 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                     let dedup = base_state.incoming_notify_dedup.clone();
                                     let caller = caller_id.clone();
                                     let ser = serial.clone();
-                                    if dedup.claim(&ser, &caller).await {
+                                    let notice = ring_notice(&state, call_reject_listed, &ser, &caller).await;
+                                    if notice == errands::CallNotice::Silent {
+                                        info!("call notify skipped (redial try after the first) serial={ser} caller={caller}");
+                                    } else if dedup.claim(&ser, &caller).await {
                                         let http = state.http.clone();
                                         // Fresh snapshot: honor hot-swapped call_notify + gateway URL.
                                         let settings = {
@@ -2701,18 +2719,22 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                                     &http, &settings, &caller, &ser, &reject_note, false,
                                                 )
                                                 .await
+                                            } else if notice == errands::CallNotice::Outgoing {
+                                                notify_outgoing_call(&http, &settings, &caller, &ser)
+                                                    .await
                                             } else {
                                                 notify_incoming_call(&http, &settings, &caller, &ser)
                                                     .await
                                             };
+                                            let what = if notice == errands::CallNotice::Outgoing { "outgoing" } else { "incoming" };
                                             if ok {
                                                 info!(
-                                                    "incoming call notify ok serial={ser} caller={caller}"
+                                                    "{what} call notify ok serial={ser} caller={caller}"
                                                 );
                                             } else {
                                                 dedup_for_task.release(&ser, &caller).await;
                                                 warn!(
-                                                    "incoming call notify FAILED serial={ser} caller={caller} call_notify={} gateway_set={}",
+                                                    "{what} call notify FAILED serial={ser} caller={caller} call_notify={} gateway_set={}",
                                                     settings.call_notify,
                                                     !settings.notify_gateway_url.trim().is_empty()
                                                 );
@@ -3120,7 +3142,10 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                     let caller = caller_id.clone();
                                     let ser = serial.clone();
                                     let dedup = base_state.incoming_notify_dedup.clone();
-                                    if dedup.claim(&ser, &caller).await {
+                                    let notice = ring_notice(&state, call_reject_listed, &ser, &caller).await;
+                                    if notice == errands::CallNotice::Silent {
+                                        info!("call notify skipped (redial try after the first) serial={ser} caller={caller}");
+                                    } else if dedup.claim(&ser, &caller).await {
                                         let http = state.http.clone();
                                         let settings = {
                                             let snap = base_state.settings_store.snapshot();
@@ -3136,18 +3161,22 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                                     &http, &settings, &caller, &ser, &reject_note, false,
                                                 )
                                                 .await
+                                            } else if notice == errands::CallNotice::Outgoing {
+                                                notify_outgoing_call(&http, &settings, &caller, &ser)
+                                                    .await
                                             } else {
                                                 notify_incoming_call(&http, &settings, &caller, &ser)
                                                     .await
                                             };
+                                            let what = if notice == errands::CallNotice::Outgoing { "outgoing" } else { "incoming" };
                                             if ok {
                                                 info!(
-                                                    "incoming call notify ok serial={ser} caller={caller}"
+                                                    "{what} call notify ok serial={ser} caller={caller}"
                                                 );
                                             } else {
                                                 dedup_for_task.release(&ser, &caller).await;
                                                 warn!(
-                                                    "incoming call notify FAILED serial={ser} caller={caller} call_notify={} gateway_set={}",
+                                                    "{what} call notify FAILED serial={ser} caller={caller} call_notify={} gateway_set={}",
                                                     settings.call_notify,
                                                     !settings.notify_gateway_url.trim().is_empty()
                                                 );
@@ -4754,6 +4783,17 @@ async fn record_declined_call(
         });
     }
     record_id
+}
+
+/// What a call that starts ringing tells the owner: a blocked number is always
+/// told as such (the caller handles it); any other is an incoming call, or one
+/// of our own going out ([`errands::call_notice`]), which is judged here, at the
+/// first ring, from what was sent to the phone.
+async fn ring_notice(state: &AppState, reject_listed: bool, serial: &str, caller: &str) -> errands::CallNotice {
+    if reject_listed {
+        return errands::CallNotice::Incoming;
+    }
+    errands::call_notice(state.control.as_ref(), state.errands.as_ref(), serial, caller).await
 }
 
 /// `whitelist_mode == "direct"`: when a Whitelist caller rings, the phone

@@ -239,3 +239,5 @@ Look at `sms_forward.log` and `health.json` in `SMS_HOME` first.
 | Phones drop their connection to the agent when this script starts | Two different adb versions are installed and each restarts the adb server. Set `ADB_BIN` to the adb the agent uses. The script itself never runs `adb kill-server`. |
 | `another sms_forward.py holds the lock` | It is already running, for example from the login task. |
 | Labels are in the wrong language | Set `SMS_LANG`. Without it the agent's language is used; messages wait up to three minutes for the agent to answer, then go out in English. |
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

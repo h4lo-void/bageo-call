@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+# SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 # Build the debug APK and package the Magisk / KernelSU module zip (macOS / Linux).
 #
 #   ./scripts/package-uplink-module.sh

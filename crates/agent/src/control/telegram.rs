@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! The Telegram adapter: long-polls every bot that serves a chat
 //! ([access::telegram_bots]), hands messages and button presses to the
 //! [Controller] and sends its answers and pushes back. The environment's bot

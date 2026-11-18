@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Taiwanese / Hokkien and Hakka in the caller's words. Gemini Live speaks only
 //! the languages on its list, and its Chinese is Mandarin (cmn): the AI never
 //! switches to these, never opens or answers in them; it understands what it can

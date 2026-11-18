@@ -207,3 +207,5 @@ Open an issue with your system (Windows, macOS or Linux), phone model and
 Android version, the Bageo version (bottom of the *System* page), what you did,
 what you expected, and the relevant lines of Bageo's terminal output.
 Remove phone numbers and keys first, and never post `settings.json`.
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

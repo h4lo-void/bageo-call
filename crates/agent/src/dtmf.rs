@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Goertzel DTMF decoder for 16-bit mono PCM (16 kHz uplink from remote party).
 //!
 //! Product: **1** = AI, **2** = voicemail. End call = hang up the phone (no 0/#).

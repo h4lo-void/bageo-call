@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Where a call is: the region of the SIM that took it (else of the language
 //! setting) and the few local rules that go into that call's prompt (scenario
 //! plan, module 6): where couriers leave parcels, times and numbers said the

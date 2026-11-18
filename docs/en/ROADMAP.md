@@ -101,3 +101,5 @@ Roughly in order of usefulness for the effort:
 8. **Removing the older menu-based code paths** to make Bageo's code easier to
    read.
 9. **Signed, notarised releases** for macOS and Windows.
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
