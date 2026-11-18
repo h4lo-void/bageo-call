@@ -259,7 +259,7 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 | `DELETE /calls/api/sms/thread?number=<号码或 key>` | 删除一条对话：`{ok: true, removed: N}`。 |
 | `GET /calls/api/quick-action` · `POST /calls/api/quick-action` | 32 种通知渠道内附的单次签名互动按钮路由（`?act=confirm\|ignore\|block\|stall\|white&target=<id或号码>&sig=<hmac>`）。打开链接（`GET`）只会先显示确认页，点页面上的按钮（`POST`）才会执行；链接 7 天后失效。通过 HMAC-SHA256 验证，不用登录控制台，支持全部 9 种语言。 |
 | `POST /calls/api/control/inbound` | 跨平台通用指令 Webhook，用聊天指令控制 Bageo。请求体例如 `{"text": "记录 5", "user": "owner", "channel": "line"}`。 |
-| `GET /calls/api/auth-status` · `POST /calls/api/initial-password` | 查询是否需要密码与是否首次设置密码（`{ok, password_required, needs_initial_password_setup}`），以及首次创建密码（`{"password": "..."}`，仅在尚未设置任何密码／Token 时可用）。 |
+| `GET /calls/api/auth-status` · `POST /calls/api/initial-password` | 查询是否已设密码与是否显示首次设置密码弹窗（`{ok, password_set, authenticated, prompt_initial, language}`），以及首次创建或跳过密码（`{"password": "..."}` 或 `{"skip": true}`，仅在尚未设置任何密码／Token 时可用）。 |
 
 `POST /calls/api/notify/test` 的响应：
 
