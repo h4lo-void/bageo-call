@@ -47,6 +47,7 @@ mod fulfill;
 mod gemini_live;
 mod gmail;
 mod hold_music;
+mod lang_lock;
 mod locale;
 mod mcp;
 mod mdns;

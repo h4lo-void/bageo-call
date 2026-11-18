@@ -1810,8 +1810,11 @@ fn line_lang(text: &str, zh: crate::locale::Lang) -> Option<(crate::locale::Lang
     }
     let latin = if words.len() >= 3 { words.len() * 2 } else { 0 };
     let cjk = |n: usize| if n >= 4 { n } else { 0 };
-    let japanese = if kana > 0 { cjk(kana + han) } else { 0 };
-    let chinese = if kana > 0 { 0 } else { cjk(han) };
+    // Kana make a line Japanese only as a fair share of its characters (a stray
+    // kana or two that speech-to-text wrote into Chinese leaves it Chinese).
+    let ja = kana >= 2 && kana * 4 >= kana + han;
+    let japanese = if ja { cjk(kana + han) } else { 0 };
+    let chinese = if ja { 0 } else { cjk(han) };
     let korean = cjk(hangul);
     let latin_lang = || {
         LATIN_LANG_WORDS
@@ -3182,6 +3185,39 @@ fn persona_idle_nudge_client_content() -> String {
     crate::prompts::client_turn(&crate::prompts::current().kick_idle)
 }
 
+/// A mid-call instruction turn or note (`clientContent`) with the call's
+/// language named after its last text ([`crate::prompts::call_language_note`],
+/// in the instructions' language): the model holds the call's language
+/// ([`crate::lang_lock`]) instead of taking the instruction's or a stray word's.
+/// None (a language without a setting) or anything else: unchanged.
+fn in_call_language(payload: String, call: Option<crate::locale::Lang>) -> String {
+    let Some(call) = call else {
+        return payload;
+    };
+    let Ok(mut v) = serde_json::from_str::<Value>(&payload) else {
+        return payload;
+    };
+    let text = v
+        .pointer_mut("/clientContent/turns")
+        .and_then(Value::as_array_mut)
+        .and_then(|t| t.last_mut())
+        .and_then(|t| t.get_mut("parts"))
+        .and_then(Value::as_array_mut)
+        .and_then(|p| p.last_mut())
+        .and_then(|p| p.get_mut("text"));
+    match text {
+        Some(Value::String(text)) => {
+            let note = crate::prompts::call_language_note(crate::locale::current(), call);
+            if text.contains(note.trim()) {
+                return payload;
+            }
+            text.push_str(&note);
+            v.to_string()
+        }
+        _ => payload,
+    }
+}
+
 /// Drop STT placeholders such as `<no speech detected>` (the AI's silent turn
 /// during the carrier prompt).
 pub(crate) fn strip_stt_markers(s: &str) -> String {
@@ -3266,17 +3302,19 @@ pub(crate) fn localize_dialogue(dialogue: &str, lang: crate::locale::Lang) -> St
 /// The call so far as alternating Live turns (`對方：` → user, `接聽：` → model),
 /// newest `max_chars` only, led by a note that the call is already in progress.
 fn transcript_history_turns(transcript: &str, max_chars: usize) -> Vec<(&'static str, String)> {
-    history_turns_with_note(transcript, max_chars, false)
+    history_turns_with_note(transcript, max_chars, false, None)
 }
 
 /// [`transcript_history_turns`]; `stall`: the call was just judged sales / scam —
 /// the note also says the replies so far ("I'll think about it", "I'll check later") are over.
 /// The note is in the agent's language and tells the model to go on in the
-/// language the caller speaks now (`prompts::Pack::history_note`).
+/// language the caller speaks now (`prompts::Pack::history_note`), named when
+/// the call's language is known (`call`, [`crate::lang_lock`]).
 fn history_turns_with_note(
     transcript: &str,
     max_chars: usize,
     stall: bool,
+    call: Option<crate::locale::Lang>,
 ) -> Vec<(&'static str, String)> {
     let transcript = merge_dialogue_fragments(transcript);
     let mut turns: Vec<(&'static str, String)> = Vec::new();
@@ -3316,8 +3354,12 @@ fn history_turns_with_note(
     kept.reverse();
     let p = crate::prompts::current();
     let note = if stall { &p.history_note_stall } else { &p.history_note };
+    let note = match call {
+        Some(l) => format!("{note}{}", crate::prompts::call_language_note(crate::locale::current(), l).trim_start()),
+        None => note.clone(),
+    };
     // Kept apart from the caller's first line by a space (Latin notes run into it otherwise).
-    let note = if note.ends_with('】') { note.clone() } else { format!("{note} ") };
+    let note = if note.ends_with('】') || note.ends_with('）') { note } else { format!("{note} ") };
     match kept.first_mut() {
         Some(("user", first)) => first.insert_str(0, &note),
         _ => kept.insert(0, ("user", note)),
@@ -5284,9 +5326,6 @@ pub async fn run_session(
     // The caller's words since the AI last answered them, and whether those asked
     // us to hold on ("等一下，我去拿", "one moment"): a long quiet line is expected.
     let mut caller_recent = String::new();
-    // The caller's last finished words (memory only): a scenario cue goes in the
-    // language they speak now.
-    let mut caller_last_turn = String::new();
     let mut caller_hold = false;
     // An errand call: wrapped up at 9:30, ended at 10 minutes.
     let (mut wrap_secs, mut wrap_force_secs, mut max_secs) = if errand.is_some() {
@@ -5296,6 +5335,10 @@ pub async fn run_session(
     };
     // Everything the caller said (input STT), for the carrier-prompt check.
     let mut caller_text_all = String::new();
+    // The language the call is held in (lang_lock): the opening's, then the
+    // caller's first clear words; it follows them only into whole turns of
+    // another language, two in a row. Every mid-call instruction names it.
+    let mut call_language = crate::lang_lock::CallLanguage::new(opening_lang.unwrap_or(prompt_lang), prompt_lang);
     // Hints for the AI's own voice. A caller found to speak Thai, Russian, Arabic or
     // Hindi adds theirs; the next rotated session carries it (`ai_stt_grown`).
     let mut ai_stt_codes = stt_ai_codes(opening_lang, lang_plan.caller_other_stt);
@@ -5506,8 +5549,8 @@ pub async fn run_session(
             }
             if let Some(turn) = ctl.take_say() {
                 model_turn_pending = true;
-                // In the language the caller speaks on this call, not the setting's.
-                let spoken = crate::urgency::caller_language(&caller_text_all);
+                // In the language the call is held in (lang_lock), not the setting's.
+                let spoken = call_language.lang();
                 info!(
                     "Whitelist urgent call: line for the AI serial={serial} caller_language={}",
                     spoken.map_or("unknown", |l| l.code())
@@ -5786,7 +5829,7 @@ pub async fn run_session(
                 let history = transcript_out
                     .as_ref()
                     .and_then(|b| b.lock().ok().map(|g| g.clone()))
-                    .map(|t| history_turns_with_note(&t, LIVE_HISTORY_MAX_CHARS, stall_on))
+                    .map(|t| history_turns_with_note(&t, LIVE_HISTORY_MAX_CHARS, stall_on, call_language.lang()))
                     .unwrap_or_default();
                 // Appointments: the new session gets the current time.
                 let fresh_setup;
@@ -5881,7 +5924,7 @@ pub async fn run_session(
                             stall_turn_kept = true;
                             match send_text_before_deadline(
                                 &mut sink,
-                                persona_stall_keep_with_retain(true, &mut stall_engine, serial),
+                                in_call_language(persona_stall_keep_with_retain(true, &mut stall_engine, serial), call_language.lang()),
                                 tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                 "gemini rotate stall keep send",
                             )
@@ -5896,7 +5939,7 @@ pub async fn run_session(
                             // Forced switch while a reply was owed: ask for it on the new socket.
                             let _ = send_text_before_deadline(
                                 &mut sink,
-                                persona_resume_reply_client_content(),
+                                in_call_language(persona_resume_reply_client_content(), call_language.lang().filter(|_| errand.is_none())),
                                 tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                 "gemini rotate reply kick send",
                             )
@@ -6346,11 +6389,11 @@ pub async fn run_session(
                 wrap_up_sent = true;
                 repeat_guard.clear();
                 let nudge = if stall_on {
-                    persona_stall_wrap_up_client_content()
+                    in_call_language(persona_stall_wrap_up_client_content(), call_language.lang())
                 } else if errand.is_some() {
                     crate::errands::wrap_up_client_content()
                 } else {
-                    persona_wrap_up_client_content()
+                    in_call_language(persona_wrap_up_client_content(), call_language.lang())
                 };
                 model_turn_pending = true;
                 match send_text_before_deadline(
@@ -6388,7 +6431,7 @@ pub async fn run_session(
                     stall_tx.clear();
                     match send_text_before_deadline(
                         &mut sink,
-                        persona_stall_keep_with_retain(false, &mut stall_engine, serial),
+                        in_call_language(persona_stall_keep_with_retain(false, &mut stall_engine, serial), call_language.lang()),
                         tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                         "gemini persona stall keep send",
                     )
@@ -6504,9 +6547,9 @@ pub async fn run_session(
             let nudge = if stall_quiet {
                 stall_nudge_chunks = Some(audio_chunks_out);
                 stall_nudge_at = Some(tokio::time::Instant::now());
-                persona_stall_idle_nudge_client_content()
+                in_call_language(persona_stall_idle_nudge_client_content(), call_language.lang().filter(|_| errand.is_none()))
             } else {
-                persona_idle_nudge_client_content()
+                in_call_language(persona_idle_nudge_client_content(), call_language.lang().filter(|_| errand.is_none()))
             };
             match send_text_before_deadline(
                 &mut sink,
@@ -7036,7 +7079,7 @@ pub async fn run_session(
                                                     model_turn_pending = true;
                                                     if let Err(e) = send_text_before_deadline(
                                                         &mut sink,
-                                                        persona_stall_keep_with_retain(true, &mut stall_engine, serial),
+                                                        in_call_language(persona_stall_keep_with_retain(true, &mut stall_engine, serial), call_language.lang()),
                                                         tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                                         "gemini persona stall keep send",
                                                     )
@@ -7458,7 +7501,17 @@ pub async fn run_session(
                                         out_tx_window.clear();
                                         stall_tx.clear();
                                         // The caller's next words start a new utterance.
-                                        caller_last_turn = std::mem::take(&mut caller_recent);
+                                        // Their finished words tell the call's language (lang_lock).
+                                        let caller_turn = std::mem::take(&mut caller_recent);
+                                        if let Some(now_in) = call_language.caller_turn(&caller_turn) {
+                                            info!(
+                                                "call_language now={} serial={serial}",
+                                                match now_in {
+                                                    crate::lang_lock::Spoken::Lang(l) => l.code(),
+                                                    crate::lang_lock::Spoken::Other => "other",
+                                                }
+                                            );
+                                        }
                                         info!(
                                             "Gemini Live new model turn after caller serial={serial} (clear recap STT window)"
                                         );
@@ -7590,7 +7643,7 @@ pub async fn run_session(
                                         // answer — ask for the reply again, as after a switch.
                                         match send_text_before_deadline(
                                             &mut sink,
-                                            persona_resume_reply_client_content(),
+                                            in_call_language(persona_resume_reply_client_content(), call_language.lang().filter(|_| errand.is_none())),
                                             tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                             "gemini dropped-turn reply kick send",
                                         )
@@ -7639,7 +7692,7 @@ pub async fn run_session(
                                                     turn_out_text.chars().take(60).collect();
                                                 match send_text_before_deadline(
                                                     &mut sink,
-                                                    persona_repeat_line_client_content(),
+                                                    in_call_language(persona_repeat_line_client_content(), call_language.lang().filter(|_| errand.is_none())),
                                                     tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                                     "gemini post-rotate re-kick send",
                                                 )
@@ -7733,7 +7786,7 @@ pub async fn run_session(
                                         stall_tx.clear();
                                         match send_text_before_deadline(
                                             &mut sink,
-                                            persona_stall_keep_with_retain(true, &mut stall_engine, serial),
+                                            in_call_language(persona_stall_keep_with_retain(true, &mut stall_engine, serial), call_language.lang()),
                                             tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                             "gemini persona stall keep send",
                                         )
@@ -7777,7 +7830,7 @@ pub async fn run_session(
                                                 } else {
                                                     match send_text_before_deadline(
                                                         &mut sink,
-                                                        crate::stall_script::client_note(&cue.text),
+                                                        in_call_language(crate::stall_script::client_note(&cue.text), call_language.lang()),
                                                         tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                                         "gemini persona stall cue send",
                                                     )
@@ -7810,11 +7863,11 @@ pub async fn run_session(
                                         && !model_turn_pending
                                         && !activity_open
                                     {
-                                        // In the caller's language, read from their words (memory only);
+                                        // In the language the call is held in (lang_lock, memory only);
                                         // a language without a setting (Thai, Italian…) gets the note in
                                         // English, marked to be said in theirs.
-                                        let spoken = crate::urgency::caller_language(&caller_text_all);
-                                        let other = crate::urgency::unlisted_language(&caller_last_turn);
+                                        let spoken = call_language.lang();
+                                        let other = call_language.is_other();
                                         let scenario_cue =
                                             scenario_router.take_pending(stall_engage_now.is_some(), spoken, other);
                                         if let Some((scenario, _)) = &scenario_cue {
@@ -7838,7 +7891,7 @@ pub async fn run_session(
                                         if !note.is_empty() {
                                             match send_text_before_deadline(
                                                 &mut sink,
-                                                crate::stall_script::client_note(&note),
+                                                in_call_language(crate::stall_script::client_note(&note), call_language.lang()),
                                                 tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                                 "gemini persona scenario / appointment note send",
                                             )
@@ -7860,6 +7913,35 @@ pub async fn run_session(
                                                     }
                                                 }
                                                 Err(e) => warn!("Persona scenario / appointment note send failed serial={serial}: {e:#}"),
+                                            }
+                                        }
+                                    }
+                                    // The AI's turn came out in another language than the call's
+                                    // though the caller did not switch: a short reminder in this
+                                    // pause, asking for no reply (lang_lock, at most twice a call).
+                                    if persona && errand.is_none() && !turn_out_text.trim().is_empty() {
+                                        let can_tell = keep.is_none()
+                                            && !model_turn_pending
+                                            && !activity_open
+                                            && !goodbye_pending
+                                            && ivr_since.is_none();
+                                        if let Some(d) = call_language.ai_turn(&turn_out_text, can_tell) {
+                                            let note = crate::prompts::language_drift_note(crate::locale::current(), d.call);
+                                            match send_text_before_deadline(
+                                                &mut sink,
+                                                crate::stall_script::client_note(&note),
+                                                tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
+                                                "gemini persona language drift note send",
+                                            )
+                                            .await
+                                            {
+                                                Ok(()) => info!(
+                                                    "language_drift ai={} call={} turn={} serial={serial}",
+                                                    d.ai.code(),
+                                                    d.call.code(),
+                                                    d.turn
+                                                ),
+                                                Err(e) => warn!("Persona language drift note send failed serial={serial}: {e:#}"),
                                             }
                                         }
                                     }
@@ -10137,8 +10219,59 @@ mod tests {
         assert!(first.contains(PERSONA_END_BLOCK) && !first.contains(PERSONA_STALL_HEAD));
         // The rotated stall session's history says so too.
         let tx = "接聽：喂？\n對方：我安信託，分期通知你還沒處理\n接聽：我再想一下，晚點再確認";
-        assert!(history_turns_with_note(tx, 2_500, true)[0].1.contains("陪他繞"));
+        assert!(history_turns_with_note(tx, 2_500, true, None)[0].1.contains("陪他繞"));
         assert!(!transcript_history_turns(tx, 2_500)[0].1.contains("陪他繞"));
+    }
+
+    /// Every mid-call instruction and note says the language the call is held in
+    /// (lang_lock), not the one the caller's latest words seem to be in.
+    #[test]
+    fn mid_call_instructions_name_the_calls_language() {
+        use crate::locale::Lang;
+        let text_of = |payload: &str| -> String {
+            let v: Value = serde_json::from_str(payload).unwrap();
+            v.pointer("/clientContent/turns/0/parts/0/text").unwrap().as_str().unwrap().to_string()
+        };
+        // A Taiwan call whose caller's last words had a few kana in them: still Chinese.
+        let mut call = crate::lang_lock::CallLanguage::new(Lang::ZhTw, Lang::ZhTw);
+        call.caller_turn("你好，我是快遞，你的包裹要放哪裡？");
+        call.caller_turn("那個包裹は放在管理室の可以嗎");
+        let kicks = [
+            persona_wrap_up_client_content(),
+            persona_stall_wrap_up_client_content(),
+            persona_stall_keep_client_content(true),
+            persona_resume_reply_client_content(),
+            persona_repeat_line_client_content(),
+            persona_stall_idle_nudge_client_content(),
+            persona_idle_nudge_client_content(),
+            crate::stall_script::client_note("一個方向"),
+        ];
+        for k in &kicks {
+            let t = text_of(&in_call_language(k.clone(), call.lang()));
+            assert!(t.ends_with("（這通電話對方講中文，這句也用中文說，不要換成別的語言。）"), "{t}");
+            assert!(!t.contains("日文"), "{t}");
+            // Once only.
+            let twice = in_call_language(in_call_language(k.clone(), call.lang()), call.lang());
+            assert_eq!(text_of(&twice).matches("這通電話對方講").count(), 1);
+            // A language without a setting: left as it is.
+            assert_eq!(in_call_language(k.clone(), None), *k);
+        }
+        // The caller really switched to English (two whole turns): English from then on.
+        call.caller_turn("Sorry, can you speak English? I don't understand.");
+        call.caller_turn("I need to know if you are at home right now.");
+        let t = text_of(&in_call_language(persona_idle_nudge_client_content(), call.lang()));
+        assert!(t.ends_with("（這通電話對方講英文，這句也用英文說，不要換成別的語言。）"), "{t}");
+        // A note that asks for no reply stays one.
+        let note: Value = serde_json::from_str(&in_call_language(crate::stall_script::client_note("x"), call.lang())).unwrap();
+        assert_eq!(note["clientContent"]["turnComplete"], json!(false));
+        // The rotated session's history names it too.
+        let tx = "接聽：喂？\n對方：Hello, I need to know if you are at home right now.";
+        assert!(history_turns_with_note(tx, 2_500, false, call.lang())[0].1.contains("這通電話對方講英文"));
+        // The drift reminder names the call's language and asks for no reply.
+        let drift = crate::prompts::language_drift_note(Lang::ZhTw, Lang::ZhTw);
+        assert!(drift.contains("對方講的是中文") && drift.contains("一直用中文回"), "{drift}");
+        let en = crate::prompts::language_drift_note(Lang::En, Lang::Ja);
+        assert!(en.contains("speaking Japanese") && en.contains("Answer in Japanese"), "{en}");
     }
 
     #[test]

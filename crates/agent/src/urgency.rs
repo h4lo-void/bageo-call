@@ -494,17 +494,44 @@ pub fn is_urgent(text: &str) -> bool {
 
 /// The language the caller speaks in their recent words, when it can be told: by
 /// script for Chinese, Japanese and Korean, by common words and letters for the
-/// others.
+/// others ([read_language]).
 pub fn caller_language(said: &str) -> Option<Lang> {
     let tail: String = {
         let chars: Vec<char> = said.chars().collect();
         chars[chars.len().saturating_sub(300)..].iter().collect()
     };
-    let (mut hangul, mut kana, mut han, mut trad, mut simp) = (0, 0, 0, 0, 0);
-    for c in tail.chars() {
+    read_language(&tail).map(|r| r.lang)
+}
+
+/// What a stretch of speech is in ([read_language]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Reading {
+    pub lang: Lang,
+    /// Said as a whole in it: enough of it, and it makes up most of what was
+    /// said (a stray "OK", a name or a few kana in Chinese leave it unclear).
+    pub clear: bool,
+}
+
+/// Latin letters (accented ones too).
+fn is_latin(c: char) -> bool {
+    c.is_ascii_alphabetic()
+        || (matches!(c as u32, 0xC0..=0x24F | 0x1E00..=0x1EFF) && c != '\u{D7}' && c != '\u{F7}')
+}
+
+/// The language of what was said, by its share of each script. Kana or Hangul
+/// count only when they make up a fair share of the Chinese characters around
+/// them (speech-to-text writes a stray kana or two into Chinese, Taiwanese or a
+/// noise); Chinese, Japanese or Korean only when its characters outweigh the
+/// Latin words (an English sentence with a Chinese name stays English, a
+/// Chinese one with "OK" or "LINE" stays Chinese); a Latin language only with
+/// two of its common words, or one in two words or more.
+pub fn read_language(said: &str) -> Option<Reading> {
+    let (mut hangul, mut kana, mut han, mut trad, mut simp) = (0usize, 0usize, 0usize, 0usize, 0usize);
+    for c in said.chars() {
         match c as u32 {
             0xAC00..=0xD7AF | 0x1100..=0x11FF | 0x3130..=0x318F => hangul += 1,
-            0x3040..=0x30FF => kana += 1,
+            // Not 「・」, which Chinese writes between the parts of a foreign name.
+            0x3040..=0x309F | 0x30A1..=0x30FA | 0x30FC => kana += 1,
             0x4E00..=0x9FFF => {
                 han += 1;
                 if T2S.iter().any(|(t, _)| *t == c) {
@@ -516,16 +543,38 @@ pub fn caller_language(said: &str) -> Option<Lang> {
             _ => {}
         }
     }
-    if hangul >= 2 {
-        return Some(Lang::Ko);
+    let words = said
+        .split(|c: char| !(is_latin(c) || c == '\''))
+        .filter(|t| t.chars().any(is_latin))
+        .count();
+    let cjk = hangul + kana + han;
+    // A Latin word against about two Chinese characters.
+    let total = cjk + 2 * words;
+    let clear_share = |n: usize| n >= 4 && n * 3 >= total * 2;
+    let cjk_reading = || -> Option<Reading> {
+        if hangul >= 2 && hangul * 2 >= cjk {
+            return Some(Reading { lang: Lang::Ko, clear: clear_share(hangul + han) });
+        }
+        if kana >= 2 && kana * 4 >= kana + han {
+            return Some(Reading { lang: Lang::Ja, clear: clear_share(kana + han) });
+        }
+        if han >= 2 {
+            let lang = if simp > trad { Lang::ZhCn } else { Lang::ZhTw };
+            return Some(Reading { lang, clear: clear_share(cjk) });
+        }
+        None
+    };
+    if cjk >= 2 && cjk >= 2 * words {
+        if let Some(r) = cjk_reading() {
+            return Some(r);
+        }
     }
-    if kana >= 2 {
-        return Some(Lang::Ja);
+    if let Some((lang, top)) = latin_scores(said) {
+        if top >= 2 || (top == 1 && words >= 2) {
+            return Some(Reading { lang, clear: top >= 2 && words >= 3 && clear_share(2 * words) });
+        }
     }
-    if han >= 2 {
-        return Some(if simp > trad { Lang::ZhCn } else { Lang::ZhTw });
-    }
-    latin_language(&tail)
+    cjk_reading().map(|r| Reading { clear: false, ..r })
 }
 
 /// The caller's words are in a language without a setting of its own (Thai,
@@ -534,7 +583,9 @@ pub fn caller_language(said: &str) -> Option<Lang> {
 /// four letters of another script, or three words of Latin letters.
 pub fn unlisted_language(said: &str) -> bool {
     let said = said.trim();
-    if said.is_empty() || caller_language(said).is_some() {
+    // Any common word of a language with a setting, or Chinese, Japanese or
+    // Korean letters, and it is not one without.
+    if said.is_empty() || caller_language(said).is_some() || latin_scores(said).is_some() {
         return false;
     }
     let (mut cjk, mut latin, mut other) = (0, 0, 0);
@@ -547,10 +598,13 @@ pub fn unlisted_language(said: &str) -> bool {
         }
     }
     let words = said.split_whitespace().filter(|w| w.chars().any(char::is_alphabetic)).count();
-    cjk == 0 && (other >= 4 || (latin >= 12 && words >= 3))
+    // Another script: most of the letters (a Thai word in an English sentence is not enough).
+    cjk == 0 && ((other >= 4 && other * 2 > latin) || (latin >= 12 && words >= 3))
 }
 
-fn latin_language(text: &str) -> Option<Lang> {
+/// The Latin language with the most common words and letters in `text`, and
+/// its score; None when no language scores.
+fn latin_scores(text: &str) -> Option<(Lang, i32)> {
     const WORDS: [(Lang, &[&str]); 5] = [
         (Lang::En, &["the", "and", "is", "are", "was", "i", "i'm", "you", "he", "she", "it", "to", "my", "his", "her", "in", "on", "at", "of", "just", "there", "has", "been", "have", "need", "we", "our", "someone", "with", "for", "they're", "it's", "get", "back", "call", "whenever", "so", "what", "this", "that", "your", "can", "will"]),
         (Lang::Es, &["el", "la", "los", "las", "y", "en", "se", "mi", "me", "es", "está", "por", "una", "un", "lo", "le", "ya", "hay", "del", "al", "muy", "con", "no", "estoy", "nos"]),
@@ -588,7 +642,7 @@ fn latin_language(text: &str) -> Option<Lang> {
         }
     }
     let (best, top) = score.iter().enumerate().max_by_key(|(_, s)| **s)?;
-    (*top > 0).then_some(WORDS[best].0)
+    (*top > 0).then_some((WORDS[best].0, *top))
 }
 
 /// The language's name for an instruction to the model.
