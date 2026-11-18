@@ -83,14 +83,14 @@ You do not need to know how to write prompts. A chat AI can interview you and
 write one.
 
 1. In the console open *Settings → Prompt*, find the card *Don't want to
-   write it yourself?*, choose the language and press **Copy interview
-   prompt**.
+   write it yourself?* (which automatically switches between the *AI assistant*
+   and *As me* interview prompts to match your answer style above), choose the
+   language and press **Copy interview prompt**.
 2. Paste it into a new chat in ChatGPT, Claude, Gemini or any other chat AI.
-3. It asks about eight questions, one at a time: the answer style and language,
-   general context, your personality and phone manner, everyday phrasing and
-   phrases you never use, who calls you, how to handle important calls, your
-   boundaries, and how you brush off unwanted sales calls. Answer in your own
-   words; say "skip" to take a default.
+3. It asks about eight questions tailored to that answer style, one at a time —
+   either shaping your AI assistant's persona, message-taking and hand-off
+   rules, or capturing how you personally sound and handle calls. Answer in your
+   own words; say "skip" to take a default.
 4. It gives you **the finished prompt** in one code block → paste it into
    *Settings → Prompt → Your own prompt*. (Facts for callers, your answer style
    and *Keep them talking* are set directly on the Settings page.)
@@ -102,17 +102,17 @@ The interview applies the techniques below on its own and keeps the rules the
 call engine relies on.
 
 The same texts are in [`docs/prompts/`](../prompts/), if you would rather open
-a file:
+a file (*As me* / *AI assistant*):
 
-- [English](../prompts/interview.en.txt)
-- [繁體中文](../prompts/interview.zh-TW.txt)
-- [简体中文](../prompts/interview.zh-CN.txt)
-- [日本語](../prompts/interview.ja.txt)
-- [한국어](../prompts/interview.ko.txt)
-- [Español](../prompts/interview.es.txt)
-- [Français](../prompts/interview.fr.txt)
-- [Deutsch](../prompts/interview.de.txt)
-- [Português](../prompts/interview.pt.txt)
+- [English](../prompts/interview.en.txt) · [AI assistant](../prompts/interview_assistant.en.txt)
+- [繁體中文](../prompts/interview.zh-TW.txt) · [AI 助理](../prompts/interview_assistant.zh-TW.txt)
+- [简体中文](../prompts/interview.zh-CN.txt) · [AI 助理](../prompts/interview_assistant.zh-CN.txt)
+- [日本語](../prompts/interview.ja.txt) · [AI アシスタント](../prompts/interview_assistant.ja.txt)
+- [한국어](../prompts/interview.ko.txt) · [AI 비서](../prompts/interview_assistant.ko.txt)
+- [Español](../prompts/interview.es.txt) · [Asistente de IA](../prompts/interview_assistant.es.txt)
+- [Français](../prompts/interview.fr.txt) · [Assistant IA](../prompts/interview_assistant.fr.txt)
+- [Deutsch](../prompts/interview.de.txt) · [KI-Assistent](../prompts/interview_assistant.de.txt)
+- [Português](../prompts/interview.pt.txt) · [Assistente de IA](../prompts/interview_assistant.pt.txt)
 
 ## Notes the AI may answer from
 

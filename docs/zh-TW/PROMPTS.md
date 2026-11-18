@@ -62,25 +62,25 @@
 
 不會寫提示詞也沒關係，讓聊天 AI 訪談你，它會幫你寫好。
 
-1. 在控制台打開「設定 → 提示詞」，找到「不想自己寫？」卡片，選好語言，按「**複製訪談提示詞**」。
+1. 在控制台打開「設定 → 提示詞」，找到「不想自己寫？」卡片（會依上方選的「AI 助理」或「本人」自動切換對應的專屬訪談題目），選好語言，按「**複製訪談提示詞**」。
 2. 在 ChatGPT、Claude、Gemini 或任何聊天 AI 開新對話，貼上。
-3. 它會一次一題，問你大約八個問題：接聽身分與語言、基本背景、講電話的感覺、常用語氣與絕不用的詞、平常誰會打來、重要正事怎麼聽、說話界線，以及推銷電話怎麼婉拒。用自己的話回答；說「跳過」就採用預設。
+3. 它會針對該接聽身分一次問一題，總共約八題（選「AI 助理」會問助理形象、怎麼稱呼你、留言重點與轉達界線；選「本人」會問你的個性、口氣、常用語與應對習慣）。用自己的話回答；說「跳過」就採用預設。
 4. 最後它會給你一段程式碼區塊裡的**完整提示詞** → 直接貼到「設定 → 提示詞 → 自訂提示詞」。（可回答的資料、接聽身分與陪聊開關，直接在網頁設定頁設好即可。）
 5. 儲存，打你的號碼聽聽看。哪裡不對，就把狀況告訴聊天 AI（「它話太多」「它問了對方兩次名字」），請它改一份。
 
 訪談會自動用上下面的技巧，也會保留通話引擎依賴的規則。
 
-訪談提示詞的同樣文字也放在 [`docs/prompts/`](../prompts/)，可以直接開檔複製：
+訪談提示詞的同樣文字也放在 [`docs/prompts/`](../prompts/)，可以直接開檔複製（本人／AI 助理）：
 
-- [English](../prompts/interview.en.txt)
-- [繁體中文](../prompts/interview.zh-TW.txt)
-- [简体中文](../prompts/interview.zh-CN.txt)
-- [日本語](../prompts/interview.ja.txt)
-- [한국어](../prompts/interview.ko.txt)
-- [Español](../prompts/interview.es.txt)
-- [Français](../prompts/interview.fr.txt)
-- [Deutsch](../prompts/interview.de.txt)
-- [Português](../prompts/interview.pt.txt)
+- [English](../prompts/interview.en.txt) · [AI assistant](../prompts/interview_assistant.en.txt)
+- [繁體中文](../prompts/interview.zh-TW.txt) · [AI 助理](../prompts/interview_assistant.zh-TW.txt)
+- [简体中文](../prompts/interview.zh-CN.txt) · [AI 助理](../prompts/interview_assistant.zh-CN.txt)
+- [日本語](../prompts/interview.ja.txt) · [AI アシスタント](../prompts/interview_assistant.ja.txt)
+- [한국어](../prompts/interview.ko.txt) · [AI 비서](../prompts/interview_assistant.ko.txt)
+- [Español](../prompts/interview.es.txt) · [Asistente de IA](../prompts/interview_assistant.es.txt)
+- [Français](../prompts/interview.fr.txt) · [Assistant IA](../prompts/interview_assistant.fr.txt)
+- [Deutsch](../prompts/interview.de.txt) · [KI-Assistent](../prompts/interview_assistant.de.txt)
+- [Português](../prompts/interview.pt.txt) · [Assistente de IA](../prompts/interview_assistant.pt.txt)
 
 ## AI 可以回答的資料
 

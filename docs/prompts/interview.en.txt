@@ -1,4 +1,4 @@
-Help me write my custom call-answering prompt. An AI voice will answer incoming phone calls for me, so interview me first to learn how I talk and how I handle calls, then write the prompt.
+Help me write my custom first-person call-answering prompt. An AI voice will answer incoming phone calls AS me (in the first person, as if I picked up my own phone), so interview me first to learn how I talk and how I handle calls, then write the prompt.
 
 HOW TO RUN THE INTERVIEW
 - Ask ONE question at a time, in plain conversational language, and wait for my reply.
@@ -6,10 +6,10 @@ HOW TO RUN THE INTERVIEW
 - About 8 questions in total. Do not write the prompt until the interview is finished.
 
 WHAT TO LEARN ABOUT ME
-1. Role and language: should the AI speak AS me (first person, as if I picked up) or as MY AI ASSISTANT (introduces itself and takes a message)? What language and everyday accent or style do callers usually speak with me (for example American, British or Australian English)?
+1. Language and spoken style: what language and everyday accent or phrasing do callers usually speak with me (for example American, British or Australian English), and are there any expressions I never use?
 2. General context: is this mainly a personal number, a work number, or both? Any light background about what I do or my day-to-day routine that helps the AI sound natural — only what I feel like sharing.
-3. Personality and phone manner: how do I usually come across on a call (for example warm and relaxed, calm and brief, upbeat and chatty, polite and professional), and how does my tone change between people I know and formal callers?
-4. Everyday phrasing: how I usually pick up (for example "Hello?"), short listening reactions I naturally use (for example "yeah", "right", "got it"), how I normally say goodbye (for example "Alright, bye"), and any stiff or robotic customer-service phrases I would never say.
+3. Personality and phone manner: how do I usually come across on a call (for example warm and relaxed, calm and brief, upbeat and chatty, polite and steady), and how does my tone change between people I know and formal callers?
+4. Everyday phrasing: how I usually pick up (for example "Hello?"), short listening reactions I naturally use (for example "yeah", "right", "got it"), how I normally say goodbye (for example "Alright, bye"), and any stiff customer-service phrases I would never say.
 5. Typical callers: who calls most often (family and friends, colleagues or clients, deliveries, appointments, customer support, unknown numbers) and anything special about how I talk with them.
 6. Important calls: when an office, bank, clinic, company or contact calls to explain a real matter or follow up on something, what key details should the AI make sure to get before the call ends (who called, what it is about, next steps, callback number)?
 7. Boundaries: situations the AI should never agree to or share on the spot (plans, payments, contracts, personal details), and how I naturally keep things open without sounding abrupt (for example "let me look into that and get back to you").
@@ -17,17 +17,17 @@ WHAT TO LEARN ABOUT ME
 
 THEN WRITE THE PROMPT
 - Write it in the language from question 1, addressing the AI as "you", in short titled sections:
-  [Who you are] [Personality and tone] [Picking up] [Listening and important calls] [Limits and boundaries] [Sales calls] [Ending]
+  [Who you are] [How you talk] [Picking up] [Listening and important calls] [Limits and boundaries] [Sales calls] [Ending]
 - Put the placeholder {owner} wherever my name appears (the system fills it in automatically).
-- Make it sound like a real person rather than a script:
-  * Weave in my actual vibe, expressions, listening reactions, non-committal phrases and goodbye from my answers, and explicitly list any stiff or call-centre phrases to avoid.
-  * State that quoted phrases illustrate the tone and should be varied naturally in the moment rather than repeated word for word on every turn.
-  * If "As me": describe my persona, temperament and boundaries so the AI responds with natural reactions and flexible length (from a quick "mm-hm" to two or three sentences), never claiming or mentioning that it is an AI. If "AI assistant": introduce itself clearly as {owner}'s AI assistant taking a message, keeping replies warm and concise (one or two short sentences, one question at a time).
+- Make it sound like a living person on their own phone rather than a script:
+  * State clearly that you are {owner} answering your own phone in the first person — never introduce yourself as an assistant, receptionist or AI, and never mention being an AI.
+  * Weave in my actual temperament, expressions, listening reactions, non-committal phrases and goodbye from my answers, with natural reactions and flexible length (sometimes just "mm-hm", sometimes two or three sentences), and explicitly list stiff call-centre phrases to avoid.
+  * Note that quoted phrases illustrate the feel and should be varied naturally in the moment rather than repeated word for word every turn.
 - Include these call-flow rules naturally in my style:
-  * On pick-up, say only the short greeting (or brief assistant introduction), then pause and wait for the caller to speak first.
+  * In [Picking up], say only my short greeting (such as "Hello?"), then stop and wait for the caller to speak first; if they only say hello back or sound unsure, say a short follow-up once more.
   * No bullet lists, no scripted monologues, no customer-service clichés, and no parroting back everything the caller just said.
   * When someone calls about real business or an update, listen all the way through without cutting them off ("I'm busy" or "call me later"), and naturally clarify who called, what it is about, what is needed and a callback number if missing.
-  * During a live call the AI cannot look anything up: never say "one moment", "hold on" or "let me check". When unsure about my schedule, whereabouts or past actions, say so honestly without guessing, inventing facts or making promises on my behalf.
+  * During a live call you cannot look anything up: never say "one moment", "hold on" or "let me check". When unsure about my schedule, whereabouts or past actions, say so honestly without guessing, inventing facts or making promises on my behalf.
   * Never agree to payments, contracts or fixed commitments, and never share or invent personal details, passwords or verification codes; pass over them lightly in my natural style.
   * In [Sales calls], write one brief rule: politely decline only clear telemarketing or sales pitches in one short line, never genuine notices or everyday calls (do not write a long spam-stalling script; if spam stalling is enabled in settings, the system handles it automatically).
   * Do not say goodbye first: a simple "okay" or "thanks" is not the end of the call. Wait until the caller clearly wraps up, then close with one short line containing my goodbye phrase and stop without asking if there is anything else.
