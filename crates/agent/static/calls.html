@@ -769,7 +769,6 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
   <section id="view-sms" data-view="sms" hidden>
     <h1 class="view-title" data-i18n="tab_sms"></h1>
     <div class="row" style="margin-bottom:14px">
-      <p class="muted small grow" id="smsKeepBox" hidden><span id="smsKeep"></span> <a href="#settings/region" id="smsKeepLink" data-i18n="sms_keep_link"></a></p>
       <span class="muted small" id="smsMeta" style="margin-left:auto"></span>
       <button type="button" class="btn sm" id="smsNew" data-i18n="sms_new"></button>
     </div>
@@ -2457,8 +2456,6 @@ I18N["en"] = {
   ct_bad_prefix: "Only Blacklist numbers can end with *, with at least 3 digits before it, not counting leading zeros.",
   tab_sms: "SMS",
   sms_count: "{n} messages",
-  sms_keep: "Records are kept for {n} days.",
-  sms_keep_link: "Change",
   sms_search_ph: "Search sender or text",
   sms_clear: "Delete all",
   sms_clear_t: "Delete all text messages?",
@@ -3539,8 +3536,6 @@ I18N["zh-TW"] = {
   ct_bad_prefix: "結尾加 * 只能用在黑名單，而且 * 前面除了開頭的 0 至少要 3 碼。",
   tab_sms: "簡訊",
   sms_count: "{n} 則",
-  sms_keep: "紀錄保留 {n} 天。",
-  sms_keep_link: "調整",
   sms_search_ph: "搜尋寄件人或內容",
   sms_clear: "全部刪除",
   sms_clear_t: "刪除全部簡訊？",
@@ -4621,8 +4616,6 @@ I18N["zh-CN"] = {
   ct_bad_prefix: "结尾加 * 只能用在黑名单，而且 * 前面除了开头的 0 至少要 3 位。",
   tab_sms: "短信",
   sms_count: "{n} 条",
-  sms_keep: "记录保留 {n} 天。",
-  sms_keep_link: "调整",
   sms_search_ph: "搜索发件人或内容",
   sms_clear: "全部删除",
   sms_clear_t: "删除全部短信？",
@@ -5703,8 +5696,6 @@ I18N["ja"] = {
   ct_bad_prefix: "末尾の * は着信拒否の番号だけに使えます（* の前に、先頭の 0 を除いて 3 桁以上）。",
   tab_sms: "SMS",
   sms_count: "{n} 件",
-  sms_keep: "記録は {n} 日間保存されます。",
-  sms_keep_link: "変更",
   sms_search_ph: "差出人や本文を検索",
   sms_clear: "すべて削除",
   sms_clear_t: "SMS をすべて削除しますか？",
@@ -6785,8 +6776,6 @@ I18N["ko"] = {
   ct_bad_prefix: "끝의 *는 차단 목록 번호에만 쓸 수 있습니다(* 앞에 앞의 0을 빼고 3자리 이상).",
   tab_sms: "문자",
   sms_count: "{n}건",
-  sms_keep: "기록은 {n}일 동안 보관됩니다.",
-  sms_keep_link: "변경",
   sms_search_ph: "보낸 사람 또는 내용 검색",
   sms_clear: "모두 삭제",
   sms_clear_t: "문자를 모두 삭제할까요?",
@@ -7867,8 +7856,6 @@ I18N["es"] = {
   ct_bad_prefix: "Solo los números de la Lista negra pueden terminar en *, con al menos 3 cifras antes sin contar los ceros iniciales.",
   tab_sms: "SMS",
   sms_count: "{n} mensajes",
-  sms_keep: "Los registros se guardan {n} días.",
-  sms_keep_link: "Cambiar",
   sms_search_ph: "Buscar remitente o texto",
   sms_clear: "Borrar todo",
   sms_clear_t: "¿Borrar todos los SMS?",
@@ -8949,8 +8936,6 @@ I18N["fr"] = {
   ct_bad_prefix: "Seuls les numéros de la Liste noire peuvent finir par *, avec au moins 3 chiffres avant, sans compter les zéros du début.",
   tab_sms: "SMS",
   sms_count: "{n} messages",
-  sms_keep: "Les données sont conservées {n} jours.",
-  sms_keep_link: "Modifier",
   sms_search_ph: "Rechercher un expéditeur ou un texte",
   sms_clear: "Tout supprimer",
   sms_clear_t: "Supprimer tous les SMS ?",
@@ -10031,8 +10016,6 @@ I18N["de"] = {
   ct_bad_prefix: "Nur Nummern auf der Sperrliste dürfen mit * enden, mit mindestens 3 Ziffern davor, führende Nullen nicht mitgezählt.",
   tab_sms: "SMS",
   sms_count: "{n} Nachrichten",
-  sms_keep: "Daten werden {n} Tage aufbewahrt.",
-  sms_keep_link: "Ändern",
   sms_search_ph: "Absender oder Text suchen",
   sms_clear: "Alle löschen",
   sms_clear_t: "Alle SMS löschen?",
@@ -11113,8 +11096,6 @@ I18N["pt"] = {
   ct_bad_prefix: "Só números da Lista de bloqueio podem terminar com *, com pelo menos 3 dígitos antes, sem contar os zeros iniciais.",
   tab_sms: "SMS",
   sms_count: "{n} mensagens",
-  sms_keep: "Os registros ficam guardados por {n} dias.",
-  sms_keep_link: "Alterar",
   sms_search_ph: "Buscar remetente ou texto",
   sms_clear: "Apagar tudo",
   sms_clear_t: "Apagar todos os SMS?",
@@ -12380,7 +12361,7 @@ const SMS_MAX_PAGE = 200; // the most one request returns
 const SMS_SEEN = "pca.smsSeen"; // conversation key → when it was last looked at (ms)
 const SMS_GROUP_MS = 5 * 60 * 1000; // bubbles this close together share one time line
 const sms = {
-  threads: [], total: 0, keep: 0, lines: [], q: "", state: "idle", error: "", seq: 0,
+  threads: [], total: 0, lines: [], q: "", state: "idle", error: "", seq: 0,
   open: null, // null: the list only; {isNew: true}: a new message; {number}: one conversation
   convo: null, // the agent's answer for the open conversation
   msgs: [], more: false, cseq: 0,
@@ -12424,7 +12405,6 @@ async function loadSmsThreads() {
     sms.threads = Array.isArray(d.threads) ? d.threads : [];
     sms.lines = Array.isArray(d.lines) ? d.lines : [];
     sms.total = Number(d.total) || 0;
-    sms.keep = Number(d.retention_days) || 0;
     sms.q = q;
     sms.state = "ok";
     if (!q) {
@@ -12497,10 +12477,6 @@ const smsWhoOf = (o) => String(o.name || "").trim() || String(o.number || "").tr
 function smsRenderThreads() {
   const box = clear($("smsThreads"));
   const ok = sms.state === "ok";
-  const keep = sms.keep || Number(S && S.retention_days) || 0;
-  $("smsKeep").textContent = keep ? t("sms_keep", { n: keep }) : "";
-  // Without a number of days (Bageo not reached yet) the line would only say "Change".
-  $("smsKeepBox").hidden = !keep;
   $("smsMeta").textContent = ok && sms.total ? t("sms_count", { n: sms.total }) : "";
   $("smsClear").hidden = !(ok && sms.total);
   if (sms.state === "idle" || sms.state === "loading") {
@@ -12884,15 +12860,6 @@ $("smsText").addEventListener("keydown", (e) => {
 $("smsText").addEventListener("input", () => { smsGrow(); smsUpdateSend(); });
 $("smsTo").addEventListener("input", smsUpdateSend);
 $("smsFrom").addEventListener("change", () => { sms.pick[smsPickKey()] = $("smsFrom").value; });
-
-// "Change" goes to the setting itself (Advanced): bring it into view.
-$("smsKeepLink").addEventListener("click", () => {
-  setTimeout(() => {
-    const field = $("f-retention_days");
-    field.scrollIntoView({ block: "center" });
-    field.focus({ preventScroll: true });
-  }, 120);
-});
 
 // ---------------------------------------------------------------- contacts
 // Caller ID → {id, name} for the calls on the list (the agent matches a number

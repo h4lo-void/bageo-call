@@ -47,6 +47,7 @@ pub fn reason_text(s: &Snapshot) -> String {
         Reason::Launching => t(lang, "r_launching"),
         Reason::LaunchFailed => t(lang, "r_launch_failed"),
         Reason::NeedAdb => t(lang, "r_need_adb"),
+        Reason::Setup => t(lang, "r_setup").replace("{n}", &s.setup_todo.to_string()),
     }
 }
 
@@ -55,7 +56,7 @@ mod tests {
     use super::*;
     use crate::status::{Level, LANGS};
 
-    const KEYS: [&str; 15] = [
+    const KEYS: [&str; 16] = [
         "r_ready",
         "r_busy",
         "r_phone_offline",
@@ -67,6 +68,7 @@ mod tests {
         "r_launching",
         "r_launch_failed",
         "r_need_adb",
+        "r_setup",
         "menu_show",
         "open",
         "quit",
