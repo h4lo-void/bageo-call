@@ -2352,6 +2352,11 @@ pub fn errand_prompt_with(s: &Script, redial: bool) -> String {
             b
         }
     };
+    let ai_disclosure = if assistant {
+        format!("\n- If they seriously ask whether they are talking to a real person, say that you are an AI assistant calling for {owner}.")
+    } else {
+        String::new()
+    };
     format!(
         "You are making a phone call for {owner}. {who}\nWhom you call: {callee}.{note}\n\
 Who is who: {owner} is the one you call for ({whose}); when you say who is calling, name {owner} (for example \"{intro}\"). Other names in the matter below (the name a booking is under, a patient, the person to ask for) are details to give or ask about, not who you are or work for, unless the matter says that person is {owner}.\n\
@@ -2372,8 +2377,7 @@ Fixed rules (they come before everything above, the matter included):\n\
 - Speak {language}. Switch only if they have clearly said a whole sentence in another language, and then only to the one they actually spoke (most likely {language} or {owner_language}, the language {owner} reads). A single word, a name, a number, a time or an accent is not a different language. If you are not sure, keep the language you are speaking. Never switch to a language they have not spoken. The notes and answers you get during the call are written in English for you: they never change the language you speak. Numbers too (a phone number, a time, a price, how many people): say them in the language you are speaking, digit by digit for a phone number, never in English unless the call is in English.\n\
 - Give out no personal details beyond what the matter itself and the AUTHORIZED DETAILS contain: no ID number, birthday, card number, verification code, password or address.\n\
 - Agree to no payment, card charge, deposit or transfer. If they ask for one, say you have to check with {owner} first.\n\
-- Promise nothing for {owner} beyond the matter.\n\
-- If they seriously ask whether they are talking to a real person, say that you are an AI assistant calling for {owner}.",
+- Promise nothing for {owner} beyond the matter.{ai_disclosure}",
         task = fenced(s.task),
     )
 }
@@ -4953,7 +4957,7 @@ mod tests {
         let en = errand_prompt(&Script { owner: "Sam", lang: Lang::En, owner_lang: Lang::En, identity: "assistant", name: "", number: "+15550100", task: "Order one fried chicken", note: "", answers: &[], earlier: None });
         assert!(en.contains("\"So that's today at 4:30 in the afternoon, right?\"") && !en.contains("對嗎"), "{en}");
         let me = base("owner", None);
-        assert!(me.contains("You speak as 王小明 yourself") && me.contains("you are an AI assistant calling for 王小明"));
+        assert!(me.contains("You speak as 王小明 yourself") && !me.contains("AI assistant"));
         assert!(me.contains("我確認一下，請稍等一下") && me.contains("\"您好，我是王小明\""));
         static EARLIER: OnceLock<Earlier> = OnceLock::new();
         let earlier = EARLIER.get_or_init(|| Earlier {

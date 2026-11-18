@@ -29,7 +29,7 @@ The few things the AI needs before it can answer your phone.
 |---|---|---|
 | Language | English | The language the AI speaks with callers, including its first line, the blocked-number announcement and the texts it sends callers. |
 | Your name | empty | How callers refer to you. Fills `{owner}` wherever a prompt uses it. |
-| Answer style | AI assistant | **AI assistant**: says it is an AI answering for you and takes a message. **As me**: answers as you, and still admits to being an AI when sincerely asked. |
+| Answer style | AI assistant | **AI assistant**: says it is an AI answering for you and takes a message. **As me**: answers as you, without agreeing to anything on your behalf. |
 | Gemini API key | empty | Your key from Google AI Studio; the AI voice needs it. Stored on your computer only. |
 | Voice | Charon | One of Gemini's built-in voices. **Preview** plays three sample lines in the language chosen above. |
 | AI answers calls | on | Master switch. Off: calls are picked up and ended at once, with nothing said. To answer a phone yourself, switch it to a [normal phone](PHONE.md#normal-phone-mode) instead. |
@@ -51,7 +51,7 @@ Details for each:
 - **Other names callers use for you**: this works in both answer styles, and with your own prompt too. Call summaries still write *Your name*. Saved as `owner_aliases` (a list).
 - **Language of notifications and summaries**: notifications, call summaries (also in the call list), appointment cards and their results, and messages from the SMS forwarder use this language. Handy abroad: the AI answers in English, your notifications stay in 繁體中文. Switching the console's display language (top right) sets this to the same language.
 - **Main language for each SIM**: e.g. *United States (US)* → English while *Language* stays 繁體中文; a Japanese number calling the US SIM still hears Japanese. Needs phone app 1.0 or later, which reports the SIM of each call. Saved as `sim_languages`, e.g. `{"us": "en"}`.
-- **AI calls: call as**: who the AI says it is on the calls it makes from the **Errands** tab ([AI errands](#ai-errands)): **Your assistant** (it calls on your behalf) or **You in person** (it speaks as you). Either way it admits to being an AI when sincerely asked. Saved as `errand_identity` (`assistant` / `owner`; anything else reads as `assistant`).
+- **AI calls: call as**: who the AI says it is on the calls it makes from the **Errands** tab ([AI errands](#ai-errands)): **Your assistant** (it calls on your behalf, and admits to being an AI when sincerely asked) or **You in person** (it speaks as you). Saved as `errand_identity` (`assistant` / `owner`; anything else reads as `assistant`).
 
 ### How it answers
 
@@ -138,7 +138,7 @@ Your own words and numbers go in `config/scam_db.local.json` in the data folder.
 
 How the AI talks. The built-in prompt is a short general baseline; add your own situation and style so the AI sounds more like you. To write your own, see [Writing the prompt](PROMPTS.md).
 
-- *Your own prompt*: empty = built-in; **Show the built-in prompt** shows it.
+- *Your own prompt*: saved separately for *AI assistant* and *As me* (empty = built-in); **Show the built-in prompt** shows it.
 - *Notes the AI may answer from*: facts callers may ask about, one per line, up to 6,000 characters.
 - The interview prompt: lets ChatGPT, Claude or Gemini write a prompt with you.
 

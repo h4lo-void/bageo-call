@@ -293,7 +293,7 @@ cuenta de Google si quieres un tope.
 Depende de dónde estéis tú y la otra persona. Grabar llamadas, avisar de que
 habla una IA y las llamadas salientes automáticas tienen cada una sus propias
 normas. El estilo *Asistente de IA* dice que es una IA en su primera frase;
-*Como yo* lo dice cuando se lo preguntan en serio. Lee
+*Como yo* habla como tú sin decir que es una IA. Lee
 [Privacidad, seguridad y ley](docs/en/PRIVACY_AND_LEGAL.md) antes de
 activarlo.
 
@@ -316,7 +316,7 @@ una pila de voz totalmente local no forma parte de la configuración admitida
   hable con personas sin avisarles, está restringido en muchos sitios. El estilo
   de respuesta *Asistente de IA* dice desde el principio que es una IA; los
   encargos hechos como **Tu asistente** presentan a la IA como tu asistente;
-  toda llamada admite ser una IA cuando se lo preguntan en serio. Infórmate de
+  *Como yo* y **Tú en persona** hablan como tú sin avisarlo. Infórmate de
   lo que se aplica donde estáis tú y la otra persona.
 - **La IA no asume compromisos.** Nunca acepta pagos, depósitos, contratos,
   contraseñas ni códigos, y las citas esperan tu decisión. Sigue siendo una IA:

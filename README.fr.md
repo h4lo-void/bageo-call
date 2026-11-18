@@ -293,7 +293,7 @@ compte Google si vous voulez un plafond.
 Cela dépend du lieu où vous et votre interlocuteur vous trouvez. L’enregistrement
 des appels, l’information sur l’IA et les appels sortants automatisés ont chacun
 leurs règles. Le style *Assistant IA* dit qu’il est une IA dès la première
-phrase ; *À ma place* le dit quand on le demande sincèrement. Lisez
+phrase ; *À ma place* parle comme vous sans dire qu’il est une IA. Lisez
 [Confidentialité, sécurité et droit](docs/en/PRIVACY_AND_LEGAL.md) avant de
 l’activer.
 
@@ -315,8 +315,8 @@ entièrement locale ne fait pas partie de la configuration prise en charge
 - **Les lois diffèrent.** Enregistrer des appels, ou laisser une IA parler à des
   personnes sans les prévenir, est restreint dans de nombreux pays. Le style de
   réponse *Assistant IA* annonce d’emblée qu’il est une IA ; les appels passés
-  comme **Votre assistant** présentent l’IA comme votre assistant ; chaque appel
-  reconnaît être une IA quand on le demande sincèrement. Renseignez-vous sur ce
+  comme **Votre assistant** présentent l’IA comme votre assistant ; *À ma place*
+  et **Vous en personne** parlent comme vous sans le mentionner. Renseignez-vous sur ce
   qui s’applique là où vous et votre interlocuteur vous trouvez.
 - **L’IA ne s’engage sur rien.** Elle n’accepte jamais de paiement, d’acompte, de
   contrat, de mot de passe ni de code, et les rendez-vous attendent votre

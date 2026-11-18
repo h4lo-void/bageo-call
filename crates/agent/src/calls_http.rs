@@ -4653,28 +4653,32 @@ mod tests {
     #[test]
     fn interview_prompts_in_html_match_docs_files_word_for_word() {
         let codes = ["en", "zh-TW", "zh-CN", "ja", "ko", "es", "fr", "de", "pt"];
-        let start = UI_HTML.find("const INTERVIEW = {").expect("INTERVIEW start");
-        let after = &UI_HTML[start + "const INTERVIEW = ".len()..];
-        let end = after.find("\n};").or_else(|| after.find("\r\n};")).expect("INTERVIEW end");
-        // Turn the JS object literal (trailing comma before closing brace) into JSON.
-        let body = after[..end].trim_end();
-        let json_str = format!("{}}}", body.strip_suffix(',').unwrap_or(body));
-        let map: serde_json::Map<String, Value> =
-            serde_json::from_str(&json_str).expect("INTERVIEW is valid JSON once trailing comma is stripped");
-        assert_eq!(map.len(), codes.len());
         let prompts_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/prompts");
-        for code in codes {
-            let got = map
-                .get(code)
-                .and_then(Value::as_str)
-                .unwrap_or_else(|| panic!("missing {code} in INTERVIEW"));
-            assert!(got.contains("{owner}"), "{code} missing {{owner}} placeholder");
-            let file = prompts_dir.join(format!("interview.{code}.txt"));
-            if file.is_file() {
+        for (const_name, prefix) in [
+            ("const INTERVIEW = {", "interview"),
+            ("const INTERVIEW_ASSISTANT = {", "interview_assistant"),
+        ] {
+            let start = UI_HTML.find(const_name).unwrap_or_else(|| panic!("{const_name} start"));
+            let after = &UI_HTML[start + const_name.len() - 1..];
+            let end = after.find("\n};").or_else(|| after.find("\r\n};")).expect("INTERVIEW end");
+            // Turn the JS object literal (trailing comma before closing brace) into JSON.
+            let body = after[..end].trim_end();
+            let json_str = format!("{}}}", body.strip_suffix(',').unwrap_or(body));
+            let map: serde_json::Map<String, Value> =
+                serde_json::from_str(&json_str).expect("INTERVIEW is valid JSON once trailing comma is stripped");
+            assert_eq!(map.len(), codes.len());
+            for code in codes {
+                let got = map
+                    .get(code)
+                    .and_then(Value::as_str)
+                    .unwrap_or_else(|| panic!("missing {code} in {const_name}"));
+                assert!(got.contains("{owner}"), "{prefix}.{code} missing {{owner}} placeholder");
+                let file = prompts_dir.join(format!("{prefix}.{code}.txt"));
+                assert!(file.is_file(), "missing {}", file.display());
                 let raw = std::fs::read_to_string(&file).expect("read interview file");
                 let expected = raw.replace("\r\n", "\n");
                 let expected = expected.trim_end_matches('\n');
-                assert_eq!(got, expected, "calls.html INTERVIEW[{code}] drifted from {}", file.display());
+                assert_eq!(got, expected, "calls.html {prefix}[{code}] drifted from {}", file.display());
             }
         }
     }

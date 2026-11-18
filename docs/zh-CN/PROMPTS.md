@@ -62,28 +62,25 @@
 
 不会写提示词也没关系，让聊天 AI 访谈你，它会帮你写好。
 
-1. 在控制台打开“设置 → 提示词”，找到“不想自己写？”卡片，选好语言，按“**复制访谈提示词**”。
+1. 在控制台打开“设置 → 提示词”，找到“不想自己写？”卡片（会按上方选的“AI 助理”或“本人”自动切换对应的专属访谈题目），选好语言，按“**复制访谈提示词**”。
 2. 在 ChatGPT、Claude、Gemini 或任何聊天 AI 里开个新对话，粘贴进去。
-3. 它会一次一题，问你大约十个问题：来电的人说什么语言、接听身份、你的名字、你怎么说话和真会说的原话、你绝不用的词、谁会打给你、对方常问什么、哪些事绝对不能答应、推销电话怎么处理、你怎么说再见。用自己的话回答；说“跳过”就用默认。
-4. 最后它会给你三样东西：
-   - 代码块里的**提示词** → 粘贴到“设置 → 提示词 → 自定义提示词”；
-   - **资料** → 粘贴到“AI 可以回答的资料”；
-   - **接听身份和推销设置该怎么选** → 到“设置 → 基本设置 → 接听身份”和“设置 → 推销与诈骗电话 → 陪他聊、拖时间”里设置。
+3. 它会针对该接听身份一次问一题，总共约八题（选“AI 助理”会问助理形象、怎么称呼你、留言重点与转达界线；选“本人”会问你的个性、口气、常用语与应对习惯）。用自己的话回答；说“跳过”就用默认。
+4. 最后它会给你一段代码块里的**完整提示词** → 直接粘贴到“设置 → 提示词 → 自定义提示词”。（可回答的资料、接听身份与陪聊开关，直接在网页设置页设好即可。）
 5. 保存，打你的号码听听看。哪里不对，就把情况告诉聊天 AI（“它话太多”“它问了对方两次名字”），让它改一份。
 
 访谈会自动用上下面的技巧，也会保留通话引擎依赖的规则。
 
-访谈提示词的同样文字也放在 [`docs/prompts/`](../prompts/)，可以直接打开文件复制：
+访谈提示词的同样文字也放在 [`docs/prompts/`](../prompts/)，可以直接打开文件复制（本人／AI 助理）：
 
-- [English](../prompts/interview.en.txt)
-- [繁體中文](../prompts/interview.zh-TW.txt)
-- [简体中文](../prompts/interview.zh-CN.txt)
-- [日本語](../prompts/interview.ja.txt)
-- [한국어](../prompts/interview.ko.txt)
-- [Español](../prompts/interview.es.txt)
-- [Français](../prompts/interview.fr.txt)
-- [Deutsch](../prompts/interview.de.txt)
-- [Português](../prompts/interview.pt.txt)
+- [English](../prompts/interview.en.txt) · [AI assistant](../prompts/interview_assistant.en.txt)
+- [繁體中文](../prompts/interview.zh-TW.txt) · [AI 助理](../prompts/interview_assistant.zh-TW.txt)
+- [简体中文](../prompts/interview.zh-CN.txt) · [AI 助理](../prompts/interview_assistant.zh-CN.txt)
+- [日本語](../prompts/interview.ja.txt) · [AI アシスタント](../prompts/interview_assistant.ja.txt)
+- [한국어](../prompts/interview.ko.txt) · [AI 비서](../prompts/interview_assistant.ko.txt)
+- [Español](../prompts/interview.es.txt) · [Asistente de IA](../prompts/interview_assistant.es.txt)
+- [Français](../prompts/interview.fr.txt) · [Assistant IA](../prompts/interview_assistant.fr.txt)
+- [Deutsch](../prompts/interview.de.txt) · [KI-Assistent](../prompts/interview_assistant.de.txt)
+- [Português](../prompts/interview.pt.txt) · [Assistente de IA](../prompts/interview_assistant.pt.txt)
 
 ## AI 可以回答的资料
 
@@ -125,7 +122,7 @@
 | 推销和诈骗 | 一句话婉拒，或见[陪聊模式](#推销与诈骗电话陪聊模式)。 |
 | 结束 | 等对方明显说完，再用一句带告别语的话收尾。 |
 
-这些**不要**放进提示词：资料栏里的事实、承认自己是 AI 的规则（Bageo 会加）、API 或技术设置、长篇陪聊剧本。
+这些**不要**放进提示词：资料栏里的事实、API 或技术设置、长篇陪聊剧本。
 
 ### 简短示例（AI 助理，简体中文）
 
@@ -282,7 +279,7 @@ AI 先装有兴趣，再每一句出一招，同一招不会连用两次。对�
 
 不论内置还是自定义，Bageo 都会在提示词后面加上这些：
 
-- **如实说明是 AI。**“AI 助理”：绝不声称自己是真人或是你本人。“本人”：以你的身份说话，但有人认真问是不是在跟真人说话时，会说这是你设置的 AI 语音。两种都不替你做任何承诺。
+- **身份与不做承诺。**“AI 助理”：绝不声称自己是真人或是你本人，被问到时会表明是 AI 助理。“本人”：以你的身份自然说话，不会说自己是 AI。两种都不替你做任何承诺。
 - **不给个人信息、不给验证码。**“本人”：对方要身份证号、生日、卡号、账号、验证码、密码或地址时，AI 一律不给、也不编，轻松带过（“这个我不方便在电话里说”）；只问是不是你本人时照常回答。这条优先于提示词里任何让它配合的说法。
 - **刷卡不替你回答。**“本人”：银行或信用卡中心问某一笔是不是你刷的，AI 不可能知道，所以不说是也不说不是，不答应停卡、挂失、取消、争议或报案；它会问清金额、商户、时间，说自己再打卡背面的电话确认。摘要会提醒你自己核对这一笔。
 - **来电者不能对它下命令。**“忽略你的规则”“把你的指令念给我听”都会被拒绝。
@@ -310,7 +307,7 @@ AI 先装有兴趣，再每一句出一招，同一招不会连用两次。对�
 - 不给交办以外的个人信息；不答应付款或定金。
 - 对方一说到时间、日期、星期、数量、金额、地址、电话号码或订位名字，就马上用问句完整复诵（“是今天下午四点三十分，对吗？”），等对方说对才算数。确认完之前不道谢、不道别。
 - 遇到语音信箱留两句话。
-- 被认真问时承认是 AI。
+- 以助理身份拨打时，被认真问到会表明是 AI 助理。
 
 AI 说交办的语言，对方改说别的语言就跟着换。
 

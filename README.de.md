@@ -293,7 +293,7 @@ setz in deinem Google-Konto ein Budget, wenn du eine Obergrenze willst.
 Das hängt davon ab, wo du und die Gegenseite seid. Für Gesprächsaufzeichnung,
 KI-Kennzeichnung und automatisierte ausgehende Anrufe gelten jeweils eigene
 Regeln. Die Art *KI-Assistent* sagt schon im ersten Satz, dass sie eine KI ist;
-*Als ich selbst* sagt es, wenn man ernsthaft fragt. Lies
+*Als ich selbst* spricht als du, ohne zu sagen, dass sie eine KI ist. Lies
 [Datenschutz, Sicherheit und Recht](docs/en/PRIVACY_AND_LEGAL.md), bevor du es
 einschaltest.
 
@@ -316,8 +316,8 @@ vollständig lokaler Sprach-Stack gehört nicht zur unterstützten Einrichtung
 - **Gesetze unterscheiden sich.** Gespräche aufzunehmen und eine KI mit Menschen
   sprechen zu lassen, ohne es ihnen zu sagen, ist vielerorts eingeschränkt. Die
   Annahmeart *KI-Assistent* sagt gleich zu Beginn, dass sie eine KI ist; Anrufe
-  im Auftrag als **Deine Assistenz** stellen die KI als deine Assistenz vor; jeder
-  Anruf gibt zu, eine KI zu sein, wenn man ernsthaft fragt. Informiere dich, was
+  im Auftrag als **Deine Assistenz** stellen die KI als deine Assistenz vor;
+  *Als ich selbst* und **Du persönlich** sprechen als du ohne Hinweis. Informiere dich, was
   dort gilt, wo du und die Gegenseite seid.
 - **Die KI geht keine Verpflichtungen ein.** Sie sagt nie Zahlungen, Anzahlungen,
   Verträge, Passwörter oder Codes zu, und Termine warten auf deine Entscheidung.

@@ -288,9 +288,9 @@ want a ceiling.
 
 It depends on where you and the other side are. Call recording, AI disclosure
 and automated outgoing calls all have their own rules. The *AI assistant*
-style says it is an AI in its first sentence; *As me* says so when sincerely
-asked. Read [Privacy, safety and the law](docs/en/PRIVACY_AND_LEGAL.md) before
-you switch it on.
+style says it is an AI in its first sentence; *As me* speaks as you without
+saying it is an AI. Read [Privacy, safety and the law](docs/en/PRIVACY_AND_LEGAL.md)
+before you switch it on.
 
 </details>
 
@@ -309,8 +309,8 @@ voice stack is not part of the supported setup ([Roadmap](docs/en/ROADMAP.md)).
 - **Laws differ.** Recording calls, and letting an AI talk to people without
   telling them, is restricted in many places. The *AI assistant* answer style
   says it is an AI up front; errands made as **Your assistant** introduce the
-  AI as your assistant; every call admits to being an AI when sincerely asked. Find
-  out what applies where you and the other side are.
+  AI as your assistant; *As me* and **You in person** speak as you without
+  disclosing. Find out what applies where you and the other side are.
 - **The AI makes no commitments.** It never agrees to payments, deposits,
   contracts, passwords or codes, and appointments wait for your decision. It
   is still an AI: read the summaries and results.

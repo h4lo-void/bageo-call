@@ -131,9 +131,12 @@ pub struct RuntimeSettings {
     /// the caps `persona_normal_max_min` / `persona_stall_max_min`).
     #[serde(default)]
     pub gemini_persona_mode: bool,
-    /// Persona system prompt; empty = built-in `gemini_live::default_persona_prompt`.
+    /// Custom prompt for "As me" (`answer_style = "persona"`); empty = built-in.
     #[serde(default)]
     pub gemini_persona_prompt: String,
+    /// Custom prompt for "AI assistant" (`answer_style = "assistant"`); empty = built-in.
+    #[serde(default)]
+    pub gemini_assistant_prompt: String,
     /// Answer hidden numbers too: hidden / private / empty caller ID takes the
     /// normal AI path instead of the reject WAV + hangup.
     #[serde(default)]
@@ -241,8 +244,7 @@ pub struct RuntimeSettings {
     #[serde(default)]
     pub owner_aliases: Vec<String>,
     /// `assistant` = the AI says it is the owner's AI assistant and takes a
-    /// message; `persona` = it answers as the owner (and still admits to being
-    /// an AI when sincerely asked).
+    /// message; `persona` = it answers as the owner.
     #[serde(default = "default_answer_style")]
     pub answer_style: String,
     /// Facts the AI may answer from (opening hours, address, what to tell
@@ -767,6 +769,7 @@ impl RuntimeSettings {
             gemini_persona_mode: env_bool("GEMINI_PERSONA_MODE", true),
             // Empty = the built-in prompt of the language and answer style.
             gemini_persona_prompt: env_or("GEMINI_PERSONA_PROMPT", ""),
+            gemini_assistant_prompt: env_or("GEMINI_ASSISTANT_PROMPT", ""),
             answer_unknown_callers: env_bool("ANSWER_UNKNOWN_CALLERS", true),
             reject_numbers: clean_reject_list(
                 split_list(&env_or("REJECT_NUMBERS", ""))
@@ -945,6 +948,16 @@ impl RuntimeSettings {
         }
     }
 
+    /// Custom prompt for the active `answer_style` (`gemini_assistant_prompt`
+    /// for `assistant`, `gemini_persona_prompt` for `persona`).
+    pub fn active_custom_prompt(&self) -> &str {
+        if self.is_assistant_style() {
+            &self.gemini_assistant_prompt
+        } else {
+            &self.gemini_persona_prompt
+        }
+    }
+
     /// A call's prompt in `lang` (None: the setting `language`). A call in a SIM's
     /// own language (setting `sim_languages`, [`crate::gemini_live::CallLangPlan::prompt_lang`])
     /// gets its prompt, its rules and the identity guard in that language.
@@ -955,7 +968,7 @@ impl RuntimeSettings {
             assistant: self.is_assistant_style(),
             owner: &self.owner_name,
             aliases: &self.owner_aliases,
-            custom: &self.gemini_persona_prompt,
+            custom: self.active_custom_prompt(),
             status: if self.owner_status_enabled { &self.owner_status_text } else { "" },
             stall,
             knowledge: &self.knowledge_notes,
@@ -965,7 +978,7 @@ impl RuntimeSettings {
     }
 
     /// The built-in prompt for the current language, style and owner name
-    /// (what an empty `gemini_persona_prompt` means).
+    /// (what an empty custom prompt for that style means).
     pub fn default_prompt(&self) -> String {
         crate::prompts::default_prompt(self.lang(), self.is_assistant_style(), &self.owner_name)
     }
@@ -977,7 +990,7 @@ impl RuntimeSettings {
             lang.unwrap_or_else(|| self.lang()),
             self.is_assistant_style(),
             &self.owner_name,
-            &self.gemini_persona_prompt,
+            self.active_custom_prompt(),
         )
     }
 
@@ -1092,6 +1105,7 @@ impl RuntimeSettings {
             summary_api_key,
             owner_status_text,
             gemini_persona_prompt,
+            gemini_assistant_prompt,
             ambience_kind,
             gemini_thinking_level,
             gemini_stall_model,
@@ -1498,6 +1512,8 @@ struct Overrides {
     #[serde(skip_serializing_if = "Option::is_none")]
     gemini_persona_prompt: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    gemini_assistant_prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     answer_unknown_callers: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     persona_stall_spam: Option<bool>,
@@ -1649,6 +1665,26 @@ impl SettingsStore {
             .clone()
             .unwrap_or_else(|| rt.summary_provider.clone());
         rt.apply(&overrides);
+        // Reading settings of older versions (before `gemini_assistant_prompt`
+        // existed, when both answer styles shared `gemini_persona_prompt`): keep
+        // the saved prompt under the answer style that was active at the time.
+        let mut prompt_split = false;
+        if overrides.gemini_assistant_prompt.is_none()
+            && overrides
+                .gemini_persona_prompt
+                .as_deref()
+                .is_some_and(|s| !s.trim().is_empty())
+        {
+            prompt_split = true;
+            if rt.is_assistant_style() {
+                let moved = std::mem::take(&mut rt.gemini_persona_prompt);
+                rt.gemini_assistant_prompt = moved.clone();
+                overrides.gemini_assistant_prompt = Some(moved);
+                overrides.gemini_persona_prompt = Some(String::new());
+            } else {
+                overrides.gemini_assistant_prompt = Some(String::new());
+            }
+        }
         // Reading settings of older versions:
         // A value from before the summary service was Gemini or custom (`auto`,
         // none, `deepseek`) is resolved once, here, and saved so: a key saved
@@ -1683,7 +1719,7 @@ impl SettingsStore {
             }
             info!("summary service of an older version written down path={}", path.display());
         }
-        if old_key_moved || filled {
+        if old_key_moved || filled || prompt_split {
             if let Err(e) = write_overrides(&path, &overrides) {
                 warn!("settings from an older version not saved yet: {e:#}");
             }
@@ -1874,6 +1910,20 @@ fn masked(rt: &RuntimeSettings) -> Value {
     m.insert(
         "default_prompt_template".into(),
         json!(crate::prompts::default_prompt_template(rt.lang(), rt.is_assistant_style())),
+    );
+    m.insert(
+        "default_prompts".into(),
+        json!({
+            "assistant": crate::prompts::default_prompt(rt.lang(), true, &rt.owner_name),
+            "persona": crate::prompts::default_prompt(rt.lang(), false, &rt.owner_name),
+        }),
+    );
+    m.insert(
+        "default_prompt_templates".into(),
+        json!({
+            "assistant": crate::prompts::default_prompt_template(rt.lang(), true),
+            "persona": crate::prompts::default_prompt_template(rt.lang(), false),
+        }),
     );
     // Lists the page builds its menus from.
     m.insert(
@@ -2077,6 +2127,7 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     p_bool(patch, "owner_status_enabled", &mut ov.owner_status_enabled);
     p_bool(patch, "gemini_persona_mode", &mut ov.gemini_persona_mode);
     p_string(patch, "gemini_persona_prompt", &mut ov.gemini_persona_prompt);
+    p_string(patch, "gemini_assistant_prompt", &mut ov.gemini_assistant_prompt);
     p_bool(patch, "answer_unknown_callers", &mut ov.answer_unknown_callers);
     p_bool(patch, "persona_stall_spam", &mut ov.persona_stall_spam);
     p_bool(patch, "scam_review_without_keywords", &mut ov.scam_review_without_keywords);
@@ -2143,6 +2194,13 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     p_string(patch, "answer_style", &mut ov.answer_style);
     if let Some(v) = ov.answer_style.take() {
         ov.answer_style = Some(sanitize_answer_style(&v));
+    }
+    if ov.gemini_assistant_prompt.is_none()
+        && (patch.get("answer_style").is_some()
+            || patch.get("gemini_persona_prompt").is_some()
+            || patch.get("gemini_assistant_prompt").is_some())
+    {
+        ov.gemini_assistant_prompt = Some(String::new());
     }
     if let Some(v) = patch.get("knowledge_notes").and_then(|v| v.as_str()) {
         ov.knowledge_notes = Some(crate::prompts::sanitize_knowledge(v));
@@ -3538,7 +3596,7 @@ mod tests {
         assert!(rt.gemini_system_prompt_for_call().contains("來電的人也可能叫你「Lex」、「xxxx"));
         assert!(rt.persona_stall_system_prompt().contains("來電的人也可能叫你「Lex」"));
         let rt = store
-            .apply_patch(&json!({ "answer_style": "assistant", "gemini_persona_prompt": "你幫{owner}接電話。" }))
+            .apply_patch(&json!({ "answer_style": "assistant", "gemini_assistant_prompt": "你幫{owner}接電話。" }))
             .unwrap();
         let p = rt.gemini_system_prompt_for_call();
         assert!(p.starts_with("你幫Alex接電話。") && p.contains("來電的人說要找「Lex」"), "{p}");
@@ -3710,5 +3768,104 @@ mod review_t4_tests {
         let rt = store.apply_patch(&json!({ "public_url": "https://bageo.example.com" })).unwrap();
         assert_eq!(rt.public_url, "https://bageo.example.com");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn each_answer_style_keeps_its_own_custom_prompt_and_migrates_older_files() {
+        for (lang, persona_line, assistant_line) in [
+            ("en", "Answer as {owner}, casual and short.", "You are {owner}'s AI assistant; take a short message."),
+            ("ja", "{owner}本人として短く自然に出てください。", "{owner}のAIアシスタントとして用件を伺ってください。"),
+            ("es", "Responde como {owner}, breve y natural.", "Eres el asistente de IA de {owner} y tomas el recado."),
+            ("zh-TW", "你是{owner}本人，講話簡短自然。", "你是{owner}的AI助理，負責記下留言。"),
+        ] {
+            let dir = std::env::temp_dir().join(format!("bageo-prompt-split-{lang}-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&dir).expect("temp settings dir");
+            let mut base = Settings::from_env();
+            base.calls_data_dir = dir.to_string_lossy().to_string();
+            let store = SettingsStore::load(base.clone());
+
+            // 1. Custom persona prompt saved under "persona", then user switches to
+            // "assistant": the assistant call uses the built-in assistant prompt
+            // (never the persona text), and switching back restores the persona text.
+            let rt = store
+                .apply_patch(&json!({
+                    "gemini_persona_mode": true,
+                    "language": lang,
+                    "owner_name": "Alex",
+                    "answer_style": "persona",
+                    "gemini_persona_prompt": persona_line,
+                }))
+                .unwrap();
+            let persona_expected = persona_line.replace("{owner}", "Alex");
+            assert!(rt.gemini_system_prompt_for_call().starts_with(&persona_expected), "{lang}");
+
+            let rt = store.apply_patch(&json!({ "answer_style": "assistant" })).unwrap();
+            let call_p = rt.gemini_system_prompt_for_call();
+            assert!(!call_p.contains(&persona_expected), "{lang}: {call_p}");
+            let mut fresh = RuntimeSettings::from_base(&base);
+            fresh.gemini_persona_mode = true;
+            fresh.language = lang.into();
+            fresh.owner_name = "Alex".into();
+            fresh.answer_style = "assistant".into();
+            assert_eq!(call_p, fresh.gemini_system_prompt_for_call(), "{lang}");
+
+            // Reload after switching to assistant: persona prompt stays in its own slot.
+            let reloaded = SettingsStore::load(base.clone());
+            let rt = reloaded.snapshot();
+            assert_eq!(rt.answer_style, "assistant");
+            assert_eq!(rt.gemini_assistant_prompt, "");
+            assert_eq!(rt.gemini_persona_prompt, persona_line);
+            assert!(!rt.gemini_system_prompt_for_call().contains(&persona_expected), "{lang}");
+
+            // 2. Saving a custom assistant prompt keeps both prompts independent.
+            let rt = reloaded
+                .apply_patch(&json!({ "gemini_assistant_prompt": assistant_line }))
+                .unwrap();
+            let assistant_expected = assistant_line.replace("{owner}", "Alex");
+            assert!(rt.gemini_system_prompt_for_call().starts_with(&assistant_expected), "{lang}");
+            let rt = reloaded.apply_patch(&json!({ "answer_style": "persona" })).unwrap();
+            assert!(rt.gemini_system_prompt_for_call().starts_with(&persona_expected), "{lang}");
+
+            let masked = reloaded.masked_json();
+            assert!(masked["default_prompts"]["assistant"].as_str().is_some_and(|s| !s.is_empty()));
+            assert!(masked["default_prompts"]["persona"].as_str().is_some_and(|s| !s.is_empty()));
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+
+        // 3. Older settings.json (no `gemini_assistant_prompt`) saved while
+        // `answer_style` was `assistant`: migrates into `gemini_assistant_prompt`.
+        let old_asst_dir = std::env::temp_dir().join(format!("bageo-old-asst-prompt-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(old_asst_dir.join("config")).unwrap();
+        std::fs::write(
+            old_asst_dir.join("config").join("settings.json"),
+            r#"{"language":"en","owner_name":"Alex","answer_style":"assistant","gemini_persona_prompt":"Legacy assistant prompt for {owner}."}"#,
+        )
+        .unwrap();
+        let mut old_asst_base = Settings::from_env();
+        old_asst_base.calls_data_dir = old_asst_dir.to_string_lossy().to_string();
+        let old_asst = SettingsStore::load(old_asst_base).snapshot();
+        assert_eq!(old_asst.gemini_assistant_prompt, "Legacy assistant prompt for {owner}.");
+        assert_eq!(old_asst.gemini_persona_prompt, "");
+        assert!(old_asst.gemini_system_prompt_for_call().starts_with("Legacy assistant prompt for Alex."));
+        let _ = std::fs::remove_dir_all(&old_asst_dir);
+
+        // 4. Older settings.json saved while `answer_style` was `persona`: stays in
+        // `gemini_persona_prompt` and switching to `assistant` uses built-in assistant.
+        let old_per_dir = std::env::temp_dir().join(format!("bageo-old-per-prompt-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(old_per_dir.join("config")).unwrap();
+        std::fs::write(
+            old_per_dir.join("config").join("settings.json"),
+            r#"{"language":"es","owner_name":"Alex","answer_style":"persona","gemini_persona_prompt":"Soy {owner}, dime."}"#,
+        )
+        .unwrap();
+        let mut old_per_base = Settings::from_env();
+        old_per_base.calls_data_dir = old_per_dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(old_per_base.clone());
+        assert_eq!(store.snapshot().gemini_persona_prompt, "Soy {owner}, dime.");
+        assert_eq!(store.snapshot().gemini_assistant_prompt, "");
+        let rt = store.apply_patch(&json!({ "answer_style": "assistant" })).unwrap();
+        assert!(!rt.gemini_system_prompt_for_call().contains("Soy Alex, dime."));
+        assert_eq!(SettingsStore::load(old_per_base).snapshot().gemini_assistant_prompt, "");
+        let _ = std::fs::remove_dir_all(&old_per_dir);
     }
 }
