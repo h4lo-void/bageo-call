@@ -186,6 +186,10 @@
                 <include
                     android:id="@+id/stepBattery"
                     layout="@layout/item_check" />
+
+                <include
+                    android:id="@+id/stepPair"
+                    layout="@layout/item_check" />
             </LinearLayout>
         </LinearLayout>
 

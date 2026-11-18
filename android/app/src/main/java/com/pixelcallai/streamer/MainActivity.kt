@@ -339,6 +339,9 @@ class MainActivity : Activity() {
                 openAppSettings()
             }
         }
+        if (hasRequiredPerms() && !isServiceRunning()) {
+            startCallService(CallAudioService.ACTION_START)
+        }
         refresh()
     }
 
@@ -707,6 +710,7 @@ class MainActivity : Activity() {
             ?.isNotificationPolicyAccessGranted == true
         val battery = getSystemService(PowerManager::class.java)
             ?.isIgnoringBatteryOptimizations(packageName) == true
+        val paired = Prefs.wifiUrls(this).isNotEmpty() || AgentControlClient.isAgentConnected()
 
         row(R.id.stepModule).bind(
             state = stepState(module),
@@ -746,8 +750,13 @@ class MainActivity : Activity() {
             detail = getString(R.string.step_battery_desc),
             actionLabel = if (battery) 0 else R.string.btn_allow,
         ) { requestBatteryExemption() }
+        row(R.id.stepPair).bind(
+            state = stepState(paired),
+            title = getString(R.string.step_pair_title),
+            detail = getString(if (paired) R.string.step_pair_ok else R.string.step_pair_missing),
+        )
 
-        val steps = listOf(module, perms, dialer, screening, dnd, battery)
+        val steps = listOf(module, perms, dialer, screening, dnd, battery, paired)
         val done = steps.count { it }
         val open = stepsOpen ?: (done < steps.size)
         stepsHeader.text = foldTitle(getString(R.string.steps_header, done, steps.size), open)

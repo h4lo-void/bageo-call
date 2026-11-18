@@ -25,7 +25,7 @@
     <string name="st_normal">Normal phone: calls ring as usual</string>
     <string name="st_normal_d">The AI does not answer. You answer calls yourself, like on any phone. Turn on the switch below to let the AI answer again.</string>
     <string name="st_offline">Not connected to the computer yet</string>
-    <string name="st_offline_d">Check that Bageo is running on the computer and the phone is plugged in by USB (or set a Wi-Fi address under Advanced). Until then, the AI cannot talk to callers.</string>
+    <string name="st_offline_d">Check that Bageo is running on the computer, and that the phone is plugged in by USB or on the same Wi-Fi (plug it in by USB once first to pair).</string>
     <string name="st_steps">Setup steps left: %1$d</string>
     <string name="st_steps_d">Finish the setup steps below so the AI can answer calls.</string>
     <string name="st_service_off">The answering service is not running</string>
@@ -72,6 +72,9 @@
     <string name="step_dnd_desc">Keeps the phone quiet while the AI answers.</string>
     <string name="step_battery_title">Do not let Android put Bageo to sleep</string>
     <string name="step_battery_desc">Stops Android from closing Bageo to save battery, so no call is missed.</string>
+    <string name="step_pair_title">Plug into the computer by USB to pair</string>
+    <string name="step_pair_ok">Paired with the computer. Calls keep working over Wi-Fi when unplugged.</string>
+    <string name="step_pair_missing">First time: turn on USB debugging and plug the phone into the computer running Bageo. After pairing once, it also connects over Wi-Fi.</string>
     <string name="btn_allow">Allow</string>
     <string name="btn_set">Set</string>
     <string name="btn_open_settings">Open settings</string>

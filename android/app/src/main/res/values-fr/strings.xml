@@ -25,7 +25,7 @@
     <string name="st_normal">Téléphone normal : les appels sonnent comme d\'habitude</string>
     <string name="st_normal_d">L\'IA ne répond pas. Vous répondez vous-même, comme sur n\'importe quel téléphone. Activez l\'interrupteur ci-dessous pour que l\'IA réponde de nouveau.</string>
     <string name="st_offline">Pas encore connecté à l\'ordinateur</string>
-    <string name="st_offline_d">Vérifiez que Bageo tourne sur l\'ordinateur et que le téléphone est branché en USB (ou saisissez une adresse Wi-Fi dans Avancé). D\'ici là, l\'IA ne peut pas parler aux appelants.</string>
+    <string name="st_offline_d">Vérifiez que Bageo tourne sur l\'ordinateur et que le téléphone est branché en USB ou sur le même Wi-Fi (branchez-le d\'abord une fois en USB pour l\'associer).</string>
     <string name="st_steps">Étapes de configuration restantes : %1$d</string>
     <string name="st_steps_d">Terminez les étapes ci-dessous pour que l\'IA puisse répondre.</string>
     <string name="st_service_off">Le service de réponse ne tourne pas</string>
@@ -72,6 +72,9 @@
     <string name="step_dnd_desc">Garde le téléphone silencieux pendant que l\'IA répond.</string>
     <string name="step_battery_title">Empêcher Android de mettre Bageo en veille</string>
     <string name="step_battery_desc">Évite qu\'Android ferme Bageo pour économiser la batterie et qu\'un appel soit manqué.</string>
+    <string name="step_pair_title">Brancher à l\'ordinateur en USB la première fois</string>
+    <string name="step_pair_ok">Associé à l\'ordinateur. Une fois le câble USB débranché, la connexion continue en Wi-Fi.</string>
+    <string name="step_pair_missing">La première fois, activez le débogage USB et branchez le téléphone en USB à l\'ordinateur. Ensuite, il se connectera aussi en Wi-Fi.</string>
     <string name="btn_allow">Autoriser</string>
     <string name="btn_set">Définir</string>
     <string name="btn_open_settings">Ouvrir les paramètres</string>
