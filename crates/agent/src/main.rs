@@ -10106,7 +10106,16 @@ fn spawn_ai_talk_tg_summary(
         let spoken_contact = if stalled || ai_failed || ai_callback {
             None
         } else {
-            extract::extract_spoken_contact(&caller_side_text(&live_full, &remote_tx), &caller)
+            let region = record
+                .sim_country
+                .clone()
+                .or_else(|| phone_region::country_of_code(&rt.effective_country_code()).map(str::to_string))
+                .unwrap_or_else(|| rt.default_region().to_string());
+            extract::extract_spoken_contact_in(
+                &caller_side_text(&live_full, &remote_tx),
+                &caller,
+                Some(&region),
+            )
         };
         if let Some(c) = &spoken_contact {
             let kept = calls.set_reply_contact(&call_id, &c.method, &c.contact).await;

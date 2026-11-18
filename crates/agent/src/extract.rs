@@ -427,61 +427,47 @@ fn infer_intent_keywords(text: &str) -> (&'static str, f32) {
 }
 
 fn looks_callback(text: &str) -> bool {
-    let lower = text.to_ascii_lowercase();
-    text.contains("回電")
-        || text.contains("回电")
-        || text.contains("回撥")
-        || text.contains("回拨")
-        || text.contains("回個電話")
-        || text.contains("回个电话")
-        || text.contains("打給我")
-        || text.contains("打给我")
-        || text.contains("請打給")
-        || text.contains("请打给")
-        || text.contains("有空打")
-        || text.contains("方便時來電")
-        || text.contains("方便时来电")
-        || lower.contains("call back")
-        || lower.contains("callback")
-        || lower.contains("call me back")
-        || lower.contains("ring me")
+    let lower = text.to_lowercase();
+    [
+        "回電", "回电", "回撥", "回拨", "回個電話", "回个电话", "打給我", "打给我", "請打給", "请打给",
+        "有空打", "方便時來電", "方便时来电",
+        "call back", "callback", "call me back", "ring me",
+        // ja, ko
+        "折り返し", "お電話", "電話ください", "전화 주세요", "전화주세요", "다시 전화", "연락 주세요", "연락주세요",
+        // es, fr, de, pt, it
+        "devuelva la llamada", "llámeme", "llameme", "llámame", "llamame",
+        "rappelez", "rappelle-moi", "rappeler", "rappel",
+        "rufen sie zurück", "ruf mich zurück", "rückruf", "ruckruf",
+        "me liga", "retorne a ligação", "retornar a ligação", "ligue de volta",
+        "mi richiami", "richiamami", "richiami",
+        // ru, vi, id, th, hi, ar
+        "перезвоните", "перезвони", "обратный звонок",
+        "gọi lại", "goi lai", "liên hệ lại",
+        "telepon balik", "hubungi kembali", "telpon lagi",
+        "โทรกลับ", "ติดต่อกลับ",
+        "कॉल बैक", "वापस कॉल", "फ़ोन करें", "फोन करें",
+        "عاود الاتصال", "اتصل بي", "أعد الاتصال",
+    ]
+    .iter()
+    .any(|k| lower.contains(k))
 }
 
 fn looks_schedule(text: &str) -> bool {
-    let lower = text.to_ascii_lowercase();
-    let schedule_verb = text.contains("預約")
-        || text.contains("预约")
-        || text.contains("約見")
-        || text.contains("约见")
-        || text.contains("約個時間")
-        || text.contains("约个时间")
-        || text.contains("約時間")
-        || text.contains("约时间")
-        || text.contains("安排時間")
-        || text.contains("安排时间")
-        || text.contains("排個時間")
-        || text.contains("排个时间")
-        || text.contains("改期")
-        || text.contains("改約")
-        || text.contains("改约")
-        || text.contains("開會")
-        || text.contains("开会")
-        || text.contains("會議")
-        || text.contains("会议")
-        || text.contains("面談")
-        || text.contains("面谈")
-        || text.contains("會面")
-        || text.contains("会面")
-        || text.contains("拜訪")
-        || text.contains("拜访")
-        || text.contains("看診")
-        || text.contains("看诊")
-        || lower.contains("appointment")
-        || lower.contains("reschedule")
-        || lower.contains("schedule a")
-        || lower.contains("schedule an")
-        || lower.contains("book a meeting")
-        || lower.contains("set up a meeting")
+    let lower = text.to_lowercase();
+    let schedule_verb = [
+        "預約", "预约", "約見", "约见", "約個時間", "约个时间", "約時間", "约时间", "安排時間", "安排时间",
+        "排個時間", "排个时间", "改期", "改約", "改约", "開會", "开会", "會議", "会议", "面談", "面谈",
+        "會面", "会面", "拜訪", "拜访", "看診", "看诊",
+        "appointment", "reschedule", "schedule a", "schedule an", "book a meeting", "set up a meeting",
+        // ja, ko, es, fr, de, pt, it, ru, vi, id, th, hi, ar
+        "予約", "打ち合わせ", "예약", "미팅", "일정",
+        "cita", "reunión", "reunion", "rendez-vous", "réunion", "termin", "besprechung",
+        "marcar", "reunião", "reuniao", "consulta", "appuntamento", "riunione",
+        "встреча", "запись", "совещание", "cuộc hẹn", "đặt lịch", "janji", "jadwal",
+        "นัดหมาย", "นัดเจอ", "अपॉइंटमेंट", "मीटिंग", "موعد", "اجتماع",
+    ]
+    .iter()
+    .any(|k| lower.contains(k))
         || (lower.contains("meeting")
             && (lower.contains("tomorrow")
                 || lower.contains("next week")
@@ -514,29 +500,23 @@ fn looks_schedule(text: &str) -> bool {
 }
 
 fn looks_question(text: &str) -> bool {
-    let lower = text.to_ascii_lowercase();
+    let lower = text.to_lowercase();
     text.contains('？')
         || text.contains('?')
-        || text.contains("請問")
-        || text.contains("请问")
-        || text.contains("想問")
-        || text.contains("想问")
-        || text.contains("請教")
-        || text.contains("请教")
-        || text.contains("有沒有")
-        || text.contains("有没有")
-        || text.contains("能不能")
-        || text.contains("可不可以")
-        || text.contains("是否")
-        || text.contains("如何")
-        || text.contains("怎麼")
-        || text.contains("怎么")
-        || lower.contains("do you")
-        || lower.contains("can you")
-        || lower.contains("could you")
-        || lower.contains("what time")
-        || lower.contains("how much")
-        || lower.contains("is it possible")
+        || text.contains('؟')
+        || [
+            "請問", "请问", "想問", "想问", "請教", "请教", "有沒有", "有没有", "能不能", "可不可以",
+            "是否", "如何", "怎麼", "怎么",
+            "do you", "can you", "could you", "what time", "how much", "is it possible",
+            "教えてください", "でしょうか", "여쭤", "문의", "있나요", "되나요",
+            "puedo", "puede", "cuánto", "cuanto", "pouvez-vous", "est-ce que",
+            "können sie", "wie viel", "wann", "você pode", "quanto",
+            "vorrei sapere", "posso", "можно", "подскажите", "сколько",
+            "cho hỏi", "có thể", "bao nhiêu", "apakah", "berapa", "bisa",
+            "สอบถาม", "เท่าไหร่", "ได้ไหม", "क्या आप", "कितना", "कब", "هل يمكن", "كم", "متى",
+        ]
+        .iter()
+        .any(|k| lower.contains(k))
 }
 
 /// Pull a short natural-language datetime snippet for GCal hint parsing.
@@ -689,7 +669,7 @@ fn find_clock_span(chars: &[char]) -> Option<(usize, usize)> {
 }
 
 fn infer_reply_method_keywords(text: &str) -> Option<String> {
-    let lower = text.to_ascii_lowercase();
+    let lower = text.to_lowercase();
     if looks_callback(text)
         || text.contains("打給")
         || text.contains("打给")
@@ -698,10 +678,12 @@ fn infer_reply_method_keywords(text: &str) -> Option<String> {
         return Some("phone".to_string());
     }
     if text.contains('@')
-        || lower.contains("email")
-        || text.contains("信箱")
-        || text.contains("郵件")
-        || text.contains("邮件")
+        || [
+            "email", "e-mail", "信箱", "郵件", "邮件", "メール", "이메일", "메일", "correo", "courriel",
+            "e-mail-adresse", "почт", "thư điện tử", "surat elektronik", "อีเมล", "ईमेल", "بريد إلكتروني",
+        ]
+        .iter()
+        .any(|k| lower.contains(k))
     {
         return Some("email".to_string());
     }
@@ -713,10 +695,18 @@ fn infer_reply_method_keywords(text: &str) -> Option<String> {
 ///
 /// Accepts ASCII digits, full-width digits, and common Mandarin phone digits
 /// (零/〇/洞、一/幺、二…); Piper `display` spaces digits / spells `@`·`.` for TTS.
-/// A phone number is one unbroken run of digits and only a Taiwan mobile, a
-/// Taiwan landline or an international number written with + (kept in
-/// `contact`); see [`extract_phone_hint`].
+/// With `region == None`, only Taiwan mobile/landline or `+` international numbers match.
+/// With `region == Some(iso)`, valid domestic numbers for that region (validated via
+/// [`crate::phone_region`]) also match.
 pub fn extract_spoken_contact(transcript: &str, caller_id: &str) -> Option<SpokenContact> {
+    extract_spoken_contact_in(transcript, caller_id, None)
+}
+
+pub fn extract_spoken_contact_in(
+    transcript: &str,
+    caller_id: &str,
+    region: Option<&str>,
+) -> Option<SpokenContact> {
     let trimmed = transcript.trim();
     if trimmed.is_empty() {
         return None;
@@ -730,7 +720,7 @@ pub fn extract_spoken_contact(transcript: &str, caller_id: &str) -> Option<Spoke
         });
     }
     // The raw text: folding turns 。 into a dot, which would join two numbers.
-    if let Some(phone) = extract_phone_hint(trimmed) {
+    if let Some(phone) = extract_phone_hint_in(trimmed, region) {
         let spoken = normalize_phone_digits(&phone);
         let caller = normalize_phone_digits(caller_id);
         if spoken.len() >= 8 && !phones_equivalent(&spoken, &caller) {
@@ -825,7 +815,10 @@ fn phones_equivalent(a: &str, b: &str) -> bool {
     }
     let ca = strip_tw_mobile_core(a);
     let cb = strip_tw_mobile_core(b);
-    ca == cb || ca.ends_with(&cb) || cb.ends_with(&ca)
+    ca == cb
+        || (ca.len().min(cb.len()) >= 8
+            && ca.len().abs_diff(cb.len()) <= 3
+            && (ca.ends_with(&cb) || cb.ends_with(&ca)))
 }
 
 /// A digit as said or typed, and whether it was typed (Arabic or full-width)
@@ -835,35 +828,48 @@ fn phone_digit(ch: char) -> Option<(char, bool)> {
     Some((d, ch.is_ascii_digit() || ('０'..='９').contains(&ch)))
 }
 
-/// Separators inside a typed number: "0912-345-678", "0912 345 678",
-/// "0912、345、678". Never a comma or a full stop: those end a sentence, and
-/// "零九一二三四五六七八，一下" is a number and then the next words.
+/// Separators inside a typed number: "0912-345-678", "(415) 555-0199",
+/// "0912、345、678". Never a comma or a full stop: those end a sentence.
 fn is_phone_separator(c: char) -> bool {
-    matches!(c, ' ' | '-' | '－' | '.' | '、' | '/' | '／')
+    matches!(c, ' ' | '-' | '－' | '.' | '、' | '/' | '／' | '(' | ')')
 }
 
 /// How much a digit run looks like a number to call back, or `None` when it
 /// is no phone number at all: a Taiwan mobile (10 digits, 09…) first, then an
 /// international number written with + (8–15 digits), then a Taiwan landline
-/// (9–10 digits, 02…08…).
-fn phone_candidate_score(number: &str) -> Option<i32> {
+/// (9–10 digits, 02…08…), or a domestic number matching `region`.
+fn phone_candidate_score_in(number: &str, region: Option<&str>) -> Option<i32> {
     if let Some(digits) = number.strip_prefix('+') {
         return (8..=15).contains(&digits.len()).then_some(2);
     }
     let b = number.as_bytes();
-    if b.len() == 10 && number.starts_with("09") {
-        Some(3)
-    } else if (9..=10).contains(&b.len()) && b[0] == b'0' && (b'2'..=b'8').contains(&b[1]) {
-        Some(1)
-    } else {
-        None
+    let iso = region.map(|r| r.trim().to_ascii_lowercase()).filter(|r| !r.is_empty());
+    if iso.is_none() || iso.as_deref() == Some("tw") {
+        if b.len() == 10 && number.starts_with("09") {
+            return Some(3);
+        }
+        if (9..=10).contains(&b.len()) && b[0] == b'0' && (b'2'..=b'8').contains(&b[1]) {
+            return Some(1);
+        }
+        return None;
     }
+    if let Some(iso) = iso.as_deref() {
+        if let Some(code) = crate::phone_region::calling_code(iso) {
+            if (8..=15).contains(&b.len())
+                && crate::phone_region::dialled_at_home(code, number)
+                && crate::phone_region::normalize(number, Some(iso)).is_some()
+            {
+                return Some(2);
+            }
+        }
+    }
+    None
 }
 
 /// The phone number in `text`: an unbroken run of digits (typed, spoken or
 /// mixed), where typed digits may be grouped by [`is_phone_separator`]. Runs
-/// that are no phone number ([`phone_candidate_score`]) are skipped.
-fn extract_phone_hint(text: &str) -> Option<String> {
+/// that are no phone number ([`phone_candidate_score_in`]) are skipped.
+fn extract_phone_hint_in(text: &str, region: Option<&str>) -> Option<String> {
     let chars: Vec<char> = text.chars().collect();
     let typed = |i: usize| chars.get(i).and_then(|&c| phone_digit(c)).is_some_and(|(_, t)| t);
     let mut best: Option<(String, i32)> = None;
@@ -896,7 +902,7 @@ fn extract_phone_hint(text: &str) -> Option<String> {
             }
             break;
         }
-        if let Some(score) = phone_candidate_score(&number) {
+        if let Some(score) = phone_candidate_score_in(&number, region) {
             if best.as_ref().map_or(true, |(_, s)| score > *s) {
                 best = Some((number, score));
             }
@@ -999,6 +1005,20 @@ fn parse_intent_json(raw_text: &str, caller_id: &str) -> Result<ExtractedIntent>
     let datetime_hint = opt_string(v.get("datetime_hint"));
     let reply_method = normalize_reply_method(v.get("reply_method"));
     let mut reply_contact = opt_string(v.get("reply_contact"));
+    if reply_method.as_deref() == Some("phone") {
+        if let Some(ref rc) = reply_contact {
+            let digits = rc.chars().filter(|c| c.is_ascii_digit()).count();
+            if rc.contains('@') || digits < 7 {
+                reply_contact = None;
+            }
+        }
+    } else if reply_method.as_deref() == Some("email") {
+        if let Some(ref rc) = reply_contact {
+            if !rc.contains('@') {
+                reply_contact = None;
+            }
+        }
+    }
     if reply_contact.is_none()
         && reply_method.as_deref() == Some("phone")
         && !caller_id.trim().is_empty()
@@ -1273,5 +1293,49 @@ mod tests {
         let i = heuristic_intent("恭喜中獎，請洽優惠專線", "+886900");
         // Spam hangup gate disabled; intent may still be non-Spam from heuristics.
         assert_ne!(i.intent, "Spam");
+    }
+
+    #[test]
+    fn multilingual_heuristics_spoken_region_and_reply_contact_validation() {
+        for sample in [
+            "折り返しお電話ください",
+            "다시 전화 주세요",
+            "Por favor devuelva la llamada",
+            "Merci de me rappeler",
+            "Bitte rufen Sie zurück",
+            "Me liga de volta por favor",
+            "Mi richiami appena può",
+            "Пожалуйста, перезвоните",
+            "Làm ơn gọi lại cho tôi",
+            "Tolong telepon balik",
+            "กรุณาโทรกลับด้วย",
+            "कृपया वापस कॉल करें",
+            "يرجى معاودة الاتصال بي",
+        ] {
+            let h = heuristic_intent(sample, "+886900");
+            assert_eq!(h.intent, "Callback", "{sample}");
+            assert_eq!(h.reply_method.as_deref(), Some("phone"), "{sample}");
+        }
+        assert_eq!(heuristic_intent("متى الموعد؟", "").intent, "Schedule");
+        assert_eq!(heuristic_intent("هل يمكن الحضور اليوم؟", "").intent, "Question");
+
+        // Domestic numbers in US/JP/KR are recognized when region is passed.
+        assert_eq!(
+            extract_spoken_contact_in("Call me at (415) 555-0199", "", Some("us")).map(|c| c.contact),
+            Some("4155550199".into())
+        );
+        assert_eq!(
+            extract_spoken_contact_in("番号は 090-1234-5678 です", "", Some("jp")).map(|c| c.contact),
+            Some("09012345678".into())
+        );
+        // Short tail suffix no longer passes as equivalent.
+        assert!(!phones_equivalent("678", "+886912345678"));
+        // Email placed into reply_contact under phone method falls back to caller_id.
+        let parsed = parse_intent_json(
+            r#"{"intent":"Callback","summary":"Call back","reply_method":"phone","reply_contact":"x@example.com"}"#,
+            "+886912345678",
+        )
+        .unwrap();
+        assert_eq!(parsed.reply_contact.as_deref(), Some("+886912345678"));
     }
 }

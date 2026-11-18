@@ -93,35 +93,62 @@ fn parse_stamp(s: &str) -> Option<NaiveDateTime> {
         .and_then(|d| d.and_hms_opt(0, 0, 0))
 }
 
-/// The model's answer as an event, or `None`: no event, not JSON, no title, a
-/// date in the past or too far ahead.
-pub fn parse_event(reply: &str, now: NaiveDateTime) -> Option<Event> {
-    let (a, b) = (reply.find('{')?, reply.rfind('}')?);
-    let v: Value = serde_json::from_str(reply.get(a..=b)?).ok()?;
-    let ev = v.get("event").filter(|e| e.is_object())?;
-    let title: String = ev
-        .get("title")?
-        .as_str()?
-        .chars()
-        .filter(|c| !c.is_control())
-        .take(120)
-        .collect();
+enum ParseOutcome {
+    Event(Event),
+    NoEvent,
+    Malformed,
+}
+
+fn parse_outcome(reply: &str, now: NaiveDateTime) -> ParseOutcome {
+    let (Some(a), Some(b)) = (reply.find('{'), reply.rfind('}')) else {
+        return ParseOutcome::Malformed;
+    };
+    let Some(slice) = reply.get(a..=b) else {
+        return ParseOutcome::Malformed;
+    };
+    let Ok(v) = serde_json::from_str::<Value>(slice) else {
+        return ParseOutcome::Malformed;
+    };
+    let Some(event_val) = v.get("event") else {
+        return ParseOutcome::Malformed;
+    };
+    if event_val.is_null() {
+        return ParseOutcome::NoEvent;
+    }
+    let Some(ev) = event_val.as_object() else {
+        return ParseOutcome::Malformed;
+    };
+    let Some(title_raw) = ev.get("title").and_then(Value::as_str) else {
+        return ParseOutcome::NoEvent;
+    };
+    let title: String = title_raw.chars().filter(|c| !c.is_control()).take(120).collect();
     let title = title.trim().to_string();
     if title.is_empty() {
-        return None;
+        return ParseOutcome::NoEvent;
     }
-    let all_day = ev.get("all_day").and_then(|x| x.as_bool()).unwrap_or(false);
-    let mut start = parse_stamp(ev.get("start")?.as_str()?)?;
+    let all_day = ev.get("all_day").and_then(Value::as_bool).unwrap_or(false);
+    let Some(start_str) = ev.get("start").and_then(Value::as_str) else {
+        return ParseOutcome::NoEvent;
+    };
+    let Some(mut start) = parse_stamp(start_str) else {
+        return ParseOutcome::NoEvent;
+    };
     if all_day {
-        start = start.date().and_hms_opt(0, 0, 0)?;
+        let Some(d) = start.date().and_hms_opt(0, 0, 0) else {
+            return ParseOutcome::NoEvent;
+        };
+        start = d;
     }
     let earliest = if all_day {
-        now.date().and_hms_opt(0, 0, 0)?
+        let Some(d) = now.date().and_hms_opt(0, 0, 0) else {
+            return ParseOutcome::NoEvent;
+        };
+        d
     } else {
         now - Duration::hours(1)
     };
     if start < earliest || start > now + Duration::days(MAX_DAYS_AHEAD) {
-        return None;
+        return ParseOutcome::NoEvent;
     }
     let default_len = if all_day { Duration::days(1) } else { Duration::hours(1) };
     let mut end = ev
@@ -131,18 +158,29 @@ pub fn parse_event(reply: &str, now: NaiveDateTime) -> Option<Event> {
         .filter(|e| *e > start && *e <= start + Duration::days(14))
         .unwrap_or(start + default_len);
     if all_day {
-        // Midnight after the last day; a same-day `end` means one day.
-        end = end.date().and_hms_opt(0, 0, 0)?;
+        let Some(d) = end.date().and_hms_opt(0, 0, 0) else {
+            return ParseOutcome::NoEvent;
+        };
+        end = d;
         if end <= start {
             end = start + Duration::days(1);
         }
     }
-    Some(Event {
+    ParseOutcome::Event(Event {
         title,
         start: start.format(STAMP).to_string(),
         end: end.format(STAMP).to_string(),
         all_day,
     })
+}
+
+/// The model's answer as an event, or `None`: no event, not JSON, no title, a
+/// date in the past or too far ahead.
+pub fn parse_event(reply: &str, now: NaiveDateTime) -> Option<Event> {
+    match parse_outcome(reply, now) {
+        ParseOutcome::Event(ev) => Some(ev),
+        ParseOutcome::NoEvent | ParseOutcome::Malformed => None,
+    }
 }
 
 impl Event {
@@ -624,12 +662,25 @@ pub async fn suggest(
     call: &str,
 ) -> Option<Event> {
     let endpoint = crate::summary::summary_endpoint(settings)?;
+    suggest_at(http, &endpoint, call).await
+}
+
+async fn suggest_at(
+    http: &reqwest::Client,
+    endpoint: &crate::summary::Endpoint,
+    call: &str,
+) -> Option<Event> {
     let active = locale::active();
     let now = chrono::Local::now().naive_local();
     let system = extraction_prompt(active.lang, &active.owner, now);
+    let max_tokens = if endpoint.url == crate::summary::GEMINI_OPENAI_URL { 600 } else { 200 };
     for model in &endpoint.models {
-        match crate::summary::chat_at(http, &endpoint, model, &system, call, 200).await {
-            Ok(reply) if !reply.trim().is_empty() => return parse_event(&reply, now),
+        match crate::summary::chat_at(http, endpoint, model, &system, call, max_tokens).await {
+            Ok(reply) if !reply.trim().is_empty() => match parse_outcome(&reply, now) {
+                ParseOutcome::Event(ev) => return Some(ev),
+                ParseOutcome::NoEvent => return None,
+                ParseOutcome::Malformed => tracing::warn!("calendar suggestion malformed model={model}"),
+            },
             Ok(_) => tracing::warn!("calendar suggestion empty model={model}"),
             Err(e) => tracing::warn!("calendar suggestion failed model={model}: {e:#}"),
         }
@@ -965,5 +1016,62 @@ mod tests {
         let ev = Event { title: "x".into(), start: "2026-11-20T10:30".into(), end: "2026-11-20T11:30".into(), all_day: false };
         assert_eq!(ev.when_in(Lang::ZhTw), "11月20日 10:30");
         assert_ne!(ev.when_in(Lang::En), ev.when_in(Lang::ZhTw));
+    }
+
+    #[tokio::test]
+    async fn suggest_stops_on_null_event_and_retries_fallback_on_truncated_json() {
+        use axum::{extract::State, routing::post, Json, Router};
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let app = Router::new()
+            .route(
+                "/chat/completions",
+                post(|State(n): State<Arc<AtomicUsize>>, Json(body): Json<Value>| async move {
+                    n.fetch_add(1, Ordering::SeqCst);
+                    let model = body["model"].as_str().unwrap_or("");
+                    let content = if model == "first-null" {
+                        r#"{"event": null}"#
+                    } else if model == "first-truncated" {
+                        r#"{"event": {"title": "Cut"#
+                    } else {
+                        r#"{"event": {"title": "Dentist", "start": "2099-05-01T10:00", "end": "", "all_day": false}}"#
+                    };
+                    Json(json!({ "choices": [{ "message": { "content": content } }] }))
+                }),
+            )
+            .with_state(calls.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let http = reqwest::Client::new();
+        let url = format!("http://{addr}/chat/completions");
+
+        // Valid {"event": null} returns None after 1 call (no fallback).
+        let ep_null = crate::summary::Endpoint {
+            url: url.clone(),
+            key: String::new(),
+            models: vec!["first-null".into(), "fallback-ok".into()],
+        };
+        assert_eq!(suggest_at(&http, &ep_null, "call").await, None);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        // Truncated/malformed JSON from first model retries fallback model.
+        calls.store(0, Ordering::SeqCst);
+        let ep_bad = crate::summary::Endpoint {
+            url,
+            key: String::new(),
+            models: vec!["first-truncated".into(), "fallback-ok".into()],
+        };
+        let ev = suggest_at(&http, &ep_bad, "call").await.unwrap();
+        assert_eq!(ev.title, "Dentist");
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        server.abort();
     }
 }

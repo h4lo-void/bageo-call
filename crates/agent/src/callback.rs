@@ -151,11 +151,12 @@ pub enum SmsOutcome {
 }
 
 /// Error codes a phone may answer `send_sms` with; anything else reads as `generic_failure`.
-pub const SMS_ERROR_CODES: [&str; 7] = [
+pub const SMS_ERROR_CODES: [&str; 8] = [
     "no_permission",
     "bad_request",
     "no_service",
     "radio_off",
+    "sim_not_found",
     "generic_failure",
     "timeout",
     "exception",
@@ -308,12 +309,15 @@ fn control_serials(serial: &str) -> Vec<String> {
 
 type SmsWaiters = HashMap<String, (String, oneshot::Sender<SmsOutcome>)>;
 
+const CALLBACK_SESSIONS_MAX: usize = 512;
+
 /// Connected idle-control WebSocket clients and in-flight callback sessions.
 #[derive(Clone, Default)]
 pub struct ControlRegistry {
     clients: Arc<Mutex<HashMap<String, WsSink>>>,
     sessions: Arc<Mutex<HashMap<String, CallbackSession>>>,
     call_index: Arc<Mutex<HashMap<String, String>>>,
+    session_order: Arc<Mutex<VecDeque<String>>>,
     /// Phones switched to "normal phone" (their owner answers): call-backs skip them.
     normal_mode: Arc<Mutex<HashSet<String>>>,
     /// Phones whose app sends text messages (`supports_sms` in the control hello).
@@ -824,14 +828,7 @@ impl ControlRegistry {
             .with_context(|| format!("send place_call serial={serial} task_id={task_id}"))?;
 
         let call_id = session.call_id.clone();
-        self.sessions
-            .lock()
-            .await
-            .insert(task_id.to_string(), session);
-        self.call_index
-            .lock()
-            .await
-            .insert(call_id, task_id.to_string());
+        self.register_callback_session(task_id, call_id, session).await;
 
         info!(
             task_id,
@@ -874,16 +871,49 @@ impl ControlRegistry {
             .await
             .with_context(|| format!("send place_call serial={serial} task_id={task_id}"))?;
         let call_id = session.call_id.clone();
-        self.sessions.lock().await.insert(task_id.to_string(), session);
-        self.call_index.lock().await.insert(call_id, task_id.to_string());
+        self.register_callback_session(task_id, call_id, session).await;
         info!(task_id, serial, sub_id = ?sub_id, number_len = number.len(), "place_call dispatched on its phone");
         Ok(true)
+    }
+
+    async fn register_callback_session(&self, task_id: &str, call_id: String, session: CallbackSession) {
+        let mut sessions = self.sessions.lock().await;
+        let mut call_index = self.call_index.lock().await;
+        let mut order = self.session_order.lock().await;
+        if let Some(prev) = sessions.insert(task_id.to_string(), session) {
+            if !prev.call_id.is_empty() && prev.call_id != call_id {
+                call_index.remove(&prev.call_id);
+            }
+            order.retain(|id| id != task_id);
+        }
+        order.push_back(task_id.to_string());
+        call_index.insert(call_id, task_id.to_string());
+        // Bound in-memory callback history by pruning the oldest finished sessions.
+        if sessions.len() > CALLBACK_SESSIONS_MAX {
+            let mut keep = VecDeque::with_capacity(order.len());
+            while let Some(id) = order.pop_front() {
+                let over = sessions.len() > CALLBACK_SESSIONS_MAX;
+                let done = sessions
+                    .get(&id)
+                    .is_some_and(|s| matches!(s.phase, CallbackPhase::Done | CallbackPhase::Failed));
+                if over && done {
+                    if let Some(old) = sessions.remove(&id) {
+                        if !old.call_id.is_empty() {
+                            call_index.remove(&old.call_id);
+                        }
+                    }
+                } else if sessions.contains_key(&id) {
+                    keep.push_back(id);
+                }
+            }
+            *order = keep;
+        }
     }
 
     /// Advance session from phone → agent control WS telemetry.
     pub async fn handle_phone_event(&self, msg: &Value, store: &TaskStore) {
         let mtype = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
-        let call_id = msg.get("call_id").and_then(|v| v.as_str()).unwrap_or("");
+        let call_id = msg.get("call_id").and_then(|v| v.as_str()).unwrap_or("").trim();
         let task_id = msg
             .get("task_id")
             .and_then(|v| v.as_str())
@@ -909,21 +939,28 @@ impl ControlRegistry {
             info!(mtype, task_id, "callback event: no session");
             return;
         };
+        if !call_id.is_empty() && !session.call_id.is_empty() && session.call_id != call_id {
+            info!(mtype, task_id, call_id, "callback event: stale call_id ignored");
+            return;
+        }
+        let write_task = !task_id.starts_with("errand-");
 
         match mtype {
             "place_call_ack" => {
                 on_place_call_result(session, true);
                 drop(sessions);
-                let _ = store.push_event(&task_id, "callback_place_call_ack").await;
-                let _ = store
-                    .patch(
-                        &task_id,
-                        crate::tasks::TaskPatch {
-                            fulfill_error: Some(None),
-                            ..Default::default()
-                        },
-                    )
-                    .await;
+                if write_task {
+                    let _ = store.push_event(&task_id, "callback_place_call_ack").await;
+                    let _ = store
+                        .patch(
+                            &task_id,
+                            crate::tasks::TaskPatch {
+                                fulfill_error: Some(None),
+                                ..Default::default()
+                            },
+                        )
+                        .await;
+                }
                 info!(task_id, "callback place_call_ack");
             }
             "place_call_failed" => {
@@ -933,24 +970,28 @@ impl ControlRegistry {
                     .and_then(|v| v.as_str())
                     .unwrap_or("dial failed");
                 drop(sessions);
-                let _ = store
-                    .push_event(&task_id, "callback_place_call_failed")
-                    .await;
-                let _ = store
-                    .patch(
-                        &task_id,
-                        crate::tasks::TaskPatch {
-                            fulfill_error: Some(Some(format!("callback: {reason}"))),
-                            ..Default::default()
-                        },
-                    )
-                    .await;
+                if write_task {
+                    let _ = store
+                        .push_event(&task_id, "callback_place_call_failed")
+                        .await;
+                    let _ = store
+                        .patch(
+                            &task_id,
+                            crate::tasks::TaskPatch {
+                                fulfill_error: Some(Some(format!("callback: {reason}"))),
+                                ..Default::default()
+                            },
+                        )
+                        .await;
+                }
                 warn!(task_id, reason, "callback place_call_failed");
             }
             "outbound_ready" => {
                 on_outbound_ready(session);
                 drop(sessions);
-                let _ = store.push_event(&task_id, "callback_outbound_ready").await;
+                if write_task {
+                    let _ = store.push_event(&task_id, "callback_outbound_ready").await;
+                }
                 info!(task_id, "callback outbound_ready");
             }
             "call_end" => {
@@ -960,12 +1001,14 @@ impl ControlRegistry {
                     .is_some_and(|r| !r.is_empty() && r != "normal");
                 on_call_end(session, failed);
                 drop(sessions);
-                let evt = if failed {
-                    "callback_failed"
-                } else {
-                    "callback_done"
-                };
-                let _ = store.push_event(&task_id, evt).await;
+                if write_task {
+                    let evt = if failed {
+                        "callback_failed"
+                    } else {
+                        "callback_done"
+                    };
+                    let _ = store.push_event(&task_id, evt).await;
+                }
                 info!(task_id, failed, "callback call_end");
             }
             _ => {}
@@ -1466,5 +1509,32 @@ mod tests {
         reg.set_supports_reject("pixel-10341", true).await;
         reg.unregister_client("pixel-10341").await;
         assert!(!reg.supports_reject("pixel-10341").await);
+    }
+
+    #[tokio::test]
+    async fn stale_call_id_and_errand_events_do_not_clobber_session_or_tasks() {
+        let reg = ControlRegistry::default();
+        let root = std::env::temp_dir().join(format!("bageo-cb-stale-{}", Uuid::new_v4()));
+        let tasks = TaskStore::new(root.clone());
+
+        let mut s1 = CallbackSession::new("errand-1", "0912345678");
+        s1.call_id = "call-old".into();
+        s1.phase = CallbackPhase::Dialing;
+        reg.register_callback_session("errand-1", "call-old".into(), s1).await;
+
+        let mut s2 = CallbackSession::new("errand-1", "0912345678");
+        s2.call_id = "call-new".into();
+        s2.phase = CallbackPhase::Dialing;
+        reg.register_callback_session("errand-1", "call-new".into(), s2).await;
+
+        assert!(reg.call_index.lock().await.get("call-old").is_none());
+        // Late call_end from call-old must NOT mark call-new Done/Failed.
+        reg.handle_phone_event(&json!({"type": "call_end", "task_id": "errand-1", "call_id": "call-old"}), &tasks).await;
+        assert_eq!(reg.callback_session_for("errand-1", "").await.unwrap().phase, CallbackPhase::Dialing);
+
+        // sim_not_found parses as Failed("sim_not_found") rather than generic_failure.
+        let parsed = parse_sms_result(&json!({"type": "send_sms_result", "id": "s1", "ok": false, "error": "sim_not_found"})).unwrap();
+        assert_eq!(parsed.1, SmsOutcome::Failed("sim_not_found".into()));
+        let _ = std::fs::remove_dir_all(root);
     }
 }

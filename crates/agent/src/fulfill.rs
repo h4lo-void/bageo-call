@@ -214,9 +214,9 @@ async fn fulfill_builtin(
                         // follows a call-back script instead of answering as for a
                         // call coming in ([`voicemail_callback_for_call`]).
                         if let Some(s) = ctrl.callback_session_for(task_id, "").await {
-                            let lang = locale::current();
-                            let script = voicemail_callback_script(&locale::active(), lang, task);
-                            register_voicemail_callback(task_id, &number, &s.serial, script, lang);
+                            let spoken = infer_voicemail_callback_lang(rt, &number, &s.serial, task);
+                            let script = voicemail_callback_script(&locale::active(), spoken, task);
+                            register_voicemail_callback(task_id, &number, &s.serial, script, spoken);
                         }
                         // Clear prior waiting hint once dial command is on the wire.
                         store
@@ -401,14 +401,11 @@ pub fn tg_result_text(task: &TaskRecord, confirmed: bool) -> String {
 struct PendingCallBack {
     task_id: String,
     number: String,
-    /// Canonical E.164 key (or raw digits when unplaceable).
     key: String,
-    /// Country of the SIM / number used to interpret national forms.
     region: Option<String>,
-    /// The phone asked to dial it.
     serial: String,
     script: String,
-    lang: Lang,
+    lang: Option<Lang>,
     since: std::time::Instant,
 }
 
@@ -463,7 +460,38 @@ fn same_callback_number(c: &PendingCallBack, caller_id: &str, serial: &str) -> b
     crate::contacts::same_number(&c.number, trimmed, sim.as_deref())
 }
 
-fn register_voicemail_callback(task_id: &str, number: &str, serial: &str, script: String, lang: Lang) {
+fn infer_voicemail_callback_lang(
+    rt: &RuntimeSettings,
+    number: &str,
+    serial: &str,
+    task: &TaskRecord,
+) -> Option<Lang> {
+    let tx = task.transcript.trim();
+    if !tx.is_empty() {
+        let dialogue = format!("對方：{tx}");
+        if crate::gemini_live::dialogue_in_other_language(&dialogue, rt.lang()) {
+            return None;
+        }
+        if let Some(l) = crate::gemini_live::dialogue_lang(&dialogue, rt.lang()) {
+            return Some(l);
+        }
+    }
+    let sim = crate::phone_region::last_sim(serial.trim());
+    let plan = crate::gemini_live::call_lang_plan(
+        number,
+        sim.as_deref(),
+        rt.lang(),
+        &rt.effective_country_code(),
+        &rt.sim_languages,
+    );
+    if plan.caller_other_stt.is_some() || plan.local_hello.is_some() {
+        None
+    } else {
+        Some(plan.opening.unwrap_or_else(|| rt.lang()))
+    }
+}
+
+fn register_voicemail_callback(task_id: &str, number: &str, serial: &str, script: String, lang: Option<Lang>) {
     let (key, region) = number_key_for(serial, number, None);
     let mut list = call_backs();
     list.retain(|c| c.task_id != task_id && c.since.elapsed() < CALL_BACK_MAX_AGE);
@@ -532,7 +560,7 @@ pub async fn voicemail_callback_for_call(
                 return Some(crate::appointments::CallbackCall {
                     task_id: c.task_id,
                     script: c.script,
-                    lang: Some(c.lang),
+                    lang: c.lang,
                     errand: false,
                 });
             }
@@ -569,9 +597,13 @@ pub async fn voicemail_callback_dialing(control: &ControlRegistry, serial: &str,
 /// What the AI follows on a to-do's phone call-back: we call them back about
 /// the message they left; it greets them once they speak, says who calls and
 /// why, listens, agrees to nothing.
-fn voicemail_callback_script(active: &locale::Active, lang: Lang, task: &TaskRecord) -> String {
-    let owner = crate::prompts::owner_label(lang, &active.owner);
-    let language = locale::phrases(lang).name_en;
+fn voicemail_callback_script(active: &locale::Active, lang: Option<Lang>, task: &TaskRecord) -> String {
+    let prompt_lang = lang.unwrap_or(Lang::En);
+    let owner = crate::prompts::owner_label(prompt_lang, &active.owner);
+    let language = match lang {
+        Some(l) => locale::phrases(l).name_en,
+        None => "the language they answer in",
+    };
     let who = if active.assistant {
         format!("{owner}'s assistant")
     } else {
@@ -699,18 +731,18 @@ mod tests {
     /// number (or the only one on that phone), and its script says we call back.
     #[test]
     fn a_todo_call_back_is_known_as_our_call() {
-        let script = voicemail_callback_script(&locale::Active::default(), Lang::ZhTw, &phone_task("想問週六有沒有營業"));
+        let script = voicemail_callback_script(&locale::Active::default(), Some(Lang::ZhTw), &phone_task("想問週六有沒有營業"));
         assert!(script.contains("returning their call") && script.contains("they did not call you"), "{script}");
         assert!(script.contains("想問週六有沒有營業"));
         assert!(!script.contains("不方便接電話"));
-        register_voicemail_callback("t-vm-1", "+886 912 000 881", "pixel-vm-test-a", "S1".into(), Lang::ZhTw);
+        register_voicemail_callback("t-vm-1", "+886 912 000 881", "pixel-vm-test-a", "S1".into(), Some(Lang::ZhTw));
         assert!(voicemail_callback_pending("pixel-vm-test-a"));
         assert!(!voicemail_callback_pending("pixel-vm-test-b"));
         assert_eq!(pending_call_back("pixel-vm-test-a", "0912000881").as_deref(), Some("t-vm-1"));
         assert_eq!(pending_call_back("pixel-vm-test-a", ""), Some("t-vm-1".to_string()), "the only one on that phone");
         assert_eq!(pending_call_back("pixel-vm-test-a", "0912000999"), None, "another number is a call coming in");
         assert_eq!(pending_call_back("pixel-vm-test-b", "0912000881"), None, "another phone");
-        register_voicemail_callback("t-vm-2", "0912000882", "pixel-vm-test-a", "S2".into(), Lang::ZhTw);
+        register_voicemail_callback("t-vm-2", "0912000882", "pixel-vm-test-a", "S2".into(), Some(Lang::ZhTw));
         assert_eq!(pending_call_back("pixel-vm-test-a", ""), None, "two on that phone: the number decides");
         assert_eq!(take_call_back("t-vm-1").map(|c| c.script), Some("S1".to_string()));
         assert_eq!(take_call_back("t-vm-1").map(|c| c.script), None, "taken once");
@@ -722,7 +754,7 @@ mod tests {
     /// the call-back (an unknown task: forgotten).
     #[tokio::test]
     async fn a_todo_call_back_waits_for_the_phones_word() {
-        register_voicemail_callback("t-vm-3", "0912000883", "pixel-vm-test-c", "S3".into(), Lang::ZhTw);
+        register_voicemail_callback("t-vm-3", "0912000883", "pixel-vm-test-c", "S3".into(), Some(Lang::ZhTw));
         let control = ControlRegistry::new();
         assert!(voicemail_callback_for_call(&control, "pixel-vm-test-c", "0912000883").await.is_none());
         assert!(!voicemail_callback_pending("pixel-vm-test-c"));
@@ -733,7 +765,7 @@ mod tests {
     /// call coming in, and asking takes nothing.
     #[tokio::test]
     async fn a_todo_call_back_is_ours_only_while_its_dial_is_live() {
-        register_voicemail_callback("t-vm-4", "0912000884", "pixel-vm-test-d", "S4".into(), Lang::ZhTw);
+        register_voicemail_callback("t-vm-4", "0912000884", "pixel-vm-test-d", "S4".into(), Some(Lang::ZhTw));
         let control = ControlRegistry::new();
         assert!(!voicemail_callback_dialing(&control, "pixel-vm-test-d", "0912000999").await, "another number");
         assert!(!voicemail_callback_dialing(&control, "pixel-vm-test-e", "0912000884").await, "another phone");
@@ -745,7 +777,7 @@ mod tests {
     #[test]
     fn eight_digit_countries_and_taiwan_landlines_match_and_stay_distinct() {
         // Taiwan 8-digit landline (07-234-5678 vs +88672345678).
-        register_voicemail_callback("t-vm-tw-ll", "07-234-5678", "pixel-vm-tw-ll", "S".into(), Lang::ZhTw);
+        register_voicemail_callback("t-vm-tw-ll", "07-234-5678", "pixel-vm-tw-ll", "S".into(), Some(Lang::ZhTw));
         assert_eq!(pending_call_back("pixel-vm-tw-ll", "+88672345678").as_deref(), Some("t-vm-tw-ll"));
         assert_eq!(pending_call_back("pixel-vm-tw-ll", "0272345678"), None);
         take_call_back("t-vm-tw-ll");
@@ -760,7 +792,7 @@ mod tests {
         ] {
             let serial = format!("pixel-vm-{iso}");
             crate::phone_region::note_sim(&serial, iso);
-            register_voicemail_callback(id, e164, &serial, "S".into(), Lang::En);
+            register_voicemail_callback(id, e164, &serial, "S".into(), Some(Lang::En));
             assert_eq!(pending_call_back(&serial, local).as_deref(), Some(id), "{iso} local");
             assert_eq!(pending_call_back(&serial, e164).as_deref(), Some(id), "{iso} e164");
             assert_eq!(pending_call_back(&serial, foreign), None, "{iso} foreign {foreign}");
@@ -769,10 +801,24 @@ mod tests {
 
         // Even before note_sim is called on a dual-SIM/unseen phone, an E.164 callback
         // still recognizes its own country's bare 8-digit local form without matching others.
-        register_voicemail_callback("t-vm-hk-nosim", "+85291234567", "pixel-vm-nosim", "S".into(), Lang::En);
+        register_voicemail_callback("t-vm-hk-nosim", "+85291234567", "pixel-vm-nosim", "S".into(), Some(Lang::En));
         assert_eq!(pending_call_back("pixel-vm-nosim", "91234567").as_deref(), Some("t-vm-hk-nosim"));
         assert_eq!(pending_call_back("pixel-vm-nosim", "+6591234567"), None);
         assert_eq!(pending_call_back("pixel-vm-nosim", "091234567"), None);
         take_call_back("t-vm-hk-nosim");
+    }
+
+    #[test]
+    fn voicemail_callback_infers_caller_language_instead_of_setting_language() {
+        let rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        let mut en_task = phone_task("Please call me back tomorrow morning");
+        en_task.transcript = "Hi, this is Alex, please call me back tomorrow morning.".into();
+        assert_eq!(infer_voicemail_callback_lang(&rt, "0912345678", "s-vm", &en_task), Some(Lang::En));
+
+        let mut th_task = phone_task("กรุณาโทรกลับด้วยครับ");
+        th_task.transcript = "สวัสดีครับ กรุณาโทรกลับด้วยครับ".into();
+        assert_eq!(infer_voicemail_callback_lang(&rt, "+66812345678", "s-vm", &th_task), None);
+        let script = voicemail_callback_script(&locale::Active::default(), None, &th_task);
+        assert!(script.contains("the language they answer in"), "{script}");
     }
 }

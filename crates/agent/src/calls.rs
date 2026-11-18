@@ -225,7 +225,7 @@ pub struct CallListPage {
 #[derive(Debug, Clone, Serialize)]
 pub struct CallStats {
     pub total: usize,
-    /// Calls whose `started_at` falls on today's UTC date (matches `date_dir`).
+    /// Calls whose `started_at` falls on today's local calendar day.
     pub today: usize,
     pub voicemails: usize,
     pub blocked: usize,
@@ -811,6 +811,7 @@ impl ActiveCall {
             let n = n.min(self.tts_mix.len());
             mix_s16le_add(&mut self.tts_mix[..n], &self.bed_mix[..n]);
         }
+        self.bed_mix = Vec::new();
         // With `record_tts` off the system voice was only kept as the echo reference: it stays
         // out of the saved mix.
         let mix_tts: &[u8] = if self.record_tts { &self.tts_mix } else { &[] };
@@ -1556,7 +1557,7 @@ impl CallStore {
             status: status.to_string(),
             sample_rate,
             date_dir,
-            mix: Vec::with_capacity(sample_rate as usize * 2 * 60),
+            mix: Vec::new(),
             tts_mix: Vec::new(),
             remote_mix: Vec::with_capacity(sample_rate as usize * 2 * 60),
             ai_remote_pcm: Vec::new(),
@@ -1605,7 +1606,6 @@ impl CallStore {
                 call.id, call.serial
             );
         }
-        call.seal_timeline();
 
         let duration_ms = call.started_instant.elapsed().as_millis() as u64;
         let ended_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
@@ -1613,45 +1613,47 @@ impl CallStore {
         // DTMF-1 AI segment only (caller speech while AI was live).
         call.ai_segment_active = false;
         let sr = call.sample_rate;
-        let raw_mix_secs = (call.mix.len() as f64 / 2.0) / f64::from(sr.max(1));
-
-        // Move the PCM buffers out and write every WAV on a blocking thread so the
-        // device WS loop (which awaits this before `call_end_ack`) never stalls on
-        // tens of MB of synchronous disk IO.
-        let mut jobs: Vec<(&'static str, String, Vec<u8>)> = Vec::with_capacity(4);
-        if !call.mix.is_empty() {
-            jobs.push((
-                "mix",
-                format!("{}/{}.wav", call.date_dir, call.id),
-                std::mem::take(&mut call.mix),
-            ));
-        }
-        if call.record_tts && !call.tts_mix.is_empty() {
-            jobs.push((
-                "tts",
-                format!("{}/{}_tts.wav", call.date_dir, call.id),
-                std::mem::take(&mut call.tts_mix),
-            ));
-        }
-        if !call.remote_mix.is_empty() {
-            jobs.push((
-                "remote",
-                format!("{}/{}_remote.wav", call.date_dir, call.id),
-                std::mem::take(&mut call.remote_mix),
-            ));
-        }
-        if call.ai_remote_pcm.len() >= sr as usize {
-            // ≥0.5s of audio at 16k mono
-            jobs.push((
-                "ai",
-                format!("{}/{}_ai.wav", call.date_dir, call.id),
-                std::mem::take(&mut call.ai_remote_pcm),
-            ));
-        }
         let root = self.root.clone();
         let call_id = call.id.clone();
-        let legacy = [call.pcm_path.clone(), call.tts_pcm_path.clone()];
-        let written: Vec<(&'static str, String)> = tokio::task::spawn_blocking(move || {
+        let fallback_record = call.to_record(Some(ended_at.clone()), None, duration_ms);
+
+        // Seal the timeline (echo suppression, normalization, mix, peak limiting)
+        // and write every WAV inside one blocking task so the device WS loop
+        // never stalls on CPU work or tens of MB of disk IO.
+        let (mut final_record, raw_mix_secs) = match tokio::task::spawn_blocking(move || {
+            call.seal_timeline();
+            let raw_mix_secs = (call.mix.len() as f64 / 2.0) / f64::from(sr.max(1));
+            let mut jobs: Vec<(&'static str, String, Vec<u8>)> = Vec::with_capacity(4);
+            if !call.mix.is_empty() {
+                jobs.push((
+                    "mix",
+                    format!("{}/{}.wav", call.date_dir, call.id),
+                    std::mem::take(&mut call.mix),
+                ));
+            }
+            if call.record_tts && !call.tts_mix.is_empty() {
+                jobs.push((
+                    "tts",
+                    format!("{}/{}_tts.wav", call.date_dir, call.id),
+                    std::mem::take(&mut call.tts_mix),
+                ));
+            }
+            if !call.remote_mix.is_empty() {
+                jobs.push((
+                    "remote",
+                    format!("{}/{}_remote.wav", call.date_dir, call.id),
+                    std::mem::take(&mut call.remote_mix),
+                ));
+            }
+            if call.ai_remote_pcm.len() >= sr as usize {
+                // ≥0.5s of audio at 16k mono
+                jobs.push((
+                    "ai",
+                    format!("{}/{}_ai.wav", call.date_dir, call.id),
+                    std::mem::take(&mut call.ai_remote_pcm),
+                ));
+            }
+            let legacy = [call.pcm_path.clone(), call.tts_pcm_path.clone()];
             let mut ok = Vec::with_capacity(jobs.len());
             for (kind, rel, pcm) in jobs {
                 match write_wav(&root.join(&rel), &pcm, sr, 1) {
@@ -1664,32 +1666,35 @@ impl CallStore {
                     Err(e) => warn!("{kind} wav write failed id={call_id}: {e:#}"),
                 }
             }
-            // Clean any leftover legacy pcm paths.
             for p in legacy {
                 let _ = fs::remove_file(p);
             }
-            ok
+            let pick = |k: &str| ok.iter().find(|(kind, _)| *kind == k).map(|(_, r)| r.clone());
+            let mut rec = call.to_record(Some(ended_at), pick("mix"), duration_ms);
+            rec.tts_audio_path = pick("tts");
+            rec.remote_audio_path = pick("remote");
+            rec.ai_audio_path = pick("ai");
+            (rec, raw_mix_secs)
         })
         .await
-        .unwrap_or_else(|e| {
-            warn!("wav write task failed: {e}");
-            Vec::new()
-        });
-        let pick = |k: &str| written.iter().find(|(kind, _)| *kind == k).map(|(_, r)| r.clone());
-        let audio_path = pick("mix");
-
-        let mut final_record = call.to_record(Some(ended_at), audio_path, duration_ms);
-        final_record.tts_audio_path = pick("tts");
-        final_record.remote_audio_path = pick("remote");
-        final_record.ai_audio_path = pick("ai");
+        {
+            Ok(pair) => pair,
+            Err(e) => {
+                warn!("wav write task failed: {e}");
+                (fallback_record, 0.0)
+            }
+        };
         final_record.status = final_status.to_string();
 
         let snap = {
             let mut idx = self.index.lock().await;
             if let Some(slot) = idx.calls.iter_mut().find(|c| c.id == final_record.id) {
-                // A late re-finalize must not wipe a summary already written.
+                // A late re-finalize must not wipe a summary or scam_feedback already written.
                 if final_record.summary.is_none() {
                     final_record.summary = slot.summary.take();
+                }
+                if final_record.scam_feedback.is_none() {
+                    final_record.scam_feedback = slot.scam_feedback.take();
                 }
                 *slot = final_record.clone();
             } else {
@@ -1853,13 +1858,18 @@ impl CallStore {
         };
         self.write_index_snapshot(snap).await;
         let dir = dir.with_context(|| format!("no date dir for call {id}"))?;
-        let path = self.root.join(dir).join(format!("{id}_notes.json"));
+        let dir_path = self.root.join(dir);
+        let path = dir_path.join(format!("{id}_notes.json"));
+        let tmp = dir_path.join(format!("{id}_notes.json.tmp"));
         let data = serde_json::to_vec(notes)?;
         tokio::task::spawn_blocking(move || {
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)?;
+            fs::create_dir_all(&dir_path)?;
+            {
+                let mut f = File::create(&tmp).with_context(|| format!("create {}", tmp.display()))?;
+                f.write_all(&data)?;
+                f.sync_all()?;
             }
-            fs::write(&path, data).with_context(|| format!("write {}", path.display()))
+            fs::rename(&tmp, &path).with_context(|| format!("rename to {}", path.display()))
         })
         .await??;
         Ok(())
@@ -2320,7 +2330,23 @@ fn load_index(root: &Path) -> Result<CallIndex> {
     let mut f = File::open(&path).with_context(|| format!("open {}", path.display()))?;
     let mut buf = String::new();
     f.read_to_string(&mut buf)?;
-    Ok(serde_json::from_str(&buf).unwrap_or_default())
+    if buf.trim().is_empty() {
+        return Ok(CallIndex::default());
+    }
+    match serde_json::from_str(&buf) {
+        Ok(idx) => Ok(idx),
+        Err(e) => {
+            let stamp = Utc::now().format("%Y%m%dT%H%M%SZ");
+            let backup = root.join(format!("index.unreadable-{stamp}.json"));
+            warn!(
+                "corrupt calls index path={} moved_to={}: {e}",
+                path.display(),
+                backup.display()
+            );
+            let _ = fs::rename(&path, &backup);
+            Ok(CallIndex::default())
+        }
+    }
 }
 
 fn write_index_bytes(root: &Path, data: &[u8]) -> Result<()> {
@@ -2329,8 +2355,10 @@ fn write_index_bytes(root: &Path, data: &[u8]) -> Result<()> {
     let tmp = root.join("index.json.tmp");
     {
         let mut f = File::create(&tmp)?;
-        f.write_all(&data)?;
-        f.flush()?;
+        if let Err(e) = f.write_all(data).and_then(|_| f.sync_all()) {
+            let _ = fs::remove_file(&tmp);
+            return Err(e.into());
+        }
     }
     fs::rename(&tmp, &path)?;
     Ok(())
@@ -3196,6 +3224,27 @@ mod review_t4_tests {
         assert_eq!(store.live_calls().await.len(), 1);
         store.finalize(again, "ended").await;
         assert!(store.live_calls().await.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn corrupt_index_is_quarantined_and_scam_feedback_survives_finalize() {
+        let dir = std::env::temp_dir().join(format!("bageo-calls-nl1-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("index.json"), "{broken json").unwrap();
+        let store = CallStore::new(dir.clone(), true, false);
+        assert!(store.list().await.is_empty());
+        let quarantined = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .any(|e| e.file_name().to_string_lossy().starts_with("index.unreadable-"));
+        assert!(quarantined, "corrupt index.json must be renamed aside");
+
+        let call = store.start("pixel-1", "0912345678", 16000, "ended").await.unwrap();
+        let cid = call.id.clone();
+        assert!(store.set_scam_feedback(&cid, "not_sales").await);
+        let rec = store.finalize(call, "ended").await;
+        assert_eq!(rec.scam_feedback.as_deref(), Some("not_sales"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

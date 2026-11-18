@@ -174,21 +174,21 @@ impl TaskStore {
         &self.root
     }
 
-    /// Remove task metadata older than the call retention window.
+    /// Remove task metadata older than the call retention window, keeping any
+    /// unfinished tasks or appointments whose scheduled date has not yet aged out.
     pub async fn purge_expired(&self, retention_days: u32) {
-        let cutoff = Utc::now() - Duration::days(i64::from(retention_days.clamp(1, 3650)));
+        let days = i64::from(retention_days.clamp(1, 3650));
+        let cutoff = Utc::now() - Duration::days(days);
+        let local_now = chrono::Local::now().naive_local();
         let mut expired = Vec::new();
         {
             let mut idx = self.index.lock().await;
             idx.tasks.retain(|task| {
-                let is_expired = DateTime::parse_from_rfc3339(&task.created_at)
-                    .map(|dt| dt.with_timezone(&Utc) < cutoff)
-                    .unwrap_or(false);
-                if is_expired {
+                if Self::should_retain_on_purge(task, cutoff, local_now, days) {
+                    true
+                } else {
                     expired.push(task.id.clone());
                     false
-                } else {
-                    true
                 }
             });
             if !expired.is_empty() {
@@ -212,6 +212,37 @@ impl TaskStore {
                 retention_days
             );
         }
+    }
+
+    fn should_retain_on_purge(
+        task: &TaskRecord,
+        cutoff: DateTime<Utc>,
+        local_now: chrono::NaiveDateTime,
+        retention_days: i64,
+    ) -> bool {
+        if matches!(task.status, TaskStatus::Pending | TaskStatus::Confirmed) {
+            return true;
+        }
+        if let Some(appt) = task.appointment.as_ref() {
+            if appt.status == crate::appointments::PENDING {
+                return true;
+            }
+            let start = chrono::NaiveDateTime::parse_from_str(appt.start.trim(), "%Y-%m-%dT%H:%M")
+                .or_else(|_| chrono::NaiveDateTime::parse_from_str(appt.start.trim(), "%Y-%m-%dT%H:%M:%S"));
+            if let Ok(dt) = start {
+                if dt + Duration::days(retention_days) > local_now {
+                    return true;
+                }
+            }
+        }
+        let stamp = if task.updated_at.trim().is_empty() {
+            &task.created_at
+        } else {
+            &task.updated_at
+        };
+        !DateTime::parse_from_rfc3339(stamp)
+            .map(|dt| dt.with_timezone(&Utc) < cutoff)
+            .unwrap_or(false)
     }
 
     /// Delete every task belonging to any of `call_ids` (used when call history
@@ -293,70 +324,83 @@ impl TaskStore {
         }
     }
 
+    async fn mutate<F>(&self, id: &str, f: F) -> Result<TaskRecord>
+    where
+        F: FnOnce(&mut TaskRecord),
+    {
+        let mut idx = self.index.lock().await;
+        let pos = if let Some(pos) = idx.tasks.iter().position(|t| t.id == id) {
+            pos
+        } else {
+            let loaded = load_task_file(&self.root, id)
+                .with_context(|| format!("task not found: {id}"))?;
+            idx.tasks.insert(0, loaded);
+            0
+        };
+        f(&mut idx.tasks[pos]);
+        idx.tasks[pos].updated_at = now_rfc3339();
+        let updated = idx.tasks[pos].clone();
+        save_task_file(&self.root, &updated)?;
+        idx.tasks.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        if let Err(e) = save_index(&self.root, &idx) {
+            warn!("tasks index save: {e:#}");
+        }
+        Ok(updated)
+    }
+
     pub async fn update_status(&self, id: &str, status: TaskStatus) -> Result<TaskRecord> {
-        let mut task = self
-            .get(id)
-            .await
-            .with_context(|| format!("task not found: {id}"))?;
-        task.status = status;
-        task.updated_at = now_rfc3339();
-        self.persist(&task).await?;
-        Ok(task)
+        self.mutate(id, |task| {
+            task.status = status;
+        })
+        .await
     }
 
     /// Merge fulfillment / extract fields; bumps `updated_at`.
     pub async fn patch(&self, id: &str, patch: TaskPatch) -> Result<TaskRecord> {
-        let mut task = self
-            .get(id)
-            .await
-            .with_context(|| format!("task not found: {id}"))?;
-        if let Some(v) = patch.summary {
-            task.summary = normalize_task_text(&v);
-        }
-        if let Some(v) = patch.transcript {
-            task.transcript = normalize_task_text(&v);
-        }
-        if let Some(v) = patch.intent {
-            task.intent = v;
-        }
-        if let Some(v) = patch.datetime_hint {
-            task.datetime_hint = v;
-        }
-        if let Some(v) = patch.calendar_event_id {
-            task.calendar_event_id = Some(v);
-        }
-        if let Some(v) = patch.openclaw_ref {
-            task.openclaw_ref = Some(v);
-        }
-        if let Some(v) = patch.fulfill_error {
-            task.fulfill_error = v;
-        }
-        if let Some(v) = patch.reply_method {
-            task.reply_method = v;
-        }
-        if let Some(v) = patch.reply_contact {
-            task.reply_contact = v;
-        }
-        if let Some(v) = patch.contact_verified {
-            task.contact_verified = v;
-        }
-        if let Some(v) = patch.appointment {
-            task.appointment = Some(v);
-        }
-        task.updated_at = now_rfc3339();
-        self.persist(&task).await?;
-        Ok(task)
+        self.mutate(id, |task| {
+            if let Some(v) = patch.summary {
+                task.summary = normalize_task_text(&v);
+            }
+            if let Some(v) = patch.transcript {
+                task.transcript = normalize_task_text(&v);
+            }
+            if let Some(v) = patch.intent {
+                task.intent = v;
+            }
+            if let Some(v) = patch.datetime_hint {
+                task.datetime_hint = v;
+            }
+            if let Some(v) = patch.calendar_event_id {
+                task.calendar_event_id = Some(v);
+            }
+            if let Some(v) = patch.openclaw_ref {
+                task.openclaw_ref = Some(v);
+            }
+            if let Some(v) = patch.fulfill_error {
+                task.fulfill_error = v;
+            }
+            if let Some(v) = patch.reply_method {
+                task.reply_method = v;
+            }
+            if let Some(v) = patch.reply_contact {
+                task.reply_contact = v;
+            }
+            if let Some(v) = patch.contact_verified {
+                task.contact_verified = v;
+            }
+            if let Some(v) = patch.appointment {
+                task.appointment = Some(v);
+            }
+        })
+        .await
     }
 
     pub async fn push_event(&self, id: &str, event: &str) -> Result<TaskRecord> {
-        let mut task = self
-            .get(id)
-            .await
-            .with_context(|| format!("task not found: {id}"))?;
-        task.events.push(event.to_string());
-        task.updated_at = now_rfc3339();
-        self.persist(&task).await?;
-        Ok(task)
+        let evt = event.to_string();
+        self.mutate(id, |task| {
+            task.events.push(evt);
+        })
+        .await
     }
 
     async fn persist(&self, task: &TaskRecord) -> Result<()> {
@@ -607,6 +651,99 @@ mod tests {
                 assert_eq!(out, input, "{lang:?} must preserve Simplified Chinese");
             }
         }
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn purge_expired_keeps_pending_and_future_appointments() {
+        let root = temp_tasks_root();
+        let store = TaskStore::new(root.clone());
+        let old_ts = (Utc::now() - Duration::days(20)).to_rfc3339_opts(SecondsFormat::Secs, true);
+        let future_start = (chrono::Local::now().naive_local() + Duration::days(10))
+            .format("%Y-%m-%dT%H:%M")
+            .to_string();
+        let past_start = (chrono::Local::now().naive_local() - Duration::days(20))
+            .format("%Y-%m-%dT%H:%M")
+            .to_string();
+
+        let mut pending_appt = draft_from_voicemail("c1", "s1", "0900000001", "", ReplyMethod::Sms, None, false);
+        pending_appt.created_at = old_ts.clone();
+        pending_appt.updated_at = old_ts.clone();
+        pending_appt.status = TaskStatus::Pending;
+        pending_appt.intent = TaskIntent::Appointment;
+        pending_appt.appointment = Some(crate::appointments::Appointment {
+            start: past_start.clone(),
+            status: crate::appointments::PENDING.to_string(),
+            ..Default::default()
+        });
+        let pending_id = pending_appt.id.clone();
+        store.create(pending_appt).await.unwrap();
+
+        let mut future_confirmed = draft_from_voicemail("c2", "s1", "0900000002", "", ReplyMethod::Sms, None, false);
+        future_confirmed.created_at = old_ts.clone();
+        future_confirmed.updated_at = old_ts.clone();
+        future_confirmed.status = TaskStatus::Fulfilled;
+        future_confirmed.intent = TaskIntent::Appointment;
+        future_confirmed.appointment = Some(crate::appointments::Appointment {
+            start: future_start,
+            status: crate::appointments::CONFIRMED.to_string(),
+            ..Default::default()
+        });
+        let future_id = future_confirmed.id.clone();
+        store.create(future_confirmed).await.unwrap();
+
+        let mut old_ignored = draft_from_voicemail("c3", "s1", "0900000003", "", ReplyMethod::None, None, false);
+        old_ignored.created_at = old_ts.clone();
+        old_ignored.updated_at = old_ts;
+        old_ignored.status = TaskStatus::Ignored;
+        old_ignored.intent = TaskIntent::Appointment;
+        old_ignored.appointment = Some(crate::appointments::Appointment {
+            start: past_start,
+            status: crate::appointments::DECLINED.to_string(),
+            ..Default::default()
+        });
+        let ignored_id = old_ignored.id.clone();
+        store.create(old_ignored).await.unwrap();
+
+        store.purge_expired(15).await;
+
+        assert!(store.get(&pending_id).await.is_some(), "pending appointment must not be purged");
+        assert!(store.get(&future_id).await.is_some(), "future confirmed appointment must not be purged");
+        assert!(store.get(&ignored_id).await.is_none(), "old declined appointment should be purged");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn concurrent_patch_and_status_updates_do_not_clobber_fields() {
+        let root = temp_tasks_root();
+        let store = TaskStore::new(root.clone());
+        let mut draft = draft_from_voicemail("c-race", "s1", "0900000009", "", ReplyMethod::Call, None, false);
+        draft.intent = TaskIntent::Appointment;
+        draft.appointment = Some(crate::appointments::Appointment {
+            start: "2026-12-01T10:00".to_string(),
+            status: crate::appointments::PENDING.to_string(),
+            ..Default::default()
+        });
+        let id = draft.id.clone();
+        store.create(draft).await.unwrap();
+
+        let confirmed = crate::appointments::Appointment {
+            start: "2026-12-01T10:00".to_string(),
+            status: crate::appointments::CONFIRMED.to_string(),
+            ..Default::default()
+        };
+        let (r1, r2, r3) = tokio::join!(
+            store.patch(&id, TaskPatch { appointment: Some(confirmed), ..Default::default() }),
+            store.patch(&id, TaskPatch { fulfill_error: Some(None), ..Default::default() }),
+            store.push_event(&id, "callback_place_call_ack"),
+        );
+        r1.unwrap();
+        r2.unwrap();
+        r3.unwrap();
+
+        let latest = store.get(&id).await.unwrap();
+        assert_eq!(latest.appointment.as_ref().map(|a| a.status.as_str()), Some(crate::appointments::CONFIRMED));
+        assert!(latest.events.iter().any(|e| e == "callback_place_call_ack"));
         let _ = fs::remove_dir_all(root);
     }
 }

@@ -1228,9 +1228,9 @@ impl ApptSession {
         }
         let (start, _) = match window(args, now) {
             Ok(w) => w,
-            Err(why) => return bad_time(why),
+            Err(why) => return bad_time(why, now),
         };
-        if let Some(e) = weekday_mismatch(args, start) {
+        if let Some(e) = weekday_mismatch_at(args, start, now) {
             return e;
         }
         unavailable()
@@ -1247,9 +1247,9 @@ impl ApptSession {
         }
         let (start, end) = match window(args, now) {
             Ok(w) => w,
-            Err(why) => return bad_time(why),
+            Err(why) => return bad_time(why, now),
         };
-        if let Some(e) = weekday_mismatch(args, start) {
+        if let Some(e) = weekday_mismatch_at(args, start, now) {
             return e;
         }
         if self.book.is_discarded() {
@@ -1331,8 +1331,12 @@ fn unavailable() -> Value {
     json!({ "free": null, "reason": "calendar_unavailable" })
 }
 
-fn bad_time(why: &str) -> Value {
-    json!({ "error": why, "expected": "start as a future local time, YYYY-MM-DDTHH:MM" })
+fn bad_time(why: &str, now: NaiveDateTime) -> Value {
+    json!({
+        "error": why,
+        "now": now.format("%Y-%m-%dT%H:%M (%A)").to_string(),
+        "expected": "start as a future local time, YYYY-MM-DDTHH:MM",
+    })
 }
 
 /// The answer to a proposal the caller has not confirmed read back: not
@@ -1348,15 +1352,16 @@ fn confirm_first(lang: Lang, start: NaiveDateTime) -> Value {
     })
 }
 
-/// A read-back question for `t`, quoted, in `lang` (Chinese) or else in
-/// English: month, day, weekday, part of the day, hour and minutes, a half
-/// hour said as 「半」 — the details a fast reply loses ("four thirty" heard
-/// as "four").
+/// A read-back question for `t`, quoted, in `lang`: month, day, weekday, part
+/// of the day, hour and minutes — the details a fast reply loses ("four thirty"
+/// heard as "four").
 fn read_back_example(lang: Lang, t: NaiveDateTime) -> String {
     let hour12 = match t.hour() % 12 {
         0 => 12,
         h => h,
     };
+    let wd_idx = t.weekday().num_days_from_monday() as usize;
+    let m_idx = (t.month() as usize).saturating_sub(1).min(11);
     match lang {
         Lang::ZhTw | Lang::ZhCn => {
             let part = match t.hour() {
@@ -1366,7 +1371,7 @@ fn read_back_example(lang: Lang, t: NaiveDateTime) -> String {
                 13..=17 => "下午",
                 _ => "晚上",
             };
-            let day = ["一", "二", "三", "四", "五", "六", "日"][t.weekday().num_days_from_monday() as usize];
+            let day = ["一", "二", "三", "四", "五", "六", "日"][wd_idx];
             let minutes = match t.minute() {
                 0 => String::new(),
                 30 => "半".to_string(),
@@ -1375,7 +1380,44 @@ fn read_back_example(lang: Lang, t: NaiveDateTime) -> String {
             let (date, clock, ask) = if lang == Lang::ZhTw { ("號", "點", "對嗎") } else { ("号", "点", "对吗") };
             format!("「是{}月{}{date}星期{day}{part}{hour12}{clock}{minutes}，{ask}？」", t.month(), t.day())
         }
-        _ => format!(
+        Lang::Ja => {
+            let wd = ["月", "火", "水", "木", "金", "土", "日"][wd_idx];
+            let part = if t.hour() < 12 { "午前" } else { "午後" };
+            let mins = match t.minute() {
+                0 => String::new(),
+                30 => "半".to_string(),
+                m => format!("{m}分"),
+            };
+            format!("「{}月{}日（{wd}）{part}{hour12}時{mins}でよろしいですか？」", t.month(), t.day())
+        }
+        Lang::Ko => {
+            let wd = ["월", "화", "수", "목", "금", "토", "일"][wd_idx];
+            let part = if t.hour() < 12 { "오전" } else { "오후" };
+            let mins = if t.minute() == 0 { String::new() } else { format!(" {}분", t.minute()) };
+            format!("\"{}월 {}일 {wd}요일 {part} {hour12}시{mins}, 맞으신가요?\"", t.month(), t.day())
+        }
+        Lang::Es => {
+            let wd = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"][wd_idx];
+            let mon = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"][m_idx];
+            let part = if t.hour() < 12 { "de la mañana" } else if t.hour() < 19 { "de la tarde" } else { "de la noche" };
+            format!("\"¿Entonces el {wd} {} de {mon} a las {hour12}:{:02} {part}, verdad?\"", t.day(), t.minute())
+        }
+        Lang::Fr => {
+            let wd = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"][wd_idx];
+            let mon = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"][m_idx];
+            format!("\"C'est bien {wd} {} {mon} à {:02} h {:02}, c'est ça ?\"", t.day(), t.hour(), t.minute())
+        }
+        Lang::De => {
+            let wd = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"][wd_idx];
+            let mon = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"][m_idx];
+            format!("\"Also {wd}, der {}. {mon} um {:02}:{:02} Uhr, stimmt das?\"", t.day(), t.hour(), t.minute())
+        }
+        Lang::Pt => {
+            let wd = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"][wd_idx];
+            let mon = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"][m_idx];
+            format!("\"Então fica para {wd}, {} de {mon}, às {:02}:{:02}, certo?\"", t.day(), t.hour(), t.minute())
+        }
+        Lang::En => format!(
             "\"So that's {}, {} {}, at {hour12}:{:02} {}, right?\"",
             t.format("%A"),
             t.format("%B"),
@@ -1390,7 +1432,12 @@ fn read_back_example(lang: Lang, t: NaiveDateTime) -> String {
 /// it worked the date out wrong ("Wednesday" as the 19th, a Thursday). The
 /// answer names the date's real weekday so it corrects the date and calls
 /// again. A missing or unknown weekday is not checked.
+#[cfg(test)]
 fn weekday_mismatch(args: &Value, start: NaiveDateTime) -> Option<Value> {
+    weekday_mismatch_at(args, start, start)
+}
+
+fn weekday_mismatch_at(args: &Value, start: NaiveDateTime, now: NaiveDateTime) -> Option<Value> {
     let said = args
         .get("weekday")
         .and_then(Value::as_str)?
@@ -1401,6 +1448,7 @@ fn weekday_mismatch(args: &Value, start: NaiveDateTime) -> Option<Value> {
         json!({
             "error": "weekday_mismatch",
             "date_is": start.format("%A").to_string(),
+            "now": now.format("%Y-%m-%dT%H:%M (%A)").to_string(),
             "expected": "the date of the weekday the caller means (see the list of dates in your instructions); call again with it",
         })
     })
@@ -1697,6 +1745,8 @@ pub fn time_talk(text: &str) -> bool {
         "अपॉइंटमेंट", "मुलाकात", "मीटिंग", "मिलने", "मिल सकते", "कब मिल", "फ्री हैं", "फ्री हो", "खाली हैं", "समय है", "वक्त है", "डिनर", "लंच", "शेड्यूल",
         // ar (Arabic: supports optional diacritics and attached prefixes)
         "موعد", "ميعاد", "اجتماع", "نتقابل", "مقابلة", "لقاء", "متفرغ", "فاضي", "فاضية", "عندك وقت", "لديك وقت", "نحدد وقت", "تغيير الموعد", "تأجيل الموعد", "عشاء", "غداء",
+        // bn, mr, ta, te (Indic vowel matras split in is_alphanumeric)
+        "অ্যাপয়েন্টমেন্ট", "দেখা কর", "मीटिंग", "भेट", "சந்திப்பு", "நேரம்", "అపాయింట్‌మెంట్", "కలుద్దాం",
     ];
     const WORDS: &[&str] = &[
         "appointment", "meeting", "meet up", "schedule", "reschedule", "you available", "are you free", "you free",
@@ -1723,6 +1773,8 @@ pub fn time_talk(text: &str) -> bool {
         // vi
         "cuộc hẹn", "hẹn gặp", "lịch hẹn", "đặt lịch", "đổi lịch", "dời lịch", "cuộc họp", "gặp nhau", "gặp mặt",
         "có rảnh", "rảnh", "có thời gian", "ăn tối", "ăn trưa", "uống cà phê",
+        // nl, pl, ro, uk
+        "afspraak", "vergadering", "spotkanie", "umówić", "umowic", "întâlnire", "intalnire", "programare", "зустріч", "домовитися",
     ];
     let low = text.to_lowercase();
     if RUNS.iter().any(|r| low.contains(r)) {
@@ -2824,8 +2876,12 @@ fn callbacks_overdue() -> Vec<(String, &'static str)> {
         .filter_map(|c| {
             let age = c.since.elapsed();
             let code = match c.stage {
-                CallbackStage::Dialing if age >= CALLBACK_DIAL_LIMIT => "failed",
-                CallbackStage::Ready if age >= CALLBACK_READY_LIMIT => "failed",
+                CallbackStage::Dialing if age >= CALLBACK_DIAL_LIMIT => {
+                    if c.kind == CallbackKind::Errand { "ended_early" } else { "failed" }
+                }
+                CallbackStage::Ready if age >= CALLBACK_READY_LIMIT => {
+                    if c.kind == CallbackKind::Errand { "ended_early" } else { "failed" }
+                }
                 CallbackStage::Ended if age >= CALLBACK_ENDED_LIMIT => "done",
                 CallbackStage::OnCall if age >= CALLBACK_CALL_LIMIT => "done",
                 _ => return None,
@@ -2901,7 +2957,10 @@ fn callback_needs_notice(code: &str) -> bool {
 /// Keep a call-back's progress on its task (`appointment.call`). A decision
 /// still writing the task finishes first (it writes `dialing` or `queued`).
 async fn set_call_code(tasks: &TaskStore, task_id: &str, code: &str) {
-    let _claim = Deciding::claim_within(task_id, Duration::from_secs(15)).await;
+    let Some(_claim) = Deciding::claim_within(task_id, Duration::from_secs(15)).await else {
+        warn!("set_call_code skipped: task {task_id} busy");
+        return;
+    };
     let Some(task) = tasks.get(task_id).await else {
         return;
     };
@@ -3185,7 +3244,7 @@ pub fn card_text(rt: &RuntimeSettings, task: &TaskRecord, appt: &Appointment, li
     lines.push(match default_reply(&rt.appointment_reply, opts) {
         Reply::Sms => format!("{}{sep}{}", p.ap_sms, p.ap_sms_will),
         Reply::Call => format!("{}{sep}{}", w.label, w.call_will),
-        Reply::None if !opts.call => format!("{}{sep}{}", w.label, w.hidden),
+        Reply::None if !callable(&task.caller_id) => format!("{}{sep}{}", w.label, w.hidden),
         Reply::None if !rt.appointment_sms => format!("{}{sep}{}", p.ap_sms, p.ap_sms_off),
         Reply::None => format!("{}{sep}{}", p.ap_sms, p.ap_sms_cannot),
     });
@@ -3518,7 +3577,7 @@ async fn decide_inner_with(
         }
         Reply::None => {
             let w = reply_words(lang);
-            lines.push(if opts.call { w.none } else { w.hidden }.to_string());
+            lines.push(if callable(&task.caller_id) { w.none } else { w.hidden }.to_string());
         }
     }
     if confirm {
@@ -4940,7 +4999,12 @@ mod tests {
         assert_eq!(read_back_example(Lang::ZhCn, at(2026, 11, 20, 9, 5)), "「是11月20号星期五上午9点5分，对吗？」");
         assert_eq!(read_back_example(Lang::ZhTw, at(2026, 11, 20, 20, 0)), "「是11月20號星期五晚上8點，對嗎？」");
         assert_eq!(read_back_example(Lang::En, at(2026, 11, 22, 0, 0)), "\"So that's Sunday, November 22, at 12:00 am, right?\"");
-        assert_eq!(read_back_example(Lang::Ja, at(2026, 11, 19, 12, 15)), "\"So that's Thursday, November 19, at 12:15 pm, right?\"");
+        assert_eq!(read_back_example(Lang::Ja, at(2026, 11, 19, 12, 15)), "「11月19日（木）午後12時15分でよろしいですか？」");
+        assert!(read_back_example(Lang::Ko, at(2026, 11, 19, 12, 15)).contains("목요일"));
+        assert!(read_back_example(Lang::Es, at(2026, 11, 19, 12, 15)).contains("jueves"));
+        assert!(read_back_example(Lang::Fr, at(2026, 11, 19, 12, 15)).contains("jeudi"));
+        assert!(read_back_example(Lang::De, at(2026, 11, 19, 12, 15)).contains("Donnerstag"));
+        assert!(read_back_example(Lang::Pt, at(2026, 11, 19, 12, 15)).contains("quinta-feira"));
     }
 
     #[test]
@@ -5676,6 +5740,53 @@ mod callback_number_key_edges {
         }
         assert!(!errand_call_known("e-cb-drop-end"));
         callbacks_remove("e-cb-drop-end");
+    }
+
+    #[test]
+    fn callbacks_overdue_marks_errand_dial_timeout_as_ended_early() {
+        let mut e = PendingCallback::errand("e-overdue-1", "0912000111", "phone-od", None, "S".into());
+        e.stage = CallbackStage::Dialing;
+        e.since = std::time::Instant::now() - CALLBACK_DIAL_LIMIT - Duration::from_secs(5);
+        let mut a = PendingCallback::new("a-overdue-1", "0912000112", "phone-od", "S".into());
+        a.stage = CallbackStage::Ready;
+        a.since = std::time::Instant::now() - CALLBACK_READY_LIMIT - Duration::from_secs(5);
+        {
+            let mut list = callbacks();
+            list.push(e);
+            list.push(a);
+        }
+        let overdue = callbacks_overdue();
+        assert!(overdue.contains(&("e-overdue-1".to_string(), "ended_early")), "{overdue:?}");
+        assert!(overdue.contains(&("a-overdue-1".to_string(), "failed")), "{overdue:?}");
+        callbacks_remove("e-overdue-1");
+        callbacks_remove("a-overdue-1");
+    }
+
+    #[test]
+    fn bad_time_includes_now_and_visible_non_callable_uses_none_label() {
+        let now = chrono::NaiveDate::from_ymd_opt(2026, 11, 18).unwrap().and_hms_opt(14, 30, 0).unwrap();
+        let err = bad_time("start_in_past", now);
+        assert_eq!(err["now"], "2026-11-18T14:30 (Wednesday)");
+
+        let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        rt.appointment_reply = "call".into();
+        let appt = Appointment {
+            start: "2026-11-20T14:00".into(),
+            end: "2026-11-20T15:00".into(),
+            mode: "confirm".into(),
+            status: PENDING.into(),
+            ..Default::default()
+        };
+        let task = TaskRecord {
+            id: "t-l22".into(),
+            caller_id: "+81312345678".into(),
+            serial: "s1".into(),
+            appointment: Some(appt.clone()),
+            ..Default::default()
+        };
+        let (_title, body) = card_text(&rt, &task, &appt, "");
+        let w = reply_words(locale::notify_lang());
+        assert!(!body.contains(w.hidden), "visible foreign number must not say hidden: {body}");
     }
 }
 

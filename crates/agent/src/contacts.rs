@@ -547,7 +547,7 @@ struct Book {
     keys: Vec<Vec<NumKey>>,
     exact: HashMap<String, Vec<usize>>,
     tails: HashMap<String, Vec<usize>>,
-    names: HashMap<String, usize>,
+    names: HashMap<String, Vec<usize>>,
     region: Option<String>,
 }
 
@@ -571,7 +571,7 @@ impl Book {
         }
         let n = name_key(name);
         if !n.is_empty() {
-            self.names.entry(n).or_insert(i);
+            add_to(&mut self.names, n, i);
         }
     }
 
@@ -593,8 +593,8 @@ impl Book {
             }
         }
         let old = name_key(&self.contacts[i].name);
-        if self.names.get(&old) == Some(&i) {
-            self.names.remove(&old);
+        if !old.is_empty() {
+            take_from(&mut self.names, &old, i);
         }
         let keys = phone_keys(&c.phones, self.region.as_deref());
         self.index(i, &keys, &c.name);
@@ -781,7 +781,10 @@ impl Book {
                 return Some((i, "phone"));
             }
         }
-        self.names.get(&name_key(&d.name)).map(|&i| (i, "name"))
+        self.names
+            .get(&name_key(&d.name))
+            .and_then(|v| v.first().copied())
+            .map(|i| (i, "name"))
     }
 
     fn position(&self, id: &str) -> Option<usize> {
@@ -4822,6 +4825,18 @@ mod tests {
         assert!(s.blacklisted("+81 3 5550 2222", TW).is_none());
         assert!(s.blacklisted("+33 1 5550 0199", Some("fr")).is_none());
         assert!(s.blacklisted("+33 1 5550 9999", Some("fr")).is_some());
+        let _ = std::fs::remove_dir_all(s.path.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn renaming_one_same_named_contact_keeps_other_name_indexed() {
+        let s = temp_store();
+        let a = s.add(&draft("Alex", &["0912000101"], "")).await.unwrap();
+        let b = s.add(&draft("Alex", &["0912000102"], "")).await.unwrap();
+        s.update(&a.id, &draft("Alex Lin", &["0912000101"], "")).await.unwrap();
+        let preview = s.preview(&[draft("Alex", &["0912000999"], "")]).await;
+        assert_eq!(preview.len(), 1);
+        assert_eq!(preview[0].existing.as_ref().map(|c| c.id.as_str()), Some(b.id.as_str()));
         let _ = std::fs::remove_dir_all(s.path.parent().unwrap());
     }
 }

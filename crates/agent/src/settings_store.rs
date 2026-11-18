@@ -1702,10 +1702,7 @@ impl SettingsStore {
         &self.path
     }
 
-    /// Apply a JSON patch from PUT /calls/api/settings, persist, hot-swap.
-    /// Persist failure keeps the previous state (error returned to caller).
-    pub fn apply_patch(&self, patch: &Value) -> Result<Arc<RuntimeSettings>> {
-        let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
+    fn apply_patch_locked(&self, st: &mut StoreState, patch: &Value) -> Result<Arc<RuntimeSettings>> {
         let mut ov = st.overrides.clone();
         patch_overrides(&mut ov, patch);
         let mut rt = RuntimeSettings::from_base(&self.base);
@@ -1729,6 +1726,13 @@ impl SettingsStore {
         Ok(st.current.clone())
     }
 
+    /// Apply a JSON patch from PUT /calls/api/settings, persist, hot-swap.
+    /// Persist failure keeps the previous state (error returned to caller).
+    pub fn apply_patch(&self, patch: &Value) -> Result<Arc<RuntimeSettings>> {
+        let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
+        self.apply_patch_locked(&mut st, patch)
+    }
+
     /// GET representation: secrets masked + `*_set` flags; rest verbatim.
     /// Also includes `gmail_configured` (fulfill gate; no secrets).
     pub fn masked_json(&self) -> Value {
@@ -1742,18 +1746,19 @@ impl SettingsStore {
         if trimmed.is_empty() {
             return Ok(self.snapshot());
         }
-        let current = self.snapshot();
+        let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
         let norm = normalize_number(trimmed);
-        if current
+        if st
+            .current
             .spam_blocklist
             .iter()
             .any(|x| normalize_number(x) == norm)
         {
-            return Ok(current);
+            return Ok(st.current.clone());
         }
-        let mut list = current.spam_blocklist.clone();
+        let mut list = st.current.spam_blocklist.clone();
         list.push(trimmed.to_string());
-        self.apply_patch(&json!({ "spam_blocklist": list }))
+        self.apply_patch_locked(&mut st, &json!({ "spam_blocklist": list }))
     }
 
     /// Remove one phone's saved label from `device_labels` (`settings.json`) and
@@ -1764,13 +1769,15 @@ impl SettingsStore {
         if s.is_empty() {
             return Ok(false);
         }
-        let current = self.snapshot();
-        if !current.device_labels.contains_key(s) {
-            return Ok(false);
+        {
+            let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
+            if !st.current.device_labels.contains_key(s) {
+                return Ok(false);
+            }
+            let mut labels = st.current.device_labels.clone();
+            labels.remove(s);
+            self.apply_patch_locked(&mut st, &json!({ "device_labels": labels }))?;
         }
-        let mut labels = current.device_labels.clone();
-        labels.remove(s);
-        self.apply_patch(&json!({ "device_labels": labels }))?;
         crate::notify::forget_device_override(s);
         Ok(true)
     }

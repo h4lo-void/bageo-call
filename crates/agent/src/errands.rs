@@ -1288,10 +1288,11 @@ pub fn owner_status(e: &Errand) -> String {
         let summary = one_line(&r.summary, 160);
         return if summary.is_empty() { label.to_string() } else { format!("{label}{}{summary}", locale::notify_kv_sep()) };
     }
-    if e.redial_waits() {
+    if e.redial_waits() && e.redial_try() > 1 {
         return redial_wait_line(locale::notify_lang(), e);
     }
     match e.status.as_str() {
+        QUEUED if e.call_code == "queued" => w.same_number.to_string(),
         QUEUED => w.queued.to_string(),
         DIALING => w.dialing.to_string(),
         ON_CALL => w.picked_up.to_string(),
@@ -2502,13 +2503,31 @@ pub fn errand_prompt_with(s: &Script, redial: bool) -> String {
         (Lang::ZhTw, false) => "我確認一下，請稍等一下".to_string(),
         (Lang::ZhCn, true) => "我问一下他，请稍等一下".to_string(),
         (Lang::ZhCn, false) => "我确认一下，请稍等一下".to_string(),
-        (_, true) => format!("let me check with {owner}, one moment please"),
-        (_, false) => "let me check, one moment please".to_string(),
+        (Lang::Ja, true) => format!("{owner}に確認しますので、少々お待ちください"),
+        (Lang::Ja, false) => "確認しますので、少々お待ちください".to_string(),
+        (Lang::Ko, true) => format!("{owner}님께 확인해 볼게요. 잠시만요"),
+        (Lang::Ko, false) => "확인해 볼게요. 잠시만 기다려 주세요".to_string(),
+        (Lang::Es, true) => format!("Déjame consultarlo con {owner}, un momento por favor"),
+        (Lang::Es, false) => "Déjame confirmarlo, un momento por favor".to_string(),
+        (Lang::Fr, true) => format!("Je vérifie avec {owner}, un instant s'il vous plaît"),
+        (Lang::Fr, false) => "Je vérifie ça, un instant s'il vous plaît".to_string(),
+        (Lang::De, true) => format!("Ich frage kurz bei {owner} nach, einen Moment bitte"),
+        (Lang::De, false) => "Ich prüfe das kurz, einen Moment bitte".to_string(),
+        (Lang::Pt, true) => format!("Vou confirmar com {owner}, um momento por favor"),
+        (Lang::Pt, false) => "Vou confirmar isso, um momento por favor".to_string(),
+        (Lang::En, true) => format!("let me check with {owner}, one moment please"),
+        (Lang::En, false) => "let me check, one moment please".to_string(),
     };
     let example_question = match s.owner_lang {
         Lang::ZhTw => "店家說 7 點沒位子，7 點半可以嗎？",
         Lang::ZhCn => "店家说 7 点没位子，7 点半可以吗？",
-        _ => "They have no table at 7; is 7:30 fine?",
+        Lang::Ja => "7時は満席ですが、7時半でもよろしいですか？",
+        Lang::Ko => "7시는 자리가 없고 7시 반은 괜찮으신가요?",
+        Lang::Es => "No tienen mesa a las 7; ¿a las 7:30 está bien?",
+        Lang::Fr => "Il n'y a plus de table à 19 h ; est-ce que 19 h 30 convient ?",
+        Lang::De => "Um 19 Uhr ist kein Tisch frei; passt 19:30 Uhr?",
+        Lang::Pt => "Não há mesa às 7; às 7:30 tudo bem?",
+        Lang::En => "They have no table at 7; is 7:30 fine?",
     };
     // A read-back is a question with the time said in full: a real call took
     // a fast 「四點半可以」 (transcribed 「字點看可以」) for four o'clock and
@@ -2516,14 +2535,32 @@ pub fn errand_prompt_with(s: &Script, redial: bool) -> String {
     let readback = match s.lang {
         Lang::ZhTw => "是今天下午四點三十分，對嗎？",
         Lang::ZhCn => "是今天下午四点三十分，对吗？",
-        _ => "So that's today at 4:30 in the afternoon, right?",
+        Lang::Ja => "今日の午後4時30分でお間違いないですか？",
+        Lang::Ko => "오늘 오후 4시 30분 맞으신가요?",
+        Lang::Es => "¿Entonces hoy a las 4:30 de la tarde, verdad?",
+        Lang::Fr => "C'est donc bien aujourd'hui à 16 h 30 ?",
+        Lang::De => "Also heute Nachmittag um 16:30 Uhr, richtig?",
+        Lang::Pt => "Então fica para hoje às 16:30, certo?",
+        Lang::En => "So that's today at 4:30 in the afternoon, right?",
     };
     // How the AI says who calls: always the owner, never a name from the matter.
     let intro = match (s.lang, assistant) {
         (Lang::ZhTw | Lang::ZhCn, true) => format!("您好，我是{owner}的助理"),
         (Lang::ZhTw | Lang::ZhCn, false) => format!("您好，我是{owner}"),
-        (_, true) => format!("Hello, I'm {owner}'s assistant"),
-        (_, false) => format!("Hello, this is {owner}"),
+        (Lang::Ja, true) => format!("{owner}の代理の者です"),
+        (Lang::Ja, false) => format!("{owner}と申します"),
+        (Lang::Ko, true) => format!("안녕하세요, {owner}님 측입니다"),
+        (Lang::Ko, false) => format!("안녕하세요, {owner}입니다"),
+        (Lang::Es, true) => format!("Hola, llamo de parte de {owner}"),
+        (Lang::Es, false) => format!("Hola, soy {owner}"),
+        (Lang::Fr, true) => format!("Bonjour, j'appelle pour {owner}"),
+        (Lang::Fr, false) => format!("Bonjour, je suis {owner}"),
+        (Lang::De, true) => format!("Guten Tag, ich rufe im Auftrag von {owner} an"),
+        (Lang::De, false) => format!("Guten Tag, hier spricht {owner}"),
+        (Lang::Pt, true) => format!("Olá, falo em nome de {owner}"),
+        (Lang::Pt, false) => format!("Olá, aqui é {owner}"),
+        (Lang::En, true) => format!("Hello, I'm {owner}'s assistant"),
+        (Lang::En, false) => format!("Hello, this is {owner}"),
     };
     let whose = if assistant { "whose assistant you are" } else { "who you are" };
     let voicemail = if redial {
@@ -3408,7 +3445,7 @@ pub async fn retry(env: &Env<'_>, id: &str) -> Result<Errand, &'static str> {
         return Err("busy");
     }
     let pick = pick_phone_sim(&env.phones, &e.number, &e.phone_asked, e.sub_id_asked, &home_region(env.rt))?;
-    env.store.update(id, |e| {
+    let updated = env.store.update_if(id, Errand::is_final, |e| {
         e.history.push(Attempt {
             attempt: e.attempts,
             status: e.status.clone(),
@@ -3427,6 +3464,9 @@ pub async fn retry(env: &Env<'_>, id: &str) -> Result<Errand, &'static str> {
         }
         e.redial_at.clear();
     });
+    if updated.is_none() {
+        return Err("busy");
+    }
     env.store.live().remove(id);
     info!(errand = id, "errand tried again");
     dial(env, id, &pick).await.ok_or("not_found")
@@ -5695,5 +5735,53 @@ mod tests {
         assert_eq!(check_sms_number("02-0412-3456", "tw"), Err("not_allowed"));
         assert_eq!(check_sms_number("+1 900 555 0100", "tw"), Err("not_allowed"));
         assert_eq!(check_sms_number("00216505550123", "tw"), Err("not_allowed"));
+    }
+
+    #[tokio::test]
+    async fn retry_uses_atomic_final_guard_and_queued_wait_status() {
+        let rig = Rig::new();
+        let phones = vec![phone("pixel-retry-1", &[(1, "tw")])];
+        let env = rig.env(phones);
+        // Active errand cannot be retried.
+        let mut active = Errand {
+            id: "errand-retry-guard".into(),
+            status: DIALING.into(),
+            number: "0912345678".into(),
+            task: "訂位".into(),
+            attempts: 1,
+            ..Default::default()
+        };
+        rig.store.insert(active.clone());
+        assert_eq!(retry(&env, &active.id).await.map(|e| e.id), Err("busy"));
+
+        // Queued same-number status prefers w.same_number; redial_try==1 does not show try 1 missed.
+        active.status = QUEUED.into();
+        active.call_code = "queued".into();
+        let w = words(locale::notify_lang());
+        assert_eq!(owner_status(&active), w.same_number);
+        active.redial = true;
+        active.redial_start = 1;
+        active.redial_at = chrono::Utc::now().to_rfc3339();
+        assert_eq!(owner_status(&active), w.same_number);
+
+        // Localized directional examples across all 9 UI languages.
+        for l in locale::ALL {
+            let p = errand_prompt_with(
+                &Script {
+                    owner: "Sam",
+                    lang: l,
+                    owner_lang: l,
+                    identity: "assistant",
+                    name: "",
+                    number: "0912345678",
+                    task: "Book",
+                    note: "",
+                    answers: &[],
+                    earlier: None,
+                },
+                false,
+            );
+            assert!(p.contains("for example"), "{l:?}");
+        }
     }
 }
