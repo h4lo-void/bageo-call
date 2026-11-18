@@ -487,7 +487,8 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 | 方法與路徑 | 內容 |
 |---|---|
 | `GET /calls/api/errands` | `{ok, errands}`，最新的在前，最多 200 筆。 |
-| `POST /calls/api/errands` | 開始一筆。Body `{number, name, contact_id, task, identity, serial, follow_up_of}`，回應 `{ok, errand}`。 |
+| `POST /calls/api/errands` | 開始一筆。Body `{number, name, contact_id, task, identity, serial, follow_up_of, answers}`，回應 `{ok, errand}`。 |
+| `POST /calls/api/errands/preflight` | 撥出前看這筆代打還缺什麼。Body `{task, lang}`，回應 `{ok, kind, missing, ladder, source, ms}`。不會撥號。內容見下方。 |
 | `POST /calls/api/errands/{id}/cancel` | 排隊中：取消。撥號中或通話中：掛斷。已經結束的原樣回傳。`{ok, errand}`。 |
 | `POST /calls/api/errands/{id}/retry` | 同一筆再打一次（`attempts` 加 1，上一次移到 `history`）。`{ok, errand}`。還在進行中（或上一通還沒結束）：400 `busy`；手機相關的代碼同新增。 |
 | `DELETE /calls/api/errands/{id}` | 從清單刪掉（通話紀錄會留著）。`{ok}`；撥號中或通話中：400 `busy`。 |
@@ -499,6 +500,17 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 - 必填：`task`，以及號碼（或給聯絡人、先前的代打，用它們的號碼）。
 - `identity` 留空就照 `errand_identity`；`serial` 留空就用任何合適的手機。
 - 回應的狀態是 `dialing`，手機或號碼忙線時是 `queued`。
+- `answers` 可以不帶：你回答補問後的內容，格式 `{key: 文字}`。key 就是 `preflight` 回傳的那些，另有 `note` 放自由文字；每項最多 80 字（`note` 120 字），不認得的 key 會被丟掉。它們會以一小段文字放進這通電話的腳本交給 AI。
+
+`POST /calls/api/errands/preflight` 的內容：
+
+- 送出 `task`（必填，最多 1,000 字）和 `lang`（可以不帶，例如 `en`、`zh-TW`：補問用的語言；留空就用通知語言）。
+- `kind`：`restaurant`、`appointment`、`order`、`change` 或 `contact`。
+- `missing`：最多 3 筆 `{key, question}`，最重要的在前；什麼都不缺就是空的。各類型的 key：`restaurant` `time`、`party`、`phone`、`name`；`appointment` `time`、`item`、`contact`、`backup`；`order` `spec`、`pickup`、`substitute`；`change` `orig_time`、`contact`；`contact` 沒有。
+- `ladder`：你願意接受的時間，最好的在前（`["19:30", "20:30"]`），最多 4 個；交辦裡沒有寫到兩個以上的時間就是空的。
+- `source` 和 `ms`：`local`、`model` 或 `timeout`，以及花了幾毫秒。
+- Bageo 自己讀得懂的交辦，幾毫秒內就在本機回答。讀不懂的（別種文字、夾很多數字的長文）會用 Gemini 金鑰問一個小模型（`gemini-flash-lite-latest`），最多等 0.9 秒；時間內沒答（`source` 為 `timeout`）或沒有金鑰，就不補問、照常撥出。
+- 在聊天室，確認卡會列出同樣的問題。直接回覆那張卡就是補答，你的回覆會存成 `answers.note`，AI 帶著它撥出；回「取消」就不撥。
 
 `GET /calls/api/errands/{id}/live?after=<seq>` 的內容：
 
@@ -513,8 +525,8 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 | `no_number` | 新增 | 沒有號碼，也沒有可以拿號碼的聯絡人或先前代打。 |
 | `bad_number` | 新增 | 不是電話號碼（有字母、`+` 不在開頭、超過 15 碼、以那個國家來說太短）。 |
 | `not_allowed` | 新增 | 緊急號碼、短碼、加值付費號碼，或用國際冠碼代替 `+`。 |
-| `no_task` | 新增 | `task` 是空的。 |
-| `task_too_long` | 新增 | `task` 超過 1,000 字。 |
+| `no_task` | 新增、補問 | `task` 是空的。 |
+| `task_too_long` | 新增、補問 | `task` 超過 1,000 字。 |
 | `no_phone` | 新增、再打 | 沒有已連線、在 AI 模式的手機（或指定的 `serial` 不是這樣的手機）。 |
 | `sim_unknown` | 新增、再打 | 沒有合適的手機，而且至少有一支的 SIM Bageo 還不知道：先打給它一通。 |
 | `no_sim_for_country` | 新增、再打 | 沒有手機有這個號碼所屬國家的 SIM。 |

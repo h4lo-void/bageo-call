@@ -413,6 +413,10 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
 .er-pick b{color:var(--text)}
 .er-pick select{width:auto;min-height:34px;padding:4px 28px 4px 10px}
 .er-pick .btn{min-height:30px}
+.er-pre{margin-top:16px;padding:12px 14px;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface2)}
+.er-pre .help{margin:4px 0 0}
+.er-pre .er-pre-in{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.er-pre .er-pre-in input{flex:1 1 14rem;min-width:0}
 .er-count{font-variant-numeric:tabular-nums;white-space:nowrap}
 .er-list-head{margin:6px 0 10px}
 .er-list-head h2{font-size:1.04rem;font-weight:650}
@@ -705,6 +709,15 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
       <div class="field"><label for="erPhone" data-i18n="er_phone"></label>
         <select id="erPhone" style="max-width:28rem"></select>
         <div class="help" id="erPhoneHelp" data-i18n="er_phone_h" hidden></div></div>
+      <div class="er-pre" id="erPre" role="group" aria-labelledby="erPreT" hidden>
+        <b id="erPreT" data-i18n="er_pre_t"></b>
+        <p class="help" data-i18n="er_pre_d"></p>
+        <div id="erPreList"></div>
+        <div class="row" style="margin-top:12px;gap:8px">
+          <button type="button" class="btn primary sm" id="erPreOk" data-i18n="er_pre_ok"></button>
+          <button type="button" class="btn sm" id="erPreGo" data-i18n="er_pre_go"></button>
+        </div>
+      </div>
       <p class="dlg-err" id="erErr" role="alert" hidden></p>
       <div class="row" style="margin-top:16px">
         <button type="submit" class="btn primary" id="erGo"><span data-i18n="er_start"></span></button>
@@ -2134,6 +2147,12 @@ I18N["en"] = {
   er_phone_auto: "Automatic (a free line that can call this number)",
   er_phone_normal: "{name} (normal phone mode, the AI can't use it)",
   er_phone_h: "A phone in normal phone mode can't make AI calls. Switch it back to AI answering on the System page.",
+  er_pre_t: "A few details are missing",
+  er_pre_d: "Add them so the AI doesn't have to stop and ask during the call.",
+  er_pre_ok: "Add and call",
+  er_pre_go: "Call anyway",
+  er_pre_sim: "Use this line's number",
+  er_pre_ph: "Optional",
   er_start: "Start the call",
   er_starting: "Sending…",
   er_started: "Handed to the AI. It is calling now.",
@@ -3188,6 +3207,12 @@ I18N["zh-TW"] = {
   er_phone_auto: "自動（挑有空、能打這個號碼的門號）",
   er_phone_normal: "{name}（一般手機模式，AI 不能用）",
   er_phone_h: "一般手機模式的手機不能讓 AI 打電話，要先到系統頁切回 AI 接聽。",
+  er_pre_t: "還缺幾個資料",
+  er_pre_d: "補上後，AI 通話中就不必停下來問你。",
+  er_pre_ok: "補好撥出",
+  er_pre_go: "直接撥出",
+  er_pre_sim: "帶入這支門號",
+  er_pre_ph: "選填",
   er_start: "開始打",
   er_starting: "送出中…",
   er_started: "已交給 AI，正在撥號。",
@@ -4176,6 +4201,12 @@ I18N["zh-CN"] = {
   er_phone_auto: "自动（挑空闲、能打这个号码的门号）",
   er_phone_normal: "{name}（普通手机模式，AI 不能用）",
   er_phone_h: "普通手机模式的手机不能让 AI 打电话，要先到系统页切回 AI 接听。",
+  er_pre_t: "还缺几个资料",
+  er_pre_d: "补上后，AI 通话中就不必停下来问你。",
+  er_pre_ok: "补好拨出",
+  er_pre_go: "直接拨出",
+  er_pre_sim: "带入这支号码",
+  er_pre_ph: "选填",
   er_start: "开始打",
   er_starting: "发送中…",
   er_started: "已交给 AI，正在拨号。",
@@ -5197,6 +5228,12 @@ I18N["ja"] = {
   er_phone_auto: "自動（空いていて、この番号にかけられる回線）",
   er_phone_normal: "{name}（通常のスマホモードのため AI は使えません）",
   er_phone_h: "通常のスマホモードのスマホでは AI は発信できません。システム画面で AI 応答に戻してください。",
+  er_pre_t: "足りない情報があります",
+  er_pre_d: "補うと、AI が通話中に止まって聞き返さずに済みます。",
+  er_pre_ok: "補って発信",
+  er_pre_go: "このまま発信",
+  er_pre_sim: "この回線の番号を入れる",
+  er_pre_ph: "任意",
   er_start: "発信する",
   er_starting: "送信中…",
   er_started: "AI に任せました。発信しています。",
@@ -6218,6 +6255,12 @@ I18N["ko"] = {
   er_phone_auto: "자동 (비어 있고 이 번호로 걸 수 있는 회선)",
   er_phone_normal: "{name} (일반 휴대폰 모드라 AI가 쓸 수 없음)",
   er_phone_h: "일반 휴대폰 모드인 휴대폰으로는 AI가 전화할 수 없습니다. 시스템 화면에서 AI 응답으로 바꾸세요.",
+  er_pre_t: "빠진 정보가 있어요",
+  er_pre_d: "채워 두면 AI가 통화 중에 멈추고 묻지 않아도 됩니다.",
+  er_pre_ok: "채우고 걸기",
+  er_pre_go: "그대로 걸기",
+  er_pre_sim: "이 회선 번호 넣기",
+  er_pre_ph: "선택 사항",
   er_start: "전화 걸기",
   er_starting: "보내는 중…",
   er_started: "AI에게 맡겼습니다. 지금 거는 중입니다.",
@@ -7239,6 +7282,12 @@ I18N["es"] = {
   er_phone_auto: "Automático (una línea libre que pueda llamar a este número)",
   er_phone_normal: "{name} (modo teléfono normal, la IA no puede usarlo)",
   er_phone_h: "Un teléfono en modo normal no puede hacer llamadas de la IA. Vuelve a ponerlo en respuesta con IA en la página Sistema.",
+  er_pre_t: "Faltan algunos datos",
+  er_pre_d: "Añádelos y la IA no tendrá que parar a preguntarte durante la llamada.",
+  er_pre_ok: "Añadir y llamar",
+  er_pre_go: "Llamar igualmente",
+  er_pre_sim: "Usar el número de esta línea",
+  er_pre_ph: "Opcional",
   er_start: "Llamar",
   er_starting: "Enviando…",
   er_started: "En manos de la IA. Está llamando.",
@@ -8260,6 +8309,12 @@ I18N["fr"] = {
   er_phone_auto: "Automatique (une ligne libre qui peut appeler ce numéro)",
   er_phone_normal: "{name} (mode téléphone normal, l'IA ne peut pas l'utiliser)",
   er_phone_h: "Un téléphone en mode normal ne peut pas passer d'appels IA. Remettez-le en réponse par l'IA dans la page Système.",
+  er_pre_t: "Il manque quelques infos",
+  er_pre_d: "Ajoutez-les : l'IA n'aura pas à s'interrompre pour vous demander pendant l'appel.",
+  er_pre_ok: "Ajouter et appeler",
+  er_pre_go: "Appeler quand même",
+  er_pre_sim: "Utiliser le numéro de cette ligne",
+  er_pre_ph: "Facultatif",
   er_start: "Lancer l'appel",
   er_starting: "Envoi…",
   er_started: "Confié à l'IA. Elle appelle.",
@@ -9281,6 +9336,12 @@ I18N["de"] = {
   er_phone_auto: "Automatisch (eine freie Leitung für diese Nummer)",
   er_phone_normal: "{name} (normaler Telefonmodus, die KI kann es nicht nutzen)",
   er_phone_h: "Ein Telefon im normalen Modus kann keine KI-Anrufe machen. Stell es auf der Seite System wieder auf KI-Annahme.",
+  er_pre_t: "Ein paar Angaben fehlen",
+  er_pre_d: "Trag sie ein, dann muss die KI im Gespräch nicht nachfragen.",
+  er_pre_ok: "Ergänzen und anrufen",
+  er_pre_go: "Trotzdem anrufen",
+  er_pre_sim: "Nummer dieser Leitung einsetzen",
+  er_pre_ph: "Optional",
   er_start: "Anruf starten",
   er_starting: "Wird gesendet…",
   er_started: "An die KI übergeben. Sie ruft jetzt an.",
@@ -10302,6 +10363,12 @@ I18N["pt"] = {
   er_phone_auto: "Automático (uma linha livre para este número)",
   er_phone_normal: "{name} (modo telefone normal, a IA não pode usar)",
   er_phone_h: "Um telefone no modo normal não faz ligações da IA. Volte-o para atendimento por IA na página Sistema.",
+  er_pre_t: "Faltam alguns dados",
+  er_pre_d: "Preencha para a IA não precisar parar e perguntar durante a ligação.",
+  er_pre_ok: "Preencher e ligar",
+  er_pre_go: "Ligar assim mesmo",
+  er_pre_sim: "Usar o número desta linha",
+  er_pre_ph: "Opcional",
   er_start: "Ligar",
   er_starting: "Enviando…",
   er_started: "Entregue à IA. Ela está ligando.",
@@ -13509,6 +13576,7 @@ const erFollow = new Map(); // errand id → the reply being written ("reply and
 let erPick = null;          // the contact picked under "Who to call": { contact_id, name, phones, number }
 let erIdTouched = false;
 let erPhonesSig = "";
+let erPre = null; // the open card of questions: { body, missing }
 let erFormLang = "";
 let erTicks = 0;
 const erOpen = (e) => ER_OPEN.includes(e.status);
@@ -13566,7 +13634,7 @@ function renderErrandForm() {
   $("erIdOwner").textContent = name ? t("er_id_owner", { name }) : t("er_id_owner_anon");
   if (!erIdTouched) erSetIdentity(erDefaultIdentity());
   erRenderPhones();
-  if (erFormLang !== lang) { erFormLang = lang; erRenderPick(); erSending(er.sending); }
+  if (erFormLang !== lang) { erFormLang = lang; erRenderPick(); erSending(er.sending); erPreHide(); }
 }
 // The connected phones; one in "normal phone" mode is listed but cannot be picked.
 function erPhones() {
@@ -13639,6 +13707,8 @@ function erSending(on) {
   er.sending = on;
   const b = clear($("erGo"));
   b.disabled = on;
+  $("erPreOk").disabled = on;
+  $("erPreGo").disabled = on;
   if (on) b.append(h("span", { class: "spin", attr: { "aria-hidden": "true" } }));
   b.append(h("span", { text: t(on ? "er_starting" : "er_start") }));
 }
@@ -13717,12 +13787,16 @@ $("erSugg").addEventListener("keydown", (ev) => {
 });
 document.addEventListener("click", (ev) => { if (!ev.target.closest || !ev.target.closest(".er-to")) erHideSugg(); });
 $("erTask").addEventListener("input", erCount);
+// Anything changed after the questions came up: they are asked again on the next start.
+for (const id of ["erTask", "erTo"]) $(id).addEventListener("input", () => { if (erPre) erPreHide(); });
+$("erPhone").addEventListener("change", () => { if (erPre) erPreHide(); });
 document.querySelectorAll('input[name="er_identity"]').forEach((r) => r.addEventListener("change", () => { erIdTouched = true; }));
 $("erRefresh").addEventListener("click", () => loadErrands());
 $("erForm").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   if (er.sending) return;
   erFormErr("");
+  if (erPre) return erCreate(erPre.body, null);
   const to = $("erTo").value.trim();
   const task = $("erTask").value.trim();
   let body;
@@ -13742,8 +13816,27 @@ $("erForm").addEventListener("submit", async (ev) => {
     body.serial = pickedLine;
   }
   erSending(true);
+  let pre = null;
+  try { pre = await erPreflight(task); } catch (_) { pre = null; }
+  if (pre && Array.isArray(pre.missing) && pre.missing.length) {
+    erSending(false);
+    erPre = { body, missing: pre.missing };
+    erPreRender();
+    return;
+  }
+  await erCreate(body, null);
+});
+// The quick check before dialing: no answer within 1.5 seconds counts as nothing missing.
+function erPreflight(task) {
+  const late = new Promise((resolve) => setTimeout(() => resolve(null), 1500));
+  return Promise.race([erApi("/preflight", jsonBody("POST", { task, lang })), late]);
+}
+async function erCreate(body, answers) {
+  if (answers && Object.keys(answers).length) body.answers = answers;
+  erSending(true);
   try {
     const d = await erApi("", jsonBody("POST", body));
+    erPreHide();
     erResetForm();
     toast(t(d.errand && d.errand.status === "queued" ? "er_queued" : "er_started"));
     if (d.errand) { erPut(d.errand); renderErrands(); erReveal(d.errand.id); }
@@ -13753,6 +13846,59 @@ $("erForm").addEventListener("submit", async (ev) => {
   } finally {
     erSending(false);
   }
+}
+function erPreHide() {
+  erPre = null;
+  $("erPre").hidden = true;
+  clear($("erPreList"));
+}
+// The number of the line picked in "Number to call from"; empty unless it is one number.
+function erLineNumber() {
+  const v = $("erPhone").value;
+  const colon = v.indexOf(":");
+  const serial = colon > 0 ? v.slice(0, colon) : v;
+  const sid = colon > 0 ? parseInt(v.slice(colon + 1), 10) : null;
+  const serials = serial ? [serial] : erPhones().filter((p) => !p.normal).map((p) => p.serial);
+  const nums = [];
+  for (const s of serials) {
+    for (const sim of phoneSims(s)) {
+      if (sid != null && sim.sub_id !== sid) continue;
+      const n = String(sim.effective_number || "").trim();
+      if (n && !nums.includes(n)) nums.push(n);
+    }
+  }
+  return nums.length === 1 ? nums[0] : "";
+}
+function erPreRender() {
+  const box = clear($("erPreList"));
+  const number = erLineNumber();
+  for (const m of erPre.missing) {
+    const input = h("input", { type: "text", id: "erPre_" + m.key, maxlength: 80, autocomplete: "off", placeholder: t("er_pre_ph") });
+    const row = h("div", { class: "er-pre-in" }, input);
+    if (number && (m.key === "phone" || m.key === "contact")) {
+      row.append(h("button", {
+        type: "button", class: "btn sm ghost", text: t("er_pre_sim"),
+        onclick: () => { input.value = m.key === "contact" && input.value.trim() ? input.value.trim() + " " + number : number; input.focus(); },
+      }));
+    }
+    box.append(h("div", { class: "field" }, h("label", { for: "erPre_" + m.key, text: m.question }), row));
+  }
+  $("erPre").hidden = false;
+  const first = box.querySelector("input");
+  if (first) first.focus();
+}
+$("erPreOk").addEventListener("click", () => {
+  if (!erPre || er.sending) return;
+  const answers = {};
+  for (const m of erPre.missing) {
+    const el = $("erPre_" + m.key);
+    if (el && el.value.trim()) answers[m.key] = el.value.trim();
+  }
+  erCreate(erPre.body, answers);
+});
+$("erPreGo").addEventListener("click", () => {
+  if (!erPre || er.sending) return;
+  erCreate(erPre.body, null);
 });
 function erReveal(id) {
   const c = erCards.get(id);

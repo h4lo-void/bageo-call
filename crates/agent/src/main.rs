@@ -32,11 +32,14 @@ mod calendar;
 mod callback;
 mod calls;
 mod calls_http;
+mod closing;
 mod config;
 mod contacts;
 mod control;
+mod country_profile;
 mod debug_probe;
 mod deepseek;
+mod dialect;
 mod dtmf;
 mod errands;
 mod extract;
@@ -44,17 +47,21 @@ mod fulfill;
 mod gemini_live;
 mod gmail;
 mod hold_music;
+mod lang_lock;
 mod locale;
 mod mcp;
 mod mdns;
 mod notify;
 mod openclaw;
 mod phone_region;
+mod preflight;
 mod prompts;
 mod services;
 mod settings_store;
 mod scam_db;
+mod scenario;
 mod stall_review;
+mod stall_script;
 mod tasks;
 mod tg_inbound;
 mod trtc;
@@ -6667,11 +6674,16 @@ fn start_gemini_session_core(
     // The opening language and the caller's speech-to-text hints, decided with the
     // call's config (a ring prewarm's is checked again at pickup).
     let lang_plan = cfg.lang.clone();
-    if (persona && lang_plan.opening.is_some()) || lang_plan.caller_stt.is_none() {
+    if (persona && (lang_plan.opening.is_some() || lang_plan.local_hello.is_some())) || lang_plan.caller_stt.is_none() {
         info!(
             "caller languages serial={serial} caller={} opening={} caller_stt={}",
             cfg.caller_id,
-            lang_plan.opening.filter(|_| persona).map_or("-", |l| l.code()),
+            lang_plan
+                .opening
+                .map(|l| l.code())
+                .or(lang_plan.local_hello.map(|h| h.code))
+                .filter(|_| persona)
+                .unwrap_or("-"),
             lang_plan
                 .caller_stt
                 .as_ref()
@@ -6679,6 +6691,13 @@ fn start_gemini_session_core(
         );
     }
     let appointment_book = appointments.as_ref().map(|a| a.book.clone());
+    // For the `persona_prompt` log: how much of the prompt is the persona text
+    // (the owner's or the built-in one; an errand's or a call-back's script has none).
+    let user_prompt_chars = if persona && !is_callback && errand.is_none() {
+        rt.persona_user_chars(cfg.lang.prompt_lang)
+    } else {
+        0
+    };
     let force_hangup = Arc::new(AtomicBool::new(false));
     let delivered_bytes = Arc::new(AtomicU64::new(0));
     let play_head = gemini_live::DownlinkPlayHead::new();
@@ -6768,6 +6787,7 @@ fn start_gemini_session_core(
                 lang_plan,
                 is_callback,
                 errand,
+                user_prompt_chars,
             )
             .await
         })

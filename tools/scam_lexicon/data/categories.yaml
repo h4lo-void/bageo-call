@@ -419,6 +419,19 @@ columbarium:
     - 塔位＋高價收購＋先付費
   legit_lookalike: （無）
 
+marketplace_escrow:
+  name: 假買家／假平台客服金流認證（網拍、二手賣家）
+  bageo_typology: marketplace_escrow_scam
+  description: 假買家說在網拍或二手平台下不了單、付款被凍結，傳「金流認證」「簽署保障」連結或轉給假客服，要賣家到 ATM 或網銀操作、填卡號與驗證碼。
+  flow:
+    - 假買家說買不了、要你做實名或金流認證
+    - 傳假客服連結或要你加通訊軟體
+    - 假客服要你到 ATM／網銀操作或填卡號驗證碼
+  detection_signals:
+    - 「金流認證／簽署保障」連結
+    - 平台客服要你到 ATM 或網銀操作
+  legit_lookalike: 真平台的認證在 App 內完成，不會叫你到 ATM 操作或給驗證碼。
+
 robocall_ivr:
   name: 自動語音／按鍵轉接（詐騙開場）
   bageo_typology: null

@@ -62,7 +62,7 @@ categories:
       - "Ich will eine Wohnung kaufen und brauche heute noch Bargeld für die Anzahlung.｜我要買房，今天就需要現金付訂金。"
       - "Ich kann nicht selbst kommen, ein Freund holt das Geld ab.｜我不能自己來，朋友會去拿錢。"
       - "Kannst du für mich eine Rechnung überweisen? Mein Online-Banking geht nicht.｜你能幫我轉帳付帳單嗎？我的網銀不能用。"
-    strong: [rate mal wer hier spricht, erkennst du mich nicht, neue handynummer, handy ist kaputt, ein freund holt das geld ab]
+    strong: [rate mal wer hier spricht, erkennst du mich nicht, neue handynummer, handy ist kaputt, ein freund holt das geld ab, brauche dringend geld, sag niemandem]
     keywords: [enkel, ich bin's, anzahlung, rechnung überweisen]
     requests: ["Bargeld an Freund｜現金交朋友", "Überweisung｜轉帳"]
     tactics: ["Opfer nennt den Namen selbst｜讓被害人自己說出名字", "Taxi zur Bank｜叫計程車載去銀行"]
@@ -116,9 +116,9 @@ categories:
       - "Sie erhalten gleich einen Code per SMS, lesen Sie ihn mir bitte vor.｜您馬上會收到簡訊碼，請唸給我。"
       - "Nennen Sie mir Ihre PIN zur Verifizierung.｜請告訴我您的 PIN 以驗證。"
       - "Geben Sie mir Ihre Zugangsdaten, damit ich das Konto entsperren kann.｜給我您的登入資料，讓我解鎖帳戶。"
-    strong: [lesen sie ihn mir vor, nennen sie mir ihre pin, zugangsdaten]
-    keywords: [code, pin, passwort, tan]
-    hard: [lesen sie ihn mir vor]
+    strong: [lesen sie ihn mir vor, nennen sie mir ihre pin, zugangsdaten, tan durchgeben, tan vorlesen]
+    keywords: [code, pin, passwort, tan, freigabe in der app bestätigen]
+    hard: [lesen sie ihn mir vor, tan durchgeben, tan vorlesen]
     requests: ["Code vorlesen｜唸代碼"]
     tactics: ["Verifizierung als Vorwand｜以驗證為藉口"]
   utility_cutoff:
@@ -146,7 +146,7 @@ categories:
     phrases:
       - "Ihr Paket liegt beim Zoll, es fallen Zollgebühren an.｜您的包裹在海關，需要付關稅。"
       - "In einem Paket auf Ihren Namen wurden Drogen gefunden, ich verbinde Sie mit der Polizei.｜以您名義的包裹裡發現毒品，我幫您轉接警察。"
-    strong: [paket liegt beim zoll, verbinde sie mit der polizei, drogen gefunden]
+    strong: [paket liegt beim zoll, verbinde sie mit der polizei, drogen gefunden, einfuhrabgaben per link, einfuhrumsatzsteuer nachzahlen]
     keywords: [paket, zoll, dhl, sendung]
     hard: [verbinde sie mit der polizei]
     requests: ["Zollgebühr｜關稅"]

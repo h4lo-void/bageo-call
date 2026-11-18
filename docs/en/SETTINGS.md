@@ -338,6 +338,7 @@ A few settings have no field. Set them in `settings.json` or with `PUT /calls/ap
 | `country_code` | Your country calling code; see [Country calling code](#country-calling-code). |
 | `name_corrections` | Names speech-to-text keeps getting wrong, one `wrong=right` per entry (e.g. `Jon=John`): fixed in transcripts and summaries. First-run default `NAME_CORRECTIONS`, comma separated. |
 | `device_labels` | Your own names for phones: the id a phone reports → the label shown in notifications and the console, e.g. `{"pixel-10123": "Work phone"}`. Wins over the model name the phone reports. |
+| `goodbye_hangup_delay_ms` | How long Bageo waits after the AI's goodbye before hanging up, in milliseconds (200 to 15000). At the default 2000 each region uses its own wait, about 1.2 to 2.5 seconds, chosen by the SIM's country and else by the call's language; any other value is used for every call. |
 
 ## Start-up options
 
