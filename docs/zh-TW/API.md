@@ -142,7 +142,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - `persona_stall_spam`：判定是推銷或詐騙。
 - `persona_scam_detected`：陪聊關閉時判定是推銷或詐騙。
 - `persona_stall_released`：之後確認是正常電話、改回正常應對。
-- `reject_list`：拒接號碼。
+- `reject_list`：黑名單上的號碼。
 - `call_waiting_rejected`：通話中拒接的第二通。
 - `ai_callback`：行程預約的 AI 回電。
 - `ai_errand`：AI 代打。
@@ -220,8 +220,8 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 | `appointment_mode` | `off`（預設）／`confirm`。舊的 `auto` 當作 `confirm`。 |
 | `appointment_sms` | `true`／`false`：要不要傳簡訊告訴對方你的決定。 |
 | `appointment_reply` | `auto`（預設）、`sms` 或 `call`。 |
-| `reject_numbers` | `{number, reason}` 的清單。 |
-| `reject_mode` | `decline`（預設：響鈴時直接拒接）或 `announce`（接起來播語音）。 |
+| `reject_numbers` | 舊版的黑名單寫法，`PUT` 仍然收：`{number, reason}` 的清單。號碼會加進黑名單（一般聯絡人改成黑名單；白名單、陪聊名單上的維持原樣），不存進設定。讀回來的是舊版存的清單，`reject_numbers_moved` 為 `true` 後就不再生效。 |
+| `reject_mode` | 黑名單來電怎麼拒接：`decline`（預設：響鈴時直接拒接）或 `announce`（接起來播語音）。 |
 | `whitelist_mode` | `off`（預設：照常由 AI 接聽）、`direct`（直接掛斷觸發電信忙線轉接並推播通知）或 `emergency`（AI 接聽並於偵測到緊急事件時告知 `whitelist_forward_number` 並發送緊急警報）。 |
 | `whitelist_forward_number` | 白名單直接轉接或緊急事件轉接時使用的真實電話號碼。 |
 | `ui_password` | 外部存取網頁控制台與 API 的密碼（讀取時遮罩；`"ui_password_clear": true` 可清空）。 |
@@ -283,7 +283,7 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 | `ambience` | `off` 或某一種背景音。 |
 | `level` | 1–3。 |
 | `regen=true` | 重新產生，不用已存的範例。 |
-| `clip=reject` | 用這個聲音念的拒接號碼語音。 |
+| `clip=reject` | 用這個聲音念的拒接語音。 |
 | `lang` | `ja`、`zh-TW`… |
 
 內建的 30 個聲音在 9 種語言都已預先錄好試聽和拒接語音（`assets/voices/` 裡共 1,080 段），所以試聽不用連 Gemini。只有 `regen=true` 或沒有預錄的聲音才會開一次連線。
@@ -491,7 +491,8 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 | 方法與路徑 | 內容 |
 |---|---|
 | `GET /calls/api/errands` | `{ok, errands}`，最新的在前，最多 200 筆。 |
-| `POST /calls/api/errands` | 開始一筆。Body `{number, name, contact_id, task, identity, serial, follow_up_of, redial}`（`redial` 是 `true` 就打開「撥到通」，預設 `false`），回應 `{ok, errand}`。 |
+| `POST /calls/api/errands` | 開始一筆。Body `{number, name, contact_id, task, identity, serial, follow_up_of, answers, redial}`（`redial` 是 `true` 就打開「撥到通」，預設 `false`），回應 `{ok, errand}`。 |
+| `POST /calls/api/errands/preflight` | 撥出前看這筆代打還缺什麼。Body `{task, lang}`，回應 `{ok, kind, missing, ladder, source, ms}`。不會撥號。內容見下方。 |
 | `POST /calls/api/errands/{id}/cancel` | 排隊中：取消。撥號中或通話中：掛斷。已經結束的原樣回傳。`{ok, errand}`。 |
 | `POST /calls/api/errands/{id}/retry` | 同一筆再打一次（`attempts` 加 1，上一次移到 `history`）。`{ok, errand}`。還在進行中（或上一通還沒結束）：400 `busy`；手機相關的代碼同新增。 |
 | `DELETE /calls/api/errands/{id}` | 從清單刪掉（通話紀錄會留著）。`{ok}`；撥號中或通話中：400 `busy`。 |
@@ -503,6 +504,17 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 - 必填：`task`，以及號碼（或給聯絡人、先前的代打，用它們的號碼）。
 - `identity` 留空就照 `errand_identity`；`serial` 留空就用任何合適的手機。
 - 回應的狀態是 `dialing`，手機或號碼忙線時是 `queued`。
+- `answers` 可以不帶：你回答補問後的內容，格式 `{key: 文字}`。key 就是 `preflight` 回傳的那些，另有 `note` 放自由文字；每項最多 80 字（`note` 120 字），不認得的 key 會被丟掉。它們會以一小段文字放進這通電話的腳本交給 AI。
+
+`POST /calls/api/errands/preflight` 的內容：
+
+- 送出 `task`（必填，最多 1,000 字）和 `lang`（可以不帶，例如 `en`、`zh-TW`：補問用的語言；留空就用通知語言）。
+- `kind`：`restaurant`、`appointment`、`order`、`change` 或 `contact`。
+- `missing`：最多 3 筆 `{key, question}`，最重要的在前；什麼都不缺就是空的。各類型的 key：`restaurant` `time`、`party`、`phone`、`name`；`appointment` `time`、`item`、`contact`、`backup`；`order` `spec`、`pickup`、`substitute`；`change` `orig_time`、`contact`；`contact` 沒有。
+- `ladder`：你願意接受的時間，最好的在前（`["19:30", "20:30"]`），最多 4 個；交辦裡沒有寫到兩個以上的時間就是空的。
+- `source` 和 `ms`：`local`、`model` 或 `timeout`，以及花了幾毫秒。
+- Bageo 自己讀得懂的交辦，幾毫秒內就在本機回答。讀不懂的（別種文字、夾很多數字的長文）會用 Gemini 金鑰問一個小模型（`gemini-flash-lite-latest`），最多等 0.9 秒；時間內沒答（`source` 為 `timeout`）或沒有金鑰，就不補問、照常撥出。
+- 在聊天室，確認卡會列出同樣的問題。直接回覆那張卡就是補答，你的回覆會存成 `answers.note`，AI 帶著它撥出；回「取消」就不撥。
 
 `GET /calls/api/errands/{id}/live?after=<seq>` 的內容：
 
@@ -517,8 +529,8 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 | `no_number` | 新增 | 沒有號碼，也沒有可以拿號碼的聯絡人或先前代打。 |
 | `bad_number` | 新增 | 不是電話號碼（有字母、`+` 不在開頭、超過 15 碼、以那個國家來說太短）。 |
 | `not_allowed` | 新增 | 緊急號碼、短碼、加值付費號碼，或用國際冠碼代替 `+`。 |
-| `no_task` | 新增 | `task` 是空的。 |
-| `task_too_long` | 新增 | `task` 超過 1,000 字。 |
+| `no_task` | 新增、補問 | `task` 是空的。 |
+| `task_too_long` | 新增、補問 | `task` 超過 1,000 字。 |
 | `no_phone` | 新增、再打 | 沒有已連線、在 AI 模式的手機（或指定的 `serial` 不是這樣的手機）。 |
 | `sim_unknown` | 新增、再打 | 沒有合適的手機，而且至少有一支的 SIM Bageo 還不知道：先打給它一通。 |
 | `no_sim_for_country` | 新增、再打 | 沒有手機有這個號碼所屬國家的 SIM。 |
@@ -567,12 +579,14 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/errands/e3f1a29c0b7d4e55/say" \
 - 最多 10 個號碼，名字最多 80 字、備註最多 500 字。
 - `kind`：`contact`（預設，一般聯絡人）、`whitelist`（白名單，家人或重要的人，搭配 `whitelist_mode` 使用）、`blacklist`（黑名單，來電直接拒接）或 `stall`（陪聊名單，來電直接進入 AI 陪聊反制模式）。
 - `source`：`manual`、`vcf`、`csv`、`text` 或 `ai`（Gemini 讀出來的）。
+- 只有黑名單的號碼可以在結尾加 `*`（`0800*`；開頭的 0 不算，至少三碼，所以 `080*`、`0000*` 不行），擋下同一個開頭的所有號碼；其他名單用 `*` 會回 400 `invalid_contact`，`field` 是 `prefix`。
 - 一個號碼只屬於一位聯絡人；通訊錄最多 10,000 位（`too_many_contacts`）。
 
 | 方法與路徑 | 內容 |
 |---|---|
 | `GET /calls/api/contacts` | 查詢參數 `q`（名字、備註或號碼，號碼怎麼寫都行）、`kind`（`contact` \| `whitelist` \| `blacklist` \| `stall`）、`limit`、`offset`。回應 `{ok, contacts, total, offset, count}`：符合的結果（共 `total` 筆），以及全部聯絡人數（`count`）。 |
 | `POST /calls/api/contacts` | Body `{name, phones: [...], note, kind?}`，回應 `{ok, contact}`。錯誤見下方。 |
+| `POST /calls/api/contacts/block` | Body `{number, reason?}`：把號碼（或結尾 `*` 的開頭）加進黑名單。已經是某位聯絡人的就把他改成黑名單（沒有備註才補上 `reason`），否則新增一位，名字用 `reason`，沒有就用號碼。回應 `{ok, contact, already}`；`already` 表示本來就在黑名單。 |
 | `PUT /calls/api/contacts/{id}` | 同樣的 body，取代名字、號碼、備註和名單分類 `kind`。404 `contact_not_found`，409、400 同上。 |
 | `DELETE /calls/api/contacts/{id}` | `{ok}`。 |
 | `POST /calls/api/contacts/import` | Body 就是檔案本身（最大 10 MB），檔名 URL 編碼後放在 `X-Filename`。只讀、**不存**（預覽）。內容見下方。 |
@@ -679,7 +693,7 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/devices/pixel-12345/mode" \
 | 手機 → Bageo | `ping` | 每 15 秒一次。 |
 | 手機 → Bageo | `status` | `{mode, in_call}`：模式或通話狀態變了。 |
 | 手機 → Bageo | `incoming`、`incoming_cancel` | 有電話在響（`caller_id`，未顯示號碼時是空字串；`sim_country`；知道時帶 `sim_sub_id`）／接起來之前就結束了。 |
-| Bageo → 手機 | `answer_plan` | `{delay_ms, prewarm, reject}`：響多久再接，或 `reject: true` 響鈴中直接拒接（`reject_mode` 為 `decline` 的拒接號碼）。 |
+| Bageo → 手機 | `answer_plan` | `{delay_ms, prewarm, reject}`：響多久再接，或 `reject: true` 響鈴中直接拒接（`reject_mode` 為 `decline` 的黑名單號碼）。 |
 | 手機 → Bageo | `call_waiting_rejected` | `{serial, caller_id, sim_country, sim_sub_id}`：通話中又有第二通打進來，手機立刻拒接（AI 模式）。會留下通話紀錄並送出「通話中插播未接」通知。 |
 | Bageo → 手機／手機 → Bageo | `set_mode`／`set_mode_result` | `{mode, id}`／`{id, ok, mode, error}`：遠端切換模式；`error` 用上面的代碼。 |
 | Bageo → 手機 | `agent_info` | `{console_url}`：給 App 的「**打開網頁控制台**」按鈕。Bageo 知道網址時才在 hello 之後送：`public_url`，或控制台對區網開放時的區網 IP 網址。 |
@@ -693,7 +707,7 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/devices/pixel-12345/mode" \
 
 - 沒有 `phone_mode`：比模式切換舊的 App（永遠是 `ai`）。
 - 沒有 `supports_sms`：不會要它傳簡訊。
-- 沒有 `supports_reject`：拒接號碼改成接起來播語音。
+- 沒有 `supports_reject`：黑名單號碼改成接起來播語音。
 
 `place_call`：手機有電話在響或通話中時不撥，回 `place_call_failed`，`reason` 為 `busy`。
 
@@ -725,7 +739,7 @@ Bageo 怎麼處理邊界情況：
 
 - 撥出的電話：Bageo 會拿 media `hello` 的 `sim_sub_id` 比對它指定的 SIM（代打不符就是 `wrong_sim`）。
 - 簡訊結果在 Bageo 不再等之後才到，照樣會記下來；手機之後用同一個 `id` 送來的真正結果會取代 `timeout`。同樣的結果再來、或已有確定結果的簡訊收到不同結果，都不會改。
-- 拒接號碼只有在 `reject_mode` 是 `decline`、而且手機說過 `supports_reject` 時才叫手機拒接；否則接起來播語音，通知會寫清楚是哪一種。
+- 黑名單號碼只有在 `reject_mode` 是 `decline`、而且手機說過 `supports_reject` 時才叫手機拒接；否則接起來播語音，通知會寫清楚是哪一種。
 - AI 回電和 AI 代打都帶 `sub_id`，雙卡手機會用對的號碼撥出。
 
 <!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

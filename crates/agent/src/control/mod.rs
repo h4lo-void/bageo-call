@@ -384,6 +384,23 @@ fn yes_no(text: &str) -> Option<bool> {
     }
 }
 
+/// A short reply that means "don't call" (any language), so it is not taken
+/// as the answer to a card's questions. Longer text (「不要吧台的位子」) is an answer.
+fn looks_like_cancel(text: &str) -> bool {
+    let t: String = text
+        .chars()
+        .filter(|c| !c.is_whitespace() && !c.is_ascii_punctuation() && !"，。！？、～…".contains(*c))
+        .flat_map(char::to_lowercase)
+        .collect();
+    const EXACT: &[&str] = &[
+        "2", "２", "no", "nope", "stop", "cancel", "dontcall", "nevermind", "不要", "不用", "取消", "算了", "不打了",
+        "不要打了", "不用打了", "別打了", "别打了", "先不要", "やめて", "やめる", "キャンセル", "いいです", "취소", "그만",
+        "하지마", "cancelar", "annuler", "abbrechen", "nein", "não", "nao",
+    ];
+    const LEAD: &[&str] = &["取消", "不要打", "不用打", "別打", "别打", "算了", "cancel", "キャンセル", "취소"];
+    EXACT.contains(&t.as_str()) || (t.chars().count() <= 8 && LEAD.iter().any(|l| t.starts_with(l)))
+}
+
 fn reply(o: &Outcome, w: &Words) -> Outbound {
     Outbound { text: words::render(o, w), ..Default::default() }
 }
@@ -559,6 +576,17 @@ impl Controller {
         if let Some(yes) = yes_no(text) {
             if self.confirms.waiting(chat) {
                 return Some(reply(&self.settle(rt, chat, &m.sender_id, None, yes).await, w));
+            }
+        }
+        // A reply to a card that asked questions is their answer: the call goes ahead with it.
+        // A short "cancel" (取消／不要打了／cancel) to that card drops it instead.
+        if !text.starts_with('/') && m.reply_to_bot && self.confirms.has_gapped_errand(chat) && looks_like_cancel(text) {
+            return Some(reply(&self.settle(rt, chat, &m.sender_id, None, false).await, w));
+        }
+        if !text.starts_with('/') && m.reply_to_bot && self.open_question(chat).is_none() {
+            if let Some(Job::Errand { mut body }) = self.confirms.take_gapped_errand(chat, &m.sender_id) {
+                body["answers"] = json!({ "note": text });
+                return Some(reply(&self.execute(rt, chat, Job::Errand { body }).await, w));
             }
         }
         if !text.starts_with('/') && m.reply_to_bot {
@@ -767,50 +795,14 @@ impl Controller {
 
     async fn set_contact_kind(&self, kind: &str, number: &str, name: &str) -> Outcome {
         if kind == "unblock" {
-            let mut found_name = String::new();
-            if let Some(c) = self.state.contacts.lookup(number, None) {
-                found_name = c.name.clone();
-                if matches!(c.kind.as_str(), "blacklist" | "stall") {
-                    let _ = self
-                        .state
-                        .contacts
-                        .update(
-                            &c.id,
-                            &crate::contacts::Draft {
-                                name: c.name,
-                                phones: c.phones,
-                                note: c.note,
-                                source: c.source,
-                                kind: String::new(),
-                            },
-                        )
-                        .await;
-                }
-            }
-            let rt = self.state.settings_store.snapshot();
-            let key: String = number.chars().filter(char::is_ascii_digit).collect();
-            let suffix = if key.len() >= 8 { &key[key.len() - 8..] } else { key.as_str() };
-            if !suffix.is_empty() {
-                let kept: Vec<_> = rt
-                    .reject_numbers
-                    .iter()
-                    .filter(|e| {
-                        let d: String = e.number.chars().filter(char::is_ascii_digit).collect();
-                        !d.ends_with(suffix)
-                    })
-                    .cloned()
-                    .collect();
-                if kept.len() != rt.reject_numbers.len() {
-                    let _ = self
-                        .state
-                        .settings_store
-                        .apply_patch(&json!({ "reject_numbers": kept }));
-                }
-            }
+            // Only the contacts: a Blacklist prefix with these digits goes too
+            // (`/unblock 0800` lifts `0800*`).
+            let found_name = self.state.contacts.lookup(number, None).map(|c| c.name).unwrap_or_default();
+            let changed = self.state.contacts.unblock(number, &["blacklist", "stall"]).await.ok().flatten();
             return Outcome::ContactKindSet {
                 list: "unblock".to_string(),
                 number: number.to_string(),
-                name: found_name,
+                name: if found_name.is_empty() { changed.unwrap_or_default() } else { found_name },
             };
         }
         match self.state.contacts.upsert_by_number(number, name, "", kind).await {
@@ -1115,7 +1107,13 @@ impl Controller {
                 let now = errands::now_of(&self.state).await;
                 errands::pick_phone(&now.phones, &number, "", &errands::home_region(&now.rt)).map_err(error_outcome)?;
                 body["task"] = json!(task);
-                Ok((Job::Errand { body }, words::ask_errand(w, &who, &number, &task)))
+                let mut summary = words::ask_errand(w, &who, &number, &task);
+                let gaps = crate::preflight::local(&task).missing;
+                if !gaps.is_empty() {
+                    summary = format!("{summary}\n\n{}", crate::preflight::card_text(locale::notify_lang(), &gaps));
+                    body["preflight_gaps"] = json!(true);
+                }
+                Ok((Job::Errand { body }, summary))
             }
             Action::Mode { phone, mode } => {
                 let serial = self.phone_ref(chat, &phone)?;
@@ -1343,7 +1341,12 @@ impl Controller {
         // owner's chats with cards.
         self.limits.note_errand(origin);
         let w = words(locale::notify_lang());
-        let summary = words::ask_errand(w, &who, &number, &task);
+        let mut summary = words::ask_errand(w, &who, &number, &task);
+        let gaps = crate::preflight::local(&task).missing;
+        if !gaps.is_empty() {
+            summary = format!("{summary}\n\n{}", crate::preflight::card_text(locale::notify_lang(), &gaps));
+            body["preflight_gaps"] = json!(true);
+        }
         let keys: Vec<String> = chats.iter().map(|(c, i)| access::chat_key(c, i)).collect();
         let code = self.confirms.ask_many(&keys, confirm::ANY_SENDER, Job::Errand { body });
         let confirm = Outcome::Confirm { code: code.clone(), summary };
@@ -1408,6 +1411,22 @@ impl Controller {
         }
         info!(errand = q.errand_id.as_str(), question = q.question_id.as_str(), sent, "errand question sent to the command chats");
         sent
+    }
+}
+
+
+#[cfg(test)]
+mod cancel_reply_tests {
+    use super::looks_like_cancel;
+
+    #[test]
+    fn a_short_cancel_drops_the_card_and_an_answer_does_not() {
+        for t in ["取消", "不要打了！", "算了", "Cancel", "no", "キャンセル", "취소", "Nein"] {
+            assert!(looks_like_cancel(t), "{t}");
+        }
+        for t in ["4 位，王先生", "不要吧台的位子", "0912345678", "two adults", "7 點半可以"] {
+            assert!(!looks_like_cancel(t), "{t}");
+        }
     }
 }
 

@@ -65,9 +65,9 @@ categories:
       - "[CA] This is the Canada Revenue Agency. You owe taxes and there is a warrant for your arrest; pay with Bitcoin to cancel it.｜（加拿大）這是 CRA，你欠稅且有逮捕令，用比特幣付款可撤銷。"
       - "[CA] If you don't pay, you will be deported.｜（加拿大）不付款你會被驅逐出境。"
       - "[AU] This is the Australian Taxation Office. You have an unpaid tax debt and a warrant has been issued.｜（澳洲）這是 ATO，你有未繳稅款且已發出逮捕令。"
-    strong: [social security number has been suspended, ssn suspended, final notice, lawsuit has been filed, back taxes, national insurance number has been compromised, tax fraud case, pay with bitcoin, you will be deported, unpaid tax debt, reactivate your social security]
+    strong: [social security number has been suspended, ssn suspended, final notice, lawsuit has been filed, back taxes, national insurance number has been compromised, tax fraud case, pay with bitcoin, you will be deported, unpaid tax debt, reactivate your social security, irs agent will arrest you, canada revenue agency, cra will arrest you, pay the irs in gift cards]
     keywords: [irs, hmrc, cra, ato, social security, tax debt, owe taxes, press 1, lawsuit]
-    hard: [social security number has been suspended, national insurance number has been compromised]
+    hard: [social security number has been suspended, national insurance number has been compromised, pay the irs in gift cards]
     requests: ["pay by gift card or Bitcoin｜禮品卡或比特幣付款", "confirm SSN｜確認社安號碼", "press 1｜按 1"]
     tactics: ["arrest or deportation threat｜逮捕或驅逐威脅", "robocall opener｜自動語音開場"]
   bank_card_alert:
@@ -179,8 +179,8 @@ categories:
       - "This is Medicare. We're issuing new plastic cards; I just need to verify your Medicare number.｜這是 Medicare，我們發新塑膠卡，只需確認你的 Medicare 號碼。"
       - "You qualify for a free back brace and a genetic test at no cost.｜你符合資格可免費取得護腰和基因檢測。"
       - "Your benefits will be cancelled unless you confirm your information.｜除非你確認資料，否則福利會被取消。"
-    strong: [new medicare card, verify your medicare number, free back brace, genetic test at no cost]
-    keywords: [medicare, medicaid, benefits, health plan]
+    strong: [new medicare card, verify your medicare number, free back brace, genetic test at no cost, medicare card is expiring, activate your new medicare card]
+    keywords: [medicare, medicaid, benefits, health plan, medicare number]
     requests: ["give Medicare number｜提供 Medicare 號碼"]
     tactics: ["free offer｜免費誘惑"]
   prize_lottery:

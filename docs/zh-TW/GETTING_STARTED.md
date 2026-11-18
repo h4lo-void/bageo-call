@@ -99,7 +99,7 @@ docker compose up -d --build
 
 下面是精簡版；詳細說明與還原方式見[手機設定](PHONE.md)。
 
-1. 把發行版附的 `pixelcallai_uplink-<version>.zip` 複製到手機，在 Magisk 或 KernelSU App 裡安裝成模組。重新開機。
+1. 把發行版附的 `bageo-phone-module-<version>.zip` 複製到手機，在 Magisk 或 KernelSU App 裡安裝成模組。重新開機。
 2. 打開 **Bageo** App，把「**設定步驟**」一項一項做完：權限、預設電話 App、來電過濾、勿擾模式權限、電池最佳化例外。App 本身不需要 root 權限，這些事由模組代勞。
 3. 開啟 **USB 偵錯**：「設定 → 關於手機」，連點「版本號碼」七次，再到「系統 → 開發人員選項 → USB 偵錯」。
 4. 把手機接上電腦。在手機上的「**允許 USB 偵錯嗎？**」按允許，並勾選「一律允許透過這台電腦進行」。

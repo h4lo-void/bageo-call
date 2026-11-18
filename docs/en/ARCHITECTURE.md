@@ -105,7 +105,7 @@ sequenceDiagram
      Bageo program directly.
 2. **Ringing.** The app reports `incoming` with the caller's number and the
    SIM the call came in on. Bageo decides:
-   - A blocked number is hung up on while it rings, or picked up for the
+   - A Blacklist number is hung up on while it rings, or picked up for the
      recorded announcement. It never reaches Gemini.
    - Any other call gets an `answer_plan`: ring for `answer_ring_ms` (3 s by
      default, 8 s at most), then pick up.

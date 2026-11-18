@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>English</strong> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.zh-CN.md">简体中文</a>
+  <strong>English</strong> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.de.md">Deutsch</a> · <a href="README.pt.md">Português</a>
 </p>
 
 <p align="center">
@@ -38,7 +38,7 @@
     <td width="25%" align="center" valign="top">
       <img src="docs/images/icons/languages.svg" width="56" height="56" alt=""><br>
       <strong>Speaks nine languages</strong><br>
-      English, Chinese, Japanese, Korean, Spanish, French, German and Portuguese. It switches when the caller does.
+      English, Traditional and Simplified Chinese, Japanese, Korean, Spanish, French, German and Portuguese. It switches when the caller does.
     </td>
   </tr>
 </table>
@@ -223,7 +223,7 @@ Every feature in detail: [Features](docs/en/FEATURES.md).
 1. **Download** the package for your system from [Releases](https://github.com/h4lo-void/bageo-call/releases) and unpack it.
 2. **Start it.** Windows: double-click `start.cmd`. macOS: double-click `start.command`. Linux: `./start.sh`. The console opens at <http://localhost:8787/>.
 3. **Fill in the basics** under **Settings**: your Gemini API key, your name and the language. Press ▶ to hear the voices and pick one.
-4. **Prepare the phone** once: install `pixelcallai_uplink-<version>.zip` as a module in Magisk or KernelSU, reboot, open the **Bageo** app, work through its checklist and plug the phone in.
+4. **Prepare the phone** once: install `bageo-phone-module-<version>.zip` as a module in Magisk or KernelSU, reboot, open the **Bageo** app, work through its checklist and plug the phone in.
 5. **Call it** from another phone: one ring, and the AI answers.
 
 Stuck? Every step in detail: [Getting started](docs/en/GETTING_STARTED.md) · [Phone setup](docs/en/PHONE.md).

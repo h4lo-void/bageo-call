@@ -140,7 +140,7 @@
       });
       return button;
     }));
-    const readme = locale === 'zh-TW' ? 'README.zh-TW.md' : locale === 'zh-CN' ? 'README.zh-CN.md' : 'README.md';
+    const readme = locale === 'en' ? 'README.md' : 'README.' + locale + '.md';
     $('setup').href = 'https://github.com/h4lo-void/bageo-call/blob/main/' + readme;
     saveSelection();
     controls();
