@@ -1691,12 +1691,38 @@ pub fn time_talk(text: &str) -> bool {
         "开会", "會議", "会议", "預約", "预约", "改天", "改期", "改到", "改成", "行程", "吃飯", "吃饭", "吃個飯", "吃个饭",
         "喝咖啡", "予約", "打ち合わせ", "ご都合", "空いて", "お時間", "お会い", "会いませんか", "日程", "お食事", "飲みに",
         "伺い", "약속", "예약", "미팅", "회의", "방문", "시간 있", "시간있", "만날", "밥 먹", "밥먹",
+        // th (Thai: non-spaced script + combining marks)
+        "นัดหมาย", "นัดเจอ", "นัดพบ", "นัดกัน", "จองเวลา", "เลื่อนนัด", "ประชุม", "ว่างไหม", "สะดวกไหม", "กินข้าว", "ทานข้าว", "เจอกัน", "พบกัน",
+        // hi (Hindi: Devanagari vowel matras are non-alphanumeric in is_alphanumeric)
+        "अपॉइंटमेंट", "मुलाकात", "मीटिंग", "मिलने", "मिल सकते", "कब मिल", "फ्री हैं", "फ्री हो", "खाली हैं", "समय है", "वक्त है", "डिनर", "लंच", "शेड्यूल",
+        // ar (Arabic: supports optional diacritics and attached prefixes)
+        "موعد", "ميعاد", "اجتماع", "نتقابل", "مقابلة", "لقاء", "متفرغ", "فاضي", "فاضية", "عندك وقت", "لديك وقت", "نحدد وقت", "تغيير الموعد", "تأجيل الموعد", "عشاء", "غداء",
     ];
     const WORDS: &[&str] = &[
         "appointment", "meeting", "meet up", "schedule", "reschedule", "you available", "are you free", "you free",
         "free on", "free at", "free this", "free tomorrow", "have time", "get together", "dinner", "lunch", "grab a",
-        "come by", "visit", "cita", "reunión", "reunion", "quedar", "rendez-vous", "réunion", "termin", "treffen",
-        "besprechung", "marcar", "reunião", "horário", "consulta",
+        "come by", "visit",
+        // es
+        "cita", "reunión", "reunion", "quedar", "quedamos", "cenamos", "cenar", "almorzar", "almorzamos", "almuerzo",
+        "nos vemos", "tienes tiempo", "libre", "disponible",
+        // fr
+        "rendez-vous", "réunion", "on se voit", "tu es libre", "vous êtes libre", "disponible", "déjeuner", "dejeuner", "dîner",
+        // de
+        "termin", "treffen", "besprechung", "zeit", "frei", "mittagessen", "abendessen",
+        // pt
+        "marcar", "reunião", "reuniao", "horário", "horario", "consulta", "jantar", "jantamos", "almoço", "almoco", "almoçar", "almocar", "almoçamos", "disponível", "disponivel", "livre", "a gente se vê", "a gente se ve",
+        // it
+        "appuntamento", "riunione", "incontro", "vediamoci", "ci vediamo", "sei libero", "sei libera", "hai tempo",
+        "ceniamo", "cenare", "pranziamo", "pranzare", "rimandare", "riprogrammare",
+        // ru
+        "встреча", "встретимся", "встретиться", "свидание", "запись", "записаться", "совещание", "свободен", "свободна",
+        "свободны", "есть время", "поужинаем", "пообедаем", "перенести", "договориться", "расписание", "когда удобно",
+        // id
+        "janji", "janjian", "pertemuan", "ketemuan", "bertemu", "jadwal", "jadwalkan", "rapat", "makan malam", "makan siang",
+        "ada waktu", "punya waktu", "luang", "bisa ketemu", "kapan bisa",
+        // vi
+        "cuộc hẹn", "hẹn gặp", "lịch hẹn", "đặt lịch", "đổi lịch", "dời lịch", "cuộc họp", "gặp nhau", "gặp mặt",
+        "có rảnh", "rảnh", "có thời gian", "ăn tối", "ăn trưa", "uống cà phê",
     ];
     let low = text.to_lowercase();
     if RUNS.iter().any(|r| low.contains(r)) {
@@ -2107,7 +2133,7 @@ async fn call_caller(
     } else {
         callback_prompt(&locale::active(), lang, appt, confirmed)
     };
-    let mut cb = PendingCallback::new(&task.id, &number, &task.serial, script);
+    let mut cb = PendingCallback::new(&task.id, &number, &task.serial, script).with_region(region.as_deref());
     // No language of ours: the call plans its languages as any call does.
     cb.lang = Some(lang).filter(|_| !other);
     if !callbacks_add(cb.clone()) {
@@ -2199,8 +2225,11 @@ struct PendingCallback {
     task_id: String,
     /// The number dialed.
     number: String,
-    /// [`number_key`] of `number`: call-backs to one number go one at a time.
+    /// Normalized E.164 key (or raw digits when unplaceable): call-backs to one
+    /// number go one at a time.
     key: String,
+    /// Country of the SIM / number used to read national caller IDs.
+    region: Option<String>,
     /// The phone asked to dial it (until then, the one that took the call).
     serial: String,
     /// What the AI follows on it ([`callback_prompt`]).
@@ -2221,10 +2250,12 @@ struct PendingCallback {
 
 impl PendingCallback {
     fn new(task_id: &str, number: &str, serial: &str, script: String) -> Self {
+        let (key, region) = number_key_for(serial, number, None);
         Self {
             task_id: task_id.to_string(),
             number: number.trim().to_string(),
-            key: number_key(number),
+            key,
+            region,
             serial: serial.trim().to_string(),
             script,
             lang: None,
@@ -2234,6 +2265,13 @@ impl PendingCallback {
             sub_id: None,
             dropped: false,
         }
+    }
+
+    fn with_region(mut self, region: Option<&str>) -> Self {
+        let (key, resolved) = number_key_for(&self.serial, &self.number, region);
+        self.key = key;
+        self.region = resolved;
+        self
     }
 
     /// An errand's call: on that phone (and SIM) only.
@@ -2260,11 +2298,53 @@ const CALLBACK_ENDED_LIMIT: Duration = Duration::from_secs(300);
 /// On the call this long: its end was lost.
 const CALLBACK_CALL_LIMIT: Duration = Duration::from_secs(45 * 60);
 
-/// The digits that tell numbers apart however they are written (`+886 912…`,
-/// `0912…`): the last nine.
+fn default_callback_region(serial: &str) -> Option<String> {
+    let s = serial.trim();
+    (!s.is_empty())
+        .then(|| crate::phone_region::last_sim(s))
+        .flatten()
+        .or_else(|| crate::phone_region::country_of_code(&crate::locale::country_code()).map(str::to_string))
+}
+
+fn number_key_for(serial: &str, number: &str, region_hint: Option<&str>) -> (String, Option<String>) {
+    let region = region_hint
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty())
+        .or_else(|| default_callback_region(serial));
+    let parsed = crate::phone_region::normalize(number, region.as_deref());
+    let key = crate::phone_region::canonical_e164(number, region.as_deref())
+        .unwrap_or_else(|| number.chars().filter(char::is_ascii_digit).collect());
+    let resolved_region = parsed.map(|n| n.country.to_string()).or(region);
+    (key, resolved_region)
+}
+
+/// Canonical E.164 key (or raw digits when unplaceable) for `number` in the
+/// owner's home country.
 fn number_key(number: &str) -> String {
-    let digits: Vec<char> = number.chars().filter(char::is_ascii_digit).collect();
-    digits[digits.len().saturating_sub(9)..].iter().collect()
+    number_key_for("", number, None).0
+}
+
+fn same_callback_number(c: &PendingCallback, caller_id: &str, serial: &str) -> bool {
+    let trimmed = caller_id.trim();
+    let digits: String = trimmed.chars().filter(char::is_ascii_digit).collect();
+    if digits.is_empty() {
+        return false;
+    }
+    let (incoming_key, _) = number_key_for(serial, trimmed, None);
+    if !c.key.is_empty() && !incoming_key.is_empty() && c.key == incoming_key {
+        return true;
+    }
+    if !trimmed.starts_with('+') && !digits.starts_with("00") {
+        if let Some(ref reg) = c.region {
+            if !(digits.starts_with('0') && crate::phone_region::no_trunk_without_zero(reg))
+                && crate::phone_region::canonical_e164(trimmed, Some(reg)).as_deref() == Some(c.key.as_str())
+            {
+                return true;
+            }
+        }
+    }
+    let sim = default_callback_region(serial).or_else(|| c.region.clone());
+    crate::contacts::same_number(&c.number, trimmed, sim.as_deref())
 }
 
 fn callbacks() -> std::sync::MutexGuard<'static, Vec<PendingCallback>> {
@@ -2290,7 +2370,14 @@ fn callbacks_try_add(mut cb: PendingCallback) -> Added {
         return Added::AlreadyOut;
     }
     list.retain(|c| c.task_id != cb.task_id);
-    let busy = list.iter().any(|c| c.key == cb.key && !c.dropped);
+    let existing_key = list
+        .iter()
+        .find(|c| !c.dropped && (c.key == cb.key || same_callback_number(c, &cb.number, &cb.serial)))
+        .map(|c| c.key.clone());
+    let busy = existing_key.is_some();
+    if let Some(key) = existing_key {
+        cb.key = key;
+    }
     cb.stage = if busy { CallbackStage::Queued } else { CallbackStage::Dialing };
     cb.since = std::time::Instant::now();
     list.push(cb);
@@ -2351,13 +2438,20 @@ fn callbacks_next(key: &str) -> Option<PendingCallback> {
 /// The phone `serial` reported `outbound_ready` for `task_id` (`number`: the
 /// number it dialed; empty from an app that does not say). True when that is
 /// the call-back dialing on that phone to that number, which is now `Ready`.
+fn callbacks_is_dropped(task_id: &str) -> bool {
+    callbacks().iter().any(|c| c.task_id == task_id && c.dropped)
+}
+
 fn callback_ready(task_id: &str, serial: &str, number: &str) -> bool {
-    let key = number_key(number);
+    let digits_empty = !number.chars().any(|c| c.is_ascii_digit());
     let mut list = callbacks();
     let Some(c) = list.iter_mut().find(|c| c.task_id == task_id) else {
         return false;
     };
-    if c.stage != CallbackStage::Dialing || !c.serial.eq_ignore_ascii_case(serial.trim()) || (!key.is_empty() && key != c.key) {
+    if c.stage != CallbackStage::Dialing
+        || !c.serial.eq_ignore_ascii_case(serial.trim())
+        || (!digits_empty && !same_callback_number(c, number, serial))
+    {
         return false;
     }
     c.stage = CallbackStage::Ready;
@@ -2382,20 +2476,30 @@ pub struct CallbackCall {
 /// media session's `caller_id` (a hello without one: the only one ready on that
 /// phone). It is `OnCall` from now on, so its script goes to one session only.
 fn take_ready_callback(serial: &str, caller_id: &str) -> Option<CallbackCall> {
-    let key = number_key(caller_id);
+    let digits_empty = !caller_id.chars().any(|c| c.is_ascii_digit());
     let mut list = callbacks();
     let ready = |c: &PendingCallback| {
         c.stage == CallbackStage::Ready && c.serial.eq_ignore_ascii_case(serial.trim()) && c.since.elapsed() < CALLBACK_READY_WINDOW
     };
-    let i = if key.is_empty() {
-        let mut on_phone = list.iter().enumerate().filter(|(_, c)| ready(c));
-        let (i, _) = on_phone.next()?;
-        if on_phone.next().is_some() {
-            return None;
+    let i = if digits_empty {
+        let mut active = list.iter().enumerate().filter(|(_, c)| ready(c) && !c.dropped);
+        if let Some((first, _)) = active.next() {
+            if active.next().is_some() {
+                return None;
+            }
+            first
+        } else {
+            let mut on_phone = list.iter().enumerate().filter(|(_, c)| ready(c));
+            let (first, _) = on_phone.next()?;
+            if on_phone.next().is_some() {
+                return None;
+            }
+            first
         }
-        i
     } else {
-        list.iter().position(|c| ready(c) && c.key == key)?
+        list.iter()
+            .position(|c| ready(c) && !c.dropped && same_callback_number(c, caller_id, serial))
+            .or_else(|| list.iter().position(|c| ready(c) && same_callback_number(c, caller_id, serial)))?
     };
     let c = &mut list[i];
     c.stage = CallbackStage::OnCall;
@@ -2406,9 +2510,11 @@ fn take_ready_callback(serial: &str, caller_id: &str) -> Option<CallbackCall> {
 /// A call-back is dialing on `serial` to this number (its `outbound_ready`
 /// may still be on its way).
 fn callback_dialing_on(serial: &str, caller_id: &str) -> bool {
-    let key = number_key(caller_id);
+    let digits_empty = !caller_id.chars().any(|c| c.is_ascii_digit());
     callbacks().iter().any(|c| {
-        c.stage == CallbackStage::Dialing && c.serial.eq_ignore_ascii_case(serial.trim()) && (key.is_empty() || c.key == key)
+        c.stage == CallbackStage::Dialing
+            && c.serial.eq_ignore_ascii_case(serial.trim())
+            && (digits_empty || same_callback_number(c, caller_id, serial))
     })
 }
 
@@ -2438,15 +2544,39 @@ pub struct OutgoingCall {
 /// it takes nothing ([`callback_for_call`] hands the script over once). With no
 /// number, only the one call the phone reported ready (`Ready` / `OnCall`).
 pub fn outgoing_call_on(serial: &str, caller_id: &str) -> Option<OutgoingCall> {
-    let key = number_key(caller_id);
+    let digits_empty = !caller_id.chars().any(|c| c.is_ascii_digit());
     let list = callbacks();
-    let mut mine = list.iter().filter(|c| c.serial.eq_ignore_ascii_case(serial.trim()));
-    let found: Option<&PendingCallback> = if key.is_empty() {
-        let mut ready = mine.filter(|c| matches!(c.stage, CallbackStage::Ready | CallbackStage::OnCall));
-        let first = ready.next()?;
-        ready.next().is_none().then_some(first)
+    let found: Option<&PendingCallback> = if digits_empty {
+        let mut active = list.iter().filter(|c| {
+            !c.dropped
+                && c.serial.eq_ignore_ascii_case(serial.trim())
+                && matches!(c.stage, CallbackStage::Ready | CallbackStage::OnCall)
+        });
+        if let Some(first) = active.next() {
+            active.next().is_none().then_some(first)
+        } else {
+            let mut ready = list.iter().filter(|c| {
+                c.serial.eq_ignore_ascii_case(serial.trim())
+                    && matches!(c.stage, CallbackStage::Ready | CallbackStage::OnCall)
+            });
+            let first = ready.next()?;
+            ready.next().is_none().then_some(first)
+        }
     } else {
-        mine.find(|c| c.key == key && matches!(c.stage, CallbackStage::Dialing | CallbackStage::Ready | CallbackStage::OnCall))
+        list.iter()
+            .find(|c| {
+                !c.dropped
+                    && c.serial.eq_ignore_ascii_case(serial.trim())
+                    && matches!(c.stage, CallbackStage::Dialing | CallbackStage::Ready | CallbackStage::OnCall)
+                    && same_callback_number(c, caller_id, serial)
+            })
+            .or_else(|| {
+                list.iter().find(|c| {
+                    c.serial.eq_ignore_ascii_case(serial.trim())
+                        && matches!(c.stage, CallbackStage::Dialing | CallbackStage::Ready | CallbackStage::OnCall)
+                        && same_callback_number(c, caller_id, serial)
+                })
+            })
     };
     let found = found?;
     Some(OutgoingCall { task_id: found.task_id.clone(), errand: found.kind == CallbackKind::Errand })
@@ -2544,8 +2674,12 @@ pub(crate) fn drop_errand_call(id: &str) -> bool {
 }
 
 /// Errands: errand `id` has an outbound call here (waiting its turn or under way).
+/// A call cancelled while dialing stays known while still in flight on the phone
+/// (`Dialing`/`Ready`/`OnCall`), and clears once its call has `Ended`.
 pub(crate) fn errand_call_known(id: &str) -> bool {
-    callbacks().iter().any(|c| c.task_id == id)
+    callbacks()
+        .iter()
+        .any(|c| c.task_id == id && !(c.dropped && c.stage == CallbackStage::Ended))
 }
 
 /// Errands: the owner cancelled errand `id`. Waiting its turn: forgotten. Sent
@@ -2659,6 +2793,7 @@ pub async fn on_callback_event(ctx: &CallbackCtx<'_>, serial: &str, msg: &Value)
         }
         "place_call_failed" => finish_callback(ctx, &task_id, "failed").await,
         "call_end" => match stage {
+            CallbackStage::OnCall if callbacks_is_dropped(&task_id) => finish_callback(ctx, &task_id, "failed").await,
             CallbackStage::OnCall => callbacks_set_stage(&task_id, CallbackStage::Ended),
             CallbackStage::Ended | CallbackStage::Queued => {}
             // An errand's call that ended before it was connected (a busy
@@ -5419,17 +5554,50 @@ mod time_talk_edges {
     #[test]
     fn plans_to_meet_bring_the_appointment_rules() {
         for t in [
+            // en
             "Are you free tomorrow?",
             "Are you free this weekend?",
             "Do you have time on Friday?",
             "How about dinner next Friday?",
+            // zh-TW / zh-CN
             "你明天在不在",
             "要不要一起吃個飯",
             "可以改到後天下午嗎",
+            "明天有没有空见个面",
+            "下周三约一下吃晚饭吧",
+            // ja
             "日程を変更できますか",
             "来週お会いできますか",
             "明日お時間ありますか",
             "明日、お食事に行きませんか",
+            // ko
+            "내일 시간 있어요?",
+            "다음 주에 약속 잡을 수 있을까요?",
+            // es / fr / de / pt (colloquial scheduling)
+            "¿Cenamos mañana a las ocho?",
+            "¿Podemos almorzar el viernes?",
+            "¿Estás libre esta tarde?",
+            "On se voit vendredi soir ?",
+            "Vous êtes disponible demain ?",
+            "Hast du morgen Zeit für ein Treffen?",
+            "Bist du am Freitag frei?",
+            "Vamos jantar na sexta?",
+            "Podemos almoçar amanhã?",
+            // it / ru / id / th / vi / hi / ar
+            "Ci vediamo domani per un caffè?",
+            "Quando sei libero per un appuntamento?",
+            "Встретимся завтра вечером?",
+            "Вы свободны на этой неделе?",
+            "Besok ada waktu untuk ketemuan?",
+            "Kita janjian makan malam besok yuk.",
+            "พรุ่งนี้ว่างไหมครับ นัดเจอกันหน่อย",
+            "ประชุมกันวันศุกร์สะดวกไหมคะ",
+            "Ngày mai bạn có rảnh đi ăn tối không?",
+            "Tuần sau mình hẹn gặp nhau nhé.",
+            "क्या आप कल मिलने के लिए फ्री हैं?",
+            "शुक्रवार को मीटिंग रख सकते हैं?",
+            "هل أنت متفرغ غداً لنحدد موعد؟",
+            "نتقابل للعشاء يوم الجمعة؟",
         ] {
             assert!(time_talk(t), "{t}");
         }
@@ -5443,9 +5611,71 @@ mod time_talk_edges {
             "Will someone be available to sign for a package?",
             "Nice to meet you, I have a parcel for you",
             "お荷物を何時ごろお届けしましょうか",
+            "Buongiorno, sono il corriere, ho un pacco da consegnare",
+            "Здравствуйте, я курьер, привез посылку",
+            "Halo, saya kurir paket, apakah ada orang di rumah?",
+            "สวัสดีครับ ผมมาส่งพัสดุ มีคนรับของไหมครับ",
+            "Xin chào, tôi là shipper giao hàng ạ",
+            "नमस्ते, मैं डिलीवरी लेकर आया हूँ",
+            "مرحباً، أنا مندوب التوصيل وعندي طرد",
         ] {
             assert!(!time_talk(t), "{t}");
         }
+    }
+}
+
+#[cfg(test)]
+mod callback_number_key_edges {
+    use super::*;
+
+    #[test]
+    fn eight_digit_countries_and_taiwan_landlines_match_and_stay_apart() {
+        // Taiwan 8-digit landline (07-234-5678 vs +88672345678).
+        assert!(callbacks_add(PendingCallback::errand("e-tw-ll-1", "07-234-5678", "phone-tw-ll", Some(1), "S1".into())));
+        assert!(!callbacks_add(PendingCallback::errand("e-tw-ll-2", "+886 7 234 5678", "phone-tw-ll", Some(1), "S2".into())));
+        assert!(callback_ready("e-tw-ll-1", "phone-tw-ll", "+88672345678"));
+        assert_eq!(outgoing_call_on("phone-tw-ll", "072345678").map(|o| o.task_id), Some("e-tw-ll-1".into()));
+        assert_eq!(outgoing_call_on("phone-tw-ll", "0272345678"), None);
+        assert_eq!(take_ready_callback("phone-tw-ll", "072345678").map(|c| c.task_id), Some("e-tw-ll-1".into()));
+        callbacks_remove("e-tw-ll-1");
+        let next = callbacks_next(&number_key("072345678")).unwrap();
+        assert_eq!(next.task_id, "e-tw-ll-2");
+        callbacks_remove("e-tw-ll-2");
+
+        // 8-digit countries (+852 HK, +65 SG, +45 DK, +47 NO).
+        for (iso, e164, local, foreign) in [
+            ("hk", "+852 9123 4567", "91234567", "+6591234567"),
+            ("sg", "+65 9123 4567", "91234567", "+886291234567"),
+            ("dk", "+45 45 12 34 56", "45123456", "+4745123456"),
+            ("no", "+47 47 12 34 56", "47123456", "+4547123456"),
+        ] {
+            let serial = format!("phone-cb-{iso}");
+            crate::phone_region::note_sim(&serial, iso);
+            let id1 = format!("e-cb-{iso}-1");
+            let id2 = format!("e-cb-{iso}-2");
+            assert!(callbacks_add(PendingCallback::errand(&id1, e164, &serial, Some(1), "A".into())));
+            assert!(!callbacks_add(PendingCallback::errand(&id2, local, &serial, Some(1), "B".into())));
+            assert!(!callback_ready(&id1, &serial, foreign), "{iso} foreign {foreign}");
+            assert!(callback_ready(&id1, &serial, local), "{iso} local {local}");
+            assert_eq!(outgoing_call_on(&serial, local).map(|o| o.task_id), Some(id1.clone()));
+            assert_eq!(outgoing_call_on(&serial, foreign), None);
+            assert_eq!(take_ready_callback(&serial, e164).map(|c| c.task_id), Some(id1.clone()));
+            callbacks_remove(&id1);
+            let key = number_key_for(&serial, e164, Some(iso)).0;
+            assert_eq!(callbacks_next(&key).map(|c| c.task_id), Some(id2.clone()));
+            callbacks_remove(&id2);
+        }
+
+        // Dropped OnCall entry is cleaned on call_end, and dropped+Ended is not errand_call_known.
+        let mut dropped_on_call = PendingCallback::errand("e-cb-drop-end", "0912000777", "phone-cb-drop", Some(1), "D".into());
+        dropped_on_call.dropped = true;
+        dropped_on_call.stage = CallbackStage::Ended;
+        {
+            let mut list = callbacks();
+            list.push(dropped_on_call);
+        }
+        assert!(!errand_call_known("e-cb-drop-end"));
+        callbacks_remove("e-cb-drop-end");
     }
 }
 

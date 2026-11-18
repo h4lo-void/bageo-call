@@ -276,4 +276,108 @@ mod close_latin_languages {
         let mut fr = CallLanguage::new(Lang::Fr, Lang::Fr);
         assert_eq!(fr.ai_turn("Oui, c'est moi, vous pouvez le laisser chez le gardien.", true), None);
     }
+
+    #[test]
+    fn multi_turn_unlisted_latin_locks_as_other_without_mislocking() {
+        let cases = [
+            (
+                "it",
+                "Ciao, sono Marco, ho un pacco per lei da consegnare oggi.",
+                "Grazie mille, però posso lasciarlo in portineria adesso?",
+                "Prego, lasci pure il pacco però grazie mille per la consegna.",
+            ),
+            (
+                "vi",
+                "Xin chào, tôi là nhân viên giao hàng, anh có ở nhà không ạ?",
+                "Cảm ơn anh nhiều nhé, tôi gửi bưu kiện ở quầy lễ tân ạ.",
+                "Vâng cảm ơn anh, cứ để bưu kiện ở đây giúp tôi nhé.",
+            ),
+            (
+                "id",
+                "Halo, saya kurir paket, bapak atau ibu ada di rumah sekarang?",
+                "Terima kasih, paketnya sudah saya titipkan kepada satpam ya.",
+                "Baik terima kasih banyak, silakan titip paketnya di depan.",
+            ),
+            (
+                "tr",
+                "Merhaba efendim, kargonuz kapıda bekliyor, evde misiniz?",
+                "Teşekkürler efendim, paketinizi kapıya bırakabilir miyim şimdi?",
+                "Tamam teşekkür ederim, kapıya bırakabilirsiniz efendim.",
+            ),
+            (
+                "pl",
+                "Dzień dobry, dzwonię z firmy kurierskiej, mam paczkę dla pani.",
+                "Dziękuję bardzo, czy można zostawić paczkę u sąsiada?",
+                "Tak, dziękuję bardzo, proszę zostawić paczkę u ochrony.",
+            ),
+            (
+                "nl",
+                "Goedemorgen, ik bel voor een bezorging en heb een pakketje bij me.",
+                "Dank u wel, zal ik het pakket bij de buren neerzetten?",
+                "Ja bedankt, zet het pakketje maar bij de buren neer.",
+            ),
+        ];
+        for (code, turn1, turn2, ai_reply) in cases {
+            for default in [Lang::En, Lang::Es, Lang::Fr, Lang::Pt, Lang::ZhTw] {
+                let mut call = CallLanguage::new(default, default);
+                assert_eq!(call.caller_turn(turn1), Some(Spoken::Other), "{code} from {default:?} turn1");
+                assert!(call.is_other(), "{code} from {default:?} should lock Other");
+                assert_eq!(call.lang(), None, "{code} must not lock as setting lang");
+                assert_eq!(call.caller_turn(turn2), None, "{code} from {default:?} turn2 should stay Other");
+                assert!(call.is_other(), "{code} must remain Other after turn2");
+                assert_eq!(call.ai_turn(ai_reply, true), None, "{code} AI reply must not trigger drift");
+            }
+        }
+    }
+
+    #[test]
+    fn multi_turn_setting_latin_languages_lock_and_switch_after_two_turns() {
+        let scripts = [
+            (
+                Lang::Es,
+                "Hola, tengo un paquete para usted, ¿lo dejo en la portería?",
+                "Sí, muchas gracias, ya se lo dejo con el portero ahora.",
+                "Perfecto, muchas gracias, puede dejarlo con el portero.",
+            ),
+            (
+                Lang::Fr,
+                "Bonjour, je suis le livreur, vous êtes chez vous pour le colis ?",
+                "Très bien, je vais laisser le colis chez votre gardien.",
+                "D'accord, merci beaucoup, laissez le colis chez le gardien.",
+            ),
+            (
+                Lang::De,
+                "Guten Tag, ich habe ein Paket für Sie, sind Sie gerade zu Hause?",
+                "Kein Problem, dann gebe ich das Paket beim Nachbarn ab.",
+                "Vielen Dank, geben Sie das Paket bitte beim Nachbarn ab.",
+            ),
+            (
+                Lang::Pt,
+                "Olá, sou o entregador, você está em casa para receber o pacote?",
+                "Tudo bem, vou deixar o pacote com o porteiro do prédio.",
+                "Obrigado, pode deixar o pacote com o porteiro agora.",
+            ),
+            (
+                Lang::En,
+                "Hello, I have a delivery for you, are you at home right now?",
+                "No worries, I will leave the package with your front desk.",
+                "Thanks, please leave the package with the front desk.",
+            ),
+        ];
+        for (lang, t1, t2, ai) in scripts {
+            let start = if lang == Lang::En { Lang::Es } else { Lang::En };
+            let mut call = CallLanguage::new(start, start);
+            assert_eq!(call.caller_turn(t1), Some(Spoken::Lang(lang)), "{lang:?} turn1");
+            assert_eq!(call.lang(), Some(lang));
+            assert_eq!(call.caller_turn(t2), None, "{lang:?} turn2 steady");
+            assert_eq!(call.ai_turn(ai, true), None, "{lang:?} matching AI reply should not drift");
+            // Two turns in another setting Latin language switch cleanly.
+            let next = if lang == Lang::Es { Lang::Pt } else { Lang::Es };
+            let (_, nt1, nt2, _) = scripts.iter().find(|(l, _, _, _)| *l == next).unwrap();
+            assert_eq!(call.caller_turn(nt1), None, "{lang:?} -> {next:?} needs 2nd turn confirmation");
+            assert_eq!(call.lang(), Some(lang));
+            assert_eq!(call.caller_turn(nt2), Some(Spoken::Lang(next)), "{lang:?} -> {next:?} switches on turn2");
+            assert_eq!(call.lang(), Some(next));
+        }
+    }
 }

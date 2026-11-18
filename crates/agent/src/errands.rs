@@ -315,6 +315,13 @@ pub async fn call_notice(control: &ControlRegistry, store: &ErrandStore, serial:
     CallNotice::Incoming
 }
 
+/// Whether `(serial, caller_id)` is currently one of our own active outbound
+/// calls (an errand dial or voicemail callback).
+pub async fn is_active_outbound_call(control: &ControlRegistry, serial: &str, caller_id: &str) -> bool {
+    appointments::outgoing_call_on(serial, caller_id).is_some()
+        || crate::fulfill::voicemail_callback_dialing(control, serial, caller_id).await
+}
+
 /// The try errand `e` is on is over with `result` and nobody picked up: kept
 /// in `history`, and the next try waits until `at`.
 fn next_try(e: &mut Errand, result: Outcome, at: chrono::DateTime<chrono::Local>) {
@@ -518,7 +525,32 @@ pub fn check_number(number: &str, sim: &str) -> Result<String, &'static str> {
             return Err("bad_number");
         }
     }
-    let parsed = crate::phone_region::normalize(&n, Some(&region)).ok_or("bad_number")?;
+    validate_normalized_number(&n, &region, code)
+}
+
+/// Validate and normalize a destination number for an outbound SMS on a SIM of
+/// country `sim` (empty if unknown). Blocks short codes / emergency / premium
+/// numbers and local international dialing prefixes while permitting valid
+/// cross-country `+...` E.164 numbers.
+pub fn check_sms_number(number: &str, sim: &str) -> Result<String, &'static str> {
+    let n = clean_number(number).ok_or("bad_number")?;
+    if short_code(&n) {
+        return Err("not_allowed");
+    }
+    if n.starts_with('+') {
+        let parsed = crate::phone_region::normalize(&n, None).ok_or("bad_number")?;
+        let code = crate::phone_region::calling_code(parsed.country).ok_or("bad_number")?;
+        return validate_normalized_number(&n, parsed.country, code);
+    }
+    let region = sim.trim().to_ascii_lowercase();
+    if region.is_empty() {
+        return Err("bad_number");
+    }
+    check_number(&n, &region)
+}
+
+fn validate_normalized_number(n: &str, region: &str, code: &str) -> Result<String, &'static str> {
+    let parsed = crate::phone_region::normalize(n, Some(region)).ok_or("bad_number")?;
     if parsed.country != region {
         return Err("no_sim_for_country");
     }
@@ -528,7 +560,7 @@ pub fn check_number(number: &str, sim: &str) -> Result<String, &'static str> {
         .and_then(|d| d.strip_prefix(code))
         .ok_or("bad_number")?;
     let national = if code == "39" { national } else { national.trim_start_matches('0') };
-    let (min, max) = match (region.as_str(), code) {
+    let (min, max) = match (region, code) {
         ("tw", _) => (8, 9),
         (_, "1") => (10, 10),
         _ => (7, 15 - code.len()),
@@ -1325,6 +1357,8 @@ enum Reply {
     Owner(String),
     /// The other side is saying goodbye: no time left to ask.
     Leaving,
+    /// Another question arrived for the same call before this one was answered.
+    Superseded,
 }
 
 /// Why the agent hung up without a conversation.
@@ -1906,6 +1940,11 @@ impl CallHooks {
         let (qid, rx) = {
             let mut all = self.store.live();
             let l = all.entry(self.errand_id.clone()).or_default();
+            if let Some(mut prev) = l.pending.take() {
+                if let Some(tx) = prev.answer.take() {
+                    let _ = tx.send(Reply::Superseded);
+                }
+            }
             l.asks += 1;
             let qid = format!("q{}", l.asks);
             l.line("system", &locale::fill(w.asking, &question));
@@ -1952,6 +1991,7 @@ impl CallHooks {
             Some(rx) => match tokio::time::timeout(wait, rx).await {
                 Ok(Ok(Reply::Owner(a))) => (Some(a), "owner", false),
                 Ok(Ok(Reply::Leaving)) => (None, "absent", true),
+                Ok(Ok(Reply::Superseded)) => (None, "absent", false),
                 _ => (None, "timeout", false),
             },
         };
@@ -2077,64 +2117,138 @@ pub fn owner_says_client_content(text: &str) -> String {
 
 /// What voicemail says: it takes a message.
 const VOICEMAIL: &[&str] = &[
-        "留言", "嗶聲", "哔声", "嘟聲", "语音信箱", "語音信箱", "voicemail", "voice mail", "leave a message", "after the tone", "after the beep",
-        // ja
-        "留守番電話", "留守電", "メッセージをどうぞ", "発信音の後", "ピーという音の後",
-        // ko
-        "음성 사서함", "음성사서함", "메시지를 남겨", "삐 소리",
-        // es
-        "buzón de voz", "buzon de voz", "deje su mensaje", "deja tu mensaje", "después del tono", "despues del tono",
-        "después de la señal", "despues de la senal",
-        // fr
-        "messagerie vocale", "laissez votre message", "laissez un message", "après le bip", "apres le bip", "après le signal sonore",
-        "après le signal", "apres le signal",
-        // de
-        "mailbox", "anrufbeantworter", "hinterlassen sie eine nachricht", "nach dem signalton", "nach dem piepton",
-        // pt
-        "caixa postal", "correio de voz", "deixe sua mensagem", "deixe a sua mensagem", "após o sinal", "apos o sinal",
-    ];
+    // zh-TW / zh-CN
+    "請留言", "请留言", "請在嗶聲後", "请在哔声后", "請在嘟聲後", "请在嘟声后", "嗶聲後留言", "哔声后留言",
+    "嘟聲後留言", "嘟声后留言", "嗶聲", "哔声", "嘟聲", "嘟声", "語音信箱", "语音信箱", "留言信箱",
+    "自動語音信箱", "自动语音信箱", "轉入語音", "转入语音", "無法接聽，請", "无法接听，请",
+    // en
+    "voicemail", "voice mail", "leave a message", "leave your message", "after the tone", "after the beep",
+    // ja
+    "留守番電話", "留守電", "メッセージをどうぞ", "発信音の後", "ピーという音の後",
+    // ko
+    "음성 사서함", "음성사서함", "메시지를 남겨", "메시지를 남기", "삐 소리",
+    // es
+    "buzón de voz", "buzon de voz", "contestador automático", "contestador automatico", "deje su mensaje", "deja tu mensaje",
+    "después del tono", "despues del tono", "después de la señal", "despues de la senal",
+    // fr
+    "messagerie vocale", "boîte vocale", "boite vocale", "sur le répondeur", "sur le repondeur",
+    "laissez votre message", "laissez un message", "après le bip", "apres le bip", "après le signal sonore",
+    "apres le signal sonore", "après le signal", "apres le signal",
+    // de
+    "hier ist die mailbox", "die mailbox von", "mailbox von", "nachrichten in der mailbox",
+    "ihre mailbox", "meine mailbox", "auf meine mailbox", "auf die mailbox",
+    "anrufbeantworter", "hinterlassen sie eine nachricht", "nachricht hinterlassen", "nach dem signalton", "nach dem piepton",
+    // pt
+    "caixa postal", "correio de voz", "atendedor automático", "atendedor automatico",
+    "deixe sua mensagem", "deixe a sua mensagem", "após o sinal", "apos o sinal", "depois do sinal",
+    // it
+    "segreteria telefonica", "casella vocale", "lasciare un messaggio", "lasci un messaggio", "lascia un messaggio",
+    "dopo il segnale", "dopo il bip", "dopo il tono",
+    // ru
+    "голосовая почта", "голосовую почту", "голосовой почтовый ящик", "автоответчик", "оставьте сообщение",
+    "оставьте ваше сообщение", "после сигнала", "после звукового сигнала", "после гудка",
+    // th
+    "ฝากข้อความ", "ระบบฝากข้อความ", "กล่องข้อความเสียง", "หลังสัญญาณ", "หลังเสียงสัญญาณ",
+    // vi
+    "hộp thư thoại", "hop thu thoai", "để lại lời nhắn", "de lai loi nhan", "để lại tin nhắn",
+    "sau tiếng bíp", "sau tieng bip", "sau hồi chuông",
+    // id
+    "pesan suara", "kotak suara", "tinggalkan pesan", "setelah nada", "setelah bunyi bip",
+    // hi
+    "वॉइसमेल", "वॉयसमेल", "संदेश छोड़ें", "अपना संदेश छोड़ें", "बीप के बाद", "टोन के बाद",
+    // ar
+    "البريد الصوتي", "رسالة صوتية", "اترك رسالة", "اترك رسالتك", "بعد سماع الصافرة", "بعد النغمة", "بعد الصافرة",
+];
 
 /// The carrier's recording instead of a person: the number is not in
 /// service, the phone is off or out of reach. Not voicemail (that takes a
 /// message).
 pub fn carrier_message(text: &str) -> bool {
     const CARRIER: &[&str] = &[
-        "空號", "空号", "未開機", "未开机", "暫停使用", "暂停使用", "停話", "停機", "停机", "無法接通", "无法接通", "收不到訊號",
-        "不在服務區", "不在服务区", "查明後再撥", "查明后再拨", "not in service", "no longer in service", "has been disconnected",
-        "cannot be completed",
+        // zh-TW / zh-CN
+        "空號", "空号", "未開機", "未开机", "已停機", "已停机", "停話", "無法接通", "无法接通",
+        "收不到訊號", "收不到信号", "不在服務區", "不在服务区", "查明後再撥", "查明后再拨",
+        // en
+        "not in service", "no longer in service", "has been disconnected", "cannot be completed as dialed", "call cannot be completed",
         // ja
         "現在使われておりません", "使われておりません", "おかけになった電話番号は", "電源が入っていないか", "電波の届かない",
         // ko
-        "없는 번호", "결번", "전원이 꺼져", "전파가 닿지 않는",
+        "없는 번호", "결번", "전원이 꺼져", "전파가 닿지 않는", "서비스 지역을 벗어나",
         // es
-        "marcado no existe", "marcó no existe", "apagado o fuera de cobertura", "fuera del área de cobertura", "fuera del area de cobertura", "no puede ser atendida", "no se puede completar",
+        "marcado no existe", "marcó no existe", "apagado o fuera de cobertura", "fuera del área de cobertura",
+        "fuera del area de cobertura", "llamada no puede ser atendida", "llamada no se puede completar",
         // fr
-        "n'est pas attribué", "n'est plus attribué", "n'est pas en service", "n'est plus en service", "ne peut aboutir",
+        "n'est pas attribué", "n'est pas attribue", "n'est plus attribué", "n'est plus attribue",
+        "n'est pas en service", "n'est plus en service", "ne peut aboutir",
         // de
         "kein anschluss unter dieser nummer", "diese nummer ist nicht vergeben",
         // pt
-        "número não existe", "numero nao existe", "discado não existe", "discado nao existe", "chamado não existe", "chamado nao existe", "não se encontra atribuído", "nao se encontra atribuido", "desligado ou fora da área", "desligado ou fora da area", "fora de área de cobertura", "fora de area de cobertura", "não pode ser completada", "nao pode ser completada",
+        "número não existe", "numero nao existe", "discado não existe", "discado nao existe", "chamado não existe", "chamado nao existe",
+        "não se encontra atribuído", "nao se encontra atribuido", "desligado ou fora da área", "desligado ou fora da area",
+        "fora de área de cobertura", "fora de area de cobertura", "chamada não pode ser completada", "chamada nao pode ser completada",
+        // it
+        "numero inesistente", "numero da lei composto è inesistente", "numero da lei composto e inesistente",
+        "numero selezionato è inesistente", "numero selezionato e inesistente", "numero non è attivo", "numero non e attivo",
+        "fuori copertura",
+        // ru
+        "неправильно набран номер", "номер не существует", "не обслуживается", "выключен или находится вне зоны",
+        "вне зоны действия сети", "аппарат абонента выключен", "абонент временно недоступен",
+        // th
+        "เลขหมายที่ท่านเรียกไม่สามารถติดต่อได้", "ไม่สามารถติดต่อได้ในขณะนี้", "ไม่มีเลขหมายที่ท่านเรียก",
+        "เลขหมายยังไม่เปิดใช้บริการ", "เลขหมายที่ท่านเรียกยังไม่เปิดใช้บริการ", "อยู่นอกพื้นที่ให้บริการ", "นอกเขตพื้นที่ให้บริการ",
+        // vi
+        "số máy quý khách vừa gọi không đúng", "so may quy khach vua goi khong dung", "số điện thoại không tồn tại",
+        "tắt máy hoặc nằm ngoài vùng phủ sóng", "ngoài vùng phủ sóng", "ngoai vung phu song", "tạm khóa", "tam khoa",
+        // id
+        "nomor yang anda tuju tidak terdaftar", "nomor yang anda hubungi tidak terdaftar",
+        "tidak aktif atau berada di luar jangkauan", "di luar jangkauan",
+        // hi
+        "डायल किया गया नंबर उपलब्ध नहीं", "डायल किया गया नंबर अमान्य", "नंबर अमान्य है", "सेवा में नहीं है",
+        "स्विच ऑफ है", "पहुंच से बाहर", "कवरेज क्षेत्र से बाहर",
+        // ar
+        "الرقم الذي طلبته غير صحيح", "الرقم غير صحيح", "غير موجود في الخدمة", "الرقم غير مستعمل",
+        "مغلق أو خارج نطاق التغطية", "خارج نطاق التغطية", "الهاتف مغلق",
     ];
     // Phrases a person says as well (「Herr Müller ist zurzeit nicht erreichbar」,
     // 「La señora García no está disponible en este momento」): the carrier's
     // recording only when the same text also names the number, the subscriber or
     // the caller's line.
     const CARRIER_IF_NAMED: &[&str] = &[
+        // zh-TW / zh-CN
+        "暫停使用", "暂停使用", "停機", "停机",
+        // en
         "is not available", "cannot be reached", "can not be reached", "is not reachable", "is switched off", "is turned off",
         // ja
         "お繋ぎできません", "おつなぎできません",
         // ko
         "연결할 수 없습니다", "통화가 불가능",
         // es
-        "no está disponible", "no esta disponible", "fuera de servicio",
+        "no está disponible", "no esta disponible", "fuera de servicio", "no puede ser atendida", "no se puede completar",
         // fr
         "injoignable", "n'est pas joignable", "n'est pas disponible", "hors service", "hors de portée", "hors de portee", "est éteint", "est eteint",
         // de
         "nicht erreichbar", "nicht in betrieb", "ist ausgeschaltet", "ist zurzeit nicht", "ist derzeit nicht",
         // pt
-        "não está disponível", "nao esta disponivel", "fora de serviço", "fora de servico",
+        "não está disponível", "nao esta disponivel", "fora de serviço", "fora de servico", "não pode ser completada", "nao pode ser completada",
+        // it
+        "spento", "non è raggiungibile", "non e raggiungibile", "non è disponibile", "non e disponibile",
+        // ru
+        "недоступен", "выключен", "не отвечает",
+        // th
+        "ปิดเครื่อง", "ไม่สามารถติดต่อได้", "ระงับการใช้งาน", "ไม่พร้อมให้บริการ",
+        // vi
+        "không liên lạc được", "khong lien lac duoc", "không thể kết nối", "tắt máy", "tat may",
+        // id
+        "tidak dapat menerima panggilan", "sedang tidak aktif", "tidak dapat dihubungi",
+        // hi
+        "उपलब्ध नहीं है", "बंद है", "संपर्क नहीं हो सकता",
+        // ar
+        "غير متاح", "مغلق", "خارج الخدمة", "لا يمكن الوصول",
     ];
     const NAMES_THE_LINE: &[&str] = &[
+        // zh-TW / zh-CN
+        "您撥", "您拨", "您所撥", "您所拨", "號碼", "号码", "門號", "门号", "本電話", "本电话",
+        // en
         "number you", "you have dialed", "you have dialled", "you dialed", "you dialled", "number dialed", "number dialled", "subscriber",
         "person you are trying", "party you", "customer you", "you are trying to reach", "you have called",
         // ja
@@ -2149,6 +2263,20 @@ pub fn carrier_message(text: &str) -> bool {
         "teilnehmer", "diese nummer", "gewählte nummer",
         // pt
         "número que ligou", "numero que ligou", "número chamado", "numero chamado", "número discado", "numero discado", "telefone chamado", "assinante",
+        // it
+        "il numero", "numero chiamato", "numero composto", "numero selezionato", "cliente chiamato", "utente",
+        // ru
+        "вызываемый номер", "набранный номер", "абонент",
+        // th
+        "เลขหมาย", "หมายเลข", "ผู้รับบริการ",
+        // vi
+        "thuê bao", "thue bao", "số máy", "so may", "số quý khách", "quý khách vừa gọi",
+        // id
+        "nomor yang anda", "pelanggan yang anda",
+        // hi
+        "डायल किया गया नंबर", "आपके द्वारा डायल", "उपभोक्ता", "ग्राहक",
+        // ar
+        "الرقم الذي", "المشترك", "الهاتف المطلوب",
     ];
     let t = text.to_lowercase();
     if VOICEMAIL.iter().any(|v| t.contains(v)) {
@@ -2172,24 +2300,94 @@ pub fn busy_message(text: &str) -> bool {
     const BUSY: &[&str] = &[
         "忙線", "忙线", "占線", "占线", "佔線", "line is busy", "話し中", "línea ocupada", "linea ocupada", "ligne occupée", "ligne occupee",
         "linha ocupada",
+        // it
+        "la linea è occupata", "la linea e occupata", "linea occupata",
+        // ru
+        "линия занята", "абонент занят",
+        // th
+        "เลขหมายที่ท่านเรียกกำลังใช้งานอยู่", "คู่สายไม่ว่าง",
+        // vi
+        "thuê bao đang bận", "thue bao dang ban", "đường dây đang bận", "duong day dang ban",
+        // id
+        "nomor yang anda tuju sedang sibuk", "saluran sedang sibuk",
+        // hi
+        "लाइन व्यस्त है", "नंबर व्यस्त है",
+        // ar
+        "الخط مشغول", "الهاتف مشغول",
     ];
     const BUSY_IF_NAMED: &[&str] = &[
         "通話中", "通话中", "is busy", "통화 중", "통화중", "ocupado", "comunicando", "occupé", "occupe", "besetzt",
+        // it
+        "è occupato", "e occupato", "occupato",
+        // ru
+        "занят", "занято",
+        // th
+        "ไม่ว่าง", "กำลังใช้งาน",
+        // vi
+        "đang bận", "dang ban",
+        // id
+        "sedang sibuk", "sibuk",
+        // hi
+        "व्यस्त है",
+        // ar
+        "مشغول",
     ];
     const THE_LINE: &[&str] = &[
         "您撥的", "您拨的", "您所撥", "您所拨", "撥打的", "拨打的", "用戶", "用户", "number you", "you have dialed", "you dialed", "you are calling",
         "subscriber", "party you", "おかけ", "걸으신", "거신", "고객", "número", "numero", "abonado", "abonné", "abonne", "correspondant",
         "teilnehmer", "gesprächspartner", "nummer", "anschluss", "assinante",
+        // it
+        "numero chiamato", "numero selezionato", "utente",
+        // ru
+        "вызываемый номер", "набранный номер", "абонент",
+        // th
+        "เลขหมาย", "หมายเลข",
+        // vi
+        "thuê bao", "thue bao", "số máy", "so may",
+        // id
+        "nomor yang anda", "pelanggan",
+        // hi
+        "डायल किया गया नंबर", "आपके द्वारा डायल", "ग्राहक",
+        // ar
+        "الرقم الذي", "المشترك", "الخط",
     ];
     let t = text.to_lowercase();
     const HOLD: &[&str] = &[
         "請稍候", "请稍候", "請勿掛斷", "请勿挂断", "please hold", "stay on the line", "remain on the line", "お待ちください", "잠시만 기다려",
         "끊지 말고", "espere", "no cuelgue", "patientez", "restez en ligne", "bleiben sie dran", "bitte warten", "aguarde", "não desligue",
+        // it
+        "rimanga in linea", "resti in linea", "attenda in linea",
+        // ru
+        "оставайтесь на линии", "подождите на линии", "не кладите трубку",
+        // th
+        "กรุณารอสักครู่", "ถือสายรอ",
+        // vi
+        "xin vui lòng giữ máy", "giữ máy", "vui lòng chờ",
+        // id
+        "mohon tunggu sebentar", "tetap di saluran",
+        // hi
+        "कृपया लाइन पर बने रहें", "प्रतीक्षा करें",
+        // ar
+        "يرجى الانتظار", "ابق على الخط",
     ];
     // 「稍後」 (later), not 「稍候」 (a moment).
     const CALL_LATER: &[&str] = &[
         "稍後再撥", "稍后再拨", "稍後再打", "try again later", "call again later", "おかけ直し", "다시 걸어", "más tarde", "plus tard", "später",
         "mais tarde",
+        // it
+        "riprovi più tardi", "riprovi piu tardi", "richiamare più tardi",
+        // ru
+        "перезвоните позже", "позвоните позже",
+        // th
+        "โทรใหม่ภายหลัง", "กรุณาติดต่อใหม่ภายหลัง", "ติดต่อใหม่อีกครั้ง",
+        // vi
+        "gọi lại sau", "goi lai sau",
+        // id
+        "hubungi kembali beberapa saat lagi", "coba lagi nanti",
+        // hi
+        "बाद में पुनः प्रयास करें", "बाद में कॉल करें",
+        // ar
+        "عاود الاتصال لاحقا", "حاول مرة أخرى لاحقا",
     ];
     let hold = crate::locale::asks_to_hold(text) || HOLD.iter().any(|h| t.contains(h));
     if hold && !CALL_LATER.iter().any(|c| t.contains(c)) {
@@ -2203,21 +2401,36 @@ pub fn busy_message(text: &str) -> bool {
 /// work (not in service, disconnected, dialed wrong).
 pub fn carrier_worth_redialing(said: &str) -> bool {
     const GONE: &[&str] = &[
-        "空號", "空号", "暫停使用", "暂停使用", "停話", "停機", "停机", "查明後再撥", "查明后再拨", "不存在", "not in service", "no longer in service",
-        "has been disconnected", "cannot be completed",
+        "空號", "空号", "暫停使用", "暂停使用", "停話", "停機", "停机", "查明後再撥", "查明后再拨", "不存在",
+        "not in service", "no longer in service", "has been disconnected", "cannot be completed as dialed", "call cannot be completed",
         // ja
         "使われておりません",
         // ko
         "없는 번호", "결번",
         // es
-        "marcado no existe", "marcó no existe", "no se puede completar",
+        "marcado no existe", "marcó no existe", "llamada no se puede completar",
         // fr
-        "n'est pas attribué", "n'est plus attribué", "n'est pas en service", "n'est plus en service", "ne peut aboutir",
+        "n'est pas attribué", "n'est pas attribue", "n'est plus attribué", "n'est plus attribue",
+        "n'est pas en service", "n'est plus en service", "ne peut aboutir",
         // de
         "kein anschluss unter dieser nummer", "diese nummer ist nicht vergeben",
         // pt
         "número não existe", "numero nao existe", "discado não existe", "discado nao existe", "chamado não existe", "chamado nao existe",
-        "não se encontra atribuído", "nao se encontra atribuido", "não pode ser completada", "nao pode ser completada",
+        "não se encontra atribuído", "nao se encontra atribuido", "chamada não pode ser completada", "chamada nao pode ser completada",
+        // it
+        "numero inesistente", "è inesistente", "e inesistente", "non è attivo", "non e attivo", "non è più attivo", "non e piu attivo",
+        // ru
+        "неправильно набран номер", "номер не существует", "не обслуживается",
+        // th
+        "ไม่มีเลขหมายที่ท่านเรียก", "ยังไม่เปิดใช้บริการ", "ระงับการใช้งาน", "ยกเลิกบริการ",
+        // vi
+        "số máy quý khách vừa gọi không đúng", "so may quy khach vua goi khong dung", "không tồn tại", "khong ton tai",
+        // id
+        "tidak terdaftar", "nomor salah",
+        // hi
+        "नंबर अमान्य है", "सेवा में नहीं है", "डायल किया गया नंबर अमान्य",
+        // ar
+        "الرقم الذي طلبته غير صحيح", "الرقم غير صحيح", "الرقم غير مستعمل", "غير موجود في الخدمة", "خارج الخدمة",
     ];
     let t = said.to_lowercase();
     busy_message(said) || !GONE.iter().any(|g| t.contains(g))
@@ -3049,6 +3262,10 @@ async fn dial(env: &Env<'_>, id: &str, pick: &Pick) -> Option<Errand> {
             );
             env.store.line(id, "system", w.same_number);
             env.store.persist().await;
+        }
+        code @ ("no_phone" | "send_failed") => {
+            let result = Outcome { outcome: "failed".into(), summary: code_reason(&w, code).into(), ..Default::default() };
+            end_try(&env.cb(), env.store, id, result, code, true).await;
         }
         other => fail(&env.cb(), env.store, id, other).await,
     }
@@ -5256,5 +5473,227 @@ mod tests {
         // The phone says the call is on another SIM: the one asked for is gone.
         gated_call(&env.cb(), &rig.store, "e-sim-8b", CallGate::WrongSim, Some(2), Some("us")).await;
         assert_eq!(rig.store.sims.of("pixel-errand-8"), vec![(2, "us".to_string())]);
+    }
+
+    #[test]
+    fn p1_3_multilingual_voicemail_carrier_and_busy_detection() {
+        // Voicemail prompts: 9 UI languages + official Gemini languages (it, ru, th, vi, id, hi, ar).
+        for prompt in [
+            "您撥的電話無人接聽，請在嗶聲後留言",
+            "您的电话暂时无人接听，请在哔声后请留言",
+            "Please leave a message after the tone.",
+            "ただいま留守番電話に接続します。ピーという音の後にメッセージをどうぞ。",
+            "지금은 전화를 받을 수 없어 음성 사서함으로 연결됩니다.",
+            "El número no responde, deje su mensaje después de la señal.",
+            "Vous êtes sur la messagerie vocale, veuillez laisser un message après le bip.",
+            "Hier ist die Mailbox von Max Mustermann. Nach dem Piepton hinterlassen Sie eine Nachricht.",
+            "Sua chamada está sendo encaminhada para a caixa postal, deixe sua mensagem após o sinal.",
+            "Segreteria telefonica: lasciare un messaggio dopo il segnale.",
+            "Оставьте сообщение после звукового сигнала.",
+            "กรุณาฝากข้อความหลังสัญญาณค่ะ",
+            "Vui lòng để lại lời nhắn sau tiếng bíp.",
+            "Silakan tinggalkan pesan suara setelah nada bip.",
+            "कृपया बीप के बाद अपना संदेश छोड़ें।",
+            "يرجى ترك رسالة بعد سماع الصافرة في البريد الصوتي.",
+        ] {
+            assert!(voicemail_message(prompt), "expected voicemail: {prompt}");
+            assert!(!carrier_message(prompt), "voicemail must not flag carrier: {prompt}");
+        }
+
+        // Negative live-human replies containing "留言" / "mailbox" / "segreteria": never voicemail.
+        for human in [
+            "不好意思我們剛收到留言現在回電",
+            "我们刚才看到您的留言了，请问几位？",
+            "Hi, Mailboxes Etc. speaking, how can I help?",
+            "Could you check your mailbox for our package?",
+            "Buongiorno, segreteria dell'ospedale, come posso aiutarla?",
+            "你好，我們餐廳已經幫您保留位子囉",
+        ] {
+            assert!(!voicemail_message(human), "false positive voicemail: {human}");
+        }
+
+        // Carrier prompts across 9 UI + 7 official languages (gone vs temporary off/out-of-reach).
+        for (prompt, redial_worth) in [
+            ("您撥的號碼是空號，請查明後再撥", false),
+            ("您拨的电话已停机，请查明后再拨", false),
+            ("您撥的電話未開機，請稍後再撥", true),
+            ("您拨打的电话不在服务区，请稍后再拨", true),
+            ("The number you have dialed is not in service.", false),
+            ("おかけになった電話番号は現在使われておりません。", false),
+            ("고객님이 거신 번호는 없는 번호입니다.", false),
+            ("El número marcado no existe.", false),
+            ("Le numéro que vous avez composé n'est pas attribué.", false),
+            ("Kein Anschluss unter dieser Nummer.", false),
+            ("O número discado não existe.", false),
+            ("Il numero da lei composto è inesistente.", false),
+            ("Il numero selezionato non è al momento raggiungibile, spento.", true),
+            ("Неправильно набран номер, номер не существует.", false),
+            ("Абонент временно недоступен, аппарат выключен.", true),
+            ("ไม่มีเลขหมายที่ท่านเรียก กรุณาตรวจสอบอีกครั้ง", false),
+            ("เลขหมายที่ท่านเรียกไม่สามารถติดต่อได้ในขณะนี้", true),
+            ("Số máy quý khách vừa gọi không đúng, vui lòng kiểm tra lại.", false),
+            ("Thuê bao quý khách vừa gọi tạm tắt máy hoặc nằm ngoài vùng phủ sóng.", true),
+            ("Nomor yang anda tuju tidak terdaftar.", false),
+            ("Nomor yang anda hubungi sedang tidak aktif atau berada di luar jangkauan.", true),
+            ("आपके द्वारा डायल किया गया नंबर अमान्य है।", false),
+            ("डायल किया गया नंबर इस समय पहुंच से बाहर है, कृपया बाद में प्रयास करें।", true),
+            ("الرقم الذي طلبته غير صحيح، يرجى التأكد.", false),
+            ("الهاتف المطلوب مغلق أو خارج نطاق التغطية.", true),
+        ] {
+            assert!(carrier_message(prompt), "expected carrier: {prompt}");
+            assert_eq!(carrier_worth_redialing(prompt), redial_worth, "redial_worth mismatch: {prompt}");
+        }
+
+        // Human negatives that previously risked false carrier detection.
+        for human in [
+            "不好意思，我們信用卡刷卡機今天暫停使用",
+            "不好意思工廠今天停機保養，請問有什麼事嗎？",
+            "Buongiorno, il direttore non è disponibile al momento",
+            "Chúng tôi kiểm tra lại thông tin không đúng lắm nhưng sẽ giữ bàn cho anh",
+            "Das Zimmer ist zurzeit nicht frei",
+        ] {
+            assert!(!carrier_message(human), "false positive carrier: {human}");
+        }
+
+        // Busy carrier prompts across languages vs queue hold prompts.
+        for prompt in [
+            "您撥的電話忙線中，請稍後再撥",
+            "The number you have dialed is busy, please try again later.",
+            "La linea è occupata, si prega di riprovare più tardi.",
+            "Абонент занят, перезвоните позже.",
+            "เลขหมายที่ท่านเรียกกำลังใช้งานอยู่ กรุณาติดต่อใหม่ภายหลัง",
+            "Thuê bao đang bận, xin vui lòng gọi lại sau.",
+            "Nomor yang anda tuju sedang sibuk, coba lagi nanti.",
+            "लाइन व्यस्त है, कृपया बाद में पुनः प्रयास करें।",
+            "الخط مشغول، يرجى معاودة الاتصال لاحقاً.",
+        ] {
+            assert!(busy_message(prompt), "expected busy: {prompt}");
+        }
+        for hold in [
+            "All agents are busy, please hold.",
+            "Tutti gli operatori sono occupati, rimanga in linea.",
+            "Все операторы заняты, пожалуйста, оставайтесь на линии.",
+            "เจ้าหน้าที่กำลังให้บริการ กรุณารอสักครู่",
+            "Tổng đài đang bận, xin vui lòng giữ máy.",
+            "Semua agen sedang sibuk, mohon tunggu sebentar.",
+            "हमारे सभी प्रतिनिधि व्यस्त हैं, कृपया लाइन पर बने रहें।",
+            "جميع الموظفين مشغولون، يرجى الانتظار على الخط.",
+        ] {
+            assert!(!busy_message(hold), "hold queue must not trigger busy hangup: {hold}");
+        }
+    }
+
+    #[tokio::test]
+    async fn p1_9_dial_transient_send_or_phone_failure_schedules_redial_and_retry_allows_ended_dropped_call() {
+        let rig = Rig::new();
+        let phones = vec![phone("pixel-gone", &[(1, "tw")])];
+
+        // 1. Disconnected phone (`send_failed` / `no_phone` in `dial()`) with redial=true -> schedules REDIAL_WAIT.
+        let mut e_redial = Errand {
+            id: "e-p19-dial-rd".into(),
+            number: "0223459101".into(),
+            task: "訂位".into(),
+            status: QUEUED.into(),
+            attempts: 1,
+            redial: true,
+            ..Default::default()
+        };
+        rig.store.insert(e_redial.clone());
+        let pick = pick_phone(&phones, &e_redial.number, "", "tw").unwrap();
+        let after = dial(&rig.env(phones.clone()), &e_redial.id, &pick).await.unwrap();
+        assert_eq!((after.status.as_str(), after.call_code.as_str(), after.attempts, after.history.len()), (QUEUED, REDIAL_WAIT, 2, 1));
+        assert!(!after.redial_at.is_empty());
+
+        // 2. Without redial, `dial()` hitting `no_phone` fails permanently right away.
+        e_redial.id = "e-p19-dial-once".into();
+        e_redial.number = "0223459102".into();
+        e_redial.redial = false;
+        rig.store.insert(e_redial.clone());
+        let pick_once = pick_phone(&phones, &e_redial.number, "", "tw").unwrap();
+        let after_once = dial(&rig.env(phones.clone()), &e_redial.id, &pick_once).await.unwrap();
+        assert_eq!((after_once.status.as_str(), after_once.call_code.as_str()), (FAILED, "no_phone"));
+
+        // 3. Cancelled (`dropped`) call stays busy while in-flight, then becomes retryable as soon as `call_end` reports.
+        let (sink, mut ph) = phone_socket().await;
+        rig.control.register_client("pixel-p19-drop".into(), sink).await;
+        let live_phones = vec![phone("pixel-p19-drop", &[(1, "tw")])];
+        let env = rig.env(live_phones);
+        let placed = create(&env, &json!({"number": "0223459103", "task": "訂明晚 7 點 2 位"})).await.unwrap();
+        let cmd = next_json(&mut ph, Duration::from_secs(2)).await.expect("place_call");
+        cancel(&env, &placed.id).await.unwrap();
+        assert!(appointments::errand_call_known(&placed.id));
+        assert_eq!(retry(&env, &placed.id).await.map(|e| e.id), Err("busy"));
+
+        appointments::on_callback_event(
+            &env.cb(),
+            "pixel-p19-drop",
+            &json!({"type": "call_end", "call_id": cmd["call_id"], "task_id": placed.id}),
+        )
+        .await;
+        assert!(!appointments::errand_call_known(&placed.id));
+        let retried = retry(&env, &placed.id).await.unwrap();
+        assert_eq!((retried.status.as_str(), retried.attempts), (DIALING, 2));
+    }
+
+    #[tokio::test]
+    async fn p1_11_overlapping_ask_within_wakes_prior_question_cleanly() {
+        let rig = Rig::new();
+        let hooks = rig.on_call("e-p111-overlap");
+        rig.store.live_view("e-p111-overlap", 0).unwrap();
+
+        let h1 = hooks.clone();
+        let first = tokio::spawn(async move {
+            h1.ask_within(&json!({"question": "要坐吧台嗎？", "options": ["好", "不要"]}), Duration::from_secs(5)).await
+        });
+        for _ in 0..100 {
+            if rig.store.live_view("e-p111-overlap", 0).unwrap()["question"]["id"] == "q1" {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(rig.store.live_view("e-p111-overlap", 0).unwrap()["question"]["id"], "q1");
+
+        // Second question arrives while q1 is still awaiting: q1 must wake cleanly as absent (not timeout).
+        let h2 = hooks.clone();
+        let second = tokio::spawn(async move {
+            h2.ask_within(&json!({"question": "那 8 點可以嗎？", "options": ["可以", "不行"]}), Duration::from_secs(5)).await
+        });
+        let q1_res = tokio::time::timeout(Duration::from_secs(1), first).await.expect("q1 wakes immediately").unwrap();
+        assert_eq!(q1_res["owner_available"], false);
+
+        for _ in 0..100 {
+            if rig.store.live_view("e-p111-overlap", 0).unwrap()["question"]["id"] == "q2" {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(say(&rig.store, "e-p111-overlap", "可以", Some("q2")), Ok(()));
+        let q2_res = second.await.unwrap();
+        assert_eq!((q2_res["owner_available"].as_bool(), q2_res["answer"].as_str()), (Some(true), Some("可以")));
+        let saved = rig.store.get("e-p111-overlap").unwrap();
+        assert_eq!(saved.questions[0].answered_by.as_deref(), Some("absent"));
+        assert_eq!(saved.questions[1].answered_by.as_deref(), Some("owner"));
+    }
+
+    #[tokio::test]
+    async fn p0_4_and_p2_1_helpers_outbound_and_sms_number() {
+        let rig = Rig::new();
+        let (sink, mut ph) = phone_socket().await;
+        rig.control.register_client("pixel-helper-1".into(), sink).await;
+        assert!(!is_active_outbound_call(&rig.control, "pixel-helper-1", "0223459104").await);
+
+        let phones = vec![phone("pixel-helper-1", &[(1, "tw")])];
+        let _e = create(&rig.env(phones), &json!({"number": "0223459104", "task": "訂位"})).await.unwrap();
+        let _ = next_json(&mut ph, Duration::from_secs(2)).await.expect("place_call");
+        assert!(is_active_outbound_call(&rig.control, "pixel-helper-1", "0223459104").await);
+        assert!(is_active_outbound_call(&rig.control, "pixel-helper-1", "+886 2 2345 9104").await);
+        assert!(!is_active_outbound_call(&rig.control, "pixel-helper-1", "0223459199").await);
+
+        assert_eq!(check_sms_number("0912-345-678", "tw"), Ok("+886912345678".into()));
+        assert_eq!(check_sms_number("+81 3 1234 5678", "tw"), Ok("+81312345678".into()));
+        assert_eq!(check_sms_number("110", "tw"), Err("not_allowed"));
+        assert_eq!(check_sms_number("02-0412-3456", "tw"), Err("not_allowed"));
+        assert_eq!(check_sms_number("+1 900 555 0100", "tw"), Err("not_allowed"));
+        assert_eq!(check_sms_number("00216505550123", "tw"), Err("not_allowed"));
     }
 }

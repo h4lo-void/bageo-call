@@ -940,7 +940,9 @@ class Forwarder:
                     queue_remove(self.adb, serial, [name])
                 continue
             sender, body = str(obj.get("addr") or ""), str(obj.get("body") or "")
-            if not self.forward(serial, "hook", name[:12], sender, body, mtime * 1000, None):
+            sub = obj.get("sub")
+            sub = sub if isinstance(sub, int) and not isinstance(sub, bool) and sub >= 0 else None
+            if not self.forward(serial, "hook", name[:12], sender, body, mtime * 1000, sub):
                 break
             if not self.dry:
                 queue_remove(self.adb, serial, [name])

@@ -721,11 +721,13 @@ impl ActiveCall {
         // of inject echo + clean TTS is what made `/calls/` harsh.
     }
 
-    /// Record system outbound PCM into `_tts.wav` (the system-only track).
+    /// Place system outbound PCM on the system-only track (`_tts.wav` when `record_tts`).
+    /// The track is also the live echo gate's reference and the barge-in check's, so it is
+    /// kept in memory with `record_tts` off too; only the file and the listen mix leave it out.
     /// Local Piper/menu/hold and TRTC downlink→phone playout (`spawn_trtc_downlink_pull_loop`)
     /// share this lane — caller uplink must never call this.
     pub fn write_tts(&mut self, pcm: &[u8]) {
-        if !self.record_tts || pcm.is_empty() {
+        if pcm.is_empty() {
             return;
         }
         let cap = self.mix_bytes_cap as usize;
@@ -809,13 +811,19 @@ impl ActiveCall {
             let n = n.min(self.tts_mix.len());
             mix_s16le_add(&mut self.tts_mix[..n], &self.bed_mix[..n]);
         }
-        self.mix = build_listen_mix_opts(&self.remote_mix, &self.tts_mix, self.sample_rate, !echo_free);
+        // With `record_tts` off the system voice was only kept as the echo reference: it stays
+        // out of the saved mix.
+        let mix_tts: &[u8] = if self.record_tts { &self.tts_mix } else { &[] };
+        self.mix = build_listen_mix_opts(&self.remote_mix, mix_tts, self.sample_rate, !echo_free);
         if self.mix.len() > cap {
             self.mix.truncate(cap & !1);
         }
         peak_limit_down_s16le(&mut self.remote_mix, 0.89);
         peak_limit_down_s16le(&mut self.tts_mix, 0.89);
         peak_limit_down_s16le(&mut self.mix, 0.89);
+        if !self.record_tts {
+            self.tts_mix = Vec::new();
+        }
     }
 }
 
@@ -2493,6 +2501,38 @@ mod tests {
             call.mix.iter().any(|&b| b != 0),
             "full mix must also include system outbound"
         );
+    }
+
+    #[test]
+    fn the_system_track_stays_the_echo_reference_with_recording_it_off() {
+        // `CALLS_RECORD_TTS=false`: no `_tts.wav` and no system voice in the saved mix, but the
+        // live echo gate and the barge-in check still see what we sent.
+        let mut call = test_call();
+        call.record_tts = false;
+        std::thread::sleep(Duration::from_millis(20));
+        let tone = tone_s16le(8000, 4000);
+        call.write_tts(&tone);
+        assert_eq!(call.tts_bytes, tone.len() as u64);
+        assert!(call.tts_mix.iter().any(|&b| b != 0), "the echo reference must be kept");
+        assert!(!call.last_tts_tail.is_empty(), "the sidetone tail must be kept");
+        assert!(call.uplink_is_echo(&tone_s16le(8000, 960)), "the live echo gate still blocks echo");
+        for _ in 1..ECHO_FREE_MIN_FRAMES {
+            call.uplink_is_echo(&tone_s16le(2, 960));
+        }
+        assert_eq!(call.echo_free, Some(false));
+        assert!(!call.barge_in_on());
+        let mut free = test_call();
+        free.record_tts = false;
+        std::thread::sleep(Duration::from_millis(20));
+        free.write_tts(&tone);
+        for _ in 0..ECHO_FREE_MIN_FRAMES {
+            free.uplink_is_echo(&tone_s16le(2, 960));
+        }
+        assert_eq!(free.echo_free, Some(true));
+        assert!(free.barge_in_on(), "echo-free barge-in still opens");
+        call.seal_timeline();
+        assert!(call.mix.iter().all(|&b| b == 0), "the saved mix must not hold the system voice");
+        assert!(call.tts_mix.is_empty(), "nothing of the system track is kept after the seal");
     }
 
     #[test]

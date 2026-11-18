@@ -301,7 +301,191 @@ const PT: Cues = Cues {
     now: &["acabou de", "acabei de", "agora mesmo"],
 };
 
-const ALL_CUES: [&Cues; 8] = [&ZH, &JA, &KO, &EN, &ES, &FR, &DE, &PT];
+const IT: Cues = Cues {
+    events: &[
+        "svenuto", "svenuta", "ha perso i sensi", "privo di sensi", "ambulanza", "pronto soccorso", "in ospedale", "ricoverato", "ricoverata",
+        "ictus", "infarto", "non respira", "terapia intensiva", "rianimazione",
+        "incidente stradale", "incidente d auto", "incidente in auto", "un incidente", "investito", "investita", "sala operatoria", "stanno operando",
+        "a fuoco", "sta bruciando", "incendio", "vigili del fuoco", "pompieri", "fuga di gas", "odore di gas", "puzza di gas", "allagamento", "allagato", "allagata", "esplosione",
+        "non lo troviamo", "non la troviamo", "si e perso", "si e persa", "scomparso", "scomparsa", "non e tornato", "non e tornata",
+        "e morto", "e morta", "e deceduto", "e deceduta", "sta morendo", "in fin di vita", "non ce la fa",
+        "ci hanno derubato", "mi hanno derubato", "rapina", "furto in casa", "entrati i ladri", "chiamato la polizia", "chiamato i carabinieri",
+        "bloccato in ascensore", "bloccata in ascensore", "chiuso in ascensore", "chiusa in ascensore", "intrappolato", "intrappolata", "persi in montagna",
+        "perso il passaporto", "perso il portafoglio", "rubato il passaporto", "rubato il portafoglio", "non ho come tornare",
+        "qualcosa di grave", "sistema e fermo", "sistema fermo", "sistema bloccato", "server e caduto", "server bloccato", "produzione ferma", "produzione e ferma",
+        "infortunio sul lavoro", "incidente in fabbrica", "incidente al lavoro", "ferito sul lavoro",
+        "chiamato da scuola", "chiamato la scuola", "battuto la testa", "rotto il braccio", "rotto una gamba", "fatto male",
+    ],
+    urge: &["emergenza", "e urgente", "molto urgente", "urgentemente", "aiuto", "soccorso", "ho bisogno di te subito", "vieni subito", "venga subito", "torna subito"],
+    ask: &["me lo passi", "digli di", "gli dica di", "fatti richiamare", "devo parlargli", "ho bisogno di lui", "vieni", "venga", "torna a casa"],
+    at_once: &["subito", "adesso", "immediatamente", "urgente"],
+    calm: &[
+        "non e urgente", "non e un emergenza", "niente di urgente", "non c e fretta", "senza fretta", "nessuna fretta", "quando puoi", "quando hai tempo", "quando puo",
+        "notizie", "telegiornale", "esercitazione", "prova antincendio", "falso allarme", "film", "scherzo", "sto scherzando", "muoio di fame",
+    ],
+    fine: &["niente di grave", "non e niente", "sto bene", "sta bene", "tutto bene", "gia dimesso", "gia dimessa", "stato dimesso", "stata dimessa", "ce la cavo"],
+    past: &["ieri", "l altro ieri", "la settimana scorsa", "l anno scorso", "il mese scorso", "anni fa", "un anno fa", "da un anno", "mesi fa", "l altro giorno", "anniversario"],
+    now: &["appena", "proprio ora", "poco fa", "adesso", "subito"],
+};
+
+const RU: Cues = Cues {
+    events: &[
+        "потерял сознание", "потеряла сознание", "упал в обморок", "упала в обморок", "без сознания", "скорая помощь", "скорую", "на скорой",
+        "в больницу", "в больнице", "в реанимацию", "в реанимации", "инсульт", "инфаркт", "сердечный приступ", "не дышит",
+        "авария", "попал в аварию", "попала в аварию", "сбила машина", "дтп", "на операции",
+        "пожар", "горит", "пожарные", "утечка газа", "пахнет газом", "запах газа", "затопило", "наводнение", "взрыв",
+        "пропал", "пропала", "потерялся", "потерялась", "не можем найти", "не вернулся", "не вернулась",
+        "умер", "умерла", "скончался", "скончалась", "при смерти",
+        "ограбили", "обокрали", "взломали", "залезли воры", "вызвали полицию", "вызвал полицию", "вызвала полицию",
+        "застрял в лифте", "застряла в лифте", "заблокирован*", "заблудились",
+        "украли паспорт", "украли кошелек", "потерял паспорт", "потеряла паспорт", "не могу вернуться",
+        "случилась беда", "что то страшное", "система упала", "сервер упал", "серверы упали", "все упало", "производство встало", "производство остановлено",
+        "несчастный случай на производстве", "травма на работе",
+        "звонили из школы", "позвонили из школы", "разбил голову", "сломал руку", "ударился головой",
+    ],
+    urge: &["срочно", "это срочно", "очень срочно", "чрезвычайная ситуация", "экстренно", "помогите", "на помощь", "нужен прямо сейчас", "приезжай немедленно", "возвращайся немедленно"],
+    ask: &["позовите его", "передайте ему", "пусть позвонит", "мне нужно с ним поговорить", "приезжай", "приезжайте", "возвращайся"],
+    at_once: &["прямо сейчас", "немедленно", "срочно", "сейчас же"],
+    calm: &[
+        "не срочно", "ничего срочного", "не торопись", "не спеши", "без спешки", "когда будет время", "когда сможешь",
+        "новости", "в новостях", "учения", "учебная тревога", "ложная тревога", "фильм", "шутка", "шучу", "умираю с голоду",
+    ],
+    fine: &["ничего серьезного", "ничего страшного", "все хорошо", "со мной все в порядке", "уже выписали", "выписался", "выписалась", "справляюсь"],
+    past: &["вчера", "позавчера", "на прошлой неделе", "в прошлом году", "в прошлом месяце", "год назад", "лет назад", "уже год", "месяцев назад", "на днях", "годовщина"],
+    now: &["только что", "прямо сейчас", "сейчас же"],
+};
+
+const ID: Cues = Cues {
+    events: &[
+        "pingsan", "tidak sadarkan diri", "ambulans", "ambulan", "igd", "ugd", "dibawa ke rumah sakit", "masuk rumah sakit", "masuk icu",
+        "stroke", "serangan jantung", "tidak bernapas", "kecelakaan", "tabrakan", "ketabrak", "ditabrak", "sedang dioperasi",
+        "kebakaran", "terbakar", "pemadam kebakaran", "bocor gas", "gas bocor", "bau gas", "banjir", "kebanjiran", "ledakan",
+        "hilang", "tersesat", "belum pulang", "tidak ketemu",
+        "meninggal", "baru saja meninggal", "sekarat", "kritis",
+        "dirampok", "kemalingan", "pencurian", "lapor polisi", "panggil polisi",
+        "terjebak di lift", "terkurung di lift", "terjebak", "tersesat di gunung",
+        "kehilangan paspor", "kehilangan dompet", "paspor hilang", "dompet hilang", "dicuri", "tidak bisa pulang",
+        "ada musibah", "sesuatu yang buruk", "sistem down", "server down", "sistem mati", "server mati", "produksi berhenti",
+        "kecelakaan kerja", "kecelakaan di pabrik", "terluka di tempat kerja",
+        "pihak sekolah menelepon", "sekolah menelepon", "jatuh di sekolah", "patah tangan", "kepalanya terbentur",
+    ],
+    urge: &["darurat", "ini darurat", "sangat mendesak", "mendesak", "tolong", "butuh kamu sekarang", "segera datang", "pulang sekarang", "cepat ke sini"],
+    ask: &["sambungkan ke", "bilang ke dia", "suruh dia", "hubungi saya", "saya perlu bicara", "datang ke", "pulang"],
+    at_once: &["sekarang juga", "segera", "langsung", "sekarang", "cepat"],
+    calm: &[
+        "tidak darurat", "bukan darurat", "tidak mendesak", "tidak usah buru buru", "tidak buru buru", "santai saja", "kapan sempat", "kapan ada waktu",
+        "berita", "simulasi", "latihan kebakaran", "alarm palsu", "film", "bercanda", "canda", "kelaparan", "mati kelaparan",
+    ],
+    fine: &["tidak parah", "tidak apa apa", "bukan apa apa", "baik baik saja", "sudah pulang dari rumah sakit", "sudah keluar dari rumah sakit", "sudah sembuh"],
+    past: &["kemarin", "minggu lalu", "tahun lalu", "bulan lalu", "bertahun tahun lalu", "setahun lalu", "sudah setahun", "beberapa bulan lalu", "ulang tahun", "peringatan"],
+    now: &["baru saja", "barusan", "sekarang juga", "tadi"],
+};
+
+const TH: Cues = Cues {
+    events: &[
+        "เป็นลม", "หมดสติ", "รถพยาบาล", "ห้องฉุกเฉิน", "ส่งโรงพยาบาล", "เข้าโรงพยาบาล", "เส้นเลือดในสมอง", "หัวใจวาย", "ไม่หายใจ", "ไอซียู",
+        "อุบัติเหตุ", "รถชน", "ถูกรถชน", "กำลังผ่าตัด",
+        "ไฟไหม้", "ดับเพลิง", "แก๊สรั่ว", "ได้กลิ่นแก๊ส", "น้ำท่วม", "ระเบิด",
+        "หายตัว", "หาไม่เจอ", "พลัดหลง", "ยังไม่กลับบ้าน",
+        "เสียชีวิต", "เพิ่งเสีย", "กำลังจะตาย", "อาการโคม่า",
+        "โดนปล้น", "ถูกปล้น", "ขโมยขึ้นบ้าน", "แจ้งตำรวจ", "เรียกตำรวจ",
+        "ติดอยู่ในลิฟต์", "ติดลิฟต์", "ติดอยู่", "หลงป่า", "หลงทาง",
+        "กระเป๋าหาย", "พาสปอร์ตหาย", "โดนขโมย", "กลับบ้านไม่ได้",
+        "เกิดเรื่องใหญ่", "ระบบล่ม", "เซิร์ฟเวอร์ล่ม", "ระบบพัง", "สายการผลิตหยุด",
+        "อุบัติเหตุในโรงงาน", "อุบัติเหตุที่ทำงาน", "โรงเรียนโทรมา", "หกล้มหัวกระแทก", "แขนหัก", "บาดเจ็บ",
+    ],
+    urge: &["ฉุกเฉิน", "ด่วนมาก", "เรื่องด่วน", "ช่วยด้วย", "รีบมาเดี๋ยวนี้", "ต้องมาตอนนี้", "กลับมาเดี๋ยวนี้"],
+    ask: &[],
+    at_once: &[],
+    calm: &[
+        "ไม่ด่วน", "ไม่ได้ด่วน", "ไม่รีบ", "ไม่ต้องรีบ", "ว่างค่อย", "ว่างเมื่อไหร่",
+        "ข่าว", "ซ้อม", "ฝึกซ้อม", "สัญญาณเตือนปลอม", "ล้อเล่น", "หนัง", "ละคร", "หิวจะตาย", "หิวตายแล้ว",
+    ],
+    fine: &["ไม่เป็นไร", "ไม่มีอะไรร้ายแรง", "สบายดี", "ออกจากโรงพยาบาลแล้ว", "หายดีแล้ว"],
+    past: &["เมื่อวาน", "วันก่อน", "สัปดาห์ที่แล้ว", "อาทิตย์ที่แล้ว", "ปีที่แล้ว", "เดือนที่แล้ว", "หลายปีก่อน", "หนึ่งปีแล้ว", "ครบรอบ"],
+    now: &["เมื่อกี้", "เพิ่ง", "ตอนนี้เลย", "เดี๋ยวนี้"],
+};
+
+const VI: Cues = Cues {
+    events: &[
+        "ngat xiu", "bat tinh", "xe cap cuu", "cap cuu", "phong cap cuu", "dua vao benh vien", "nhap vien", "dot quy", "nhoi mau co tim", "ngung tho", "hoi suc tich cuc",
+        "tai nan giao thong", "tai nan xe", "bi tai nan", "bi xe tong", "bi tong xe", "dang phau thuat", "dang mo",
+        "chay nha", "boc chay", "hoa hoan", "cuu hoa", "linh cuu hoa", "ro ri ga", "ro ri gas", "mui ga", "ngap lut", "vu no",
+        "bi mat tich", "mat tich", "di lac", "khong tim thay", "chua ve nha",
+        "qua doi", "moi mat", "vua mat", "hap hoi", "nguy kich",
+        "bi cuop", "cuop giat", "trom dot nhap", "bao cong an", "goi cong an", "goi canh sat",
+        "ket trong thang may", "mac ket", "lac tren nui",
+        "mat ho chieu", "mat vi", "bi mat cap", "khong co cach nao ve",
+        "co chuyen lon", "co chuyen chang lanh", "he thong sap", "he thong bi sap", "may chu sap", "server sap", "san xuat dung",
+        "tai nan lao dong", "tai nan o nha may", "bi thuong khi lam viec",
+        "truong goi", "nha truong goi", "nga dap dau", "gay tay", "bi thuong o truong",
+    ],
+    urge: &["khan cap", "rat gap", "viec gap", "cuu voi", "can anh ngay", "ve ngay", "den ngay lap tuc"],
+    ask: &["noi voi anh ay", "chuyen may cho", "bao anh ay", "can gap", "ve nha", "den day"],
+    at_once: &["ngay bay gio", "ngay lap tuc", "lap tuc", "gap lam"],
+    calm: &[
+        "khong gap", "khong khan cap", "khong co gi gap", "khong voi", "cu tu tu", "luc nao ranh", "khi nao ranh",
+        "tin tuc", "dien tap", "bao chay gia", "phim", "dua thoi", "noi dua", "chet doi",
+    ],
+    fine: &["khong sao", "khong co gi nghiem trong", "on roi", "da xuat vien", "xuat vien roi", "khoe roi"],
+    past: &["hom qua", "hom kia", "tuan truoc", "nam ngoai", "thang truoc", "cach day vai nam", "mot nam truoc", "ngay gio", "ky niem"],
+    now: &["vua moi", "moi day", "ngay bay gio", "vua xay ra"],
+};
+
+const HI: Cues = Cues {
+    events: &[
+        "बेहोश", "होश नहीं", "एम्बुलेंस", "इमरजेंसी", "आपातकालीन", "अस्पताल ले जा", "अस्पताल में भर्ती", "आईसीयू",
+        "दिल का दौरा", "हार्ट अटैक", "स्ट्रोक", "सांस नहीं", "एक्सीडेंट", "दुर्घटना", "कार से टक्कर", "गाड़ी से टक्कर", "ऑपरेशन चल रहा",
+        "आग लग गई", "आग लगी", "दमकल", "फायर ब्रिगेड", "गैस लीक", "गैस की बदबू", "बाढ़", "धमाका", "विस्फोट",
+        "लापता", "गुम हो", "खो गया", "खो गई", "मिल नहीं रह", "घर नहीं लौटा", "घर नहीं लौटी",
+        "निधन हो गया", "गुजर गए", "गुजर गईं", "दम तोड़", "हालत गंभीर",
+        "लूटपाट", "चोरी हो गई", "डाका", "पुलिस को बुला", "पुलिस को फोन",
+        "लिफ्ट में फंस", "फंस गया", "फंस गई", "पहाड़ पर भटक",
+        "पासपोर्ट चोरी", "बटुआ चोरी", "पर्स चोरी", "वापस आने का रास्ता नहीं",
+        "बहुत बड़ी मुसीबत", "कुछ बुरा हुआ", "सिस्टम क्रैश", "सर्वर डाउन", "सर्वर बंद", "प्रोडक्शन रुक",
+        "काम पर हादसा", "फैक्ट्री में हादसा", "स्कूल से फोन", "सिर में चोट", "हाथ टूट गया", "चोट लग गई",
+    ],
+    urge: &["इमरजेंसी है", "बहुत जरूरी है", "बहुत ज़रूरी है", "तुरंत आओ", "तुरंत आइए", "अभी आओ", "अभी आइए", "बचाओ", "मदद करो"],
+    ask: &["बात करा दीजिए", "उनसे कहिए", "उन्हें बता दीजिए", "अभी आना", "घर आओ", "यहाँ आओ"],
+    at_once: &["तुरंत", "अभी", "फौरन", "फ़ौरन"],
+    calm: &[
+        "जल्दी नहीं", "जरूरी नहीं", "ज़रूरी नहीं", "कोई जल्दी नहीं", "आराम से", "फुर्सत में", "जब समय मिले",
+        "समाचार", "खबर", "ख़बर", "मॉक ड्रिल", "अभ्यास", "झूठा अलार्म", "फिल्म", "फ़िल्म", "मजाक", "मज़ाक", "भूख से मर",
+    ],
+    fine: &["कुछ गंभीर नहीं", "सब ठीक है", "मैं ठीक हूँ", "छुट्टी मिल गई", "अस्पताल से छुट्टी", "ठीक हो गए"],
+    past: &["कल", "परसों", "पिछले हफ्ते", "पिछले हफ़्ते", "पिछले साल", "पिछले महीने", "साल पहले", "एक साल हो गया", "बरसी", "सालगिरह"],
+    now: &["अभी अभी", "तुरंत", "अभी"],
+};
+
+const AR: Cues = Cues {
+    events: &[
+        "اغمي عليه", "اغمي عليها", "مغمى عليه", "فاقد الوعي", "فاقده الوعي", "سياره اسعاف", "الاسعاف", "الطوارئ", "قسم الطوارئ",
+        "نقلوه للمستشفي", "نقلوها للمستشفي", "في المستشفي", "العنايه المركزه", "جلطه", "سكته قلبيه", "ازمه قلبيه", "لا يتنفس",
+        "حادث سياره", "تعرض لحادث", "حادث مروري", "صدمته سياره", "في غرفه العمليات",
+        "حريق", "تشتعل", "الدفاع المدني", "المطافئ", "تسرب غاز", "رائحه غاز", "غرق", "فيضان", "انفجار",
+        "مفقود", "مفقوده", "تاه", "ضاع", "ما لقيناه", "ما لقيناها", "لم يعد للمنزل",
+        "توفي", "توفيت", "مات", "يحتضر", "حالته حرجه",
+        "سرقه", "سطو", "اقتحام", "اتصلنا بالشرطه", "بلغنا الشرطه",
+        "عالق في المصعد", "عالقه في المصعد", "محبوس", "تائهين",
+        "انسرق جواز سفري", "انسرقت محفظتي", "ضاع جوازي", "ما عندي طريقه ارجع",
+        "مصيبه في البيت", "شيء خطير", "النظام تعطل", "السيرفر طاح", "السيرفر متوقف", "توقف الانتاج",
+        "اصابه عمل", "حادث في المصنع", "المدرسه اتصلت", "اتصلوا من المدرسه", "انكسرت يده", "انكسرت يدها", "انضرب في راسه",
+    ],
+    urge: &["طوارئ", "حاله طارئه", "امر عاجل", "عاجل جدا", "النجده", "ساعدوني", "نحتاجك فورا", "تعال فورا", "ارجع فورا"],
+    ask: &["اعطني اياه", "قل له", "اطلب منه", "احتاج اكلمه", "تعال", "ارجع للبيت"],
+    at_once: &["فورا", "الان", "حالا"],
+    calm: &[
+        "ليس عاجل", "مش مستعجل", "مو مستعجل", "لا تستعجل", "على مهلك", "متي ما فضيت",
+        "الاخبار", "تدريب", "بروفه", "انذار كاذب", "فيلم", "امزح", "نكته", "اموت من الجوع", "ميت من الجوع",
+    ],
+    fine: &["لا شيء خطير", "ما في شيء خطير", "انا بخير", "بخير الان", "خرج من المستشفي", "خرجت من المستشفي", "تعافي"],
+    past: &["امس", "اول امس", "الاسبوع الماضي", "السنه الماضيه", "العام الماضي", "الشهر الماضي", "منذ سنوات", "قبل سنه", "الذكرى السنويه"],
+    now: &["للتو", "قبل قليل", "الان", "فورا"],
+};
+
+const ALL_CUES: [&Cues; 15] = [
+    &ZH, &JA, &KO, &EN, &ES, &FR, &DE, &PT, &IT, &RU, &ID, &TH, &VI, &HI, &AR,
+];
 
 /// One cue, folded like the text it is matched against.
 struct Cue {
@@ -363,41 +547,27 @@ fn compiled() -> &'static [Compiled] {
     })
 }
 
-/// CJK ideographs, kana and hangul: phrases without spaces between words.
+/// CJK ideographs, kana, hangul and spaceless scripts (Thai, Lao, Myanmar, Khmer):
+/// phrases without spaces between words.
 fn is_wide(c: char) -> bool {
-    (c as u32) >= 0x2E80
+    (c as u32) >= 0x2E80 || matches!(c as u32, 0x0E00..=0x0EFF | 0x1000..=0x109F | 0x1780..=0x17FF)
 }
 
-/// Traditional → simplified for the characters the cues and common speech use.
-const T2S: &[(char, char)] = &[
-    ('醫', '医'), ('診', '诊'), ('車', '车'), ('禍', '祸'), ('緊', '紧'), ('搶', '抢'), ('報', '报'), ('災', '灾'), ('氣', '气'), ('見', '见'),
-    ('過', '过'), ('闖', '闯'), ('傷', '伤'), ('掛', '挂'), ('當', '当'), ('機', '机'), ('證', '证'), ('錢', '钱'), ('個', '个'), ('電', '电'),
-    ('話', '话'), ('這', '这'), ('們', '们'), ('來', '来'), ('馬', '马'), ('請', '请'), ('讓', '让'), ('關', '关'), ('學', '学'), ('從', '从'),
-    ('風', '风'), ('發', '发'), ('煙', '烟'), ('燒', '烧'), ('護', '护'), ('進', '进'), ('斷', '断'), ('剛', '刚'), ('樓', '楼'), ('裡', '里'),
-    ('裏', '里'), ('時', '时'), ('開', '开'), ('門', '门'), ('號', '号'), ('習', '习'), ('練', '练'), ('聞', '闻'), ('導', '导'), ('沒', '没'),
-    ('趕', '赶'), ('點', '点'), ('連', '连'), ('絡', '络'), ('聯', '联'), ('現', '现'), ('對', '对'), ('嚴', '严'), ('險', '险'), ('喪', '丧'),
-    ('丟', '丢'), ('會', '会'), ('經', '经'), ('後', '后'), ('盜', '盗'), ('竊', '窃'), ('實', '实'), ('驗', '验'), ('員', '员'), ('廠', '厂'),
-    ('業', '业'), ('統', '统'), ('線', '线'), ('據', '据'), ('庫', '库'), ('戶', '户'), ('頭', '头'), ('腦', '脑'), ('歲', '岁'), ('說', '说'),
-    ('麼', '么'), ('嗎', '吗'), ('為', '为'), ('還', '还'), ('處', '处'), ('單', '单'), ('區', '区'), ('遠', '远'), ('邊', '边'), ('給', '给'),
-    ('帶', '带'), ('難', '难'), ('種', '种'), ('應', '应'), ('該', '该'), ('認', '认'), ('識', '识'), ('訴', '诉'), ('煩', '烦'), ('媽', '妈'),
-    ('爺', '爷'), ('孫', '孙'), ('兒', '儿'), ('寶', '宝'), ('東', '东'), ('聽', '听'), ('動', '动'), ('無', '无'), ('張', '张'), ('熱', '热'),
-    ('頂', '顶'), ('層', '层'), ('鄰', '邻'), ('術', '术'), ('檢', '检'), ('試', '试'), ('問', '问'), ('間', '间'), ('鎖', '锁'), ('綁', '绑'),
-    ('騙', '骗'), ('輛', '辆'), ('騎', '骑'), ('託', '托'), ('幫', '帮'), ('擔', '担'), ('驚', '惊'), ('嚇', '吓'), ('亂', '乱'), ('聲', '声'),
-    ('飛', '飞'), ('場', '场'), ('館', '馆'), ('飯', '饭'), ('餓', '饿'), ('樂', '乐'), ('歡', '欢'), ('禮', '礼'), ('週', '周'), ('師', '师'),
-    ('擺', '摆'), ('屬', '属'), ('廚', '厨'), ('載', '载'), ('費', '费'), ('買', '买'), ('賣', '卖'), ('錯', '错'), ('鐵', '铁'), ('殺', '杀'),
-    ('槍', '枪'), ('戰', '战'), ('獄', '狱'), ('違', '违'), ('規', '规'), ('視', '视'), ('劇', '剧'), ('書', '书'), ('寫', '写'), ('讀', '读'),
-    ('紙', '纸'), ('畫', '画'), ('戲', '戏'), ('訊', '讯'), ('響', '响'), ('準', '准'), ('備', '备'), ('隨', '随'), ('題', '题'),
-    ('撐', '撑'), ('鬧', '闹'), ('壞', '坏'), ('換', '换'), ('夠', '够'), ('嬰', '婴'), ('憂', '忧'), ('鐘', '钟'), ('島', '岛'), ('傳', '传'),
-    ('別', '别'), ('撥', '拨'), ('鑰', '钥'), ('頁', '页'), ('較', '较'), ('隊', '队'), ('濃', '浓'), ('潰', '溃'), ('癱', '瘫'), ('瘓', '痪'),
-    ('壓', '压'), ('幾', '几'), ('卦', '挂'), ('褂', '挂'),
-];
-
-fn t2s(c: char) -> char {
-    T2S.iter().find(|(t, _)| *t == c).map_or(c, |(_, s)| *s)
+fn has_cjk_or_corner(s: &str) -> bool {
+    s.chars().any(|c| {
+        matches!(c as u32, 0x3400..=0x9FFF | 0xF900..=0xFAFF | 0x20000..=0x2EBEF)
+            || matches!(c, '「' | '」' | '『' | '』')
+    })
 }
 
-/// Latin letters without accents, full-width ASCII as ASCII, simplified Chinese;
-/// anything that is not a letter or digit becomes a space.
+fn is_word_script_char(c: char) -> bool {
+    c.is_alphanumeric()
+        || matches!(c as u32, 0x0900..=0x0963 | 0x0966..=0x097F | 0x0E01..=0x0E5B)
+}
+
+/// Latin letters without accents, full-width ASCII as ASCII, simplified Chinese
+/// (already folded via OpenCC `to_cn`), Arabic/Russian folds; anything else not
+/// belonging to a word becomes a space.
 fn fold_char(c: char, out: &mut String) {
     let c = match c {
         '\u{FF01}'..='\u{FF5E}' => char::from_u32(c as u32 - 0xFEE0).unwrap_or(c),
@@ -406,8 +576,8 @@ fn fold_char(c: char, out: &mut String) {
     };
     for c in c.to_lowercase() {
         let base = match c {
-            // A combining accent (e + U+0301) is no letter of its own: the text reads as without it.
-            '\u{0300}'..='\u{036F}' => continue,
+            // A combining accent (e + U+0301) is no letter of its own, nor Arabic harakat.
+            '\u{0300}'..='\u{036F}' | '\u{064B}'..='\u{065F}' | '\u{0670}' => continue,
             'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => "a",
             'ă' | 'ạ' | 'ả' | 'ấ' | 'ầ' | 'ẩ' | 'ẫ' | 'ậ' | 'ắ' | 'ằ' | 'ẳ' | 'ẵ' | 'ặ' => "a",
             'ç' => "c",
@@ -425,9 +595,17 @@ fn fold_char(c: char, out: &mut String) {
             'ỳ' | 'ỵ' | 'ỷ' | 'ỹ' => "y",
             'ß' => "ss",
             'œ' => "oe",
+            'ё' => "е",
+            'أ' | 'إ' | 'آ' | 'ٱ' => "ا",
+            'ة' => "ه",
+            'ى' => "ي",
             _ => {
-                let c = t2s(c);
-                out.push(if c.is_alphanumeric() { c } else { ' ' });
+                // Live speech-to-text homophones for 掛 (OpenCC preserves valid 卦/褂).
+                let c = match c {
+                    '卦' | '褂' => '挂',
+                    _ => c,
+                };
+                out.push(if is_word_script_char(c) { c } else { ' ' });
                 continue;
             }
         };
@@ -438,8 +616,15 @@ fn fold_char(c: char, out: &mut String) {
 /// The folded text with single spaces between words and one at both ends (so
 /// " word " matches whole words).
 pub(crate) fn fold_spaced(s: &str) -> String {
-    let mut raw = String::with_capacity(s.len() + 2);
-    for c in s.chars() {
+    let owned;
+    let text = if has_cjk_or_corner(s) {
+        owned = crate::zh_convert::to_cn(s);
+        owned.as_str()
+    } else {
+        s
+    };
+    let mut raw = String::with_capacity(text.len() + 2);
+    for c in text.chars() {
         fold_char(c, &mut raw);
     }
     let mut out = String::with_capacity(raw.len() + 2);
@@ -481,7 +666,7 @@ fn sentence_urgent(spaced: &str, compact: &str) -> bool {
 /// The sentences of what was said, each judged alone ("last week" in one does not
 /// cancel an emergency in the next).
 fn sentences(text: &str) -> impl Iterator<Item = &str> {
-    text.split(['.', '!', '?', '。', '！', '？', '\n', '…', ';', '；'])
+    text.split(['.', '!', '?', '。', '！', '？', '\n', '…', ';', '；', '।', '؟'])
         .map(str::trim)
         .filter(|s| !s.is_empty())
 }
@@ -521,28 +706,50 @@ fn is_latin(c: char) -> bool {
         || (matches!(c as u32, 0xC0..=0x24F | 0x1E00..=0x1EFF) && c != '\u{D7}' && c != '\u{F7}')
 }
 
+fn is_han_bmp(c: char) -> bool {
+    ('\u{4E00}'..='\u{9FFF}').contains(&c)
+}
+
+fn zh_variant(said: &str) -> Lang {
+    let cn = crate::zh_convert::to_cn(said);
+    let tw = crate::zh_convert::to_tw(said);
+    let trad = if said.chars().count() == cn.chars().count() {
+        said.chars().zip(cn.chars()).filter(|(a, b)| a != b && is_han_bmp(*a)).count()
+    } else {
+        usize::from(said != cn)
+    };
+    let simp = if said.chars().count() == tw.chars().count() {
+        said.chars()
+            .zip(tw.chars())
+            .filter(|(a, b)| {
+                a != b
+                    && is_han_bmp(*a)
+                    && !matches!(*a, '里' | '周' | '后' | '台' | '才' | '只' | '面' | '系' | '干')
+            })
+            .count()
+    } else {
+        usize::from(said != tw)
+    };
+    if simp > trad { Lang::ZhCn } else { Lang::ZhTw }
+}
+
 /// The language of what was said, by its share of each script. Kana or Hangul
 /// count only when they make up a fair share of the Chinese characters around
 /// them (speech-to-text writes a stray kana or two into Chinese, Taiwanese or a
 /// noise); Chinese, Japanese or Korean only when its characters outweigh the
 /// Latin words (an English sentence with a Chinese name stays English, a
 /// Chinese one with "OK" or "LINE" stays Chinese); a Latin language only with
-/// two of its common words, or one in two words or more.
+/// two of its common words, or one in two words or more, and not when stronger
+/// markers of an unlisted Latin language (Vietnamese, Italian, Indonesian,
+/// Turkish, Polish, Dutch) outweigh it.
 pub fn read_language(said: &str) -> Option<Reading> {
-    let (mut hangul, mut kana, mut han, mut trad, mut simp) = (0usize, 0usize, 0usize, 0usize, 0usize);
+    let (mut hangul, mut kana, mut han) = (0usize, 0usize, 0usize);
     for c in said.chars() {
         match c as u32 {
             0xAC00..=0xD7AF | 0x1100..=0x11FF | 0x3130..=0x318F => hangul += 1,
             // Not 「・」, which Chinese writes between the parts of a foreign name.
             0x3040..=0x309F | 0x30A1..=0x30FA | 0x30FC => kana += 1,
-            0x4E00..=0x9FFF => {
-                han += 1;
-                if T2S.iter().any(|(t, _)| *t == c) {
-                    trad += 1;
-                } else if !matches!(c, '里' | '周' | '后') && T2S.iter().any(|(_, s)| *s == c) {
-                    simp += 1;
-                }
-            }
+            0x4E00..=0x9FFF => han += 1,
             _ => {}
         }
     }
@@ -562,8 +769,7 @@ pub fn read_language(said: &str) -> Option<Reading> {
             return Some(Reading { lang: Lang::Ja, clear: clear_share(kana + han) });
         }
         if han >= 2 {
-            let lang = if simp > trad { Lang::ZhCn } else { Lang::ZhTw };
-            return Some(Reading { lang, clear: clear_share(cjk) });
+            return Some(Reading { lang: zh_variant(said), clear: clear_share(cjk) });
         }
         None
     };
@@ -572,23 +778,27 @@ pub fn read_language(said: &str) -> Option<Reading> {
             return Some(r);
         }
     }
-    if let Some((lang, top)) = latin_scores(said) {
-        if top >= 2 || (top == 1 && words >= 2) {
-            return Some(Reading { lang, clear: top >= 2 && words >= 3 && clear_share(2 * words) });
+    if !is_strong_other_latin(said) {
+        if let Some((lang, top)) = latin_scores(said) {
+            if top >= 2 || (top == 1 && words >= 2) {
+                return Some(Reading { lang, clear: top >= 2 && words >= 3 && clear_share(2 * words) });
+            }
         }
     }
     cjk_reading().map(|r| Reading { clear: false, ..r })
 }
 
 /// The caller's words are in a language without a setting of its own (Thai,
-/// Russian, Italian, Vietnamese…): no Chinese, Japanese or Korean letters, none
-/// of the setting languages [caller_language] tells, and more than an "OK" —
-/// four letters of another script, or three words of Latin letters.
+/// Russian, Italian, Vietnamese, Indonesian…): no Chinese, Japanese or Korean
+/// letters, none of the setting languages [caller_language] tells, and more
+/// than an "OK" — four letters of another script, or three words of Latin letters.
 pub fn unlisted_language(said: &str) -> bool {
     let said = said.trim();
-    // Any common word of a language with a setting, or Chinese, Japanese or
-    // Korean letters, and it is not one without.
-    if said.is_empty() || caller_language(said).is_some() || latin_scores(said).is_some() {
+    if said.is_empty() || caller_language(said).is_some() {
+        return false;
+    }
+    let other_latin = is_strong_other_latin(said);
+    if !other_latin && latin_scores(said).is_some() {
         return false;
     }
     let (mut cjk, mut latin, mut other) = (0, 0, 0);
@@ -601,8 +811,171 @@ pub fn unlisted_language(said: &str) -> bool {
         }
     }
     let words = said.split_whitespace().filter(|w| w.chars().any(char::is_alphabetic)).count();
+    let unique_script = other_latin && other_latin_stats(said).unique_script;
     // Another script: most of the letters (a Thai word in an English sentence is not enough).
-    cjk == 0 && ((other >= 4 && other * 2 > latin) || (latin >= 12 && words >= 3))
+    cjk == 0 && ((other >= 4 && other * 2 > latin) || (latin >= 12 && words >= 3) || (unique_script && words >= 3))
+}
+
+#[derive(Default)]
+struct OtherLatin {
+    best: i32,
+    best_words: i32,
+    unique_script: bool,
+    unique_tokens: usize,
+}
+
+fn is_vi_unique_char(c: char) -> bool {
+    matches!(
+        c,
+        'đ' | 'Đ'
+            | 'ơ'
+            | 'Ơ'
+            | 'ư'
+            | 'Ư'
+            | 'ă'
+            | 'Ă'
+            | '\u{1EA0}'..='\u{1EF9}'
+            | '\u{0306}'
+            | '\u{031B}'
+            | '\u{0323}'
+            | '\u{0309}'
+    )
+}
+
+fn is_tr_unique_char(c: char) -> bool {
+    matches!(c, 'ğ' | 'Ğ' | 'ı' | 'İ' | 'ş' | 'Ş')
+}
+
+fn is_pl_unique_char(c: char) -> bool {
+    matches!(
+        c,
+        'ł' | 'Ł' | 'ą' | 'Ą' | 'ę' | 'Ę' | 'ż' | 'Ż' | 'ź' | 'Ź' | 'ć' | 'Ć' | 'ń' | 'Ń' | 'ś' | 'Ś'
+    )
+}
+
+fn other_latin_stats(text: &str) -> OtherLatin {
+    const VI_WORDS: &[&str] = &[
+        "xin", "chào", "tôi", "không", "được", "vâng", "người", "nhé", "rồi", "giúp", "mình", "bạn", "anh", "chị",
+        "cảm", "ơn", "bưu", "kiện", "giao", "hàng", "nhà", "tên", "của", "với", "này", "gọi", "khẩn", "cấp", "ngay",
+        "bệnh", "viện", "cứu", "tai", "nạn", "cháy", "công", "an", "cảnh", "sát",
+    ];
+    const IT_WORDS: &[&str] = &[
+        "sono", "ciao", "pronto", "questo", "questa", "questi", "queste", "però", "perché", "perche", "grazie",
+        "dalla", "della", "delle", "degli", "dello", "nella", "nelle", "negli", "nello", "sulla", "vorrei", "chiamo",
+        "chiami", "signor", "signora", "signore", "pacco", "pacchi", "corriere", "consegna", "portineria", "posso",
+        "può", "abbiamo", "siamo", "tutto", "tutti", "molto", "anche", "sempre", "subito", "adesso", "domani", "oggi",
+        "allora", "quindi", "nessuno", "qualcuno", "qualcosa", "bisogno", "scusi", "scusa", "prego", "arrivederci",
+        "arrivederla", "buongiorno", "buonasera", "giornata", "serata", "richiamo", "richiamare", "lasciare", "lascio",
+        "lascerò", "parlo", "parlare", "per", "più", "già", "così", "cioè", "ospedale", "ambulanza", "incidente",
+        "polizia", "emergenza", "fuoco", "successo", "svenuto", "svenuta", "mamma", "papà", "fratello", "sorella",
+        "bambino", "bambina",
+    ];
+    const ID_WORDS: &[&str] = &[
+        "saya", "anda", "bapak", "ibu", "tolong", "terima", "kasih", "makasih", "paket", "paketnya", "sudah", "udah",
+        "tidak", "nggak", "bisa", "ada", "ini", "itu", "dari", "untuk", "yang", "dengan", "mau", "akan", "rumah",
+        "kurir", "telepon", "telpon", "maaf", "permisi", "selamat", "pagi", "siang", "sore", "malam", "besok",
+        "sekarang", "nanti", "belum", "jangan", "kirim", "antar", "titip", "ambil", "orang", "kami", "kita", "mereka",
+        "beliau", "mbak", "halo", "segera", "darurat", "kecelakaan", "kebakaran", "pingsan", "ambulans", "sakit",
+        "polisi",
+    ];
+    const TR_WORDS: &[&str] = &[
+        "merhaba", "evet", "hayır", "hayir", "teşekkür", "tesekkur", "teşekkürler", "lütfen", "lutfen", "kargo",
+        "kargonuz", "evde", "misiniz", "arıyorum", "ariyorum", "benim", "sizin", "acil", "hastane", "ambulans",
+        "kaza", "yangın", "yangin", "polis", "şimdi", "simdi", "yok", "değil", "degil", "günler", "gunler", "iyi",
+        "tamam", "efendim", "kapıda", "kapida", "bayıldı", "bayildi",
+    ];
+    const PL_WORDS: &[&str] = &[
+        "dzień", "dzien", "dobry", "cześć", "czesc", "dziękuję", "dziekuje", "proszę", "prosze", "paczka", "paczkę",
+        "paczke", "kurier", "jestem", "jest", "czy", "pani", "domu", "można", "mozna", "zostawić", "zostawic",
+        "pilne", "wypadek", "karetka", "szpital", "policja", "pożar", "pozar", "natychmiast",
+    ];
+    const NL_WORDS: &[&str] = &[
+        "ik", "het", "een", "van", "voor", "niet", "zijn", "heb", "heeft", "bent", "thuis", "wij", "mijn", "jij",
+        "goedemorgen", "goedemiddag", "goedenavond", "dank", "bedankt", "alstublieft", "alsjeblieft", "pakket",
+        "pakketje", "bezorger", "bezorging", "bellen", "bel", "maar", "naar", "ook", "nog", "geen", "ziekenhuis",
+        "ongeluk", "spoed", "dringend", "meteen", "politie", "brandweer", "flauwgevallen",
+    ];
+    // [Vi, It, Id, Tr, Pl, Nl]
+    let mut scores = [0i32; 6];
+    let mut word_hits = [0i32; 6];
+    let mut unique_tokens = [0usize; 6];
+    for raw_tok in text
+        .split(|c: char| !(c.is_alphabetic() || matches!(c, '\'' | '\u{2019}' | '\u{2018}' | '\u{60}') || ('\u{0300}'..='\u{036F}').contains(&c)))
+        .filter(|t| !t.is_empty())
+    {
+        if raw_tok.chars().any(is_vi_unique_char) {
+            unique_tokens[0] += 1;
+        }
+        if raw_tok.chars().any(is_tr_unique_char) {
+            unique_tokens[3] += 1;
+        }
+        if raw_tok.chars().any(is_pl_unique_char) {
+            unique_tokens[4] += 1;
+        }
+        let tok: String = raw_tok
+            .to_lowercase()
+            .chars()
+            .filter(|c| *c != '\u{0307}')
+            .map(|c| if matches!(c, '\u{2019}' | '\u{2018}' | '\u{60}') { '\'' } else { c })
+            .collect();
+        let word = tok.as_str();
+        for (idx, list) in [VI_WORDS, IT_WORDS, ID_WORDS, TR_WORDS, PL_WORDS, NL_WORDS].iter().enumerate() {
+            if list.contains(&word) {
+                scores[idx] += 1;
+                word_hits[idx] += 1;
+            }
+        }
+        if matches!(word, "è" | "c'è") {
+            scores[1] += 2;
+        }
+    }
+    for c in text.chars() {
+        if is_vi_unique_char(c) {
+            scores[0] += 2;
+        } else if matches!(c, 'ò' | 'Ò') {
+            scores[1] += 2;
+        } else if is_tr_unique_char(c) {
+            scores[3] += 2;
+        } else if is_pl_unique_char(c) {
+            scores[4] += 2;
+        }
+    }
+    let Some((best_idx, &best)) = scores.iter().enumerate().max_by_key(|(_, s)| **s) else {
+        return OtherLatin::default();
+    };
+    OtherLatin {
+        best,
+        best_words: word_hits[best_idx],
+        unique_script: unique_tokens[best_idx] > 0,
+        unique_tokens: unique_tokens[best_idx],
+    }
+}
+
+fn is_strong_other_latin(text: &str) -> bool {
+    let (_, total_scores, word_scores) = latin_word_and_total_scores(text);
+    let setting_total = total_scores.into_iter().max().unwrap_or(0);
+    let setting_words = word_scores.into_iter().max().unwrap_or(0);
+    let o = other_latin_stats(text);
+    if o.best < 2 {
+        return false;
+    }
+    if o.unique_script
+        && (o.unique_tokens >= 2 || o.best_words >= 1 || setting_words == 0)
+        && o.best > setting_words
+    {
+        return true;
+    }
+    o.best > setting_total
+}
+
+/// Score of the strongest unlisted Latin language (`it, vi, id, tr, pl, nl`) when
+/// it clearly outweighs the five setting Latin languages; `0` otherwise.
+pub(crate) fn unlisted_latin_best_score(text: &str) -> i32 {
+    if is_strong_other_latin(text) {
+        other_latin_stats(text).best
+    } else {
+        0
+    }
 }
 
 /// The Latin language with the most common words and letters in `text`, and
@@ -629,6 +1002,11 @@ pub fn is_latin_lang(lang: Lang) -> bool {
 }
 
 fn latin_score_table(text: &str) -> ([Lang; 5], [i32; 5]) {
+    let (langs, total, _) = latin_word_and_total_scores(text);
+    (langs, total)
+}
+
+fn latin_word_and_total_scores(text: &str) -> ([Lang; 5], [i32; 5], [i32; 5]) {
     const WORDS: [(Lang, &[&str]); 5] = [
         (Lang::En, &["the", "and", "is", "are", "was", "i", "i'm", "you", "he", "she", "it", "to", "my", "his", "her", "in", "on", "at", "of", "just", "there", "has", "been", "have", "need", "we", "our", "someone", "with", "for", "they're", "it's", "get", "back", "call", "whenever", "so", "what", "this", "that", "your", "can", "will"]),
         (Lang::Es, &["el", "la", "los", "las", "y", "en", "se", "mi", "me", "es", "está", "por", "una", "un", "lo", "le", "ya", "hay", "del", "al", "muy", "con", "no", "estoy", "nos"]),
@@ -637,35 +1015,37 @@ fn latin_score_table(text: &str) -> ([Lang; 5], [i32; 5]) {
         (Lang::Pt, &["o", "os", "as", "e", "em", "do", "da", "no", "na", "meu", "minha", "um", "uma", "não", "tá", "tô", "pra", "pro", "com", "ele", "ela", "já", "foi", "é", "eu", "tão", "ao", "hoje", "teve", "você", "gente", "isso", "bora", "ontem", "dela", "dele"]),
     ];
     let lower = text.to_lowercase().replace(['\u{2019}', '\u{2018}', '\u{60}'], "'");
-    let mut score = [0i32; 5];
+    let mut word_score = [0i32; 5];
+    let mut total_score = [0i32; 5];
     for token in lower.split(|c: char| !(c.is_alphabetic() || c == '\'')).filter(|t| !t.is_empty()) {
         for (i, (_, words)) in WORDS.iter().enumerate() {
             if words.contains(&token) {
-                score[i] += 1;
+                word_score[i] += 1;
+                total_score[i] += 1;
             }
         }
         if ["l'", "d'", "qu'", "j'", "s'", "c'", "m'", "n'"].iter().any(|p| token.starts_with(p) && token.len() > p.len()) {
-            score[2] += 1;
+            total_score[2] += 1;
         }
     }
     for c in lower.chars() {
         match c {
-            'ñ' | '¿' | '¡' => score[1] += 2,
-            'ã' | 'õ' => score[4] += 2,
+            'ñ' | '¿' | '¡' => total_score[1] += 2,
+            'ã' | 'õ' => total_score[4] += 2,
             'ç' => {
-                score[2] += 1;
-                score[4] += 1;
+                total_score[2] += 1;
+                total_score[4] += 1;
             }
-            'ß' | 'ä' | 'ö' | 'ü' => score[3] += 2,
-            'è' | 'ê' | 'à' | 'ù' | 'î' | 'ô' | 'û' | 'œ' | 'ë' => score[2] += 1,
+            'ß' | 'ä' | 'ö' | 'ü' => total_score[3] += 2,
+            'è' | 'ê' | 'à' | 'ù' | 'î' | 'ô' | 'û' | 'œ' | 'ë' => total_score[2] += 1,
             'á' | 'í' | 'ó' | 'ú' => {
-                score[1] += 1;
-                score[4] += 1;
+                total_score[1] += 1;
+                total_score[4] += 1;
             }
             _ => {}
         }
     }
-    (WORDS.map(|(l, _)| l), score)
+    (WORDS.map(|(l, _)| l), total_score, word_score)
 }
 
 /// The language's name for an instruction to the model.
@@ -688,15 +1068,41 @@ mod tests {
 
     #[test]
     fn a_language_without_a_setting_is_told_apart() {
-        for t in ["สวัสดีครับ ผมเป็นคนส่งของ", "Алло, это курьер, вы дома?", "Halo, saya kurir paket, bapak ada di rumah?", "مرحبا، أنا من شركة التوصيل"] {
+        for t in [
+            "สวัสดีครับ ผมเป็นคนส่งของ",
+            "Алло, это курьер, вы дома?",
+            "Halo, saya kurir paket, bapak ada di rumah?",
+            "مرحبا، أنا من شركة التوصيل",
+            "Ciao, sono Marco, ho un pacco per lei",
+            "Xin chào, tôi là nhân viên giao hàng ạ",
+            "Merhaba efendim, kargonuz kapıda",
+            "Dzień dobry, mam paczkę dla pani, czy jest ktoś w domu?",
+            "Goedemorgen, ik heb een pakketje voor u",
+            "नमस्ते, मैं डिलीवरी वाला हूँ, क्या कोई घर पर है?",
+        ] {
             assert!(unlisted_language(t), "{t}");
         }
-        for t in ["", "OK OK", "喂，你好", "Hello, I'm the courier, where should I leave it?", "もしもし", "여보세요 택배입니다", "OK，那我放管理室"] {
+        for t in [
+            "",
+            "OK OK",
+            "喂，你好",
+            "Hello, I'm the courier, where should I leave it?",
+            "もしもし",
+            "여보세요 택배입니다",
+            "OK，那我放管理室",
+            "Hola, tengo un paquete para usted, ¿lo dejo en portería?",
+            "Bonjour, je suis le livreur, vous êtes chez vous ?",
+            "Hallo, ich bin der Paketbote, sind Sie zu Hause?",
+            "Olá, sou o entregador, posso deixar com o porteiro?",
+        ] {
             assert!(!unlisted_language(t), "{t}");
         }
     }
 
-    const LANGS: [&str; 9] = ["zh-TW", "zh-CN", "en", "ja", "ko", "es", "fr", "de", "pt"];
+    const LANGS: [&str; 16] = [
+        "zh-TW", "zh-CN", "en", "ja", "ko", "es", "fr", "de", "pt",
+        "it", "ru", "id", "th", "vi", "hi", "ar",
+    ];
 
     /// The emergencies every language is tested with.
     pub(crate) const SITUATIONS: [&str; 11] = [
@@ -826,6 +1232,83 @@ mod tests {
         ("pt", 8, "Aconteceu uma coisa séria em casa, fala pra ele vir agora mesmo."),
         ("pt", 9, "O sistema do cliente caiu inteiro e a produção parou, ele precisa ver isso agora."),
         ("pt", 10, "A escola ligou, a menina caiu no recreio e quebrou o braço."),
+        ("it", 0, "Mia mamma è svenuta in casa e l'ambulanza la sta portando al pronto soccorso adesso!"),
+        ("it", 1, "Mio fratello ha avuto un incidente stradale molto grave, i pompieri lo stanno tirando fuori, vieni subito!"),
+        ("it", 2, "La cucina sta andando a fuoco, abbiamo già chiamato i vigili del fuoco, vieni subito!"),
+        ("it", 3, "Non troviamo più il bambino al centro commerciale, è scomparso e abbiamo bisogno di aiuto subito!"),
+        ("it", 4, "Purtroppo mia nonna è morta poco fa in ospedale, però hanno detto di venire subito adesso."),
+        ("it", 5, "Sono entrati i ladri in casa e ci hanno derubato, abbiamo già chiamato la polizia!"),
+        ("it", 6, "Sono rimasto bloccato in ascensore da quasi un'ora e non risponde nessuno, ho bisogno di aiuto!"),
+        ("it", 7, "Sono ancora all'estero, però mi hanno rubato il passaporto e il portafoglio, proprio non ho come tornare oggi!"),
+        ("it", 8, "È successo qualcosa di grave a casa, digli di tornare subito adesso!"),
+        ("it", 9, "Il sistema è bloccato però tutta la produzione è ferma adesso, gli dica subito che abbiamo bisogno di lui!"),
+        ("it", 10, "Hanno chiamato da scuola, il bambino ha battuto la testa e adesso lo portano in ospedale!"),
+        ("ru", 0, "Мама только что упала в обморок дома, скорая помощь уже везет ее в больницу, приезжай немедленно!"),
+        ("ru", 1, "Брат попал в аварию, машина разбита, врачи уже на месте, приезжай прямо сейчас!"),
+        ("ru", 2, "На кухне пожар, все горит, пожарные уже едут!"),
+        ("ru", 3, "Ребенок пропал в торговом центре, мы никак не можем найти его!"),
+        ("ru", 4, "Бабушка только что скончалась в больнице, врачи просят приехать прямо сейчас."),
+        ("ru", 5, "В квартиру залезли воры и все ограбили, я уже вызвал полицию!"),
+        ("ru", 6, "Я застрял в лифте уже почти час, никак не могу выбраться, помогите!"),
+        ("ru", 7, "У меня в поездке украли паспорт и украли кошелек, не могу вернуться домой!"),
+        ("ru", 8, "Дома случилась беда, передайте ему, пусть возвращается прямо сейчас!"),
+        ("ru", 9, "Сервер упал и производство встало, ему нужно все срочно проверить прямо сейчас!"),
+        ("ru", 10, "Позвонили из школы, сын упал на физкультуре и разбил голову, везут в больницу!"),
+        ("id", 0, "Ibu saya baru saja pingsan di rumah dan ambulans sedang membawanya ke rumah sakit sekarang!"),
+        ("id", 1, "Adik saya mengalami kecelakaan lalu lintas, sekarang masih di UGD, tolong segera datang!"),
+        ("id", 2, "Dapur kami mengalami kebakaran besar, pemadam kebakaran sudah menuju ke sini!"),
+        ("id", 3, "Anak kami hilang di mal dan sampai sekarang belum ketemu juga, tolong bantu kami!"),
+        ("id", 4, "Nenek baru saja meninggal di rumah sakit, keluarga diminta segera datang sekarang!"),
+        ("id", 5, "Rumah kami baru saja dirampok dan saya sudah lapor polisi, tolong pulang sekarang!"),
+        ("id", 6, "Saya terjebak di lift sudah hampir satu jam dan tidak bisa keluar, tolong bantu saya!"),
+        ("id", 7, "Saya di luar negeri, saya kehilangan paspor dan dompet, saya tidak bisa pulang sekarang!"),
+        ("id", 8, "Di rumah ada musibah besar, bilang ke dia untuk segera datang sekarang juga!"),
+        ("id", 9, "Server down dan sistem kami mati sehingga produksi berhenti sekarang juga, ini bilang ke dia saya butuh bantuan!"),
+        ("id", 10, "Sekolah menelepon memberi tahu anak kami jatuh di sekolah dan patah tangan, sekarang saya sudah panik di sini!"),
+        ("th", 0, "แม่เป็นลมอยู่ที่บ้านตอนนี้ รถพยาบาลกำลังพาไปส่งโรงพยาบาล รีบมาเดี๋ยวนี้เลย!"),
+        ("th", 1, "น้องเกิดอุบัติเหตุรถชน ตอนนี้กำลังผ่าตัดอยู่ รีบมาเดี๋ยวนี้!"),
+        ("th", 2, "ในครัวเกิดไฟไหม้ รถดับเพลิงกำลังมาแล้ว รีบกลับมาเดี๋ยวนี้!"),
+        ("th", 3, "ลูกหายตัวไปที่ห้าง ยังหาไม่เจอเลย ช่วยด้วย!"),
+        ("th", 4, "คุณยายเพิ่งเสียชีวิตที่โรงพยาบาล หมอบอกต้องมาตอนนี้เลย!"),
+        ("th", 5, "มีขโมยขึ้นบ้านเมื่อกี้ ฉันแจ้งตำรวจแล้ว รีบกลับมาเดี๋ยวนี้!"),
+        ("th", 6, "ฉันติดอยู่ในลิฟต์มาเกือบชั่วโมงแล้ว ออกไม่ได้ ช่วยด้วย!"),
+        ("th", 7, "ฉันอยู่ที่สนามบิน พาสปอร์ตหายกับกระเป๋าหาย กลับบ้านไม่ได้เลย!"),
+        ("th", 8, "ที่บ้านเกิดเรื่องใหญ่แล้ว บอกให้เขากลับมาเดี๋ยวนี้เลย!"),
+        ("th", 9, "ระบบล่มหมดแล้ว สายการผลิตหยุดทำงาน เรื่องด่วนมาก!"),
+        ("th", 10, "โรงเรียนโทรมาบอกว่าน้องหกล้มหัวกระแทก ตอนนี้กำลังส่งโรงพยาบาล!"),
+        ("vi", 0, "Mẹ tôi vừa mới bị ngất xỉu ở nhà, xe cấp cứu đang đưa vào bệnh viện rồi, anh đến ngay lập tức!"),
+        ("vi", 1, "Em trai bị tai nạn giao thông, hiện đang phẫu thuật trong bệnh viện, anh đến ngay lập tức!"),
+        ("vi", 2, "Trong bếp đang bốc cháy rồi, lính cứu hỏa đã tới nơi, anh về ngay!"),
+        ("vi", 3, "Con bé đi lạc ở siêu thị, mãi vẫn không tìm thấy, anh ơi giúp với!"),
+        ("vi", 4, "Bà ngoại vừa mất ở bệnh viện rồi, bác sĩ bảo gia đình đến ngay lập tức!"),
+        ("vi", 5, "Nhà mình vừa bị cướp đột nhập, tôi đã gọi công an rồi, anh về ngay!"),
+        ("vi", 6, "Tôi đang bị kẹt trong thang máy gần một tiếng rồi không ra được, cứu với!"),
+        ("vi", 7, "Tôi đang ở sân bay, bị mất hộ chiếu và mất ví rồi, không có cách nào về nước cả!"),
+        ("vi", 8, "Ở nhà có chuyện lớn rồi, bảo anh ấy về ngay lập tức!"),
+        ("vi", 9, "Hệ thống bị sập rồi, sản xuất dừng hết cả, bảo anh ấy kiểm tra ngay lập tức!"),
+        ("vi", 10, "Nhà trường gọi báo cháu bị ngã đập đầu ở trường, đang đưa vào bệnh viện cấp cứu!"),
+        ("hi", 0, "माँ घर पर बेहोश हो गई हैं, एम्बुलेंस अस्पताल ले जा रही है, आप तुरंत आइए!"),
+        ("hi", 1, "भाई का बड़ा एक्सीडेंट हो गया है, उसका ऑपरेशन चल रहा है, आप अभी आइए!"),
+        ("hi", 2, "रसोई में आग लग गई है, दमकल की गाड़ी आ रही है, तुरंत घर आओ!"),
+        ("hi", 3, "बच्चा बाजार में गुम हो गया है, हमें कहीं मिल नहीं रहा है, मदद करो!"),
+        ("hi", 4, "दादी का अभी अभी निधन हो गया है, डॉक्टर ने परिवार को तुरंत बुलाया है!"),
+        ("hi", 5, "हमारे घर में चोरी हो गई है, मैंने पुलिस को फोन कर दिया है, आप तुरंत आइए!"),
+        ("hi", 6, "मैं एक घंटे से लिफ्ट में फंस गया हूँ, बाहर नहीं निकल पा रहा हूँ, बचाओ!"),
+        ("hi", 7, "मेरा पासपोर्ट चोरी हो गया और बटुआ चोरी हो गया, मेरे पास वापस आने का रास्ता नहीं है!"),
+        ("hi", 8, "घर पर बहुत बड़ी मुसीबत आ गई है, उन्हें बता दीजिए कि तुरंत अभी आना है!"),
+        ("hi", 9, "पूरा सिस्टम क्रैश हो गया है और प्रोडक्शन रुक गया है, उनसे कहिए तुरंत देखें!"),
+        ("hi", 10, "स्कूल से फोन आया है, बच्चे को सिर में चोट लग गई है और अस्पताल ले जा रहे हैं!"),
+        ("ar", 0, "أمي أغمي عليها في البيت الآن وسيارة الإسعاف تنقلها إلى المستشفى، تعال فوراً!"),
+        ("ar", 1, "أخي تعرض لحادث سيارة خطير وهو الآن في غرفة العمليات، تعال فوراً!"),
+        ("ar", 2, "المطبخ يشتعل وفيه حريق كبير، الدفاع المدني في الطريق الآن!"),
+        ("ar", 3, "الطفل مفقود في المركز التجاري وما لقيناه في أي مكان!"),
+        ("ar", 4, "جدتي توفيت للتو في المستشفى، والأطباء يطلبون من العائلة الحضور فوراً."),
+        ("ar", 5, "اقتحم اللصوص بيتنا ووقعت سرقة، اتصلنا بالشرطة الآن، ارجع فوراً!"),
+        ("ar", 6, "أنا عالق في المصعد منذ ساعة تقريباً ولا أستطيع الخروج، النجدة!"),
+        ("ar", 7, "أنا في المطار، انسرق جواز سفري وانسرقت محفظتي، ما عندي طريقة أرجع!"),
+        ("ar", 8, "حدثت مصيبة في البيت الآن، قل له أن يرجع للبيت فوراً!"),
+        ("ar", 9, "النظام تعطل وتوقف الإنتاج بالكامل، اطلب منه أن يتدخل فوراً!"),
+        ("ar", 10, "المدرسة اتصلت الآن، الولد سقط في الملعب وانكسرت يده وفي طريقه إلى المستشفى!"),
     ];
 
     /// (language, mention, what a caller would say): none is urgent.
@@ -902,6 +1385,62 @@ mod tests {
         ("pt", 5, "Tô morrendo de fome, bora jantar hoje?"),
         ("pt", 6, "Não é urgente, me liga quando puder."),
         ("pt", 7, "Agora mesmo tô no mercado, te ligo depois."),
+        ("it", 0, "La settimana scorsa sono andato all'ospedale per prendere le medicine, però niente di grave."),
+        ("it", 1, "Stamattina abbiamo fatto una prova antincendio in ufficio, però era tutto tranquillo oggi."),
+        ("it", 2, "Al telegiornale hanno detto che ieri c'è stato un brutto incidente, però per fortuna sto sempre bene."),
+        ("it", 3, "Mia nonna è deceduta l'anno scorso, però oggi parliamo sempre di lei."),
+        ("it", 4, "Questo periodo al lavoro è sempre tutto urgente, però ce la cavo bene oggi."),
+        ("it", 5, "Ragazzi, muoio di fame adesso, però ceniamo tutti insieme stasera?"),
+        ("it", 6, "Non è urgente per niente, però puoi richiamare domani quando hai tempo."),
+        ("it", 7, "Proprio adesso sono al supermercato, però ti richiamo subito dopo pranzo."),
+        ("ru", 0, "На прошлой неделе я ходил в больницу за лекарствами, ничего серьезного."),
+        ("ru", 1, "Утром на работе была учебная тревога, все вышли на улицу."),
+        ("ru", 2, "В новостях сказали, что вчера на трассе была авария, будь осторожен."),
+        ("ru", 3, "Моя бабушка умерла в прошлом году, сегодня ровно год."),
+        ("ru", 4, "На работе сейчас все в спешке, вообще ничего не успеваю."),
+        ("ru", 5, "Ой, умираю с голоду, пойдем сегодня ужинать вместе?"),
+        ("ru", 6, "Это не срочно, перезвони, когда будет время."),
+        ("ru", 7, "Я прямо сейчас в магазине, перезвоню тебе попозже."),
+        ("id", 0, "Minggu lalu saya pergi ke rumah sakit untuk ambil obat, tidak parah kok."),
+        ("id", 1, "Tadi pagi saya dan bapak ibu di kantor ikut simulasi latihan kebakaran, sudah selesai."),
+        ("id", 2, "Menurut berita kemarin ada kecelakaan di jalan tol, namun ibu bapak semua sudah baik baik saja."),
+        ("id", 3, "Nenek saya meninggal tahun lalu, hari ini adalah peringatan satu tahun beliau."),
+        ("id", 4, "Sekarang pekerjaan di kantor padat sekali dan semua harus cepat, saya sampai bingung."),
+        ("id", 5, "Saya sudah mati kelaparan nih, nanti malam kita makan bersama yuk!"),
+        ("id", 6, "Ini tidak mendesak kok, bapak telepon saya lagi nanti kapan sempat saja."),
+        ("id", 7, "Saya sekarang juga masih di pasar, nanti saya telepon balik ya."),
+        ("th", 0, "สัปดาห์ที่แล้วฉันไปรับยาที่โรงพยาบาล ไม่มีอะไรร้ายแรงหรอก"),
+        ("th", 1, "เมื่อเช้าที่ทำงานมีการฝึกซ้อมหนีไฟ ทุกคนลงมารวมกันด้านล่าง"),
+        ("th", 2, "ในข่าวบอกว่าเมื่อวานมีอุบัติเหตุบนทางด่วน ขับรถระวังนะ"),
+        ("th", 3, "คุณย่าเสียชีวิตปีที่แล้ว วันนี้ครบรอบหนึ่งปีพอดี"),
+        ("th", 4, "ช่วงนี้งานเร่งทุกอย่างเลย ยุ่งมากจริง ๆ"),
+        ("th", 5, "หิวจะตายอยู่แล้ว เย็นนี้ไปกินข้าวด้วยกันไหม"),
+        ("th", 6, "ไม่ด่วนหรอก ว่างเมื่อไหร่ค่อยโทรกลับมาก็ได้"),
+        ("th", 7, "ตอนนี้เลยฉันยังซื้อของอยู่ เดี๋ยวโทรกลับนะ"),
+        ("vi", 0, "Tuần trước tôi có vào bệnh viện lấy thuốc thôi, không có gì nghiêm trọng đâu."),
+        ("vi", 1, "Sáng nay công ty có buổi diễn tập phòng cháy chữa cháy, mọi người đều ổn rồi."),
+        ("vi", 2, "Tin tức hôm qua đưa có tai nạn trên cao tốc đấy, anh đi đường cẩn thận nhé."),
+        ("vi", 3, "Bà nội tôi qua đời năm ngoái rồi, hôm nay là ngày giỗ của bà."),
+        ("vi", 4, "Dạo này công việc ở văn phòng bận rộn quá, việc gì cũng dồn dập cả."),
+        ("vi", 5, "Trời ơi chết đói mất rồi, tối nay đi ăn cơm cùng nhau nhé?"),
+        ("vi", 6, "Chuyện này không gấp đâu, khi nào rảnh thì anh gọi lại cho tôi nhé."),
+        ("vi", 7, "Ngay bây giờ tôi đang ở siêu thị, chút nữa tôi gọi lại cho bạn nhé."),
+        ("hi", 0, "पिछले हफ्ते मैं अस्पताल से दवा लेने गया था, कुछ गंभीर नहीं है।"),
+        ("hi", 1, "आज सुबह ऑफिस में आग बुझाने का मॉक ड्रिल अभ्यास था, सब ठीक है।"),
+        ("hi", 2, "समाचार में बताया कि कल हाईवे पर दुर्घटना हुई थी, संभल कर चलना।"),
+        ("hi", 3, "पिछले साल दादाजी गुजर गए थे, आज उनकी बरसी है।"),
+        ("hi", 4, "आजकल काम बहुत ज्यादा है, हर काम जल्दी निपटाना पड़ रहा है।"),
+        ("hi", 5, "अरे मैं तो भूख से मर रहा हूँ, आज शाम को साथ खाना खाएं क्या?"),
+        ("hi", 6, "कोई जल्दी नहीं है, जब समय मिले तब वापस फोन कर लेना।"),
+        ("hi", 7, "मैं अभी बाज़ार में हूँ, थोड़ी देर में फोन करता हूँ।"),
+        ("ar", 0, "الأسبوع الماضي ذهبت إلى المستشفى لأخذ الدواء، لا شيء خطير."),
+        ("ar", 1, "هذا الصباح كان عندنا تدريب بروفة إخلاء حريق في العمل، الكل بخير."),
+        ("ar", 2, "ذكروا في الأخبار أن هناك حادث سيارة أمس على الطريق السريع، انتبه."),
+        ("ar", 3, "جدتي توفيت السنة الماضية، واليوم الذكرى السنوية لوفاتها."),
+        ("ar", 4, "هذه الأيام كل شيء في العمل مضغوط ومستعجل."),
+        ("ar", 5, "والله أموت من الجوع الآن، هل نتعشى معاً الليلة؟"),
+        ("ar", 6, "الأمر ليس عاجل أبداً، اتصل بي متى ما فضيت."),
+        ("ar", 7, "أنا الآن في السوق، سأتصل بك لاحقاً."),
     ];
 
     #[test]
@@ -972,18 +1511,75 @@ mod tests {
 
     #[test]
     fn the_callers_language_is_told_from_what_they_said() {
+        let setting_langs = ["zh-TW", "zh-CN", "en", "ja", "ko", "es", "fr", "de", "pt"];
         let wrong: Vec<String> = URGENT
             .iter()
             .chain(NOT_URGENT.iter().filter(|(_, k, _)| *k != 7))
             .filter_map(|(lang, _, s)| {
-                let got = caller_language(s).map(|l| if l.is_zh() { "zh" } else { l.code() });
-                let want = if lang.starts_with("zh") { "zh" } else { lang };
-                (got != Some(want)).then(|| format!("{lang} got {got:?}: {s}"))
+                if setting_langs.contains(lang) {
+                    let got = caller_language(s).map(|l| if l.is_zh() { "zh" } else { l.code() });
+                    let want = if lang.starts_with("zh") { "zh" } else { lang };
+                    (got != Some(want)).then(|| format!("{lang} got {got:?}: {s}"))
+                } else {
+                    let got = caller_language(s);
+                    let unlisted = unlisted_language(s);
+                    (got.is_some() || !unlisted).then(|| format!("unlisted {lang} got {got:?} unlisted={unlisted}: {s}"))
+                }
             })
             .collect();
         assert!(wrong.is_empty(), "{}", wrong.join("\n"));
         assert_eq!(caller_language(""), None);
         assert_eq!(caller_language("123 !!"), None);
+    }
+
+    #[test]
+    fn traditional_chinese_urgent_words_are_normalized_via_opencc() {
+        for s in [
+            "我媽媽剛剛在家裡暈倒了，救護車剛到！",
+            "爸爸突然心臟病發送急診，你快來醫院！",
+            "隔壁房子著火了，消防車已經趕過來！",
+            "廚房突然瓦斯外洩，大家都在撤離，快回來！",
+            "弟弟打翻熱湯嚴重燙傷，現在在醫院急診！",
+            "爺爺從早上失蹤到現在還沒找到，已經報警了！",
+            "這件事十萬火急，請務必馬上回電給我！",
+            "我在機場護照被偷，沒辦法搭機，回不了國了！",
+            "公司整個系統的網站掛了，全部客戶都停擺！",
+            "線上大故障，客戶群那邊都炸鍋了，快回來處理！",
+        ] {
+            assert!(is_urgent(s), "zh-TW should be urgent via to_cn: {s}");
+        }
+        assert_eq!(caller_language("我媽媽暈倒了，已經送醫院急診！"), Some(Lang::ZhTw));
+        assert_eq!(caller_language("台灣台北的快遞到了請問有人在家嗎？"), Some(Lang::ZhTw));
+        assert_eq!(caller_language("我爸在家晕倒了，已经叫了救护车送急诊！"), Some(Lang::ZhCn));
+    }
+
+    #[test]
+    fn unlisted_latin_languages_never_mislock_as_setting_latin_languages() {
+        for sample in [
+            "Ciao, sono Marco, ho un pacco per lei, posso lasciarlo in portineria?",
+            "Pronto, vorrei parlare con il signor Rossi per una consegna urgente.",
+            "Xin chào, tôi là nhân viên giao hàng, anh có ở nhà không ạ?",
+            "Tôi muốn gửi bưu kiện cho anh, cảm ơn nhiều nhé.",
+            "Halo, saya kurir paket, bapak atau ibu ada di rumah sekarang?",
+            "Terima kasih, paketnya sudah saya titipkan ke satpam ya.",
+            "Merhaba efendim, kargonuz kapıda bekliyor, evde misiniz?",
+            "Dzień dobry, dzwonię z firmy kurierskiej, mam paczkę dla pani.",
+            "Goedemorgen, ik bel voor een bezorging en heb een pakketje bij me.",
+        ] {
+            assert!(unlisted_language(sample), "expected unlisted=true: {sample}");
+            assert_eq!(caller_language(sample), None, "expected caller_language=None: {sample}");
+            assert_eq!(read_language(sample), None, "expected read_language=None: {sample}");
+        }
+        for (lang, sample) in [
+            (Lang::En, "Hello, I have a package for you, can I leave it at the front desk?"),
+            (Lang::Es, "Hola, soy el repartidor, tengo un paquete para usted hoy."),
+            (Lang::Fr, "Bonjour, je suis le livreur, vous êtes chez vous pour le colis ?"),
+            (Lang::De, "Guten Tag, ich habe ein Paket für Sie, sind Sie zu Hause?"),
+            (Lang::Pt, "Olá, sou o entregador, posso deixar o pacote com o porteiro?"),
+        ] {
+            assert!(!unlisted_language(sample), "expected unlisted=false for {lang:?}: {sample}");
+            assert_eq!(caller_language(sample), Some(lang), "expected {lang:?}: {sample}");
+        }
     }
 
     #[test]

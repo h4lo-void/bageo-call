@@ -1139,11 +1139,20 @@ async fn send_channel_inner(http: &Client, ch: &Channel, msg: &Message) -> Resul
     let prepared = prepare(ch, msg, now_ms)?;
     refuse_metadata(&prepared.url, testing).await?;
     let sent = match send_prepared(http, &prepared).await {
-        // Telegram refuses HTML it cannot parse: send the plain text instead.
-        Err(e) if ch.kind == "telegram" && msg.html.is_some() => {
-            warn!("notify telegram HTML refused ({e:#}); retrying as plain text");
-            let plain = Message { html: None, ..msg.clone() };
-            send_prepared(http, &prepare(ch, &plain, now_ms)?).await
+        // Telegram refuses HTML it cannot parse, and buttons whose address it will not
+        // open (a `.local` name): send the plain text, then the plain text without the
+        // buttons (their links go into the text).
+        Err(e) if ch.kind == "telegram" && (msg.html.is_some() || !msg.actions.is_empty()) => {
+            warn!("notify telegram message refused ({e:#}); retrying as plain text");
+            let mut result = Err(e);
+            if msg.html.is_some() {
+                let plain = Message { html: None, ..msg.clone() };
+                result = send_prepared(http, &prepare(ch, &plain, now_ms)?).await;
+            }
+            if result.is_err() && !msg.actions.is_empty() {
+                result = send_prepared(http, &prepare(ch, &telegram_without_buttons(msg), now_ms)?).await;
+            }
+            result
         }
         other => other,
     };
@@ -1151,6 +1160,15 @@ async fn send_channel_inner(http: &Client, ch: &Channel, msg: &Message) -> Resul
         Ok(()) if ch.kind == "discord" => discord_gave_up(ch, testing),
         other => other,
     }
+}
+
+/// The message as plain text with no buttons: each button's link follows the text.
+fn telegram_without_buttons(msg: &Message) -> Message {
+    let mut body = msg.body.clone();
+    for a in &msg.actions {
+        body.push_str(&format!("\n{}: {}", a.label, a.url));
+    }
+    Message { html: None, body, actions: Vec::new(), ..msg.clone() }
 }
 
 /// A text in the owner's language: zh-TW, zh-CN, en, ja, ko, es, fr, de, pt.
@@ -2365,6 +2383,28 @@ mod tests {
         let p = prepare(&c, &plain, 0).unwrap();
         assert!(json_body(&p).get("parse_mode").is_none());
         assert!(json_body(&p)["text"].as_str().unwrap().starts_with("Call summary"));
+    }
+
+    #[test]
+    fn telegram_retry_without_buttons_keeps_the_links_in_the_text() {
+        let c = ch("telegram", "", "123:ABC", "-100200");
+        let with_buttons = Message {
+            actions: vec![
+                NotifyAction { label: "Confirm".into(), url: "http://bageo.local/a".into() },
+                NotifyAction { label: "確認".into(), url: "http://bageo.local/b".into() },
+            ],
+            ..msg()
+        };
+        let p = prepare(&c, &with_buttons, 0).unwrap();
+        assert!(json_body(&p).get("reply_markup").is_some());
+        let retry = telegram_without_buttons(&with_buttons);
+        assert!(retry.html.is_none() && retry.actions.is_empty());
+        let p = prepare(&c, &retry, 0).unwrap();
+        assert!(json_body(&p).get("reply_markup").is_none());
+        assert!(json_body(&p).get("parse_mode").is_none());
+        let text = json_body(&p)["text"].as_str().unwrap();
+        assert!(text.starts_with("Call summary"), "{text}");
+        assert!(text.contains("Confirm: http://bageo.local/a") && text.contains("確認: http://bageo.local/b"), "{text}");
     }
 
     #[test]
