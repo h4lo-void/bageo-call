@@ -391,7 +391,7 @@ def agent_request(path: str, payload: dict | None = None, timeout: float = 10.0)
 
 
 def deliver(title: str, body: str, sender: str = "", text: str = "", to: str = "", serial: str = "",
-            device: str = "", received_ms: int = 0, ref: str = "") -> tuple[bool, str]:
+            device: str = "", received_ms: int = 0, ref: str = "", sub_id: int | None = None) -> tuple[bool, str]:
     """Hand a message to the agent's notification channels. (delivered, reason).
 
     With a sender or text the request also says it is an SMS and carries its parts:
@@ -403,6 +403,8 @@ def deliver(title: str, body: str, sender: str = "", text: str = "", to: str = "
     if sender or text:
         payload.update({"kind": "sms", "from": sender, "text": text[:SMS_TEXT_MAX], "to": to, "serial": serial,
                         "device": device, "received_ms": int(received_ms or 0), "ref": ref})
+        if sub_id is not None:
+            payload["sub_id"] = int(sub_id)  # the SIM it came in on: a reply goes out on it
     status, obj = agent_request("/calls/api/notify/send", payload, SEND_TIMEOUT)
     if status == 200 and isinstance(obj, dict) and obj.get("ok") is True:
         return True, "agent:200"
@@ -848,7 +850,7 @@ class Forwarder:
         title, text = format_sms(lang, sender, line, body, serial, model, received_ms, time.time(),
                                  self.zone() if late else None)
         ok, via = self.deliver(title, text, sender, body, to=line, serial=serial, device=model,
-                               received_ms=received_ms, ref=sms_ref(key, received_ms, time.time()))
+                               received_ms=received_ms, ref=sms_ref(key, received_ms, time.time()), sub_id=sub)
         self.last_send = time.time()
         self.sends += 1
         if not self.note_delivery(ok, via, f"{serial} {src}={ref}"):

@@ -94,7 +94,8 @@ h1,h2,h3,p{margin:0}
 .lang{width:auto;min-height:33px;padding:4px 28px 4px 10px;font-size:.85rem;max-width:9.5rem;border-radius:var(--radius-sm)}
 
 main{max-width:1180px;margin:0 auto;padding:24px 20px}
-.view-title{font-size:1.3rem;font-weight:700;letter-spacing:-.015em;margin-bottom:14px}
+/* The navigation already says which page this is: the page's own title is for screen readers only. */
+.view-title{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 
 /* ---------- generic pieces ---------- */
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--card-shadow)}
@@ -193,22 +194,79 @@ pre.block.prose{font:inherit;font-size:.9rem}
 .call .call-acts .btn{border-color:transparent;background:transparent;color:var(--muted);min-height:25px;padding:1px 8px;font-size:.79rem}
 .call .call-acts .btn:hover{background:var(--surface);border-color:var(--line);color:var(--text)}
 .call .call-acts .btn.danger:hover{background:var(--bad-soft);border-color:color-mix(in srgb,var(--bad) 32%,var(--line));color:var(--bad)}
-.sms-bar{display:flex;gap:8px;align-items:center;margin-bottom:12px}
-.sms-bar input{flex:1 1 auto;min-width:0;max-width:26rem}
-.sms-bar .btn{flex:0 0 auto;margin-left:auto}
-.sms{padding:13px 16px 9px;border-radius:var(--radius);background:var(--surface);border:1px solid var(--line);box-shadow:var(--card-shadow)}
-.sms-head{display:flex;gap:9px;align-items:baseline;min-width:0}
-.sms .who{font-weight:600;font-size:.98rem;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sms .num{font-family:var(--mono);font-size:.82rem;color:var(--muted);white-space:nowrap}
-.sms .when{font-size:.82rem;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
-.sms-text{margin:5px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}
-.sms-foot{display:flex;gap:4px;align-items:center;margin-top:5px;min-height:27px;color:var(--muted);font-size:.82rem}
-.sms-foot .via{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sms-foot .btn{border-color:transparent;background:transparent;color:var(--muted);min-height:25px;padding:1px 8px;font-size:.79rem;opacity:0;transition:opacity .14s,background .14s,color .14s}
-.sms:hover .sms-foot .btn,.sms:focus-within .sms-foot .btn{opacity:1}
-.sms-foot .btn:hover{background:var(--surface2);color:var(--text)}
-.sms-foot .btn.danger:hover{background:var(--bad-soft);border-color:transparent;color:var(--bad)}
-@media (hover:none){.sms-foot .btn{opacity:1}}
+/* SMS page: one conversation per number, like a phone's messages app (scoped: .chat and .note mean other things elsewhere on this page) */
+#view-sms .chat{display:grid;grid-template-columns:300px minmax(0,1fr);height:calc(100vh - var(--top-h) - 150px);min-height:460px;overflow:hidden;padding:0}
+#view-sms .chat-list{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
+#view-sms .chat-search{padding:12px 12px 8px}
+#view-sms .chat-search input{min-height:36px}
+#view-sms .threads{flex:1 1 auto;overflow-y:auto;padding:0 6px 6px}
+#view-sms .th{display:grid;grid-template-columns:36px minmax(0,1fr);gap:11px;align-items:center;width:100%;padding:9px 10px;border:0;border-radius:var(--radius-sm);background:transparent;text-align:left;cursor:pointer;color:var(--text);font:inherit}
+#view-sms .th:hover{background:var(--surface2)}
+#view-sms .th[aria-current=true]{background:var(--nav-active-bg)}
+#view-sms .th .th-top{display:flex;gap:8px;align-items:baseline;min-width:0}
+#view-sms .threads,#view-sms .msgs{scrollbar-width:thin;scrollbar-color:var(--line-strong) transparent}
+#view-sms .b .acts .btn{white-space:nowrap}
+#view-sms .th .name{flex:1 1 auto;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
+#view-sms .th .time{flex:0 0 auto;font-size:.76rem;color:var(--muted);font-variant-numeric:tabular-nums}
+#view-sms .th .prev{display:flex;gap:6px;align-items:center;min-width:0;color:var(--muted);font-size:.86rem;margin-top:1px}
+#view-sms .th .prev span{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#view-sms .th.unread .name{font-weight:700}
+#view-sms .th.unread .prev{color:var(--text)}
+#view-sms .th .new{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:0 0 auto}
+#view-sms .th-empty{padding:28px 14px;text-align:center;color:var(--muted);font-size:.88rem}
+#view-sms .th-empty b{display:block;color:var(--text);font-weight:600;margin-bottom:4px}
+#view-sms .av{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--surface2);color:var(--muted);font-weight:600;font-size:.9rem;flex:0 0 auto}
+#view-sms .av svg{width:18px;height:18px;display:block}
+#view-sms .chat-list-foot{padding:6px 10px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;min-height:40px}
+#view-sms .convo{display:flex;flex-direction:column;min-width:0;min-height:0}
+#view-sms .chat-pick{flex:1 1 auto;display:grid;place-items:center;padding:24px;text-align:center;color:var(--muted);font-size:.92rem}
+#view-sms .convo-head{display:flex;align-items:center;gap:10px;padding:10px 14px 10px 18px;border-bottom:1px solid var(--line);min-height:58px}
+#view-sms .convo-head .who{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
+#view-sms .convo-head .num{font-family:var(--mono);font-size:.8rem;color:var(--muted)}
+#view-sms .convo-head .back{display:none}
+#view-sms .convo-to{display:flex;align-items:center;gap:10px}
+#view-sms .convo-to label{color:var(--muted);font-size:.9rem;flex:0 0 auto}
+#view-sms .convo-to input{max-width:17rem;min-height:36px}
+#view-sms .msgs{flex:1 1 auto;overflow-y:auto;padding:14px 18px 10px;display:flex;flex-direction:column;gap:3px}
+#view-sms .msgs .earlier{align-self:center;margin:2px 0 8px}
+#view-sms .day{align-self:center;margin:12px 0 6px;font-size:.75rem;font-weight:500;color:var(--muted)}
+#view-sms .b{display:flex;align-items:center;gap:4px;max-width:min(78%,560px)}
+#view-sms .b.in{align-self:flex-start}
+#view-sms .b.out{align-self:flex-end;flex-direction:row-reverse}
+#view-sms .b .bub{padding:8px 13px;border-radius:17px;background:var(--bubble-caller);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;user-select:text}
+#view-sms .b.out .bub{background:var(--bubble-ai)}
+#view-sms .b.in.last .bub{border-bottom-left-radius:6px}
+#view-sms .b.out.last .bub{border-bottom-right-radius:6px}
+#view-sms .b.out.sending .bub{opacity:.6}
+#view-sms .b.out.failed .bub{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--bad) 45%,transparent)}
+#view-sms .b .acts{display:flex;gap:2px;opacity:0;transition:opacity .14s}
+#view-sms .b:hover .acts,#view-sms .b:focus-within .acts{opacity:1}
+#view-sms .b .acts .btn{border-color:transparent;background:transparent;color:var(--muted);min-height:24px;padding:1px 7px;font-size:.76rem}
+#view-sms .b .acts .btn:hover{background:var(--surface2);color:var(--text)}
+#view-sms .b .acts .btn.danger:hover{background:var(--bad-soft);color:var(--bad)}
+#view-sms .meta{font-size:.74rem;color:var(--muted);margin:2px 6px 9px;font-variant-numeric:tabular-nums;max-width:min(78%,560px)}
+#view-sms .meta.in{align-self:flex-start}
+#view-sms .meta.out{align-self:flex-end;text-align:right}
+#view-sms .meta .bad{color:var(--bad)}
+#view-sms .meta .link{border:0;background:none;padding:0;margin-left:4px;color:var(--accent-ink);font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+#view-sms .composer{border-top:1px solid var(--line);padding:9px 14px 12px}
+#view-sms .composer .from{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:.84rem;color:var(--muted)}
+#view-sms .composer .from select{width:auto;max-width:100%;min-height:30px;padding:2px 26px 2px 9px;font-size:.84rem;border-radius:7px}
+#view-sms .composer .crow{display:flex;gap:8px;align-items:flex-end}
+#view-sms .composer textarea{flex:1 1 auto;min-height:40px;height:40px;max-height:150px;resize:none;overflow-y:hidden;border-radius:20px;padding:9px 15px;line-height:1.45}
+#view-sms .composer .btn.primary{flex:0 0 auto;white-space:nowrap;border-radius:20px;min-height:40px;padding:7px 18px}
+#view-sms .composer .count{font-size:.74rem;color:var(--muted);text-align:right;margin-top:4px;font-variant-numeric:tabular-nums}
+#view-sms .composer .note{font-size:.84rem;color:var(--muted);margin-top:6px;padding-left:0;border-left:0}
+.nav .dot.sms{background:var(--accent)}
+@media (max-width:760px){
+  #view-sms .chat{grid-template-columns:minmax(0,1fr);height:calc(100dvh - var(--top-h) - 200px - env(safe-area-inset-bottom));min-height:380px}
+  #view-sms .chat.open .chat-list{display:none}
+  #view-sms .chat:not(.open) .convo{display:none}
+  #view-sms .chat-list{border-right:0}
+  #view-sms .convo-head{padding-left:8px}
+  #view-sms .convo-head .back{display:inline-flex}
+  #view-sms .b,#view-sms .meta{max-width:88%}
+}
 .more{display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 0}
 
 /* detail */
@@ -519,7 +577,6 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
   .nav a span{overflow:hidden;text-overflow:ellipsis;max-width:100%}
   .nav .dot{right:6px;top:6px}
   main{padding:14px 12px calc(96px + env(safe-area-inset-bottom))}
-  .view-title{font-size:1.18rem;margin-bottom:10px}
   .pad{padding:16px}
   .stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
   .steps{grid-template-columns:minmax(0,1fr)}
@@ -550,7 +607,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
     </a>
     <nav class="nav" id="nav" data-i18n-aria="nav_main">
       <a href="#calls" data-tab="calls"><span data-i18n="tab_calls"></span></a>
-      <a href="#sms" data-tab="sms"><span data-i18n="tab_sms"></span></a>
+      <a href="#sms" data-tab="sms"><span data-i18n="tab_sms"></span><i class="dot sms" id="navSms" hidden></i></a>
       <a href="#errands" data-tab="errands"><span data-i18n="tab_errands"></span></a>
       <a href="#contacts" data-tab="contacts"><span data-i18n="tab_contacts"></span></a>
       <a href="#settings" data-tab="settings"><span data-i18n="tab_settings"></span><i class="dot" id="navDirty" hidden></i></a>
@@ -702,20 +759,38 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
   </section>
 
   <!-- ======================= SMS ======================= -->
-  <!-- Text messages the phones received (handed over by the SMS forwarder) -->
+  <!-- Text messages as conversations (one per number): what the phones received
+       (handed over by the SMS forwarder) and the replies sent from here -->
   <section id="view-sms" data-view="sms" hidden>
-    <div class="row" style="margin-bottom:6px">
-      <h1 class="view-title grow" style="margin:0" data-i18n="tab_sms"></h1>
-      <span class="muted small" id="smsMeta"></span>
+    <h1 class="view-title" data-i18n="tab_sms"></h1>
+    <div class="row" style="margin-bottom:14px">
+      <p class="muted small grow" id="smsKeepBox" hidden><span id="smsKeep"></span> <a href="#settings/notify" id="smsKeepLink" data-i18n="sms_keep_link"></a></p>
+      <span class="muted small" id="smsMeta" style="margin-left:auto"></span>
+      <button type="button" class="btn sm" id="smsNew" data-i18n="sms_new"></button>
     </div>
-    <p class="muted small" style="margin-bottom:14px"><span id="smsKeep"></span> <a href="#settings/notify" id="smsKeepLink" data-i18n="sms_keep_link"></a></p>
-    <div class="sms-bar">
-      <input type="search" id="smsQ" autocomplete="off" data-i18n-ph="sms_search_ph" />
-      <button type="button" class="btn danger" id="smsClear" data-i18n="sms_clear" hidden></button>
+    <div class="card chat" id="smsChat">
+      <aside class="chat-list">
+        <div class="chat-search"><input type="search" id="smsQ" autocomplete="off" data-i18n-ph="sms_search_ph" /></div>
+        <div class="threads" id="smsThreads"></div>
+        <div class="chat-list-foot"><button type="button" class="btn xs ghost danger" id="smsClear" data-i18n="sms_clear" hidden></button></div>
+      </aside>
+      <section class="convo" id="smsConvo">
+        <div class="chat-pick" id="smsPick" data-i18n="sms_pick"></div>
+        <header class="convo-head" id="smsHead" hidden>
+          <button type="button" class="btn xs ghost back" id="smsBack" data-i18n="sms_back"></button>
+          <div class="grow" id="smsWho"><div class="who" id="smsName"></div><div class="num" id="smsNum"></div></div>
+          <div class="convo-to grow" id="smsToRow" hidden><label for="smsTo" data-i18n="sms_to"></label><input type="tel" id="smsTo" autocomplete="off" data-i18n-ph="sms_to_ph" /></div>
+          <button type="button" class="btn xs ghost danger" id="smsDelThread" data-i18n="sms_del_thread"></button>
+        </header>
+        <div class="msgs" id="smsMsgs" hidden></div>
+        <form class="composer" id="smsForm" hidden>
+          <div class="from"><label for="smsFrom" data-i18n="sms_from"></label><select id="smsFrom"></select></div>
+          <div class="crow"><textarea id="smsText" rows="1" maxlength="500" data-i18n-ph="sms_input_ph"></textarea><button type="submit" class="btn primary" id="smsSend" data-i18n="sms_send"></button></div>
+          <div class="count" id="smsCount" hidden></div>
+          <div class="note" id="smsNote" hidden></div>
+        </form>
+      </section>
     </div>
-    <div class="list" id="smsList"></div>
-    <div class="card empty" id="smsEmpty" hidden><h3 id="smsEmptyT"></h3><p id="smsEmptyD"></p></div>
-    <div class="row" style="justify-content:center;margin-top:14px"><button type="button" class="btn" id="smsMore" data-i18n="sms_more" hidden></button></div>
   </section>
 
   <!-- ======================= Errands ======================= -->
@@ -757,10 +832,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
 
   <!-- ======================= Contacts ======================= -->
   <section id="view-contacts" data-view="contacts" hidden>
-    <div class="row" style="margin-bottom:14px">
-      <h1 class="view-title grow" style="margin:0" data-i18n="tab_contacts"></h1>
-      <span class="muted small" id="ctMeta"></span>
-    </div>
+    <h1 class="view-title" data-i18n="tab_contacts"></h1>
     <div class="seg" id="ctTabs" role="tablist" style="margin-bottom:14px;flex-wrap:wrap">
       <button type="button" role="tab" data-kind="all" aria-selected="true"><span data-i18n="ct_tab_all"></span> <span class="muted small" id="ctCntAll"></span></button>
       <button type="button" role="tab" data-kind="contact" aria-selected="false"><span data-i18n="ct_tab_contact"></span> <span class="muted small" id="ctCntContact"></span></button>
@@ -1177,9 +1249,9 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
 
   <!-- ======================= System ======================= -->
   <section id="view-system" data-view="system" hidden>
+    <h1 class="view-title" data-i18n="tab_system"></h1>
     <div class="row" style="margin-bottom:14px">
-      <h1 class="view-title grow" style="margin:0" data-i18n="tab_system"></h1>
-      <span class="muted small" id="sysMeta"></span>
+      <span class="muted small" id="sysMeta" style="margin-left:auto"></span>
       <button type="button" class="btn sm" id="btnSysRefresh" data-i18n="refresh"></button>
     </div>
     <div class="sys-grid">
@@ -1313,7 +1385,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
  * JSON API under /calls/api/.
  *
  * LINKS
- *   #calls  #sms  #settings  #settings/<section>  #system  #call=<call id>
+ *   #calls  #sms  #sms/<number>  #sms/new  #settings  #settings/<section>  #system  #call=<call id>
  *   ?lang=<code>  ?theme=light|dark  ?token=<CALLS_UI_TOKEN>
  *
  * TRANSLATIONS
@@ -1580,7 +1652,6 @@ I18N["en"] = {
   ct_add: "Add",
   ct_import: "Import",
   ct_export: "Export vCard",
-  ct_count: "{n} contacts",
   ct_empty_title: "No contacts yet",
   ct_empty_body: "Add people yourself, or import contacts from your phone, Google or Outlook. When they call you see their name, and the AI knows who it is.",
   ct_empty_filtered: "No contact matches",
@@ -2370,11 +2441,36 @@ I18N["en"] = {
   sms_empty_t: "No text messages yet",
   sms_empty_d: "Texts your phones receive show up here once the SMS forwarder is running.",
   sms_none_found: "No text message matches.",
-  sms_more: "Show more",
   sms_unknown: "Unknown sender",
   f_sms_keep: "Days to keep text messages",
   f_sms_keep_h: "Older text messages are deleted automatically.",
   unit_days: "days",
+  sms_new: "New message",
+  sms_pick: "Pick a conversation, or press “New message”.",
+  sms_to: "To",
+  sms_to_ph: "Phone number",
+  sms_from: "From",
+  sms_input_ph: "Text message",
+  sms_send: "Send",
+  sms_sending: "Sending…",
+  sms_sent: "Sent",
+  sms_failed: "Not sent",
+  sms_unsure: "Not confirmed yet",
+  sms_retry: "Retry",
+  sms_you: "You: ",
+  sms_no_line: "No phone can send texts right now.",
+  sms_no_reply: "You can't reply to this sender.",
+  sms_del_thread: "Delete conversation",
+  sms_del_thread_t: "Delete all messages with {name}?",
+  sms_back: "Back",
+  sms_earlier: "Show earlier messages",
+  sms_sim_n: "SIM {n}",
+  sms_err_offline: "The phone is not connected.",
+  sms_err_old_app: "This phone's app is too old to send texts.",
+  sms_err_permission: "The phone's app may not send texts. Allow it on the phone.",
+  sms_err_no_service: "The phone has no signal.",
+  sms_err_generic: "The phone could not send it.",
+  sms_err_number: "Check the number and try again.",
 };
 
 I18N["zh-TW"] = {
@@ -2620,7 +2716,6 @@ I18N["zh-TW"] = {
   ct_add: "新增",
   ct_import: "匯入",
   ct_export: "匯出 vCard",
-  ct_count: "共 {n} 位",
   ct_empty_title: "還沒有聯絡人",
   ct_empty_body: "自己新增，或匯入手機、Google、Outlook 的通訊錄。他們打來時會顯示名字，AI 也知道是誰。",
   ct_empty_filtered: "找不到符合的聯絡人",
@@ -3410,11 +3505,36 @@ I18N["zh-TW"] = {
   sms_empty_t: "還沒有簡訊",
   sms_empty_d: "簡訊轉發開始運作後，手機收到的簡訊會出現在這裡。",
   sms_none_found: "找不到符合的簡訊。",
-  sms_more: "顯示更多",
   sms_unknown: "未知寄件人",
   f_sms_keep: "簡訊紀錄保留幾天",
   f_sms_keep_h: "超過天數的簡訊會自動刪除。",
   unit_days: "天",
+  sms_new: "新簡訊",
+  sms_pick: "選一則對話，或按「新簡訊」。",
+  sms_to: "收件人",
+  sms_to_ph: "輸入電話號碼",
+  sms_from: "從",
+  sms_input_ph: "輸入簡訊",
+  sms_send: "傳送",
+  sms_sending: "傳送中…",
+  sms_sent: "已送出",
+  sms_failed: "沒有送出",
+  sms_unsure: "還不確定有沒有送出",
+  sms_retry: "重試",
+  sms_you: "你：",
+  sms_no_line: "現在沒有可以傳簡訊的手機。",
+  sms_no_reply: "這個寄件人不能回覆。",
+  sms_del_thread: "刪除對話",
+  sms_del_thread_t: "刪除跟 {name} 的所有簡訊？",
+  sms_back: "返回",
+  sms_earlier: "顯示更早的簡訊",
+  sms_sim_n: "SIM {n}",
+  sms_err_offline: "手機沒有連線。",
+  sms_err_old_app: "這支手機的 App 太舊，不能傳簡訊。",
+  sms_err_permission: "手機的 App 沒有傳簡訊的權限，請在手機上允許。",
+  sms_err_no_service: "手機沒有訊號。",
+  sms_err_generic: "手機沒有送出這則簡訊。",
+  sms_err_number: "請檢查號碼後再試一次。",
 };
 
 I18N["zh-CN"] = {
@@ -3660,7 +3780,6 @@ I18N["zh-CN"] = {
   ct_add: "新增",
   ct_import: "导入",
   ct_export: "导出 vCard",
-  ct_count: "共 {n} 位",
   ct_empty_title: "还没有联系人",
   ct_empty_body: "自己添加，或导入手机、Google、Outlook 的通讯录。他们打来时会显示名字，AI 也知道是谁。",
   ct_empty_filtered: "找不到符合的联系人",
@@ -4450,11 +4569,36 @@ I18N["zh-CN"] = {
   sms_empty_t: "还没有短信",
   sms_empty_d: "短信转发开始运行后，手机收到的短信会出现在这里。",
   sms_none_found: "找不到符合的短信。",
-  sms_more: "显示更多",
   sms_unknown: "未知发件人",
   f_sms_keep: "短信记录保留几天",
   f_sms_keep_h: "超过天数的短信会自动删除。",
   unit_days: "天",
+  sms_new: "新短信",
+  sms_pick: "选一个对话，或点“新短信”。",
+  sms_to: "收件人",
+  sms_to_ph: "输入电话号码",
+  sms_from: "从",
+  sms_input_ph: "输入短信",
+  sms_send: "发送",
+  sms_sending: "发送中…",
+  sms_sent: "已发送",
+  sms_failed: "没有发出",
+  sms_unsure: "还不确定有没有发出",
+  sms_retry: "重试",
+  sms_you: "你：",
+  sms_no_line: "现在没有可以发短信的手机。",
+  sms_no_reply: "这个发件人不能回复。",
+  sms_del_thread: "删除对话",
+  sms_del_thread_t: "删除和 {name} 的所有短信？",
+  sms_back: "返回",
+  sms_earlier: "显示更早的短信",
+  sms_sim_n: "SIM {n}",
+  sms_err_offline: "手机没有连接。",
+  sms_err_old_app: "这部手机的 App 太旧，不能发短信。",
+  sms_err_permission: "手机的 App 没有发短信的权限，请在手机上允许。",
+  sms_err_no_service: "手机没有信号。",
+  sms_err_generic: "手机没有发出这条短信。",
+  sms_err_number: "请检查号码后再试一次。",
 };
 
 I18N["ja"] = {
@@ -4700,7 +4844,6 @@ I18N["ja"] = {
   ct_add: "追加",
   ct_import: "インポート",
   ct_export: "vCard で書き出し",
-  ct_count: "{n} 件",
   ct_empty_title: "連絡先はまだありません",
   ct_empty_body: "自分で追加するか、スマホ・Google・Outlook の連絡先を取り込めます。登録した人からの電話には名前が表示され、AI にも誰からか伝わります。",
   ct_empty_filtered: "一致する連絡先はありません",
@@ -5490,11 +5633,36 @@ I18N["ja"] = {
   sms_empty_t: "SMS はまだありません",
   sms_empty_d: "SMS 転送が動き始めると、スマホに届いた SMS がここに表示されます。",
   sms_none_found: "一致する SMS がありません。",
-  sms_more: "さらに表示",
   sms_unknown: "差出人不明",
   f_sms_keep: "SMS を保存する日数",
   f_sms_keep_h: "日数を過ぎた SMS は自動で削除されます。",
   unit_days: "日",
+  sms_new: "新規 SMS",
+  sms_pick: "会話を選ぶか、「新規 SMS」を押してください。",
+  sms_to: "宛先",
+  sms_to_ph: "電話番号",
+  sms_from: "送信元",
+  sms_input_ph: "メッセージを入力",
+  sms_send: "送信",
+  sms_sending: "送信中…",
+  sms_sent: "送信済み",
+  sms_failed: "送信できませんでした",
+  sms_unsure: "送信できたか未確認",
+  sms_retry: "再送信",
+  sms_you: "あなた：",
+  sms_no_line: "いま SMS を送れるスマホがありません。",
+  sms_no_reply: "この差出人には返信できません。",
+  sms_del_thread: "会話を削除",
+  sms_del_thread_t: "{name} とのメッセージをすべて削除しますか？",
+  sms_back: "戻る",
+  sms_earlier: "以前のメッセージを表示",
+  sms_sim_n: "SIM {n}",
+  sms_err_offline: "スマホが接続されていません。",
+  sms_err_old_app: "このスマホのアプリは古いため SMS を送れません。",
+  sms_err_permission: "スマホのアプリに SMS 送信の権限がありません。スマホで許可してください。",
+  sms_err_no_service: "スマホが圏外です。",
+  sms_err_generic: "スマホが送信できませんでした。",
+  sms_err_number: "番号を確認して、もう一度お試しください。",
 };
 
 I18N["ko"] = {
@@ -5740,7 +5908,6 @@ I18N["ko"] = {
   ct_add: "추가",
   ct_import: "가져오기",
   ct_export: "vCard로 내보내기",
-  ct_count: "{n}명",
   ct_empty_title: "아직 연락처가 없습니다",
   ct_empty_body: "직접 추가하거나 휴대폰, Google, Outlook 연락처를 가져올 수 있습니다. 등록된 사람이 전화하면 이름이 표시되고 AI도 누구인지 압니다.",
   ct_empty_filtered: "일치하는 연락처가 없습니다",
@@ -6530,11 +6697,36 @@ I18N["ko"] = {
   sms_empty_t: "아직 문자가 없습니다",
   sms_empty_d: "문자 전달이 작동하면 휴대폰이 받은 문자가 여기에 표시됩니다.",
   sms_none_found: "일치하는 문자가 없습니다.",
-  sms_more: "더 보기",
   sms_unknown: "알 수 없는 발신자",
   f_sms_keep: "문자 보관 일수",
   f_sms_keep_h: "기간이 지난 문자는 자동으로 삭제됩니다.",
   unit_days: "일",
+  sms_new: "새 문자",
+  sms_pick: "대화를 고르거나 \"새 문자\"를 누르세요.",
+  sms_to: "받는 사람",
+  sms_to_ph: "전화번호",
+  sms_from: "보내는 번호",
+  sms_input_ph: "문자 입력",
+  sms_send: "보내기",
+  sms_sending: "보내는 중…",
+  sms_sent: "보냄",
+  sms_failed: "보내지 못함",
+  sms_unsure: "전송 여부 확인 전",
+  sms_retry: "다시 보내기",
+  sms_you: "나: ",
+  sms_no_line: "지금 문자를 보낼 수 있는 휴대폰이 없습니다.",
+  sms_no_reply: "이 발신자에게는 답장할 수 없습니다.",
+  sms_del_thread: "대화 삭제",
+  sms_del_thread_t: "{name}님과의 문자를 모두 삭제할까요?",
+  sms_back: "뒤로",
+  sms_earlier: "이전 문자 보기",
+  sms_sim_n: "SIM {n}",
+  sms_err_offline: "휴대폰이 연결되어 있지 않습니다.",
+  sms_err_old_app: "이 휴대폰의 앱이 오래되어 문자를 보낼 수 없습니다.",
+  sms_err_permission: "휴대폰 앱에 문자 전송 권한이 없습니다. 휴대폰에서 허용해 주세요.",
+  sms_err_no_service: "휴대폰에 신호가 없습니다.",
+  sms_err_generic: "휴대폰이 문자를 보내지 못했습니다.",
+  sms_err_number: "번호를 확인하고 다시 시도해 주세요.",
 };
 
 I18N["es"] = {
@@ -6780,7 +6972,6 @@ I18N["es"] = {
   ct_add: "Añadir",
   ct_import: "Importar",
   ct_export: "Exportar vCard",
-  ct_count: "{n} contactos",
   ct_empty_title: "Todavía no hay contactos",
   ct_empty_body: "Añade personas a mano o importa los contactos de tu teléfono, Google u Outlook. Cuando llamen verás su nombre y la IA sabrá quién es.",
   ct_empty_filtered: "Ningún contacto coincide",
@@ -7570,11 +7761,36 @@ I18N["es"] = {
   sms_empty_t: "Aún no hay SMS",
   sms_empty_d: "Cuando el reenvío de SMS esté en marcha, los SMS que reciban tus teléfonos aparecerán aquí.",
   sms_none_found: "Ningún SMS coincide.",
-  sms_more: "Ver más",
   sms_unknown: "Remitente desconocido",
   f_sms_keep: "Días que se guardan los SMS",
   f_sms_keep_h: "Los SMS más antiguos se borran solos.",
   unit_days: "días",
+  sms_new: "Nuevo mensaje",
+  sms_pick: "Elige una conversación o pulsa «Nuevo mensaje».",
+  sms_to: "Para",
+  sms_to_ph: "Número de teléfono",
+  sms_from: "Desde",
+  sms_input_ph: "Escribe un SMS",
+  sms_send: "Enviar",
+  sms_sending: "Enviando…",
+  sms_sent: "Enviado",
+  sms_failed: "No enviado",
+  sms_unsure: "Sin confirmar",
+  sms_retry: "Reintentar",
+  sms_you: "Tú: ",
+  sms_no_line: "Ahora no hay ningún teléfono que pueda enviar SMS.",
+  sms_no_reply: "No puedes responder a este remitente.",
+  sms_del_thread: "Borrar conversación",
+  sms_del_thread_t: "¿Borrar todos los mensajes con {name}?",
+  sms_back: "Atrás",
+  sms_earlier: "Ver mensajes anteriores",
+  sms_sim_n: "SIM {n}",
+  sms_err_offline: "El teléfono no está conectado.",
+  sms_err_old_app: "La app de este teléfono es demasiado antigua para enviar SMS.",
+  sms_err_permission: "La app del teléfono no tiene permiso para enviar SMS. Permítelo en el teléfono.",
+  sms_err_no_service: "El teléfono no tiene señal.",
+  sms_err_generic: "El teléfono no pudo enviarlo.",
+  sms_err_number: "Revisa el número e inténtalo de nuevo.",
 };
 
 I18N["fr"] = {
@@ -7820,7 +8036,6 @@ I18N["fr"] = {
   ct_add: "Ajouter",
   ct_import: "Importer",
   ct_export: "Exporter en vCard",
-  ct_count: "{n} contacts",
   ct_empty_title: "Aucun contact pour l'instant",
   ct_empty_body: "Ajoutez des personnes vous-même ou importez les contacts de votre téléphone, de Google ou d'Outlook. Quand elles appellent, leur nom s'affiche et l'IA sait qui c'est.",
   ct_empty_filtered: "Aucun contact ne correspond",
@@ -8610,11 +8825,36 @@ I18N["fr"] = {
   sms_empty_t: "Pas encore de SMS",
   sms_empty_d: "Une fois le transfert de SMS lancé, les SMS reçus par vos téléphones s'affichent ici.",
   sms_none_found: "Aucun SMS ne correspond.",
-  sms_more: "Afficher plus",
   sms_unknown: "Expéditeur inconnu",
   f_sms_keep: "Nombre de jours de conservation des SMS",
   f_sms_keep_h: "Les SMS plus anciens sont supprimés automatiquement.",
   unit_days: "jours",
+  sms_new: "Nouveau message",
+  sms_pick: "Choisissez une conversation ou appuyez sur « Nouveau message ».",
+  sms_to: "À",
+  sms_to_ph: "Numéro de téléphone",
+  sms_from: "Depuis",
+  sms_input_ph: "Écrire un SMS",
+  sms_send: "Envoyer",
+  sms_sending: "Envoi…",
+  sms_sent: "Envoyé",
+  sms_failed: "Non envoyé",
+  sms_unsure: "Pas encore confirmé",
+  sms_retry: "Réessayer",
+  sms_you: "Vous : ",
+  sms_no_line: "Aucun téléphone ne peut envoyer de SMS pour le moment.",
+  sms_no_reply: "Vous ne pouvez pas répondre à cet expéditeur.",
+  sms_del_thread: "Supprimer la conversation",
+  sms_del_thread_t: "Supprimer tous les messages avec {name} ?",
+  sms_back: "Retour",
+  sms_earlier: "Afficher les messages précédents",
+  sms_sim_n: "SIM {n}",
+  sms_err_offline: "Le téléphone n'est pas connecté.",
+  sms_err_old_app: "L'app de ce téléphone est trop ancienne pour envoyer des SMS.",
+  sms_err_permission: "L'app du téléphone n'a pas le droit d'envoyer des SMS. Autorisez-la sur le téléphone.",
+  sms_err_no_service: "Le téléphone n'a pas de réseau.",
+  sms_err_generic: "Le téléphone n'a pas pu l'envoyer.",
+  sms_err_number: "Vérifiez le numéro et réessayez.",
 };
 
 I18N["de"] = {
@@ -8860,7 +9100,6 @@ I18N["de"] = {
   ct_add: "Hinzufügen",
   ct_import: "Importieren",
   ct_export: "Als vCard exportieren",
-  ct_count: "{n} Kontakte",
   ct_empty_title: "Noch keine Kontakte",
   ct_empty_body: "Füge Personen selbst hinzu oder importiere die Kontakte von deinem Telefon, aus Google oder Outlook. Ruft jemand davon an, siehst du den Namen, und die KI weiß, wer es ist.",
   ct_empty_filtered: "Kein Kontakt passt",
@@ -9650,11 +9889,36 @@ I18N["de"] = {
   sms_empty_t: "Noch keine SMS",
   sms_empty_d: "Sobald die SMS-Weiterleitung läuft, erscheinen hier die SMS, die deine Telefone empfangen.",
   sms_none_found: "Keine passende SMS.",
-  sms_more: "Mehr anzeigen",
   sms_unknown: "Unbekannter Absender",
   f_sms_keep: "So viele Tage bleiben SMS gespeichert",
   f_sms_keep_h: "Ältere SMS werden automatisch gelöscht.",
   unit_days: "Tage",
+  sms_new: "Neue Nachricht",
+  sms_pick: "Wähl eine Unterhaltung oder tipp auf „Neue Nachricht“.",
+  sms_to: "An",
+  sms_to_ph: "Telefonnummer",
+  sms_from: "Von",
+  sms_input_ph: "SMS schreiben",
+  sms_send: "Senden",
+  sms_sending: "Wird gesendet …",
+  sms_sent: "Gesendet",
+  sms_failed: "Nicht gesendet",
+  sms_unsure: "Noch nicht bestätigt",
+  sms_retry: "Erneut senden",
+  sms_you: "Du: ",
+  sms_no_line: "Gerade kann kein Telefon SMS senden.",
+  sms_no_reply: "Diesem Absender kannst du nicht antworten.",
+  sms_del_thread: "Unterhaltung löschen",
+  sms_del_thread_t: "Alle Nachrichten mit {name} löschen?",
+  sms_back: "Zurück",
+  sms_earlier: "Ältere Nachrichten anzeigen",
+  sms_sim_n: "SIM {n}",
+  sms_err_offline: "Das Telefon ist nicht verbunden.",
+  sms_err_old_app: "Die App auf diesem Telefon ist zu alt, um SMS zu senden.",
+  sms_err_permission: "Die App darf keine SMS senden. Erlaub es auf dem Telefon.",
+  sms_err_no_service: "Das Telefon hat keinen Empfang.",
+  sms_err_generic: "Das Telefon konnte sie nicht senden.",
+  sms_err_number: "Prüf die Nummer und versuch es noch einmal.",
 };
 
 I18N["pt"] = {
@@ -9900,7 +10164,6 @@ I18N["pt"] = {
   ct_add: "Adicionar",
   ct_import: "Importar",
   ct_export: "Exportar vCard",
-  ct_count: "{n} contatos",
   ct_empty_title: "Ainda não há contatos",
   ct_empty_body: "Adicione pessoas você mesmo ou importe os contatos do celular, do Google ou do Outlook. Quando elas ligarem, o nome aparece e a IA sabe quem é.",
   ct_empty_filtered: "Nenhum contato encontrado",
@@ -10690,11 +10953,36 @@ I18N["pt"] = {
   sms_empty_t: "Ainda não há SMS",
   sms_empty_d: "Quando o encaminhamento de SMS estiver funcionando, os SMS que seus telefones receberem aparecerão aqui.",
   sms_none_found: "Nenhum SMS corresponde.",
-  sms_more: "Mostrar mais",
   sms_unknown: "Remetente desconhecido",
   f_sms_keep: "Dias para guardar os SMS",
   f_sms_keep_h: "Os SMS mais antigos são apagados automaticamente.",
   unit_days: "dias",
+  sms_new: "Nova mensagem",
+  sms_pick: "Escolha uma conversa ou toque em “Nova mensagem”.",
+  sms_to: "Para",
+  sms_to_ph: "Número de telefone",
+  sms_from: "De",
+  sms_input_ph: "Escreva um SMS",
+  sms_send: "Enviar",
+  sms_sending: "Enviando…",
+  sms_sent: "Enviado",
+  sms_failed: "Não enviado",
+  sms_unsure: "Ainda não confirmado",
+  sms_retry: "Tentar de novo",
+  sms_you: "Você: ",
+  sms_no_line: "Agora nenhum telefone pode enviar SMS.",
+  sms_no_reply: "Não é possível responder a este remetente.",
+  sms_del_thread: "Apagar conversa",
+  sms_del_thread_t: "Apagar todas as mensagens com {name}?",
+  sms_back: "Voltar",
+  sms_earlier: "Ver mensagens anteriores",
+  sms_sim_n: "SIM {n}",
+  sms_err_offline: "O telefone não está conectado.",
+  sms_err_old_app: "O app deste telefone é antigo demais para enviar SMS.",
+  sms_err_permission: "O app do telefone não tem permissão para enviar SMS. Permita no telefone.",
+  sms_err_no_service: "O telefone está sem sinal.",
+  sms_err_generic: "O telefone não conseguiu enviar.",
+  sms_err_number: "Confira o número e tente novamente.",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word
@@ -11119,6 +11407,15 @@ function setHash(hash, replace) {
   else location.hash = hash;
 }
 function route() {
+  // A text conversation: everything after "sms/" is the number (it may hold a "/").
+  const raw = location.hash.slice(1);
+  if (raw === "sms" || raw.startsWith("sms/")) {
+    let arg = raw.slice(4);
+    try { arg = decodeURIComponent(arg); } catch (_) { /* keep raw */ }
+    showView("sms");
+    smsApplyRoute(arg.trim());
+    return;
+  }
   let hash = location.hash.slice(1);
   try { hash = decodeURIComponent(hash); } catch (_) { /* keep raw */ }
   const m = hash.match(/^call=([A-Za-z0-9_-]{1,128})$/);
@@ -11895,133 +12192,466 @@ $("btnBlock").addEventListener("click", async () => {
 });
 
 // ---------------------------------------------------------------- text messages (SMS)
-// What the SMS forwarder handed over: newest first, a page at a time; the
-// agent searches (sender, contact name, text) and drops the old ones.
+// Conversations, one per number, like a phone's messages app: what the phones
+// received (the SMS forwarder hands them over) and the replies sent from here.
 const SMS_PAGE = 50;
 const SMS_MAX_PAGE = 200; // the most one request returns
-const smsBox = { list: [], total: 0, keep: 0, more: false, state: "idle", error: "", seq: 0, q: "", sig: "" };
+const SMS_SEEN = "pca.smsSeen"; // conversation key → when it was last looked at (ms)
+const SMS_GROUP_MS = 5 * 60 * 1000; // bubbles this close together share one time line
+const sms = {
+  threads: [], total: 0, keep: 0, lines: [], q: "", state: "idle", error: "", seq: 0,
+  open: null, // null: the list only; {isNew: true}: a new message; {number}: one conversation
+  convo: null, // the agent's answer for the open conversation
+  msgs: [], more: false, cseq: 0,
+  pending: [], // texts on their way, shown until the agent's answer replaces them
+  sending: 0,
+  pick: {}, // conversation key → the line picked for it (this page only)
+};
 let smsTicks = 0;
-// Requests overlap (timer, typing, after a delete): only the answer to the latest is used.
-async function loadSms(o) {
-  const more = !!(o && o.more);
-  const seq = ++smsBox.seq;
-  const q = $("smsQ").value.trim();
-  const fresh = q !== smsBox.q; // another search starts from the top
-  if (smsBox.state !== "ok") { smsBox.state = "loading"; renderSms(); }
-  const had = fresh ? 0 : smsBox.list.length;
-  const p = new URLSearchParams();
-  if (q) p.set("q", q);
-  if (more && had) p.set("before", String(smsBox.list[had - 1].id));
-  p.set("limit", String(more ? SMS_PAGE : Math.min(SMS_MAX_PAGE, Math.max(SMS_PAGE, had))));
+
+// ---- read and unread
+function smsSeen() {
   try {
-    const d = await api("/sms?" + p.toString());
-    if (seq !== smsBox.seq) return;
-    const got = Array.isArray(d.messages) ? d.messages : [];
-    if (more && had) {
-      smsBox.list = smsBox.list.concat(got);
-      smsBox.more = !!d.has_more;
-    } else {
-      // Messages shown beyond what one request carries stay as they are.
-      const tail = !fresh && got.length && d.has_more ? smsBox.list.filter((m) => m.id < got[got.length - 1].id) : [];
-      smsBox.more = tail.length ? smsBox.more : !!d.has_more;
-      smsBox.list = got.concat(tail);
+    const v = JSON.parse(store.get(SMS_SEEN) || "null");
+    return v && typeof v === "object" ? v : null;
+  } catch (_) { return null; }
+}
+const smsSaveSeen = (seen) => store.set(SMS_SEEN, JSON.stringify(seen));
+const smsUnread = (th, seen) => !!seen && Number(th.last_in_at || 0) > Number(seen[th.key] || 0);
+function smsMarkSeen(key, at) {
+  const seen = smsSeen();
+  if (!seen) return; // the first list marks everything as read
+  if (Number(seen[key] || 0) >= Number(at || 0)) return;
+  // The time of the newest message seen (the phone's clock, like last_in_at).
+  seen[key] = Number(at) || 0;
+  smsSaveSeen(seen);
+}
+function smsDot() {
+  if (sms.state !== "ok" || sms.q) return; // a search shows only part of the list
+  const seen = smsSeen();
+  $("navSms").hidden = !sms.threads.some((th) => smsUnread(th, seen));
+}
+
+// ---- the list of conversations
+async function loadSmsThreads() {
+  const seq = ++sms.seq;
+  const q = $("smsQ").value.trim();
+  if (sms.state !== "ok") { sms.state = "loading"; if (view === "sms") smsRenderThreads(); }
+  try {
+    const d = await api("/sms/threads" + (q ? "?q=" + encodeURIComponent(q) : ""));
+    if (seq !== sms.seq) return;
+    sms.threads = Array.isArray(d.threads) ? d.threads : [];
+    sms.lines = Array.isArray(d.lines) ? d.lines : [];
+    sms.total = Number(d.total) || 0;
+    sms.keep = Number(d.retention_days) || 0;
+    sms.q = q;
+    sms.state = "ok";
+    if (!q) {
+      let seen = smsSeen();
+      if (!seen) {
+        // The first time: what is there already counts as read.
+        seen = {};
+        for (const th of sms.threads) seen[th.key] = Number(th.last_in_at) || 0;
+        smsSaveSeen(seen);
+      } else {
+        const keys = new Set(sms.threads.map((th) => th.key));
+        const gone = Object.keys(seen).filter((k) => !keys.has(k));
+        if (gone.length) { for (const k of gone) delete seen[k]; smsSaveSeen(seen); }
+      }
     }
-    smsBox.q = q;
-    smsBox.total = Number(d.total) || 0;
-    smsBox.keep = Number(d.retention_days) || 0;
-    const sig = JSON.stringify([smsBox.total, smsBox.keep, smsBox.more, smsBox.list]);
-    // Nothing new since the last look: the page stays as it is (focus, hover).
-    if (smsBox.state === "ok" && sig === smsBox.sig) return;
-    smsBox.sig = sig;
-    smsBox.state = "ok";
+    // The conversation in front is read.
+    const cur = sms.convo && view === "sms" && visible() ? sms.threads.find((th) => th.key === sms.convo.key) : null;
+    if (cur) smsMarkSeen(cur.key, cur.last_in_at);
   } catch (e) {
-    if (seq !== smsBox.seq || smsBox.state === "ok") return; // keep what is shown
-    smsBox.state = "error";
-    smsBox.error = e.message;
+    if (seq !== sms.seq || sms.state === "ok") return; // keep what is shown
+    sms.state = "error";
+    sms.error = e.message;
   }
-  renderSms();
+  smsDot();
+  if (view === "sms") { smsRenderThreads(); smsRenderComposer(); }
 }
-function showSms() {
-  smsTicks = 0;
-  loadSms();
+// The time of a conversation's newest message: only the time for today.
+function smsListTime(ms) {
+  const d = new Date(Number(ms) || 0);
+  if (!Number(ms) || isNaN(d)) return "";
+  // The list keeps it short: the time today, "yesterday", then only the date.
+  const now = new Date();
+  const days = Math.round((dayStart(now) - dayStart(d)) / 86400000);
+  if (days === 0) return fmtClockTime(d);
+  if (days === 1) return relDay(-1);
+  const opt = { month: "numeric", day: "numeric" };
+  if (d.getFullYear() !== now.getFullYear()) opt.year = "numeric";
+  return new Intl.DateTimeFormat(loc(), opt).format(d);
 }
-// Text being selected in a message: a redraw would drop the selection.
-function smsSelecting() {
-  const s = window.getSelection ? window.getSelection() : null;
-  return !!s && !s.isCollapsed && $("smsList").contains(s.anchorNode);
+function smsDayLabel(d) {
+  if (isNaN(d)) return "";
+  const now = new Date();
+  const days = Math.round((dayStart(now) - dayStart(d)) / 86400000);
+  if (days === 0 || days === 1) return relDay(-days);
+  const opt = { weekday: "short", month: "short", day: "numeric" };
+  if (d.getFullYear() !== now.getFullYear()) opt.year = "numeric";
+  return new Intl.DateTimeFormat(loc(), opt).format(d);
 }
-// Every second while the SMS view is in front (the page timer skips hidden tabs).
-function smsTick() {
-  smsTicks++;
-  if (smsTicks % 15 === 0 && !smsSelecting()) loadSms();
+function smsPersonIcon() {
+  const ns = "http://www.w3.org/2000/svg";
+  const el = (tag, attrs) => {
+    const e = document.createElementNS(ns, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    return e;
+  };
+  const svg = el("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.8", "stroke-linecap": "round", "aria-hidden": "true" });
+  svg.append(el("circle", { cx: "12", cy: "8.5", r: "3.6" }), el("path", { d: "M5 19.5c1.3-3.4 4-5 7-5s5.7 1.6 7 5" }));
+  return svg;
 }
-function smsRow(m) {
-  const from = String(m.from || "").trim();
-  const name = String(m.from_name || "").trim();
-  const text = String(m.text || "");
-  const at = new Date(Number(m.at_ms) || 0);
-  const iso = isNaN(at) ? "" : at.toISOString();
-  const via = [String(m.device || "").trim() || String(m.serial || "").trim(), String(m.to || "").trim()].filter(Boolean).join(" · ");
-  return h("article", { class: "sms" },
-    h("div", { class: "sms-head" },
-      h("span", { class: "who", text: name || from || t("sms_unknown") }),
-      name && from ? h("span", { class: "num", text: from }) : null,
-      h("span", { class: "grow" }),
-      h("time", { class: "when", attr: { datetime: iso }, text: fmtWhen(iso) })),
-    h("p", { class: "sms-text", text }),
-    h("div", { class: "sms-foot" },
-      via ? h("span", { class: "via", text: via }) : null,
-      h("span", { class: "grow" }),
-      h("button", { type: "button", class: "btn xs", text: t("sms_copy"), onclick: () => copyWithToast(text) }),
-      h("button", { type: "button", class: "btn xs danger", text: t("sms_del"), onclick: () => deleteSms(m) })));
+// A contact's first letter, else a person.
+function smsAvatar(name) {
+  const first = Array.from(String(name || "").trim())[0];
+  const av = h("span", { class: "av", attr: { "aria-hidden": "true" } });
+  if (first) av.textContent = first.toLocaleUpperCase(loc());
+  else av.append(smsPersonIcon());
+  return av;
 }
-function renderSms() {
-  const box = clear($("smsList"));
-  const ok = smsBox.state === "ok";
-  const keep = smsBox.keep || Number(S && S.sms_retention_days) || 0;
+const smsOneLine = (s) => String(s || "").replace(/\s+/g, " ").trim();
+const smsWhoOf = (o) => String(o.name || "").trim() || String(o.number || "").trim() || t("sms_unknown");
+function smsRenderThreads() {
+  const box = clear($("smsThreads"));
+  const ok = sms.state === "ok";
+  const keep = sms.keep || Number(S && S.sms_retention_days) || 0;
   $("smsKeep").textContent = keep ? t("sms_keep", { n: keep }) : "";
-  $("smsMeta").textContent = ok && smsBox.total ? t("sms_count", { n: smsBox.total }) : "";
-  document.querySelector("#view-sms .sms-bar").hidden = ok && !smsBox.total;
-  $("smsClear").hidden = !(ok && smsBox.total);
-  $("smsMore").hidden = !(ok && smsBox.more && smsBox.list.length);
-  const empty = $("smsEmpty");
-  empty.hidden = true;
-  if (smsBox.state === "loading") {
+  // Without a number of days (Bageo not reached yet) the line would only say "Change".
+  $("smsKeepBox").hidden = !keep;
+  $("smsMeta").textContent = ok && sms.total ? t("sms_count", { n: sms.total }) : "";
+  $("smsClear").hidden = !(ok && sms.total);
+  if (sms.state === "idle" || sms.state === "loading") {
     for (let i = 0; i < 3; i++) box.append(h("div", { class: "skel" }));
     return;
   }
-  if (smsBox.state === "error") {
-    box.append(h("div", { class: "card empty" },
-      h("h3", { text: t("err_load", { msg: smsBox.error }) }),
-      h("p", {}, h("button", { type: "button", class: "btn", style: "margin-top:12px", onclick: () => loadSms(), text: t("retry") }))));
+  if (sms.state === "error") {
+    box.append(h("div", { class: "th-empty" },
+      h("b", { text: t("err_load", { msg: sms.error }) }),
+      h("button", { type: "button", class: "btn sm", style: "margin-top:8px", onclick: () => loadSmsThreads(), text: t("retry") })));
     return;
   }
-  if (!ok) return;
-  if (!smsBox.list.length) {
-    // None at all, or none for this search.
-    $("smsEmptyT").textContent = smsBox.total ? t("sms_none_found") : t("sms_empty_t");
-    $("smsEmptyD").textContent = smsBox.total ? "" : t("sms_empty_d");
-    $("smsEmptyD").hidden = !!smsBox.total;
-    empty.hidden = false;
+  if (!sms.threads.length) {
+    box.append(sms.total
+      ? h("div", { class: "th-empty", text: t("sms_none_found") })
+      : h("div", { class: "th-empty" }, h("b", { text: t("sms_empty_t") }), t("sms_empty_d")));
     return;
   }
-  for (const m of smsBox.list) box.append(smsRow(m));
+  const seen = smsSeen();
+  const cur = sms.open && !sms.open.isNew && sms.convo ? sms.convo.key : "";
+  for (const th of sms.threads) {
+    const unread = th.key !== cur && smsUnread(th, seen);
+    const prev = (th.last_dir === "out" ? t("sms_you") : "") + smsOneLine(th.last_text);
+    box.append(h("button", {
+      type: "button", class: "th" + (unread ? " unread" : ""),
+      attr: th.key === cur ? { "aria-current": "true" } : null,
+      onclick: () => setHash("sms/" + encodeURIComponent(th.key)),
+    },
+      smsAvatar(th.name),
+      h("span", { style: "display:block;min-width:0" },
+        h("div", { class: "th-top" }, h("span", { class: "name", text: smsWhoOf(th) }), h("span", { class: "time", text: smsListTime(th.last_at) })),
+        h("div", { class: "prev" }, h("span", { text: prev }), unread ? h("i", { class: "new" }) : null))));
+  }
 }
-async function deleteSms(m) {
+
+// ---- lines (a phone and its SIM)
+const smsLineValue = (l) => l.serial + "|" + (l.sub_id == null ? "" : l.sub_id);
+const smsSendLines = () => sms.lines.filter((l) => l.can_send);
+const smsLineOf = (serial, sub) => sms.lines.find((l) => l.serial === serial && (l.sub_id ?? null) === (sub ?? null)) || null;
+// "Pixel 9 · 0912 000 111", or "Pixel 9 · SIM 2" without a number.
+function smsLineLabel(serial, sub, number, device) {
+  const line = smsLineOf(serial, sub);
+  const dev = devName(serial) !== serial ? devName(serial) : String(device || (line && line.device) || serial || "");
+  const num = String(number || (line && line.number) || "").trim();
+  if (num) return dev ? dev + " · " + num : num;
+  const slot = line && line.slot != null ? Number(line.slot) : null;
+  return slot != null && dev ? dev + " · " + t("sms_sim_n", { n: slot + 1 }) : dev;
+}
+
+// ---- one conversation
+// What the address names: "" the list, "new" a new message, else a number.
+function smsApplyRoute(arg) {
+  const before = sms.open && !sms.open.isNew ? sms.open.number : sms.open ? "new" : "";
+  const same = before === arg;
+  if (!arg) sms.open = null;
+  else if (!same) sms.open = arg === "new" ? { isNew: true } : { number: arg };
+  if (!same) {
+    sms.convo = null;
+    sms.msgs = [];
+    sms.more = false;
+    sms.pending = [];
+    sms.cseq++;
+    $("smsText").value = "";
+    $("smsTo").value = "";
+    smsGrow();
+  }
+  smsRenderConvo(true, "bottom");
+  smsRenderThreads();
+  if (sms.open && !sms.open.isNew) smsLoadConvo({ scroll: same ? "" : "bottom" });
+  if (sms.open && sms.open.isNew && !same) setTimeout(() => $("smsTo").focus(), 0);
+}
+// Requests overlap (timer, after sending): only the answer to the latest is used.
+async function smsLoadConvo(o) {
+  const op = sms.open;
+  if (!op || op.isNew) return;
+  const older = !!(o && o.older);
+  const seq = ++sms.cseq;
+  const p = new URLSearchParams({ number: op.number });
+  if (older && sms.msgs.length) {
+    p.set("before", String(sms.msgs[0].id));
+    p.set("limit", String(SMS_PAGE));
+  } else {
+    p.set("limit", String(Math.min(SMS_MAX_PAGE, Math.max(SMS_PAGE, sms.msgs.length))));
+  }
+  try {
+    const d = await api("/sms/thread?" + p.toString());
+    if (seq !== sms.cseq || sms.open !== op) return;
+    const got = Array.isArray(d.messages) ? d.messages : [];
+    if (older) {
+      sms.msgs = got.concat(sms.msgs);
+      sms.more = !!d.has_more;
+    } else {
+      // Older messages shown beyond what one request carries stay as they are.
+      const head = got.length && d.has_more ? sms.msgs.filter((m) => m.id < got[0].id) : [];
+      sms.more = head.length ? sms.more : !!d.has_more;
+      sms.msgs = head.concat(got);
+    }
+    sms.convo = d;
+    if (view === "sms" && visible()) {
+      const newest = sms.msgs.reduce((a, m) => (m.dir === "in" ? Math.max(a, Number(m.at_ms) || 0) : a), 0);
+      smsMarkSeen(d.key, newest);
+      smsDot();
+    }
+    smsRenderConvo(false, older ? "keep" : o && o.scroll);
+    smsRenderThreads();
+  } catch (e) {
+    if (seq !== sms.cseq || e.status === 401) return;
+    if (!sms.convo) toast(t("err_load", { msg: e.message }), true);
+  }
+}
+function smsSelectingIn(el) {
+  const s = window.getSelection ? window.getSelection() : null;
+  return !!s && !s.isCollapsed && el.contains(s.anchorNode);
+}
+function smsRenderConvo(force, scroll) {
+  const op = sms.open;
+  $("smsChat").classList.toggle("open", !!op);
+  $("smsPick").hidden = !!op;
+  $("smsHead").hidden = !op;
+  $("smsMsgs").hidden = !op;
+  $("smsForm").hidden = !op;
+  if (!op) return;
+  const c = sms.convo;
+  $("smsWho").hidden = !!op.isNew;
+  $("smsToRow").hidden = !op.isNew;
+  $("smsDelThread").hidden = !!op.isNew || !c || !sms.msgs.length;
+  const number = c ? String(c.number || "").trim() : op.isNew ? "" : op.number;
+  const name = c ? String(c.name || "").trim() : "";
+  $("smsName").textContent = name || number || t("sms_unknown");
+  $("smsNum").textContent = name ? number : "";
+  $("smsNum").hidden = !name || !number;
+  smsRenderMsgs(force, scroll);
+  smsRenderComposer();
+}
+const SMS_ERR = {
+  offline: "sms_err_offline", unsupported: "sms_err_old_app", no_permission: "sms_err_permission",
+  no_service: "sms_err_no_service", radio_off: "sms_err_no_service", bad_number: "sms_err_number",
+};
+const smsErrText = (code) => t(SMS_ERR[code] || "sms_err_generic");
+function smsFailedText(code) {
+  const why = smsErrText(code).replace(/[。．.!！]\s*$/, "");
+  return /^(zh|ja)/.test(lang) ? t("sms_failed") + "（" + why + "）" : t("sms_failed") + " (" + why + ")";
+}
+// The line under the last bubble of a run: time · line, or how sending went.
+function smsMeta(m, lastOut) {
+  const out = m.dir === "out";
+  const meta = h("div", { class: "meta " + (out ? "out" : "in") });
+  if (out && m.status === "sending") { meta.textContent = t("sms_sending"); return meta; }
+  if (out && m.status === "failed") {
+    meta.append(h("span", { class: "bad", text: smsFailedText(m.error) }),
+      h("button", { type: "button", class: "link", text: t("sms_retry"), onclick: () => smsRetry(m) }));
+    return meta;
+  }
+  const at = new Date(Number(m.at_ms) || 0);
+  const parts = [isNaN(at) ? "" : fmtClockTime(at), smsLineLabel(m.serial, m.sub_id, out ? m.from : m.to, m.device)];
+  if (out && m.status === "timeout") parts.push(t("sms_unsure"));
+  else if (out && m.status === "sent" && lastOut) parts.push(t("sms_sent"));
+  meta.textContent = parts.filter(Boolean).join(" · ");
+  return meta;
+}
+function smsRenderMsgs(force, scroll) {
+  const box = $("smsMsgs");
+  if (!force && smsSelectingIn(box)) return; // a redraw would drop the selection
+  const top = box.scrollTop;
+  const fromBottom = box.scrollHeight - box.scrollTop - box.clientHeight;
+  const fromEnd = box.scrollHeight - box.scrollTop;
+  clear(box);
+  if (sms.more && sms.msgs.length) {
+    box.append(h("button", { type: "button", class: "btn xs ghost earlier", text: t("sms_earlier"), onclick: () => smsLoadConvo({ older: true }) }));
+  }
+  // A text the agent already lists as "sending" is not shown twice.
+  const pending = sms.pending.filter((p) => !sms.msgs.some((m) => m.dir === "out" && m.status === "sending" && m.text === p.text));
+  const shown = sms.msgs.concat(pending);
+  let lastOut = null;
+  for (const m of shown) if (m.dir === "out") lastOut = m;
+  let prevDay = null;
+  shown.forEach((m, i) => {
+    const at = new Date(Number(m.at_ms) || 0);
+    const day = dayStart(at);
+    if (day !== prevDay) { box.append(h("div", { class: "day", text: smsDayLabel(at) })); prevDay = day; }
+    const out = m.dir === "out";
+    const next = shown[i + 1];
+    const flagged = out && !!m.status && m.status !== "sent";
+    const last = flagged || !next || next.dir !== m.dir || Number(next.at_ms) - Number(m.at_ms) > SMS_GROUP_MS
+      || dayStart(new Date(Number(next.at_ms) || 0)) !== day;
+    const cls = "b " + (out ? "out" : "in") + (last ? " last" : "")
+      + (out && m.status === "sending" ? " sending" : "") + (out && m.status === "failed" ? " failed" : "");
+    const acts = m.local ? null : h("div", { class: "acts" },
+      h("button", { type: "button", class: "btn xs", text: t("sms_copy"), onclick: () => copyWithToast(String(m.text || "")) }),
+      h("button", { type: "button", class: "btn xs danger", text: t("sms_del"), onclick: () => smsDeleteMessage(m) }));
+    box.append(h("div", { class: cls }, h("div", { class: "bub", text: String(m.text || "") }), acts));
+    if (last) box.append(smsMeta(m, m === lastOut));
+  });
+  // Opened, sent, or already near the end: stay at the end. Earlier ones
+  // added: keep the same message in view. Otherwise: where the owner was.
+  if (scroll === "bottom" || fromBottom <= 80) box.scrollTop = box.scrollHeight;
+  else if (scroll === "keep") box.scrollTop = box.scrollHeight - fromEnd;
+  else box.scrollTop = top;
+}
+
+// ---- writing
+function smsGrow() {
+  const ta = $("smsText");
+  ta.style.height = "auto";
+  const want = ta.scrollHeight + 2;
+  ta.style.height = Math.max(40, Math.min(want, 150)) + "px";
+  // A scroll bar only once the box stops growing.
+  ta.style.overflowY = want > 150 ? "auto" : "hidden";
+}
+const smsPickKey = () => (sms.open && !sms.open.isNew ? (sms.convo ? sms.convo.key : sms.open.number) : "");
+function smsRenderComposer() {
+  const op = sms.open;
+  if (!op) return;
+  const c = sms.convo;
+  const form = $("smsForm");
+  const canReply = !!op.isNew || !c || !!c.can_reply;
+  form.querySelector(".from").hidden = !canReply;
+  form.querySelector(".crow").hidden = !canReply;
+  const note = $("smsNote");
+  if (!canReply) {
+    note.textContent = t("sms_no_reply");
+    note.hidden = false;
+    $("smsCount").hidden = true;
+    return;
+  }
+  const lines = smsSendLines();
+  const sel = $("smsFrom");
+  const values = lines.map(smsLineValue);
+  const picked = sms.pick[smsPickKey()];
+  const reply = c && c.reply ? smsLineValue(c.reply) : "";
+  const want = values.includes(picked) ? picked : values.includes(reply) ? reply : values[0] || "";
+  const labels = lines.map((l) => smsLineLabel(l.serial, l.sub_id, l.number, l.device));
+  const same = sel.options.length === lines.length && [...sel.options].every((o, i) => o.value === values[i] && o.textContent === labels[i]);
+  if (!same) {
+    clear(sel);
+    lines.forEach((l, i) => sel.append(h("option", { value: values[i], text: labels[i] })));
+  }
+  if (sel.value !== want) sel.value = want;
+  sel.disabled = !lines.length;
+  note.textContent = lines.length ? "" : t("sms_no_line");
+  note.hidden = !!lines.length;
+  smsUpdateSend();
+}
+function smsUpdateSend() {
+  const op = sms.open;
+  const n = $("smsText").value.length;
+  $("smsCount").textContent = n + "/500";
+  $("smsCount").hidden = n <= 400;
+  const noTo = !!(op && op.isNew) && !$("smsTo").value.trim();
+  $("smsSend").disabled = sms.sending > 0 || !smsSendLines().length || noTo;
+}
+async function smsSubmit() {
+  const op = sms.open;
+  if (!op || sms.sending > 0) return;
+  const text = $("smsText").value.trim();
+  const to = op.isNew ? $("smsTo").value.trim() : String((sms.convo && sms.convo.number) || op.number).trim();
+  const line = smsSendLines().find((l) => smsLineValue(l) === $("smsFrom").value);
+  if (!text || !to || !line) return;
+  const temp = {
+    id: 0, local: true, dir: "out", status: "sending", text, at_ms: Date.now(),
+    serial: line.serial, sub_id: line.sub_id ?? null, from: line.number || "", to, device: line.device || "",
+  };
+  sms.pending.push(temp);
+  sms.sending++;
+  $("smsText").value = "";
+  smsGrow();
+  smsRenderConvo(true, "bottom");
+  try {
+    const d = await api("/sms/send", jsonBody("POST", { to, text, serial: line.serial, sub_id: line.sub_id ?? null }));
+    sms.pending = sms.pending.filter((p) => p !== temp);
+    const m = d.message;
+    if (op.isNew && m && m.to) {
+      if (sms.open === op) setHash("sms/" + encodeURIComponent(m.to), true);
+    } else if (m && sms.open === op) {
+      const i = sms.msgs.findIndex((x) => x.id === m.id);
+      if (i >= 0) sms.msgs[i] = m; else sms.msgs.push(m);
+      smsRenderConvo(true, "bottom");
+      smsLoadConvo();
+    }
+    loadSmsThreads();
+  } catch (e) {
+    sms.pending = sms.pending.filter((p) => p !== temp);
+    if (sms.open === op && !$("smsText").value) { $("smsText").value = text; smsGrow(); }
+    if (e.status !== 401) toast(e.data && e.data.code === "bad_number" ? t("sms_err_number") : e.message, true);
+    if (sms.open === op) smsRenderConvo(true);
+  } finally {
+    sms.sending--;
+    smsUpdateSend();
+  }
+}
+async function smsRetry(m) {
+  const op = sms.open;
+  m.status = "sending";
+  m.error = "";
+  smsRenderConvo(true);
+  try {
+    const d = await api("/sms/" + encodeURIComponent(m.id) + "/retry", jsonBody("POST", {}));
+    if (d.message) Object.assign(m, d.message);
+  } catch (e) {
+    if (e.status !== 401) toast(e.message, true);
+  }
+  if (sms.open === op) { smsRenderConvo(true); smsLoadConvo(); }
+  loadSmsThreads();
+}
+async function smsDeleteMessage(m) {
   const yes = await ask({ title: t("sms_del_t"), ok: t("sms_del"), danger: true });
   if (!yes) return;
   try {
-    await api("/sms/" + encodeURIComponent(m.id), { method: "DELETE" });
+    await api("/sms/" + encodeURIComponent(m.id), jsonBody("DELETE", {}));
   } catch (e) {
     if (e.status === 401) return;
-    // Already gone (deleted elsewhere, or too old by now): the list just catches up.
+    // Already gone (deleted elsewhere, or too old by now): the page just catches up.
     if (e.status !== 404) { toast(e.message, true); return; }
   }
-  smsBox.list = smsBox.list.filter((x) => x.id !== m.id);
-  if (smsBox.total > 0) smsBox.total--;
-  smsBox.sig = "";
-  renderSms();
-  loadSms();
+  sms.msgs = sms.msgs.filter((x) => x.id !== m.id);
+  smsRenderConvo(true);
+  smsLoadConvo();
+  loadSmsThreads();
+}
+async function smsDeleteThread() {
+  const c = sms.convo;
+  if (!c) return;
+  const yes = await ask({ title: t("sms_del_thread_t", { name: smsWhoOf(c) }), ok: t("sms_del_thread"), danger: true });
+  if (!yes) return;
+  try {
+    await api("/sms/thread?number=" + encodeURIComponent(c.key), jsonBody("DELETE", {}));
+  } catch (e) {
+    if (e.status !== 401) toast(e.message, true);
+    return;
+  }
+  setHash("sms");
+  loadSmsThreads();
 }
 async function clearSms() {
   const yes = await ask({ title: t("sms_clear_t"), body: t("sms_clear_b"), ok: t("sms_clear"), danger: true });
@@ -12030,17 +12660,50 @@ async function clearSms() {
   try {
     await api("/sms/clear", jsonBody("POST", {}));
     $("smsQ").value = "";
-    await loadSms();
+    setHash("sms");
+    await loadSmsThreads();
   } catch (e) {
     if (e.status !== 401) toast(e.message, true);
   } finally {
     $("smsClear").disabled = false;
   }
 }
+
+// ---- the view
+function showSms() {
+  smsTicks = 0;
+  loadSmsThreads();
+}
+function loadSms() {
+  loadSmsThreads();
+  smsLoadConvo();
+}
+function renderSms() {
+  smsRenderThreads();
+  smsRenderConvo(true);
+}
+// Every second while the SMS view is in front (the page timer skips hidden tabs).
+function smsTick() {
+  smsTicks++;
+  if (smsTicks % 10 === 0) loadSms();
+}
 let smsQTimer = 0;
-$("smsQ").addEventListener("input", () => { clearTimeout(smsQTimer); smsQTimer = setTimeout(() => loadSms(), 300); });
-$("smsMore").addEventListener("click", () => loadSms({ more: true }));
+$("smsQ").addEventListener("input", () => { clearTimeout(smsQTimer); smsQTimer = setTimeout(() => loadSmsThreads(), 300); });
+$("smsNew").addEventListener("click", () => setHash("sms/new"));
+$("smsBack").addEventListener("click", () => setHash("sms"));
+$("smsDelThread").addEventListener("click", smsDeleteThread);
 $("smsClear").addEventListener("click", clearSms);
+$("smsForm").addEventListener("submit", (e) => { e.preventDefault(); smsSubmit(); });
+$("smsText").addEventListener("keydown", (e) => {
+  // Enter sends, Shift+Enter starts a new line; not while an input method is choosing characters.
+  if (e.key !== "Enter" || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+  e.preventDefault();
+  smsSubmit();
+});
+$("smsText").addEventListener("input", () => { smsGrow(); smsUpdateSend(); });
+$("smsTo").addEventListener("input", smsUpdateSend);
+$("smsFrom").addEventListener("change", () => { sms.pick[smsPickKey()] = $("smsFrom").value; });
+
 // "Change" goes to the setting itself: open the fold it is in and bring it into view.
 $("smsKeepLink").addEventListener("click", () => {
   setTimeout(() => {
@@ -12113,7 +12776,6 @@ function contactRow(c) {
 function renderContacts() {
   const box = clear($("ctList"));
   $("ctExport").hidden = cts.state === "ok" && !cts.count;
-  $("ctMeta").textContent = cts.state === "ok" && cts.count ? t("ct_count", { n: cts.count }) : "";
   $("ctMoreWrap").hidden = true;
   const cnt = cts.counts || {};
   const setCnt = (id, n) => { const el = $(id); if (el) el.textContent = n != null ? `(${n})` : ""; };
@@ -14590,6 +15252,8 @@ setInterval(() => {
   if (ticks % 8 === 0 && view === "system" && !(document.activeElement && document.activeElement.closest("#sysPhones .sim-in"))) loadSystem();
   if (view === "errands") errandTick();
   if (view === "sms") smsTick();
+  // Elsewhere: the dot on the SMS tab follows new texts every half minute.
+  else if (ticks % 30 === 2) loadSmsThreads();
 }, 1000);
 document.addEventListener("visibilitychange", () => {
   if (!visible()) return;

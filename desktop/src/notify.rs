@@ -65,14 +65,33 @@ pub fn call_url(address: &str, id: &str) -> String {
     format!("{base}/calls/#call={id}")
 }
 
-/// Link that opens the console on the text messages.
-pub fn sms_url(address: &str) -> String {
+/// Link that opens the console on the conversation with sender (the list of
+/// conversations when the sender is not known).
+pub fn sms_url(address: &str, sender: &str) -> String {
     if address.is_empty() {
         return String::new();
     }
     let base = address.trim_end_matches('/');
     let base = base.strip_suffix("/calls").unwrap_or(base);
-    format!("{base}/calls/#sms")
+    let sender = sender.trim();
+    if sender.is_empty() {
+        return format!("{base}/calls/#sms");
+    }
+    format!("{base}/calls/#sms/{}", url_component(sender))
+}
+
+/// Percent-encoding of everything but letters, digits and "-._~", like the
+/// browser's encodeURIComponent.
+fn url_component(s: &str) -> String {
+    let mut out = String::new();
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
 }
 
 /// Phone name for a call, only worth showing when more than one phone is known.
@@ -199,7 +218,7 @@ impl SmsWatch {
                 who: text_of(e.get("from")).to_string(),
                 text: e.get("text").and_then(Value::as_str).unwrap_or("").to_string(),
                 phone: String::new(),
-                url: sms_url(address),
+                url: sms_url(address, text_of(e.get("from"))),
             })
             .collect()
     }
@@ -395,7 +414,8 @@ mod tests {
         let n = s.on_response(&body, ADDR);
         assert_eq!(n.len(), 2);
         assert_eq!((n[0].kind, n[0].who.as_str(), n[0].text.as_str()), (Kind::Sms, "+15550100", "hello"));
-        assert_eq!(n[0].url, "http://192.168.1.20:8787/calls/#sms");
+        assert_eq!(n[0].url, "http://192.168.1.20:8787/calls/#sms/%2B15550100");
+        assert_eq!(n[1].url, "http://192.168.1.20:8787/calls/#sms/%2B15550101");
         assert_eq!(n[1].text, "again");
         assert_eq!(s.after(), Some(13));
         assert!(s.on_response(&json!({"ok": true, "last_id": 13, "events": []}), ADDR).is_empty());
@@ -403,10 +423,13 @@ mod tests {
 
     #[test]
     fn sms_link_opens_the_text_messages() {
-        assert_eq!(sms_url(ADDR), "http://192.168.1.20:8787/calls/#sms");
-        assert_eq!(sms_url("http://192.168.1.20:8787"), "http://192.168.1.20:8787/calls/#sms");
-        assert_eq!(sms_url("http://192.168.1.20:8787/calls/"), "http://192.168.1.20:8787/calls/#sms");
-        assert_eq!(sms_url(""), "");
+        assert_eq!(sms_url(ADDR, ""), "http://192.168.1.20:8787/calls/#sms");
+        assert_eq!(sms_url("http://192.168.1.20:8787", " "), "http://192.168.1.20:8787/calls/#sms");
+        assert_eq!(sms_url("http://192.168.1.20:8787/calls/", "0912345678"), "http://192.168.1.20:8787/calls/#sms/0912345678");
+        assert_eq!(sms_url(ADDR, "+1 (650) 555-0142"), "http://192.168.1.20:8787/calls/#sms/%2B1%20%28650%29%20555-0142");
+        assert_eq!(sms_url(ADDR, "王小明"), "http://192.168.1.20:8787/calls/#sms/%E7%8E%8B%E5%B0%8F%E6%98%8E");
+        assert_eq!(sms_url(ADDR, "Bank/Info#1"), "http://192.168.1.20:8787/calls/#sms/Bank%2FInfo%231");
+        assert_eq!(sms_url("", "0912345678"), "");
     }
 
     #[test]

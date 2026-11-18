@@ -1,6 +1,7 @@
 //! Text messages the SMS forwarder hands to POST /calls/api/notify/send with
-//! "kind": "sms", kept on disk so the console's SMS page can show, search and
-//! delete them.
+//! "kind": "sms", and the ones the owner sends from the console, kept on disk
+//! so the console's SMS page can show them as conversations (one per number),
+//! search and delete them.
 //!
 //! One JSON file (sms/messages.json under the calls data folder), written
 //! whole on every change: to a temporary file first, then renamed over the old
@@ -26,6 +27,20 @@ pub const PAGE_MAX: usize = 200;
 const MAX_REF_CHARS: usize = 200;
 const DAY_MS: u64 = 86_400_000;
 const FILE_NAME: &str = "messages.json";
+/// The conversation of messages without a sender.
+pub const NO_SENDER_KEY: &str = "~";
+/// Directions of a message.
+pub const DIR_IN: &str = "in";
+pub const DIR_OUT: &str = "out";
+/// States of a message sent from the console.
+pub const STATUS_SENDING: &str = "sending";
+pub const STATUS_SENT: &str = "sent";
+pub const STATUS_FAILED: &str = "failed";
+pub const STATUS_TIMEOUT: &str = "timeout";
+
+fn dir_in() -> String {
+    DIR_IN.to_string()
+}
 
 /// One stored text message.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,6 +63,34 @@ pub struct SmsMessage {
     /// same key is not stored again.
     #[serde(default, rename = "ref")]
     pub reference: String,
+    /// "in" (received by a phone) or "out" (sent from the console). A sent
+    /// message keeps the owner's line in from and the other party in to.
+    #[serde(default = "dir_in")]
+    pub dir: String,
+    /// The SIM (Android subscription id) that received or sent it, when known.
+    #[serde(default)]
+    pub sub_id: Option<i64>,
+    /// Sent messages: "sending", "sent", "failed" or "timeout"; "" for received ones.
+    #[serde(default)]
+    pub status: String,
+    /// Why a sent message failed (the phone's code), else "".
+    #[serde(default)]
+    pub error: String,
+}
+
+impl SmsMessage {
+    pub fn is_out(&self) -> bool {
+        self.dir == DIR_OUT
+    }
+
+    /// The other party: the sender of a received message, the recipient of a sent one.
+    pub fn peer(&self) -> &str {
+        if self.is_out() {
+            &self.to
+        } else {
+            &self.from
+        }
+    }
 }
 
 /// A message as a request carries it, before it is cleaned up and stored.
@@ -60,6 +103,20 @@ pub struct NewSms<'a> {
     pub serial: &'a str,
     pub device: &'a str,
     pub reference: &'a str,
+    pub sub_id: Option<i64>,
+}
+
+/// A message the owner sends from the console, before it is stored.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NewOut<'a> {
+    /// The other party's number.
+    pub to: &'a str,
+    pub text: &'a str,
+    /// The number of the SIM it goes out from (may be empty).
+    pub from: &'a str,
+    pub serial: &'a str,
+    pub device: &'a str,
+    pub sub_id: Option<i64>,
 }
 
 /// What became of a pushed message.
@@ -79,6 +136,19 @@ pub struct Page {
     pub messages: Vec<SmsMessage>,
     /// Older messages that match are left after this page.
     pub has_more: bool,
+}
+
+/// One conversation: every message with the same other party.
+#[derive(Clone, Debug)]
+pub struct Thread {
+    pub key: String,
+    /// The other party as the newest message writes it.
+    pub number: String,
+    /// The newest message.
+    pub last: SmsMessage,
+    pub count: usize,
+    /// When the newest received message arrived (0: none received).
+    pub last_in_at: u64,
 }
 
 /// The messages in memory, oldest first. Nothing here reads the clock or the
@@ -104,6 +174,16 @@ impl SmsBook {
         &self.messages
     }
 
+    pub fn get(&self, id: u64) -> Option<&SmsMessage> {
+        self.messages.iter().find(|m| m.id == id)
+    }
+
+    fn next_id(&mut self, now_ms: u64) -> u64 {
+        let id = self.last_id.saturating_add(1).max(now_ms);
+        self.last_id = id;
+        id
+    }
+
     /// Drop what is older than keep_days and what is over [MAX_MESSAGES].
     /// True when something was dropped.
     pub fn prune(&mut self, now_ms: u64, keep_days: u32) -> bool {
@@ -125,8 +205,7 @@ impl SmsBook {
         if !reference.is_empty() && self.messages.iter().any(|m| m.reference == reference) {
             return Pushed::Duplicate;
         }
-        let id = self.last_id.saturating_add(1).max(now_ms);
-        self.last_id = id;
+        let id = self.next_id(now_ms);
         let at_ms = if new.received_ms > 0 && new.received_ms <= now_ms.saturating_add(DAY_MS) {
             new.received_ms
         } else {
@@ -141,9 +220,101 @@ impl SmsBook {
             serial: clean_label(new.serial),
             device: clean_label(new.device),
             reference,
+            dir: dir_in(),
+            sub_id: new.sub_id,
+            status: String::new(),
+            error: String::new(),
         });
         self.prune(now_ms, keep_days);
         Pushed::Stored(id)
+    }
+
+    /// Store a message sent from the console, as "sending"; its id.
+    pub fn push_out(&mut self, now_ms: u64, keep_days: u32, new: NewOut<'_>) -> u64 {
+        self.prune(now_ms, keep_days);
+        let id = self.next_id(now_ms);
+        self.messages.push(SmsMessage {
+            id,
+            at_ms: now_ms,
+            from: clean_label(new.from),
+            to: clean_label(new.to),
+            text: clean_text(new.text),
+            serial: clean_label(new.serial),
+            device: clean_label(new.device),
+            reference: String::new(),
+            dir: DIR_OUT.to_string(),
+            sub_id: new.sub_id,
+            status: STATUS_SENDING.to_string(),
+            error: String::new(),
+        });
+        self.prune(now_ms, keep_days);
+        id
+    }
+
+    /// Record what became of a sent message; the message as it is now.
+    pub fn set_status(&mut self, id: u64, status: &str, error: &str) -> Option<SmsMessage> {
+        let m = self.messages.iter_mut().find(|m| m.id == id && m.is_out())?;
+        m.status = status.to_string();
+        m.error = error.chars().take(MAX_LABEL_CHARS).collect();
+        Some(m.clone())
+    }
+
+    /// Sent messages still marked "sending" become "timeout": after a restart
+    /// nobody waits for their result any more. True when one changed.
+    fn settle_sending(&mut self) -> bool {
+        let mut changed = false;
+        for m in self.messages.iter_mut().filter(|m| m.is_out() && m.status == STATUS_SENDING) {
+            m.status = STATUS_TIMEOUT.to_string();
+            changed = true;
+        }
+        changed
+    }
+
+    /// The conversations, newest first. key_of gives a message's conversation
+    /// ([thread_key] with the country of its SIM); name_of the contact name of
+    /// a conversation's newest message. q (case is ignored) matches the name,
+    /// the number or any message's text; an empty q matches everything.
+    pub fn threads(&self, q: &str, key_of: &dyn Fn(&SmsMessage) -> String, name_of: &dyn Fn(&SmsMessage) -> String) -> Vec<Thread> {
+        let needle = fold(q);
+        let mut by_key: HashMap<String, (Thread, bool)> = HashMap::new();
+        for m in &self.messages {
+            let key = key_of(m);
+            let hit = !needle.is_empty() && (fold(&m.text).contains(&needle) || fold(m.peer()).contains(&needle));
+            let entry = by_key.entry(key.clone()).or_insert_with(|| {
+                (Thread { key, number: String::new(), last: m.clone(), count: 0, last_in_at: 0 }, false)
+            });
+            let (t, found) = entry;
+            t.count += 1;
+            if m.id >= t.last.id {
+                t.last = m.clone();
+            }
+            if !m.is_out() {
+                t.last_in_at = t.last_in_at.max(m.at_ms);
+            }
+            *found |= hit;
+        }
+        let mut out: Vec<Thread> = by_key
+            .into_values()
+            .filter_map(|(mut t, found)| {
+                t.number = t.last.peer().to_string();
+                let keep = needle.is_empty() || found || fold(&t.key).contains(&needle) || fold(&name_of(&t.last)).contains(&needle);
+                keep.then_some(t)
+            })
+            .collect();
+        out.sort_by(|a, b| (b.last.at_ms, b.last.id).cmp(&(a.last.at_ms, a.last.id)));
+        out
+    }
+
+    /// Every message of the conversation key, oldest first.
+    pub fn thread(&self, key: &str, key_of: &dyn Fn(&SmsMessage) -> String) -> Vec<SmsMessage> {
+        self.messages.iter().filter(|m| key_of(m) == key).cloned().collect()
+    }
+
+    /// Remove the conversation key; how many messages that was.
+    pub fn delete_thread(&mut self, key: &str, key_of: &dyn Fn(&SmsMessage) -> String) -> usize {
+        let before = self.messages.len();
+        self.messages.retain(|m| key_of(m) != key);
+        before - self.messages.len()
     }
 
     /// A page of messages, newest first: those with an id below before_id (all
@@ -220,6 +391,67 @@ pub fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+/// Full-width digits and signs as plain ones ("０９１２", "＋886").
+fn ascii_form(c: char) -> char {
+    match c {
+        '０'..='９' => char::from_u32(c as u32 - '０' as u32 + '0' as u32).unwrap_or(c),
+        '＋' => '+',
+        '－' | '‐' | '‑' | '–' | '—' => '-',
+        '（' => '(',
+        '）' => ')',
+        '．' => '.',
+        '\u{3000}' => ' ',
+        _ => c,
+    }
+}
+
+/// A number a text can be sent to: the digits (3 to 20), with a leading + when
+/// written so, once spaces, -, (, ) and . are taken out. None for anything else
+/// (a sender name like "BankInfo", a short code with a #).
+pub fn sendable_number(raw: &str) -> Option<String> {
+    let plain: String = raw
+        .trim()
+        .chars()
+        .map(ascii_form)
+        .filter(|c| !c.is_whitespace() && !matches!(c, '-' | '(' | ')' | '.'))
+        .collect();
+    let digits = plain.strip_prefix('+').unwrap_or(&plain);
+    ((3..=20).contains(&digits.len()) && digits.chars().all(|c| c.is_ascii_digit())).then_some(plain)
+}
+
+/// The conversation a message with the other party peer belongs to. A phone
+/// number in international form when it reads as one (its digits taken in
+/// region, the country of the SIM, when it has no country code), so 0912…
+/// and +886912… meet; else its digits. A sender name (letters) in lower case;
+/// no sender at all is [NO_SENDER_KEY].
+pub fn thread_key(peer: &str, region: Option<&str>) -> String {
+    let plain: String = peer.trim().chars().map(ascii_form).collect();
+    if plain.trim().is_empty() {
+        return NO_SENDER_KEY.to_string();
+    }
+    let digits: String = plain.chars().filter(char::is_ascii_digit).collect();
+    if plain.chars().any(char::is_alphabetic) || !(3..=20).contains(&digits.len()) {
+        return fold(&plain);
+    }
+    if let Some(n) = crate::phone_region::normalize(&plain, region) {
+        // "+886 0912…": the trunk 0 written after the country code (Italy keeps its 0).
+        let split = crate::phone_region::calling_code(n.country)
+            .and_then(|code| n.e164.strip_prefix('+')?.strip_prefix(code).map(|national| (code, national)));
+        return match split {
+            Some((code, national)) if code != "39" && national.starts_with('0') => {
+                format!("+{code}{}", national.trim_start_matches('0'))
+            }
+            _ => n.e164,
+        };
+    }
+    let intl = plain.chars().find(|c| c.is_ascii_digit() || *c == '+') == Some('+');
+    match (intl, digits.strip_prefix("00")) {
+        (true, _) => format!("+{digits}"),
+        (false, Some(rest)) if rest.len() >= 3 => format!("+{rest}"),
+        _ => digits,
+    }
+}
+
 #[derive(Deserialize)]
 struct SmsFile {
     #[serde(default)]
@@ -245,9 +477,10 @@ impl SmsStore {
         let path = dir.join(FILE_NAME);
         drop_old_unreadable(&dir, now_ms, keep_days);
         let mut book = SmsBook::from_messages(load_file(&path));
+        let settled = book.settle_sending();
         let pruned = book.prune(now_ms, keep_days);
         let store = Self { path, book: Mutex::new(book) };
-        if pruned {
+        if pruned || settled {
             store.save(&store.lock());
         }
         Arc::new(store)
@@ -287,6 +520,62 @@ impl SmsStore {
             self.save(&book);
         }
         book.page(q, before_id, limit, name_of)
+    }
+
+    /// Store a message sent from the console ("sending"); the message.
+    pub fn push_out(&self, now_ms: u64, keep_days: u32, new: NewOut<'_>) -> SmsMessage {
+        let mut book = self.lock();
+        let id = book.push_out(now_ms, keep_days, new);
+        self.save(&book);
+        book.get(id).cloned().expect("just stored")
+    }
+
+    pub fn get(&self, id: u64) -> Option<SmsMessage> {
+        self.lock().get(id).cloned()
+    }
+
+    /// Record what became of a sent message; None when it is gone.
+    pub fn set_status(&self, id: u64, status: &str, error: &str) -> Option<SmsMessage> {
+        let mut book = self.lock();
+        let m = book.set_status(id, status, error)?;
+        self.save(&book);
+        Some(m)
+    }
+
+    /// The conversations, newest first, and how many messages there are in all
+    /// ([SmsBook::threads]).
+    pub fn threads(
+        &self,
+        now_ms: u64,
+        keep_days: u32,
+        q: &str,
+        key_of: &dyn Fn(&SmsMessage) -> String,
+        name_of: &dyn Fn(&SmsMessage) -> String,
+    ) -> (usize, Vec<Thread>) {
+        let mut book = self.lock();
+        if book.prune(now_ms, keep_days) {
+            self.save(&book);
+        }
+        (book.len(), book.threads(q, key_of, name_of))
+    }
+
+    /// Every message of the conversation key, oldest first.
+    pub fn thread(&self, now_ms: u64, keep_days: u32, key: &str, key_of: &dyn Fn(&SmsMessage) -> String) -> Vec<SmsMessage> {
+        let mut book = self.lock();
+        if book.prune(now_ms, keep_days) {
+            self.save(&book);
+        }
+        book.thread(key, key_of)
+    }
+
+    /// Remove a conversation; how many messages that was.
+    pub fn delete_thread(&self, key: &str, key_of: &dyn Fn(&SmsMessage) -> String) -> usize {
+        let mut book = self.lock();
+        let removed = book.delete_thread(key, key_of);
+        if removed > 0 {
+            self.save(&book);
+        }
+        removed
     }
 
     pub fn delete(&self, id: u64) -> bool {
@@ -405,6 +694,153 @@ mod tests {
         book.page("", None, PAGE_MAX, &no_name).messages
     }
 
+    fn key_tw(m: &SmsMessage) -> String {
+        thread_key(m.peer(), Some("tw"))
+    }
+
+    fn out_to<'a>(to: &'a str, text: &'a str) -> NewOut<'a> {
+        NewOut { to, text, from: "0912000111", serial: "TESTSERIAL01", device: "Pixel Test", sub_id: Some(1) }
+    }
+
+    #[test]
+    fn sms_thread_key_puts_local_and_international_numbers_together() {
+        let same = |region: &str, a: &str, b: &str| {
+            assert_eq!(thread_key(a, Some(region)), thread_key(b, Some(region)), "{a} / {b} in {region}");
+        };
+        // Taiwan
+        same("tw", "0912345678", "+886912345678");
+        same("tw", "0912-345-678", "+886 0912 345 678");
+        same("tw", "０９１２３４５６７８", "00886912345678");
+        assert_eq!(thread_key("0912345678", Some("tw")), "+886912345678");
+        // United States
+        same("us", "(650) 555-0142", "+1 650 555 0142");
+        assert_eq!(thread_key("650.555.0142", Some("us")), "+16505550142");
+        // Japan
+        same("jp", "090-1234-5678", "+81 90 1234 5678");
+        // A number with its own country code reads the same on any SIM.
+        assert_eq!(thread_key("+16505550142", Some("tw")), thread_key("+16505550142", Some("jp")));
+        // The same local digits are another number in another country.
+        assert_ne!(thread_key("0912345678", Some("tw")), thread_key("0912345678", Some("jp")));
+        // Without a country: the digits.
+        assert_eq!(thread_key("0912345678", None), "0912345678");
+        assert_eq!(thread_key("+886 912 345 678", None), "+886912345678");
+        // Sender names, short codes, nobody.
+        assert_eq!(thread_key(" BankInfo ", Some("tw")), "bankinfo");
+        assert_eq!(thread_key("bankinfo", None), "bankinfo");
+        assert_eq!(thread_key("中華電信", Some("tw")), "中華電信");
+        assert_eq!(thread_key("", Some("tw")), NO_SENDER_KEY);
+        assert_eq!(thread_key("   ", None), NO_SENDER_KEY);
+        assert_eq!(thread_key("55", Some("tw")), "55");
+    }
+
+    #[test]
+    fn sms_sendable_number_takes_digits_only() {
+        assert_eq!(sendable_number(" +886 912-345-678 ").as_deref(), Some("+886912345678"));
+        assert_eq!(sendable_number("(650) 555.0142").as_deref(), Some("6505550142"));
+        assert_eq!(sendable_number("１２３").as_deref(), Some("123"));
+        for bad in ["", "BankInfo", "12", "#123", "++886912", "0912 345 678 ext 5", "1".repeat(21).as_str()] {
+            assert_eq!(sendable_number(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn sms_threads_group_sort_and_search_in_many_languages() {
+        let mut book = SmsBook::default();
+        let rows: [(u64, &str, &str); 8] = [
+            (1, "0912345678", "您的包裹已送達"),
+            (2, "+81312345678", "明日の予定を確認してください"),
+            (3, "+821012345678", "내일 회의는 오후 3시입니다"),
+            (4, "+966500000000", "موعدك غدا الساعة العاشرة"),
+            (5, "+66812345678", "พรุ่งนี้เจอกันที่ร้านกาแฟ"),
+            (6, "+34600000000", "¿Nos vemos mañana en la estación?"),
+            (7, "+886912345678", "第二則：明天見"),
+            (8, "BankInfo", "Your statement is ready"),
+        ];
+        for (t, from, text) in rows {
+            book.push(NOW + t, KEEP, NewSms { from, text, sub_id: Some(1), ..Default::default() });
+        }
+        book.push_out(NOW + 9, KEEP, out_to("+81 3-1234-5678", "了解です"));
+        let names = |m: &SmsMessage| if key_tw(m) == "+886912345678" { "王小明".to_string() } else { String::new() };
+        let all = book.threads("", &key_tw, &names);
+        assert_eq!(all.len(), 7, "0912… and +886912… are one conversation");
+        assert_eq!(all[0].key, "+81312345678", "newest first");
+        assert_eq!((all[0].count, all[0].last.dir.as_str(), all[0].last.status.as_str()), (2, "out", "sending"));
+        assert_eq!(all[0].last_in_at, NOW + 2);
+        assert_eq!(all[0].number, "+81 3-1234-5678", "the newest message's number as written");
+        let tw = all.iter().find(|t| t.key == "+886912345678").unwrap();
+        assert_eq!((tw.count, tw.number.as_str(), tw.last.text.as_str(), tw.last_in_at), (2, "+886912345678", "第二則：明天見", NOW + 7));
+        let bank = all.iter().find(|t| t.key == "bankinfo").unwrap();
+        assert_eq!(bank.number, "BankInfo");
+        let found = |q: &str| book.threads(q, &key_tw, &names).into_iter().map(|t| t.key).collect::<Vec<_>>();
+        for (q, key) in [
+            ("包裹", "+886912345678"),
+            ("王小明", "+886912345678"),
+            ("予定", "+81312345678"),
+            ("了解", "+81312345678"),
+            ("회의는", "+821012345678"),
+            ("الساعة", "+966500000000"),
+            ("ร้านกาแฟ", "+66812345678"),
+            ("MAÑANA", "+34600000000"),
+            ("bankinfo", "bankinfo"),
+            ("statement", "bankinfo"),
+            ("0912345678", "+886912345678"),
+            ("886912345678", "+886912345678"),
+        ] {
+            assert_eq!(found(q), vec![key.to_string()], "q {q:?}");
+        }
+        assert!(found("nothing like this").is_empty());
+        // One conversation, oldest first.
+        let jp = book.thread("+81312345678", &key_tw);
+        assert_eq!(jp.iter().map(|m| m.dir.as_str()).collect::<Vec<_>>(), vec!["in", "out"]);
+        // Deleting it leaves the others.
+        assert_eq!(book.delete_thread("+886912345678", &key_tw), 2);
+        assert_eq!(book.threads("", &key_tw, &names).len(), 6);
+        assert_eq!(book.delete_thread("+886912345678", &key_tw), 0);
+    }
+
+    #[test]
+    fn sms_sent_messages_keep_their_status() {
+        let dir = temp_dir("out");
+        let store = SmsStore::open(dir.clone(), NOW, KEEP);
+        let m = store.push_out(NOW, KEEP, out_to("+886912345678", "  回覆內容 \n第二行 "));
+        assert_eq!((m.dir.as_str(), m.status.as_str(), m.error.as_str()), ("out", "sending", ""));
+        assert_eq!((m.from.as_str(), m.to.as_str(), m.peer()), ("0912000111", "+886912345678", "+886912345678"));
+        assert_eq!((m.text.as_str(), m.sub_id, m.serial.as_str()), ("回覆內容 \n第二行", Some(1), "TESTSERIAL01"));
+        let failed = store.set_status(m.id, STATUS_FAILED, "no_service").unwrap();
+        assert_eq!((failed.status.as_str(), failed.error.as_str()), ("failed", "no_service"));
+        // A received message has no send status.
+        let Pushed::Stored(in_id) = store.push(NOW + 1, KEEP, sms("+886912345678", "收到")) else { panic!() };
+        assert_eq!(store.set_status(in_id, STATUS_SENT, ""), None);
+        assert_eq!(store.get(in_id).unwrap().status, "");
+        assert_eq!(store.set_status(42, STATUS_SENT, ""), None);
+        // Still "sending" when Bageo stops: after a restart nobody waits for it.
+        let pending = store.push_out(NOW + 2, KEEP, out_to("+886912345678", "pending"));
+        drop(store);
+        let again = SmsStore::open(dir.clone(), NOW + 3, KEEP);
+        assert_eq!(again.get(pending.id).unwrap().status, STATUS_TIMEOUT);
+        assert_eq!(again.get(m.id).unwrap().error, "no_service");
+        // Sent messages go after the retention like the others.
+        assert_eq!(again.threads(NOW + 20 * DAY_MS, KEEP, "", &key_tw, &|_: &SmsMessage| String::new()).0, 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sms_old_file_without_direction_reads_as_received() {
+        let dir = temp_dir("oldfile");
+        std::fs::create_dir_all(&dir).unwrap();
+        let old = format!(
+            r#"{{"messages":[{{"id":{id},"at_ms":{id},"from":"0912345678","to":"+886912000111","text":"舊格式","serial":"TESTSERIAL01","device":"Pixel Test","ref":"k-1"}}]}}"#,
+            id = NOW
+        );
+        std::fs::write(dir.join("messages.json"), old).unwrap();
+        let store = SmsStore::open(dir.clone(), NOW, KEEP);
+        let m = store.get(NOW).expect("read");
+        assert_eq!((m.dir.as_str(), m.status.as_str(), m.error.as_str(), m.sub_id), ("in", "", "", None));
+        assert_eq!((m.peer(), m.text.as_str(), m.reference.as_str()), ("0912345678", "舊格式", "k-1"));
+        assert_eq!(store.push(NOW + 1, KEEP, NewSms { from: "x", text: "y", reference: "k-1", ..Default::default() }), Pushed::Duplicate);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn sms_store_saves_and_reads_back_after_a_restart() {
         let dir = temp_dir("restart");
@@ -421,6 +857,7 @@ mod tests {
                 serial: "TESTSERIAL01",
                 device: "Pixel Test",
                 reference: "key-1",
+                sub_id: Some(3),
             },
         );
         let (Pushed::Stored(a), Pushed::Stored(b)) = (first, second) else { panic!("{first:?} {second:?}") };

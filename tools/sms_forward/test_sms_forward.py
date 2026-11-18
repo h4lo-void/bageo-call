@@ -557,6 +557,7 @@ class ForwarderTests(Base):
         self.assertLess(abs(parts["received_ms"] - now_ms), 5000)
         key = sf.sms_key(P1, "+15555550123", "TEST-CODE 000000\nsecond line")
         self.assertEqual(parts["ref"], sf.sms_ref(key, parts["received_ms"], time.time()))
+        self.assertIn(parts["sub_id"], (None, 10), "the SIM it came in on, when the phone said")
 
         # Delivery down: hook file stays, inbox cursor stays; delivered after recovery.
         up["v"] = False
@@ -943,13 +944,13 @@ class AgentTests(Base):
     def test_deliver_with_sender_and_text(self) -> None:
         ok, via = sf.deliver("New SMS", "From: +15555550123\nMessage: 測試 ✓", "+15555550123", "測試 ✓",
                              to="+15555550100", serial=P1, device="Pixel 7", received_ms=1700000000111,
-                             ref="abc-19675")
+                             ref="abc-19675", sub_id=2)
         self.assertTrue(ok, via)
         self.assertEqual(self.sent_json(), {"title": "New SMS", "body": "From: +15555550123\nMessage: 測試 ✓",
                                             "kind": "sms", "from": "+15555550123", "text": "測試 ✓",
                                             "to": "+15555550100", "serial": P1, "device": "Pixel 7",
-                                            "received_ms": 1700000000111, "ref": "abc-19675"})
-        # Only the sender and the text: the other parts go out empty.
+                                            "received_ms": 1700000000111, "ref": "abc-19675", "sub_id": 2})
+        # Only the sender and the text: the other parts go out empty, no SIM.
         self.deliver_with("t", "b", "+15555550123", "x")
         self.assertEqual(self.sent_json(), {"title": "t", "body": "b", "kind": "sms", "from": "+15555550123",
                                             "text": "x", "to": "", "serial": "", "device": "",
