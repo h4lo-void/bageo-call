@@ -43,6 +43,7 @@ impl Rig {
             phones: PhoneDevices::new(),
             contacts: crate::contacts::ContactStore::open(root.join("contacts.json")),
             errands: crate::errands::ErrandStore::open(root.join("errands.json"), crate::errands::SimBook::in_memory()),
+            sms: crate::sms_store::SmsStore::open(root.join("sms"), crate::sms_store::now_ms(), 15),
         };
         let rig = Rig { root, state };
         // The key may come from the environment of the machine running the tests.

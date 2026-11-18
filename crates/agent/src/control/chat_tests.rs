@@ -48,6 +48,7 @@ impl Rig {
             phones: PhoneDevices::new(),
             contacts: crate::contacts::ContactStore::open(root.join("contacts.json")),
             errands: crate::errands::ErrandStore::open(root.join("errands.json"), crate::errands::SimBook::in_memory()),
+            sms: crate::sms_store::SmsStore::open(root.join("sms"), crate::sms_store::now_ms(), 15),
         };
         let rig = Rig { root, state };
         rig.set(json!({"gemini_api_key_clear": true}));

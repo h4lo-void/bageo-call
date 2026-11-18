@@ -247,8 +247,11 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 | 方法与路径 | 内容 |
 |---|---|
 | `POST /calls/api/notify/test` | 把测试消息发到那一个渠道（已保存的机密按 `id` 补上）。请求体 `{"channel": {kind, url, token, target, id?}}`。响应见下方。 |
-| `POST /calls/api/notify/send` | 请求体 `{"title": "...", "body": "..."}`。把你的消息发到每一个已启用的渠道。可另外带 `"kind": "sms"`、`"from"`、`"text"`，桌面状态小程序用它显示短信通知。规则见下方。 |
+| `POST /calls/api/notify/send` | 请求体 `{"title": "...", "body": "..."}`。把你的消息发到每一个已启用的渠道。可另外带 `"kind": "sms"` 与短信的字段：Bageo 会把短信存进控制台的“短信”页，桌面状态小程序也用它显示短信通知。规则见下方。 |
 | `GET /calls/api/notify/recent?after=<id>` | 由旧到新列出发过 `notify/send` 的消息：`{ok, last_id, events: [{id, at_ms, kind, title, from, text}]}`。`events` 只放 `id` 大于 `after` 的；没带 `after` 或不是数字时 `events` 是空的，`last_id` 让客户端知道从哪里开始。只留最近 50 条，只放在内存里，重启就清空。 |
+| `GET /calls/api/sms?q=&before=<id>&limit=<n>` | 由新到旧列出存下来的短信：`{ok, total, retention_days, has_more, messages: [{id, at_ms, from, from_name, to, text, serial, device}]}`。`q` 搜索发件人、联系人名称与内容；`before` 只列比这个 `id` 旧的；`limit` 是 1 到 200（默认 50）。`total` 是全部短信的数目，不受搜索影响。超过“短信记录保留几天”的短信会删掉，最多留 5000 条。 |
+| `DELETE /calls/api/sms/{id}` | 删除一条短信：`{ok: true}`，找不到返回 HTTP 404 `not_found`。 |
+| `POST /calls/api/sms/clear` | 删除全部短信：`{ok: true, removed: N}`。 |
 | `GET /calls/api/quick-action` · `POST /calls/api/quick-action` | 32 种通知渠道内附的单次签名互动按钮路由（`?act=confirm\|ignore\|block\|stall\|white&target=<id或号码>&sig=<hmac>`）。打开链接（`GET`）只会先显示确认页，点页面上的按钮（`POST`）才会执行；链接 7 天后失效。通过 HMAC-SHA256 验证，不用登录控制台，支持全部 9 种语言。 |
 | `POST /calls/api/control/inbound` | 跨平台通用指令 Webhook，用聊天指令控制 Bageo。请求体例如 `{"text": "记录 5", "user": "owner", "channel": "line"}`。 |
 | `GET /calls/api/auth-status` · `POST /calls/api/initial-password` | 查询是否需要密码与是否首次设置密码（`{ok, password_required, needs_initial_password_setup}`），以及首次创建密码（`{"password": "..."}`，仅在尚未设置任何密码／Token 时可用）。 |
@@ -264,7 +267,7 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 
 - `title` 为空就用“Bageo”；`body` 为空返回 HTTP 400 `empty_body`。
 - 只要有一个渠道接受就返回 `{ok: true}`。
-- 可另外带 `"kind": "sms"`、`"from"`（寄件人）、`"text"`（短信内容），桌面状态小程序用它显示短信通知；旧的请求照常运作。
+- 短信可另外带 `"kind": "sms"`、`"from"`（发件人）、`"text"`（短信内容）、`"to"`（收件号码）、`"serial"` 与 `"device"`（手机）、`"received_ms"`（收到的时间，Unix 毫秒）、`"ref"`（你自己给这条短信的标识）。Bageo 会把它存进控制台的“短信”页，同一个 `ref` 只存一次；桌面状态小程序用它显示短信通知。旧的请求照常运作。
 - [短信转发工具](../../tools/sms_forward/README.md)（英文）就是用这条路由。
 
 `POST /calls/api/control/inbound` 的规则：

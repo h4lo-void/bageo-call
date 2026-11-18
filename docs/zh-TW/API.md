@@ -247,8 +247,11 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 | 方法與路徑 | 內容 |
 |---|---|
 | `POST /calls/api/notify/test` | 把測試訊息傳到那一個管道（已存的機密依 `id` 補上）。Body `{"channel": {kind, url, token, target, id?}}`。回應見下方。 |
-| `POST /calls/api/notify/send` | Body `{"title": "...", "body": "..."}`。把你的訊息傳到每一個啟用的管道。可另外帶 `"kind": "sms"`、`"from"`、`"text"`，桌面狀態小程式用它顯示簡訊通知。規則見下方。 |
+| `POST /calls/api/notify/send` | Body `{"title": "...", "body": "..."}`。把你的訊息傳到每一個啟用的管道。可另外帶 `"kind": "sms"` 與簡訊的欄位：Bageo 會把簡訊存進控制台的「簡訊」頁，桌面狀態小程式也用它顯示簡訊通知。規則見下方。 |
 | `GET /calls/api/notify/recent?after=<id>` | 由舊到新列出傳過 `notify/send` 的訊息：`{ok, last_id, events: [{id, at_ms, kind, title, from, text}]}`。`events` 只放 `id` 大於 `after` 的；沒帶 `after` 或不是數字時 `events` 是空的，`last_id` 讓用戶端知道從哪裡開始。只留最近 50 筆，只放在記憶體，重新啟動就清空。 |
+| `GET /calls/api/sms?q=&before=<id>&limit=<n>` | 由新到舊列出存下來的簡訊：`{ok, total, retention_days, has_more, messages: [{id, at_ms, from, from_name, to, text, serial, device}]}`。`q` 搜尋寄件人、聯絡人名稱與內容；`before` 只列比這個 `id` 舊的；`limit` 是 1 到 200（預設 50）。`total` 是全部簡訊的數目，不受搜尋影響。超過「簡訊紀錄保留幾天」的簡訊會刪掉，最多留 5000 則。 |
+| `DELETE /calls/api/sms/{id}` | 刪除一則簡訊：`{ok: true}`，找不到回 HTTP 404 `not_found`。 |
+| `POST /calls/api/sms/clear` | 刪除全部簡訊：`{ok: true, removed: N}`。 |
 | `GET /calls/api/quick-action` · `POST /calls/api/quick-action` | 32 種通知管道內附的單次簽章互動按鈕路由（`?act=confirm\|ignore\|block\|stall\|white&target=<id或號碼>&sig=<hmac>`）。打開連結（`GET`）只會先顯示確認頁，按下頁面上的按鈕（`POST`）才會執行；連結 7 天後失效。透過 HMAC-SHA256 驗證，不用登入控制台，支援全部 9 種語言。 |
 | `POST /calls/api/control/inbound` | 跨平台通用指令 Webhook，用聊天指令控制 Bageo。Body 例如 `{"text": "清單 5", "user": "owner", "channel": "line"}`。 |
 | `GET /calls/api/auth-status` · `POST /calls/api/initial-password` | 查詢是否需要密碼與是否首次設定密碼（`{ok, password_required, needs_initial_password_setup}`），以及首次建立密碼（`{"password": "..."}`，僅在尚未設定任何密碼／Token 時可用）。 |
@@ -264,7 +267,7 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 
 - `title` 空白就用「Bageo」；`body` 空白回 HTTP 400 `empty_body`。
 - 只要有一個管道接受就回 `{ok: true}`。
-- 可另外帶 `"kind": "sms"`、`"from"`（寄件人）、`"text"`（簡訊內容），桌面狀態小程式用它顯示簡訊通知；舊的請求照常運作。
+- 簡訊可另外帶 `"kind": "sms"`、`"from"`（寄件人）、`"text"`（簡訊內容）、`"to"`（收件門號）、`"serial"` 與 `"device"`（手機）、`"received_ms"`（收到的時間，Unix 毫秒）、`"ref"`（你自己給這則簡訊的識別碼）。Bageo 會把它存進控制台的「簡訊」頁，同一個 `ref` 只存一次；桌面狀態小程式用它顯示簡訊通知。舊的請求照常運作。
 - [簡訊轉發工具](../../tools/sms_forward/README.md)（英文）就是用這條路由。
 
 `POST /calls/api/control/inbound` 的規則：

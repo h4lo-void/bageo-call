@@ -145,6 +145,10 @@ details.fold>summary::-webkit-details-marker{display:none}
 details.fold>summary::before{content:"";width:6px;height:6px;border-right:1.75px solid currentColor;border-bottom:1.75px solid currentColor;transform:rotate(-45deg);transition:transform .15s;margin:0 4px 0 2px}
 details.fold[open]>summary::before{transform:rotate(45deg)}
 details.fold.more{margin-top:16px;padding-top:6px;border-top:1px solid var(--line)}
+/* A fold that holds one short field: the field stays at the left edge like the
+   other fields, the fold's title stays in the middle like the other folds. */
+#smsKeepFold{display:block}
+#smsKeepFold>summary{margin-left:auto;margin-right:auto}
 pre.block{margin:8px 0 0;max-height:340px;overflow:auto;background:var(--surface2);border:1px solid var(--line);padding:12px 14px;border-radius:var(--radius-sm);font:12.5px/1.55 var(--mono);white-space:pre-wrap;word-break:break-word}
 pre.block.prose{font:inherit;font-size:.9rem}
 
@@ -189,6 +193,22 @@ pre.block.prose{font:inherit;font-size:.9rem}
 .call .call-acts .btn{border-color:transparent;background:transparent;color:var(--muted);min-height:25px;padding:1px 8px;font-size:.79rem}
 .call .call-acts .btn:hover{background:var(--surface);border-color:var(--line);color:var(--text)}
 .call .call-acts .btn.danger:hover{background:var(--bad-soft);border-color:color-mix(in srgb,var(--bad) 32%,var(--line));color:var(--bad)}
+.sms-bar{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+.sms-bar input{flex:1 1 auto;min-width:0;max-width:26rem}
+.sms-bar .btn{flex:0 0 auto;margin-left:auto}
+.sms{padding:13px 16px 9px;border-radius:var(--radius);background:var(--surface);border:1px solid var(--line);box-shadow:var(--card-shadow)}
+.sms-head{display:flex;gap:9px;align-items:baseline;min-width:0}
+.sms .who{font-weight:600;font-size:.98rem;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sms .num{font-family:var(--mono);font-size:.82rem;color:var(--muted);white-space:nowrap}
+.sms .when{font-size:.82rem;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.sms-text{margin:5px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}
+.sms-foot{display:flex;gap:4px;align-items:center;margin-top:5px;min-height:27px;color:var(--muted);font-size:.82rem}
+.sms-foot .via{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sms-foot .btn{border-color:transparent;background:transparent;color:var(--muted);min-height:25px;padding:1px 8px;font-size:.79rem;opacity:0;transition:opacity .14s,background .14s,color .14s}
+.sms:hover .sms-foot .btn,.sms:focus-within .sms-foot .btn{opacity:1}
+.sms-foot .btn:hover{background:var(--surface2);color:var(--text)}
+.sms-foot .btn.danger:hover{background:var(--bad-soft);border-color:transparent;color:var(--bad)}
+@media (hover:none){.sms-foot .btn{opacity:1}}
 .more{display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 0}
 
 /* detail */
@@ -530,6 +550,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
     </a>
     <nav class="nav" id="nav" data-i18n-aria="nav_main">
       <a href="#calls" data-tab="calls"><span data-i18n="tab_calls"></span></a>
+      <a href="#sms" data-tab="sms"><span data-i18n="tab_sms"></span></a>
       <a href="#errands" data-tab="errands"><span data-i18n="tab_errands"></span></a>
       <a href="#contacts" data-tab="contacts"><span data-i18n="tab_contacts"></span></a>
       <a href="#settings" data-tab="settings"><span data-i18n="tab_settings"></span><i class="dot" id="navDirty" hidden></i></a>
@@ -678,6 +699,23 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
         </div>
       </aside>
     </div>
+  </section>
+
+  <!-- ======================= SMS ======================= -->
+  <!-- Text messages the phones received (handed over by the SMS forwarder) -->
+  <section id="view-sms" data-view="sms" hidden>
+    <div class="row" style="margin-bottom:6px">
+      <h1 class="view-title grow" style="margin:0" data-i18n="tab_sms"></h1>
+      <span class="muted small" id="smsMeta"></span>
+    </div>
+    <p class="muted small" style="margin-bottom:14px"><span id="smsKeep"></span> <a href="#settings/notify" id="smsKeepLink" data-i18n="sms_keep_link"></a></p>
+    <div class="sms-bar">
+      <input type="search" id="smsQ" autocomplete="off" data-i18n-ph="sms_search_ph" />
+      <button type="button" class="btn danger" id="smsClear" data-i18n="sms_clear" hidden></button>
+    </div>
+    <div class="list" id="smsList"></div>
+    <div class="card empty" id="smsEmpty" hidden><h3 id="smsEmptyT"></h3><p id="smsEmptyD"></p></div>
+    <div class="row" style="justify-content:center;margin-top:14px"><button type="button" class="btn" id="smsMore" data-i18n="sms_more" hidden></button></div>
   </section>
 
   <!-- ======================= Errands ======================= -->
@@ -1035,6 +1073,12 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
                 <div class="help" data-i18n="rc_msgs_h"></div></div>
             </div>
           </details>
+          <details class="fold more" id="smsKeepFold">
+            <summary data-i18n="more_opts"></summary>
+            <div class="field"><label for="f-sms_retention_days" data-i18n="f_sms_keep"></label>
+              <div class="inline"><input type="number" id="f-sms_retention_days" data-k="sms_retention_days" data-t="int" min="1" max="365" step="1" inputmode="numeric" /><span class="muted" data-i18n="unit_days"></span></div>
+              <div class="help" data-i18n="f_sms_keep_h"></div></div>
+          </details>
         </div></div>
 
         <!-- Summary & calendar -->
@@ -1269,7 +1313,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
  * JSON API under /calls/api/.
  *
  * LINKS
- *   #calls  #settings  #settings/<section>  #system  #call=<call id>
+ *   #calls  #sms  #settings  #settings/<section>  #system  #call=<call id>
  *   ?lang=<code>  ?theme=light|dark  ?token=<CALLS_UI_TOKEN>
  *
  * TRANSLATIONS
@@ -2312,6 +2356,25 @@ I18N["en"] = {
   bl_mode: "When someone on the Blacklist calls:",
   bl_voice_link: "Choose the announcement voice",
   ct_bad_prefix: "Only Blacklist numbers can end with *, with at least 3 digits before it, not counting leading zeros.",
+  tab_sms: "SMS",
+  sms_count: "{n} messages",
+  sms_keep: "Text messages are kept for {n} days.",
+  sms_keep_link: "Change",
+  sms_search_ph: "Search sender or text",
+  sms_clear: "Delete all",
+  sms_clear_t: "Delete all text messages?",
+  sms_clear_b: "This cannot be undone.",
+  sms_del: "Delete",
+  sms_del_t: "Delete this text message?",
+  sms_copy: "Copy",
+  sms_empty_t: "No text messages yet",
+  sms_empty_d: "Texts your phones receive show up here once the SMS forwarder is running.",
+  sms_none_found: "No text message matches.",
+  sms_more: "Show more",
+  sms_unknown: "Unknown sender",
+  f_sms_keep: "Days to keep text messages",
+  f_sms_keep_h: "Older text messages are deleted automatically.",
+  unit_days: "days",
 };
 
 I18N["zh-TW"] = {
@@ -3333,6 +3396,25 @@ I18N["zh-TW"] = {
   bl_mode: "黑名單打來時：",
   bl_voice_link: "選拒接語音的聲音",
   ct_bad_prefix: "結尾加 * 只能用在黑名單，而且 * 前面除了開頭的 0 至少要 3 碼。",
+  tab_sms: "簡訊",
+  sms_count: "{n} 則",
+  sms_keep: "簡訊保留 {n} 天。",
+  sms_keep_link: "調整",
+  sms_search_ph: "搜尋寄件人或內容",
+  sms_clear: "全部刪除",
+  sms_clear_t: "刪除全部簡訊？",
+  sms_clear_b: "刪除後無法復原。",
+  sms_del: "刪除",
+  sms_del_t: "刪除這則簡訊？",
+  sms_copy: "複製",
+  sms_empty_t: "還沒有簡訊",
+  sms_empty_d: "簡訊轉發開始運作後，手機收到的簡訊會出現在這裡。",
+  sms_none_found: "找不到符合的簡訊。",
+  sms_more: "顯示更多",
+  sms_unknown: "未知寄件人",
+  f_sms_keep: "簡訊紀錄保留幾天",
+  f_sms_keep_h: "超過天數的簡訊會自動刪除。",
+  unit_days: "天",
 };
 
 I18N["zh-CN"] = {
@@ -4354,6 +4436,25 @@ I18N["zh-CN"] = {
   bl_mode: "黑名单打来时：",
   bl_voice_link: "选择拒接语音的声音",
   ct_bad_prefix: "结尾加 * 只能用在黑名单，而且 * 前面除了开头的 0 至少要 3 位。",
+  tab_sms: "短信",
+  sms_count: "{n} 条",
+  sms_keep: "短信保留 {n} 天。",
+  sms_keep_link: "调整",
+  sms_search_ph: "搜索发件人或内容",
+  sms_clear: "全部删除",
+  sms_clear_t: "删除全部短信？",
+  sms_clear_b: "删除后无法恢复。",
+  sms_del: "删除",
+  sms_del_t: "删除这条短信？",
+  sms_copy: "复制",
+  sms_empty_t: "还没有短信",
+  sms_empty_d: "短信转发开始运行后，手机收到的短信会出现在这里。",
+  sms_none_found: "找不到符合的短信。",
+  sms_more: "显示更多",
+  sms_unknown: "未知发件人",
+  f_sms_keep: "短信记录保留几天",
+  f_sms_keep_h: "超过天数的短信会自动删除。",
+  unit_days: "天",
 };
 
 I18N["ja"] = {
@@ -5375,6 +5476,25 @@ I18N["ja"] = {
   bl_mode: "着信拒否の相手から電話が来たとき：",
   bl_voice_link: "アナウンスの声を選ぶ",
   ct_bad_prefix: "末尾の * は着信拒否の番号だけに使えます（* の前に、先頭の 0 を除いて 3 桁以上）。",
+  tab_sms: "SMS",
+  sms_count: "{n} 件",
+  sms_keep: "SMS は {n} 日間保存されます。",
+  sms_keep_link: "変更",
+  sms_search_ph: "差出人や本文を検索",
+  sms_clear: "すべて削除",
+  sms_clear_t: "SMS をすべて削除しますか？",
+  sms_clear_b: "削除すると元に戻せません。",
+  sms_del: "削除",
+  sms_del_t: "この SMS を削除しますか？",
+  sms_copy: "コピー",
+  sms_empty_t: "SMS はまだありません",
+  sms_empty_d: "SMS 転送が動き始めると、スマホに届いた SMS がここに表示されます。",
+  sms_none_found: "一致する SMS がありません。",
+  sms_more: "さらに表示",
+  sms_unknown: "差出人不明",
+  f_sms_keep: "SMS を保存する日数",
+  f_sms_keep_h: "日数を過ぎた SMS は自動で削除されます。",
+  unit_days: "日",
 };
 
 I18N["ko"] = {
@@ -6396,6 +6516,25 @@ I18N["ko"] = {
   bl_mode: "차단 목록의 번호가 전화하면:",
   bl_voice_link: "안내 음성 목소리 고르기",
   ct_bad_prefix: "끝의 *는 차단 목록 번호에만 쓸 수 있습니다(* 앞에 앞의 0을 빼고 3자리 이상).",
+  tab_sms: "문자",
+  sms_count: "{n}건",
+  sms_keep: "문자는 {n}일 동안 보관됩니다.",
+  sms_keep_link: "변경",
+  sms_search_ph: "보낸 사람 또는 내용 검색",
+  sms_clear: "모두 삭제",
+  sms_clear_t: "문자를 모두 삭제할까요?",
+  sms_clear_b: "삭제하면 되돌릴 수 없습니다.",
+  sms_del: "삭제",
+  sms_del_t: "이 문자를 삭제할까요?",
+  sms_copy: "복사",
+  sms_empty_t: "아직 문자가 없습니다",
+  sms_empty_d: "문자 전달이 작동하면 휴대폰이 받은 문자가 여기에 표시됩니다.",
+  sms_none_found: "일치하는 문자가 없습니다.",
+  sms_more: "더 보기",
+  sms_unknown: "알 수 없는 발신자",
+  f_sms_keep: "문자 보관 일수",
+  f_sms_keep_h: "기간이 지난 문자는 자동으로 삭제됩니다.",
+  unit_days: "일",
 };
 
 I18N["es"] = {
@@ -7417,6 +7556,25 @@ I18N["es"] = {
   bl_mode: "Cuando llama alguien de la Lista negra:",
   bl_voice_link: "Elegir la voz del aviso",
   ct_bad_prefix: "Solo los números de la Lista negra pueden terminar en *, con al menos 3 cifras antes sin contar los ceros iniciales.",
+  tab_sms: "SMS",
+  sms_count: "{n} mensajes",
+  sms_keep: "Los SMS se guardan {n} días.",
+  sms_keep_link: "Cambiar",
+  sms_search_ph: "Buscar remitente o texto",
+  sms_clear: "Borrar todo",
+  sms_clear_t: "¿Borrar todos los SMS?",
+  sms_clear_b: "No se puede deshacer.",
+  sms_del: "Borrar",
+  sms_del_t: "¿Borrar este SMS?",
+  sms_copy: "Copiar",
+  sms_empty_t: "Aún no hay SMS",
+  sms_empty_d: "Cuando el reenvío de SMS esté en marcha, los SMS que reciban tus teléfonos aparecerán aquí.",
+  sms_none_found: "Ningún SMS coincide.",
+  sms_more: "Ver más",
+  sms_unknown: "Remitente desconocido",
+  f_sms_keep: "Días que se guardan los SMS",
+  f_sms_keep_h: "Los SMS más antiguos se borran solos.",
+  unit_days: "días",
 };
 
 I18N["fr"] = {
@@ -8438,6 +8596,25 @@ I18N["fr"] = {
   bl_mode: "Quand quelqu'un de la Liste noire appelle :",
   bl_voice_link: "Choisir la voix de l'annonce",
   ct_bad_prefix: "Seuls les numéros de la Liste noire peuvent finir par *, avec au moins 3 chiffres avant, sans compter les zéros du début.",
+  tab_sms: "SMS",
+  sms_count: "{n} messages",
+  sms_keep: "Les SMS sont conservés {n} jours.",
+  sms_keep_link: "Modifier",
+  sms_search_ph: "Rechercher un expéditeur ou un texte",
+  sms_clear: "Tout supprimer",
+  sms_clear_t: "Supprimer tous les SMS ?",
+  sms_clear_b: "Cette action est définitive.",
+  sms_del: "Supprimer",
+  sms_del_t: "Supprimer ce SMS ?",
+  sms_copy: "Copier",
+  sms_empty_t: "Pas encore de SMS",
+  sms_empty_d: "Une fois le transfert de SMS lancé, les SMS reçus par vos téléphones s'affichent ici.",
+  sms_none_found: "Aucun SMS ne correspond.",
+  sms_more: "Afficher plus",
+  sms_unknown: "Expéditeur inconnu",
+  f_sms_keep: "Nombre de jours de conservation des SMS",
+  f_sms_keep_h: "Les SMS plus anciens sont supprimés automatiquement.",
+  unit_days: "jours",
 };
 
 I18N["de"] = {
@@ -9459,6 +9636,25 @@ I18N["de"] = {
   bl_mode: "Wenn jemand von der Sperrliste anruft:",
   bl_voice_link: "Stimme der Ansage wählen",
   ct_bad_prefix: "Nur Nummern auf der Sperrliste dürfen mit * enden, mit mindestens 3 Ziffern davor, führende Nullen nicht mitgezählt.",
+  tab_sms: "SMS",
+  sms_count: "{n} Nachrichten",
+  sms_keep: "SMS werden {n} Tage aufbewahrt.",
+  sms_keep_link: "Ändern",
+  sms_search_ph: "Absender oder Text suchen",
+  sms_clear: "Alle löschen",
+  sms_clear_t: "Alle SMS löschen?",
+  sms_clear_b: "Das lässt sich nicht rückgängig machen.",
+  sms_del: "Löschen",
+  sms_del_t: "Diese SMS löschen?",
+  sms_copy: "Kopieren",
+  sms_empty_t: "Noch keine SMS",
+  sms_empty_d: "Sobald die SMS-Weiterleitung läuft, erscheinen hier die SMS, die deine Telefone empfangen.",
+  sms_none_found: "Keine passende SMS.",
+  sms_more: "Mehr anzeigen",
+  sms_unknown: "Unbekannter Absender",
+  f_sms_keep: "So viele Tage bleiben SMS gespeichert",
+  f_sms_keep_h: "Ältere SMS werden automatisch gelöscht.",
+  unit_days: "Tage",
 };
 
 I18N["pt"] = {
@@ -10480,6 +10676,25 @@ I18N["pt"] = {
   bl_mode: "Quando alguém da Lista de bloqueio ligar:",
   bl_voice_link: "Escolher a voz do aviso",
   ct_bad_prefix: "Só números da Lista de bloqueio podem terminar com *, com pelo menos 3 dígitos antes, sem contar os zeros iniciais.",
+  tab_sms: "SMS",
+  sms_count: "{n} mensagens",
+  sms_keep: "Os SMS ficam guardados por {n} dias.",
+  sms_keep_link: "Alterar",
+  sms_search_ph: "Buscar remetente ou texto",
+  sms_clear: "Apagar tudo",
+  sms_clear_t: "Apagar todos os SMS?",
+  sms_clear_b: "Não dá para desfazer.",
+  sms_del: "Apagar",
+  sms_del_t: "Apagar este SMS?",
+  sms_copy: "Copiar",
+  sms_empty_t: "Ainda não há SMS",
+  sms_empty_d: "Quando o encaminhamento de SMS estiver funcionando, os SMS que seus telefones receberem aparecerão aqui.",
+  sms_none_found: "Nenhum SMS corresponde.",
+  sms_more: "Mostrar mais",
+  sms_unknown: "Remetente desconhecido",
+  f_sms_keep: "Dias para guardar os SMS",
+  f_sms_keep_h: "Os SMS mais antigos são apagados automaticamente.",
+  unit_days: "dias",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word
@@ -10806,6 +11021,7 @@ $("netRetry").addEventListener("click", () => {
   loadDevices();
   if (!S) loadSettings();
   if (view === "system") loadSystem();
+  if (view === "sms") loadSms();
 });
 
 // ---------------------------------------------------------------- theme + language switchers
@@ -10845,6 +11061,7 @@ function setLang(l) {
   renderErrands();
   renderContacts();
   renderImport();
+  renderSms();
   if (view === "system") renderSystem();
 }
 (function fillLangSel() {
@@ -10875,7 +11092,7 @@ async function followNotifyLang(l) {
 }
 
 // ---------------------------------------------------------------- views / routing
-const VIEWS = ["calls", "errands", "contacts", "settings", "system"];
+const VIEWS = ["calls", "sms", "errands", "contacts", "settings", "system"];
 let view = "calls";
 let pendingJump = "";
 function setTitle() {
@@ -10893,6 +11110,7 @@ function showView(name) {
   if (name === "system") loadSystem();
   if (name === "contacts") loadContacts();
   if (name === "errands") showErrands();
+  if (name === "sms") showSms();
   if (changed) window.scrollTo(0, 0);
 }
 function setHash(hash, replace) {
@@ -11674,6 +11892,163 @@ $("btnBlock").addEventListener("click", async () => {
     toast(t(d.already ? "d_blocked_already" : "d_block_done", { num }));
     contactsChanged();
   } catch (e) { if (e.status !== 401) toast(t("save_failed", { msg: contactErrText(e) }), true); }
+});
+
+// ---------------------------------------------------------------- text messages (SMS)
+// What the SMS forwarder handed over: newest first, a page at a time; the
+// agent searches (sender, contact name, text) and drops the old ones.
+const SMS_PAGE = 50;
+const SMS_MAX_PAGE = 200; // the most one request returns
+const smsBox = { list: [], total: 0, keep: 0, more: false, state: "idle", error: "", seq: 0, q: "", sig: "" };
+let smsTicks = 0;
+// Requests overlap (timer, typing, after a delete): only the answer to the latest is used.
+async function loadSms(o) {
+  const more = !!(o && o.more);
+  const seq = ++smsBox.seq;
+  const q = $("smsQ").value.trim();
+  const fresh = q !== smsBox.q; // another search starts from the top
+  if (smsBox.state !== "ok") { smsBox.state = "loading"; renderSms(); }
+  const had = fresh ? 0 : smsBox.list.length;
+  const p = new URLSearchParams();
+  if (q) p.set("q", q);
+  if (more && had) p.set("before", String(smsBox.list[had - 1].id));
+  p.set("limit", String(more ? SMS_PAGE : Math.min(SMS_MAX_PAGE, Math.max(SMS_PAGE, had))));
+  try {
+    const d = await api("/sms?" + p.toString());
+    if (seq !== smsBox.seq) return;
+    const got = Array.isArray(d.messages) ? d.messages : [];
+    if (more && had) {
+      smsBox.list = smsBox.list.concat(got);
+      smsBox.more = !!d.has_more;
+    } else {
+      // Messages shown beyond what one request carries stay as they are.
+      const tail = !fresh && got.length && d.has_more ? smsBox.list.filter((m) => m.id < got[got.length - 1].id) : [];
+      smsBox.more = tail.length ? smsBox.more : !!d.has_more;
+      smsBox.list = got.concat(tail);
+    }
+    smsBox.q = q;
+    smsBox.total = Number(d.total) || 0;
+    smsBox.keep = Number(d.retention_days) || 0;
+    const sig = JSON.stringify([smsBox.total, smsBox.keep, smsBox.more, smsBox.list]);
+    // Nothing new since the last look: the page stays as it is (focus, hover).
+    if (smsBox.state === "ok" && sig === smsBox.sig) return;
+    smsBox.sig = sig;
+    smsBox.state = "ok";
+  } catch (e) {
+    if (seq !== smsBox.seq || smsBox.state === "ok") return; // keep what is shown
+    smsBox.state = "error";
+    smsBox.error = e.message;
+  }
+  renderSms();
+}
+function showSms() {
+  smsTicks = 0;
+  loadSms();
+}
+// Text being selected in a message: a redraw would drop the selection.
+function smsSelecting() {
+  const s = window.getSelection ? window.getSelection() : null;
+  return !!s && !s.isCollapsed && $("smsList").contains(s.anchorNode);
+}
+// Every second while the SMS view is in front (the page timer skips hidden tabs).
+function smsTick() {
+  smsTicks++;
+  if (smsTicks % 15 === 0 && !smsSelecting()) loadSms();
+}
+function smsRow(m) {
+  const from = String(m.from || "").trim();
+  const name = String(m.from_name || "").trim();
+  const text = String(m.text || "");
+  const at = new Date(Number(m.at_ms) || 0);
+  const iso = isNaN(at) ? "" : at.toISOString();
+  const via = [String(m.device || "").trim() || String(m.serial || "").trim(), String(m.to || "").trim()].filter(Boolean).join(" · ");
+  return h("article", { class: "sms" },
+    h("div", { class: "sms-head" },
+      h("span", { class: "who", text: name || from || t("sms_unknown") }),
+      name && from ? h("span", { class: "num", text: from }) : null,
+      h("span", { class: "grow" }),
+      h("time", { class: "when", attr: { datetime: iso }, text: fmtWhen(iso) })),
+    h("p", { class: "sms-text", text }),
+    h("div", { class: "sms-foot" },
+      via ? h("span", { class: "via", text: via }) : null,
+      h("span", { class: "grow" }),
+      h("button", { type: "button", class: "btn xs", text: t("sms_copy"), onclick: () => copyWithToast(text) }),
+      h("button", { type: "button", class: "btn xs danger", text: t("sms_del"), onclick: () => deleteSms(m) })));
+}
+function renderSms() {
+  const box = clear($("smsList"));
+  const ok = smsBox.state === "ok";
+  const keep = smsBox.keep || Number(S && S.sms_retention_days) || 0;
+  $("smsKeep").textContent = keep ? t("sms_keep", { n: keep }) : "";
+  $("smsMeta").textContent = ok && smsBox.total ? t("sms_count", { n: smsBox.total }) : "";
+  document.querySelector("#view-sms .sms-bar").hidden = ok && !smsBox.total;
+  $("smsClear").hidden = !(ok && smsBox.total);
+  $("smsMore").hidden = !(ok && smsBox.more && smsBox.list.length);
+  const empty = $("smsEmpty");
+  empty.hidden = true;
+  if (smsBox.state === "loading") {
+    for (let i = 0; i < 3; i++) box.append(h("div", { class: "skel" }));
+    return;
+  }
+  if (smsBox.state === "error") {
+    box.append(h("div", { class: "card empty" },
+      h("h3", { text: t("err_load", { msg: smsBox.error }) }),
+      h("p", {}, h("button", { type: "button", class: "btn", style: "margin-top:12px", onclick: () => loadSms(), text: t("retry") }))));
+    return;
+  }
+  if (!ok) return;
+  if (!smsBox.list.length) {
+    // None at all, or none for this search.
+    $("smsEmptyT").textContent = smsBox.total ? t("sms_none_found") : t("sms_empty_t");
+    $("smsEmptyD").textContent = smsBox.total ? "" : t("sms_empty_d");
+    $("smsEmptyD").hidden = !!smsBox.total;
+    empty.hidden = false;
+    return;
+  }
+  for (const m of smsBox.list) box.append(smsRow(m));
+}
+async function deleteSms(m) {
+  const yes = await ask({ title: t("sms_del_t"), ok: t("sms_del"), danger: true });
+  if (!yes) return;
+  try {
+    await api("/sms/" + encodeURIComponent(m.id), { method: "DELETE" });
+  } catch (e) {
+    if (e.status === 401) return;
+    // Already gone (deleted elsewhere, or too old by now): the list just catches up.
+    if (e.status !== 404) { toast(e.message, true); return; }
+  }
+  smsBox.list = smsBox.list.filter((x) => x.id !== m.id);
+  if (smsBox.total > 0) smsBox.total--;
+  smsBox.sig = "";
+  renderSms();
+  loadSms();
+}
+async function clearSms() {
+  const yes = await ask({ title: t("sms_clear_t"), body: t("sms_clear_b"), ok: t("sms_clear"), danger: true });
+  if (!yes) return;
+  $("smsClear").disabled = true;
+  try {
+    await api("/sms/clear", jsonBody("POST", {}));
+    $("smsQ").value = "";
+    await loadSms();
+  } catch (e) {
+    if (e.status !== 401) toast(e.message, true);
+  } finally {
+    $("smsClear").disabled = false;
+  }
+}
+let smsQTimer = 0;
+$("smsQ").addEventListener("input", () => { clearTimeout(smsQTimer); smsQTimer = setTimeout(() => loadSms(), 300); });
+$("smsMore").addEventListener("click", () => loadSms({ more: true }));
+$("smsClear").addEventListener("click", clearSms);
+// "Change" goes to the setting itself: open the fold it is in and bring it into view.
+$("smsKeepLink").addEventListener("click", () => {
+  setTimeout(() => {
+    $("smsKeepFold").open = true;
+    const field = $("f-sms_retention_days");
+    field.scrollIntoView({ block: "center" });
+    field.focus({ preventScroll: true });
+  }, 120);
 });
 
 // ---------------------------------------------------------------- contacts
@@ -14214,12 +14589,14 @@ setInterval(() => {
   if (ticks % 30 === 0 && view === "calls") loadAppts();
   if (ticks % 8 === 0 && view === "system" && !(document.activeElement && document.activeElement.closest("#sysPhones .sim-in"))) loadSystem();
   if (view === "errands") errandTick();
+  if (view === "sms") smsTick();
 }, 1000);
 document.addEventListener("visibilitychange", () => {
   if (!visible()) return;
   pollLive();
   refreshCalls({ keep: true });
   if (view === "errands") loadErrands();
+  if (view === "sms") loadSms();
 });
 
 // ---------------------------------------------------------------- first-time password prompt

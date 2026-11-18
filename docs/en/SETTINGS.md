@@ -200,6 +200,8 @@ The default for *Call as* is *AI calls: call as* under [Basics](#basics). Every 
 
 *Commands from chat* is a fold-out section; its settings are saved as `telegram_control`, `telegram_control_users`, `control_errands_per_hour` and `control_commands_per_minute`.
 
+**More options.** *Days to keep text messages* (default 15, from 1 to 365) is folded under *More options* in Notifications. Text messages on the **SMS** page that are older are deleted automatically. It is saved as `sms_retention_days`.
+
 ### Summary & calendar
 
 After each call the AI writes a short summary. It uses your Gemini key, so normally there is nothing to set up.

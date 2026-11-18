@@ -54,6 +54,7 @@ mod prompts;
 mod recent_notices;
 mod services;
 mod settings_store;
+mod sms_store;
 mod scam_db;
 mod stall_review;
 mod tasks;
@@ -1036,6 +1037,12 @@ async fn main() -> Result<()> {
     let phone_sims = errands::SimBook::open(PathBuf::from(&settings.calls_data_dir).join("phone_sims.json"));
     errands::install_sims(phone_sims.clone());
     let errand_store = errands::ErrandStore::open(PathBuf::from(&settings.calls_data_dir).join("errands.json"), phone_sims);
+    // Text messages the SMS forwarder hands over, for the console's SMS page.
+    let sms_store = sms_store::SmsStore::open(
+        PathBuf::from(&settings.calls_data_dir).join("sms"),
+        sms_store::now_ms(),
+        settings_store.snapshot().sms_retention_days,
+    );
     {
         let calls = calls.clone();
         let task_store = task_store.clone();
@@ -1166,6 +1173,7 @@ async fn main() -> Result<()> {
         phones: phones.clone(),
         contacts: contacts.clone(),
         errands: errand_store.clone(),
+        sms: sms_store,
     };
     let addr: SocketAddr = format!("{}:{}", settings.host, settings.port).parse()?;
     let mode = settings.agent_mode.as_str();

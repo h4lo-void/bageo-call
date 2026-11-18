@@ -141,6 +141,7 @@ LATE_SEC = 300  # add the receive time when a message is forwarded later than th
 SEND_GAP_SEC = 1.5
 SENDS_PER_TICK = 15
 BODY_MAX = 3000  # the agent cuts a whole notification at 3500 characters
+SMS_TEXT_MAX = 2000  # the agent stores at most this much of one SMS
 LANG_REFRESH_SEC = 60  # the agent's language (and time zone) are asked again this often
 LANG_RETRY_SEC = 30
 LANG_TRIES = 2  # quick tries in a row before waiting LANG_RETRY_SEC
@@ -389,15 +390,19 @@ def agent_request(path: str, payload: dict | None = None, timeout: float = 10.0)
         return status, None
 
 
-def deliver(title: str, body: str, sender: str = "", text: str = "") -> tuple[bool, str]:
+def deliver(title: str, body: str, sender: str = "", text: str = "", to: str = "", serial: str = "",
+            device: str = "", received_ms: int = 0, ref: str = "") -> tuple[bool, str]:
     """Hand a message to the agent's notification channels. (delivered, reason).
 
-    With a sender or text the request also says it is an SMS, with the sender and
-    the message apart (the desktop status app shows them). An older agent ignores
-    the extra fields."""
+    With a sender or text the request also says it is an SMS and carries its parts:
+    sender, text, the receiving line, the phone, the time it arrived and `ref` (the
+    agent stores a message with the same `ref` only once). The agent keeps it for the
+    console's SMS page and the desktop status app. An older agent ignores the extra
+    fields."""
     payload = {"title": title, "body": body}
     if sender or text:
-        payload.update({"kind": "sms", "from": sender, "text": text[:200]})
+        payload.update({"kind": "sms", "from": sender, "text": text[:SMS_TEXT_MAX], "to": to, "serial": serial,
+                        "device": device, "received_ms": int(received_ms or 0), "ref": ref})
     status, obj = agent_request("/calls/api/notify/send", payload, SEND_TIMEOUT)
     if status == 200 and isinstance(obj, dict) and obj.get("ok") is True:
         return True, "agent:200"
@@ -708,6 +713,14 @@ def sms_key(serial: str, sender: str, body: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
 
 
+def sms_ref(key: str, received_ms: int, now: float) -> str:
+    """What the agent knows one SMS by: its dedup key and the SMS_DEDUP_SEC window it
+    arrived in. Sending it again (the notification failed) gives the same ref; the
+    same text from the same sender after the window is a message of its own."""
+    at_ms = received_ms if received_ms and received_ms > 0 else int(now * 1000)
+    return f"{key}-{int(at_ms // (DEDUP_SEC * 1000))}"
+
+
 def mask_sender(sender: str) -> str:
     """Sender for the log: the last four digits of a number, or only the length of a name."""
     digits = re.sub(r"\D", "", sender or "")
@@ -830,10 +843,12 @@ class Forwarder:
         if wait > 0:
             time.sleep(wait)
         late = bool(received_ms) and time.time() - received_ms / 1000 > LATE_SEC
-        title, text = format_sms(lang, sender, self.line_for(serial, sub), body, serial,
-                                 self.phone(serial).get("model", ""), received_ms, time.time(),
+        line = self.line_for(serial, sub)
+        model = self.phone(serial).get("model", "")
+        title, text = format_sms(lang, sender, line, body, serial, model, received_ms, time.time(),
                                  self.zone() if late else None)
-        ok, via = self.deliver(title, text, sender, body)
+        ok, via = self.deliver(title, text, sender, body, to=line, serial=serial, device=model,
+                               received_ms=received_ms, ref=sms_ref(key, received_ms, time.time()))
         self.last_send = time.time()
         self.sends += 1
         if not self.note_delivery(ok, via, f"{serial} {src}={ref}"):

@@ -247,6 +247,11 @@ message goes to all of them. Bageo supports these 32:
 The optional [SMS forwarder](../../tools/sms_forward/README.md) sends the phone's
 incoming text messages to the same channels.
 
+While the forwarder runs, those texts also show up on the console's **SMS** page:
+the sender (with the contact's name when you have one), the text, and the phone and
+number that received it. You can search, copy and delete them. They are kept for 15
+days; change that with *Days to keep text messages* in the settings.
+
 Only three things leave your computer:
 
 - **Live call audio** goes to Gemini.

@@ -169,6 +169,10 @@ pub struct RuntimeSettings {
     /// should wrap up around 4½ minutes → default 5.
     #[serde(default = "default_normal_max_min")]
     pub persona_normal_max_min: u32,
+    /// Days a forwarded text message stays on the console's SMS page
+    /// (clamped 1–365); older ones are deleted.
+    #[serde(default = "default_sms_retention_days")]
+    pub sms_retention_days: u32,
     /// Model a call switches to once judged sales / scam (its stall session);
     /// empty = keep the call's model. E.g. normal calls on
     /// `gemini-3.8-live-extended-thinking`, stalling on `gemini-3.8-live`.
@@ -377,6 +381,9 @@ pub const STALL_MAX_MIN_DEFAULT: u32 = 30;
 pub const NORMAL_MAX_MIN_DEFAULT: u32 = 5;
 const STALL_MAX_MIN_FLOOR: u32 = 3;
 const STALL_MAX_MIN_CEIL: u32 = 30;
+pub const SMS_RETENTION_DAYS_DEFAULT: u32 = 15;
+const SMS_RETENTION_DAYS_MIN: u32 = 1;
+const SMS_RETENTION_DAYS_MAX: u32 = 365;
 pub const STALL_MODEL_DEFAULT: &str = "gemini-3.8-live";
 /// About one ring (Taiwan ringback: 1 s tone, 2 s pause).
 pub const ANSWER_RING_MS_DEFAULT: u32 = 3_000;
@@ -392,6 +399,10 @@ fn default_stall_max_min() -> u32 {
 
 fn default_normal_max_min() -> u32 {
     NORMAL_MAX_MIN_DEFAULT
+}
+
+fn default_sms_retention_days() -> u32 {
+    SMS_RETENTION_DAYS_DEFAULT
 }
 
 fn default_stall_model() -> String {
@@ -704,6 +715,8 @@ impl RuntimeSettings {
             scam_review_without_keywords: env_bool("SCAM_REVIEW_WITHOUT_KEYWORDS", true),
             persona_stall_max_min: env_parse("PERSONA_STALL_MAX_MIN", STALL_MAX_MIN_DEFAULT),
             persona_normal_max_min: env_parse("PERSONA_NORMAL_MAX_MIN", NORMAL_MAX_MIN_DEFAULT),
+            sms_retention_days: env_parse("SMS_RETENTION_DAYS", SMS_RETENTION_DAYS_DEFAULT)
+                .clamp(SMS_RETENTION_DAYS_MIN, SMS_RETENTION_DAYS_MAX),
             gemini_stall_model: env_or("GEMINI_STALL_MODEL", STALL_MODEL_DEFAULT),
             gemini_server_vad: env_bool("GEMINI_SERVER_VAD", true),
             gemini_barge_in: env_bool("GEMINI_BARGE_IN", true),
@@ -1072,6 +1085,7 @@ impl RuntimeSettings {
             whitelist_urgent_call,
             persona_stall_max_min,
             persona_normal_max_min,
+            sms_retention_days,
             gemini_server_vad,
             gemini_barge_in,
             answer_ring_ms,
@@ -1086,6 +1100,9 @@ impl RuntimeSettings {
             .ivr_start_delay_ms
             .min(crate::config::IVR_FIRST_AUDIO_DELAY_CAP_MS);
         self.answer_ring_ms = self.answer_ring_ms.min(ANSWER_RING_MS_CEIL);
+        self.sms_retention_days = self
+            .sms_retention_days
+            .clamp(SMS_RETENTION_DAYS_MIN, SMS_RETENTION_DAYS_MAX);
         (self.ambience_kind, self.ambience_level) =
             sanitize_ambience(&self.ambience_kind, self.ambience_level);
         self.gemini_thinking_level = sanitize_thinking_level(&self.gemini_thinking_level);
@@ -1409,6 +1426,8 @@ struct Overrides {
     gemini_thinking_level: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     persona_normal_max_min: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sms_retention_days: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     gemini_stall_model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1974,6 +1993,10 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     p_u32(patch, "persona_normal_max_min", &mut ov.persona_normal_max_min);
     if let Some(v) = ov.persona_normal_max_min {
         ov.persona_normal_max_min = Some(v.clamp(STALL_MAX_MIN_FLOOR, STALL_MAX_MIN_CEIL));
+    }
+    p_u32(patch, "sms_retention_days", &mut ov.sms_retention_days);
+    if let Some(v) = ov.sms_retention_days {
+        ov.sms_retention_days = Some(v.clamp(SMS_RETENTION_DAYS_MIN, SMS_RETENTION_DAYS_MAX));
     }
     p_string(patch, "gemini_stall_model", &mut ov.gemini_stall_model);
     p_string(patch, "language", &mut ov.language);
@@ -2751,6 +2774,28 @@ mod tests {
         assert!(!rt.gemini_server_vad);
         // Survives a restart (settings.json override).
         assert!(!SettingsStore::load(base).snapshot().gemini_server_vad);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sms_retention_days_defaults_to_15_and_clamps() {
+        let dir = std::env::temp_dir().join(format!("bageo-sms-keep-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("temp settings dir");
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        assert_eq!(store.snapshot().sms_retention_days, SMS_RETENTION_DAYS_DEFAULT);
+        assert_eq!(SMS_RETENTION_DAYS_DEFAULT, 15);
+        for (asked, kept) in [(30, 30), (1, 1), (365, 365), (0, 1), (366, 365), (100_000, 365)] {
+            let rt = store.apply_patch(&json!({ "sms_retention_days": asked })).unwrap();
+            assert_eq!(rt.sms_retention_days, kept, "asked {asked}");
+        }
+        // Not a number: the value stays.
+        let rt = store.apply_patch(&json!({ "sms_retention_days": "soon" })).unwrap();
+        assert_eq!(rt.sms_retention_days, 365);
+        // It is saved: a restart reads it back.
+        store.apply_patch(&json!({ "sms_retention_days": 7 })).unwrap();
+        assert_eq!(SettingsStore::load(base).snapshot().sms_retention_days, 7);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

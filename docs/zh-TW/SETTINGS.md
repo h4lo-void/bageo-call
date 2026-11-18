@@ -200,6 +200,8 @@ AI 要能替你接電話，先把這幾項填好。
 
 「在聊天室操作」是一個折疊區塊，裡面的細項存成 `telegram_control`、`telegram_control_users`、`control_errands_per_hour`、`control_commands_per_minute`。
 
+**更多選項。** 「簡訊紀錄保留幾天」（預設 15，1 到 365）收在「通知」的「更多選項」裡。「簡訊」頁上超過天數的簡訊會自動刪除。存成 `sms_retention_days`。
+
 ### 摘要與行事曆
 
 每通電話結束後，AI 會寫一段簡短摘要。它用你的 Gemini 金鑰，通常什麼都不用設定。
