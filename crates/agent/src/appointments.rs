@@ -5777,13 +5777,17 @@ mod callback_number_key_edges {
             status: PENDING.into(),
             ..Default::default()
         };
-        let task = TaskRecord {
-            id: "t-l22".into(),
-            caller_id: "+81312345678".into(),
-            serial: "s1".into(),
-            appointment: Some(appt.clone()),
-            ..Default::default()
-        };
+        let mut task = crate::tasks::draft_from_voicemail(
+            "c-l22",
+            "s1",
+            "+81312345678",
+            "",
+            crate::tasks::ReplyMethod::Phone,
+            None,
+            false,
+        );
+        task.id = "t-l22".into();
+        task.appointment = Some(appt.clone());
         let (_title, body) = card_text(&rt, &task, &appt, "");
         let w = reply_words(locale::notify_lang());
         assert!(!body.contains(w.hidden), "visible foreign number must not say hidden: {body}");

@@ -3916,7 +3916,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         && state.settings.trtc().configured()
                                         && uplink_bytes % 320_000 < bin.len() as u64
                                     {
-                                        debug!(
+                                        tracing::debug!(
                                             "IVR trtc uplink pending serial={serial} phase={phase:?} live=false bytes={uplink_bytes}"
                                         );
                                     }
@@ -4858,14 +4858,18 @@ async fn start_unknown_caller_reject(
         warn!("unknown-caller reject skipped exclusive serial={serial}");
         return;
     }
-    {
+    let already_ended = {
         let mut p = phase.lock().unwrap_or_else(|e| e.into_inner());
         if matches!(*p, IvrPhase::Goodbye | IvrPhase::Done) {
-            drop(p);
-            state.media_play.release(serial).await;
-            return;
+            true
+        } else {
+            *p = IvrPhase::Goodbye;
+            false
         }
-        *p = IvrPhase::Goodbye;
+    };
+    if already_ended {
+        state.media_play.release(serial).await;
+        return;
     }
     stop_hold_loop(hold_cancel);
     if busy.try_lock().is_err() {
@@ -10185,7 +10189,7 @@ fn spawn_ai_talk_tg_summary(
         let spoken_contact = if stalled || ai_failed || ai_callback {
             None
         } else {
-            let region = record
+            let region = call_record
                 .sim_country
                 .clone()
                 .or_else(|| phone_region::country_of_code(&rt.effective_country_code()).map(str::to_string))

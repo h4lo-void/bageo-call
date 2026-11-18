@@ -1040,7 +1040,7 @@ mod tests {
                     } else {
                         r#"{"event": {"title": "Dentist", "start": "2099-05-01T10:00", "end": "", "all_day": false}}"#
                     };
-                    Json(json!({ "choices": [{ "message": { "content": content } }] }))
+                    Json(serde_json::json!({ "choices": [{ "message": { "content": content } }] }))
                 }),
             )
             .with_state(calls.clone());

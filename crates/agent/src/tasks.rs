@@ -666,7 +666,7 @@ mod tests {
             .format("%Y-%m-%dT%H:%M")
             .to_string();
 
-        let mut pending_appt = draft_from_voicemail("c1", "s1", "0900000001", "", ReplyMethod::Sms, None, false);
+        let mut pending_appt = draft_from_voicemail("c1", "s1", "0900000001", "", ReplyMethod::Phone, None, false);
         pending_appt.created_at = old_ts.clone();
         pending_appt.updated_at = old_ts.clone();
         pending_appt.status = TaskStatus::Pending;
@@ -679,7 +679,7 @@ mod tests {
         let pending_id = pending_appt.id.clone();
         store.create(pending_appt).await.unwrap();
 
-        let mut future_confirmed = draft_from_voicemail("c2", "s1", "0900000002", "", ReplyMethod::Sms, None, false);
+        let mut future_confirmed = draft_from_voicemail("c2", "s1", "0900000002", "", ReplyMethod::Phone, None, false);
         future_confirmed.created_at = old_ts.clone();
         future_confirmed.updated_at = old_ts.clone();
         future_confirmed.status = TaskStatus::Fulfilled;
@@ -717,7 +717,7 @@ mod tests {
     async fn concurrent_patch_and_status_updates_do_not_clobber_fields() {
         let root = temp_tasks_root();
         let store = TaskStore::new(root.clone());
-        let mut draft = draft_from_voicemail("c-race", "s1", "0900000009", "", ReplyMethod::Call, None, false);
+        let mut draft = draft_from_voicemail("c-race", "s1", "0900000009", "", ReplyMethod::Phone, None, false);
         draft.intent = TaskIntent::Appointment;
         draft.appointment = Some(crate::appointments::Appointment {
             start: "2026-12-01T10:00".to_string(),

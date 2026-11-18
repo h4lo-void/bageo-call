@@ -430,12 +430,12 @@ fn sec_api_sender_ok_filters_disabled_and_resolves_hierarchically() {
 #[test]
 fn sec_scrub_redacts_trtc_webhook_and_short_alphanumeric_passwords() {
     let rig = Rig::new();
-    let mut base = (*rig.state.settings).clone();
+    let mut base = rig.state.settings.clone();
     base.notify_webhook_url = "https://hooks.example.org/secret-hook".into();
     base.calls_ui_token = String::new();
     let mut st = rig.state.clone();
-    st.settings = Arc::new(base);
-    st.settings_store = SettingsStore::load((*st.settings).clone());
+    st.settings = base.clone();
+    st.settings_store = SettingsStore::load(base);
     let c = Controller::new(st);
     let mut rt = (*c.settings()).clone();
     rt.trtc_secret_key = "trtc-key-xyz".into();

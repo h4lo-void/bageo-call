@@ -399,7 +399,8 @@ mod close_latin_languages {
         let mut call = CallLanguage::new(Lang::ZhTw, Lang::ZhTw);
         assert_eq!(call.spoken(), Spoken::Lang(Lang::ZhTw));
 
-        let mut other = CallLanguage::open_other(Lang::ZhTw);
+        let mut other = CallLanguage::new(Lang::ZhTw, Lang::ZhTw);
+        other.caller_turn("สวัสดีครับ ผมเป็นคนส่งของครับ");
         assert!(other.is_other());
         assert_eq!(other.spoken(), Spoken::Other);
 

@@ -5994,21 +5994,23 @@ pub async fn run_session(
                     next_setup
                 };
                 let next_prompt_chars = setup_system_prompt(next_setup).chars().count();
-                let rotate_fut = open_live_with_history(&url, next_setup, &history, serial);
-                tokio::pin!(rotate_fut);
-                let deadline = tokio::time::sleep(Duration::from_secs(10));
-                tokio::pin!(deadline);
-                let opened = loop {
-                    if cancel.load(Ordering::Relaxed) {
-                        info!("Gemini Live rotate aborted (hangup) serial={serial}");
-                        let _ = sink.send(WsMessage::Close(None)).await;
-                        let _ = sink.close().await;
-                        return Ok(resolve_cancel(goodbye_pending));
-                    }
-                    tokio::select! {
-                        r = &mut rotate_fut => break r,
-                        _ = &mut deadline => break Err(anyhow::anyhow!("gemini rotate timed out after 10s")),
-                        _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+                let opened = {
+                    let rotate_fut = open_live_with_history(&url, next_setup, &history, serial);
+                    tokio::pin!(rotate_fut);
+                    let deadline = tokio::time::sleep(Duration::from_secs(10));
+                    tokio::pin!(deadline);
+                    loop {
+                        if cancel.load(Ordering::Relaxed) {
+                            info!("Gemini Live rotate aborted (hangup) serial={serial}");
+                            let _ = sink.send(WsMessage::Close(None)).await;
+                            let _ = sink.close().await;
+                            return Ok(resolve_cancel(goodbye_pending));
+                        }
+                        tokio::select! {
+                            r = &mut rotate_fut => break r,
+                            _ = &mut deadline => break Err(anyhow::anyhow!("gemini rotate timed out after 10s")),
+                            _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+                        }
                     }
                 };
                 match opened {

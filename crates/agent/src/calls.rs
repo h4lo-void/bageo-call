@@ -3243,7 +3243,7 @@ mod review_t4_tests {
 
         let call = store.start("pixel-1", "0912345678", 16000, "ended").await.unwrap();
         let cid = call.id.clone();
-        assert!(store.set_scam_feedback(&cid, "not_sales").await);
+        assert!(store.set_scam_feedback(&cid, "not_sales").await.is_some());
         let rec = store.finalize(call, "ended").await;
         assert_eq!(rec.scam_feedback.as_deref(), Some("not_sales"));
         let _ = std::fs::remove_dir_all(&dir);

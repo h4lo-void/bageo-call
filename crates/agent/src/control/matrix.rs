@@ -483,7 +483,14 @@ mod tests {
 
     #[test]
     fn endpoint_rejects_non_http_with_accurate_scheme_message() {
-        let err = endpoint("ftp://matrix.example.org", "/sync").unwrap_err().to_string();
+        let acct = Account {
+            kind: "matrix".into(),
+            url: "ftp://matrix.example.org".into(),
+            token: "tok".into(),
+            app_token: String::new(),
+            chats: Vec::new(),
+        };
+        let err = endpoint(&acct, &["sync"], &[]).unwrap_err().to_string();
         assert!(err.contains("http:// or https://"), "{err}");
     }
 }
