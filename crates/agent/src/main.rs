@@ -5412,15 +5412,19 @@ async fn start_ivr_prompt(
         warn!("IVR prompt skipped exclusive serial={serial} (reject/twin already playing)");
         return;
     }
-    {
+    let not_wait = {
         let mut p = phase.lock().unwrap_or_else(|e| e.into_inner());
         // Greeting may only start from idle wait (not during voicemail/hold/goodbye).
         if *p != IvrPhase::WaitDtmf {
-            drop(p);
-            state.media_play.release(serial).await;
-            return;
+            true
+        } else {
+            *p = IvrPhase::PlayPrompt;
+            false
         }
-        *p = IvrPhase::PlayPrompt;
+    };
+    if not_wait {
+        state.media_play.release(serial).await;
+        return;
     }
     if busy.try_lock().is_err() {
         *phase.lock().unwrap_or_else(|e| e.into_inner()) = IvrPhase::WaitDtmf;

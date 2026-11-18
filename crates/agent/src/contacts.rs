@@ -4836,7 +4836,7 @@ mod tests {
         s.update(&a.id, &draft("Alex Lin", &["0912000101"], "")).await.unwrap();
         let preview = s.preview(vec![draft("Alex", &["0912000999"], "")]);
         assert_eq!(preview.len(), 1);
-        assert_eq!(preview[0].existing.as_ref().map(|c| c.id.as_str()), Some(b.id.as_str()));
+        assert_eq!(preview[0].duplicate.as_ref().and_then(|d| d["id"].as_str()), Some(b.id.as_str()));
         let _ = std::fs::remove_dir_all(s.path.parent().unwrap());
     }
 }
