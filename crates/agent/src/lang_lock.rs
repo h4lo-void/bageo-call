@@ -415,6 +415,7 @@ mod close_latin_languages {
 
         // Different-language short turn between two Spanish turns clears pending.
         let mut call2 = CallLanguage::new(Lang::En, Lang::En);
+        assert_eq!(call2.caller_turn("Hello, how are you doing today?"), None);
         assert_eq!(call2.caller_turn("Buenos días, llamo por su cita de mañana"), None);
         assert_eq!(call2.caller_turn("こんにちは"), None);
         assert_eq!(call2.caller_turn("Confirmamos el horario de mañana"), None);

@@ -2688,7 +2688,7 @@ mod tests {
                         "name_en": "Test conflict",
                         "prevalence": "high",
                         "lang": "en",
-                        "red_flag_keywords": [{"text": "install anydesk", "weight": 2, "hard": true}],
+                        "red_flag_keywords": [{"text": "anydesk", "weight": 2, "hard": true}],
                         "bait_tactics": ["Look for reading glasses"],
                         "signals_en": "Asks to install remote desktop.",
                         "legit_en": "Ordinary call."
