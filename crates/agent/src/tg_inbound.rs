@@ -1160,27 +1160,36 @@ mod tests {
 
     #[tokio::test]
     async fn send_task_card_retries_transient_500_and_clips_long_body() {
+        use axum::{
+            extract::State, http::StatusCode, response::IntoResponse, routing::post, Json, Router,
+        };
         use std::sync::atomic::{AtomicUsize, Ordering};
         use std::sync::Arc;
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        async fn send_message(
+            State(hits): State<Arc<AtomicUsize>>,
+            Json(body): Json<serde_json::Value>,
+        ) -> axum::response::Response {
+            assert!(body["text"].as_str().is_some_and(|s| {
+                !s.is_empty() && s.chars().map(char::len_utf16).sum::<usize>() <= MAX_MESSAGE_TEXT
+            }));
+            let n = hits.fetch_add(1, Ordering::Relaxed);
+            if n == 0 {
+                (StatusCode::INTERNAL_SERVER_ERROR, "busy").into_response()
+            } else {
+                Json(serde_json::json!({ "ok": true, "result": { "message_id": 99 } }))
+                    .into_response()
+            }
+        }
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let hits = Arc::new(AtomicUsize::new(0));
-        let hits_bg = hits.clone();
-        tokio::spawn(async move {
-            while let Ok((mut sock, _)) = listener.accept().await {
-                let mut buf = [0u8; 4096];
-                let _ = sock.read(&mut buf).await;
-                let n = hits_bg.fetch_add(1, Ordering::Relaxed);
-                let resp = if n == 0 {
-                    "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 4\r\nConnection: close\r\n\r\nbusy".to_string()
-                } else {
-                    let b = r#"{"ok":true,"result":{"message_id":99}}"#;
-                    format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{b}", b.len())
-                };
-                let _ = sock.write_all(resp.as_bytes()).await;
-            }
+        let app = Router::new()
+            .route("/bot123:TEST/sendMessage", post(send_message))
+            .with_state(hits.clone());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
         });
         let mid = send_task_card_labeled_at(
             &Client::new(),
@@ -1197,5 +1206,6 @@ mod tests {
         .unwrap();
         assert_eq!(mid, 99);
         assert_eq!(hits.load(Ordering::Relaxed), 2);
+        server.abort();
     }
 }
