@@ -220,8 +220,8 @@ AI の声、内蔵のプロンプト、コンソール、スマホアプリ、�
 
 ## クイックスタート
 
-1. **ダウンロード**：お使いの OS 用のパッケージを [Releases](https://github.com/h4lo-void/bageo-call/releases) から入手して、展開します。
-2. **起動**：Windows は `start.cmd` をダブルクリック。macOS は `start.command` をダブルクリック。Linux は `./start.sh`。コンソールが <http://localhost:8787/> で開きます。
+1. **ダウンロード**：お使いの OS 用のファイルを [Releases](https://github.com/h4lo-void/bageo-call/releases) から入手します。Windows は `bageo-call-<version>-windows-x64-setup.exe`、macOS は `bageo-call-<version>-macos-arm64.dmg`（Apple シリコン）または `bageo-call-<version>-macos-x64.dmg`（Intel）、Linux は `bageo-call-<version>-linux-x64.tar.gz` です。
+2. **インストールして起動**：Windows は `setup.exe` をダブルクリックしてインストールし、デスクトップの「Bageo」ショートカットをクリックします。macOS は `.dmg` を開き、Bageo を「アプリケーション」にドラッグして、クリックします。Linux は展開して `./start.sh` を実行します。コンソールが <http://localhost:8787/> で開きます。
 3. **基本を入力**：**設定**で、Gemini API キー、あなたの名前、言語を入れます。▶ を押すと声を聞けるので、好きな声を選びます。
 4. **スマホを準備**（最初の 1 回だけ）：`bageo-phone-module-<version>.zip` を Magisk か KernelSU のモジュールとしてインストールし、再起動して、**Bageo** アプリを開きます。チェックリストを順に進めたら、スマホをつなぎます。
 5. **ほかのスマホからかけてみる**：1 回鳴ると、AI が出ます。

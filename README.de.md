@@ -220,8 +220,8 @@ Alle Funktionen im Detail: [Funktionen](docs/en/FEATURES.md).
 
 ## Schnellstart
 
-1. **Lade** das Paket für dein System von [Releases](https://github.com/h4lo-void/bageo-call/releases) herunter und entpacke es.
-2. **Starte es.** Windows: Doppelklick auf `start.cmd`. macOS: Doppelklick auf `start.command`. Linux: `./start.sh`. Die Konsole öffnet sich unter <http://localhost:8787/>.
+1. **Lade** die Datei für dein System von [Releases](https://github.com/h4lo-void/bageo-call/releases) herunter: `bageo-call-<version>-windows-x64-setup.exe` für Windows, `bageo-call-<version>-macos-arm64.dmg` (Apple-Chip) oder `bageo-call-<version>-macos-x64.dmg` (Intel) für macOS, `bageo-call-<version>-linux-x64.tar.gz` für Linux.
+2. **Installiere und starte es.** Windows: Doppelklick auf `setup.exe`, dann auf die Verknüpfung **Bageo** auf dem Desktop. macOS: Öffne die `.dmg`, zieh Bageo in *Programme* und klick darauf. Linux: entpacken und `./start.sh` ausführen. Die Konsole öffnet sich unter <http://localhost:8787/>.
 3. **Trag die Grundlagen ein** unter **Einstellungen**: dein Gemini-API-Schlüssel, dein Name und die Sprache. Drück auf ▶, um die Stimmen anzuhören und eine auszuwählen.
 4. **Bereite das Telefon vor**, einmalig: Installiere `bageo-phone-module-<version>.zip` als Modul in Magisk oder KernelSU, starte neu, öffne die App **Bageo**, arbeite ihre Einrichtungsschritte ab und steck das Telefon an.
 5. **Ruf es an** von einem anderen Telefon: einmal klingeln, und die KI nimmt ab.

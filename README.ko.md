@@ -220,8 +220,8 @@ AI의 목소리, 기본 프롬프트, 콘솔, 휴대폰 앱, 알림이 모두 9�
 
 ## 빠른 시작
 
-1. **다운로드**: [Releases](https://github.com/h4lo-void/bageo-call/releases)에서 내 운영체제용 패키지를 받아 압축을 풉니다.
-2. **실행**: Windows는 `start.cmd`를 더블클릭하고, macOS는 `start.command`를 더블클릭합니다. Linux는 `./start.sh`를 실행합니다. 콘솔이 <http://localhost:8787/>에서 열립니다.
+1. **다운로드**: [Releases](https://github.com/h4lo-void/bageo-call/releases)에서 내 운영체제용 파일을 받습니다. Windows는 `bageo-call-<version>-windows-x64-setup.exe`, macOS는 `bageo-call-<version>-macos-arm64.dmg`(Apple 칩) 또는 `bageo-call-<version>-macos-x64.dmg`(Intel), Linux는 `bageo-call-<version>-linux-x64.tar.gz`입니다.
+2. **설치하고 실행**: Windows는 `setup.exe`를 더블클릭해 설치한 뒤 바탕화면의 "Bageo" 바로가기를 클릭합니다. macOS는 `.dmg`를 열어 Bageo를 "응용 프로그램"으로 끌어다 놓고 클릭합니다. Linux는 압축을 풀고 `./start.sh`를 실행합니다. 콘솔이 <http://localhost:8787/>에서 열립니다.
 3. **기본 정보 입력**: **설정**에서 Gemini API 키, 내 이름, 언어를 입력합니다. ▶를 눌러 목소리를 들어 보고 하나를 고릅니다.
 4. **폰 준비** (처음 한 번만): `bageo-phone-module-<version>.zip`을 Magisk나 KernelSU의 모듈로 설치하고, 재부팅한 뒤 **Bageo** 앱을 열어 체크리스트를 끝까지 진행하고 폰을 연결합니다.
 5. **다른 폰으로 걸어 보기**: 벨이 한 번 울리면 AI가 받습니다.

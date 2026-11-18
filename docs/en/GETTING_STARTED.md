@@ -32,31 +32,33 @@ database and no other service to install.
 
 ### From a release (easiest)
 
-1. Download the package for your system from the
-   [Releases](https://github.com/h4lo-void/bageo-call/releases) page and unpack
-   it anywhere, for example `Documents/bageo-call`:
+1. Download the file for your system from the
+   [Releases](https://github.com/h4lo-void/bageo-call/releases) page:
 
-   | System | Package |
+   | System | File |
    |---|---|
-   | Windows | `bageo-call-<version>-windows-x64.zip` |
-   | macOS, Apple Silicon | `bageo-call-<version>-macos-arm64.tar.gz` |
-   | macOS, Intel | `bageo-call-<version>-macos-x64.tar.gz` |
+   | Windows | `bageo-call-<version>-windows-x64-setup.exe` |
+   | macOS, Apple chip | `bageo-call-<version>-macos-arm64.dmg` |
+   | macOS, Intel | `bageo-call-<version>-macos-x64.dmg` |
    | Linux | `bageo-call-<version>-linux-x64.tar.gz` |
 
-   Each one holds the program, the bundled sounds, the start scripts and the
-   documents.
-2. Start it:
-   - **Windows:** double-click `bageo-status.exe` (or `start.cmd`). If
-     SmartScreen warns about an unknown publisher, choose *More info → Run
-     anyway*.
-   - **macOS:** the first time, double-click `start.command`. It opens Bageo
-     Status and shows it where Bageo is; you can close the Terminal window
-     afterwards. From then on, open `Bageo Status.app` directly. The program
-     is not notarised, so the first time macOS may refuse: right-click the
-     file → *Open*. If the icon shows up but Bageo does not start, allow the
-     Bageo program under *System Settings → Privacy & Security*, or run
-     `xattr -dr com.apple.quarantine .` once in the folder, then start again.
-   - **Linux:** run `./start.sh` in a terminal.
+   Bageo Status, the small icon that shows what Bageo is doing, comes with the
+   installer. There is nothing else to download.
+2. Install and start it:
+   - **Windows:** double-click the `setup.exe`. It needs no administrator
+     rights and installs into `%LOCALAPPDATA%\Programs\Bageo`. Then click the
+     **Bageo** shortcut on the desktop or in the Start menu. If Windows shows
+     "Windows protected your PC", click *More info → Run anyway*; the program
+     has no paid signature. Your calls, recordings and settings live in the
+     `data` folder inside the install folder, and removing the program does
+     not delete it.
+   - **macOS:** open the `.dmg`, drag **Bageo** into *Applications* and click
+     it. Your calls, recordings and settings live in
+     `~/Library/Application Support/Bageo`; updating the app does not touch
+     them. If macOS says it cannot verify the developer the first time,
+     right-click Bageo in Finder → *Open*, or press *Open Anyway* under
+     *System Settings → Privacy & Security*.
+   - **Linux:** unpack the file and run `./start.sh` in a terminal.
 3. On Windows and macOS there is no command window. An icon appears in the
    system tray (Windows) or the menu bar (macOS), and Bageo runs in the
    background with it. Bageo stops only when you choose "Quit Bageo" from the
@@ -67,11 +69,14 @@ database and no other service to install.
 5. The USB link needs `adb` (Google's Android platform-tools). If it is
    missing, click the icon and press "Download". It goes into a
    `platform-tools` folder next to the program.
-6. Bageo writes its log to `bageo.log` in the same folder. To see the output
-   in a terminal as before, start with `start.cmd -Console` (Windows) or
-   `./start.sh --console` (macOS).
+6. For advanced use: if you want a `.env` file, put it in the install folder
+   (Windows) or in `~/Library/Application Support/Bageo/.env` (macOS). The
+   Windows install folder also holds `start.cmd` and `start.ps1`, which start
+   Bageo from the command line; the macOS app has no start script. To see the
+   output in a terminal, run `start.cmd -Console` (Windows) or
+   `./start.sh --console` (Linux).
 
-On Linux, and with `-Console` or `--console`, the start script does the same
+On Linux, and with `-Console` on Windows, the start script does the same
 work in the terminal: it offers the `adb` download, opens the web console and
 puts a **Bageo Console** shortcut on the desktop (to skip the shortcut, start
 with `-NoShortcut` on Windows or `--no-shortcut`, or set
@@ -284,9 +289,9 @@ the AI call again.
 
 Calls are answered only while Bageo runs.
 
-- **Windows:** click the Bageo Status icon, open "Settings" and turn on "Start
+- **Windows:** click the Bageo icon, open "Settings" and turn on "Start
   when I log in". Turn off sleep while plugged in.
-- **macOS:** click the Bageo Status icon, open "Settings" and turn on "Start
+- **macOS:** click the Bageo icon, open "Settings" and turn on "Start
   when I log in". Prevent sleep (*Battery / Energy → Prevent automatic
   sleeping*).
 - **Linux:** a systemd user unit:
@@ -316,8 +321,8 @@ reconnect by themselves.
 
 ### See the status in the system tray or menu bar
 
-On Windows and macOS, **Bageo Status** is the program you start Bageo with. It
-sits in the system tray (Windows) or the menu bar (macOS). The frame around
+On Windows and macOS, the Bageo icon (called **Bageo Status**) starts together
+with Bageo. It sits in the system tray (Windows) or the menu bar (macOS). The frame around
 its icon is green when everything works, yellow when something needs a look
 (for example the console still lists settings to fill in, a phone is not
 connected, or the Android tools are missing) and red when Bageo cannot be
@@ -336,11 +341,6 @@ Under "Settings" you can type the address, enter the console password, turn on
 text messages. They are off by default; click one to open the console. Text
 message notifications need the
 [SMS forwarder](../../tools/sms_forward/README.md) from the same version.
-
-Bageo Status can also watch a Bageo that runs somewhere else, such as another
-computer or Docker. Copy `bageo-status.exe` or `Bageo Status.app` to the
-computer you sit at and start it there. It finds Bageo on your network by
-itself and never stops that Bageo.
 
 ## Next
 
