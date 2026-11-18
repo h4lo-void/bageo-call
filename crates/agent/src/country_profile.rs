@@ -28,6 +28,9 @@ pub enum Region {
     GbIe,
     AuNz,
     In,
+    It,
+    Vn,
+    Th,
     Jp,
     Kr,
     /// Spain.
@@ -60,6 +63,9 @@ pub fn of_sim(iso: &str) -> Option<Region> {
         "gb" | "ie" | "im" | "je" | "gg" => Region::GbIe,
         "au" | "nz" => Region::AuNz,
         "in" => Region::In,
+        "it" | "sm" | "va" => Region::It,
+        "vn" => Region::Vn,
+        "th" => Region::Th,
         "jp" => Region::Jp,
         "kr" => Region::Kr,
         "es" => Region::EsEu,
@@ -162,6 +168,12 @@ fn text(region: Region, kind: Kind) -> Option<(&'static str, &'static str)> {
         (AuNz, Fraud) => ("自稱 ATO、銀行或 myGov 要你付款的都是詐騙", "ATO, bank or myGov payment demands are scams"),
         (In, Delivery) => ("包裹常交給 security 或放門口", "Parcels: with security or at the door"),
         (In, Fraud) => ("說要更新 KYC、付包裹海關費的都是詐騙", "KYC updates and customs fees for a parcel are scams"),
+        (It, Delivery) => ("包裹常交給 portineria 或放 punto di ritiro", "Parcels: with the portineria or at a punto di ritiro"),
+        (It, Fraud) => ("叫你轉到安全帳戶或給驗證碼的都是詐騙", "safe-account transfers or verification codes asked for are scams"),
+        (Vn, Delivery) => ("包裹常交給警衛（bảo vệ）或放門口", "Parcels: with bảo vệ (guard) or at the door"),
+        (Vn, Fraud) => ("自稱公安、要你點連結或轉帳的都是詐騙", "fake police, suspicious links or transfer demands are scams"),
+        (Th, Delivery) => ("包裹常放管理處（นิติบุคคล）或警衛室", "Parcels: at the juristic office or with the guard"),
+        (Th, Fraud) => ("自稱警察、叫你加 LINE 或轉帳的都是詐騙", "fake police, adding LINE or transfer demands are scams"),
         (Jp, Delivery) => (
             "包裹常置き配、放宅配ボックス或留不在票再送",
             "Parcels: 置き配, the 宅配ボックス or a 不在票 for redelivery",
@@ -241,7 +253,7 @@ mod tests {
     const BLOCK_MAX_CHARS_ZH: usize = 90;
     const BLOCK_MAX_CHARS_EN: usize = 200;
 
-    const ALL: [Region; 21] = [
+    const ALL: [Region; 24] = [
         Region::Tw,
         Region::HkMo,
         Region::Cn,
@@ -251,6 +263,9 @@ mod tests {
         Region::GbIe,
         Region::AuNz,
         Region::In,
+        Region::It,
+        Region::Vn,
+        Region::Th,
         Region::Jp,
         Region::Kr,
         Region::EsEu,
@@ -284,10 +299,13 @@ mod tests {
         assert_eq!(resolve(Some("mo"), Lang::ZhTw), Some(Region::HkMo));
         assert_eq!(resolve(Some("sg"), Lang::ZhCn), Some(Region::MySg));
         assert_eq!(resolve(Some("uy"), Lang::Es), Some(Region::EsRp));
+        assert_eq!(resolve(Some("it"), Lang::ZhTw), Some(Region::It));
+        assert_eq!(resolve(Some("vn"), Lang::ZhTw), Some(Region::Vn));
+        assert_eq!(resolve(Some("th"), Lang::ZhTw), Some(Region::Th));
         assert_eq!(resolve(None, Lang::Ja), Some(Region::Jp));
         assert_eq!(resolve(Some(" "), Lang::ZhTw), Some(Region::Tw));
         // A SIM of a country without rules: none, not the language's.
-        assert_eq!(resolve(Some("th"), Lang::ZhTw), None);
+        assert_eq!(resolve(Some("fi"), Lang::ZhTw), None);
     }
 
     #[test]

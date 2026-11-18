@@ -112,19 +112,47 @@ fn hold_cues(strong_only: bool, ai_said: &str) -> bool {
         // English
         "don't hang up", "do not hang up", "stay on the line", "stay on the phone", "please hold", "hold the line", "don't go anywhere",
         // Japanese
-        "切らないで", "切らずに", "そのままお待ち", "そのまま待って", "そのままで待って",
+        "切らないで", "切らずに", "そのままお待ち", "そのまま待って", "そのままで待って", "そのままでいて",
         // Korean
         "끊지 마", "끊지 말", "끊지 않",
         // Spanish
         "no cuelgue", "no cuelgues", "no cortes", "no corte", "quédese en la línea", "quédate en la línea", "siga en la línea", "sigue en la línea",
         "no se vaya", "no te vayas",
         // French
-        "ne raccroche", "ne quittez pas", "ne quitte pas", "restez en ligne", "reste en ligne",
+        "ne raccroche", "ne quittez pas", "ne quitte pas", "ne coupez pas", "ne coupe pas", "restez en ligne", "reste en ligne",
         // German
         "nicht auflegen", "leg nicht auf", "legen sie nicht auf", "legt nicht auf", "bleib dran", "bleiben sie dran", "bleiben sie bitte dran",
         "bleib bitte dran", "bleib am apparat", "bleiben sie am apparat",
         // Portuguese
         "não desligue", "não desliga", "não desliguem", "fique na linha", "fica na linha", "aguarde na linha",
+        // Italian
+        "non riattaccare", "non riattacchi", "non chiudere", "non chiuda", "rimani in linea", "rimanga in linea", "resti in linea", "resta in linea",
+        "attenda in linea", "aspetti in linea",
+        // Russian
+        "не кладите трубку", "не клади трубку", "не вешайте трубку", "не вешай трубку", "оставайтесь на линии", "оставайся на линии",
+        "подождите на линии", "будьте на линии",
+        // Hindi
+        "फोन मत काटिए", "फ़ोन मत काटिए", "फोन मत काटना", "लाइन पर रहिए", "लाइन पर रहें", "लाइन पर बने रहिए", "कॉल मत काटिए", "हटिएगा नहीं",
+        // Arabic
+        "لا تقفل الخط", "لا تغلق الخط", "لا تسكر الخط", "ابقي على الخط", "ابق على الخط", "خليك على الخط", "خلك على الخط", "انتظر على الخط",
+        // Dutch
+        "hang niet op", "niet ophangen", "blijf aan de lijn", "blijft u aan de lijn", "wacht aan de lijn",
+        // Polish
+        "nie rozlaczaj sie", "nie rozłączaj się", "prosze sie nie rozlaczac", "proszę się nie rozłączać",
+        "nie odkladaj sluchawki", "nie odkładaj słuchawki", "zostan na linii", "zostań na linii", "prosze zostac na linii", "proszę zostać na linii",
+        // Romanian
+        "nu inchide", "nu închide", "nu inchideti", "nu închideți", "ramaneti pe fir", "rămâneți pe fir", "ramai pe fir", "rămâi pe fir",
+        "asteptati pe fir", "așteptați pe fir",
+        // Ukrainian
+        "не кладіть слухавку", "не клади слухавку", "не вибивайте", "залишайтесь на лінії", "залишайтеся на лінії", "будьте на лінії",
+        // Bengali
+        "ফোন কাটবেন না", "কল কাটবেন না", "লাইনে থাকুন", "লাইন ধরে থাকুন",
+        // Marathi
+        "फोन ठेवू नका", "कॉल कट करू नका", "लाईनवर राहा", "लाइनवर थांबा",
+        // Tamil
+        "போனை வைக்காதீர்கள்", "அழைப்பை துண்டிக்காதீர்கள்", "லைனில் இருங்கள்", "லைனில் காத்திருங்கள்",
+        // Telugu
+        "ఫోన్ కట్ చేయకండి", "కాల్ కట్ చేయవద్దు", "లైన్లో ఉండండి", "లైన్ లోనే ఉండండి",
         // Cantonese (folded to simplified: 唔好掛線 and 唔好挂线 read the same)
         "唔好挂", "唔好收线", "咪挂", "咪收线", "唔好走开", "咪走开", "唔好挂线", "咪挂线",
         // Vietnamese (accents folded)
@@ -1133,6 +1161,31 @@ mod tests {
         ] {
             assert!(!is_hold_line(said), "{said}");
         }
+    }
+
+    #[test]
+    fn hold_on_lines_cover_extended_official_languages_without_overmatching() {
+        for said in [
+            "Ne coupez pas, je vous le passe tout de suite.",
+            "そのままでいてください、今つなぎます。",
+            "Non riattaccare, lo chiamo subito.",
+            "Resti in linea per favore, glielo passo.",
+            "Не кладите трубку, сейчас соединю.",
+            "Оставайтесь на линии, пожалуйста.",
+            "फोन मत काटिए, मैं अभी बात कराता हूँ।",
+            "لا تقفل الخط، سأتصل به الآن.",
+            "Blijf aan de lijn, ik verbind u door.",
+            "Proszę się nie rozłączać, już łączę.",
+            "Nu închideți, rămâneți pe fir vă rog.",
+            "Не кладіть слухавку, залишайтесь на лінії.",
+            "ফোন কাটবেন না, লাইনে থাকুন।",
+            "फोन ठेवू नका, लाइनवर थांबा.",
+            "போனை வைக்காதீர்கள், லைனில் இருங்கள்.",
+            "ఫోన్ కట్ చేయకండి, లైన్లో ఉండండి.",
+        ] {
+            assert!(is_hold_line(said) && is_strong_hold_line(said), "{said}");
+        }
+        assert!(!is_hold_line("そのままで大丈夫です。"), "bare そのままで must not count");
     }
 
     #[test]

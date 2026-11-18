@@ -439,7 +439,7 @@ const PRE_CLOSINGS: Lexicon = &[
     ]),
     ("yue", &[
         "係咁先", "系咁先", "就咁先", "唔阻你", "唔阻你啦", "唔阻你喇", "再打俾你", "再打畀你", "再覆你", "覆返你",
-        "短訊覆你", "短讯覆你",
+        "短訊覆你", "短讯覆你", "收線先", "收线先", "得閒再傾", "得闲再倾",
     ]),
     ("ja", &[
         "以上となりますが", "以上となります", "それではよろしくお願いいたします",
@@ -453,6 +453,7 @@ const PRE_CLOSINGS: Lexicon = &[
     ]),
     ("ko", &[
         "나중에다시연락드릴게요", "다시연락드릴게요", "연락드릴게요", "연락드리겠습니다", "나끊는다", "그럼이만", "이만줄일게요",
+        "이제끊을게요", "먼저끊을게요",
     ]),
     ("es", &[
         "bueno te dejo", "te dejo", "le dejo", "nada era solo eso", "era solo eso", "hablamos luego",
@@ -467,10 +468,21 @@ const PRE_CLOSINGS: Lexicon = &[
         "alles klar dann weiß ich bescheid", "dann weiß ich bescheid", "dann weiss ich bescheid",
     ]),
     ("pt", &["então tá bom", "entao ta bom", "combinado então", "combinado entao", "a gente se fala"]),
-    ("th", &["งั้นแค่นี้", "แค่นี้ก่อน", "แค่นี้"]),
+    ("th", &["งั้นแค่นี้", "งั้นแค่นี้นะ", "แค่นี้นะ", "แค่นี้ก่อน", "แค่นี้", "เอาไว้คุยกันใหม่", "คุยกันแค่นี้ก่อน"]),
     ("vi", &["dạ vậy nhé", "vậy nhé", "vay nhe", "thế nhé", "the nhe", "thôi nhé"]),
     ("id", &["oke sudah dulu ya", "sudah dulu ya", "sudah dulu", "udah dulu ya", "udah dulu", "segitu dulu ya", "itu saja"]),
-    ("it", &["allora ti lascio", "ti lascio", "la lascio", "non ti disturbo più", "non la disturbo più"]),
+    ("it", &["allora ti lascio", "ti lascio", "la lascio", "non ti disturbo più", "non ti disturbo piu", "non la disturbo più", "non la disturbo piu"]),
+    ("ru", &["хорошо тогда до свидания", "ладно мне пора", "мне пора", "я перезвоню", "поговорим позже", "тогда пока", "всего вам доброго"]),
+    ("ar", &["حسنا سأغلق الآن", "حسنا ساغلق الان", "لنتحدث لاحقا", "سأتصل بك لاحقا", "ساتصل بك لاحقا", "سأتركك الآن", "هذا كل شيء"]),
+    ("hi", &["ठीक है अब रखता हूँ", "बाद में बात करते हैं", "मैं बाद में कॉल करूँगा", "बस इतना ही", "अच्छा चलता हूँ"]),
+    ("nl", &["ik houd u niet langer op", "ik hou je niet langer op", "dan spreken we later", "ik bel u later terug", "tot later"]),
+    ("pl", &["nie zatrzymuję już", "nie zatrzymuje juz", "odezwę się później", "odezwe sie pozniej", "zadzwonię później", "zadzwonie pozniej", "to tyle na teraz"]),
+    ("ro", &["nu vă mai rețin", "nu va mai retin", "nu te mai rețin", "nu te mai retin", "vorbim mai târziu", "vorbim mai tarziu"]),
+    ("uk", &["добре тоді до побачення", "мені вже пора", "передзвоню пізніше", "поговоримо пізніше", "на все добре"]),
+    ("bn", &["তাহলে এখন রাখছি", "পরে আবার কথা হবে", "আমি পরে ফোন করব", "আজ এই পর্যন্তই"]),
+    ("mr", &["ठीक आहे आता ठेवतो", "नंतर बोलूया", "मी नंतर फोन करतो", "इतकेच होते"]),
+    ("ta", &["சரி நான் வைக்கிறேன்", "பிறகு பேசலாம்", "நான் பிறகு அழைக்கிறேன்"]),
+    ("te", &["సరే నేను పెడుతున్నాను", "తర్వాత మాట్లాడుదాం", "నేను తర్వాత ఫోన్ చేస్తాను"]),
 ];
 
 /// Goodbyes said only at the end.
@@ -485,45 +497,48 @@ const FAREWELLS: Lexicon = &[
         "那掛了",
     ]),
     ("zh-CN", &["再见", "再会", "挂了啊", "先挂了", "我挂了", "那挂了", "好嘞拜拜", "挂啰", "挂咯", "挂啦", "那我挂了"]),
-    ("yue", &["得啦唔該晒", "得啦唔该晒", "得啦唔該曬", "先掛啦", "拜拜啦", "byebye"]),
+    ("yue", &["得啦唔該晒", "得啦唔该晒", "得啦唔該曬", "先掛啦", "拜拜啦", "byebye", "收線啦", "收线啦", "得閒再傾", "得闲再倾", "遲啲再傾", "迟啲再倾"]),
     ("ja", &[
         // A bare 「ありがとうございました」 is thanks, like 謝謝 elsewhere; with 本日は／今日は it closes.
         // 「失礼いたします／します」 is in GREETING_BYES so opening phrases never close on Turn 1.
         "本日はありがとうございました", "今日はありがとうございました", "じゃあね", "じゃあまた",
         "またね", "さようなら", "お疲れ様でした", "お疲れさまでした", "ではまた", "それではまた", "バイバイ",
-        "ばいばい",
+        "ばいばい", "切るね", "切ります", "じゃあ切るね", "おやすみなさい",
     ]),
     ("ko", &[
-        "들어가세요", "수고하세요", "끊겠습니다", "끊을게요", "응끊어", "어끊어", "그래끊어", "안녕히계세요",
-        "안녕히가세요", "다음에봬요",
+        "들어가세요", "수고하세요", "끊겠습니다", "끊을게요", "끊을게", "먼저끊을게", "잘가", "잘가요", "잘가세요",
+        "응끊어", "어끊어", "그래끊어", "안녕히계세요", "안녕히가세요", "다음에봬요",
         // 「그럼 수요일에 뵙겠습니다」: seeing them on the day ends the call (처음 뵙겠습니다 opens one).
         "에뵙겠습니다", "그때뵙겠습니다", "그럼뵙겠습니다", "또뵙겠습니다", "에봬요", "그때봬요",
     ]),
     ("es", &[
         "chao", "chau", "hasta luego", "hasta pronto", "cuídate", "cuidate", "cuídese", "cuidese",
         "un abrazo", "un beso", "besos", "adiós", "adios", "nos vemos",
+        "que le vaya bien", "que te vaya bien", "que tenga buen día", "que tenga buen dia", "que tengas buen día", "que tengas buen dia",
     ]),
     ("fr", &[
         "au revoir", "bonne journée", "bonne journee", "bonne soirée", "bonne soiree", "à bientôt",
-        "a bientot", "bisous", "bises", "à plus",
+        "a bientot", "bisous", "bises", "à plus", "je raccroche", "bonne continuation", "à tout à l'heure", "a tout a l heure",
     ]),
     ("de", &[
         "auf wiederhören", "auf wiederhoren", "wiederhören", "schönen tag noch", "schönen tag", "tschüss",
-        "tschüs", "tschuss", "baba", "pfiat di", "pfiat eich",
+        "tschüs", "tschuss", "baba", "pfiat di", "pfiat eich", "gute nacht", "schönen abend noch", "schonen abend noch",
+        "machs gut", "machen sie es gut",
     ]),
     ("pt", &[
-        "tchau tchau", "tchau", "até logo", "ate logo", "até mais", "um abraço", "um abraco", "beijos",
-        "beijo", "fica com deus", "vai com deus",
+        "tchau tchau", "tchau", "até logo", "ate logo", "até mais", "um abraço", "um abraco", "abraço", "abraco", "beijos",
+        "beijo", "fica com deus", "vai com deus", "fique bem", "bom trabalho",
         // Portugal: 「…e continuação de um bom dia」.
         "continuação de um bom dia", "continuação de bom dia", "continuacao de um bom dia", "tenha um bom dia",
         "boa continuação",
     ]),
-    ("th", &["บ๊ายบาย", "บายบาย", "ไว้คุยกันใหม่", "แล้วคุยกันใหม่"]),
+    ("th", &["บ๊ายบาย", "บายบาย", "ไว้คุยกันใหม่", "แล้วคุยกันใหม่", "แล้วพบกันใหม่", "พบกันใหม่", "ไปก่อนนะ", "วางสายนะ"]),
     ("vi", &["tạm biệt", "tam biet", "hẹn gặp lại", "hen gap lai", "chào nhé", "chao nhe"]),
     ("id", &["sampai jumpa", "sampai ketemu", "dadah"]),
     ("it", &[
-        "arrivederci", "arrivederla", "buona giornata", "buona serata", "buona continuazione", "a presto",
-        "ci sentiamo", "ciao ciao",
+        "arrivederci", "arrivederla", "buona giornata", "buongiornata", "buona serata", "buonanotte",
+        "buona continuazione", "grazie a lei", "stammi bene", "stia bene", "a presto", "a domani",
+        "ci vediamo", "ci sentiamo", "ciao ciao",
     ]),
     ("ru", &[
         "до свидания", "до свиданья", "всего доброго", "всего хорошего", "хорошего дня", "хорошего вечера",
@@ -537,23 +552,38 @@ const FAREWELLS: Lexicon = &[
         "अलविदा", "फिर मिलेंगे", "फिर मिलते हैं", "फिर बात करते हैं", "बाद में बात करते हैं",
         "आपका दिन शुभ हो", "बाय बाय",
     ]),
+    ("nl", &["tot ziens", "tot spreeks", "doei", "dag hoor", "fijne dag nog", "fijne avond"]),
+    ("pl", &["do widzenia", "na razie", "do usłyszenia", "do uslyszenia", "dobrego dnia", "miłego dnia", "milego dnia"]),
+    ("ro", &["la revedere", "pa pa", "o zi bună", "o zi buna", "toate cele bune", "pe curând", "pe curand"]),
+    ("uk", &["до побачення", "на все добре", "гарного дня", "бувайте", "до зустрічі", "до зв'язку"]),
+    ("bn", &["বিদায়", "আল্লাহ হাফেজ", "ভালো থাকবেন", "আবার কথা হবে", "রাখছি তাহলে", "শুভ দিন"]),
+    ("mr", &["नमस्कार पुन्हा बोलू", "काळजी घ्या", "शुभ दिवस", "आता ठेवतो", "बाय बाय"]),
+    ("ta", &["வருகிறேன்", "பை பை", "பிறகு பேசலாம்", "நல்ல நாள்", "கவனமாக இருங்கள்"]),
+    ("te", &["వస్తాను", "బై బై", "మళ్ళీ మాట్లాడుదాం", "శుభ దినం", "జాగ్రత్త"]),
 ];
 
 /// Greetings that also say goodbye: farewells only once the business is done
 /// ([`ClosingMachine::greeting_bye_counts`]).
 const GREETING_BYES: Lexicon = &[
     ("ja", &["失礼いたします", "失礼致します", "失礼します"]),
-    ("ko", &["수고하십니다", "수고하셨습니다"]),
+    ("ko", &["수고하십니다", "수고하셨습니다", "안녕"]),
     ("th", &["สวัสดีค่ะ", "สวัสดีครับ", "สวัสดี"]),
     ("vi", &["chào anh ạ", "chào chị ạ", "chào anh", "chào chị", "chào em", "chào bạn", "chao anh"]),
     ("id", &["selamat siang", "selamat pagi", "selamat sore", "selamat malam"]),
     ("it", &["ciao"]),
     ("de", &["servus"]),
     ("fr", &["salut", "bonsoir"]),
-    ("es", &["buenas noches", "buenas tardes"]),
+    ("es", &["buenas noches", "buenas tardes", "buen día", "buen dia", "buenos días", "buenos dias"]),
     ("pt", &["boa noite", "boa tarde"]),
     ("ru", &["пока"]),
     ("hi", &["नमस्ते", "नमस्कार"]),
+    ("nl", &["goedendag", "dag"]),
+    ("pl", &["cześć", "czesc"]),
+    ("ro", &["bună ziua", "buna ziua"]),
+    ("uk", &["бувай", "па па"]),
+    ("mr", &["नमस्कार"]),
+    ("ta", &["வணக்கம்"]),
+    ("te", &["నమస్కారం"]),
 ];
 
 /// How calls are answered and opened; never a goodbye by themselves.
@@ -577,7 +607,7 @@ const BACKCHANNELS: Lexicon = &[
         "ok la", "okay lah",
     ]),
     ("ja", &["はい", "はいはい", "ええ", "なるほど", "そうですね", "うん", "うんうん", "そうそう", "はーい"]),
-    ("ko", &["네", "네네", "예", "어", "응", "맞아요", "그렇죠", "네에"]),
+    ("ko", &["네", "네네", "예", "어", "응", "맞아요", "그렇죠", "네에", "그래요", "네알겠습니다", "알겠습니다"]),
     ("en", &[
         "uh huh", "mhm", "mm", "hmm", "right", "gotcha", "yeah", "yep", "yes", "okay", "ok", "sure", "i see",
         "got it",
@@ -586,9 +616,9 @@ const BACKCHANNELS: Lexicon = &[
     ("fr", &["d'accord", "tout à fait", "tout a fait", "oui", "ouais", "entendu", "bien sûr"]),
     ("de", &["genau", "alles klar", "ja", "jawohl", "stimmt"]),
     ("pt", &["entendi", "tá bom", "ta bom", "tá", "pois", "pois é", "sim", "uhum", "certo", "beleza"]),
-    ("it", &["va bene", "d'accordo", "capito", "certo", "perfetto"]),
-    ("th", &["ค่ะ", "ครับ", "อืม", "ใช่"]),
-    ("vi", &["vâng", "dạ", "ừ", "ờ", "dạ vâng"]),
+    ("it", &["va bene", "d'accordo", "capito", "certo", "perfetto", "ok grazie", "sì", "si"]),
+    ("th", &["ค่ะ", "ครับ", "อืม", "ใช่", "โอเคค่ะ", "โอเคครับ", "ได้ค่ะ", "ได้ครับ"]),
+    ("vi", &["vâng", "dạ", "ừ", "ờ", "dạ vâng", "ừ nhé", "u nhe", "vâng ạ", "vang a", "ok nhé", "oke nhé"]),
     ("id", &["iya", "oke"]),
     ("ru", &["да", "ага", "понятно", "хорошо", "ладно"]),
     ("ar", &["نعم", "أيوه", "أيوة", "تمام", "طيب"]),
@@ -660,7 +690,7 @@ const JA_PARTICLES: &[&str] = &["よね", "ねー", "ね", "よ"];
 const TAIL_WORDS: &[&str] = &[
     "mate", "then", "now", "too", "again", "dear", "sir", "madam", "ma'am", "anh", "chị", "chi", "em", "ạ",
     "pak", "bu", "bapak", "ibu", "kak", "señor", "señora", "senhor", "senhora", "monsieur", "madame",
-    "signore", "signora", "mucho", "ya", "you", "जी",
+    "signore", "signora", "lei", "mucho", "ya", "you", "जी", "nhé", "nhe",
 ];
 
 /// Only the end of a long window is looked at.
@@ -2034,6 +2064,42 @@ mod p0_p1_multilingual_closing_tests {
             assert_eq!(m.state(), ClosingState::PreClosing);
             assert_eq!(m.on_ai_turn(ai_bye, true, false), ClosingEvent::FarewellsExchanged, "{lang}: {ai_bye}");
             assert!(m.may_hang_up(false), "{lang}");
+        }
+    }
+
+    #[test]
+    fn ambiguous_greetings_and_extended_official_languages_behave_safely() {
+        // TRAP check: KO "안녕" and ES "buen día" only in GREETING_BYES, never FAREWELLS.
+        assert!(!FAREWELLS.iter().any(|(_, list)| list.contains(&"안녕") || list.contains(&"buen día") || list.contains(&"buen dia")));
+        for (lang, opener, cue_bye) in [
+            ("ko", "안녕", "알겠습니다, 감사합니다. 안녕!"),
+            ("es", "Hola, buen día", "Muchas gracias por avisar, buen día."),
+        ] {
+            let mut m1 = ClosingMachine::new(lang);
+            let s1 = m1.on_caller(opener, opener, crate::locale::caller_wraps_up(opener), false);
+            assert!(!s1.ends_call, "Turn 1 {opener:?} must not close");
+            m1.on_caller("Tengo un paquete para entregar", "Tengo un paquete para entregar", false, false);
+            let s2 = m1.on_caller(cue_bye, cue_bye, false, false);
+            assert!(s2.ends_call, "Post-cue {cue_bye:?} should close");
+        }
+
+        // nl/pl/ro/uk/bn/mr/ta/te + it/th farewells close cleanly after substance.
+        for (lang, bye) in [
+            ("nl", "Bedankt, tot ziens!"),
+            ("pl", "Dziękuję, do widzenia!"),
+            ("ro", "Mulțumesc, la revedere!"),
+            ("uk", "Дякую, до побачення!"),
+            ("bn", "ধন্যবাদ, বিদায়!"),
+            ("mr", "धन्यवाद, बाय बाय!"),
+            ("ta", "நன்றி, வருகிறேன்!"),
+            ("te", "ధన్యవాదాలు, వస్తాను!"),
+            ("it", "Perfetto, buongiornata!"),
+            ("th", "ขอบคุณค่ะ แล้วพบกันใหม่นะคะ"),
+        ] {
+            let mut m = ClosingMachine::new(lang);
+            m.on_caller("Parcel delivery info", "Parcel delivery info", false, false);
+            let step = m.on_caller(bye, bye, false, false);
+            assert!(step.ends_call, "{lang}: {bye:?} did not close");
         }
     }
 }

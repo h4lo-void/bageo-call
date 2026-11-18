@@ -335,40 +335,47 @@ fn compact(text: &str) -> String {
 /// "đầu tư" and "dau tu" read the same. Other scripts are left as they are.
 fn fold_accents(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
-    for c in text.chars().flat_map(char::to_lowercase) {
-        let base = match c {
-            // A combining mark only after a Latin letter (Cyrillic й is и + a mark).
-            '\u{0300}'..='\u{036F}' if out.chars().next_back().is_some_and(|p| p.is_ascii_alphabetic()) => continue,
-            'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'ā' | 'ă' | 'ą' | 'ạ' | 'ả' | 'ấ' | 'ầ' | 'ẩ' | 'ẫ' | 'ậ' | 'ắ' | 'ằ' | 'ẳ' | 'ẵ' | 'ặ' => 'a',
-            'ç' | 'ć' | 'č' => 'c',
-            'đ' | 'ď' => 'd',
-            'è' | 'é' | 'ê' | 'ë' | 'ē' | 'ę' | 'ě' | 'ẹ' | 'ẻ' | 'ẽ' | 'ế' | 'ề' | 'ể' | 'ễ' | 'ệ' => 'e',
-            'ğ' => 'g',
-            'ì' | 'í' | 'î' | 'ï' | 'ī' | 'ĩ' | 'ỉ' | 'ị' => 'i',
-            'ł' => 'l',
-            'ñ' | 'ń' | 'ň' => 'n',
-            'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' | 'ō' | 'ơ' | 'ọ' | 'ỏ' | 'ố' | 'ồ' | 'ổ' | 'ỗ' | 'ộ' | 'ớ' | 'ờ' | 'ở' | 'ỡ' | 'ợ' => 'o',
-            'ř' => 'r',
-            'ş' | 'ś' | 'š' => 's',
-            'ť' => 't',
-            'ù' | 'ú' | 'û' | 'ü' | 'ū' | 'ũ' | 'ů' | 'ư' | 'ụ' | 'ủ' | 'ứ' | 'ừ' | 'ử' | 'ữ' | 'ự' => 'u',
-            'ý' | 'ÿ' | 'ỳ' | 'ỵ' | 'ỷ' | 'ỹ' => 'y',
-            'ź' | 'ż' | 'ž' => 'z',
-            'ß' => {
-                out.push_str("ss");
-                continue;
-            }
-            'œ' => {
-                out.push_str("oe");
-                continue;
-            }
-            'æ' => {
-                out.push_str("ae");
-                continue;
-            }
-            _ => c,
+    for raw in text.chars() {
+        let raw = match raw {
+            '\u{FF01}'..='\u{FF5E}' => char::from_u32(raw as u32 - 0xFEE0).unwrap_or(raw),
+            '\u{3000}' => ' ',
+            _ => raw,
         };
-        out.push(base);
+        for c in raw.to_lowercase() {
+            let base = match c {
+                // A combining mark only after a Latin letter (Cyrillic й is и + a mark).
+                '\u{0300}'..='\u{036F}' if out.chars().next_back().is_some_and(|p| p.is_ascii_alphabetic()) => continue,
+                'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'ā' | 'ă' | 'ą' | 'ạ' | 'ả' | 'ấ' | 'ầ' | 'ẩ' | 'ẫ' | 'ậ' | 'ắ' | 'ằ' | 'ẳ' | 'ẵ' | 'ặ' => 'a',
+                'ç' | 'ć' | 'č' => 'c',
+                'đ' | 'ď' => 'd',
+                'è' | 'é' | 'ê' | 'ë' | 'ē' | 'ę' | 'ě' | 'ẹ' | 'ẻ' | 'ẽ' | 'ế' | 'ề' | 'ể' | 'ễ' | 'ệ' => 'e',
+                'ğ' => 'g',
+                'ì' | 'í' | 'î' | 'ï' | 'ī' | 'ĩ' | 'ỉ' | 'ị' => 'i',
+                'ł' => 'l',
+                'ñ' | 'ń' | 'ň' => 'n',
+                'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' | 'ō' | 'ơ' | 'ọ' | 'ỏ' | 'ố' | 'ồ' | 'ổ' | 'ỗ' | 'ộ' | 'ớ' | 'ờ' | 'ở' | 'ỡ' | 'ợ' => 'o',
+                'ř' => 'r',
+                'ş' | 'ś' | 'š' | 'ș' => 's',
+                'ť' | 'ț' | 'ţ' => 't',
+                'ù' | 'ú' | 'û' | 'ü' | 'ū' | 'ũ' | 'ů' | 'ư' | 'ụ' | 'ủ' | 'ứ' | 'ừ' | 'ử' | 'ữ' | 'ự' => 'u',
+                'ý' | 'ÿ' | 'ỳ' | 'ỵ' | 'ỷ' | 'ỹ' => 'y',
+                'ź' | 'ż' | 'ž' => 'z',
+                'ß' => {
+                    out.push_str("ss");
+                    continue;
+                }
+                'œ' => {
+                    out.push_str("oe");
+                    continue;
+                }
+                'æ' => {
+                    out.push_str("ae");
+                    continue;
+                }
+                _ => c,
+            };
+            out.push(base);
+        }
     }
     out
 }
@@ -918,6 +925,12 @@ pub fn merge_countries(db: &mut ScamDb, json: &str) -> Result<(), String> {
                 }
                 let kw = Keyword::new(&cleaned, rf.weight, &s.typology, rf.hard, &s.lang, mode);
                 if let Some(&idx) = db.by_text.get(&(kw.lang.clone(), kw.text.clone())) {
+                    if rf.hard && typ_hard && db.keywords[idx].typology != s.typology {
+                        return Err(format!(
+                            "{}: hard red_flag {:?} conflicts with typology {}",
+                            s.id, rf.text, db.keywords[idx].typology
+                        ));
+                    }
                     if rf.weight > db.keywords[idx].weight {
                         db.keywords[idx].weight = rf.weight;
                     }
@@ -1251,7 +1264,26 @@ pub fn typology_for_hits(hits: &[&str]) -> Option<&'static str> {
 /// dossier", 折り返し, 민원, "seu pedido"): one of them alone is no proof of a
 /// follow-up on the owner's own matter; two different ones, or any other
 /// own-matter phrase, are.
-const WEAK_OWN_MATTER: &[&str] = &["折り返し", "민원", "votre dossier", "seu pedido", "your claim"];
+const WEAK_OWN_MATTER: &[&str] = &[
+    "折り返し",
+    "민원",
+    "votre dossier",
+    "seu pedido",
+    "your claim",
+    "您申請的",
+    "你申請的",
+    "調查結果",
+    "調查的結果",
+    "your request",
+    "su solicitud",
+    "votre demande",
+    "ihr anliegen",
+    "ihrem anliegen",
+    "ihres anliegens",
+    "sua solicitação",
+    "la sua richiesta",
+    "la sua pratica",
+];
 
 /// The caller follows up on something the owner raised (a complaint, a repair,
 /// an application): never a pitch, in any language of the database — unless the
@@ -1814,9 +1846,10 @@ mod tests {
     use super::*;
     use crate::locale::Lang;
 
-    /// The 19 languages the database covers.
-    const LANGS: [&str; 19] = [
+    /// The 27 languages the database covers.
+    const LANGS: [&str; 27] = [
         "zh-TW", "zh-CN", "en", "es", "fr", "de", "pt", "it", "vi", "id", "ms", "tl", "tr", "ru", "ja", "ko", "hi", "ar", "th",
+        "nl", "pl", "ro", "uk", "bn", "mr", "ta", "te",
     ];
 
     fn temp_dir(tag: &str) -> PathBuf {
@@ -1863,7 +1896,7 @@ mod tests {
     fn country_scam_database_merges_self_matches_and_protects_normal_calls() {
         let mut parsed = parse(BUILTIN).expect("data/scam_db.json");
         merge_countries(&mut parsed, BUILTIN_COUNTRIES).expect("data/country_scams.json");
-        let expected_isos = ["tw", "cn", "us", "gb", "jp", "kr", "de", "es", "fr", "br", "pt", "id"];
+        let expected_isos = ["tw", "cn", "us", "gb", "jp", "kr", "de", "es", "fr", "br", "pt", "id", "it", "in"];
         for iso in expected_isos {
             assert!(parsed.countries.contains_key(iso), "missing country profile: {iso}");
         }
@@ -2649,5 +2682,68 @@ mod tests {
         let custom_en = local.keywords.iter().find(|k| k.lang == "en" && k.text == "custom keyword").unwrap();
         assert_eq!((custom_en.weight, custom_en.typology.as_str(), custom_en.hard), (2, "fake_official", true));
         assert!(local.keywords.iter().any(|k| k.lang == "es" && k.text == "custom keyword"));
+    }
+
+    #[test]
+    fn fullwidth_folding_cross_typology_conflict_soft_advance_fee_and_extended_languages_work() {
+        // N-L23: fullwidth ASCII folds into plain ASCII words.
+        assert_eq!(fold_accents("ＡＴＭ　ＯＴＰ"), "atm otp");
+        assert!(has_hard_hit("Please tell me your ＯＴＰ right now"));
+
+        // NL15: hard red_flag in country_scams colliding with a different typology errors.
+        let mut base = parse(BUILTIN).unwrap();
+        let conflict_json = r#"{
+            "countries": {
+                "XX": {
+                    "name": "Test",
+                    "iso": "xx",
+                    "calling_code": "+99",
+                    "languages": ["en"],
+                    "scams": [{
+                        "id": "xx_conflict",
+                        "typology": "otp_theft",
+                        "name": "Test conflict",
+                        "name_en": "Test conflict",
+                        "prevalence": "high",
+                        "lang": "en",
+                        "red_flag_keywords": [{"text": "install anydesk", "weight": 2, "hard": true}],
+                        "signals_en": "Asks to install remote desktop.",
+                        "legit_en": "Ordinary call."
+                    }]
+                }
+            }
+        }"#;
+        let err = merge_countries(&mut base, conflict_json).unwrap_err();
+        assert!(err.contains("conflicts with typology"), "{err}");
+
+        // N1: soft advance-fee loan openers do not bypass detection, while real complaints stay protected.
+        for scam_opener in [
+            "您申請的信貸已通過，先付保證金美化帳戶",
+            "Llamo por su solicitud de préstamo preaprobado, pague por adelantado",
+            "Nous appelons au sujet de votre demande de financement, payez les frais",
+        ] {
+            assert!(!own_matter(scam_opener), "soft scam opener must not bypass: {scam_opener}");
+        }
+        for genuine in [
+            "Llamo por su reclamación de la semana pasada",
+            "關於您反映的客訴問題已經處理完成",
+        ] {
+            assert!(own_matter(genuine), "real follow-up must stay protected: {genuine}");
+        }
+
+        // N2: extended official Live languages detect hard scams and protect own_matter.
+        for (lang, hard_phrase, genuine) in [
+            ("nl", "Maak uw geld over naar een veilige rekening", "Wij bellen terug over uw klacht van gisteren"),
+            ("pl", "Proszę przelać środki na bezpieczne konto prokuratury", "Dzwonimy w sprawie pani reklamacja jest gotowa"),
+            ("ro", "Transferați banii într-un cont sigur și spuneți codul", "Vă sunăm pentru reclamația dumneavoastră rezolvată"),
+            ("uk", "Терміново перекажіть кошти на безпечний рахунок", "Телефонуємо щодо ваше звернення вже опрацьовано"),
+            ("bn", "আপনি ডিজিটাল অ্যারেস্ট হয়েছেন এখনই সেফ অ্যাকাউন্ট পাঠান", "আপনার অভিযোগ যাচাই করে আমরা কল করছি"),
+            ("mr", "तुम्ही डिजिटल अरेस्ट मध्ये आहात तुमचा ओटीपी कोड सांगा", "तुमची तक्रार सोडवण्यात आली आहे"),
+            ("ta", "உங்கள் மீது டிஜிட்டல் கைது உள்ளது ஓடிபி எண் சொல்லுங்கள்", "உங்கள் புகார் குறித்து பேசுகிறோம்"),
+            ("te", "మీపై డిజిటల్ అరెస్ట్ ఉంది వెంటనే ఓటీపీ కోడ్ చెప్పండి", "మీ ఫిర్యాదు పరిష్కరించబడింది"),
+        ] {
+            assert!(has_hard_hit(hard_phrase), "{lang}: expected hard hit on {hard_phrase}");
+            assert!(own_matter(genuine), "{lang}: expected own_matter on {genuine}");
+        }
     }
 }

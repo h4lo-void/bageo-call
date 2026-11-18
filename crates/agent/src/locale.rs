@@ -2258,6 +2258,21 @@ const EXTRA_WORD_FAREWELLS: &[&str] = &[
     // (also in Latin letters, as speech-to-text writes it at times).
     "अलविदा", "फिर मिलेंगे", "फिर मिलते हैं", "फिर बात करते हैं", "बाद में बात करते हैं",
     "आपका दिन शुभ हो", "बाय बाय", "alvida", "phir milenge", "phir milte hain",
+    // Italian / Spanish / French / German / Korean / Cantonese additions
+    "arrivederci", "arrivederla", "buona giornata", "buongiornata", "buonanotte", "grazie a lei",
+    "stammi bene", "stia bene", "a domani", "ci vediamo",
+    "que le vaya bien", "que te vaya bien", "que tenga buen día", "que tengas buen día",
+    "je raccroche", "bonne continuation", "gute nacht",
+    "잘 가", "잘 가요", "끊을게", "끊을게요", "得閒再傾", "得闲再倾", "收線啦", "收线啦",
+    // Dutch / Polish / Romanian / Ukrainian / Bengali / Marathi / Tamil / Telugu
+    "tot ziens", "tot spreeks", "doei", "fijne dag nog",
+    "do widzenia", "na razie", "do usłyszenia", "do uslyszenia", "miłego dnia", "milego dnia",
+    "la revedere", "o zi bună", "o zi buna", "toate cele bune", "pe curând", "pe curand",
+    "до побачення", "на все добре", "гарного дня", "бувайте", "до зустрічі",
+    "বিদায়", "আল্লাহ হাফেজ", "ভালো থাকবেন", "আবার কথা হবে", "শুভ দিন",
+    "नमस्कार पुन्हा बोलू", "काळजी घ्या", "शुभ दिवस", "आता ठेवतो", "बाय बाय",
+    "வருகிறேன்", "பை பை", "பிறகு பேசலாம்", "நல்ல நாள்",
+    "వస్తాను", "బై బై", "మళ్ళీ మాట్లాడుదాం", "శుభ దినం",
 ];
 
 /// A goodbye that also opens calls: "chào anh", "selamat pagi", "sawasdee ka".
@@ -2340,6 +2355,20 @@ const GREETING_BYES: &[GreetingBye] = &[
             "shukriya",
         ],
     },
+    // Korean casual "안녕" / Spanish "buen día": only counts as farewell after a closing cue.
+    GreetingBye {
+        heads: &["안녕", "buen día", "buen dia"],
+        tail: &[],
+        closing_tail: &[],
+        cues: &["감사합니다", "고마워요", "알겠습니다", "gracias", "ok", "okay", "thanks", "thank you"],
+    },
+    // Tamil / Telugu polite greeting-farewells.
+    GreetingBye {
+        heads: &["வணக்கம்", "నమస్కారం"],
+        tail: &[],
+        closing_tail: &[],
+        cues: &["நன்றி", "సరే", "ధన్యవాదాలు", "ok", "okay", "thanks", "thank you"],
+    },
 ];
 
 impl GreetingBye {
@@ -2398,7 +2427,8 @@ fn has_cue(ws: &[String], cue: &str) -> bool {
 const TH_FAREWELLS: &[&str] = &[
     "ลาก่อน", "บ๊ายบาย", "บายบาย", "บ๊ายบ๊าย",
     // "Talk again later", "that's all for now".
-    "ไว้คุยกันใหม่", "ไว้ค่อยคุยกัน", "แค่นี้ก่อน", "แล้วคุยกันใหม่", "แล้วค่อยคุยกัน",
+    "ไว้คุยกันใหม่", "ไว้ค่อยคุยกัน", "แค่นี้ก่อน", "แค่นี้นะ", "วางสายนะ", "แล้วคุยกันใหม่", "แล้วค่อยคุยกัน",
+    "แล้วพบกันใหม่", "พบกันใหม่",
     // "Good luck", "have a good day": how the AI's own Thai calls end.
     "โชคดี", "ขอให้มีวันที่ดี",
 ];
@@ -3098,8 +3128,18 @@ mod tests {
         ] {
             assert!(ends_with_farewell(s, 0), "expected farewell: {s}");
         }
-        for open in ["Hola, buen día, hablo del banco.", "Olá, bom dia, tudo bem?"] {
+        for open in ["Hola, buen día, hablo del banco.", "Olá, bom dia, tudo bem?", "안녕!"] {
             assert!(!ends_with_farewell(open, 2), "greeting must not match farewell: {open}");
         }
+        assert!(ends_with_farewell("Grazie mille, buongiornata!", 0));
+        assert!(ends_with_farewell("감사합니다, 안녕!", 0));
+        assert!(ends_with_farewell("ขอบคุณค่ะ แล้วพบกันใหม่นะคะ", 0));
+        assert!(ends_with_farewell("Bedankt, tot ziens!", 0));
+        assert!(ends_with_farewell("Dziękuję, do widzenia!", 0));
+        assert!(ends_with_farewell("Mulțumesc, la revedere!", 0));
+        assert!(ends_with_farewell("Дякую, до побачення!", 0));
+        assert!(ends_with_farewell("ধন্যবাদ, বিদায়!", 0));
+        assert!(ends_with_farewell("நன்றி, வருகிறேன்!", 0));
+        assert!(ends_with_farewell("ధన్యవాదాలు, వస్తాను!", 0));
     }
 }

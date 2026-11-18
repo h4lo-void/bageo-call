@@ -112,6 +112,8 @@ const NANP_AREAS: &[(&str, &[&str])] = &[
 
 /// Fewer digits after the country code: a service or garbled number.
 const MIN_NATIONAL_DIGITS: usize = 4;
+/// Unplussed domestic numbers shorter than this are carrier short codes (e.g. 165, 1999, 55688).
+const MIN_DOMESTIC_NATIONAL_DIGITS: usize = 7;
 /// E.164 numbers have at most 15 digits.
 const MAX_DIGITS: usize = 15;
 
@@ -411,7 +413,17 @@ pub fn normalize(caller_id: &str, region: Option<&str>) -> Option<CallerNumber> 
             (code, national_number(code, &iso, &digits))
         }
     };
-    if national.len() < MIN_NATIONAL_DIGITS || code.len() + national.len() > MAX_DIGITS {
+    let min_digits = if international.is_some() {
+        MIN_NATIONAL_DIGITS
+    } else if matches!(
+        region.map(|r| r.trim().to_ascii_lowercase()).as_deref(),
+        Some("ad" | "sm" | "gl" | "fo")
+    ) {
+        6
+    } else {
+        MIN_DOMESTIC_NATIONAL_DIGITS
+    };
+    if national.len() < min_digits || code.len() + national.len() > MAX_DIGITS {
         return None;
     }
     Some(CallerNumber {
@@ -535,11 +547,14 @@ mod tests {
     #[test]
     fn hidden_short_and_unplaceable_numbers_have_no_country() {
         for caller in [
-            "", "  ", "unknown", "Private", "anonymous", "-2", "+12", "+1202", "165", "+999123456",
+            "", "  ", "unknown", "Private", "anonymous", "-2", "+12", "+1202", "165", "1234", "1999", "55688", "+999123456",
             "+80012345678", "+1 202 555 0143 0000 0000",
         ] {
             assert_eq!(normalize(caller, Some("tw")), None, "{caller}");
         }
+        assert_eq!(normalize("411", Some("us")), None);
+        assert_eq!(normalize("123456", Some("us")), None);
+        assert!(normalize("+8861234", None).is_some());
         // A national number without a region, or a region nobody knows.
         assert_eq!(normalize("0912345678", None), None);
         assert_eq!(normalize("0912345678", Some("zz")), None);

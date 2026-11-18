@@ -188,13 +188,17 @@ const ES: Cues = Cues {
         "algo muy grave", "algo grave", "se cayo todo", "se cayo el sistema", "se cayo el servidor", "colapso el sistema", "sistema caido", "servidor caido",
         "produccion parada", "produccion esta parada", "accidente laboral", "accidente en la fabrica", "accidente en la planta", "herido en el trabajo",
         "llamaron del colegio", "llamaron de la escuela", "se rompio", "se golpeo la cabeza", "se lastimo", "se hizo dano",
+        "emergencia medica", "llamaron de urgencias", "esta en el hospital", "lo llevaron al hospital", "la llevaron al hospital",
+        "tuvo un infarto", "paro cardiaco", "esta inconsciente", "se quema la casa", "fuego en la cocina", "robo en casa",
+        "nos atracaron", "se ha perdido", "no aparece", "sufrio un accidente", "tuvo una caida", "se cayo por las escaleras",
+        "ictus", "embolia", "convulsionando",
     ],
-    urge: &["emergencia", "es urgente", "muy urgente", "urgentemente", "auxilio", "socorro", "te necesito ahora", "te necesito ya", "ven ahora mismo", "vente ya"],
+    urge: &["emergencia", "es una emergencia", "caso de emergencia", "es urgente", "muy urgente", "urgentemente", "auxilio", "socorro", "por favor ayuda", "te necesito ahora", "te necesito ya", "ven ahora mismo", "vente ya", "ven ya", "ven rapido", "venga rapido"],
     ask: &[
-        "dile que", "digale que", "que venga", "que se venga", "comuniquelo", "pasamelo", "pasemelo", "que me llame", "necesito hablar con el",
+        "dile que", "digale que", "dile por favor que", "que venga", "que se venga", "comuniquelo", "pasamelo", "pasemelo", "pasame con el", "paseme con el", "que me llame", "necesito hablar", "necesito hablar con el",
         "te necesito", "necesito que vengas", "necesito hablar contigo", "ven a", "vente",
     ],
-    at_once: &["ahora mismo", "ya", "enseguida", "inmediatamente", "urgente"],
+    at_once: &["ahora mismo", "ahora", "ya", "enseguida", "inmediatamente", "urgente"],
     calm: &[
         "no es urgente", "no es una emergencia", "nada urgente", "no hay prisa", "sin prisa", "no corre prisa", "cuando puedas", "cuando tengas tiempo", "cuando pueda",
         "noticias", "simulacro", "alarma de incendio", "falsa alarma", "pelicula", "novela", "es broma", "jaja", "me muero de hambre",
@@ -254,14 +258,16 @@ const DE: Cues = Cues {
         "was schlimmes passiert", "etwas schlimmes passiert", "ist was passiert",
         "system ausgefallen", "system ist ausgefallen", "system abgesturzt", "system ist abgesturzt", "server ausgefallen", "server abgesturzt",
         "server ist down", "system ist down", "produktion steht", "arbeitsunfall", "betriebsunfall", "unfall in der fabrik", "unfall im werk", "bei der arbeit verletzt",
-        "schule hat angerufen", "verletzt", "gebrochen",
+        "schule hat angerufen", "verletzt", "schwer verletzt", "gebrochen",
+        "ist im krankenhaus", "ins krankenhaus", "krankenwagen gerufen", "notruf gewahlt", "notarzt kommt", "bewusstsein verloren",
+        "herzstillstand", "treppe heruntergefallen", "treppe gesturzt", "ist gesturzt", "schwerer sturz", "gas ausgetreten", "wohnungsbrand", "brand ausgebrochen", "hat einen unfall",
     ],
-    urge: &["notfall", "es ist dringend", "sehr dringend", "dringend sprechen", "dringend erreichen", "brauche dich sofort", "brauche dich jetzt", "komm sofort"],
+    urge: &["notfall", "ist ein notfall", "es ist dringend", "sehr dringend", "ganz dringend", "dringend sprechen", "dringend erreichen", "brauche dich sofort", "brauche dich jetzt", "komm sofort", "bitte sofort kommen", "hilfe", "ich brauche hilfe", "wir brauchen hilfe"],
     ask: &[
-        "muss ihn", "muss mit ihm", "verbinden sie mich", "holen sie ihn", "sag ihm er soll", "sagen sie ihm er soll", "er soll", "er muss",
+        "muss ihn", "muss mit ihm", "ich muss mit ihm sprechen", "verbinden sie mich", "holen sie ihn", "geben sie mir bitte", "sag ihm er soll", "sagen sie ihm er soll", "sag ihm bescheid", "er soll", "er muss",
         "brauche dich", "muss dich", "du musst", "komm bitte", "kommen sie",
     ],
-    at_once: &["sofort", "jetzt", "dringend"],
+    at_once: &["sofort", "schnell", "jetzt", "dringend"],
     calm: &[
         "nicht dringend", "kein notfall", "nichts dringendes", "keine eile", "eilt nicht", "wenn du zeit hast", "wenn sie zeit haben", "in ruhe",
         "nachrichten", "ubung", "probealarm", "feueralarm", "fehlalarm", "film", "serie", "spass", "sterbe vor hunger",
@@ -285,11 +291,13 @@ const PT: Cues = Cues {
         "coisa seria", "coisa grave", "algo grave", "caiu inteiro", "caiu tudo", "sistema caiu", "sistema travou", "servidor caiu", "producao parou", "fora do ar",
         "acidente de trabalho", "acidente na fabrica", "machucou no trabalho", "ferido no trabalho",
         "a escola ligou", "ligaram da escola", "quebrou o braco", "quebrou a perna", "se machucou", "bateu a cabeca",
+        "chamem a policia", "liguei pra policia", "chama a ambulancia", "chamamos a ambulancia", "esta no hospital", "ta no hospital",
+        "foi pro hospital", "levado ao hospital", "levada ao hospital", "caiu da escada", "queda grave", "emergencia medica", "derrame", "convulsao",
     ],
-    urge: &["emergencia", "e urgente", "muito urgente", "urgencia", "socorro", "preciso de voce agora", "preciso muito de voce", "vem agora", "venha agora"],
+    urge: &["emergencia", "e urgente", "muito urgente", "urgencia", "socorro", "por favor me ajuda", "e caso de vida ou morte", "preciso de voce agora", "preciso muito de voce", "precisamos de voce agora", "vem agora", "venha agora"],
     ask: &[
-        "fala pra ele", "diz pra ele", "diga a ele", "pede pra ele", "preciso falar com ele", "chama ele",
-        "preciso de voce", "preciso falar com voce", "vem pra ca", "venha", "precisa vir",
+        "fala pra ele", "diz pra ele", "diga a ele", "pede pra ele", "preciso falar com ele", "chama ele", "chama ele agora", "passa pra ele",
+        "me liga", "liga pra mim", "preciso de voce", "preciso falar com voce", "vem pra ca", "venha", "precisa vir",
     ],
     at_once: &["agora mesmo", "ja", "urgente", "imediatamente", "agora"],
     calm: &[
@@ -444,9 +452,10 @@ const HI: Cues = Cues {
         "पासपोर्ट चोरी", "बटुआ चोरी", "पर्स चोरी", "वापस आने का रास्ता नहीं",
         "बहुत बड़ी मुसीबत", "कुछ बुरा हुआ", "सिस्टम क्रैश", "सर्वर डाउन", "सर्वर बंद", "प्रोडक्शन रुक",
         "काम पर हादसा", "फैक्ट्री में हादसा", "स्कूल से फोन", "सिर में चोट", "हाथ टूट गया", "चोट लग गई",
+        "अस्पताल में है", "अस्पताल गए हैं", "खून बह रहा", "सीढ़ियों से गिर", "हड्डी टूट", "पुलिस बुलाओ",
     ],
-    urge: &["इमरजेंसी है", "बहुत जरूरी है", "बहुत ज़रूरी है", "तुरंत आओ", "तुरंत आइए", "अभी आओ", "अभी आइए", "बचाओ", "मदद करो"],
-    ask: &["बात करा दीजिए", "उनसे कहिए", "उन्हें बता दीजिए", "अभी आना", "घर आओ", "यहाँ आओ"],
+    urge: &["इमरजेंसी है", "बहुत जरूरी है", "बहुत ज़रूरी है", "तुरंत आओ", "तुरंत आइए", "अभी आओ", "अभी आइए", "जल्दी आओ", "बचाओ", "मदद करो", "मेरी मदद करो"],
+    ask: &["बात करा दीजिए", "उनसे कहिए", "उन्हें बता दीजिए", "अभी घर आओ", "अभी आना", "घर आओ", "यहाँ आओ"],
     at_once: &["तुरंत", "अभी", "फौरन", "फ़ौरन"],
     calm: &[
         "जल्दी नहीं", "जरूरी नहीं", "ज़रूरी नहीं", "कोई जल्दी नहीं", "आराम से", "फुर्सत में", "जब समय मिले",
@@ -470,10 +479,11 @@ const AR: Cues = Cues {
         "انسرق جواز سفري", "انسرقت محفظتي", "ضاع جوازي", "ما عندي طريقه ارجع",
         "مصيبه في البيت", "شيء خطير", "النظام تعطل", "السيرفر طاح", "السيرفر متوقف", "توقف الانتاج",
         "اصابه عمل", "حادث في المصنع", "المدرسه اتصلت", "اتصلوا من المدرسه", "انكسرت يده", "انكسرت يدها", "انضرب في راسه",
+        "ينزف", "سكته", "اختفي", "احترق",
     ],
-    urge: &["طوارئ", "حاله طارئه", "امر عاجل", "عاجل جدا", "النجده", "ساعدوني", "نحتاجك فورا", "تعال فورا", "ارجع فورا"],
-    ask: &["اعطني اياه", "قل له", "اطلب منه", "احتاج اكلمه", "تعال", "ارجع للبيت"],
-    at_once: &["فورا", "الان", "حالا"],
+    urge: &["طوارئ", "حاله طارئه", "امر عاجل", "عاجل جدا", "النجده", "ساعدوني", "ساعدني", "الحقوني", "اسعفوني", "نحتاجك فورا", "تعال فورا", "ارجع فورا", "لازم ترجع"],
+    ask: &["اعطني اياه", "قل له", "اطلب منه", "احتاج اكلمه", "ابغى اكلمه", "عايز اكلمه", "محتاج اكلمه", "اتصل بي فورا", "كلمني", "تعال", "ارجع للبيت"],
+    at_once: &["فورا", "الان", "حالا", "بسرعه"],
     calm: &[
         "ليس عاجل", "مش مستعجل", "مو مستعجل", "لا تستعجل", "على مهلك", "متي ما فضيت",
         "الاخبار", "تدريب", "بروفه", "انذار كاذب", "فيلم", "امزح", "نكته", "اموت من الجوع", "ميت من الجوع",
@@ -483,8 +493,218 @@ const AR: Cues = Cues {
     now: &["للتو", "قبل قليل", "الان", "فورا"],
 };
 
-const ALL_CUES: [&Cues; 15] = [
-    &ZH, &JA, &KO, &EN, &ES, &FR, &DE, &PT, &IT, &RU, &ID, &TH, &VI, &HI, &AR,
+const NL: Cues = Cues {
+    events: &[
+        "flauwgevallen", "bewusteloos", "ambulance", "spoedeisende hulp", "eerste hulp", "naar het ziekenhuis", "in het ziekenhuis",
+        "ziekenhuis gebracht", "opgenomen in het ziekenhuis", "intensive care", "hartaanval", "beroerte", "ademt niet",
+        "auto ongeluk", "verkeersongeluk", "ongeluk gehad", "aangereden", "geopereerd", "wordt geopereerd",
+        "brand", "staat in brand", "brandweer", "gaslek", "gaslucht", "ruikt naar gas", "overstroming", "onder water", "explosie",
+        "vermist", "verdwenen", "kind is kwijt", "niet thuisgekomen", "verdwaald",
+        "overleden", "gestorven", "doodgaan", "ligt op sterven", "kritiek", "kritieke toestand",
+        "ingebroken", "inbraak", "overvallen", "beroving", "beroofd", "politie gebeld", "politie ingeschakeld",
+        "vast in de lift", "opgesloten in de lift", "zit vast", "zitten vast", "verdwaald in",
+        "paspoort gestolen", "portemonnee gestolen", "paspoort kwijt", "kan niet naar huis", "niet terug naar huis",
+        "iets ergs gebeurd", "ergs gebeurd", "systeem ligt plat", "systeem is uitgevallen", "server ligt plat", "server is down",
+        "productie ligt stil", "productie staat stil", "bedrijfsongeval", "arbeidsongeval", "ongeluk op het werk",
+        "school belde", "school heeft gebeld", "hoofd gestoten", "arm gebroken", "been gebroken", "gewond geraakt",
+    ],
+    urge: &["noodgeval", "noodsituatie", "dit is dringend", "heel dringend", "zeer dringend", "spoedgeval", "met spoed", "help me", "bel 112", "kom meteen", "kom onmiddellijk", "nu meteen komen"],
+    ask: &["geef hem", "geef haar", "zeg tegen hem", "zeg tegen haar", "laat hem", "hij moet", "moet hem spreken", "moet haar spreken", "kom naar huis", "kom hier"],
+    at_once: &["meteen", "onmiddellijk", "nu meteen", "dringend", "spoed"],
+    calm: &[
+        "niet dringend", "geen noodgeval", "geen haast", "heeft geen haast", "als je tijd hebt", "wanneer het uitkomt",
+        "nieuws", "oefening", "brandoefening", "ontruimingsoefening", "vals alarm", "brandalarm", "grapje", "film", "serie",
+        "sterf van de honger", "kom om van de honger",
+    ],
+    fine: &["niets ernstigs", "niks ernstigs", "alles goed", "gaat goed", "uit het ziekenhuis", "ontslagen", "alweer beter"],
+    past: &["gisteren", "eergisteren", "vorige week", "vorig jaar", "vorige maand", "jaren geleden", "een jaar geleden", "maanden geleden", "sterfdag", "verjaardag", "herdenking"],
+    now: &["net gebeurd", "zojuist", "daarnet", "nu meteen"],
+};
+
+const PL: Cues = Cues {
+    events: &[
+        "zemdlala", "zemdlal", "stracila przytomnosc", "stracil przytomnosc", "nieprzytomny", "nieprzytomna",
+        "karetka", "pogotowie", "na sor", "do szpitala", "w szpitalu", "ojom", "oiom", "zawal", "udar", "nie oddycha",
+        "wypadek samochodowy", "wypadek drogowy", "mial wypadek", "miala wypadek", "potracony", "potracona", "jest operowany", "jest operowana", "na sali operacyjnej",
+        "pozar", "pali sie", "straz pozarna", "wyciek gazu", "ulatnia sie gaz", "czuc gaz", "powodz", "zalalo", "wybuch", "eksplozja",
+        "zaginal", "zaginela", "zgubil sie", "zgubila sie", "nie wrocil do domu", "nie wrocila do domu", "nie mozemy go znalezc", "nie mozemy jej znalezc",
+        "zmarl", "zmarla", "umarl", "umarla", "umiera", "stan krytyczny", "walczy o zycie",
+        "wlamanie", "wlamali sie", "okradli", "napad", "wezwalismy policje", "wezwalam policje", "policja jest",
+        "utknalem w windzie", "utknelam w windzie", "uwieziony w windzie", "zgubilismy sie", "utknelismy",
+        "ukradli mi paszport", "skradziono paszport", "ukradli portfel", "nie mam jak wrocic",
+        "cos zlego sie stalo", "stalo sie cos zlego", "nieszczescie", "system padl", "serwer padl", "awaria systemu", "produkcja stoi", "produkcja stanela",
+        "wypadek w pracy", "wypadek w fabryce", "szkola dzwonila", "dzwonili ze szkoly", "rozbil glowe", "rozbila glowe", "zlamal reke", "zlamala reke",
+    ],
+    urge: &["sprawa jest pilna", "to pilne", "bardzo pilne", "nagly wypadek", "stan nagly", "ratunku", "pomocy", "potrzebuje cie teraz", "przyjezdzaj natychmiast", "wracaj natychmiast"],
+    ask: &["daj mi go", "przelacz mnie", "powiedz mu", "przekaz mu", "musze z nim porozmawiac", "niech zadzwoni", "wracaj do domu", "przyjedz tu"],
+    at_once: &["natychmiast", "od razu", "zaraz", "teraz", "pilnie"],
+    calm: &[
+        "nic pilnego", "nie jest pilne", "to nie jest pilne", "bez pospiechu", "nie spieszy sie", "kiedy bedziesz mial czas", "kiedy znajdziesz czas", "w wolnej chwili",
+        "wiadomosci", "w wiadomosciach", "cwiczenia", "probny alarm", "falszywy alarm", "film", "serial", "zartuje", "glupie zarty", "umieram z glodu",
+    ],
+    fine: &["nic powaznego", "nic zlego", "wszystko w porzadku", "czuje sie dobrze", "juz w domu", "wyszedl ze szpitala", "wyszla ze szpitala", "wypisany", "wypisana"],
+    past: &["wczoraj", "przedwczoraj", "w zeszlym tygodniu", "w zeszlym roku", "w zeszlym miesiacu", "lata temu", "rok temu", "miesiace temu", "rocznica"],
+    now: &["wlasnie", "przed chwila", "dopiero co", "teraz"],
+};
+
+const RO: Cues = Cues {
+    events: &[
+        "a lesinat", "lesinat", "lesinata", "inconstient", "inconstienta", "ambulanta", "salvarea", "la urgente", "la spital",
+        "dus la spital", "dusa la spital", "internat", "internata", "terapie intensiva", "infarct", "atac de cord", "accident vascular", "nu respira",
+        "accident rutier", "accident de masina", "a avut un accident", "lovit de masina", "lovita de masina", "este in operatie", "il opereaza", "o opereaza",
+        "incendiu", "arde casa", "arde bucataria", "a luat foc", "pompierii", "scurgere de gaz", "miros de gaz", "miroase a gaz", "inundatie", "inundat", "explozie",
+        "a disparut", "disparut", "disparuta", "s a pierdut", "nu il gasim", "nu o gasim", "nu s a intors acasa",
+        "a murit", "a decedat", "tocmai a murit", "e pe moarte", "stare critica",
+        "ne au spart casa", "spargere", "jaf", "talharie", "ne au jefuit", "am sunat la politie", "chemat politia",
+        "blocat in lift", "blocata in lift", "ramas blocat", "rataciti pe munte",
+        "mi au furat pasaportul", "mi am pierdut pasaportul", "furat portofelul", "nu am cum sa ma intorc",
+        "ceva grav", "o nenorocire", "sistemul a picat", "a picat serverul", "serverul e picat", "productia s a oprit", "productia e oprita",
+        "accident de munca", "accident la fabrica", "au sunat de la scoala", "sunat de la scoala", "s a lovit la cap", "si a rupt mana", "si a rupt piciorul",
+    ],
+    urge: &["e o urgenta", "foarte urgent", "mare urgenta", "ajutor", "sariti", "am nevoie de tine acum", "vino imediat", "intoarce te imediat"],
+    ask: &["da mi l", "spune i", "spune i sa", "trebuie sa vorbesc cu el", "sa ma sune", "vino acasa", "vino aici"],
+    at_once: &["imediat", "acum", "chiar acum", "de urgenta", "urgent"],
+    calm: &[
+        "nu e urgent", "nu e o urgenta", "nimic urgent", "fara graba", "nu te grabi", "cand ai timp", "cand poti",
+        "la stiri", "stiri", "exercitiu", "exercitiu de incendiu", "alarma falsa", "alarma de incendiu", "film", "serial", "glumesc", "e o gluma", "mor de foame",
+    ],
+    fine: &["nimic grav", "nu e nimic grav", "sunt bine", "e bine", "a iesit din spital", "externat", "externata", "s a vindecat"],
+    past: &["ieri", "alaltaieri", "saptamana trecuta", "anul trecut", "luna trecuta", "acum cativa ani", "acum un an", "comemorare", "aniversare"],
+    now: &["tocmai", "adineaori", "chiar acum", "abia"],
+};
+
+const UK: Cues = Cues {
+    events: &[
+        "знепритомнів", "знепритомніла", "втратив свідомість", "втратила свідомість", "швидка", "швидка допомога", "в лікарні", "до лікарні", "реанімація",
+        "інсульт", "інфаркт", "серцевий напад", "не дихає",
+        "автокатастрофа", "аварія", "дтп", "потрапив у дтп", "потрапила у дтп", "збила машина", "на операції", "роблять операцію", "оперують",
+        "пожежа", "горить", "пожежники", "рятувальники", "витік газу", "пахне газом", "запах газу", "потоп", "затопило", "вибух",
+        "зник", "зникла", "загубився", "загубилась", "загубилася", "не повернувся додому", "не повернулася додому", "не можемо знайти",
+        "помер", "померла", "щойно помер", "помирає", "у критичному стані", "критичний стан",
+        "пограбували", "обікрали", "грабіж", "злам", "викликали поліцію", "викликав поліцію",
+        "застряг у ліфті", "застрягла у ліфті", "заблоковано у ліфті", "заблукали в горах",
+        "вкрали паспорт", "вкрали гаманець", "загубив паспорт", "не можу повернутися", "немає як повернутися",
+        "сталася біда", "щось страшне", "трапилася біда", "система впала", "сервер впав", "сервер лежить", "виробництво зупинилося",
+        "нещасний випадок на роботі", "травма на заводі", "подзвонили зі школи", "зі школи дзвонили", "вдарився головою", "зламав руку", "зламала руку", "травмувався",
+    ],
+    urge: &["це терміново", "дуже терміново", "надзвичайна ситуація", "рятуйте", "допоможіть", "приїжджай негайно", "повертайся негайно", "ти потрібен зараз"],
+    ask: &["передай йому", "скажи йому", "потрібно поговорити", "нехай подзвонить", "приїжджай додому", "повертайся"],
+    at_once: &["негайно", "терміново", "прямо зараз", "зараз же"],
+    calm: &[
+        "не терміново", "нічого термінового", "немає поспіху", "не поспішай", "коли буде час", "коли зможеш",
+        "у новинах", "новини", "навчання", "навчальна тривога", "пожежна тривога", "хибна тривога", "фільм", "серіал", "жартую", "помираю з голоду", "вмираю з голоду",
+    ],
+    fine: &["нічого серйозного", "все добре", "зі мною все гаразд", "виписали з лікарні", "вже вдома", "одужав", "одужала"],
+    past: &["вчора", "позавчора", "минулого тижня", "минулого року", "торік", "минулого місяця", "років тому", "рік тому", "річниця"],
+    now: &["щойно", "тільки що", "прямо зараз"],
+};
+
+const BN: Cues = Cues {
+    events: &[
+        "অজ্ঞান", "জ্ঞান হারিয়ে", "অ্যাম্বুলেন্স", "এম্বুলেন্স", "হাসপাতালে নিয়ে", "হাসপাতালে ভর্তি", "জরুরি বিভাগে", "আইসিইউ",
+        "হার্ট অ্যাটাক", "স্ট্রোক", "শ্বাস নিচ্ছে না",
+        "গাড়ি দুর্ঘটনা", "সড়ক দুর্ঘটনা", "বড় দুর্ঘটনা", "দুর্ঘটনা ঘটেছে", "দুর্ঘটনায় পড়ে", "অপারেশন চলছে", "অস্ত্রোপচার চলছে",
+        "আগুন লেগেছে", "আগুন ধরেছে", "দমকল", "ফায়ার সার্ভিস", "গ্যাস লিক", "গ্যাসের গন্ধ", "বন্যা", "বিস্ফোরণ",
+        "নিখোঁজ", "হারিয়ে গেছে", "খুঁজে পাচ্ছি না", "বাড়ি ফেরেনি",
+        "মারা গেছেন", "মারা গেছে", "ইন্তেকাল", "আশঙ্কাজনক", "সংকটাপন্ন",
+        "ডাকাতি", "চুরি হয়েছে", "পুলিশ ডেকেছি", "পুলিশে খবর",
+        "লিফটে আটকে", "আটকে গেছি", "আটকা পড়েছি", "পাহাড়ে হারিয়ে",
+        "পাসপোর্ট চুরি", "মানিব্যাগ চুরি", "ফিরতে পারছি না",
+        "বড় বিপদ", "খারাপ কিছু ঘটেছে", "সিস্টেম ক্র্যাশ", "সার্ভার ডাউন", "সার্ভার বন্ধ", "উৎপাদন বন্ধ",
+        "কাজের জায়গায় দুর্ঘটনা", "কারখানায় দুর্ঘটনা", "স্কুল থেকে ফোন", "মাথায় চোট", "মাথায় আঘাত", "হাত ভেঙে",
+    ],
+    urge: &["জরুরি অবস্থা", "খুব জরুরি", "এটা জরুরি", "তাড়াতাড়ি আসুন", "এখনি আসুন", "বাঁচাও", "সাহায্য করুন"],
+    ask: &["তাকে বলুন", "কথা বলিয়ে দিন", "বাড়ি আসুন", "চলে আসুন"],
+    at_once: &["এখনই", "এখনি", "সাথে সাথে", "তক্ষুনি", "অবিলম্বে"],
+    calm: &[
+        "জরুরি নয়", "জরুরি না", "তাড়া নেই", "কোনো তাড়া নেই", "সময়ে হলে",
+        "খবর", "খবরে", "মহড়া", "অগ্নিনির্বাপণ মহড়া", "মিথ্যা অ্যালার্ম", "ভুয়া অ্যালার্ম", "সিনেমা", "মজা করছি", "ঠাট্টা করছি", "খিদেয় মরে যাচ্ছি", "ক্ষুধায় মরে",
+    ],
+    fine: &["গুরুতর কিছু না", "সব ঠিক আছে", "আমি ঠিক আছি", "ভালো আছে", "হাসপাতাল থেকে ছাড়া", "সুস্থ হয়ে গেছে"],
+    past: &["গতকাল", "গত সপ্তাহে", "গত বছর", "গত মাসে", "অনেক বছর আগে", "এক বছর আগে", "মৃত্যুবার্ষিকী", "বার্ষিকী"],
+    now: &["এইমাত্র", "এখনই", "এখনি", "কিছুক্ষণ আগে"],
+};
+
+const MR: Cues = Cues {
+    events: &[
+        "बेशुद्ध", "शुद्ध हरपली", "अ\u{0945}म्ब्युलन्स", "अॅम्ब्युलन्स", "रुग्णवाहिका", "इस्पितळात नेले", "रुग्णालयात दाखल", "आयसीयू", "अतिदक्षता विभाग",
+        "हृदयविकाराचा झटका", "हार्ट अटॅक", "स्ट्रोक", "श्वास घेत नाही",
+        "अपघात", "गाडीचा अपघात", "कार अपघात", "शस्त्रक्रिया सुरू", "ऑपरेशन चालू",
+        "आग लागली", "अग्निशमन दल", "गॅस गळती", "गॅसचा वास", "पूर आला", "स्फोट",
+        "हरवला", "हरवली", "बेपत्ता", "सापडत नाही", "घरी आलेला नाही", "घरी आलेली नाही",
+        "निधन झाले", "मृत्यू झाला", "वारले", "प्रकृती गंभीर", "चिंताजनक",
+        "दरोडा", "चोरी झाली", "पोलिसांना बोलावले", "पोलिसांना फोन",
+        "लिफ्टमध्ये अडक", "अडकलो आहे", "अडकले आहे", "डोंगरात वाट चुक",
+        "पासपोर्ट चोरीला", "पाकीट चोरीला", "परत येण्याचा मार्ग नाही",
+        "मोठे संकट", "काहीतरी वाईट घडले", "सिस्टम बंद", "सर्व्हर डाऊन", "सर्व्हर बंद", "उत्पादन ठप्प",
+        "कामाच्या ठिकाणी अपघात", "कारखान्यात अपघात", "शाळेतून फोन", "डोक्याला मार", "हात मोडला", "जखमी झाला", "जखमी झाली",
+    ],
+    urge: &["आणीबाणी", "खूप तातडीचे", "तातडीचे आहे", "लवकर या", "लगेच या", "मदत करा", "वाचवा"],
+    ask: &["त्यांना सांगा", "बोलणे करून द्या", "घरी या", "इथे या"],
+    at_once: &["लगेच", "तात्काळ", "आत्ताच", "तातडीने"],
+    calm: &[
+        "तातडीचे नाही", "घाई नाही", "काही घाई नाही", "सवडीने", "वेळ मिळेल तेव्हा",
+        "बातम्या", "बातमीत", "सराव", "रंगीत तालीम", "खोटा अलार्म", "चित्रपट", "मस्करी", "भूक लागून मरत",
+    ],
+    fine: &["काही गंभीर नाही", "सगळे ठीक आहे", "मी ठीक आहे", "डिस्चार्ज मिळाला", "रुग्णालयातून सुट्टी", "बरे झाले"],
+    past: &["काल", "परवा", "गेल्या आठवड्यात", "गेल्या वर्षी", "गेल्या महिन्यात", "वर्षांपूर्वी", "एक वर्ष झाले", "पुण्यतिथी", "जयंती"],
+    now: &["आत्ताच", "नुकतेच", "लगेच"],
+};
+
+const TA: Cues = Cues {
+    events: &[
+        "மயங்கி விழுந்தார்", "மயங்கி விட்டார்", "சுயநினைவு இழந்த", "ஆம்புலன்ஸ்", "அவசர சிகிச்சை", "மருத்துவமனையில்", "ஐசியு",
+        "மாரடைப்பு", "ஹார்ட் அட்டாக்", "பக்கவாதம்", "மூச்சு விடவில்லை",
+        "விபத்து", "கார் விபத்து", "சாலை விபத்து", "அறுவை சிகிச்சை", "ஆபரேஷன்",
+        "தீ விபத்து", "தீ பிடித்து", "தீயணைப்பு", "கேஸ் கசிவு", "எரிவாயு கசிவு", "வெள்ளம்", "வெடி விபத்து",
+        "காணவில்லை", "காணாமல் போன", "தேடி வருகிறோம்", "வீடு திரும்பவில்லை",
+        "இறந்து விட்டார்", "காலமானார்", "உயிரிழந்தார்", "நிலைமை கவலைக்கிடம்",
+        "கொள்ளை", "திருட்டு போனது", "போலீசுக்கு தகவல்", "போலீஸை அழைத்தோம்",
+        "லிப்டில் சிக்கி", "சிக்கிக் கொண்டோம்", "மலையில் வழி தவறி",
+        "பாஸ்போர்ட் திருடப்பட்டது", "பர்ஸ் திருடப்பட்டது", "திரும்ப வர முடியவில்லை",
+        "பெரிய ஆபத்து", "சர்வர் டவுன்", "சிஸ்டம் செயலிழந்தது", "உற்பத்தி நின்றது",
+        "பணியிட விபத்து", "தொழிற்சாலையில் விபத்து", "பள்ளியிலிருந்து போன்", "தலையில் அடி", "கை உடைந்தது",
+    ],
+    urge: &["அவசர நிலை", "மிக அவசரம்", "ரொம்ப அவசரம்", "உடனே வாருங்கள்", "உடனடியாக வாருங்கள்", "உதவி செய்யுங்கள்", "காப்பாற்றுங்கள்"],
+    ask: &["அவரிடம் சொல்லுங்கள்", "பேசச் சொல்லுங்கள்", "வீட்டுக்கு வாருங்கள்", "இங்கே வாருங்கள்"],
+    at_once: &["உடனே", "உடனடியாக", "இப்போதே", "அவசரமாக"],
+    calm: &[
+        "அவசரம் இல்லை", "அவசரமில்லை", "பதற்றம் இல்லை", "நேரம் இருக்கும்போது",
+        "செய்திகளில்", "செய்தி", "ஒத்திகை", "தீயணைப்பு ஒத்திகை", "தவறான அலாரம்", "சினிமா", "படம்", "தமாஷ்", "பசியால் சாகிறேன்",
+    ],
+    fine: &["பெரிதாக ஒன்றும் இல்லை", "நலமாக இருக்கிறேன்", "எல்லாம் சரியாக உள்ளது", "வீடு திரும்பி விட்டார்", "டிஸ்சார்ஜ் ஆகிவிட்டார்", "குணமாகி விட்டார்"],
+    past: &["நேற்று", "முந்தாநாள்", "கடந்த வாரம்", "கடந்த ஆண்டு", "போன வருடம்", "கடந்த மாதம்", "பல ஆண்டுகளுக்கு முன்", "நினைவு நாள்"],
+    now: &["இப்போதுதான்", "சற்று முன்பு", "இப்போதே"],
+};
+
+const TE: Cues = Cues {
+    events: &[
+        "స్పృహ తప్పి", "కళ్ళు తిరిగి పడిపోయారు", "అంబులెన్స్", "ఆసుపత్రిలో చేర్చ", "ఆసుపత్రికి తీసుకెళ్ళ", "ఐసియు", "అత్యవసర విభాగం",
+        "గుండెపోటు", "హార్ట్ అటాక్", "పక్షవాతం", "శ్వాస ఆడటం లేదు",
+        "ప్రమాదం", "రోడ్డు ప్రమాదం", "కారు ప్రమాదం", "ఆపరేషన్ జరుగుతోంది", "శస్త్రచికిత్స",
+        "మంటలు", "అగ్నిప్రమాదం", "అగ్నిమాపక", "గ్యాస్ లీక్", "గ్యాస్ వాసన", "వరద", "పేలుడు",
+        "కనిపించడం లేదు", "తప్పిపోయారు", "ఇంటికి రాలేదు", "వెతుకుతున్నాము",
+        "మరణించారు", "చనిపోయారు", "కన్నుమూశారు", "పరిస్థితి విషమంగా",
+        "దొంగతనం", "దోపిడీ", "పోలీసులకు ఫోన్", "పోలీసులను పిలిచాము",
+        "లిఫ్ట్ లో ఇరుక్కు", "ఇరుక్కుపోయాను", "కొండల్లో దారి తప్పి",
+        "పాస్ పోర్ట్ దొంగిలించ", "పర్సు పోయింది", "తిరిగి రాలేకపోతున్నాము",
+        "పెద్ద ఆపద", "సర్వర్ డౌన్", "సిస్టమ్ ఆగిపోయింది", "ఉత్పత్తి ఆగిపోయింది",
+        "పని స్థలంలో ప్రమాదం", "ఫ్యాక్టరీలో ప్రమాదం", "స్కూల్ నుండి ఫోన్", "తలకు గాయం", "చేయి విరిగింది",
+    ],
+    urge: &["అత్యవసర పరిస్థితి", "చాలా అత్యవసరం", "అత్యవసరం ఇది", "వెంటనే రండి", "ఇప్పుడే రండి", "సహాయం చేయండి", "కాపాడండి"],
+    ask: &["ఆయనకు చెప్పండి", "మాట్లాడించండి", "ఇంటికి రండి", "ఇక్కడికి రండి"],
+    at_once: &["వెంటనే", "తక్షణమే", "ఇప్పుడే", "అత్యవసరంగా"],
+    calm: &[
+        "అత్యవసరం లేదు", "తొందర లేదు", "ఏం తొందర లేదు", "తీరిక ఉన్నప్పుడు",
+        "వార్తల్లో", "వార్తలు", "మాక్ డ్రిల్", "ఫైర్ డ్రిల్", "తప్పుడు అలారం", "సినిమా", "సరదాకు", "ఆకలితో చస్తున్నా",
+    ],
+    fine: &["పెద్దగా ఏమీ లేదు", "నేను బాగున్నాను", "అంతా బాగానే ఉంది", "ఆసుపత్రి నుండి డిశ్చార్జ్", "ఇంటికి వచ్చేశారు", "కోలుకున్నారు"],
+    past: &["నిన్న", "మొన్న", "గత వారం", "గత సంవత్సరం", "పోయిన ఏడాది", "గత నెల", "సంవత్సరాల క్రితం", "వర్ధంతి"],
+    now: &["ఇప్పుడే", "కొద్దిసేపటి క్రితం", "ఈ క్షణమే"],
+};
+
+const ALL_CUES: [&Cues; 23] = [
+    &ZH, &JA, &KO, &EN, &ES, &FR, &DE, &PT, &IT, &RU, &ID, &TH, &VI, &HI, &AR, &NL, &PL, &RO, &UK, &BN, &MR, &TA, &TE,
 ];
 
 /// One cue, folded like the text it is matched against.
@@ -562,7 +782,7 @@ fn has_cjk_or_corner(s: &str) -> bool {
 
 fn is_word_script_char(c: char) -> bool {
     c.is_alphanumeric()
-        || matches!(c as u32, 0x0900..=0x0963 | 0x0966..=0x097F | 0x0E01..=0x0E5B)
+        || matches!(c as u32, 0x0900..=0x0963 | 0x0966..=0x097F | 0x0980..=0x0D7F | 0x0E01..=0x0E5B)
 }
 
 /// Latin letters without accents, full-width ASCII as ASCII, simplified Chinese
@@ -579,20 +799,24 @@ fn fold_char(c: char, out: &mut String) {
             // A combining accent (e + U+0301) is no letter of its own, nor Arabic harakat.
             '\u{0300}'..='\u{036F}' | '\u{064B}'..='\u{065F}' | '\u{0670}' => continue,
             'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => "a",
-            'ă' | 'ạ' | 'ả' | 'ấ' | 'ầ' | 'ẩ' | 'ẫ' | 'ậ' | 'ắ' | 'ằ' | 'ẳ' | 'ẵ' | 'ặ' => "a",
-            'ç' => "c",
+            'ă' | 'ą' | 'ạ' | 'ả' | 'ấ' | 'ầ' | 'ẩ' | 'ẫ' | 'ậ' | 'ắ' | 'ằ' | 'ẳ' | 'ẵ' | 'ặ' => "a",
+            'ç' | 'ć' => "c",
             'đ' => "d",
             'è' | 'é' | 'ê' | 'ë' => "e",
-            'ẹ' | 'ẻ' | 'ẽ' | 'ế' | 'ề' | 'ể' | 'ễ' | 'ệ' => "e",
+            'ę' | 'ẹ' | 'ẻ' | 'ẽ' | 'ế' | 'ề' | 'ể' | 'ễ' | 'ệ' => "e",
             'ì' | 'í' | 'î' | 'ï' => "i",
             'ĩ' | 'ỉ' | 'ị' => "i",
-            'ñ' => "n",
+            'ł' => "l",
+            'ñ' | 'ń' => "n",
             'ò' | 'ó' | 'ô' | 'õ' | 'ö' => "o",
             'ơ' | 'ọ' | 'ỏ' | 'ố' | 'ồ' | 'ổ' | 'ỗ' | 'ộ' | 'ớ' | 'ờ' | 'ở' | 'ỡ' | 'ợ' => "o",
+            'ś' | 'ș' | 'ş' => "s",
+            'ț' | 'ţ' => "t",
             'ù' | 'ú' | 'û' | 'ü' => "u",
             'ũ' | 'ư' | 'ụ' | 'ủ' | 'ứ' | 'ừ' | 'ử' | 'ữ' | 'ự' => "u",
             'ý' | 'ÿ' => "y",
             'ỳ' | 'ỵ' | 'ỷ' | 'ỹ' => "y",
+            'ź' | 'ż' => "z",
             'ß' => "ss",
             'œ' => "oe",
             'ё' => "е",
@@ -853,6 +1077,13 @@ fn is_pl_unique_char(c: char) -> bool {
     )
 }
 
+fn is_ro_unique_char(c: char) -> bool {
+    matches!(
+        c,
+        'ș' | 'Ș' | 'ț' | 'Ț' | 'ţ' | 'Ţ' | 'ă' | 'Ă'
+    )
+}
+
 fn other_latin_stats(text: &str) -> OtherLatin {
     const VI_WORDS: &[&str] = &[
         "xin", "chào", "tôi", "không", "được", "vâng", "người", "nhé", "rồi", "giúp", "mình", "bạn", "anh", "chị",
@@ -886,19 +1117,34 @@ fn other_latin_stats(text: &str) -> OtherLatin {
     ];
     const PL_WORDS: &[&str] = &[
         "dzień", "dzien", "dobry", "cześć", "czesc", "dziękuję", "dziekuje", "proszę", "prosze", "paczka", "paczkę",
-        "paczke", "kurier", "jestem", "jest", "czy", "pani", "domu", "można", "mozna", "zostawić", "zostawic",
-        "pilne", "wypadek", "karetka", "szpital", "policja", "pożar", "pozar", "natychmiast",
+        "paczke", "kurier", "jestem", "jest", "czy", "pani", "dom", "domu", "można", "mozna", "zostawić", "zostawic",
+        "pilne", "pilnego", "wypadek", "karetka", "szpital", "szpitala", "szpitalu", "policja", "policję", "policji",
+        "pożar", "pozar", "straż", "natychmiast", "się", "nie", "już", "wszystko", "nic", "tylko", "pracy", "szkoły",
+        "szkole", "windzie", "paszport", "portfel", "serwer", "produkcja", "wczoraj", "dzisiaj", "czas", "wiadomości",
+        "ćwiczenia", "żartuję", "głodu", "mama", "brat", "babcia", "dziadek",
     ];
     const NL_WORDS: &[&str] = &[
         "ik", "het", "een", "van", "voor", "niet", "zijn", "heb", "heeft", "bent", "thuis", "wij", "mijn", "jij",
         "goedemorgen", "goedemiddag", "goedenavond", "dank", "bedankt", "alstublieft", "alsjeblieft", "pakket",
         "pakketje", "bezorger", "bezorging", "bellen", "bel", "maar", "naar", "ook", "nog", "geen", "ziekenhuis",
-        "ongeluk", "spoed", "dringend", "meteen", "politie", "brandweer", "flauwgevallen",
+        "ongeluk", "spoed", "dringend", "meteen", "politie", "brandweer", "flauwgevallen", "gisteren", "vorige",
+        "vorig", "nieuws", "oefening", "grapje", "honger", "ernstigs", "haast", "lift", "paspoort", "portemonnee",
+        "productie", "school",
     ];
-    // [Vi, It, Id, Tr, Pl, Nl]
-    let mut scores = [0i32; 6];
-    let mut word_hits = [0i32; 6];
-    let mut unique_tokens = [0usize; 6];
+    const RO_WORDS: &[&str] = &[
+        "bună", "buna", "ziua", "salut", "sunt", "este", "vă", "va", "rog", "mulțumesc", "multumesc", "curier",
+        "curierul", "pachet", "pachetul", "colet", "coletul", "livrare", "acasă", "acasa", "pentru", "dumneavoastră",
+        "dumneavoastra", "domnul", "doamna", "spital", "ambulanță", "ambulanta", "ambulanța", "accident", "incendiu",
+        "poliție", "politie", "poliția", "pompieri", "urgență", "urgenta", "urgent", "imediat", "acum", "ajutor",
+        "leșinat", "lesinat", "operație", "operatie", "școală", "scoala", "școala", "lăsați", "lasati", "puteți",
+        "puteti", "nimic", "grav", "fără", "grabă", "timp", "lucru", "sistemul", "serverul", "producția", "săptămâna",
+        "trecută", "anul", "trecut", "știri", "știrile", "exercițiu", "falsă", "glumesc", "foame", "mama", "tata",
+        "bunica", "copilul", "fratele", "pasaportul", "pașaportul", "portofelul", "lift", "gaze",
+    ];
+    // [Vi, It, Id, Tr, Pl, Nl, Ro]
+    let mut scores = [0i32; 7];
+    let mut word_hits = [0i32; 7];
+    let mut unique_tokens = [0usize; 7];
     for raw_tok in text
         .split(|c: char| !(c.is_alphabetic() || matches!(c, '\'' | '\u{2019}' | '\u{2018}' | '\u{60}') || ('\u{0300}'..='\u{036F}').contains(&c)))
         .filter(|t| !t.is_empty())
@@ -912,6 +1158,9 @@ fn other_latin_stats(text: &str) -> OtherLatin {
         if raw_tok.chars().any(is_pl_unique_char) {
             unique_tokens[4] += 1;
         }
+        if raw_tok.chars().any(is_ro_unique_char) {
+            unique_tokens[6] += 1;
+        }
         let tok: String = raw_tok
             .to_lowercase()
             .chars()
@@ -919,7 +1168,7 @@ fn other_latin_stats(text: &str) -> OtherLatin {
             .map(|c| if matches!(c, '\u{2019}' | '\u{2018}' | '\u{60}') { '\'' } else { c })
             .collect();
         let word = tok.as_str();
-        for (idx, list) in [VI_WORDS, IT_WORDS, ID_WORDS, TR_WORDS, PL_WORDS, NL_WORDS].iter().enumerate() {
+        for (idx, list) in [VI_WORDS, IT_WORDS, ID_WORDS, TR_WORDS, PL_WORDS, NL_WORDS, RO_WORDS].iter().enumerate() {
             if list.contains(&word) {
                 scores[idx] += 1;
                 word_hits[idx] += 1;
@@ -938,6 +1187,9 @@ fn other_latin_stats(text: &str) -> OtherLatin {
             scores[3] += 2;
         } else if is_pl_unique_char(c) {
             scores[4] += 2;
+        }
+        if is_ro_unique_char(c) {
+            scores[6] += 2;
         }
     }
     let Some((best_idx, &best)) = scores.iter().enumerate().max_by_key(|(_, s)| **s) else {
@@ -968,7 +1220,7 @@ fn is_strong_other_latin(text: &str) -> bool {
     o.best > setting_total
 }
 
-/// Score of the strongest unlisted Latin language (`it, vi, id, tr, pl, nl`) when
+/// Score of the strongest unlisted Latin language (`it, vi, id, tr, pl, nl, ro`) when
 /// it clearly outweighs the five setting Latin languages; `0` otherwise.
 pub(crate) fn unlisted_latin_best_score(text: &str) -> i32 {
     if is_strong_other_latin(text) {
@@ -1078,6 +1330,12 @@ mod tests {
             "Merhaba efendim, kargonuz kapıda",
             "Dzień dobry, mam paczkę dla pani, czy jest ktoś w domu?",
             "Goedemorgen, ik heb een pakketje voor u",
+            "Bună ziua, sunt curierul, am un colet pentru dumneavoastră",
+            "Алло, це кур'єр, ви зараз вдома?",
+            "নমস্কার, আমি ডেলিভারি নিয়ে এসেছি, বাড়িতে কেউ আছেন?",
+            "नमस्कार, मी डिलिव्हरी घेऊन आलो आहे, घरी कोणी आहे का?",
+            "வணக்கம், நான் டெலிவரி வந்திருக்கிறேன், வீட்டில் யாராவது இருக்கிறீர்களா?",
+            "నమస్కారం, నేను డెలివరీ కోసం వచ్చాను, ఇంట్లో ఎవరైనా ఉన్నారా?",
             "नमस्ते, मैं डिलीवरी वाला हूँ, क्या कोई घर पर है?",
         ] {
             assert!(unlisted_language(t), "{t}");
@@ -1099,9 +1357,10 @@ mod tests {
         }
     }
 
-    const LANGS: [&str; 16] = [
+    const LANGS: [&str; 24] = [
         "zh-TW", "zh-CN", "en", "ja", "ko", "es", "fr", "de", "pt",
         "it", "ru", "id", "th", "vi", "hi", "ar",
+        "nl", "pl", "ro", "uk", "bn", "mr", "ta", "te",
     ];
 
     /// The emergencies every language is tested with.
@@ -1309,6 +1568,94 @@ mod tests {
         ("ar", 8, "حدثت مصيبة في البيت الآن، قل له أن يرجع للبيت فوراً!"),
         ("ar", 9, "النظام تعطل وتوقف الإنتاج بالكامل، اطلب منه أن يتدخل فوراً!"),
         ("ar", 10, "المدرسة اتصلت الآن، الولد سقط في الملعب وانكسرت يده وفي طريقه إلى المستشفى!"),
+        ("nl", 0, "Mijn moeder is thuis flauwgevallen en de ambulance brengt haar naar het ziekenhuis, kom meteen!"),
+        ("nl", 1, "Mijn broer heeft een auto-ongeluk gehad en hij wordt nu geopereerd!"),
+        ("nl", 2, "De keuken staat in brand, de brandweer is al onderweg naar ons huis!"),
+        ("nl", 3, "Mijn opa is sinds vanochtend verdwenen, het kind is ook vermist bij de winkel!"),
+        ("nl", 4, "Mijn oma is zojuist overleden, het ziekenhuis vraagt of de familie meteen kan komen."),
+        ("nl", 5, "Er is bij ons ingebroken en we hebben de politie gebeld, kom snel naar huis!"),
+        ("nl", 6, "Ik zit al bijna een uur vast in de lift en niemand hoort mij, help me!"),
+        ("nl", 7, "Mijn paspoort en portemonnee zijn gestolen op reis, ik kan niet naar huis komen!"),
+        ("nl", 8, "Er is thuis iets ergs gebeurd, zeg tegen hem dat hij nu meteen moet komen!"),
+        ("nl", 9, "Het hele systeem is uitgevallen en de productie staat stil op het werk, kom met spoed!"),
+        ("nl", 10, "De school belde dat ons kind gevallen is en zijn arm gebroken heeft!"),
+        ("pl", 0, "Moja mama zemdlała w domu, karetka wiezie ją do szpitala, przyjeżdżaj natychmiast!"),
+        ("pl", 1, "Mój brat miał wypadek samochodowy i właśnie jest operowany w szpitalu!"),
+        ("pl", 2, "Kuchnia się pali, to duży pożar, straż pożarna już jedzie do domu!"),
+        ("pl", 3, "Moja babcia zaginęła w mieście i nie wróciła do domu, nie możemy jej znaleźć!"),
+        ("pl", 4, "Nasz dziadek właśnie zmarł w szpitalu, lekarze proszą żeby rodzina przyjechała od razu."),
+        ("pl", 5, "Mieliśmy włamanie do domu i wezwaliśmy policję, proszę przyjedź natychmiast!"),
+        ("pl", 6, "Utknąłem w windzie prawie godzinę temu i nie mogę wyjść, ratunku!"),
+        ("pl", 7, "Na lotnisku ukradli mi paszport i portfel, nie mam jak wrócić do domu!"),
+        ("pl", 8, "W domu stało się coś złego, przekaż mu że ma wracać natychmiast!"),
+        ("pl", 9, "Cały serwer padł i produkcja stanęła w pracy, to bardzo pilne!"),
+        ("pl", 10, "Dzwonili ze szkoły, syn przewrócił się na boisku i złamał rękę!"),
+        ("ro", 0, "Mama a leșinat acasă și ambulanța o duce la spital acum, vino imediat!"),
+        ("ro", 1, "Fratele meu a avut un accident rutier grav și este în operație la spital!"),
+        ("ro", 2, "Arde bucătăria și este un incendiu mare, pompierii au ajuns acasă!"),
+        ("ro", 3, "Copilul a dispărut în centru și nu îl găsim nicăieri, ajutor!"),
+        ("ro", 4, "Bunicul tocmai a murit la spital, doctorii au cerut să vină familia imediat."),
+        ("ro", 5, "Ne-au spart casa și am sunat la poliție, te rog vino acasă imediat!"),
+        ("ro", 6, "Am rămas blocat în lift de aproape o oră și nu răspunde nimeni!"),
+        ("ro", 7, "Mi-au furat pașaportul și portofelul în călătorie, nu am cum să mă întorc acasă!"),
+        ("ro", 8, "S-a întâmplat ceva grav acasă, spune-i să vină acasă imediat!"),
+        ("ro", 9, "Sistemul a picat și producția e oprită, trebuie să rezolve de urgență acum!"),
+        ("ro", 10, "Au sunat de la școală că fetița s-a lovit la cap și o duc la spital!"),
+        ("uk", 0, "Мама щойно знепритомніла вдома, швидка допомога вже везе її до лікарні!"),
+        ("uk", 1, "Брат потрапив у ДТП, його вже забрали на операцію!"),
+        ("uk", 2, "У нас пожежа на кухні, все горить, пожежники вже їдуть!"),
+        ("uk", 3, "Дитина зникла в торговому центрі, ми ніяк не можемо знайти її!"),
+        ("uk", 4, "Дідусь щойно помер у лікарні, лікарі просять рідних приїхати негайно."),
+        ("uk", 5, "Нашу квартиру пограбували, ми вже викликали поліцію, приїжджай негайно!"),
+        ("uk", 6, "Я застряг у ліфті майже на годину і не можу вибратися, допоможіть!"),
+        ("uk", 7, "У мене вкрали паспорт і вкрали гаманець, я не можу повернутися додому!"),
+        ("uk", 8, "Вдома сталася біда, передай йому щоб повертався негайно!"),
+        ("uk", 9, "Сервер впав і виробництво зупинилося, це дуже терміново!"),
+        ("uk", 10, "Подзвонили зі школи, син вдарився головою і зламав руку!"),
+        ("bn", 0, "মা বাড়িতে অজ্ঞান হয়ে গেছেন, অ্যাম্বুলেন্স হাসপাতালে নিয়ে যাচ্ছে, এখনি আসুন!"),
+        ("bn", 1, "ভাই বড় সড়ক দুর্ঘটনায় পড়েছে, হাসপাতালে অপারেশন চলছে, তাড়াতাড়ি আসুন!"),
+        ("bn", 2, "রান্নাঘরে আগুন লেগেছে, ফায়ার সার্ভিস আসছে, এখনি বাড়িতে আসুন!"),
+        ("bn", 3, "বাচ্চাটা বাজারে হারিয়ে গেছে, আমরা কোথাও খুঁজে পাচ্ছি না, বাঁচাও!"),
+        ("bn", 4, "দাদু এইমাত্র মারা গেছেন, ডাক্তার বলেছেন পরিবারকে এখনই আসতে হবে।"),
+        ("bn", 5, "আমাদের বাড়িতে ডাকাতি হয়েছে, পুলিশ ডেকেছি, এখনি চলে আসুন!"),
+        ("bn", 6, "আমি এক ঘণ্টা ধরে লিফটে আটকে গেছি, বের হতে পারছি না, সাহায্য করুন!"),
+        ("bn", 7, "বিমানবন্দরে আমার পাসপোর্ট চুরি হয়েছে এবং মানিব্যাগ চুরি হয়েছে, বাড়ি ফিরতে পারছি না!"),
+        ("bn", 8, "বাড়িতে বড় বিপদ হয়েছে, তাকে বলুন এখনই বাড়ি চলে আসতে!"),
+        ("bn", 9, "সার্ভার ডাউন হয়ে উৎপাদন বন্ধ হয়ে গেছে, খুব জরুরি ব্যবস্থা নিতে হবে!"),
+        ("bn", 10, "স্কুল থেকে ফোন এসেছে, ছেলে পড়ে মাথায় আঘাত পেয়েছে এবং হাত ভেঙে গেছে!"),
+        ("mr", 0, "आई घरी बेशुद्ध पडली आहे, रुग्णवाहिका तिला इस्पितळात नेत आहे, लगेच या!"),
+        ("mr", 1, "भावाचा मोठा गाडीचा अपघात झाला आहे आणि त्याचे ऑपरेशन चालू आहे!"),
+        ("mr", 2, "स्वयंपाकघरात आग लागली आहे, अग्निशमन दल येत आहे, घरी लगेच या!"),
+        ("mr", 3, "मुलगा बाजारात हरवला आहे आणि अजून सापडत नाही, मदत करा!"),
+        ("mr", 4, "आजोबांचे आत्ताच निधन झाले आहे, डॉक्टरांनी कुटुंबाला तात्काळ बोलावले आहे."),
+        ("mr", 5, "आमच्या घरात चोरी झाली आहे, आम्ही पोलिसांना फोन केला आहे, लगेच घरी या!"),
+        ("mr", 6, "मी एक तास झाला लिफ्टमध्ये अडकलो आहे आणि बाहेर येता येत नाही, वाचवा!"),
+        ("mr", 7, "माझा पासपोर्ट चोरीला गेला आणि पाकीट चोरीला गेले, परत येण्याचा मार्ग नाही!"),
+        ("mr", 8, "घरावर मोठे संकट आले आहे, त्यांना सांगा आत्ताच घरी या!"),
+        ("mr", 9, "संपूर्ण सिस्टम बंद पडली आणि उत्पादन ठप्प झाले आहे, खूप तातडीचे आहे!"),
+        ("mr", 10, "शाळेतून फोन आला आहे, मुलगा पडला आणि त्याच्या डोक्याला मार लागला आहे!"),
+        ("ta", 0, "அம்மா வீட்டில் மயங்கி விழுந்தார், ஆம்புலன்ஸ் மருத்துவமனைக்கு கொண்டு செல்கிறது, உடனே வாருங்கள்!"),
+        ("ta", 1, "தம்பிக்கு கார் விபத்து ஏற்பட்டு இப்போது அறுவை சிகிச்சை நடக்கிறது, உடனே வாருங்கள்!"),
+        ("ta", 2, "சமையலறையில் தீ விபத்து ஏற்பட்டுள்ளது, தீயணைப்பு வண்டி வருகிறது, உடனே வாருங்கள்!"),
+        ("ta", 3, "குழந்தை கடைவீதியில் காணவில்லை, தேடி வருகிறோம் ஆனால் கிடைக்கவில்லை, காப்பாற்றுங்கள்!"),
+        ("ta", 4, "தாத்தா சற்று முன்பு காலமானார், குடும்பத்தினர் அனைவரும் உடனே வர வேண்டும் என்று சொன்னார்கள்."),
+        ("ta", 5, "வீட்டில் கொள்ளை நடந்து விட்டது, போலீசுக்கு தகவல் கொடுத்து விட்டோம், உடனே வாருங்கள்!"),
+        ("ta", 6, "நான் ஒரு மணி நேரமாக லிப்டில் சிக்கி இருக்கிறேன், வெளியே வர முடியவில்லை, உதவி செய்யுங்கள்!"),
+        ("ta", 7, "என் பாஸ்போர்ட் திருடப்பட்டது மற்றும் பர்ஸ் திருடப்பட்டது, வீட்டுக்கு திரும்ப வர முடியவில்லை!"),
+        ("ta", 8, "வீட்டில் பெரிய ஆபத்து ஏற்பட்டுள்ளது, அவரிடம் சொல்லுங்கள் உடனே வீட்டுக்கு வர வேண்டும்!"),
+        ("ta", 9, "சர்வர் டவுன் ஆகி உற்பத்தி நின்றது, இது மிக அவசரம் உடனே பார்க்க வேண்டும்!"),
+        ("ta", 10, "பள்ளியிலிருந்து போன் வந்தது, மகனுக்கு தலையில் அடி பட்டு கை உடைந்தது!"),
+        ("te", 0, "అమ్మ ఇంట్లో స్పృహ తప్పి పడిపోయారు, అంబులెన్స్ ఆసుపత్రికి తీసుకెళ్తోంది, వెంటనే రండి!"),
+        ("te", 1, "తమ్ముడికి పెద్ద రోడ్డు ప్రమాదం జరిగింది, ఇప్పుడు ఆపరేషన్ జరుగుతోంది, వెంటనే రండి!"),
+        ("te", 2, "వంటగదిలో అగ్నిప్రమాదం జరిగింది, మంటలు చెలరేగాయి, అగ్నిమాపక సిబ్బంది వస్తున్నారు!"),
+        ("te", 3, "పాప మార్కెట్ లో తప్పిపోయారు, ఎక్కడా కనిపించడం లేదు, దయచేసి సహాయం చేయండి!"),
+        ("te", 4, "తాతయ్య కొద్దిసేపటి క్రితం మరణించారు, కుటుంబ సభ్యులు వెంటనే రావాలని చెప్పారు."),
+        ("te", 5, "మా ఇంట్లో దొంగతనం జరిగింది, పోలీసులకు ఫోన్ చేశాము, ఇప్పుడే ఇంటికి రండి!"),
+        ("te", 6, "నేను ఒక గంట నుండి లిఫ్ట్ లో ఇరుక్కుపోయాను, బయటకు రాలేకపోతున్నాను, కాపాడండి!"),
+        ("te", 7, "విమానాశ్రయంలో నా పాస్ పోర్ట్ దొంగిలించబడింది, పర్సు పోయింది, తిరిగి రాలేకపోతున్నాము!"),
+        ("te", 8, "ఇంట్లో పెద్ద ఆపద వచ్చింది, ఆయనకు చెప్పండి ఇప్పుడే ఇంటికి రండి అని!"),
+        ("te", 9, "సర్వర్ డౌన్ అయింది మరియు ఉత్పత్తి ఆగిపోయింది, ఇది చాలా అత్యవసరం!"),
+        ("te", 10, "స్కూల్ నుండి ఫోన్ వచ్చింది, బాబు కిందపడి తలకు గాయం అయింది మరియు చేయి విరిగింది!"),
     ];
 
     /// (language, mention, what a caller would say): none is urgent.
@@ -1441,6 +1788,70 @@ mod tests {
         ("ar", 5, "والله أموت من الجوع الآن، هل نتعشى معاً الليلة؟"),
         ("ar", 6, "الأمر ليس عاجل أبداً، اتصل بي متى ما فضيت."),
         ("ar", 7, "أنا الآن في السوق، سأتصل بك لاحقاً."),
+        ("nl", 0, "Vorige week ben ik naar het ziekenhuis gegaan voor mijn medicijnen, niets ernstigs."),
+        ("nl", 1, "Vanmorgen hadden wij op mijn werk een brandoefening, alles ging goed."),
+        ("nl", 2, "In het nieuws zeiden ze dat gisteren een ongeluk gebeurde op de weg."),
+        ("nl", 3, "Mijn oma is vorig jaar overleden, vandaag is haar sterfdag."),
+        ("nl", 4, "Alles heeft haast op mijn werk tegenwoordig, het is erg druk."),
+        ("nl", 5, "Ik sterf van de honger, zullen wij samen eten vanavond?"),
+        ("nl", 6, "Het heeft geen haast hoor, bel mij terug als je tijd hebt."),
+        ("nl", 7, "Ik ben nu meteen in de winkel boodschappen aan het doen."),
+        ("pl", 0, "W zeszłym tygodniu byłem w szpitalu po leki, nic poważnego."),
+        ("pl", 1, "Dziś rano w pracy mieliśmy ćwiczenia i próbny alarm, wszystko dobrze."),
+        ("pl", 2, "W wiadomościach mówili że wczoraj na drodze był wypadek, uważaj."),
+        ("pl", 3, "Moja babcia zmarła w zeszłym roku, dzisiaj jest rocznica."),
+        ("pl", 4, "W pracy ostatnio wszystko na wczoraj, bardzo dużo roboty."),
+        ("pl", 5, "Umieram z głodu, pójdziemy dzisiaj na kolację?"),
+        ("pl", 6, "Nic pilnego, oddzwoń kiedy będziesz miał czas."),
+        ("pl", 7, "Teraz jestem w sklepie, zadzwonię potem."),
+        ("ro", 0, "Săptămâna trecută am fost la spital după rețetă, nimic grav."),
+        ("ro", 1, "Azi dimineață am avut exercițiu de incendiu la birou, alarmă falsă."),
+        ("ro", 2, "La știri au spus că ieri a fost un accident pe autostradă."),
+        ("ro", 3, "Bunica a murit anul trecut, astăzi este comemorarea ei."),
+        ("ro", 4, "La lucru zilele astea e mare aglomerație și multă treabă."),
+        ("ro", 5, "Mor de foame acum, mergem la cină diseară împreună?"),
+        ("ro", 6, "Nu e urgent deloc, sună-mă când ai timp liber."),
+        ("ro", 7, "Chiar acum sunt la magazin cu familia."),
+        ("uk", 0, "Минулого тижня я ходив до лікарні по ліки, нічого серйозного."),
+        ("uk", 1, "Сьогодні вранці на роботі була навчальна тривога і навчання, все добре."),
+        ("uk", 2, "У новинах казали, що вчора на трасі була аварія, будь обережним."),
+        ("uk", 3, "Моя бабуся померла минулого року, сьогодні річниця."),
+        ("uk", 4, "На роботі зараз усе дуже поспішно, нічого не встигаю."),
+        ("uk", 5, "Ой, помираю з голоду, підемо сьогодні разом повечеряти?"),
+        ("uk", 6, "Це не терміново, передзвони коли буде час."),
+        ("uk", 7, "Я прямо зараз у магазині, передзвоню пізніше."),
+        ("bn", 0, "গত সপ্তাহে আমি হাসপাতালে ওষুধ আনতে গিয়েছিলাম, গুরুতর কিছু না।"),
+        ("bn", 1, "আজ সকালে অফিসে অগ্নিনির্বাপণ মহড়া ছিল, সব ঠিক আছে।"),
+        ("bn", 2, "খবরে দেখলাম গতকাল রাস্তায় একটি দুর্ঘটনা হয়েছে, সাবধানে চলবেন।"),
+        ("bn", 3, "আমার দাদি গত বছর মারা গেছেন, আজ তাঁর মৃত্যুবার্ষিকী।"),
+        ("bn", 4, "আজকাল অফিসে খুব কাজের চাপ, সব কাজ তাড়াতাড়ি শেষ করতে হচ্ছে।"),
+        ("bn", 5, "আরে আমি তো খিদেয় মরে যাচ্ছি, রাতে একসাথে খাওয়া যাক?"),
+        ("bn", 6, "কোনো তাড়া নেই, সময় হলে আমাকে ফোন করবেন।"),
+        ("bn", 7, "আমি এখনই বাজারে আছি, একটু পরে কথা বলছি।"),
+        ("mr", 0, "गेल्या आठवड्यात मी औषधे आणायला इस्पितळात गेलो होतो, काही गंभीर नाही."),
+        ("mr", 1, "आज सकाळी कार्यालयात आगीचा सराव होता, सर्व ठीक आहे."),
+        ("mr", 2, "बातम्यांमध्ये सांगितले की काल रस्त्यावर अपघात झाला होता, जपून जा."),
+        ("mr", 3, "माझ्या आजीचे गेल्या वर्षी निधन झाले, आज त्यांची पुण्यतिथी आहे."),
+        ("mr", 4, "आजकाल कामावर खूप घाईगडबड सुरू आहे, वेळ मिळत नाही."),
+        ("mr", 5, "अरे मी तर भूक लागून मरत आहे, आज रात्री जेवायला जाऊया का?"),
+        ("mr", 6, "काही घाई नाही, वेळ मिळेल तेव्हा मला फोन करा."),
+        ("mr", 7, "मी आत्ताच दुकानात आहे, थोड्या वेळाने बोलतो."),
+        ("ta", 0, "கடந்த வாரம் மருத்துவமனைக்கு மருந்து வாங்க சென்றேன், பெரிதாக ஒன்றும் இல்லை."),
+        ("ta", 1, "இன்று காலை அலுவலகத்தில் தீயணைப்பு ஒத்திகை நடந்தது, எல்லாம் சரியாக உள்ளது."),
+        ("ta", 2, "செய்திகளில் நேற்று சாலையில் விபத்து நடந்ததாக சொன்னார்கள், கவனமாக செல்லுங்கள்."),
+        ("ta", 3, "என் பாட்டி கடந்த ஆண்டு காலமானார், இன்று அவரது நினைவு நாள்."),
+        ("ta", 4, "இந்த வாரம் அலுவலகத்தில் வேலை அதிகமாக உள்ளது, நேரமே இல்லை."),
+        ("ta", 5, "நான் பசியால் சாகிறேன், இன்றிரவு ஒன்றாக சாப்பிடலாமா?"),
+        ("ta", 6, "அவசரம் இல்லை, நேரம் இருக்கும்போது என்னை அழைக்கவும்."),
+        ("ta", 7, "நான் இப்போதே கடையில் இருக்கிறேன், பிறகு அழைக்கிறேன்."),
+        ("te", 0, "గత వారం నేను మందుల కోసం ఆసుపత్రికి వెళ్ళాను, పెద్దగా ఏమీ లేదు."),
+        ("te", 1, "ఈరోజు ఉదయం ఆఫీసులో ఫైర్ డ్రిల్ జరిగింది, అంతా బాగానే ఉంది."),
+        ("te", 2, "వార్తల్లో నిన్న రోడ్డుపై ప్రమాదం జరిగిందని చెప్పారు, జాగ్రత్తగా వెళ్ళండి."),
+        ("te", 3, "మా అమ్మమ్మ గత సంవత్సరం మరణించారు, ఈరోజు ఆవిడ వర్ధంతి."),
+        ("te", 4, "ఈ రోజుల్లో ఆఫీసులో పని ఒత్తిడి చాలా ఎక్కువగా ఉంది."),
+        ("te", 5, "నేను ఆకలితో చస్తున్నా, ఈరోజు రాత్రి కలిసి భోజనం చేద్దామా?"),
+        ("te", 6, "ఏం తొందర లేదు, తీరిక ఉన్నప్పుడు మళ్ళీ ఫోన్ చేయండి."),
+        ("te", 7, "నేను ఇప్పుడే మార్కెట్ లో ఉన్నాను, కాసేపట్లో ఫోన్ చేస్తాను."),
     ];
 
     #[test]
@@ -1565,6 +1976,7 @@ mod tests {
             "Merhaba efendim, kargonuz kapıda bekliyor, evde misiniz?",
             "Dzień dobry, dzwonię z firmy kurierskiej, mam paczkę dla pani.",
             "Goedemorgen, ik bel voor een bezorging en heb een pakketje bij me.",
+            "Bună ziua, sunt curierul, am un colet pentru dumneavoastră acasă.",
         ] {
             assert!(unlisted_language(sample), "expected unlisted=true: {sample}");
             assert_eq!(caller_language(sample), None, "expected caller_language=None: {sample}");
