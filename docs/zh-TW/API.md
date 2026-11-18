@@ -214,6 +214,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 | `owner_name` | 你的名字，用在 `{owner}`。 |
 | `owner_aliases` | 別人怎麼叫你，最多 10 個，每個最多 40 字。空白的、重複的和跟 `owner_name` 相同的會被拿掉。 |
 | `answer_style` | `assistant`／`persona`（AI 以你本人身分接）。 |
+| `gemini_assistant_prompt`／`gemini_persona_prompt` | `assistant`／`persona` 各自的自訂提示詞（留空 = 內建）。 |
 | `errand_identity` | `assistant`（預設）／`owner`：AI 代打時說自己是誰。其他值存成 `assistant`。 |
 | `summary_provider` | `gemini`（預設）／`custom`。`custom` 用 `summary_api_base`、`summary_model`（填了網址就必填）和 `summary_api_key`（那家服務的金鑰）。舊版的值和舊的設定名稱會在設定載入時轉換一次。 |
 | `calendar_app` | `google`、`outlook`、`office365`、`apple`、`yahoo`、`ics` 或空白（還沒選）。其他值存成空白。 |

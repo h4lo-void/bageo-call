@@ -138,7 +138,7 @@ Your own words and numbers go in `config/scam_db.local.json` in the data folder.
 
 How the AI talks; the built-in prompt works for most people. To write your own, see [Writing the prompt](PROMPTS.md).
 
-- *Your own prompt*: empty = built-in; **Show the built-in prompt** shows it.
+- *Your own prompt*: saved separately for *AI assistant* and *As me* (empty = built-in); **Show the built-in prompt** shows it.
 - *Notes the AI may answer from*: facts callers may ask about, one per line, up to 6,000 characters.
 - The interview prompt: lets ChatGPT, Claude or Gemini write a prompt with you.
 
