@@ -301,6 +301,27 @@ Calls are answered only while Bageo runs.
 Keep the phone on a charger. If the phone or the computer restarts, both sides
 reconnect by themselves.
 
+### See the status in the system tray or menu bar
+
+The Windows and macOS packages also hold **Bageo Status**, a small program
+that sits in the system tray (Windows) or the menu bar (macOS). The frame
+around its icon is green when everything works, yellow when something needs a
+look (for example a phone is not connected) and red when Bageo cannot be
+reached or no phone is connected.
+
+- **Windows:** double-click `bageo-status.exe`. Windows puts new icons behind
+  the `^` next to the clock; drag the icon onto the taskbar to keep it in view.
+- **macOS:** open `Bageo Status.app`. If macOS refuses the first time,
+  right-click it → *Open*.
+
+Click the icon to see the console address and your phones, and to open the
+console. It finds Bageo on this computer or on your network by itself. Under
+"Settings" you can type the address, enter the console password, have it start
+when you log in, and turn on small notifications for incoming calls and text
+messages. They are off by default; click one to open the console. Text message
+notifications need the [SMS forwarder](../../tools/sms_forward/README.md) from
+the same version.
+
 ## Next
 
 - Make it sound like you: [Writing the prompt](PROMPTS.md)

@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
+<title>Bageo</title>
+<link rel="stylesheet" href="base.css" />
+<style>
+.head{display:flex;align-items:center;gap:13px;padding:16px 16px 15px}
+.mark{width:42px;height:42px;flex:0 0 auto;display:block}
+.mark svg{width:100%;height:100%;display:block}
+.mark .frame{fill:var(--st-unknown);transition:fill .2s}
+.card[data-level=ok] .mark .frame{fill:var(--st-ok)}
+.card[data-level=warn] .mark .frame{fill:var(--st-warn)}
+.card[data-level=bad] .mark .frame{fill:var(--st-bad)}
+.head h1{font-size:1.07rem;font-weight:650;letter-spacing:-.01em;line-height:1.3}
+.sub{color:var(--muted);font-size:.9rem;line-height:1.4;margin-top:1px}
+
+.sec{padding:11px 16px 12px;border-top:1px solid var(--line)}
+.label{font-size:.75rem;font-weight:600;letter-spacing:.03em;color:var(--muted);margin-bottom:4px}
+.row{display:flex;align-items:center;gap:6px}
+.addr{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:text;-webkit-user-select:text;cursor:text}
+
+.phones{list-style:none}
+.ph{display:flex;align-items:center;gap:10px;padding:3px 0}
+.ph .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:var(--line-strong)}
+.ph .name{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ph .st{color:var(--muted);font-size:.86rem;white-space:nowrap}
+.ph.ready .dot{background:var(--ok)}
+.ph.call .dot{background:var(--accent)}
+.ph.call .st{color:var(--accent)}
+.ph.offline .dot{background:transparent;box-shadow:inset 0 0 0 1.5px var(--warn)}
+.ph.offline .name{color:var(--muted)}
+.ph.offline .st{color:var(--warn)}
+.note{color:var(--muted);font-size:.9rem}
+.note .btn{margin-top:8px}
+
+.foot{display:flex;align-items:center;gap:2px;padding:7px 8px 7px 16px;border-top:1px solid var(--line)}
+.ver{color:var(--muted);font-size:.8rem}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:3px 10px;min-height:28px;border-radius:8px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-weight:500;font-size:.86rem;color:var(--text);white-space:nowrap;transition:background .14s,border-color .14s,color .14s}
+.btn:hover{background:var(--surface2);border-color:var(--line-strong)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btn.ghost:hover{background:var(--surface2);color:var(--text)}
+.btn.primary{background:var(--primary-bg);border-color:var(--primary-bg);color:var(--primary-fg);font-weight:600}
+.btn.primary:hover{opacity:.9;background:var(--primary-bg);border-color:var(--primary-bg)}
+
+/* ---------- settings ---------- */
+.set-title{padding:14px 16px 12px;font-size:1.07rem;font-weight:650;letter-spacing:-.01em}
+.field{display:block;margin-bottom:12px}
+.field .fl{display:block;font-weight:600;font-size:.9rem;margin-bottom:4px}
+.field input{width:100%;padding:5px 10px;min-height:34px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--text);transition:border-color .14s;user-select:text;-webkit-user-select:text}
+.field input:hover{border-color:var(--line-strong)}
+.field input:focus-visible{outline:2px solid color-mix(in srgb,var(--focus) 35%,transparent);outline-offset:0;border-color:var(--focus);border-radius:8px}
+.field input::placeholder{color:var(--muted);opacity:.72}
+.hint{display:block;color:var(--muted);font-size:.82rem;margin-top:4px}
+.hint.bad{color:var(--bad)}
+.pw-row{display:flex;gap:6px}
+.check{display:flex;align-items:center;gap:9px;padding:3px 0;cursor:pointer}
+.check input{width:16px;height:16px;margin:0;accent-color:var(--accent);cursor:pointer}
+</style>
+</head>
+<body>
+<div class="card" id="card" data-level="unknown">
+
+  <section id="viewMain">
+    <header class="head">
+      <span class="mark" aria-hidden="true"><svg viewBox="0 0 256 256"><rect class="frame" x="6" y="6" width="244" height="244" rx="62"/><rect x="36" y="36" width="184" height="184" rx="36" fill="#F7F3E8"/><g transform="translate(36 36) scale(0.766667) translate(-8 -8)">
+    <g fill="#177571"><rect x="52" y="204" width="136" height="16" rx="8"/><rect x="44" y="204" width="34" height="30" rx="11"/><rect x="162" y="204" width="34" height="30" rx="11"/></g>
+    <g stroke="#C97B10" stroke-width="7" stroke-linecap="round"><line x1="104" y1="186" x2="104" y2="203"/><line x1="128" y1="186" x2="128" y2="203"/></g>
+    <polygon points="70,150 22,176 30,192 84,176" fill="#1C1D20"/>
+    <ellipse cx="112" cy="142" rx="56" ry="50" fill="#1C1D20"/>
+    <circle cx="146" cy="88" r="38" fill="#1C1D20"/>
+    <polygon points="158,60 166,30 172,56 184,36 184,64 198,50 190,76" fill="#1C1D20"/>
+    <g transform="rotate(-24 100 150)"><ellipse cx="100" cy="150" rx="42" ry="25" fill="#34363D"/><ellipse cx="88" cy="160" rx="18" ry="7" fill="#F2F2F4"/></g>
+    <g fill="#FAF2DC" stroke="#1C1D20" stroke-width="3" stroke-linejoin="round"><polygon points="178,74 216,84 180,92"/><polygon points="180,94 208,102 176,106"/></g>
+    <circle cx="158" cy="80" r="8" fill="#E57E25"/><circle cx="159" cy="80" r="3.5" fill="#1C1D20"/>
+    <g fill="none" stroke="#1C1D20" stroke-width="5" stroke-linecap="round"><path d="M222 80 q7 13 0 26"/><path d="M233 71 q13 22 0 44"/></g>
+      </g></svg></span>
+      <div class="grow">
+        <h1 id="headline" aria-live="polite"></h1>
+        <p class="sub" id="sub"></p>
+      </div>
+    </header>
+
+    <div class="sec" id="secAddr" hidden>
+      <div class="label" data-i18n="addr_label"></div>
+      <div class="row">
+        <span class="addr grow" id="addr"></span>
+        <button type="button" class="btn ghost" id="btnCopy" data-i18n="copy"></button>
+        <button type="button" class="btn" id="btnOpen" data-i18n="open"></button>
+      </div>
+    </div>
+
+    <div class="sec" id="secPhones" hidden>
+      <div class="label" data-i18n="phones_label"></div>
+      <ul class="phones" id="phones"></ul>
+      <div class="note" id="note" hidden>
+        <div id="noteText"></div>
+        <button type="button" class="btn" id="btnPw" data-i18n="enter_pw" hidden></button>
+      </div>
+    </div>
+
+    <footer class="foot">
+      <span class="ver grow" id="ver">Bageo</span>
+      <button type="button" class="btn ghost" id="btnSet" data-i18n="settings"></button>
+      <button type="button" class="btn ghost" id="btnQuit" data-i18n="quit"></button>
+    </footer>
+  </section>
+
+  <form id="viewSet" hidden novalidate>
+    <h1 class="set-title" data-i18n="settings"></h1>
+    <div class="sec">
+      <label class="field">
+        <span class="fl" data-i18n="set_addr"></span>
+        <input type="text" id="fAddr" inputmode="url" placeholder="http://192.168.1.20:8787" spellcheck="false" autocomplete="off" autocapitalize="off" />
+        <span class="hint" id="addrHint"></span>
+      </label>
+      <label class="field">
+        <span class="fl" data-i18n="set_pw"></span>
+        <span class="pw-row">
+          <input type="password" id="fPw" spellcheck="false" autocomplete="off" />
+          <button type="button" class="btn ghost" id="btnPwClear" data-i18n="pw_clear" hidden></button>
+        </span>
+        <span class="hint" data-i18n="set_pw_hint"></span>
+      </label>
+      <label class="check">
+        <input type="checkbox" id="fAuto" />
+        <span data-i18n="set_auto"></span>
+      </label>
+    </div>
+    <div class="sec">
+      <div class="label" data-i18n="set_notify"></div>
+      <label class="check">
+        <input type="checkbox" id="fNotifyCalls" />
+        <span data-i18n="set_notify_calls"></span>
+      </label>
+      <label class="check">
+        <input type="checkbox" id="fNotifySms" />
+        <span data-i18n="set_notify_sms"></span>
+      </label>
+      <span class="hint" id="smsHint" data-i18n="set_notify_sms_old" hidden></span>
+    </div>
+    <div class="sec" id="saveErr" hidden><span class="hint bad" data-i18n="err_save"></span></div>
+    <footer class="foot">
+      <span class="grow"></span>
+      <button type="button" class="btn ghost" id="btnCancel" data-i18n="cancel"></button>
+      <button type="submit" class="btn primary" data-i18n="save"></button>
+    </footer>
+  </form>
+
+</div>
+<script>
+(() => {
+  "use strict";
+  const T = window.__TAURI__;
+  const invoke = (cmd, args) => T.core.invoke(cmd, args);
+  const $ = (id) => document.getElementById(id);
+
+  let I18N = {};
+  let lang = "en";
+  let snap = null;
+  let hasPassword = false;
+  let clearPw = false;
+  let copiedTimer = 0;
+
+  // Until Bageo says which language its owner reads, follow the computer.
+  function systemLang() {
+    const l = (navigator.language || "en").toLowerCase();
+    if (l.startsWith("zh")) return /hant|tw|hk|mo/.test(l) ? "zh-TW" : "zh-CN";
+    for (const k of ["ja", "ko", "es", "fr", "de", "pt"]) if (l.startsWith(k)) return k;
+    return "en";
+  }
+  function t(key, vars) {
+    let s = (I18N[lang] && I18N[lang][key]) || (I18N.en && I18N.en[key]) || "";
+    for (const k in vars || {}) s = s.split("{" + k + "}").join(String(vars[k]));
+    return s;
+  }
+  function applyTexts() {
+    document.documentElement.lang = lang;
+    document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  }
+  function reasonText(s) {
+    switch (s.reason) {
+      case "ready": return t("r_ready", { n: s.ready });
+      case "busy": return t("r_busy");
+      case "phone_offline":
+        return s.offline_count > 1 ? t("r_phones_offline", { n: s.offline_count }) : t("r_phone_offline", { name: s.offline_name });
+      case "all_normal": return t("r_all_normal");
+      case "no_phone": return t("r_no_phone");
+      case "offline": return t("r_offline");
+      default: return t("r_starting");
+    }
+  }
+  const shortAddr = (a) => String(a || "").replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+
+  function render() {
+    const s = snap || { level: "unknown", reason: "starting", phones: [] };
+    const wanted = s.lang && I18N[s.lang] ? s.lang : systemLang();
+    if (wanted !== lang) { lang = wanted; }
+    applyTexts();
+    const level = ["ok", "warn", "bad"].includes(s.level) ? s.level : "unknown";
+    $("card").dataset.level = level;
+    $("headline").textContent = t("h_" + level);
+    $("sub").textContent = reasonText(s);
+
+    $("secAddr").hidden = !s.address;
+    $("addr").textContent = shortAddr(s.address);
+    $("addr").title = s.address || "";
+
+    const reached = s.reason !== "offline" && s.reason !== "starting" && !!snap;
+    const phones = Array.isArray(s.phones) ? s.phones : [];
+    const list = $("phones");
+    list.textContent = "";
+    for (const p of phones) {
+      const state = ["ready", "call", "normal", "offline"].includes(p.state) ? p.state : "ready";
+      const li = document.createElement("li");
+      li.className = "ph " + state;
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      const name = document.createElement("span");
+      name.className = "name grow";
+      name.textContent = p.name || p.serial || "";
+      const st = document.createElement("span");
+      st.className = "st";
+      st.textContent = t("p_" + state);
+      li.append(dot, name, st);
+      list.append(li);
+    }
+    let note = "";
+    if (reached && s.locked) note = t(s.has_password ? "pw_wrong" : "locked");
+    else if (reached && !phones.length && !s.ready && !s.calls) note = t("no_phone_hint");
+    $("noteText").textContent = note;
+    $("note").hidden = !note;
+    $("btnPw").hidden = !(reached && s.locked);
+    list.hidden = !phones.length;
+    $("secPhones").hidden = !reached || (!phones.length && !note);
+
+    $("ver").textContent = s.version ? "Bageo " + s.version : "Bageo";
+  }
+
+  // Keep the window exactly as tall as the card (plus the room its shadow needs).
+  let fitQueued = false;
+  function fit() {
+    if (fitQueued) return;
+    fitQueued = true;
+    requestAnimationFrame(() => {
+      fitQueued = false;
+      const h = Math.ceil($("card").getBoundingClientRect().height) + 20;
+      invoke("fit", { height: h }).catch(() => {});
+    });
+  }
+  new ResizeObserver(fit).observe($("card"));
+
+  function showMain() {
+    $("viewSet").hidden = true;
+    $("viewMain").hidden = false;
+  }
+  async function showSettings() {
+    let cfg = { address: "", has_password: false, autostart: false, notify_calls: false, notify_sms: false };
+    try { cfg = await invoke("get_config"); } catch (_) { /* keep the empty form */ }
+    hasPassword = !!cfg.has_password;
+    clearPw = false;
+    $("fAddr").value = cfg.address || "";
+    $("fPw").value = "";
+    $("fPw").placeholder = hasPassword ? t("pw_keep") : "";
+    $("btnPwClear").hidden = !hasPassword;
+    $("fAuto").checked = !!cfg.autostart;
+    $("fNotifyCalls").checked = !!cfg.notify_calls;
+    $("fNotifySms").checked = !!cfg.notify_sms;
+    showSmsHint();
+    setAddrHint(false);
+    $("saveErr").hidden = true;
+    $("viewMain").hidden = true;
+    $("viewSet").hidden = false;
+    (snap && snap.locked ? $("fPw") : $("fAddr")).focus();
+  }
+  // An older Bageo cannot tell this program about text messages.
+  function showSmsHint() {
+    $("smsHint").hidden = !($("fNotifySms").checked && snap && snap.sms_supported === false);
+  }
+  function setAddrHint(bad) {
+    const el = $("addrHint");
+    el.textContent = t(bad ? "err_addr" : "set_addr_hint");
+    el.classList.toggle("bad", bad);
+  }
+
+  $("btnOpen").addEventListener("click", () => invoke("open_console"));
+  $("btnCopy").addEventListener("click", async () => {
+    if (!snap || !snap.address) return;
+    try { await navigator.clipboard.writeText(snap.address); } catch (_) { return; }
+    const b = $("btnCopy");
+    b.textContent = t("copied");
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => { b.textContent = t("copy"); }, 1600);
+  });
+  $("btnSet").addEventListener("click", showSettings);
+  $("btnPw").addEventListener("click", showSettings);
+  $("btnQuit").addEventListener("click", () => invoke("quit"));
+  $("btnCancel").addEventListener("click", showMain);
+  $("btnPwClear").addEventListener("click", () => {
+    clearPw = true;
+    $("fPw").value = "";
+    $("fPw").placeholder = "";
+    $("btnPwClear").hidden = true;
+  });
+  $("fPw").addEventListener("input", () => { if ($("fPw").value) clearPw = false; });
+  $("fNotifySms").addEventListener("change", showSmsHint);
+  $("viewSet").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const address = $("fAddr").value.trim();
+    if (address && !/^https?:\/\//i.test(address)) { setAddrHint(true); $("fAddr").focus(); return; }
+    const password = $("fPw").value || null;
+    const clear = clearPw && !password;
+    try {
+      await invoke("save_config", {
+        address, password, clear_password: clear, autostart: $("fAuto").checked,
+        notify_calls: $("fNotifyCalls").checked, notify_sms: $("fNotifySms").checked,
+      });
+    } catch (e) {
+      if (String(e) === "addr") { setAddrHint(true); $("fAddr").focus(); return; }
+      // The rest was saved; say so and stay here.
+      $("saveErr").hidden = false;
+      return;
+    }
+    showMain();
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Escape") return;
+    if (!$("viewSet").hidden) showMain(); else invoke("hide");
+  });
+  document.addEventListener("contextmenu", (ev) => ev.preventDefault());
+
+  async function start() {
+    lang = systemLang();
+    try { I18N = await (await fetch("i18n.json")).json(); } catch (_) { I18N = {}; }
+    render();
+    T.event.listen("snapshot", (e) => { snap = e.payload; render(); });
+    T.event.listen("shown", async () => {
+      showMain();
+      try { snap = await invoke("get_snapshot"); render(); } catch (_) { /* the next event brings it */ }
+      invoke("refresh").catch(() => {});
+    });
+    try { snap = await invoke("get_snapshot"); } catch (_) { /* the first event brings it */ }
+    render();
+    fit();
+  }
+  start();
+})();
+</script>
+</body>
+</html>

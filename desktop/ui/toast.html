@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
+<title>Bageo</title>
+<link rel="stylesheet" href="base.css" />
+<style>
+/* The window sits in a screen corner; the card hugs that corner. */
+html,body{height:100%}
+body{display:flex;flex-direction:column;justify-content:flex-end}
+body.top{justify-content:flex-start}
+.toast{display:flex;align-items:center;gap:12px;padding:12px 10px 12px 14px;cursor:pointer;position:relative;opacity:0;transform:translateY(6px);transition:opacity .24s ease-out,transform .24s ease-out,background .14s}
+body.top .toast{transform:translateY(-6px)}
+.toast.in{opacity:1;transform:none}
+.toast:hover{background:color-mix(in srgb,var(--surface2) 45%,var(--surface))}
+.mark{width:34px;height:34px;flex:0 0 auto;display:block}
+.mark svg{width:100%;height:100%;display:block}
+.kind{font-size:.75rem;font-weight:600;letter-spacing:.03em;color:var(--muted);line-height:1.35}
+.who{font-size:1rem;font-weight:650;letter-spacing:-.005em;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.text{color:var(--muted);font-size:.88rem;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.x{flex:0 0 auto;align-self:flex-start;width:24px;height:24px;margin:-4px 0 0;padding:0;border:0;border-radius:7px;background:transparent;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .14s,background .14s,color .14s}
+.toast:hover .x,.x:focus-visible{opacity:1}
+.x:hover{background:var(--surface2);color:var(--text)}
+.x svg{width:11px;height:11px;display:block}
+</style>
+</head>
+<body>
+<div class="card toast" id="toast" role="button" tabindex="0">
+  <span class="mark" aria-hidden="true"><svg viewBox="0 0 256 256"><rect x="8" y="8" width="240" height="240" rx="56" fill="#ECC354"/>
+    <g fill="#177571"><rect x="52" y="204" width="136" height="16" rx="8"/><rect x="44" y="204" width="34" height="30" rx="11"/><rect x="162" y="204" width="34" height="30" rx="11"/></g>
+    <g stroke="#C97B10" stroke-width="7" stroke-linecap="round"><line x1="104" y1="186" x2="104" y2="203"/><line x1="128" y1="186" x2="128" y2="203"/></g>
+    <polygon points="70,150 22,176 30,192 84,176" fill="#1C1D20"/>
+    <ellipse cx="112" cy="142" rx="56" ry="50" fill="#1C1D20"/>
+    <circle cx="146" cy="88" r="38" fill="#1C1D20"/>
+    <polygon points="158,60 166,30 172,56 184,36 184,64 198,50 190,76" fill="#1C1D20"/>
+    <g transform="rotate(-24 100 150)"><ellipse cx="100" cy="150" rx="42" ry="25" fill="#34363D"/><ellipse cx="88" cy="160" rx="18" ry="7" fill="#F2F2F4"/></g>
+    <g fill="#FAF2DC" stroke="#1C1D20" stroke-width="3" stroke-linejoin="round"><polygon points="178,74 216,84 180,92"/><polygon points="180,94 208,102 176,106"/></g>
+    <circle cx="158" cy="80" r="8" fill="#E57E25"/><circle cx="159" cy="80" r="3.5" fill="#1C1D20"/>
+    <g fill="none" stroke="#1C1D20" stroke-width="5" stroke-linecap="round"><path d="M222 80 q7 13 0 26"/><path d="M233 71 q13 22 0 44"/></g>
+  </svg></span>
+  <div class="grow">
+    <div class="kind" id="kind" hidden></div>
+    <div class="who" id="who"></div>
+    <div class="text" id="text" hidden></div>
+  </div>
+  <button type="button" class="x" id="x"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8"/></svg></button>
+</div>
+<script>
+(() => {
+  "use strict";
+  const T = window.__TAURI__;
+  const invoke = (cmd, args) => T.core.invoke(cmd, args);
+  const $ = (id) => document.getElementById(id);
+  const SHOW_MS = 7000;      // how long the card stays
+  const AFTER_HOVER_MS = 2500;
+
+  let I18N = {};
+  let timer = 0;
+  let closing = 0;
+  // macOS shows it under the menu bar, Windows above the taskbar.
+  if (/Mac/i.test(navigator.userAgent)) document.body.classList.add("top");
+
+  function render(n) {
+    const lang = n.lang && I18N[n.lang] ? n.lang : "en";
+    const t = (key, vars) => {
+      let s = (I18N[lang] && I18N[lang][key]) || (I18N.en && I18N.en[key]) || "";
+      for (const k in vars || {}) s = s.split("{" + k + "}").join(String(vars[k]));
+      return s;
+    };
+    document.documentElement.lang = lang;
+    const label = t(n.kind === "sms" ? "n_sms" : "n_call");
+    const who = String(n.who || "").trim();
+    // The small line: what happened, on which phone, and how many more are waiting.
+    const small = [];
+    if (who) small.push(label);
+    if (n.phone) small.push(n.phone);
+    if (n.more > 0) small.push(t("n_more", { n: n.more }));
+    $("kind").textContent = small.join(" · ");
+    $("kind").hidden = !small.length;
+    $("who").textContent = who || label;
+    const text = n.kind === "sms" ? String(n.text || "").trim() : "";
+    $("text").textContent = text;
+    $("text").hidden = !text;
+    $("x").setAttribute("aria-label", t("n_close"));
+    $("x").title = t("n_close");
+  }
+  function close() {
+    clearTimeout(timer);
+    $("toast").classList.remove("in");
+    clearTimeout(closing);
+    closing = setTimeout(() => invoke("toast_close").catch(() => {}), 260);
+  }
+  function arm(ms) {
+    clearTimeout(timer);
+    timer = setTimeout(close, ms);
+  }
+  function show(n) {
+    if (!n) { invoke("toast_close").catch(() => {}); return; }
+    // A new one came while the last was fading out: keep the window.
+    clearTimeout(closing);
+    render(n);
+    requestAnimationFrame(() => $("toast").classList.add("in"));
+    arm(SHOW_MS);
+  }
+
+  $("toast").addEventListener("click", () => { clearTimeout(timer); invoke("toast_open").catch(() => {}); });
+  $("toast").addEventListener("keydown", (ev) => {
+    if (ev.target !== $("toast")) return;
+    if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); $("toast").click(); }
+  });
+  $("x").addEventListener("click", (ev) => { ev.stopPropagation(); close(); });
+  $("toast").addEventListener("mouseenter", () => clearTimeout(timer));
+  $("toast").addEventListener("mouseleave", () => arm(AFTER_HOVER_MS));
+  document.addEventListener("contextmenu", (ev) => ev.preventDefault());
+
+  async function start() {
+    try { I18N = await (await fetch("i18n.json")).json(); } catch (_) { I18N = {}; }
+    T.event.listen("toast", (e) => show(e.payload));
+    let n = null;
+    try { n = await invoke("toast_get"); } catch (_) { /* nothing to show */ }
+    show(n);
+  }
+  start();
+})();
+</script>
+</body>
+</html>
