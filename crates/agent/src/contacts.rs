@@ -240,11 +240,36 @@ pub fn clean_phone(raw: &str) -> Option<String> {
 /// The numbers in one field: Google writes several as `a ::: b`, people use
 /// `/`, `、`, `;`, `,` or new lines.
 fn split_phones(field: &str) -> Vec<String> {
+    phone_parts(field).filter_map(|p| clean_phone(&excel_number(p))).collect()
+}
+
+/// The parts of a field that each hold one number, as written ([`split_phones`]).
+fn phone_parts(field: &str) -> impl Iterator<Item = &str> {
     field
         .split(":::")
         .flat_map(|p| p.split(|c: char| matches!(c, '\n' | '\r' | ';' | '/' | '、' | ',' | '，' | '；' | '|')))
-        .filter_map(|p| clean_phone(&excel_number(p)))
-        .collect()
+}
+
+/// A Blacklist entry for every number that starts the same way: it ends in
+/// `*` (`0800*`).
+fn is_prefix(s: &str) -> bool {
+    s.trim_end().ends_with('*')
+}
+
+/// A prefix entry as it is kept: the number before the `*` cleaned like any
+/// number, then `*`. None when it has fewer than 4 digits
+/// ([`crate::settings_store::reject_prefix_ok`]: `02*` would turn a whole
+/// area away).
+fn clean_prefix(raw: &str) -> Option<String> {
+    let p = clean_phone(raw.trim().trim_end_matches('*'))?;
+    let p = format!("{p}*");
+    crate::settings_store::reject_prefix_ok(&p).then_some(p)
+}
+
+/// Two prefix entries with the same digits (`0800*`, `0800-*`).
+fn same_prefix(a: &str, b: &str) -> bool {
+    let digits = |s: &str| crate::settings_store::national_digits(s.trim().trim_end_matches('*'));
+    is_prefix(a) && is_prefix(b) && digits(a) == digits(b)
 }
 
 /// A number as compared: in international form when it reads as one (its
@@ -259,6 +284,11 @@ struct NumKey {
 }
 
 fn num_key(raw: &str, region: Option<&str>) -> Option<NumKey> {
+    // A prefix (`0800*`) is no number of its own: it is matched apart
+    // ([`ContactStore::blacklisted`]).
+    if is_prefix(raw) {
+        return None;
+    }
     let plain: String = raw.chars().map(ascii_form).collect();
     let digits: String = plain.chars().filter(char::is_ascii_digit).collect();
     let intl = plain.chars().find(|c| c.is_ascii_digit() || *c == '+') == Some('+') || digits.starts_with("00");
@@ -426,12 +456,26 @@ pub struct PreviewEntry {
 
 /// A draft as it is kept: one-line name and note, clean numbers (each once,
 /// at most [`MAX_PHONES`]), a known source (`default_source` otherwise).
+/// Only a Blacklist contact may have a prefix (`0800*`, at least 4 digits);
+/// any other prefix: [`ContactError::Invalid`] `prefix`.
 fn tidy(d: &Draft, default_source: &str, region: Option<&str>) -> Result<Draft, ContactError> {
     let name = one_line(&d.name, NAME_MAX_CHARS);
     let note = one_line(&d.note, NOTE_MAX_CHARS);
+    let kind = sanitize_kind(&d.kind);
     let mut phones: Vec<String> = Vec::new();
     let mut keys: Vec<NumKey> = Vec::new();
-    for p in d.phones.iter().flat_map(|p| split_phones(p)) {
+    let mut bad_prefix = false;
+    for raw in d.phones.iter().flat_map(|p| phone_parts(p)) {
+        if is_prefix(raw) {
+            match clean_prefix(raw).filter(|_| kind == "blacklist") {
+                Some(p) if phones.iter().any(|x| same_prefix(x, &p)) => {}
+                Some(p) if phones.len() < MAX_PHONES => phones.push(p),
+                Some(_) => break,
+                None => bad_prefix = true,
+            }
+            continue;
+        }
+        let Some(p) = clean_phone(&excel_number(raw)) else { continue };
         let Some(k) = num_key(&p, region) else { continue };
         if keys.iter().any(|x| match_level(x, &k) == 2) {
             continue;
@@ -445,12 +489,14 @@ fn tidy(d: &Draft, default_source: &str, region: Option<&str>) -> Result<Draft, 
     if name.is_empty() {
         return Err(ContactError::Invalid("name"));
     }
+    if bad_prefix {
+        return Err(ContactError::Invalid("prefix"));
+    }
     if phones.is_empty() {
         return Err(ContactError::Invalid("phones"));
     }
     let source = one_line(&d.source, 16).to_ascii_lowercase();
     let source = if SOURCES.contains(&source.as_str()) { source } else { default_source.to_string() };
-    let kind = sanitize_kind(&d.kind);
     Ok(Draft { name, phones, note, source, kind })
 }
 
@@ -585,12 +631,74 @@ impl Book {
     }
 
     /// The contact (other than `except`) that has one of `phones` already
-    /// (the same number, or almost surely it: [`match_level`]).
+    /// (the same number, or almost surely it: [`match_level`]; a prefix: the
+    /// same prefix).
     fn owner_of(&self, phones: &[String], except: Option<usize>) -> Option<usize> {
-        phones
+        phones.iter().find_map(|p| {
+            if is_prefix(p) {
+                self.find_prefix(p, except)
+            } else {
+                num_key(p, self.region.as_deref()).and_then(|key| self.find_except(&key, except))
+            }
+        })
+    }
+
+    /// The contact (other than `except`) with the prefix entry `p` (`0800*`).
+    fn find_prefix(&self, p: &str, except: Option<usize>) -> Option<usize> {
+        self.contacts
             .iter()
-            .filter_map(|p| num_key(p, self.region.as_deref()))
-            .find_map(|key| self.find_except(&key, except))
+            .enumerate()
+            .find(|&(i, c)| Some(i) != except && c.phones.iter().any(|x| same_prefix(x, p)))
+            .map(|(i, _)| i)
+    }
+
+    /// Put `number` (or a prefix such as `0800*`) on the Blacklist: the
+    /// contact that has it becomes a Blacklist one (its note, when empty, set
+    /// to `reason`); else a new contact named `reason` (the number without
+    /// one) with `reason` as its note. Also: whether it was on the Blacklist
+    /// already.
+    fn block(&mut self, number: &str, reason: &str) -> Result<(Contact, bool), ContactError> {
+        let reason = one_line(reason, NOTE_MAX_CHARS);
+        let (phone, found) = if is_prefix(number) {
+            let p = clean_prefix(number).ok_or(ContactError::Invalid("prefix"))?;
+            let i = self.find_prefix(&p, None);
+            (p, i)
+        } else {
+            let p = clean_phone(number).ok_or(ContactError::Invalid("phones"))?;
+            let key = num_key(&p, self.region.as_deref()).ok_or(ContactError::Invalid("phones"))?;
+            let i = self.find(&key);
+            (p, i)
+        };
+        if let Some(i) = found {
+            let mut c = self.contacts[i].clone();
+            let was = c.kind == "blacklist";
+            let fill_note = c.note.trim().is_empty() && !reason.is_empty();
+            if was && !fill_note {
+                return Ok((c, true));
+            }
+            c.kind = "blacklist".into();
+            if fill_note {
+                c.note = reason;
+            }
+            c.updated_at = now();
+            self.set(i, c.clone());
+            return Ok((c, was));
+        }
+        if self.contacts.len() >= MAX_CONTACTS {
+            return Err(ContactError::TooMany);
+        }
+        let name = if reason.is_empty() { phone.clone() } else { one_line(&reason, NAME_MAX_CHARS) };
+        let c = Contact {
+            id: new_id(),
+            name,
+            phones: vec![phone],
+            note: reason,
+            source: "manual".into(),
+            kind: "blacklist".into(),
+            updated_at: now(),
+        };
+        self.push(c.clone());
+        Ok((c, false))
     }
 
     /// The contact `d` repeats: by one of its numbers, else by its name.
@@ -740,11 +848,64 @@ impl ContactStore {
 
     /// The contact a caller ID belongs to. `region`: the country of the SIM
     /// the call came in on (a number without a country code reads as dialled
-    /// there); None reads it in the owner's country.
+    /// there); None reads it in the owner's country. A prefix (`0800*`): the
+    /// contact with that prefix entry.
     pub fn lookup(&self, number: &str, region: Option<&str>) -> Option<Contact> {
+        if is_prefix(number) {
+            return self.with_book(|b| b.find_prefix(number, None).map(|i| b.contacts[i].clone()));
+        }
         let region = region.map(str::trim).filter(|r| !r.is_empty()).map(str::to_string).or_else(|| (self.region)());
         let key = num_key(number, region.as_deref())?;
         self.with_book(|b| b.find(&key).map(|i| b.contacts[i].clone()))
+    }
+
+    /// The Blacklist contact a caller ID is turned away by: its number, or a
+    /// prefix entry it starts with, read as dialled on the SIM of country
+    /// `region` (None: the owner's country) the way blocked numbers always
+    /// were ([`crate::settings_store::reject_entry_hit`]).
+    pub fn blacklisted(&self, number: &str, region: Option<&str>) -> Option<Contact> {
+        if let Some(c) = self.lookup(number, region).filter(|c| c.kind == "blacklist") {
+            return Some(c);
+        }
+        let region = region.map(str::trim).filter(|r| !r.is_empty());
+        self.with_book(|b| {
+            b.contacts
+                .iter()
+                .find(|c| {
+                    c.kind == "blacklist"
+                        && c.phones.iter().any(|p| is_prefix(p) && crate::settings_store::reject_entry_hit(p, number, region))
+                })
+                .cloned()
+        })
+    }
+
+    /// How many contacts are on the Blacklist.
+    pub fn blacklist_len(&self) -> usize {
+        self.with_book(|b| b.contacts.iter().filter(|c| c.kind == "blacklist").count())
+    }
+
+    /// Put one number (or prefix) on the Blacklist ([`Book::block`]): the
+    /// contact, and whether it was on the Blacklist already.
+    pub async fn block(&self, number: &str, reason: &str) -> Result<(Contact, bool), ContactError> {
+        self.change(|b| b.block(number, reason)).await
+    }
+
+    /// Put `(number, reason)` pairs on the Blacklist in one save. One that is
+    /// no number (or a prefix under 4 digits, which never turned anyone away)
+    /// is left out; any other failure saves nothing. How many are on it.
+    pub async fn block_many(&self, entries: &[(String, String)]) -> Result<usize, ContactError> {
+        self.change(|b| {
+            let mut n = 0;
+            for (number, reason) in entries {
+                match b.block(number, reason) {
+                    Ok(_) => n += 1,
+                    Err(ContactError::Invalid(_)) => {}
+                    Err(e) => return Err(e),
+                }
+            }
+            Ok(n)
+        })
+        .await
     }
 
     /// The contact with this id.
@@ -834,6 +995,21 @@ impl ContactStore {
         let note = note.trim().to_string();
         let kind = sanitize_kind(kind);
         self.change(|b| {
+            // A prefix (`0800*`) can only be a Blacklist entry.
+            if is_prefix(&number) {
+                if kind != "blacklist" {
+                    return Err(ContactError::Invalid("prefix"));
+                }
+                let (mut c, _) = b.block(&number, &note)?;
+                if !name.is_empty() {
+                    if let Some(i) = b.position(&c.id) {
+                        c.name = one_line(&name, NAME_MAX_CHARS);
+                        c.updated_at = now();
+                        b.set(i, c.clone());
+                    }
+                }
+                return Ok(c);
+            }
             let cleaned = clean_phone(&number).ok_or(ContactError::Invalid("phones"))?;
             let key = num_key(&cleaned, b.region.as_deref()).ok_or(ContactError::Invalid("phones"))?;
             if let Some(i) = b.find(&key) {
@@ -1013,9 +1189,45 @@ pub fn is_whitelist(number: &str, region: Option<&str>) -> Option<Contact> {
     lookup(number, region).filter(|c| c.kind == "whitelist")
 }
 
-/// Whether `number` is on the Blacklist (`kind == "blacklist"`).
+/// Whether `number` is on the Blacklist (`kind == "blacklist"`), itself or
+/// by a prefix entry ([`ContactStore::blacklisted`]).
 pub fn is_blacklist(number: &str, region: Option<&str>) -> Option<Contact> {
-    lookup(number, region).filter(|c| c.kind == "blacklist")
+    STORE.get()?.blacklisted(number, region)
+}
+
+/// How many contacts are on the Blacklist (0 before the contacts are open).
+pub fn blacklist_len() -> usize {
+    STORE.get().map_or(0, |s| s.blacklist_len())
+}
+
+/// Move the blocked numbers older versions kept in the settings
+/// (`reject_numbers`) onto the Blacklist ([`Book::block`]: a number that is a
+/// contact's makes that contact a Blacklist one, its note filled with the
+/// reason when empty; else a new contact named after the reason, or the
+/// number). The settings list is emptied only once the contacts are saved;
+/// when they cannot be, it stays (still turned away) and the next start or
+/// save tries again. Moving the same numbers again adds nothing. How many
+/// were moved.
+pub async fn absorb_reject_numbers(settings: &crate::settings_store::SettingsStore, contacts: &ContactStore) -> usize {
+    let pending = settings.snapshot().reject_numbers.clone();
+    if pending.is_empty() {
+        return 0;
+    }
+    let entries: Vec<(String, String)> = pending.iter().map(|e| (e.number.clone(), e.reason.clone())).collect();
+    let moved = match contacts.block_many(&entries).await {
+        Ok(n) => n,
+        Err(e) => {
+            warn!("contacts: {} blocked numbers not moved to the Blacklist, kept in the settings until the next try: {e:?}", pending.len());
+            return 0;
+        }
+    };
+    // Entries saved meanwhile stay for the next time.
+    let left: Vec<_> = settings.snapshot().reject_numbers.iter().filter(|e| !pending.contains(e)).cloned().collect();
+    match settings.apply_patch(&json!({ "reject_numbers": left })) {
+        Ok(_) => info!("contacts: {moved} blocked numbers moved to the Blacklist ({} in the settings)", pending.len()),
+        Err(e) => warn!("contacts: blocked numbers are on the Blacklist but the settings were not emptied (next try at start): {e:#}"),
+    }
+    moved
 }
 
 /// Whether `number` is on the Force-Stall list (`kind == "stall"`).
@@ -2985,6 +3197,9 @@ async fn create_contact(State(state): State<CallsState>, headers: HeaderMap, Que
     match state.contacts.add(&draft).await {
         Ok(c) => {
             info!(contact = c.id.as_str(), "contact added");
+            if c.kind == "blacklist" {
+                ready_reject_clip(&state);
+            }
             Json(json!({"ok": true, "contact": c})).into_response()
         }
         Err(e) => contact_error(e),
@@ -3012,7 +3227,57 @@ async fn update_contact(
         return api_error(StatusCode::BAD_REQUEST, "bad_request", "the body must be {\"name\": …, \"phones\": [...], \"note\": …}");
     };
     match state.contacts.update(&id, &draft).await {
-        Ok(c) => Json(json!({"ok": true, "contact": c})).into_response(),
+        Ok(c) => {
+            if c.kind == "blacklist" {
+                ready_reject_clip(&state);
+            }
+            Json(json!({"ok": true, "contact": c})).into_response()
+        }
+        Err(e) => contact_error(e),
+    }
+}
+
+/// A number has joined the Blacklist: have the "cannot be reached"
+/// announcement ready before it calls (free when it exists).
+fn ready_reject_clip(state: &CallsState) {
+    let previews = state.previews.clone();
+    let rt = state.settings_store.snapshot();
+    let sr = state.settings.sample_rate;
+    tokio::spawn(async move {
+        crate::voice_preview::prepare_reject_clip(&previews, &rt, sr).await;
+    });
+}
+
+#[derive(Deserialize)]
+struct BlockBody {
+    #[serde(default)]
+    number: String,
+    #[serde(default)]
+    reason: String,
+}
+
+/// `POST /api/contacts/block` `{number, reason}`: `{ok, contact, already}` —
+/// the number (or a prefix such as `0800*`) on the Blacklist: the contact
+/// that has it moved there, else a new one ([`ContactStore::block`]).
+/// `already`: it was on the Blacklist before.
+async fn block_contact(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, body: Bytes) -> Response {
+    if !authorized(&state, &headers, q.token.as_deref()) {
+        return unauthorized();
+    }
+    if !json_request(&headers) {
+        return json_required();
+    }
+    let Ok(b) = serde_json::from_slice::<BlockBody>(&body) else {
+        return api_error(StatusCode::BAD_REQUEST, "bad_request", "the body must be {\"number\": …, \"reason\": …}");
+    };
+    match state.contacts.block(&b.number, &b.reason).await {
+        Ok((c, already)) => {
+            if !already {
+                info!(contact = c.id.as_str(), "number added to the Blacklist");
+                ready_reject_clip(&state);
+            }
+            Json(json!({"ok": true, "contact": c, "already": already})).into_response()
+        }
         Err(e) => contact_error(e),
     }
 }
@@ -3155,6 +3420,7 @@ async fn export_contacts(State(state): State<CallsState>, headers: HeaderMap, Qu
 pub fn router() -> Router<CallsState> {
     Router::new()
         .route("/api/contacts", get(list_contacts).post(create_contact))
+        .route("/api/contacts/block", post(block_contact))
         .route("/api/contacts/batch", post(batch_contacts).layer(DefaultBodyLimit::max(IMPORT_MAX_BYTES)))
         .route("/api/contacts/import", post(import_contacts).layer(DefaultBodyLimit::max(IMPORT_MAX_BYTES)))
         .route("/api/contacts/export.vcf", get(export_contacts))
@@ -4046,5 +4312,130 @@ mod tests {
         let (sjis, _, _) = encoding_rs::SHIFT_JIS.encode(&jp);
         assert!(sjis.len() > DECODE_SAMPLE_BYTES);
         assert!(decode_text(&sjis).starts_with("氏名,電話番号\r\n佐藤健一,"));
+    }
+
+    /// Settings of their own (in `dir`) with `reject_numbers` sent the old way.
+    fn settings_with_rejects(dir: &Path, list: Value) -> (crate::config::Settings, Arc<crate::settings_store::SettingsStore>) {
+        let mut base = crate::config::Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().into_owned();
+        let store = crate::settings_store::SettingsStore::load(base.clone());
+        store.apply_patch(&json!({ "reject_numbers": list })).unwrap();
+        (base, store)
+    }
+
+    fn black(name: &str, phones: &[&str]) -> Draft {
+        Draft { kind: "blacklist".into(), ..draft(name, phones, "") }
+    }
+
+    #[tokio::test]
+    async fn older_blocked_numbers_move_to_the_blacklist_once() {
+        let dir = temp_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let s = ContactStore::open_with(dir.join("contacts.json"), Box::new(|| Some("tw".to_string())));
+        let friend = s.add(&draft("王小明", &["02-2345-6789"], "")).await.unwrap();
+        let noted = s.add(&draft("李大華", &["0933123456"], "老同學")).await.unwrap();
+        let list = json!([
+            { "number": "02-5550-1234", "reason": "推銷電話" },
+            { "number": "0800*", "reason": "" },
+            { "number": "(02) 2345-6789", "reason": "其實是推銷" },
+            { "number": "0933123456", "reason": "借錢" },
+            "0912345678",
+            { "number": "02*", "reason": "太短，從來沒擋過人" }
+        ]);
+        let (base, settings) = settings_with_rejects(&dir, list.clone());
+        assert_eq!(settings.snapshot().reject_numbers.len(), 6);
+        // The prefix under 4 digits never turned anyone away: left out.
+        assert_eq!(absorb_reject_numbers(&settings, &s).await, 5);
+        // The settings list is empty, also after a restart.
+        assert!(settings.snapshot().reject_numbers.is_empty());
+        assert!(crate::settings_store::SettingsStore::load(base).snapshot().reject_numbers.is_empty());
+        assert_eq!(s.len(), 5);
+        assert_eq!(s.blacklist_len(), 5);
+        // A number that was a contact's: that contact on the Blacklist, its
+        // name kept, its note filled only when it had none.
+        let f = s.get(&friend.id).unwrap();
+        assert_eq!((f.name.as_str(), f.kind.as_str(), f.note.as_str()), ("王小明", "blacklist", "其實是推銷"));
+        let n = s.get(&noted.id).unwrap();
+        assert_eq!((n.kind.as_str(), n.note.as_str()), ("blacklist", "老同學"));
+        // New contacts: named after the reason, or the number without one.
+        let sales = s.lookup("0255501234", TW).unwrap();
+        assert_eq!((sales.name.as_str(), sales.note.as_str(), sales.kind.as_str()), ("推銷電話", "推銷電話", "blacklist"));
+        assert_eq!(s.lookup("+886 912 345 678", TW).unwrap().name, "0912345678");
+        assert_eq!(s.lookup("0800*", None).unwrap().phones, vec!["0800*".to_string()]);
+        // The old settings API: the same list again adds nobody.
+        settings.apply_patch(&json!({ "reject_numbers": list })).unwrap();
+        assert_eq!(absorb_reject_numbers(&settings, &s).await, 5);
+        assert_eq!(s.len(), 5);
+        assert!(settings.snapshot().reject_numbers.is_empty());
+        // Nothing waiting: nothing done.
+        assert_eq!(absorb_reject_numbers(&settings, &s).await, 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn blocked_numbers_stay_in_the_settings_until_the_contacts_are_saved() {
+        let dir = temp_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        // A file where the contacts' folder should be: no contact can be saved.
+        let not_a_folder = dir.join("not-a-folder");
+        std::fs::write(&not_a_folder, b"x").unwrap();
+        let s = ContactStore::open_with(not_a_folder.join("contacts.json"), Box::new(|| Some("tw".to_string())));
+        let (base, settings) = settings_with_rejects(&dir, json!([{ "number": "0255501234", "reason": "推銷" }]));
+        assert_eq!(absorb_reject_numbers(&settings, &s).await, 0);
+        assert_eq!(settings.snapshot().reject_numbers.len(), 1);
+        assert_eq!(crate::settings_store::SettingsStore::load(base).snapshot().reject_numbers.len(), 1);
+        // Meanwhile the number is still turned away.
+        assert!(crate::settings_store::reject_number_hit_on(&settings.snapshot().reject_numbers, "02-5550-1234", TW));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_blacklist_prefix_turns_away_every_number_that_starts_so() {
+        let s = temp_store();
+        let c = s.add(&black("免付費推銷", &["0800*", "0800-*", "+81 3 1234*"])).await.unwrap();
+        assert_eq!(c.phones, vec!["0800*".to_string(), "+81 3 1234*".to_string()]);
+        for caller in ["0800123456", "+886 800 123 456", "0800-000-111"] {
+            assert_eq!(s.blacklisted(caller, TW).map(|c| c.name).as_deref(), Some("免付費推銷"), "{caller}");
+        }
+        // Other numbers, hidden ones and the bare prefix: nobody.
+        for caller in ["0280012345", "", "unknown", "0800"] {
+            assert!(s.blacklisted(caller, TW).is_none(), "{caller:?}");
+        }
+        assert!(s.lookup("0800", TW).is_none());
+        // Read as the SIM that rings reads it: on a Japanese SIM 03-1234-5678
+        // is +81 3 1234 5678; on a Taiwan SIM it is a Taiwanese number.
+        assert!(s.blacklisted("03-1234-5678", Some("jp")).is_some());
+        assert!(s.blacklisted("03-1234-5678", TW).is_none());
+        assert!(s.blacklisted("+81 3 1234 5678", TW).is_some());
+        // The same prefix is one contact's.
+        assert!(matches!(s.add(&black("又一個", &["0800 *"])).await, Err(ContactError::Exists { .. })));
+        // A plain number on the Blacklist still matches as before.
+        s.add(&black("推銷", &["02-5550-1234"])).await.unwrap();
+        assert_eq!(s.blacklisted("+886 2 5550 1234", TW).map(|c| c.name).as_deref(), Some("推銷"));
+        let _ = std::fs::remove_dir_all(s.path.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn only_the_blacklist_takes_a_prefix() {
+        let s = temp_store();
+        for kind in ["", "whitelist", "stall"] {
+            let d = Draft { kind: kind.into(), ..draft("王小明", &["0912345678", "0800*"], "") };
+            assert!(matches!(s.add(&d).await, Err(ContactError::Invalid("prefix"))), "{kind:?}");
+        }
+        // At least 4 digits before the *.
+        assert!(matches!(s.add(&black("太短", &["02*"])).await, Err(ContactError::Invalid("prefix"))));
+        assert!(matches!(s.block("02*", "").await, Err(ContactError::Invalid("prefix"))));
+        assert!(matches!(s.upsert_by_number("0800*", "", "", "whitelist").await, Err(ContactError::Invalid("prefix"))));
+        assert_eq!(s.len(), 0);
+        // A contact with a prefix cannot leave the Blacklist with it.
+        let c = s.add(&black("免付費推銷", &["0800*"])).await.unwrap();
+        let d = Draft { kind: String::new(), ..black("免付費推銷", &["0800*"]) };
+        assert!(matches!(s.update(&c.id, &d).await, Err(ContactError::Invalid("prefix"))));
+        // From a chat command or the call page: the same contact, once.
+        assert_eq!(s.upsert_by_number("0800*", "", "", "blacklist").await.unwrap().id, c.id);
+        let (again, already) = s.block("0800 *", "推銷").await.unwrap();
+        assert_eq!((again.id.as_str(), already, again.note.as_str()), (c.id.as_str(), true, "推銷"));
+        assert_eq!(s.len(), 1);
+        let _ = std::fs::remove_dir_all(s.path.parent().unwrap());
     }
 }

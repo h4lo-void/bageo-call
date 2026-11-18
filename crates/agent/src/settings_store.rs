@@ -130,9 +130,10 @@ pub struct RuntimeSettings {
     /// normal AI path instead of the reject WAV + hangup.
     #[serde(default)]
     pub answer_unknown_callers: bool,
-    /// Blocked numbers: for callers the AI should not handle, the phone picks up,
-    /// plays the "cannot be reached" line and hangs up — no AI. Number and reason
-    /// apart ([`RejectEntry`]); a trailing `*` on a number matches a prefix
+    /// Blocked numbers saved by older versions (and still accepted from the
+    /// settings API). They are moved onto the Contacts Blacklist at start and
+    /// on save ([`crate::contacts::absorb_reject_numbers`]), which empties this
+    /// list; until then they are turned away like the Blacklist
     /// ([`reject_number_hit`]).
     #[serde(default)]
     pub reject_numbers: Vec<RejectEntry>,
@@ -2287,9 +2288,10 @@ pub fn split_reject_entry(entry: &str) -> (&str, &str) {
 /// Shortest prefix a `…*` entry may have: `0*` / `02*` would turn whole areas away.
 const REJECT_PREFIX_MIN_DIGITS: usize = 4;
 
-/// The caller is on the blocked-numbers list (`reject_numbers` or Contacts
-/// Blacklist `kind == "blacklist"`): same national number, or it starts with
-/// an entry ending in `*`. Hidden / garbled numbers never match.
+/// The caller is turned away: on the Contacts Blacklist (`kind == "blacklist"`),
+/// or in `list` (blocked numbers not moved onto it yet): the same national
+/// number, or it starts with an entry ending in `*`. Hidden / garbled numbers
+/// never match.
 pub fn reject_number_hit(list: &[RejectEntry], caller: &str) -> bool {
     reject_number_hit_on(list, caller, None)
 }
@@ -2332,21 +2334,41 @@ pub fn reject_reason_on(list: &[RejectEntry], caller: &str, sim: Option<&str>) -
     })
 }
 
-fn reject_entry_for<'a>(list: &'a [RejectEntry], caller: &str, sim: Option<&str>) -> Option<&'a RejectEntry> {
-    // The SIM's country code reads the caller ID (and the owner's entries) the
-    // way that SIM does; without one, the owner's.
-    let cc = sim
+/// The country calling code a call on the SIM of country `sim` reads numbers
+/// in (the caller ID and the owner's entries); without one, the owner's.
+fn reading_code(sim: Option<&str>) -> String {
+    sim
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .and_then(crate::phone_region::calling_code)
         .map(str::to_string)
-        .unwrap_or_else(crate::locale::country_code);
-    let national_digits = |s: &str| national_digits_for(s, &cc);
+        .unwrap_or_else(crate::locale::country_code)
+}
+
+/// Whether a blocked-number entry can stand: a number, or a prefix ending in
+/// `*` with at least [`REJECT_PREFIX_MIN_DIGITS`] digits (`0800*`).
+pub fn reject_prefix_ok(entry: &str) -> bool {
+    match entry.trim().strip_suffix('*') {
+        Some(prefix) => national_digits(prefix).len() >= REJECT_PREFIX_MIN_DIGITS,
+        None => true,
+    }
+}
+
+/// `caller` is the blocked `entry` read as dialled on the SIM of country
+/// `sim` (None: the owner's country): the same national number, or, for an
+/// entry ending in `*`, it starts with those digits. Hidden / garbled
+/// numbers never match.
+pub fn reject_entry_hit(entry: &str, caller: &str, sim: Option<&str>) -> bool {
+    entry_hit(entry, caller, &reading_code(sim))
+}
+
+fn entry_hit(entry: &str, caller: &str, cc: &str) -> bool {
+    let national_digits = |s: &str| national_digits_for(s, cc);
     let c = national_digits(caller);
     if c.len() < 5 {
-        return None;
+        return false;
     }
-    list.iter().find(|e| match e.number.trim().strip_suffix('*') {
+    match entry.trim().strip_suffix('*') {
         Some(prefix) => {
             let p = national_digits(prefix);
             p.len() >= REJECT_PREFIX_MIN_DIGITS
@@ -2354,10 +2376,15 @@ fn reject_entry_for<'a>(list: &'a [RejectEntry], caller: &str, sim: Option<&str>
                     || without_leading_zeros(&c).starts_with(without_leading_zeros(&p)))
         }
         None => {
-            let n = national_digits(&e.number);
+            let n = national_digits(entry);
             n.len() >= 5 && same_number(&n, &c)
         }
-    })
+    }
+}
+
+fn reject_entry_for<'a>(list: &'a [RejectEntry], caller: &str, sim: Option<&str>) -> Option<&'a RejectEntry> {
+    let cc = reading_code(sim);
+    list.iter().find(|e| entry_hit(&e.number, caller, &cc))
 }
 
 #[cfg(test)]
@@ -2460,7 +2487,8 @@ mod tests {
             ] }))
             .unwrap();
         assert_eq!(rt.reject_numbers, vec![entry("0255501234", "安信"), entry("0912345678", "")]);
-        // Saved: a restart keeps the list.
+        // Saved: a restart keeps the list (until it moves onto the Blacklist,
+        // contacts::absorb_reject_numbers).
         let again = SettingsStore::load(base);
         assert!(reject_number_hit(&again.snapshot().reject_numbers, "+886255501234"));
         assert_eq!(reject_reason(&again.snapshot().reject_numbers, "0255501234").as_deref(), Some("安信"));

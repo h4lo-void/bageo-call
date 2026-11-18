@@ -5,7 +5,7 @@ AI 电话助理接完电话，挂断几秒后，你的手机就会收到一条�
 Bageo 也会在这些时候通知你：
 
 - 来电的时候。
-- 拦截号码或通话中插播被挡下的时候。
+- 黑名单号码或通话中插播被挡下的时候。
 - AI 回拨或 AI 代打结束的时候。
 
 支持 32 种服务，从 Telegram、LINE、Teams、Signal 到企业微信、钉钉、飞书、Server酱、PushPlus、WxPusher、Home Assistant、邮件，以及你自己的 Webhook。
@@ -63,7 +63,7 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&…
 | 标题 | 什么时候 | Webhook `event` |
 |---|---|---|
 | 来电 | 电话被接起来。 | `incoming` |
-| 拒接号码来电 | 拦截号码打来。消息会写明是响铃时直接拒接，还是接起来播放语音，以及你当初填的原因。 | `blocked` |
+| 拒接号码来电 | 黑名单上的号码打来。消息会写明是响铃时直接拒接，还是接起来播放语音，以及你当初填的原因。 | `blocked` |
 | 通话摘要 | 通话结束几秒后：谁、什么事、AI 怎么回复、你要处理什么，以及链接。 | `summary` |
 | 通话中插播未接 | 通话中又有第二通打进来，手机把它拒接了（对方听到忙音）。知道号码的话记得回电。 | `call_waiting` |
 | AI 回拨：〈号码〉 | AI 打给来电者告知预约结果。消息会写结果（接通并告知、没人接、拨不出去，或这个号码不能回拨）和那通电话的摘要。 | `ai_callback` |
@@ -677,7 +677,7 @@ smtps://you@example.com@smtp.example.com:465    一连接就走 TLS
 | `event` | 什么时候 | `data` |
 |---|---|---|
 | `incoming` | 电话被接起来 | `caller_id`、`device`、`time` |
-| `blocked` | 拦截号码打来 | `caller_id`、`device`、`time`、`reason`、`declined`（`true`：响铃时拒接；`false`：接起来播放语音） |
+| `blocked` | 黑名单上的号码打来 | `caller_id`、`device`、`time`、`reason`、`declined`（`true`：响铃时拒接；`false`：接起来播放语音） |
 | `summary` | 通话结束几秒后 | `caller_id`、`device`、`time`、`summary`、`contact`（联系人名字，不是联系人就是空字符串） |
 | `call_waiting` | 通话中第二通打进来被拒接 | `caller_id`、`device`、`time`、`sim_country` |
 | `ai_callback` | 日程预约的 AI 回拨结束，或拨不出去 | `caller_id`、`device`、`time`、`summary` |

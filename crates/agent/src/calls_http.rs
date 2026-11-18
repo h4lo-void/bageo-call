@@ -1272,7 +1272,12 @@ async fn settings_put(
         return api_error(StatusCode::BAD_REQUEST, "bad_request", "JSON object body required");
     }
     match state.settings_store.apply_patch(&patch) {
-        Ok(rt) => {
+        Ok(mut rt) => {
+            // Blocked numbers sent the old way join the Blacklist (and leave the settings).
+            if patch.get("reject_numbers").is_some() {
+                crate::contacts::absorb_reject_numbers(&state.settings_store, &state.contacts).await;
+                rt = state.settings_store.snapshot();
+            }
             // Language, answer style, owner name: what the next call's helpers read.
             rt.apply_globals();
             // Blocked numbers / hidden numbers / voice / model changed: have the "cannot be

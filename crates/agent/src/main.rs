@@ -1026,6 +1026,8 @@ async fn main() -> Result<()> {
     // The owner's contacts (names for caller IDs), next to the call records.
     let contacts = contacts::ContactStore::open(PathBuf::from(&settings.calls_data_dir).join("contacts.json"));
     contacts::install(contacts.clone());
+    // Blocked numbers older versions kept in the settings join the Blacklist.
+    contacts::absorb_reject_numbers(&settings_store, &contacts).await;
     // The scam database's owner file and number book live next to the settings.
     scam_db::init(&PathBuf::from(&settings.calls_data_dir));
     // Calls the owner has the AI make (errands), and the SIMs each phone has
@@ -1844,7 +1846,7 @@ async fn health(
     );
     body.insert("ambience_kind".into(), json!(rt.ambience_kind));
     body.insert("ambience_level".into(), json!(rt.ambience_level));
-    body.insert("reject_numbers_len".into(), json!(rt.reject_numbers.len()));
+    body.insert("blacklist_len".into(), json!(contacts::blacklist_len()));
     body.insert("reject_mode".into(), json!(rt.reject_mode));
     body.insert("reject_voice".into(), json!(voice_preview::reject_voice(&rt)));
     body.insert(
