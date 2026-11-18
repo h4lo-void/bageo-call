@@ -25,7 +25,7 @@
     <string name="st_normal">一般手機：來電會正常響</string>
     <string name="st_normal_d">AI 不會接電話，你可以像一般手機一樣自己接。打開下面的開關，就換回 AI 接聽。</string>
     <string name="st_offline">還沒連上電腦</string>
-    <string name="st_offline_d">請確認電腦上的 Bageo 開著，手機用 USB 線接著電腦（或在「進階」設定 Wi-Fi 位址）。連上之前，AI 沒辦法跟來電的人講話。</string>
+    <string name="st_offline_d">請確認電腦上的 Bageo 開著，而且手機用 USB 線接著電腦，或和電腦在同一個 Wi-Fi（第一次要先用 USB 線接電腦配對）。</string>
     <string name="st_steps">還有 %1$d 個設定步驟沒完成</string>
     <string name="st_steps_d">完成下面的設定步驟，AI 才能接電話。</string>
     <string name="st_service_off">接聽服務沒有在執行</string>
@@ -72,6 +72,9 @@
     <string name="step_dnd_desc">讓手機在 AI 接電話時保持安靜。</string>
     <string name="step_battery_title">不要讓 Bageo 進入休眠</string>
     <string name="step_battery_desc">避免 Android 為了省電把 Bageo 停掉而漏接電話。</string>
+    <string name="step_pair_title">插入電腦完成第一次配對</string>
+    <string name="step_pair_ok">已與電腦配對。拔掉 USB 線後也能用 Wi-Fi 連線。</string>
+    <string name="step_pair_missing">第一次請開啟 USB 偵錯，用 USB 線接到電腦配對；之後拔掉線也能用 Wi-Fi 連線。</string>
     <string name="btn_allow">允許</string>
     <string name="btn_set">設定</string>
     <string name="btn_open_settings">開啟設定</string>
@@ -140,4 +143,12 @@
     <string name="about_dedicated">AI 模式下，模組會接管電話 App、關掉鈴聲並開啟勿擾，所以最好用一支備用手機。要暫時當一般手機用，關掉最上面的開關就好。</string>
     <string name="about_rollback">要完全移除 Bageo：先關掉最上面的開關（變回一般手機），再到 Magisk 或 KernelSU 停用或移除模組，然後重新開機。</string>
     <string name="about_legal">各地對通話錄音、以及是否須告知對方正在與 AI 對話的法律規定不同，遵守當地法規是你的責任。</string>
+    <!-- Connection route and Wi-Fi backup -->
+    <string name="route_usb">已透過 USB 連線。</string>
+    <string name="route_wifi">已透過 Wi-Fi 連線。</string>
+    <string name="route_custom">已連到你填的位址。</string>
+    <string name="wifi_ready">Wi-Fi 備援已就緒，USB 線拔掉後通話仍可繼續。</string>
+    <string name="wifi_not_ready">還沒設定 Wi-Fi 備援。用 USB 線連接一次就會設定好。</string>
+    <string name="btn_forget_wifi">忘記 Wi-Fi 連線</string>
+    <string name="msg_wifi_forgotten">已忘記 Wi-Fi 連線。要再使用時，請用 USB 線連接一次。</string>
 </resources>

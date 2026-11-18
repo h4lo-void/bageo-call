@@ -25,7 +25,7 @@
     <string name="st_normal">Normal phone: calls ring as usual</string>
     <string name="st_normal_d">The AI does not answer. You answer calls yourself, like on any phone. Turn on the switch below to let the AI answer again.</string>
     <string name="st_offline">Not connected to the computer yet</string>
-    <string name="st_offline_d">Check that Bageo is running on the computer and the phone is plugged in by USB (or set a Wi-Fi address under Advanced). Until then, the AI cannot talk to callers.</string>
+    <string name="st_offline_d">Check that Bageo is running on the computer, and that the phone is plugged in by USB or on the same Wi-Fi (plug it in by USB once first to pair).</string>
     <string name="st_steps">Setup steps left: %1$d</string>
     <string name="st_steps_d">Finish the setup steps below so the AI can answer calls.</string>
     <string name="st_service_off">The answering service is not running</string>
@@ -72,6 +72,9 @@
     <string name="step_dnd_desc">Keeps the phone quiet while the AI answers.</string>
     <string name="step_battery_title">Do not let Android put Bageo to sleep</string>
     <string name="step_battery_desc">Stops Android from closing Bageo to save battery, so no call is missed.</string>
+    <string name="step_pair_title">Plug into the computer by USB to pair</string>
+    <string name="step_pair_ok">Paired with the computer. Calls keep working over Wi-Fi when unplugged.</string>
+    <string name="step_pair_missing">First time: turn on USB debugging and plug the phone into the computer running Bageo. After pairing once, it also connects over Wi-Fi.</string>
     <string name="btn_allow">Allow</string>
     <string name="btn_set">Set</string>
     <string name="btn_open_settings">Open settings</string>
@@ -140,4 +143,12 @@
     <string name="about_dedicated">In AI mode the module takes over the phone app, silences the ringer and turns on Do Not Disturb, so a spare phone works best. To use the phone normally for a while, turn off the switch at the top.</string>
     <string name="about_rollback">To remove Bageo completely, first turn off the switch at the top (back to a normal phone), then disable or remove the module in Magisk or KernelSU and restart the phone.</string>
     <string name="about_legal">Laws on recording calls and on telling callers that they are talking to an AI differ from place to place. Following them is your responsibility.</string>
+    <!-- Connection route and Wi-Fi backup -->
+    <string name="route_usb">Connected by USB cable.</string>
+    <string name="route_wifi">Connected by Wi-Fi.</string>
+    <string name="route_custom">Connected to the address you entered.</string>
+    <string name="wifi_ready">Wi-Fi backup is ready. Calls keep working if the USB cable comes out.</string>
+    <string name="wifi_not_ready">Wi-Fi backup is not set up. Connect the USB cable once to set it up.</string>
+    <string name="btn_forget_wifi">Forget Wi-Fi connection</string>
+    <string name="msg_wifi_forgotten">Wi-Fi connection forgotten. Connect the USB cable once to set it up again.</string>
 </resources>

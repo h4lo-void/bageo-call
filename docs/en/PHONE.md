@@ -86,6 +86,7 @@ handset. All of this can be switched off from the app or the console (see
    | Make Bageo the call screening app | **Set**. |
    | Let Bageo control Do Not Disturb | **Open settings** and allow it. |
    | Do not let Android put Bageo to sleep | **Allow**, so Android does not stop the service. |
+   | Plug into the computer by USB to pair | Turn on USB debugging and plug the phone into the computer running Bageo once; after that it also connects over Wi-Fi. |
 
    When every step is done the list folds away, and once the phone is
    connected to the computer the card says *The AI is answering your calls*.
@@ -129,7 +130,28 @@ take several phones; each answers its own number.
 
 ### Wi-Fi
 
-Use this when the phone cannot be cabled to the computer.
+Plug the phone in by USB once (above) and it is paired: Bageo gives it its
+Wi-Fi address and a pairing key. Unplug it afterwards and the phone connects
+over Wi-Fi by itself; plug it back in and it uses USB again. The *System* page
+shows for each phone whether it is connected by USB or over Wi-Fi.
+
+- The phone and the computer must be on the same network.
+- On Windows, the first time a phone is paired the firewall asks whether
+  Bageo may use the network: allow it on **private networks**.
+- Phones connect on port 8788 (`PHONE_WIFI_PORT`; 8787 when Bageo is open
+  to the network with `AGENT_HOST=0.0.0.0`). The phone tries the computer's
+  IP address first, then `bageo.local` while the network name is on.
+- **Phones can also connect over Wi-Fi** (*Settings → Advanced*) turns this
+  off; phones on Wi-Fi are disconnected at once. **Pair phones again** gives a
+  new pairing key, for a lost phone: every phone on Wi-Fi must then be plugged
+  in by USB once more.
+- The pairing key goes only to a phone that is already connected. It is not
+  shown in the console, notifications or logs.
+- An older app ignores the pairing and keeps using USB only.
+- With Docker the phone does not get the Wi-Fi address: enter it by hand.
+
+**Entering the address by hand.** Use this when the phone cannot be cabled to
+the computer at all.
 
 1. Make Bageo reachable over the network and ask for a password: in `.env`
    set `AGENT_HOST=0.0.0.0`, `DEVICE_TOKEN=<a long random string>` (for the

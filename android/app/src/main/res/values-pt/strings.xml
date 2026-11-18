@@ -25,7 +25,7 @@
     <string name="st_normal">Telefone normal: as chamadas tocam como sempre</string>
     <string name="st_normal_d">A IA não atende. Você atende as chamadas, como em qualquer telefone. Ative o botão abaixo para a IA voltar a atender.</string>
     <string name="st_offline">Ainda não está conectado ao computador</string>
-    <string name="st_offline_d">Verifique se o Bageo está aberto no computador e se o telefone está ligado por USB (ou informe um endereço Wi-Fi em Avançado). Até lá, a IA não consegue falar com quem liga.</string>
+    <string name="st_offline_d">Verifique se o Bageo está aberto no computador e se o telefone está conectado por USB ou no mesmo Wi-Fi (na primeira vez, conecte pelo cabo USB para parear).</string>
     <string name="st_steps">Etapas de configuração pendentes: %1$d</string>
     <string name="st_steps_d">Conclua as etapas abaixo para a IA poder atender.</string>
     <string name="st_service_off">O serviço de atendimento não está rodando</string>
@@ -72,6 +72,9 @@
     <string name="step_dnd_desc">Mantém o telefone em silêncio enquanto a IA atende.</string>
     <string name="step_battery_title">Não deixar o Android pôr o Bageo para dormir</string>
     <string name="step_battery_desc">Evita que o Android feche o Bageo para poupar bateria e alguma chamada se perca.</string>
+    <string name="step_pair_title">Conectar ao computador por USB na primeira vez</string>
+    <string name="step_pair_ok">Pareado com o computador. Ao tirar o cabo USB, a conexão continua pelo Wi-Fi.</string>
+    <string name="step_pair_missing">Na primeira vez, ative a depuração USB e conecte o telefone pelo cabo ao computador. Depois disso, ele também se conecta pelo Wi-Fi.</string>
     <string name="btn_allow">Permitir</string>
     <string name="btn_set">Definir</string>
     <string name="btn_open_settings">Abrir configurações</string>
@@ -140,4 +143,12 @@
     <string name="about_dedicated">No modo IA, o módulo assume o app de telefone, silencia o toque e ativa o Não perturbe; por isso, o ideal é um telefone reserva. Para usá-lo normalmente por um tempo, desative o botão no topo.</string>
     <string name="about_rollback">Para remover o Bageo de vez, primeiro desative o botão no topo (volta a ser um telefone normal), depois desative ou remova o módulo no Magisk ou KernelSU e reinicie.</string>
     <string name="about_legal">As leis sobre gravação de chamadas e sobre avisar que a pessoa está falando com uma IA variam de um lugar para outro. Cumpri-las é sua responsabilidade.</string>
+    <!-- Connection route and Wi-Fi backup -->
+    <string name="route_usb">Conectado por USB.</string>
+    <string name="route_wifi">Conectado por Wi-Fi.</string>
+    <string name="route_custom">Conectado ao endereço que você digitou.</string>
+    <string name="wifi_ready">A conexão Wi-Fi reserva está pronta. As chamadas continuam se o cabo USB for removido.</string>
+    <string name="wifi_not_ready">A conexão Wi-Fi reserva não está configurada. Conecte o cabo USB uma vez para configurá-la.</string>
+    <string name="btn_forget_wifi">Esquecer conexão Wi-Fi</string>
+    <string name="msg_wifi_forgotten">Conexão Wi-Fi esquecida. Para usar de novo, conecte o cabo USB uma vez.</string>
 </resources>

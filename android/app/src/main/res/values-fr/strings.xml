@@ -25,7 +25,7 @@
     <string name="st_normal">Téléphone normal : les appels sonnent comme d\'habitude</string>
     <string name="st_normal_d">L\'IA ne répond pas. Vous répondez vous-même, comme sur n\'importe quel téléphone. Activez l\'interrupteur ci-dessous pour que l\'IA réponde de nouveau.</string>
     <string name="st_offline">Pas encore connecté à l\'ordinateur</string>
-    <string name="st_offline_d">Vérifiez que Bageo tourne sur l\'ordinateur et que le téléphone est branché en USB (ou saisissez une adresse Wi-Fi dans Avancé). D\'ici là, l\'IA ne peut pas parler aux appelants.</string>
+    <string name="st_offline_d">Vérifiez que Bageo tourne sur l\'ordinateur et que le téléphone est branché en USB ou sur le même Wi-Fi (branchez-le d\'abord une fois en USB pour l\'associer).</string>
     <string name="st_steps">Étapes de configuration restantes : %1$d</string>
     <string name="st_steps_d">Terminez les étapes ci-dessous pour que l\'IA puisse répondre.</string>
     <string name="st_service_off">Le service de réponse ne tourne pas</string>
@@ -72,6 +72,9 @@
     <string name="step_dnd_desc">Garde le téléphone silencieux pendant que l\'IA répond.</string>
     <string name="step_battery_title">Empêcher Android de mettre Bageo en veille</string>
     <string name="step_battery_desc">Évite qu\'Android ferme Bageo pour économiser la batterie et qu\'un appel soit manqué.</string>
+    <string name="step_pair_title">Brancher à l\'ordinateur en USB la première fois</string>
+    <string name="step_pair_ok">Associé à l\'ordinateur. Une fois le câble USB débranché, la connexion continue en Wi-Fi.</string>
+    <string name="step_pair_missing">La première fois, activez le débogage USB et branchez le téléphone en USB à l\'ordinateur. Ensuite, il se connectera aussi en Wi-Fi.</string>
     <string name="btn_allow">Autoriser</string>
     <string name="btn_set">Définir</string>
     <string name="btn_open_settings">Ouvrir les paramètres</string>
@@ -140,4 +143,12 @@
     <string name="about_dedicated">En mode IA, le module prend la place de l\'application Téléphone, coupe la sonnerie et active Ne pas déranger : mieux vaut un téléphone de secours. Pour l\'utiliser normalement un moment, désactivez l\'interrupteur en haut.</string>
     <string name="about_rollback">Pour retirer complètement Bageo, désactivez d\'abord l\'interrupteur en haut (retour au téléphone normal), puis désactivez ou supprimez le module dans Magisk ou KernelSU et redémarrez.</string>
     <string name="about_legal">Les lois sur l\'enregistrement des appels et sur l\'obligation d\'informer l\'interlocuteur qu\'il parle à une IA varient selon les pays. Leur respect relève de votre responsabilité.</string>
+    <!-- Connection route and Wi-Fi backup -->
+    <string name="route_usb">Connecté par USB.</string>
+    <string name="route_wifi">Connecté par Wi-Fi.</string>
+    <string name="route_custom">Connecté à l\'adresse que vous avez saisie.</string>
+    <string name="wifi_ready">La connexion Wi-Fi de secours est prête. Les appels continuent si vous débranchez le câble USB.</string>
+    <string name="wifi_not_ready">La connexion Wi-Fi de secours n\'est pas configurée. Branchez le câble USB une fois pour la configurer.</string>
+    <string name="btn_forget_wifi">Oublier la connexion Wi-Fi</string>
+    <string name="msg_wifi_forgotten">Connexion Wi-Fi oubliée. Pour la réutiliser, branchez le câble USB une fois.</string>
 </resources>

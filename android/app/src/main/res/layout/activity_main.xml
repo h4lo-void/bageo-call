@@ -58,6 +58,13 @@
                 android:textSize="15sp" />
 
             <TextView
+                android:id="@+id/connRoute"
+                style="@style/PcaBody"
+                android:layout_marginTop="6dp"
+                android:textSize="15sp"
+                android:visibility="gone" />
+
+            <TextView
                 android:id="@+id/legacyHint"
                 style="@style/PcaBody"
                 android:layout_marginTop="8dp"
@@ -179,6 +186,10 @@
                 <include
                     android:id="@+id/stepBattery"
                     layout="@layout/item_check" />
+
+                <include
+                    android:id="@+id/stepPair"
+                    layout="@layout/item_check" />
             </LinearLayout>
         </LinearLayout>
 
@@ -291,6 +302,18 @@
                 style="@style/PcaBody"
                 android:layout_marginTop="6dp"
                 android:text="@string/connection_hint_wifi" />
+
+            <TextView
+                android:id="@+id/wifiState"
+                style="@style/PcaBody"
+                android:layout_marginTop="10dp" />
+
+            <Button
+                android:id="@+id/btnForgetWifi"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/btn_forget_wifi" />
 
             <Button
                 android:id="@+id/btnTest"

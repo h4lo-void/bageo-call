@@ -70,6 +70,9 @@ class MainActivity : Activity() {
     private lateinit var serviceStatus: TextView
     private lateinit var agentUrlField: EditText
     private lateinit var urlMessage: TextView
+    private lateinit var connRoute: TextView
+    private lateinit var wifiState: TextView
+    private lateinit var btnForgetWifi: Button
     private lateinit var btnTest: Button
     private lateinit var testResult: TextView
     private lateinit var testDetailToggle: TextView
@@ -172,6 +175,9 @@ class MainActivity : Activity() {
         serviceStatus = findViewById(R.id.serviceStatus)
         agentUrlField = findViewById(R.id.agentUrl)
         urlMessage = findViewById(R.id.urlMessage)
+        connRoute = findViewById(R.id.connRoute)
+        wifiState = findViewById(R.id.wifiState)
+        btnForgetWifi = findViewById(R.id.btnForgetWifi)
         btnTest = findViewById(R.id.btnTest)
         testResult = findViewById(R.id.testResult)
         testDetailToggle = findViewById(R.id.testDetailToggle)
@@ -235,6 +241,7 @@ class MainActivity : Activity() {
             saveAgentUrl(BuildConfig.BRIDGE_WS_URL)
         }
         btnTest.setOnClickListener { testConnection() }
+        btnForgetWifi.setOnClickListener { forgetWifi() }
         testDetailToggle.setOnClickListener {
             val show = testDetail.visibility != View.VISIBLE
             testDetail.visibility = if (show) View.VISIBLE else View.GONE
@@ -331,6 +338,9 @@ class MainActivity : Activity() {
                 showStatus(getString(R.string.msg_perm_settings))
                 openAppSettings()
             }
+        }
+        if (hasRequiredPerms() && !isServiceRunning()) {
+            startCallService(CallAudioService.ACTION_START)
         }
         refresh()
     }
@@ -470,6 +480,24 @@ class MainActivity : Activity() {
         false
     }
 
+    /** Drops the Wi-Fi addresses the agent gave this phone; USB has to give them again. */
+    private fun forgetWifi() {
+        val connectedUrl = AgentControlClient.connectedUrl()
+        Prefs.clearWifiUrls(this)
+        // Connected over Wi-Fi right now: reconnect so calls use an address that still exists.
+        if (connectedUrl != null && connectedUrl !in Prefs.connectionCandidates(this) &&
+            isServiceRunning() && isPhoneIdle()
+        ) {
+            startService(
+                Intent(this, CallAudioService::class.java).setAction(CallAudioService.ACTION_STOP),
+            )
+            startCallService(CallAudioService.ACTION_START)
+        }
+        showUrlMessage(getString(R.string.msg_wifi_forgotten), CheckState.OK)
+        refresh()
+        refreshSoon()
+    }
+
     private fun saveAgentUrl(raw: String) {
         val url = raw.trim()
         if (!Prefs.isValidAgentUrl(url)) {
@@ -499,7 +527,14 @@ class MainActivity : Activity() {
 
     /** Opens a WebSocket to the address in the field, reports the result, sends nothing. */
     private fun testConnection() {
-        val url = agentUrlField.text.toString().trim()
+        val typed = agentUrlField.text.toString().trim()
+        // Automatic mode (the field still holds the USB default): test the address in use now.
+        val url = if (typed == BuildConfig.BRIDGE_WS_URL && !Prefs.isManualAgentUrl(this)) {
+            AgentControlClient.connectedUrl()
+                ?: AgentControlClient.activeUrl(Prefs.connectionCandidates(this))
+        } else {
+            typed
+        }
         if (!Prefs.isValidAgentUrl(url)) {
             showTestResult(getString(R.string.msg_url_invalid), CheckState.MISSING, null)
             return
@@ -639,6 +674,25 @@ class MainActivity : Activity() {
             modeError.visibility = View.GONE
         }
         btnConsole.visibility = if (Prefs.consoleUrl(this) != null) View.VISIBLE else View.GONE
+        bindRoute(ai && !switching)
+    }
+
+    /** Under the status: how the phone reaches Bageo now (USB or Wi-Fi) and whether Wi-Fi is ready. */
+    private fun bindRoute(show: Boolean) {
+        val url = if (show) AgentControlClient.connectedUrl() else null
+        if (url == null) {
+            connRoute.visibility = View.GONE
+            return
+        }
+        val manual = Prefs.isManualAgentUrl(this)
+        val text = when {
+            manual -> getString(R.string.route_custom)
+            url == BuildConfig.BRIDGE_WS_URL -> getString(R.string.route_usb) + " " +
+                getString(if (Prefs.wifiUrls(this).isNotEmpty()) R.string.wifi_ready else R.string.wifi_not_ready)
+            else -> getString(R.string.route_wifi)
+        }
+        connRoute.text = text
+        connRoute.visibility = View.VISIBLE
     }
 
     /** The setup steps the AI mode needs. Returns how many are not done (0 in normal mode). */
@@ -656,6 +710,7 @@ class MainActivity : Activity() {
             ?.isNotificationPolicyAccessGranted == true
         val battery = getSystemService(PowerManager::class.java)
             ?.isIgnoringBatteryOptimizations(packageName) == true
+        val paired = Prefs.wifiUrls(this).isNotEmpty() || AgentControlClient.isAgentConnected()
 
         row(R.id.stepModule).bind(
             state = stepState(module),
@@ -695,8 +750,13 @@ class MainActivity : Activity() {
             detail = getString(R.string.step_battery_desc),
             actionLabel = if (battery) 0 else R.string.btn_allow,
         ) { requestBatteryExemption() }
+        row(R.id.stepPair).bind(
+            state = stepState(paired),
+            title = getString(R.string.step_pair_title),
+            detail = getString(if (paired) R.string.step_pair_ok else R.string.step_pair_missing),
+        )
 
-        val steps = listOf(module, perms, dialer, screening, dnd, battery)
+        val steps = listOf(module, perms, dialer, screening, dnd, battery, paired)
         val done = steps.count { it }
         val open = stepsOpen ?: (done < steps.size)
         stepsHeader.text = foldTitle(getString(R.string.steps_header, done, steps.size), open)
@@ -711,6 +771,10 @@ class MainActivity : Activity() {
         serviceStatus.setText(
             if (isServiceRunning()) R.string.service_running else R.string.service_stopped,
         )
+        val paired = Prefs.wifiUrls(this).isNotEmpty()
+        wifiState.text = getString(if (paired) R.string.wifi_ready else R.string.wifi_not_ready)
+        wifiState.visibility = if (Prefs.isManualAgentUrl(this)) View.GONE else View.VISIBLE
+        btnForgetWifi.visibility = if (paired) View.VISIBLE else View.GONE
 
         // Installed by the Magisk / KernelSU module as a privileged system app.
         val sourceDir = applicationInfo.sourceDir.orEmpty()

@@ -1,5 +1,8 @@
 # Unreleased
 
+- **Plug the phone in once, then it works over Wi-Fi.** The first time a phone connects by USB, Bageo gives it its Wi-Fi address and a pairing key; unplugged, the phone connects over Wi-Fi by itself. The System page shows whether each phone is on USB or Wi-Fi, and *Settings → Advanced* can turn this off or pair the phones again (needs the matching phone app; entering the address by hand still works). See [Phone setup](docs/en/PHONE.md#wi-fi).
+- **手機用 USB 接一次，之後就能走 Wi-Fi。** 手機第一次用 USB 連上時，Bageo 會把自己的 Wi-Fi 位址和配對碼交給手機；拔掉線後，手機會自己改用 Wi-Fi 連回來。「系統」頁會顯示每支手機是用 USB 還是 Wi-Fi，「設定 → 進階」可以關掉這個功能或重新配對手機（要搭配新版手機 App；手動填網址照樣能用）。見[手機設定](docs/zh-TW/PHONE.md#wi-fi)。
+- **手机用 USB 连一次，之后就能走 Wi-Fi。** 手机第一次用 USB 连上时，Bageo 会把自己的 Wi-Fi 地址和配对码交给手机；拔掉线后，手机会自己改用 Wi-Fi 连回来。“系统”页会显示每台手机是用 USB 还是 Wi-Fi，“设置 → 高级”可以关掉这个功能或重新配对手机（要搭配新版手机应用；手动填写地址照样能用）。见[手机设置](docs/zh-CN/PHONE.md#wi-fi)。
 - **Windows installer and macOS dmg: one click to start.** On Windows, run `bageo-call-<version>-windows-x64-setup.exe` (no administrator rights needed) and click the **Bageo** shortcut. On macOS, open the `.dmg` and drag Bageo into Applications. Bageo runs in the background with an icon in the system tray or menu bar, and your data stays when you update or remove the program. See [Getting started](docs/en/GETTING_STARTED.md).
 - **Windows 安裝程式與 macOS dmg：點一下就啟動。** Windows 執行 `bageo-call-<版本>-windows-x64-setup.exe`（不需要系統管理員權限），再點「Bageo」捷徑；macOS 打開 `.dmg`，把 Bageo 拖進「應用程式」。Bageo 在背景執行，系統匣或選單列會有圖示；更新或移除程式時資料都會留著。見[開始使用](docs/zh-TW/GETTING_STARTED.md)。
 - **Windows 安装程序与 macOS dmg：点一下就启动。** Windows 运行 `bageo-call-<版本>-windows-x64-setup.exe`（不需要管理员权限），再点“Bageo”快捷方式；macOS 打开 `.dmg`，把 Bageo 拖进“应用程序”。Bageo 在后台运行，系统托盘或菜单栏会有图标；更新或卸载程序时数据都会留着。见[开始使用](docs/zh-CN/GETTING_STARTED.md)。
