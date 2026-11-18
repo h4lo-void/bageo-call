@@ -49,7 +49,9 @@ class AgentControlClient(
     private val sims: () -> JSONArray? = { null },
     private val onOpened: () -> Unit = {},
 ) {
-    private var client: WebSocketClient? = null
+    @Volatile private var client: WebSocketClient? = null
+    private val stateLock = Any()
+    private val reconnecting = AtomicBoolean(false)
     private val open = AtomicBoolean(false)
     private val shouldRun = AtomicBoolean(false)
     private val lastPingAt = AtomicLong(0L)
@@ -64,88 +66,107 @@ class AgentControlClient(
     fun isOpen(): Boolean = open.get() && client?.isOpen == true
 
     fun connect(serial: String) {
-        shouldRun.set(true)
-        serialHeld = serial
-        if (client != null) return
-        val list = candidates().ifEmpty { listOf(usbUrl) }
-        val url = target?.takeIf { it in list } ?: list.first()
-        currentUrl = url
-        val openedHere = AtomicBoolean(false)
-        val ws = object : WebSocketClient(URI(url), Draft_6455(), null, CONNECT_TIMEOUT_MS) {
-            override fun onOpen(handshakedata: ServerHandshake?) {
-                open.set(true)
-                openedHere.set(true)
-                target = url
-                lastGoodUrl = url
-                current = this@AgentControlClient
-                val hello = JSONObject()
-                    .put("type", "hello")
-                    .put("serial", serial)
-                    .put("mode", "CONTROL_IDLE")
-                    .put("play_tts_locally", false)
-                    .put("model", android.os.Build.MODEL)
-                    .put("app_version", BuildConfig.VERSION_NAME)
-                    .put("supports_sms", true)
-                    .put("supports_reject", true)
-                try {
-                    describe(hello)
-                } catch (e: Exception) {
-                    Log.w(TAG, "hello state failed: ${e.message}")
-                }
-                try {
-                    sims()?.let { hello.put("sims", it) }
-                } catch (e: Exception) {
-                    Log.w(TAG, "hello sims failed: ${e.message}")
-                }
-                send(hello.toString())
-                Log.i(TAG, "control WS open ${Prefs.redactUrl(url)} usb=${url == usbUrl} serial=$serial mode=CONTROL_IDLE")
-                try {
-                    onOpened()
-                } catch (e: Exception) {
-                    Log.w(TAG, "after-hello step failed: ${e.message}")
-                }
-                ensurePingLoop()
-                ensureUsbWatch()
-            }
-
-            override fun onMessage(message: String?) {
-                if (message == null) return
-                try {
-                    val obj = JSONObject(message)
-                    when (obj.optString("type")) {
-                        "hello_ack", "hello_ok", "ack", "pong" -> {
-                            Log.i(TAG, "control TEXT ${obj.optString("type")}")
+        val ws: WebSocketClient
+        synchronized(stateLock) {
+            shouldRun.set(true)
+            serialHeld = serial
+            if (client != null) return
+            val list = candidates().ifEmpty { listOf(usbUrl) }
+            val url = target?.takeIf { it in list } ?: list.first()
+            currentUrl = url
+            val openedHere = AtomicBoolean(false)
+            ws = object : WebSocketClient(URI(url), Draft_6455(), null, CONNECT_TIMEOUT_MS) {
+                override fun onOpen(handshakedata: ServerHandshake?) {
+                    synchronized(stateLock) {
+                        if (!shouldRun.get() || client !== this) {
+                            try {
+                                this.close()
+                            } catch (_: Exception) {
+                            }
+                            return
                         }
-                        "place_call", "blocklist_sync", "answer_plan", "set_mode", "agent_info", "send_sms" -> onCommand(obj)
-                        else -> Log.i(TAG, "control TEXT type=${obj.optString("type")} len=${message.length}")
+                        open.set(true)
+                        openedHere.set(true)
+                        target = url
+                        lastGoodUrl = url
+                        current = this@AgentControlClient
                     }
-                } catch (e: Exception) {
-                    Log.w(TAG, "control TEXT parse failed: ${e.message}")
+                    val hello = JSONObject()
+                        .put("type", "hello")
+                        .put("serial", serial)
+                        .put("mode", "CONTROL_IDLE")
+                        .put("play_tts_locally", false)
+                        .put("model", android.os.Build.MODEL)
+                        .put("app_version", BuildConfig.VERSION_NAME)
+                        .put("supports_sms", true)
+                        .put("supports_reject", true)
+                    try {
+                        describe(hello)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "hello state failed: ${e.message}")
+                    }
+                    try {
+                        sims()?.let { hello.put("sims", it) }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "hello sims failed: ${e.message}")
+                    }
+                    send(hello.toString())
+                    Log.i(TAG, "control WS open ${Prefs.redactUrl(url)} usb=${url == usbUrl} serial=$serial mode=CONTROL_IDLE")
+                    try {
+                        onOpened()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "after-hello step failed: ${e.message}")
+                    }
+                    ensurePingLoop()
+                    ensureUsbWatch()
                 }
-            }
 
-            override fun onClose(code: Int, reason: String?, remote: Boolean) {
-                open.set(false)
-                if (current === this@AgentControlClient) current = null
-                client = null
-                Log.w(TAG, "control WS closed code=$code reason=$reason remote=$remote")
-                if (!openedHere.get()) {
-                    // Never got through: the next try uses the next address.
-                    target = ConnectionPlan.nextAfterFailure(candidates().ifEmpty { listOf(usbUrl) }, url)
+                override fun onMessage(message: String?) {
+                    if (message == null) return
+                    try {
+                        val obj = JSONObject(message)
+                        when (obj.optString("type")) {
+                            "hello_ack", "hello_ok", "ack", "pong" -> {
+                                Log.i(TAG, "control TEXT ${obj.optString("type")}")
+                            }
+                            "place_call", "blocklist_sync", "answer_plan", "set_mode", "agent_info", "send_sms" -> onCommand(obj)
+                            else -> Log.i(TAG, "control TEXT type=${obj.optString("type")} len=${message.length}")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "control TEXT parse failed: ${e.message}")
+                    }
                 }
-                scheduleReconnect(serial)
-            }
 
-            override fun onError(ex: Exception?) {
-                Log.e(TAG, "control WS error", ex)
-                // Drop socket only — keep shouldRun so onClose → reconnect.
-                try {
-                    client?.close()
-                } catch (_: Exception) {
+                override fun onClose(code: Int, reason: String?, remote: Boolean) {
+                    var cleared = false
+                    synchronized(stateLock) {
+                        if (client === this) {
+                            client = null
+                            open.set(false)
+                            if (current === this@AgentControlClient) current = null
+                            cleared = true
+                        }
+                    }
+                    if (!cleared) return
+                    Log.w(TAG, "control WS closed code=$code reason=$reason remote=$remote")
+                    if (!openedHere.get()) {
+                        // Never got through: the next try uses the next address.
+                        target = ConnectionPlan.nextAfterFailure(candidates().ifEmpty { listOf(usbUrl) }, url)
+                    }
+                    scheduleReconnect(serial)
+                }
+
+                override fun onError(ex: Exception?) {
+                    Log.e(TAG, "control WS error", ex)
+                    // Drop socket only — keep shouldRun so onClose → reconnect.
+                    try {
+                        this.close()
+                    } catch (_: Exception) {
+                    }
                 }
             }
+            client = ws
         }
-        client = ws
         try {
             ws.connectionLostTimeout = 30
         } catch (_: Exception) {
@@ -164,18 +185,22 @@ class AgentControlClient(
     }
 
     fun close() {
-        shouldRun.set(false)
-        open.set(false)
-        if (current === this) current = null
-        pingThread?.interrupt()
-        pingThread = null
-        usbThread?.interrupt()
-        usbThread = null
+        val toClose: WebSocketClient?
+        synchronized(stateLock) {
+            shouldRun.set(false)
+            open.set(false)
+            if (current === this) current = null
+            toClose = client
+            client = null
+            pingThread?.interrupt()
+            pingThread = null
+            usbThread?.interrupt()
+            usbThread = null
+        }
         try {
-            client?.close()
+            toClose?.close()
         } catch (_: Exception) {
         }
-        client = null
     }
 
     private fun ensurePingLoop() {
@@ -216,18 +241,31 @@ class AgentControlClient(
     }
 
     private fun scheduleReconnect(serial: String) {
-        if (!shouldRun.get()) return
-        Thread {
-            try {
+        if (!shouldRun.get() || !reconnecting.compareAndSet(false, true)) return
+        val t = Thread {
+            val retry = try {
                 Thread.sleep(RECONNECT_MS)
+                shouldRun.get() && client == null
             } catch (_: InterruptedException) {
-                return@Thread
+                false
+            } finally {
+                // Release before connect(): connect() is serialized by stateLock, and an
+                // immediate async failure on ws.connect() may invoke onClose right away.
+                reconnecting.set(false)
             }
-            if (shouldRun.get() && client == null) {
+            if (retry) {
                 Log.i(TAG, "control WS reconnecting…")
                 connect(serial)
             }
-        }.start()
+        }
+        t.isDaemon = true
+        t.name = "AgentControlReconnect"
+        try {
+            t.start()
+        } catch (e: Throwable) {
+            reconnecting.set(false)
+            throw e
+        }
     }
 
     /** While on Wi-Fi and idle, look for the USB link again and move back to it. */

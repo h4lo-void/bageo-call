@@ -220,8 +220,8 @@ Every feature in detail: [Features](docs/en/FEATURES.md).
 
 ## Quick start
 
-1. **Download** the package for your system from [Releases](https://github.com/h4lo-void/bageo-call/releases) and unpack it.
-2. **Start it.** Windows: double-click `start.cmd`. macOS: double-click `start.command`. Linux: `./start.sh`. The console opens at <http://localhost:8787/>.
+1. **Download** the file for your system from [Releases](https://github.com/h4lo-void/bageo-call/releases): `bageo-call-<version>-windows-x64-setup.exe` for Windows, `bageo-call-<version>-macos-arm64.dmg` (Apple chip) or `bageo-call-<version>-macos-x64.dmg` (Intel) for macOS, `bageo-call-<version>-linux-x64.tar.gz` for Linux.
+2. **Install and start it.** Windows: double-click the `setup.exe` and click the **Bageo** shortcut on the desktop. macOS: open the `.dmg`, drag Bageo into Applications and click it. Linux: unpack and run `./start.sh`. The console opens at <http://localhost:8787/>.
 3. **Fill in the basics** under **Settings**: your Gemini API key, your name and the language. Press ▶ to hear the voices and pick one.
 4. **Prepare the phone** once: install `bageo-phone-module-<version>.zip` as a module in Magisk or KernelSU, reboot, open the **Bageo** app, work through its checklist and plug the phone in.
 5. **Call it** from another phone: one ring, and the AI answers.

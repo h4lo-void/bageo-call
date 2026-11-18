@@ -220,8 +220,8 @@ AI 的语音、内置提示词、网页控制台、手机应用和通知，九�
 
 ## 快速开始
 
-1. **下载**：从 [Releases](https://github.com/h4lo-void/bageo-call/releases) 下载适合你系统的安装包并解压。
-2. **启动**：Windows 双击 `start.cmd`，macOS 双击 `start.command`，Linux 运行 `./start.sh`，控制台会在 <http://localhost:8787/> 打开。
+1. **下载**：从 [Releases](https://github.com/h4lo-void/bageo-call/releases) 下载适合你系统的文件：Windows 用 `bageo-call-<version>-windows-x64-setup.exe`，macOS 用 `bageo-call-<version>-macos-arm64.dmg`（Apple 芯片）或 `bageo-call-<version>-macos-x64.dmg`（Intel），Linux 用 `bageo-call-<version>-linux-x64.tar.gz`。
+2. **安装并启动**：Windows 双击 `setup.exe` 安装，再点桌面上的“Bageo”快捷方式。macOS 打开 `.dmg`，把 Bageo 拖进“应用程序”，再点一下它。Linux 解压后运行 `./start.sh`。控制台会在 <http://localhost:8787/> 打开。
 3. **填写基本设置**：在“**设置**”里填上 Gemini API 密钥、你的名字和语言，按 ▶ 试听各个声音，选一个。
 4. **准备手机**（只需一次）：在 Magisk 或 KernelSU 里安装模块 `bageo-phone-module-<version>.zip`，重启，打开 **Bageo** 应用把检查清单做完，插上 USB。
 5. **打一通试试**：用另一部手机拨打它的号码，响一声，AI 就接了。
