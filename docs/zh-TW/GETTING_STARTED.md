@@ -200,7 +200,7 @@ Bageo 在跑，才接得到電話。
 
 ### 在系統匣或選單列看狀態
 
-在 Windows 和 macOS，**Bageo Status** 就是用來啟動 Bageo 的程式，它待在系統匣（Windows）或選單列（macOS）。圖示外框是綠色代表一切正常，黃色代表有地方要留意（例如有手機沒連線，或缺 Android 工具），紅色代表連不上 Bageo 或沒有手機連線。
+在 Windows 和 macOS，**Bageo Status** 就是用來啟動 Bageo 的程式，它待在系統匣（Windows）或選單列（macOS）。圖示外框是綠色代表一切正常，黃色代表有地方要留意（例如控制台還有項目沒設定、有手機沒連線，或缺 Android 工具），紅色代表連不上 Bageo 或沒有手機連線。
 
 - **Windows：** 新圖示會先收在時鐘旁的 `^` 裡，把它拖到工作列上就會一直看得到。
 - **macOS：** 圖示在選單列右邊。

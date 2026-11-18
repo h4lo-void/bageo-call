@@ -35,6 +35,8 @@ pub enum Reason {
     LaunchFailed,
     /// No phone, and the Android tools (adb) are missing on this computer.
     NeedAdb,
+    /// Bageo answers, but its console still lists settings to fill in.
+    Setup,
 }
 
 #[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug)]
@@ -84,6 +86,8 @@ pub struct Snapshot {
     pub local: bool,
     /// Android tools on this computer: "" (fine or not our business), "missing", "downloading" or "failed".
     pub adb: String,
+    /// How many items the console's "Ready?" list still asks for (0 for an older Bageo).
+    pub setup_todo: u32,
 }
 
 impl Snapshot {
@@ -104,6 +108,7 @@ impl Snapshot {
             sms_supported: None,
             local: false,
             adb: String::new(),
+            setup_todo: 0,
         }
     }
 }
@@ -223,7 +228,21 @@ pub fn build_snapshot(
             snap.reason = reason;
         }
     }
+    snap.setup_todo = health
+        .get("setup_missing")
+        .and_then(Value::as_array)
+        .map(|a| a.len().min(u32::MAX as usize) as u32)
+        .unwrap_or(0);
+    apply_setup(&mut snap);
     snap
+}
+
+/// Unfinished setup turns anything short of red into yellow: it is never "all good".
+fn apply_setup(snap: &mut Snapshot) {
+    if snap.setup_todo > 0 && snap.level != Level::Bad {
+        snap.level = Level::Warn;
+        snap.reason = Reason::Setup;
+    }
 }
 
 fn apply_detail(snap: &mut Snapshot, d: &Value) {
@@ -482,6 +501,35 @@ mod tests {
         let s = build_snapshot(&health(), &DevicesResult::Unavailable, false, "", "en");
         assert!(!s.locked);
         assert_eq!((s.level, s.reason), (Level::Bad, Reason::NoPhone));
+    }
+
+    #[test]
+    fn unfinished_setup_is_never_green() {
+        let mut h = health();
+        h["setup_missing"] = json!(["gemini_key", "owner_name", "notify", "summary"]);
+        let one = json!({
+            "connected": ["A1"],
+            "phones": [{"serial": "A1", "connected": true, "mode": "ai", "model": "Pixel 9", "in_call": false}]
+        });
+        let s = build_snapshot(&h, &DevicesResult::Detail(one.clone()), false, "", "en");
+        assert_eq!((s.level, s.reason, s.setup_todo, s.ready), (Level::Warn, Reason::Setup, 4, 1));
+        assert_eq!(serde_json::to_value(&s).unwrap()["reason"], "setup");
+
+        // Locked console: the short /health still carries the list.
+        h["control_idle_clients"] = json!(1);
+        let s = build_snapshot(&h, &DevicesResult::Locked, true, "", "en");
+        assert_eq!((s.level, s.reason), (Level::Warn, Reason::Setup));
+
+        // Red stays red.
+        let s = build_snapshot(&h, &DevicesResult::Detail(json!({"connected": [], "phones": []})), false, "", "en");
+        assert_eq!((s.level, s.reason), (Level::Bad, Reason::NoPhone));
+
+        // Everything set, or an older Bageo without the field: green again.
+        h["setup_missing"] = json!([]);
+        let s = build_snapshot(&h, &DevicesResult::Detail(one.clone()), false, "", "en");
+        assert_eq!((s.level, s.reason, s.setup_todo), (Level::Ok, Reason::Ready, 0));
+        let s = build_snapshot(&health(), &DevicesResult::Detail(one), false, "", "en");
+        assert_eq!((s.level, s.reason), (Level::Ok, Reason::Ready));
     }
 
     #[test]
