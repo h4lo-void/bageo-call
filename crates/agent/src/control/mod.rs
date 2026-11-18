@@ -1241,7 +1241,11 @@ impl Controller {
             rt.trtc_secret_id.clone(),
             rt.trtc_cloud_secret_key.clone(),
             self.state.settings.notify_webhook_url.clone(),
+            self.state.settings.calls_ui_token.clone(),
+            crate::settings_store::active_ui_token(&self.state.settings.calls_ui_token),
             self.state.settings.device_token.clone(),
+            // The key phones use over Wi-Fi (crate::phone_wifi), when one was made.
+            crate::phone_wifi::pairing().peek().unwrap_or_default(),
         ];
         for c in &rt.notify_channels {
             secrets.push(c.token.clone());

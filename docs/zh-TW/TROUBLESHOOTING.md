@@ -13,9 +13,9 @@ AI 電話助理一直沒接、接起來就掛、預約簡訊傳不出去？在�
 | 你看到的 | 原因 | 怎麼修 |
 |---|---|---|
 | `cannot listen on 127.0.0.1:8787 … is another copy running?` | 另一個 Bageo 或別的程式已經佔用這個連接埠。 | 把它關掉，或在 `.env` 裡設 `AGENT_PORT=8790`。 |
-| `The agent program was not found.`（找不到 Bageo 程式） | 你 clone 了原始碼卻沒裝 Rust，所以沒有程式可以執行。 | 安裝 [Rust](https://rustup.rs) 後再執行一次啟動腳本，或把 GitHub Releases 的發行版解壓縮到這個資料夾。 |
-| Windows：「running scripts is disabled on this system」（已停用指令碼執行） | PowerShell 預設不讓 `.ps1` 執行。 | 改用 `start.cmd`，不要直接執行 `start.ps1`；它會用正確的選項啟動 PowerShell。 |
-| macOS：「cannot be opened because the developer cannot be verified」（無法驗證開發者） | 發行版沒有經過 Apple 公證。 | 按右鍵 →「打開」，或到「系統設定 → 隱私權與安全性」允許，或在該資料夾執行 `xattr -dr com.apple.quarantine .`。 |
+| `The agent program was not found.`（找不到 Bageo 程式） | 你 clone 了原始碼卻沒裝 Rust，所以沒有程式可以執行。 | 安裝 [Rust](https://rustup.rs) 後再執行一次啟動腳本，或從 GitHub Releases 安裝 Windows 安裝程式或 macOS 的 `.dmg`。 |
+| Windows：「running scripts is disabled on this system」（已停用指令碼執行） | PowerShell 預設不讓 `.ps1` 執行。 | 點「Bageo」捷徑，或在安裝資料夾改用 `start.cmd`，不要直接執行 `start.ps1`；它會用正確的選項啟動 PowerShell。 |
+| macOS：「cannot be opened because the developer cannot be verified」（無法驗證開發者） | App 沒有經過 Apple 公證。 | 在 Finder 對 Bageo 按右鍵 →「打開」，或到「系統設定 → 隱私權與安全性」按「強制打開」。 |
 | 控制台要求輸入密碼 | 有設定控制台密碼或 `CALLS_UI_TOKEN`。 | 輸入密碼（瀏覽器會記住），或打開 `http://…:8787/?token=<你的密碼>`。 |
 
 ## 手機沒有出現
@@ -161,7 +161,7 @@ AI 代打是你在「AI 代打」頁交代、由 AI 替你撥出的電話，例�
 在 `data/calls/<date>/`。超過「設定 → 進階」的「紀錄保留幾天」（預設 15 天）會自動刪除；把資料夾刪掉就一次清空。
 
 **對方會知道這是 AI 嗎？**
-用「AI 助理」方式時，第一句話就會說。用「本人」方式時，只有對方認真問起才會說。後者在你所在的地方是否允許，要由你自己查清楚，見[隱私、安全與法律](PRIVACY_AND_LEGAL.md)。
+用「AI 助理」方式時，第一句話就會說。用「本人」方式時，AI 以你的身分講話，不會說自己是 AI。後者在你所在的地方是否允許，要由你自己查清楚，見[隱私、安全與法律](PRIVACY_AND_LEGAL.md)。
 
 ## 回報問題
 

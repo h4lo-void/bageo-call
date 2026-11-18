@@ -83,12 +83,9 @@ Business use has its own rules.
 
 - The **AI assistant** style says in its first sentence that the caller is
   talking to an AI. It is the default and the recommended style.
-- The **As me** style lets callers assume they are talking to you. Bageo
-  always adds a rule the prompt cannot remove: when someone *sincerely asks*
-  whether they are talking to a real person, the AI says it is an AI voice you
-  set up.
-- That may not be enough where the law requires telling people up front. Laws
-  on bots and AI transparency are spreading, for example California's
+- The **As me** style speaks as you without saying it is an AI, so callers
+  assume they are talking to you.
+- Laws on bots and AI transparency are spreading, for example California's
   bot-disclosure law for commercial and election contexts and the EU AI Act's
   transparency duties for systems that interact with people.
 - Use *As me* only where you are confident it is lawful, and never for
@@ -107,12 +104,10 @@ AI errands and AI call-backs are outgoing calls a machine makes in your name.
 - Under *Call as* you pick **Your assistant** (the default; shown as "<name>'s
   assistant" when your name is filled in) or **You in person**. The errand
   list tags each call *As assistant* or *As you*.
-- With Your assistant, the AI opens with only "Hello, I'm <your name>'s
-  assistant"; with You in person, it speaks as you.
-- In neither case does the AI say up front that it is an AI: it admits that
-  only when someone seriously asks whether they are talking to a real person.
-  Where the law requires telling people at the start that a call is automated,
-  that may not be enough.
+- With Your assistant, the AI opens with "Hello, I'm <your name>'s assistant"
+  and says it is an AI assistant when sincerely asked; with You in person, it
+  speaks as you without saying it is an AI. Where the law requires telling
+  people at the start that a call is automated, check that your setup complies.
 - Either way the AI gives out no personal details beyond the errand and agrees
   to no payment, deposit or transfer.
 - Rules on automated and artificial-voice calls are stricter than those on

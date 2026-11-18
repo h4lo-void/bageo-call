@@ -25,7 +25,7 @@
     <string name="st_normal">Normales Telefon: Anrufe klingeln wie gewohnt</string>
     <string name="st_normal_d">Die KI nimmt nicht ab. Du nimmst Anrufe selbst an, wie bei jedem Telefon. Schalte den Schalter unten ein, damit die KI wieder annimmt.</string>
     <string name="st_offline">Noch nicht mit dem Computer verbunden</string>
-    <string name="st_offline_d">Prüfe, ob Bageo auf dem Computer läuft und das Telefon per USB angeschlossen ist (oder trag unter „Erweitert“ eine WLAN-Adresse ein). Bis dahin kann die KI nicht mit Anrufern sprechen.</string>
+    <string name="st_offline_d">Prüfe, ob Bageo auf dem Computer läuft und das Telefon per USB angeschlossen oder im selben WLAN ist (zum ersten Koppeln einmal per USB anschließen).</string>
     <string name="st_steps">Offene Einrichtungsschritte: %1$d</string>
     <string name="st_steps_d">Erledige die Schritte unten, damit die KI Anrufe annehmen kann.</string>
     <string name="st_service_off">Der Annahmedienst läuft nicht</string>
@@ -72,6 +72,9 @@
     <string name="step_dnd_desc">Hält das Telefon still, während die KI annimmt.</string>
     <string name="step_battery_title">Bageo nicht schlafen legen lassen</string>
     <string name="step_battery_desc">Verhindert, dass Android Bageo zum Akkusparen beendet und Anrufe verloren gehen.</string>
+    <string name="step_pair_title">Zum ersten Koppeln per USB an den Computer anschließen</string>
+    <string name="step_pair_ok">Mit dem Computer gekoppelt. Ohne USB-Kabel läuft die Verbindung über WLAN weiter.</string>
+    <string name="step_pair_missing">Schalte beim ersten Mal das USB-Debugging ein und schließe das Telefon per USB an den Computer an. Danach verbindet es sich auch über WLAN.</string>
     <string name="btn_allow">Zulassen</string>
     <string name="btn_set">Festlegen</string>
     <string name="btn_open_settings">Einstellungen öffnen</string>
@@ -140,4 +143,12 @@
     <string name="about_dedicated">Im KI-Modus übernimmt das Modul die Telefon-App, schaltet den Klingelton stumm und aktiviert „Bitte nicht stören“. Am besten nimmst du ein Zweittelefon. Um es eine Zeit lang normal zu nutzen, schalte den Schalter oben aus.</string>
     <string name="about_rollback">Um Bageo ganz zu entfernen, schalte zuerst den Schalter oben aus (zurück zum normalen Telefon), deaktiviere oder entferne dann das Modul in Magisk oder KernelSU und starte neu.</string>
     <string name="about_legal">Die Gesetze zum Aufzeichnen von Anrufen und zur Pflicht, Anrufer auf eine KI hinzuweisen, unterscheiden sich je nach Land. Für die Einhaltung bist du selbst verantwortlich.</string>
+    <!-- Connection route and Wi-Fi backup -->
+    <string name="route_usb">Über USB verbunden.</string>
+    <string name="route_wifi">Über WLAN verbunden.</string>
+    <string name="route_custom">Mit der Adresse verbunden, die du eingegeben hast.</string>
+    <string name="wifi_ready">Die WLAN-Reserve ist bereit. Anrufe laufen weiter, wenn du das USB-Kabel abziehst.</string>
+    <string name="wifi_not_ready">Die WLAN-Reserve ist noch nicht eingerichtet. Verbinde das USB-Kabel einmal, dann ist sie eingerichtet.</string>
+    <string name="btn_forget_wifi">WLAN-Verbindung vergessen</string>
+    <string name="msg_wifi_forgotten">WLAN-Verbindung vergessen. Zum erneuten Einrichten das USB-Kabel einmal anschließen.</string>
 </resources>

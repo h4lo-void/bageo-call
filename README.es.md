@@ -151,7 +151,7 @@ Reservar una mesa, cambiar una cita, preguntar en una tienda si hay existencias 
   <img src="docs/images/languages.en.svg" width="900" alt="Bageo habla nueve idiomas: inglés, chino tradicional, chino simplificado, japonés, coreano, español, francés, alemán y portugués. Cada uno contesta con su propio saludo.">
 </p>
 
-La voz de la IA, las instrucciones integradas, la consola web, la app del teléfono y las notificaciones están en nueve idiomas. En un teléfono con doble SIM, cada SIM abre las llamadas en su propio idioma; quien llama desde el extranjero oye el idioma de su país, y si cambia de idioma a mitad de la llamada, la IA lo sigue. Las transcripciones conservan las palabras originales, cada línea con una traducción a tu idioma de notificaciones. [Más sobre idiomas y doble SIM](docs/en/FEATURES.md#nine-languages-dual-sim-translated-transcripts)
+La voz de la IA, las instrucciones integradas (una base breve y general que puedes adaptar a tu situación y estilo), la consola web, la app del teléfono y las notificaciones están en nueve idiomas. En un teléfono con doble SIM, cada SIM abre las llamadas en su propio idioma; quien llama desde el extranjero oye el idioma de su país, y si cambia de idioma a mitad de la llamada, la IA lo sigue. Las transcripciones conservan las palabras originales, cada línea con una traducción a tu idioma de notificaciones. [Más sobre idiomas y doble SIM](docs/en/FEATURES.md#nine-languages-dual-sim-translated-transcripts)
 
 ## Cómo funciona
 
@@ -220,8 +220,8 @@ Todas las funciones en detalle: [Funciones](docs/en/FEATURES.md).
 
 ## Inicio rápido
 
-1. **Descarga** el paquete para tu sistema desde [Releases](https://github.com/h4lo-void/bageo-call/releases) y descomprímelo.
-2. **Ponlo en marcha.** Windows: doble clic en `start.cmd`. macOS: doble clic en `start.command`. Linux: `./start.sh`. La consola se abre en <http://localhost:8787/>.
+1. **Descarga** el archivo para tu sistema desde [Releases](https://github.com/h4lo-void/bageo-call/releases): `bageo-call-<version>-windows-x64-setup.exe` en Windows, `bageo-call-<version>-macos-arm64.dmg` (chip Apple) o `bageo-call-<version>-macos-x64.dmg` (Intel) en macOS, `bageo-call-<version>-linux-x64.tar.gz` en Linux.
+2. **Instálalo y ábrelo.** Windows: doble clic en `setup.exe` y luego en el acceso directo **Bageo** del escritorio. macOS: abre el `.dmg`, arrastra Bageo a *Aplicaciones* y haz clic en él. Linux: descomprime y ejecuta `./start.sh`. La consola se abre en <http://localhost:8787/>.
 3. **Rellena lo básico** en **Ajustes**: tu clave de API de Gemini, tu nombre y el idioma. Pulsa ▶ para escuchar las voces y elige una.
 4. **Prepara el teléfono** una sola vez: instala `bageo-phone-module-<version>.zip` como módulo en Magisk o KernelSU, reinicia, abre la app **Bageo**, completa sus pasos de configuración y conecta el teléfono.
 5. **Llámale** desde otro teléfono: un tono y la IA contesta.
@@ -293,7 +293,7 @@ cuenta de Google si quieres un tope.
 Depende de dónde estéis tú y la otra persona. Grabar llamadas, avisar de que
 habla una IA y las llamadas salientes automáticas tienen cada una sus propias
 normas. El estilo *Asistente de IA* dice que es una IA en su primera frase;
-*Como yo* lo dice cuando se lo preguntan en serio. Lee
+*Como yo* habla como tú sin decir que es una IA. Lee
 [Privacidad, seguridad y ley](docs/en/PRIVACY_AND_LEGAL.md) antes de
 activarlo.
 
@@ -316,7 +316,7 @@ una pila de voz totalmente local no forma parte de la configuración admitida
   hable con personas sin avisarles, está restringido en muchos sitios. El estilo
   de respuesta *Asistente de IA* dice desde el principio que es una IA; los
   encargos hechos como **Tu asistente** presentan a la IA como tu asistente;
-  toda llamada admite ser una IA cuando se lo preguntan en serio. Infórmate de
+  *Como yo* y **Tú en persona** hablan como tú sin avisarlo. Infórmate de
   lo que se aplica donde estáis tú y la otra persona.
 - **La IA no asume compromisos.** Nunca acepta pagos, depósitos, contratos,
   contraseñas ni códigos, y las citas esperan tu decisión. Sigue siendo una IA:

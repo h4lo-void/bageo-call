@@ -3176,6 +3176,11 @@ pub fn callback_prompt_in(active: &locale::Active, lang: Option<Lang>, appt: &Ap
     } else {
         format!("{owner} cannot make it at {when}{about} after all. Apologize politely and say they are welcome to call again to find another time.")
     };
+    let ai_disclosure = if active.assistant {
+        "\nIf they seriously ask whether they are talking to a real person, say that you are an AI assistant."
+    } else {
+        ""
+    };
     format!(
         "You are making a short phone call for {owner}. Earlier this person called and asked to meet at {when}{about}; {owner} has decided, and you are calling them back with the answer.\n\
 Who is calling: {who}.\n\
@@ -3186,8 +3191,7 @@ How the call goes:\n\
 - Then, in one go: greet them in one short sentence, say who is calling and that you are calling back about the appointment they asked for, give the answer in one or two short sentences, and say goodbye once.\n\
 - Once they have heard it, say it only that once: say the answer again only if they ask for it (\"what?\", \"sorry?\", \"say that again\"), and only once; if they ask about the time, tell them the time. If you are told they did not hear you, say all of it when they speak. Agree to nothing new and do not move the time; if they want another time, say {owner} will get back to them about it. Give out no personal details, codes or other information.\n\
 - After your goodbye, stay quiet and let the call end: say nothing more unless they speak to you, and then answer in a few words.\n\
-- If voicemail or an answering machine picks up, leave the answer in two sentences and say goodbye.\n\
-If they seriously ask whether they are talking to a real person, say that you are an AI assistant."
+- If voicemail or an answering machine picks up, leave the answer in two sentences and say goodbye.{ai_disclosure}"
     )
 }
 
@@ -4506,7 +4510,7 @@ mod tests {
         let yes = callback_prompt(&me, Lang::ZhTw, &a, true);
         assert!(yes.contains("11/14（週六）15:00 (看房) works") && yes.contains("Confirm the time"), "{yes}");
         assert!(yes.contains("speak Traditional Chinese") && yes.contains("you speak as 王先生 yourself"), "{yes}");
-        assert!(yes.contains("say goodbye once") && yes.contains("AI assistant"), "{yes}");
+        assert!(yes.contains("say goodbye once") && !yes.contains("AI assistant"), "{yes}");
         // Once they have heard it: again only when asked, once; unheard, all of it again.
         assert!(yes.contains("Once they have heard it, say it only that once") && yes.contains("only if they ask for it"), "{yes}");
         assert!(yes.contains("If you are told they did not hear you, say all of it"), "{yes}");
@@ -4514,7 +4518,7 @@ mod tests {
         assert!(yes.contains("Switch only if they clearly talk to you in another language"), "{yes}");
         let no = callback_prompt(&locale::Active { assistant: true, ..me }, Lang::En, &a, false);
         assert!(no.contains("cannot make it at Sat, Nov 14, 3:00 PM (看房) after all") && no.contains("Apologize"), "{no}");
-        assert!(no.contains("王先生's assistant") && no.contains("speak English the whole call"), "{no}");
+        assert!(no.contains("王先生's assistant") && no.contains("AI assistant") && no.contains("speak English the whole call"), "{no}");
         // The AI waits for the callee: the ringing is no one to talk to.
         assert!(yes.contains("say nothing until you are told they have picked up and spoken"), "{yes}");
     }

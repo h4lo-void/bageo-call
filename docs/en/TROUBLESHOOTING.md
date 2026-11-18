@@ -20,9 +20,9 @@ questions about iPhones, root, cost and keeping your real phone number usable.
 | You see | Why | Fix |
 |---|---|---|
 | `cannot listen on 127.0.0.1:8787 … is another copy running?` | Another copy of Bageo, or another program, already uses the port. | Close it, or set `AGENT_PORT=8790` in `.env`. |
-| `The agent program was not found.` | You cloned the source and Rust is not installed, so there is nothing to run. | Install [Rust](https://rustup.rs) and run the start script again, or unpack a release package from GitHub Releases into the folder. |
-| Windows: "running scripts is disabled on this system" | PowerShell blocks `.ps1` files by default. | Start `start.cmd` instead of `start.ps1`; it launches PowerShell with the right option. |
-| macOS: "cannot be opened because the developer cannot be verified" | The release is not notarised by Apple. | Right-click → *Open*, or allow it in *System Settings → Privacy & Security*, or run `xattr -dr com.apple.quarantine .` in the folder. |
+| `The agent program was not found.` | You cloned the source and Rust is not installed, so there is nothing to run. | Install [Rust](https://rustup.rs) and run the start script again, or install Bageo from the Windows installer or macOS `.dmg` on GitHub Releases. |
+| Windows: "running scripts is disabled on this system" | PowerShell blocks `.ps1` files by default. | Click the **Bageo** shortcut, or start `start.cmd` in the install folder instead of `start.ps1`; it launches PowerShell with the right option. |
+| macOS: "cannot be opened because the developer cannot be verified" | The app is not notarised by Apple. | In Finder, right-click Bageo → *Open*, or press *Open Anyway* in *System Settings → Privacy & Security*. |
 | The console asks for a password | A console password or `CALLS_UI_TOKEN` is set. | Type the password (the browser remembers it), or open `http://…:8787/?token=<your password>`. |
 
 ## The phone does not show up
@@ -197,9 +197,9 @@ In `data/calls/<date>/`. They are deleted after *Days to keep records*
 (*Settings → Advanced*, default 15 days); delete the folder to remove everything at once.
 
 **Is the caller told it is an AI?**
-With the *AI assistant* style, in the first sentence. With *As me*, only when
-they sincerely ask. Whether the second is allowed where you live is yours to
-check: see [Privacy, safety and the law](PRIVACY_AND_LEGAL.md).
+With the *AI assistant* style, in the first sentence. With *As me*, it speaks as
+you without saying it is an AI. Whether the second is allowed where you live is
+yours to check: see [Privacy, safety and the law](PRIVACY_AND_LEGAL.md).
 
 ## Reporting a problem
 

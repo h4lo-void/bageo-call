@@ -239,6 +239,7 @@ Fields worth knowing (all of them are in `RuntimeSettings` in
 | `owner_name` | Your name, used for `{owner}`. |
 | `owner_aliases` | Up to 10 other names callers use for you, each up to 40 characters. Blanks, repeats and your own `owner_name` are dropped. |
 | `answer_style` | `assistant` / `persona` (the AI answers as you). |
+| `gemini_assistant_prompt` / `gemini_persona_prompt` | Your custom prompt for `assistant` / `persona` (empty = built-in). |
 | `errand_identity` | `assistant` (default) / `owner`: who the AI says it is on an AI errand. Anything else is stored as `assistant`. |
 | `summary_provider` | `gemini` (default) / `custom`. `custom` uses `summary_api_base`, `summary_model` (required with a base URL) and `summary_api_key` (the key of that service). |
 | `calendar_app` | `google`, `outlook`, `office365`, `apple`, `yahoo`, `ics`, or empty (not chosen yet). Anything else is stored as empty. |
@@ -464,9 +465,10 @@ something on a question you did not answer, the result is never `done`: it is
 `need_owner`, telling you to confirm or call back to change it.
 
 **Who calls.** `errand_identity` (setting: `assistant`, your assistant, by
-default, or `owner`, as you); each errand may pick its own. Either way the AI
-admits it is an AI when sincerely asked, gives out no personal details beyond
-the errand, and agrees to no payment, deposit or transfer.
+default, or `owner`, as you); each errand may pick its own. As `assistant` the
+AI admits to being an AI when sincerely asked; either way it gives out no
+personal details beyond the errand, and agrees to no payment, deposit or
+transfer.
 
 **Which numbers.**
 

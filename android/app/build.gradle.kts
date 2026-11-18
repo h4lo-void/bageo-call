@@ -81,4 +81,5 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("org.java-websocket:Java-WebSocket:1.5.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    testImplementation("junit:junit:4.13.2")
 }

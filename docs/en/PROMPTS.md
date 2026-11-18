@@ -1,10 +1,11 @@
 # Prompt guide: teach your AI phone assistant how to talk
 
 The prompt is the text that tells Bageo's AI who it is and how to behave when
-it answers calls on your real phone number. You can skip this page: all nine
-languages come with a built-in prompt for both answer styles (*AI assistant*
-and *As me*). Read on when you want the AI to sound like you, answer from your
-own facts, or treat certain callers your way.
+it answers calls on your real phone number. All nine languages come with a
+short, general built-in prompt for both answer styles (*AI assistant* and *As
+me*) as a starting baseline. Read on when you want to tailor it to your own
+situation and speaking style, answer from your own facts, or treat certain
+callers your way.
 
 - [What the AI is told on every call](#what-the-ai-is-told-on-every-call)
 - [The quick way: let an AI interview you](#the-quick-way-let-an-ai-interview-you)
@@ -83,20 +84,17 @@ You do not need to know how to write prompts. A chat AI can interview you and
 write one.
 
 1. In the console open *Settings → Prompt*, find the card *Don't want to
-   write it yourself?*, choose the language and press **Copy interview
-   prompt**.
+   write it yourself?* (which automatically switches between the *AI assistant*
+   and *As me* interview prompts to match your answer style above), choose the
+   language and press **Copy interview prompt**.
 2. Paste it into a new chat in ChatGPT, Claude, Gemini or any other chat AI.
-3. It asks about ten questions, one at a time: the language callers use, the
-   answer style, your name, how you talk and the exact words you say, words
-   you never use, who calls you, what callers ask, what must never be agreed
-   to, what to do with sales calls, and how you say goodbye. Answer in your own
-   words; say "skip" to take a default.
-4. You get three things back:
-   - **the prompt** in a code block → paste it into *Settings → Prompt → Your
-     own prompt*;
-   - **Notes** → paste them into *Notes the AI may answer from*;
-   - **which answer style and sales setting to pick** → set *Settings → Basics
-     → Answer style* and *Settings → Sales & scam calls → Keep them talking*.
+3. It asks about eight questions tailored to that answer style, one at a time —
+   either shaping your AI assistant's persona, message-taking and hand-off
+   rules, or capturing how you personally sound and handle calls. Answer in your
+   own words; say "skip" to take a default.
+4. It gives you **the finished prompt** in one code block → paste it into
+   *Settings → Prompt → Your own prompt*. (Facts for callers, your answer style
+   and *Keep them talking* are set directly on the Settings page.)
 5. Save, call your number, listen. If something is off, tell the chat AI what
    happened ("it talks too much", "it asked my caller for their name twice")
    and ask for a corrected prompt.
@@ -105,17 +103,17 @@ The interview applies the techniques below on its own and keeps the rules the
 call engine relies on.
 
 The same texts are in [`docs/prompts/`](../prompts/), if you would rather open
-a file:
+a file (*As me* / *AI assistant*):
 
-- [English](../prompts/interview.en.txt)
-- [繁體中文](../prompts/interview.zh-TW.txt)
-- [简体中文](../prompts/interview.zh-CN.txt)
-- [日本語](../prompts/interview.ja.txt)
-- [한국어](../prompts/interview.ko.txt)
-- [Español](../prompts/interview.es.txt)
-- [Français](../prompts/interview.fr.txt)
-- [Deutsch](../prompts/interview.de.txt)
-- [Português](../prompts/interview.pt.txt)
+- [English](../prompts/interview.en.txt) · [AI assistant](../prompts/interview_assistant.en.txt)
+- [繁體中文](../prompts/interview.zh-TW.txt) · [AI 助理](../prompts/interview_assistant.zh-TW.txt)
+- [简体中文](../prompts/interview.zh-CN.txt) · [AI 助理](../prompts/interview_assistant.zh-CN.txt)
+- [日本語](../prompts/interview.ja.txt) · [AI アシスタント](../prompts/interview_assistant.ja.txt)
+- [한국어](../prompts/interview.ko.txt) · [AI 비서](../prompts/interview_assistant.ko.txt)
+- [Español](../prompts/interview.es.txt) · [Asistente de IA](../prompts/interview_assistant.es.txt)
+- [Français](../prompts/interview.fr.txt) · [Assistant IA](../prompts/interview_assistant.fr.txt)
+- [Deutsch](../prompts/interview.de.txt) · [KI-Assistent](../prompts/interview_assistant.de.txt)
+- [Português](../prompts/interview.pt.txt) · [Assistente de IA](../prompts/interview_assistant.pt.txt)
 
 ## Notes the AI may answer from
 
@@ -172,9 +170,8 @@ sections work better than one long paragraph. Cover these:
 | Sales and scam calls | Decline in one line, or see [Stall Mode](#sales-and-scam-calls-stall-mode). |
 | Ending | Wait until the caller is clearly done, then one closing line with your goodbye word. |
 
-Leave these **out** of the prompt: the facts from your notes, a rule about
-admitting to being an AI (Bageo adds it), API or technical settings, and
-long stalling scripts.
+Leave these **out** of the prompt: the facts from your notes, API or technical
+settings, and long stalling scripts.
 
 ### A short example (AI assistant, English)
 
@@ -401,10 +398,9 @@ A wait you set yourself wins; see `goodbye_hangup_delay_ms` in [Settings](SETTIN
 
 Bageo appends these to every prompt, built-in or your own:
 
-- **Honesty about being an AI.** *AI assistant*: never claims to be a person or
-  to be you. *As me*: talks as you, but when someone sincerely asks whether
-  they are talking to a real person, says it is an AI voice you set up. Either
-  way it makes no commitments for you.
+- **Identity and commitments.** *AI assistant*: never claims to be a person or
+  to be you. *As me*: speaks as you without claiming to be an AI. Either way it
+  makes no commitments for you.
 - **No personal details, no codes.** *As me*: asked for an ID number, date of
   birth, card or account number, verification code, password or address, the
   AI gives none and makes none up; it brushes it off ("I'd rather not do that
@@ -454,7 +450,7 @@ or you) and these fixed rules:
   booking name back as a question as soon as it comes up ("today at 4:30 in the
   afternoon, right?"), and wait for a yes before any thanks or goodbye.
 - Leave a two-sentence message on voicemail.
-- Admit to being an AI when sincerely asked.
+- Admit to being an AI when sincerely asked (when calling as your assistant).
 
 The AI speaks the task's language and switches if the other side answers in
 another.

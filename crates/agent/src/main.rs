@@ -55,6 +55,7 @@ mod mdns;
 mod notify;
 mod openclaw;
 mod phone_region;
+mod phone_wifi;
 mod preflight;
 mod prompts;
 mod recent_notices;
@@ -88,7 +89,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{ConnectInfo, Query, State};
+use axum::extract::{ConnectInfo, Query, RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect};
 use axum::routing::{get, post};
@@ -1146,6 +1147,8 @@ async fn main() -> Result<()> {
         settings.calls_record_tts,
     );
     let task_store = TaskStore::new(PathBuf::from(&settings.calls_data_dir).join("tasks"));
+    // The key phones use over Wi-Fi, kept next to the call records (phone_wifi).
+    phone_wifi::init(std::path::Path::new(&settings.calls_data_dir));
     // The owner's contacts (names for caller IDs), next to the call records.
     let contacts = contacts::ContactStore::open(PathBuf::from(&settings.calls_data_dir).join("contacts.json"));
     contacts::install(contacts.clone());
@@ -1540,7 +1543,20 @@ async fn main() -> Result<()> {
             let store = settings_store.clone();
             mdns::spawn(addr.ip(), move || store.snapshot().mdns_name.clone());
         }
+    } else if !settings_store::in_container() {
+        // Listening on this computer only: the network name answers while
+        // phones may connect over Wi-Fi, so `bageo.local` reaches the Wi-Fi entry.
+        let store = settings_store.clone();
+        mdns::spawn(addr.ip(), move || {
+            let rt = store.snapshot();
+            if rt.phone_wifi {
+                rt.mdns_name.clone()
+            } else {
+                String::new()
+            }
+        });
     }
+    spawn_phone_wifi(state.clone(), addr);
 
     let app = Router::new()
         .route("/", get(root))
@@ -1602,7 +1618,7 @@ async fn root(
 /// on the LAN connect so). A connection through a reverse proxy on this
 /// machine (`proxied`: it carries a forwarding header) is not this machine's
 /// own even from loopback: it needs `DEVICE_TOKEN`, and without one set it is
-/// refused.
+/// refused. The pairing key ([`phone_wifi`]) is checked apart, in [`phone_ws`].
 fn phone_allowed(peer: &SocketAddr, proxied: bool, token: Option<&str>, required: &str) -> bool {
     let required = required.trim();
     let token_ok = !required.is_empty() && token.is_some_and(|t| crate::mcp::same(t, required));
@@ -1620,11 +1636,248 @@ fn phone_ws(
     state: AppState,
 ) -> axum::response::Response {
     let proxied = calls_http::came_through_proxy(headers);
-    if !phone_allowed(&peer, proxied, q.get("token").map(String::as_str), &state.settings.device_token) {
+    let token = q.get("token").map(String::as_str);
+    // A phone paired over USB that reaches this port over Wi-Fi (the agent is
+    // open to the LAN): its pairing key counts while phone Wi-Fi is on.
+    let paired = state.settings_store.snapshot().phone_wifi && phone_wifi::pairing().accepts(token);
+    if !paired && !phone_allowed(&peer, proxied, token, &state.settings.device_token) {
         warn!("phone websocket refused from {peer} (through a proxy: {proxied}): missing or wrong token");
         return (StatusCode::UNAUTHORIZED, "device token required").into_response();
     }
-    ws.on_upgrade(move |socket| handle_ws(socket, state))
+    let device_token = state.settings.device_token.trim();
+    let link = PhoneLink::main_port(
+        peer.ip().is_loopback(),
+        proxied,
+        paired,
+        !device_token.is_empty() && token.is_some_and(|t| phone_wifi::same_token(t.trim(), device_token)),
+    );
+    ws.on_upgrade(move |socket| handle_ws(socket, state, link))
+}
+
+/// How a phone's WebSocket came in.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct PhoneLink {
+    /// Over the network (shown as Wi-Fi), not the USB tunnel that ends on loopback.
+    wifi: bool,
+    /// Through a reverse proxy on this machine.
+    proxied: bool,
+    /// May be given the Wi-Fi addresses with the pairing key: the USB tunnel,
+    /// or a connection that showed the pairing key or `DEVICE_TOKEN`.
+    trusted: bool,
+    /// Dropped when the phones are paired again or phone Wi-Fi is turned off.
+    on_pairing: bool,
+}
+
+impl PhoneLink {
+    /// A connection on the main port. `paired`: it showed the pairing key;
+    /// `device_token`: it showed `DEVICE_TOKEN`.
+    fn main_port(loopback: bool, proxied: bool, paired: bool, device_token: bool) -> Self {
+        let usb = loopback && !proxied;
+        Self {
+            wifi: !usb,
+            proxied,
+            trusted: usb || paired || device_token,
+            on_pairing: paired,
+        }
+    }
+
+    /// A connection on the Wi-Fi entry (it showed the pairing key or `DEVICE_TOKEN`).
+    fn wifi_entry(proxied: bool, on_pairing: bool) -> Self {
+        Self {
+            wifi: true,
+            proxied,
+            trusted: true,
+            on_pairing,
+        }
+    }
+}
+
+/// What a phone connection reads: the WebSocket, ending early when a phone
+/// on Wi-Fi must be dropped ([`until_dropped`]).
+type PhoneStream = futures_util::stream::TakeUntil<
+    futures_util::stream::SplitStream<WebSocket>,
+    std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>,
+>;
+
+/// Finishes when the phones are paired again or phone Wi-Fi is turned off,
+/// for a connection made over Wi-Fi with the pairing; never for the others.
+fn until_dropped(link: PhoneLink) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+    if !link.on_pairing {
+        return Box::pin(std::future::pending());
+    }
+    let mut kicked = phone_wifi::pairing().kicked();
+    Box::pin(async move {
+        if kicked.changed().await.is_err() {
+            std::future::pending::<()>().await;
+        }
+        info!("phone on Wi-Fi disconnected: paired again or phone Wi-Fi turned off");
+    })
+}
+
+/// Where phones reach this agent over Wi-Fi: the address to announce from and
+/// the port. None while phone Wi-Fi is off, in a container (its addresses are
+/// Docker's), or while the Wi-Fi entry is not running.
+fn wifi_entry(base: &Settings, rt: &RuntimeSettings) -> Option<(std::net::IpAddr, u16)> {
+    wifi_entry_for(
+        rt.phone_wifi,
+        settings_store::in_container(),
+        base.host.trim().parse().ok(),
+        base.port,
+        phone_wifi::entry_port(),
+    )
+}
+
+/// [`wifi_entry`]: an agent open to the LAN (`AGENT_HOST` not loopback) takes
+/// phones on its own port; one on this computer only, on the Wi-Fi entry.
+fn wifi_entry_for(
+    on: bool,
+    in_container: bool,
+    host: Option<std::net::IpAddr>,
+    port: u16,
+    entry_port: Option<u16>,
+) -> Option<(std::net::IpAddr, u16)> {
+    if !on || in_container {
+        return None;
+    }
+    let host = host?;
+    if !host.is_loopback() {
+        return Some((host, port));
+    }
+    entry_port.map(|p| (host, p))
+}
+
+/// The `wifi.urls` of `agent_info` for the Wi-Fi `entry`; `lan_ip` finds the
+/// address to give for the address listened on ([`mdns::answer_ip`]).
+fn agent_info_wifi_urls(
+    entry: Option<(std::net::IpAddr, u16)>,
+    lan_ip: impl FnOnce(std::net::IpAddr) -> Option<std::net::Ipv4Addr>,
+    mdns_host: &str,
+    key: impl FnOnce() -> String,
+) -> Vec<String> {
+    match entry {
+        Some((listen, port)) => match lan_ip(listen) {
+            Some(ip) => phone_wifi::wifi_urls(Some(ip), port, mdns_host, &key()),
+            None => Vec::new(),
+        },
+        None => Vec::new(),
+    }
+}
+
+/// The value of `?token=` in a query string.
+fn token_param(query: Option<&str>) -> Option<String> {
+    url::form_urlencoded::parse(query?.as_bytes())
+        .find(|(k, _)| k == "token")
+        .map(|(_, v)| v.into_owned())
+}
+
+/// The Wi-Fi entry lets in only a phone with the pairing key or
+/// `DEVICE_TOKEN` (`device_token`): no exception for loopback or an unset token.
+fn wifi_entry_gate(router: Router, device_token: String) -> Router {
+    router.layer(axum::middleware::from_fn(
+        move |req: axum::extract::Request, next: axum::middleware::Next| {
+            let device_token = device_token.clone();
+            async move {
+                let token = token_param(req.uri().query());
+                if !phone_wifi::entry_allows(token.as_deref(), &device_token, phone_wifi::pairing()) {
+                    let peer = req
+                        .extensions()
+                        .get::<ConnectInfo<SocketAddr>>()
+                        .map(|c| c.0.to_string())
+                        .unwrap_or_default();
+                    warn!("phone refused on the Wi-Fi entry from {peer}: missing or wrong pairing key");
+                    return (StatusCode::UNAUTHORIZED, "pairing key required").into_response();
+                }
+                next.run(req).await
+            }
+        },
+    ))
+}
+
+/// The Wi-Fi entry's only page: `/ws` for phones.
+async fn wifi_entry_ws(
+    ws: WebSocketUpgrade,
+    headers: axum::http::HeaderMap,
+    RawQuery(query): RawQuery,
+    State(state): State<AppState>,
+) -> axum::response::Response {
+    let token = token_param(query.as_deref());
+    let device_token = state.settings.device_token.trim();
+    let device_ok = !device_token.is_empty()
+        && token.as_deref().is_some_and(|t| phone_wifi::same_token(t.trim(), device_token));
+    let link = PhoneLink::wifi_entry(calls_http::came_through_proxy(&headers), !device_ok);
+    ws.on_upgrade(move |socket| handle_ws(socket, state, link))
+}
+
+/// Phone Wi-Fi (setting `phone_wifi`, re-read every 2 s): while the agent
+/// listens on this computer only, a second listener on all addresses at
+/// `PHONE_WIFI_PORT` that serves only `/ws` ([`wifi_entry_gate`]). Turning the
+/// setting off closes it and drops the phones on Wi-Fi. Not in a container.
+fn spawn_phone_wifi(state: AppState, main_addr: SocketAddr) {
+    if settings_store::in_container() {
+        info!("phone Wi-Fi: no Wi-Fi entry inside a container (see docker-compose.yml)");
+        return;
+    }
+    let port = state.settings.phone_wifi_port;
+    let own_entry = main_addr.ip().is_loopback() && port != 0 && port != main_addr.port();
+    tokio::spawn(async move {
+        let mut running: Option<(tokio::sync::oneshot::Sender<()>, tokio::task::JoinHandle<()>)> = None;
+        let mut was_on = state.settings_store.snapshot().phone_wifi;
+        let mut retry_at: Option<tokio::time::Instant> = None;
+        loop {
+            let prev_port = phone_wifi::entry_port();
+            let on = state.settings_store.snapshot().phone_wifi;
+            let switched = was_on != on;
+            if was_on && !on {
+                info!("phone Wi-Fi: turned off");
+                phone_wifi::pairing().kick();
+            }
+            was_on = on;
+            if running.as_ref().is_some_and(|(_, task)| task.is_finished()) {
+                running = None;
+                phone_wifi::set_entry_port(0);
+            }
+            if own_entry && on && running.is_none() && retry_at.is_none_or(|t| tokio::time::Instant::now() >= t) {
+                match tokio::net::TcpListener::bind((std::net::Ipv4Addr::UNSPECIFIED, port)).await {
+                    Ok(listener) => {
+                        let app = wifi_entry_gate(
+                            Router::new().route("/ws", get(wifi_entry_ws)).with_state(state.clone()),
+                            state.settings.device_token.clone(),
+                        );
+                        let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+                        let task = tokio::spawn(async move {
+                            let served = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
+                                .with_graceful_shutdown(async {
+                                    let _ = stopped.await;
+                                })
+                                .await;
+                            if let Err(e) = served {
+                                warn!("phone Wi-Fi: the Wi-Fi entry stopped ({e})");
+                            }
+                        });
+                        phone_wifi::set_entry_port(port);
+                        retry_at = None;
+                        running = Some((stop, task));
+                        info!("phone Wi-Fi: phones paired over USB can connect on port {port}");
+                    }
+                    Err(e) => {
+                        warn!("phone Wi-Fi: cannot listen on port {port} ({e}); PHONE_WIFI_PORT picks another port. Trying again in 60 s");
+                        retry_at = Some(tokio::time::Instant::now() + Duration::from_secs(60));
+                    }
+                }
+            } else if !on {
+                retry_at = None;
+                if let Some((stop, _)) = running.take() {
+                    let _ = stop.send(());
+                    phone_wifi::set_entry_port(0);
+                    info!("phone Wi-Fi: Wi-Fi entry closed");
+                }
+            }
+            if switched || phone_wifi::entry_port() != prev_port {
+                phone_wifi::pairing().notify_refresh();
+            }
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+    });
 }
 
 /// Permanent redirect to the web console.
@@ -1920,6 +2173,16 @@ async fn health(
     body.insert("language".into(), json!(rt.language));
     body.insert("notify_language".into(), json!(rt.notify_lang().code()));
     body.insert("usb_bridge".into(), usb_bridge::status_json());
+    // Phones over Wi-Fi: the setting, the port they use (null: none now) and
+    // how many are connected so. Never the pairing key.
+    body.insert(
+        "phone_wifi".into(),
+        json!({
+            "on": rt.phone_wifi,
+            "port": wifi_entry(s, &rt).map(|(_, port)| port),
+            "wifi_phones": state.phones.wifi_count(),
+        }),
+    );
     body.insert("calls_data_dir".into(), json!(s.calls_data_dir));
     body.insert("calls_record".into(), json!(s.calls_record));
     body.insert("calls_record_tts".into(), json!(s.calls_record_tts));
@@ -2228,10 +2491,25 @@ async fn handle_control_idle_ws(
     state: AppState,
     serial: String,
     sink: WsSink,
-    mut stream: futures_util::stream::SplitStream<WebSocket>,
+    mut stream: PhoneStream,
+    link: PhoneLink,
 ) {
+    let mut refreshed = phone_wifi::pairing().refreshed();
     loop {
-        let Some(msg) = stream.next().await else {
+        let next_msg = if link.trusted && !link.proxied {
+            tokio::select! {
+                msg = stream.next() => msg,
+                changed = refreshed.changed() => {
+                    if changed.is_ok() {
+                        send_agent_info(&state, &sink, link).await;
+                    }
+                    continue;
+                }
+            }
+        } else {
+            stream.next().await
+        };
+        let Some(msg) = next_msg else {
             break;
         };
         let msg = match msg {
@@ -2421,17 +2699,36 @@ async fn sync_normal_mode(state: &AppState, serial: &str) {
 /// Tell a phone's app where the web console is, for its "Open the web console"
 /// button: the address typed in the settings (`public_url`) or, when that is empty,
 /// the LAN IP address (some Android phones cannot open `.local` names, so the
-/// automatic `bageo.local` address is not used here). Nothing is sent while it is
-/// unknown; older apps ignore the message.
-async fn send_agent_info(state: &AppState, sink: &WsSink) {
-    let eff = state.settings_store.snapshot().effective(&state.settings);
+/// automatic `bageo.local` address is not used here); left out while it is unknown.
+/// `wifi.urls`: where the phone connects once unplugged, with the pairing key
+/// ([`phone_wifi`]); empty when phone Wi-Fi is off or there is no LAN address
+/// (the phone then forgets the ones it kept). Only on a connection that may
+/// have the key ([`PhoneLink::trusted`]) and not through a reverse proxy; the
+/// phone keeps what it has when the field is missing. Older apps ignore the message.
+async fn send_agent_info(state: &AppState, sink: &WsSink, link: PhoneLink) {
+    let rt = state.settings_store.snapshot();
+    let eff = rt.effective(&state.settings);
     let base = if eff.public_url.trim().is_empty() {
         settings_store::lan_console_url(&eff)
     } else {
         settings_store::effective_console_url(&eff)
     };
+    let mut msg = serde_json::Map::new();
+    msg.insert("type".into(), json!("agent_info"));
     if let Some(url) = calls_http::phone_console_url(&base) {
-        let _ = send_json(sink, json!({"type": "agent_info", "console_url": url})).await;
+        msg.insert("console_url".into(), json!(url));
+    }
+    if link.trusted && !link.proxied {
+        let urls = agent_info_wifi_urls(
+            wifi_entry(&state.settings, &rt),
+            mdns::answer_ip,
+            &mdns::parse_name_setting(&rt.mdns_name),
+            || phone_wifi::pairing().key(),
+        );
+        msg.insert("wifi".into(), json!({ "urls": urls }));
+    }
+    if msg.len() > 1 {
+        let _ = send_json(sink, Value::Object(msg)).await;
     }
 }
 
@@ -2445,7 +2742,7 @@ async fn ws_upgrade(
     phone_ws(ws, peer, &headers, &q, state)
 }
 
-async fn handle_ws(socket: WebSocket, base_state: AppState) {
+async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
     // Session view of runtime settings: snapshot here, refreshed at call start
     // (hello/ringing). `state.settings` carries the env+runtime merge so all
     // existing helpers keep reading `state.settings.*` unchanged.
@@ -2453,7 +2750,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
     let mut state = base_state.clone();
     state.settings = rt.effective(&base_state.settings);
 
-    let (sink, mut stream) = socket.split();
+    let (sink, stream) = socket.split();
+    let mut stream: PhoneStream = stream.take_until(until_dropped(link));
     let sink = Arc::new(Mutex::new(sink));
 
     let mut serial = "unknown".to_string();
@@ -2668,6 +2966,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                         .register_client(serial.clone(), sink.clone())
                                         .await;
                                     state.phones.connected(&serial, sink.clone(), &parsed);
+                                    state.phones.set_wifi(&serial, link.wifi);
                                     sync_normal_mode(&state, &serial).await;
                                     // An app that lists its SIMs: errands dial from the right one.
                                     errands::note_hello_sims(&canonical_device_serial(&serial), &parsed);
@@ -2708,8 +3007,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState) {
                                             "control_idle blocklist clear failed serial={serial}: {e:#}"
                                         );
                                     }
-                                    send_agent_info(&state, &sink).await;
-                                    handle_control_idle_ws(state, serial, sink, stream).await;
+                                    send_agent_info(&state, &sink, link).await;
+                                    handle_control_idle_ws(state, serial, sink, stream, link).await;
                                     return;
                                 }
                                 // Whitelist urgent call dialing / merged on this phone: a new media
@@ -13105,6 +13404,102 @@ mod access_and_whitelist_tests {
         assert!(!phone_allowed(&lo, true, None, "dev-test"));
         assert!(!phone_allowed(&lo, true, Some("wrong"), "dev-test"));
         assert!(phone_allowed(&lo, true, Some("dev-test"), "dev-test"));
+    }
+
+    /// The Wi-Fi entry: no pairing key, no entry, even from this computer
+    /// and with no `DEVICE_TOKEN` exception.
+    #[tokio::test]
+    async fn the_wifi_entry_refuses_phones_without_the_pairing_key() {
+        let key = phone_wifi::pairing().key();
+        let app = wifi_entry_gate(Router::new().route("/ws", get(|| async { "in" })), "dev-test-token".into());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await;
+        });
+        let http = reqwest::Client::new();
+        let status = |query: String| {
+            let http = http.clone();
+            async move { http.get(format!("http://{addr}/ws{query}")).send().await.unwrap().status().as_u16() }
+        };
+        assert_eq!(status(String::new()).await, 401, "no token");
+        assert_eq!(status("?token=".into()).await, 401, "empty token");
+        assert_eq!(status("?token=wrong".into()).await, 401, "wrong token");
+        assert_eq!(status(format!("?token={}", &key[..20])).await, 401, "part of the key");
+        assert_eq!(status(format!("?token={key}")).await, 200, "the pairing key");
+        assert_eq!(status("?token=dev-test-token".into()).await, 200, "DEVICE_TOKEN");
+
+        let open = wifi_entry_gate(Router::new().route("/ws", get(|| async { "in" })), String::new());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, open.into_make_service_with_connect_info::<SocketAddr>()).await;
+        });
+        let no_device_token = http.get(format!("http://{addr}/ws")).send().await.unwrap().status().as_u16();
+        assert_eq!(no_device_token, 401, "no DEVICE_TOKEN set is no way in");
+    }
+
+    #[test]
+    fn how_a_phone_came_in() {
+        let usb = PhoneLink::main_port(true, false, false, false);
+        assert!(!usb.wifi && usb.trusted && !usb.on_pairing, "the USB tunnel");
+        let lan_open = PhoneLink::main_port(false, false, false, false);
+        assert!(lan_open.wifi && !lan_open.trusted, "a LAN phone without a token gets no pairing key");
+        let paired = PhoneLink::main_port(false, false, true, false);
+        assert!(paired.wifi && paired.trusted && paired.on_pairing);
+        let device = PhoneLink::main_port(false, false, false, true);
+        assert!(device.trusted && !device.on_pairing, "DEVICE_TOKEN phones stay when paired again");
+        let proxied = PhoneLink::main_port(true, true, false, true);
+        assert!(proxied.wifi && proxied.proxied, "a reverse proxy is not the USB tunnel");
+        let entry = PhoneLink::wifi_entry(false, true);
+        assert!(entry.wifi && entry.trusted && entry.on_pairing);
+        let entry_dev = PhoneLink::wifi_entry(false, false);
+        assert!(entry_dev.wifi && entry_dev.trusted && !entry_dev.on_pairing, "DEVICE_TOKEN on Wi-Fi entry survives renew");
+    }
+
+    #[test]
+    fn agent_info_gives_the_wifi_addresses_of_the_entry_in_use() {
+        use std::net::{IpAddr, Ipv4Addr};
+        let lo: IpAddr = "127.0.0.1".parse().unwrap();
+        let any: IpAddr = "0.0.0.0".parse().unwrap();
+        let lan = |_: IpAddr| Some(Ipv4Addr::new(192, 168, 1, 20));
+        let key = || "k3y".to_string();
+        // This computer only (the default): the Wi-Fi entry's port, IP first.
+        assert_eq!(
+            agent_info_wifi_urls(wifi_entry_for(true, false, Some(lo), 8787, Some(8788)), lan, "bageo", key),
+            vec!["ws://192.168.1.20:8788/ws?token=k3y", "ws://bageo.local:8788/ws?token=k3y"]
+        );
+        // Network name off: the IP address only.
+        assert_eq!(
+            agent_info_wifi_urls(wifi_entry_for(true, false, Some(lo), 8787, Some(8788)), lan, "", key),
+            vec!["ws://192.168.1.20:8788/ws?token=k3y"]
+        );
+        // Open to the LAN: the agent's own port.
+        assert_eq!(
+            agent_info_wifi_urls(wifi_entry_for(true, false, Some(any), 8787, None), lan, "front-desk", key),
+            vec!["ws://192.168.1.20:8787/ws?token=k3y", "ws://front-desk.local:8787/ws?token=k3y"]
+        );
+        // AGENT_HOST set to one LAN address (a VPN on this computer): that address.
+        let one: IpAddr = "192.0.2.7".parse().unwrap();
+        assert_eq!(
+            agent_info_wifi_urls(wifi_entry_for(true, false, Some(one), 8787, None), mdns::answer_ip, "", key),
+            vec!["ws://192.0.2.7:8787/ws?token=k3y"]
+        );
+        // Empty (the phone forgets its addresses): phone Wi-Fi off, in a
+        // container, the Wi-Fi entry not running, no LAN address.
+        let none = || -> String { panic!("no key is made when there is nothing to send") };
+        assert!(agent_info_wifi_urls(wifi_entry_for(false, false, Some(lo), 8787, Some(8788)), lan, "bageo", none).is_empty());
+        assert!(agent_info_wifi_urls(wifi_entry_for(true, true, Some(any), 8787, None), lan, "bageo", none).is_empty());
+        assert!(agent_info_wifi_urls(wifi_entry_for(true, false, Some(lo), 8787, None), lan, "bageo", none).is_empty());
+        assert!(agent_info_wifi_urls(wifi_entry_for(true, false, Some(lo), 8787, Some(8788)), |_| None, "bageo", none).is_empty());
+    }
+
+    #[test]
+    fn the_token_of_a_phone_address() {
+        assert_eq!(token_param(Some("token=abc-_1")).as_deref(), Some("abc-_1"));
+        assert_eq!(token_param(Some("a=1&token=x%2By")).as_deref(), Some("x+y"));
+        assert_eq!(token_param(Some("a=1")), None);
+        assert_eq!(token_param(None), None);
     }
 
     #[test]

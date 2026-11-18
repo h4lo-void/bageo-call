@@ -8,4 +8,5 @@
     <color name="pca_status_check">#A15C00</color>
     <color name="pca_card_bg">#F2F5F7</color>
     <color name="pca_card_line">#DCE2E7</color>
+    <color name="ic_launcher_background">#FFCF4A</color>
 </resources>

@@ -193,6 +193,18 @@ fn sec_a_url_encoded_token_must_still_be_cut_out() {
     assert!(!out.text.contains("TESTTOKENabc"), "{}", out.text);
 }
 
+/// The key phones use over Wi-Fi never shows in a chat reply.
+#[test]
+fn sec_the_phone_pairing_key_is_cut_out_of_replies() {
+    let rig = Rig::new();
+    rig.set(json!({"telegram_bot_token": "123456:TESTTOKENabc", "telegram_chat_id": "42", "telegram_control": true}));
+    let c = Controller::new(rig.state.clone());
+    let rt = rig.state.settings_store.snapshot();
+    let key = crate::phone_wifi::pairing().key();
+    let out = c.scrub(&rt, Outbound { text: format!("ws://192.168.1.20:8788/ws?token={key}"), ..Default::default() });
+    assert!(!out.text.contains(&key), "{}", out.text);
+}
+
 /// P2: free text the model reads as "say" goes into the live call at once,
 /// without the owner's yes (perform's doc: "anything else needs a confirmation").
 #[tokio::test]

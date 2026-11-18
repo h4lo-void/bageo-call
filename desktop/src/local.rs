@@ -103,6 +103,24 @@ pub fn find_agent(candidates: &[PathBuf], exists: impl Fn(&Path) -> bool) -> Opt
     candidates.iter().find(|p| exists(p)).cloned()
 }
 
+/// Bageo inside a Mac app ("Bageo.app/Contents/MacOS/agent"): the app's
+/// Contents folder. Nothing may be written inside an app, so such a Bageo
+/// keeps its data elsewhere and reads its sounds from Contents/Resources.
+pub fn mac_app_contents(agent: &Path) -> Option<PathBuf> {
+    let macos = agent.parent()?;
+    let contents = macos.parent()?;
+    let app = contents.parent()?;
+    let is_app = macos.file_name()? == "MacOS"
+        && contents.file_name()? == "Contents"
+        && app.extension().is_some_and(|e| e.eq_ignore_ascii_case("app"));
+    is_app.then(|| contents.to_path_buf())
+}
+
+/// Where Bageo from a Mac app keeps its data, .env and log.
+pub fn mac_data_dir(home: &Path) -> PathBuf {
+    home.join("Library").join("Application Support").join("Bageo")
+}
+
 fn unquote(v: &str) -> &str {
     for q in ['"', '\''] {
         if v.len() >= 2 && v.starts_with(q) && v.ends_with(q) {
@@ -286,7 +304,8 @@ pub fn extract_zip<R: Read + Seek>(reader: R, dest: &Path) -> Result<(), String>
 /// Bageo found next to this program.
 pub struct Local {
     agent: PathBuf,
-    /// The program folder: Bageo's working directory, .env, log and platform-tools.
+    /// Bageo's working directory, .env, log and platform-tools: the program
+    /// folder, or ~/Library/Application Support/Bageo for the Mac app.
     dir: PathBuf,
     /// Where Bageo answers on this computer, with a trailing slash.
     pub base: String,
@@ -308,12 +327,29 @@ pub fn detect(remembered: &str) -> Option<Local> {
     let override_path = std::env::var("BAGEO_AGENT").ok();
     let candidates = agent_candidates(exe_dir, override_path.as_deref(), remembered, Platform::current());
     let agent = find_agent(&candidates, |p| p.is_file())?;
-    let dir = agent.parent()?.to_path_buf();
+    // Bageo from a Mac app works in ~/Library/Application Support/Bageo and
+    // reads its sounds from the app; anywhere else it works in its own folder.
+    let (dir, assets) = match mac_app_contents(&agent) {
+        Some(contents) => {
+            let home = std::env::var_os("HOME").filter(|h| !h.is_empty()).map(PathBuf::from)?;
+            let dir = mac_data_dir(&home);
+            if fs::create_dir_all(&dir).is_err() {
+                return None;
+            }
+            (dir, Some(contents.join("Resources").join("assets")))
+        }
+        None => (agent.parent()?.to_path_buf(), None),
+    };
 
     let text = fs::read(dir.join(".env")).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
     let parsed = parse_env(&text);
-    let env = child_env(&parsed, |k| std::env::var_os(k).is_some());
+    let mut env = child_env(&parsed, |k| std::env::var_os(k).is_some());
     let get = |key: &str| setting(key, |k| std::env::var(k).ok(), &parsed);
+    if let Some(assets) = assets.filter(|a| a.is_dir()) {
+        if get("ASSETS_DIR").is_none() {
+            env.push(("ASSETS_DIR".to_string(), assets.to_string_lossy().into_owned()));
+        }
+    }
     let port = port_from(get("AGENT_PORT").as_deref());
     let host = probe_host(get("AGENT_HOST").as_deref());
     Some(Local { agent, dir, base: local_base(&host, port), env })
@@ -682,6 +718,21 @@ mod tests {
         assert_eq!(find_agent(&c, |_| false), None);
         // A folder too shallow to be inside an .app only has the last candidate.
         assert_eq!(agent_candidates(Path::new("bin"), None, "", Platform::Mac), vec![Path::new("bin").join("agent")]);
+    }
+
+    #[test]
+    fn bageo_inside_a_mac_app_is_told_apart() {
+        let agent = Path::new("/Applications/Bageo.app/Contents/MacOS/agent");
+        assert_eq!(mac_app_contents(agent), Some(PathBuf::from("/Applications/Bageo.app/Contents")));
+        // Next to an app, in a plain folder or too shallow: not inside an app.
+        assert_eq!(mac_app_contents(Path::new("/path/to/bageo-call/agent")), None);
+        assert_eq!(mac_app_contents(Path::new("/path/MacOS/agent")), None);
+        assert_eq!(mac_app_contents(Path::new("/path/Folder/Contents/MacOS/agent")), None);
+        assert_eq!(mac_app_contents(Path::new("agent")), None);
+        assert_eq!(
+            mac_data_dir(Path::new("/Users/someone")),
+            PathBuf::from("/Users/someone/Library/Application Support/Bageo")
+        );
     }
 
     #[test]

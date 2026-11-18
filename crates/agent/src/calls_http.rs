@@ -2335,6 +2335,8 @@ struct PhoneEntry {
     hello: PhoneHello,
     /// Last message on the control connection (ms since epoch).
     last_seen_ms: u64,
+    /// Connected over the network (Wi-Fi) rather than the USB tunnel.
+    wifi: bool,
 }
 
 fn phone_json(serial: &str, p: &PhoneEntry, agent_call: bool) -> Value {
@@ -2348,6 +2350,8 @@ fn phone_json(serial: &str, p: &PhoneEntry, agent_call: bool) -> Value {
         "app_version": p.hello.app_version,
         "in_call": connected && (p.hello.in_call || agent_call),
         "last_seen_ms": p.last_seen_ms,
+        // How it is connected now: "usb" or "wifi".
+        "link": if p.wifi { "wifi" } else { "usb" },
     })
 }
 
@@ -2391,8 +2395,24 @@ impl PhoneDevices {
                 sink: Some(sink),
                 hello: info,
                 last_seen_ms: now_ms(),
+                wifi: false,
             },
         );
+    }
+
+    /// Whether the phone's control connection came over the network (Wi-Fi).
+    pub fn set_wifi(&self, serial: &str, wifi: bool) {
+        if let Some(p) = self.phones().get_mut(serial) {
+            p.wifi = wifi;
+        }
+    }
+
+    /// Phones connected over Wi-Fi now (for `/health`).
+    pub fn wifi_count(&self) -> usize {
+        self.phones()
+            .iter()
+            .filter(|(serial, p)| p.sink.is_some() && p.wifi && !crate::calls::is_twin_serial(serial))
+            .count()
     }
 
     /// The control connection closed. Ignored when the phone already reconnected.
@@ -2652,6 +2672,42 @@ async fn device_mode(
         "phone mode switch"
     );
     Json(mode_reply_json(&reply)).into_response()
+}
+
+/// `POST /api/phone-pairing/renew`, "Pair phones again": a new pairing key
+/// replaces the old one and the phones on Wi-Fi are dropped; each one is
+/// plugged in by USB once more to get the new key. The key is never returned.
+async fn phone_pairing_renew(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+) -> Response {
+    phone_pairing_renew_with(&state.settings, &headers, &query, crate::phone_wifi::pairing())
+}
+
+fn phone_pairing_renew_with(
+    settings: &Settings,
+    headers: &HeaderMap,
+    query: &TokenQuery,
+    pairing: &crate::phone_wifi::Pairing,
+) -> Response {
+    if !token_ok(settings, headers, query) {
+        return unauthorized();
+    }
+    if !is_json_request(headers) {
+        return json_required();
+    }
+    match pairing.renew() {
+        Ok(()) => {
+            info!("phones paired again: the phones on Wi-Fi must be plugged in by USB once more");
+            Json(json!({"ok": true})).into_response()
+        }
+        Err(e) => api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "save_failed",
+            format!("the new pairing could not be saved: {e}"),
+        ),
+    }
 }
 
 /// `DELETE /api/devices/{serial}`: forget an offline phone from `PhoneDevices`,
@@ -4687,10 +4743,26 @@ mod tests {
     #[test]
     fn disconnected_phone_is_never_in_call() {
         let hello = parse_phone_hello(&json!({"phone_mode": "normal", "in_call": true}));
-        let p = PhoneEntry { sink: None, hello, last_seen_ms: 5 };
+        let p = PhoneEntry { sink: None, hello, last_seen_ms: 5, wifi: false };
         let v = phone_json("pixel-1", &p, true);
         assert_eq!((v["connected"].clone(), v["in_call"].clone()), (json!(false), json!(false)));
         assert_eq!(v["mode"], json!("normal"));
+    }
+
+    #[test]
+    fn the_phone_list_says_usb_or_wifi() {
+        let devices = PhoneDevices::new();
+        let hello = |model: &str| parse_phone_hello(&json!({"model": model, "phone_mode": "ai"}));
+        devices.phones().insert("pixel-usb".into(), PhoneEntry { sink: None, hello: hello("Pixel A"), last_seen_ms: 1, wifi: false });
+        devices.phones().insert("pixel-air".into(), PhoneEntry { sink: None, hello: hello("Pixel B"), last_seen_ms: 1, wifi: false });
+        devices.set_wifi("pixel-air", true);
+        devices.set_wifi("pixel-none", true);
+        let list = devices.list_json(&[]);
+        let link = |serial: &str| list.iter().find(|p| p["serial"] == serial).map(|p| p["link"].clone());
+        assert_eq!(link("pixel-usb"), Some(json!("usb")));
+        assert_eq!(link("pixel-air"), Some(json!("wifi")));
+        assert_eq!(link("pixel-none"), None, "set_wifi does not add a phone");
+        assert_eq!(devices.wifi_count(), 0, "only connected phones count");
     }
 
     #[test]
@@ -4724,28 +4796,32 @@ mod tests {
     #[test]
     fn interview_prompts_in_html_match_docs_files_word_for_word() {
         let codes = ["en", "zh-TW", "zh-CN", "ja", "ko", "es", "fr", "de", "pt"];
-        let start = UI_HTML.find("const INTERVIEW = {").expect("INTERVIEW start");
-        let after = &UI_HTML[start + "const INTERVIEW = ".len()..];
-        let end = after.find("\n};").or_else(|| after.find("\r\n};")).expect("INTERVIEW end");
-        // Turn the JS object literal (trailing comma before closing brace) into JSON.
-        let body = after[..end].trim_end();
-        let json_str = format!("{}}}", body.strip_suffix(',').unwrap_or(body));
-        let map: serde_json::Map<String, Value> =
-            serde_json::from_str(&json_str).expect("INTERVIEW is valid JSON once trailing comma is stripped");
-        assert_eq!(map.len(), codes.len());
         let prompts_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/prompts");
-        for code in codes {
-            let got = map
-                .get(code)
-                .and_then(Value::as_str)
-                .unwrap_or_else(|| panic!("missing {code} in INTERVIEW"));
-            assert!(got.contains("{owner}"), "{code} missing {{owner}} placeholder");
-            let file = prompts_dir.join(format!("interview.{code}.txt"));
-            if file.is_file() {
+        for (const_name, prefix) in [
+            ("const INTERVIEW = {", "interview"),
+            ("const INTERVIEW_ASSISTANT = {", "interview_assistant"),
+        ] {
+            let start = UI_HTML.find(const_name).unwrap_or_else(|| panic!("{const_name} start"));
+            let after = &UI_HTML[start + const_name.len() - 1..];
+            let end = after.find("\n};").or_else(|| after.find("\r\n};")).expect("INTERVIEW end");
+            // Turn the JS object literal (trailing comma before closing brace) into JSON.
+            let body = after[..end].trim_end();
+            let json_str = format!("{}}}", body.strip_suffix(',').unwrap_or(body));
+            let map: serde_json::Map<String, Value> =
+                serde_json::from_str(&json_str).expect("INTERVIEW is valid JSON once trailing comma is stripped");
+            assert_eq!(map.len(), codes.len());
+            for code in codes {
+                let got = map
+                    .get(code)
+                    .and_then(Value::as_str)
+                    .unwrap_or_else(|| panic!("missing {code} in {const_name}"));
+                assert!(got.contains("{owner}"), "{prefix}.{code} missing {{owner}} placeholder");
+                let file = prompts_dir.join(format!("{prefix}.{code}.txt"));
+                assert!(file.is_file(), "missing {}", file.display());
                 let raw = std::fs::read_to_string(&file).expect("read interview file");
                 let expected = raw.replace("\r\n", "\n");
                 let expected = expected.trim_end_matches('\n');
-                assert_eq!(got, expected, "calls.html INTERVIEW[{code}] drifted from {}", file.display());
+                assert_eq!(got, expected, "calls.html {prefix}[{code}] drifted from {}", file.display());
             }
         }
     }
@@ -4893,6 +4969,7 @@ mod tests {
                 sink: None,
                 hello: parse_phone_hello(&json!({"model": "Pixel Old", "phone_mode": "ai"})),
                 last_seen_ms: 12345,
+                wifi: false,
             },
         );
         crate::notify::remember_device(serial, "Pixel Old");
@@ -5013,6 +5090,36 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    #[tokio::test]
+    async fn phone_pairing_renew_requires_json_and_rotates_key() {
+        let root = std::env::temp_dir().join(format!("bageo-prenew-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let state = quick_state(&root);
+        let base = spawn_router(state.clone()).await;
+        let client = reqwest::Client::new();
+
+        // Missing Content-Type: application/json on POST /api/phone-pairing/renew is rejected (CSRF).
+        let no_json = client
+            .post(format!("{base}/api/phone-pairing/renew"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(no_json.status().as_u16(), 400);
+
+        let pairing = crate::phone_wifi::Pairing::open(&root);
+        let before = pairing.key();
+        let mut headers = HeaderMap::new();
+        headers.insert(header::CONTENT_TYPE, header::HeaderValue::from_static("application/json"));
+        let res = phone_pairing_renew_with(&state.settings, &headers, &TokenQuery { token: None }, &pairing);
+        assert_eq!(res.status().as_u16(), 200);
+        let after = pairing.key();
+        assert_ne!(after, before);
+        assert!(!pairing.accepts(Some(&before)));
+        assert!(pairing.accepts(Some(&after)));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 pub fn router(state: CallsState) -> Router {
@@ -5055,6 +5162,7 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/devices/{serial}", axum::routing::delete(device_delete))
         .route("/api/devices/{serial}/mode", post(device_mode))
         .route("/api/devices/{serial}/sim-number", axum::routing::put(device_sim_number))
+        .route("/api/phone-pairing/renew", post(phone_pairing_renew))
         .route("/api/tasks", get(tasks_list))
         .route("/api/tasks/{id}/confirm", post(tasks_confirm))
         .route("/api/tasks/{id}/ignore", post(tasks_ignore))

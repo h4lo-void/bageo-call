@@ -214,6 +214,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 | `owner_name` | 你的名字，用在 `{owner}`。 |
 | `owner_aliases` | 別人怎麼叫你，最多 10 個，每個最多 40 字。空白的、重複的和跟 `owner_name` 相同的會被拿掉。 |
 | `answer_style` | `assistant`／`persona`（AI 以你本人身分接）。 |
+| `gemini_assistant_prompt`／`gemini_persona_prompt` | `assistant`／`persona` 各自的自訂提示詞（留空 = 內建）。 |
 | `errand_identity` | `assistant`（預設）／`owner`：AI 代打時說自己是誰。其他值存成 `assistant`。 |
 | `summary_provider` | `gemini`（預設）／`custom`。`custom` 用 `summary_api_base`、`summary_model`（填了網址就必填）和 `summary_api_key`（那家服務的金鑰）。舊版的值和舊的設定名稱會在設定載入時轉換一次。 |
 | `calendar_app` | `google`、`outlook`、`office365`、`apple`、`yahoo`、`ics` 或空白（還沒選）。其他值存成空白。 |
@@ -414,7 +415,7 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 
 **通話後。** 摘要模型會對照交辦內容讀這通電話，你會收到一則通知（標題「AI 代打電話：<名字或號碼>」，用通知語言；webhook 事件 `ai_errand`）。AI 在你沒回答的問題上自己答應的事，結果一定不是 `done`，而是 `need_owner`，提醒你確認，不合適就回電改。
 
-**用誰的身分打。** 設定 `errand_identity`（預設 `assistant`，你的助理；或 `owner`，你本人），每筆代打也可以各自指定。不論哪一種，被認真問到時 AI 都會承認自己是 AI，不透露交辦內容以外的個人資料，也不答應任何付款、訂金或轉帳。
+**用誰的身分打。** 設定 `errand_identity`（預設 `assistant`，你的助理；或 `owner`，你本人），每筆代打也可以各自指定。選 `assistant` 時，被認真問到會表明是 AI 助理；不論哪一種，都不透露交辦內容以外的個人資料，也不答應任何付款、訂金或轉帳。
 
 **能打哪些號碼。**
 

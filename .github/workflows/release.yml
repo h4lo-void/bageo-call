@@ -5,13 +5,15 @@ name: Release
 
 # Push a tag like v1.0.0 to build the downloads and attach them to a GitHub
 # Release:
-#   bageo-call-<version>-windows-x64.zip
-#   bageo-call-<version>-macos-arm64.tar.gz / -macos-x64.tar.gz
+#   bageo-call-<version>-windows-x64-setup.exe  (installer)
+#   bageo-call-<version>-macos-arm64.dmg / -macos-x64.dmg
 #   bageo-call-<version>-linux-x64.tar.gz
 #   bageo-phone-module-<version>.zip          (phone module, flash in Magisk / KernelSU)
 #
-# Each desktop download holds the agent program, the bundled sounds, the start
-# scripts and the documents: unpack and run the start script.
+# Each desktop download is the whole of Bageo. Windows: run the installer, then
+# click "Bageo" on the desktop. macOS: drag Bageo to Applications and open it.
+# Both start Bageo in the background with its status icon. Linux: unpack and
+# run start.sh.
 
 on:
   push:
@@ -62,6 +64,23 @@ jobs:
             version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)-${GITHUB_SHA::7}"
           fi
           dir="bageo-call-$version-${{ matrix.name }}"
+          echo "PKG=$dir" >> "$GITHUB_ENV"
+          echo "PKG_VERSION=$version" >> "$GITHUB_ENV"
+          echo "PKG_NUMBER=$(sed -n 's/^version = "\([0-9.]*\).*"/\1/p' Cargo.toml | head -n 1)" >> "$GITHUB_ENV"
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            # One app holds Bageo, its status icon and its sounds.
+            mkdir -p dist/dmg
+            sh desktop/scripts/package-macos.sh desktop/target/release/bageo-status dist/dmg target/release/agent .
+            ln -s /Applications dist/dmg/Applications
+            # hdiutil on build machines now and then reports "Resource busy": try again.
+            for i in 1 2 3; do
+              hdiutil create -volname Bageo -srcfolder dist/dmg -ov -format UDZO "dist/$dir.dmg" && break
+              sleep 10
+            done
+            test -f "dist/$dir.dmg"
+            rm -rf dist/dmg
+            exit 0
+          fi
           mkdir -p "dist/$dir"
           cp "target/release/${{ matrix.exe }}" "dist/$dir/"
           cp -R assets docs LICENSES "dist/$dir/"
@@ -69,20 +88,37 @@ jobs:
           if [ "${{ runner.os }}" = "Windows" ]; then
             cp start.ps1 start.cmd "dist/$dir/"
             cp desktop/target/release/bageo-status.exe "dist/$dir/"
-            (cd dist && 7z a -tzip "$dir.zip" "$dir" > /dev/null)
           else
             cp start.sh start.command "dist/$dir/"
             chmod +x "dist/$dir/agent" "dist/$dir/start.sh" "dist/$dir/start.command"
-            if [ "${{ runner.os }}" = "macOS" ]; then
-              sh desktop/scripts/package-macos.sh desktop/target/release/bageo-status "dist/$dir"
-            fi
             tar -C dist -czf "dist/$dir.tar.gz" "$dir"
           fi
+      # The installer: one setup.exe that puts Bageo in the user's programs
+      # with a "Bageo" shortcut on the desktop.
+      - name: Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          if (-not (Test-Path $iscc)) { throw 'Inno Setup is not installed' }
+          # Chinese installer texts are not part of Inno Setup itself.
+          $lang = Join-Path (Split-Path $iscc) 'Languages'
+          foreach ($n in 'ChineseTraditional', 'ChineseSimplified') {
+            if (-not (Test-Path "$lang\$n.isl")) {
+              try { Invoke-WebRequest "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/$n.isl" -OutFile "$lang\$n.isl" }
+              catch { Write-Warning "$n.isl: $_" }
+            }
+          }
+          & $iscc /Qp "/DAppVersion=$env:PKG_VERSION" "/DNumVersion=$env:PKG_NUMBER" "/DSourceDir=$PWD\dist\$env:PKG" "/DOutputDir=$PWD\dist" "/DOutputName=$env:PKG-setup" desktop\installer\bageo.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed: $LASTEXITCODE" }
+          Remove-Item -Recurse -Force "dist\$env:PKG"
       - uses: actions/upload-artifact@v4
         with:
           name: agent-${{ matrix.name }}
           path: |
-            dist/*.zip
+            dist/*.exe
+            dist/*.dmg
             dist/*.tar.gz
 
   android:

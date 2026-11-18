@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import java.io.File
 import java.net.URI
+import org.json.JSONArray
 
 object Prefs {
     private const val NAME = "pixel_call_ai"
@@ -15,6 +16,11 @@ object Prefs {
     const val KEY_LAST_SIM_COUNTRY = "LAST_SIM_COUNTRY"
     const val KEY_LAST_SIM_SUB_ID = "LAST_SIM_SUB_ID"
     const val KEY_AGENT_URL = "AGENT_URL"
+    /**
+     * Wi-Fi addresses the agent sent over USB (`agent_info`), as a JSON array. They carry
+     * the pairing password, so they stay in this private storage and out of every log.
+     */
+    const val KEY_WIFI_URLS = "WIFI_URLS"
     /** Web console address the agent sent (`agent_info`); cleared on every new connection. */
     const val KEY_CONSOLE_URL = "CONSOLE_URL"
     /** Id of the last mode switch whose `set_mode_result` went to the agent. */
@@ -189,6 +195,45 @@ object Prefs {
 
     /** For logs: drop the query string, which may carry an access token. */
     fun redactUrl(url: String): String = url.substringBefore('?')
+
+    /** True when the user typed their own address under Advanced (it replaces USB and Wi-Fi). */
+    fun isManualAgentUrl(ctx: Context): Boolean = agentUrl(ctx) != BuildConfig.BRIDGE_WS_URL
+
+    /** The Wi-Fi addresses the agent gave this phone; empty when not paired. */
+    fun wifiUrls(ctx: Context): List<String> {
+        val raw = sp(ctx).getString(KEY_WIFI_URLS, null) ?: return emptyList()
+        return try {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).map { arr.optString(it) }.filter { isValidAgentUrl(it) }
+                .distinct().take(ConnectionPlan.MAX_WIFI_URLS)
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /** Only valid `ws://` / `wss://` addresses are kept; an empty list forgets Wi-Fi. */
+    fun setWifiUrls(ctx: Context, urls: List<String>) {
+        val clean = urls.map { it.trim() }.filter { isValidAgentUrl(it) }.distinct()
+            .take(ConnectionPlan.MAX_WIFI_URLS)
+        val editor = sp(ctx).edit()
+        if (clean.isEmpty()) editor.remove(KEY_WIFI_URLS) else editor.putString(KEY_WIFI_URLS, JSONArray(clean).toString())
+        editor.apply()
+    }
+
+    fun clearWifiUrls(ctx: Context) = setWifiUrls(ctx, emptyList())
+
+    /**
+     * Handles the `wifi` part of `agent_info`: [incoming] null = the field was missing, keep
+     * what is stored; an empty list clears it.
+     */
+    fun applyAgentWifi(ctx: Context, incoming: List<String>?) {
+        if (incoming == null) return
+        setWifiUrls(ctx, ConnectionPlan.nextWifiUrls(wifiUrls(ctx), incoming) { isValidAgentUrl(it) })
+    }
+
+    /** The addresses to try, in order (see [ConnectionPlan.candidates]). */
+    fun connectionCandidates(ctx: Context): List<String> =
+        ConnectionPlan.candidates(BuildConfig.BRIDGE_WS_URL, agentUrl(ctx), wifiUrls(ctx))
 
     fun audioMode(ctx: Context): String =
         sp(ctx).getString(KEY_MODE, MODE_SILENT_LOCAL) ?: MODE_SILENT_LOCAL

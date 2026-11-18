@@ -151,7 +151,7 @@ AI 一確定對方是推銷或詐騙，就變成一個有興趣、反應慢、�
   <img src="docs/images/languages.zh-TW.svg" width="900" alt="Bageo 會講九種語言：英文、繁體中文、簡體中文、日文、韓文、西班牙文、法文、德文、葡萄牙文，各用自己的方式說「喂？」。">
 </p>
 
-AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種語言都有。雙卡手機每張 SIM 卡可以各設主要語言；國外號碼打來，就用那一國的語言開場；對方中途改講別的語言，AI 也跟著換。逐字稿保留原文，每句附上翻成你通知語言的對照。[語言與雙卡的完整說明](docs/zh-TW/FEATURES.md#九種語言雙卡逐字稿附翻譯)
+AI 的語音、內建提示詞（簡短通用的基本寫法，可依自己的情況與風格自訂）、網頁控制台、手機 App 和通知，九種語言都有。雙卡手機每張 SIM 卡可以各設主要語言；國外號碼打來，就用那一國的語言開場；對方中途改講別的語言，AI 也跟著換。逐字稿保留原文，每句附上翻成你通知語言的對照。[語言與雙卡的完整說明](docs/zh-TW/FEATURES.md#九種語言雙卡逐字稿附翻譯)
 
 ## 運作方式
 
@@ -220,8 +220,8 @@ AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種
 
 ## 快速開始
 
-1. **下載**：從 [Releases](https://github.com/h4lo-void/bageo-call/releases) 下載適合你系統的套件並解壓縮。
-2. **啟動**：Windows 按兩下 `start.cmd`，macOS 按兩下 `start.command`，Linux 執行 `./start.sh`，控制台會打開在 <http://localhost:8787/>。
+1. **下載**：從 [Releases](https://github.com/h4lo-void/bageo-call/releases) 下載適合你系統的檔案：Windows 用 `bageo-call-<version>-windows-x64-setup.exe`，macOS 用 `bageo-call-<version>-macos-arm64.dmg`（Apple 晶片）或 `bageo-call-<version>-macos-x64.dmg`（Intel），Linux 用 `bageo-call-<version>-linux-x64.tar.gz`。
+2. **安裝並啟動**：Windows 按兩下 `setup.exe` 安裝，再點桌面上的「Bageo」捷徑。macOS 打開 `.dmg`，把 Bageo 拖進「應用程式」，再點一下它。Linux 解壓縮後執行 `./start.sh`。控制台會打開在 <http://localhost:8787/>。
 3. **填好基本設定**：在「**設定**」填入 Gemini API 金鑰、你的名字和語言，按 ▶ 試聽各個聲音，挑一個。
 4. **準備手機**（只要一次）：在 Magisk 或 KernelSU 安裝模組 `bageo-phone-module-<version>.zip`，重新開機，打開 **Bageo** App 把檢查清單做完，接上 USB。
 5. **打一通試試**：用另一支手機撥它的號碼，響一聲，AI 就接了。
@@ -272,7 +272,7 @@ AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種
 <details>
 <summary><strong>讓 AI 接電話合法嗎？</strong></summary>
 
-要看你和通話對象在哪裡。通話錄音、揭露 AI 身分、自動撥出的電話，各有各的規定。「AI 助理」身分第一句話就會表明是 AI；「本人」身分在被認真問到時才會說。開始使用前，請先讀[隱私、安全與法律](docs/zh-TW/PRIVACY_AND_LEGAL.md)。
+要看你和通話對象在哪裡。通話錄音、揭露 AI 身分、自動撥出的電話，各有各的規定。「AI 助理」身分第一句話就會表明是 AI；「本人」身分則直接以你的身分講話、不會表明是 AI。開始使用前，請先讀[隱私、安全與法律](docs/zh-TW/PRIVACY_AND_LEGAL.md)。
 
 </details>
 
@@ -285,7 +285,7 @@ AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種
 
 ## 請負責任地使用
 
-- **各地法律不同。** 通話錄音、以及讓 AI 在沒有告知的情況下跟人講話，在很多地方都受到限制。「AI 助理」接聽身分一開口就表明是 AI；以助理身分代打時，AI 會自稱是你的助理；任何通話被認真問到時都會承認是 AI。請先弄清楚你和通話對象所在地的規定。
+- **各地法律不同。** 通話錄音、以及讓 AI 在沒有告知的情況下跟人講話，在很多地方都受到限制。「AI 助理」接聽身分一開口就表明是 AI；以助理身分代打時，AI 會自稱是你的助理；選「本人」時則直接以你的身分講話、不主動或被問時表明是 AI。請先弄清楚你和通話對象所在地的規定。
 - **AI 不做任何承諾。** 它絕不答應付款、訂金、合約、密碼或驗證碼，預約也要等你決定。但它畢竟是 AI：摘要和代打結果請務必看過。
 - **緊急狀況不要依賴它。** AI 代打絕不會撥緊急電話。
 - **Root 會讓保固失效，也可能出問題。** 請用備用手機。
