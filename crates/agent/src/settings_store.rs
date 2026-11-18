@@ -286,6 +286,12 @@ pub struct RuntimeSettings {
     /// Empty = off.
     #[serde(default = "default_mdns_name")]
     pub mdns_name: String,
+    /// Phones may connect over Wi-Fi: a phone plugged in by USB once gets
+    /// the Wi-Fi addresses with the pairing key ([`crate::phone_wifi`]) and
+    /// connects there when unplugged. Off: the Wi-Fi entry closes (no restart)
+    /// and the phones on Wi-Fi are dropped.
+    #[serde(default = "default_true")]
+    pub phone_wifi: bool,
     /// When a call fixes a date (delivery, appointment, callback time), add an
     /// "add to calendar" link to the summary. One more request to the summary
     /// model per call.
@@ -803,6 +809,7 @@ impl RuntimeSettings {
             notify_channels: Vec::new(),
             public_url: env_or("PUBLIC_URL", ""),
             mdns_name: base.mdns_name.clone(),
+            phone_wifi: env_bool("PHONE_WIFI", true),
             calendar_suggest: env_bool("CALENDAR_SUGGEST", true),
             calendar_app: String::new(),
             appointment_mode: sanitize_appointment_mode(&env_or("APPOINTMENT_MODE", "off")),
@@ -1165,6 +1172,7 @@ impl RuntimeSettings {
             owner_status_enabled,
             gemini_persona_mode,
             answer_unknown_callers,
+            phone_wifi,
             persona_stall_spam,
             scam_review_without_keywords,
             whitelist_urgent_call,
@@ -1563,6 +1571,8 @@ struct Overrides {
     public_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     mdns_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    phone_wifi: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     calendar_suggest: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2215,6 +2225,7 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
         ov.public_url = Some(sanitize_public_url(&v));
     }
     p_string(patch, "mdns_name", &mut ov.mdns_name);
+    p_bool(patch, "phone_wifi", &mut ov.phone_wifi);
     if let Some(v) = ov.mdns_name.take() {
         ov.mdns_name = Some(crate::mdns::parse_name_setting(&v));
     }
@@ -2888,10 +2899,11 @@ mod tests {
         assert_eq!(rt.persona_max_secs(), 5 * 60);
         assert_eq!(rt.persona_stall_max_secs(), 30 * 60);
         assert_eq!(rt.gemini_stall_model, "gemini-3.8-live");
+        let pk = crate::prompts::pack(crate::locale::Lang::ZhTw);
         // Every call starts short; the full stall block only after the switch.
         let first = rt.gemini_system_prompt_for_call();
-        assert!(first.contains("讓他繼續講") && !first.contains("陪他繞"));
-        assert!(!first.contains("喔不用了，謝謝"));
+        assert!(first.contains(&pk.sales_listen_line) && first.contains("讓他繼續講") && !first.contains("陪他繞"));
+        assert!(!first.contains(&pk.sales_reject_default));
         let full = rt.persona_stall_system_prompt();
         assert!(full.contains("陪他繞") && !full.contains("讓他繼續講"));
         assert!(full.len() > first.len());
@@ -2917,8 +2929,8 @@ mod tests {
             .apply_patch(&json!({ "persona_stall_spam": false }))
             .unwrap();
         let p = off.gemini_system_prompt_for_call();
-        assert!(!p.contains("陪他繞"));
-        assert!(p.contains("喔不用了，謝謝"));
+        assert!(!p.contains("陪他繞") && !p.contains(&pk.sales_listen_line));
+        assert!(p.contains(&pk.sales_reject_default));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

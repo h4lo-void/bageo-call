@@ -665,7 +665,8 @@ Content-Type: application/json
 - `control_idle_clients`／`control_idle_serials` 统计所有连上的手机；`normal_mode_serials` 列出切换成一般手机的那几部。
 - `local_time` 是 Bageo 按 `TZ` 的时钟。
 - `summary_ready`（`summary_api_key_set` 是同一个值）表示有没有设置摘要服务。
-- 设置了控制台密码、请求却没带时，只返回 `ok`、`version`、`language`、`notify_language`、`active_call_count` 和 `control_idle_clients`，监控用已经足够。
+- `setup_missing` 列出控制台“都准备好了吗？”还没完成的项目：`ai_off`、`gemini_key`、`owner_name`、`notify`、`summary`（只有名称，没有设置值）；全部设置好是空数组。
+- 设置了控制台密码、请求却没带时，只返回 `ok`、`version`、`language`、`notify_language`、`active_call_count`、`control_idle_clients` 和 `setup_missing`，监控用已经足够。
 
 切换模式后，`mode` 是手机现在的模式（不知道时为 `null`）；成功时 `error_code` 为 `null`，否则是下面其中之一：
 

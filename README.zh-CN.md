@@ -151,7 +151,7 @@ AI 一确定对方是推销或诈骗，就变成一个有兴趣、反应慢、�
   <img src="docs/images/languages.zh-CN.svg" width="900" alt="Bageo 会说九种语言：英语、繁体中文、简体中文、日语、韩语、西班牙语、法语、德语、葡萄牙语，各用自己的方式说“喂？”。">
 </p>
 
-AI 的语音、内置提示词、网页控制台、手机应用和通知，九种语言都有。双卡手机每张 SIM 卡可以各设主要语言；国外号码打来，就用那个国家的语言开场；对方中途改说别的语言，AI 也跟着换。文字记录保留原文，每句附上翻译成你通知语言的对照。[语言与双卡的完整说明](docs/zh-CN/FEATURES.md#九种语言双卡文字记录附翻译)
+AI 的语音、内置提示词（简短通用的基本写法，可按自己的情况与风格自定义）、网页控制台、手机应用和通知，九种语言都有。双卡手机每张 SIM 卡可以各设主要语言；国外号码打来，就用那个国家的语言开场；对方中途改说别的语言，AI 也跟着换。文字记录保留原文，每句附上翻译成你通知语言的对照。[语言与双卡的完整说明](docs/zh-CN/FEATURES.md#九种语言双卡文字记录附翻译)
 
 ## 工作原理
 
@@ -220,8 +220,8 @@ AI 的语音、内置提示词、网页控制台、手机应用和通知，九�
 
 ## 快速开始
 
-1. **下载**：从 [Releases](https://github.com/h4lo-void/bageo-call/releases) 下载适合你系统的安装包并解压。
-2. **启动**：Windows 双击 `start.cmd`，macOS 双击 `start.command`，Linux 运行 `./start.sh`，控制台会在 <http://localhost:8787/> 打开。
+1. **下载**：从 [Releases](https://github.com/h4lo-void/bageo-call/releases) 下载适合你系统的文件：Windows 用 `bageo-call-<version>-windows-x64-setup.exe`，macOS 用 `bageo-call-<version>-macos-arm64.dmg`（Apple 芯片）或 `bageo-call-<version>-macos-x64.dmg`（Intel），Linux 用 `bageo-call-<version>-linux-x64.tar.gz`。
+2. **安装并启动**：Windows 双击 `setup.exe` 安装，再点桌面上的“Bageo”快捷方式。macOS 打开 `.dmg`，把 Bageo 拖进“应用程序”，再点一下它。Linux 解压后运行 `./start.sh`。控制台会在 <http://localhost:8787/> 打开。
 3. **填写基本设置**：在“**设置**”里填上 Gemini API 密钥、你的名字和语言，按 ▶ 试听各个声音，选一个。
 4. **准备手机**（只需一次）：在 Magisk 或 KernelSU 里安装模块 `bageo-phone-module-<version>.zip`，重启，打开 **Bageo** 应用把检查清单做完，插上 USB。
 5. **打一通试试**：用另一部手机拨打它的号码，响一声，AI 就接了。

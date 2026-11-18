@@ -151,7 +151,7 @@ Réserver une table, déplacer un rendez-vous, demander à un magasin s’il a u
   <img src="docs/images/languages.en.svg" width="900" alt="Bageo parle neuf langues : anglais, chinois traditionnel, chinois simplifié, japonais, coréen, espagnol, français, allemand et portugais. Chacune répond avec son propre bonjour.">
 </p>
 
-La voix de l’IA, les prompts intégrés, la console web, l’application du téléphone et les notifications existent en neuf langues. Sur un téléphone à double SIM, chaque SIM ouvre les appels dans sa propre langue, un appelant de l’étranger entend la langue de son pays, et si l’appelant change de langue en cours d’appel, l’IA suit. Les transcriptions gardent les mots d’origine, chaque ligne avec une traduction dans la langue de vos notifications. [En savoir plus sur les langues et la double SIM](docs/en/FEATURES.md#nine-languages-dual-sim-translated-transcripts)
+La voix de l’IA, les prompts intégrés (une base courte et générale que vous pouvez adapter à votre situation et à votre style), la console web, l’application du téléphone et les notifications existent en neuf langues. Sur un téléphone à double SIM, chaque SIM ouvre les appels dans sa propre langue, un appelant de l’étranger entend la langue de son pays, et si l’appelant change de langue en cours d’appel, l’IA suit. Les transcriptions gardent les mots d’origine, chaque ligne avec une traduction dans la langue de vos notifications. [En savoir plus sur les langues et la double SIM](docs/en/FEATURES.md#nine-languages-dual-sim-translated-transcripts)
 
 ## Comment ça marche
 
@@ -220,8 +220,8 @@ Toutes les fonctions en détail : [Fonctionnalités](docs/en/FEATURES.md).
 
 ## Démarrage rapide
 
-1. **Téléchargez** le paquet pour votre système depuis [Releases](https://github.com/h4lo-void/bageo-call/releases) et décompressez-le.
-2. **Lancez-le.** Windows : double-cliquez sur `start.cmd`. macOS : double-cliquez sur `start.command`. Linux : `./start.sh`. La console s’ouvre sur <http://localhost:8787/>.
+1. **Téléchargez** le fichier pour votre système depuis [Releases](https://github.com/h4lo-void/bageo-call/releases) : `bageo-call-<version>-windows-x64-setup.exe` pour Windows, `bageo-call-<version>-macos-arm64.dmg` (puce Apple) ou `bageo-call-<version>-macos-x64.dmg` (Intel) pour macOS, `bageo-call-<version>-linux-x64.tar.gz` pour Linux.
+2. **Installez-le et lancez-le.** Windows : double-cliquez sur `setup.exe`, puis sur le raccourci **Bageo** du bureau. macOS : ouvrez le `.dmg`, glissez Bageo dans *Applications* et cliquez dessus. Linux : décompressez puis lancez `./start.sh`. La console s’ouvre sur <http://localhost:8787/>.
 3. **Renseignez l’essentiel** sous **Réglages** : votre clé API Gemini, votre nom et la langue. Appuyez sur ▶ pour écouter les voix et en choisir une.
 4. **Préparez le téléphone** une seule fois : installez `bageo-phone-module-<version>.zip` comme module dans Magisk ou KernelSU, redémarrez, ouvrez l’application **Bageo**, suivez ses étapes de configuration et branchez le téléphone.
 5. **Appelez-le** depuis un autre téléphone : une sonnerie, et l’IA décroche.

@@ -1,10 +1,11 @@
 # Prompt guide: teach your AI phone assistant how to talk
 
 The prompt is the text that tells Bageo's AI who it is and how to behave when
-it answers calls on your real phone number. You can skip this page: all nine
-languages come with a built-in prompt for both answer styles (*AI assistant*
-and *As me*). Read on when you want the AI to sound like you, answer from your
-own facts, or treat certain callers your way.
+it answers calls on your real phone number. All nine languages come with a
+short, general built-in prompt for both answer styles (*AI assistant* and *As
+me*) as a starting baseline. Read on when you want to tailor it to your own
+situation and speaking style, answer from your own facts, or treat certain
+callers your way.
 
 - [What the AI is told on every call](#what-the-ai-is-told-on-every-call)
 - [The quick way: let an AI interview you](#the-quick-way-let-an-ai-interview-you)

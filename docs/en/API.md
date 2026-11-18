@@ -706,7 +706,8 @@ Details for these routes:
 - `mode` is `ai` (the AI answers) or `normal` (an ordinary phone, see [Phone setup](PHONE.md#normal-phone-mode)).
 - `supports_mode` is false for apps older than the switch, which always run as `ai`.
 - `GET /health`: `control_idle_clients` / `control_idle_serials` count every connected phone; `normal_mode_serials` lists those switched to a normal phone; `local_time` is Bageo's clock in its `TZ`; `summary_ready` (and `summary_api_key_set`, the same value) says whether a summary service is set.
-- Without the console password (when one is set), `GET /health` returns only `ok`, `version`, `language`, `notify_language`, `active_call_count` and `control_idle_clients`, enough for monitoring.
+- `GET /health`: `setup_missing` lists what the console's "Ready?" list still needs: `ai_off`, `gemini_key`, `owner_name`, `notify`, `summary` (names only, never values). It is empty when everything is set.
+- Without the console password (when one is set), `GET /health` returns only `ok`, `version`, `language`, `notify_language`, `active_call_count`, `control_idle_clients` and `setup_missing`, enough for monitoring.
 
 After a mode switch, `mode` is the phone's mode (`null` when unknown) and
 `error_code` is `null` on success, otherwise one of:

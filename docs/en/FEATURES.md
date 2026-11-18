@@ -276,8 +276,9 @@ Details: [Privacy, safety and the law](PRIVACY_AND_LEGAL.md).
 
 ## Make it sound like you
 
-The built-in prompts work out of the box. To make the AI talk the way *you* do,
-let another AI interview you:
+The built-in prompts are a short general baseline that works out of the box. To
+tailor the AI to your own situation and the way *you* talk, let another AI
+interview you:
 
 1. Open **Settings → Prompt**, find *Don't want to write it yourself?*, choose
    a language and press **Copy interview prompt** (the same texts, in all nine

@@ -136,7 +136,7 @@ Your own words and numbers go in `config/scam_db.local.json` in the data folder.
 
 ### Prompt
 
-How the AI talks; the built-in prompt works for most people. To write your own, see [Writing the prompt](PROMPTS.md).
+How the AI talks. The built-in prompt is a short general baseline; add your own situation and style so the AI sounds more like you. To write your own, see [Writing the prompt](PROMPTS.md).
 
 - *Your own prompt*: saved separately for *AI assistant* and *As me* (empty = built-in); **Show the built-in prompt** shows it.
 - *Notes the AI may answer from*: facts callers may ask about, one per line, up to 6,000 characters.
@@ -308,6 +308,9 @@ Times are the computer's local time (see [Time zone](#time-zone)). Without any k
 | Let other AI tools connect (MCP) | off | Lets AI tools such as Claude or ChatGPT look up your calls and *To do* items. Leave it off if you do not need it. |
 | Address of this console | empty (automatic) | The address put into notification links, e.g. `http://192.0.2.10:8787`. |
 | Network name | `bageo` | The name phones and computers on your network can use instead of the IP: `http://bageo.local:8787/`. Letters, digits and hyphens; empty, `off`, `0`, `none` or `false` turns it off. |
+| Phones can also connect over Wi-Fi | On | A phone plugged in by USB once keeps working over Wi-Fi after you unplug it. Turning it off applies at once and disconnects the phones on Wi-Fi. Stored as `phone_wifi`; `PHONE_WIFI` only sets the default. See [Phone setup → Wi-Fi](PHONE.md#wi-fi). |
+
+**Pair phones again** (under the switch above) replaces the pairing key: every phone on Wi-Fi is disconnected and must be plugged in by USB once more.
 
 The first time you open the console without a password, it offers to set one.
 
@@ -323,7 +326,7 @@ Left empty, *Address of this console* is filled in while the console is open to 
 
 With the console on this computer only, notifications carry no links; inside Docker, set it yourself. *System → About* shows the address in use.
 
-Bageo answers the *Network name* itself (multicast DNS, UDP port 5353) while the console is open to your network, but not inside a container.
+Bageo answers the *Network name* itself (multicast DNS, UDP port 5353) while the console is open to your network or *Phones can also connect over Wi-Fi* is on, but not inside a container.
 
 If the system keeps that port to itself, the log shows a line starting with `mDNS:` and links use the IP address. Older Android phones that cannot open `.local` names can use the IP address or the QR code under *System → About*.
 
@@ -358,6 +361,7 @@ The image itself sets `AGENT_HOST=0.0.0.0`, `ASSETS_DIR=/app/assets`, `CALLS_DAT
 | `DEVICE_TOKEN` | *(empty)* | Phones that do not come through USB must connect with `…/ws?token=<this>`. **Set it whenever `AGENT_HOST` is not `127.0.0.1`.** |
 | `PUBLIC_URL` | *(empty)* | Same as *Address of this console*; the web console's value wins. Empty = automatic (see [Advanced](#advanced)). |
 | `MDNS_NAME` | `bageo` | Same as *Network name*: the console answers at `http://<this>.local:8787/` on your network. The web console's value wins. |
+| `PHONE_WIFI_PORT` | `AGENT_PORT` + 1 (`8788`) | Port phones use over Wi-Fi. Opened on all network interfaces only while `AGENT_HOST` is `127.0.0.1`; it serves only the phones' connection (no console) and always needs the pairing key or `DEVICE_TOKEN`. `0` = never. |
 
 Phones on USB are exempt from `DEVICE_TOKEN` (the USB tunnel ends on the computer itself).
 
@@ -377,7 +381,7 @@ Open `http://bageo.local:8787/?token=choose-a-long-random-string` (or the comput
 
 *System → About* shows the address with a QR code to scan with your phone, and how to add the console to your home screen.
 
-If this computer is on a VPN that sends all traffic through the tunnel, Bageo may take the VPN's address for the name and the links. Set `AGENT_HOST` to the computer's LAN IP (e.g. `AGENT_HOST=192.0.2.10`); the name and the links then use that address.
+If this computer is on a VPN that sends all traffic through the tunnel, Bageo may take the VPN's address for the name, the links and the phones' Wi-Fi address. Set `AGENT_HOST` to the computer's LAN IP (e.g. `AGENT_HOST=192.0.2.10`); the name, the links and the phones then use that address (phones then connect on `AGENT_PORT`).
 
 The connection is plain HTTP: fine on a home network you trust, not for the open internet. To reach the console from outside, use a VPN (WireGuard, Tailscale) or a reverse proxy with HTTPS and its own login; do not forward the port.
 

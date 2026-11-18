@@ -335,8 +335,8 @@ pub struct Settings {
     /// Address of the web console for links in notifications (`PUBLIC_URL`).
     pub public_url: String,
     /// Name this computer answers to on the LAN, `<name>.local` (`MDNS_NAME`,
-    /// default `bageo`; empty, `off`, `0`, `none` or `false` = off). Only while the
-    /// agent is open to the LAN.
+    /// default `bageo`; empty, `off`, `0`, `none` or `false` = off). While the
+    /// agent is open to the LAN, or while phones may connect over Wi-Fi.
     pub mdns_name: String,
     /// OpenAI-compatible endpoint for the post-call summary (`SUMMARY_API_BASE`).
     pub summary_api_base: String,
@@ -347,6 +347,10 @@ pub struct Settings {
     /// When set, phones must connect with `/ws?token=<this>` (`DEVICE_TOKEN`).
     /// Needed once the agent listens beyond this machine (Wi-Fi phones).
     pub device_token: String,
+    /// Port of the Wi-Fi entry for phones (`PHONE_WIFI_PORT`, default
+    /// `AGENT_PORT` + 1): opened on all addresses while the agent listens on
+    /// this computer only and the setting `phone_wifi` is on. 0 = never.
+    pub phone_wifi_port: u16,
 }
 
 impl Settings {
@@ -497,6 +501,7 @@ impl Settings {
             summary_model: env_or("SUMMARY_MODEL", ""),
             gemini_api_key: env_or("GEMINI_API_KEY", "").into(),
             device_token: env_or("DEVICE_TOKEN", ""),
+            phone_wifi_port: env_parse("PHONE_WIFI_PORT", env_parse("AGENT_PORT", 8787u16).wrapping_add(1)),
         }
     }
 
