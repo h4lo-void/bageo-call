@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Appointments: when a caller wants to set a time, the AI takes it down and
 //! tells them it will check and text them back later (only "get back to you"
 //! when no text can reach them). No calendar is connected: after the call the
@@ -1167,16 +1170,27 @@ impl ApptSession {
 
     /// Added after the call's system instruction (the stored prompt is not touched).
     pub fn prompt_block(&self, now: chrono::DateTime<chrono::Local>) -> String {
+        prompt_block(self.reply, &self.active(), now.naive_local(), &now.format("%:z").to_string())
+    }
+
+    /// The short part a call's system instruction starts with ([`prompt_stub`]);
+    /// [`Self::prompt_note`] goes in as a note once times come up.
+    pub fn prompt_stub(&self) -> String {
+        prompt_stub(self.reply, &self.active())
+    }
+
+    /// The appointment rules sent mid-call once times come up ([`prompt_note`]),
+    /// and kept in the prompt of a later session of the call.
+    pub fn prompt_note(&self, now: chrono::DateTime<chrono::Local>) -> String {
+        prompt_note(self.reply, &self.active(), now.naive_local(), &now.format("%:z").to_string())
+    }
+
+    fn active(&self) -> locale::Active {
         let mut active = locale::active();
         if let Some(l) = self.prompt_lang {
             active.lang = l;
         }
-        prompt_block(
-            self.reply,
-            &active,
-            now.naive_local(),
-            &now.format("%:z").to_string(),
-        )
+        active
     }
 
     /// Answer one function call (runs on its own task; at most [`TOOL_WAIT`]).
@@ -1197,12 +1211,12 @@ impl ApptSession {
 
     /// The answer to a proposal that waits for the owner: not settled, and what
     /// the caller is told — checked and texted or called back later, or only
-    /// "get back to you" when neither can reach them ([`check_back_line`]).
+    /// "get back to you" when neither can reach them ([`check_back_said`]).
     fn pending_answer(&self) -> Value {
         json!({
             "status": "pending_owner_confirmation",
             "tell_caller": format!(
-                "Not settled yet. If you have not said it already, say {}, in the language of the call; never say it is booked.",
+                "Not settled yet. If you have not said it already, say {}, in the language of the call; never say it is booked, and do not ask them to wait.",
                 check_back_said(&locale::active(), self.reply)
             ),
         })
@@ -1521,35 +1535,20 @@ fn window(
 /// later, checked and called back later, or — neither can reach this caller —
 /// only checked and got back to, with nothing promised. `me`: answering as the
 /// owner (else as their assistant, checking with `owner`).
-pub fn check_back_line(me: bool, owner: &str, reply: Reply) -> String {
-    match (me, reply) {
-        (true, Reply::Sms) => "Let me check and I'll text you back later.".to_string(),
-        (true, Reply::Call) => "Let me check and I'll call you back later.".to_string(),
-        (true, Reply::None) => "Let me check and get back to you.".to_string(),
-        (false, Reply::Sms) => format!("I'll check with {owner} and text you back later."),
-        (false, Reply::Call) => format!("I'll check with {owner} and call you back later."),
-        (false, Reply::None) => format!("I'll check with {owner} and get back to you."),
-    }
-}
-
-/// [`check_back_line`] in quotes, with the owner's own Chinese wording when
-/// the call is in Chinese ("我確認一下，晚點再用簡訊回你" / "我確認一下，晚點再打給你"
-/// / "我確認一下再回你").
+/// What the AI tells the caller once a time is asked back: the direction only
+/// (the owner, 2026-11-17: "tell the model roughly where to go, not the
+/// route"), said in its own words in the call's language — a text later, a
+/// call-back later, or — neither can reach this caller — only that it will get
+/// back to them. `me`: answering as the owner (else as their assistant).
 fn check_back_said(active: &locale::Active, reply: Reply) -> String {
     let owner = crate::prompts::owner_label(active.lang, &active.owner);
-    let me = !active.assistant;
-    let en = check_back_line(me, &owner, reply);
-    let (who, tail) = match (active.lang, reply) {
-        (Lang::ZhTw, Reply::Sms) => ("確認一下", "，晚點再用簡訊回你"),
-        (Lang::ZhTw, Reply::Call) => ("確認一下", "，晚點再打給你"),
-        (Lang::ZhTw, Reply::None) => ("確認一下", "再回你"),
-        (Lang::ZhCn, Reply::Sms) => ("确认一下", "，晚点再用短信回你"),
-        (Lang::ZhCn, Reply::Call) => ("确认一下", "，晚点再打给你"),
-        (Lang::ZhCn, Reply::None) => ("确认一下", "再回你"),
-        _ => return format!("\"{en}\""),
+    let first = if active.assistant { format!("you'll check with {owner} and") } else { "you'll".to_string() };
+    let how = match reply {
+        Reply::Sms => "text them back later",
+        Reply::Call => "call them back later",
+        Reply::None => "get back to them",
     };
-    let zh = if me { format!("我{who}{tail}") } else { format!("我跟{owner}{who}{tail}") };
-    format!("\"{en}\" (in Chinese: 「{zh}」)")
+    format!("that {first} {how}, in your own words")
 }
 
 /// The instructions added after a call's system prompt (English; the model
@@ -1627,6 +1626,87 @@ pub fn prompt_block(
     s.push_str("- After calling propose_appointment do not repeat what you have just told the caller: if you already said it, simply go on with the conversation.\n");
     s.push_str("- Never make an appointment with a sales, insurance, loan, investment or scam caller.");
     s
+}
+
+/// What a call's system prompt carries of appointments from the start: the few
+/// rules for the first time asked about. The dates and the function's details
+/// ([`prompt_note`]) go in as a note when times come up
+/// ([`time_talk`]): ~4,900 characters in every call slowed every reply.
+pub fn prompt_stub(reply: Reply, active: &locale::Active) -> String {
+    let owner = crate::prompts::owner_label(active.lang, &active.owner);
+    let said = check_back_said(active, reply);
+    format!(
+        "\n[Appointments] A time with {owner}: ask it back in full, call propose_appointment, then say {said}; never free or booked."
+    )
+}
+
+/// Longest [`prompt_note`] (characters). It goes in mid-call, between two
+/// replies: the model reads it before its next one, so it stays short.
+pub const PROMPT_NOTE_MAX_CHARS: usize = 1_400;
+
+/// The appointment rules as a mid-call note: the dates to look days up in and
+/// what the function needs, [`prompt_block`] cut to what the model acts on.
+/// The function's errors explain themselves; no-waiting is in every prompt.
+pub fn prompt_note(reply: Reply, active: &locale::Active, now: NaiveDateTime, utc_offset: &str) -> String {
+    let owner = crate::prompts::owner_label(active.lang, &active.owner);
+    let language = locale::phrases(active.lang).name_en;
+    let said = check_back_said(active, reply);
+    let example = read_back_example(active.lang, (now.date() + Span::days(1)).and_hms_opt(15, 30, 0).unwrap_or(now));
+    let day = |d: i64| (now.date() + Span::days(d)).format("%a %Y-%m-%d").to_string();
+    let monday = now.date() - Span::days(i64::from(now.weekday().num_days_from_monday()));
+    let week = |from: i64| -> String {
+        (from..from + 7)
+            .map(|d| (monday + Span::days(d)).format("%a %m-%d").to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let reply_line = match reply {
+        Reply::Sms => "",
+        Reply::Call => " Never promise a text message.",
+        Reply::None => " Never promise to text or call them back.",
+    };
+    format!(
+        "[Appointments — over anything above about not agreeing to plans for {owner}] Now {} ({}), UTC{utc_offset}. today = {}, tomorrow = {}, the day after tomorrow = {}. This week: {}. Next week: {}. Look days up here, never count (下禮拜三／来週の水曜日 = next week's Wed). \
+You cannot see {owner}'s schedule: never say a time is free or booked. Once there is a day and a time, ask it back in full as a question (e.g. {example}) and wait; if you did not catch it, ask again, never guess. After a clear yes, say {said} in {language}, then call propose_appointment: start YYYY-MM-DDTHH:MM local, weekday, period if named (晚上 = evening), title in a few {language} words, caller_name only if said, confirmed_by_caller = true; replaces_previous = true only when the agreed time changes.{reply_line} \
+Its answer pending_owner_confirmation is not settled. An error: fix what it says and call again without telling the caller. Do not repeat what you just said. No appointments with sales or scam callers.",
+        now.format("%Y-%m-%d %H:%M"),
+        now.format("%A"),
+        day(0),
+        day(1),
+        day(2),
+        week(0),
+        week(7),
+    )
+}
+
+/// Words of a caller setting a time or asking whether the owner is free: the
+/// whole [`prompt_block`] is due. Memory only; a stray hit only sends the note
+/// every call used to start with.
+pub fn time_talk(text: &str) -> bool {
+    // Not bare 約／幾點／何時 / "meet" / "available": couriers ask those too
+    // (「大約十分鐘」, "nice to meet you", "be available to sign").
+    const RUNS: &[&str] = &[
+        "約好", "約個", "約一下", "約時間", "相約", "有約", "邀約", "约好", "约个", "约一下", "约时间", "相约", "有约",
+        "邀约", "有空", "有沒有空", "有没有空", "在不在", "見面", "见面", "碰面", "聚一下", "聚聚", "拜訪", "拜访", "開會",
+        "开会", "會議", "会议", "預約", "预约", "改天", "改期", "改到", "改成", "行程", "吃飯", "吃饭", "吃個飯", "吃个饭",
+        "喝咖啡", "予約", "打ち合わせ", "ご都合", "空いて", "お時間", "お会い", "会いませんか", "日程", "お食事", "飲みに",
+        "伺い", "약속", "예약", "미팅", "회의", "방문", "시간 있", "시간있", "만날", "밥 먹", "밥먹",
+    ];
+    const WORDS: &[&str] = &[
+        "appointment", "meeting", "meet up", "schedule", "reschedule", "you available", "are you free", "you free",
+        "free on", "free at", "free this", "free tomorrow", "have time", "get together", "dinner", "lunch", "grab a",
+        "come by", "visit", "cita", "reunión", "reunion", "quedar", "rendez-vous", "réunion", "termin", "treffen",
+        "besprechung", "marcar", "reunião", "horário", "consulta",
+    ];
+    let low = text.to_lowercase();
+    if RUNS.iter().any(|r| low.contains(r)) {
+        return true;
+    }
+    let spaced: String = format!(
+        " {} ",
+        low.chars().map(|c| if c.is_alphanumeric() || c == '-' { c } else { ' ' }).collect::<String>()
+    );
+    WORDS.iter().any(|w| spaced.contains(&format!(" {w} ")))
 }
 
 // ---------------------------------------------------------------------------
@@ -2341,6 +2421,37 @@ pub fn callback_pending_on(serial: &str) -> bool {
     })
 }
 
+/// One of our own calls (an appointment's call-back or an errand) going out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutgoingCall {
+    /// The appointment task's id, or the errand's.
+    pub task_id: String,
+    /// An errand's call ([`crate::errands`]).
+    pub errand: bool,
+}
+
+/// Whether a call ringing on phone `serial` for `caller_id` (the number
+/// dialed) is a call we placed ourselves: a call-back or errand that was sent
+/// to that very phone for that number (`Dialing`, `Ready` or `OnCall`). It
+/// reads the state `place_call` left, so it holds from the moment the phone is
+/// asked to dial, before its `outbound_ready` or the Live session's start, and
+/// it takes nothing ([`callback_for_call`] hands the script over once). With no
+/// number, only the one call the phone reported ready (`Ready` / `OnCall`).
+pub fn outgoing_call_on(serial: &str, caller_id: &str) -> Option<OutgoingCall> {
+    let key = number_key(caller_id);
+    let list = callbacks();
+    let mut mine = list.iter().filter(|c| c.serial.eq_ignore_ascii_case(serial.trim()));
+    let found: Option<&PendingCallback> = if key.is_empty() {
+        let mut ready = mine.filter(|c| matches!(c.stage, CallbackStage::Ready | CallbackStage::OnCall));
+        let first = ready.next()?;
+        ready.next().is_none().then_some(first)
+    } else {
+        mine.find(|c| c.key == key && matches!(c.stage, CallbackStage::Dialing | CallbackStage::Ready | CallbackStage::OnCall))
+    };
+    let found = found?;
+    Some(OutgoingCall { task_id: found.task_id.clone(), errand: found.kind == CallbackKind::Errand })
+}
+
 /// Whether the Live session starting for a call on `serial` with `caller_id`
 /// is an appointment's call-back, and its script. Only the call the phone
 /// reported dialing for it (`outbound_ready` with its task, call and number,
@@ -2550,7 +2661,9 @@ pub async fn on_callback_event(ctx: &CallbackCtx<'_>, serial: &str, msg: &Value)
         "call_end" => match stage {
             CallbackStage::OnCall => callbacks_set_stage(&task_id, CallbackStage::Ended),
             CallbackStage::Ended | CallbackStage::Queued => {}
-            CallbackStage::Dialing | CallbackStage::Ready => finish_callback(ctx, &task_id, "failed").await,
+            // An errand's call that ended before it was connected (a busy
+            // line, declined) may be dialed again ("Redial until answered").
+            CallbackStage::Dialing | CallbackStage::Ready => finish_callback(ctx, &task_id, if errand { "ended_early" } else { "failed" }).await,
         },
         _ => {}
     }
@@ -3788,7 +3901,7 @@ mod tests {
         assert_eq!(answer["status"], "pending_owner_confirmation");
         // What the caller hears: checked later, no text promised (texts off).
         let tell = answer["tell_caller"].as_str().unwrap();
-        assert!(tell.contains("Let me check and get back to you.") && tell.contains("我確認一下再回你") && !tell.contains("text you"), "{tell}");
+        assert!(tell.contains("get back to them") && !tell.contains("text them") && !tell.contains("我確認一下"), "{tell}");
         let got = s.book.outcome().unwrap();
         assert_eq!(
             (got.title.as_str(), got.caller_name.as_str(), got.status.as_str(), got.mode.as_str()),
@@ -3972,7 +4085,7 @@ mod tests {
         assert!(p.contains("period_mismatch") && p.contains("晚上") && p.contains("evening"), "{p}");
         assert!(p.contains("check_availability") && p.contains("propose_appointment"));
         // What the AI says to the caller is about "you", in the owner's words.
-        assert!(p.contains("say \"Let me check and I'll text you back later.\" (in Chinese: 「我確認一下，晚點再用簡訊回你」) — in Traditional"), "{p}");
+        assert!(p.contains("say that you'll text them back later, in your own words — in Traditional"), "{p}");
         assert!(p.contains("overrides anything above") && p.contains("王先生"));
         // No waiting on the line; saying it will be checked after the call is that line.
         assert!(p.contains("never say you are looking something up right now") && p.contains("ちょっと待って"), "{p}");
@@ -3994,7 +4107,7 @@ mod tests {
         let assistant = locale::Active { assistant: true, ..me };
         let a = prompt_block(Reply::None, &assistant, now, "+08:00");
         assert!(a.contains("check with 王先生"), "{a}");
-        assert!(a.contains("\"I'll check with 王先生 and get back to you.\" (in Chinese: 「我跟王先生確認一下再回你」)"), "{a}");
+        assert!(a.contains("that you'll check with 王先生 and get back to them"), "{a}");
     }
 
     /// The owner's wording, by how the answer will reach the caller: a text, a
@@ -4004,13 +4117,13 @@ mod tests {
         let now = at(2026, 11, 13, 14, 5);
         let me = locale::Active::default();
         let text = prompt_block(Reply::Sms, &me, now, "+08:00");
-        assert!(text.contains("\"Let me check and I'll text you back later.\" (in Chinese: 「我確認一下，晚點再用簡訊回你」)"), "{text}");
+        assert!(text.contains("that you'll text them back later"), "{text}");
         assert!(!text.contains("never promise a text") && !text.contains("never promise to text"), "{text}");
         let call = prompt_block(Reply::Call, &me, now, "+08:00");
-        assert!(call.contains("\"Let me check and I'll call you back later.\" (in Chinese: 「我確認一下，晚點再打給你」)"), "{call}");
+        assert!(call.contains("that you'll call them back later"), "{call}");
         assert!(call.contains("never promise a text message") && !call.contains("text you back"), "{call}");
         let none = prompt_block(Reply::None, &me, now, "+08:00");
-        assert!(none.contains("\"Let me check and get back to you.\" (in Chinese: 「我確認一下再回你」)"), "{none}");
+        assert!(none.contains("that you'll get back to them"), "{none}");
         assert!(none.contains("never promise to text or call them") && !none.contains("text you back") && !none.contains("call you back"), "{none}");
         // Every prompt says it before the proposal and never calls it settled.
         for p in [&text, &call, &none] {
@@ -4018,17 +4131,19 @@ mod tests {
         }
         // Simplified Chinese, English and the assistant style.
         let cn = locale::Active { lang: Lang::ZhCn, ..Default::default() };
-        assert!(prompt_block(Reply::Sms, &cn, now, "+08:00").contains("「我确认一下，晚点再用短信回你」"));
-        assert!(prompt_block(Reply::Call, &cn, now, "+08:00").contains("「我确认一下，晚点再打给你」"));
+        // A direction, not a line to recite, in every language.
+        assert!(!prompt_block(Reply::Sms, &cn, now, "+08:00").contains("「我确认一下"));
+        assert!(prompt_block(Reply::Call, &cn, now, "+08:00").contains("call them back later"));
         let en = locale::Active { lang: Lang::En, ..Default::default() };
         let p = prompt_block(Reply::Sms, &en, now, "+08:00");
-        assert!(p.contains("say \"Let me check and I'll text you back later.\" — in English") && !p.contains("in Chinese"), "{p}");
+        assert!(p.contains("say that you'll text them back later, in your own words — in English") && !p.contains("in Chinese"), "{p}");
         assert!(p.contains("for example \"So that's Saturday, November 14, at 3:30 pm, right?\""), "{p}");
-        assert_eq!(check_back_line(false, "Sam", Reply::Call), "I'll check with Sam and call you back later.");
         // The proposal's answer to the model carries the same line.
         let mut s = session(Mode::Confirm);
         s.reply = Reply::Call;
-        assert!(s.pending_answer()["tell_caller"].as_str().unwrap().contains("I'll call you back later."));
+        assert!(s.pending_answer()["tell_caller"].as_str().unwrap().contains("call them back later"));
+        // e_close_kr: 「확인하고 연락드릴게요. 조금만 기다려 주세요.」 kept the caller waiting.
+        assert!(s.pending_answer()["tell_caller"].as_str().unwrap().contains("do not ask them to wait"));
     }
 
     #[test]
@@ -4129,6 +4244,33 @@ mod tests {
         // The AI waits for the callee: the ringing is no one to talk to.
         assert!(yes.contains("say nothing until you are told they have picked up and spoken"), "{yes}");
     }
+
+    #[test]
+    fn our_own_call_is_known_from_the_moment_the_phone_is_asked_to_dial() {
+        // An appointment's call-back, dialing: the first ring is already ours.
+        assert!(callbacks_add(PendingCallback::new("t-cb-o1", "0912000301", "phone-o1", "S".into())));
+        let own = outgoing_call_on("phone-o1", "+886 912 000 301").expect("dialing");
+        assert_eq!((own.task_id.as_str(), own.errand), ("t-cb-o1", false));
+        // Another number, another phone, or no number with only a dial out: a call coming in.
+        assert!(outgoing_call_on("phone-o1", "0912000399").is_none());
+        assert!(outgoing_call_on("phone-o2", "0912000301").is_none());
+        assert!(outgoing_call_on("phone-o1", "").is_none());
+        // Asking takes nothing: the session that follows still gets the script.
+        assert_eq!(callbacks_stage("t-cb-o1"), Some(CallbackStage::Dialing));
+        assert!(callback_ready("t-cb-o1", "phone-o1", "0912000301"));
+        assert_eq!(outgoing_call_on("phone-o1", "").map(|c| c.task_id), Some("t-cb-o1".to_string()), "the only ready one");
+        assert!(outgoing_call_on("phone-o1", "0912000301").is_some());
+        assert_eq!(take_ready_callback("phone-o1", "0912000301").map(|c| c.script), Some("S".to_string()));
+        assert!(outgoing_call_on("phone-o1", "0912000301").is_some(), "still our call once its session took the script");
+        // An errand's call says so.
+        callbacks_remove("t-cb-o1");
+        assert!(callbacks_add(PendingCallback::errand("e-cb-o2", "0912000302", "phone-o1", None, "S".into())));
+        assert_eq!(outgoing_call_on("phone-o1", "0912000302"), Some(OutgoingCall { task_id: "e-cb-o2".into(), errand: true }));
+        // Over: a call from that number is an ordinary one again.
+        callbacks_remove("e-cb-o2");
+        assert!(outgoing_call_on("phone-o1", "0912000302").is_none());
+    }
+
 
     #[test]
     fn a_call_back_script_goes_only_to_the_call_its_phone_reported() {
@@ -5267,5 +5409,74 @@ mod tests {
         assert_ne!(caller_text(&rt, &a, true), sms_text(Lang::ZhTw, &rt.owner_name, &a, true));
         a.set_call_lang(Lang::En);
         assert_eq!(caller_text(&rt, &a, false), sms_text(Lang::En, &rt.owner_name, &a, false));
+    }
+}
+
+#[cfg(test)]
+mod time_talk_edges {
+    use super::time_talk;
+
+    #[test]
+    fn plans_to_meet_bring_the_appointment_rules() {
+        for t in [
+            "Are you free tomorrow?",
+            "Are you free this weekend?",
+            "Do you have time on Friday?",
+            "How about dinner next Friday?",
+            "你明天在不在",
+            "要不要一起吃個飯",
+            "可以改到後天下午嗎",
+            "日程を変更できますか",
+            "来週お会いできますか",
+            "明日お時間ありますか",
+            "明日、お食事に行きませんか",
+        ] {
+            assert!(time_talk(t), "{t}");
+        }
+    }
+
+    #[test]
+    fn a_courier_asking_times_does_not() {
+        for t in [
+            "我是宅配司機，明天下午大概幾點有人在家？",
+            "我大約十分鐘後到樓下",
+            "Will someone be available to sign for a package?",
+            "Nice to meet you, I have a parcel for you",
+            "お荷物を何時ごろお届けしましょうか",
+        ] {
+            assert!(!time_talk(t), "{t}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod prompt_note_edges {
+    use super::*;
+
+    /// The note that goes in mid-call keeps what the model acts on and stays
+    /// short in every language, answer style and way of replying.
+    #[test]
+    fn the_mid_call_note_is_short_and_keeps_the_rules() {
+        let now = chrono::NaiveDate::from_ymd_opt(2026, 11, 13).unwrap().and_hms_opt(14, 5, 0).unwrap();
+        for lang in locale::ALL {
+            for assistant in [false, true] {
+                for reply in [Reply::Sms, Reply::Call, Reply::None] {
+                    let active = locale::Active { lang, assistant, owner: "王先生".into(), ..Default::default() };
+                    let n = prompt_note(reply, &active, now, "+08:00");
+                    let full = prompt_block(reply, &active, now, "+08:00");
+                    assert!(n.chars().count() <= PROMPT_NOTE_MAX_CHARS, "{lang:?} {reply:?} {}", n.chars().count());
+                    assert!(n.chars().count() * 2 < full.chars().count(), "{lang:?}");
+                    assert!(n.contains(&check_back_said(&active, reply)), "{n}");
+                    for must in ["today = Fri 2026-11-13", "tomorrow = Sat 2026-11-14", "Next week: Mon 11-16", "Sun 11-22",
+                        "propose_appointment", "confirmed_by_caller = true", "replaces_previous", "never say a time is free",
+                        "never guess", "UTC+08:00"] {
+                        assert!(n.contains(must), "{lang:?} {must}: {n}");
+                    }
+                    assert!(!n.to_lowercase().contains("hold on") && !n.contains("check_availability"), "{n}");
+                    assert_eq!(n.contains("Never promise a text message"), reply == Reply::Call);
+                    assert_eq!(n.contains("Never promise to text or call"), reply == Reply::None);
+                }
+            }
+        }
     }
 }

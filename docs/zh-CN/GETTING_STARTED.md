@@ -102,7 +102,7 @@ docker compose up -d --build
 
 下面是简要步骤；详细说明和还原方法见[手机设置](PHONE.md)。
 
-1. 把发布版附带的 `pixelcallai_uplink-<version>.zip` 复制到手机，在 Magisk 或 KernelSU 应用里安装为模块。重启。
+1. 把发布版附带的 `bageo-phone-module-<version>.zip` 复制到手机，在 Magisk 或 KernelSU 应用里安装为模块。重启。
 2. 打开 **Bageo** 应用，把“**设置步骤**”逐项做完：权限、默认电话应用、来电过滤、勿扰模式权限、电池优化豁免。应用本身不需要 root 权限，这些事由模块完成。
 3. 开启 **USB 调试**：“设置 → 关于手机”，连续点“版本号”七次，再到“系统 → 开发者选项 → USB 调试”。
 4. 把手机插到电脑上。在手机上的“**允许 USB 调试吗？**”里点允许，并勾选“始终允许使用这台计算机进行调试”。
@@ -217,3 +217,5 @@ Bageo 在别的地方运行（例如另一台电脑或 Docker）时，也可以�
 - 所有可以调整的东西：[设置参考](SETTINGS.md)
 - 内部怎么运作：[架构](ARCHITECTURE.md)
 
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

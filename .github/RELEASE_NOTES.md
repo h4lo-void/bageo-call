@@ -15,3 +15,5 @@
 - **要看到門號，手機模組也要更新。**
 
 Full changes / 完整變更：[CHANGELOG.md](https://github.com/h4lo-void/bageo-call/blob/v1.4.0/CHANGELOG.md)
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

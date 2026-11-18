@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+# SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
 # Builds "Bageo Status.app" from a release binary.
 # Usage: package-macos.sh <release binary> <output directory>
 set -eu

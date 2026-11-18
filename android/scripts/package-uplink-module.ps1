@@ -1,8 +1,11 @@
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+# SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 # Build the debug APK and package the Magisk / KernelSU module zip (Windows).
 #
 #   .\scripts\package-uplink-module.ps1
 #
-# Output: android\magisk\dist\pixelcallai_uplink-<versionName>.zip
+# Output: android\magisk\dist\bageo-phone-module-<versionName>.zip
 # Module layout: system/priv-app/com.pixelcallai.streamer/base.apk + privapp-permissions XML.
 $ErrorActionPreference = "Stop"
 
@@ -16,7 +19,7 @@ $gradleFile = Join-Path $android "app\build.gradle.kts"
 $versionMatch = Select-String -Path $gradleFile -Pattern 'versionName\s*=\s*"([^"]+)"' | Select-Object -First 1
 if (-not $versionMatch) { throw "versionName not found in $gradleFile" }
 $version = $versionMatch.Matches[0].Groups[1].Value
-$zipOut = Join-Path $outDir "pixelcallai_uplink-$version.zip"
+$zipOut = Join-Path $outDir "bageo-phone-module-$version.zip"
 
 Write-Host "Building debug APK $version ..."
 Push-Location $android

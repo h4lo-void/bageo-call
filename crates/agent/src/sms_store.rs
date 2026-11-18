@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Text messages the SMS forwarder hands to POST /calls/api/notify/send with
 //! "kind": "sms", and the ones the owner sends from the console, kept on disk
 //! so the console's SMS page can show them as conversations (one per number),

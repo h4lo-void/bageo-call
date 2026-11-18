@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Confirmation of what has side effects (a call, a phone's mode, a to-do).
 //!
 //! The chat gets a summary and a code; only the person who asked, in the same
@@ -85,6 +88,28 @@ impl Confirmations {
         self.open().contains_key(chat)
     }
 
+    /// The job waiting in this chat is an errand that asked questions.
+    pub fn has_gapped_errand(&self, chat: &str) -> bool {
+        self.open().get(chat).is_some_and(|p| {
+            matches!(&p.job, Job::Errand { body } if body.get("preflight_gaps").and_then(Value::as_bool) == Some(true))
+        })
+    }
+
+    /// The errand waiting in this chat that asked questions (its body has
+    /// `preflight_gaps`), taken like [Self::take] without a code: the owner's
+    /// reply is the answer and the call goes ahead.
+    pub fn take_gapped_errand(&self, chat: &str, sender: &str) -> Option<Job> {
+        let mut open = self.open();
+        let p = open.get(chat)?;
+        let gapped = matches!(&p.job, Job::Errand { body } if body.get("preflight_gaps").and_then(Value::as_bool) == Some(true));
+        if !gapped || p.at.elapsed() > self.ttl || (p.sender != ANY_SENDER && p.sender != sender.trim()) {
+            return None;
+        }
+        let taken = open.remove(chat)?;
+        open.retain(|_, q| q.code != taken.code);
+        Some(taken.job)
+    }
+
     /// The job waiting in this chat, taken (it is used once). code: the one a
     /// button carries; None for a typed 1 / 2 (the chat's newest). None when
     /// there is none, it expired, it is another one (a stale button), or the
@@ -123,6 +148,23 @@ mod tests {
 
     fn job() -> Job {
         Job::Decide { task_id: "t1".into(), confirm: true }
+    }
+
+    #[test]
+    fn a_reply_settles_only_an_errand_card_that_asked_questions() {
+        let c = Confirmations::new(Duration::from_secs(60));
+        let plain = Job::Errand { body: serde_json::json!({"number": "0912345678", "task": "x"}) };
+        c.ask("chat", "42", plain.clone());
+        assert_eq!(c.take_gapped_errand("chat", "42"), None);
+        assert!(c.waiting("chat"), "a card without questions stays for 1 / 2");
+        let gapped = Job::Errand { body: serde_json::json!({"number": "0912345678", "task": "x", "preflight_gaps": true}) };
+        c.ask("chat", "42", gapped.clone());
+        assert_eq!(c.take_gapped_errand("chat", "7"), None, "another member cannot answer it");
+        assert_eq!(c.take_gapped_errand("chat", "42"), Some(gapped));
+        assert_eq!(c.take_gapped_errand("chat", "42"), None, "it is used once");
+        let other = c.ask("chat", "42", job());
+        assert_eq!(c.take_gapped_errand("chat", "42"), None);
+        assert!(c.take("chat", "42", Some(&other)).is_some());
     }
 
     #[test]

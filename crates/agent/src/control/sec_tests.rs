@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Security acceptance tests for the chat commands (attacker's view). A
 //! failing test here shows a weakness; a passing one shows a defence holds.
 //! All numbers, ids and names are made up.

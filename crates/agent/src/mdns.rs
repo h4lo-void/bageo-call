@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Answers "<name>.local" on the local network (multicast DNS, RFC 6762), so
 //! the web console opens at `http://bageo.local:8787/` without knowing
 //! this machine's IP address.

@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial -->
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -34,6 +36,7 @@
         android:hasCode="true">
 
         <meta-data android:name="xposedmodule" android:value="true" />
+        <meta-data android:name="bageo.source" android:value="https://github.com/h4lo-void/bageo-call" />
         <meta-data android:name="xposeddescription" android:value="Bageo optional SMS hook. Scope: com.android.phone only." />
         <meta-data android:name="xposedminversion" android:value="82" />
         <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />

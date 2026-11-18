@@ -492,7 +492,8 @@ the errand, and agrees to no payment, deposit or transfer.
 | Length | At most 10 minutes; the AI wraps up at 9:30. |
 | A voice menu | The AI waits up to 90 seconds for a person; it cannot press keys (`keypad_menu`). |
 | A carrier recording ("the number you dialed is not in service") | It hangs up at once (`carrier_message`). |
-| No answer or failure | No automatic retries: **Try again** is yours. |
+| No answer or failure | No automatic retries: **Try again** is yours. With `redial` on, see the next row. |
+| **Redial until answered** (`redial`) | No answer, a busy line, the phone off or voicemail (no message left): the errand waits (`queued`, `call_code` `redial_wait`, the time in `redial_at`) and is dialed again a minute later, up to 30 tries in all. It stops once someone picks up, after 30 tries (`no_answer`), or at a number that does not work, a voice menu or a phone problem. One notification, at the end. |
 | You cancel while it dials | The phone and the number are free for the next call at once; if the call still connects, it is hung up before the AI speaks. |
 
 ### The errand object
@@ -523,8 +524,11 @@ the errand, and agrees to no payment, deposit or transfer.
 | `identity` | `assistant` or `owner`. |
 | `serial`, `device_label` | The phone that dials it, and its name. |
 | `status` | `queued`, `dialing` (the line rings, nobody has spoken yet), `on_call` (the other side picked up and spoke), `done`, `no_answer`, `failed`, `cancelled`. The last four are final. |
-| `call_code` | Where the dial stands: `dialing`, `queued`, `answered`, `no_answer`, `failed`, `phone_busy`, `number_busy`, `no_phone`, `send_failed`, `keypad_menu`, `carrier_message`, `wrong_sim`, `agent_restarted`, `cancelled`. |
-| `attempts` | 1, plus one per **Try again**. |
+| `call_code` | Where the dial stands: `dialing`, `queued`, `answered`, `no_answer`, `failed`, `phone_busy`, `number_busy`, `no_phone`, `send_failed`, `keypad_menu`, `carrier_message`, `wrong_sim`, `agent_restarted`, `cancelled`, `redial_wait`, `voicemail`. |
+| `attempts` | 1, plus one per **Try again** and per redial. |
+| `redial` | **Redial until answered** is on. Left out when off. |
+| `redial_at` | When the next try is dialed (while `call_code` is `redial_wait`). Left out otherwise. |
+| `redial_start` | The try the current run of redials started at (**Try again** starts a new run of 30). Left out when 0. |
 | `record_id` | The call record of this try (`GET /calls/api/call/{id}`: transcript and recording). |
 | `follow_up_of` | An earlier errand this call follows up; its last 20 transcript lines go into the AI's script. |
 | `questions` | `[{id, text, options, answer, answered_by, asked_at}]`: what the AI asked you, with up to 4 options. |
@@ -538,14 +542,16 @@ the errand, and agrees to no payment, deposit or transfer.
 
 Errands are kept in `errands.json` in the data folder (the newest 500). An
 errand still under way when Bageo restarts becomes `failed` (`call_code`
-`agent_restarted`).
+`agent_restarted`). A redialing errand goes on instead, unless the other side
+had already picked up.
 
 ### Errand routes
 
 | Method and path | What |
 |---|---|
 | `GET /calls/api/errands` | `{ok, errands}`, newest first, at most 200. |
-| `POST /calls/api/errands` | Start one. Body `{number, name, contact_id, task, identity, serial, follow_up_of}`. Answer `{ok, errand}` with status `dialing`, or `queued` when the phone or the number is busy. |
+| `POST /calls/api/errands` | Start one. Body `{number, name, contact_id, task, identity, serial, follow_up_of, answers, redial}` (`redial`: `true` for **Redial until answered**, default `false`). Answer `{ok, errand}` with status `dialing`, or `queued` when the phone or the number is busy. |
+| `POST /calls/api/errands/preflight` | What the errand still lacks before it dials. Body `{task, lang}`; answer `{ok, kind, missing, ladder, source, ms}`. Nothing is dialed. Details are below the table. |
 | `POST /calls/api/errands/{id}/cancel` | Waiting: dropped. Dialing or on the call: hung up. An errand already over comes back unchanged. `{ok, errand}`. |
 | `POST /calls/api/errands/{id}/retry` | The same errand once more (`attempts` + 1, the last try moved to `history`). `{ok, errand}`. Still under way (or its last call not ended yet): 400 `busy`; the phone codes as for a new errand. |
 | `DELETE /calls/api/errands/{id}` | Removes it from the list (its call records stay). `{ok}`; dialing or on the call: 400 `busy`. |
@@ -555,9 +561,17 @@ errand still under way when Bageo restarts becomes `failed` (`call_code`
 Details for these routes:
 
 - Creating an errand requires `task`, and a number (or a contact or an earlier errand whose number is used). Empty `identity` means `errand_identity`; empty `serial` means any suitable phone.
+- `answers` is optional: what you added after the questions, as `{key: text}`. The keys are the ones `preflight` returns, plus `note` for free text; up to 80 characters each (`note`: 120). Unknown keys are dropped. They reach the AI as a short block in the call's script.
 - `lines`: the captions after `seq`, `[{seq, who, text, at}]`, with `who` `ai`, `callee`, `owner` or `system`. The newest 400 are kept; a line is complete after 1.2 s without more words.
 - `question`: `null` or `{id, text, options, asked_at, expires_at}`, the question waiting for you.
 - `watching`: whether you count as watching. Each read marks you as watching for 6 seconds, so poll every few seconds while you follow the call.
+- `preflight` takes `task` (required, up to 1,000 characters) and `lang` (optional, such as `en` or `zh-TW`: the language of the questions; empty means the notification language). It answers:
+  - `kind`: `restaurant`, `appointment`, `order`, `change` or `contact`.
+  - `missing`: at most 3 `{key, question}`, the most important first; empty when nothing is missing. The keys by kind: `restaurant` `time`, `party`, `phone`, `name`; `appointment` `time`, `item`, `contact`, `backup`; `order` `spec`, `pickup`, `substitute`; `change` `orig_time`, `contact`; `contact` none.
+  - `ladder`: the times you would accept, best first (`["19:30", "20:30"]`), at most 4. Empty unless the task names two or more times.
+  - `source` and `ms`: `local`, `model` or `timeout`, and how long it took in milliseconds.
+- A request Bageo can read itself is answered locally in a few milliseconds. One in words it cannot read (another script, long text full of numbers) asks a small model (`gemini-flash-lite-latest`) through the Gemini key, for at most 0.9 seconds. When no answer comes in time (`source` `timeout`) or there is no key, the call goes ahead without questions.
+- In a chat, the confirmation card lists the same questions. Replying to the card with the answers saves your reply as `answers.note` and the AI calls with it; replying "cancel" dials nothing.
 
 Error codes (HTTP 400 `{ok: false, error, code}`, the same word in both):
 
@@ -566,8 +580,8 @@ Error codes (HTTP 400 `{ok: false, error, code}`, the same word in both):
 | `no_number` | create | No number, and no contact or earlier errand to take one from. |
 | `bad_number` | create | Not a phone number (letters, a plus that does not lead, more than 15 digits, too short for its country). |
 | `not_allowed` | create | Emergency, short code, premium rate, or an international prefix instead of `+`. |
-| `no_task` | create | `task` empty. |
-| `task_too_long` | create | `task` over 1,000 characters. |
+| `no_task` | create, preflight | `task` empty. |
+| `task_too_long` | create, preflight | `task` over 1,000 characters. |
 | `no_phone` | create, retry | No connected phone in AI mode (or the `serial` asked for is not one). |
 | `sim_unknown` | create, retry | No phone fits, and at least one has SIMs Bageo has not learned yet: call it once. |
 | `no_sim_for_country` | create, retry | No phone has a SIM of the number's country. |
@@ -779,3 +793,5 @@ How Bageo handles the edge cases:
 - Call-backs and errands carry `sub_id`, so a dual-SIM phone calls from the
   right number.
 
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

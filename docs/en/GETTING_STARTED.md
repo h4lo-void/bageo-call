@@ -154,7 +154,7 @@ Save. The checklist on the *System* page shows anything still missing.
 The short version is below; details and rollback are in
 [Phone setup](PHONE.md).
 
-1. Copy `pixelcallai_uplink-<version>.zip` from the release to the phone and
+1. Copy `bageo-phone-module-<version>.zip` from the release to the phone and
    install it as a module in the Magisk or KernelSU app. Reboot.
 2. Open the **Bageo** app and work through **Setup steps** until every step
    is done: permissions, default phone app, call screening, Do Not Disturb
@@ -347,3 +347,5 @@ itself and never stops that Bageo.
 - Everything you can change: [Settings reference](SETTINGS.md)
 - How it works inside: [Architecture](ARCHITECTURE.md)
 
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

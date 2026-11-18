@@ -81,3 +81,5 @@ Bageo（八哥，`bageo-call`，含 Bageo 程序、控制台、手机应用、Ro
 - **第 7(f) 条（下游担保赔偿）：** 转分发本软件（或其修改版）的人，若自行向下游承诺合同担保或承担责任，就该承诺直接加诸于原作者（**h4lo-void**）与贡献者的任何责任，必须赔偿原作者与贡献者。
 
 通用免责与部署者使用须知请见 [`LEGAL.md`](LEGAL.md)；第三方软件与素材授权请见 [`NOTICE.md`](NOTICE.md)。英文版与中文翻译如有歧义，以英文版为准。
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

@@ -1,4 +1,7 @@
 #!/system/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+# SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 # Late-start: roles + mute + arm service. Never abort boot; all ops best-effort.
 #
 # Phone mode, kept outside the module folder so it survives module updates:

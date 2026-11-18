@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Running Bageo itself when it sits next to this program: finding it, reading
 //! its .env, starting it without a window, keeping it running, and fetching adb.
 

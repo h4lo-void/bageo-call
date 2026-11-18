@@ -186,7 +186,7 @@ What it needs and how it behaves:
 - A call lasts 10 minutes at most (the AI wraps up at 9:30).
 - The AI cannot press keys: it waits up to 90 seconds for a person in a voice menu, and hangs up at once on a carrier recording ("the number you dialed…").
 - When something comes up that your instructions do not settle, the AI tells the other side it will check and asks you on the page (up to 40 seconds while you are watching). If you are not watching or do not answer, it agrees to nothing about it: it notes their options, says you will confirm and call back, and ends politely.
-- It agrees to no payment, deposit or transfer, gives out no personal details beyond the errand, and never redials on its own.
+- It agrees to no payment, deposit or transfer, gives out no personal details beyond the errand, and redials only when you turn on **Redial until answered**.
 
 The default for *Call as* is *AI calls: call as* under [Basics](#basics). Every rule, status and error code is in [API → AI errands](API.md#ai-errands).
 
@@ -338,6 +338,7 @@ A few settings have no field. Set them in `settings.json` or with `PUT /calls/ap
 | `country_code` | Your country calling code; see [Country calling code](#country-calling-code). |
 | `name_corrections` | Names speech-to-text keeps getting wrong, one `wrong=right` per entry (e.g. `Jon=John`): fixed in transcripts and summaries. First-run default `NAME_CORRECTIONS`, comma separated. |
 | `device_labels` | Your own names for phones: the id a phone reports → the label shown in notifications and the console, e.g. `{"pixel-10123": "Work phone"}`. Wins over the model name the phone reports. |
+| `goodbye_hangup_delay_ms` | How long Bageo waits after the AI's goodbye before hanging up, in milliseconds (200 to 15000). At the default 2000 each region uses its own wait, about 1.2 to 2.5 seconds, chosen by the SIM's country and else by the call's language; any other value is used for every call. |
 
 ## Start-up options
 
@@ -458,3 +459,5 @@ Notification routes you can set the same way. They are used in addition to the c
 ### Logging
 
 `RUST_LOG` (default `agent=info`): set `agent=debug` for more detail in the log.
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

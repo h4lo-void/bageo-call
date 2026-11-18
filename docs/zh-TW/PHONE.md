@@ -54,7 +54,7 @@
 
 1. 用 Magisk 或 KernelSU 把手機 **root**（這裡不說明）。
 2. 如果你曾經把這個 App 當一般 APK 安裝過，請先解除安裝。兩種絕對不要同時存在。
-3. 把 `pixelcallai_uplink-<version>.zip` 複製到手機（這一版是 `pixelcallai_uplink-1.4.0.zip`）。在 Magisk 或 KernelSU App 裡：「模組」（Modules）→「從本機安裝」（Install from storage）→ 選那個 zip → 重新開機。
+3. 把 `bageo-phone-module-<version>.zip` 複製到手機（這一版是 `pixelcallai_uplink-1.4.0.zip`）。在 Magisk 或 KernelSU App 裡：「模組」（Modules）→「從本機安裝」（Install from storage）→ 選那個 zip → 重新開機。
 4. 打開 **Bageo**。最上面的卡片用一句話說明手機現在的狀態。下面的「**設定步驟**」列出還沒完成的事，每一步都有按鈕：
 
    | 步驟 | 要做什麼 |
@@ -194,3 +194,5 @@ USB 還能讓手機一直充電，沒有 Wi-Fi 也能用。一台電腦可以接
 
 請看[疑難排解](TROUBLESHOOTING.md)，以及 [`android/README.md`](../../android/README.md#troubleshooting)（英文）最後面的表格。
 
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Which country a caller's number belongs to. The caller ID is read the way
 //! the SIM that took the call reads it: `0912 345 678` on a Taiwanese SIM is a
 //! Taiwanese number, `(202) 555-0143` on a US SIM an American one, and `+…` or

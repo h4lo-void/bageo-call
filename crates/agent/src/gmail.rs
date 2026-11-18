@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Gmail SMTP reply sender (Google app password, AUTH LOGIN + STARTTLS), and
 //! the same conversation with any other SMTP server for the "Email (SMTP)"
 //! notification channel ([`send_mail_via`]).

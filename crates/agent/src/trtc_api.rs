@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Tencent Cloud TRTC **control-plane** REST (TC3-HMAC-SHA256).
 //!
 //! Official Actions only (API version `2019-07-22`), verified against

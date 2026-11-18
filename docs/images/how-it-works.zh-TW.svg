@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 330" width="900" height="330" role="img" aria-labelledby="t" xml:lang="zh-Hant" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang TC','Microsoft JhengHei','Noto Sans TC','Noto Sans CJK TC',sans-serif">
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
   <title id="t">Bageo 怎麼運作：對方透過電信網路打到你的備用手機（已 root、插著你的 SIM），手機用 USB 或 Wi-Fi 把通話聲音交給你電腦上的 Bageo 程式，再由它跟 Gemini Live 對話。錄音留在你的硬碟，通知送到 32 種管道，一切在網頁控制台管理。</title>
   <style>
     .fr{animation:fr 1s linear infinite}

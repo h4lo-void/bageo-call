@@ -1,4 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial -->
+  <!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
   <!-- Tray icon: the Bageo logo inside a frame. The program replaces {{frame}}
        with the colour of the current state before drawing it. -->
   <rect x="6" y="6" width="244" height="244" rx="62" fill="{{frame}}"/>

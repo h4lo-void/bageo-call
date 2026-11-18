@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Calendar suggestion: when a call fixes a date (a delivery window, an
 //! appointment, a time someone will call back), the summary model is asked for
 //! it as a small JSON object. The owner adds it to their own calendar with one

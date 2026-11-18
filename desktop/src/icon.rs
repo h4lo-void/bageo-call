@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Draws the tray icon: the Bageo logo inside a frame whose colour shows the state.
 
 use resvg::{tiny_skia, usvg};

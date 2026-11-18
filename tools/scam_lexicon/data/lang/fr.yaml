@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+# SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 lang: fr
 name: Français
 regions: ["France", "Belgique", "Suisse", "Canada (Québec)", "Afrique francophone"]
@@ -134,7 +137,7 @@ categories:
     phrases:
       - "Votre colis est bloqué à la douane, il faut régler des frais de dédouanement.｜您的包裹卡在海關，必須付清關費。"
       - "Un colis à votre nom contenait des stupéfiants, je vous passe la police.｜以您名義的包裹有毒品，我幫您轉警察。"
-    strong: [bloqué à la douane, frais de dédouanement, je vous passe la police]
+    strong: [bloqué à la douane, frais de dédouanement, je vous passe la police, taxes d'importation à régler, lien de paiement des taxes]
     keywords: [colis, douane, livraison, la poste, chronopost]
     hard: [je vous passe la police]
     requests: ["payer des frais｜付費"]
@@ -158,3 +161,10 @@ categories:
     hard: [donnez-moi les codes]
     requests: ["acheter des coupons prépayés｜買預付券"]
     tactics: ["paiement intraçable｜無法追蹤"]
+  tax_debt_ssa:
+    phrases:
+      - "Ici l'Agence du revenu du Canada, vous devez des impôts et un mandat d'arrêt a été émis.｜（加拿大）這是加拿大稅務局，您欠稅且已發出逮捕令。"
+    strong: [agence du revenu du canada, l'arc va vous arrêter, payer vos impôts en cartes-cadeaux]
+    keywords: [impôts impayés]
+    requests: ["paiement en cartes-cadeaux｜用禮品卡付款"]
+    tactics: ["menace d'arrestation｜逮捕威脅"]

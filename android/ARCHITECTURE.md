@@ -187,3 +187,5 @@ grant them. That is why the phone has to be rooted (Magisk or KernelSU).
 - No call transfer: a call in progress cannot be bridged to another phone.
 - No decisions about outgoing calls: the agent decides which number, which SIM
   and when; the app dials what `place_call` says, or reports `busy`.
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

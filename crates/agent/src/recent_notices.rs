@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! The last few messages sent through `POST /calls/api/notify/send`, kept in
 //! memory only so a desktop status app can poll for new ones and pop up a
 //! notification. Nothing is written to disk; a restart empties the list.

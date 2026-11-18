@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · <strong>繁體中文</strong> · <a href="README.zh-CN.md">简体中文</a>
+  <a href="README.md">English</a> · <strong>繁體中文</strong> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.de.md">Deutsch</a> · <a href="README.pt.md">Português</a>
 </p>
 
 <p align="center">
@@ -223,7 +223,7 @@ AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種
 1. **下載**：從 [Releases](https://github.com/h4lo-void/bageo-call/releases) 下載適合你系統的套件並解壓縮。
 2. **啟動**：Windows 按兩下 `start.cmd`，macOS 按兩下 `start.command`，Linux 執行 `./start.sh`，控制台會打開在 <http://localhost:8787/>。
 3. **填好基本設定**：在「**設定**」填入 Gemini API 金鑰、你的名字和語言，按 ▶ 試聽各個聲音，挑一個。
-4. **準備手機**（只要一次）：在 Magisk 或 KernelSU 安裝模組 `pixelcallai_uplink-<version>.zip`，重新開機，打開 **Bageo** App 把檢查清單做完，接上 USB。
+4. **準備手機**（只要一次）：在 Magisk 或 KernelSU 安裝模組 `bageo-phone-module-<version>.zip`，重新開機，打開 **Bageo** App 把檢查清單做完，接上 USB。
 5. **打一通試試**：用另一支手機撥它的號碼，響一聲，AI 就接了。
 
 卡住了？每個步驟的詳細說明：[開始使用](docs/zh-TW/GETTING_STARTED.md) · [手機設定](docs/zh-TW/PHONE.md)。
@@ -298,3 +298,5 @@ AI 的語音、內建提示詞、網頁控制台、手機 App 和通知，九種
 - **取得商業授權：** 若企業、電信／雲端總機營運商、客服中心或硬體廠商不願依 `AGPL-3.0-only` 開源，可向原作者洽購書面商業授權，詳見 [**雙重授權與商業授權條款（COMMERCIAL_LICENSE.md）**](COMMERCIAL_LICENSE.md)。
 
 **免責聲明與使用須知：** 本專案為自架軟體，按「現狀（AS IS）」提供且不附任何擔保；作者不維運任何服務，軟體也不會將資料傳回給作者。部署者須自行負責遵守當地通話錄音、AI 揭露與自動撥號相關法律，並自負手機 Root 與資費帳單風險。使用前請詳閱 [**法律免責聲明與使用須知（LEGAL.md）**](LEGAL.md)、[隱私、安全與法律](docs/zh-TW/PRIVACY_AND_LEGAL.md) 及 [v1.0 AI 輔助內部審查筆記](AUDIT_REPORT.md)（`gemini-4-carbon`，非第三方審計）。第三方授權聲明（含 OpenCC `Apache-2.0` 字典）見 [NOTICE.md](NOTICE.md)。本專案與 Google LLC 無關；Pixel、Android 與 Gemini 為 Google LLC 之商標。
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

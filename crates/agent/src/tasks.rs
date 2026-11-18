@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! Assistant task store — voicemail → extract → fulfill pipeline.
 //!
 //! Persists under `{CALLS_DATA_DIR}/tasks/` as `{id}.json` plus optional

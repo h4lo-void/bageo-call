@@ -124,3 +124,5 @@ Compliance with local telecom, call-recording, AI-disclosure, and personal-data 
 - **授权与知识产权的书面文件：** 供企业合规、采购与审计使用的授权证明，以及版权人有权授予该授权的书面保证。外部贡献的代码均依[贡献者许可协议](CLA.md)取得许可，因此整份代码都可以纳入商业授权。
 
 部署是否符合当地电信、通话录音、AI 披露与个人信息法规，仍由运营者自行负责（见 [`LEGAL.md`](LEGAL.md)）；商业授权合同可约定在违法使用时终止该商业授权。
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+// SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
 //! The Slack adapter: Socket Mode, one connection per app (the bot token and
 //! app-level token of the Slack channels set up to take commands), serving
 //! the Slack channels named as those channels' channel ID (Channel::target).

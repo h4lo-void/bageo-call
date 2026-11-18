@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 401" width="760" height="401" role="img" aria-labelledby="t" xml:lang="zh-Hans" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans SC','Noto Sans CJK SC',sans-serif">
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
   <title id="t">一次 AI 代打。你交代：订明天晚上 7 点 4 位，7 点半也行。AI 以小明助理的身份打给餐厅；7 点满了，餐厅问 7 点半可不可以，AI 答应。结果：办好了，明天晚上 7 点半、4 位，可以一键添加到日历。</title>
   <style>
     .a0{animation:k0 13.5s ease-out infinite}

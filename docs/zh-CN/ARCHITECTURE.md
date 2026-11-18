@@ -232,3 +232,5 @@ data/calls/
 ## 旧代码路径
 
 Bageo 是从一套菜单式系统演变来的（预录问候、DTMF、等待音乐、语音留言、腾讯 TRTC 桥接、Whisper／LLM／Piper 流程）。那些代码还在 `main.rs` 和各自的模块里，默认关闭，也不附带录音。暂时保留是因为它和现行路径交织在一起；干净地移除它列在[路线图](ROADMAP.md)上。
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

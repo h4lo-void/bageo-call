@@ -55,6 +55,9 @@ have asked you on the console first.
 - **No hanging up on a whim.** A silent line gets "are you still there?". The AI
   hangs up when the caller's own last words are a goodbye; ordinary calls wrap up
   politely at *Longest normal call* (5 minutes by default) in **How it answers**.
+- **Ends the way a person would.** Bageo recognizes "I won't keep you" and goodbye words in the nine languages and in Cantonese, Thai, Vietnamese and Indonesian, and hangs up only once the caller has said goodbye (Cantonese is only listened for; the AI answers in Mandarin). A greeting that also means goodbye (Korean 수고하십니다) never ends a call at the start, and an "I see" in another language (なるほど, Genau, Vale) does not interrupt the AI. Each region has its own wait before hanging up, about 1.2 to 2.5 seconds; a wait you set yourself wins ([Settings](SETTINGS.md)). AI errands end as before.
+- **Speaks like the place the SIM is from.** Each call carries only the local habits of the SIM's region: where couriers leave parcels, how times and numbers are repeated, which scams are common. The region only sets the language the AI opens in; a caller in another language Gemini supports is answered in theirs. Its Chinese is always Mandarin: Taiwanese, Hakka, Cantonese and other dialects Gemini does not speak are answered in Mandarin, never put on. See [Prompts](PROMPTS.md).
+- **Knows what the call is about.** A courier, a bank checking a charge, an important notice, setting a time, family or friend chat, a wrong number: each gets one short hint in the pause after the AI finishes a sentence, so replies stay as fast. A bank hears the amount, shop and time repeated back, gets neither a yes nor a no and no card block, and the AI ends with calling the official line itself later. A wrong number never hears your name.
 - **Sounds like a real phone call.** Optional background sound under the AI's
   voice, 12 kinds at three levels: home, office, street, hospital, ambulance
   passing, typhoon, thunderstorm, construction site, metro, night market,
@@ -83,6 +86,7 @@ to call and write what needs doing. The AI calls as **Your assistant** (the
 default) or as **You in person**.
 
 - **Live captions** show both sides while the call runs.
+- **It asks what is missing before it dials.** Within a second of starting, Bageo sees what the task lacks (for a table: how many people, which phone number to leave, the booking name) and asks at most 3 questions. Pick **Add and call** or **Call anyway**. It also notes the order you would give way in (if 7:30 is full, 8:30) and opens with the polite phrases of the place you call. A confirmation card in your chat lists the same questions: reply to answer, reply "cancel" to dial nothing.
 - **It asks before it guesses.** When the other side raises something your
   instructions do not settle, the AI asks them to wait a moment and calls
   `ask_owner`: a question card with its options and a 40-second countdown
@@ -98,6 +102,10 @@ default) or as **You in person**.
 - **A clear result, one notification.** *Done*, *Partly done*, *Not done*,
   *Your decision needed*, *No answer*, *Voicemail* or *Failed*, with the
   details, the options offered and any agreed time, ready for your calendar.
+- **Redial until answered.** For a restaurant or shop whose line is always
+  busy, turn this on when you start the errand. If nobody picks up or the line
+  is busy, the AI calls again every minute, up to 30 times. It leaves no
+  voicemail message, and you get one notification at the end.
 - **Safe dialing.** Emergency numbers, short codes, premium-rate numbers and
   numbers written after an international call prefix are refused, so an errand
   never turns into an international call by mistake.
@@ -106,9 +114,10 @@ default) or as **You in person**.
   country. If the phone reports a different SIM as the call starts, Bageo hangs
   up before it connects (`wrong_sim`).
 - **Sensible limits.** One call to a number at a time; at most 10 minutes per
-  call, with a wrap-up at 9:30; no automatic redials (**Call again** is your
-  button); voice menus waited out for up to 90 seconds; a carrier's "not in
-  service" recording ends the call at once.
+  call, with a wrap-up at 9:30; no automatic redials unless you turn on
+  **Redial until answered** (otherwise **Call again** is your button); voice
+  menus waited out for up to 90 seconds; a carrier's "not in service"
+  recording ends the call at once.
 
 ## Spam and scam call blocker, with Stall Mode
 
@@ -144,6 +153,8 @@ A confirmed sales or scam call meets **Stall Mode**: an interested, slow,
 easily distracted customer who asks about every detail and keeps running into
 problems, for up to 30 minutes, without giving out a single real detail or
 agreeing to pay anything.
+
+Stall Mode follows the kind of call. Investment, insurance, loan, fake official, bank or store, debt collection and harassment calls each have their own script: the AI sounds keen first, then runs into one problem after another, and when the caller wants to hang up it says "wait, one more question". A debt collector never gets an admission of debt. The scam word list also covers Taiwan "cancel the installment" ATM calls, Japan ATM tax refunds, Korean prosecutor "safe account" calls, US IRS and Medicare gift-card calls, and European customs fee links and TAN codes.
 
 Under **Settings → Sales & scam calls**, *Keep them talking* is on by default and
 *Longest such call* sets the time limit. Switch it off and the AI declines
@@ -292,3 +303,5 @@ More, including the techniques that make the biggest difference:
 
 Reports from other phones and languages help the most: see
 [CONTRIBUTING.md](../../CONTRIBUTING.md).
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

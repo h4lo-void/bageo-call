@@ -124,7 +124,8 @@ AI errands and AI call-backs are outgoing calls a machine makes in your name.
   a time with a friend), never for marketing, mass calling or calls the other
   side would not expect from you.
 - Bageo never dials emergency numbers, short codes or premium-rate numbers,
-  and calls each errand once; it does not redial on its own.
+  and calls each errand once. It redials only if you turn on **Redial until
+  answered** for that errand: at most 30 times, a minute apart.
 
 ## What the AI will and will not do
 
@@ -184,3 +185,5 @@ sends for you are billed by your plan like any other.
 Bageo is self-hosted software provided "AS IS" without warranty of any kind. The author (**h4lo-void**) operates no servers or call relays, and the software sends no call audio, recordings, messages or keys back to the author. Whoever deploys Bageo is solely responsible for complying with local laws on call recording, AI disclosure, telemarketing and personal data, as well as hardware rooting and carrier or API charges.
 
 Before running Bageo, read the [**Legal Disclaimer & Usage Notice (`LEGAL.md`)**](../../LEGAL.md), the [**Dual Licensing & Section 7 Terms (`LICENSING.md`)**](../../LICENSING.md) ([`AGPL-3.0-only`](../../LICENSE) / [**Commercial License (`COMMERCIAL_LICENSE.md`)**](../../COMMERCIAL_LICENSE.md)), and the AI-assisted internal review note [**`AUDIT_REPORT.md`**](../../AUDIT_REPORT.md) (for `v1.0`, not a third-party audit).
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

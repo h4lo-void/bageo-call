@@ -441,7 +441,8 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 | 通话时长 | 最长 10 分钟；9 分半开始收尾。 |
 | 语音菜单 | AI 最多等 90 秒等真人接听；它不能按键（`keypad_menu`）。 |
 | 运营商录音（“您拨打的号码是空号”） | 直接挂断（`carrier_message`）。 |
-| 没人接或失败 | 不会自动重拨：要不要“再打一次”由你决定。 |
+| 没人接或失败 | 不会自动重拨：要不要“再打一次”由你决定。打开 `redial` 见下一行。 |
+| “拨到通”（`redial`） | 没人接、占线、对方关机或进语音信箱（不留言）：代打排队（`queued`，`call_code` 是 `redial_wait`，时间在 `redial_at`），一分钟后再拨，总共最多 30 次。有人接起来、拨满 30 次（`no_answer`）、号码不通、语音菜单或手机出问题就停。只在最后通知一次。 |
 | 拨号中你点了取消 | 手机和号码立刻释放给下一通；万一电话还是接通了，会在 AI 开口前挂断。 |
 
 ### 代打对象
@@ -473,14 +474,17 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 | `serial`、`device_label` | 拨出的手机和它的名称。 |
 | `status` | `queued`、`dialing`（电话在响，还没有人出声）、`on_call`（对方接起来出声了）、`done`、`no_answer`、`failed`、`cancelled`。后四个是最终状态。 |
 | `call_code` | 拨号进行到哪一步。值见下方。 |
-| `attempts` | 从 1 开始，每点一次“再打一次”加 1。 |
+| `attempts` | 从 1 开始，每点一次“再打一次”或每重拨一次加 1。 |
+| `redial` | 打开了“拨到通”。没打开就不出现。 |
+| `redial_at` | 下一次什么时候拨（`call_code` 是 `redial_wait` 时）。其他时候不出现。 |
+| `redial_start` | 这一轮重拨从第几次开始（点“再打一次”会重新算 30 次）。是 0 就不出现。 |
 | `record_id` | 这一次的通话记录（`GET /calls/api/call/{id}`：文字记录和录音）。 |
 | `follow_up_of` | 这通是接着哪一条之前的代打；那一条最后 20 行文字记录会放进 AI 的脚本。 |
 | `questions` | `[{id, text, options, answer, answered_by, asked_at}]`：AI 问过你的问题，选项最多 4 个。 |
 | `result` | `null` 或 `{outcome, summary, details, follow_up, options, event, unconfirmed}`。字段见下方。 |
 | `history` | 之前几次的尝试，`[{attempt, status, result, record_id, ended_at, questions}]`。 |
 
-`call_code` 的值：`dialing`、`queued`、`answered`、`no_answer`、`failed`、`phone_busy`、`number_busy`、`no_phone`、`send_failed`、`keypad_menu`、`carrier_message`、`wrong_sim`、`agent_restarted`、`cancelled`。
+`call_code` 的值：`dialing`、`queued`、`answered`、`no_answer`、`failed`、`phone_busy`、`number_busy`、`no_phone`、`send_failed`、`keypad_menu`、`carrier_message`、`wrong_sim`、`agent_restarted`、`cancelled`、`redial_wait`、`voicemail`。
 
 `questions` 里的 `answered_by`：`owner`（你回答了）、`timeout`（你在看但没来得及回答）、`absent`（没人在看）；还在等时是 `null`。
 
@@ -490,14 +494,15 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 - `event`：`null` 或 `{start, end, title}`（带时差的当地时间；没谈定结束时间就没有 `end`）。
 - `unconfirmed`：`details` 或 `event` 里 AI 复述时对方没有明确确认的时间、日期、号码或名字（最多 8 项）；没有就不出现。
 
-代打保存在数据文件夹的 `errands.json`（保留最新 500 条）。Bageo 重启时还在进行中的代打会变成 `failed`（`call_code` `agent_restarted`）。
+代打保存在数据文件夹的 `errands.json`（保留最新 500 条）。Bageo 重启时还在进行中的代打会变成 `failed`（`call_code` `agent_restarted`）；打开“拨到通”的会接着拨，除非对方已经接起来过。
 
 ### 代打路由
 
 | 方法与路径 | 内容 |
 |---|---|
 | `GET /calls/api/errands` | `{ok, errands}`，最新的在前，最多 200 条。 |
-| `POST /calls/api/errands` | 开始一条。请求体 `{number, name, contact_id, task, identity, serial, follow_up_of}`，响应 `{ok, errand}`。 |
+| `POST /calls/api/errands` | 开始一条。请求体 `{number, name, contact_id, task, identity, serial, follow_up_of, answers, redial}`（`redial` 是 `true` 就打开“拨到通”，默认 `false`），响应 `{ok, errand}`。 |
+| `POST /calls/api/errands/preflight` | 拨出前看这条代打还缺什么。请求体 `{task, lang}`，响应 `{ok, kind, missing, ladder, source, ms}`。不会拨号。内容见下方。 |
 | `POST /calls/api/errands/{id}/cancel` | 排队中：取消。拨号中或通话中：挂断。已经结束的原样返回。`{ok, errand}`。 |
 | `POST /calls/api/errands/{id}/retry` | 同一条再打一次（`attempts` 加 1，上一次移到 `history`）。`{ok, errand}`。还在进行中（或上一通还没结束）：400 `busy`；手机相关的代码同新建。 |
 | `DELETE /calls/api/errands/{id}` | 从列表删除（通话记录会保留）。`{ok}`；拨号中或通话中：400 `busy`。 |
@@ -509,6 +514,17 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 - 必填：`task`，以及号码（或给联系人、之前的代打，用它们的号码）。
 - `identity` 留空就按 `errand_identity`；`serial` 留空就用任何合适的手机。
 - 响应里的状态是 `dialing`，手机或号码忙线时是 `queued`。
+- `answers` 可以不带：你回答补问后的内容，格式 `{key: 文字}`。key 就是 `preflight` 返回的那些，另有 `note` 放自由文字；每项最多 80 字（`note` 120 字），不认识的 key 会被丢掉。它们会以一小段文字放进这通电话的脚本交给 AI。
+
+`POST /calls/api/errands/preflight` 的内容：
+
+- 发送 `task`（必填，最多 1,000 字）和 `lang`（可以不带，例如 `en`、`zh-TW`：补问用的语言；留空就用通知语言）。
+- `kind`：`restaurant`、`appointment`、`order`、`change` 或 `contact`。
+- `missing`：最多 3 条 `{key, question}`，最重要的在前；什么都不缺就是空的。各类型的 key：`restaurant` `time`、`party`、`phone`、`name`；`appointment` `time`、`item`、`contact`、`backup`；`order` `spec`、`pickup`、`substitute`；`change` `orig_time`、`contact`；`contact` 没有。
+- `ladder`：你愿意接受的时间，最好的在前（`["19:30", "20:30"]`），最多 4 个；交办里没有写到两个以上的时间就是空的。
+- `source` 和 `ms`：`local`、`model` 或 `timeout`，以及花了多少毫秒。
+- Bageo 自己读得懂的交办，几毫秒内就在本机回答。读不懂的（别种文字、夹很多数字的长文）会用 Gemini 密钥问一个小模型（`gemini-flash-lite-latest`），最多等 0.9 秒；时间内没答（`source` 为 `timeout`）或没有密钥，就不补问、照常拨出。
+- 在聊天室，确认卡会列出同样的问题。直接回复那张卡就是补答，你的回复会存成 `answers.note`，AI 带着它拨出；回“取消”就不拨。
 
 `GET /calls/api/errands/{id}/live?after=<seq>` 的内容：
 
@@ -523,8 +539,8 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 | `no_number` | 新建 | 没有号码，也没有可以取号码的联系人或之前的代打。 |
 | `bad_number` | 新建 | 不是电话号码（有字母、`+` 不在开头、超过 15 位、对那个国家来说太短）。 |
 | `not_allowed` | 新建 | 紧急号码、短号、增值付费号码，或用国际冠码代替 `+`。 |
-| `no_task` | 新建 | `task` 为空。 |
-| `task_too_long` | 新建 | `task` 超过 1,000 字。 |
+| `no_task` | 新建、补问 | `task` 为空。 |
+| `task_too_long` | 新建、补问 | `task` 超过 1,000 字。 |
 | `no_phone` | 新建、再打 | 没有已连接、处于 AI 模式的手机（或指定的 `serial` 不是这样的手机）。 |
 | `sim_unknown` | 新建、再打 | 没有合适的手机，而且至少有一部的 SIM Bageo 还不知道：先给它打一通。 |
 | `no_sim_for_country` | 新建、再打 | 没有手机有该号码所属国家的 SIM。 |
@@ -736,3 +752,5 @@ Bageo 怎么处理边界情况：
 - 短信结果在 Bageo 不再等待之后才到，照样会记录；手机之后用同一个 `id` 发来的真正结果会取代 `timeout`。同样的结果再来、或已有确定结果的短信收到不同结果，都不会改。
 - 黑名单号码只有在 `reject_mode` 为 `decline`、并且手机声明过 `supports_reject` 时才让手机拒接；否则接起来播放语音，通知会写清楚是哪一种。
 - AI 回拨和 AI 代打都带 `sub_id`，双卡手机会用正确的号码拨出。
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

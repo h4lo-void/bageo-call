@@ -63,6 +63,7 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&…
 | 標題 | 什麼時候 | Webhook `event` |
 |---|---|---|
 | 來電 | 電話被接起來。 | `incoming` |
+| 去電 | Bageo 自己撥出電話：AI 代打、預約回電或待辦回電。代打設成「撥到通」時，只有第一次撥號會通知。 | `outgoing` |
 | 黑名單來電 | 黑名單上的號碼打來。訊息會寫是響鈴時直接拒接，還是接起來播語音，以及你當初填的原因。 | `blocked` |
 | 通話摘要 | 通話結束幾秒後：誰、什麼事、AI 怎麼回、你要處理什麼，以及連結。 | `summary` |
 | 通話中插播未接 | 通話中又有第二通打進來，手機把它拒接了（對方聽到忙線）。知道號碼的話記得回電。 | `call_waiting` |
@@ -677,6 +678,7 @@ smtps://you@example.com@smtp.example.com:465    一連線就走 TLS
 | `event` | 什麼時候 | `data` |
 |---|---|---|
 | `incoming` | 電話被接起來 | `caller_id`、`device`、`time` |
+| `outgoing` | Bageo 自己撥出的電話開始響鈴 | `caller_id`（撥出的號碼）、`device`、`time` |
 | `blocked` | 黑名單上的號碼打來 | `caller_id`、`device`、`time`、`reason`、`declined`（`true`：響鈴時拒接；`false`：接起來播語音） |
 | `summary` | 通話結束幾秒後 | `caller_id`、`device`、`time`、`summary`、`contact`（聯絡人名字，不是聯絡人就是空字串） |
 | `call_waiting` | 通話中第二通打進來被拒接 | `caller_id`、`device`、`time`、`sim_country` |
@@ -715,3 +717,5 @@ POST /calls/api/notify/send        {"title": "Garage", "body": "Door left open"}
 | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` | Telegram Bot；預約卡片也是由它送出。控制台裡有同一個 Bot 和聊天時，不會重複送。 |
 | `NOTIFY_WEBHOOK_URL` | 上面的 [JSON Webhook](#webhook-json)，不帶權杖 |
 | `NOTIFY_GATEWAY_URL` + `NOTIFY_GATEWAY_TAG` | Apprise API 的基底網址；訊息送到 `<URL>/notify/<tag>`，標籤留空時是 `normal` |
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

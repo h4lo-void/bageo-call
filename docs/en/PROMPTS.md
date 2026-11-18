@@ -345,6 +345,58 @@ lines of the **built-in** prompt. It works with your own prompt too:
 So keep long stalling scripts out of your prompt, and do not tell it to ask for
 the caller's staff ID or proof: scammers who feel found out hang up at once.
 
+## Shorter prompts by region, languages and call situations
+
+Bageo trims what the AI is told on each call, so replies stay as fast. None of this needs a setting.
+
+**By SIM region.** Each call carries only the local habits of the region of the SIM that took it (the *Language* setting when the SIM is not known), such as where couriers leave parcels, how times and numbers are repeated back and which scams are common there. The region is looked up from a table while the phone rings, so nothing waits. The region only sets the language the AI opens in; it never limits the language the caller can speak.
+
+**Only languages Gemini supports.** The AI speaks only the [languages Gemini Live supports](https://firebase.google.com/docs/ai-logic/live-api/limits-and-specs).
+
+- A caller who speaks another supported language (English, Japanese, Thai…) is answered in it, whatever the SIM or your *Language* setting.
+- Its Chinese is always Mandarin. A caller in Taiwanese, Hakka, Cantonese or another dialect Gemini does not speak is understood as far as the model can and answered in Mandarin; the AI never puts on the dialect. Hong Kong and Macau SIMs answer in Mandarin too.
+- The appointment rules start short. The full steps are added once the caller brings up a time.
+
+**By what the call is about.** For an ordinary call Bageo works out what it is about and gives the AI one short hint in the pause after it finishes a sentence, so nothing slows down. A hint is sent once per kind of call per call, and never while a sales or scam caller is being stalled.
+
+- **Courier:** brief. For cash on delivery it asks for the amount and the sender and pays no large sum.
+- **Your bank checking a charge:** repeats the amount, shop and time back, says neither that it was you nor that it was not, agrees to no card block or hold, and ends with "I'll call the official line myself later".
+- **Important notice:** hears it all, asks for one missing item at a time (unit, deadline, call-back number) and repeats the key figures.
+- **Setting a time:** welcomes it and says it will confirm later. With appointments switched on, it notes the date and time and repeats them.
+- **Family or friend chat:** relaxed, no list of questions.
+- **Wrong number:** says so briefly and never gives your name.
+
+**Sales and scam calls.** Once a call is judged sales or scam, Stall Mode loads only the script for its kind:
+
+| Kind | What the AI does |
+|---|---|
+| Investment, insurance, loan or credit | Keen customer: torn between two plans, miscounts a figure, fumbles the app and asks for step-by-step help. |
+| Fake official, bank or store | Keen and worried: gets a step wrong, cannot find the screen and asks them to start again. |
+| Debt collection | Puzzled but polite: asks which debt and which firm, and admits none. |
+| Harassment | Calm and slow: the line keeps breaking up, mishears a word and retells it a bit wrong. |
+| Anything else | The full stalling instructions. |
+
+It sounds keen at first, then makes one move per turn and never the same one twice in a row. When the caller says the call is ending or says goodbye, it throws out one last line: "wait, one more question". The scam word list also covers Taiwan "cancel the installment" ATM calls, Japan ATM tax refunds, Korean prosecutor "safe account" calls, US IRS and Medicare gift-card calls, and European customs fee links and TAN codes.
+
+**Ending a call.** Bageo knows how people announce the end ("I won't keep you") and say goodbye in the nine languages plus Cantonese, Thai, Vietnamese and Indonesian, and hangs up only when the caller's latest words close the call (Cantonese is only listened for; the AI answers in Mandarin).
+
+- A greeting that also means goodbye (Korean 수고하십니다, Thai สวัสดีค่ะ) never ends a call at the start. Later it counts only once the business is done.
+- Short agreements in any language (なるほど, Genau, Vale) do not interrupt the AI.
+- The wait between the AI's goodbye and hanging up depends on the region:
+
+| Wait | Where |
+|---|---|
+| 1.2 s | Mainland China, Malaysia, Singapore |
+| 1.3 s | Hong Kong, Macau |
+| 1.4 s | Germany, Austria, German-speaking Switzerland |
+| 1.5 s | Taiwan, Korea, the US, Canada, the UK, Ireland, Australia, New Zealand, India, Thailand, Vietnam, Indonesia, the Philippines and others |
+| 1.6 s | Spanish-speaking countries, France, Belgium, Portugal, Brazil, French-speaking Switzerland |
+| 2.5 s | Japan |
+
+A wait you set yourself wins; see `goodbye_hangup_delay_ms` in [Settings](SETTINGS.md). AI errands end as before.
+
+**AI errands.** Besides the task, an errand's script carries a short block (up to 300 characters): your answers to the questions Bageo asked before dialing, the order in which you would give way (if 7:30 is full, 8:30) and the polite phrases of the place called. The questions come from the check described under `POST /calls/api/errands/preflight` in the [API](API.md).
+
 ## What you cannot change
 
 Bageo appends these to every prompt, built-in or your own:
@@ -422,3 +474,5 @@ to 8 is fine too").
 - Change one thing at a time, then call again.
 - If the AI does something odd, find the sentence in the prompt that allowed it
   rather than adding a new "never do X" line.
+
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
