@@ -134,6 +134,14 @@ impl CallLanguage {
         if ai == call || followed(self.caller_last) || followed(self.pending) {
             return None;
         }
+        // Close Latin languages share short words (a Spanish line can score a
+        // point of Portuguese): a drift between them needs a clear margin.
+        if crate::urgency::is_latin_lang(ai)
+            && crate::urgency::is_latin_lang(call)
+            && crate::urgency::latin_margin(said, ai, call) < 2
+        {
+            return None;
+        }
         if !can_tell || self.drift_notes >= DRIFT_NOTES_MAX {
             return None;
         }
@@ -248,3 +256,21 @@ mod tests {
     }
 }
 
+
+#[cfg(test)]
+mod close_latin_languages {
+    use super::*;
+
+    #[test]
+    fn a_short_line_of_the_call_language_is_no_drift_but_a_clear_other_one_is() {
+        let mut es = CallLanguage::new(Lang::Es, Lang::Es);
+        assert_eq!(es.ai_turn("Sí, soy yo. Puedes dejarlo en la portería.", true), None);
+        assert!(es.ai_turn("Olá, não estou em casa hoje, você pode deixar com o porteiro, tá bom?", true).is_some());
+        let mut en = CallLanguage::new(Lang::En, Lang::En);
+        assert_eq!(en.ai_turn("Sure, just leave it with the front desk, merci.", true), None);
+        let mut de = CallLanguage::new(Lang::De, Lang::De);
+        assert_eq!(de.ai_turn("Ja, das ist mein Paket, bitte beim Nachbarn abgeben.", true), None);
+        let mut fr = CallLanguage::new(Lang::Fr, Lang::Fr);
+        assert_eq!(fr.ai_turn("Oui, c'est moi, vous pouvez le laisser chez le gardien.", true), None);
+    }
+}

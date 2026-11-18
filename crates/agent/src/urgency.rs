@@ -605,6 +605,27 @@ pub fn unlisted_language(said: &str) -> bool {
 /// The Latin language with the most common words and letters in `text`, and
 /// its score; None when no language scores.
 fn latin_scores(text: &str) -> Option<(Lang, i32)> {
+    let (langs, score) = latin_score_table(text);
+    let (best, top) = score.iter().enumerate().max_by_key(|(_, s)| **s)?;
+    (*top > 0).then_some((langs[best], *top))
+}
+
+/// How much more a text reads as `lang` than as `other` (their common words
+/// and letters, [latin_score_table]); 0 for languages not in the table. Close
+/// languages share words (`en`, `la`, `no`): a short Spanish line can score a
+/// point of Portuguese, so a switch between them needs a clear margin.
+pub fn latin_margin(text: &str, lang: Lang, other: Lang) -> i32 {
+    let (langs, score) = latin_score_table(text);
+    let of = |l: Lang| langs.iter().position(|x| *x == l).map_or(0, |i| score[i]);
+    of(lang) - of(other)
+}
+
+/// The Latin-script languages [latin_scores] tells apart.
+pub fn is_latin_lang(lang: Lang) -> bool {
+    matches!(lang, Lang::En | Lang::Es | Lang::Fr | Lang::De | Lang::Pt)
+}
+
+fn latin_score_table(text: &str) -> ([Lang; 5], [i32; 5]) {
     const WORDS: [(Lang, &[&str]); 5] = [
         (Lang::En, &["the", "and", "is", "are", "was", "i", "i'm", "you", "he", "she", "it", "to", "my", "his", "her", "in", "on", "at", "of", "just", "there", "has", "been", "have", "need", "we", "our", "someone", "with", "for", "they're", "it's", "get", "back", "call", "whenever", "so", "what", "this", "that", "your", "can", "will"]),
         (Lang::Es, &["el", "la", "los", "las", "y", "en", "se", "mi", "me", "es", "está", "por", "una", "un", "lo", "le", "ya", "hay", "del", "al", "muy", "con", "no", "estoy", "nos"]),
@@ -641,8 +662,7 @@ fn latin_scores(text: &str) -> Option<(Lang, i32)> {
             _ => {}
         }
     }
-    let (best, top) = score.iter().enumerate().max_by_key(|(_, s)| **s)?;
-    (*top > 0).then_some((WORDS[best].0, *top))
+    (WORDS.map(|(l, _)| l), score)
 }
 
 /// The language's name for an instruction to the model.
