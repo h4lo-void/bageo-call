@@ -16,9 +16,9 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  # Run by hand (Actions → Release → Run workflow) to build only the phone
-  # module, signed like a release, without publishing anything: for trying a
-  # build on a phone before tagging. Download it from the run's artifacts.
+  # Run by hand (Actions → Release → Run workflow) to build the same full
+  # downloads and the signed phone module without publishing anything: for
+  # trying a build before tagging. Download them from the run's artifacts.
   workflow_dispatch:
 
 permissions:
@@ -27,7 +27,6 @@ permissions:
 jobs:
   agent:
     name: agent ${{ matrix.name }}
-    if: github.event_name == 'push'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -55,7 +54,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          dir="bageo-call-${GITHUB_REF_NAME#v}-${{ matrix.name }}"
+          # A tag names the version; a build by hand is the version in
+          # Cargo.toml and the commit it was built from.
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)-${GITHUB_SHA::7}"
+          fi
+          dir="bageo-call-$version-${{ matrix.name }}"
           mkdir -p "dist/$dir"
           cp "target/release/${{ matrix.exe }}" "dist/$dir/"
           cp -R assets docs LICENSES "dist/$dir/"
