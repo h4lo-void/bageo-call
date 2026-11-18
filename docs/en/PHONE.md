@@ -86,6 +86,7 @@ handset. All of this can be switched off from the app or the console (see
    | Make Bageo the call screening app | **Set**. |
    | Let Bageo control Do Not Disturb | **Open settings** and allow it. |
    | Do not let Android put Bageo to sleep | **Allow**, so Android does not stop the service. |
+   | Plug into the computer by USB to pair | Turn on USB debugging and plug the phone into the computer running Bageo once; after that it also connects over Wi-Fi. |
 
    When every step is done the list folds away, and once the phone is
    connected to the computer the card says *The AI is answering your calls*.

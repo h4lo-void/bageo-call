@@ -25,7 +25,7 @@
     <string name="st_normal">通常のスマホ：着信音が普通に鳴ります</string>
     <string name="st_normal_d">AI は電話に出ません。普通のスマホと同じように自分で出られます。下のスイッチをオンにすると、また AI が出るようになります。</string>
     <string name="st_offline">まだパソコンにつながっていません</string>
-    <string name="st_offline_d">パソコンで Bageo が動いていて、スマホが USB でつながっているか確認してください（Wi-Fi の場合は「詳細設定」でアドレスを設定）。つながるまで、AI は相手と話せません。</string>
+    <string name="st_offline_d">パソコンで Bageo が動いていて、スマホが USB でつながっているか、同じ Wi-Fi にあるか確認してください（最初は一度 USB でつないでペアリングが必要です）。</string>
     <string name="st_steps">未完了の設定ステップ：%1$d</string>
     <string name="st_steps_d">AI が電話に出られるように、下の設定ステップを済ませてください。</string>
     <string name="st_service_off">応答サービスが動いていません</string>
@@ -72,6 +72,9 @@
     <string name="step_dnd_desc">AI が電話に出ている間、スマホを静かに保ちます。</string>
     <string name="step_battery_title">Bageo をスリープさせない</string>
     <string name="step_battery_desc">省電力のために Bageo が止められて電話を逃すのを防ぎます。</string>
+    <string name="step_pair_title">最初はパソコンに USB でつないでペアリング</string>
+    <string name="step_pair_ok">パソコンとペアリング済みです。USB ケーブルを抜いても Wi-Fi でつながります。</string>
+    <string name="step_pair_missing">最初は USB デバッグをオンにして、パソコンに USB ケーブルでつないでください。一度ペアリングすれば、抜いたあとも Wi-Fi でつながります。</string>
     <string name="btn_allow">許可</string>
     <string name="btn_set">設定する</string>
     <string name="btn_open_settings">設定を開く</string>

@@ -25,7 +25,7 @@
     <string name="st_normal">일반 휴대전화: 전화가 평소처럼 울립니다</string>
     <string name="st_normal_d">AI가 전화를 받지 않습니다. 일반 휴대전화처럼 직접 받으면 됩니다. 아래 스위치를 켜면 다시 AI가 받습니다.</string>
     <string name="st_offline">아직 컴퓨터에 연결되지 않았습니다</string>
-    <string name="st_offline_d">컴퓨터에서 Bageo가 실행 중이고 휴대전화이 USB로 연결되어 있는지 확인하세요(Wi-Fi는 \'고급\'에서 주소 설정). 연결되기 전에는 AI가 상대방과 이야기할 수 없습니다.</string>
+    <string name="st_offline_d">컴퓨터에서 Bageo가 실행 중이고, 휴대전화가 USB로 연결되어 있거나 같은 Wi-Fi에 있는지 확인하세요(처음에는 USB로 한 번 연결해 페어링해야 합니다).</string>
     <string name="st_steps">남은 설정 단계: %1$d개</string>
     <string name="st_steps_d">AI가 전화를 받을 수 있도록 아래 설정 단계를 마치세요.</string>
     <string name="st_service_off">응답 서비스가 실행되고 있지 않습니다</string>
@@ -72,6 +72,9 @@
     <string name="step_dnd_desc">AI가 전화를 받는 동안 휴대전화을 조용하게 유지합니다.</string>
     <string name="step_battery_title">Bageo가 절전 상태가 되지 않게 하기</string>
     <string name="step_battery_desc">배터리 절약 때문에 Bageo가 멈춰 전화를 놓치는 일을 막습니다.</string>
+    <string name="step_pair_title">처음 한 번 컴퓨터에 USB로 연결해 페어링</string>
+    <string name="step_pair_ok">컴퓨터와 페어링되었습니다. USB 케이블을 뽑아도 Wi-Fi로 연결됩니다.</string>
+    <string name="step_pair_missing">처음에는 USB 디버깅을 켜고 컴퓨터에 USB 케이블로 연결하세요. 한 번 페어링하면 선을 뽑아도 Wi-Fi로 연결됩니다.</string>
     <string name="btn_allow">허용</string>
     <string name="btn_set">설정</string>
     <string name="btn_open_settings">설정 열기</string>

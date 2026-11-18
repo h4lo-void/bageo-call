@@ -25,7 +25,7 @@
     <string name="st_normal">Teléfono normal: las llamadas suenan como siempre</string>
     <string name="st_normal_d">La IA no contesta. Contestas tú, como en cualquier teléfono. Activa el interruptor de abajo para que la IA vuelva a contestar.</string>
     <string name="st_offline">Todavía no está conectado al ordenador</string>
-    <string name="st_offline_d">Comprueba que Bageo está abierto en el ordenador y que el teléfono está conectado por USB (o pon una dirección Wi-Fi en Avanzado). Hasta entonces, la IA no puede hablar con quien llama.</string>
+    <string name="st_offline_d">Comprueba que Bageo está abierto en el ordenador y que el teléfono está conectado por USB o en el mismo Wi-Fi (la primera vez hay que conectarlo por USB para emparejarlo).</string>
     <string name="st_steps">Pasos de configuración pendientes: %1$d</string>
     <string name="st_steps_d">Completa los pasos de abajo para que la IA pueda contestar.</string>
     <string name="st_service_off">El servicio de respuesta no está en marcha</string>
@@ -72,6 +72,9 @@
     <string name="step_dnd_desc">Mantiene el teléfono en silencio mientras contesta la IA.</string>
     <string name="step_battery_title">Que Android no duerma a Bageo</string>
     <string name="step_battery_desc">Evita que Android cierre Bageo para ahorrar batería y se pierdan llamadas.</string>
+    <string name="step_pair_title">Conectar al ordenador por USB la primera vez</string>
+    <string name="step_pair_ok">Emparejado con el ordenador. Al quitar el cable USB seguirá conectado por Wi-Fi.</string>
+    <string name="step_pair_missing">La primera vez, activa la depuración por USB y conecta el teléfono por cable al ordenador. Después también se conectará por Wi-Fi.</string>
     <string name="btn_allow">Permitir</string>
     <string name="btn_set">Establecer</string>
     <string name="btn_open_settings">Abrir ajustes</string>

@@ -25,7 +25,7 @@
     <string name="st_normal">一般手機：來電會正常響</string>
     <string name="st_normal_d">AI 不會接電話，你可以像一般手機一樣自己接。打開下面的開關，就換回 AI 接聽。</string>
     <string name="st_offline">還沒連上電腦</string>
-    <string name="st_offline_d">請確認電腦上的 Bageo 開著，手機用 USB 線接著電腦（或在「進階」設定 Wi-Fi 位址）。連上之前，AI 沒辦法跟來電的人講話。</string>
+    <string name="st_offline_d">請確認電腦上的 Bageo 開著，而且手機用 USB 線接著電腦，或和電腦在同一個 Wi-Fi（第一次要先用 USB 線接電腦配對）。</string>
     <string name="st_steps">還有 %1$d 個設定步驟沒完成</string>
     <string name="st_steps_d">完成下面的設定步驟，AI 才能接電話。</string>
     <string name="st_service_off">接聽服務沒有在執行</string>
@@ -72,6 +72,9 @@
     <string name="step_dnd_desc">讓手機在 AI 接電話時保持安靜。</string>
     <string name="step_battery_title">不要讓 Bageo 進入休眠</string>
     <string name="step_battery_desc">避免 Android 為了省電把 Bageo 停掉而漏接電話。</string>
+    <string name="step_pair_title">插入電腦完成第一次配對</string>
+    <string name="step_pair_ok">已與電腦配對。拔掉 USB 線後也能用 Wi-Fi 連線。</string>
+    <string name="step_pair_missing">第一次請開啟 USB 偵錯，用 USB 線接到電腦配對；之後拔掉線也能用 Wi-Fi 連線。</string>
     <string name="btn_allow">允許</string>
     <string name="btn_set">設定</string>
     <string name="btn_open_settings">開啟設定</string>
