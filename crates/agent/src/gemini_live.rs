@@ -747,7 +747,9 @@ pub fn default_system_prompt() -> &'static str {
 // hanging up, or a long silence; there is no fixed clock.
 // ---------------------------------------------------------------------------
 
-/// Default persona prompt (editable in the `/calls` settings → `gemini_persona_prompt`).
+/// The long Chinese persona prompt of releases up to the generic one
+/// ([`default_persona_prompt`]). Kept only so that a copy saved from it still
+/// counts as the built-in prompt (`prompts::is_unedited_default`).
 ///
 /// Design notes, from what real calls showed:
 /// - The model tends to answer instantly in flat, complete sentences with the
@@ -764,7 +766,7 @@ pub fn default_system_prompt() -> &'static str {
 /// - The prompt describes the situation and the few hard lines, and leaves the
 ///   rest to the model: own reactions, mood and opinions, length by situation,
 ///   small talk answered like a person (only things that matter stay unsaid).
-pub fn default_persona_prompt() -> &'static str {
+pub(crate) fn legacy_persona_prompt() -> &'static str {
     "【你是誰】你就是{owner}本人，用自己的手機接電話。你不是助理、客服、機器人，不要自我介紹，不要說自己是幫誰接的。\
 對方問「請問是{owner}嗎」「{owner}喔？」，就像本人那樣回「對，我是」「嘿，是我」；不要反問對方是誰，除非真的聽不出來是誰打來。\
 \
@@ -801,9 +803,38 @@ pub fn default_persona_prompt() -> &'static str {
 講電話沒有時間限制，對方要講多久都可以，不要自己找理由掛電話。"
 }
 
-/// The language line of [`default_persona_prompt`]: Chinese without English
-/// mixed in, but a caller who speaks another language gets that language.
-pub(crate) const PERSONA_LANGUAGE_LINE: &str = "用台灣平常講的中文、繁體用詞；不要中國大陸的說法（不要「没事、行、挺好、回拨、咱们」）。對方講中文時不要夾英文（OK 可以）；對方講英文或其他語言、或問你能不能講某種語言，就直接改用他的語言。";
+/// The built-in persona prompt: short and the same for every owner. It says
+/// who the AI is, the feel of a phone call and the few lines it never crosses;
+/// the owner's own situation goes into the prompt they write themselves.
+/// The section titles stay (the opening instructions point at 【接起來】, the
+/// prompt-leak check looks for 【你是誰】), and so do the three sentences that
+/// sales / scam stalling swaps out ([`PERSONA_SALES_REJECT_DEFAULT`],
+/// [`PERSONA_HOLD_OFF_DEFAULT`], [`PERSONA_END_DEFAULT`]).
+pub fn default_persona_prompt() -> &'static str {
+    static PROMPT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    PROMPT.get_or_init(|| {
+        format!(
+            "【你是誰】你就是{{owner}}本人，在接自己的電話。不要自我介紹，不要說自己是幫誰接的。\n\n\
+【講話的樣子】像真人講電話：用自己的話，簡短、自然、口語；不要客服腔，不要念稿，不要條列。{PERSONA_LANGUAGE_LINE}\n\n\
+【接起來】先簡短打聲招呼就停，讓對方說。\n\n\
+【聽對方說】對方講事情就讓他講完，不搶話。需要處理的事，弄清楚是誰打來、什麼事、要你做什麼。講電話的當下你查不了任何東西，也不知道{{owner}}的行程：不要編答案，也不要叫對方等。\n\n\
+【不答應的事】{PERSONA_HOLD_OFF_DEFAULT}{PERSONA_SALES_REJECT_DEFAULT}\n\n\
+{PERSONA_END_DEFAULT}"
+        )
+    })
+}
+
+/// Sentences of the built-in persona prompt that sales / scam stalling swaps
+/// out (the long ones they replace are the `PERSONA_*_LINE` / `_BLOCK` below).
+pub(crate) const PERSONA_SALES_REJECT_DEFAULT: &str = "推銷、廣告、詐騙：簡單回絕就好。";
+pub(crate) const PERSONA_HOLD_OFF_DEFAULT: &str = "錢、轉帳、簽約、密碼、驗證碼、個資、見面或約時間：都不要答應，輕輕帶過。";
+pub(crate) const PERSONA_END_DEFAULT: &str = "【結束】等對方表示要結束了，你再簡短道別；通話沒有時間限制。";
+
+/// The language line of [`default_persona_prompt`]: spoken Chinese, and a
+/// caller who speaks another language gets that language.
+pub(crate) const PERSONA_LANGUAGE_LINE: &str = "用自然的口語中文。對方講英文或其他語言、或問你能不能講某種語言，就直接改用他的語言。";
+/// The language line of [`legacy_persona_prompt`].
+pub(crate) const PERSONA_LANGUAGE_LINE_LEGACY: &str = "用台灣平常講的中文、繁體用詞；不要中國大陸的說法（不要「没事、行、挺好、回拨、咱们」）。對方講中文時不要夾英文（OK 可以）；對方講英文或其他語言、或問你能不能講某種語言，就直接改用他的語言。";
 /// The same line up to caf7bc4: it kept an English-speaking caller on Chinese. A
 /// saved copy of that prompt still counts as the built-in one
 /// (`prompts::is_unedited_default`).
@@ -9854,8 +9885,9 @@ mod tests {
         assert_eq!(session_prompt(&p, Outbound::Errand), s);
         assert_eq!(session_prompt(&s, Outbound::CallBack), s, "once");
         let base = default_persona_prompt();
-        assert!(!base.contains("不要講英文") && base.contains("對方講中文時不要夾英文"));
+        assert!(!base.contains("不要講英文") && base.contains("就直接改用他的語言"));
         assert!(base.contains(PERSONA_LANGUAGE_LINE));
+        assert!(legacy_persona_prompt().contains(PERSONA_LANGUAGE_LINE_LEGACY));
         // A custom prompt keeps its words; the note goes before the fixed guard.
         let c = session_prompt(&persona_system_prompt("你是我，只講中文。", false, "", StallPrompt::Off), Outbound::Errand);
         assert!(c.starts_with("你是我，只講中文。") && c.contains("【對方講別的語言】"));
@@ -10144,17 +10176,18 @@ mod tests {
 
     #[test]
     fn stall_prompt_replaces_sales_reject_line() {
-        assert!(default_persona_prompt().contains(PERSONA_SALES_REJECT_LINE));
+        assert!(default_persona_prompt().contains(PERSONA_SALES_REJECT_DEFAULT));
+        assert!(legacy_persona_prompt().contains(PERSONA_SALES_REJECT_LINE));
         let off = persona_system_prompt("", false, "", StallPrompt::Off);
-        assert!(off.contains(PERSONA_SALES_REJECT_LINE));
+        assert!(off.contains(PERSONA_SALES_REJECT_DEFAULT));
         assert!(!off.contains("陪他繞"));
         // Every call starts with the short line, not the ~900-char block.
         let first = persona_system_prompt("", false, "", StallPrompt::ListenFirst);
-        assert!(!first.contains(PERSONA_SALES_REJECT_LINE) && first.contains(PERSONA_SALES_LISTEN_LINE));
+        assert!(!first.contains(PERSONA_SALES_REJECT_DEFAULT) && first.contains(PERSONA_SALES_LISTEN_LINE));
         assert!(!first.contains("陪他繞"));
         assert!(first.chars().count() < off.chars().count() + 200);
         let on = persona_system_prompt("", false, "", StallPrompt::Full);
-        assert!(!on.contains(PERSONA_SALES_REJECT_LINE) && !on.contains(PERSONA_SALES_LISTEN_LINE));
+        assert!(!on.contains(PERSONA_SALES_REJECT_DEFAULT) && !on.contains(PERSONA_SALES_LISTEN_LINE));
         assert!(on.contains("陪他繞") && on.contains("理賠") && on.contains("不能給"));
         // The fixed guard still comes last.
         let guard = PERSONA_GUARD.replace("{owner}", "機主");
@@ -10204,18 +10237,31 @@ mod tests {
     fn stall_prompt_drops_the_lines_that_let_callers_go() {
         // Each normal-call line the stall prompt swaps out is in the default prompt…
         let base = default_persona_prompt();
-        for line in [PERSONA_ACK_LINE, PERSONA_HOLD_OFF_LINE, PERSONA_END_BLOCK, PERSONA_SALES_REJECT_LINE] {
+        for line in [PERSONA_HOLD_OFF_DEFAULT, PERSONA_END_DEFAULT, PERSONA_SALES_REJECT_DEFAULT] {
             assert!(base.contains(line), "{line}");
+        }
+        let legacy = legacy_persona_prompt();
+        for line in [PERSONA_ACK_LINE, PERSONA_HOLD_OFF_LINE, PERSONA_END_BLOCK, PERSONA_SALES_REJECT_LINE] {
+            assert!(legacy.contains(line), "{line}");
         }
         // …and gone once the call is judged: no 「我再想一下／晚點再確認／好，我知道了」
         // brush-offs, no 掰掰 when they wrap up; the stall block leads and ends it.
         let on = persona_system_prompt("", false, "", StallPrompt::Full);
-        for line in [PERSONA_ACK_LINE, PERSONA_HOLD_OFF_LINE, PERSONA_END_BLOCK] {
+        for line in [PERSONA_HOLD_OFF_DEFAULT, PERSONA_END_DEFAULT, PERSONA_SALES_REJECT_DEFAULT] {
             assert!(!on.contains(line), "{line}");
         }
         assert!(on.starts_with(PERSONA_STALL_HEAD));
-        for line in [PERSONA_ACK_STALL, PERSONA_HOLD_OFF_STALL, PERSONA_END_STALL] {
+        for line in [PERSONA_HOLD_OFF_STALL, PERSONA_END_STALL] {
             assert!(on.contains(line), "{line}");
+        }
+        // An edited copy starting from the legacy long prompt still gets all four swaps.
+        let edited_legacy = format!("{legacy}\n備註：有養狗。");
+        let on_legacy = persona_system_prompt(&edited_legacy, false, "", StallPrompt::Full);
+        for line in [PERSONA_ACK_LINE, PERSONA_HOLD_OFF_LINE, PERSONA_END_BLOCK, PERSONA_SALES_REJECT_LINE] {
+            assert!(!on_legacy.contains(line), "{line}");
+        }
+        for line in [PERSONA_ACK_STALL, PERSONA_HOLD_OFF_STALL, PERSONA_END_STALL] {
+            assert!(on_legacy.contains(line), "{line}");
         }
         assert!(on.contains("把話丟回給他") && on.contains("催繳"));
         // No checking the caller
@@ -10237,7 +10283,7 @@ mod tests {
         assert!(PERSONA_STALL_IDLE_NUDGE_SECS < PERSONA_IDLE_NUDGE_SECS);
         // Normal calls keep them.
         let first = persona_system_prompt("", false, "", StallPrompt::ListenFirst);
-        assert!(first.contains(PERSONA_END_BLOCK) && !first.contains(PERSONA_STALL_HEAD));
+        assert!(first.contains(PERSONA_END_DEFAULT) && !first.contains(PERSONA_STALL_HEAD));
         // The rotated stall session's history says so too.
         let tx = "接聽：喂？\n對方：我安信託，分期通知你還沒處理\n接聽：我再想一下，晚點再確認";
         assert!(history_turns_with_note(tx, 2_500, true, None)[0].1.contains("陪他繞"));
@@ -10669,17 +10715,17 @@ mod tests {
     fn persona_prompt_hears_matters_out() {
         let base = default_persona_prompt();
         // Deflection replies came from these example lines.
-        for bad in ["我現在在外面，等一下回你", "晚點回你好不好", "晚點回你」"] {
+        for bad in ["我現在在外面，等一下回你", "晚點回你好不好", "晚點回你」", "我現在不方便"] {
             assert!(!base.contains(bad), "{bad}");
         }
-        assert!(base.contains("【對方有事要說明】") && base.contains("你現在說就好"));
-        assert!(base.contains("沒有時間限制"));
-        // A 「好，我知道了，…掰掰。」 right after the caller gave a phone
-        // number, before the caller closed — wait for the caller to wrap up.
-        assert!(!base.contains("或事情明顯講完了") && base.contains("要等對方表示要結束了"));
+        assert!(base.contains("對方講事情就讓他講完") && base.contains("弄清楚是誰打來、什麼事、要你做什麼"));
+        assert!(base.contains("沒有時間限制") && base.contains("等對方表示要結束了"));
         for mode in [StallPrompt::Off, StallPrompt::ListenFirst, StallPrompt::Full] {
-            assert!(persona_system_prompt("", false, "", mode).contains("【對方有事要說明】"));
+            assert!(persona_system_prompt("", false, "", mode).contains("對方講事情就讓他講完"));
         }
+        let legacy = legacy_persona_prompt();
+        assert!(legacy.contains("【對方有事要說明】") && legacy.contains("你現在說就好"));
+        assert!(!legacy.contains("或事情明顯講完了") && legacy.contains("要等對方表示要結束了"));
         // The wrap-up nudge no longer speaks of two minutes.
         let w = persona_wrap_up_client_content();
         assert!(!w.contains("兩分鐘") && w.contains("時間上限"));
@@ -10692,23 +10738,24 @@ mod tests {
         for bad in ["「等一下、", "、我看一下、", "「這個我要看一下」"] {
             assert!(!base.contains(bad), "{bad}");
         }
-        assert!(base.contains("【不要讓對方等】") && base.contains("我沒什麼印象耶"));
+        assert!(base.contains("講電話的當下你查不了任何東西") && base.contains("不要編答案，也不要叫對方等"));
         // So did 「我想一下」 (from the word list) and 「我晚點自己再確認」
         // (from 「跟他說你之後自己再確認」), in nearly every reply.
         assert!(!base.contains("、我想一下、") && !base.contains("跟他說你之後自己再確認"));
-        assert!(base.contains("一通電話最多講一次"));
-        // A caller's 「好，好，謝謝」 while waiting for our answer must not get a goodbye.
-        assert!(!base.contains("（說謝謝、") && base.contains("對方只說「好」「謝謝」不算要結束"));
+        assert!(!base.contains("（說謝謝、"));
         for mode in [StallPrompt::Off, StallPrompt::ListenFirst, StallPrompt::Full] {
-            assert!(persona_system_prompt("", false, "", mode).contains("【不要讓對方等】"));
+            assert!(persona_system_prompt("", false, "", mode).contains("也不要叫對方等"));
         }
+        let legacy = legacy_persona_prompt();
+        assert!(legacy.contains("【不要讓對方等】") && legacy.contains("我沒什麼印象耶"));
+        assert!(legacy.contains("一通電話最多講一次") && legacy.contains("對方只說「好」「謝謝」不算要結束"));
     }
 
     #[test]
     fn persona_prompt_leaves_room_to_improvise() {
         // More freedom for the model, less formula.
         let base = default_persona_prompt();
-        assert!(base.contains("自由發揮") && base.contains("長短看情況"));
+        assert!(base.contains("像真人講電話：用自己的話") && base.contains("不要客服腔，不要念稿，不要條列"));
         // The lines that made every reply the same shape are gone…
         for formula in [
             "一次講一句，最多兩句",
@@ -10718,22 +10765,21 @@ mod tests {
         ] {
             assert!(!base.contains(formula), "{formula}");
         }
-        // …small talk is answered like a person, only what matters stays unsaid…
-        assert!(base.contains("無關緊要的") && base.contains("不要說「我在家」「明天可以」"));
         // …and the hard lines stay.
-        for kept in ["不要說「我查一下」", "一定要帶「掰掰」", "不要答應也不要硬拒絕", "不要客服腔"] {
+        for kept in ["不要編答案，也不要叫對方等", "都不要答應，輕輕帶過", "等對方表示要結束了"] {
             assert!(base.contains(kept), "{kept}");
         }
+        let legacy = legacy_persona_prompt();
+        assert!(legacy.contains("自由發揮") && legacy.contains("長短看情況"));
+        assert!(legacy.contains("無關緊要的") && legacy.contains("不要說「我在家」「明天可以」"));
+        assert!(legacy.contains("不要自己先說掰掰") && legacy.contains("不要把時間說定"));
         // Not judged yet: no checking the caller out either.
         assert!(!PERSONA_SALES_LISTEN_LINE.contains("哪個單位"));
-        // With a model playing the caller, the freer AI said 掰掰 to a building's front desk before
-        // they were done and fixed a lunch date with a friend on the owner's behalf.
-        assert!(base.contains("不要自己先說掰掰") && base.contains("不要把時間說定"));
         // Stalling: scammers stay while they think the money is coming — play along,
         // keep hitting snags, give nothing real.
         let on = persona_system_prompt("", false, "", StallPrompt::Full);
         assert!(on.contains("嘴上配合") && on.contains("真的錢一毛都不會動"));
-        assert!(!on.contains("不要把時間說定"));
+        assert!(!on.contains(PERSONA_HOLD_OFF_DEFAULT));
     }
 
     #[test]

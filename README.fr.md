@@ -151,7 +151,7 @@ Réserver une table, déplacer un rendez-vous, demander à un magasin s’il a u
   <img src="docs/images/languages.en.svg" width="900" alt="Bageo parle neuf langues : anglais, chinois traditionnel, chinois simplifié, japonais, coréen, espagnol, français, allemand et portugais. Chacune répond avec son propre bonjour.">
 </p>
 
-La voix de l’IA, les prompts intégrés, la console web, l’application du téléphone et les notifications existent en neuf langues. Sur un téléphone à double SIM, chaque SIM ouvre les appels dans sa propre langue, un appelant de l’étranger entend la langue de son pays, et si l’appelant change de langue en cours d’appel, l’IA suit. Les transcriptions gardent les mots d’origine, chaque ligne avec une traduction dans la langue de vos notifications. [En savoir plus sur les langues et la double SIM](docs/en/FEATURES.md#nine-languages-dual-sim-translated-transcripts)
+La voix de l’IA, les prompts intégrés (une base courte et générale que vous pouvez adapter à votre situation et à votre style), la console web, l’application du téléphone et les notifications existent en neuf langues. Sur un téléphone à double SIM, chaque SIM ouvre les appels dans sa propre langue, un appelant de l’étranger entend la langue de son pays, et si l’appelant change de langue en cours d’appel, l’IA suit. Les transcriptions gardent les mots d’origine, chaque ligne avec une traduction dans la langue de vos notifications. [En savoir plus sur les langues et la double SIM](docs/en/FEATURES.md#nine-languages-dual-sim-translated-transcripts)
 
 ## Comment ça marche
 
