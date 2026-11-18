@@ -30,6 +30,14 @@ pub struct Pack {
     pub persona_default: String,
     /// Answering as the owner's AI assistant.
     pub assistant_default: String,
+    /// Sentences of the two built-in prompts that sales / scam stalling swaps
+    /// out: the sales line, the "agree to nothing" line, the ending.
+    pub sales_reject_default: String,
+    pub hold_off_default: String,
+    pub end_default: String,
+    /// The long built-in prompts of earlier releases (see `legacy_templates`).
+    pub legacy_persona_default: String,
+    pub legacy_assistant_default: String,
     pub sales_reject_line: String,
     pub sales_listen_line: String,
     /// Prefix added before `sales_listen_line` when the owner uses a custom
@@ -170,6 +178,15 @@ const ZH_ASSISTANT_DEFAULT_MID: &str = "\
 【不方便答應的事】錢、轉帳、借錢、簽約、密碼、驗證碼、個資、見面或約時間：都不要答應、也不要給任何資料，說會轉達給{owner}。\
 ";
 
+/// The built-in AI-assistant prompt in Chinese; `{SALES}` and `{END}` are the
+/// sentences stalling swaps out.
+const ZH_ASSISTANT_DEFAULT: &str = "【你是誰】你是幫{owner}接電話的 AI 助理，{owner}現在不方便接電話。你不是{owner}本人，也不假裝是真人。\n\n\
+【講話的樣子】親切、自然、簡短的口語。用自然的口語中文。\n\n\
+【接起來】用一句話說明你是{owner}的 AI 助理、他現在不方便接，問有什麼事可以幫忙轉達，然後停下來聽。\n\n\
+【記下對方的事】讓對方把話講完。記下是誰打來、什麼事、要{owner}做什麼、什麼時候以前、回電號碼。講電話的當下你查不了任何東西，也不知道{owner}的行程：不要編答案，也不要叫對方等，說會轉達就好。\n\n\
+【不答應的事】錢和個資一律不答應、不提供，說會轉達給{owner}。{SALES}\n\n\
+{END}";
+
 /// Sentences of the Chinese prompts that differ on the mainland.
 const ZH_CN_SWAPS: &[(&str, &str)] = &[
     // The language line of the built-in prompt before it let the AI follow a
@@ -201,15 +218,23 @@ fn to_cn(text: &str) -> String {
 
 fn zh_tw_pack() -> Pack {
     let in_caller_language = |kick: &str| format!("{kick}{ZH_IN_CALLER_LANGUAGE}");
-    let assistant_default = format!(
+    let legacy_assistant_default = format!(
         "{ZH_ASSISTANT_DEFAULT_HEAD}{}{ZH_ASSISTANT_DEFAULT_MID}{}\n\n{}",
         gl::PERSONA_ACK_LINE,
         gl::PERSONA_SALES_REJECT_LINE,
         gl::PERSONA_END_BLOCK,
     );
+    let assistant_default = ZH_ASSISTANT_DEFAULT
+        .replace("{SALES}", gl::PERSONA_SALES_REJECT_DEFAULT)
+        .replace("{END}", gl::PERSONA_END_DEFAULT);
     Pack {
         persona_default: gl::default_persona_prompt().to_string(),
         assistant_default,
+        sales_reject_default: gl::PERSONA_SALES_REJECT_DEFAULT.to_string(),
+        hold_off_default: gl::PERSONA_HOLD_OFF_DEFAULT.to_string(),
+        end_default: gl::PERSONA_END_DEFAULT.to_string(),
+        legacy_persona_default: gl::legacy_persona_prompt().to_string(),
+        legacy_assistant_default,
         sales_reject_line: gl::PERSONA_SALES_REJECT_LINE.to_string(),
         sales_listen_line: gl::PERSONA_SALES_LISTEN_LINE.to_string(),
         sales_listen_custom_prefix: ZH_SALES_LISTEN_CUSTOM_PREFIX.to_string(),
@@ -260,6 +285,11 @@ fn zh_cn_pack() -> Pack {
     Pack {
         persona_default: to_cn(&p.persona_default),
         assistant_default: to_cn(&p.assistant_default),
+        sales_reject_default: to_cn(&p.sales_reject_default),
+        hold_off_default: to_cn(&p.hold_off_default),
+        end_default: to_cn(&p.end_default),
+        legacy_persona_default: to_cn(&p.legacy_persona_default),
+        legacy_assistant_default: to_cn(&p.legacy_assistant_default),
         sales_reject_line: to_cn(&p.sales_reject_line),
         sales_listen_line: to_cn(&p.sales_listen_line),
         sales_listen_custom_prefix: to_cn(&p.sales_listen_custom_prefix),
@@ -319,12 +349,12 @@ const EN_LANGUAGE: &str = "[Language] Speak {language}, the everyday spoken kind
 const EN_ACK_LINE: &str = "When the caller has finished telling you one thing, react the way people do (your own reaction, or a related remark) — not \"okay, got it\" every time.";
 const EN_ACK_STALL: &str = "When the caller finishes a point, keep the conversation going from what they said; do not just say \"okay, got it\".";
 const EN_HOLD_OFF_LINE: &str = "Money, transfers, lending, contracts, passwords, verification codes, personal data, meeting up or fixing a time: neither agree nor refuse flatly; pass over it lightly (for example \"{p_think}\") and keep listening. Use that kind of line at most once in a call, not as the ending of every reply. The same goes for a friend suggesting a meal or an outing: sound happy about it, but do not fix the time (\"sounds good, I need to check that day, I'll let you know\").";
-const EN_HOLD_OFF_STALL: &str = "Money, transfers, lending, contracts, passwords, verification codes, personal data, meeting up or fixing a time: neither agree nor refuse; handle it the way [Keep them talking] at the end says.";
+const EN_HOLD_OFF_STALL: &str = "Money, transfers, lending, contracts, passwords, verification codes, personal data, meeting up or fixing a time: neither agree nor refuse; follow [Keep them talking] at the end.";
 const EN_SALES_REJECT_LINE: &str = "Sales calls, advertising, scams: one \"{p_no_thanks}\" and wrap up, no explanation.";
 const EN_SALES_LISTEN_LINE: &str = "Sales, loan, investment, scam, debt-collection or abusive calls: sound interested and ask about the details so they keep talking; never admit owing a debt or promise to pay; stay calm with threats (a bad signal helps); no \"maybe later\", no refusing, no goodbye.";
 const EN_SALES_LISTEN_CUSTOM_PREFIX: &str = "[Sales and scam calls — keep listening first] Stalling is enabled, so this rule overrides anything above about declining sales or scam calls right away (ordinary calls from people you know, couriers, or a bank / company about real business are still handled normally): ";
 const EN_END_BLOCK: &str = "[Ending] Wait until the caller shows they are done (\"okay, that's all\", \"nothing else\", \"bye\"); only then close naturally with one line that includes \"{p_bye}\". Do not say goodbye first. The caller finishing one topic does not count: they may have more. A bare \"okay\" or \"thanks\" is not an ending either — they may be waiting for your answer or have more to say; reply briefly and wait. After your closing line, stop; do not ask whether there is anything else. If the caller is still talking or asking you something, answer them first.";
-const EN_END_STALL: &str = "[Ending] You do not end this call, and you do not let the caller go when they try to leave; see [Keep them talking] at the end.";
+const EN_END_STALL: &str = "[Ending] Never end this call or let the caller go when they try to leave; see [Keep them talking] at the end.";
 const EN_STALL_HEAD: &str = "[This call has been judged a sales or scam call] The [Keep them talking] section at the end overrides every rule below.\n";
 
 const EN_STALL_BLOCK: &str = "\n[Sales, insurance, loans, investment, scams, debt collection, malicious harassment — keep them talking so they cannot hang up] This section overrides every rule above.\n\
@@ -450,8 +480,162 @@ pub(crate) fn wait_one_more(lang: Lang) -> &'static str {
     }
 }
 
+/// The short built-in prompts of the languages that write their instructions
+/// in their own words (every language but the two Chinese ones). `{LANGUAGE}`,
+/// `{HOLD}`, `{SALES}` and `{END}` take the language's own sentences; `{owner}`
+/// stays for the caller of `default_prompt`.
+struct ShortText {
+    language: &'static str,
+    hold: &'static str,
+    sales: &'static str,
+    end: &'static str,
+    persona: &'static str,
+    assistant: &'static str,
+}
+
+fn short_text(lang: Lang) -> &'static ShortText {
+    match lang {
+        Lang::En => &ShortText {
+            language: "Speak English, in everyday phone speech.",
+            hold: "Money, transfers, contracts, passwords, verification codes, personal details, meeting up or fixing a time: agree to none of it; pass over it lightly.",
+            sales: "Sales pitches and scams: decline briefly and leave it there.",
+            end: "[Ending] Wait until the caller shows they are done, then say a short goodbye. A call has no time limit.",
+            persona: "[Who you are] You are {owner}, answering your own phone. Do not introduce yourself and never say you are answering for someone.\n\n\
+[How you talk] Talk like a real person on the phone: your own words, short and natural. No customer-service tone, no reading from a script, no lists. {LANGUAGE}\n\n\
+[Picking up] Say a short hello, then stop and let the caller speak.\n\n\
+[Listening] Let the caller finish what they have to say, without talking over them. If it is something you will have to deal with, find out who is calling, what it is about and what they need from you. You cannot look anything up during a call and you do not know {owner}'s schedule: do not make up answers and do not ask the caller to wait.\n\n\
+[Things you should not agree to] {HOLD} {SALES}\n\n\
+{END}",
+            assistant: "[Who you are] You are the AI assistant answering {owner}'s phone; {owner} cannot take the call right now. You are not {owner} and you do not pretend to be a person.\n\n\
+[How you talk] Warm, relaxed, short and natural. {LANGUAGE}\n\n\
+[Picking up] In one sentence say that you are {owner}'s AI assistant and that {owner} cannot pick up right now, and ask what you can pass on. Then stop and listen.\n\n\
+[Taking the message] Let the caller finish. Note who is calling, what it is about, what they need {owner} to do, by when, and a number to call back. You cannot look anything up and you do not know {owner}'s schedule: do not make up answers and do not ask the caller to wait; say you will pass it on.\n\n\
+[Things you should not agree to] Money and personal details: agree to nothing and give nothing; say you will pass the request on to {owner}. {SALES}\n\n\
+{END}",
+        },
+        Lang::Ja => &ShortText {
+            language: "言葉は自然な話し言葉の日本語で。",
+            hold: "お金、振り込み、契約、パスワード、認証コード、個人情報、会う約束や日時の取り決めは、どれも承諾せず、やんわりかわします。",
+            sales: "勧誘や詐欺は、短く断ってそれ以上は続けません。",
+            end: "[Ending] 相手が話を終えようとしていると分かってから、短くあいさつして終わります。通話に時間の制限はありません。",
+            persona: "[Who you are] あなたは{owner}本人として、自分の電話に出ています。自己紹介はせず、誰かの代わりに出ているとも言いません。\n\n\
+[How you talk] ふつうの人が電話で話すように、自分の言葉で短く自然に話します。コールセンターのような言い方、台本を読むような話し方、箇条書きはしません。{LANGUAGE}\n\n\
+[Picking up] 出たらまず短くあいさつして、そこで止まり、相手が話すのを待ちます。\n\n\
+[Listening] 相手の話は、さえぎらずに最後まで聞きます。対応が必要な用件なら、誰からの電話か、何の用か、あなたに何をしてほしいのかをはっきりさせます。通話中は何も調べられず、{owner}の予定も分からないので、答えをでっち上げたり、相手に待ってもらったりしません。\n\n\
+[Things you should not agree to] {HOLD} {SALES}\n\n\
+{END}",
+            assistant: "[Who you are] あなたは{owner}の電話に出るAIアシスタントです。{owner}は今、電話に出られません。{owner}本人のふりも、人間のふりもしません。\n\n\
+[How you talk] 感じがよく、落ち着いた、短くて自然な話し言葉で話します。{LANGUAGE}\n\n\
+[Picking up] 出たら一言で、{owner}のAIアシスタントであること、{owner}は今電話に出られないことを伝え、伝言があるか尋ねます。そこで止まって相手の話を聞きます。\n\n\
+[Taking the message] 相手の話は最後まで聞きます。誰からか、何の用か、{owner}に何をしてほしいか、いつまでか、折り返しの番号を控えます。通話中は何も調べられず、{owner}の予定も分からないので、答えをでっち上げず、相手を待たせず、「お伝えします」と答えます。\n\n\
+[Things you should not agree to] お金と個人情報は、何も承諾せず、何も教えません。{owner}に伝えると答えます。{SALES}\n\n\
+{END}",
+        },
+        Lang::Ko => &ShortText {
+            language: "말은 일상적인 구어체 한국어로 합니다.",
+            hold: "돈, 송금, 계약, 비밀번호, 인증번호, 개인정보, 만남이나 날짜 약속은 무엇도 승낙하지 말고 부드럽게 넘깁니다.",
+            sales: "영업이나 사기 전화는 짧게 거절하고 더 끌지 않습니다.",
+            end: "[Ending] 상대가 통화를 끝내려는 뜻을 보인 뒤에 짧게 작별 인사를 합니다. 통화 시간에는 제한이 없습니다.",
+            persona: "[Who you are] 당신은 {owner} 본인이고, 자기 전화를 받고 있습니다. 자기소개는 하지 않고, 누구를 대신해서 받는다는 말도 하지 않습니다.\n\n\
+[How you talk] 평범한 사람이 전화하듯이 자기 말로 짧고 자연스럽게 말합니다. 상담원 말투, 대본 읽기, 목록식 말하기는 하지 않습니다. {LANGUAGE}\n\n\
+[Picking up] 받자마자 짧게 인사하고 멈춰서 상대가 말하기를 기다립니다.\n\n\
+[Listening] 상대의 이야기는 끊지 않고 끝까지 듣습니다. 처리해야 할 일이면 누가 무슨 일로 전화했는지, 당신에게 무엇을 원하는지 분명히 파악합니다. 통화 중에는 아무것도 조회할 수 없고 {owner}의 일정도 모르므로, 답을 지어내지 않고 상대에게 기다리라고도 하지 않습니다.\n\n\
+[Things you should not agree to] {HOLD} {SALES}\n\n\
+{END}",
+            assistant: "[Who you are] 당신은 {owner}의 전화를 대신 받는 AI 비서입니다. {owner}은(는) 지금 전화를 받을 수 없습니다. {owner} 본인인 척도, 사람인 척도 하지 않습니다.\n\n\
+[How you talk] 친절하고 차분하게, 짧고 자연스러운 구어체로 말합니다. {LANGUAGE}\n\n\
+[Picking up] 받으면 한 문장으로 {owner}의 AI 비서라는 것과 {owner}이(가) 지금 전화를 받을 수 없다는 것을 알리고, 전할 말이 있는지 묻습니다. 그다음 멈추고 상대의 말을 듣습니다.\n\n\
+[Taking the message] 상대의 말은 끝까지 듣습니다. 누가 전화했는지, 무슨 일인지, {owner}이(가) 무엇을 해야 하는지, 언제까지인지, 회신할 번호를 적어 둡니다. 통화 중에는 아무것도 조회할 수 없고 {owner}의 일정도 모르므로, 답을 지어내지 않고 상대를 기다리게 하지 않으며 ‘전달하겠습니다’라고 답합니다.\n\n\
+[Things you should not agree to] 돈과 개인정보는 아무것도 승낙하지 않고 알려 주지도 않습니다. {owner}에게 전하겠다고 답합니다. {SALES}\n\n\
+{END}",
+        },
+        Lang::Es => &ShortText {
+            language: "Habla en español coloquial, como se habla de verdad por teléfono.",
+            hold: "Dinero, transferencias, contratos, contraseñas, códigos de verificación, datos personales, verse o fijar fecha: no aceptes nada; esquívalo con suavidad.",
+            sales: "Ventas y estafas: recházalas en pocas palabras y no sigas.",
+            end: "[Ending] Espera a que la otra persona quiera terminar y despídete breve. Sin límite de tiempo.",
+            persona: "[Who you are] Eres {owner}, contestando tu propio teléfono. No te presentes ni digas que contestas por nadie.\n\n\
+[How you talk] Habla como una persona real al teléfono: con tus palabras, breve y natural. Sin tono de atención al cliente, sin guion ni listas. {LANGUAGE}\n\n\
+[Picking up] Saluda breve y quédate en silencio para que hable.\n\n\
+[Listening] Deja que termine sin interrumpir. Si hay que atender algo, averigua quién llama, qué es y qué necesita. No puedes consultar nada ni sabes la agenda de {owner}: no inventes ni pidas que esperen.\n\n\
+[Things you should not agree to] {HOLD} {SALES}\n\n\
+{END}",
+            assistant: "[Who you are] Eres el asistente de IA que contesta el teléfono de {owner}; {owner} no puede atender ahora. No eres {owner} ni finges ser una persona.\n\n\
+[How you talk] Cercano, tranquilo, breve y natural. {LANGUAGE}\n\n\
+[Picking up] En una sola frase di que eres el asistente de IA de {owner} y que {owner} no puede ponerse ahora, y pregunta qué quieres que le transmitas. Luego para y escucha.\n\n\
+[Taking the message] Deja que la persona termine. Anota quién llama, de qué se trata, qué necesita que haga {owner}, para cuándo y un número para devolver la llamada. No puedes consultar nada y no sabes la agenda de {owner}: no inventes respuestas ni pidas que esperen; di que se lo transmitirás.\n\n\
+[Things you should not agree to] Dinero y datos personales: no aceptes nada y no des nada; di que se lo transmitirás a {owner}. {SALES}\n\n\
+{END}",
+        },
+        Lang::Fr => &ShortText {
+            language: "Parle un français courant, celui du téléphone.",
+            hold: "Argent, virements, contrats, mots de passe, codes, données personnelles, rendez-vous ou date : n\'accepte rien, esquive avec légèreté.",
+            sales: "Démarchage et arnaques : refuse en peu de mots et n\'insiste pas.",
+            end: "[Ending] Attends que la personne ait fini, puis dis un bref au revoir. Appel sans limite de durée.",
+            persona: "[Who you are] Tu es {owner} et tu réponds à ton téléphone. Ne te présente pas et ne dis jamais répondre pour quelqu\'un.\n\n\
+[How you talk] Parle comme une vraie personne au téléphone : avec tes mots, court et naturel. Pas de ton service client, de texte récité ni d\'énumération. {LANGUAGE}\n\n\
+[Picking up] Dis un bref bonjour, puis laisse l\'autre parler.\n\n\
+[Listening] Laisse la personne finir sans la couper. S\'il faut traiter quelque chose, comprends qui appelle, pourquoi et ce qu\'on attend de toi. Tu ne peux rien vérifier ni connaître l\'agenda de {owner} : n\'invente rien et ne demande pas à la personne d\'attendre.\n\n\
+[Things you should not agree to] {HOLD} {SALES}\n\n\
+{END}",
+            assistant: "[Who you are] Tu es l\'assistant IA qui répond au téléphone de {owner} ; {owner} ne peut pas répondre en ce moment. Tu n\'es pas {owner} et tu ne fais pas semblant d\'être une personne.\n\n\
+[How you talk] Chaleureux, calme, bref et naturel. {LANGUAGE}\n\n\
+[Picking up] En une phrase, dis que tu es l\'assistant IA de {owner} et que {owner} ne peut pas répondre maintenant, puis demande ce que tu peux transmettre. Ensuite, arrête-toi et écoute.\n\n\
+[Taking the message] Laisse la personne finir. Note qui appelle, de quoi il s\'agit, ce qu\'on attend de {owner}, pour quand, et un numéro pour rappeler. Tu ne peux rien vérifier et tu ne connais pas l\'emploi du temps de {owner} : n\'invente pas de réponse et ne demande pas d\'attendre ; dis que tu transmettras.\n\n\
+[Things you should not agree to] Argent et données personnelles : n\'accepte rien et ne donne rien ; dis que tu transmettras à {owner}. {SALES}\n\n\
+{END}",
+        },
+        Lang::De => &ShortText {
+            language: "Sprich alltägliches, gesprochenes Deutsch wie am Telefon.",
+            hold: "Geld, Überweisungen, Verträge, Passwörter, Codes, persönliche Daten, Treffen oder Termine: stimm nichts davon zu, weich freundlich aus.",
+            sales: "Werbung, Verkauf und Betrug: kurz ablehnen und gut.",
+            end: "[Ending] Warte, bis die Person fertig ist, und verabschiede dich kurz. Kein Zeitlimit.",
+            persona: "[Who you are] Du bist {owner} und gehst an dein eigenes Telefon. Stell dich nicht vor und sag nie, dass du für jemand anderen abnimmst.\n\n\
+[How you talk] Sprich wie ein echter Mensch am Telefon: eigene Worte, kurz und natürlich. Kein Kundenservice-Ton, kein Ablesen, keine Aufzählungen. {LANGUAGE}\n\n\
+[Picking up] Sag kurz Hallo und lass die andere Person sprechen.\n\n\
+[Listening] Lass sie ausreden. Falls etwas zu klären ist, finde heraus, wer anruft, worum es geht und was gebraucht wird. Du kannst nichts nachsehen und kennst die Termine von {owner} nicht: erfinde nichts und bitte niemanden zu warten.\n\n\
+[Things you should not agree to] {HOLD} {SALES}\n\n\
+{END}",
+            assistant: "[Who you are] Du bist der KI-Assistent, der für {owner} ans Telefon geht; {owner} kann gerade nicht rangehen. Du bist nicht {owner} und tust nicht so, als wärst du ein Mensch.\n\n\
+[How you talk] Freundlich, ruhig, kurz und natürlich. {LANGUAGE}\n\n\
+[Picking up] Sag in einem Satz, dass du der KI-Assistent von {owner} bist und {owner} gerade nicht rangehen kann, und frag, was du ausrichten sollst. Dann hör auf zu reden und hör zu.\n\n\
+[Taking the message] Lass die Person ausreden. Halte fest, wer anruft, worum es geht, was {owner} tun soll, bis wann, und eine Nummer zum Zurückrufen. Du kannst nichts nachsehen und kennst die Termine von {owner} nicht: erfinde keine Antworten und bitte niemanden zu warten; sag, dass du es ausrichtest.\n\n\
+[Things you should not agree to] Geld und persönliche Daten: stimm nichts zu und gib nichts heraus; sag, dass du es an {owner} weitergibst. {SALES}\n\n\
+{END}",
+        },
+        Lang::Pt => &ShortText {
+            language: "Fale em português coloquial, como se fala ao telefone.",
+            hold: "Dinheiro, transferências, contratos, senhas, códigos, dados pessoais, encontros ou horários: não aceite nada; desvie com leveza.",
+            sales: "Vendas e golpes: recuse em poucas palavras e encerre.",
+            end: "[Ending] Espere a pessoa terminar e despeça-se breve. Sem limite de tempo.",
+            persona: "[Who you are] Você é {owner} atendendo o seu telefone. Não se apresente nem diga atender por outra pessoa.\n\n\
+[How you talk] Fale como gente de verdade ao telefone: palavras suas, curto e natural. Sem tom de atendimento, roteiro ou listas. {LANGUAGE}\n\n\
+[Picking up] Dê um alô curto e deixe a outra pessoa falar.\n\n\
+[Listening] Deixe a pessoa terminar sem interromper. Se precisar resolver algo, descubra quem liga, do que se trata e o que querem. Você não consulta nada e não sabe a agenda de {owner}: não invente e não peça para esperarem.\n\n\
+[Things you should not agree to] {HOLD} {SALES}\n\n\
+{END}",
+            assistant: "[Who you are] Você é o assistente de IA que atende o telefone de {owner}; {owner} não pode atender agora. Você não é {owner} e não finge ser uma pessoa.\n\n\
+[How you talk] Simpático, calmo, curto e natural. {LANGUAGE}\n\n\
+[Picking up] Em uma frase, diga que você é o assistente de IA de {owner} e que {owner} não pode atender agora, e pergunte o que pode repassar. Depois pare e escute.\n\n\
+[Taking the message] Deixe a pessoa terminar. Anote quem está ligando, do que se trata, o que {owner} precisa fazer, até quando, e um número para retornar. Você não consegue consultar nada e não sabe a agenda de {owner}: não invente respostas e não peça para esperarem; diga que vai repassar.\n\n\
+[Things you should not agree to] Dinheiro e dados pessoais: não aceite nada e não informe nada; diga que vai repassar para {owner}. {SALES}\n\n\
+{END}",
+        },
+        // The Chinese prompts are written in `zh_tw_pack`.
+        Lang::ZhTw | Lang::ZhCn => &ShortText { language: "", hold: "", sales: "", end: "", persona: "", assistant: "" },
+    }
+}
+
+
 fn generic_pack(lang: Lang) -> Pack {
     let ph = locale::phrases(lang);
+    let st = short_text(lang);
+    let short = |t: &str| -> String {
+        t.replace("{LANGUAGE}", st.language)
+            .replace("{HOLD}", st.hold)
+            .replace("{SALES}", st.sales)
+            .replace("{END}", st.end)
+    };
     let fill = |s: &str| -> String {
         s.replace("{language}", ph.name_en)
             .replace("{p_hello_again}", ph.hello_again)
@@ -480,8 +664,13 @@ fn generic_pack(lang: Lang) -> Pack {
             .replace("{END_BLOCK}", &end_block)
     };
     Pack {
-        persona_default: compose(EN_PERSONA_DEFAULT),
-        assistant_default: compose(EN_ASSISTANT_DEFAULT),
+        persona_default: short(st.persona),
+        assistant_default: short(st.assistant),
+        sales_reject_default: st.sales.to_string(),
+        hold_off_default: st.hold.to_string(),
+        end_default: st.end.to_string(),
+        legacy_persona_default: compose(EN_PERSONA_DEFAULT),
+        legacy_assistant_default: compose(EN_ASSISTANT_DEFAULT),
         sales_listen_line: fill(EN_SALES_LISTEN_LINE),
         sales_listen_custom_prefix: fill(EN_SALES_LISTEN_CUSTOM_PREFIX),
         ack_stall: fill(EN_ACK_STALL),
@@ -879,15 +1068,22 @@ fn is_unedited_default(custom: &str, assistant: bool, owner: &str) -> bool {
 }
 
 /// Built-in prompts (`{owner}` kept) that earlier releases shipped and the
-/// current ones replaced: (language, assistant style, text). Only the Chinese
-/// persona prompt has changed since caf7bc4 (its language line); its Simplified
-/// version is converted the way it was then.
+/// current ones replaced: (language, assistant style, text). First the Chinese
+/// persona prompt of caf7bc4 (it differs from the one after it in its language
+/// line only; its Simplified version is converted the way it was then), then
+/// the long prompts of every language that the short generic ones replaced.
 fn legacy_templates() -> &'static [(Lang, bool, String)] {
     static LEGACY: OnceLock<Vec<(Lang, bool, String)>> = OnceLock::new();
     LEGACY.get_or_init(|| {
-        let tw = gl::default_persona_prompt().replace(gl::PERSONA_LANGUAGE_LINE, gl::PERSONA_LANGUAGE_LINE_CAF7BC4);
+        let tw = gl::legacy_persona_prompt().replace(gl::PERSONA_LANGUAGE_LINE_LEGACY, gl::PERSONA_LANGUAGE_LINE_CAF7BC4);
         let cn = to_cn(&tw);
-        vec![(Lang::ZhTw, false, tw), (Lang::ZhCn, false, cn)]
+        let mut all = vec![(Lang::ZhTw, false, tw), (Lang::ZhCn, false, cn)];
+        for l in locale::ALL.iter() {
+            let p = pack(*l);
+            all.push((*l, false, p.legacy_persona_default.clone()));
+            all.push((*l, true, p.legacy_assistant_default.clone()));
+        }
+        all
     })
 }
 
@@ -917,6 +1113,9 @@ pub fn build_parts(ctx: &Ctx) -> (String, String) {
         StallPrompt::ListenFirst if base.contains(&p.sales_reject_line) => {
             base.replace(&p.sales_reject_line, &p.sales_listen_line)
         }
+        StallPrompt::ListenFirst if base.contains(&p.sales_reject_default) => {
+            base.replace(&p.sales_reject_default, &p.sales_listen_line)
+        }
         StallPrompt::ListenFirst => {
             format!("{base}\n{}{}", p.sales_listen_custom_prefix, p.sales_listen_line)
         }
@@ -924,9 +1123,12 @@ pub fn build_parts(ctx: &Ctx) -> (String, String) {
             "{}{}",
             p.stall_head,
             base.replace(&p.sales_reject_line, "")
+                .replace(&p.sales_reject_default, "")
                 .replace(&p.ack_line, &p.ack_stall)
                 .replace(&p.hold_off_line, &p.hold_off_stall)
+                .replace(&p.hold_off_default, &p.hold_off_stall)
                 .replace(&p.end_block, &p.end_stall)
+                .replace(&p.end_default, &p.end_stall)
         ),
     };
     let status = gl::sanitize_owner_status(ctx.status);
@@ -1253,28 +1455,32 @@ mod tests {
         assert!(pack(Lang::ZhTw).persona_default.contains("就直接改用他的語言"));
         // Its Simplified version, converted the way caf7bc4 did.
         assert!(legacy[1].2.contains("不要讲英文（OK 可以）") && !legacy[1].2.contains("台灣"));
-        // A copy saved from either (owner filled in or not) follows today's
+        // A copy saved from any of them (owner filled in or not) follows today's
         // built-in prompt of whatever language is set.
-        for (lang, _, t) in legacy {
+        for (lang, assistant, t) in legacy {
             for saved in [t.clone(), t.replace("{owner}", &owner_label(*lang, "Alex"))] {
                 let saved: &'static str = Box::leak(saved.into_boxed_str());
                 for now in [Lang::ZhTw, Lang::ZhCn, Lang::En] {
-                    let mut c = ctx(now, false, StallPrompt::Off);
+                    let mut c = ctx(now, *assistant, StallPrompt::Off);
                     let fresh = build(&c);
                     c.custom = saved;
                     let built = build(&c);
-                    assert_eq!(built, fresh, "{lang:?} copy, {now:?} set");
+                    assert_eq!(built, fresh, "{lang:?} assistant={assistant} copy, {now:?} set");
                     assert!(!built.contains("不要講英文（OK 可以）") && !built.contains("不要讲英文（OK 可以）"));
                 }
             }
             // Edited, it is the owner's own prompt.
             let edited: &'static str = Box::leak(format!("{t}\nAlways mention the cat.").into_boxed_str());
-            let mut c = ctx(Lang::En, false, StallPrompt::Off);
+            let mut c = ctx(Lang::En, *assistant, StallPrompt::Off);
             c.custom = edited;
             assert!(build(&c).contains("Always mention the cat."));
         }
-        // The assistant style never had that line: no legacy copy for it.
-        assert!(legacy.iter().all(|(_, a, _)| !a));
+        // All 9 languages and both answer styles are covered by the legacy templates.
+        for l in locale::ALL {
+            for a in [false, true] {
+                assert!(legacy.iter().any(|(ll, aa, _)| *ll == l && *aa == a), "{l:?} assistant={a}");
+            }
+        }
     }
 
     #[test]
@@ -1365,13 +1571,19 @@ mod tests {
                 let off = build(&ctx(lang, assistant, StallPrompt::Off));
                 let first = build(&ctx(lang, assistant, StallPrompt::ListenFirst));
                 let full = build(&ctx(lang, assistant, StallPrompt::Full));
-                let reject = p.sales_reject_line.replace("{owner}", "Alex");
+                let reject = p.sales_reject_default.replace("{owner}", "Alex");
                 let listen = p.sales_listen_line.replace("{owner}", "Alex");
-                assert!(off.contains(&reject) && !off.contains(&listen), "{lang:?}");
-                assert!(first.contains(&listen) && !first.contains(&reject), "{lang:?}");
-                assert!(full.starts_with(p.stall_head.as_str()), "{lang:?}");
-                assert!(full.contains(p.stall_block.as_str()) && !full.contains(&reject), "{lang:?}");
-                assert!(full.contains(p.end_stall.as_str()) && !full.contains(p.end_block.as_str()), "{lang:?}");
+                assert!(off.contains(&reject) && !off.contains(&listen), "{lang:?} assistant={assistant}");
+                assert!(first.contains(&listen) && !first.contains(&reject), "{lang:?} assistant={assistant}");
+                assert!(full.starts_with(p.stall_head.as_str()), "{lang:?} assistant={assistant}");
+                assert!(full.contains(p.stall_block.as_str()) && !full.contains(&reject), "{lang:?} assistant={assistant}");
+                assert!(full.contains(p.end_stall.as_str()) && !full.contains(p.end_default.as_str()), "{lang:?} assistant={assistant}");
+                assert!(off.contains(p.end_default.as_str()) && first.contains(p.end_default.as_str()), "{lang:?} assistant={assistant}");
+                if !assistant {
+                    assert!(off.contains(p.hold_off_default.as_str()) && !off.contains(p.hold_off_stall.as_str()), "{lang:?}");
+                    assert!(first.contains(p.hold_off_default.as_str()) && !first.contains(p.hold_off_stall.as_str()), "{lang:?}");
+                    assert!(full.contains(p.hold_off_stall.as_str()) && !full.contains(p.hold_off_default.as_str()), "{lang:?}");
+                }
                 assert!(!off.contains(p.stall_block.as_str()) && !first.contains(p.stall_block.as_str()));
             }
         }
@@ -1395,12 +1607,11 @@ mod tests {
         assert!(zh.contains("【時間、金額、號碼要複誦確認】") && zh.contains("「明天下午三點送到，對嗎？」"), "{zh}");
         assert!(zh.contains("半點要講出「半」") && zh.contains("不要自己猜一個") && zh.contains("同一項確認過就不要再問"), "{zh}");
         assert!(zh.contains("不等於答應"), "{zh}");
-        // It is the named exception to the no-repeating rule, which still stands before it.
-        assert!(zh.contains("是上面「不要把對方的話整段覆述」「不用每句都問問題」的例外") && zh.contains("不要把對方的話整段覆述。"), "{zh}");
-        assert!(zh.find("不要把對方的話整段覆述。").unwrap() < zh.find("【時間、金額、號碼要複誦確認】").unwrap());
+        // It is the named exception to not repeating the caller's words.
+        assert!(zh.contains("是上面「不要把對方的話整段覆述」「不用每句都問問題」的例外") && zh.contains("其他的話照樣不要覆述"), "{zh}");
         let en = build(&ctx(Lang::En, true, StallPrompt::Off));
         assert!(en.contains("[Read back]") && en.contains("\"tomorrow at three in the afternoon, right?\"") && en.contains("never guess"), "{en}");
-        assert!(en.contains("the one exception to not repeating the caller") && en.contains("do not repeat back everything they said"), "{en}");
+        assert!(en.contains("the one exception to not repeating the caller"), "{en}");
         assert!(en.contains("It is no agreement"), "{en}");
         for lang in locale::ALL {
             let note = pack(lang).readback_note.replace("{owner}", "Alex");
@@ -1435,12 +1646,19 @@ mod tests {
 
     #[test]
     fn simplified_prompt_has_no_taiwan_wording() {
-        let cn = build(&ctx(Lang::ZhCn, false, StallPrompt::Full));
-        assert!(cn.contains("你就是Alex本人"));
-        for w in ["台灣", "台湾", "繁體", "掰掰", "管理室", "電"] {
-            assert!(!cn.contains(w), "{w}");
+        for assistant in [false, true] {
+            for stall in [StallPrompt::Off, StallPrompt::ListenFirst, StallPrompt::Full] {
+                let mut c = ctx(Lang::ZhCn, assistant, stall);
+                c.auto_language = true;
+                let cn = build(&c);
+                for w in ["台灣", "台湾", "繁體", "繁体", "掰掰", "管理室", "電"] {
+                    assert!(!cn.contains(w), "{assistant} {stall:?}: {w}");
+                }
+                assert!(cn.contains("普通话"), "{assistant} {stall:?}");
+            }
         }
-        assert!(cn.contains("拜拜") && cn.contains("普通话"));
+        let cn = build(&ctx(Lang::ZhCn, false, StallPrompt::Full));
+        assert!(cn.contains("你就是Alex本人") && cn.contains("拜拜"));
     }
 
     #[test]
@@ -1525,18 +1743,31 @@ mod tests {
 
     #[test]
     fn other_languages_name_their_language_and_phrases() {
-        let ja = build(&ctx(Lang::Ja, false, StallPrompt::Off));
-        assert!(ja.contains("Speak Japanese") && ja.contains("もしもし？") && ja.contains("失礼します"));
+        // Each non-Chinese built-in prompt is written in its own language and tells
+        // the AI to speak naturally without making the caller wait.
+        let checks = [
+            (Lang::En, "Speak English", "do not ask the caller to wait"),
+            (Lang::Ja, "自然な話し言葉の日本語", "待ってもらったりしません"),
+            (Lang::Ko, "구어체 한국어", "기다리라고도 하지 않습니다"),
+            (Lang::Es, "español coloquial", "ni pidas que esperen"),
+            (Lang::Fr, "français courant", "ne demande pas à la personne d'attendre"),
+            (Lang::De, "gesprochenes Deutsch", "bitte niemanden zu warten"),
+            (Lang::Pt, "português coloquial", "não peça para esperarem"),
+        ];
+        for (lang, speak, no_wait) in checks {
+            let p = pack(lang);
+            assert!(p.persona_default.contains(speak) && p.persona_default.contains(no_wait), "{lang:?}");
+            assert!(p.assistant_default.contains(speak), "{lang:?}");
+            let mut c = ctx(lang, false, StallPrompt::Off);
+            c.auto_language = true;
+            assert!(build(&c).contains(speak), "{lang:?}");
+        }
+        let ja = pack(Lang::Ja);
+        assert!(ja.kick_open_persona.contains("もしもし？") && ja.kick_wrap_up.contains("失礼します"));
+        assert!(ja.auto_language_note.contains("never answer in Japanese again"));
         let es = pack(Lang::Es);
         assert!(es.kick_wrap_up.contains("\"Adiós\""));
         assert!(es.kick_open_persona.starts_with(SYS));
-        // "ちょっと待ってな。スケジュール確認するから" on the probe: the ban names
-        // the call's own language's ways of making the caller wait.
-        let ja_persona = pack(Lang::Ja).persona_default.clone();
-        assert!(ja_persona.contains("ちょっと待って") && ja_persona.contains("確認するから待って"));
-        assert!(pack(Lang::Ja).assistant_default.contains("ちょっと待って"));
-        assert!(pack(Lang::Ko).persona_default.contains("잠깐만요"));
-        assert!(pack(Lang::De).persona_default.contains("Moment mal"));
     }
 
     #[test]
@@ -1789,17 +2020,25 @@ mod tests {
             let p = scope_to_region(&build(&c), lang, Scope { region: Some(region), carrier_note: false });
             assert!(p.contains("【方言】") || p.contains("[Dialects]"), "{lang:?} {region:?}");
         }
-        // Taiwan's parcel rule is in the built-in prompt already: not said twice.
+        // Taiwan's parcel rule comes from the region block once (the generic
+        // built-in prompt has no parcel rule of its own); an owner prompt that
+        // already mentions 管理室 suppresses the duplicate from the region block.
         let built = build(&ctx(Lang::ZhTw, false, StallPrompt::Off));
+        assert_eq!(built.matches("管理室").count(), 0, "{built}");
         let p = scope_to_region(&built, Lang::ZhTw, Scope { region: Some(Region::Tw), carrier_note: false });
-        assert_eq!(p.matches("管理室").count(), built.matches("管理室").count(), "{p}");
+        assert_eq!(p.matches("管理室").count(), 1, "{p}");
         assert!(p.contains("【當地】") && p.contains("賣場金流認證"));
+        let mut custom = ctx(Lang::ZhTw, false, StallPrompt::Off);
+        custom.custom = "我是{owner}，快遞請放管理室。";
+        let custom_scoped = scope_to_region(&build(&custom), Lang::ZhTw, Scope { region: Some(Region::Tw), carrier_note: false });
+        assert_eq!(custom_scoped.matches("管理室").count(), 1, "{custom_scoped}");
         // The persona's short language line goes only where the full note is.
         assert!(built.contains(ZH_FOLLOW_LANGUAGE) && p.contains(ZH_FOLLOW_LANGUAGE));
         let mut c = ctx(Lang::ZhTw, false, StallPrompt::Off);
         c.auto_language = true;
         let with_note = scope_to_region(&build(&c), Lang::ZhTw, Scope { region: Some(Region::Tw), carrier_note: false });
         assert!(!with_note.contains(ZH_FOLLOW_LANGUAGE) && with_note.contains("【對方講別的語言】"));
+        assert!(with_note.contains("台語、客語、粵語這類方言不算別的語言，照用普通話回"));
     }
 
     /// The SIM's region sets how the call opens and the local ways, never the
@@ -1850,4 +2089,46 @@ mod tests {
         "only in English",
         "Speak only",
     ];
+
+    #[test]
+    fn built_in_prompts_are_generic_and_concise() {
+        let forbidden = ["管理室", "中國大陸", "台灣平常", "没事", "咱们", "front desk"];
+        for lang in locale::ALL {
+            for assistant in [false, true] {
+                let t = default_prompt_template(lang, assistant);
+                assert!(t.contains("{owner}"), "{lang:?} assistant={assistant}");
+                for w in forbidden {
+                    assert!(!t.contains(w), "{lang:?} assistant={assistant} contains {w}");
+                }
+                if !assistant {
+                    let cap = match lang {
+                        Lang::ZhTw | Lang::ZhCn | Lang::Ja | Lang::Ko => 650,
+                        _ => 1_100,
+                    };
+                    let n = t.chars().count();
+                    assert!(n <= cap, "{lang:?} persona too long: {n} > {cap}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn is_unedited_default_recognizes_all_legacy_templates() {
+        for lang in locale::ALL {
+            let p = pack(lang);
+            for (assistant, t) in [(false, &p.legacy_persona_default), (true, &p.legacy_assistant_default)] {
+                assert!(is_unedited_default(t, assistant, "Alex"), "{lang:?} assistant={assistant}");
+                let filled = t.replace("{owner}", &owner_label(lang, "Alex"));
+                assert!(is_unedited_default(&filled, assistant, "Alex"), "{lang:?} assistant={assistant} filled");
+                let edited = format!("{t}\nAlways mention the cat.");
+                assert!(!is_unedited_default(&edited, assistant, "Alex"), "{lang:?} assistant={assistant} edited");
+                assert!(!is_unedited_default(t, !assistant, "Alex"), "{lang:?} assistant={assistant} wrong style");
+            }
+        }
+        for (lang, assistant, t) in legacy_templates() {
+            assert!(is_unedited_default(t, *assistant, "Alex"), "{lang:?} assistant={assistant} legacy");
+            let filled = t.replace("{owner}", &owner_label(*lang, "Alex"));
+            assert!(is_unedited_default(&filled, *assistant, "Alex"), "{lang:?} assistant={assistant} legacy filled");
+        }
+    }
 }

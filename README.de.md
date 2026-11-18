@@ -151,7 +151,7 @@ Einen Tisch reservieren, einen Termin verschieben, in einem Geschäft nach Vorra
   <img src="docs/images/languages.en.svg" width="900" alt="Bageo spricht neun Sprachen: Englisch, Traditionelles Chinesisch, Vereinfachtes Chinesisch, Japanisch, Koreanisch, Spanisch, Französisch, Deutsch und Portugiesisch. Jede antwortet mit ihrem eigenen Hallo.">
 </p>
 
-Die Stimme der KI, die eingebauten Prompts, die Webkonsole, die Telefon-App und die Benachrichtigungen gibt es alle in neun Sprachen. Auf einem Dual-SIM-Telefon eröffnet jede SIM-Karte Anrufe in ihrer eigenen Sprache, ein Anrufer aus dem Ausland hört die Sprache seines Landes, und wenn ein Anrufer mitten im Gespräch die Sprache wechselt, folgt ihm die KI. Transkripte behalten die Originalworte, jede Zeile mit einer Übersetzung in deine Benachrichtigungssprache. [Mehr zu Sprachen und Dual-SIM](docs/en/FEATURES.md#nine-languages-dual-sim-translated-transcripts)
+Die Stimme der KI, die eingebauten Prompts (eine kurze, allgemeine Grundlage, die du an deine Situation und deinen Stil anpassen kannst), die Webkonsole, die Telefon-App und die Benachrichtigungen gibt es alle in neun Sprachen. Auf einem Dual-SIM-Telefon eröffnet jede SIM-Karte Anrufe in ihrer eigenen Sprache, ein Anrufer aus dem Ausland hört die Sprache seines Landes, und wenn ein Anrufer mitten im Gespräch die Sprache wechselt, folgt ihm die KI. Transkripte behalten die Originalworte, jede Zeile mit einer Übersetzung in deine Benachrichtigungssprache. [Mehr zu Sprachen und Dual-SIM](docs/en/FEATURES.md#nine-languages-dual-sim-translated-transcripts)
 
 ## So funktioniert es
 
