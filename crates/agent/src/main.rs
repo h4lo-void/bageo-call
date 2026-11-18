@@ -1513,6 +1513,29 @@ fn health_retention(rt: &settings_store::RuntimeSettings) -> [(&'static str, Val
     [("retention_days", json!(rt.retention_days)), ("calls_retention_days", json!(rt.retention_days))]
 }
 
+/// What the console's "Ready?" list still asks for, for /health `setup_missing`.
+/// Bageo Status shows yellow while this is not empty. Phones are not here:
+/// /health already counts the connected ones.
+fn setup_missing(rt: &RuntimeSettings, eff: &Settings) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    if !rt.gemini_live_enabled {
+        out.push("ai_off");
+    }
+    if rt.gemini_api_key.trim().is_empty() {
+        out.push("gemini_key");
+    }
+    if rt.owner_name.trim().is_empty() {
+        out.push("owner_name");
+    }
+    if !notify_configured(eff) {
+        out.push("notify");
+    }
+    if summary::summary_endpoint(eff).is_none() {
+        out.push("summary");
+    }
+    out
+}
+
 async fn health(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
@@ -1530,6 +1553,8 @@ async fn health(
             "notify_language": rt.notify_lang().code(),
             "active_call_count": state.calls.live_calls().await.len(),
             "control_idle_clients": state.control.connected_serials().await.len(),
+            // Names only (no values), so Bageo Status can tell setup is not finished.
+            "setup_missing": setup_missing(&rt, &rt.effective(&state.settings)),
         }));
     }
     // Effective view: env base + runtime overrides, so the health JSON shows
@@ -1781,6 +1806,7 @@ async fn health(
     );
     body.insert("call_notify".into(), json!(s.call_notify));
     body.insert("call_notify_configured".into(), json!(notify_configured(s)));
+    body.insert("setup_missing".into(), json!(setup_missing(&rt, s)));
     // The press-1 summary notification uses the same Apprise/webhook/bot chain as call/VM
     // (`notify_ai_request`). Bot token is NOT required when Apprise gateway is set.
     body.insert(
@@ -12170,6 +12196,27 @@ mod retention_health_tests {
         rt.retention_days = 21;
         let got: HashMap<&str, Value> = health_retention(&rt).into_iter().collect();
         assert_eq!((got["retention_days"].as_u64(), got["calls_retention_days"].as_u64()), (Some(21), Some(21)));
+    }
+
+    #[test]
+    fn setup_missing_follows_the_ready_list() {
+        let base = Settings::from_env();
+        let mut rt = RuntimeSettings::from_base(&base);
+        rt.gemini_live_enabled = true;
+        rt.gemini_api_key = String::new();
+        rt.owner_name = "  ".into();
+        let got = setup_missing(&rt, &rt.effective(&base));
+        assert!(got.contains(&"gemini_key") && got.contains(&"owner_name"), "{got:?}");
+        assert!(!got.contains(&"ai_off"), "{got:?}");
+
+        rt.gemini_api_key = "test-key".into();
+        rt.owner_name = "Alex".into();
+        rt.gemini_live_enabled = false;
+        let got = setup_missing(&rt, &rt.effective(&base));
+        assert!(!got.contains(&"gemini_key") && !got.contains(&"owner_name"), "{got:?}");
+        assert!(got.contains(&"ai_off"), "{got:?}");
+        // A Gemini key also covers summaries.
+        assert!(!got.contains(&"summary"), "{got:?}");
     }
 }
 
