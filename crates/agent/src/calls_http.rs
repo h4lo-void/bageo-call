@@ -1356,6 +1356,13 @@ pub struct NotifySendBody {
     #[serde(default)]
     pub title: String,
     pub body: String,
+    /// `"sms"` marks a forwarded text message; anything else is a plain message.
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub from: String,
+    #[serde(default)]
+    pub text: String,
 }
 
 /// Send a message of your own to every notification channel (for scripts
@@ -1374,8 +1381,32 @@ async fn notify_send(
     }
     let eff = state.settings_store.snapshot().effective(&state.settings);
     let title = if body.title.trim().is_empty() { "Bageo" } else { body.title.trim() };
+    // Remember it for the desktop status app whether or not a channel works.
+    crate::recent_notices::record(&body.kind, title, &body.from, &body.text, &body.body);
     let ok = crate::notify::notify_event(&state.http, &eff, title, &body.body).await;
     Json(json!({"ok": ok})).into_response()
+}
+
+#[derive(Deserialize)]
+struct RecentQuery {
+    token: Option<String>,
+    after: Option<String>,
+}
+
+/// The last messages sent through `notify/send` (memory only, newest 50), so
+/// a desktop app can poll. Without a numeric `after` only `last_id` is useful:
+/// the client uses it as its starting point.
+async fn notify_recent(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<RecentQuery>,
+) -> Response {
+    if !token_ok_parts(&state.settings, &headers, query.token.as_deref()) {
+        return unauthorized();
+    }
+    let after = query.after.as_deref().and_then(|s| s.trim().parse::<u64>().ok());
+    let (last_id, events) = crate::recent_notices::snapshot(after.unwrap_or(u64::MAX));
+    Json(json!({"ok": true, "last_id": last_id, "events": events})).into_response()
 }
 
 /// Phones: what is plugged in (USB), what is connected to the agent, and the
@@ -2973,6 +3004,118 @@ mod tests {
         assert_eq!(channel_error_body("ntfy", &plain)["code"], "send_failed");
     }
 
+    async fn recent_send(state: &CallsState, token: Option<&str>, body: Value) -> Response {
+        let mut headers = HeaderMap::new();
+        if let Some(t) = token {
+            headers.insert("x-calls-token", t.parse().unwrap());
+        }
+        notify_send(
+            State(state.clone()),
+            headers,
+            Query(TokenQuery { token: None }),
+            Json(serde_json::from_value(body).unwrap()),
+        )
+        .await
+    }
+
+    async fn recent_get(state: &CallsState, token: Option<&str>, after: Option<&str>) -> Response {
+        let mut headers = HeaderMap::new();
+        if let Some(t) = token {
+            headers.insert("x-calls-token", t.parse().unwrap());
+        }
+        notify_recent(
+            State(state.clone()),
+            headers,
+            Query(RecentQuery { token: None, after: after.map(str::to_string) }),
+        )
+        .await
+    }
+
+    async fn recent_json(r: Response) -> Value {
+        assert_eq!(r.status(), StatusCode::OK);
+        serde_json::from_str(&body_text(r).await).unwrap()
+    }
+
+    fn recent_state(tag: &str) -> CallsState {
+        let root = std::env::temp_dir().join(format!("bageo-{tag}-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        quick_state(&root)
+    }
+
+    fn recent_marker(tag: &str) -> String {
+        format!("{tag}-{}", uuid::Uuid::new_v4().simple())
+    }
+
+    #[tokio::test]
+    async fn recent_route_needs_the_password() {
+        let mut state = recent_state("recent-auth");
+        state.settings.calls_ui_token = "recent-test-pw".into();
+        let marker = recent_marker("auth");
+        let r = recent_get(&state, None, None).await;
+        assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+        // Sending without the password is refused and leaves nothing behind.
+        let r = recent_send(&state, None, json!({"body": marker, "kind": "sms"})).await;
+        assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+        let ok = recent_json(recent_get(&state, Some("recent-test-pw"), Some("0")).await).await;
+        assert_eq!(ok["ok"], true);
+        assert!(ok["events"].as_array().unwrap().iter().all(|e| e["text"] != marker.as_str()));
+    }
+
+    #[tokio::test]
+    async fn recent_route_without_after_only_gives_last_id() {
+        let state = recent_state("recent-noafter");
+        let _ = recent_send(&state, None, json!({"body": recent_marker("noafter")})).await;
+        for after in [None, Some(""), Some("abc"), Some("-1"), Some("1.5")] {
+            let v = recent_json(recent_get(&state, None, after).await).await;
+            assert_eq!(v["ok"], true, "after {after:?}");
+            assert!(v["last_id"].as_u64().unwrap() > 0, "after {after:?}");
+            assert_eq!(v["events"], json!([]), "after {after:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn recent_route_shows_what_notify_send_got() {
+        let state = recent_state("recent-send");
+        let start = recent_json(recent_get(&state, None, None).await).await["last_id"].as_u64().unwrap();
+        let sms = recent_marker("sms");
+        let plain = recent_marker("plain");
+        let r = recent_send(
+            &state,
+            None,
+            json!({"title": "Texts", "body": format!("Texts\n{sms}"), "kind": "SMS", "from": "+15555550123", "text": format!("  {sms}\n 簡訊內容 ")}),
+        )
+        .await;
+        assert_eq!(r.status(), StatusCode::OK);
+        assert!(recent_json(r).await.get("ok").is_some());
+        // An old-style request (no kind, from, text) still works.
+        let r = recent_send(&state, None, json!({"body": format!("{plain}\nsecond line")})).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        // An empty body is refused and not recorded.
+        let r = recent_send(&state, None, json!({"body": "  ", "kind": "sms", "text": "x"})).await;
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+
+        let v = recent_json(recent_get(&state, None, Some(&start.to_string())).await).await;
+        let events = v["events"].as_array().unwrap();
+        let first = events.iter().find(|e| e["text"].as_str().is_some_and(|t| t.contains(&sms))).expect("sms event");
+        assert_eq!(first["kind"], "sms");
+        assert_eq!(first["title"], "Texts");
+        assert_eq!(first["from"], "+15555550123");
+        assert_eq!(first["text"], format!("{sms} 簡訊內容"));
+        let second = events.iter().find(|e| e["text"] == plain.as_str()).expect("plain event");
+        assert_eq!(second["kind"], "message");
+        assert_eq!(second["title"], "Bageo");
+        assert_eq!(second["from"], "");
+        let (a, b) = (first["id"].as_u64().unwrap(), second["id"].as_u64().unwrap());
+        assert!(a < b && b <= v["last_id"].as_u64().unwrap());
+        assert!(events.windows(2).all(|w| w[0]["id"].as_u64() < w[1]["id"].as_u64()));
+        assert!(events.iter().all(|e| e["at_ms"].as_u64().unwrap() > 0));
+        // Asking from the first event's id leaves only the later ones.
+        let v = recent_json(recent_get(&state, None, Some(&a.to_string())).await).await;
+        let events = v["events"].as_array().unwrap();
+        assert!(events.iter().all(|e| e["id"].as_u64().unwrap() > a));
+        assert!(events.iter().any(|e| e["id"].as_u64() == Some(b)));
+    }
+
     #[test]
     fn phone_hello_old_and_new_apps() {
         // An app from before the mode switch: AI mode, cannot be switched from the page.
@@ -3392,6 +3535,7 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/preview", get(preview))
         .route("/api/notify/test", post(notify_test))
         .route("/api/notify/send", post(notify_send))
+        .route("/api/notify/recent", get(notify_recent))
         .route("/api/devices", get(devices))
         .route("/api/devices/{serial}", axum::routing::delete(device_delete))
         .route("/api/devices/{serial}/mode", post(device_mode))

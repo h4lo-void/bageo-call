@@ -222,12 +222,13 @@ class Base(unittest.TestCase):
     def forwarder(self, adb, **kw):
         """A forwarder with a recording delivery; returns (forwarder, sent, switch)."""
         sent: list[tuple[str, str]] = []
-        up = {"v": True}
+        up = {"v": True, "fields": []}
 
-        def deliver(title: str, body: str):
+        def deliver(title: str, body: str, sender: str = "", text: str = ""):
             if not up["v"]:
                 return False, "agent: no answer"
             sent.append((title, body))
+            up["fields"].append((sender, text))
             return True, "agent:200"
 
         kw.setdefault("in_call", lambda: False)
@@ -547,6 +548,9 @@ class ForwarderTests(Base):
         self.assertIn("To: +15555550100", sent[0][1])
         self.assertNotIn("forwarded late", sent[0][1])
         self.assertEqual((p1.queue, s1["inbox_id"]), ({}, 6))
+        # The sender and the message also go out apart, for the desktop status app.
+        self.assertEqual(up["fields"][0][1], "TEST-CODE 000000\nsecond line")
+        self.assertIn("5555550123", up["fields"][0][0])
 
         # Delivery down: hook file stays, inbox cursor stays; delivered after recovery.
         up["v"] = False
@@ -594,6 +598,7 @@ class ForwarderTests(Base):
         self.assertIn(f"Pixel 7 ({P1}): 25 messages", sent[5][1])
         self.assertNotIn("FLOOD 1", sent[5][1])
         self.assertEqual(s1["inbox_id"], 124)
+        self.assertEqual(up["fields"][5], ("", ""))
 
         # State survives a restart; nothing is replayed.
         fw2, sent2, _ = self.forwarder(adb)
@@ -927,6 +932,31 @@ class AgentTests(Base):
                          {"title": "New SMS", "body": "From: +15555550123\nMessage: 測試 ✓"})
         self.assertTrue(req["headers"]["content-type"].startswith("application/json"))
         self.assertNotIn("authorization", req["headers"])
+
+    def test_deliver_with_sender_and_text(self) -> None:
+        ok, via = self.deliver_with("New SMS", "From: +15555550123\nMessage: 測試 ✓", "+15555550123", "測試 ✓")
+        self.assertTrue(ok, via)
+        self.assertEqual(self.sent_json(), {"title": "New SMS", "body": "From: +15555550123\nMessage: 測試 ✓",
+                                            "kind": "sms", "from": "+15555550123", "text": "測試 ✓"})
+
+    def test_deliver_without_sender_and_text_keeps_the_old_request(self) -> None:
+        self.assertTrue(sf.deliver("Notice", "plain")[0])
+        self.assertEqual(self.sent_json(), {"title": "Notice", "body": "plain"})
+
+    def test_deliver_cuts_text_to_200_characters(self) -> None:
+        for char in ("x", "測", "😀"):
+            self.deliver_with("t", "b", "+15555550123", char * 250)
+            sent = self.sent_json()
+            self.assertEqual(sent["text"], char * 200)
+            self.assertEqual(len(sent["text"]), 200)
+        self.deliver_with("t", "b", "+15555550123", "y" * 200)
+        self.assertEqual(self.sent_json()["text"], "y" * 200)
+
+    def deliver_with(self, title: str, body: str, sender: str, text: str):
+        return sf.deliver(title, body, sender=sender, text=text)
+
+    def sent_json(self) -> dict:
+        return json.loads(self.agent.requests[-1]["body"].decode("utf-8"))
 
     def test_bearer_token(self) -> None:
         self.patch("AGENT_TOKEN", "test-token-123")

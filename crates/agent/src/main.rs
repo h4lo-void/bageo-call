@@ -51,6 +51,7 @@ mod notify;
 mod openclaw;
 mod phone_region;
 mod prompts;
+mod recent_notices;
 mod services;
 mod settings_store;
 mod scam_db;

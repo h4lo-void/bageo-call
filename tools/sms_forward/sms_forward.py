@@ -389,9 +389,16 @@ def agent_request(path: str, payload: dict | None = None, timeout: float = 10.0)
         return status, None
 
 
-def deliver(title: str, body: str) -> tuple[bool, str]:
-    """Hand a message to the agent's notification channels. (delivered, reason)."""
-    status, obj = agent_request("/calls/api/notify/send", {"title": title, "body": body}, SEND_TIMEOUT)
+def deliver(title: str, body: str, sender: str = "", text: str = "") -> tuple[bool, str]:
+    """Hand a message to the agent's notification channels. (delivered, reason).
+
+    With a sender or text the request also says it is an SMS, with the sender and
+    the message apart (the desktop status app shows them). An older agent ignores
+    the extra fields."""
+    payload = {"title": title, "body": body}
+    if sender or text:
+        payload.update({"kind": "sms", "from": sender, "text": text[:200]})
+    status, obj = agent_request("/calls/api/notify/send", payload, SEND_TIMEOUT)
     if status == 200 and isinstance(obj, dict) and obj.get("ok") is True:
         return True, "agent:200"
     if status == 200:
@@ -826,7 +833,7 @@ class Forwarder:
         title, text = format_sms(lang, sender, self.line_for(serial, sub), body, serial,
                                  self.phone(serial).get("model", ""), received_ms, time.time(),
                                  self.zone() if late else None)
-        ok, via = self.deliver(title, text)
+        ok, via = self.deliver(title, text, sender, body)
         self.last_send = time.time()
         self.sends += 1
         if not self.note_delivery(ok, via, f"{serial} {src}={ref}"):
