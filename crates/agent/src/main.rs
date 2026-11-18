@@ -1033,6 +1033,8 @@ async fn main() -> Result<()> {
     // The owner's contacts (names for caller IDs), next to the call records.
     let contacts = contacts::ContactStore::open(PathBuf::from(&settings.calls_data_dir).join("contacts.json"));
     contacts::install(contacts.clone());
+    // Blocked numbers older versions kept in the settings join the Blacklist.
+    contacts::absorb_reject_numbers(&settings_store, &contacts).await;
     // The scam database's owner file and number book live next to the settings.
     scam_db::init(&PathBuf::from(&settings.calls_data_dir));
     // Calls the owner has the AI make (errands), and the SIMs each phone has
@@ -1851,7 +1853,7 @@ async fn health(
     );
     body.insert("ambience_kind".into(), json!(rt.ambience_kind));
     body.insert("ambience_level".into(), json!(rt.ambience_level));
-    body.insert("reject_numbers_len".into(), json!(rt.reject_numbers.len()));
+    body.insert("blacklist_len".into(), json!(contacts::blacklist_len()));
     body.insert("reject_mode".into(), json!(rt.reject_mode));
     body.insert("reject_voice".into(), json!(voice_preview::reject_voice(&rt)));
     body.insert(
@@ -4137,12 +4139,12 @@ fn call_sim_country(serial: &str) -> Option<String> {
 /// SIM of the phone's current call reads the number: one without a country code
 /// is dialled in that SIM's country ([`settings_store::reject_number_hit_on`]).
 fn reject_listed_on_line(rt: &RuntimeSettings, caller: &str, serial: &str) -> bool {
-    settings_store::reject_number_hit_on(&rt.reject_numbers, caller, call_sim_country(serial).as_deref())
+    settings_store::reject_number_hit_on(rt.pending_rejects(), caller, call_sim_country(serial).as_deref())
 }
 
 /// Why the caller is blocked, read as in [`reject_listed_on_line`].
 fn reject_reason_on_line(rt: &RuntimeSettings, caller: &str, serial: &str) -> Option<String> {
-    settings_store::reject_reason_on(&rt.reject_numbers, caller, call_sim_country(serial).as_deref())
+    settings_store::reject_reason_on(rt.pending_rejects(), caller, call_sim_country(serial).as_deref())
 }
 
 /// Android subscription id of the SIM each phone's current call came in on
@@ -4935,7 +4937,7 @@ fn save_reject_list_notes(state: &AppState, record: &CallRecord) {
     let rt = state.settings_store.snapshot();
     let number = display_caller_id(&record.caller_id).to_string();
     // Number and reason on lines of their own.
-    let reason = settings_store::reject_reason_on(&rt.reject_numbers, &record.caller_id, record.sim_country.as_deref());
+    let reason = settings_store::reject_reason_on(rt.pending_rejects(), &record.caller_id, record.sim_country.as_deref());
     // The record is the owner's; the announcement quoted is what the caller heard.
     let lang = locale::notify_lang();
     let p = locale::phrases(lang);
@@ -4961,7 +4963,7 @@ fn save_reject_list_notes(state: &AppState, record: &CallRecord) {
         locale::zh_or_in(
             lang,
             &format!(
-                "對方：{number}{reason}\n事情：拒接號碼來電，播「{announce}」後掛斷\nAI 回覆：沒有接（沒用 AI）\n要處理：要聯絡的話自己回電"
+                "對方：{number}{reason}\n事情：黑名單來電，播「{announce}」後掛斷\nAI 回覆：沒有接（沒用 AI）\n要處理：要聯絡的話自己回電"
             ),
             "",
         )
@@ -4986,12 +4988,12 @@ fn save_reject_list_notes(state: &AppState, record: &CallRecord) {
         recording_text: String::new(),
         end_hint: if declined {
             locale::notify_zh_or(
-                "拒接號碼：響鈴時直接拒接（沒有用 AI）",
+                "黑名單：響鈴時直接拒接（沒有用 AI）",
                 "blocked number: declined while it rang (no AI)",
             )
         } else {
             locale::notify_zh_or(
-                "拒接號碼：播無法接通語音後掛斷（沒有用 AI）",
+                "黑名單：播無法接通語音後掛斷（沒有用 AI）",
                 "blocked number: the announcement was played, then hung up (no AI)",
             )
         },
@@ -6018,7 +6020,7 @@ fn start_ring_prewarm(
             serial,
             caller_id,
             rt.answer_unknown_callers,
-            settings_store::reject_number_hit_on(&rt.reject_numbers, caller_id, sim.as_deref()),
+            settings_store::reject_number_hit_on(rt.pending_rejects(), caller_id, sim.as_deref()),
         ) != CidRoute::Greet
     {
         return false;
@@ -10050,7 +10052,7 @@ fn summary_end_hint(events: &[String], scam: Option<&calls::ScamJudgement>) -> S
     } else if has("reject_unknown_caller") {
         locale::notify_zh_or("未顯示號碼，播拒接語音後掛斷（AI 沒有接）", "hidden number: the refusal announcement was played, then hung up (the AI did not answer)")
     } else if has("reject_list") {
-        locale::notify_zh_or("拒接號碼：播無法接通語音後掛斷（AI 沒有接）", "blocked number: the unavailable announcement was played, then hung up (the AI did not answer)")
+        locale::notify_zh_or("黑名單：播無法接通語音後掛斷（AI 沒有接）", "blocked number: the unavailable announcement was played, then hung up (the AI did not answer)")
     } else if has("persona_stall_released") {
         locale::notify_zh_or("系統一度以為是推銷／詐騙，再確認一次是正常電話，AI 回到正常應對", "the system first took it for a sales / scam call; a second check found an ordinary call and the AI went back to talking normally")
     } else if has("persona_stall_spam") {
@@ -11944,7 +11946,7 @@ mod unknown_caller_tests {
         assert_eq!(p.take("pixel-10111"), None);
         assert!(REJECT_PENDING_TTL >= Duration::from_secs(10));
         // The record says why there was no AI.
-        assert!(summary_end_hint(&["reject_list".to_string()], None).contains("拒接號碼"));
+        assert!(summary_end_hint(&["reject_list".to_string()], None).contains("黑名單"));
     }
 
     #[test]

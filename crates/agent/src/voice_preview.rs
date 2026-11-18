@@ -267,15 +267,15 @@ pub fn reject_voice(rt: &crate::settings_store::RuntimeSettings) -> &str {
 }
 
 /// Have the announcement ready for the current voice, language and model while it
-/// can be needed: there are blocked numbers, or hidden numbers are not answered
-/// (bundled: no Gemini call; else one, the first time only). `true` = nothing
-/// left to do.
+/// can be needed: someone is on the Blacklist (or blocked numbers wait to be
+/// moved there), or hidden numbers are not answered (bundled: no Gemini call;
+/// else one, the first time only). `true` = nothing left to do.
 pub async fn prepare_reject_clip(
     previews: &VoicePreviews,
     rt: &crate::settings_store::RuntimeSettings,
     sample_rate: u32,
 ) -> bool {
-    let needed = !rt.reject_numbers.is_empty() || !rt.answer_unknown_callers;
+    let needed = crate::contacts::blacklist_len() > 0 || !rt.pending_rejects().is_empty() || !rt.answer_unknown_callers;
     if !needed || rt.gemini_api_key.trim().is_empty() {
         return true;
     }

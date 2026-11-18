@@ -70,8 +70,9 @@ have asked you on the console first.
   holds facts such as where parcels go or your office hours; the *Status note* (in
   **How it answers**) holds one line about right now ("expecting a delivery this
   afternoon"). Anything not written there, the AI must not make up.
-- **Blocked and hidden numbers.** Numbers added under **Blocked numbers** are
-  refused while ringing, or hear a short announcement, and never reach the AI.
+- **Blocked and hidden numbers.** Numbers on the **Blacklist** in **Contacts**
+  are refused while ringing, or hear a short announcement, and never reach the
+  AI. A Blacklist number ending in `*` covers every number that starts that way.
   Callers without caller ID get the AI like anyone else; switch *Answer hidden
   numbers* off (in **How it answers**) and they hear the announcement instead.
 
@@ -203,7 +204,7 @@ Every contact can be assigned to one of four lists (from the Contacts page, via 
   1. *Off: the AI answers*: the AI knows who is calling and answers naturally.
   2. *Only when it is urgent*: the AI answers first. If the caller says it is urgent (in any of the 9 languages), the AI gives them your phone number and Bageo sends you an urgent alert at once.
   3. *Always: put through to your phone*: the AI phone declines the call, your carrier's forward-when-busy rings your own phone, and you get a notification at once. Turn forwarding on first: switch the phone to normal phone, then dial `**67*your number#` on it.
-- **Blacklist (`blacklist`)**: handled like blocked numbers: turned away while ringing, or after a short "not available" announcement, without using the AI.
+- **Blacklist (`blacklist`)**: turned away while ringing, or after a short "not available" announcement, without using the AI; the **Blacklist** tab sets which. A number ending in `*` (`0800*`, at least three digits not counting leading zeros) covers every number that starts that way.
 - **Stall list (`stall`)**: known debt collectors, sales callers or harassers. The AI starts wasting their time the moment the call connects, without waiting for keywords.
 
 ## Nine languages, dual SIM, translated transcripts

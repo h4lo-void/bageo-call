@@ -792,50 +792,14 @@ impl Controller {
 
     async fn set_contact_kind(&self, kind: &str, number: &str, name: &str) -> Outcome {
         if kind == "unblock" {
-            let mut found_name = String::new();
-            if let Some(c) = self.state.contacts.lookup(number, None) {
-                found_name = c.name.clone();
-                if matches!(c.kind.as_str(), "blacklist" | "stall") {
-                    let _ = self
-                        .state
-                        .contacts
-                        .update(
-                            &c.id,
-                            &crate::contacts::Draft {
-                                name: c.name,
-                                phones: c.phones,
-                                note: c.note,
-                                source: c.source,
-                                kind: String::new(),
-                            },
-                        )
-                        .await;
-                }
-            }
-            let rt = self.state.settings_store.snapshot();
-            let key: String = number.chars().filter(char::is_ascii_digit).collect();
-            let suffix = if key.len() >= 8 { &key[key.len() - 8..] } else { key.as_str() };
-            if !suffix.is_empty() {
-                let kept: Vec<_> = rt
-                    .reject_numbers
-                    .iter()
-                    .filter(|e| {
-                        let d: String = e.number.chars().filter(char::is_ascii_digit).collect();
-                        !d.ends_with(suffix)
-                    })
-                    .cloned()
-                    .collect();
-                if kept.len() != rt.reject_numbers.len() {
-                    let _ = self
-                        .state
-                        .settings_store
-                        .apply_patch(&json!({ "reject_numbers": kept }));
-                }
-            }
+            // Only the contacts: a Blacklist prefix with these digits goes too
+            // (`/unblock 0800` lifts `0800*`).
+            let found_name = self.state.contacts.lookup(number, None).map(|c| c.name).unwrap_or_default();
+            let changed = self.state.contacts.unblock(number, &["blacklist", "stall"]).await.ok().flatten();
             return Outcome::ContactKindSet {
                 list: "unblock".to_string(),
                 number: number.to_string(),
-                name: found_name,
+                name: if found_name.is_empty() { changed.unwrap_or_default() } else { found_name },
             };
         }
         match self.state.contacts.upsert_by_number(number, name, "", kind).await {

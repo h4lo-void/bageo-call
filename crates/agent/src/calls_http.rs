@@ -1271,6 +1271,15 @@ async fn settings_put(
     if !patch.is_object() {
         return api_error(StatusCode::BAD_REQUEST, "bad_request", "JSON object body required");
     }
+    // Blocked numbers sent the old way go onto the Blacklist (the settings do
+    // not keep them); nothing is saved when the contacts cannot be.
+    if let Some(v) = patch.get("reject_numbers") {
+        let entries: Vec<(String, String)> = crate::settings_store::reject_entries(v).into_iter().map(|e| (e.number, e.reason)).collect();
+        if let Err(e) = state.contacts.block_many(&entries).await {
+            tracing::warn!("settings: blocked numbers not put on the Blacklist: {e:?}");
+            return api_error(StatusCode::INTERNAL_SERVER_ERROR, "contacts_save_failed", "the blocked numbers could not be saved");
+        }
+    }
     match state.settings_store.apply_patch(&patch) {
         Ok(rt) => {
             // Language, answer style, owner name: what the next call's helpers read.
@@ -2639,23 +2648,7 @@ async fn quick_action_run(
             }
         }
         "unblock" => {
-            if let Some(c) = state.contacts.lookup(target, None) {
-                if c.kind == "blacklist" || c.kind == "stall" || c.kind == "whitelist" {
-                    let _ = state
-                        .contacts
-                        .update(
-                            &c.id,
-                            &crate::contacts::Draft {
-                                name: c.name,
-                                phones: c.phones,
-                                note: c.note,
-                                source: c.source,
-                                kind: String::new(),
-                            },
-                        )
-                        .await;
-                }
-            }
+            let _ = state.contacts.unblock(target, &["blacklist", "stall", "whitelist"]).await;
             let title = crate::control::words::fmt(w.list_unblocked, &[target]);
             reply_out(true, &title, target)
         }

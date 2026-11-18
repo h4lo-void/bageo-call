@@ -130,12 +130,17 @@ pub struct RuntimeSettings {
     /// normal AI path instead of the reject WAV + hangup.
     #[serde(default)]
     pub answer_unknown_callers: bool,
-    /// Blocked numbers: for callers the AI should not handle, the phone picks up,
-    /// plays the "cannot be reached" line and hangs up — no AI. Number and reason
-    /// apart ([`RejectEntry`]); a trailing `*` on a number matches a prefix
-    /// ([`reject_number_hit`]).
+    /// Blocked numbers saved by older versions. They are copied onto the
+    /// Contacts Blacklist at start ([`crate::contacts::absorb_reject_numbers`])
+    /// and kept here as they were, for an older version to read; until then
+    /// they are turned away like the Blacklist ([`RuntimeSettings::pending_rejects`]).
+    /// The settings API no longer writes it: numbers sent in it go onto the
+    /// Blacklist.
     #[serde(default)]
     pub reject_numbers: Vec<RejectEntry>,
+    /// `reject_numbers` is on the Blacklist: from then on only the Blacklist counts.
+    #[serde(default)]
+    pub reject_numbers_moved: bool,
     /// Voice of the blocked-number announcement; empty = the AI's voice.
     #[serde(default)]
     pub reject_voice_name: String,
@@ -692,6 +697,7 @@ impl RuntimeSettings {
                     .map(|line| RejectEntry::from(RejectEntryRepr::Line(line)))
                     .collect(),
             ),
+            reject_numbers_moved: false,
             reject_voice_name: env_or("REJECT_VOICE_NAME", ""),
             reject_mode: sanitize_reject_mode(&env_or("REJECT_MODE", "decline")),
             persona_stall_spam: env_bool("PERSONA_STALL_SPAM", true),
@@ -797,6 +803,16 @@ impl RuntimeSettings {
     /// Blocked numbers are refused while they ring (`reject_mode` `decline`).
     pub fn reject_declines(&self) -> bool {
         self.reject_mode != "announce"
+    }
+
+    /// Blocked numbers of an older version not on the Blacklist yet (still
+    /// turned away); none once they have moved.
+    pub fn pending_rejects(&self) -> &[RejectEntry] {
+        if self.reject_numbers_moved {
+            &[]
+        } else {
+            &self.reject_numbers
+        }
     }
 
     pub fn is_assistant_style(&self) -> bool {
@@ -973,6 +989,7 @@ impl RuntimeSettings {
             spam_keywords,
             callback_whitelist,
             reject_numbers,
+            reject_numbers_moved,
             reject_voice_name,
             reject_mode,
             ivr_goodbye_text,
@@ -1297,6 +1314,8 @@ struct Overrides {
     callback_whitelist: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reject_numbers: Option<Vec<RejectEntry>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reject_numbers_moved: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reject_voice_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1863,12 +1882,9 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     );
     p_list(patch, "spam_keywords", &mut ov.spam_keywords);
     p_list(patch, "callback_whitelist", &mut ov.callback_whitelist);
-    if let Some(v) = patch.get("reject_numbers") {
-        // Rows {number, reason} from the settings page (older one-line strings too).
-        if let Ok(list) = serde_json::from_value::<Vec<RejectEntry>>(v.clone()) {
-            ov.reject_numbers = Some(clean_reject_list(list));
-        }
-    }
+    // `reject_numbers` is not written any more: the settings API puts those
+    // numbers on the Blacklist ([`reject_entries`]).
+    p_bool(patch, "reject_numbers_moved", &mut ov.reject_numbers_moved);
     p_u32(patch, "vm_max_ms", &mut ov.vm_max_ms);
     p_u32(patch, "vm_silence_ms", &mut ov.vm_silence_ms);
     p_f32(patch, "vm_silence_rms", &mut ov.vm_silence_rms);
@@ -2295,12 +2311,20 @@ pub fn split_reject_entry(entry: &str) -> (&str, &str) {
     (e[..cut].trim(), e[cut..].trim())
 }
 
-/// Shortest prefix a `…*` entry may have: `0*` / `02*` would turn whole areas away.
-const REJECT_PREFIX_MIN_DIGITS: usize = 4;
+/// Fewest digits a `…*` entry needs after its leading zeros: `02*` / `080*`
+/// would turn whole areas away, and `0000*` everyone.
+const REJECT_PREFIX_MIN_DIGITS: usize = 3;
 
-/// The caller is on the blocked-numbers list (`reject_numbers` or Contacts
-/// Blacklist `kind == "blacklist"`): same national number, or it starts with
-/// an entry ending in `*`. Hidden / garbled numbers never match.
+/// Blocked numbers sent the old way (`reject_numbers`: rows `{number,
+/// reason}` or one-line strings), cleaned; anything else: none.
+pub fn reject_entries(v: &Value) -> Vec<RejectEntry> {
+    serde_json::from_value::<Vec<RejectEntry>>(v.clone()).map(clean_reject_list).unwrap_or_default()
+}
+
+/// The caller is turned away: on the Contacts Blacklist (`kind == "blacklist"`),
+/// or in `list` (blocked numbers not moved onto it yet): the same national
+/// number, or it starts with an entry ending in `*`. Hidden / garbled numbers
+/// never match.
 pub fn reject_number_hit(list: &[RejectEntry], caller: &str) -> bool {
     reject_number_hit_on(list, caller, None)
 }
@@ -2330,45 +2354,80 @@ pub fn reject_reason_on(list: &[RejectEntry], caller: &str, sim: Option<&str>) -
     }
     crate::contacts::is_blacklist(caller, sim).and_then(|c| {
         let note = c.note.trim();
+        // A name that is only the number (or repeats the note, as moved-over
+        // blocked numbers do) says nothing new.
         let name = c.name.trim();
-        if !note.is_empty() && !name.is_empty() && name != caller.trim() {
-            Some(format!("{name} · {note}"))
-        } else if !note.is_empty() {
-            Some(note.to_string())
-        } else if !name.is_empty() && name != caller.trim() {
-            Some(name.to_string())
+        let name = if name.is_empty()
+            || name.eq_ignore_ascii_case(note)
+            || name == caller.trim()
+            || crate::contacts::same_number(name, caller, sim)
+        {
+            ""
         } else {
-            None
+            name
+        };
+        match (name.is_empty(), note.is_empty()) {
+            (false, false) => Some(format!("{name} · {note}")),
+            (true, false) => Some(note.to_string()),
+            (false, true) => Some(name.to_string()),
+            (true, true) => None,
         }
     })
 }
 
-fn reject_entry_for<'a>(list: &'a [RejectEntry], caller: &str, sim: Option<&str>) -> Option<&'a RejectEntry> {
-    // The SIM's country code reads the caller ID (and the owner's entries) the
-    // way that SIM does; without one, the owner's.
-    let cc = sim
+/// The country calling code a call on the SIM of country `sim` reads numbers
+/// in (the caller ID and the owner's entries); without one, the owner's.
+fn reading_code(sim: Option<&str>) -> String {
+    sim
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .and_then(crate::phone_region::calling_code)
         .map(str::to_string)
-        .unwrap_or_else(crate::locale::country_code);
-    let national_digits = |s: &str| national_digits_for(s, &cc);
+        .unwrap_or_else(crate::locale::country_code)
+}
+
+/// Whether a blocked-number entry can stand: a number, or a prefix ending in
+/// `*` with at least [`REJECT_PREFIX_MIN_DIGITS`] digits after its leading
+/// zeros (`0800*`, `0912*`; not `080*`, `0008*`, `0000*`).
+pub fn reject_prefix_ok(entry: &str) -> bool {
+    match entry.trim().strip_suffix('*') {
+        Some(prefix) => without_leading_zeros(&national_digits(prefix)).len() >= REJECT_PREFIX_MIN_DIGITS,
+        None => true,
+    }
+}
+
+/// `caller` is the blocked `entry` read as dialled on the SIM of country
+/// `sim` (None: the owner's country): the same national number, or, for an
+/// entry ending in `*`, it starts with those digits. Hidden / garbled
+/// numbers never match.
+pub fn reject_entry_hit(entry: &str, caller: &str, sim: Option<&str>) -> bool {
+    entry_hit(entry, caller, &reading_code(sim))
+}
+
+fn entry_hit(entry: &str, caller: &str, cc: &str) -> bool {
+    let national_digits = |s: &str| national_digits_for(s, cc);
     let c = national_digits(caller);
     if c.len() < 5 {
-        return None;
+        return false;
     }
-    list.iter().find(|e| match e.number.trim().strip_suffix('*') {
+    match entry.trim().strip_suffix('*') {
         Some(prefix) => {
             let p = national_digits(prefix);
-            p.len() >= REJECT_PREFIX_MIN_DIGITS
-                && (c.starts_with(&p)
-                    || without_leading_zeros(&c).starts_with(without_leading_zeros(&p)))
+            // Too few digits (an empty one would match everyone): nobody.
+            let significant = without_leading_zeros(&p);
+            significant.len() >= REJECT_PREFIX_MIN_DIGITS
+                && (c.starts_with(&p) || without_leading_zeros(&c).starts_with(significant))
         }
         None => {
-            let n = national_digits(&e.number);
+            let n = national_digits(entry);
             n.len() >= 5 && same_number(&n, &c)
         }
-    })
+    }
+}
+
+fn reject_entry_for<'a>(list: &'a [RejectEntry], caller: &str, sim: Option<&str>) -> Option<&'a RejectEntry> {
+    let cc = reading_code(sim);
+    list.iter().find(|e| entry_hit(&e.number, caller, &cc))
 }
 
 #[cfg(test)]
@@ -2406,6 +2465,8 @@ mod tests {
             entry("0800*", "免付費推銷"),
             entry("02*", ""),
             entry("*", ""),
+            entry("0000*", ""),
+            entry("0008*", ""),
         ];
         // Stored as plain national digits.
         assert_eq!(list[0].number, "0255501234");
@@ -2416,9 +2477,15 @@ mod tests {
         }
         assert!(reject_number_hit(&list, "0912345678"));
         assert!(reject_number_hit(&list, "0800123456"));
-        // Prefixes shorter than 4 digits and a bare `*` turn nobody away.
+        // Prefixes with fewer than 3 digits after their zeros (`0000*` would
+        // match everyone) and a bare `*` turn nobody away.
         assert!(!reject_number_hit(&list, "0223456789"));
         assert!(!reject_number_hit(&list, "0255501235"));
+        assert!(!reject_number_hit(&list, "0008123456"));
+        assert!(!reject_number_hit(&list, "0000123456"));
+        for (prefix, ok) in [("0800*", true), ("0912*", true), ("123*", true), ("080*", false), ("0008*", false), ("0000*", false), ("02*", false)] {
+            assert_eq!(reject_prefix_ok(prefix), ok, "{prefix}");
+        }
         // Hidden / unknown callers never match.
         for caller in ["", "unknown", "private", "anonymous"] {
             assert!(!reject_number_hit(&list, caller), "{caller}");
@@ -2453,28 +2520,41 @@ mod tests {
     }
 
     #[test]
-    fn reject_numbers_persist_through_a_patch() {
+    fn reject_numbers_are_read_but_no_longer_written() {
         let dir = std::env::temp_dir().join(format!(
             "bageo-call-settings-test-{}",
             uuid::Uuid::new_v4()
         ));
-        std::fs::create_dir_all(&dir).expect("temp settings dir");
+        std::fs::create_dir_all(dir.join("config")).expect("temp settings dir");
+        // A settings file of an older version keeps its list.
+        std::fs::write(
+            dir.join("config").join("settings.json"),
+            r#"{"reject_numbers": [{"number": "02-5550-1234", "reason": " 安信 "}, "0912345678"]}"#,
+        )
+        .unwrap();
         let mut base = Settings::from_env();
         base.calls_data_dir = dir.to_string_lossy().to_string();
         let store = SettingsStore::load(base.clone());
-        let rt = store
-            .apply_patch(&json!({ "reject_numbers": [
-                { "number": "02-5550-1234", "reason": " 安信 " },
-                { "number": "  ", "reason": "沒有號碼的列不存" },
-                { "number": "0912345678" },
-                { "number": "0255501234", "reason": "重複的不存" }
-            ] }))
-            .unwrap();
+        let rt = store.snapshot();
         assert_eq!(rt.reject_numbers, vec![entry("0255501234", "安信"), entry("0912345678", "")]);
-        // Saved: a restart keeps the list.
-        let again = SettingsStore::load(base);
-        assert!(reject_number_hit(&again.snapshot().reject_numbers, "+886255501234"));
-        assert_eq!(reject_reason(&again.snapshot().reject_numbers, "0255501234").as_deref(), Some("安信"));
+        assert!(reject_number_hit(rt.pending_rejects(), "+886255501234"));
+        assert_eq!(reject_reason(rt.pending_rejects(), "0255501234").as_deref(), Some("安信"));
+        // The settings API does not write it (those numbers go onto the Blacklist).
+        let rt = store.apply_patch(&json!({ "reject_numbers": [{ "number": "0800*" }] })).unwrap();
+        assert_eq!(rt.reject_numbers.len(), 2);
+        // Once moved, the list stays as it was but counts no more.
+        let rt = store.apply_patch(&json!({ "reject_numbers_moved": true })).unwrap();
+        assert_eq!(rt.reject_numbers.len(), 2);
+        assert!(rt.pending_rejects().is_empty());
+        let again = SettingsStore::load(base).snapshot();
+        assert!(again.reject_numbers_moved);
+        assert_eq!(again.reject_numbers.len(), 2);
+        let saved = std::fs::read_to_string(dir.join("config").join("settings.json")).unwrap();
+        assert!(saved.contains("0255501234"), "{saved}");
+        assert_eq!(
+            reject_entries(&json!(["0255501234 推銷", { "number": " " }, { "number": "0255501234" }])),
+            vec![entry("0255501234", "推銷")]
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

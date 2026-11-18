@@ -28,7 +28,7 @@ missing, with no date.
 | Silence handling | Done | Asks whether the caller is still there, then ends the call. |
 | Voice-activity detection, noise | Done | Gemini's own detection, or a local detector. |
 | Natural surroundings | Done | Twelve background sounds at three levels. |
-| Spam and robocall handling | Done | Blocked numbers; three layers (follow-up whitelist, weighted keywords, a semantic second look), then a polite no or Stall Mode. |
+| Spam and robocall handling | Done | Blacklist (with `*` prefixes); three layers (follow-up whitelist, weighted keywords, a semantic second look), then a polite no or Stall Mode. |
 | Recognising returning callers | Partly | Contacts give the AI the caller's name and your note. Earlier summaries for the same number are not in the prompt yet. |
 | Knowledge-base answers without making things up | Partly | *Notes the AI may answer from*: plain text in the prompt with a "do not guess" rule. No document search. |
 | AI disclosure, recording notice | Partly | Disclosure is built into the *AI assistant* style and given on a sincere question in *As me*. A recording notice is up to your prompt. |
