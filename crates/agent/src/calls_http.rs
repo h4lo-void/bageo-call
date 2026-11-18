@@ -2663,10 +2663,22 @@ async fn phone_pairing_renew(
     headers: HeaderMap,
     Query(query): Query<TokenQuery>,
 ) -> Response {
-    if !token_ok(&state.settings, &headers, &query) {
+    phone_pairing_renew_with(&state.settings, &headers, &query, crate::phone_wifi::pairing())
+}
+
+fn phone_pairing_renew_with(
+    settings: &Settings,
+    headers: &HeaderMap,
+    query: &TokenQuery,
+    pairing: &crate::phone_wifi::Pairing,
+) -> Response {
+    if !token_ok(settings, headers, query) {
         return unauthorized();
     }
-    match crate::phone_wifi::pairing().renew() {
+    if !is_json_request(headers) {
+        return json_required();
+    }
+    match pairing.renew() {
         Ok(()) => {
             info!("phones paired again: the phones on Wi-Fi must be plugged in by USB once more");
             Json(json!({"ok": true})).into_response()
@@ -4928,6 +4940,36 @@ mod tests {
         let pick_us = crate::errands::pick_phone_sim(&phones, "202-555-0199", serial, Some(20), "tw").unwrap();
         assert_eq!(pick_us.sub_id, Some(20));
         assert_eq!(pick_us.e164, "+12025550199");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn phone_pairing_renew_requires_json_and_rotates_key() {
+        let root = std::env::temp_dir().join(format!("bageo-prenew-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let state = quick_state(&root);
+        let base = spawn_router(state.clone()).await;
+        let client = reqwest::Client::new();
+
+        // Missing Content-Type: application/json on POST /api/phone-pairing/renew is rejected (CSRF).
+        let no_json = client
+            .post(format!("{base}/api/phone-pairing/renew"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(no_json.status().as_u16(), 400);
+
+        let pairing = crate::phone_wifi::Pairing::open(&root);
+        let before = pairing.key();
+        let mut headers = HeaderMap::new();
+        headers.insert(header::CONTENT_TYPE, header::HeaderValue::from_static("application/json"));
+        let res = phone_pairing_renew_with(&state.settings, &headers, &TokenQuery { token: None }, &pairing);
+        assert_eq!(res.status().as_u16(), 200);
+        let after = pairing.key();
+        assert_ne!(after, before);
+        assert!(!pairing.accepts(Some(&before)));
+        assert!(pairing.accepts(Some(&after)));
 
         let _ = std::fs::remove_dir_all(&root);
     }

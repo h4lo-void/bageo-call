@@ -1236,6 +1236,7 @@ impl Controller {
             rt.openclaw_token.clone(),
             rt.mcp_token.clone(),
             self.state.settings.calls_ui_token.clone(),
+            crate::settings_store::active_ui_token(&self.state.settings.calls_ui_token),
             self.state.settings.device_token.clone(),
             // The key phones use over Wi-Fi (crate::phone_wifi), when one was made.
             crate::phone_wifi::pairing().peek().unwrap_or_default(),

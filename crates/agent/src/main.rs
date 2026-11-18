@@ -89,7 +89,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{ConnectInfo, Query, State};
+use axum::extract::{ConnectInfo, Query, RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect};
 use axum::routing::{get, post};
@@ -1524,7 +1524,7 @@ fn phone_ws(
         peer.ip().is_loopback(),
         proxied,
         paired,
-        !device_token.is_empty() && token.is_some_and(|t| t.trim() == device_token),
+        !device_token.is_empty() && token.is_some_and(|t| phone_wifi::same_token(t.trim(), device_token)),
     );
     ws.on_upgrade(move |socket| handle_ws(socket, state, link))
 }
@@ -1557,12 +1557,12 @@ impl PhoneLink {
     }
 
     /// A connection on the Wi-Fi entry (it showed the pairing key or `DEVICE_TOKEN`).
-    fn wifi_entry(proxied: bool) -> Self {
+    fn wifi_entry(proxied: bool, on_pairing: bool) -> Self {
         Self {
             wifi: true,
             proxied,
             trusted: true,
-            on_pairing: true,
+            on_pairing,
         }
     }
 }
@@ -1672,9 +1672,14 @@ fn wifi_entry_gate(router: Router, device_token: String) -> Router {
 async fn wifi_entry_ws(
     ws: WebSocketUpgrade,
     headers: axum::http::HeaderMap,
+    RawQuery(query): RawQuery,
     State(state): State<AppState>,
 ) -> axum::response::Response {
-    let link = PhoneLink::wifi_entry(calls_http::came_through_proxy(&headers));
+    let token = token_param(query.as_deref());
+    let device_token = state.settings.device_token.trim();
+    let device_ok = !device_token.is_empty()
+        && token.as_deref().is_some_and(|t| phone_wifi::same_token(t.trim(), device_token));
+    let link = PhoneLink::wifi_entry(calls_http::came_through_proxy(&headers), !device_ok);
     ws.on_upgrade(move |socket| handle_ws(socket, state, link))
 }
 
@@ -1694,7 +1699,9 @@ fn spawn_phone_wifi(state: AppState, main_addr: SocketAddr) {
         let mut was_on = state.settings_store.snapshot().phone_wifi;
         let mut retry_at: Option<tokio::time::Instant> = None;
         loop {
+            let prev_port = phone_wifi::entry_port();
             let on = state.settings_store.snapshot().phone_wifi;
+            let switched = was_on != on;
             if was_on && !on {
                 info!("phone Wi-Fi: turned off");
                 phone_wifi::pairing().kick();
@@ -1739,6 +1746,9 @@ fn spawn_phone_wifi(state: AppState, main_addr: SocketAddr) {
                     phone_wifi::set_entry_port(0);
                     info!("phone Wi-Fi: Wi-Fi entry closed");
                 }
+            }
+            if switched || phone_wifi::entry_port() != prev_port {
+                phone_wifi::pairing().notify_refresh();
             }
             tokio::time::sleep(Duration::from_secs(2)).await;
         }
@@ -2356,9 +2366,24 @@ async fn handle_control_idle_ws(
     serial: String,
     sink: WsSink,
     mut stream: PhoneStream,
+    link: PhoneLink,
 ) {
+    let mut refreshed = phone_wifi::pairing().refreshed();
     loop {
-        let Some(msg) = stream.next().await else {
+        let next_msg = if link.trusted && !link.proxied {
+            tokio::select! {
+                msg = stream.next() => msg,
+                changed = refreshed.changed() => {
+                    if changed.is_ok() {
+                        send_agent_info(&state, &sink, link).await;
+                    }
+                    continue;
+                }
+            }
+        } else {
+            stream.next().await
+        };
+        let Some(msg) = next_msg else {
             break;
         };
         let msg = match msg {
@@ -2853,7 +2878,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         );
                                     }
                                     send_agent_info(&state, &sink, link).await;
-                                    handle_control_idle_ws(state, serial, sink, stream).await;
+                                    handle_control_idle_ws(state, serial, sink, stream, link).await;
                                     return;
                                 }
                                 // Whitelist urgent call dialing / merged on this phone: a new media
@@ -12914,8 +12939,10 @@ mod access_and_whitelist_tests {
         assert!(device.trusted && !device.on_pairing, "DEVICE_TOKEN phones stay when paired again");
         let proxied = PhoneLink::main_port(true, true, false, true);
         assert!(proxied.wifi && proxied.proxied, "a reverse proxy is not the USB tunnel");
-        let entry = PhoneLink::wifi_entry(false);
+        let entry = PhoneLink::wifi_entry(false, true);
         assert!(entry.wifi && entry.trusted && entry.on_pairing);
+        let entry_dev = PhoneLink::wifi_entry(false, false);
+        assert!(entry_dev.wifi && entry_dev.trusted && !entry_dev.on_pairing, "DEVICE_TOKEN on Wi-Fi entry survives renew");
     }
 
     #[test]

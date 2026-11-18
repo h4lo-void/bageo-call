@@ -13722,7 +13722,7 @@ $("btnRepairPhones").addEventListener("click", async () => {
   const yes = await ask({ title: t("repair_t"), body: t("repair_b"), ok: t("repair_btn"), danger: true });
   if (!yes) return;
   try {
-    await api("/phone-pairing/renew", { method: "POST" });
+    await api("/phone-pairing/renew", jsonBody("POST", {}));
     toast(t("repair_done"));
   } catch (e) {
     if (e.status !== 401) toast(e.message, true);

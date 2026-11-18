@@ -167,6 +167,10 @@ class AgentControlClient(
         shouldRun.set(false)
         open.set(false)
         if (current === this) current = null
+        pingThread?.interrupt()
+        pingThread = null
+        usbThread?.interrupt()
+        usbThread = null
         try {
             client?.close()
         } catch (_: Exception) {

@@ -37,6 +37,7 @@ pub struct Pairing {
     path: PathBuf,
     key: Mutex<Option<String>>,
     kick: watch::Sender<u64>,
+    refresh: watch::Sender<u64>,
 }
 
 /// 32 random bytes (the system's random source, through uuid v4), base64url.
@@ -57,6 +58,11 @@ fn valid_key(s: &str) -> bool {
 fn same(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// Constant-time comparison for pairing keys and device tokens.
+pub fn same_token(a: &str, b: &str) -> bool {
+    same(a, b)
 }
 
 /// Write `key` to `path` (mode 600 on Unix), through a temporary file.
@@ -107,6 +113,7 @@ impl Pairing {
             path,
             key: Mutex::new(key),
             kick: watch::channel(0).0,
+            refresh: watch::channel(0).0,
         }
     }
 
@@ -152,6 +159,7 @@ impl Pairing {
         write_key(&self.path, &k)?;
         *self.slot() = Some(k);
         self.kick();
+        self.notify_refresh();
         Ok(())
     }
 
@@ -163,6 +171,16 @@ impl Pairing {
     /// Changes when the phones connected over Wi-Fi must be dropped.
     pub fn kicked(&self) -> watch::Receiver<u64> {
         self.kick.subscribe()
+    }
+
+    /// Notify plugged-in USB phones to push updated `agent_info`.
+    pub fn notify_refresh(&self) {
+        self.refresh.send_modify(|n| *n = n.wrapping_add(1));
+    }
+
+    /// Changes when plugged-in USB phones should receive updated `agent_info`.
+    pub fn refreshed(&self) -> watch::Receiver<u64> {
+        self.refresh.subscribe()
     }
 }
 
@@ -265,8 +283,10 @@ mod tests {
         assert!(restarted.accepts(Some(&key)));
 
         let kicked = restarted.kicked();
+        let refreshed = restarted.refreshed();
         restarted.renew().unwrap();
         assert!(kicked.has_changed().unwrap(), "the phones on Wi-Fi are dropped");
+        assert!(refreshed.has_changed().unwrap(), "USB phones receive the new pairing");
         let renewed = restarted.key();
         assert_ne!(renewed, key);
         assert!(!restarted.accepts(Some(&key)), "the old key stops working");
