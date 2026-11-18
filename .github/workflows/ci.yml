@@ -76,9 +76,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - name: Build debug APK
+      - name: Build debug APK and run unit tests
         working-directory: android
-        run: sh ./gradlew :app:assembleDebug --no-daemon
+        run: sh ./gradlew :app:assembleDebug :app:testDebugUnitTest --no-daemon
 
   sms-forward:
     name: sms_forward tests

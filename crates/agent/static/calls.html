@@ -1219,6 +1219,10 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <input type="text" id="f-mdns_name" data-k="mdns_name" data-t="text" spellcheck="false" autocapitalize="off" autocomplete="off" maxlength="63" placeholder="bageo" style="max-width:16rem" />
             <div class="help" data-i18n="f_mdns_name_h"></div></div>
           <div class="hr"></div>
+          <label class="sw"><input type="checkbox" data-k="phone_wifi" data-t="bool" /><span><b data-i18n="f_phone_wifi"></b><small data-i18n="f_phone_wifi_h"></small></span></label>
+          <div class="field"><button type="button" class="btn sm" id="btnRepairPhones" data-i18n="repair_btn"></button>
+            <div class="help" data-i18n="f_repair_h"></div></div>
+          <div class="hr"></div>
           <div class="field"><label for="f-gemini_thinking_level" data-i18n="f_think"></label>
             <select id="f-gemini_thinking_level" data-k="gemini_thinking_level" data-t="text" style="max-width:16rem">
               <option value="low" data-i18n="th_low"></option><option value="medium" data-i18n="th_medium"></option><option value="high" data-i18n="th_high"></option>
@@ -1467,7 +1471,7 @@ I18N["en"] = {
   setup_1_t: "Basics",
   setup_1_d: "Add your Gemini API key and your name.",
   setup_2_t: "Phone",
-  setup_2_d: "Plug in the phone with the app installed and wait until it shows “Ready for calls”.",
+  setup_2_d: "Plug in the phone with the app installed by USB and wait until it shows “Ready for calls”. After that you can unplug it: it switches to Wi-Fi by itself.",
   setup_3_t: "Notifications",
   setup_3_d: "Choose where call summaries go, such as Telegram or Discord.",
   live_active: "Call in progress",
@@ -2492,6 +2496,15 @@ I18N["en"] = {
   sms_err_number: "Check the number and try again.",
   f_keep: "Days to keep records",
   f_keep_h: "Calls and recordings, texts, errands and to-dos older than this are deleted automatically.",
+  f_phone_wifi: "Phones can also connect over Wi-Fi",
+  f_phone_wifi_h: "On: a phone plugged in by USB once keeps working over Wi-Fi after you unplug it. Off: phones connect by USB only.",
+  repair_btn: "Pair phones again",
+  f_repair_h: "Use this if a phone was lost or someone else used it.",
+  repair_t: "Pair phones again?",
+  repair_b: "Phones on Wi-Fi are disconnected. Plug each one in by USB once more to connect it again.",
+  repair_done: "Phones paired again. Plug each Wi-Fi phone in by USB once.",
+  ph_link_usb: "Connected by USB",
+  ph_link_wifi: "Connected over Wi-Fi",
 };
 
 I18N["zh-TW"] = {
@@ -2538,7 +2551,7 @@ I18N["zh-TW"] = {
   setup_1_t: "基本設定",
   setup_1_d: "填 Gemini API 金鑰和你的名字。",
   setup_2_t: "手機",
-  setup_2_d: "接上裝好 App 的手機，顯示「待命中」就可以了。",
+  setup_2_d: "用 USB 線接上裝好 App 的手機，顯示「待命中」就可以了。接過一次之後拔掉線，也會自動改用 Wi-Fi 連線。",
   setup_3_t: "通知",
   setup_3_d: "選通話摘要要傳到哪裡，例如 Telegram、LINE。",
   live_active: "通話進行中",
@@ -3563,6 +3576,15 @@ I18N["zh-TW"] = {
   sms_err_number: "請檢查號碼後再試一次。",
   f_keep: "紀錄保留幾天",
   f_keep_h: "通話和錄音、簡訊、AI 代打和待處理事項，超過天數就自動刪除。",
+  f_phone_wifi: "手機也能用 Wi-Fi 連",
+  f_phone_wifi_h: "開：手機用 USB 接過一次後，拔掉線也能繼續用 Wi-Fi 連線。關：手機只能用 USB 連。",
+  repair_btn: "重新配對手機",
+  f_repair_h: "手機遺失或給別人用過時使用。",
+  repair_t: "重新配對手機？",
+  repair_b: "用 Wi-Fi 連線的手機會斷線，每支都要再用 USB 接一次才能連回來。",
+  repair_done: "已重新配對。用 Wi-Fi 的手機請再用 USB 接一次。",
+  ph_link_usb: "用 USB 連線",
+  ph_link_wifi: "用 Wi-Fi 連線",
 };
 
 I18N["zh-CN"] = {
@@ -3609,7 +3631,7 @@ I18N["zh-CN"] = {
   setup_1_t: "基本设置",
   setup_1_d: "填写 Gemini API 密钥和你的名字。",
   setup_2_t: "手机",
-  setup_2_d: "接上装好 App 的手机，显示“待命中”就可以了。",
+  setup_2_d: "用 USB 数据线连接装好 App 的手机，显示“待命中”就可以了。连过一次之后拔掉线，也会自动改用 Wi-Fi 连接。",
   setup_3_t: "通知",
   setup_3_d: "选择通话摘要发到哪里，例如 Telegram、钉钉。",
   live_active: "通话进行中",
@@ -4634,6 +4656,15 @@ I18N["zh-CN"] = {
   sms_err_number: "请检查号码后再试一次。",
   f_keep: "记录保留几天",
   f_keep_h: "通话和录音、短信、AI 代打和待处理事项，超过天数就自动删除。",
+  f_phone_wifi: "手机也能用 Wi-Fi 连接",
+  f_phone_wifi_h: "开：手机用 USB 连过一次后，拔掉线也能继续用 Wi-Fi 连接。关：手机只能用 USB 连接。",
+  repair_btn: "重新配对手机",
+  f_repair_h: "手机丢失或给别人用过时使用。",
+  repair_t: "重新配对手机？",
+  repair_b: "用 Wi-Fi 连接的手机会断开，每台都要再用 USB 连一次才能连回来。",
+  repair_done: "已重新配对。用 Wi-Fi 的手机请再用 USB 连一次。",
+  ph_link_usb: "通过 USB 连接",
+  ph_link_wifi: "通过 Wi-Fi 连接",
 };
 
 I18N["ja"] = {
@@ -4680,7 +4711,7 @@ I18N["ja"] = {
   setup_1_t: "基本設定",
   setup_1_d: "Gemini API キーとあなたの名前を入力します。",
   setup_2_t: "スマホ",
-  setup_2_d: "アプリを入れたスマホをつなぎ、「待機中」と表示されれば完了です。",
+  setup_2_d: "アプリを入れたスマホを USB ケーブルでつなぎ、「待機中」と表示されれば完了です。一度つないだ後はケーブルを抜いても、自動で Wi-Fi に切り替わります。",
   setup_3_t: "通知",
   setup_3_d: "通話の要約の送り先を選びます（Telegram、LINE など）。",
   live_active: "通話中",
@@ -5705,6 +5736,15 @@ I18N["ja"] = {
   sms_err_number: "番号を確認して、もう一度お試しください。",
   f_keep: "記録を保存する日数",
   f_keep_h: "通話と録音、SMS、AI 代理電話、対応待ちは、日数を過ぎると自動で削除されます。",
+  f_phone_wifi: "スマホを Wi-Fi でもつなぐ",
+  f_phone_wifi_h: "オン：一度 USB でつないだスマホは、ケーブルを抜いても Wi-Fi でつながります。オフ：USB でのみつながります。",
+  repair_btn: "スマホをペアリングし直す",
+  f_repair_h: "スマホをなくしたときや、ほかの人が使ったときに使います。",
+  repair_t: "スマホをペアリングし直しますか？",
+  repair_b: "Wi-Fi でつながっているスマホは切断されます。それぞれもう一度 USB でつなぐと、またつながります。",
+  repair_done: "ペアリングし直しました。Wi-Fi のスマホはもう一度 USB でつないでください。",
+  ph_link_usb: "USB で接続中",
+  ph_link_wifi: "Wi-Fi で接続中",
 };
 
 I18N["ko"] = {
@@ -5751,7 +5791,7 @@ I18N["ko"] = {
   setup_1_t: "기본 설정",
   setup_1_d: "Gemini API 키와 내 이름을 입력합니다.",
   setup_2_t: "휴대폰",
-  setup_2_d: "앱을 설치한 휴대폰을 연결하고 '대기 중'으로 표시되면 됩니다.",
+  setup_2_d: "앱을 설치한 휴대폰을 USB 케이블로 연결하고 '대기 중'으로 표시되면 됩니다. 한 번 연결한 뒤에는 케이블을 빼도 자동으로 Wi-Fi로 연결됩니다.",
   setup_3_t: "알림",
   setup_3_d: "통화 요약을 받을 곳을 고릅니다(예: Telegram, Discord).",
   live_active: "통화 진행 중",
@@ -6776,6 +6816,15 @@ I18N["ko"] = {
   sms_err_number: "번호를 확인하고 다시 시도해 주세요.",
   f_keep: "기록 보관 일수",
   f_keep_h: "통화와 녹음, 문자, AI 대리 전화, 처리할 일은 기간이 지나면 자동으로 삭제됩니다.",
+  f_phone_wifi: "휴대폰을 Wi-Fi로도 연결",
+  f_phone_wifi_h: "켜기: USB로 한 번 연결한 휴대폰은 케이블을 빼도 Wi-Fi로 계속 연결됩니다. 끄기: USB로만 연결됩니다.",
+  repair_btn: "휴대폰 다시 페어링",
+  f_repair_h: "휴대폰을 잃어버렸거나 다른 사람이 사용했을 때 쓰세요.",
+  repair_t: "휴대폰을 다시 페어링할까요?",
+  repair_b: "Wi-Fi로 연결된 휴대폰은 연결이 끊깁니다. 각 휴대폰을 USB로 한 번 더 연결하면 다시 연결됩니다.",
+  repair_done: "다시 페어링했습니다. Wi-Fi 휴대폰은 USB로 한 번 더 연결하세요.",
+  ph_link_usb: "USB로 연결됨",
+  ph_link_wifi: "Wi-Fi로 연결됨",
 };
 
 I18N["es"] = {
@@ -6822,7 +6871,7 @@ I18N["es"] = {
   setup_1_t: "Lo básico",
   setup_1_d: "Añade tu clave de API de Gemini y tu nombre.",
   setup_2_t: "Teléfono",
-  setup_2_d: "Conecta el teléfono con la app instalada y espera a que aparezca como listo.",
+  setup_2_d: "Conecta por USB el teléfono con la app instalada y espera a que aparezca como listo. Después puedes quitar el cable: pasará a Wi-Fi solo.",
   setup_3_t: "Notificaciones",
   setup_3_d: "Elige adónde se envían los resúmenes, por ejemplo Telegram o Discord.",
   live_active: "Llamada en curso",
@@ -7847,6 +7896,15 @@ I18N["es"] = {
   sms_err_number: "Revisa el número e inténtalo de nuevo.",
   f_keep: "Días que se guardan los registros",
   f_keep_h: "Las llamadas y grabaciones, los SMS, los encargos y los pendientes más antiguos se borran solos.",
+  f_phone_wifi: "Conectar teléfonos también por Wi-Fi",
+  f_phone_wifi_h: "Activado: un teléfono conectado una vez por USB sigue funcionando por Wi-Fi al quitar el cable. Desactivado: solo por USB.",
+  repair_btn: "Volver a emparejar teléfonos",
+  f_repair_h: "Úsalo si perdiste un teléfono o lo usó otra persona.",
+  repair_t: "¿Volver a emparejar los teléfonos?",
+  repair_b: "Los teléfonos conectados por Wi-Fi se desconectan. Conecta cada uno por USB una vez más para que vuelva a conectarse.",
+  repair_done: "Teléfonos emparejados de nuevo. Conecta por USB una vez cada teléfono que usaba Wi-Fi.",
+  ph_link_usb: "Conectado por USB",
+  ph_link_wifi: "Conectado por Wi-Fi",
 };
 
 I18N["fr"] = {
@@ -7893,7 +7951,7 @@ I18N["fr"] = {
   setup_1_t: "L'essentiel",
   setup_1_d: "Ajoutez votre clé API Gemini et votre nom.",
   setup_2_t: "Téléphone",
-  setup_2_d: "Branchez le téléphone où l'application est installée et attendez qu'il apparaisse comme prêt.",
+  setup_2_d: "Branchez en USB le téléphone où l'application est installée et attendez qu'il apparaisse comme prêt. Ensuite, vous pouvez débrancher le câble : il passe tout seul en Wi-Fi.",
   setup_3_t: "Notifications",
   setup_3_d: "Choisissez où envoyer les résumés d'appel, par exemple Telegram ou Discord.",
   live_active: "Appel en cours",
@@ -8918,6 +8976,15 @@ I18N["fr"] = {
   sms_err_number: "Vérifiez le numéro et réessayez.",
   f_keep: "Nombre de jours de conservation",
   f_keep_h: "Les appels et enregistrements, les SMS, les appels IA et les éléments à traiter plus anciens sont supprimés automatiquement.",
+  f_phone_wifi: "Connecter aussi les téléphones en Wi-Fi",
+  f_phone_wifi_h: "Activé : un téléphone branché une fois en USB reste connecté en Wi-Fi une fois débranché. Désactivé : USB uniquement.",
+  repair_btn: "Réassocier les téléphones",
+  f_repair_h: "À utiliser si un téléphone a été perdu ou utilisé par quelqu'un d'autre.",
+  repair_t: "Réassocier les téléphones ?",
+  repair_b: "Les téléphones connectés en Wi-Fi sont déconnectés. Rebranchez chacun une fois en USB pour le reconnecter.",
+  repair_done: "Téléphones réassociés. Rebranchez une fois en USB chaque téléphone qui était en Wi-Fi.",
+  ph_link_usb: "Connecté en USB",
+  ph_link_wifi: "Connecté en Wi-Fi",
 };
 
 I18N["de"] = {
@@ -8964,7 +9031,7 @@ I18N["de"] = {
   setup_1_t: "Grundlagen",
   setup_1_d: "Trag deinen Gemini-API-Schlüssel und deinen Namen ein.",
   setup_2_t: "Telefon",
-  setup_2_d: "Schließ das Telefon mit der installierten App an und warte, bis es als bereit angezeigt wird.",
+  setup_2_d: "Schließ das Telefon mit der installierten App per USB an und warte, bis es als bereit angezeigt wird. Danach kannst du das Kabel abziehen: Es wechselt von selbst ins WLAN.",
   setup_3_t: "Benachrichtigungen",
   setup_3_d: "Wähle, wohin die Zusammenfassungen gehen, zum Beispiel Telegram oder Discord.",
   live_active: "Anruf läuft",
@@ -9989,6 +10056,15 @@ I18N["de"] = {
   sms_err_number: "Prüf die Nummer und versuch es noch einmal.",
   f_keep: "So viele Tage bleiben Daten gespeichert",
   f_keep_h: "Ältere Anrufe und Aufnahmen, SMS, KI-Anrufe und offene Punkte werden automatisch gelöscht.",
+  f_phone_wifi: "Telefone auch per WLAN verbinden",
+  f_phone_wifi_h: "An: Ein Telefon, das einmal per USB angeschlossen war, bleibt nach dem Abziehen per WLAN verbunden. Aus: nur per USB.",
+  repair_btn: "Telefone neu koppeln",
+  f_repair_h: "Nutze das, wenn ein Telefon verloren ging oder jemand anderes es benutzt hat.",
+  repair_t: "Telefone neu koppeln?",
+  repair_b: "Telefone im WLAN werden getrennt. Schließ jedes noch einmal per USB an, damit es sich wieder verbindet.",
+  repair_done: "Telefone neu gekoppelt. Schließ jedes WLAN-Telefon einmal per USB an.",
+  ph_link_usb: "Per USB verbunden",
+  ph_link_wifi: "Per WLAN verbunden",
 };
 
 I18N["pt"] = {
@@ -10035,7 +10111,7 @@ I18N["pt"] = {
   setup_1_t: "O básico",
   setup_1_d: "Adicione sua chave de API do Gemini e seu nome.",
   setup_2_t: "Telefone",
-  setup_2_d: "Conecte o telefone com o app instalado e espere ele aparecer como pronto.",
+  setup_2_d: "Conecte por USB o celular com o app instalado e espere ele aparecer como pronto. Depois você pode tirar o cabo: ele passa sozinho para o Wi-Fi.",
   setup_3_t: "Notificações",
   setup_3_d: "Escolha para onde vão os resumos das chamadas, por exemplo Telegram ou Discord.",
   live_active: "Chamada em andamento",
@@ -11060,6 +11136,15 @@ I18N["pt"] = {
   sms_err_number: "Confira o número e tente novamente.",
   f_keep: "Dias para guardar os registros",
   f_keep_h: "Chamadas e gravações, SMS, ligações IA e pendências mais antigas são apagadas automaticamente.",
+  f_phone_wifi: "Conectar celulares também por Wi-Fi",
+  f_phone_wifi_h: "Ligado: um celular conectado uma vez por USB continua funcionando por Wi-Fi sem o cabo. Desligado: só por USB.",
+  repair_btn: "Parear celulares de novo",
+  f_repair_h: "Use se um celular foi perdido ou usado por outra pessoa.",
+  repair_t: "Parear os celulares de novo?",
+  repair_b: "Os celulares no Wi-Fi são desconectados. Conecte cada um por USB mais uma vez para ele voltar a se conectar.",
+  repair_done: "Celulares pareados de novo. Conecte por USB uma vez cada celular que usava Wi-Fi.",
+  ph_link_usb: "Conectado por USB",
+  ph_link_wifi: "Conectado por Wi-Fi",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word
@@ -13632,6 +13717,18 @@ $("btnSave").addEventListener("click", saveSettings);
 $("btnDiscard").addEventListener("click", populate);
 window.addEventListener("beforeunload", (e) => { if (dirtyCount() > 0) { e.preventDefault(); e.returnValue = ""; } });
 $("btnUseThisUrl").addEventListener("click", () => { $("f-public_url").value = location.origin; updateDirty(); });
+// "Pair phones again": new pairing; phones on Wi-Fi must be plugged in by USB once more.
+$("btnRepairPhones").addEventListener("click", async () => {
+  const yes = await ask({ title: t("repair_t"), body: t("repair_b"), ok: t("repair_btn"), danger: true });
+  if (!yes) return;
+  try {
+    await api("/phone-pairing/renew", jsonBody("POST", {}));
+    toast(t("repair_done"));
+  } catch (e) {
+    if (e.status !== 401) toast(e.message, true);
+  }
+  loadSystem();
+});
 
 // ----- prompt editor + interview helper
 $("btnPromptCopyIn").addEventListener("click", async () => {
@@ -14182,6 +14279,7 @@ function phoneItem(s, call, ph) {
   } else if (inCall) lines.push(t("ph_incall"));
   else lines.push(normal ? t("ph_mode_normal") : t("ph_ready"));
   if (ph && ph.app_version) lines.push(t("ph_app", { v: ph.app_version }));
+  if (ph && ph.link) lines.push(t(ph.link === "wifi" ? "ph_link_wifi" : "ph_link_usb"));
   if (ph && !ph.supports_mode) lines.push(t("ph_need_update"));
   if (modeErr[s] === "timeout") lines.push(t("pm_err_timeout"));
   else if (modeErr[s]) lines.push(t("ph_mode_fail", { why: modeErrText(modeErr[s]) }));

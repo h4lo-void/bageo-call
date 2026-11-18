@@ -140,4 +140,12 @@
     <string name="about_dedicated">AI 모드에서는 모듈이 전화 앱을 넘겨받고 벨소리를 끄며 방해 금지 모드를 켭니다. 그래서 남는 휴대전화을 쓰는 것이 좋습니다. 잠시 일반 휴대전화으로 쓰려면 맨 위의 스위치를 끄세요.</string>
     <string name="about_rollback">Bageo를 완전히 없애려면 먼저 맨 위의 스위치를 끄고(일반 휴대전화으로 되돌림) Magisk 또는 KernelSU에서 모듈을 끄거나 삭제한 뒤 다시 시작하세요.</string>
     <string name="about_legal">통화 녹음과, 상대방에게 AI와 통화 중임을 알려야 하는지에 관한 법률은 국가와 지역마다 다릅니다. 법규 준수는 사용자의 책임입니다.</string>
+    <!-- Connection route and Wi-Fi backup -->
+    <string name="route_usb">USB로 연결되어 있습니다.</string>
+    <string name="route_wifi">Wi-Fi로 연결되어 있습니다.</string>
+    <string name="route_custom">입력한 주소에 연결되어 있습니다.</string>
+    <string name="wifi_ready">Wi-Fi 예비 연결이 준비되었습니다. USB 케이블을 뽑아도 통화를 계속할 수 있습니다.</string>
+    <string name="wifi_not_ready">Wi-Fi 예비 연결이 아직 설정되지 않았습니다. USB 케이블로 한 번 연결하면 설정됩니다.</string>
+    <string name="btn_forget_wifi">Wi-Fi 연결 삭제</string>
+    <string name="msg_wifi_forgotten">Wi-Fi 연결을 삭제했습니다. 다시 사용하려면 USB 케이블로 한 번 연결하세요.</string>
 </resources>

@@ -140,4 +140,12 @@
     <string name="about_dedicated">AI 模式下，模块会接管电话应用、关掉铃声并开启勿扰，所以最好用一部备用手机。要暂时当普通手机用，关掉最上面的开关就行。</string>
     <string name="about_rollback">要彻底移除 Bageo：先关掉最上面的开关（变回普通手机），再到 Magisk 或 KernelSU 停用或移除模块，然后重启手机。</string>
     <string name="about_legal">各地关于通话录音以及是否须告知对方正在与 AI 通话的法律规定不同，遵守当地法规是你的责任。</string>
+    <!-- Connection route and Wi-Fi backup -->
+    <string name="route_usb">已通过 USB 连接。</string>
+    <string name="route_wifi">已通过 Wi-Fi 连接。</string>
+    <string name="route_custom">已连接到你填写的地址。</string>
+    <string name="wifi_ready">Wi-Fi 备用连接已就绪，拔掉 USB 线后通话仍可继续。</string>
+    <string name="wifi_not_ready">还没设置 Wi-Fi 备用连接。用 USB 线连接一次就会设置好。</string>
+    <string name="btn_forget_wifi">忘记 Wi-Fi 连接</string>
+    <string name="msg_wifi_forgotten">已忘记 Wi-Fi 连接。要再使用时，请用 USB 线连接一次。</string>
 </resources>

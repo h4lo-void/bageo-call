@@ -8,6 +8,9 @@ import org.java_websocket.client.WebSocketClient
 import org.java_websocket.handshake.ServerHandshake
 import org.json.JSONObject
 import org.json.JSONArray
+import org.java_websocket.drafts.Draft_6455
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.net.URI
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -15,8 +18,13 @@ import java.util.concurrent.atomic.AtomicLong
 /**
  * Idle control WebSocket — separate from the in-call [BridgeClient] PCM relay.
  *
- * Connects to the agent URL ([Prefs.agentUrl]) while [CallAudioService] is armed,
- * so the agent can send text JSON to the phone even when no call is active.
+ * Connects to the agent while [CallAudioService] is armed, so the agent can send text
+ * JSON to the phone even when no call is active. The address comes from [candidates]
+ * (USB first, then the Wi-Fi addresses the agent sent; a hand-typed address stands
+ * alone): a failed attempt moves on to the next one, and the address that worked is
+ * remembered ([activeUrl]) so the in-call connection uses the same one. While on Wi-Fi
+ * and not in a call ([isBusy] false), the client checks every [USB_CHECK_MS] whether
+ * the USB link is back and then moves back to it. It never switches during a call.
  * In-call audio uses a second WebSocket via [BridgeClient] on OFFHOOK.
  *
  * Handles agent → phone commands such as `{"type":"place_call",...}` and the
@@ -33,8 +41,10 @@ import java.util.concurrent.atomic.AtomicLong
  * [onOpened] runs right after the hello was sent (on the socket's thread).
  */
 class AgentControlClient(
-    private val url: String,
+    private val candidates: () -> List<String>,
     private val onCommand: (JSONObject) -> Unit,
+    private val isBusy: () -> Boolean = { false },
+    private val usbUrl: String = BuildConfig.BRIDGE_WS_URL,
     private val describe: (JSONObject) -> Unit = {},
     private val sims: () -> JSONArray? = { null },
     private val onOpened: () -> Unit = {},
@@ -45,6 +55,11 @@ class AgentControlClient(
     private val lastPingAt = AtomicLong(0L)
     @Volatile private var serialHeld: String = ""
     private var pingThread: Thread? = null
+    private var usbThread: Thread? = null
+    /** The address the next attempt uses (null = the first candidate). */
+    @Volatile private var target: String? = null
+    /** The address of the current or latest attempt. */
+    @Volatile private var currentUrl: String = ""
 
     fun isOpen(): Boolean = open.get() && client?.isOpen == true
 
@@ -52,9 +67,16 @@ class AgentControlClient(
         shouldRun.set(true)
         serialHeld = serial
         if (client != null) return
-        val ws = object : WebSocketClient(URI(url)) {
+        val list = candidates().ifEmpty { listOf(usbUrl) }
+        val url = target?.takeIf { it in list } ?: list.first()
+        currentUrl = url
+        val openedHere = AtomicBoolean(false)
+        val ws = object : WebSocketClient(URI(url), Draft_6455(), null, CONNECT_TIMEOUT_MS) {
             override fun onOpen(handshakedata: ServerHandshake?) {
                 open.set(true)
+                openedHere.set(true)
+                target = url
+                lastGoodUrl = url
                 current = this@AgentControlClient
                 val hello = JSONObject()
                     .put("type", "hello")
@@ -76,13 +98,14 @@ class AgentControlClient(
                     Log.w(TAG, "hello sims failed: ${e.message}")
                 }
                 send(hello.toString())
-                Log.i(TAG, "control WS open ${Prefs.redactUrl(url)} serial=$serial mode=CONTROL_IDLE")
+                Log.i(TAG, "control WS open ${Prefs.redactUrl(url)} usb=${url == usbUrl} serial=$serial mode=CONTROL_IDLE")
                 try {
                     onOpened()
                 } catch (e: Exception) {
                     Log.w(TAG, "after-hello step failed: ${e.message}")
                 }
                 ensurePingLoop()
+                ensureUsbWatch()
             }
 
             override fun onMessage(message: String?) {
@@ -106,6 +129,10 @@ class AgentControlClient(
                 if (current === this@AgentControlClient) current = null
                 client = null
                 Log.w(TAG, "control WS closed code=$code reason=$reason remote=$remote")
+                if (!openedHere.get()) {
+                    // Never got through: the next try uses the next address.
+                    target = ConnectionPlan.nextAfterFailure(candidates().ifEmpty { listOf(usbUrl) }, url)
+                }
                 scheduleReconnect(serial)
             }
 
@@ -140,6 +167,10 @@ class AgentControlClient(
         shouldRun.set(false)
         open.set(false)
         if (current === this) current = null
+        pingThread?.interrupt()
+        pingThread = null
+        usbThread?.interrupt()
+        usbThread = null
         try {
             client?.close()
         } catch (_: Exception) {
@@ -199,18 +230,78 @@ class AgentControlClient(
         }.start()
     }
 
+    /** While on Wi-Fi and idle, look for the USB link again and move back to it. */
+    private fun ensureUsbWatch() {
+        if (usbThread?.isAlive == true) return
+        usbThread = Thread {
+            while (shouldRun.get()) {
+                try {
+                    Thread.sleep(USB_CHECK_MS)
+                } catch (_: InterruptedException) {
+                    break
+                }
+                if (!shouldRun.get()) break
+                try {
+                    val c = client
+                    if (c == null || !open.get() || !c.isOpen) continue
+                    val list = candidates()
+                    if (currentUrl == usbUrl || usbUrl !in list || currentUrl !in list) continue
+                    if (isBusy() || !usbReachable()) continue
+                    // Look again right before the switch: a call may have just come in.
+                    if (isBusy()) continue
+                    Log.i(TAG, "USB link is back: leaving ${Prefs.redactUrl(currentUrl)} for USB")
+                    target = usbUrl
+                    c.close()
+                } catch (e: Exception) {
+                    Log.w(TAG, "USB check failed: ${e.message}")
+                }
+            }
+        }.also {
+            it.isDaemon = true
+            it.name = "AgentControlUsbWatch"
+            it.start()
+        }
+    }
+
+    /** True when the phone's USB port (adb reverse) accepts a connection. Sends nothing. */
+    private fun usbReachable(): Boolean {
+        val hp = ConnectionPlan.hostPort(usbUrl) ?: return false
+        return try {
+            Socket().use { it.connect(InetSocketAddress(hp.first, hp.second), USB_PROBE_TIMEOUT_MS) }
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     companion object {
         private const val TAG = "AgentControlClient"
         /** Keep the agent's CONTROL_IDLE registration warm. */
         private const val PING_INTERVAL_MS = 15_000L
         /** Faster than 3s — idle drops show up as missing callbacks. */
         private const val RECONNECT_MS = 1_500L
+        /** A silent address (Wi-Fi off, wrong network) must not hold up the next one for long. */
+        private const val CONNECT_TIMEOUT_MS = 5_000
+        /** How often to look for the USB link while on Wi-Fi. */
+        private const val USB_CHECK_MS = 30_000L
+        private const val USB_PROBE_TIMEOUT_MS = 400
 
         /** The client whose connection is open (one per running service). */
         @Volatile
         private var current: AgentControlClient? = null
 
+        /** The address that last got through; the in-call connection uses it too. */
+        @Volatile
+        private var lastGoodUrl: String? = null
+
         /** True while the service's control connection to the agent is open (setup screen). */
         fun isAgentConnected(): Boolean = current?.isOpen() == true
+
+        /** The address the open control connection uses, or null when not connected. */
+        fun connectedUrl(): String? = current?.takeIf { it.isOpen() }?.currentUrl
+
+        /** The address for a new connection (the in-call media one): [candidates] decides. */
+        fun activeUrl(candidates: List<String>): String =
+            ConnectionPlan.pickActive(lastGoodUrl, candidates) ?: BuildConfig.BRIDGE_WS_URL
     }
 }
