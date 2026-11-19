@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+# SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
+name: Docker Hub description
+
+# Copies .github/DOCKERHUB.md to the Overview of bageo/bageo-call on Docker
+# Hub, with a one-line short description. Runs when that file changes on main,
+# or by hand. Needs the DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets (the
+# token must be allowed to change repository settings); skipped without them.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/DOCKERHUB.md
+      - .github/workflows/dockerhub-description.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  description:
+    runs-on: ubuntu-latest
+    env:
+      HUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+      HUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    steps:
+      - name: Without Docker Hub secrets there is nothing to update
+        if: env.HUB_USER == '' || env.HUB_TOKEN == ''
+        run: echo "::warning::DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is not set; Docker Hub description not updated"
+
+      - uses: actions/checkout@v4
+        if: env.HUB_USER != '' && env.HUB_TOKEN != ''
+
+      - uses: peter-evans/dockerhub-description@v4
+        if: env.HUB_USER != '' && env.HUB_TOKEN != ''
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: bageo/bageo-call
+          short-description: "AI phone assistant for your own number: answers calls, stalls scammers, makes calls for you."
+          readme-filepath: ./.github/DOCKERHUB.md
