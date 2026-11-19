@@ -5,15 +5,17 @@
 
 use std::time::Duration;
 
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
-use crate::notify::Notice;
+use crate::notify::{Kind, Notice};
 use crate::state::{lock, Shared};
 use crate::window::{work_rect, Rect};
 
 const LABEL: &str = "toast";
 const WIDTH: f64 = 340.0;
 const HEIGHT: f64 = 104.0;
+/// A call summary shows up to four lines of text, so its card is taller.
+const HEIGHT_SUMMARY: f64 = 156.0;
 /// Distance from the work area edges, in logical pixels.
 const MARGIN: f64 = 6.0;
 /// The window is closed after this long even if the page never asks for it.
@@ -27,6 +29,15 @@ pub fn place(work: Rect, scale: f64, w: f64, h: f64, mac: bool) -> (f64, f64) {
     (x, y)
 }
 
+/// Window height for a kind of notification.
+fn height_for(kind: Kind) -> f64 {
+    if kind == Kind::Summary {
+        HEIGHT_SUMMARY
+    } else {
+        HEIGHT
+    }
+}
+
 /// Shows a notification: opens the window, or hands the new one to the open window.
 /// Never takes keyboard focus.
 pub fn show(app: &AppHandle, notice: Notice, lang: &str) {
@@ -37,12 +48,14 @@ pub fn show(app: &AppHandle, notice: Notice, lang: &str) {
         (st.data(), st.generation)
     };
     let Some(data) = data else { return };
+    let height = height_for(data.kind);
 
     match app.get_webview_window(LABEL) {
         Some(win) => {
+            resize(app, &win, height);
             let _ = win.emit("toast", &data);
         }
-        None => create(app),
+        None => create(app, height),
     }
 
     let app = app.clone();
@@ -55,10 +68,20 @@ pub fn show(app: &AppHandle, notice: Notice, lang: &str) {
     });
 }
 
-fn create(app: &AppHandle) {
+/// Gives the open window the height of the notification it now shows, keeping it in its corner.
+fn resize(app: &AppHandle, win: &WebviewWindow, height: f64) {
+    let _ = win.set_size(LogicalSize::new(WIDTH, height));
+    if let Some(monitor) = app.primary_monitor().ok().flatten() {
+        let scale = monitor.scale_factor();
+        let (x, y) = place(work_rect(&monitor), scale, (WIDTH * scale).round(), (height * scale).round(), cfg!(target_os = "macos"));
+        let _ = win.set_position(LogicalPosition::new(x / scale, y / scale));
+    }
+}
+
+fn create(app: &AppHandle, height: f64) {
     let mut builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("toast.html".into()))
         .title("Bageo")
-        .inner_size(WIDTH, HEIGHT)
+        .inner_size(WIDTH, height)
         .decorations(false)
         .transparent(true)
         .shadow(false)
@@ -72,7 +95,7 @@ fn create(app: &AppHandle) {
         .visible_on_all_workspaces(true);
     if let Some(monitor) = app.primary_monitor().ok().flatten() {
         let scale = monitor.scale_factor();
-        let (x, y) = place(work_rect(&monitor), scale, (WIDTH * scale).round(), (HEIGHT * scale).round(), cfg!(target_os = "macos"));
+        let (x, y) = place(work_rect(&monitor), scale, (WIDTH * scale).round(), (height * scale).round(), cfg!(target_os = "macos"));
         builder = builder.position(x / scale, y / scale);
     }
     let _ = builder.build();
@@ -116,5 +139,12 @@ mod tests {
     fn work_area_with_offset_origin() {
         let (x, _) = place(r(100.0, 0.0, 1000.0, 800.0), 1.0, 340.0, 104.0, false);
         assert_eq!(x, 100.0 + 1000.0 - 340.0 - 6.0);
+    }
+
+    #[test]
+    fn only_call_summaries_get_the_taller_card() {
+        assert_eq!(height_for(Kind::Call), HEIGHT);
+        assert_eq!(height_for(Kind::Sms), HEIGHT);
+        assert_eq!(height_for(Kind::Summary), HEIGHT_SUMMARY);
     }
 }

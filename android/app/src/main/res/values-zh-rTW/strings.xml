@@ -48,6 +48,7 @@
     <string name="mode_err_dialer">無法更換預設電話 App。</string>
     <string name="mode_err_screening">無法更換來電過濾設定。</string>
     <string name="mode_err_dnd">無法更改勿擾模式。</string>
+    <string name="mode_err_dnd_mode">勿擾還開著。請到手機的「設定 → 模式」，把「%1$s」關掉。</string>
     <string name="mode_err_volume">無法調整鈴聲音量。</string>
     <string name="mode_err_other">發生沒預期到的錯誤。</string>
     <string name="btn_console">打開網頁控制台</string>

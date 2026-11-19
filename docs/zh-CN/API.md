@@ -224,8 +224,9 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 | `appointment_reply` | `auto`（默认）、`sms` 或 `call`。 |
 | `reject_numbers` | 旧版的黑名单写法，`PUT` 仍然接受：`{number, reason}` 的列表。号码会加进黑名单（普通联系人改成黑名单；白名单、陪聊名单上的保持原样），不保存进设置。读回来的是旧版保存的列表，`reject_numbers_moved` 为 `true` 后就不再生效。 |
 | `reject_mode` | 黑名单来电怎么拒接：`decline`（默认：响铃时直接拒接）或 `announce`（接起来播放语音）。 |
-| `whitelist_mode` | `off`（默认：照常由 AI 接听）、`direct`（直接挂断触发运营商遇忙转移并推送通知）或 `emergency`（AI 接听并在侦测到紧急事件时告知 `whitelist_forward_number` 并发送紧急警报）。 |
-| `whitelist_forward_number` | 白名单直接转接或紧急事件转接时使用的真实电话号码。 |
+| `whitelist_mode` | `off`（默认：照常由 AI 接听）、`direct`（直接挂断触发运营商遇忙转移并推送通知）或 `emergency`（AI 接听并在对方有急事时告知 `whitelist_forward_number` 并发送通知）。只对 `transfer_whitelist`、`transfer_contacts`、`transfer_others` 允许的来电生效。 |
+| `whitelist_forward_number` | 直接转接或有急事转接时使用的真实电话号码。 |
+| `transfer_whitelist`、`transfer_contacts`、`transfer_others` | 哪些人可以转：白名单（默认 `true`）、其他联系人（默认 `false`）、不在联系人里的号码，包括未显示号码（默认 `false`）。黑名单和陪聊名单永远不转。不在联系人里的号码 30 分钟内最多拨给主人一次；判定为推销或诈骗的来电不发急事通知、不拨号。 |
 | `ui_password` | 外部访问网页控制台与 API 的密码（读取时掩码；`"ui_password_clear": true` 可清空）。 |
 | `country_code` | 只有数字（`86`、`1`）。控制台不显示；这里有值时优先于 `COUNTRY_CODE`。 |
 | `gemini_thinking_level` | `low`（默认）／`medium`／`high`，只对 thinking 模型有效。 |

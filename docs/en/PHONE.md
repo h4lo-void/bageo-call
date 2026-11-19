@@ -243,6 +243,13 @@ volumes go to zero.
   switch is unfinished.
 - If the app says the Bageo module is not running, check in Magisk or KernelSU
   that **Bageo Uplink** is enabled, then reboot the phone.
+- If the app says *Do Not Disturb is still on* when you switch to a normal phone,
+  open **Settings → Modes** on the phone, turn off the mode the app names (for
+  example *Do Not Disturb (Bageo)* or *Bedtime*), then switch again. The app does
+  not retry this one by itself. On Android 15 and later, app 1.4.0 and earlier
+  turned on a mode of its own, named after Bageo, that the module cannot turn
+  off; newer versions no longer do, and turn it off before switching to a normal
+  phone.
 - When the console gets no answer within 15 seconds, it says *Result not
   confirmed yet*: refresh a little later to see the mode the phone reports.
 

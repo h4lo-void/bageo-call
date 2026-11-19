@@ -2726,33 +2726,39 @@ async fn handle_control_idle_ws(
                         let rt = state.settings_store.snapshot();
                         if rt.whitelist_mode == "direct" {
                             let sim = call_sim_country(&serial);
-                            if let Some(wc) = contacts::is_whitelist(&caller, sim.as_deref()) {
+                            // Who may be forwarded: the switches under the transfer menu. Our
+                            // own calls going out are never declined.
+                            let target = match urgent_call::transfer_target(&rt, &caller, sim.as_deref()) {
+                                Some(t) if !errands::is_active_outbound_call(state.control.as_ref(), &serial, &caller).await => Some(t),
+                                _ => None,
+                            };
+                            if let Some(t) = target {
                                 let decline = state.control.supports_reject(&serial).await;
                                 if whitelist_direct_ready(&rt.whitelist_forward_number, decline) {
                                     record_whitelist_direct_transfer(
                                         &state,
                                         &serial,
                                         &caller,
-                                        &wc.name,
+                                        &t.name,
                                         sample_rate,
                                         &rt,
                                     )
                                     .await;
                                     let _ = send_json(&sink, reject_answer_plan(true)).await;
                                     info!(
-                                        "incoming serial={serial} caller={} on 白名單 ({}) whitelist_mode=direct → decline, transfer to '{}'",
+                                        "incoming serial={serial} caller={} may be forwarded ({:?}) whitelist_mode=direct → decline, transfer to '{}'",
                                         urgent_call::masked(&caller),
-                                        wc.name,
+                                        t.who,
                                         urgent_call::masked(&rt.whitelist_forward_number)
                                     );
                                     continue;
                                 }
-                                // Never hang up on a whitelisted caller: without a number to
+                                // Never hang up on a caller to forward: without a number to
                                 // forward to, or a phone that can decline, the AI answers.
                                 warn!(
-                                    "incoming serial={serial} caller={} on 白名單 ({}) whitelist_mode=direct but the transfer is not ready (number set={}, phone can decline={decline}) → the AI answers",
+                                    "incoming serial={serial} caller={} may be forwarded ({:?}) whitelist_mode=direct but the transfer is not ready (number set={}, phone can decline={decline}) → the AI answers",
                                     urgent_call::masked(&caller),
-                                    wc.name,
+                                    t.who,
                                     !rt.whitelist_forward_number.trim().is_empty()
                                 );
                             }
@@ -5558,7 +5564,105 @@ async fn ring_notice(state: &AppState, reject_listed: bool, serial: &str, caller
     errands::call_notice(state.control.as_ref(), state.errands.as_ref(), serial, caller).await
 }
 
-/// `whitelist_mode == "direct"`: when a Whitelist caller rings, the phone
+/// The words of a direct transfer's record and alert (`whitelist_mode` direct):
+/// real number, matter, reply, to-do, end hint, alert title, status, forwarding number.
+fn direct_transfer_words(lang: locale::Lang) -> [&'static str; 8] {
+    match lang {
+        locale::Lang::ZhTw => [
+            "真實號碼",
+            "來電直接轉到你的手機",
+            "未經 AI 篩選，直接轉接至",
+            "請留意真實電話來電或回電",
+            "直接轉到你的手機（未經 AI 篩選）",
+            "來電已轉到你的手機",
+            "已觸發直接轉接（未由 AI 攔截）",
+            "轉接號碼",
+        ],
+        locale::Lang::ZhCn => [
+            "真实号码",
+            "来电直接转到你的手机",
+            "未经 AI 筛选，直接转接至",
+            "请留意真实电话来电或回电",
+            "直接转到你的手机（未经 AI 筛选）",
+            "来电已转到你的手机",
+            "已触发直接转接（未由 AI 拦截）",
+            "转接号码",
+        ],
+        locale::Lang::Ja => [
+            "本人の番号",
+            "着信をあなたのスマホに直接転送",
+            "AI を通さず直接転送：",
+            "本人の電話への着信をご確認いただくか折り返してください",
+            "あなたのスマホへ直接転送（AI 応答なし）",
+            "着信をあなたのスマホに転送しました",
+            "直接転送を実行しました（AI 応答なし）",
+            "転送先",
+        ],
+        locale::Lang::Ko => [
+            "실제 번호",
+            "착신을 내 휴대폰으로 바로 전환",
+            "AI 거치지 않고 직접 전환:",
+            "실제 전화 착신을 확인하거나 회신하세요",
+            "내 휴대폰으로 바로 전환 (AI 응답 없음)",
+            "전화를 내 휴대폰으로 전환함",
+            "직접 전환 실행됨 (AI 응답 없음)",
+            "전환 번호",
+        ],
+        locale::Lang::Es => [
+            "número real",
+            "Llamada pasada directamente a tu teléfono",
+            "Transferido directamente sin filtro de IA a",
+            "Atiende tu teléfono real o devuelve la llamada",
+            "Pasada directamente a tu teléfono (sin la IA)",
+            "Llamada pasada a tu teléfono",
+            "Transferencia directa activada (sin pasar por la IA)",
+            "Número de desvío",
+        ],
+        locale::Lang::Fr => [
+            "vrai numéro",
+            "Appel transféré directement vers votre téléphone",
+            "Transféré directement sans filtrage IA vers",
+            "Surveillez votre vrai téléphone ou rappelez",
+            "Transféré directement vers votre téléphone (sans l'IA)",
+            "Appel transféré vers votre téléphone",
+            "Transfert direct déclenché (sans interception IA)",
+            "Numéro de transfert",
+        ],
+        locale::Lang::De => [
+            "echte Nummer",
+            "Anruf direkt an dein Telefon weitergeleitet",
+            "Ohne KI-Filter direkt weitergeleitet an",
+            "Bitte auf dem echten Telefon entgegennehmen oder zurückrufen",
+            "Direkt an dein Telefon weitergeleitet (ohne KI)",
+            "Anruf an dein Telefon weitergeleitet",
+            "Direktweiterleitung ausgelöst (ohne KI)",
+            "Weiterleitungsnummer",
+        ],
+        locale::Lang::Pt => [
+            "número real",
+            "Ligação passada direto para o seu celular",
+            "Transferido diretamente sem triagem da IA para",
+            "Acompanhe no seu telefone real ou retorne a ligação",
+            "Passada direto para o seu celular (sem a IA)",
+            "Ligação passada para o seu celular",
+            "Transferência direta acionada (sem passar pela IA)",
+            "Número de transferência",
+        ],
+        locale::Lang::En => [
+            "real number",
+            "Call forwarded straight to your phone",
+            "Forwarded directly without AI screening to",
+            "Check your real phone or call back",
+            "Forwarded straight to your phone (no AI screening)",
+            "Call Forwarded to Your Phone",
+            "Direct transfer triggered (bypassed AI)",
+            "Forwarding number",
+        ],
+    }
+}
+
+/// `whitelist_mode == "direct"`: when a caller who may be forwarded rings
+/// ([`urgent_call::transfer_target`]), the phone
 /// declines the call so carrier conditional forwarding (`**67*<number>#`)
 /// transfers the caller directly to the owner's real phone number, while Bageo
 /// records the transfer and alerts all notification channels immediately.
@@ -5577,98 +5681,7 @@ async fn record_whitelist_direct_transfer(
     let forward_to = rt.whitelist_forward_number.trim().to_string();
     let lang = locale::notify_lang();
     let p = locale::phrases(lang);
-    let (real_lbl, about_lbl, reply_prefix, todo_lbl, end_hint, alert_title, status_lbl, fwd_lbl) = match lang {
-        locale::Lang::ZhTw => (
-            "真實號碼",
-            "白名單來電直接轉接",
-            "未經 AI 篩選，直接轉接至",
-            "請留意真實電話來電或回電",
-            "白名單：直接轉接真實號碼（未經 AI 篩選）",
-            "白名單來電直接轉接",
-            "已觸發直接轉接（未由 AI 攔截）",
-            "轉接號碼",
-        ),
-        locale::Lang::ZhCn => (
-            "真实号码",
-            "白名单来电直接转接",
-            "未经 AI 筛选，直接转接至",
-            "请留意真实电话来电或回电",
-            "白名单：直接转接真实号码（未经 AI 筛选）",
-            "白名单来电直接转接",
-            "已触发直接转接（未由 AI 拦截）",
-            "转接号码",
-        ),
-        locale::Lang::Ja => (
-            "本人の番号",
-            "ホワイトリスト着信の直接転送",
-            "AI を通さず直接転送：",
-            "本人の電話への着信をご確認いただくか折り返してください",
-            "ホワイトリスト：本人の番号へ直接転送（AI 応答なし）",
-            "ホワイトリスト着信の直接転送",
-            "直接転送を実行しました（AI 応答なし）",
-            "転送先",
-        ),
-        locale::Lang::Ko => (
-            "실제 번호",
-            "화이트리스트 착신 직접 전환",
-            "AI 거치지 않고 직접 전환:",
-            "실제 전화 착신을 확인하거나 회신하세요",
-            "화이트리스트: 실제 번호로 직접 전환 (AI 응답 없음)",
-            "화이트리스트 착신 직접 전환",
-            "직접 전환 실행됨 (AI 응답 없음)",
-            "전환 번호",
-        ),
-        locale::Lang::Es => (
-            "número real",
-            "Transferencia directa de lista blanca",
-            "Transferido directamente sin filtro de IA a",
-            "Atiende tu teléfono real o devuelve la llamada",
-            "Lista blanca: transferencia directa al número real",
-            "Transferencia directa de lista blanca",
-            "Transferencia directa activada (sin pasar por la IA)",
-            "Número de desvío",
-        ),
-        locale::Lang::Fr => (
-            "vrai numéro",
-            "Transfert direct liste blanche",
-            "Transféré directement sans filtrage IA vers",
-            "Surveillez votre vrai téléphone ou rappelez",
-            "Liste blanche : transfert direct vers le vrai numéro",
-            "Transfert direct liste blanche",
-            "Transfert direct déclenché (sans interception IA)",
-            "Numéro de transfert",
-        ),
-        locale::Lang::De => (
-            "echte Nummer",
-            "Whitelist-Direktweiterleitung",
-            "Ohne KI-Filter direkt weitergeleitet an",
-            "Bitte auf dem echten Telefon entgegennehmen oder zurückrufen",
-            "Whitelist: direkte Weiterleitung an echte Nummer",
-            "Whitelist-Direktweiterleitung",
-            "Direktweiterleitung ausgelöst (ohne KI)",
-            "Weiterleitungsnummer",
-        ),
-        locale::Lang::Pt => (
-            "número real",
-            "Transferência direta da lista branca",
-            "Transferido diretamente sem triagem da IA para",
-            "Acompanhe no seu telefone real ou retorne a ligação",
-            "Lista branca: transferência direta para o número real",
-            "Transferência direta da lista branca",
-            "Transferência direta acionada (sem passar pela IA)",
-            "Número de transferência",
-        ),
-        locale::Lang::En => (
-            "real number",
-            "Whitelist direct call transfer",
-            "Forwarded directly without AI screening to",
-            "Check your real phone or call back",
-            "Whitelist: transferred directly to real number",
-            "Whitelist Direct Transfer",
-            "Direct transfer triggered (bypassed AI)",
-            "Forwarding number",
-        ),
-    };
+    let [real_lbl, about_lbl, reply_prefix, todo_lbl, end_hint, alert_title, status_lbl, fwd_lbl] = direct_transfer_words(lang);
     if let Some(mut call) = state
         .calls
         .start(serial, caller, sample_rate, "whitelist_direct_transfer")
@@ -5682,10 +5695,9 @@ async fn record_whitelist_direct_transfer(
             forward_to.clone()
         };
         let summary = format!(
-            "{}: {} ({})\n{}: {}\n{}: {} {}\n{}: {}",
+            "{}: {}\n{}: {}\n{}: {} {}\n{}: {}",
             p.s_caller,
-            display_caller_id(caller),
-            contact_name,
+            contacts::named_number(display_caller_id(caller), Some(contact_name)),
             p.s_matter,
             about_lbl,
             p.s_reply,
@@ -7391,12 +7403,42 @@ fn start_gemini_session_core(
     let sim_init = call_sim_country(serial)
         .or_else(|| phone_region::last_sim(&canonical_device_serial(serial)));
     let force_stall = contacts::is_force_stall(&cfg.caller_id, sim_init.as_deref()).is_some();
-    let is_whitelist_emerg = rt.whitelist_mode == "emergency"
-        && contacts::is_whitelist(&cfg.caller_id, sim_init.as_deref()).is_some();
-    // Whitelist urgent call: decided when the session starts (with the prompt that
-    // tells the AI to ask the caller to hold on).
-    let urgent_ctl = (is_whitelist_emerg && persona && !is_callback && urgent_call::number_to_call(rt).is_some())
-        .then(|| Arc::new(urgent_call::CallCtl::default()));
+    // `whitelist_mode` emergency for a caller who may be forwarded
+    // (urgent_call::transfer_target): the urgent part of the prompt, the alert and
+    // the call to the owner. Calls answered for the owner only: not the AI's own
+    // call-backs and errands.
+    let urgent_target = (rt.whitelist_mode == "emergency" && persona && !is_callback && errand.is_none())
+        .then(|| urgent_call::transfer_target(rt, &cfg.caller_id, sim_init.as_deref()))
+        .flatten();
+    // A number not in the contacts: one call to the owner per STRANGER_DIAL_EVERY.
+    let urgent_key = urgent_target
+        .as_ref()
+        .filter(|t| t.who == urgent_call::TransferWho::Stranger)
+        .map(|_| urgent_call::stranger_key(&cfg.caller_id, sim_init.as_deref()));
+    // Urgent call: decided when the session starts (with the prompt that tells the
+    // AI to ask the caller to hold on, or that the owner will call back).
+    let urgent_will_call = urgent_target.as_ref().is_some_and(|t| {
+        urgent_call::will_dial(
+            rt,
+            t,
+            urgent_key.as_deref().unwrap_or_default(),
+            urgent_call::stranger_dials(),
+            std::time::Instant::now(),
+        )
+    });
+    if let Some(t) = &urgent_target {
+        info!(
+            "urgent forwarding on this call serial={serial} who={:?} will_call={urgent_will_call}",
+            t.who
+        );
+    }
+    let urgent_prompt = urgent_target.as_ref().map(|t| (t.who, urgent_will_call));
+    let urgent_ctl = urgent_will_call.then(|| {
+        Arc::new(match urgent_key.clone() {
+            Some(key) => urgent_call::CallCtl::limited(key),
+            None => urgent_call::CallCtl::default(),
+        })
+    });
     let stall_cfg = (persona && !is_callback).then(|| {
         let serial_for_ctx = serial.to_string();
         let caller_slot_for_ctx = caller_slot.clone();
@@ -7428,7 +7470,7 @@ fn start_gemini_session_core(
                     flagged_before: facts.flagged_before,
                 }
             }))),
-            urgent_transfer: is_whitelist_emerg.then(|| {
+            urgent_transfer: urgent_target.is_some().then(|| {
                 gemini_live::UrgentTransferFn(Arc::new(move |said: &str| {
                     if let Ok(mut g) = urgent_slot.lock() {
                         if g.is_none() {
@@ -7544,7 +7586,7 @@ fn start_gemini_session_core(
         } else if persona && errand.is_none() {
             let sim = call_sim_country(&serial).or_else(|| phone_region::last_sim(&canonical_device_serial(&serial)));
             let lang = cfg.lang.prompt_lang.unwrap_or_else(|| rt.lang());
-            contacts::with_caller(&system, rt, &cfg.caller_id, sim.as_deref(), lang)
+            contacts::with_caller(&system, rt, &cfg.caller_id, sim.as_deref(), lang, urgent_prompt)
         } else {
             system
         };
@@ -8114,6 +8156,7 @@ async fn run_gemini_session_to_end(
         let play_head = play_head.clone();
         let serial = serial.clone();
         let media_call_guard = media_call_guard.clone();
+        let urgent_ctl = urgent_ctl.clone();
         tokio::spawn(async move {
             stream_gemini_downlink_pcm(
                 &sink,
@@ -8125,6 +8168,7 @@ async fn run_gemini_session_to_end(
                 &play_head,
                 &serial,
                 &media_call_guard,
+                urgent_ctl.as_deref(),
             )
             .await
         })
@@ -8182,6 +8226,22 @@ async fn run_gemini_session_to_end(
                         }
                     }
                 }
+                // A call judged sales / scam (stalling started, or a judgement that
+                // stands): no urgent alert and no call to the owner, whoever calls.
+                // A call to the owner already dialing goes on.
+                if !urgent_recorded
+                    && urgent_reason.lock().is_ok_and(|g| g.is_some())
+                    && urgent_call::urgent_blocked_by_scam(
+                        stall_engaged.load(Ordering::Relaxed),
+                        stall_judgement.lock().ok().and_then(|g| g.clone()).as_ref(),
+                    )
+                {
+                    urgent_recorded = true;
+                    if let Some(ctl) = urgent_ctl.as_ref() {
+                        ctl.block_dial();
+                    }
+                    info!("urgent matter on a call judged sales / scam serial={serial} — no alert, no call to the owner");
+                }
                 if !urgent_recorded {
                     if let Some(reason) = urgent_reason.lock().ok().and_then(|g| g.clone()) {
                         urgent_recorded = true;
@@ -8205,16 +8265,17 @@ async fn run_gemini_session_to_end(
                         let fwd = rt.whitelist_forward_number.trim().to_string();
                         let lang = locale::notify_lang();
                         let p = locale::phrases(lang);
-                        let (urg_title, urg_label, fwd_label, urg_footer) = match lang {
-                            locale::Lang::ZhTw => ("白名單緊急事件通知", "緊急內容", "轉接號碼", "請立即回電或接手處理！"),
-                            locale::Lang::ZhCn => ("白名单紧急事件通知", "紧急内容", "转接号码", "请立即回电或接手处理！"),
-                            locale::Lang::Ja => ("ホワイトリスト緊急通知", "緊急の用件", "転送先番号", "直ちに折り返すか対応してください！"),
-                            locale::Lang::Ko => ("화이트리스트 긴급 알림", "긴급 내용", "전환 번호", "즉시 회신하거나 확인해 주세요!"),
-                            locale::Lang::Es => ("Alerta de emergencia (Lista blanca)", "Detalle urgente", "Número de desvío", "¡Por favor devuelve la llamada o atiende de inmediato!"),
-                            locale::Lang::Fr => ("Alerte d'urgence (Liste blanche)", "Urgence", "Numéro de transfert", "Veuillez rappeler ou prendre le relais immédiatement !"),
-                            locale::Lang::De => ("Whitelist-Notfallalarm", "Dringendes Anliegen", "Weiterleitungsnummer", "Bitte sofort zurückrufen oder übernehmen!"),
-                            locale::Lang::Pt => ("Alerta de emergência (Lista branca)", "Assunto urgente", "Número de transferência", "Por favor, retorne a ligação ou assuma imediatamente!"),
-                            locale::Lang::En => ("Whitelist Emergency Alert", "Urgent matter", "Forwarding number", "Please call back or take over immediately!"),
+                        let urg_title = urgent_call::alert_title(lang);
+                        let (urg_label, fwd_label, urg_footer) = match lang {
+                            locale::Lang::ZhTw => ("緊急內容", "轉接號碼", "請立即回電或接手處理！"),
+                            locale::Lang::ZhCn => ("紧急内容", "转接号码", "请立即回电或接手处理！"),
+                            locale::Lang::Ja => ("緊急の用件", "転送先番号", "直ちに折り返すか対応してください！"),
+                            locale::Lang::Ko => ("긴급 내용", "전환 번호", "즉시 회신하거나 확인해 주세요!"),
+                            locale::Lang::Es => ("Detalle urgente", "Número de desvío", "¡Por favor devuelve la llamada o atiende de inmediato!"),
+                            locale::Lang::Fr => ("Urgence", "Numéro de transfert", "Veuillez rappeler ou prendre le relais immédiatement !"),
+                            locale::Lang::De => ("Dringendes Anliegen", "Weiterleitungsnummer", "Bitte sofort zurückrufen oder übernehmen!"),
+                            locale::Lang::Pt => ("Assunto urgente", "Número de transferência", "Por favor, retorne a ligação ou assuma imediatamente!"),
+                            locale::Lang::En => ("Urgent matter", "Forwarding number", "Please call back or take over immediately!"),
                         };
                         let fwd_line = if fwd.is_empty() {
                             String::new()
@@ -8234,7 +8295,12 @@ async fn run_gemini_session_to_end(
                             let on_fail = urgent_call::not_answered_turn(rt.lang(), rt.is_assistant_style(), &rt.owner_name);
                             let on_callback = urgent_call::callback_turn(rt.lang(), rt.is_assistant_style(), &rt.owner_name);
                             match urgent_call::number_to_call(&rt) {
-                                Some(number) => {
+                                // A number not in the contacts: its allowance is used now.
+                                Some(number)
+                                    if ctl
+                                        .limit_key()
+                                        .is_none_or(|k| urgent_call::stranger_dials().take(k, std::time::Instant::now())) =>
+                                {
                                     tokio::spawn(run_urgent_call(
                                         sink.clone(),
                                         state.clone(),
@@ -8251,6 +8317,13 @@ async fn run_gemini_session_to_end(
                                         cancel.clone(),
                                         urgent_coord_w.clone(),
                                     ));
+                                }
+                                Some(_) => {
+                                    info!("Urgent call: this number was put through less than 30 minutes ago serial={serial} — alert only");
+                                    ctl.block_dial();
+                                    if ctl.hold_said_at().is_some() {
+                                        ctl.resume_with(on_callback);
+                                    }
                                 }
                                 None => {
                                     info!("Whitelist urgent call turned off during the call serial={serial} — no call");
@@ -11075,6 +11148,21 @@ fn summary_end_hint(events: &[String], scam: Option<&calls::ScamJudgement>) -> S
         locale::notify_zh_or("未顯示號碼，播拒接語音後掛斷（AI 沒有接）", "hidden number: the refusal announcement was played, then hung up (the AI did not answer)")
     } else if has("reject_list") {
         locale::notify_zh_or("黑名單：播無法接通語音後掛斷（AI 沒有接）", "blocked number: the unavailable announcement was played, then hung up (the AI did not answer)")
+    } else if has("whitelist_urgent_call_merged") {
+        locale::notify_zh_or(
+            "來電者說有急事：手機打給主人，主人接起來後三方一起通話，AI 退出；這通沒有被當成推銷或詐騙陪聊拖時間",
+            "the caller said it was urgent: the phone called the owner, who picked up and joined a three-way call, and the AI left; this call was not treated as a sales or scam call to stall",
+        )
+    } else if events.iter().any(|e| e.starts_with("whitelist_urgent_call_failed") || e == "whitelist_urgent_call_ai_ended") {
+        locale::notify_zh_or(
+            "來電者說有急事：手機打給主人但沒接通，AI 跟對方說主人會盡快回電；這通沒有被當成推銷或詐騙陪聊拖時間，「要處理」寫盡快回電給對方",
+            "the caller said it was urgent: the phone called the owner but did not get through, and the AI told the caller the owner would call back soon; this call was not treated as a sales or scam call to stall, so the to-do is to call them back as soon as possible",
+        )
+    } else if has("whitelist_urgent_transfer") {
+        locale::notify_zh_or(
+            "來電者說有急事，系統已馬上通知主人；這通沒有被當成推銷或詐騙陪聊拖時間，「要處理」寫盡快回電給對方",
+            "the caller said it was urgent and the owner was alerted at once; this call was not treated as a sales or scam call to stall, so the to-do is to call them back as soon as possible",
+        )
     } else if has("persona_stall_released") {
         locale::notify_zh_or("系統一度以為是推銷／詐騙，再確認一次是正常電話，AI 回到正常應對", "the system first took it for a sales / scam call; a second check found an ordinary call and the AI went back to talking normally")
     } else if has("persona_stall_spam") {
@@ -11746,6 +11834,7 @@ async fn stream_gemini_downlink_pcm(
     play_head: &gemini_live::DownlinkPlayHead,
     serial: &str,
     media_call_guard: &MediaCallGuard,
+    urgent: Option<&urgent_call::CallCtl>,
 ) -> Result<GeminiDeliveryStats> {
     let sr = state.settings.sample_rate.max(8000);
     // Match send_tts_pcm: 40 ms frames + 1s head-burst per spoken segment for USB prebuffer.
@@ -11779,6 +11868,9 @@ async fn stream_gemini_downlink_pcm(
     // Echo-free phone (the call's echo check): the bed also runs through pauses.
     let mut amb_continuous = false;
     let mut amb_checked_at = tokio::time::Instant::now();
+    // Whitelist urgent call: while the phone calls the owner and once the owner is
+    // on, no room noise goes out (the phone's outgoing audio is the owner's call then).
+    let mut amb_off_for_owner = false;
     let frame_dur = Duration::from_millis(FRAME_MS);
     // Estimated moment the phone has played everything sent / the last AI frame.
     let mut phone_tail = tokio::time::Instant::now();
@@ -11807,6 +11899,17 @@ async fn stream_gemini_downlink_pcm(
             if active_call.lock().await.as_ref().and_then(|c| c.echo_free()) == Some(true) {
                 amb_continuous = true;
                 info!("Gemini ambience serial={serial} continuous (echo-free line)");
+            }
+        }
+        let owner_call = urgent.is_some_and(|c| c.ai_quiet());
+        if owner_call != amb_off_for_owner {
+            amb_off_for_owner = owner_call;
+            if amb.is_some() {
+                if owner_call {
+                    info!("Gemini ambience serial={serial} off: the phone is calling the owner");
+                } else {
+                    info!("Gemini ambience serial={serial} back on: the AI talks to the caller again");
+                }
             }
         }
 
@@ -12201,7 +12304,7 @@ async fn stream_gemini_downlink_pcm(
             // Mid-reply only once the phone has run dry: room noise queued ahead
             // of the next lump would sit inside a word (every reply
             // of the thinking model had 40–80 ms holes on an echo-free phone).
-            if amb_continuous && buf.len() < frame {
+            if amb_continuous && !amb_off_for_owner && buf.len() < frame {
                 if let Some(a) = amb.as_mut() {
                     let lead = if mid_reply { Duration::ZERO } else { AMBIENCE_LEAD };
                     let mut sent = 0;
@@ -12989,6 +13092,12 @@ mod unknown_caller_tests {
         assert!(REJECT_PENDING_TTL >= Duration::from_secs(10));
         // The record says why there was no AI.
         assert!(summary_end_hint(&["reject_list".to_string()], None).contains("黑名單"));
+        // An urgent call that went to the owner is never written up as a stalled sales call.
+        let urgent = |evs: &[&str]| summary_end_hint(&evs.iter().map(|e| e.to_string()).collect::<Vec<_>>(), None);
+        let missed = urgent(&["whitelist_urgent_transfer", "whitelist_urgent_call_failed", "whitelist_urgent_call_failed:no_answer"]);
+        assert!(missed.contains("沒接通") && missed.contains("盡快回電") && !missed.contains("陪他聊"), "{missed}");
+        assert!(urgent(&["whitelist_urgent_transfer", "whitelist_urgent_call_merged"]).contains("三方"));
+        assert!(urgent(&["whitelist_urgent_transfer"]).contains("盡快回電"));
     }
 
     #[test]

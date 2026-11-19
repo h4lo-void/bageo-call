@@ -12,7 +12,7 @@ use tauri::{AppHandle, Manager};
 const KEYCHAIN_SERVICE: &str = "bageo-status";
 const KEYCHAIN_USER: &str = "console";
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default)]
 pub struct Config {
     /// Empty means "find Bageo automatically".
@@ -22,11 +22,28 @@ pub struct Config {
     pub notify_calls: bool,
     /// Show a desktop notification when a text message arrives.
     pub notify_sms: bool,
+    /// Show a desktop notification when the summary of a finished call is ready.
+    /// On by default, also for settings files written before this existed.
+    pub notify_summary: bool,
     /// The console was opened once after Bageo first answered on this computer.
     pub opened_console: bool,
     /// Where the Bageo program was last found. macOS can run a downloaded app
     /// from a temporary copy, away from the folder Bageo is in.
     pub agent_path: String,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            address: String::new(),
+            autostart: false,
+            notify_calls: false,
+            notify_sms: false,
+            notify_summary: true,
+            opened_console: false,
+            agent_path: String::new(),
+        }
+    }
 }
 
 fn path(app: &AppHandle) -> Option<PathBuf> {
@@ -108,5 +125,17 @@ mod tests {
         let c: Config = serde_json::from_str(r#"{"opened_console": true}"#).unwrap();
         assert!(c.opened_console);
         assert!(serde_json::to_string(&c).unwrap().contains("\"opened_console\":true"));
+    }
+
+    #[test]
+    fn call_summary_notice_is_on_unless_the_file_says_otherwise() {
+        assert!(Config::default().notify_summary);
+        let c: Config = serde_json::from_str("{}").unwrap();
+        assert!(c.notify_summary);
+        let old = r#"{"address": "", "autostart": true, "notify_calls": true, "notify_sms": false}"#;
+        let c: Config = serde_json::from_str(old).unwrap();
+        assert!(c.notify_summary && c.notify_calls && !c.notify_sms);
+        let c: Config = serde_json::from_str(r#"{"notify_summary": false}"#).unwrap();
+        assert!(!c.notify_summary);
     }
 }

@@ -48,6 +48,7 @@
     <string name="mode_err_dialer">デフォルトの電話アプリを変更できませんでした。</string>
     <string name="mode_err_screening">着信フィルタの設定を変更できませんでした。</string>
     <string name="mode_err_dnd">サイレント モードを変更できませんでした。</string>
+    <string name="mode_err_dnd_mode">サイレント モードがオンのままです。スマホの「設定 → モード」で「%1$s」をオフにしてください。</string>
     <string name="mode_err_volume">着信音の音量を設定できませんでした。</string>
     <string name="mode_err_other">予期しないエラーが起きました。</string>
     <string name="btn_console">Web コンソールを開く</string>
