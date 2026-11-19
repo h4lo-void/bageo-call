@@ -206,9 +206,9 @@ Every contact can be assigned to one of four lists (from the Contacts page, via 
 
 - **Contacts**: the AI knows who is calling and reads your note about them.
 - **Whitelist (`whitelist`)**: close friends, family and clients, with three ways to put them through (**Settings → How it answers**, *Transfer*; the Contacts page can set it too):
-  1. *Off: the AI answers*: the AI knows who is calling and answers naturally.
-  2. *Only when it is urgent*: the AI answers first. If the caller says it is urgent (in any of the 9 languages), the AI gives them your phone number and Bageo sends you an urgent alert at once.
-  3. *Always: put through to your phone*: the AI phone declines the call, your carrier's forward-when-busy rings your own phone, and you get a notification at once. Turn forwarding on first: switch the phone to normal phone, then dial `**67*your number#` on it.
+  1. *Don't transfer: the AI answers*: the AI knows who is calling, answers naturally, and tells you afterwards.
+  2. *AI answers, reaches you if urgent*: the AI answers first. If the caller says it is urgent (in any of the 9 languages), the AI gives them your phone number and Bageo sends you an urgent alert at once. Turn on *When it's urgent, call me and join us (trial)* and the AI also has this phone call you and joins you in; a confirmation box appears when you turn it on, described in the Settings page.
+  3. *Don't answer: send to your phone*: this phone doesn't answer; your carrier forwards the call to your phone, the AI stays silent, and you get a notification at once. First switch the phone to normal phone and dial `**67*your number#` to turn on forward-when-busy, or callers reach voicemail.
 - **Blacklist (`blacklist`)**: turned away while ringing, or after a short "not available" announcement, without using the AI; the **Blacklist** tab sets which. A number ending in `*` (`0800*`, at least three digits not counting leading zeros) covers every number that starts that way.
 - **Stall list (`stall`)**: known debt collectors, sales callers or harassers. The AI starts wasting their time the moment the call connects, without waiting for keywords.
 

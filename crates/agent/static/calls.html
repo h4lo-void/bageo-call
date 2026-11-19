@@ -439,6 +439,8 @@ dialog h2{font-size:1.08rem;font-weight:650;margin-bottom:8px}
 dialog p{color:var(--muted)}
 dialog .field{margin-top:14px}
 dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;flex-wrap:wrap}
+dialog .terms{margin:10px 0 0;padding-left:1.2em;color:var(--muted)}
+dialog .terms li+li{margin-top:8px}
 .dlg-err{color:var(--bad);font-size:.87rem;margin-top:8px}
 .bk-status{margin-top:12px;font-size:.92rem}
 .bk-status .bad{color:var(--bad)}
@@ -878,7 +880,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <option value="direct" data-i18n="wl_m_direct"></option>
             <option value="emergency" data-i18n="wl_m_emergency"></option>
           </select>
-          <div class="help" data-i18n="f_wl_mode_h"></div></div>
+          <div class="help" id="wlQuickModeHelpText" data-i18n="f_wl_mode_h_off"></div></div>
         <div class="field"><label for="wlQuickNum" data-i18n="f_wl_num"></label>
           <div class="with-btn">
             <input type="tel" id="wlQuickNum" maxlength="40" autocomplete="off" data-i18n-ph="f_wl_num_ph" />
@@ -1069,7 +1071,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
                   <option value="direct" data-i18n="wl_m_direct"></option>
                   <option value="emergency" data-i18n="wl_m_emergency"></option>
                 </select>
-                <div class="help" data-i18n="f_wl_mode_h"></div></div>
+                <div class="help" id="wlModeHelpText" data-i18n="f_wl_mode_h_off"></div></div>
               <div class="field"><label for="f-whitelist_forward_number" data-i18n="f_wl_num"></label>
                 <input type="tel" id="f-whitelist_forward_number" data-k="whitelist_forward_number" data-t="text" maxlength="40" autocomplete="off" data-i18n-ph="f_wl_num_ph" />
                 <div class="help" data-i18n="f_wl_num_h"></div></div>
@@ -1456,6 +1458,22 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
       <button type="button" class="btn danger ct-del" id="ctDel" data-i18n="ct_delete"></button>
       <button type="button" class="btn" id="ctCancel" data-i18n="cancel"></button>
       <button type="submit" class="btn primary" id="ctSave" data-i18n="ct_save"></button>
+    </div>
+  </form>
+</dialog>
+<dialog id="wlTermsDlg" aria-labelledby="wlTermsTitle">
+  <form method="dialog" id="wlTermsForm">
+    <h2 id="wlTermsTitle" data-i18n="wl_call_terms_title"></h2>
+    <ul class="terms">
+      <li data-i18n="wl_call_terms_1"></li>
+      <li data-i18n="wl_call_terms_2"></li>
+      <li data-i18n="wl_call_terms_3"></li>
+      <li data-i18n="wl_call_terms_4"></li>
+      <li data-i18n="wl_call_terms_5"></li>
+    </ul>
+    <div class="dlg-btns">
+      <button type="button" class="btn" id="wlTermsCancel" data-i18n="wl_call_terms_cancel"></button>
+      <button type="submit" class="btn primary" id="wlTermsOk" value="ok" data-i18n="wl_call_terms_ok"></button>
     </div>
   </form>
 </dialog>
@@ -2470,10 +2488,9 @@ I18N["en"] = {
   wl_title: "Whitelist call transfer",
   wl_desc: "Whether calls from whitelisted numbers are put through to your own phone.",
   f_wl_mode: "Transfer",
-  wl_m_off: "Off: the AI answers",
-  wl_m_direct: "Always: put through to your phone",
-  wl_m_emergency: "Only when it is urgent",
-  f_wl_mode_h: "Always: first switch the phone to normal phone, then dial **67*your number# on it to turn on forward-when-busy. Only when urgent: if the caller says it is urgent, the AI alerts you at once so you can call back. You are notified either way.",
+  wl_m_off: "Don't transfer: the AI answers",
+  wl_m_direct: "Don't answer: send to your phone",
+  wl_m_emergency: "AI answers, reaches you if urgent",
   f_wl_num: "Your own phone number",
   f_wl_num_ph: "e.g. 0912345678",
   f_wl_num_h: "The number to reach you when something is urgent. It appears in the alerts; with the trial switch below on, the phone dials it.",
@@ -2491,8 +2508,8 @@ I18N["en"] = {
   ev_whitelist_urgent_transfer: "Whitelist: emergency transfer",
   more_opts: "More options",
   g_region_d: "Most people never need these.",
-  f_wl_call: "When it's urgent, call me and join us on one call (trial)",
-  f_wl_call_h: "Needs \"Only when it is urgent\" and your number. If you don't answer, the AI tells the caller you'll call back.",
+  f_wl_call: "When it's urgent, call me and join us (trial)",
+  f_wl_call_h: "The AI asks the caller to hold and this phone calls you; once you pick up, all three of you talk and the AI goes quiet. If you don't answer, the AI tells the caller you'll call back. Needs \"AI answers, reaches you if urgent\" and your number.",
   nf_discord_token: "Bot token",
   nf_discord_target: "Channel ID",
   nf_slack_token: "Bot token",
@@ -2697,6 +2714,17 @@ I18N["en"] = {
   err_backup_password_short: "The backup password needs at least 8 characters.",
   err_backup_password_missing: "Set a backup password before you turn on encryption.",
   bk_st_exporting: "Preparing the export file…",
+  f_wl_mode_h_off: "The AI answers whitelisted callers as usual and tells you afterwards.",
+  f_wl_mode_h_direct: "This phone doesn't answer; your carrier forwards the call to your number and the AI stays silent. First switch the phone to normal phone and dial **67*your number# to turn on forward-when-busy, or callers reach voicemail.",
+  f_wl_mode_h_emergency: "The AI answers first and alerts you right away if it's urgent. Turn on the switch below to also have it call you and join you in.",
+  wl_call_terms_title: "Before you turn this on",
+  wl_call_terms_1: "The AI can get it wrong: it may not call you about something truly urgent, or may call you when it isn't.",
+  wl_call_terms_2: "This does not replace emergency services. If a life is at risk, the caller should call the local emergency number directly.",
+  wl_call_terms_3: "The call to you is made from this phone's SIM. Your carrier charges as usual; international or roaming calls may cost more.",
+  wl_call_terms_4: "The three-way call is recorded according to your settings. You are responsible for following local laws about telling people they are recorded.",
+  wl_call_terms_5: "This is a trial feature; the call or the merge may fail. You use it at your own risk; Bageo and its developers are not liable for any loss.",
+  wl_call_terms_ok: "I understand, turn it on",
+  wl_call_terms_cancel: "Cancel",
 };
 
 I18N["zh-TW"] = {
@@ -3012,10 +3040,9 @@ I18N["zh-TW"] = {
   wl_title: "白名單來電轉接",
   wl_desc: "白名單上的人打來時，要不要轉到你自己的手機。",
   f_wl_mode: "轉接方式",
-  wl_m_off: "不轉接，由 AI 接聽",
-  wl_m_direct: "直接轉接到你的手機",
-  wl_m_emergency: "有急事才轉接",
-  f_wl_mode_h: "直接轉接：先把手機改成「一般手機」，再在手機上撥 **67*你的號碼# 開啟忙線轉接。有急事才轉接：對方說有急事，AI 會馬上通知你回電。兩種都會通知你。",
+  wl_m_off: "不轉，AI 照常接聽",
+  wl_m_direct: "不接，直接轉到你的手機",
+  wl_m_emergency: "AI 先接，有急事才找你",
   f_wl_num: "你自己的手機號碼",
   f_wl_num_ph: "例如：0912345678",
   f_wl_num_h: "有急事時要找你的號碼，會顯示在通知裡；打開下面的試驗開關，手機會直接撥這個號碼。",
@@ -3672,8 +3699,8 @@ I18N["zh-TW"] = {
   er_id_opt_owner: "本人",
   more_opts: "更多選項",
   g_region_d: "大部分的人用不到這裡的設定。",
-  f_wl_call: "有急事時，打給你並把三方接在一起（試驗中）",
-  f_wl_call_h: "要選「有急事才轉接」並填好你的號碼。你沒接的話，AI 會請對方等你回電。",
+  f_wl_call: "有急事時打給你，三方一起講（試驗中）",
+  f_wl_call_h: "AI 會請對方稍等並用這支手機打給你，你接起來後三方一起講、AI 不再出聲；你沒接，AI 會跟對方說你會盡快回電。要先選「AI 先接，有急事才找你」並填好你的號碼。",
   nf_discord_token: "Bot 權杖",
   nf_discord_target: "頻道 ID",
   nf_slack_token: "Bot 權杖",
@@ -3878,6 +3905,17 @@ I18N["zh-TW"] = {
   err_backup_password_short: "備份密碼至少要 8 個字元。",
   err_backup_password_missing: "開啟備份檔加密前，請先設定備份密碼。",
   bk_st_exporting: "正在準備匯出檔…",
+  f_wl_mode_h_off: "白名單的人打來，AI 照常接聽，事後通知你。",
+  f_wl_mode_h_direct: "這支手機不接，由電信轉到你的號碼，AI 不出聲。要先把手機切到「一般手機」，撥 **67*你的號碼# 開好忙線轉接，沒開的話對方會進語音信箱。",
+  f_wl_mode_h_emergency: "AI 先接聽，對方有急事就馬上通知你。打開下面的開關，還會直接打給你、三方一起講。",
+  wl_call_terms_title: "開啟前請先看完",
+  wl_call_terms_1: "AI 可能判斷錯：真的急事可能沒打給你，不急的事也可能打給你。",
+  wl_call_terms_2: "這不能取代報警或叫救護車。有生命危險時，請對方直接打當地的緊急電話。",
+  wl_call_terms_3: "打給你的電話由這支手機的 SIM 卡撥出，電信照常收費，國際或漫遊可能更貴。",
+  wl_call_terms_4: "三方通話會照你的設定錄音。錄音前要不要先告知對方，請依當地法律自行處理。",
+  wl_call_terms_5: "這是試驗功能，可能撥不通或接不起來。使用這個功能造成的任何損失由你自行負責，Bageo 及開發者不負任何責任。",
+  wl_call_terms_ok: "我了解，開啟",
+  wl_call_terms_cancel: "取消",
 };
 
 I18N["zh-CN"] = {
@@ -4832,10 +4870,9 @@ I18N["zh-CN"] = {
   wl_title: "白名单来电转接",
   wl_desc: "白名单上的人打来时，是否转接到你自己的手机。",
   f_wl_mode: "转接方式",
-  wl_m_off: "不转接，由 AI 接听",
-  wl_m_direct: "直接转接到你的手机",
-  wl_m_emergency: "有急事才转接",
-  f_wl_mode_h: "直接转接：先把手机改成「普通手机」，再在手机上拨 **67*你的号码# 开启遇忙转移。有急事才转接：对方说有急事，AI 会马上通知你回电。两种都会通知你。",
+  wl_m_off: "不转，AI 照常接听",
+  wl_m_direct: "不接，直接转到你的手机",
+  wl_m_emergency: "AI 先接，有急事才找你",
   f_wl_num: "你自己的手机号码",
   f_wl_num_ph: "例如：13800138000",
   f_wl_num_h: "有急事时要找你的号码，会显示在通知里；打开下面的试验开关，手机会直接拨这个号码。",
@@ -4853,8 +4890,8 @@ I18N["zh-CN"] = {
   ev_whitelist_urgent_transfer: "白名单紧急事件转接",
   more_opts: "更多选项",
   g_region_d: "大部分人用不到这里的设置。",
-  f_wl_call: "有急事时，打给你并把三方接在一起（试验中）",
-  f_wl_call_h: "要选「有急事才转接」并填好你的号码。你没接的话，AI 会请对方等你回电。",
+  f_wl_call: "有急事时打给你，三方一起说（试验中）",
+  f_wl_call_h: "AI 会请对方稍等并用这部手机打给你，你接起来后三方一起说、AI 不再出声；你没接，AI 会跟对方说你会尽快回电。要先选「AI 先接，有急事才找你」并填好你的号码。",
   nf_discord_token: "Bot 令牌",
   nf_discord_target: "频道 ID",
   nf_slack_token: "Bot 令牌",
@@ -5059,6 +5096,17 @@ I18N["zh-CN"] = {
   err_backup_password_short: "备份密码至少要 8 个字符。",
   err_backup_password_missing: "打开备份文件加密之前，请先设置备份密码。",
   bk_st_exporting: "正在准备导出文件…",
+  f_wl_mode_h_off: "白名单的人打来，AI 照常接听，事后通知你。",
+  f_wl_mode_h_direct: "这部手机不接，由运营商转到你的号码，AI 不出声。要先把手机切到「普通手机」，拨 **67*你的号码# 开好遇忙转移，没开的话对方会进语音信箱。",
+  f_wl_mode_h_emergency: "AI 先接听，对方有急事就马上通知你。打开下面的开关，还会直接打给你、三方一起说。",
+  wl_call_terms_title: "开启前请先看完",
+  wl_call_terms_1: "AI 可能判断错：真的急事可能没打给你，不急的事也可能打给你。",
+  wl_call_terms_2: "这不能取代报警或叫救护车。有生命危险时，请对方直接打当地的紧急电话。",
+  wl_call_terms_3: "打给你的电话由这部手机的 SIM 卡拨出，运营商照常收费，国际或漫游可能更贵。",
+  wl_call_terms_4: "三方通话会按你的设置录音。录音前要不要先告知对方，请依当地法律自行处理。",
+  wl_call_terms_5: "这是试验功能，可能拨不通或接不起来。使用这个功能造成的任何损失由你自行承担，Bageo 及开发者不负任何责任。",
+  wl_call_terms_ok: "我了解，开启",
+  wl_call_terms_cancel: "取消",
 };
 
 I18N["ja"] = {
@@ -6014,9 +6062,8 @@ I18N["ja"] = {
   wl_desc: "ホワイトリストの相手からの着信を、あなた自身のスマホにつなぐかどうかを選びます。",
   f_wl_mode: "転送方法",
   wl_m_off: "転送しない（AI が応答）",
-  wl_m_direct: "直接転送（あなたのスマホへ）",
-  wl_m_emergency: "急ぎのときだけ転送",
-  f_wl_mode_h: "直接転送：先にスマホを「通常のスマホ」に切り替え、スマホで **67*あなたの番号# にかけて話中転送を有効にしてください。急ぎのときだけ：相手が急用と言ったら、AI がすぐあなたに知らせるので折り返してください。どちらも通知が届きます。",
+  wl_m_direct: "応答せず、あなたのスマホへ転送",
+  wl_m_emergency: "AI が先に応答、急ぎなら連絡",
   f_wl_num: "あなたのスマホの番号",
   f_wl_num_ph: "例：09012345678",
   f_wl_num_h: "急ぎのときにあなたへ連絡する番号です。通知に表示されます。下の試験スイッチをオンにすると、スマホがこの番号に発信します。",
@@ -6034,8 +6081,8 @@ I18N["ja"] = {
   ev_whitelist_urgent_transfer: "ホワイトリスト：緊急転送",
   more_opts: "その他の設定",
   g_region_d: "ほとんどの人は変更不要です。",
-  f_wl_call: "急ぎのとき、あなたに電話して三者通話にする（試験中）",
-  f_wl_call_h: "「急ぎのときだけ転送」とあなたの番号が必要です。出られなかったときは、AI が折り返すと伝えます。",
+  f_wl_call: "急ぎのとき、あなたに電話して三者で話す（試験中）",
+  f_wl_call_h: "AI が相手に少し待ってもらい、このスマホからあなたに電話します。あなたが出ると三者で話し、AI は話さなくなります。出なかったときは、折り返すと AI が相手に伝えます。「AI が先に応答、急ぎなら連絡」を選び、あなたの番号を入力する必要があります。",
   nf_discord_token: "ボットトークン",
   nf_discord_target: "チャンネル ID",
   nf_slack_token: "ボットトークン",
@@ -6240,6 +6287,17 @@ I18N["ja"] = {
   err_backup_password_short: "バックアップのパスワードは 8 文字以上にしてください。",
   err_backup_password_missing: "暗号化をオンにする前に、バックアップのパスワードを設定してください。",
   bk_st_exporting: "エクスポートするファイルを準備しています…",
+  f_wl_mode_h_off: "ホワイトリストの人からの電話は、AI がいつも通り応答し、あとで知らせます。",
+  f_wl_mode_h_direct: "このスマホでは応答せず、携帯会社の転送であなたの番号につなぎます。AI は話しません。先にスマホを「通常のスマホ」に切り替え、**67*あなたの番号# にかけて話中転送を有効にしてください。有効にしていないと、相手は留守番電話につながります。",
+  f_wl_mode_h_emergency: "AI が先に応答し、相手が急ぎだと言えばすぐあなたに知らせます。下のスイッチをオンにすると、あなたに電話をかけて三者で話せます。",
+  wl_call_terms_title: "オンにする前にお読みください",
+  wl_call_terms_1: "AI が判断を誤ることがあります。本当に急ぎの用件で電話が来なかったり、急ぎでないのに電話が来たりすることがあります。",
+  wl_call_terms_2: "緊急通報の代わりにはなりません。命に関わるときは、相手に現地の緊急番号へ直接かけてもらってください。",
+  wl_call_terms_3: "あなたへの電話は、このスマホの SIM から発信されます。通話料は通常どおりかかり、国際通話やローミングでは高くなることがあります。",
+  wl_call_terms_4: "三者通話は設定に従って録音されます。録音を相手に知らせるかどうかは、現地の法律に従ってご自身で対応してください。",
+  wl_call_terms_5: "試験中の機能のため、発信やつなぎ込みに失敗することがあります。この機能の利用で生じた損害は自己責任となり、Bageo と開発者は一切責任を負いません。",
+  wl_call_terms_ok: "理解したのでオンにする",
+  wl_call_terms_cancel: "キャンセル",
 };
 
 I18N["ko"] = {
@@ -7194,10 +7252,9 @@ I18N["ko"] = {
   wl_title: "화이트리스트 전화 전환",
   wl_desc: "화이트리스트에 있는 사람이 전화하면 내 휴대폰으로 전환할지 정합니다.",
   f_wl_mode: "전환 방식",
-  wl_m_off: "전환 안 함 (AI가 응대)",
-  wl_m_direct: "직접 전환 (내 휴대폰으로)",
-  wl_m_emergency: "급할 때만 전환",
-  f_wl_mode_h: "직접 전환: 먼저 휴대폰을 ‘일반 휴대전화’로 바꾼 뒤, 휴대폰에서 **67*내 번호#를 눌러 통화 중 착신전환을 켜세요. 급할 때만 전환: 상대방이 급하다고 하면 AI가 바로 알려 주니 다시 전화해 주세요. 두 경우 모두 알림을 보냅니다.",
+  wl_m_off: "전환 안 함: AI가 받음",
+  wl_m_direct: "받지 않고 내 휴대폰으로 전환",
+  wl_m_emergency: "AI가 먼저 받고, 급하면 나에게 연락",
   f_wl_num: "내 휴대폰 번호",
   f_wl_num_ph: "예: 01012345678",
   f_wl_num_h: "급한 일이 있을 때 연락할 내 번호입니다. 알림에 표시되며, 아래 시험 스위치를 켜면 휴대폰이 이 번호로 전화합니다.",
@@ -7215,8 +7272,8 @@ I18N["ko"] = {
   ev_whitelist_urgent_transfer: "화이트리스트: 긴급 전환",
   more_opts: "추가 옵션",
   g_region_d: "대부분은 바꿀 필요가 없습니다.",
-  f_wl_call: "급할 때 나에게 전화해 3자 통화로 연결(시험 중)",
-  f_wl_call_h: "‘급할 때만 전환’과 내 번호가 필요합니다. 받지 못하면 AI가 다시 전화할 거라고 알려 줍니다.",
+  f_wl_call: "급할 때 나에게 전화해 셋이 함께 통화(시험 중)",
+  f_wl_call_h: "AI가 상대방에게 잠시만 기다려 달라고 하고 이 휴대폰으로 나에게 전화합니다. 내가 받으면 셋이 함께 통화하고 AI는 더 이상 말하지 않습니다. 내가 받지 않으면 AI가 곧 다시 전화드리겠다고 상대방에게 말합니다. ‘AI가 먼저 받고, 급하면 나에게 연락’을 선택하고 내 번호를 입력해야 합니다.",
   nf_discord_token: "봇 토큰",
   nf_discord_target: "채널 ID",
   nf_slack_token: "봇 토큰",
@@ -7421,6 +7478,17 @@ I18N["ko"] = {
   err_backup_password_short: "백업 비밀번호는 8자 이상이어야 합니다.",
   err_backup_password_missing: "암호화를 켜기 전에 백업 비밀번호를 설정하세요.",
   bk_st_exporting: "내보낼 파일을 준비하는 중…",
+  f_wl_mode_h_off: "화이트리스트 사람이 걸면 AI가 평소처럼 받고, 끝난 뒤에 알려 줍니다.",
+  f_wl_mode_h_direct: "이 휴대폰은 받지 않고, 통신사가 내 번호로 전환하며 AI는 말하지 않습니다. 먼저 휴대폰을 ‘일반 휴대전화’로 바꾸고 **67*내 번호#를 눌러 통화 중 착신전환을 켜 두세요. 켜 두지 않으면 상대방은 음성사서함으로 넘어갑니다.",
+  f_wl_mode_h_emergency: "AI가 먼저 받고, 상대방이 급하다고 하면 바로 알려 줍니다. 아래 스위치를 켜면 나에게 직접 전화해 셋이 함께 통화할 수도 있습니다.",
+  wl_call_terms_title: "켜기 전에 꼭 읽어 주세요",
+  wl_call_terms_1: "AI가 잘못 판단할 수 있습니다. 정말 급한 일인데 전화가 오지 않거나, 급하지 않은데 전화가 올 수도 있습니다.",
+  wl_call_terms_2: "응급 신고를 대신할 수 없습니다. 생명이 위험할 때는 상대방이 현지 긴급 전화번호로 직접 전화해야 합니다.",
+  wl_call_terms_3: "나에게 거는 전화는 이 휴대폰의 SIM 카드로 발신됩니다. 통신사 요금이 평소처럼 부과되며, 국제전화나 로밍은 더 비쌀 수 있습니다.",
+  wl_call_terms_4: "3자 통화는 설정에 따라 녹음됩니다. 녹음 사실을 상대방에게 미리 알릴지는 현지 법률에 따라 직접 판단해 처리해야 합니다.",
+  wl_call_terms_5: "시험 중인 기능이라 전화가 연결되지 않거나 합류에 실패할 수 있습니다. 이 기능을 사용해 생긴 모든 손해는 본인 책임이며, Bageo와 개발자는 어떠한 책임도 지지 않습니다.",
+  wl_call_terms_ok: "이해했습니다. 켭니다",
+  wl_call_terms_cancel: "취소",
 };
 
 I18N["es"] = {
@@ -8375,10 +8443,9 @@ I18N["es"] = {
   wl_title: "Transferencia de llamadas de la lista blanca",
   wl_desc: "Si las llamadas de números de la lista blanca pasan a tu propio teléfono.",
   f_wl_mode: "Transferencia",
-  wl_m_off: "Desactivada: contesta la IA",
-  wl_m_direct: "Siempre: pasar a tu teléfono",
-  wl_m_emergency: "Solo si es urgente",
-  f_wl_mode_h: "Siempre: primero pasa el teléfono a «Teléfono normal» y marca en él **67*tu número# para activar el desvío si comunica. Solo si es urgente: si quien llama dice que es urgente, la IA te avisa al momento para que le devuelvas la llamada. En ambos casos recibes un aviso.",
+  wl_m_off: "No transferir: contesta la IA",
+  wl_m_direct: "No contestar: pasar a tu teléfono",
+  wl_m_emergency: "Contesta la IA, te avisa si es urgente",
   f_wl_num: "Tu propio número de teléfono",
   f_wl_num_ph: "p. ej. +34600123456",
   f_wl_num_h: "El número para localizarte si es urgente. Aparece en los avisos; con el interruptor de prueba de abajo activado, el teléfono lo marca.",
@@ -8396,8 +8463,8 @@ I18N["es"] = {
   ev_whitelist_urgent_transfer: "Lista blanca: transferencia de emergencia",
   more_opts: "Más opciones",
   g_region_d: "Casi nadie necesita cambiar esto.",
-  f_wl_call: "Si es urgente, llamarme y unirnos en una sola llamada (prueba)",
-  f_wl_call_h: "Requiere \"Solo si es urgente\" y tu número. Si no contestas, la IA le dice que le devolverás la llamada.",
+  f_wl_call: "Si es urgente, llamarme y hablar los tres (prueba)",
+  f_wl_call_h: "La IA pide a quien llama que espere y este teléfono te llama; cuando contestes, hablan los tres y la IA se queda en silencio. Si no contestas, la IA le dice que le devolverás la llamada. Requiere «Contesta la IA, te avisa si es urgente» y tu número.",
   nf_discord_token: "Token del bot",
   nf_discord_target: "ID del canal",
   nf_slack_token: "Token del bot",
@@ -8602,6 +8669,17 @@ I18N["es"] = {
   err_backup_password_short: "La contraseña de las copias debe tener al menos 8 caracteres.",
   err_backup_password_missing: "Pon una contraseña para las copias antes de activar el cifrado.",
   bk_st_exporting: "Preparando el archivo para exportar…",
+  f_wl_mode_h_off: "La IA contesta como siempre a las personas de la lista blanca y te avisa después.",
+  f_wl_mode_h_direct: "Este teléfono no contesta: tu operador desvía la llamada a tu número y la IA no dice nada. Primero pasa el teléfono a «Teléfono normal» y marca en él **67*tu número# para activar el desvío si comunica; si no, quien llama oirá el buzón de voz.",
+  f_wl_mode_h_emergency: "La IA contesta primero y te avisa al momento si es urgente. Activa el interruptor de abajo para que además te llame y hablen los tres juntos.",
+  wl_call_terms_title: "Léelo antes de activarlo",
+  wl_call_terms_1: "La IA puede equivocarse: puede que no te llame por algo realmente urgente, o que te llame cuando no lo es.",
+  wl_call_terms_2: "Esto no sustituye a los servicios de emergencia. Si hay una vida en peligro, quien llama debe marcar directamente el número de emergencias local.",
+  wl_call_terms_3: "La llamada hacia ti sale de la SIM de este teléfono. Tu operador cobra como siempre; las llamadas internacionales o en roaming pueden costar más.",
+  wl_call_terms_4: "La llamada a tres se graba según tu configuración. Avisar o no a las personas de que se graba depende de la ley local, y cumplirla es cosa tuya.",
+  wl_call_terms_5: "Es una función de prueba: la llamada o la unión pueden fallar. La usas bajo tu propia responsabilidad; Bageo y sus desarrolladores no responden por ninguna pérdida.",
+  wl_call_terms_ok: "Lo entiendo, activar",
+  wl_call_terms_cancel: "Cancelar",
 };
 
 I18N["fr"] = {
@@ -9556,10 +9634,9 @@ I18N["fr"] = {
   wl_title: "Transfert des appels de la liste blanche",
   wl_desc: "Indique si les appels des numéros de la liste blanche sont transférés vers votre propre téléphone.",
   f_wl_mode: "Transfert",
-  wl_m_off: "Désactivé : l'IA répond",
-  wl_m_direct: "Toujours : transférer vers votre téléphone",
-  wl_m_emergency: "Seulement si c'est urgent",
-  f_wl_mode_h: "Toujours : passez d'abord le téléphone en « Téléphone normal », puis composez dessus **67*votre numéro# pour activer le renvoi sur occupation. Seulement si c'est urgent : si le correspondant dit que c'est urgent, l'IA vous prévient aussitôt pour que vous le rappeliez. Dans les deux cas, vous êtes prévenu.",
+  wl_m_off: "Ne pas transférer : l'IA répond",
+  wl_m_direct: "Ne pas répondre : renvoyer vers votre téléphone",
+  wl_m_emergency: "L'IA répond, vous prévient si urgent",
   f_wl_num: "Votre propre numéro de téléphone",
   f_wl_num_ph: "ex. +33612345678",
   f_wl_num_h: "Le numéro pour vous joindre en cas d'urgence. Il apparaît dans les notifications ; avec l'interrupteur d'essai ci-dessous activé, le téléphone l'appelle.",
@@ -9577,8 +9654,8 @@ I18N["fr"] = {
   ev_whitelist_urgent_transfer: "Liste blanche : transfert d'urgence",
   more_opts: "Plus d'options",
   g_region_d: "La plupart des gens n'ont pas besoin de ces réglages.",
-  f_wl_call: "En cas d'urgence, m'appeler et nous réunir dans un seul appel (essai)",
-  f_wl_call_h: "Nécessite « Seulement si c'est urgent » et votre numéro. Si vous ne répondez pas, l'IA dit que vous rappellerez.",
+  f_wl_call: "Si c'est urgent, m'appeler et parler à trois (essai)",
+  f_wl_call_h: "L'IA demande à l'appelant de patienter et ce téléphone vous appelle ; quand vous décrochez, vous parlez à trois et l'IA se tait. Si vous ne répondez pas, l'IA dit à l'appelant que vous le rappellerez. Nécessite « L'IA répond, vous prévient si urgent » et votre numéro.",
   nf_discord_token: "Jeton du bot",
   nf_discord_target: "ID du salon",
   nf_slack_token: "Jeton du bot",
@@ -9783,6 +9860,17 @@ I18N["fr"] = {
   err_backup_password_short: "Le mot de passe des sauvegardes doit contenir au moins 8 caractères.",
   err_backup_password_missing: "Définissez un mot de passe pour les sauvegardes avant d'activer le chiffrement.",
   bk_st_exporting: "Préparation du fichier à exporter…",
+  f_wl_mode_h_off: "L'IA répond comme d'habitude aux personnes de la liste blanche et vous prévient ensuite.",
+  f_wl_mode_h_direct: "Ce téléphone ne répond pas : votre opérateur renvoie l'appel vers votre numéro et l'IA reste muette. Passez d'abord le téléphone en « Téléphone normal », puis composez dessus **67*votre numéro# pour activer le renvoi sur occupation ; sinon l'appelant tombe sur la messagerie vocale.",
+  f_wl_mode_h_emergency: "L'IA répond d'abord et vous prévient aussitôt si c'est urgent. Activez l'interrupteur ci-dessous pour qu'elle vous appelle aussi et que vous parliez à trois.",
+  wl_call_terms_title: "À lire avant d'activer",
+  wl_call_terms_1: "L'IA peut se tromper : elle peut ne pas vous appeler pour une vraie urgence, ou vous appeler alors que ce n'en est pas une.",
+  wl_call_terms_2: "Cela ne remplace pas les secours. Si une vie est en danger, l'appelant doit composer directement le numéro d'urgence local.",
+  wl_call_terms_3: "L'appel vers vous part de la carte SIM de ce téléphone. Votre opérateur facture comme d'habitude ; les appels internationaux ou en itinérance peuvent coûter plus cher.",
+  wl_call_terms_4: "L'appel à trois est enregistré selon vos réglages. Prévenir ou non les personnes qu'elles sont enregistrées relève de la loi locale, que vous devez respecter.",
+  wl_call_terms_5: "C'est une fonction d'essai : l'appel ou la mise en relation peut échouer. Vous l'utilisez à vos risques ; Bageo et ses développeurs déclinent toute responsabilité en cas de perte.",
+  wl_call_terms_ok: "J'ai compris, activer",
+  wl_call_terms_cancel: "Annuler",
 };
 
 I18N["de"] = {
@@ -10737,10 +10825,9 @@ I18N["de"] = {
   wl_title: "Weiterleitung von Whitelist-Anrufen",
   wl_desc: "Ob Anrufe von Nummern auf der Whitelist an dein eigenes Telefon durchgestellt werden.",
   f_wl_mode: "Weiterleitung",
-  wl_m_off: "Aus: Die KI nimmt ab",
-  wl_m_direct: "Immer: an dein Telefon weiterleiten",
-  wl_m_emergency: "Nur wenn es dringend ist",
-  f_wl_mode_h: "Immer: Stelle das Telefon zuerst auf „Normales Telefon“ und wähle darauf **67*deine Nummer#, um die Rufumleitung bei Besetzt einzuschalten. Nur wenn es dringend ist: Sagt der Anrufer, dass es dringend ist, benachrichtigt dich die KI sofort, damit du zurückrufst. In beiden Fällen wirst du benachrichtigt.",
+  wl_m_off: "Nicht weiterleiten: Die KI nimmt ab",
+  wl_m_direct: "Nicht abnehmen: an dein Telefon weiterleiten",
+  wl_m_emergency: "KI nimmt ab, erreicht dich bei Dringendem",
   f_wl_num: "Deine eigene Telefonnummer",
   f_wl_num_ph: "z. B. +491701234567",
   f_wl_num_h: "Die Nummer, unter der du bei Dringendem erreichbar bist. Sie steht in den Benachrichtigungen; ist der Testschalter unten an, wählt das Telefon sie.",
@@ -10758,8 +10845,8 @@ I18N["de"] = {
   ev_whitelist_urgent_transfer: "Whitelist: Notfallweiterleitung",
   more_opts: "Weitere Optionen",
   g_region_d: "Die meisten brauchen diese Einstellungen nie.",
-  f_wl_call: "Wenn es dringend ist, mich anrufen und alle in ein Gespräch holen (Test)",
-  f_wl_call_h: "Braucht „Nur wenn es dringend ist“ und deine Nummer. Gehst du nicht ran, sagt die KI, dass du zurückrufst.",
+  f_wl_call: "Bei Dringendem mich anrufen, zu dritt sprechen (Test)",
+  f_wl_call_h: "Die KI bittet den Anrufer zu warten und dieses Telefon ruft dich an; sobald du abnimmst, sprecht ihr zu dritt und die KI schweigt. Nimmst du nicht ab, sagt die KI dem Anrufer, dass du zurückrufst. Braucht „KI nimmt ab, erreicht dich bei Dringendem“ und deine Nummer.",
   nf_discord_token: "Bot-Token",
   nf_discord_target: "Kanal-ID",
   nf_slack_token: "Bot-Token",
@@ -10964,6 +11051,17 @@ I18N["de"] = {
   err_backup_password_short: "Das Passwort für Sicherungen braucht mindestens 8 Zeichen.",
   err_backup_password_missing: "Lege ein Passwort für Sicherungen fest, bevor du die Verschlüsselung einschaltest.",
   bk_st_exporting: "Die Exportdatei wird vorbereitet…",
+  f_wl_mode_h_off: "Die KI nimmt Anrufe von Personen auf der Whitelist wie gewohnt an und benachrichtigt dich danach.",
+  f_wl_mode_h_direct: "Dieses Telefon nimmt nicht ab: Dein Mobilfunkanbieter leitet den Anruf an deine Nummer weiter, die KI bleibt stumm. Stelle das Telefon zuerst auf „Normales Telefon“ und wähle darauf **67*deine Nummer#, um die Rufumleitung bei Besetzt einzuschalten – sonst landen Anrufer auf der Mailbox.",
+  f_wl_mode_h_emergency: "Die KI nimmt zuerst ab und benachrichtigt dich sofort, wenn es dringend ist. Schalte unten den Schalter ein, dann ruft sie dich auch an und ihr sprecht zu dritt.",
+  wl_call_terms_title: "Bitte vor dem Einschalten lesen",
+  wl_call_terms_1: "Die KI kann sich irren: Bei etwas wirklich Dringendem ruft sie dich womöglich nicht an, oder sie ruft an, obwohl es nicht dringend ist.",
+  wl_call_terms_2: "Das ersetzt keinen Notruf. Bei Lebensgefahr soll der Anrufer direkt die örtliche Notrufnummer wählen.",
+  wl_call_terms_3: "Der Anruf bei dir wird über die SIM-Karte dieses Telefons geführt. Dein Anbieter berechnet ihn wie gewohnt; internationale Anrufe oder Roaming können mehr kosten.",
+  wl_call_terms_4: "Das Dreiergespräch wird gemäß deinen Einstellungen aufgezeichnet. Ob und wie du die Beteiligten über die Aufzeichnung informierst, musst du nach dem Recht vor Ort selbst klären.",
+  wl_call_terms_5: "Das ist eine Testfunktion; der Anruf oder das Zusammenschalten kann scheitern. Du nutzt sie auf eigenes Risiko; Bageo und die Entwickler haften nicht für Schäden.",
+  wl_call_terms_ok: "Verstanden, einschalten",
+  wl_call_terms_cancel: "Abbrechen",
 };
 
 I18N["pt"] = {
@@ -11918,10 +12016,9 @@ I18N["pt"] = {
   wl_title: "Transferência de ligações da lista branca",
   wl_desc: "Se as ligações de números da lista branca são passadas para o seu próprio celular.",
   f_wl_mode: "Transferência",
-  wl_m_off: "Desligada: a IA atende",
-  wl_m_direct: "Sempre: passar para o seu celular",
-  wl_m_emergency: "Só quando for urgente",
-  f_wl_mode_h: "Sempre: primeiro mude o celular para “Telefone normal” e disque nele **67*seu número# para ativar o desvio quando ocupado. Só se for urgente: se quem liga disser que é urgente, a IA avisa você na hora para retornar a ligação. Nos dois casos você recebe um aviso.",
+  wl_m_off: "Não transferir: a IA atende",
+  wl_m_direct: "Não atender: passar para o seu celular",
+  wl_m_emergency: "A IA atende e avisa se for urgente",
   f_wl_num: "Seu próprio número de celular",
   f_wl_num_ph: "ex.: 11987654321",
   f_wl_num_h: "O número para falar com você em caso de urgência. Aparece nos avisos; com o interruptor de teste abaixo ligado, o telefone liga para ele.",
@@ -11939,8 +12036,8 @@ I18N["pt"] = {
   ev_whitelist_urgent_transfer: "Lista branca: transferência de emergência",
   more_opts: "Mais opções",
   g_region_d: "A maioria das pessoas nunca precisa mexer aqui.",
-  f_wl_call: "Se for urgente, me ligar e juntar todos numa só ligação (teste)",
-  f_wl_call_h: "Precisa de \"Só quando for urgente\" e do seu número. Se você não atender, a IA avisa que você vai retornar.",
+  f_wl_call: "Se for urgente, ligar para mim e falar os três (teste)",
+  f_wl_call_h: "A IA pede a quem liga que aguarde e este celular liga para você; quando você atender, os três conversam e a IA fica em silêncio. Se você não atender, a IA avisa que você vai retornar. Precisa de “A IA atende e avisa se for urgente” e do seu número.",
   nf_discord_token: "Token do bot",
   nf_discord_target: "ID do canal",
   nf_slack_token: "Token do bot",
@@ -12145,6 +12242,17 @@ I18N["pt"] = {
   err_backup_password_short: "A senha dos backups precisa ter pelo menos 8 caracteres.",
   err_backup_password_missing: "Defina uma senha para os backups antes de ativar a criptografia.",
   bk_st_exporting: "Preparando o arquivo para exportar…",
+  f_wl_mode_h_off: "A IA atende como sempre quem está na lista branca e avisa você depois.",
+  f_wl_mode_h_direct: "Este celular não atende: sua operadora desvia a chamada para o seu número e a IA fica em silêncio. Primeiro mude o celular para “Telefone normal” e disque nele **67*seu número# para ativar o desvio quando ocupado; se não, quem liga cai na caixa postal.",
+  f_wl_mode_h_emergency: "A IA atende primeiro e avisa você na hora se for urgente. Ative a chave abaixo para ela também ligar para você e vocês falarem os três juntos.",
+  wl_call_terms_title: "Leia antes de ativar",
+  wl_call_terms_1: "A IA pode errar: pode não ligar para você num caso realmente urgente, ou ligar quando não é urgente.",
+  wl_call_terms_2: "Isto não substitui os serviços de emergência. Se houver risco de vida, quem liga deve discar direto para o número de emergência local.",
+  wl_call_terms_3: "A ligação para você sai do chip (SIM) deste celular. A operadora cobra normalmente; ligações internacionais ou em roaming podem custar mais.",
+  wl_call_terms_4: "A chamada a três é gravada conforme suas configurações. Avisar ou não as pessoas sobre a gravação depende da lei local, e cumpri-la é responsabilidade sua.",
+  wl_call_terms_5: "É um recurso em teste: a ligação ou a união das chamadas pode falhar. Você o usa por sua conta e risco; o Bageo e seus desenvolvedores não respondem por nenhuma perda.",
+  wl_call_terms_ok: "Entendi, ativar",
+  wl_call_terms_cancel: "Cancelar",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word
@@ -13959,6 +14067,7 @@ function renderContacts() {
     $("wlQuickMode").value = S.whitelist_mode || "off";
     $("wlQuickNum").value = S.whitelist_forward_number || "";
   }
+  wlModeHelp();
   $("ctBlackCard").hidden = cts.kind !== "blacklist";
   if (cts.kind === "blacklist" && S) $("blQuickMode").value = S.reject_mode === "announce" ? "announce" : "decline";
   $("blVoiceHelp").hidden = $("blQuickMode").value !== "announce";
@@ -13988,6 +14097,27 @@ $("ctTabs").addEventListener("click", (e) => {
   cts.list = [];
   loadContacts();
 });
+// The line under the transfer menu follows the option picked (Settings page and Contacts page).
+function wlModeHelp() {
+  for (const [selId, helpId] of [["f-whitelist_mode", "wlModeHelpText"], ["wlQuickMode", "wlQuickModeHelpText"]]) {
+    const v = $(selId).value, help = $(helpId);
+    help.dataset.i18n = "f_wl_mode_h_" + (v === "direct" || v === "emergency" ? v : "off");
+    help.textContent = t(help.dataset.i18n);
+  }
+}
+$("f-whitelist_mode").addEventListener("change", wlModeHelp);
+$("wlQuickMode").addEventListener("change", wlModeHelp);
+// Turning on "call me when it is urgent" needs a yes to the terms first, every time. Resolves true on "I understand".
+function wlCallTermsAsk() {
+  return new Promise((resolve) => {
+    const d = $("wlTermsDlg");
+    if (typeof d.showModal !== "function") { resolve(false); return; }
+    d.returnValue = "";
+    d.addEventListener("close", () => resolve(d.returnValue === "ok"), { once: true });
+    d.showModal();
+  });
+}
+$("wlTermsCancel").addEventListener("click", () => $("wlTermsDlg").close("cancel"));
 $("wlQuickSave").addEventListener("click", async () => {
   const patch = {
     whitelist_mode: $("wlQuickMode").value || "off",
@@ -14690,6 +14820,7 @@ function populate() {
   promptStyleShown = pickedStyle();
   $("f-gemini_persona_prompt").value = promptDraft[promptStyleShown];
   relabelSettings(true);
+  wlModeHelp();
   updateDirty();
   renderSetup();
   renderNote();
@@ -14782,6 +14913,15 @@ form.addEventListener("change", updateDirty);
 form.addEventListener("submit", (e) => { e.preventDefault(); saveSettings(); });
 $("btnSave").addEventListener("click", saveSettings);
 $("btnDiscard").addEventListener("click", populate);
+{
+  const urgentSw = form.querySelector('[data-k="whitelist_urgent_call"]');
+  urgentSw.addEventListener("change", async () => {
+    if (!urgentSw.checked) return;
+    if (await wlCallTermsAsk()) return;
+    urgentSw.checked = false;
+    updateDirty();
+  });
+}
 window.addEventListener("beforeunload", (e) => { if (dirtyCount() > 0) { e.preventDefault(); e.returnValue = ""; } });
 $("btnUseThisUrl").addEventListener("click", () => { $("f-public_url").value = location.origin; updateDirty(); });
 // "Pair phones again": new pairing; phones on Wi-Fi must be plugged in by USB once more.

@@ -63,7 +63,7 @@ Details for each:
 | Longest normal call | 5 min | 3 to 30 minutes. About 25 seconds before the limit the AI wraps up politely and hangs up. |
 | Status note | off | One line about right now, up to 400 characters ("Deliveries: please leave the parcel at the front desk"). The AI mentions it only when it fits the call. |
 | Background sound, Background volume | off, Medium | A quiet room tone under the AI's voice, so it sounds like someone picking up in a real place. Volume Quiet, Medium or Loud. |
-| Whitelist call transfer: Transfer | Off: the AI answers | Whether a call from someone on the Whitelist is put through to your phone (`whitelist_mode`). The Whitelist tab on the **Contacts** page has the same setting. |
+| Whitelist call transfer: Transfer | Don't transfer: the AI answers | Whether a call from someone on the Whitelist is put through to your phone (`whitelist_mode`). The Whitelist tab on the **Contacts** page has the same setting. |
 | Whitelist call transfer: Your own phone number | empty | The number the AI gives an urgent caller; it also appears in the notification (`whitelist_forward_number`). |
 
 With *Answer hidden numbers* off, the "not available" announcement uses your *Language* and the *Announcement voice*, like Blacklist calls. It comes recorded with Bageo, so no Gemini key is needed.
@@ -72,9 +72,17 @@ With *Answer hidden numbers* off, the "not available" announcement uses your *La
 
 *Whitelist call transfer* works in one of three ways:
 
-- **Off: the AI answers** (`off`): the AI answers; nothing is transferred.
-- **Always: put through to your phone** (`direct`): the AI phone declines the call, your carrier's forward-when-busy rings your own phone, and you get a notification at once. Turn forwarding on first: switch the phone to normal phone, then dial `**67*your number#` on it.
-- **Only when it is urgent** (`emergency`): the AI answers and gives the caller your number only if they say it is urgent, and alerts you.
+- **Don't transfer: the AI answers** (`off`): the AI answers whitelisted callers as usual and tells you afterwards.
+- **Don't answer: send to your phone** (`direct`): this phone doesn't answer; your carrier forwards the call to your number, the AI stays silent, and you get a notification at once. First switch the phone to normal phone and dial `**67*your number#` to turn on forward-when-busy, or callers reach voicemail.
+- **AI answers, reaches you if urgent** (`emergency`): the AI answers first, gives the caller your number only if they say it is urgent, and alerts you right away. Turn on the switch below, **When it's urgent, call me and join us (trial)** (`whitelist_urgent_call`), to also have it call you and join you in.
+
+**Before you turn on "When it's urgent, call me and join us".** A confirmation box appears each time you turn the switch on, and it only stays on after you pick **I understand, turn it on**. The AI asks the caller to hold and this phone calls you; once you pick up, all three of you talk and the AI goes quiet. If you don't answer, the AI tells the caller you'll call back. It needs **AI answers, reaches you if urgent** and your number.
+
+1. The AI can get it wrong: it may not call you about something truly urgent, or may call you when it isn't.
+2. This does not replace emergency services. If a life is at risk, the caller should call the local emergency number directly.
+3. The call to you is made from this phone's SIM. Your carrier charges as usual; international or roaming calls may cost more.
+4. The three-way call is recorded according to your settings. You are responsible for following local laws about telling people they are recorded.
+5. This is a trial feature; the call or the merge may fail. You use it at your own risk; Bageo and its developers are not liable for any loss.
 
 **More options.** These three are folded under *More options* in How it answers, and most people never change them:
 

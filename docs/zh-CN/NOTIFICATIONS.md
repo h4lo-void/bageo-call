@@ -71,7 +71,7 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&…
 | AI 回拨：〈号码〉 | AI 打给来电者告知预约结果。消息会写结果（接通并告知、没人接、拨不出去，或这个号码不能回拨）和那通电话的摘要。 | `ai_callback` |
 | AI 代打：〈名字或号码〉 | 你交办的 AI 代打结束了。消息有结果、细节、需要你决定的选项、下一步、谈定的时间，以及“AI 代打”页的链接。 | `ai_errand` |
 | 预约待你确认 | 对方跟 AI 约了时间。Telegram 收到带按钮的卡片，其他渠道收到附一键“同意／不同意”签名按钮或链接的通知（见[日程预约](#日程预约)）。 | `appointment_pending` / `summary` |
-| 白名单来电直接转接 | 白名单号码打来、且“转接方式”设为“直接转接到你的手机”时，手机自动挂断以触发运营商呼叫转移，并即时推送通知。 | `whitelist_direct_transfer` |
+| 白名单来电直接转接 | 白名单号码打来、且“转接方式”设为“不接，直接转到你的手机”时，手机自动挂断以触发运营商呼叫转移，并即时推送通知。 | `whitelist_direct_transfer` |
 | 白名单紧急事件通知 | 白名单号码打来、且 AI 在通话中听出对方有紧急事件时，AI 主动告知你的真实转接号码并发送紧急警报。 | `whitelist_urgent_transfer` |
 | 测试通知 | 你按了“发送测试”。 | `test` |
 | 新短信 | 可选的[短信转发工具](../../tools/sms_forward/README.md)（英文）转来的短信。 | `event` |
