@@ -2362,7 +2362,7 @@ pub struct StallCfg {
     pub judgement: Arc<std::sync::Mutex<Option<crate::calls::ScamJudgement>>>,
     /// Fired once if a Whitelist caller (`whitelist_mode == "emergency"`) states an emergency.
     pub urgent_transfer: Option<UrgentTransferFn>,
-    /// Whitelist urgent call (setting `whitelist_urgent_call`): the agent pauses the
+    /// Whitelist urgent call (`whitelist_mode` emergency with the owner's number set): the agent pauses the
     /// AI while the phone dials the owner, ends the session once merged, or has the
     /// AI say the owner did not answer.
     pub urgent_call: Option<Arc<crate::urgent_call::CallCtl>>,
@@ -7316,7 +7316,7 @@ pub async fn run_session(
                                             }
                                         }
                                     } else if !urgent_transfer_fired {
-                                        // Alert-only mode (`whitelist_urgent_call` off): checked once the AI
+                                        // Alert-only (no urgent call to the owner): checked once the AI
                                         // starts replying so the caller's full sentence is in `in_tx_window`.
                                         if let Some(ut) = stall.as_ref().and_then(|c| c.urgent_transfer.as_ref()) {
                                             if is_urgent_whitelist_turn(&in_tx_window) {

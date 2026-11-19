@@ -72,7 +72,7 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&…
 | AI 代打：〈名字或号码〉 | 你交办的 AI 代打结束了。消息有结果、细节、需要你决定的选项、下一步、谈定的时间，以及“AI 代打”页的链接。 | `ai_errand` |
 | 预约待你确认 | 对方跟 AI 约了时间。Telegram 收到带按钮的卡片，其他渠道收到附一键“同意／不同意”签名按钮或链接的通知（见[日程预约](#日程预约)）。 | `appointment_pending` / `summary` |
 | 来电已转到你的手机 | “谁打来可以转”勾选的人打来、且“转接方式”是“不接，直接转到你的手机”时，手机不接，让运营商把电话转给你，并马上通知你。 | `whitelist_direct_transfer` |
-| 来电急事通知 | “谁打来可以转”勾选的人打来、AI 先接，对方说有急事时马上通知你；打开“有急事时打给你”时，手机也会拨给你。 | `whitelist_urgent_transfer` |
+| 来电急事通知 | “谁打来可以转”勾选的人打来、AI 先接，对方说有急事时马上通知你；转接方式选“AI 先接，有急事才转给你”并填好你的号码时，手机也会拨给你。 | `whitelist_urgent_transfer` |
 | 测试通知 | 你按了“发送测试”。 | `test` |
 | 新短信 | 可选的[短信转发工具](../../tools/sms_forward/README.md)（英文）转来的短信。 | `event` |
 

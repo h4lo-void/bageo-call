@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
 // SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
 
-//! Whitelist urgent call (setting `whitelist_urgent_call`, trial).
+//! Whitelist urgent call: with `whitelist_mode` emergency and `whitelist_forward_number`
+//! filled, an urgent Whitelist caller is put through to the owner.
 //!
 //! A Whitelist caller (whitelist_mode emergency) says it is urgent: the AI asks
 //! them to hold on, the agent sends the phone add_call on the call's media
@@ -39,11 +40,12 @@ pub const ABORT_WAIT: Duration = Duration::from_secs(8);
 /// After the attempt was given up: a late "merged" still hands the call over.
 pub const LATE_MERGE_WAIT: Duration = Duration::from_secs(90);
 
-/// The owner's number to dial, only when the trial is on: whitelist_mode
-/// emergency, whitelist_urgent_call on and whitelist_forward_number filled.
+/// The owner's number to dial: whitelist_mode emergency and whitelist_forward_number
+/// filled. The old setting `whitelist_urgent_call` is still read from settings files
+/// and backups but no longer changes anything.
 pub fn number_to_call(rt: &RuntimeSettings) -> Option<String> {
     let number = rt.whitelist_forward_number.trim();
-    (rt.whitelist_mode == "emergency" && rt.whitelist_urgent_call && !number.is_empty()).then(|| number.to_string())
+    (rt.whitelist_mode == "emergency" && !number.is_empty()).then(|| number.to_string())
 }
 
 /// Who a call that may be forwarded to the owner comes from.
@@ -143,7 +145,7 @@ pub fn stranger_key(caller: &str, sim: Option<&str>) -> String {
     crate::scam_db::number_key(caller, sim).unwrap_or_else(|| "hidden".to_string())
 }
 
-/// Whether the phone may dial the owner for `t` on this call: the trial is on
+/// Whether the phone may dial the owner for `t` on this call: the owner's number is set
 /// ([`number_to_call`]) and, for a number not in the contacts, its allowance
 /// (`key`, [`stranger_key`]) is free. Otherwise the AI says the owner will call
 /// back and the owner is only alerted.
@@ -736,22 +738,32 @@ pub fn status_ends_owner_call(status: &Value) -> bool {
 mod tests {
     use super::*;
 
-    fn rt(mode: &str, on: bool, number: &str) -> RuntimeSettings {
+    fn rt(mode: &str, number: &str) -> RuntimeSettings {
         let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
         rt.whitelist_mode = mode.to_string();
-        rt.whitelist_urgent_call = on;
         rt.whitelist_forward_number = number.to_string();
         rt
     }
 
     #[test]
-    fn only_emergency_mode_with_the_setting_on_and_a_number_dials() {
-        assert_eq!(number_to_call(&rt("emergency", true, " +15550001111 ")).as_deref(), Some("+15550001111"));
-        assert_eq!(number_to_call(&rt("emergency", false, "+15550001111")), None);
-        assert_eq!(number_to_call(&rt("emergency", true, "   ")), None);
-        assert_eq!(number_to_call(&rt("emergency", true, "")), None);
-        assert_eq!(number_to_call(&rt("direct", true, "+15550001111")), None);
-        assert_eq!(number_to_call(&rt("off", true, "+15550001111")), None);
+    fn only_emergency_mode_with_a_number_dials() {
+        assert_eq!(number_to_call(&rt("emergency", " +15550001111 ")).as_deref(), Some("+15550001111"));
+        assert_eq!(number_to_call(&rt("emergency", "   ")), None);
+        assert_eq!(number_to_call(&rt("emergency", "")), None);
+        assert_eq!(number_to_call(&rt("direct", "+15550001111")), None);
+        assert_eq!(number_to_call(&rt("off", "+15550001111")), None);
+    }
+
+    #[test]
+    fn the_old_urgent_call_setting_changes_nothing() {
+        for old in [false, true] {
+            let mut with_number = rt("emergency", "+15550001111");
+            with_number.whitelist_urgent_call = old;
+            assert_eq!(number_to_call(&with_number).as_deref(), Some("+15550001111"), "old setting {old}");
+            let mut no_number = rt("emergency", "");
+            no_number.whitelist_urgent_call = old;
+            assert_eq!(number_to_call(&no_number), None, "old setting {old}");
+        }
     }
 
     #[test]
@@ -859,12 +871,12 @@ mod tests {
     // ---- reviewer additions ----
 
     #[test]
-    fn reviewer_default_settings_never_dial() {
+    fn reviewer_default_settings_dial_once_a_number_is_set() {
         let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
         rt.whitelist_mode = "emergency".to_string();
-        rt.whitelist_forward_number = "+15550001111".to_string();
-        assert!(!rt.whitelist_urgent_call, "the trial is off unless the owner turns it on");
         assert_eq!(number_to_call(&rt), None);
+        rt.whitelist_forward_number = "+15550001111".to_string();
+        assert_eq!(number_to_call(&rt).as_deref(), Some("+15550001111"));
     }
 
     #[test]
@@ -1475,7 +1487,7 @@ mod tests {
     fn a_number_not_in_the_contacts_gets_the_owner_dialed_once_in_30_minutes() {
         let limits = DialLimit::default();
         let t0 = Instant::now();
-        let mut cfg = rt("emergency", true, "+15550001111");
+        let mut cfg = rt("emergency", "+15550001111");
         cfg.transfer_contacts = true;
         cfg.transfer_others = true;
         let stranger = Transfer { who: TransferWho::Stranger, name: String::new() };
@@ -1503,8 +1515,8 @@ mod tests {
         // 30 minutes on, the number may get the owner dialed again.
         assert!(will_dial(&cfg, &stranger, &key, &limits, t0 + STRANGER_DIAL_EVERY));
         assert!(limits.take(&key, t0 + STRANGER_DIAL_EVERY));
-        // The trial off: nobody is dialed, the owner is only alerted.
-        let off = rt("emergency", false, "+15550001111");
+        // No number: nobody is dialed, the owner is only alerted.
+        let off = rt("emergency", "");
         assert!(!will_dial(&off, &family, "", &limits, t0));
         // The call's control carries the key the dial uses.
         assert_eq!(CallCtl::limited(key.clone()).limit_key(), Some(key.as_str()));

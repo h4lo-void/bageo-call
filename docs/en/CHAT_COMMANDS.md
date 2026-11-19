@@ -104,7 +104,7 @@ Numbers like `1` or `#2` refer to the list the chat was shown last
 | `/contacts <name>` | Find a contact |
 | `/block <number> [name/reason]` | Add a number to the **Blacklist** (its calls are always rejected) |
 | `/stall <number> [name/note]` | Add a number to the **Stall list** (the AI keeps them talking from the first second) |
-| `/white <number> [name/note]` | Add a number to the **Whitelist** (family and friends; calls can go straight to your phone, or the AI answers and reaches you only if urgent) |
+| `/white <number> [name/note]` | Add a number to the **Whitelist** (family and friends; calls can go straight to your phone, or the AI answers and puts you through only if urgent) |
 | `/unblock <number>` | Remove a number from the Blacklist or Stall list; the AI answers it normally again |
 
 You can also just write what you want, in any language, for example:

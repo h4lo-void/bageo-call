@@ -1669,7 +1669,7 @@ fn urgent_intro(lang: Lang, assistant: bool, owner: &str, who: TransferWho) -> S
 /// What the AI says when a caller who may be forwarded has something urgent
 /// (`whitelist_mode` emergency; `who`: [`crate::urgent_call::transfer_target`]). Without `will_call` Bageo does not put the
 /// call through: it alerts the owner, who calls back, and the AI says only
-/// that. With `will_call` (setting `whitelist_urgent_call`) the phone dials the
+/// that. With `will_call` (the owner's number is set) the phone dials the
 /// owner and merges the calls: the AI only asks the caller to hold on.
 pub fn urgent_block(lang: Lang, assistant: bool, owner: &str, who: TransferWho, will_call: bool) -> String {
     let owner = crate::prompts::owner_label(lang, owner);
