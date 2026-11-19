@@ -15,6 +15,7 @@
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, Result};
 use base64::Engine;
@@ -243,7 +244,7 @@ pub struct NotifyAction {
 /// What is sent.
 #[derive(Debug, Clone, Default)]
 pub struct Message {
-    /// `incoming` / `outgoing` / `blocked` / `voicemail` / `summary` / `test` / `sms`.
+    /// `incoming` / `outgoing` / `blocked` / `repeat_calls` / `voicemail` / `summary` / `test` / `sms`.
     pub event: String,
     pub title: String,
     /// Plain text; its first line is the headline.
@@ -1738,6 +1739,153 @@ fn ring_message(event: &str, title: &str, caller_id: &str, serial: &str) -> Mess
         )
 }
 
+/// How long one number's call notifications are counted together.
+const REPEAT_WINDOW: Duration = Duration::from_secs(60);
+/// Notifications of one kind for one number allowed per [`REPEAT_WINDOW`].
+const REPEAT_MAX_SENT: usize = 2;
+/// Most numbers the limiter remembers at once.
+const REPEAT_MAX_NUMBERS: usize = 1000;
+
+/// What the limiter says about one more notification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Admit {
+    /// Send it.
+    Send,
+    /// Too many already. `first` = this is the first one held back since the
+    /// last count was handed out, so the caller must arrange the one summary.
+    Skip { first: bool },
+}
+
+#[derive(Default)]
+struct RepeatEntry {
+    /// When the notifications still inside the window went out.
+    sent: Vec<Instant>,
+    /// Held back and not yet reported.
+    skipped: u32,
+    last_seen: Option<Instant>,
+}
+
+/// Lets a few call notifications per number through each minute and counts
+/// the rest. Time is passed in so tests do not have to wait.
+struct RepeatLimiter {
+    entries: HashMap<String, RepeatEntry>,
+    max_numbers: usize,
+}
+
+impl RepeatLimiter {
+    fn new(max_numbers: usize) -> Self {
+        Self { entries: HashMap::new(), max_numbers }
+    }
+
+    /// `key` = notification kind and the digits of the number.
+    fn admit(&mut self, key: &str, now: Instant) -> Admit {
+        self.prune(now);
+        if !self.entries.contains_key(key) && self.entries.len() >= self.max_numbers.max(1) {
+            // Full: drop the entry seen longest ago. One still waiting to be
+            // reported is never dropped; then the newcomer simply goes out.
+            let victim = self
+                .entries
+                .iter()
+                .min_by_key(|(_, e)| (e.skipped > 0, e.last_seen))
+                .map(|(k, e)| (k.clone(), e.skipped > 0));
+            match victim {
+                Some((_, true)) => return Admit::Send,
+                Some((k, false)) => {
+                    self.entries.remove(&k);
+                }
+                None => {}
+            }
+        }
+        let entry = self.entries.entry(key.to_string()).or_default();
+        entry.last_seen = Some(now);
+        entry.sent.retain(|t| now.saturating_duration_since(*t) < REPEAT_WINDOW);
+        if entry.sent.len() < REPEAT_MAX_SENT {
+            entry.sent.push(now);
+            Admit::Send
+        } else {
+            entry.skipped += 1;
+            Admit::Skip { first: entry.skipped == 1 }
+        }
+    }
+
+    /// The held-back count, handed out once: it starts again from zero.
+    fn take_skipped(&mut self, key: &str) -> u32 {
+        self.entries.get_mut(key).map(|e| std::mem::take(&mut e.skipped)).unwrap_or(0)
+    }
+
+    /// Forget numbers with nothing in the window and nothing to report.
+    fn prune(&mut self, now: Instant) {
+        self.entries.retain(|_, e| {
+            e.skipped > 0 || e.sent.iter().any(|t| now.saturating_duration_since(*t) < REPEAT_WINDOW)
+        });
+    }
+}
+
+fn repeat_limiter() -> &'static Mutex<RepeatLimiter> {
+    static LIMITER: OnceLock<Mutex<RepeatLimiter>> = OnceLock::new();
+    LIMITER.get_or_init(|| Mutex::new(RepeatLimiter::new(REPEAT_MAX_NUMBERS)))
+}
+
+/// The summary of calls that were not notified one by one.
+fn repeat_calls_message(p: &locale::Phrases, kind: &str, caller_id: &str, count: u32) -> Message {
+    let caller = display_or_hidden(caller_id);
+    let body = p.n_repeat_body.replace("{number}", &caller).replace("{count}", &count.to_string());
+    Card::new(p.n_repeat_title).tail(&body).message(
+        "repeat_calls",
+        format!("{} {caller}", p.n_repeat_title),
+        json!({ "caller_id": caller_id.trim(), "count": count, "kind": kind }),
+    )
+}
+
+/// Sends a call notification, unless this number already had two of this kind
+/// in the last minute. Held-back ones are counted and the owner gets one short
+/// message about them a minute after the first. A number without digits cannot
+/// be told apart from another caller, so it is never held back. Returns true
+/// for a held-back one too: it was handled on purpose, not lost.
+async fn deliver_limited(
+    http: &Client,
+    settings: &Settings,
+    kind: &'static str,
+    caller_id: &str,
+    msg: &Message,
+) -> bool {
+    let digits: String = caller_id.chars().filter(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return deliver(http, settings, msg).await;
+    }
+    let key = format!("{kind}:{digits}");
+    let verdict = repeat_limiter()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .admit(&key, Instant::now());
+    match verdict {
+        Admit::Send => deliver(http, settings, msg).await,
+        Admit::Skip { first } => {
+            info!(
+                "notify held back kind={kind} number={}: more than {REPEAT_MAX_SENT} in a minute",
+                crate::urgent_call::masked(caller_id)
+            );
+            if first {
+                let http = http.clone();
+                let settings = settings.clone();
+                let caller_id = caller_id.trim().to_string();
+                tokio::spawn(async move {
+                    tokio::time::sleep(REPEAT_WINDOW).await;
+                    let count = repeat_limiter()
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .take_skipped(&key);
+                    if count > 0 {
+                        let msg = repeat_calls_message(locale::notify_phrases(), kind, &caller_id, count);
+                        deliver(&http, &settings, &msg).await;
+                    }
+                });
+            }
+            true
+        }
+    }
+}
+
 /// A call came in. Returns true when at least one channel took the message.
 pub async fn notify_incoming_call(
     http: &Client,
@@ -1749,7 +1897,7 @@ pub async fn notify_incoming_call(
         return false;
     }
     let msg = ring_message("incoming", locale::notify_phrases().n_incoming, caller_id, serial);
-    deliver(http, settings, &msg).await
+    deliver_limited(http, settings, "incoming", caller_id, &msg).await
 }
 
 /// Bageo's own call rings on the other side (an AI errand, an appointment's
@@ -1807,7 +1955,7 @@ pub async fn notify_rejected_call(
                 "declined": declined,
             }),
         );
-    deliver(http, settings, &msg).await
+    deliver_limited(http, settings, "blocked", caller_id, &msg).await
 }
 
 /// What became of a blocked number's call: refused while it rang, or picked up
@@ -1859,7 +2007,7 @@ pub async fn notify_call_waiting_rejected(
             "sim_country": sim_country.unwrap_or(""),
         }),
     );
-    deliver(http, settings, &msg).await
+    deliver_limited(http, settings, "call_waiting", caller_id, &msg).await
 }
 
 /// The post-call summary (`summary_body` = the summary lines and the link).
@@ -3098,5 +3246,131 @@ mod tests {
         assert!(!is_transient_send_error(&ChannelError::new("auth_failed", "", "HTTP 401: nope").into()));
         assert!(!is_transient_send_error(&ChannelError::new("http_error", "", "HTTP 400: bad json").into()));
         assert!(!is_transient_send_error(&ChannelError::new("missing_field", "url", "empty").into()));
+    }
+
+    fn secs(base: Instant, s: u64) -> Instant {
+        base + Duration::from_secs(s)
+    }
+
+    #[test]
+    fn a_number_gets_two_notifications_a_minute_then_is_counted() {
+        let t0 = Instant::now();
+        let mut l = RepeatLimiter::new(1000);
+        assert_eq!(l.admit("incoming:15550100123", secs(t0, 0)), Admit::Send);
+        assert_eq!(l.admit("incoming:15550100123", secs(t0, 5)), Admit::Send);
+        assert_eq!(l.admit("incoming:15550100123", secs(t0, 10)), Admit::Skip { first: true });
+        assert_eq!(l.admit("incoming:15550100123", secs(t0, 20)), Admit::Skip { first: false });
+        assert_eq!(l.admit("incoming:15550100123", secs(t0, 30)), Admit::Skip { first: false });
+        // The window slides: the first one is 60 s old, so one more fits.
+        assert_eq!(l.admit("incoming:15550100123", secs(t0, 60)), Admit::Send);
+        assert_eq!(l.admit("incoming:15550100123", secs(t0, 61)), Admit::Skip { first: false });
+        assert_eq!(l.take_skipped("incoming:15550100123"), 4);
+    }
+
+    #[test]
+    fn the_held_back_count_is_handed_out_once() {
+        let t0 = Instant::now();
+        let mut l = RepeatLimiter::new(1000);
+        for i in 0..5 {
+            l.admit("blocked:15550100123", secs(t0, i));
+        }
+        assert_eq!(l.take_skipped("blocked:15550100123"), 3);
+        assert_eq!(l.take_skipped("blocked:15550100123"), 0);
+        assert_eq!(l.take_skipped("blocked:15550100999"), 0);
+        // After the hand-out the next held-back one asks for a new summary.
+        assert_eq!(l.admit("blocked:15550100123", secs(t0, 6)), Admit::Skip { first: true });
+        assert_eq!(l.take_skipped("blocked:15550100123"), 1);
+    }
+
+    #[test]
+    fn other_numbers_and_other_kinds_do_not_share_a_count() {
+        let t0 = Instant::now();
+        let mut l = RepeatLimiter::new(1000);
+        for _ in 0..2 {
+            assert_eq!(l.admit("incoming:15550100123", t0), Admit::Send);
+        }
+        assert_eq!(l.admit("incoming:15550100123", t0), Admit::Skip { first: true });
+        assert_eq!(l.admit("incoming:15550100456", t0), Admit::Send);
+        assert_eq!(l.admit("blocked:15550100123", t0), Admit::Send);
+        assert_eq!(l.admit("call_waiting:15550100123", t0), Admit::Send);
+        assert_eq!(l.take_skipped("incoming:15550100456"), 0);
+    }
+
+    #[test]
+    fn the_table_stays_small_and_forgets_old_numbers() {
+        let t0 = Instant::now();
+        let mut l = RepeatLimiter::new(3);
+        for n in 0..10u64 {
+            assert_eq!(l.admit(&format!("incoming:{n}"), secs(t0, n)), Admit::Send);
+            assert!(l.entries.len() <= 3);
+        }
+        // The oldest were dropped, the newest are kept.
+        assert!(l.entries.contains_key("incoming:9") && !l.entries.contains_key("incoming:0"));
+        // A minute later nothing is left to remember.
+        assert_eq!(l.admit("incoming:42", secs(t0, 200)), Admit::Send);
+        assert_eq!(l.entries.len(), 1);
+    }
+
+    #[test]
+    fn a_number_waiting_to_be_reported_is_never_dropped() {
+        let t0 = Instant::now();
+        let mut l = RepeatLimiter::new(2);
+        for _ in 0..3 {
+            l.admit("incoming:1", t0);
+        }
+        for _ in 0..3 {
+            l.admit("incoming:2", t0);
+        }
+        // Full of numbers with counts to report: a new number just goes out.
+        assert_eq!(l.admit("incoming:3", secs(t0, 1)), Admit::Send);
+        assert_eq!(l.take_skipped("incoming:1"), 1);
+        assert_eq!(l.take_skipped("incoming:2"), 1);
+    }
+
+    #[tokio::test]
+    async fn numbers_written_differently_count_as_one_and_blank_ones_are_free() {
+        let http = Client::new();
+        // No channel is set up, so nothing goes out: a call that is let through
+        // answers false, a held-back one answers true.
+        let mut settings = Settings::from_env();
+        settings.call_notify = true;
+        settings.notify_channels.clear();
+        settings.notify_gateway_url.clear();
+        settings.notify_webhook_url.clear();
+        settings.telegram_bot_token.clear();
+        let sent: Vec<bool> = {
+            let mut v = Vec::new();
+            for caller in ["+886 912-000-111", "+886912000111", "886 912 000 111 "] {
+                v.push(notify_incoming_call(&http, &settings, caller, "pixel-test").await);
+            }
+            v
+        };
+        assert_eq!(sent, [false, false, true]);
+        let key = format!("incoming:{}", "886912000111");
+        assert_eq!(repeat_limiter().lock().unwrap().take_skipped(&key), 1);
+        // Hidden or blank numbers are never held back (so each one is tried).
+        for caller in ["", "  ", "no number"] {
+            for _ in 0..4 {
+                assert!(!notify_incoming_call(&http, &settings, caller, "pixel-test").await);
+            }
+        }
+        // A held-back call reports success, so the callers do not treat it as lost.
+        let held = notify_rejected_call(&http, &settings, "+15550100777", "pixel-test", "", false).await;
+        let held2 = notify_rejected_call(&http, &settings, "+15550100777", "pixel-test", "", false).await;
+        let held3 = notify_rejected_call(&http, &settings, "+15550100777", "pixel-test", "", false).await;
+        assert!(!held && !held2 && held3);
+    }
+
+    #[test]
+    fn the_summary_is_written_in_every_language_with_the_count() {
+        for l in locale::ALL {
+            let m = repeat_calls_message(locale::phrases(l), "incoming", "+15550100123", 7);
+            assert!(!m.title.trim().is_empty() && m.title.contains("+15550100123"), "{l:?}");
+            assert!(m.body.contains("+15550100123") && m.body.contains('7'), "{l:?}: {}", m.body);
+            assert!(!m.body.contains('{'), "{l:?}: {}", m.body);
+            assert_eq!(m.event, "repeat_calls");
+            assert_eq!(m.data["count"], 7);
+            assert_eq!(m.data["caller_id"], "+15550100123");
+        }
     }
 }

@@ -92,6 +92,7 @@ You can receive these messages:
 | Blocked number called | A blocked number called. The message says whether it was declined while it rang or answered with the announcement, and your reason for blocking it. | `blocked` |
 | Call summary | A few seconds after a call ended: who, what about, what the AI said, what you should do, and the links. | `summary` |
 | Missed while on another call | A second call rang during a call and the phone declined it (the caller heard busy). Call back if you know the number. | `call_waiting` |
+| Repeated calls from one number | One number called again and again within a minute. You get one message saying how many more calls came, instead of one each. | `repeat_calls` |
 | AI call-back: <number> | The AI called a caller back with your answer to an appointment. The message gives how it went (answered, nobody answered, could not be placed, or the number cannot be called back) and the call's summary. | `ai_callback` |
 | AI errand call: <name or number> | An AI errand you started has ended. The message has the result, details, your decision when one is needed, the next step, the time agreed and a link to the *Errands* page. | `ai_errand` |
 | Appointment to confirm | A caller set a time with the AI. Telegram receives a card with buttons; every other channel receives signed one-tap **Accept / Decline** buttons or links (see [Appointments](#appointments)). | `appointment_pending` / `summary` |
@@ -100,8 +101,9 @@ You can receive these messages:
 | Test notification | You pressed **Send test**. | `test` |
 | New SMS | A text message passed on by the optional [SMS forwarder](../../tools/sms_forward/README.md). | `event` |
 
-A call-waiting message:
+A number that keeps calling does not flood you. For each number, Bageo sends at most two *Incoming call*, *Blocked number called* or *Missed while on another call* messages a minute, and a minute later one *Repeated calls from one number* message tells you how many more came. Urgent whitelist alerts, appointments, call summaries, AI errands and call-backs, voicemail, outgoing calls and SMS are never held back.
 
+A call-waiting message:
 ```text
 Missed while on another call: 0912345678 (Pixel 9)
 Time: Nov 14, 18:02
@@ -785,6 +787,7 @@ With a *Bearer token (optional)* set, it adds `Authorization: Bearer <token>`.
 | `blocked` | a blocked number called | `caller_id`, `device`, `time`, `reason`, `declined` (`true`: refused while it rang; `false`: answered with the announcement) |
 | `summary` | a few seconds after a call ended | `caller_id`, `device`, `time`, `summary`, `contact` (the contact's name, or empty) |
 | `call_waiting` | a second call rang during a call and was declined | `caller_id`, `device`, `time`, `sim_country` |
+| `repeat_calls` | one number kept calling and the extra notifications were held back | `caller_id`, `count`, `kind` (`incoming`, `blocked` or `call_waiting`) |
 | `ai_callback` | the AI's call-back for an appointment ended, or could not be placed | `caller_id`, `device`, `time`, `summary` |
 | `ai_errand` | an AI errand ended, or never got going | `number`, `device`, `time`, `summary` |
 | `appointment_pending` | a caller booked an appointment waiting for your decision | `task_id`, `caller_id`, `device`, `title`, `start_at`, `accept_url`, `decline_url` |

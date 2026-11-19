@@ -275,7 +275,7 @@ pub fn token_ok_parts(settings: &Settings, headers: &HeaderMap, query_token: Opt
     false
 }
 
-fn unauthorized() -> Response {
+pub fn unauthorized() -> Response {
     (
         StatusCode::UNAUTHORIZED,
         Json(json!({"error": "unauthorized", "code": "unauthorized", "hint": "pass ?token= or Authorization: Bearer"})),

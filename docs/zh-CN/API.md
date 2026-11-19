@@ -36,7 +36,7 @@ curl -s http://127.0.0.1:8787/calls/api/stats
 | 用你自己的按钮同意预约 | `POST /calls/api/tasks/{id}/confirm` |
 | 在家时让手机照常响、自己接 | `POST /calls/api/devices/{serial}/mode`，请求体 `{"mode": "normal"}` |
 | 把任何消息转到你的通知渠道 | `POST /calls/api/notify/send` |
-| 监控 Bageo | `GET /health`（不带密码也能读） |
+| 监控 Bageo | `GET /health`（简版状态不带密码也能读） |
 
 ## 访问
 
@@ -48,7 +48,7 @@ Authorization: Bearer <token>
 X-Calls-Token: <token>
 ```
 
-密码错误或缺失会得到 HTTP 401，内容是 `{"error": "unauthorized", "code": "unauthorized", "hint": …}`。`/health` 不带密码也会响应，但只返回监控用的几个字段（见[手机与健康状态](#手机与健康状态)）。
+密码错误或缺失会得到 HTTP 401，内容是 `{"error": "unauthorized", "code": "unauthorized", "hint": …}`。`/health` 不带密码也会响应，但只返回监控用的几个字段（见[手机与健康状态](#手机与健康状态)）。完整的 `/health` 数据也要带密码；控制台用 `GET /calls/api/health` 读取。
 
 ```bash
 curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
@@ -651,7 +651,8 @@ Content-Type: application/json
 | `POST /calls/api/devices/{serial}/mode` | 请求体 `{"mode": "ai" \| "normal"}`。让手机切换，最多等 15 秒等它回复。返回 `{ok, mode, error_code}`（400 时另附说明 `error`）。 |
 | `DELETE /calls/api/devices/{serial}` | 移除一台未连接的旧手机（同时清除手机列表、已存名称与 SIM 记录，保留过往通话记录）：`{ok, serial}`。手机仍在线或通话中返回 HTTP 409 `device_online`／`device_in_call`。 |
 | `PUT /calls/api/devices/{serial}/sim-number` | 请求体 `{"sub_id": <整数>, "number": "..."}`。设置（留空表示清除）这部手机某张 SIM 的号码，让来电与 AI 代打直接显示并按号码挑选：`{ok, serial, sims}`。 |
-| `GET /health` | 排查问题用的大型 JSON 对象：版本、语言、哪些东西已配置、已连接的手机、进行中的通话；不含密钥或密码。 |
+| `GET /health` | 排查问题用的大型 JSON 对象：版本、语言、哪些东西已配置、已连接的手机、进行中的通话；不含密钥或密码。要带密码才拿得到（见下方说明最后一点）。 |
+| `GET /calls/api/health` | 控制台用，内容和 `/health` 的完整版相同。跟其他 `/calls/api/` 路由一样：设置了密码而没带返回 HTTP 401，没设密码就开放。 |
 
 `GET /calls/api/devices` 的内容：
 
@@ -666,7 +667,7 @@ Content-Type: application/json
 - `local_time` 是 Bageo 按 `TZ` 的时钟。
 - `summary_ready`（`summary_api_key_set` 是同一个值）表示有没有设置摘要服务。
 - `setup_missing` 列出控制台“都准备好了吗？”还没完成的项目：`ai_off`、`gemini_key`、`owner_name`、`notify`、`summary`（只有名称，没有设置值）；全部设置好是空数组。
-- 设置了控制台密码、请求却没带时，只返回 `ok`、`version`、`language`、`notify_language`、`active_call_count`、`control_idle_clients` 和 `setup_missing`，监控用已经足够。
+- `GET /health` 只有带了控制台密码的请求才拿到完整内容。没设密码时，只有这台电脑自己发的请求拿得到（经过反向代理的不算；用 Docker 默认网络时，从宿主机发的请求也算别的电脑）。其他来源只返回 `ok`、`version`、`local_time`、`language`、`notify_language`、`active_call_count`、`control_idle_clients` 和 `setup_missing`，监控用已经足够。
 
 切换模式后，`mode` 是手机现在的模式（不知道时为 `null`）；成功时 `error_code` 为 `null`，否则是下面其中之一：
 

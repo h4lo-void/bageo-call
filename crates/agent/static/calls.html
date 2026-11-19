@@ -11409,10 +11409,9 @@ function openDialog(o) {
 }
 
 // ---------------------------------------------------------------- API
-// The page lives at <base>/ (normally /calls/); the API under <base>/api, /health one level up.
+// The page lives at <base>/ (normally /calls/); the API under <base>/api.
 const basePath = location.pathname.replace(/\/+$/, "").replace(/\/index(\.html)?$/, "");
 const apiBase = basePath + "/api";
-const healthUrl = basePath.replace(/\/[^/]*$/, "") + "/health";
 let token = qs.get("token") || store.get("pca.token") || "";
 if (qs.get("token")) {
   store.set("pca.token", token);
@@ -14174,7 +14173,7 @@ let sysError = "";
 const modeBusy = {};
 const modeErr = {};
 async function loadSystem() {
-  const [dev, hl] = await Promise.allSettled([api("/devices"), fetch(healthUrl, authInit()).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))]);
+  const [dev, hl] = await Promise.allSettled([api("/devices"), api("/health")]);
   if (dev.status === "fulfilled") {
     devices = dev.value;
     labels = { ...labels, ...(devices.labels || {}) };

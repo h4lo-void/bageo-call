@@ -42,7 +42,7 @@ A few things people build on top:
 | Accept an appointment from your own button | `POST /calls/api/tasks/{id}/confirm` |
 | Let a phone ring normally while you are home | `POST /calls/api/devices/{serial}/mode` with `{"mode": "normal"}` |
 | Forward any message to your channels | `POST /calls/api/notify/send` |
-| Monitor Bageo | `GET /health` (works without the password) |
+| Monitor Bageo | `GET /health` (the short status works without the password) |
 
 ## Access
 
@@ -60,7 +60,8 @@ X-Calls-Token: <token>
 A wrong or missing password gets HTTP 401 with
 `{"error": "unauthorized", "code": "unauthorized", "hint": …}`. `/health` still
 answers without it, with a short subset for monitoring (see
-[Phones and health](#phones-and-health)).
+[Phones and health](#phones-and-health)). The full `/health` data needs the
+password too; the console reads it from `GET /calls/api/health`.
 
 ```bash
 curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
@@ -698,7 +699,8 @@ Content-Type: application/json
 | `POST /calls/api/devices/{serial}/mode` | Body `{"mode": "ai" \| "normal"}`. Asks the phone to switch and waits up to 15 seconds for its answer. Answers `{ok, mode, error_code}` (a 400 adds `error`, a description). |
 | `DELETE /calls/api/devices/{serial}` | Removes an offline phone from the phone list, saved device labels and recorded SIMs while keeping past call records: `{ok, serial}`. HTTP 409 `device_online` / `device_in_call` if the phone is connected or in a call. |
 | `PUT /calls/api/devices/{serial}/sim-number` | Body `{"sub_id": <int>, "number": "..."}`. Saves (or clears when empty) the phone number for a SIM on that phone so calls and AI errands show and pick by number: `{ok, serial, sims}`. |
-| `GET /health` | A large flat JSON object for troubleshooting: version, language, what is configured, connected phones, calls in progress; no keys or tokens. Details are below the table. |
+| `GET /health` | A large flat JSON object for troubleshooting: version, language, what is configured, connected phones, calls in progress; no keys or tokens. Needs the password (see the last point below the table). Details are below the table. |
+| `GET /calls/api/health` | The same full JSON as `/health`, for the console. Like the other `/calls/api/` routes: HTTP 401 without the password when one is set, open when none is set. |
 
 Details for these routes:
 
@@ -707,7 +709,7 @@ Details for these routes:
 - `supports_mode` is false for apps older than the switch, which always run as `ai`.
 - `GET /health`: `control_idle_clients` / `control_idle_serials` count every connected phone; `normal_mode_serials` lists those switched to a normal phone; `local_time` is Bageo's clock in its `TZ`; `summary_ready` (and `summary_api_key_set`, the same value) says whether a summary service is set.
 - `GET /health`: `setup_missing` lists what the console's "Ready?" list still needs: `ai_off`, `gemini_key`, `owner_name`, `notify`, `summary` (names only, never values). It is empty when everything is set.
-- Without the console password (when one is set), `GET /health` returns only `ok`, `version`, `language`, `notify_language`, `active_call_count`, `control_idle_clients` and `setup_missing`, enough for monitoring.
+- `GET /health` returns the full JSON only to a request that carries the console password. With no password set, only a request from this computer itself gets it (not one through a reverse proxy; in Docker's default network, a request from the host counts as another computer). Everyone else gets only `ok`, `version`, `local_time`, `language`, `notify_language`, `active_call_count`, `control_idle_clients` and `setup_missing`, enough for monitoring.
 
 After a mode switch, `mode` is the phone's mode (`null` when unknown) and
 `error_code` is `null` on success, otherwise one of:

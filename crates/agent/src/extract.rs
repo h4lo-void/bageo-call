@@ -231,9 +231,10 @@ pub async fn process_voicemail_file(
 ) -> Result<(String, ExtractedIntent)> {
     let transcript = transcribe_voicemail_wav(http, settings, wav_path).await?;
     info!(
-        "voicemail transcribed path={} chars={} caller={caller_id}",
+        "voicemail transcribed path={} chars={} caller={}",
         wav_path.display(),
-        transcript.len()
+        transcript.len(),
+        crate::urgent_call::masked(caller_id)
     );
     let intent = extract_intent(
         http,
