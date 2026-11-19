@@ -1365,6 +1365,34 @@ impl CallStore {
         &self.root
     }
 
+    /// Add call records of a backup this store does not have (by id); the
+    /// ones it has stay as they are. A row still ringing or active in the
+    /// backup is over here. How many were added.
+    pub async fn merge_records(&self, records: Vec<CallRecord>) -> usize {
+        let (added, snap) = {
+            let mut idx = self.index.lock().await;
+            let mut have: std::collections::HashSet<String> = idx.calls.iter().map(|c| c.id.clone()).collect();
+            let mut added = 0;
+            for mut r in records {
+                if !record_id_ok(&r.id) || is_twin_serial(&r.serial) || !have.insert(r.id.clone()) {
+                    continue;
+                }
+                if r.status == "ringing" || r.status == "active" {
+                    r.status = "ended".to_string();
+                }
+                idx.calls.push(r);
+                added += 1;
+            }
+            if added == 0 {
+                return 0;
+            }
+            idx.calls.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+            (added, self.snapshot_index(&idx))
+        };
+        self.write_index_snapshot(snap).await;
+        added
+    }
+
     /// Remove the calls older than retention_days (the setting as it is now):
     /// their rows and every file they have.
     ///
@@ -1848,6 +1876,9 @@ impl CallStore {
     /// Store the post-call notes: short summary on the index row (list / notification),
     /// everything else in `{date}/{id}_notes.json` (purged with the date dir).
     pub async fn save_notes(&self, id: &str, notes: &CallNotes) -> Result<()> {
+        if !record_id_ok(id) {
+            anyhow::bail!("call id is no file name");
+        }
         let (snap, dir) = {
             let mut idx = self.index.lock().await;
             let Some(rec) = idx.calls.iter_mut().find(|c| c.id == id) else {
@@ -1878,10 +1909,7 @@ impl CallStore {
 
     pub async fn load_notes(&self, id: &str) -> Option<CallNotes> {
         let rec = self.get(id).await?;
-        let path = self
-            .root
-            .join(record_date_dir(&rec)?)
-            .join(format!("{id}_notes.json"));
+        let path = record_path(&self.root, &format!("{}/{id}_notes.json", record_date_dir(&rec)?))?;
         let data = tokio::task::spawn_blocking(move || fs::read(path)).await.ok()?.ok()?;
         serde_json::from_slice(&data).ok()
     }
@@ -1975,7 +2003,7 @@ impl CallStore {
     }
 
     pub fn audio_abs(&self, rel: &str) -> Option<PathBuf> {
-        let p = self.root.join(rel);
+        let p = record_path(&self.root, rel)?;
         if p.is_file() {
             Some(p)
         } else {
@@ -2162,15 +2190,51 @@ fn index_path(root: &Path) -> PathBuf {
     root.join("index.json")
 }
 
+/// The call records of an `index.json` (a backup's).
+pub fn records_from_index_json(bytes: &[u8]) -> serde_json::Result<Vec<CallRecord>> {
+    serde_json::from_slice::<CallIndex>(bytes).map(|i| i.calls)
+}
+
+/// A file a call record names: `YYYY-MM-DD/<name>` in the calls folder, the
+/// name only letters, digits, `.`, `-` and `_`, and not hidden. Nothing else
+/// is read or deleted for a record.
+pub fn record_file_ok(rel: &str) -> bool {
+    let Some((day, name)) = rel.split_once('/') else {
+        return false;
+    };
+    day.len() == 10
+        && NaiveDate::parse_from_str(day, "%Y-%m-%d").is_ok()
+        && !name.is_empty()
+        && name.len() <= 200
+        && !name.starts_with('.')
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+}
+
+/// A call id that can be part of a file name.
+pub fn record_id_ok(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 100 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// `rel` in the calls folder `root`: a record path ([`record_file_ok`]) that,
+/// links followed, is still inside the folder.
+fn record_path(root: &Path, rel: &str) -> Option<PathBuf> {
+    if !record_file_ok(rel) {
+        return None;
+    }
+    let (day, name) = rel.split_once('/')?;
+    let path = root.join(day).join(name);
+    if let (Ok(inside), Ok(real)) = (root.canonicalize(), path.canonicalize()) {
+        if !real.starts_with(&inside) {
+            return None;
+        }
+    }
+    Some(path)
+}
+
 fn remove_record_file(root: &Path, rel: &str) {
-    let rel_path = Path::new(rel);
-    if rel_path.is_absolute() {
+    let Some(path) = record_path(root, rel) else {
         return;
-    }
-    let path = root.join(rel_path);
-    if !path.starts_with(root) {
-        return;
-    }
+    };
     if let Err(e) = fs::remove_file(&path) {
         if e.kind() != std::io::ErrorKind::NotFound {
             warn!(
@@ -2434,6 +2498,34 @@ fn write_wav(path: &Path, pcm: &[u8], sample_rate: u32, channels: u16) -> Result
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    #[test]
+    fn record_paths_never_leave_the_calls_folder() {
+        let top = std::env::temp_dir().join(format!("bageo-record-paths-{}", Uuid::new_v4()));
+        let root = top.join("calls");
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("2026-02-03")).unwrap();
+        fs::write(top.join("outside.txt"), b"x").unwrap();
+        fs::write(root.join("config").join("settings.json"), b"{}").unwrap();
+        fs::write(root.join("2026-02-03").join("call-a.wav"), b"RIFF").unwrap();
+        let store = CallStore::new(root.clone(), true, false);
+        let outside = top.join("outside.txt").to_string_lossy().into_owned();
+        for rel in ["../outside.txt", "/etc/hosts", outside.as_str(), "config/settings.json", "2026-02-03/../../outside.txt", "2026-02-03/.hidden", "2026-02-03"] {
+            assert!(store.audio_abs(rel).is_none(), "{rel} was read");
+            remove_record_file(&root, rel);
+        }
+        assert!(top.join("outside.txt").exists() && root.join("config").join("settings.json").exists(), "nothing deleted");
+        assert!(store.audio_abs("2026-02-03/call-a.wav").is_some());
+        #[cfg(unix)]
+        {
+            // A date folder that is a link to elsewhere is not followed.
+            std::os::unix::fs::symlink(&top, root.join("2026-02-04")).unwrap();
+            assert!(store.audio_abs("2026-02-04/outside.txt").is_none());
+            remove_record_file(&root, "2026-02-04/outside.txt");
+            assert!(top.join("outside.txt").exists());
+        }
+        let _ = fs::remove_dir_all(&top);
+    }
 
     fn test_call() -> ActiveCall {
         ActiveCall {

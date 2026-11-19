@@ -144,6 +144,27 @@ impl Pairing {
         self.slot().clone()
     }
 
+    /// Read the key file again (a backup put it back). Another key: the phones
+    /// on Wi-Fi are dropped and plugged-in phones get the new one. No key in
+    /// the file: this one stays.
+    pub fn reload(&self) {
+        let key = std::fs::read_to_string(&self.path).ok().map(|s| s.trim().to_string()).filter(|s| valid_key(s));
+        let changed = {
+            let mut slot = self.slot();
+            match key {
+                Some(k) if slot.as_deref() != Some(k.as_str()) => {
+                    *slot = Some(k);
+                    true
+                }
+                _ => false,
+            }
+        };
+        if changed {
+            self.kick();
+            self.notify_refresh();
+        }
+    }
+
     /// `token` is the pairing key. False while there is none.
     pub fn accepts(&self, token: Option<&str>) -> bool {
         match (token.map(str::trim).filter(|t| !t.is_empty()), self.slot().as_deref()) {

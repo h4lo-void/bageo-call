@@ -82,6 +82,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - `POST /calls/api/devices/{serial}/mode`；
 - `POST /calls/api/contacts`、`PUT /calls/api/contacts/{id}`、`POST /calls/api/contacts/batch`（`POST /calls/api/contacts/import` 則改成要帶 `X-Filename` 標頭）；
 - `POST /calls/api/errands`、`…/{id}/cancel`、`…/{id}/retry`、`…/{id}/say`。
+- `POST /calls/api/backup/run`、`…/export`、`…/file-ticket`、`…/restore`、`…/unlock`、`…/apply`、`…/discard`、`…/open-folder`（`POST /calls/api/backup/import` 則改成要帶 `X-Filename` 標頭）。
 
 允許空 body 的路由，空 body 當成 `{}`。這是第二道防線；第一道是控制台對區網開放時一定要設密碼（`CALLS_UI_TOKEN`）。
 
@@ -642,6 +643,40 @@ Content-Type: application/json
 {"ok": true, "contact": {"id": "4f0c9a…", "name": "林小美", "phones": ["0912 000 000", "+1 202 555 0143"],
  "note": "我姊", "source": "manual", "updated_at": "2026-11-14T08:00:00Z"}}
 ```
+
+## 備份與還原
+
+十一個路由用來備份和還原 Bageo 自己的資料，對應控制台設定裡的「備份與還原」（見[設定參考](SETTINGS.md#備份與還原)）。任何資料都不會送到你的電腦以外。它們照控制台的密碼規則，每個 `POST` 也要照上面的 `Content-Type: application/json` 規則（`import` 跟 `contacts/import` 一樣，body 是檔案本身，另外帶 `X-Filename` 標頭）。`GET …/download/{ticket}` 只要下載碼，下載網址裡不會出現任何密碼。
+
+四個設定用 `PUT /calls/api/settings` 存：`backup_schedule`（`off`、`daily`、預設的 `weekly`，或 `monthly`）、`backup_dir`（空白：資料夾底下的 `backups`；否則要填絕對路徑，Bageo 會建好資料夾並試寫一個檔，寫不進去就回 HTTP 400 `backup_dir_unwritable`）、`backup_keep`（1 到 100，預設 10，只算自動備份）、`backup_include_calls`（預設 `false`；`true` 時自動和手動備份也會放進通話紀錄、錄音、簡訊和待處理事項）。另外兩個是加密：`backup_encrypt`（預設 `false`；`true` 時手動、自動和 `before_import` 備份都加密）、`backup_password`（至少 8 個字元，否則 HTTP 400 `backup_password_short`；不會回傳，只回 `backup_password_set`；`backup_password_clear: true` 會刪掉）。沒有密碼卻開 `backup_encrypt`，或加密開著時刪掉密碼，回 HTTP 400 `backup_password_missing`。密碼跟其他設定一起存在這台電腦，自動備份才用得到；加密保護的是放到別處的那份，例如外接硬碟、雲端或網路資料夾。它屬於 `keys`。
+
+| 方法與路徑 | 內容 |
+|---|---|
+| `GET /calls/api/backup` | 目前狀態：`{dir, default_dir, dir_ok, can_open_folder, can_download, running, last, next_at, backups}`。 |
+| `POST /calls/api/backup/run` | Body `{}`。馬上做一份手動備份：`{entry}`，是 `backups` 裡的一筆。已經有備份在跑：HTTP 409 `busy`。失敗：HTTP 500 `dir_unwritable`、`disk_full` 或 `io`。 |
+| `POST /calls/api/backup/export` | Body `{items, password}`。做一個檔案，內容是 `items` 指定的項目：`settings`、`keys`、`contacts`、`numbers`、`phones`、`errands`、`calls`、`sms`、`tasks`。沒帶 `items` 就是 `settings`、`keys`、`contacts`、`numbers`、`phones`、`errands`。有不認識的 id 或清單是空的：HTTP 400 `bad_items`。有 `password`（至少 8 個字元，否則 HTTP 400 `backup_password_short`）就加密成 `.bageo`，沒有就是 zip。回 `{ticket, name}`，再用 `GET …/download/{ticket}` 下載。含 `calls` 時檔案可能很大。含 `keys` 又沒設控制台密碼時，只有在 Bageo 所在的這台電腦用 `localhost` 打開才行，否則 HTTP 403 `need_password`。 |
+| `POST /calls/api/backup/file-ticket` | Body `{name}`。拿備份資料夾裡某個檔案的下載碼：`{ticket, name}`。`name` 必須是資料夾裡真的有的備份檔名（否則 HTTP 404 `not_found`）。備份檔裡有金鑰：沒設控制台密碼時，規則跟含 `keys` 的匯出一樣（HTTP 403 `need_password`）。 |
+| `GET /calls/api/backup/download/{ticket}` | 下載某個下載碼的檔案。下載碼是 256 位元的隨機數，2 分鐘內有效、只能用一次，之後回 HTTP 404 `not_found`。匯出的檔案送完或下載碼過期就刪掉。 |
+| `POST /calls/api/backup/import` | Body 是檔案本身（最大 200 MB），檔名 URL 編碼後放 `X-Filename`。可以是備份 zip、加密的備份（`.bageo`），或舊版單獨的 `settings.json`。**不會還原任何東西**：檔案暫存 15 分鐘，回傳預覽。加密的檔案只回 `{token, source_name, encrypted: true, needs_password: true}`，沒有 `items`，要先用 `unlock` 解開。最多 3 份預覽等著：再來一份就丟掉最舊的（它的 token 之後回 `expired`）。同時最多 2 個上傳在跑，再多回 HTTP 409 `busy`。 |
+| `POST /calls/api/backup/restore` | Body `{name}`。對備份資料夾裡的檔案做同樣的預覽（沒有 200 MB 的上傳上限）。加密的檔案會先用這台存的備份密碼試，打得開就直接回預覽，打不開就跟匯入一樣回 `needs_password`。 |
+| `POST /calls/api/backup/unlock` | Body `{token, password}`。用密碼解開預覽裡的加密檔，回完整的預覽。密碼不對：HTTP 400 `wrong_password`。一次只試一個，每次至少隔一秒；不管是哪份預覽，連續錯 5 次以後每次等待加倍，最長 60 秒。同一份預覽錯 5 次就丟掉（HTTP 400 `expired`）。沒設控制台密碼時只能在執行 Bageo 的這台電腦上解（HTTP 403 `need_password`）。 |
+| `POST /calls/api/backup/apply` | Body `{token, items}`。`items` 必須是預覽 `items` 的子集合、不能是空的，否則 HTTP 400 `bad_items`。只還原這些項目。`{ok, before_import, restart_needed, warnings}`。 |
+| `POST /calls/api/backup/discard` | Body `{token}`。丟掉不還原的預覽和它的上傳檔：`{ok}`（token 不存在或已經沒了也一樣）。控制台關掉還原視窗時會呼叫。 |
+| `POST /calls/api/backup/open-folder` | Body `{}`。用檔案總管或 Finder 打開備份資料夾。只有從 Bageo 所在的這台電腦連線、而且是 Windows 或 macOS 才行，否則 HTTP 403 `not_local`。 |
+
+細節：
+
+- `GET /calls/api/backup`：`dir` 是正在用的資料夾，`default_dir` 是預設資料夾，`dir_ok` 是寫不寫得進去，`can_open_folder` 是 `open-folder` 能不能用，`can_download` 是在這裡能不能下載含金鑰的檔案，`running` 是不是正在備份，`next_at` 是下一次自動備份的時間（RFC 3339，或 `null`）。`last` 是最近一次自動或手動備份的 `{at, ok, name, size, error}`，沒有就是 `null`。`backups` 是資料夾裡的檔案，新到舊，每筆 `{name, at, size, kind, app_version, include_calls, encrypted}`；`kind` 是 `scheduled`、`manual`、`before_import` 或 `export`。加密的檔案沒有密碼什麼都讀不到，所以 `app_version` 和 `include_calls` 是 `null`。
+- 備份檔是 zip。根目錄的 `bageo-backup.json` 放 `{format: "bageo-backup", version: 1, app_version, created_at, kind, include_calls, items, files: [{path, size, sha256}]}`，`items` 是檔案裡真的有的項目 id。其他檔案都在 `data/` 底下，路徑是資料夾裡的相對路徑（`data/config/settings.json`）。不放的有：`backups` 資料夾本身、暫存檔、除錯檔、重新啟動標記這類一次性的檔案，以及快取。自動、手動和 `before_import` 備份一律含 `settings`、`keys`、`contacts`、`numbers`、`phones`、`errands`，`backup_include_calls` 為 `true` 時再加 `calls`、`sms`、`tasks`。匯出只放勾選的項目：選了 `settings` 沒選 `keys`，`settings.json` 不含整組 `keys`；選了 `keys` 沒選 `settings`，只放這一組和手機配對金鑰（`phone-pairing.key`）。`keys` 是金鑰、密碼和連線：Gemini 和其他服務的金鑰、通知和聊天機器人的權杖、控制台密碼、MCP token，以及所有決定資料送去哪裡、誰可以遙控 Bageo 的設定（整個通知管道，含送去的對象和誰可以下指令；Telegram 聊天和遙控；通知閘道；寄信帳號；摘要服務；TRTC 橋接和端點；轉接號碼和急事要不要直接轉過去；Bageo 可以回撥的號碼；MCP 存取），再加上手機配對金鑰。完整清單是 `crates/agent/src/settings_store.rs` 的 `CREDENTIAL_FIELDS` 和 `CONNECTION_FIELDS`。
+- 檔名用本機時間：`bageo-backup-YYYYMMDD-HHMMSS-auto.zip`、`…-manual.zip`、`…-before-import.zip`，匯出的是 `bageo-export-YYYYMMDD-HHMMSS.zip`（`kind` 是 `export`，跟其他檔案一起列出，Bageo 不會自動刪）。加密的檔案結尾是 `.bageo`，不是 `.zip`。
+- 加密的檔案（`.bageo`）就是同一個 zip 加密後的樣子，有密碼就能用一般工具自己解開：
+  - 檔頭 62 位元組（整數都是 little-endian）：`BAGEOENC`（8 位元組）；格式版本 `1`（1）；金鑰推導 `1` = Argon2id、版本 0x13（1）；記憶體 KiB（4，65536 = 64 MiB）；次數（4，3）；並行數（4，1）；salt（16，隨機）；加密法 `1` = XChaCha20-Poly1305 的 STREAM 做法（1）；每塊大小（4，1048576）；nonce 前綴（19，隨機）。
+  - 金鑰：用 Argon2id 從密碼（UTF-8，去掉前後空白）和 salt 算出 32 位元組。
+  - 接著是 zip 一塊一塊加密：每塊是每塊大小那麼多位元組（最後一塊比較短，也可能是空的），用 XChaCha20-Poly1305 加密，後面接 16 位元組的 tag。每塊的 24 位元組 nonce 是前綴、這塊從 0 起算的編號（4 位元組，big-endian）、再一個位元組：最後一塊是 1，其他是 0。整個檔頭是每一塊的 associated data。
+  - 要求超過 256 MiB 記憶體、超過 4 次或超過 4 個並行數的檔案，Bageo 直接拒絕；任何一塊被改、被截斷或少了，都回 `damaged`（第一塊的話是 `wrong_password`）。
+- 預覽是 `{token, source_name, created_at, app_version, kind, items, has_calls, calls_count, changes_password, changes_connections, total_size, warnings, encrypted, needs_password}`。`items` 的每筆是 `{id}` 或 `{id, count}`，列出檔案裡真的有的項目：`settings`、`keys`、`contacts`、`numbers`、`phones`、`errands`、`calls`、`sms`、`tasks`。舊版單獨的設定檔有金鑰或密碼欄位時，也會列出 `keys`。只有還原 `keys` 會換掉控制台密碼（換成別的或變成沒有）時，`changes_password` 才是 `true`；會改變通知送去哪裡、轉接號碼或誰可以遙控時，`changes_connections` 才是 `true`。兩個都是拿這台現在的跟還原後的結果比（算法跟 `apply` 一樣）。`total_size` 是可以還原的檔案解開後的大小（位元組）。`warnings` 可能有 `newer_version`、`plain_settings_file`（舊版單獨的設定檔：只還原設定，有金鑰的話一起還原）。預覽不會去碰檔案裡寫的備份資料夾。
+- `apply` 只還原勾選的 `items`。選 `settings` 沒選 `keys`：換掉其他設定，這台電腦整組 `keys` 都保留。有選 `keys`：檔案裡有填值的欄位換掉這台的，檔案裡沒有或空的欄位保留這台的。只有從備份資料夾還原這台自己的 `before_import` 備份時，整組完全照檔案（沒有或空的欄位一律清空或回到預設），所以能把匯入帶進來的金鑰和連線全部拿掉；上傳的檔案一律不走這條。選 `keys` 沒選 `settings`：只換這一組，檔案裡有手機配對金鑰才換。檔案裡沒有 `keys`，或沒選 `keys`，這台的整組都不會變。`retention_days` 和 `backup_keep` 只會維持或變長：檔案的值比較大才採用，檔案沒寫就保留這台的。`backup_dir` 和 `public_url` 一律維持這台電腦的設定。還原的通話紀錄和待處理事項，只保留這次真的還原了的錄音路徑（`YYYY-MM-DD/<name>`），其他路徑一律清空。解開之前 Bageo 會先確認硬碟空間夠（不夠回 HTTP 500 `disk_full`）。`calls`、`sms`、`tasks` 是加進現有的，不會刪掉任何東西。動手之前 Bageo 會先把現在的設定做成一份 `before_import` 備份（選的資料夾寫不進去就放預設資料夾），檔名放在 `before_import`。`restart_needed` 表示有些變更要重新開啟 Bageo 才會全部生效。
+- 預覽路由的錯誤（HTTP 400）：`not_backup`、`damaged`、`too_new`（來自比較新的 Bageo）、`too_large`。上限看檔案實際是什麼，不看 manifest 怎麼說：`calls`、`sms`、`tasks` 以外的項目每個檔案解開最多 20 MB、合計 50 MB，通話紀錄合計最多 8 GB；解開後比壓縮時大 200 倍以上的檔案算 `damaged`。已經有 2 個上傳在跑：HTTP 409 `busy`。`unlock` 密碼不對回 HTTP 400 `wrong_password`，錯 5 次回 `expired`。`apply` 在通話中回 HTTP 409 `call_active`；`items` 是空的或有預覽沒列的 id，回 HTTP 400 `bad_items`；token 超過 15 分鐘或已經用過，回 HTTP 400 `expired`。
 
 ## 手機與健康狀態
 

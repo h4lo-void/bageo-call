@@ -387,6 +387,28 @@ pub struct RuntimeSettings {
     /// Whether the first-time password setup prompt has already been shown/dismissed.
     #[serde(default)]
     pub ui_password_prompted: bool,
+    /// Automatic backups: `off`, `daily`, `weekly` or `monthly` ([`crate::backup`]).
+    #[serde(default = "default_backup_schedule")]
+    pub backup_schedule: String,
+    /// Folder backups are saved in (absolute path); empty = `backups` in the
+    /// data folder.
+    #[serde(default)]
+    pub backup_dir: String,
+    /// Automatic backups kept (1–100); the oldest go first.
+    #[serde(default = "default_backup_keep")]
+    pub backup_keep: u32,
+    /// Backups ("Back up now" and automatic ones) also hold the call records,
+    /// recordings, text messages and to-do items.
+    #[serde(default)]
+    pub backup_include_calls: bool,
+    /// Backups ("Back up now", automatic ones, the copy made before an import)
+    /// are encrypted with `backup_password` ([`crate::backup_crypt`]). Never
+    /// on without a password.
+    #[serde(default)]
+    pub backup_encrypt: bool,
+    /// The password backups are encrypted with (at least 8 characters).
+    #[serde(default)]
+    pub backup_password: String,
     /// Where calls, recordings and settings are kept (`CALLS_DATA_DIR`, from the
     /// env base). Not a setting: never shown or saved.
     #[serde(skip)]
@@ -461,6 +483,33 @@ fn default_reply_in_caller_language() -> bool {
 
 fn default_auto() -> String {
     "auto".to_string()
+}
+
+fn default_backup_schedule() -> String {
+    "weekly".to_string()
+}
+
+fn default_backup_keep() -> u32 {
+    10
+}
+
+/// `off` / `daily` / `weekly` / `monthly`; anything else is the default, weekly.
+pub fn sanitize_backup_schedule(s: &str) -> String {
+    match s.trim().to_ascii_lowercase().as_str() {
+        v @ ("off" | "daily" | "weekly" | "monthly") => v.to_string(),
+        _ => default_backup_schedule(),
+    }
+}
+
+/// A backup folder: trimmed, and empty (the default place) unless it is an
+/// absolute path.
+fn sanitize_backup_dir(s: &str) -> String {
+    let t = s.trim();
+    if Path::new(t).is_absolute() {
+        t.to_string()
+    } else {
+        String::new()
+    }
 }
 
 fn default_mdns_name() -> String {
@@ -672,6 +721,266 @@ fn write_overrides(path: &Path, ov: &Overrides) -> Result<()> {
     Ok(())
 }
 
+/// The credentials among the settings: one half of the backup item `keys`
+/// ([`crate::backup`]). Every field the settings page masks ([`SECRET_FIELDS`])
+/// and the old name of the summary key.
+pub const CREDENTIAL_FIELDS: [&str; 15] = [
+    "openrouter_api_key",
+    "telegram_bot_token",
+    "gmail_app_password",
+    "openclaw_token",
+    "mcp_token",
+    "ui_password",
+    "trtc_secret_key",
+    "trtc_secret_id",
+    "trtc_cloud_secret_key",
+    "trtc_llm_config",
+    "trtc_tts_config",
+    "gemini_api_key",
+    "summary_api_key",
+    "deepseek_api_key",
+    "backup_password",
+];
+
+/// Where data goes and who may operate Bageo from outside: the other half of
+/// the backup item `keys` ("keys, passwords and connections"). The
+/// notification channels whole (where they send, who may give commands there),
+/// the Telegram chat and remote control, the notification gateway, the mail
+/// account, the services summaries and calls are sent to, the owner's number
+/// calls are forwarded to and whether an urgent caller is dialled through to
+/// it, the numbers Bageo may call back, and what AI tools may do over MCP.
+pub const CONNECTION_FIELDS: [&str; 25] = [
+    "notify_channels",
+    "notify_gateway_url",
+    "notify_gateway_tag",
+    "telegram_chat_id",
+    "telegram_control",
+    "telegram_control_users",
+    "control_errands_per_hour",
+    "control_commands_per_minute",
+    "gmail_user",
+    "openclaw_url",
+    "summary_provider",
+    "summary_api_base",
+    "summary_model",
+    "trtc_sdk_app_id",
+    "trtc_api_host",
+    "trtc_api_intl",
+    "trtc_ai_region",
+    "trtc_bridge_url",
+    "whitelist_forward_number",
+    "whitelist_urgent_call",
+    "callback_whitelist",
+    "mcp_enabled",
+    "mcp_calls",
+    "mcp_errands_per_hour",
+    "mcp_allowed_origins",
+];
+
+/// Settings whose names look like a credential or an address but are neither
+/// (a test checks every setting against the two lists above and this one):
+/// `public_url` is this computer's own address and never leaves it nor comes
+/// from a backup; `ui_password_prompted` only says the password hint was shown;
+/// `spam_keywords` and `scam_review_without_keywords` are about words callers say.
+pub const KEY_LOOKALIKES: [&str; 4] = ["public_url", "ui_password_prompted", "spam_keywords", "scam_review_without_keywords"];
+
+/// Settings that make Bageo delete things on its own: how many days calls,
+/// recordings, texts, to-do items and AI calls are kept (`retention_days`; the
+/// older `sms_retention_days` is no setting any more) and how many automatic
+/// backups (`backup_keep`). A restore only keeps or lengthens them
+/// ([`SettingsStore::replace_from_backup`]): a shorter one would delete
+/// records at once, and the copy made before the restore does not hold them.
+/// Only the console shortens them.
+pub const RETENTION_FIELDS: [&str; 2] = ["retention_days", "backup_keep"];
+
+/// A setting of the backup item `keys` ([`CREDENTIAL_FIELDS`], [`CONNECTION_FIELDS`]).
+pub fn is_key_field(name: &str) -> bool {
+    CREDENTIAL_FIELDS.contains(&name) || CONNECTION_FIELDS.contains(&name)
+}
+
+fn key_fields() -> impl Iterator<Item = &'static str> {
+    CREDENTIAL_FIELDS.into_iter().chain(CONNECTION_FIELDS)
+}
+
+/// A value that says something (not null, not empty).
+fn filled(v: &Value) -> bool {
+    match v {
+        Value::Null => false,
+        Value::String(s) => !s.trim().is_empty(),
+        Value::Array(a) => !a.is_empty(),
+        Value::Object(o) => !o.is_empty(),
+        _ => true,
+    }
+}
+
+/// A settings file (JSON object) without the item `keys`.
+pub fn settings_part(v: &Value) -> Value {
+    let mut m = v.as_object().cloned().unwrap_or_default();
+    m.retain(|k, _| !is_key_field(k));
+    Value::Object(m)
+}
+
+/// Only the item `keys` of a settings file.
+pub fn keys_part(v: &Value) -> Value {
+    let mut m = v.as_object().cloned().unwrap_or_default();
+    m.retain(|k, _| is_key_field(k));
+    Value::Object(m)
+}
+
+/// The settings file holds something of the item `keys` that is set.
+pub fn has_keys(v: &Value) -> bool {
+    key_fields().any(|f| v.get(f).is_some_and(filled))
+}
+
+/// The settings file holds a setting outside the item `keys`.
+pub fn has_settings(v: &Value) -> bool {
+    settings_part(v).as_object().is_some_and(|m| !m.is_empty())
+}
+
+/// The settings file a restore makes ([`crate::backup`]) from this computer's
+/// (`cur`) and the backup's (`inc`). `settings`: the backup's settings outside
+/// `keys` take the place of these, whole; else these stay. `keys`: a field of
+/// the group the backup has set takes the place of this computer's; one it
+/// does not have, or leaves empty, stays as it is here, so an older or partial
+/// backup never takes away a password or key set since. `whole_keys` (putting
+/// back this computer's own `before_import` copy): the group is the backup's
+/// exactly, a field it does not have going back to its default here, so that
+/// copy takes away every key, channel and remote control the restore before
+/// brought. Without `keys` the whole group stays as it is here.
+pub fn combine_settings(cur: &Value, inc: &Value, settings: bool, keys: bool, whole_keys: bool) -> Value {
+    let mut out = settings_part(if settings { inc } else { cur });
+    if let Some(m) = out.as_object_mut() {
+        for f in key_fields() {
+            let pick = match (keys, whole_keys) {
+                (false, _) => cur.get(f),
+                (true, true) => inc.get(f),
+                (true, false) => inc.get(f).filter(|v| filled(v)).or_else(|| cur.get(f)),
+            };
+            if let Some(x) = pick {
+                m.insert(f.to_string(), x.clone());
+            }
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod combine_tests {
+    use super::*;
+
+    #[test]
+    fn keys_of_an_older_backup_keep_what_it_does_not_have() {
+        let cur = json!({"owner_name": "Here", "ui_password": "test-fake-pw-here", "gemini_api_key": "test-fake-key-here", "mcp_token": "test-fake-mcp-here"});
+        let inc = json!({"owner_name": "There", "telegram_bot_token": "test-fake-bot-there", "gemini_api_key": ""});
+        let mixed = combine_settings(&cur, &inc, false, true, false);
+        assert_eq!(mixed["ui_password"], "test-fake-pw-here");
+        assert_eq!(mixed["gemini_api_key"], "test-fake-key-here", "an empty key in the file does not clear this one");
+        assert_eq!(mixed["mcp_token"], "test-fake-mcp-here");
+        assert_eq!(mixed["telegram_bot_token"], "test-fake-bot-there");
+        assert_eq!(mixed["owner_name"], "Here", "settings not chosen");
+        let whole = combine_settings(&cur, &inc, false, true, true);
+        assert!(whole.get("ui_password").is_none(), "the before_import copy takes the group exactly");
+        assert!(whole.get("mcp_token").is_none());
+        assert_eq!(whole["telegram_bot_token"], "test-fake-bot-there");
+        let none = combine_settings(&cur, &inc, true, false, false);
+        assert_eq!(none["owner_name"], "There");
+        assert_eq!(none["ui_password"], "test-fake-pw-here");
+        assert!(none.get("telegram_bot_token").is_none());
+    }
+}
+
+/// [`RETENTION_FIELDS`] of a restore (`out`) never shorter than this
+/// computer's (`now`: the settings in use): the backup's (`inc`) only when it
+/// is longer, else this computer's own setting (`cur`) stays, missing or not.
+fn never_shorter(out: &mut Map<String, Value>, inc: &Value, cur: &Value, now: &Value) {
+    for f in RETENTION_FIELDS {
+        let longer = match (inc.get(f).and_then(Value::as_u64), now.get(f).and_then(Value::as_u64)) {
+            (Some(new), Some(here)) => new > here,
+            _ => false,
+        };
+        if longer {
+            continue;
+        }
+        match cur.get(f) {
+            Some(v) => {
+                out.insert(f.to_string(), v.clone());
+            }
+            None => {
+                out.remove(f);
+            }
+        }
+    }
+}
+
+/// A notification channel as a destination: where it sends and who may give
+/// commands there (its id and tokens do not count).
+fn destination(field: &str, v: Option<&Value>) -> Value {
+    let v = v.cloned().unwrap_or(Value::Null);
+    if field != "notify_channels" {
+        return v;
+    }
+    let mut rows: Vec<String> = v
+        .as_array()
+        .map(|l| {
+            l.iter()
+                .map(|c| {
+                    let pick = |k: &str| c.get(k).cloned().unwrap_or(Value::Null);
+                    json!([pick("kind"), pick("url"), pick("target"), pick("enabled"), pick("control"), pick("control_users")]).to_string()
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    rows.sort();
+    json!(rows)
+}
+
+/// What the import preview shows of a settings file ([`crate::backup`]).
+#[derive(Debug, Clone, Default)]
+pub struct SettingsPeek {
+    /// Settings outside the item `keys`.
+    pub has_settings: bool,
+    /// Something of the item `keys` that is set.
+    pub has_keys: bool,
+}
+
+/// What restoring the item `keys` of a settings file would change here.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct KeysChange {
+    /// The console password (set, another one, or none any more).
+    pub password: bool,
+    /// Where data goes or who may operate Bageo ([`CONNECTION_FIELDS`]).
+    pub connections: bool,
+}
+
+/// Read a settings file for the import preview. Err: not a settings file (not
+/// a JSON object of settings). Keys this agent does not know count for nothing.
+pub fn peek_settings_text(text: &str) -> Result<SettingsPeek> {
+    let (ov, _) = read_overrides(text)?;
+    let raw: Value = serde_json::from_str(text)?;
+    let known: Vec<String> = serde_json::to_value(&ov)?.as_object().map(|m| m.keys().cloned().collect()).unwrap_or_default();
+    let mut m = raw.as_object().cloned().unwrap_or_default();
+    m.retain(|k, _| known.contains(k) || k == "deepseek_api_key");
+    let v = Value::Object(m);
+    Ok(SettingsPeek {
+        has_settings: has_settings(&v),
+        has_keys: has_keys(&v),
+    })
+}
+
+/// `public_url` and `backup_dir` belong to this computer: a backup never brings them.
+fn keep_this_computers(m: &mut Map<String, Value>, cur: &Value) {
+    for k in ["public_url", "backup_dir"] {
+        match cur.get(k) {
+            Some(v) => {
+                m.insert(k.to_string(), v.clone());
+            }
+            None => {
+                m.remove(k);
+            }
+        }
+    }
+}
+
 fn sanitize_answer_style(s: &str) -> String {
     match s.trim().to_ascii_lowercase().as_str() {
         "persona" => "persona".to_string(),
@@ -832,6 +1141,12 @@ impl RuntimeSettings {
             whitelist_urgent_call: env_bool("WHITELIST_URGENT_CALL", false),
             ui_password: String::new(),
             ui_password_prompted: false,
+            backup_schedule: default_backup_schedule(),
+            backup_dir: String::new(),
+            backup_keep: default_backup_keep(),
+            backup_include_calls: false,
+            backup_encrypt: false,
+            backup_password: String::new(),
             calls_data_dir: base.calls_data_dir.clone(),
         }
     }
@@ -1250,6 +1565,32 @@ impl RuntimeSettings {
         self.appointment_reply = crate::appointments::sanitize_reply_setting(&self.appointment_reply);
         self.owner_aliases = clean_owner_aliases(&self.owner_aliases, &self.owner_name);
         self.errand_identity = sanitize_errand_identity(&self.errand_identity);
+        if let Some(v) = &ov.backup_schedule {
+            self.backup_schedule = v.clone();
+        }
+        if let Some(v) = &ov.backup_dir {
+            self.backup_dir = v.clone();
+        }
+        if let Some(v) = ov.backup_keep {
+            self.backup_keep = v;
+        }
+        if let Some(v) = ov.backup_include_calls {
+            self.backup_include_calls = v;
+        }
+        if let Some(v) = ov.backup_encrypt {
+            self.backup_encrypt = v;
+        }
+        if let Some(v) = &ov.backup_password {
+            self.backup_password = v.trim().to_string();
+        }
+        // Encryption needs a password: a settings file with one and not the
+        // other (a restore without the keys) backs up as before.
+        if self.backup_password.is_empty() {
+            self.backup_encrypt = false;
+        }
+        self.backup_schedule = sanitize_backup_schedule(&self.backup_schedule);
+        self.backup_dir = sanitize_backup_dir(&self.backup_dir);
+        self.backup_keep = self.backup_keep.clamp(1, 100);
     }
 
     /// Overlay runtime-editable values onto the env base so existing call
@@ -1646,6 +1987,18 @@ struct Overrides {
     ui_password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     ui_password_prompted: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    backup_schedule: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    backup_dir: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    backup_keep: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    backup_include_calls: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    backup_encrypt: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    backup_password: Option<String>,
 }
 
 struct StoreState {
@@ -1666,7 +2019,7 @@ impl SettingsStore {
             .join("config")
             .join("settings.json");
         let mut old_key_moved = false;
-        let mut overrides = match std::fs::read_to_string(&path) {
+        let overrides = match std::fs::read_to_string(&path) {
             Ok(text) => match read_overrides(&text) {
                 Ok((o, moved)) => {
                     info!("runtime settings overrides loaded path={}", path.display());
@@ -1683,12 +2036,30 @@ impl SettingsStore {
             },
             Err(_) => Overrides::default(),
         };
+        let (overrides, rt) = Self::settle_overrides(&base, &path, overrides, old_key_moved);
+        rt.warn_if_legacy_flow_replaced();
+        set_active_ui_password(&rt.ui_password);
+        crate::calendar::set_link_secret(&active_ui_token(&base.calls_ui_token));
+        Arc::new(Self {
+            base,
+            path,
+            state: RwLock::new(StoreState {
+                overrides,
+                current: Arc::new(rt),
+            }),
+        })
+    }
+
+    /// A settings file as read (`overrides`) after the changes settings of
+    /// older versions need, and the runtime settings it makes. The file at
+    /// `path` is written again when one of those changed it.
+    fn settle_overrides(base: &Settings, path: &Path, mut overrides: Overrides, old_key_moved: bool) -> (Overrides, RuntimeSettings) {
         // An `auto` from before the Google Calendar connection was removed is
         // `confirm` now, and is saved so.
         if let Some(m) = overrides.appointment_mode.take() {
             overrides.appointment_mode = Some(sanitize_appointment_mode(&m));
         }
-        let mut rt = RuntimeSettings::from_base(&base);
+        let mut rt = RuntimeSettings::from_base(base);
         let summary_provider = overrides
             .summary_provider
             .clone()
@@ -1749,21 +2120,11 @@ impl SettingsStore {
             info!("summary service of an older version written down path={}", path.display());
         }
         if old_key_moved || filled || prompt_split {
-            if let Err(e) = write_overrides(&path, &overrides) {
+            if let Err(e) = write_overrides(path, &overrides) {
                 warn!("settings from an older version not saved yet: {e:#}");
             }
         }
-        set_active_ui_password(&rt.ui_password);
-        crate::calendar::set_link_secret(&active_ui_token(&base.calls_ui_token));
-        rt.warn_if_legacy_flow_replaced();
-        Arc::new(Self {
-            base,
-            path,
-            state: RwLock::new(StoreState {
-                overrides,
-                current: Arc::new(rt),
-            }),
-        })
+        (overrides, rt)
     }
 
     pub fn snapshot(&self) -> Arc<RuntimeSettings> {
@@ -1776,6 +2137,96 @@ impl SettingsStore {
 
     pub fn storage_path(&self) -> &Path {
         &self.path
+    }
+
+    /// The settings file as it is written now (what a backup keeps).
+    pub fn overrides_json(&self) -> Vec<u8> {
+        let st = self.state.read().unwrap_or_else(|e| e.into_inner());
+        serde_json::to_vec_pretty(&st.overrides).unwrap_or_else(|_| b"{}".to_vec())
+    }
+
+    /// A restore of the backup items `settings` and / or `keys` ([`combine_settings`]):
+    /// `text` is the backup's settings.json. What belongs to this computer
+    /// stays: `public_url` and `backup_dir`, never taken from a file. The
+    /// [`RETENTION_FIELDS`] only keep or lengthen. Read the way [`Self::load`]
+    /// reads a file (the same changes for older versions), saved, then swapped in.
+    pub fn replace_from_backup(&self, text: &str, settings: bool, keys: bool, whole_keys: bool) -> Result<Arc<RuntimeSettings>> {
+        let inc: Value = serde_json::from_str(text).context("not a settings file")?;
+        if !inc.is_object() {
+            anyhow::bail!("not a settings file");
+        }
+        let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
+        let cur = serde_json::to_value(&st.overrides)?;
+        let now = serde_json::to_value(&*st.current)?;
+        let mut merged = combine_settings(&cur, &inc, settings, keys, whole_keys);
+        if let Some(m) = merged.as_object_mut() {
+            keep_this_computers(m, &cur);
+            never_shorter(m, &inc, &cur, &now);
+            if m.get("ui_password").is_some_and(filled) {
+                m.insert("ui_password_prompted".into(), json!(true));
+            }
+        }
+        let (ov, moved) = read_overrides(&merged.to_string()).context("not a settings file")?;
+        let rt = self.swap_in(&mut st, ov, moved)?;
+        info!("runtime settings restored from a backup path={} settings={settings} keys={keys}", self.path.display());
+        Ok(rt)
+    }
+
+    /// The settings file of a backup taken whole (putting back the copy made
+    /// before a restore), but for `public_url` and `backup_dir`, which stay.
+    pub fn replace_from_text(&self, text: &str) -> Result<Arc<RuntimeSettings>> {
+        let mut inc: Value = serde_json::from_str(text).context("not a settings file")?;
+        let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
+        let cur = serde_json::to_value(&st.overrides)?;
+        let Some(m) = inc.as_object_mut() else {
+            anyhow::bail!("not a settings file");
+        };
+        keep_this_computers(m, &cur);
+        let (ov, moved) = read_overrides(&inc.to_string()).context("not a settings file")?;
+        let rt = self.swap_in(&mut st, ov, moved)?;
+        info!("runtime settings replaced from a backup path={}", self.path.display());
+        Ok(rt)
+    }
+
+    fn swap_in(&self, st: &mut StoreState, ov: Overrides, moved: bool) -> Result<Arc<RuntimeSettings>> {
+        let (ov, rt) = Self::settle_overrides(&self.base, &self.path, ov, moved);
+        write_overrides(&self.path, &ov)?;
+        st.overrides = ov;
+        set_active_ui_password(&rt.ui_password);
+        crate::calendar::set_link_secret(&active_ui_token(&self.base.calls_ui_token));
+        st.current = Arc::new(rt);
+        Ok(st.current.clone())
+    }
+
+    /// What restoring the item `keys` of the settings file `text` would change:
+    /// the console password, and where data goes or who may operate Bageo (a
+    /// value of [`CONNECTION_FIELDS`]; a channel's id and tokens do not count).
+    /// Worked out the way the restore does it ([`combine_settings`];
+    /// `whole_keys` for this computer's own `before_import` copy).
+    pub fn keys_change(&self, text: &str, whole_keys: bool) -> KeysChange {
+        let Ok(inc) = serde_json::from_str::<Value>(text) else {
+            return KeysChange::default();
+        };
+        let (cur, now) = {
+            let st = self.state.read().unwrap_or_else(|e| e.into_inner());
+            (serde_json::to_value(&st.overrides), st.current.clone())
+        };
+        let Ok(cur) = cur else {
+            return KeysChange::default();
+        };
+        let merged = combine_settings(&cur, &inc, false, true, whole_keys);
+        let Ok((ov, _)) = read_overrides(&merged.to_string()) else {
+            return KeysChange::default();
+        };
+        let mut after = RuntimeSettings::from_base(&self.base);
+        after.apply(&ov);
+        let (Ok(a), Ok(b)) = (serde_json::to_value(&*now), serde_json::to_value(&after)) else {
+            return KeysChange::default();
+        };
+        KeysChange {
+            password: now.ui_password.trim() != after.ui_password.trim(),
+            connections: CONNECTION_FIELDS.iter().any(|f| destination(f, a.get(*f)) != destination(f, b.get(*f))),
+        }
     }
 
     fn apply_patch_locked(&self, st: &mut StoreState, patch: &Value) -> Result<Arc<RuntimeSettings>> {
@@ -1880,7 +2331,7 @@ fn set_active_ui_password(pw: &str) {
         .unwrap_or_else(|e| e.into_inner()) = pw.trim().to_string();
 }
 
-const SECRET_FIELDS: [&str; 13] = [
+const SECRET_FIELDS: [&str; 14] = [
     "openrouter_api_key",
     "telegram_bot_token",
     "gmail_app_password",
@@ -1894,6 +2345,7 @@ const SECRET_FIELDS: [&str; 13] = [
     "trtc_tts_config",
     "gemini_api_key",
     "summary_api_key",
+    "backup_password",
 ];
 
 fn masked(rt: &RuntimeSettings) -> Value {
@@ -2346,6 +2798,21 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     if ov.ui_password.as_ref().is_some_and(|s| !s.is_empty()) {
         ov.ui_password_prompted = Some(true);
     }
+    p_string(patch, "backup_schedule", &mut ov.backup_schedule);
+    if let Some(v) = ov.backup_schedule.take() {
+        ov.backup_schedule = Some(sanitize_backup_schedule(&v));
+    }
+    p_string(patch, "backup_dir", &mut ov.backup_dir);
+    if let Some(v) = ov.backup_dir.take() {
+        ov.backup_dir = Some(sanitize_backup_dir(&v));
+    }
+    p_u32(patch, "backup_keep", &mut ov.backup_keep);
+    if let Some(v) = ov.backup_keep.take() {
+        ov.backup_keep = Some(v.clamp(1, 100));
+    }
+    p_bool(patch, "backup_include_calls", &mut ov.backup_include_calls);
+    p_bool(patch, "backup_encrypt", &mut ov.backup_encrypt);
+    p_secret(patch, "backup_password", &mut ov.backup_password);
 }
 
 fn split_list(spec: &str) -> Vec<String> {
@@ -2661,6 +3128,32 @@ fn reject_entry_for<'a>(list: &'a [RejectEntry], caller: &str, sim: Option<&str>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_masked_setting_is_a_key_of_backups() {
+        for f in SECRET_FIELDS {
+            assert!(is_key_field(f), "{f}");
+        }
+    }
+
+    #[test]
+    fn settings_named_like_keys_or_addresses_go_with_the_keys() {
+        let rt = RuntimeSettings::from_base(&Settings::from_env());
+        let v = serde_json::to_value(&rt).unwrap();
+        let looks = ["url", "base", "endpoint", "webhook", "token", "key", "secret", "password", "chat_id", "forward"];
+        let names: Vec<&String> = v.as_object().unwrap().keys().collect();
+        for name in &names {
+            if looks.iter().any(|w| name.contains(w)) {
+                assert!(is_key_field(name) || KEY_LOOKALIKES.contains(&name.as_str()), "{name} is not in the backup's keys");
+            }
+        }
+        for f in KEY_LOOKALIKES {
+            assert!(!is_key_field(f) && names.iter().any(|n| n.as_str() == f), "{f}");
+        }
+        for f in CONNECTION_FIELDS {
+            assert!(names.iter().any(|n| n.as_str() == f), "{f} is no setting");
+        }
+    }
 
     #[test]
     fn numbers_match_across_countries() {

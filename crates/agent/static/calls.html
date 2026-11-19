@@ -440,6 +440,19 @@ dialog p{color:var(--muted)}
 dialog .field{margin-top:14px}
 dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;flex-wrap:wrap}
 .dlg-err{color:var(--bad);font-size:.87rem;margin-top:8px}
+.bk-status{margin-top:12px;font-size:.92rem}
+.bk-status .bad{color:var(--bad)}
+.bk-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.bk-list{display:flex;flex-direction:column;margin-top:4px}
+.bk-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:9px 0;border-top:1px solid var(--line)}
+.bk-row:first-child{border-top:0}
+.bk-when{flex:1 1 11rem;min-width:0}
+.bk-meta{color:var(--muted);font-size:.86rem}
+.bk-acts{display:flex;gap:6px;margin-left:auto}
+.bk-items{margin:6px 0 0}
+.bk-items .sw{padding:6px 0}
+.bk-warns{margin-top:12px;padding:8px 12px;border-radius:var(--radius-sm);background:var(--surface2)}
+.bk-warns p{color:var(--text);font-size:.9rem;margin:4px 0}
 
 /* ---------- contacts ---------- */
 .ct-bar .btn{flex:0 0 auto}
@@ -942,6 +955,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
         <a href="#settings/blocked" data-jump="blocked"><span data-i18n="g_blocked"></span></a>
         <a href="#settings/notify" data-jump="notify"><span data-i18n="g_notify"></span></a>
         <a href="#settings/summary" data-jump="summary"><span data-i18n="g_summary"></span></a>
+        <a href="#settings/backup" data-jump="backup"><span data-i18n="g_backup"></span></a>
         <a href="#settings/region" data-jump="region"><span data-i18n="g_region"></span></a>
       </nav>
 
@@ -1199,6 +1213,44 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <div class="help" data-i18n="f_appt_reply_h"></div></div>
         </div></div>
 
+        <!-- Backup -->
+        <div class="card group" id="g-backup"><div class="pad">
+          <h2><span data-i18n="g_backup"></span></h2>
+          <p class="desc" data-i18n="g_backup_d"></p>
+          <div class="field"><label for="f-backup_schedule" data-i18n="bk_schedule"></label>
+            <select id="f-backup_schedule" data-k="backup_schedule" data-t="text" style="max-width:20rem">
+              <option value="off" data-i18n="bk_s_off"></option><option value="daily" data-i18n="bk_s_daily"></option><option value="weekly" data-i18n="bk_s_weekly"></option><option value="monthly" data-i18n="bk_s_monthly"></option>
+            </select></div>
+          <div class="field"><label for="f-backup_dir" data-i18n="bk_dir"></label>
+            <div class="with-btn" style="max-width:34rem">
+              <input type="text" id="f-backup_dir" data-k="backup_dir" data-t="text" spellcheck="false" autocomplete="off" />
+              <button type="button" class="btn" id="btnBkOpen" data-i18n="bk_open" hidden></button>
+            </div>
+            <div class="help" data-i18n="bk_dir_h"></div></div>
+          <div class="bk-status" id="bkStatus" aria-live="polite"></div>
+          <div class="bk-btns">
+            <button type="button" class="btn primary" id="btnBkRun" data-i18n="bk_run"></button>
+            <button type="button" class="btn" id="btnBkExport" data-i18n="bk_export"></button>
+            <button type="button" class="btn" id="btnBkImport" data-i18n="bk_import"></button>
+            <input type="file" id="bkFile" hidden accept=".zip,.json,.bageo,application/zip,application/json" />
+          </div>
+          <details class="fold" id="bkFilesBox" style="margin-top:10px">
+            <summary><span data-i18n="bk_files"></span><span id="bkCount"></span></summary>
+            <div class="bk-list" id="bkList"></div>
+            <button type="button" class="btn sm ghost" id="btnBkAll" hidden></button>
+          </details>
+          <details class="fold more">
+            <summary data-i18n="more_opts"></summary>
+            <div class="field"><label for="f-backup_keep" data-i18n="bk_keep"></label>
+              <div class="inline"><input type="number" id="f-backup_keep" data-k="backup_keep" data-t="int" min="1" max="100" step="1" inputmode="numeric" /><span class="muted" data-i18n="bk_unit_copies"></span></div></div>
+            <label class="sw"><input type="checkbox" data-k="backup_include_calls" data-t="bool" /><span><b data-i18n="bk_calls"></b><small data-i18n="bk_calls_h"></small></span></label>
+            <label class="sw"><input type="checkbox" id="f-backup_encrypt" data-k="backup_encrypt" data-t="bool" /><span><b data-i18n="bk_encrypt"></b><small data-i18n="bk_encrypt_h"></small></span></label>
+            <div class="field"><label for="f-backup_password"><span data-i18n="bk_pw"></span><span class="tag" data-flag="backup_password"></span></label>
+              <div data-secret="backup_password"></div>
+              <div class="help" data-i18n="bk_pw_h"></div></div>
+          </details>
+        </div></div>
+
         <!-- Advanced -->
         <div class="card group" id="g-region"><div class="pad">
           <h2><span data-i18n="g_region"></span></h2>
@@ -1332,6 +1384,45 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
     <div class="dlg-btns">
       <button type="button" class="btn" id="dlgCancel" data-i18n="cancel"></button>
       <button type="submit" class="btn primary" id="dlgOk"></button>
+    </div>
+  </form>
+</dialog>
+<dialog id="bkDlg" aria-labelledby="bkDlgTitle">
+  <form method="dialog" id="bkDlgForm">
+    <h2 id="bkDlgTitle" data-i18n="bk_dlg_title"></h2>
+    <p id="bkDlgMeta"></p>
+    <div id="bkDlgLock" hidden>
+      <p data-i18n="bk_unlock_t"></p>
+      <div class="field"><label for="bkDlgPw" data-i18n="bk_exp_pw"></label>
+        <input type="password" id="bkDlgPw" autocomplete="off" spellcheck="false" /></div>
+      <p class="help bad" id="bkDlgPwErr" role="alert" hidden></p>
+    </div>
+    <p id="bkDlgHas" data-i18n="bk_dlg_has"></p>
+    <div class="bk-items" id="bkDlgItems"></div>
+    <div class="bk-warns" id="bkDlgWarns" hidden></div>
+    <p class="help" data-i18n="bk_dlg_note"></p>
+    <div class="dlg-btns">
+      <button type="button" class="btn" id="bkDlgCancel" data-i18n="cancel"></button>
+      <button type="submit" class="btn primary" id="bkDlgOk" value="ok" data-i18n="bk_dlg_ok"></button>
+    </div>
+  </form>
+</dialog>
+<dialog id="bkExpDlg" aria-labelledby="bkExpTitle">
+  <form method="dialog" id="bkExpForm">
+    <h2 id="bkExpTitle" data-i18n="bk_exp_title"></h2>
+    <div class="bk-items" id="bkExpItems"></div>
+    <label class="sw"><input type="checkbox" id="bkExpEnc" /><span><b data-i18n="bk_exp_enc"></b></span></label>
+    <div id="bkExpPwBox" hidden>
+      <div class="field"><label for="bkExpPw" data-i18n="bk_exp_pw"></label>
+        <input type="password" id="bkExpPw" autocomplete="new-password" spellcheck="false" /></div>
+      <div class="field"><label for="bkExpPw2" data-i18n="bk_exp_pw2"></label>
+        <input type="password" id="bkExpPw2" autocomplete="new-password" spellcheck="false" /></div>
+      <p class="help" data-i18n="bk_pw_h"></p>
+      <p class="help bad" id="bkExpPwErr" role="alert" hidden></p>
+    </div>
+    <div class="dlg-btns">
+      <button type="button" class="btn" id="bkExpCancel" data-i18n="cancel"></button>
+      <button type="submit" class="btn primary" id="bkExpOk" value="ok" data-i18n="bk_exp_ok"></button>
     </div>
   </form>
 </dialog>
@@ -2509,6 +2600,103 @@ I18N["en"] = {
   repair_done: "Phones paired again. Plug each Wi-Fi phone in by USB once.",
   ph_link_usb: "Connected by USB",
   ph_link_wifi: "Connected over Wi-Fi",
+  g_backup: "Backup & restore",
+  g_backup_d: "Backup files hold your keys and passwords. Keep them where only you can get them.",
+  bk_schedule: "Automatic backup",
+  bk_s_off: "Don't back up automatically",
+  bk_s_daily: "Every day",
+  bk_s_weekly: "Every week",
+  bk_s_monthly: "Every month",
+  bk_dir: "Save backups to",
+  bk_dir_ph: "Default location",
+  bk_dir_ph_d: "Default location: {dir}",
+  bk_dir_h: "Leave empty to use the default location. Otherwise type the full path of a folder.",
+  bk_open: "Open folder",
+  bk_run: "Back up now",
+  bk_export: "Export settings",
+  bk_import: "Import settings",
+  bk_keep: "Automatic backups to keep",
+  bk_unit_copies: "copies",
+  bk_calls: "Include call records, recordings and texts",
+  bk_calls_h: "Backup files get much bigger.",
+  bk_files: "Backup files",
+  bk_files_empty: "No backup files yet.",
+  bk_show_all: "Show all ({n})",
+  bk_show_less: "Show only the latest 10",
+  bk_kind_scheduled: "Automatic",
+  bk_kind_manual: "Manual",
+  bk_kind_before_import: "Before import",
+  bk_kind_export: "Exported",
+  bk_btn_restore: "Restore",
+  bk_btn_download: "Download",
+  bk_st_running: "Backing up…",
+  bk_st_none: "No backup yet.",
+  bk_st_ok: "Last backup: {time}, done.",
+  bk_st_fail: "Last backup failed ({time}). {why}",
+  bk_st_next: "Next backup: {time}",
+  bk_item_settings: "Settings",
+  bk_item_contacts: "Contacts, Blacklist and Whitelist",
+  bk_item_numbers: "Your own number notes and scam numbers",
+  bk_item_phones: "SIM card details",
+  bk_item_errands: "AI errands",
+  bk_item_calls: "Call records and recordings",
+  bk_item_sms: "Texts",
+  bk_item_tasks: "To do items",
+  bk_item_n: "{name}: {n}",
+  bk_dlg_title: "Restore from this backup?",
+  bk_dlg_when: "Backup made {time}",
+  bk_dlg_ver: "Bageo {ver}",
+  bk_dlg_file: "File: {name}",
+  bk_dlg_has: "Choose what to restore:",
+  bk_warn_newer_version: "This backup comes from a newer Bageo. Some settings may not work here.",
+  bk_warn_plain_settings_file: "This is a plain settings file, so only settings are restored.",
+  bk_warn_password: "The console password will change to the one in this backup.",
+  bk_dlg_note: "Before restoring, Bageo saves your current settings to a separate file.",
+  bk_dlg_ok: "Restore",
+  bk_done_run: "Backup saved: {name}",
+  bk_done_apply: "Restored. Your previous settings were saved as {name}.",
+  bk_done_restart: "Reopen Bageo for everything to take effect.",
+  err_backup_dir_unwritable: "Can't save to that folder. Pick another folder and type its full path.",
+  bk_err_busy: "A backup or restore is already under way. Try again when it finishes.",
+  bk_err_dir_unwritable: "Can't save to the backup folder. Pick another folder.",
+  bk_err_disk_full: "The disk is full. Free up some space or pick another folder.",
+  bk_err_io: "The backup didn't work. Try again in a moment.",
+  bk_err_not_backup: "This isn't a Bageo backup file. Pick another file.",
+  bk_err_damaged: "This backup file is damaged. Try another one.",
+  bk_err_too_new: "This backup comes from a newer Bageo than this one. Install the newer version first.",
+  bk_err_too_large: "The file is over 200 MB. Use a settings-only backup instead.",
+  bk_err_expired: "This took too long. Choose the file again.",
+  bk_err_call_active: "A call is in progress. Try again when it ends.",
+  bk_err_not_local: "The folder can only be opened on the computer that runs Bageo.",
+  bk_item_keys: "Keys, passwords and connections",
+  bk_exp_title: "What do you want to export?",
+  bk_exp_keys_h: "Turn this on when you move to another computer. Leave it off when you show your settings to someone.",
+  bk_exp_big_h: "Makes the file much bigger.",
+  bk_exp_ok: "Export",
+  bk_err_bad_items: "Pick at least one item.",
+  bk_warn_keys_kept: "The keys, passwords and connections on this computer stay as they are.",
+  bk_warn_connections: "Where notifications go and who can control Bageo remotely will change to what this file says.",
+  bk_dlg_size: "Size: {size}",
+  bk_st_restoring: "Restoring…",
+  bk_err_need_password: "To download this, open the console on the computer that runs Bageo, or set a console password first.",
+  bk_err_bad_request: "Something is wrong with the file or the request. Choose the file again and retry.",
+  bk_err_not_found: "That backup file is no longer there. Reload the page and pick another one.",
+  bk_encrypt: "Encrypt backup files",
+  bk_encrypt_h: "Protects the copies you keep on an external drive, in a cloud folder or on a network folder.",
+  bk_pw: "Backup password",
+  bk_pw_h: "If you forget the password, these backups can't be opened, and Bageo can't recover them either.",
+  bk_exp_enc: "Encrypt this file with a password",
+  bk_exp_pw: "Password",
+  bk_exp_pw2: "Enter it again",
+  bk_pw_mismatch: "The two passwords don't match.",
+  bk_unlock_t: "This backup is encrypted. Enter its password.",
+  bk_unlock_btn: "Unlock",
+  bk_encrypted: "Encrypted",
+  bk_err_wrong_password: "Wrong password. Try again.",
+  bk_err_backup_password_short: "The password needs at least 8 characters.",
+  err_backup_password_short: "The backup password needs at least 8 characters.",
+  err_backup_password_missing: "Set a backup password before you turn on encryption.",
+  bk_st_exporting: "Preparing the export file…",
 };
 
 I18N["zh-TW"] = {
@@ -3593,6 +3781,103 @@ I18N["zh-TW"] = {
   repair_done: "已重新配對。用 Wi-Fi 的手機請再用 USB 接一次。",
   ph_link_usb: "用 USB 連線",
   ph_link_wifi: "用 Wi-Fi 連線",
+  g_backup: "備份與還原",
+  g_backup_d: "備份檔裡有金鑰和密碼，要放在只有自己拿得到的地方。",
+  bk_schedule: "自動備份",
+  bk_s_off: "不自動備份",
+  bk_s_daily: "每天",
+  bk_s_weekly: "每週",
+  bk_s_monthly: "每月",
+  bk_dir: "存到哪裡",
+  bk_dir_ph: "預設位置",
+  bk_dir_ph_d: "預設位置：{dir}",
+  bk_dir_h: "空白就存在預設位置；要換的話，請填資料夾的完整路徑。",
+  bk_open: "打開資料夾",
+  bk_run: "立即備份",
+  bk_export: "匯出設定",
+  bk_import: "匯入設定",
+  bk_keep: "自動備份保留幾份",
+  bk_unit_copies: "份",
+  bk_calls: "連通話紀錄、錄音和簡訊一起備份",
+  bk_calls_h: "檔案會大很多。",
+  bk_files: "備份檔",
+  bk_files_empty: "還沒有備份檔。",
+  bk_show_all: "顯示全部（{n}）",
+  bk_show_less: "只顯示最新 10 筆",
+  bk_kind_scheduled: "自動",
+  bk_kind_manual: "手動",
+  bk_kind_before_import: "匯入前",
+  bk_kind_export: "匯出",
+  bk_btn_restore: "還原",
+  bk_btn_download: "下載",
+  bk_st_running: "正在備份…",
+  bk_st_none: "還沒備份過。",
+  bk_st_ok: "上次備份：{time}，成功。",
+  bk_st_fail: "上次備份沒成功（{time}）。{why}",
+  bk_st_next: "下次備份：{time}",
+  bk_item_settings: "設定",
+  bk_item_contacts: "聯絡人與黑名單、白名單",
+  bk_item_numbers: "自己記的號碼和詐騙號碼",
+  bk_item_phones: "SIM 卡資料",
+  bk_item_errands: "AI 代打",
+  bk_item_calls: "通話紀錄與錄音",
+  bk_item_sms: "簡訊",
+  bk_item_tasks: "待處理事項",
+  bk_item_n: "{name}：{n}",
+  bk_dlg_title: "要用這份備份還原嗎？",
+  bk_dlg_when: "備份時間：{time}",
+  bk_dlg_ver: "Bageo {ver}",
+  bk_dlg_file: "檔案：{name}",
+  bk_dlg_has: "選擇要還原的項目：",
+  bk_warn_newer_version: "這份備份來自比較新的 Bageo，有些設定在這裡可能沒有作用。",
+  bk_warn_plain_settings_file: "這是舊版的單一設定檔，只會還原設定。",
+  bk_warn_password: "控制台密碼會換成備份裡的密碼。",
+  bk_dlg_note: "還原前，Bageo 會先把現在的設定另外存一份。",
+  bk_dlg_ok: "還原",
+  bk_done_run: "已備份：{name}",
+  bk_done_apply: "已還原，原本的設定另存成 {name}。",
+  bk_done_restart: "請重新開啟 Bageo，全部設定才會生效。",
+  err_backup_dir_unwritable: "這個資料夾存不進去，請換一個資料夾，並填完整路徑。",
+  bk_err_busy: "正在進行其他備份或還原，請等它完成再試一次。",
+  bk_err_dir_unwritable: "備份資料夾存不進去，請換一個資料夾。",
+  bk_err_disk_full: "硬碟空間不夠，請清出空間或換一個資料夾。",
+  bk_err_io: "備份沒成功，請稍後再試一次。",
+  bk_err_not_backup: "這不是 Bageo 的備份檔，請選另一個檔案。",
+  bk_err_damaged: "這個備份檔壞掉了，請換一份。",
+  bk_err_too_new: "這份備份來自比較新的 Bageo，請先安裝新版再還原。",
+  bk_err_too_large: "檔案超過 200 MB，請改用只有設定的備份。",
+  bk_err_expired: "等太久了，請重新選擇檔案。",
+  bk_err_call_active: "現在有電話在通話，請通話結束後再試。",
+  bk_err_not_local: "只能在執行 Bageo 的這台電腦上打開資料夾。",
+  bk_item_keys: "金鑰、密碼和連線",
+  bk_exp_title: "要匯出哪些項目？",
+  bk_exp_keys_h: "換電腦要勾；給別人看設定時不要勾。",
+  bk_exp_big_h: "檔案會大很多。",
+  bk_exp_ok: "匯出",
+  bk_err_bad_items: "請至少選一個項目。",
+  bk_warn_keys_kept: "這台電腦現有的金鑰、密碼和連線會保留。",
+  bk_warn_connections: "通知要送去哪裡、誰可以遙控 Bageo，會換成檔案裡的設定。",
+  bk_dlg_size: "大小：{size}",
+  bk_st_restoring: "正在還原…",
+  bk_err_need_password: "要下載這個檔案，請在執行 Bageo 的這台電腦上打開控制台，或先設定控制台密碼。",
+  bk_err_bad_request: "檔案或要求有問題，請重新選擇檔案再試一次。",
+  bk_err_not_found: "找不到這個備份檔，可能已經刪掉了。請重新整理頁面再選一次。",
+  bk_encrypt: "備份檔加密",
+  bk_encrypt_h: "保護放到外接硬碟、雲端或網路資料夾的那份。",
+  bk_pw: "備份密碼",
+  bk_pw_h: "忘記密碼就打不開這些備份，Bageo 也救不回來。",
+  bk_exp_enc: "用密碼加密這個檔案",
+  bk_exp_pw: "密碼",
+  bk_exp_pw2: "再輸入一次",
+  bk_pw_mismatch: "兩次密碼不一樣。",
+  bk_unlock_t: "這個備份有加密，請輸入密碼。",
+  bk_unlock_btn: "解開",
+  bk_encrypted: "已加密",
+  bk_err_wrong_password: "密碼不對，請再試一次。",
+  bk_err_backup_password_short: "密碼至少要 8 個字元。",
+  err_backup_password_short: "備份密碼至少要 8 個字元。",
+  err_backup_password_missing: "開啟備份檔加密前，請先設定備份密碼。",
+  bk_st_exporting: "正在準備匯出檔…",
 };
 
 I18N["zh-CN"] = {
@@ -4677,6 +4962,103 @@ I18N["zh-CN"] = {
   repair_done: "已重新配对。用 Wi-Fi 的手机请再用 USB 连一次。",
   ph_link_usb: "通过 USB 连接",
   ph_link_wifi: "通过 Wi-Fi 连接",
+  g_backup: "备份与还原",
+  g_backup_d: "备份文件里有密钥和密码，要放在只有自己拿得到的地方。",
+  bk_schedule: "自动备份",
+  bk_s_off: "不自动备份",
+  bk_s_daily: "每天",
+  bk_s_weekly: "每周",
+  bk_s_monthly: "每月",
+  bk_dir: "存到哪里",
+  bk_dir_ph: "默认位置",
+  bk_dir_ph_d: "默认位置：{dir}",
+  bk_dir_h: "留空就存在默认位置；要换的话，请填文件夹的完整路径。",
+  bk_open: "打开文件夹",
+  bk_run: "立即备份",
+  bk_export: "导出设置",
+  bk_import: "导入设置",
+  bk_keep: "自动备份保留几份",
+  bk_unit_copies: "份",
+  bk_calls: "连通话记录、录音和短信一起备份",
+  bk_calls_h: "文件会大很多。",
+  bk_files: "备份文件",
+  bk_files_empty: "还没有备份文件。",
+  bk_show_all: "显示全部（{n}）",
+  bk_show_less: "只显示最新 10 条",
+  bk_kind_scheduled: "自动",
+  bk_kind_manual: "手动",
+  bk_kind_before_import: "导入前",
+  bk_kind_export: "导出",
+  bk_btn_restore: "还原",
+  bk_btn_download: "下载",
+  bk_st_running: "正在备份…",
+  bk_st_none: "还没备份过。",
+  bk_st_ok: "上次备份：{time}，成功。",
+  bk_st_fail: "上次备份没成功（{time}）。{why}",
+  bk_st_next: "下次备份：{time}",
+  bk_item_settings: "设置",
+  bk_item_contacts: "联系人与黑名单、白名单",
+  bk_item_numbers: "自己记的号码和诈骗号码",
+  bk_item_phones: "SIM 卡资料",
+  bk_item_errands: "AI 代打",
+  bk_item_calls: "通话记录与录音",
+  bk_item_sms: "短信",
+  bk_item_tasks: "待处理事项",
+  bk_item_n: "{name}：{n}",
+  bk_dlg_title: "要用这份备份还原吗？",
+  bk_dlg_when: "备份时间：{time}",
+  bk_dlg_ver: "Bageo {ver}",
+  bk_dlg_file: "文件：{name}",
+  bk_dlg_has: "选择要还原的项目：",
+  bk_warn_newer_version: "这份备份来自较新的 Bageo，有些设置在这里可能不起作用。",
+  bk_warn_plain_settings_file: "这是旧版的单个设置文件，只会还原设置。",
+  bk_warn_password: "控制台密码会换成备份里的密码。",
+  bk_dlg_note: "还原前，Bageo 会先把现在的设置另外存一份。",
+  bk_dlg_ok: "还原",
+  bk_done_run: "已备份：{name}",
+  bk_done_apply: "已还原，原来的设置另存成 {name}。",
+  bk_done_restart: "请重新打开 Bageo，全部设置才会生效。",
+  err_backup_dir_unwritable: "这个文件夹存不进去，请换一个文件夹，并填完整路径。",
+  bk_err_busy: "正在进行其他备份或还原，请等它完成再试一次。",
+  bk_err_dir_unwritable: "备份文件夹存不进去，请换一个文件夹。",
+  bk_err_disk_full: "硬盘空间不够，请清出空间或换一个文件夹。",
+  bk_err_io: "备份没成功，请稍后再试一次。",
+  bk_err_not_backup: "这不是 Bageo 的备份文件，请选另一个文件。",
+  bk_err_damaged: "这个备份文件坏了，请换一份。",
+  bk_err_too_new: "这份备份来自较新的 Bageo，请先安装新版再还原。",
+  bk_err_too_large: "文件超过 200 MB，请改用只有设置的备份。",
+  bk_err_expired: "等太久了，请重新选择文件。",
+  bk_err_call_active: "现在有电话在通话，请通话结束后再试。",
+  bk_err_not_local: "只能在运行 Bageo 的这台电脑上打开文件夹。",
+  bk_item_keys: "密钥、密码和连接",
+  bk_exp_title: "要导出哪些项目？",
+  bk_exp_keys_h: "换电脑要勾选；给别人看设置时不要勾选。",
+  bk_exp_big_h: "文件会大很多。",
+  bk_exp_ok: "导出",
+  bk_err_bad_items: "请至少选一个项目。",
+  bk_warn_keys_kept: "这台电脑现有的密钥、密码和连接会保留。",
+  bk_warn_connections: "通知要发到哪里、谁可以远程控制 Bageo，会换成文件里的设置。",
+  bk_dlg_size: "大小：{size}",
+  bk_st_restoring: "正在还原…",
+  bk_err_need_password: "要下载这个文件，请在运行 Bageo 的这台电脑上打开控制台，或先设置控制台密码。",
+  bk_err_bad_request: "文件或请求有问题，请重新选择文件再试一次。",
+  bk_err_not_found: "找不到这个备份文件，可能已经删除了。请刷新页面再选一次。",
+  bk_encrypt: "备份文件加密",
+  bk_encrypt_h: "保护放到移动硬盘、云端或网络文件夹的那份。",
+  bk_pw: "备份密码",
+  bk_pw_h: "忘记密码就打不开这些备份，Bageo 也救不回来。",
+  bk_exp_enc: "用密码加密这个文件",
+  bk_exp_pw: "密码",
+  bk_exp_pw2: "再输入一次",
+  bk_pw_mismatch: "两次密码不一样。",
+  bk_unlock_t: "这个备份有加密，请输入密码。",
+  bk_unlock_btn: "解开",
+  bk_encrypted: "已加密",
+  bk_err_wrong_password: "密码不对，请再试一次。",
+  bk_err_backup_password_short: "密码至少要 8 个字符。",
+  err_backup_password_short: "备份密码至少要 8 个字符。",
+  err_backup_password_missing: "打开备份文件加密之前，请先设置备份密码。",
+  bk_st_exporting: "正在准备导出文件…",
 };
 
 I18N["ja"] = {
@@ -5761,6 +6143,103 @@ I18N["ja"] = {
   repair_done: "ペアリングし直しました。Wi-Fi のスマホはもう一度 USB でつないでください。",
   ph_link_usb: "USB で接続中",
   ph_link_wifi: "Wi-Fi で接続中",
+  g_backup: "バックアップと復元",
+  g_backup_d: "バックアップファイルにはキーとパスワードが入っています。自分だけが取り出せる場所に置いてください。",
+  bk_schedule: "自動バックアップ",
+  bk_s_off: "自動ではバックアップしない",
+  bk_s_daily: "毎日",
+  bk_s_weekly: "毎週",
+  bk_s_monthly: "毎月",
+  bk_dir: "保存先",
+  bk_dir_ph: "既定の場所",
+  bk_dir_ph_d: "既定の場所：{dir}",
+  bk_dir_h: "空欄なら既定の場所に保存します。変えるときはフォルダーのフルパスを入力してください。",
+  bk_open: "フォルダーを開く",
+  bk_run: "今すぐバックアップ",
+  bk_export: "設定を書き出す",
+  bk_import: "設定を読み込む",
+  bk_keep: "自動バックアップを残す数",
+  bk_unit_copies: "件",
+  bk_calls: "通話記録・録音・SMS も一緒にバックアップ",
+  bk_calls_h: "ファイルがかなり大きくなります。",
+  bk_files: "バックアップファイル",
+  bk_files_empty: "バックアップファイルはまだありません。",
+  bk_show_all: "すべて表示（{n}）",
+  bk_show_less: "最新の 10 件だけ表示",
+  bk_kind_scheduled: "自動",
+  bk_kind_manual: "手動",
+  bk_kind_before_import: "読み込み前",
+  bk_kind_export: "書き出し",
+  bk_btn_restore: "復元",
+  bk_btn_download: "ダウンロード",
+  bk_st_running: "バックアップ中…",
+  bk_st_none: "まだバックアップがありません。",
+  bk_st_ok: "前回のバックアップ：{time}、成功。",
+  bk_st_fail: "前回のバックアップは失敗しました（{time}）。{why}",
+  bk_st_next: "次のバックアップ：{time}",
+  bk_item_settings: "設定",
+  bk_item_contacts: "連絡先とブラックリスト・ホワイトリスト",
+  bk_item_numbers: "自分で記録した番号と詐欺番号",
+  bk_item_phones: "SIM カードの情報",
+  bk_item_errands: "AI 代理電話",
+  bk_item_calls: "通話記録と録音",
+  bk_item_sms: "SMS",
+  bk_item_tasks: "対応待ち",
+  bk_item_n: "{name}：{n}",
+  bk_dlg_title: "このバックアップから復元しますか？",
+  bk_dlg_when: "バックアップ日時：{time}",
+  bk_dlg_ver: "Bageo {ver}",
+  bk_dlg_file: "ファイル：{name}",
+  bk_dlg_has: "復元する項目を選んでください：",
+  bk_warn_newer_version: "このバックアップは新しい Bageo のものです。一部の設定はここでは効かない場合があります。",
+  bk_warn_plain_settings_file: "設定だけの単独ファイルなので、設定のみ復元します。",
+  bk_warn_password: "コンソールのパスワードがバックアップ内のものに変わります。",
+  bk_dlg_note: "復元の前に、今の設定を別のファイルに保存します。",
+  bk_dlg_ok: "復元",
+  bk_done_run: "バックアップしました：{name}",
+  bk_done_apply: "復元しました。元の設定は {name} に保存しました。",
+  bk_done_restart: "Bageo を開き直すと、すべて有効になります。",
+  err_backup_dir_unwritable: "このフォルダーには保存できません。別のフォルダーをフルパスで指定してください。",
+  bk_err_busy: "ほかのバックアップか復元が進行中です。終わってからもう一度お試しください。",
+  bk_err_dir_unwritable: "バックアップ先に保存できません。別のフォルダーを選んでください。",
+  bk_err_disk_full: "ディスクの空きが足りません。空きを作るか、別のフォルダーを選んでください。",
+  bk_err_io: "バックアップできませんでした。しばらくしてからもう一度お試しください。",
+  bk_err_not_backup: "Bageo のバックアップファイルではありません。別のファイルを選んでください。",
+  bk_err_damaged: "このバックアップファイルは壊れています。別のものをお試しください。",
+  bk_err_too_new: "このバックアップはより新しい Bageo のものです。先に新しい版をインストールしてください。",
+  bk_err_too_large: "ファイルが 200 MB を超えています。設定だけのバックアップを使ってください。",
+  bk_err_expired: "時間が経ちすぎました。もう一度ファイルを選んでください。",
+  bk_err_call_active: "通話中です。終わってからもう一度お試しください。",
+  bk_err_not_local: "フォルダーを開けるのは、Bageo が動いているパソコンだけです。",
+  bk_item_keys: "キー、パスワードと接続先",
+  bk_exp_title: "書き出す項目を選んでください",
+  bk_exp_keys_h: "別のパソコンに移すときはオンにします。設定を人に見せるときはオフにします。",
+  bk_exp_big_h: "ファイルがかなり大きくなります。",
+  bk_exp_ok: "書き出す",
+  bk_err_bad_items: "項目を 1 つ以上選んでください。",
+  bk_warn_keys_kept: "このパソコンのキー、パスワードと接続先はそのまま残ります。",
+  bk_warn_connections: "通知の送り先と、Bageo を遠隔操作できる人が、このファイルの内容に変わります。",
+  bk_dlg_size: "サイズ：{size}",
+  bk_st_restoring: "復元中…",
+  bk_err_need_password: "ダウンロードするには、Bageo が動いているパソコンでコンソールを開くか、先にコンソールのパスワードを設定してください。",
+  bk_err_bad_request: "ファイルか要求に問題があります。もう一度ファイルを選んでやり直してください。",
+  bk_err_not_found: "そのバックアップファイルはもうありません。ページを再読み込みして選び直してください。",
+  bk_encrypt: "バックアップファイルを暗号化",
+  bk_encrypt_h: "外付けドライブ、クラウド、ネットワークフォルダーに置くバックアップを守ります。",
+  bk_pw: "バックアップのパスワード",
+  bk_pw_h: "パスワードを忘れると、これらのバックアップは開けず、Bageo でも元に戻せません。",
+  bk_exp_enc: "パスワードでこのファイルを暗号化",
+  bk_exp_pw: "パスワード",
+  bk_exp_pw2: "もう一度入力",
+  bk_pw_mismatch: "2 つのパスワードが一致しません。",
+  bk_unlock_t: "このバックアップは暗号化されています。パスワードを入力してください。",
+  bk_unlock_btn: "開く",
+  bk_encrypted: "暗号化済み",
+  bk_err_wrong_password: "パスワードが違います。もう一度お試しください。",
+  bk_err_backup_password_short: "パスワードは 8 文字以上にしてください。",
+  err_backup_password_short: "バックアップのパスワードは 8 文字以上にしてください。",
+  err_backup_password_missing: "暗号化をオンにする前に、バックアップのパスワードを設定してください。",
+  bk_st_exporting: "エクスポートするファイルを準備しています…",
 };
 
 I18N["ko"] = {
@@ -6845,6 +7324,103 @@ I18N["ko"] = {
   repair_done: "다시 페어링했습니다. Wi-Fi 휴대폰은 USB로 한 번 더 연결하세요.",
   ph_link_usb: "USB로 연결됨",
   ph_link_wifi: "Wi-Fi로 연결됨",
+  g_backup: "백업 및 복원",
+  g_backup_d: "백업 파일에는 키와 비밀번호가 들어 있습니다. 나만 열 수 있는 곳에 보관하세요.",
+  bk_schedule: "자동 백업",
+  bk_s_off: "자동 백업 안 함",
+  bk_s_daily: "매일",
+  bk_s_weekly: "매주",
+  bk_s_monthly: "매월",
+  bk_dir: "저장 위치",
+  bk_dir_ph: "기본 위치",
+  bk_dir_ph_d: "기본 위치: {dir}",
+  bk_dir_h: "비워 두면 기본 위치에 저장합니다. 바꾸려면 폴더의 전체 경로를 입력하세요.",
+  bk_open: "폴더 열기",
+  bk_run: "지금 백업",
+  bk_export: "설정 내보내기",
+  bk_import: "설정 가져오기",
+  bk_keep: "자동 백업 보관 개수",
+  bk_unit_copies: "개",
+  bk_calls: "통화 기록, 녹음, 문자도 함께 백업",
+  bk_calls_h: "파일이 훨씬 커집니다.",
+  bk_files: "백업 파일",
+  bk_files_empty: "아직 백업 파일이 없습니다.",
+  bk_show_all: "전체 보기({n})",
+  bk_show_less: "최신 10개만 보기",
+  bk_kind_scheduled: "자동",
+  bk_kind_manual: "수동",
+  bk_kind_before_import: "가져오기 전",
+  bk_kind_export: "내보내기",
+  bk_btn_restore: "복원",
+  bk_btn_download: "다운로드",
+  bk_st_running: "백업하는 중…",
+  bk_st_none: "아직 백업한 적이 없습니다.",
+  bk_st_ok: "마지막 백업: {time}, 성공.",
+  bk_st_fail: "마지막 백업이 실패했습니다({time}). {why}",
+  bk_st_next: "다음 백업: {time}",
+  bk_item_settings: "설정",
+  bk_item_contacts: "연락처와 차단 목록·화이트리스트",
+  bk_item_numbers: "직접 적어 둔 번호와 사기 번호",
+  bk_item_phones: "SIM 카드 정보",
+  bk_item_errands: "AI 대리 전화",
+  bk_item_calls: "통화 기록과 녹음",
+  bk_item_sms: "문자",
+  bk_item_tasks: "처리할 일",
+  bk_item_n: "{name}: {n}",
+  bk_dlg_title: "이 백업으로 복원할까요?",
+  bk_dlg_when: "백업한 시간: {time}",
+  bk_dlg_ver: "Bageo {ver}",
+  bk_dlg_file: "파일: {name}",
+  bk_dlg_has: "복원할 항목을 고르세요:",
+  bk_warn_newer_version: "이 백업은 더 새로운 Bageo에서 만든 것입니다. 일부 설정은 여기서 작동하지 않을 수 있습니다.",
+  bk_warn_plain_settings_file: "설정만 담긴 단일 파일이라 설정만 복원합니다.",
+  bk_warn_password: "콘솔 비밀번호가 백업에 있는 비밀번호로 바뀝니다.",
+  bk_dlg_note: "복원하기 전에 지금 설정을 별도 파일로 저장합니다.",
+  bk_dlg_ok: "복원",
+  bk_done_run: "백업했습니다: {name}",
+  bk_done_apply: "복원했습니다. 이전 설정은 {name}에 저장했습니다.",
+  bk_done_restart: "Bageo를 다시 열면 모든 설정이 적용됩니다.",
+  err_backup_dir_unwritable: "이 폴더에는 저장할 수 없습니다. 다른 폴더를 골라 전체 경로를 입력하세요.",
+  bk_err_busy: "다른 백업이나 복원이 진행 중입니다. 끝난 뒤에 다시 시도하세요.",
+  bk_err_dir_unwritable: "백업 폴더에 저장할 수 없습니다. 다른 폴더를 고르세요.",
+  bk_err_disk_full: "디스크 공간이 부족합니다. 공간을 확보하거나 다른 폴더를 고르세요.",
+  bk_err_io: "백업하지 못했습니다. 잠시 후 다시 시도하세요.",
+  bk_err_not_backup: "Bageo 백업 파일이 아닙니다. 다른 파일을 고르세요.",
+  bk_err_damaged: "이 백업 파일이 손상되었습니다. 다른 파일을 사용하세요.",
+  bk_err_too_new: "이 백업은 더 새로운 Bageo에서 만든 것입니다. 먼저 새 버전을 설치하세요.",
+  bk_err_too_large: "파일이 200 MB를 넘습니다. 설정만 담은 백업을 사용하세요.",
+  bk_err_expired: "시간이 너무 지났습니다. 파일을 다시 선택하세요.",
+  bk_err_call_active: "통화 중입니다. 통화가 끝난 뒤에 다시 시도하세요.",
+  bk_err_not_local: "Bageo가 실행 중인 컴퓨터에서만 폴더를 열 수 있습니다.",
+  bk_item_keys: "키, 비밀번호와 연결",
+  bk_exp_title: "내보낼 항목을 고르세요",
+  bk_exp_keys_h: "다른 컴퓨터로 옮길 때는 켜세요. 설정을 다른 사람에게 보여 줄 때는 끄세요.",
+  bk_exp_big_h: "파일이 훨씬 커집니다.",
+  bk_exp_ok: "내보내기",
+  bk_err_bad_items: "항목을 하나 이상 고르세요.",
+  bk_warn_keys_kept: "이 컴퓨터의 키, 비밀번호와 연결은 그대로 유지됩니다.",
+  bk_warn_connections: "알림을 보낼 곳과 Bageo를 원격으로 조작할 수 있는 사람이 이 파일의 설정으로 바뀝니다.",
+  bk_dlg_size: "크기: {size}",
+  bk_st_restoring: "복원하는 중…",
+  bk_err_need_password: "내려받으려면 Bageo가 실행 중인 컴퓨터에서 콘솔을 열거나, 먼저 콘솔 비밀번호를 설정하세요.",
+  bk_err_bad_request: "파일이나 요청에 문제가 있습니다. 파일을 다시 골라 다시 시도하세요.",
+  bk_err_not_found: "그 백업 파일이 더 이상 없습니다. 페이지를 새로 고친 뒤 다른 파일을 고르세요.",
+  bk_encrypt: "백업 파일 암호화",
+  bk_encrypt_h: "외장 드라이브, 클라우드, 네트워크 폴더에 두는 백업을 보호합니다.",
+  bk_pw: "백업 비밀번호",
+  bk_pw_h: "비밀번호를 잊으면 이 백업은 열 수 없고, Bageo도 되살릴 수 없습니다.",
+  bk_exp_enc: "비밀번호로 이 파일 암호화",
+  bk_exp_pw: "비밀번호",
+  bk_exp_pw2: "한 번 더 입력",
+  bk_pw_mismatch: "두 비밀번호가 다릅니다.",
+  bk_unlock_t: "이 백업은 암호화되어 있습니다. 비밀번호를 입력하세요.",
+  bk_unlock_btn: "열기",
+  bk_encrypted: "암호화됨",
+  bk_err_wrong_password: "비밀번호가 틀렸습니다. 다시 시도하세요.",
+  bk_err_backup_password_short: "비밀번호는 8자 이상이어야 합니다.",
+  err_backup_password_short: "백업 비밀번호는 8자 이상이어야 합니다.",
+  err_backup_password_missing: "암호화를 켜기 전에 백업 비밀번호를 설정하세요.",
+  bk_st_exporting: "내보낼 파일을 준비하는 중…",
 };
 
 I18N["es"] = {
@@ -7929,6 +8505,103 @@ I18N["es"] = {
   repair_done: "Teléfonos emparejados de nuevo. Conecta por USB una vez cada teléfono que usaba Wi-Fi.",
   ph_link_usb: "Conectado por USB",
   ph_link_wifi: "Conectado por Wi-Fi",
+  g_backup: "Copia de seguridad y restauración",
+  g_backup_d: "Las copias contienen tus claves y contraseñas. Guárdalas donde solo tú puedas acceder.",
+  bk_schedule: "Copia automática",
+  bk_s_off: "No hacer copias automáticas",
+  bk_s_daily: "Cada día",
+  bk_s_weekly: "Cada semana",
+  bk_s_monthly: "Cada mes",
+  bk_dir: "Dónde guardar las copias",
+  bk_dir_ph: "Ubicación predeterminada",
+  bk_dir_ph_d: "Ubicación predeterminada: {dir}",
+  bk_dir_h: "Si lo dejas vacío, se usa la ubicación predeterminada. Para cambiarla, escribe la ruta completa de una carpeta.",
+  bk_open: "Abrir carpeta",
+  bk_run: "Copiar ahora",
+  bk_export: "Exportar ajustes",
+  bk_import: "Importar ajustes",
+  bk_keep: "Copias automáticas que se conservan",
+  bk_unit_copies: "copias",
+  bk_calls: "Incluir registro de llamadas, grabaciones y SMS",
+  bk_calls_h: "Los archivos pesan mucho más.",
+  bk_files: "Archivos de copia",
+  bk_files_empty: "Todavía no hay copias.",
+  bk_show_all: "Ver todas ({n})",
+  bk_show_less: "Ver solo las 10 más recientes",
+  bk_kind_scheduled: "Automática",
+  bk_kind_manual: "Manual",
+  bk_kind_before_import: "Antes de importar",
+  bk_kind_export: "Exportada",
+  bk_btn_restore: "Restaurar",
+  bk_btn_download: "Descargar",
+  bk_st_running: "Haciendo la copia…",
+  bk_st_none: "Aún no hay ninguna copia.",
+  bk_st_ok: "Última copia: {time}, correcta.",
+  bk_st_fail: "La última copia falló ({time}). {why}",
+  bk_st_next: "Próxima copia: {time}",
+  bk_item_settings: "Ajustes",
+  bk_item_contacts: "Contactos, Lista negra y Lista blanca",
+  bk_item_numbers: "Tus números anotados y números de estafa",
+  bk_item_phones: "Datos de las SIM",
+  bk_item_errands: "Encargos",
+  bk_item_calls: "Registro de llamadas y grabaciones",
+  bk_item_sms: "SMS",
+  bk_item_tasks: "Pendientes",
+  bk_item_n: "{name}: {n}",
+  bk_dlg_title: "¿Restaurar esta copia?",
+  bk_dlg_when: "Copia hecha el {time}",
+  bk_dlg_ver: "Bageo {ver}",
+  bk_dlg_file: "Archivo: {name}",
+  bk_dlg_has: "Elige qué restaurar:",
+  bk_warn_newer_version: "Esta copia viene de un Bageo más nuevo. Es posible que algunos ajustes no funcionen aquí.",
+  bk_warn_plain_settings_file: "Es un archivo de ajustes sin más, así que solo se restauran los ajustes.",
+  bk_warn_password: "La contraseña de la consola cambiará a la de esta copia.",
+  bk_dlg_note: "Antes de restaurar, Bageo guarda tus ajustes actuales en otro archivo.",
+  bk_dlg_ok: "Restaurar",
+  bk_done_run: "Copia guardada: {name}",
+  bk_done_apply: "Restaurado. Tus ajustes anteriores se guardaron en {name}.",
+  bk_done_restart: "Vuelve a abrir Bageo para que todo surta efecto.",
+  err_backup_dir_unwritable: "No se puede guardar en esa carpeta. Elige otra y escribe su ruta completa.",
+  bk_err_busy: "Ya hay una copia o una restauración en curso. Inténtalo de nuevo cuando termine.",
+  bk_err_dir_unwritable: "No se puede guardar en la carpeta de copias. Elige otra carpeta.",
+  bk_err_disk_full: "El disco está lleno. Libera espacio o elige otra carpeta.",
+  bk_err_io: "No se pudo hacer la copia. Inténtalo de nuevo en un momento.",
+  bk_err_not_backup: "Este archivo no es una copia de Bageo. Elige otro archivo.",
+  bk_err_damaged: "Este archivo de copia está dañado. Prueba con otro.",
+  bk_err_too_new: "Esta copia viene de un Bageo más nuevo. Instala primero la versión nueva.",
+  bk_err_too_large: "El archivo supera los 200 MB. Usa una copia que solo tenga los ajustes.",
+  bk_err_expired: "Ha pasado demasiado tiempo. Vuelve a elegir el archivo.",
+  bk_err_call_active: "Hay una llamada en curso. Inténtalo de nuevo cuando termine.",
+  bk_err_not_local: "La carpeta solo se puede abrir en el equipo donde se ejecuta Bageo.",
+  bk_item_keys: "Claves, contraseñas y conexiones",
+  bk_exp_title: "¿Qué quieres exportar?",
+  bk_exp_keys_h: "Actívalo si te cambias de ordenador. Desactívalo si vas a enseñar tus ajustes a otra persona.",
+  bk_exp_big_h: "El archivo será mucho más grande.",
+  bk_exp_ok: "Exportar",
+  bk_err_bad_items: "Elige al menos un elemento.",
+  bk_warn_keys_kept: "Las claves, contraseñas y conexiones de este ordenador se quedan como están.",
+  bk_warn_connections: "El destino de las notificaciones y quién puede controlar Bageo a distancia pasarán a ser los de este archivo.",
+  bk_dlg_size: "Tamaño: {size}",
+  bk_st_restoring: "Restaurando…",
+  bk_err_need_password: "Para descargarlo, abre la consola en el ordenador donde funciona Bageo o pon antes una contraseña a la consola.",
+  bk_err_bad_request: "Hay un problema con el archivo o la solicitud. Vuelve a elegir el archivo e inténtalo otra vez.",
+  bk_err_not_found: "Ese archivo de copia ya no está. Recarga la página y elige otro.",
+  bk_encrypt: "Cifrar las copias de seguridad",
+  bk_encrypt_h: "Protege las copias que guardas en un disco externo, en la nube o en una carpeta de red.",
+  bk_pw: "Contraseña de las copias",
+  bk_pw_h: "Si olvidas la contraseña, no podrás abrir estas copias y Bageo tampoco podrá recuperarlas.",
+  bk_exp_enc: "Cifrar este archivo con una contraseña",
+  bk_exp_pw: "Contraseña",
+  bk_exp_pw2: "Escríbela otra vez",
+  bk_pw_mismatch: "Las dos contraseñas no coinciden.",
+  bk_unlock_t: "Esta copia está cifrada. Escribe su contraseña.",
+  bk_unlock_btn: "Abrir",
+  bk_encrypted: "Cifrada",
+  bk_err_wrong_password: "La contraseña no es correcta. Inténtalo otra vez.",
+  bk_err_backup_password_short: "La contraseña debe tener al menos 8 caracteres.",
+  err_backup_password_short: "La contraseña de las copias debe tener al menos 8 caracteres.",
+  err_backup_password_missing: "Pon una contraseña para las copias antes de activar el cifrado.",
+  bk_st_exporting: "Preparando el archivo para exportar…",
 };
 
 I18N["fr"] = {
@@ -9013,6 +9686,103 @@ I18N["fr"] = {
   repair_done: "Téléphones réassociés. Rebranchez une fois en USB chaque téléphone qui était en Wi-Fi.",
   ph_link_usb: "Connecté en USB",
   ph_link_wifi: "Connecté en Wi-Fi",
+  g_backup: "Sauvegarde et restauration",
+  g_backup_d: "Les sauvegardes contiennent vos clés et mots de passe. Gardez-les là où vous seul pouvez y accéder.",
+  bk_schedule: "Sauvegarde automatique",
+  bk_s_off: "Pas de sauvegarde automatique",
+  bk_s_daily: "Chaque jour",
+  bk_s_weekly: "Chaque semaine",
+  bk_s_monthly: "Chaque mois",
+  bk_dir: "Où enregistrer",
+  bk_dir_ph: "Emplacement par défaut",
+  bk_dir_ph_d: "Emplacement par défaut : {dir}",
+  bk_dir_h: "Laissez vide pour utiliser l'emplacement par défaut. Sinon, saisissez le chemin complet d'un dossier.",
+  bk_open: "Ouvrir le dossier",
+  bk_run: "Sauvegarder maintenant",
+  bk_export: "Exporter les réglages",
+  bk_import: "Importer les réglages",
+  bk_keep: "Sauvegardes automatiques à garder",
+  bk_unit_copies: "sauvegardes",
+  bk_calls: "Inclure journal d'appels, enregistrements et SMS",
+  bk_calls_h: "Les fichiers deviennent beaucoup plus gros.",
+  bk_files: "Fichiers de sauvegarde",
+  bk_files_empty: "Aucun fichier de sauvegarde pour le moment.",
+  bk_show_all: "Tout afficher ({n})",
+  bk_show_less: "Afficher seulement les 10 dernières",
+  bk_kind_scheduled: "Automatique",
+  bk_kind_manual: "Manuelle",
+  bk_kind_before_import: "Avant import",
+  bk_kind_export: "Exportée",
+  bk_btn_restore: "Restaurer",
+  bk_btn_download: "Télécharger",
+  bk_st_running: "Sauvegarde en cours…",
+  bk_st_none: "Aucune sauvegarde pour le moment.",
+  bk_st_ok: "Dernière sauvegarde : {time}, réussie.",
+  bk_st_fail: "La dernière sauvegarde a échoué ({time}). {why}",
+  bk_st_next: "Prochaine sauvegarde : {time}",
+  bk_item_settings: "Réglages",
+  bk_item_contacts: "Contacts, Liste noire et Liste blanche",
+  bk_item_numbers: "Vos numéros notés et numéros d'arnaque",
+  bk_item_phones: "Infos des cartes SIM",
+  bk_item_errands: "Appels IA",
+  bk_item_calls: "Journal d'appels et enregistrements",
+  bk_item_sms: "SMS",
+  bk_item_tasks: "À traiter",
+  bk_item_n: "{name} : {n}",
+  bk_dlg_title: "Restaurer cette sauvegarde ?",
+  bk_dlg_when: "Sauvegarde du {time}",
+  bk_dlg_ver: "Bageo {ver}",
+  bk_dlg_file: "Fichier : {name}",
+  bk_dlg_has: "Choisissez ce qu'il faut restaurer :",
+  bk_warn_newer_version: "Cette sauvegarde vient d'un Bageo plus récent. Certains réglages peuvent ne pas fonctionner ici.",
+  bk_warn_plain_settings_file: "C'est un simple fichier de réglages : seuls les réglages sont restaurés.",
+  bk_warn_password: "Le mot de passe de la console sera remplacé par celui de la sauvegarde.",
+  bk_dlg_note: "Avant la restauration, Bageo enregistre vos réglages actuels dans un autre fichier.",
+  bk_dlg_ok: "Restaurer",
+  bk_done_run: "Sauvegarde enregistrée : {name}",
+  bk_done_apply: "Restauré. Vos anciens réglages ont été enregistrés sous {name}.",
+  bk_done_restart: "Rouvrez Bageo pour que tout prenne effet.",
+  err_backup_dir_unwritable: "Impossible d'enregistrer dans ce dossier. Choisissez-en un autre et saisissez son chemin complet.",
+  bk_err_busy: "Une sauvegarde ou une restauration est déjà en cours. Réessayez quand elle sera terminée.",
+  bk_err_dir_unwritable: "Impossible d'enregistrer dans le dossier de sauvegarde. Choisissez un autre dossier.",
+  bk_err_disk_full: "Le disque est plein. Libérez de la place ou choisissez un autre dossier.",
+  bk_err_io: "La sauvegarde a échoué. Réessayez dans un instant.",
+  bk_err_not_backup: "Ce fichier n'est pas une sauvegarde Bageo. Choisissez un autre fichier.",
+  bk_err_damaged: "Ce fichier de sauvegarde est endommagé. Essayez-en un autre.",
+  bk_err_too_new: "Cette sauvegarde vient d'un Bageo plus récent. Installez d'abord la nouvelle version.",
+  bk_err_too_large: "Le fichier dépasse 200 Mo. Utilisez une sauvegarde qui ne contient que les réglages.",
+  bk_err_expired: "Trop de temps s'est écoulé. Choisissez de nouveau le fichier.",
+  bk_err_call_active: "Un appel est en cours. Réessayez quand il sera terminé.",
+  bk_err_not_local: "Le dossier ne peut être ouvert que sur l'ordinateur où Bageo fonctionne.",
+  bk_item_keys: "Clés, mots de passe et connexions",
+  bk_exp_title: "Que voulez-vous exporter ?",
+  bk_exp_keys_h: "Activez-le pour changer d'ordinateur. Laissez-le désactivé pour montrer vos réglages à quelqu'un.",
+  bk_exp_big_h: "Le fichier sera beaucoup plus gros.",
+  bk_exp_ok: "Exporter",
+  bk_err_bad_items: "Choisissez au moins un élément.",
+  bk_warn_keys_kept: "Les clés, mots de passe et connexions de cet ordinateur restent tels quels.",
+  bk_warn_connections: "La destination des notifications et les personnes qui peuvent piloter Bageo à distance seront celles de ce fichier.",
+  bk_dlg_size: "Taille : {size}",
+  bk_st_restoring: "Restauration…",
+  bk_err_need_password: "Pour le télécharger, ouvrez la console sur l'ordinateur où tourne Bageo, ou définissez d'abord un mot de passe pour la console.",
+  bk_err_bad_request: "Le fichier ou la demande pose problème. Choisissez à nouveau le fichier et réessayez.",
+  bk_err_not_found: "Ce fichier de sauvegarde n'existe plus. Rechargez la page et choisissez-en un autre.",
+  bk_encrypt: "Chiffrer les fichiers de sauvegarde",
+  bk_encrypt_h: "Protège les copies gardées sur un disque externe, dans le cloud ou dans un dossier réseau.",
+  bk_pw: "Mot de passe des sauvegardes",
+  bk_pw_h: "Si vous oubliez le mot de passe, ces sauvegardes ne pourront plus être ouvertes, et Bageo ne pourra pas les récupérer.",
+  bk_exp_enc: "Chiffrer ce fichier avec un mot de passe",
+  bk_exp_pw: "Mot de passe",
+  bk_exp_pw2: "Saisissez-le à nouveau",
+  bk_pw_mismatch: "Les deux mots de passe ne sont pas identiques.",
+  bk_unlock_t: "Cette sauvegarde est chiffrée. Saisissez son mot de passe.",
+  bk_unlock_btn: "Ouvrir",
+  bk_encrypted: "Chiffrée",
+  bk_err_wrong_password: "Mot de passe incorrect. Réessayez.",
+  bk_err_backup_password_short: "Le mot de passe doit contenir au moins 8 caractères.",
+  err_backup_password_short: "Le mot de passe des sauvegardes doit contenir au moins 8 caractères.",
+  err_backup_password_missing: "Définissez un mot de passe pour les sauvegardes avant d'activer le chiffrement.",
+  bk_st_exporting: "Préparation du fichier à exporter…",
 };
 
 I18N["de"] = {
@@ -10097,6 +10867,103 @@ I18N["de"] = {
   repair_done: "Telefone neu gekoppelt. Schließ jedes WLAN-Telefon einmal per USB an.",
   ph_link_usb: "Per USB verbunden",
   ph_link_wifi: "Per WLAN verbunden",
+  g_backup: "Sicherung und Wiederherstellung",
+  g_backup_d: "Sicherungen enthalten deine Schlüssel und Passwörter. Bewahre sie dort auf, wo nur du drankommst.",
+  bk_schedule: "Automatische Sicherung",
+  bk_s_off: "Nicht automatisch sichern",
+  bk_s_daily: "Jeden Tag",
+  bk_s_weekly: "Jede Woche",
+  bk_s_monthly: "Jeden Monat",
+  bk_dir: "Speicherort",
+  bk_dir_ph: "Standardort",
+  bk_dir_ph_d: "Standardort: {dir}",
+  bk_dir_h: "Leer lassen, dann wird der Standardort verwendet. Sonst gib den vollständigen Pfad eines Ordners ein.",
+  bk_open: "Ordner öffnen",
+  bk_run: "Jetzt sichern",
+  bk_export: "Einstellungen exportieren",
+  bk_import: "Einstellungen importieren",
+  bk_keep: "Automatische Sicherungen behalten",
+  bk_unit_copies: "Sicherungen",
+  bk_calls: "Anrufprotokoll, Aufnahmen und SMS mitsichern",
+  bk_calls_h: "Die Dateien werden viel größer.",
+  bk_files: "Sicherungsdateien",
+  bk_files_empty: "Noch keine Sicherungen.",
+  bk_show_all: "Alle anzeigen ({n})",
+  bk_show_less: "Nur die neuesten 10 anzeigen",
+  bk_kind_scheduled: "Automatisch",
+  bk_kind_manual: "Manuell",
+  bk_kind_before_import: "Vor dem Import",
+  bk_kind_export: "Exportiert",
+  bk_btn_restore: "Wiederherstellen",
+  bk_btn_download: "Herunterladen",
+  bk_st_running: "Sicherung läuft…",
+  bk_st_none: "Noch nicht gesichert.",
+  bk_st_ok: "Letzte Sicherung: {time}, erfolgreich.",
+  bk_st_fail: "Die letzte Sicherung hat nicht geklappt ({time}). {why}",
+  bk_st_next: "Nächste Sicherung: {time}",
+  bk_item_settings: "Einstellungen",
+  bk_item_contacts: "Kontakte, Sperrliste und Whitelist",
+  bk_item_numbers: "Eigene Nummernnotizen und Betrugsnummern",
+  bk_item_phones: "SIM-Kartendaten",
+  bk_item_errands: "KI-Anrufe",
+  bk_item_calls: "Anrufprotokoll und Aufnahmen",
+  bk_item_sms: "SMS",
+  bk_item_tasks: "Zu erledigen",
+  bk_item_n: "{name}: {n}",
+  bk_dlg_title: "Aus dieser Sicherung wiederherstellen?",
+  bk_dlg_when: "Gesichert am {time}",
+  bk_dlg_ver: "Bageo {ver}",
+  bk_dlg_file: "Datei: {name}",
+  bk_dlg_has: "Wähle, was wiederhergestellt wird:",
+  bk_warn_newer_version: "Diese Sicherung stammt von einem neueren Bageo. Manche Einstellungen funktionieren hier eventuell nicht.",
+  bk_warn_plain_settings_file: "Das ist nur eine einfache Einstellungsdatei, deshalb werden nur die Einstellungen wiederhergestellt.",
+  bk_warn_password: "Das Konsolenpasswort wird durch das Passwort aus der Sicherung ersetzt.",
+  bk_dlg_note: "Vor dem Wiederherstellen speichert Bageo deine aktuellen Einstellungen in einer separaten Datei.",
+  bk_dlg_ok: "Wiederherstellen",
+  bk_done_run: "Gesichert: {name}",
+  bk_done_apply: "Wiederhergestellt. Deine bisherigen Einstellungen sind unter {name} gespeichert.",
+  bk_done_restart: "Öffne Bageo neu, damit alles wirksam wird.",
+  err_backup_dir_unwritable: "In diesen Ordner lässt sich nicht speichern. Wähle einen anderen und gib den vollständigen Pfad ein.",
+  bk_err_busy: "Es läuft schon eine Sicherung oder Wiederherstellung. Versuche es erneut, wenn sie fertig ist.",
+  bk_err_dir_unwritable: "Im Sicherungsordner lässt sich nicht speichern. Wähle einen anderen Ordner.",
+  bk_err_disk_full: "Der Datenträger ist voll. Schaffe Platz oder wähle einen anderen Ordner.",
+  bk_err_io: "Die Sicherung hat nicht geklappt. Versuche es gleich noch einmal.",
+  bk_err_not_backup: "Das ist keine Bageo-Sicherung. Wähle eine andere Datei.",
+  bk_err_damaged: "Diese Sicherungsdatei ist beschädigt. Nimm eine andere.",
+  bk_err_too_new: "Diese Sicherung stammt von einem neueren Bageo. Installiere zuerst die neue Version.",
+  bk_err_too_large: "Die Datei ist größer als 200 MB. Nutze eine Sicherung, die nur Einstellungen enthält.",
+  bk_err_expired: "Das hat zu lange gedauert. Wähle die Datei noch einmal.",
+  bk_err_call_active: "Gerade läuft ein Anruf. Versuche es nach dem Anruf noch einmal.",
+  bk_err_not_local: "Der Ordner lässt sich nur auf dem Computer öffnen, auf dem Bageo läuft.",
+  bk_item_keys: "Schlüssel, Passwörter und Verbindungen",
+  bk_exp_title: "Was möchtest du exportieren?",
+  bk_exp_keys_h: "Schalte das ein, wenn du auf einen anderen Computer umziehst. Lass es aus, wenn du deine Einstellungen jemandem zeigst.",
+  bk_exp_big_h: "Die Datei wird viel größer.",
+  bk_exp_ok: "Exportieren",
+  bk_err_bad_items: "Wähle mindestens einen Punkt aus.",
+  bk_warn_keys_kept: "Die Schlüssel, Passwörter und Verbindungen auf diesem Computer bleiben, wie sie sind.",
+  bk_warn_connections: "Wohin Benachrichtigungen gehen und wer Bageo aus der Ferne steuern darf, wird durch die Angaben in dieser Datei ersetzt.",
+  bk_dlg_size: "Größe: {size}",
+  bk_st_restoring: "Wird wiederhergestellt…",
+  bk_err_need_password: "Zum Herunterladen öffne die Konsole auf dem Computer, auf dem Bageo läuft, oder lege zuerst ein Konsolenpasswort fest.",
+  bk_err_bad_request: "Mit der Datei oder der Anfrage stimmt etwas nicht. Wähle die Datei noch einmal aus und versuche es erneut.",
+  bk_err_not_found: "Diese Sicherungsdatei gibt es nicht mehr. Lade die Seite neu und wähle eine andere.",
+  bk_encrypt: "Sicherungsdateien verschlüsseln",
+  bk_encrypt_h: "Schützt die Kopien auf einer externen Festplatte, in der Cloud oder in einem Netzwerkordner.",
+  bk_pw: "Passwort für Sicherungen",
+  bk_pw_h: "Wenn du das Passwort vergisst, lassen sich diese Sicherungen nicht mehr öffnen, und auch Bageo kann sie nicht retten.",
+  bk_exp_enc: "Diese Datei mit einem Passwort verschlüsseln",
+  bk_exp_pw: "Passwort",
+  bk_exp_pw2: "Noch einmal eingeben",
+  bk_pw_mismatch: "Die beiden Passwörter stimmen nicht überein.",
+  bk_unlock_t: "Diese Sicherung ist verschlüsselt. Gib ihr Passwort ein.",
+  bk_unlock_btn: "Öffnen",
+  bk_encrypted: "Verschlüsselt",
+  bk_err_wrong_password: "Falsches Passwort. Versuche es noch einmal.",
+  bk_err_backup_password_short: "Das Passwort braucht mindestens 8 Zeichen.",
+  err_backup_password_short: "Das Passwort für Sicherungen braucht mindestens 8 Zeichen.",
+  err_backup_password_missing: "Lege ein Passwort für Sicherungen fest, bevor du die Verschlüsselung einschaltest.",
+  bk_st_exporting: "Die Exportdatei wird vorbereitet…",
 };
 
 I18N["pt"] = {
@@ -11181,6 +12048,103 @@ I18N["pt"] = {
   repair_done: "Celulares pareados de novo. Conecte por USB uma vez cada celular que usava Wi-Fi.",
   ph_link_usb: "Conectado por USB",
   ph_link_wifi: "Conectado por Wi-Fi",
+  g_backup: "Backup e restauração",
+  g_backup_d: "Os backups contêm suas chaves e senhas. Guarde-os num lugar a que só você tenha acesso.",
+  bk_schedule: "Backup automático",
+  bk_s_off: "Não fazer backup automático",
+  bk_s_daily: "Todo dia",
+  bk_s_weekly: "Toda semana",
+  bk_s_monthly: "Todo mês",
+  bk_dir: "Onde salvar",
+  bk_dir_ph: "Local padrão",
+  bk_dir_ph_d: "Local padrão: {dir}",
+  bk_dir_h: "Deixe em branco para usar o local padrão. Para mudar, digite o caminho completo de uma pasta.",
+  bk_open: "Abrir pasta",
+  bk_run: "Fazer backup agora",
+  bk_export: "Exportar configurações",
+  bk_import: "Importar configurações",
+  bk_keep: "Backups automáticos a manter",
+  bk_unit_copies: "backups",
+  bk_calls: "Incluir registro de chamadas, gravações e SMS",
+  bk_calls_h: "Os arquivos ficam bem maiores.",
+  bk_files: "Arquivos de backup",
+  bk_files_empty: "Ainda não há backups.",
+  bk_show_all: "Mostrar todos ({n})",
+  bk_show_less: "Mostrar só os 10 mais recentes",
+  bk_kind_scheduled: "Automático",
+  bk_kind_manual: "Manual",
+  bk_kind_before_import: "Antes de importar",
+  bk_kind_export: "Exportado",
+  bk_btn_restore: "Restaurar",
+  bk_btn_download: "Baixar",
+  bk_st_running: "Fazendo backup…",
+  bk_st_none: "Ainda não há nenhum backup.",
+  bk_st_ok: "Último backup: {time}, concluído.",
+  bk_st_fail: "O último backup não deu certo ({time}). {why}",
+  bk_st_next: "Próximo backup: {time}",
+  bk_item_settings: "Configurações",
+  bk_item_contacts: "Contatos, Lista de bloqueio e Lista branca",
+  bk_item_numbers: "Seus números anotados e números de golpe",
+  bk_item_phones: "Dados dos chips SIM",
+  bk_item_errands: "Ligações IA",
+  bk_item_calls: "Registro de chamadas e gravações",
+  bk_item_sms: "SMS",
+  bk_item_tasks: "Pendências",
+  bk_item_n: "{name}: {n}",
+  bk_dlg_title: "Restaurar a partir deste backup?",
+  bk_dlg_when: "Backup feito em {time}",
+  bk_dlg_ver: "Bageo {ver}",
+  bk_dlg_file: "Arquivo: {name}",
+  bk_dlg_has: "Escolha o que restaurar:",
+  bk_warn_newer_version: "Este backup vem de um Bageo mais novo. Algumas configurações podem não funcionar aqui.",
+  bk_warn_plain_settings_file: "Este é só um arquivo de configurações, então apenas as configurações são restauradas.",
+  bk_warn_password: "A senha do console será trocada pela senha que está no backup.",
+  bk_dlg_note: "Antes de restaurar, o Bageo salva suas configurações atuais em outro arquivo.",
+  bk_dlg_ok: "Restaurar",
+  bk_done_run: "Backup salvo: {name}",
+  bk_done_apply: "Restaurado. Suas configurações anteriores foram salvas em {name}.",
+  bk_done_restart: "Abra o Bageo de novo para tudo valer.",
+  err_backup_dir_unwritable: "Não dá para salvar nessa pasta. Escolha outra e digite o caminho completo.",
+  bk_err_busy: "Já há um backup ou uma restauração em andamento. Tente de novo quando terminar.",
+  bk_err_dir_unwritable: "Não dá para salvar na pasta de backup. Escolha outra pasta.",
+  bk_err_disk_full: "O disco está cheio. Libere espaço ou escolha outra pasta.",
+  bk_err_io: "O backup não deu certo. Tente de novo daqui a pouco.",
+  bk_err_not_backup: "Este arquivo não é um backup do Bageo. Escolha outro arquivo.",
+  bk_err_damaged: "Este arquivo de backup está danificado. Tente outro.",
+  bk_err_too_new: "Este backup vem de um Bageo mais novo. Instale primeiro a versão nova.",
+  bk_err_too_large: "O arquivo passa de 200 MB. Use um backup só com as configurações.",
+  bk_err_expired: "Passou tempo demais. Escolha o arquivo de novo.",
+  bk_err_call_active: "Há uma chamada em andamento. Tente de novo quando ela acabar.",
+  bk_err_not_local: "A pasta só pode ser aberta no computador onde o Bageo está rodando.",
+  bk_item_keys: "Chaves, senhas e conexões",
+  bk_exp_title: "O que você quer exportar?",
+  bk_exp_keys_h: "Ative ao trocar de computador. Deixe desativado ao mostrar suas configurações a outra pessoa.",
+  bk_exp_big_h: "O arquivo fica bem maior.",
+  bk_exp_ok: "Exportar",
+  bk_err_bad_items: "Escolha pelo menos um item.",
+  bk_warn_keys_kept: "As chaves, senhas e conexões deste computador ficam como estão.",
+  bk_warn_connections: "Para onde vão as notificações e quem pode controlar o Bageo a distância passam a ser os deste arquivo.",
+  bk_dlg_size: "Tamanho: {size}",
+  bk_st_restoring: "Restaurando…",
+  bk_err_need_password: "Para baixar, abra o console no computador em que o Bageo roda ou defina antes uma senha para o console.",
+  bk_err_bad_request: "Há um problema com o arquivo ou o pedido. Escolha o arquivo de novo e tente outra vez.",
+  bk_err_not_found: "Esse arquivo de backup não existe mais. Recarregue a página e escolha outro.",
+  bk_encrypt: "Criptografar os arquivos de backup",
+  bk_encrypt_h: "Protege as cópias guardadas em um disco externo, na nuvem ou em uma pasta de rede.",
+  bk_pw: "Senha dos backups",
+  bk_pw_h: "Se você esquecer a senha, não será possível abrir esses backups, e o Bageo também não consegue recuperá-los.",
+  bk_exp_enc: "Criptografar este arquivo com uma senha",
+  bk_exp_pw: "Senha",
+  bk_exp_pw2: "Digite de novo",
+  bk_pw_mismatch: "As duas senhas não são iguais.",
+  bk_unlock_t: "Este backup está criptografado. Digite a senha dele.",
+  bk_unlock_btn: "Abrir",
+  bk_encrypted: "Criptografado",
+  bk_err_wrong_password: "Senha errada. Tente de novo.",
+  bk_err_backup_password_short: "A senha precisa ter pelo menos 8 caracteres.",
+  err_backup_password_short: "A senha dos backups precisa ter pelo menos 8 caracteres.",
+  err_backup_password_missing: "Defina uma senha para os backups antes de ativar a criptografia.",
+  bk_st_exporting: "Preparando o arquivo para exportar…",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word
@@ -13730,6 +14694,7 @@ function populate() {
   renderSetup();
   renderNote();
   renderErrandForm();
+  bkLoad();
   // The environment's bot can take commands only when it is set up.
   $("tgEnvCtl").hidden = !(S.telegram_bot_token_set && String(S.telegram_chat_id || "").trim());
 }
@@ -13749,6 +14714,7 @@ function relabelSettings(skipRows) {
   $("sumReady").textContent = t(S.summary_ready ? "sum_ready" : "sum_notready");
   $("btnUseThisUrl").textContent = t("use_this_url", { url: location.origin });
   $("f-public_url").placeholder = consoleUrl || "http://192.168.1.20:8787";
+  bkRender();
   renderHelper();
   updateDirty();
 }
@@ -13829,6 +14795,399 @@ $("btnRepairPhones").addEventListener("click", async () => {
     if (e.status !== 401) toast(e.message, true);
   }
   loadSystem();
+});
+
+// ----- backup & restore
+const BK_ORDER = ["settings", "keys", "contacts", "numbers", "phones", "errands", "calls", "sms", "tasks"];
+const BK_EXPORT_ON = new Set(["settings", "keys", "contacts", "numbers", "phones", "errands"]);
+const BK_BIG = new Set(["calls", "sms", "tasks"]);
+const BK_MAX_IMPORT = 200 * 1024 * 1024;
+let bk = null, bkBusy = false, bkPhase = "", bkAll = false, bkNote = "", bkFail = "", bkTimer = 0;
+const bkHas = (key) => I18N[lang][key] != null || I18N.en[key] != null;
+function bkErr(e) {
+  const d = (e && e.data) || {};
+  const code = String(d.code || d.error || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  return code && bkHas("bk_err_" + code) ? t("bk_err_" + code) : (e && e.message) || t("err_network");
+}
+function bkSize(n) {
+  n = Number(n) || 0;
+  const f = (v, unit, digits) => {
+    try { return new Intl.NumberFormat(loc(), { style: "unit", unit, unitDisplay: "short", maximumFractionDigits: digits }).format(v); }
+    catch (_) { return v.toFixed(digits) + " " + unit; }
+  };
+  if (n < 1024) return f(n, "byte", 0);
+  if (n < 1048576) return f(n / 1024, "kilobyte", 0);
+  if (n < 1073741824) return f(n / 1048576, "megabyte", 1);
+  return f(n / 1073741824, "gigabyte", 1);
+}
+function bkKind(k) {
+  const key = "bk_kind_" + String(k || "");
+  return bkHas(key) ? t(key) : String(k || "");
+}
+function bkRender() {
+  const d = bk;
+  // Backing up and restoring show here; picking a file or what to restore does not.
+  const running = bkPhase === "run" || !!(d && d.running);
+  const restoring = bkPhase === "apply";
+  const busy = running || restoring;
+  $("f-backup_dir").placeholder = d && d.default_dir ? t("bk_dir_ph_d", { dir: d.default_dir }) : t("bk_dir_ph");
+  $("btnBkOpen").hidden = !(d && d.can_open_folder);
+  $("btnBkRun").disabled = busy;
+  $("btnBkImport").disabled = busy;
+  const lines = [];
+  if (running) lines.push({ text: t("bk_st_running") });
+  else if (restoring) lines.push({ text: t("bk_st_restoring") });
+  else if (bkPhase === "export") lines.push({ text: t("bk_st_exporting") });
+  else if (d) {
+    const last = d.last;
+    if (!last) lines.push({ text: t("bk_st_none") });
+    else if (last.ok) lines.push({ text: t("bk_st_ok", { time: fmtFull(last.at) }) });
+    else {
+      const code = String(last.error || "").toLowerCase();
+      const why = code && bkHas("bk_err_" + code) ? t("bk_err_" + code) : "";
+      lines.push({ text: t("bk_st_fail", { time: fmtFull(last.at), why }).trim(), bad: true });
+    }
+    if (d.next_at) lines.push({ text: t("bk_st_next", { time: fmtFull(d.next_at) }) });
+    if (d.dir_ok === false) lines.push({ text: t("err_backup_dir_unwritable"), bad: true });
+  }
+  if (bkFail) lines.push({ text: bkFail, bad: true });
+  if (bkNote) lines.push({ text: bkNote });
+  $("bkStatus").replaceChildren(...lines.map((l) => {
+    const p = document.createElement("div");
+    p.textContent = l.text;
+    if (l.bad) p.className = "bad";
+    return p;
+  }));
+  const list = d && Array.isArray(d.backups) ? d.backups : [];
+  $("bkCount").textContent = list.length ? "(" + list.length + ")" : "";
+  const rows = (bkAll ? list : list.slice(0, 10)).map((b) => {
+    const row = document.createElement("div");
+    row.className = "bk-row";
+    const who = document.createElement("div");
+    who.className = "bk-when";
+    const when = document.createElement("div");
+    when.textContent = fmtFull(b.at);
+    const meta = document.createElement("div");
+    meta.className = "bk-meta";
+    meta.textContent = [bkKind(b.kind), bkSize(b.size)].concat(b.encrypted ? [t("bk_encrypted")] : []).join(" · ");
+    who.append(when, meta);
+    const acts = document.createElement("div");
+    acts.className = "bk-acts";
+    const re = document.createElement("button");
+    re.type = "button";
+    re.className = "btn sm";
+    re.textContent = t("bk_btn_restore");
+    re.dataset.bkRestore = b.name;
+    re.disabled = busy;
+    const dl = document.createElement("button");
+    dl.type = "button";
+    dl.className = "btn sm";
+    dl.textContent = t("bk_btn_download");
+    dl.dataset.bkDownload = b.name;
+    dl.disabled = busy;
+    acts.append(re, dl);
+    row.append(who, acts);
+    return row;
+  });
+  if (!rows.length) {
+    const none = document.createElement("div");
+    none.className = "bk-meta";
+    none.textContent = t("bk_files_empty");
+    rows.push(none);
+  }
+  $("bkList").replaceChildren(...rows);
+  $("btnBkAll").hidden = list.length <= 10;
+  $("btnBkAll").textContent = bkAll ? t("bk_show_less") : t("bk_show_all", { n: list.length });
+}
+async function bkLoad() {
+  clearTimeout(bkTimer);
+  try {
+    bk = await api("/backup");
+    bkFail = "";
+  } catch (e) {
+    bk = null;
+    bkFail = e.status === 401 ? "" : bkErr(e);
+  }
+  bkRender();
+  if (bk && bk.running) bkTimer = setTimeout(() => { if (view === "settings") bkLoad(); }, 3000);
+}
+// A download through a one-time ticket: the link holds no password.
+function bkDownload(ticket) {
+  const a = document.createElement("a");
+  a.href = apiBase + "/backup/download/" + encodeURIComponent(ticket);
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+const bkName = (id) => (bkHas("bk_item_" + id) ? t("bk_item_" + id) : String(id));
+// A list of tick boxes in `host`; rows are {id, label, hint, on}.
+function bkTicks(host, rows, onChange) {
+  host.replaceChildren(...rows.map((r) => {
+    const lab = document.createElement("label");
+    lab.className = "sw";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.value = r.id;
+    box.checked = r.on;
+    box.addEventListener("change", onChange);
+    const name = document.createElement("b");
+    name.textContent = r.label;
+    const body = document.createElement("span");
+    body.append(name);
+    if (r.hint) {
+      const small = document.createElement("small");
+      small.textContent = r.hint;
+      body.append(small);
+    }
+    lab.append(box, body);
+    return lab;
+  }));
+}
+const bkTicked = (host) => Array.from(host.querySelectorAll("input:checked"), (b) => b.value);
+// The export choices: resolves {items, password} on "Export", null otherwise.
+function bkExportAsk() {
+  return new Promise((resolve) => {
+    const d = $("bkExpDlg"), host = $("bkExpItems");
+    if (typeof d.showModal !== "function") { resolve({ items: Array.from(BK_EXPORT_ON) }); return; }
+    const enc = $("bkExpEnc"), pw = $("bkExpPw"), pw2 = $("bkExpPw2"), err = $("bkExpPwErr");
+    enc.checked = false;
+    pw.value = "";
+    pw2.value = "";
+    const sync = () => {
+      $("bkExpPwBox").hidden = !enc.checked;
+      const a = pw.value.trim(), b = pw2.value.trim();
+      let why = "";
+      if (enc.checked && a && [...a].length < 8) why = t("bk_err_backup_password_short");
+      else if (enc.checked && b && a !== b) why = t("bk_pw_mismatch");
+      err.textContent = why;
+      err.hidden = !why;
+      const pwOk = !enc.checked || ([...a].length >= 8 && a === b);
+      $("bkExpOk").disabled = !bkTicked(host).length || !pwOk;
+    };
+    for (const el of [pw, pw2]) el.oninput = sync;
+    enc.onchange = () => { sync(); if (enc.checked) pw.focus(); };
+    bkTicks(host, BK_ORDER.map((id) => ({
+      id,
+      label: bkName(id),
+      hint: id === "keys" ? t("bk_exp_keys_h") : BK_BIG.has(id) ? t("bk_exp_big_h") : "",
+      on: BK_EXPORT_ON.has(id),
+    })), sync);
+    sync();
+    d.returnValue = "";
+    d.addEventListener("close", () => {
+      const items = bkTicked(host);
+      const password = enc.checked ? pw.value.trim() : "";
+      pw.value = "";
+      pw2.value = "";
+      resolve(d.returnValue === "ok" ? { items, password } : null);
+    }, { once: true });
+    d.showModal();
+  });
+}
+// The preview of a backup, as a confirmation: resolves {items} (the ticked ids) on "Restore", null otherwise.
+function bkAsk(p) {
+  return new Promise((resolve) => {
+    const d = $("bkDlg"), host = $("bkDlgItems");
+    const parts = [];
+    if (p.created_at) parts.push(t("bk_dlg_when", { time: fmtFull(p.created_at) }));
+    if (p.app_version) parts.push(t("bk_dlg_ver", { ver: p.app_version }));
+    if (!parts.length) parts.push(t("bk_dlg_file", { name: p.source_name || "" }));
+    if (p.total_size) parts.push(t("bk_dlg_size", { size: bkSize(p.total_size) }));
+    if (p.encrypted) parts.push(t("bk_encrypted"));
+    $("bkDlgMeta").textContent = parts.join(" · ");
+    const rank = (id) => { const i = BK_ORDER.indexOf(id); return i < 0 ? BK_ORDER.length : i; };
+    const has = (Array.isArray(p.items) ? p.items : []).slice().sort((a, b) => rank(a.id) - rank(b.id));
+    $("bkDlgHas").hidden = !has.length;
+    const base = (Array.isArray(p.warnings) ? p.warnings : []).map((w) => "bk_warn_" + w).filter(bkHas);
+    const sync = () => {
+      const on = bkTicked(host);
+      const keys = base.slice();
+      if (p.changes_password && on.includes("keys")) keys.push("bk_warn_password");
+      if (p.changes_connections && on.includes("keys")) keys.push("bk_warn_connections");
+      if (!on.includes("keys")) keys.push("bk_warn_keys_kept");
+      $("bkDlgWarns").replaceChildren(...keys.map((k) => {
+        const e = document.createElement("p");
+        e.textContent = t(k);
+        return e;
+      }));
+      $("bkDlgWarns").hidden = !keys.length;
+      $("bkDlgOk").disabled = !on.length;
+    };
+    bkTicks(host, has.map((it) => {
+      const name = bkName(it.id);
+      return { id: it.id, label: it.count != null ? t("bk_item_n", { name, n: it.count }) : name, on: true };
+    }), sync);
+    sync();
+    if (typeof d.showModal !== "function") {
+      resolve(window.confirm(t("bk_dlg_title") + "\n\n" + parts.join(" · ")) ? { items: has.map((it) => it.id) } : null);
+      return;
+    }
+    d.returnValue = "";
+    d.addEventListener("close", () => resolve(d.returnValue === "ok" ? { items: bkTicked(host) } : null), { once: true });
+    d.showModal();
+  });
+}
+// An encrypted file: ask for its password in the restore dialog until it opens.
+// Resolves the opened preview, null when the dialog is closed; other errors are thrown.
+function bkUnlock(p) {
+  return new Promise((resolve, reject) => {
+    const d = $("bkDlg"), form = $("bkDlgForm"), pw = $("bkDlgPw"), err = $("bkDlgPwErr"), ok = $("bkDlgOk");
+    const parts = [$("bkDlgHas"), $("bkDlgItems"), $("bkDlgWarns")];
+    if (typeof d.showModal !== "function") {
+      const typed = window.prompt(t("bk_unlock_t"));
+      if (!typed) { resolve(null); return; }
+      api("/backup/unlock", jsonBody("POST", { token: p.token, password: typed })).then(resolve, reject);
+      return;
+    }
+    $("bkDlgMeta").textContent = t("bk_dlg_file", { name: p.source_name || "" }) + " · " + t("bk_encrypted");
+    $("bkDlgLock").hidden = false;
+    parts.forEach((e) => { e.hidden = true; });
+    ok.textContent = t("bk_unlock_btn");
+    ok.disabled = false;
+    pw.value = "";
+    err.hidden = true;
+    let busy = false, settled = false;
+    const done = (fn, v) => {
+      if (settled) return;
+      settled = true;
+      form.removeEventListener("submit", submit);
+      d.removeEventListener("close", closed);
+      pw.value = "";
+      $("bkDlgLock").hidden = true;
+      parts.forEach((e) => { e.hidden = false; });
+      ok.textContent = t("bk_dlg_ok");
+      // The dialog's "close" comes a moment later: only then is it free for the next step.
+      if (d.open) {
+        d.addEventListener("close", () => fn(v), { once: true });
+        d.close();
+      } else fn(v);
+    };
+    const submit = async (ev) => {
+      ev.preventDefault();
+      if (busy || !pw.value.trim()) { pw.focus(); return; }
+      busy = true;
+      ok.disabled = true;
+      err.hidden = true;
+      try {
+        done(resolve, await api("/backup/unlock", jsonBody("POST", { token: p.token, password: pw.value })));
+      } catch (e) {
+        const code = String(((e && e.data) || {}).code || "");
+        if (code === "wrong_password") {
+          err.textContent = t("bk_err_wrong_password");
+          err.hidden = false;
+          pw.select();
+        } else done(reject, e);
+      } finally {
+        busy = false;
+        ok.disabled = false;
+      }
+    };
+    const closed = () => done(resolve, null);
+    form.addEventListener("submit", submit);
+    d.addEventListener("close", closed);
+    d.returnValue = "";
+    d.showModal();
+    pw.focus();
+  });
+}
+// After the preview: ask, apply, then reload the settings (a changed password goes through the usual sign-in).
+async function bkFinish(p) {
+  if (p && p.needs_password) {
+    const opened = await bkUnlock(p);
+    if (!opened) {
+      api("/backup/discard", jsonBody("POST", { token: p.token })).catch(() => {});
+      return;
+    }
+    p = opened;
+  }
+  const r = await bkAsk(p);
+  if (!r) {
+    // Closed without restoring: the preview and its upload can go now.
+    if (p && p.token) api("/backup/discard", jsonBody("POST", { token: p.token })).catch(() => {});
+    return;
+  }
+  bkPhase = "apply";
+  bkRender();
+  const d = await api("/backup/apply", jsonBody("POST", { token: p.token, items: r.items }));
+  const msg = [t("bk_done_apply", { name: d.before_import || "" })];
+  if (d.restart_needed) msg.push(t("bk_done_restart"));
+  bkNote = msg.join(" ");
+  toast(bkNote);
+  await loadSettings();
+}
+async function bkGuard(work, phase = "") {
+  if (bkBusy) return;
+  bkBusy = true;
+  bkPhase = phase;
+  bkNote = "";
+  bkRender();
+  try { await work(); }
+  catch (e) { if (e.status !== 401) toast(bkErr(e), true); }
+  finally {
+    bkBusy = false;
+    bkPhase = "";
+    await bkLoad();
+  }
+}
+$("btnBkRun").addEventListener("click", () => bkGuard(async () => {
+  const d = await api("/backup/run", jsonBody("POST", {}));
+  toast(t("bk_done_run", { name: d.entry ? d.entry.name : "" }));
+}, "run"));
+$("btnBkExport").addEventListener("click", async () => {
+  const r = await bkExportAsk();
+  if (!r || !r.items.length) return;
+  if (r.items.includes("keys") && bk && bk.can_download === false) { toast(t("bk_err_need_password"), true); return; }
+  const body = { items: r.items };
+  if (r.password) body.password = r.password;
+  bkGuard(async () => {
+    const d = await api("/backup/export", jsonBody("POST", body));
+    bkDownload(d.ticket);
+  }, "export");
+});
+$("btnBkImport").addEventListener("click", () => { if (!bkBusy) $("bkFile").click(); });
+$("bkFile").addEventListener("change", () => {
+  const file = $("bkFile").files[0];
+  $("bkFile").value = "";
+  if (!file) return;
+  if (file.size > BK_MAX_IMPORT) { toast(t("bk_err_too_large"), true); return; }
+  bkGuard(async () => {
+    const p = await api("/backup/import", {
+      method: "POST",
+      headers: { "Content-Type": file.type || "application/octet-stream", "X-Filename": encodeURIComponent(file.name || "backup") },
+      body: file,
+    });
+    await bkFinish(p);
+  });
+});
+$("bkList").addEventListener("click", (ev) => {
+  const g = ev.target.closest("[data-bk-download]");
+  if (g) {
+    if (bk && bk.can_download === false) { toast(t("bk_err_need_password"), true); return; }
+    api("/backup/file-ticket", jsonBody("POST", { name: g.dataset.bkDownload }))
+      .then((d) => bkDownload(d.ticket))
+      .catch((e) => { if (e.status !== 401) toast(bkErr(e), true); });
+    return;
+  }
+  const b = ev.target.closest("[data-bk-restore]");
+  if (!b) return;
+  bkGuard(async () => {
+    await bkFinish(await api("/backup/restore", jsonBody("POST", { name: b.dataset.bkRestore })));
+  });
+});
+$("btnBkAll").addEventListener("click", () => { bkAll = !bkAll; bkRender(); });
+$("btnBkOpen").addEventListener("click", async () => {
+  try { await api("/backup/open-folder", jsonBody("POST", {})); }
+  catch (e) { if (e.status !== 401) toast(bkErr(e), true); }
+});
+$("bkDlgCancel").addEventListener("click", () => $("bkDlg").close("cancel"));
+$("bkExpCancel").addEventListener("click", () => $("bkExpDlg").close("cancel"));
+// Encryption needs a password: say so as soon as it is turned on without one.
+$("f-backup_encrypt").addEventListener("change", (ev) => {
+  const pw = $("f-backup_password");
+  if (!ev.target.checked || (S && S.backup_password_set) || (pw && pw.value.trim())) return;
+  toast(t("err_backup_password_missing"), true);
+  if (pw) pw.focus();
 });
 
 // ----- prompt editor + interview helper

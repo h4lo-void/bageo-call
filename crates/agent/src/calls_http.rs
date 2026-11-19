@@ -286,7 +286,7 @@ pub fn unauthorized() -> Response {
 /// An error for the web console: `code` is what the page translates
 /// (`err_<code>` in its dictionary); `error` keeps the agent's own words for
 /// the tooltip and for scripts.
-fn api_error(status: StatusCode, code: &str, error: impl Into<String>) -> Response {
+pub(crate) fn api_error(status: StatusCode, code: &str, error: impl Into<String>) -> Response {
     let error: String = error.into();
     (status, Json(json!({"ok": false, "code": code, "error": error}))).into_response()
 }
@@ -1277,6 +1277,11 @@ async fn settings_put(
     if !patch.is_object() {
         return api_error(StatusCode::BAD_REQUEST, "bad_request", "JSON object body required");
     }
+    // A backup folder this computer cannot write in, or a backup password that
+    // does not work, is not saved.
+    if let Some(refused) = crate::backup::check_settings_patch(&patch, &state.settings_store.snapshot()) {
+        return refused;
+    }
     let days_before = state.settings_store.snapshot().retention_days;
     // Blocked numbers sent the old way go onto the Blacklist (the settings do
     // not keep them); nothing is saved when the contacts cannot be.
@@ -1590,7 +1595,7 @@ async fn sms_clear(
 
 /// The owner now keeps fewer days: what is too old goes right away (in the
 /// background; the hourly cleanup would only get to it later).
-fn purge_after_fewer_days(state: &CallsState, days_before: u32, days_now: u32) {
+pub(crate) fn purge_after_fewer_days(state: &CallsState, days_before: u32, days_now: u32) {
     if days_now >= days_before {
         return;
     }
@@ -5170,5 +5175,6 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/appointments/{id}/retry-sms", post(appointment_retry_sms))
         .merge(crate::contacts::router())
         .merge(crate::errands::router())
+        .merge(crate::backup::router())
         .with_state(state)
 }

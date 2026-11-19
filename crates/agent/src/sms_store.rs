@@ -173,6 +173,42 @@ impl SmsBook {
         self.messages.len()
     }
 
+    /// Add messages from elsewhere (a backup): the same time, direction,
+    /// numbers and text (or the same ref) count as one already here. An id
+    /// taken here gets the next free one; one still "sending" has timed out.
+    /// How many were added.
+    pub fn merge(&mut self, incoming: Vec<SmsMessage>) -> usize {
+        let mut ids: std::collections::HashSet<u64> = self.messages.iter().map(|m| m.id).collect();
+        let mut added = 0;
+        for mut m in incoming {
+            let known = self.messages.iter().any(|x| {
+                (x.at_ms == m.at_ms && x.dir == m.dir && x.from == m.from && x.to == m.to && x.text == m.text)
+                    || (!m.reference.is_empty() && x.reference == m.reference)
+            });
+            if known {
+                continue;
+            }
+            if m.id == 0 || ids.contains(&m.id) {
+                m.id = self.last_id.saturating_add(1);
+            }
+            if m.status == STATUS_SENDING {
+                m.status = STATUS_TIMEOUT.to_string();
+            }
+            ids.insert(m.id);
+            self.last_id = self.last_id.max(m.id);
+            self.messages.push(m);
+            added += 1;
+        }
+        if added > 0 {
+            self.messages.sort_by_key(|m| m.id);
+            if self.messages.len() > MAX_MESSAGES {
+                let extra = self.messages.len() - MAX_MESSAGES;
+                self.messages.drain(..extra);
+            }
+        }
+        added
+    }
+
     pub fn messages(&self) -> &[SmsMessage] {
         &self.messages
     }
@@ -517,6 +553,21 @@ impl SmsStore {
         self.book.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// The folder the messages are kept in.
+    pub fn dir(&self) -> PathBuf {
+        self.path.parent().map(Path::to_path_buf).unwrap_or_default()
+    }
+
+    /// Add the messages of a backup that are not here yet; how many.
+    pub fn merge(&self, messages: Vec<SmsMessage>) -> usize {
+        let mut book = self.lock();
+        let added = book.merge(messages);
+        if added > 0 {
+            self.save(&book);
+        }
+        added
+    }
+
     /// Write the file. A failure is logged and the messages stay in memory.
     fn save(&self, book: &SmsBook) {
         let body = match serde_json::to_vec(&SmsFileRef { messages: book.messages() }) {
@@ -640,6 +691,11 @@ impl SmsStore {
         }
         removed
     }
+}
+
+/// The messages of a `messages.json` (a backup's).
+pub fn messages_from_json(bytes: &[u8]) -> serde_json::Result<Vec<SmsMessage>> {
+    serde_json::from_slice::<SmsFile>(bytes).map(|f| f.messages)
 }
 
 /// The messages of the file. A file that cannot be read is moved aside (so the

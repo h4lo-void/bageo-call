@@ -18,6 +18,7 @@ Settings live in two places:
 | Have the AI call a restaurant and book a table | [AI errands](#ai-errands) |
 | Decide on meeting requests later and let the caller know | [Appointments](#appointments) |
 | Open the console from my phone | [Using the console from other devices](#using-the-console-from-other-devices) |
+| Keep copies of my settings, or move to a new computer | [Backup & restore](#backup--restore) |
 
 ## Settings in the web console
 
@@ -297,6 +298,53 @@ Rules that keep it safe:
 - Texts also go out from the SIM the call came in on, so a dual-SIM phone answers from the right number.
 
 Times are the computer's local time (see [Time zone](#time-zone)). Without any key for the summary, the notification carries the caller's first words instead; the transcript is always in the console. Every appointment field and route is in [API → Appointments and tasks](API.md#appointments-and-tasks).
+
+### Backup & restore
+
+Bageo can back up your settings on its own, make a copy when you ask, and pack everything into one file for another computer. Backups stay on your computer: nothing is uploaded or sent anywhere, and Bageo does not update itself.
+
+Backup files hold your keys, passwords and connections, unless you leave them out of an export. Connections are where notifications go and who can control Bageo remotely: the notification channels, the Telegram chat, the number calls are forwarded to and whether urgent calls are put through to it, the numbers Bageo may call back, the summary service and what AI tools may do over MCP. Keep backup files where only you can get them.
+
+| Setting | Default | What it does |
+|---|---|---|
+| Automatic backup | every week | Off, every day, every week or every month. |
+| Save backups to | default location | The full path of a folder. Empty: the `backups` folder inside Bageo's data folder (`data/calls/backups`). When you save, Bageo checks that it can write there. |
+| Automatic backups to keep (*More options*) | 10 | 1 to 100. Only automatic backups count. |
+| Include call records, recordings and texts (*More options*) | off | On: *Back up now* and automatic backups also hold call records, recordings, texts and *To do* items. The file gets much bigger. |
+| Encrypt backup files (*More options*) | off | On: *Back up now*, automatic backups and "Before import" copies are encrypted with the backup password. |
+| Backup password (*More options*) | empty | At least 8 characters; needed before encryption can be turned on. It is never shown again. If you forget it, these backups can't be opened, and Bageo can't recover them either. |
+
+The six settings are saved as `backup_schedule`, `backup_dir`, `backup_keep`, `backup_include_calls`, `backup_encrypt` and `backup_password`. Automatic and manual backups always hold your settings, your keys, passwords and connections, contacts and lists, your own number notes and scam numbers, SIM card details, and AI errands.
+
+The backup password is saved on this computer with your other settings, so automatic backups can use it. Encryption protects the copies that leave this computer: on an external drive, in a cloud folder or on a network folder. An export with only the settings leaves the password out.
+
+- *Back up now* makes a copy right away.
+- *Export settings* opens a list where you tick what to export: settings, keys, passwords and connections, contacts and lists, your own number notes and scam numbers, SIM card details, AI errands, call records and recordings, texts, and *To do* items. The first six are ticked at the start. Tick *Keys, passwords and connections* when you move to another computer; leave it off when you show your settings to someone. Call records, texts and *To do* items make the file much bigger. Without a console password, a file with keys only downloads when the console is open on the computer that runs Bageo. Tick *Encrypt this file with a password* and type a password twice (at least 8 characters) for an encrypted file. The file is named `bageo-export-YYYYMMDD-HHMMSS.zip`, or `.bageo` when it is encrypted.
+- *Import settings* takes a backup or export (.zip, or .bageo when it is encrypted), or an older single settings file (.json). An encrypted file asks for its password first; after 5 wrong tries, choose the file again. From the older file only the settings come back, and the keys, passwords and connections too if it holds any.
+- *Backup files* lists the latest 10 copies, each with *Restore* and *Download*. Encrypted copies are marked *Encrypted*. Restoring one uses the backup password saved here; if the copy was made with another password, the console asks for it.
+
+Before anything is restored, the console shows when the backup was made, which version it comes from, how big it is and what is inside, with a tick box for each item. All are ticked at the start, and items the file does not hold are not shown. Untick what you do not want back; *Restore* needs at least one. Bageo first saves your current settings as a separate file ("Before import"). If *Keys, passwords and connections* is not ticked, or the file has none, those on this computer stay as they are. If it is ticked, the ones the file holds replace these, and any the file does not have stay, so an older backup never takes away a password or key set since. Restoring a "Before import" file from the backup list puts the whole group back exactly as it was before that import, taking away everything the import brought. The console warns you first when the console password, where notifications go or who can control Bageo would change. The backup folder always stays as it is on this computer. A restore never shortens how long things are kept: *Days to keep records* and *Automatic backups to keep* only stay the same or get longer. To shorten them, change them in the console. Call records, texts and *To do* items are added to the ones you already have, and nothing is deleted. Nothing can be restored during a call: try again when it ends. If some changes need a restart, the console says so.
+
+**How automatic backups run:**
+
+- One is made once a full day, week or month has passed since the last one.
+- A call in progress makes it wait until the call ends.
+- If the computer was off at the time, the backup is made when Bageo starts again.
+- If a backup fails, Bageo tries again every hour and sends you one notification.
+
+**What is kept:**
+
+- Automatic backups: only the newest ones, as many as *Automatic backups to keep*.
+- "Before import" copies: the newest 5.
+- Manual backups and exports: never deleted by Bageo.
+- Any other file in the folder is left alone.
+
+**Moving to a new computer:**
+
+1. On the old computer, click *Export settings* and keep *Keys, passwords and connections* ticked, so you do not have to type them again. To bring call records along, also tick *Call records and recordings*, *Texts* and *To do items*.
+2. Install Bageo on the new computer.
+3. Open the console and click *Import settings*, pick the file, and confirm with *Restore*.
+4. If the phones do not connect by themselves, plug each one in with USB once.
 
 ### Advanced
 

@@ -29,6 +29,8 @@
 mod adpcm;
 mod ambience;
 mod appointments;
+mod backup;
+mod backup_crypt;
 mod calendar;
 mod callback;
 mod calls;
@@ -1310,6 +1312,8 @@ async fn main() -> Result<()> {
         errands: errand_store.clone(),
         sms: sms_store,
     };
+    // Automatic backups (backup_schedule), checked every 10 minutes.
+    backup::spawn(calls_state.clone());
     let addr: SocketAddr = format!("{}:{}", settings.host, settings.port).parse()?;
     let mode = settings.agent_mode.as_str();
     let llm_desc = match settings.llm_provider {

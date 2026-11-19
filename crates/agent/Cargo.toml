@@ -42,3 +42,12 @@ flate2.workspace = true
 encoding_rs = "0.8"
 # Share UDP 5353 with the system's mDNS responder (SO_REUSEADDR / SO_REUSEPORT).
 socket2 = { version = "0.6", features = ["all"] }
+# Encrypted backups (.bageo): Argon2id turns the password into a key, XChaCha20-Poly1305
+# seals the backup a chunk at a time (RustCrypto); random salts and nonces from the system.
+argon2 = { version = "0.5", default-features = false, features = ["alloc"] }
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc", "stream"] }
+getrandom = "0.2"
+
+[target.'cfg(unix)'.dependencies]
+# Free room on the disk before a backup's call records are restored (statvfs).
+libc = "0.2"
