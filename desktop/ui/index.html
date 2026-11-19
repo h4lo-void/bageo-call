@@ -145,6 +145,10 @@
         <span data-i18n="set_notify_sms"></span>
       </label>
       <span class="hint" id="smsHint" data-i18n="set_notify_sms_old" hidden></span>
+      <label class="check">
+        <input type="checkbox" id="fNotifySummary" />
+        <span data-i18n="set_notify_summary"></span>
+      </label>
     </div>
     <div class="sec" id="saveErr" hidden><span class="hint bad" data-i18n="err_save"></span></div>
     <footer class="foot">
@@ -274,7 +278,7 @@
     $("viewMain").hidden = false;
   }
   async function showSettings() {
-    let cfg = { address: "", has_password: false, autostart: false, notify_calls: false, notify_sms: false };
+    let cfg = { address: "", has_password: false, autostart: false, notify_calls: false, notify_sms: false, notify_summary: true };
     try { cfg = await invoke("get_config"); } catch (_) { /* keep the empty form */ }
     hasPassword = !!cfg.has_password;
     clearPw = false;
@@ -285,6 +289,7 @@
     $("fAuto").checked = !!cfg.autostart;
     $("fNotifyCalls").checked = !!cfg.notify_calls;
     $("fNotifySms").checked = !!cfg.notify_sms;
+    $("fNotifySummary").checked = cfg.notify_summary !== false;
     showSmsHint();
     setAddrHint(false);
     $("saveErr").hidden = true;
@@ -334,6 +339,7 @@
       await invoke("save_config", {
         address, password, clear_password: clear, autostart: $("fAuto").checked,
         notify_calls: $("fNotifyCalls").checked, notify_sms: $("fNotifySms").checked,
+        notify_summary: $("fNotifySummary").checked,
       });
     } catch (e) {
       if (String(e) === "addr") { setAddrHint(true); $("fAddr").focus(); return; }

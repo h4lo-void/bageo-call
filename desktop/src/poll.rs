@@ -11,7 +11,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_opener::OpenerExt as _;
 
-use crate::notify::{CallWatch, Notice, SmsWatch};
+use crate::notify::{CallWatch, Notice, SmsWatch, SummaryWatch};
 use crate::state::{lock, Shared};
 use crate::status::{self, DevicesResult, Snapshot};
 use crate::{config, local, toast, tray};
@@ -77,8 +77,10 @@ struct Poller {
     lang: String,
     calls: CallWatch,
     sms: SmsWatch,
+    summary: SummaryWatch,
     calls_on: bool,
     sms_on: bool,
+    summary_on: bool,
     /// The Bageo base address the watchers last looked at.
     watched_base: Option<String>,
 }
@@ -99,8 +101,10 @@ impl Poller {
             lang,
             calls: CallWatch::default(),
             sms: SmsWatch::default(),
+            summary: SummaryWatch::default(),
             calls_on: false,
             sms_on: false,
+            summary_on: false,
             watched_base: None,
         })
     }
@@ -113,6 +117,7 @@ impl Poller {
         self.refresh_ui_url = true;
         self.calls.reset();
         self.sms.reset();
+        self.summary.reset();
         self.watched_base = None;
     }
 
@@ -124,7 +129,7 @@ impl Poller {
         }
     }
 
-    /// Looks for new calls and text messages. Updates `snap.sms_supported`.
+    /// Looks for new calls, text messages and call summaries. Updates `snap.sms_supported`.
     async fn collect_notices(
         &mut self,
         cfg: &config::Config,
@@ -137,6 +142,7 @@ impl Poller {
         if self.watched_base.as_deref() != Some(base) {
             self.calls.reset();
             self.sms.reset();
+            self.summary.reset();
             self.watched_base = Some(base.to_string());
         }
 
@@ -177,6 +183,21 @@ impl Poller {
         } else {
             self.sms_on = false;
             snap.sms_supported = None;
+        }
+
+        if cfg.notify_summary {
+            if !self.summary_on {
+                self.summary.reset();
+                self.summary_on = true;
+            }
+            // Quiet on any failure (an older Bageo, a missing password): calls and texts go on.
+            if self.summary.due() {
+                if let Some((200, Some(body))) = get(&self.client, &format!("{base}calls/api/list?limit=10"), token).await {
+                    notices.extend(self.summary.on_list(&body, &snap.address, &snap.lang));
+                }
+            }
+        } else {
+            self.summary_on = false;
         }
         notices
     }
