@@ -139,56 +139,76 @@ where
 #[cfg(target_os = "macos")]
 mod bonjour {
     use super::*;
+    use std::os::unix::process::CommandExt;
     use std::process::{Child, Command, Stdio};
+    use std::time::Instant;
+
+    /// `dns-sd` that ends this soon after it started: the name is taken on this network.
+    const QUICK_END: Duration = Duration::from_secs(10);
+    /// Wait before trying a taken name again.
+    const TAKEN_RETRY: Duration = Duration::from_secs(60);
 
     /// The shell around `dns-sd`: `$1` = Bageo's process id, the rest = the command.
     const WATCH: &str = "P=$1; shift; \"$@\" & C=$!; trap 'kill $C 2>/dev/null; exit 0' TERM INT HUP; \
         while kill -0 \"$P\" 2>/dev/null && kill -0 \"$C\" 2>/dev/null; do sleep 1; done; kill $C 2>/dev/null";
 
-    /// The `dns-sd` arguments for `<host>.local` at `ip`, with an HTTP service at `port`.
-    pub(super) fn args(host: &str, ip: Ipv4Addr, port: u16) -> Vec<String> {
-        vec![
-            "-P".into(),
-            format!("Bageo ({host})"),
-            "_http._tcp".into(),
-            "local".into(),
-            port.to_string(),
-            format!("{host}.local"),
-            ip.to_string(),
-            "path=/calls/".into(),
-        ]
+    /// The `dns-sd` arguments for `<host>.local` at `ip`: with the web console
+    /// at `port` (`console`), or else with only the phones' Wi-Fi entry there,
+    /// which is not a web page.
+    pub(super) fn args(host: &str, ip: Ipv4Addr, port: u16, console: bool) -> Vec<String> {
+        let mut a = vec!["-P".to_string(), format!("Bageo ({host})")];
+        let kind = if console { "_http._tcp" } else { "_bageo-phone._tcp" };
+        a.extend([kind.to_string(), "local".into(), port.to_string(), format!("{host}.local"), ip.to_string()]);
+        if console {
+            a.push("path=/calls/".into());
+        }
+        a
     }
 
-    fn start(host: &str, ip: Ipv4Addr, port: u16) -> std::io::Result<Child> {
+    fn start(host: &str, ip: Ipv4Addr, port: u16, console: bool) -> std::io::Result<Child> {
         Command::new("/bin/sh")
             .arg("-c")
             .arg(WATCH)
             .arg("sh")
             .arg(std::process::id().to_string())
             .arg("/usr/bin/dns-sd")
-            .args(args(host, ip, port))
+            .args(args(host, ip, port, console))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
+            // The shell and `dns-sd` in a group of their own, ended together by [`stop`].
+            .process_group(0)
             .spawn()
     }
 
     fn stop(child: &mut Child) {
-        // TERM lets the shell end `dns-sd` too.
-        let _ = Command::new("/bin/kill").arg(child.id().to_string()).status();
+        // The whole group: `dns-sd` too, even when the shell around it is already gone.
+        let _ = Command::new("/bin/kill").args(["-TERM", "--", &format!("-{}", child.id())]).status();
         let _ = child.wait();
     }
 
     pub(super) fn run<F: Fn() -> String>(listen: IpAddr, port: u16, name: F) {
-        let mut running: Option<((String, Ipv4Addr, u16), Child)> = None;
+        // Listening on this computer only: the name leads to the phones' Wi-Fi entry.
+        let console = !listen.is_loopback();
+        let mut running: Option<((String, Ipv4Addr, u16), Child, Instant)> = None;
+        // A name another device on the network already answers to, and since when.
+        let mut taken: Option<((String, Ipv4Addr, u16), Instant)> = None;
         loop {
             let host = parse_name_setting(&name());
             let shown = if crate::lan::port_80() { 80 } else { port };
             let want = answer_ip(listen).filter(|_| !host.is_empty()).map(|ip| (host.clone(), ip, shown));
-            if let Some((had, child)) = running.as_mut() {
+            if let Some((had, child, since)) = running.as_mut() {
                 let ended = child.try_wait().ok().flatten().is_some();
                 if ended || want.as_ref() != Some(had) {
-                    if ended {
+                    if ended && since.elapsed() < QUICK_END {
+                        if taken.as_ref().map(|t| &t.0) != Some(&*had) {
+                            warn!(
+                                "mDNS: another device on this network already answers as {}.local; Bageo tries again every minute (or pick another network name)",
+                                had.0
+                            );
+                        }
+                        taken = Some((had.clone(), Instant::now()));
+                    } else if ended {
                         warn!("mDNS: Bonjour stopped answering as {}.local; starting it again", had.0);
                     }
                     stop(child);
@@ -201,14 +221,29 @@ mod bonjour {
             }
             if running.is_none() {
                 if let Some(w) = want {
-                    match start(&w.0, w.1, w.2) {
-                        Ok(child) => {
-                            ACTIVE.store(true, Ordering::Relaxed);
-                            info!("mDNS: this computer answers as {}.local (through Bonjour)", w.0);
-                            running = Some((w, child));
+                    let retry = taken.as_ref().is_some_and(|(t, _)| *t == w);
+                    let waiting = taken.as_ref().is_some_and(|(t, at)| *t == w && at.elapsed() < TAKEN_RETRY);
+                    if !waiting {
+                        match start(&w.0, w.1, w.2, console) {
+                            Ok(child) => {
+                                // A taken name stays off (the console shows its IP address) until it answers.
+                                ACTIVE.store(!retry, Ordering::Relaxed);
+                                if !retry {
+                                    info!("mDNS: this computer answers as {}.local (through Bonjour)", w.0);
+                                }
+                                running = Some((w, child, Instant::now()));
+                            }
+                            Err(e) => warn!("mDNS: could not start dns-sd ({e}); {}.local will not work, open the console by its IP address", w.0),
                         }
-                        Err(e) => warn!("mDNS: could not start dns-sd ({e}); {}.local will not work, open the console by its IP address", w.0),
                     }
+                }
+            }
+            // A name that has answered for a while is no longer taken.
+            if let Some((w, _, since)) = running.as_ref() {
+                if since.elapsed() >= QUICK_END && taken.as_ref().is_some_and(|(t, _)| t == w) {
+                    taken = None;
+                    ACTIVE.store(true, Ordering::Relaxed);
+                    info!("mDNS: this computer answers as {}.local (through Bonjour)", w.0);
                 }
             }
             std::thread::sleep(Duration::from_secs(3));
@@ -549,6 +584,17 @@ fn build_response(host: &str, ip: Ipv4Addr, legacy_id: Option<u16>, address: boo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn bonjour_names_the_web_console_only_when_it_is_on_the_network() {
+        let ip = Ipv4Addr::new(192, 168, 1, 20);
+        let lan = bonjour::args("bageo", ip, 80, true);
+        assert!(lan.iter().any(|a| a == "_http._tcp") && lan.iter().any(|a| a == "path=/calls/"));
+        let local = bonjour::args("bageo", ip, 8788, false);
+        assert!(!local.iter().any(|a| a == "_http._tcp" || a.starts_with("path=")), "the phones' entry is no web page");
+        assert!(local.iter().any(|a| a == "bageo.local") && local.iter().any(|a| a == "192.168.1.20"));
+    }
 
     /// A query the way resolvers send it: header, then the questions.
     fn query(id: u16, flags: u16, questions: &[(&str, u16, u16)]) -> Vec<u8> {

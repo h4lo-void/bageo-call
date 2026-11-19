@@ -452,17 +452,37 @@ impl Tries {
 }
 
 /// A fingerprint of the passwords a request carries (`?token=`, a bearer
-/// token, `X-Calls-Token`); None when it carries none.
-fn credential(headers: &HeaderMap, query: Option<&str>) -> Option<u64> {
+/// token, `X-Calls-Token`, or the `token` in a chat command's body); None
+/// when it carries none.
+fn credential(headers: &HeaderMap, query: Option<&str>, body_token: Option<&str>) -> Option<u64> {
     let token = query_param(query, "token").filter(|t| !t.trim().is_empty());
     let auth = headers.get(header::AUTHORIZATION).map(|v| v.as_bytes().to_vec());
     let calls = headers.get("x-calls-token").map(|v| v.as_bytes().to_vec());
-    if token.is_none() && auth.is_none() && calls.is_none() {
+    let body = body_token.map(str::trim).filter(|t| !t.is_empty());
+    if token.is_none() && auth.is_none() && calls.is_none() && body.is_none() {
         return None;
     }
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    (token, auth, calls).hash(&mut h);
+    (token, auth, calls, body).hash(&mut h);
     Some(h.finish())
+}
+
+/// The chat command webhook, which also takes its password in the JSON body.
+const INBOUND_PATH: &str = "/calls/api/control/inbound";
+/// The most of a chat command's body read here (the server's default limit).
+const INBOUND_BODY_MAX: usize = 2 << 20;
+
+/// The request again with its body read, and the `token` of that JSON body.
+async fn body_token(req: Request) -> Result<(Request, Option<String>), Response> {
+    let (parts, body) = req.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, INBOUND_BODY_MAX).await else {
+        return Err(api_refusal(StatusCode::PAYLOAD_TOO_LARGE, "too_large", "the request is too large"));
+    };
+    let token = serde_json::from_slice::<serde_json::Value>(&bytes)
+        .ok()
+        .and_then(|v| v.get("token").and_then(|t| t.as_str()).map(|t| t.trim().to_string()))
+        .filter(|t| !t.is_empty());
+    Ok((Request::from_parts(parts, axum::body::Body::from(bytes)), token))
 }
 
 /// Routes whose `?token=` / bearer token is not the console password (the
@@ -512,7 +532,7 @@ fn forwarded_client(headers: &HeaderMap) -> Option<IpAddr> {
 /// ([`Tries`]); this computer is never held back. A request counts only
 /// when it carries a password: wrong when it is not the console password
 /// (where one is set), or, on routes with their own token, when the answer is 401.
-/// Counted per [`try_key`].
+/// Only a right console password starts the count over. Counted per [`try_key`].
 pub fn throttle(router: Router, settings: Settings) -> Router {
     let settings = Arc::new(settings);
     let tries = Arc::new(Mutex::new(Tries::default()));
@@ -523,7 +543,15 @@ pub fn throttle(router: Router, settings: Settings) -> Router {
             if from_this_computer(req.extensions(), req.headers()) {
                 return next.run(req).await;
             }
-            let Some(wrong) = credential(req.headers(), req.uri().query()) else {
+            let (req, body_tok) = if req.uri().path() == INBOUND_PATH {
+                match body_token(req).await {
+                    Ok(read) => read,
+                    Err(res) => return res,
+                }
+            } else {
+                (req, None)
+            };
+            let Some(wrong) = credential(req.headers(), req.uri().query(), body_tok.as_deref()) else {
                 return next.run(req).await;
             };
             let Some(ip) = try_key(req.extensions(), req.headers()) else {
@@ -547,10 +575,17 @@ pub fn throttle(router: Router, settings: Settings) -> Router {
                 crate::calls_http::token_ok_parts(&settings, req.headers(), query_param(req.uri().query(), "token").as_deref())
             });
             let res = next.run(req).await;
-            let right = right.unwrap_or(res.status() != StatusCode::UNAUTHORIZED);
-            if right {
-                tries.lock().unwrap_or_else(|e| e.into_inner()).succeeded(ip);
-                return res;
+            match right {
+                Some(true) => {
+                    tries.lock().unwrap_or_else(|e| e.into_inner()).succeeded(ip);
+                    return res;
+                }
+                Some(false) => {}
+                // A route with its own token (or no console password set): only its 401
+                // counts as a wrong password, and nothing it answers starts the count over,
+                // else any other answer (a 404, a 415) would clear it between guesses.
+                None if res.status() != StatusCode::UNAUTHORIZED => return res,
+                None => {}
             }
             let fails = tries.lock().unwrap_or_else(|e| e.into_inner()).failed(ip, wrong, Instant::now());
             if fails >= MAX_TRIES {
@@ -889,19 +924,34 @@ mod tests {
     #[test]
     fn only_requests_carrying_a_password_are_counted_too() {
         let mut h = HeaderMap::new();
-        assert_eq!(credential(&h, None), None);
-        assert_eq!(credential(&h, Some("q=1&token=")), None, "an empty token is no password");
-        let q = credential(&h, Some("token=abc"));
+        assert_eq!(credential(&h, None, None), None);
+        assert_eq!(credential(&h, Some("q=1&token="), None), None, "an empty token is no password");
+        assert_eq!(credential(&h, None, Some("  ")), None, "nor an empty body token");
+        assert!(credential(&h, None, Some("abc")).is_some(), "a chat command's body token counts");
+        assert_ne!(credential(&h, None, Some("abc")), credential(&h, None, Some("abd")));
+        let q = credential(&h, Some("token=abc"), None);
         assert!(q.is_some());
-        assert_eq!(q, credential(&h, Some("x=1&token=abc")));
-        assert_ne!(q, credential(&h, Some("token=abd")));
+        assert_eq!(q, credential(&h, Some("x=1&token=abc"), None));
+        assert_ne!(q, credential(&h, Some("token=abd"), None));
         h.insert(header::AUTHORIZATION, HeaderValue::from_static("Bearer abc"));
-        assert!(credential(&h, None).is_some());
+        assert!(credential(&h, None, None).is_some());
         let mut c = HeaderMap::new();
         c.insert("x-calls-token", HeaderValue::from_static("abc"));
-        assert!(credential(&c, None).is_some());
+        assert!(credential(&c, None, None).is_some());
         assert!(own_token_route("/ws", false) && own_token_route("/", true) && own_token_route("/mcp", false));
         assert!(!own_token_route("/", false) && !own_token_route("/calls/api/list", false));
+    }
+
+    #[tokio::test]
+    async fn a_chat_command_body_token_is_read_and_the_body_kept() {
+        let body = r#"{"token":" abc ","text":"/calls"}"#;
+        let req = axum::http::Request::builder().uri(INBOUND_PATH).body(axum::body::Body::from(body)).unwrap();
+        let (req, tok) = body_token(req).await.unwrap();
+        assert_eq!(tok.as_deref(), Some("abc"));
+        let kept = axum::body::to_bytes(req.into_body(), 1024).await.unwrap();
+        assert_eq!(&kept[..], body.as_bytes(), "the handler still reads the whole body");
+        let req = axum::http::Request::builder().uri(INBOUND_PATH).body(axum::body::Body::from("not json")).unwrap();
+        assert_eq!(body_token(req).await.unwrap().1, None);
     }
 
     #[test]

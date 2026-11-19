@@ -3110,6 +3110,15 @@ pub(crate) fn delete_saved(state: &CallsState, name: &str) -> Result<(), ApiErr>
     if !is_plain_file(&path) {
         return Err((StatusCode::NOT_FOUND, "not_found"));
     }
+    // A restore preview of this file could not be applied once it is gone: it goes too.
+    let previews: Vec<Pending> = {
+        let mut map = pending();
+        let of_it: Vec<String> = map.iter().filter(|(_, p)| !p.owned && p.file == path).map(|(k, _)| k.clone()).collect();
+        of_it.into_iter().filter_map(|k| map.remove(&k)).collect()
+    };
+    for p in &previews {
+        drop_pending_file(p);
+    }
     match std::fs::remove_file(&path) {
         Ok(()) => {
             info!("backup deleted name={name}");

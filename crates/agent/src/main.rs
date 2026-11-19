@@ -1330,7 +1330,7 @@ async fn main() -> Result<()> {
     // AGENT_HOST not set: every address, and the console's network name.
     let listening = if settings.host_auto {
         let name = mdns::parse_name_setting(&settings_store.snapshot().mdns_name);
-        let lan = if name.is_empty() { String::new() } else { format!(", on this network http://{name}.local/") };
+        let lan = if name.is_empty() { String::new() } else { format!(", on this network http://{name}.local:{}/", settings.port) };
         format!("0.0.0.0:{} (this computer http://localhost:{}/{lan})", settings.port, settings.port)
     } else {
         addr.to_string()
