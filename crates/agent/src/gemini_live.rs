@@ -10972,15 +10972,18 @@ mod tests {
     #[test]
     fn replies_about_the_owners_own_matter_are_no_pitch() {
         for t in [
-            "您好，這邊是中信銀行，您申請的信用卡已經核卡了，想跟您確認寄送地址",
+            "您好，這邊是中信銀行，您反映的信用卡寄送問題，想跟您確認寄送地址",
             "Hi, it's Dana from Acme support, following up on the issue you had with our router",
         ] {
             assert!(looks_like_own_matter(t), "{t}");
         }
+        // 「您申請的」 alone opens loan and card scams too: it counts only with another phrase.
+        assert!(!looks_like_own_matter("您好，這邊是銀行，您申請的信用卡已經核卡了，想跟您確認寄送地址"));
+        assert!(!looks_like_own_matter("這裡是地檢署，調查結果顯示你的帳戶涉及洗錢"));
         // "Your order" / "your account" open many scams: they do not count.
         assert!(!looks_like_own_matter("There is a problem with your order, we need to refund you"));
-        assert!(dialogue_own_matter("接聽：喂？\n對方：您申請的信用卡額度調整好了，分期的部分也可以跟您說明"));
-        assert!(!dialogue_is_sales("接聽：喂？\n對方：您申請的信用卡額度調整好了，分期的部分也可以跟您說明"));
+        assert!(dialogue_own_matter("接聽：喂？\n對方：您反映的信用卡額度調整好了，分期的部分也可以跟您說明"));
+        assert!(!dialogue_is_sales("接聽：喂？\n對方：您反映的信用卡額度調整好了，分期的部分也可以跟您說明"));
         assert!(!dialogue_own_matter("接聽：您申請的那個我晚點看\n對方：我們有免費試用的軟體"));
     }
 
@@ -13005,7 +13008,7 @@ mod tests {
                 "Ici le cabinet de recouvrement, l'huissier lance une saisie sur salaire et des poursuites judiciaires",
                 "Espèce de connard, on sait où tu habites et on va venir chez vous",
                 "接聽：Allô ?\n對方：Suite à votre demande, donnez-moi le code de vérification",
-                "接聽：Allô ?\n對方：Suite à votre demande concernant votre compte, tout est réglé",
+                "接聽：Allô ?\n對方：Suite à votre réclamation concernant votre compte, tout est réglé",
                 "Bonjour, c'est le livreur, j'ai un colis pour vous devant l'immeuble",
             ),
             (
@@ -13014,7 +13017,7 @@ mod tests {
                 "Hier ist das Inkassobüro wegen Lohnpfändung und Zwangsvollstreckung durch den Gerichtsvollzieher",
                 "Du Arschloch und Hurensohn, wir kommen bei Ihnen vorbei",
                 "接聽：Hallo?\n對方：Bezüglich Ihrer Anfrage brauche ich sofort Ihren Bestätigungscode",
-                "接聽：Hallo?\n對方：Bezüglich Ihrer Anfrage zum Konto ist nun alles erledigt",
+                "接聽：Hallo?\n對方：Bezüglich Ihrer Beschwerde zum Konto ist nun alles erledigt",
                 "Guten Tag, Paketdienst hier, darf ich Ihr Paket beim Nachbarn abgeben?",
             ),
             (
