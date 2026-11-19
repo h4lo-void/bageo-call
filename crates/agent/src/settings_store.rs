@@ -713,12 +713,10 @@ fn write_overrides(path: &Path, ov: &Overrides) -> Result<()> {
     Ok(())
 }
 
-/// The settings that are credentials: the backup item `keys` ([`crate::backup`]).
-/// Every field the settings page masks ([`SECRET_FIELDS`]), the notification
-/// gateway address (its path can hold a key) and the old name of the summary
-/// key. In each notification channel, [`CHANNEL_KEY_FIELDS`] are credentials
-/// too; the phone pairing key file ([`crate::phone_wifi::KEY_FILE`]) goes with them.
-pub const KEY_FIELDS: [&str; 15] = [
+/// The credentials among the settings: one half of the backup item `keys`
+/// ([`crate::backup`]). Every field the settings page masks ([`SECRET_FIELDS`])
+/// and the old name of the summary key.
+pub const CREDENTIAL_FIELDS: [&str; 14] = [
     "openrouter_api_key",
     "telegram_bot_token",
     "gmail_app_password",
@@ -732,170 +730,142 @@ pub const KEY_FIELDS: [&str; 15] = [
     "trtc_tts_config",
     "gemini_api_key",
     "summary_api_key",
-    "notify_gateway_url",
     "deepseek_api_key",
 ];
 
-/// The fields of a notification channel that are credentials: its address
-/// (webhook URLs carry their secret), token and Slack app-level token.
-pub const CHANNEL_KEY_FIELDS: [&str; 3] = ["url", "token", "app_token"];
+/// Where data goes and who may operate Bageo from outside: the other half of
+/// the backup item `keys` ("keys, passwords and connections"). The
+/// notification channels whole (where they send, who may give commands there),
+/// the Telegram chat and remote control, the notification gateway, the mail
+/// account, the services summaries and calls are sent to, the owner's number
+/// calls are forwarded to, and what AI tools may do over MCP.
+pub const CONNECTION_FIELDS: [&str; 23] = [
+    "notify_channels",
+    "notify_gateway_url",
+    "notify_gateway_tag",
+    "telegram_chat_id",
+    "telegram_control",
+    "telegram_control_users",
+    "control_errands_per_hour",
+    "control_commands_per_minute",
+    "gmail_user",
+    "openclaw_url",
+    "summary_provider",
+    "summary_api_base",
+    "summary_model",
+    "trtc_sdk_app_id",
+    "trtc_api_host",
+    "trtc_api_intl",
+    "trtc_ai_region",
+    "trtc_bridge_url",
+    "whitelist_forward_number",
+    "mcp_enabled",
+    "mcp_calls",
+    "mcp_errands_per_hour",
+    "mcp_allowed_origins",
+];
 
-fn channel_id(c: &Value) -> Option<(&str, &str)> {
-    Some((c.get("id")?.as_str()?, c.get("kind")?.as_str()?))
+/// Settings whose names look like a credential or an address but are neither
+/// (a test checks every setting against the two lists above and this one):
+/// `public_url` is this computer's own address and never leaves it nor comes
+/// from a backup; `ui_password_prompted` only says the password hint was shown;
+/// `spam_keywords` and `scam_review_without_keywords` are about words callers say.
+pub const KEY_LOOKALIKES: [&str; 4] = ["public_url", "ui_password_prompted", "spam_keywords", "scam_review_without_keywords"];
+
+/// A setting of the backup item `keys` ([`CREDENTIAL_FIELDS`], [`CONNECTION_FIELDS`]).
+pub fn is_key_field(name: &str) -> bool {
+    CREDENTIAL_FIELDS.contains(&name) || CONNECTION_FIELDS.contains(&name)
 }
 
-/// A value that says something (not null, not an empty string).
+fn key_fields() -> impl Iterator<Item = &'static str> {
+    CREDENTIAL_FIELDS.into_iter().chain(CONNECTION_FIELDS)
+}
+
+/// A value that says something (not null, not empty).
 fn filled(v: &Value) -> bool {
     match v {
         Value::Null => false,
         Value::String(s) => !s.trim().is_empty(),
+        Value::Array(a) => !a.is_empty(),
+        Value::Object(o) => !o.is_empty(),
         _ => true,
     }
 }
 
-/// A settings file (JSON object) without its credentials ([`KEY_FIELDS`]).
+/// A settings file (JSON object) without the item `keys`.
 pub fn settings_part(v: &Value) -> Value {
     let mut m = v.as_object().cloned().unwrap_or_default();
-    for f in KEY_FIELDS {
-        m.remove(f);
-    }
-    let mut drop_channels = false;
-    if let Some(Value::Array(list)) = m.get_mut("notify_channels") {
-        let had = !list.is_empty();
-        for c in list.iter_mut() {
-            if let Some(o) = c.as_object_mut() {
-                for f in CHANNEL_KEY_FIELDS {
-                    o.remove(f);
-                }
-            }
-        }
-        // A row that only names its channel (a file of credentials only) is no setting.
-        list.retain(|c| c.as_object().is_some_and(|o| o.keys().any(|k| k != "id" && k != "kind")));
-        drop_channels = had && list.is_empty();
-    }
-    if drop_channels {
-        m.remove("notify_channels");
-    }
+    m.retain(|k, _| !is_key_field(k));
     Value::Object(m)
 }
 
-/// Only the credentials of a settings file: the [`KEY_FIELDS`] it has, and of
-/// each notification channel its id, kind and the credentials that are set.
+/// Only the item `keys` of a settings file.
 pub fn keys_part(v: &Value) -> Value {
-    let mut out = Map::new();
-    for f in KEY_FIELDS {
-        if let Some(x) = v.get(f) {
-            out.insert(f.to_string(), x.clone());
-        }
-    }
-    if let Some(list) = v.get("notify_channels").and_then(Value::as_array) {
-        let rows: Vec<Value> = list
-            .iter()
-            .filter_map(|c| {
-                let (id, kind) = channel_id(c)?;
-                let mut row = Map::new();
-                row.insert("id".into(), json!(id));
-                row.insert("kind".into(), json!(kind));
-                for f in CHANNEL_KEY_FIELDS {
-                    if let Some(x) = c.get(f).filter(|x| filled(x)) {
-                        row.insert(f.to_string(), x.clone());
-                    }
-                }
-                (row.len() > 2).then_some(Value::Object(row))
-            })
-            .collect();
-        if !rows.is_empty() {
-            out.insert("notify_channels".into(), Value::Array(rows));
-        }
-    }
-    Value::Object(out)
+    let mut m = v.as_object().cloned().unwrap_or_default();
+    m.retain(|k, _| is_key_field(k));
+    Value::Object(m)
 }
 
-/// The settings file holds a credential that is set.
+/// The settings file holds something of the item `keys` that is set.
 pub fn has_keys(v: &Value) -> bool {
-    let k = keys_part(v);
-    KEY_FIELDS.iter().any(|f| k.get(*f).is_some_and(filled)) || k.get("notify_channels").is_some()
+    key_fields().any(|f| v.get(f).is_some_and(filled))
 }
 
-/// The settings file holds a setting other than credentials.
+/// The settings file holds a setting outside the item `keys`.
 pub fn has_settings(v: &Value) -> bool {
     settings_part(v).as_object().is_some_and(|m| !m.is_empty())
 }
 
 /// The settings file a restore makes ([`crate::backup`]) from this computer's
-/// (`cur`) and the backup's (`inc`). `settings`: the backup's settings take the
-/// place of these, whole; else these stay. `keys`: each credential the backup
-/// has set replaces this one; else (and for every credential the backup does
-/// not have) this computer's stays: a restore never clears a key. A channel
-/// keeps its credentials by its id and kind.
+/// (`cur`) and the backup's (`inc`). `settings`: the backup's settings outside
+/// `keys` take the place of these, whole; else these stay. `keys`: each field
+/// of `keys` the backup has set replaces this one; every other field of `keys`
+/// stays as it is here, so a restore never clears a key, a channel or who may
+/// give commands. Without `keys` the whole group stays as it is here.
 pub fn combine_settings(cur: &Value, inc: &Value, settings: bool, keys: bool) -> Value {
     let mut out = settings_part(if settings { inc } else { cur });
-    let find = |v: &Value, id: &str, kind: &str| -> Option<Value> {
-        v.get("notify_channels")?.as_array()?.iter().find(|c| channel_id(c) == Some((id, kind))).cloned()
-    };
     if let Some(m) = out.as_object_mut() {
-        for f in KEY_FIELDS {
+        for f in key_fields() {
             let from = if keys && inc.get(f).is_some_and(filled) { inc } else { cur };
             if let Some(x) = from.get(f) {
                 m.insert(f.to_string(), x.clone());
-            }
-        }
-        if let Some(Value::Array(list)) = m.get_mut("notify_channels") {
-            for c in list.iter_mut() {
-                let Some((id, kind)) = channel_id(c).map(|(a, b)| (a.to_string(), b.to_string())) else {
-                    continue;
-                };
-                let from_inc = if keys {
-                    find(inc, &id, &kind).filter(|x| CHANNEL_KEY_FIELDS.iter().any(|f| x.get(*f).is_some_and(filled)))
-                } else {
-                    None
-                };
-                let src = from_inc.or_else(|| find(cur, &id, &kind));
-                if let (Some(src), Some(o)) = (src, c.as_object_mut()) {
-                    for f in CHANNEL_KEY_FIELDS {
-                        if let Some(x) = src.get(f) {
-                            o.insert(f.to_string(), x.clone());
-                        }
-                    }
-                }
-            }
-        }
-        // A channel of this computer that has credentials stays, also when
-        // the backup does not have it.
-        let present: Vec<(String, String)> = m
-            .get("notify_channels")
-            .and_then(Value::as_array)
-            .map(|l| l.iter().filter_map(|c| channel_id(c).map(|(a, b)| (a.to_string(), b.to_string()))).collect())
-            .unwrap_or_default();
-        let extra: Vec<Value> = cur
-            .get("notify_channels")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter(|c| CHANNEL_KEY_FIELDS.iter().any(|f| c.get(*f).is_some_and(filled)))
-            .filter(|c| channel_id(c).is_some_and(|(a, b)| !present.iter().any(|(x, y)| x == a && y == b)))
-            .cloned()
-            .collect();
-        if !extra.is_empty() {
-            if let Some(list) = m.entry("notify_channels").or_insert_with(|| json!([])).as_array_mut() {
-                list.extend(extra);
             }
         }
     }
     out
 }
 
+/// A notification channel as a destination: where it sends and who may give
+/// commands there (its id and tokens do not count).
+fn destination(field: &str, v: Option<&Value>) -> Value {
+    let v = v.cloned().unwrap_or(Value::Null);
+    if field != "notify_channels" {
+        return v;
+    }
+    let mut rows: Vec<String> = v
+        .as_array()
+        .map(|l| {
+            l.iter()
+                .map(|c| {
+                    let pick = |k: &str| c.get(k).cloned().unwrap_or(Value::Null);
+                    json!([pick("kind"), pick("url"), pick("target"), pick("enabled"), pick("control"), pick("control_users")]).to_string()
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    rows.sort();
+    json!(rows)
+}
+
 /// What the import preview shows of a settings file ([`crate::backup`]).
 #[derive(Debug, Clone, Default)]
 pub struct SettingsPeek {
-    /// Settings other than credentials.
+    /// Settings outside the item `keys`.
     pub has_settings: bool,
-    /// Credentials that are set.
+    /// Something of the item `keys` that is set.
     pub has_keys: bool,
     /// Its console password, when it has one.
     pub password: Option<String>,
-    /// Its backup folder ("" = the default one).
-    pub backup_dir: String,
 }
 
 /// Read a settings file for the import preview. Err: not a settings file (not
@@ -911,8 +881,21 @@ pub fn peek_settings_text(text: &str) -> Result<SettingsPeek> {
         has_settings: has_settings(&v),
         has_keys: has_keys(&v),
         password: ov.ui_password.map(|p| p.trim().to_string()).filter(|p| !p.is_empty()),
-        backup_dir: ov.backup_dir.unwrap_or_default().trim().to_string(),
     })
+}
+
+/// `public_url` and `backup_dir` belong to this computer: a backup never brings them.
+fn keep_this_computers(m: &mut Map<String, Value>, cur: &Value) {
+    for k in ["public_url", "backup_dir"] {
+        match cur.get(k) {
+            Some(v) => {
+                m.insert(k.to_string(), v.clone());
+            }
+            None => {
+                m.remove(k);
+            }
+        }
+    }
 }
 
 fn sanitize_answer_style(s: &str) -> String {
@@ -2034,11 +2017,10 @@ impl SettingsStore {
 
     /// A restore of the backup items `settings` and / or `keys` ([`combine_settings`]):
     /// `text` is the backup's settings.json. What belongs to this computer
-    /// stays: `public_url`, and `backup_dir` when this computer cannot write
-    /// there (`dir_ok` false; then the second value is true). Read the way
-    /// [`Self::load`] reads a file (the same changes for older versions), saved,
-    /// then swapped in.
-    pub fn replace_from_backup(&self, text: &str, settings: bool, keys: bool, dir_ok: &dyn Fn(&str) -> bool) -> Result<(Arc<RuntimeSettings>, bool)> {
+    /// stays: `public_url` and `backup_dir`, never taken from a file. Read the
+    /// way [`Self::load`] reads a file (the same changes for older versions),
+    /// saved, then swapped in.
+    pub fn replace_from_backup(&self, text: &str, settings: bool, keys: bool) -> Result<Arc<RuntimeSettings>> {
         let inc: Value = serde_json::from_str(text).context("not a settings file")?;
         if !inc.is_object() {
             anyhow::bail!("not a settings file");
@@ -2046,61 +2028,68 @@ impl SettingsStore {
         let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
         let cur = serde_json::to_value(&st.overrides)?;
         let mut merged = combine_settings(&cur, &inc, settings, keys);
-        let mut dir_reset = false;
         if let Some(m) = merged.as_object_mut() {
-            let keep = |m: &mut Map<String, Value>, k: &str| match cur.get(k) {
-                Some(v) => {
-                    m.insert(k.to_string(), v.clone());
-                }
-                None => {
-                    m.remove(k);
-                }
-            };
-            keep(m, "public_url");
-            let wanted = m.get("backup_dir").and_then(Value::as_str).unwrap_or("").trim().to_string();
-            if settings && !wanted.is_empty() && !dir_ok(&wanted) {
-                keep(m, "backup_dir");
-                dir_reset = true;
-            }
+            keep_this_computers(m, &cur);
             if m.get("ui_password").is_some_and(filled) {
                 m.insert("ui_password_prompted".into(), json!(true));
             }
         }
         let (ov, moved) = read_overrides(&merged.to_string()).context("not a settings file")?;
+        let rt = self.swap_in(&mut st, ov, moved)?;
+        info!("runtime settings restored from a backup path={} settings={settings} keys={keys}", self.path.display());
+        Ok(rt)
+    }
+
+    /// The settings file of a backup taken whole (putting back the copy made
+    /// before a restore), but for `public_url` and `backup_dir`, which stay.
+    pub fn replace_from_text(&self, text: &str) -> Result<Arc<RuntimeSettings>> {
+        let mut inc: Value = serde_json::from_str(text).context("not a settings file")?;
+        let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
+        let cur = serde_json::to_value(&st.overrides)?;
+        let Some(m) = inc.as_object_mut() else {
+            anyhow::bail!("not a settings file");
+        };
+        keep_this_computers(m, &cur);
+        let (ov, moved) = read_overrides(&inc.to_string()).context("not a settings file")?;
+        let rt = self.swap_in(&mut st, ov, moved)?;
+        info!("runtime settings replaced from a backup path={}", self.path.display());
+        Ok(rt)
+    }
+
+    fn swap_in(&self, st: &mut StoreState, ov: Overrides, moved: bool) -> Result<Arc<RuntimeSettings>> {
         let (ov, rt) = Self::settle_overrides(&self.base, &self.path, ov, moved);
         write_overrides(&self.path, &ov)?;
         st.overrides = ov;
         set_active_ui_password(&rt.ui_password);
         crate::calendar::set_link_secret(&active_ui_token(&self.base.calls_ui_token));
         st.current = Arc::new(rt);
-        info!("runtime settings restored from a backup path={} settings={settings} keys={keys}", self.path.display());
-        Ok((st.current.clone(), dir_reset))
+        Ok(st.current.clone())
     }
 
-    /// The settings of a backup take the place of these, whole ([`crate::backup`]):
-    /// `text` is a settings.json, read the way [`Self::load`] reads one (the
-    /// same changes for older versions). What belongs to this computer stays:
-    /// `public_url` (the address other devices open it at), and `backup_dir`
-    /// when this computer cannot write there (`dir_ok` false; then the second
-    /// value is true). Saved, then swapped in.
-    pub fn replace_from_text(&self, text: &str, dir_ok: &dyn Fn(&str) -> bool) -> Result<(Arc<RuntimeSettings>, bool)> {
-        let (mut incoming, moved) = read_overrides(text).context("not a settings file")?;
-        let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
-        incoming.public_url = st.overrides.public_url.clone();
-        let mut dir_reset = false;
-        let wanted = incoming.backup_dir.as_deref().map(str::trim).unwrap_or("").to_string();
-        if !wanted.is_empty() && !dir_ok(&wanted) {
-            incoming.backup_dir = st.overrides.backup_dir.clone();
-            dir_reset = true;
-        }
-        let (ov, rt) = Self::settle_overrides(&self.base, &self.path, incoming, moved);
-        write_overrides(&self.path, &ov)?;
-        st.overrides = ov;
-        set_active_ui_password(&rt.ui_password);
-        crate::calendar::set_link_secret(&active_ui_token(&self.base.calls_ui_token));
-        st.current = Arc::new(rt);
-        info!("runtime settings replaced from a backup path={}", self.path.display());
-        Ok((st.current.clone(), dir_reset))
+    /// Restoring the item `keys` of the settings file `text` would change where
+    /// data goes or who may operate Bageo: a value of [`CONNECTION_FIELDS`]
+    /// would differ from now (a channel's id and tokens do not count).
+    pub fn connections_change(&self, text: &str) -> bool {
+        let Ok(inc) = serde_json::from_str::<Value>(text) else {
+            return false;
+        };
+        let (cur, now) = {
+            let st = self.state.read().unwrap_or_else(|e| e.into_inner());
+            (serde_json::to_value(&st.overrides), st.current.clone())
+        };
+        let Ok(cur) = cur else {
+            return false;
+        };
+        let merged = combine_settings(&cur, &inc, false, true);
+        let Ok((ov, _)) = read_overrides(&merged.to_string()) else {
+            return false;
+        };
+        let mut after = RuntimeSettings::from_base(&self.base);
+        after.apply(&ov);
+        let (Ok(a), Ok(b)) = (serde_json::to_value(&*now), serde_json::to_value(&after)) else {
+            return false;
+        };
+        CONNECTION_FIELDS.iter().any(|f| destination(f, a.get(*f)) != destination(f, b.get(*f)))
     }
 
     fn apply_patch_locked(&self, st: &mut StoreState, patch: &Value) -> Result<Arc<RuntimeSettings>> {
@@ -3002,7 +2991,26 @@ mod tests {
     #[test]
     fn every_masked_setting_is_a_key_of_backups() {
         for f in SECRET_FIELDS {
-            assert!(KEY_FIELDS.contains(&f), "{f}");
+            assert!(is_key_field(f), "{f}");
+        }
+    }
+
+    #[test]
+    fn settings_named_like_keys_or_addresses_go_with_the_keys() {
+        let rt = RuntimeSettings::from_base(&Settings::from_env());
+        let v = serde_json::to_value(&rt).unwrap();
+        let looks = ["url", "base", "endpoint", "webhook", "token", "key", "secret", "password", "chat_id", "forward"];
+        let names: Vec<&String> = v.as_object().unwrap().keys().collect();
+        for name in &names {
+            if looks.iter().any(|w| name.contains(w)) {
+                assert!(is_key_field(name) || KEY_LOOKALIKES.contains(&name.as_str()), "{name} is not in the backup's keys");
+            }
+        }
+        for f in KEY_LOOKALIKES {
+            assert!(!is_key_field(f) && names.iter().any(|n| n.as_str() == f), "{f}");
+        }
+        for f in CONNECTION_FIELDS {
+            assert!(names.iter().any(|n| n.as_str() == f), "{f} is no setting");
         }
     }
 

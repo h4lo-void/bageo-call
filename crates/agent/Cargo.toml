@@ -42,3 +42,7 @@ flate2.workspace = true
 encoding_rs = "0.8"
 # Share UDP 5353 with the system's mDNS responder (SO_REUSEADDR / SO_REUSEPORT).
 socket2 = { version = "0.6", features = ["all"] }
+
+[target.'cfg(unix)'.dependencies]
+# Free room on the disk before a backup's call records are restored (statvfs).
+libc = "0.2"

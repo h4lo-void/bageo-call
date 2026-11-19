@@ -8,8 +8,9 @@
 //! A backup is a zip file. `bageo-backup.json` at its root ([`Manifest`])
 //! lists every other file: under `data/`, with its path inside the data folder
 //! (`CALLS_DATA_DIR`), its size and its SHA-256, and `items` names the parts
-//! it holds ([`ITEMS`]): settings, keys (every credential: [`crate::settings_store::KEY_FIELDS`]
-//! and the phone pairing key), contacts, the number book, phones (SIMs and
+//! it holds ([`ITEMS`]): settings, keys (credentials, where data goes and who
+//! may operate Bageo: [`crate::settings_store::is_key_field`], and the phone
+//! pairing key), contacts, the number book, phones (SIMs and
 //! names), AI errands, and the call records with their recordings, text
 //! messages and to-do items. Settings and keys share `settings.json`: a file
 //! without one of them leaves its fields out. Never the backup folder itself,
@@ -27,13 +28,13 @@ use std::fs::File;
 use std::io::{self, BufWriter, Read, Seek, SeekFrom, Write};
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
 use axum::body::{Body, Bytes};
-use axum::extract::rejection::BytesRejection;
-use axum::extract::{ConnectInfo, DefaultBodyLimit, Path as UrlPath, Query, State};
+use axum::extract::{ConnectInfo, Path as UrlPath, Query, State};
 use axum::http::{header, Extensions, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -56,11 +57,24 @@ const MANIFEST_NAME: &str = "bageo-backup.json";
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Largest file `POST /api/backup/import` takes.
 pub const IMPORT_MAX_BYTES: usize = 200 << 20;
-/// What a backup may unpack to: settings only / with the call records.
-const SETTINGS_MAX_BYTES: u64 = 50 << 20;
+/// What the parts other than the call records may unpack to: each file, all of
+/// them, how many. Set by what a file is, never by what the manifest says it holds.
+const SMALL_FILE_MAX_BYTES: u64 = 20 << 20;
+const SMALL_MAX_BYTES: u64 = 50 << 20;
+const SMALL_MAX_FILES: usize = 2_000;
+/// What the call records, texts and to-do items may unpack to.
 const CALLS_MAX_BYTES: u64 = 8 << 30;
-const SETTINGS_MAX_FILES: usize = 2_000;
 const CALLS_MAX_FILES: usize = 500_000;
+/// A file that unpacks to more than this many times its packed size is refused
+/// (when it unpacks to more than [`RATIO_FREE_BYTES`]).
+const RATIO_MAX: u64 = 200;
+const RATIO_FREE_BYTES: u64 = 64 << 10;
+/// Previews waiting at once, what their uploads may take together, uploads under way.
+const PENDING_MAX: usize = 3;
+const STAGING_MAX_BYTES: u64 = 600 << 20;
+const UPLOADS_MAX: usize = 2;
+/// Room left on the disk after the call records are restored.
+const DISK_MARGIN_BYTES: u64 = 64 << 20;
 const MANIFEST_MAX_BYTES: u64 = 64 << 20;
 /// A JSON file read whole for the preview (the call list, the texts).
 const COUNT_FILE_MAX_BYTES: u64 = 256 << 20;
@@ -408,6 +422,7 @@ impl<W: Write> Write for Counting<W> {
 
 struct CentralEntry {
     name: String,
+    method: u16,
     crc: u32,
     packed: u64,
     size: u64,
@@ -420,6 +435,24 @@ struct ZipOut<W: Write + Seek> {
     entries: Vec<CentralEntry>,
     time: u16,
     date: u16,
+}
+
+/// `src` copied to `out`, counted into `crc` and `sha`: how many bytes.
+fn pump(src: &mut dyn Read, out: &mut dyn Write, crc: &mut flate2::Crc, sha: &mut Sha256) -> io::Result<u64> {
+    let mut size = 0u64;
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = match src.read(&mut buf) {
+            Ok(0) => return Ok(size),
+            Ok(n) => n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        crc.update(&buf[..n]);
+        sha.update(&buf[..n]);
+        size += n as u64;
+        out.write_all(&buf[..n])?;
+    }
 }
 
 fn dos_time(at: NaiveDateTime) -> (u16, u16) {
@@ -440,12 +473,15 @@ impl<W: Write + Seek> ZipOut<W> {
     fn add(&mut self, name: &str, src: &mut dyn Read, size_hint: u64) -> io::Result<(u64, String)> {
         let offset = self.out.stream_position()?;
         let zip64 = size_hint >= BIG_FILE;
+        // Recordings are kept as they are: they hardly pack, and a file of
+        // silence would look like a zip bomb.
+        let method: u16 = if name.ends_with(".wav") || name.ends_with(".pcm") { 0 } else { 8 };
         let name_b = name.as_bytes();
         let mut h = Vec::with_capacity(50 + name_b.len());
         h.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
         h.extend_from_slice(&(if zip64 { 45u16 } else { 20 }).to_le_bytes());
         h.extend_from_slice(&0x0800u16.to_le_bytes());
-        h.extend_from_slice(&8u16.to_le_bytes());
+        h.extend_from_slice(&method.to_le_bytes());
         h.extend_from_slice(&self.time.to_le_bytes());
         h.extend_from_slice(&self.date.to_le_bytes());
         h.extend_from_slice(&0u32.to_le_bytes());
@@ -464,22 +500,15 @@ impl<W: Write + Seek> ZipOut<W> {
         let level = if size_hint > (1 << 20) { 1 } else { 6 };
         let mut crc = flate2::Crc::new();
         let mut sha = Sha256::new();
-        let mut size = 0u64;
-        let mut enc = flate2::write::DeflateEncoder::new(Counting { inner: &mut self.out, count: 0 }, flate2::Compression::new(level));
-        let mut buf = vec![0u8; 64 * 1024];
-        loop {
-            let n = match src.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => n,
-                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                Err(e) => return Err(e),
-            };
-            crc.update(&buf[..n]);
-            sha.update(&buf[..n]);
-            size += n as u64;
-            enc.write_all(&buf[..n])?;
-        }
-        let packed = enc.finish()?.count;
+        let (size, packed) = if method == 0 {
+            let mut out = Counting { inner: &mut self.out, count: 0 };
+            let size = pump(src, &mut out, &mut crc, &mut sha)?;
+            (size, out.count)
+        } else {
+            let mut enc = flate2::write::DeflateEncoder::new(Counting { inner: &mut self.out, count: 0 }, flate2::Compression::new(level));
+            let size = pump(src, &mut enc, &mut crc, &mut sha)?;
+            (size, enc.finish()?.count)
+        };
         if !zip64 && (size >= U32_MAX || packed >= U32_MAX) {
             return Err(io::Error::other("a file grew past 4 GB while it was saved"));
         }
@@ -495,7 +524,7 @@ impl<W: Write + Seek> ZipOut<W> {
             self.out.write_all(&(size as u32).to_le_bytes())?;
         }
         self.out.seek(SeekFrom::Start(end))?;
-        self.entries.push(CentralEntry { name: name.to_string(), crc: crc.sum(), packed, size, offset });
+        self.entries.push(CentralEntry { name: name.to_string(), method, crc: crc.sum(), packed, size, offset });
         Ok((size, hex(&sha.finalize())))
     }
 
@@ -521,7 +550,7 @@ impl<W: Write + Seek> ZipOut<W> {
             h.extend_from_slice(&45u16.to_le_bytes());
             h.extend_from_slice(&(if extra.is_empty() { 20u16 } else { 45 }).to_le_bytes());
             h.extend_from_slice(&0x0800u16.to_le_bytes());
-            h.extend_from_slice(&8u16.to_le_bytes());
+            h.extend_from_slice(&e.method.to_le_bytes());
             h.extend_from_slice(&self.time.to_le_bytes());
             h.extend_from_slice(&self.date.to_le_bytes());
             h.extend_from_slice(&e.crc.to_le_bytes());
@@ -830,10 +859,21 @@ fn safe_rel(path: &str) -> Option<&str> {
     if rel.is_empty() || rel.contains('\\') || rel.contains(':') || rel.starts_with('/') || rel.chars().any(char::is_control) {
         return None;
     }
-    if rel.split('/').any(|c| c.is_empty() || c == "." || c == "..") {
+    if rel.split('/').any(|c| c.is_empty() || c == "." || c == ".." || c.ends_with(' ') || c.ends_with('.') || reserved_name(c)) {
         return None;
     }
     Some(rel)
+}
+
+/// A name Windows keeps for a device, with or without an extension (`CON`,
+/// `nul.json`, `COM1`, `lpt9.txt`): such a file cannot be made there.
+fn reserved_name(c: &str) -> bool {
+    let stem = c.split('.').next().unwrap_or("").trim_end().to_ascii_uppercase();
+    match stem.as_str() {
+        "CON" | "PRN" | "AUX" | "NUL" => true,
+        s if s.len() == 4 && (s.starts_with("COM") || s.starts_with("LPT")) => s.as_bytes()[3].is_ascii_digit() && s.as_bytes()[3] != b'0',
+        _ => false,
+    }
 }
 
 // ---------------------------------------------------------------- reading a backup
@@ -855,8 +895,11 @@ struct Inspected {
     files: Vec<Wanted>,
     /// The parts it has, with how many records where that is known.
     counts: BTreeMap<&'static str, Option<usize>>,
-    /// What its settings.json holds.
+    /// What its settings.json holds, and the file itself.
     settings: Option<crate::settings_store::SettingsPeek>,
+    settings_text: Option<String>,
+    /// What the files it restores unpack to.
+    total_size: u64,
 }
 
 /// Read `path` (a backup zip or an older settings.json) and check every file
@@ -885,8 +928,8 @@ fn inspect_plain(mut f: File, len: u64) -> Result<Inspected, Bad> {
     f.seek(SeekFrom::Start(0))?;
     let mut bytes = Vec::new();
     f.read_to_end(&mut bytes)?;
-    let text = std::str::from_utf8(&bytes).map_err(|_| Bad::NotBackup)?;
-    let peek = crate::settings_store::peek_settings_text(text.trim_start_matches('\u{feff}')).map_err(|_| Bad::NotBackup)?;
+    let text = std::str::from_utf8(&bytes).map_err(|_| Bad::NotBackup)?.trim_start_matches('\u{feff}');
+    let peek = crate::settings_store::peek_settings_text(text).map_err(|_| Bad::NotBackup)?;
     if !peek.has_settings && !peek.has_keys {
         return Err(Bad::NotBackup);
     }
@@ -904,6 +947,8 @@ fn inspect_plain(mut f: File, len: u64) -> Result<Inspected, Bad> {
         files: vec![Wanted { rel: "config/settings.json".to_string(), item: "settings", entry }],
         counts,
         settings: Some(peek),
+        settings_text: Some(text.to_string()),
+        total_size: bytes.len() as u64,
     })
 }
 
@@ -930,39 +975,61 @@ fn inspect_zip(f: File) -> Result<Inspected, Bad> {
         return Err(Bad::Damaged);
     }
     let manifest: Manifest = serde_json::from_value(v).map_err(|_| Bad::Damaged)?;
-    let (max_files, max_bytes) = if manifest.include_calls { (CALLS_MAX_FILES, CALLS_MAX_BYTES) } else { (SETTINGS_MAX_FILES, SETTINGS_MAX_BYTES) };
-    if manifest.files.len() > max_files {
-        return Err(Bad::TooLarge);
-    }
-    let mut total = 0u64;
+    // Every path is checked; only the files of known parts are read, within
+    // the limits of what each one is.
     let mut seen = HashSet::new();
+    let (mut small, mut small_n, mut big, mut big_n) = (0u64, 0usize, 0u64, 0usize);
+    let mut kept: Vec<(String, &'static str, FileEntry)> = Vec::new();
     for f in &manifest.files {
         let rel = safe_rel(&f.path).ok_or(Bad::Damaged)?;
         if !seen.insert(rel) || f.sha256.len() != 64 || !f.sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err(Bad::Damaged);
         }
-        total = total.checked_add(f.size).ok_or(Bad::TooLarge)?;
-        if total > max_bytes {
-            return Err(Bad::TooLarge);
+        let Some(item) = item_of(rel) else {
+            continue;
+        };
+        if CALL_ITEMS.contains(&item) {
+            big_n += 1;
+            big = big.checked_add(f.size).ok_or(Bad::TooLarge)?;
+            if big_n > CALLS_MAX_FILES || big > CALLS_MAX_BYTES {
+                return Err(Bad::TooLarge);
+            }
+        } else {
+            small_n += 1;
+            small = small.checked_add(f.size).ok_or(Bad::TooLarge)?;
+            if f.size > SMALL_FILE_MAX_BYTES || small_n > SMALL_MAX_FILES || small > SMALL_MAX_BYTES {
+                return Err(Bad::TooLarge);
+            }
+        }
+        kept.push((rel.to_string(), item, f.clone()));
+    }
+    for (_, _, f) in &kept {
+        let e = zip.entries.get(&f.path).copied().ok_or(Bad::Damaged)?;
+        if e.size != f.size {
+            return Err(Bad::Damaged);
+        }
+        // Packed far tighter than any real file: a zip bomb.
+        if e.size > RATIO_FREE_BYTES && e.size / e.packed.max(1) > RATIO_MAX {
+            return Err(Bad::Damaged);
         }
     }
     let mut files = Vec::new();
     let mut counts: BTreeMap<&'static str, Option<usize>> = BTreeMap::new();
-    let mut settings = None;
-    let mut tasks = 0usize;
-    for f in &manifest.files {
-        let rel = safe_rel(&f.path).ok_or(Bad::Damaged)?.to_string();
-        let item = item_of(&rel);
+    let (mut settings, mut settings_text) = (None, None);
+    let (mut tasks, mut total) = (0usize, 0u64);
+    for (rel, item, f) in kept {
         if counted(&rel) {
-            if f.size > COUNT_FILE_MAX_BYTES {
+            let cap = if CALL_ITEMS.contains(&item) { COUNT_FILE_MAX_BYTES } else { SMALL_FILE_MAX_BYTES };
+            if f.size > cap {
                 return Err(Bad::TooLarge);
             }
             let mut buf = Vec::with_capacity(f.size as usize);
             zip.copy_checked(&f.path, f.size, &f.sha256, &mut buf)?;
             if rel == "config/settings.json" {
-                let text = std::str::from_utf8(&buf).map_err(|_| Bad::Damaged)?;
-                settings = Some(crate::settings_store::peek_settings_text(text).map_err(|_| Bad::Damaged)?);
-            } else if let Some(item) = item {
+                let text = String::from_utf8(buf).map_err(|_| Bad::Damaged)?;
+                settings = Some(crate::settings_store::peek_settings_text(&text).map_err(|_| Bad::Damaged)?);
+                settings_text = Some(text);
+            } else {
                 let v: Value = serde_json::from_slice(&buf).map_err(|_| Bad::Damaged)?;
                 let n = match rel.as_str() {
                     "contacts.json" => v.get("contacts").and_then(Value::as_array).map(Vec::len),
@@ -978,9 +1045,6 @@ fn inspect_zip(f: File) -> Result<Inspected, Bad> {
         } else {
             zip.copy_checked(&f.path, f.size, &f.sha256, &mut io::sink())?;
         }
-        let Some(item) = item else {
-            continue;
-        };
         if item == "tasks" && rel != "tasks/index.json" {
             tasks += 1;
         }
@@ -988,7 +1052,8 @@ fn inspect_zip(f: File) -> Result<Inspected, Bad> {
         if rel != "config/settings.json" {
             counts.entry(item).or_insert(None);
         }
-        files.push(Wanted { rel, item, entry: f.clone() });
+        total += f.size;
+        files.push(Wanted { rel, item, entry: f });
     }
     if tasks > 0 {
         counts.insert("tasks", Some(tasks));
@@ -1001,7 +1066,7 @@ fn inspect_zip(f: File) -> Result<Inspected, Bad> {
             counts.entry("keys").or_insert(None);
         }
     }
-    Ok(Inspected { plain: false, manifest: Some(manifest), files, counts, settings })
+    Ok(Inspected { plain: false, manifest: Some(manifest), files, counts, settings, settings_text, total_size: total })
 }
 
 /// `a` is a later version than `than` (`1.4.10` > `1.4.9`).
@@ -1020,13 +1085,6 @@ fn newer(a: &str, than: &str) -> bool {
     x > y
 }
 
-/// The backup folder of a backup's settings can be used here as it is (it is
-/// not made for a preview).
-fn dir_usable_now(d: &str) -> bool {
-    let d = d.trim();
-    d.is_empty() || (Path::new(d).is_absolute() && Path::new(d).is_dir() && probe_write(Path::new(d)))
-}
-
 fn preview_warnings(ins: &Inspected) -> Vec<&'static str> {
     let mut w = Vec::new();
     if ins.manifest.as_ref().is_some_and(|m| newer(&m.app_version, APP_VERSION)) {
@@ -1035,13 +1093,10 @@ fn preview_warnings(ins: &Inspected) -> Vec<&'static str> {
     if ins.plain {
         w.push("plain_settings_file");
     }
-    if ins.counts.contains_key("settings") && ins.settings.as_ref().is_some_and(|p| !dir_usable_now(&p.backup_dir)) {
-        w.push("backup_dir_reset");
-    }
     w
 }
 
-fn preview_json(token: &str, source_name: &str, ins: &Inspected, current_password: &str, warnings: &[&'static str]) -> Value {
+fn preview_json(token: &str, source_name: &str, ins: &Inspected, current_password: &str, changes_connections: bool, warnings: &[&'static str]) -> Value {
     let items: Vec<Value> = ITEMS
         .iter()
         .filter_map(|id| {
@@ -1066,6 +1121,9 @@ fn preview_json(token: &str, source_name: &str, ins: &Inspected, current_passwor
         // Only restoring the keys changes the password.
         "changes_password": ins.counts.contains_key("keys")
             && ins.settings.as_ref().and_then(|p| p.password.as_deref()).is_some_and(|pw| pw != current_password.trim()),
+        // Where notifications go, the forwarding number or who may give commands.
+        "changes_connections": ins.counts.contains_key("keys") && changes_connections,
+        "total_size": ins.total_size,
         "warnings": warnings,
     })
 }
@@ -1099,7 +1157,7 @@ fn absolute(p: &Path) -> PathBuf {
 /// A file can be written in `dir` (which exists).
 fn probe_write(dir: &Path) -> bool {
     let probe = dir.join(format!(".bageo-write-test-{}.tmp", uuid::Uuid::new_v4().simple()));
-    let ok = std::fs::write(&probe, b"ok").is_ok();
+    let ok = create_private(&probe).and_then(|mut f| f.write_all(b"ok")).is_ok();
     let _ = std::fs::remove_file(&probe);
     ok
 }
@@ -1126,9 +1184,11 @@ pub fn check_settings_patch(patch: &Value) -> Option<Response> {
     Some(api_error(StatusCode::BAD_REQUEST, "backup_dir_unwritable", message("backup_dir_unwritable")))
 }
 
+/// A new file at `path`, readable by its owner only (Unix). It must not be
+/// there yet (`O_EXCL`): every temporary file has a random name of its own.
 fn create_private(path: &Path) -> io::Result<File> {
     let mut o = std::fs::OpenOptions::new();
-    o.write(true).create(true).truncate(true);
+    o.write(true).create_new(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
@@ -1147,8 +1207,12 @@ fn move_into(from: &Path, to: &Path) -> io::Result<()> {
     }
     let name = to.file_name().and_then(|n| n.to_str()).unwrap_or("file");
     let tmp = to.with_file_name(format!(".{name}.{}.tmp", uuid::Uuid::new_v4().simple()));
-    std::fs::copy(from, &tmp)?;
-    if let Err(e) = std::fs::rename(&tmp, to) {
+    let copied = (|| -> io::Result<()> {
+        let mut out = create_private(&tmp)?;
+        io::copy(&mut File::open(from)?, &mut out)?;
+        out.sync_all()
+    })();
+    if let Err(e) = copied.and_then(|_| std::fs::rename(&tmp, to)) {
         let _ = std::fs::remove_file(&tmp);
         return Err(e);
     }
@@ -1264,44 +1328,65 @@ fn run_err(e: &io::Error, opening: bool) -> RunErr {
     RunErr::Io
 }
 
-/// A backup file of the parts `want` in `dir`: written next to its name, then
-/// renamed (mode 600 on Unix). `settings_json`: the settings file as saved.
+/// The backup zip of the parts `want` written into `file` (`settings_json`:
+/// the settings file as saved); the parts it holds.
+fn write_backup(lay: &Layout, settings_json: &[u8], file: File, kind: Kind, want: &[&'static str], at: DateTime<Local>) -> io::Result<Vec<&'static str>> {
+    let (json, settings_items) = settings_for(settings_json, want);
+    let sources = collect(lay, json, want);
+    let (out, held) = write_zip(BufWriter::new(file), sources, kind, &settings_items, at)?;
+    let file = out.into_inner().map_err(|e| e.into_error())?;
+    file.sync_all()?;
+    Ok(held)
+}
+
+/// `tmp` named `to`, unless a file already has that name (false then).
+fn publish(tmp: &Path, to: &Path) -> io::Result<bool> {
+    match std::fs::hard_link(tmp, to) {
+        Ok(()) => {
+            let _ = std::fs::remove_file(tmp);
+            Ok(true)
+        }
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Ok(false),
+        // A disk without hard links: the name is looked at, then taken.
+        Err(_) if to.exists() => Ok(false),
+        Err(_) => std::fs::rename(tmp, to).map(|_| true),
+    }
+}
+
+/// A backup file of the parts `want` in `dir` (mode 600 on Unix): written
+/// under a random name, then named for its time (a second later while
+/// another file has that name).
 fn write_backup_file(lay: &Layout, settings_json: Vec<u8>, dir: &Path, kind: Kind, want: &[&'static str], now: DateTime<Local>) -> Result<Entry, RunErr> {
     std::fs::create_dir_all(dir).map_err(|e| run_err(&e, true))?;
-    let mut at = now;
-    let mut name = file_name(kind, at.naive_local());
-    for _ in 0..60 {
-        if !dir.join(&name).exists() {
-            break;
-        }
-        at += chrono::Duration::seconds(1);
-        name = file_name(kind, at.naive_local());
-    }
-    if dir.join(&name).exists() {
-        return Err(RunErr::Io);
-    }
-    let tmp = dir.join(format!(".{name}.tmp"));
+    let tmp = dir.join(format!(".bageo-{}.tmp", uuid::Uuid::new_v4().simple()));
     let file = create_private(&tmp).map_err(|e| run_err(&e, true))?;
-    let written = (move || -> io::Result<Vec<&'static str>> {
-        let (json, settings_items) = settings_for(&settings_json, want);
-        let sources = collect(lay, json, want);
-        let (out, held) = write_zip(BufWriter::new(file), sources, kind, &settings_items, at)?;
-        let file = out.into_inner().map_err(|e| e.into_error())?;
-        file.sync_all()?;
-        Ok(held)
-    })();
-    let done = written.and_then(|held| std::fs::rename(&tmp, dir.join(&name)).map(|_| held));
-    let held = match done {
+    let held = match write_backup(lay, &settings_json, file, kind, want, now) {
         Ok(held) => held,
         Err(e) => {
             let _ = std::fs::remove_file(&tmp);
             return Err(run_err(&e, false));
         }
     };
+    let mut at = now;
+    let name = loop {
+        let name = file_name(kind, at.naive_local());
+        match publish(&tmp, &dir.join(&name)) {
+            Ok(true) => break name,
+            Ok(false) if at < now + chrono::Duration::seconds(60) => at += chrono::Duration::seconds(1),
+            Ok(false) => {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(RunErr::Io);
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(run_err(&e, false));
+            }
+        }
+    };
     let size = std::fs::metadata(dir.join(&name)).map(|m| m.len()).unwrap_or(0);
     Ok(Entry {
         name,
-        at: at.to_rfc3339_opts(SecondsFormat::Secs, false),
+        at: now.to_rfc3339_opts(SecondsFormat::Secs, false),
         size,
         kind: kind.as_str(),
         app_version: Some(APP_VERSION.to_string()),
@@ -1350,6 +1435,8 @@ struct Inner {
 struct DirState {
     running: tokio::sync::Mutex<()>,
     inner: Mutex<Inner>,
+    /// Uploads under way ([`UPLOADS_MAX`]).
+    uploads: AtomicUsize,
 }
 
 impl DirState {
@@ -1403,12 +1490,16 @@ pub(crate) async fn export_file(state: &CallsState, want: Vec<&'static str>) -> 
     let now = Local::now();
     tokio::task::spawn_blocking(move || -> Result<(String, PathBuf), RunErr> {
         let stage = staging_dir(&lay.data);
+        std::fs::create_dir_all(&stage).map_err(|e| run_err(&e, true))?;
         sweep_exports(&stage);
-        let entry = write_backup_file(&lay, settings_json, &stage, Kind::Export, &want, now)?;
-        // Named for the download; kept under a name of its own while it is sent.
+        // A name of its own: exports at the same moment never meet.
         let path = stage.join(format!("export-{}.zip", uuid::Uuid::new_v4().simple()));
-        std::fs::rename(stage.join(&entry.name), &path).map_err(|e| run_err(&e, false))?;
-        Ok((entry.name, path))
+        let file = create_private(&path).map_err(|e| run_err(&e, true))?;
+        if let Err(e) = write_backup(&lay, &settings_json, file, Kind::Export, &want, now) {
+            let _ = std::fs::remove_file(&path);
+            return Err(run_err(&e, false));
+        }
+        Ok((file_name(Kind::Export, now.naive_local()), path))
     })
     .await
     .unwrap_or(Err(RunErr::Io))
@@ -1600,7 +1691,7 @@ fn bad_err(e: Bad) -> ApiErr {
         Bad::TooNew => (StatusCode::BAD_REQUEST, "too_new"),
         Bad::TooLarge => (StatusCode::BAD_REQUEST, "too_large"),
         Bad::Io(e) => {
-            warn!("backup: file error: {e}");
+            warn!("backup: file error kind={:?}", e.kind());
             (StatusCode::INTERNAL_SERVER_ERROR, "io")
         }
     }
@@ -1608,9 +1699,13 @@ fn bad_err(e: Bad) -> ApiErr {
 
 /// A preview waiting for "Restore".
 struct Pending {
+    /// The data folder it is for.
+    data: PathBuf,
     file: PathBuf,
     /// An upload (deleted when done); a file of the backup folder stays.
     owned: bool,
+    /// What the upload takes on the disk.
+    bytes: u64,
     made: Instant,
     ins: Inspected,
     warnings: Vec<&'static str>,
@@ -1640,39 +1735,104 @@ fn sweep_pending() {
     }
 }
 
-fn register(state: &CallsState, file: PathBuf, owned: bool, ins: Inspected, source_name: &str) -> Value {
+/// The previews waiting for the data folder `data`, and what their uploads take.
+fn pending_load(data: &Path) -> (usize, u64) {
+    pending().values().filter(|p| p.data == data).fold((0, 0), |(n, b), p| (n + 1, b + if p.owned { p.bytes } else { 0 }))
+}
+
+fn register(state: &CallsState, data: PathBuf, file: PathBuf, owned: bool, bytes: u64, ins: Inspected, source_name: &str) -> Value {
     let token = uuid::Uuid::new_v4().simple().to_string();
     let warnings = preview_warnings(&ins);
     let password = state.settings_store.snapshot().ui_password.clone();
-    let v = preview_json(&token, source_name, &ins, &password, &warnings);
-    pending().insert(token, Pending { file, owned, made: Instant::now(), ins, warnings });
+    let connections = ins.counts.contains_key("keys") && ins.settings_text.as_deref().is_some_and(|t| state.settings_store.connections_change(t));
+    let v = preview_json(&token, source_name, &ins, &password, connections, &warnings);
+    pending().insert(token, Pending { data, file, owned, bytes, made: Instant::now(), ins, warnings });
     v
 }
 
-/// The preview of an uploaded file (kept for 15 minutes). Nothing changes yet.
-pub(crate) async fn preview_upload(state: &CallsState, source_name: &str, body: Bytes) -> Result<Value, ApiErr> {
+/// One upload under way (at most [`UPLOADS_MAX`] for a data folder).
+struct UploadSlot(Arc<DirState>);
+
+impl Drop for UploadSlot {
+    fn drop(&mut self) {
+        self.0.uploads.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+fn upload_slot(ds: Arc<DirState>) -> Option<UploadSlot> {
+    if ds.uploads.fetch_add(1, Ordering::SeqCst) >= UPLOADS_MAX {
+        ds.uploads.fetch_sub(1, Ordering::SeqCst);
+        return None;
+    }
+    Some(UploadSlot(ds))
+}
+
+/// The upload `body` written to the new file `file`: its size. At most
+/// [`IMPORT_MAX_BYTES`], and no more than the staging folder may still take.
+async fn receive<S, E>(file: &Path, body: &mut S, staged: u64) -> Result<u64, ApiErr>
+where
+    S: futures_util::Stream<Item = Result<Bytes, E>> + Unpin,
+{
+    use futures_util::StreamExt as _;
+    use tokio::io::AsyncWriteExt as _;
+    let io_err = |_: io::Error| (StatusCode::INTERNAL_SERVER_ERROR, "io");
+    if let Some(dir) = file.parent() {
+        tokio::fs::create_dir_all(dir).await.map_err(io_err)?;
+    }
+    let path = file.to_path_buf();
+    let made = tokio::task::spawn_blocking(move || create_private(&path)).await.map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "io"))?;
+    let mut out = tokio::fs::File::from_std(made.map_err(io_err)?);
+    let mut n = 0u64;
+    while let Some(chunk) = body.next().await {
+        let chunk = chunk.map_err(|_| (StatusCode::BAD_REQUEST, "bad_request"))?;
+        n += chunk.len() as u64;
+        if n > IMPORT_MAX_BYTES as u64 {
+            return Err((StatusCode::BAD_REQUEST, "too_large"));
+        }
+        if staged + n > STAGING_MAX_BYTES {
+            return Err((StatusCode::CONFLICT, "busy"));
+        }
+        out.write_all(&chunk).await.map_err(io_err)?;
+    }
+    out.sync_all().await.map_err(io_err)?;
+    Ok(n)
+}
+
+/// The preview of an uploaded file read from `body` (`declared`: its
+/// Content-Length), kept for 15 minutes. Nothing changes yet. At most
+/// [`PENDING_MAX`] previews wait and [`UPLOADS_MAX`] uploads run at once.
+pub(crate) async fn preview_upload_stream<S, E>(state: &CallsState, source_name: &str, declared: Option<u64>, mut body: S) -> Result<Value, ApiErr>
+where
+    S: futures_util::Stream<Item = Result<Bytes, E>> + Unpin,
+{
     sweep_pending();
-    if body.len() > IMPORT_MAX_BYTES {
+    if declared.is_some_and(|n| n > IMPORT_MAX_BYTES as u64) {
         return Err((StatusCode::BAD_REQUEST, "too_large"));
     }
-    if body.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "not_backup"));
+    let data = PathBuf::from(&state.settings.calls_data_dir);
+    let (waiting, staged) = pending_load(&data);
+    if waiting >= PENDING_MAX || staged + declared.unwrap_or(0) > STAGING_MAX_BYTES {
+        return Err((StatusCode::CONFLICT, "busy"));
     }
-    let stage = staging_dir(&PathBuf::from(&state.settings.calls_data_dir));
-    let file = stage.join(format!("upload-{}.bin", uuid::Uuid::new_v4().simple()));
+    let Some(_slot) = upload_slot(dir_state(&data)) else {
+        return Err((StatusCode::CONFLICT, "busy"));
+    };
+    let file = staging_dir(&data).join(format!("upload-{}.bin", uuid::Uuid::new_v4().simple()));
+    let bytes = match receive(&file, &mut body, staged).await {
+        Ok(0) => Err((StatusCode::BAD_REQUEST, "not_backup")),
+        other => other,
+    };
+    let bytes = match bytes {
+        Ok(n) => n,
+        Err(e) => {
+            let _ = std::fs::remove_file(&file);
+            return Err(e);
+        }
+    };
     let path = file.clone();
-    let read = tokio::task::spawn_blocking(move || -> Result<Inspected, Bad> {
-        std::fs::create_dir_all(&stage)?;
-        let mut f = create_private(&path)?;
-        f.write_all(&body)?;
-        f.sync_all()?;
-        drop(f);
-        inspect(&path)
-    })
-    .await
-    .unwrap_or_else(|_| Err(Bad::Io(io::Error::other("preview task"))));
+    let read = tokio::task::spawn_blocking(move || inspect(&path)).await.unwrap_or_else(|_| Err(Bad::Io(io::Error::other("preview task"))));
     match read {
-        Ok(ins) => Ok(register(state, file, true, ins, source_name)),
+        Ok(ins) => Ok(register(state, data, file, true, bytes, ins, source_name)),
         Err(e) => {
             let _ = std::fs::remove_file(&file);
             Err(bad_err(e))
@@ -1680,18 +1840,28 @@ pub(crate) async fn preview_upload(state: &CallsState, source_name: &str, body: 
     }
 }
 
+/// [`preview_upload_stream`] of a body already read.
+pub(crate) async fn preview_upload(state: &CallsState, source_name: &str, body: Bytes) -> Result<Value, ApiErr> {
+    let declared = Some(body.len() as u64);
+    preview_upload_stream(state, source_name, declared, futures_util::stream::iter([Ok::<Bytes, io::Error>(body)])).await
+}
+
 /// The preview of a file in the backup folder.
 pub(crate) async fn preview_saved(state: &CallsState, name: &str) -> Result<Value, ApiErr> {
     sweep_pending();
     let rt = state.settings_store.snapshot();
-    let path = configured_dir(&rt, &PathBuf::from(&state.settings.calls_data_dir)).join(name);
+    let data = PathBuf::from(&state.settings.calls_data_dir);
+    let path = configured_dir(&rt, &data).join(name);
     if parse_name(name).is_none() || !is_plain_file(&path) {
         return Err((StatusCode::NOT_FOUND, "not_found"));
+    }
+    if pending_load(&data).0 >= PENDING_MAX {
+        return Err((StatusCode::CONFLICT, "busy"));
     }
     let p = path.clone();
     let read = tokio::task::spawn_blocking(move || inspect(&p)).await.unwrap_or_else(|_| Err(Bad::Io(io::Error::other("preview task"))));
     match read {
-        Ok(ins) => Ok(register(state, path, false, ins, name)),
+        Ok(ins) => Ok(register(state, data, path, false, 0, ins, name)),
         Err(e) => Err(bad_err(e)),
     }
 }
@@ -1753,9 +1923,14 @@ fn wanted_file(w: &Wanted, chosen: &[&str]) -> bool {
 
 async fn apply_pending(state: &CallsState, p: &Pending, chosen: &[&'static str]) -> Result<Value, ApiErr> {
     let lay = Layout::of(state);
+    let want: Vec<Wanted> = p.ins.files.iter().filter(|w| wanted_file(w, chosen)).cloned().collect();
+    // Room for what is unpacked (on the disk of the data folder) first.
+    let need: u64 = want.iter().map(|w| w.entry.size).sum();
+    if free_space(&lay.data).is_some_and(|free| free < need.saturating_add(DISK_MARGIN_BYTES)) {
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, "disk_full"));
+    }
     let (before, before_dir) = make_before_import(state, &lay).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.code()))?;
     let before_path = before_dir.join(&before.name);
-    let want: Vec<Wanted> = p.ins.files.iter().filter(|w| wanted_file(w, chosen)).cloned().collect();
     let stage = staging_dir(&lay.data).join(format!("apply-{}", uuid::Uuid::new_v4().simple()));
     let unpacked = {
         let (src, plain, stage, want) = (p.file.clone(), p.ins.plain, stage.clone(), want.clone());
@@ -1771,7 +1946,7 @@ async fn apply_pending(state: &CallsState, p: &Pending, chosen: &[&'static str])
     let installed = match install(state, &lay, &stage, &want, chosen, false, &mut created).await {
         Ok(i) => i,
         Err(e) => {
-            warn!("backup: restoring failed, the settings from before are put back: {e:#}");
+            warn!("backup: restoring failed ({}), the settings from before are put back", err_kind(&e));
             roll_back(state, &lay, &before_path, &created).await;
             let _ = std::fs::remove_dir_all(&stage);
             return Err((StatusCode::INTERNAL_SERVER_ERROR, "io"));
@@ -1781,7 +1956,7 @@ async fn apply_pending(state: &CallsState, p: &Pending, chosen: &[&'static str])
         match merge_records(state, &lay, &stage, &want).await {
             Ok((calls, sms, tasks)) => info!("backup records added calls={calls} sms={sms} tasks={tasks}"),
             Err(e) => {
-                warn!("backup: adding the call records failed, the settings from before are put back: {e:#}");
+                warn!("backup: adding the call records failed ({}), the settings from before are put back", err_kind(&e));
                 roll_back(state, &lay, &before_path, &created).await;
                 let _ = std::fs::remove_dir_all(&stage);
                 return Err((StatusCode::INTERNAL_SERVER_ERROR, "io"));
@@ -1790,10 +1965,7 @@ async fn apply_pending(state: &CallsState, p: &Pending, chosen: &[&'static str])
     }
     let _ = std::fs::remove_dir_all(&stage);
     prune(&before_dir, Kind::BeforeImport, BEFORE_IMPORT_KEEP);
-    let mut warnings: Vec<&'static str> = p.warnings.iter().copied().filter(|w| *w != "backup_dir_reset").collect();
-    if installed.dir_reset {
-        warnings.push("backup_dir_reset");
-    }
+    let warnings = p.warnings.clone();
     info!("backup restored items={chosen:?} restart_needed={}", installed.restart_needed);
     Ok(json!({"ok": true, "before_import": before.name, "restart_needed": installed.restart_needed, "warnings": warnings}))
 }
@@ -1806,7 +1978,7 @@ fn extract(src: &Path, plain: bool, want: &[Wanted], stage: &Path) -> Result<(),
         if let Some(dir) = to.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        std::fs::copy(src, &to)?;
+        io::copy(&mut File::open(src)?, &mut create_private(&to)?)?;
         return Ok(());
     }
     let mut zip = ZipIn::open(File::open(src)?)?;
@@ -1823,7 +1995,6 @@ fn extract(src: &Path, plain: bool, want: &[Wanted], stage: &Path) -> Result<(),
 }
 
 struct Installed {
-    dir_reset: bool,
     restart_needed: bool,
 }
 
@@ -1852,18 +2023,12 @@ async fn install(
         }
         move_into(&stage_path(stage, &w.rel), &target).with_context(|| format!("put back {}", w.rel))?;
     }
-    let mut dir_reset = false;
     let staged_settings = stage_path(stage, "config/settings.json");
     if (s || k) && staged_settings.is_file() {
         let text = std::fs::read_to_string(&staged_settings).context("read the settings of the backup")?;
         let text = text.trim_start_matches('\u{feff}');
         let days_before = state.settings_store.snapshot().retention_days;
-        let (rt, reset) = if exact {
-            state.settings_store.replace_from_text(text, &dir_setting_ok)?
-        } else {
-            state.settings_store.replace_from_backup(text, s, k, &dir_setting_ok)?
-        };
-        dir_reset = reset;
+        let rt = if exact { state.settings_store.replace_from_text(text)? } else { state.settings_store.replace_from_backup(text, s, k)? };
         crate::calls_http::purge_after_fewer_days(state, days_before, rt.retention_days);
         // Language, answer style, phone names: process-wide, like a settings
         // save does (left alone in unit tests, where other tests read them).
@@ -1880,7 +2045,7 @@ async fn install(
         // Blocked numbers kept in an older settings file join the Blacklist.
         crate::contacts::absorb_reject_numbers(&state.settings_store, &state.contacts).await;
     }
-    Ok(Installed { dir_reset, restart_needed })
+    Ok(Installed { restart_needed })
 }
 
 /// The stores of `items` read their files again. True when one of them can
@@ -1929,11 +2094,11 @@ async fn roll_back(state: &CallsState, lay: &Layout, before: &Path, created: &[P
             let mut again = Vec::new();
             let held: Vec<&'static str> = ins.counts.keys().copied().collect();
             if let Err(e) = install(state, lay, &stage, &ins.files, &held, true, &mut again).await {
-                warn!("backup: the settings from before could not all be put back: {e:#}");
+                warn!("backup: the settings from before could not all be put back ({})", err_kind(&e));
             }
             let all: HashSet<&'static str> = STORE_ITEMS.into_iter().collect();
             if let Err(e) = reload_stores(state, &all).await {
-                warn!("backup: reading the restored files again failed: {e:#}");
+                warn!("backup: reading the restored files again failed ({})", err_kind(&e));
             }
         }
         Err(e) => warn!("backup: the copy made before restoring cannot be read: {}", bad_err(e).1),
@@ -1945,6 +2110,8 @@ async fn roll_back(state: &CallsState, lay: &Layout, before: &Path, created: &[P
 /// that are not here yet are added; how many of each.
 async fn merge_records(state: &CallsState, lay: &Layout, stage: &Path, want: &[Wanted]) -> anyhow::Result<(usize, usize, usize)> {
     let (mut calls, mut sms, mut tasks) = (0, 0, 0);
+    // The recordings this restore brings back: the only files a restored record may name.
+    let restored: HashSet<&str> = want.iter().filter(|w| w.item == "calls" && w.rel != "index.json").map(|w| w.rel.as_str()).collect();
     // Recordings first, so the call list never points at a file that is not there.
     for w in want.iter().filter(|w| w.item == "calls" && w.rel != "index.json") {
         let target = lay.target(&w.rel).context("no place for a recording")?;
@@ -1954,7 +2121,12 @@ async fn merge_records(state: &CallsState, lay: &Layout, stage: &Path, want: &[W
     }
     let index = stage_path(stage, "index.json");
     if want.iter().any(|w| w.rel == "index.json") && index.is_file() {
-        let records = crate::calls::records_from_index_json(&std::fs::read(&index)?).context("call list of the backup")?;
+        let mut records = crate::calls::records_from_index_json(&std::fs::read(&index)?).context("call list of the backup")?;
+        for r in records.iter_mut() {
+            for slot in [&mut r.audio_path, &mut r.tts_audio_path, &mut r.remote_audio_path, &mut r.ai_audio_path, &mut r.voicemail_path] {
+                keep_restored(slot, &restored);
+            }
+        }
         calls = state.store.merge_records(records).await;
     }
     let texts = stage_path(stage, "sms/messages.json");
@@ -1965,12 +2137,68 @@ async fn merge_records(state: &CallsState, lay: &Layout, stage: &Path, want: &[W
     let mut list = Vec::new();
     for w in want.iter().filter(|w| w.item == "tasks" && w.rel != "tasks/index.json") {
         let bytes = std::fs::read(stage_path(stage, &w.rel))?;
-        list.push(serde_json::from_slice::<crate::tasks::TaskRecord>(&bytes).with_context(|| format!("to-do item {}", w.rel))?);
+        let mut task = serde_json::from_slice::<crate::tasks::TaskRecord>(&bytes).with_context(|| format!("to-do item {}", w.rel))?;
+        keep_restored(&mut task.voicemail_path, &restored);
+        list.push(task);
     }
     if !list.is_empty() {
         tasks = state.task_store.merge(list).await?;
     }
     Ok((calls, sms, tasks))
+}
+
+/// A file a restored record names stays only when it is `YYYY-MM-DD/<name>`
+/// and this restore brought it back; anything else is cleared.
+fn keep_restored(slot: &mut Option<String>, restored: &HashSet<&str>) {
+    if slot.as_deref().is_some_and(|p| !(crate::calls::record_file_ok(p) && restored.contains(p))) {
+        *slot = None;
+    }
+}
+
+/// What kind of failure, for the log (never a message that could quote a file).
+fn err_kind(e: &anyhow::Error) -> String {
+    if let Some(io) = e.downcast_ref::<io::Error>() {
+        return format!("io:{:?}", io.kind());
+    }
+    if e.downcast_ref::<serde_json::Error>().is_some() {
+        return "format".to_string();
+    }
+    "other".to_string()
+}
+
+/// Free room on the disk that holds `dir`; None when it cannot be told.
+#[cfg(unix)]
+// The statvfs fields are u32 on some systems and u64 on others.
+#[allow(clippy::useless_conversion)]
+fn free_space(dir: &Path) -> Option<u64> {
+    use std::os::unix::ffi::OsStrExt as _;
+    let c = std::ffi::CString::new(dir.as_os_str().as_bytes()).ok()?;
+    // SAFETY: an all-zero statvfs is a valid value to be filled in.
+    let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+    // SAFETY: `c` is a NUL-terminated path and `st` a writable statvfs.
+    if unsafe { libc::statvfs(c.as_ptr(), &mut st) } != 0 {
+        return None;
+    }
+    Some(u64::from(st.f_bavail).saturating_mul(u64::from(st.f_frsize)))
+}
+
+#[cfg(windows)]
+fn free_space(dir: &Path) -> Option<u64> {
+    use std::os::windows::ffi::OsStrExt as _;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetDiskFreeSpaceExW(dir: *const u16, free: *mut u64, total: *mut u64, total_free: *mut u64) -> i32;
+    }
+    let wide: Vec<u16> = dir.as_os_str().encode_wide().chain(Some(0)).collect();
+    let mut free = 0u64;
+    // SAFETY: a NUL-terminated wide path and a writable u64; the other two may be null.
+    let ok = unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut free, std::ptr::null_mut(), std::ptr::null_mut()) };
+    (ok != 0).then_some(free)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn free_space(_dir: &Path) -> Option<u64> {
+    None
 }
 
 // ---------------------------------------------------------------- web API
@@ -1983,7 +2211,8 @@ fn message(code: &str) -> &'static str {
         "too_large" => "the file is too large",
         "expired" => "this preview has expired; choose the file again",
         "call_active" => "a call is in progress; try again when it ends",
-        "busy" => "a backup is already running",
+        "busy" => "a backup or another restore is under way; try again in a moment",
+        "need_password" => "set a console password first, or open the console on the computer Bageo runs on",
         "dir_unwritable" => "backups cannot be saved in the backup folder",
         "backup_dir_unwritable" => "backups cannot be saved in this folder",
         "disk_full" => "the disk is full",
@@ -2033,6 +2262,35 @@ fn from_this_computer(ext: &Extensions, headers: &HeaderMap) -> bool {
     local && !came_through_proxy(headers)
 }
 
+/// The request names this computer by a loopback name (`localhost`, `127.x.x.x`,
+/// `[::1]`): a page of another site cannot reach Bageo by pointing its own name
+/// at this computer (DNS rebinding).
+fn loopback_host(headers: &HeaderMap) -> bool {
+    let Some(host) = headers.get(header::HOST).and_then(|v| v.to_str().ok()) else {
+        return false;
+    };
+    let host = host.trim().to_ascii_lowercase();
+    let name = match host.strip_prefix('[') {
+        Some(rest) => rest.split(']').next().unwrap_or("").to_string(),
+        None => match host.rsplit_once(':') {
+            Some((h, port)) if port.bytes().all(|b| b.is_ascii_digit()) => h.to_string(),
+            _ => host.clone(),
+        },
+    };
+    name == "localhost"
+        || name.ends_with(".localhost")
+        || name == "::1"
+        || name.parse::<std::net::Ipv4Addr>().is_ok_and(|ip| ip.is_loopback())
+}
+
+/// A file holding keys may be downloaded: a console password is set, or the
+/// request comes from this computer itself, to a loopback name. Otherwise
+/// anyone who can reach the console could take them (`need_password`).
+fn may_download_keys(state: &CallsState, ext: &Extensions, headers: &HeaderMap) -> bool {
+    let password = crate::settings_store::active_ui_token(&state.settings.calls_ui_token);
+    !password.trim().is_empty() || (from_this_computer(ext, headers) && loopback_host(headers))
+}
+
 fn can_open_folder(ext: &Extensions, headers: &HeaderMap) -> bool {
     cfg!(any(target_os = "windows", target_os = "macos")) && from_this_computer(ext, headers)
 }
@@ -2066,6 +2324,8 @@ async fn status(State(state): State<CallsState>, headers: HeaderMap, Query(q): Q
         "default_dir": absolute(&default_dir(&data)).display().to_string(),
         "dir_ok": dir_ok,
         "can_open_folder": can_open_folder(&ext, &headers),
+        // Downloads that hold keys work here (else they answer need_password).
+        "can_download": may_download_keys(&state, &ext, &headers),
         "running": running,
         "last": last,
         "next_at": next_at,
@@ -2151,7 +2411,7 @@ async fn send_file(path: PathBuf, name: &str, remove: bool) -> Response {
 
 /// `GET /api/backup/export?items=settings,keys,…`: a zip of those parts, as a
 /// download (`bad_items` for an empty list or an unknown part).
-async fn export(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<ExportQuery>) -> Response {
+async fn export(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<ExportQuery>, ext: Extensions) -> Response {
     if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
         return unauthorized();
     }
@@ -2162,6 +2422,9 @@ async fn export(State(state): State<CallsState>, headers: HeaderMap, Query(q): Q
     let Some(want) = want else {
         return err_response((StatusCode::BAD_REQUEST, "bad_items"));
     };
+    if want.contains(&"keys") && !may_download_keys(&state, &ext, &headers) {
+        return err_response((StatusCode::FORBIDDEN, "need_password"));
+    }
     match export_file(&state, want).await {
         Ok((name, path)) => send_file(path, &name, true).await,
         Err(e) => err_response((StatusCode::INTERNAL_SERVER_ERROR, e.code())),
@@ -2169,9 +2432,13 @@ async fn export(State(state): State<CallsState>, headers: HeaderMap, Query(q): Q
 }
 
 /// `GET /api/backup/file/{name}`: a backup of the backup folder, as a download.
-async fn download(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, UrlPath(name): UrlPath<String>) -> Response {
+async fn download(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, ext: Extensions, UrlPath(name): UrlPath<String>) -> Response {
     if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
         return unauthorized();
+    }
+    // Backups hold the keys.
+    if !may_download_keys(&state, &ext, &headers) {
+        return err_response((StatusCode::FORBIDDEN, "need_password"));
     }
     let path = configured_dir(&state.settings_store.snapshot(), &PathBuf::from(&state.settings.calls_data_dir)).join(&name);
     if parse_name(&name).is_none() || !is_plain_file(&path) {
@@ -2182,19 +2449,15 @@ async fn download(State(state): State<CallsState>, headers: HeaderMap, Query(q):
 
 /// `POST /api/backup/import`, the file as the body and its name in
 /// `X-Filename`: the preview, nothing restored yet.
-async fn import(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, body: Result<Bytes, BytesRejection>) -> Response {
+async fn import(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, body: Body) -> Response {
     if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
         return unauthorized();
     }
     let Some(name) = upload_name(&headers) else {
         return api_error(StatusCode::BAD_REQUEST, "bad_request", "send the file name (URL-encoded) in X-Filename");
     };
-    let body = match body {
-        Ok(b) => b,
-        Err(rej) if rej.status() == StatusCode::PAYLOAD_TOO_LARGE => return err_response((StatusCode::BAD_REQUEST, "too_large")),
-        Err(_) => return err_response((StatusCode::BAD_REQUEST, "bad_request")),
-    };
-    match preview_upload(&state, &name, body).await {
+    let declared = headers.get(header::CONTENT_LENGTH).and_then(|v| v.to_str().ok()).and_then(|v| v.trim().parse::<u64>().ok());
+    match preview_upload_stream(&state, &name, declared, body.into_data_stream()).await {
         Ok(v) => Json(v).into_response(),
         Err(e) => err_response(e),
     }
@@ -2282,7 +2545,7 @@ async fn open_folder(State(state): State<CallsState>, headers: HeaderMap, Query(
     match open_in_file_manager(&dir) {
         Ok(()) => Json(json!({"ok": true})).into_response(),
         Err(e) => {
-            warn!("backup: the folder could not be opened: {e}");
+            warn!("backup: the folder could not be opened kind={:?}", e.kind());
             err_response((StatusCode::INTERNAL_SERVER_ERROR, "io"))
         }
     }
@@ -2295,7 +2558,7 @@ pub fn router() -> Router<CallsState> {
         .route("/api/backup/run", post(run))
         .route("/api/backup/export", get(export))
         .route("/api/backup/file/{name}", get(download))
-        .route("/api/backup/import", post(import).layer(DefaultBodyLimit::max(IMPORT_MAX_BYTES + (1 << 20))))
+        .route("/api/backup/import", post(import))
         .route("/api/backup/restore", post(restore))
         .route("/api/backup/apply", post(apply_route))
         .route("/api/backup/open-folder", post(open_folder))
@@ -2350,6 +2613,10 @@ mod tests {
                 "gemini_api_key": FAKE_GEMINI,
                 "summary_api_key": FAKE_SUMMARY,
                 "notify_channels": [{"kind": "ntfy", "name": "Test channel", "url": "https://ntfy.example/fake-topic", "token": FAKE_CHANNEL, "target": "fake-topic"}],
+                "telegram_chat_id": "fake-chat-a",
+                "whitelist_forward_number": "+15555550188",
+                "summary_api_base": "https://summary-a.example/v1",
+                "mcp_enabled": true,
             }))
             .unwrap();
         std::fs::write(root.join(crate::phone_wifi::KEY_FILE), FAKE_PAIRING).unwrap();
@@ -2451,6 +2718,8 @@ mod tests {
         assert_eq!(preview_items(&preview), ["settings", "keys", "contacts"]);
         assert!(preview["items"].as_array().unwrap().contains(&json!({"id": "contacts", "count": 1})));
         assert!(preview["warnings"].as_array().unwrap().is_empty());
+        assert_eq!(preview["changes_connections"], true, "the channel of the backup is new here");
+        assert!(preview["total_size"].as_u64().unwrap() > 0);
 
         let token = preview["token"].as_str().unwrap().to_string();
         let done = apply(&b, &token, &["settings", "keys", "contacts"]).await.unwrap();
@@ -2471,9 +2740,13 @@ mod tests {
         assert_eq!(parse_name(before).map(|(k, _)| k), Some(Kind::BeforeImport));
         let kept = inspect(&default_dir(&rb).join(before)).unwrap().manifest.unwrap();
         assert!(!kept.include_calls);
-        assert_eq!(kept.items, ["settings"], "a fresh install has only (default) settings");
+        assert_eq!(kept.items, ["settings", "keys"], "a fresh install: its settings and the summary service it uses");
         // The token works once.
         assert_eq!(code(apply(&b, &token, &["settings"]).await), "expired");
+        // Its own keys and connections, back again: nothing would change.
+        let (name, bytes) = export_bytes(&b, &["keys"]).await;
+        let again = preview_upload(&b, &name, Bytes::from(bytes)).await.unwrap();
+        assert_eq!(again["changes_connections"], false);
         let _ = std::fs::remove_dir_all(&ra);
         let _ = std::fs::remove_dir_all(&rb);
     }
@@ -2485,8 +2758,7 @@ mod tests {
         let (_, bytes) = export_bytes(&a, &["settings"]).await;
         let plain = unpacked(&bytes);
         assert!(has(&plain, "Sam Example"), "the settings are there");
-        assert!(has(&plain, "Test channel"), "the channel is there, without its credentials");
-        for secret in [FAKE_GEMINI, FAKE_SUMMARY, FAKE_CHANNEL, FAKE_PAIRING, "ntfy.example"] {
+        for secret in [FAKE_GEMINI, FAKE_SUMMARY, FAKE_CHANNEL, FAKE_PAIRING, "ntfy.example", "Test channel", "fake-topic", "fake-chat-a", "+15555550188", "summary-a.example"] {
             assert!(!has(&plain, secret), "{secret} leaked");
         }
         assert_eq!(manifest_items(&bytes), ["settings"]);
@@ -2495,7 +2767,8 @@ mod tests {
         let (_, bytes) = export_bytes(&a, &["keys"]).await;
         let plain = unpacked(&bytes);
         assert!(has(&plain, FAKE_GEMINI) && has(&plain, FAKE_CHANNEL) && has(&plain, FAKE_PAIRING));
-        assert!(!has(&plain, "Sam Example") && !has(&plain, "Alex Example") && !has(&plain, "Test channel"));
+        assert!(has(&plain, "Test channel") && has(&plain, "fake-chat-a") && has(&plain, "+15555550188"), "connections go with the keys");
+        assert!(!has(&plain, "Sam Example") && !has(&plain, "Alex Example"));
         assert_eq!(manifest_items(&bytes), ["keys"]);
 
         let (_, bytes) = export_bytes(&a, &["contacts"]).await;
@@ -2511,19 +2784,30 @@ mod tests {
         let (name, bytes) = export_bytes(&a, &["settings"]).await;
         let rb_owner = "Bob Example";
         let b = keyed_state(&rb, rb_owner).await;
-        b.settings_store.apply_patch(&json!({"gemini_api_key": "test-fake-b-key-0005"})).unwrap();
+        b.settings_store
+            .apply_patch(&json!({
+                "gemini_api_key": "test-fake-b-key-0005",
+                "telegram_chat_id": "fake-chat-b",
+                "whitelist_forward_number": "+15555550199",
+                "summary_api_base": "https://summary-b.example/v1",
+                "mcp_enabled": false,
+                "backup_keep": 3,
+            }))
+            .unwrap();
         let preview = preview_upload(&b, &name, Bytes::from(bytes)).await.unwrap();
         assert_eq!(preview_items(&preview), ["settings"]);
-        assert_eq!(preview["changes_password"], false);
+        assert_eq!((preview["changes_password"].as_bool(), preview["changes_connections"].as_bool()), (Some(false), Some(false)));
         assert_eq!(code(apply(&b, preview["token"].as_str().unwrap(), &["keys"]).await), "bad_items");
         apply(&b, preview["token"].as_str().unwrap(), &["settings"]).await.unwrap();
         let rt = b.settings_store.snapshot();
         assert_eq!(rt.owner_name, "Sam Example");
         assert_eq!((rt.gemini_api_key.as_str(), rt.summary_api_key.as_str()), ("test-fake-b-key-0005", FAKE_SUMMARY));
-        // Its own channel keeps its token; the one from the backup has none.
-        assert_eq!(rt.notify_channels.len(), 2);
-        assert!(rt.notify_channels.iter().any(|c| c.token == FAKE_CHANNEL));
-        assert!(rt.notify_channels.iter().any(|c| c.token.is_empty() && c.url.is_empty()));
+        assert_eq!(rt.backup_keep, 7, "the other settings come from the file");
+        // Its own connections stay whole.
+        assert_eq!(rt.notify_channels.len(), 1);
+        assert_eq!((rt.notify_channels[0].token.as_str(), rt.notify_channels[0].url.as_str()), (FAKE_CHANNEL, "https://ntfy.example/fake-topic"));
+        assert_eq!((rt.telegram_chat_id.as_str(), rt.whitelist_forward_number.as_str()), ("fake-chat-b", "+15555550199"));
+        assert_eq!((rt.summary_api_base.as_str(), rt.mcp_enabled), ("https://summary-b.example/v1", false));
         assert_eq!(std::fs::read_to_string(rb.join(crate::phone_wifi::KEY_FILE)).unwrap(), FAKE_PAIRING);
         let _ = std::fs::remove_dir_all(&ra);
         let _ = std::fs::remove_dir_all(&rb);
@@ -2537,10 +2821,12 @@ mod tests {
         let b = state_at(&rb);
         b.settings_store.apply_patch(&json!({"owner_name": "Bob Example", "retention_days": 30})).unwrap();
         let preview = preview_upload(&b, &name, Bytes::from(bytes)).await.unwrap();
+        assert_eq!(preview["changes_connections"], true);
         apply(&b, preview["token"].as_str().unwrap(), &["keys"]).await.unwrap();
         let rt = b.settings_store.snapshot();
         assert_eq!((rt.owner_name.as_str(), rt.retention_days, rt.backup_keep), ("Bob Example", 30, 10));
         assert_eq!((rt.gemini_api_key.as_str(), rt.summary_api_key.as_str()), (FAKE_GEMINI, FAKE_SUMMARY));
+        assert_eq!((rt.notify_channels.len(), rt.telegram_chat_id.as_str(), rt.mcp_enabled), (1, "fake-chat-a", true));
         assert!(b.contacts.list("").is_empty(), "contacts were not picked");
         assert_eq!(std::fs::read_to_string(rb.join(crate::phone_wifi::KEY_FILE)).unwrap(), FAKE_PAIRING);
         let _ = std::fs::remove_dir_all(&ra);
@@ -2608,7 +2894,23 @@ mod tests {
         let ok = preview_upload(&b, "ok.zip", Bytes::from(zip)).await.unwrap();
         assert_eq!(ok["items"], json!([{"id": "settings"}]));
 
-        for path in ["data/../escape.json", "/etc/passwd", "data//etc/passwd", "data/C:/x.json", "data\\config\\settings.json", "data/config/../../x.json", "config/settings.json"] {
+        let evil = [
+            "data/../escape.json",
+            "/etc/passwd",
+            "data//etc/passwd",
+            "data/C:/x.json",
+            "data\\config\\settings.json",
+            "data/config/../../x.json",
+            "config/settings.json",
+            "data/config/CON.json",
+            "data/nul",
+            "data/2026-01-01/lpt1.wav",
+            "data/config/Aux.txt",
+            "data/2026-01-01/com9",
+            "data/config/x.json ",
+            "data/config/x.json.",
+        ];
+        for path in evil {
             let zip = zip_with(&manifest(1, vec![entry(path, settings, &sha(settings))]), &[(path, settings)]);
             assert_eq!(code(preview_upload(&b, "evil.zip", Bytes::from(zip)).await), "damaged", "{path}");
         }
@@ -2622,7 +2924,7 @@ mod tests {
 
         let big = entry("data/contacts.json", settings, &sha(settings));
         let mut m = manifest(1, vec![big]);
-        m["files"][0]["size"] = json!(SETTINGS_MAX_BYTES + 1);
+        m["files"][0]["size"] = json!(SMALL_FILE_MAX_BYTES + 1);
         let zip = zip_with(&m, &[("data/contacts.json", settings)]);
         assert_eq!(code(preview_upload(&b, "big.zip", Bytes::from(zip)).await), "too_large");
 
@@ -2707,7 +3009,15 @@ mod tests {
     #[tokio::test]
     async fn call_records_are_added_and_none_here_go() {
         let (ra, rb) = (temp_root("ca"), temp_root("cb"));
-        std::fs::write(ra.join("index.json"), json!({"calls": [call_json("call-a", "2026-02-03")]}).to_string()).unwrap();
+        // A record naming files the restore does not bring back, or outside the calls.
+        let mut evil = call_json("call-evil", "2026-02-03");
+        evil["audio_path"] = json!("../../../outside.txt");
+        evil["tts_audio_path"] = json!("config/settings.json");
+        evil["remote_audio_path"] = json!("/etc/hosts");
+        evil["voicemail_path"] = json!("2026-02-03/missing.wav");
+        evil["ai_audio_path"] = json!("2026-02-03/call-a.wav");
+        let calls = json!({"calls": [call_json("call-a", "2026-02-03"), evil, call_json("../escape", "2026-02-03")]});
+        std::fs::write(ra.join("index.json"), calls.to_string()).unwrap();
         std::fs::create_dir_all(ra.join("2026-02-03")).unwrap();
         std::fs::write(ra.join("2026-02-03").join("call-a.wav"), b"RIFF test recording").unwrap();
         std::fs::write(ra.join("2026-02-03").join("call-x.pcm"), b"still recording").unwrap();
@@ -2738,19 +3048,25 @@ mod tests {
             assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
         }
         let held = inspect(&path).unwrap();
-        assert_eq!(held.manifest.as_ref().unwrap().items, ["settings", "calls", "sms", "tasks"]);
+        assert_eq!(held.manifest.as_ref().unwrap().items, ["settings", "keys", "calls", "sms", "tasks"]);
         assert!(held.files.iter().all(|w| !w.rel.ends_with(".pcm")), "a call still being recorded stays out");
         assert!(held.files.iter().all(|w| !w.rel.starts_with("backups/")));
 
         let b = state_at(&rb);
         let preview = preview_upload(&b, &entry.name, Bytes::from(std::fs::read(&path).unwrap())).await.unwrap();
-        assert_eq!((preview["has_calls"].as_bool(), preview["calls_count"].as_u64()), (Some(true), Some(1)));
+        assert_eq!((preview["has_calls"].as_bool(), preview["calls_count"].as_u64()), (Some(true), Some(3)));
         // The call records alone: the settings here stay.
         let done = apply(&b, preview["token"].as_str().unwrap(), &["calls", "sms", "tasks"]).await.unwrap();
         assert_eq!(done["ok"], true);
         assert_ne!(b.settings_store.snapshot().owner_name, "Calls Example");
         let ids: Vec<String> = b.store.list().await.into_iter().map(|c| c.id).collect();
         assert!(ids.contains(&"call-a".to_string()) && ids.contains(&"call-b".to_string()), "{ids:?}");
+        assert!(!ids.iter().any(|i| i.contains("escape")), "a record id that is no file name stays out");
+        let evil = b.store.get("call-evil").await.expect("restored");
+        assert_eq!(
+            (evil.audio_path, evil.tts_audio_path, evil.remote_audio_path, evil.voicemail_path, evil.ai_audio_path.as_deref()),
+            (None, None, None, None, Some("2026-02-03/call-a.wav"))
+        );
         assert_eq!(std::fs::read(rb.join("2026-02-03").join("call-a.wav")).unwrap(), b"RIFF test recording");
         assert!(b.sms.get(text_id).is_some());
         assert!(b.task_store.get(&task.id).await.is_some());
@@ -2804,5 +3120,114 @@ mod tests {
                 assert!(!body.contains("dir_unwritable") && !body.contains("disk_full"), "{lang:?}");
             }
         }
+    }
+
+    #[tokio::test]
+    async fn twelve_exports_at_once_all_work() {
+        let ra = temp_root("many");
+        let a = keyed_state(&ra, "Sam Example").await;
+        let runs = (0..12).map(|_| export_file(&a, DEFAULT_ITEMS.to_vec()));
+        let done = futures_util::future::join_all(runs).await;
+        let paths: HashSet<PathBuf> = done.into_iter().map(|r| r.expect("export").1).collect();
+        assert_eq!(paths.len(), 12);
+        for p in &paths {
+            assert!(inspect(p).is_ok());
+            let _ = std::fs::remove_file(p);
+        }
+        let _ = std::fs::remove_dir_all(&ra);
+    }
+
+    #[tokio::test]
+    async fn backups_of_the_same_second_get_names_of_their_own() {
+        let root = temp_root("same");
+        let st = state_at(&root);
+        let lay = Layout::of(&st);
+        let dir = default_dir(&root);
+        let now = Local::now();
+        let first = write_backup_file(&lay, b"{}".to_vec(), &dir, Kind::Manual, &DEFAULT_ITEMS, now).unwrap();
+        let second = write_backup_file(&lay, b"{}".to_vec(), &dir, Kind::Manual, &DEFAULT_ITEMS, now).unwrap();
+        assert_ne!(first.name, second.name);
+        assert!(dir.join(&first.name).is_file() && dir.join(&second.name).is_file());
+        assert!(names_in(&dir).iter().all(|n| !n.ends_with(".tmp")), "no temporary file left");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn at_most_three_previews_and_two_uploads_wait() {
+        let rb = temp_root("three");
+        let b = state_at(&rb);
+        for n in 0..3 {
+            preview_upload(&b, "settings.json", Bytes::from(format!("{{\"owner_name\": \"Wait {n}\"}}"))).await.unwrap();
+        }
+        let fourth = preview_upload(&b, "settings.json", Bytes::from_static(br#"{"owner_name": "Wait 3"}"#)).await;
+        assert_eq!(fourth.expect_err("busy"), (StatusCode::CONFLICT, "busy"));
+        let ds = dir_state(&rb);
+        let one = upload_slot(ds.clone());
+        let two = upload_slot(ds.clone());
+        assert!(one.is_some() && two.is_some() && upload_slot(ds.clone()).is_none());
+        drop(one);
+        assert!(upload_slot(ds).is_some());
+        let _ = std::fs::remove_dir_all(&rb);
+    }
+
+    #[tokio::test]
+    async fn limits_go_by_what_the_files_are() {
+        let rb = temp_root("limits");
+        let b = state_at(&rb);
+        // Saying it holds call records does not lift the limit of the other files.
+        let body = br#"{"owner_name": "Limit Example"}"#;
+        let files: Vec<Value> = (0..3).map(|n| json!({"path": format!("data/config/extra{n}.json"), "size": SMALL_FILE_MAX_BYTES, "sha256": sha(body)})).collect();
+        let mut m = manifest(1, files);
+        m["include_calls"] = json!(true);
+        m["items"] = json!(["settings", "calls"]);
+        assert_eq!(code(preview_upload(&b, "lie.zip", Bytes::from(zip_with(&m, &[]))).await), "too_large");
+        // Packed far tighter than a real file.
+        let blank = vec![b' '; 1 << 20];
+        let m = manifest(1, vec![json!({"path": "data/contacts.json", "size": blank.len(), "sha256": sha(&blank)})]);
+        let zip = zip_with(&m, &[("data/contacts.json", &blank)]);
+        assert_eq!(code(preview_upload(&b, "bomb.zip", Bytes::from(zip)).await), "damaged");
+        // A recording is kept as it is: silence is no bomb.
+        let mut z = ZipOut::new(io::Cursor::new(Vec::new()), Local::now().naive_local());
+        z.add("data/2026-01-01/quiet.wav", &mut &blank[..], blank.len() as u64).unwrap();
+        let path = rb.join("quiet.zip");
+        std::fs::write(&path, z.finish().unwrap().into_inner()).unwrap();
+        let zin = ZipIn::open(File::open(&path).unwrap()).unwrap();
+        let e = zin.entries["data/2026-01-01/quiet.wav"];
+        assert_eq!((e.method, e.packed), (0, e.size));
+        let _ = std::fs::remove_dir_all(&rb);
+    }
+
+    #[test]
+    fn keys_leave_without_a_password_only_for_this_computer() {
+        let host = |h: &str| {
+            let mut m = HeaderMap::new();
+            m.insert(header::HOST, h.parse().unwrap());
+            m
+        };
+        for ok in ["localhost:8787", "127.0.0.1:8787", "[::1]:8787", "LOCALHOST", "app.localhost:8787", "127.0.0.1"] {
+            assert!(loopback_host(&host(ok)), "{ok}");
+        }
+        for bad in ["bageo.local:8787", "192.0.2.10:8787", "evil.example", "127.0.0.1.evil.example", "[2001:db8::1]:8787", ""] {
+            assert!(!loopback_host(&host(bad)), "{bad}");
+        }
+        let peer = |ip: &str| {
+            let mut e = Extensions::new();
+            e.insert(ConnectInfo(std::net::SocketAddr::new(ip.parse().unwrap(), 50000)));
+            e
+        };
+        let plain = host("localhost:8787");
+        assert!(from_this_computer(&peer("127.0.0.1"), &plain));
+        assert!(from_this_computer(&peer("::1"), &plain));
+        assert!(!from_this_computer(&peer("192.0.2.10"), &plain));
+        let mut proxied = plain.clone();
+        proxied.insert("x-forwarded-for", "198.51.100.7".parse().unwrap());
+        assert!(!from_this_computer(&peer("127.0.0.1"), &proxied));
+        assert!(!from_this_computer(&Extensions::new(), &plain));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn free_room_on_the_disk_is_known() {
+        assert!(free_space(&std::env::temp_dir()).is_some_and(|n| n > 0));
     }
 }
