@@ -183,6 +183,27 @@ pub fn shown_address(base: &str, reported: &str, reachable: bool) -> String {
     }
 }
 
+/// Failed checks in a row before a reported address that opened here before
+/// stops being shown (a `.local` name is sometimes slow to look up).
+pub const UI_URL_KEEP_MISSES: u32 = 3;
+
+/// After one check of the console address Bageo reports (`opens`: it answered
+/// from this computer just now): the address to show (empty = the polling
+/// address) and the failed checks so far. An address that is already shown
+/// stays through up to `UI_URL_KEEP_MISSES - 1` failed checks of that same
+/// address, so the window does not flip between it and 127.0.0.1.
+pub fn next_ui_url(current: &str, misses: u32, reported: &str, opens: bool) -> (String, u32) {
+    if opens {
+        return (reported.trim().to_string(), 0);
+    }
+    let same = !current.is_empty() && current.trim() == reported.trim();
+    if same && misses + 1 < UI_URL_KEEP_MISSES {
+        (current.to_string(), misses + 1)
+    } else {
+        (String::new(), 0)
+    }
+}
+
 /// Turns what the user typed into a base address with a trailing slash.
 /// A pasted console link ("…/calls/", with or without "?…" or "#…") is cut back to the
 /// address in front of "/calls", because every request adds "calls/…" itself.
@@ -671,6 +692,26 @@ mod tests {
         assert_eq!(shown_address(base, "http://bageo.local/", false), base);
         assert_eq!(shown_address(base, "", true), base);
         assert_eq!(shown_address(base, "ftp://x/", true), base);
+    }
+
+    #[test]
+    fn a_console_address_that_opened_stays_through_a_slow_lookup() {
+        let local = "http://bageo.local/";
+        // Opens: shown.
+        assert_eq!(next_ui_url("", 0, local, true), (local.to_string(), 0));
+        // A failed check or two of the same address: still shown.
+        let (shown, m) = next_ui_url(local, 0, local, false);
+        assert_eq!((shown.as_str(), m), (local, 1));
+        let (shown, m) = next_ui_url(&shown, m, local, false);
+        assert_eq!((shown.as_str(), m), (local, 2));
+        // Opens again: the count starts over.
+        assert_eq!(next_ui_url(&shown, m, local, true), (local.to_string(), 0));
+        // Third failure in a row: the polling address is shown.
+        assert_eq!(next_ui_url(local, 2, local, false), (String::new(), 0));
+        // Never opened here, or Bageo now reports another address that does not open: not shown.
+        assert_eq!(next_ui_url("", 0, local, false), (String::new(), 0));
+        assert_eq!(next_ui_url(local, 0, "http://other.local/", false), (String::new(), 0));
+        assert_eq!(next_ui_url(local, 0, "", false), (String::new(), 0));
     }
 
     #[test]
