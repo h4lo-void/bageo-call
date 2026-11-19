@@ -1161,6 +1161,10 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
               <button type="button" class="btn" id="btnChanAdd" data-i18n="n_add"></button>
             </div>
           </div>
+          <div class="field"><label for="f-public_url" data-i18n="f_public_url"></label>
+            <input type="url" id="f-public_url" data-k="public_url" data-t="text" spellcheck="false" placeholder="http://bageo.local/" />
+            <div class="help" data-i18n="f_public_url_h"></div>
+            <button type="button" class="btn sm ghost" id="btnUseThisUrl" style="margin-top:4px;padding-left:0"></button></div>
           <details class="fold more" id="ctlField">
             <summary data-i18n="rc_title"></summary>
             <p class="help" style="margin-top:0" data-i18n="rc_desc"></p>
@@ -1263,10 +1267,6 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <div data-secret="ui_password"></div>
             <div class="help" data-i18n="f_ui_pw_h"></div></div>
           <div class="hr"></div>
-          <div class="field"><label for="f-public_url" data-i18n="f_public_url"></label>
-            <input type="url" id="f-public_url" data-k="public_url" data-t="text" spellcheck="false" placeholder="http://192.168.1.20:8787" />
-            <div class="help" data-i18n="f_public_url_h"></div>
-            <button type="button" class="btn sm ghost" id="btnUseThisUrl" style="margin-top:4px;padding-left:0"></button></div>
           <div class="field"><label for="f-mdns_name" data-i18n="f_mdns_name"></label>
             <input type="text" id="f-mdns_name" data-k="mdns_name" data-t="text" spellcheck="false" autocapitalize="off" autocomplete="off" maxlength="63" placeholder="bageo" style="max-width:16rem" />
             <div class="help" data-i18n="f_mdns_name_h"></div></div>
@@ -1340,6 +1340,8 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
                 <button type="button" class="btn sm" id="btnCopyUrl" data-i18n="cu_copy"></button>
               </div>
               <p class="help" id="sysUrlHelp"></p>
+              <a class="btn sm" id="btnUrlSetPw" href="#settings/region" data-i18n="cu_set_pw" hidden></a>
+              <p class="help" id="sysQrHelp" data-i18n="cu_qr_h" hidden></p>
               <p class="help" id="sysUrlIp" hidden><span data-i18n="cu_ip"></span> <a id="sysUrlIpLink" class="mono" target="_blank" rel="noopener"></a></p>
               <div class="a2hs" id="a2hs">
                 <b data-i18n="a2hs_title"></b>
@@ -2063,8 +2065,8 @@ I18N["en"] = {
   hint_smtp: "Any mail server with TLS: smtp://you@example.com@smtp.example.com:587 (STARTTLS) or smtps://…:465. The login is also the sender. Use an app password if your provider offers one.",
   hint_homeassistant: "Your Home Assistant address, a long-lived access token (Profile → Security) and the notify service, e.g. mobile_app_pixel_9 (listed under Developer tools → Actions).",
   hint_ifttt: "ifttt.com/maker_webhooks → Documentation shows your key. Create an applet “If Webhooks: Receive a web request” with the same event name; value1 is the title and value2 the message.",
-  f_public_url: "Address of this console",
-  f_public_url_h: "Links in notifications use this address. Empty = worked out automatically. With Docker, fill it in yourself.",
+  f_public_url: "Address in notifications",
+  f_public_url_h: "Links in notifications use this address. Empty = the one shown in grey; with Docker, or to reach it from outside your home, type your own.",
   use_this_url: "Use the address of this page: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "After each call the AI writes a short summary. There is normally nothing to set up here.",
@@ -2295,11 +2297,11 @@ I18N["en"] = {
   err_network_error: "The service could not be reached.",
   err_send_failed: "Sending failed.",
   f_mdns_name: "Network name",
-  f_mdns_name_h: "Devices on the same network can open the console at http://name.local:8787. Letters, digits and hyphens only. Empty = off.",
+  f_mdns_name_h: "Devices on the same network can open the console at http://name.local. Letters, digits and hyphens only. Empty = off.",
   cu_title: "Console address",
   cu_copy: "Copy",
   cu_qr_h: "Scan the code with your phone's camera to open the console there.",
-  cu_local: "Only this computer can open this address. To open the console from your phone, open it to your network (AGENT_HOST=0.0.0.0, see the guide).",
+  cu_local: "Only this computer can open this address.",
   cu_qr_alt: "QR code of the console address",
   a2hs_title: "Add this page to your home screen. Next time, just tap the icon.",
   a2hs_install: "Install",
@@ -2478,7 +2480,7 @@ I18N["en"] = {
   f_wl_num_ph: "e.g. 0912345678",
   f_wl_num_h: "The number to reach you when something is urgent. It appears in the alerts; with the trial switch below on, the phone dials it.",
   f_ui_pw: "Console password",
-  f_ui_pw_h: "Once set, the console asks for it when opened (once per browser). You can skip it if you only use the console at home.",
+  f_ui_pw_h: "Once set, the console asks for it when opened (once per browser). Needed to open the console on your phone or another computer.",
   pw_setup_title: "Set a console password (optional)",
   pw_setup_body: "Set a password if you will open this console from outside your home network. You can change it later in Settings.",
   pw_setup_ph: "At least 4 characters",
@@ -2697,6 +2699,9 @@ I18N["en"] = {
   err_backup_password_short: "The backup password needs at least 8 characters.",
   err_backup_password_missing: "Set a backup password before you turn on encryption.",
   bk_st_exporting: "Preparing the export file…",
+  cu_lan: "Phones and computers on the same Wi-Fi can open the console at this address.",
+  cu_lan_nopw: "Phones and computers on the same Wi-Fi can use this address. Set a console password before opening it on another device.",
+  cu_set_pw: "Set password",
 };
 
 I18N["zh-TW"] = {
@@ -3020,7 +3025,7 @@ I18N["zh-TW"] = {
   f_wl_num_ph: "例如：0912345678",
   f_wl_num_h: "有急事時要找你的號碼，會顯示在通知裡；打開下面的試驗開關，手機會直接撥這個號碼。",
   f_ui_pw: "控制台密碼",
-  f_ui_pw_h: "設了以後，打開控制台要輸入密碼（每個瀏覽器只要輸入一次）。只在家裡的網路用可以不設。",
+  f_ui_pw_h: "設了以後，打開控制台要輸入密碼（每個瀏覽器只要輸入一次）。要用手機或別台電腦打開控制台，一定要設。",
   pw_setup_title: "設定控制台密碼（可不設）",
   pw_setup_body: "會從外面連回這個控制台的話，建議設密碼。之後可以到「設定」修改。",
   pw_setup_ph: "至少 4 個字",
@@ -3277,8 +3282,8 @@ I18N["zh-TW"] = {
   hint_smtp: "任何支援 TLS 的郵件伺服器：smtp://you@example.com@smtp.example.com:587（STARTTLS）或 smtps://…:465。登入帳號同時是寄件人。郵件服務有提供應用程式密碼的話請用它。",
   hint_homeassistant: "你的 Home Assistant 網址、長期存取權杖（個人資料 → 安全性）和通知服務名稱，例如 mobile_app_pixel_9（在「開發者工具 → 動作」可以查到）。",
   hint_ifttt: "ifttt.com/maker_webhooks → Documentation 會顯示你的金鑰。建立 Applet「If Webhooks：Receive a web request」，事件名稱填一樣的；value1 是標題、value2 是內容。",
-  f_public_url: "這個控制台的網址",
-  f_public_url_h: "通知裡的連結會用這個網址。留空會自動判斷；用 Docker 安裝請自己填。",
+  f_public_url: "通知裡的網址",
+  f_public_url_h: "通知裡的連結用這個網址。留空＝用欄位裡灰字的網址；用 Docker 或要從外面連進來時請自己填。",
   use_this_url: "使用目前這個頁面的網址：{url}",
   // ---- settings: summary & calendar
   g_summary_d: "每通電話結束後，AI 會寫一段摘要。通常不用另外設定。",
@@ -3509,11 +3514,11 @@ I18N["zh-TW"] = {
   err_network_error: "連不上服務。",
   err_send_failed: "傳送失敗。",
   f_mdns_name: "區網名稱",
-  f_mdns_name_h: "同一個網路的裝置可以用 http://名稱.local:8787 打開控制台。只能用英文、數字和連字號（-）。留空 = 不使用。",
+  f_mdns_name_h: "同一個網路的裝置可以用 http://名稱.local 打開控制台。只能用英文、數字和連字號（-）。留空 = 不使用。",
   cu_title: "控制台網址",
   cu_copy: "複製",
   cu_qr_h: "用手機相機掃這個 QR code，就能在手機上打開控制台。",
-  cu_local: "這個網址只有這台電腦能開。要用手機打開，請讓控制台對區網開放（AGENT_HOST=0.0.0.0，見說明文件）。",
+  cu_local: "這個網址只有這台電腦能開。",
   cu_qr_alt: "控制台網址的 QR code",
   a2hs_title: "把這個網頁加到主畫面，下次點圖示就打開。",
   a2hs_install: "安裝",
@@ -3878,6 +3883,9 @@ I18N["zh-TW"] = {
   err_backup_password_short: "備份密碼至少要 8 個字元。",
   err_backup_password_missing: "開啟備份檔加密前，請先設定備份密碼。",
   bk_st_exporting: "正在準備匯出檔…",
+  cu_lan: "同一個 Wi-Fi 的手機和電腦都能用這個網址打開。",
+  cu_lan_nopw: "同一個 Wi-Fi 的手機和電腦都能用這個網址。從別的裝置打開前，請先設控制台密碼。",
+  cu_set_pw: "設定密碼",
 };
 
 I18N["zh-CN"] = {
@@ -4425,8 +4433,8 @@ I18N["zh-CN"] = {
   hint_smtp: "任何支持 TLS 的邮件服务器：smtp://you@example.com@smtp.example.com:587（STARTTLS）或 smtps://…:465。登录账号同时是发件人。邮件服务提供应用专用密码的话请用它。",
   hint_homeassistant: "你的 Home Assistant 地址、长期访问令牌（个人资料 → 安全）和通知服务名称，例如 mobile_app_pixel_9（在“开发者工具 → 动作”里能查到）。",
   hint_ifttt: "ifttt.com/maker_webhooks → Documentation 会显示你的密钥。创建 Applet“If Webhooks：Receive a web request”，事件名称填一样的；value1 是标题、value2 是内容。",
-  f_public_url: "这个控制台的地址",
-  f_public_url_h: "通知里的链接会用这个地址。留空会自动判断；用 Docker 安装请自己填。",
+  f_public_url: "通知里的地址",
+  f_public_url_h: "通知里的链接用这个地址。留空＝用输入框里灰字的地址；用 Docker 或要从外面连进来时请自己填。",
   use_this_url: "使用当前页面的地址：{url}",
   // ---- settings: summary & calendar
   g_summary_d: "每通电话结束后，AI 会写一段摘要。通常不用另外设置。",
@@ -4657,11 +4665,11 @@ I18N["zh-CN"] = {
   err_network_error: "连不上服务。",
   err_send_failed: "发送失败。",
   f_mdns_name: "局域网名称",
-  f_mdns_name_h: "同一个网络的设备可以用 http://名称.local:8787 打开控制台。只能用英文、数字和连字符（-）。留空 = 不使用。",
+  f_mdns_name_h: "同一个网络的设备可以用 http://名称.local 打开控制台。只能用英文、数字和连字符（-）。留空 = 不使用。",
   cu_title: "控制台地址",
   cu_copy: "复制",
   cu_qr_h: "用手机相机扫这个二维码，就能在手机上打开控制台。",
-  cu_local: "这个地址只有这台电脑能打开。要用手机打开，请让控制台对局域网开放（AGENT_HOST=0.0.0.0，见说明文档）。",
+  cu_local: "这个地址只有这台电脑能打开。",
   cu_qr_alt: "控制台地址的二维码",
   a2hs_title: "把这个网页添加到主屏幕，下次点图标就能打开。",
   a2hs_install: "安装",
@@ -4840,7 +4848,7 @@ I18N["zh-CN"] = {
   f_wl_num_ph: "例如：13800138000",
   f_wl_num_h: "有急事时要找你的号码，会显示在通知里；打开下面的试验开关，手机会直接拨这个号码。",
   f_ui_pw: "控制台密码",
-  f_ui_pw_h: "设置后，打开控制台要输入密码（每个浏览器只需输入一次）。只在家里的网络使用可以不设。",
+  f_ui_pw_h: "设置后，打开控制台要输入密码（每个浏览器只需输入一次）。要用手机或别的电脑打开控制台，必须设置。",
   pw_setup_title: "设置控制台密码（选填）",
   pw_setup_body: "如果会从外面连回这个控制台，建议设置密码。以后可以到“设置”修改。",
   pw_setup_ph: "至少 4 个字符",
@@ -5059,6 +5067,9 @@ I18N["zh-CN"] = {
   err_backup_password_short: "备份密码至少要 8 个字符。",
   err_backup_password_missing: "打开备份文件加密之前，请先设置备份密码。",
   bk_st_exporting: "正在准备导出文件…",
+  cu_lan: "同一个 Wi-Fi 下的手机和电脑都能用这个地址打开。",
+  cu_lan_nopw: "同一个 Wi-Fi 下的手机和电脑都能用这个地址。从别的设备打开前，请先设置控制台密码。",
+  cu_set_pw: "设置密码",
 };
 
 I18N["ja"] = {
@@ -5606,8 +5617,8 @@ I18N["ja"] = {
   hint_smtp: "TLS に対応したメールサーバーなら使えます：smtp://you@example.com@smtp.example.com:587（STARTTLS）または smtps://…:465。ログインのアドレスが送信者になります。プロバイダーにアプリ パスワードがあればそれを使ってください。",
   hint_homeassistant: "Home Assistant のアドレス、長期アクセストークン（プロフィール → セキュリティ）、notify サービス名（例：mobile_app_pixel_9。開発者ツール → アクション で確認できます）を入力します。",
   hint_ifttt: "ifttt.com/maker_webhooks → Documentation にキーが表示されます。同じイベント名でアプレット「If Webhooks: Receive a web request」を作成します。value1 がタイトル、value2 が本文です。",
-  f_public_url: "このコンソールのアドレス",
-  f_public_url_h: "通知内のリンクに使うアドレスです。空欄なら自動で決まります。Docker の場合は自分で入力してください。",
+  f_public_url: "通知に使うアドレス",
+  f_public_url_h: "通知内のリンクはこのアドレスを使います。空欄なら薄い文字のアドレス、Docker や外から使うときは自分で入力してください。",
   use_this_url: "このページのアドレスを使う：{url}",
   // ---- settings: summary & calendar
   g_summary_d: "通話が終わるたびに AI が短い要約を書きます。通常、ここの設定は不要です。",
@@ -5838,11 +5849,11 @@ I18N["ja"] = {
   err_network_error: "サービスに接続できませんでした。",
   err_send_failed: "送信に失敗しました。",
   f_mdns_name: "ネットワーク名",
-  f_mdns_name_h: "同じネットワークの機器から http://名前.local:8787 でコンソールを開けます。英字、数字、ハイフンのみ。空欄 = 使わない。",
+  f_mdns_name_h: "同じネットワークの機器から http://名前.local でコンソールを開けます。英字、数字、ハイフンのみ。空欄 = 使わない。",
   cu_title: "コンソールのアドレス",
   cu_copy: "コピー",
   cu_qr_h: "スマホのカメラでこのコードを読み取ると、スマホでコンソールが開きます。",
-  cu_local: "このアドレスはこのPCでしか開けません。スマホから開くには、コンソールをネットワークに公開してください（AGENT_HOST=0.0.0.0、ガイド参照）。",
+  cu_local: "このアドレスはこのPCでしか開けません。",
   cu_qr_alt: "コンソールのアドレスの QR コード",
   a2hs_title: "このページをホーム画面に追加すると、次からはアイコンをタップするだけで開けます。",
   a2hs_install: "インストール",
@@ -6021,7 +6032,7 @@ I18N["ja"] = {
   f_wl_num_ph: "例：09012345678",
   f_wl_num_h: "急ぎのときにあなたへ連絡する番号です。通知に表示されます。下の試験スイッチをオンにすると、スマホがこの番号に発信します。",
   f_ui_pw: "コンソールのパスワード",
-  f_ui_pw_h: "設定すると、コンソールを開くときにパスワードを求められます（ブラウザごとに一度だけ）。自宅のネットワークだけで使うなら不要です。",
+  f_ui_pw_h: "設定すると、コンソールを開くときにパスワードを求められます（ブラウザごとに一度だけ）。スマホやほかのパソコンで開くには必要です。",
   pw_setup_title: "コンソールのパスワードを設定（任意）",
   pw_setup_body: "外出先からこのコンソールを開くなら、パスワードの設定をおすすめします。あとから「設定」で変更できます。",
   pw_setup_ph: "4 文字以上",
@@ -6240,6 +6251,9 @@ I18N["ja"] = {
   err_backup_password_short: "バックアップのパスワードは 8 文字以上にしてください。",
   err_backup_password_missing: "暗号化をオンにする前に、バックアップのパスワードを設定してください。",
   bk_st_exporting: "エクスポートするファイルを準備しています…",
+  cu_lan: "同じ Wi-Fi のスマホやパソコンから、このアドレスで開けます。",
+  cu_lan_nopw: "同じ Wi-Fi のスマホやパソコンでこのアドレスを使えます。ほかの端末で開く前に、コンソールのパスワードを設定してください。",
+  cu_set_pw: "パスワードを設定",
 };
 
 I18N["ko"] = {
@@ -6787,8 +6801,8 @@ I18N["ko"] = {
   hint_smtp: "TLS를 지원하는 메일 서버면 됩니다: smtp://you@example.com@smtp.example.com:587(STARTTLS) 또는 smtps://…:465. 로그인 주소가 보내는 사람이 됩니다. 메일 서비스에 앱 비밀번호가 있으면 그것을 쓰세요.",
   hint_homeassistant: "Home Assistant 주소, 장기 액세스 토큰(프로필 → 보안), notify 서비스 이름(예: mobile_app_pixel_9, 개발자 도구 → 동작에서 확인)을 입력합니다.",
   hint_ifttt: "ifttt.com/maker_webhooks → Documentation에 키가 나옵니다. 같은 이벤트 이름으로 애플릿 “If Webhooks: Receive a web request”를 만듭니다. value1은 제목, value2는 내용입니다.",
-  f_public_url: "이 콘솔의 주소",
-  f_public_url_h: "알림 속 링크에 쓰는 주소입니다. 비워 두면 자동으로 정해집니다. Docker로 설치했다면 직접 입력해 주세요.",
+  f_public_url: "알림에 쓰는 주소",
+  f_public_url_h: "알림 속 링크는 이 주소를 씁니다. 비워 두면 흐린 글자의 주소를 쓰고, Docker나 밖에서 접속할 때는 직접 입력하세요.",
   use_this_url: "지금 이 페이지의 주소 사용: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "통화가 끝날 때마다 AI가 짧은 요약을 씁니다. 보통은 따로 설정할 것이 없습니다.",
@@ -7019,11 +7033,11 @@ I18N["ko"] = {
   err_network_error: "서비스에 연결할 수 없습니다.",
   err_send_failed: "보내지 못했습니다.",
   f_mdns_name: "네트워크 이름",
-  f_mdns_name_h: "같은 네트워크의 기기에서 http://이름.local:8787 로 콘솔을 열 수 있습니다. 영문자, 숫자, 하이픈만 가능합니다. 비워 두면 사용하지 않습니다.",
+  f_mdns_name_h: "같은 네트워크의 기기에서 http://이름.local 로 콘솔을 열 수 있습니다. 영문자, 숫자, 하이픈만 가능합니다. 비워 두면 사용하지 않습니다.",
   cu_title: "콘솔 주소",
   cu_copy: "복사",
   cu_qr_h: "휴대폰 카메라로 이 코드를 찍으면 휴대폰에서 콘솔이 열립니다.",
-  cu_local: "이 주소는 이 컴퓨터에서만 열 수 있습니다. 휴대폰에서 열려면 콘솔을 네트워크에 여세요(AGENT_HOST=0.0.0.0, 안내서 참고).",
+  cu_local: "이 주소는 이 컴퓨터에서만 열 수 있습니다.",
   cu_qr_alt: "콘솔 주소 QR 코드",
   a2hs_title: "이 페이지를 홈 화면에 추가하면 다음부터는 아이콘만 누르면 열립니다.",
   a2hs_install: "설치",
@@ -7202,7 +7216,7 @@ I18N["ko"] = {
   f_wl_num_ph: "예: 01012345678",
   f_wl_num_h: "급한 일이 있을 때 연락할 내 번호입니다. 알림에 표시되며, 아래 시험 스위치를 켜면 휴대폰이 이 번호로 전화합니다.",
   f_ui_pw: "콘솔 비밀번호",
-  f_ui_pw_h: "설정하면 콘솔을 열 때 비밀번호를 묻습니다(브라우저마다 한 번). 집 네트워크에서만 쓴다면 설정하지 않아도 됩니다.",
+  f_ui_pw_h: "설정하면 콘솔을 열 때 비밀번호를 묻습니다(브라우저마다 한 번). 휴대폰이나 다른 컴퓨터에서 콘솔을 열려면 꼭 필요합니다.",
   pw_setup_title: "콘솔 비밀번호 설정 (선택)",
   pw_setup_body: "밖에서 이 콘솔에 접속할 계획이라면 비밀번호를 설정하는 것이 좋습니다. 나중에 '설정'에서 바꿀 수 있습니다.",
   pw_setup_ph: "4자 이상",
@@ -7421,6 +7435,9 @@ I18N["ko"] = {
   err_backup_password_short: "백업 비밀번호는 8자 이상이어야 합니다.",
   err_backup_password_missing: "암호화를 켜기 전에 백업 비밀번호를 설정하세요.",
   bk_st_exporting: "내보낼 파일을 준비하는 중…",
+  cu_lan: "같은 Wi-Fi의 휴대폰과 컴퓨터에서 이 주소로 열 수 있습니다.",
+  cu_lan_nopw: "같은 Wi-Fi의 휴대폰과 컴퓨터에서 이 주소를 쓸 수 있습니다. 다른 기기에서 열기 전에 콘솔 비밀번호를 정하세요.",
+  cu_set_pw: "비밀번호 정하기",
 };
 
 I18N["es"] = {
@@ -7968,8 +7985,8 @@ I18N["es"] = {
   hint_smtp: "Cualquier servidor de correo con TLS: smtp://tu@example.com@smtp.example.com:587 (STARTTLS) o smtps://…:465. El usuario es también el remitente. Usa una contraseña de aplicación si tu proveedor la ofrece.",
   hint_homeassistant: "La dirección de tu Home Assistant, un token de acceso de larga duración (Perfil → Seguridad) y el servicio notify, p. ej. mobile_app_pixel_9 (aparecen en Herramientas para desarrolladores → Acciones).",
   hint_ifttt: "ifttt.com/maker_webhooks → Documentation muestra tu clave. Crea un applet «If Webhooks: Receive a web request» con el mismo nombre de evento; value1 es el título y value2 el mensaje.",
-  f_public_url: "Dirección de esta consola",
-  f_public_url_h: "Los enlaces de las notificaciones usan esta dirección. Vacío = se calcula sola. Con Docker, escríbela tú.",
+  f_public_url: "Dirección en las notificaciones",
+  f_public_url_h: "Los enlaces de las notificaciones usan esta dirección. Vacío = la que se ve en gris; con Docker, o para entrar desde fuera de casa, escribe la tuya.",
   use_this_url: "Usar la dirección de esta página: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Después de cada llamada la IA escribe un resumen breve. Normalmente no hay nada que configurar aquí.",
@@ -8200,11 +8217,11 @@ I18N["es"] = {
   err_network_error: "No se pudo conectar con el servicio.",
   err_send_failed: "No se pudo enviar.",
   f_mdns_name: "Nombre en la red",
-  f_mdns_name_h: "Los dispositivos de la misma red pueden abrir la consola en http://nombre.local:8787. Solo letras, cifras y guiones. Vacío = desactivado.",
+  f_mdns_name_h: "Los dispositivos de la misma red pueden abrir la consola en http://nombre.local. Solo letras, cifras y guiones. Vacío = desactivado.",
   cu_title: "Dirección de la consola",
   cu_copy: "Copiar",
   cu_qr_h: "Escanea el código con la cámara del teléfono para abrir la consola allí.",
-  cu_local: "Solo este equipo puede abrir esta dirección. Para abrir la consola desde el teléfono, ábrela a tu red (AGENT_HOST=0.0.0.0, consulta la guía).",
+  cu_local: "Solo este equipo puede abrir esta dirección.",
   cu_qr_alt: "Código QR de la dirección de la consola",
   a2hs_title: "Añade esta página a la pantalla de inicio. La próxima vez, solo toca el icono.",
   a2hs_install: "Instalar",
@@ -8383,7 +8400,7 @@ I18N["es"] = {
   f_wl_num_ph: "p. ej. +34600123456",
   f_wl_num_h: "El número para localizarte si es urgente. Aparece en los avisos; con el interruptor de prueba de abajo activado, el teléfono lo marca.",
   f_ui_pw: "Contraseña de la consola",
-  f_ui_pw_h: "Si la pones, la consola la pedirá al abrirla (una vez por navegador). No hace falta si solo la usas en casa.",
+  f_ui_pw_h: "Si la pones, la consola la pedirá al abrirla (una vez por navegador). Hace falta para abrir la consola en el teléfono u otro equipo.",
   pw_setup_title: "Configurar una contraseña de la consola (opcional)",
   pw_setup_body: "Si vas a abrir esta consola desde fuera de casa, conviene poner una contraseña. Puedes cambiarla después en Ajustes.",
   pw_setup_ph: "Mínimo 4 caracteres",
@@ -8602,6 +8619,9 @@ I18N["es"] = {
   err_backup_password_short: "La contraseña de las copias debe tener al menos 8 caracteres.",
   err_backup_password_missing: "Pon una contraseña para las copias antes de activar el cifrado.",
   bk_st_exporting: "Preparando el archivo para exportar…",
+  cu_lan: "Los teléfonos y equipos de la misma red Wi-Fi pueden abrir la consola con esta dirección.",
+  cu_lan_nopw: "Los teléfonos y equipos de la misma red Wi-Fi pueden usar esta dirección. Antes de abrirla en otro dispositivo, pon una contraseña a la consola.",
+  cu_set_pw: "Poner contraseña",
 };
 
 I18N["fr"] = {
@@ -9149,8 +9169,8 @@ I18N["fr"] = {
   hint_smtp: "Tout serveur de messagerie avec TLS : smtp://vous@example.com@smtp.example.com:587 (STARTTLS) ou smtps://…:465. L'identifiant est aussi l'expéditeur. Utilisez un mot de passe d'application si votre fournisseur en propose.",
   hint_homeassistant: "L'adresse de votre Home Assistant, un jeton d'accès longue durée (Profil → Sécurité) et le service notify, par ex. mobile_app_pixel_9 (listés dans Outils de développement → Actions).",
   hint_ifttt: "ifttt.com/maker_webhooks → Documentation affiche votre clé. Créez une applet « If Webhooks: Receive a web request » avec le même nom d'événement ; value1 est le titre et value2 le message.",
-  f_public_url: "Adresse de cette console",
-  f_public_url_h: "Les liens des notifications utilisent cette adresse. Vide = déterminée automatiquement. Avec Docker, saisissez-la vous-même.",
+  f_public_url: "Adresse dans les notifications",
+  f_public_url_h: "Les liens des notifications utilisent cette adresse. Vide = celle affichée en gris ; avec Docker, ou pour y accéder hors de chez vous, saisissez la vôtre.",
   use_this_url: "Utiliser l'adresse de cette page : {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Après chaque appel, l'IA rédige un court résumé. En général, il n'y a rien à régler ici.",
@@ -9381,11 +9401,11 @@ I18N["fr"] = {
   err_network_error: "Impossible de joindre le service.",
   err_send_failed: "Échec de l'envoi.",
   f_mdns_name: "Nom sur le réseau",
-  f_mdns_name_h: "Les appareils du même réseau peuvent ouvrir la console à l'adresse http://nom.local:8787. Lettres, chiffres et tirets uniquement. Vide = désactivé.",
+  f_mdns_name_h: "Les appareils du même réseau peuvent ouvrir la console à l'adresse http://nom.local. Lettres, chiffres et tirets uniquement. Vide = désactivé.",
   cu_title: "Adresse de la console",
   cu_copy: "Copier",
   cu_qr_h: "Scannez le code avec l'appareil photo du téléphone pour y ouvrir la console.",
-  cu_local: "Seul cet ordinateur peut ouvrir cette adresse. Pour ouvrir la console depuis votre téléphone, ouvrez-la à votre réseau (AGENT_HOST=0.0.0.0, voir le guide).",
+  cu_local: "Seul cet ordinateur peut ouvrir cette adresse.",
   cu_qr_alt: "QR code de l'adresse de la console",
   a2hs_title: "Ajoutez cette page à l'écran d'accueil : la prochaine fois, touchez simplement l'icône.",
   a2hs_install: "Installer",
@@ -9564,7 +9584,7 @@ I18N["fr"] = {
   f_wl_num_ph: "ex. +33612345678",
   f_wl_num_h: "Le numéro pour vous joindre en cas d'urgence. Il apparaît dans les notifications ; avec l'interrupteur d'essai ci-dessous activé, le téléphone l'appelle.",
   f_ui_pw: "Mot de passe de la console",
-  f_ui_pw_h: "Une fois défini, la console le demande à l'ouverture (une fois par navigateur). Inutile si vous ne l'utilisez que chez vous.",
+  f_ui_pw_h: "Une fois défini, la console le demande à l'ouverture (une fois par navigateur). Nécessaire pour ouvrir la console sur votre téléphone ou un autre ordinateur.",
   pw_setup_title: "Définir un mot de passe de la console (facultatif)",
   pw_setup_body: "Si vous comptez ouvrir cette console depuis l'extérieur, définissez un mot de passe. Vous pourrez le modifier plus tard dans Réglages.",
   pw_setup_ph: "Au moins 4 caractères",
@@ -9783,6 +9803,9 @@ I18N["fr"] = {
   err_backup_password_short: "Le mot de passe des sauvegardes doit contenir au moins 8 caractères.",
   err_backup_password_missing: "Définissez un mot de passe pour les sauvegardes avant d'activer le chiffrement.",
   bk_st_exporting: "Préparation du fichier à exporter…",
+  cu_lan: "Les téléphones et ordinateurs du même Wi-Fi peuvent ouvrir la console à cette adresse.",
+  cu_lan_nopw: "Les téléphones et ordinateurs du même Wi-Fi peuvent utiliser cette adresse. Avant de l'ouvrir sur un autre appareil, définissez un mot de passe pour la console.",
+  cu_set_pw: "Définir le mot de passe",
 };
 
 I18N["de"] = {
@@ -10330,8 +10353,8 @@ I18N["de"] = {
   hint_smtp: "Jeder Mailserver mit TLS: smtp://du@example.com@smtp.example.com:587 (STARTTLS) oder smtps://…:465. Der Login ist auch der Absender. Nimm ein App-Passwort, wenn dein Anbieter eins anbietet.",
   hint_homeassistant: "Die Adresse deines Home Assistant, ein langlebiges Zugriffstoken (Profil → Sicherheit) und der Notify-Dienst, z. B. mobile_app_pixel_9 (zu finden unter Entwicklerwerkzeuge → Aktionen).",
   hint_ifttt: "ifttt.com/maker_webhooks → Documentation zeigt deinen Schlüssel. Lege ein Applet „If Webhooks: Receive a web request“ mit demselben Ereignisnamen an; value1 ist der Titel, value2 die Nachricht.",
-  f_public_url: "Adresse dieser Konsole",
-  f_public_url_h: "Links in Benachrichtigungen nutzen diese Adresse. Leer = wird automatisch ermittelt. Mit Docker bitte selbst eintragen.",
+  f_public_url: "Adresse in Benachrichtigungen",
+  f_public_url_h: "Links in Benachrichtigungen nutzen diese Adresse. Leer = die grau angezeigte; mit Docker oder für den Zugriff von unterwegs trag deine eigene ein.",
   use_this_url: "Adresse dieser Seite verwenden: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Nach jedem Anruf schreibt die KI eine kurze Zusammenfassung. Normalerweise musst du hier nichts einstellen.",
@@ -10562,11 +10585,11 @@ I18N["de"] = {
   err_network_error: "Der Dienst ist nicht erreichbar.",
   err_send_failed: "Senden fehlgeschlagen.",
   f_mdns_name: "Netzwerkname",
-  f_mdns_name_h: "Geräte im selben Netz können die Konsole unter http://name.local:8787 öffnen. Nur Buchstaben, Ziffern und Bindestriche. Leer = aus.",
+  f_mdns_name_h: "Geräte im selben Netz können die Konsole unter http://name.local öffnen. Nur Buchstaben, Ziffern und Bindestriche. Leer = aus.",
   cu_title: "Adresse der Konsole",
   cu_copy: "Kopieren",
   cu_qr_h: "Scannen Sie den Code mit der Handykamera, um die Konsole dort zu öffnen.",
-  cu_local: "Nur dieser Computer kann diese Adresse öffnen. Um die Konsole vom Handy aus zu öffnen, machen Sie sie im Netzwerk erreichbar (AGENT_HOST=0.0.0.0, siehe Anleitung).",
+  cu_local: "Nur dieser Computer kann diese Adresse öffnen.",
   cu_qr_alt: "QR-Code der Konsolenadresse",
   a2hs_title: "Legen Sie diese Seite auf den Startbildschirm. Beim nächsten Mal tippen Sie einfach auf das Symbol.",
   a2hs_install: "Installieren",
@@ -10745,7 +10768,7 @@ I18N["de"] = {
   f_wl_num_ph: "z. B. +491701234567",
   f_wl_num_h: "Die Nummer, unter der du bei Dringendem erreichbar bist. Sie steht in den Benachrichtigungen; ist der Testschalter unten an, wählt das Telefon sie.",
   f_ui_pw: "Konsolenpasswort",
-  f_ui_pw_h: "Ist es gesetzt, fragt die Konsole beim Öffnen danach (einmal pro Browser). Nicht nötig, wenn du sie nur zu Hause nutzt.",
+  f_ui_pw_h: "Ist es gesetzt, fragt die Konsole beim Öffnen danach (einmal pro Browser). Nötig, um die Konsole auf dem Handy oder einem anderen Computer zu öffnen.",
   pw_setup_title: "Konsolenpasswort festlegen (optional)",
   pw_setup_body: "Wenn du diese Konsole von unterwegs öffnen willst, setz ein Passwort. Du kannst es später in den Einstellungen ändern.",
   pw_setup_ph: "Mindestens 4 Zeichen",
@@ -10964,6 +10987,9 @@ I18N["de"] = {
   err_backup_password_short: "Das Passwort für Sicherungen braucht mindestens 8 Zeichen.",
   err_backup_password_missing: "Lege ein Passwort für Sicherungen fest, bevor du die Verschlüsselung einschaltest.",
   bk_st_exporting: "Die Exportdatei wird vorbereitet…",
+  cu_lan: "Handys und Computer im selben WLAN können die Konsole unter dieser Adresse öffnen.",
+  cu_lan_nopw: "Handys und Computer im selben WLAN können diese Adresse nutzen. Bevor du sie auf einem anderen Gerät öffnest, lege ein Konsolen-Passwort fest.",
+  cu_set_pw: "Passwort festlegen",
 };
 
 I18N["pt"] = {
@@ -11511,8 +11537,8 @@ I18N["pt"] = {
   hint_smtp: "Qualquer servidor de e-mail com TLS: smtp://voce@example.com@smtp.example.com:587 (STARTTLS) ou smtps://…:465. O login também é o remetente. Use uma senha de app se o seu provedor oferecer.",
   hint_homeassistant: "O endereço do seu Home Assistant, um token de acesso de longa duração (Perfil → Segurança) e o serviço notify, ex.: mobile_app_pixel_9 (listados em Ferramentas do desenvolvedor → Ações).",
   hint_ifttt: "ifttt.com/maker_webhooks → Documentation mostra a sua chave. Crie um applet “If Webhooks: Receive a web request” com o mesmo nome de evento; value1 é o título e value2 a mensagem.",
-  f_public_url: "Endereço deste console",
-  f_public_url_h: "Os links das notificações usam este endereço. Vazio = definido automaticamente. Com Docker, preencha você mesmo.",
+  f_public_url: "Endereço nas notificações",
+  f_public_url_h: "Os links das notificações usam este endereço. Vazio = o que aparece em cinza; com Docker, ou para acessar de fora de casa, digite o seu.",
   use_this_url: "Usar o endereço desta página: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Depois de cada ligação a IA escreve um resumo curto. Normalmente não há nada para configurar aqui.",
@@ -11743,11 +11769,11 @@ I18N["pt"] = {
   err_network_error: "Não foi possível conectar ao serviço.",
   err_send_failed: "Falha ao enviar.",
   f_mdns_name: "Nome na rede",
-  f_mdns_name_h: "Aparelhos na mesma rede podem abrir o console em http://nome.local:8787. Só letras, números e hífens. Vazio = desligado.",
+  f_mdns_name_h: "Aparelhos na mesma rede podem abrir o console em http://nome.local. Só letras, números e hífens. Vazio = desligado.",
   cu_title: "Endereço do console",
   cu_copy: "Copiar",
   cu_qr_h: "Aponte a câmera do celular para o código para abrir o console nele.",
-  cu_local: "Só este computador consegue abrir este endereço. Para abrir o console no celular, abra-o para a sua rede (AGENT_HOST=0.0.0.0, veja o guia).",
+  cu_local: "Só este computador consegue abrir este endereço.",
   cu_qr_alt: "QR code do endereço do console",
   a2hs_title: "Adicione esta página à tela inicial. Da próxima vez, é só tocar no ícone.",
   a2hs_install: "Instalar",
@@ -11926,7 +11952,7 @@ I18N["pt"] = {
   f_wl_num_ph: "ex.: 11987654321",
   f_wl_num_h: "O número para falar com você em caso de urgência. Aparece nos avisos; com o interruptor de teste abaixo ligado, o telefone liga para ele.",
   f_ui_pw: "Senha do console",
-  f_ui_pw_h: "Depois de definida, o console pede a senha ao abrir (uma vez por navegador). Não precisa se você só usa em casa.",
+  f_ui_pw_h: "Depois de definida, o console pede a senha ao abrir (uma vez por navegador). Necessária para abrir o console no celular ou em outro computador.",
   pw_setup_title: "Definir uma senha do console (opcional)",
   pw_setup_body: "Se você vai abrir este console de fora de casa, defina uma senha. Dá para mudar depois em Configurações.",
   pw_setup_ph: "Pelo menos 4 caracteres",
@@ -12145,6 +12171,9 @@ I18N["pt"] = {
   err_backup_password_short: "A senha dos backups precisa ter pelo menos 8 caracteres.",
   err_backup_password_missing: "Defina uma senha para os backups antes de ativar a criptografia.",
   bk_st_exporting: "Preparando o arquivo para exportar…",
+  cu_lan: "Celulares e computadores no mesmo Wi-Fi podem abrir o console neste endereço.",
+  cu_lan_nopw: "Celulares e computadores no mesmo Wi-Fi podem usar este endereço. Antes de abrir em outro aparelho, defina uma senha para o console.",
+  cu_set_pw: "Definir senha",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word
@@ -14287,6 +14316,27 @@ let S = null;            // settings as the agent last sent them
 let storagePath = "";
 let consoleUrl = "";     // the console's address for other devices ("" = this computer only)
 let consoleIpUrl = "";   // the same at the LAN IP, for phones that cannot open .local names
+let consoleDefaultUrl = ""; // what an empty "Address in notifications" stands for
+let consoleAccess = "";  // "local" (this computer only) or "lan"; "" = not known yet
+let consolePwSet = false; // a console password is set
+function takeConsoleInfo(d) {
+  if ("console_default_url" in d) consoleDefaultUrl = d.console_default_url || "";
+  if ("console_access" in d) consoleAccess = d.console_access || "";
+  if ("console_password_set" in d) consolePwSet = !!d.console_password_set;
+}
+// The first of this browser's languages that the console has ("" = none).
+const browserLang = () => (navigator.languages || [navigator.language]).map(matchLang).find(Boolean) || "";
+// A new install (no language saved in Bageo yet) takes the language of the
+// browser it is first opened in, as if chosen here.
+async function adoptFirstLang(l) {
+  try {
+    const d = await api("/settings", jsonBody("PUT", { language: l }));
+    S = d.settings || S;
+    const el = $("f-language");
+    if (el) el.value = S.language || l;
+    updateDirty();
+  } catch (_) { /* left as it is: tried again next time */ }
+}
 const form = $("setForm");
 const fieldEls = () => Array.from(form.querySelectorAll("[data-k]"));
 
@@ -14299,9 +14349,12 @@ async function loadSettings() {
     storagePath = d.storage_path || "";
     consoleUrl = d.console_url || "";
     consoleIpUrl = d.console_ip_url || "";
+    takeConsoleInfo(d);
     $("setLoading").hidden = true;
     $("setGrid").hidden = false;
     populate();
+    const firstLang = d.language_chosen === false && !qs.get("lang") ? matchLang(store.get("pca.lang")) || browserLang() : "";
+    if (firstLang) await adoptFirstLang(firstLang);
     // No language chosen in this browser: follow the language the owner reads.
     const srv = matchLang(S.notify_language || S.language);
     if (srv) store.set("pca.srvlang", srv);
@@ -14713,7 +14766,7 @@ function relabelSettings(skipRows) {
   $("sumReady").className = "tag " + (S.summary_ready ? "ok" : "warn");
   $("sumReady").textContent = t(S.summary_ready ? "sum_ready" : "sum_notready");
   $("btnUseThisUrl").textContent = t("use_this_url", { url: location.origin });
-  $("f-public_url").placeholder = consoleUrl || "http://192.168.1.20:8787";
+  $("f-public_url").placeholder = consoleDefaultUrl || "http://192.168.1.20:8787";
   bkRender();
   renderHelper();
   updateDirty();
@@ -14768,6 +14821,7 @@ async function saveSettings() {
     storagePath = d.storage_path || storagePath;
     if ("console_url" in d) consoleUrl = d.console_url || "";
     if ("console_ip_url" in d) consoleIpUrl = d.console_ip_url || "";
+    takeConsoleInfo(d);
     populate();
     const srv = matchLang(S.notify_language || S.language);
     if (srv) store.set("pca.srvlang", srv);
@@ -15487,7 +15541,7 @@ const isWebUrl = (u) => /^https?:\/\//i.test(String(u || "").trim());
 const setWebLink = (el, u) => { if (isWebUrl(u)) el.href = String(u).trim(); else el.removeAttribute("href"); };
 function renderConsoleUrl() {
   const url = consoleUrl || (health && health.calls_ui_url) || "";
-  const localOnly = !url && isLocalHost(location.hostname);
+  const localOnly = consoleAccess ? consoleAccess === "local" : !url && isLocalHost(location.hostname);
   const shown = url || location.origin + "/";
   $("sysUrl").textContent = shown;
   setWebLink($("sysUrl"), shown);
@@ -15498,9 +15552,13 @@ function renderConsoleUrl() {
     canvas.hidden = !(target && drawQr(canvas, target));
   }
   const help = $("sysUrlHelp");
-  help.dataset.i18n = localOnly ? "cu_local" : "cu_qr_h";
-  help.textContent = t(help.dataset.i18n);
-  help.hidden = !localOnly && canvas.hidden;
+  // Who can open it: this computer only; the same Wi-Fi; the same Wi-Fi once a password is set.
+  const say = localOnly ? "cu_local" : !consoleAccess ? "" : consolePwSet ? "cu_lan" : "cu_lan_nopw";
+  if (say) help.dataset.i18n = say; else delete help.dataset.i18n;
+  help.textContent = say ? t(say) : "";
+  help.hidden = !say;
+  $("btnUrlSetPw").hidden = say !== "cu_lan_nopw";
+  $("sysQrHelp").hidden = canvas.hidden;
   // Under a .local address, the LAN IP too (some older Android phones cannot open .local names).
   const viaName = /^https?:\/\/[^/:]+\.local(:\d+)?\//i.test(shown);
   $("sysUrlIp").hidden = !(viaName && consoleIpUrl && consoleIpUrl !== shown);

@@ -34,7 +34,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
-use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
@@ -42,7 +41,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
 use axum::body::{Body, Bytes};
-use axum::extract::{ConnectInfo, Path as UrlPath, Query, State};
+use axum::extract::{Path as UrlPath, Query, State};
 use axum::http::{header, Extensions, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -53,7 +52,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 
-use crate::calls_http::{api_error, came_through_proxy, token_ok_parts, unauthorized, CallsState, TokenQuery};
+use crate::calls_http::{api_error, token_ok_parts, unauthorized, CallsState, TokenQuery};
 use crate::backup_crypt::{self, CryptErr};
 use crate::locale::Lang;
 use crate::settings_store::RuntimeSettings;
@@ -2748,16 +2747,10 @@ fn upload_name(headers: &HeaderMap) -> Option<String> {
     (!clean.is_empty()).then(|| clean.to_string())
 }
 
-/// The request comes from this computer itself (not through a proxy on it).
+/// The request comes from this computer itself (not through a proxy on it):
+/// loopback, or this computer's own LAN address (`crate::lan`).
 fn from_this_computer(ext: &Extensions, headers: &HeaderMap) -> bool {
-    let Some(ConnectInfo(peer)) = ext.get::<ConnectInfo<std::net::SocketAddr>>() else {
-        return false;
-    };
-    let local = match peer.ip() {
-        IpAddr::V4(v4) => v4.is_loopback(),
-        IpAddr::V6(v6) => v6.is_loopback() || v6.to_ipv4_mapped().is_some_and(|v4| v4.is_loopback()),
-    };
-    local && !came_through_proxy(headers)
+    crate::lan::from_this_computer(ext, headers)
 }
 
 /// The request names this computer by a loopback name (`localhost`, `127.x.x.x`,
@@ -3204,6 +3197,7 @@ pub fn router() -> Router<CallsState> {
 mod tests {
     use super::*;
     use crate::calls_http::PhoneDevices;
+    use axum::extract::ConnectInfo;
 
     const FAKE_GEMINI: &str = "test-fake-gemini-key-0001";
     const FAKE_SUMMARY: &str = "test-fake-summary-key-0002";

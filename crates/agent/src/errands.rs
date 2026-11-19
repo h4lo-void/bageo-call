@@ -3234,9 +3234,11 @@ pub async fn outbound_dialing(store: &ErrandStore, id: &str) {
     }
 }
 
-/// The web console's errands page; empty without `public_url`.
+/// The web console's errands page at the console's address
+/// (`settings_store::effective_console_url`); empty without one.
 fn errands_url(settings: &Settings) -> String {
-    let base = settings.public_url.trim().trim_end_matches('/');
+    let console = crate::settings_store::effective_console_url(settings);
+    let base = console.trim().trim_end_matches('/');
     if base.is_empty() {
         return String::new();
     }

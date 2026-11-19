@@ -21,6 +21,8 @@ use tracing::{debug, info, warn};
 const GROUP: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 251);
 const PORT: u16 = 5353;
 const TYPE_A: u16 = 1;
+const TYPE_AAAA: u16 = 28;
+const TYPE_NSEC: u16 = 47;
 const TYPE_ANY: u16 = 255;
 const CLASS_IN: u16 = 1;
 const CLASS_ANY: u16 = 255;
@@ -138,7 +140,7 @@ fn run<F: Fn() -> String>(listen: IpAddr, name: F) {
                     info!("mDNS: this computer answers as {host}.local");
                     // Announce once so caches that saw an older address update.
                     if let Some(ip) = answer_ip(listen) {
-                        let _ = s.send_to(&build_response(&host, ip, None), group);
+                        let _ = s.send_to(&build_response(&host, ip, None, true), group);
                     }
                     sock = Some(s);
                 }
@@ -195,7 +197,7 @@ fn run<F: Fn() -> String>(listen: IpAddr, name: F) {
         let Some(ip) = ours else {
             continue;
         };
-        let reply = build_response(&host, ip, ask.legacy_id);
+        let reply = build_response(&host, ip, ask.legacy_id, ask.address);
         let to = if ask.unicast { from } else { group };
         if let Err(e) = s.send_to(&reply, to) {
             debug!("mDNS: reply to {to} failed ({e})");
@@ -277,6 +279,9 @@ struct Ask {
     /// A one-shot resolver (source port other than 5353): echo its id and
     /// question (RFC 6762 §6.7).
     legacy_id: Option<u16>,
+    /// It asked for the IPv4 address (A or ANY); false: only for an IPv6
+    /// address (AAAA), which this name does not have.
+    address: bool,
 }
 
 fn be16(buf: &[u8], pos: usize) -> Option<u16> {
@@ -344,7 +349,8 @@ fn parse_questions(buf: &[u8]) -> Option<(u16, u16, Vec<Question>, usize)> {
 }
 
 /// A standard query that asks for the IPv4 address of `<host>.local` (or for
-/// any record of it). `host` is already sanitized (lower case).
+/// any record of it), or for its IPv6 address, which is answered "none"
+/// ([`build_response`]). `host` is already sanitized (lower case).
 fn match_query(buf: &[u8], host: &str, from_port: u16) -> Option<Ask> {
     let (id, flags, questions, _) = parse_questions(buf)?;
     // Responses (QR bit) and other opcodes are not questions for us.
@@ -354,14 +360,16 @@ fn match_query(buf: &[u8], host: &str, from_port: u16) -> Option<Ask> {
     let fqdn = format!("{host}.local");
     let mut hit = false;
     let mut unicast = false;
+    let mut address = false;
     for q in &questions {
         let class = q.qclass & !UNICAST_BIT;
         if q.name == fqdn
-            && matches!(q.qtype, TYPE_A | TYPE_ANY)
+            && matches!(q.qtype, TYPE_A | TYPE_ANY | TYPE_AAAA)
             && matches!(class, CLASS_IN | CLASS_ANY)
         {
             hit = true;
             unicast |= q.qclass & UNICAST_BIT != 0;
+            address |= q.qtype != TYPE_AAAA;
         }
     }
     if !hit {
@@ -371,6 +379,7 @@ fn match_query(buf: &[u8], host: &str, from_port: u16) -> Option<Ask> {
     Some(Ask {
         unicast: unicast || legacy,
         legacy_id: legacy.then_some(id),
+        address,
     })
 }
 
@@ -384,33 +393,56 @@ fn encode_name(host: &str) -> Vec<u8> {
     out
 }
 
-/// The answer packet: one A record `<host>.local -> ip`. With `legacy_id` it
-/// echoes the id and the question and uses a short TTL without the
-/// cache-flush bit, as one-shot resolvers expect.
-fn build_response(host: &str, ip: Ipv4Addr, legacy_id: Option<u16>) -> Vec<u8> {
+/// The NSEC record that says `<host>.local` has an A record and nothing else
+/// (RFC 6762 §6.1): next name = the name itself, type bitmap = A only.
+fn nsec_record(name: &[u8], class: u16, ttl: u32) -> Vec<u8> {
+    let mut out = Vec::with_capacity(2 * name.len() + 13);
+    out.extend_from_slice(name);
+    out.extend_from_slice(&TYPE_NSEC.to_be_bytes());
+    out.extend_from_slice(&class.to_be_bytes());
+    out.extend_from_slice(&ttl.to_be_bytes());
+    out.extend_from_slice(&((name.len() + 3) as u16).to_be_bytes());
+    out.extend_from_slice(name);
+    // Window 0, one bitmap byte, bit 1 (from the top) = type 1 (A).
+    out.extend_from_slice(&[0, 1, 0x40]);
+    out
+}
+
+/// The answer packet. For the IPv4 address (`address`): the A record
+/// `<host>.local -> ip`, with the NSEC record (no IPv6 address) as an
+/// additional record; for the IPv6 address only: the NSEC record as the
+/// answer, so resolvers do not wait for one that never comes. With
+/// `legacy_id` it echoes the id and the question and uses a short TTL
+/// without the cache-flush bit, as one-shot resolvers expect.
+fn build_response(host: &str, ip: Ipv4Addr, legacy_id: Option<u16>, address: bool) -> Vec<u8> {
     let name = encode_name(host);
     let legacy = legacy_id.is_some();
-    let mut out = Vec::with_capacity(12 + 2 * name.len() + 18);
+    let mut out = Vec::with_capacity(12 + 5 * name.len() + 40);
     out.extend_from_slice(&legacy_id.unwrap_or(0).to_be_bytes());
     // Response + authoritative answer.
     out.extend_from_slice(&0x8400u16.to_be_bytes());
     let questions: u16 = if legacy { 1 } else { 0 };
-    for count in [questions, 1, 0, 0] {
+    let additional: u16 = if address { 1 } else { 0 };
+    for count in [questions, 1, 0, additional] {
         out.extend_from_slice(&count.to_be_bytes());
     }
     if legacy {
         out.extend_from_slice(&name);
-        out.extend_from_slice(&TYPE_A.to_be_bytes());
+        let asked = if address { TYPE_A } else { TYPE_AAAA };
+        out.extend_from_slice(&asked.to_be_bytes());
         out.extend_from_slice(&CLASS_IN.to_be_bytes());
     }
-    out.extend_from_slice(&name);
-    out.extend_from_slice(&TYPE_A.to_be_bytes());
     let class = if legacy { CLASS_IN } else { CLASS_IN | CACHE_FLUSH_BIT };
-    out.extend_from_slice(&class.to_be_bytes());
     let ttl = if legacy { LEGACY_TTL_SECS } else { TTL_SECS };
-    out.extend_from_slice(&ttl.to_be_bytes());
-    out.extend_from_slice(&4u16.to_be_bytes());
-    out.extend_from_slice(&ip.octets());
+    if address {
+        out.extend_from_slice(&name);
+        out.extend_from_slice(&TYPE_A.to_be_bytes());
+        out.extend_from_slice(&class.to_be_bytes());
+        out.extend_from_slice(&ttl.to_be_bytes());
+        out.extend_from_slice(&4u16.to_be_bytes());
+        out.extend_from_slice(&ip.octets());
+    }
+    out.extend_from_slice(&nsec_record(&name, class, ttl));
     out
 }
 
@@ -439,19 +471,40 @@ mod tests {
 
     /// Answer records after the questions: (name, type, class, ttl, data).
     fn parse_answers(buf: &[u8]) -> Vec<(String, u16, u16, u32, Vec<u8>)> {
+        parse_records(buf, 0)
+    }
+
+    /// Additional records after the answers.
+    fn parse_additional(buf: &[u8]) -> Vec<(String, u16, u16, u32, Vec<u8>)> {
+        parse_records(buf, 1)
+    }
+
+    /// The answer (`section` 0) or additional (1) records; no authority records are sent.
+    fn parse_records(buf: &[u8], section: usize) -> Vec<(String, u16, u16, u32, Vec<u8>)> {
         let (_, _, _, mut pos) = parse_questions(buf).expect("header and questions");
-        let count = be16(buf, 6).unwrap();
-        let mut out = Vec::new();
-        for _ in 0..count {
-            let (name, next) = read_name(buf, pos).expect("answer name");
-            let rtype = be16(buf, next).unwrap();
-            let class = be16(buf, next + 2).unwrap();
-            let ttl = u32::from_be_bytes(buf[next + 4..next + 8].try_into().unwrap());
-            let len = usize::from(be16(buf, next + 8).unwrap());
-            out.push((name, rtype, class, ttl, buf[next + 10..next + 10 + len].to_vec()));
-            pos = next + 10 + len;
+        assert_eq!(be16(buf, 8).unwrap(), 0, "no authority records");
+        let counts = [be16(buf, 6).unwrap(), be16(buf, 10).unwrap()];
+        let mut sections = vec![Vec::new(), Vec::new()];
+        for (i, count) in counts.iter().enumerate() {
+            for _ in 0..*count {
+                let (name, next) = read_name(buf, pos).expect("record name");
+                let rtype = be16(buf, next).unwrap();
+                let class = be16(buf, next + 2).unwrap();
+                let ttl = u32::from_be_bytes(buf[next + 4..next + 8].try_into().unwrap());
+                let len = usize::from(be16(buf, next + 8).unwrap());
+                sections[i].push((name, rtype, class, ttl, buf[next + 10..next + 10 + len].to_vec()));
+                pos = next + 10 + len;
+            }
         }
-        out
+        assert_eq!(pos, buf.len(), "nothing after the records");
+        sections.swap_remove(section)
+    }
+
+    /// The NSEC data for `bageo.local`: the name, then "A only".
+    fn nsec_a_only(host: &str) -> Vec<u8> {
+        let mut d = encode_name(host);
+        d.extend_from_slice(&[0, 1, 0x40]);
+        d
     }
 
     #[test]
@@ -459,11 +512,44 @@ mod tests {
         let q = query(0, 0, &[("bageo.local", TYPE_A, CLASS_IN)]);
         assert_eq!(
             match_query(&q, "bageo", PORT),
-            Some(Ask { unicast: false, legacy_id: None })
+            Some(Ask { unicast: false, legacy_id: None, address: true })
         );
         // ANY also asks for the address.
         let q = query(0, 0, &[("bageo.local", TYPE_ANY, CLASS_IN)]);
-        assert!(match_query(&q, "bageo", PORT).is_some());
+        assert_eq!(match_query(&q, "bageo", PORT).map(|a| a.address), Some(true));
+        // A and AAAA in one query: the address, with "no IPv6" beside it.
+        let q = query(0, 0, &[("bageo.local", TYPE_AAAA, CLASS_IN), ("bageo.local", TYPE_A, CLASS_IN)]);
+        assert_eq!(match_query(&q, "bageo", PORT).map(|a| a.address), Some(true));
+    }
+
+    #[test]
+    fn an_ipv6_question_gets_nsec_saying_only_a_exists() {
+        let q = query(0, 0, &[("bageo.local", TYPE_AAAA, CLASS_IN)]);
+        let ask = match_query(&q, "bageo", PORT).expect("answered");
+        assert_eq!(ask, Ask { unicast: false, legacy_id: None, address: false });
+        let ip = Ipv4Addr::new(192, 168, 1, 20);
+        let r = build_response("bageo", ip, ask.legacy_id, ask.address);
+        assert_eq!(
+            parse_answers(&r),
+            vec![("bageo.local".to_string(), TYPE_NSEC, CLASS_IN | CACHE_FLUSH_BIT, TTL_SECS, nsec_a_only("bageo"))]
+        );
+        assert!(parse_additional(&r).is_empty());
+        // No IPv6 address is made up anywhere in the packet.
+        assert!(!r.windows(2).any(|w| w == TYPE_AAAA.to_be_bytes()), "{r:?}");
+        // A one-shot resolver gets its AAAA question back, then the NSEC.
+        let q = query(0x4242, 0x0100, &[("bageo.local", TYPE_AAAA, CLASS_IN)]);
+        let ask = match_query(&q, "bageo", 50000).expect("answered");
+        assert_eq!(ask, Ask { unicast: true, legacy_id: Some(0x4242), address: false });
+        let r = build_response("bageo", ip, ask.legacy_id, ask.address);
+        let (id, _, questions, _) = parse_questions(&r).unwrap();
+        assert_eq!(id, 0x4242);
+        assert_eq!(questions, vec![Question { name: "bageo.local".into(), qtype: TYPE_AAAA, qclass: CLASS_IN }]);
+        assert_eq!(
+            parse_answers(&r),
+            vec![("bageo.local".to_string(), TYPE_NSEC, CLASS_IN, LEGACY_TTL_SECS, nsec_a_only("bageo"))]
+        );
+        // Another name's IPv6 address is not ours to deny.
+        assert_eq!(match_query(&query(0, 0, &[("other.local", TYPE_AAAA, CLASS_IN)]), "bageo", PORT), None);
     }
 
     #[test]
@@ -475,7 +561,7 @@ mod tests {
     #[test]
     fn other_names_types_and_responses_get_no_answer() {
         // IPv6 address, service browsing, another host.
-        assert_eq!(match_query(&query(0, 0, &[("bageo.local", 28, CLASS_IN)]), "bageo", PORT), None);
+        // (Service browsing and another host; the IPv6 address gets NSEC, see above.)
         assert_eq!(match_query(&query(0, 0, &[("bageo.local", 12, CLASS_IN)]), "bageo", PORT), None);
         assert_eq!(match_query(&query(0, 0, &[("other.local", TYPE_A, CLASS_IN)]), "bageo", PORT), None);
         assert_eq!(match_query(&query(0, 0, &[("bageo.local.example", TYPE_A, CLASS_IN)]), "bageo", PORT), None);
@@ -488,12 +574,12 @@ mod tests {
         let q = query(0, 0, &[("bageo.local", TYPE_A, CLASS_IN | UNICAST_BIT)]);
         assert_eq!(
             match_query(&q, "bageo", PORT),
-            Some(Ask { unicast: true, legacy_id: None })
+            Some(Ask { unicast: true, legacy_id: None, address: true })
         );
         let q = query(0x1234, 0x0100, &[("bageo.local", TYPE_A, CLASS_IN)]);
         assert_eq!(
             match_query(&q, "bageo", 50000),
-            Some(Ask { unicast: true, legacy_id: Some(0x1234) })
+            Some(Ask { unicast: true, legacy_id: Some(0x1234), address: true })
         );
     }
 
@@ -524,13 +610,18 @@ mod tests {
     #[test]
     fn the_answer_reads_back() {
         let ip = Ipv4Addr::new(192, 168, 1, 20);
-        let r = build_response("bageo", ip, None);
+        let r = build_response("bageo", ip, None, true);
         let (id, flags, questions, _) = parse_questions(&r).unwrap();
         assert_eq!((id, flags), (0, 0x8400));
         assert!(questions.is_empty());
         assert_eq!(
             parse_answers(&r),
             vec![("bageo.local".to_string(), TYPE_A, CLASS_IN | CACHE_FLUSH_BIT, TTL_SECS, ip.octets().to_vec())]
+        );
+        // Beside it: this name has no IPv6 address (RFC 6762 §6.1).
+        assert_eq!(
+            parse_additional(&r),
+            vec![("bageo.local".to_string(), TYPE_NSEC, CLASS_IN | CACHE_FLUSH_BIT, TTL_SECS, nsec_a_only("bageo"))]
         );
         // Our own multicast answer comes back to us: it must not look like a question.
         assert_eq!(match_query(&r, "bageo", PORT), None);
@@ -539,7 +630,7 @@ mod tests {
     #[test]
     fn a_one_shot_answer_echoes_id_and_question() {
         let ip = Ipv4Addr::new(10, 0, 0, 7);
-        let r = build_response("bageo", ip, Some(0xBEEF));
+        let r = build_response("bageo", ip, Some(0xBEEF), true);
         let (id, _, questions, _) = parse_questions(&r).unwrap();
         assert_eq!(id, 0xBEEF);
         assert_eq!(

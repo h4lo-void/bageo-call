@@ -50,6 +50,7 @@ mod fulfill;
 mod gemini_live;
 mod gmail;
 mod hold_music;
+mod lan;
 mod lang_lock;
 mod locale;
 mod log_text;
@@ -1544,7 +1545,18 @@ async fn main() -> Result<()> {
     // Links to an `.ics` that leave the console (notifications, Telegram) carry
     // a key made from the console token, never the token itself.
     calendar::set_link_secret(&settings_store::active_ui_token(&settings.calls_ui_token));
-    if !addr.ip().is_loopback() {
+    if settings.host_auto {
+        // AGENT_HOST not set: the console on this network (crate::lan). Other
+        // devices get in once a console password is set.
+        if settings_store::active_ui_token(&settings.calls_ui_token).is_empty() {
+            info!("web console open on this network: other devices can use it once a console password is set");
+        }
+        // `http://bageo.local/`: the network name answers for the console.
+        let store = settings_store.clone();
+        mdns::spawn(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), move || {
+            store.snapshot().mdns_name.clone()
+        });
+    } else if !addr.ip().is_loopback() {
         if settings.device_token.trim().is_empty() {
             warn!("listening on {addr} without DEVICE_TOKEN: anyone on this network can connect as a phone");
         }
@@ -1572,17 +1584,56 @@ async fn main() -> Result<()> {
     }
     spawn_phone_wifi(state.clone(), addr);
 
+    let auto = settings.host_auto;
+    let guard_settings = settings.clone();
+    let guard_store = state.settings_store.clone();
     let app = build_app(state, calls_state, remote);
-    let listener = tokio::net::TcpListener::bind(addr)
+    // Automatic: every address, behind the password check for other devices.
+    let (app, listen) = if auto {
+        (
+            lan::guard(app, guard_settings, guard_store),
+            SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), addr.port()),
+        )
+    } else {
+        (app, addr)
+    };
+    let listener = tokio::net::TcpListener::bind(listen)
         .await
-        .map_err(|e| anyhow::anyhow!("cannot listen on {addr}: {e} (is another copy running? AGENT_PORT picks another port)"))?;
-    info!("web console: http://{}:{}/", if addr.ip().is_unspecified() { "localhost".to_string() } else { addr.ip().to_string() }, addr.port());
+        .map_err(|e| anyhow::anyhow!("cannot listen on {listen}: {e} (is another copy running? AGENT_PORT picks another port)"))?;
+    if auto {
+        lan::set_auto(true);
+        open_port_80(&app, addr.port()).await;
+    }
+    info!("web console: http://{}:{}/", if listen.ip().is_unspecified() { "localhost".to_string() } else { listen.ip().to_string() }, listen.port());
     axum::serve(
         listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
+        app.into_make_service_with_connect_info::<lan::ConnAddrs>(),
     )
     .await?;
     Ok(())
+}
+
+/// Automatic mode: the console at port 80 too, so `http://bageo.local/` opens
+/// it; `CONSOLE_PORT_80=off` keeps the port closed. Port 80 in use or not
+/// allowed: one line in the log, and the console stays at its own port.
+async fn open_port_80(app: &Router, port: u16) {
+    if port == 80 || !lan::port_80_wanted(std::env::var("CONSOLE_PORT_80").ok().as_deref()) {
+        return;
+    }
+    match tokio::net::TcpListener::bind((std::net::Ipv4Addr::UNSPECIFIED, 80)).await {
+        Ok(listener) => {
+            lan::set_port_80(true);
+            info!("web console also at port 80");
+            let app = app.clone();
+            tokio::spawn(async move {
+                if let Err(e) = axum::serve(listener, app.into_make_service_with_connect_info::<lan::ConnAddrs>()).await {
+                    warn!("web console at port 80 stopped ({e})");
+                }
+                lan::set_port_80(false);
+            });
+        }
+        Err(e) => info!("web console not at port 80 ({e}); it stays at port {port}"),
+    }
 }
 
 /// The agent's HTTP routes: the phone and test routes with the agent's state,
@@ -1604,6 +1655,8 @@ fn build_app(state: AppState, calls_state: CallsState, remote: Arc<control::Cont
         .nest_service("/calls", calls_router(calls_state))
         .layer(TraceLayer::new_for_http())
         .layer(axum::middleware::map_response(add_source_header))
+        // Served with `lan::ConnAddrs`: the handlers still read the peer as a `SocketAddr`.
+        .layer(axum::middleware::from_fn(lan::copy_peer))
         .with_state(state)
 }
 
@@ -1951,7 +2004,7 @@ fn health_full_allowed(password_set: bool, token_ok: bool, peer_loopback: bool, 
 
 async fn health(
     State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    ext: axum::http::Extensions,
     headers: axum::http::HeaderMap,
     Query(q): Query<HashMap<String, String>>,
 ) -> Json<Value> {
@@ -1960,7 +2013,8 @@ async fn health(
     // `GET /calls/api/health`, which has the console's own password check.
     let password_set = !settings_store::active_ui_token(&state.settings.calls_ui_token).is_empty();
     let token_ok = calls_http::token_ok_parts(&state.settings, &headers, q.get("token").map(String::as_str));
-    let peer_loopback = peer.ip().to_canonical().is_loopback();
+    // Loopback, or this computer's own LAN address (`http://bageo.local/health` here).
+    let peer_loopback = lan::peer_is_this_computer(&ext);
     let proxied = calls_http::came_through_proxy(&headers);
     if !health_full_allowed(password_set, token_ok, peer_loopback, proxied) {
         let rt = state.settings_store.snapshot();
@@ -2224,6 +2278,8 @@ async fn health_full(state: &AppState) -> Value {
         "calls_ui_url".into(),
         json!(settings_store::effective_console_url(s)),
     );
+    // The same, under the name the console's own API uses.
+    body.insert("console_url".into(), json!(settings_store::effective_console_url(s)));
     body.insert("version".into(), json!(env!("CARGO_PKG_VERSION")));
     // The clock notifications and "today" use (set TZ when it is not yours).
     body.insert(
@@ -10767,7 +10823,7 @@ fn spawn_ai_talk_tg_summary(
                 // address (no link for Apple / .ics without one). Not chosen
                 // yet: no calendar is picked for them — the call's page (the
                 // last line) asks which one on "Add to calendar".
-                let ics = calendar::ics_url(&eff.public_url, &format!("call/{call_id}"));
+                let ics = calendar::ics_url(&settings_store::effective_console_url(&eff), &format!("call/{call_id}"));
                 let link = if calendar::sanitize_app(&rt.calendar_app).is_empty() {
                     String::new()
                 } else {
@@ -13921,6 +13977,16 @@ mod health_access_tests {
     /// The agent's real routes (`build_app`) over a temp data folder, answering
     /// as if every request came from `peer`. Returns the base URL and the folder.
     async fn serve(password: &str, peer: &str) -> (String, PathBuf) {
+        serve_as(password, peer, None).await
+    }
+
+    /// [`serve`] in the automatic mode (`lan::guard`), the connection reaching
+    /// this computer at `local`.
+    async fn serve_auto(password: &str, peer: &str, local: &str) -> (String, PathBuf) {
+        serve_as(password, peer, Some(local)).await
+    }
+
+    async fn serve_as(password: &str, peer: &str, auto_local: Option<&str>) -> (String, PathBuf) {
         let root = std::env::temp_dir().join(format!("bageo-health-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&root).unwrap();
         let mut base = Settings::from_env();
@@ -13984,7 +14050,14 @@ mod health_access_tests {
         };
         let remote = control::Controller::new(calls_state.clone());
         let peer: SocketAddr = peer.parse().unwrap();
-        let app = build_app(state, calls_state, remote).layer(MockConnectInfo(peer));
+        let guard_settings = state.settings.clone();
+        let guard_store = state.settings_store.clone();
+        let app = build_app(state, calls_state, remote);
+        let app = match auto_local {
+            Some(local) => lan::guard(app, guard_settings, guard_store)
+                .layer(MockConnectInfo(lan::ConnAddrs { peer, local: Some(local.parse().unwrap()) })),
+            None => app.layer(MockConnectInfo(peer)),
+        };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         tokio::spawn(async move {
@@ -14131,5 +14204,87 @@ mod health_access_tests {
             assert_eq!(reqwest::get(format!("{base}/calls/")).await.unwrap().status().as_u16(), 200);
             let _ = std::fs::remove_dir_all(&root);
         }
+    }
+
+    /// GET `path` with `Accept-Language`: the status and the text.
+    async fn get_text(base: &str, path: &str, accept_language: &str) -> (u16, String) {
+        let res = reqwest::Client::new()
+            .get(format!("{base}{path}"))
+            .header("accept-language", accept_language)
+            .send()
+            .await
+            .unwrap();
+        let status = res.status().as_u16();
+        (status, res.text().await.unwrap_or_default())
+    }
+
+    #[tokio::test]
+    async fn automatic_mode_without_password_keeps_other_devices_out() {
+        let (base, root) = serve_auto("", "203.0.113.9:5000", "192.168.1.20:8787").await;
+        // A browser gets the page in its language; the API gets need_password.
+        let (status, page) = get_text(&base, "/calls/", "zh-TW,zh;q=0.9").await;
+        assert_eq!(status, 403);
+        assert!(page.contains("請先設密碼") && page.contains("lang=\"zh-Hant\""), "{page}");
+        let (status, page) = get_text(&base, "/", "de-DE,de;q=0.9").await;
+        assert_eq!(status, 403);
+        assert!(page.contains("Passwort"), "{page}");
+        for path in ["/calls/api/list", "/calls/api/settings", "/calls/api/health", "/calls/api/devices"] {
+            let (status, body) = get_json(&base, path, &[]).await;
+            assert_eq!(status, 403, "{path}");
+            assert_eq!(body["code"], json!("need_password"), "{path}");
+        }
+        // Nobody else may set the first password.
+        let res = reqwest::Client::new()
+            .post(format!("{base}/calls/api/initial-password"))
+            .json(&json!({"password": "taken-over"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status().as_u16(), 403);
+        // Short health, the notification buttons (signed) and phones with their key only.
+        let (status, body) = get_json(&base, "/health", &[]).await;
+        assert_eq!(status, 200);
+        assert_brief(&body);
+        let (status, _) = get_json(&base, "/calls/api/quick-action?op=block&target=0912345678", &[("accept", "application/json")]).await;
+        assert_eq!(status, 410, "an unsigned link reaches its own check");
+        assert_eq!(get_json(&base, "/ws", &[]).await.0, 401);
+        // An .ics link: its own key opens it, another key does not get past the gate.
+        let k = calendar::link_key("call/abc");
+        let (status, body) = get_json(&base, &format!("/calls/api/call/abc/event.ics?k={k}"), &[]).await;
+        assert_ne!(body["code"], json!("need_password"));
+        assert_ne!(status, 403);
+        let (status, body) = get_json(&base, &format!("/calls/api/call/other/event.ics?k={k}"), &[]).await;
+        assert_eq!((status, body["code"].clone()), (403, json!("need_password")));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn automatic_mode_lets_this_computer_in_by_its_own_address() {
+        for (peer, local) in [("127.0.0.1:5000", "127.0.0.1:8787"), ("192.168.1.20:5000", "192.168.1.20:80")] {
+            let (base, root) = serve_auto("", peer, local).await;
+            assert_eq!(get_json(&base, "/calls/api/devices", &[]).await.0, 200, "{peer}");
+            let (status, body) = get_json(&base, "/health", &[]).await;
+            assert_eq!(status, 200);
+            assert_full(&body);
+            assert_eq!(reqwest::get(format!("{base}/calls/")).await.unwrap().status().as_u16(), 200);
+            // Through a proxy on this computer it is another device.
+            let (status, body) = get_json(&base, "/calls/api/devices", &[("x-forwarded-for", "198.51.100.7")]).await;
+            assert_eq!((status, body["code"].clone()), (403, json!("need_password")), "{peer}");
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    #[tokio::test]
+    async fn automatic_mode_with_password_other_devices_use_it() {
+        let (base, root) = serve_auto("auto-test-pw", "203.0.113.9:5000", "192.168.1.20:8787").await;
+        assert_eq!(reqwest::get(format!("{base}/calls/")).await.unwrap().status().as_u16(), 200);
+        let (status, body) = get_json(&base, "/calls/api/devices", &[]).await;
+        assert_eq!((status, body["code"].clone()), (401, json!("unauthorized")));
+        assert_eq!(get_json(&base, "/calls/api/devices?token=auto-test-pw", &[]).await.0, 200);
+        let (_, body) = get_json(&base, "/health?token=auto-test-pw", &[]).await;
+        assert_full(&body);
+        // Phones still need their own key, whatever the console password.
+        assert_eq!(get_json(&base, "/ws?token=auto-test-pw", &[]).await.0, 401);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

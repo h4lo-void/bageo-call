@@ -138,6 +138,16 @@ the [SMS forwarder](../../tools/sms_forward/README.md#troubleshooting).
 
 ## FAQ
 
+**`bageo.local` does not open?**
+Check, in this order:
+
+- The phone or computer is on the same Wi-Fi as the computer running Bageo (a guest network usually is not).
+- From another device, a console password must be set first on the computer running Bageo; until then you only see "Set a password first".
+- On Windows, answer the "Allow access" prompt with *Private networks*. If you chose otherwise, open *Windows Security → Firewall & network protection → Allow an app through firewall* and tick *Private* for Bageo's `agent.exe`.
+- On a VPN that sends all traffic through the tunnel, turn the VPN off and try again, or see [Using the console from other devices](SETTINGS.md#using-the-console-from-other-devices).
+- When another program holds port 80, use `http://bageo.local:8787/`; *System → About* shows the address that works.
+- Some older Android phones cannot open `.local` addresses: use the IP address or the QR code under *System → About*.
+
 **Does it work on an iPhone, or on Android without root?**
 No. Android lets only privileged system apps record a call and play sound into
 it, and iOS does not allow it at all.

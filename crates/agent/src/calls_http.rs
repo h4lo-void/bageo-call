@@ -1249,6 +1249,10 @@ async fn settings_get(
         "storage_path": state.settings_store.storage_path().display().to_string(),
         "console_url": console_url(&state),
         "console_ip_url": console_ip_url(&state),
+        "console_default_url": console_default_url(&state),
+        "console_access": console_access(&state),
+        "console_password_set": console_password_set(&state),
+        "language_chosen": state.settings_store.language_chosen(),
     }))
     .into_response()
 }
@@ -1261,6 +1265,20 @@ fn console_url(state: &CallsState) -> String {
 /// The same at the LAN IP, for phones that cannot open `.local` names.
 fn console_ip_url(state: &CallsState) -> String {
     crate::settings_store::lan_console_url(&state.settings_store.snapshot().effective(&state.settings))
+}
+
+/// The address an empty "Address in notifications" stands for.
+fn console_default_url(state: &CallsState) -> String {
+    crate::settings_store::default_console_url(&state.settings_store.snapshot().effective(&state.settings))
+}
+
+/// `local` (this computer only) or `lan` (other devices too).
+fn console_access(state: &CallsState) -> &'static str {
+    crate::settings_store::console_access(&state.settings)
+}
+
+fn console_password_set(state: &CallsState) -> bool {
+    !crate::settings_store::active_ui_token(&state.settings.calls_ui_token).trim().is_empty()
 }
 
 /// JSON patch of runtime settings. Secret fields: absent/"" keeps the stored
@@ -1333,6 +1351,10 @@ async fn settings_put(
                 "storage_path": state.settings_store.storage_path().display().to_string(),
                 "console_url": console_url(&state),
                 "console_ip_url": console_ip_url(&state),
+                "console_default_url": console_default_url(&state),
+                "console_access": console_access(&state),
+                "console_password_set": console_password_set(&state),
+                "language_chosen": state.settings_store.language_chosen(),
             }))
             .into_response()
         }

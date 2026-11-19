@@ -401,10 +401,11 @@ pub fn key_opens(what: &str, k: &str) -> bool {
 }
 
 /// Address of an `.ics` for a link outside the console: `<public_url>/calls/api/
-/// <what>/event.ics`, with its key when the console has a token. Empty without
-/// `public_url`: no address other devices are known to open.
+/// <what>/event.ics`, with its key when the console has a token, or when other
+/// devices need one without a password set (`AGENT_HOST` not set, `crate::lan`).
+/// Empty without `public_url`: no address other devices are known to open.
 pub fn ics_url(public_url: &str, what: &str) -> String {
-    let key = (!link_secret().trim().is_empty()).then(quick_action_key);
+    let key = (!link_secret().trim().is_empty() || crate::lan::auto()).then(quick_action_key);
     ics_url_with(public_url, what, key)
 }
 

@@ -197,6 +197,7 @@ The default for *Call as* is *AI calls: call as* under [Basics](#basics). Every 
 |---|---|---|
 | Send notifications | on | Off: nothing is sent to any channel. |
 | Channels | none | Telegram, Discord, LINE, ntfy, email, webhooks and more; every enabled channel gets every message. Set-up for each is in [Notifications](NOTIFICATIONS.md). |
+| Address in notifications | empty (automatic) | Links in notifications (transcript, recording, buttons, calendar) open the console at this address. Empty = the address Bageo works out, usually `http://bageo.local/`, shown in grey in the field; to reach it from outside your home, type your own. Saved as `public_url`. |
 | Commands from chat | off | Look up calls, have the AI call someone and handle your *To do* items from a Telegram chat. See [Chat commands](CHAT_COMMANDS.md). |
 
 *Commands from chat* is a fold-out section; its settings are saved as `telegram_control`, `telegram_control_users`, `control_errands_per_hour` and `control_commands_per_minute`.
@@ -236,7 +237,7 @@ Base URL examples:
 
 - Choose Google Calendar, Outlook.com, Microsoft 365, Apple Calendar, Yahoo Calendar or an `.ics` download. The choice is remembered (`calendar_app`); **Pick another calendar** next to the button picks another.
 - Notifications and Telegram replies link the same calendar.
-- For Apple Calendar or `.ics` the link points to *Address of this console* (no address, no link) and carries a key for that one file, never your password. No calendar account is connected to Bageo.
+- For Apple Calendar or `.ics` the link points to *Address in notifications* (no address, no link) and carries a key for that one file, never your password. No calendar account is connected to Bageo.
 - With *Suggest calendar events* on, each call costs one extra request to the summary model.
 
 #### Appointments
@@ -352,10 +353,9 @@ Before anything is restored, the console shows when the backup was made, which v
 |---|---|---|
 | Days to keep records | 15 | Calls and their recordings, text messages, AI errands and *To do* items older than this are deleted automatically (1 to 365). A change takes effect at once. Saved as `retention_days`; `CALLS_RETENTION_DAYS` only sets the default. |
 | Thinking level | Low | For Live models with "thinking" in their name only: Low, Medium or High. Low answers fastest. Saved as `gemini_thinking_level`. |
-| Console password | empty | Once set, the console and the API ask for the password (the browser remembers it). Saved as `ui_password`. |
+| Console password | empty | Once set, the console and the API ask for the password (the browser remembers it). Needed to open the console on your phone or another computer. Saved as `ui_password`. |
 | Let other AI tools connect (MCP) | off | Lets AI tools such as Claude or ChatGPT look up your calls and *To do* items. Leave it off if you do not need it. |
-| Address of this console | empty (automatic) | The address put into notification links, e.g. `http://192.0.2.10:8787`. |
-| Network name | `bageo` | The name phones and computers on your network can use instead of the IP: `http://bageo.local:8787/`. Letters, digits and hyphens; empty, `off`, `0`, `none` or `false` turns it off. |
+| Network name | `bageo` | The name phones and computers on your network can use instead of the IP: `http://bageo.local/`. Letters, digits and hyphens; empty, `off`, `0`, `none` or `false` turns it off. |
 | Phones can also connect over Wi-Fi | On | A phone plugged in by USB once keeps working over Wi-Fi after you unplug it. Turning it off applies at once and disconnects the phones on Wi-Fi. Stored as `phone_wifi`; `PHONE_WIFI` only sets the default. See [Phone setup → Wi-Fi](PHONE.md#wi-fi). |
 
 **Pair phones again** (under the switch above) replaces the pairing key: every phone on Wi-Fi is disconnected and must be plugged in by USB once more.
@@ -370,11 +370,11 @@ The first time you open the console without a password, it offers to set one.
 - *Most AI calls per hour* (`mcp_errands_per_hour`): counted across all AI tools, 0 to 30.
 - *Allowed websites* (`mcp_allowed_origins`): needed only for web-based AI tools, one address per line, e.g. `https://app.example`. Otherwise leave it empty.
 
-Left empty, *Address of this console* is filled in while the console is open to your network (`AGENT_HOST=0.0.0.0`): `http://<network name>.local:8787/` while Bageo answers that name, else the computer's network address.
+Left empty, *Address in notifications* (under *Notifications*) is filled in by itself. With `AGENT_HOST` not set (the default) it is `http://<network name>.local/` while Bageo answers that name, `http://<network name>.local:8787/` when port 80 cannot be opened, else the computer's network address; with `AGENT_HOST=0.0.0.0` it always carries `:8787`.
 
-With the console on this computer only, notifications carry no links; inside Docker, set it yourself. *System → About* shows the address in use.
+With the console on this computer only (`AGENT_HOST=127.0.0.1`), notifications carry no links; inside Docker, set it yourself. *System → About* shows the address in use.
 
-Bageo answers the *Network name* itself (multicast DNS, UDP port 5353) while the console is open to your network or *Phones can also connect over Wi-Fi* is on, but not inside a container.
+Bageo answers the *Network name* itself (multicast DNS, UDP port 5353) while the console is open to your network (including the default, with `AGENT_HOST` not set) or *Phones can also connect over Wi-Fi* is on, but not inside a container.
 
 If the system keeps that port to itself, the log shows a line starting with `mDNS:` and links use the IP address. Older Android phones that cannot open `.local` names can use the IP address or the QR code under *System → About*.
 
@@ -403,13 +403,14 @@ The image itself sets `AGENT_HOST=0.0.0.0`, `ASSETS_DIR=/app/assets`, `CALLS_DAT
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AGENT_HOST` | `127.0.0.1` | Address to listen on. `127.0.0.1` = this computer only. `0.0.0.0` = every network interface. |
+| `AGENT_HOST` | *(not set)* | Address to listen on. Not set = the console is open to your network (`AGENT_PORT` and port 80) and other devices get in once a console password is set; phones keep their own Wi-Fi port. `127.0.0.1` = this computer only. `0.0.0.0` = everything open on every network interface. |
 | `AGENT_PORT` | `8787` | Port of the web console and of the phones' connection. |
-| `CALLS_UI_TOKEN` | *(empty)* | Password for the web console and API. Send as `?token=…`, `Authorization: Bearer …` or `X-Calls-Token`. **Set it whenever `AGENT_HOST` is not `127.0.0.1`.** |
-| `DEVICE_TOKEN` | *(empty)* | Phones that do not come through USB must connect with `…/ws?token=<this>`. **Set it whenever `AGENT_HOST` is not `127.0.0.1`.** |
-| `PUBLIC_URL` | *(empty)* | Same as *Address of this console*; the web console's value wins. Empty = automatic (see [Advanced](#advanced)). |
-| `MDNS_NAME` | `bageo` | Same as *Network name*: the console answers at `http://<this>.local:8787/` on your network. The web console's value wins. |
-| `PHONE_WIFI_PORT` | `AGENT_PORT` + 1 (`8788`) | Port phones use over Wi-Fi. Opened on all network interfaces only while `AGENT_HOST` is `127.0.0.1`; it serves only the phones' connection (no console) and always needs the pairing key or `DEVICE_TOKEN`. `0` = never. |
+| `CONSOLE_PORT_80` | *(on)* | With `AGENT_HOST` not set, the console also answers at port 80, so its address needs no `:8787`. `off` = never. When port 80 is taken or not allowed, the log says so in one line and the console stays at `AGENT_PORT`. |
+| `CALLS_UI_TOKEN` | *(empty)* | Password for the web console and API. Send as `?token=…`, `Authorization: Bearer …` or `X-Calls-Token`. **Set it to open the console from other devices**; the console's *Console password* does the same. |
+| `DEVICE_TOKEN` | *(empty)* | Phones that do not come through USB must connect with `…/ws?token=<this>`. **Set it whenever `AGENT_HOST` is set to anything but `127.0.0.1`.** |
+| `PUBLIC_URL` | *(empty)* | Same as *Address in notifications*; the web console's value wins. Empty = automatic (see [Advanced](#advanced)). |
+| `MDNS_NAME` | `bageo` | Same as *Network name*: the console answers at `http://<this>.local/` on your network. The web console's value wins. |
+| `PHONE_WIFI_PORT` | `AGENT_PORT` + 1 (`8788`) | Port phones use over Wi-Fi. Opened on all network interfaces only while `AGENT_HOST` is not set or `127.0.0.1`; it serves only the phones' connection (no console) and always needs the pairing key or `DEVICE_TOKEN`. `0` = never. |
 
 Phones on USB are exempt from `DEVICE_TOKEN` (the USB tunnel ends on the computer itself).
 
@@ -417,7 +418,9 @@ An empty `MDNS_NAME`, `off`, `0`, `none` or `false` turns it off. On Windows an 
 
 ### Using the console from other devices
 
-By default only the computer itself can open the console. To reach it from your phone or another computer on your home network, put this in `.env`:
+With `AGENT_HOST` not set (the default of the installers), phones and computers on the same Wi-Fi open the console at `http://bageo.local/` once you open the console on this computer and set a console password. Until then other devices only see "Set a password first".
+
+To open everything to your network instead (phones then connect on `AGENT_PORT` too), put this in `.env`:
 
 ```ini
 AGENT_HOST=0.0.0.0
@@ -428,6 +431,8 @@ DEVICE_TOKEN=another-long-random-string
 Open `http://bageo.local:8787/?token=choose-a-long-random-string` (or the computer's IP, e.g. `http://192.0.2.10:8787/?token=…`) once; the page remembers the password.
 
 *System → About* shows the address with a QR code to scan with your phone, and how to add the console to your home screen.
+
+The first time, Windows asks whether to allow Bageo on the network: choose *Private networks*. When other devices still cannot open it, see [Troubleshooting](TROUBLESHOOTING.md#faq).
 
 If this computer is on a VPN that sends all traffic through the tunnel, Bageo may take the VPN's address for the name, the links and the phones' Wi-Fi address. Set `AGENT_HOST` to the computer's LAN IP (e.g. `AGENT_HOST=192.0.2.10`); the name, the links and the phones then use that address (phones then connect on `AGENT_PORT`).
 

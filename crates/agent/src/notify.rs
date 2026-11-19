@@ -1594,7 +1594,11 @@ pub fn device_label(serial: &str) -> String {
 /// Link that opens one call in the web console; empty when the console has no
 /// address other devices can open (see `settings_store::effective_console_url`).
 pub fn call_detail_url(settings: &Settings, call_id: &str) -> String {
-    let console = crate::settings_store::effective_console_url(settings);
+    call_detail_url_at(&crate::settings_store::effective_console_url(settings), call_id)
+}
+
+/// [`call_detail_url`] for the console at `console`.
+fn call_detail_url_at(console: &str, call_id: &str) -> String {
     let base = console.trim().trim_end_matches('/');
     if base.is_empty() {
         return String::new();
@@ -3059,6 +3063,29 @@ mod tests {
         // An address typed in the settings wins.
         rt.public_url = "https://calls.example.org/".into();
         assert_eq!(card_console_url(&rt, &base), "https://calls.example.org/");
+    }
+
+    #[test]
+    fn call_links_use_bageo_local_without_agent_host_and_the_typed_address_first() {
+        use std::net::{IpAddr, Ipv4Addr};
+        let lan = |_: IpAddr| Some(Ipv4Addr::new(192, 168, 1, 20));
+        let mut s = Settings::from_env();
+        s.host = "127.0.0.1".into();
+        s.port = 8787;
+        s.mdns_name = "bageo".into();
+        s.public_url = String::new();
+        // AGENT_HOST not set, port 80 open, the name answering.
+        let console = crate::settings_store::console_url_for(&s, false, true, true, true, lan);
+        assert_eq!(call_detail_url_at(&console, "c-1"), "http://bageo.local/calls/#call=c-1");
+        let console = crate::settings_store::console_url_for(&s, false, true, false, true, lan);
+        assert_eq!(call_detail_url_at(&console, "c-1"), "http://bageo.local:8787/calls/#call=c-1");
+        // AGENT_HOST=127.0.0.1: no link, as before.
+        let console = crate::settings_store::console_url_for(&s, false, false, true, true, lan);
+        assert_eq!(call_detail_url_at(&console, "c-1"), "");
+        // "Address in notifications" filled in: that one.
+        s.public_url = "https://calls.example.org/calls/".into();
+        let console = crate::settings_store::console_url_for(&s, false, true, true, true, lan);
+        assert_eq!(call_detail_url_at(&console, "c-1"), "https://calls.example.org/calls/#call=c-1");
     }
 
     #[test]

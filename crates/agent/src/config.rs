@@ -170,6 +170,10 @@ impl std::ops::Deref for SecretString {
 #[derive(Debug, Clone)]
 pub struct Settings {
     pub host: String,
+    /// `AGENT_HOST` is not set (and not in a container): the web console
+    /// listens on all addresses, and on port 80 when it can (`crate::lan`);
+    /// `host` stays `127.0.0.1` for what phones are told.
+    pub host_auto: bool,
     pub port: u16,
     pub agent_mode: AgentMode,
     /// Piper fallback when hold MP3 missing (`TRANSFER_USE_HOLD_MUSIC=false` / decode fail).
@@ -355,10 +359,16 @@ pub struct Settings {
 
 impl Settings {
     pub fn from_env() -> Self {
+        let (host, host_auto) = agent_host(
+            env::var("AGENT_HOST").ok().as_deref(),
+            crate::settings_store::in_container(),
+        );
         Self {
-            // This machine only by default; `AGENT_HOST=0.0.0.0` opens it to the LAN
-            // (set `CALLS_UI_TOKEN` and `DEVICE_TOKEN` then).
-            host: env_or("AGENT_HOST", "127.0.0.1"),
+            // Not set: automatic (the console on this network, see `crate::lan`).
+            // `127.0.0.1` = this machine only; `0.0.0.0` opens everything to the
+            // LAN (set `CALLS_UI_TOKEN` and `DEVICE_TOKEN` then).
+            host,
+            host_auto,
             port: env_parse("AGENT_PORT", 8787u16),
             agent_mode: AgentMode::parse(&env_or("AGENT_MODE", "ivr")),
             transfer_prompt: env_or("TRANSFER_PROMPT", "轉接中，請稍候。"),
@@ -576,6 +586,16 @@ pub(crate) fn env_or(key: &str, default: &str) -> String {
     env::var(key).unwrap_or_else(|_| default.to_string())
 }
 
+/// The address to listen on and whether it is automatic: `AGENT_HOST` as set,
+/// or, when it is not set or empty, `127.0.0.1` and automatic (outside a
+/// container: a container is always run with its own `AGENT_HOST`).
+pub(crate) fn agent_host(raw: Option<&str>, in_container: bool) -> (String, bool) {
+    match raw.map(str::trim).filter(|v| !v.is_empty()) {
+        Some(v) => (v.to_string(), false),
+        None => ("127.0.0.1".to_string(), !in_container),
+    }
+}
+
 fn env_first(keys: &[&str], default: &str) -> String {
     for k in keys {
         if let Ok(v) = env::var(k) {
@@ -638,6 +658,16 @@ pub(crate) fn env_bool(key: &str, default: bool) -> bool {
 mod tests {
     use super::*;
     use chrono::{FixedOffset, TimeZone};
+
+    #[test]
+    fn agent_host_not_set_is_automatic_and_a_set_one_is_kept() {
+        assert_eq!(agent_host(None, false), ("127.0.0.1".to_string(), true));
+        assert_eq!(agent_host(Some("  "), false), ("127.0.0.1".to_string(), true));
+        assert_eq!(agent_host(None, true), ("127.0.0.1".to_string(), false), "a container is never automatic");
+        assert_eq!(agent_host(Some("127.0.0.1"), false), ("127.0.0.1".to_string(), false));
+        assert_eq!(agent_host(Some(" 0.0.0.0 "), false), ("0.0.0.0".to_string(), false));
+        assert_eq!(agent_host(Some("192.168.1.20"), true), ("192.168.1.20".to_string(), false));
+    }
 
     #[test]
     fn ivr_menu_greeting_by_hour() {

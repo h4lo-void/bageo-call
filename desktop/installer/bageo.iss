@@ -10,6 +10,12 @@
 ; the Start menu. The shortcut opens Bageo Status, which starts Bageo in the
 ; background. Bageo keeps its data in the "data" folder there; removing the
 ; program leaves that folder alone.
+;
+; Windows Firewall: Bageo opens its console to the local network
+; (http://bageo.local/). Adding a firewall rule needs an administrator, which
+; this per-user install does not ask for, so Windows asks once ("Allow
+; access") when Bageo first starts: choose Private networks (see the
+; troubleshooting guide, "bageo.local does not open").
 
 #ifndef AppVersion
   #error Pass /DAppVersion=...
