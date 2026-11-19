@@ -5,7 +5,7 @@ phone into a two-way audio stream for the agent, and why it has to run as a
 privileged system app. Build, install, permissions and the full message list
 are in [README.md](README.md); the agent side is in
 [docs/en/ARCHITECTURE.md](../docs/en/ARCHITECTURE.md). This page describes app
-`1.0.0` (versionCode 28) in module `v1.0.0` (versionCode 20).
+`1.6.9` (versionCode 33) in module `v1.6.9` (versionCode 25).
 
 ## Overview
 
@@ -19,17 +19,20 @@ are in [README.md](README.md); the agent side is in
                                 |          ^
                                 v          |
                               BridgeClient (media WebSocket, one per call)
+     app -> agent: hello, ringing, call_end, add_call_result
+     agent -> app: ready, tts_start/end, dtmf, hangup, add_call, add_call_abort
                                 |          ^
              binary PCM frames  |          |  binary PCM frames + JSON
                                 v          |
                          agent on the PC (speech AI)
 
- AgentControlClient (control WebSocket, open while the service runs)
-     app -> agent: hello, ping, status, incoming, call_waiting_rejected,
+ AgentControlClient (control WebSocket, open while the service runs, ConnectionPlan USB/Wi-Fi)
+     app -> agent: hello (with sims), ping, status (with sims), incoming,
+                   incoming_cancel, reject_failed, call_waiting_rejected,
                    place_call_ack / _failed, outbound_ready, call_end,
                    send_sms_result, send_sms_delivered, set_mode_result
-     agent -> app: answer_plan, place_call, send_sms, set_mode, agent_info,
-                   blocklist_sync
+     agent -> app: answer_plan, place_call, send_sms, set_mode,
+                   agent_info (console_url, wifi.urls), blocklist_sync
 
  PhoneModeManager --request file--> mode_daemon.sh (root, started by the module)
                                         |
@@ -55,12 +58,14 @@ are in [README.md](README.md); the agent side is in
 | `VoiceCallCapture` | `AudioRecord` on the far-end call audio. Tries `VOICE_DOWNLINK` first, then `VOICE_CALL`. |
 | `TelephonyUplinkInjector` (`UplinkInjector.kt`) | `AudioTrack` whose preferred device is the `TYPE_TELEPHONY` output, fed from a queue by a worker thread. |
 | `LocalAudioGuard` | Keeps the phone itself silent: microphone muted, speaker off, earpiece at minimum, ringer and Do Not Disturb. All audio system calls run on one worker thread. |
-| `SilentInCallService` | The in-call service Android binds because the app is the default dialer. Shows nothing, never answers by itself, tells `CallAudioService` when a call becomes active or ends. Keeps each call's number and SIM, declines a second call that rings during a call, and leaves calls dialed by hand alone. |
+| `SilentInCallService` | The in-call service Android binds because the app is the default dialer. Shows nothing, never answers by itself, tells `CallAudioService` when a call becomes active or ends. Keeps each call's number and SIM, declines a second call that rings during a call, leaves calls dialed by hand alone, and handles `add_call` / 3-way conference merging for urgent calls. |
 | `SilentCallScreeningService` | Call screening role. Allows every call and asks Android to silence the ringtone. Runs in its own process (`:screening`). |
 | `TransparentDialerActivity` | The activity a default dialer must have. Invisible; finishes at once. |
 | `DialerRoleHelper` | Takes the dialer and call screening roles and disables Google Dialer's call UI, through `su`. |
 | `OutboundCallHelper` | Dials a number when the agent sends `place_call`, from the SIM its `sub_id` names. |
+| `SimList` | Reads active SIM subscription IDs, countries, slots, carriers and numbers (Android 13+ with `READ_PHONE_NUMBERS`) for `sims` in `hello` and `status`. |
 | `SimSubscriptions` | Reads the optional `sub_id` of an agent command and picks that subscription's phone account. A missing or invalid id means the default SIM. SIMs are never matched by carrier name or by their own number. |
+| `ConnectionPlan` | Picks USB (`ws://127.0.0.1:8765`) first and paired Wi-Fi URLs (`agent_info.wifi.urls`) next, or only a manually typed address when changed. |
 | `SmsSender` | Sends a text from the phone's number when the agent sends `send_sms` (replies to appointment requests), from the SIM its `sub_id` names, else the default SMS SIM. Answers with `send_sms_result` and `send_sms_delivered`, keeps the results of the last 20 ids and resends them after a reconnect. Needs `SEND_SMS`, which the module grants at boot and on every switch to AI mode. |
 | `PhoneModeManager` | The AI / normal phone switch: writes the request for the module's root helper (`files/mode/request`), reads its answer (`files/mode/state`), keeps the app's copy of the mode, repeats an unfinished switch at start-up, and saves and restores the normal phone's volumes. See [Normal phone mode](README.md#normal-phone-mode). |
 | `RootShell` | Runs the optional `su` commands (roles, mute); the app works without root. |
@@ -184,7 +189,9 @@ grant them. That is why the phone has to be rooted (Magisk or KernelSU).
   call, and the list stored from `blocklist_sync` is not consulted. A ringing
   call is declined only when the agent's `answer_plan` says `reject`, or
   when another call is already up.
-- No call transfer: a call in progress cannot be bridged to another phone.
+- No blind call transfer inside the app (direct forwarding uses carrier
+  forward-when-busy). Adding and merging a second call into a 3-way conference
+  is supported via `add_call` for urgent calls (trial).
 - No decisions about outgoing calls: the agent decides which number, which SIM
   and when; the app dials what `place_call` says, or reports `busy`.
 

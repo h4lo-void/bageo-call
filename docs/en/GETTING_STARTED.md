@@ -124,15 +124,15 @@ the phone's connection).
 
 ### Where your data lives
 
-Everything stays in the folder you started from (`/data/calls` in Docker):
+Everything stays in the folder you started from (`/data/calls` in Docker; `~/Library/Application Support/Bageo` in the macOS app):
 
 | Path | Contents |
 |---|---|
-| `data/calls/` | call records, recordings, transcripts, contacts, to-do items, errands |
+| `data/calls/` | call records, recordings, transcripts, contacts, to-do items, errands, forwarded SMS (`sms/`), and backups (`backups/`) |
 | `data/calls/config/settings.json` | everything you set in the web console, **including your API keys** |
 | `.env` | optional start-up options (port, passwords); see [Settings reference](SETTINGS.md) |
 
-Back up or delete `data/` as you like. Nothing is stored anywhere else.
+Back up or delete `data/` as you like (or use **Backup & restore** in the web console). Nothing is stored anywhere else.
 
 ## 3. Fill in the basics
 
@@ -256,7 +256,8 @@ into the AI's prompt when that person calls. In a call's details, **Add to
 contacts** saves the caller.
 
 Each contact goes on one of four lists: ordinary contact, Whitelist (close
-family and friends, whose calls can be put through to you), Blacklist (turned
+family and friends, whose calls can be put through to you—use *Who can be
+forwarded* if you want others included too), Blacklist (turned
 away, no AI) or stall list (kept talking from the first second).
 
 ### Appointments
@@ -277,8 +278,8 @@ From then on:
 
 ### Your first AI errand
 
-The phone must have taken at least one call first, so Bageo knows which
-SIMs it holds. Then open **Errands**:
+The 1.4+ phone app reports its SIMs automatically when it connects (calling the
+phone once is only needed on older app versions). Then open **Errands**:
 
 1. **Who to call**: a contact's name or a number. A number without `+` is
    read as one from your own country; write numbers abroad with `+`. The AI

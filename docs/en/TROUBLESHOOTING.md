@@ -10,9 +10,12 @@ questions about iPhones, root, cost and keeping your real phone number usable.
 1. Open the **System** page of the web console. Its checklist names the piece
    that is missing.
 2. Watch Bageo's terminal window on the computer: it shows what it is doing on
-   every call. For more detail, set `RUST_LOG=agent=debug` in `.env` and
-   restart. The log shows only how many characters were said on a call; to
-   see the words, set `LOG_CALL_TEXT=1` too, and turn it off when done.
+   every call. (The Windows and macOS installers run Bageo in the background
+   with **Bageo Status** and no terminal window; run `start.cmd -Console` on
+   Windows or `./start.sh --console` on Linux to see it.) For more detail, set
+   `RUST_LOG=agent=debug` in `.env` and restart. The log shows only how many
+   characters were said on a call; to see the words, set `LOG_CALL_TEXT=1` too,
+   and turn it off when done.
 3. On the phone, open the Bageo app. The card at the top says whether it is
    connected and which mode it is in.
 
@@ -20,7 +23,7 @@ questions about iPhones, root, cost and keeping your real phone number usable.
 
 | You see | Why | Fix |
 |---|---|---|
-| `cannot listen on 127.0.0.1:8787 … is another copy running?` | Another copy of Bageo, or another program, already uses the port. | Close it, or set `AGENT_PORT=8790` in `.env`. |
+| `cannot listen on 0.0.0.0:8787` or `127.0.0.1:8787 … is another copy running?` | Another copy of Bageo, or another program, already uses the port. | Close it, or set `AGENT_PORT=8790` in `.env`. |
 | `The agent program was not found.` | You cloned the source and Rust is not installed, so there is nothing to run. | Install [Rust](https://rustup.rs) and run the start script again, or install Bageo from the Windows installer or macOS `.dmg` on GitHub Releases. |
 | Windows: "running scripts is disabled on this system" | PowerShell blocks `.ps1` files by default. | Click the **Bageo** shortcut, or start `start.cmd` in the install folder instead of `start.ps1`; it launches PowerShell with the right option. |
 | macOS: "cannot be opened because the developer cannot be verified" | The app is not notarised by Apple. | In Finder, right-click Bageo → *Open*, or press *Open Anyway* in *System Settings → Privacy & Security*. |
@@ -33,7 +36,7 @@ of USB: see [Phone setup](PHONE.md#wi-fi).
 
 | You see | Why | Fix |
 |---|---|---|
-| adb not found | Android platform-tools are missing. | Let the start script download them (about 7 MB, from Google), install them yourself, or set `ADB_BIN`. |
+| adb not found | Android platform-tools are missing. | Click the **Bageo Status** icon and press **Download**, let the start script download them (about 7 MB, from Google), install them yourself, or set `ADB_BIN`. |
 | No phone listed | The cable or port only charges, USB debugging is off, or Windows lacks the driver. | Try another cable and port, switch on USB debugging, and on Windows install Google's USB driver if needed. |
 | `unauthorized` | The phone does not trust this computer yet. | Unlock the phone and accept "Allow USB debugging?". No prompt? Developer options → *Revoke USB debugging authorisations*, then replug. |
 | App not installed | The root module is not installed or not active. | See [Phone setup](PHONE.md). |
@@ -59,8 +62,8 @@ of USB: see [Phone setup](PHONE.md#wi-fi).
 
 Opened in the right language, then switched? That is intended: when the caller
 clearly speaks another language, the AI follows. A short "hello?" alone does
-not switch it. Every call gets this instruction automatically; there is no
-switch for it.
+not switch it. This is on by default; turn it off with *Reply in the caller's
+language* under *Settings → How it answers*.
 
 When the line goes quiet, Bageo follows fixed timings (no setting):
 
@@ -111,7 +114,7 @@ one does not go out, or comes back undecided, the page tells you why:
 
 | The console says | Why | Fix |
 |---|---|---|
-| "This phone hasn't taken a call yet…" (`sim_unknown`) | Bageo learns which SIM belongs to which country from the calls a phone reports. That way an errand never dials from another country's SIM (an expensive international call, or no connection at all). | Call that phone once from any phone, then try again. |
+| "This phone hasn't taken a call yet…" (`sim_unknown`) | Current phone apps report active SIMs automatically when connecting, so this happens with older apps or if Android has not reported the SIM yet. That way an errand never dials from another country's SIM. | Update the phone module, or call that phone once from any phone and try again. |
 | "No phone has a SIM that can call this country's numbers." (`no_sim_for_country`) | Errands dial only from a SIM of the number's country. A number without `+` counts as one of your country. | Write numbers abroad with `+` and the country code. |
 | "The AI can't call this number" (`not_allowed`) | Emergency numbers, short codes (7 digits or fewer) and premium-rate numbers are never dialed. Neither are numbers written with an international prefix (`00…`, `011…`) instead of `+`. | Use the `+` form, or call it yourself. |
 | "No AI phone is available right now" (`no_phone`) | No phone is connected, or every phone is in normal phone mode. | Switch one back on *System → Phones*. |
@@ -129,8 +132,8 @@ one does not go out, or comes back undecided, the page tells you why:
 | *Send test* shows an error | The text is the service's own answer, usually a wrong token, chat ID or URL. | Follow the steps for that service in [Notifications](NOTIFICATIONS.md). |
 | Test works, but no message after calls | *Send notifications* is off, or the channel is disabled. | Switch both on. |
 | No summary, only the caller's first words | There is no summary service. | Set the Gemini key (used by default), or your own service under *Summary & calendar*. The terminal shows the reason if the service refused. |
-| Links in notifications do not open | *Address of this console* is not reachable from your phone, or Bageo listens only on its own computer. | See [Using the console from other devices](SETTINGS.md#using-the-console-from-other-devices). |
-| The calendar link opens the wrong calendar | The first press of **Add to calendar** asks which calendar to use and remembers it. | Press **Pick another calendar** next to it. Apple Calendar and `.ics` links need *Address of this console*. |
+| Links in notifications do not open | *Address in notifications* (*Settings → Notifications*) is not reachable from your phone, or Bageo listens only on this computer (`AGENT_HOST=127.0.0.1`). | See [Using the console from other devices](SETTINGS.md#using-the-console-from-other-devices). |
+| The calendar link opens the wrong calendar | The first press of **Add to calendar** asks which calendar to use and remembers it. | Press **Pick another calendar** next to it. Apple Calendar and `.ics` links need *Address in notifications*. |
 | The SMS forwarder stops reading texts after the phone restarted | Android keeps the SMS inbox locked (Direct Boot) until the phone is unlocked once with its PIN. | Unlock it once; the forwarder catches up by itself. |
 
 With the optional SMS hook, new texts are forwarded even before the unlock. See
@@ -196,10 +199,17 @@ give a caller your answer to an appointment, and so do **texts**, sent from the
 SIM the call came in on.
 
 The optional [SMS forwarder](../../tools/sms_forward/README.md) passes texts
-the phone receives on to your notifications.
+the phone receives on to your notifications and to the console's **SMS** page,
+where you can also reply directly.
 
 **Can it transfer a live call to my own phone?**
-Not yet. The AI takes a message or gets the errand done, and you call back.
+Yes, with *Forward to your phone* under *Settings → How it answers*. Pick
+whether to **send calls straight to your phone** (via your carrier's
+forward-when-busy) or have the **AI answer and reach you if urgent** (sending
+an instant alert, and optionally turning on **When it's urgent, call me and
+join us (trial)** so this phone calls you and merges a 3-way call), and tick
+**Who can be forwarded** (*Whitelist*, *Other contacts*, or *Numbers not in your
+contacts*).
 
 **Several phones, several numbers?**
 Yes: plug several phones into the same computer. They share the settings.

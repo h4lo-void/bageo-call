@@ -24,6 +24,9 @@ not legal advice; check the rules where you and your callers live.
 | AI errands | What you ask the AI to do (`errands.json`, the newest 500), the SIMs each phone has (`phone_sims.json`), and the call's record and recording in `data/calls/`. | Google and your summary service; the person called hears the AI. |
 | Appointment replies | A **text** from your phone to the caller with only the time (and your name), never what the appointment is about; or an **AI call-back**. | Your carrier and the caller. |
 | Calendars | **No calendar account is connected.** *Add to calendar* opens a filled-in "new event" form of the calendar you chose, in your own browser, or downloads an `.ics` file from the console. | Only the calendar you open the link with. |
+| Backups | `data/calls/backups/` (or your chosen folder). Automatic and manual backups include keys, passwords and connections unless encrypted (`.bageo`) or excluded in an export. | Nobody; files stay on your computer. |
+| Logs | Call words are left out by default (`LOG_CALL_TEXT` off; only character counts), and caller numbers are masked. | Nobody on your computer unless you share the log. |
+| Bageo Status (Windows / macOS) | Talks only to your Bageo console address; stores the console password in the OS keychain; downloads `adb` from Google only if you press **Download**. | Nobody. |
 
 Details for some rows:
 
@@ -148,9 +151,15 @@ silence, and says so in the notification.
 
 ## Securing the installation
 
-- By default Bageo listens only on its own computer. If you open it to your
-  network (`AGENT_HOST=0.0.0.0`), set the console password (`CALLS_UI_TOKEN`)
-  **and** `DEVICE_TOKEN`.
+- By default (`AGENT_HOST` unset), Bageo listens on your network (`AGENT_PORT`
+  and port 80 for `http://bageo.local/`), refuses other devices until you set
+  a console password (in the console or `CALLS_UI_TOKEN`), checks the `Host`
+  header to block DNS rebinding, and rate-limits password guesses. Phones
+  paired once over USB connect over Wi-Fi on `PHONE_WIFI_PORT` (`8788`) with a
+  pairing key (disable with *Phones can also connect over Wi-Fi*).
+- Set `AGENT_HOST=127.0.0.1` to listen on this computer only. If you open
+  everything with `AGENT_HOST=0.0.0.0`, set both `CALLS_UI_TOKEN` and
+  `DEVICE_TOKEN`.
 - Without them anyone on that network can listen to your calls, read your
   keys' hints, change the prompt, or connect as a phone.
 - Never expose the port to the internet. The console has a single shared

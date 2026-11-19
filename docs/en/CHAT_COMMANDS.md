@@ -175,15 +175,15 @@ The result of an AI call still arrives as the usual notification.
 
 ## Interactive buttons & commands across all 32 notification channels
 
-Beyond Telegram two-way chat, **all 32 notification channels** support interactive operation:
+Beyond Telegram, Discord, Slack and Matrix two-way chat, **all 32 notification channels** support interactive operation:
 
 1. **One-tap signed action buttons on call summaries & appointments (HMAC-SHA256, no console password needed)**
-   - When *Address of this console* (`public_url`, under *Settings → Advanced*) is filled in, every call summary and pending appointment notification includes one-tap signed actions:
+   - When *Address in notifications* (`public_url`, under *Settings → Notifications*) is filled in, every call summary and pending appointment notification includes one-tap signed actions:
       - Call summaries: **Block**, **Stall**, **Whitelist**
       - Pending appointments: **Accept**, **Decline**
    - How each channel shows them:
       - **Telegram**: Inline Keyboard buttons
-      - **ntfy**: Native HTTP POST action buttons directly in the phone notification shade
+      - **ntfy**: Native action buttons (opening the confirmation page) directly in the phone notification shade
       - **Home Assistant**: Companion App `data.actions` notification buttons & `clickAction`
       - **Microsoft Teams**: Adaptive Card `Action.OpenUrl` buttons
       - **Bark / Pushover / Gotify / Chanify**: Native tap-to-open URLs (`url` / `click` / `link`)
@@ -207,7 +207,7 @@ Beyond Telegram two-way chat, **all 32 notification channels** support interacti
       - `token`: The password can go here too.
    - `"reply": true` goes only to the one notification channel that is enabled and whose id, name or service type equals `channel_id`. With no `channel_id`, or one that matches nothing, nothing is sent.
    - Authenticate with the console password or the MCP token, in the `Authorization: Bearer` or `X-Calls-Token` header, or in the JSON `token` field. If neither is set, nothing is checked.
-   - The JSON that comes back has `text` (the reply) and `pushed` (whether it was sent out).
+   - The JSON that comes back has `ok`, `text` (the reply), `buttons`, and `pushed` (whether it was sent out).
 
 ## How well tested
 

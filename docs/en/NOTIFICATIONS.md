@@ -76,8 +76,8 @@ Transcript / recording: http://192.0.2.10:8787/calls/#call=…
   open the call's page (the last line) and press **Add to calendar** to pick
   one. See [Add to calendar](#appointments) below.
 - **The last line** links to the call's page. It appears only when Bageo has an
-  address other devices can open: *Address of this console* (under *Settings →
-  Advanced*), or the automatic one when the console is open to your network
+  address other devices can open: *Address in notifications* (under *Settings →
+  Notifications*), or the automatic one when the console is open to your network
   (not inside Docker). See [Using the console from other
   devices](SETTINGS.md#using-the-console-from-other-devices).
 
@@ -99,7 +99,9 @@ You can receive these messages:
 | Call forwarded to your phone | Someone ticked under *Who can be forwarded* called while *Transfer* is *Don't answer: send to your phone*. The phone declined the call so your carrier forwards it to you, and you get an instant alert. | `whitelist_direct_transfer` |
 | Urgent call alert | Someone ticked under *Who can be forwarded* called, the AI answered and the caller said it was urgent; you are alerted at once. With *When it's urgent, call me and join us* on, the phone also calls you. | `whitelist_urgent_transfer` |
 | Test notification | You pressed **Send test**. | `test` |
+| Chat command reply | Reply to a command sent to `POST /calls/api/control/inbound` with `"reply": true`. | `control_reply` |
 | New SMS | A text message passed on by the optional [SMS forwarder](../../tools/sms_forward/README.md). | `event` |
+| Automatic backup failed | A scheduled backup failed to write or check. | `event` |
 
 A number that keeps calling does not flood you. For each number, Bageo sends at most two *Incoming call*, *Blocked number called* or *Missed while on another call* messages a minute, and a minute later one *Repeated calls from one number* message tells you how many more came. Urgent call alerts, appointments, call summaries, AI errands and call-backs, voicemail, outgoing calls and SMS are never held back.
 
@@ -120,7 +122,7 @@ Time: Nov 14, 18:05
 Done: Table for 4 booked tomorrow 7:30 pm under Wang
 Details: They hold the table for 15 minutes.
 Agreed time: Nov 15, 19:30 Dinner at Din Tai Fung
-http://bageo.local:8787/calls/#errands
+http://bageo.local/calls/#errands
 ```
 
 If the AI agreed to something on a question you did not answer in time, the
@@ -146,7 +148,7 @@ Appointment to confirm: Sat, Nov 14, 3:00 PM–4:00 PM House viewing — confirm
 3. Press **Accept** or **Decline**.
 
 - The link in a notification opens the call. Without an address other devices
-  can open (*Address of this console*), the line ends with "confirm in the web
+  can open (*Address in notifications*), the line ends with "confirm in the web
   console" instead.
 - With no channel set up nothing is sent, and the appointment simply waits in
   the console.
@@ -209,8 +211,8 @@ you pressed **Add to calendar** (setting `calendar_app`):
 
 - Google Calendar, Outlook.com, Microsoft 365 or Yahoo Calendar: the filled-in
   "new event" form.
-- Apple Calendar or plain `.ics`: the event's `.ics` file at *Address of this
-  console*.
+- Apple Calendar or plain `.ics`: the event's `.ics` file at *Address in
+  notifications*.
 
 Until you pick one, the bot's answer links the call's page in the console
 instead (no console address, no link). There, **Add to calendar** asks which

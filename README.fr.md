@@ -222,8 +222,8 @@ Toutes les fonctions en détail : [Fonctionnalités](docs/en/FEATURES.md).
 
 Si le téléphone est déjà rooté, comptez environ 3 minutes entre le téléchargement et le premier appel décroché par l'IA.
 
-1. **Téléchargez** le fichier pour votre système depuis [Releases](https://github.com/h4lo-void/bageo-call/releases) : `bageo-call-<version>-windows-x64-setup.exe` pour Windows, `bageo-call-<version>-macos-arm64.dmg` (puce Apple) ou `bageo-call-<version>-macos-x64.dmg` (Intel) pour macOS, `bageo-call-<version>-linux-x64.tar.gz` pour Linux.
-2. **Installez-le et lancez-le.** Windows : double-cliquez sur `setup.exe`, puis sur le raccourci **Bageo** du bureau. macOS : ouvrez le `.dmg`, glissez Bageo dans *Applications* et cliquez dessus. Linux : décompressez puis lancez `./start.sh`. La console s’ouvre sur <http://localhost:8787/>.
+1. **Téléchargez** le fichier pour votre système depuis [Releases](https://github.com/h4lo-void/bageo-call/releases) : `bageo-call-<version>-windows-x64-setup.exe` pour Windows, `bageo-call-<version>-macos-arm64.dmg` (puce Apple) ou `bageo-call-<version>-macos-x64.dmg` (Intel) pour macOS, `bageo-call-<version>-linux-x64.tar.gz` pour Linux. Pour Docker, des images prêtes à l’emploi sont publiées sur `bageo/bageo-call` et `ghcr.io/h4lo-void/bageo-call`.
+2. **Installez-le et lancez-le.** Windows : double-cliquez sur `setup.exe`, puis sur le raccourci **Bageo** du bureau. macOS : ouvrez le `.dmg`, glissez Bageo dans *Applications* et cliquez dessus. Linux : décompressez puis lancez `./start.sh`. La console s’ouvre sur <http://localhost:8787/> ; une fois un mot de passe défini, <http://bageo.local/> fonctionne aussi sur cet ordinateur et sur le même réseau Wi-Fi.
 3. **Renseignez l’essentiel** sous **Réglages** : votre clé API Gemini, votre nom et la langue. Appuyez sur ▶ pour écouter les voix et en choisir une.
 4. **Préparez le téléphone** une seule fois : installez `bageo-phone-module-<version>.zip` comme module dans Magisk ou KernelSU, redémarrez, ouvrez l’application **Bageo**, suivez ses étapes de configuration et branchez le téléphone.
 5. **Appelez-le** depuis un autre téléphone : une sonnerie, et l’IA décroche.
@@ -238,10 +238,10 @@ Pour l’instant, les documents détaillés sont en anglais.
 |---|---|
 | **Démarrer** | [Démarrage](docs/en/GETTING_STARTED.md) · [Configuration du téléphone](docs/en/PHONE.md) · [Dépannage et FAQ](docs/en/TROUBLESHOOTING.md) |
 | **Utiliser** | [Fonctionnalités](docs/en/FEATURES.md) · [Commandes de chat et contrôle des notifications](docs/en/CHAT_COMMANDS.md) · [Rédiger le prompt](docs/en/PROMPTS.md) · [Référence des réglages](docs/en/SETTINGS.md) · [Notifications](docs/en/NOTIFICATIONS.md) |
-| **Aller plus loin** | [Architecture](docs/en/ARCHITECTURE.md) · [API](docs/en/API.md) · [Feuille de route](docs/en/ROADMAP.md) · [Notes de version v1.0](CHANGELOG.md) · [`android/` (en anglais)](android/README.md) · [`tools/sms_forward/` (en anglais)](tools/sms_forward/README.md) |
+| **Aller plus loin** | [Architecture](docs/en/ARCHITECTURE.md) · [API](docs/en/API.md) · [MCP](docs/en/MCP.md) · [Feuille de route](docs/en/ROADMAP.md) · [Journal des modifications](CHANGELOG.md) · [`android/` (en anglais)](android/README.md) · [`tools/sms_forward/` (en anglais)](tools/sms_forward/README.md) |
 | **Mentions légales** | [Confidentialité, sécurité et droit](docs/en/PRIVACY_AND_LEGAL.md) · [Avertissement juridique et conditions d’exploitation](LEGAL.md) · [Double licence et licence commerciale](COMMERCIAL_LICENSE.md) · [Audit de sécurité et de conformité du projet](AUDIT_REPORT.md) |
 
-**État des tests :** plus de 520 tests automatisés en CI, 234 appels simulés en 28 langues, et de vrais appels sur Pixel 7, 7a et 9. [Détails](docs/en/FEATURES.md#test-status). Les retours sur d’autres téléphones et d’autres langues aident le plus : [CONTRIBUTING.md](CONTRIBUTING.md) (en anglais).
+**État des tests :** plus de 1 400 tests automatisés en CI, 234 appels simulés en 28 langues, et de vrais appels sur Pixel 7, 7a et 9. [Détails](docs/en/FEATURES.md#test-status). Les retours sur d’autres téléphones et d’autres langues aident le plus : [CONTRIBUTING.md](CONTRIBUTING.md) (en anglais).
 
 ## FAQ
 

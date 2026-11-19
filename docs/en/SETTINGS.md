@@ -122,7 +122,7 @@ For example, a caller opens with a "pre-approved loan", or claims to be from you
 
 **How a call is judged.**
 
-- Words from the built-in scam database (42 kinds of sales and scam calls, keywords in 19 languages) start a second look by a low-cost model.
+- Words from the built-in scam database (46 kinds of sales and scam calls, keywords in 27 languages) start a second look by a low-cost model.
 - With *Check every call for sales and scams* on, calls without such words get a look too, at most three times a call.
 - The model names the kind of call and how sure it is; an unsure answer waits for the caller's next turn.
 - When the model does not answer in time, only requests that are a scam whoever makes them (a verification code, ATM steps, gift cards, remote access, a "safe account") start the stalling at once. Otherwise the next turn is looked at, and after two failures in a row the keywords decide alone.
@@ -194,7 +194,7 @@ During the call the AI reads every time, date, number or name back as a question
 
 What it needs and how it behaves:
 
-- A connected phone in AI mode with a SIM of the number's country. Bageo learns a phone's SIMs from the calls it takes, so a new phone must take one call first (*This phone hasn't taken a call yet*).
+- A connected phone in AI mode with a SIM of the number's country. Current phone apps report their active SIMs automatically on connect and when SIMs change; calling the phone once is only needed for older apps or if Android has not reported the SIM (*This phone hasn't taken a call yet*).
 - It never dials an emergency number, a short code (7 digits or fewer) or a premium-rate number; toll-free numbers are fine. Write numbers abroad with `+`; a number without `+` is one of your country.
 - One call to a number at a time, shared with the AI call-backs of [appointments](#appointments). A busy phone makes the errand wait up to 10 minutes, and an earlier call to the same number up to 25 minutes.
 - A call lasts 10 minutes at most (the AI wraps up at 9:30).
@@ -211,9 +211,9 @@ The default for *Call as* is *AI calls: call as* under [Basics](#basics). Every 
 | Send notifications | on | Off: nothing is sent to any channel. |
 | Channels | none | Telegram, Discord, LINE, ntfy, email, webhooks and more; every enabled channel gets every message. Set-up for each is in [Notifications](NOTIFICATIONS.md). |
 | Address in notifications | empty (automatic) | Links in notifications (transcript, recording, buttons, calendar) open the console at this address. Empty = the address Bageo works out, usually `http://bageo.local/`, shown in grey in the field; to reach it from outside your home, type your own. Saved as `public_url`. |
-| Commands from chat | off | Look up calls, have the AI call someone and handle your *To do* items from a Telegram chat. See [Chat commands](CHAT_COMMANDS.md). |
+| Commands from chat | off | Look up calls, have the AI call someone and handle your *To do* items from chat. Telegram, Discord, Slack and Matrix channels each have *Take commands from this chat* inside the channel; the fold-out section covers the environment-variable Telegram bot and shared limits. See [Chat commands](CHAT_COMMANDS.md). |
 
-*Commands from chat* is a fold-out section; its settings are saved as `telegram_control`, `telegram_control_users`, `control_errands_per_hour` and `control_commands_per_minute`.
+The fold-out *Commands from chat* settings are saved as `telegram_control`, `telegram_control_users`, `control_errands_per_hour` and `control_commands_per_minute`.
 
 ### Summary & calendar
 
@@ -421,7 +421,7 @@ The image itself sets `AGENT_HOST=0.0.0.0`, `ASSETS_DIR=/app/assets`, `CALLS_DAT
 | `CONSOLE_PORT_80` | *(on)* | With `AGENT_HOST` not set, the console also answers at port 80, so its address needs no `:8787`. `off` = never. When port 80 is taken or not allowed, the log says so in one line and the console stays at `AGENT_PORT`. |
 | `CALLS_UI_TOKEN` | *(empty)* | Password for the web console and API. Send as `?token=…`, `Authorization: Bearer …` or `X-Calls-Token`. **Set it to open the console from other devices**; the console's *Console password* does the same. |
 | `DEVICE_TOKEN` | *(empty)* | Phones that do not come through USB must connect with `…/ws?token=<this>`. **Set it whenever `AGENT_HOST` is set to anything but `127.0.0.1`.** |
-| `PUBLIC_URL` | *(empty)* | Same as *Address in notifications*; the web console's value wins. Empty = automatic (see [Advanced](#advanced)). |
+| `PUBLIC_URL` | *(empty)* | Same as *Address in notifications* (under [Notifications](#notifications)); the web console's value wins. Empty = automatic (see [Advanced](#advanced)). |
 | `MDNS_NAME` | `bageo` | Same as *Network name*: the console answers at `http://<this>.local/` on your network. The web console's value wins. |
 | `PHONE_WIFI_PORT` | `AGENT_PORT` + 1 (`8788`) | Port phones use over Wi-Fi. Opened on all network interfaces only while `AGENT_HOST` is not set or `127.0.0.1`; it serves only the phones' connection (no console) and always needs the pairing key or `DEVICE_TOKEN`. `0` = never. |
 

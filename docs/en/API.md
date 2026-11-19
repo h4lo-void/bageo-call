@@ -11,7 +11,7 @@ including the WebSocket protocol the rooted Android phone speaks.
 
 | | |
 |---|---|
-| **Base address** | Where Bageo listens, by default `http://127.0.0.1:8787`. The console itself is `/calls/` (`/` redirects there). |
+| **Base address** | Where Bageo listens: by default on your local network at port `8787` (and port `80` when available for `http://bageo.local/`), or `http://127.0.0.1:8787` when `AGENT_HOST=127.0.0.1`. The console itself is `/calls/` (`/` redirects there). |
 | **Routes** | API routes start with `/calls/api/`. The exceptions are `/health` and the phones' WebSocket. |
 | **AI tools** | `POST /mcp` is a Model Context Protocol server with its own token, off by default: see [MCP](MCP.md). |
 | **Format** | UTF-8 JSON unless a route says otherwise (WAV, CSV, vCard, iCalendar). Send JSON bodies with `Content-Type: application/json`. |
@@ -46,8 +46,10 @@ A few things people build on top:
 
 ## Access
 
-If no password is set (`CALLS_UI_TOKEN`), the API is open to whoever can reach
-the port. By default that is only this computer.
+By default (`AGENT_HOST` unset), Bageo listens on your local network: calls
+from this computer work even before a password is set, while calls from other
+devices require a console password (`CALLS_UI_TOKEN` or a saved password),
+enforce a `Host` header check, and rate-limit failed attempts.
 
 With a password set, every request must carry it in one of these ways:
 
@@ -100,13 +102,16 @@ places a call, sends a text, decides something or changes stored data requires
 A page on another site cannot send that header without a CORS preflight, and
 Bageo never answers preflights. This covers:
 
+- `POST /calls/api/initial-password` and `POST /calls/api/phone-pairing/renew`;
+- `POST /calls/api/call/{id}/scam-feedback`;
 - `POST /calls/api/tasks/{id}/confirm` and `…/ignore`;
 - `POST /calls/api/appointments/{id}/retry-sms`;
 - `POST /calls/api/calls/clear`;
-- `POST /calls/api/devices/{serial}/mode`;
-- `POST /calls/api/contacts`, `PUT /calls/api/contacts/{id}`, `POST /calls/api/contacts/batch`
+- `POST /calls/api/sms/send`, `…/retry`, `…/clear`, and `DELETE /calls/api/sms/thread`;
+- `POST /calls/api/devices/{serial}/mode` and `PUT /calls/api/devices/{serial}/sim-number`;
+- `POST /calls/api/contacts`, `PUT /calls/api/contacts/{id}`, `POST /calls/api/contacts/batch`, `POST /calls/api/contacts/block`
   (`POST /calls/api/contacts/import` needs an `X-Filename` header instead);
-- `POST /calls/api/errands`, `…/{id}/cancel`, `…/{id}/retry`, `…/{id}/say`.
+- `POST /calls/api/errands`, `…/{id}/cancel`, `…/{id}/retry`, `…/{id}/say`;
 - `POST /calls/api/backup/run`, `…/export`, `…/file-ticket`, `…/restore`, `…/delete`, `…/unlock`, `…/apply`, `…/discard`, `…/open-folder` (`POST /calls/api/backup/import` needs an `X-Filename` header instead).
 
 Where a route allows an empty body, it counts as `{}`. This is the second line
@@ -166,8 +171,10 @@ Each call record (`call`, and every entry of `calls`) carries, among others:
 - `persona_stall_spam`: judged a sales or scam call
 - `persona_scam_detected`: judged so with *Keep them talking* off
 - `persona_stall_released`: a later look let the caller go
-- `reject_list`: a number on the Blacklist
+- `reject_list` / `reject_list_declined`: a number on the Blacklist (announcement or declined)
 - `call_waiting_rejected`: a second call declined during a call
+- `ivr_hangup`: an automated menu / robocall hung up early
+- `whitelist_urgent_transfer`: an urgent call from the Whitelist transferred to you
 - `ai_callback`: the AI calling back about an appointment
 - `ai_errand`: an AI errand
 - `persona_ai_fail_hangup`
@@ -295,7 +302,7 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 | `POST /calls/api/sms/{id}/retry` | Sends a text that `failed` or `timeout` again, on the same line: answer as for `send`. HTTP 409 `not_retryable` for any other message. |
 | `DELETE /calls/api/sms/thread?number=<number or key>` | Deletes one conversation: `{ok: true, removed: N}`. |
 | `GET /calls/api/quick-action` · `POST /calls/api/quick-action` | Signed one-tap action links included in notifications across all 32 channels (`?act=confirm\|ignore\|block\|stall\|white&target=<id_or_number>&sig=<hmac>`). Opening a link (`GET`) only shows a confirmation page; the action runs when you press the button on that page (`POST`). A link stops working after 7 days. Verified with HMAC-SHA256 so no console login is needed; localized in all 9 languages. |
-| `POST /calls/api/control/inbound` | Universal chat command webhook, for example `{"text": "calls 5", "user": "owner", "channel": "line"}`. Runs a chat command and returns `{ok, text}` in your notification language. |
+| `POST /calls/api/control/inbound` | Universal chat command webhook, accepting `{"text": "calls 5", "channel_id": "line", "sender_id": "owner", "reply": false, "token": "..."}` (`user` / `channel` aliases also work). Runs a chat command and returns `{ok, text, buttons, pushed}` in your notification language. |
 | `GET /calls/api/auth-status` · `POST /calls/api/initial-password` | Public status check (`{ok, password_set, authenticated, prompt_initial, language}`) and first-time password setup (`{"password": "..."}` or `{"skip": true}`, allowed before any password/token is set). |
 
 Details for `POST /calls/api/notify/test`:
@@ -483,8 +490,8 @@ transfer.
 **Which phone and SIM.**
 
 - The call goes out from a connected phone in AI mode that has a SIM of the number's country.
-- Bageo learns each phone's SIMs (subscription id and country) from the calls it reports (`sim_sub_id` and `sim_country` in `incoming` and the media `hello`), and from an optional `sims: [{sub_id, country}]` list in the control `hello` (the 1.0 app does not send one yet). They are kept in `phone_sims.json`.
-- A phone whose SIMs Bageo has never heard about takes no errand (`sim_unknown`): call that phone once first.
+- Bageo learns each phone's SIMs (subscription id, country, carrier, and optional number) from the `sims` list reported in control `hello` / `status` (plus `sim_sub_id` and `sim_country` on calls for older app versions). They are kept in `phone_sims.json`.
+- A phone whose SIMs Bageo has never heard about takes no errand (`sim_unknown`): reconnect the phone (or call it once on older app versions).
 - The phone gets the number in E.164 form with the SIM to use (`sub_id`).
 - If the call's own media `hello` shows another SIM, or none, Bageo hangs up before the AI speaks (`failed`, `call_code` `wrong_sim`, you are told) and forgets that SIM on that phone until a call reports it again.
 
@@ -736,6 +743,7 @@ Details:
 | `POST /calls/api/devices/{serial}/mode` | Body `{"mode": "ai" \| "normal"}`. Asks the phone to switch and waits up to 15 seconds for its answer. Answers `{ok, mode, error_code}` (a 400 adds `error`, a description). |
 | `DELETE /calls/api/devices/{serial}` | Removes an offline phone from the phone list, saved device labels and recorded SIMs while keeping past call records: `{ok, serial}`. HTTP 409 `device_online` / `device_in_call` if the phone is connected or in a call. |
 | `PUT /calls/api/devices/{serial}/sim-number` | Body `{"sub_id": <int>, "number": "..."}`. Saves (or clears when empty) the phone number for a SIM on that phone so calls and AI errands show and pick by number: `{ok, serial, sims}`. |
+| `POST /calls/api/phone-pairing/renew` | Rotates the Wi-Fi pairing key (`phone-pairing.key`) and disconnects Wi-Fi-paired phones so each must plug in via USB once more to get the new key: `{ok: true}` (or HTTP 500 `save_failed`). The key is never returned. |
 | `GET /health` | A large flat JSON object for troubleshooting: version, language, what is configured, connected phones, calls in progress; no keys or tokens. Needs the password (see the last point below the table). Details are below the table. |
 | `GET /calls/api/health` | The same full JSON as `/health`, for the console. Like the other `/calls/api/` routes: HTTP 401 without the password when one is set, open when none is set. |
 
@@ -778,8 +786,10 @@ call.
 Both carry JSON text frames and raw 16 kHz mono 16-bit little-endian PCM binary
 frames in both directions (the phone sends 60 ms frames).
 
-A connection from the computer itself (the USB tunnel) is always accepted; any
-other must carry `?token=<DEVICE_TOKEN>` when that is set.
+A connection from the computer itself (the USB tunnel) is accepted without a
+token. Wireless connections use `PHONE_WIFI_PORT` (default `8788`, serving
+`/ws` only) with the `phone-pairing.key` pushed over USB or `DEVICE_TOKEN`, or
+the main port with `?token=<DEVICE_TOKEN>` when set.
 
 The complete message list, field by field, is in
 [`android/README.md`](../../android/README.md#websocket-protocol).
@@ -792,14 +802,15 @@ ignore what they do not know, so old apps and older Bageo versions keep working.
 
 | Direction | Message | Meaning |
 |---|---|---|
-| phone → Bageo | `hello` | `serial`, `mode` = `CONTROL_IDLE`, `model`, `app_version`, `phone_mode` (`ai` / `normal`), `in_call`, `supports_sms`, `supports_reject`. No `phone_mode`: an app older than the mode switch (always `ai`). No `supports_sms`: no texts are asked of it. No `supports_reject`: Blacklist numbers are answered and get the announcement instead. |
+| phone → Bageo | `hello` | `serial`, `mode` = `CONTROL_IDLE`, `model`, `app_version`, `phone_mode` (`ai` / `normal`), `in_call`, `supports_sms`, `supports_reject`, and `sims` (`[{sub_id, country, slot?, carrier?, number?}]`, reported automatically by 1.4+ apps). No `phone_mode`: an app older than the mode switch (always `ai`). No `supports_sms`: no texts are asked of it. No `supports_reject`: Blacklist numbers are answered and get the announcement instead. |
 | phone → Bageo | `ping` | Every 15 s. |
-| phone → Bageo | `status` | `{mode, in_call}`: the mode or the call state changed. |
+| phone → Bageo | `status` | `{mode, in_call}` (and optional `sims`): the mode, call state, or SIM list changed. |
 | phone → Bageo | `incoming`, `incoming_cancel` | A call rings (`caller_id`, empty for a hidden number; `sim_country`; `sim_sub_id` when known) / it ended before it was answered. |
+| phone → Bageo | `reject_failed` | `answer_plan` with `reject: true` could not reject the ringing call. |
 | Bageo → phone | `answer_plan` | `{delay_ms, prewarm, reject}`: how long to ring before answering, or `reject: true` to decline the ringing call (Blacklist numbers with `reject_mode` `decline`). |
 | phone → Bageo | `call_waiting_rejected` | `{serial, caller_id, sim_country, sim_sub_id}`: a second call rang during a call and the phone declined it at once (AI mode). Becomes a call record and a "Missed while on a call" notification. |
 | Bageo → phone / phone → Bageo | `set_mode` / `set_mode_result` | `{mode, id}` / `{id, ok, mode, error}`: the remote mode switch; `error` uses the codes above. |
-| Bageo → phone | `agent_info` | `{console_url}` for the app's **Open the web console** button. Sent after the hello when Bageo knows an address: `public_url`, or the LAN IP address when the console is open to your network. |
+| Bageo → phone | `agent_info` | `{console_url}` for the app's **Open the web console** button (`public_url` or the LAN address), plus `wifi: {urls: [...]}` over a trusted USB connection (`ws://<lan-ip>:<PHONE_WIFI_PORT>/ws?token=<key>`, and `ws://<name>.local:<PHONE_WIFI_PORT>/ws?token=<key>` when the network name is enabled). |
 | Bageo → phone | `place_call` | `{number, call_id, task_id, sub_id}`: dial out for an AI call-back or an AI errand, from the SIM with subscription id `sub_id` (the phone's default when that SIM is not found). While a call rings or is up, the phone does not dial and answers `place_call_failed` with `reason` `busy`. |
 | phone → Bageo | `place_call_ack`, `place_call_failed`, `outbound_ready`, `call_end` | The outgoing call was dialed / could not be dialed / connected / ended. |
 | Bageo → phone | `send_sms` | `{id, to, text, sub_id}`: text a caller (appointments). An id already sent is answered again and never texted twice. |
@@ -821,6 +832,8 @@ Details for `send_sms` and `send_sms_result`:
 | phone → Bageo | `hello` | `serial`, `caller_id`, `sample_rate` (16000), `mode` = `SILENT_LOCAL`, `sim_country`, `sim_sub_id`, `model`, `app_version`. For an outgoing call Bageo checks `sim_sub_id` against the SIM it asked for (errands: `wrong_sim`). |
 | phone → Bageo | `ringing`, `call_end` | The caller's number (sent again when it becomes known later) / the call ended. |
 | Bageo → phone | `tts_start`, `tts_end`, `hangup` | Audio follows / audio ended / end the call. |
+| Bageo → phone | `add_call`, `add_call_abort` | `{id, number, merge, answer_timeout_ms}` / `{id}`: used by Whitelist urgent forwarding to call you and merge a 3-way call (or cancel and take the caller off hold). |
+| phone → Bageo | `add_call_result` | `{id, status, reason?}` (`status` in `dialing` / `active` / `merged` / `failed`): progress or outcome of the 3-way dial/merge attempt. |
 | both | binary | The caller's voice (phone → Bageo) and the AI's voice (Bageo → phone), PCM as above. |
 
 How Bageo handles the edge cases:

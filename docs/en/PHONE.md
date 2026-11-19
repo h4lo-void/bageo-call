@@ -98,8 +98,9 @@ handset. All of this can be switched off from the app or the console (see
 
    You are not asked for the permission to send texts (`SEND_SMS`): the module
    grants it at boot and whenever the phone switches to AI mode. A dual-SIM
-   phone picks each SIM by its subscription id, never by its own number, so no
-   extra permission is needed for that either.
+   phone routes each SIM by its subscription id, while `READ_PHONE_NUMBERS` is
+   only used to read the SIM numbers reported to Bageo (if a carrier hides the
+   number, you can fill it in on the console's **Phones** tab).
 5. Leave **AI answers my calls** on.
 
 ### Updating
@@ -177,12 +178,13 @@ USB.
 - With two SIMs, Bageo knows which SIM each call came in on. It picks the
   opening language from *Main language for each SIM* (under *Basics → More
   options*) and sends texts and call-backs from the same SIM.
-- AI errands need to know the phone's SIMs, which Bageo learns from the calls
-  the phone reports. A newly set-up phone can run an errand once it has taken
-  one call; until then the console says *This phone hasn't taken a call yet*.
+- AI errands need to know the phone's SIMs. The 1.4+ phone app reports installed
+  SIMs automatically when it connects (calling the phone once is only needed for
+  older app versions if the console says *This phone hasn't taken a call yet*).
 - The **Open the web console** button in the app appears once Bageo has a
-  console address: *Address of this console* under *Advanced* or, when that is
-  empty and the console is open to your network, the computer's LAN address.
+  console address: *Address in notifications* under *Notifications* or, when
+  that is empty and the console is open to your network, the computer's LAN
+  address.
 
 ## Normal phone mode
 
@@ -305,6 +307,7 @@ To remove Bageo:
    adb shell su -c "pm enable com.google.android.dialer"
    adb shell su -c "pm enable com.google.android.dialer/com.android.incallui.InCallServiceImpl"
    adb shell su -c "pm enable com.google.android.dialer/com.android.incallui.InCallActivity"
+   adb shell su -c "pm enable com.google.android.dialer/com.android.incallui.LegacyInCallActivity"
    adb shell su -c "cmd role add-role-holder android.app.role.DIALER com.google.android.dialer"
    adb shell su -c "telecom set-default-dialer com.google.android.dialer"
    ```

@@ -38,6 +38,7 @@ flowchart LR
 | **Root 模組** | `android/magisk/pixelcallai_uplink` | 把 App 裝成特權系統 App，每次開機把手機設定成專門接電話的機器，並執行「AI 接聽／[一般手機](PHONE.md#一般手機模式)」切換背後的 root 小程式。 |
 | **Bageo 程式** | [`crates/agent`](../../crates/agent) | 其他所有事：通話狀態機、Gemini Live 連線、錄音、摘要、聯絡人、行程預約、AI 代打、通知、網頁控制台與 API、跟手機的 USB 連線。 |
 | **網頁控制台** | `crates/agent/static/calls.html` | 編譯進 Bageo 程式的單一頁面。 |
+| **Bageo Status** | [`desktop/`](../../desktop) | 選用的桌面系統列／選單列程式（Tauri 2，含於 Windows 安裝檔與 macOS `.dmg`），在背景帶起 Bageo 並顯示狀態、來電、簡訊與摘要通知。 |
 | **簡訊轉發器** | [`tools/sms_forward`](../../tools/sms_forward) | 選用、獨立的 Python 腳本，轉發手機收到的簡訊。 |
 
 ### Bageo 程式的模組
@@ -47,9 +48,12 @@ flowchart LR
 | `main.rs` | 啟動、手機的 WebSocket 端點、來電狀態機、響鈴預熱、通話結束後的處理流程。 |
 | `gemini_live.rs` | 每通電話一條 Live 連線：音訊轉送、回音檢查、插話、掛斷規則、推銷偵測與切換到陪聊模式、連線續接，以及撥出用的模式（等對方接起、回鈴音過濾、工具呼叫）。 |
 | `prompts.rs`、`locale.rs` | 依語言和接聽身分組出每通電話的系統提示詞；每種語言要講和要聽的語句。 |
+| `closing.rs` | 跨 26 種語言詞表的本地端掛斷狀態機：判斷準備掛斷、道別語、繼續講話與兼作問候的道別詞。 |
+| `scenario.rs`、`preflight.rs` | 來電情境小提示（快遞、銀行核對刷卡、打錯電話…）與代打撥出前補問／可接受時間整理。 |
 | `stall_review.rs` | 進入陪聊前的複審：`gemini-flash-lite-latest` 在 1.5 秒內把通話判成 `scam_or_sales`、`normal`、`ivr_recording` 或 `too_early`，並說出是資料庫裡哪一種話術、有多確定。 |
-| `scam_db.rs` | 推銷與詐騙資料庫（`data/scam_db.json`：話術類型、19 種語言的關鍵字、號碼提示）、你在 `config/scam_db.local.json` 加的內容，以及每個號碼的標記。 |
+| `scam_db.rs` | 推銷與詐騙資料庫（`data/scam_db.json`：46 種話術類型、27 種語言的關鍵字、號碼提示）、你在 `config/scam_db.local.json` 加的內容，以及每個號碼的標記。 |
 | `appointments.rs` | 一般通話的預約工具、由它們產生的待處理事項、同意／不同意、用簡訊或 AI 回電告訴對方，以及共用的撥出佇列。 |
+| `urgent_call.rs`、`urgency.rs` | 多語言急事偵測，以及轉接來電試驗用的三方通話合併（`add_call`）。 |
 | `callback.rs` | 手機的控制連線：`place_call`、`send_sms` 和它們的結果，送到正確的手機。 |
 | `errands.rs` | AI 代打：號碼檢查、挑手機與 SIM 卡（`SimBook`）、代打腳本與 `ask_owner`、即時字幕、通話中你打的字、結構化結果。 |
 | `contacts.rs` | 通訊錄；不管號碼怎麼寫都能比對；從 vCard、CSV、TSV、純文字、`.xlsx`、`.docx` 匯入，PDF 與圖片交給 Gemini 讀；匯出 vCard。 |
@@ -57,11 +61,17 @@ flowchart LR
 | `calendar.rs` | 行事曆建議，以及 Google、Outlook.com、Microsoft 365、Yahoo、`.ics` 的「加入行事曆」連結。 |
 | `summary.rs` | 通話後的摘要，走 Gemini 或任何 OpenAI 相容 API；其他語言句子的翻譯；代打的結果。 |
 | `tasks.rs` | 「待處理事項」背後的儲存。 |
+| `sms_store.rs` | 依號碼分組儲存的簡訊對話，以及透過手機送出的回覆。 |
 | `notify.rs`、`gmail.rs`、`tg_inbound.rs` | 32 種通知管道、透過 SMTP 寄信、Telegram 按鈕。 |
+| `control/` | Telegram、Discord、Slack 與 Matrix 的遠端指令與自然語言解析。 |
+| `mcp.rs` | 內建 Model Context Protocol（`POST /mcp`）伺服器，以及跨平台通用指令接口（`POST /calls/api/control/inbound`）。 |
 | `calls.rs`、`calls_http.rs` | 通話紀錄、錄音與逐字稿；網頁控制台的 REST API。 |
+| `backup.rs`、`backup_crypt.rs` | 自動與手動備份、勾選匯出／匯入，以及 `.bageo` 加密（Argon2id + XChaCha20-Poly1305）。 |
 | `settings_store.rs` | `.env` 加上控制台存的設定，改了不用重新啟動。 |
+| `lan.rs`、`phone_wifi.rs` | 區網存取把關、`Host` 標頭檢查、猜密碼限速，以及 USB 轉 Wi-Fi 的手機配對金鑰。 |
 | `usb_bridge.rs` | 為每支 USB 手機維持 `adb reverse`，並啟動 App 的通話服務。 |
 | `mdns.rs` | 在區網回應 `bageo.local`（multicast DNS），不知道電腦 IP 也能打開控制台。 |
+| `log_text.rs` | 遮罩來電號碼，且預設不把通話內容寫進日誌（除非設 `LOG_CALL_TEXT=1`）。 |
 | `adpcm.rs`、`voice_preview.rs`、`ambience.rs` | 1,080 個內建語音檔（IMA ADPCM）、聲音試聽與「無法接通」語音、12 種背景音。 |
 
 ## 一通來電的完整過程
@@ -195,13 +205,12 @@ AI 代打和預約回電共用 `appointments.rs` 裡同一條撥出路線：
 
 `prompts.rs` 組系統提示詞：
 
-- 繁體中文有自己專門調過的提示詞。
-- 簡體中文用轉換過的版本。
-- 其他語言共用一套英文指示，指明要講哪種語言並引用那種語言的語句。
+- 九種語言各自都有用該語言寫好的精簡預設提示詞（`short_text`），涵蓋「AI 助理」與「本人」兩種身分。
+- 其餘輔助系統指示（陪聊劇本、催促、固定底線）則使用繁體中文、轉成簡體的中文版本，或共用的英文範本搭配該語言的語句。
 
 開場語言依來電號碼和 SIM 卡的主要語言決定，每份提示詞都要求 AI 跟著對方換語言。
 
-要新增一種語言，就加一個 `Phrases` 區塊，再在網頁控制台的字典加一份翻譯。
+要新增一種語言，就加一個 `Phrases` 區塊、一組 `short_text` 預設提示詞，再在網頁控制台的字典加一份翻譯。
 
 ## 資料存在哪裡
 
@@ -215,12 +224,15 @@ data/calls/
   tasks/index.json、tasks/<id>.json 待處理事項（行程預約）
   errands.json                      AI 代打，保留最新 500 筆
   phone_sims.json                   每支手機回報過的 SIM 卡
+  phone-pairing.key                 手機 Wi-Fi 連線的配對金鑰
+  sms/messages.json                 轉發與回覆的簡訊
+  backups/                          排程、手動與匯入前備份（.zip / .bageo）
   voice_preview/                    快取的聲音範例與語音
 ```
 
 都是一般的 JSON 和 WAV 檔，沒有資料庫。每次寫入都先寫暫存檔，再改名蓋過舊檔。讀不懂的 `errands.json` 或 `phone_sims.json` 會被移到旁邊，不會被覆蓋。
 
-**試試看：** 要備份全部資料，複製 `data/calls` 資料夾就好。備份要自己收好：`settings.json` 裡的 API 金鑰是明文。
+**試試看：** 可直接用控制台的「**設定 → 備份與還原**」（支援密碼加密），或複製 `data/calls` 資料夾。任何備份都要自己收好：`settings.json` 裡的 API 金鑰是明文。
 
 ## 設計取捨
 

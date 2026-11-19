@@ -222,8 +222,8 @@ Todas las funciones en detalle: [Funciones](docs/en/FEATURES.md).
 
 Si el teléfono ya tiene root, pasan unos 3 minutos desde la descarga hasta la primera llamada que contesta la IA.
 
-1. **Descarga** el archivo para tu sistema desde [Releases](https://github.com/h4lo-void/bageo-call/releases): `bageo-call-<version>-windows-x64-setup.exe` en Windows, `bageo-call-<version>-macos-arm64.dmg` (chip Apple) o `bageo-call-<version>-macos-x64.dmg` (Intel) en macOS, `bageo-call-<version>-linux-x64.tar.gz` en Linux.
-2. **Instálalo y ábrelo.** Windows: doble clic en `setup.exe` y luego en el acceso directo **Bageo** del escritorio. macOS: abre el `.dmg`, arrastra Bageo a *Aplicaciones* y haz clic en él. Linux: descomprime y ejecuta `./start.sh`. La consola se abre en <http://localhost:8787/>.
+1. **Descarga** el archivo para tu sistema desde [Releases](https://github.com/h4lo-void/bageo-call/releases): `bageo-call-<version>-windows-x64-setup.exe` en Windows, `bageo-call-<version>-macos-arm64.dmg` (chip Apple) o `bageo-call-<version>-macos-x64.dmg` (Intel) en macOS, `bageo-call-<version>-linux-x64.tar.gz` en Linux. Para Docker también hay imágenes listas en `bageo/bageo-call` y `ghcr.io/h4lo-void/bageo-call`.
+2. **Instálalo y ábrelo.** Windows: doble clic en `setup.exe` y luego en el acceso directo **Bageo** del escritorio. macOS: abre el `.dmg`, arrastra Bageo a *Aplicaciones* y haz clic en él. Linux: descomprime y ejecuta `./start.sh`. La consola se abre en <http://localhost:8787/>; una vez que pongas una contraseña de la consola, también funciona <http://bageo.local/> desde este ordenador y desde la misma red Wi-Fi.
 3. **Rellena lo básico** en **Ajustes**: tu clave de API de Gemini, tu nombre y el idioma. Pulsa ▶ para escuchar las voces y elige una.
 4. **Prepara el teléfono** una sola vez: instala `bageo-phone-module-<version>.zip` como módulo en Magisk o KernelSU, reinicia, abre la app **Bageo**, completa sus pasos de configuración y conecta el teléfono.
 5. **Llámale** desde otro teléfono: un tono y la IA contesta.
@@ -238,10 +238,10 @@ La documentación detallada está, por ahora, solo en inglés.
 |---|---|
 | **Empezar** | [Primeros pasos](docs/en/GETTING_STARTED.md) · [Configurar el teléfono](docs/en/PHONE.md) · [Solución de problemas y preguntas frecuentes](docs/en/TROUBLESHOOTING.md) |
 | **Usar** | [Funciones](docs/en/FEATURES.md) · [Comandos de chat y control de notificaciones](docs/en/CHAT_COMMANDS.md) · [Cómo escribir el prompt](docs/en/PROMPTS.md) · [Referencia de ajustes](docs/en/SETTINGS.md) · [Notificaciones](docs/en/NOTIFICATIONS.md) |
-| **Ir más a fondo** | [Arquitectura](docs/en/ARCHITECTURE.md) · [API](docs/en/API.md) · [Hoja de ruta](docs/en/ROADMAP.md) · [Notas de la versión 1.0](CHANGELOG.md) · [`android/`](android/README.md) · [`tools/sms_forward/`](tools/sms_forward/README.md) |
+| **Ir más a fondo** | [Arquitectura](docs/en/ARCHITECTURE.md) · [API](docs/en/API.md) · [MCP](docs/en/MCP.md) · [Hoja de ruta](docs/en/ROADMAP.md) · [Registro de cambios](CHANGELOG.md) · [`android/`](android/README.md) · [`tools/sms_forward/`](tools/sms_forward/README.md) |
 | **Legal** | [Privacidad, seguridad y ley](docs/en/PRIVACY_AND_LEGAL.md) · [Aviso legal y condiciones para operadores](LEGAL.md) · [Licencia dual y comercial](COMMERCIAL_LICENSE.md) · [Auditoría de seguridad y cumplimiento del proyecto](AUDIT_REPORT.md) |
 
-**Estado de las pruebas:** más de 520 pruebas automáticas en CI, 234 llamadas simuladas en 28 idiomas y llamadas reales en Pixel 7, 7a y 9. [Detalles](docs/en/FEATURES.md#test-status). Los informes de otros teléfonos e idiomas son los que más ayudan: [CONTRIBUTING.md](CONTRIBUTING.md).
+**Estado de las pruebas:** más de 1.400 pruebas automáticas en CI, 234 llamadas simuladas en 28 idiomas y llamadas reales en Pixel 7, 7a y 9. [Detalles](docs/en/FEATURES.md#test-status). Los informes de otros teléfonos e idiomas son los que más ayudan: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Preguntas frecuentes
 
