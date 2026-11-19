@@ -105,6 +105,11 @@ cp .env.example .env        # set CALLS_UI_TOKEN and DEVICE_TOKEN
 docker compose up -d --build
 ```
 
+To skip building, use the ready-made image `bageo/bageo-call` on Docker Hub
+(also `ghcr.io/h4lo-void/bageo-call`), for amd64 and arm64: in
+`docker-compose.yml` delete the `build: .` line, change `image:` to
+`bageo/bageo-call:latest`, then run `docker compose up -d`.
+
 In a container Bageo is reachable from your network, so two values in `.env`
 are required: `CALLS_UI_TOKEN` (the console password) and `DEVICE_TOKEN` (for
 the phone's connection).

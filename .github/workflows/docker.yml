@@ -1,0 +1,218 @@
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+# SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
+name: Docker
+
+# Ready-made images of Bageo for linux/amd64 and linux/arm64:
+#   bageo/bageo-call              Docker Hub (needs the DOCKERHUB_USERNAME and
+#                                 DOCKERHUB_TOKEN secrets; skipped without them)
+#   ghcr.io/h4lo-void/bageo-call  GitHub Container Registry
+# Tags: the version, major.minor and latest, e.g. 1.6.9, 1.6, latest.
+#
+# Pushing a tag like v1.6.9 builds and pushes. Run by hand (Actions → Docker →
+# Run workflow) with a tag to push the images of a release made earlier, or
+# with the tag left empty to only try the build on the chosen branch.
+# A pull request that changes the Dockerfile or this file only builds.
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - .github/workflows/docker.yml
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and push, like v1.6.9. Empty: build only, push nothing."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+env:
+  GHCR_IMAGE: ghcr.io/h4lo-void/bageo-call
+  HUB_IMAGE: bageo/bageo-call
+
+jobs:
+  build:
+    name: build ${{ matrix.platform }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Decide what to build
+        id: what
+        shell: bash
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          PLATFORM: ${{ matrix.platform }}
+          HUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          HUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            ref="${GITHUB_REF_NAME}"; push=true
+          elif [[ -n "${INPUT_TAG}" ]]; then
+            ref="${INPUT_TAG}"; push=true
+          else
+            ref="${GITHUB_SHA}"; push=false
+          fi
+          if [[ "${push}" == true && ! "${ref}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::The tag must look like v1.6.9, got ${ref}"; exit 1
+          fi
+          names="${GHCR_IMAGE}"
+          hub=false
+          if [[ -n "${HUB_USER}" && -n "${HUB_TOKEN}" ]]; then
+            names="${HUB_IMAGE},${names}"; hub=true
+          elif [[ "${push}" == true ]]; then
+            echo "::warning::DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is not set; pushing to GHCR only"
+          fi
+          {
+            echo "ref=${ref}"
+            echo "push=${push}"
+            echo "hub=${hub}"
+            echo "names=${names}"
+            echo "version=${ref#v}"
+            echo "pair=${PLATFORM//\//-}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.what.outputs.ref }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: steps.what.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        if: steps.what.outputs.push == 'true' && steps.what.outputs.hub == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build only
+        if: steps.what.outputs.push != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          build-args: CARGO_BUILD_JOBS=4
+          push: false
+
+      - name: Build and push by digest
+        id: build
+        if: steps.what.outputs.push == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          build-args: CARGO_BUILD_JOBS=4
+          labels: |
+            org.opencontainers.image.title=Bageo
+            org.opencontainers.image.description=AI phone assistant for your real phone number
+            org.opencontainers.image.source=https://github.com/h4lo-void/bageo-call
+            org.opencontainers.image.version=${{ steps.what.outputs.version }}
+            org.opencontainers.image.licenses=AGPL-3.0-only
+          outputs: type=image,"name=${{ steps.what.outputs.names }}",push-by-digest=true,name-canonical=true,push=true
+
+      - name: Keep the digest
+        if: steps.what.outputs.push == 'true'
+        shell: bash
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digests"
+          touch "${RUNNER_TEMP}/digests/${DIGEST#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.what.outputs.push == 'true'
+        with:
+          name: digests-${{ steps.what.outputs.pair }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.tag != ''
+    runs-on: ubuntu-latest
+    env:
+      HUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+      HUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    steps:
+      - name: Decide the tags
+        id: what
+        shell: bash
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then ref="${GITHUB_REF_NAME}"; else ref="${INPUT_TAG}"; fi
+          version="${ref#v}"
+          images="${GHCR_IMAGE}"
+          if [[ -n "${HUB_USER}" && -n "${HUB_TOKEN}" ]]; then images="${HUB_IMAGE} ${images}"; echo "hub=true" >> "${GITHUB_OUTPUT}"; fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "minor=${version%.*}" >> "${GITHUB_OUTPUT}"
+          echo "images=${images}" >> "${GITHUB_OUTPUT}"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        if: steps.what.outputs.hub == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Tag both architectures together
+        shell: bash
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          VERSION: ${{ steps.what.outputs.version }}
+          MINOR: ${{ steps.what.outputs.minor }}
+          IMAGES: ${{ steps.what.outputs.images }}
+        run: |
+          set -euo pipefail
+          ls -1
+          for image in ${IMAGES}; do
+            sources=()
+            for d in *; do sources+=("${image}@sha256:${d}"); done
+            docker buildx imagetools create \
+              -t "${image}:${VERSION}" -t "${image}:${MINOR}" -t "${image}:latest" \
+              "${sources[@]}"
+            docker buildx imagetools inspect "${image}:${VERSION}"
+          done
