@@ -71,8 +71,8 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&…
 | AI 回電：〈號碼〉 | AI 打給來電者告知預約結果。訊息會寫結果（接通並告知、沒人接、撥不出去，或這個號碼不能回電）和那通電話的摘要。 | `ai_callback` |
 | AI 代打：〈名字或號碼〉 | 你交辦的 AI 代打結束了。訊息有結果、細節、需要你決定的選項、下一步、談定的時間，以及「AI 代打」頁的連結。 | `ai_errand` |
 | 預約待你確認 | 對方跟 AI 約了時間。Telegram 收到有按鈕的卡片，其他管道收到附一鍵「同意／不同意」簽章按鈕或連結的通知（見[行程預約](#行程預約)）。 | `appointment_pending` / `summary` |
-| 白名單來電直接轉接 | 白名單號碼打來、且「轉接方式」設為「不接，直接轉到你的手機」時，手機自動掛斷以觸發電信轉接，並即時推播通知。 | `whitelist_direct_transfer` |
-| 白名單緊急事件通知 | 白名單號碼打來、且 AI 在通話中聽出對方有緊急事件時，AI 主動告知你的真實轉接號碼並發送緊急警報。 | `whitelist_urgent_transfer` |
+| 來電已轉到你的手機 | 「誰打來可以轉」勾選的人打來、且「轉接方式」是「不接，直接轉到你的手機」時，手機不接，讓電信把電話轉給你，並馬上通知你。 | `whitelist_direct_transfer` |
+| 來電急事通知 | 「誰打來可以轉」勾選的人打來、AI 先接，對方說有急事時馬上通知你；打開「有急事時打給你」時，手機也會撥給你。 | `whitelist_urgent_transfer` |
 | 測試通知 | 你按了「傳送測試」。 | `test` |
 | 新簡訊 | 選用的[簡訊轉發工具](../../tools/sms_forward/README.md)（英文）轉來的簡訊。 | `event` |
 
@@ -688,8 +688,8 @@ smtps://you@example.com@smtp.example.com:465    一連線就走 TLS
 | `ai_callback` | 行程預約的 AI 回電結束，或撥不出去 | `caller_id`、`device`、`time`、`summary` |
 | `ai_errand` | AI 代打結束，或沒能開始 | `number`、`device`、`time`、`summary` |
 | `appointment_pending` | 對方跟 AI 約了時間，等待你決定 | `task_id`、`caller_id`、`device`、`title`、`start_at`、`accept_url`、`decline_url` |
-| `whitelist_direct_transfer` | 白名單來電直接掛斷觸發電信轉接 | `caller_id`、`device`、`time`、`forward_to`、`contact` |
-| `whitelist_urgent_transfer` | 白名單來電中 AI 偵測到緊急事件並告知真實轉接號碼 | `caller_id`、`device`、`time`、`forward_to`、`reason`、`contact` |
+| `whitelist_direct_transfer` | 手機不接、由電信把來電轉到你的手機 | `caller_id`、`device`、`time`、`forward_to`、`contact` |
+| `whitelist_urgent_transfer` | 來電者說有急事，已馬上通知你 | `caller_id`、`device`、`time`、`forward_to`、`reason`、`contact` |
 | `voicemail` | 存下一則語音留言（舊的選單模式） | `caller_id`、`device`、`time`、`seconds` |
 | `event` | 透過 API 傳的訊息（`/calls/api/notify/send`） | `null` |
 | `test` | 「傳送測試」 | `{}` |

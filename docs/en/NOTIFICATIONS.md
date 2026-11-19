@@ -96,12 +96,12 @@ You can receive these messages:
 | AI call-back: <number> | The AI called a caller back with your answer to an appointment. The message gives how it went (answered, nobody answered, could not be placed, or the number cannot be called back) and the call's summary. | `ai_callback` |
 | AI errand call: <name or number> | An AI errand you started has ended. The message has the result, details, your decision when one is needed, the next step, the time agreed and a link to the *Errands* page. | `ai_errand` |
 | Appointment to confirm | A caller set a time with the AI. Telegram receives a card with buttons; every other channel receives signed one-tap **Accept / Decline** buttons or links (see [Appointments](#appointments)). | `appointment_pending` / `summary` |
-| Whitelist call forwarded | A whitelisted number called while *Transfer* is set to *Don't answer: send to your phone*. The phone declined the call to trigger carrier conditional call forwarding and sent an instant alert. | `whitelist_direct_transfer` |
-| Urgent call from Whitelist | A whitelisted caller had an urgent matter during the call; the AI shared your forwarding number and sent an urgent alert. | `whitelist_urgent_transfer` |
+| Call forwarded to your phone | Someone ticked under *Who can be forwarded* called while *Transfer* is *Don't answer: send to your phone*. The phone declined the call so your carrier forwards it to you, and you get an instant alert. | `whitelist_direct_transfer` |
+| Urgent call alert | Someone ticked under *Who can be forwarded* called, the AI answered and the caller said it was urgent; you are alerted at once. With *When it's urgent, call me and join us* on, the phone also calls you. | `whitelist_urgent_transfer` |
 | Test notification | You pressed **Send test**. | `test` |
 | New SMS | A text message passed on by the optional [SMS forwarder](../../tools/sms_forward/README.md). | `event` |
 
-A number that keeps calling does not flood you. For each number, Bageo sends at most two *Incoming call*, *Blocked number called* or *Missed while on another call* messages a minute, and a minute later one *Repeated calls from one number* message tells you how many more came. Urgent whitelist alerts, appointments, call summaries, AI errands and call-backs, voicemail, outgoing calls and SMS are never held back.
+A number that keeps calling does not flood you. For each number, Bageo sends at most two *Incoming call*, *Blocked number called* or *Missed while on another call* messages a minute, and a minute later one *Repeated calls from one number* message tells you how many more came. Urgent call alerts, appointments, call summaries, AI errands and call-backs, voicemail, outgoing calls and SMS are never held back.
 
 A call-waiting message:
 ```text
@@ -791,8 +791,8 @@ With a *Bearer token (optional)* set, it adds `Authorization: Bearer <token>`.
 | `ai_callback` | the AI's call-back for an appointment ended, or could not be placed | `caller_id`, `device`, `time`, `summary` |
 | `ai_errand` | an AI errand ended, or never got going | `number`, `device`, `time`, `summary` |
 | `appointment_pending` | a caller booked an appointment waiting for your decision | `task_id`, `caller_id`, `device`, `title`, `start_at`, `accept_url`, `decline_url` |
-| `whitelist_direct_transfer` | a whitelisted call was declined to trigger carrier forwarding | `caller_id`, `device`, `time`, `forward_to`, `contact` |
-| `whitelist_urgent_transfer` | the AI detected an urgent matter from a whitelisted caller and gave them your forwarding number | `caller_id`, `device`, `time`, `forward_to`, `reason`, `contact` |
+| `whitelist_direct_transfer` | a call was declined so your carrier forwards it to your phone | `caller_id`, `device`, `time`, `forward_to`, `contact` |
+| `whitelist_urgent_transfer` | the caller said it was urgent and you were alerted at once | `caller_id`, `device`, `time`, `forward_to`, `reason`, `contact` |
 | `voicemail` | a voicemail was saved (older menu mode) | `caller_id`, `device`, `time`, `seconds` |
 | `event` | a message sent through the API (`/calls/api/notify/send`) | `null` |
 | `test` | **Send test** | `{}` |
