@@ -12,7 +12,7 @@
 
 建置 App、它的權限與通訊協定，寫在 [`android/README.md`](../../android/README.md)（英文）。
 
-這一頁說明的是 **Bageo 1.4**：root 模組 `v1.4.0`（versionCode 24），裡面的 App 是 `1.4.0`（versionCode 32），安裝檔是 `pixelcallai_uplink-1.4.0.zip`。App 的版本在它的「進階」畫面看得到，控制台則在「系統 → 手機」。
+這一頁說明的是 **Bageo 1.6**：root 模組 `v1.6.9`（versionCode 25），裡面的 App 是 `1.6.9`（versionCode 33），安裝檔是 `bageo-phone-module-1.6.9.zip`。App 的版本在它的「進階」畫面看得到，控制台則在「系統 → 手機」。
 
 ## 手機會做哪些事
 
@@ -54,7 +54,7 @@
 
 1. 用 Magisk 或 KernelSU 把手機 **root**（這裡不說明）。
 2. 如果你曾經把這個 App 當一般 APK 安裝過，請先解除安裝。兩種絕對不要同時存在。
-3. 把 `bageo-phone-module-<version>.zip` 複製到手機（這一版是 `pixelcallai_uplink-1.4.0.zip`）。在 Magisk 或 KernelSU App 裡：「模組」（Modules）→「從本機安裝」（Install from storage）→ 選那個 zip → 重新開機。
+3. 把 `bageo-phone-module-<version>.zip` 複製到手機（這一版是 `bageo-phone-module-1.6.9.zip`）。在 Magisk 或 KernelSU App 裡：「模組」（Modules）→「從本機安裝」（Install from storage）→ 選那個 zip → 重新開機。
 4. 打開 **Bageo**。最上面的卡片用一句話說明手機現在的狀態。下面的「**設定步驟**」列出還沒完成的事，每一步都有按鈕：
 
    | 步驟 | 要做什麼 |

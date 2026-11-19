@@ -3,7 +3,7 @@
 
 [package]
 name = "bageo-status"
-version = "1.4.0"
+version = "1.6.9"
 edition = "2021"
 license = "AGPL-3.0-only"
 description = "Tray status app for Bageo"

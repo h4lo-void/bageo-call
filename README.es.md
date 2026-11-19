@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v1.4.0"><img src="https://img.shields.io/badge/release-v1.4.0-brightgreen.svg" alt="Versión v1.4.0"></a>
+  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v1.6.9"><img src="https://img.shields.io/badge/release-v1.6.9-brightgreen.svg" alt="Versión v1.6.9"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="Licencia: AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/commercial-dual%20license-gold.svg" alt="Licencia comercial disponible"></a>
 </p>
@@ -219,6 +219,8 @@ Todas las funciones en detalle: [Funciones](docs/en/FEATURES.md).
 4. **Una clave de API de Gemini** de [Google AI Studio](https://aistudio.google.com/apikey). Google cobra por uso.
 
 ## Inicio rápido
+
+Si el teléfono ya tiene root, pasan unos 3 minutos desde la descarga hasta la primera llamada que contesta la IA.
 
 1. **Descarga** el archivo para tu sistema desde [Releases](https://github.com/h4lo-void/bageo-call/releases): `bageo-call-<version>-windows-x64-setup.exe` en Windows, `bageo-call-<version>-macos-arm64.dmg` (chip Apple) o `bageo-call-<version>-macos-x64.dmg` (Intel) en macOS, `bageo-call-<version>-linux-x64.tar.gz` en Linux.
 2. **Instálalo y ábrelo.** Windows: doble clic en `setup.exe` y luego en el acceso directo **Bageo** del escritorio. macOS: abre el `.dmg`, arrastra Bageo a *Aplicaciones* y haz clic en él. Linux: descomprime y ejecuta `./start.sh`. La consola se abre en <http://localhost:8787/>.

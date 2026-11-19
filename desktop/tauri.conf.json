@@ -1,6 +1,6 @@
 {
   "productName": "Bageo Status",
-  "version": "1.4.0",
+  "version": "1.6.9",
   "identifier": "app.bageo.status",
   "build": {
     "frontendDist": "./ui"
