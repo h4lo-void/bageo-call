@@ -22,6 +22,8 @@ body.top .toast{transform:translateY(-6px)}
 .kind{font-size:.75rem;font-weight:600;letter-spacing:.03em;color:var(--muted);line-height:1.35}
 .who{font-size:1rem;font-weight:650;letter-spacing:-.005em;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .text{color:var(--muted);font-size:.88rem;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* A call summary: its lines as they are, at most four, then an ellipsis. */
+.text.multi{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;line-clamp:4;white-space:pre-line;overflow-wrap:anywhere}
 .x{flex:0 0 auto;align-self:flex-start;width:24px;height:24px;margin:-4px 0 0;padding:0;border:0;border-radius:7px;background:transparent;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .14s,background .14s,color .14s}
 .toast:hover .x,.x:focus-visible{opacity:1}
 .x:hover{background:var(--surface2);color:var(--text)}
@@ -56,6 +58,7 @@ body.top .toast{transform:translateY(-6px)}
   const invoke = (cmd, args) => T.core.invoke(cmd, args);
   const $ = (id) => document.getElementById(id);
   const SHOW_MS = 7000;      // how long the card stays
+  const SHOW_SUMMARY_MS = 10000; // a summary takes longer to read
   const AFTER_HOVER_MS = 2500;
 
   let I18N = {};
@@ -72,7 +75,8 @@ body.top .toast{transform:translateY(-6px)}
       return s;
     };
     document.documentElement.lang = lang;
-    const label = t(n.kind === "sms" ? "n_sms" : "n_call");
+    const summary = n.kind === "summary";
+    const label = t(summary ? "n_summary" : n.kind === "sms" ? "n_sms" : "n_call");
     const who = String(n.who || "").trim();
     // The small line: what happened, on which phone, and how many more are waiting.
     const small = [];
@@ -82,8 +86,9 @@ body.top .toast{transform:translateY(-6px)}
     $("kind").textContent = small.join(" · ");
     $("kind").hidden = !small.length;
     $("who").textContent = who || label;
-    const text = n.kind === "sms" ? String(n.text || "").trim() : "";
+    const text = n.kind === "sms" || summary ? String(n.text || "").trim() : "";
     $("text").textContent = text;
+    $("text").classList.toggle("multi", summary);
     $("text").hidden = !text;
     $("x").setAttribute("aria-label", t("n_close"));
     $("x").title = t("n_close");
@@ -104,7 +109,7 @@ body.top .toast{transform:translateY(-6px)}
     clearTimeout(closing);
     render(n);
     requestAnimationFrame(() => $("toast").classList.add("in"));
-    arm(SHOW_MS);
+    arm(n.kind === "summary" ? SHOW_SUMMARY_MS : SHOW_MS);
   }
 
   $("toast").addEventListener("click", () => { clearTimeout(timer); invoke("toast_open").catch(() => {}); });

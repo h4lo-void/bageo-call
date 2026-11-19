@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::i18n;
 use crate::status::Phone;
 
 #[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug)]
@@ -15,6 +16,7 @@ use crate::status::Phone;
 pub enum Kind {
     Call,
     Sms,
+    Summary,
 }
 
 /// One notification. `url` stays on the Rust side; the page gets `ToastData`.
@@ -33,6 +35,9 @@ const HIDDEN_IDS: [&str; 7] = ["unknown", "private", "anonymous", "restricted", 
 const SMS_RETRY_ROUNDS: u32 = 12;
 /// Remember at most this many call ids.
 const MAX_SEEN: usize = 500;
+/// The call list is read every this many polling rounds. A summary shows up 5 to 60 seconds after
+/// the call ends, so a few seconds of delay on top is not noticeable.
+const SUMMARY_EVERY: u32 = 2;
 
 fn text_of(v: Option<&Value>) -> &str {
     v.and_then(Value::as_str).map(str::trim).unwrap_or("")
@@ -232,6 +237,80 @@ impl SmsWatch {
                 url: sms_url(address, text_of(e.get("from"))),
             })
             .collect()
+    }
+}
+
+/// The summary without its first line (who the caller is, already in the title) when there are
+/// three lines or more; shorter summaries stay whole. Blank lines are dropped.
+pub fn summary_text(summary: &str) -> String {
+    let lines: Vec<&str> = summary.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let skip = if lines.len() >= 3 { 1 } else { 0 };
+    lines[skip..].join("\n")
+}
+
+/// Watches the list of calls for summaries that have just been written.
+#[derive(Default)]
+pub struct SummaryWatch {
+    seen: HashSet<String>,
+    primed: bool,
+    /// Rounds still to skip before the next read.
+    wait: u32,
+}
+
+impl SummaryWatch {
+    pub fn reset(&mut self) {
+        *self = SummaryWatch::default();
+    }
+
+    /// Whether to read the list this round (the first round after a reset always does).
+    pub fn due(&mut self) -> bool {
+        if self.wait == 0 {
+            self.wait = SUMMARY_EVERY - 1;
+            true
+        } else {
+            self.wait -= 1;
+            false
+        }
+    }
+
+    /// Handles a successful answer from the call list. The first answer only records the
+    /// summaries that already exist. Oldest notice first, so the newest call ends up on screen.
+    pub fn on_list(&mut self, body: &Value, address: &str, lang: &str) -> Vec<Notice> {
+        let Some(calls) = body.get("calls").and_then(Value::as_array) else {
+            return Vec::new();
+        };
+        let contacts = body.get("contacts_by_number");
+        let mut out = Vec::new();
+        let mut current: Vec<String> = Vec::new();
+        for c in calls {
+            let id = text_of(c.get("id"));
+            if id.is_empty() {
+                continue;
+            }
+            current.push(id.to_string());
+            let finished = !text_of(c.get("status")).eq_ignore_ascii_case("active");
+            let summary = text_of(c.get("summary"));
+            if !finished || summary.is_empty() || !self.seen.insert(id.to_string()) || !self.primed {
+                continue;
+            }
+            let mut who = caller_name(text_of(c.get("caller_id")), contacts);
+            if who.is_empty() {
+                who = i18n::t(lang, "n_hidden");
+            }
+            out.push(Notice {
+                kind: Kind::Summary,
+                who,
+                text: summary_text(summary),
+                phone: String::new(),
+                url: call_url(address, id),
+            });
+        }
+        self.primed = true;
+        if self.seen.len() > MAX_SEEN {
+            self.seen.retain(|id| current.contains(id));
+        }
+        out.reverse();
+        out
     }
 }
 
@@ -514,5 +593,127 @@ mod tests {
         assert_eq!(serde_json::to_value(&s).unwrap()["sms_supported"], false);
         s.sms_supported = Some(true);
         assert_eq!(serde_json::to_value(&s).unwrap()["sms_supported"], true);
+    }
+
+    const FOUR: &str = "Contact: Alex (friend)\nWhat: Asks you to call back\nAI reply: Said you would call\nTo do: Call Alex";
+
+    fn list(calls: Value) -> Value {
+        json!({"calls": calls, "contacts_by_number": {"+15550100": {"name": "Alex"}, "+15550101": {"name": ""}}})
+    }
+
+    fn done(id: &str, caller: &str, summary: Value) -> Value {
+        json!({"id": id, "caller_id": caller, "status": "ended", "summary": summary})
+    }
+
+    #[test]
+    fn summary_first_answer_records_existing_summaries_without_notifying() {
+        let mut w = SummaryWatch::default();
+        let body = list(json!([done("c2", "+15550100", json!(FOUR)), done("c1", "+15550199", json!("Contact: Bo\nWhat: Sales"))]));
+        assert!(w.on_list(&body, ADDR, "en").is_empty());
+        assert!(w.on_list(&body, ADDR, "en").is_empty());
+    }
+
+    #[test]
+    fn new_summary_notifies_once() {
+        let mut w = SummaryWatch::default();
+        assert!(w.on_list(&list(json!([done("c1", "+15550199", json!("Contact: Bo\nWhat: Sales"))])), ADDR, "en").is_empty());
+        let body = list(json!([done("c2", "+15550100", json!(FOUR)), done("c1", "+15550199", json!("Contact: Bo\nWhat: Sales"))]));
+        let n = w.on_list(&body, ADDR, "en");
+        assert_eq!(n.len(), 1);
+        assert_eq!(n[0].kind, Kind::Summary);
+        assert_eq!(n[0].url, "http://192.168.1.20:8787/calls/#call=c2");
+        assert_eq!(n[0].phone, "");
+        assert!(w.on_list(&body, ADDR, "en").is_empty());
+    }
+
+    #[test]
+    fn summary_waits_until_it_is_written_and_the_call_is_over() {
+        let mut w = SummaryWatch::default();
+        w.on_list(&list(json!([])), ADDR, "en");
+        // Ended, summary not written yet (null, missing or blank): nothing, and nothing is used up.
+        for pending in [done("c1", "+15550100", Value::Null), json!({"id": "c1", "caller_id": "+15550100", "status": "ended"}), done("c1", "+15550100", json!("  "))] {
+            assert!(w.on_list(&list(json!([pending])), ADDR, "en").is_empty());
+        }
+        // Still on the phone: nothing, even if a summary is already there.
+        let live = json!({"id": "c1", "caller_id": "+15550100", "status": "active", "summary": "Contact: Alex\nWhat: Hi"});
+        assert!(w.on_list(&list(json!([live])), ADDR, "en").is_empty());
+        // The summary arrives after the call: one notice.
+        let n = w.on_list(&list(json!([done("c1", "+15550100", json!("Contact: Alex\nWhat: Hi"))])), ADDR, "en");
+        assert_eq!(n.len(), 1);
+        assert!(w.on_list(&list(json!([done("c1", "+15550100", json!("Contact: Alex\nWhat: Hi"))])), ADDR, "en").is_empty());
+    }
+
+    #[test]
+    fn summary_title_is_the_contact_name_before_the_number() {
+        let mut w = SummaryWatch::default();
+        w.on_list(&list(json!([])), ADDR, "en");
+        let body = list(json!([
+            done("c1", "+15550100", json!("Contact: a\nWhat: b")),
+            done("c2", "+15550101", json!("Contact: a\nWhat: b")),
+            done("c3", "+15550123", json!("Contact: a\nWhat: b"))
+        ]));
+        let n = w.on_list(&body, ADDR, "en");
+        // Oldest first, so the newest call is the one left on screen.
+        let who: Vec<&str> = n.iter().map(|x| x.who.as_str()).collect();
+        assert_eq!(who, ["+15550123", "+15550101", "Alex"]);
+    }
+
+    #[test]
+    fn summary_of_a_hidden_number_says_so_in_the_toast_language() {
+        let mut w = SummaryWatch::default();
+        w.on_list(&list(json!([])), ADDR, "en");
+        let body = list(json!([done("c1", "unknown", json!("Contact: a\nWhat: b")), done("c2", "", json!("Contact: a\nWhat: b"))]));
+        let n = w.on_list(&body, ADDR, "zh-TW");
+        assert_eq!(n.len(), 2);
+        assert!(n.iter().all(|x| x.who == "未顯示號碼"));
+        let mut w = SummaryWatch::default();
+        w.on_list(&list(json!([])), ADDR, "en");
+        let n = w.on_list(&list(json!([done("c1", "private", json!("Contact: a\nWhat: b"))])), ADDR, "en");
+        assert_eq!(n[0].who, "Hidden number");
+    }
+
+    #[test]
+    fn summary_text_drops_the_first_line_from_three_lines_up() {
+        assert_eq!(summary_text(FOUR), "What: Asks you to call back\nAI reply: Said you would call\nTo do: Call Alex");
+        assert_eq!(summary_text("Contact: Alex\nWhat: Hi\nTo do: Nothing"), "What: Hi\nTo do: Nothing");
+        assert_eq!(summary_text("Contact: Alex\r\n\r\nWhat: Hi\r\n  To do: Nothing  \r\n"), "What: Hi\nTo do: Nothing");
+        // One or two lines stay whole.
+        assert_eq!(summary_text("Contact: Alex\nWhat: Hi"), "Contact: Alex\nWhat: Hi");
+        assert_eq!(summary_text("Just one line"), "Just one line");
+        // Any language works: only the position of the lines counts.
+        assert_eq!(summary_text("\u{5c0d}\u{65b9}\u{ff1a}\u{5c0f}\u{9673}\n\u{4e8b}\u{60c5}\u{ff1a}A\n\u{8981}\u{8655}\u{7406}\u{ff1a}B"), "\u{4e8b}\u{60c5}\u{ff1a}A\n\u{8981}\u{8655}\u{7406}\u{ff1a}B");
+    }
+
+    #[test]
+    fn summary_reset_and_odd_answers() {
+        let mut w = SummaryWatch::default();
+        // An answer without a call list records nothing and does not count as the first answer.
+        assert!(w.on_list(&json!({"ok": true}), ADDR, "en").is_empty());
+        w.on_list(&list(json!([])), ADDR, "en");
+        let body = list(json!([done("c1", "+15550100", json!("Contact: a\nWhat: b"))]));
+        w.reset();
+        // After a reset (address changed, setting turned off and on) the next answer only records.
+        assert!(w.on_list(&body, ADDR, "en").is_empty());
+        assert!(w.on_list(&body, ADDR, "en").is_empty());
+        // Calls without an id are skipped.
+        assert!(w.on_list(&list(json!([{"status": "ended", "summary": "x"}])), ADDR, "en").is_empty());
+    }
+
+    #[test]
+    fn summary_list_is_read_every_second_round() {
+        let mut w = SummaryWatch::default();
+        let rounds: Vec<bool> = (0..5).map(|_| w.due()).collect();
+        assert_eq!(rounds, [true, false, true, false, true]);
+        w.reset();
+        assert!(w.due());
+    }
+
+    #[test]
+    fn summary_kind_serialises_for_the_page() {
+        let mut t = ToastState::default();
+        t.push(Notice { kind: Kind::Summary, who: "Alex".into(), text: "What: Hi".into(), phone: String::new(), url: ADDR.into() }, "en");
+        let v = serde_json::to_value(t.data().unwrap()).unwrap();
+        assert_eq!(v["kind"], "summary");
+        assert_eq!(v["text"], "What: Hi");
     }
 }

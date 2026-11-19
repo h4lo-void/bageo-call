@@ -340,9 +340,13 @@ console. Right-click it and choose "Quit Bageo" to stop Bageo and remove the
 icon.
 
 Under "Settings" you can type the address, enter the console password, turn on
-"Start when I log in", and turn on small notifications for incoming calls and
-text messages. They are off by default; click one to open the console. Text
-message notifications need the
+"Start when I log in", and choose which small notifications to see: when a call
+comes in, when a text message arrives, and when a call summary is ready. Click
+one to open the console. A call summary notification appears once Bageo has
+written the summary after a call ends. It shows the contact's name (or the
+number) and the main points of the call, and opens that call. Call and text
+message notifications are off by default; call summaries are on. Text message
+notifications need the
 [SMS forwarder](../../tools/sms_forward/README.md) from the same version.
 
 ## Next
