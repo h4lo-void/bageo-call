@@ -48,6 +48,7 @@
     <string name="mode_err_dialer">Não foi possível trocar o app de telefone padrão.</string>
     <string name="mode_err_screening">Não foi possível alterar a triagem de chamadas.</string>
     <string name="mode_err_dnd">Não foi possível alterar o Não perturbe.</string>
+    <string name="mode_err_dnd_mode">O Não perturbe continua ativado. No telefone, abra Configurações → Modos e desative “%1$s”.</string>
     <string name="mode_err_volume">Não foi possível ajustar o volume do toque.</string>
     <string name="mode_err_other">Algo deu errado.</string>
     <string name="btn_console">Abrir o console web</string>

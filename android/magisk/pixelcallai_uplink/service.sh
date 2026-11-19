@@ -89,7 +89,11 @@ rm -f /data/adb/pixelcallai/daemon.pid 2>/dev/null || true
       log -t pixelcallai_uplink "service.sh: default dialer is '$DEF' — leave $GDIALER enabled"
     fi
 
+    # Do Not Disturb on, as apply_mode.sh does: Android puts a bare zen_mode write back,
+    # set_dnd is what turns it on. On Android 15+ the app no longer adds its own mode,
+    # so this is the AI phone's Do Not Disturb after a reboot.
     settings put global zen_mode 2 >/dev/null 2>&1 || true
+    cmd notification set_dnd on >/dev/null 2>&1 || true
     settings put system volume_ring 0 >/dev/null 2>&1 || true
     settings put system volume_notification 0 >/dev/null 2>&1 || true
   fi

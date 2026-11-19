@@ -48,6 +48,7 @@
     <string name="mode_err_dialer">Die Standard-Telefon-App konnte nicht geändert werden.</string>
     <string name="mode_err_screening">Die Anruffilterung konnte nicht geändert werden.</string>
     <string name="mode_err_dnd">„Bitte nicht stören“ konnte nicht geändert werden.</string>
+    <string name="mode_err_dnd_mode">„Bitte nicht stören“ ist noch an. Öffne auf dem Telefon Einstellungen → Modi und schalte „%1$s“ aus.</string>
     <string name="mode_err_volume">Die Klingellautstärke konnte nicht eingestellt werden.</string>
     <string name="mode_err_other">Ein unerwarteter Fehler ist aufgetreten.</string>
     <string name="btn_console">Webkonsole öffnen</string>

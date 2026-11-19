@@ -58,6 +58,33 @@ class LocalAudioGuard(context: Context) {
     companion object {
         const val HOLD_INTERVAL_MS = 500L
 
+        /**
+         * Android 15 and later: setInterruptionFilter() from an app no longer changes the
+         * phone's Do Not Disturb. It turns on a mode of the app's own ("Do Not Disturb
+         * (Bageo)" in Settings > Modes) that the module's `cmd notification set_dnd off`
+         * cannot turn off, so switching to a normal phone failed with `dnd_failed`. There
+         * the module's Do Not Disturb (root, the phone's own) is the only one, and the app
+         * just turns its own mode off.
+         */
+        fun appHasOwnDndMode(): Boolean =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM
+
+        /**
+         * Android 15+: turn off Bageo's own Do Not Disturb mode, including one an older
+         * version left on. Only that mode: the phone's own Do Not Disturb is not touched.
+         * Does nothing on older Android.
+         */
+        fun turnOffOwnDndMode(context: Context) {
+            if (!appHasOwnDndMode()) return
+            try {
+                context.getSystemService(NotificationManager::class.java)
+                    ?.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+                Log.i("LocalAudioGuard", "own Do Not Disturb mode off")
+            } catch (e: Exception) {
+                Log.w("LocalAudioGuard", "own Do Not Disturb mode off failed: ${e.message}")
+            }
+        }
+
         private val coordinatorLock = Any()
 
         @Volatile
@@ -402,6 +429,10 @@ private class LocalAudioGuardCoordinator(context: Context) {
     }
 
     private fun applyZenSilence() {
+        // Android 15+: the module already turned the phone's Do Not Disturb on (root), and
+        // the ringer is silent with its volume at zero. A filter set here would only add
+        // Bageo's own mode, which blocks the switch to a normal phone.
+        if (LocalAudioGuard.appHasOwnDndMode()) return
         try {
             if (nm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 if (!nm.isNotificationPolicyAccessGranted) {
@@ -412,7 +443,6 @@ private class LocalAudioGuardCoordinator(context: Context) {
         } catch (e: Exception) {
             Log.w(TAG, "zen INTERRUPTION_FILTER_NONE failed: ${e.message}")
         }
-        trySu("settings put global zen_mode 2")
     }
 
     /** Best-effort mic/root knobs. Never touches telephony output routing. */
@@ -495,7 +525,8 @@ private class LocalAudioGuardCoordinator(context: Context) {
         } catch (_: Exception) {
         }
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            // Android 15+: putting the saved filter back would turn Bageo's own mode on.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !LocalAudioGuard.appHasOwnDndMode()) {
                 savedInterruption?.let { nm?.setInterruptionFilter(it) }
             }
         } catch (_: Exception) {
@@ -548,6 +579,7 @@ private class LocalAudioGuardCoordinator(context: Context) {
     }
 
     private fun forgetSavedState() {
+        LocalAudioGuard.turnOffOwnDndMode(appContext)
         savedMicMute = null
         savedSpeaker = null
         savedMode = null

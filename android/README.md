@@ -175,8 +175,9 @@ it, all steps run:
 4. Only if the app really is the default dialer: disables Google Dialer's in-call
    components (`InCallServiceImpl`, `InCallActivity`), then the whole
    `com.google.android.dialer` package for user 0 (`pm disable-user`).
-5. Turns on Do Not Disturb in its strictest mode (`zen_mode 2`) and sets the ring
-   and notification volume settings to 0.
+5. Turns on Do Not Disturb in its strictest mode (`zen_mode 2` and
+   `cmd notification set_dnd on`; Android puts a bare `zen_mode` write back) and sets
+   the ring and notification volume settings to 0.
 6. Starts the app's foreground service.
 7. Only if the LSPosed-compatible module `zygisk_vector` is installed: enables this
    app as an LSPosed module scoped to `com.android.phone` (see
@@ -241,7 +242,7 @@ reported as a code:
 | `busy` | Another switch is still running. |
 | `invalid_mode` | The request named neither `ai` nor `normal`. |
 | `no_root` | The module's helper did not take the request: the module is not running. Enable **Bageo Uplink** in Magisk or KernelSU and reboot. |
-| `dialer_failed`, `screening_failed`, `dnd_failed`, `volume_failed`, `save_failed` | That step did not take effect. |
+| `dialer_failed`, `screening_failed`, `dnd_failed`, `volume_failed`, `save_failed` | That step did not take effect. With `dnd_failed` on the way to a normal phone, the app names the mode that kept Do Not Disturb on (`dnd_mode` below) and does not retry by itself. |
 | `failed` | Any other failure, for example the request could not be written or the helper gave no usable answer. |
 
 ### How the switch runs
@@ -275,7 +276,7 @@ Every root command runs under `toybox timeout`.
 |---|---|
 | `/data/adb/pixelcallai/mode` | `ai` or `normal`, written by the script when the app switches. Outside the module folder, so module updates keep it. `service.sh` reads it at every boot; **no file means `ai`**, so a phone that was never switched behaves as before. `service.sh`, the script and the app all drop blanks (space, tab, CR, LF, VT, FF) and a UTF-8 BOM before comparing. |
 | `/data/adb/pixelcallai/pending` | Exists from the start of a switch until every step worked. |
-| `/data/adb/pixelcallai/last_apply` | The last run as `key=value` lines: `id`, `mode`, `step_<name>=ok\|fail`, then `error=<code>` or `result=ok`, and `done=1`. |
+| `/data/adb/pixelcallai/last_apply` | The last run as `key=value` lines: `id`, `mode`, `step_<name>=ok\|fail`, then `error=<code>` or `result=ok`, and `done=1`. When Do Not Disturb will not go off, also `dnd_blocker=app\|mode\|manual\|unknown` (Bageo's own mode, another mode, the phone's own Do Not Disturb, not found) and `dnd_mode=<name>` (the mode's name in Settings > Modes, Android 15+). |
 | `/data/adb/pixelcallai/apply.lock` | Held while a run is going (its pid inside). |
 | `/data/adb/pixelcallai/daemon.pid` | The helper's pid; `service.sh` removes it at boot. |
 | `files/mode/state` (app's device-protected storage) | The helper's answer, owned by the app and readable only by it. `key=value` lines: `daemon=1`, `mode`, `pending`, `running`, `updated` and `uptime` (the app ignores a state written before the last reboot), `request` and `exit` (the last request and the script's exit code once it ended), `error=invalid_request`, and every `last_apply` line as `log.<key>`. Written when the helper starts, before and after every run, and whenever the file is missing. |
