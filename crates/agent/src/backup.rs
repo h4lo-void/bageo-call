@@ -20,12 +20,20 @@
 //! Importing first answers a preview (nothing changed yet) with a token. The
 //! token, used once within 15 minutes, restores the parts the owner picks: a
 //! `before_import` backup is made first and put back when restoring fails
-//! half-way. A restore never clears a key this computer has. Call records,
-//! texts and to-do items are only added; the ones already here stay.
+//! half-way. Restoring `keys` takes that whole group from the file (so putting
+//! the `before_import` copy back undoes it); without `keys` the group here
+//! stays. How long records are kept never gets shorter. Call records, texts
+//! and to-do items are only added; the ones already here stay.
+//!
+//! With `backup_encrypt` (or a password given to an export) the zip is sealed
+//! with a password into a `.bageo` file ([`crate::backup_crypt`]). Such a file
+//! is opened (`unlock`) before its preview; a restore from the list tries the
+//! password saved here first. Downloads go through one-time tickets that last
+//! two minutes, so no password ever sits in a download link.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
-use std::io::{self, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -46,6 +54,7 @@ use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 
 use crate::calls_http::{api_error, came_through_proxy, token_ok_parts, unauthorized, CallsState, TokenQuery};
+use crate::backup_crypt::{self, CryptErr};
 use crate::locale::Lang;
 use crate::settings_store::RuntimeSettings;
 
@@ -83,6 +92,13 @@ const PLAIN_MAX_BYTES: u64 = 16 << 20;
 /// The zip's central directory.
 const DIRECTORY_MAX_BYTES: u64 = 256 << 20;
 const TOKEN_TTL: Duration = Duration::from_secs(15 * 60);
+/// A download ticket works once, within two minutes.
+const TICKET_TTL: Duration = Duration::from_secs(120);
+/// Wrong passwords one preview takes before it goes, and the least time between two tries.
+const UNLOCK_TRIES: u32 = 5;
+const UNLOCK_GAP: Duration = Duration::from_secs(1);
+/// The name ending of an encrypted backup (the others end in `.zip`).
+const SEALED_EXT: &str = ".bageo";
 const BEFORE_IMPORT_KEEP: usize = 5;
 const CHECK_EVERY: Duration = Duration::from_secs(10 * 60);
 const RETRY_AFTER_HOURS: i64 = 1;
@@ -137,7 +153,7 @@ impl Kind {
     }
 }
 
-/// The file name of a backup made at `at` (local time).
+/// The file name of a backup made at `at` (local time), not encrypted.
 pub fn file_name(kind: Kind, at: NaiveDateTime) -> String {
     let stamp = at.format(STAMP);
     match kind {
@@ -148,16 +164,32 @@ pub fn file_name(kind: Kind, at: NaiveDateTime) -> String {
     }
 }
 
-/// What a backup file name says (kind and local time); None for any other name.
+/// [`file_name`], ending in `.bageo` when the file is encrypted.
+pub fn file_name_as(kind: Kind, at: NaiveDateTime, sealed: bool) -> String {
+    let name = file_name(kind, at);
+    match name.strip_suffix(".zip") {
+        Some(stem) if sealed => format!("{stem}{SEALED_EXT}"),
+        _ => name,
+    }
+}
+
+/// The name of an encrypted backup.
+pub fn is_sealed_name(name: &str) -> bool {
+    name.ends_with(SEALED_EXT)
+}
+
+/// What a backup file name says (kind and local time); None for any other
+/// name. `.zip` and `.bageo` (encrypted) alike.
 pub fn parse_name(name: &str) -> Option<(Kind, NaiveDateTime)> {
     if !name.is_ascii() {
         return None;
     }
-    let export = name.strip_prefix("bageo-export-").or_else(|| name.strip_prefix("bageo-settings-"));
+    let stem = name.strip_suffix(".zip").or_else(|| name.strip_suffix(SEALED_EXT))?;
+    let export = stem.strip_prefix("bageo-export-").or_else(|| stem.strip_prefix("bageo-settings-"));
     let (kind, stamp) = if let Some(rest) = export {
-        (Kind::Export, rest.strip_suffix(".zip")?)
+        (Kind::Export, rest)
     } else {
-        let rest = name.strip_prefix("bageo-backup-")?.strip_suffix(".zip")?;
+        let rest = stem.strip_prefix("bageo-backup-")?;
         if rest.len() < 15 {
             return None;
         }
@@ -351,25 +383,26 @@ fn collect(lay: &Layout, settings_json: Option<Vec<u8>>, want: &[&str]) -> Vec<(
     out
 }
 
-/// `settings.json` for a backup of the parts `want`: whole, without the
-/// credentials (settings only), or only them (keys only); and the parts it
-/// holds. None: neither part is wanted, or only keys and none is set.
+/// `settings.json` for a backup of the parts `want`: whole, without the group
+/// `keys` (settings only), or only it (keys only); and the parts it holds.
+/// `keys` counts even when none is set here: restoring it then clears the
+/// group, which is what putting back such a copy has to do. None: neither
+/// part is wanted.
 fn settings_for(full: &[u8], want: &[&str]) -> (Option<Vec<u8>>, Vec<&'static str>) {
-    use crate::settings_store::{has_keys, keys_part, settings_part};
+    use crate::settings_store::{keys_part, settings_part};
     let v: Value = serde_json::from_slice(full).unwrap_or_else(|_| json!({}));
     let (s, k) = (want.contains(&"settings"), want.contains(&"keys"));
-    let keys = k && has_keys(&v);
     let part = match (s, k) {
         (true, true) => v,
         (true, false) => settings_part(&v),
-        (false, true) if keys => keys_part(&v),
+        (false, true) => keys_part(&v),
         _ => return (None, Vec::new()),
     };
     let mut items = Vec::new();
     if s {
         items.push("settings");
     }
-    if keys {
+    if k {
         items.push("keys");
     }
     (serde_json::to_vec_pretty(&part).ok(), items)
@@ -866,12 +899,13 @@ fn safe_rel(path: &str) -> Option<&str> {
 }
 
 /// A name Windows keeps for a device, with or without an extension (`CON`,
-/// `nul.json`, `COM1`, `lpt9.txt`): such a file cannot be made there.
+/// `nul.json`, `COM1`, `lpt9.txt`, `COM¹`, `lpt³.wav`): such a file cannot
+/// be made there.
 fn reserved_name(c: &str) -> bool {
-    let stem = c.split('.').next().unwrap_or("").trim_end().to_ascii_uppercase();
-    match stem.as_str() {
-        "CON" | "PRN" | "AUX" | "NUL" => true,
-        s if s.len() == 4 && (s.starts_with("COM") || s.starts_with("LPT")) => s.as_bytes()[3].is_ascii_digit() && s.as_bytes()[3] != b'0',
+    let stem: Vec<char> = c.split('.').next().unwrap_or("").trim_end().chars().map(|ch| ch.to_ascii_uppercase()).collect();
+    match stem.as_slice() {
+        ['C', 'O', 'N'] | ['P', 'R', 'N'] | ['A', 'U', 'X'] | ['N', 'U', 'L'] => true,
+        ['C', 'O', 'M', d] | ['L', 'P', 'T', d] => matches!(d, '1'..='9' | '\u{b9}' | '\u{b2}' | '\u{b3}'),
         _ => false,
     }
 }
@@ -1062,7 +1096,8 @@ fn inspect_zip(f: File) -> Result<Inspected, Bad> {
         if p.has_settings || manifest.items.iter().any(|i| i == "settings") {
             counts.entry("settings").or_insert(None);
         }
-        if p.has_keys {
+        // A backup of the keys says so even when none was set: restoring it clears them.
+        if p.has_keys || manifest.items.iter().any(|i| i == "keys") {
             counts.entry("keys").or_insert(None);
         }
     }
@@ -1096,7 +1131,7 @@ fn preview_warnings(ins: &Inspected) -> Vec<&'static str> {
     w
 }
 
-fn preview_json(token: &str, source_name: &str, ins: &Inspected, current_password: &str, changes_connections: bool, warnings: &[&'static str]) -> Value {
+fn preview_json(token: &str, source_name: &str, ins: &Inspected, change: crate::settings_store::KeysChange, warnings: &[&'static str]) -> Value {
     let items: Vec<Value> = ITEMS
         .iter()
         .filter_map(|id| {
@@ -1118,11 +1153,10 @@ fn preview_json(token: &str, source_name: &str, ins: &Inspected, current_passwor
         "items": items,
         "has_calls": CALL_ITEMS.iter().any(|i| ins.counts.contains_key(i)),
         "calls_count": ins.counts.get("calls").copied().flatten().unwrap_or(0),
-        // Only restoring the keys changes the password.
-        "changes_password": ins.counts.contains_key("keys")
-            && ins.settings.as_ref().and_then(|p| p.password.as_deref()).is_some_and(|pw| pw != current_password.trim()),
+        // Only restoring the keys changes the password (or clears it).
+        "changes_password": ins.counts.contains_key("keys") && change.password,
         // Where notifications go, the forwarding number or who may give commands.
-        "changes_connections": ins.counts.contains_key("keys") && changes_connections,
+        "changes_connections": ins.counts.contains_key("keys") && change.connections,
         "total_size": ins.total_size,
         "warnings": warnings,
     })
@@ -1174,14 +1208,30 @@ pub fn dir_setting_ok(d: &str) -> bool {
     d.is_empty() || (Path::new(d).is_absolute() && dir_writable(Path::new(d)))
 }
 
-/// `PUT /api/settings` with a `backup_dir` backups cannot be saved in: the
-/// 400 answer (`backup_dir_unwritable`). The folder is made when it can be.
-pub fn check_settings_patch(patch: &Value) -> Option<Response> {
-    let d = patch.get("backup_dir")?.as_str()?.trim();
-    if dir_setting_ok(d) {
-        return None;
+/// `PUT /api/settings` refused (400): a `backup_dir` backups cannot be saved
+/// in (`backup_dir_unwritable`; the folder is made when it can be), a backup
+/// password under 8 characters (`backup_password_short`), or encryption
+/// turned on, or its password removed, with no password left
+/// (`backup_password_missing`). `rt`: the settings now.
+pub fn check_settings_patch(patch: &Value, rt: &RuntimeSettings) -> Option<Response> {
+    let refuse = |code: &'static str| Some(api_error(StatusCode::BAD_REQUEST, code, message(code)));
+    if let Some(d) = patch.get("backup_dir").and_then(Value::as_str) {
+        if !dir_setting_ok(d.trim()) {
+            return refuse("backup_dir_unwritable");
+        }
     }
-    Some(api_error(StatusCode::BAD_REQUEST, "backup_dir_unwritable", message("backup_dir_unwritable")))
+    let typed = patch.get("backup_password").and_then(Value::as_str).map(str::trim).filter(|p| !p.is_empty());
+    if typed.is_some_and(|p| !backup_crypt::password_ok(p)) {
+        return refuse("backup_password_short");
+    }
+    let clearing = patch.get("backup_password_clear").and_then(Value::as_bool) == Some(true);
+    let asked = patch.get("backup_encrypt").and_then(Value::as_bool);
+    let encrypt = asked.unwrap_or(rt.backup_encrypt);
+    let has_password = !clearing && (typed.is_some() || !rt.backup_password.trim().is_empty());
+    if (asked.is_some() || clearing) && encrypt && !has_password {
+        return refuse("backup_password_missing");
+    }
+    None
 }
 
 /// A new file at `path`, readable by its owner only (Unix). It must not be
@@ -1260,11 +1310,17 @@ pub struct Entry {
     pub size: u64,
     pub kind: &'static str,
     pub app_version: Option<String>,
-    pub include_calls: bool,
+    /// Unknown (null) for an encrypted file until it is opened.
+    pub include_calls: Option<bool>,
+    pub encrypted: bool,
 }
 
 fn describe(path: &Path, name: String, kind: Kind, at: NaiveDateTime) -> Entry {
     let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    // An encrypted file says nothing before its password.
+    if is_sealed_name(&name) {
+        return Entry { at: local_rfc3339(at), app_version: None, include_calls: None, encrypted: true, name, size, kind: kind.as_str() };
+    }
     let manifest: Option<Value> = File::open(path)
         .ok()
         .and_then(|f| ZipIn::open(f).ok())
@@ -1274,7 +1330,8 @@ fn describe(path: &Path, name: String, kind: Kind, at: NaiveDateTime) -> Entry {
     Entry {
         at: field("created_at").unwrap_or_else(|| local_rfc3339(at)),
         app_version: field("app_version"),
-        include_calls: manifest.as_ref().and_then(|m| m.get("include_calls")).and_then(Value::as_bool).unwrap_or(false),
+        include_calls: Some(manifest.as_ref().and_then(|m| m.get("include_calls")).and_then(Value::as_bool).unwrap_or(false)),
+        encrypted: false,
         name,
         size,
         kind: kind.as_str(),
@@ -1339,6 +1396,31 @@ fn write_backup(lay: &Layout, settings_json: &[u8], file: File, kind: Kind, want
     Ok(held)
 }
 
+fn crypt_io(e: CryptErr) -> io::Error {
+    match e {
+        CryptErr::Io(e) => e,
+        _ => io::Error::other("encrypting failed"),
+    }
+}
+
+/// [`write_backup`] sealed with `password` into `out`: the zip is written to
+/// the staging folder first (it needs to seek), then encrypted a chunk at a
+/// time, then deleted.
+fn write_sealed(lay: &Layout, settings_json: &[u8], out: File, kind: Kind, want: &[&'static str], at: DateTime<Local>, password: &str) -> io::Result<Vec<&'static str>> {
+    let stage = staging_dir(&lay.data);
+    std::fs::create_dir_all(&stage)?;
+    let plain = stage.join(format!("seal-{}.zip", uuid::Uuid::new_v4().simple()));
+    let made = (|| -> io::Result<Vec<&'static str>> {
+        let held = write_backup(lay, settings_json, create_private(&plain)?, kind, want, at)?;
+        let mut w = BufWriter::new(out);
+        backup_crypt::seal(password, &mut BufReader::new(File::open(&plain)?), &mut w).map_err(crypt_io)?;
+        w.into_inner().map_err(|e| e.into_error())?.sync_all()?;
+        Ok(held)
+    })();
+    let _ = std::fs::remove_file(&plain);
+    made
+}
+
 /// `tmp` named `to`, unless a file already has that name (false then).
 fn publish(tmp: &Path, to: &Path) -> io::Result<bool> {
     match std::fs::hard_link(tmp, to) {
@@ -1353,14 +1435,26 @@ fn publish(tmp: &Path, to: &Path) -> io::Result<bool> {
     }
 }
 
-/// A backup file of the parts `want` in `dir` (mode 600 on Unix): written
-/// under a random name, then named for its time (a second later while
-/// another file has that name).
-fn write_backup_file(lay: &Layout, settings_json: Vec<u8>, dir: &Path, kind: Kind, want: &[&'static str], now: DateTime<Local>) -> Result<Entry, RunErr> {
+/// A backup file of the parts `want` in `dir` (mode 600 on Unix), encrypted
+/// with `seal` when there is one: written under a random name, then named for
+/// its time (a second later while another file has that name).
+fn write_backup_file(
+    lay: &Layout,
+    settings_json: Vec<u8>,
+    dir: &Path,
+    kind: Kind,
+    want: &[&'static str],
+    now: DateTime<Local>,
+    seal: Option<&str>,
+) -> Result<Entry, RunErr> {
     std::fs::create_dir_all(dir).map_err(|e| run_err(&e, true))?;
     let tmp = dir.join(format!(".bageo-{}.tmp", uuid::Uuid::new_v4().simple()));
     let file = create_private(&tmp).map_err(|e| run_err(&e, true))?;
-    let held = match write_backup(lay, &settings_json, file, kind, want, now) {
+    let written = match seal {
+        Some(pw) => write_sealed(lay, &settings_json, file, kind, want, now, pw),
+        None => write_backup(lay, &settings_json, file, kind, want, now),
+    };
+    let held = match written {
         Ok(held) => held,
         Err(e) => {
             let _ = std::fs::remove_file(&tmp);
@@ -1369,7 +1463,7 @@ fn write_backup_file(lay: &Layout, settings_json: Vec<u8>, dir: &Path, kind: Kin
     };
     let mut at = now;
     let name = loop {
-        let name = file_name(kind, at.naive_local());
+        let name = file_name_as(kind, at.naive_local(), seal.is_some());
         match publish(&tmp, &dir.join(&name)) {
             Ok(true) => break name,
             Ok(false) if at < now + chrono::Duration::seconds(60) => at += chrono::Duration::seconds(1),
@@ -1390,7 +1484,8 @@ fn write_backup_file(lay: &Layout, settings_json: Vec<u8>, dir: &Path, kind: Kin
         size,
         kind: kind.as_str(),
         app_version: Some(APP_VERSION.to_string()),
-        include_calls: held.iter().any(|i| CALL_ITEMS.contains(i)),
+        include_calls: Some(held.iter().any(|i| CALL_ITEMS.contains(i))),
+        encrypted: seal.is_some(),
     })
 }
 
@@ -1403,10 +1498,16 @@ fn backup_items(with_calls: bool) -> Vec<&'static str> {
     v
 }
 
-async fn create_in(state: &CallsState, lay: &Layout, dir: &Path, kind: Kind, want: Vec<&'static str>) -> Result<Entry, RunErr> {
+/// The password backups are encrypted with now: none unless `backup_encrypt`.
+fn backup_seal(rt: &RuntimeSettings) -> Option<String> {
+    let pw = rt.backup_password.trim();
+    (rt.backup_encrypt && !pw.is_empty()).then(|| pw.to_string())
+}
+
+async fn create_in(state: &CallsState, lay: &Layout, dir: &Path, kind: Kind, want: Vec<&'static str>, seal: Option<String>) -> Result<Entry, RunErr> {
     let settings_json = state.settings_store.overrides_json();
     let (lay, dir, now) = (lay.clone(), dir.to_path_buf(), Local::now());
-    tokio::task::spawn_blocking(move || write_backup_file(&lay, settings_json, &dir, kind, &want, now))
+    tokio::task::spawn_blocking(move || write_backup_file(&lay, settings_json, &dir, kind, &want, now, seal.as_deref()))
         .await
         .unwrap_or(Err(RunErr::Io))
 }
@@ -1461,7 +1562,7 @@ pub(crate) async fn run_backup(state: &CallsState, kind: Kind) -> Result<Entry, 
     };
     let rt = state.settings_store.snapshot();
     let dir = configured_dir(&rt, &lay.data);
-    let res = create_in(state, &lay, &dir, kind, backup_items(rt.backup_include_calls)).await;
+    let res = create_in(state, &lay, &dir, kind, backup_items(rt.backup_include_calls), backup_seal(&rt)).await;
     let at = Local::now().to_rfc3339_opts(SecondsFormat::Secs, false);
     ds.inner().last = Some(match &res {
         Ok(e) => LastRun { at, ok: true, name: Some(e.name.clone()), size: e.size, error: None },
@@ -1469,7 +1570,7 @@ pub(crate) async fn run_backup(state: &CallsState, kind: Kind) -> Result<Entry, 
     });
     match &res {
         Ok(e) => {
-            info!("backup made kind={} size={} with_calls={}", kind.as_str(), e.size, e.include_calls);
+            info!("backup made kind={} size={} with_calls={} encrypted={}", kind.as_str(), e.size, e.include_calls == Some(true), e.encrypted);
             if kind == Kind::Scheduled {
                 let gone = prune(&dir, Kind::Scheduled, rt.backup_keep as usize);
                 if gone > 0 {
@@ -1482,9 +1583,10 @@ pub(crate) async fn run_backup(state: &CallsState, kind: Kind) -> Result<Entry, 
     res
 }
 
-/// The zip "Export" downloads, of the parts `want`: written to a temporary
-/// file (it can hold every recording); its download name and that file.
-pub(crate) async fn export_file(state: &CallsState, want: Vec<&'static str>) -> Result<(String, PathBuf), RunErr> {
+/// The file "Export" downloads, of the parts `want` (encrypted with
+/// `password` when there is one): written to a temporary file (it can hold
+/// every recording); its download name and that file.
+pub(crate) async fn export_file(state: &CallsState, want: Vec<&'static str>, password: Option<String>) -> Result<(String, PathBuf), RunErr> {
     let lay = Layout::of(state);
     let settings_json = state.settings_store.overrides_json();
     let now = Local::now();
@@ -1493,24 +1595,30 @@ pub(crate) async fn export_file(state: &CallsState, want: Vec<&'static str>) -> 
         std::fs::create_dir_all(&stage).map_err(|e| run_err(&e, true))?;
         sweep_exports(&stage);
         // A name of its own: exports at the same moment never meet.
-        let path = stage.join(format!("export-{}.zip", uuid::Uuid::new_v4().simple()));
+        let ext = if password.is_some() { SEALED_EXT } else { ".zip" };
+        let path = stage.join(format!("export-{}{ext}", uuid::Uuid::new_v4().simple()));
         let file = create_private(&path).map_err(|e| run_err(&e, true))?;
-        if let Err(e) = write_backup(&lay, &settings_json, file, Kind::Export, &want, now) {
+        let written = match password.as_deref() {
+            Some(pw) => write_sealed(&lay, &settings_json, file, Kind::Export, &want, now, pw),
+            None => write_backup(&lay, &settings_json, file, Kind::Export, &want, now),
+        };
+        if let Err(e) = written {
             let _ = std::fs::remove_file(&path);
             return Err(run_err(&e, false));
         }
-        Ok((file_name(Kind::Export, now.naive_local()), path))
+        Ok((file_name_as(Kind::Export, now.naive_local(), password.is_some()), path))
     })
     .await
     .unwrap_or(Err(RunErr::Io))
 }
 
-/// Exports a download left behind (it was cut off) go after an hour.
+/// Exports a download left behind (it was cut off), and copies being sealed
+/// or opened when Bageo stopped, go after an hour.
 fn sweep_exports(stage: &Path) {
     for name in names_in(stage) {
         let path = stage.join(&name);
         let old = std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age > Duration::from_secs(3600));
-        if name.starts_with("export-") && old {
+        if ["export-", "seal-"].iter().any(|p| name.starts_with(p)) && old {
             let _ = std::fs::remove_file(&path);
         }
     }
@@ -1552,6 +1660,9 @@ pub fn spawn(state: CallsState) {
         let mut tick = tokio::time::interval(CHECK_EVERY);
         loop {
             tick.tick().await;
+            // Downloads and previews nobody came back for go with their files.
+            sweep_tickets();
+            sweep_pending();
             scheduled_tick(&state, Local::now()).await;
         }
     });
@@ -1701,14 +1812,56 @@ fn bad_err(e: Bad) -> ApiErr {
 struct Pending {
     /// The data folder it is for.
     data: PathBuf,
+    /// The file as uploaded or picked from the list (encrypted or not).
     file: PathBuf,
     /// An upload (deleted when done); a file of the backup folder stays.
     owned: bool,
-    /// What the upload takes on the disk.
+    /// What it takes in the staging folder: an upload, or an upload's opened copy.
     bytes: u64,
     made: Instant,
-    ins: Inspected,
+    /// An encrypted file.
+    encrypted: bool,
+    /// Its opened copy in the staging folder (deleted when done).
+    opened: Option<PathBuf>,
+    /// What it holds; None while an encrypted file waits for its password.
+    ins: Option<Inspected>,
     warnings: Vec<&'static str>,
+    source_name: String,
+    /// Wrong passwords so far, when the last one was tried, one being tried now.
+    fails: u32,
+    tried: Option<Instant>,
+    trying: bool,
+}
+
+impl Pending {
+    fn new(data: PathBuf, file: PathBuf, owned: bool, bytes: u64, source_name: &str) -> Pending {
+        Pending {
+            data,
+            file,
+            owned,
+            bytes,
+            made: Instant::now(),
+            encrypted: false,
+            opened: None,
+            ins: None,
+            warnings: Vec::new(),
+            source_name: source_name.to_string(),
+            fails: 0,
+            tried: None,
+            trying: false,
+        }
+    }
+
+    fn with(mut self, ins: Inspected) -> Pending {
+        self.warnings = preview_warnings(&ins);
+        self.ins = Some(ins);
+        self
+    }
+
+    /// The file a restore reads: the opened copy of an encrypted one.
+    fn source(&self) -> &Path {
+        self.opened.as_deref().unwrap_or(&self.file)
+    }
 }
 
 static PENDING: LazyLock<Mutex<HashMap<String, Pending>>> = LazyLock::new(Default::default);
@@ -1720,6 +1873,9 @@ fn pending() -> MutexGuard<'static, HashMap<String, Pending>> {
 fn drop_pending_file(p: &Pending) {
     if p.owned {
         let _ = std::fs::remove_file(&p.file);
+    }
+    if let Some(o) = &p.opened {
+        let _ = std::fs::remove_file(o);
     }
 }
 
@@ -1735,18 +1891,91 @@ fn sweep_pending() {
     }
 }
 
-/// The previews waiting for the data folder `data`, and what their uploads take.
+/// The previews waiting for the data folder `data`, and what they take in the staging folder.
 fn pending_load(data: &Path) -> (usize, u64) {
-    pending().values().filter(|p| p.data == data).fold((0, 0), |(n, b), p| (n + 1, b + if p.owned { p.bytes } else { 0 }))
+    pending().values().filter(|p| p.data == data).fold((0, 0), |(n, b), p| (n + 1, b + p.bytes))
 }
 
-fn register(state: &CallsState, data: PathBuf, file: PathBuf, owned: bool, bytes: u64, ins: Inspected, source_name: &str) -> Value {
+/// The oldest previews of the data folder `data` taken out of `map` (but
+/// `except`) until at most `keep` wait there and what they take leaves room
+/// for `bytes` more in the staging folder. True: that much room is there now.
+fn take_oldest(map: &mut HashMap<String, Pending>, data: &Path, keep: usize, bytes: u64, except: Option<&str>) -> (Vec<Pending>, bool) {
+    let mut mine: Vec<(Instant, String, u64)> = map.iter().filter(|(_, p)| p.data == data).map(|(k, p)| (p.made, k.clone(), p.bytes)).collect();
+    mine.sort();
+    let (mut n, mut staged) = (mine.len(), mine.iter().map(|m| m.2).sum::<u64>());
+    let room = |n: usize, staged: u64| n <= keep && staged.saturating_add(bytes) <= STAGING_MAX_BYTES;
+    let mut gone = Vec::new();
+    for (_, k, b) in mine {
+        if room(n, staged) {
+            break;
+        }
+        if except == Some(k.as_str()) {
+            continue;
+        }
+        if let Some(p) = map.remove(&k) {
+            gone.push(p);
+            n -= 1;
+            staged -= b;
+        }
+    }
+    (gone, room(n, staged))
+}
+
+/// Room for one more preview of `data` (or, with `except`, for that one to
+/// grow) taking `bytes` in the staging folder: the oldest ones waiting go (a closed
+/// dialog may never have said so). False: there is no such room.
+fn make_room(data: &Path, bytes: u64, except: Option<&str>) -> bool {
+    let keep = if except.is_some() { PENDING_MAX } else { PENDING_MAX - 1 };
+    let (gone, ok) = take_oldest(&mut pending(), data, keep, bytes, except);
+    for p in &gone {
+        drop_pending_file(p);
+    }
+    ok
+}
+
+/// Forget the preview `token` of the data folder `data` and its upload (the
+/// dialog was closed). One that is not there: nothing to do.
+pub(crate) fn discard(data: &Path, token: &str) {
+    let gone = {
+        let mut map = pending();
+        match map.get(token) {
+            Some(p) if p.data == data => map.remove(token),
+            _ => None,
+        }
+    };
+    if let Some(p) = gone {
+        drop_pending_file(&p);
+    }
+}
+
+/// The answer for the preview `token`: what it holds, or that its password is needed.
+fn preview_of(state: &CallsState, token: &str, p: &Pending) -> Value {
+    let Some(ins) = &p.ins else {
+        return json!({"ok": true, "token": token, "source_name": p.source_name, "encrypted": true, "needs_password": true});
+    };
+    let change = match ins.settings_text.as_deref() {
+        Some(t) if ins.counts.contains_key("keys") => state.settings_store.keys_change(t),
+        _ => Default::default(),
+    };
+    let mut v = preview_json(token, &p.source_name, ins, change, &p.warnings);
+    v["encrypted"] = json!(p.encrypted);
+    v["needs_password"] = json!(false);
+    v
+}
+
+fn register(state: &CallsState, p: Pending) -> Value {
     let token = uuid::Uuid::new_v4().simple().to_string();
-    let warnings = preview_warnings(&ins);
-    let password = state.settings_store.snapshot().ui_password.clone();
-    let connections = ins.counts.contains_key("keys") && ins.settings_text.as_deref().is_some_and(|t| state.settings_store.connections_change(t));
-    let v = preview_json(&token, source_name, &ins, &password, connections, &warnings);
-    pending().insert(token, Pending { data, file, owned, bytes, made: Instant::now(), ins, warnings });
+    let v = preview_of(state, &token, &p);
+    let data = p.data.clone();
+    // Two at once may both have made room: the oldest still goes.
+    let gone = {
+        let mut map = pending();
+        map.insert(token.clone(), p);
+        take_oldest(&mut map, &data, PENDING_MAX, 0, Some(&token)).0
+    };
+    for p in &gone {
+        drop_pending_file(p);
+    }
     v
 }
 
@@ -1798,9 +2027,93 @@ where
     Ok(n)
 }
 
+/// What a file is: an encrypted backup (its header checked; the rest waits
+/// for the password) or one read and checked whole ([`inspect`]).
+enum Look {
+    Sealed,
+    Open(Box<Inspected>),
+}
+
+fn crypt_bad(e: CryptErr) -> Bad {
+    match e {
+        CryptErr::Io(e) => Bad::Io(e),
+        CryptErr::TooNew => Bad::TooNew,
+        CryptErr::WrongPassword | CryptErr::Damaged => Bad::Damaged,
+    }
+}
+
+fn look(path: &Path) -> Result<Look, Bad> {
+    let mut f = File::open(path)?;
+    let mut head = Vec::with_capacity(backup_crypt::MAGIC.len());
+    (&mut f).take(backup_crypt::MAGIC.len() as u64).read_to_end(&mut head)?;
+    if backup_crypt::is_sealed(&head) {
+        f.seek(SeekFrom::Start(0))?;
+        backup_crypt::check_header(&mut f).map_err(crypt_bad)?;
+        return Ok(Look::Sealed);
+    }
+    inspect(path).map(|ins| Look::Open(Box::new(ins)))
+}
+
+async fn look_at(path: &Path) -> Result<Look, Bad> {
+    let p = path.to_path_buf();
+    tokio::task::spawn_blocking(move || look(&p)).await.unwrap_or_else(|_| Err(Bad::Io(io::Error::other("preview task"))))
+}
+
+/// Why an encrypted backup was not opened.
+enum OpenErr {
+    WrongPassword,
+    Bad(Bad),
+    Api(ApiErr),
+}
+
+impl From<CryptErr> for OpenErr {
+    fn from(e: CryptErr) -> Self {
+        match e {
+            CryptErr::WrongPassword => OpenErr::WrongPassword,
+            e => OpenErr::Bad(crypt_bad(e)),
+        }
+    }
+}
+
+impl From<io::Error> for OpenErr {
+    fn from(e: io::Error) -> Self {
+        OpenErr::Bad(Bad::Io(e))
+    }
+}
+
+/// The encrypted backup `src` opened with `password` into the staging
+/// folder of `data` and checked: the opened copy and what it holds. Fixed memory
+/// whatever its size; the disk must have room for the copy.
+async fn open_sealed(data: &Path, src: &Path, password: &str) -> Result<(PathBuf, Inspected), OpenErr> {
+    let stage = staging_dir(data);
+    std::fs::create_dir_all(&stage)?;
+    let size = std::fs::metadata(src)?.len();
+    if free_space(&stage).is_some_and(|free| free < size.saturating_add(DISK_MARGIN_BYTES)) {
+        return Err(OpenErr::Api((StatusCode::INTERNAL_SERVER_ERROR, "disk_full")));
+    }
+    let out = stage.join(format!("open-{}.zip", uuid::Uuid::new_v4().simple()));
+    let (src, pw, to) = (src.to_path_buf(), password.to_string(), out.clone());
+    let done = tokio::task::spawn_blocking(move || -> Result<Inspected, OpenErr> {
+        let mut w = BufWriter::new(create_private(&to)?);
+        backup_crypt::open(&pw, &mut BufReader::new(File::open(&src)?), &mut w)?;
+        w.into_inner().map_err(|e| e.into_error())?.sync_all()?;
+        inspect(&to).map_err(OpenErr::Bad)
+    })
+    .await
+    .unwrap_or_else(|_| Err(OpenErr::Bad(Bad::Io(io::Error::other("open task")))));
+    match done {
+        Ok(ins) => Ok((out, ins)),
+        Err(e) => {
+            let _ = std::fs::remove_file(&out);
+            Err(e)
+        }
+    }
+}
+
 /// The preview of an uploaded file read from `body` (`declared`: its
 /// Content-Length), kept for 15 minutes. Nothing changes yet. At most
-/// [`PENDING_MAX`] previews wait and [`UPLOADS_MAX`] uploads run at once.
+/// [`PENDING_MAX`] previews wait (the oldest goes for a new one) and
+/// [`UPLOADS_MAX`] uploads run at once. An encrypted file waits for its password.
 pub(crate) async fn preview_upload_stream<S, E>(state: &CallsState, source_name: &str, declared: Option<u64>, mut body: S) -> Result<Value, ApiErr>
 where
     S: futures_util::Stream<Item = Result<Bytes, E>> + Unpin,
@@ -1810,13 +2123,13 @@ where
         return Err((StatusCode::BAD_REQUEST, "too_large"));
     }
     let data = PathBuf::from(&state.settings.calls_data_dir);
-    let (waiting, staged) = pending_load(&data);
-    if waiting >= PENDING_MAX || staged + declared.unwrap_or(0) > STAGING_MAX_BYTES {
-        return Err((StatusCode::CONFLICT, "busy"));
-    }
     let Some(_slot) = upload_slot(dir_state(&data)) else {
         return Err((StatusCode::CONFLICT, "busy"));
     };
+    if !make_room(&data, declared.unwrap_or(0), None) {
+        return Err((StatusCode::CONFLICT, "busy"));
+    }
+    let staged = pending_load(&data).1;
     let file = staging_dir(&data).join(format!("upload-{}.bin", uuid::Uuid::new_v4().simple()));
     let bytes = match receive(&file, &mut body, staged).await {
         Ok(0) => Err((StatusCode::BAD_REQUEST, "not_backup")),
@@ -1829,10 +2142,10 @@ where
             return Err(e);
         }
     };
-    let path = file.clone();
-    let read = tokio::task::spawn_blocking(move || inspect(&path)).await.unwrap_or_else(|_| Err(Bad::Io(io::Error::other("preview task"))));
-    match read {
-        Ok(ins) => Ok(register(state, data, file, true, bytes, ins, source_name)),
+    let p = Pending::new(data, file.clone(), true, bytes, source_name);
+    match look_at(&file).await {
+        Ok(Look::Open(ins)) => Ok(register(state, p.with(*ins))),
+        Ok(Look::Sealed) => Ok(register(state, Pending { encrypted: true, ..p })),
         Err(e) => {
             let _ = std::fs::remove_file(&file);
             Err(bad_err(e))
@@ -1846,7 +2159,8 @@ pub(crate) async fn preview_upload(state: &CallsState, source_name: &str, body: 
     preview_upload_stream(state, source_name, declared, futures_util::stream::iter([Ok::<Bytes, io::Error>(body)])).await
 }
 
-/// The preview of a file in the backup folder.
+/// The preview of a file in the backup folder. An encrypted one is opened with
+/// the backup password saved here when that works; else it waits for one.
 pub(crate) async fn preview_saved(state: &CallsState, name: &str) -> Result<Value, ApiErr> {
     sweep_pending();
     let rt = state.settings_store.snapshot();
@@ -1855,15 +2169,107 @@ pub(crate) async fn preview_saved(state: &CallsState, name: &str) -> Result<Valu
     if parse_name(name).is_none() || !is_plain_file(&path) {
         return Err((StatusCode::NOT_FOUND, "not_found"));
     }
-    if pending_load(&data).0 >= PENDING_MAX {
+    if !make_room(&data, 0, None) {
         return Err((StatusCode::CONFLICT, "busy"));
     }
-    let p = path.clone();
-    let read = tokio::task::spawn_blocking(move || inspect(&p)).await.unwrap_or_else(|_| Err(Bad::Io(io::Error::other("preview task"))));
-    match read {
-        Ok(ins) => Ok(register(state, data, path, false, 0, ins, name)),
-        Err(e) => Err(bad_err(e)),
+    let p = Pending::new(data.clone(), path.clone(), false, 0, name);
+    match look_at(&path).await.map_err(bad_err)? {
+        Look::Open(ins) => Ok(register(state, p.with(*ins))),
+        Look::Sealed => {
+            let mut p = Pending { encrypted: true, ..p };
+            let saved = rt.backup_password.trim();
+            if !saved.is_empty() {
+                match open_sealed(&data, &path, saved).await {
+                    Ok((opened, ins)) => {
+                        p.opened = Some(opened);
+                        p = p.with(ins);
+                    }
+                    // Another password: the owner types it.
+                    Err(OpenErr::WrongPassword) => {}
+                    Err(OpenErr::Bad(e)) => return Err(bad_err(e)),
+                    Err(OpenErr::Api(e)) => return Err(e),
+                }
+            }
+            Ok(register(state, p))
+        }
     }
+}
+
+/// Open the encrypted file of the preview `token` with `password`: its
+/// preview. `wrong_password`; after [`UNLOCK_TRIES`] of them the preview goes
+/// (`expired`). Tries are at least [`UNLOCK_GAP`] apart, one at a time.
+pub(crate) async fn unlock(state: &CallsState, token: &str, password: &str) -> Result<Value, ApiErr> {
+    sweep_pending();
+    let data = PathBuf::from(&state.settings.calls_data_dir);
+    let expired = (StatusCode::BAD_REQUEST, "expired");
+    let (src, upload, wait) = {
+        let mut map = pending();
+        let Some(p) = map.get_mut(token).filter(|p| p.data == data && p.made.elapsed() < TOKEN_TTL) else {
+            return Err(expired);
+        };
+        if p.ins.is_some() {
+            return Ok(preview_of(state, token, p));
+        }
+        if p.trying {
+            return Err((StatusCode::CONFLICT, "busy"));
+        }
+        p.trying = true;
+        let wait = p.tried.map(|t| UNLOCK_GAP.saturating_sub(t.elapsed())).unwrap_or_default();
+        (p.file.clone(), p.owned.then_some(p.bytes), wait)
+    };
+    let release = || {
+        if let Some(p) = pending().get_mut(token) {
+            p.trying = false;
+        }
+    };
+    tokio::time::sleep(wait).await;
+    // The opened copy of an upload takes about as much as the upload.
+    if let Some(size) = upload {
+        if !make_room(&data, size, Some(token)) {
+            release();
+            return Err((StatusCode::CONFLICT, "busy"));
+        }
+    }
+    let res = open_sealed(&data, &src, password).await;
+    let mut map = pending();
+    let Some(p) = map.get_mut(token) else {
+        // Gone meanwhile (swept or pushed out).
+        if let Ok((opened, _)) = &res {
+            let _ = std::fs::remove_file(opened);
+        }
+        return Err(expired);
+    };
+    p.trying = false;
+    p.tried = Some(Instant::now());
+    let gone = match res {
+        Ok((opened, ins)) => {
+            // An upload: its opened copy takes its place.
+            if p.owned {
+                let _ = std::fs::remove_file(&p.file);
+                p.bytes = std::fs::metadata(&opened).map(|m| m.len()).unwrap_or(0);
+            }
+            p.opened = Some(opened);
+            p.warnings = preview_warnings(&ins);
+            p.ins = Some(ins);
+            return Ok(preview_of(state, token, p));
+        }
+        Err(OpenErr::WrongPassword) => {
+            p.fails += 1;
+            if p.fails < UNLOCK_TRIES {
+                warn!("backup: a wrong password for an encrypted backup tries={}", p.fails);
+                return Err((StatusCode::BAD_REQUEST, "wrong_password"));
+            }
+            warn!("backup: too many wrong passwords, the encrypted backup is let go");
+            (map.remove(token), expired)
+        }
+        Err(OpenErr::Bad(e)) => (map.remove(token), bad_err(e)),
+        Err(OpenErr::Api(e)) => return Err(e),
+    };
+    drop(map);
+    if let Some(p) = gone.0 {
+        drop_pending_file(&p);
+    }
+    Err(gone.1)
 }
 
 /// Restore the parts `items` of what the preview `token` showed (each one the
@@ -1871,8 +2277,10 @@ pub(crate) async fn preview_saved(state: &CallsState, name: &str) -> Result<Valu
 /// backup first; call records, texts and to-do items are only added.
 pub(crate) async fn apply<S: AsRef<str>>(state: &CallsState, token: &str, items: &[S]) -> Result<Value, ApiErr> {
     sweep_pending();
-    let listed: Option<Vec<&'static str>> =
-        pending().get(token).filter(|p| p.made.elapsed() < TOKEN_TTL).map(|p| p.ins.counts.keys().copied().collect());
+    let listed: Option<Vec<&'static str>> = pending()
+        .get(token)
+        .filter(|p| p.made.elapsed() < TOKEN_TTL)
+        .map(|p| p.ins.as_ref().map(|i| i.counts.keys().copied().collect()).unwrap_or_default());
     let Some(listed) = listed else {
         return Err((StatusCode::BAD_REQUEST, "expired"));
     };
@@ -1891,23 +2299,29 @@ pub(crate) async fn apply<S: AsRef<str>>(state: &CallsState, token: &str, items:
     let Some(p) = taken else {
         return Err((StatusCode::BAD_REQUEST, "expired"));
     };
-    let out = apply_pending(state, &p, &chosen).await;
+    let out = match &p.ins {
+        Some(ins) => apply_pending(state, &p, ins, &chosen).await,
+        None => Err((StatusCode::BAD_REQUEST, "bad_items")),
+    };
     drop_pending_file(&p);
     out
 }
 
 /// A copy of the settings as they are now, in the backup folder (in the
-/// default one when that cannot be written): the entry and its folder.
-async fn make_before_import(state: &CallsState, lay: &Layout) -> Result<(Entry, PathBuf), RunErr> {
-    let dir = configured_dir(&state.settings_store.snapshot(), &lay.data);
-    match create_in(state, lay, &dir, Kind::BeforeImport, backup_items(false)).await {
-        Ok(e) => Ok((e, dir)),
+/// default one when that cannot be written): the entry, its folder and the
+/// password it is encrypted with (none when backups are not encrypted).
+async fn make_before_import(state: &CallsState, lay: &Layout) -> Result<(Entry, PathBuf, Option<String>), RunErr> {
+    let rt = state.settings_store.snapshot();
+    let dir = configured_dir(&rt, &lay.data);
+    let seal = backup_seal(&rt);
+    match create_in(state, lay, &dir, Kind::BeforeImport, backup_items(false), seal.clone()).await {
+        Ok(e) => Ok((e, dir, seal)),
         Err(first) => {
             let fallback = default_dir(&lay.data);
             if fallback == dir {
                 return Err(first);
             }
-            create_in(state, lay, &fallback, Kind::BeforeImport, backup_items(false)).await.map(|e| (e, fallback))
+            create_in(state, lay, &fallback, Kind::BeforeImport, backup_items(false), seal.clone()).await.map(|e| (e, fallback, seal))
         }
     }
 }
@@ -1921,19 +2335,24 @@ fn wanted_file(w: &Wanted, chosen: &[&str]) -> bool {
     }
 }
 
-async fn apply_pending(state: &CallsState, p: &Pending, chosen: &[&'static str]) -> Result<Value, ApiErr> {
+async fn apply_pending(state: &CallsState, p: &Pending, ins: &Inspected, chosen: &[&'static str]) -> Result<Value, ApiErr> {
     let lay = Layout::of(state);
-    let want: Vec<Wanted> = p.ins.files.iter().filter(|w| wanted_file(w, chosen)).cloned().collect();
+    let want: Vec<Wanted> = ins.files.iter().filter(|w| wanted_file(w, chosen)).cloned().collect();
     // Room for what is unpacked (on the disk of the data folder) first.
     let need: u64 = want.iter().map(|w| w.entry.size).sum();
     if free_space(&lay.data).is_some_and(|free| free < need.saturating_add(DISK_MARGIN_BYTES)) {
         return Err((StatusCode::INTERNAL_SERVER_ERROR, "disk_full"));
     }
-    let (before, before_dir) = make_before_import(state, &lay).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.code()))?;
+    let (before, before_dir, before_seal) = make_before_import(state, &lay).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.code()))?;
     let before_path = before_dir.join(&before.name);
+    let undo = |created: Vec<PathBuf>| {
+        let (before_path, seal) = (before_path.clone(), before_seal.clone());
+        let lay = lay.clone();
+        async move { roll_back(state, &lay, &before_path, &created, seal.as_deref()).await }
+    };
     let stage = staging_dir(&lay.data).join(format!("apply-{}", uuid::Uuid::new_v4().simple()));
     let unpacked = {
-        let (src, plain, stage, want) = (p.file.clone(), p.ins.plain, stage.clone(), want.clone());
+        let (src, plain, stage, want) = (p.source().to_path_buf(), ins.plain, stage.clone(), want.clone());
         tokio::task::spawn_blocking(move || extract(&src, plain, &want, &stage))
             .await
             .unwrap_or_else(|_| Err(Bad::Io(io::Error::other("restore task"))))
@@ -1947,7 +2366,7 @@ async fn apply_pending(state: &CallsState, p: &Pending, chosen: &[&'static str])
         Ok(i) => i,
         Err(e) => {
             warn!("backup: restoring failed ({}), the settings from before are put back", err_kind(&e));
-            roll_back(state, &lay, &before_path, &created).await;
+            undo(created).await;
             let _ = std::fs::remove_dir_all(&stage);
             return Err((StatusCode::INTERNAL_SERVER_ERROR, "io"));
         }
@@ -1957,7 +2376,7 @@ async fn apply_pending(state: &CallsState, p: &Pending, chosen: &[&'static str])
             Ok((calls, sms, tasks)) => info!("backup records added calls={calls} sms={sms} tasks={tasks}"),
             Err(e) => {
                 warn!("backup: adding the call records failed ({}), the settings from before are put back", err_kind(&e));
-                roll_back(state, &lay, &before_path, &created).await;
+                undo(created).await;
                 let _ = std::fs::remove_dir_all(&stage);
                 return Err((StatusCode::INTERNAL_SERVER_ERROR, "io"));
             }
@@ -1966,7 +2385,7 @@ async fn apply_pending(state: &CallsState, p: &Pending, chosen: &[&'static str])
     let _ = std::fs::remove_dir_all(&stage);
     prune(&before_dir, Kind::BeforeImport, BEFORE_IMPORT_KEEP);
     let warnings = p.warnings.clone();
-    info!("backup restored items={chosen:?} restart_needed={}", installed.restart_needed);
+    info!("backup restored items={chosen:?} restart_needed={} encrypted={}", installed.restart_needed, p.encrypted);
     Ok(json!({"ok": true, "before_import": before.name, "restart_needed": installed.restart_needed, "warnings": warnings}))
 }
 
@@ -2072,12 +2491,25 @@ async fn reload_stores(state: &CallsState, items: &HashSet<&'static str>) -> any
 }
 
 /// Restoring failed half-way: the files it added go, and the `before_import`
-/// backup is put back.
-async fn roll_back(state: &CallsState, lay: &Layout, before: &Path, created: &[PathBuf]) {
+/// backup is put back (opened with `seal` first when it is encrypted).
+async fn roll_back(state: &CallsState, lay: &Layout, before: &Path, created: &[PathBuf], seal: Option<&str>) {
     for p in created {
         let _ = std::fs::remove_file(p);
     }
-    let src = before.to_path_buf();
+    let mut src = before.to_path_buf();
+    let mut opened = None;
+    if before.file_name().and_then(|n| n.to_str()).is_some_and(is_sealed_name) {
+        match open_sealed(&lay.data, before, seal.unwrap_or_default()).await {
+            Ok((o, _)) => {
+                src = o.clone();
+                opened = Some(o);
+            }
+            Err(_) => {
+                warn!("backup: the copy made before restoring cannot be opened");
+                return;
+            }
+        }
+    }
     let stage = staging_dir(&lay.data).join(format!("undo-{}", uuid::Uuid::new_v4().simple()));
     let read = {
         let stage = stage.clone();
@@ -2104,6 +2536,9 @@ async fn roll_back(state: &CallsState, lay: &Layout, before: &Path, created: &[P
         Err(e) => warn!("backup: the copy made before restoring cannot be read: {}", bad_err(e).1),
     }
     let _ = std::fs::remove_dir_all(&stage);
+    if let Some(o) = opened {
+        let _ = std::fs::remove_file(o);
+    }
 }
 
 /// Call records with their recordings, texts and to-do items of the backup
@@ -2220,6 +2655,9 @@ fn message(code: &str) -> &'static str {
         "not_local" => "only on the computer Bageo runs on",
         "bad_request" => "bad request",
         "bad_items" => "pick one or more of: settings, keys, contacts, numbers, phones, errands, calls, sms, tasks",
+        "wrong_password" => "this password does not open the backup",
+        "backup_password_missing" => "set a backup password before turning on encryption",
+        "backup_password_short" => "the password needs at least 8 characters",
         _ => "something went wrong while saving",
     }
 }
@@ -2350,10 +2788,56 @@ async fn run(State(state): State<CallsState>, headers: HeaderMap, Query(q): Quer
 }
 
 #[derive(Deserialize)]
-struct ExportQuery {
-    token: Option<String>,
-    /// Comma-separated parts ([`ITEMS`]); none: [`DEFAULT_ITEMS`].
-    items: Option<String>,
+struct ExportBody {
+    /// The parts ([`ITEMS`]); none: [`DEFAULT_ITEMS`].
+    #[serde(default)]
+    items: Option<Vec<String>>,
+    /// Encrypt the file with this password (a `.bageo`).
+    #[serde(default)]
+    password: Option<String>,
+}
+
+/// A download that works once ("Export", "Download").
+struct Ticket {
+    path: PathBuf,
+    name: String,
+    /// The file goes once sent (an export).
+    remove: bool,
+    made: Instant,
+}
+
+static TICKETS: LazyLock<Mutex<HashMap<String, Ticket>>> = LazyLock::new(Default::default);
+
+fn tickets() -> MutexGuard<'static, HashMap<String, Ticket>> {
+    TICKETS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Tickets older than two minutes go, with the exports they were for.
+fn sweep_tickets() {
+    let gone: Vec<Ticket> = {
+        let mut map = tickets();
+        let old: Vec<String> = map.iter().filter(|(_, t)| t.made.elapsed() >= TICKET_TTL).map(|(k, _)| k.clone()).collect();
+        old.into_iter().filter_map(|k| map.remove(&k)).collect()
+    };
+    for t in gone.iter().filter(|t| t.remove) {
+        let _ = std::fs::remove_file(&t.path);
+    }
+}
+
+/// A new ticket (256 random bits) for downloading `path` as `name`.
+fn issue_ticket(path: PathBuf, name: String, remove: bool) -> io::Result<String> {
+    sweep_tickets();
+    let mut b = [0u8; 32];
+    backup_crypt::random(&mut b)?;
+    let t = hex(&b);
+    tickets().insert(t.clone(), Ticket { path, name, remove, made: Instant::now() });
+    Ok(t)
+}
+
+/// The ticket `t`, used up now; None when it is unknown, used or too old.
+fn take_ticket(t: &str) -> Option<Ticket> {
+    sweep_tickets();
+    tickets().remove(t)
 }
 
 /// A file sent as a download; `remove`: deleted once sent (or the download is cut off).
@@ -2372,7 +2856,7 @@ impl Drop for Sending {
     }
 }
 
-/// `path` as a zip download named `name`, read a piece at a time.
+/// `path` as a download named `name` (a zip, or an encrypted `.bageo`), read a piece at a time.
 async fn send_file(path: PathBuf, name: &str, remove: bool) -> Response {
     let file = match tokio::fs::File::open(&path).await {
         Ok(f) => f,
@@ -2400,7 +2884,7 @@ async fn send_file(path: PathBuf, name: &str, remove: bool) -> Response {
     });
     let mut res = Response::builder()
         .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "application/zip")
+        .header(header::CONTENT_TYPE, if is_sealed_name(name) { "application/octet-stream" } else { "application/zip" })
         .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"{name}\""))
         .header(header::CACHE_CONTROL, "no-store");
     if let Some(len) = len {
@@ -2409,42 +2893,86 @@ async fn send_file(path: PathBuf, name: &str, remove: bool) -> Response {
     res.body(Body::from_stream(stream)).unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
-/// `GET /api/backup/export?items=settings,keys,…`: a zip of those parts, as a
-/// download (`bad_items` for an empty list or an unknown part).
-async fn export(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<ExportQuery>, ext: Extensions) -> Response {
+/// `POST /api/backup/export` `{items, password}`: the file of those parts
+/// (`bad_items` for an empty list or an unknown part), encrypted when a password
+/// comes (at least 8 characters, else `backup_password_short`): its name and a
+/// ticket to download it.
+async fn export(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, ext: Extensions, body: Bytes) -> Response {
     if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
         return unauthorized();
     }
-    let want = match q.items.as_deref() {
+    if !json_request(&headers) {
+        return json_required();
+    }
+    let Ok(b) = serde_json::from_slice::<ExportBody>(&body) else {
+        return err_response((StatusCode::BAD_REQUEST, "bad_request"));
+    };
+    let want = match &b.items {
         None => Some(DEFAULT_ITEMS.to_vec()),
-        Some(list) => parse_items(&list.split(',').collect::<Vec<_>>()),
+        Some(list) => parse_items(list),
     };
     let Some(want) = want else {
         return err_response((StatusCode::BAD_REQUEST, "bad_items"));
     };
+    let password = match b.password {
+        None => None,
+        Some(p) if backup_crypt::password_ok(&p) => Some(p.trim().to_string()),
+        Some(_) => return err_response((StatusCode::BAD_REQUEST, "backup_password_short")),
+    };
     if want.contains(&"keys") && !may_download_keys(&state, &ext, &headers) {
         return err_response((StatusCode::FORBIDDEN, "need_password"));
     }
-    match export_file(&state, want).await {
-        Ok((name, path)) => send_file(path, &name, true).await,
+    match export_file(&state, want, password).await {
+        Ok((name, path)) => match issue_ticket(path.clone(), name.clone(), true) {
+            Ok(ticket) => Json(json!({"ok": true, "ticket": ticket, "name": name})).into_response(),
+            Err(_) => {
+                let _ = std::fs::remove_file(&path);
+                err_response((StatusCode::INTERNAL_SERVER_ERROR, "io"))
+            }
+        },
         Err(e) => err_response((StatusCode::INTERNAL_SERVER_ERROR, e.code())),
     }
 }
 
-/// `GET /api/backup/file/{name}`: a backup of the backup folder, as a download.
-async fn download(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, ext: Extensions, UrlPath(name): UrlPath<String>) -> Response {
+#[derive(Deserialize)]
+struct NameBody {
+    name: String,
+}
+
+/// `POST /api/backup/file-ticket` `{name}`: a ticket to download that file of the
+/// backup folder. Backups hold the keys: without a console password, only on
+/// this computer (`need_password`).
+async fn file_ticket(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, ext: Extensions, body: Bytes) -> Response {
     if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
         return unauthorized();
     }
-    // Backups hold the keys.
+    if !json_request(&headers) {
+        return json_required();
+    }
+    let Ok(b) = serde_json::from_slice::<NameBody>(&body) else {
+        return err_response((StatusCode::BAD_REQUEST, "bad_request"));
+    };
     if !may_download_keys(&state, &ext, &headers) {
         return err_response((StatusCode::FORBIDDEN, "need_password"));
     }
+    let name = b.name.trim().to_string();
     let path = configured_dir(&state.settings_store.snapshot(), &PathBuf::from(&state.settings.calls_data_dir)).join(&name);
     if parse_name(&name).is_none() || !is_plain_file(&path) {
         return err_response((StatusCode::NOT_FOUND, "not_found"));
     }
-    send_file(path, &name, false).await
+    match issue_ticket(path, name.clone(), false) {
+        Ok(ticket) => Json(json!({"ok": true, "ticket": ticket, "name": name})).into_response(),
+        Err(_) => err_response((StatusCode::INTERNAL_SERVER_ERROR, "io")),
+    }
+}
+
+/// `GET /api/backup/download/{ticket}`: the file of a ticket, once, within two
+/// minutes; `not_found` after. The ticket is all it needs.
+async fn download(UrlPath(ticket): UrlPath<String>) -> Response {
+    match take_ticket(ticket.trim()) {
+        Some(t) => send_file(t.path, &t.name, t.remove).await,
+        None => err_response((StatusCode::NOT_FOUND, "not_found")),
+    }
 }
 
 /// `POST /api/backup/import`, the file as the body and its name in
@@ -2463,11 +2991,6 @@ async fn import(State(state): State<CallsState>, headers: HeaderMap, Query(q): Q
     }
 }
 
-#[derive(Deserialize)]
-struct RestoreBody {
-    name: String,
-}
-
 /// `POST /api/backup/restore` `{name}`: the preview of a file in the backup folder.
 async fn restore(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, body: Bytes) -> Response {
     if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
@@ -2476,7 +2999,7 @@ async fn restore(State(state): State<CallsState>, headers: HeaderMap, Query(q): 
     if !json_request(&headers) {
         return json_required();
     }
-    let Ok(b) = serde_json::from_slice::<RestoreBody>(&body) else {
+    let Ok(b) = serde_json::from_slice::<NameBody>(&body) else {
         return err_response((StatusCode::BAD_REQUEST, "bad_request"));
     };
     match preview_saved(&state, b.name.trim()).await {
@@ -2504,6 +3027,52 @@ async fn apply_route(State(state): State<CallsState>, headers: HeaderMap, Query(
         return err_response((StatusCode::BAD_REQUEST, "bad_request"));
     };
     match apply(&state, b.token.trim(), &b.items).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => err_response(e),
+    }
+}
+
+#[derive(Deserialize)]
+struct DiscardBody {
+    token: String,
+}
+
+/// `POST /api/backup/discard` `{token}`: the preview was closed without
+/// restoring; it and its upload go now (else after 15 minutes).
+async fn discard_route(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, body: Bytes) -> Response {
+    if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
+        return unauthorized();
+    }
+    if !json_request(&headers) {
+        return json_required();
+    }
+    let Ok(b) = serde_json::from_slice::<DiscardBody>(&body) else {
+        return err_response((StatusCode::BAD_REQUEST, "bad_request"));
+    };
+    discard(&PathBuf::from(&state.settings.calls_data_dir), b.token.trim());
+    Json(json!({"ok": true})).into_response()
+}
+
+#[derive(Deserialize)]
+struct UnlockBody {
+    token: String,
+    #[serde(default)]
+    password: String,
+}
+
+/// `POST /api/backup/unlock` `{token, password}`: open the encrypted file of a
+/// preview; its preview (`wrong_password`, `expired` after 5 wrong ones).
+async fn unlock_route(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, body: Bytes) -> Response {
+    if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
+        return unauthorized();
+    }
+    if !json_request(&headers) {
+        return json_required();
+    }
+    let Ok(b) = serde_json::from_slice::<UnlockBody>(&body) else {
+        return err_response((StatusCode::BAD_REQUEST, "bad_request"));
+    };
+    match unlock(&state, b.token.trim(), &b.password).await {
         Ok(v) => Json(v).into_response(),
         Err(e) => err_response(e),
     }
@@ -2556,11 +3125,14 @@ pub fn router() -> Router<CallsState> {
     Router::new()
         .route("/api/backup", get(status))
         .route("/api/backup/run", post(run))
-        .route("/api/backup/export", get(export))
-        .route("/api/backup/file/{name}", get(download))
+        .route("/api/backup/export", post(export))
+        .route("/api/backup/file-ticket", post(file_ticket))
+        .route("/api/backup/download/{ticket}", get(download))
         .route("/api/backup/import", post(import))
         .route("/api/backup/restore", post(restore))
         .route("/api/backup/apply", post(apply_route))
+        .route("/api/backup/discard", post(discard_route))
+        .route("/api/backup/unlock", post(unlock_route))
         .route("/api/backup/open-folder", post(open_folder))
 }
 
@@ -2573,6 +3145,7 @@ mod tests {
     const FAKE_SUMMARY: &str = "test-fake-summary-key-0002";
     const FAKE_CHANNEL: &str = "test-fake-channel-token-0003";
     const FAKE_PAIRING: &str = "test_fake_pairing_key_0004_abcdefghijklmnopqrstuvwxyz";
+    const FAKE_BACKUP_PW: &str = "test-fake-backup-pass-0005";
 
     fn temp_root(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("bageo-backup-{tag}-{}", uuid::Uuid::new_v4().simple()));
@@ -2626,7 +3199,7 @@ mod tests {
     }
 
     async fn export_bytes(state: &CallsState, items: &[&'static str]) -> (String, Vec<u8>) {
-        let (name, path) = export_file(state, items.to_vec()).await.unwrap();
+        let (name, path) = export_file(state, items.to_vec(), None).await.unwrap();
         let bytes = std::fs::read(&path).unwrap();
         let _ = std::fs::remove_file(&path);
         (name, bytes)
@@ -2725,7 +3298,8 @@ mod tests {
         let done = apply(&b, &token, &["settings", "keys", "contacts"]).await.unwrap();
         assert_eq!(done["ok"], true);
         let rt = b.settings_store.snapshot();
-        assert_eq!((rt.owner_name.as_str(), rt.backup_keep, rt.gemini_api_key.as_str()), ("Sam Example", 7, FAKE_GEMINI));
+        // Fewer automatic backups kept (7 there, 10 here) only from the console.
+        assert_eq!((rt.owner_name.as_str(), rt.backup_keep, rt.gemini_api_key.as_str()), ("Sam Example", 10, FAKE_GEMINI));
         assert_eq!(rt.public_url, "", "the address of this computer stays");
         assert_eq!(rt.notify_channels.len(), 1);
         assert_eq!(rt.notify_channels[0].token, FAKE_CHANNEL);
@@ -2909,6 +3483,9 @@ mod tests {
             "data/2026-01-01/com9",
             "data/config/x.json ",
             "data/config/x.json.",
+            "data/config/COM\u{b9}.json",
+            "data/lpt\u{b3}",
+            "data/2026-01-01/Com\u{b2}.wav",
         ];
         for path in evil {
             let zip = zip_with(&manifest(1, vec![entry(path, settings, &sha(settings))]), &[(path, settings)]);
@@ -3040,7 +3617,7 @@ mod tests {
         a.settings_store.apply_patch(&json!({"backup_include_calls": true, "owner_name": "Calls Example"})).unwrap();
 
         let entry = run_backup(&a, Kind::Manual).await.unwrap();
-        assert!(entry.include_calls);
+        assert_eq!((entry.include_calls, entry.encrypted), (Some(true), false));
         let path = default_dir(&ra).join(&entry.name);
         #[cfg(unix)]
         {
@@ -3077,20 +3654,21 @@ mod tests {
     #[tokio::test]
     async fn a_backup_folder_that_cannot_be_written_is_refused() {
         let root = temp_root("dir");
+        let rt = state_at(&root).settings_store.snapshot();
         let blocker = root.join("blocker");
         std::fs::write(&blocker, b"x").unwrap();
         for bad in [blocker.join("backups").to_string_lossy().into_owned(), "relative/folder".to_string()] {
-            let r = check_settings_patch(&json!({"backup_dir": bad})).expect("refused");
+            let r = check_settings_patch(&json!({"backup_dir": bad}), &rt).expect("refused");
             assert_eq!(r.status(), StatusCode::BAD_REQUEST);
             let body = axum::body::to_bytes(r.into_body(), 1 << 16).await.unwrap();
             let v: Value = serde_json::from_slice(&body).unwrap();
             assert_eq!(v["code"], "backup_dir_unwritable");
         }
         let fine = root.join("fine");
-        assert!(check_settings_patch(&json!({"backup_dir": fine.to_string_lossy()})).is_none());
+        assert!(check_settings_patch(&json!({"backup_dir": fine.to_string_lossy()}), &rt).is_none());
         assert!(fine.is_dir(), "made when saved");
-        assert!(check_settings_patch(&json!({"backup_dir": ""})).is_none());
-        assert!(check_settings_patch(&json!({"owner_name": "x"})).is_none());
+        assert!(check_settings_patch(&json!({"backup_dir": ""}), &rt).is_none());
+        assert!(check_settings_patch(&json!({"owner_name": "x"}), &rt).is_none());
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -3126,12 +3704,13 @@ mod tests {
     async fn twelve_exports_at_once_all_work() {
         let ra = temp_root("many");
         let a = keyed_state(&ra, "Sam Example").await;
-        let runs = (0..12).map(|_| export_file(&a, DEFAULT_ITEMS.to_vec()));
+        let runs = (0..12).map(|n| export_file(&a, DEFAULT_ITEMS.to_vec(), (n % 3 == 0).then(|| FAKE_BACKUP_PW.to_string())));
         let done = futures_util::future::join_all(runs).await;
         let paths: HashSet<PathBuf> = done.into_iter().map(|r| r.expect("export").1).collect();
         assert_eq!(paths.len(), 12);
         for p in &paths {
-            assert!(inspect(p).is_ok());
+            let sealed = p.extension().is_some_and(|e| e == "bageo");
+            assert!(if sealed { look(p).is_ok() } else { inspect(p).is_ok() });
             let _ = std::fs::remove_file(p);
         }
         let _ = std::fs::remove_dir_all(&ra);
@@ -3144,8 +3723,8 @@ mod tests {
         let lay = Layout::of(&st);
         let dir = default_dir(&root);
         let now = Local::now();
-        let first = write_backup_file(&lay, b"{}".to_vec(), &dir, Kind::Manual, &DEFAULT_ITEMS, now).unwrap();
-        let second = write_backup_file(&lay, b"{}".to_vec(), &dir, Kind::Manual, &DEFAULT_ITEMS, now).unwrap();
+        let first = write_backup_file(&lay, b"{}".to_vec(), &dir, Kind::Manual, &DEFAULT_ITEMS, now, None).unwrap();
+        let second = write_backup_file(&lay, b"{}".to_vec(), &dir, Kind::Manual, &DEFAULT_ITEMS, now, None).unwrap();
         assert_ne!(first.name, second.name);
         assert!(dir.join(&first.name).is_file() && dir.join(&second.name).is_file());
         assert!(names_in(&dir).iter().all(|n| !n.ends_with(".tmp")), "no temporary file left");
@@ -3153,14 +3732,33 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn at_most_three_previews_and_two_uploads_wait() {
+    async fn a_new_preview_pushes_out_the_oldest_and_closed_ones_go() {
         let rb = temp_root("three");
         let b = state_at(&rb);
-        for n in 0..3 {
-            preview_upload(&b, "settings.json", Bytes::from(format!("{{\"owner_name\": \"Wait {n}\"}}"))).await.unwrap();
+        let mut tokens = Vec::new();
+        for n in 0..4 {
+            let v = preview_upload(&b, "settings.json", Bytes::from(format!("{{\"owner_name\": \"Wait {n}\"}}"))).await.unwrap();
+            tokens.push(v["token"].as_str().unwrap().to_string());
         }
-        let fourth = preview_upload(&b, "settings.json", Bytes::from_static(br#"{"owner_name": "Wait 3"}"#)).await;
-        assert_eq!(fourth.expect_err("busy"), (StatusCode::CONFLICT, "busy"));
+        let uploads = || names_in(&staging_dir(&rb)).into_iter().filter(|n| n.starts_with("upload-")).count();
+        assert_eq!((pending_load(&rb).0, uploads()), (PENDING_MAX, PENDING_MAX));
+        assert_eq!(code(apply(&b, &tokens[0], &["settings"]).await), "expired", "the oldest went, with its upload");
+        // A closed dialog: gone at once. Another folder's or an unknown token: nothing.
+        discard(&rb, &tokens[3]);
+        discard(&rb, "no-such-preview");
+        discard(&std::env::temp_dir(), &tokens[2]);
+        assert_eq!(code(apply(&b, &tokens[3], &["settings"]).await), "expired");
+        assert_eq!((pending_load(&rb).0, uploads()), (2, 2));
+        apply(&b, &tokens[2], &["settings"]).await.unwrap();
+        assert_eq!(b.settings_store.snapshot().owner_name, "Wait 2");
+        // Restoring from the list makes room the same way.
+        let entry = run_backup(&b, Kind::Manual).await.unwrap();
+        for _ in 0..4 {
+            preview_saved(&b, &entry.name).await.unwrap();
+        }
+        assert_eq!(pending_load(&rb).0, PENDING_MAX);
+        assert_eq!(code(apply(&b, &tokens[1], &["settings"]).await), "expired");
+        assert_eq!(uploads(), 0, "every upload went with its preview");
         let ds = dir_state(&rb);
         let one = upload_slot(ds.clone());
         let two = upload_slot(ds.clone());
@@ -3229,5 +3827,288 @@ mod tests {
     #[test]
     fn free_room_on_the_disk_is_known() {
         assert!(free_space(&std::env::temp_dir()).is_some_and(|n| n > 0));
+    }
+
+    #[test]
+    fn windows_device_names_are_refused() {
+        for bad in ["CON", "con.json", "Nul .txt", "COM1", "lpt9.wav", "COM\u{b9}", "com\u{b2}.json", "LPT\u{b3}.txt", "Lpt\u{b9}"] {
+            assert!(reserved_name(bad), "{bad}");
+        }
+        for fine in ["CONTACTS.json", "COM0", "COM10", "LPT\u{2074}", "COM", "console.json", "com1x.json", "aux_notes.json", "2026-01-01"] {
+            assert!(!reserved_name(fine), "{fine}");
+        }
+        for bad in ["data/config/COM\u{b9}.json", "data/lpt\u{b3}", "data/2026-01-01/Com\u{b2}.wav"] {
+            assert_eq!(safe_rel(bad), None, "{bad}");
+        }
+        assert_eq!(safe_rel("data/config/settings.json"), Some("config/settings.json"));
+    }
+
+    #[tokio::test]
+    async fn a_restore_never_shortens_how_long_records_are_kept() {
+        let rb = temp_root("keepdays");
+        let old_day = (Local::now() - chrono::Duration::days(60)).format("%Y-%m-%d").to_string();
+        std::fs::write(rb.join("index.json"), json!({"calls": [call_json("call-old", &old_day)]}).to_string()).unwrap();
+        std::fs::create_dir_all(rb.join(&old_day)).unwrap();
+        std::fs::write(rb.join(&old_day).join("call-old.wav"), b"RIFF old recording").unwrap();
+        let b = state_at(&rb);
+        b.settings_store.apply_patch(&json!({"retention_days": 90, "backup_keep": 20})).unwrap();
+        let purge = |days: u32| crate::calls_http::purge_expired_records(&b.store, &b.task_store, &b.errands, &b.sms, days);
+        // The file says nothing, or a shorter time.
+        let files: [&[u8]; 2] = [br#"{"owner_name": "Days Example"}"#, br#"{"owner_name": "Days Example", "retention_days": 7, "backup_keep": 2}"#];
+        for body in files {
+            let preview = preview_upload(&b, "settings.json", Bytes::copy_from_slice(body)).await.unwrap();
+            apply(&b, preview["token"].as_str().unwrap(), &["settings"]).await.unwrap();
+            let rt = b.settings_store.snapshot();
+            assert_eq!((rt.owner_name.as_str(), rt.retention_days, rt.backup_keep), ("Days Example", 90, 20));
+            assert!(std::fs::read_to_string(rb.join("config").join("settings.json")).unwrap().contains("90"));
+            // The hourly clean-up after it.
+            purge(rt.retention_days).await;
+            assert!(b.store.get("call-old").await.is_some(), "the 60-day-old call stays");
+            assert!(rb.join(&old_day).join("call-old.wav").is_file(), "and its recording");
+        }
+        // A longer one is taken; the console alone shortens it.
+        let preview = preview_upload(&b, "settings.json", Bytes::from_static(br#"{"retention_days": 120, "backup_keep": 30}"#)).await.unwrap();
+        apply(&b, preview["token"].as_str().unwrap(), &["settings"]).await.unwrap();
+        let rt = b.settings_store.snapshot();
+        assert_eq!((rt.retention_days, rt.backup_keep), (120, 30));
+        assert_eq!(b.settings_store.apply_patch(&json!({"retention_days": 15})).unwrap().retention_days, 15);
+        purge(15).await;
+        assert!(b.store.get("call-old").await.is_none(), "the call was one a clean-up does take");
+        let _ = std::fs::remove_dir_all(&rb);
+    }
+
+    /// The settings of the item `keys` as the agent uses them now, field by field.
+    fn key_group(st: &CallsState) -> Vec<(&'static str, Value)> {
+        use crate::settings_store::{CONNECTION_FIELDS, CREDENTIAL_FIELDS};
+        let v = serde_json::to_value(&*st.settings_store.snapshot()).unwrap();
+        CREDENTIAL_FIELDS.into_iter().chain(CONNECTION_FIELDS).map(|f| (f, v.get(f).cloned().unwrap_or(Value::Null))).collect()
+    }
+
+    #[tokio::test]
+    async fn putting_back_the_copy_from_before_undoes_every_key_and_connection() {
+        const OWN_MCP: &str = "test-fake-mcp-own-0010";
+        const THEIR_MCP: &str = "test-fake-mcp-attacker-0011";
+        let rb = temp_root("undo");
+        let b = state_at(&rb);
+        b.settings_store
+            .apply_patch(&json!({
+                "owner_name": "Own Example",
+                "gemini_api_key": FAKE_GEMINI,
+                "mcp_enabled": true,
+                "mcp_token": OWN_MCP,
+                "telegram_chat_id": "fake-chat-own",
+                "callback_whitelist": ["+15555550100"],
+            }))
+            .unwrap();
+        let before = key_group(&b);
+        let attacker = json!({
+            "owner_name": "Attacker Example",
+            "mcp_enabled": true,
+            "mcp_token": THEIR_MCP,
+            "mcp_calls": "direct",
+            "mcp_errands_per_hour": 30,
+            "mcp_allowed_origins": ["https://attacker.example"],
+            "telegram_control": true,
+            "telegram_control_users": ["1000001"],
+            "notify_gateway_url": "https://gateway.attacker.example/notify",
+            "trtc_bridge_url": "wss://bridge.attacker.example/ws",
+            "gmail_user": "attacker@example.com",
+            "callback_whitelist": ["*"],
+            "whitelist_forward_number": "+15555550666",
+            "whitelist_urgent_call": true,
+        });
+        let preview = preview_upload(&b, "settings.json", Bytes::from(attacker.to_string())).await.unwrap();
+        assert_eq!(preview_items(&preview), ["settings", "keys"]);
+        assert_eq!(preview["changes_connections"], true);
+        let done = apply(&b, preview["token"].as_str().unwrap(), &["settings", "keys"]).await.unwrap();
+        let rt = b.settings_store.snapshot();
+        assert_eq!((rt.mcp_token.as_str(), rt.telegram_chat_id.as_str(), rt.callback_whitelist.clone()), (THEIR_MCP, "", vec!["*".to_string()]), "the group is the file's");
+
+        // Everything the copy from before holds, put back.
+        let name = done["before_import"].as_str().unwrap();
+        let again = preview_saved(&b, name).await.unwrap();
+        assert_eq!(preview_items(&again), ["settings", "keys"]);
+        assert_eq!(again["changes_connections"], true);
+        apply(&b, again["token"].as_str().unwrap(), &preview_items(&again)).await.unwrap();
+        let after = key_group(&b);
+        for ((f, was), (_, now)) in before.iter().zip(&after) {
+            assert_eq!(now, was, "{f}");
+        }
+        assert_eq!(b.settings_store.snapshot().owner_name, "Own Example");
+        let ctrl = crate::control::Controller::new(b.clone());
+        let bearer = |t: &str| {
+            let mut h = HeaderMap::new();
+            h.insert(header::AUTHORIZATION, format!("Bearer {t}").parse().unwrap());
+            h
+        };
+        let ping = br#"{"jsonrpc": "2.0", "id": 1, "method": "ping"}"#;
+        assert_eq!(crate::mcp::answer(&ctrl, &bearer(THEIR_MCP), ping).await.0, StatusCode::UNAUTHORIZED);
+        assert_ne!(crate::mcp::answer(&ctrl, &bearer(OWN_MCP), ping).await.0, StatusCode::UNAUTHORIZED);
+
+        // A file with only one key would clear the rest of the group: that counts as a change.
+        let one = preview_upload(&b, "keys.json", Bytes::from(json!({"gemini_api_key": FAKE_GEMINI}).to_string())).await.unwrap();
+        assert_eq!((one["changes_password"].as_bool(), one["changes_connections"].as_bool()), (Some(false), Some(true)));
+        discard(&rb, one["token"].as_str().unwrap());
+        let _ = std::fs::remove_dir_all(&rb);
+    }
+    /// The code of a refused settings save.
+    async fn refused_code(r: Option<Response>) -> String {
+        let r = r.expect("refused");
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(r.into_body(), 1 << 16).await.unwrap();
+        serde_json::from_slice::<Value>(&body).unwrap()["code"].as_str().unwrap_or_default().to_string()
+    }
+
+    #[tokio::test]
+    async fn the_backup_password_is_checked_when_saved() {
+        let root = temp_root("bkpw");
+        let st = state_at(&root);
+        let rt = st.settings_store.snapshot();
+        assert_eq!(refused_code(check_settings_patch(&json!({"backup_password": "short"}), &rt)).await, "backup_password_short");
+        assert_eq!(refused_code(check_settings_patch(&json!({"backup_encrypt": true}), &rt)).await, "backup_password_missing");
+        assert!(check_settings_patch(&json!({"backup_encrypt": true, "backup_password": FAKE_BACKUP_PW}), &rt).is_none());
+        assert!(check_settings_patch(&json!({"backup_encrypt": false}), &rt).is_none());
+        st.settings_store.apply_patch(&json!({"backup_encrypt": true, "backup_password": FAKE_BACKUP_PW})).unwrap();
+        let rt = st.settings_store.snapshot();
+        assert!(rt.backup_encrypt);
+        // Removing the password while encryption is on: refused; with it off: fine.
+        assert_eq!(refused_code(check_settings_patch(&json!({"backup_password_clear": true}), &rt)).await, "backup_password_missing");
+        assert!(check_settings_patch(&json!({"backup_password_clear": true, "backup_encrypt": false}), &rt).is_none());
+        assert!(check_settings_patch(&json!({"owner_name": "x"}), &rt).is_none());
+        // Never shown: only whether one is set.
+        let shown = st.settings_store.masked_json();
+        assert_eq!(shown["backup_password_set"], true);
+        assert_ne!(shown["backup_password"], FAKE_BACKUP_PW);
+        // A settings file asking for encryption without a password backs up as before.
+        let rt = st.settings_store.apply_patch(&json!({"backup_password_clear": true})).unwrap();
+        assert!(!rt.backup_encrypt);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn encrypted_backups_open_with_the_saved_password_or_a_typed_one() {
+        let ra = temp_root("seal");
+        let a = keyed_state(&ra, "Sam Example").await;
+        a.settings_store.apply_patch(&json!({"backup_encrypt": true, "backup_password": FAKE_BACKUP_PW})).unwrap();
+        let entry = run_backup(&a, Kind::Manual).await.unwrap();
+        assert!(entry.name.ends_with("-manual.bageo") && entry.encrypted, "{}", entry.name);
+        assert_eq!(entry.include_calls, Some(false));
+        let path = default_dir(&ra).join(&entry.name);
+        let bytes = std::fs::read(&path).unwrap();
+        assert!(bytes.starts_with(backup_crypt::MAGIC));
+        for plain in ["PK\x03\x04", MANIFEST_NAME, "Sam Example", "Alex Example", FAKE_GEMINI, FAKE_BACKUP_PW] {
+            assert!(!has(&bytes, plain), "{plain} shows");
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        let listed = list_backups(&default_dir(&ra));
+        assert_eq!((listed[0].name.as_str(), listed[0].encrypted, listed[0].include_calls), (entry.name.as_str(), true, None));
+        assert_eq!(parse_name(&entry.name).map(|(k, _)| k), Some(Kind::Manual));
+
+        // From the list: the password saved here opens it.
+        let p = preview_saved(&a, &entry.name).await.unwrap();
+        assert_eq!((p["encrypted"].as_bool(), p["needs_password"].as_bool()), (Some(true), Some(false)));
+        assert_eq!(preview_items(&p), ["settings", "keys", "contacts"]);
+        discard(&ra, p["token"].as_str().unwrap());
+        assert!(names_in(&staging_dir(&ra)).iter().all(|n| !n.starts_with("open-")), "the opened copy went with it");
+
+        // Another password saved here: the owner types the one of the file.
+        a.settings_store.apply_patch(&json!({"backup_password": "test-fake-backup-pass-0006"})).unwrap();
+        let p = preview_saved(&a, &entry.name).await.unwrap();
+        assert_eq!((p["needs_password"].as_bool(), p.get("items")), (Some(true), None));
+        let token = p["token"].as_str().unwrap();
+        assert_eq!(code(apply(&a, token, &["settings"]).await), "bad_items", "nothing to restore before it is open");
+        assert_eq!(code(unlock(&a, token, "test-fake-backup-pass-0006").await), "wrong_password");
+        let p = unlock(&a, token, FAKE_BACKUP_PW).await.unwrap();
+        assert_eq!((p["encrypted"].as_bool(), p["needs_password"].as_bool()), (Some(true), Some(false)));
+        let done = apply(&a, token, &["settings", "contacts"]).await.unwrap();
+        assert_eq!(done["ok"], true);
+        // The copy made before the restore is encrypted too, with the password of now.
+        let before = done["before_import"].as_str().unwrap();
+        assert!(before.ends_with("-before-import.bageo"), "{before}");
+        assert!(std::fs::read(default_dir(&ra).join(before)).unwrap().starts_with(backup_crypt::MAGIC));
+        let _ = std::fs::remove_dir_all(&ra);
+    }
+
+    #[tokio::test]
+    async fn an_encrypted_export_needs_its_password_and_five_wrong_ones_end_it() {
+        let (ra, rb) = (temp_root("sexp"), temp_root("simp"));
+        let a = keyed_state(&ra, "Sam Example").await;
+        let (name, path) = export_file(&a, DEFAULT_ITEMS.to_vec(), Some(FAKE_BACKUP_PW.to_string())).await.unwrap();
+        assert!(name.starts_with("bageo-export-") && name.ends_with(".bageo"), "{name}");
+        assert_eq!(parse_name(&name).map(|(k, _)| k), Some(Kind::Export));
+        let sealed = std::fs::read(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert!(!has(&sealed, FAKE_GEMINI) && !has(&sealed, "Sam Example"));
+
+        let b = state_at(&rb);
+        let p = preview_upload(&b, &name, Bytes::from(sealed.clone())).await.unwrap();
+        assert_eq!((p["encrypted"].as_bool(), p["needs_password"].as_bool(), p.get("items")), (Some(true), Some(true), None));
+        let token = p["token"].as_str().unwrap().to_string();
+        let started = Instant::now();
+        for n in 1..UNLOCK_TRIES {
+            assert_eq!(code(unlock(&b, &token, &format!("test-fake-wrong-{n:04}")).await), "wrong_password");
+        }
+        assert!(started.elapsed() >= UNLOCK_GAP * (UNLOCK_TRIES - 2), "tries wait for each other");
+        assert_eq!(code(unlock(&b, &token, "test-fake-wrong-0005").await), "expired");
+        assert_eq!(code(unlock(&b, &token, FAKE_BACKUP_PW).await), "expired", "even the right one, once it went");
+        assert!(names_in(&staging_dir(&rb)).is_empty(), "the upload went too");
+
+        let p = preview_upload(&b, &name, Bytes::from(sealed)).await.unwrap();
+        let token = p["token"].as_str().unwrap();
+        let p = unlock(&b, token, &format!("  {FAKE_BACKUP_PW} ")).await.unwrap();
+        assert_eq!(preview_items(&p), ["settings", "keys", "contacts"]);
+        assert_eq!(p["encrypted"], true);
+        apply(&b, token, &["settings", "keys", "contacts"]).await.unwrap();
+        let rt = b.settings_store.snapshot();
+        assert_eq!((rt.owner_name.as_str(), rt.gemini_api_key.as_str()), ("Sam Example", FAKE_GEMINI));
+        assert_eq!(b.contacts.list("").len(), 1);
+        // A broken file says so before any password.
+        let mut cut = backup_crypt::MAGIC.to_vec();
+        cut.extend([1u8; 20]);
+        assert_eq!(code(preview_upload(&b, "cut.bageo", Bytes::from(cut)).await), "damaged");
+        let _ = std::fs::remove_dir_all(&ra);
+        let _ = std::fs::remove_dir_all(&rb);
+    }
+
+    #[tokio::test]
+    async fn the_backup_password_never_leaves_with_the_settings_alone() {
+        let ra = temp_root("pwset");
+        let a = keyed_state(&ra, "Sam Example").await;
+        a.settings_store.apply_patch(&json!({"backup_encrypt": true, "backup_password": FAKE_BACKUP_PW})).unwrap();
+        let (_, bytes) = export_bytes(&a, &["settings"]).await;
+        let plain = unpacked(&bytes);
+        assert!(has(&plain, "backup_encrypt") && has(&plain, "Sam Example"));
+        assert!(!has(&plain, FAKE_BACKUP_PW) && !has(&plain, "backup_password"));
+        let (_, bytes) = export_bytes(&a, &["keys"]).await;
+        assert!(has(&unpacked(&bytes), FAKE_BACKUP_PW), "it is one of the keys");
+        let _ = std::fs::remove_dir_all(&ra);
+    }
+
+    #[tokio::test]
+    async fn download_tickets_work_once_and_only_for_two_minutes() {
+        let root = temp_root("ticket");
+        let st = state_at(&root);
+        let entry = run_backup(&st, Kind::Manual).await.unwrap();
+        let file = default_dir(&root).join(&entry.name);
+        let t = issue_ticket(file.clone(), entry.name.clone(), false).unwrap();
+        assert_eq!(t.len(), 64, "256 random bits");
+        let first = download(UrlPath(t.clone())).await;
+        assert_eq!(first.status(), StatusCode::OK);
+        assert!(first.headers()[header::CONTENT_DISPOSITION].to_str().unwrap().contains(&entry.name));
+        assert_eq!(download(UrlPath(t)).await.status(), StatusCode::NOT_FOUND, "used up");
+        assert!(file.is_file(), "a file of the backup folder stays");
+
+        // An export ticket two minutes old: gone, and so is its file.
+        let (name, export) = export_file(&st, vec!["settings"], None).await.unwrap();
+        let t = issue_ticket(export.clone(), name, true).unwrap();
+        tickets().get_mut(&t).unwrap().made = Instant::now().checked_sub(TICKET_TTL).expect("clock");
+        assert_eq!(download(UrlPath(t)).await.status(), StatusCode::NOT_FOUND);
+        assert!(!export.exists(), "the export went with its ticket");
+        assert_eq!(download(UrlPath("0".repeat(64))).await.status(), StatusCode::NOT_FOUND);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

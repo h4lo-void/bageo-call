@@ -1232,7 +1232,7 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <button type="button" class="btn primary" id="btnBkRun" data-i18n="bk_run"></button>
             <button type="button" class="btn" id="btnBkExport" data-i18n="bk_export"></button>
             <button type="button" class="btn" id="btnBkImport" data-i18n="bk_import"></button>
-            <input type="file" id="bkFile" hidden accept=".zip,.json,application/zip,application/json" />
+            <input type="file" id="bkFile" hidden accept=".zip,.json,.bageo,application/zip,application/json" />
           </div>
           <details class="fold" id="bkFilesBox" style="margin-top:10px">
             <summary><span data-i18n="bk_files"></span><span id="bkCount"></span></summary>
@@ -1244,6 +1244,10 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <div class="field"><label for="f-backup_keep" data-i18n="bk_keep"></label>
               <div class="inline"><input type="number" id="f-backup_keep" data-k="backup_keep" data-t="int" min="1" max="100" step="1" inputmode="numeric" /><span class="muted" data-i18n="bk_unit_copies"></span></div></div>
             <label class="sw"><input type="checkbox" data-k="backup_include_calls" data-t="bool" /><span><b data-i18n="bk_calls"></b><small data-i18n="bk_calls_h"></small></span></label>
+            <label class="sw"><input type="checkbox" id="f-backup_encrypt" data-k="backup_encrypt" data-t="bool" /><span><b data-i18n="bk_encrypt"></b><small data-i18n="bk_encrypt_h"></small></span></label>
+            <div class="field"><label for="f-backup_password"><span data-i18n="bk_pw"></span><span class="tag" data-flag="backup_password"></span></label>
+              <div data-secret="backup_password"></div>
+              <div class="help" data-i18n="bk_pw_h"></div></div>
           </details>
         </div></div>
 
@@ -1387,6 +1391,12 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
   <form method="dialog" id="bkDlgForm">
     <h2 id="bkDlgTitle" data-i18n="bk_dlg_title"></h2>
     <p id="bkDlgMeta"></p>
+    <div id="bkDlgLock" hidden>
+      <p data-i18n="bk_unlock_t"></p>
+      <div class="field"><label for="bkDlgPw" data-i18n="bk_exp_pw"></label>
+        <input type="password" id="bkDlgPw" autocomplete="off" spellcheck="false" /></div>
+      <p class="help bad" id="bkDlgPwErr" role="alert" hidden></p>
+    </div>
     <p id="bkDlgHas" data-i18n="bk_dlg_has"></p>
     <div class="bk-items" id="bkDlgItems"></div>
     <div class="bk-warns" id="bkDlgWarns" hidden></div>
@@ -1401,6 +1411,15 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
   <form method="dialog" id="bkExpForm">
     <h2 id="bkExpTitle" data-i18n="bk_exp_title"></h2>
     <div class="bk-items" id="bkExpItems"></div>
+    <label class="sw"><input type="checkbox" id="bkExpEnc" /><span><b data-i18n="bk_exp_enc"></b></span></label>
+    <div id="bkExpPwBox" hidden>
+      <div class="field"><label for="bkExpPw" data-i18n="bk_exp_pw"></label>
+        <input type="password" id="bkExpPw" autocomplete="new-password" spellcheck="false" /></div>
+      <div class="field"><label for="bkExpPw2" data-i18n="bk_exp_pw2"></label>
+        <input type="password" id="bkExpPw2" autocomplete="new-password" spellcheck="false" /></div>
+      <p class="help" data-i18n="bk_pw_h"></p>
+      <p class="help bad" id="bkExpPwErr" role="alert" hidden></p>
+    </div>
     <div class="dlg-btns">
       <button type="button" class="btn" id="bkExpCancel" data-i18n="cancel"></button>
       <button type="submit" class="btn primary" id="bkExpOk" value="ok" data-i18n="bk_exp_ok"></button>
@@ -2662,6 +2681,22 @@ I18N["en"] = {
   bk_err_need_password: "To download this, open the console on the computer that runs Bageo, or set a console password first.",
   bk_err_bad_request: "Something is wrong with the file or the request. Choose the file again and retry.",
   bk_err_not_found: "That backup file is no longer there. Reload the page and pick another one.",
+  bk_encrypt: "Encrypt backup files",
+  bk_encrypt_h: "Protects the copies you keep on an external drive, in a cloud folder or on a network folder.",
+  bk_pw: "Backup password",
+  bk_pw_h: "If you forget the password, these backups can't be opened, and Bageo can't recover them either.",
+  bk_exp_enc: "Encrypt this file with a password",
+  bk_exp_pw: "Password",
+  bk_exp_pw2: "Enter it again",
+  bk_pw_mismatch: "The two passwords don't match.",
+  bk_unlock_t: "This backup is encrypted. Enter its password.",
+  bk_unlock_btn: "Unlock",
+  bk_encrypted: "Encrypted",
+  bk_err_wrong_password: "Wrong password. Try again.",
+  bk_err_backup_password_short: "The password needs at least 8 characters.",
+  err_backup_password_short: "The backup password needs at least 8 characters.",
+  err_backup_password_missing: "Set a backup password before you turn on encryption.",
+  bk_st_exporting: "Preparing the export file…",
 };
 
 I18N["zh-TW"] = {
@@ -3827,6 +3862,22 @@ I18N["zh-TW"] = {
   bk_err_need_password: "要下載這個檔案，請在執行 Bageo 的這台電腦上打開控制台，或先設定控制台密碼。",
   bk_err_bad_request: "檔案或要求有問題，請重新選擇檔案再試一次。",
   bk_err_not_found: "找不到這個備份檔，可能已經刪掉了。請重新整理頁面再選一次。",
+  bk_encrypt: "備份檔加密",
+  bk_encrypt_h: "保護放到外接硬碟、雲端或網路資料夾的那份。",
+  bk_pw: "備份密碼",
+  bk_pw_h: "忘記密碼就打不開這些備份，Bageo 也救不回來。",
+  bk_exp_enc: "用密碼加密這個檔案",
+  bk_exp_pw: "密碼",
+  bk_exp_pw2: "再輸入一次",
+  bk_pw_mismatch: "兩次密碼不一樣。",
+  bk_unlock_t: "這個備份有加密，請輸入密碼。",
+  bk_unlock_btn: "解開",
+  bk_encrypted: "已加密",
+  bk_err_wrong_password: "密碼不對，請再試一次。",
+  bk_err_backup_password_short: "密碼至少要 8 個字元。",
+  err_backup_password_short: "備份密碼至少要 8 個字元。",
+  err_backup_password_missing: "開啟備份檔加密前，請先設定備份密碼。",
+  bk_st_exporting: "正在準備匯出檔…",
 };
 
 I18N["zh-CN"] = {
@@ -4992,6 +5043,22 @@ I18N["zh-CN"] = {
   bk_err_need_password: "要下载这个文件，请在运行 Bageo 的这台电脑上打开控制台，或先设置控制台密码。",
   bk_err_bad_request: "文件或请求有问题，请重新选择文件再试一次。",
   bk_err_not_found: "找不到这个备份文件，可能已经删除了。请刷新页面再选一次。",
+  bk_encrypt: "备份文件加密",
+  bk_encrypt_h: "保护放到移动硬盘、云端或网络文件夹的那份。",
+  bk_pw: "备份密码",
+  bk_pw_h: "忘记密码就打不开这些备份，Bageo 也救不回来。",
+  bk_exp_enc: "用密码加密这个文件",
+  bk_exp_pw: "密码",
+  bk_exp_pw2: "再输入一次",
+  bk_pw_mismatch: "两次密码不一样。",
+  bk_unlock_t: "这个备份有加密，请输入密码。",
+  bk_unlock_btn: "解开",
+  bk_encrypted: "已加密",
+  bk_err_wrong_password: "密码不对，请再试一次。",
+  bk_err_backup_password_short: "密码至少要 8 个字符。",
+  err_backup_password_short: "备份密码至少要 8 个字符。",
+  err_backup_password_missing: "打开备份文件加密之前，请先设置备份密码。",
+  bk_st_exporting: "正在准备导出文件…",
 };
 
 I18N["ja"] = {
@@ -6157,6 +6224,22 @@ I18N["ja"] = {
   bk_err_need_password: "ダウンロードするには、Bageo が動いているパソコンでコンソールを開くか、先にコンソールのパスワードを設定してください。",
   bk_err_bad_request: "ファイルか要求に問題があります。もう一度ファイルを選んでやり直してください。",
   bk_err_not_found: "そのバックアップファイルはもうありません。ページを再読み込みして選び直してください。",
+  bk_encrypt: "バックアップファイルを暗号化",
+  bk_encrypt_h: "外付けドライブ、クラウド、ネットワークフォルダーに置くバックアップを守ります。",
+  bk_pw: "バックアップのパスワード",
+  bk_pw_h: "パスワードを忘れると、これらのバックアップは開けず、Bageo でも元に戻せません。",
+  bk_exp_enc: "パスワードでこのファイルを暗号化",
+  bk_exp_pw: "パスワード",
+  bk_exp_pw2: "もう一度入力",
+  bk_pw_mismatch: "2 つのパスワードが一致しません。",
+  bk_unlock_t: "このバックアップは暗号化されています。パスワードを入力してください。",
+  bk_unlock_btn: "開く",
+  bk_encrypted: "暗号化済み",
+  bk_err_wrong_password: "パスワードが違います。もう一度お試しください。",
+  bk_err_backup_password_short: "パスワードは 8 文字以上にしてください。",
+  err_backup_password_short: "バックアップのパスワードは 8 文字以上にしてください。",
+  err_backup_password_missing: "暗号化をオンにする前に、バックアップのパスワードを設定してください。",
+  bk_st_exporting: "エクスポートするファイルを準備しています…",
 };
 
 I18N["ko"] = {
@@ -7322,6 +7405,22 @@ I18N["ko"] = {
   bk_err_need_password: "내려받으려면 Bageo가 실행 중인 컴퓨터에서 콘솔을 열거나, 먼저 콘솔 비밀번호를 설정하세요.",
   bk_err_bad_request: "파일이나 요청에 문제가 있습니다. 파일을 다시 골라 다시 시도하세요.",
   bk_err_not_found: "그 백업 파일이 더 이상 없습니다. 페이지를 새로 고친 뒤 다른 파일을 고르세요.",
+  bk_encrypt: "백업 파일 암호화",
+  bk_encrypt_h: "외장 드라이브, 클라우드, 네트워크 폴더에 두는 백업을 보호합니다.",
+  bk_pw: "백업 비밀번호",
+  bk_pw_h: "비밀번호를 잊으면 이 백업은 열 수 없고, Bageo도 되살릴 수 없습니다.",
+  bk_exp_enc: "비밀번호로 이 파일 암호화",
+  bk_exp_pw: "비밀번호",
+  bk_exp_pw2: "한 번 더 입력",
+  bk_pw_mismatch: "두 비밀번호가 다릅니다.",
+  bk_unlock_t: "이 백업은 암호화되어 있습니다. 비밀번호를 입력하세요.",
+  bk_unlock_btn: "열기",
+  bk_encrypted: "암호화됨",
+  bk_err_wrong_password: "비밀번호가 틀렸습니다. 다시 시도하세요.",
+  bk_err_backup_password_short: "비밀번호는 8자 이상이어야 합니다.",
+  err_backup_password_short: "백업 비밀번호는 8자 이상이어야 합니다.",
+  err_backup_password_missing: "암호화를 켜기 전에 백업 비밀번호를 설정하세요.",
+  bk_st_exporting: "내보낼 파일을 준비하는 중…",
 };
 
 I18N["es"] = {
@@ -8487,6 +8586,22 @@ I18N["es"] = {
   bk_err_need_password: "Para descargarlo, abre la consola en el ordenador donde funciona Bageo o pon antes una contraseña a la consola.",
   bk_err_bad_request: "Hay un problema con el archivo o la solicitud. Vuelve a elegir el archivo e inténtalo otra vez.",
   bk_err_not_found: "Ese archivo de copia ya no está. Recarga la página y elige otro.",
+  bk_encrypt: "Cifrar las copias de seguridad",
+  bk_encrypt_h: "Protege las copias que guardas en un disco externo, en la nube o en una carpeta de red.",
+  bk_pw: "Contraseña de las copias",
+  bk_pw_h: "Si olvidas la contraseña, no podrás abrir estas copias y Bageo tampoco podrá recuperarlas.",
+  bk_exp_enc: "Cifrar este archivo con una contraseña",
+  bk_exp_pw: "Contraseña",
+  bk_exp_pw2: "Escríbela otra vez",
+  bk_pw_mismatch: "Las dos contraseñas no coinciden.",
+  bk_unlock_t: "Esta copia está cifrada. Escribe su contraseña.",
+  bk_unlock_btn: "Abrir",
+  bk_encrypted: "Cifrada",
+  bk_err_wrong_password: "La contraseña no es correcta. Inténtalo otra vez.",
+  bk_err_backup_password_short: "La contraseña debe tener al menos 8 caracteres.",
+  err_backup_password_short: "La contraseña de las copias debe tener al menos 8 caracteres.",
+  err_backup_password_missing: "Pon una contraseña para las copias antes de activar el cifrado.",
+  bk_st_exporting: "Preparando el archivo para exportar…",
 };
 
 I18N["fr"] = {
@@ -9652,6 +9767,22 @@ I18N["fr"] = {
   bk_err_need_password: "Pour le télécharger, ouvrez la console sur l'ordinateur où tourne Bageo, ou définissez d'abord un mot de passe pour la console.",
   bk_err_bad_request: "Le fichier ou la demande pose problème. Choisissez à nouveau le fichier et réessayez.",
   bk_err_not_found: "Ce fichier de sauvegarde n'existe plus. Rechargez la page et choisissez-en un autre.",
+  bk_encrypt: "Chiffrer les fichiers de sauvegarde",
+  bk_encrypt_h: "Protège les copies gardées sur un disque externe, dans le cloud ou dans un dossier réseau.",
+  bk_pw: "Mot de passe des sauvegardes",
+  bk_pw_h: "Si vous oubliez le mot de passe, ces sauvegardes ne pourront plus être ouvertes, et Bageo ne pourra pas les récupérer.",
+  bk_exp_enc: "Chiffrer ce fichier avec un mot de passe",
+  bk_exp_pw: "Mot de passe",
+  bk_exp_pw2: "Saisissez-le à nouveau",
+  bk_pw_mismatch: "Les deux mots de passe ne sont pas identiques.",
+  bk_unlock_t: "Cette sauvegarde est chiffrée. Saisissez son mot de passe.",
+  bk_unlock_btn: "Ouvrir",
+  bk_encrypted: "Chiffrée",
+  bk_err_wrong_password: "Mot de passe incorrect. Réessayez.",
+  bk_err_backup_password_short: "Le mot de passe doit contenir au moins 8 caractères.",
+  err_backup_password_short: "Le mot de passe des sauvegardes doit contenir au moins 8 caractères.",
+  err_backup_password_missing: "Définissez un mot de passe pour les sauvegardes avant d'activer le chiffrement.",
+  bk_st_exporting: "Préparation du fichier à exporter…",
 };
 
 I18N["de"] = {
@@ -10817,6 +10948,22 @@ I18N["de"] = {
   bk_err_need_password: "Zum Herunterladen öffne die Konsole auf dem Computer, auf dem Bageo läuft, oder lege zuerst ein Konsolenpasswort fest.",
   bk_err_bad_request: "Mit der Datei oder der Anfrage stimmt etwas nicht. Wähle die Datei noch einmal aus und versuche es erneut.",
   bk_err_not_found: "Diese Sicherungsdatei gibt es nicht mehr. Lade die Seite neu und wähle eine andere.",
+  bk_encrypt: "Sicherungsdateien verschlüsseln",
+  bk_encrypt_h: "Schützt die Kopien auf einer externen Festplatte, in der Cloud oder in einem Netzwerkordner.",
+  bk_pw: "Passwort für Sicherungen",
+  bk_pw_h: "Wenn du das Passwort vergisst, lassen sich diese Sicherungen nicht mehr öffnen, und auch Bageo kann sie nicht retten.",
+  bk_exp_enc: "Diese Datei mit einem Passwort verschlüsseln",
+  bk_exp_pw: "Passwort",
+  bk_exp_pw2: "Noch einmal eingeben",
+  bk_pw_mismatch: "Die beiden Passwörter stimmen nicht überein.",
+  bk_unlock_t: "Diese Sicherung ist verschlüsselt. Gib ihr Passwort ein.",
+  bk_unlock_btn: "Öffnen",
+  bk_encrypted: "Verschlüsselt",
+  bk_err_wrong_password: "Falsches Passwort. Versuche es noch einmal.",
+  bk_err_backup_password_short: "Das Passwort braucht mindestens 8 Zeichen.",
+  err_backup_password_short: "Das Passwort für Sicherungen braucht mindestens 8 Zeichen.",
+  err_backup_password_missing: "Lege ein Passwort für Sicherungen fest, bevor du die Verschlüsselung einschaltest.",
+  bk_st_exporting: "Die Exportdatei wird vorbereitet…",
 };
 
 I18N["pt"] = {
@@ -11982,6 +12129,22 @@ I18N["pt"] = {
   bk_err_need_password: "Para baixar, abra o console no computador em que o Bageo roda ou defina antes uma senha para o console.",
   bk_err_bad_request: "Há um problema com o arquivo ou o pedido. Escolha o arquivo de novo e tente outra vez.",
   bk_err_not_found: "Esse arquivo de backup não existe mais. Recarregue a página e escolha outro.",
+  bk_encrypt: "Criptografar os arquivos de backup",
+  bk_encrypt_h: "Protege as cópias guardadas em um disco externo, na nuvem ou em uma pasta de rede.",
+  bk_pw: "Senha dos backups",
+  bk_pw_h: "Se você esquecer a senha, não será possível abrir esses backups, e o Bageo também não consegue recuperá-los.",
+  bk_exp_enc: "Criptografar este arquivo com uma senha",
+  bk_exp_pw: "Senha",
+  bk_exp_pw2: "Digite de novo",
+  bk_pw_mismatch: "As duas senhas não são iguais.",
+  bk_unlock_t: "Este backup está criptografado. Digite a senha dele.",
+  bk_unlock_btn: "Abrir",
+  bk_encrypted: "Criptografado",
+  bk_err_wrong_password: "Senha errada. Tente de novo.",
+  bk_err_backup_password_short: "A senha precisa ter pelo menos 8 caracteres.",
+  err_backup_password_short: "A senha dos backups precisa ter pelo menos 8 caracteres.",
+  err_backup_password_missing: "Defina uma senha para os backups antes de ativar a criptografia.",
+  bk_st_exporting: "Preparando o arquivo para exportar…",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word
@@ -14661,13 +14824,6 @@ function bkKind(k) {
   const key = "bk_kind_" + String(k || "");
   return bkHas(key) ? t(key) : String(k || "");
 }
-// Files that hold keys download only on this computer or with a console password.
-function bkKeysGuard(ev) {
-  if (bk && bk.can_download === false) {
-    ev.preventDefault();
-    toast(t("bk_err_need_password"), true);
-  }
-}
 function bkRender() {
   const d = bk;
   // Backing up and restoring show here; picking a file or what to restore does not.
@@ -14681,6 +14837,7 @@ function bkRender() {
   const lines = [];
   if (running) lines.push({ text: t("bk_st_running") });
   else if (restoring) lines.push({ text: t("bk_st_restoring") });
+  else if (bkPhase === "export") lines.push({ text: t("bk_st_exporting") });
   else if (d) {
     const last = d.last;
     if (!last) lines.push({ text: t("bk_st_none") });
@@ -14712,7 +14869,7 @@ function bkRender() {
     when.textContent = fmtFull(b.at);
     const meta = document.createElement("div");
     meta.className = "bk-meta";
-    meta.textContent = bkKind(b.kind) + " · " + bkSize(b.size);
+    meta.textContent = [bkKind(b.kind), bkSize(b.size)].concat(b.encrypted ? [t("bk_encrypted")] : []).join(" · ");
     who.append(when, meta);
     const acts = document.createElement("div");
     acts.className = "bk-acts";
@@ -14722,12 +14879,12 @@ function bkRender() {
     re.textContent = t("bk_btn_restore");
     re.dataset.bkRestore = b.name;
     re.disabled = busy;
-    const dl = document.createElement("a");
+    const dl = document.createElement("button");
+    dl.type = "button";
     dl.className = "btn sm";
     dl.textContent = t("bk_btn_download");
-    dl.href = withTok(apiBase + "/backup/file/" + encodeURIComponent(b.name));
-    dl.download = b.name;
-    dl.addEventListener("click", bkKeysGuard);
+    dl.dataset.bkDownload = b.name;
+    dl.disabled = busy;
     acts.append(re, dl);
     row.append(who, acts);
     return row;
@@ -14754,9 +14911,10 @@ async function bkLoad() {
   bkRender();
   if (bk && bk.running) bkTimer = setTimeout(() => { if (view === "settings") bkLoad(); }, 3000);
 }
-function bkDownload(path) {
+// A download through a one-time ticket: the link holds no password.
+function bkDownload(ticket) {
   const a = document.createElement("a");
-  a.href = withTok(apiBase + path);
+  a.href = apiBase + "/backup/download/" + encodeURIComponent(ticket);
   a.rel = "noopener";
   document.body.appendChild(a);
   a.click();
@@ -14787,12 +14945,28 @@ function bkTicks(host, rows, onChange) {
   }));
 }
 const bkTicked = (host) => Array.from(host.querySelectorAll("input:checked"), (b) => b.value);
-// The export choices: resolves the ticked item ids on "Export", null otherwise.
+// The export choices: resolves {items, password} on "Export", null otherwise.
 function bkExportAsk() {
   return new Promise((resolve) => {
     const d = $("bkExpDlg"), host = $("bkExpItems");
-    if (typeof d.showModal !== "function") { resolve(Array.from(BK_EXPORT_ON)); return; }
-    const sync = () => { $("bkExpOk").disabled = !bkTicked(host).length; };
+    if (typeof d.showModal !== "function") { resolve({ items: Array.from(BK_EXPORT_ON) }); return; }
+    const enc = $("bkExpEnc"), pw = $("bkExpPw"), pw2 = $("bkExpPw2"), err = $("bkExpPwErr");
+    enc.checked = false;
+    pw.value = "";
+    pw2.value = "";
+    const sync = () => {
+      $("bkExpPwBox").hidden = !enc.checked;
+      const a = pw.value.trim(), b = pw2.value.trim();
+      let why = "";
+      if (enc.checked && a && [...a].length < 8) why = t("bk_err_backup_password_short");
+      else if (enc.checked && b && a !== b) why = t("bk_pw_mismatch");
+      err.textContent = why;
+      err.hidden = !why;
+      const pwOk = !enc.checked || ([...a].length >= 8 && a === b);
+      $("bkExpOk").disabled = !bkTicked(host).length || !pwOk;
+    };
+    for (const el of [pw, pw2]) el.oninput = sync;
+    enc.onchange = () => { sync(); if (enc.checked) pw.focus(); };
     bkTicks(host, BK_ORDER.map((id) => ({
       id,
       label: bkName(id),
@@ -14801,7 +14975,13 @@ function bkExportAsk() {
     })), sync);
     sync();
     d.returnValue = "";
-    d.addEventListener("close", () => resolve(d.returnValue === "ok" ? bkTicked(host) : null), { once: true });
+    d.addEventListener("close", () => {
+      const items = bkTicked(host);
+      const password = enc.checked ? pw.value.trim() : "";
+      pw.value = "";
+      pw2.value = "";
+      resolve(d.returnValue === "ok" ? { items, password } : null);
+    }, { once: true });
     d.showModal();
   });
 }
@@ -14814,6 +14994,7 @@ function bkAsk(p) {
     if (p.app_version) parts.push(t("bk_dlg_ver", { ver: p.app_version }));
     if (!parts.length) parts.push(t("bk_dlg_file", { name: p.source_name || "" }));
     if (p.total_size) parts.push(t("bk_dlg_size", { size: bkSize(p.total_size) }));
+    if (p.encrypted) parts.push(t("bk_encrypted"));
     $("bkDlgMeta").textContent = parts.join(" · ");
     const rank = (id) => { const i = BK_ORDER.indexOf(id); return i < 0 ? BK_ORDER.length : i; };
     const has = (Array.isArray(p.items) ? p.items : []).slice().sort((a, b) => rank(a.id) - rank(b.id));
@@ -14847,10 +15028,85 @@ function bkAsk(p) {
     d.showModal();
   });
 }
+// An encrypted file: ask for its password in the restore dialog until it opens.
+// Resolves the opened preview, null when the dialog is closed; other errors are thrown.
+function bkUnlock(p) {
+  return new Promise((resolve, reject) => {
+    const d = $("bkDlg"), form = $("bkDlgForm"), pw = $("bkDlgPw"), err = $("bkDlgPwErr"), ok = $("bkDlgOk");
+    const parts = [$("bkDlgHas"), $("bkDlgItems"), $("bkDlgWarns")];
+    if (typeof d.showModal !== "function") {
+      const typed = window.prompt(t("bk_unlock_t"));
+      if (!typed) { resolve(null); return; }
+      api("/backup/unlock", jsonBody("POST", { token: p.token, password: typed })).then(resolve, reject);
+      return;
+    }
+    $("bkDlgMeta").textContent = t("bk_dlg_file", { name: p.source_name || "" }) + " · " + t("bk_encrypted");
+    $("bkDlgLock").hidden = false;
+    parts.forEach((e) => { e.hidden = true; });
+    ok.textContent = t("bk_unlock_btn");
+    ok.disabled = false;
+    pw.value = "";
+    err.hidden = true;
+    let busy = false, settled = false;
+    const done = (fn, v) => {
+      if (settled) return;
+      settled = true;
+      form.removeEventListener("submit", submit);
+      d.removeEventListener("close", closed);
+      pw.value = "";
+      $("bkDlgLock").hidden = true;
+      parts.forEach((e) => { e.hidden = false; });
+      ok.textContent = t("bk_dlg_ok");
+      // The dialog's "close" comes a moment later: only then is it free for the next step.
+      if (d.open) {
+        d.addEventListener("close", () => fn(v), { once: true });
+        d.close();
+      } else fn(v);
+    };
+    const submit = async (ev) => {
+      ev.preventDefault();
+      if (busy || !pw.value.trim()) { pw.focus(); return; }
+      busy = true;
+      ok.disabled = true;
+      err.hidden = true;
+      try {
+        done(resolve, await api("/backup/unlock", jsonBody("POST", { token: p.token, password: pw.value })));
+      } catch (e) {
+        const code = String(((e && e.data) || {}).code || "");
+        if (code === "wrong_password") {
+          err.textContent = t("bk_err_wrong_password");
+          err.hidden = false;
+          pw.select();
+        } else done(reject, e);
+      } finally {
+        busy = false;
+        ok.disabled = false;
+      }
+    };
+    const closed = () => done(resolve, null);
+    form.addEventListener("submit", submit);
+    d.addEventListener("close", closed);
+    d.returnValue = "";
+    d.showModal();
+    pw.focus();
+  });
+}
 // After the preview: ask, apply, then reload the settings (a changed password goes through the usual sign-in).
 async function bkFinish(p) {
+  if (p && p.needs_password) {
+    const opened = await bkUnlock(p);
+    if (!opened) {
+      api("/backup/discard", jsonBody("POST", { token: p.token })).catch(() => {});
+      return;
+    }
+    p = opened;
+  }
   const r = await bkAsk(p);
-  if (!r) return;
+  if (!r) {
+    // Closed without restoring: the preview and its upload can go now.
+    if (p && p.token) api("/backup/discard", jsonBody("POST", { token: p.token })).catch(() => {});
+    return;
+  }
   bkPhase = "apply";
   bkRender();
   const d = await api("/backup/apply", jsonBody("POST", { token: p.token, items: r.items }));
@@ -14879,10 +15135,15 @@ $("btnBkRun").addEventListener("click", () => bkGuard(async () => {
   toast(t("bk_done_run", { name: d.entry ? d.entry.name : "" }));
 }, "run"));
 $("btnBkExport").addEventListener("click", async () => {
-  const items = await bkExportAsk();
-  if (!items || !items.length) return;
-  if (items.includes("keys") && bk && bk.can_download === false) { toast(t("bk_err_need_password"), true); return; }
-  bkDownload("/backup/export?items=" + items.join(","));
+  const r = await bkExportAsk();
+  if (!r || !r.items.length) return;
+  if (r.items.includes("keys") && bk && bk.can_download === false) { toast(t("bk_err_need_password"), true); return; }
+  const body = { items: r.items };
+  if (r.password) body.password = r.password;
+  bkGuard(async () => {
+    const d = await api("/backup/export", jsonBody("POST", body));
+    bkDownload(d.ticket);
+  }, "export");
 });
 $("btnBkImport").addEventListener("click", () => { if (!bkBusy) $("bkFile").click(); });
 $("bkFile").addEventListener("change", () => {
@@ -14900,6 +15161,14 @@ $("bkFile").addEventListener("change", () => {
   });
 });
 $("bkList").addEventListener("click", (ev) => {
+  const g = ev.target.closest("[data-bk-download]");
+  if (g) {
+    if (bk && bk.can_download === false) { toast(t("bk_err_need_password"), true); return; }
+    api("/backup/file-ticket", jsonBody("POST", { name: g.dataset.bkDownload }))
+      .then((d) => bkDownload(d.ticket))
+      .catch((e) => { if (e.status !== 401) toast(bkErr(e), true); });
+    return;
+  }
   const b = ev.target.closest("[data-bk-restore]");
   if (!b) return;
   bkGuard(async () => {
@@ -14913,6 +15182,13 @@ $("btnBkOpen").addEventListener("click", async () => {
 });
 $("bkDlgCancel").addEventListener("click", () => $("bkDlg").close("cancel"));
 $("bkExpCancel").addEventListener("click", () => $("bkExpDlg").close("cancel"));
+// Encryption needs a password: say so as soon as it is turned on without one.
+$("f-backup_encrypt").addEventListener("change", (ev) => {
+  const pw = $("f-backup_password");
+  if (!ev.target.checked || (S && S.backup_password_set) || (pw && pw.value.trim())) return;
+  toast(t("err_backup_password_missing"), true);
+  if (pw) pw.focus();
+});
 
 // ----- prompt editor + interview helper
 $("btnPromptCopyIn").addEventListener("click", async () => {

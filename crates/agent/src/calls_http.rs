@@ -1277,8 +1277,9 @@ async fn settings_put(
     if !patch.is_object() {
         return api_error(StatusCode::BAD_REQUEST, "bad_request", "JSON object body required");
     }
-    // A backup folder this computer cannot write in is not saved.
-    if let Some(refused) = crate::backup::check_settings_patch(&patch) {
+    // A backup folder this computer cannot write in, or a backup password that
+    // does not work, is not saved.
+    if let Some(refused) = crate::backup::check_settings_patch(&patch, &state.settings_store.snapshot()) {
         return refused;
     }
     let days_before = state.settings_store.snapshot().retention_days;

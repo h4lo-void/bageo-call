@@ -30,6 +30,7 @@ mod adpcm;
 mod ambience;
 mod appointments;
 mod backup;
+mod backup_crypt;
 mod calendar;
 mod callback;
 mod calls;

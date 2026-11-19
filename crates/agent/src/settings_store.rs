@@ -401,6 +401,14 @@ pub struct RuntimeSettings {
     /// recordings, text messages and to-do items.
     #[serde(default)]
     pub backup_include_calls: bool,
+    /// Backups ("Back up now", automatic ones, the copy made before an import)
+    /// are encrypted with `backup_password` ([`crate::backup_crypt`]). Never
+    /// on without a password.
+    #[serde(default)]
+    pub backup_encrypt: bool,
+    /// The password backups are encrypted with (at least 8 characters).
+    #[serde(default)]
+    pub backup_password: String,
     /// Where calls, recordings and settings are kept (`CALLS_DATA_DIR`, from the
     /// env base). Not a setting: never shown or saved.
     #[serde(skip)]
@@ -716,7 +724,7 @@ fn write_overrides(path: &Path, ov: &Overrides) -> Result<()> {
 /// The credentials among the settings: one half of the backup item `keys`
 /// ([`crate::backup`]). Every field the settings page masks ([`SECRET_FIELDS`])
 /// and the old name of the summary key.
-pub const CREDENTIAL_FIELDS: [&str; 14] = [
+pub const CREDENTIAL_FIELDS: [&str; 15] = [
     "openrouter_api_key",
     "telegram_bot_token",
     "gmail_app_password",
@@ -731,6 +739,7 @@ pub const CREDENTIAL_FIELDS: [&str; 14] = [
     "gemini_api_key",
     "summary_api_key",
     "deepseek_api_key",
+    "backup_password",
 ];
 
 /// Where data goes and who may operate Bageo from outside: the other half of
@@ -738,8 +747,9 @@ pub const CREDENTIAL_FIELDS: [&str; 14] = [
 /// notification channels whole (where they send, who may give commands there),
 /// the Telegram chat and remote control, the notification gateway, the mail
 /// account, the services summaries and calls are sent to, the owner's number
-/// calls are forwarded to, and what AI tools may do over MCP.
-pub const CONNECTION_FIELDS: [&str; 23] = [
+/// calls are forwarded to and whether an urgent caller is dialled through to
+/// it, the numbers Bageo may call back, and what AI tools may do over MCP.
+pub const CONNECTION_FIELDS: [&str; 25] = [
     "notify_channels",
     "notify_gateway_url",
     "notify_gateway_tag",
@@ -759,6 +769,8 @@ pub const CONNECTION_FIELDS: [&str; 23] = [
     "trtc_ai_region",
     "trtc_bridge_url",
     "whitelist_forward_number",
+    "whitelist_urgent_call",
+    "callback_whitelist",
     "mcp_enabled",
     "mcp_calls",
     "mcp_errands_per_hour",
@@ -771,6 +783,15 @@ pub const CONNECTION_FIELDS: [&str; 23] = [
 /// from a backup; `ui_password_prompted` only says the password hint was shown;
 /// `spam_keywords` and `scam_review_without_keywords` are about words callers say.
 pub const KEY_LOOKALIKES: [&str; 4] = ["public_url", "ui_password_prompted", "spam_keywords", "scam_review_without_keywords"];
+
+/// Settings that make Bageo delete things on its own: how many days calls,
+/// recordings, texts, to-do items and AI calls are kept (`retention_days`; the
+/// older `sms_retention_days` is no setting any more) and how many automatic
+/// backups (`backup_keep`). A restore only keeps or lengthens them
+/// ([`SettingsStore::replace_from_backup`]): a shorter one would delete
+/// records at once, and the copy made before the restore does not hold them.
+/// Only the console shortens them.
+pub const RETENTION_FIELDS: [&str; 2] = ["retention_days", "backup_keep"];
 
 /// A setting of the backup item `keys` ([`CREDENTIAL_FIELDS`], [`CONNECTION_FIELDS`]).
 pub fn is_key_field(name: &str) -> bool {
@@ -818,21 +839,45 @@ pub fn has_settings(v: &Value) -> bool {
 
 /// The settings file a restore makes ([`crate::backup`]) from this computer's
 /// (`cur`) and the backup's (`inc`). `settings`: the backup's settings outside
-/// `keys` take the place of these, whole; else these stay. `keys`: each field
-/// of `keys` the backup has set replaces this one; every other field of `keys`
-/// stays as it is here, so a restore never clears a key, a channel or who may
-/// give commands. Without `keys` the whole group stays as it is here.
+/// `keys` take the place of these, whole; else these stay. `keys`: the whole
+/// group `keys` is the backup's as it is there; a field the backup does not
+/// have goes back to its default here too, so putting back the copy made
+/// before a restore takes away every key, channel and remote control that
+/// restore brought. Without `keys` the whole group stays as it is here.
 pub fn combine_settings(cur: &Value, inc: &Value, settings: bool, keys: bool) -> Value {
     let mut out = settings_part(if settings { inc } else { cur });
     if let Some(m) = out.as_object_mut() {
+        let from = if keys { inc } else { cur };
         for f in key_fields() {
-            let from = if keys && inc.get(f).is_some_and(filled) { inc } else { cur };
             if let Some(x) = from.get(f) {
                 m.insert(f.to_string(), x.clone());
             }
         }
     }
     out
+}
+
+/// [`RETENTION_FIELDS`] of a restore (`out`) never shorter than this
+/// computer's (`now`: the settings in use): the backup's (`inc`) only when it
+/// is longer, else this computer's own setting (`cur`) stays, missing or not.
+fn never_shorter(out: &mut Map<String, Value>, inc: &Value, cur: &Value, now: &Value) {
+    for f in RETENTION_FIELDS {
+        let longer = match (inc.get(f).and_then(Value::as_u64), now.get(f).and_then(Value::as_u64)) {
+            (Some(new), Some(here)) => new > here,
+            _ => false,
+        };
+        if longer {
+            continue;
+        }
+        match cur.get(f) {
+            Some(v) => {
+                out.insert(f.to_string(), v.clone());
+            }
+            None => {
+                out.remove(f);
+            }
+        }
+    }
 }
 
 /// A notification channel as a destination: where it sends and who may give
@@ -864,8 +909,15 @@ pub struct SettingsPeek {
     pub has_settings: bool,
     /// Something of the item `keys` that is set.
     pub has_keys: bool,
-    /// Its console password, when it has one.
-    pub password: Option<String>,
+}
+
+/// What restoring the item `keys` of a settings file would change here.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct KeysChange {
+    /// The console password (set, another one, or none any more).
+    pub password: bool,
+    /// Where data goes or who may operate Bageo ([`CONNECTION_FIELDS`]).
+    pub connections: bool,
 }
 
 /// Read a settings file for the import preview. Err: not a settings file (not
@@ -880,7 +932,6 @@ pub fn peek_settings_text(text: &str) -> Result<SettingsPeek> {
     Ok(SettingsPeek {
         has_settings: has_settings(&v),
         has_keys: has_keys(&v),
-        password: ov.ui_password.map(|p| p.trim().to_string()).filter(|p| !p.is_empty()),
     })
 }
 
@@ -1062,6 +1113,8 @@ impl RuntimeSettings {
             backup_dir: String::new(),
             backup_keep: default_backup_keep(),
             backup_include_calls: false,
+            backup_encrypt: false,
+            backup_password: String::new(),
             calls_data_dir: base.calls_data_dir.clone(),
         }
     }
@@ -1492,6 +1545,17 @@ impl RuntimeSettings {
         if let Some(v) = ov.backup_include_calls {
             self.backup_include_calls = v;
         }
+        if let Some(v) = ov.backup_encrypt {
+            self.backup_encrypt = v;
+        }
+        if let Some(v) = &ov.backup_password {
+            self.backup_password = v.trim().to_string();
+        }
+        // Encryption needs a password: a settings file with one and not the
+        // other (a restore without the keys) backs up as before.
+        if self.backup_password.is_empty() {
+            self.backup_encrypt = false;
+        }
         self.backup_schedule = sanitize_backup_schedule(&self.backup_schedule);
         self.backup_dir = sanitize_backup_dir(&self.backup_dir);
         self.backup_keep = self.backup_keep.clamp(1, 100);
@@ -1899,6 +1963,10 @@ struct Overrides {
     backup_keep: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     backup_include_calls: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    backup_encrypt: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    backup_password: Option<String>,
 }
 
 struct StoreState {
@@ -2047,9 +2115,9 @@ impl SettingsStore {
 
     /// A restore of the backup items `settings` and / or `keys` ([`combine_settings`]):
     /// `text` is the backup's settings.json. What belongs to this computer
-    /// stays: `public_url` and `backup_dir`, never taken from a file. Read the
-    /// way [`Self::load`] reads a file (the same changes for older versions),
-    /// saved, then swapped in.
+    /// stays: `public_url` and `backup_dir`, never taken from a file. The
+    /// [`RETENTION_FIELDS`] only keep or lengthen. Read the way [`Self::load`]
+    /// reads a file (the same changes for older versions), saved, then swapped in.
     pub fn replace_from_backup(&self, text: &str, settings: bool, keys: bool) -> Result<Arc<RuntimeSettings>> {
         let inc: Value = serde_json::from_str(text).context("not a settings file")?;
         if !inc.is_object() {
@@ -2057,9 +2125,11 @@ impl SettingsStore {
         }
         let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
         let cur = serde_json::to_value(&st.overrides)?;
+        let now = serde_json::to_value(&*st.current)?;
         let mut merged = combine_settings(&cur, &inc, settings, keys);
         if let Some(m) = merged.as_object_mut() {
             keep_this_computers(m, &cur);
+            never_shorter(m, &inc, &cur, &now);
             if m.get("ui_password").is_some_and(filled) {
                 m.insert("ui_password_prompted".into(), json!(true));
             }
@@ -2096,30 +2166,35 @@ impl SettingsStore {
         Ok(st.current.clone())
     }
 
-    /// Restoring the item `keys` of the settings file `text` would change where
-    /// data goes or who may operate Bageo: a value of [`CONNECTION_FIELDS`]
-    /// would differ from now (a channel's id and tokens do not count).
-    pub fn connections_change(&self, text: &str) -> bool {
+    /// What restoring the item `keys` of the settings file `text` would change:
+    /// the console password, and where data goes or who may operate Bageo (a
+    /// value of [`CONNECTION_FIELDS`]; a channel's id and tokens do not count).
+    /// The group comes from the file whole ([`combine_settings`]), so one the
+    /// file does not have that is set here counts as a change too.
+    pub fn keys_change(&self, text: &str) -> KeysChange {
         let Ok(inc) = serde_json::from_str::<Value>(text) else {
-            return false;
+            return KeysChange::default();
         };
         let (cur, now) = {
             let st = self.state.read().unwrap_or_else(|e| e.into_inner());
             (serde_json::to_value(&st.overrides), st.current.clone())
         };
         let Ok(cur) = cur else {
-            return false;
+            return KeysChange::default();
         };
         let merged = combine_settings(&cur, &inc, false, true);
         let Ok((ov, _)) = read_overrides(&merged.to_string()) else {
-            return false;
+            return KeysChange::default();
         };
         let mut after = RuntimeSettings::from_base(&self.base);
         after.apply(&ov);
         let (Ok(a), Ok(b)) = (serde_json::to_value(&*now), serde_json::to_value(&after)) else {
-            return false;
+            return KeysChange::default();
         };
-        CONNECTION_FIELDS.iter().any(|f| destination(f, a.get(*f)) != destination(f, b.get(*f)))
+        KeysChange {
+            password: now.ui_password.trim() != after.ui_password.trim(),
+            connections: CONNECTION_FIELDS.iter().any(|f| destination(f, a.get(*f)) != destination(f, b.get(*f))),
+        }
     }
 
     fn apply_patch_locked(&self, st: &mut StoreState, patch: &Value) -> Result<Arc<RuntimeSettings>> {
@@ -2224,7 +2299,7 @@ fn set_active_ui_password(pw: &str) {
         .unwrap_or_else(|e| e.into_inner()) = pw.trim().to_string();
 }
 
-const SECRET_FIELDS: [&str; 13] = [
+const SECRET_FIELDS: [&str; 14] = [
     "openrouter_api_key",
     "telegram_bot_token",
     "gmail_app_password",
@@ -2238,6 +2313,7 @@ const SECRET_FIELDS: [&str; 13] = [
     "trtc_tts_config",
     "gemini_api_key",
     "summary_api_key",
+    "backup_password",
 ];
 
 fn masked(rt: &RuntimeSettings) -> Value {
@@ -2703,6 +2779,8 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
         ov.backup_keep = Some(v.clamp(1, 100));
     }
     p_bool(patch, "backup_include_calls", &mut ov.backup_include_calls);
+    p_bool(patch, "backup_encrypt", &mut ov.backup_encrypt);
+    p_secret(patch, "backup_password", &mut ov.backup_password);
 }
 
 fn split_list(spec: &str) -> Vec<String> {
