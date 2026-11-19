@@ -5,7 +5,7 @@
 
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
-use axum::http::{header, HeaderMap, StatusCode};
+use axum::http::{header, Extensions, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -2741,6 +2741,69 @@ fn phone_pairing_renew_with(
     }
 }
 
+/// `POST /api/phone-pairing/code`, "Get a pairing code": a 6-digit code for
+/// pairing a phone by IP address ([`crate::phone_wifi::PairCodes`]); a new one
+/// replaces the one before. With it, the agent's LAN address for the console to
+/// offer when it was opened as `localhost` or `bageo.local` (none in a container).
+async fn phone_pairing_code(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+    ext: Extensions,
+) -> Response {
+    let on = state.settings_store.snapshot().phone_wifi;
+    let here = crate::lan::from_this_computer(&ext, &headers);
+    phone_pairing_code_with(&state.settings, &headers, &query, on, here, crate::phone_wifi::codes())
+}
+
+/// `from_here`: the request comes from the computer Bageo runs on. Without a
+/// console password only that computer may get a code (a code is a way to the
+/// pairing key, so the open console of a container must not hand it to anyone
+/// on the network).
+fn phone_pairing_code_with(
+    settings: &Settings,
+    headers: &HeaderMap,
+    query: &TokenQuery,
+    phone_wifi_on: bool,
+    from_here: bool,
+    codes: &crate::phone_wifi::PairCodes,
+) -> Response {
+    if !token_ok(settings, headers, query) {
+        return unauthorized();
+    }
+    if !is_json_request(headers) {
+        return json_required();
+    }
+    let has_password = !crate::settings_store::active_ui_token(&settings.calls_ui_token).trim().is_empty();
+    if !has_password && !from_here {
+        return api_error(
+            StatusCode::FORBIDDEN,
+            "need_password",
+            "set a console password first to get a pairing code from another device",
+        );
+    }
+    if !phone_wifi_on {
+        return api_error(StatusCode::CONFLICT, "phone_wifi_off", "phones over Wi-Fi are turned off");
+    }
+    let code = codes.issue(std::time::Instant::now());
+    let in_container = crate::settings_store::in_container();
+    let lan_ips: Vec<String> = if in_container {
+        Vec::new()
+    } else {
+        crate::mdns::lan_ipv4().map(|ip| ip.to_string()).into_iter().collect()
+    };
+    info!("phone pairing: a pairing code was made (good for 10 minutes)");
+    Json(json!({
+        "ok": true,
+        "code": code,
+        "expires_in": crate::phone_wifi::CODE_TTL.as_secs(),
+        "port": settings.port,
+        "lan_ips": lan_ips,
+        "in_container": in_container,
+    }))
+    .into_response()
+}
+
 /// `DELETE /api/devices/{serial}`: forget an offline phone from `PhoneDevices`,
 /// `notify` labels, `phone_sims.json`, and `settings.json` (`device_labels`),
 /// keeping past call records intact. Connected or busy phones are refused.
@@ -5184,6 +5247,54 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    #[tokio::test]
+    async fn a_pairing_code_needs_the_password_and_json() {
+        let root = std::env::temp_dir().join(format!("bageo-pcode-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let state = quick_state(&root);
+        let base = spawn_router(state.clone()).await;
+        let client = reqwest::Client::new();
+        // Through the route: no Content-Type: application/json is refused (CSRF).
+        let no_json = client.post(format!("{base}/api/phone-pairing/code")).send().await.unwrap();
+        assert_eq!(no_json.status().as_u16(), 400);
+
+        let codes = crate::phone_wifi::PairCodes::new();
+        let mut json_headers = HeaderMap::new();
+        json_headers.insert(header::CONTENT_TYPE, header::HeaderValue::from_static("application/json"));
+        let mut locked = state.settings.clone();
+        locked.calls_ui_token = "pair-code-pw".into();
+        let none = TokenQuery { token: None };
+        let res = phone_pairing_code_with(&locked, &json_headers, &none, true, false, &codes);
+        assert_eq!(res.status().as_u16(), 401, "not signed in");
+        let wrong = TokenQuery { token: Some("nope".into()) };
+        assert_eq!(phone_pairing_code_with(&locked, &json_headers, &wrong, true, false, &codes).status().as_u16(), 401);
+        let right = TokenQuery { token: Some("pair-code-pw".into()) };
+        assert_eq!(phone_pairing_code_with(&locked, &HeaderMap::new(), &right, true, false, &codes).status().as_u16(), 400, "no JSON header");
+        let off = phone_pairing_code_with(&locked, &json_headers, &right, false, false, &codes);
+        assert_eq!(off.status().as_u16(), 409, "phones over Wi-Fi turned off");
+
+        // No console password: only the computer Bageo runs on gets a code.
+        let mut open = state.settings.clone();
+        open.calls_ui_token = String::new();
+        let other = phone_pairing_code_with(&open, &json_headers, &none, true, false, &codes);
+        assert_eq!(other.status().as_u16(), 403, "another device, no password");
+        let body: Value = serde_json::from_slice(&axum::body::to_bytes(other.into_body(), 4096).await.unwrap()).unwrap();
+        assert_eq!(body["code"], "need_password");
+        assert_eq!(phone_pairing_code_with(&open, &json_headers, &none, true, true, &codes).status().as_u16(), 200, "this computer, no password");
+
+        // With a password, another device that signed in gets one.
+        let res = phone_pairing_code_with(&locked, &json_headers, &right, true, false, &codes);
+        assert_eq!(res.status().as_u16(), 200);
+        let body: Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), 4096).await.unwrap()).unwrap();
+        let code = body["code"].as_str().unwrap().to_string();
+        assert_eq!(code.len(), 6);
+        assert_eq!(body["expires_in"], 600);
+        assert!(body["lan_ips"].is_array());
+        assert_eq!(codes.claim(&code, std::time::Instant::now()), Ok(()), "the code it showed works");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 pub fn router(state: CallsState) -> Router {
@@ -5227,6 +5338,7 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/devices/{serial}/mode", post(device_mode))
         .route("/api/devices/{serial}/sim-number", axum::routing::put(device_sim_number))
         .route("/api/phone-pairing/renew", post(phone_pairing_renew))
+        .route("/api/phone-pairing/code", post(phone_pairing_code))
         .route("/api/tasks", get(tasks_list))
         .route("/api/tasks/{id}/confirm", post(tasks_confirm))
         .route("/api/tasks/{id}/ignore", post(tasks_ignore))

@@ -9,6 +9,7 @@ import android.app.ActivityManager
 import android.app.AlertDialog
 import android.app.NotificationManager
 import android.app.role.RoleManager
+import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -21,10 +22,13 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.telephony.TelephonyManager
+import android.text.InputFilter
+import android.text.InputType
 import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.Switch
 import android.widget.TextView
 import androidx.core.app.ActivityCompat
@@ -108,6 +112,9 @@ class MainActivity : Activity() {
     private var modeErrorCode: String? = null
     /** With a Do Not Disturb error: the phone's mode that kept it on (may be empty). */
     private var modeErrorDndMode: String = ""
+
+    /** The status card's button: what it does ([StatusLine.action]). */
+    private var statusAction: Int = 0
 
     private enum class CheckState { OK, MISSING, CHECK }
 
@@ -207,7 +214,11 @@ class MainActivity : Activity() {
             confirmModeSwitch(if (isChecked) Prefs.PHONE_MODE_AI else Prefs.PHONE_MODE_NORMAL)
         }
         btnStatusAction.setOnClickListener {
-            if (ensurePerms()) armService(CallAudioService.ACTION_START)
+            if (statusAction == R.string.ip_connect_btn) {
+                showIpConnect()
+            } else if (ensurePerms()) {
+                armService(CallAudioService.ACTION_START)
+            }
         }
         btnConsole.setOnClickListener { openConsole() }
         stepsHeader.setOnClickListener {
@@ -244,6 +255,7 @@ class MainActivity : Activity() {
         }
         btnTest.setOnClickListener { testConnection() }
         btnForgetWifi.setOnClickListener { forgetWifi() }
+        findViewById<Button>(R.id.btnIpConnect).setOnClickListener { showIpConnect() }
         testDetailToggle.setOnClickListener {
             val show = testDetail.visibility != View.VISIBLE
             testDetail.visibility = if (show) View.VISIBLE else View.GONE
@@ -492,10 +504,13 @@ class MainActivity : Activity() {
         false
     }
 
-    /** Drops the Wi-Fi addresses the agent gave this phone; USB has to give them again. */
+    /**
+     * Drops the Wi-Fi addresses the agent gave this phone and the address paired by IP;
+     * USB (or a new pairing code) has to give them again.
+     */
     private fun forgetWifi() {
         val connectedUrl = AgentControlClient.connectedUrl()
-        Prefs.clearWifiUrls(this)
+        Prefs.forgetNetworkPairing(this)
         // Connected over Wi-Fi right now: reconnect so calls use an address that still exists.
         if (connectedUrl != null && connectedUrl !in Prefs.connectionCandidates(this) &&
             isServiceRunning() && isPhoneIdle()
@@ -535,6 +550,129 @@ class MainActivity : Activity() {
             }
         }
         showUrlMessage(getString(message), CheckState.OK)
+    }
+
+    /**
+     * "Connect by IP address": Bageo's address and the pairing code made in the web
+     * console. The code is traded for the pairing key off the main thread; on success the
+     * phone keeps that address ([Prefs.setIpUrl]) and connects to it now and after restarts.
+     */
+    private fun showIpConnect() {
+        val pad = (20 * resources.displayMetrics.density).toInt()
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad / 2, pad, 0)
+        }
+        val addrField = EditText(this).apply {
+            id = View.generateViewId()
+            setHint(R.string.ip_addr_hint)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI or
+                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+            Prefs.ipUrl(this@MainActivity)?.let(ConnectionPlan::hostPort)?.let { (host, port) ->
+                // URI.getHost() keeps the brackets of an IPv6 address.
+                val bare = host.removePrefix("[").removeSuffix("]")
+                setText(if (bare.contains(':')) "[$bare]:$port" else "$bare:$port")
+            }
+        }
+        val codeField = EditText(this).apply {
+            id = View.generateViewId()
+            setHint(R.string.ip_code_hint)
+            inputType = InputType.TYPE_CLASS_NUMBER
+            filters = arrayOf<InputFilter>(InputFilter.LengthFilter(6))
+            setSingleLine(true)
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+        }
+        val addrLabel = TextView(this).apply {
+            setText(R.string.ip_addr_label)
+            labelFor = addrField.id
+        }
+        val codeLabel = TextView(this).apply {
+            setText(R.string.ip_code_label)
+            labelFor = codeField.id
+            setPadding(0, pad / 2, 0, 0)
+        }
+        val message = TextView(this).apply {
+            visibility = View.GONE
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+            setPadding(0, pad / 2, 0, 0)
+        }
+        listOf(addrLabel, addrField, codeLabel, codeField, message).forEach { box.addView(it) }
+        fun say(text: Int, state: CheckState?) {
+            message.setText(text)
+            if (state != null) message.setTextColor(stateColor(state))
+            message.visibility = View.VISIBLE
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.ip_connect_btn)
+            .setView(box)
+            .setPositiveButton(R.string.ip_connect, null)
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+        dialog.setOnShowListener {
+            val ok = dialog.getButton(DialogInterface.BUTTON_POSITIVE)
+            ok.setOnClickListener {
+                val address = IpPairing.parseAddress(addrField.text.toString())
+                if (address == null) {
+                    say(R.string.ip_err_address, CheckState.MISSING)
+                    return@setOnClickListener
+                }
+                val code = IpPairing.normalizeCode(codeField.text.toString())
+                if (code == null) {
+                    say(R.string.ip_err_code_format, CheckState.MISSING)
+                    return@setOnClickListener
+                }
+                ok.isEnabled = false
+                say(R.string.ip_connecting, CheckState.CHECK)
+                Thread({
+                    val outcome = IpPairing.claim(address, code)
+                    if (outcome is IpPairing.Outcome.Paired) {
+                        Prefs.setIpUrl(this, outcome.wsUrl)
+                        // An address typed under Advanced would be used instead of this one.
+                        Prefs.setAgentUrl(this, null)
+                    }
+                    runOnUiThread {
+                        if (isDestroyed) return@runOnUiThread
+                        ok.isEnabled = true
+                        when (outcome) {
+                            is IpPairing.Outcome.Paired -> {
+                                dialog.dismiss()
+                                ipPairingDone()
+                            }
+                            is IpPairing.Outcome.Failed -> say(
+                                when (outcome.failure) {
+                                    IpPairing.Failure.UNREACHABLE -> R.string.ip_err_unreachable
+                                    IpPairing.Failure.BAD_CODE -> R.string.ip_err_code
+                                    IpPairing.Failure.TOO_MANY -> R.string.ip_err_busy
+                                    IpPairing.Failure.WIFI_OFF -> R.string.ip_err_wifi_off
+                                },
+                                CheckState.MISSING,
+                            )
+                        }
+                    }
+                }, "ip-pairing").start()
+            }
+        }
+        dialog.show()
+    }
+
+    /** Paired by IP address: (re)start the connection so it uses the new address now. */
+    private fun ipPairingDone() {
+        agentUrlField.setText(Prefs.agentUrl(this))
+        if (isServiceRunning()) {
+            if (isPhoneIdle()) {
+                startService(
+                    Intent(this, CallAudioService::class.java).setAction(CallAudioService.ACTION_STOP),
+                )
+                startCallService(CallAudioService.ACTION_START)
+            }
+        } else if (hasRequiredPerms()) {
+            startCallService(CallAudioService.ACTION_START)
+        }
+        showStatus(getString(R.string.ip_connected))
+        refresh()
+        refreshSoon()
     }
 
     /** Opens a WebSocket to the address in the field, reports the result, sends nothing. */
@@ -663,6 +801,7 @@ class MainActivity : Activity() {
                 CheckState.MISSING,
                 getString(R.string.st_offline),
                 getString(R.string.st_offline_d),
+                R.string.ip_connect_btn,
             )
             else -> StatusLine(CheckState.OK, getString(R.string.st_ai_on), getString(R.string.st_ai_on_d))
         }
@@ -671,6 +810,7 @@ class MainActivity : Activity() {
         statusDetail.text = line.detail
         // Upgraded from a version whose "AI answering" switch was off: it now answers.
         legacyHint.visibility = if (ai && !switching && Prefs.legacyAiSwitchOff(this)) View.VISIBLE else View.GONE
+        statusAction = line.action
         if (line.action != 0) {
             btnStatusAction.setText(line.action)
             btnStatusAction.visibility = View.VISIBLE
@@ -700,7 +840,7 @@ class MainActivity : Activity() {
         val text = when {
             manual -> getString(R.string.route_custom)
             url == BuildConfig.BRIDGE_WS_URL -> getString(R.string.route_usb) + " " +
-                getString(if (Prefs.wifiUrls(this).isNotEmpty()) R.string.wifi_ready else R.string.wifi_not_ready)
+                getString(if (Prefs.hasNetworkPairing(this)) R.string.wifi_ready else R.string.wifi_not_ready)
             else -> getString(R.string.route_wifi)
         }
         connRoute.text = text
@@ -722,7 +862,7 @@ class MainActivity : Activity() {
             ?.isNotificationPolicyAccessGranted == true
         val battery = getSystemService(PowerManager::class.java)
             ?.isIgnoringBatteryOptimizations(packageName) == true
-        val paired = Prefs.wifiUrls(this).isNotEmpty() || AgentControlClient.isAgentConnected()
+        val paired = Prefs.hasNetworkPairing(this) || AgentControlClient.isAgentConnected()
 
         row(R.id.stepModule).bind(
             state = stepState(module),
@@ -765,8 +905,13 @@ class MainActivity : Activity() {
         row(R.id.stepPair).bind(
             state = stepState(paired),
             title = getString(R.string.step_pair_title),
-            detail = getString(if (paired) R.string.step_pair_ok else R.string.step_pair_missing),
-        )
+            detail = if (paired) {
+                getString(R.string.step_pair_ok)
+            } else {
+                getString(R.string.step_pair_missing) + "\n" + getString(R.string.step_pair_ip)
+            },
+            actionLabel = if (paired) 0 else R.string.ip_connect_btn,
+        ) { showIpConnect() }
 
         val steps = listOf(module, perms, dialer, screening, dnd, battery, paired)
         val done = steps.count { it }
@@ -783,7 +928,7 @@ class MainActivity : Activity() {
         serviceStatus.setText(
             if (isServiceRunning()) R.string.service_running else R.string.service_stopped,
         )
-        val paired = Prefs.wifiUrls(this).isNotEmpty()
+        val paired = Prefs.hasNetworkPairing(this)
         wifiState.text = getString(if (paired) R.string.wifi_ready else R.string.wifi_not_ready)
         wifiState.visibility = if (Prefs.isManualAgentUrl(this)) View.GONE else View.VISIBLE
         btnForgetWifi.visibility = if (paired) View.VISIBLE else View.GONE

@@ -68,7 +68,11 @@ docker compose up -d --build
 容器裡的 Bageo 對區網開放，所以 `.env` 裡這兩個值一定要設：`CALLS_UI_TOKEN`（控制台密碼）和 `DEVICE_TOKEN`（手機連線用）。
 
 - 控制台在 `http://<主機>:8787/`，打開時輸入 `CALLS_UI_TOKEN` 的值。
-- 手機走 Wi-Fi，連到 `ws://<主機>:8787/ws?token=<DEVICE_TOKEN>`（見[手機設定 → Wi-Fi](PHONE.md#wi-fi)）。
+- 手機用 IP 位址連線，不用插 USB：
+  1. 控制台打開「系統」頁，在「**用 IP 位址配對手機**」按「**產生配對碼**」。
+  2. 手機的 Bageo App 點「**用 IP 位址連線**」，輸入 Docker 主機的 IP（例如 `192.168.1.20`）和配對碼。配對碼 10 分鐘內有效。
+
+  手機和控制台用同一個埠，所以只要開 8787。主機上的埠換成別的號碼也可以（例如 `9000:8787`），手機輸入的位址就填你對外開的那個埠（`192.168.1.20:9000`）。手機和 Docker 主機要在同一個網路。詳見[手機設定 → Wi-Fi](PHONE.md#wi-fi)。手動填 `ws://<主機>:8787/ws?token=<DEVICE_TOKEN>` 也照樣能用。
 - 在 `.env` 設 `PUBLIC_URL`（例如 `http://192.168.1.20:8787`），通知裡的連結才打得開。容器裡不能用 `bageo.local`。
 - 時區設定寫在 `docker-compose.yml` 的註解裡。
 

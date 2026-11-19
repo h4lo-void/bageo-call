@@ -116,8 +116,19 @@ the phone's connection).
 
 - The console is at `http://<host>:8787/`; type the `CALLS_UI_TOKEN` value
   when it asks for the password.
-- Phones connect over Wi-Fi to `ws://<host>:8787/ws?token=<DEVICE_TOKEN>` (see
-  [Phone setup → Wi-Fi](PHONE.md#wi-fi)).
+- Connect the phone by IP address, no USB needed:
+  1. In the console open *System* and, under **Pair a phone by IP address**,
+     click **Get a pairing code**.
+  2. In the Bageo app on the phone tap **Connect by IP address** and enter the
+     Docker host's IP (for example `192.168.1.20`) and the code. The code
+     works for 10 minutes.
+
+  The phone uses the same port as the console, so only port 8787 has to be
+  open. The host port can be another number (for example `9000:8787`): then
+  type the address with that port (`192.168.1.20:9000`). The phone and the
+  Docker host must be on the same network. More in
+  [Phone setup → Wi-Fi](PHONE.md#wi-fi). Connecting to
+  `ws://<host>:8787/ws?token=<DEVICE_TOKEN>` by hand still works too.
 - Set `PUBLIC_URL` in `.env` (for example `http://192.168.1.20:8787`) so the
   links in notifications open. `bageo.local` does not work inside a container.
 - The comments in `docker-compose.yml` cover the time zone.

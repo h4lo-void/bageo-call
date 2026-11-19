@@ -194,7 +194,9 @@ pub fn gate(f: &Facts) -> Gate {
         | "/calls/icon-512.png"
         | "/calls/apple-touch-icon.png"
         | "/calls/api/quick-action"
-        | "/mcp" => return Gate::Pass,
+        | "/mcp"
+        // A phone trades a pairing code for its key; the code is the proof.
+        | "/api/phone-pairing/claim" => return Gate::Pass,
         "/calls/api/control/inbound" if f.mcp_token_set => return Gate::Pass,
         _ => {}
     }
@@ -758,6 +760,7 @@ mod tests {
             "/calls/icon-192.png",
             "/calls/api/quick-action",
             "/mcp",
+            "/api/phone-pairing/claim",
         ] {
             assert_eq!(gate(&outside(path)), Gate::Pass, "{path}");
         }

@@ -1663,6 +1663,8 @@ fn build_app(state: AppState, calls_state: CallsState, remote: Arc<control::Cont
         .route("/v1/turn", post(turn))
         .route("/v1/transfer", get(transfer_smoke).post(transfer_smoke))
         .route("/ws", get(ws_upgrade))
+        // A phone trades the console's pairing code for the pairing key (no sign-in).
+        .route(PAIRING_CLAIM_PATH, post(phone_pairing_claim))
         // MCP tool interface (crate::mcp): off and silent until enabled with a token.
         .merge(mcp::router(remote))
         .nest_service("/calls", calls_router(calls_state))
@@ -1899,6 +1901,74 @@ async fn wifi_entry_ws(
     ws.on_upgrade(move |socket| handle_ws(socket, state, link))
 }
 
+/// Where a phone trades a pairing code for the pairing key.
+const PAIRING_CLAIM_PATH: &str = "/api/phone-pairing/claim";
+
+/// `POST /api/phone-pairing/claim` `{"code": "123456", "name": "..."}`: a phone
+/// paired by IP address. The code the console made ([`phone_wifi::PairCodes`])
+/// gives the pairing key once; the phone then opens `/ws?token=<key>` on the
+/// address it typed. No sign-in: the code is the proof. On the main port and
+/// on the Wi-Fi entry.
+async fn phone_pairing_claim(
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
+) -> axum::response::Response {
+    let on = state.settings_store.snapshot().phone_wifi;
+    let res = claim_answer(on, &headers, &body, phone_wifi::codes(), phone_wifi::pairing(), phone_wifi::entry_port());
+    if res.status().is_success() {
+        info!("phone pairing: a phone at {} paired with a pairing code", peer.ip());
+    } else {
+        warn!("phone pairing: refused a pairing code from {} ({})", peer.ip(), res.status().as_u16());
+    }
+    res
+}
+
+/// [`phone_pairing_claim`]'s answer. Errors carry a `code`: `bad_request` (no
+/// JSON or no code), `phone_wifi_off`, `no_code` (none in use: expired, used
+/// or voided), `wrong_code`, `too_many_tries`.
+fn claim_answer(
+    phone_wifi_on: bool,
+    headers: &axum::http::HeaderMap,
+    body: &[u8],
+    codes: &phone_wifi::PairCodes,
+    pairing: &phone_wifi::Pairing,
+    entry_port: Option<u16>,
+) -> axum::response::Response {
+    let json_type = headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.split(';').next().unwrap_or("").trim().eq_ignore_ascii_case("application/json"));
+    let code = serde_json::from_slice::<Value>(body)
+        .ok()
+        .and_then(|v| v.get("code").and_then(Value::as_str).map(|c| c.trim().to_string()))
+        .filter(|c| !c.is_empty());
+    let Some(code) = code.filter(|_| json_type) else {
+        return calls_http::api_error(StatusCode::BAD_REQUEST, "bad_request", "send JSON with the pairing code: {\"code\": \"123456\"}");
+    };
+    if !phone_wifi_on {
+        return calls_http::api_error(StatusCode::CONFLICT, "phone_wifi_off", "phones over Wi-Fi are turned off");
+    }
+    match codes.claim(&code, std::time::Instant::now()) {
+        Ok(()) => {
+            let mut body = json!({"ok": true, "token": pairing.key(), "path": "/ws"});
+            if let Some(port) = entry_port {
+                body["ws_port"] = json!(port);
+            }
+            Json(body).into_response()
+        }
+        Err(e) => {
+            let (status, words) = match e {
+                phone_wifi::ClaimError::TooMany => (StatusCode::TOO_MANY_REQUESTS, "too many wrong pairing codes; try again in a minute"),
+                phone_wifi::ClaimError::NoCode => (StatusCode::FORBIDDEN, "no pairing code in use; make a new one in the console"),
+                phone_wifi::ClaimError::Wrong => (StatusCode::FORBIDDEN, "wrong pairing code"),
+            };
+            calls_http::api_error(status, e.code(), words)
+        }
+    }
+}
+
 /// Phone Wi-Fi (setting `phone_wifi`, re-read every 2 s): while the agent
 /// listens on this computer only, a second listener on all addresses at
 /// `PHONE_WIFI_PORT` that serves only `/ws` ([`wifi_entry_gate`]). Turning the
@@ -1933,7 +2003,9 @@ fn spawn_phone_wifi(state: AppState, main_addr: SocketAddr) {
                         let app = wifi_entry_gate(
                             Router::new().route("/ws", get(wifi_entry_ws)).with_state(state.clone()),
                             state.settings.device_token.clone(),
-                        );
+                        )
+                        // Pairing codes need no key (they are how a phone gets one).
+                        .merge(Router::new().route(PAIRING_CLAIM_PATH, post(phone_pairing_claim)).with_state(state.clone()));
                         let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
                         let task = tokio::spawn(async move {
                             let served = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
@@ -13698,6 +13770,56 @@ mod access_and_whitelist_tests {
         });
         let no_device_token = http.get(format!("http://{addr}/ws")).send().await.unwrap().status().as_u16();
         assert_eq!(no_device_token, 401, "no DEVICE_TOKEN set is no way in");
+    }
+
+    /// Pairing by IP address: the code gives the pairing key once, and that
+    /// key opens the phone entry (the Wi-Fi entry's gate, as on the main port).
+    #[tokio::test]
+    async fn a_pairing_code_gives_the_key_that_opens_the_phone_entry() {
+        let dir = std::env::temp_dir().join(format!("bageo-claim-{}", uuid::Uuid::new_v4().simple()));
+        let pairing = phone_wifi::Pairing::open(&dir);
+        let codes = phone_wifi::PairCodes::new();
+        let mut json_headers = axum::http::HeaderMap::new();
+        json_headers.insert(axum::http::header::CONTENT_TYPE, "application/json".parse().unwrap());
+        let answer = |res: axum::response::Response| async move {
+            let status = res.status().as_u16();
+            let body: Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), 4096).await.unwrap()).unwrap();
+            (status, body)
+        };
+
+        let (s, b) = answer(claim_answer(true, &json_headers, br#"{"code":"123456"}"#, &codes, &pairing, None)).await;
+        assert_eq!((s, b["code"].as_str()), (403, Some("no_code")), "no code made yet");
+        let code = codes.issue(std::time::Instant::now());
+        let body = format!(r#"{{"code":"{code}","name":"Pixel"}}"#);
+        let (s, b) = answer(claim_answer(true, &axum::http::HeaderMap::new(), body.as_bytes(), &codes, &pairing, None)).await;
+        assert_eq!((s, b["code"].as_str()), (400, Some("bad_request")), "no JSON header");
+        let (s, b) = answer(claim_answer(true, &json_headers, b"{}", &codes, &pairing, None)).await;
+        assert_eq!((s, b["code"].as_str()), (400, Some("bad_request")), "no code sent");
+        let (s, b) = answer(claim_answer(false, &json_headers, body.as_bytes(), &codes, &pairing, None)).await;
+        assert_eq!((s, b["code"].as_str()), (409, Some("phone_wifi_off")));
+
+        let (s, b) = answer(claim_answer(true, &json_headers, body.as_bytes(), &codes, &pairing, Some(8788))).await;
+        assert_eq!(s, 200);
+        let token = b["token"].as_str().unwrap().to_string();
+        assert_eq!(token, pairing.key(), "the pairing key");
+        assert_eq!(b["path"], "/ws");
+        assert_eq!(b["ws_port"], 8788);
+        assert!(pairing.accepts(Some(&token)));
+        assert!(phone_wifi::entry_allows(Some(&token), "", &pairing), "it opens the phone entry");
+        let (s, b) = answer(claim_answer(true, &json_headers, body.as_bytes(), &codes, &pairing, None)).await;
+        assert_eq!((s, b["code"].as_str()), (403, Some("no_code")), "used once, then gone");
+
+        let code = codes.issue(std::time::Instant::now());
+        let wrong = if code == "000000" { "000001" } else { "000000" };
+        let wrong_body = format!(r#"{{"code":"{wrong}"}}"#);
+        for _ in 0..phone_wifi::CODE_MAX_WRONG {
+            let (s, b) = answer(claim_answer(true, &json_headers, wrong_body.as_bytes(), &codes, &pairing, None)).await;
+            assert_eq!((s, b["code"].as_str()), (403, Some("wrong_code")));
+        }
+        let right_body = format!(r#"{{"code":"{code}"}}"#);
+        let (s, b) = answer(claim_answer(true, &json_headers, right_body.as_bytes(), &codes, &pairing, None)).await;
+        assert_eq!((s, b["code"].as_str()), (403, Some("no_code")), "five wrong tries void it");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -21,6 +21,11 @@ object Prefs {
      * the pairing password, so they stay in this private storage and out of every log.
      */
     const val KEY_WIFI_URLS = "WIFI_URLS"
+    /**
+     * The address paired by IP address ([IpPairing]), with the pairing key. Kept apart from
+     * [KEY_WIFI_URLS]: a Bageo in Docker sends no Wi-Fi addresses, and that must not clear it.
+     */
+    const val KEY_IP_URL = "IP_PAIRED_URL"
     /** Web console address the agent sent (`agent_info`); cleared on every new connection. */
     const val KEY_CONSOLE_URL = "CONSOLE_URL"
     /** Id of the last mode switch whose `set_mode_result` went to the agent. */
@@ -222,6 +227,27 @@ object Prefs {
 
     fun clearWifiUrls(ctx: Context) = setWifiUrls(ctx, emptyList())
 
+    /** The address paired by IP address, when there is one. */
+    fun ipUrl(ctx: Context): String? =
+        sp(ctx).getString(KEY_IP_URL, null)?.trim()?.takeIf { isValidAgentUrl(it) }
+
+    /** Null or an invalid address forgets it. */
+    fun setIpUrl(ctx: Context, url: String?) {
+        val cleaned = url?.trim().orEmpty()
+        val editor = sp(ctx).edit()
+        if (isValidAgentUrl(cleaned)) editor.putString(KEY_IP_URL, cleaned) else editor.remove(KEY_IP_URL)
+        editor.apply()
+    }
+
+    /** The phone can reach Bageo without the cable: Wi-Fi addresses from USB, or pairing by IP. */
+    fun hasNetworkPairing(ctx: Context): Boolean = wifiUrls(ctx).isNotEmpty() || ipUrl(ctx) != null
+
+    /** "Forget Wi-Fi connection": both kinds. */
+    fun forgetNetworkPairing(ctx: Context) {
+        clearWifiUrls(ctx)
+        setIpUrl(ctx, null)
+    }
+
     /**
      * Handles the `wifi` part of `agent_info`: [incoming] null = the field was missing, keep
      * what is stored; an empty list clears it.
@@ -233,7 +259,11 @@ object Prefs {
 
     /** The addresses to try, in order (see [ConnectionPlan.candidates]). */
     fun connectionCandidates(ctx: Context): List<String> =
-        ConnectionPlan.candidates(BuildConfig.BRIDGE_WS_URL, agentUrl(ctx), wifiUrls(ctx))
+        ConnectionPlan.candidates(
+            BuildConfig.BRIDGE_WS_URL,
+            agentUrl(ctx),
+            ConnectionPlan.networkUrls(ipUrl(ctx), wifiUrls(ctx)),
+        )
 
     fun audioMode(ctx: Context): String =
         sp(ctx).getString(KEY_MODE, MODE_SILENT_LOCAL) ?: MODE_SILENT_LOCAL

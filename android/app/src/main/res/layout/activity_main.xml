@@ -303,6 +303,13 @@
                 android:layout_marginTop="6dp"
                 android:text="@string/connection_hint_wifi" />
 
+            <Button
+                android:id="@+id/btnIpConnect"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/ip_connect_btn" />
+
             <TextView
                 android:id="@+id/wifiState"
                 style="@style/PcaBody"
