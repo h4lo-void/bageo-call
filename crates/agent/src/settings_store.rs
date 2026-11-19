@@ -380,6 +380,16 @@ pub struct RuntimeSettings {
     /// same SIM and merges the two calls (`crate::urgent_call`). Off: alert only.
     #[serde(default)]
     pub whitelist_urgent_call: bool,
+    /// Who may be forwarded to the owner (`whitelist_mode` direct or emergency):
+    /// Whitelist contacts (on by default, as before these switches), other
+    /// contacts, and numbers not in the contacts (hidden ones too). Blacklist
+    /// and stall-list contacts never are (`crate::urgent_call::transfer_target`).
+    #[serde(default = "default_true")]
+    pub transfer_whitelist: bool,
+    #[serde(default)]
+    pub transfer_contacts: bool,
+    #[serde(default)]
+    pub transfer_others: bool,
     /// Password for accessing the web console (`?token=` or `Authorization: Bearer`);
     /// overrides `CALLS_UI_TOKEN` when non-empty.
     #[serde(default)]
@@ -1139,6 +1149,9 @@ impl RuntimeSettings {
             whitelist_mode: sanitize_whitelist_mode(&env_or("WHITELIST_MODE", "off")),
             whitelist_forward_number: env_or("WHITELIST_FORWARD_NUMBER", ""),
             whitelist_urgent_call: env_bool("WHITELIST_URGENT_CALL", false),
+            transfer_whitelist: env_bool("TRANSFER_WHITELIST", true),
+            transfer_contacts: env_bool("TRANSFER_CONTACTS", false),
+            transfer_others: env_bool("TRANSFER_OTHERS", false),
             ui_password: String::new(),
             ui_password_prompted: false,
             backup_schedule: default_backup_schedule(),
@@ -1520,6 +1533,9 @@ impl RuntimeSettings {
             persona_stall_spam,
             scam_review_without_keywords,
             whitelist_urgent_call,
+            transfer_whitelist,
+            transfer_contacts,
+            transfer_others,
             persona_stall_max_min,
             persona_normal_max_min,
             retention_days,
@@ -1983,6 +1999,12 @@ struct Overrides {
     whitelist_forward_number: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     whitelist_urgent_call: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    transfer_whitelist: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    transfer_contacts: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    transfer_others: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     ui_password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2793,6 +2815,9 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
         ov.whitelist_forward_number = Some(v.chars().filter(|c| !c.is_control()).take(32).collect());
     }
     p_bool(patch, "whitelist_urgent_call", &mut ov.whitelist_urgent_call);
+    p_bool(patch, "transfer_whitelist", &mut ov.transfer_whitelist);
+    p_bool(patch, "transfer_contacts", &mut ov.transfer_contacts);
+    p_bool(patch, "transfer_others", &mut ov.transfer_others);
     p_secret(patch, "ui_password", &mut ov.ui_password);
     p_bool(patch, "ui_password_prompted", &mut ov.ui_password_prompted);
     if ov.ui_password.as_ref().is_some_and(|s| !s.is_empty()) {
@@ -3407,6 +3432,49 @@ mod tests {
             .unwrap();
         assert!(!cleared.owner_status_enabled);
         assert!(cleared.owner_status_note().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn transfer_switches_keep_an_older_file_on_the_whitelist_only_and_save() {
+        let dir = std::env::temp_dir().join(format!("bageo-call-transfer-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(dir.join("config")).expect("temp settings dir");
+        // An older version's file: the mode and number, none of the new switches.
+        std::fs::write(
+            dir.join("config").join("settings.json"),
+            r#"{"whitelist_mode":"emergency","whitelist_forward_number":"+15555550100"}"#,
+        )
+        .unwrap();
+        let base = || {
+            let mut b = Settings::from_env();
+            b.calls_data_dir = dir.to_string_lossy().to_string();
+            b
+        };
+        let store = SettingsStore::load(base());
+        let rt = store.snapshot();
+        assert_eq!(rt.whitelist_mode, "emergency");
+        assert!(rt.transfer_whitelist && !rt.transfer_contacts && !rt.transfer_others);
+        use crate::urgent_call::{transfer_who, TransferWho};
+        assert_eq!(transfer_who(&rt, Some("whitelist"), false), Some(TransferWho::Whitelist));
+        assert_eq!(transfer_who(&rt, Some(""), false), None);
+        assert_eq!(transfer_who(&rt, None, false), None);
+        let shown = store.masked_json();
+        assert_eq!(shown["transfer_whitelist"], json!(true));
+        assert_eq!(shown["transfer_others"], json!(false));
+        let rt = store
+            .apply_patch(&json!({ "transfer_whitelist": false, "transfer_contacts": true, "transfer_others": true }))
+            .unwrap();
+        assert!(!rt.transfer_whitelist && rt.transfer_contacts && rt.transfer_others);
+        let shown = store.masked_json();
+        assert_eq!(
+            (&shown["transfer_whitelist"], &shown["transfer_contacts"], &shown["transfer_others"]),
+            (&json!(false), &json!(true), &json!(true))
+        );
+        // Saved: read back the same after a restart.
+        let again = SettingsStore::load(base()).snapshot();
+        assert!(!again.transfer_whitelist && again.transfer_contacts && again.transfer_others);
+        assert_eq!(transfer_who(&again, Some("whitelist"), false), None);
+        assert_eq!(transfer_who(&again, None, false), Some(TransferWho::Stranger));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
