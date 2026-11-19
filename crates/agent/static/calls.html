@@ -449,8 +449,8 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
 .bk-when{flex:1 1 11rem;min-width:0}
 .bk-meta{color:var(--muted);font-size:.86rem}
 .bk-acts{display:flex;gap:6px;margin-left:auto}
-.bk-items{margin:6px 0 0;padding-left:1.3em}
-.bk-items li.off{color:var(--muted);text-decoration:line-through}
+.bk-items{margin:6px 0 0}
+.bk-items .sw{padding:6px 0}
 .bk-warns{margin-top:12px;padding:8px 12px;border-radius:var(--radius-sm);background:var(--surface2)}
 .bk-warns p{color:var(--text);font-size:.9rem;margin:4px 0}
 
@@ -1388,13 +1388,22 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
     <h2 id="bkDlgTitle" data-i18n="bk_dlg_title"></h2>
     <p id="bkDlgMeta"></p>
     <p id="bkDlgHas" data-i18n="bk_dlg_has"></p>
-    <ul class="bk-items" id="bkDlgItems"></ul>
+    <div class="bk-items" id="bkDlgItems"></div>
     <div class="bk-warns" id="bkDlgWarns" hidden></div>
-    <label class="sw" id="bkDlgCallsWrap" style="margin-top:14px" hidden><input type="checkbox" id="bkDlgCalls" checked /><span><b data-i18n="bk_with_calls"></b></span></label>
     <p class="help" data-i18n="bk_dlg_note"></p>
     <div class="dlg-btns">
       <button type="button" class="btn" id="bkDlgCancel" data-i18n="cancel"></button>
       <button type="submit" class="btn primary" id="bkDlgOk" value="ok" data-i18n="bk_dlg_ok"></button>
+    </div>
+  </form>
+</dialog>
+<dialog id="bkExpDlg" aria-labelledby="bkExpTitle">
+  <form method="dialog" id="bkExpForm">
+    <h2 id="bkExpTitle" data-i18n="bk_exp_title"></h2>
+    <div class="bk-items" id="bkExpItems"></div>
+    <div class="dlg-btns">
+      <button type="button" class="btn" id="bkExpCancel" data-i18n="cancel"></button>
+      <button type="submit" class="btn primary" id="bkExpOk" value="ok" data-i18n="bk_exp_ok"></button>
     </div>
   </form>
 </dialog>
@@ -2609,7 +2618,7 @@ I18N["en"] = {
   bk_item_settings: "Settings",
   bk_item_contacts: "Contacts, Blacklist and Whitelist",
   bk_item_numbers: "Your own number notes and scam numbers",
-  bk_item_phones: "Phone pairing, SIMs and phone names",
+  bk_item_phones: "SIMs and phone names",
   bk_item_errands: "AI errands",
   bk_item_calls: "Call records and recordings",
   bk_item_sms: "Texts",
@@ -2619,12 +2628,11 @@ I18N["en"] = {
   bk_dlg_when: "Backup made {time}",
   bk_dlg_ver: "Bageo {ver}",
   bk_dlg_file: "File: {name}",
-  bk_dlg_has: "Inside:",
+  bk_dlg_has: "Choose what to restore:",
   bk_warn_newer_version: "This backup comes from a newer Bageo. Some settings may not work here.",
   bk_warn_plain_settings_file: "This is a plain settings file, so only settings are restored.",
   bk_warn_backup_dir_reset: "The backup folder in this file can't be used on this computer, so the default location is used.",
   bk_warn_password: "The console password will change to the one in this backup.",
-  bk_with_calls: "Also bring back call records",
   bk_dlg_note: "Before restoring, Bageo saves your current settings to a separate file.",
   bk_dlg_ok: "Restore",
   bk_done_run: "Backup saved: {name}",
@@ -2642,6 +2650,13 @@ I18N["en"] = {
   bk_err_expired: "This took too long. Choose the file again.",
   bk_err_call_active: "A call is in progress. Try again when it ends.",
   bk_err_not_local: "The folder can only be opened on the computer that runs Bageo.",
+  bk_item_keys: "Keys and passwords",
+  bk_exp_title: "What do you want to export?",
+  bk_exp_keys_h: "Turn this on when you move to another computer. Leave it off when you show your settings to someone.",
+  bk_exp_big_h: "Makes the file much bigger.",
+  bk_exp_ok: "Export",
+  bk_err_bad_items: "Pick at least one item.",
+  bk_warn_keys_kept: "The keys and passwords on this computer stay as they are.",
 };
 
 I18N["zh-TW"] = {
@@ -3763,7 +3778,7 @@ I18N["zh-TW"] = {
   bk_item_settings: "設定",
   bk_item_contacts: "聯絡人與黑名單、白名單",
   bk_item_numbers: "自己記的號碼和詐騙號碼",
-  bk_item_phones: "手機配對、SIM 卡和手機名稱",
+  bk_item_phones: "SIM 卡和手機名稱",
   bk_item_errands: "AI 代打",
   bk_item_calls: "通話紀錄與錄音",
   bk_item_sms: "簡訊",
@@ -3773,12 +3788,11 @@ I18N["zh-TW"] = {
   bk_dlg_when: "備份時間：{time}",
   bk_dlg_ver: "Bageo {ver}",
   bk_dlg_file: "檔案：{name}",
-  bk_dlg_has: "裡面有：",
+  bk_dlg_has: "選擇要還原的項目：",
   bk_warn_newer_version: "這份備份來自比較新的 Bageo，有些設定在這裡可能沒有作用。",
   bk_warn_plain_settings_file: "這是舊版的單一設定檔，只會還原設定。",
   bk_warn_backup_dir_reset: "備份裡的存放資料夾在這台電腦上不能用，會改回預設位置。",
   bk_warn_password: "控制台密碼會換成備份裡的密碼。",
-  bk_with_calls: "也把通話紀錄加回來",
   bk_dlg_note: "還原前，Bageo 會先把現在的設定另外存一份。",
   bk_dlg_ok: "還原",
   bk_done_run: "已備份：{name}",
@@ -3796,6 +3810,13 @@ I18N["zh-TW"] = {
   bk_err_expired: "等太久了，請重新選擇檔案。",
   bk_err_call_active: "現在有電話在通話，請通話結束後再試。",
   bk_err_not_local: "只能在執行 Bageo 的這台電腦上打開資料夾。",
+  bk_item_keys: "金鑰和密碼",
+  bk_exp_title: "要匯出哪些項目？",
+  bk_exp_keys_h: "換電腦時要勾。給別人看設定時不要勾。",
+  bk_exp_big_h: "檔案會大很多。",
+  bk_exp_ok: "匯出",
+  bk_err_bad_items: "請至少選一個項目。",
+  bk_warn_keys_kept: "這台電腦現有的金鑰和密碼會保留。",
 };
 
 I18N["zh-CN"] = {
@@ -4917,7 +4938,7 @@ I18N["zh-CN"] = {
   bk_item_settings: "设置",
   bk_item_contacts: "联系人与黑名单、白名单",
   bk_item_numbers: "自己记的号码和诈骗号码",
-  bk_item_phones: "手机配对、SIM 卡和手机名称",
+  bk_item_phones: "SIM 卡和手机名称",
   bk_item_errands: "AI 代打",
   bk_item_calls: "通话记录与录音",
   bk_item_sms: "短信",
@@ -4927,12 +4948,11 @@ I18N["zh-CN"] = {
   bk_dlg_when: "备份时间：{time}",
   bk_dlg_ver: "Bageo {ver}",
   bk_dlg_file: "文件：{name}",
-  bk_dlg_has: "里面有：",
+  bk_dlg_has: "选择要还原的项目：",
   bk_warn_newer_version: "这份备份来自较新的 Bageo，有些设置在这里可能不起作用。",
   bk_warn_plain_settings_file: "这是旧版的单个设置文件，只会还原设置。",
   bk_warn_backup_dir_reset: "备份里的存放文件夹在这台电脑上不能用，会改回默认位置。",
   bk_warn_password: "控制台密码会换成备份里的密码。",
-  bk_with_calls: "也把通话记录加回来",
   bk_dlg_note: "还原前，Bageo 会先把现在的设置另外存一份。",
   bk_dlg_ok: "还原",
   bk_done_run: "已备份：{name}",
@@ -4950,6 +4970,13 @@ I18N["zh-CN"] = {
   bk_err_expired: "等太久了，请重新选择文件。",
   bk_err_call_active: "现在有电话在通话，请通话结束后再试。",
   bk_err_not_local: "只能在运行 Bageo 的这台电脑上打开文件夹。",
+  bk_item_keys: "密钥和密码",
+  bk_exp_title: "要导出哪些项目？",
+  bk_exp_keys_h: "换电脑时要勾选。给别人看设置时不要勾选。",
+  bk_exp_big_h: "文件会大很多。",
+  bk_exp_ok: "导出",
+  bk_err_bad_items: "请至少选一个项目。",
+  bk_warn_keys_kept: "这台电脑现有的密钥和密码会保留。",
 };
 
 I18N["ja"] = {
@@ -6071,7 +6098,7 @@ I18N["ja"] = {
   bk_item_settings: "設定",
   bk_item_contacts: "連絡先とブラックリスト・ホワイトリスト",
   bk_item_numbers: "自分で記録した番号と詐欺番号",
-  bk_item_phones: "スマホのペアリング・SIM・スマホ名",
+  bk_item_phones: "SIM とスマホ名",
   bk_item_errands: "AI 代理電話",
   bk_item_calls: "通話記録と録音",
   bk_item_sms: "SMS",
@@ -6081,12 +6108,11 @@ I18N["ja"] = {
   bk_dlg_when: "バックアップ日時：{time}",
   bk_dlg_ver: "Bageo {ver}",
   bk_dlg_file: "ファイル：{name}",
-  bk_dlg_has: "中身：",
+  bk_dlg_has: "復元する項目を選んでください：",
   bk_warn_newer_version: "このバックアップは新しい Bageo のものです。一部の設定はここでは効かない場合があります。",
   bk_warn_plain_settings_file: "設定だけの単独ファイルなので、設定のみ復元します。",
   bk_warn_backup_dir_reset: "バックアップ内の保存先フォルダーはこのパソコンでは使えないため、既定の場所に戻します。",
   bk_warn_password: "コンソールのパスワードがバックアップ内のものに変わります。",
-  bk_with_calls: "通話記録も戻す",
   bk_dlg_note: "復元の前に、今の設定を別のファイルに保存します。",
   bk_dlg_ok: "復元",
   bk_done_run: "バックアップしました：{name}",
@@ -6104,6 +6130,13 @@ I18N["ja"] = {
   bk_err_expired: "時間が経ちすぎました。もう一度ファイルを選んでください。",
   bk_err_call_active: "通話中です。終わってからもう一度お試しください。",
   bk_err_not_local: "フォルダーを開けるのは、Bageo が動いているパソコンだけです。",
+  bk_item_keys: "キーとパスワード",
+  bk_exp_title: "書き出す項目を選んでください",
+  bk_exp_keys_h: "別のパソコンに移すときはオンにします。設定を人に見せるときはオフにします。",
+  bk_exp_big_h: "ファイルがかなり大きくなります。",
+  bk_exp_ok: "書き出す",
+  bk_err_bad_items: "項目を 1 つ以上選んでください。",
+  bk_warn_keys_kept: "このパソコンのキーとパスワードはそのまま残ります。",
 };
 
 I18N["ko"] = {
@@ -7225,7 +7258,7 @@ I18N["ko"] = {
   bk_item_settings: "설정",
   bk_item_contacts: "연락처와 차단 목록·화이트리스트",
   bk_item_numbers: "직접 적어 둔 번호와 사기 번호",
-  bk_item_phones: "휴대폰 연결, SIM, 휴대폰 이름",
+  bk_item_phones: "SIM과 휴대폰 이름",
   bk_item_errands: "AI 대리 전화",
   bk_item_calls: "통화 기록과 녹음",
   bk_item_sms: "문자",
@@ -7235,12 +7268,11 @@ I18N["ko"] = {
   bk_dlg_when: "백업한 시간: {time}",
   bk_dlg_ver: "Bageo {ver}",
   bk_dlg_file: "파일: {name}",
-  bk_dlg_has: "들어 있는 것:",
+  bk_dlg_has: "복원할 항목을 고르세요:",
   bk_warn_newer_version: "이 백업은 더 새로운 Bageo에서 만든 것입니다. 일부 설정은 여기서 작동하지 않을 수 있습니다.",
   bk_warn_plain_settings_file: "설정만 담긴 단일 파일이라 설정만 복원합니다.",
   bk_warn_backup_dir_reset: "백업에 적힌 저장 폴더는 이 컴퓨터에서 쓸 수 없어 기본 위치로 되돌립니다.",
   bk_warn_password: "콘솔 비밀번호가 백업에 있는 비밀번호로 바뀝니다.",
-  bk_with_calls: "통화 기록도 다시 가져오기",
   bk_dlg_note: "복원하기 전에 지금 설정을 별도 파일로 저장합니다.",
   bk_dlg_ok: "복원",
   bk_done_run: "백업했습니다: {name}",
@@ -7258,6 +7290,13 @@ I18N["ko"] = {
   bk_err_expired: "시간이 너무 지났습니다. 파일을 다시 선택하세요.",
   bk_err_call_active: "통화 중입니다. 통화가 끝난 뒤에 다시 시도하세요.",
   bk_err_not_local: "Bageo가 실행 중인 컴퓨터에서만 폴더를 열 수 있습니다.",
+  bk_item_keys: "키와 비밀번호",
+  bk_exp_title: "내보낼 항목을 고르세요",
+  bk_exp_keys_h: "다른 컴퓨터로 옮길 때는 켜세요. 설정을 다른 사람에게 보여 줄 때는 끄세요.",
+  bk_exp_big_h: "파일이 훨씬 커집니다.",
+  bk_exp_ok: "내보내기",
+  bk_err_bad_items: "항목을 하나 이상 고르세요.",
+  bk_warn_keys_kept: "이 컴퓨터의 키와 비밀번호는 그대로 유지됩니다.",
 };
 
 I18N["es"] = {
@@ -8379,7 +8418,7 @@ I18N["es"] = {
   bk_item_settings: "Ajustes",
   bk_item_contacts: "Contactos, Lista negra y Lista blanca",
   bk_item_numbers: "Tus números anotados y números de estafa",
-  bk_item_phones: "Emparejamiento de teléfonos, SIM y nombres",
+  bk_item_phones: "SIM y nombres de teléfonos",
   bk_item_errands: "Encargos",
   bk_item_calls: "Registro de llamadas y grabaciones",
   bk_item_sms: "SMS",
@@ -8389,12 +8428,11 @@ I18N["es"] = {
   bk_dlg_when: "Copia hecha el {time}",
   bk_dlg_ver: "Bageo {ver}",
   bk_dlg_file: "Archivo: {name}",
-  bk_dlg_has: "Contiene:",
+  bk_dlg_has: "Elige qué restaurar:",
   bk_warn_newer_version: "Esta copia viene de un Bageo más nuevo. Es posible que algunos ajustes no funcionen aquí.",
   bk_warn_plain_settings_file: "Es un archivo de ajustes sin más, así que solo se restauran los ajustes.",
   bk_warn_backup_dir_reset: "La carpeta de copias que figura aquí no sirve en este equipo, así que se usa la ubicación predeterminada.",
   bk_warn_password: "La contraseña de la consola cambiará a la de esta copia.",
-  bk_with_calls: "Recuperar también el registro de llamadas",
   bk_dlg_note: "Antes de restaurar, Bageo guarda tus ajustes actuales en otro archivo.",
   bk_dlg_ok: "Restaurar",
   bk_done_run: "Copia guardada: {name}",
@@ -8412,6 +8450,13 @@ I18N["es"] = {
   bk_err_expired: "Ha pasado demasiado tiempo. Vuelve a elegir el archivo.",
   bk_err_call_active: "Hay una llamada en curso. Inténtalo de nuevo cuando termine.",
   bk_err_not_local: "La carpeta solo se puede abrir en el equipo donde se ejecuta Bageo.",
+  bk_item_keys: "Claves y contraseñas",
+  bk_exp_title: "¿Qué quieres exportar?",
+  bk_exp_keys_h: "Actívalo si te cambias de ordenador. Desactívalo si vas a enseñar tus ajustes a otra persona.",
+  bk_exp_big_h: "El archivo será mucho más grande.",
+  bk_exp_ok: "Exportar",
+  bk_err_bad_items: "Elige al menos un elemento.",
+  bk_warn_keys_kept: "Las claves y contraseñas de este ordenador se conservan.",
 };
 
 I18N["fr"] = {
@@ -9533,7 +9578,7 @@ I18N["fr"] = {
   bk_item_settings: "Réglages",
   bk_item_contacts: "Contacts, Liste noire et Liste blanche",
   bk_item_numbers: "Vos numéros notés et numéros d'arnaque",
-  bk_item_phones: "Appairage des téléphones, SIM et noms",
+  bk_item_phones: "SIM et noms des téléphones",
   bk_item_errands: "Appels IA",
   bk_item_calls: "Journal d'appels et enregistrements",
   bk_item_sms: "SMS",
@@ -9543,12 +9588,11 @@ I18N["fr"] = {
   bk_dlg_when: "Sauvegarde du {time}",
   bk_dlg_ver: "Bageo {ver}",
   bk_dlg_file: "Fichier : {name}",
-  bk_dlg_has: "Contenu :",
+  bk_dlg_has: "Choisissez ce qu'il faut restaurer :",
   bk_warn_newer_version: "Cette sauvegarde vient d'un Bageo plus récent. Certains réglages peuvent ne pas fonctionner ici.",
   bk_warn_plain_settings_file: "C'est un simple fichier de réglages : seuls les réglages sont restaurés.",
   bk_warn_backup_dir_reset: "Le dossier de sauvegarde indiqué ne peut pas être utilisé sur cet ordinateur ; l'emplacement par défaut sera utilisé.",
   bk_warn_password: "Le mot de passe de la console sera remplacé par celui de la sauvegarde.",
-  bk_with_calls: "Récupérer aussi le journal d'appels",
   bk_dlg_note: "Avant la restauration, Bageo enregistre vos réglages actuels dans un autre fichier.",
   bk_dlg_ok: "Restaurer",
   bk_done_run: "Sauvegarde enregistrée : {name}",
@@ -9566,6 +9610,13 @@ I18N["fr"] = {
   bk_err_expired: "Trop de temps s'est écoulé. Choisissez de nouveau le fichier.",
   bk_err_call_active: "Un appel est en cours. Réessayez quand il sera terminé.",
   bk_err_not_local: "Le dossier ne peut être ouvert que sur l'ordinateur où Bageo fonctionne.",
+  bk_item_keys: "Clés et mots de passe",
+  bk_exp_title: "Que voulez-vous exporter ?",
+  bk_exp_keys_h: "Activez-le pour changer d'ordinateur. Laissez-le désactivé pour montrer vos réglages à quelqu'un.",
+  bk_exp_big_h: "Le fichier sera beaucoup plus gros.",
+  bk_exp_ok: "Exporter",
+  bk_err_bad_items: "Choisissez au moins un élément.",
+  bk_warn_keys_kept: "Les clés et mots de passe de cet ordinateur sont conservés.",
 };
 
 I18N["de"] = {
@@ -10687,7 +10738,7 @@ I18N["de"] = {
   bk_item_settings: "Einstellungen",
   bk_item_contacts: "Kontakte, Sperrliste und Whitelist",
   bk_item_numbers: "Eigene Nummernnotizen und Betrugsnummern",
-  bk_item_phones: "Telefon-Kopplung, SIMs und Telefonnamen",
+  bk_item_phones: "SIMs und Telefonnamen",
   bk_item_errands: "KI-Anrufe",
   bk_item_calls: "Anrufprotokoll und Aufnahmen",
   bk_item_sms: "SMS",
@@ -10697,12 +10748,11 @@ I18N["de"] = {
   bk_dlg_when: "Gesichert am {time}",
   bk_dlg_ver: "Bageo {ver}",
   bk_dlg_file: "Datei: {name}",
-  bk_dlg_has: "Enthalten:",
+  bk_dlg_has: "Wähle, was wiederhergestellt wird:",
   bk_warn_newer_version: "Diese Sicherung stammt von einem neueren Bageo. Manche Einstellungen funktionieren hier eventuell nicht.",
   bk_warn_plain_settings_file: "Das ist nur eine einfache Einstellungsdatei, deshalb werden nur die Einstellungen wiederhergestellt.",
   bk_warn_backup_dir_reset: "Der Sicherungsordner aus der Datei lässt sich auf diesem Computer nicht nutzen, deshalb gilt der Standardort.",
   bk_warn_password: "Das Konsolenpasswort wird durch das Passwort aus der Sicherung ersetzt.",
-  bk_with_calls: "Anrufprotokoll auch zurückholen",
   bk_dlg_note: "Vor dem Wiederherstellen speichert Bageo deine aktuellen Einstellungen in einer separaten Datei.",
   bk_dlg_ok: "Wiederherstellen",
   bk_done_run: "Gesichert: {name}",
@@ -10720,6 +10770,13 @@ I18N["de"] = {
   bk_err_expired: "Das hat zu lange gedauert. Wähle die Datei noch einmal.",
   bk_err_call_active: "Gerade läuft ein Anruf. Versuche es nach dem Anruf noch einmal.",
   bk_err_not_local: "Der Ordner lässt sich nur auf dem Computer öffnen, auf dem Bageo läuft.",
+  bk_item_keys: "Schlüssel und Passwörter",
+  bk_exp_title: "Was möchtest du exportieren?",
+  bk_exp_keys_h: "Schalte das ein, wenn du auf einen anderen Computer umziehst. Lass es aus, wenn du deine Einstellungen jemandem zeigst.",
+  bk_exp_big_h: "Die Datei wird viel größer.",
+  bk_exp_ok: "Exportieren",
+  bk_err_bad_items: "Wähle mindestens einen Punkt aus.",
+  bk_warn_keys_kept: "Die Schlüssel und Passwörter dieses Computers bleiben erhalten.",
 };
 
 I18N["pt"] = {
@@ -11841,7 +11898,7 @@ I18N["pt"] = {
   bk_item_settings: "Configurações",
   bk_item_contacts: "Contatos, Lista de bloqueio e Lista branca",
   bk_item_numbers: "Seus números anotados e números de golpe",
-  bk_item_phones: "Pareamento de celulares, SIMs e nomes",
+  bk_item_phones: "SIMs e nomes dos celulares",
   bk_item_errands: "Ligações IA",
   bk_item_calls: "Registro de chamadas e gravações",
   bk_item_sms: "SMS",
@@ -11851,12 +11908,11 @@ I18N["pt"] = {
   bk_dlg_when: "Backup feito em {time}",
   bk_dlg_ver: "Bageo {ver}",
   bk_dlg_file: "Arquivo: {name}",
-  bk_dlg_has: "Conteúdo:",
+  bk_dlg_has: "Escolha o que restaurar:",
   bk_warn_newer_version: "Este backup vem de um Bageo mais novo. Algumas configurações podem não funcionar aqui.",
   bk_warn_plain_settings_file: "Este é só um arquivo de configurações, então apenas as configurações são restauradas.",
   bk_warn_backup_dir_reset: "A pasta de backup que consta aqui não pode ser usada neste computador, então será usado o local padrão.",
   bk_warn_password: "A senha do console será trocada pela senha que está no backup.",
-  bk_with_calls: "Trazer de volta também o registro de chamadas",
   bk_dlg_note: "Antes de restaurar, o Bageo salva suas configurações atuais em outro arquivo.",
   bk_dlg_ok: "Restaurar",
   bk_done_run: "Backup salvo: {name}",
@@ -11874,6 +11930,13 @@ I18N["pt"] = {
   bk_err_expired: "Passou tempo demais. Escolha o arquivo de novo.",
   bk_err_call_active: "Há uma chamada em andamento. Tente de novo quando ela acabar.",
   bk_err_not_local: "A pasta só pode ser aberta no computador onde o Bageo está rodando.",
+  bk_item_keys: "Chaves e senhas",
+  bk_exp_title: "O que você quer exportar?",
+  bk_exp_keys_h: "Ative ao trocar de computador. Deixe desativado ao mostrar suas configurações a outra pessoa.",
+  bk_exp_big_h: "O arquivo fica bem maior.",
+  bk_exp_ok: "Exportar",
+  bk_err_bad_items: "Escolha pelo menos um item.",
+  bk_warn_keys_kept: "As chaves e senhas deste computador continuam como estão.",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word
@@ -14527,7 +14590,9 @@ $("btnRepairPhones").addEventListener("click", async () => {
 });
 
 // ----- backup & restore
-const BK_CALLISH = new Set(["calls", "sms", "tasks"]);
+const BK_ORDER = ["settings", "keys", "contacts", "numbers", "phones", "errands", "calls", "sms", "tasks"];
+const BK_EXPORT_ON = new Set(["settings", "keys", "contacts", "numbers", "phones", "errands"]);
+const BK_BIG = new Set(["calls", "sms", "tasks"]);
 const BK_MAX_IMPORT = 200 * 1024 * 1024;
 let bk = null, bkBusy = false, bkAll = false, bkNote = "", bkFail = "", bkTimer = 0;
 const bkHas = (key) => I18N[lang][key] != null || I18N.en[key] != null;
@@ -14640,45 +14705,86 @@ function bkDownload(path) {
   a.click();
   a.remove();
 }
-// The preview of a backup, as a confirmation: resolves {withCalls} on "Restore", null otherwise.
+const bkName = (id) => (bkHas("bk_item_" + id) ? t("bk_item_" + id) : String(id));
+// A list of tick boxes in `host`; rows are {id, label, hint, on}.
+function bkTicks(host, rows, onChange) {
+  host.replaceChildren(...rows.map((r) => {
+    const lab = document.createElement("label");
+    lab.className = "sw";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.value = r.id;
+    box.checked = r.on;
+    box.addEventListener("change", onChange);
+    const name = document.createElement("b");
+    name.textContent = r.label;
+    const body = document.createElement("span");
+    body.append(name);
+    if (r.hint) {
+      const small = document.createElement("small");
+      small.textContent = r.hint;
+      body.append(small);
+    }
+    lab.append(box, body);
+    return lab;
+  }));
+}
+const bkTicked = (host) => Array.from(host.querySelectorAll("input:checked"), (b) => b.value);
+// The export choices: resolves the ticked item ids on "Export", null otherwise.
+function bkExportAsk() {
+  return new Promise((resolve) => {
+    const d = $("bkExpDlg"), host = $("bkExpItems");
+    if (typeof d.showModal !== "function") { resolve(Array.from(BK_EXPORT_ON)); return; }
+    const sync = () => { $("bkExpOk").disabled = !bkTicked(host).length; };
+    bkTicks(host, BK_ORDER.map((id) => ({
+      id,
+      label: bkName(id),
+      hint: id === "keys" ? t("bk_exp_keys_h") : BK_BIG.has(id) ? t("bk_exp_big_h") : "",
+      on: BK_EXPORT_ON.has(id),
+    })), sync);
+    sync();
+    d.returnValue = "";
+    d.addEventListener("close", () => resolve(d.returnValue === "ok" ? bkTicked(host) : null), { once: true });
+    d.showModal();
+  });
+}
+// The preview of a backup, as a confirmation: resolves {items} (the ticked ids) on "Restore", null otherwise.
 function bkAsk(p) {
   return new Promise((resolve) => {
-    const d = $("bkDlg");
+    const d = $("bkDlg"), host = $("bkDlgItems");
     const parts = [];
     if (p.created_at) parts.push(t("bk_dlg_when", { time: fmtFull(p.created_at) }));
     if (p.app_version) parts.push(t("bk_dlg_ver", { ver: p.app_version }));
     if (!parts.length) parts.push(t("bk_dlg_file", { name: p.source_name || "" }));
     $("bkDlgMeta").textContent = parts.join(" · ");
-    const items = (Array.isArray(p.items) ? p.items : []).map((it) => {
-      const key = "bk_item_" + it.id;
-      const name = bkHas(key) ? t(key) : String(it.id);
-      const li = document.createElement("li");
-      li.textContent = it.count != null ? t("bk_item_n", { name, n: it.count }) : name;
-      if (BK_CALLISH.has(it.id)) li.dataset.callish = "1";
-      return li;
-    });
-    $("bkDlgItems").replaceChildren(...items);
-    $("bkDlgHas").hidden = !items.length;
-    const keys = (Array.isArray(p.warnings) ? p.warnings : []).map((w) => "bk_warn_" + w).filter(bkHas);
-    if (p.changes_password) keys.push("bk_warn_password");
-    $("bkDlgWarns").replaceChildren(...keys.map((k) => {
-      const e = document.createElement("p");
-      e.textContent = t(k);
-      return e;
-    }));
-    $("bkDlgWarns").hidden = !keys.length;
-    $("bkDlgCallsWrap").hidden = !p.has_calls;
-    const box = $("bkDlgCalls");
-    box.checked = true;
-    const sync = () => $("bkDlgItems").querySelectorAll("[data-callish]").forEach((li) => li.classList.toggle("off", !box.checked));
-    box.onchange = sync;
+    const rank = (id) => { const i = BK_ORDER.indexOf(id); return i < 0 ? BK_ORDER.length : i; };
+    const has = (Array.isArray(p.items) ? p.items : []).slice().sort((a, b) => rank(a.id) - rank(b.id));
+    $("bkDlgHas").hidden = !has.length;
+    const base = (Array.isArray(p.warnings) ? p.warnings : []).map((w) => "bk_warn_" + w).filter(bkHas);
+    const sync = () => {
+      const on = bkTicked(host);
+      const keys = base.slice();
+      if (p.changes_password && on.includes("keys")) keys.push("bk_warn_password");
+      if (!on.includes("keys")) keys.push("bk_warn_keys_kept");
+      $("bkDlgWarns").replaceChildren(...keys.map((k) => {
+        const e = document.createElement("p");
+        e.textContent = t(k);
+        return e;
+      }));
+      $("bkDlgWarns").hidden = !keys.length;
+      $("bkDlgOk").disabled = !on.length;
+    };
+    bkTicks(host, has.map((it) => {
+      const name = bkName(it.id);
+      return { id: it.id, label: it.count != null ? t("bk_item_n", { name, n: it.count }) : name, on: true };
+    }), sync);
     sync();
     if (typeof d.showModal !== "function") {
-      resolve(window.confirm(t("bk_dlg_title") + "\n\n" + parts.join(" · ")) ? { withCalls: !!p.has_calls } : null);
+      resolve(window.confirm(t("bk_dlg_title") + "\n\n" + parts.join(" · ")) ? { items: has.map((it) => it.id) } : null);
       return;
     }
     d.returnValue = "";
-    d.addEventListener("close", () => resolve(d.returnValue === "ok" ? { withCalls: !!p.has_calls && box.checked } : null), { once: true });
+    d.addEventListener("close", () => resolve(d.returnValue === "ok" ? { items: bkTicked(host) } : null), { once: true });
     d.showModal();
   });
 }
@@ -14686,7 +14792,7 @@ function bkAsk(p) {
 async function bkFinish(p) {
   const r = await bkAsk(p);
   if (!r) return;
-  const d = await api("/backup/apply", jsonBody("POST", { token: p.token, with_calls: r.withCalls }));
+  const d = await api("/backup/apply", jsonBody("POST", { token: p.token, items: r.items }));
   const msg = [t("bk_done_apply", { name: d.before_import || "" })];
   if (d.restart_needed) msg.push(t("bk_done_restart"));
   bkNote = msg.join(" ");
@@ -14709,7 +14815,10 @@ $("btnBkRun").addEventListener("click", () => bkGuard(async () => {
   const d = await api("/backup/run", jsonBody("POST", {}));
   toast(t("bk_done_run", { name: d.entry ? d.entry.name : "" }));
 }));
-$("btnBkExport").addEventListener("click", () => bkDownload("/backup/export"));
+$("btnBkExport").addEventListener("click", async () => {
+  const items = await bkExportAsk();
+  if (items && items.length) bkDownload("/backup/export?items=" + items.join(","));
+});
 $("btnBkImport").addEventListener("click", () => { if (!bkBusy) $("bkFile").click(); });
 $("bkFile").addEventListener("change", () => {
   const file = $("bkFile").files[0];
@@ -14738,6 +14847,7 @@ $("btnBkOpen").addEventListener("click", async () => {
   catch (e) { if (e.status !== 401) toast(bkErr(e), true); }
 });
 $("bkDlgCancel").addEventListener("click", () => $("bkDlg").close("cancel"));
+$("bkExpCancel").addEventListener("click", () => $("bkExpDlg").close("cancel"));
 
 // ----- prompt editor + interview helper
 $("btnPromptCopyIn").addEventListener("click", async () => {

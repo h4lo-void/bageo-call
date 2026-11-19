@@ -303,7 +303,7 @@ Times are the computer's local time (see [Time zone](#time-zone)). Without any k
 
 Bageo can back up your settings on its own, make a copy when you ask, and pack everything into one file for another computer. Backups stay on your computer: nothing is uploaded or sent anywhere, and Bageo does not update itself.
 
-Backup files hold your keys and passwords. Keep them where only you can get them.
+Backup files hold your keys and passwords, unless you leave them out of an export. Keep them where only you can get them.
 
 | Setting | Default | What it does |
 |---|---|---|
@@ -312,14 +312,14 @@ Backup files hold your keys and passwords. Keep them where only you can get them
 | Automatic backups to keep (*More options*) | 10 | 1 to 100. Only automatic backups count. |
 | Include call records, recordings and texts (*More options*) | off | On: *Back up now* and automatic backups also hold call records, recordings, texts and *To do* items. The file gets much bigger. |
 
-The four settings are saved as `backup_schedule`, `backup_dir`, `backup_keep` and `backup_include_calls`. A backup holds your settings, contacts and lists, your own number notes and scam numbers, phone pairing, SIM and phone names, and AI errands.
+The four settings are saved as `backup_schedule`, `backup_dir`, `backup_keep` and `backup_include_calls`. Automatic and manual backups always hold your settings, your keys and passwords, contacts and lists, your own number notes and scam numbers, SIMs and phone names, and AI errands.
 
 - *Back up now* makes a copy right away.
-- *Export settings* downloads a file with settings only, with no call records, texts or *To do* items.
-- *Import settings* takes a backup (.zip) or an older single settings file (.json). Settings only come back from the older file.
+- *Export settings* opens a list where you tick what to export: settings, keys and passwords, contacts and lists, your own number notes and scam numbers, SIMs and phone names, AI errands, call records and recordings, texts, and *To do* items. The first six are ticked at the start. Call records, texts and *To do* items make the file much bigger. The file is named `bageo-export-YYYYMMDD-HHMMSS.zip`.
+- *Import settings* takes a backup or export (.zip), or an older single settings file (.json). From the older file only the settings come back, and the keys and passwords too if it holds any.
 - *Backup files* lists the latest 10 copies, each with *Restore* and *Download*.
 
-Before anything is restored, the console shows when the backup was made, which version it comes from and what is inside, and waits for *Restore*. Bageo first saves your current settings as a separate file ("Before import"). If the backup holds call records, you can tick *Also bring back call records*. Nothing can be restored during a call: try again when it ends. If some changes need a restart, the console says so; the console password changes too when the backup has a different one.
+Before anything is restored, the console shows when the backup was made, which version it comes from and what is inside, with a tick box for each item. All are ticked at the start, and items the file does not hold are not shown. Untick what you do not want back; *Restore* needs at least one. Bageo first saves your current settings as a separate file ("Before import"). If *Keys and passwords* is not ticked, or the file has none, the keys and passwords on this computer stay as they are; the console password changes only when they are restored. Call records, texts and *To do* items are added to the ones you already have, and nothing is deleted. Nothing can be restored during a call: try again when it ends. If some changes need a restart, the console says so.
 
 **How automatic backups run:**
 
@@ -337,7 +337,7 @@ Before anything is restored, the console shows when the backup was made, which v
 
 **Moving to a new computer:**
 
-1. On the old computer, click *Export settings*. To bring call records along, tick *Include call records, recordings and texts* under *More options*, click *Back up now*, then copy that file from the backup folder.
+1. On the old computer, click *Export settings* and keep *Keys and passwords* ticked, so you do not have to type them again. To bring call records along, also tick *Call records and recordings*, *Texts* and *To do items*.
 2. Install Bageo on the new computer.
 3. Open the console and click *Import settings*, pick the file, and confirm with *Restore*.
 4. If the phones do not connect by themselves, plug each one in with USB once.

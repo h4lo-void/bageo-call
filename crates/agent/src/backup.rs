@@ -7,17 +7,20 @@
 //!
 //! A backup is a zip file. `bageo-backup.json` at its root ([`Manifest`])
 //! lists every other file: under `data/`, with its path inside the data folder
-//! (`CALLS_DATA_DIR`), its size and its SHA-256. Without the call records it
-//! holds the settings and the small files next to them, the contacts, the
-//! number book, phone pairing and SIMs, and AI errands; with them also the call
-//! records and recordings, text messages and to-do items. Never the backup
-//! folder itself, temporary files, debug output or caches: only the files
-//! named in [`item_of`] go in.
+//! (`CALLS_DATA_DIR`), its size and its SHA-256, and `items` names the parts
+//! it holds ([`ITEMS`]): settings, keys (every credential: [`crate::settings_store::KEY_FIELDS`]
+//! and the phone pairing key), contacts, the number book, phones (SIMs and
+//! names), AI errands, and the call records with their recordings, text
+//! messages and to-do items. Settings and keys share `settings.json`: a file
+//! without one of them leaves its fields out. Never the backup folder itself,
+//! temporary files, debug output or caches: only the files named in
+//! [`item_of`] go in.
 //!
 //! Importing first answers a preview (nothing changed yet) with a token. The
-//! token, used once within 15 minutes, restores it: a `before_import` backup
-//! of the settings is made first and put back when restoring fails half-way.
-//! Call records, texts and to-do items are only added; the ones already here stay.
+//! token, used once within 15 minutes, restores the parts the owner picks: a
+//! `before_import` backup is made first and put back when restoring fails
+//! half-way. A restore never clears a key this computer has. Call records,
+//! texts and to-do items are only added; the ones already here stay.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
@@ -74,12 +77,29 @@ const U32_MAX: u64 = 0xFFFF_FFFF;
 /// Files this big get zip64 sizes in their local header.
 const BIG_FILE: u64 = 0xF000_0000;
 
-/// The parts of a backup, as the preview names them.
-pub const ITEMS: [&str; 8] = ["settings", "contacts", "numbers", "phones", "errands", "calls", "sms", "tasks"];
-/// The parts that are only added, and only when asked (`with_calls`).
+/// The parts of a backup, in the order the preview lists them.
+pub const ITEMS: [&str; 9] = ["settings", "keys", "contacts", "numbers", "phones", "errands", "calls", "sms", "tasks"];
+/// What backups (manual, automatic, before an import) and an export without
+/// `items` hold; with `backup_include_calls` backups also hold [`CALL_ITEMS`].
+pub const DEFAULT_ITEMS: [&str; 6] = ["settings", "keys", "contacts", "numbers", "phones", "errands"];
+/// The parts that are only added to what is here.
 const CALL_ITEMS: [&str; 3] = ["calls", "sms", "tasks"];
 /// The parts that are read again by their store once they are back in place.
-const STORE_ITEMS: [&str; 4] = ["contacts", "numbers", "phones", "errands"];
+const STORE_ITEMS: [&str; 5] = ["keys", "contacts", "numbers", "phones", "errands"];
+
+/// `items` as the parts they name (in [`ITEMS`] order); None when the list is
+/// empty or names something else.
+pub fn parse_items<S: AsRef<str>>(items: &[S]) -> Option<Vec<&'static str>> {
+    let mut out: Vec<&'static str> = Vec::new();
+    for i in items {
+        let id = ITEMS.iter().copied().find(|x| *x == i.as_ref().trim())?;
+        if !out.contains(&id) {
+            out.push(id);
+        }
+    }
+    out.sort_by_key(|id| ITEMS.iter().position(|x| x == id));
+    (!out.is_empty()).then_some(out)
+}
 
 // ---------------------------------------------------------------- names
 
@@ -110,7 +130,7 @@ pub fn file_name(kind: Kind, at: NaiveDateTime) -> String {
         Kind::Scheduled => format!("bageo-backup-{stamp}-auto.zip"),
         Kind::Manual => format!("bageo-backup-{stamp}-manual.zip"),
         Kind::BeforeImport => format!("bageo-backup-{stamp}-before-import.zip"),
-        Kind::Export => format!("bageo-settings-{stamp}.zip"),
+        Kind::Export => format!("bageo-export-{stamp}.zip"),
     }
 }
 
@@ -119,7 +139,8 @@ pub fn parse_name(name: &str) -> Option<(Kind, NaiveDateTime)> {
     if !name.is_ascii() {
         return None;
     }
-    let (kind, stamp) = if let Some(rest) = name.strip_prefix("bageo-settings-") {
+    let export = name.strip_prefix("bageo-export-").or_else(|| name.strip_prefix("bageo-settings-"));
+    let (kind, stamp) = if let Some(rest) = export {
         (Kind::Export, rest.strip_suffix(".zip")?)
     } else {
         let rest = name.strip_prefix("bageo-backup-")?.strip_suffix(".zip")?;
@@ -163,7 +184,8 @@ pub fn item_of(rel: &str) -> Option<&'static str> {
         "config/settings.json" => return Some("settings"),
         "config/scam_numbers.json" | "config/scam_feedback.jsonl" | "config/scam_db.local.json" => return Some("numbers"),
         "contacts.json" => return Some("contacts"),
-        "phone_sims.json" | "phone-pairing.key" => return Some("phones"),
+        "phone_sims.json" => return Some("phones"),
+        "phone-pairing.key" => return Some("keys"),
         "errands.json" => return Some("errands"),
         "index.json" => return Some("calls"),
         "sms/messages.json" => return Some("sms"),
@@ -265,11 +287,17 @@ enum Source {
     File(PathBuf),
 }
 
-/// The files of a backup (path inside the data folder, where to read it).
-/// The settings come from the store (`settings_json`), the way they are saved.
-fn collect(lay: &Layout, settings_json: Vec<u8>, with_calls: bool) -> Vec<(String, Source)> {
-    let mut out = vec![("config/settings.json".to_string(), Source::Bytes(settings_json))];
+/// The files of a backup of the parts `want` (path inside the data folder,
+/// where to read it). `settings.json` is `settings_json` ([`settings_for`]).
+fn collect(lay: &Layout, settings_json: Option<Vec<u8>>, want: &[&str]) -> Vec<(String, Source)> {
+    let mut out = Vec::new();
+    if let Some(json) = settings_json {
+        out.push(("config/settings.json".to_string(), Source::Bytes(json)));
+    }
     let add = |out: &mut Vec<(String, Source)>, rel: String| {
+        if !item_of(&rel).is_some_and(|i| want.contains(&i)) {
+            return;
+        }
         if let Some(path) = lay.target(&rel) {
             if is_plain_file(&path) {
                 out.push((rel, Source::File(path)));
@@ -278,14 +306,14 @@ fn collect(lay: &Layout, settings_json: Vec<u8>, with_calls: bool) -> Vec<(Strin
     };
     for name in names_in(&lay.config) {
         let rel = format!("config/{name}");
-        if rel != "config/settings.json" && item_of(&rel).is_some() {
+        if rel != "config/settings.json" {
             add(&mut out, rel);
         }
     }
     for rel in ["contacts.json", "phone_sims.json", "phone-pairing.key", "errands.json"] {
         add(&mut out, rel.to_string());
     }
-    if with_calls {
+    if want.iter().any(|i| CALL_ITEMS.contains(i)) {
         add(&mut out, "index.json".to_string());
         for day in names_in(&lay.calls) {
             if !is_day(&day) || !is_plain_dir(&lay.calls.join(&day)) {
@@ -309,6 +337,30 @@ fn collect(lay: &Layout, settings_json: Vec<u8>, with_calls: bool) -> Vec<(Strin
     out
 }
 
+/// `settings.json` for a backup of the parts `want`: whole, without the
+/// credentials (settings only), or only them (keys only); and the parts it
+/// holds. None: neither part is wanted, or only keys and none is set.
+fn settings_for(full: &[u8], want: &[&str]) -> (Option<Vec<u8>>, Vec<&'static str>) {
+    use crate::settings_store::{has_keys, keys_part, settings_part};
+    let v: Value = serde_json::from_slice(full).unwrap_or_else(|_| json!({}));
+    let (s, k) = (want.contains(&"settings"), want.contains(&"keys"));
+    let keys = k && has_keys(&v);
+    let part = match (s, k) {
+        (true, true) => v,
+        (true, false) => settings_part(&v),
+        (false, true) if keys => keys_part(&v),
+        _ => return (None, Vec::new()),
+    };
+    let mut items = Vec::new();
+    if s {
+        items.push("settings");
+    }
+    if keys {
+        items.push("keys");
+    }
+    (serde_json::to_vec_pretty(&part).ok(), items)
+}
+
 // ---------------------------------------------------------------- the zip file
 
 /// What the manifest says.
@@ -324,6 +376,8 @@ struct Manifest {
     kind: String,
     #[serde(default)]
     include_calls: bool,
+    #[serde(default)]
+    items: Vec<String>,
     #[serde(default)]
     files: Vec<FileEntry>,
 }
@@ -514,10 +568,12 @@ impl<W: Write + Seek> ZipOut<W> {
     }
 }
 
-/// A backup zip written to `out`: the `sources`, then the manifest.
-fn write_zip<W: Write + Seek>(out: W, sources: Vec<(String, Source)>, kind: Kind, with_calls: bool, at: DateTime<Local>) -> io::Result<W> {
+/// A backup zip written to `out`: the `sources`, then the manifest. Its
+/// `items`: the parts of the files in it, with `settings_items` for `settings.json`.
+fn write_zip<W: Write + Seek>(out: W, sources: Vec<(String, Source)>, kind: Kind, settings_items: &[&'static str], at: DateTime<Local>) -> io::Result<(W, Vec<&'static str>)> {
     let mut zip = ZipOut::new(out, at.naive_local());
     let mut files = Vec::with_capacity(sources.len());
+    let mut held: Vec<&'static str> = Vec::new();
     for (rel, src) in sources {
         let name = format!("data/{rel}");
         let (size, sha256) = match src {
@@ -532,8 +588,20 @@ fn write_zip<W: Write + Seek>(out: W, sources: Vec<(String, Source)>, kind: Kind
                 Err(e) => return Err(e),
             },
         };
+        if let Some(item) = item_of(&rel).filter(|_| rel != "config/settings.json") {
+            if !held.contains(&item) {
+                held.push(item);
+            }
+        }
         files.push(FileEntry { path: name, size, sha256 });
     }
+    for item in settings_items {
+        if !held.contains(item) {
+            held.push(item);
+        }
+    }
+    held.sort_by_key(|id| ITEMS.iter().position(|x| x == id));
+    let with_calls = held.iter().any(|i| CALL_ITEMS.contains(i));
     let manifest = Manifest {
         format: FORMAT.to_string(),
         version: VERSION,
@@ -541,11 +609,12 @@ fn write_zip<W: Write + Seek>(out: W, sources: Vec<(String, Source)>, kind: Kind
         created_at: at.to_rfc3339_opts(SecondsFormat::Secs, false),
         kind: kind.as_str().to_string(),
         include_calls: with_calls,
+        items: held.iter().map(|i| i.to_string()).collect(),
         files,
     };
     let body = serde_json::to_vec_pretty(&manifest).map_err(io::Error::other)?;
     zip.add(MANIFEST_NAME, &mut body.as_slice(), body.len() as u64)?;
-    zip.finish()
+    Ok((zip.finish()?, held))
 }
 
 /// Why a file is not restored.
@@ -786,8 +855,8 @@ struct Inspected {
     files: Vec<Wanted>,
     /// The parts it has, with how many records where that is known.
     counts: BTreeMap<&'static str, Option<usize>>,
-    /// Its console password and backup folder.
-    settings: Option<(String, String)>,
+    /// What its settings.json holds.
+    settings: Option<crate::settings_store::SettingsPeek>,
 }
 
 /// Read `path` (a backup zip or an older settings.json) and check every file
@@ -817,13 +886,23 @@ fn inspect_plain(mut f: File, len: u64) -> Result<Inspected, Bad> {
     let mut bytes = Vec::new();
     f.read_to_end(&mut bytes)?;
     let text = std::str::from_utf8(&bytes).map_err(|_| Bad::NotBackup)?;
-    let peek = crate::settings_store::peek_settings_text(text.trim_start_matches('\u{feff}'), true).map_err(|_| Bad::NotBackup)?;
+    let peek = crate::settings_store::peek_settings_text(text.trim_start_matches('\u{feff}')).map_err(|_| Bad::NotBackup)?;
+    if !peek.has_settings && !peek.has_keys {
+        return Err(Bad::NotBackup);
+    }
+    let mut counts = BTreeMap::new();
+    if peek.has_settings {
+        counts.insert("settings", None);
+    }
+    if peek.has_keys {
+        counts.insert("keys", None);
+    }
     let entry = FileEntry { path: "data/config/settings.json".to_string(), size: bytes.len() as u64, sha256: hex(&Sha256::digest(&bytes)) };
     Ok(Inspected {
         plain: true,
         manifest: None,
         files: vec![Wanted { rel: "config/settings.json".to_string(), item: "settings", entry }],
-        counts: BTreeMap::from([("settings", None)]),
+        counts,
         settings: Some(peek),
     })
 }
@@ -882,7 +961,7 @@ fn inspect_zip(f: File) -> Result<Inspected, Bad> {
             zip.copy_checked(&f.path, f.size, &f.sha256, &mut buf)?;
             if rel == "config/settings.json" {
                 let text = std::str::from_utf8(&buf).map_err(|_| Bad::Damaged)?;
-                settings = Some(crate::settings_store::peek_settings_text(text, false).map_err(|_| Bad::Damaged)?);
+                settings = Some(crate::settings_store::peek_settings_text(text).map_err(|_| Bad::Damaged)?);
             } else if let Some(item) = item {
                 let v: Value = serde_json::from_slice(&buf).map_err(|_| Bad::Damaged)?;
                 let n = match rel.as_str() {
@@ -905,11 +984,22 @@ fn inspect_zip(f: File) -> Result<Inspected, Bad> {
         if item == "tasks" && rel != "tasks/index.json" {
             tasks += 1;
         }
-        counts.entry(item).or_insert(None);
+        // settings.json holds settings, keys or both: told below.
+        if rel != "config/settings.json" {
+            counts.entry(item).or_insert(None);
+        }
         files.push(Wanted { rel, item, entry: f.clone() });
     }
     if tasks > 0 {
         counts.insert("tasks", Some(tasks));
+    }
+    if let Some(p) = &settings {
+        if p.has_settings || manifest.items.iter().any(|i| i == "settings") {
+            counts.entry("settings").or_insert(None);
+        }
+        if p.has_keys {
+            counts.entry("keys").or_insert(None);
+        }
     }
     Ok(Inspected { plain: false, manifest: Some(manifest), files, counts, settings })
 }
@@ -945,7 +1035,7 @@ fn preview_warnings(ins: &Inspected) -> Vec<&'static str> {
     if ins.plain {
         w.push("plain_settings_file");
     }
-    if ins.settings.as_ref().is_some_and(|(_, d)| !dir_usable_now(d)) {
+    if ins.counts.contains_key("settings") && ins.settings.as_ref().is_some_and(|p| !dir_usable_now(&p.backup_dir)) {
         w.push("backup_dir_reset");
     }
     w
@@ -973,7 +1063,9 @@ fn preview_json(token: &str, source_name: &str, ins: &Inspected, current_passwor
         "items": items,
         "has_calls": CALL_ITEMS.iter().any(|i| ins.counts.contains_key(i)),
         "calls_count": ins.counts.get("calls").copied().flatten().unwrap_or(0),
-        "changes_password": ins.settings.as_ref().is_some_and(|(pw, _)| pw != current_password.trim()),
+        // Only restoring the keys changes the password.
+        "changes_password": ins.counts.contains_key("keys")
+            && ins.settings.as_ref().and_then(|p| p.password.as_deref()).is_some_and(|pw| pw != current_password.trim()),
         "warnings": warnings,
     })
 }
@@ -1172,8 +1264,9 @@ fn run_err(e: &io::Error, opening: bool) -> RunErr {
     RunErr::Io
 }
 
-/// A backup file in `dir`: written next to its name, then renamed (mode 600 on Unix).
-fn write_backup_file(lay: &Layout, settings_json: Vec<u8>, dir: &Path, kind: Kind, with_calls: bool, now: DateTime<Local>) -> Result<Entry, RunErr> {
+/// A backup file of the parts `want` in `dir`: written next to its name, then
+/// renamed (mode 600 on Unix). `settings_json`: the settings file as saved.
+fn write_backup_file(lay: &Layout, settings_json: Vec<u8>, dir: &Path, kind: Kind, want: &[&'static str], now: DateTime<Local>) -> Result<Entry, RunErr> {
     std::fs::create_dir_all(dir).map_err(|e| run_err(&e, true))?;
     let mut at = now;
     let mut name = file_name(kind, at.naive_local());
@@ -1189,17 +1282,22 @@ fn write_backup_file(lay: &Layout, settings_json: Vec<u8>, dir: &Path, kind: Kin
     }
     let tmp = dir.join(format!(".{name}.tmp"));
     let file = create_private(&tmp).map_err(|e| run_err(&e, true))?;
-    let written = (move || -> io::Result<()> {
-        let sources = collect(lay, settings_json, with_calls);
-        let out = write_zip(BufWriter::new(file), sources, kind, with_calls, at)?;
+    let written = (move || -> io::Result<Vec<&'static str>> {
+        let (json, settings_items) = settings_for(&settings_json, want);
+        let sources = collect(lay, json, want);
+        let (out, held) = write_zip(BufWriter::new(file), sources, kind, &settings_items, at)?;
         let file = out.into_inner().map_err(|e| e.into_error())?;
-        file.sync_all()
+        file.sync_all()?;
+        Ok(held)
     })();
-    let done = written.and_then(|_| std::fs::rename(&tmp, dir.join(&name)));
-    if let Err(e) = done {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(run_err(&e, false));
-    }
+    let done = written.and_then(|held| std::fs::rename(&tmp, dir.join(&name)).map(|_| held));
+    let held = match done {
+        Ok(held) => held,
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(run_err(&e, false));
+        }
+    };
     let size = std::fs::metadata(dir.join(&name)).map(|m| m.len()).unwrap_or(0);
     Ok(Entry {
         name,
@@ -1207,14 +1305,23 @@ fn write_backup_file(lay: &Layout, settings_json: Vec<u8>, dir: &Path, kind: Kin
         size,
         kind: kind.as_str(),
         app_version: Some(APP_VERSION.to_string()),
-        include_calls: with_calls,
+        include_calls: held.iter().any(|i| CALL_ITEMS.contains(i)),
     })
 }
 
-async fn create_in(state: &CallsState, lay: &Layout, dir: &Path, kind: Kind, with_calls: bool) -> Result<Entry, RunErr> {
+/// What backups hold: [`DEFAULT_ITEMS`], with the call records when asked.
+fn backup_items(with_calls: bool) -> Vec<&'static str> {
+    let mut v = DEFAULT_ITEMS.to_vec();
+    if with_calls {
+        v.extend(CALL_ITEMS);
+    }
+    v
+}
+
+async fn create_in(state: &CallsState, lay: &Layout, dir: &Path, kind: Kind, want: Vec<&'static str>) -> Result<Entry, RunErr> {
     let settings_json = state.settings_store.overrides_json();
     let (lay, dir, now) = (lay.clone(), dir.to_path_buf(), Local::now());
-    tokio::task::spawn_blocking(move || write_backup_file(&lay, settings_json, &dir, kind, with_calls, now))
+    tokio::task::spawn_blocking(move || write_backup_file(&lay, settings_json, &dir, kind, &want, now))
         .await
         .unwrap_or(Err(RunErr::Io))
 }
@@ -1267,7 +1374,7 @@ pub(crate) async fn run_backup(state: &CallsState, kind: Kind) -> Result<Entry, 
     };
     let rt = state.settings_store.snapshot();
     let dir = configured_dir(&rt, &lay.data);
-    let res = create_in(state, &lay, &dir, kind, rt.backup_include_calls).await;
+    let res = create_in(state, &lay, &dir, kind, backup_items(rt.backup_include_calls)).await;
     let at = Local::now().to_rfc3339_opts(SecondsFormat::Secs, false);
     ds.inner().last = Some(match &res {
         Ok(e) => LastRun { at, ok: true, name: Some(e.name.clone()), size: e.size, error: None },
@@ -1288,18 +1395,34 @@ pub(crate) async fn run_backup(state: &CallsState, kind: Kind) -> Result<Entry, 
     res
 }
 
-/// The settings-only zip "Export settings" downloads: its name and bytes.
-pub(crate) async fn export_bytes(state: &CallsState) -> Result<(String, Vec<u8>), RunErr> {
+/// The zip "Export" downloads, of the parts `want`: written to a temporary
+/// file (it can hold every recording); its download name and that file.
+pub(crate) async fn export_file(state: &CallsState, want: Vec<&'static str>) -> Result<(String, PathBuf), RunErr> {
     let lay = Layout::of(state);
     let settings_json = state.settings_store.overrides_json();
     let now = Local::now();
-    tokio::task::spawn_blocking(move || -> Result<(String, Vec<u8>), RunErr> {
-        let sources = collect(&lay, settings_json, false);
-        let out = write_zip(io::Cursor::new(Vec::new()), sources, Kind::Export, false, now).map_err(|e| run_err(&e, false))?;
-        Ok((file_name(Kind::Export, now.naive_local()), out.into_inner()))
+    tokio::task::spawn_blocking(move || -> Result<(String, PathBuf), RunErr> {
+        let stage = staging_dir(&lay.data);
+        sweep_exports(&stage);
+        let entry = write_backup_file(&lay, settings_json, &stage, Kind::Export, &want, now)?;
+        // Named for the download; kept under a name of its own while it is sent.
+        let path = stage.join(format!("export-{}.zip", uuid::Uuid::new_v4().simple()));
+        std::fs::rename(stage.join(&entry.name), &path).map_err(|e| run_err(&e, false))?;
+        Ok((entry.name, path))
     })
     .await
     .unwrap_or(Err(RunErr::Io))
+}
+
+/// Exports a download left behind (it was cut off) go after an hour.
+fn sweep_exports(stage: &Path) {
+    for name in names_in(stage) {
+        let path = stage.join(&name);
+        let old = std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age > Duration::from_secs(3600));
+        if name.starts_with("export-") && old {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
 }
 
 // ---------------------------------------------------------------- schedule
@@ -1573,15 +1696,20 @@ pub(crate) async fn preview_saved(state: &CallsState, name: &str) -> Result<Valu
     }
 }
 
-/// Restore what the preview `token` showed: refused during a call; a
-/// `before_import` backup first; the call records, texts and to-do items only
-/// with `with_calls`, and only added.
-pub(crate) async fn apply(state: &CallsState, token: &str, with_calls: bool) -> Result<Value, ApiErr> {
+/// Restore the parts `items` of what the preview `token` showed (each one the
+/// preview listed, else `bad_items`): refused during a call; a `before_import`
+/// backup first; call records, texts and to-do items are only added.
+pub(crate) async fn apply<S: AsRef<str>>(state: &CallsState, token: &str, items: &[S]) -> Result<Value, ApiErr> {
     sweep_pending();
-    let valid = pending().get(token).is_some_and(|p| p.made.elapsed() < TOKEN_TTL);
-    if !valid {
+    let listed: Option<Vec<&'static str>> =
+        pending().get(token).filter(|p| p.made.elapsed() < TOKEN_TTL).map(|p| p.ins.counts.keys().copied().collect());
+    let Some(listed) = listed else {
         return Err((StatusCode::BAD_REQUEST, "expired"));
-    }
+    };
+    let chosen = match parse_items(items) {
+        Some(c) if c.iter().all(|i| listed.contains(i)) => c,
+        _ => return Err((StatusCode::BAD_REQUEST, "bad_items")),
+    };
     if !state.store.live_calls().await.is_empty() {
         return Err((StatusCode::CONFLICT, "call_active"));
     }
@@ -1593,7 +1721,7 @@ pub(crate) async fn apply(state: &CallsState, token: &str, with_calls: bool) -> 
     let Some(p) = taken else {
         return Err((StatusCode::BAD_REQUEST, "expired"));
     };
-    let out = apply_pending(state, &p, with_calls).await;
+    let out = apply_pending(state, &p, &chosen).await;
     drop_pending_file(&p);
     out
 }
@@ -1602,23 +1730,32 @@ pub(crate) async fn apply(state: &CallsState, token: &str, with_calls: bool) -> 
 /// default one when that cannot be written): the entry and its folder.
 async fn make_before_import(state: &CallsState, lay: &Layout) -> Result<(Entry, PathBuf), RunErr> {
     let dir = configured_dir(&state.settings_store.snapshot(), &lay.data);
-    match create_in(state, lay, &dir, Kind::BeforeImport, false).await {
+    match create_in(state, lay, &dir, Kind::BeforeImport, backup_items(false)).await {
         Ok(e) => Ok((e, dir)),
         Err(first) => {
             let fallback = default_dir(&lay.data);
             if fallback == dir {
                 return Err(first);
             }
-            create_in(state, lay, &fallback, Kind::BeforeImport, false).await.map(|e| (e, fallback))
+            create_in(state, lay, &fallback, Kind::BeforeImport, backup_items(false)).await.map(|e| (e, fallback))
         }
     }
 }
 
-async fn apply_pending(state: &CallsState, p: &Pending, with_calls: bool) -> Result<Value, ApiErr> {
+/// `settings.json` is restored for settings or keys; any other file for its part.
+fn wanted_file(w: &Wanted, chosen: &[&str]) -> bool {
+    if w.rel == "config/settings.json" {
+        chosen.contains(&"settings") || chosen.contains(&"keys")
+    } else {
+        chosen.contains(&w.item)
+    }
+}
+
+async fn apply_pending(state: &CallsState, p: &Pending, chosen: &[&'static str]) -> Result<Value, ApiErr> {
     let lay = Layout::of(state);
     let (before, before_dir) = make_before_import(state, &lay).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.code()))?;
     let before_path = before_dir.join(&before.name);
-    let want: Vec<Wanted> = p.ins.files.iter().filter(|w| with_calls || !CALL_ITEMS.contains(&w.item)).cloned().collect();
+    let want: Vec<Wanted> = p.ins.files.iter().filter(|w| wanted_file(w, chosen)).cloned().collect();
     let stage = staging_dir(&lay.data).join(format!("apply-{}", uuid::Uuid::new_v4().simple()));
     let unpacked = {
         let (src, plain, stage, want) = (p.file.clone(), p.ins.plain, stage.clone(), want.clone());
@@ -1631,7 +1768,7 @@ async fn apply_pending(state: &CallsState, p: &Pending, with_calls: bool) -> Res
         return Err(bad_err(e));
     }
     let mut created = Vec::new();
-    let installed = match install(state, &lay, &stage, &want, &mut created).await {
+    let installed = match install(state, &lay, &stage, &want, chosen, false, &mut created).await {
         Ok(i) => i,
         Err(e) => {
             warn!("backup: restoring failed, the settings from before are put back: {e:#}");
@@ -1640,7 +1777,7 @@ async fn apply_pending(state: &CallsState, p: &Pending, with_calls: bool) -> Res
             return Err((StatusCode::INTERNAL_SERVER_ERROR, "io"));
         }
     };
-    if with_calls {
+    if chosen.iter().any(|i| CALL_ITEMS.contains(i)) {
         match merge_records(state, &lay, &stage, &want).await {
             Ok((calls, sms, tasks)) => info!("backup records added calls={calls} sms={sms} tasks={tasks}"),
             Err(e) => {
@@ -1657,8 +1794,7 @@ async fn apply_pending(state: &CallsState, p: &Pending, with_calls: bool) -> Res
     if installed.dir_reset {
         warnings.push("backup_dir_reset");
     }
-    let items: Vec<&str> = want.iter().map(|w| w.item).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
-    info!("backup restored items={items:?} with_calls={with_calls} restart_needed={}", installed.restart_needed);
+    info!("backup restored items={chosen:?} restart_needed={}", installed.restart_needed);
     Ok(json!({"ok": true, "before_import": before.name, "restart_needed": installed.restart_needed, "warnings": warnings}))
 }
 
@@ -1691,12 +1827,22 @@ struct Installed {
     restart_needed: bool,
 }
 
-/// The settings-sized parts in place (files that were not here go into
-/// `created`), then read again by their stores.
-async fn install(state: &CallsState, lay: &Layout, stage: &Path, want: &[Wanted], created: &mut Vec<PathBuf>) -> anyhow::Result<Installed> {
-    let mut items: HashSet<&'static str> = HashSet::new();
+/// The parts `chosen` other than the call records in place (files that were
+/// not here go into `created`), then read again by their stores. Settings and
+/// keys mix into this computer's ([`crate::settings_store::combine_settings`]);
+/// `exact` (putting the `before_import` copy back) takes its settings.json whole.
+async fn install(
+    state: &CallsState,
+    lay: &Layout,
+    stage: &Path,
+    want: &[Wanted],
+    chosen: &[&'static str],
+    exact: bool,
+    created: &mut Vec<PathBuf>,
+) -> anyhow::Result<Installed> {
+    let items: HashSet<&'static str> = chosen.iter().copied().collect();
+    let (s, k) = (items.contains("settings"), items.contains("keys"));
     for w in want.iter().filter(|w| !CALL_ITEMS.contains(&w.item)) {
-        items.insert(w.item);
         if w.rel == "config/settings.json" {
             continue;
         }
@@ -1708,10 +1854,15 @@ async fn install(state: &CallsState, lay: &Layout, stage: &Path, want: &[Wanted]
     }
     let mut dir_reset = false;
     let staged_settings = stage_path(stage, "config/settings.json");
-    if items.contains("settings") && staged_settings.is_file() {
+    if (s || k) && staged_settings.is_file() {
         let text = std::fs::read_to_string(&staged_settings).context("read the settings of the backup")?;
+        let text = text.trim_start_matches('\u{feff}');
         let days_before = state.settings_store.snapshot().retention_days;
-        let (rt, reset) = state.settings_store.replace_from_text(text.trim_start_matches('\u{feff}'), &dir_setting_ok)?;
+        let (rt, reset) = if exact {
+            state.settings_store.replace_from_text(text, &dir_setting_ok)?
+        } else {
+            state.settings_store.replace_from_backup(text, s, k, &dir_setting_ok)?
+        };
         dir_reset = reset;
         crate::calls_http::purge_after_fewer_days(state, days_before, rt.retention_days);
         // Language, answer style, phone names: process-wide, like a settings
@@ -1725,7 +1876,7 @@ async fn install(state: &CallsState, lay: &Layout, stage: &Path, want: &[Wanted]
         }
     }
     let restart_needed = reload_stores(state, &items).await?;
-    if items.contains("settings") {
+    if s {
         // Blocked numbers kept in an older settings file join the Blacklist.
         crate::contacts::absorb_reject_numbers(&state.settings_store, &state.contacts).await;
     }
@@ -1745,6 +1896,8 @@ async fn reload_stores(state: &CallsState, items: &HashSet<&'static str>) -> any
     }
     if items.contains("phones") {
         restart |= !state.errands.sims.reload();
+    }
+    if items.contains("keys") {
         crate::phone_wifi::pairing().reload();
     }
     if items.contains("errands") {
@@ -1774,7 +1927,8 @@ async fn roll_back(state: &CallsState, lay: &Layout, before: &Path, created: &[P
     match read {
         Ok(ins) => {
             let mut again = Vec::new();
-            if let Err(e) = install(state, lay, &stage, &ins.files, &mut again).await {
+            let held: Vec<&'static str> = ins.counts.keys().copied().collect();
+            if let Err(e) = install(state, lay, &stage, &ins.files, &held, true, &mut again).await {
                 warn!("backup: the settings from before could not all be put back: {e:#}");
             }
             let all: HashSet<&'static str> = STORE_ITEMS.into_iter().collect();
@@ -1836,6 +1990,7 @@ fn message(code: &str) -> &'static str {
         "not_found" => "no such backup file",
         "not_local" => "only on the computer Bageo runs on",
         "bad_request" => "bad request",
+        "bad_items" => "pick one or more of: settings, keys, contacts, numbers, phones, errands, calls, sms, tasks",
         _ => "something went wrong while saving",
     }
 }
@@ -1934,44 +2089,51 @@ async fn run(State(state): State<CallsState>, headers: HeaderMap, Query(q): Quer
     }
 }
 
-/// `GET /api/backup/export`: the settings-only zip, as a download.
-async fn export(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>) -> Response {
-    if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
-        return unauthorized();
-    }
-    match export_bytes(&state).await {
-        Ok((name, bytes)) => Response::builder()
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, "application/zip")
-            .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"{name}\""))
-            .header(header::CACHE_CONTROL, "no-store")
-            .body(Body::from(bytes))
-            .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response()),
-        Err(e) => err_response((StatusCode::INTERNAL_SERVER_ERROR, e.code())),
+#[derive(Deserialize)]
+struct ExportQuery {
+    token: Option<String>,
+    /// Comma-separated parts ([`ITEMS`]); none: [`DEFAULT_ITEMS`].
+    items: Option<String>,
+}
+
+/// A file sent as a download; `remove`: deleted once sent (or the download is cut off).
+struct Sending {
+    file: Option<tokio::fs::File>,
+    path: PathBuf,
+    remove: bool,
+}
+
+impl Drop for Sending {
+    fn drop(&mut self) {
+        drop(self.file.take());
+        if self.remove {
+            let _ = std::fs::remove_file(&self.path);
+        }
     }
 }
 
-/// `GET /api/backup/file/{name}`: a backup of the backup folder, as a download.
-async fn download(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, UrlPath(name): UrlPath<String>) -> Response {
-    if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
-        return unauthorized();
-    }
-    let path = configured_dir(&state.settings_store.snapshot(), &PathBuf::from(&state.settings.calls_data_dir)).join(&name);
-    if parse_name(&name).is_none() || !is_plain_file(&path) {
-        return err_response((StatusCode::NOT_FOUND, "not_found"));
-    }
-    let Ok(file) = tokio::fs::File::open(&path).await else {
-        return err_response((StatusCode::NOT_FOUND, "not_found"));
+/// `path` as a zip download named `name`, read a piece at a time.
+async fn send_file(path: PathBuf, name: &str, remove: bool) -> Response {
+    let file = match tokio::fs::File::open(&path).await {
+        Ok(f) => f,
+        Err(_) => {
+            if remove {
+                let _ = std::fs::remove_file(&path);
+            }
+            return err_response((StatusCode::NOT_FOUND, "not_found"));
+        }
     };
     let len = file.metadata().await.map(|m| m.len()).ok();
-    let stream = futures_util::stream::unfold(Some(file), |state| async move {
-        let mut f = state?;
+    let sending = Sending { file: Some(file), path, remove };
+    let stream = futures_util::stream::unfold(Some(sending), |state| async move {
+        let mut s = state?;
         let mut buf = vec![0u8; 64 * 1024];
-        match tokio::io::AsyncReadExt::read(&mut f, &mut buf).await {
+        let f = s.file.as_mut()?;
+        match tokio::io::AsyncReadExt::read(f, &mut buf).await {
             Ok(0) => None,
             Ok(n) => {
                 buf.truncate(n);
-                Some((Ok::<Bytes, io::Error>(Bytes::from(buf)), Some(f)))
+                Some((Ok::<Bytes, io::Error>(Bytes::from(buf)), Some(s)))
             }
             Err(e) => Some((Err(e), None)),
         }
@@ -1985,6 +2147,37 @@ async fn download(State(state): State<CallsState>, headers: HeaderMap, Query(q):
         res = res.header(header::CONTENT_LENGTH, len);
     }
     res.body(Body::from_stream(stream)).unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+/// `GET /api/backup/export?items=settings,keys,…`: a zip of those parts, as a
+/// download (`bad_items` for an empty list or an unknown part).
+async fn export(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<ExportQuery>) -> Response {
+    if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
+        return unauthorized();
+    }
+    let want = match q.items.as_deref() {
+        None => Some(DEFAULT_ITEMS.to_vec()),
+        Some(list) => parse_items(&list.split(',').collect::<Vec<_>>()),
+    };
+    let Some(want) = want else {
+        return err_response((StatusCode::BAD_REQUEST, "bad_items"));
+    };
+    match export_file(&state, want).await {
+        Ok((name, path)) => send_file(path, &name, true).await,
+        Err(e) => err_response((StatusCode::INTERNAL_SERVER_ERROR, e.code())),
+    }
+}
+
+/// `GET /api/backup/file/{name}`: a backup of the backup folder, as a download.
+async fn download(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, UrlPath(name): UrlPath<String>) -> Response {
+    if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
+        return unauthorized();
+    }
+    let path = configured_dir(&state.settings_store.snapshot(), &PathBuf::from(&state.settings.calls_data_dir)).join(&name);
+    if parse_name(&name).is_none() || !is_plain_file(&path) {
+        return err_response((StatusCode::NOT_FOUND, "not_found"));
+    }
+    send_file(path, &name, false).await
 }
 
 /// `POST /api/backup/import`, the file as the body and its name in
@@ -2033,10 +2226,10 @@ async fn restore(State(state): State<CallsState>, headers: HeaderMap, Query(q): 
 struct ApplyBody {
     token: String,
     #[serde(default)]
-    with_calls: bool,
+    items: Vec<String>,
 }
 
-/// `POST /api/backup/apply` `{token, with_calls}`: restore what the preview showed.
+/// `POST /api/backup/apply` `{token, items}`: restore those parts of what the preview showed.
 async fn apply_route(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, body: Bytes) -> Response {
     if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
         return unauthorized();
@@ -2047,7 +2240,7 @@ async fn apply_route(State(state): State<CallsState>, headers: HeaderMap, Query(
     let Ok(b) = serde_json::from_slice::<ApplyBody>(&body) else {
         return err_response((StatusCode::BAD_REQUEST, "bad_request"));
     };
-    match apply(&state, b.token.trim(), b.with_calls).await {
+    match apply(&state, b.token.trim(), &b.items).await {
         Ok(v) => Json(v).into_response(),
         Err(e) => err_response(e),
     }
@@ -2113,6 +2306,11 @@ mod tests {
     use super::*;
     use crate::calls_http::PhoneDevices;
 
+    const FAKE_GEMINI: &str = "test-fake-gemini-key-0001";
+    const FAKE_SUMMARY: &str = "test-fake-summary-key-0002";
+    const FAKE_CHANNEL: &str = "test-fake-channel-token-0003";
+    const FAKE_PAIRING: &str = "test_fake_pairing_key_0004_abcdefghijklmnopqrstuvwxyz";
+
     fn temp_root(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("bageo-backup-{tag}-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&d).unwrap();
@@ -2141,6 +2339,62 @@ mod tests {
         }
     }
 
+    /// A state with settings, two fake keys, a channel with a token, a
+    /// contact and a pairing key file.
+    async fn keyed_state(root: &Path, owner: &str) -> CallsState {
+        let st = state_at(root);
+        st.settings_store
+            .apply_patch(&json!({
+                "owner_name": owner,
+                "backup_keep": 7,
+                "gemini_api_key": FAKE_GEMINI,
+                "summary_api_key": FAKE_SUMMARY,
+                "notify_channels": [{"kind": "ntfy", "name": "Test channel", "url": "https://ntfy.example/fake-topic", "token": FAKE_CHANNEL, "target": "fake-topic"}],
+            }))
+            .unwrap();
+        std::fs::write(root.join(crate::phone_wifi::KEY_FILE), FAKE_PAIRING).unwrap();
+        let draft = crate::contacts::Draft { name: "Alex Example".into(), phones: vec!["+1 555 555 0123".into()], ..Default::default() };
+        st.contacts.add(&draft).await.unwrap();
+        st
+    }
+
+    async fn export_bytes(state: &CallsState, items: &[&'static str]) -> (String, Vec<u8>) {
+        let (name, path) = export_file(state, items.to_vec()).await.unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        (name, bytes)
+    }
+
+    /// Every file of a zip, unpacked, one after the other.
+    fn unpacked(bytes: &[u8]) -> Vec<u8> {
+        let path = std::env::temp_dir().join(format!("bageo-unpack-{}.zip", uuid::Uuid::new_v4().simple()));
+        std::fs::write(&path, bytes).unwrap();
+        let mut z = ZipIn::open(File::open(&path).unwrap()).unwrap();
+        let names: Vec<String> = z.entries.keys().cloned().collect();
+        let mut all = Vec::new();
+        for n in names {
+            all.extend(z.read_entry(&n, 1 << 30).unwrap().unwrap());
+        }
+        let _ = std::fs::remove_file(&path);
+        all
+    }
+
+    fn has(hay: &[u8], needle: &str) -> bool {
+        hay.windows(needle.len()).any(|w| w == needle.as_bytes())
+    }
+
+    fn manifest_items(bytes: &[u8]) -> Vec<String> {
+        let path = std::env::temp_dir().join(format!("bageo-manifest-{}.zip", uuid::Uuid::new_v4().simple()));
+        std::fs::write(&path, bytes).unwrap();
+        let items = inspect(&path).unwrap().manifest.unwrap().items;
+        let _ = std::fs::remove_file(&path);
+        items
+    }
+
+    fn preview_items(preview: &Value) -> Vec<String> {
+        preview["items"].as_array().unwrap().iter().map(|i| i["id"].as_str().unwrap().to_string()).collect()
+    }
+
     fn sha(b: &[u8]) -> String {
         hex(&Sha256::digest(b))
     }
@@ -2158,7 +2412,7 @@ mod tests {
 
     fn manifest(version: u64, files: Vec<Value>) -> Value {
         json!({"format": FORMAT, "version": version, "app_version": "1.0.0", "created_at": "2026-01-01T00:00:00+00:00",
-               "kind": "manual", "include_calls": false, "files": files})
+               "kind": "manual", "include_calls": false, "items": ["settings"], "files": files})
     }
 
     fn call_json(id: &str, day: &str) -> Value {
@@ -2171,47 +2425,141 @@ mod tests {
         r.expect_err("refused").1
     }
 
+    #[test]
+    fn item_lists_are_checked() {
+        assert_eq!(parse_items(&["contacts", "settings", "contacts"]), Some(vec!["settings", "contacts"]));
+        assert_eq!(parse_items(&[" keys "]), Some(vec!["keys"]));
+        assert_eq!(parse_items::<&str>(&[]), None);
+        assert_eq!(parse_items(&[""]), None);
+        assert_eq!(parse_items(&["settings", "passwords"]), None);
+    }
+
     #[tokio::test]
-    async fn export_then_import_brings_back_settings_and_contacts() {
+    async fn export_then_import_brings_back_settings_keys_and_contacts() {
         let (ra, rb) = (temp_root("a"), temp_root("b"));
-        let a = state_at(&ra);
-        a.settings_store.apply_patch(&json!({"owner_name": "Sam Example", "backup_keep": 7, "public_url": "http://198.51.100.20:8787"})).unwrap();
-        let draft = crate::contacts::Draft { name: "Alex Example".into(), phones: vec!["+1 555 555 0123".into()], ..Default::default() };
-        a.contacts.add(&draft).await.unwrap();
-        let (name, bytes) = export_bytes(&a).await.unwrap();
+        let a = keyed_state(&ra, "Sam Example").await;
+        a.settings_store.apply_patch(&json!({"public_url": "http://198.51.100.20:8787"})).unwrap();
+        let (name, bytes) = export_bytes(&a, &DEFAULT_ITEMS).await;
         assert_eq!(parse_name(&name).map(|(k, _)| k), Some(Kind::Export));
+        assert!(name.starts_with("bageo-export-"), "{name}");
+        assert_eq!(manifest_items(&bytes), ["settings", "keys", "contacts"]);
 
         let b = state_at(&rb);
         let preview = preview_upload(&b, &name, Bytes::from(bytes)).await.unwrap();
         assert_eq!(preview["kind"], "export");
         assert_eq!(preview["has_calls"], false);
-        assert_eq!(preview["changes_password"], false);
-        let items = preview["items"].as_array().unwrap();
-        assert!(items.contains(&json!({"id": "settings"})));
-        assert!(items.contains(&json!({"id": "contacts", "count": 1})));
+        assert_eq!(preview_items(&preview), ["settings", "keys", "contacts"]);
+        assert!(preview["items"].as_array().unwrap().contains(&json!({"id": "contacts", "count": 1})));
         assert!(preview["warnings"].as_array().unwrap().is_empty());
 
         let token = preview["token"].as_str().unwrap().to_string();
-        let done = apply(&b, &token, false).await.unwrap();
+        let done = apply(&b, &token, &["settings", "keys", "contacts"]).await.unwrap();
         assert_eq!(done["ok"], true);
         let rt = b.settings_store.snapshot();
-        assert_eq!((rt.owner_name.as_str(), rt.backup_keep), ("Sam Example", 7));
+        assert_eq!((rt.owner_name.as_str(), rt.backup_keep, rt.gemini_api_key.as_str()), ("Sam Example", 7, FAKE_GEMINI));
         assert_eq!(rt.public_url, "", "the address of this computer stays");
+        assert_eq!(rt.notify_channels.len(), 1);
+        assert_eq!(rt.notify_channels[0].token, FAKE_CHANNEL);
         let contacts = b.contacts.list("");
-        assert_eq!(contacts.len(), 1);
-        assert_eq!(contacts[0].name, "Alex Example");
-        // Saved: a restart reads the same.
+        assert_eq!((contacts.len(), contacts[0].name.as_str()), (1, "Alex Example"));
+        assert_eq!(std::fs::read_to_string(rb.join(crate::phone_wifi::KEY_FILE)).unwrap(), FAKE_PAIRING);
         let saved = std::fs::read_to_string(rb.join("config").join("settings.json")).unwrap();
         assert!(saved.contains("Sam Example"));
 
-        // A before_import copy came first, of the settings before.
+        // A before_import copy came first: every part but the call records.
         let before = done["before_import"].as_str().unwrap();
         assert_eq!(parse_name(before).map(|(k, _)| k), Some(Kind::BeforeImport));
-        let kept = inspect(&default_dir(&rb).join(before)).unwrap();
-        assert!(!kept.manifest.unwrap().include_calls);
+        let kept = inspect(&default_dir(&rb).join(before)).unwrap().manifest.unwrap();
+        assert!(!kept.include_calls);
+        assert_eq!(kept.items, ["settings"], "a fresh install has only (default) settings");
         // The token works once.
-        assert_eq!(code(apply(&b, &token, false).await), "expired");
+        assert_eq!(code(apply(&b, &token, &["settings"]).await), "expired");
         let _ = std::fs::remove_dir_all(&ra);
+        let _ = std::fs::remove_dir_all(&rb);
+    }
+
+    #[tokio::test]
+    async fn a_settings_only_export_holds_no_key() {
+        let ra = temp_root("nokey");
+        let a = keyed_state(&ra, "Sam Example").await;
+        let (_, bytes) = export_bytes(&a, &["settings"]).await;
+        let plain = unpacked(&bytes);
+        assert!(has(&plain, "Sam Example"), "the settings are there");
+        assert!(has(&plain, "Test channel"), "the channel is there, without its credentials");
+        for secret in [FAKE_GEMINI, FAKE_SUMMARY, FAKE_CHANNEL, FAKE_PAIRING, "ntfy.example"] {
+            assert!(!has(&plain, secret), "{secret} leaked");
+        }
+        assert_eq!(manifest_items(&bytes), ["settings"]);
+
+        // Keys only: the credentials and the pairing key, nothing else.
+        let (_, bytes) = export_bytes(&a, &["keys"]).await;
+        let plain = unpacked(&bytes);
+        assert!(has(&plain, FAKE_GEMINI) && has(&plain, FAKE_CHANNEL) && has(&plain, FAKE_PAIRING));
+        assert!(!has(&plain, "Sam Example") && !has(&plain, "Alex Example") && !has(&plain, "Test channel"));
+        assert_eq!(manifest_items(&bytes), ["keys"]);
+
+        let (_, bytes) = export_bytes(&a, &["contacts"]).await;
+        assert_eq!(manifest_items(&bytes), ["contacts"]);
+        assert!(!has(&unpacked(&bytes), FAKE_GEMINI));
+        let _ = std::fs::remove_dir_all(&ra);
+    }
+
+    #[tokio::test]
+    async fn importing_a_file_without_keys_keeps_the_keys_here() {
+        let (ra, rb) = (temp_root("ka"), temp_root("kb"));
+        let a = keyed_state(&ra, "Sam Example").await;
+        let (name, bytes) = export_bytes(&a, &["settings"]).await;
+        let rb_owner = "Bob Example";
+        let b = keyed_state(&rb, rb_owner).await;
+        b.settings_store.apply_patch(&json!({"gemini_api_key": "test-fake-b-key-0005"})).unwrap();
+        let preview = preview_upload(&b, &name, Bytes::from(bytes)).await.unwrap();
+        assert_eq!(preview_items(&preview), ["settings"]);
+        assert_eq!(preview["changes_password"], false);
+        assert_eq!(code(apply(&b, preview["token"].as_str().unwrap(), &["keys"]).await), "bad_items");
+        apply(&b, preview["token"].as_str().unwrap(), &["settings"]).await.unwrap();
+        let rt = b.settings_store.snapshot();
+        assert_eq!(rt.owner_name, "Sam Example");
+        assert_eq!((rt.gemini_api_key.as_str(), rt.summary_api_key.as_str()), ("test-fake-b-key-0005", FAKE_SUMMARY));
+        // Its own channel keeps its token; the one from the backup has none.
+        assert_eq!(rt.notify_channels.len(), 2);
+        assert!(rt.notify_channels.iter().any(|c| c.token == FAKE_CHANNEL));
+        assert!(rt.notify_channels.iter().any(|c| c.token.is_empty() && c.url.is_empty()));
+        assert_eq!(std::fs::read_to_string(rb.join(crate::phone_wifi::KEY_FILE)).unwrap(), FAKE_PAIRING);
+        let _ = std::fs::remove_dir_all(&ra);
+        let _ = std::fs::remove_dir_all(&rb);
+    }
+
+    #[tokio::test]
+    async fn restoring_only_the_keys_leaves_the_other_settings() {
+        let (ra, rb) = (temp_root("oa"), temp_root("ob"));
+        let a = keyed_state(&ra, "Sam Example").await;
+        let (name, bytes) = export_bytes(&a, &DEFAULT_ITEMS).await;
+        let b = state_at(&rb);
+        b.settings_store.apply_patch(&json!({"owner_name": "Bob Example", "retention_days": 30})).unwrap();
+        let preview = preview_upload(&b, &name, Bytes::from(bytes)).await.unwrap();
+        apply(&b, preview["token"].as_str().unwrap(), &["keys"]).await.unwrap();
+        let rt = b.settings_store.snapshot();
+        assert_eq!((rt.owner_name.as_str(), rt.retention_days, rt.backup_keep), ("Bob Example", 30, 10));
+        assert_eq!((rt.gemini_api_key.as_str(), rt.summary_api_key.as_str()), (FAKE_GEMINI, FAKE_SUMMARY));
+        assert!(b.contacts.list("").is_empty(), "contacts were not picked");
+        assert_eq!(std::fs::read_to_string(rb.join(crate::phone_wifi::KEY_FILE)).unwrap(), FAKE_PAIRING);
+        let _ = std::fs::remove_dir_all(&ra);
+        let _ = std::fs::remove_dir_all(&rb);
+    }
+
+    #[tokio::test]
+    async fn apply_takes_only_parts_the_preview_listed() {
+        let rb = temp_root("items");
+        let b = state_at(&rb);
+        let preview = preview_upload(&b, "settings.json", Bytes::from_static(br#"{"owner_name": "Items Example"}"#)).await.unwrap();
+        let token = preview["token"].as_str().unwrap();
+        let lists: [&[&str]; 5] = [&["keys"], &["calls"], &[], &["bogus"], &["settings", "contacts"]];
+        for bad in lists {
+            assert_eq!(code(apply(&b, token, bad).await), "bad_items", "{bad:?}");
+        }
+        assert!(names_in(&default_dir(&rb)).is_empty(), "nothing done for a bad list");
+        apply(&b, token, &["settings"]).await.unwrap();
+        assert_eq!(b.settings_store.snapshot().owner_name, "Items Example");
         let _ = std::fs::remove_dir_all(&rb);
     }
 
@@ -2224,9 +2572,18 @@ mod tests {
         assert_eq!(preview["items"], json!([{"id": "settings"}]));
         assert_eq!(preview["warnings"], json!(["plain_settings_file"]));
         assert_eq!(preview["kind"], Value::Null);
-        let done = apply(&b, preview["token"].as_str().unwrap(), false).await.unwrap();
+        let done = apply(&b, preview["token"].as_str().unwrap(), &["settings"]).await.unwrap();
         assert_eq!(done["warnings"], json!(["plain_settings_file"]));
         assert_eq!(b.settings_store.snapshot().owner_name, "Plain Example");
+
+        // With credentials it lists keys too; the password counts only there.
+        let body = Bytes::from_static(br#"{"owner_name": "Plain Example", "gemini_api_key": "test-fake-plain-0006", "ui_password": "test-fake-pw"}"#);
+        let preview = preview_upload(&b, "settings.json", body).await.unwrap();
+        assert_eq!(preview_items(&preview), ["settings", "keys"]);
+        assert_eq!(preview["changes_password"], true);
+        let preview = preview_upload(&b, "keys.json", Bytes::from_static(br#"{"deepseek_api_key": "test-fake-old-0007"}"#)).await.unwrap();
+        assert_eq!(preview_items(&preview), ["keys"]);
+        assert_eq!(preview["changes_password"], false);
 
         let cases: [&[u8]; 4] = [b"[1, 2]", b"{\"contacts\": []}", b"hello", b"PK\x03\x04 not really a zip"];
         for not_settings in cases {
@@ -2308,7 +2665,8 @@ mod tests {
             assert_eq!(parse_name(&name), Some((kind, at)), "{name}");
         }
         assert_eq!(file_name(Kind::Scheduled, at), "bageo-backup-20261119-080509-auto.zip");
-        for bad in ["bageo-backup-20261119-080509-auto.zip/../x", "../bageo-settings-20261119-080509.zip", "bageo-backup-20261119-080509.zip", "bageo-settings-2026111-0805099.zip"] {
+        assert_eq!(file_name(Kind::Export, at), "bageo-export-20261119-080509.zip");
+        for bad in ["bageo-backup-20261119-080509-auto.zip/../x", "../bageo-export-20261119-080509.zip", "bageo-backup-20261119-080509.zip", "bageo-export-2026111-0805099.zip"] {
             assert_eq!(parse_name(bad), None, "{bad}");
         }
     }
@@ -2339,7 +2697,7 @@ mod tests {
         let preview = preview_upload(&b, "settings.json", Bytes::from_static(br#"{"owner_name": "Call Example"}"#)).await.unwrap();
         let token = preview["token"].as_str().unwrap().to_string();
         let _call = b.store.start("pixel-test-1", "+15555550188", 16000, "ringing").await.expect("call started");
-        assert_eq!(apply(&b, &token, false).await.expect_err("refused"), (StatusCode::CONFLICT, "call_active"));
+        assert_eq!(apply(&b, &token, &["settings"]).await.expect_err("refused"), (StatusCode::CONFLICT, "call_active"));
         assert!(pending().contains_key(&token), "the preview can be used after the call");
         assert_ne!(b.settings_store.snapshot().owner_name, "Call Example");
         assert!(names_in(&default_dir(&rb)).is_empty(), "no before_import copy either");
@@ -2369,7 +2727,7 @@ mod tests {
         let crate::sms_store::Pushed::Stored(text_id) = text else { panic!("stored") };
         let task = crate::tasks::draft_from_voicemail("call-a", "pixel-test-1", "+15555550100", "2026-02-03/call-a.wav", crate::tasks::ReplyMethod::None, None, false);
         let task = a.task_store.create(task).await.unwrap();
-        a.settings_store.apply_patch(&json!({"backup_include_calls": true})).unwrap();
+        a.settings_store.apply_patch(&json!({"backup_include_calls": true, "owner_name": "Calls Example"})).unwrap();
 
         let entry = run_backup(&a, Kind::Manual).await.unwrap();
         assert!(entry.include_calls);
@@ -2380,14 +2738,17 @@ mod tests {
             assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
         }
         let held = inspect(&path).unwrap();
+        assert_eq!(held.manifest.as_ref().unwrap().items, ["settings", "calls", "sms", "tasks"]);
         assert!(held.files.iter().all(|w| !w.rel.ends_with(".pcm")), "a call still being recorded stays out");
         assert!(held.files.iter().all(|w| !w.rel.starts_with("backups/")));
 
         let b = state_at(&rb);
         let preview = preview_upload(&b, &entry.name, Bytes::from(std::fs::read(&path).unwrap())).await.unwrap();
         assert_eq!((preview["has_calls"].as_bool(), preview["calls_count"].as_u64()), (Some(true), Some(1)));
-        let done = apply(&b, preview["token"].as_str().unwrap(), true).await.unwrap();
+        // The call records alone: the settings here stay.
+        let done = apply(&b, preview["token"].as_str().unwrap(), &["calls", "sms", "tasks"]).await.unwrap();
         assert_eq!(done["ok"], true);
+        assert_ne!(b.settings_store.snapshot().owner_name, "Calls Example");
         let ids: Vec<String> = b.store.list().await.into_iter().map(|c| c.id).collect();
         assert!(ids.contains(&"call-a".to_string()) && ids.contains(&"call-b".to_string()), "{ids:?}");
         assert_eq!(std::fs::read(rb.join("2026-02-03").join("call-a.wav")).unwrap(), b"RIFF test recording");

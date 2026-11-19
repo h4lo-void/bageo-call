@@ -713,22 +713,206 @@ fn write_overrides(path: &Path, ov: &Overrides) -> Result<()> {
     Ok(())
 }
 
-/// What the import preview shows of a settings file ([`crate::backup`]): its
-/// console password and its backup folder. Err: not a settings file (not a
-/// JSON object, or, with `require_keys`, none of the keys settings have).
-pub fn peek_settings_text(text: &str, require_keys: bool) -> Result<(String, String)> {
-    let (ov, _) = read_overrides(text)?;
-    let has_keys = serde_json::to_value(&ov)
-        .ok()
-        .and_then(|v| v.as_object().map(|m| !m.is_empty()))
-        .unwrap_or(false);
-    if require_keys && !has_keys {
-        anyhow::bail!("no settings in it");
+/// The settings that are credentials: the backup item `keys` ([`crate::backup`]).
+/// Every field the settings page masks ([`SECRET_FIELDS`]), the notification
+/// gateway address (its path can hold a key) and the old name of the summary
+/// key. In each notification channel, [`CHANNEL_KEY_FIELDS`] are credentials
+/// too; the phone pairing key file ([`crate::phone_wifi::KEY_FILE`]) goes with them.
+pub const KEY_FIELDS: [&str; 15] = [
+    "openrouter_api_key",
+    "telegram_bot_token",
+    "gmail_app_password",
+    "openclaw_token",
+    "mcp_token",
+    "ui_password",
+    "trtc_secret_key",
+    "trtc_secret_id",
+    "trtc_cloud_secret_key",
+    "trtc_llm_config",
+    "trtc_tts_config",
+    "gemini_api_key",
+    "summary_api_key",
+    "notify_gateway_url",
+    "deepseek_api_key",
+];
+
+/// The fields of a notification channel that are credentials: its address
+/// (webhook URLs carry their secret), token and Slack app-level token.
+pub const CHANNEL_KEY_FIELDS: [&str; 3] = ["url", "token", "app_token"];
+
+fn channel_id(c: &Value) -> Option<(&str, &str)> {
+    Some((c.get("id")?.as_str()?, c.get("kind")?.as_str()?))
+}
+
+/// A value that says something (not null, not an empty string).
+fn filled(v: &Value) -> bool {
+    match v {
+        Value::Null => false,
+        Value::String(s) => !s.trim().is_empty(),
+        _ => true,
     }
-    Ok((
-        ov.ui_password.unwrap_or_default().trim().to_string(),
-        ov.backup_dir.unwrap_or_default().trim().to_string(),
-    ))
+}
+
+/// A settings file (JSON object) without its credentials ([`KEY_FIELDS`]).
+pub fn settings_part(v: &Value) -> Value {
+    let mut m = v.as_object().cloned().unwrap_or_default();
+    for f in KEY_FIELDS {
+        m.remove(f);
+    }
+    let mut drop_channels = false;
+    if let Some(Value::Array(list)) = m.get_mut("notify_channels") {
+        let had = !list.is_empty();
+        for c in list.iter_mut() {
+            if let Some(o) = c.as_object_mut() {
+                for f in CHANNEL_KEY_FIELDS {
+                    o.remove(f);
+                }
+            }
+        }
+        // A row that only names its channel (a file of credentials only) is no setting.
+        list.retain(|c| c.as_object().is_some_and(|o| o.keys().any(|k| k != "id" && k != "kind")));
+        drop_channels = had && list.is_empty();
+    }
+    if drop_channels {
+        m.remove("notify_channels");
+    }
+    Value::Object(m)
+}
+
+/// Only the credentials of a settings file: the [`KEY_FIELDS`] it has, and of
+/// each notification channel its id, kind and the credentials that are set.
+pub fn keys_part(v: &Value) -> Value {
+    let mut out = Map::new();
+    for f in KEY_FIELDS {
+        if let Some(x) = v.get(f) {
+            out.insert(f.to_string(), x.clone());
+        }
+    }
+    if let Some(list) = v.get("notify_channels").and_then(Value::as_array) {
+        let rows: Vec<Value> = list
+            .iter()
+            .filter_map(|c| {
+                let (id, kind) = channel_id(c)?;
+                let mut row = Map::new();
+                row.insert("id".into(), json!(id));
+                row.insert("kind".into(), json!(kind));
+                for f in CHANNEL_KEY_FIELDS {
+                    if let Some(x) = c.get(f).filter(|x| filled(x)) {
+                        row.insert(f.to_string(), x.clone());
+                    }
+                }
+                (row.len() > 2).then_some(Value::Object(row))
+            })
+            .collect();
+        if !rows.is_empty() {
+            out.insert("notify_channels".into(), Value::Array(rows));
+        }
+    }
+    Value::Object(out)
+}
+
+/// The settings file holds a credential that is set.
+pub fn has_keys(v: &Value) -> bool {
+    let k = keys_part(v);
+    KEY_FIELDS.iter().any(|f| k.get(*f).is_some_and(filled)) || k.get("notify_channels").is_some()
+}
+
+/// The settings file holds a setting other than credentials.
+pub fn has_settings(v: &Value) -> bool {
+    settings_part(v).as_object().is_some_and(|m| !m.is_empty())
+}
+
+/// The settings file a restore makes ([`crate::backup`]) from this computer's
+/// (`cur`) and the backup's (`inc`). `settings`: the backup's settings take the
+/// place of these, whole; else these stay. `keys`: each credential the backup
+/// has set replaces this one; else (and for every credential the backup does
+/// not have) this computer's stays: a restore never clears a key. A channel
+/// keeps its credentials by its id and kind.
+pub fn combine_settings(cur: &Value, inc: &Value, settings: bool, keys: bool) -> Value {
+    let mut out = settings_part(if settings { inc } else { cur });
+    let find = |v: &Value, id: &str, kind: &str| -> Option<Value> {
+        v.get("notify_channels")?.as_array()?.iter().find(|c| channel_id(c) == Some((id, kind))).cloned()
+    };
+    if let Some(m) = out.as_object_mut() {
+        for f in KEY_FIELDS {
+            let from = if keys && inc.get(f).is_some_and(filled) { inc } else { cur };
+            if let Some(x) = from.get(f) {
+                m.insert(f.to_string(), x.clone());
+            }
+        }
+        if let Some(Value::Array(list)) = m.get_mut("notify_channels") {
+            for c in list.iter_mut() {
+                let Some((id, kind)) = channel_id(c).map(|(a, b)| (a.to_string(), b.to_string())) else {
+                    continue;
+                };
+                let from_inc = if keys {
+                    find(inc, &id, &kind).filter(|x| CHANNEL_KEY_FIELDS.iter().any(|f| x.get(*f).is_some_and(filled)))
+                } else {
+                    None
+                };
+                let src = from_inc.or_else(|| find(cur, &id, &kind));
+                if let (Some(src), Some(o)) = (src, c.as_object_mut()) {
+                    for f in CHANNEL_KEY_FIELDS {
+                        if let Some(x) = src.get(f) {
+                            o.insert(f.to_string(), x.clone());
+                        }
+                    }
+                }
+            }
+        }
+        // A channel of this computer that has credentials stays, also when
+        // the backup does not have it.
+        let present: Vec<(String, String)> = m
+            .get("notify_channels")
+            .and_then(Value::as_array)
+            .map(|l| l.iter().filter_map(|c| channel_id(c).map(|(a, b)| (a.to_string(), b.to_string()))).collect())
+            .unwrap_or_default();
+        let extra: Vec<Value> = cur
+            .get("notify_channels")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|c| CHANNEL_KEY_FIELDS.iter().any(|f| c.get(*f).is_some_and(filled)))
+            .filter(|c| channel_id(c).is_some_and(|(a, b)| !present.iter().any(|(x, y)| x == a && y == b)))
+            .cloned()
+            .collect();
+        if !extra.is_empty() {
+            if let Some(list) = m.entry("notify_channels").or_insert_with(|| json!([])).as_array_mut() {
+                list.extend(extra);
+            }
+        }
+    }
+    out
+}
+
+/// What the import preview shows of a settings file ([`crate::backup`]).
+#[derive(Debug, Clone, Default)]
+pub struct SettingsPeek {
+    /// Settings other than credentials.
+    pub has_settings: bool,
+    /// Credentials that are set.
+    pub has_keys: bool,
+    /// Its console password, when it has one.
+    pub password: Option<String>,
+    /// Its backup folder ("" = the default one).
+    pub backup_dir: String,
+}
+
+/// Read a settings file for the import preview. Err: not a settings file (not
+/// a JSON object of settings). Keys this agent does not know count for nothing.
+pub fn peek_settings_text(text: &str) -> Result<SettingsPeek> {
+    let (ov, _) = read_overrides(text)?;
+    let raw: Value = serde_json::from_str(text)?;
+    let known: Vec<String> = serde_json::to_value(&ov)?.as_object().map(|m| m.keys().cloned().collect()).unwrap_or_default();
+    let mut m = raw.as_object().cloned().unwrap_or_default();
+    m.retain(|k, _| known.contains(k) || k == "deepseek_api_key");
+    let v = Value::Object(m);
+    Ok(SettingsPeek {
+        has_settings: has_settings(&v),
+        has_keys: has_keys(&v),
+        password: ov.ui_password.map(|p| p.trim().to_string()).filter(|p| !p.is_empty()),
+        backup_dir: ov.backup_dir.unwrap_or_default().trim().to_string(),
+    })
 }
 
 fn sanitize_answer_style(s: &str) -> String {
@@ -1848,6 +2032,51 @@ impl SettingsStore {
         serde_json::to_vec_pretty(&st.overrides).unwrap_or_else(|_| b"{}".to_vec())
     }
 
+    /// A restore of the backup items `settings` and / or `keys` ([`combine_settings`]):
+    /// `text` is the backup's settings.json. What belongs to this computer
+    /// stays: `public_url`, and `backup_dir` when this computer cannot write
+    /// there (`dir_ok` false; then the second value is true). Read the way
+    /// [`Self::load`] reads a file (the same changes for older versions), saved,
+    /// then swapped in.
+    pub fn replace_from_backup(&self, text: &str, settings: bool, keys: bool, dir_ok: &dyn Fn(&str) -> bool) -> Result<(Arc<RuntimeSettings>, bool)> {
+        let inc: Value = serde_json::from_str(text).context("not a settings file")?;
+        if !inc.is_object() {
+            anyhow::bail!("not a settings file");
+        }
+        let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
+        let cur = serde_json::to_value(&st.overrides)?;
+        let mut merged = combine_settings(&cur, &inc, settings, keys);
+        let mut dir_reset = false;
+        if let Some(m) = merged.as_object_mut() {
+            let keep = |m: &mut Map<String, Value>, k: &str| match cur.get(k) {
+                Some(v) => {
+                    m.insert(k.to_string(), v.clone());
+                }
+                None => {
+                    m.remove(k);
+                }
+            };
+            keep(m, "public_url");
+            let wanted = m.get("backup_dir").and_then(Value::as_str).unwrap_or("").trim().to_string();
+            if settings && !wanted.is_empty() && !dir_ok(&wanted) {
+                keep(m, "backup_dir");
+                dir_reset = true;
+            }
+            if m.get("ui_password").is_some_and(filled) {
+                m.insert("ui_password_prompted".into(), json!(true));
+            }
+        }
+        let (ov, moved) = read_overrides(&merged.to_string()).context("not a settings file")?;
+        let (ov, rt) = Self::settle_overrides(&self.base, &self.path, ov, moved);
+        write_overrides(&self.path, &ov)?;
+        st.overrides = ov;
+        set_active_ui_password(&rt.ui_password);
+        crate::calendar::set_link_secret(&active_ui_token(&self.base.calls_ui_token));
+        st.current = Arc::new(rt);
+        info!("runtime settings restored from a backup path={} settings={settings} keys={keys}", self.path.display());
+        Ok((st.current.clone(), dir_reset))
+    }
+
     /// The settings of a backup take the place of these, whole ([`crate::backup`]):
     /// `text` is a settings.json, read the way [`Self::load`] reads one (the
     /// same changes for older versions). What belongs to this computer stays:
@@ -2769,6 +2998,13 @@ fn reject_entry_for<'a>(list: &'a [RejectEntry], caller: &str, sim: Option<&str>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_masked_setting_is_a_key_of_backups() {
+        for f in SECRET_FIELDS {
+            assert!(KEY_FIELDS.contains(&f), "{f}");
+        }
+    }
 
     #[test]
     fn numbers_match_across_countries() {
