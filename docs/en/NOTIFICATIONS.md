@@ -97,7 +97,7 @@ You can receive these messages:
 | AI errand call: <name or number> | An AI errand you started has ended. The message has the result, details, your decision when one is needed, the next step, the time agreed and a link to the *Errands* page. | `ai_errand` |
 | Appointment to confirm | A caller set a time with the AI. Telegram receives a card with buttons; every other channel receives signed one-tap **Accept / Decline** buttons or links (see [Appointments](#appointments)). | `appointment_pending` / `summary` |
 | Call forwarded to your phone | Someone ticked under *Who can be forwarded* called while *Transfer* is *Don't answer: send to your phone*. The phone declined the call so your carrier forwards it to you, and you get an instant alert. | `whitelist_direct_transfer` |
-| Urgent call alert | Someone ticked under *Who can be forwarded* called, the AI answered and the caller said it was urgent; you are alerted at once. With *When it's urgent, call me and join us* on, the phone also calls you. | `whitelist_urgent_transfer` |
+| Urgent call alert | Someone ticked under *Who can be forwarded* called, the AI answered and the caller said it was urgent; you are alerted at once. With *AI answers, puts you through if urgent* and your number filled in, the phone also calls you. | `whitelist_urgent_transfer` |
 | Test notification | You pressed **Send test**. | `test` |
 | New SMS | A text message passed on by the optional [SMS forwarder](../../tools/sms_forward/README.md). | `event` |
 

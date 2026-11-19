@@ -375,9 +375,11 @@ pub struct RuntimeSettings {
     /// The owner's real phone number for Whitelist forwarding / emergency call.
     #[serde(default)]
     pub whitelist_forward_number: String,
-    /// Trial: with `whitelist_mode` emergency and a forwarding number, an urgent
-    /// Whitelist caller is put on hold, the phone dials that number from the
-    /// same SIM and merges the two calls (`crate::urgent_call`). Off: alert only.
+    /// Old switch for the urgent call. Kept so older settings files and backups still
+    /// load; it no longer changes anything. With `whitelist_mode` emergency and a
+    /// forwarding number, an urgent Whitelist caller is put on hold, the phone dials
+    /// that number from the same SIM and merges the two calls (`crate::urgent_call`);
+    /// without the number only an alert goes out.
     #[serde(default)]
     pub whitelist_urgent_call: bool,
     /// Who may be forwarded to the owner (`whitelist_mode` direct or emergency):
