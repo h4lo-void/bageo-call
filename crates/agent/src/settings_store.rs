@@ -839,22 +839,54 @@ pub fn has_settings(v: &Value) -> bool {
 
 /// The settings file a restore makes ([`crate::backup`]) from this computer's
 /// (`cur`) and the backup's (`inc`). `settings`: the backup's settings outside
-/// `keys` take the place of these, whole; else these stay. `keys`: the whole
-/// group `keys` is the backup's as it is there; a field the backup does not
-/// have goes back to its default here too, so putting back the copy made
-/// before a restore takes away every key, channel and remote control that
-/// restore brought. Without `keys` the whole group stays as it is here.
-pub fn combine_settings(cur: &Value, inc: &Value, settings: bool, keys: bool) -> Value {
+/// `keys` take the place of these, whole; else these stay. `keys`: a field of
+/// the group the backup has set takes the place of this computer's; one it
+/// does not have, or leaves empty, stays as it is here, so an older or partial
+/// backup never takes away a password or key set since. `whole_keys` (putting
+/// back this computer's own `before_import` copy): the group is the backup's
+/// exactly, a field it does not have going back to its default here, so that
+/// copy takes away every key, channel and remote control the restore before
+/// brought. Without `keys` the whole group stays as it is here.
+pub fn combine_settings(cur: &Value, inc: &Value, settings: bool, keys: bool, whole_keys: bool) -> Value {
     let mut out = settings_part(if settings { inc } else { cur });
     if let Some(m) = out.as_object_mut() {
-        let from = if keys { inc } else { cur };
         for f in key_fields() {
-            if let Some(x) = from.get(f) {
+            let pick = match (keys, whole_keys) {
+                (false, _) => cur.get(f),
+                (true, true) => inc.get(f),
+                (true, false) => inc.get(f).filter(|v| filled(v)).or_else(|| cur.get(f)),
+            };
+            if let Some(x) = pick {
                 m.insert(f.to_string(), x.clone());
             }
         }
     }
     out
+}
+
+#[cfg(test)]
+mod combine_tests {
+    use super::*;
+
+    #[test]
+    fn keys_of_an_older_backup_keep_what_it_does_not_have() {
+        let cur = json!({"owner_name": "Here", "ui_password": "test-fake-pw-here", "gemini_api_key": "test-fake-key-here", "mcp_token": "test-fake-mcp-here"});
+        let inc = json!({"owner_name": "There", "telegram_bot_token": "test-fake-bot-there", "gemini_api_key": ""});
+        let mixed = combine_settings(&cur, &inc, false, true, false);
+        assert_eq!(mixed["ui_password"], "test-fake-pw-here");
+        assert_eq!(mixed["gemini_api_key"], "test-fake-key-here", "an empty key in the file does not clear this one");
+        assert_eq!(mixed["mcp_token"], "test-fake-mcp-here");
+        assert_eq!(mixed["telegram_bot_token"], "test-fake-bot-there");
+        assert_eq!(mixed["owner_name"], "Here", "settings not chosen");
+        let whole = combine_settings(&cur, &inc, false, true, true);
+        assert!(whole.get("ui_password").is_none(), "the before_import copy takes the group exactly");
+        assert!(whole.get("mcp_token").is_none());
+        assert_eq!(whole["telegram_bot_token"], "test-fake-bot-there");
+        let none = combine_settings(&cur, &inc, true, false, false);
+        assert_eq!(none["owner_name"], "There");
+        assert_eq!(none["ui_password"], "test-fake-pw-here");
+        assert!(none.get("telegram_bot_token").is_none());
+    }
 }
 
 /// [`RETENTION_FIELDS`] of a restore (`out`) never shorter than this
@@ -2118,7 +2150,7 @@ impl SettingsStore {
     /// stays: `public_url` and `backup_dir`, never taken from a file. The
     /// [`RETENTION_FIELDS`] only keep or lengthen. Read the way [`Self::load`]
     /// reads a file (the same changes for older versions), saved, then swapped in.
-    pub fn replace_from_backup(&self, text: &str, settings: bool, keys: bool) -> Result<Arc<RuntimeSettings>> {
+    pub fn replace_from_backup(&self, text: &str, settings: bool, keys: bool, whole_keys: bool) -> Result<Arc<RuntimeSettings>> {
         let inc: Value = serde_json::from_str(text).context("not a settings file")?;
         if !inc.is_object() {
             anyhow::bail!("not a settings file");
@@ -2126,7 +2158,7 @@ impl SettingsStore {
         let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
         let cur = serde_json::to_value(&st.overrides)?;
         let now = serde_json::to_value(&*st.current)?;
-        let mut merged = combine_settings(&cur, &inc, settings, keys);
+        let mut merged = combine_settings(&cur, &inc, settings, keys, whole_keys);
         if let Some(m) = merged.as_object_mut() {
             keep_this_computers(m, &cur);
             never_shorter(m, &inc, &cur, &now);
@@ -2169,9 +2201,9 @@ impl SettingsStore {
     /// What restoring the item `keys` of the settings file `text` would change:
     /// the console password, and where data goes or who may operate Bageo (a
     /// value of [`CONNECTION_FIELDS`]; a channel's id and tokens do not count).
-    /// The group comes from the file whole ([`combine_settings`]), so one the
-    /// file does not have that is set here counts as a change too.
-    pub fn keys_change(&self, text: &str) -> KeysChange {
+    /// Worked out the way the restore does it ([`combine_settings`];
+    /// `whole_keys` for this computer's own `before_import` copy).
+    pub fn keys_change(&self, text: &str, whole_keys: bool) -> KeysChange {
         let Ok(inc) = serde_json::from_str::<Value>(text) else {
             return KeysChange::default();
         };
@@ -2182,7 +2214,7 @@ impl SettingsStore {
         let Ok(cur) = cur else {
             return KeysChange::default();
         };
-        let merged = combine_settings(&cur, &inc, false, true);
+        let merged = combine_settings(&cur, &inc, false, true, whole_keys);
         let Ok((ov, _)) = read_overrides(&merged.to_string()) else {
             return KeysChange::default();
         };

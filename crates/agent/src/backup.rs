@@ -97,6 +97,9 @@ const TICKET_TTL: Duration = Duration::from_secs(120);
 /// Wrong passwords one preview takes before it goes, and the least time between two tries.
 const UNLOCK_TRIES: u32 = 5;
 const UNLOCK_GAP: Duration = Duration::from_secs(1);
+/// After [`UNLOCK_TRIES`] wrong passwords in a row, on any preview, each try
+/// waits twice as long as the one before, up to this.
+const UNLOCK_WAIT_MAX: Duration = Duration::from_secs(if cfg!(test) { 4 } else { 60 });
 /// The name ending of an encrypted backup (the others end in `.zip`).
 const SEALED_EXT: &str = ".bageo";
 const BEFORE_IMPORT_KEEP: usize = 5;
@@ -1954,13 +1957,47 @@ fn preview_of(state: &CallsState, token: &str, p: &Pending) -> Value {
         return json!({"ok": true, "token": token, "source_name": p.source_name, "encrypted": true, "needs_password": true});
     };
     let change = match ins.settings_text.as_deref() {
-        Some(t) if ins.counts.contains_key("keys") => state.settings_store.keys_change(t),
+        Some(t) if ins.counts.contains_key("keys") => state.settings_store.keys_change(t, whole_keys(p, ins)),
         _ => Default::default(),
     };
     let mut v = preview_json(token, &p.source_name, ins, change, &p.warnings);
     v["encrypted"] = json!(p.encrypted);
     v["needs_password"] = json!(false);
     v
+}
+
+/// The preview is this computer's own `before_import` copy, picked from the
+/// backup folder (an upload never is): its keys come back exactly as they were.
+fn whole_keys(p: &Pending, ins: &Inspected) -> bool {
+    !p.owned
+        && ins.manifest.as_ref().is_some_and(|m| m.kind == "before_import")
+        && p.file.file_name().and_then(|n| n.to_str()).and_then(parse_name).is_some_and(|(k, _)| k == Kind::BeforeImport)
+}
+
+/// Wrong passwords in a row across every preview, and when the last try was:
+/// a new preview does not start the count again.
+static GUESSES: std::sync::Mutex<(u32, Option<Instant>)> = std::sync::Mutex::new((0, None));
+/// One password try at a time, whichever preview it is for.
+static UNLOCKING: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+
+/// How long the next password try still waits.
+fn guess_wait() -> Duration {
+    let (fails, last) = *GUESSES.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(last) = last else {
+        return Duration::ZERO;
+    };
+    let gap = if fails < UNLOCK_TRIES {
+        UNLOCK_GAP
+    } else {
+        UNLOCK_GAP.saturating_mul(1u32 << (fails - UNLOCK_TRIES + 1).min(6)).min(UNLOCK_WAIT_MAX)
+    };
+    gap.saturating_sub(last.elapsed())
+}
+
+fn guessed(right: bool) {
+    let mut g = GUESSES.lock().unwrap_or_else(|e| e.into_inner());
+    g.0 = if right { 0 } else { g.0.saturating_add(1) };
+    g.1 = Some(Instant::now());
 }
 
 fn register(state: &CallsState, p: Pending) -> Value {
@@ -2197,7 +2234,8 @@ pub(crate) async fn preview_saved(state: &CallsState, name: &str) -> Result<Valu
 
 /// Open the encrypted file of the preview `token` with `password`: its
 /// preview. `wrong_password`; after [`UNLOCK_TRIES`] of them the preview goes
-/// (`expired`). Tries are at least [`UNLOCK_GAP`] apart, one at a time.
+/// (`expired`). One try at a time over every preview, at least [`UNLOCK_GAP`]
+/// apart, and longer after wrong ones in a row ([`guess_wait`]).
 pub(crate) async fn unlock(state: &CallsState, token: &str, password: &str) -> Result<Value, ApiErr> {
     sweep_pending();
     let data = PathBuf::from(&state.settings.calls_data_dir);
@@ -2222,7 +2260,9 @@ pub(crate) async fn unlock(state: &CallsState, token: &str, password: &str) -> R
             p.trying = false;
         }
     };
-    tokio::time::sleep(wait).await;
+    // One try at a time across every preview, spaced by the wrong ones before.
+    let _one = UNLOCKING.get_or_init(|| tokio::sync::Mutex::new(())).lock().await;
+    tokio::time::sleep(wait.max(guess_wait())).await;
     // The opened copy of an upload takes about as much as the upload.
     if let Some(size) = upload {
         if !make_room(&data, size, Some(token)) {
@@ -2231,6 +2271,11 @@ pub(crate) async fn unlock(state: &CallsState, token: &str, password: &str) -> R
         }
     }
     let res = open_sealed(&data, &src, password).await;
+    match &res {
+        Ok(_) => guessed(true),
+        Err(OpenErr::WrongPassword) => guessed(false),
+        Err(_) => {}
+    }
     let mut map = pending();
     let Some(p) = map.get_mut(token) else {
         // Gone meanwhile (swept or pushed out).
@@ -2362,7 +2407,8 @@ async fn apply_pending(state: &CallsState, p: &Pending, ins: &Inspected, chosen:
         return Err(bad_err(e));
     }
     let mut created = Vec::new();
-    let installed = match install(state, &lay, &stage, &want, chosen, false, &mut created).await {
+    let way = if whole_keys(p, ins) { SettingsWay::WholeKeys } else { SettingsWay::Mix };
+    let installed = match install(state, &lay, &stage, &want, chosen, way, &mut created).await {
         Ok(i) => i,
         Err(e) => {
             warn!("backup: restoring failed ({}), the settings from before are put back", err_kind(&e));
@@ -2417,17 +2463,28 @@ struct Installed {
     restart_needed: bool,
 }
 
+/// How a restore takes the settings file of a backup.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SettingsWay {
+    /// Mixed into this computer's: the chosen parts, keys only where the backup has them.
+    Mix,
+    /// This computer's own `before_import` copy: the keys group exactly as it was.
+    WholeKeys,
+    /// Putting the `before_import` copy back after a restore failed: the file whole.
+    Exact,
+}
+
 /// The parts `chosen` other than the call records in place (files that were
 /// not here go into `created`), then read again by their stores. Settings and
 /// keys mix into this computer's ([`crate::settings_store::combine_settings`]);
-/// `exact` (putting the `before_import` copy back) takes its settings.json whole.
+/// see [`SettingsWay`].
 async fn install(
     state: &CallsState,
     lay: &Layout,
     stage: &Path,
     want: &[Wanted],
     chosen: &[&'static str],
-    exact: bool,
+    way: SettingsWay,
     created: &mut Vec<PathBuf>,
 ) -> anyhow::Result<Installed> {
     let items: HashSet<&'static str> = chosen.iter().copied().collect();
@@ -2447,7 +2504,10 @@ async fn install(
         let text = std::fs::read_to_string(&staged_settings).context("read the settings of the backup")?;
         let text = text.trim_start_matches('\u{feff}');
         let days_before = state.settings_store.snapshot().retention_days;
-        let rt = if exact { state.settings_store.replace_from_text(text)? } else { state.settings_store.replace_from_backup(text, s, k)? };
+        let rt = match way {
+            SettingsWay::Exact => state.settings_store.replace_from_text(text)?,
+            w => state.settings_store.replace_from_backup(text, s, k, w == SettingsWay::WholeKeys)?,
+        };
         crate::calls_http::purge_after_fewer_days(state, days_before, rt.retention_days);
         // Language, answer style, phone names: process-wide, like a settings
         // save does (left alone in unit tests, where other tests read them).
@@ -2525,7 +2585,7 @@ async fn roll_back(state: &CallsState, lay: &Layout, before: &Path, created: &[P
         Ok(ins) => {
             let mut again = Vec::new();
             let held: Vec<&'static str> = ins.counts.keys().copied().collect();
-            if let Err(e) = install(state, lay, &stage, &ins.files, &held, true, &mut again).await {
+            if let Err(e) = install(state, lay, &stage, &ins.files, &held, SettingsWay::Exact, &mut again).await {
                 warn!("backup: the settings from before could not all be put back ({})", err_kind(&e));
             }
             let all: HashSet<&'static str> = STORE_ITEMS.into_iter().collect();
@@ -3062,7 +3122,7 @@ struct UnlockBody {
 
 /// `POST /api/backup/unlock` `{token, password}`: open the encrypted file of a
 /// preview; its preview (`wrong_password`, `expired` after 5 wrong ones).
-async fn unlock_route(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, body: Bytes) -> Response {
+async fn unlock_route(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, ext: Extensions, body: Bytes) -> Response {
     if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
         return unauthorized();
     }
@@ -3072,6 +3132,10 @@ async fn unlock_route(State(state): State<CallsState>, headers: HeaderMap, Query
     let Ok(b) = serde_json::from_slice::<UnlockBody>(&body) else {
         return err_response((StatusCode::BAD_REQUEST, "bad_request"));
     };
+    // Without a console password, guessing a backup password is for this computer only.
+    if !may_download_keys(&state, &ext, &headers) {
+        return err_response((StatusCode::FORBIDDEN, "need_password"));
+    }
     match unlock(&state, b.token.trim(), &b.password).await {
         Ok(v) => Json(v).into_response(),
         Err(e) => err_response(e),
@@ -3922,7 +3986,11 @@ mod tests {
         assert_eq!(preview["changes_connections"], true);
         let done = apply(&b, preview["token"].as_str().unwrap(), &["settings", "keys"]).await.unwrap();
         let rt = b.settings_store.snapshot();
-        assert_eq!((rt.mcp_token.as_str(), rt.telegram_chat_id.as_str(), rt.callback_whitelist.clone()), (THEIR_MCP, "", vec!["*".to_string()]), "the group is the file's");
+        assert_eq!(
+            (rt.mcp_token.as_str(), rt.telegram_chat_id.as_str(), rt.callback_whitelist.clone()),
+            (THEIR_MCP, "fake-chat-own", vec!["*".to_string()]),
+            "the file's keys where it has them, this computer's where it has none"
+        );
 
         // Everything the copy from before holds, put back.
         let name = done["before_import"].as_str().unwrap();
@@ -3945,9 +4013,9 @@ mod tests {
         assert_eq!(crate::mcp::answer(&ctrl, &bearer(THEIR_MCP), ping).await.0, StatusCode::UNAUTHORIZED);
         assert_ne!(crate::mcp::answer(&ctrl, &bearer(OWN_MCP), ping).await.0, StatusCode::UNAUTHORIZED);
 
-        // A file with only one key would clear the rest of the group: that counts as a change.
+        // A file with only one key leaves the rest of the group as it is here: nothing else changes.
         let one = preview_upload(&b, "keys.json", Bytes::from(json!({"gemini_api_key": FAKE_GEMINI}).to_string())).await.unwrap();
-        assert_eq!((one["changes_password"].as_bool(), one["changes_connections"].as_bool()), (Some(false), Some(true)));
+        assert_eq!((one["changes_password"].as_bool(), one["changes_connections"].as_bool()), (Some(false), Some(false)));
         discard(&rb, one["token"].as_str().unwrap());
         let _ = std::fs::remove_dir_all(&rb);
     }

@@ -29,8 +29,8 @@
 //! header is the associated data of every chunk. A changed byte, a cut-off
 //! file, a missing last chunk or a changed header all fail the tags.
 //!
-//! A file that asks for more than 1 GiB of memory, more than 10 passes or more
-//! than 4 lanes is refused before any work: it could tie up the computer.
+//! A file that asks for more than 256 MiB of memory, more than 4 passes or
+//! more than 4 lanes is refused before any work: it could tie up the computer.
 
 use std::io::{self, Read, Write};
 use std::ops::RangeInclusive;
@@ -60,8 +60,8 @@ pub const LANES: u32 = 1;
 /// Bytes of the zip in each chunk.
 pub const CHUNK: u32 = 1 << 20;
 /// What a file may ask for.
-const MEMORY_KIB_OK: RangeInclusive<u32> = 8 * 1024..=1024 * 1024;
-const PASSES_OK: RangeInclusive<u32> = 1..=10;
+const MEMORY_KIB_OK: RangeInclusive<u32> = 8 * 1024..=256 * 1024;
+const PASSES_OK: RangeInclusive<u32> = 1..=4;
 const LANES_OK: RangeInclusive<u32> = 1..=4;
 const CHUNK_OK: RangeInclusive<u32> = 4 * 1024..=16 << 20;
 /// The shortest password a backup is encrypted with.
@@ -338,11 +338,11 @@ mod tests {
         assert_eq!((at(10), at(14), at(18), at(39)), (MEMORY_KIB, PASSES, LANES, CHUNK));
         assert_eq!((MEMORY_KIB_NEW, PASSES, LANES, CHUNK), (64 * 1024, 3, 1, 1 << 20));
         let mut g = f.clone();
-        g[10..14].copy_from_slice(&(1024 * 1024 + 1u32).to_le_bytes());
-        assert!(matches!(check_header(&mut &g[..]), Err(CryptErr::Damaged)), "over 1 GiB");
+        g[10..14].copy_from_slice(&(256 * 1024 + 1u32).to_le_bytes());
+        assert!(matches!(check_header(&mut &g[..]), Err(CryptErr::Damaged)), "over 256 MiB");
         g[10..14].copy_from_slice(&(64 * 1024u32).to_le_bytes());
-        g[14..18].copy_from_slice(&11u32.to_le_bytes());
-        assert!(matches!(check_header(&mut &g[..]), Err(CryptErr::Damaged)), "over 10 passes");
+        g[14..18].copy_from_slice(&5u32.to_le_bytes());
+        assert!(matches!(check_header(&mut &g[..]), Err(CryptErr::Damaged)), "over 4 passes");
     }
 
     #[test]
