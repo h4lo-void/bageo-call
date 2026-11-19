@@ -11008,18 +11008,18 @@ fn summary_end_hint(events: &[String], scam: Option<&calls::ScamJudgement>) -> S
         locale::notify_zh_or("黑名單：播無法接通語音後掛斷（AI 沒有接）", "blocked number: the unavailable announcement was played, then hung up (the AI did not answer)")
     } else if has("whitelist_urgent_call_merged") {
         locale::notify_zh_or(
-            "白名單聯絡人說有急事：手機打給主人，主人接起來後三方一起通話，AI 退出；這是真的急事，不是推銷或詐騙",
-            "a whitelisted contact said it was urgent: the phone called the owner, who picked up and joined a three-way call, and the AI left; a real urgent matter, not a sales call or scam",
+            "來電者說有急事：手機打給主人，主人接起來後三方一起通話，AI 退出；這通沒有被當成推銷或詐騙陪聊拖時間",
+            "the caller said it was urgent: the phone called the owner, who picked up and joined a three-way call, and the AI left; this call was not treated as a sales or scam call to stall",
         )
     } else if events.iter().any(|e| e.starts_with("whitelist_urgent_call_failed") || e == "whitelist_urgent_call_ai_ended") {
         locale::notify_zh_or(
-            "白名單聯絡人說有急事：手機打給主人但沒接通，AI 跟對方說主人會盡快回電；這是真的急事，不是推銷或詐騙，「要處理」寫盡快回電給對方",
-            "a whitelisted contact said it was urgent: the phone called the owner but did not get through, and the AI told the caller the owner would call back soon; a real urgent matter, not a sales call or scam, so the to-do is to call them back as soon as possible",
+            "來電者說有急事：手機打給主人但沒接通，AI 跟對方說主人會盡快回電；這通沒有被當成推銷或詐騙陪聊拖時間，「要處理」寫盡快回電給對方",
+            "the caller said it was urgent: the phone called the owner but did not get through, and the AI told the caller the owner would call back soon; this call was not treated as a sales or scam call to stall, so the to-do is to call them back as soon as possible",
         )
     } else if has("whitelist_urgent_transfer") {
         locale::notify_zh_or(
-            "白名單聯絡人說有急事，系統已馬上通知主人；這是真的急事，不是推銷或詐騙，「要處理」寫盡快回電給對方",
-            "a whitelisted contact said it was urgent and the owner was alerted at once; a real urgent matter, not a sales call or scam, so the to-do is to call them back as soon as possible",
+            "來電者說有急事，系統已馬上通知主人；這通沒有被當成推銷或詐騙陪聊拖時間，「要處理」寫盡快回電給對方",
+            "the caller said it was urgent and the owner was alerted at once; this call was not treated as a sales or scam call to stall, so the to-do is to call them back as soon as possible",
         )
     } else if has("persona_stall_released") {
         locale::notify_zh_or("系統一度以為是推銷／詐騙，再確認一次是正常電話，AI 回到正常應對", "the system first took it for a sales / scam call; a second check found an ordinary call and the AI went back to talking normally")
@@ -12950,7 +12950,7 @@ mod unknown_caller_tests {
         assert!(REJECT_PENDING_TTL >= Duration::from_secs(10));
         // The record says why there was no AI.
         assert!(summary_end_hint(&["reject_list".to_string()], None).contains("黑名單"));
-        // A whitelisted caller's urgent matter is never written up as a stalled sales call.
+        // An urgent call that went to the owner is never written up as a stalled sales call.
         let urgent = |evs: &[&str]| summary_end_hint(&evs.iter().map(|e| e.to_string()).collect::<Vec<_>>(), None);
         let missed = urgent(&["whitelist_urgent_transfer", "whitelist_urgent_call_failed", "whitelist_urgent_call_failed:no_answer"]);
         assert!(missed.contains("沒接通") && missed.contains("盡快回電") && !missed.contains("陪他聊"), "{missed}");
