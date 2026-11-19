@@ -7360,7 +7360,7 @@ struct GeminiSessionCore {
     caller: Arc<std::sync::Mutex<String>>,
     /// Set once when a Whitelist caller (`whitelist_mode == "emergency"`) states an emergency.
     urgent_reason: Arc<std::sync::Mutex<Option<String>>>,
-    /// Whitelist urgent call (setting `whitelist_urgent_call`) on this call.
+    /// Whitelist urgent call (`whitelist_mode` emergency with the owner's number set) on this call.
     urgent_call: Option<Arc<urgent_call::CallCtl>>,
 }
 
@@ -7710,7 +7710,7 @@ async fn send_urgent_call_alert(state: &AppState, serial: &str, caller_num: &str
     });
 }
 
-/// Whitelist urgent call (setting `whitelist_urgent_call`). Dials only once the
+/// Whitelist urgent call (`whitelist_mode` emergency with the owner's number set). Dials only once the
 /// AI has said its hold-on line (from its own words) and that line has played
 /// (hold cuts this call's audio for the caller); the owner's number must pass the
 /// errands check. Then the phone dials from this call's SIM and merges; the call
@@ -8289,8 +8289,8 @@ async fn run_gemini_session_to_end(
                         tokio::spawn(async move {
                             let _ = notify::send_text_alert(&http, &settings, "whitelist_urgent_transfer", urg_title, &alert).await;
                         });
-                        // Trial (setting whitelist_urgent_call): the phone dials the owner
-                        // and merges the calls; the alert above goes out either way.
+                        // `whitelist_mode` emergency with the owner's number set: the phone dials the
+                        // owner and puts them through; the alert above goes out either way.
                         if let Some(ctl) = urgent_ctl.clone().filter(|c| !c.dial_blocked()) {
                             let on_fail = urgent_call::not_answered_turn(rt.lang(), rt.is_assistant_style(), &rt.owner_name);
                             let on_callback = urgent_call::callback_turn(rt.lang(), rt.is_assistant_style(), &rt.owner_name);
@@ -11150,8 +11150,8 @@ fn summary_end_hint(events: &[String], scam: Option<&calls::ScamJudgement>) -> S
         locale::notify_zh_or("黑名單：播無法接通語音後掛斷（AI 沒有接）", "blocked number: the unavailable announcement was played, then hung up (the AI did not answer)")
     } else if has("whitelist_urgent_call_merged") {
         locale::notify_zh_or(
-            "來電者說有急事：手機打給主人，主人接起來後三方一起通話，AI 退出；這通沒有被當成推銷或詐騙陪聊拖時間",
-            "the caller said it was urgent: the phone called the owner, who picked up and joined a three-way call, and the AI left; this call was not treated as a sales or scam call to stall",
+            "來電者說有急事：手機打給主人，主人接起來後直接跟來電者通話，AI 退出；這通沒有被當成推銷或詐騙陪聊拖時間",
+            "the caller said it was urgent: the phone called the owner, who picked up and was put through to the caller, and the AI left; this call was not treated as a sales or scam call to stall",
         )
     } else if events.iter().any(|e| e.starts_with("whitelist_urgent_call_failed") || e == "whitelist_urgent_call_ai_ended") {
         locale::notify_zh_or(
@@ -13096,7 +13096,7 @@ mod unknown_caller_tests {
         let urgent = |evs: &[&str]| summary_end_hint(&evs.iter().map(|e| e.to_string()).collect::<Vec<_>>(), None);
         let missed = urgent(&["whitelist_urgent_transfer", "whitelist_urgent_call_failed", "whitelist_urgent_call_failed:no_answer"]);
         assert!(missed.contains("沒接通") && missed.contains("盡快回電") && !missed.contains("陪他聊"), "{missed}");
-        assert!(urgent(&["whitelist_urgent_transfer", "whitelist_urgent_call_merged"]).contains("三方"));
+        assert!(urgent(&["whitelist_urgent_transfer", "whitelist_urgent_call_merged"]).contains("直接跟來電者通話"));
         assert!(urgent(&["whitelist_urgent_transfer"]).contains("盡快回電"));
     }
 

@@ -72,7 +72,7 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&…
 | AI 代打：〈名字或號碼〉 | 你交辦的 AI 代打結束了。訊息有結果、細節、需要你決定的選項、下一步、談定的時間，以及「AI 代打」頁的連結。 | `ai_errand` |
 | 預約待你確認 | 對方跟 AI 約了時間。Telegram 收到有按鈕的卡片，其他管道收到附一鍵「同意／不同意」簽章按鈕或連結的通知（見[行程預約](#行程預約)）。 | `appointment_pending` / `summary` |
 | 來電已轉到你的手機 | 「誰打來可以轉」勾選的人打來、且「轉接方式」是「不接，直接轉到你的手機」時，手機不接，讓電信把電話轉給你，並馬上通知你。 | `whitelist_direct_transfer` |
-| 來電急事通知 | 「誰打來可以轉」勾選的人打來、AI 先接，對方說有急事時馬上通知你；打開「有急事時打給你」時，手機也會撥給你。 | `whitelist_urgent_transfer` |
+| 來電急事通知 | 「誰打來可以轉」勾選的人打來、AI 先接，對方說有急事時馬上通知你；轉接方式選「AI 先接，有急事才轉給你」並填好你的號碼時，手機也會撥給你。 | `whitelist_urgent_transfer` |
 | 測試通知 | 你按了「傳送測試」。 | `test` |
 | 聊天指令回覆 | 呼叫 `POST /calls/api/control/inbound` 並帶入 `"reply": true` 時發出的回覆。 | `control_reply` |
 | 新簡訊 | 選用的[簡訊轉發工具](../../tools/sms_forward/README.md)（英文）轉來的簡訊。 | `event` |

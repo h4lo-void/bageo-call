@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+# SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
+name: Docker Hub remove a tag
+
+# Removes one tag from bageo/bageo-call on Docker Hub. Run by hand only
+# (Actions → Docker Hub remove a tag → Run workflow). Only the name goes away:
+# the image stays as long as another tag, like latest, still points to it.
+# "latest" cannot be removed here. Uses the DOCKERHUB_USERNAME and
+# DOCKERHUB_TOKEN secrets; the token needs the Read, Write, Delete permission.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to remove, like 1.6"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  remove:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove the tag
+        shell: bash
+        env:
+          HUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          HUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${TAG}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo "::error::Not a tag name: ${TAG}"; exit 1
+          fi
+          if [[ "${TAG}" == latest ]]; then
+            echo "::error::latest is what the instructions use; it is not removed here"; exit 1
+          fi
+          if [[ -z "${HUB_USER}" || -z "${HUB_TOKEN}" ]]; then
+            echo "::error::DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is not set"; exit 1
+          fi
+          body=$(jq -n --arg u "${HUB_USER}" --arg p "${HUB_TOKEN}" '{username: $u, password: $p}')
+          jwt=$(curl -fsS -H 'Content-Type: application/json' -d "${body}" https://hub.docker.com/v2/users/login | jq -r .token)
+          echo "::add-mask::${jwt}"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
+            -H "Authorization: Bearer ${jwt}" \
+            "https://hub.docker.com/v2/repositories/bageo/bageo-call/tags/${TAG}/")
+          echo "Docker Hub answered HTTP ${code}"
+          if [[ "${code}" != 204 ]]; then
+            echo "::error::Docker Hub did not remove ${TAG} (HTTP ${code})"; exit 1
+          fi
+          echo "Removed bageo/bageo-call:${TAG}"
