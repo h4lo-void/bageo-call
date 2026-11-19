@@ -205,10 +205,9 @@ skipped, and the whole list exports as vCard.
 Every contact can be assigned to one of four lists (from the Contacts page, via one-tap buttons on call summary notifications, or via chat commands `/block`, `/stall`, `/white`, `/unblock`):
 
 - **Contacts**: the AI knows who is calling and reads your note about them.
-- **Whitelist (`whitelist`)**: close friends, family and clients, with three ways to put them through (**Settings → How it answers**, *Transfer*; the Contacts page can set it too):
-  1. *Don't transfer: the AI answers*: the AI knows who is calling, answers naturally, and tells you afterwards.
-  2. *AI answers, reaches you if urgent*: the AI answers first. If the caller says it is urgent (in any of the 9 languages), the AI gives them your phone number and Bageo sends you an urgent alert at once. Turn on *When it's urgent, call me and join us (trial)* and the AI also has this phone call you and joins you in; a confirmation box appears when you turn it on, described in the Settings page.
-  3. *Don't answer: send to your phone*: this phone doesn't answer; your carrier forwards the call to your phone, the AI stays silent, and you get a notification at once. First switch the phone to normal phone and dial `**67*your number#` to turn on forward-when-busy, or callers reach voicemail.
+- **Whitelist (`whitelist`)**: close friends, family and clients, who can be put through to your phone (turn on *Turn on forwarding* in **Settings → How it answers**; the Contacts page can set it too). It is off by default, so the AI answers as usual and tells you afterwards, and a confirmation box comes first when you turn it on. Two ways:
+  1. *AI answers, puts you through if urgent*: the AI answers first. If the caller says it is urgent (in any of the 9 languages), the AI asks them to hold and this phone calls you; once you pick up you talk to them directly, and Bageo sends you an urgent alert at once. Without your number you only get the alert.
+  2. *Don't answer: send to your phone*: this phone doesn't answer; your carrier forwards the call to your phone, the AI stays silent, and you get a notification at once. First switch the phone to normal phone and dial `**67*your number#` to turn on forward-when-busy, or callers reach voicemail.
 - **Blacklist (`blacklist`)**: turned away while ringing, or after a short "not available" announcement, without using the AI; the **Blacklist** tab sets which. A number ending in `*` (`0800*`, at least three digits not counting leading zeros) covers every number that starts that way.
 - **Stall list (`stall`)**: known debt collectors, sales callers or harassers. The AI starts wasting their time the moment the call connects, without waiting for keywords.
 
