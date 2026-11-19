@@ -3,7 +3,7 @@
 Updates and validates [`crates/agent/data/country_scams.json`](../../crates/agent/data/country_scams.json) before releases using Gemini API with Google Search grounding (`google_search`).
 
 ## Supported Countries
-`TW`, `CN`, `US`, `GB` (`UK`), `JP`, `KR`, `DE`, `ES`, `FR`, `BR`, `PT`, `ID` (`+62` cross-border).
+`TW`, `CN`, `US`, `GB` (`UK`), `JP`, `KR`, `DE`, `ES`, `FR`, `BR`, `PT`, `ID` (`+62` cross-border), `IT`, `IN`.
 
 ## Commands
 

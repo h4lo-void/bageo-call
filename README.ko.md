@@ -222,8 +222,8 @@ AI의 목소리, 기본 프롬프트(내 상황과 말투에 맞게 직접 고�
 
 폰이 이미 root 되어 있다면, 다운로드부터 AI가 첫 전화를 받기까지 3분 정도면 됩니다.
 
-1. **다운로드**: [Releases](https://github.com/h4lo-void/bageo-call/releases)에서 내 운영체제용 파일을 받습니다. Windows는 `bageo-call-<version>-windows-x64-setup.exe`, macOS는 `bageo-call-<version>-macos-arm64.dmg`(Apple 칩) 또는 `bageo-call-<version>-macos-x64.dmg`(Intel), Linux는 `bageo-call-<version>-linux-x64.tar.gz`입니다.
-2. **설치하고 실행**: Windows는 `setup.exe`를 더블클릭해 설치한 뒤 바탕화면의 "Bageo" 바로가기를 클릭합니다. macOS는 `.dmg`를 열어 Bageo를 "응용 프로그램"으로 끌어다 놓고 클릭합니다. Linux는 압축을 풀고 `./start.sh`를 실행합니다. 콘솔이 <http://localhost:8787/>에서 열립니다.
+1. **다운로드**: [Releases](https://github.com/h4lo-void/bageo-call/releases)에서 내 운영체제용 파일을 받습니다. Windows는 `bageo-call-<version>-windows-x64-setup.exe`, macOS는 `bageo-call-<version>-macos-arm64.dmg`(Apple 칩) 또는 `bageo-call-<version>-macos-x64.dmg`(Intel), Linux는 `bageo-call-<version>-linux-x64.tar.gz`입니다. Docker를 쓴다면 `bageo/bageo-call` 및 `ghcr.io/h4lo-void/bageo-call`의 완성된 이미지도 이용할 수 있습니다.
+2. **설치하고 실행**: Windows는 `setup.exe`를 더블클릭해 설치한 뒤 바탕화면의 "Bageo" 바로가기를 클릭합니다. macOS는 `.dmg`를 열어 Bageo를 "응용 프로그램"으로 끌어다 놓고 클릭합니다. Linux는 압축을 풀고 `./start.sh`를 실행합니다. 콘솔이 <http://localhost:8787/>에서 열리며, 콘솔 비밀번호를 설정하면 이 컴퓨터와 같은 Wi-Fi의 다른 기기에서도 <http://bageo.local/>로 열 수 있습니다.
 3. **기본 정보 입력**: **설정**에서 Gemini API 키, 내 이름, 언어를 입력합니다. ▶를 눌러 목소리를 들어 보고 하나를 고릅니다.
 4. **폰 준비** (처음 한 번만): `bageo-phone-module-<version>.zip`을 Magisk나 KernelSU의 모듈로 설치하고, 재부팅한 뒤 **Bageo** 앱을 열어 체크리스트를 끝까지 진행하고 폰을 연결합니다.
 5. **다른 폰으로 걸어 보기**: 벨이 한 번 울리면 AI가 받습니다.
@@ -238,10 +238,10 @@ AI의 목소리, 기본 프롬프트(내 상황과 말투에 맞게 직접 고�
 |---|---|
 | **시작하기** | [시작하기](docs/en/GETTING_STARTED.md) · [폰 설정](docs/en/PHONE.md) · [문제 해결과 FAQ](docs/en/TROUBLESHOOTING.md) |
 | **사용하기** | [기능](docs/en/FEATURES.md) · [채팅 명령과 알림 제어](docs/en/CHAT_COMMANDS.md) · [프롬프트 작성법](docs/en/PROMPTS.md) · [설정 레퍼런스](docs/en/SETTINGS.md) · [알림](docs/en/NOTIFICATIONS.md) |
-| **더 깊이** | [아키텍처](docs/en/ARCHITECTURE.md) · [API](docs/en/API.md) · [로드맵](docs/en/ROADMAP.md) · [릴리스 노트 v1.0](CHANGELOG.md) · [`android/`](android/README.md) · [`tools/sms_forward/`](tools/sms_forward/README.md) |
+| **더 깊이** | [아키텍처](docs/en/ARCHITECTURE.md) · [API](docs/en/API.md) · [MCP](docs/en/MCP.md) · [로드맵](docs/en/ROADMAP.md) · [변경 이력](CHANGELOG.md) · [`android/`](android/README.md) · [`tools/sms_forward/`](tools/sms_forward/README.md) |
 | **법률** | [개인정보, 안전, 법률](docs/en/PRIVACY_AND_LEGAL.md) · [법적 고지와 운영자 약관](LEGAL.md) · [이중 라이선스와 상용 라이선스](COMMERCIAL_LICENSE.md) · [프로젝트 보안·규정 준수 감사](AUDIT_REPORT.md) |
 
-**테스트 현황:** CI에서 520개가 넘는 자동 테스트, 28개 언어로 234건의 모의 통화, Pixel 7, 7a, 9의 실제 통화. [자세히 보기](docs/en/FEATURES.md#test-status). 다른 폰과 언어에서 보내 주시는 제보가 가장 큰 도움이 됩니다: [CONTRIBUTING.md](CONTRIBUTING.md).
+**테스트 현황:** CI에서 1,400개가 넘는 자동 테스트, 28개 언어로 234건의 모의 통화, Pixel 7, 7a, 9의 실제 통화. [자세히 보기](docs/en/FEATURES.md#test-status). 다른 폰과 언어에서 보내 주시는 제보가 가장 큰 도움이 됩니다: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## FAQ
 

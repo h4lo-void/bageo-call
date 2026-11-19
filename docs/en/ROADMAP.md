@@ -13,7 +13,7 @@ to rent, and quick replies and interruptions come from the model itself
 instead of a chain of speech-to-text, LLM and text-to-speech. Since 1.0 the
 same phone also makes calls for you, from your own number.
 
-## Where 1.0 stands
+## Where 1.6 stands
 
 **Done** works today. **Partly** works with the limits noted. **Not yet** is
 missing, with no date.
@@ -52,7 +52,7 @@ missing, with no date.
 | Outbound calls on your behalf | Done | AI errands with live captions, questions to you (`ask_owner`), instructions during the call, a structured result and follow-up calls. Proven in simulation; reports from real phones are welcome. |
 | Appointment booking | Done | The AI takes the request without agreeing; you accept or decline under *To do* or on a Telegram card; the caller hears back by text or AI call-back. |
 | Calendar | Done | One tap into Google, Outlook.com, Microsoft 365, Apple, Yahoo or `.ics`, with no calendar account connected. |
-| SMS replies | Done | Appointment answers go out by text from the SIM that took the call. Incoming texts can be forwarded with the SMS forwarder. |
+| SMS replies | Done | Appointment answers go out by text from the SIM that took the call. Incoming texts can be forwarded with the SMS forwarder, and you can read conversations and reply directly on the console's **SMS** page. |
 | Contacts | Done | Import vCard, CSV, TSV, text, Excel and Word files, and PDFs or pictures through Gemini; merge duplicates; export vCard. |
 | Tools during the call | Partly | `propose_appointment` and `ask_owner`, each under a strict state machine. No open-ended tool use, by design. |
 | Post-call summary, intent, to-do | Done | Four lines; appointments become to-do items. No sentiment analysis or analytics dashboard. |
@@ -65,13 +65,15 @@ missing, with no date.
 | Everything stored on your own machine | Done | Except what goes to the models and the notification services; see [Privacy](PRIVACY_AND_LEGAL.md). |
 | Notifications, webhooks, n8n / Zapier | Done | 32 channel types, including e-mail and a [JSON webhook](NOTIFICATIONS.md#webhook-json); the REST API for the rest. |
 | Web console from any device | Done | `bageo.local`, QR code, add to home screen. |
-| One-step start | Done | Start scripts for Windows, macOS and Linux; Docker image. |
+| One-step start | Done | Windows installer (`setup.exe`) and macOS `.dmg` (both include the **Bageo Status** tray app with desktop call, SMS and summary notifications), Linux start script, and ready-made Docker images (`bageo/bageo-call`, `ghcr.io/h4lo-void/bageo-call`). |
+| Chat commands | Done | Control Bageo from Telegram, Discord, Slack, Matrix or any tool via the inbound command route (`POST /calls/api/control/inbound`). |
+| Backup & restore | Done | Scheduled and manual backups, selective export/import, and optional `.bageo` password encryption. |
 | Use the spare phone as a normal phone again | Done | One switch in the console or the app; the app needs no root. |
 | REST API | Done | See the [API reference](API.md). |
 | MCP server | Done | See [MCP](MCP.md). |
 | Business hours, holidays | Not yet | The status note covers simple cases. |
-| Whitelisted numbers straight to a person | Partly | A whitelisted caller can be put through to your phone with your carrier's forward-when-busy, or the AI can give the caller your number when they say it is urgent. The phone app cannot bridge calls directly yet. |
-| Transfer to a person with a summary | Not yet | The phone app cannot bridge calls yet. |
+| Forward calls to your phone | Partly | Choose who can be forwarded (*Whitelist*, *Other contacts*, *Numbers not in your contacts*), with carrier forward-when-busy, instant urgent alerts, and a trial urgent 3-way conference merge (*When it's urgent, call me and join us (trial)*). |
+| Transfer to a person with a summary | Not yet | Urgent 3-way conference merge is available as a trial, without a private spoken summary briefing before joining. |
 | Emergency keyword handling | Not yet | Errands never dial emergency numbers. |
 | Spending caps, daily call limits | Not yet | Only the longest-call settings; set a budget with your API provider. |
 | Fully local voice stack (Whisper / Ollama / Piper) | Not yet | Not in the supported mode. An older pipeline exists in the code, unmaintained. The summary can already use a local model. |
@@ -94,8 +96,7 @@ Roughly in order of usefulness for the effort:
 5. **Clearer call states from the phone**: report the moment an outgoing call
    is answered, so *To do* and the errand page can tell "answered" from
    "ringing" without listening for a voice.
-6. **Call transfer or conference** from the phone app, so a person can take
-   over.
+6. **Maturing call transfer and 3-way conference**, graduating the trial urgent merge and adding warm transfer with a spoken briefing.
 7. **Other realtime models** behind the same call logic (OpenAI Realtime, and
    local speech-to-speech models as they mature).
 8. **Removing the older menu-based code paths** to make Bageo's code easier to

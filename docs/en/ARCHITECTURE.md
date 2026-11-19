@@ -47,6 +47,7 @@ flowchart LR
 | **Root module** | `android/magisk/pixelcallai_uplink` | Installs the app as a privileged system app, sets the phone up as a call box at every boot, and runs the root helper behind the AI phone / [normal phone](PHONE.md#normal-phone-mode) switch. |
 | **Bageo program** | [`crates/agent`](../../crates/agent) | Everything else: the call state machine, Gemini Live sessions, recording, summaries, contacts, appointments, errands, notifications, the web console and its API, the USB link to the phones. |
 | **Web console** | `crates/agent/static/calls.html` | One self-contained page compiled into the Bageo program. |
+| **Bageo Status** | [`desktop/`](../../desktop) | Optional desktop tray / menu-bar app (Tauri 2, included in the Windows installer and macOS `.dmg`) that starts Bageo in the background and shows status, call, SMS and summary notifications. |
 | **SMS forwarder** | [`tools/sms_forward`](../../tools/sms_forward) | Optional, separate Python script that forwards the phone's incoming texts. |
 
 ### Modules of the Bageo program
@@ -56,9 +57,12 @@ flowchart LR
 | `main.rs` | Start-up, the phone WebSocket endpoints, the incoming-call state machine, ring pre-warm, the after-call pipeline. |
 | `gemini_live.rs` | One Live session per call: audio relay, echo check, interruptions, hang-up rules, sales detection and the switch to Stall Mode, session renewal, and the outbound modes (wait for the callee, ringback filter, tool calls). |
 | `prompts.rs`, `locale.rs` | The system prompt of each call, built per language and answer style; the phrases each language says and listens for. |
+| `closing.rs` | Local closing state machine across 26 language word sets: detects pre-closings, farewells, resumptions and greetings that also mean goodbye. |
+| `scenario.rs`, `preflight.rs` | Call-situation hints (courier, bank charge check, wrong number, …) and errand preflight question/ladder extraction. |
 | `stall_review.rs` | The second look before Stall Mode: `gemini-flash-lite-latest` labels the call `scam_or_sales`, `normal`, `ivr_recording` or `too_early` within 1.5 s, naming the kind of call from the scam database and how sure it is. |
-| `scam_db.rs` | The sales and scam database (`data/scam_db.json`: kinds of call, keywords in 19 languages, number hints), your additions in `config/scam_db.local.json`, and the marks per number. |
+| `scam_db.rs` | The sales and scam database (`data/scam_db.json`: 46 kinds of call, keywords in 27 languages, number hints), your additions in `config/scam_db.local.json`, and the marks per number. |
 | `appointments.rs` | The appointment tools on normal calls, the to-do items they create, Accept / Decline, the text or AI call-back that tells the caller, and the shared outbound queue. |
+| `urgent_call.rs`, `urgency.rs` | Urgent caller detection across languages and the trial 3-way conference merge (`add_call`) for forwarded calls. |
 | `callback.rs` | The phones' control connections: `place_call`, `send_sms` and their results, routed to the right phone. |
 | `errands.rs` | AI errands: number checks, phone and SIM choice (`SimBook`), the errand script and `ask_owner`, live captions, what you type during the call, the structured result. |
 | `contacts.rs` | The contact list; number matching however a number is written; import from vCard, CSV, TSV, text, `.xlsx` and `.docx`, and through Gemini for PDFs and pictures; vCard export. |
@@ -66,11 +70,17 @@ flowchart LR
 | `calendar.rs` | Calendar suggestions and "add to calendar" links for Google, Outlook.com, Microsoft 365, Yahoo and `.ics`. |
 | `summary.rs` | The after-call summary over Gemini or any OpenAI-compatible API, translations of lines said in another language, the result of an errand. |
 | `tasks.rs` | The store behind **To do**. |
+| `sms_store.rs` | Stored text messages, grouped into conversations, and replies sent back through the phone. |
 | `notify.rs`, `gmail.rs`, `tg_inbound.rs` | The 32 notification channels, e-mail over SMTP, Telegram button presses. |
+| `control/` | Remote chat commands and natural-language parsing across Telegram, Discord, Slack and Matrix. |
+| `mcp.rs` | Built-in Model Context Protocol (`POST /mcp`) server and universal inbound command endpoint (`POST /calls/api/control/inbound`). |
 | `calls.rs`, `calls_http.rs` | Call records, recordings and transcripts; the web console's REST API. |
+| `backup.rs`, `backup_crypt.rs` | Scheduled and manual backups, selective export/import, and `.bageo` encryption (Argon2id + XChaCha20-Poly1305). |
 | `settings_store.rs` | Settings from `.env` plus what the console saved, applied without a restart. |
+| `lan.rs`, `phone_wifi.rs` | LAN access guard, `Host` check, password rate limiting, and the USB-to-Wi-Fi phone pairing key. |
 | `usb_bridge.rs` | Keeps `adb reverse` up for every USB phone and starts the app's call service. |
 | `mdns.rs` | Answers `bageo.local` on the local network (multicast DNS), so the console opens without knowing the computer's IP. |
+| `log_text.rs` | Masks caller numbers and omits spoken words from logs unless `LOG_CALL_TEXT=1` is set. |
 | `adpcm.rs`, `voice_preview.rs`, `ambience.rs` | The 1,080 bundled voice clips (IMA ADPCM), voice previews and the "not available" announcement, the 12 background sounds. |
 
 ## An incoming call, step by step
@@ -286,16 +296,17 @@ numbers may be dialed and from which SIM.
 
 `prompts.rs` builds the system prompt:
 
-- Traditional Chinese has its own hand-tuned prompts.
-- Simplified Chinese uses a converted copy.
-- Every other language gets one set of English instructions that names the
-  language to speak and quotes its phrases.
+- Each of the nine languages has its own concise built-in default prompt in that
+  language (`short_text`), for both *AI assistant* and *As me*.
+- Auxiliary instructions (stalling, nudges, fixed guard rules) come from
+  Traditional Chinese, a converted Simplified Chinese copy, or a shared set of
+  English instructions filled with that language's phrases.
 
 The opening language follows the caller's number and the SIM's main language,
 and every prompt tells the AI to follow the caller into another language.
 
-To add a language, add one `Phrases` block and its entry in the web console's
-dictionary.
+To add a language, add one `Phrases` block, a `short_text` default prompt and
+its entry in the web console's dictionary.
 
 ## Where your data lives
 
@@ -309,6 +320,9 @@ data/calls/
   tasks/index.json, tasks/<id>.json the to-do items (appointments)
   errands.json                      AI errands, the newest 500
   phone_sims.json                   the SIMs each phone has reported
+  phone-pairing.key                 pairing key for phones over Wi-Fi
+  sms/messages.json                 forwarded and replied text messages
+  backups/                          scheduled, manual, before-import backups (.zip / .bageo)
   voice_preview/                    cached voice samples and announcements
 ```
 
@@ -316,8 +330,9 @@ Plain JSON and WAV files, no database. Every write goes to a temporary file
 first and is then renamed over the old one. An unreadable `errands.json` or
 `phone_sims.json` is moved aside rather than overwritten.
 
-**Try it:** to back up everything, copy the `data/calls` folder. Keep the copy
-private: `settings.json` holds your API keys in plain text.
+**Try it:** use **Settings → Backup & restore** in the console (with optional
+password encryption), or copy the `data/calls` folder. Keep any copy private:
+`settings.json` holds your API keys in plain text.
 
 ## Design choices
 

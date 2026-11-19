@@ -11,7 +11,7 @@ Bageo 網頁控制台做的每件事，都是透過你自己電腦上的一個�
 
 | | |
 |---|---|
-| **基底位址** | Bageo 監聽的位置，預設 `http://127.0.0.1:8787`。API 路由都以 `/calls/api/` 開頭，例外是 `/health` 和手機用的 WebSocket。控制台本身在 `/calls/`（`/` 會轉址過去）。 |
+| **基底位址** | Bageo 監聽的位置：預設在區網監聽 `8787` 連接埠（可用時也會監聽 `80` 連接埠供 `http://bageo.local/` 使用），設為 `AGENT_HOST=127.0.0.1` 時則只在 `http://127.0.0.1:8787`。API 路由都以 `/calls/api/` 開頭，例外是 `/health` 和手機用的 WebSocket。控制台本身在 `/calls/`（`/` 會轉址過去）。 |
 | **AI 代理** | `POST /mcp` 是 Model Context Protocol 伺服器，有自己的 Token，預設關閉：見 [MCP](MCP.md)。 |
 | **格式** | UTF-8 的 JSON；路由另有說明的除外（WAV、CSV、vCard、iCalendar）。送 JSON body 時請帶 `Content-Type: application/json`。 |
 | **時間** | 通話紀錄：UTC 的 RFC 3339（`2026-11-14T07:02:11Z`）。行程預約：當地時間（`TZ`），格式 `YYYY-MM-DDTHH:MM`。AI 代打：帶時差的當地時間（`2026-11-15T19:00:00+08:00`）。 |
@@ -40,7 +40,7 @@ curl -s http://127.0.0.1:8787/calls/api/stats
 
 ## 存取
 
-沒有設定 `CALLS_UI_TOKEN`（控制台密碼）時，任何連得到這個連接埠的人都能用 API（預設只有這台電腦自己）。有設定時，每個請求都要用下列其中一種方式帶上密碼：
+預設（未設定 `AGENT_HOST`）會對區網監聽：本機在還沒設定密碼前就能呼叫，其他裝置連進來時則必須帶控制台密碼（`CALLS_UI_TOKEN` 或設定中儲存的密碼），並且會檢查 `Host` 標頭與限制密碼錯誤次數。有設定密碼時，每個請求都要用下列其中一種方式帶上密碼：
 
 ```text
 GET /calls/api/list?token=<token>
@@ -76,12 +76,15 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 
 所以凡是會撥電話、傳簡訊、做決定或改動已存資料的路由，一律要求 `Content-Type: application/json`，沒帶就回 HTTP 400 `bad_request`。別的網站要送這個標頭必須先經過 CORS 預檢，而 Bageo 從不回應預檢。適用的路由：
 
+- `POST /calls/api/initial-password` 和 `POST /calls/api/phone-pairing/renew`；
+- `POST /calls/api/call/{id}/scam-feedback`；
 - `POST /calls/api/tasks/{id}/confirm` 和 `…/ignore`；
 - `POST /calls/api/appointments/{id}/retry-sms`；
 - `POST /calls/api/calls/clear`；
-- `POST /calls/api/devices/{serial}/mode`；
-- `POST /calls/api/contacts`、`PUT /calls/api/contacts/{id}`、`POST /calls/api/contacts/batch`（`POST /calls/api/contacts/import` 則改成要帶 `X-Filename` 標頭）；
-- `POST /calls/api/errands`、`…/{id}/cancel`、`…/{id}/retry`、`…/{id}/say`。
+- `POST /calls/api/sms/send`、`…/retry`、`…/clear` 和 `DELETE /calls/api/sms/thread`；
+- `POST /calls/api/devices/{serial}/mode` 和 `PUT /calls/api/devices/{serial}/sim-number`；
+- `POST /calls/api/contacts`、`PUT /calls/api/contacts/{id}`、`POST /calls/api/contacts/batch`、`POST /calls/api/contacts/block`（`POST /calls/api/contacts/import` 則改成要帶 `X-Filename` 標頭）；
+- `POST /calls/api/errands`、`…/{id}/cancel`、`…/{id}/retry`、`…/{id}/say`；
 - `POST /calls/api/backup/run`、`…/export`、`…/file-ticket`、`…/restore`、`…/delete`、`…/unlock`、`…/apply`、`…/discard`、`…/open-folder`（`POST /calls/api/backup/import` 則改成要帶 `X-Filename` 標頭）。
 
 允許空 body 的路由，空 body 當成 `{}`。這是第二道防線；第一道是控制台對區網開放時一定要設密碼（`CALLS_UI_TOKEN`）。
@@ -143,8 +146,10 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - `persona_stall_spam`：判定是推銷或詐騙。
 - `persona_scam_detected`：陪聊關閉時判定是推銷或詐騙。
 - `persona_stall_released`：之後確認是正常電話、改回正常應對。
-- `reject_list`：黑名單上的號碼。
+- `reject_list`／`reject_list_declined`：黑名單上的號碼（播語音／直接拒接）。
 - `call_waiting_rejected`：通話中拒接的第二通。
+- `ivr_hangup`：自動語音選單／機器人來電提早掛斷。
+- `whitelist_urgent_transfer`：白名單急事來電轉接給你。
 - `ai_callback`：行程預約的 AI 回電。
 - `ai_errand`：AI 代打。
 - 其他事件：`active`、`persona_ai_fail_hangup`、`ended`。
@@ -261,7 +266,7 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 | `POST /calls/api/sms/{id}/retry` | 用同一個門號重送 `failed` 或 `timeout` 的簡訊，回應同 `send`。其他簡訊回 HTTP 409 `not_retryable`。 |
 | `DELETE /calls/api/sms/thread?number=<號碼或 key>` | 刪除一則對話：`{ok: true, removed: N}`。 |
 | `GET /calls/api/quick-action` · `POST /calls/api/quick-action` | 32 種通知管道內附的單次簽章互動按鈕路由（`?act=confirm\|ignore\|block\|stall\|white&target=<id或號碼>&sig=<hmac>`）。打開連結（`GET`）只會先顯示確認頁，按下頁面上的按鈕（`POST`）才會執行；連結 7 天後失效。透過 HMAC-SHA256 驗證，不用登入控制台，支援全部 9 種語言。 |
-| `POST /calls/api/control/inbound` | 跨平台通用指令 Webhook，用聊天指令控制 Bageo。Body 例如 `{"text": "清單 5", "user": "owner", "channel": "line"}`。 |
+| `POST /calls/api/control/inbound` | 跨平台通用指令 Webhook，用聊天指令控制 Bageo。Body 例如 `{"text": "清單 5", "channel_id": "line", "sender_id": "owner", "reply": false, "token": "..."}`（也相容 `user`／`channel`）。 |
 | `GET /calls/api/auth-status` · `POST /calls/api/initial-password` | 查詢是否已設密碼與是否顯示首次設定密碼視窗（`{ok, password_set, authenticated, prompt_initial, language}`），以及首次建立或略過密碼（`{"password": "..."}` 或 `{"skip": true}`，僅在尚未設定任何密碼／Token 時可用）。 |
 
 `POST /calls/api/notify/test` 的回應：
@@ -281,7 +286,7 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 `POST /calls/api/control/inbound` 的規則：
 
 - 支援 Slack、Discord、LINE、企業微信、釘釘、飛書、Mattermost、Rocket.Chat、Zulip、Matrix、Nextcloud Talk、Synology Chat、Home Assistant、n8n 或 curl。
-- 可執行全部 18 個聊天指令（包含 `block`、`stall`、`white`、`unblock`），並以通知語言回傳 `{ok, text}`。
+- 可執行全部 18 個聊天指令（包含 `block`、`stall`、`white`、`unblock`），並以通知語言回傳 `{ok, text, buttons, pushed}`。
 - 用 MCP 的 token 打時，只能做 `mcp_calls` 允許的事（見 [MCP](MCP.md)）。設成 `off`（預設）時，只能查看，不能用指令改任何東西。
 
 你自己的 webhook 會收到的 JSON 和每一種事件，在[通知](NOTIFICATIONS.md#webhook-json)裡有說明。
@@ -429,9 +434,9 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 **用哪支手機、哪張卡。**
 
 - 電話從一支已連線、在 AI 模式、而且有那個號碼所屬國家 SIM 卡的手機撥出。
-- Bageo 從手機回報的來電學會每支手機有哪些 SIM（subscription id 和國家；來自 `incoming` 和 media `hello` 裡的 `sim_sub_id`、`sim_country`），也可以從 control `hello` 裡選填的 `sims: [{sub_id, country}]` 清單得知（1.0 版 App 還不會送）。
+- Bageo 從手機控制連線 `hello`／`status` 上報的 `sims` 清單學會每支手機有哪些 SIM（subscription id、國家、電信商與門號；舊版 App 則來自 `incoming` 和 media `hello` 裡的 `sim_sub_id`、`sim_country`）。
 - 這些記在 `phone_sims.json`。
-- Bageo 從沒聽過 SIM 的手機不接代打（`sim_unknown`）：先打一通電話給那支手機。
+- Bageo 從沒聽過 SIM 的手機不接代打（`sim_unknown`）：重新連線那支手機（舊版 App 則先打一通電話給它）。
 - 手機收到的是 E.164 格式的號碼和要用的 SIM（`sub_id`）。
 - 那通電話自己的 media `hello` 顯示用的是別張 SIM、或沒回報時，Bageo 會在 AI 開口前掛斷（`failed`、`call_code` `wrong_sim`，會通知你），並把那張卡從這支手機的紀錄裡拿掉，等之後有來電回報它再加回來。
 
@@ -688,6 +693,7 @@ Content-Type: application/json
 | `POST /calls/api/devices/{serial}/mode` | Body `{"mode": "ai" \| "normal"}`。叫手機切換，最多等 15 秒等它回覆。回 `{ok, mode, error_code}`（400 時另附說明 `error`）。 |
 | `DELETE /calls/api/devices/{serial}` | 移除一支沒連線的舊手機（同時清除手機清單、已存名稱與 SIM 紀錄，保留過往通話紀錄）：`{ok, serial}`。手機還在線或通話中回 HTTP 409 `device_online`／`device_in_call`。 |
 | `PUT /calls/api/devices/{serial}/sim-number` | Body `{"sub_id": <整數>, "number": "..."}`。設定（空白代表清除）這支手機某張 SIM 的門號，讓來電與 AI 代打直接顯示並依門號挑選：`{ok, serial, sims}`。 |
+| `POST /calls/api/phone-pairing/renew` | 更換 Wi-Fi 配對金鑰（`phone-pairing.key`）並中斷透過 Wi-Fi 連線的手機，每支手機重新插上 USB 一次即可取得新金鑰：`{ok: true}`（失敗回傳 HTTP 500 `save_failed`）。金鑰本身不會回傳。 |
 | `GET /health` | 排查問題用的大型 JSON 物件：版本、語言、哪些東西已設定、已連線的手機、進行中的通話；不含金鑰或密碼。要帶密碼才拿得到（見下方說明最後一點）。 |
 | `GET /calls/api/health` | 控制台用，內容和 `/health` 的完整版相同。跟其他 `/calls/api/` 路由一樣：有設密碼而沒帶回 HTTP 401，沒設密碼就開放。 |
 
@@ -732,7 +738,7 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/devices/pixel-12345/mode" \
 
 - 每支手機維持一條長期的 *control* 連線，每通電話另開一條 *media* 連線。
 - 兩種連線都雙向傳送 JSON 文字訊框和原始的 16 kHz 單聲道 16 位元小端序 PCM 二進位訊框（手機每 60 ms 送一框）。
-- 從這台電腦本身來的連線（USB 通道）一律接受；其他連線在有設定 `DEVICE_TOKEN` 時必須帶上 `?token=<DEVICE_TOKEN>`。
+- 從這台電腦本身來的連線（USB 通道）不需 Token 一律接受；Wi-Fi 連線可連 `PHONE_WIFI_PORT`（預設 `8788`，僅提供 `/ws`）並帶上 USB 配對時發放的 `phone-pairing.key` 或 `DEVICE_TOKEN`，或連到主連接埠並在有設定 `DEVICE_TOKEN` 時帶上 `?token=<DEVICE_TOKEN>`。
 
 逐欄位的完整訊息列表在 [`android/README.md`](../../android/README.md#websocket-protocol)（英文）。任何會講這個通訊協定的程式都能代替手機，所以要加上 SIP 或軟體電話前端，完全不用動通話邏輯。雙方都會忽略不認得的東西，所以舊 App、舊版 Bageo照樣能用。
 
@@ -740,14 +746,15 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/devices/pixel-12345/mode" \
 
 | 方向 | 訊息 | 意思 |
 |---|---|---|
-| 手機 → Bageo | `hello` | `serial`、`mode` = `CONTROL_IDLE`、`model`、`app_version`、`phone_mode`（`ai`／`normal`）、`in_call`、`supports_sms`、`supports_reject`。缺少欄位的意思見下方。 |
+| 手機 → Bageo | `hello` | `serial`、`mode` = `CONTROL_IDLE`、`model`、`app_version`、`phone_mode`（`ai`／`normal`）、`in_call`、`supports_sms`、`supports_reject`、`sims`（`[{sub_id, country, slot?, carrier?, number?}]`，1.4 以上 App 會自動上報）。缺少欄位的意思見下方。 |
 | 手機 → Bageo | `ping` | 每 15 秒一次。 |
-| 手機 → Bageo | `status` | `{mode, in_call}`：模式或通話狀態變了。 |
+| 手機 → Bageo | `status` | `{mode, in_call}`（SIM 變動時另含 `sims`）：模式、通話狀態或 SIM 清單變了。 |
 | 手機 → Bageo | `incoming`、`incoming_cancel` | 有電話在響（`caller_id`，未顯示號碼時是空字串；`sim_country`；知道時帶 `sim_sub_id`）／接起來之前就結束了。 |
+| 手機 → Bageo | `reject_failed` | 收到 `reject: true` 的 `answer_plan` 但未能拒接該通來電。 |
 | Bageo → 手機 | `answer_plan` | `{delay_ms, prewarm, reject}`：響多久再接，或 `reject: true` 響鈴中直接拒接（`reject_mode` 為 `decline` 的黑名單號碼）。 |
 | 手機 → Bageo | `call_waiting_rejected` | `{serial, caller_id, sim_country, sim_sub_id}`：通話中又有第二通打進來，手機立刻拒接（AI 模式）。會留下通話紀錄並送出「通話中插播未接」通知。 |
 | Bageo → 手機／手機 → Bageo | `set_mode`／`set_mode_result` | `{mode, id}`／`{id, ok, mode, error}`：遠端切換模式；`error` 用上面的代碼。 |
-| Bageo → 手機 | `agent_info` | `{console_url}`：給 App 的「**打開網頁控制台**」按鈕。Bageo 知道網址時才在 hello 之後送：`public_url`，或控制台對區網開放時的區網 IP 網址。 |
+| Bageo → 手機 | `agent_info` | `{console_url}` 給 App 的「**打開網頁控制台**」按鈕用（`public_url` 或區網網址）；透過受信任的 USB 通道時另附 `wifi: {urls: [...]}` 提供 Wi-Fi 配對網址（`ws://<區網-IP>:<PHONE_WIFI_PORT>/ws?token=<key>`，開啟區網名稱時另附 `ws://<名稱>.local:<PHONE_WIFI_PORT>/ws?token=<key>`）。 |
 | Bageo → 手機 | `place_call` | `{number, call_id, task_id, sub_id}`：撥出電話（AI 回電或 AI 代打），用 subscription id 為 `sub_id` 的 SIM 撥（找不到就用手機預設的）。忙線時見下方。 |
 | 手機 → Bageo | `place_call_ack`、`place_call_failed`、`outbound_ready`、`call_end` | 撥出的電話已撥號／撥不出去／接通／結束。 |
 | Bageo → 手機 | `send_sms` | `{id, to, text, sub_id}`：傳簡訊給來電者（行程預約）。欄位限制見下方。 |
@@ -784,6 +791,8 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/devices/pixel-12345/mode" \
 | 手機 → Bageo | `hello` | `serial`、`caller_id`、`sample_rate`（16000）、`mode` = `SILENT_LOCAL`、`sim_country`、`sim_sub_id`、`model`、`app_version`。撥出電話的 SIM 比對見下方。 |
 | 手機 → Bageo | `ringing`、`call_end` | 對方號碼（晚一點才知道時會再送）／通話結束。 |
 | Bageo → 手機 | `tts_start`、`tts_end`、`hangup` | 接下來有聲音／聲音結束／掛斷。 |
+| Bageo → 手機 | `add_call`、`add_call_abort` | `{id, number, merge, answer_timeout_ms}`／`{id}`：白名單急事轉接時請手機撥給你並合併成三方通話（或取消並把來電者切回通話）。 |
+| 手機 → Bageo | `add_call_result` | `{id, status, reason?}`（`status` 為 `dialing`／`active`／`merged`／`failed`）：三方撥號與合併的進度或結果。 |
 | 雙向 | 二進位 | 對方的聲音（手機 → Bageo）和 AI 的聲音（Bageo → 手機），格式同上。 |
 
 Bageo 怎麼處理邊界情況：

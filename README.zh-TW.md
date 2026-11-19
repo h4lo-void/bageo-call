@@ -222,8 +222,8 @@ AI 的語音、內建提示詞（簡短通用的基本寫法，可依自己的�
 
 手機已經 root 好的話，從下載到 AI 接起第一通電話，大約 3 分鐘。
 
-1. **下載**：從 [Releases](https://github.com/h4lo-void/bageo-call/releases) 下載適合你系統的檔案：Windows 用 `bageo-call-<version>-windows-x64-setup.exe`，macOS 用 `bageo-call-<version>-macos-arm64.dmg`（Apple 晶片）或 `bageo-call-<version>-macos-x64.dmg`（Intel），Linux 用 `bageo-call-<version>-linux-x64.tar.gz`。
-2. **安裝並啟動**：Windows 按兩下 `setup.exe` 安裝，再點桌面上的「Bageo」捷徑。macOS 打開 `.dmg`，把 Bageo 拖進「應用程式」，再點一下它。Linux 解壓縮後執行 `./start.sh`。控制台會打開在 <http://localhost:8787/>。
+1. **下載**：從 [Releases](https://github.com/h4lo-void/bageo-call/releases) 下載適合你系統的檔案：Windows 用 `bageo-call-<version>-windows-x64-setup.exe`，macOS 用 `bageo-call-<version>-macos-arm64.dmg`（Apple 晶片）或 `bageo-call-<version>-macos-x64.dmg`（Intel），Linux 用 `bageo-call-<version>-linux-x64.tar.gz`。使用 Docker 也可直接拉取現成映像 `bageo/bageo-call` 或 `ghcr.io/h4lo-void/bageo-call`。
+2. **安裝並啟動**：Windows 按兩下 `setup.exe` 安裝，再點桌面上的「Bageo」捷徑。macOS 打開 `.dmg`，把 Bageo 拖進「應用程式」，再點一下它。Linux 解壓縮後執行 `./start.sh`。控制台會打開在 <http://localhost:8787/>；設好控制台密碼後，這台電腦與同一個 Wi-Fi 下的裝置也能用 <http://bageo.local/> 開啟。
 3. **填好基本設定**：在「**設定**」填入 Gemini API 金鑰、你的名字和語言，按 ▶ 試聽各個聲音，挑一個。
 4. **準備手機**（只要一次）：在 Magisk 或 KernelSU 安裝模組 `bageo-phone-module-<version>.zip`，重新開機，打開 **Bageo** App 把檢查清單做完，接上 USB。
 5. **打一通試試**：用另一支手機撥它的號碼，響一聲，AI 就接了。
@@ -236,10 +236,10 @@ AI 的語音、內建提示詞（簡短通用的基本寫法，可依自己的�
 |---|---|
 | **上手** | [開始使用](docs/zh-TW/GETTING_STARTED.md) · [手機設定](docs/zh-TW/PHONE.md) · [疑難排解與常見問題](docs/zh-TW/TROUBLESHOOTING.md) |
 | **使用** | [功能總覽](docs/zh-TW/FEATURES.md) · [聊天室指令與通知互動](docs/zh-TW/CHAT_COMMANDS.md) · [撰寫提示詞](docs/zh-TW/PROMPTS.md) · [設定參考](docs/zh-TW/SETTINGS.md) · [通知](docs/zh-TW/NOTIFICATIONS.md) |
-| **深入** | [架構](docs/zh-TW/ARCHITECTURE.md) · [API](docs/zh-TW/API.md) · [發展藍圖](docs/zh-TW/ROADMAP.md) · [v1.0 發行說明](CHANGELOG.md) · [`android/`（英文）](android/README.md) · [`tools/sms_forward/`（英文）](tools/sms_forward/README.md) |
+| **深入** | [架構](docs/zh-TW/ARCHITECTURE.md) · [API](docs/zh-TW/API.md) · [MCP](docs/zh-TW/MCP.md) · [發展藍圖](docs/zh-TW/ROADMAP.md) · [更新紀錄](CHANGELOG.md) · [`android/`（英文）](android/README.md) · [`tools/sms_forward/`（英文）](tools/sms_forward/README.md) |
 | **法律** | [隱私、安全與法律](docs/zh-TW/PRIVACY_AND_LEGAL.md) · [法律免責聲明與使用限制](LEGAL.md) · [雙重授權與商業授權](COMMERCIAL_LICENSE.md) · [全專案技術與資安審計報告](AUDIT_REPORT.md) |
 
-**測試狀態**：超過 520 個自動化測試、234 通模擬通話（28 種語言），並在 Pixel 7、7a、9 實機測過。[詳細狀態](docs/zh-TW/FEATURES.md#測試狀態)。其他手機和語言的使用回報最有幫助，請見 [CONTRIBUTING.md](CONTRIBUTING.md)（英文）。
+**測試狀態**：超過 1,400 個自動化測試、234 通模擬通話（28 種語言），並在 Pixel 7、7a、9 實機測過。[詳細狀態](docs/zh-TW/FEATURES.md#測試狀態)。其他手機和語言的使用回報最有幫助，請見 [CONTRIBUTING.md](CONTRIBUTING.md)（英文）。
 
 ## 常見問題
 

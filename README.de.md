@@ -222,8 +222,8 @@ Alle Funktionen im Detail: [Funktionen](docs/en/FEATURES.md).
 
 Ist das Telefon schon gerootet, dauert es vom Download bis zum ersten Anruf, den die KI annimmt, etwa 3 Minuten.
 
-1. **Lade** die Datei für dein System von [Releases](https://github.com/h4lo-void/bageo-call/releases) herunter: `bageo-call-<version>-windows-x64-setup.exe` für Windows, `bageo-call-<version>-macos-arm64.dmg` (Apple-Chip) oder `bageo-call-<version>-macos-x64.dmg` (Intel) für macOS, `bageo-call-<version>-linux-x64.tar.gz` für Linux.
-2. **Installiere und starte es.** Windows: Doppelklick auf `setup.exe`, dann auf die Verknüpfung **Bageo** auf dem Desktop. macOS: Öffne die `.dmg`, zieh Bageo in *Programme* und klick darauf. Linux: entpacken und `./start.sh` ausführen. Die Konsole öffnet sich unter <http://localhost:8787/>.
+1. **Lade** die Datei für dein System von [Releases](https://github.com/h4lo-void/bageo-call/releases) herunter: `bageo-call-<version>-windows-x64-setup.exe` für Windows, `bageo-call-<version>-macos-arm64.dmg` (Apple-Chip) oder `bageo-call-<version>-macos-x64.dmg` (Intel) für macOS, `bageo-call-<version>-linux-x64.tar.gz` für Linux. Für Docker gibt es fertige Images auf `bageo/bageo-call` und `ghcr.io/h4lo-void/bageo-call`.
+2. **Installiere und starte es.** Windows: Doppelklick auf `setup.exe`, dann auf die Verknüpfung **Bageo** auf dem Desktop. macOS: Öffne die `.dmg`, zieh Bageo in *Programme* und klick darauf. Linux: entpacken und `./start.sh` ausführen. Die Konsole öffnet sich unter <http://localhost:8787/>; sobald ein Konsolenpasswort gesetzt ist, funktioniert <http://bageo.local/> ebenfalls auf diesem Computer und im selben WLAN.
 3. **Trag die Grundlagen ein** unter **Einstellungen**: dein Gemini-API-Schlüssel, dein Name und die Sprache. Drück auf ▶, um die Stimmen anzuhören und eine auszuwählen.
 4. **Bereite das Telefon vor**, einmalig: Installiere `bageo-phone-module-<version>.zip` als Modul in Magisk oder KernelSU, starte neu, öffne die App **Bageo**, arbeite ihre Einrichtungsschritte ab und steck das Telefon an.
 5. **Ruf es an** von einem anderen Telefon: einmal klingeln, und die KI nimmt ab.
@@ -238,10 +238,10 @@ Die ausführlichen Dokumente gibt es derzeit nur auf Englisch.
 |---|---|
 | **Einstieg** | [Erste Schritte](docs/en/GETTING_STARTED.md) · [Telefon einrichten](docs/en/PHONE.md) · [Fehlerbehebung und FAQ](docs/en/TROUBLESHOOTING.md) |
 | **Nutzen** | [Funktionen](docs/en/FEATURES.md) · [Chat-Befehle und Steuerung der Benachrichtigungen](docs/en/CHAT_COMMANDS.md) · [Den Prompt schreiben](docs/en/PROMPTS.md) · [Einstellungen im Überblick](docs/en/SETTINGS.md) · [Benachrichtigungen](docs/en/NOTIFICATIONS.md) |
-| **Mehr erfahren** | [Architektur](docs/en/ARCHITECTURE.md) · [API](docs/en/API.md) · [Roadmap](docs/en/ROADMAP.md) · [Versionshinweise v1.0](CHANGELOG.md) · [`android/` (Englisch)](android/README.md) · [`tools/sms_forward/` (Englisch)](tools/sms_forward/README.md) |
+| **Mehr erfahren** | [Architektur](docs/en/ARCHITECTURE.md) · [API](docs/en/API.md) · [MCP](docs/en/MCP.md) · [Roadmap](docs/en/ROADMAP.md) · [Änderungsprotokoll](CHANGELOG.md) · [`android/` (Englisch)](android/README.md) · [`tools/sms_forward/` (Englisch)](tools/sms_forward/README.md) |
 | **Rechtliches** | [Datenschutz, Sicherheit und Recht](docs/en/PRIVACY_AND_LEGAL.md) · [Rechtlicher Hinweis und Betreiberbedingungen](LEGAL.md) · [Duale und kommerzielle Lizenz](COMMERCIAL_LICENSE.md) · [Sicherheits- und Compliance-Prüfung des Projekts](AUDIT_REPORT.md) |
 
-**Teststatus:** mehr als 520 automatisierte Tests in der CI, 234 simulierte Anrufe in 28 Sprachen und echte Anrufe auf Pixel 7, 7a und 9. [Details](docs/en/FEATURES.md#test-status). Rückmeldungen zu anderen Telefonen und Sprachen helfen am meisten: [CONTRIBUTING.md](CONTRIBUTING.md) (Englisch).
+**Teststatus:** mehr als 1.400 automatisierte Tests in der CI, 234 simulierte Anrufe in 28 Sprachen und echte Anrufe auf Pixel 7, 7a und 9. [Details](docs/en/FEATURES.md#test-status). Rückmeldungen zu anderen Telefonen und Sprachen helfen am meisten: [CONTRIBUTING.md](CONTRIBUTING.md) (Englisch).
 
 ## FAQ
 

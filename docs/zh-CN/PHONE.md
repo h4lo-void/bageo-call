@@ -71,7 +71,7 @@
 
    应用本身不需要 root 权限（root 的工作由模块做），所以 root 管理器如果询问，允许或拒绝都可以。
 
-   设置页面不会向你要发短信的权限（`SEND_SMS`）：模块会在开机时、以及每次切换到 AI 模式时授予。双卡手机选择 SIM 卡一律用订阅 id，不比对卡片自己的号码，所以也不需要其他权限。
+   设置页面不会向你要发短信的权限（`SEND_SMS`）：模块会在开机时、以及每次切换到 AI 模式时授予。双卡手机选卡和拨号一律用订阅 id，而 `READ_PHONE_NUMBERS` 权限只用来读取本机号码上报给 Bageo（如果运营商隐藏了号码，也能在控制台的“手机”页手动填写）。
 5. 让“**AI 帮我接电话**”保持开启。
 
 ### 更新
@@ -115,8 +115,8 @@ USB 还能让手机一直充电，没有 Wi-Fi 也能用。一台电脑可以插
 - 想暂时自己用这部手机，把它切换成[普通手机](#普通手机模式)。
 - 想让所有手机的 AI 一起停，到控制台“基本设置”关掉“由 AI 接听来电”（电话会被接起来再挂断）。
 - 双卡手机会告诉 Bageo 每通电话打到哪一张 SIM。Bageo 按“各 SIM 卡的主要语言”（在“基本设置”的“更多选项”）决定开场语言，短信和回拨也从同一张卡发出。
-- AI 代打要先知道手机有哪些 SIM，Bageo 是从手机上报的来电里学到的。新设置好的手机要先接过一通电话才能代打；在那之前，控制台会提示这部手机还没接过电话。
-- Bageo 有控制台地址时，应用里会出现“**打开网页控制台**”按钮。地址取自“高级”里的“这个控制台的地址”；没填而控制台对局域网开放时，自动用电脑的局域网地址。
+- AI 代打要先知道手机有哪些 SIM。1.4 以上版本的手机应用连接时会自动上报所有 SIM 卡（只有旧版应用才需要在首次代打前先打一通电话给它）。
+- Bageo 有控制台地址时，应用里会出现“**打开网页控制台**”按钮。地址取自“通知”页里的“通知里的地址”；没填而控制台对局域网开放时，自动用电脑的局域网地址。
 
 ## 普通手机模式
 
@@ -196,6 +196,7 @@ USB 还能让手机一直充电，没有 Wi-Fi 也能用。一台电脑可以插
    adb shell su -c "pm enable com.google.android.dialer"
    adb shell su -c "pm enable com.google.android.dialer/com.android.incallui.InCallServiceImpl"
    adb shell su -c "pm enable com.google.android.dialer/com.android.incallui.InCallActivity"
+   adb shell su -c "pm enable com.google.android.dialer/com.android.incallui.LegacyInCallActivity"
    adb shell su -c "cmd role add-role-holder android.app.role.DIALER com.google.android.dialer"
    adb shell su -c "telecom set-default-dialer com.google.android.dialer"
    ```

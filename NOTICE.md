@@ -39,10 +39,12 @@ The parts listed below come under other terms or from other projects.
 
 ## Third-party software
 
-The Bageo program is built from Rust crates listed in `Cargo.lock`, each
-distributed under its own open-source license. The Android app uses AndroidX
-Core (`Apache-2.0`), Java-WebSocket (`MIT`), kotlinx.coroutines (`Apache-2.0`)
-and compile-only Xposed API stubs (`Apache-2.0`). The start scripts can download
+The Bageo program is built from Rust crates listed in `Cargo.lock`, and the
+**Bageo Status** desktop tray app (`desktop/`) is built with Tauri 2 and Rust
+crates listed in `desktop/Cargo.lock`, each distributed under its own
+open-source license. The Android app uses AndroidX Core (`Apache-2.0`),
+Java-WebSocket (`MIT`), kotlinx.coroutines (`Apache-2.0`) and compile-only
+Xposed API stubs (`Apache-2.0`). Bageo Status and the start scripts can download
 Android SDK Platform-Tools (`adb`) from Google on request; `adb` is distributed
 under Google's own terms and is not part of this repository.
 

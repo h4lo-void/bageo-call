@@ -14,9 +14,9 @@ Bageo agent on your computer and plays the AI's reply back into the call.
 The phone does no AI work itself. The package name and module id keep the project's
 earlier working name, so phones already running the module update in place.
 
-**Version 1.0:** app `versionName` `1.0.0`, `versionCode` 28; module `version`
-`v1.0.0`, `versionCode` 20 (`module.prop`); release file
-`pixelcallai_uplink-1.0.0.zip`. A SIM is always picked by its subscription id (`sub_id`).
+**Version 1.6.9:** app `versionName` `1.6.9`, `versionCode` 33; module `version`
+`v1.6.9`, `versionCode` 25 (`module.prop`); release file
+`bageo-phone-module-1.6.9.zip`. A SIM is always picked by its subscription id (`sub_id`).
 
 > **Use a dedicated phone.** The module takes over the phone app, disables Google
 > Dialer, turns on Do Not Disturb and sets the ringer volume to zero. The phone is not
@@ -117,6 +117,7 @@ start-up.
    | *Allow Bageo to use the phone and microphone* | Tap **Allow**. |
    | *Make Bageo the default phone app*, *Make Bageo the call screening app* | Tap **Set**. |
    | *Let Bageo control Do Not Disturb*, *Do not let Android put Bageo to sleep* | Tap the button and allow it. |
+   | *Plug into the computer by USB to pair* | Turn on USB debugging and plug into the computer running Bageo once so it can send its Wi-Fi addresses and pairing key. |
 
    The individual permissions and the call-audio check (*AI voice injection into the
    call*) are under **Advanced → Detailed checks**.
@@ -143,14 +144,11 @@ address and the app's permissions are kept (mind [Signing keys](#signing-keys)).
 
 | | USB (default, recommended) | Wi-Fi |
 |---|---|---|
-| Address on the phone | `ws://127.0.0.1:8765` | The address the PC program shows, for example `ws://192.0.2.10:8787/ws?token=...`. Must start with `ws://` or `wss://`. |
-| How it reaches the agent | `adb reverse tcp:8765 tcp:<agent port>` maps the port through the cable. The agent sets this up by itself and re-checks it every few seconds. | Phone and PC must be on the same network. |
-| Good to know | Keeps working with Wi-Fi off. | Anything after `?` is left out of the app's log output. |
+| Address on the phone | `ws://127.0.0.1:8765` | Automatic after plugging in once over USB (`agent_info.wifi.urls`, port `8788` with a pairing key); or enter `ws://<host>:8787/ws?token=<DEVICE_TOKEN>` by hand (required for Docker or when the phone cannot be plugged in). Must start with `ws://` or `wss://`. |
+| How it reaches the agent | `adb reverse tcp:8765 tcp:<agent port>` maps the port through the cable. Bageo sets this up by itself and re-checks it every few seconds. | Phone and PC must be on the same network. When paired, `ConnectionPlan` tries the LAN IP first and `bageo.local` next, and switches back to USB when plugged in. |
+| Good to know | Keeps working with Wi-Fi off. | Anything after `?` is left out of the app's log output. **Forget Wi-Fi connection** clears paired addresses until plugged in again. |
 
-The address is stored on the phone in device-protected storage, so it is available
-before the first unlock after a reboot. **Reset to USB default** removes it. After you
-save a new address the app restarts its service; if a call is in progress it asks you
-to restart the service afterwards.
+The address and paired Wi-Fi URLs are stored on the phone in device-protected storage, so they are available before the first unlock after a reboot. **Reset to USB default** removes a typed address. After you save a new address the app restarts its service; if a call is in progress it asks you to restart the service afterwards.
 
 ## What changes on the phone
 
@@ -199,7 +197,11 @@ In AI mode the service:
 - Mutes the microphone, turns the speakerphone off and holds the in-call earpiece
   volume at its minimum. During a call it repeats the microphone mute every 500 ms.
 - The first time it arms: sets media, ring, notification, system, alarm and DTMF volume
-  to 0, switches the ringer to silent and turns on Do Not Disturb.
+  to 0 and switches the ringer to silent. On Android 14 and below it also turns on
+  Do Not Disturb; on Android 15 and later it skips `setInterruptionFilter` (because
+  Android 15 creates an app-owned Zen mode the root module cannot disable) and leaves
+  Do Not Disturb to the root module (`service.sh` / `apply_mode.sh`), while turning off
+  any legacy app-owned mode before switching back to a normal phone.
 - With root, also runs `cmd media.audio_flinger mute mic 1`, the volume settings
   above and several `tinymix` microphone mute controls (controls a device lacks are
   ignored).
@@ -366,7 +368,8 @@ Do not disable `com.android.phone`: that is the telephony stack itself.
 | Permission | Why |
 |---|---|
 | `RECORD_AUDIO` | Required by Android for any audio recording, including call audio. |
-| `READ_PHONE_STATE` | Know when a call rings, connects and ends. |
+| `READ_PHONE_STATE` | Know when a call rings, connects and ends, and read active SIM subscriptions (`sub_id`, country, slot, carrier). |
+| `READ_PHONE_NUMBERS` | Read each SIM's own phone number on Android 13+ when the card exposes one, so the console can display it. |
 | `READ_CALL_LOG` | Read the caller's number when it did not arrive any other way. |
 | `ANSWER_PHONE_CALLS` | Answer and hang up automatically. |
 | `CALL_PHONE` | Place a call when the agent asks for a call-back or errand. |
@@ -385,8 +388,9 @@ Do not disable `com.android.phone`: that is the telephony stack itself.
 | `MANAGE_OWN_CALLS` | Declared; not used by the current code. |
 | `SEND_SMS` | Send a text when the agent asks (`send_sms`, for example to reply to an appointment request). The module grants it at boot and when the phone switches to AI mode; the setup screen does not ask for it. |
 
-SIMs are told apart only by Android's subscription id, which `READ_PHONE_STATE`
-already covers; no permission to read the SIMs' own numbers is requested. The manifest
+SIMs are still matched strictly by Android's subscription id (`sub_id`, covered by
+`READ_PHONE_STATE`), never by their phone numbers; `READ_PHONE_NUMBERS` is only used
+to show each SIM's number in the console when the card exposes one. The manifest
 sets `usesCleartextTraffic="true"`, because `ws://` to localhost or to a PC on
 your own network is not encrypted.
 
@@ -450,12 +454,13 @@ App to agent:
 
 | `type` | Fields | When |
 |---|---|---|
-| `hello` | `serial`, `mode` = `"CONTROL_IDLE"`, `play_tts_locally` = `false`, `model`, `app_version`, `phone_mode` (`"ai"` / `"normal"`), `in_call`, `supports_sms` = `true`, `supports_reject` = `true` | Right after connecting. `phone_mode` is not called `mode` because `mode` names the connection. Without `supports_reject` an app would answer a call the agent wants rejected. The agent also accepts an optional `sims` list (`[{sub_id, country}]`); the 1.0 app does not send it, so the agent learns the SIMs from `incoming` and the media `hello`. |
+| `hello` | `serial`, `mode` = `"CONTROL_IDLE"`, `play_tts_locally` = `false`, `model`, `app_version`, `phone_mode` (`"ai"` / `"normal"`), `in_call`, `supports_sms` = `true`, `supports_reject` = `true`, `sims` (optional array) | Right after connecting. `phone_mode` is not called `mode` because `mode` names the connection. Without `supports_reject` an app would answer a call the agent wants rejected. `SimList.kt` attaches `sims` (`[{"sub_id", "country", "slot"?, "carrier"?, "number"?}]`) whenever active SIMs can be read. |
 | `ping` | `t` (milliseconds since epoch) | Every 15 s. |
-| `status` | `mode` (`"ai"` / `"normal"`), `in_call` | The phone mode or the call state (ringing or active vs idle) changed. |
+| `status` | `mode` (`"ai"` / `"normal"`), `in_call`, `sims` (when changed or ready) | The phone mode, call state (ringing or active vs idle), or active SIM list changed. |
 | `set_mode_result` | `id`, `ok`, `mode`, `error` | Answer to `set_mode`. `mode` is the mode afterwards; `error` is empty on success, otherwise a code from [Normal phone mode](#normal-phone-mode). |
 | `incoming` | `serial`, `caller_id`, `sim_country`, `sample_rate`, `sim_sub_id` (only when known) | A call is ringing. `caller_id` is empty for a hidden number. `sim_country` (ISO code, lowercase, empty when unknown) and `sim_sub_id` (Android subscription id) name the SIM the call came in on. |
 | `incoming_cancel` | `serial` | The call ended before it was answered. |
+| `reject_failed` | `serial` | Declining a ringing call failed (the app retries once after a short delay). |
 | `call_waiting_rejected` | `serial`, `caller_id`, `sim_country`, `sim_sub_id` (only when known) | A second call rang during a call and was declined (AI mode). The fields describe the declined call. |
 | `place_call_ack` | `call_id`, `task_id`, `number`, `reason` = `""` | A requested call was dialed. |
 | `place_call_failed` | `call_id`, `task_id`, `number`, `reason` | A requested call was not dialed. `reason`: `busy` (a call was ringing or up), `ai_call_disabled` (normal phone mode), `missing number or call_id`, or `dial_helper_failed` (Android refused to place it). |
@@ -472,7 +477,7 @@ Agent to app:
 | `place_call` | `number`, `call_id`, `task_id`, `sub_id` (optional) | Dial `number` from the SIM with subscription id `sub_id` when given (Android's default when that SIM is not found). Answered with `place_call_ack` or `place_call_failed`. |
 | `set_mode` | `mode` (`"ai"` / `"normal"`), `id` | Switch the phone mode; answered with `set_mode_result`. |
 | `send_sms` | `id` (1–64 characters), `to` (3–20 digits, optional leading `+`), `text` (1–500 characters), `sub_id` (optional) | Send `text` from the phone's own number: the SIM with subscription id `sub_id`, else the default SMS SIM. Answered with `send_sms_result` and, when the network reports it, `send_sms_delivered`. A repeat of an id still being sent is ignored; a repeat of an id already sent is answered again without sending twice. |
-| `agent_info` | `console_url` | The web console's address for **Open the web console**. Sent after `hello` only when the agent knows it; the app forgets the old one on every new connection. |
+| `agent_info` | `console_url`, `wifi` (optional: `{"urls": [...]}`) | The web console's address for **Open the web console**, plus the paired Wi-Fi WebSocket addresses (`urls`). Sent after `hello`; omitting `wifi` keeps stored URLs, while an empty `urls` list clears them. |
 | `blocklist_sync` | `numbers` (array) | Stored but unused: the agent decides rejections with `answer_plan` `reject`. |
 | `hello_ack`, `hello_ok`, `ack`, `pong` | | Logged only. |
 
@@ -487,6 +492,7 @@ App to agent:
 | `hello` | `serial`, `caller_id`, `sample_rate` (16000), `mode` = `"SILENT_LOCAL"`, `sim_country`, `sim_sub_id` (only when known), `play_tts_locally` = `false`, `local_menu` (`false` in this build), `model`, `app_version` | Right after connecting. `sim_country` and `sim_sub_id` match `incoming`. `caller_id` can be empty when Android has not reported the number yet. |
 | `ringing` | `serial`, `caller_id` | Right after `hello`, and again if the caller's number becomes known later. |
 | `call_end` | `serial`, `caller_id` | The call ended. The app closes the connection shortly afterwards. |
+| `add_call_result` | `id`, `status`, `reason` | Progress of `add_call`: `status` is `dialing`, `active`, `merged`, or `failed` (`reason`: `bad_number`, `no_incall_service`, `busy`, `no_active_call`, `cannot_add_call`, `cannot_hold`, `no_account`, `no_telecom`, `ai_call_disabled`, `missing_id_or_number`). |
 | `local_menu_started`, `local_menu_done`, `local_menu_failed` | | Only in builds with `LOCAL_MENU_ENABLED = true`; never sent by default. |
 
 Agent to app:
@@ -500,6 +506,8 @@ Agent to app:
 | `stop_local_menu` | `reason` | Only relevant when `LOCAL_MENU_ENABLED = true`. |
 | `hangup` | `reason` | End the call. |
 | `place_call` | as on the control connection | As on the control connection. |
+| `add_call` | `id`, `number`, `merge` (optional, default `true`), `answer_timeout_ms` (optional, 5000–60000, default 25000) | Dials a second call (e.g. the owner for an urgent call) and merges it into a 3-way conference once answered. |
+| `add_call_abort` | `id` | Cancels an in-progress `add_call`. |
 | `reply_text`, `tts_text` | `text` | Logged only (the length, not the text). |
 
 **Audio frames.** Both directions use raw PCM, signed 16-bit little-endian, mono,

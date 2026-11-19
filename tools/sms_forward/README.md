@@ -2,17 +2,18 @@
 
 `sms_forward.py` forwards the text messages (SMS) that arrive on your Android phones
 to the notification channels set up in the Bageo web console (*Settings →
-Notifications*): Telegram, Discord, a webhook and the others the agent supports. It is
-optional and experimental. The agent works without it, and nothing starts it for you.
+Notifications*): Telegram, Discord, a webhook and the others Bageo supports. It is
+optional and experimental. Bageo works without it, and nothing starts it for you.
 
 A newer Bageo also keeps every forwarded text on the console's **SMS** page, where you
-can read, search and delete it.
+can read, search, reply in conversation threads and delete messages, and shows desktop
+notifications in **Bageo Status**.
 
 It runs on the computer the phones are plugged into, reads them over `adb` and uses
 only the Python standard library (Python 3.10 or newer; tested with 3.12 on Windows).
-It works with Bageo 1.0: it needs only the agent's
+It works with Bageo 1.0: it needs only Bageo's
 `POST /calls/api/notify/send` route, and on the phone either nothing (inbox) or the
-Bageo app's optional SMS hook. The texts the agent itself sends to callers (appointment
+Bageo app's optional SMS hook. The texts Bageo itself sends to callers (appointment
 replies) go out through the phone app and are unrelated to this script.
 
 **Status:** the logic is covered by offline tests with fake phones. On real phones it
@@ -70,7 +71,7 @@ control characters, cuts a notification at 3500 characters and, when its languag
 
 - The Bageo agent, running, with at least one notification channel
   ([Notifications](../../docs/en/NOTIFICATIONS.md)).
-- `adb` (Android platform-tools). The agent's start scripts offer to download it.
+- `adb` (Android platform-tools). **Bageo Status** and the start scripts offer to download it.
 - Each phone connected by USB, with **USB debugging** on and this computer allowed.
 
 **For the inbox,** the phone must have been unlocked once since it was switched on.

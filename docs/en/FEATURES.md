@@ -55,7 +55,7 @@ have asked you on the console first.
 - **No hanging up on a whim.** A silent line gets "are you still there?". The AI
   hangs up when the caller's own last words are a goodbye; ordinary calls wrap up
   politely at *Longest normal call* (5 minutes by default) in **How it answers**.
-- **Ends the way a person would.** Bageo recognizes "I won't keep you" and goodbye words in the nine languages and in Cantonese, Thai, Vietnamese and Indonesian, and hangs up only once the caller has said goodbye (Cantonese is only listened for; the AI answers in Mandarin). A greeting that also means goodbye (Korean 수고하십니다) never ends a call at the start, and an "I see" in another language (なるほど, Genau, Vale) does not interrupt the AI. Each region has its own wait before hanging up, about 1.2 to 2.5 seconds; a wait you set yourself wins ([Settings](SETTINGS.md)). AI errands end as before.
+- **Ends the way a person would.** Bageo recognizes "I won't keep you" and goodbye words across 25 official Gemini Live languages plus Cantonese (26 word sets in all, including Italian, Turkish, Arabic, Hindi and Russian), and hangs up only once the caller has said goodbye (Cantonese is only listened for; the AI answers in Mandarin). A greeting that also means goodbye (Korean 수고하십니다) never ends a call at the start, and an "I see" in another language (なるほど, Genau, Vale) does not interrupt the AI. Each region has its own wait before hanging up, about 1.2 to 2.5 seconds; a wait you set yourself wins ([Settings](SETTINGS.md)). AI errands end as before.
 - **Speaks like the place the SIM is from.** Each call carries only the local habits of the SIM's region: where couriers leave parcels, how times and numbers are repeated, which scams are common. The region only sets the language the AI opens in; a caller in another language Gemini supports is answered in theirs. Its Chinese is always Mandarin: Taiwanese, Hakka, Cantonese and other dialects Gemini does not speak are answered in Mandarin, never put on. See [Prompts](PROMPTS.md).
 - **Knows what the call is about.** A courier, a bank checking a charge, an important notice, setting a time, family or friend chat, a wrong number: each gets one short hint in the pause after the AI finishes a sentence, so replies stay as fast. A bank hears the amount, shop and time repeated back, gets neither a yes nor a no and no card block, and the AI ends with calling the official line itself later. A wrong number never hears your name.
 - **Sounds like a real phone call.** Optional background sound under the AI's
@@ -109,10 +109,7 @@ default) or as **You in person**.
 - **Safe dialing.** Emergency numbers, short codes, premium-rate numbers and
   numbers written after an international call prefix are refused, so an errand
   never turns into an international call by mistake.
-- **The right SIM.** Bageo learns from incoming calls which SIM country each
-  phone holds (`phone_sims.json`) and dials only on a SIM of the number's own
-  country. If the phone reports a different SIM as the call starts, Bageo hangs
-  up before it connects (`wrong_sim`).
+- **The right SIM.** Phone app 1.4 and later reports its active SIMs automatically on connect and when SIMs change (`phone_sims.json`; older apps learn them from incoming calls), and errands dial only on a SIM of the number's own country. If the phone reports a different SIM as the call starts, Bageo hangs up before it connects (`wrong_sim`).
 - **Sensible limits.** One call to a number at a time; at most 10 minutes per
   call, with a wrap-up at 9:30; no automatic redials unless you turn on
   **Redial until answered** (otherwise **Call again** is your button); voice
@@ -205,8 +202,8 @@ skipped, and the whole list exports as vCard.
 Every contact can be assigned to one of four lists (from the Contacts page, via one-tap buttons on call summary notifications, or via chat commands `/block`, `/stall`, `/white`, `/unblock`):
 
 - **Contacts**: the AI knows who is calling and reads your note about them.
-- **Whitelist (`whitelist`)**: close friends, family and clients, who can be put through to your phone (turn on *Turn on forwarding* in **Settings → How it answers**; the Contacts page can set it too). It is off by default, so the AI answers as usual and tells you afterwards, and a confirmation box comes first when you turn it on. Two ways:
-  1. *AI answers, puts you through if urgent*: the AI answers first. If the caller says it is urgent (in any of the 9 languages), the AI asks them to hold and this phone calls you; once you pick up you talk to them directly, and Bageo sends you an urgent alert at once. Without your number you only get the alert.
+- **Whitelist (`whitelist`)**: close friends, family and clients, who can be put through to your phone (turn on *Turn on forwarding* in **Settings → How it answers**; the Contacts page can set it too). It is off by default, so the AI answers as usual and tells you afterwards, and a confirmation box comes first when you turn it on. Once it is on, choose *Who can be forwarded* (**Whitelist** by default, plus optional **Other contacts** and **Numbers not in your contacts**, the latter at most one call to you every 30 minutes); Blacklist, stall-list and confirmed sales or scam calls are never forwarded. Two ways:
+  1. *AI answers, puts you through if urgent*: the AI answers first. If the caller says it is urgent (in any of the 9 languages), the AI asks them to hold and this phone calls you (background sound pauses while dialing); once you pick up you talk to them directly, and Bageo sends you an urgent alert at once. Without your number you only get the alert. The summary records whether you were put through, could not be reached, or only got an alert.
   2. *Don't answer: send to your phone*: this phone doesn't answer; your carrier forwards the call to your phone, the AI stays silent, and you get a notification at once. First switch the phone to normal phone and dial `**67*your number#` to turn on forward-when-busy, or callers reach voicemail.
 - **Blacklist (`blacklist`)**: turned away while ringing, or after a short "not available" announcement, without using the AI; the **Blacklist** tab sets which. A number ending in `*` (`0800*`, at least three digits not counting leading zeros) covers every number that starts that way.
 - **Stall list (`stall`)**: known debt collectors, sales callers or harassers. The AI starts wasting their time the moment the call connects, without waiting for keywords.
@@ -264,6 +261,12 @@ and SIM that received the text, and you can pick another number. You can search,
 and delete them. Like the other records they are kept for 15 days; change that with
 *Days to keep records* in the settings.
 
+Built-in **Backup & restore** lets you schedule automatic backups, run manual
+backups and selectively export or import settings, keys, contacts and call
+records (with optional `.bageo` password encryption). On Windows and macOS,
+the **Bageo Status** tray app runs Bageo in the background and shows desktop
+notifications for incoming calls, text messages and ready call summaries.
+
 Only three things leave your computer:
 
 - **Live call audio** goes to Gemini.
@@ -296,9 +299,9 @@ More, including the techniques that make the biggest difference:
 
 | | |
 |---|---|
-| **Automated** | More than 520 unit and integration tests run in CI on every change. |
+| **Automated** | More than 1,400 unit and integration tests run in CI on every change. |
 | **Simulated calls** | 234 calls against Bageo itself, with Gemini playing callers in 28 languages, plus 15 AI errand scenarios. All pass. |
-| **Real phones (1.0)** | Pixel 7, 7a and 9: answering, interruptions, background sound, sales and scam stalling, blocked numbers, appointment texts, AI call-backs, normal phone mode. |
+| **Real phones** | Pixel 7, 7a and 9: answering, interruptions, background sound, sales and scam stalling, blocked numbers, appointment texts, AI call-backs, normal phone mode (including Android 15+), SIM change reporting and urgent 3-way call merge. |
 | **Needs real-world reports** | AI errands dialing out, the call-back's ringback filter on a real ringback, notification channels other than Telegram on live accounts, other languages, the *AI assistant* style, Docker, USB on macOS and Linux. |
 
 Reports from other phones and languages help the most: see
