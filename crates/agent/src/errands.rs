@@ -776,6 +776,22 @@ impl SimBook {
         Arc::new(Self { path: None, map: Mutex::new(BTreeMap::new()) })
     }
 
+    /// The file the SIMs are kept in (None: in memory only).
+    pub fn path(&self) -> Option<&Path> {
+        self.path.as_deref()
+    }
+
+    /// Read the file again (a backup put it back). False when there is no
+    /// file to read (in memory only).
+    pub fn reload(&self) -> bool {
+        let Some(path) = &self.path else {
+            return false;
+        };
+        let (map, _) = read_json::<BTreeMap<String, Vec<SimLine>>>(path, "phone SIMs");
+        *self.guard() = map.unwrap_or_default();
+        true
+    }
+
     fn guard(&self) -> MutexGuard<'_, BTreeMap<String, Vec<SimLine>>> {
         self.map.lock().unwrap_or_else(|e| e.into_inner())
     }
@@ -1568,6 +1584,41 @@ impl ErrandStore {
 
     fn live(&self) -> MutexGuard<'_, HashMap<String, Live>> {
         self.live.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Where the errands are kept.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Read `errands.json` again (a backup put it back): its errands replace
+    /// these. One that was under way there is over here (failed,
+    /// `agent_restarted`): a restored errand never dials by itself. How many.
+    pub fn reload(&self) -> usize {
+        let (file, _) = read_json::<ErrandFile>(&self.path, "errands");
+        let mut list = file.unwrap_or_default().errands;
+        let w = words(locale::notify_lang());
+        for e in list.iter_mut().filter(|e| !e.is_final()) {
+            e.status = FAILED.to_string();
+            e.call_code = "agent_restarted".to_string();
+            e.queued_at.clear();
+            e.updated_at = now_stamp();
+            for q in e.questions.iter_mut().filter(|q| q.answered_by.is_none()) {
+                q.answered_by = Some("timeout".to_string());
+            }
+            e.result = Some(Outcome { outcome: "failed".to_string(), summary: w.restarted.to_string(), ..Default::default() });
+        }
+        let n = list.len();
+        if self.writable {
+            let body = serde_json::to_vec_pretty(&ErrandFileRef { errands: &list }).unwrap_or_default();
+            if let Err(e) = write_atomic(&self.path, &body) {
+                warn!("errands not saved: {e:#}");
+            }
+        }
+        *self.guard() = list;
+        self.live().clear();
+        info!("errands read again: {n}");
+        n
     }
 
     /// Where the AI's questions to the owner also go: the chats that take

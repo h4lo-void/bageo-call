@@ -1365,6 +1365,34 @@ impl CallStore {
         &self.root
     }
 
+    /// Add call records of a backup this store does not have (by id); the
+    /// ones it has stay as they are. A row still ringing or active in the
+    /// backup is over here. How many were added.
+    pub async fn merge_records(&self, records: Vec<CallRecord>) -> usize {
+        let (added, snap) = {
+            let mut idx = self.index.lock().await;
+            let mut have: std::collections::HashSet<String> = idx.calls.iter().map(|c| c.id.clone()).collect();
+            let mut added = 0;
+            for mut r in records {
+                if r.id.trim().is_empty() || is_twin_serial(&r.serial) || !have.insert(r.id.clone()) {
+                    continue;
+                }
+                if r.status == "ringing" || r.status == "active" {
+                    r.status = "ended".to_string();
+                }
+                idx.calls.push(r);
+                added += 1;
+            }
+            if added == 0 {
+                return 0;
+            }
+            idx.calls.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+            (added, self.snapshot_index(&idx))
+        };
+        self.write_index_snapshot(snap).await;
+        added
+    }
+
     /// Remove the calls older than retention_days (the setting as it is now):
     /// their rows and every file they have.
     ///
@@ -2160,6 +2188,11 @@ impl ActiveCall {
 
 fn index_path(root: &Path) -> PathBuf {
     root.join("index.json")
+}
+
+/// The call records of an `index.json` (a backup's).
+pub fn records_from_index_json(bytes: &[u8]) -> serde_json::Result<Vec<CallRecord>> {
+    serde_json::from_slice::<CallIndex>(bytes).map(|i| i.calls)
 }
 
 fn remove_record_file(root: &Path, rel: &str) {

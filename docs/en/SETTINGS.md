@@ -18,6 +18,7 @@ Settings live in two places:
 | Have the AI call a restaurant and book a table | [AI errands](#ai-errands) |
 | Decide on meeting requests later and let the caller know | [Appointments](#appointments) |
 | Open the console from my phone | [Using the console from other devices](#using-the-console-from-other-devices) |
+| Keep copies of my settings, or move to a new computer | [Backup & restore](#backup--restore) |
 
 ## Settings in the web console
 
@@ -297,6 +298,49 @@ Rules that keep it safe:
 - Texts also go out from the SIM the call came in on, so a dual-SIM phone answers from the right number.
 
 Times are the computer's local time (see [Time zone](#time-zone)). Without any key for the summary, the notification carries the caller's first words instead; the transcript is always in the console. Every appointment field and route is in [API → Appointments and tasks](API.md#appointments-and-tasks).
+
+### Backup & restore
+
+Bageo can back up your settings on its own, make a copy when you ask, and pack everything into one file for another computer. Backups stay on your computer: nothing is uploaded or sent anywhere, and Bageo does not update itself.
+
+Backup files hold your keys and passwords. Keep them where only you can get them.
+
+| Setting | Default | What it does |
+|---|---|---|
+| Automatic backup | every week | Off, every day, every week or every month. |
+| Save backups to | default location | The full path of a folder. Empty: the `backups` folder inside Bageo's data folder (`data/calls/backups`). When you save, Bageo checks that it can write there. |
+| Automatic backups to keep (*More options*) | 10 | 1 to 100. Only automatic backups count. |
+| Include call records, recordings and texts (*More options*) | off | On: *Back up now* and automatic backups also hold call records, recordings, texts and *To do* items. The file gets much bigger. |
+
+The four settings are saved as `backup_schedule`, `backup_dir`, `backup_keep` and `backup_include_calls`. A backup holds your settings, contacts and lists, your own number notes and scam numbers, phone pairing, SIM and phone names, and AI errands.
+
+- *Back up now* makes a copy right away.
+- *Export settings* downloads a file with settings only, with no call records, texts or *To do* items.
+- *Import settings* takes a backup (.zip) or an older single settings file (.json). Settings only come back from the older file.
+- *Backup files* lists the latest 10 copies, each with *Restore* and *Download*.
+
+Before anything is restored, the console shows when the backup was made, which version it comes from and what is inside, and waits for *Restore*. Bageo first saves your current settings as a separate file ("Before import"). If the backup holds call records, you can tick *Also bring back call records*. Nothing can be restored during a call: try again when it ends. If some changes need a restart, the console says so; the console password changes too when the backup has a different one.
+
+**How automatic backups run:**
+
+- One is made once a full day, week or month has passed since the last one.
+- A call in progress makes it wait until the call ends.
+- If the computer was off at the time, the backup is made when Bageo starts again.
+- If a backup fails, Bageo tries again every hour and sends you one notification.
+
+**What is kept:**
+
+- Automatic backups: only the newest ones, as many as *Automatic backups to keep*.
+- "Before import" copies: the newest 5.
+- Manual backups and exports: never deleted by Bageo.
+- Any other file in the folder is left alone.
+
+**Moving to a new computer:**
+
+1. On the old computer, click *Export settings*. To bring call records along, tick *Include call records, recordings and texts* under *More options*, click *Back up now*, then copy that file from the backup folder.
+2. Install Bageo on the new computer.
+3. Open the console and click *Import settings*, pick the file, and confirm with *Restore*.
+4. If the phones do not connect by themselves, plug each one in with USB once.
 
 ### Advanced
 

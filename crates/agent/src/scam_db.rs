@@ -1415,6 +1415,16 @@ impl NumberBook {
         self.numbers.lock().unwrap_or_else(|e| e.into_inner()).len()
     }
 
+    /// Read `scam_numbers.json` again (a backup put it back).
+    pub fn reload(&self) {
+        let Some(dir) = &self.dir else {
+            return;
+        };
+        let fresh = NumberBook::open(Some(dir.clone()));
+        let map = fresh.numbers.into_inner().unwrap_or_else(|e| e.into_inner());
+        *self.numbers.lock().unwrap_or_else(|e| e.into_inner()) = map;
+    }
+
     fn save(&self, map: &BTreeMap<String, NumberEntry>) {
         let Some(dir) = &self.dir else { return };
         let file = NumberFile {

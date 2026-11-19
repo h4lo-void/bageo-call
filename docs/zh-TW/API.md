@@ -82,6 +82,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - `POST /calls/api/devices/{serial}/mode`；
 - `POST /calls/api/contacts`、`PUT /calls/api/contacts/{id}`、`POST /calls/api/contacts/batch`（`POST /calls/api/contacts/import` 則改成要帶 `X-Filename` 標頭）；
 - `POST /calls/api/errands`、`…/{id}/cancel`、`…/{id}/retry`、`…/{id}/say`。
+- `POST /calls/api/backup/run`、`…/restore`、`…/apply`、`…/open-folder`（`POST /calls/api/backup/import` 則改成要帶 `X-Filename` 標頭）。
 
 允許空 body 的路由，空 body 當成 `{}`。這是第二道防線；第一道是控制台對區網開放時一定要設密碼（`CALLS_UI_TOKEN`）。
 
@@ -642,6 +643,32 @@ Content-Type: application/json
 {"ok": true, "contact": {"id": "4f0c9a…", "name": "林小美", "phones": ["0912 000 000", "+1 202 555 0143"],
  "note": "我姊", "source": "manual", "updated_at": "2026-11-14T08:00:00Z"}}
 ```
+
+## 備份與還原
+
+八個路由用來備份和還原 Bageo 自己的資料，對應控制台設定裡的「備份與還原」（見[設定參考](SETTINGS.md#備份與還原)）。任何資料都不會送到你的電腦以外。它們照控制台的密碼規則，每個 `POST` 也要照上面的 `Content-Type: application/json` 規則（`import` 跟 `contacts/import` 一樣，body 是檔案本身，另外帶 `X-Filename` 標頭）。
+
+四個設定用 `PUT /calls/api/settings` 存：`backup_schedule`（`off`、`daily`、預設的 `weekly`，或 `monthly`）、`backup_dir`（空白：資料夾底下的 `backups`；否則要填絕對路徑，Bageo 會建好資料夾並試寫一個檔，寫不進去就回 HTTP 400 `backup_dir_unwritable`）、`backup_keep`（1 到 100，預設 10，只算自動備份）、`backup_include_calls`（預設 `false`；`true` 時自動和手動備份也會放進通話紀錄、錄音、簡訊和待處理事項）。
+
+| 方法與路徑 | 內容 |
+|---|---|
+| `GET /calls/api/backup` | 目前狀態：`{dir, default_dir, dir_ok, can_open_folder, running, last, next_at, backups}`。 |
+| `POST /calls/api/backup/run` | Body `{}`。馬上做一份手動備份：`{entry}`，是 `backups` 裡的一筆。已經有備份在跑：HTTP 409 `busy`。失敗：HTTP 500 `dir_unwritable`、`disk_full` 或 `io`。 |
+| `GET /calls/api/backup/export` | 下載只有設定的 zip（不含通話紀錄、簡訊和待處理事項）。 |
+| `GET /calls/api/backup/file/{name}` | 下載備份資料夾裡的檔案。`name` 必須是資料夾裡真的有的備份檔名。 |
+| `POST /calls/api/backup/import` | Body 是檔案本身（最大 200 MB），檔名 URL 編碼後放 `X-Filename`。可以是備份 zip，或舊版單獨的 `settings.json`。**不會還原任何東西**：檔案暫存 15 分鐘，回傳預覽。 |
+| `POST /calls/api/backup/restore` | Body `{name}`。對備份資料夾裡的檔案做同樣的預覽（沒有 200 MB 的上傳上限）。 |
+| `POST /calls/api/backup/apply` | Body `{token, with_calls}`。照預覽的內容還原。`{ok, before_import, restart_needed, warnings}`。 |
+| `POST /calls/api/backup/open-folder` | Body `{}`。用檔案總管或 Finder 打開備份資料夾。只有從 Bageo 所在的這台電腦連線、而且是 Windows 或 macOS 才行，否則 HTTP 403 `not_local`。 |
+
+細節：
+
+- `GET /calls/api/backup`：`dir` 是正在用的資料夾，`default_dir` 是預設資料夾，`dir_ok` 是寫不寫得進去，`can_open_folder` 是 `open-folder` 能不能用，`running` 是不是正在備份，`next_at` 是下一次自動備份的時間（RFC 3339，或 `null`）。`last` 是最近一次自動或手動備份的 `{at, ok, name, size, error}`，沒有就是 `null`。`backups` 是資料夾裡的檔案，新到舊，每筆 `{name, at, size, kind, app_version, include_calls}`；`kind` 是 `scheduled`、`manual`、`before_import` 或 `export`。
+- 備份檔是 zip。根目錄的 `bageo-backup.json` 放 `{format: "bageo-backup", version: 1, app_version, created_at, kind, include_calls, files: [{path, size, sha256}]}`。其他檔案都在 `data/` 底下，路徑是資料夾裡的相對路徑（`data/config/settings.json`）。不放的有：`backups` 資料夾本身、暫存檔、除錯檔、重新啟動標記這類一次性的檔案，以及快取。
+- 檔名用本機時間：`bageo-backup-YYYYMMDD-HHMMSS-auto.zip`、`…-manual.zip`、`…-before-import.zip`，匯出下載的是 `bageo-settings-YYYYMMDD-HHMMSS.zip`。
+- 預覽是 `{token, source_name, created_at, app_version, kind, items, has_calls, calls_count, changes_password, warnings}`。`items` 的每筆是 `{id}` 或 `{id, count}`，id 有 `settings`、`contacts`、`numbers`、`phones`、`errands`、`calls`、`sms`、`tasks`。`warnings` 可能有 `newer_version`、`plain_settings_file`（舊版單獨的設定檔：只還原設定）、`backup_dir_reset`（檔案裡的資料夾在這裡不能用，改用預設位置）。
+- `apply`：`with_calls: true` 時，備份裡有的話會連通話紀錄、錄音、簡訊和待處理事項一起還原。動手之前 Bageo 會先把現在的設定做成一份 `before_import` 備份（選的資料夾寫不進去就放預設資料夾），檔名放在 `before_import`。`restart_needed` 表示有些變更要重新開啟 Bageo 才會全部生效。
+- 預覽路由的錯誤（HTTP 400）：`not_backup`、`damaged`、`too_new`（來自比較新的 Bageo）、`too_large`。`apply` 在通話中回 HTTP 409 `call_active`；token 超過 15 分鐘或已經用過，回 HTTP 400 `expired`。
 
 ## 手機與健康狀態
 

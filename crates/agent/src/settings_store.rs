@@ -387,6 +387,20 @@ pub struct RuntimeSettings {
     /// Whether the first-time password setup prompt has already been shown/dismissed.
     #[serde(default)]
     pub ui_password_prompted: bool,
+    /// Automatic backups: `off`, `daily`, `weekly` or `monthly` ([`crate::backup`]).
+    #[serde(default = "default_backup_schedule")]
+    pub backup_schedule: String,
+    /// Folder backups are saved in (absolute path); empty = `backups` in the
+    /// data folder.
+    #[serde(default)]
+    pub backup_dir: String,
+    /// Automatic backups kept (1–100); the oldest go first.
+    #[serde(default = "default_backup_keep")]
+    pub backup_keep: u32,
+    /// Backups ("Back up now" and automatic ones) also hold the call records,
+    /// recordings, text messages and to-do items.
+    #[serde(default)]
+    pub backup_include_calls: bool,
     /// Where calls, recordings and settings are kept (`CALLS_DATA_DIR`, from the
     /// env base). Not a setting: never shown or saved.
     #[serde(skip)]
@@ -461,6 +475,33 @@ fn default_reply_in_caller_language() -> bool {
 
 fn default_auto() -> String {
     "auto".to_string()
+}
+
+fn default_backup_schedule() -> String {
+    "weekly".to_string()
+}
+
+fn default_backup_keep() -> u32 {
+    10
+}
+
+/// `off` / `daily` / `weekly` / `monthly`; anything else is the default, weekly.
+pub fn sanitize_backup_schedule(s: &str) -> String {
+    match s.trim().to_ascii_lowercase().as_str() {
+        v @ ("off" | "daily" | "weekly" | "monthly") => v.to_string(),
+        _ => default_backup_schedule(),
+    }
+}
+
+/// A backup folder: trimmed, and empty (the default place) unless it is an
+/// absolute path.
+fn sanitize_backup_dir(s: &str) -> String {
+    let t = s.trim();
+    if Path::new(t).is_absolute() {
+        t.to_string()
+    } else {
+        String::new()
+    }
 }
 
 fn default_mdns_name() -> String {
@@ -672,6 +713,24 @@ fn write_overrides(path: &Path, ov: &Overrides) -> Result<()> {
     Ok(())
 }
 
+/// What the import preview shows of a settings file ([`crate::backup`]): its
+/// console password and its backup folder. Err: not a settings file (not a
+/// JSON object, or, with `require_keys`, none of the keys settings have).
+pub fn peek_settings_text(text: &str, require_keys: bool) -> Result<(String, String)> {
+    let (ov, _) = read_overrides(text)?;
+    let has_keys = serde_json::to_value(&ov)
+        .ok()
+        .and_then(|v| v.as_object().map(|m| !m.is_empty()))
+        .unwrap_or(false);
+    if require_keys && !has_keys {
+        anyhow::bail!("no settings in it");
+    }
+    Ok((
+        ov.ui_password.unwrap_or_default().trim().to_string(),
+        ov.backup_dir.unwrap_or_default().trim().to_string(),
+    ))
+}
+
 fn sanitize_answer_style(s: &str) -> String {
     match s.trim().to_ascii_lowercase().as_str() {
         "persona" => "persona".to_string(),
@@ -832,6 +891,10 @@ impl RuntimeSettings {
             whitelist_urgent_call: env_bool("WHITELIST_URGENT_CALL", false),
             ui_password: String::new(),
             ui_password_prompted: false,
+            backup_schedule: default_backup_schedule(),
+            backup_dir: String::new(),
+            backup_keep: default_backup_keep(),
+            backup_include_calls: false,
             calls_data_dir: base.calls_data_dir.clone(),
         }
     }
@@ -1221,6 +1284,21 @@ impl RuntimeSettings {
         self.appointment_reply = crate::appointments::sanitize_reply_setting(&self.appointment_reply);
         self.owner_aliases = clean_owner_aliases(&self.owner_aliases, &self.owner_name);
         self.errand_identity = sanitize_errand_identity(&self.errand_identity);
+        if let Some(v) = &ov.backup_schedule {
+            self.backup_schedule = v.clone();
+        }
+        if let Some(v) = &ov.backup_dir {
+            self.backup_dir = v.clone();
+        }
+        if let Some(v) = ov.backup_keep {
+            self.backup_keep = v;
+        }
+        if let Some(v) = ov.backup_include_calls {
+            self.backup_include_calls = v;
+        }
+        self.backup_schedule = sanitize_backup_schedule(&self.backup_schedule);
+        self.backup_dir = sanitize_backup_dir(&self.backup_dir);
+        self.backup_keep = self.backup_keep.clamp(1, 100);
     }
 
     /// Overlay runtime-editable values onto the env base so existing call
@@ -1617,6 +1695,14 @@ struct Overrides {
     ui_password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     ui_password_prompted: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    backup_schedule: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    backup_dir: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    backup_keep: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    backup_include_calls: Option<bool>,
 }
 
 struct StoreState {
@@ -1637,7 +1723,7 @@ impl SettingsStore {
             .join("config")
             .join("settings.json");
         let mut old_key_moved = false;
-        let mut overrides = match std::fs::read_to_string(&path) {
+        let overrides = match std::fs::read_to_string(&path) {
             Ok(text) => match read_overrides(&text) {
                 Ok((o, moved)) => {
                     info!("runtime settings overrides loaded path={}", path.display());
@@ -1654,12 +1740,29 @@ impl SettingsStore {
             },
             Err(_) => Overrides::default(),
         };
+        let (overrides, rt) = Self::settle_overrides(&base, &path, overrides, old_key_moved);
+        set_active_ui_password(&rt.ui_password);
+        crate::calendar::set_link_secret(&active_ui_token(&base.calls_ui_token));
+        Arc::new(Self {
+            base,
+            path,
+            state: RwLock::new(StoreState {
+                overrides,
+                current: Arc::new(rt),
+            }),
+        })
+    }
+
+    /// A settings file as read (`overrides`) after the changes settings of
+    /// older versions need, and the runtime settings it makes. The file at
+    /// `path` is written again when one of those changed it.
+    fn settle_overrides(base: &Settings, path: &Path, mut overrides: Overrides, old_key_moved: bool) -> (Overrides, RuntimeSettings) {
         // An `auto` from before the Google Calendar connection was removed is
         // `confirm` now, and is saved so.
         if let Some(m) = overrides.appointment_mode.take() {
             overrides.appointment_mode = Some(sanitize_appointment_mode(&m));
         }
-        let mut rt = RuntimeSettings::from_base(&base);
+        let mut rt = RuntimeSettings::from_base(base);
         let summary_provider = overrides
             .summary_provider
             .clone()
@@ -1720,20 +1823,11 @@ impl SettingsStore {
             info!("summary service of an older version written down path={}", path.display());
         }
         if old_key_moved || filled || prompt_split {
-            if let Err(e) = write_overrides(&path, &overrides) {
+            if let Err(e) = write_overrides(path, &overrides) {
                 warn!("settings from an older version not saved yet: {e:#}");
             }
         }
-        set_active_ui_password(&rt.ui_password);
-        crate::calendar::set_link_secret(&active_ui_token(&base.calls_ui_token));
-        Arc::new(Self {
-            base,
-            path,
-            state: RwLock::new(StoreState {
-                overrides,
-                current: Arc::new(rt),
-            }),
-        })
+        (overrides, rt)
     }
 
     pub fn snapshot(&self) -> Arc<RuntimeSettings> {
@@ -1746,6 +1840,38 @@ impl SettingsStore {
 
     pub fn storage_path(&self) -> &Path {
         &self.path
+    }
+
+    /// The settings file as it is written now (what a backup keeps).
+    pub fn overrides_json(&self) -> Vec<u8> {
+        let st = self.state.read().unwrap_or_else(|e| e.into_inner());
+        serde_json::to_vec_pretty(&st.overrides).unwrap_or_else(|_| b"{}".to_vec())
+    }
+
+    /// The settings of a backup take the place of these, whole ([`crate::backup`]):
+    /// `text` is a settings.json, read the way [`Self::load`] reads one (the
+    /// same changes for older versions). What belongs to this computer stays:
+    /// `public_url` (the address other devices open it at), and `backup_dir`
+    /// when this computer cannot write there (`dir_ok` false; then the second
+    /// value is true). Saved, then swapped in.
+    pub fn replace_from_text(&self, text: &str, dir_ok: &dyn Fn(&str) -> bool) -> Result<(Arc<RuntimeSettings>, bool)> {
+        let (mut incoming, moved) = read_overrides(text).context("not a settings file")?;
+        let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
+        incoming.public_url = st.overrides.public_url.clone();
+        let mut dir_reset = false;
+        let wanted = incoming.backup_dir.as_deref().map(str::trim).unwrap_or("").to_string();
+        if !wanted.is_empty() && !dir_ok(&wanted) {
+            incoming.backup_dir = st.overrides.backup_dir.clone();
+            dir_reset = true;
+        }
+        let (ov, rt) = Self::settle_overrides(&self.base, &self.path, incoming, moved);
+        write_overrides(&self.path, &ov)?;
+        st.overrides = ov;
+        set_active_ui_password(&rt.ui_password);
+        crate::calendar::set_link_secret(&active_ui_token(&self.base.calls_ui_token));
+        st.current = Arc::new(rt);
+        info!("runtime settings replaced from a backup path={}", self.path.display());
+        Ok((st.current.clone(), dir_reset))
     }
 
     fn apply_patch_locked(&self, st: &mut StoreState, patch: &Value) -> Result<Arc<RuntimeSettings>> {
@@ -2315,6 +2441,19 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     if ov.ui_password.as_ref().is_some_and(|s| !s.is_empty()) {
         ov.ui_password_prompted = Some(true);
     }
+    p_string(patch, "backup_schedule", &mut ov.backup_schedule);
+    if let Some(v) = ov.backup_schedule.take() {
+        ov.backup_schedule = Some(sanitize_backup_schedule(&v));
+    }
+    p_string(patch, "backup_dir", &mut ov.backup_dir);
+    if let Some(v) = ov.backup_dir.take() {
+        ov.backup_dir = Some(sanitize_backup_dir(&v));
+    }
+    p_u32(patch, "backup_keep", &mut ov.backup_keep);
+    if let Some(v) = ov.backup_keep.take() {
+        ov.backup_keep = Some(v.clamp(1, 100));
+    }
+    p_bool(patch, "backup_include_calls", &mut ov.backup_include_calls);
 }
 
 fn split_list(spec: &str) -> Vec<String> {

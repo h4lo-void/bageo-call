@@ -107,6 +107,7 @@ Bageo never answers preflights. This covers:
 - `POST /calls/api/contacts`, `PUT /calls/api/contacts/{id}`, `POST /calls/api/contacts/batch`
   (`POST /calls/api/contacts/import` needs an `X-Filename` header instead);
 - `POST /calls/api/errands`, `…/{id}/cancel`, `…/{id}/retry`, `…/{id}/say`.
+- `POST /calls/api/backup/run`, `…/restore`, `…/apply`, `…/open-folder` (`POST /calls/api/backup/import` needs an `X-Filename` header instead).
 
 Where a route allows an empty body, it counts as `{}`. This is the second line
 of defence. The first is setting a password (`CALLS_UI_TOKEN`) whenever your
@@ -690,6 +691,32 @@ Content-Type: application/json
 {"ok": true, "contact": {"id": "4f0c9a…", "name": "Mei Lin", "phones": ["0912 000 000", "+1 202 555 0143"],
  "note": "my sister", "source": "manual", "updated_at": "2026-11-14T08:00:00Z"}}
 ```
+
+## Backup and restore
+
+Eight routes back up and restore Bageo's own data: the same as *Backup & restore* in the console settings (see [Settings](SETTINGS.md#backup--restore)). Nothing is sent outside your computer. They follow the console's password rule, and every `POST` the `Content-Type: application/json` rule above (`import` takes the file itself with an `X-Filename` header, like `contacts/import`).
+
+Four settings control it, saved with `PUT /calls/api/settings`: `backup_schedule` (`off`, `daily`, `weekly` by default, or `monthly`), `backup_dir` (empty: the `backups` folder in the data folder; otherwise an absolute path, which Bageo creates and test-writes, answering HTTP 400 `backup_dir_unwritable` when it cannot), `backup_keep` (1 to 100, default 10, automatic backups only) and `backup_include_calls` (default `false`: with `true`, automatic and manual backups also hold call records, recordings, texts and *To do* items).
+
+| Method and path | What |
+|---|---|
+| `GET /calls/api/backup` | The state: `{dir, default_dir, dir_ok, can_open_folder, running, last, next_at, backups}`. |
+| `POST /calls/api/backup/run` | Body `{}`. Makes a manual backup now: `{entry}`, one item of `backups`. Another one running: HTTP 409 `busy`. A failure: HTTP 500 `dir_unwritable`, `disk_full` or `io`. |
+| `GET /calls/api/backup/export` | Downloads a zip with settings only (no call records, texts or *To do* items). |
+| `GET /calls/api/backup/file/{name}` | Downloads a file from the backup folder. `name` must be the name of a backup file that exists there. |
+| `POST /calls/api/backup/import` | The file itself as the body (up to 200 MB), its name URL-encoded in `X-Filename`. A backup zip, or an older single `settings.json`. **Restores nothing**: it keeps the file for 15 minutes and answers a preview. |
+| `POST /calls/api/backup/restore` | Body `{name}`. The same preview for a file in the backup folder (no 200 MB upload limit). |
+| `POST /calls/api/backup/apply` | Body `{token, with_calls}`. Restores what the preview showed. `{ok, before_import, restart_needed, warnings}`. |
+| `POST /calls/api/backup/open-folder` | Body `{}`. Opens the backup folder in the file manager. Only from the computer Bageo runs on, on Windows or macOS; otherwise HTTP 403 `not_local`. |
+
+Details:
+
+- `GET /calls/api/backup`: `dir` is the folder in use, `default_dir` the default one, `dir_ok` whether it can be written to, `can_open_folder` whether `open-folder` works, `running` whether a backup is under way, `next_at` when the next automatic one is due (RFC 3339, or `null`). `last` is `{at, ok, name, size, error}` for the last automatic or manual attempt, or `null`. `backups` lists the files in the folder, newest first, each `{name, at, size, kind, app_version, include_calls}`; `kind` is `scheduled`, `manual`, `before_import` or `export`.
+- The file is a zip. `bageo-backup.json` at its root holds `{format: "bageo-backup", version: 1, app_version, created_at, kind, include_calls, files: [{path, size, sha256}]}`. Everything else is under `data/`, with the path inside the data folder (`data/config/settings.json`). Left out: the `backups` folder itself, temporary files, debug files, one-time files such as the restart marker, and caches.
+- Names use local time: `bageo-backup-YYYYMMDD-HHMMSS-auto.zip`, `…-manual.zip`, `…-before-import.zip`, and `bageo-settings-YYYYMMDD-HHMMSS.zip` for the export download.
+- The preview is `{token, source_name, created_at, app_version, kind, items, has_calls, calls_count, changes_password, warnings}`. `items` has `{id}` or `{id, count}` for `settings`, `contacts`, `numbers`, `phones`, `errands`, `calls`, `sms` and `tasks`. `warnings` holds `newer_version`, `plain_settings_file` (an older single settings file: only the settings are restored) and `backup_dir_reset` (the folder in the file cannot be used here, so the default is used).
+- `apply`: `with_calls: true` also restores call records, recordings, texts and *To do* items when the backup has them. Before it changes anything Bageo makes a `before_import` backup of the current settings (in the default folder when the chosen one cannot be written to) and names it in `before_import`. `restart_needed` says some changes only take full effect after Bageo is reopened.
+- Errors of the preview routes (HTTP 400): `not_backup`, `damaged`, `too_new` (made by a newer Bageo) and `too_large`. `apply` answers HTTP 409 `call_active` during a call and HTTP 400 `expired` for a token that is older than 15 minutes or already used.
 
 ## Phones and health
 

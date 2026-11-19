@@ -174,6 +174,28 @@ impl TaskStore {
         &self.root
     }
 
+    /// Add to-do items of a backup this store does not have (by id); the
+    /// ones it has stay. How many were added.
+    pub async fn merge(&self, tasks: Vec<TaskRecord>) -> Result<usize> {
+        let mut idx = self.index.lock().await;
+        let mut have: std::collections::HashSet<String> = idx.tasks.iter().map(|t| t.id.clone()).collect();
+        let mut added = 0;
+        for t in tasks {
+            let safe_id = !t.id.is_empty() && t.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+            if !safe_id || !have.insert(t.id.clone()) {
+                continue;
+            }
+            save_task_file(&self.root, &t)?;
+            idx.tasks.push(t);
+            added += 1;
+        }
+        if added > 0 {
+            idx.tasks.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            save_index(&self.root, &idx)?;
+        }
+        Ok(added)
+    }
+
     /// Remove task metadata older than the call retention window, keeping any
     /// unfinished tasks or appointments whose scheduled date has not yet aged out.
     pub async fn purge_expired(&self, retention_days: u32) {

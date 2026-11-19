@@ -853,6 +853,33 @@ impl ContactStore {
         Ok(out)
     }
 
+    /// Where the contacts are kept.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Changes are refused: the file could neither be read nor set aside at start.
+    pub fn is_blocked(&self) -> bool {
+        self.blocked.is_some()
+    }
+
+    /// Read `contacts.json` again (a backup put it back, [`crate::backup`]);
+    /// how many contacts it holds. A file that is there but is no contacts
+    /// file is an error, and the book stays as it was.
+    pub async fn reload(&self) -> Result<usize> {
+        let _one = self.writing.lock().await;
+        let contacts = match std::fs::read(&self.path) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(e) => return Err(e).with_context(|| format!("read {}", self.path.display())),
+            Ok(bytes) => serde_json::from_slice::<ContactFile>(&bytes).context("not a contacts file")?.contacts,
+        };
+        let n = contacts.len();
+        let region = (self.region)();
+        *self.book.write().unwrap_or_else(|e| e.into_inner()) = Book::new(contacts, region.as_deref());
+        info!("contacts read again: {n}");
+        Ok(n)
+    }
+
     pub fn len(&self) -> usize {
         self.book.read().unwrap_or_else(|e| e.into_inner()).contacts.len()
     }
