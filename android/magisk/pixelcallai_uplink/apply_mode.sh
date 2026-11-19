@@ -125,6 +125,38 @@ ring_on() {
   [ "$(o settings get global mode_ringer | tr -d "$STRIP")" = "2" ]
 }
 dnd_off() { [ "$(zen)" = "0" ]; }
+# Do Not Disturb stayed on: note in last_apply which mode keeps it on, so the app can
+# tell the owner what to turn off in Settings > Modes. Android 15+ prints each mode of the
+# current config in dumpsys as "ZenRule[id=..,state=STATE_TRUE,enabled=TRUE,..,name=..,
+# zenMode=..,..pkg=..,"; older versions print them differently and only "unknown" is noted.
+#   dnd_blocker=app      Bageo's own mode (left on by an older app version)
+#   dnd_blocker=mode     another mode (a schedule such as Bedtime, or another app's)
+#   dnd_blocker=manual   the phone's own Do Not Disturb
+#   dnd_blocker=unknown  none of these could be found
+#   dnd_mode=<name>      that mode's name as Settings > Modes shows it (app and mode only)
+note_dnd_blocker() {
+  rules=$(o dumpsys notification | sed -n '/mConfig=ZenModeConfig/,/deletedRules=/p' |
+    grep 'ZenRule\[id=[^,]*,state=STATE_TRUE,enabled=TRUE' | grep -v 'OVERRIDE_DEACTIVATE')
+  own=$(printf '%s\n' "$rules" | grep -F ",pkg=$PKG," | head -n 1)
+  other=$(printf '%s\n' "$rules" | grep -v 'manualRule=' | grep -vF ",pkg=$PKG," | head -n 1)
+  line=""
+  if [ -n "$own" ]; then
+    kind=app
+    line=$own
+  elif [ -n "$other" ]; then
+    kind=mode
+    line=$other
+  elif printf '%s\n' "$rules" | grep -q 'manualRule='; then
+    kind=manual
+  else
+    kind=unknown
+  fi
+  note "dnd_blocker=$kind"
+  [ -n "$line" ] || return 0
+  name=$(printf '%s\n' "$line" | sed -n 's/.*,name=\(.*\),zenMode=.*/\1/p' | head -n 1 | tr -d '\r\n')
+  if [ -n "$name" ] && [ "$name" != null ]; then note "dnd_mode=$name"; fi
+  return 0
+}
 google_ready() {
   [ "$(dialer)" = "$GD" ] || return 1
   o pm list packages -d | grep -qx "package:$GD" && return 1
@@ -157,10 +189,11 @@ apply_normal() {
   [ $? -eq 0 ] && fail screening screening_failed
   step screening ok
 
-  # 2. Do Not Disturb off.
+  # 2. Do Not Disturb off. Both commands only reach the phone's own Do Not Disturb: a mode
+  #    that stays on (an app's or a schedule's) fails here, noting which one.
   q cmd notification set_dnd off
   q settings put global zen_mode 0
-  until_ok dnd_off || fail dnd dnd_failed
+  until_ok dnd_off || { note_dnd_blocker; fail dnd dnd_failed; }
   step dnd ok
 
   # 3. Ringer on, volumes back (ring, notification, earpiece, media, alarm, system).

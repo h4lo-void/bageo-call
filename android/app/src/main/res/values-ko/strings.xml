@@ -48,6 +48,7 @@
     <string name="mode_err_dialer">기본 전화 앱을 바꾸지 못했습니다.</string>
     <string name="mode_err_screening">통화 필터링 설정을 바꾸지 못했습니다.</string>
     <string name="mode_err_dnd">방해 금지 모드를 바꾸지 못했습니다.</string>
+    <string name="mode_err_dnd_mode">방해 금지 모드가 아직 켜져 있습니다. 휴대전화의 설정 → 모드에서 ‘%1$s’ 항목을 끄세요.</string>
     <string name="mode_err_volume">벨소리 볼륨을 설정하지 못했습니다.</string>
     <string name="mode_err_other">예상하지 못한 오류가 발생했습니다.</string>
     <string name="btn_console">웹 콘솔 열기</string>

@@ -48,6 +48,7 @@
     <string name="mode_err_dialer">The default phone app could not be changed.</string>
     <string name="mode_err_screening">The call screening setting could not be changed.</string>
     <string name="mode_err_dnd">Do Not Disturb could not be changed.</string>
+    <string name="mode_err_dnd_mode">Do Not Disturb is still on. On the phone, open Settings → Modes and turn off “%1$s”.</string>
     <string name="mode_err_volume">The ringer volume could not be set.</string>
     <string name="mode_err_other">Something unexpected went wrong.</string>
     <string name="btn_console">Open the web console</string>

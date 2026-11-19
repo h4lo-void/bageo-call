@@ -59,11 +59,21 @@ object PhoneModeManager {
     /** Ids of switches started on the phone itself; their results are not sent to the agent. */
     const val LOCAL_ID_PREFIX = "app-"
 
-    /** [mode] is the phone's mode after the attempt; [error] is empty when [ok]. */
-    class Result(val ok: Boolean, val mode: String, val error: String)
+    /**
+     * [mode] is the phone's mode after the attempt; [error] is empty when [ok].
+     * [dndMode]: with [ERR_DND], the name of the phone's mode that kept Do Not Disturb on
+     * (as Settings > Modes shows it); empty when the script could not tell.
+     */
+    class Result(val ok: Boolean, val mode: String, val error: String, val dndMode: String = "")
 
-    /** One run of the root script, read from `last_apply`. */
-    class ApplyLog(val id: String, val mode: String, val done: Boolean, val error: String) {
+    /** One run of the root script, read from `last_apply` ([dndMode] from `dnd_mode`). */
+    class ApplyLog(
+        val id: String,
+        val mode: String,
+        val done: Boolean,
+        val error: String,
+        val dndMode: String = "",
+    ) {
         val ok: Boolean get() = done && error.isEmpty()
     }
 
@@ -321,6 +331,9 @@ object PhoneModeManager {
         if (scriptRunning(ctx)) return Result(false, before, ERR_BUSY)
         if (target == Prefs.PHONE_MODE_AI && before == Prefs.PHONE_MODE_NORMAL) saveNormalVolumes(ctx)
         val volumes = if (target == Prefs.PHONE_MODE_NORMAL) normalVolumes(ctx) else emptyList()
+        // Android 15+: turn Bageo's own Do Not Disturb mode off now, before the script checks
+        // that Do Not Disturb went off (the audio guard's release below is only queued).
+        if (target == Prefs.PHONE_MODE_NORMAL) LocalAudioGuard.turnOffOwnDndMode(ctx)
         val request = File(appDir(ctx), REQUEST_FILE)
         val line = (listOf(target, id) + volumes.map { it.toString() }).joinToString(" ")
         if (!writeRequest(request, line)) return Result(false, before, ERR_FAILED)
@@ -347,8 +360,10 @@ object PhoneModeManager {
         Prefs.setPhoneMode(ctx, mode)
         notifyListeners(mode)
         if (!log.ok) {
-            if (allowRetry) scheduleRetry(ctx, target)
-            return Result(false, mode, log.error.ifEmpty { ERR_FAILED })
+            // Do Not Disturb that will not go off stays on until the owner turns that mode
+            // off, and every try first puts the phone back in AI mode: no automatic retry.
+            if (allowRetry && log.error != ERR_DND) scheduleRetry(ctx, target)
+            return Result(false, mode, log.error.ifEmpty { ERR_FAILED }, log.dndMode)
         }
         clearRetry()
         Prefs.clearLegacyAiSwitch(ctx)
@@ -491,7 +506,7 @@ object PhoneModeManager {
         val error = kv["error"].orEmpty().ifEmpty {
             if (done && kv["result"] != "ok") ERR_FAILED else ""
         }
-        return ApplyLog(id, kv["mode"].orEmpty(), done, error)
+        return ApplyLog(id, kv["mode"].orEmpty(), done, error, kv["dnd_mode"].orEmpty())
     }
 
     /** False when the thread was interrupted. */

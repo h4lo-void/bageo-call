@@ -106,6 +106,8 @@ class MainActivity : Activity() {
 
     /** Error code of the last switch made on this screen, shown until the next one. */
     private var modeErrorCode: String? = null
+    /** With a Do Not Disturb error: the phone's mode that kept it on (may be empty). */
+    private var modeErrorDndMode: String = ""
 
     private enum class CheckState { OK, MISSING, CHECK }
 
@@ -364,10 +366,12 @@ class MainActivity : Activity() {
 
     private fun startModeSwitch(target: String) {
         modeErrorCode = null
+        modeErrorDndMode = ""
         PhoneModeManager.requestSwitch(this, target, callBusy = false) { result ->
             runOnUiThread {
                 if (isDestroyed) return@runOnUiThread
                 modeErrorCode = if (result.ok) null else result.error
+                modeErrorDndMode = if (result.ok) "" else result.dndMode
                 // Same service in both modes: (re)start it so it runs the new one.
                 if (result.mode == target && hasRequiredPerms()) {
                     startCallService(CallAudioService.ACTION_START)
@@ -379,7 +383,15 @@ class MainActivity : Activity() {
         refresh()
     }
 
-    private fun modeErrorText(code: String): String = getString(
+    private fun modeErrorText(code: String): String {
+        // Do Not Disturb stayed on because of a mode the owner can turn off: say which.
+        if (code == PhoneModeManager.ERR_DND && modeErrorDndMode.isNotEmpty()) {
+            return getString(R.string.mode_err_dnd_mode, modeErrorDndMode)
+        }
+        return modeErrorTextFor(code)
+    }
+
+    private fun modeErrorTextFor(code: String): String = getString(
         when (code) {
             PhoneModeManager.ERR_IN_CALL -> R.string.mode_err_in_call
             PhoneModeManager.ERR_BUSY -> R.string.mode_err_busy

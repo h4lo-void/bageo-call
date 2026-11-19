@@ -48,6 +48,7 @@
     <string name="mode_err_dialer">Impossible de changer l\'application Téléphone par défaut.</string>
     <string name="mode_err_screening">Impossible de modifier le filtrage des appels.</string>
     <string name="mode_err_dnd">Impossible de modifier Ne pas déranger.</string>
+    <string name="mode_err_dnd_mode">Ne pas déranger est toujours activé. Sur le téléphone, ouvrez Paramètres → Modes et désactivez « %1$s ».</string>
     <string name="mode_err_volume">Impossible de régler le volume de la sonnerie.</string>
     <string name="mode_err_other">Une erreur inattendue s\'est produite.</string>
     <string name="btn_console">Ouvrir la console web</string>
