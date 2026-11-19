@@ -169,11 +169,15 @@ fn hold_cues(strong_only: bool, ai_said: &str) -> bool {
         "huwag po ninyong ibaba", "huwag po kayong magbaba", "huwag magbaba", "huwag mong patayin", "wag ibaba", "wag mong ibaba",
         "wag mo munang ibaba", "wag munang ibaba", "wag po munang ibaba", "manatili sa linya", "manatili po sa linya",
         "dito lang po kayo sa linya", "dito ka lang sa linya", "maghintay po sa linya",
+        // Turkish
+        "kapatmayın", "telefonu kapatmayın", "kapatma", "hatta kalın", "hatta kal", "hatta bekleyin", "hattan ayrılmayın", "ayrılmayın",
     ];
     const WEAK: &[&str] = &[
         "请稍候", "请稍等", "稍等一下", "你等一下", "等我一下", "先等一下", "hold on", "hang on", "少々お待ち", "お待ちください", "ちょっと待って", "待っててね", "待ってて",
         "잠깐만 기다려", "잠시만 기다려", "기다려 주세요", "기다려 줘", "espera un momento", "espere un momento", "patientez",
         "ne bougez pas", "ne bouge pas", "nicht weggehen", "aguarde um pouco", "espera um pouco", "espere um pouco",
+        // Turkish
+        "bir dakika", "bir saniye", "lütfen bekleyin",
     ];
     static FOLDED: std::sync::OnceLock<(Vec<String>, Vec<String>)> = std::sync::OnceLock::new();
     let (strong, weak) = FOLDED.get_or_init(|| {
@@ -1186,6 +1190,25 @@ mod tests {
             assert!(is_hold_line(said) && is_strong_hold_line(said), "{said}");
         }
         assert!(!is_hold_line("そのままで大丈夫です。"), "bare そのままで must not count");
+    }
+
+    #[test]
+    fn the_hold_on_line_is_found_in_turkish() {
+        for said in [
+            "Lütfen telefonu kapatmayın, hemen onu arıyorum.",
+            "Kapatmayın, sizi hemen bağlıyorum.",
+            "Hatta kalın lütfen, bir saniye.",
+            "Hattan ayrılmayın, birazdan döneceğim.",
+            "Ayrılmayın, hemen kontrol ediyorum.",
+        ] {
+            assert!(is_hold_line(said) && is_strong_hold_line(said), "strong Turkish wording: {said}");
+        }
+        for said in ["Bir dakika, hemen bakıyorum.", "Bir saniye lütfen.", "Lütfen bekleyin."] {
+            assert!(is_hold_line(said) && !is_strong_hold_line(said), "weak Turkish wording: {said}");
+        }
+        for said in ["Tabii, ne hakkında konuşuyoruz?", "Merhaba, size nasıl yardımcı olabilirim?"] {
+            assert!(!is_hold_line(said), "{said}");
+        }
     }
 
     #[test]

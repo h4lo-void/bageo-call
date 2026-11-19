@@ -791,7 +791,7 @@ pub fn kick_open_call(lang: Lang, assistant: bool, opening: Option<Lang>, from_a
 }
 
 /// How a country whose language the AI has no setting for answers the phone
-/// (Italy, Russia, Indonesia, Thailand, Vietnam; English in India and the
+/// (Italy, Russia, Indonesia, Thailand, Vietnam, Turkey; English in India and the
 /// Philippines): a SIM there, or a number from there, opens this way instead of
 /// in the setting's language (the acceptance run's Italian, Russian, Indonesian
 /// and Filipino couriers heard 「喂，你好」 first).
@@ -863,6 +863,14 @@ const ARABIC: LocalHello = LocalHello {
     hello: "ألو؟",
     hello_again: "ألو، هل تسمعني؟",
 };
+const TURKISH: LocalHello = LocalHello {
+    code: "tr",
+    name_tw: "土耳其文",
+    name_cn: "土耳其语",
+    name_en: "Turkish",
+    hello: "Alo?",
+    hello_again: "Alo, duyuyor musunuz?",
+};
 
 /// [LocalHello] of a country (ISO 3166 alpha-2, any case); None where the AI
 /// speaks the language or no local way is listed.
@@ -871,6 +879,7 @@ pub fn local_hello(country: &str) -> Option<&'static LocalHello> {
         "it" | "sm" | "va" => &ITALIAN,
         "ru" | "by" | "kz" | "kg" => &RUSSIAN,
         "id" => &INDONESIAN,
+        "tr" => &TURKISH,
         "th" => &THAI,
         "vn" => &VIETNAMESE,
         "in" | "ph" => &ENGLISH,
@@ -1934,7 +1943,7 @@ mod tests {
     #[test]
     fn a_calls_prompt_is_scoped_to_its_region_and_within_budget() {
         use crate::country_profile::Region;
-        const REGIONS: [Region; 21] = [
+        const REGIONS: [Region; 22] = [
             Region::Tw,
             Region::HkMo,
             Region::Cn,
@@ -1956,6 +1965,7 @@ mod tests {
             Region::Ch,
             Region::Br,
             Region::Pt,
+            Region::Tr,
         ];
         // The plan's matrix (setting language, SIM region), then every region in
         // the language people there set.
@@ -2124,6 +2134,16 @@ mod tests {
         assert_eq!(eg.code, "ar");
         assert!(!eg.hello.is_empty() && !eg.hello_again.is_empty());
         assert!(local_hello("zz").is_none());
+    }
+
+    #[test]
+    fn local_hello_covers_turkey() {
+        let tr = local_hello("TR").expect("Turkey should have local hello");
+        assert_eq!(tr, local_hello("tr").unwrap());
+        assert_eq!((tr.code, tr.hello), ("tr", "Alo?"));
+        assert!(tr.hello_again.starts_with("Alo"));
+        // A neighbour without a local way listed keeps the setting's language.
+        assert!(local_hello("gr").is_none());
     }
 
     #[test]

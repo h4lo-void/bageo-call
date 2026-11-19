@@ -461,7 +461,8 @@ const PRE_CLOSINGS: Lexicon = &[
     ]),
     ("fr", &[
         "je ne vous retiens pas plus longtemps", "je ne vous retiens pas", "je ne te retiens pas",
-        "je vous laisse", "je te laisse", "c'est noté", "c'est note",
+        "je vous laisse", "je te laisse", "je vous laisse à vos occupations", "je te laisse à tes occupations",
+        "c'est noté", "c'est note",
     ]),
     ("de", &[
         "gut dann verbleiben wir so", "dann verbleiben wir so", "verbleiben wir so",
@@ -470,7 +471,10 @@ const PRE_CLOSINGS: Lexicon = &[
     ("pt", &["então tá bom", "entao ta bom", "combinado então", "combinado entao", "a gente se fala"]),
     ("th", &["งั้นแค่นี้", "งั้นแค่นี้นะ", "แค่นี้นะ", "แค่นี้ก่อน", "แค่นี้", "เอาไว้คุยกันใหม่", "คุยกันแค่นี้ก่อน"]),
     ("vi", &["dạ vậy nhé", "vậy nhé", "vay nhe", "thế nhé", "the nhe", "thôi nhé"]),
-    ("id", &["oke sudah dulu ya", "sudah dulu ya", "sudah dulu", "udah dulu ya", "udah dulu", "segitu dulu ya", "itu saja"]),
+    ("id", &[
+        "oke sudah dulu ya", "sudah dulu ya", "sudah dulu", "udah dulu ya", "udah dulu", "segitu dulu ya", "itu saja",
+        "saya tutup dulu ya", "saya tutup dulu", "tutup dulu ya",
+    ]),
     ("it", &["allora ti lascio", "ti lascio", "la lascio", "non ti disturbo più", "non ti disturbo piu", "non la disturbo più", "non la disturbo piu"]),
     ("ru", &["хорошо тогда до свидания", "ладно мне пора", "мне пора", "я перезвоню", "поговорим позже", "тогда пока", "всего вам доброго"]),
     ("ar", &["حسنا سأغلق الآن", "حسنا ساغلق الان", "لنتحدث لاحقا", "سأتصل بك لاحقا", "ساتصل بك لاحقا", "سأتركك الآن", "هذا كل شيء"]),
@@ -483,12 +487,16 @@ const PRE_CLOSINGS: Lexicon = &[
     ("mr", &["ठीक आहे आता ठेवतो", "नंतर बोलूया", "मी नंतर फोन करतो", "इतकेच होते"]),
     ("ta", &["சரி நான் வைக்கிறேன்", "பிறகு பேசலாம்", "நான் பிறகு அழைக்கிறேன்"]),
     ("te", &["సరే నేను పెడుతున్నాను", "తర్వాత మాట్లాడుదాం", "నేను తర్వాత ఫోన్ చేస్తాను"]),
+    ("tr", &[
+        "sizi daha fazla tutmayayım", "ben kapatıyorum", "kapatıyorum", "sonra konuşuruz", "sonra ararım",
+        "tekrar ararım", "şimdilik bu kadar", "o zaman görüşürüz",
+    ]),
 ];
 
 /// Goodbyes said only at the end.
 const FAREWELLS: Lexicon = &[
     ("en", &[
-        "bye", "bye bye", "goodbye", "good bye", "talk to you soon", "talk soon", "take care",
+        "bye", "bye bye", "byebye", "goodbye", "good bye", "talk to you soon", "talk soon", "take care",
         "have a great rest of your day", "have a good rest of your day", "enjoy the rest of your day",
         "cheers mate", "lovely ta", "ta ta", "see you", "see ya", "catch you later",
     ]),
@@ -532,8 +540,14 @@ const FAREWELLS: Lexicon = &[
         "continuação de um bom dia", "continuação de bom dia", "continuacao de um bom dia", "tenha um bom dia",
         "boa continuação",
     ]),
-    ("th", &["บ๊ายบาย", "บายบาย", "ไว้คุยกันใหม่", "แล้วคุยกันใหม่", "แล้วพบกันใหม่", "พบกันใหม่", "ไปก่อนนะ", "วางสายนะ"]),
-    ("vi", &["tạm biệt", "tam biet", "hẹn gặp lại", "hen gap lai", "chào nhé", "chao nhe"]),
+    ("th", &[
+        "บ๊ายบาย", "บายบาย", "ไว้คุยกันใหม่", "แล้วคุยกันใหม่", "แล้วพบกันใหม่", "พบกันใหม่", "ไปก่อนนะ", "วางสายนะ",
+        "ไว้เจอกัน", "ไว้เจอกันใหม่",
+    ]),
+    ("vi", &[
+        "tạm biệt", "tam biet", "hẹn gặp lại", "hen gap lai", "chào nhé", "chao nhe", "một ngày tốt lành",
+        "ngày tốt lành",
+    ]),
     ("id", &["sampai jumpa", "sampai ketemu", "dadah"]),
     ("it", &[
         "arrivederci", "arrivederla", "buona giornata", "buongiornata", "buona serata", "buonanotte",
@@ -553,13 +567,30 @@ const FAREWELLS: Lexicon = &[
         "आपका दिन शुभ हो", "बाय बाय",
     ]),
     ("nl", &["tot ziens", "tot spreeks", "doei", "dag hoor", "fijne dag nog", "fijne avond"]),
-    ("pl", &["do widzenia", "na razie", "do usłyszenia", "do uslyszenia", "dobrego dnia", "miłego dnia", "milego dnia"]),
+    // "Na razie" is "bye" as the last words (or before pa / cześć / thanks): "Na razie nie wiem" is no goodbye.
+    // With a name or another goodbye after it ("No to na razie, Ania") the older check decides.
+    ("pl", &[
+        "do widzenia", "na razie", "na razie pa", "na razie cześć", "na razie czesc", "na razie dzięki",
+        "na razie dzieki", "na razie dziękuję", "na razie dziekuje", "do usłyszenia", "do uslyszenia",
+        "dobrego dnia", "miłego dnia", "milego dnia",
+    ]),
     ("ro", &["la revedere", "pa pa", "o zi bună", "o zi buna", "toate cele bune", "pe curând", "pe curand"]),
     ("uk", &["до побачення", "на все добре", "гарного дня", "бувайте", "до зустрічі", "до зв'язку"]),
     ("bn", &["বিদায়", "আল্লাহ হাফেজ", "ভালো থাকবেন", "আবার কথা হবে", "রাখছি তাহলে", "শুভ দিন"]),
     ("mr", &["नमस्कार पुन्हा बोलू", "काळजी घ्या", "शुभ दिवस", "आता ठेवतो", "बाय बाय"]),
-    ("ta", &["வருகிறேன்", "பை பை", "பிறகு பேசலாம்", "நல்ல நாள்", "கவனமாக இருங்கள்"]),
-    ("te", &["వస్తాను", "బై బై", "మళ్ళీ మాట్లాడుదాం", "శుభ దినం", "జాగ్రత్త"]),
+    // Not வருகிறேன் / వస్తాను alone: "I am coming" is no goodbye, "I'll go and come" is.
+    ("ta", &[
+        "போய் வருகிறேன்", "போயிட்டு வருகிறேன்", "போயிட்டு வரேன்", "பை பை", "பிறகு பேசலாம்", "நல்ல நாள்",
+        "கவனமாக இருங்கள்",
+    ]),
+    ("te", &[
+        "వెళ్ళొస్తాను", "వెళ్లొస్తాను", "సరే ఉంటాను", "ఇక ఉంటాను", "బై బై", "మళ్ళీ మాట్లాడుదాం", "శుభ దినం",
+        "జాగ్రత్త",
+    ]),
+    ("tr", &[
+        "hoşça kal", "hoşça kalın", "hoşçakal", "hoşçakalın", "görüşürüz", "görüşmek üzere", "iyi geceler",
+        "kendine iyi bak", "kendinize iyi bakın", "güle güle", "allaha ısmarladık", "bay bay",
+    ]),
 ];
 
 /// Greetings that also say goodbye: farewells only once the business is done
@@ -584,6 +615,7 @@ const GREETING_BYES: Lexicon = &[
     ("mr", &["नमस्कार"]),
     ("ta", &["வணக்கம்"]),
     ("te", &["నమస్కారం"]),
+    ("tr", &["iyi günler", "iyi akşamlar", "kolay gelsin"]),
 ];
 
 /// How calls are answered and opened; never a goodbye by themselves.
@@ -596,6 +628,7 @@ const OPENING_GREETINGS: &[&str] = &[
     "grüß gott", "grüss gott", "gruss gott", "grüezi", "moin", "alô", "oi", "olá", "ola", "bom dia",
     "tudo bem", "ฮัลโหล", "a lô", "xin chào", "halo", "pronto", "salve", "ciao", "алло", "здравствуйте",
     "привет", "مرحباً", "مرحبا", "أهلاً", "أهلا", "السلام عليكم", "हेलो",
+    "merhaba", "efendim", "buyurun",
 ];
 
 /// Short replies to someone still talking (aizuchi): not a turn of their own,
@@ -618,11 +651,16 @@ const BACKCHANNELS: Lexicon = &[
     ("pt", &["entendi", "tá bom", "ta bom", "tá", "pois", "pois é", "sim", "uhum", "certo", "beleza"]),
     ("it", &["va bene", "d'accordo", "capito", "certo", "perfetto", "ok grazie", "sì", "si"]),
     ("th", &["ค่ะ", "ครับ", "อืม", "ใช่", "โอเคค่ะ", "โอเคครับ", "ได้ค่ะ", "ได้ครับ"]),
-    ("vi", &["vâng", "dạ", "ừ", "ờ", "dạ vâng", "ừ nhé", "u nhe", "vâng ạ", "vang a", "ok nhé", "oke nhé"]),
+    ("vi", &[
+        "vâng", "dạ", "ừ", "ờ", "dạ vâng", "ừ nhé", "u nhe", "vâng ạ", "vang a", "ok nhé", "oke nhé",
+        // "Got it", "alright": 「Vâng em hiểu rồi, chào anh ạ」.
+        "hiểu rồi", "được rồi",
+    ]),
     ("id", &["iya", "oke"]),
     ("ru", &["да", "ага", "понятно", "хорошо", "ладно"]),
     ("ar", &["نعم", "أيوه", "أيوة", "تمام", "طيب"]),
     ("hi", &["हाँ", "हां", "जी", "अच्छा"]),
+    ("tr", &["evet", "tamam", "tabii", "peki", "anladım", "aynen", "hı hı"]),
 ];
 
 /// Thanks the shared list ([`crate::locale::strip_trailing_thanks`]) does not have.
@@ -638,6 +676,7 @@ const EXTRA_THANKS: &[&str] = &[
     "большое спасибо", "спасибо большое", "спасибо вам", "благодарю", "спасибо",
     "شكراً جزيلاً", "شكرا جزيلا", "شكراً لك", "شكرا لك", "شكراً", "شكرا", "يعطيك العافية",
     "बहुत बहुत धन्यवाद", "बहुत धन्यवाद", "बहुत शुक्रिया", "धन्यवाद", "शुक्रिया",
+    "çok teşekkür ederim", "teşekkür ederim", "teşekkürler", "sağ olun", "sağ ol", "sağolun", "sağol",
 ];
 
 /// Thanks for something, at the very end ("Thanks for your help", "thank you
@@ -691,6 +730,7 @@ const TAIL_WORDS: &[&str] = &[
     "mate", "then", "now", "too", "again", "dear", "sir", "madam", "ma'am", "anh", "chị", "chi", "em", "ạ",
     "pak", "bu", "bapak", "ibu", "kak", "señor", "señora", "senhor", "senhora", "monsieur", "madame",
     "signore", "signora", "lei", "mucho", "ya", "you", "जी", "nhé", "nhe",
+    "efendim", "hanım", "bey",
 ];
 
 /// Only the end of a long window is looked at.
@@ -740,7 +780,8 @@ fn norm(text: &str) -> String {
                 space = true;
             }
         } else {
-            out.extend(c.to_lowercase());
+            // Turkish capital İ lowers to "i" plus a combining dot (U+0307): dropped, so "İyi" is "iyi".
+            out.extend(c.to_lowercase().filter(|&l| l != '\u{307}'));
             space = false;
         }
     }
@@ -875,6 +916,134 @@ fn ends_as_question(text: &str) -> bool {
     core.ends_with('嗎') || core.ends_with('吗') || ["ですか", "ますか", "でしょうか"].iter().any(|q| core.ends_with(q))
 }
 
+/// Chinese goodbyes that are also other words: 「拜拜」 is worshipping at a
+/// temple, 「掰」 is 「瞎掰」 (talking nonsense) and 「掰開」 (to break apart).
+const ZH_BYE_WORDS: &[&str] = &["掰掰", "拜拜", "掰"];
+
+/// What may stand right before a Chinese 「拜拜／掰」 for it to be a goodbye
+/// (after punctuation or at the start, anything may): an answer, thanks, a
+/// wrap-up word, or another goodbye. 「去拜拜」「在拜拜」「瞎掰」 are none of them.
+/// Not a bare 「先」 or 「就」: 「我們要先拜拜」「祖先拜拜」「初一就拜拜」 are worship.
+const ZH_BYE_CUES: &[&str] = &[
+    "好", "好的", "好啦", "好喔", "好哦", "好了", "那", "那就", "那先", "嗯", "喔", "哦", "啊", "欸", "ok", "okay",
+    "謝謝", "謝謝你", "謝謝您", "感謝", "謝啦", "我先", "那我先", "就先", "那我就", "我就先", "說", "講", "了", "囉", "啦", "吧", "齁",
+    "掰", "掰掰", "拜拜", "bye", "再見", "晚安", "沒問題", "不會", "收到", "了解", "知道了", "沒事", "辛苦了",
+    "麻煩你", "麻煩您", "再聯絡", "再聯繫", "先這樣", "就這樣",
+    "谢谢", "谢谢你", "谢谢您", "感谢", "谢啦", "说", "讲", "啰", "再见", "没问题", "不会", "没事",
+    "麻烦你", "麻烦您", "再联络", "再联系", "先这样", "就这样",
+    // How a call ends without punctuation: 「下次見拜拜」「沒關係拜拜」「你路上小心拜拜」
+    // 「我明天再打來拜拜」「沒事你忙你的拜拜」.
+    "見", "沒關係", "消息", "休息", "小心", "看看", "打來", "聊", "電話", "你忙", "您忙", "先忙", "去忙", "忙你的",
+    "早安", "午安", "快樂", "愉快", "保重", "加油", "慢走", "安全", "知道", "不好意思", "抱歉",
+    "對不起", "客氣", "謝",
+    "见", "没关系", "打来", "电话", "快乐", "对不起", "客气", "谢",
+];
+
+/// "You" right before the goodbye is a cue as well (「好我再打給你掰」) — unless
+/// one of [`ZH_NOT_BEFORE_YOU`] stands before it: 「我會幫你拜拜」「明天我陪你拜拜」
+/// are worship done for or with them.
+const ZH_YOU: &str = "你妳您";
+const ZH_NOT_BEFORE_YOU: &str = "幫帮替陪帶带跟叫要等讓让和為为代";
+
+fn zh_you_before_bye(b: &str) -> bool {
+    let mut back = b.chars().rev();
+    back.next().is_some_and(|c| ZH_YOU.contains(c)) && !back.next().is_some_and(|c| ZH_NOT_BEFORE_YOU.contains(c))
+}
+
+/// `b` ends on one of [`ZH_BYE_CUES`]. 「那」 after a word of place is "there"
+/// (「他在那拜拜」), not "then".
+fn zh_cue_ends(b: &str) -> bool {
+    ZH_BYE_CUES.iter().any(|cue| {
+        b.strip_suffix(cue).is_some_and(|rest| {
+            if cue.is_ascii() {
+                return !rest.ends_with(|c: char| c.is_ascii_alphanumeric());
+            }
+            *cue != "那" || !rest.ends_with(|c: char| "在去到從从往來来".contains(c))
+        })
+    })
+}
+
+/// Whom the goodbye is said to, right before it (「好的王小姐拜拜」「謝謝老師拜拜」
+/// 「老闆拜拜」): a title ([`ADDRESS_TITLES`]) after a cue or at the very start,
+/// with a name of up to two letters before it after a cue, of one letter at the
+/// start. 「今天老闆拜拜」「我們請師傅拜拜」 say who worships.
+fn zh_addressee_before_bye(b: &str) -> bool {
+    ADDRESS_TITLES.iter().any(|title| {
+        let Some(mut rest) = b.strip_suffix(title) else {
+            return false;
+        };
+        for name_letters in 0..=2 {
+            if zh_cue_ends(rest) || zh_you_before_bye(rest) || (rest.is_empty() && name_letters <= 1) {
+                return true;
+            }
+            match rest.chars().next_back() {
+                Some(c) if ('\u{4E00}'..='\u{9FFF}').contains(&c) => rest = &rest[..rest.len() - c.len_utf8()],
+                _ => return false,
+            }
+        }
+        false
+    })
+}
+
+/// A Chinese goodbye word ends `t`'s start: `before` is what comes before it
+/// (normalized), `separated` that punctuation or a space stands between. True
+/// at the start of the text, after punctuation or a space, and right after one of
+/// [`ZH_BYE_CUES`], whom it is said to ([`ADDRESS_TITLES`]: 「好的王小姐拜拜」) or
+/// "you" ([`zh_you_before_bye`]); particles may stand between: 「好喔掰」.
+fn zh_bye_before_ok(before: &str, separated: bool) -> bool {
+    let b: String = before.chars().filter(|c| !c.is_whitespace()).collect();
+    if separated || b.is_empty() {
+        return true;
+    }
+    let mut b = b.as_str();
+    loop {
+        let cue = zh_cue_ends(b) || zh_addressee_before_bye(b) || zh_you_before_bye(b);
+        if cue {
+            return true;
+        }
+        let rest = b.trim_end_matches(|c: char| ZH_PARTICLES.contains(c));
+        if rest.len() == b.len() {
+            return false;
+        }
+        if rest.is_empty() {
+            return true;
+        }
+        b = rest;
+    }
+}
+
+/// The Chinese goodbye word 「拜拜／掰掰／掰」 (with a particle after it, as the
+/// lexicon has them) in `word`.
+fn is_zh_bye_word(word: &str) -> bool {
+    let w: String = word.chars().filter(|c| !c.is_whitespace()).collect();
+    ZH_BYE_WORDS.contains(&w.trim_end_matches(|c: char| ZH_PARTICLES.contains(c)))
+}
+
+/// What was said ends on a Chinese 「拜拜／掰掰／掰」 that is a goodbye, with
+/// particles, thanks and an addressee allowed after it and a cue before it
+/// ([`ZH_BYE_CUES`]); None for 「我們在拜拜」「你不要瞎掰」 and for a question.
+/// Some(what came before the goodbye, normalized) otherwise.
+pub(crate) fn zh_bye_ends(text: &str) -> Option<String> {
+    if ends_as_question(text) {
+        return None;
+    }
+    let all = norm(text);
+    let mut t = all.as_str();
+    for _ in 0..=MAX_PEEL {
+        if t.is_empty() {
+            return None;
+        }
+        for w in ZH_BYE_WORDS {
+            if let Some(before) = ends_with_phrase(t, w) {
+                let separated = t[before.len()..].starts_with(' ');
+                return zh_bye_before_ok(before, separated).then(|| before.to_string());
+            }
+        }
+        t = peel(t)?.0;
+    }
+    None
+}
+
 /// A closing found at the end of what was said.
 #[derive(Debug, Clone)]
 struct Hit {
@@ -908,6 +1077,13 @@ fn classify(text: &str) -> Option<Hit> {
             if kind == Kind::Farewell && asks_to_stay(before, &t[before.len()..]) {
                 return None;
             }
+            // 「我們在拜拜」「你不要瞎掰」: 拜拜／掰 as other words are no goodbye.
+            if kind == Kind::Farewell {
+                let word = &t[before.len()..];
+                if is_zh_bye_word(word) && !zh_bye_before_ok(before, word.starts_with(' ')) {
+                    return None;
+                }
+            }
             return Some(Hit { kind, lang, ambiguous, before: before.to_string() });
         }
         t = peel(t)?.0;
@@ -936,6 +1112,13 @@ fn ja_opening_apology(before: &str) -> bool {
     OPENERS.iter().any(|p| compact.contains(p))
 }
 
+/// "Understood" in Japanese ([`SETTLED`] has 「承知」 as a stem): right before
+/// 「では／じゃ」 it settles the matter, 「わかりました、では失礼いたします」.
+const JA_UNDERSTOOD: &[&str] = &[
+    "かしこまりました", "承知しました", "承知いたしました", "承知致しました", "承知です", "承知", "わかりました",
+    "分かりました",
+];
+
 fn ends_with_ja_wrap_cue(t: &str) -> bool {
     const UNCONDITIONAL: &[&str] = &[
         "それでは", "それじゃあ", "それじゃ", "じゃあ", "ではでは", "以上です", "以上となります",
@@ -952,6 +1135,7 @@ fn ends_with_ja_wrap_cue(t: &str) -> bool {
                 || ends_with_any(rest, PRE_CLOSINGS).is_some()
                 || ends_with_any(rest, FAREWELLS).is_some()
                 || matches!(peel(rest), Some((_, Peel::Thanks | Peel::Backchannel)))
+                || JA_UNDERSTOOD.iter().any(|w| ends_with_phrase(rest, w).is_some())
         })
     })
 }
@@ -998,6 +1182,7 @@ const SETTLED: &[&str] = &[
     "хорошо", "ладно", "понял", "поняла", "понятно", "договорились", "без проблем", "извините", "не туда попал", "ошибся номером",
     "حسناً", "حسنا", "تمام", "طيب", "فهمت", "لا مشكلة", "آسف", "الرقم غلط", "رقم غلط",
     "ठीक है", "अच्छा", "समझ गया", "समझ गई", "कोई बात नहीं", "माफ़ कीजिए", "माफ कीजिए", "गलत नंबर",
+    "tamam", "peki", "anladım", "sorun değil", "özür dilerim", "yanlış numara", "yanlış aradım",
 ];
 
 /// Settling words that close a call with nothing more said: a wrong number.
@@ -1005,6 +1190,7 @@ const SETTLED_ALONE: &[&str] = &[
     "打錯", "打错", "wrong number", "잘못걸", "número equivocado", "falsch verbunden", "失礼しました",
     "numero sbagliato", "nhầm số", "gọi nhầm", "salah sambung", "salah nomor", "โทรผิด",
     "не туда попал", "ошибся номером", "الرقم غلط", "رقم غلط", "गलत नंबर",
+    "yanlış numara", "yanlış aradım",
 ];
 
 /// Words that ask something even without a question mark (「那明天幾點到」,
@@ -1019,6 +1205,7 @@ const ASKS_WORDS: &[&str] = &[
     "will you", "qué", "cuándo", "dónde", "cómo", "quand", "où", "comment", "quel", "quelle", "wann", "wo", "wie",
     "was", "welche", "quando", "onde", "como", "qual", "dove", "che ora", "bao giờ", "mấy giờ", "ở đâu",
     "jam berapa", "kapan", "di mana", "когда", "где", "сколько", "почему", "متى", "أين", "كم", "कब", "कहाँ", "कितना",
+    "ne zaman", "nerede", "kaç", "nasıl", "neden",
 ];
 
 fn asks(t: &str) -> bool {
@@ -2091,8 +2278,8 @@ mod p0_p1_multilingual_closing_tests {
             ("uk", "Дякую, до побачення!"),
             ("bn", "ধন্যবাদ, বিদায়!"),
             ("mr", "धन्यवाद, बाय बाय!"),
-            ("ta", "நன்றி, வருகிறேன்!"),
-            ("te", "ధన్యవాదాలు, వస్తాను!"),
+            ("ta", "நன்றி, போய் வருகிறேன்!"),
+            ("te", "ధన్యవాదాలు, వెళ్ళొస్తాను!"),
             ("it", "Perfetto, buongiornata!"),
             ("th", "ขอบคุณค่ะ แล้วพบกันใหม่นะคะ"),
         ] {
@@ -2100,6 +2287,412 @@ mod p0_p1_multilingual_closing_tests {
             m.on_caller("Parcel delivery info", "Parcel delivery info", false, false);
             let step = m.on_caller(bye, bye, false, false);
             assert!(step.ends_call, "{lang}: {bye:?} did not close");
+        }
+    }
+}
+
+/// Words that only look like goodbyes ("falou", "take care of it", Tamil
+/// "I am coming"), "byebye", and Turkish.
+#[cfg(test)]
+mod false_hangups_and_turkish_tests {
+    use super::*;
+
+    /// After some business, so greetings that also say goodbye may close.
+    fn after_talk(lang: &'static str) -> ClosingMachine {
+        let mut m = ClosingMachine::new(lang);
+        m.on_caller("Parcel delivery info", "Parcel delivery info", false, false);
+        m
+    }
+
+    /// The caller's turn as the live session feeds it: with the older check.
+    fn hears(m: &mut ClosingMachine, t: &str) -> ClosingStep {
+        m.on_caller(t, t, crate::locale::caller_wraps_up(t), false)
+    }
+
+    #[test]
+    fn sentences_that_only_look_like_goodbyes_do_not_end_the_call() {
+        for t in [
+            "Foi o que ele falou.",
+            "O gerente falou que sim.",
+            "Ela já falou com você.",
+            "Valeu a pena.",
+            "Ah, valeu.",
+            "I'll take care of it.",
+            "My sister will take care of mom.",
+            "That's all right.",
+            "Je vous laisse mon numéro.",
+            "Je vous laisse un message.",
+            "Te dejo mi número.",
+            "Le dejo el paquete.",
+            "Nada más quería confirmar.",
+            "Das ist alles sehr teuer.",
+            "C'est tout à fait.",
+            "Isso é tudo verdade.",
+            "Na razie nie wiem.",
+            "Na razie nie mogę.",
+            "Fica combinado como ele falou.",
+            "Ele chegou e falou.",
+            "Je vous laisse l'adresse.",
+            "Je vous laisse réfléchir.",
+            "Te dejo un mensaje.",
+            "Le dejo mis datos.",
+            "Das ist alles nicht so einfach.",
+            "Das ist alles zu teuer.",
+            "Na razie nic nie wiem.",
+            "Na razie jestem w pracy.",
+            "Isso é tudo que eu sei.",
+            "பத்து நிமிடத்தில் வருகிறேன்.",
+            "நான் நாளைக்கு வருகிறேன்.",
+            "నేను రేపు వస్తాను.",
+            "పది నిమిషాల్లో వస్తాను.",
+        ] {
+            assert!(!crate::locale::caller_wraps_up(t), "older check: {t}");
+            let mut m = after_talk("en");
+            let step = hears(&mut m, t);
+            assert!(!step.ends_call, "must not end the call: {t}");
+            assert_ne!(step.event, ClosingEvent::CallerFarewell, "{t}");
+        }
+    }
+
+    #[test]
+    fn real_goodbyes_in_the_same_words_still_end_the_call() {
+        for t in [
+            "Beleza, valeu, falou!",
+            "Então tá, falou.",
+            "Tchau, falou.",
+            "Falou!",
+            "Take care.",
+            "Okay, take care, bye.",
+            "That's all.",
+            "That's all, thanks.",
+            "That's all for now.",
+            "Je vous laisse.",
+            "Bon, je vous laisse, bonne journée.",
+            "Bueno, te dejo.",
+            "Le dejo, hasta luego.",
+            "Nada más, gracias.",
+            "Das ist alles, danke.",
+            "C'est tout, merci.",
+            "É tudo, obrigado.",
+            "Na razie!",
+            "To na razie, pa.",
+            // "Falou" set off by punctuation or after a closing cue.
+            "Certo, falou",
+            "Tá combinado então, falou",
+            "Beleza então, falou",
+            "Fechou, falou",
+            "Obrigado, até mais, falou",
+            "Então tá bom, falou valeu",
+            "Tá bom, obrigada, falou",
+            // A name, a title, a particle or another goodbye after the closing words.
+            "Bon, je vous laisse madame",
+            "Je vous laisse monsieur",
+            "Bon allez je vous laisse hein",
+            "D'accord je vous laisse et merci",
+            "Je vous laisse à vos occupations",
+            "Le dejo señora",
+            "Bueno te dejo Marta",
+            "Das ist alles, Herr Müller",
+            "Das ist alles, Frau Schmidt",
+            "Das ist alles so weit",
+            "No to na razie, Ania",
+            "Dobrze, na razie, do jutra",
+            // "No" as the answer to "anything else?".
+            "No, that's all, thanks.",
+            "No that's everything, thank you so much",
+            "No, nothing else.",
+            "No, nada más, gracias.",
+            "No, eso es todo.",
+            "Não, é só isso, obrigado.",
+            "Não, mais nada.",
+            "சரி, போய் வருகிறேன்.",
+            "సరే, వెళ్ళొస్తాను.",
+        ] {
+            let mut m = after_talk("en");
+            let step = hears(&mut m, t);
+            assert!(step.ends_call, "must end the call: {t}");
+        }
+    }
+
+    #[test]
+    fn japanese_understood_then_dewa_shitsurei_is_a_farewell() {
+        for t in [
+            "わかりました、では失礼いたします",
+            "かしこまりました。では失礼します",
+            "承知しました、では失礼いたします",
+        ] {
+            let mut m = ClosingMachine::new("ja");
+            let talk = "山田運送の田中です、お荷物は宅配ボックスに入れました。";
+            m.on_caller(talk, talk, false, false);
+            let step = m.on_caller(t, t, false, false);
+            assert_eq!(step.event, ClosingEvent::CallerFarewell, "{t}");
+            assert!(step.ends_call, "{t}");
+        }
+        // The opening apology still closes nothing.
+        let opener = "お忙しいところ失礼いたします";
+        for old_rules in [false, true] {
+            let mut m = ClosingMachine::new("ja");
+            let step = m.on_caller(opener, opener, old_rules, false);
+            assert!(!step.ends_call, "old_rules={old_rules}");
+            assert_eq!(m.state(), ClosingState::Talking);
+        }
+    }
+
+    #[test]
+    fn indonesian_thai_and_vietnamese_closings_added_after_review() {
+        let t = "Ya sudah, saya tutup dulu ya";
+        let mut m = after_talk("id");
+        let step = m.on_caller(t, t, false, false);
+        assert_eq!(step.event, ClosingEvent::CallerPreClosing, "{t}");
+
+        for (lang, t) in [
+            ("th", "ขอบคุณครับ ไว้เจอกันครับ"),
+            ("vi", "Cảm ơn anh nhiều, chúc anh một ngày tốt lành"),
+            ("vi", "Vâng em hiểu rồi, chào anh ạ"),
+        ] {
+            assert!(crate::locale::ends_with_farewell(t, 2), "older check: {t}");
+            for old_rules in [false, true] {
+                let mut m = after_talk(lang);
+                let step = m.on_caller(t, t, old_rules, false);
+                assert_eq!(step.event, ClosingEvent::CallerFarewell, "{t} (old_rules={old_rules})");
+                assert!(step.ends_call, "{t} (old_rules={old_rules})");
+            }
+        }
+
+        // "Dạ" opens a call as well: the greeting after it is no goodbye.
+        let opener = "Alo, dạ chào anh ạ";
+        for old_rules in [false, true, crate::locale::caller_wraps_up(opener)] {
+            let mut m = ClosingMachine::new("vi");
+            let step = m.on_caller(opener, opener, old_rules, false);
+            assert!(!step.ends_call, "opening must not close (old_rules={old_rules})");
+            assert_eq!(m.state(), ClosingState::Talking);
+        }
+    }
+
+    #[test]
+    fn a_thanks_only_portuguese_close_waits_for_the_ai_goodbye() {
+        let t = "Beleza, então. Vou deixar com a portaria para você. Valeu.";
+        let mut m = after_talk("pt");
+        let step = hears(&mut m, t);
+        assert!(!step.ends_call, "{t}");
+        assert_eq!(m.on_ai_turn("Tá bom, tchau.", true, false), ClosingEvent::FarewellsExchanged);
+    }
+
+    #[test]
+    fn byebye_in_one_word_is_a_farewell() {
+        let mut m = after_talk("en");
+        let step = m.on_caller("Okay, byebye.", "Okay, byebye.", false, false);
+        assert_eq!(step.event, ClosingEvent::CallerFarewell);
+        assert!(step.ends_call);
+    }
+
+    #[test]
+    fn turkish_greeting_at_the_start_does_not_close_but_after_talk_it_does() {
+        let opener = "Merhaba, iyi günler.";
+        for old_rules in [false, true, crate::locale::caller_wraps_up(opener)] {
+            let mut m = ClosingMachine::new("tr");
+            let step = m.on_caller(opener, opener, old_rules, false);
+            assert!(!step.ends_call, "opening must not close (old_rules={old_rules})");
+            assert_eq!(m.state(), ClosingState::Talking);
+        }
+        let mut m = after_talk("tr");
+        let step = hears(&mut m, "Tamam, teşekkürler, iyi günler.");
+        assert_eq!(step.event, ClosingEvent::CallerFarewell);
+        assert!(step.ends_call);
+    }
+
+    #[test]
+    fn turkish_goodbyes_pre_closings_fluff_and_thanks_wraps() {
+        for t in ["Görüşürüz.", "Hoşça kalın.", "Güle güle.", "İyi geceler."] {
+            let mut m = after_talk("tr");
+            let step = m.on_caller(t, t, false, false);
+            assert_eq!(step.event, ClosingEvent::CallerFarewell, "{t}");
+            assert!(step.ends_call, "{t}");
+        }
+        let mut m = after_talk("tr");
+        let step = m.on_caller("Tamam, kapatıyorum.", "Tamam, kapatıyorum.", false, false);
+        assert_eq!(step.event, ClosingEvent::CallerPreClosing);
+
+        assert!(is_fluff("Evet, tamam."));
+        assert!(is_backchannel("Evet, tamam."));
+        let mut m = after_talk("tr");
+        let step = m.on_caller("Evet, tamam.", "Evet, tamam.", false, false);
+        assert_eq!(step.event, ClosingEvent::None);
+        assert!(!step.ends_call);
+
+        let t = "Pardon, yanlış numara, teşekkürler.";
+        assert!(thanks_wrap(t));
+        let mut m = after_talk("tr");
+        let step = m.on_caller(t, t, false, false);
+        assert_eq!(step.event, ClosingEvent::CallerThanksWrap);
+        assert!(!step.ends_call);
+
+        let q = "Yarın evde misiniz?";
+        let mut m = after_talk("tr");
+        let step = m.on_caller(q, q, false, false);
+        assert!(!step.ends_call);
+        assert_eq!(step.event, ClosingEvent::None);
+        assert!(asks("ne zaman gelecek"));
+    }
+
+    #[test]
+    fn turkish_dotted_capital_matches_like_the_lowercase_word() {
+        assert_eq!(norm("İyi günler"), "iyi günler");
+        let t = "Teşekkürler, İyi günler.";
+        let mut m = after_talk("tr");
+        let step = m.on_caller(t, t, false, false);
+        assert_eq!(step.event, ClosingEvent::CallerFarewell);
+        assert!(step.ends_call);
+    }
+}
+
+/// 「拜拜」 is worshipping at a temple and 「掰」 is 「瞎掰」: only a goodbye
+/// when said as one.
+#[cfg(test)]
+mod chinese_bye_words {
+    use super::*;
+
+    fn after_talk() -> ClosingMachine {
+        let mut m = ClosingMachine::new("zh-TW");
+        m.on_caller("我要寄一個包裹給王先生 0912345678", "我要寄一個包裹給王先生 0912345678", false, false);
+        m
+    }
+
+    #[test]
+    fn worshipping_and_nonsense_are_no_goodbye() {
+        for t in [
+            "我明天要去拜拜",
+            "我們在拜拜",
+            "等一下要拜拜",
+            "我媽叫我回去拜拜",
+            "今天公司拜拜",
+            "初一十五都要拜拜",
+            "我明天要去拜拜喔",
+            "你不要瞎掰",
+            "他在亂掰啦",
+            "把它掰開",
+            "我们在拜拜呢",
+            "拜拜的時候再說",
+            "我們要先拜拜",
+            "祖先拜拜",
+            "初一十五就拜拜",
+            "我明天要去廟裡拜拜",
+            "阿嬤每天早上都要拜拜",
+            "過年要回老家拜拜",
+            "中元節家家戶戶都在拜拜",
+            "他講的都是瞎掰的",
+            "這個故事是他自己掰的",
+            "路邊有人在拜拜",
+            "公司明天要拜拜",
+            "好了我們現在去拜拜",
+            "我媽叫我來拜拜",
+            "今天初一要先拜拜",
+            "我先去拜拜",
+            "我在廟裡跟神明拜拜",
+            // "You" before it, but the worship is done for or with them.
+            "我會幫你拜拜",
+            // Who worships, where and what for: not whom a goodbye is said to.
+            "今天老闆拜拜",
+            "我們請師傅拜拜",
+            "他在那拜拜",
+            "初一十五去廟裡求平安拜拜",
+            "全家一起去祈求順利拜拜",
+            "明天我陪你拜拜",
+            // Reads both ways ("I'll come over and worship later" / "I'll come over later, bye"):
+            // kept as no goodbye.
+            "那我晚點再過去拜拜",
+        ] {
+            assert!(zh_bye_ends(t).is_none(), "{t}");
+            let mut m = after_talk();
+            let step = m.on_caller(t, t, false, false);
+            assert!(!step.ends_call, "{t}");
+            assert_ne!(step.event, ClosingEvent::CallerFarewell, "{t}");
+            // The AI's turn is judged the same way.
+            assert!(classify(t).map_or(true, |h| h.kind != Kind::Farewell), "{t}");
+        }
+    }
+
+    #[test]
+    fn a_goodbye_said_is_one() {
+        for t in [
+            "好，拜拜",
+            "好拜拜",
+            "那拜拜囉",
+            "謝謝，拜拜",
+            "嗯嗯拜拜",
+            "OK拜拜",
+            "拜拜",
+            "掰掰",
+            "好喔掰",
+            "那先這樣，拜拜",
+            "我要去拜拜了，拜拜",
+            "好的謝謝你掰掰",
+            "先這樣囉掰掰",
+            "沒問題拜拜",
+            "辛苦了拜拜",
+            "跟你說拜拜",
+            "喂,不好意思,那也不打擾您,祝您事事順心,謝謝您哦,好,拜拜。",
+            "谢谢您，拜拜",
+            "好，拜拜，王先生",
+        ] {
+            assert!(zh_bye_ends(t).is_some(), "{t}");
+            let mut m = after_talk();
+            let step = m.on_caller(t, t, false, false);
+            assert_eq!(step.event, ClosingEvent::CallerFarewell, "{t}");
+            assert!(step.ends_call, "{t}");
+        }
+    }
+
+    #[test]
+    fn a_goodbye_run_into_the_words_before_it_is_one() {
+        for t in [
+            "好喔那就先這樣拜拜",
+            "OK那我知道了掰掰",
+            "沒關係拜拜",
+            "那再麻煩你囉拜拜",
+            "不好意思打擾了拜拜",
+            "好我再打給你掰",
+            "謝謝你喔拜拜",
+            "對對對那就這樣啦掰掰",
+            "好啦好啦我知道了拜拜",
+            "麻煩你了拜拜",
+            "好的謝謝再見拜拜",
+            "嗯嗯我了解了拜拜",
+            "沒事沒事你忙你的拜拜",
+            "辛苦你了掰掰",
+            "好那我先去忙了拜拜",
+            "我明天再打來拜拜",
+            "沒問題我等你消息拜拜",
+            "下次見啦拜拜",
+            "好那改天見拜拜",
+            "恩恩好的沒問題掰",
+            "好的王小姐拜拜",
+            "謝謝老師拜拜",
+            "那就這樣子喔拜拜",
+            "對不起我打錯了拜拜",
+            "不會啦拜拜",
+            "我知道了謝謝掰",
+            "那我們週五見拜拜",
+            "你好好休息拜拜",
+            "你路上小心拜拜",
+            "沒關係沒關係拜拜",
+            "好我再看看拜拜",
+            "好的陳先生拜拜",
+            "謝謝經理拜拜",
+            "好啦下次再聊拜拜",
+            "不用了謝謝拜拜",
+            "好我懂了拜拜",
+            "我要去忙了拜拜",
+            // Simplified characters.
+            "没关系拜拜",
+            "那我们周五见拜拜",
+            "对不起我打错了拜拜",
+        ] {
+            assert!(zh_bye_ends(t).is_some(), "{t}");
+            let mut m = after_talk();
+            let step = m.on_caller(t, t, false, false);
+            assert_eq!(step.event, ClosingEvent::CallerFarewell, "{t}");
+            assert!(step.ends_call, "{t}");
         }
     }
 }

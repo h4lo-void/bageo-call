@@ -46,6 +46,7 @@ pub enum Region {
     Ch,
     Br,
     Pt,
+    Tr,
 }
 
 /// The region of a SIM country (ISO 3166 alpha-2, any case); None for a
@@ -79,6 +80,7 @@ pub fn of_sim(iso: &str) -> Option<Region> {
         "ch" | "li" => Region::Ch,
         "br" => Region::Br,
         "pt" => Region::Pt,
+        "tr" => Region::Tr,
         _ => return None,
     })
 }
@@ -198,6 +200,11 @@ fn text(region: Region, kind: Kind) -> Option<(&'static str, &'static str)> {
         (Br, Fraud) => ("要你用 PIX 轉帳、付中獎手續費的都是詐騙", "PIX transfers or fees for a \"prize\" are scams"),
         (Pt, Delivery) => ("包裹常留 portaria 或交給鄰居", "Parcels: the portaria or a neighbour"),
         (Pt, Fraud) => ("要你用 MB WAY 操作或給驗證碼的都是詐騙", "MB WAY steps or codes asked for are scams"),
+        (Tr, Delivery) => ("包裹常交給門房（kapıcı）或鄰居", "Parcels: the kapıcı (doorman) or a neighbour"),
+        (Tr, Fraud) => (
+            "自稱警察、檢察官或銀行要你轉到安全帳戶、給簡訊碼的都是詐騙",
+            "\"police\", prosecutors or bank staff asking for a safe-account transfer or an SMS code are scams",
+        ),
         _ => return None,
     })
 }
@@ -253,7 +260,7 @@ mod tests {
     const BLOCK_MAX_CHARS_ZH: usize = 90;
     const BLOCK_MAX_CHARS_EN: usize = 200;
 
-    const ALL: [Region; 24] = [
+    const ALL: [Region; 25] = [
         Region::Tw,
         Region::HkMo,
         Region::Cn,
@@ -278,6 +285,7 @@ mod tests {
         Region::Ch,
         Region::Br,
         Region::Pt,
+        Region::Tr,
     ];
 
     #[test]
@@ -302,6 +310,7 @@ mod tests {
         assert_eq!(resolve(Some("it"), Lang::ZhTw), Some(Region::It));
         assert_eq!(resolve(Some("vn"), Lang::ZhTw), Some(Region::Vn));
         assert_eq!(resolve(Some("th"), Lang::ZhTw), Some(Region::Th));
+        assert_eq!(resolve(Some("TR"), Lang::En), Some(Region::Tr));
         assert_eq!(resolve(None, Lang::Ja), Some(Region::Jp));
         assert_eq!(resolve(Some(" "), Lang::ZhTw), Some(Region::Tw));
         // A SIM of a country without rules: none, not the language's.
@@ -315,6 +324,9 @@ mod tests {
         assert!(cn.contains("安全账户") || cn.contains("安全帐户"), "{cn}");
         assert!(line(Region::Jp, Kind::Delivery, Lang::Ja).unwrap().starts_with("Parcels:"));
         assert!(line(Region::De, Kind::Readback, Lang::De).unwrap().contains("19 Uhr 30"));
+        assert!(line(Region::Tr, Kind::Delivery, Lang::En).unwrap().contains("kapıcı"));
+        assert!(line(Region::Tr, Kind::Fraud, Lang::ZhTw).unwrap().contains("安全帳戶"));
+        assert_eq!(line(Region::Tr, Kind::Readback, Lang::En), None);
         assert_eq!(line(Region::Tw, Kind::Readback, Lang::ZhTw), None);
         // The prompt already says where parcels go: only the rest.
         let b = block(Region::Tw, Lang::ZhTw, true);

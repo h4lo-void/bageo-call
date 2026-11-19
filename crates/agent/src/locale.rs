@@ -1114,7 +1114,7 @@ static EN: Phrases = Phrases {
         "talk to you later", "talk later", "talk soon", "speak soon", "take care",
         "have a good day", "have a nice day", "have a great day", "have a wonderful day",
         "have a lovely day", "have a good one", "have a good evening", "have a great evening",
-        "have a good night", "good night", "cheers",
+        "have a good night", "good night", "cheers", "byebye",
     ],
     wrapups: &[
         "that's all", "that is all", "that's it", "that's everything", "nothing else",
@@ -1737,7 +1737,8 @@ static FR: Phrases = Phrases {
         "bonne soirée", "bonne fin de journée", "ciao",
     ],
     wrapups: &[
-        "c'est tout", "rien d'autre", "je vous laisse", "je te laisse", "je dois y aller",
+        "c'est tout", "rien d'autre", "je vous laisse", "je te laisse", "je vous laisse à vos occupations",
+        "je te laisse à tes occupations", "je dois y aller",
         "je rappellerai", "je vous rappelle",
     ],
 };
@@ -2040,7 +2041,7 @@ static PT: Phrases = Phrases {
     farewells: &[
         "tchau", "adeus", "até logo", "até mais", "até breve", "até amanhã", "tenha um bom dia",
         "tenha um ótimo dia", "tenha uma boa tarde", "tenha uma ótima tarde",
-        "tenha uma boa noite", "um abraço", "falou", "valeu",
+        "tenha uma boa noite", "um abraço",
     ],
     wrapups: &[
         "é só isso", "só isso", "mais nada", "é tudo", "tenho que ir", "preciso desligar",
@@ -2053,9 +2054,15 @@ const WORD_LANGS: [Lang; 5] = [Lang::En, Lang::Es, Lang::Fr, Lang::De, Lang::Pt]
 /// Languages written without spaces: matched as substrings.
 const RUN_LANGS: [Lang; 2] = [Lang::Ja, Lang::Ko];
 
+/// Lowercase of the text. Rust lowers a Turkish capital İ to "i" plus a combining
+/// dot (U+0307), so "İyi" would never match "iyi": the dot is dropped.
+fn lowercase(text: &str) -> String {
+    text.to_lowercase().replace('\u{307}', "")
+}
+
 /// Lowercase words of `text`, punctuation dropped (apostrophes kept inside words).
 fn words(text: &str) -> Vec<String> {
-    text.to_lowercase()
+    lowercase(text)
         .replace('’', "'")
         .split(|c: char| !(c.is_alphanumeric() || c == '\''))
         .map(|w| w.trim_matches('\'').to_string())
@@ -2063,24 +2070,176 @@ fn words(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// Punctuation that ends a clause: what stands between "No" and "that's all" in
+/// "No, that's all", and before a closing "falou" in "Certo, falou".
+const CLAUSE_MARKS: &str = ",.;:!?…，。；：！？、";
+
+/// The same words as [`words`], and for each of them whether one of
+/// [`CLAUSE_MARKS`] stands between it and the word before.
+fn words_after_marks(text: &str) -> (Vec<String>, Vec<bool>) {
+    let mut ws = Vec::new();
+    let mut after_mark = Vec::new();
+    let mut word = String::new();
+    let mut mark = false;
+    for c in lowercase(text).replace('’', "'").chars().chain(std::iter::once(' ')) {
+        if c.is_alphanumeric() || c == '\'' {
+            word.push(c);
+            continue;
+        }
+        let w = word.trim_matches('\'');
+        if !w.is_empty() {
+            ws.push(w.to_string());
+            after_mark.push(mark);
+            mark = false;
+        }
+        word.clear();
+        mark |= CLAUSE_MARKS.contains(c);
+    }
+    (ws, after_mark)
+}
+
 /// `phrase` (space-separated words) ends `words`, with at most `slack` words after it.
-fn phrase_near_end(words: &[String], phrase: &str, slack: usize) -> bool {
+/// `after_mark`: where the punctuation was ([`words_after_marks`]).
+fn phrase_near_end(words: &[String], after_mark: &[bool], phrase: &str, slack: usize) -> bool {
     let p = self::words(phrase);
     if p.is_empty() || words.len() < p.len() {
         return false;
     }
     let last_start = words.len() - p.len();
     let first_start = last_start.saturating_sub(slack);
+    let key = p.join(" ");
     // "Hace tiempo que no nos vemos" (we haven't seen each other in ages) is
-    // no goodbye: a negation right before the phrase rules it out.
-    let negated = |i: usize| i > 0 && NEGATIONS.contains(&words[i - 1].as_str());
+    // no goodbye: a negation right before the phrase rules it out. The "no" of
+    // "No, that's all" is an answer, not a negation.
+    let negated = |i: usize| {
+        let direct = i > 0
+            && NEGATIONS.contains(&words[i - 1].as_str())
+            && !no_is_the_answer(&key, &words[i - 1], after_mark.get(i).copied().unwrap_or(false));
+        // "Não é só isso" (that is not all): the negation stands before the "é".
+        let over_the_verb = i > 1
+            && words[i - 1] == "é"
+            && ["não", "nao"].contains(&words[i - 2].as_str())
+            && !after_mark.get(i - 1).copied().unwrap_or(false);
+        direct || over_the_verb
+    };
     // "Say bye to grandma" is said to someone else on the caller's side.
     let to_someone_else = |i: usize| {
         let after = &words[i + p.len()..];
         after.first().is_some_and(|w| w == "to")
             && after.get(1).is_some_and(|w| !["you", "y'all", "all", "everyone", "everybody"].contains(&w.as_str()))
     };
-    (first_start..=last_start).any(|i| words[i..i + p.len()] == p[..] && !negated(i) && !to_someone_else(i))
+    (first_start..=last_start).any(|i| {
+        words[i..i + p.len()] == p[..]
+            && !negated(i)
+            && !to_someone_else(i)
+            && followed_as_a_goodbye(&key, &words[i + p.len()..])
+    })
+}
+
+/// Asked "anything else?", callers answer "No, that's all" / "No, nada más":
+/// the "no" before these is their answer, not a negation.
+const NOTHING_MORE: &[&str] = &[
+    "that's all", "that is all", "that's it", "that's everything", "nothing else", "nada más",
+    "eso es todo", "eso sería todo", "mais nada",
+];
+/// The same in Portuguese, where these words also follow a real negation
+/// ("Isso não é tudo", "Não só isso": there is more to come). The "não" is the
+/// answer only with a comma or a full stop after it: "Não, é só isso".
+const NOTHING_MORE_AFTER_A_MARK: &[&str] = &["é só isso", "só isso", "é tudo"];
+
+/// The "no" (`word_before`) right before the phrase `key` answers a question
+/// rather than negating it. `mark_between`: punctuation stands between the two.
+fn no_is_the_answer(key: &str, word_before: &str, mark_between: bool) -> bool {
+    ["no", "não", "nao"].contains(&word_before)
+        && (NOTHING_MORE.contains(&key) || (mark_between && NOTHING_MORE_AFTER_A_MARK.contains(&key)))
+}
+
+/// What is left with someone, or what they are left to do, after "je vous
+/// laisse" / "je te laisse": "Je vous laisse mon numéro", "Je vous laisse réfléchir".
+const FR_LEFT_WITH: &[&str] = &[
+    "mon", "ma", "mes", "un", "une", "le", "la", "les", "du", "des", "ce", "cet", "cette", "ces", "votre",
+    "vos", "ton", "ta", "tes", "son", "sa", "ses", "notre", "nos", "leur", "quelques", "réfléchir", "voir",
+    "faire", "choisir", "décider", "regarder", "vérifier", "parler", "finir", "continuer", "y", "deux", "trois",
+    "quatre", "cinq", "six", "dix", "vingt", "plusieurs", "tout", "toutes",
+];
+/// The same after "le dejo" / "te dejo": "Te dejo mi número", "Le dejo el paquete".
+const ES_LEFT_WITH: &[&str] = &[
+    "el", "la", "los", "las", "un", "una", "unos", "unas", "mi", "mis", "tu", "tus", "su", "sus", "este",
+    "esta", "esto", "eso", "aquí", "todo", "dicho", "saber", "pensar", "ver", "elegir", "decidir", "dos", "tres",
+    "cuatro", "cinco", "diez", "veinte", "varios", "varias", "algunos", "algunas",
+];
+
+/// Phrases that are no goodbye when one of these words comes right after them:
+/// "I'll take care of it", "That's all right", "C'est tout à fait", "Je vous
+/// laisse mon numéro", "Na razie nie wiem" ("I don't know yet"). Any other word
+/// after them — a name, a title, a particle, another goodbye — leaves them one:
+/// "Je vous laisse, madame", "Das ist alles, Herr Müller", "No to na razie, Ania".
+const CANCELLED_BY: &[(&str, &[&str])] = &[
+    ("take care", &["of"]),
+    ("that's all", &["right", "good", "fine", "true", "wrong"]),
+    ("that is all", &["right", "good", "fine", "true", "wrong"]),
+    ("c'est tout", &["à", "près", "de", "ce", "le", "la"]),
+    ("je vous rappelle", &["que"]),
+    (
+        "nada más",
+        &["quería", "queria", "quiero", "para", "que", "llamaba", "llamo", "llamar", "un", "una", "le", "te"],
+    ),
+    ("je vous laisse", FR_LEFT_WITH),
+    ("je te laisse", FR_LEFT_WITH),
+    ("à plus", &["de", "cher", "ou"]),
+    ("le dejo", ES_LEFT_WITH),
+    ("te dejo", ES_LEFT_WITH),
+    (
+        "das ist alles",
+        &[
+            "sehr", "zu", "ganz", "ziemlich", "total", "völlig", "nicht", "noch", "nur", "was", "in", "im",
+            "kein", "keine", "quatsch", "unsinn", "falsch", "richtig", "teuer", "kompliziert", "schwierig",
+            "egal", "bereits", "schon", "gelogen", "bezahlt", "erledigt", "andere", "anders", "gut", "klar",
+            "wahr", "neu", "kaputt", "weg", "fertig", "möglich",
+        ],
+    ),
+    (
+        "é tudo",
+        &[
+            "verdade", "mentira", "que", "o", "isso", "muito", "culpa", "igual", "novo", "diferente", "a",
+            "um", "uma", "meu", "minha", "bem", "errado", "caro", "barato", "mais", "tão", "tao",
+        ],
+    ),
+    (
+        "na razie",
+        &[
+            "nie", "nic", "to", "jest", "tak", "tylko", "mam", "jestem", "wiem", "mogę", "będę", "bez",
+            "wszystko", "w", "na", "z", "po", "się", "jeszcze", "mi", "nam", "brak", "nikogo", "czekam",
+            "czekamy", "są", "sa", "był", "byl",
+        ],
+    ),
+];
+
+/// The same for a next word that starts like this: "Je vous laisse l'adresse",
+/// "à plus d'un titre".
+const CANCELLED_BY_START: &[(&str, &[&str])] = &[
+    ("je vous laisse", &["l'", "d'"]),
+    ("je te laisse", &["l'", "d'"]),
+    ("à plus", &["d'"]),
+];
+
+/// The words after a phrase (its words joined by spaces: key) leave it a goodbye.
+fn followed_as_a_goodbye(key: &str, after: &[String]) -> bool {
+    let Some(next) = after.first() else {
+        return true;
+    };
+    // "Take care of yourself" is the goodbye itself.
+    if key == "take care" && next == "of" && after.get(1).is_some_and(|w| w == "yourself" || w == "yourselves") {
+        return true;
+    }
+    // "Je vous laisse 20 euros", "Le dejo 3 paquetes": something is left, in figures.
+    if matches!(key, "je vous laisse" | "je te laisse" | "le dejo" | "te dejo") && next.starts_with(|c: char| c.is_ascii_digit()) {
+        return false;
+    }
+    !CANCELLED_BY.iter().any(|(k, ws)| *k == key && ws.contains(&next.as_str()))
+        // "Je vous laisse, d'accord ?" asks nothing to be left: still a goodbye.
+        && (next == "d'accord"
+            || !CANCELLED_BY_START.iter().any(|(k, starts)| *k == key && starts.iter().any(|s| next.starts_with(s))))
 }
 
 /// Words that turn a following goodbye phrase into something else.
@@ -2099,10 +2258,10 @@ fn run_near_end(compact: &str, marker: &str, slack: usize) -> bool {
 }
 
 fn ends_on(text: &str, pick: fn(&Phrases) -> &'static [&'static str], slack_words: usize, slack_chars: usize) -> bool {
-    let ws = words(text);
+    let (ws, after_mark) = words_after_marks(text);
     if WORD_LANGS
         .iter()
-        .any(|l| pick(phrases(*l)).iter().any(|m| phrase_near_end(&ws, m, slack_words)))
+        .any(|l| pick(phrases(*l)).iter().any(|m| phrase_near_end(&ws, &after_mark, m, slack_words)))
     {
         return true;
     }
@@ -2125,7 +2284,7 @@ const THANKS: &[&str] = &[
     "thank you", "thanks", "thx",
     "muchísimas gracias", "muchas gracias", "gracias", "merci beaucoup", "merci bien", "merci",
     "vielen dank", "danke schön", "danke schon", "dankeschön", "danke",
-    "muito obrigado", "muito obrigada", "obrigado", "obrigada",
+    "muito obrigado", "muito obrigada", "obrigado", "obrigada", "valeu",
     "どうもありがとうございました", "どうもありがとうございます", "ありがとうございました",
     "ありがとうございます", "ありがとう",
     "감사합니다", "고맙습니다", "감사해요", "고마워요",
@@ -2135,6 +2294,7 @@ const THANKS: &[&str] = &[
     "большое спасибо", "спасибо",
     "شكرا جزيلا", "شكراً جزيلاً", "شكرا لك", "شكراً لك", "شكرا", "شكراً",
     "बहुत धन्यवाद", "बहुत शुक्रिया", "धन्यवाद", "शुक्रिया",
+    "çok teşekkür ederim", "teşekkür ederim", "teşekkürler", "sağ olun", "sağ ol", "sağolun", "sağol",
 ];
 
 fn is_latin_letter(c: char) -> bool {
@@ -2149,7 +2309,7 @@ fn strip_suffix_nocase<'a>(text: &'a str, suffix: &str) -> Option<&'a str> {
         return None;
     }
     let (start, _) = text.char_indices().rev().nth(n - 1)?;
-    if text[start..].to_lowercase() != suffix {
+    if lowercase(&text[start..]) != suffix {
         return None;
     }
     let head = &text[..start];
@@ -2246,6 +2406,8 @@ const EXTRA_WORD_FAREWELLS: &[&str] = &[
     "tạm biệt", "tam biet", "hẹn gặp lại", "hen gap lai", "chào nhé", "chao nhe",
     // "That's it then": how many Vietnamese calls end.
     "thế nhé", "vậy nhé", "thôi nhé", "thoi nhe", "bye nhé", "bye nhe",
+    // "(Have) a good day": "Chúc anh một ngày tốt lành".
+    "một ngày tốt lành", "ngày tốt lành",
     "sampai jumpa", "sampai ketemu", "selamat tinggal", "dadah", "daah",
     "sampai nanti", "sudah dulu ya", "udah dulu ya", "segitu dulu ya",
     // Russian: "goodbye", "all the best", "have a good day", "see you", "bye-bye".
@@ -2271,8 +2433,12 @@ const EXTRA_WORD_FAREWELLS: &[&str] = &[
     "до побачення", "на все добре", "гарного дня", "бувайте", "до зустрічі",
     "বিদায়", "আল্লাহ হাফেজ", "ভালো থাকবেন", "আবার কথা হবে", "শুভ দিন",
     "नमस्कार पुन्हा बोलू", "काळजी घ्या", "शुभ दिवस", "आता ठेवतो", "बाय बाय",
-    "வருகிறேன்", "பை பை", "பிறகு பேசலாம்", "நல்ல நாள்",
-    "వస్తాను", "బై బై", "మళ్ళీ మాట్లాడుదాం", "శుభ దినం",
+    // Tamil / Telugu "I am coming" (வருகிறேன், వస్తాను) is no goodbye: only "I'll go and come".
+    "போய் வருகிறேன்", "போயிட்டு வருகிறேன்", "போயிட்டு வரேன்", "பை பை", "பிறகு பேசலாம்", "நல்ல நாள்",
+    "వెళ్ళొస్తాను", "వెళ్లొస్తాను", "సరే ఉంటాను", "ఇక ఉంటాను", "బై బై", "మళ్ళీ మాట్లాడుదాం", "శుభ దినం",
+    // Turkish
+    "hoşça kal", "hoşça kalın", "hoşçakal", "hoşçakalın", "görüşürüz", "görüşmek üzere", "iyi geceler",
+    "kendine iyi bak", "kendinize iyi bakın", "güle güle", "allaha ısmarladık", "bay bay",
 ];
 
 /// A goodbye that also opens calls: "chào anh", "selamat pagi", "sawasdee ka".
@@ -2310,7 +2476,11 @@ const GREETING_BYES: &[GreetingBye] = &[
             "nhé", "nhe", "nhá", "nha",
         ],
         closing_tail: &["nhé", "nhe", "nhá", "nha"],
-        cues: &["cảm ơn", "cám ơn", "cam on", "thôi", "thoi", "ok", "oke", "okay", "thanks", "thank you"],
+        // Not "dạ" / "vâng": those open a call too ("Alo, dạ chào anh ạ").
+        cues: &[
+            "cảm ơn", "cám ơn", "cam on", "thôi", "thoi", "hiểu rồi", "được rồi", "ok", "oke", "okay", "thanks",
+            "thank you",
+        ],
     },
     // Indonesian: "Baik, terima kasih, selamat siang."
     // Speech-to-text set to Chinese writes "terima kasih" as 「謝謝」.
@@ -2368,6 +2538,13 @@ const GREETING_BYES: &[GreetingBye] = &[
         tail: &[],
         closing_tail: &[],
         cues: &["நன்றி", "సరే", "ధన్యవాదాలు", "ok", "okay", "thanks", "thank you"],
+    },
+    // Turkish: "Tamam, teşekkürler, iyi günler."
+    GreetingBye {
+        heads: &["iyi günler", "iyi akşamlar", "kolay gelsin"],
+        tail: &["efendim", "hanım", "bey"],
+        closing_tail: &[],
+        cues: &["teşekkürler", "teşekkür ederim", "sağ olun", "sağ ol", "tamam", "peki", "ok", "okay"],
     },
 ];
 
@@ -2429,6 +2606,8 @@ const TH_FAREWELLS: &[&str] = &[
     // "Talk again later", "that's all for now".
     "ไว้คุยกันใหม่", "ไว้ค่อยคุยกัน", "แค่นี้ก่อน", "แค่นี้นะ", "วางสายนะ", "แล้วคุยกันใหม่", "แล้วค่อยคุยกัน",
     "แล้วพบกันใหม่", "พบกันใหม่",
+    // "See you (again)".
+    "ไว้เจอกัน", "ไว้เจอกันใหม่",
     // "Good luck", "have a good day": how the AI's own Thai calls end.
     "โชคดี", "ขอให้มีวันที่ดี",
 ];
@@ -2451,7 +2630,7 @@ const TH_NEGATIONS: &[&str] = &["อย่า", "อย่าเพิ่ง", "
 /// Lowercase letters and digits only. Thai tone marks drop out, so spellings
 /// that differ only in them match.
 fn squeeze(text: &str) -> String {
-    text.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect()
+    lowercase(text).chars().filter(|c| c.is_alphanumeric()).collect()
 }
 
 /// [`squeeze`]d `text`, and where each of its runs between spaces or
@@ -2460,7 +2639,7 @@ fn squeeze_runs(text: &str) -> (String, Vec<usize>) {
     let mut out = String::new();
     let mut starts = Vec::new();
     let mut new_run = true;
-    for c in text.to_lowercase().chars() {
+    for c in lowercase(text).chars() {
         if c.is_alphanumeric() {
             if new_run {
                 starts.push(out.len());
@@ -2546,10 +2725,34 @@ fn thai_farewell(text: &str, slack_chars: usize) -> bool {
 
 /// [`ends_with_farewell`] for Vietnamese, Thai and Indonesian.
 fn extra_farewell(text: &str, slack: usize) -> bool {
-    let ws = words(text);
-    EXTRA_WORD_FAREWELLS.iter().any(|m| phrase_near_end(&ws, m, slack))
+    let (ws, after_mark) = words_after_marks(text);
+    EXTRA_WORD_FAREWELLS.iter().any(|m| phrase_near_end(&ws, &after_mark, m, slack))
         || GREETING_BYES.iter().any(|g| g.ends(&ws))
+        || falou_closing(&ws, &after_mark)
         || thai_farewell(text, slack * 2)
+}
+
+/// Words right before a closing Portuguese "falou" ("Beleza, valeu falou!").
+/// "Então" only after another cue: "E então falou" is "and then he said".
+const FALOU_CUES: &[&str] = &[
+    "valeu", "obrigado", "obrigada", "beleza", "tá bom", "ta bom", "então tá", "combinado", "ok", "okay",
+    "tchau", "abraço", "até mais", "certo", "fechou", "fechado", "tá", "ta", "tranquilo",
+    "show", "joia", "jóia", "blz", "beleza então", "beleza entao", "combinado então", "combinado entao",
+    "certo então", "certo entao", "fechado então", "fechado entao", "ok então", "ok entao", "tá bom então",
+    "ta bom entao",
+];
+
+/// "Falou" is "bye" in Brazilian speech, and also just "said" ("Foi o que ele
+/// falou."). It is a goodbye only as the very last word: alone, set off by
+/// punctuation ("Certo, falou") or right after a closing cue.
+fn falou_closing(ws: &[String], after_mark: &[bool]) -> bool {
+    let Some((last, before)) = ws.split_last() else {
+        return false;
+    };
+    last == "falou"
+        && (before.is_empty()
+            || after_mark.last().copied().unwrap_or(false)
+            || FALOU_CUES.iter().any(|c| before.ends_with(&words(c))))
 }
 
 /// What was said ends on a goodbye, in any supported language other than
@@ -2656,6 +2859,48 @@ mod tests {
         assert!(!caller_wraps_up("¡Hola! ¿Qué tal? Hace tiempo que no nos vemos."));
         assert!(caller_wraps_up("Vale, perfecto. Nos vemos."));
         assert!(caller_wraps_up("Bueno, adiós."));
+        assert!(!caller_wraps_up("Ainda não, tchau não"));
+    }
+
+    #[test]
+    fn a_no_that_answers_anything_else_is_no_negation() {
+        for s in [
+            "No, that's all, thanks.",
+            "No that's everything, thank you so much",
+            "No, nothing else.",
+            "No, that's it.",
+            "No, nada más, gracias.",
+            "No, eso es todo.",
+            "Não, é só isso, obrigado.",
+            "Não, mais nada.",
+            "Não, é tudo.",
+            "Não, só isso.",
+        ] {
+            assert!(caller_wraps_up(s), "must wrap up: {s}");
+        }
+        // A real negation of the same words: there is more to come.
+        for s in ["Mas isso não é tudo.", "Não só isso.", "No, that's all right.", "That's not all."] {
+            assert!(!caller_wraps_up(s), "must not wrap up: {s}");
+        }
+    }
+
+    #[test]
+    fn words_after_marks_has_the_same_words() {
+        for s in [
+            "No, that's all — thanks!",
+            "Certo, falou",
+            "’Bye… l'adresse, d'accord ?",
+            "Teşekkürler, İyi günler.",
+            "好的，謝謝。Bye-bye",
+            "",
+            " ' ",
+        ] {
+            let (ws, after_mark) = words_after_marks(s);
+            assert_eq!(ws, words(s), "{s}");
+            assert_eq!(ws.len(), after_mark.len(), "{s}");
+        }
+        assert_eq!(words_after_marks("Certo, falou").1, [false, true]);
+        assert_eq!(words_after_marks("ele falou").1, [false, false]);
     }
 
     #[test]
@@ -2737,7 +2982,6 @@ mod tests {
             "Nos vemos.",
             "Chao.",
             "Valeu, tchau.",
-            "Valeu!",
             "Até mais.",
             "Bonne journée !",
             "Merci, à bientôt.",
@@ -2763,6 +3007,8 @@ mod tests {
             "Thank you.",
             "Thanks so much",
             "Muchas gracias",
+            // Portuguese "valeu" is thanks.
+            "Valeu!",
             "감사합니다",
             "Say bye to grandma",
             "Come on, say bye bye to Auntie",
@@ -3139,7 +3385,189 @@ mod tests {
         assert!(ends_with_farewell("Mulțumesc, la revedere!", 0));
         assert!(ends_with_farewell("Дякую, до побачення!", 0));
         assert!(ends_with_farewell("ধন্যবাদ, বিদায়!", 0));
-        assert!(ends_with_farewell("நன்றி, வருகிறேன்!", 0));
-        assert!(ends_with_farewell("ధన్యవాదాలు, వస్తాను!", 0));
+        assert!(ends_with_farewell("நன்றி, போய் வருகிறேன்!", 0));
+        assert!(ends_with_farewell("ధన్యవాదాలు, వెళ్ళొస్తాను!", 0));
+    }
+
+    #[test]
+    fn pt_valeu_is_thanks_and_falou_closes_only_after_a_cue() {
+        assert_eq!(strip_trailing_thanks("Ah, valeu."), "Ah");
+        for s in [
+            "Foi o que ele falou.",
+            "O gerente falou que sim.",
+            "Ela já falou com você.",
+            "Fica combinado como ele falou.",
+            "Ele chegou e falou.",
+            "Valeu a pena.",
+            "Ah, valeu.",
+        ] {
+            assert!(!caller_wraps_up(s), "must not wrap up: {s}");
+        }
+        for s in [
+            "Beleza, valeu, falou!",
+            "Então tá, falou.",
+            "Tchau, falou.",
+            "Falou!",
+            // Set off by punctuation, or right after a closing cue.
+            "Certo, falou",
+            "Tá combinado então, falou",
+            "Beleza então, falou",
+            "Fechou, falou",
+            "Obrigado, até mais, falou",
+            "Então tá bom, falou valeu",
+            "Tá bom, obrigada, falou",
+            "Beleza então falou",
+        ] {
+            assert!(caller_wraps_up(s), "must wrap up: {s}");
+        }
+    }
+
+    #[test]
+    fn a_word_after_a_goodbye_phrase_can_make_it_something_else() {
+        for s in [
+            "I'll take care of it.",
+            "My sister will take care of mom.",
+            "That's all right.",
+            "Je vous laisse mon numéro.",
+            "Je vous laisse un message.",
+            "Te dejo mi número.",
+            "Le dejo el paquete.",
+            "Nada más quería confirmar.",
+            "Das ist alles sehr teuer.",
+            "C'est tout à fait.",
+            "Isso é tudo verdade.",
+            "Na razie nie wiem.",
+            "Na razie nie mogę.",
+            // What is left with them, or what they are left to do.
+            "Je vous laisse l'adresse.",
+            "Je vous laisse réfléchir.",
+            "Te dejo un mensaje.",
+            "Le dejo mis datos.",
+            "Das ist alles nicht so einfach.",
+            "Das ist alles zu teuer.",
+            "Na razie nic nie wiem.",
+            "Na razie jestem w pracy.",
+            "Isso é tudo que eu sei.",
+        ] {
+            assert!(!caller_wraps_up(s), "must not wrap up: {s}");
+        }
+        for s in [
+            "Take care.",
+            "Okay, take care, bye.",
+            "Take care now.",
+            "Take care of yourself.",
+            "That's all.",
+            "That's all, thanks.",
+            "That's all for now.",
+            "That's all I need.",
+            "Je vous laisse.",
+            "Bon, je vous laisse, bonne journée.",
+            "Bueno, te dejo.",
+            "Le dejo, hasta luego.",
+            "Nada más, gracias.",
+            "Das ist alles.",
+            "Das ist alles, danke.",
+            "C'est tout.",
+            "C'est tout, merci.",
+            "É tudo.",
+            "É tudo, obrigado.",
+            "Na razie!",
+            "To na razie, pa.",
+            // A name, a title, a particle or another goodbye after it.
+            "Bon, je vous laisse madame",
+            "Je vous laisse monsieur",
+            "Bon allez je vous laisse hein",
+            "D'accord je vous laisse et merci",
+            "Je vous laisse à vos occupations",
+            "Le dejo señora",
+            "Bueno te dejo Marta",
+            "Das ist alles, Herr Müller",
+            "Das ist alles, Frau Schmidt",
+            "Das ist alles so weit",
+            "No to na razie, Ania",
+            "Dobrze, na razie, do jutra",
+        ] {
+            assert!(caller_wraps_up(s), "must wrap up: {s}");
+        }
+    }
+
+    #[test]
+    fn tamil_and_telugu_coming_is_no_goodbye_but_going_and_coming_is() {
+        for s in [
+            "பத்து நிமிடத்தில் வருகிறேன்.",
+            "நான் நாளைக்கு வருகிறேன்.",
+            "నేను రేపు వస్తాను.",
+            "పది నిమిషాల్లో వస్తాను.",
+        ] {
+            assert!(!caller_wraps_up(s), "must not wrap up: {s}");
+        }
+        for s in ["சரி, போய் வருகிறேன்.", "சரி, போயிட்டு வருகிறேன்.", "సరే, వెళ్ళొస్తాను.", "సరే, ఉంటాను.", "ఇక ఉంటాను."] {
+            assert!(caller_wraps_up(s), "must wrap up: {s}");
+        }
+    }
+
+    #[test]
+    fn byebye_written_as_one_word_is_a_goodbye() {
+        assert!(ends_with_farewell("Chào em nhé. Byebye.", 1));
+        assert!(ends_with_farewell("Okay, byebye.", 1));
+    }
+
+    #[test]
+    fn words_that_only_look_like_a_cue_or_an_object_are_told_apart() {
+        // "And then he said": no goodbye. With a comma it is one.
+        assert!(!caller_wraps_up("E então falou."));
+        assert!(caller_wraps_up("Beleza então, falou."));
+        // "That is not all" is no wrap-up; "No, that is all" is.
+        assert!(!caller_wraps_up("Não é só isso."));
+        assert!(!caller_wraps_up("Isso não é tudo."));
+        assert!(caller_wraps_up("Não, é só isso."));
+        // "d'accord" after the goodbye leaves nothing with anyone.
+        assert!(caller_wraps_up("Je vous laisse, d'accord."));
+        assert!(!caller_wraps_up("Je vous laisse d'autres documents."));
+        // What is left, counted; what "all that" is.
+        for s in [
+            "Je vous laisse deux colis.",
+            "Je vous laisse 20 euros.",
+            "Le dejo veinte euros.",
+            "Le dejo 3 paquetes.",
+            "Das ist alles bereits bezahlt.",
+            "Das ist alles schon erledigt.",
+            "É tudo bem barato.",
+            "Isso é tudo errado.",
+            "Na razie brak paczki.",
+        ] {
+            assert!(!caller_wraps_up(s), "must not wrap up: {s}");
+        }
+    }
+
+    #[test]
+    fn thai_see_you_and_vietnamese_good_day_are_goodbyes() {
+        assert!(ends_with_farewell("ขอบคุณครับ ไว้เจอกันครับ", 1));
+        assert!(ends_with_farewell("โอเคค่ะ ไว้เจอกันใหม่นะคะ", 1));
+        assert!(ends_with_farewell("Cảm ơn anh nhiều, chúc anh một ngày tốt lành", 1));
+        assert!(ends_with_farewell("Vâng em hiểu rồi, chào anh ạ", 1));
+        assert!(ends_with_farewell("Được rồi, chào chị.", 1));
+        // "Dạ" opens a call as well: no closing cue.
+        assert!(!ends_with_farewell("Alo, dạ chào anh ạ", 1));
+        assert!(!caller_wraps_up("Alo, dạ chào anh ạ"));
+    }
+
+    #[test]
+    fn turkish_goodbyes_thanks_and_the_dotted_capital() {
+        assert!(ends_with_farewell("Tamam, görüşürüz.", 1));
+        for s in ["Hoşça kalın.", "Görüşürüz.", "İyi geceler.", "Güle güle.", "Kendinize iyi bakın."] {
+            assert!(ends_with_farewell(s, 1), "must be a goodbye: {s}");
+        }
+        // A greeting that also says goodbye needs a closing cue before it.
+        assert!(!ends_with_farewell("Merhaba, iyi günler.", 1));
+        assert!(ends_with_farewell("Tamam, teşekkürler, iyi günler.", 1));
+        // Turkish capital İ lowercases to "i" plus a combining dot: it must still match.
+        assert!(ends_with_farewell("Teşekkürler, İyi günler.", 1));
+        assert!(ends_with_farewell("İYİ GECELER.", 1));
+        assert_eq!(strip_trailing_thanks("Tamam, teşekkürler."), "Tamam");
+        assert_eq!(strip_trailing_thanks("Anladım, Çok Teşekkür Ederim!"), "Anladım");
+        assert!(caller_wraps_up("Tamam, görüşürüz."));
+        assert!(!caller_wraps_up("Yarın evde misiniz?"));
+        assert!(!caller_wraps_up("Yarın görüşürüz mü?"));
     }
 }
