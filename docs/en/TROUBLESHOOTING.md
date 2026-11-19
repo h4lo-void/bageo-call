@@ -145,6 +145,7 @@ Check, in this order:
 - From another device, a console password must be set first on the computer running Bageo; until then you only see "Set a password first".
 - On Windows, answer the "Allow access" prompt with *Private networks*. If you chose otherwise, open *Windows Security → Firewall & network protection → Allow an app through firewall* and tick *Private* for Bageo's `agent.exe`.
 - On a VPN that sends all traffic through the tunnel, turn the VPN off and try again, or see [Using the console from other devices](SETTINGS.md#using-the-console-from-other-devices).
+- Opening it by your own domain, a reverse proxy or a VPN name shows "This address can't open the console": enter that address under *Address in notifications*.
 - When another program holds port 80, use `http://bageo.local:8787/`; *System → About* shows the address that works.
 - Some older Android phones cannot open `.local` addresses: use the IP address or the QR code under *System → About*.
 

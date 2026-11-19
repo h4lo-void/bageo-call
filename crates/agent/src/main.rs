@@ -1327,9 +1327,17 @@ async fn main() -> Result<()> {
             settings.openrouter_base_url, settings.openrouter_model
         ),
     };
+    // AGENT_HOST not set: every address, and the console's network name.
+    let listening = if settings.host_auto {
+        let name = mdns::parse_name_setting(&settings_store.snapshot().mdns_name);
+        let lan = if name.is_empty() { String::new() } else { format!(", on this network http://{name}.local/") };
+        format!("0.0.0.0:{} (this computer http://localhost:{}/{lan})", settings.port, settings.port)
+    } else {
+        addr.to_string()
+    };
     info!(
         "pixel-agent listening on http://{} (ws /ws, ui /calls/) mode={} ivr_prompt={:?} ivr_start_delay_ms={} ivr_segments={:?} ivr_prompt_pcm_bytes={} ivr_fail_pcm_bytes={} ivr_goodbye_pcm_bytes={} ivr_reject_unknown_pcm_bytes={} dtmf_hold={} dtmf_vm={} dtmf_end={:?} ivr_loop={} max_menu_plays={} reprompt_ms={} wait_remote_voice={} hold_music={} hold_pcm_bytes={} calls_dir={} calls_record={} llm={} whisper={} piper={}",
-        addr,
+        listening,
         mode,
         settings.ivr_prompt_text,
         settings.ivr_start_delay_ms,
@@ -1553,7 +1561,7 @@ async fn main() -> Result<()> {
         }
         // `http://bageo.local/`: the network name answers for the console.
         let store = settings_store.clone();
-        mdns::spawn(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), move || {
+        mdns::spawn(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), settings.port, move || {
             store.snapshot().mdns_name.clone()
         });
     } else if !addr.ip().is_loopback() {
@@ -1567,13 +1575,13 @@ async fn main() -> Result<()> {
             info!("mDNS: not started inside a container (see docker-compose.yml)");
         } else {
             let store = settings_store.clone();
-            mdns::spawn(addr.ip(), move || store.snapshot().mdns_name.clone());
+            mdns::spawn(addr.ip(), addr.port(), move || store.snapshot().mdns_name.clone());
         }
     } else if !settings_store::in_container() {
         // Listening on this computer only: the network name answers while
         // phones may connect over Wi-Fi, so `bageo.local` reaches the Wi-Fi entry.
         let store = settings_store.clone();
-        mdns::spawn(addr.ip(), move || {
+        mdns::spawn(addr.ip(), settings.phone_wifi_port, move || {
             let rt = store.snapshot();
             if rt.phone_wifi {
                 rt.mdns_name.clone()
@@ -1603,8 +1611,12 @@ async fn main() -> Result<()> {
     if auto {
         lan::set_auto(true);
         open_port_80(&app, addr.port()).await;
+        let eff = settings_store.snapshot().effective(&settings);
+        let on_lan = settings_store::console_url_for(&eff, false, true, lan::port_80(), true, mdns::answer_ip);
+        info!("web console: http://localhost:{}/ on this computer, {on_lan} on this network (listening on {listen})", listen.port());
+    } else {
+        info!("web console: http://{}:{}/", if listen.ip().is_unspecified() { "localhost".to_string() } else { listen.ip().to_string() }, listen.port());
     }
-    info!("web console: http://{}:{}/", if listen.ip().is_unspecified() { "localhost".to_string() } else { listen.ip().to_string() }, listen.port());
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<lan::ConnAddrs>(),
@@ -1639,7 +1651,8 @@ async fn open_port_80(app: &Router, port: u16) {
 /// The agent's HTTP routes: the phone and test routes with the agent's state,
 /// and the web console (`/calls`) with its own.
 fn build_app(state: AppState, calls_state: CallsState, remote: Arc<control::Controller>) -> Router {
-    Router::new()
+    let settings = state.settings.clone();
+    let app = Router::new()
         .route("/", get(root))
         .route("/index", get(redirect_to_calls))
         .route("/favicon.ico", get(calls_http::favicon))
@@ -1657,7 +1670,9 @@ fn build_app(state: AppState, calls_state: CallsState, remote: Arc<control::Cont
         .layer(axum::middleware::map_response(add_source_header))
         // Served with `lan::ConnAddrs`: the handlers still read the peer as a `SocketAddr`.
         .layer(axum::middleware::from_fn(lan::copy_peer))
-        .with_state(state)
+        .with_state(state);
+    // Wrong passwords from other devices: slower, then a minute's wait.
+    lan::throttle(app, settings)
 }
 
 /// Authorship marker that stays in the compiled program (LICENSING.md, Section 7(b)).
@@ -14285,6 +14300,88 @@ mod health_access_tests {
         assert_full(&body);
         // Phones still need their own key, whatever the console password.
         assert_eq!(get_json(&base, "/ws?token=auto-test-pw", &[]).await.0, 401);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn automatic_mode_refuses_names_that_are_not_this_computers() {
+        // From this computer itself, no password: a page pointing its own name
+        // here (DNS rebinding) gets nothing; this computer's names do.
+        let (base, root) = serve_auto("", "192.168.1.20:5000", "192.168.1.20:8787").await;
+        for host in ["evil.example", "evil.example:8787", "bageo.local.evil.example", "0.0.0.0"] {
+            let (status, body) = get_json(&base, "/calls/api/settings", &[("host", host)]).await;
+            assert_eq!((status, body["code"].clone()), (403, json!("bad_host")), "{host}");
+            let (status, _) = get_json(&base, "/calls/api/initial-password", &[("host", host)]).await;
+            assert_eq!(status, 403, "{host}");
+        }
+        let (status, page) = get_text_host(&base, "/calls/", "evil.example", "ja").await;
+        assert_eq!(status, 403);
+        assert!(page.contains("このアドレスではコンソールを開けません"), "{page}");
+        for host in ["127.0.0.1:8787", "localhost", "LOCALHOST.", "[::1]:8787", "192.168.1.20", "bageo.local", "bageo.local:8787"] {
+            assert_eq!(get_json(&base, "/calls/api/settings", &[("host", host)]).await.0, 200, "{host}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+        // Another device with the password: the same names only.
+        let (base, root) = serve_auto("auto-host-pw", "203.0.113.30:5000", "192.168.1.20:8787").await;
+        let (status, body) = get_json(&base, "/calls/api/settings?token=auto-host-pw", &[("host", "evil.example")]).await;
+        assert_eq!((status, body["code"].clone()), (403, json!("bad_host")));
+        assert_eq!(get_json(&base, "/calls/api/settings?token=auto-host-pw", &[("host", "bageo.local")]).await.0, 200);
+        assert_eq!(get_json(&base, "/calls/api/settings?token=auto-host-pw", &[("host", "192.168.1.20:8787")]).await.0, 200);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// GET `path` naming `host`, with `Accept-Language`: the status and the text.
+    async fn get_text_host(base: &str, path: &str, host: &str, accept_language: &str) -> (u16, String) {
+        let res = reqwest::Client::new()
+            .get(format!("{base}{path}"))
+            .header("host", host)
+            .header("accept-language", accept_language)
+            .send()
+            .await
+            .unwrap();
+        let status = res.status().as_u16();
+        (status, res.text().await.unwrap_or_default())
+    }
+
+    #[tokio::test]
+    async fn wrong_passwords_from_another_device_slow_down_then_wait() {
+        let (base, root) = serve("throttle-test-pw", "198.51.100.77:5000").await;
+        let started = std::time::Instant::now();
+        for n in 1..=lan::FREE_TRIES {
+            let (status, _) = get_json(&base, &format!("/calls/api/devices?token=wrong-{n}"), &[]).await;
+            assert_eq!(status, 401, "try {n}");
+        }
+        assert!(started.elapsed() < std::time::Duration::from_millis(900), "the first tries answer at once");
+        let slow = std::time::Instant::now();
+        for n in lan::FREE_TRIES + 1..=lan::MAX_TRIES {
+            let (status, _) = get_json(&base, &format!("/calls/api/devices?token=wrong-{n}"), &[]).await;
+            assert_eq!(status, 401, "try {n}");
+        }
+        assert!(slow.elapsed() >= std::time::Duration::from_secs(u64::from(lan::MAX_TRIES - lan::FREE_TRIES)), "later tries answer late");
+        // Now even the right password waits.
+        for path in ["/calls/api/devices?token=wrong-again", "/calls/api/devices?token=throttle-test-pw"] {
+            let (status, body) = get_json(&base, path, &[]).await;
+            assert_eq!((status, body["code"].clone()), (429, json!("too_many_tries")), "{path}");
+        }
+        // A page without a password still opens.
+        assert_eq!(reqwest::get(format!("{base}/calls/")).await.unwrap().status().as_u16(), 200);
+        let _ = std::fs::remove_dir_all(&root);
+
+        // The same wrong password over and over (the console's parallel requests) counts once,
+        // and a right one starts over.
+        let (base, root) = serve("throttle-test-pw", "198.51.100.78:5000").await;
+        for _ in 0..15 {
+            assert_eq!(get_json(&base, "/calls/api/devices?token=stale-pw", &[]).await.0, 401);
+        }
+        assert_eq!(get_json(&base, "/calls/api/devices?token=throttle-test-pw", &[]).await.0, 200);
+        let _ = std::fs::remove_dir_all(&root);
+
+        // This computer is never held back.
+        let (base, root) = serve("throttle-test-pw", "127.0.0.1:5000").await;
+        for n in 0..12 {
+            assert_eq!(get_json(&base, &format!("/calls/api/devices?token=local-wrong-{n}"), &[]).await.0, 401);
+        }
+        assert_eq!(get_json(&base, "/calls/api/devices?token=throttle-test-pw", &[]).await.0, 200);
         let _ = std::fs::remove_dir_all(&root);
     }
 }

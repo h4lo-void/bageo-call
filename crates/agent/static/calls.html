@@ -1326,9 +1326,15 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
     <div class="sys-grid">
       <div class="sys-col">
         <div class="card pad">
+          <h2 data-i18n="sys_phones"></h2>
+          <div id="sysPhones"><div class="skel"></div></div>
+        </div>
+        <div class="card pad">
           <h2 data-i18n="chk_title"></h2>
           <div id="sysCheck"><div class="skel"></div></div>
         </div>
+      </div>
+      <div class="sys-col">
         <div class="card pad">
           <h2 data-i18n="about"></h2>
           <div class="cu">
@@ -1359,12 +1365,6 @@ dialog .dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;f
             <summary data-i18n="raw_health"></summary>
             <pre class="block" id="sysRaw" tabindex="0"></pre>
           </details>
-        </div>
-      </div>
-      <div class="sys-col">
-        <div class="card pad">
-          <h2 data-i18n="sys_phones"></h2>
-          <div id="sysPhones"><div class="skel"></div></div>
         </div>
       </div>
     </div>
@@ -2483,11 +2483,11 @@ I18N["en"] = {
   f_ui_pw_h: "Once set, the console asks for it when opened (once per browser). Needed to open the console on your phone or another computer.",
   pw_setup_title: "Set a console password (optional)",
   pw_setup_body: "Set a password if you will open this console from outside your home network. You can change it later in Settings.",
-  pw_setup_ph: "At least 4 characters",
+  pw_setup_ph: "At least 8 characters",
   pw_setup_help: "This browser remembers it. You will be asked again on a new device.",
   pw_setup_skip: "Not now",
   pw_setup_save: "Save password",
-  pw_setup_short: "The password needs at least 4 characters.",
+  pw_setup_short: "The password needs at least 8 characters.",
   pw_setup_saved: "Password set",
   ev_whitelist_direct_transfer: "Whitelist: direct transfer",
   ev_whitelist_urgent_transfer: "Whitelist: emergency transfer",
@@ -2702,6 +2702,13 @@ I18N["en"] = {
   cu_lan: "Phones and computers on the same Wi-Fi can open the console at this address.",
   cu_lan_nopw: "Phones and computers on the same Wi-Fi can use this address. Set a console password before opening it on another device.",
   cu_set_pw: "Set password",
+  err_password_too_short: "The password needs at least 8 characters.",
+  err_too_many_tries: "Too many wrong passwords. Try again in a minute.",
+  bk_btn_delete: "Delete",
+  bk_del_t: "Delete this backup?",
+  bk_del_b: "Once deleted, it can't be brought back.",
+  bk_done_delete: "Backup deleted.",
+  bk_del_need_password: "To delete it, open the console on the computer that runs Bageo, or set a console password first.",
 };
 
 I18N["zh-TW"] = {
@@ -3028,11 +3035,11 @@ I18N["zh-TW"] = {
   f_ui_pw_h: "設了以後，打開控制台要輸入密碼（每個瀏覽器只要輸入一次）。要用手機或別台電腦打開控制台，一定要設。",
   pw_setup_title: "設定控制台密碼（可不設）",
   pw_setup_body: "會從外面連回這個控制台的話，建議設密碼。之後可以到「設定」修改。",
-  pw_setup_ph: "至少 4 個字",
+  pw_setup_ph: "至少 8 個字",
   pw_setup_help: "這個瀏覽器會記住密碼；換裝置時再輸入一次。",
   pw_setup_skip: "先不設定",
   pw_setup_save: "儲存密碼",
-  pw_setup_short: "密碼至少要 4 個字。",
+  pw_setup_short: "密碼至少要 8 個字。",
   pw_setup_saved: "密碼已設定",
   ev_whitelist_direct_transfer: "白名單直接轉接",
   ev_whitelist_urgent_transfer: "白名單緊急事件轉接",
@@ -3886,6 +3893,13 @@ I18N["zh-TW"] = {
   cu_lan: "同一個 Wi-Fi 的手機和電腦都能用這個網址打開。",
   cu_lan_nopw: "同一個 Wi-Fi 的手機和電腦都能用這個網址。從別的裝置打開前，請先設控制台密碼。",
   cu_set_pw: "設定密碼",
+  err_password_too_short: "密碼至少要 8 個字。",
+  err_too_many_tries: "密碼錯太多次了，請 1 分鐘後再試。",
+  bk_btn_delete: "刪除",
+  bk_del_t: "要刪除這份備份嗎？",
+  bk_del_b: "刪了就救不回來。",
+  bk_done_delete: "已刪除備份。",
+  bk_del_need_password: "要刪除，請在執行 Bageo 的電腦上打開控制台，或先設控制台密碼。",
 };
 
 I18N["zh-CN"] = {
@@ -4851,11 +4865,11 @@ I18N["zh-CN"] = {
   f_ui_pw_h: "设置后，打开控制台要输入密码（每个浏览器只需输入一次）。要用手机或别的电脑打开控制台，必须设置。",
   pw_setup_title: "设置控制台密码（选填）",
   pw_setup_body: "如果会从外面连回这个控制台，建议设置密码。以后可以到“设置”修改。",
-  pw_setup_ph: "至少 4 个字符",
+  pw_setup_ph: "至少 8 个字符",
   pw_setup_help: "这个浏览器会记住密码；换新设备时需再输入一次。",
   pw_setup_skip: "暂不设置",
   pw_setup_save: "保存密码",
-  pw_setup_short: "密码至少需要 4 个字符。",
+  pw_setup_short: "密码至少需要 8 个字符。",
   pw_setup_saved: "控制台密码已设置",
   ev_whitelist_direct_transfer: "白名单直接转接",
   ev_whitelist_urgent_transfer: "白名单紧急事件转接",
@@ -5070,6 +5084,13 @@ I18N["zh-CN"] = {
   cu_lan: "同一个 Wi-Fi 下的手机和电脑都能用这个地址打开。",
   cu_lan_nopw: "同一个 Wi-Fi 下的手机和电脑都能用这个地址。从别的设备打开前，请先设置控制台密码。",
   cu_set_pw: "设置密码",
+  err_password_too_short: "密码至少需要 8 个字符。",
+  err_too_many_tries: "密码错误次数太多，请 1 分钟后再试。",
+  bk_btn_delete: "删除",
+  bk_del_t: "要删除这份备份吗？",
+  bk_del_b: "删了就找不回来。",
+  bk_done_delete: "已删除备份。",
+  bk_del_need_password: "要删除，请在运行 Bageo 的电脑上打开控制台，或先设置控制台密码。",
 };
 
 I18N["ja"] = {
@@ -6035,11 +6056,11 @@ I18N["ja"] = {
   f_ui_pw_h: "設定すると、コンソールを開くときにパスワードを求められます（ブラウザごとに一度だけ）。スマホやほかのパソコンで開くには必要です。",
   pw_setup_title: "コンソールのパスワードを設定（任意）",
   pw_setup_body: "外出先からこのコンソールを開くなら、パスワードの設定をおすすめします。あとから「設定」で変更できます。",
-  pw_setup_ph: "4 文字以上",
+  pw_setup_ph: "8 文字以上",
   pw_setup_help: "このブラウザには記憶されます。新しい端末では、もう一度入力が必要です。",
   pw_setup_skip: "今は設定しない",
   pw_setup_save: "パスワードを保存",
-  pw_setup_short: "パスワードは 4 文字以上にしてください。",
+  pw_setup_short: "パスワードは 8 文字以上にしてください。",
   pw_setup_saved: "コンソールのパスワードを設定しました",
   ev_whitelist_direct_transfer: "ホワイトリスト：直接転送",
   ev_whitelist_urgent_transfer: "ホワイトリスト：緊急転送",
@@ -6254,6 +6275,13 @@ I18N["ja"] = {
   cu_lan: "同じ Wi-Fi のスマホやパソコンから、このアドレスで開けます。",
   cu_lan_nopw: "同じ Wi-Fi のスマホやパソコンでこのアドレスを使えます。ほかの端末で開く前に、コンソールのパスワードを設定してください。",
   cu_set_pw: "パスワードを設定",
+  err_password_too_short: "パスワードは 8 文字以上にしてください。",
+  err_too_many_tries: "パスワードの間違いが多すぎます。1 分後にもう一度お試しください。",
+  bk_btn_delete: "削除",
+  bk_del_t: "このバックアップを削除しますか？",
+  bk_del_b: "削除すると元に戻せません。",
+  bk_done_delete: "バックアップを削除しました。",
+  bk_del_need_password: "削除するには、Bageo が動いているパソコンでコンソールを開くか、先にコンソールのパスワードを設定してください。",
 };
 
 I18N["ko"] = {
@@ -7219,11 +7247,11 @@ I18N["ko"] = {
   f_ui_pw_h: "설정하면 콘솔을 열 때 비밀번호를 묻습니다(브라우저마다 한 번). 휴대폰이나 다른 컴퓨터에서 콘솔을 열려면 꼭 필요합니다.",
   pw_setup_title: "콘솔 비밀번호 설정 (선택)",
   pw_setup_body: "밖에서 이 콘솔에 접속할 계획이라면 비밀번호를 설정하는 것이 좋습니다. 나중에 '설정'에서 바꿀 수 있습니다.",
-  pw_setup_ph: "4자 이상",
+  pw_setup_ph: "8자 이상",
   pw_setup_help: "이 브라우저에는 저장되며, 새 기기에서는 다시 입력해야 합니다.",
   pw_setup_skip: "지금 건너뛰기",
   pw_setup_save: "비밀번호 저장",
-  pw_setup_short: "비밀번호는 4자 이상이어야 합니다.",
+  pw_setup_short: "비밀번호는 8자 이상이어야 합니다.",
   pw_setup_saved: "콘솔 비밀번호를 설정했습니다",
   ev_whitelist_direct_transfer: "화이트리스트: 직접 전환",
   ev_whitelist_urgent_transfer: "화이트리스트: 긴급 전환",
@@ -7438,6 +7466,13 @@ I18N["ko"] = {
   cu_lan: "같은 Wi-Fi의 휴대폰과 컴퓨터에서 이 주소로 열 수 있습니다.",
   cu_lan_nopw: "같은 Wi-Fi의 휴대폰과 컴퓨터에서 이 주소를 쓸 수 있습니다. 다른 기기에서 열기 전에 콘솔 비밀번호를 정하세요.",
   cu_set_pw: "비밀번호 정하기",
+  err_password_too_short: "비밀번호는 8자 이상이어야 합니다.",
+  err_too_many_tries: "비밀번호가 너무 여러 번 틀렸습니다. 1분 뒤에 다시 시도하세요.",
+  bk_btn_delete: "삭제",
+  bk_del_t: "이 백업을 삭제할까요?",
+  bk_del_b: "삭제하면 되돌릴 수 없습니다.",
+  bk_done_delete: "백업을 삭제했습니다.",
+  bk_del_need_password: "삭제하려면 Bageo가 실행 중인 컴퓨터에서 콘솔을 열거나, 먼저 콘솔 비밀번호를 정하세요.",
 };
 
 I18N["es"] = {
@@ -8403,11 +8438,11 @@ I18N["es"] = {
   f_ui_pw_h: "Si la pones, la consola la pedirá al abrirla (una vez por navegador). Hace falta para abrir la consola en el teléfono u otro equipo.",
   pw_setup_title: "Configurar una contraseña de la consola (opcional)",
   pw_setup_body: "Si vas a abrir esta consola desde fuera de casa, conviene poner una contraseña. Puedes cambiarla después en Ajustes.",
-  pw_setup_ph: "Mínimo 4 caracteres",
+  pw_setup_ph: "Mínimo 8 caracteres",
   pw_setup_help: "Este navegador la recuerda. Te la pedirán de nuevo en un dispositivo nuevo.",
   pw_setup_skip: "Ahora no",
   pw_setup_save: "Guardar contraseña",
-  pw_setup_short: "La contraseña debe tener al menos 4 caracteres.",
+  pw_setup_short: "La contraseña debe tener al menos 8 caracteres.",
   pw_setup_saved: "Contraseña configurada",
   ev_whitelist_direct_transfer: "Lista blanca: transferencia directa",
   ev_whitelist_urgent_transfer: "Lista blanca: transferencia de emergencia",
@@ -8622,6 +8657,13 @@ I18N["es"] = {
   cu_lan: "Los teléfonos y equipos de la misma red Wi-Fi pueden abrir la consola con esta dirección.",
   cu_lan_nopw: "Los teléfonos y equipos de la misma red Wi-Fi pueden usar esta dirección. Antes de abrirla en otro dispositivo, pon una contraseña a la consola.",
   cu_set_pw: "Poner contraseña",
+  err_password_too_short: "La contraseña debe tener al menos 8 caracteres.",
+  err_too_many_tries: "Demasiadas contraseñas incorrectas. Vuelve a intentarlo en un minuto.",
+  bk_btn_delete: "Eliminar",
+  bk_del_t: "¿Eliminar esta copia?",
+  bk_del_b: "Una vez eliminada, no se puede recuperar.",
+  bk_done_delete: "Copia eliminada.",
+  bk_del_need_password: "Para eliminarla, abre la consola en el equipo donde está Bageo o pon antes una contraseña a la consola.",
 };
 
 I18N["fr"] = {
@@ -9587,11 +9629,11 @@ I18N["fr"] = {
   f_ui_pw_h: "Une fois défini, la console le demande à l'ouverture (une fois par navigateur). Nécessaire pour ouvrir la console sur votre téléphone ou un autre ordinateur.",
   pw_setup_title: "Définir un mot de passe de la console (facultatif)",
   pw_setup_body: "Si vous comptez ouvrir cette console depuis l'extérieur, définissez un mot de passe. Vous pourrez le modifier plus tard dans Réglages.",
-  pw_setup_ph: "Au moins 4 caractères",
+  pw_setup_ph: "Au moins 8 caractères",
   pw_setup_help: "Ce navigateur le mémorise. Il sera redemandé sur un nouvel appareil.",
   pw_setup_skip: "Pas maintenant",
   pw_setup_save: "Enregistrer le mot de passe",
-  pw_setup_short: "Le mot de passe doit contenir au moins 4 caractères.",
+  pw_setup_short: "Le mot de passe doit contenir au moins 8 caractères.",
   pw_setup_saved: "Mot de passe défini",
   ev_whitelist_direct_transfer: "Liste blanche : transfert direct",
   ev_whitelist_urgent_transfer: "Liste blanche : transfert d'urgence",
@@ -9806,6 +9848,13 @@ I18N["fr"] = {
   cu_lan: "Les téléphones et ordinateurs du même Wi-Fi peuvent ouvrir la console à cette adresse.",
   cu_lan_nopw: "Les téléphones et ordinateurs du même Wi-Fi peuvent utiliser cette adresse. Avant de l'ouvrir sur un autre appareil, définissez un mot de passe pour la console.",
   cu_set_pw: "Définir le mot de passe",
+  err_password_too_short: "Le mot de passe doit contenir au moins 8 caractères.",
+  err_too_many_tries: "Trop de mots de passe erronés. Réessayez dans une minute.",
+  bk_btn_delete: "Supprimer",
+  bk_del_t: "Supprimer cette sauvegarde ?",
+  bk_del_b: "Une fois supprimée, elle ne peut pas être récupérée.",
+  bk_done_delete: "Sauvegarde supprimée.",
+  bk_del_need_password: "Pour la supprimer, ouvrez la console sur l'ordinateur où tourne Bageo, ou définissez d'abord un mot de passe pour la console.",
 };
 
 I18N["de"] = {
@@ -10771,11 +10820,11 @@ I18N["de"] = {
   f_ui_pw_h: "Ist es gesetzt, fragt die Konsole beim Öffnen danach (einmal pro Browser). Nötig, um die Konsole auf dem Handy oder einem anderen Computer zu öffnen.",
   pw_setup_title: "Konsolenpasswort festlegen (optional)",
   pw_setup_body: "Wenn du diese Konsole von unterwegs öffnen willst, setz ein Passwort. Du kannst es später in den Einstellungen ändern.",
-  pw_setup_ph: "Mindestens 4 Zeichen",
+  pw_setup_ph: "Mindestens 8 Zeichen",
   pw_setup_help: "Dieser Browser merkt es sich. Auf einem neuen Gerät wirst du erneut danach gefragt.",
   pw_setup_skip: "Jetzt nicht",
   pw_setup_save: "Passwort speichern",
-  pw_setup_short: "Das Passwort muss mindestens 4 Zeichen lang sein.",
+  pw_setup_short: "Das Passwort muss mindestens 8 Zeichen lang sein.",
   pw_setup_saved: "Passwort festgelegt",
   ev_whitelist_direct_transfer: "Whitelist: Direktweiterleitung",
   ev_whitelist_urgent_transfer: "Whitelist: Notfallweiterleitung",
@@ -10990,6 +11039,13 @@ I18N["de"] = {
   cu_lan: "Handys und Computer im selben WLAN können die Konsole unter dieser Adresse öffnen.",
   cu_lan_nopw: "Handys und Computer im selben WLAN können diese Adresse nutzen. Bevor du sie auf einem anderen Gerät öffnest, lege ein Konsolen-Passwort fest.",
   cu_set_pw: "Passwort festlegen",
+  err_password_too_short: "Das Passwort muss mindestens 8 Zeichen lang sein.",
+  err_too_many_tries: "Zu viele falsche Passwörter. Versuch es in einer Minute noch einmal.",
+  bk_btn_delete: "Löschen",
+  bk_del_t: "Diese Sicherung löschen?",
+  bk_del_b: "Einmal gelöscht, lässt sie sich nicht zurückholen.",
+  bk_done_delete: "Sicherung gelöscht.",
+  bk_del_need_password: "Zum Löschen öffne die Konsole auf dem Computer, auf dem Bageo läuft, oder lege zuerst ein Konsolen-Passwort fest.",
 };
 
 I18N["pt"] = {
@@ -11955,11 +12011,11 @@ I18N["pt"] = {
   f_ui_pw_h: "Depois de definida, o console pede a senha ao abrir (uma vez por navegador). Necessária para abrir o console no celular ou em outro computador.",
   pw_setup_title: "Definir uma senha do console (opcional)",
   pw_setup_body: "Se você vai abrir este console de fora de casa, defina uma senha. Dá para mudar depois em Configurações.",
-  pw_setup_ph: "Pelo menos 4 caracteres",
+  pw_setup_ph: "Pelo menos 8 caracteres",
   pw_setup_help: "Este navegador a lembra. Ela será pedida de novo em um dispositivo novo.",
   pw_setup_skip: "Agora não",
   pw_setup_save: "Salvar senha",
-  pw_setup_short: "A senha deve ter pelo menos 4 caracteres.",
+  pw_setup_short: "A senha deve ter pelo menos 8 caracteres.",
   pw_setup_saved: "Senha definida",
   ev_whitelist_direct_transfer: "Lista branca: transferência direta",
   ev_whitelist_urgent_transfer: "Lista branca: transferência de emergência",
@@ -12174,6 +12230,13 @@ I18N["pt"] = {
   cu_lan: "Celulares e computadores no mesmo Wi-Fi podem abrir o console neste endereço.",
   cu_lan_nopw: "Celulares e computadores no mesmo Wi-Fi podem usar este endereço. Antes de abrir em outro aparelho, defina uma senha para o console.",
   cu_set_pw: "Definir senha",
+  err_password_too_short: "A senha deve ter pelo menos 8 caracteres.",
+  err_too_many_tries: "Senhas erradas demais. Tente de novo daqui a um minuto.",
+  bk_btn_delete: "Excluir",
+  bk_del_t: "Excluir este backup?",
+  bk_del_b: "Depois de excluído, não dá para recuperar.",
+  bk_done_delete: "Backup excluído.",
+  bk_del_need_password: "Para excluir, abra o console no computador onde o Bageo está ou defina antes uma senha para o console.",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word
@@ -14939,7 +15002,13 @@ function bkRender() {
     dl.textContent = t("bk_btn_download");
     dl.dataset.bkDownload = b.name;
     dl.disabled = busy;
-    acts.append(re, dl);
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "btn sm";
+    del.textContent = t("bk_btn_delete");
+    del.dataset.bkDelete = b.name;
+    del.disabled = busy;
+    acts.append(re, dl, del);
     row.append(who, acts);
     return row;
   });
@@ -15215,6 +15284,12 @@ $("bkFile").addEventListener("change", () => {
   });
 });
 $("bkList").addEventListener("click", (ev) => {
+  const x = ev.target.closest("[data-bk-delete]");
+  if (x) {
+    if (bk && bk.can_download === false) { toast(t("bk_del_need_password"), true); return; }
+    bkDelete(x.dataset.bkDelete);
+    return;
+  }
   const g = ev.target.closest("[data-bk-download]");
   if (g) {
     if (bk && bk.can_download === false) { toast(t("bk_err_need_password"), true); return; }
@@ -15230,6 +15305,18 @@ $("bkList").addEventListener("click", (ev) => {
   });
 });
 $("btnBkAll").addEventListener("click", () => { bkAll = !bkAll; bkRender(); });
+// Deleting a backup file cannot be undone: asked first.
+async function bkDelete(name) {
+  const yes = await ask({ title: t("bk_del_t"), body: t("bk_del_b"), ok: t("bk_btn_delete"), danger: true });
+  if (!yes) return;
+  try {
+    await api("/backup/delete", jsonBody("POST", { name }));
+    toast(t("bk_done_delete"));
+  } catch (e) {
+    if (e.status !== 401) toast(e.data && e.data.code === "need_password" ? t("bk_del_need_password") : bkErr(e), true);
+  }
+  bkLoad();
+}
 $("btnBkOpen").addEventListener("click", async () => {
   try { await api("/backup/open-folder", jsonBody("POST", {})); }
   catch (e) { if (e.status !== 401) toast(bkErr(e), true); }
@@ -17083,7 +17170,7 @@ async function checkInitialPassword() {
     $("pwSetupForm").onsubmit = async (e) => {
       e.preventDefault();
       const pw = $("pwSetupInput").value.trim();
-      if (pw.length < 4) {
+      if (pw.length < 8) {
         $("pwSetupErr").textContent = t("pw_setup_short");
         $("pwSetupErr").hidden = false;
         $("pwSetupInput").focus();
@@ -17101,10 +17188,10 @@ async function checkInitialPassword() {
           loadSettings();
         } else {
           const errData = await r.json().catch(() => null);
-          const code = errData && (errData.error || errData.code || "");
-          $("pwSetupErr").textContent = code === "too_short"
-            ? t("pw_setup_short")
-            : t("save_failed", { msg: (errData && errData.message) || t("err_save_failed") });
+          // A code the page knows (password too short, too many tries) in its own words.
+          $("pwSetupErr").textContent = errData && errData.code
+            ? apiErrorText(errData, r.status)
+            : t("save_failed", { msg: t("err_save_failed") });
           $("pwSetupErr").hidden = false;
         }
       } catch (err) {

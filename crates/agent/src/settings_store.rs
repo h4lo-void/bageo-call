@@ -2372,6 +2372,16 @@ impl SettingsStore {
 
 static ACTIVE_UI_PASSWORD: std::sync::RwLock<String> = std::sync::RwLock::new(String::new());
 
+/// The fewest characters a new console password may have.
+pub const MIN_UI_PASSWORD_CHARS: usize = 8;
+
+/// A new console password that is too short. Empty is not: it keeps the
+/// saved password.
+pub fn ui_password_too_short(pw: &str) -> bool {
+    let pw = pw.trim();
+    !pw.is_empty() && pw.chars().count() < MIN_UI_PASSWORD_CHARS
+}
+
 /// The active console password (`ui_password` from settings if set, else `env_token`).
 pub fn active_ui_token(env_token: &str) -> String {
     let pw = ACTIVE_UI_PASSWORD

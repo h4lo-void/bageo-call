@@ -1295,6 +1295,10 @@ async fn settings_put(
     if !patch.is_object() {
         return api_error(StatusCode::BAD_REQUEST, "bad_request", "JSON object body required");
     }
+    // A new console password: at least 8 characters (one already saved stays usable).
+    if patch.get("ui_password").and_then(Value::as_str).is_some_and(crate::settings_store::ui_password_too_short) {
+        return password_too_short();
+    }
     // A backup folder this computer cannot write in, or a backup password that
     // does not work, is not saved.
     if let Some(refused) = crate::backup::check_settings_patch(&patch, &state.settings_store.snapshot()) {
@@ -3153,6 +3157,8 @@ async fn initial_password(
         json!({ "ui_password_prompted": true })
     } else if pw.is_empty() {
         return api_error(StatusCode::BAD_REQUEST, "bad_request", "password cannot be empty");
+    } else if crate::settings_store::ui_password_too_short(pw) {
+        return password_too_short();
     } else {
         json!({
             "ui_password": pw,
@@ -3171,6 +3177,16 @@ async fn initial_password(
             format!("{e:#}"),
         ),
     }
+}
+
+/// 400 `password_too_short`: a new console password needs
+/// [`crate::settings_store::MIN_UI_PASSWORD_CHARS`] characters.
+fn password_too_short() -> Response {
+    api_error(
+        StatusCode::BAD_REQUEST,
+        "password_too_short",
+        format!("the console password needs at least {} characters", crate::settings_store::MIN_UI_PASSWORD_CHARS),
+    )
 }
 
 #[derive(Deserialize)]
@@ -4678,6 +4694,27 @@ mod tests {
         )
         .await;
         assert_eq!(empty.status(), StatusCode::BAD_REQUEST);
+
+        // A new password needs 8 characters (counted as characters, not bytes).
+        for (body, short) in [(r#"{"password":"seven77"}"#, true), (r#"{"password":"密碼密碼密碼密"}"#, true)] {
+            let r = initial_password(
+                State(open.clone()),
+                sms_json_headers(None),
+                Query(TokenQuery { token: None }),
+                axum::body::Bytes::from(body.to_string()),
+            )
+            .await;
+            assert_eq!(r.status(), StatusCode::BAD_REQUEST, "{body}");
+            let got: Value = serde_json::from_str(&body_text(r).await).unwrap();
+            assert_eq!(got["code"], json!("password_too_short"), "{body} short={short}");
+        }
+        let r = settings_put(State(open.clone()), HeaderMap::new(), Query(TokenQuery { token: None }), Json(json!({"ui_password": " seven77 "}))).await;
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        let got: Value = serde_json::from_str(&body_text(r).await).unwrap();
+        assert_eq!(got["code"], json!("password_too_short"));
+        assert!(open.settings_store.snapshot().ui_password.is_empty(), "nothing saved");
+        assert!(!crate::settings_store::ui_password_too_short("eight888"));
+        assert!(!crate::settings_store::ui_password_too_short(""), "empty keeps the saved one");
 
         let skipped = initial_password(
             State(open.clone()),

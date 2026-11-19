@@ -11,6 +11,12 @@
 //! SO_REUSEADDR / SO_REUSEPORT. When the port still cannot be had it logs one
 //! line and stays off; the console address then falls back to the LAN IP (see
 //! `settings_store::effective_console_url`).
+//!
+//! On macOS the name is registered with the system's own Bonjour instead
+//! ([`bonjour`]): a program's socket there stops getting the network's
+//! multicast queries a minute or so after it starts (it still gets them on
+//! Windows and Linux), so answers only reached caches through the start
+//! announcement and the name stopped working once they expired.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -104,19 +110,113 @@ pub fn answer_ip(listen: IpAddr) -> Option<Ipv4Addr> {
 
 /// Start answering `<name()>.local` in a background thread. `name` is read
 /// again every few seconds, so a changed setting applies without a restart;
-/// an empty name closes the socket.
-pub fn spawn<F>(listen: IpAddr, name: F)
+/// an empty name closes the socket. `port`: the console's port, for the
+/// service macOS registers along with the name.
+pub fn spawn<F>(listen: IpAddr, port: u16, name: F)
 where
     F: Fn() -> String + Send + 'static,
 {
+    #[cfg(target_os = "macos")]
     let started = std::thread::Builder::new()
         .name("mdns".into())
-        .spawn(move || run(listen, name));
+        .spawn(move || bonjour::run(listen, port, name));
+    #[cfg(not(target_os = "macos"))]
+    let started = std::thread::Builder::new()
+        .name("mdns".into())
+        .spawn(move || {
+            let _ = port;
+            run(listen, name)
+        });
     if let Err(e) = started {
         warn!("mDNS: could not start ({e})");
     }
 }
 
+/// macOS: the name is registered with the system's Bonjour by a `dns-sd -P`
+/// process (an HTTP service on `<name>.local` at this computer's address),
+/// started again when the name, the address or the port changes. A small
+/// shell around it ends it when Bageo ends, even when Bageo is killed.
+#[cfg(target_os = "macos")]
+mod bonjour {
+    use super::*;
+    use std::process::{Child, Command, Stdio};
+
+    /// The shell around `dns-sd`: `$1` = Bageo's process id, the rest = the command.
+    const WATCH: &str = "P=$1; shift; \"$@\" & C=$!; trap 'kill $C 2>/dev/null; exit 0' TERM INT HUP; \
+        while kill -0 \"$P\" 2>/dev/null && kill -0 \"$C\" 2>/dev/null; do sleep 1; done; kill $C 2>/dev/null";
+
+    /// The `dns-sd` arguments for `<host>.local` at `ip`, with an HTTP service at `port`.
+    pub(super) fn args(host: &str, ip: Ipv4Addr, port: u16) -> Vec<String> {
+        vec![
+            "-P".into(),
+            format!("Bageo ({host})"),
+            "_http._tcp".into(),
+            "local".into(),
+            port.to_string(),
+            format!("{host}.local"),
+            ip.to_string(),
+            "path=/calls/".into(),
+        ]
+    }
+
+    fn start(host: &str, ip: Ipv4Addr, port: u16) -> std::io::Result<Child> {
+        Command::new("/bin/sh")
+            .arg("-c")
+            .arg(WATCH)
+            .arg("sh")
+            .arg(std::process::id().to_string())
+            .arg("/usr/bin/dns-sd")
+            .args(args(host, ip, port))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+    }
+
+    fn stop(child: &mut Child) {
+        // TERM lets the shell end `dns-sd` too.
+        let _ = Command::new("/bin/kill").arg(child.id().to_string()).status();
+        let _ = child.wait();
+    }
+
+    pub(super) fn run<F: Fn() -> String>(listen: IpAddr, port: u16, name: F) {
+        let mut running: Option<((String, Ipv4Addr, u16), Child)> = None;
+        loop {
+            let host = parse_name_setting(&name());
+            let shown = if crate::lan::port_80() { 80 } else { port };
+            let want = answer_ip(listen).filter(|_| !host.is_empty()).map(|ip| (host.clone(), ip, shown));
+            if let Some((had, child)) = running.as_mut() {
+                let ended = child.try_wait().ok().flatten().is_some();
+                if ended || want.as_ref() != Some(had) {
+                    if ended {
+                        warn!("mDNS: Bonjour stopped answering as {}.local; starting it again", had.0);
+                    }
+                    stop(child);
+                    running = None;
+                    ACTIVE.store(false, Ordering::Relaxed);
+                    if want.is_none() {
+                        info!("mDNS: off (the network name setting is empty, or no LAN address)");
+                    }
+                }
+            }
+            if running.is_none() {
+                if let Some(w) = want {
+                    match start(&w.0, w.1, w.2) {
+                        Ok(child) => {
+                            ACTIVE.store(true, Ordering::Relaxed);
+                            info!("mDNS: this computer answers as {}.local (through Bonjour)", w.0);
+                            running = Some((w, child));
+                        }
+                        Err(e) => warn!("mDNS: could not start dns-sd ({e}); {}.local will not work, open the console by its IP address", w.0),
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_secs(3));
+        }
+    }
+}
+
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn run<F: Fn() -> String>(listen: IpAddr, name: F) {
     let mut sock: Option<UdpSocket> = None;
     let mut buf = vec![0u8; 9000];
