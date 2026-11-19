@@ -21,6 +21,13 @@ object ConnectionPlan {
         if (agentUrl != usbUrl) listOf(agentUrl) else (listOf(usbUrl) + wifiUrls).distinct()
 
     /**
+     * The addresses tried after USB: the one paired by IP address ([ipUrl], typed by the
+     * owner) first, then the Wi-Fi addresses Bageo sent over USB.
+     */
+    fun networkUrls(ipUrl: String?, wifiUrls: List<String>): List<String> =
+        (listOfNotNull(ipUrl) + wifiUrls).distinct()
+
+    /**
      * The stored Wi-Fi addresses after an `agent_info`. [incoming] null means the message
      * had no `wifi` field (an older agent): keep what is stored. An empty list clears it.
      * Entries that are not valid addresses are dropped.

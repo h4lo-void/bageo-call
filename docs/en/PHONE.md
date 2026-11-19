@@ -86,7 +86,7 @@ handset. All of this can be switched off from the app or the console (see
    | Make Bageo the call screening app | **Set**. |
    | Let Bageo control Do Not Disturb | **Open settings** and allow it. |
    | Do not let Android put Bageo to sleep | **Allow**, so Android does not stop the service. |
-   | Plug into the computer by USB to pair | Turn on USB debugging and plug the phone into the computer running Bageo once; after that it also connects over Wi-Fi. |
+   | Plug into the computer by USB to pair | Turn on USB debugging and plug the phone into the computer running Bageo once; after that it also connects over Wi-Fi. Cannot plug it in (Bageo in Docker)? Tap **Connect by IP address** ([Wi-Fi](#wi-fi)). |
 
    When every step is done the list folds away, and once the phone is
    connected to the computer the card says *The AI is answering your calls*.
@@ -149,7 +149,25 @@ shows for each phone whether it is connected by USB or over Wi-Fi.
 - The pairing key goes only to a phone that is already connected. It is not
   shown in the console, notifications or logs.
 - An older app ignores the pairing and keeps using USB only.
-- With Docker the phone does not get the Wi-Fi address: enter it by hand.
+- With Docker, or when the phone cannot be plugged in at all, pair it by IP
+  address (below).
+
+**Pairing by IP address.** Use this when Bageo runs in Docker or on another
+computer and the phone cannot be plugged in.
+
+1. In the web console open *System* and, under **Pair a phone by IP address**,
+   click **Get a pairing code**. The code works once, for 10 minutes.
+2. In the Bageo app tap **Connect by IP address** (on the status card, in the
+   setup steps, or under *Advanced → Connection*) and enter Bageo's IP address
+   with its port, for example `192.168.1.20:8787`, and the code.
+
+The phone keeps the address and connects to it again after a restart. It uses
+the same port as the console (8787 unless you changed it); with Docker the
+host port can be another number: type the one you published. The phone and
+Bageo must be on the same network, and **Phones can also connect over Wi-Fi**
+must be on. A new code replaces the old one, and five wrong codes void it.
+**Pair phones again** also disconnects phones paired this way; pair them again
+with a new code.
 
 **Entering the address by hand.** Use this when the phone cannot be cabled to
 the computer at all.

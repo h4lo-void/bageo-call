@@ -17,11 +17,19 @@
 //! "Pair phones again" in the console ([`Pairing::renew`]), which also drops
 //! every phone connected over Wi-Fi. It is never shown in the console,
 //! `/health`, logs or chat replies.
+//!
+//! A phone that cannot be plugged in (the agent runs in Docker or on another
+//! computer) gets the key with a pairing code instead ([`PairCodes`]): the
+//! console makes a 6-digit code, the owner types it with the agent's address
+//! in the app, and the app trades it once for the key
+//! (`POST /api/phone-pairing/claim`). It then connects to the address typed,
+//! on `/ws` with the key.
 
 use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use base64::Engine as _;
 use tokio::sync::watch;
@@ -257,6 +265,126 @@ pub fn wifi_urls(lan_ip: Option<Ipv4Addr>, port: u16, mdns_host: &str, key: &str
     urls
 }
 
+/// How long a pairing code works.
+pub const CODE_TTL: Duration = Duration::from_secs(10 * 60);
+/// Wrong tries that void the code in use.
+pub const CODE_MAX_WRONG: u32 = 5;
+/// Wrong tries per minute, from anywhere, after which every try is refused
+/// until the minute is over.
+pub const CLAIM_WRONG_PER_MINUTE: u32 = 20;
+/// Digits in a pairing code.
+pub const CODE_DIGITS: usize = 6;
+
+/// Why a pairing code was not taken.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClaimError {
+    /// No code in use: none was made, it expired, it was used, or it was voided.
+    NoCode,
+    /// Not the code in use.
+    Wrong,
+    /// Too many wrong tries in the last minute.
+    TooMany,
+}
+
+impl ClaimError {
+    /// The `code` of the API's error answer.
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::NoCode => "no_code",
+            Self::Wrong => "wrong_code",
+            Self::TooMany => "too_many_tries",
+        }
+    }
+}
+
+struct PendingCode {
+    code: String,
+    made: Instant,
+    wrong: u32,
+}
+
+#[derive(Default)]
+struct CodesInner {
+    pending: Option<PendingCode>,
+    window_start: Option<Instant>,
+    window_wrong: u32,
+}
+
+/// The pairing code the console made: one at a time, [`CODE_TTL`] long, good
+/// once, voided after [`CODE_MAX_WRONG`] wrong tries. Never logged.
+#[derive(Default)]
+pub struct PairCodes {
+    inner: Mutex<CodesInner>,
+}
+
+/// A random number below 10^[`CODE_DIGITS`], from the system's random source
+/// (through uuid v4), without bias.
+fn fresh_code() -> String {
+    const SPAN: u32 = 1_000_000;
+    const LIMIT: u32 = u32::MAX - (u32::MAX % SPAN);
+    loop {
+        let b = uuid::Uuid::new_v4().into_bytes();
+        let n = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+        if n < LIMIT {
+            return format!("{:0width$}", n % SPAN, width = CODE_DIGITS);
+        }
+    }
+}
+
+impl PairCodes {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, CodesInner> {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// A new code; the one before stops working.
+    pub fn issue(&self, now: Instant) -> String {
+        let code = fresh_code();
+        self.lock().pending = Some(PendingCode { code: code.clone(), made: now, wrong: 0 });
+        code
+    }
+
+    /// Use `code`: Ok once for the code in use, which then stops working.
+    pub fn claim(&self, code: &str, now: Instant) -> Result<(), ClaimError> {
+        let code = code.trim();
+        let mut inner = self.lock();
+        if inner.window_start.is_none_or(|t| now.saturating_duration_since(t) >= Duration::from_secs(60)) {
+            inner.window_start = Some(now);
+            inner.window_wrong = 0;
+        }
+        if inner.window_wrong >= CLAIM_WRONG_PER_MINUTE {
+            return Err(ClaimError::TooMany);
+        }
+        if inner.pending.as_ref().is_some_and(|p| now.saturating_duration_since(p.made) >= CODE_TTL) {
+            inner.pending = None;
+        }
+        let Some(pending) = inner.pending.as_mut() else {
+            inner.window_wrong += 1;
+            return Err(ClaimError::NoCode);
+        };
+        if same(code, &pending.code) {
+            inner.pending = None;
+            return Ok(());
+        }
+        pending.wrong += 1;
+        if pending.wrong >= CODE_MAX_WRONG {
+            inner.pending = None;
+        }
+        inner.window_wrong += 1;
+        Err(ClaimError::Wrong)
+    }
+}
+
+static CODES: OnceLock<PairCodes> = OnceLock::new();
+
+/// The agent's pairing code.
+pub fn codes() -> &'static PairCodes {
+    CODES.get_or_init(PairCodes::new)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -338,5 +466,65 @@ mod tests {
         );
         assert_eq!(wifi_urls(ip, 8788, "", "k3y"), vec!["ws://192.168.1.20:8788/ws?token=k3y".to_string()], "network name off");
         assert!(wifi_urls(None, 8788, "bageo", "k3y").is_empty(), "no LAN address");
+    }
+
+    #[test]
+    fn a_pairing_code_is_six_digits_and_works_once() {
+        let codes = PairCodes::new();
+        let t0 = Instant::now();
+        let code = codes.issue(t0);
+        assert_eq!(code.len(), CODE_DIGITS);
+        assert!(code.bytes().all(|b| b.is_ascii_digit()), "{code:?}");
+        assert_eq!(codes.claim(&format!(" {code} "), t0), Ok(()), "blanks around it are fine");
+        assert_eq!(codes.claim(&code, t0), Err(ClaimError::NoCode), "used: it stops working");
+    }
+
+    #[test]
+    fn a_pairing_code_expires_after_ten_minutes() {
+        let codes = PairCodes::new();
+        let t0 = Instant::now();
+        let code = codes.issue(t0);
+        assert_eq!(codes.claim(&code, t0 + CODE_TTL), Err(ClaimError::NoCode));
+        let code = codes.issue(t0);
+        assert_eq!(codes.claim(&code, t0 + CODE_TTL - Duration::from_secs(1)), Ok(()), "still good just before");
+    }
+
+    #[test]
+    fn five_wrong_tries_void_the_code() {
+        let codes = PairCodes::new();
+        let t0 = Instant::now();
+        let code = codes.issue(t0);
+        let wrong = if code == "000000" { "000001" } else { "000000" };
+        for _ in 0..CODE_MAX_WRONG {
+            assert_eq!(codes.claim(wrong, t0), Err(ClaimError::Wrong));
+        }
+        assert_eq!(codes.claim(&code, t0), Err(ClaimError::NoCode), "voided: even the right code is refused");
+        let code = codes.issue(t0);
+        assert_eq!(codes.claim(&code, t0), Ok(()), "a new code works");
+    }
+
+    #[test]
+    fn a_new_code_replaces_the_old_one() {
+        let codes = PairCodes::new();
+        let t0 = Instant::now();
+        let old = codes.issue(t0);
+        let mut new = codes.issue(t0);
+        while new == old {
+            new = codes.issue(t0);
+        }
+        assert_eq!(codes.claim(&old, t0), Err(ClaimError::Wrong), "the old one no longer works");
+        assert_eq!(codes.claim(&new, t0), Ok(()));
+    }
+
+    #[test]
+    fn too_many_wrong_tries_a_minute_stop_every_try() {
+        let codes = PairCodes::new();
+        let t0 = Instant::now();
+        for _ in 0..CLAIM_WRONG_PER_MINUTE {
+            assert_eq!(codes.claim("123456", t0), Err(ClaimError::NoCode));
+        }
+        let code = codes.issue(t0);
+        assert_eq!(codes.claim(&code, t0), Err(ClaimError::TooMany), "held for the rest of the minute");
+        assert_eq!(codes.claim(&code, t0 + Duration::from_secs(60)), Ok(()), "the next minute it works");
     }
 }

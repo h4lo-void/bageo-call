@@ -13,6 +13,11 @@
 # The web console is then at http://<this-host>:8787/?token=<CALLS_UI_TOKEN>
 # and phones connect to ws://<this-host>:8787/ws?token=<DEVICE_TOKEN>.
 #
+# Phones without USB: in the console open System -> "Pair a phone by IP
+# address" -> "Get a pairing code"; in the Bageo app tap "Connect by IP
+# address" and enter this host's IP (e.g. 192.168.1.20:8787) and the code.
+# The phone and this host must be on the same network.
+#
 # http://bageo.local:8787 (the agent's network name, MDNS_NAME): the agent does
 # not answer it inside a container (with the default bridge network below the
 # answers would stay inside Docker). To use the name, let the host announce
@@ -30,6 +35,8 @@ services:
     ports:
       # Bind to one address of the host (e.g. "192.168.1.20:8787:8787") to keep
       # it off other networks.
+      # The console and the phones both use this one port. The host port can be
+      # another number (e.g. "9000:8787"); then type that port in the phone app.
       - "8787:8787"
     environment:
       # Inside a container the agent is reachable from the network: both

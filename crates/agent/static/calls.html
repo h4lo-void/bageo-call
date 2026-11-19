@@ -358,6 +358,11 @@ audio{width:100%;height:40px;margin-top:10px;display:block}
 .field{margin:16px 0 0}
 .field>label,.field>.lbl{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:550;margin-bottom:6px;min-height:24px}
 .help{color:var(--muted);font-size:.86rem;margin-top:6px}
+.ippair{margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface2)}
+.ippair p{margin:0 0 8px}
+.ippair-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;margin-top:6px}
+.ippair-row code{font-family:var(--mono);font-size:1.02rem}
+.ippair-code{font-family:var(--mono);font-size:2rem;font-weight:650;letter-spacing:.16em;font-variant-numeric:tabular-nums}
 .dirty>label::after,.dirty>.lbl::after,.sw.dirty b::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--warn);display:inline-block;margin-left:6px;vertical-align:middle}
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 20px}
 .inline{display:flex;gap:8px;align-items:center}
@@ -1377,6 +1382,17 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
         <div class="card pad">
           <h2 data-i18n="sys_phones"></h2>
           <div id="sysPhones"><div class="skel"></div></div>
+        </div>
+        <div class="card pad" id="ipPairCard">
+          <h2 data-i18n="ippair_title"></h2>
+          <p class="help" style="margin:0 0 10px" data-i18n="ippair_h"></p>
+          <button type="button" class="btn sm" id="btnIpPair" data-i18n="ippair_btn"></button>
+          <div class="ippair" id="ipPairOut" hidden>
+            <p data-i18n="ippair_step"></p>
+            <div class="ippair-row"><span class="muted" data-i18n="ippair_addr"></span><span id="ipPairAddr"></span></div>
+            <div class="ippair-row"><span class="muted" data-i18n="ippair_code"></span><b class="ippair-code" id="ipPairCode"></b></div>
+            <div class="help" data-i18n="ippair_valid"></div>
+          </div>
         </div>
         <div class="card pad">
           <h2 data-i18n="chk_title"></h2>
@@ -2787,6 +2803,15 @@ I18N["en"] = {
   f_wl_who_others_h: "Includes hidden numbers. A stranger saying it's urgent may be a scam; turn this on only if you need it.",
   f_wl_who_h: "People on the Blacklist or the Stall list are never forwarded.",
   wl_enable: "Turn on forwarding",
+  ippair_title: "Pair a phone by IP address",
+  ippair_h: "Use this when Bageo runs in Docker or on another computer and the phone can't be plugged in.",
+  ippair_btn: "Get a pairing code",
+  ippair_step: "In the Bageo app on the phone, tap \"Connect by IP address\" and enter:",
+  ippair_addr: "Address",
+  ippair_code: "Pairing code",
+  ippair_valid: "Valid for 10 minutes",
+  ippair_docker: "Enter the IP of the Docker host",
+  err_phone_wifi_off: "Turn on \"Phones can also connect over Wi-Fi\" first.",
 };
 
 I18N["zh-TW"] = {
@@ -3991,6 +4016,15 @@ I18N["zh-TW"] = {
   f_wl_who_others_h: "包含未顯示號碼。陌生人說有急事也可能是詐騙，需要時再打開。",
   f_wl_who_h: "黑名單和陪聊名單的人不會轉。",
   wl_enable: "開啟轉接",
+  ippair_title: "用 IP 位址配對手機",
+  ippair_h: "Bageo 裝在 Docker 或另一台電腦、手機插不上 USB 時用。",
+  ippair_btn: "產生配對碼",
+  ippair_step: "在手機的 Bageo App 點「用 IP 位址連線」，輸入：",
+  ippair_addr: "位址",
+  ippair_code: "配對碼",
+  ippair_valid: "10 分鐘內有效",
+  ippair_docker: "輸入 Docker 主機的 IP",
+  err_phone_wifi_off: "請先打開「手機也能用 Wi-Fi 連」。",
 };
 
 I18N["zh-CN"] = {
@@ -5195,6 +5229,15 @@ I18N["zh-CN"] = {
   f_wl_who_others_h: "包括未显示号码。陌生人说有急事也可能是诈骗，需要时再打开。",
   f_wl_who_h: "黑名单和陪聊名单里的人不会转。",
   wl_enable: "开启转接",
+  ippair_title: "用 IP 地址配对手机",
+  ippair_h: "Bageo 装在 Docker 或另一台电脑上、手机没法插 USB 时使用。",
+  ippair_btn: "生成配对码",
+  ippair_step: "在手机的 Bageo App 里点“用 IP 地址连接”，输入：",
+  ippair_addr: "地址",
+  ippair_code: "配对码",
+  ippair_valid: "10 分钟内有效",
+  ippair_docker: "输入 Docker 主机的 IP",
+  err_phone_wifi_off: "请先打开“手机也能用 Wi-Fi 连接”。",
 };
 
 I18N["ja"] = {
@@ -6399,6 +6442,15 @@ I18N["ja"] = {
   f_wl_who_others_h: "非通知の番号も含みます。知らない人が急ぎだと言っても詐欺のことがあるので、必要なときだけオンにしてください。",
   f_wl_who_h: "「着信拒否」と「引き延ばしリスト」の相手は転送しません。",
   wl_enable: "転送をオンにする",
+  ippair_title: "IP アドレスでスマホをペアリング",
+  ippair_h: "Bageo を Docker やほかのパソコンで動かしていて、スマホを USB でつなげないときに使います。",
+  ippair_btn: "ペアリングコードを表示",
+  ippair_step: "スマホの Bageo アプリで「IP アドレスで接続」をタップして、次を入力します：",
+  ippair_addr: "アドレス",
+  ippair_code: "ペアリングコード",
+  ippair_valid: "10 分間有効",
+  ippair_docker: "Docker ホストの IP を入力",
+  err_phone_wifi_off: "先に「スマホを Wi-Fi でもつなぐ」をオンにしてください。",
 };
 
 I18N["ko"] = {
@@ -7603,6 +7655,15 @@ I18N["ko"] = {
   f_wl_who_others_h: "발신번호 표시 제한 번호도 포함됩니다. 모르는 사람이 급하다고 해도 사기일 수 있으니 필요할 때만 켜세요.",
   f_wl_who_h: "‘차단 목록’과 ‘시간 끌기 목록’에 있는 사람은 전환하지 않습니다.",
   wl_enable: "전환 켜기",
+  ippair_title: "IP 주소로 휴대폰 페어링",
+  ippair_h: "Bageo가 Docker나 다른 컴퓨터에서 실행 중이라 휴대폰을 USB로 연결할 수 없을 때 쓰세요.",
+  ippair_btn: "페어링 코드 받기",
+  ippair_step: "휴대폰의 Bageo 앱에서 'IP 주소로 연결'을 누르고 다음을 입력하세요:",
+  ippair_addr: "주소",
+  ippair_code: "페어링 코드",
+  ippair_valid: "10분 동안 유효",
+  ippair_docker: "Docker 호스트의 IP를 입력하세요",
+  err_phone_wifi_off: "먼저 '휴대폰을 Wi-Fi로도 연결'을 켜세요.",
 };
 
 I18N["es"] = {
@@ -8807,6 +8868,15 @@ I18N["es"] = {
   f_wl_who_others_h: "Incluye números ocultos. Un desconocido que dice que es urgente puede ser una estafa; actívalo solo si lo necesitas.",
   f_wl_who_h: "Las personas de «Lista negra» y «Entretener» nunca se pasan.",
   wl_enable: "Activar el reenvío",
+  ippair_title: "Emparejar un teléfono por dirección IP",
+  ippair_h: "Úsalo cuando Bageo funciona en Docker o en otro ordenador y no puedes conectar el teléfono por USB.",
+  ippair_btn: "Obtener un código",
+  ippair_step: "En la app Bageo del teléfono, toca «Conectar por dirección IP» e introduce:",
+  ippair_addr: "Dirección",
+  ippair_code: "Código de emparejamiento",
+  ippair_valid: "Válido durante 10 minutos",
+  ippair_docker: "Introduce la IP del equipo con Docker",
+  err_phone_wifi_off: "Primero activa «Conectar teléfonos también por Wi-Fi».",
 };
 
 I18N["fr"] = {
@@ -10011,6 +10081,15 @@ I18N["fr"] = {
   f_wl_who_others_h: "Inclut les numéros masqués. Un inconnu qui dit que c'est urgent peut être une arnaque ; activez-le seulement si vous en avez besoin.",
   f_wl_who_h: "Les personnes de « Liste noire » et de « Les faire parler » ne sont jamais transférées.",
   wl_enable: "Activer le renvoi",
+  ippair_title: "Associer un téléphone par adresse IP",
+  ippair_h: "À utiliser quand Bageo tourne dans Docker ou sur un autre ordinateur et que le téléphone ne peut pas être branché.",
+  ippair_btn: "Obtenir un code",
+  ippair_step: "Dans l’app Bageo du téléphone, touchez « Connexion par adresse IP » et saisissez :",
+  ippair_addr: "Adresse",
+  ippair_code: "Code d’association",
+  ippair_valid: "Valable 10 minutes",
+  ippair_docker: "Saisissez l’IP de la machine Docker",
+  err_phone_wifi_off: "Activez d’abord « Connecter aussi les téléphones en Wi-Fi ».",
 };
 
 I18N["de"] = {
@@ -11215,6 +11294,15 @@ I18N["de"] = {
   f_wl_who_others_h: "Gilt auch für unterdrückte Nummern. Sagt ein Fremder, es sei dringend, kann das Betrug sein – schalte es nur ein, wenn du es brauchst.",
   f_wl_who_h: "Personen auf der „Sperrliste“ und der „Hinhalteliste“ werden nie weitergeleitet.",
   wl_enable: "Weiterleitung einschalten",
+  ippair_title: "Telefon per IP-Adresse koppeln",
+  ippair_h: "Nutze das, wenn Bageo in Docker oder auf einem anderen Computer läuft und du das Telefon nicht anschließen kannst.",
+  ippair_btn: "Kopplungscode holen",
+  ippair_step: "Tippe in der Bageo-App auf dem Telefon auf „Per IP-Adresse verbinden“ und gib ein:",
+  ippair_addr: "Adresse",
+  ippair_code: "Kopplungscode",
+  ippair_valid: "10 Minuten gültig",
+  ippair_docker: "Gib die IP des Docker-Hosts ein",
+  err_phone_wifi_off: "Schalte zuerst „Telefone auch per WLAN verbinden“ ein.",
 };
 
 I18N["pt"] = {
@@ -12419,6 +12507,15 @@ I18N["pt"] = {
   f_wl_who_others_h: "Inclui números ocultos. Um desconhecido dizendo que é urgente pode ser golpe; ative só se precisar.",
   f_wl_who_h: "Quem está na “Lista de bloqueio” ou em “Manter falando” nunca é transferido.",
   wl_enable: "Ativar o encaminhamento",
+  ippair_title: "Parear um celular pelo endereço IP",
+  ippair_h: "Use quando o Bageo roda no Docker ou em outro computador e não dá para ligar o celular por USB.",
+  ippair_btn: "Gerar código de pareamento",
+  ippair_step: "No app Bageo do celular, toque em “Conectar por endereço IP” e digite:",
+  ippair_addr: "Endereço",
+  ippair_code: "Código de pareamento",
+  ippair_valid: "Válido por 10 minutos",
+  ippair_docker: "Digite o IP do host do Docker",
+  err_phone_wifi_off: "Primeiro ative “Conectar celulares também por Wi-Fi”.",
 };
 
 // The interview prompts of docs/prompts/interview.<lang>.txt, word for word
@@ -15136,6 +15233,36 @@ $("btnRepairPhones").addEventListener("click", async () => {
     if (e.status !== 401) toast(e.message, true);
   }
   loadSystem();
+});
+// "Get a pairing code": a phone that cannot be plugged in pairs by IP address.
+// The address shown is the one this page was opened at; for localhost or a
+// .local name, the LAN address Bageo found (none inside Docker).
+let ipPairTimer = 0;
+const ipPairLocal = (h) => /^(localhost|127\.|0\.0\.0\.0$|\[::1\]$|::1$)/i.test(h) || /\.local\.?$/i.test(h);
+$("btnIpPair").addEventListener("click", async () => {
+  let d;
+  try {
+    d = await api("/phone-pairing/code", jsonBody("POST", {}));
+  } catch (e) {
+    if (e.status !== 401) toast(e.message, true);
+    return;
+  }
+  const port = location.port || (location.protocol === "https:" ? "443" : "80");
+  const here = location.hostname;
+  const addrs = ipPairLocal(here) ? (d.lan_ips || []).map((ip) => `${ip}:${d.port}`) : [`${here}:${port}`];
+  const code = (text) => { const c = document.createElement("code"); c.textContent = text; return c; };
+  const box = $("ipPairAddr");
+  if (addrs.length) {
+    box.replaceChildren(...addrs.map(code));
+  } else {
+    const hint = document.createElement("span");
+    hint.textContent = t("ippair_docker");
+    box.replaceChildren(hint, ...(port === "8787" ? [] : [document.createTextNode(" "), code(":" + port)]));
+  }
+  $("ipPairCode").textContent = d.code;
+  $("ipPairOut").hidden = false;
+  clearTimeout(ipPairTimer);
+  ipPairTimer = setTimeout(() => { $("ipPairOut").hidden = true; $("ipPairCode").textContent = ""; }, (Number(d.expires_in) || 600) * 1000);
 });
 
 // ----- backup & restore

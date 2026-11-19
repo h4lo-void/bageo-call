@@ -7,8 +7,12 @@
 #   docker compose up -d --build
 #
 # A container cannot see USB phones unless you pass the USB bus through, so
-# USB_BRIDGE is off here by default: connect phones over Wi-Fi, or run the
-# agent directly on the computer the phones are plugged into.
+# USB_BRIDGE is off here by default. Pair phones by IP address instead: in the
+# web console open System -> "Pair a phone by IP address" -> "Get a pairing
+# code", then in the Bageo app tap "Connect by IP address" and enter this
+# host's IP and the code. Phones use the console's port (8787, or the host
+# port you map to it), so no other port is needed. Running the agent directly
+# on the computer the phones are plugged into also works.
 FROM rust:bookworm AS builder
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./

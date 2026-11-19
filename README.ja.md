@@ -222,7 +222,7 @@ AI の声、内蔵のプロンプト（ご自身の状況や話し方に合わ�
 
 スマホが root 化済みなら、ダウンロードから AI が最初の電話に出るまで約 3 分です。
 
-1. **ダウンロード**：お使いの OS 用のファイルを [Releases](https://github.com/h4lo-void/bageo-call/releases) から入手します。Windows は `bageo-call-<version>-windows-x64-setup.exe`、macOS は `bageo-call-<version>-macos-arm64.dmg`（Apple シリコン）または `bageo-call-<version>-macos-x64.dmg`（Intel）、Linux は `bageo-call-<version>-linux-x64.tar.gz` です。Docker 用の既製イメージ（`bageo/bageo-call`・`ghcr.io/h4lo-void/bageo-call`）もあります。
+1. **ダウンロード**：お使いの OS 用のファイルを [Releases](https://github.com/h4lo-void/bageo-call/releases) から入手します。Windows は `bageo-call-<version>-windows-x64-setup.exe`、macOS は `bageo-call-<version>-macos-arm64.dmg`（Apple シリコン）または `bageo-call-<version>-macos-x64.dmg`（Intel）、Linux は `bageo-call-<version>-linux-x64.tar.gz` です。Docker 用の既製イメージ（`bageo/bageo-call`・`ghcr.io/h4lo-void/bageo-call`）もあります。Docker の場合、スマホは Web コンソールで表示したペアリングコードを使い、IP アドレスで接続します（[Phone setup → Wi-Fi](docs/en/PHONE.md#wi-fi)）。
 2. **インストールして起動**：Windows は `setup.exe` をダブルクリックしてインストールし、デスクトップの「Bageo」ショートカットをクリックします。macOS は `.dmg` を開き、Bageo を「アプリケーション」にドラッグして、クリックします。Linux は展開して `./start.sh` を実行します。コンソールが <http://localhost:8787/> で開きます。コンソールパスワードを設定すれば、このパソコンや同じ Wi-Fi 内の端末から <http://bageo.local/> でも開けます。
 3. **基本を入力**：**設定**で、Gemini API キー、あなたの名前、言語を入れます。▶ を押すと声を聞けるので、好きな声を選びます。
 4. **スマホを準備**（最初の 1 回だけ）：`bageo-phone-module-<version>.zip` を Magisk か KernelSU のモジュールとしてインストールし、再起動して、**Bageo** アプリを開きます。チェックリストを順に進めたら、スマホをつなぎます。

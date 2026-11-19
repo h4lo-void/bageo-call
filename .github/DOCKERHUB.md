@@ -58,7 +58,10 @@ docker run -d --name bageo-call --restart unless-stopped \
 
 1. Open `http://<this host>:8787/` and type the `CALLS_UI_TOKEN` value as the password.
 2. Under **Settings**, fill in your Gemini key, your name and the language.
-3. In the **Bageo** app on the phone, connect over Wi-Fi to `ws://<this host>:8787/ws?token=<DEVICE_TOKEN>` ([Phone setup → Wi-Fi](https://github.com/h4lo-void/bageo-call/blob/main/docs/en/PHONE.md#wi-fi)).
+3. Pair the phone by IP address ([Phone setup → Wi-Fi](https://github.com/h4lo-void/bageo-call/blob/main/docs/en/PHONE.md#wi-fi)):
+   1. In the console open **System** and, under **Pair a phone by IP address**, click **Get a pairing code**.
+   2. In the **Bageo** app on the phone tap **Connect by IP address** and enter this host's IP, for example `192.168.1.20:8787`, and the code.
+   3. Only port 8787 is needed. If you publish another host port (`-p 9000:8787`), type that port in the app. The phone and this host must be on the same network. Connecting to `ws://<this host>:8787/ws?token=<DEVICE_TOKEN>` by hand still works too.
 4. Call your number from another phone: one ring, and the AI answers.
 
 Or with Docker Compose:
@@ -108,7 +111,7 @@ Every tag has `linux/amd64` and `linux/arm64`. The same images are on `ghcr.io/h
 
 ## Good to know
 
-- A container cannot see USB phones, so the phone connects over Wi-Fi.
+- A container cannot see USB phones, so the phone pairs by IP address and connects over Wi-Fi.
 - `http://bageo.local/` does not work inside a container. Use the host's IP address.
 - On a Windows or Mac desktop, the installer from [Releases](https://github.com/h4lo-void/bageo-call/releases) is easier: one click to start, and USB works too.
 - Recording calls and letting an AI talk for you is regulated differently from place to place. Read [Use it responsibly](https://github.com/h4lo-void/bageo-call#use-it-responsibly) before you start.
@@ -143,7 +146,13 @@ docker run -d --name bageo-call --restart unless-stopped \
   bageo/bageo-call:latest
 ```
 
-打開 `http://<這台主機>:8787/`，輸入 `CALLS_UI_TOKEN` 的值當密碼，在「設定」填好 Gemini 金鑰、名字和語言；手機的 **Bageo** App 走 Wi-Fi 連到 `ws://<這台主機>:8787/ws?token=<DEVICE_TOKEN>`。容器看不到 USB 手機，也不能用 `bageo.local`，請用主機的 IP。在 Windows 或 Mac 桌機上，用 [Releases](https://github.com/h4lo-void/bageo-call/releases) 的安裝檔比較方便。
+打開 `http://<這台主機>:8787/`，輸入 `CALLS_UI_TOKEN` 的值當密碼，在「設定」填好 Gemini 金鑰、名字和語言。容器看不到 USB 手機，也不能用 `bageo.local`，請用主機的 IP。在 Windows 或 Mac 桌機上，用 [Releases](https://github.com/h4lo-void/bageo-call/releases) 的安裝檔比較方便。
+
+手機用 IP 位址配對：
+
+1. 控制台打開「系統」頁，在「**用 IP 位址配對手機**」按「**產生配對碼**」。
+2. 手機的 **Bageo** App 點「**用 IP 位址連線**」，輸入這台主機的 IP（例如 `192.168.1.20:8787`）和配對碼。
+3. 只要開 8787。主機上的埠換成別的號碼也可以（`-p 9000:8787`），手機輸入的位址就填你對外開的那個埠。手機和主機要在同一個網路。原本的 `ws://<這台主機>:8787/ws?token=<DEVICE_TOKEN>` 也照樣能用。
 
 完整說明：[中文 README](https://github.com/h4lo-void/bageo-call/blob/main/README.zh-TW.md) · [開始使用](https://github.com/h4lo-void/bageo-call/blob/main/docs/zh-TW/GETTING_STARTED.md)
 
