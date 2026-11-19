@@ -22,6 +22,9 @@ const LAUNCH_INTERVAL: Duration = Duration::from_secs(1);
 const TIMEOUT: Duration = Duration::from_secs(4);
 /// The console address is re-read from /health once per this many rounds.
 const UI_URL_EVERY: u64 = 12;
+/// While no reported address has opened yet, it is tried again on the next
+/// rounds, this many times, before falling back to once per UI_URL_EVERY.
+const UI_URL_QUICK_TRIES: u32 = 5;
 /// Failed rounds before automatic discovery starts over.
 const REDISCOVER_AFTER: u32 = 3;
 const TOKEN_HEADER: &str = "x-calls-token";
@@ -74,6 +77,10 @@ struct Poller {
     /// Console address Bageo reports about itself (may be empty).
     ui_url: String,
     refresh_ui_url: bool,
+    /// Failed checks in a row of the shown ui_url.
+    ui_url_misses: u32,
+    /// Quick re-checks used while nothing is shown yet.
+    ui_url_tries: u32,
     lang: String,
     calls: CallWatch,
     sms: SmsWatch,
@@ -98,6 +105,8 @@ impl Poller {
             round: 0,
             ui_url: String::new(),
             refresh_ui_url: true,
+            ui_url_misses: 0,
+            ui_url_tries: 0,
             lang,
             calls: CallWatch::default(),
             sms: SmsWatch::default(),
@@ -115,6 +124,8 @@ impl Poller {
         self.last_good = None;
         self.ui_url.clear();
         self.refresh_ui_url = true;
+        self.ui_url_misses = 0;
+        self.ui_url_tries = 0;
         self.calls.reset();
         self.sms.reset();
         self.summary.reset();
@@ -260,8 +271,13 @@ impl Poller {
                     Some(url) => health(&self.client, &url, None).await.is_some(),
                     None => false,
                 };
-                self.ui_url = if opens { reported } else { String::new() };
-                self.refresh_ui_url = false;
+                let (shown, misses) = status::next_ui_url(&self.ui_url, self.ui_url_misses, &reported, opens);
+                self.ui_url = shown;
+                self.ui_url_misses = misses;
+                // Nothing shown yet but Bageo names an address: look again soon.
+                let retry = self.ui_url.is_empty() && !reported.is_empty() && self.ui_url_tries < UI_URL_QUICK_TRIES;
+                self.ui_url_tries = if opens { 0 } else if retry { self.ui_url_tries + 1 } else { self.ui_url_tries };
+                self.refresh_ui_url = retry;
             }
         }
 
