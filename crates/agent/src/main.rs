@@ -1558,20 +1558,7 @@ async fn main() -> Result<()> {
     }
     spawn_phone_wifi(state.clone(), addr);
 
-    let app = Router::new()
-        .route("/", get(root))
-        .route("/index", get(redirect_to_calls))
-        .route("/favicon.ico", get(calls_http::favicon))
-        .route("/health", get(health))
-        .route("/v1/turn", post(turn))
-        .route("/v1/transfer", get(transfer_smoke).post(transfer_smoke))
-        .route("/ws", get(ws_upgrade))
-        // MCP tool interface (crate::mcp): off and silent until enabled with a token.
-        .merge(mcp::router(remote.clone()))
-        .nest_service("/calls", calls_router(calls_state))
-        .layer(TraceLayer::new_for_http())
-        .layer(axum::middleware::map_response(add_source_header))
-        .with_state(state);
+    let app = build_app(state, calls_state, remote);
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|e| anyhow::anyhow!("cannot listen on {addr}: {e} (is another copy running? AGENT_PORT picks another port)"))?;
@@ -1582,6 +1569,28 @@ async fn main() -> Result<()> {
     )
     .await?;
     Ok(())
+}
+
+/// The agent's HTTP routes: the phone and test routes with the agent's state,
+/// and the web console (`/calls`) with its own.
+fn build_app(state: AppState, calls_state: CallsState, remote: Arc<control::Controller>) -> Router {
+    Router::new()
+        .route("/", get(root))
+        .route("/index", get(redirect_to_calls))
+        .route("/favicon.ico", get(calls_http::favicon))
+        .route("/health", get(health))
+        // The console's copy of the full health JSON (it cannot read `/health`
+        // from another computer, or through a proxy, when no password is set).
+        .route("/calls/api/health", get(console_health))
+        .route("/v1/turn", post(turn))
+        .route("/v1/transfer", get(transfer_smoke).post(transfer_smoke))
+        .route("/ws", get(ws_upgrade))
+        // MCP tool interface (crate::mcp): off and silent until enabled with a token.
+        .merge(mcp::router(remote))
+        .nest_service("/calls", calls_router(calls_state))
+        .layer(TraceLayer::new_for_http())
+        .layer(axum::middleware::map_response(add_source_header))
+        .with_state(state)
 }
 
 /// Authorship marker that stays in the compiled program (LICENSING.md, Section 7(b)).
@@ -1914,14 +1923,32 @@ fn setup_missing(rt: &RuntimeSettings, eff: &Settings) -> Vec<&'static str> {
     out
 }
 
+/// Who gets the full `/health` JSON (phone serials, caller numbers of calls in
+/// progress, folder paths, prompts): with a console password set, a request that
+/// carries it; with none set, only a request from this machine itself, which
+/// did not come through a reverse proxy. Everyone else gets the short version.
+fn health_full_allowed(password_set: bool, token_ok: bool, peer_loopback: bool, proxied: bool) -> bool {
+    if password_set {
+        token_ok
+    } else {
+        peer_loopback && !proxied
+    }
+}
+
 async fn health(
     State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
     Query(q): Query<HashMap<String, String>>,
 ) -> Json<Value> {
-    // With a console token set, anyone else only learns that the agent is up
-    // (enough for monitors and the SMS forwarder).
-    if !calls_http::token_ok_parts(&state.settings, &headers, q.get("token").map(String::as_str)) {
+    // Anyone else only learns that the agent is up (enough for monitors and the
+    // SMS forwarder). The web console reads the full version from
+    // `GET /calls/api/health`, which has the console's own password check.
+    let password_set = !settings_store::active_ui_token(&state.settings.calls_ui_token).is_empty();
+    let token_ok = calls_http::token_ok_parts(&state.settings, &headers, q.get("token").map(String::as_str));
+    let peer_loopback = peer.ip().to_canonical().is_loopback();
+    let proxied = calls_http::came_through_proxy(&headers);
+    if !health_full_allowed(password_set, token_ok, peer_loopback, proxied) {
         let rt = state.settings_store.snapshot();
         return Json(json!({
             "ok": true,
@@ -1936,6 +1963,25 @@ async fn health(
             "setup_missing": setup_missing(&rt, &rt.effective(&state.settings)),
         }));
     }
+    Json(health_full(&state).await)
+}
+
+/// `GET /calls/api/health`: the full health JSON for the web console, behind
+/// the console's password like its other API routes.
+async fn console_health(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Query(q): Query<HashMap<String, String>>,
+) -> axum::response::Response {
+    if !calls_http::token_ok_parts(&state.settings, &headers, q.get("token").map(String::as_str)) {
+        return calls_http::unauthorized();
+    }
+    Json(health_full(&state).await).into_response()
+}
+
+/// The full health JSON, shared by `/health` (for who may see it) and the
+/// console's `/calls/api/health`.
+async fn health_full(state: &AppState) -> Value {
     // Effective view: env base + runtime overrides, so the health JSON shows
     // what a call starting right now would actually use.
     let rt = state.settings_store.snapshot();
@@ -2362,7 +2408,7 @@ async fn health(
             .collect::<Vec<_>>()),
     );
     body.insert("runtime".into(), json!("rust"));
-    Json(Value::Object(body))
+    Value::Object(body)
 }
 
 #[derive(Deserialize)]
@@ -13829,5 +13875,226 @@ mod audit_a_tests {
         assert!(!gate.claim("pixel-1010111", MediaPlayKind::Greet, &c2).await);
         gate.release("pixel-10111").await;
         assert!(gate.claim("pixel-1010111", MediaPlayKind::Greet, &c2).await);
+    }
+}
+
+#[cfg(test)]
+mod health_access_tests {
+    use super::*;
+    use axum::extract::connect_info::MockConnectInfo;
+
+    /// The agent's real routes (`build_app`) over a temp data folder, answering
+    /// as if every request came from `peer`. Returns the base URL and the folder.
+    async fn serve(password: &str, peer: &str) -> (String, PathBuf) {
+        let root = std::env::temp_dir().join(format!("bageo-health-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut base = Settings::from_env();
+        base.calls_data_dir = root.to_string_lossy().into_owned();
+        base.calls_ui_token = password.to_string();
+        base.telegram_bot_token = String::new();
+        base.telegram_chat_id = String::new();
+        let settings_store = SettingsStore::load(base.clone());
+        let calls = CallStore::new(root.join("calls"), true, false);
+        let task_store = TaskStore::new(root.join("tasks"));
+        let control = ControlRegistry::new();
+        let phones = calls_http::PhoneDevices::new();
+        let http = reqwest::Client::new();
+        let ambience = Arc::new(ambience::AmbienceLibrary::load(&root, 16000));
+        let previews = Arc::new(voice_preview::VoicePreviews::new(root.join("voice_preview"), root.join("voices")));
+        let errands = errands::ErrandStore::open(root.join("errands.json"), errands::SimBook::in_memory());
+        let calls_state = CallsState {
+            settings: base.clone(),
+            store: calls.clone(),
+            settings_store: settings_store.clone(),
+            task_store: task_store.clone(),
+            http: http.clone(),
+            control: control.clone(),
+            ambience: ambience.clone(),
+            previews: previews.clone(),
+            phones: phones.clone(),
+            contacts: contacts::ContactStore::open(root.join("contacts.json")),
+            errands: errands.clone(),
+            sms: sms_store::SmsStore::open(root.join("sms"), sms_store::now_ms(), 15),
+        };
+        let state = AppState {
+            settings: base,
+            settings_store,
+            http,
+            hold_pcm: None,
+            ivr_prompt_segments: Arc::new(Vec::new()),
+            ivr_fail_pcm: None,
+            ivr_goodbye_pcm: None,
+            ivr_reject_unknown_pcm: None,
+            ivr_dtmf1_wait_pcm: None,
+            ivr_ai_hello_pcm: None,
+            ivr_ai_nudge_pcm: None,
+            ivr_vm_intro_pcm: None,
+            ivr_vm_confirm_pcm: None,
+            ivr_menu_full_pcm: Arc::new(Vec::new()),
+            vm_beep_pcm: Arc::new(Vec::new()),
+            latency_build: "test",
+            calls,
+            task_store,
+            control,
+            phones,
+            trtc_talk: Arc::new(TrtcTalkMetrics::default()),
+            incoming_notify_dedup: Arc::new(IncomingNotifyDedup::default()),
+            call_reattach: Arc::new(CallReattachRegistry::default()),
+            media_play: Arc::new(MediaPlayGate::default()),
+            ring_prewarm: Arc::new(RingPrewarmRegistry::default()),
+            reject_pending: Arc::new(RejectPending::default()),
+            previews,
+            ambience,
+            errands,
+        };
+        let remote = control::Controller::new(calls_state.clone());
+        let peer: SocketAddr = peer.parse().unwrap();
+        let app = build_app(state, calls_state, remote).layer(MockConnectInfo(peer));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app.into_make_service()).await;
+        });
+        (format!("http://127.0.0.1:{port}"), root)
+    }
+
+    /// GET `path` with optional extra headers; the status and the JSON body
+    /// (`null` when the answer is not JSON, like the console page).
+    async fn get_json(base: &str, path: &str, headers: &[(&str, &str)]) -> (u16, Value) {
+        let mut req = reqwest::Client::new().get(format!("{base}{path}"));
+        for (k, v) in headers {
+            req = req.header(*k, *v);
+        }
+        let res = req.send().await.unwrap();
+        let status = res.status().as_u16();
+        let body = res.json::<Value>().await.unwrap_or(Value::Null);
+        (status, body)
+    }
+
+    const FULL_ONLY: [&str; 4] = ["active_calls", "device_labels", "calls_data_dir", "control_idle_serials"];
+
+    fn assert_brief(body: &Value) {
+        for key in ["ok", "version", "language", "notify_language", "local_time", "active_call_count", "control_idle_clients", "setup_missing"] {
+            assert!(body.get(key).is_some(), "short health lacks {key}");
+        }
+        assert_eq!(body.as_object().unwrap().len(), 8, "short health has other keys: {body}");
+        for key in FULL_ONLY {
+            assert!(body.get(key).is_none(), "short health leaks {key}");
+        }
+    }
+
+    fn assert_full(body: &Value) {
+        for key in FULL_ONLY {
+            assert!(body.get(key).is_some(), "full health lacks {key}");
+        }
+        assert_eq!(body["ok"], json!(true));
+        assert!(body.get("version").is_some() && body.get("setup_missing").is_some());
+    }
+
+    #[test]
+    fn health_full_allowed_covers_every_combination() {
+        for password_set in [false, true] {
+            for token_ok in [false, true] {
+                for peer_loopback in [false, true] {
+                    for proxied in [false, true] {
+                        let want = if password_set { token_ok } else { peer_loopback && !proxied };
+                        assert_eq!(
+                            health_full_allowed(password_set, token_ok, peer_loopback, proxied),
+                            want,
+                            "password_set={password_set} token_ok={token_ok} loopback={peer_loopback} proxied={proxied}"
+                        );
+                    }
+                }
+            }
+        }
+        // The cases that matter, spelled out.
+        assert!(!health_full_allowed(false, true, false, false), "no password, another computer");
+        assert!(health_full_allowed(false, true, true, false), "no password, this computer");
+        assert!(!health_full_allowed(false, true, true, true), "no password, through a proxy");
+        assert!(health_full_allowed(true, true, false, true), "right password from anywhere");
+        assert!(!health_full_allowed(true, false, true, false), "password set, none sent, this computer");
+    }
+
+    #[tokio::test]
+    async fn no_password_other_computer_gets_short_health_and_console_gets_full() {
+        let (base, root) = serve("", "203.0.113.9:5000").await;
+        let (status, body) = get_json(&base, "/health", &[]).await;
+        assert_eq!(status, 200);
+        assert_brief(&body);
+        // A forwarding header or a query token changes nothing for this caller.
+        let (_, body) = get_json(&base, "/health?token=whatever", &[("x-forwarded-for", "198.51.100.7")]).await;
+        assert_brief(&body);
+
+        let (status, body) = get_json(&base, "/calls/api/health", &[]).await;
+        assert_eq!(status, 200);
+        assert_full(&body);
+        // The console's own routes still answer (the new route did not shadow the nest).
+        assert_eq!(get_json(&base, "/calls/api/devices", &[]).await.0, 200);
+        assert_eq!(get_json(&base, "/calls/api/auth-status", &[]).await.0, 200);
+        let page = reqwest::get(format!("{base}/calls/")).await.unwrap();
+        assert_eq!(page.status().as_u16(), 200);
+        assert!(page.text().await.unwrap().contains("<html"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn no_password_this_computer_gets_full_health_unless_proxied() {
+        for peer in ["127.0.0.1:5000", "[::ffff:127.0.0.1]:5000", "[::1]:5000"] {
+            let (base, root) = serve("", peer).await;
+            let (status, body) = get_json(&base, "/health", &[]).await;
+            assert_eq!(status, 200, "{peer}");
+            assert_full(&body);
+            for header in ["x-forwarded-for", "forwarded", "x-real-ip", "cf-connecting-ip"] {
+                let (status, body) = get_json(&base, "/health", &[(header, "198.51.100.7")]).await;
+                assert_eq!(status, 200, "{peer} {header}");
+                assert_brief(&body);
+            }
+            // The console has no password to check, so it stays open behind a proxy too.
+            let (status, body) = get_json(&base, "/calls/api/health", &[("x-forwarded-for", "198.51.100.7")]).await;
+            assert_eq!(status, 200, "{peer}");
+            assert_full(&body);
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    #[tokio::test]
+    async fn with_password_full_health_needs_the_password() {
+        for peer in ["203.0.113.9:5000", "127.0.0.1:5000"] {
+            let (base, root) = serve("health-test-pw", peer).await;
+            let (status, body) = get_json(&base, "/health", &[]).await;
+            assert_eq!(status, 200, "{peer}");
+            assert_brief(&body);
+            let (_, body) = get_json(&base, "/health?token=wrong-pw", &[]).await;
+            assert_brief(&body);
+            let (_, body) = get_json(&base, "/health?token=health-test-pw", &[]).await;
+            assert_full(&body);
+            let (_, body) = get_json(&base, "/health", &[("authorization", "Bearer health-test-pw")]).await;
+            assert_full(&body);
+            let (_, body) = get_json(&base, "/health", &[("x-calls-token", "health-test-pw")]).await;
+            assert_full(&body);
+
+            for (path, headers) in [
+                ("/calls/api/health", vec![]),
+                ("/calls/api/health?token=wrong-pw", vec![]),
+                ("/calls/api/health", vec![("authorization", "Bearer wrong-pw")]),
+            ] {
+                let (status, body) = get_json(&base, path, &headers).await;
+                assert_eq!(status, 401, "{peer} {path}");
+                assert_eq!(body["code"], json!("unauthorized"));
+                assert!(body.get("calls_data_dir").is_none());
+            }
+            let (status, body) = get_json(&base, "/calls/api/health", &[("authorization", "Bearer health-test-pw")]).await;
+            assert_eq!(status, 200);
+            assert_full(&body);
+            let (status, body) = get_json(&base, "/calls/api/health?token=health-test-pw", &[("x-forwarded-for", "198.51.100.7")]).await;
+            assert_eq!(status, 200);
+            assert_full(&body);
+
+            // The other console routes keep their own check.
+            assert_eq!(get_json(&base, "/calls/api/devices", &[]).await.0, 401);
+            assert_eq!(get_json(&base, "/calls/api/devices?token=health-test-pw", &[]).await.0, 200);
+            assert_eq!(reqwest::get(format!("{base}/calls/")).await.unwrap().status().as_u16(), 200);
+            let _ = std::fs::remove_dir_all(&root);
+        }
     }
 }

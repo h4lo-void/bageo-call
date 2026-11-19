@@ -383,14 +383,15 @@ pub async fn summarize(http: &Client, settings: &Settings, caller_id: &str, tran
     for round in 0..2 {
         if round > 0 {
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-            info!("call summary retry caller={caller}");
+            info!("call summary retry caller={}", crate::urgent_call::masked(caller));
         }
         for model in &endpoint.models {
             match chat_at(http, &endpoint, model, &system, &trimmed, summary_max_tokens(&endpoint)).await {
                 Ok(text) if !text.trim().is_empty() => {
                     let text = locale::fix_names(&polish_summary(lang, &text, &trimmed));
                     info!(
-                        "call summary ok caller={caller} model={model} chars={}",
+                        "call summary ok caller={} model={model} chars={}",
+                        crate::urgent_call::masked(caller),
                         text.chars().count()
                     );
                     return text;

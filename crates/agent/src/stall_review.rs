@@ -346,11 +346,12 @@ async fn review_at_with_context(
     ctx: &CallerContext,
     purpose: Purpose,
 ) -> Review {
-    let head = head_chars(dialogue.trim(), 80);
+    let dialogue_chars = dialogue.trim().chars().count();
     let key = api_key.trim();
     let caller_id = ctx.number.as_str();
+    let caller_tail = crate::urgent_call::masked(caller_id);
     if key.is_empty() {
-        warn!("stall review: no Gemini key ({purpose:?}) caller={caller_id} dialogue={head:?}");
+        warn!("stall review: no Gemini key ({purpose:?}) caller={caller_tail} dialogue_chars={dialogue_chars}");
         return Review::unavailable(true);
     }
     let started = Instant::now();
@@ -359,13 +360,13 @@ async fn review_at_with_context(
             review.ms = u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX);
             if let Some(unsure) = unsure_on_dialect(review, dialogue, hits) {
                 info!(
-                    "stall review ({purpose:?}) sales answer on Hokkien / Hakka words, no keyword: confidence {} → low caller={caller_id}",
+                    "stall review ({purpose:?}) sales answer on Hokkien / Hakka words, no keyword: confidence {} → low caller={caller_tail}",
                     review.confidence.as_str()
                 );
                 review = unsure;
             }
             info!(
-                "stall review ({purpose:?}) verdict={:?} typology={:?} confidence={} scenario={} caller={caller_id} hits={hits:?} ms={} dialogue={head:?}",
+                "stall review ({purpose:?}) verdict={:?} typology={:?} confidence={} scenario={} caller={caller_tail} hits={hits:?} ms={} dialogue_chars={dialogue_chars}",
                 review.verdict,
                 review.typology,
                 review.confidence.as_str(),
@@ -375,12 +376,12 @@ async fn review_at_with_context(
             review
         }
         Ok(Err(e)) => {
-            warn!("stall review ({purpose:?}) failed caller={caller_id}: {e:#} dialogue={head:?}");
+            warn!("stall review ({purpose:?}) failed caller={caller_tail}: {e:#} dialogue_chars={dialogue_chars}");
             local_or_unavailable(dialogue, hits, purpose, caller_id)
         }
         Err(_) => {
             warn!(
-                "stall review ({purpose:?}) timed out after {} ms caller={caller_id} dialogue={head:?}",
+                "stall review ({purpose:?}) timed out after {} ms caller={caller_tail} dialogue_chars={dialogue_chars}",
                 REVIEW_TIMEOUT.as_millis()
             );
             local_or_unavailable(dialogue, hits, purpose, caller_id)
@@ -393,10 +394,11 @@ fn local_or_unavailable(dialogue: &str, hits: &[String], purpose: Purpose, calle
     match local_fallback(dialogue, hits) {
         Some(r) => {
             info!(
-                "stall review ({purpose:?}) no answer → local verdict={:?} confidence={} scenario={} caller={caller_id} hits={hits:?}",
+                "stall review ({purpose:?}) no answer → local verdict={:?} confidence={} scenario={} caller={} hits={hits:?}",
                 r.verdict,
                 r.confidence.as_str(),
-                r.scenario.as_str()
+                r.scenario.as_str(),
+                crate::urgent_call::masked(caller_id)
             );
             r
         }

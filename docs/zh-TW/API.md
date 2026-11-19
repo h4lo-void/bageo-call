@@ -36,7 +36,7 @@ curl -s http://127.0.0.1:8787/calls/api/stats
 | 用你自己的按鈕同意預約 | `POST /calls/api/tasks/{id}/confirm` |
 | 在家時讓手機照常響、自己接 | `POST /calls/api/devices/{serial}/mode`，body `{"mode": "normal"}` |
 | 把任何訊息轉到你的通知管道 | `POST /calls/api/notify/send` |
-| 監控 Bageo | `GET /health`（不用密碼也能讀） |
+| 監控 Bageo | `GET /health`（短版狀態不用密碼也能讀） |
 
 ## 存取
 
@@ -48,7 +48,7 @@ Authorization: Bearer <token>
 X-Calls-Token: <token>
 ```
 
-密碼錯誤或沒帶，會得到 HTTP 401，內容是 `{"error": "unauthorized", "code": "unauthorized", "hint": …}`。`/health` 沒帶密碼也會回應，但只給監控用的幾個欄位（見[手機與健康狀態](#手機與健康狀態)）。
+密碼錯誤或沒帶，會得到 HTTP 401，內容是 `{"error": "unauthorized", "code": "unauthorized", "hint": …}`。`/health` 沒帶密碼也會回應，但只給監控用的幾個欄位（見[手機與健康狀態](#手機與健康狀態)）。完整的 `/health` 資料也要帶密碼；控制台用 `GET /calls/api/health` 讀。
 
 ```bash
 curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
@@ -651,7 +651,8 @@ Content-Type: application/json
 | `POST /calls/api/devices/{serial}/mode` | Body `{"mode": "ai" \| "normal"}`。叫手機切換，最多等 15 秒等它回覆。回 `{ok, mode, error_code}`（400 時另附說明 `error`）。 |
 | `DELETE /calls/api/devices/{serial}` | 移除一支沒連線的舊手機（同時清除手機清單、已存名稱與 SIM 紀錄，保留過往通話紀錄）：`{ok, serial}`。手機還在線或通話中回 HTTP 409 `device_online`／`device_in_call`。 |
 | `PUT /calls/api/devices/{serial}/sim-number` | Body `{"sub_id": <整數>, "number": "..."}`。設定（空白代表清除）這支手機某張 SIM 的門號，讓來電與 AI 代打直接顯示並依門號挑選：`{ok, serial, sims}`。 |
-| `GET /health` | 排查問題用的大型 JSON 物件：版本、語言、哪些東西已設定、已連線的手機、進行中的通話；不含金鑰或密碼。 |
+| `GET /health` | 排查問題用的大型 JSON 物件：版本、語言、哪些東西已設定、已連線的手機、進行中的通話；不含金鑰或密碼。要帶密碼才拿得到（見下方說明最後一點）。 |
+| `GET /calls/api/health` | 控制台用，內容和 `/health` 的完整版相同。跟其他 `/calls/api/` 路由一樣：有設密碼而沒帶回 HTTP 401，沒設密碼就開放。 |
 
 `GET /calls/api/devices` 的內容：
 
@@ -666,7 +667,7 @@ Content-Type: application/json
 - `local_time` 是 Bageo 依 `TZ` 的時鐘。
 - `summary_ready`（`summary_api_key_set` 是同一個值）表示有沒有設定摘要服務。
 - `setup_missing` 列出控制台「都準備好了嗎？」還沒完成的項目：`ai_off`、`gemini_key`、`owner_name`、`notify`、`summary`（只有名稱，沒有設定值）；全部設好是空陣列。
-- 有設定控制台密碼、請求卻沒帶時，只回 `ok`、`version`、`language`、`notify_language`、`active_call_count`、`control_idle_clients` 和 `setup_missing`，監控用已經足夠。
+- `GET /health` 只有帶了控制台密碼的請求才拿到完整內容。沒設密碼時，只有這台電腦自己送的請求拿得到（經過反向代理的不算；用 Docker 預設網路時，從主機送的請求也算別台電腦）。其他來源只回 `ok`、`version`、`local_time`、`language`、`notify_language`、`active_call_count`、`control_idle_clients` 和 `setup_missing`，監控用已經足夠。
 
 切換模式後，`mode` 是手機現在的模式（不知道時為 `null`）；成功時 `error_code` 是 `null`，否則是下面其中之一：
 

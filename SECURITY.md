@@ -49,7 +49,9 @@ phone module together.
   answered on, at most 30 times, a minute apart), and hang up before
   the AI speaks when the phone used another SIM than the one asked for.
 - **Secrets stay hidden.** The settings API returns keys and notification tokens
-  masked; `/health` without the token returns only a short status.
+  masked. `/health` returns only a short status unless the request carries the
+  console password, or, with no password set, comes from this computer itself
+  (not through a reverse proxy).
 
 Found a way around any of these? Please report it privately, as above.
 

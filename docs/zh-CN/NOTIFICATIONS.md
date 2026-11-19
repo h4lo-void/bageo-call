@@ -67,6 +67,7 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&…
 | 黑名单来电 | 黑名单上的号码打来。消息会写明是响铃时直接拒接，还是接起来播放语音，以及你当初填的原因。 | `blocked` |
 | 通话摘要 | 通话结束几秒后：谁、什么事、AI 怎么回复、你要处理什么，以及链接。 | `summary` |
 | 通话中插播未接 | 通话中又有第二通打进来，手机把它拒接了（对方听到忙音）。知道号码的话记得回电。 | `call_waiting` |
+| 同一号码连续来电 | 同一个号码一分钟内不停打来。你会收到一条说明又打了几通的消息，不会每通都通知。 | `repeat_calls` |
 | AI 回拨：〈号码〉 | AI 打给来电者告知预约结果。消息会写结果（接通并告知、没人接、拨不出去，或这个号码不能回拨）和那通电话的摘要。 | `ai_callback` |
 | AI 代打：〈名字或号码〉 | 你交办的 AI 代打结束了。消息有结果、细节、需要你决定的选项、下一步、谈定的时间，以及“AI 代打”页的链接。 | `ai_errand` |
 | 预约待你确认 | 对方跟 AI 约了时间。Telegram 收到带按钮的卡片，其他渠道收到附一键“同意／不同意”签名按钮或链接的通知（见[日程预约](#日程预约)）。 | `appointment_pending` / `summary` |
@@ -75,8 +76,9 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&…
 | 测试通知 | 你按了“发送测试”。 | `test` |
 | 新短信 | 可选的[短信转发工具](../../tools/sms_forward/README.md)（英文）转来的短信。 | `event` |
 
-插播未接的消息：
+同一个号码不停打来，不会刷屏：每个号码一分钟内，“来电”“黑名单来电”“通话中插播未接”各最多通知两次，一分钟后用一条“同一号码连续来电”告诉你又打了几通。紧急警报、预约、通话摘要、AI 代打与回拨、语音留言、去电和短信不受影响，一定会通知。
 
+插播未接的消息：
 ```text
 通话中插播未接：0912345678（Pixel 9）
 时间：11月14日 18:02
@@ -682,6 +684,7 @@ smtps://you@example.com@smtp.example.com:465    一连接就走 TLS
 | `blocked` | 黑名单上的号码打来 | `caller_id`、`device`、`time`、`reason`、`declined`（`true`：响铃时拒接；`false`：接起来播放语音） |
 | `summary` | 通话结束几秒后 | `caller_id`、`device`、`time`、`summary`、`contact`（联系人名字，不是联系人就是空字符串） |
 | `call_waiting` | 通话中第二通打进来被拒接 | `caller_id`、`device`、`time`、`sim_country` |
+| `repeat_calls` | 同一个号码不停打来，多出来的通知被合并 | `caller_id`、`count`、`kind`（`incoming`、`blocked` 或 `call_waiting`） |
 | `ai_callback` | 日程预约的 AI 回拨结束，或拨不出去 | `caller_id`、`device`、`time`、`summary` |
 | `ai_errand` | AI 代打结束，或没能开始 | `number`、`device`、`time`、`summary` |
 | `appointment_pending` | 对方跟 AI 约了时间，等待你决定 | `task_id`、`caller_id`、`device`、`title`、`start_at`、`accept_url`、`decline_url` |

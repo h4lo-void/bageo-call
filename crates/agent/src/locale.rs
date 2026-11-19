@@ -520,6 +520,10 @@ pub struct Phrases {
     pub n_calendar: &'static str,
     pub n_test_title: &'static str,
     pub n_test_body: &'static str,
+    /// Held-back calls of one number, in one message. `{number}` = the number,
+    /// `{count}` = how many calls.
+    pub n_repeat_title: &'static str,
+    pub n_repeat_body: &'static str,
     // Post-call summary lines
     pub s_caller: &'static str,
     pub s_matter: &'static str,
@@ -716,6 +720,8 @@ static ZH_TW: Phrases = Phrases {
     n_calendar: "行事曆",
     n_test_title: "測試通知",
     n_test_body: "這是 Bageo 的測試通知，看到這則就代表設定成功。",
+    n_repeat_title: "同一號碼連續來電",
+    n_repeat_body: "{number} 這一分鐘內又打了 {count} 通，沒有另外通知。",
     s_caller: "對方",
     s_matter: "事情",
     s_reply: "AI 回覆",
@@ -862,6 +868,8 @@ static ZH_CN: Phrases = Phrases {
     n_calendar: "日历",
     n_test_title: "测试通知",
     n_test_body: "这是 Bageo 的测试通知，看到这条就说明设置成功。",
+    n_repeat_title: "同一号码连续来电",
+    n_repeat_body: "{number} 这一分钟内又打了 {count} 个电话，没有另外通知。",
     s_caller: "对方",
     s_matter: "事情",
     s_reply: "AI 回复",
@@ -1008,6 +1016,8 @@ static EN: Phrases = Phrases {
     n_calendar: "Calendar",
     n_test_title: "Test notification",
     n_test_body: "This is a test notification from Bageo. If you can read it, the channel works.",
+    n_repeat_title: "Repeated calls from one number",
+    n_repeat_body: "More calls from {number} in the last minute: {count}. They were not sent one by one.",
     s_caller: "Caller",
     s_matter: "About",
     s_reply: "AI said",
@@ -1164,6 +1174,8 @@ static JA: Phrases = Phrases {
     n_calendar: "カレンダー",
     n_test_title: "テスト通知",
     n_test_body: "Bageo からのテスト通知です。これが届いていれば設定は完了です。",
+    n_repeat_title: "同じ番号から連続着信",
+    n_repeat_body: "{number} から、この1分間にさらに{count}回の着信がありましたが、1回ずつの通知は省きました。",
     s_caller: "相手",
     s_matter: "用件",
     s_reply: "AI の返答",
@@ -1322,6 +1334,8 @@ static KO: Phrases = Phrases {
     n_calendar: "캘린더",
     n_test_title: "테스트 알림",
     n_test_body: "Bageo 테스트 알림입니다. 이 메시지가 보이면 설정이 완료된 것입니다.",
+    n_repeat_title: "같은 번호에서 연속 전화",
+    n_repeat_body: "{number} 번호에서 지난 1분 동안 {count}번 더 전화가 왔지만, 하나씩 알리지는 않았습니다.",
     s_caller: "상대",
     s_matter: "용건",
     s_reply: "AI 답변",
@@ -1474,6 +1488,8 @@ static ES: Phrases = Phrases {
     n_calendar: "Calendario",
     n_test_title: "Notificación de prueba",
     n_test_body: "Esta es una notificación de prueba de Bageo. Si la ves, el canal funciona.",
+    n_repeat_title: "Llamadas repetidas de un mismo número",
+    n_repeat_body: "Más llamadas de {number} en el último minuto: {count}. No se avisó de cada una.",
     s_caller: "Quién",
     s_matter: "Asunto",
     s_reply: "La IA dijo",
@@ -1630,6 +1646,8 @@ static FR: Phrases = Phrases {
     n_calendar: "Agenda",
     n_test_title: "Notification de test",
     n_test_body: "Ceci est une notification de test de Bageo. Si vous la voyez, le canal fonctionne.",
+    n_repeat_title: "Appels répétés du même numéro",
+    n_repeat_body: "Autres appels de {number} en une minute : {count}. Ils n'ont pas été signalés un par un.",
     s_caller: "Qui",
     s_matter: "Objet",
     s_reply: "Réponse de l'IA",
@@ -1784,6 +1802,8 @@ static DE: Phrases = Phrases {
     n_calendar: "Kalender",
     n_test_title: "Testbenachrichtigung",
     n_test_body: "Dies ist eine Testbenachrichtigung von Bageo. Wenn du sie siehst, funktioniert der Kanal.",
+    n_repeat_title: "Wiederholte Anrufe derselben Nummer",
+    n_repeat_body: "Weitere Anrufe von {number} in der letzten Minute: {count}. Sie wurden nicht einzeln gemeldet.",
     s_caller: "Anrufer",
     s_matter: "Anliegen",
     s_reply: "KI-Antwort",
@@ -1937,6 +1957,8 @@ static PT: Phrases = Phrases {
     n_calendar: "Calendário",
     n_test_title: "Notificação de teste",
     n_test_body: "Esta é uma notificação de teste do Bageo. Se você está vendo isto, o canal funciona.",
+    n_repeat_title: "Chamadas repetidas do mesmo número",
+    n_repeat_body: "Mais chamadas de {number} no último minuto: {count}. Elas não foram avisadas uma a uma.",
     s_caller: "Quem",
     s_matter: "Assunto",
     s_reply: "A IA disse",
@@ -3306,6 +3328,8 @@ mod tests {
             let p = phrases(l);
             assert!(!p.hello.is_empty() && !p.bye.is_empty() && !p.unavailable.is_empty(), "{l:?}");
             assert!(p.n_blocked_done.contains("{}"), "{l:?}");
+            assert!(!p.n_repeat_title.is_empty(), "{l:?}");
+            assert!(p.n_repeat_body.contains("{number}") && p.n_repeat_body.contains("{count}"), "{l:?}");
             if !l.is_zh() {
                 assert!(!p.farewells.is_empty(), "{l:?}");
             }
