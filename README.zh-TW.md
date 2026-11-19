@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v1.4.0"><img src="https://img.shields.io/badge/release-v1.4.0-brightgreen.svg" alt="Release v1.4.0"></a>
+  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v1.6.9"><img src="https://img.shields.io/badge/release-v1.6.9-brightgreen.svg" alt="Release v1.6.9"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="授權：AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/商業授權-雙重授權-gold.svg" alt="提供商業授權"></a>
 </p>
@@ -219,6 +219,8 @@ AI 的語音、內建提示詞（簡短通用的基本寫法，可依自己的�
 4. **一把 Gemini API 金鑰**，到 [Google AI Studio](https://aistudio.google.com/apikey) 取得，Google 依用量計費。
 
 ## 快速開始
+
+手機已經 root 好的話，從下載到 AI 接起第一通電話，大約 3 分鐘。
 
 1. **下載**：從 [Releases](https://github.com/h4lo-void/bageo-call/releases) 下載適合你系統的檔案：Windows 用 `bageo-call-<version>-windows-x64-setup.exe`，macOS 用 `bageo-call-<version>-macos-arm64.dmg`（Apple 晶片）或 `bageo-call-<version>-macos-x64.dmg`（Intel），Linux 用 `bageo-call-<version>-linux-x64.tar.gz`。
 2. **安裝並啟動**：Windows 按兩下 `setup.exe` 安裝，再點桌面上的「Bageo」捷徑。macOS 打開 `.dmg`，把 Bageo 拖進「應用程式」，再點一下它。Linux 解壓縮後執行 `./start.sh`。控制台會打開在 <http://localhost:8787/>。

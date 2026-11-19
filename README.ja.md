@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v1.4.0"><img src="https://img.shields.io/badge/release-v1.4.0-brightgreen.svg" alt="リリース v1.4.0"></a>
+  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v1.6.9"><img src="https://img.shields.io/badge/release-v1.6.9-brightgreen.svg" alt="リリース v1.6.9"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="ライセンス：AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/commercial-dual%20license-gold.svg" alt="商用ライセンスあり"></a>
 </p>
@@ -219,6 +219,8 @@ AI の声、内蔵のプロンプト（ご自身の状況や話し方に合わ�
 4. **Gemini API キー**：[Google AI Studio](https://aistudio.google.com/apikey) で取得します。料金は、使った分だけ Google から請求されます。
 
 ## クイックスタート
+
+スマホが root 化済みなら、ダウンロードから AI が最初の電話に出るまで約 3 分です。
 
 1. **ダウンロード**：お使いの OS 用のファイルを [Releases](https://github.com/h4lo-void/bageo-call/releases) から入手します。Windows は `bageo-call-<version>-windows-x64-setup.exe`、macOS は `bageo-call-<version>-macos-arm64.dmg`（Apple シリコン）または `bageo-call-<version>-macos-x64.dmg`（Intel）、Linux は `bageo-call-<version>-linux-x64.tar.gz` です。
 2. **インストールして起動**：Windows は `setup.exe` をダブルクリックしてインストールし、デスクトップの「Bageo」ショートカットをクリックします。macOS は `.dmg` を開き、Bageo を「アプリケーション」にドラッグして、クリックします。Linux は展開して `./start.sh` を実行します。コンソールが <http://localhost:8787/> で開きます。
