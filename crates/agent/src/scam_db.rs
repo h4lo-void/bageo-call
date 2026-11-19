@@ -1268,9 +1268,26 @@ pub fn typology_for_hits(hits: &[&str]) -> Option<&'static str> {
 /// "About your request / application / inquiry / call" is how sales and scam
 /// calls open too ("по вашему запросу на кредит…", 「お申込みの件で、保証金を…」,
 /// "신청하신 건 대출 승인…"): weak. Only a phrase about a complaint or repair the
-/// owner reported being dealt with is strong on its own.
+/// owner reported being dealt with is strong on its own. The same goes for the
+/// generic "your request / inquiry / call", "following up on your…", "returning
+/// your call", 您申請的 and 調查結果 (fake prosecutors say it too) in the other
+/// languages. Each string must equal an own-matter phrase of the database.
 const WEAK_OWN_MATTER: &[&str] = &[
     "折り返し", "민원", "votre dossier", "seu pedido", "your claim",
+    // en
+    "your request", "your inquiry", "your enquiry", "following up on your", "regarding your case", "you contacted us",
+    "returning your call",
+    // zh-TW
+    "您申請的", "你申請的", "調查結果", "調查的結果",
+    // es, fr, de, pt, it
+    "su consulta", "su solicitud", "devolver su llamada",
+    "votre demande", "suite à votre appel",
+    "ihre anfrage", "ihrer anfrage", "ihr anliegen", "ihrem anliegen", "ihres anliegens", "ihren rückruf", "ihrem rückruf",
+    "sua solicitação", "retornando sua ligação",
+    "la sua richiesta", "come da sua richiesta", "la sua pratica",
+    // id, ms, tl, tr, vi
+    "menindaklanjuti permintaan anda", "pertanyaan anda", "susulan permohonan anda", "tungkol sa request mo",
+    "talebiniz üzerine", "phản hồi yêu cầu của",
     // ru
     "по вашему запросу", "по вашей заявке", "по вашему заявлению", "вашего обращения", "ваше обращение рассмотрено",
     // ja
@@ -2274,8 +2291,8 @@ mod tests {
             "following up on your ticket",
             "お問い合わせの件でお電話しました",
             "Llamo por su reclamación",
-            "Rappel suite à votre appel",
-            "come da sua richiesta la richiamo",
+            "Rappel suite à votre appel au sujet de votre signalement",
+            "come da sua richiesta la richiamo per la sua pratica",
             "Saya menelepon soal keluhan anda",
             "Звоню по вашему обращению",
             "şikayetiniz hakkında arıyorum",
@@ -2384,8 +2401,8 @@ mod tests {
             "Hello, about your claim, returning your call",
             "Following up on your ticket",
             "Llamo por su reclamación de la semana pasada",
-            "Rappel suite à votre appel",
-            "Retornando sua ligação sobre o reparo do aparelho",
+            "Rappel suite à votre appel au sujet de votre signalement",
+            "Retornando sua ligação sobre sua solicitação de reparo do aparelho",
         ] {
             assert!(own_matter(t), "{t}");
         }
@@ -2580,7 +2597,7 @@ mod tests {
                 "Hier ist das Inkassobüro: zahlen Sie sofort, sonst folgen Mahnbescheid, Zwangsvollstreckung und Lohnpfändung durch den Gerichtsvollzieher",
                 "Hör zu du Arschloch, wir wissen wo du wohnst und kommen bei Ihnen vorbei, ich mach dich fertig",
                 "Bezüglich Ihrer Anfrage nennen Sie mir bitte sofort den Bestätigungscode und Ihr Passwort",
-                "Bezüglich Ihrer Anfrage von gestern wollte ich Ihnen kurz mitteilen, dass das Teil da ist",
+                "Bezüglich Ihrer Anfrage von gestern und Ihres Anliegens wollte ich Ihnen kurz mitteilen, dass das Teil da ist",
                 "Guten Tag, hier ist die Zahnarztpraxis zur Erinnerung an Ihren Termin morgen um zehn Uhr",
             ),
             (
@@ -2589,7 +2606,7 @@ mod tests {
                 "Aqui é da assessoria de cobrança e recuperação de crédito; sem pagamento hoje haverá bloqueio judicial, penhora e protesto em cartório",
                 "Olha aqui seu vagabundo caloteiro, sei onde você mora e vamos na sua casa hoje",
                 "Sobre sua reclamação, informe agora o código de verificação e sua senha para liberar",
-                "Retornando sua ligação sobre o reparo do aparelho, ele já está pronto para retirada",
+                "Retornando sua ligação sobre sua solicitação de reparo do aparelho, ele já está pronto para retirada",
                 "Olá, aqui é da clínica odontológica apenas lembrando da sua consulta amanhã às três da tarde",
             ),
         ];
@@ -2854,6 +2871,109 @@ mod tests {
         ] {
             assert!(has_hard_hit(hard_phrase), "{lang}: expected hard hit on {hard_phrase}");
             assert!(own_matter(genuine), "{lang}: expected own_matter on {genuine}");
+        }
+    }
+
+    /// A scam-free opener: no OTP / ATM word and no advance-fee loan pitch, so
+    /// only the own-matter phrases decide.
+    fn without_spoof_demand(t: &str) -> bool {
+        keyword_hits(t).iter().all(|h| !h.hard && h.typology != "loan_advance_fee")
+    }
+
+    #[test]
+    fn every_weak_own_matter_phrase_is_a_phrase_of_the_database() {
+        for w in WEAK_OWN_MATTER {
+            assert!(
+                db().own_matter.iter().any(|(_, ps)| ps.iter().any(|p| p == w)),
+                "not in own_matter, so it would never match: {w}"
+            );
+        }
+    }
+
+    /// "Regarding your request / your application / returning your call" opens
+    /// loan, investment and police-impersonation calls too: one such phrase is no
+    /// follow-up, and the stalling starts as usual.
+    #[test]
+    fn generic_openers_in_every_language_do_not_make_the_call_the_owners_own_matter() {
+        let cases: [(&str, &str, bool); 28] = [
+            ("en", "Regarding your request, you have been approved for a loan with no interest, pay the fee first", false),
+            ("en", "Following up on your application, we can offer you a credit card with zero interest", true),
+            ("en", "Returning your call about the investment plan, I can also get you a credit card with no annual fee", true),
+            ("en", "Regarding your case, this is the police, your bank account is involved in money laundering", false),
+            ("zh-TW", "您申請的貸款已經核准了，先繳手續費就能撥款", false),
+            ("zh-TW", "您申請的信用卡已經核卡，另外我們有投資方案可以介紹", true),
+            ("es", "Sobre su solicitud, le hemos aprobado un préstamo sin intereses", true),
+            ("es", "Sobre su consulta, tenemos un seguro de vida con descuento y una inversión con rentabilidad garantizada", true),
+            ("fr", "Suite à votre demande, nous vous proposons une offre de placement", true),
+            ("fr", "Suite à votre appel, nous avons un crédit à taux zéro pour vous", true),
+            ("de", "Zu Ihrer Anfrage: wir haben einen Kredit ohne Zinsen für Sie", true),
+            ("de", "Wegen Ihres Anliegens: wir bieten Ihnen eine Geldanlage mit garantierter Rendite", true),
+            ("pt", "Sobre sua solicitação, seu empréstimo foi aprovado com juros baixos, pague a taxa", true),
+            ("pt", "Retornando sua ligação, temos um investimento com retorno garantido de vinte por cento", true),
+            ("it", "Riguardo la sua richiesta, le offriamo un prestito e una carta di credito senza spese", true),
+            ("it", "Come da sua richiesta, abbiamo un prestito senza interessi, paghi prima la commissione", true),
+            ("id", "Menindaklanjuti permintaan anda, kami menawarkan pinjaman dengan bunga rendah, bayar biaya dulu", true),
+            ("ms", "Susulan permohonan anda, kami tawarkan pelaburan dan kad kredit tanpa yuran", true),
+            ("tl", "Tungkol sa request mo, may alok kaming loan na walang interes, bayaran muna ang fee", true),
+            ("tr", "Talebiniz üzerine, size faizsiz bir kredi onayladık, önce ücreti ödeyin", true),
+            ("vi", "Phản hồi yêu cầu của anh, chúng tôi có khoản vay không lãi suất, anh đóng phí trước", true),
+            ("es", "Para devolver su llamada, le ofrecemos una inversión con rentabilidad garantizada del veinte por ciento", true),
+            ("de", "Ich rufe wegen Ihrer Anfrage an: wir haben eine Geldanlage mit garantierter Rendite", true),
+            ("pt", "Sobre sua solicitação, temos um seguro de vida com desconto e uma carta de crédito contemplada", true),
+            ("it", "Per la sua pratica, le proponiamo di investire in un piano e una assicurazione vantaggiosa", true),
+            ("fr", "Au sujet de votre demande, nous avons une offre de placement avec rendement garanti", true),
+            ("zh-TW", "你申請的貸款已經通過了，我們還有投資課程可以介紹", true),
+            ("en", "Returning your call, we have a special offer on life insurance with a free gift", true),
+        ];
+        let mut bad: Vec<String> = Vec::new();
+        for (lang, t, engages) in cases {
+            if !without_spoof_demand(t) {
+                bad.push(format!("{lang}: a spoof demand is in it, so the phrases prove nothing: {t} {:?}", keyword_hits(t)));
+            }
+            if own_matter(t) {
+                bad.push(format!("{lang}: one generic phrase is no follow-up: {t}"));
+            }
+            if engages {
+                let dialogue = format!("接聽：喂？\n對方：{t}");
+                if !crate::gemini_live::dialogue_is_sales(&dialogue) {
+                    bad.push(format!("{lang}: stalling must still start: {t}"));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// A complaint or repair the owner reported is strong alone; the generic
+    /// phrases need a second, different one.
+    #[test]
+    fn real_follow_ups_in_every_language_stay_the_owners_own_matter() {
+        for (lang, t) in [
+            ("en", "I'm calling about the issue you reported with your router"),
+            ("en", "Following up on your request \u{2014} returning your call from yesterday"),
+            ("zh-TW", "您反映的漏水問題，我們明天派人過去"),
+            ("zh-TW", "您報修的冷氣已經排定明天派人處理"),
+            ("es", "Llamo por su reclamación de la semana pasada"),
+            ("es", "Para devolver su llamada sobre su consulta de ayer"),
+            ("fr", "Je vous appelle au sujet de votre réclamation"),
+            ("fr", "Suite à votre appel, je reviens vers vous au sujet de votre demande"),
+            ("de", "Ich rufe wegen Ihrer Beschwerde an"),
+            ("de", "Ich rufe auf Ihre Anfrage zurück, wegen Ihres Anliegens"),
+            ("pt", "Ligo sobre sua reclamação da semana passada"),
+            ("pt", "Retornando sua ligação sobre sua solicitação de ontem"),
+            ("it", "Chiamo per il suo reclamo di ieri"),
+            ("it", "Come da sua richiesta, richiamo per la sua pratica"),
+            ("id", "Saya menelepon soal keluhan anda"),
+            ("id", "Terkait laporan anda minggu lalu, teknisi kami datang besok"),
+            ("ms", "Saya telefon tentang aduan anda semalam"),
+            ("ms", "Susulan permohonan anda dan pertanyaan anda, kami sudah semak"),
+            ("tl", "Tumatawag ako tungkol sa reklamo mo kahapon"),
+            ("tl", "Ang inireklamo mo ay naayos na namin"),
+            ("tr", "Şikayetiniz hakkında arıyorum"),
+            ("tr", "Bildiriminiz üzerine yarın teknisyen gelecek"),
+            ("vi", "Tôi gọi về việc anh đã phản ánh tiếng ồn hôm qua"),
+            ("vi", "Về khiếu nại của anh tuần trước, bên tôi đã xử lý xong"),
+        ] {
+            assert!(own_matter(t), "{lang}: {t}");
         }
     }
 }
