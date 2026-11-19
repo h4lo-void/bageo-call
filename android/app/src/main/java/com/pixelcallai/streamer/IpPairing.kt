@@ -128,7 +128,7 @@ object IpPairing {
                 null
             }
             val token = json?.optString("token").orEmpty()
-            if (status == 200 && json?.optBoolean("ok") == true && token.isNotBlank()) {
+            if (status == 200 && json != null && json.optBoolean("ok") && token.isNotBlank()) {
                 Outcome.Paired(wsUrl(address, json.optString("path"), token))
             } else {
                 Outcome.Failed(failureFor(status, json?.optString("code")))

@@ -9,6 +9,7 @@ import android.app.ActivityManager
 import android.app.AlertDialog
 import android.app.NotificationManager
 import android.app.role.RoleManager
+import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -577,7 +578,7 @@ class MainActivity : Activity() {
             id = View.generateViewId()
             setHint(R.string.ip_code_hint)
             inputType = InputType.TYPE_CLASS_NUMBER
-            filters = arrayOf(InputFilter.LengthFilter(6))
+            filters = arrayOf<InputFilter>(InputFilter.LengthFilter(6))
             setSingleLine(true)
             importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
         }
@@ -608,7 +609,7 @@ class MainActivity : Activity() {
             .setNegativeButton(android.R.string.cancel, null)
             .create()
         dialog.setOnShowListener {
-            val ok = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            val ok = dialog.getButton(DialogInterface.BUTTON_POSITIVE)
             ok.setOnClickListener {
                 val address = IpPairing.parseAddress(addrField.text.toString())
                 if (address == null) {
