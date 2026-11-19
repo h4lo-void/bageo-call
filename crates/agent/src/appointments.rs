@@ -1768,6 +1768,7 @@ pub fn time_talk(text: &str) -> bool {
         // it
         "appuntamento", "riunione", "incontro", "vediamoci", "ci vediamo", "sei libero", "sei libera", "hai tempo",
         "ceniamo", "cenare", "pranziamo", "pranzare", "rimandare", "riprogrammare",
+        "cena", "pranzo", "caffè", "spostare", "libero", "libera",
         // ru
         "встреча", "встретимся", "встретиться", "свидание", "запись", "записаться", "совещание", "свободен", "свободна",
         "свободны", "есть время", "поужинаем", "пообедаем", "перенести", "договориться", "расписание", "когда удобно",
@@ -5785,9 +5786,29 @@ mod time_talk_edges {
             "مرحباً، أنا مندوب التوصيل وعندي طرد",
             "Merhaba, kargo şirketinden arıyorum, paketiniz kapınızda",
             "İyi günler, kurye geldi, kapıyı açar mısınız?",
+            "Il corriere passa domani mattina, c'è qualcuno in casa?",
+            "Buonasera, ho una consegna per lei, può scendere?",
         ] {
             assert!(!time_talk(t), "{t}");
         }
+    }
+
+    #[test]
+    fn italian_plans_to_eat_or_move_a_time_bring_the_appointment_rules() {
+        for t in [
+            "Facciamo una cena venerdì?",
+            "Domani a pranzo?",
+            "Che ne dici di un caffè domani?",
+            "Possiamo spostare a giovedì?",
+            "Sei libero sabato sera?",
+            "Ci vediamo domani per un appuntamento?",
+        ] {
+            assert!(time_talk(t), "{t}");
+        }
+        // Other languages as before.
+        assert!(time_talk("Are you free tomorrow?"));
+        assert!(time_talk("¿Cenamos mañana a las ocho?"));
+        assert!(!time_talk("Nice to meet you, I have a parcel for you"));
     }
 }
 

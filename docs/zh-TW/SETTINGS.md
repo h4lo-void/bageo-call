@@ -464,4 +464,6 @@ Bageo 會自己維持 `adb reverse`，並啟動手機上的 App。
 
 `RUST_LOG`（預設 `agent=info`）：設成 `agent=debug` 可以在日誌看到更多細節。
 
+`LOG_CALL_TEXT`（預設關）：日誌只記通話裡講了幾個字，像 `<12 chars>`。設成 `LOG_CALL_TEXT=1` 才會把通話中講的話寫進日誌。只在排查問題時開，查完就關掉。
+
 <!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

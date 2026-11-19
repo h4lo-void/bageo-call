@@ -190,7 +190,7 @@ fn marker_before(c: &[char], i: usize) -> Option<Marker> {
     } else if contains_any(&pre, &["上午", "早上", "早晨", "清晨", "아침", "朝"]) {
         Some(Marker::Morning)
     } else {
-        tr_marker_before(c, i)
+        tr_marker_before(c, i).or_else(|| it_marker_before(c, i))
     }
 }
 
@@ -203,6 +203,22 @@ fn tr_marker_before(c: &[char], i: usize) -> Option<Marker> {
     } else if pre.contains("öğlen") || pre.contains("öğle ") {
         Some(Marker::Noon)
     } else if pre.contains("sabah") {
+        Some(Marker::Morning)
+    } else {
+        None
+    }
+}
+
+/// Italian names the part of the day before the time too ("stasera alle 8",
+/// "domani mattina alle 9", "nel pomeriggio alle 3"). Whole Italian words only:
+/// the French "sera" ("il sera là à 8h") is no evening.
+fn it_marker_before(c: &[char], i: usize) -> Option<Marker> {
+    let pre: String = c[i.saturating_sub(20)..i].iter().collect();
+    if pre.contains("stasera") || pre.contains("questa sera") || pre.contains("pomeriggio") {
+        Some(Marker::Pm)
+    } else if pre.contains("mezzogiorno") {
+        Some(Marker::Noon)
+    } else if pre.contains("mattina") {
         Some(Marker::Morning)
     } else {
         None
@@ -564,6 +580,8 @@ const OTHER_LATIN_WORDS: &[&str] = &[
     "prenot", "ristorante", "tavolo", "appuntamento", "stasera", "domani", "ordinare", "pesan", "meja", "restoran", "reservasi", "janji temu", "dokter",
     "besok", "reserveer", "tafel", "afspraak", "stolik", "rezerwac", "wizyt", "rezervasyon", "randevu", "akşam", "yarın",
     "ayırt", "kişilik", "sipariş", "bugün", "doktor", "kuaför", "berber", "iptal", "ertele", "öğleden sonra",
+    "pranzo", "la cena", "a cena", "parrucchier", "barbiere", "disdire", "annullare", "spostare", "dottore", "oggi", "dopodomani",
+    "persone", "asporto",
 ];
 
 const CHANGE_WORDS: &[&str] = &[
@@ -1325,6 +1343,31 @@ mod tests {
         assert!(local("İptal etmek istiyorum").unsure);
         assert!(local("Yarına iki kişilik masa ayırtın, İyi akşamlar").unsure);
         assert!(!local("Ask Sam if he is coming to dinner").unsure);
+    }
+
+    #[test]
+    fn times_written_the_italian_way_are_read_with_the_part_of_the_day_before_them() {
+        let at = |t: &str| clocks_of(&fold(t).chars().collect::<Vec<_>>(), Kind::Appointment);
+        assert_eq!(at("Stasera alle 7"), [(19, 0)]);
+        assert_eq!(at("Domani mattina alle 9"), [(9, 0)]);
+        assert_eq!(at("Nel pomeriggio alle 3"), [(15, 0)]);
+        assert_eq!(at("Domani a mezzogiorno alle 1"), [(13, 0)]);
+        assert_eq!(at("Prenota alle 8 di sera"), [(20, 0)]);
+        // A number of people is not a time.
+        assert!(at("Stasera tavolo per 5 persone").is_empty());
+        // The French "sera" is no evening, and the other writings are unchanged.
+        assert_eq!(at("Il sera là à 8h"), [(8, 0)]);
+        assert_eq!(at("Réservation à 19h30"), [(19, 30)]);
+        assert_eq!(at("Reservar a las 8 de la tarde"), [(20, 0)]);
+        assert_eq!(at("Yarın akşam saat 8'de"), [(20, 0)]);
+    }
+
+    #[test]
+    fn italian_requests_go_to_the_model() {
+        assert!(local("Prenota per oggi un tavolo da asporto").unsure);
+        assert!(local("Chiama il parrucchiere e spostare l'appuntamento").unsure);
+        assert!(!local("Ask Sam if he is coming to dinner").unsure);
+        assert!(!local("Llama a mamá y dile que llego tarde").unsure);
     }
 
     #[test]

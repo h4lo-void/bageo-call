@@ -63,7 +63,13 @@ const JAPANESE_ONLY: &str = "駅営沢斉広図売読険円気様辺変鉄県関
 
 /// Written the same in Simplified Chinese and in Japanese, another way in
 /// Traditional Chinese: 「失礼」「番号」「会社」 alone may be either.
-const SHARED_WITH_JAPANESE: &str = "会号礼体国学声区当写旧万与乱争党画担胆恋双参来麦点断辞献尽属数楼状将条窃誉宝灯炉虫励践浅残径茎痴届内携医寝盗湿";
+///
+/// 「机」 (a desk in Japanese, 「機」 in Simplified Chinese) is here too: a live
+/// fragment of it waits, and the whole line is converted once it is complete
+/// (the call record, summaries and notifications go through [`for_reading`]),
+/// so 「手机」 still reads 「手機」 in everything the owner keeps. A fragment with
+/// another Simplified-only character in it (「手机没电」) is converted at once.
+const SHARED_WITH_JAPANESE: &str = "会号礼体国学声区当写旧万与乱争党画担胆恋双参来麦点断辞献尽属数楼状将条窃誉宝灯炉虫励践浅残径茎痴届内携医寝盗湿机";
 
 /// One line as the zh-TW owner reads it. `fragment`: the line may be a piece of
 /// one still coming in, so Chinese that reads the same in Japanese waits.
@@ -208,5 +214,28 @@ mod tests {
         assert_eq!(to_tw_in(Lang::ZhTw, "案内"), "案内");
         assert_eq!(to_tw_whole_in(Lang::ZhTw, "手机"), "手機");
         assert_eq!(to_tw_whole_in(Lang::ZhTw, "帯"), "帯");
+    }
+
+    #[test]
+    fn the_japanese_desk_waits_as_a_fragment_and_the_simplified_phone_is_converted_whole() {
+        // The call record, summaries and notifications read the whole line
+        // ([`for_reading`], [`to_tw_whole_in`]): errands close a caption line through
+        // `to_tw_whole`, the dialogue merge through `locale::for_owner`.
+        // A Japanese fragment keeps its 机, with or without more kanji or kana around it.
+        assert_eq!(to_tw_in(Lang::ZhTw, "机"), "机");
+        assert_eq!(to_tw_in(Lang::ZhTw, "机の上に置いてください"), "机の上に置いてください");
+        assert_eq!(to_tw_in(Lang::ZhTw, "机の上"), "机の上");
+        assert_eq!(for_reading("机の上に置いてください"), "机の上に置いてください");
+        assert_eq!(to_tw_whole_in(Lang::ZhTw, "對方：机の上に置いてください"), "對方：机の上に置いてください");
+        // Simplified Chinese with 机 is converted whole, and as a fragment once
+        // another character only Simplified Chinese writes is in it.
+        assert_eq!(to_tw_whole_in(Lang::ZhTw, "手机"), "手機");
+        assert_eq!(to_tw_whole_in(Lang::ZhTw, "我的手机号码"), "我的手機號碼");
+        assert_eq!(for_reading("我的手机没电了"), "我的手機沒電了");
+        assert_eq!(to_tw_in(Lang::ZhTw, "我的手机没电了"), "我的手機沒電了");
+        assert_eq!(for_reading("對方：这个手机很好用"), "對方：這個手機很好用");
+        // Other readers are left as they are.
+        assert_eq!(to_tw_whole_in(Lang::En, "手机"), "手机");
+        assert_eq!(to_tw_whole_in(Lang::ZhCn, "手机"), "手机");
     }
 }

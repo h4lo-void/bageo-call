@@ -2209,6 +2209,14 @@ const CANCELLED_BY: &[(&str, &[&str])] = &[
     ("je vous laisse", FR_LEFT_WITH),
     ("je te laisse", FR_LEFT_WITH),
     ("à plus", &["de", "cher", "ou"]),
+    // "Ciao, sono Marco" is a greeting: the words that go on after it.
+    (
+        "ciao",
+        &[
+            "sono", "mi", "chiamo", "volevo", "vorrei", "ho", "sei", "senti", "scusa", "scusi", "posso", "parlo", "ti", "chi", "come",
+            "c'è", "dimmi", "dammi", "ascolta", "dove", "quando", "hai", "puoi", "è",
+        ],
+    ),
     ("le dejo", ES_LEFT_WITH),
     ("te dejo", ES_LEFT_WITH),
     (
@@ -2307,6 +2315,7 @@ const THANKS: &[&str] = &[
     "muchísimas gracias", "muchas gracias", "gracias", "merci beaucoup", "merci bien", "merci",
     "vielen dank", "danke schön", "danke schon", "dankeschön", "danke",
     "muito obrigado", "muito obrigada", "obrigado", "obrigada", "valeu",
+    "grazie mille", "molte grazie", "mille grazie", "grazie tante", "grazie infinite", "grazie",
     "どうもありがとうございました", "どうもありがとうございます", "ありがとうございました",
     "ありがとうございます", "ありがとう",
     "감사합니다", "고맙습니다", "감사해요", "고마워요",
@@ -2445,6 +2454,8 @@ const EXTRA_WORD_FAREWELLS: &[&str] = &[
     // Italian / Spanish / French / German / Korean / Cantonese additions
     "arrivederci", "arrivederla", "buona giornata", "buongiornata", "buonanotte", "grazie a lei",
     "stammi bene", "stia bene", "a domani", "ci vediamo",
+    "buona serata", "a presto", "ci sentiamo", "ci risentiamo", "a risentirci", "buon proseguimento",
+    "buona continuazione", "ciao ciao",
     "que le vaya bien", "que te vaya bien", "que tenga buen día", "que tengas buen día",
     "je raccroche", "bonne continuation", "gute nacht",
     "잘 가", "잘 가요", "끊을게", "끊을게요", "得閒再傾", "得闲再倾", "收線啦", "收线啦",
@@ -2567,6 +2578,13 @@ const GREETING_BYES: &[GreetingBye] = &[
         tail: &["efendim", "hanım", "bey"],
         closing_tail: &[],
         cues: &["teşekkürler", "teşekkür ederim", "sağ olun", "sağ ol", "tamam", "peki", "ok", "okay"],
+    },
+    // Italian: "Grazie, ciao." "Va bene, grazie, buonasera." These open calls too, so only after a closing cue.
+    GreetingBye {
+        heads: &["ciao", "buongiorno", "buonasera", "buon pomeriggio"],
+        tail: &["a", "tutti", "signora", "signore", "ciao"],
+        closing_tail: &[],
+        cues: &["grazie", "va bene", "perfetto", "benissimo", "ok", "okay", "thanks", "thank you"],
     },
 ];
 
@@ -2746,9 +2764,35 @@ fn thai_farewell(text: &str, slack_chars: usize) -> bool {
 }
 
 /// [`ends_with_farewell`] for Vietnamese, Thai and Indonesian.
+/// Italian goodbyes said as the very last words only: "La saluto mia madre"
+/// passes a greeting on, "Perfetto, la saluto" ends the call.
+const IT_LAST_FAREWELLS: &[&str] = &["la saluto", "ti saluto"];
+
+/// Italian goodbyes that are everyday words too ("cerco un buon lavoro", "alla
+/// prossima fermata scendo"): a goodbye only as the very last words, with thanks
+/// or an "okay" right before them ("Grazie, buon lavoro", "Va bene, alla prossima").
+const IT_CUED_FAREWELLS: &[&str] = &["buon lavoro", "alla prossima"];
+const IT_FAREWELL_CUES: &[&str] = &["grazie", "va bene", "perfetto", "ok", "okay", "d'accordo"];
+/// Words right before a cued goodbye that may hold its cue ("grazie mille, buon lavoro").
+const IT_FAREWELL_CUE_WORDS: usize = 2;
+
+fn it_cued_farewell(ws: &[String]) -> bool {
+    IT_CUED_FAREWELLS.iter().any(|f| {
+        let h = words(f);
+        if ws.len() <= h.len() || !ws.ends_with(&h) {
+            return false;
+        }
+        let at = ws.len() - h.len();
+        let before = &ws[at.saturating_sub(IT_FAREWELL_CUE_WORDS)..at];
+        IT_FAREWELL_CUES.iter().any(|c| has_phrase(before, c))
+    })
+}
+
 fn extra_farewell(text: &str, slack: usize) -> bool {
     let (ws, after_mark) = words_after_marks(text);
     EXTRA_WORD_FAREWELLS.iter().any(|m| phrase_near_end(&ws, &after_mark, m, slack))
+        || IT_LAST_FAREWELLS.iter().any(|m| phrase_near_end(&ws, &after_mark, m, 0))
+        || it_cued_farewell(&ws)
         || GREETING_BYES.iter().any(|g| g.ends(&ws))
         || falou_closing(&ws, &after_mark)
         || thai_farewell(text, slack * 2)
@@ -3593,5 +3637,64 @@ mod tests {
         assert!(caller_wraps_up("Tamam, görüşürüz."));
         assert!(!caller_wraps_up("Yarın evde misiniz?"));
         assert!(!caller_wraps_up("Yarın görüşürüz mü?"));
+    }
+
+    #[test]
+    fn italian_goodbyes_thanks_and_the_greetings_that_say_goodbye() {
+        for s in [
+            "Va bene, a presto.",
+            "Buona serata.",
+            "Ci sentiamo.",
+            "Grazie mille, arrivederci.",
+            "Arrivederci, grazie mille.",
+            "Grazie, buon lavoro.",
+            "Va bene, alla prossima!",
+            "Grazie mille, alla prossima.",
+            "Perfetto, la saluto.",
+            "La saluto.",
+        ] {
+            assert!(ends_with_farewell(s, 1), "must be a goodbye: {s}");
+        }
+        // Everyday sentences with the same words, with the slack the caller's check allows.
+        for s in [
+            "Siamo un'azienda che cerca persone per un buon lavoro",
+            "Alla prossima fermata scendo",
+            "Buongiorno, buon lavoro, sono l'idraulico",
+            "La saluto mia madre",
+            "Buon lavoro.",
+            "Grazie, cerchiamo persone per un buon lavoro",
+        ] {
+            assert!(!ends_with_farewell(s, 2), "must not be a goodbye: {s}");
+            assert!(!caller_wraps_up(s), "must not wrap up: {s}");
+        }
+        // Greetings that also say goodbye need a closing cue before them.
+        assert!(ends_with_farewell("Va bene, grazie, buonasera.", 1));
+        assert!(ends_with_farewell("Perfetto, grazie, ciao!", 1));
+        assert!(ends_with_farewell("Grazie mille, buongiorno.", 1));
+        for s in [
+            "Buongiorno.",
+            "Pronto, buongiorno.",
+            "Ho un pacco per lei, buongiorno",
+        ] {
+            assert!(!ends_with_farewell(s, 1), "must not be a goodbye: {s}");
+        }
+        // A greeting with a name after it, with the slack the caller's check allows.
+        for s in ["Ciao, sono Marco.", "Ciao, mi chiamo Marco.", "Ciao, ho un pacco per lei.", "Ciao, c'è il signor Rossi?"] {
+            assert!(!ends_with_farewell(s, 2), "must not be a goodbye: {s}");
+            assert!(!caller_wraps_up(s), "must not wrap up: {s}");
+        }
+        // A name after a goodbye is still a goodbye.
+        assert!(ends_with_farewell("Va bene, ciao Marco.", 2));
+        assert!(ends_with_farewell("Grazie, ciao a tutti.", 2));
+        assert_eq!(strip_trailing_thanks("Va bene, grazie."), "Va bene");
+        assert_eq!(strip_trailing_thanks("Perfetto, Grazie Mille!"), "Perfetto");
+        assert_eq!(strip_trailing_thanks("Grazie"), "");
+        assert!(caller_wraps_up("Va bene, a presto."));
+        assert!(!caller_wraps_up("Ci sentiamo domani?"));
+        // Other languages as before.
+        assert!(ends_with_farewell("Okay, goodbye.", 1));
+        assert!(ends_with_farewell("Vale, hasta luego.", 1));
+        assert!(!ends_with_farewell("Gracias", 1));
+        assert_eq!(strip_trailing_thanks("Vale, gracias."), "Vale");
     }
 }
