@@ -1264,7 +1264,24 @@ pub fn typology_for_hits(hits: &[&str]) -> Option<&'static str> {
 /// dossier", 折り返し, 민원, "seu pedido"): one of them alone is no proof of a
 /// follow-up on the owner's own matter; two different ones, or any other
 /// own-matter phrase, are.
-const WEAK_OWN_MATTER: &[&str] = &["折り返し", "민원", "votre dossier", "seu pedido", "your claim"];
+///
+/// "About your request / application / inquiry / call" is how sales and scam
+/// calls open too ("по вашему запросу на кредит…", 「お申込みの件で、保証金を…」,
+/// "신청하신 건 대출 승인…"): weak. Only a phrase about a complaint or repair the
+/// owner reported being dealt with is strong on its own.
+const WEAK_OWN_MATTER: &[&str] = &[
+    "折り返し", "민원", "votre dossier", "seu pedido", "your claim",
+    // ru
+    "по вашему запросу", "по вашей заявке", "по вашему заявлению", "вашего обращения", "ваше обращение рассмотрено",
+    // ja
+    "お申し込みの件", "お申込みの件", "ご申請の件", "ご相談の件", "お問合せの件", "ご依頼いただいた件", "お電話いただいた件",
+    // ko
+    "신청하신 건", "문의해 주신", "접수해 주신", "요청해 주신", "남겨 주신 문의",
+    // hi
+    "आपके आवेदन के बारे में", "आपके अनुरोध के बारे में", "आपकी पूछताछ", "आपकी समस्या के बारे में", "आपने संपर्क किया था",
+    // ar
+    "بخصوص طلبك", "بشأن طلبك", "استفسارك",
+];
 
 /// The caller follows up on something the owner raised (a complaint, a repair,
 /// an application): never a pitch, in any language of the database — unless the
@@ -2270,6 +2287,116 @@ mod tests {
         }
         assert!(!own_matter("There is a problem with your order"));
         assert!(!own_matter("他反應很快"));
+    }
+
+    /// Russian, Hindi, Arabic, Japanese and Korean: a reply about a complaint or
+    /// repair the owner raised is their own matter; "about your request /
+    /// application / inquiry" alone is how sales and scam calls open too.
+    #[test]
+    fn follow_ups_in_russian_hindi_arabic_japanese_and_korean_are_the_owners_own_matter() {
+        // One strong phrase, or two different weak ones.
+        let cases: [(&str, [&str; 3], &str, &str); 5] = [
+            (
+                "ru",
+                [
+                    "Звоним сообщить, что мы рассмотрели вашу жалобу на шум, мастер придёт в пятницу",
+                    "Перезваниваю по вашей жалобе на протечку в ванной",
+                    "По вашей заявке на ремонт: ваше обращение рассмотрено, мастер приедет завтра",
+                ],
+                "По вашему запросу назовите код из смс и перейдите на безопасный счёт",
+                "Предлагаем вам выгодный кредит на особых условиях",
+            ),
+            (
+                "hi",
+                [
+                    "आपने जो समस्या बताई थी, उसका समाधान हो गया है",
+                    "आपकी शिकायत पर इंजीनियर कल आपके घर आएगा",
+                    "आपके आवेदन के बारे में और आपकी पूछताछ का जवाब देने के लिए फोन किया है",
+                ],
+                "आपके आवेदन के बारे में ओटीपी कोड बताइए",
+                "हमारी कंपनी में निवेश करें और ज्यादा मुनाफा कमाएं",
+            ),
+            (
+                "ar",
+                [
+                    "بخصوص المشكلة التي أبلغت عنها، تم إصلاح العطل",
+                    "الشكوى التي قدمتها الأسبوع الماضي تم حلها",
+                    "أتصل بخصوص طلبك واستفسارك الأسبوع الماضي، انتهى الإصلاح",
+                ],
+                "بخصوص طلبك أرسل لي رمز التحقق",
+                "لدينا عرض خاص لقرض بدون فوائد",
+            ),
+            (
+                "ja",
+                [
+                    "ご依頼の件でお見積もりができました",
+                    "修理ご依頼の件でご連絡いたしました",
+                    "お申し込みの件と、ご相談の件について合わせてご連絡いたしました",
+                ],
+                "お申し込みの件ですが、認証コードと暗証番号を教えてください",
+                "新しい投資プランのご案内でお電話しました",
+            ),
+            (
+                "ko",
+                [
+                    "접수하신 민원 처리 결과를 알려드립니다",
+                    "요청하신 인터넷 설치 일정 안내드립니다",
+                    "신청하신 건과 문의해 주신 내용 함께 안내드립니다",
+                ],
+                "신청하신 건 승인을 위해 문자로 간 인증번호와 비밀번호를 말씀해 주세요",
+                "민원 처리 결과를 알려드립니다",
+            ),
+        ];
+        for (lang, genuine, spoofed, other) in cases {
+            for t in genuine {
+                assert!(!has_hard_hit(t), "{lang}: a genuine follow-up has no scam-only demand: {t}");
+                assert!(own_matter(t), "{lang}: {t}");
+            }
+            assert!(has_hard_hit(spoofed), "{lang}: {spoofed}");
+            assert!(!own_matter(spoofed), "{lang}: a scam-only demand cancels it: {spoofed}");
+            assert!(!own_matter(other), "{lang}: not a follow-up: {other}");
+        }
+        // Sales and scam openers that start with one weak phrase.
+        for t in [
+            "ご相談の件で、新しい投資プランをご紹介します。元本保証で年利二十パーセントです",
+            "お問合せの件で、保険の見直しのご案内です",
+            "お申込みの件で、融資の保証金として先に五万円お振込みください",
+            "お申し込みの件ですが、未納料金が発生しています",
+            "문의해 주신 투자 상품 안내드립니다. 수익률 삼십 퍼센트 보장입니다",
+            "접수해 주신 건과 관련해 검찰청입니다. 계좌가 범죄에 연루되었습니다",
+            "남겨 주신 문의 확인해서 연락드렸습니다. 보험 가입하시면 혜택이 있습니다",
+            "신청하신 건 대출 승인되었습니다. 수수료를 먼저 입금해 주세요",
+            "आपकी समस्या के बारे में, हम आपको नया क्रेडिट कार्ड ऑफर देते हैं",
+            "आपकी पूछताछ के लिए धन्यवाद, हमारी बीमा पॉलिसी में निवेश करें",
+            "आपके अनुरोध के बारे में निवेश योजना बताता हूँ",
+            "أنا من الشرطة، بخصوص طلبك، حسابك متورط في غسيل أموال",
+            "بخصوص طلبك فزت بجائزة كبرى، ادفع رسوم التحويل لاستلامها",
+            "بخصوص طلبك، تمت الموافقة على قرض بدون فوائد",
+            "Это служба безопасности банка, по вашему запросу на кредит зафиксирована подозрительная операция по карте",
+            "Звоню по вашему запросу на кредит, мы одобрили вам сумму",
+            "Добрый день, по вашему запросу в интернете мы звоним предложить натяжные потолки",
+            "Ваше обращение рассмотрено, вам положена выплата, оплатите комиссию",
+        ] {
+            assert!(!own_matter(t), "one weak phrase is no follow-up: {t}");
+        }
+        // English, Spanish, French and Portuguese read as before.
+        for t in [
+            "Hello, about your claim, returning your call",
+            "Following up on your ticket",
+            "Llamo por su reclamación de la semana pasada",
+            "Rappel suite à votre appel",
+            "Retornando sua ligação sobre o reparo do aparelho",
+        ] {
+            assert!(own_matter(t), "{t}");
+        }
+        for t in [
+            "We are calling about your claim",
+            "Nous appelons au sujet de votre dossier CPF",
+            "Estou ligando sobre seu pedido",
+            "Le llamamos para ofrecerle un seguro de vida",
+        ] {
+            assert!(!own_matter(t), "{t}");
+        }
     }
 
     #[test]

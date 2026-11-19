@@ -2150,6 +2150,8 @@ const VOICEMAIL: &[&str] = &[
     // it
     "segreteria telefonica", "casella vocale", "lasciare un messaggio", "lasci un messaggio", "lascia un messaggio",
     "dopo il segnale", "dopo il bip", "dopo il tono",
+    "dopo il beep", "posta vocale", "lasciate un messaggio", "lasci il suo messaggio", "lascia il tuo messaggio",
+    "risponde la segreteria telefonica",
     // ru
     "голосовая почта", "голосовую почту", "голосовой почтовый ящик", "автоответчик", "оставьте сообщение",
     "оставьте ваше сообщение", "после сигнала", "после звукового сигнала", "после гудка",
@@ -2206,6 +2208,7 @@ pub fn carrier_message(text: &str) -> bool {
         "numero inesistente", "numero da lei composto è inesistente", "numero da lei composto e inesistente",
         "numero selezionato è inesistente", "numero selezionato e inesistente", "numero non è attivo", "numero non e attivo",
         "fuori copertura",
+        "spento o non raggiungibile", "spento o fuori copertura", "al di fuori dell'area di copertura",
         // ru
         "неправильно набран номер", "номер не существует", "не обслуживается", "выключен или находится вне зоны",
         "вне зоны действия сети", "аппарат абонента выключен", "абонент временно недоступен",
@@ -2251,6 +2254,8 @@ pub fn carrier_message(text: &str) -> bool {
         "não está disponível", "nao esta disponivel", "fora de serviço", "fora de servico", "não pode ser completada", "nao pode ser completada",
         // it
         "spento", "non è raggiungibile", "non e raggiungibile", "non è disponibile", "non e disponibile",
+        "irraggiungibile", "non raggiungibile", "fuori servizio", "non è in servizio", "non e in servizio", "non è più in servizio",
+        "non e piu in servizio", "non è assegnato", "non e assegnato",
         // ru
         "недоступен", "выключен", "не отвечает",
         // th
@@ -2286,6 +2291,7 @@ pub fn carrier_message(text: &str) -> bool {
         "número que ligou", "numero que ligou", "número chamado", "numero chamado", "número discado", "numero discado", "telefone chamado", "assinante",
         // it
         "il numero", "numero chiamato", "numero composto", "numero selezionato", "cliente chiamato", "utente",
+        "da lei chiamato", "da lei selezionato", "abbonato",
         // ru
         "вызываемый номер", "набранный номер", "абонент",
         // th
@@ -2325,6 +2331,8 @@ pub fn busy_message(text: &str) -> bool {
         "linha ocupada",
         // it
         "la linea è occupata", "la linea e occupata", "linea occupata",
+        "linea impegnata", "la linea è impegnata", "la linea e impegnata", "impegnato in un'altra conversazione",
+        "impegnata in un'altra conversazione",
         // ru
         "линия занята", "абонент занят",
         // th
@@ -2386,6 +2394,8 @@ pub fn busy_message(text: &str) -> bool {
         "끊지 말고", "espere", "no cuelgue", "patientez", "restez en ligne", "bleiben sie dran", "bitte warten", "aguarde", "não desligue",
         // it
         "rimanga in linea", "resti in linea", "attenda in linea",
+        "resti in attesa", "rimanga in attesa", "non riattacchi", "non attacchi", "la preghiamo di attendere", "attendere prego",
+        "un attimo di pazienza",
         // ru
         "оставайтесь на линии", "подождите на линии", "не кладите трубку",
         // th
@@ -2407,6 +2417,8 @@ pub fn busy_message(text: &str) -> bool {
         "mais tarde",
         // it
         "riprovi più tardi", "riprovi piu tardi", "richiamare più tardi",
+        "riprovare più tardi", "riprovare piu tardi", "richiami più tardi", "richiami piu tardi", "richiamare piu tardi", "riprovi tra",
+        "riprovi dopo", "riprovi in seguito", "richiami in seguito",
         // ru
         "перезвоните позже", "позвоните позже",
         // th
@@ -2452,6 +2464,7 @@ pub fn carrier_worth_redialing(said: &str) -> bool {
         "não se encontra atribuído", "nao se encontra atribuido", "chamada não pode ser completada", "chamada nao pode ser completada",
         // it
         "numero inesistente", "è inesistente", "e inesistente", "non è attivo", "non e attivo", "non è più attivo", "non e piu attivo",
+        "non è assegnato", "non e assegnato", "non è in servizio", "non e in servizio", "non è più in servizio", "non e piu in servizio",
         // ru
         "неправильно набран номер", "номер не существует", "не обслуживается",
         // th
@@ -5706,6 +5719,54 @@ mod tests {
             assert!(!busy_message(hold), "hold queue must not trigger busy hangup: {hold}");
         }
         assert!(!busy_message("Şu an meşgulüz, biraz sonra arar mısınız?"));
+    }
+
+    #[test]
+    fn italian_voicemail_carrier_and_busy_wording() {
+        for vm in [
+            "Siamo spiacenti, risponde la segreteria telefonica. Lasci un messaggio dopo il segnale acustico.",
+            "La posta vocale è attiva, lasciate un messaggio dopo il beep.",
+            "Casella vocale dell'utente: lasci il suo messaggio dopo il tono.",
+        ] {
+            assert!(voicemail_message(vm), "expected voicemail: {vm}");
+            assert!(!carrier_message(vm), "voicemail is no carrier recording: {vm}");
+        }
+        assert!(!voicemail_message("Buongiorno, segreteria dell'ospedale, come posso aiutarla?"));
+        assert!(!voicemail_message("Risponde la segreteria, come posso aiutarla?"));
+        for carrier in [
+            "Il telefono potrebbe essere spento o non raggiungibile.",
+            "Il cliente da lei chiamato è irraggiungibile.",
+            "Il numero da lei chiamato non è in servizio.",
+            "Il numero selezionato non è assegnato.",
+        ] {
+            assert!(carrier_message(carrier), "expected carrier recording: {carrier}");
+        }
+        for human in [
+            "Il signor Rossi è irraggiungibile in questo momento, richiami più tardi.",
+            "L'ufficio non è in servizio il sabato, venga lunedì.",
+        ] {
+            assert!(!carrier_message(human), "false positive carrier: {human}");
+        }
+        // A number that does not work is not dialed again; a phone that is off is.
+        assert!(!carrier_worth_redialing("Il numero da lei chiamato non è in servizio."));
+        assert!(carrier_worth_redialing("Il telefono potrebbe essere spento o non raggiungibile."));
+        for busy in [
+            "La linea è impegnata, riprovi più tardi.",
+            "Il numero chiamato è impegnato in un'altra conversazione.",
+        ] {
+            assert!(busy_message(busy), "expected busy: {busy}");
+        }
+        for hold in [
+            "Tutti i nostri operatori sono impegnati, resti in attesa.",
+            "Tutti gli operatori sono occupati, la preghiamo di attendere.",
+        ] {
+            assert!(!busy_message(hold), "hold queue must not trigger busy hangup: {hold}");
+        }
+        // Other languages as before.
+        assert!(carrier_message("The number you have dialed is not in service."));
+        assert!(voicemail_message("Deje su mensaje después del tono."));
+        assert!(busy_message("Aradığınız numara meşgul."));
+        assert!(!busy_message("All agents are busy, please hold."));
     }
 
     #[tokio::test]

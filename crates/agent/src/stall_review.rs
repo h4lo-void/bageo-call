@@ -967,6 +967,11 @@ const PRESS_VERBS: &[&[&str]] = &[
     &["pressione"],
     &["tapez"],
     &["digite"],
+    &["prema"],
+    &["premi"],
+    &["premere"],
+    &["digiti"],
+    &["digita"],
     &["tecle"],
     &["tekan"],
     &["nhấn"],
@@ -974,9 +979,9 @@ const PRESS_VERBS: &[&[&str]] = &[
 ];
 
 /// Words that may stand between the verb and the key ("press the pound key").
-const KEY_ARTICLES: &[&str] = &["the", "la", "el", "le", "a", "o", "die"];
+const KEY_ARTICLES: &[&str] = &["the", "la", "el", "le", "a", "o", "die", "il", "lo"];
 /// The key's own name before it: "la touche 2", "die Taste 1", "phím 1".
-const KEY_NOUNS: &[&str] = &["touche", "taste", "tecla", "phím", "số"];
+const KEY_NOUNS: &[&str] = &["touche", "taste", "tecla", "tasto", "phím", "số"];
 
 /// Keys by name: en, es, fr, de, pt, id.
 const KEY_WORDS: &[&str] = &[
@@ -985,12 +990,13 @@ const KEY_WORDS: &[&str] = &[
     "zéro", "deux", "trois", "quatre", "cinq", "sept", "huit", "neuf", "dièse", "étoile",
     "null", "eins", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun",
     "dois", "três", "quatro", "sete", "oito", "nove",
+    "due", "tre", "quattro", "cinque", "sei", "sette", "otto", "cancelletto",
     "nol", "satu", "dua", "tiga", "empat", "lima", "enam", "tujuh", "delapan", "sembilan",
 ];
 
 /// What an option is for: "for billing, press 1", "press 1 to …", "para …".
 const PURPOSE_WORDS: &[&str] = &[
-    "for", "to", "if", "para", "pour", "si", "se", "für", "um", "wenn", "falls", "untuk", "jika", "kalau",
+    "for", "to", "if", "para", "pour", "si", "se", "für", "um", "wenn", "falls", "untuk", "jika", "kalau", "per",
     "nếu", "để",
 ];
 
@@ -1196,6 +1202,31 @@ mod tests {
         ] {
             assert!(!ivr_cue(text), "{text}");
         }
+    }
+
+    #[test]
+    fn italian_menus_say_prema_or_digiti_and_the_key() {
+        for text in [
+            "Per informazioni sul conto prema 1, per parlare con un operatore prema 2",
+            "Prema il tasto 1 per parlare con un operatore",
+            "Per la fatturazione digiti uno",
+            "Per ripetere il messaggio prema il tasto cancelletto",
+            "PER L'ASSISTENZA TECNICA PREMA 3",
+        ] {
+            assert!(ivr_cue(text), "{text}");
+        }
+        for text in [
+            "Prema pure il campanello, io scendo subito",
+            "Al terzo piano prema 3",
+            "Ho premuto il pulsante due volte",
+            "Ti richiamo tra 5 minuti, buona giornata",
+        ] {
+            assert!(!ivr_cue(text), "{text}");
+        }
+        // Other languages as before.
+        assert!(ivr_cue("For billing, press 1"));
+        assert!(ivr_cue("日本語は1を押して"));
+        assert!(!ivr_cue("Please press one button"));
     }
 
     #[test]

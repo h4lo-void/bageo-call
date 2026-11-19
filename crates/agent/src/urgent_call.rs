@@ -128,6 +128,8 @@ fn hold_cues(strong_only: bool, ai_said: &str) -> bool {
         // Italian
         "non riattaccare", "non riattacchi", "non chiudere", "non chiuda", "rimani in linea", "rimanga in linea", "resti in linea", "resta in linea",
         "attenda in linea", "aspetti in linea",
+        "non attacchi", "non attaccare", "non metta giù", "non mettere giù", "resti in attesa", "rimanga in attesa", "rimani in attesa",
+        "non si allontani", "non andare via",
         // Russian
         "не кладите трубку", "не клади трубку", "не вешайте трубку", "не вешай трубку", "оставайтесь на линии", "оставайся на линии",
         "подождите на линии", "будьте на линии",
@@ -178,6 +180,9 @@ fn hold_cues(strong_only: bool, ai_said: &str) -> bool {
         "ne bougez pas", "ne bouge pas", "nicht weggehen", "aguarde um pouco", "espera um pouco", "espere um pouco",
         // Turkish
         "bir dakika", "bir saniye", "lütfen bekleyin",
+        // Italian
+        "aspetti un attimo", "aspetta un attimo", "aspetti un momento", "aspetta un momento", "attenda un attimo", "attenda un momento",
+        "solo un attimo", "solo un momento", "un attimo di pazienza", "un secondo",
     ];
     static FOLDED: std::sync::OnceLock<(Vec<String>, Vec<String>)> = std::sync::OnceLock::new();
     let (strong, weak) = FOLDED.get_or_init(|| {
@@ -1209,6 +1214,29 @@ mod tests {
         for said in ["Tabii, ne hakkında konuşuyoruz?", "Merhaba, size nasıl yardımcı olabilirim?"] {
             assert!(!is_hold_line(said), "{said}");
         }
+    }
+
+    #[test]
+    fn the_hold_on_line_is_found_in_italian() {
+        for said in [
+            "Non riattacchi, la passo subito.",
+            "Non attacchi, lo chiamo adesso.",
+            "Resti in attesa, per favore.",
+            "Non metta giù, glielo passo.",
+            "Non si allontani, torno subito.",
+        ] {
+            assert!(is_hold_line(said) && is_strong_hold_line(said), "strong Italian wording: {said}");
+        }
+        for said in ["Aspetti un attimo, controllo subito.", "Un secondo, guardo qui.", "Solo un momento, la prego."] {
+            assert!(is_hold_line(said) && !is_strong_hold_line(said), "weak Italian wording: {said}");
+        }
+        for said in ["Certo, di cosa stiamo parlando?", "Buongiorno, come posso aiutarla?"] {
+            assert!(!is_hold_line(said), "{said}");
+        }
+        // Other languages as before.
+        assert!(is_hold_line("Please hold, I'll put you through."));
+        assert!(is_hold_line("No cuelgue, ya le paso."));
+        assert!(!is_hold_line("Sure, what is this about?"));
     }
 
     #[test]

@@ -475,7 +475,12 @@ const PRE_CLOSINGS: Lexicon = &[
         "oke sudah dulu ya", "sudah dulu ya", "sudah dulu", "udah dulu ya", "udah dulu", "segitu dulu ya", "itu saja",
         "saya tutup dulu ya", "saya tutup dulu", "tutup dulu ya",
     ]),
-    ("it", &["allora ti lascio", "ti lascio", "la lascio", "non ti disturbo più", "non ti disturbo piu", "non la disturbo più", "non la disturbo piu"]),
+    ("it", &[
+        "allora ti lascio", "ti lascio", "la lascio", "non ti disturbo più", "non ti disturbo piu", "non la disturbo più", "non la disturbo piu",
+        "non la trattengo", "non ti trattengo", "non la trattengo oltre", "non ti trattengo oltre", "per ora è tutto", "per ora e tutto",
+        "è tutto per ora", "e tutto per ora", "ne parliamo dopo", "ti richiamo dopo", "la richiamo dopo", "ti chiamo dopo", "la chiamo dopo",
+        "ti richiamo più tardi", "ti richiamo piu tardi", "la richiamo più tardi", "la richiamo piu tardi", "adesso attacco", "ora attacco",
+    ]),
     ("ru", &["хорошо тогда до свидания", "ладно мне пора", "мне пора", "я перезвоню", "поговорим позже", "тогда пока", "всего вам доброго"]),
     ("ar", &["حسنا سأغلق الآن", "حسنا ساغلق الان", "لنتحدث لاحقا", "سأتصل بك لاحقا", "ساتصل بك لاحقا", "سأتركك الآن", "هذا كل شيء"]),
     ("hi", &["ठीक है अब रखता हूँ", "बाद में बात करते हैं", "मैं बाद में कॉल करूँगा", "बस इतना ही", "अच्छा चलता हूँ"]),
@@ -552,7 +557,9 @@ const FAREWELLS: Lexicon = &[
     ("it", &[
         "arrivederci", "arrivederla", "buona giornata", "buongiornata", "buona serata", "buonanotte",
         "buona continuazione", "grazie a lei", "stammi bene", "stia bene", "a presto", "a domani",
-        "ci vediamo", "ci sentiamo", "ciao ciao",
+        "ci vediamo", "ci sentiamo", "ciao ciao", "a dopo", "a più tardi", "a piu tardi", "buon proseguimento",
+        "buon weekend", "buon fine settimana", "buona domenica", "ci risentiamo", "ci rivediamo", "a risentirci",
+        "la saluto", "ti saluto", "vi saluto", "cordiali saluti",
     ]),
     ("ru", &[
         "до свидания", "до свиданья", "всего доброго", "всего хорошего", "хорошего дня", "хорошего вечера",
@@ -601,7 +608,8 @@ const GREETING_BYES: Lexicon = &[
     ("th", &["สวัสดีค่ะ", "สวัสดีครับ", "สวัสดี"]),
     ("vi", &["chào anh ạ", "chào chị ạ", "chào anh", "chào chị", "chào em", "chào bạn", "chao anh"]),
     ("id", &["selamat siang", "selamat pagi", "selamat sore", "selamat malam"]),
-    ("it", &["ciao"]),
+    // "Buon lavoro" and "alla prossima" are everyday words too ("cerco un buon lavoro").
+    ("it", &["ciao", "buongiorno", "buonasera", "buon pomeriggio", "buon lavoro", "alla prossima"]),
     ("de", &["servus"]),
     ("fr", &["salut", "bonsoir"]),
     ("es", &["buenas noches", "buenas tardes", "buen día", "buen dia", "buenos días", "buenos dias"]),
@@ -629,6 +637,7 @@ const OPENING_GREETINGS: &[&str] = &[
     "tudo bem", "ฮัลโหล", "a lô", "xin chào", "halo", "pronto", "salve", "ciao", "алло", "здравствуйте",
     "привет", "مرحباً", "مرحبا", "أهلاً", "أهلا", "السلام عليكم", "हेलो",
     "merhaba", "efendim", "buyurun",
+    "buongiorno", "buonasera", "buon pomeriggio", "mi dica", "dica",
 ];
 
 /// Short replies to someone still talking (aizuchi): not a turn of their own,
@@ -649,7 +658,10 @@ const BACKCHANNELS: Lexicon = &[
     ("fr", &["d'accord", "tout à fait", "tout a fait", "oui", "ouais", "entendu", "bien sûr"]),
     ("de", &["genau", "alles klar", "ja", "jawohl", "stimmt"]),
     ("pt", &["entendi", "tá bom", "ta bom", "tá", "pois", "pois é", "sim", "uhum", "certo", "beleza"]),
-    ("it", &["va bene", "d'accordo", "capito", "certo", "perfetto", "ok grazie", "sì", "si"]),
+    ("it", &[
+        "va bene", "d'accordo", "ho capito", "capito", "certo", "perfetto", "ok grazie", "sì", "si", "esatto", "giusto", "benissimo",
+        "ottimo", "chiaro", "sì sì", "si si", "certo certo",
+    ]),
     ("th", &["ค่ะ", "ครับ", "อืม", "ใช่", "โอเคค่ะ", "โอเคครับ", "ได้ค่ะ", "ได้ครับ"]),
     ("vi", &[
         "vâng", "dạ", "ừ", "ờ", "dạ vâng", "ừ nhé", "u nhe", "vâng ạ", "vang a", "ok nhé", "oke nhé",
@@ -672,7 +684,7 @@ const EXTRA_THANKS: &[&str] = &[
     "cảm ơn nhiều", "cảm ơn", "cám ơn anh", "cám ơn chị", "cám ơn nhiều", "cám ơn",
     "cam on anh", "cam on chi", "cam on",
     "terima kasih banyak", "terima kasih", "makasih banyak", "makasih",
-    "grazie mille", "molte grazie", "grazie tante", "grazie",
+    "grazie mille", "molte grazie", "grazie tante", "mille grazie", "grazie infinite", "la ringrazio", "ti ringrazio", "vi ringrazio", "grazie",
     "большое спасибо", "спасибо большое", "спасибо вам", "благодарю", "спасибо",
     "شكراً جزيلاً", "شكرا جزيلا", "شكراً لك", "شكرا لك", "شكراً", "شكرا", "يعطيك العافية",
     "बहुत बहुत धन्यवाद", "बहुत धन्यवाद", "बहुत शुक्रिया", "धन्यवाद", "शुक्रिया",
@@ -1142,6 +1154,9 @@ fn ends_with_ja_wrap_cue(t: &str) -> bool {
 
 /// Right before a greeting-goodbye: thanks, a short "ok", a pre-closing or a Japanese wrap cue.
 fn cue_before(before: &str) -> bool {
+    if it_farewell_before(before) {
+        return true;
+    }
     let mut t = before.trim_end();
     for _ in 0..MAX_PEEL {
         if t.is_empty() {
@@ -1162,6 +1177,21 @@ fn cue_before(before: &str) -> bool {
     false
 }
 
+/// Words that may follow an Italian goodbye before a closing "ciao" ("ci
+/// sentiamo domani, ciao").
+const IT_BYE_BEFORE_WORDS: usize = 2;
+
+/// An Italian goodbye shortly before a greeting-goodbye ("Perfetto, ci sentiamo
+/// domani. Ciao"): the call is ending already.
+fn it_farewell_before(before: &str) -> bool {
+    let ws: Vec<&str> = before.split(' ').filter(|w| !w.is_empty()).collect();
+    FAREWELLS.iter().filter(|(l, _)| *l == "it").flat_map(|(_, list)| list.iter()).any(|p| {
+        let pw: Vec<&str> = p.split(' ').collect();
+        ws.len() >= pw.len()
+            && (ws.len().saturating_sub(pw.len() + IT_BYE_BEFORE_WORDS)..=ws.len() - pw.len()).any(|i| ws[i..i + pw.len()] == pw[..])
+    })
+}
+
 /// Words that settle a matter before closing thanks: agreement, "got it", an
 /// apology for a wrong number. Space-separated scripts are matched as whole words;
 /// the others are compared without spaces.
@@ -1176,6 +1206,7 @@ const SETTLED: &[&str] = &[
     "entschuldigung", "falsch verbunden", "certo", "perfeito", "combinado", "entendi", "tá bom", "ta bom",
     "desculpa", "desculpe", "beleza",
     "va bene", "perfetto", "d'accordo", "ho capito", "capito", "nessun problema", "mi scusi", "scusi", "numero sbagliato",
+    "benissimo", "ottimo", "chiaro", "esatto", "scusate", "scusa", "mi dispiace", "ho sbagliato numero",
     "dạ vâng", "vâng", "được rồi", "hiểu rồi", "không sao", "xin lỗi", "nhầm số", "gọi nhầm",
     "baik", "siap", "mengerti", "paham", "tidak masalah", "maaf", "salah sambung", "salah nomor",
     "โอเค", "ตกลง", "ได้เลย", "รับทราบ", "เข้าใจแล้ว", "ไม่มีปัญหา", "ขอโทษ", "โทรผิด",
@@ -1188,7 +1219,7 @@ const SETTLED: &[&str] = &[
 /// Settling words that close a call with nothing more said: a wrong number.
 const SETTLED_ALONE: &[&str] = &[
     "打錯", "打错", "wrong number", "잘못걸", "número equivocado", "falsch verbunden", "失礼しました",
-    "numero sbagliato", "nhầm số", "gọi nhầm", "salah sambung", "salah nomor", "โทรผิด",
+    "numero sbagliato", "ho sbagliato numero", "nhầm số", "gọi nhầm", "salah sambung", "salah nomor", "โทรผิด",
     "не туда попал", "ошибся номером", "الرقم غلط", "رقم غلط", "गलत नंबर",
     "yanlış numara", "yanlış aradım",
 ];
@@ -1203,7 +1234,8 @@ const ASKS_RUNS: &[&str] = &[
 const ASKS_WORDS: &[&str] = &[
     "what", "when", "where", "which", "how", "who", "why", "can you", "could you", "is there", "are you", "do you",
     "will you", "qué", "cuándo", "dónde", "cómo", "quand", "où", "comment", "quel", "quelle", "wann", "wo", "wie",
-    "was", "welche", "quando", "onde", "como", "qual", "dove", "che ora", "bao giờ", "mấy giờ", "ở đâu",
+    "was", "welche", "quando", "onde", "como", "qual", "dove", "che ora", "a che ora", "che ore", "quale", "quanto", "quanti", "perché",
+    "perche", "cosa", "bao giờ", "mấy giờ", "ở đâu",
     "jam berapa", "kapan", "di mana", "когда", "где", "сколько", "почему", "متى", "أين", "كم", "कब", "कहाँ", "कितना",
     "ne zaman", "nerede", "kaç", "nasıl", "neden",
 ];
@@ -2129,6 +2161,139 @@ mod acceptance_closings {
         // 「Pronto?」 opens a call.
         let mut m = ClosingMachine::new("it");
         assert!(!m.on_caller("Pronto?", "Pronto?", true, false).ends_call);
+    }
+}
+
+/// What Italians say to end a phone call, next to what only looks like it
+/// (greetings that open a call), and the other languages as they were.
+#[cfg(test)]
+mod italian_phone_talk_tests {
+    use super::*;
+
+    fn after_talk(lang: &'static str) -> ClosingMachine {
+        let mut m = ClosingMachine::new(lang);
+        m.on_caller("Parcel delivery info", "Parcel delivery info", false, false);
+        m
+    }
+
+    fn hears(m: &mut ClosingMachine, t: &str) -> ClosingStep {
+        m.on_caller(t, t, crate::locale::caller_wraps_up(t), false)
+    }
+
+    #[test]
+    fn italian_goodbyes_pre_closings_and_the_greetings_that_say_goodbye() {
+        for t in [
+            "A dopo.",
+            "Va bene, alla prossima!",
+            "Grazie, buon lavoro.",
+            "La saluto.",
+            "Perfetto, la saluto.",
+            "Buon proseguimento!",
+            "Cordiali saluti.",
+            "Ci risentiamo.",
+            "Va bene, grazie, buonasera.",
+            "Perfetto, mille grazie, buongiorno.",
+            "Ok, grazie, buon pomeriggio.",
+        ] {
+            let mut m = after_talk("it");
+            let step = hears(&mut m, t);
+            assert_eq!(step.event, ClosingEvent::CallerFarewell, "{t}");
+            assert!(step.ends_call, "{t}");
+        }
+        for t in ["Non la trattengo.", "Ti richiamo più tardi.", "Per ora è tutto."] {
+            let mut m = after_talk("it");
+            let step = hears(&mut m, t);
+            assert_eq!(step.event, ClosingEvent::CallerPreClosing, "{t}");
+            assert!(!step.ends_call, "{t}");
+        }
+    }
+
+    #[test]
+    fn italian_everyday_words_that_look_like_goodbyes_do_not_hang_up() {
+        for t in [
+            "Siamo un'azienda che cerca persone per un buon lavoro",
+            "Alla prossima fermata scendo",
+            "Buongiorno, buon lavoro, sono l'idraulico",
+            "La saluto mia madre",
+            "Grazie, cerchiamo persone per un buon lavoro",
+        ] {
+            let mut m = ClosingMachine::new("it");
+            assert!(!hears(&mut m, t).ends_call, "first turn: {t}");
+            let mut m = after_talk("it");
+            assert!(!hears(&mut m, t).ends_call, "after talk: {t}");
+        }
+    }
+
+    #[test]
+    fn a_ciao_after_an_italian_goodbye_ends_the_call() {
+        for t in ["Perfetto, ci sentiamo domani. Ciao", "Va bene, a presto, ciao", "Arrivederci, ciao!"] {
+            let mut m = after_talk("it");
+            let step = hears(&mut m, t);
+            assert_eq!(step.event, ClosingEvent::CallerFarewell, "{t}");
+            assert!(step.ends_call, "{t}");
+        }
+        // A greeting at the start is still no goodbye.
+        for t in ["Ciao, sono Marco", "Pronto, ciao!", "Buongiorno, ci vediamo alle cinque per il pacco, ciao"] {
+            let mut m = ClosingMachine::new("it");
+            assert!(!hears(&mut m, t).ends_call, "{t}");
+        }
+    }
+
+    #[test]
+    fn italian_greetings_open_calls_and_do_not_close_them() {
+        for opener in [
+            "Buongiorno, sono Marco della consegna.",
+            "Pronto, buongiorno.",
+            "Buonasera.",
+            "Buon pomeriggio, parlo con il signor Rossi?",
+            "Ciao, sono Marco.",
+        ] {
+            let mut m = ClosingMachine::new("it");
+            let step = m.on_caller(opener, opener, crate::locale::caller_wraps_up(opener), false);
+            assert!(!step.ends_call, "{opener}");
+            assert_eq!(m.state(), ClosingState::Talking, "{opener}");
+        }
+        for t in [
+            "Buongiorno, sono Marco, ho un pacco per lei.",
+            "A dopo le cinque sono in ufficio.",
+            "Il signor Rossi lavora qui e dice che arriva domani.",
+            "Mi passa il signor Rossi, buonasera?",
+        ] {
+            let mut m = after_talk("it");
+            assert!(!hears(&mut m, t).ends_call, "{t}");
+        }
+    }
+
+    #[test]
+    fn italian_thanks_replies_and_questions() {
+        assert!(thanks_wrap("Mi scusi, ho sbagliato numero, grazie mille"));
+        assert!(thanks_wrap("Benissimo, lascio il pacco in portineria, grazie"));
+        assert!(!thanks_wrap("Benissimo, grazie"));
+        assert!(!thanks_wrap("Perfetto, a che ora arriva il corriere, grazie"));
+        assert!(asks("a che ora arriva il corriere"));
+        assert!(!asks("lascio il pacco in portineria"));
+        assert!(is_backchannel("Sì sì, esatto."));
+        assert!(is_backchannel("Benissimo, ho capito."));
+        assert!(!is_backchannel("Va bene, lascio il pacco in portineria"));
+        let mut m = after_talk("it");
+        let step = hears(&mut m, "Mille grazie.");
+        assert!(!step.ends_call);
+    }
+
+    #[test]
+    fn goodbyes_in_other_languages_close_as_before() {
+        for (lang, bye) in [
+            ("en", "Okay, bye!"),
+            ("es", "Vale, hasta luego."),
+            ("de", "Alles klar, tschüss."),
+            ("tr", "Görüşürüz."),
+            ("zh-TW", "好的，掰掰。"),
+        ] {
+            let mut m = after_talk(lang);
+            assert!(hears(&mut m, bye).ends_call, "{lang}: {bye}");
+        }
+        let mut m = after_talk("en");
+        assert!(!hears(&mut m, "Hi, good evening, I have a parcel for you.").ends_call);
     }
 }
 
