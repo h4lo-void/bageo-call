@@ -5,7 +5,7 @@
 
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
-use axum::http::{header, HeaderMap, StatusCode};
+use axum::http::{header, Extensions, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -2749,16 +2749,23 @@ async fn phone_pairing_code(
     State(state): State<CallsState>,
     headers: HeaderMap,
     Query(query): Query<TokenQuery>,
+    ext: Extensions,
 ) -> Response {
     let on = state.settings_store.snapshot().phone_wifi;
-    phone_pairing_code_with(&state.settings, &headers, &query, on, crate::phone_wifi::codes())
+    let here = crate::lan::from_this_computer(&ext, &headers);
+    phone_pairing_code_with(&state.settings, &headers, &query, on, here, crate::phone_wifi::codes())
 }
 
+/// `from_here`: the request comes from the computer Bageo runs on. Without a
+/// console password only that computer may get a code (a code is a way to the
+/// pairing key, so the open console of a container must not hand it to anyone
+/// on the network).
 fn phone_pairing_code_with(
     settings: &Settings,
     headers: &HeaderMap,
     query: &TokenQuery,
     phone_wifi_on: bool,
+    from_here: bool,
     codes: &crate::phone_wifi::PairCodes,
 ) -> Response {
     if !token_ok(settings, headers, query) {
@@ -2766,6 +2773,14 @@ fn phone_pairing_code_with(
     }
     if !is_json_request(headers) {
         return json_required();
+    }
+    let has_password = !crate::settings_store::active_ui_token(&settings.calls_ui_token).trim().is_empty();
+    if !has_password && !from_here {
+        return api_error(
+            StatusCode::FORBIDDEN,
+            "need_password",
+            "set a console password first to get a pairing code from another device",
+        );
     }
     if !phone_wifi_on {
         return api_error(StatusCode::CONFLICT, "phone_wifi_off", "phones over Wi-Fi are turned off");
@@ -5250,16 +5265,26 @@ mod tests {
         let mut locked = state.settings.clone();
         locked.calls_ui_token = "pair-code-pw".into();
         let none = TokenQuery { token: None };
-        let res = phone_pairing_code_with(&locked, &json_headers, &none, true, &codes);
+        let res = phone_pairing_code_with(&locked, &json_headers, &none, true, false, &codes);
         assert_eq!(res.status().as_u16(), 401, "not signed in");
         let wrong = TokenQuery { token: Some("nope".into()) };
-        assert_eq!(phone_pairing_code_with(&locked, &json_headers, &wrong, true, &codes).status().as_u16(), 401);
+        assert_eq!(phone_pairing_code_with(&locked, &json_headers, &wrong, true, false, &codes).status().as_u16(), 401);
         let right = TokenQuery { token: Some("pair-code-pw".into()) };
-        assert_eq!(phone_pairing_code_with(&locked, &HeaderMap::new(), &right, true, &codes).status().as_u16(), 400, "no JSON header");
-        let off = phone_pairing_code_with(&locked, &json_headers, &right, false, &codes);
+        assert_eq!(phone_pairing_code_with(&locked, &HeaderMap::new(), &right, true, false, &codes).status().as_u16(), 400, "no JSON header");
+        let off = phone_pairing_code_with(&locked, &json_headers, &right, false, false, &codes);
         assert_eq!(off.status().as_u16(), 409, "phones over Wi-Fi turned off");
 
-        let res = phone_pairing_code_with(&locked, &json_headers, &right, true, &codes);
+        // No console password: only the computer Bageo runs on gets a code.
+        let mut open = state.settings.clone();
+        open.calls_ui_token = String::new();
+        let other = phone_pairing_code_with(&open, &json_headers, &none, true, false, &codes);
+        assert_eq!(other.status().as_u16(), 403, "another device, no password");
+        let body: Value = serde_json::from_slice(&axum::body::to_bytes(other.into_body(), 4096).await.unwrap()).unwrap();
+        assert_eq!(body["code"], "need_password");
+        assert_eq!(phone_pairing_code_with(&open, &json_headers, &none, true, true, &codes).status().as_u16(), 200, "this computer, no password");
+
+        // With a password, another device that signed in gets one.
+        let res = phone_pairing_code_with(&locked, &json_headers, &right, true, false, &codes);
         assert_eq!(res.status().as_u16(), 200);
         let body: Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), 4096).await.unwrap()).unwrap();
         let code = body["code"].as_str().unwrap().to_string();

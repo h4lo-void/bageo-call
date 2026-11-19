@@ -571,7 +571,9 @@ class MainActivity : Activity() {
             setSingleLine(true)
             importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
             Prefs.ipUrl(this@MainActivity)?.let(ConnectionPlan::hostPort)?.let { (host, port) ->
-                setText(if (host.contains(':')) "[$host]:$port" else "$host:$port")
+                // URI.getHost() keeps the brackets of an IPv6 address.
+                val bare = host.removePrefix("[").removeSuffix("]")
+                setText(if (bare.contains(':')) "[$bare]:$port" else "$bare:$port")
             }
         }
         val codeField = EditText(this).apply {
