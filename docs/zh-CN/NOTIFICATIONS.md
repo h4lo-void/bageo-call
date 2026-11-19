@@ -71,8 +71,8 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&…
 | AI 回拨：〈号码〉 | AI 打给来电者告知预约结果。消息会写结果（接通并告知、没人接、拨不出去，或这个号码不能回拨）和那通电话的摘要。 | `ai_callback` |
 | AI 代打：〈名字或号码〉 | 你交办的 AI 代打结束了。消息有结果、细节、需要你决定的选项、下一步、谈定的时间，以及“AI 代打”页的链接。 | `ai_errand` |
 | 预约待你确认 | 对方跟 AI 约了时间。Telegram 收到带按钮的卡片，其他渠道收到附一键“同意／不同意”签名按钮或链接的通知（见[日程预约](#日程预约)）。 | `appointment_pending` / `summary` |
-| 白名单来电直接转接 | 白名单号码打来、且“转接方式”设为“直接转接到你的手机”时，手机自动挂断以触发运营商呼叫转移，并即时推送通知。 | `whitelist_direct_transfer` |
-| 白名单紧急事件通知 | 白名单号码打来、且 AI 在通话中听出对方有紧急事件时，AI 主动告知你的真实转接号码并发送紧急警报。 | `whitelist_urgent_transfer` |
+| 来电已转到你的手机 | “谁打来可以转”勾选的人打来、且“转接方式”是“不接，直接转到你的手机”时，手机不接，让运营商把电话转给你，并马上通知你。 | `whitelist_direct_transfer` |
+| 来电急事通知 | “谁打来可以转”勾选的人打来、AI 先接，对方说有急事时马上通知你；打开“有急事时打给你”时，手机也会拨给你。 | `whitelist_urgent_transfer` |
 | 测试通知 | 你按了“发送测试”。 | `test` |
 | 新短信 | 可选的[短信转发工具](../../tools/sms_forward/README.md)（英文）转来的短信。 | `event` |
 
@@ -688,8 +688,8 @@ smtps://you@example.com@smtp.example.com:465    一连接就走 TLS
 | `ai_callback` | 日程预约的 AI 回拨结束，或拨不出去 | `caller_id`、`device`、`time`、`summary` |
 | `ai_errand` | AI 代打结束，或没能开始 | `number`、`device`、`time`、`summary` |
 | `appointment_pending` | 对方跟 AI 约了时间，等待你决定 | `task_id`、`caller_id`、`device`、`title`、`start_at`、`accept_url`、`decline_url` |
-| `whitelist_direct_transfer` | 白名单来电直接挂断触发运营商呼叫转移 | `caller_id`、`device`、`time`、`forward_to`、`contact` |
-| `whitelist_urgent_transfer` | 白名单来电中 AI 侦测到紧急事件并告知真实转接号码 | `caller_id`、`device`、`time`、`forward_to`、`reason`、`contact` |
+| `whitelist_direct_transfer` | 手机不接、由运营商把来电转到你的手机 | `caller_id`、`device`、`time`、`forward_to`、`contact` |
+| `whitelist_urgent_transfer` | 来电者说有急事，已马上通知你 | `caller_id`、`device`、`time`、`forward_to`、`reason`、`contact` |
 | `voicemail` | 保存了一条语音留言（旧的菜单模式） | `caller_id`、`device`、`time`、`seconds` |
 | `event` | 通过 API 发送的消息（`/calls/api/notify/send`） | `null` |
 | `test` | “发送测试” | `{}` |

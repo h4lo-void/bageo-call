@@ -46,6 +46,111 @@ pub fn number_to_call(rt: &RuntimeSettings) -> Option<String> {
     (rt.whitelist_mode == "emergency" && rt.whitelist_urgent_call && !number.is_empty()).then(|| number.to_string())
 }
 
+/// Who a call that may be forwarded to the owner comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransferWho {
+    /// A Whitelist contact (setting `transfer_whitelist`).
+    Whitelist,
+    /// Any other contact off the Blacklist and the stall list (`transfer_contacts`).
+    Contact,
+    /// A number not in the contacts, hidden numbers too (`transfer_others`).
+    Stranger,
+}
+
+/// A call that may be forwarded: who it is from, and the contact's name
+/// (empty for a number not in the contacts).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Transfer {
+    pub who: TransferWho,
+    pub name: String,
+}
+
+/// Whether a caller may be forwarded (`whitelist_mode` direct or emergency).
+/// `kind`: the contact list the number is on (None: not in the contacts);
+/// `blocked`: the number is turned away (Blacklist, also by a prefix, or a
+/// blocked number of an older version). Blacklist and stall-list contacts never
+/// are; a Whitelist contact is even when a Blacklist prefix covers its number.
+pub fn transfer_who(rt: &RuntimeSettings, kind: Option<&str>, blocked: bool) -> Option<TransferWho> {
+    if !matches!(rt.whitelist_mode.as_str(), "direct" | "emergency") {
+        return None;
+    }
+    match kind {
+        Some("whitelist") => rt.transfer_whitelist.then_some(TransferWho::Whitelist),
+        Some("" | "contact") => (rt.transfer_contacts && !blocked).then_some(TransferWho::Contact),
+        Some(_) => None,
+        None => (rt.transfer_others && !blocked).then_some(TransferWho::Stranger),
+    }
+}
+
+/// [`transfer_who`] for the number `caller` on a call that came in on the SIM
+/// of country `sim`. The one place that decides whether a call is forwarded
+/// (direct) or gets the urgent part and the call to the owner (emergency). Our
+/// own calls (call-backs, errands) are left out by the callers.
+pub fn transfer_target(rt: &RuntimeSettings, caller: &str, sim: Option<&str>) -> Option<Transfer> {
+    if !matches!(rt.whitelist_mode.as_str(), "direct" | "emergency") {
+        return None;
+    }
+    let contact = crate::contacts::is_whitelist(caller, sim).or_else(|| crate::contacts::lookup(caller, sim));
+    let blocked = crate::settings_store::reject_number_hit_on(rt.pending_rejects(), caller, sim);
+    let who = transfer_who(rt, contact.as_ref().map(|c| c.kind.as_str()), blocked)?;
+    Some(Transfer {
+        who,
+        name: contact.map(|c| c.name).unwrap_or_default(),
+    })
+}
+
+/// A call judged sales / scam (stalling started, or a judgement that stands)
+/// gets no urgent alert and no call to the owner, whoever the caller is.
+pub fn urgent_blocked_by_scam(stall_engaged: bool, judged: Option<&crate::calls::ScamJudgement>) -> bool {
+    stall_engaged || judged.is_some_and(crate::calls::ScamJudgement::stands)
+}
+
+/// A number not in the contacts gets the owner dialed at most once in this
+/// long; hidden numbers share one allowance. Contacts have no such limit.
+pub const STRANGER_DIAL_EVERY: Duration = Duration::from_secs(30 * 60);
+
+/// When the owner was last dialed for each number not in the contacts (memory only).
+#[derive(Debug, Default)]
+pub struct DialLimit(Mutex<HashMap<String, Instant>>);
+
+impl DialLimit {
+    /// The allowance of `key` is free at `now`.
+    pub fn free(&self, key: &str, now: Instant) -> bool {
+        let g = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        g.get(key).is_none_or(|t| now.saturating_duration_since(*t) >= STRANGER_DIAL_EVERY)
+    }
+
+    /// Uses the allowance of `key`: false when it was used less than
+    /// [`STRANGER_DIAL_EVERY`] ago.
+    pub fn take(&self, key: &str, now: Instant) -> bool {
+        let mut g = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if g.get(key).is_some_and(|t| now.saturating_duration_since(*t) < STRANGER_DIAL_EVERY) {
+            return false;
+        }
+        g.retain(|_, t| now.saturating_duration_since(*t) < STRANGER_DIAL_EVERY);
+        g.insert(key.to_string(), now);
+        true
+    }
+}
+
+pub fn stranger_dials() -> &'static DialLimit {
+    static L: OnceLock<DialLimit> = OnceLock::new();
+    L.get_or_init(Default::default)
+}
+
+/// The key a number not in the contacts is limited under; hidden numbers share one.
+pub fn stranger_key(caller: &str, sim: Option<&str>) -> String {
+    crate::scam_db::number_key(caller, sim).unwrap_or_else(|| "hidden".to_string())
+}
+
+/// Whether the phone may dial the owner for `t` on this call: the trial is on
+/// ([`number_to_call`]) and, for a number not in the contacts, its allowance
+/// (`key`, [`stranger_key`]) is free. Otherwise the AI says the owner will call
+/// back and the owner is only alerted.
+pub fn will_dial(rt: &RuntimeSettings, t: &Transfer, key: &str, limits: &DialLimit, now: Instant) -> bool {
+    number_to_call(rt).is_some() && (t.who != TransferWho::Stranger || limits.free(key, now))
+}
+
 /// The owner's number as the phone may dial it: full `+` numbers are checked
 /// against their own country (`phone_region::normalize`), even when the incoming
 /// phone carries another country's SIM (`sim`); numbers without `+` use the
@@ -354,9 +459,24 @@ pub struct CallCtl {
     dial_blocked: AtomicBool,
     /// The Live session ended while the AI was paused: nobody can talk to the caller.
     session_gone: AtomicBool,
+    /// A number not in the contacts: the key its dial allowance is under
+    /// ([`stranger_key`]), used when the phone dials ([`DialLimit::take`]).
+    limit_key: Option<String>,
 }
 
 impl CallCtl {
+    /// For a caller whose call to the owner counts against [`STRANGER_DIAL_EVERY`].
+    pub fn limited(key: String) -> Self {
+        Self {
+            limit_key: Some(key),
+            ..Self::default()
+        }
+    }
+
+    pub fn limit_key(&self) -> Option<&str> {
+        self.limit_key.as_deref()
+    }
+
     pub fn pause(&self) {
         self.paused.store(true, Ordering::Relaxed);
     }
@@ -554,15 +674,15 @@ pub fn alert_line(alert: Alert, lang: Lang) -> &'static str {
 /// Title of the owner's urgent alert (same as the urgent-matter alert).
 pub fn alert_title(lang: Lang) -> &'static str {
     match lang {
-        Lang::ZhTw => "白名單緊急事件通知",
-        Lang::ZhCn => "白名单紧急事件通知",
-        Lang::Ja => "ホワイトリスト緊急通知",
-        Lang::Ko => "화이트리스트 긴급 알림",
-        Lang::Es => "Alerta de emergencia (Lista blanca)",
-        Lang::Fr => "Alerte d'urgence (Liste blanche)",
-        Lang::De => "Whitelist-Notfallalarm",
-        Lang::Pt => "Alerta de emergência (Lista branca)",
-        Lang::En => "Whitelist Emergency Alert",
+        Lang::ZhTw => "來電急事通知",
+        Lang::ZhCn => "来电急事通知",
+        Lang::Ja => "急ぎの着信のお知らせ",
+        Lang::Ko => "급한 전화 알림",
+        Lang::Es => "Aviso: llamada urgente",
+        Lang::Fr => "Alerte : appel urgent",
+        Lang::De => "Dringender Anruf",
+        Lang::Pt => "Aviso: ligação urgente",
+        Lang::En => "Urgent Call Alert",
     }
 }
 
@@ -1281,5 +1401,154 @@ mod tests {
         let t = with_caller_language(&callback_turn(Lang::En, true, "Sam"), None);
         assert!(t.contains("language the caller is speaking on this call"), "{t}");
         assert_eq!(with_caller_language("not json", Some(Lang::En)), "not json");
+    }
+
+    fn who_rt(mode: &str, wl: bool, contacts: bool, others: bool) -> RuntimeSettings {
+        let mut cfg = RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        cfg.whitelist_mode = mode.to_string();
+        cfg.transfer_whitelist = wl;
+        cfg.transfer_contacts = contacts;
+        cfg.transfer_others = others;
+        cfg
+    }
+
+    #[test]
+    fn who_may_be_forwarded_follows_the_three_switches() {
+        for mode in ["direct", "emergency"] {
+            for bits in 0..8u8 {
+                let (wl, ct, ot) = (bits & 1 != 0, bits & 2 != 0, bits & 4 != 0);
+                let cfg = who_rt(mode, wl, ct, ot);
+                let case = format!("{mode} wl={wl} contacts={ct} others={ot}");
+                assert_eq!(transfer_who(&cfg, Some("whitelist"), false), wl.then_some(TransferWho::Whitelist), "{case}");
+                assert_eq!(transfer_who(&cfg, Some(""), false), ct.then_some(TransferWho::Contact), "{case}");
+                assert_eq!(transfer_who(&cfg, Some("blacklist"), false), None, "{case}");
+                assert_eq!(transfer_who(&cfg, Some("stall"), false), None, "{case}");
+                assert_eq!(transfer_who(&cfg, None, false), ot.then_some(TransferWho::Stranger), "{case}");
+                // Hidden numbers are never in the contacts: the third switch.
+                for hidden in ["", "unknown", "private", "  "] {
+                    let t = transfer_target(&cfg, hidden, None);
+                    assert_eq!(t.as_ref().map(|t| t.who), ot.then_some(TransferWho::Stranger), "{case} {hidden:?}");
+                    assert!(t.is_none_or(|t| t.name.is_empty()));
+                }
+                assert_eq!(
+                    transfer_target(&cfg, "+15555550123", None).map(|t| t.who),
+                    ot.then_some(TransferWho::Stranger),
+                    "{case}"
+                );
+                // A blocked number is never forwarded, unless it is on the Whitelist.
+                assert_eq!(transfer_who(&cfg, None, true), None, "{case}");
+                assert_eq!(transfer_who(&cfg, Some(""), true), None, "{case}");
+                assert_eq!(transfer_who(&cfg, Some("whitelist"), true), wl.then_some(TransferWho::Whitelist), "{case}");
+            }
+        }
+        // Off: nobody, whatever the switches say.
+        let cfg = who_rt("off", true, true, true);
+        for kind in [Some("whitelist"), Some(""), None] {
+            assert_eq!(transfer_who(&cfg, kind, false), None);
+        }
+        assert_eq!(transfer_target(&cfg, "", None), None);
+        // A number on an older version's blocked list is turned away, not forwarded.
+        let mut cfg = who_rt("emergency", true, true, true);
+        cfg.reject_numbers_moved = false;
+        cfg.reject_numbers = vec![crate::settings_store::RejectEntry { number: "+15555550177".into(), reason: String::new() }];
+        assert_eq!(transfer_target(&cfg, "+15555550177", None), None);
+        assert_eq!(transfer_target(&cfg, "+15555550178", None).map(|t| t.who), Some(TransferWho::Stranger));
+    }
+
+    #[test]
+    fn a_call_judged_sales_or_scam_never_gets_the_owner_dialed() {
+        let judged = |released| crate::calls::ScamJudgement {
+            kind: "scam".into(),
+            typology: "impersonation".into(),
+            confidence: "high".into(),
+            source: "test".into(),
+            released,
+        };
+        assert!(!urgent_blocked_by_scam(false, None));
+        assert!(urgent_blocked_by_scam(true, None), "stalling started");
+        assert!(urgent_blocked_by_scam(false, Some(&judged(false))), "judged, stalling off");
+        assert!(urgent_blocked_by_scam(true, Some(&judged(false))));
+        assert!(!urgent_blocked_by_scam(false, Some(&judged(true))), "let go again: an ordinary call");
+    }
+
+    #[test]
+    fn a_number_not_in_the_contacts_gets_the_owner_dialed_once_in_30_minutes() {
+        let limits = DialLimit::default();
+        let t0 = Instant::now();
+        let mut cfg = rt("emergency", true, "+15550001111");
+        cfg.transfer_contacts = true;
+        cfg.transfer_others = true;
+        let stranger = Transfer { who: TransferWho::Stranger, name: String::new() };
+        let family = Transfer { who: TransferWho::Whitelist, name: "Amy".into() };
+        let friend = Transfer { who: TransferWho::Contact, name: "Bo".into() };
+        let key = stranger_key("+15555550123", None);
+        assert!(will_dial(&cfg, &stranger, &key, &limits, t0));
+        assert!(limits.take(&key, t0));
+        let later = t0 + Duration::from_secs(29 * 60);
+        assert!(!will_dial(&cfg, &stranger, &key, &limits, later), "used 29 minutes ago");
+        assert!(!limits.take(&key, later));
+        // Another number has its own allowance; hidden numbers share one.
+        let other = stranger_key("+15555550124", None);
+        assert_ne!(key, other);
+        assert!(limits.take(&other, later));
+        assert_eq!(stranger_key("", None), stranger_key("unknown", Some("us")));
+        assert_eq!(stranger_key("private", None), "hidden");
+        assert!(limits.take("hidden", t0));
+        assert!(!will_dial(&cfg, &stranger, &stranger_key("", None), &limits, later));
+        // Whitelist and other contacts have no limit.
+        for _ in 0..3 {
+            assert!(will_dial(&cfg, &family, &key, &limits, later));
+            assert!(will_dial(&cfg, &friend, &key, &limits, later));
+        }
+        // 30 minutes on, the number may get the owner dialed again.
+        assert!(will_dial(&cfg, &stranger, &key, &limits, t0 + STRANGER_DIAL_EVERY));
+        assert!(limits.take(&key, t0 + STRANGER_DIAL_EVERY));
+        // The trial off: nobody is dialed, the owner is only alerted.
+        let off = rt("emergency", false, "+15550001111");
+        assert!(!will_dial(&off, &family, "", &limits, t0));
+        // The call's control carries the key the dial uses.
+        assert_eq!(CallCtl::limited(key.clone()).limit_key(), Some(key.as_str()));
+        assert_eq!(CallCtl::default().limit_key(), None);
+    }
+
+    #[test]
+    fn the_owner_sees_a_neutral_name_and_urgent_in_english() {
+        let langs = [Lang::ZhTw, Lang::ZhCn, Lang::En, Lang::Ja, Lang::Ko, Lang::Es, Lang::Fr, Lang::De, Lang::Pt];
+        let list_names = ["白名單", "白名单", "ホワイトリスト", "화이트리스트", "whitelist", "lista blanca", "liste blanche", "lista branca"];
+        for lang in langs {
+            let mut words = vec![alert_title(lang)];
+            words.extend(crate::direct_transfer_words(lang));
+            for w in words {
+                for name in list_names {
+                    assert!(!w.to_lowercase().contains(name), "{lang:?}: {w}");
+                }
+            }
+        }
+        for w in [alert_title(Lang::En)].into_iter().chain(crate::direct_transfer_words(Lang::En)) {
+            assert!(!w.to_lowercase().contains("emergency"), "{w}");
+        }
+        // The console: this section and the call record's labels, in every language.
+        let html = include_str!("../static/calls.html");
+        let block = |code: &str| {
+            let start = html.find(&format!("I18N[\"{code}\"] = {{")).expect("language block");
+            let rest = &html[start..];
+            &rest[..rest.find("\n};").expect("end of block")]
+        };
+        for code in ["en", "zh-TW", "zh-CN", "ja", "ko", "es", "fr", "de", "pt"] {
+            for line in block(code).lines().map(str::trim) {
+                let Some((key, value)) = line.split_once(": ") else { continue };
+                if key.starts_with("ev_whitelist") || key == "wl_title" || key == "wl_desc" || key.starts_with("f_wl_mode_h_") {
+                    for name in list_names {
+                        assert!(!value.to_lowercase().contains(name), "{code} {line}");
+                    }
+                }
+                let ours = key.starts_with("ev_whitelist") || key.starts_with("wl_") || key.starts_with("f_wl_");
+                if code == "en" && ours {
+                    // "emergency services" / "emergency number" are about calling for help.
+                    let plain = value.replace("emergency services", "").replace("emergency number", "");
+                    assert!(!plain.to_lowercase().contains("emergency"), "{line}");
+                }
+            }
+        }
     }
 }

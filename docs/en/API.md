@@ -250,8 +250,9 @@ Fields worth knowing (all of them are in `RuntimeSettings` in
 | `appointment_reply` | `auto` (default), `sms` or `call`. |
 | `reject_numbers` | Older form of the Blacklist, still taken by `PUT`: a list of `{number, reason}`. The numbers join the Blacklist (an ordinary contact moves there; one on the Whitelist or Stall list stays) and are not stored in the settings. Reads back what an older version saved, which counts no more once `reject_numbers_moved` is `true`. |
 | `reject_mode` | How Blacklist calls are turned away: `decline` (default: refuse while it rings) or `announce` (answer and play the announcement). |
-| `whitelist_mode` | `off` (default: AI answers normally), `direct` (decline to trigger carrier call forwarding and alert), or `emergency` (AI answers and gives out `whitelist_forward_number` if the caller has an urgent matter). |
-| `whitelist_forward_number` | Your real forwarding phone number used by Whitelist direct/emergency transfer. |
+| `whitelist_mode` | `off` (default: AI answers normally), `direct` (decline to trigger carrier call forwarding and alert), or `emergency` (urgent: AI answers and gives out `whitelist_forward_number` if the caller has an urgent matter). Applies to the callers `transfer_whitelist`, `transfer_contacts` and `transfer_others` allow. |
+| `whitelist_forward_number` | Your real forwarding phone number used by direct and urgent transfer. |
+| `transfer_whitelist`, `transfer_contacts`, `transfer_others` | Who may be forwarded: Whitelist contacts (default `true`), other contacts (default `false`), numbers not in the contacts including hidden ones (default `false`). Blacklist and stall-list contacts never are. A number not in the contacts gets the owner called at most once every 30 minutes; a call judged sales or scam gets no urgent alert or call. |
 | `ui_password` | Password for external console/API access (masked on read; `"ui_password_clear": true` clears it). |
 | `country_code` | Digits only (`886`, `1`). Not shown in the console; a value here wins over `COUNTRY_CODE`. |
 | `gemini_thinking_level` | `low` (default) / `medium` / `high`, for thinking models only. |
