@@ -40,7 +40,7 @@
    - **macOS：** 打開 `.dmg`，把 **Bageo** 拖進「應用程式」，再點一下它。通話、錄音和設定存在 `~/Library/Application Support/Bageo`，更新 App 不會動到。第一次如果 macOS 說無法驗證開發者：在 Finder 對 Bageo 按右鍵 →「打開」，或到「系統設定 → 隱私權與安全性」按「強制打開」。
    - **Linux：** 解壓縮後，在終端機執行 `./start.sh`。
 3. Windows 和 macOS 不會出現命令視窗。系統匣（Windows）或選單列（macOS）會多一個圖示，Bageo 跟著它在背景執行。在圖示的選單按「結束 Bageo」才會停。
-4. 第一次會自動用瀏覽器打開網頁控制台，並問要不要設控制台密碼，只在家裡用可以先不設。之後點圖示就能開控制台，或直接開 <http://localhost:8787/>。
+4. 第一次會自動用瀏覽器打開網頁控制台，並問要不要設控制台密碼；要用手機或別台電腦打開控制台就要設。之後點圖示就能開控制台，或直接開 <http://bageo.local/>（這台電腦也能用 <http://localhost:8787/>）。Windows 第一次會問要不要允許 Bageo 存取網路，請選「私人網路」允許。
 5. USB 連線要用 `adb`（Google 的 Android platform-tools）。沒裝的話，點圖示後按「下載」，它會放進程式旁邊的 `platform-tools` 資料夾。
 6. 進階：想用 `.env` 的話，Windows 放在安裝資料夾，macOS 放在 `~/Library/Application Support/Bageo/.env`。Windows 安裝資料夾裡另有 `start.cmd` 和 `start.ps1`，可以用命令列啟動 Bageo；Mac 的 App 裡沒有啟動腳本。想在終端機看輸出，用 `start.cmd -Console`（Windows）或 `./start.sh --console`（Linux）。
 
@@ -129,9 +129,9 @@ docker compose up -d --build
 
 到「設定 → 通知」，選一個服務、按「**新增管道**」，填好欄位（每個欄位都有提示告訴你去哪裡找），再按「**傳送測試**」。想加幾個都可以，每則訊息會送到全部管道。共支援 32 種服務；各服務的設定方式見[通知](NOTIFICATIONS.md)。
 
-想讓通知裡的連結能直接打開那通電話，要先把控制台對區網開放（見[從其他裝置使用控制台](SETTINGS.md#從其他裝置使用控制台)）。開放後，連結會自動用 `http://bageo.local:8787/` 或電腦的區網位址；「系統 → 關於」看得到目前用哪一個，還附 QR code。
+通知裡的連結會直接打開那通電話，預設用 `http://bageo.local/`（80 埠打不開時是 `http://bageo.local:8787/`）；「系統 → 關於」看得到目前用哪一個，還附 QR code。用手機點連結之前，要先設控制台密碼（見[從其他裝置使用控制台](SETTINGS.md#從其他裝置使用控制台)）。
 
-只有用 VPN、反向代理或 Docker 連到這台電腦時，才需要到「設定 → 進階」填「**這個控制台的網址**」。
+只有用 VPN、反向代理或 Docker 連到這台電腦時，才需要到「設定 → 通知」填「**通知裡的網址**」。
 
 想在自己手機上開控制台：掃那個 QR code，再把頁面加到主畫面（iPhone：「分享 → 加入主畫面」；Android：Chrome 選單 ⋮ →「加到主畫面」）。之後點 Bageo 圖示就能打開。
 

@@ -64,8 +64,11 @@ database and no other service to install.
    background with it. Bageo stops only when you choose "Quit Bageo" from the
    icon's menu.
 4. The first time, your browser opens the web console. It offers to set a
-   console password; skip it if you only use the console at home. Later, click
-   the icon to open the console, or go to <http://localhost:8787/>.
+   console password; set one to open the console on your phone or another
+   computer. Later, click the icon to open the console, or go to
+   <http://bageo.local/> (on this computer <http://localhost:8787/> works too).
+   The first time, Windows asks whether to allow Bageo on the network: choose
+   *Private networks*.
 5. The USB link needs `adb` (Google's Android platform-tools). If it is
    missing, click the icon and press "Download". It goes into a
    `platform-tools` folder next to the program.
@@ -213,13 +216,13 @@ in the fields (each has a hint on where to find it) and press **Send test**.
 Add as many as you like; every message goes to all of them. There are 32
 services; setup for each one is in [Notifications](NOTIFICATIONS.md).
 
-For the links in notifications to open the call, first open the console to
-your network (see
+Links in notifications open the call, at `http://bageo.local/` by default
+(`http://bageo.local:8787/` when port 80 cannot be opened); *System → About*
+shows which one, with a QR code. Set a console password before you tap them on
+your phone (see
 [Using the console from other devices](SETTINGS.md#using-the-console-from-other-devices)).
-Links then use `http://bageo.local:8787/` or the computer's network address
-by themselves; *System → About* shows which one, with a QR code.
 
-Fill in **Address of this console** under *Settings → Advanced* only when you
+Fill in **Address in notifications** under *Settings → Notifications* only when you
 reach the computer through a VPN, a reverse proxy or Docker.
 
 To get the console on your own phone, scan that QR code, then add the page to

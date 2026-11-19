@@ -82,7 +82,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - `POST /calls/api/devices/{serial}/mode`；
 - `POST /calls/api/contacts`、`PUT /calls/api/contacts/{id}`、`POST /calls/api/contacts/batch`（`POST /calls/api/contacts/import` 則改成要帶 `X-Filename` 標頭）；
 - `POST /calls/api/errands`、`…/{id}/cancel`、`…/{id}/retry`、`…/{id}/say`。
-- `POST /calls/api/backup/run`、`…/export`、`…/file-ticket`、`…/restore`、`…/unlock`、`…/apply`、`…/discard`、`…/open-folder`（`POST /calls/api/backup/import` 則改成要帶 `X-Filename` 標頭）。
+- `POST /calls/api/backup/run`、`…/export`、`…/file-ticket`、`…/restore`、`…/delete`、`…/unlock`、`…/apply`、`…/discard`、`…/open-folder`（`POST /calls/api/backup/import` 則改成要帶 `X-Filename` 標頭）。
 
 允許空 body 的路由，空 body 當成 `{}`。這是第二道防線；第一道是控制台對區網開放時一定要設密碼（`CALLS_UI_TOKEN`）。
 
@@ -647,7 +647,7 @@ Content-Type: application/json
 
 ## 備份與還原
 
-十一個路由用來備份和還原 Bageo 自己的資料，對應控制台設定裡的「備份與還原」（見[設定參考](SETTINGS.md#備份與還原)）。任何資料都不會送到你的電腦以外。它們照控制台的密碼規則，每個 `POST` 也要照上面的 `Content-Type: application/json` 規則（`import` 跟 `contacts/import` 一樣，body 是檔案本身，另外帶 `X-Filename` 標頭）。`GET …/download/{ticket}` 只要下載碼，下載網址裡不會出現任何密碼。
+十二個路由用來備份和還原 Bageo 自己的資料，對應控制台設定裡的「備份與還原」（見[設定參考](SETTINGS.md#備份與還原)）。任何資料都不會送到你的電腦以外。它們照控制台的密碼規則，每個 `POST` 也要照上面的 `Content-Type: application/json` 規則（`import` 跟 `contacts/import` 一樣，body 是檔案本身，另外帶 `X-Filename` 標頭）。`GET …/download/{ticket}` 只要下載碼，下載網址裡不會出現任何密碼。
 
 四個設定用 `PUT /calls/api/settings` 存：`backup_schedule`（`off`、`daily`、預設的 `weekly`，或 `monthly`）、`backup_dir`（空白：資料夾底下的 `backups`；否則要填絕對路徑，Bageo 會建好資料夾並試寫一個檔，寫不進去就回 HTTP 400 `backup_dir_unwritable`）、`backup_keep`（1 到 100，預設 10，只算自動備份）、`backup_include_calls`（預設 `false`；`true` 時自動和手動備份也會放進通話紀錄、錄音、簡訊和待處理事項）。另外兩個是加密：`backup_encrypt`（預設 `false`；`true` 時手動、自動和 `before_import` 備份都加密）、`backup_password`（至少 8 個字元，否則 HTTP 400 `backup_password_short`；不會回傳，只回 `backup_password_set`；`backup_password_clear: true` 會刪掉）。沒有密碼卻開 `backup_encrypt`，或加密開著時刪掉密碼，回 HTTP 400 `backup_password_missing`。密碼跟其他設定一起存在這台電腦，自動備份才用得到；加密保護的是放到別處的那份，例如外接硬碟、雲端或網路資料夾。它屬於 `keys`。
 
@@ -660,6 +660,7 @@ Content-Type: application/json
 | `GET /calls/api/backup/download/{ticket}` | 下載某個下載碼的檔案。下載碼是 256 位元的隨機數，2 分鐘內有效、只能用一次，之後回 HTTP 404 `not_found`。匯出的檔案送完或下載碼過期就刪掉。 |
 | `POST /calls/api/backup/import` | Body 是檔案本身（最大 200 MB），檔名 URL 編碼後放 `X-Filename`。可以是備份 zip、加密的備份（`.bageo`），或舊版單獨的 `settings.json`。**不會還原任何東西**：檔案暫存 15 分鐘，回傳預覽。加密的檔案只回 `{token, source_name, encrypted: true, needs_password: true}`，沒有 `items`，要先用 `unlock` 解開。最多 3 份預覽等著：再來一份就丟掉最舊的（它的 token 之後回 `expired`）。同時最多 2 個上傳在跑，再多回 HTTP 409 `busy`。 |
 | `POST /calls/api/backup/restore` | Body `{name}`。對備份資料夾裡的檔案做同樣的預覽（沒有 200 MB 的上傳上限）。加密的檔案會先用這台存的備份密碼試，打得開就直接回預覽，打不開就跟匯入一樣回 `needs_password`。 |
+| `POST /calls/api/backup/delete` | Body `{name}`。刪掉備份資料夾裡這個備份檔，回 `{ok}`，刪了不能復原。`name` 只能是備份檔名（`.zip` 或 `.bageo`），帶路徑回 HTTP 400 `bad_request`；不是資料夾裡的一般檔案（不存在、符號連結）回 HTTP 404 `not_found`；正在備份或還原時回 HTTP 409 `busy`。沒設控制台密碼時，規則跟 `file-ticket` 一樣（HTTP 403 `need_password`）。 |
 | `POST /calls/api/backup/unlock` | Body `{token, password}`。用密碼解開預覽裡的加密檔，回完整的預覽。密碼不對：HTTP 400 `wrong_password`。一次只試一個，每次至少隔一秒；不管是哪份預覽，連續錯 5 次以後每次等待加倍，最長 60 秒。同一份預覽錯 5 次就丟掉（HTTP 400 `expired`）。沒設控制台密碼時只能在執行 Bageo 的這台電腦上解（HTTP 403 `need_password`）。 |
 | `POST /calls/api/backup/apply` | Body `{token, items}`。`items` 必須是預覽 `items` 的子集合、不能是空的，否則 HTTP 400 `bad_items`。只還原這些項目。`{ok, before_import, restart_needed, warnings}`。 |
 | `POST /calls/api/backup/discard` | Body `{token}`。丟掉不還原的預覽和它的上傳檔：`{ok}`（token 不存在或已經沒了也一樣）。控制台關掉還原視窗時會呼叫。 |

@@ -34,7 +34,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
-use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
@@ -42,7 +41,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
 use axum::body::{Body, Bytes};
-use axum::extract::{ConnectInfo, Path as UrlPath, Query, State};
+use axum::extract::{Path as UrlPath, Query, State};
 use axum::http::{header, Extensions, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -53,7 +52,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 
-use crate::calls_http::{api_error, came_through_proxy, token_ok_parts, unauthorized, CallsState, TokenQuery};
+use crate::calls_http::{api_error, token_ok_parts, unauthorized, CallsState, TokenQuery};
 use crate::backup_crypt::{self, CryptErr};
 use crate::locale::Lang;
 use crate::settings_store::RuntimeSettings;
@@ -2748,16 +2747,10 @@ fn upload_name(headers: &HeaderMap) -> Option<String> {
     (!clean.is_empty()).then(|| clean.to_string())
 }
 
-/// The request comes from this computer itself (not through a proxy on it).
+/// The request comes from this computer itself (not through a proxy on it):
+/// loopback, or this computer's own LAN address (`crate::lan`).
 fn from_this_computer(ext: &Extensions, headers: &HeaderMap) -> bool {
-    let Some(ConnectInfo(peer)) = ext.get::<ConnectInfo<std::net::SocketAddr>>() else {
-        return false;
-    };
-    let local = match peer.ip() {
-        IpAddr::V4(v4) => v4.is_loopback(),
-        IpAddr::V6(v6) => v6.is_loopback() || v6.to_ipv4_mapped().is_some_and(|v4| v4.is_loopback()),
-    };
-    local && !came_through_proxy(headers)
+    crate::lan::from_this_computer(ext, headers)
 }
 
 /// The request names this computer by a loopback name (`localhost`, `127.x.x.x`,
@@ -3075,6 +3068,70 @@ struct ApplyBody {
     items: Vec<String>,
 }
 
+/// `POST /api/backup/delete` `{name}`: deletes one file from the backup
+/// folder. It cannot be undone: without a console password, only from this
+/// computer (as downloading one, `need_password`).
+async fn delete_route(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, ext: Extensions, body: Bytes) -> Response {
+    if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
+        return unauthorized();
+    }
+    if !json_request(&headers) {
+        return json_required();
+    }
+    let Ok(b) = serde_json::from_slice::<NameBody>(&body) else {
+        return err_response((StatusCode::BAD_REQUEST, "bad_request"));
+    };
+    if !may_download_keys(&state, &ext, &headers) {
+        return err_response((StatusCode::FORBIDDEN, "need_password"));
+    }
+    match delete_saved(&state, b.name.trim()) {
+        Ok(()) => Json(json!({"ok": true})).into_response(),
+        Err(e) => err_response(e),
+    }
+}
+
+/// Deletes the backup file `name` from the backup folder: only a name of a
+/// backup (`parse_name`, `.zip` or `.bageo`), with no path in it, that is a
+/// regular file there (a symbolic link is not followed). Not while a backup or
+/// a restore is under way (`busy`).
+pub(crate) fn delete_saved(state: &CallsState, name: &str) -> Result<(), ApiErr> {
+    if name.is_empty() || name.contains(['/', '\\', ':', '\0']) || name.starts_with('.') {
+        return Err((StatusCode::BAD_REQUEST, "bad_request"));
+    }
+    if parse_name(name).is_none() {
+        return Err((StatusCode::NOT_FOUND, "not_found"));
+    }
+    let data = PathBuf::from(&state.settings.calls_data_dir);
+    let ds = dir_state(&data);
+    let Ok(_running) = ds.running.try_lock() else {
+        return Err((StatusCode::CONFLICT, "busy"));
+    };
+    let path = configured_dir(&state.settings_store.snapshot(), &data).join(name);
+    if !is_plain_file(&path) {
+        return Err((StatusCode::NOT_FOUND, "not_found"));
+    }
+    // A restore preview of this file could not be applied once it is gone: it goes too.
+    let previews: Vec<Pending> = {
+        let mut map = pending();
+        let of_it: Vec<String> = map.iter().filter(|(_, p)| !p.owned && p.file == path).map(|(k, _)| k.clone()).collect();
+        of_it.into_iter().filter_map(|k| map.remove(&k)).collect()
+    };
+    for p in &previews {
+        drop_pending_file(p);
+    }
+    match std::fs::remove_file(&path) {
+        Ok(()) => {
+            info!("backup deleted name={name}");
+            Ok(())
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Err((StatusCode::NOT_FOUND, "not_found")),
+        Err(e) => {
+            warn!("backup: could not delete name={name} kind={:?}", e.kind());
+            Err((StatusCode::INTERNAL_SERVER_ERROR, "io"))
+        }
+    }
+}
+
 /// `POST /api/backup/apply` `{token, items}`: restore those parts of what the preview showed.
 async fn apply_route(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, body: Bytes) -> Response {
     if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
@@ -3194,6 +3251,7 @@ pub fn router() -> Router<CallsState> {
         .route("/api/backup/download/{ticket}", get(download))
         .route("/api/backup/import", post(import))
         .route("/api/backup/restore", post(restore))
+        .route("/api/backup/delete", post(delete_route))
         .route("/api/backup/apply", post(apply_route))
         .route("/api/backup/discard", post(discard_route))
         .route("/api/backup/unlock", post(unlock_route))
@@ -3204,6 +3262,7 @@ pub fn router() -> Router<CallsState> {
 mod tests {
     use super::*;
     use crate::calls_http::PhoneDevices;
+    use axum::extract::ConnectInfo;
 
     const FAKE_GEMINI: &str = "test-fake-gemini-key-0001";
     const FAKE_SUMMARY: &str = "test-fake-summary-key-0002";
@@ -3792,6 +3851,52 @@ mod tests {
         assert_ne!(first.name, second.name);
         assert!(dir.join(&first.name).is_file() && dir.join(&second.name).is_file());
         assert!(names_in(&dir).iter().all(|n| !n.ends_with(".tmp")), "no temporary file left");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_backup_file_can_be_deleted_and_nothing_else() {
+        let root = temp_root("delete");
+        let st = state_at(&root);
+        let lay = Layout::of(&st);
+        let dir = default_dir(&root);
+        let made = write_backup_file(&lay, b"{}".to_vec(), &dir, Kind::Manual, &DEFAULT_ITEMS, Local::now(), None).unwrap();
+        // Other files in the folder, and a backup-looking file outside it.
+        std::fs::write(dir.join("notes.txt"), b"keep").unwrap();
+        let outside = root.join("bageo-backup-20260101-000000-manual.zip");
+        std::fs::write(&outside, b"outside").unwrap();
+        for (name, code) in [
+            ("../bageo-backup-20260101-000000-manual.zip", "bad_request"),
+            ("..\\bageo-backup-20260101-000000-manual.zip", "bad_request"),
+            ("sub/bageo-backup-20260101-000000-manual.zip", "bad_request"),
+            ("C:bageo-backup-20260101-000000-manual.zip", "bad_request"),
+            ("..", "bad_request"),
+            ("", "bad_request"),
+            ("notes.txt", "not_found"),
+            ("bageo-backup-20990101-000000-manual.zip", "not_found"),
+        ] {
+            assert_eq!(delete_saved(&st, name).unwrap_err().1, code, "{name}");
+        }
+        assert!(outside.is_file() && dir.join("notes.txt").is_file());
+        // A symbolic link with a backup's name is not followed.
+        #[cfg(unix)]
+        {
+            let link = "bageo-backup-20260102-000000-auto.zip";
+            std::os::unix::fs::symlink(&outside, dir.join(link)).unwrap();
+            assert_eq!(delete_saved(&st, link).unwrap_err().1, "not_found");
+            assert!(outside.is_file());
+        }
+        // Not while a backup or a restore is under way.
+        {
+            let ds = dir_state(&lay.data);
+            let _running = ds.running.try_lock().unwrap();
+            assert_eq!(delete_saved(&st, &made.name).unwrap_err(), (StatusCode::CONFLICT, "busy"));
+        }
+        assert!(dir.join(&made.name).is_file());
+        delete_saved(&st, &made.name).unwrap();
+        assert!(!dir.join(&made.name).exists());
+        assert!(list_backups(&dir).iter().all(|e| e.name != made.name));
+        assert_eq!(delete_saved(&st, &made.name).unwrap_err().1, "not_found");
         let _ = std::fs::remove_dir_all(&root);
     }
 

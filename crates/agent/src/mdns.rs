@@ -11,6 +11,12 @@
 //! SO_REUSEADDR / SO_REUSEPORT. When the port still cannot be had it logs one
 //! line and stays off; the console address then falls back to the LAN IP (see
 //! `settings_store::effective_console_url`).
+//!
+//! On macOS the name is registered with the system's own Bonjour instead
+//! ([`bonjour`]): a program's socket there stops getting the network's
+//! multicast queries a minute or so after it starts (it still gets them on
+//! Windows and Linux), so answers only reached caches through the start
+//! announcement and the name stopped working once they expired.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -21,6 +27,8 @@ use tracing::{debug, info, warn};
 const GROUP: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 251);
 const PORT: u16 = 5353;
 const TYPE_A: u16 = 1;
+const TYPE_AAAA: u16 = 28;
+const TYPE_NSEC: u16 = 47;
 const TYPE_ANY: u16 = 255;
 const CLASS_IN: u16 = 1;
 const CLASS_ANY: u16 = 255;
@@ -102,19 +110,148 @@ pub fn answer_ip(listen: IpAddr) -> Option<Ipv4Addr> {
 
 /// Start answering `<name()>.local` in a background thread. `name` is read
 /// again every few seconds, so a changed setting applies without a restart;
-/// an empty name closes the socket.
-pub fn spawn<F>(listen: IpAddr, name: F)
+/// an empty name closes the socket. `port`: the console's port, for the
+/// service macOS registers along with the name.
+pub fn spawn<F>(listen: IpAddr, port: u16, name: F)
 where
     F: Fn() -> String + Send + 'static,
 {
+    #[cfg(target_os = "macos")]
     let started = std::thread::Builder::new()
         .name("mdns".into())
-        .spawn(move || run(listen, name));
+        .spawn(move || bonjour::run(listen, port, name));
+    #[cfg(not(target_os = "macos"))]
+    let started = std::thread::Builder::new()
+        .name("mdns".into())
+        .spawn(move || {
+            let _ = port;
+            run(listen, name)
+        });
     if let Err(e) = started {
         warn!("mDNS: could not start ({e})");
     }
 }
 
+/// macOS: the name is registered with the system's Bonjour by a `dns-sd -P`
+/// process (an HTTP service on `<name>.local` at this computer's address),
+/// started again when the name, the address or the port changes. A small
+/// shell around it ends it when Bageo ends, even when Bageo is killed.
+#[cfg(target_os = "macos")]
+mod bonjour {
+    use super::*;
+    use std::os::unix::process::CommandExt;
+    use std::process::{Child, Command, Stdio};
+    use std::time::Instant;
+
+    /// `dns-sd` that ends this soon after it started: the name is taken on this network.
+    const QUICK_END: Duration = Duration::from_secs(10);
+    /// Wait before trying a taken name again.
+    const TAKEN_RETRY: Duration = Duration::from_secs(60);
+
+    /// The shell around `dns-sd`: `$1` = Bageo's process id, the rest = the command.
+    const WATCH: &str = "P=$1; shift; \"$@\" & C=$!; trap 'kill $C 2>/dev/null; exit 0' TERM INT HUP; \
+        while kill -0 \"$P\" 2>/dev/null && kill -0 \"$C\" 2>/dev/null; do sleep 1; done; kill $C 2>/dev/null";
+
+    /// The `dns-sd` arguments for `<host>.local` at `ip`: with the web console
+    /// at `port` (`console`), or else with only the phones' Wi-Fi entry there,
+    /// which is not a web page.
+    pub(super) fn args(host: &str, ip: Ipv4Addr, port: u16, console: bool) -> Vec<String> {
+        let mut a = vec!["-P".to_string(), format!("Bageo ({host})")];
+        let kind = if console { "_http._tcp" } else { "_bageo-phone._tcp" };
+        a.extend([kind.to_string(), "local".into(), port.to_string(), format!("{host}.local"), ip.to_string()]);
+        if console {
+            a.push("path=/calls/".into());
+        }
+        a
+    }
+
+    fn start(host: &str, ip: Ipv4Addr, port: u16, console: bool) -> std::io::Result<Child> {
+        Command::new("/bin/sh")
+            .arg("-c")
+            .arg(WATCH)
+            .arg("sh")
+            .arg(std::process::id().to_string())
+            .arg("/usr/bin/dns-sd")
+            .args(args(host, ip, port, console))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            // The shell and `dns-sd` in a group of their own, ended together by [`stop`].
+            .process_group(0)
+            .spawn()
+    }
+
+    fn stop(child: &mut Child) {
+        // The whole group: `dns-sd` too, even when the shell around it is already gone.
+        let _ = Command::new("/bin/kill").args(["-TERM", "--", &format!("-{}", child.id())]).status();
+        let _ = child.wait();
+    }
+
+    pub(super) fn run<F: Fn() -> String>(listen: IpAddr, port: u16, name: F) {
+        // Listening on this computer only: the name leads to the phones' Wi-Fi entry.
+        let console = !listen.is_loopback();
+        let mut running: Option<((String, Ipv4Addr, u16), Child, Instant)> = None;
+        // A name another device on the network already answers to, and since when.
+        let mut taken: Option<((String, Ipv4Addr, u16), Instant)> = None;
+        loop {
+            let host = parse_name_setting(&name());
+            let shown = if crate::lan::port_80() { 80 } else { port };
+            let want = answer_ip(listen).filter(|_| !host.is_empty()).map(|ip| (host.clone(), ip, shown));
+            if let Some((had, child, since)) = running.as_mut() {
+                let ended = child.try_wait().ok().flatten().is_some();
+                if ended || want.as_ref() != Some(had) {
+                    if ended && since.elapsed() < QUICK_END {
+                        if taken.as_ref().map(|t| &t.0) != Some(&*had) {
+                            warn!(
+                                "mDNS: another device on this network already answers as {}.local; Bageo tries again every minute (or pick another network name)",
+                                had.0
+                            );
+                        }
+                        taken = Some((had.clone(), Instant::now()));
+                    } else if ended {
+                        warn!("mDNS: Bonjour stopped answering as {}.local; starting it again", had.0);
+                    }
+                    stop(child);
+                    running = None;
+                    ACTIVE.store(false, Ordering::Relaxed);
+                    if want.is_none() {
+                        info!("mDNS: off (the network name setting is empty, or no LAN address)");
+                    }
+                }
+            }
+            if running.is_none() {
+                if let Some(w) = want {
+                    let retry = taken.as_ref().is_some_and(|(t, _)| *t == w);
+                    let waiting = taken.as_ref().is_some_and(|(t, at)| *t == w && at.elapsed() < TAKEN_RETRY);
+                    if !waiting {
+                        match start(&w.0, w.1, w.2, console) {
+                            Ok(child) => {
+                                // A taken name stays off (the console shows its IP address) until it answers.
+                                ACTIVE.store(!retry, Ordering::Relaxed);
+                                if !retry {
+                                    info!("mDNS: this computer answers as {}.local (through Bonjour)", w.0);
+                                }
+                                running = Some((w, child, Instant::now()));
+                            }
+                            Err(e) => warn!("mDNS: could not start dns-sd ({e}); {}.local will not work, open the console by its IP address", w.0),
+                        }
+                    }
+                }
+            }
+            // A name that has answered for a while is no longer taken.
+            if let Some((w, _, since)) = running.as_ref() {
+                if since.elapsed() >= QUICK_END && taken.as_ref().is_some_and(|(t, _)| t == w) {
+                    taken = None;
+                    ACTIVE.store(true, Ordering::Relaxed);
+                    info!("mDNS: this computer answers as {}.local (through Bonjour)", w.0);
+                }
+            }
+            std::thread::sleep(Duration::from_secs(3));
+        }
+    }
+}
+
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn run<F: Fn() -> String>(listen: IpAddr, name: F) {
     let mut sock: Option<UdpSocket> = None;
     let mut buf = vec![0u8; 9000];
@@ -138,7 +275,7 @@ fn run<F: Fn() -> String>(listen: IpAddr, name: F) {
                     info!("mDNS: this computer answers as {host}.local");
                     // Announce once so caches that saw an older address update.
                     if let Some(ip) = answer_ip(listen) {
-                        let _ = s.send_to(&build_response(&host, ip, None), group);
+                        let _ = s.send_to(&build_response(&host, ip, None, true), group);
                     }
                     sock = Some(s);
                 }
@@ -195,7 +332,7 @@ fn run<F: Fn() -> String>(listen: IpAddr, name: F) {
         let Some(ip) = ours else {
             continue;
         };
-        let reply = build_response(&host, ip, ask.legacy_id);
+        let reply = build_response(&host, ip, ask.legacy_id, ask.address);
         let to = if ask.unicast { from } else { group };
         if let Err(e) = s.send_to(&reply, to) {
             debug!("mDNS: reply to {to} failed ({e})");
@@ -277,6 +414,9 @@ struct Ask {
     /// A one-shot resolver (source port other than 5353): echo its id and
     /// question (RFC 6762 §6.7).
     legacy_id: Option<u16>,
+    /// It asked for the IPv4 address (A or ANY); false: only for an IPv6
+    /// address (AAAA), which this name does not have.
+    address: bool,
 }
 
 fn be16(buf: &[u8], pos: usize) -> Option<u16> {
@@ -344,7 +484,8 @@ fn parse_questions(buf: &[u8]) -> Option<(u16, u16, Vec<Question>, usize)> {
 }
 
 /// A standard query that asks for the IPv4 address of `<host>.local` (or for
-/// any record of it). `host` is already sanitized (lower case).
+/// any record of it), or for its IPv6 address, which is answered "none"
+/// ([`build_response`]). `host` is already sanitized (lower case).
 fn match_query(buf: &[u8], host: &str, from_port: u16) -> Option<Ask> {
     let (id, flags, questions, _) = parse_questions(buf)?;
     // Responses (QR bit) and other opcodes are not questions for us.
@@ -354,14 +495,16 @@ fn match_query(buf: &[u8], host: &str, from_port: u16) -> Option<Ask> {
     let fqdn = format!("{host}.local");
     let mut hit = false;
     let mut unicast = false;
+    let mut address = false;
     for q in &questions {
         let class = q.qclass & !UNICAST_BIT;
         if q.name == fqdn
-            && matches!(q.qtype, TYPE_A | TYPE_ANY)
+            && matches!(q.qtype, TYPE_A | TYPE_ANY | TYPE_AAAA)
             && matches!(class, CLASS_IN | CLASS_ANY)
         {
             hit = true;
             unicast |= q.qclass & UNICAST_BIT != 0;
+            address |= q.qtype != TYPE_AAAA;
         }
     }
     if !hit {
@@ -371,6 +514,7 @@ fn match_query(buf: &[u8], host: &str, from_port: u16) -> Option<Ask> {
     Some(Ask {
         unicast: unicast || legacy,
         legacy_id: legacy.then_some(id),
+        address,
     })
 }
 
@@ -384,39 +528,73 @@ fn encode_name(host: &str) -> Vec<u8> {
     out
 }
 
-/// The answer packet: one A record `<host>.local -> ip`. With `legacy_id` it
-/// echoes the id and the question and uses a short TTL without the
-/// cache-flush bit, as one-shot resolvers expect.
-fn build_response(host: &str, ip: Ipv4Addr, legacy_id: Option<u16>) -> Vec<u8> {
+/// The NSEC record that says `<host>.local` has an A record and nothing else
+/// (RFC 6762 §6.1): next name = the name itself, type bitmap = A only.
+fn nsec_record(name: &[u8], class: u16, ttl: u32) -> Vec<u8> {
+    let mut out = Vec::with_capacity(2 * name.len() + 13);
+    out.extend_from_slice(name);
+    out.extend_from_slice(&TYPE_NSEC.to_be_bytes());
+    out.extend_from_slice(&class.to_be_bytes());
+    out.extend_from_slice(&ttl.to_be_bytes());
+    out.extend_from_slice(&((name.len() + 3) as u16).to_be_bytes());
+    out.extend_from_slice(name);
+    // Window 0, one bitmap byte, bit 1 (from the top) = type 1 (A).
+    out.extend_from_slice(&[0, 1, 0x40]);
+    out
+}
+
+/// The answer packet. For the IPv4 address (`address`): the A record
+/// `<host>.local -> ip`, with the NSEC record (no IPv6 address) as an
+/// additional record; for the IPv6 address only: the NSEC record as the
+/// answer, so resolvers do not wait for one that never comes. With
+/// `legacy_id` it echoes the id and the question and uses a short TTL
+/// without the cache-flush bit, as one-shot resolvers expect.
+fn build_response(host: &str, ip: Ipv4Addr, legacy_id: Option<u16>, address: bool) -> Vec<u8> {
     let name = encode_name(host);
     let legacy = legacy_id.is_some();
-    let mut out = Vec::with_capacity(12 + 2 * name.len() + 18);
+    let mut out = Vec::with_capacity(12 + 5 * name.len() + 40);
     out.extend_from_slice(&legacy_id.unwrap_or(0).to_be_bytes());
     // Response + authoritative answer.
     out.extend_from_slice(&0x8400u16.to_be_bytes());
     let questions: u16 = if legacy { 1 } else { 0 };
-    for count in [questions, 1, 0, 0] {
+    let additional: u16 = if address { 1 } else { 0 };
+    for count in [questions, 1, 0, additional] {
         out.extend_from_slice(&count.to_be_bytes());
     }
     if legacy {
         out.extend_from_slice(&name);
-        out.extend_from_slice(&TYPE_A.to_be_bytes());
+        let asked = if address { TYPE_A } else { TYPE_AAAA };
+        out.extend_from_slice(&asked.to_be_bytes());
         out.extend_from_slice(&CLASS_IN.to_be_bytes());
     }
-    out.extend_from_slice(&name);
-    out.extend_from_slice(&TYPE_A.to_be_bytes());
     let class = if legacy { CLASS_IN } else { CLASS_IN | CACHE_FLUSH_BIT };
-    out.extend_from_slice(&class.to_be_bytes());
     let ttl = if legacy { LEGACY_TTL_SECS } else { TTL_SECS };
-    out.extend_from_slice(&ttl.to_be_bytes());
-    out.extend_from_slice(&4u16.to_be_bytes());
-    out.extend_from_slice(&ip.octets());
+    if address {
+        out.extend_from_slice(&name);
+        out.extend_from_slice(&TYPE_A.to_be_bytes());
+        out.extend_from_slice(&class.to_be_bytes());
+        out.extend_from_slice(&ttl.to_be_bytes());
+        out.extend_from_slice(&4u16.to_be_bytes());
+        out.extend_from_slice(&ip.octets());
+    }
+    out.extend_from_slice(&nsec_record(&name, class, ttl));
     out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn bonjour_names_the_web_console_only_when_it_is_on_the_network() {
+        let ip = Ipv4Addr::new(192, 168, 1, 20);
+        let lan = bonjour::args("bageo", ip, 80, true);
+        assert!(lan.iter().any(|a| a == "_http._tcp") && lan.iter().any(|a| a == "path=/calls/"));
+        let local = bonjour::args("bageo", ip, 8788, false);
+        assert!(!local.iter().any(|a| a == "_http._tcp" || a.starts_with("path=")), "the phones' entry is no web page");
+        assert!(local.iter().any(|a| a == "bageo.local") && local.iter().any(|a| a == "192.168.1.20"));
+    }
 
     /// A query the way resolvers send it: header, then the questions.
     fn query(id: u16, flags: u16, questions: &[(&str, u16, u16)]) -> Vec<u8> {
@@ -439,19 +617,40 @@ mod tests {
 
     /// Answer records after the questions: (name, type, class, ttl, data).
     fn parse_answers(buf: &[u8]) -> Vec<(String, u16, u16, u32, Vec<u8>)> {
+        parse_records(buf, 0)
+    }
+
+    /// Additional records after the answers.
+    fn parse_additional(buf: &[u8]) -> Vec<(String, u16, u16, u32, Vec<u8>)> {
+        parse_records(buf, 1)
+    }
+
+    /// The answer (`section` 0) or additional (1) records; no authority records are sent.
+    fn parse_records(buf: &[u8], section: usize) -> Vec<(String, u16, u16, u32, Vec<u8>)> {
         let (_, _, _, mut pos) = parse_questions(buf).expect("header and questions");
-        let count = be16(buf, 6).unwrap();
-        let mut out = Vec::new();
-        for _ in 0..count {
-            let (name, next) = read_name(buf, pos).expect("answer name");
-            let rtype = be16(buf, next).unwrap();
-            let class = be16(buf, next + 2).unwrap();
-            let ttl = u32::from_be_bytes(buf[next + 4..next + 8].try_into().unwrap());
-            let len = usize::from(be16(buf, next + 8).unwrap());
-            out.push((name, rtype, class, ttl, buf[next + 10..next + 10 + len].to_vec()));
-            pos = next + 10 + len;
+        assert_eq!(be16(buf, 8).unwrap(), 0, "no authority records");
+        let counts = [be16(buf, 6).unwrap(), be16(buf, 10).unwrap()];
+        let mut sections = vec![Vec::new(), Vec::new()];
+        for (i, count) in counts.iter().enumerate() {
+            for _ in 0..*count {
+                let (name, next) = read_name(buf, pos).expect("record name");
+                let rtype = be16(buf, next).unwrap();
+                let class = be16(buf, next + 2).unwrap();
+                let ttl = u32::from_be_bytes(buf[next + 4..next + 8].try_into().unwrap());
+                let len = usize::from(be16(buf, next + 8).unwrap());
+                sections[i].push((name, rtype, class, ttl, buf[next + 10..next + 10 + len].to_vec()));
+                pos = next + 10 + len;
+            }
         }
-        out
+        assert_eq!(pos, buf.len(), "nothing after the records");
+        sections.swap_remove(section)
+    }
+
+    /// The NSEC data for `bageo.local`: the name, then "A only".
+    fn nsec_a_only(host: &str) -> Vec<u8> {
+        let mut d = encode_name(host);
+        d.extend_from_slice(&[0, 1, 0x40]);
+        d
     }
 
     #[test]
@@ -459,11 +658,44 @@ mod tests {
         let q = query(0, 0, &[("bageo.local", TYPE_A, CLASS_IN)]);
         assert_eq!(
             match_query(&q, "bageo", PORT),
-            Some(Ask { unicast: false, legacy_id: None })
+            Some(Ask { unicast: false, legacy_id: None, address: true })
         );
         // ANY also asks for the address.
         let q = query(0, 0, &[("bageo.local", TYPE_ANY, CLASS_IN)]);
-        assert!(match_query(&q, "bageo", PORT).is_some());
+        assert_eq!(match_query(&q, "bageo", PORT).map(|a| a.address), Some(true));
+        // A and AAAA in one query: the address, with "no IPv6" beside it.
+        let q = query(0, 0, &[("bageo.local", TYPE_AAAA, CLASS_IN), ("bageo.local", TYPE_A, CLASS_IN)]);
+        assert_eq!(match_query(&q, "bageo", PORT).map(|a| a.address), Some(true));
+    }
+
+    #[test]
+    fn an_ipv6_question_gets_nsec_saying_only_a_exists() {
+        let q = query(0, 0, &[("bageo.local", TYPE_AAAA, CLASS_IN)]);
+        let ask = match_query(&q, "bageo", PORT).expect("answered");
+        assert_eq!(ask, Ask { unicast: false, legacy_id: None, address: false });
+        let ip = Ipv4Addr::new(192, 168, 1, 20);
+        let r = build_response("bageo", ip, ask.legacy_id, ask.address);
+        assert_eq!(
+            parse_answers(&r),
+            vec![("bageo.local".to_string(), TYPE_NSEC, CLASS_IN | CACHE_FLUSH_BIT, TTL_SECS, nsec_a_only("bageo"))]
+        );
+        assert!(parse_additional(&r).is_empty());
+        // No IPv6 address is made up anywhere in the packet.
+        assert!(!r.windows(2).any(|w| w == TYPE_AAAA.to_be_bytes()), "{r:?}");
+        // A one-shot resolver gets its AAAA question back, then the NSEC.
+        let q = query(0x4242, 0x0100, &[("bageo.local", TYPE_AAAA, CLASS_IN)]);
+        let ask = match_query(&q, "bageo", 50000).expect("answered");
+        assert_eq!(ask, Ask { unicast: true, legacy_id: Some(0x4242), address: false });
+        let r = build_response("bageo", ip, ask.legacy_id, ask.address);
+        let (id, _, questions, _) = parse_questions(&r).unwrap();
+        assert_eq!(id, 0x4242);
+        assert_eq!(questions, vec![Question { name: "bageo.local".into(), qtype: TYPE_AAAA, qclass: CLASS_IN }]);
+        assert_eq!(
+            parse_answers(&r),
+            vec![("bageo.local".to_string(), TYPE_NSEC, CLASS_IN, LEGACY_TTL_SECS, nsec_a_only("bageo"))]
+        );
+        // Another name's IPv6 address is not ours to deny.
+        assert_eq!(match_query(&query(0, 0, &[("other.local", TYPE_AAAA, CLASS_IN)]), "bageo", PORT), None);
     }
 
     #[test]
@@ -475,7 +707,7 @@ mod tests {
     #[test]
     fn other_names_types_and_responses_get_no_answer() {
         // IPv6 address, service browsing, another host.
-        assert_eq!(match_query(&query(0, 0, &[("bageo.local", 28, CLASS_IN)]), "bageo", PORT), None);
+        // (Service browsing and another host; the IPv6 address gets NSEC, see above.)
         assert_eq!(match_query(&query(0, 0, &[("bageo.local", 12, CLASS_IN)]), "bageo", PORT), None);
         assert_eq!(match_query(&query(0, 0, &[("other.local", TYPE_A, CLASS_IN)]), "bageo", PORT), None);
         assert_eq!(match_query(&query(0, 0, &[("bageo.local.example", TYPE_A, CLASS_IN)]), "bageo", PORT), None);
@@ -488,12 +720,12 @@ mod tests {
         let q = query(0, 0, &[("bageo.local", TYPE_A, CLASS_IN | UNICAST_BIT)]);
         assert_eq!(
             match_query(&q, "bageo", PORT),
-            Some(Ask { unicast: true, legacy_id: None })
+            Some(Ask { unicast: true, legacy_id: None, address: true })
         );
         let q = query(0x1234, 0x0100, &[("bageo.local", TYPE_A, CLASS_IN)]);
         assert_eq!(
             match_query(&q, "bageo", 50000),
-            Some(Ask { unicast: true, legacy_id: Some(0x1234) })
+            Some(Ask { unicast: true, legacy_id: Some(0x1234), address: true })
         );
     }
 
@@ -524,13 +756,18 @@ mod tests {
     #[test]
     fn the_answer_reads_back() {
         let ip = Ipv4Addr::new(192, 168, 1, 20);
-        let r = build_response("bageo", ip, None);
+        let r = build_response("bageo", ip, None, true);
         let (id, flags, questions, _) = parse_questions(&r).unwrap();
         assert_eq!((id, flags), (0, 0x8400));
         assert!(questions.is_empty());
         assert_eq!(
             parse_answers(&r),
             vec![("bageo.local".to_string(), TYPE_A, CLASS_IN | CACHE_FLUSH_BIT, TTL_SECS, ip.octets().to_vec())]
+        );
+        // Beside it: this name has no IPv6 address (RFC 6762 §6.1).
+        assert_eq!(
+            parse_additional(&r),
+            vec![("bageo.local".to_string(), TYPE_NSEC, CLASS_IN | CACHE_FLUSH_BIT, TTL_SECS, nsec_a_only("bageo"))]
         );
         // Our own multicast answer comes back to us: it must not look like a question.
         assert_eq!(match_query(&r, "bageo", PORT), None);
@@ -539,7 +776,7 @@ mod tests {
     #[test]
     fn a_one_shot_answer_echoes_id_and_question() {
         let ip = Ipv4Addr::new(10, 0, 0, 7);
-        let r = build_response("bageo", ip, Some(0xBEEF));
+        let r = build_response("bageo", ip, Some(0xBEEF), true);
         let (id, _, questions, _) = parse_questions(&r).unwrap();
         assert_eq!(id, 0xBEEF);
         assert_eq!(

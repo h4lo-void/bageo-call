@@ -703,6 +703,11 @@ fn fill_old_summary_service(provider: &str, has_key: bool, base: &mut String, mo
 
 /// settings.json as it is read: the summary key of older versions moves to its
 /// new name. True when the file had it.
+/// [`SettingsStore::language_chosen`] for a settings file and the environment (`env_set`).
+fn language_chosen_in(o: &Overrides, env_set: impl Fn(&str) -> bool) -> bool {
+    o.language.is_some() || o.notify_language.is_some() || env_set("APP_LANGUAGE") || env_set("NOTIFY_LANGUAGE")
+}
+
 fn read_overrides(text: &str) -> serde_json::Result<(Overrides, bool)> {
     let mut v: Value = serde_json::from_str(text)?;
     let mut moved = false;
@@ -1711,21 +1716,64 @@ impl RuntimeSettings {
 
 /// The address of this web console as other devices reach it, for links in
 /// notifications, `/health` and the console's own "Console address":
-/// what the owner typed in "Address of this console"; else, when the agent is
+/// what the owner typed in "Address in notifications"; else, when the agent is
 /// open to the LAN, `http://<mdns_name>.local:<port>/` while the mDNS
-/// responder answers, or `http://<LAN IP>:<port>/`. Empty when the agent
-/// listens on this computer only and nothing was typed (a link to localhost
-/// would not open on a phone), and in a container: there the name and the
-/// address are Docker's own network, which other devices cannot reach.
+/// responder answers (`http://<mdns_name>.local/` when `AGENT_HOST` is not
+/// set and port 80 is open too, `crate::lan`), or `http://<LAN IP>:<port>/`.
+/// Empty when the agent listens on this computer only and nothing was typed (a
+/// link to localhost would not open on a phone), and in a container: there the
+/// name and the address are Docker's own network, which other devices cannot reach.
 pub fn effective_console_url(s: &Settings) -> String {
-    let listen = if in_container() {
-        None
-    } else {
-        s.host.trim().parse::<std::net::IpAddr>().ok()
-    };
-    let host = crate::mdns::sanitize_name(&s.mdns_name);
+    let host = crate::mdns::parse_name_setting(&s.mdns_name);
     let mdns_on = !host.is_empty() && crate::mdns::is_active();
-    console_url(&s.public_url, listen, s.port, &host, mdns_on, crate::mdns::answer_ip)
+    console_url_for(s, in_container(), crate::lan::auto(), crate::lan::port_80(), mdns_on, crate::mdns::answer_ip)
+}
+
+/// [`effective_console_url`] with what it reads from the running agent given:
+/// inside a container, `AGENT_HOST` not set (`auto`), port 80 open, mDNS answering.
+pub(crate) fn console_url_for(
+    s: &Settings,
+    in_container: bool,
+    auto: bool,
+    port80: bool,
+    mdns_on: bool,
+    lan_ip: impl FnOnce(std::net::IpAddr) -> Option<std::net::Ipv4Addr>,
+) -> String {
+    let listen = if in_container { None } else { console_listen(s, auto) };
+    let host = crate::mdns::parse_name_setting(&s.mdns_name);
+    console_url(&s.public_url, listen, s.port, &host, mdns_on && !host.is_empty(), auto && port80, lan_ip)
+}
+
+/// The address the console listens on: all of them when `AGENT_HOST` is not set.
+fn console_listen(s: &Settings, auto: bool) -> Option<std::net::IpAddr> {
+    if auto {
+        return Some(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED));
+    }
+    s.host.trim().parse::<std::net::IpAddr>().ok()
+}
+
+/// [`effective_console_url`] without the typed address: what an empty
+/// "Address in notifications" stands for.
+pub fn default_console_url(s: &Settings) -> String {
+    let mut plain = s.clone();
+    plain.public_url.clear();
+    effective_console_url(&plain)
+}
+
+/// Who can open the console: `local` = this computer only (`AGENT_HOST` set
+/// to a loopback address), `lan` = other devices too.
+pub fn console_access(s: &Settings) -> &'static str {
+    console_access_for(s, in_container(), crate::lan::auto())
+}
+
+fn console_access_for(s: &Settings, in_container: bool, auto: bool) -> &'static str {
+    if in_container || auto {
+        return "lan";
+    }
+    match s.host.trim().parse::<std::net::IpAddr>() {
+        Ok(ip) if ip.is_loopback() => "local",
+        _ => "lan",
+    }
 }
 
 /// Running inside Docker or Podman.
@@ -1741,8 +1789,7 @@ pub fn lan_console_url(s: &Settings) -> String {
     if in_container() {
         return String::new();
     }
-    let listen = s.host.trim().parse::<std::net::IpAddr>().ok();
-    console_url("", listen, s.port, "", false, crate::mdns::answer_ip)
+    console_url("", console_listen(s, crate::lan::auto()), s.port, "", false, false, crate::mdns::answer_ip)
 }
 
 fn console_url(
@@ -1751,6 +1798,7 @@ fn console_url(
     port: u16,
     mdns_host: &str,
     mdns_on: bool,
+    port80: bool,
     lan_ip: impl FnOnce(std::net::IpAddr) -> Option<std::net::Ipv4Addr>,
 ) -> String {
     let own = sanitize_public_url(public_url);
@@ -1761,6 +1809,9 @@ fn console_url(
         return String::new();
     };
     if mdns_on {
+        if port80 {
+            return format!("http://{mdns_host}.local/");
+        }
         return format!("http://{mdns_host}.local:{port}/");
     }
     match lan_ip(listen) {
@@ -2161,6 +2212,14 @@ impl SettingsStore {
         &self.path
     }
 
+    /// The language was chosen: saved in the settings (`language` or
+    /// `notify_language`), or set in the environment. Until then the console
+    /// follows the browser's language and saves it once.
+    pub fn language_chosen(&self) -> bool {
+        let st = self.state.read().unwrap_or_else(|e| e.into_inner());
+        language_chosen_in(&st.overrides, |k| std::env::var(k).is_ok_and(|v| !v.trim().is_empty()))
+    }
+
     /// The settings file as it is written now (what a backup keeps).
     pub fn overrides_json(&self) -> Vec<u8> {
         let st = self.state.read().unwrap_or_else(|e| e.into_inner());
@@ -2334,6 +2393,16 @@ impl SettingsStore {
 }
 
 static ACTIVE_UI_PASSWORD: std::sync::RwLock<String> = std::sync::RwLock::new(String::new());
+
+/// The fewest characters a new console password may have.
+pub const MIN_UI_PASSWORD_CHARS: usize = 8;
+
+/// A new console password that is too short. Empty is not: it keeps the
+/// saved password.
+pub fn ui_password_too_short(pw: &str) -> bool {
+    let pw = pw.trim();
+    !pw.is_empty() && pw.chars().count() < MIN_UI_PASSWORD_CHARS
+}
 
 /// The active console password (`ui_password` from settings if set, else `env_token`).
 pub fn active_ui_token(env_token: &str) -> String {
@@ -3691,20 +3760,70 @@ mod tests {
         let no_lan = |_: IpAddr| -> Option<Ipv4Addr> { None };
         // Typed by the owner: used as typed, whatever else is true.
         assert_eq!(
-            console_url(" https://calls.example.com ", any, 8787, "bageo", true, lan),
+            console_url(" https://calls.example.com ", any, 8787, "bageo", true, true, lan),
             "https://calls.example.com"
         );
         assert_eq!(
-            console_url("http://10.0.0.5:8787", local, 8787, "bageo", false, lan),
+            console_url("http://10.0.0.5:8787", local, 8787, "bageo", false, false, lan),
             "http://10.0.0.5:8787"
         );
         // Open to the LAN: the network name while it answers, else the IP.
-        assert_eq!(console_url("", any, 8787, "bageo", true, lan), "http://bageo.local:8787/");
-        assert_eq!(console_url("", any, 9000, "bageo", false, lan), "http://192.168.1.20:9000/");
-        assert_eq!(console_url("", any, 8787, "bageo", false, no_lan), "");
+        assert_eq!(console_url("", any, 8787, "bageo", true, false, lan), "http://bageo.local:8787/");
+        assert_eq!(console_url("", any, 8787, "bageo", true, true, lan), "http://bageo.local/");
+        assert_eq!(console_url("", any, 9000, "bageo", false, false, lan), "http://192.168.1.20:9000/");
+        // Port 80 without the network name: the IP at the console's own port.
+        assert_eq!(console_url("", any, 8787, "bageo", false, true, lan), "http://192.168.1.20:8787/");
+        assert_eq!(console_url("", any, 8787, "bageo", false, false, no_lan), "");
         // This computer only: no link a phone could open.
-        assert_eq!(console_url("", local, 8787, "bageo", true, lan), "");
-        assert_eq!(console_url("", None, 8787, "bageo", true, lan), "");
+        assert_eq!(console_url("", local, 8787, "bageo", true, false, lan), "");
+        assert_eq!(console_url("", None, 8787, "bageo", true, false, lan), "");
+    }
+
+    #[test]
+    fn automatic_mode_console_url_and_access() {
+        use std::net::{IpAddr, Ipv4Addr};
+        let lan = |_: IpAddr| Some(Ipv4Addr::new(192, 168, 1, 20));
+        let mut s = Settings::from_env();
+        s.host = "127.0.0.1".into();
+        s.port = 8787;
+        s.mdns_name = "bageo".into();
+        s.public_url = String::new();
+        // AGENT_HOST not set: port 80 and the name, the name at 8787, the IP.
+        assert_eq!(console_url_for(&s, false, true, true, true, lan), "http://bageo.local/");
+        assert_eq!(console_url_for(&s, false, true, false, true, lan), "http://bageo.local:8787/");
+        assert_eq!(console_url_for(&s, false, true, true, false, lan), "http://192.168.1.20:8787/");
+        // The network name turned off: the IP even with mDNS running.
+        s.mdns_name = "off".into();
+        assert_eq!(console_url_for(&s, false, true, true, true, lan), "http://192.168.1.20:8787/");
+        s.mdns_name = "bageo".into();
+        // AGENT_HOST=127.0.0.1 set: this computer only, as before.
+        assert_eq!(console_url_for(&s, false, false, true, true, lan), "");
+        assert_eq!(console_access_for(&s, false, false), "local");
+        assert_eq!(console_access_for(&s, false, true), "lan");
+        // AGENT_HOST=0.0.0.0 set: the name at the console's port, never port 80.
+        s.host = "0.0.0.0".into();
+        assert_eq!(console_url_for(&s, false, false, true, true, lan), "http://bageo.local:8787/");
+        assert_eq!(console_access_for(&s, false, false), "lan");
+        // The address typed in the settings wins; a container has no own address.
+        s.public_url = "https://calls.example.org/".into();
+        assert_eq!(console_url_for(&s, false, true, true, true, lan), "https://calls.example.org/");
+        s.public_url = String::new();
+        assert_eq!(console_url_for(&s, true, false, true, true, lan), "");
+    }
+
+    #[test]
+    fn language_counts_as_chosen_once_saved_or_set_in_the_environment() {
+        let none = |_: &str| false;
+        let (fresh, _) = read_overrides("{}").unwrap();
+        assert!(!language_chosen_in(&fresh, none));
+        assert!(language_chosen_in(&fresh, |k| k == "APP_LANGUAGE"));
+        assert!(language_chosen_in(&fresh, |k| k == "NOTIFY_LANGUAGE"));
+        let (other, _) = read_overrides(r#"{"owner_name":"Lee"}"#).unwrap();
+        assert!(!language_chosen_in(&other, none));
+        for saved in [r#"{"language":"ja"}"#, r#"{"notify_language":"zh-TW"}"#] {
+            let (o, _) = read_overrides(saved).unwrap();
+            assert!(language_chosen_in(&o, none), "{saved}");
+        }
     }
 
     #[test]
@@ -4425,7 +4544,7 @@ mod review_t4_tests {
         use std::net::{IpAddr, Ipv4Addr};
         let any = Some(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
         let lan = |_: IpAddr| Some(Ipv4Addr::new(192, 168, 1, 20));
-        assert_eq!(console_url("javascript:alert(1)", any, 8787, "bageo", true, lan), "http://bageo.local:8787/");
+        assert_eq!(console_url("javascript:alert(1)", any, 8787, "bageo", true, false, lan), "http://bageo.local:8787/");
         // Saved through the settings page: cleared.
         let dir = std::env::temp_dir().join(format!("bageo-call-public-url-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("temp settings dir");

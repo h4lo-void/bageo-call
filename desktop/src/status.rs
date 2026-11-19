@@ -162,6 +162,27 @@ pub fn is_web_url(s: &str) -> bool {
     l.starts_with("http://") || l.starts_with("https://")
 }
 
+/// The console address Bageo reports about itself in its full health
+/// (`console_url`; older versions only `calls_ui_url`). Empty when there is none.
+pub fn reported_console_url(health: &Value) -> String {
+    ["console_url", "calls_ui_url"]
+        .iter()
+        .map(|k| text(health.get(*k)).trim())
+        .find(|s| is_web_url(s))
+        .unwrap_or("")
+        .to_string()
+}
+
+/// The address to show, copy and open: the one Bageo reports once it opened
+/// on this computer (`reachable`), else the address used for polling.
+pub fn shown_address(base: &str, reported: &str, reachable: bool) -> String {
+    if reachable && is_web_url(reported) {
+        reported.trim().to_string()
+    } else {
+        base.to_string()
+    }
+}
+
 /// Turns what the user typed into a base address with a trailing slash.
 /// A pasted console link ("…/calls/", with or without "?…" or "#…") is cut back to the
 /// address in front of "/calls", because every request adds "calls/…" itself.
@@ -635,6 +656,21 @@ mod tests {
         assert_eq!(normalize_address("ftp://host"), None);
         assert_eq!(normalize_address("http://"), None);
         assert_eq!(normalize_address("   "), None);
+    }
+
+    #[test]
+    fn console_address_is_the_reported_one_once_it_opens_here() {
+        let h = json!({"console_url": "http://bageo.local/", "calls_ui_url": "http://bageo.local/"});
+        assert_eq!(reported_console_url(&h), "http://bageo.local/");
+        assert_eq!(reported_console_url(&json!({"calls_ui_url": " http://bageo.local:8787/ "})), "http://bageo.local:8787/");
+        assert_eq!(reported_console_url(&json!({"console_url": "", "calls_ui_url": ""})), "");
+        assert_eq!(reported_console_url(&json!({"console_url": "javascript:x"})), "");
+        assert_eq!(reported_console_url(&json!({"ok": true})), "");
+        let base = "http://127.0.0.1:8787/";
+        assert_eq!(shown_address(base, "http://bageo.local/", true), "http://bageo.local/");
+        assert_eq!(shown_address(base, "http://bageo.local/", false), base);
+        assert_eq!(shown_address(base, "", true), base);
+        assert_eq!(shown_address(base, "ftp://x/", true), base);
     }
 
     #[test]

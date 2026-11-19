@@ -163,6 +163,8 @@ pre.block.prose{font:inherit;font-size:.9rem}
 .sw input:focus-visible{outline:2px solid color-mix(in srgb,var(--focus) 65%,transparent);outline-offset:2px;border-radius:999px}
 .sw b{display:block;font-weight:600}
 .sw small{display:block;color:var(--muted);font-size:.87rem;margin-top:2px}
+.field>label.sw{flex-wrap:nowrap;align-items:flex-start;gap:14px;font-weight:400;margin-bottom:0;min-height:0}
+.sw>span{min-width:0}
 
 /* ---------- calls view ---------- */
 .setup{margin-bottom:16px}
@@ -400,8 +402,9 @@ audio{width:100%;height:40px;margin-top:10px;display:block}
 .savebar .btn.plain{background:transparent;color:var(--muted);border-color:var(--line)}
 
 /* ---------- system ---------- */
-.sys-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+.sys-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:stretch}
 .sys-col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.sys-col>.card:last-child{flex:1 1 auto}
 .sys-grid h2{font-size:1.04rem;font-weight:650;margin-bottom:10px;display:flex;align-items:center;gap:10px}
 .sys-grid h3{font-size:.78rem;letter-spacing:.03em;color:var(--muted);margin:16px 0 4px;font-weight:600}
 .item{display:flex;gap:11px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--line)}
@@ -578,6 +581,17 @@ dialog .terms li+li{margin-top:8px}
   body.detail-open{overflow:hidden}
   .detail-inner{max-width:720px;margin:0 auto}
 }
+/* Narrow windows and tablets: the tabs move to a bar at the bottom (they no longer fit next to the logo and the status) */
+@media (max-width:980px){
+  .top{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--bg)}
+  .nav{position:fixed;left:0;right:0;bottom:0;z-index:40;margin:0;justify-content:center;background:var(--surface);border-top:1px solid var(--line);padding:8px 8px calc(8px + env(safe-area-inset-bottom));gap:4px}
+  .nav a{flex:1 1 0;max-width:150px;font-size:.82rem;padding:9px 6px;min-height:46px;justify-content:center;min-width:0;text-align:center}
+  .nav a span{overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  .nav .dot{right:6px;top:6px}
+  main{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+  .savebar{bottom:calc(74px + env(safe-area-inset-bottom))}
+  #themeBtn{white-space:nowrap;flex:none}
+}
 @media (max-width:900px){
   .set-grid{grid-template-columns:minmax(0,1fr);gap:12px}
   .snav{position:sticky;top:var(--top-h);z-index:20;flex-direction:row;overflow-x:auto;background:var(--bg);margin:-8px -20px 0;padding:8px 20px;scrollbar-width:none;border-bottom:1px solid var(--line)}
@@ -592,10 +606,6 @@ dialog .terms li+li{margin-top:8px}
   html,body{font-size:15.5px}
   .top-in{padding:0 12px;gap:8px}
   .brand span.word{font-size:1.02rem}
-  .nav{position:fixed;left:0;right:0;bottom:0;z-index:40;margin:0;background:var(--surface);border-top:1px solid var(--line);padding:8px 8px calc(8px + env(safe-area-inset-bottom));gap:4px}
-  .nav a{flex:1 1 0;font-size:.82rem;padding:8px 6px;justify-content:center;min-width:0;text-align:center}
-  .nav a span{overflow:hidden;text-overflow:ellipsis;max-width:100%}
-  .nav .dot{right:6px;top:6px}
   main{padding:14px 12px calc(96px + env(safe-area-inset-bottom))}
   .pad{padding:16px}
   .stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
@@ -608,11 +618,40 @@ dialog .terms li+li{margin-top:8px}
   .brow{grid-template-columns:minmax(0,1fr) auto}
   .brow .sl-lang{grid-column:1;grid-row:2}
   .brow .btn{grid-row:1/3;align-self:center}
-  .savebar{bottom:calc(74px + env(safe-area-inset-bottom));width:calc(100vw - 24px);padding-left:14px}
+  .savebar{width:calc(100vw - 24px);padding-left:14px}
   .savebar .grow{font-size:.9rem}
   .lang{max-width:7rem}
   .pill{font-size:.79rem;padding:5px 10px}
   #toast{top:10px}
+}
+/* ---------- phones: bigger touch targets, no zoom on focus, dialogs that always show their buttons ---------- */
+dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow:auto;overscroll-behavior:contain}
+@media (max-width:720px){
+  .nav{gap:2px;padding-left:4px;padding-right:4px}
+  .nav a{font-size:.76rem;padding:9px 2px;min-height:46px}
+  .btn{min-height:42px}
+  .btn.sm{min-height:40px}
+  .btn.xs{min-height:36px}
+  .call .call-acts .btn{min-height:36px;padding:2px 10px}
+  input:not([type=checkbox]):not([type=radio]),select:not(.lang),textarea{font-size:16px!important}
+  input[type=text],input[type=search],input[type=password],input[type=number],input[type=url],input[type=tel],select,textarea{min-height:44px}
+  .lang{min-height:40px}
+  .search{flex:1 1 100%}
+  .filters select{flex:1 1 auto;min-height:44px}
+  .snav a{min-height:40px}
+  .ct-row .who{white-space:normal;overflow-wrap:anywhere}
+  .ct-call{min-height:40px}
+  dialog{width:calc(100vw - 24px)}
+  dialog form{padding:18px 16px 0}
+  dialog .dlg-btns{position:sticky;bottom:0;z-index:1;background:var(--surface);margin:16px -16px 0;padding:12px 16px 16px;border-top:1px solid var(--line)}
+  dialog .dlg-btns .btn{flex:1 1 auto;min-height:44px}
+}
+/* touch screens have no hover: show each text message's copy and delete buttons under it */
+@media (hover:none){
+  #view-sms .b{flex-direction:column;align-items:flex-start;gap:2px}
+  #view-sms .b.out{flex-direction:column;align-items:flex-end}
+  #view-sms .b .acts{opacity:1;gap:6px}
+  #view-sms .b .acts .btn{min-height:34px;padding:2px 10px}
 }
 </style>
 </head>
@@ -1170,6 +1209,10 @@ dialog .terms li+li{margin-top:8px}
               <button type="button" class="btn" id="btnChanAdd" data-i18n="n_add"></button>
             </div>
           </div>
+          <div class="field"><label for="f-public_url" data-i18n="f_public_url"></label>
+            <input type="url" id="f-public_url" data-k="public_url" data-t="text" spellcheck="false" placeholder="http://bageo.local/" />
+            <div class="help" data-i18n="f_public_url_h"></div>
+            <button type="button" class="btn sm ghost" id="btnUseThisUrl" style="margin-top:4px;padding-left:0"></button></div>
           <details class="fold more" id="ctlField">
             <summary data-i18n="rc_title"></summary>
             <p class="help" style="margin-top:0" data-i18n="rc_desc"></p>
@@ -1272,10 +1315,6 @@ dialog .terms li+li{margin-top:8px}
             <div data-secret="ui_password"></div>
             <div class="help" data-i18n="f_ui_pw_h"></div></div>
           <div class="hr"></div>
-          <div class="field"><label for="f-public_url" data-i18n="f_public_url"></label>
-            <input type="url" id="f-public_url" data-k="public_url" data-t="text" spellcheck="false" placeholder="http://192.168.1.20:8787" />
-            <div class="help" data-i18n="f_public_url_h"></div>
-            <button type="button" class="btn sm ghost" id="btnUseThisUrl" style="margin-top:4px;padding-left:0"></button></div>
           <div class="field"><label for="f-mdns_name" data-i18n="f_mdns_name"></label>
             <input type="text" id="f-mdns_name" data-k="mdns_name" data-t="text" spellcheck="false" autocapitalize="off" autocomplete="off" maxlength="63" placeholder="bageo" style="max-width:16rem" />
             <div class="help" data-i18n="f_mdns_name_h"></div></div>
@@ -1335,9 +1374,15 @@ dialog .terms li+li{margin-top:8px}
     <div class="sys-grid">
       <div class="sys-col">
         <div class="card pad">
+          <h2 data-i18n="sys_phones"></h2>
+          <div id="sysPhones"><div class="skel"></div></div>
+        </div>
+        <div class="card pad">
           <h2 data-i18n="chk_title"></h2>
           <div id="sysCheck"><div class="skel"></div></div>
         </div>
+      </div>
+      <div class="sys-col">
         <div class="card pad">
           <h2 data-i18n="about"></h2>
           <div class="cu">
@@ -1349,6 +1394,8 @@ dialog .terms li+li{margin-top:8px}
                 <button type="button" class="btn sm" id="btnCopyUrl" data-i18n="cu_copy"></button>
               </div>
               <p class="help" id="sysUrlHelp"></p>
+              <a class="btn sm" id="btnUrlSetPw" href="#settings/region" data-i18n="cu_set_pw" hidden></a>
+              <p class="help" id="sysQrHelp" data-i18n="cu_qr_h" hidden></p>
               <p class="help" id="sysUrlIp" hidden><span data-i18n="cu_ip"></span> <a id="sysUrlIpLink" class="mono" target="_blank" rel="noopener"></a></p>
               <div class="a2hs" id="a2hs">
                 <b data-i18n="a2hs_title"></b>
@@ -1366,12 +1413,6 @@ dialog .terms li+li{margin-top:8px}
             <summary data-i18n="raw_health"></summary>
             <pre class="block" id="sysRaw" tabindex="0"></pre>
           </details>
-        </div>
-      </div>
-      <div class="sys-col">
-        <div class="card pad">
-          <h2 data-i18n="sys_phones"></h2>
-          <div id="sysPhones"><div class="skel"></div></div>
         </div>
       </div>
     </div>
@@ -2088,8 +2129,8 @@ I18N["en"] = {
   hint_smtp: "Any mail server with TLS: smtp://you@example.com@smtp.example.com:587 (STARTTLS) or smtps://…:465. The login is also the sender. Use an app password if your provider offers one.",
   hint_homeassistant: "Your Home Assistant address, a long-lived access token (Profile → Security) and the notify service, e.g. mobile_app_pixel_9 (listed under Developer tools → Actions).",
   hint_ifttt: "ifttt.com/maker_webhooks → Documentation shows your key. Create an applet “If Webhooks: Receive a web request” with the same event name; value1 is the title and value2 the message.",
-  f_public_url: "Address of this console",
-  f_public_url_h: "Links in notifications use this address. Empty = worked out automatically. With Docker, fill it in yourself.",
+  f_public_url: "Address in notifications",
+  f_public_url_h: "Links in notifications use this address. Empty = the one shown in grey; with Docker, or to reach it from outside your home, type your own.",
   use_this_url: "Use the address of this page: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "After each call the AI writes a short summary. There is normally nothing to set up here.",
@@ -2320,11 +2361,11 @@ I18N["en"] = {
   err_network_error: "The service could not be reached.",
   err_send_failed: "Sending failed.",
   f_mdns_name: "Network name",
-  f_mdns_name_h: "Devices on the same network can open the console at http://name.local:8787. Letters, digits and hyphens only. Empty = off.",
+  f_mdns_name_h: "Devices on the same network can open the console at http://name.local. Letters, digits and hyphens only. Empty = off.",
   cu_title: "Console address",
   cu_copy: "Copy",
   cu_qr_h: "Scan the code with your phone's camera to open the console there.",
-  cu_local: "Only this computer can open this address. To open the console from your phone, open it to your network (AGENT_HOST=0.0.0.0, see the guide).",
+  cu_local: "Only this computer can open this address.",
   cu_qr_alt: "QR code of the console address",
   a2hs_title: "Add this page to your home screen. Next time, just tap the icon.",
   a2hs_install: "Install",
@@ -2502,14 +2543,14 @@ I18N["en"] = {
   f_wl_num_ph: "e.g. 0912345678",
   f_wl_num_h: "The number to reach you when something is urgent. It appears in the alerts; with the trial switch below on, the phone dials it.",
   f_ui_pw: "Console password",
-  f_ui_pw_h: "Once set, the console asks for it when opened (once per browser). You can skip it if you only use the console at home.",
+  f_ui_pw_h: "Once set, the console asks for it when opened (once per browser). Needed to open the console on your phone or another computer.",
   pw_setup_title: "Set a console password (optional)",
   pw_setup_body: "Set a password if you will open this console from outside your home network. You can change it later in Settings.",
-  pw_setup_ph: "At least 4 characters",
+  pw_setup_ph: "At least 8 characters",
   pw_setup_help: "This browser remembers it. You will be asked again on a new device.",
   pw_setup_skip: "Not now",
   pw_setup_save: "Save password",
-  pw_setup_short: "The password needs at least 4 characters.",
+  pw_setup_short: "The password needs at least 8 characters.",
   pw_setup_saved: "Password set",
   ev_whitelist_direct_transfer: "Forwarded to your phone",
   ev_whitelist_urgent_transfer: "Urgent: you were alerted",
@@ -2721,6 +2762,16 @@ I18N["en"] = {
   err_backup_password_short: "The backup password needs at least 8 characters.",
   err_backup_password_missing: "Set a backup password before you turn on encryption.",
   bk_st_exporting: "Preparing the export file…",
+  cu_lan: "Phones and computers on the same Wi-Fi can open the console at this address.",
+  cu_lan_nopw: "Phones and computers on the same Wi-Fi can use this address. Set a console password before opening it on another device.",
+  cu_set_pw: "Set password",
+  err_password_too_short: "The password needs at least 8 characters.",
+  err_too_many_tries: "Too many wrong passwords. Try again in a minute.",
+  bk_btn_delete: "Delete",
+  bk_del_t: "Delete this backup?",
+  bk_del_b: "Once deleted, it can't be brought back.",
+  bk_done_delete: "Backup deleted.",
+  bk_del_need_password: "To delete it, open the console on the computer that runs Bageo, or set a console password first.",
   f_wl_mode_h_off: "The AI answers as usual and tells you afterwards.",
   f_wl_mode_h_direct: "This phone doesn't answer; your carrier forwards the call to your number and the AI stays silent. First switch the phone to normal phone and dial **67*your number# to turn on forward-when-busy, or callers reach voicemail.",
   f_wl_mode_h_emergency: "The AI answers first and alerts you right away if it's urgent. Turn on the switch below to also have it call you and join you in.",
@@ -3060,14 +3111,14 @@ I18N["zh-TW"] = {
   f_wl_num_ph: "例如：0912345678",
   f_wl_num_h: "有急事時要找你的號碼，會顯示在通知裡；打開下面的試驗開關，手機會直接撥這個號碼。",
   f_ui_pw: "控制台密碼",
-  f_ui_pw_h: "設了以後，打開控制台要輸入密碼（每個瀏覽器只要輸入一次）。只在家裡的網路用可以不設。",
+  f_ui_pw_h: "設了以後，打開控制台要輸入密碼（每個瀏覽器只要輸入一次）。要用手機或別台電腦打開控制台，一定要設。",
   pw_setup_title: "設定控制台密碼（可不設）",
   pw_setup_body: "會從外面連回這個控制台的話，建議設密碼。之後可以到「設定」修改。",
-  pw_setup_ph: "至少 4 個字",
+  pw_setup_ph: "至少 8 個字",
   pw_setup_help: "這個瀏覽器會記住密碼；換裝置時再輸入一次。",
   pw_setup_skip: "先不設定",
   pw_setup_save: "儲存密碼",
-  pw_setup_short: "密碼至少要 4 個字。",
+  pw_setup_short: "密碼至少要 8 個字。",
   pw_setup_saved: "密碼已設定",
   ev_whitelist_direct_transfer: "直接轉到你的手機",
   ev_whitelist_urgent_transfer: "有急事：已通知你",
@@ -3317,8 +3368,8 @@ I18N["zh-TW"] = {
   hint_smtp: "任何支援 TLS 的郵件伺服器：smtp://you@example.com@smtp.example.com:587（STARTTLS）或 smtps://…:465。登入帳號同時是寄件人。郵件服務有提供應用程式密碼的話請用它。",
   hint_homeassistant: "你的 Home Assistant 網址、長期存取權杖（個人資料 → 安全性）和通知服務名稱，例如 mobile_app_pixel_9（在「開發者工具 → 動作」可以查到）。",
   hint_ifttt: "ifttt.com/maker_webhooks → Documentation 會顯示你的金鑰。建立 Applet「If Webhooks：Receive a web request」，事件名稱填一樣的；value1 是標題、value2 是內容。",
-  f_public_url: "這個控制台的網址",
-  f_public_url_h: "通知裡的連結會用這個網址。留空會自動判斷；用 Docker 安裝請自己填。",
+  f_public_url: "通知裡的網址",
+  f_public_url_h: "通知裡的連結用這個網址。留空＝用欄位裡灰字的網址；用 Docker 或要從外面連進來時請自己填。",
   use_this_url: "使用目前這個頁面的網址：{url}",
   // ---- settings: summary & calendar
   g_summary_d: "每通電話結束後，AI 會寫一段摘要。通常不用另外設定。",
@@ -3549,11 +3600,11 @@ I18N["zh-TW"] = {
   err_network_error: "連不上服務。",
   err_send_failed: "傳送失敗。",
   f_mdns_name: "區網名稱",
-  f_mdns_name_h: "同一個網路的裝置可以用 http://名稱.local:8787 打開控制台。只能用英文、數字和連字號（-）。留空 = 不使用。",
+  f_mdns_name_h: "同一個網路的裝置可以用 http://名稱.local 打開控制台。只能用英文、數字和連字號（-）。留空 = 不使用。",
   cu_title: "控制台網址",
   cu_copy: "複製",
   cu_qr_h: "用手機相機掃這個 QR code，就能在手機上打開控制台。",
-  cu_local: "這個網址只有這台電腦能開。要用手機打開，請讓控制台對區網開放（AGENT_HOST=0.0.0.0，見說明文件）。",
+  cu_local: "這個網址只有這台電腦能開。",
   cu_qr_alt: "控制台網址的 QR code",
   a2hs_title: "把這個網頁加到主畫面，下次點圖示就打開。",
   a2hs_install: "安裝",
@@ -3918,6 +3969,16 @@ I18N["zh-TW"] = {
   err_backup_password_short: "備份密碼至少要 8 個字元。",
   err_backup_password_missing: "開啟備份檔加密前，請先設定備份密碼。",
   bk_st_exporting: "正在準備匯出檔…",
+  cu_lan: "同一個 Wi-Fi 的手機和電腦都能用這個網址打開。",
+  cu_lan_nopw: "同一個 Wi-Fi 的手機和電腦都能用這個網址。從別的裝置打開前，請先設控制台密碼。",
+  cu_set_pw: "設定密碼",
+  err_password_too_short: "密碼至少要 8 個字。",
+  err_too_many_tries: "密碼錯太多次了，請 1 分鐘後再試。",
+  bk_btn_delete: "刪除",
+  bk_del_t: "要刪除這份備份嗎？",
+  bk_del_b: "刪了就救不回來。",
+  bk_done_delete: "已刪除備份。",
+  bk_del_need_password: "要刪除，請在執行 Bageo 的電腦上打開控制台，或先設控制台密碼。",
   f_wl_mode_h_off: "AI 照常接聽，事後通知你。",
   f_wl_mode_h_direct: "這支手機不接，由電信轉到你的號碼，AI 不出聲。要先把手機切到「一般手機」，撥 **67*你的號碼# 開好忙線轉接，沒開的話對方會進語音信箱。",
   f_wl_mode_h_emergency: "AI 先接聽，對方有急事就馬上通知你。打開下面的開關，還會直接打給你、三方一起講。",
@@ -4482,8 +4543,8 @@ I18N["zh-CN"] = {
   hint_smtp: "任何支持 TLS 的邮件服务器：smtp://you@example.com@smtp.example.com:587（STARTTLS）或 smtps://…:465。登录账号同时是发件人。邮件服务提供应用专用密码的话请用它。",
   hint_homeassistant: "你的 Home Assistant 地址、长期访问令牌（个人资料 → 安全）和通知服务名称，例如 mobile_app_pixel_9（在“开发者工具 → 动作”里能查到）。",
   hint_ifttt: "ifttt.com/maker_webhooks → Documentation 会显示你的密钥。创建 Applet“If Webhooks：Receive a web request”，事件名称填一样的；value1 是标题、value2 是内容。",
-  f_public_url: "这个控制台的地址",
-  f_public_url_h: "通知里的链接会用这个地址。留空会自动判断；用 Docker 安装请自己填。",
+  f_public_url: "通知里的地址",
+  f_public_url_h: "通知里的链接用这个地址。留空＝用输入框里灰字的地址；用 Docker 或要从外面连进来时请自己填。",
   use_this_url: "使用当前页面的地址：{url}",
   // ---- settings: summary & calendar
   g_summary_d: "每通电话结束后，AI 会写一段摘要。通常不用另外设置。",
@@ -4714,11 +4775,11 @@ I18N["zh-CN"] = {
   err_network_error: "连不上服务。",
   err_send_failed: "发送失败。",
   f_mdns_name: "局域网名称",
-  f_mdns_name_h: "同一个网络的设备可以用 http://名称.local:8787 打开控制台。只能用英文、数字和连字符（-）。留空 = 不使用。",
+  f_mdns_name_h: "同一个网络的设备可以用 http://名称.local 打开控制台。只能用英文、数字和连字符（-）。留空 = 不使用。",
   cu_title: "控制台地址",
   cu_copy: "复制",
   cu_qr_h: "用手机相机扫这个二维码，就能在手机上打开控制台。",
-  cu_local: "这个地址只有这台电脑能打开。要用手机打开，请让控制台对局域网开放（AGENT_HOST=0.0.0.0，见说明文档）。",
+  cu_local: "这个地址只有这台电脑能打开。",
   cu_qr_alt: "控制台地址的二维码",
   a2hs_title: "把这个网页添加到主屏幕，下次点图标就能打开。",
   a2hs_install: "安装",
@@ -4896,14 +4957,14 @@ I18N["zh-CN"] = {
   f_wl_num_ph: "例如：13800138000",
   f_wl_num_h: "有急事时要找你的号码，会显示在通知里；打开下面的试验开关，手机会直接拨这个号码。",
   f_ui_pw: "控制台密码",
-  f_ui_pw_h: "设置后，打开控制台要输入密码（每个浏览器只需输入一次）。只在家里的网络使用可以不设。",
+  f_ui_pw_h: "设置后，打开控制台要输入密码（每个浏览器只需输入一次）。要用手机或别的电脑打开控制台，必须设置。",
   pw_setup_title: "设置控制台密码（选填）",
   pw_setup_body: "如果会从外面连回这个控制台，建议设置密码。以后可以到“设置”修改。",
-  pw_setup_ph: "至少 4 个字符",
+  pw_setup_ph: "至少 8 个字符",
   pw_setup_help: "这个浏览器会记住密码；换新设备时需再输入一次。",
   pw_setup_skip: "暂不设置",
   pw_setup_save: "保存密码",
-  pw_setup_short: "密码至少需要 4 个字符。",
+  pw_setup_short: "密码至少需要 8 个字符。",
   pw_setup_saved: "控制台密码已设置",
   ev_whitelist_direct_transfer: "直接转到你的手机",
   ev_whitelist_urgent_transfer: "有急事：已通知你",
@@ -5115,6 +5176,16 @@ I18N["zh-CN"] = {
   err_backup_password_short: "备份密码至少要 8 个字符。",
   err_backup_password_missing: "打开备份文件加密之前，请先设置备份密码。",
   bk_st_exporting: "正在准备导出文件…",
+  cu_lan: "同一个 Wi-Fi 下的手机和电脑都能用这个地址打开。",
+  cu_lan_nopw: "同一个 Wi-Fi 下的手机和电脑都能用这个地址。从别的设备打开前，请先设置控制台密码。",
+  cu_set_pw: "设置密码",
+  err_password_too_short: "密码至少需要 8 个字符。",
+  err_too_many_tries: "密码错误次数太多，请 1 分钟后再试。",
+  bk_btn_delete: "删除",
+  bk_del_t: "要删除这份备份吗？",
+  bk_del_b: "删了就找不回来。",
+  bk_done_delete: "已删除备份。",
+  bk_del_need_password: "要删除，请在运行 Bageo 的电脑上打开控制台，或先设置控制台密码。",
   f_wl_mode_h_off: "AI 照常接听，事后通知你。",
   f_wl_mode_h_direct: "这部手机不接，由运营商转到你的号码，AI 不出声。要先把手机切到「普通手机」，拨 **67*你的号码# 开好遇忙转移，没开的话对方会进语音信箱。",
   f_wl_mode_h_emergency: "AI 先接听，对方有急事就马上通知你。打开下面的开关，还会直接打给你、三方一起说。",
@@ -5679,8 +5750,8 @@ I18N["ja"] = {
   hint_smtp: "TLS に対応したメールサーバーなら使えます：smtp://you@example.com@smtp.example.com:587（STARTTLS）または smtps://…:465。ログインのアドレスが送信者になります。プロバイダーにアプリ パスワードがあればそれを使ってください。",
   hint_homeassistant: "Home Assistant のアドレス、長期アクセストークン（プロフィール → セキュリティ）、notify サービス名（例：mobile_app_pixel_9。開発者ツール → アクション で確認できます）を入力します。",
   hint_ifttt: "ifttt.com/maker_webhooks → Documentation にキーが表示されます。同じイベント名でアプレット「If Webhooks: Receive a web request」を作成します。value1 がタイトル、value2 が本文です。",
-  f_public_url: "このコンソールのアドレス",
-  f_public_url_h: "通知内のリンクに使うアドレスです。空欄なら自動で決まります。Docker の場合は自分で入力してください。",
+  f_public_url: "通知に使うアドレス",
+  f_public_url_h: "通知内のリンクはこのアドレスを使います。空欄なら薄い文字のアドレス、Docker や外から使うときは自分で入力してください。",
   use_this_url: "このページのアドレスを使う：{url}",
   // ---- settings: summary & calendar
   g_summary_d: "通話が終わるたびに AI が短い要約を書きます。通常、ここの設定は不要です。",
@@ -5911,11 +5982,11 @@ I18N["ja"] = {
   err_network_error: "サービスに接続できませんでした。",
   err_send_failed: "送信に失敗しました。",
   f_mdns_name: "ネットワーク名",
-  f_mdns_name_h: "同じネットワークの機器から http://名前.local:8787 でコンソールを開けます。英字、数字、ハイフンのみ。空欄 = 使わない。",
+  f_mdns_name_h: "同じネットワークの機器から http://名前.local でコンソールを開けます。英字、数字、ハイフンのみ。空欄 = 使わない。",
   cu_title: "コンソールのアドレス",
   cu_copy: "コピー",
   cu_qr_h: "スマホのカメラでこのコードを読み取ると、スマホでコンソールが開きます。",
-  cu_local: "このアドレスはこのPCでしか開けません。スマホから開くには、コンソールをネットワークに公開してください（AGENT_HOST=0.0.0.0、ガイド参照）。",
+  cu_local: "このアドレスはこのPCでしか開けません。",
   cu_qr_alt: "コンソールのアドレスの QR コード",
   a2hs_title: "このページをホーム画面に追加すると、次からはアイコンをタップするだけで開けます。",
   a2hs_install: "インストール",
@@ -6093,14 +6164,14 @@ I18N["ja"] = {
   f_wl_num_ph: "例：09012345678",
   f_wl_num_h: "急ぎのときにあなたへ連絡する番号です。通知に表示されます。下の試験スイッチをオンにすると、スマホがこの番号に発信します。",
   f_ui_pw: "コンソールのパスワード",
-  f_ui_pw_h: "設定すると、コンソールを開くときにパスワードを求められます（ブラウザごとに一度だけ）。自宅のネットワークだけで使うなら不要です。",
+  f_ui_pw_h: "設定すると、コンソールを開くときにパスワードを求められます（ブラウザごとに一度だけ）。スマホやほかのパソコンで開くには必要です。",
   pw_setup_title: "コンソールのパスワードを設定（任意）",
   pw_setup_body: "外出先からこのコンソールを開くなら、パスワードの設定をおすすめします。あとから「設定」で変更できます。",
-  pw_setup_ph: "4 文字以上",
+  pw_setup_ph: "8 文字以上",
   pw_setup_help: "このブラウザには記憶されます。新しい端末では、もう一度入力が必要です。",
   pw_setup_skip: "今は設定しない",
   pw_setup_save: "パスワードを保存",
-  pw_setup_short: "パスワードは 4 文字以上にしてください。",
+  pw_setup_short: "パスワードは 8 文字以上にしてください。",
   pw_setup_saved: "コンソールのパスワードを設定しました",
   ev_whitelist_direct_transfer: "あなたのスマホに直接転送",
   ev_whitelist_urgent_transfer: "急用：あなたに知らせた",
@@ -6312,6 +6383,16 @@ I18N["ja"] = {
   err_backup_password_short: "バックアップのパスワードは 8 文字以上にしてください。",
   err_backup_password_missing: "暗号化をオンにする前に、バックアップのパスワードを設定してください。",
   bk_st_exporting: "エクスポートするファイルを準備しています…",
+  cu_lan: "同じ Wi-Fi のスマホやパソコンから、このアドレスで開けます。",
+  cu_lan_nopw: "同じ Wi-Fi のスマホやパソコンでこのアドレスを使えます。ほかの端末で開く前に、コンソールのパスワードを設定してください。",
+  cu_set_pw: "パスワードを設定",
+  err_password_too_short: "パスワードは 8 文字以上にしてください。",
+  err_too_many_tries: "パスワードの間違いが多すぎます。1 分後にもう一度お試しください。",
+  bk_btn_delete: "削除",
+  bk_del_t: "このバックアップを削除しますか？",
+  bk_del_b: "削除すると元に戻せません。",
+  bk_done_delete: "バックアップを削除しました。",
+  bk_del_need_password: "削除するには、Bageo が動いているパソコンでコンソールを開くか、先にコンソールのパスワードを設定してください。",
   f_wl_mode_h_off: "AI がいつも通り応答し、あとで知らせます。",
   f_wl_mode_h_direct: "このスマホでは応答せず、携帯会社の転送であなたの番号につなぎます。AI は話しません。先にスマホを「通常のスマホ」に切り替え、**67*あなたの番号# にかけて話中転送を有効にしてください。有効にしていないと、相手は留守番電話につながります。",
   f_wl_mode_h_emergency: "AI が先に応答し、相手が急ぎだと言えばすぐあなたに知らせます。下のスイッチをオンにすると、あなたに電話をかけて三者で話せます。",
@@ -6876,8 +6957,8 @@ I18N["ko"] = {
   hint_smtp: "TLS를 지원하는 메일 서버면 됩니다: smtp://you@example.com@smtp.example.com:587(STARTTLS) 또는 smtps://…:465. 로그인 주소가 보내는 사람이 됩니다. 메일 서비스에 앱 비밀번호가 있으면 그것을 쓰세요.",
   hint_homeassistant: "Home Assistant 주소, 장기 액세스 토큰(프로필 → 보안), notify 서비스 이름(예: mobile_app_pixel_9, 개발자 도구 → 동작에서 확인)을 입력합니다.",
   hint_ifttt: "ifttt.com/maker_webhooks → Documentation에 키가 나옵니다. 같은 이벤트 이름으로 애플릿 “If Webhooks: Receive a web request”를 만듭니다. value1은 제목, value2는 내용입니다.",
-  f_public_url: "이 콘솔의 주소",
-  f_public_url_h: "알림 속 링크에 쓰는 주소입니다. 비워 두면 자동으로 정해집니다. Docker로 설치했다면 직접 입력해 주세요.",
+  f_public_url: "알림에 쓰는 주소",
+  f_public_url_h: "알림 속 링크는 이 주소를 씁니다. 비워 두면 흐린 글자의 주소를 쓰고, Docker나 밖에서 접속할 때는 직접 입력하세요.",
   use_this_url: "지금 이 페이지의 주소 사용: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "통화가 끝날 때마다 AI가 짧은 요약을 씁니다. 보통은 따로 설정할 것이 없습니다.",
@@ -7108,11 +7189,11 @@ I18N["ko"] = {
   err_network_error: "서비스에 연결할 수 없습니다.",
   err_send_failed: "보내지 못했습니다.",
   f_mdns_name: "네트워크 이름",
-  f_mdns_name_h: "같은 네트워크의 기기에서 http://이름.local:8787 로 콘솔을 열 수 있습니다. 영문자, 숫자, 하이픈만 가능합니다. 비워 두면 사용하지 않습니다.",
+  f_mdns_name_h: "같은 네트워크의 기기에서 http://이름.local 로 콘솔을 열 수 있습니다. 영문자, 숫자, 하이픈만 가능합니다. 비워 두면 사용하지 않습니다.",
   cu_title: "콘솔 주소",
   cu_copy: "복사",
   cu_qr_h: "휴대폰 카메라로 이 코드를 찍으면 휴대폰에서 콘솔이 열립니다.",
-  cu_local: "이 주소는 이 컴퓨터에서만 열 수 있습니다. 휴대폰에서 열려면 콘솔을 네트워크에 여세요(AGENT_HOST=0.0.0.0, 안내서 참고).",
+  cu_local: "이 주소는 이 컴퓨터에서만 열 수 있습니다.",
   cu_qr_alt: "콘솔 주소 QR 코드",
   a2hs_title: "이 페이지를 홈 화면에 추가하면 다음부터는 아이콘만 누르면 열립니다.",
   a2hs_install: "설치",
@@ -7290,14 +7371,14 @@ I18N["ko"] = {
   f_wl_num_ph: "예: 01012345678",
   f_wl_num_h: "급한 일이 있을 때 연락할 내 번호입니다. 알림에 표시되며, 아래 시험 스위치를 켜면 휴대폰이 이 번호로 전화합니다.",
   f_ui_pw: "콘솔 비밀번호",
-  f_ui_pw_h: "설정하면 콘솔을 열 때 비밀번호를 묻습니다(브라우저마다 한 번). 집 네트워크에서만 쓴다면 설정하지 않아도 됩니다.",
+  f_ui_pw_h: "설정하면 콘솔을 열 때 비밀번호를 묻습니다(브라우저마다 한 번). 휴대폰이나 다른 컴퓨터에서 콘솔을 열려면 꼭 필요합니다.",
   pw_setup_title: "콘솔 비밀번호 설정 (선택)",
   pw_setup_body: "밖에서 이 콘솔에 접속할 계획이라면 비밀번호를 설정하는 것이 좋습니다. 나중에 '설정'에서 바꿀 수 있습니다.",
-  pw_setup_ph: "4자 이상",
+  pw_setup_ph: "8자 이상",
   pw_setup_help: "이 브라우저에는 저장되며, 새 기기에서는 다시 입력해야 합니다.",
   pw_setup_skip: "지금 건너뛰기",
   pw_setup_save: "비밀번호 저장",
-  pw_setup_short: "비밀번호는 4자 이상이어야 합니다.",
+  pw_setup_short: "비밀번호는 8자 이상이어야 합니다.",
   pw_setup_saved: "콘솔 비밀번호를 설정했습니다",
   ev_whitelist_direct_transfer: "내 휴대폰으로 바로 전환",
   ev_whitelist_urgent_transfer: "급한 일: 나에게 알림",
@@ -7509,6 +7590,16 @@ I18N["ko"] = {
   err_backup_password_short: "백업 비밀번호는 8자 이상이어야 합니다.",
   err_backup_password_missing: "암호화를 켜기 전에 백업 비밀번호를 설정하세요.",
   bk_st_exporting: "내보낼 파일을 준비하는 중…",
+  cu_lan: "같은 Wi-Fi의 휴대폰과 컴퓨터에서 이 주소로 열 수 있습니다.",
+  cu_lan_nopw: "같은 Wi-Fi의 휴대폰과 컴퓨터에서 이 주소를 쓸 수 있습니다. 다른 기기에서 열기 전에 콘솔 비밀번호를 정하세요.",
+  cu_set_pw: "비밀번호 정하기",
+  err_password_too_short: "비밀번호는 8자 이상이어야 합니다.",
+  err_too_many_tries: "비밀번호가 너무 여러 번 틀렸습니다. 1분 뒤에 다시 시도하세요.",
+  bk_btn_delete: "삭제",
+  bk_del_t: "이 백업을 삭제할까요?",
+  bk_del_b: "삭제하면 되돌릴 수 없습니다.",
+  bk_done_delete: "백업을 삭제했습니다.",
+  bk_del_need_password: "삭제하려면 Bageo가 실행 중인 컴퓨터에서 콘솔을 열거나, 먼저 콘솔 비밀번호를 정하세요.",
   f_wl_mode_h_off: "AI가 평소처럼 받고, 끝난 뒤에 알려 줍니다.",
   f_wl_mode_h_direct: "이 휴대폰은 받지 않고, 통신사가 내 번호로 전환하며 AI는 말하지 않습니다. 먼저 휴대폰을 ‘일반 휴대전화’로 바꾸고 **67*내 번호#를 눌러 통화 중 착신전환을 켜 두세요. 켜 두지 않으면 상대방은 음성사서함으로 넘어갑니다.",
   f_wl_mode_h_emergency: "AI가 먼저 받고, 상대방이 급하다고 하면 바로 알려 줍니다. 아래 스위치를 켜면 나에게 직접 전화해 셋이 함께 통화할 수도 있습니다.",
@@ -8073,8 +8164,8 @@ I18N["es"] = {
   hint_smtp: "Cualquier servidor de correo con TLS: smtp://tu@example.com@smtp.example.com:587 (STARTTLS) o smtps://…:465. El usuario es también el remitente. Usa una contraseña de aplicación si tu proveedor la ofrece.",
   hint_homeassistant: "La dirección de tu Home Assistant, un token de acceso de larga duración (Perfil → Seguridad) y el servicio notify, p. ej. mobile_app_pixel_9 (aparecen en Herramientas para desarrolladores → Acciones).",
   hint_ifttt: "ifttt.com/maker_webhooks → Documentation muestra tu clave. Crea un applet «If Webhooks: Receive a web request» con el mismo nombre de evento; value1 es el título y value2 el mensaje.",
-  f_public_url: "Dirección de esta consola",
-  f_public_url_h: "Los enlaces de las notificaciones usan esta dirección. Vacío = se calcula sola. Con Docker, escríbela tú.",
+  f_public_url: "Dirección en las notificaciones",
+  f_public_url_h: "Los enlaces de las notificaciones usan esta dirección. Vacío = la que se ve en gris; con Docker, o para entrar desde fuera de casa, escribe la tuya.",
   use_this_url: "Usar la dirección de esta página: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Después de cada llamada la IA escribe un resumen breve. Normalmente no hay nada que configurar aquí.",
@@ -8305,11 +8396,11 @@ I18N["es"] = {
   err_network_error: "No se pudo conectar con el servicio.",
   err_send_failed: "No se pudo enviar.",
   f_mdns_name: "Nombre en la red",
-  f_mdns_name_h: "Los dispositivos de la misma red pueden abrir la consola en http://nombre.local:8787. Solo letras, cifras y guiones. Vacío = desactivado.",
+  f_mdns_name_h: "Los dispositivos de la misma red pueden abrir la consola en http://nombre.local. Solo letras, cifras y guiones. Vacío = desactivado.",
   cu_title: "Dirección de la consola",
   cu_copy: "Copiar",
   cu_qr_h: "Escanea el código con la cámara del teléfono para abrir la consola allí.",
-  cu_local: "Solo este equipo puede abrir esta dirección. Para abrir la consola desde el teléfono, ábrela a tu red (AGENT_HOST=0.0.0.0, consulta la guía).",
+  cu_local: "Solo este equipo puede abrir esta dirección.",
   cu_qr_alt: "Código QR de la dirección de la consola",
   a2hs_title: "Añade esta página a la pantalla de inicio. La próxima vez, solo toca el icono.",
   a2hs_install: "Instalar",
@@ -8487,14 +8578,14 @@ I18N["es"] = {
   f_wl_num_ph: "p. ej. +34600123456",
   f_wl_num_h: "El número para localizarte si es urgente. Aparece en los avisos; con el interruptor de prueba de abajo activado, el teléfono lo marca.",
   f_ui_pw: "Contraseña de la consola",
-  f_ui_pw_h: "Si la pones, la consola la pedirá al abrirla (una vez por navegador). No hace falta si solo la usas en casa.",
+  f_ui_pw_h: "Si la pones, la consola la pedirá al abrirla (una vez por navegador). Hace falta para abrir la consola en el teléfono u otro equipo.",
   pw_setup_title: "Configurar una contraseña de la consola (opcional)",
   pw_setup_body: "Si vas a abrir esta consola desde fuera de casa, conviene poner una contraseña. Puedes cambiarla después en Ajustes.",
-  pw_setup_ph: "Mínimo 4 caracteres",
+  pw_setup_ph: "Mínimo 8 caracteres",
   pw_setup_help: "Este navegador la recuerda. Te la pedirán de nuevo en un dispositivo nuevo.",
   pw_setup_skip: "Ahora no",
   pw_setup_save: "Guardar contraseña",
-  pw_setup_short: "La contraseña debe tener al menos 4 caracteres.",
+  pw_setup_short: "La contraseña debe tener al menos 8 caracteres.",
   pw_setup_saved: "Contraseña configurada",
   ev_whitelist_direct_transfer: "Pasada a tu teléfono",
   ev_whitelist_urgent_transfer: "Urgente: se te avisó",
@@ -8706,6 +8797,16 @@ I18N["es"] = {
   err_backup_password_short: "La contraseña de las copias debe tener al menos 8 caracteres.",
   err_backup_password_missing: "Pon una contraseña para las copias antes de activar el cifrado.",
   bk_st_exporting: "Preparando el archivo para exportar…",
+  cu_lan: "Los teléfonos y equipos de la misma red Wi-Fi pueden abrir la consola con esta dirección.",
+  cu_lan_nopw: "Los teléfonos y equipos de la misma red Wi-Fi pueden usar esta dirección. Antes de abrirla en otro dispositivo, pon una contraseña a la consola.",
+  cu_set_pw: "Poner contraseña",
+  err_password_too_short: "La contraseña debe tener al menos 8 caracteres.",
+  err_too_many_tries: "Demasiadas contraseñas incorrectas. Vuelve a intentarlo en un minuto.",
+  bk_btn_delete: "Eliminar",
+  bk_del_t: "¿Eliminar esta copia?",
+  bk_del_b: "Una vez eliminada, no se puede recuperar.",
+  bk_done_delete: "Copia eliminada.",
+  bk_del_need_password: "Para eliminarla, abre la consola en el equipo donde está Bageo o pon antes una contraseña a la consola.",
   f_wl_mode_h_off: "La IA contesta como siempre y te avisa después.",
   f_wl_mode_h_direct: "Este teléfono no contesta: tu operador desvía la llamada a tu número y la IA no dice nada. Primero pasa el teléfono a «Teléfono normal» y marca en él **67*tu número# para activar el desvío si comunica; si no, quien llama oirá el buzón de voz.",
   f_wl_mode_h_emergency: "La IA contesta primero y te avisa al momento si es urgente. Activa el interruptor de abajo para que además te llame y hablen los tres juntos.",
@@ -9270,8 +9371,8 @@ I18N["fr"] = {
   hint_smtp: "Tout serveur de messagerie avec TLS : smtp://vous@example.com@smtp.example.com:587 (STARTTLS) ou smtps://…:465. L'identifiant est aussi l'expéditeur. Utilisez un mot de passe d'application si votre fournisseur en propose.",
   hint_homeassistant: "L'adresse de votre Home Assistant, un jeton d'accès longue durée (Profil → Sécurité) et le service notify, par ex. mobile_app_pixel_9 (listés dans Outils de développement → Actions).",
   hint_ifttt: "ifttt.com/maker_webhooks → Documentation affiche votre clé. Créez une applet « If Webhooks: Receive a web request » avec le même nom d'événement ; value1 est le titre et value2 le message.",
-  f_public_url: "Adresse de cette console",
-  f_public_url_h: "Les liens des notifications utilisent cette adresse. Vide = déterminée automatiquement. Avec Docker, saisissez-la vous-même.",
+  f_public_url: "Adresse dans les notifications",
+  f_public_url_h: "Les liens des notifications utilisent cette adresse. Vide = celle affichée en gris ; avec Docker, ou pour y accéder hors de chez vous, saisissez la vôtre.",
   use_this_url: "Utiliser l'adresse de cette page : {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Après chaque appel, l'IA rédige un court résumé. En général, il n'y a rien à régler ici.",
@@ -9502,11 +9603,11 @@ I18N["fr"] = {
   err_network_error: "Impossible de joindre le service.",
   err_send_failed: "Échec de l'envoi.",
   f_mdns_name: "Nom sur le réseau",
-  f_mdns_name_h: "Les appareils du même réseau peuvent ouvrir la console à l'adresse http://nom.local:8787. Lettres, chiffres et tirets uniquement. Vide = désactivé.",
+  f_mdns_name_h: "Les appareils du même réseau peuvent ouvrir la console à l'adresse http://nom.local. Lettres, chiffres et tirets uniquement. Vide = désactivé.",
   cu_title: "Adresse de la console",
   cu_copy: "Copier",
   cu_qr_h: "Scannez le code avec l'appareil photo du téléphone pour y ouvrir la console.",
-  cu_local: "Seul cet ordinateur peut ouvrir cette adresse. Pour ouvrir la console depuis votre téléphone, ouvrez-la à votre réseau (AGENT_HOST=0.0.0.0, voir le guide).",
+  cu_local: "Seul cet ordinateur peut ouvrir cette adresse.",
   cu_qr_alt: "QR code de l'adresse de la console",
   a2hs_title: "Ajoutez cette page à l'écran d'accueil : la prochaine fois, touchez simplement l'icône.",
   a2hs_install: "Installer",
@@ -9684,14 +9785,14 @@ I18N["fr"] = {
   f_wl_num_ph: "ex. +33612345678",
   f_wl_num_h: "Le numéro pour vous joindre en cas d'urgence. Il apparaît dans les notifications ; avec l'interrupteur d'essai ci-dessous activé, le téléphone l'appelle.",
   f_ui_pw: "Mot de passe de la console",
-  f_ui_pw_h: "Une fois défini, la console le demande à l'ouverture (une fois par navigateur). Inutile si vous ne l'utilisez que chez vous.",
+  f_ui_pw_h: "Une fois défini, la console le demande à l'ouverture (une fois par navigateur). Nécessaire pour ouvrir la console sur votre téléphone ou un autre ordinateur.",
   pw_setup_title: "Définir un mot de passe de la console (facultatif)",
   pw_setup_body: "Si vous comptez ouvrir cette console depuis l'extérieur, définissez un mot de passe. Vous pourrez le modifier plus tard dans Réglages.",
-  pw_setup_ph: "Au moins 4 caractères",
+  pw_setup_ph: "Au moins 8 caractères",
   pw_setup_help: "Ce navigateur le mémorise. Il sera redemandé sur un nouvel appareil.",
   pw_setup_skip: "Pas maintenant",
   pw_setup_save: "Enregistrer le mot de passe",
-  pw_setup_short: "Le mot de passe doit contenir au moins 4 caractères.",
+  pw_setup_short: "Le mot de passe doit contenir au moins 8 caractères.",
   pw_setup_saved: "Mot de passe défini",
   ev_whitelist_direct_transfer: "Transféré vers votre téléphone",
   ev_whitelist_urgent_transfer: "Urgent : vous avez été prévenu",
@@ -9903,6 +10004,16 @@ I18N["fr"] = {
   err_backup_password_short: "Le mot de passe des sauvegardes doit contenir au moins 8 caractères.",
   err_backup_password_missing: "Définissez un mot de passe pour les sauvegardes avant d'activer le chiffrement.",
   bk_st_exporting: "Préparation du fichier à exporter…",
+  cu_lan: "Les téléphones et ordinateurs du même Wi-Fi peuvent ouvrir la console à cette adresse.",
+  cu_lan_nopw: "Les téléphones et ordinateurs du même Wi-Fi peuvent utiliser cette adresse. Avant de l'ouvrir sur un autre appareil, définissez un mot de passe pour la console.",
+  cu_set_pw: "Définir le mot de passe",
+  err_password_too_short: "Le mot de passe doit contenir au moins 8 caractères.",
+  err_too_many_tries: "Trop de mots de passe erronés. Réessayez dans une minute.",
+  bk_btn_delete: "Supprimer",
+  bk_del_t: "Supprimer cette sauvegarde ?",
+  bk_del_b: "Une fois supprimée, elle ne peut pas être récupérée.",
+  bk_done_delete: "Sauvegarde supprimée.",
+  bk_del_need_password: "Pour la supprimer, ouvrez la console sur l'ordinateur où tourne Bageo, ou définissez d'abord un mot de passe pour la console.",
   f_wl_mode_h_off: "L'IA répond comme d'habitude et vous prévient ensuite.",
   f_wl_mode_h_direct: "Ce téléphone ne répond pas : votre opérateur renvoie l'appel vers votre numéro et l'IA reste muette. Passez d'abord le téléphone en « Téléphone normal », puis composez dessus **67*votre numéro# pour activer le renvoi sur occupation ; sinon l'appelant tombe sur la messagerie vocale.",
   f_wl_mode_h_emergency: "L'IA répond d'abord et vous prévient aussitôt si c'est urgent. Activez l'interrupteur ci-dessous pour qu'elle vous appelle aussi et que vous parliez à trois.",
@@ -10467,8 +10578,8 @@ I18N["de"] = {
   hint_smtp: "Jeder Mailserver mit TLS: smtp://du@example.com@smtp.example.com:587 (STARTTLS) oder smtps://…:465. Der Login ist auch der Absender. Nimm ein App-Passwort, wenn dein Anbieter eins anbietet.",
   hint_homeassistant: "Die Adresse deines Home Assistant, ein langlebiges Zugriffstoken (Profil → Sicherheit) und der Notify-Dienst, z. B. mobile_app_pixel_9 (zu finden unter Entwicklerwerkzeuge → Aktionen).",
   hint_ifttt: "ifttt.com/maker_webhooks → Documentation zeigt deinen Schlüssel. Lege ein Applet „If Webhooks: Receive a web request“ mit demselben Ereignisnamen an; value1 ist der Titel, value2 die Nachricht.",
-  f_public_url: "Adresse dieser Konsole",
-  f_public_url_h: "Links in Benachrichtigungen nutzen diese Adresse. Leer = wird automatisch ermittelt. Mit Docker bitte selbst eintragen.",
+  f_public_url: "Adresse in Benachrichtigungen",
+  f_public_url_h: "Links in Benachrichtigungen nutzen diese Adresse. Leer = die grau angezeigte; mit Docker oder für den Zugriff von unterwegs trag deine eigene ein.",
   use_this_url: "Adresse dieser Seite verwenden: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Nach jedem Anruf schreibt die KI eine kurze Zusammenfassung. Normalerweise musst du hier nichts einstellen.",
@@ -10699,11 +10810,11 @@ I18N["de"] = {
   err_network_error: "Der Dienst ist nicht erreichbar.",
   err_send_failed: "Senden fehlgeschlagen.",
   f_mdns_name: "Netzwerkname",
-  f_mdns_name_h: "Geräte im selben Netz können die Konsole unter http://name.local:8787 öffnen. Nur Buchstaben, Ziffern und Bindestriche. Leer = aus.",
+  f_mdns_name_h: "Geräte im selben Netz können die Konsole unter http://name.local öffnen. Nur Buchstaben, Ziffern und Bindestriche. Leer = aus.",
   cu_title: "Adresse der Konsole",
   cu_copy: "Kopieren",
   cu_qr_h: "Scannen Sie den Code mit der Handykamera, um die Konsole dort zu öffnen.",
-  cu_local: "Nur dieser Computer kann diese Adresse öffnen. Um die Konsole vom Handy aus zu öffnen, machen Sie sie im Netzwerk erreichbar (AGENT_HOST=0.0.0.0, siehe Anleitung).",
+  cu_local: "Nur dieser Computer kann diese Adresse öffnen.",
   cu_qr_alt: "QR-Code der Konsolenadresse",
   a2hs_title: "Legen Sie diese Seite auf den Startbildschirm. Beim nächsten Mal tippen Sie einfach auf das Symbol.",
   a2hs_install: "Installieren",
@@ -10881,14 +10992,14 @@ I18N["de"] = {
   f_wl_num_ph: "z. B. +491701234567",
   f_wl_num_h: "Die Nummer, unter der du bei Dringendem erreichbar bist. Sie steht in den Benachrichtigungen; ist der Testschalter unten an, wählt das Telefon sie.",
   f_ui_pw: "Konsolenpasswort",
-  f_ui_pw_h: "Ist es gesetzt, fragt die Konsole beim Öffnen danach (einmal pro Browser). Nicht nötig, wenn du sie nur zu Hause nutzt.",
+  f_ui_pw_h: "Ist es gesetzt, fragt die Konsole beim Öffnen danach (einmal pro Browser). Nötig, um die Konsole auf dem Handy oder einem anderen Computer zu öffnen.",
   pw_setup_title: "Konsolenpasswort festlegen (optional)",
   pw_setup_body: "Wenn du diese Konsole von unterwegs öffnen willst, setz ein Passwort. Du kannst es später in den Einstellungen ändern.",
-  pw_setup_ph: "Mindestens 4 Zeichen",
+  pw_setup_ph: "Mindestens 8 Zeichen",
   pw_setup_help: "Dieser Browser merkt es sich. Auf einem neuen Gerät wirst du erneut danach gefragt.",
   pw_setup_skip: "Jetzt nicht",
   pw_setup_save: "Passwort speichern",
-  pw_setup_short: "Das Passwort muss mindestens 4 Zeichen lang sein.",
+  pw_setup_short: "Das Passwort muss mindestens 8 Zeichen lang sein.",
   pw_setup_saved: "Passwort festgelegt",
   ev_whitelist_direct_transfer: "An dein Telefon weitergeleitet",
   ev_whitelist_urgent_transfer: "Dringend: du wurdest benachrichtigt",
@@ -11100,6 +11211,16 @@ I18N["de"] = {
   err_backup_password_short: "Das Passwort für Sicherungen braucht mindestens 8 Zeichen.",
   err_backup_password_missing: "Lege ein Passwort für Sicherungen fest, bevor du die Verschlüsselung einschaltest.",
   bk_st_exporting: "Die Exportdatei wird vorbereitet…",
+  cu_lan: "Handys und Computer im selben WLAN können die Konsole unter dieser Adresse öffnen.",
+  cu_lan_nopw: "Handys und Computer im selben WLAN können diese Adresse nutzen. Bevor du sie auf einem anderen Gerät öffnest, lege ein Konsolen-Passwort fest.",
+  cu_set_pw: "Passwort festlegen",
+  err_password_too_short: "Das Passwort muss mindestens 8 Zeichen lang sein.",
+  err_too_many_tries: "Zu viele falsche Passwörter. Versuch es in einer Minute noch einmal.",
+  bk_btn_delete: "Löschen",
+  bk_del_t: "Diese Sicherung löschen?",
+  bk_del_b: "Einmal gelöscht, lässt sie sich nicht zurückholen.",
+  bk_done_delete: "Sicherung gelöscht.",
+  bk_del_need_password: "Zum Löschen öffne die Konsole auf dem Computer, auf dem Bageo läuft, oder lege zuerst ein Konsolen-Passwort fest.",
   f_wl_mode_h_off: "Die KI nimmt wie gewohnt ab und benachrichtigt dich danach.",
   f_wl_mode_h_direct: "Dieses Telefon nimmt nicht ab: Dein Mobilfunkanbieter leitet den Anruf an deine Nummer weiter, die KI bleibt stumm. Stelle das Telefon zuerst auf „Normales Telefon“ und wähle darauf **67*deine Nummer#, um die Rufumleitung bei Besetzt einzuschalten – sonst landen Anrufer auf der Mailbox.",
   f_wl_mode_h_emergency: "Die KI nimmt zuerst ab und benachrichtigt dich sofort, wenn es dringend ist. Schalte unten den Schalter ein, dann ruft sie dich auch an und ihr sprecht zu dritt.",
@@ -11664,8 +11785,8 @@ I18N["pt"] = {
   hint_smtp: "Qualquer servidor de e-mail com TLS: smtp://voce@example.com@smtp.example.com:587 (STARTTLS) ou smtps://…:465. O login também é o remetente. Use uma senha de app se o seu provedor oferecer.",
   hint_homeassistant: "O endereço do seu Home Assistant, um token de acesso de longa duração (Perfil → Segurança) e o serviço notify, ex.: mobile_app_pixel_9 (listados em Ferramentas do desenvolvedor → Ações).",
   hint_ifttt: "ifttt.com/maker_webhooks → Documentation mostra a sua chave. Crie um applet “If Webhooks: Receive a web request” com o mesmo nome de evento; value1 é o título e value2 a mensagem.",
-  f_public_url: "Endereço deste console",
-  f_public_url_h: "Os links das notificações usam este endereço. Vazio = definido automaticamente. Com Docker, preencha você mesmo.",
+  f_public_url: "Endereço nas notificações",
+  f_public_url_h: "Os links das notificações usam este endereço. Vazio = o que aparece em cinza; com Docker, ou para acessar de fora de casa, digite o seu.",
   use_this_url: "Usar o endereço desta página: {url}",
   // ---- settings: summary & calendar
   g_summary_d: "Depois de cada ligação a IA escreve um resumo curto. Normalmente não há nada para configurar aqui.",
@@ -11896,11 +12017,11 @@ I18N["pt"] = {
   err_network_error: "Não foi possível conectar ao serviço.",
   err_send_failed: "Falha ao enviar.",
   f_mdns_name: "Nome na rede",
-  f_mdns_name_h: "Aparelhos na mesma rede podem abrir o console em http://nome.local:8787. Só letras, números e hífens. Vazio = desligado.",
+  f_mdns_name_h: "Aparelhos na mesma rede podem abrir o console em http://nome.local. Só letras, números e hífens. Vazio = desligado.",
   cu_title: "Endereço do console",
   cu_copy: "Copiar",
   cu_qr_h: "Aponte a câmera do celular para o código para abrir o console nele.",
-  cu_local: "Só este computador consegue abrir este endereço. Para abrir o console no celular, abra-o para a sua rede (AGENT_HOST=0.0.0.0, veja o guia).",
+  cu_local: "Só este computador consegue abrir este endereço.",
   cu_qr_alt: "QR code do endereço do console",
   a2hs_title: "Adicione esta página à tela inicial. Da próxima vez, é só tocar no ícone.",
   a2hs_install: "Instalar",
@@ -12078,14 +12199,14 @@ I18N["pt"] = {
   f_wl_num_ph: "ex.: 11987654321",
   f_wl_num_h: "O número para falar com você em caso de urgência. Aparece nos avisos; com o interruptor de teste abaixo ligado, o telefone liga para ele.",
   f_ui_pw: "Senha do console",
-  f_ui_pw_h: "Depois de definida, o console pede a senha ao abrir (uma vez por navegador). Não precisa se você só usa em casa.",
+  f_ui_pw_h: "Depois de definida, o console pede a senha ao abrir (uma vez por navegador). Necessária para abrir o console no celular ou em outro computador.",
   pw_setup_title: "Definir uma senha do console (opcional)",
   pw_setup_body: "Se você vai abrir este console de fora de casa, defina uma senha. Dá para mudar depois em Configurações.",
-  pw_setup_ph: "Pelo menos 4 caracteres",
+  pw_setup_ph: "Pelo menos 8 caracteres",
   pw_setup_help: "Este navegador a lembra. Ela será pedida de novo em um dispositivo novo.",
   pw_setup_skip: "Agora não",
   pw_setup_save: "Salvar senha",
-  pw_setup_short: "A senha deve ter pelo menos 4 caracteres.",
+  pw_setup_short: "A senha deve ter pelo menos 8 caracteres.",
   pw_setup_saved: "Senha definida",
   ev_whitelist_direct_transfer: "Passada para o seu celular",
   ev_whitelist_urgent_transfer: "Urgente: você foi avisado",
@@ -12297,6 +12418,16 @@ I18N["pt"] = {
   err_backup_password_short: "A senha dos backups precisa ter pelo menos 8 caracteres.",
   err_backup_password_missing: "Defina uma senha para os backups antes de ativar a criptografia.",
   bk_st_exporting: "Preparando o arquivo para exportar…",
+  cu_lan: "Celulares e computadores no mesmo Wi-Fi podem abrir o console neste endereço.",
+  cu_lan_nopw: "Celulares e computadores no mesmo Wi-Fi podem usar este endereço. Antes de abrir em outro aparelho, defina uma senha para o console.",
+  cu_set_pw: "Definir senha",
+  err_password_too_short: "A senha deve ter pelo menos 8 caracteres.",
+  err_too_many_tries: "Senhas erradas demais. Tente de novo daqui a um minuto.",
+  bk_btn_delete: "Excluir",
+  bk_del_t: "Excluir este backup?",
+  bk_del_b: "Depois de excluído, não dá para recuperar.",
+  bk_done_delete: "Backup excluído.",
+  bk_del_need_password: "Para excluir, abra o console no computador onde o Bageo está ou defina antes uma senha para o console.",
   f_wl_mode_h_off: "A IA atende como sempre e avisa você depois.",
   f_wl_mode_h_direct: "Este celular não atende: sua operadora desvia a chamada para o seu número e a IA fica em silêncio. Primeiro mude o celular para “Telefone normal” e disque nele **67*seu número# para ativar o desvio quando ocupado; se não, quem liga cai na caixa postal.",
   f_wl_mode_h_emergency: "A IA atende primeiro e avisa você na hora se for urgente. Ative a chave abaixo para ela também ligar para você e vocês falarem os três juntos.",
@@ -14478,6 +14609,27 @@ let S = null;            // settings as the agent last sent them
 let storagePath = "";
 let consoleUrl = "";     // the console's address for other devices ("" = this computer only)
 let consoleIpUrl = "";   // the same at the LAN IP, for phones that cannot open .local names
+let consoleDefaultUrl = ""; // what an empty "Address in notifications" stands for
+let consoleAccess = "";  // "local" (this computer only) or "lan"; "" = not known yet
+let consolePwSet = false; // a console password is set
+function takeConsoleInfo(d) {
+  if ("console_default_url" in d) consoleDefaultUrl = d.console_default_url || "";
+  if ("console_access" in d) consoleAccess = d.console_access || "";
+  if ("console_password_set" in d) consolePwSet = !!d.console_password_set;
+}
+// The first of this browser's languages that the console has ("" = none).
+const browserLang = () => (navigator.languages || [navigator.language]).map(matchLang).find(Boolean) || "";
+// A new install (no language saved in Bageo yet) takes the language of the
+// browser it is first opened in, as if chosen here.
+async function adoptFirstLang(l) {
+  try {
+    const d = await api("/settings", jsonBody("PUT", { language: l }));
+    S = d.settings || S;
+    const el = $("f-language");
+    if (el) el.value = S.language || l;
+    updateDirty();
+  } catch (_) { /* left as it is: tried again next time */ }
+}
 const form = $("setForm");
 const fieldEls = () => Array.from(form.querySelectorAll("[data-k]"));
 
@@ -14490,9 +14642,12 @@ async function loadSettings() {
     storagePath = d.storage_path || "";
     consoleUrl = d.console_url || "";
     consoleIpUrl = d.console_ip_url || "";
+    takeConsoleInfo(d);
     $("setLoading").hidden = true;
     $("setGrid").hidden = false;
     populate();
+    const firstLang = d.language_chosen === false && !qs.get("lang") ? matchLang(store.get("pca.lang")) || browserLang() : "";
+    if (firstLang) await adoptFirstLang(firstLang);
     // No language chosen in this browser: follow the language the owner reads.
     const srv = matchLang(S.notify_language || S.language);
     if (srv) store.set("pca.srvlang", srv);
@@ -14905,7 +15060,7 @@ function relabelSettings(skipRows) {
   $("sumReady").className = "tag " + (S.summary_ready ? "ok" : "warn");
   $("sumReady").textContent = t(S.summary_ready ? "sum_ready" : "sum_notready");
   $("btnUseThisUrl").textContent = t("use_this_url", { url: location.origin });
-  $("f-public_url").placeholder = consoleUrl || "http://192.168.1.20:8787";
+  $("f-public_url").placeholder = consoleDefaultUrl || "http://192.168.1.20:8787";
   bkRender();
   renderHelper();
   updateDirty();
@@ -14960,6 +15115,7 @@ async function saveSettings() {
     storagePath = d.storage_path || storagePath;
     if ("console_url" in d) consoleUrl = d.console_url || "";
     if ("console_ip_url" in d) consoleIpUrl = d.console_ip_url || "";
+    takeConsoleInfo(d);
     populate();
     const srv = matchLang(S.notify_language || S.language);
     if (srv) store.set("pca.srvlang", srv);
@@ -15086,7 +15242,13 @@ function bkRender() {
     dl.textContent = t("bk_btn_download");
     dl.dataset.bkDownload = b.name;
     dl.disabled = busy;
-    acts.append(re, dl);
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "btn sm";
+    del.textContent = t("bk_btn_delete");
+    del.dataset.bkDelete = b.name;
+    del.disabled = busy;
+    acts.append(re, dl, del);
     row.append(who, acts);
     return row;
   });
@@ -15362,6 +15524,12 @@ $("bkFile").addEventListener("change", () => {
   });
 });
 $("bkList").addEventListener("click", (ev) => {
+  const x = ev.target.closest("[data-bk-delete]");
+  if (x) {
+    if (bk && bk.can_download === false) { toast(t("bk_del_need_password"), true); return; }
+    bkDelete(x.dataset.bkDelete);
+    return;
+  }
   const g = ev.target.closest("[data-bk-download]");
   if (g) {
     if (bk && bk.can_download === false) { toast(t("bk_err_need_password"), true); return; }
@@ -15377,6 +15545,18 @@ $("bkList").addEventListener("click", (ev) => {
   });
 });
 $("btnBkAll").addEventListener("click", () => { bkAll = !bkAll; bkRender(); });
+// Deleting a backup file cannot be undone: asked first.
+async function bkDelete(name) {
+  const yes = await ask({ title: t("bk_del_t"), body: t("bk_del_b"), ok: t("bk_btn_delete"), danger: true });
+  if (!yes) return;
+  try {
+    await api("/backup/delete", jsonBody("POST", { name }));
+    toast(t("bk_done_delete"));
+  } catch (e) {
+    if (e.status !== 401) toast(e.data && e.data.code === "need_password" ? t("bk_del_need_password") : bkErr(e), true);
+  }
+  bkLoad();
+}
 $("btnBkOpen").addEventListener("click", async () => {
   try { await api("/backup/open-folder", jsonBody("POST", {})); }
   catch (e) { if (e.status !== 401) toast(bkErr(e), true); }
@@ -15688,7 +15868,7 @@ const isWebUrl = (u) => /^https?:\/\//i.test(String(u || "").trim());
 const setWebLink = (el, u) => { if (isWebUrl(u)) el.href = String(u).trim(); else el.removeAttribute("href"); };
 function renderConsoleUrl() {
   const url = consoleUrl || (health && health.calls_ui_url) || "";
-  const localOnly = !url && isLocalHost(location.hostname);
+  const localOnly = consoleAccess ? consoleAccess === "local" : !url && isLocalHost(location.hostname);
   const shown = url || location.origin + "/";
   $("sysUrl").textContent = shown;
   setWebLink($("sysUrl"), shown);
@@ -15699,9 +15879,13 @@ function renderConsoleUrl() {
     canvas.hidden = !(target && drawQr(canvas, target));
   }
   const help = $("sysUrlHelp");
-  help.dataset.i18n = localOnly ? "cu_local" : "cu_qr_h";
-  help.textContent = t(help.dataset.i18n);
-  help.hidden = !localOnly && canvas.hidden;
+  // Who can open it: this computer only; the same Wi-Fi; the same Wi-Fi once a password is set.
+  const say = localOnly ? "cu_local" : !consoleAccess ? "" : consolePwSet ? "cu_lan" : "cu_lan_nopw";
+  if (say) help.dataset.i18n = say; else delete help.dataset.i18n;
+  help.textContent = say ? t(say) : "";
+  help.hidden = !say;
+  $("btnUrlSetPw").hidden = say !== "cu_lan_nopw";
+  $("sysQrHelp").hidden = canvas.hidden;
   // Under a .local address, the LAN IP too (some older Android phones cannot open .local names).
   const viaName = /^https?:\/\/[^/:]+\.local(:\d+)?\//i.test(shown);
   $("sysUrlIp").hidden = !(viaName && consoleIpUrl && consoleIpUrl !== shown);
@@ -17226,7 +17410,7 @@ async function checkInitialPassword() {
     $("pwSetupForm").onsubmit = async (e) => {
       e.preventDefault();
       const pw = $("pwSetupInput").value.trim();
-      if (pw.length < 4) {
+      if (pw.length < 8) {
         $("pwSetupErr").textContent = t("pw_setup_short");
         $("pwSetupErr").hidden = false;
         $("pwSetupInput").focus();
@@ -17244,10 +17428,10 @@ async function checkInitialPassword() {
           loadSettings();
         } else {
           const errData = await r.json().catch(() => null);
-          const code = errData && (errData.error || errData.code || "");
-          $("pwSetupErr").textContent = code === "too_short"
-            ? t("pw_setup_short")
-            : t("save_failed", { msg: (errData && errData.message) || t("err_save_failed") });
+          // A code the page knows (password too short, too many tries) in its own words.
+          $("pwSetupErr").textContent = errData && errData.code
+            ? apiErrorText(errData, r.status)
+            : t("save_failed", { msg: t("err_save_failed") });
           $("pwSetupErr").hidden = false;
         }
       } catch (err) {

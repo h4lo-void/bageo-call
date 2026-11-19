@@ -124,8 +124,7 @@ impl Poller {
     fn address(&self, base: Option<&str>) -> String {
         match base {
             None => String::new(),
-            Some(_) if status::is_web_url(&self.ui_url) => self.ui_url.clone(),
-            Some(b) => b.to_string(),
+            Some(b) => status::shown_address(b, &self.ui_url, !self.ui_url.is_empty()),
         }
     }
 
@@ -254,7 +253,14 @@ impl Poller {
         // Step 3 (before building the snapshot so the address is current).
         if self.refresh_ui_url || round % UI_URL_EVERY == 0 {
             if let Some(h) = health(&self.client, &base, password.as_deref()).await {
-                self.ui_url = h.get("calls_ui_url").and_then(Value::as_str).unwrap_or("").trim().to_string();
+                // Shown only once it opens on this computer (a name this computer
+                // cannot look up, a port that is closed): else the polling address.
+                let reported = status::reported_console_url(&h);
+                let opens = match status::normalize_address(&reported) {
+                    Some(url) => health(&self.client, &url, None).await.is_some(),
+                    None => false,
+                };
+                self.ui_url = if opens { reported } else { String::new() };
                 self.refresh_ui_url = false;
             }
         }
