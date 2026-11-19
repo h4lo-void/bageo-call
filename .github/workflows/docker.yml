@@ -7,7 +7,7 @@ name: Docker
 #   bageo/bageo-call              Docker Hub (needs the DOCKERHUB_USERNAME and
 #                                 DOCKERHUB_TOKEN secrets; skipped without them)
 #   ghcr.io/h4lo-void/bageo-call  GitHub Container Registry
-# Tags: the version, major.minor and latest, e.g. 1.6.9, 1.6, latest.
+# Tags: the version and latest, e.g. 1.6.9 and latest.
 #
 # Pushing a tag like v1.6.9 builds and pushes. Run by hand (Actions → Docker →
 # Run workflow) with a tag to push the images of a release made earlier, or
@@ -173,7 +173,6 @@ jobs:
           images="${GHCR_IMAGE}"
           if [[ -n "${HUB_USER}" && -n "${HUB_TOKEN}" ]]; then images="${HUB_IMAGE} ${images}"; echo "hub=true" >> "${GITHUB_OUTPUT}"; fi
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
-          echo "minor=${version%.*}" >> "${GITHUB_OUTPUT}"
           echo "images=${images}" >> "${GITHUB_OUTPUT}"
 
       - uses: actions/download-artifact@v4
@@ -203,7 +202,6 @@ jobs:
         working-directory: ${{ runner.temp }}/digests
         env:
           VERSION: ${{ steps.what.outputs.version }}
-          MINOR: ${{ steps.what.outputs.minor }}
           IMAGES: ${{ steps.what.outputs.images }}
         run: |
           set -euo pipefail
@@ -212,7 +210,7 @@ jobs:
             sources=()
             for d in *; do sources+=("${image}@sha256:${d}"); done
             docker buildx imagetools create \
-              -t "${image}:${VERSION}" -t "${image}:${MINOR}" -t "${image}:latest" \
+              -t "${image}:${VERSION}" -t "${image}:latest" \
               "${sources[@]}"
             docker buildx imagetools inspect "${image}:${VERSION}"
           done

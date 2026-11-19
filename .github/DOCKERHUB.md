@@ -102,7 +102,6 @@ Everything else is set in the web console. Full list: [Settings reference](https
 | Tag | Meaning |
 |---|---|
 | `latest` | The newest release |
-| `1.6` | The newest 1.6.x |
 | `1.6.9` | Exactly this version |
 
 Every tag has `linux/amd64` and `linux/arm64`. The same images are on `ghcr.io/h4lo-void/bageo-call`.
