@@ -63,6 +63,8 @@ cp .env.example .env        # 設定 CALLS_UI_TOKEN 和 DEVICE_TOKEN
 docker compose up -d --build
 ```
 
+不想自己建置的話，可以用現成的映像 `bageo/bageo-call`（Docker Hub，另有 `ghcr.io/h4lo-void/bageo-call`），支援 amd64 和 arm64：把 `docker-compose.yml` 的 `build: .` 那一行刪掉、`image:` 改成 `bageo/bageo-call:latest`，再執行 `docker compose up -d`。
+
 容器裡的 Bageo 對區網開放，所以 `.env` 裡這兩個值一定要設：`CALLS_UI_TOKEN`（控制台密碼）和 `DEVICE_TOKEN`（手機連線用）。
 
 - 控制台在 `http://<主機>:8787/`，打開時輸入 `CALLS_UI_TOKEN` 的值。

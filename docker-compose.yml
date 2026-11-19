@@ -6,6 +6,10 @@
 #   cp .env.example .env      # set CALLS_UI_TOKEN and DEVICE_TOKEN
 #   docker compose up -d --build
 #
+# To skip building, use the ready-made image: delete the "build: ." line
+# below, set "image: bageo/bageo-call:latest" (or
+# ghcr.io/h4lo-void/bageo-call:latest) and run "docker compose up -d".
+#
 # The web console is then at http://<this-host>:8787/?token=<CALLS_UI_TOKEN>
 # and phones connect to ws://<this-host>:8787/ws?token=<DEVICE_TOKEN>.
 #
