@@ -8043,6 +8043,7 @@ async fn run_gemini_session_to_end(
         let play_head = play_head.clone();
         let serial = serial.clone();
         let media_call_guard = media_call_guard.clone();
+        let urgent_ctl = urgent_ctl.clone();
         tokio::spawn(async move {
             stream_gemini_downlink_pcm(
                 &sink,
@@ -8054,6 +8055,7 @@ async fn run_gemini_session_to_end(
                 &play_head,
                 &serial,
                 &media_call_guard,
+                urgent_ctl.as_deref(),
             )
             .await
         })
@@ -11004,6 +11006,21 @@ fn summary_end_hint(events: &[String], scam: Option<&calls::ScamJudgement>) -> S
         locale::notify_zh_or("未顯示號碼，播拒接語音後掛斷（AI 沒有接）", "hidden number: the refusal announcement was played, then hung up (the AI did not answer)")
     } else if has("reject_list") {
         locale::notify_zh_or("黑名單：播無法接通語音後掛斷（AI 沒有接）", "blocked number: the unavailable announcement was played, then hung up (the AI did not answer)")
+    } else if has("whitelist_urgent_call_merged") {
+        locale::notify_zh_or(
+            "來電者說有急事：手機打給主人，主人接起來後三方一起通話，AI 退出；這通沒有被當成推銷或詐騙陪聊拖時間",
+            "the caller said it was urgent: the phone called the owner, who picked up and joined a three-way call, and the AI left; this call was not treated as a sales or scam call to stall",
+        )
+    } else if events.iter().any(|e| e.starts_with("whitelist_urgent_call_failed") || e == "whitelist_urgent_call_ai_ended") {
+        locale::notify_zh_or(
+            "來電者說有急事：手機打給主人但沒接通，AI 跟對方說主人會盡快回電；這通沒有被當成推銷或詐騙陪聊拖時間，「要處理」寫盡快回電給對方",
+            "the caller said it was urgent: the phone called the owner but did not get through, and the AI told the caller the owner would call back soon; this call was not treated as a sales or scam call to stall, so the to-do is to call them back as soon as possible",
+        )
+    } else if has("whitelist_urgent_transfer") {
+        locale::notify_zh_or(
+            "來電者說有急事，系統已馬上通知主人；這通沒有被當成推銷或詐騙陪聊拖時間，「要處理」寫盡快回電給對方",
+            "the caller said it was urgent and the owner was alerted at once; this call was not treated as a sales or scam call to stall, so the to-do is to call them back as soon as possible",
+        )
     } else if has("persona_stall_released") {
         locale::notify_zh_or("系統一度以為是推銷／詐騙，再確認一次是正常電話，AI 回到正常應對", "the system first took it for a sales / scam call; a second check found an ordinary call and the AI went back to talking normally")
     } else if has("persona_stall_spam") {
@@ -11675,6 +11692,7 @@ async fn stream_gemini_downlink_pcm(
     play_head: &gemini_live::DownlinkPlayHead,
     serial: &str,
     media_call_guard: &MediaCallGuard,
+    urgent: Option<&urgent_call::CallCtl>,
 ) -> Result<GeminiDeliveryStats> {
     let sr = state.settings.sample_rate.max(8000);
     // Match send_tts_pcm: 40 ms frames + 1s head-burst per spoken segment for USB prebuffer.
@@ -11708,6 +11726,9 @@ async fn stream_gemini_downlink_pcm(
     // Echo-free phone (the call's echo check): the bed also runs through pauses.
     let mut amb_continuous = false;
     let mut amb_checked_at = tokio::time::Instant::now();
+    // Whitelist urgent call: while the phone calls the owner and once the owner is
+    // on, no room noise goes out (the phone's outgoing audio is the owner's call then).
+    let mut amb_off_for_owner = false;
     let frame_dur = Duration::from_millis(FRAME_MS);
     // Estimated moment the phone has played everything sent / the last AI frame.
     let mut phone_tail = tokio::time::Instant::now();
@@ -11736,6 +11757,17 @@ async fn stream_gemini_downlink_pcm(
             if active_call.lock().await.as_ref().and_then(|c| c.echo_free()) == Some(true) {
                 amb_continuous = true;
                 info!("Gemini ambience serial={serial} continuous (echo-free line)");
+            }
+        }
+        let owner_call = urgent.is_some_and(|c| c.ai_quiet());
+        if owner_call != amb_off_for_owner {
+            amb_off_for_owner = owner_call;
+            if amb.is_some() {
+                if owner_call {
+                    info!("Gemini ambience serial={serial} off: the phone is calling the owner");
+                } else {
+                    info!("Gemini ambience serial={serial} back on: the AI talks to the caller again");
+                }
             }
         }
 
@@ -12130,7 +12162,7 @@ async fn stream_gemini_downlink_pcm(
             // Mid-reply only once the phone has run dry: room noise queued ahead
             // of the next lump would sit inside a word (every reply
             // of the thinking model had 40–80 ms holes on an echo-free phone).
-            if amb_continuous && buf.len() < frame {
+            if amb_continuous && !amb_off_for_owner && buf.len() < frame {
                 if let Some(a) = amb.as_mut() {
                     let lead = if mid_reply { Duration::ZERO } else { AMBIENCE_LEAD };
                     let mut sent = 0;
@@ -12918,6 +12950,12 @@ mod unknown_caller_tests {
         assert!(REJECT_PENDING_TTL >= Duration::from_secs(10));
         // The record says why there was no AI.
         assert!(summary_end_hint(&["reject_list".to_string()], None).contains("黑名單"));
+        // An urgent call that went to the owner is never written up as a stalled sales call.
+        let urgent = |evs: &[&str]| summary_end_hint(&evs.iter().map(|e| e.to_string()).collect::<Vec<_>>(), None);
+        let missed = urgent(&["whitelist_urgent_transfer", "whitelist_urgent_call_failed", "whitelist_urgent_call_failed:no_answer"]);
+        assert!(missed.contains("沒接通") && missed.contains("盡快回電") && !missed.contains("陪他聊"), "{missed}");
+        assert!(urgent(&["whitelist_urgent_transfer", "whitelist_urgent_call_merged"]).contains("三方"));
+        assert!(urgent(&["whitelist_urgent_transfer"]).contains("盡快回電"));
     }
 
     #[test]
