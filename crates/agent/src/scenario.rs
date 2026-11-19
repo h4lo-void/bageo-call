@@ -183,6 +183,7 @@ const DELIVERY_WORDS: &[&str] = &[
     "courier", "parcel", "package", "delivery", "deliver", "paquete", "envío", "envio", "repartidor", "mensajería",
     "colis", "livraison", "livreur", "paket", "lieferung", "zusteller", "sendung", "encomenda", "entregador", "pacote",
     "corriere", "consegna", "pacco", "курьер", "посылка", "доставка", "giao hàng", "bưu kiện", "người giao hàng",
+    "corrier*", "consegn*", "spedizion*", "fattorin*", "pacch*",
     "kurir", "pengiriman", "ส่งของ", "พัสดุ", "ขนส่ง", "डिलीवरी", "पार्सल", "कूरियर", "مندوب التوصيل", "شحنة", "توصيل",
     // tr (a trailing * is a stem: the endings pile up, "kargonuz")
     "kargo*", "kurye*", "teslimat*", "gönderi*", "sipariş*",
@@ -194,6 +195,7 @@ const CARD_WORDS: &[&str] = &[
     "cartao", "carta", "banca", "карта", "банк", "thẻ", "ngân hàng", "kartu", "บัตร", "ธนาคาร", "कार्ड", "बैंक",
     "بطاقة", "البنك",
     "kart*", "banka*",
+    "carte", "banche", "banc*",
 ];
 
 /// One purchase or charge on it.
@@ -204,6 +206,7 @@ const CHARGE_WORDS: &[&str] = &[
     "cobranca", "acquisto", "addebito", "transazione", "покупка", "списание", "транзакция", "giao dịch", "thanh toán",
     "transaksi", "pembayaran", "รูดบัตร", "รายการใช้จ่าย", "काटने", "लेनदेन", "सौदा", "عملية شراء", "خصم", "معاملة",
     "işlem*", "harcama*", "alışveriş*", "ödeme*", "çekim*", "tahsilat*",
+    "acquist*", "addebit*", "transazion*", "operazion*", "moviment*", "prelev*", "l'acquist*", "l'addebit*", "un'operazion*", "l'operazion*",
 ];
 
 /// Asking whether it was the owner's.
@@ -215,6 +218,7 @@ const OWNER_CHECK_WORDS: &[&str] = &[
     "подтвердить", "вы сами", "xác nhận", "chính chủ", "konfirmasi", "anda sendiri", "ยืนยัน", "ด้วยตัวเอง",
     "पुष्टि", "खुद", "क्या आपने", "تأكيد", "بنفسك",
     "doğrula*", "onayla*", "siz mi", "sizin mi", "kendiniz*", "yaptınız mı", "tanıyor musunuz",
+    "conferm*", "riconosc*", "lei stessa", "è stato lei", "e stato lei", "ha fatto lei", "ha effettuato lei", "autorizzat*",
 ];
 
 /// What only a scammer asks a card holder for (or a step a real card desk never
@@ -238,6 +242,9 @@ const SCAM_ASK_WORDS: &[&str] = &[
     "繳費", "缴费", "付款", "付費", "付费", "繳款", "缴款", "證件", "证件", "送金", "お支払い", "支払って", "송금", "결제",
     "pay a", "pay the", "pay us", "to pay", "fee", "your id", "id card", "photo of your", "pagar", "payer", "zahlen",
     "pagamento",
+    "codic*", "bonific*", "polizi*", "carabinier*", "conto sicuro", "conto protetto", "numero della carta", "scadenza", "data di nascita",
+    "carta d'identità", "collegamento", "l'app", "un'app", "applicazione", "dogan*", "spese di spedizione", "versament*", "ricaric*",
+    "pagare", "paghi",
     // Not "parola": Italian says it for any "word".
     "şifre*", "parolanız*", "parolanizi", "doğrulama kodu*", "güvenlik kodu*", "sms kodu*", "kart numara*", "son kullanma", "doğum tarihi", "tc kimlik*",
     "kimlik numara*", "iban*", "havale*", "eft", "güvenli hesap*", "polis*", "savcı*", "uzaktan", "uzak masaüstü", "bağlantı*", "tıkla*",
@@ -358,7 +365,8 @@ pub fn local_guess(caller: &str) -> Scenario {
 
 /// A bank or card company calling.
 const BANK_WORDS: &[&str] = &[
-    "銀行", "银行", "信用卡", "卡片中心", "カード会社", "은행", "카드사", "bank", "credit card", "banco", "banque", "sparkasse",
+    "銀行", "银行", "信用卡", "卡片中心", "カード会社", "은행", "카드사", "bank", "credit card", "banco", "banque", "sparkasse", "banca",
+    "carta di credito",
 ];
 
 /// What a review did to the call's routing (for the log).
@@ -747,5 +755,37 @@ mod notice_fallback_edges {
         // İ lower-cases to i plus a combining dot, which would split the word.
         assert!(Words::of("İŞLEMİ onaylayın").has("işlem*"));
         assert_eq!(local_guess("İYİ GÜNLER, KURYE GELDİ"), Scenario::Delivery);
+    }
+
+    #[test]
+    fn italian_words_take_their_endings_and_the_card_desk_and_courier_are_told_from_scammers() {
+        use super::Words;
+        assert!(Words::of("Ho consegnato i pacchi ieri").has("consegn*"));
+        assert!(Words::of("Ci sono due pacchi per lei").has("pacch*"));
+        assert!(!Words::of("Una scatola grande").has("pacch*"));
+        for (sample, want) in [
+            ("Buongiorno, sono il corriere, ho una spedizione per lei, la lascio in portineria?", Scenario::Delivery),
+            ("Buonasera, sono il fattorino, ho dei pacchi per lei", Scenario::Delivery),
+            ("Buongiorno, sono della sua banca, vorrei verificare un addebito di ieri sulla sua carta, è stato lei?", Scenario::BankVerify),
+            ("Dalla banca: abbiamo visto un acquisto con la carta, lo riconosce?", Scenario::BankVerify),
+            ("Buongiorno, la chiamo dalla banca per un'operazione sulla sua carta, la conferma lei stessa?", Scenario::BankVerify),
+            ("Sono il corriere, per consegnare il pacco mi dica il codice di verifica", Scenario::None),
+            ("Sono il corriere, deve pagare le spese di spedizione con una ricarica", Scenario::None),
+            ("Buongiorno, la chiamo dalla banca, ha fatto lei questo acquisto con la carta? Mi dica la data di nascita", Scenario::None),
+            ("Buongiorno, ho un appuntamento dal dentista domani", Scenario::None),
+        ] {
+            assert_eq!(local_guess(sample), want, "{sample}");
+        }
+        // Other languages as before.
+        for (sample, want) in [
+            ("Courier here, delivery on the line waiting downstairs", Scenario::Delivery),
+            ("Hola, soy el repartidor, tengo un paquete para usted", Scenario::Delivery),
+            ("Bonjour, livreur, j'ai un colis pour vous", Scenario::Delivery),
+            ("お荷物のお届けです", Scenario::Delivery),
+            ("Hi, this is your bank verifying a purchase on your card, did you make it yourself?", Scenario::BankVerify),
+            ("Courier here, please send the gift card code", Scenario::None),
+        ] {
+            assert_eq!(local_guess(sample), want, "{sample}");
+        }
     }
 }

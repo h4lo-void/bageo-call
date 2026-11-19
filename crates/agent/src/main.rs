@@ -51,6 +51,7 @@ mod gmail;
 mod hold_music;
 mod lang_lock;
 mod locale;
+mod log_text;
 mod mcp;
 mod mdns;
 mod notify;
@@ -397,7 +398,10 @@ impl RingPrewarmRegistry {
                 e.id, e.plan.lang, plan.lang
             );
             "languages differ at pickup"
-        } else if e.plan.intl_hold != plan.intl_hold {
+        } else if e.plan.intl_hold != plan.intl_hold && has_digits(&e.caller_id) && has_digits(caller_id) {
+            // (With no number on one side, the session reads the other one at
+            // pickup: a hidden number waits for the carrier's warning, a local
+            // one does not.)
             "international-call prompt differs at pickup"
         } else if e.plan.appointments != plan.appointments {
             "appointments differ at pickup"
@@ -446,7 +450,7 @@ fn take_ring_prewarm(
     caller_id: &str,
     sample_rate: u32,
 ) -> Option<RingPrewarm> {
-    if !rt.gemini_persona_mode {
+    if !rt.persona_flow_active() {
         state.ring_prewarm.cancel(serial, None, "persona mode off at pickup");
         return None;
     }
@@ -483,6 +487,11 @@ fn caller_plan(rt: &RuntimeSettings, caller_id: &str, sim: Option<&str>) -> Call
         appointments: appointments::Mode::parse(&rt.appointment_mode) != appointments::Mode::Off,
         contact: contacts::lookup(caller_id, sim).map(|c| c.id),
     }
+}
+
+/// The number has at least one digit (a hidden number is empty or a word).
+fn has_digits(number: &str) -> bool {
+    number.chars().any(|c| c.is_ascii_digit())
 }
 
 /// Ring and hello report the same call (CID may still be empty on one side, or
@@ -1040,6 +1049,7 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|_| "agent=info".into()),
         )
         .init();
+    log_text::announce();
 
     // `agent make-voice-samples [dir]`: record the bundled voice samples and exit.
     let args: Vec<String> = std::env::args().collect();
@@ -4385,7 +4395,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                             if let Some(c) = candidate {
                                                 info!(
                                                     "VM contact confirmed serial={serial} method={} contact={}",
-                                                    c.method, c.contact
+                                                    c.method,
+                                                    log_text::Said(&c.contact)
                                                 );
                                                 {
                                                     let mut g = active_call.lock().await;
@@ -5809,7 +5820,7 @@ async fn start_ivr_prompt(
         let persona = {
             let rt = state.settings_store.snapshot();
             state.settings = rt.effective(&state.settings);
-            rt.gemini_persona_mode
+            rt.persona_flow_active()
                 || fulfill::voicemail_callback_pending(&serial)
                 || appointments::callback_pending_on(&serial)
         };
@@ -6618,7 +6629,7 @@ fn unmute_gemini_after_greet(
         // Brief wait only if warm setup lagged entire greet duration (normally 0).
         // Persona mode unmutes ~400ms after answer (no greeting to hide setup behind),
         // so allow the WS connect + setup more time before falling back to voicemail.
-        let wait_ms: u64 = if state.settings_store.snapshot().gemini_persona_mode {
+        let wait_ms: u64 = if state.settings_store.snapshot().persona_flow_active() {
             5_000
         } else {
             2_000
@@ -6741,7 +6752,7 @@ fn start_ring_prewarm(
     let sim = call_sim_country(serial)
         .or_else(|| phone_region::last_sim(&canonical_device_serial(serial)));
     if !rt.gemini_ring_prewarm
-        || !rt.gemini_persona_mode
+        || !rt.persona_flow_active()
         || !state.settings.agent_mode.is_transfer()
         || !rt.gemini_live_enabled
         || rt.gemini_api_key.trim().is_empty()
@@ -6923,7 +6934,8 @@ async fn adopt_ring_prewarm(
     info!(
         "Ring prewarm adopted serial={serial} id={id} rang_ms={} setup_ready={} opening_stt={opening_text:?}",
         started.elapsed().as_millis(),
-        setup_ready.load(Ordering::Relaxed)
+        setup_ready.load(Ordering::Relaxed),
+        opening_text = log_text::Said(&opening_text)
     );
     tokio::spawn(run_gemini_session_to_end(
         core,
@@ -7043,7 +7055,7 @@ fn start_gemini_connect_at_answer(
     let setup_ready = gemini_setup_ready.clone();
     let connect_failed = gemini_connect_failed.clone();
     let media_call_guard = media_call_guard.clone();
-    let persona = rt.gemini_persona_mode;
+    let persona = rt.persona_flow_active();
     let caller_id = caller_id.to_string();
 
     info!(
@@ -8845,7 +8857,7 @@ fn start_gemini_live_after_choice(
     let gemini_uplink_tx = gemini_uplink_tx.clone();
     let gemini_transcript = gemini_transcript.clone();
     let wait_text = state.settings.ivr_dtmf1_wait_text.clone();
-    let persona = rt.gemini_persona_mode;
+    let persona = rt.persona_flow_active();
     // Persona mode never plays the "please hold" connect-wait clip.
     let play_connect_wait = play_connect_wait && !persona;
     let audio_open = gemini_audio_open.clone();
@@ -9432,7 +9444,7 @@ fn start_voicemail_intro_for_gemini(
     let busy = busy.clone();
     let active_call = active_call.clone();
     let media_call_guard = media_call_guard.clone();
-    let persona = state.settings_store.snapshot().gemini_persona_mode;
+    let persona = state.settings_store.snapshot().persona_flow_active();
     tokio::spawn(async move {
         // No lease is held from here on: the hangup's guarded sends take it per
         // message, and one held across them deadlocks with the media loop's
@@ -11569,7 +11581,7 @@ fn ambience_mixer_for_call(
     sample_rate: u32,
 ) -> Option<ambience::AmbienceMixer> {
     let rt = state.settings_store.snapshot();
-    if !rt.gemini_persona_mode || !ambience::valid_kind(&rt.ambience_kind) {
+    if !rt.persona_flow_active() || !ambience::valid_kind(&rt.ambience_kind) {
         return None;
     }
     let Some(bed) = state.ambience.get(&rt.ambience_kind) else {
@@ -12652,6 +12664,21 @@ mod ring_prewarm_tests {
     }
 
     #[tokio::test]
+    async fn a_hidden_number_keeps_the_ring_session() {
+        let rt = tw_settings();
+        let reg = RingPrewarmRegistry::default();
+        // Rang and picked up with a hidden number: both wait for the carrier's
+        // warning, so the ring's session is adopted.
+        let hidden = caller_plan(&rt, "unknown", Some("tw"));
+        assert!(hidden.intl_hold);
+        let (mut pw, cancel) = entry("", live());
+        pw.plan = caller_plan(&rt, "", Some("tw"));
+        reg.insert("pixel-1", pw);
+        assert!(reg.take("pixel-1", "unknown", 16_000, &hidden).is_some());
+        assert!(!cancel.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
     async fn pickup_decides_again_with_the_hellos_number() {
         let rt = tw_settings();
         let reg = RingPrewarmRegistry::default();
@@ -12680,9 +12707,13 @@ mod ring_prewarm_tests {
         // Rang without a number, picked up with a local one: the same set-up, so
         // the session is adopted and reads the hello's number from then on.
         let local = caller_plan(&rt, "0922222222", Some("tw"));
-        assert_eq!(caller_plan(&rt, "", Some("tw")), local);
+        let hidden = caller_plan(&rt, "", Some("tw"));
+        // A hidden number waits for the carrier's warning, a local one does not;
+        // the session decides again with the number it has at pickup.
+        assert!(hidden.intl_hold && !local.intl_hold);
+        assert_eq!(hidden.lang, local.lang);
         let (mut pw, cancel) = entry("", live());
-        pw.plan = local.clone();
+        pw.plan = hidden.clone();
         reg.insert("pixel-1", pw);
         let mut got = reg
             .take("pixel-1", "0922222222", 16_000, &local)

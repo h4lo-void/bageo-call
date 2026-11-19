@@ -11,7 +11,8 @@ questions about iPhones, root, cost and keeping your real phone number usable.
    that is missing.
 2. Watch Bageo's terminal window on the computer: it shows what it is doing on
    every call. For more detail, set `RUST_LOG=agent=debug` in `.env` and
-   restart.
+   restart. The log shows only how many characters were said on a call; to
+   see the words, set `LOG_CALL_TEXT=1` too, and turn it off when done.
 3. On the phone, open the Bageo app. The card at the top says whether it is
    connected and which mode it is in.
 

@@ -157,7 +157,10 @@ pub async fn chat_openrouter(
 /// Never synthesize the default female Piper voice (zh_CN-huayan).
 pub async fn synthesize_piper(_client: &Client, _settings: &Settings, text: &str) -> Vec<u8> {
     let preview: String = text.chars().take(48).collect();
-    warn!("Piper TTS disabled (clone-WAV only); refusing synth text={preview:?}");
+    warn!(
+        "Piper TTS disabled (clone-WAV only); refusing synth text={preview:?}",
+        preview = crate::log_text::Said(&preview)
+    );
     Vec::new()
 }
 

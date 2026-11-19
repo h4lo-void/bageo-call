@@ -2177,6 +2177,20 @@ mod tests {
     }
 
     #[test]
+    fn italian_is_told_apart_and_its_urgent_and_calm_lines_read_naturally() {
+        assert!(unlisted_language("Buongiorno, ho un pacco per il signor Wang, può scendere a ritirarlo alla portineria?"));
+        assert!(is_urgent("Mia mamma è svenuta in casa e l'ambulanza la sta portando al pronto soccorso adesso!"));
+        assert!(is_urgent("MIA MAMMA È SVENUTA IN CASA E L'AMBULANZA LA STA PORTANDO AL PRONTO SOCCORSO ADESSO!"));
+        assert!(is_urgent("Mio fratello ha avuto un incidente stradale molto grave, i pompieri lo stanno tirando fuori, vieni subito!"));
+        assert!(!is_urgent("Non è urgente per niente, però puoi richiamare domani quando hai tempo."));
+        assert!(!is_urgent("NON È URGENTE PER NIENTE, PERÒ PUOI RICHIAMARE DOMANI QUANDO HAI TEMPO."));
+        assert!(!is_urgent("Mia nonna è deceduta l'anno scorso, però oggi parliamo sempre di lei."));
+        // Other languages as before.
+        assert!(is_urgent("Mom collapsed at home and the ambulance is taking her to the ER right now."));
+        assert!(!is_urgent("I went to the hospital last week to pick up my meds, nothing serious."));
+    }
+
+    #[test]
     fn folding_reads_spaces_accents_and_widths_alike() {
         assert_eq!(fold_compact("Ne raccroche pas"), fold_compact("neraccroche pas"));
         assert_eq!(fold_compact("Não desliga"), "naodesliga");

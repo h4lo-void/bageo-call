@@ -508,4 +508,6 @@ Notification routes you can set the same way. They are used in addition to the c
 
 `RUST_LOG` (default `agent=info`): set `agent=debug` for more detail in the log.
 
+`LOG_CALL_TEXT` (default off): the log only says how many characters were said on a call, like `<12 chars>`. Set `LOG_CALL_TEXT=1` to write the words themselves into the log. Turn it on only while you are troubleshooting, and off again afterwards.
+
 <!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

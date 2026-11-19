@@ -19,6 +19,7 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tracing::{info, warn};
 
 use crate::hold_music::resample_s16le_mono_pub;
+use crate::log_text::Said;
 
 const DEFAULT_MODEL: &str = "gemini-3.8-live";
 const WS_BASE: &str =
@@ -1291,19 +1292,25 @@ const CARRIER_INTL_PROMPT_SIMS: &[&str] = &["tw"];
 ///   the US — or from anywhere — hears 「喂？」 at once.
 /// - SIM unknown (phone app older than 0.2.5): `zh_tw` (the language is
 ///   Traditional Chinese, so the SIM is assumed to be Taiwan's) and a caller from abroad.
+/// - A number with no digit at all (hidden, private, unknown) does not say where the
+///   call comes from, and the carrier plays its warning to such calls too: they wait
+///   on a SIM that plays it (or, with the SIM unknown, for `zh_tw`). A number with
+///   digits that reads as no country (a short code) is judged as above.
 pub fn expects_carrier_intl_prompt(
     zh_tw: bool,
     caller_id: &str,
     sim_country: Option<&str>,
 ) -> bool {
+    let hidden = !caller_id.chars().any(|c| c.is_ascii_digit());
     match sim_country.map(str::trim).filter(|c| !c.is_empty()) {
         Some(sim) => {
             let sim = sim.to_ascii_lowercase();
             CARRIER_INTL_PROMPT_SIMS.contains(&sim.as_str())
-                && crate::phone_region::normalize(caller_id, Some(sim.as_str()))
-                    .is_some_and(|n| n.country != sim.as_str())
+                && (hidden
+                    || crate::phone_region::normalize(caller_id, Some(sim.as_str()))
+                        .is_some_and(|n| n.country != sim.as_str()))
         }
-        None => zh_tw && is_intl_caller(caller_id),
+        None => zh_tw && (hidden || is_intl_caller(caller_id)),
     }
 }
 
@@ -5391,7 +5398,8 @@ pub async fn run_session(
                                     .await
                                     {
                                         Ok(()) => warn!(
-                                            "Gemini Live warm opening text-only (0 audio) serial={serial} out_stt={dropped:?} — re-kick n={warm_rekicks} before pickup"
+                                            "Gemini Live warm opening text-only (0 audio) serial={serial} out_stt={dropped:?} — re-kick n={warm_rekicks} before pickup",
+                                            dropped = Said(&dropped)
                                         ),
                                         Err(e) => warn!(
                                             "Gemini Live warm text-only re-kick failed serial={serial}: {e:#}"
@@ -5400,7 +5408,8 @@ pub async fn run_session(
                                 } else if !warm_text_only {
                                     warm_text_only = true;
                                     warn!(
-                                        "Gemini Live warm opening text-only {warm_rekicks}x serial={serial} out_stt={dropped:?} — kick again when the dialogue opens"
+                                        "Gemini Live warm opening text-only {warm_rekicks}x serial={serial} out_stt={dropped:?} — kick again when the dialogue opens",
+                                        dropped = Said(&dropped)
                                     );
                                 }
                             }
@@ -6308,7 +6317,8 @@ pub async fn run_session(
                     turn_base_bytes = delivered_bytes.load(Ordering::Relaxed);
                     first_delivery_deadline = first_delivery_deadline.max(now + FIRST_DELIVERY_TIMEOUT);
                     info!(
-                        "Gemini Live intl caller serial={serial} — line talking before our opening (carrier prompt): dropped it ({dropped_ms}ms {dropped:?}); the model answers after the prompt"
+                        "Gemini Live intl caller serial={serial} — line talking before our opening (carrier prompt): dropped it ({dropped_ms}ms {dropped:?}); the model answers after the prompt",
+                        dropped = Said(&dropped)
                     );
                 }
                 IntlGateStep::Play | IntlGateStep::PromptOver => {
@@ -6415,7 +6425,8 @@ pub async fn run_session(
                     .is_ok();
                     info!(
                         "Gemini Live call-back serial={serial} — the AI spoke with nobody speaking to it: dropped unheard ({dropped_ms}ms {dropped:?}) replies={} model_told={told}",
-                        cb_floor.replies
+                        cb_floor.replies,
+                        dropped = Said(&dropped)
                     );
                 }
             }
@@ -6649,7 +6660,8 @@ pub async fn run_session(
                 .rev()
                 .collect();
             info!(
-                "Persona: AI turn does not end on a farewell — keep talking serial={serial} stall={stall_on} tail={tail}"
+                "Persona: AI turn does not end on a farewell — keep talking serial={serial} stall={stall_on} tail={tail}",
+                tail = Said(&tail)
             );
         } else if fire_wav {
             end_reason = SessionEndReason::Goodbye;
@@ -7233,7 +7245,7 @@ pub async fn run_session(
                                     v_clean = without_output_transcription(&v);
                                     &v_clean
                                 } else if let Some((raw, fixed)) = &ai_stt_slip {
-                                    info!("Errand: AI transcript in a script the call does not use serial={serial} raw={raw} kept={fixed:?}");
+                                    info!("Errand: AI transcript in a script the call does not use serial={serial} raw={raw} kept={fixed:?}", raw = Said(raw), fixed = fixed.as_deref().map(Said));
                                     v_clean = match fixed {
                                         Some(t) => with_output_transcription(&v, t),
                                         None => without_output_transcription(&v),
@@ -7347,7 +7359,8 @@ pub async fn run_session(
                                                 )
                                             {
                                                 info!(
-                                                    "Persona farewells exchanged after the caller's pre-closing (AI words came after its turn) serial={serial} text={s} — hang up once our words have played"
+                                                    "Persona farewells exchanged after the caller's pre-closing (AI words came after its turn) serial={serial} text={s} — hang up once our words have played",
+                                                    s = Said(s)
                                                 );
                                             }
                                         }
@@ -7366,7 +7379,8 @@ pub async fn run_session(
                                         {
                                             if !goodbye_pending {
                                                 info!(
-                                                    "Persona closing ignored serial={serial} — caller only played the carrier international-call prompt text={s}"
+                                                    "Persona closing ignored serial={serial} — caller only played the carrier international-call prompt text={s}",
+                                                    s = Said(s)
                                                 );
                                             }
                                             continue;
@@ -7410,7 +7424,8 @@ pub async fn run_session(
                                                 }
                                                 info!(
                                                     "Persona stall: AI started a farewell — cut={cut} keep nudge n={stall_keeps} {} serial={serial} text={preview}",
-                                                    if stall_keep_after_turn { "after this generation" } else { "sent" }
+                                                    if stall_keep_after_turn { "after this generation" } else { "sent" },
+                                                    preview = Said(&preview)
                                                 );
                                             }
                                         }
@@ -7420,7 +7435,8 @@ pub async fn run_session(
                                         if closing && (caller_had_voice || wrap_up_sent) {
                                             if !goodbye_pending {
                                                 info!(
-                                                    "Persona closing armed serial={serial} wrap_up={wrap_up_sent} text={s}"
+                                                    "Persona closing armed serial={serial} wrap_up={wrap_up_sent} text={s}",
+                                                    s = Said(s)
                                                 );
                                             }
                                             goodbye_pending = true;
@@ -7435,7 +7451,8 @@ pub async fn run_session(
                                     if complete && (named || asked_clarify) {
                                         if !saw_relay_ack {
                                             info!(
-                                                "Complete relay recap serial={serial} text={s}"
+                                                "Complete relay recap serial={serial} text={s}",
+                                                s = Said(s)
                                             );
                                         }
                                         let first_arm = !goodbye_pending;
@@ -7448,26 +7465,30 @@ pub async fn run_session(
                                         }
                                     } else if complete && !named && !asked_clarify {
                                         info!(
-                                            "Matter-less recap — not arming hangup serial={serial} text={s}"
+                                            "Matter-less recap — not arming hangup serial={serial} text={s}",
+                                            s = Said(s)
                                         );
                                     } else if looks_like_incomplete_relay(s)
                                         || looks_like_incomplete_relay(&out_tx_window)
                                     {
                                         info!(
-                                            "Incomplete recap trailing 關於 — not arming hangup serial={serial} text={s}"
+                                            "Incomplete recap trailing 關於 — not arming hangup serial={serial} text={s}",
+                                            s = Said(s)
                                         );
                                     } else if looks_like_backchannel(s)
                                         || looks_like_backchannel(&out_tx_window)
                                     {
                                         info!(
-                                            "Backchannel without recap — not arming hangup serial={serial} text={s}"
+                                            "Backchannel without recap — not arming hangup serial={serial} text={s}",
+                                            s = Said(s)
                                         );
                                     }
                                     let farewell = looks_like_goodbye(s)
                                         || looks_like_goodbye(&out_tx_window);
                                     if farewell && !saw_relay_ack {
                                         info!(
-                                            "Goodbye phrase without complete relay ack — not arming hangup serial={serial} text={s}"
+                                            "Goodbye phrase without complete relay ack — not arming hangup serial={serial} text={s}",
+                                            s = Said(s)
                                         );
                                     }
                                 }
@@ -7546,7 +7567,8 @@ pub async fn run_session(
                                         caller_hold = hold;
                                         info!(
                                             "Persona caller {} serial={serial} text={s}",
-                                            if hold { "asked us to hold on — longer quiet line allowed" } else { "is back" }
+                                            if hold { "asked us to hold on — longer quiet line allowed" } else { "is back" },
+                                            s = Said(s)
                                         );
                                     }
                                     if crate::scam_db::has_hard_hit(&in_tx_window) {
@@ -7554,13 +7576,15 @@ pub async fn run_session(
                                             own_matter = false;
                                             stall_score += stall_score_add(&caller_text_all, &mut stall_hits);
                                             info!(
-                                                "Persona caller hit scam-only keywords after own-matter phrasing — re-enabling stall check serial={serial} text={s}"
+                                                "Persona caller hit scam-only keywords after own-matter phrasing — re-enabling stall check serial={serial} text={s}",
+                                                s = Said(s)
                                             );
                                         }
                                     } else if !own_matter && looks_like_own_matter(&in_tx_window) {
                                         own_matter = true;
                                         info!(
-                                            "Persona caller follows up on the owner's own matter — no 陪聊 this call serial={serial} stall={stall_on} text={s}"
+                                            "Persona caller follows up on the owner's own matter — no 陪聊 this call serial={serial} stall={stall_on} text={s}",
+                                            s = Said(s)
                                         );
                                     }
                                     // A recorded voice menu ("查帳單請按1，轉接專人請按9"): nobody to
@@ -7684,7 +7708,8 @@ pub async fn run_session(
                                         output_goodbye_at = None;
                                         end_reason = SessionEndReason::WsClosed;
                                         info!(
-                                            "Persona caller's goodbye taken back (more words followed) serial={serial} text={s}"
+                                            "Persona caller's goodbye taken back (more words followed) serial={serial} text={s}",
+                                            s = Said(s)
                                         );
                                     }
                                     if (caller_closing || stall_retain_event) && persona && stall_on && !wrap_up_sent {
@@ -7692,7 +7717,8 @@ pub async fn run_session(
                                         // is not let go — the AI keeps asking.
                                         if stall_keep_due.is_none() {
                                             info!(
-                                                "Persona stall: caller wants to leave — not hanging up, keep them on the line serial={serial} text={s}"
+                                                "Persona stall: caller wants to leave — not hanging up, keep them on the line serial={serial} text={s}",
+                                                s = Said(s)
                                             );
                                             stall_keep_due =
                                                 Some(tokio::time::Instant::now() + STALL_KEEP_WAIT);
@@ -7722,7 +7748,8 @@ pub async fn run_session(
                                         }
                                         goodbye_pending = true;
                                         info!(
-                                            "Goodbye detected text={s} → hangup serial={serial} source=input (wait model turn / delay)"
+                                            "Goodbye detected text={s} → hangup serial={serial} source=input (wait model turn / delay)",
+                                            s = Said(s)
                                         );
                                     }
                                 }
@@ -8033,7 +8060,8 @@ pub async fn run_session(
                                                 .await
                                                 {
                                                     Ok(()) => warn!(
-                                                        "Gemini Live text-only turn after rotation (0 audio) serial={serial} out_stt={preview} — asked to say it again"
+                                                        "Gemini Live text-only turn after rotation (0 audio) serial={serial} out_stt={preview} — asked to say it again",
+                                                        preview = Said(&preview)
                                                     ),
                                                     Err(e) => warn!(
                                                         "Gemini Live post-rotate re-kick failed serial={serial}: {e:#}"
@@ -8059,7 +8087,8 @@ pub async fn run_session(
                                             );
                                         } else if looks_like_persona_closing(&turn_out_text) {
                                             info!(
-                                                "Persona closing kept (model closed again) serial={serial} text={preview}"
+                                                "Persona closing kept (model closed again) serial={serial} text={preview}",
+                                                preview = Said(&preview)
                                             );
                                         } else {
                                             goodbye_pending = false;
@@ -8070,7 +8099,8 @@ pub async fn run_session(
                                             out_tx_window.clear();
                                             in_tx_window.clear();
                                             info!(
-                                                "Persona closing disarmed (caller added something new) serial={serial} text={preview}"
+                                                "Persona closing disarmed (caller added something new) serial={serial} text={preview}",
+                                                preview = Said(&preview)
                                             );
                                         }
                                     }
@@ -8127,7 +8157,8 @@ pub async fn run_session(
                                         .await
                                         {
                                             Ok(()) => info!(
-                                                "Persona stall keep nudge serial={serial} n={stall_keeps} why={why:?} text={preview}"
+                                                "Persona stall keep nudge serial={serial} n={stall_keeps} why={why:?} text={preview}",
+                                                preview = Said(&preview)
                                             ),
                                             Err(e) => warn!(
                                                 "Persona stall keep send failed serial={serial}: {e:#}"
@@ -8293,7 +8324,8 @@ pub async fn run_session(
                                         out_tx_window.chars().take(80).collect();
                                     if first_delivery_kick_retried {
                                         bail!(
-                                            "gemini transcript-only turn (0 audio) after re-kick serial={serial} out_stt={stt_preview}"
+                                            "gemini transcript-only turn (0 audio) after re-kick serial={serial} out_stt={stt_preview}",
+                                            stt_preview = Said(&stt_preview)
                                         );
                                     }
                                     out_tx_window.clear();
@@ -8306,7 +8338,8 @@ pub async fn run_session(
                                     .await?;
                                     first_delivery_kick_retried = true;
                                     warn!(
-                                        "Gemini Live opening turn text-only (0 audio) serial={serial} out_stt={stt_preview} -- re-kick now (fresh session if it repeats)"
+                                        "Gemini Live opening turn text-only (0 audio) serial={serial} out_stt={stt_preview} -- re-kick now (fresh session if it repeats)",
+                                        stt_preview = Said(&stt_preview)
                                     );
                                 }
                                 if turn_done && !tool_quiet && !opening_turn_complete {
@@ -8343,7 +8376,8 @@ pub async fn run_session(
                                         .is_ok()
                                         {
                                             info!(
-                                                "Owner-status missing in opening stt={stt_preview} audio_ms={audio_ms} — retry kick serial={serial}"
+                                                "Owner-status missing in opening stt={stt_preview} audio_ms={audio_ms} — retry kick serial={serial}",
+                                                stt_preview = Said(&stt_preview)
                                             );
                                         } else {
                                             opening_turn_complete = true;
@@ -8354,7 +8388,8 @@ pub async fn run_session(
                                     } else {
                                         opening_turn_complete = true;
                                         warn!(
-                                            "Owner-status still missing after retry stt={stt_preview} — release barge-in serial={serial}"
+                                            "Owner-status still missing after retry stt={stt_preview} — release barge-in serial={serial}",
+                                            stt_preview = Said(&stt_preview)
                                         );
                                     }
                                 }
@@ -8369,7 +8404,8 @@ pub async fn run_session(
                                     let stt_preview: String =
                                         out_tx_window.chars().take(120).collect();
                                     info!(
-                                        "Gemini Live turnComplete serial={serial} out={audio_chunks_out} goodbye_pending={goodbye_pending} complete_recap={saw_relay_ack} after_caller={model_spoke_after_caller} post_ms={post_ms} activity_open={activity_open} out_stt={stt_preview}"
+                                        "Gemini Live turnComplete serial={serial} out={audio_chunks_out} goodbye_pending={goodbye_pending} complete_recap={saw_relay_ack} after_caller={model_spoke_after_caller} post_ms={post_ms} activity_open={activity_open} out_stt={stt_preview}",
+                                        stt_preview = Said(&stt_preview)
                                     );
                                     last_activity_at = tokio::time::Instant::now();
                                     // Complete recap (with or without spoken 再見): arm hangup
@@ -8483,7 +8519,7 @@ pub async fn run_session(
                     {
                         Ok(()) => info!(
                             "Gemini Live errand answer sent as a note serial={serial} id={} response={}",
-                            done.key, done.response
+                            done.key, Said(&done.response.to_string())
                         ),
                         Err(e) => warn!("Gemini Live errand late answer send failed serial={serial}: {e:#}"),
                     }
@@ -8512,7 +8548,7 @@ pub async fn run_session(
                 {
                     Ok(()) => info!(
                         "Gemini Live toolResponse serial={serial} name={} id={} blocking={} response={}",
-                        done.name, done.key, done.blocking, done.response
+                        done.name, done.key, done.blocking, Said(&done.response.to_string())
                     ),
                     Err(e) => warn!("Gemini Live toolResponse send failed serial={serial}: {e:#}"),
                 }
@@ -9110,7 +9146,8 @@ pub async fn run_session(
         if let Some(ut) = stall.as_ref().and_then(|c| c.urgent_transfer.as_ref()) {
             if is_urgent_whitelist_turn(&in_tx_window) {
                 info!(
-                    "Whitelist caller reported an urgent matter before hangup serial={serial} text={in_tx_window} — triggering urgent transfer/alert"
+                    "Whitelist caller reported an urgent matter before hangup serial={serial} text={in_tx_window} — triggering urgent transfer/alert",
+                    in_tx_window = Said(&in_tx_window)
                 );
                 (ut.0)(&in_tx_window);
             }
@@ -10935,15 +10972,18 @@ mod tests {
     #[test]
     fn replies_about_the_owners_own_matter_are_no_pitch() {
         for t in [
-            "您好，這邊是中信銀行，您申請的信用卡已經核卡了，想跟您確認寄送地址",
+            "您好，這邊是中信銀行，您反映的信用卡寄送問題，想跟您確認寄送地址",
             "Hi, it's Dana from Acme support, following up on the issue you had with our router",
         ] {
             assert!(looks_like_own_matter(t), "{t}");
         }
+        // 「您申請的」 alone opens loan and card scams too: it counts only with another phrase.
+        assert!(!looks_like_own_matter("您好，這邊是銀行，您申請的信用卡已經核卡了，想跟您確認寄送地址"));
+        assert!(!looks_like_own_matter("這裡是地檢署，調查結果顯示你的帳戶涉及洗錢"));
         // "Your order" / "your account" open many scams: they do not count.
         assert!(!looks_like_own_matter("There is a problem with your order, we need to refund you"));
-        assert!(dialogue_own_matter("接聽：喂？\n對方：您申請的信用卡額度調整好了，分期的部分也可以跟您說明"));
-        assert!(!dialogue_is_sales("接聽：喂？\n對方：您申請的信用卡額度調整好了，分期的部分也可以跟您說明"));
+        assert!(dialogue_own_matter("接聽：喂？\n對方：您反映的信用卡額度調整好了，分期的部分也可以跟您說明"));
+        assert!(!dialogue_is_sales("接聽：喂？\n對方：您反映的信用卡額度調整好了，分期的部分也可以跟您說明"));
         assert!(!dialogue_own_matter("接聽：您申請的那個我晚點看\n對方：我們有免費試用的軟體"));
     }
 
@@ -11584,6 +11624,70 @@ mod tests {
         assert_eq!(other_lang_stt_of_country("us"), None);
     }
 
+    #[test]
+    fn italian_calls_get_their_speech_to_text_code_and_the_ai_goodbyes_are_found() {
+        for iso in ["it", "IT", "sm", "va"] {
+            assert_eq!(other_lang_stt_of_country(iso), Some("it-IT"), "{iso}");
+        }
+        for said in [
+            "Grazie, alla prossima.",
+            "Va bene, grazie, buon lavoro!",
+            "Allora la saluto.",
+            "Va bene, a presto.",
+            "Perfetto, buon proseguimento.",
+            "Arrivederci, grazie mille.",
+            "Perfetto, mille grazie, buonasera.",
+        ] {
+            assert!(ends_with_farewell(said), "{said}");
+        }
+        for said in [
+            "Grazie mille.",
+            "Pronto, buongiorno.",
+            "Buongiorno, sono Marco, ho un pacco.",
+            "A dopo le cinque non ci sono.",
+            "Torno a casa dopo.",
+            "Il tecnico passa un'ora più tardi.",
+            "Cerchiamo persone per un buon lavoro.",
+        ] {
+            assert!(!ends_with_farewell(said), "{said}");
+        }
+        assert!(ends_with_farewell("Okay, bye!"));
+        assert!(!ends_with_farewell("Gracias"));
+    }
+
+    /// Italian lines through the closing machine the way the session feeds it
+    /// ([`caller_wraps_up`] as `old_rules`), on the first turn and after some talk.
+    #[test]
+    fn italian_everyday_lines_do_not_hang_up_and_real_goodbyes_do() {
+        let talk = "Buongiorno, sono il corriere, ho un pacco per il signor Rossi.";
+        let first = |t: &str| crate::closing::ClosingMachine::new("it").on_caller(t, t, caller_wraps_up(t), false).ends_call;
+        let later = |t: &str| {
+            let mut m = crate::closing::ClosingMachine::new("it");
+            m.on_caller(talk, talk, caller_wraps_up(talk), false);
+            m.on_caller(t, t, caller_wraps_up(t), false).ends_call
+        };
+        for t in [
+            "Siamo un'azienda che cerca persone per un buon lavoro",
+            "Alla prossima fermata scendo",
+            "Buongiorno, buon lavoro, sono l'idraulico",
+            "La saluto mia madre",
+            "Ciao, sono Marco",
+        ] {
+            assert!(!caller_wraps_up(t), "{t}");
+            assert!(!first(t), "first turn: {t}");
+            assert!(!later(t), "after talk: {t}");
+        }
+        for t in ["Grazie, buon lavoro", "Va bene, alla prossima", "Perfetto, la saluto", "Perfetto, ci sentiamo domani. Ciao"] {
+            assert!(caller_wraps_up(t), "{t}");
+            assert!(later(t), "after talk: {t}");
+        }
+        // Other languages as before.
+        for t in ["Okay, bye!", "Vale, hasta luego.", "Görüşürüz."] {
+            assert!(later(t), "after talk: {t}");
+        }
+        assert!(!later("I'm looking for a good job nearby"));
+    }
+
     /// The raw pieces Gemini's output transcription was seen to send, with the
     /// word break at the end of one piece or at the start of the next, and the
     /// text each makes.
@@ -11794,12 +11898,23 @@ mod tests {
         assert!(!expects_carrier_intl_prompt(true, "+886912345678", Some("tw")));
         assert!(!expects_carrier_intl_prompt(true, "0912345678", Some("tw")));
         // Abroad is the number's country, read the way the SIM reads it: the
-        // international prefix 00 and Hong Kong count; a hidden number does not.
+        // international prefix 00 and Hong Kong count.
         assert!(expects_carrier_intl_prompt(false, "0012025550143", Some("tw")));
         assert!(expects_carrier_intl_prompt(false, "+85291234567", Some("tw")));
         assert!(!expects_carrier_intl_prompt(true, "00886912345678", Some("tw")));
-        assert!(!expects_carrier_intl_prompt(true, "", Some("tw")));
-        assert!(!expects_carrier_intl_prompt(true, "unknown", Some("tw")));
+        // A hidden number (no digit at all) gets the carrier's warning like any
+        // call from abroad, whatever the language setting says.
+        for hidden in ["", "  ", "unknown", "private", "Anonymous"] {
+            assert!(expects_carrier_intl_prompt(true, hidden, Some("tw")), "{hidden:?}");
+            assert!(expects_carrier_intl_prompt(false, hidden, Some("TW")), "{hidden:?}");
+            assert!(!expects_carrier_intl_prompt(true, hidden, Some("us")), "{hidden:?}");
+            assert!(!expects_carrier_intl_prompt(true, hidden, Some("jp")), "{hidden:?}");
+        }
+        // SIM unknown: Traditional Chinese reads as a Taiwan SIM, any other language does not.
+        assert!(expects_carrier_intl_prompt(true, "", None));
+        assert!(expects_carrier_intl_prompt(true, "unknown", None));
+        assert!(!expects_carrier_intl_prompt(false, "", None));
+        assert!(!expects_carrier_intl_prompt(false, "private", Some(" ")));
         // US SIM (e.g. Tello on Wi-Fi calling): no warning from any caller, even with
         // the language set to Traditional Chinese.
         assert!(!expects_carrier_intl_prompt(true, "+12025550143", Some("us")));
@@ -12893,7 +13008,7 @@ mod tests {
                 "Ici le cabinet de recouvrement, l'huissier lance une saisie sur salaire et des poursuites judiciaires",
                 "Espèce de connard, on sait où tu habites et on va venir chez vous",
                 "接聽：Allô ?\n對方：Suite à votre demande, donnez-moi le code de vérification",
-                "接聽：Allô ?\n對方：Suite à votre demande concernant votre compte, tout est réglé",
+                "接聽：Allô ?\n對方：Suite à votre réclamation concernant votre compte, tout est réglé",
                 "Bonjour, c'est le livreur, j'ai un colis pour vous devant l'immeuble",
             ),
             (
@@ -12902,7 +13017,7 @@ mod tests {
                 "Hier ist das Inkassobüro wegen Lohnpfändung und Zwangsvollstreckung durch den Gerichtsvollzieher",
                 "Du Arschloch und Hurensohn, wir kommen bei Ihnen vorbei",
                 "接聽：Hallo?\n對方：Bezüglich Ihrer Anfrage brauche ich sofort Ihren Bestätigungscode",
-                "接聽：Hallo?\n對方：Bezüglich Ihrer Anfrage zum Konto ist nun alles erledigt",
+                "接聽：Hallo?\n對方：Bezüglich Ihrer Beschwerde zum Konto ist nun alles erledigt",
                 "Guten Tag, Paketdienst hier, darf ich Ihr Paket beim Nachbarn abgeben?",
             ),
             (

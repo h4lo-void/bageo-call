@@ -1129,7 +1129,36 @@ impl RuntimeSettings {
     }
 
     pub fn is_assistant_style(&self) -> bool {
+        self.answer_style_is_assistant() || self.legacy_flow_replaced()
+    }
+
+    /// The saved `answer_style` is "AI assistant" (what the console shows).
+    pub fn answer_style_is_assistant(&self) -> bool {
         self.answer_style != "persona"
+    }
+
+    /// `gemini_persona_mode` is off, but the older relay flow (greeting lines and
+    /// call rules written in Traditional Chinese only) is not used for an owner
+    /// whose language is another one: the call runs in the current flow, as the
+    /// owner's AI assistant, in the owner's language.
+    pub fn legacy_flow_replaced(&self) -> bool {
+        !self.gemini_persona_mode && self.lang() != crate::locale::Lang::ZhTw
+    }
+
+    /// Whether calls run in the current flow (opening, language rules, closing):
+    /// the value every call path reads instead of `gemini_persona_mode`.
+    pub fn persona_flow_active(&self) -> bool {
+        self.gemini_persona_mode || self.legacy_flow_replaced()
+    }
+
+    /// Says in the log that a turned-off `gemini_persona_mode` is not honored.
+    fn warn_if_legacy_flow_replaced(&self) {
+        if self.legacy_flow_replaced() {
+            warn!(
+                "gemini_persona_mode is off, but the older answering flow only exists in Traditional Chinese: calls in language={} use the current flow as the AI assistant",
+                self.language
+            );
+        }
     }
 
     /// Country calling code: the setting; else Taiwan's for zh-TW; else the
@@ -1266,7 +1295,7 @@ impl RuntimeSettings {
     /// [`Self::gemini_system_prompt_for_call`]; persona mode builds it in `lang`
     /// (None: the setting's).
     pub fn gemini_system_prompt_for_call_in(&self, lang: Option<crate::locale::Lang>) -> String {
-        if self.gemini_persona_mode {
+        if self.persona_flow_active() {
             use crate::gemini_live::StallPrompt;
             return self.call_prompt(
                 if self.persona_stall_spam {
@@ -1908,6 +1937,7 @@ impl SettingsStore {
             Err(_) => Overrides::default(),
         };
         let (overrides, rt) = Self::settle_overrides(&base, &path, overrides, old_key_moved);
+        rt.warn_if_legacy_flow_replaced();
         set_active_ui_password(&rt.ui_password);
         crate::calendar::set_link_secret(&active_ui_token(&base.calls_ui_token));
         Arc::new(Self {
@@ -1946,7 +1976,7 @@ impl SettingsStore {
                 .is_some_and(|s| !s.trim().is_empty())
         {
             prompt_split = true;
-            if rt.is_assistant_style() {
+            if rt.answer_style_is_assistant() {
                 let moved = std::mem::take(&mut rt.gemini_persona_prompt);
                 rt.gemini_assistant_prompt = moved.clone();
                 overrides.gemini_assistant_prompt = Some(moved);
@@ -2099,6 +2129,7 @@ impl SettingsStore {
         rt.apply(&ov);
         write_overrides(&self.path, &ov)?;
 
+        rt.warn_if_legacy_flow_replaced();
         st.overrides = ov;
         set_active_ui_password(&rt.ui_password);
         crate::calendar::set_link_secret(&active_ui_token(&self.base.calls_ui_token));
@@ -2260,7 +2291,7 @@ fn masked(rt: &RuntimeSettings) -> Value {
     // The same with `{owner}` left in, for copying into the editor.
     m.insert(
         "default_prompt_template".into(),
-        json!(crate::prompts::default_prompt_template(rt.lang(), rt.is_assistant_style())),
+        json!(crate::prompts::default_prompt_template(rt.lang(), rt.answer_style_is_assistant())),
     );
     m.insert(
         "default_prompts".into(),
@@ -3244,7 +3275,9 @@ mod tests {
         let rt = store
             .apply_patch(&json!({
                 // The older relay-assistant mode (forced first line).
+                // (Kept for Traditional Chinese; other languages use the current flow.)
                 "gemini_persona_mode": false,
+                "language": "zh-TW",
                 "owner_status_enabled": true,
                 "owner_status_text": "  包裹的錢放在管理室外送桌了  "
             }))
@@ -3745,6 +3778,74 @@ mod tests {
         assert!(!rt.gemini_system_prompt_for_call().contains("【對方講別的語言】"));
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn the_older_answering_flow_is_only_kept_for_traditional_chinese() {
+        use crate::locale::{Lang, ALL};
+        let mk = |lang: Lang, persona_mode: bool, style: &str| {
+            let mut rt = RuntimeSettings::from_base(&Settings::from_env());
+            rt.language = lang.code().into();
+            rt.owner_name = "Alex".into();
+            rt.gemini_persona_mode = persona_mode;
+            rt.answer_style = style.into();
+            rt.gemini_system_prompt.clear();
+            rt.gemini_persona_prompt.clear();
+            rt.gemini_assistant_prompt.clear();
+            rt
+        };
+        let mut prompts = Vec::new();
+        for lang in ALL {
+            // Turned on: every language runs the current flow with the saved identity.
+            let on_persona = mk(lang, true, "persona");
+            let on_assistant = mk(lang, true, "assistant");
+            assert!(on_persona.persona_flow_active() && !on_persona.legacy_flow_replaced(), "{lang:?}");
+            assert!(!on_persona.is_assistant_style() && on_assistant.is_assistant_style(), "{lang:?}");
+
+            // Turned off, even with "as me" saved.
+            let off = mk(lang, false, "persona");
+            assert!(!off.gemini_persona_mode, "{lang:?}");
+            if lang == Lang::ZhTw {
+                // Traditional Chinese: the older relay flow stays as it was.
+                assert!(!off.persona_flow_active() && !off.legacy_flow_replaced(), "{lang:?}");
+                assert!(!off.is_assistant_style() && !off.locale_active().assistant, "{lang:?}");
+                let legacy = crate::gemini_live::with_owner_status(
+                    crate::gemini_live::default_system_prompt(),
+                    off.owner_status_enabled,
+                    &off.owner_status_text,
+                );
+                assert_eq!(off.gemini_system_prompt_for_call(), legacy, "{lang:?}");
+                // Its opening is the persona one, as before.
+                assert!(!mk(lang, false, "assistant").legacy_flow_replaced());
+                continue;
+            }
+            // Any other language: the current flow, as the AI assistant, in the owner's language.
+            assert!(off.persona_flow_active() && off.legacy_flow_replaced(), "{lang:?}");
+            assert!(off.is_assistant_style() && off.locale_active().assistant, "{lang:?}");
+            // The saved identity is left alone (the console still shows it).
+            assert_eq!(off.answer_style, "persona", "{lang:?}");
+            assert!(!off.answer_style_is_assistant(), "{lang:?}");
+            // The call's prompt is the assistant prompt of the current flow, not the older text.
+            assert_eq!(off.gemini_system_prompt_for_call(), on_assistant.gemini_system_prompt_for_call(), "{lang:?}");
+            assert_ne!(off.gemini_system_prompt_for_call(), crate::gemini_live::default_system_prompt(), "{lang:?}");
+            assert_ne!(off.gemini_system_prompt_for_call(), on_persona.gemini_system_prompt_for_call(), "{lang:?}");
+            assert!(off.gemini_system_prompt_for_call().contains("Alex"), "{lang:?}");
+            // The opening is the assistant's in the owner's language, never the owner's own.
+            let opening = crate::prompts::kick_open_call(off.lang(), off.is_assistant_style(), None, false);
+            assert_eq!(opening, crate::prompts::kick_open_call(lang, true, None, false), "{lang:?}");
+            assert_ne!(opening, crate::prompts::kick_open_call(lang, false, None, false), "{lang:?}");
+            prompts.push(off.gemini_system_prompt_for_call());
+            // With the assistant already saved, turning the mode off changes nothing more.
+            let off_assistant = mk(lang, false, "assistant");
+            assert!(off_assistant.persona_flow_active() && off_assistant.is_assistant_style(), "{lang:?}");
+        }
+        // Eight languages, eight different prompts (each in the owner's language).
+        let mut unique = prompts.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), 8);
+        assert_eq!(prompts.len(), 8);
+    }
+
 
     #[test]
     fn summary_provider_defaults_gemini_and_resolves_older_values() {
