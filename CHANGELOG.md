@@ -1,8 +1,8 @@
 # Unreleased
 
-- **Ready-made Docker images.** Starting with 1.6.9, each release is also on Docker Hub as `bageo/bageo-call` and on GitHub as `ghcr.io/h4lo-void/bageo-call`, for amd64 and arm64. Tags are the version, like `1.6.9`, plus `1.6` and `latest`. See [Getting started](docs/en/GETTING_STARTED.md#with-docker).
-- **現成的 Docker 映像。** 從 1.6.9 起，每一版也會放上 Docker Hub（`bageo/bageo-call`）和 GitHub（`ghcr.io/h4lo-void/bageo-call`），支援 amd64 和 arm64。標籤是版本號（例如 `1.6.9`），另有 `1.6` 和 `latest`。見[開始使用](docs/zh-TW/GETTING_STARTED.md#用-docker)。
-- **现成的 Docker 镜像。** 从 1.6.9 起，每一版也会放到 Docker Hub（`bageo/bageo-call`）和 GitHub（`ghcr.io/h4lo-void/bageo-call`），支持 amd64 和 arm64。标签是版本号（例如 `1.6.9`），另有 `1.6` 和 `latest`。见[开始使用](docs/zh-CN/GETTING_STARTED.md#用-docker)。
+- **Ready-made Docker images.** Starting with 1.6.9, each release is also on Docker Hub as `bageo/bageo-call` and on GitHub as `ghcr.io/h4lo-void/bageo-call`, for amd64 and arm64. Each release has two tags: its version, like `1.6.9`, and `latest`. See [Getting started](docs/en/GETTING_STARTED.md#with-docker).
+- **現成的 Docker 映像。** 從 1.6.9 起，每一版也會放上 Docker Hub（`bageo/bageo-call`）和 GitHub（`ghcr.io/h4lo-void/bageo-call`），支援 amd64 和 arm64。每一版有兩個標籤：版本號（例如 `1.6.9`）和 `latest`。見[開始使用](docs/zh-TW/GETTING_STARTED.md#用-docker)。
+- **现成的 Docker 镜像。** 从 1.6.9 起，每一版也会放到 Docker Hub（`bageo/bageo-call`）和 GitHub（`ghcr.io/h4lo-void/bageo-call`），支持 amd64 和 arm64。每一版有两个标签：版本号（例如 `1.6.9`）和 `latest`。见[开始使用](docs/zh-CN/GETTING_STARTED.md#用-docker)。
 
 # Bageo v1.6.9
 
