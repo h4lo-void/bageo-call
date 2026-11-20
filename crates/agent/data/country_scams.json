@@ -23,7 +23,16 @@
     "MX",
     "AR",
     "AT",
-    "CH"
+    "CH",
+    "RU",
+    "TR",
+    "VN",
+    "TH",
+    "SA",
+    "AE",
+    "EG",
+    "NL",
+    "PL"
   ],
   "countries": {
     "TW": {
@@ -2442,6 +2451,695 @@
           ],
           "sources": [
             "fedpol"
+          ]
+        }
+      ]
+    },
+    "RU": {
+      "name": "Russia",
+      "name_local": "Россия",
+      "iso": "ru",
+      "calling_code": "+7",
+      "languages": [
+        "ru"
+      ],
+      "prevalence_note": "Bank of Russia and police warnings 2025-2026: fake Central Bank, FSB or bank security staff moving savings to a safe account, and fake operator staff asking for SMS codes to extend a SIM contract dominate.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "ru_safe_account",
+          "typology": "fake_official",
+          "name": "Лжесотрудники ЦБ или ФСБ и «безопасный счёт»",
+          "name_en": "Fake Central Bank or FSB officer moving savings to a safe account",
+          "prevalence": "very_high",
+          "lang": "ru",
+          "context_keywords": [
+            "сотрудник фсб"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "безопасный счёт",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "безопасный счет",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "встречный кредит",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the FSB, the Central Bank or a bank's security service says someone is taking a loan in the owner's name and the savings must go to a safe account or a counter loan must be taken.",
+          "legit_en": "The Central Bank has no private clients, and no bank or police officer asks anyone to move money to another account on the phone.",
+          "bait_tactics": [
+            "Встревоженно переспрашивать, какой именно кредит оформляют и в каком отделении",
+            "Говорить, что очки остались в прихожей, и просить продиктовать всё помедленнее"
+          ],
+          "sources": [
+            "Банк России"
+          ]
+        },
+        {
+          "id": "ru_sim_contract_code",
+          "typology": "otp_theft",
+          "name": "Продление договора связи по коду из СМС",
+          "name_en": "Fake mobile operator extending a SIM contract for an SMS code",
+          "prevalence": "high",
+          "lang": "ru",
+          "context_keywords": [
+            "срок действия сим"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "код для продления договора",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as the mobile operator or Gosuslugi says the SIM contract or account is about to expire and asks for the code that just arrived by SMS.",
+          "legit_en": "Operators extend contracts without calls, and real staff never ask for a code from an SMS.",
+          "bait_tactics": [
+            "Говорить, что СМС приходят на старый кнопочный телефон в другой комнате, и долго его искать",
+            "Переспрашивать, какой у договора номер и с какого года он заключён"
+          ],
+          "sources": [
+            "Банк России"
+          ]
+        }
+      ]
+    },
+    "TR": {
+      "name": "Turkey",
+      "name_local": "Türkiye",
+      "iso": "tr",
+      "calling_code": "+90",
+      "languages": [
+        "tr"
+      ],
+      "prevalence_note": "Police and bank warnings 2025-2026: fake police or prosecutors linking the owner to terrorism and moving money to a state account, and fake bank staff refunding card fees for an SMS code dominate.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "tr_sahte_polis_guvence_hesabi",
+          "typology": "fake_official",
+          "name": "Sahte polis ve savcı: devlet güvence hesabı",
+          "name_en": "Fake police or prosecutor moving money to a state safe account",
+          "prevalence": "very_high",
+          "lang": "tr",
+          "context_keywords": [
+            "terörle mücadele"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "devlet güvence hesab",
+              "weight": 2,
+              "hard": true
+            },
+            {
+              "text": "sivil polise teslim",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Fake counter-terrorism police or a prosecutor say the owner's name came up in a terror or money-laundering case and the money must go to a state account or be handed to a plain-clothes officer.",
+          "legit_en": "Turkish police and prosecutors never ask for transfers, cash or gold on the phone.",
+          "bait_tactics": [
+            "Endişeli görünüp hangi dosyadan bahsettiklerini yavaşça sormak",
+            "Yakın gözlüğünü bulamadığını söyleyip her şeyi tekrar ettirmek"
+          ],
+          "sources": [
+            "Emniyet Genel Müdürlüğü"
+          ]
+        },
+        {
+          "id": "tr_kart_aidati_iadesi",
+          "typology": "fake_bank_account_alert",
+          "name": "Kart aidatı iadesi bahanesiyle şifre",
+          "name_en": "Fake bank refunding card fees for an SMS code",
+          "prevalence": "high",
+          "lang": "tr",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "kart aidatı iade",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "güvenli hesaba havale",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's head office offers to refund past card fees or stop a suspicious charge and asks for the SMS code or a transfer to a safe account.",
+          "legit_en": "Banks refund fees without calls and never ask for SMS codes or transfers on the phone.",
+          "bait_tactics": [
+            "Mobil bankacılık uygulamasının güncelleme istediğini söyleyip beklemek",
+            "Hangi kartın aidatından bahsettiklerini ve tutarı yavaşça sormak"
+          ],
+          "sources": [
+            "Türkiye Bankalar Birliği"
+          ]
+        }
+      ]
+    },
+    "VN": {
+      "name": "Vietnam",
+      "name_local": "Việt Nam",
+      "iso": "vn",
+      "calling_code": "+84",
+      "languages": [
+        "vi"
+      ],
+      "prevalence_note": "Ministry of Public Security warnings 2025-2026: fake police moving money to a holding account during a secret investigation, and fake EVN staff installing an app and reading a Smart OTP dominate.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "vn_cong_an_tai_khoan_tam_giu",
+          "typology": "fake_official",
+          "name": "Giả công an: chuyển tiền vào tài khoản tạm giữ",
+          "name_en": "Fake police moving money to a holding account",
+          "prevalence": "very_high",
+          "lang": "vi",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "tài khoản tạm giữ",
+              "weight": 2,
+              "hard": true
+            },
+            {
+              "text": "giữ bí mật điều tra",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Fake ward police or prosecutors say the owner is linked to money laundering, demand secrecy and order the money moved to a holding account for checking.",
+          "legit_en": "Vietnamese police never handle cases by phone or ask for transfers to any account.",
+          "bait_tactics": [
+            "Tỏ ra lo lắng, hỏi chậm rãi đó là vụ việc nào và ở phường nào",
+            "Nói kính lão để trên lầu, nhờ đọc lại từng chữ"
+          ],
+          "sources": [
+            "Bộ Công an"
+          ]
+        },
+        {
+          "id": "vn_gia_dien_luc_cai_app",
+          "typology": "fake_utility",
+          "name": "Giả điện lực: cài ứng dụng và đọc Smart OTP",
+          "name_en": "Fake EVN staff installing an app and reading a Smart OTP",
+          "prevalence": "high",
+          "lang": "vi",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "cài ứng dụng điện lực",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "cài app điện lực",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "đọc mã smart otp",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Fake EVN staff threaten to cut the power within hours and ask the owner to install an app from a link and read out a Smart OTP.",
+          "legit_en": "EVN sends notices on paper or in its official app and never asks for OTP codes on the phone.",
+          "bait_tactics": [
+            "Nói điện thoại cũ đầy bộ nhớ, tải mãi không xong",
+            "Hỏi tháng nào chưa đóng tiền và số tiền bao nhiêu"
+          ],
+          "sources": [
+            "Tập đoàn Điện lực Việt Nam"
+          ]
+        }
+      ]
+    },
+    "TH": {
+      "name": "Thailand",
+      "name_local": "ประเทศไทย",
+      "iso": "th",
+      "calling_code": "+66",
+      "languages": [
+        "th"
+      ],
+      "prevalence_note": "Royal Thai Police and PEA/MEA warnings 2025-2026: call-center gangs posing as police asking for a LINE video statement and a transfer to check the money, and fake electricity staff installing an app to refund the meter deposit dominate.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "th_police_line_transfer",
+          "typology": "fake_official",
+          "name": "แก๊งคอลเซ็นเตอร์อ้างเป็นตำรวจ ให้โอนเงินมาตรวจสอบ",
+          "name_en": "Fake police taking a LINE statement and a transfer to check the money",
+          "prevalence": "very_high",
+          "lang": "th",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "โอนเงินมาตรวจสอบ",
+              "weight": 2,
+              "hard": true
+            },
+            {
+              "text": "แอดไลน์สอบปากคำ",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Fake police or DSI officers say the owner's account is tied to money laundering, take a statement over a LINE video call and ask for a transfer to prove the money is clean.",
+          "legit_en": "Thai police never take statements on LINE or ask for transfers to check money.",
+          "bait_tactics": [
+            "ทำเป็นกังวล ถามช้าๆ ว่าเป็นคดีอะไร ที่สถานีไหน",
+            "บอกว่าหาแว่นสายตาไม่เจอ ขอให้พูดซ้ำทีละคำ"
+          ],
+          "sources": [
+            "สำนักงานตำรวจแห่งชาติ"
+          ]
+        },
+        {
+          "id": "th_pea_meter_refund_app",
+          "typology": "fake_utility",
+          "name": "อ้างการไฟฟ้าคืนเงินประกันมิเตอร์ ให้โหลดแอป",
+          "name_en": "Fake electricity staff refunding the meter deposit through an app",
+          "prevalence": "high",
+          "lang": "th",
+          "context_keywords": [
+            "คืนเงินประกันมิเตอร์"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "กดลิงก์โหลดแอปการไฟฟ้า",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "โหลดแอปการไฟฟ้าจากลิงก์",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "ติดตั้งไฟล์ apk",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Fake PEA or MEA staff offer to refund the meter deposit and ask the owner to install an app from a link, set a code and scan their face.",
+          "legit_en": "The electricity authorities refund deposits through their official channels and never send app links by LINE.",
+          "bait_tactics": [
+            "บอกว่าเน็ตมือถือหมุนติ้วๆ โหลดไม่ขึ้น",
+            "ถามว่ามิเตอร์ไหนและจะได้คืนเท่าไหร่"
+          ],
+          "sources": [
+            "การไฟฟ้าส่วนภูมิภาค"
+          ]
+        }
+      ]
+    },
+    "SA": {
+      "name": "Saudi Arabia",
+      "name_local": "السعودية",
+      "iso": "sa",
+      "calling_code": "+966",
+      "languages": [
+        "ar"
+      ],
+      "prevalence_note": "SAMA and Absher warnings 2025-2026: fake Absher staff asking the owner to pick the number shown in Nafath, and fake central bank staff moving money to a temporary protection account dominate.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "sa_nafath_absher_code",
+          "typology": "otp_theft",
+          "name": "انتحال أبشر وطلب الرقم الظاهر في نفاذ",
+          "name_en": "Fake Absher staff asking for the Nafath number or code",
+          "prevalence": "very_high",
+          "lang": "ar",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "اختر الرقم الظاهر في نفاذ",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "رمز التحقق من أبشر",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as Absher or a government platform says the account will be suspended and asks the owner to accept the number shown in Nafath or read out the code.",
+          "legit_en": "Government platforms never call to ask for Nafath numbers or verification codes.",
+          "bait_tactics": [
+            "يقول إن التطبيق يحمّل ببطء ويطلب منه الانتظار",
+            "يسأل بهدوء عن أي خدمة يتكلم ومتى ستتوقف"
+          ],
+          "sources": [
+            "البنك المركزي السعودي"
+          ]
+        },
+        {
+          "id": "sa_central_bank_protection_account",
+          "typology": "fake_bank_account_alert",
+          "name": "انتحال البنك المركزي وتحويل الرصيد لحساب حماية",
+          "name_en": "Fake central bank moving money to a temporary protection account",
+          "prevalence": "high",
+          "lang": "ar",
+          "context_keywords": [
+            "البنك المركزي"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "حساب حماية مؤقت",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the central bank or the owner's bank says the account is frozen and the balance must be moved to a temporary protection account.",
+          "legit_en": "Banks and SAMA never ask customers to move their money to another account on the phone.",
+          "bait_tactics": [
+            "يقول إن البطاقة في السيارة ويروح يجيبها",
+            "يسأل عن اسم الفرع ورقم البلاغ بهدوء"
+          ],
+          "sources": [
+            "البنك المركزي السعودي"
+          ]
+        }
+      ]
+    },
+    "AE": {
+      "name": "United Arab Emirates",
+      "name_local": "الإمارات",
+      "iso": "ae",
+      "calling_code": "+971",
+      "languages": [
+        "ar",
+        "en"
+      ],
+      "prevalence_note": "Dubai Police and UAE Central Bank warnings 2025-2026: fake police demanding a fine paid through an exchange house, and fake Emirates Post delivery fees paid through a link dominate.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "ae_fake_police_exchange_fine",
+          "typology": "fake_official",
+          "name": "انتحال الشرطة وطلب غرامة عن طريق الصرافة",
+          "name_en": "Fake police demanding a fine through an exchange house",
+          "prevalence": "very_high",
+          "lang": "ar",
+          "context_keywords": [
+            "شرطة دبي",
+            "شرطة أبوظبي"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "الغرامة عبر الصرافة",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "الغرامة عن طريق الصرافة",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "الغرامة اليوم عبر الصرافة",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "الغرامة اليوم عن طريق الصرافة",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Fake police say the owner faces a money-laundering or residency case and must pay a fine at once through an exchange house or a link.",
+          "legit_en": "UAE police never collect fines on the phone or through exchange houses.",
+          "bait_tactics": [
+            "يتظاهر بالقلق ويسأل بهدوء عن رقم القضية ومتى سُجلت",
+            "يقول إن الصرافة القريبة مقفلة ويسأل عن غيرها"
+          ],
+          "sources": [
+            "شرطة دبي"
+          ]
+        },
+        {
+          "id": "ae_post_delivery_fee_link",
+          "typology": "fake_customs_parcel",
+          "name": "رسوم توصيل وهمية عبر رابط",
+          "name_en": "Fake delivery or customs fee paid through a link",
+          "prevalence": "high",
+          "lang": "ar",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "رسوم التوصيل عبر الرابط",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "بيانات البطاقة في الرابط",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as Emirates Post or a courier says a parcel is held and asks the owner to pay a small fee and enter card details through a link.",
+          "legit_en": "Couriers do not call to collect fees through links, and customs fees are paid on official sites.",
+          "bait_tactics": [
+            "يقول إن الرابط ما يفتح ويطلب منهم يشرحون مرة ثانية",
+            "يسأل عن رقم الشحنة ومن أين أُرسلت"
+          ],
+          "sources": [
+            "مصرف الإمارات العربية المتحدة المركزي"
+          ]
+        }
+      ]
+    },
+    "EG": {
+      "name": "Egypt",
+      "name_local": "مصر",
+      "iso": "eg",
+      "calling_code": "+20",
+      "languages": [
+        "ar"
+      ],
+      "prevalence_note": "Central Bank of Egypt warnings 2025-2026: fake bank or InstaPay staff asking for the card's back digits and a test transfer, and fake Vodafone Cash prizes with an activation fee dominate.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "eg_instapay_card_digits",
+          "typology": "fake_bank_account_alert",
+          "name": "انتحال البنك وإنستاباي وطلب أرقام ضهر الكارت",
+          "name_en": "Fake bank or InstaPay staff asking for the card's back digits",
+          "prevalence": "very_high",
+          "lang": "ar",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "الأرقام اللي على ضهر الكارت",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank or InstaPay says the account will be closed unless the owner reads the digits on the back of the card or makes a test transfer.",
+          "legit_en": "Egyptian banks never ask for card digits, codes or test transfers on the phone.",
+          "bait_tactics": [
+            "يقول إن الكارت في المحفظة في العربية ويروح يجيبه",
+            "يسأل بهدوء أنهي حساب وإمتى هيتقفل"
+          ],
+          "sources": [
+            "البنك المركزي المصري"
+          ]
+        },
+        {
+          "id": "eg_vodafone_cash_prize_fee",
+          "typology": "prize_lottery",
+          "name": "جايزة فودافون كاش ورسوم تشغيلها",
+          "name_en": "Fake Vodafone Cash prize with an activation fee",
+          "prevalence": "high",
+          "lang": "ar",
+          "context_keywords": [
+            "رسوم تشغيل"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "رسوم تشغيل الجايزة",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller congratulates the owner on a Vodafone Cash prize and asks for a fee or the wallet code to release it.",
+          "legit_en": "Real prizes are never released for a fee or a wallet code.",
+          "bait_tactics": [
+            "يسأل الجايزة قد إيه وهتوصل إزاي",
+            "يقول إن الموبايل التاني اللي عليه المحفظة مش معاه"
+          ],
+          "sources": [
+            "البنك المركزي المصري"
+          ]
+        }
+      ]
+    },
+    "NL": {
+      "name": "Netherlands",
+      "name_local": "Nederland",
+      "iso": "nl",
+      "calling_code": "+31",
+      "languages": [
+        "nl"
+      ],
+      "prevalence_note": "Fraudehelpdesk and police warnings 2025-2026: fake bank helpdesk staff moving money to a vault account, and fake police collecting valuables and PIN codes at the door dominate.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "nl_bankhelpdesk_kluisrekening",
+          "typology": "fake_bank_account_alert",
+          "name": "Bankhelpdeskfraude: geld naar een kluisrekening",
+          "name_en": "Fake bank helpdesk moving money to a vault account",
+          "prevalence": "very_high",
+          "lang": "nl",
+          "context_keywords": [
+            "afdeling fraude"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "kluisrekening",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's fraud department reports a suspicious login and asks the owner to move the money to a vault or safe account.",
+          "legit_en": "Banks never ask customers to move money to another account to keep it safe.",
+          "bait_tactics": [
+            "Zeggen dat de bankapp nog aan het laden is en rustig laten uitleggen wat er precies is gebeurd",
+            "Vragen welke transactie het was en op welke dag"
+          ],
+          "sources": [
+            "Fraudehelpdesk"
+          ]
+        },
+        {
+          "id": "nl_nepagenten_pincode",
+          "typology": "fake_official",
+          "name": "Nepagenten halen waardevolle spullen op",
+          "name_en": "Fake police collecting valuables and PIN codes",
+          "prevalence": "high",
+          "lang": "nl",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "waardevolle spullen veiligstellen",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "pincode doorgeven",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Fake police say burglars have the owner's address and a colleague will come to secure valuables and bank cards, and ask for the PIN code.",
+          "legit_en": "Dutch police never collect valuables or bank cards at the door and never ask for PIN codes.",
+          "bait_tactics": [
+            "Zeggen dat de sleutel van de kast bij de buurvrouw ligt",
+            "Rustig vragen hoe de collega eruitziet en hoe laat hij komt"
+          ],
+          "sources": [
+            "Politie"
+          ]
+        }
+      ]
+    },
+    "PL": {
+      "name": "Poland",
+      "name_local": "Polska",
+      "iso": "pl",
+      "calling_code": "+48",
+      "languages": [
+        "pl"
+      ],
+      "prevalence_note": "Police and CERT Polska warnings 2025-2026: fake bank security staff moving money to a technical account, and fake CBŚP officers collecting cash during a secret action dominate.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "pl_konto_techniczne",
+          "typology": "fake_bank_account_alert",
+          "name": "Fałszywy pracownik banku: konto techniczne",
+          "name_en": "Fake bank security moving money to a technical account",
+          "prevalence": "very_high",
+          "lang": "pl",
+          "context_keywords": [
+            "departamentu bezpieczeństwa"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "przelać środki na konto techniczne",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "przelać pieniądze na konto techniczne",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "wpłacić gotówkę na konto techniczne",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "wpłacić pieniądze na konto techniczne",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security department says someone is applying for a loan in the owner's name and the money must go to a technical or safe account.",
+          "legit_en": "Banks never ask customers to move money to a technical account on the phone.",
+          "bait_tactics": [
+            "Mówić, że aplikacja banku się aktualizuje, i prosić o powolne tłumaczenie",
+            "Pytać spokojnie, o jaki wniosek chodzi i z którego dnia"
+          ],
+          "sources": [
+            "CERT Polska"
+          ]
+        },
+        {
+          "id": "pl_policjant_tajna_akcja",
+          "typology": "fake_official",
+          "name": "Na policjanta: tajna akcja i zabezpieczenie gotówki",
+          "name_en": "Fake police collecting cash during a secret action",
+          "prevalence": "high",
+          "lang": "pl",
+          "context_keywords": [
+            "z prokuratury"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "zabezpieczenie gotówki",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "tajemnica śledztwa",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Fake police or CBŚP officers say a gang works inside the owner's bank, impose investigation secrecy and ask for the cash to be secured by a courier.",
+          "legit_en": "Polish police never collect money and never ask people to keep it from their family.",
+          "bait_tactics": [
+            "Udawać zaniepokojenie i powoli dopytywać, o jaką akcję chodzi",
+            "Mówić, że okulary zostały w kuchni, i prosić o powtórzenie"
+          ],
+          "sources": [
+            "Policja"
           ]
         }
       ]

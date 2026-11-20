@@ -478,8 +478,14 @@ const PRE_CLOSINGS: Lexicon = &[
         "alles klar dann weiß ich bescheid", "dann weiß ich bescheid", "dann weiss ich bescheid",
     ]),
     ("pt", &["então tá bom", "entao ta bom", "combinado então", "combinado entao", "a gente se fala", "falamos depois"]),
-    ("th", &["งั้นแค่นี้", "งั้นแค่นี้นะ", "แค่นี้นะ", "แค่นี้ก่อน", "แค่นี้", "เอาไว้คุยกันใหม่", "คุยกันแค่นี้ก่อน"]),
-    ("vi", &["dạ vậy nhé", "vậy nhé", "vay nhe", "thế nhé", "the nhe", "thôi nhé"]),
+    ("th", &[
+        "งั้นแค่นี้", "งั้นแค่นี้นะ", "แค่นี้นะ", "แค่นี้ก่อน", "แค่นี้", "เอาไว้คุยกันใหม่", "คุยกันแค่นี้ก่อน",
+    ]),
+    ("vi", &[
+        "dạ vậy nhé", "vậy nhé", "vay nhe", "thế nhé", "the nhe", "thôi nhé",
+        // "If anything, we'll be in touch later, okay": only with the closing particle.
+        "có gì liên lạc sau nhé", "có gì liên lạc sau nha", "co gi lien lac sau nhe",
+    ]),
     ("id", &[
         "oke sudah dulu ya", "sudah dulu ya", "sudah dulu", "udah dulu ya", "udah dulu", "segitu dulu ya", "itu saja",
         "saya tutup dulu ya", "saya tutup dulu", "tutup dulu ya",
@@ -492,7 +498,12 @@ const PRE_CLOSINGS: Lexicon = &[
     ]),
     ("ru", &["хорошо тогда до свидания", "ладно мне пора", "мне пора", "я перезвоню", "поговорим позже", "тогда пока", "всего вам доброго"]),
     ("ar", &["حسنا سأغلق الآن", "حسنا ساغلق الان", "لنتحدث لاحقا", "سأتصل بك لاحقا", "ساتصل بك لاحقا", "سأتركك الآن", "هذا كل شيء"]),
-    ("hi", &["ठीक है अब रखता हूँ", "बाद में बात करते हैं", "मैं बाद में कॉल करूँगा", "बस इतना ही", "अच्छा चलता हूँ"]),
+    ("hi", &[
+        "ठीक है अब रखता हूँ", "बाद में बात करते हैं", "मैं बाद में कॉल करूँगा", "बस इतना ही", "अच्छा चलता हूँ",
+        // Romanized "I'll put the phone down", only after okay / chalo: "main ek copy rakhta hoon" keeps a copy.
+        "okay rakhta hoon", "ok rakhta hoon", "chalo rakhta hoon", "chalo ab rakhta hoon", "theek hai rakhta hoon",
+        "okay rakhti hoon", "ok rakhti hoon", "chalo rakhti hoon", "chalo ab rakhti hoon", "theek hai rakhti hoon",
+    ]),
     ("nl", &["ik houd u niet langer op", "ik hou je niet langer op", "dan spreken we later", "ik bel u later terug", "tot later"]),
     ("pl", &["nie zatrzymuję już", "nie zatrzymuje juz", "odezwę się później", "odezwe sie pozniej", "zadzwonię później", "zadzwonie pozniej", "to tyle na teraz"]),
     ("ro", &["nu vă mai rețin", "nu va mai retin", "nu te mai rețin", "nu te mai retin", "vorbim mai târziu", "vorbim mai tarziu"]),
@@ -567,6 +578,9 @@ const FAREWELLS: Lexicon = &[
     ("vi", &[
         "tạm biệt", "tam biet", "hẹn gặp lại", "hen gap lai", "chào nhé", "chao nhe", "một ngày tốt lành",
         "ngày tốt lành",
+        // Hanging up out loud; not 「đừng cúp máy」 ("don't hang up").
+        "thôi mình cúp máy", "thôi em cúp máy", "thôi mình cúp máy nha", "thôi em cúp máy nha",
+        "em xin phép cúp máy", "mình xin phép cúp máy", "con xin phép cúp máy", "tôi xin phép cúp máy",
     ]),
     ("id", &["sampai jumpa", "sampai ketemu", "dadah"]),
     ("it", &[
@@ -575,26 +589,37 @@ const FAREWELLS: Lexicon = &[
         "ci vediamo", "ci sentiamo", "ciao ciao", "a dopo", "a più tardi", "a piu tardi", "buon proseguimento",
         "buon weekend", "buon fine settimana", "buona domenica", "ci risentiamo", "ci rivediamo", "a risentirci",
         "la saluto", "ti saluto", "vi saluto", "cordiali saluti",
+        // "Un saluto" only after thanks: "sì, un saluto" answers "any message for her?".
+        "grazie un saluto",
     ]),
     ("ru", &[
         "до свидания", "до свиданья", "всего доброго", "всего хорошего", "хорошего дня", "хорошего вечера",
         "до встречи", "до связи", "пока пока",
+        // "Пока" after a closing word; alone it is in GREETING_BYES ("я пока не знаю").
+        // Not "ну всё пока": "ну всё пока понятно" is "all clear so far".
+        "давай пока", "удачи пока", "ну всё счастливо", "ну все счастливо",
     ]),
     ("ar", &[
         "مع السلامة", "مع السلامه", "إلى اللقاء", "الى اللقاء", "في أمان الله", "في امان الله", "وداعاً",
         "وداعا", "باي باي",
+        // "Good night", said only on leaving; "come on, bye".
+        "تصبح على خير", "تصبحين على خير", "تصبحون على خير", "تصبحوا على خير", "يلا سلام", "يلا باي",
     ]),
     ("hi", &[
         "अलविदा", "फिर मिलेंगे", "फिर मिलते हैं", "फिर बात करते हैं", "बाद में बात करते हैं",
         "आपका दिन शुभ हो", "बाय बाय",
     ]),
-    ("nl", &["tot ziens", "tot spreeks", "doei", "dag hoor", "fijne dag nog", "fijne avond"]),
+    ("nl", &[
+        "tot ziens", "tot spreeks", "doei", "dag hoor", "fijne dag nog", "fijne avond",
+        "doeg", "tot snel", "tot binnenkort", "spreek je later",
+    ]),
     // "Na razie" is "bye" as the last words (or before pa / cześć / thanks): "Na razie nie wiem" is no goodbye.
     // With a name or another goodbye after it ("No to na razie, Ania") the older check decides.
     ("pl", &[
         "do widzenia", "na razie", "na razie pa", "na razie cześć", "na razie czesc", "na razie dzięki",
         "na razie dzieki", "na razie dziękuję", "na razie dziekuje", "do usłyszenia", "do uslyszenia",
         "dobrego dnia", "miłego dnia", "milego dnia",
+        "no to cześć", "no to czesc", "miłego wieczoru", "milego wieczoru",
     ]),
     ("ro", &["la revedere", "pa pa", "o zi bună", "o zi buna", "toate cele bune", "pe curând", "pe curand"]),
     ("uk", &["до побачення", "на все добре", "гарного дня", "бувайте", "до зустрічі", "до зв'язку"]),
@@ -622,7 +647,11 @@ const GREETING_BYES: Lexicon = &[
     ("ko", &["수고하십니다", "수고하셨습니다", "안녕"]),
     ("th", &["สวัสดีค่ะ", "สวัสดีครับ", "สวัสดี"]),
     ("vi", &["chào anh ạ", "chào chị ạ", "chào anh", "chào chị", "chào em", "chào bạn", "chao anh"]),
-    ("id", &["selamat siang", "selamat pagi", "selamat sore", "selamat malam"]),
+    ("id", &[
+        "selamat siang", "selamat pagi", "selamat sore", "selamat malam",
+        // Opens a call as often as it ends one.
+        "assalamualaikum", "assalamu'alaikum", "assalamu alaikum",
+    ]),
     // "Buon lavoro" and "alla prossima" are everyday words too ("cerco un buon lavoro").
     ("it", &["ciao", "buongiorno", "buonasera", "buon pomeriggio", "buon lavoro", "alla prossima"]),
     // Swiss "tschau" and "adieu" are said on meeting too; "Ade" is also a name.
@@ -633,16 +662,32 @@ const GREETING_BYES: Lexicon = &[
     // "¡Feliz día!" also opens a call on a birthday or a holiday.
     ("es", &["buenas noches", "buenas tardes", "buen día", "buen dia", "buenos días", "buenos dias", "feliz día", "feliz dia"]),
     ("pt", &["boa noite", "boa tarde", "cumprimentos"]),
-    ("ru", &["пока"]),
+    // "Бывай" is also "be (here more often)", "созвонимся" also "we'll talk
+    // (tomorrow)" in a plan.
+    ("ru", &["пока", "созвонимся", "бывай"]),
+    // Greetings at the start too (السلام عليكم, سلام, نهارك سعيد), or words of a
+    // sentence ("عملية سلام", "لا تخاف، الله معك", "الأولاد في رعاية الله", "تفاح باي").
+    ("ar", &[
+        "السلام عليكم", "سلام عليكم", "سلام", "باي", "بأمان الله", "بامان الله", "في رعاية الله", "الله معك",
+        "نهارك سعيد",
+    ]),
     ("hi", &["नमस्ते", "नमस्कार"]),
-    ("nl", &["goedendag", "dag"]),
-    ("pl", &["cześć", "czesc"]),
+    // "Het was een fijne dag", "ik ben bezig tot straks", "ik daag hem uit"; Flemish
+    // "salu" and "hoi hoi" also greet.
+    ("nl", &[
+        "fijne dag", "prettige dag", "prettige avond", "goed weekend", "fijn weekend", "werk ze", "tot straks",
+        "salukes", "salu", "hoi hoi", "daag", "goedendag", "dag",
+    ]),
+    // "Nic do zobaczenia" is "nothing to see", "trzymaj się poręczy" "hold the rail";
+    // "wszystkiego dobrego" also opens a birthday call.
+    ("pl", &["cześć", "czesc", "do zobaczenia", "trzymaj się", "trzymaj sie", "wszystkiego dobrego"]),
     ("ro", &["bună ziua", "buna ziua"]),
     ("uk", &["бувай", "па па"]),
     ("mr", &["नमस्कार"]),
     ("ta", &["வணக்கம்"]),
     ("te", &["నమస్కారం"]),
-    ("tr", &["iyi günler", "iyi akşamlar", "kolay gelsin"]),
+    // Not "eyvallah": "anladım, eyvallah" is "got it, thanks" in the middle of a call.
+    ("tr", &["iyi günler", "iyi akşamlar", "kolay gelsin", "hayırlı günler"]),
 ];
 
 /// How calls are answered and opened; never a goodbye by themselves.
@@ -708,6 +753,8 @@ const EXTRA_THANKS: &[&str] = &[
     "شكراً جزيلاً", "شكرا جزيلا", "شكراً لك", "شكرا لك", "شكراً", "شكرا", "يعطيك العافية",
     "बहुत बहुत धन्यवाद", "बहुत धन्यवाद", "बहुत शुक्रिया", "धन्यवाद", "शुक्रिया",
     "çok teşekkür ederim", "teşekkür ederim", "teşekkürler", "sağ olun", "sağ ol", "sağolun", "sağol",
+    "bardzo dziękuję", "dziękuję bardzo", "dziękuję", "dziekuje", "dzięki wielkie", "dzięki", "dzieki",
+    "hartelijk bedankt", "bedankt", "dank je wel", "dank u wel", "dank je", "dank u",
 ];
 
 /// Thanks for something, at the very end ("Thanks for your help", "thank you
@@ -3121,3 +3168,350 @@ mod review_probe_tests {
         assert!(bad.is_empty(), "end-position lookalikes treated as closing:\n{}", bad.join("\n"));
     }
 }
+
+/// Closing words from the regional research, second batch (Italian, Russian,
+/// Turkish, Vietnamese, Thai, Indonesian, Arabic, Hindi, Dutch, Polish): what
+/// callers there say to end a call ends it; ordinary sentences holding the same
+/// words, and greetings at the start of a call, do not.
+#[cfg(test)]
+mod regional_closing_words_2_tests {
+    use super::*;
+
+    fn after_talk(lang: &'static str) -> ClosingMachine {
+        let mut m = ClosingMachine::new(lang);
+        m.on_caller("Parcel delivery info", "Parcel delivery info", false, false);
+        m
+    }
+
+    /// The caller's turn as the live session feeds it: with the older check.
+    fn hears(m: &mut ClosingMachine, t: &str) -> ClosingStep {
+        m.on_caller(t, t, crate::locale::caller_wraps_up(t), false)
+    }
+
+    fn closes(s: &ClosingStep) -> bool {
+        s.ends_call || matches!(s.event, ClosingEvent::CallerFarewell | ClosingEvent::CallerPreClosing)
+    }
+
+    #[test]
+    fn goodbyes_end_the_call() {
+        let cases: &[(&'static str, &str)] = &[
+            ("ru", "Ну давай, пока!"), ("ru", "Давай, пока"), ("ru", "Удачи, пока!"),
+            ("ru", "Ну всё, счастливо!"),
+            ("vi", "Thôi mình cúp máy nhé"), ("vi", "Dạ, em xin phép cúp máy ạ"), ("vi", "Thôi em cúp máy nha"),
+            ("ar", "تصبح على خير"), ("ar", "شكراً، تصبحين على خير"), ("ar", "يلا سلام"), ("ar", "طيب، يلا باي"),
+            ("nl", "Doeg!"), ("nl", "Tot snel!"), ("nl", "Bedankt, tot binnenkort."), ("nl", "Oké, spreek je later."),
+            ("pl", "No to cześć!"), ("pl", "Miłego wieczoru!"), ("pl", "Dzięki, miłego wieczoru."),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let mut m = after_talk(lang);
+            let s = hears(&mut m, t);
+            if s.event != ClosingEvent::CallerFarewell || !s.ends_call {
+                bad.push(format!("[{lang}] {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        assert!(bad.is_empty(), "goodbyes missed:\n{}", bad.join("\n"));
+    }
+
+    #[test]
+    fn pre_closings_announce_the_end() {
+        let cases: &[(&'static str, &str)] = &[
+            ("vi", "Có gì liên lạc sau nhé"), ("vi", "Vậy có gì liên lạc sau nha"),
+            ("hi", "Okay rakhta hoon"), ("hi", "Chalo, rakhti hoon"), ("hi", "Theek hai, rakhta hoon"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let mut m = after_talk(lang);
+            let s = hears(&mut m, t);
+            if s.event != ClosingEvent::CallerPreClosing {
+                bad.push(format!("[{lang}] {t} -> {:?}", s.event));
+            }
+        }
+        assert!(bad.is_empty(), "pre-closings missed:\n{}", bad.join("\n"));
+    }
+
+    /// Greetings that also say goodbye close right after thanks or a short "ok".
+    #[test]
+    fn greeting_goodbyes_close_after_thanks_or_ok() {
+        let cases: &[(&'static str, &str)] = &[
+            ("it", "Grazie, un saluto."), ("it", "Va bene, grazie, un saluto"),
+            ("ru", "Ладно, созвонимся."), ("ru", "Спасибо, созвонимся"), ("ru", "Спасибо, бывай!"),
+            ("tr", "Teşekkürler, hayırlı günler."),
+            ("id", "Terima kasih, assalamualaikum."), ("id", "Oke, assalamu'alaikum"),
+            ("ar", "شكراً، السلام عليكم"), ("ar", "شكرا، سلام"), ("ar", "يعطيك العافية، باي"), ("ar", "شكراً، بأمان الله"),
+            ("ar", "شكراً، في رعاية الله"), ("ar", "شكراً، الله معك"), ("ar", "شكراً، نهارك سعيد"),
+            ("nl", "Bedankt, fijne dag!"), ("nl", "Dank je wel, prettige avond."), ("nl", "Bedankt, goed weekend!"),
+            ("nl", "Bedankt, werk ze."), ("nl", "Dank u, tot straks."), ("nl", "Merci, salukes!"), ("nl", "Bedankt, daag!"),
+            ("nl", "Bedankt, hoi hoi"),
+            ("pl", "Dzięki, cześć!"), ("pl", "Dziękuję, wszystkiego dobrego."), ("pl", "Dzięki, trzymaj się!"),
+            ("pl", "Dziękuję bardzo, do zobaczenia."),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let mut m = after_talk(lang);
+            let s = hears(&mut m, t);
+            if s.event != ClosingEvent::CallerFarewell || !s.ends_call {
+                bad.push(format!("[{lang}] {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        assert!(bad.is_empty(), "greeting goodbyes after thanks missed:\n{}", bad.join("\n"));
+    }
+
+    /// Ordinary sentences holding a newly added closing word: no goodbye.
+    #[test]
+    fn lookalikes_do_not_close() {
+        let cases: &[(&'static str, &str)] = &[
+            ("it", "Volevo solo fare un saluto"), ("it", "Passo in negozio solo per un saluto"),
+            ("it", "Mia madre le manda un saluto"),
+            ("ru", "Давай пока подождём с оплатой"), ("ru", "Давай пока оставим как есть"),
+            ("ru", "Давай пока я уточню адрес доставки"),
+            ("ru", "Ну всё пока идёт по плану"), ("ru", "Ну всё пока нормально с заказом"), ("ru", "Ну все пока понятно"),
+            ("ru", "Удачи пока не было, но мы стараемся"), ("ru", "Удачи пока никакой с этим заказом"),
+            ("ru", "Пожелайте нам удачи пока мы едем"),
+            ("ru", "Ну всё счастливо закончилось"), ("ru", "Они живут очень счастливо"), ("ru", "Спасибо, всё прошло счастливо"),
+            ("ru", "Я думал, мы завтра созвонимся"), ("ru", "Он сказал, что вечером созвонимся"),
+            ("ru", "Мы с курьером обычно утром созвонимся"),
+            ("ru", "Ты к нам почаще бывай"), ("ru", "Бывай у нас почаще"), ("ru", "Не бывай таким грустным"),
+            ("tr", "Bu işe eyvallah"), ("tr", "Eyvallah abi, şimdi adrese gelelim"), ("tr", "Ona hiç eyvallah etmem"),
+            ("tr", "Hayırlı günler dileriz, kargonuz yolda"), ("tr", "Bayramınız hayırlı günler getirsin"),
+            ("tr", "Size de hayırlı günler"),
+            ("tr", "Tamamdır eyvallah dedi ama gelmedi"), ("tr", "Usta tamamdır eyvallah deyip gitti"),
+            ("tr", "Tamamdır eyvallah demeden kapattı"),
+            ("tr", "Anladım, eyvallah"), ("tr", "Tamamdır, eyvallah"), ("tr", "Sağ olun, eyvallah"),
+            ("it", "Sì, un saluto"), ("it", "Va bene, un saluto"),
+            ("ru", "Да, счастливо"), ("ru", "Спасибо, всё счастливо"),
+            ("th", "โอเคค่ะ ไม่รบกวนแล้ว"), ("vi", "Dạ, có gì liên lạc sau"),
+            ("vi", "Anh đừng cúp máy nhé"), ("vi", "Nếu mạng yếu thì mình cúp máy rồi gọi lại"),
+            ("vi", "Hôm qua em xin phép cúp máy giữa chừng"),
+            ("vi", "Lần trước anh nói có gì liên lạc sau mà không thấy"), ("vi", "Có gì liên lạc sau thì gọi số này"),
+            ("vi", "Chị bảo có gì liên lạc sau cũng được"),
+            ("th", "ขอโทษที่รบกวนนะครับ"), ("th", "ไม่รบกวนเวลานานครับ ขอสองนาที"), ("th", "เสียงดังไม่รบกวนแล้วใช่ไหมคะ"),
+            ("th", "ยาตัวนี้แก้หวัดดี"), ("th", "ลูกเป็นไข้หวัดดีขึ้นแล้วค่ะ"), ("th", "ขอบคุณค่ะ ยาตัวนี้แก้หวัดดี"),
+            ("id", "Assalamualaikum, pak, saya dari kurir"), ("id", "Tadi dia bilang assalamualaikum lalu pergi"),
+            ("id", "Dia cuma bilang assalamualaikum"),
+            ("ar", "إن شاء الله الأمور تصبح على خير ما يرام"), ("ar", "الحالة تصبح على خير حال بعد العلاج"),
+            ("ar", "قال لي يلا سلام وراح"),
+            ("ar", "يلا سلام عليكم يا جماعة، أنا من شركة التوصيل"), ("ar", "قال يلا باي وسكر الخط"),
+            ("ar", "الحمد لله البلد في سلام"), ("ar", "وقعوا اتفاقية سلام"), ("ar", "أبغى أطلب تفاح باي"),
+            ("ar", "الحمد لله، الأولاد بأمان الله"), ("ar", "وصلنا البيت بأمان الله"), ("ar", "الأطفال في رعاية الله"),
+            ("ar", "المريض الآن في رعاية الله"), ("ar", "لا تخاف، الله معك"), ("ar", "ربنا يسهل والله معك"),
+            ("ar", "نهارك سعيد يا أستاذ، معك البنك"),
+            ("hi", "Okay, main paise locker mein rakhta hoon"), ("hi", "Main hamesha ek copy rakhta hoon"),
+            ("hi", "Main roz phone charging pe rakhta hoon"),
+            ("nl", "Wat betekent doeg eigenlijk"), ("nl", "Hij zei doeg tegen de buren"), ("nl", "Het woord doeg schrijf je met een g"),
+            ("nl", "Tot snel in de winkel, maar eerst nog een vraag over de levering"), ("nl", "Ik zei tot snel tegen de monteur"),
+            ("nl", "Tot snel is niet hetzelfde als vandaag"),
+            ("nl", "Tot binnenkort hadden we geen problemen met de verwarming"), ("nl", "Ik zei tot binnenkort tegen de buurvrouw"),
+            ("nl", "Tot binnenkort is te vaag voor de planning"),
+            ("nl", "Spreek je later nog met de huisarts"), ("nl", "Of spreek je later liever Engels"),
+            ("nl", "Wanneer spreek je later met de manager"),
+            ("nl", "Het was een fijne dag"), ("nl", "We hadden een fijne dag aan zee"), ("nl", "Fijne dag gehad, maar ik bel over de factuur"),
+            ("nl", "Gisteren was een prettige avond"), ("nl", "Het werd toch een prettige dag"), ("nl", "We hadden een prettige avond bij de buren"),
+            ("nl", "We hadden een goed weekend"), ("nl", "Het was een fijn weekend"), ("nl", "Goed weekend gehad, maar de verwarming doet het niet"),
+            ("nl", "Ik werk ze vandaag nog af"), ("nl", "Die formulieren, ik werk ze"), ("nl", "Werk ze maar bij in het systeem"),
+            ("nl", "Ik ben bezig tot straks"), ("nl", "De winkel is dicht tot straks"), ("nl", "Wacht maar tot straks"),
+            ("nl", "Ik daag hem uit"), ("nl", "Waarom daag je ons voor de rechter"), ("nl", "Ik daag"),
+            ("nl", "Salu, met Jan van de bakker"), ("nl", "Ik zei salu tegen de buurman"), ("nl", "Salukes, ik bel voor de afspraak"),
+            ("nl", "Hoi hoi, met Lisa van de tandarts"), ("nl", "Ze riep hoi hoi en ging weg"), ("nl", "De kinderen zeggen altijd hoi hoi"),
+            ("nl", "Bedankt voor het wachten, ik heb nog een vraag"), ("nl", "Dank je wel voor de moeite maar het pakket is er nog niet"),
+            ("pl", "No to cześć, tu kurier, mam paczkę"), ("pl", "Powiedział no to cześć i poszedł"), ("pl", "No to cześć pracy"),
+            ("pl", "Miłego wieczoru życzę, ale mam jeszcze pytanie"), ("pl", "Nie mieliśmy miłego wieczoru przez awarię"),
+            ("pl", "Życzyła mi miłego wieczoru wczoraj"),
+            ("pl", "Wiem, że ciężko, ale trzymaj się"), ("pl", "Trzymaj się poręczy na schodach"), ("pl", "Trzymaj się instrukcji"),
+            ("pl", "Wszystkiego dobrego z okazji urodzin"), ("pl", "Życzymy wszystkiego dobrego"),
+            ("pl", "Wszystkiego dobrego nie da się kupić"),
+            ("pl", "Tu nie ma już nic do zobaczenia"), ("pl", "Mam coś do zobaczenia w aplikacji"), ("pl", "Do zobaczenia jest tylko faktura"),
+            ("pl", "Dzięki temu paczka dotarła szybciej"), ("pl", "Dziękuję za informację, ale mam jeszcze jedno pytanie"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            for l in [*lang, "en"] {
+                let mut m = after_talk(l);
+                let s = hears(&mut m, t);
+                if closes(&s) {
+                    bad.push(format!("[{l}] {t} -> {:?} ends={}", s.event, s.ends_call));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "lookalikes treated as closing:\n{}", bad.join("\n"));
+    }
+
+    /// Greetings that also say goodbye open a call without ending it.
+    #[test]
+    fn openers_do_not_close() {
+        let cases: &[(&'static str, &str)] = &[
+            ("ar", "السلام عليكم"), ("ar", "السلام عليكم، معك البنك"), ("ar", "سلام"), ("ar", "نهارك سعيد"),
+            ("ar", "مرحبا، نهارك سعيد"),
+            ("id", "Assalamualaikum"), ("id", "Halo, assalamualaikum"),
+            ("th", "หวัดดีค่ะ"), ("tr", "Hayırlı günler"), ("tr", "Merhaba, hayırlı günler"), ("tr", "Eyvallah"),
+            ("it", "Pronto, un saluto!"),
+            ("nl", "Hoi hoi"), ("nl", "Salu"), ("nl", "Daag"), ("nl", "Hallo, fijne dag!"), ("nl", "Goedemiddag, goed weekend gehad?"),
+            ("pl", "Cześć mamo, wszystkiego dobrego!"), ("pl", "Wszystkiego dobrego!"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let mut m = ClosingMachine::new(lang);
+            let s = hears(&mut m, t);
+            if closes(&s) {
+                bad.push(format!("[{lang}] {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        assert!(bad.is_empty(), "openers treated as closing:\n{}", bad.join("\n"));
+    }
+}
+
+/// Reviewer probe (second batch of closing words): replies that carry a newly
+/// added word without ending the call.
+#[cfg(test)]
+mod review_probe2_tests {
+    use super::*;
+
+    fn hears(m: &mut ClosingMachine, t: &str) -> ClosingStep {
+        m.on_caller(t, t, crate::locale::caller_wraps_up(t), false)
+    }
+    fn closes(s: &ClosingStep) -> bool {
+        s.ends_call || matches!(s.event, ClosingEvent::CallerFarewell | ClosingEvent::CallerPreClosing)
+    }
+    fn talked(lang: &'static str, ai: &str) -> ClosingMachine {
+        let mut m = ClosingMachine::new(lang);
+        m.on_caller("Parcel delivery info", "Parcel delivery info", false, false);
+        m.on_ai_turn(ai, false, false);
+        m
+    }
+
+    /// The AI's own greeting, as a call's first words, reads as a closing
+    /// announced. Existing behavior, not from this batch: "Pronto, buongiorno" and
+    /// "Hallo, servus" do the same. Nothing ends: the caller's first words with
+    /// content take it back.
+    #[test]
+    fn ai_own_greeting_never_ends_the_call() {
+        let cases: &[(&'static str, &str)] = &[
+            ("ar", "ألو، السلام عليكم"), ("ar", "السلام عليكم"), ("id", "Halo, assalamualaikum"),
+            ("tr", "Alo, hayırlı günler"), ("nl", "Hoi hoi"), ("nl", "Hallo, fijne dag"), ("pl", "Dzień dobry, wszystkiego dobrego"),
+            ("it", "Pronto, un saluto"), ("ru", "Алло, счастливо"),
+            // baselines already in the code before this batch
+            ("it", "Pronto, buongiorno"), ("de", "Hallo, servus"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let mut m = ClosingMachine::new(lang);
+            m.on_ai_turn(t, false, false);
+            let s = hears(&mut m, "I am calling about the parcel for tomorrow");
+            if closes(&s) || m.state() != ClosingState::Talking {
+                bad.push(format!("[{lang}] AI says {t} -> {:?} ends={} state {:?}", s.event, s.ends_call, m.state()));
+            }
+        }
+        assert!(bad.is_empty(), "AI greeting ended the call:\n{}", bad.join("\n"));
+    }
+
+    /// AI greeted, the caller greets back or answers: no hang-up.
+    #[test]
+    fn greeting_exchange_does_not_hang_up() {
+        let cases: &[(&'static str, &str, &str)] = &[
+            ("ar", "ألو، السلام عليكم", "السلام عليكم"), ("ar", "السلام عليكم", "سلام"), ("ar", "ألو؟", "أيوه، السلام عليكم"),
+            ("ar", "ألو؟", "نعم، السلام عليكم"), ("ar", "ألو؟", "تمام، السلام عليكم"), ("ar", "ألو؟", "شكراً، السلام عليكم"),
+            ("id", "Halo, assalamualaikum", "Assalamualaikum"), ("id", "Halo?", "Iya, assalamualaikum"),
+            ("id", "Halo?", "Oke, assalamualaikum"),
+            ("tr", "Efendim?", "Evet, hayırlı günler"), ("tr", "Efendim?", "Tamam, hayırlı günler"),
+            ("tr", "Alo, hayırlı günler", "Hayırlı günler"), ("tr", "Efendim?", "Evet, eyvallah"),
+            ("nl", "Hallo?", "Ja, hoi hoi"), ("nl", "Hoi hoi", "Hoi hoi"), ("nl", "Hallo?", "Ja, salu"),
+            ("nl", "Hallo?", "Dank u, goedendag"),
+            ("it", "Pronto?", "Sì, un saluto"), ("it", "Pronto?", "Va bene, un saluto"),
+            ("pl", "Halo?", "Tak, cześć"), ("pl", "Halo?", "Dziękuję, wszystkiego dobrego"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, ai, caller) in cases {
+            let mut m = ClosingMachine::new(lang);
+            m.on_ai_turn(ai, false, false);
+            let s = hears(&mut m, caller);
+            if closes(&s) {
+                bad.push(format!("[{lang}] AI: {ai} / caller: {caller} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        assert!(bad.is_empty(), "greeting exchange closes:\n{}", bad.join("\n"));
+    }
+
+    /// Mid-call, a cue word right before a newly added word that is not a goodbye.
+    #[test]
+    fn midcall_cue_then_added_word_is_not_a_goodbye() {
+        let cases: &[(&'static str, &str)] = &[
+            ("ar", "شكراً، الأولاد في رعاية الله"), ("ar", "تمام، هو الآن في رعاية الله"), ("ar", "أيوه، وصلنا بأمان الله"),
+            ("ar", "نعم، لا تخف الله معك"), ("ar", "شكراً، عملية سلام"),
+            ("tr", "Tamam, bu işe eyvallah"), ("tr", "Peki, ona eyvallah"), ("tr", "Evet, hayırlı günler getirsin"),
+            ("tr", "Anladım, eyvallah"),
+            ("nl", "Ja, ik bel u tot straks"), ("nl", "Oké, ik ben bezig tot straks"), ("nl", "Ja, ik daag"),
+            ("nl", "Oké, ik werk ze"), ("nl", "Ja, we hadden een fijne dag"),
+            ("pl", "Tak, trzymaj się"), ("pl", "Dobrze, dziękuję"), ("pl", "Nie, dziękuję"), ("nl", "Nee, bedankt"),
+            ("pl", "Dobrze, do zobaczenia"),
+            ("ru", "Да, счастливо"),
+            ("it", "Sì, un saluto"), ("it", "Va bene, un saluto"), ("it", "Sì, mi manda un saluto"),
+            ("hi", "Okay, main ek copy rakhta hoon"), ("hi", "Theek hai, main yahin rakhta hoon"),
+            ("hi", "Chalo, main photo rakhta hoon"), ("hi", "Okay, yeh bhi rakhta hoon"),
+            ("th", "โอเคค่ะ ไม่รบกวนแล้ว"),
+            ("vi", "Dạ, có gì liên lạc sau"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            for ai in ["Understood, go ahead", "تمام، تفضل", "Tamam, buyurun"] {
+                let mut m = talked(lang, ai);
+                let s = hears(&mut m, t);
+                if closes(&s) {
+                    bad.push(format!("[{lang}] (AI: {ai}) {t} -> {:?} ends={}", s.event, s.ends_call));
+                    break;
+                }
+            }
+        }
+        assert!(bad.is_empty(), "mid-call words treated as goodbye:\n{}", bad.join("\n"));
+    }
+
+    /// Mid-call, a short "ok" and then a goodbye: the caller is leaving.
+    #[test]
+    fn midcall_ok_then_goodbye_closes() {
+        let cases: &[(&'static str, &str)] = &[
+            ("ar", "طيب، الله معك"), ("ar", "تمام، باي"),
+            ("ru", "Хорошо, созвонимся"), ("ru", "Ладно, бывай"),
+            ("id", "Oke, assalamualaikum"), ("id", "Iya, assalamualaikum"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let mut m = talked(lang, "Understood, go ahead");
+            let s = hears(&mut m, t);
+            if s.event != ClosingEvent::CallerFarewell || !s.ends_call {
+                bad.push(format!("[{lang}] {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        assert!(bad.is_empty(), "goodbyes missed:\n{}", bad.join("\n"));
+    }
+
+    /// The live call feeds the transcript piece by piece. A piece that ends on thanks
+    /// and a greeting-goodbye reads as a goodbye until more comes in. Existing
+    /// behavior of every greeting-goodbye ("Danke, servus" does the same): the rest
+    /// of the sentence takes the closing back and the call goes on.
+    #[test]
+    fn the_rest_of_the_sentence_takes_a_partial_goodbye_back() {
+        let cases: &[(&'static str, &[&str])] = &[
+            ("ar", &["شكراً، السلام عليكم", "شكراً، السلام عليكم ورحمة الله، عندي سؤال ثاني"]),
+            ("ar", &["شكراً", "شكراً، السلام عليكم", "شكراً، السلام عليكم، معك فلان من البنك"]),
+            ("id", &["Terima kasih, assalamualaikum", "Terima kasih, assalamualaikum, saya mau tanya lagi"]),
+            ("tr", &["Teşekkürler, hayırlı günler", "Teşekkürler, hayırlı günler, kargo için arıyorum"]),
+            ("nl", &["Bedankt, fijne dag", "Bedankt, fijne dag, maar ik heb nog een vraag"]),
+            ("nl", &["Bedankt, tot straks", "Bedankt, tot straks, maar eerst nog een vraag"]),
+            ("pl", &["Dziękuję, trzymaj się", "Dziękuję, trzymaj się tego planu"]),
+            ("de", &["Danke, servus", "Danke, servus, ich habe noch eine Frage zur Lieferung"]),
+        ];
+        let mut bad = Vec::new();
+        for (lang, pieces) in cases {
+            let mut m = talked(lang, "Understood, go ahead");
+            let mut last = ClosingStep { event: ClosingEvent::None, ends_call: false };
+            for p in *pieces {
+                last = hears(&mut m, p);
+            }
+            if closes(&last) || m.state() != ClosingState::Talking {
+                bad.push(format!("[{lang}] {} -> {:?} ends={} state {:?}", pieces.last().unwrap(), last.event, last.ends_call, m.state()));
+            }
+        }
+        assert!(bad.is_empty(), "the rest did not take the closing back:\n{}", bad.join("\n"));
+    }
+}
+
+
