@@ -623,7 +623,7 @@ dialog .terms li+li{margin-top:8px}
   .call .call-acts{margin-top:0;margin-left:auto}
   .snav{margin:-4px -12px 0;padding:8px 12px}
   .brow{grid-template-columns:minmax(0,1fr) auto}
-  .brow .sl-lang{grid-column:1;grid-row:2}
+  .brow .sl-lang,.brow .cb-sl{grid-column:1;grid-row:2}
   .brow .btn{grid-row:1/3;align-self:center}
   .savebar{width:calc(100vw - 24px);padding-left:14px}
   .savebar .grow{font-size:.9rem}
@@ -739,7 +739,12 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
 }
 /* ---------- searchable menu ---------- */
 .cb{position:relative;max-width:28rem}
-.cb-input{width:100%}
+.cb::after{content:"";position:absolute;right:14px;top:50%;width:6px;height:6px;border-right:1.75px solid var(--muted);border-bottom:1.75px solid var(--muted);transform:translateY(-70%) rotate(45deg);pointer-events:none}
+.cb-input{width:100%;padding-right:32px;text-overflow:ellipsis}
+.cb-short{width:9.5rem;flex:0 0 auto}
+.cb-short .cb-input{min-height:33px;padding:4px 28px 4px 10px;font-size:.85rem}
+.cb-short::after{right:11px}
+.cb-short .cb-list{left:auto;right:0;width:17rem;max-width:calc(100vw - 24px)}
 .cb-list{position:absolute;z-index:30;left:0;right:0;top:calc(100% + 4px);max-height:280px;overflow:auto;margin:0;padding:4px;list-style:none;background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius-sm);box-shadow:0 10px 30px rgba(0,0,0,.16)}
 .cb-list li{display:flex;align-items:center;min-height:40px;padding:8px 10px;border-radius:6px;cursor:pointer}
 .cb-list li[aria-selected=true]{font-weight:600}
@@ -2504,7 +2509,7 @@ I18N["en"] = {
   g_prompt_d: "A few short answers help the AI sound like you. All optional.",
   f_prompt: "Your own prompt",
   f_prompt_ph: "Empty: the built-in prompt is used",
-  f_prompt_h: "Filled in, it replaces the talk style and local habits. “AI assistant” and “As me” each keep their own; write {owner} where your name goes.",
+  f_prompt_h: "Filled in, it replaces the talk style and local habits. Each answer style keeps its own; write {owner} for your name.",
   p_builtin: "Show the built-in prompt",
   p_builtin_h: "For the saved language, answer style and name. Save first if you just changed them.",
   p_copy_in: "Copy into editor",
@@ -3788,7 +3793,7 @@ I18N["zh-TW"] = {
   g_prompt_d: "回答幾個小問題，AI 接電話會更像你。都可以不填。",
   f_prompt: "自訂提示詞",
   f_prompt_ph: "留空：使用內建提示詞",
-  f_prompt_h: "有填就會取代講話風格和當地習慣。「AI 助理」和「本人」各存一份，名字的地方寫 {owner}。",
+  f_prompt_h: "有填就會取代講話風格和當地習慣。兩種接聽身分各存一份，名字寫 {owner}。",
   p_builtin: "查看內建提示詞",
   p_builtin_h: "依照已儲存的語言、接聽方式和名字產生。剛改過的話請先儲存。",
   p_copy_in: "複製到編輯區",
@@ -5010,7 +5015,7 @@ I18N["zh-CN"] = {
   g_prompt_d: "回答几个小问题，AI 接电话会更像你。都可以不填。",
   f_prompt: "自定义提示词",
   f_prompt_ph: "留空：使用内置提示词",
-  f_prompt_h: "填了就会取代说话风格和当地习惯。“AI 助理”和“本人”各存一份，名字的地方写 {owner}。",
+  f_prompt_h: "填了就会取代说话风格和当地习惯。两种接听身份各存一份，名字写 {owner}。",
   p_builtin: "查看内置提示词",
   p_builtin_h: "根据已保存的语言、接听方式和名字生成。刚改过的话请先保存。",
   p_copy_in: "复制到编辑框",
@@ -6263,7 +6268,7 @@ I18N["ja"] = {
   g_prompt_d: "いくつか答えると、AI の応対があなたらしくなります。どれも空欄でかまいません。",
   f_prompt: "独自のプロンプト",
   f_prompt_ph: "空欄：内蔵のプロンプトを使います",
-  f_prompt_h: "入力すると、話し方と地域の習慣の代わりにこれが使われます。「AI アシスタント」と「本人」は別々に保存。名前の所には {owner} と書きます。",
+  f_prompt_h: "入力すると、話し方と地域の習慣の代わりに使われます。応答方法ごとに保存され、名前は {owner} と書きます。",
   p_builtin: "内蔵のプロンプトを見る",
   p_builtin_h: "保存済みの言語・応答スタイル・名前に合わせた内容です。変更した直後は、先に保存してください。",
   p_copy_in: "編集欄にコピー",
@@ -7516,7 +7521,7 @@ I18N["ko"] = {
   g_prompt_d: "몇 가지만 답하면 AI가 더 나답게 전화를 받아요. 모두 비워 둬도 돼요.",
   f_prompt: "직접 쓴 프롬프트",
   f_prompt_ph: "비워 두면 기본 프롬프트를 사용합니다",
-  f_prompt_h: "입력하면 말투와 현지 습관 대신 이 내용을 써요. “AI 비서”와 “본인”은 따로 저장되고, 이름 자리에 {owner}라고 씁니다.",
+  f_prompt_h: "입력하면 말투와 현지 습관 대신 사용됩니다. 응답 방식마다 따로 저장되며, 이름은 {owner}로 씁니다.",
   p_builtin: "기본 프롬프트 보기",
   p_builtin_h: "저장된 언어, 응답 방식, 이름에 맞춘 내용입니다. 방금 바꿨다면 먼저 저장해 주세요.",
   p_copy_in: "편집 칸에 복사",
@@ -8769,7 +8774,7 @@ I18N["es"] = {
   g_prompt_d: "Unas respuestas cortas ayudan a que la IA suene como tú. Todo es opcional.",
   f_prompt: "Tu propio prompt",
   f_prompt_ph: "Vacío: se usa el prompt integrado",
-  f_prompt_h: "Si lo rellenas, reemplaza la forma de hablar y las costumbres locales. «Asistente de IA» y «Como yo» guardan cada uno el suyo; escribe {owner} donde va tu nombre.",
+  f_prompt_h: "Si lo rellenas, reemplaza la forma de hablar y las costumbres locales. Cada modo guarda el suyo; escribe {owner} para tu nombre.",
   p_builtin: "Ver el prompt integrado",
   p_builtin_h: "Según el idioma, el estilo de respuesta y el nombre guardados. Si acabas de cambiarlos, guarda primero.",
   p_copy_in: "Copiar al editor",
@@ -10022,7 +10027,7 @@ I18N["fr"] = {
   g_prompt_d: "Quelques réponses courtes aident l'IA à parler comme vous. Tout est facultatif.",
   f_prompt: "Votre propre prompt",
   f_prompt_ph: "Vide : le prompt intégré est utilisé",
-  f_prompt_h: "S'il est rempli, il remplace la façon de parler et les habitudes locales. « Assistant IA » et « À ma place » ont chacun le leur ; écrivez {owner} là où va votre nom.",
+  f_prompt_h: "S'il est rempli, il remplace la façon de parler et les habitudes locales. Chaque mode a le sien ; écrivez {owner} pour votre nom.",
   p_builtin: "Afficher le prompt intégré",
   p_builtin_h: "Pour la langue, le style de réponse et le nom enregistrés. Si vous venez de les modifier, enregistrez d'abord.",
   p_copy_in: "Copier dans l'éditeur",
@@ -11275,7 +11280,7 @@ I18N["de"] = {
   g_prompt_d: "Ein paar kurze Antworten, und die KI klingt mehr wie du. Alles ist freiwillig.",
   f_prompt: "Eigener Prompt",
   f_prompt_ph: "Leer: Der eingebaute Prompt wird verwendet",
-  f_prompt_h: "Ausgefüllt ersetzt er die Sprechweise und die örtlichen Gewohnheiten. „KI-Assistent“ und „Als ich selbst“ haben je einen eigenen; schreib {owner} an die Stelle deines Namens.",
+  f_prompt_h: "Ausgefüllt ersetzt er Sprechweise und örtliche Gewohnheiten. Jeder Modus hat seinen eigenen; schreib {owner} für deinen Namen.",
   p_builtin: "Eingebauten Prompt anzeigen",
   p_builtin_h: "Für die gespeicherte Sprache, die gespeicherte Art der Annahme und den gespeicherten Namen. Speichere zuerst, wenn du sie gerade geändert hast.",
   p_copy_in: "In den Editor kopieren",
@@ -12528,7 +12533,7 @@ I18N["pt"] = {
   g_prompt_d: "Algumas respostas curtas deixam a IA com o seu jeito. Tudo é opcional.",
   f_prompt: "Seu próprio prompt",
   f_prompt_ph: "Em branco: o prompt padrão é usado",
-  f_prompt_h: "Preenchido, ele substitui o jeito de falar e os costumes locais. “Assistente de IA” e “Como se fosse eu” têm cada um o seu; escreva {owner} onde vai o seu nome.",
+  f_prompt_h: "Preenchido, ele substitui o jeito de falar e os costumes locais. Cada modo tem o seu; escreva {owner} no lugar do seu nome.",
   p_builtin: "Ver o prompt padrão",
   p_builtin_h: "Para o idioma, o estilo de atendimento e o nome que estão salvos. Se acabou de alterá-los, salve primeiro.",
   p_copy_in: "Copiar para o editor",
@@ -13677,6 +13682,7 @@ function setLang(l) {
   document.documentElement.lang = HTML_LANG[lang] || lang;
   $("langSel").value = lang;
   applyI18n();
+  refreshLangCombos();
   renderThemeBtn();
   setTitle();
   renderPill();
@@ -15664,8 +15670,10 @@ function simLangRow(e) {
   lg.append(h("option", { value: "", text: t("nl_same") }));
   for (const code of (S && S.languages) || LANGS) lg.append(h("option", { value: code, text: LANG_NAMES[code] || code }));
   lg.value = e.lang || "";
-  return h("div", { class: "brow slrow" }, cc, lg,
+  const row = h("div", { class: "brow slrow" }, cc, lg,
     h("button", { type: "button", class: "btn sm ghost sl-del", title: t("sl_remove"), "aria-label": t("sl_remove"), text: t("ct_delete") }));
+  langCombo(lg, false, "cb-sl");
+  return row;
 }
 function renderSimLangRows(list) {
   const box = clear($("simLangRows"));
@@ -15901,6 +15909,7 @@ function updateDirty() {
   $("navDirty").hidden = n === 0;
   $("statusCount").textContent = String($("f-owner_status_text").value.length);
   tsSync();
+  refreshLangCombos();
   const cur = $("f-public_url").value.trim();
   const host = location.hostname;
   const local = host === "localhost" || host === "[::1]" || /^127\./.test(host);
@@ -16524,8 +16533,18 @@ function makeCombo(box, opts) {
   const list = h("ul", { id: listId, class: "cb-list", hidden: true, attr: { role: "listbox" } });
   box.append(input, list);
   let all = [], shown = [], active = -1, value = "";
-  const labelOf = (v) => { const o = all.find((x) => x.value === v); return o ? o.label : v; };
+  const labelOf = (v) => { const o = all.find((x) => x.value === v); return o ? ((opts && opts.short && o.short) || o.label) : v; };
   const keysOf = (o) => o.keys || (o.keys = [o.label, ...(o.search || [])].filter(Boolean).map(foldText));
+  // 0 = the whole of a name or code, 1 = the start of one, 2 = inside one, 3 = not found.
+  const rankOf = (o, q) => {
+    let best = 3;
+    for (const k of keysOf(o)) {
+      if (k === q) return 0;
+      if (k.startsWith(q)) best = 1;
+      else if (best > 2 && k.includes(q)) best = 2;
+    }
+    return best;
+  };
   function paint() {
     clear(list);
     if (!shown.length) list.append(h("li", { class: "cb-none", text: t("cb_none"), attr: { role: "option", "aria-disabled": "true" } }));
@@ -16543,7 +16562,8 @@ function makeCombo(box, opts) {
   function open(typed) {
     if (typed) {
       const q = foldText(input.value);
-      shown = q ? all.filter((o) => keysOf(o).some((k) => k.includes(q))) : all.slice();
+      shown = !q ? all.slice() : all.map((o, i) => ({ o, i, r: rankOf(o, q) })).filter((x) => x.r < 3)
+        .sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.o);
       active = shown.length ? 0 : -1;
     } else {
       shown = all.slice();
@@ -16584,10 +16604,64 @@ function makeCombo(box, opts) {
     }
   });
   return {
+    input,
     setOptions(o) { all = o; if (list.hidden) input.value = labelOf(value); else open(true); },
     setValue(v) { value = v; if (list.hidden) input.value = labelOf(value); },
   };
 }
+
+// ----- language menus: the searchable menu over the <select> that holds the value
+// (the <select> stays, hidden: its id, data-k, value and change event are as before).
+const LANG_EN = { en: "English", "zh-TW": "Traditional Chinese", "zh-CN": "Simplified Chinese", ja: "Japanese", ko: "Korean", es: "Spanish", fr: "French", de: "German", pt: "Portuguese" };
+const LANG_INTL = { "zh-TW": "zh-Hant", "zh-CN": "zh-Hans" };
+const langNamers = {};
+// A language's name in the language of this page ("西班牙文").
+function langNameHere(code) {
+  try {
+    if (!langNamers[lang]) langNamers[lang] = new Intl.DisplayNames([loc()], { type: "language" });
+    return langNamers[lang].of(LANG_INTL[code] || code) || "";
+  } catch (_) { return ""; }
+}
+function langOption(o) {
+  const code = o.value, own = LANG_NAMES[code];
+  if (!own) return { value: code, label: o.textContent, search: [] };
+  const en = LANG_EN[code] || code;
+  return { value: code, label: own === en ? en : own + " · " + en, short: own, search: [own, en, langNameHere(code), code] };
+}
+const langCombos = [];
+let cbSeq = 0;
+function langComboSync(c) {
+  const list = Array.from(c.sel.options).filter((o) => !o.hidden).map(langOption);
+  const sig = lang + "|" + list.map((o) => o.value + "=" + o.label).join("|");
+  if (sig !== c.sig) { c.sig = sig; c.combo.setOptions(list); }
+  c.combo.setValue(c.sel.value);
+  const al = c.sel.getAttribute("aria-label");
+  if (al) c.combo.input.setAttribute("aria-label", al);
+}
+function langCombo(sel, short, cls) {
+  const box = h("div", { class: "cb" + (short ? " cb-short" : "") + (cls ? " " + cls : ""), id: sel.id ? sel.id + "Cb" : "cb" + (++cbSeq) });
+  sel.style.display = "none";
+  sel.after(box);
+  const combo = makeCombo(box, { short, onPick: (v) => {
+    sel.value = v;
+    sel.dispatchEvent(new Event("input", { bubbles: true }));
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  } });
+  const lbl = sel.id && document.querySelector('label[for="' + sel.id + '"]');
+  if (lbl) lbl.htmlFor = box.id + "In";
+  const c = { sel, combo, sig: "" };
+  langCombos.push(c);
+  langComboSync(c);
+}
+// After the menus were rebuilt or a value was set in code.
+function refreshLangCombos() {
+  for (let i = langCombos.length - 1; i >= 0; i--) {
+    if (langCombos[i].sel.isConnected) langComboSync(langCombos[i]); else langCombos.splice(i, 1);
+  }
+}
+langCombo($("f-language"));
+langCombo($("f-notify_language"));
+langCombo($("langSel"), true);
 
 // ----- the built-in regions (GET packs/regions): names, countries, where parcels go
 // Calling codes, the same table as Bageo's phone_region.rs (to find a country by +66).
@@ -16607,6 +16681,11 @@ const DIAL = Object.fromEntries((
   "qa974 bt975 mn976 np977 ir98 tj992 tm993 az994 ge995 kg996 uz998"
 ).split(" ").map((s) => [s.slice(0, 2), s.slice(2)]));
 let packRegions = null; // [] when the agent has none or could not be asked
+// Names people still type for a country (the browser may only know the newer one).
+const COUNTRY_ALIASES = {
+  tr: "Turkey", cz: "Czech Republic|Czechia", mk: "Macedonia", mm: "Burma", sz: "Swaziland", ci: "Ivory Coast",
+  gb: "UK|Britain|Great Britain|England", us: "USA|America", ae: "UAE|Emirates", kr: "South Korea", nl: "Holland",
+};
 let packAsked = false;
 async function loadPackRegions() {
   if (packAsked) return;
@@ -16678,11 +16757,14 @@ function renderHomeCountry() {
   if (cur && !seen.has(cur)) seen.set(cur, null);
   const first = [...connectedCountries(), ...browserCountries()];
   const rows = [...seen].map(([cc, r]) => {
-    const en = countryNameIn("en", cc) || cc.toUpperCase();
+    // English as the region writes it ("Turkey"); the browser's name ("Türkiye") stays searchable.
+    const intlEn = countryNameIn("en", cc);
+    const en = (r && r.countries.length === 1 && r.name && r.name.en) || intlEn || cc.toUpperCase();
     const own = nativeCountryName(cc, r) || en;
     const rank = first.indexOf(cc);
     return { value: cc, en, rank: rank < 0 ? 1e6 : rank, label: own === en ? en : own + " · " + en,
-      search: [own, en, countryName(cc), cc, DIAL[cc] ? "+" + DIAL[cc] : ""] };
+      search: [own, en, intlEn, countryName(cc), cc, DIAL[cc] ? "+" + DIAL[cc] : "",
+        ...(r && r.name ? [r.name.en, r.name.zh, r.name.native] : []), ...(COUNTRY_ALIASES[cc] || "").split("|")] };
   }).sort((a, b) => a.rank - b.rank || a.en.localeCompare(b.en, "en"));
   hcCombo.setOptions([{ value: "", label: t("hc_auto"), search: [] }, ...rows]);
   hcCombo.setValue(cur);
@@ -16691,7 +16773,10 @@ function renderHomeCountry() {
 // ----- "About you": where parcels go, as the country does it
 function renderAboutHints() {
   const r = regionOfCountry(homeCountryNow()) || (packRegions || []).find((x) => x.code === "default");
-  const d = r && r.delivery ? String((lang.startsWith("zh") ? r.delivery.zh : r.delivery.en) || r.delivery.en || "") : "";
+  // The region's own way in English or Chinese; other languages, or a Chinese line with
+  // words in another script (Thai, Arabic, Cyrillic…), get the plain example.
+  let d = r && r.delivery ? String((lang === "en" ? r.delivery.en : lang.startsWith("zh") ? r.delivery.zh : "") || "") : "";
+  if (lang.startsWith("zh") && /[^\u0000-\u024F\u2000-\u206F\u3000-\u30FF\u3400-\u9FFF\uAC00-\uD7AF\uFF00-\uFFEF]/.test(d)) d = "";
   $("f-about_parcel").placeholder = d ? t("ab_parcel_ph", { x: d }) : t("ab_parcel_ph0");
 }
 // Answer 1 suggests where the talk style starts (family 2, work 4, both 3): only
