@@ -1525,7 +1525,10 @@ mod tests {
         for (key, source) in [("key", "timeout"), (" ", "local")] {
             let v = check(&Client::new(), "http://127.0.0.1:1", key, "訂餐廳 7 點半，不行就 8 點半", &Known::default(), Lang::ZhTw, MODEL_TIMEOUT).await;
             assert_eq!((v.source, v.kind, v.missing, v.ladder), (source, Kind::Restaurant, vec!["party", "phone", "name"], vec!["19:30".to_string(), "20:30".to_string()]));
-            assert!(v.ms < 50.0, "{}", v.ms);
+            // No key: answered at once. With a key the model is tried first; a refused
+            // connection takes about 2 s on Windows, never longer than the limit.
+            let most = if source == "local" { 50.0 } else { MODEL_TIMEOUT.as_millis() as f64 + 500.0 };
+            assert!(v.ms < most, "{}", v.ms);
         }
         // Unreadable words and no key: the local look stands.
         let v = check(&Client::new(), "http://127.0.0.1:1", " ", RU, &Known::default(), Lang::En, MODEL_TIMEOUT).await;
