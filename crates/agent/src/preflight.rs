@@ -454,27 +454,42 @@ fn has_phone(c: &[char]) -> bool {
     false
 }
 
-/// Units after a number that make it a number of people in Chinese, Japanese
-/// and Korean ("4位", "7個大人", "大人7名", "어른 7명", "4인").
-const PARTY_UNITS: [&str; 17] = [
+/// Units after a number that make it a number of people in Chinese, Japanese,
+/// Korean and Tamil ("4位", "7個大人", "大人7名", "어른 7명", "4인", "4 பேர்").
+const PARTY_UNITS: &[&str] = &[
     "位", "人", "個人", "个人", "個大人", "个大人", "大人", "名", "명", "인", "個囡仔", "个囡仔", "個小孩", "个小孩", "個小朋友", "个小朋友", "位小朋友",
+    "பேர்", "பெரியவர்",
 ];
 /// Right after such a unit: the number counts something else ("2人份" and
-/// "4人前" servings, "3位數", "3인분").
-const NOT_PEOPLE_AFTER: [char; 11] = ['份', '分', '前', '民', '數', '数', '置', '분', '字', '單', '单'];
+/// "4人前" servings, "3位數", "3인분", "2人餐" and "4人套餐" set meals).
+const NOT_PEOPLE_AFTER: &[char] = &['份', '分', '前', '民', '數', '数', '置', '분', '字', '單', '单', '餐', '套'];
 /// Words right before a number that make it people ("おとな3、こども1", "어른 7").
-const PARTY_BEFORE: [&str; 7] = ["大人", "おとな", "子ども", "子供", "こども", "어른", "아이"];
+const PARTY_BEFORE: &[&str] = &["大人", "おとな", "子ども", "子供", "こども", "어른", "아이", "성인"];
 /// Words after a number that make it a number of people ("4 people", "2 adultos y 1 niño").
 const PARTY_WORDS: &[&str] = &[
     "people", "persons", "person", "ppl", "pax", "guests", "guest", "adults", "adult", "kids", "kid", "children", "child", "babies", "baby",
     "personas", "persona", "adultos", "adulto", "niños", "niño", "niñas", "niña", "bebés", "bebé", "personnes", "personne", "adultes", "adulte",
     "enfants", "enfant", "personen", "erwachsene", "erwachsener", "kinder", "pessoas", "pessoa", "crianças", "criança", "pers",
+    // English "covers", Malay, Catalan, Galician, Basque, French "couverts", Spanish "cubiertos", Dutch, German, Luxembourgish, Swiss German,
+    // Italian and Portuguese "lugares".
+    "covers", "cover", "orang", "dewasa", "kanak", "persones", "nen", "nens", "nena", "nenes", "neno", "nenos", "nenas", "persoas", "persoa",
+    "heldu", "haur", "lagun", "lagunentzako", "pertsona", "pertsonak", "pertsonentzat", "pertsonentzako", "gara", "cubiertos", "cubierto",
+    "couverts", "couvert", "persoon", "volwassenen", "volwassene", "kind", "kinderen", "leute", "leuten", "leit", "lüüt", "persounen", "persoun",
+    "erwuessener", "kand", "kanner", "adulti", "bambino", "bambini", "bambina", "persone", "erwachseni", "chind", "chinder", "lugares",
 ];
 /// Words right before a number that make it the number of people ("table for
 /// 4", "party of 2", "somos 6", "wir sind 6"; "me + 3" is read apart).
 const PARTY_LEADS: &[&[&str]] = &[
     &["for"], &["party", "of"], &["group", "of"], &["just"], &["only"], &["we", "are"], &["we're"], &["para"], &["grupo", "de"], &["somos"],
     &["pour"], &["sommes"], &["für"], &["sind"], &["são"],
+    &["untuk"], &["per"], &["per", "a"], &["som"], &["voor"], &["fir"], &["sinn"], &["siamo"], &["siamo", "in"], &["somos", "em"],
+    &["gruppo", "di"], &["grup", "de"], &["grupp", "vun"], &["gruppe", "von"], &["gruppe", "mit"], &["groep", "van"], &["groupe", "de"],
+];
+/// A set, a deal or a pack "for 2" is food for two, not two people ("Meal deal
+/// for 2", "menú para 2", "Pack for 4"). Looked for in the two words before the lead.
+const FOR_TWO_THINGS: &[&str] = &[
+    "menu", "menü", "menú", "meal", "deal", "set", "combo", "pack", "paquete", "paquet", "promo", "promoción", "promocion", "formule", "formula",
+    "bundle", "offer", "special", "package", "pakej", "pakket", "platter", "combinado", "oferta", "plateau", "assiette", "kit", "box",
 ];
 /// What may come right after "for 4" when the 4 is people ("for 4 at 7",
 /// "para 4 mañana"); anything else ("for 2 hours", "for 2 pizzas") is not.
@@ -490,12 +505,20 @@ const NUMBER_WORDS: &[&str] = &[
     "cinco", "seis", "siete", "ocho", "nueve", "diez", "un", "une", "deux", "trois", "quatre", "cinq", "sept", "huit", "neuf", "dix", "ein",
     "eine", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun", "zehn", "um", "uma", "dois", "duas", "três", "quatro", "sete",
     "oito", "nove", "dez",
+    // Catalan, Galician and Basque ("per a dues persones", "para dúas persoas", "bi pertsonentzat").
+    "dues", "cinc", "sis", "vuit", "deu", "dúas", "catro", "bi", "hiru", "lau", "bost", "sei", "zazpi", "zortzi", "bederatzi", "hamar",
 ];
 /// Whole phrases that give the party without a number to read.
 const PARTY_PHRASES: &[&str] = &[
     "para mí solo", "para mi solo", "solo yo", "just me", "only me", "pour moi seul", "nur ich", "só eu", "apenas eu", "ひとり", "ふたり", "한 명",
     "두 명", "세 명", "네 명", "다섯 명", "여섯 명", "일곱 명", "여덟 명", "아홉 명", "열 명", "두명", "세명", "네명", "한 분", "두 분", "세 분", "네 분",
+    "혼자", "어른 하나", "어른 둘", "어른 셋", "어른 넷", "어른 다섯", "어른 여섯", "성인 하나", "성인 둘", "성인 셋", "성인 넷",
+    "zu zweit", "zu dritt", "zu viert", "zu fünft", "zu sechst", "zu zweet", "zu drëtt", "z'n tweeën", "z'n drieën", "z'n vieren", "z'n vijven",
+    "இருவர்", "மூவர்", "நால்வர்", "இரண்டு பேர்", "மூன்று பேர்", "நான்கு பேர்", "ஐந்து பேர்", "ஆறு பேர்", "ஏழு பேர்", "எட்டு பேர்",
 ];
+/// One word that is the whole answer and gives a party of one ("solo", "seorang", "alleine").
+const ALONE_WORDS: &[&str] =
+    &["solo", "sola", "alone", "alleine", "allein", "eleng", "seul", "seule", "sozinho", "sozinha", "seorang", "单人", "單人"];
 
 /// A number of people in the Chinese, Japanese and Korean way: a number and
 /// a unit ("7個大人", "大人7名"), or adults and children ("兩大一小", "四大兩細").
@@ -525,9 +548,15 @@ fn has_party_cjk(c: &[char]) -> bool {
             }
             let j = skip_spaces(c, after).min(c.len());
             let rest = &c[j..];
+            // "一家三口" (a family of three).
+            if i > 0 && c[i - 1] == '家' && rest.first() == Some(&'口') {
+                return true;
+            }
             for unit in PARTY_UNITS {
                 let unit: Vec<char> = unit.chars().collect();
-                if rest.starts_with(&unit) && !rest.get(unit.len()).is_some_and(|x| NOT_PEOPLE_AFTER.contains(x)) {
+                // "2인 세트" is a set meal for two.
+                let set_meal = rest.starts_with(&unit) && rest[unit.len()..].iter().collect::<String>().trim_start().starts_with("세트");
+                if rest.starts_with(&unit) && !set_meal && !rest.get(unit.len()).is_some_and(|x| NOT_PEOPLE_AFTER.contains(x)) {
                     return true;
                 }
             }
@@ -577,6 +606,11 @@ fn has_party_words(c: &[char]) -> bool {
             if PARTY_WORDS.contains(&rest.as_str()) {
                 return true;
             }
+            // "2A1C" (adults and children), "6ko taldea" (Basque), "6er Gruppe" (German).
+            let next = words.get(k + 1).map(String::as_str);
+            if adults_and_children_code(&rest) || (rest == "ko" && next == Some("taldea")) || (rest == "er" && next == Some("gruppe")) {
+                return true;
+            }
             continue;
         }
         if !((digits > 0 && digits <= 3) || NUMBER_WORDS.contains(&w.as_str())) {
@@ -596,7 +630,13 @@ fn has_party_words(c: &[char]) -> bool {
         if next.is_some_and(|n| PARTY_WORDS.contains(&n)) || (next == Some("of") && words.get(k + 2).map(String::as_str) == Some("us")) {
             return true;
         }
-        let led = PARTY_LEADS.iter().any(|lead| k >= lead.len() && lead.iter().enumerate().all(|(j, l)| words[k - lead.len() + j] == *l))
+        let led = PARTY_LEADS.iter().any(|lead| {
+            k >= lead.len()
+                && lead.iter().enumerate().all(|(j, l)| words[k - lead.len() + j] == *l)
+                // "2-for-1" is a deal, and "Set B for 2" is food for two.
+                && c[spans[k - 1].1..start].iter().all(|x| *x == ' ')
+                && !words[k.saturating_sub(lead.len() + 2)..k - lead.len()].iter().any(|w| FOR_TWO_THINGS.contains(&w.as_str()))
+        })
             || (k > 0 && words[k - 1] == "me" && c[spans[k - 1].1..start].contains(&'+'));
         if led {
             let breaks = match spans.get(k + 1) {
@@ -611,8 +651,17 @@ fn has_party_words(c: &[char]) -> bool {
     false
 }
 
+/// "a1c": the rest of "2A1C", two adults and a child ("2a2k" with kids).
+fn adults_and_children_code(rest: &str) -> bool {
+    let Some(r) = rest.strip_prefix('a') else {
+        return false;
+    };
+    let n = r.chars().take_while(char::is_ascii_digit).count();
+    n > 0 && matches!(&r[n..], "c" | "k")
+}
+
 fn has_party(low: &str, c: &[char]) -> bool {
-    has_party_cjk(c) || has_party_words(c) || contains_any(low, PARTY_PHRASES)
+    has_party_cjk(c) || has_party_words(c) || contains_any(low, PARTY_PHRASES) || ALONE_WORDS.contains(&low.trim_matches(|ch: char| !ch.is_alphanumeric()))
 }
 
 /// Whether the words give a number of people, in any of the ways above.

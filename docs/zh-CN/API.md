@@ -527,12 +527,12 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 
 `POST /calls/api/errands/preflight` 的内容：
 
-- 发送 `task`（必填，最多 1,000 字）、`lang`（可以不带，例如 `en`、`zh-TW`：补问和提醒用的语言；留空就用通知语言）和 `number`（可以不带：要拨的号码，用来决定套用哪里的当地习惯；目前有台湾、美国、香港与澳门、日本）。
+- 发送 `task`（必填，最多 1,000 字）、`lang`（可以不带，例如 `en`、`zh-TW`：补问和提醒用的语言；留空就用通知语言）和 `number`（可以不带：要拨的号码，用来决定套用哪里的当地习惯；目前有台湾、香港与澳门、中国大陆、新加坡、日本、韩国、美国、加拿大、英国与爱尔兰、澳大利亚与新西兰、欧洲主要国家与中南美洲，共 22 个地区）。
 - `kind`：`restaurant`、`appointment`、`order`、`change` 或 `contact`。
 - `type`：哪一类商家的电话，是 `restaurant`、`clinic`、`beauty`、`repair`、`takeout`、`shop_order`、`change`、`inquiry`、`hotel`、`activity`、`home_service`、`pet`、`tracking`、`customer_service`、`transport`、`property`、`government_school` 之一，或 `contact`；不知道就是空的。
 - `missing`：最多 3 条 `{key, question}`，最重要的在前；什么都不缺就是空的。只会问号码所在地这类电话需要的资料：`time`、`party`、`phone`、`name`、`item`、`contact`、`backup`、`spec`、`pickup`、`substitute`、`orig_time`、`for_whom`、`visit_type`、`checkin_out`、`guests`、`address`、`pet_detail`、`reference_no`、`pickup_place`、`dropoff_place`、`room_type`、`duration`。设置了主人名字时，不会问 `name`，除非是帮别人办而且这类电话要分清楚是谁。
 - `note`：拨号前值得知道的一句话，用 `lang` 的语言；只有这类电话当地很少能用电话办成时才有（例如诊所多半先接按键语音、客服要先核对本人），其他时候是空的。
-- `region`：套用了哪里的习惯（`tw`、`us`、`hk-mo` 或 `jp`），没有就是空的。
+- `region`：套用了哪里的习惯（`tw`、`us`、`hk-mo`、`jp`、`cn`、`sg`、`kr`、`gb-ie`、`ca`、`au-nz`、`es`、`mx`、`latam`、`ar-uy`、`fr`、`be`、`lu`、`de`、`at`、`ch`、`br` 或 `pt`），没有就是空的。
 - `ladder`：你愿意接受的时间，最好的在前（`["19:30", "20:30"]`），最多 4 个；交办里没有写到两个以上的时间就是空的。
 - `source` 和 `ms`：`local`、`model` 或 `timeout`，以及花了多少毫秒。
 - Bageo 自己读得懂、又什么都不缺的交办，几毫秒内就在本机回答。看出有缺，或读不懂（别种文字、夹很多数字的长文）时，会用 Gemini 密钥问一个小模型（`gemini-flash-lite-latest`），最多等 2.5 秒；任何写法、任何语言写了都算有（“7个大人”“party of 7”“7 adultos”）。时间内没答（`source` 为 `timeout`）或没有密钥，就照 Bageo 自己看出的问题问；读不懂的就不问。

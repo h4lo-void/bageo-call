@@ -6056,7 +6056,7 @@ mod tests {
         assert!(local_ways(&hotel, "tw").contains("this is a hotel call"));
         // A personal call, and a number outside every region, carry none.
         assert_eq!(local_ways(&Errand { task: "Ask Sam if he is coming to dinner".into(), ..e.clone() }, "tw"), "");
-        assert_eq!(local_ways(&Errand { number: "+4930123456".into(), ..e.clone() }, "tw"), "");
+        assert_eq!(local_ways(&Errand { number: "+390612345678".into(), ..e.clone() }, "tw"), "");
         // An errand saved before this field reads as before.
         let old: Errand = serde_json::from_str(r#"{"id":"e-old","task":"x"}"#).unwrap();
         assert_eq!(old.place_type, "");

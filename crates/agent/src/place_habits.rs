@@ -319,7 +319,13 @@ mod tests {
     #[test]
     fn every_region_reads_with_all_kinds_and_known_codes() {
         let regs = regions();
-        assert_eq!(regs.iter().map(|r| r.region.as_str()).collect::<Vec<_>>(), ["tw", "us", "hk-mo", "jp"]);
+        assert_eq!(
+            regs.iter().map(|r| r.region.as_str()).collect::<Vec<_>>(),
+            [
+                "tw", "us", "hk-mo", "jp", "cn", "sg", "kr", "gb-ie", "ca", "au-nz", "es", "mx", "latam", "ar-uy", "fr", "be", "lu", "de", "at", "ch", "br",
+                "pt"
+            ]
+        );
         let mut countries: Vec<&str> = Vec::new();
         for r in regs {
             assert!(!r.region_name.is_empty(), "{}", r.region);
@@ -386,9 +392,13 @@ mod tests {
         assert_eq!(for_number("09012345678", "jp").map(|r| r.region.as_str()), Some("jp"));
         // A number without its country code is the owner's country's.
         assert_eq!(for_number("2125550123", "us").map(|r| r.region.as_str()), Some("us"));
+        assert_eq!(id("+4930123456"), Some("de"));
+        assert_eq!(id("+33123456789"), Some("fr"));
+        assert_eq!(id("+8613800138000"), Some("cn"));
+        assert_eq!(id("+821012345678"), Some("kr"));
+        assert_eq!(id("+5511912345678"), Some("br"));
         // Places with no data, and no number at all.
-        assert_eq!(id("+4930123456"), None);
-        assert_eq!(id("+33123456789"), None);
+        assert_eq!(id("+390612345678"), None);
         assert_eq!(id(""), None);
     }
 
