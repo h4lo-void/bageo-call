@@ -295,18 +295,65 @@ fn text_over_its_limit_is_refused() {
     expect(&i, rule::LENGTH, "hello.hello");
 }
 
+fn t(en: &str, zh: &str) -> Text {
+    Text { en: en.to_string(), zh: zh.to_string() }
+}
+
+/// The built fixture with jp's prompt texts set: delivery and readback 80,
+/// fraud 110, habits as given, nine talk-style cells of 100 and one as given
+/// (English); the Chinese ones short unless zh_full.
+fn jp_with(habits: usize, longest: usize, stall: Option<usize>, zh_full: bool) -> Vec<Issue> {
+    let mut b = built();
+    let r = b.regions.get_mut("jp").unwrap();
+    let zh = |n: usize, s: &str| if zh_full { s.repeat(n) } else { "短".to_string() };
+    r.delivery = t(&"d".repeat(80), &zh(36, "短"));
+    r.readback = Some(t(&"r".repeat(80), &zh(36, "短")));
+    r.fraud = t(&format!("scam{}", "f".repeat(106)), &format!("詐騙{}", zh(48, "短")));
+    r.habits = t(&"h".repeat(habits), &zh(190, "短"));
+    r.stall_local = stall.map(|n| t(&"s".repeat(n), &zh(70, "短")));
+    for c in r.talk_style.persona.iter_mut().chain(r.talk_style.assistant.iter_mut()) {
+        *c = t(&"c".repeat(100), &zh(90, "短"));
+    }
+    r.talk_style.assistant[4] = t(&"c".repeat(longest), &zh(90, "短"));
+    check_bundle_at(&b, util::now_days())
+}
+
 #[test]
-fn the_four_blocks_together_have_a_limit_too() {
-    // Each within its own limit; together 80 + 80 + 110 + 306 = 576 over 560.
-    let i = issues_of(|s| {
-        let r = region(s, "jp");
-        r.delivery = Some(text(&"d".repeat(80), "短"));
-        r.readback = Some(text(&"r".repeat(80), "短"));
-        r.fraud = Some(text(&format!("scam{}", "f".repeat(106)), "詐騙"));
-        r.habits = Some(text(&"h".repeat(271), "短"));
-    });
-    expect(&i, rule::LENGTH, "total.en");
-    assert!(!has(&i, rule::LENGTH, "delivery") && !has(&i, rule::LENGTH, "habits"), "{i:?}");
+fn a_regions_prompt_texts_with_its_longest_talk_style_cell_have_a_limit() {
+    let (n_en, _) = check::PROMPT_SUM_MAX;
+    let fixed = 80 + 80 + 110 + 100;
+    // Exactly the limit passes; one more character of habits does not.
+    let i = jp_with(n_en - fixed, 100, None, false);
+    assert!(!has(&i, rule::LENGTH, ".total.en"), "{i:?}");
+    let i = jp_with(n_en - fixed + 1, 100, None, false);
+    expect(&i, rule::LENGTH, ".total.en");
+    // Each part is within its own limit: only the sum is refused.
+    assert!(!has(&i, rule::LENGTH, "habits") && !has(&i, rule::LENGTH, "talk_style"), "{i:?}");
+    // The longest of the ten cells counts, whichever it is.
+    expect(&jp_with(n_en - fixed, 101, None, false), rule::LENGTH, ".total.en");
+}
+
+#[test]
+fn the_stalling_texts_together_have_a_limit_too() {
+    let (m_en, _) = check::STALL_SUM_MAX;
+    // Parcels and read-back are not in the stalling prompt: they do not count.
+    let i = jp_with(0, 100, Some(m_en - 110), false);
+    assert!(!has(&i, rule::LENGTH, "stall_total"), "{i:?}");
+    expect(&jp_with(0, 100, Some(m_en - 109), false), rule::LENGTH, "stall_total.en");
+    let mut b = built();
+    let r = b.regions.get_mut("jp").unwrap();
+    r.fraud = t(&format!("scam{}", "f".repeat(m_en - 4)), "詐騙");
+    r.stall_local = None;
+    let i = check_bundle_at(&b, util::now_days());
+    assert!(!has(&i, rule::LENGTH, "stall_total"), "{i:?}");
+    b.regions.get_mut("jp").unwrap().stall_local = Some(t("s", "短"));
+    expect(&check_bundle_at(&b, util::now_days()), rule::LENGTH, "stall_total.en");
+}
+
+#[test]
+fn chinese_at_every_single_field_limit_stays_within_both_sums() {
+    let i = jp_with(10, 10, Some(10), true);
+    assert!(!has(&i, rule::LENGTH, "total.zh"), "{i:?}");
 }
 
 #[test]

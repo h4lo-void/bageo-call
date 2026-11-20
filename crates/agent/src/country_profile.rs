@@ -1,119 +1,119 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
 // SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
 
-//! Where a call is: the region of the SIM that took it (else of the language
-//! setting) and the few local rules that go into that call's prompt (scenario
-//! plan, module 6): where couriers leave parcels, times and numbers said the
-//! local way, and the local scams. A region never limits the languages a call
-//! may speak: the caller is followed into any language Gemini Live supports
-//! ([`crate::prompts`]).
+//! Where a call is, and the local part of its prompt: where couriers leave
+//! parcels, times and numbers said the local way, the local scams, the local
+//! ways of talking and the talk-style slider (scenario plan, module 6; plan A2).
+//! A region never limits the languages a call may speak: the caller is
+//! followed into any language Gemini Live supports ([crate::prompts]).
+//!
+//! The regions come from the local data pack ([crate::packs_store]); this
+//! module only decides which one a call gets and puts its fields into fixed
+//! places. The hard lines stay in the prompts, never in the data.
 //!
 //! Decided from memory before the call is picked up (the ring prewarm has the
-//! SIM): a table lookup, no I/O. Each region's part is one short paragraph,
-//! only that region's goes into a prompt ([`crate::prompts::scope_to_region`]).
-//! Instructions are in the prompt's own instruction language: Chinese for the
-//! two Chinese settings, English for the others (as every other part of those
-//! prompts, [`crate::prompts`]); local words stay in the local script.
+//! SIM): a table lookup, no I/O. Instructions are in the prompt's own
+//! instruction language: Chinese for the two Chinese settings, English for the
+//! others (as every other part of those prompts, [crate::prompts]); local words
+//! stay in the local script.
+
+use std::hash::{Hash, Hasher};
+
+use bageo_packs::{RegionData, Text};
 
 use crate::locale::Lang;
+use crate::packs_store;
+use crate::prompts::LocalHello;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Region {
-    Tw,
-    HkMo,
-    Cn,
-    MySg,
-    Us,
-    Ca,
-    GbIe,
-    AuNz,
-    In,
-    It,
-    Vn,
-    Th,
-    Jp,
-    Kr,
-    /// Spain.
-    EsEu,
-    /// Mexico, Central and South America, the Caribbean (but Argentina, Uruguay).
-    EsAm,
-    /// Argentina, Uruguay.
-    EsRp,
-    Fr,
-    Be,
-    De,
-    At,
-    Ch,
-    Br,
-    Pt,
-    Tr,
-}
+/// One region of the local data pack. Two regions are the same when their codes are.
+#[derive(Clone, Copy)]
+pub struct Region(&'static RegionData);
 
-/// The region of a SIM country (ISO 3166 alpha-2, any case); None for a
-/// country without one.
-pub fn of_sim(iso: &str) -> Option<Region> {
-    let iso = iso.trim().to_ascii_lowercase();
-    Some(match iso.as_str() {
-        "tw" => Region::Tw,
-        "hk" | "mo" => Region::HkMo,
-        "cn" => Region::Cn,
-        "my" | "sg" => Region::MySg,
-        "us" | "ag" | "ai" | "as" | "bb" | "bm" | "bs" | "dm" | "gd" | "gu" | "jm" | "kn" | "ky" | "lc" | "mp" | "ms"
-        | "sx" | "tc" | "tt" | "vc" | "vg" | "vi" => Region::Us,
-        "ca" => Region::Ca,
-        "gb" | "ie" | "im" | "je" | "gg" => Region::GbIe,
-        "au" | "nz" => Region::AuNz,
-        "in" => Region::In,
-        "it" | "sm" | "va" => Region::It,
-        "vn" => Region::Vn,
-        "th" => Region::Th,
-        "jp" => Region::Jp,
-        "kr" => Region::Kr,
-        "es" => Region::EsEu,
-        "mx" | "co" | "cl" | "pe" | "ve" | "ec" | "bo" | "py" | "gt" | "hn" | "sv" | "ni" | "cr" | "pa" | "cu" | "do"
-        | "pr" => Region::EsAm,
-        "ar" | "uy" => Region::EsRp,
-        "fr" | "re" | "yt" | "gp" | "bl" | "mf" | "mq" | "gf" | "pm" | "nc" | "pf" | "wf" | "mc" | "lu" => Region::Fr,
-        "be" => Region::Be,
-        "de" => Region::De,
-        "at" => Region::At,
-        "ch" | "li" => Region::Ch,
-        "br" => Region::Br,
-        "pt" => Region::Pt,
-        "tr" => Region::Tr,
-        _ => return None,
-    })
-}
-
-/// The region a language setting stands for when the SIM is not known.
-pub fn of_lang(lang: Lang) -> Region {
-    match lang {
-        Lang::ZhTw => Region::Tw,
-        Lang::ZhCn => Region::Cn,
-        Lang::En => Region::Us,
-        Lang::Ja => Region::Jp,
-        Lang::Ko => Region::Kr,
-        Lang::Es => Region::EsAm,
-        Lang::Fr => Region::Fr,
-        Lang::De => Region::De,
-        Lang::Pt => Region::Br,
+impl PartialEq for Region {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.code == other.0.code
     }
 }
 
-/// A call's region: its SIM's (a SIM of a country without one: none), else the
-/// language setting's.
+impl Eq for Region {}
+
+impl Hash for Region {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.code.hash(state);
+    }
+}
+
+impl std::fmt::Debug for Region {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0.code)
+    }
+}
+
+impl Region {
+    /// The region's code in the pack (tw, hk-mo, latam…).
+    pub fn code(self) -> &'static str {
+        &self.0.code
+    }
+
+    /// The region with this code in the pack in use.
+    pub fn of_code(code: &str) -> Option<Region> {
+        packs_store::current().region(code.trim().to_ascii_lowercase().as_str()).map(Region)
+    }
+
+    /// The region of a country (ISO 3166 alpha-2, any case); a country the pack
+    /// does not list gets its default region. None for something that is not a
+    /// country code.
+    pub fn of_country(iso: &str) -> Option<Region> {
+        let iso = iso.trim().to_ascii_lowercase();
+        if !bageo_packs::data::is_country(&iso) {
+            return None;
+        }
+        let t = packs_store::current();
+        t.region_of_country(&iso).or_else(|| t.region("default")).map(Region)
+    }
+}
+
+/// Every region of the pack in use.
+pub fn all() -> Vec<Region> {
+    packs_store::current().regions.values().map(Region).collect()
+}
+
+/// The country a language setting stands for when nothing else says where the call is.
+pub fn lang_default_country(lang: Lang) -> &'static str {
+    match lang {
+        Lang::ZhTw => "tw",
+        Lang::ZhCn => "cn",
+        Lang::En => "us",
+        Lang::Ja => "jp",
+        Lang::Ko => "kr",
+        Lang::Es => "mx",
+        Lang::Fr => "fr",
+        Lang::De => "de",
+        Lang::Pt => "br",
+    }
+}
+
+/// A call's region ([resolve_with]) with the owner's home country from the settings.
 pub fn resolve(sim: Option<&str>, lang: Lang) -> Option<Region> {
-    match sim.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(s) => of_sim(s),
-        None => Some(of_lang(lang)),
+    let home = crate::locale::active().home_country;
+    resolve_with(sim, home.as_deref(), lang)
+}
+
+/// A call's region: the country of the SIM that took it; when the SIM does not
+/// say, the owner's home country; else the language setting's country.
+pub fn resolve_with(sim: Option<&str>, home: Option<&str>, lang: Lang) -> Option<Region> {
+    let given = |s: Option<&str>| s.map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+    match (given(sim), given(home)) {
+        (Some(s), _) | (None, Some(s)) => Region::of_country(&s),
+        (None, None) => Region::of_country(lang_default_country(lang)),
     }
 }
 
 /// Regions where callers may speak a Chinese dialect Gemini Live does not
 /// speak (Taiwanese / Hokkien, Hakka, Cantonese): the AI answers them in
-/// Mandarin ([`crate::prompts::scope_to_region`]).
+/// Mandarin ([crate::prompts::scope_to_region]).
 pub fn chinese_dialects_heard(region: Region) -> bool {
-    matches!(region, Region::Tw | Region::HkMo | Region::Cn | Region::MySg)
+    region.0.chinese_dialects
 }
 
 /// The kinds of local rule a region has.
@@ -127,102 +127,72 @@ pub enum Kind {
     Fraud,
 }
 
-/// (Traditional Chinese, English) of a region's rule; None = the region has none of that kind.
-fn text(region: Region, kind: Kind) -> Option<(&'static str, &'static str)> {
-    use Kind::*;
-    use Region::*;
-    const DE_PARCEL: (&str, &str) = ("包裹交給鄰居或 Packstation", "Parcels: beim Nachbarn or a Packstation");
-    const DE_FRAUD: (&str, &str) = ("要 TAN 碼、補繳海關費的都是詐騙", "a TAN or customs fees asked for are scams");
-    const FR_PARCEL: (&str, &str) = ("包裹放 point relais 或交給鄰居", "Parcels: a point relais or a neighbour");
-    const FR_FRAUD: (&str, &str) = ("要簡訊驗證碼、補繳包裹費的都是詐騙", "SMS codes or parcel fees asked for are scams");
-    const ES_FRAUD: (&str, &str) = ("要你付海關費、給簡訊驗證碼的都是詐騙", "customs fees or SMS codes asked for are scams");
-    const US_PARCEL: (&str, &str) = ("包裹常放 front porch 或門口，門禁密碼不用編", "Parcels: front porch or door, no made-up gate code");
-    Some(match (region, kind) {
-        (Tw, Delivery) => ("快遞常放管理室或門口", "Parcels: the building's management desk or the door"),
-        (Tw, Fraud) => (
-            "說要解除分期、去 ATM 操作、做賣場金流認證的都是詐騙",
-            "cancelling an instalment plan, ATM steps or a shop's payment check are scams",
-        ),
-        (HkMo, Delivery) => ("快遞常放管理處或門口", "Parcels: the building's management office or the door"),
-        (HkMo, Fraud) => (
-            "自稱入境處、公安或速遞公司要你轉帳、給驗證碼的都是詐騙",
-            "\"Immigration\", mainland police or couriers asking for transfers or codes are scams",
-        ),
-        (Cn, Delivery) => ("快遞常放快遞櫃、驛站或門口", "Parcels: a parcel locker, pickup station or the door"),
-        (Cn, Fraud) => (
-            "自稱公檢法要你轉到安全帳戶、刷流水的都是詐騙",
-            "\"police or prosecutors\" moving money to a \"safe account\" are scams",
-        ),
-        (MySg, Delivery) => ("快遞常放門口或保安亭", "Parcels: the door or the guardhouse"),
-        (MySg, Fraud) => (
-            "自稱警察、銀行或政府部門要你轉帳的都是詐騙",
-            "\"police\", bank or government officers asking for transfers are scams",
-        ),
-        (Us, Delivery) | (Ca, Delivery) => US_PARCEL,
-        (Us, Fraud) => ("拿 IRS、Medicare 威脅或要你用禮品卡付款的都是詐騙", "IRS, Medicare or gift-card demands are scams"),
-        (Ca, Fraud) => ("拿 CRA 稅務威脅或要你用禮品卡付款的都是詐騙", "CRA or gift-card demands are scams"),
-        (GbIe, Delivery) => ("包裹常放 safe place 或交給鄰居", "Parcels: a safe place or a neighbour"),
-        (GbIe, Fraud) => (
-            "自稱 HMRC 或銀行要你轉到 safe account 的都是詐騙",
-            "HMRC or a bank moving money to a \"safe account\" are scams",
-        ),
-        (AuNz, Delivery) => ("包裹常 leave at the front door", "Parcels: left at the front door"),
-        (AuNz, Fraud) => ("自稱 ATO、銀行或 myGov 要你付款的都是詐騙", "ATO, bank or myGov payment demands are scams"),
-        (In, Delivery) => ("包裹常交給 security 或放門口", "Parcels: with security or at the door"),
-        (In, Fraud) => ("說要更新 KYC、付包裹海關費的都是詐騙", "KYC updates and customs fees for a parcel are scams"),
-        (It, Delivery) => ("包裹常交給 portineria 或放 punto di ritiro", "Parcels: with the portineria or at a punto di ritiro"),
-        (It, Fraud) => ("叫你轉到安全帳戶或給驗證碼的都是詐騙", "safe-account transfers or verification codes asked for are scams"),
-        (Vn, Delivery) => ("包裹常交給警衛（bảo vệ）或放門口", "Parcels: with bảo vệ (guard) or at the door"),
-        (Vn, Fraud) => ("自稱公安、要你點連結或轉帳的都是詐騙", "fake police, suspicious links or transfer demands are scams"),
-        (Th, Delivery) => ("包裹常放管理處（นิติบุคคล）或警衛室", "Parcels: at the juristic office or with the guard"),
-        (Th, Fraud) => ("自稱警察、叫你加 LINE 或轉帳的都是詐騙", "fake police, adding LINE or transfer demands are scams"),
-        (Jp, Delivery) => (
-            "包裹常置き配、放宅配ボックス或留不在票再送",
-            "Parcels: 置き配, the 宅配ボックス or a 不在票 for redelivery",
-        ),
-        (Jp, Fraud) => ("叫你去 ATM 領還付金的都是詐騙", "being sent to an ATM for a 還付金 refund is a scam"),
-        (Kr, Delivery) => ("包裹常放문 앞或경비실", "Parcels: 문 앞 or the 경비실"),
-        (Kr, Fraud) => (
-            "自稱檢察廳要你把錢移到安全帳戶的都是詐騙",
-            "\"prosecutors\" asking to move money to a safe account are scams",
-        ),
-        (EsEu, Delivery) => ("包裹常交給門房（conserje）或鄰居", "Parcels: the conserje or a neighbour"),
-        (EsAm, Delivery) | (EsRp, Delivery) => ("包裹常交給門房（portería）或鄰居", "Parcels: the portería or a neighbour"),
-        (EsEu, Fraud) | (EsAm, Fraud) | (EsRp, Fraud) => ES_FRAUD,
-        (Fr, Delivery) | (Be, Delivery) => FR_PARCEL,
-        (Be, Readback) => ("septante=70、nonante=90，數字要複誦", "septante = 70, nonante = 90: read numbers back"),
-        (Fr, Fraud) | (Be, Fraud) => FR_FRAUD,
-        (De, Delivery) | (At, Delivery) | (Ch, Delivery) => DE_PARCEL,
-        (De, Readback) | (At, Readback) => ("halb acht 是 7:30，複誦成 19 Uhr 30", "halb acht means 7:30: read it back as 19 Uhr 30"),
-        (Ch, Readback) => ("halb acht=7:30、huitante=80，要複誦", "halb acht = 7:30, huitante = 80: read times and numbers back"),
-        (De, Fraud) | (At, Fraud) | (Ch, Fraud) => DE_FRAUD,
-        (Br, Delivery) => ("包裹常留在 portaria", "Parcels: the portaria"),
-        (Br, Fraud) => ("要你用 PIX 轉帳、付中獎手續費的都是詐騙", "PIX transfers or fees for a \"prize\" are scams"),
-        (Pt, Delivery) => ("包裹常留 portaria 或交給鄰居", "Parcels: the portaria or a neighbour"),
-        (Pt, Fraud) => ("要你用 MB WAY 操作或給驗證碼的都是詐騙", "MB WAY steps or codes asked for are scams"),
-        (Tr, Delivery) => ("包裹常交給門房（kapıcı）或鄰居", "Parcels: the kapıcı (doorman) or a neighbour"),
-        (Tr, Fraud) => (
-            "自稱警察、檢察官或銀行要你轉到安全帳戶、給簡訊碼的都是詐騙",
-            "\"police\", prosecutors or bank staff asking for a safe-account transfer or an SMS code are scams",
-        ),
-        _ => return None,
-    })
+/// A text of the pack in the instruction language of lang's prompts.
+fn pick(t: &Text, lang: Lang) -> String {
+    match lang {
+        Lang::ZhTw => t.zh.clone(),
+        Lang::ZhCn => crate::zh_convert::to_cn(&t.zh),
+        _ => t.en.clone(),
+    }
+}
+
+/// The headings of a region's parts in one instruction language, and how its
+/// rules are joined. Kept short: every character is in every call's prompt
+/// ([bageo_packs::check::PROMPT_SUM_MAX] is worked out with them).
+struct Heads {
+    local: &'static str,
+    ways: &'static str,
+    style: &'static str,
+    stall: &'static str,
+    sep: &'static str,
+    end: &'static str,
+}
+
+const HEADS_EN: Heads =
+    Heads { local: "[Local] ", ways: "[Local ways] ", style: "[Talk style] ", stall: "[Local snags] ", sep: "; ", end: "." };
+const HEADS_TW: Heads = Heads { local: "【當地】", ways: "【當地習慣】", style: "【講話風格】", stall: "【當地狀況】", sep: "；", end: "。" };
+const HEADS_CN: Heads = Heads { local: "【当地】", ways: "【当地习惯】", style: "【讲话风格】", stall: "【当地状况】", sep: "；", end: "。" };
+
+fn heads(lang: Lang) -> &'static Heads {
+    match lang {
+        Lang::ZhTw => &HEADS_TW,
+        Lang::ZhCn => &HEADS_CN,
+        _ => &HEADS_EN,
+    }
+}
+
+/// Most characters a normal call's region part adds besides the pack's texts:
+/// three line breaks, the three headings, two joins and the full stop.
+#[cfg(test)]
+pub fn prompt_overhead(lang: Lang) -> usize {
+    let h = heads(lang);
+    let n = |s: &str| s.chars().count();
+    3 + n(h.local) + n(h.ways) + n(h.style) + 2 * n(h.sep) + n(h.end)
+}
+
+/// The same for the stalling prompt's region part ([stall_block]: the scams and the snags).
+#[cfg(test)]
+pub fn stall_overhead(lang: Lang) -> usize {
+    let h = heads(lang);
+    let n = |s: &str| s.chars().count();
+    2 + n(h.local) + n(h.stall) + n(h.end)
 }
 
 /// One local fact of a region (how things are done there, said as background,
-/// never as an order or a line) in the instruction language of `lang`'s prompts,
+/// never as an order or a line) in the instruction language of lang's prompts,
 /// without the paragraph's heading — e.g. the delivery line a scenario hint uses.
 pub fn line(region: Region, kind: Kind, lang: Lang) -> Option<String> {
-    let (zh, en) = text(region, kind)?;
-    Some(match lang {
-        Lang::ZhTw => zh.to_string(),
-        Lang::ZhCn => crate::zh_convert::to_cn(zh),
-        _ => en.to_string(),
-    })
+    let d = region.0;
+    let t = match kind {
+        Kind::Delivery => Some(&d.delivery),
+        Kind::Readback => d.readback.as_ref(),
+        Kind::Fraud => Some(&d.fraud),
+    }?;
+    Some(pick(t, lang)).filter(|s| !s.trim().is_empty())
 }
 
-/// The region's paragraph for a prompt in `lang` ("【當地】…" / "[Local] …"), led
-/// by a line break; empty when the region has no rule. `skip_delivery`: the
+/// The region's paragraph for a prompt in lang ("【當地】…" / "[Local] …"), led
+/// by a line break; empty when the region has no rule. skip_delivery: the
 /// prompt says where parcels go already.
 pub fn block(region: Region, lang: Lang, skip_delivery: bool) -> String {
     let kinds = [Kind::Delivery, Kind::Readback, Kind::Fraud];
@@ -230,106 +200,269 @@ pub fn block(region: Region, lang: Lang, skip_delivery: bool) -> String {
         .iter()
         .filter(|k| !(skip_delivery && **k == Kind::Delivery))
         .filter_map(|k| line(region, *k, lang))
+        .map(|l| l.trim_end_matches(['。', '.', ';', '；']).to_string())
         .collect();
     if lines.is_empty() {
         return String::new();
     }
-    match lang {
-        Lang::ZhTw => format!("\n【當地】{}。", lines.join("；")),
-        Lang::ZhCn => format!("\n【当地】{}。", lines.join("；")),
-        _ => format!("\n[Local] {}.", lines.join("; ")),
-    }
+    let h = heads(lang);
+    format!("\n{}{}{}", h.local, lines.join(h.sep), h.end)
 }
 
-/// A word of the region's delivery rule, in the instruction language of `lang`:
+/// A word of the region's delivery rule, in the instruction language of lang:
 /// a prompt that has it says where parcels go already (the Taiwan prompt's
 /// 「管理室」).
 pub fn delivery_key(region: Region, lang: Lang) -> Option<&'static str> {
-    match (region, lang) {
-        (Region::Tw, Lang::ZhTw) | (Region::Tw, Lang::ZhCn) => Some("管理室"),
-        _ => None,
+    let k = region.0.delivery_key.as_ref()?;
+    if lang.is_zh() { k.zh.as_deref() } else { k.en.as_deref() }.filter(|s| !s.is_empty())
+}
+
+/// The region's local ways of talking (words to use and avoid, date order…),
+/// led by a line break; empty when it has none. Only with the built-in prompt.
+pub fn habits_block(region: Region, lang: Lang) -> String {
+    let t = pick(&region.0.habits, lang);
+    if t.trim().is_empty() {
+        return String::new();
     }
+    format!("\n{}{t}", heads(lang).ways)
+}
+
+/// The talk-style slider's level (1 casual to 5 businesslike, clamped) for the
+/// owner's own voice or the assistant, as the region says it; owner (already
+/// cleaned, [crate::prompts::owner_label]) fills {owner}. Led by a line break.
+/// It goes after the local rules and ways and before the owner's notes and the
+/// hard lines ([crate::prompts::scope_to_region]), which come last and win.
+pub fn style_line(region: Region, lang: Lang, assistant: bool, level: u8, owner: &str) -> String {
+    let ts = &region.0.talk_style;
+    let cells = if assistant { &ts.assistant } else { &ts.persona };
+    let i = usize::from(level.clamp(1, 5)) - 1;
+    let text: String = pick(&cells[i], lang).replace("{owner}", owner).chars().filter(|c| *c != '{' && *c != '}').collect();
+    if text.trim().is_empty() {
+        return String::new();
+    }
+    format!("\n{}{text}", heads(lang).style)
+}
+
+/// The region's own snags for keeping a sales / scam caller talking (the local
+/// bank app, the local payment tool…), led by a line break; empty when it has none.
+pub fn stall_line(region: Region, lang: Lang) -> String {
+    let Some(t) = region.0.stall_local.as_ref() else { return String::new() };
+    let t = pick(t, lang);
+    if t.trim().is_empty() {
+        return String::new();
+    }
+    format!("\n{}{t}", heads(lang).stall)
+}
+
+/// The stalling prompt's region part: the local scams and the region's
+/// stalling snags ([stall_line]); parcels and read-back are no matter there.
+pub fn stall_block(region: Region, lang: Lang) -> String {
+    let fraud = line(region, Kind::Fraud, lang)
+        .map(|l| format!("\n{}{}{}", heads(lang).local, l.trim_end_matches(['。', '.', ';', '；']), heads(lang).end))
+        .unwrap_or_default();
+    format!("{fraud}{}", stall_line(region, lang))
+}
+
+/// The speech-to-text code a country's region names (ISO 3166 alpha-2, any
+/// case); None where the region gives none or the pack does not list the country.
+pub fn stt_of_country(iso: &str) -> Option<&'static str> {
+    let iso = iso.trim().to_ascii_lowercase();
+    packs_store::current().region_of_country(&iso)?.stt.as_deref()
+}
+
+/// How a country whose language the AI has no setting for answers the phone
+/// (ISO 3166 alpha-2, any case): its region's opening. None for a country of
+/// one of the nine settings languages ([crate::locale::country_lang]): those
+/// keep the setting's opening; and where Chinese callers are expected
+/// (chinese_dialects: Malaysia), which keeps the setting's opening as before.
+pub fn hello_of_country(iso: &str) -> Option<&'static LocalHello> {
+    let iso = iso.trim().to_ascii_lowercase();
+    if crate::locale::country_lang(&iso).is_some() {
+        return None;
+    }
+    let t = packs_store::current();
+    let code = t.countries.get(&iso)?;
+    if t.region(code).is_some_and(|r| r.chinese_dialects) {
+        return None;
+    }
+    t.hello(code)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Longest region paragraph: Chinese characters, and English (about the same
-    /// number of tokens).
-    const BLOCK_MAX_CHARS_ZH: usize = 90;
-    const BLOCK_MAX_CHARS_EN: usize = 200;
+    fn r(code: &str) -> Region {
+        Region::of_code(code).unwrap_or_else(|| panic!("no region {code}"))
+    }
 
-    const ALL: [Region; 25] = [
-        Region::Tw,
-        Region::HkMo,
-        Region::Cn,
-        Region::MySg,
-        Region::Us,
-        Region::Ca,
-        Region::GbIe,
-        Region::AuNz,
-        Region::In,
-        Region::It,
-        Region::Vn,
-        Region::Th,
-        Region::Jp,
-        Region::Kr,
-        Region::EsEu,
-        Region::EsAm,
-        Region::EsRp,
-        Region::Fr,
-        Region::Be,
-        Region::De,
-        Region::At,
-        Region::Ch,
-        Region::Br,
-        Region::Pt,
-        Region::Tr,
+    /// The 25 regions the code had before the pack (old name, its countries,
+    /// the regions they belong to now): every country still has a region.
+    const LEGACY: [(&str, &[&str], &[&str]); 25] = [
+        ("Tw", &["tw"], &["tw"]),
+        ("HkMo", &["hk", "mo"], &["hk-mo"]),
+        ("Cn", &["cn"], &["cn"]),
+        ("MySg", &["my", "sg"], &["my", "sg"]),
+        (
+            "Us",
+            &["us", "ag", "ai", "as", "bb", "bm", "bs", "dm", "gd", "gu", "jm", "kn", "ky", "lc", "mp", "ms", "sx", "tc", "tt", "vc", "vg", "vi"],
+            &["us"],
+        ),
+        ("Ca", &["ca"], &["ca"]),
+        ("GbIe", &["gb", "ie", "im", "je", "gg"], &["gb-ie"]),
+        ("AuNz", &["au", "nz"], &["au-nz"]),
+        ("In", &["in"], &["in"]),
+        ("It", &["it", "sm", "va"], &["it"]),
+        ("Vn", &["vn"], &["vn"]),
+        ("Th", &["th"], &["th"]),
+        ("Jp", &["jp"], &["jp"]),
+        ("Kr", &["kr"], &["kr"]),
+        ("EsEu", &["es"], &["es"]),
+        (
+            "EsAm",
+            &["mx", "co", "cl", "pe", "ve", "ec", "bo", "py", "gt", "hn", "sv", "ni", "cr", "pa", "cu", "do", "pr"],
+            &["mx", "latam"],
+        ),
+        ("EsRp", &["ar", "uy"], &["ar-uy"]),
+        ("Fr", &["fr", "re", "yt", "gp", "bl", "mf", "mq", "gf", "pm", "nc", "pf", "wf", "mc", "lu"], &["fr", "lu"]),
+        ("Be", &["be"], &["be"]),
+        ("De", &["de"], &["de"]),
+        ("At", &["at"], &["at"]),
+        ("Ch", &["ch", "li"], &["ch"]),
+        ("Br", &["br"], &["br"]),
+        ("Pt", &["pt"], &["pt"]),
+        ("Tr", &["tr"], &["tr"]),
     ];
 
     #[test]
+    fn every_country_of_the_old_regions_still_has_one() {
+        for (old, countries, now) in LEGACY {
+            for c in countries {
+                let got = packs_store::current().countries.get(*c).map(String::as_str);
+                assert!(got.is_some_and(|g| now.contains(&g)), "{old}: {c} -> {got:?}, want one of {now:?}");
+                assert!(Region::of_country(c).is_some_and(|r| now.contains(&r.code())), "{old}: {c}");
+            }
+        }
+        assert!(all().len() >= 74, "{}", all().len());
+    }
+
+    /// Longest region paragraph (delivery, read-back, scams): Chinese characters,
+    /// and English (about the same number of tokens).
+    const BLOCK_MAX_CHARS_ZH: usize = 140;
+    const BLOCK_MAX_CHARS_EN: usize = 320;
+
+    #[test]
     fn every_regions_paragraph_is_short() {
-        for r in ALL {
+        for r in all() {
             for lang in crate::locale::ALL {
                 let b = block(r, lang, false);
                 let n = b.trim().chars().count();
                 let max = if lang.is_zh() { BLOCK_MAX_CHARS_ZH } else { BLOCK_MAX_CHARS_EN };
                 assert!(n > 0 && n <= max, "{r:?} {lang:?}: {n} {b}");
-                assert!(!b.contains('{'), "{r:?} {lang:?}");
+                assert!(!b.contains('{') && !habits_block(r, lang).contains('{'), "{r:?} {lang:?}");
+                assert!(!stall_line(r, lang).contains('{'), "{r:?} {lang:?}");
             }
         }
     }
 
     #[test]
-    fn sim_first_then_language() {
-        assert_eq!(resolve(Some("TW"), Lang::En), Some(Region::Tw));
-        assert_eq!(resolve(Some("mo"), Lang::ZhTw), Some(Region::HkMo));
-        assert_eq!(resolve(Some("sg"), Lang::ZhCn), Some(Region::MySg));
-        assert_eq!(resolve(Some("uy"), Lang::Es), Some(Region::EsRp));
-        assert_eq!(resolve(Some("it"), Lang::ZhTw), Some(Region::It));
-        assert_eq!(resolve(Some("vn"), Lang::ZhTw), Some(Region::Vn));
-        assert_eq!(resolve(Some("th"), Lang::ZhTw), Some(Region::Th));
-        assert_eq!(resolve(Some("TR"), Lang::En), Some(Region::Tr));
-        assert_eq!(resolve(None, Lang::Ja), Some(Region::Jp));
-        assert_eq!(resolve(Some(" "), Lang::ZhTw), Some(Region::Tw));
-        // A SIM of a country without rules: none, not the language's.
-        assert_eq!(resolve(Some("fi"), Lang::ZhTw), None);
+    fn sim_first_then_home_then_language() {
+        assert_eq!(resolve_with(Some("TW"), None, Lang::En), Some(r("tw")));
+        assert_eq!(resolve_with(Some("mo"), None, Lang::ZhTw), Some(r("hk-mo")));
+        assert_eq!(resolve_with(Some("sg"), None, Lang::ZhCn), Some(r("sg")));
+        assert_eq!(resolve_with(Some("uy"), None, Lang::Es), Some(r("ar-uy")));
+        assert_eq!(resolve_with(Some("it"), None, Lang::ZhTw), Some(r("it")));
+        assert_eq!(resolve_with(Some("TR"), None, Lang::En), Some(r("tr")));
+        // The SIM beats the home country; the home country beats the language.
+        assert_eq!(resolve_with(Some("jp"), Some("de"), Lang::En), Some(r("jp")));
+        assert_eq!(resolve_with(None, Some("de"), Lang::En), Some(r("de")));
+        assert_eq!(resolve_with(Some(" "), Some(""), Lang::Ja), Some(r("jp")));
+        assert_eq!(resolve_with(None, None, Lang::ZhTw), Some(r("tw")));
+        assert_eq!(resolve_with(None, None, Lang::Es), Some(r("mx")));
+        assert_eq!(resolve_with(None, None, Lang::Pt), Some(r("br")));
+        // A country the pack does not list: its default region; not a country: none.
+        assert_eq!(resolve_with(Some("aq"), None, Lang::ZhTw), Some(r("default")));
+        assert_eq!(resolve_with(Some("zz"), None, Lang::ZhTw), None);
+        // Settings unset (unit tests): no home country.
+        assert_eq!(resolve(None, Lang::De), Some(r("de")));
     }
 
     #[test]
     fn a_line_is_in_the_prompts_instruction_language() {
-        assert_eq!(line(Region::Tw, Kind::Delivery, Lang::ZhTw).as_deref(), Some("快遞常放管理室或門口"));
-        let cn = line(Region::Cn, Kind::Fraud, Lang::ZhCn).unwrap();
-        assert!(cn.contains("安全账户") || cn.contains("安全帐户"), "{cn}");
-        assert!(line(Region::Jp, Kind::Delivery, Lang::Ja).unwrap().starts_with("Parcels:"));
-        assert!(line(Region::De, Kind::Readback, Lang::De).unwrap().contains("19 Uhr 30"));
-        assert!(line(Region::Tr, Kind::Delivery, Lang::En).unwrap().contains("kapıcı"));
-        assert!(line(Region::Tr, Kind::Fraud, Lang::ZhTw).unwrap().contains("安全帳戶"));
-        assert_eq!(line(Region::Tr, Kind::Readback, Lang::En), None);
-        assert_eq!(line(Region::Tw, Kind::Readback, Lang::ZhTw), None);
+        let tw = line(r("tw"), Kind::Delivery, Lang::ZhTw).unwrap();
+        assert!(tw.contains("管理室"), "{tw}");
+        let cn = line(r("cn"), Kind::Fraud, Lang::ZhCn).unwrap();
+        assert!(cn.contains("诈骗"), "{cn}");
+        assert!(line(r("de"), Kind::Delivery, Lang::De).unwrap().contains("Packstation"));
+        for (code, lang) in [("us", Lang::En), ("jp", Lang::Ja), ("kr", Lang::Ko), ("es", Lang::Es), ("fr", Lang::Fr), ("br", Lang::Pt), ("gulf", Lang::En)] {
+            assert!(line(r(code), Kind::Fraud, lang).unwrap().contains("scam"), "{code}");
+        }
+        assert!(line(r("th"), Kind::Fraud, Lang::ZhTw).unwrap().contains("詐騙"));
         // The prompt already says where parcels go: only the rest.
-        let b = block(Region::Tw, Lang::ZhTw, true);
-        assert!(!b.contains("管理室") && b.contains("ATM"), "{b}");
+        let b = block(r("tw"), Lang::ZhTw, true);
+        assert!(!b.contains("管理室") && b.contains("詐騙"), "{b}");
+        assert_eq!(delivery_key(r("tw"), Lang::ZhTw), Some("管理室"));
+        assert_eq!(delivery_key(r("us"), Lang::En), None);
+    }
+
+    #[test]
+    fn the_five_levels_differ_and_fill_in_the_owner() {
+        for code in ["tw", "us", "jp", "de", "kr", "es", "fr", "br", "th", "eg"] {
+            for lang in [Lang::ZhTw, Lang::ZhCn, Lang::En, Lang::Ja, Lang::De] {
+                for assistant in [false, true] {
+                    let lines: Vec<String> = (1..=5).map(|l| style_line(r(code), lang, assistant, l, "Alex")).collect();
+                    for (i, a) in lines.iter().enumerate() {
+                        assert!(!a.is_empty() && !a.contains('{') && !a.contains('}'), "{code} {lang:?} {a}");
+                        for b in &lines[i + 1..] {
+                            assert_ne!(a, b, "{code} {lang:?} assistant={assistant}");
+                        }
+                    }
+                    // Out of range is held to 1..5.
+                    assert_eq!(style_line(r(code), lang, assistant, 0, "Alex"), lines[0]);
+                    assert_eq!(style_line(r(code), lang, assistant, 9, "Alex"), lines[4]);
+                }
+            }
+        }
+        let tw = style_line(r("tw"), Lang::ZhTw, false, 1, "王先生");
+        assert!(tw.starts_with("\n【講話風格") && tw.contains("王先生"), "{tw}");
+        let cn = style_line(r("tw"), Lang::ZhCn, true, 1, "王先生");
+        assert!(cn.starts_with("\n【讲话风格"), "{cn}");
+        let us = style_line(r("us"), Lang::En, false, 1, "Alex");
+        assert!(us.starts_with("\n[Talk style] ") && us.contains("Alex"), "{us}");
+    }
+
+    #[test]
+    fn opening_and_speech_codes_come_from_the_pack() {
+        // Countries of the nine settings languages keep the setting's opening.
+        for c in ["es", "fr", "de", "us", "tw", "jp", "kr", "br", "mx", "be"] {
+            assert!(hello_of_country(c).is_none(), "{c}");
+        }
+        assert!(hello_of_country("ad").is_some(), "Andorra");
+        // Kept as before: English in India and the Philippines, Hindi heard in India.
+        for c in ["in", "ph"] {
+            let h = hello_of_country(c).unwrap();
+            assert_eq!((h.code, h.name_en), ("en", "English"), "{c}");
+        }
+        assert_eq!(stt_of_country("IN"), Some("hi-IN"));
+        assert_eq!(stt_of_country("us"), None);
+        assert_eq!(stt_of_country("th"), Some("th-TH"));
+        assert_eq!(stt_of_country("ua"), Some("uk-UA"));
+        assert_eq!(stt_of_country("zz"), None);
+        let it = hello_of_country("IT").unwrap();
+        assert_eq!(it.code, "it");
+        assert!(!it.hello.is_empty() && !it.hello_again.is_empty());
+        let th = hello_of_country("th").unwrap();
+        assert!(th.hello.chars().any(|c| ('\u{0E00}'..='\u{0E7F}').contains(&c)), "{}", th.hello);
+        assert!(hello_of_country("sa").unwrap().hello.chars().any(|c| ('\u{0600}'..='\u{06FF}').contains(&c)));
+    }
+
+    #[test]
+    fn the_dialect_regions_are_the_chinese_ones() {
+        for c in ["tw", "hk-mo", "cn", "sg", "my"] {
+            assert!(chinese_dialects_heard(r(c)), "{c}");
+        }
+        for c in ["us", "jp", "de", "ch", "pt", "ca", "th"] {
+            assert!(!chinese_dialects_heard(r(c)), "{c}");
+        }
     }
 }

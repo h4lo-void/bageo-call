@@ -58,6 +58,7 @@ mod mcp;
 mod mdns;
 mod notify;
 mod openclaw;
+mod packs_store;
 mod phone_region;
 mod phone_wifi;
 mod place_habits;

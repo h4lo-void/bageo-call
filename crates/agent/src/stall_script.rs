@@ -593,28 +593,50 @@ mod tests {
     /// shorter overall than before).
     #[test]
     fn the_english_stall_prompt_stays_within_the_budget() {
-        use crate::gemini_live::StallPrompt;
-        const STALL_ADDITION_BUDGET: usize = 3_000;
-        let ctx = crate::prompts::Ctx {
-            lang: Lang::En,
-            assistant: false,
-            owner: "Sam",
-            aliases: &[],
-            custom: "",
-            status: "",
-            stall: StallPrompt::Full,
-            knowledge: "",
-            carrier_note: false,
-            auto_language: true,
-        };
-        let scope = crate::prompts::Scope { region: Some(crate::country_profile::Region::Us), carrier_note: false };
-        let full = crate::prompts::scope_to_region(&crate::prompts::build(&ctx), Lang::En, scope);
+        // As a call has it: the region's rules and its stalling snags.
+        let scope = crate::prompts::Scope { region: crate::country_profile::Region::of_code("us"), stall: true, ..Default::default() };
+        let full = crate::prompts::scope_to_region(&crate::prompts::build(&english_stall_ctx()), Lang::En, scope);
         let persona = crate::prompts::persona_chars(Lang::En, false, "Sam", "");
         for typology in ["investment_group_scam", "fake_official", "fake_debt_collection", "general_promotion"] {
             let (slim, found) = slim_stall_prompt(&full, typology);
             assert_eq!(found, Some(Lang::En));
             let rest = slim.chars().count() - persona;
             assert!(rest <= STALL_ADDITION_BUDGET, "{typology}: {rest} besides the persona (was {})", full.chars().count() - persona);
+        }
+    }
+
+    const STALL_ADDITION_BUDGET: usize = 3_000;
+
+    fn english_stall_ctx() -> crate::prompts::Ctx<'static> {
+        crate::prompts::Ctx {
+            lang: Lang::En,
+            assistant: false,
+            owner: "Sam",
+            aliases: &[],
+            custom: "",
+            status: "",
+            stall: crate::gemini_live::StallPrompt::Full,
+            knowledge: "",
+            carrier_note: false,
+            auto_language: true,
+        }
+    }
+
+    /// The pack's limit on the stalling prompt's region texts
+    /// ([bageo_packs::check::STALL_SUM_MAX]: delivery + readback + fraud +
+    /// stall_local) keeps the English stalling prompt within its budget with
+    /// any region.
+    #[test]
+    fn the_packs_stall_limit_keeps_the_english_stall_prompt_within_the_budget() {
+        let (m_en, _) = bageo_packs::check::STALL_SUM_MAX;
+        let bare = crate::prompts::scope_to_region(&crate::prompts::build(&english_stall_ctx()), Lang::En, Default::default());
+        let persona = crate::prompts::persona_chars(Lang::En, false, "Sam", "");
+        for typology in ["investment_group_scam", "fake_official", "fake_debt_collection", "general_promotion"] {
+            let (slim, _) = slim_stall_prompt(&bare, typology);
+            let rest = slim.chars().count() - persona;
+            let room = STALL_ADDITION_BUDGET - rest - crate::country_profile::stall_overhead(Lang::En);
+            println!("STALL_ROOM {typology} rest={rest} room={room} limit={m_en}");
+            assert!(m_en <= room, "{typology}: the pack lets in {m_en}, the budget has room for {room}");
         }
     }
 
@@ -736,13 +758,7 @@ mod tests {
     /// line to recite.
     #[test]
     fn no_call_text_hands_the_ai_a_line_to_recite() {
-        use crate::country_profile::Region;
         use crate::scenario::Scenario;
-        const REGIONS: [Region; 21] = [
-            Region::Tw, Region::HkMo, Region::Cn, Region::MySg, Region::Us, Region::Ca, Region::GbIe,
-            Region::AuNz, Region::In, Region::Jp, Region::Kr, Region::EsEu, Region::EsAm, Region::EsRp,
-            Region::Fr, Region::Be, Region::De, Region::At, Region::Ch, Region::Br, Region::Pt,
-        ];
         let mut texts: Vec<String> = Vec::new();
         for lang in crate::locale::ALL {
             texts.extend(ALL_FAMILIES.iter().filter_map(|f| script(*f, lang)));
@@ -753,8 +769,15 @@ mod tests {
                     texts.extend(crate::scenario::cue(s, lang, None, booking));
                 }
             }
-            for r in REGIONS {
+            for r in crate::country_profile::all() {
                 texts.push(crate::country_profile::block(r, lang, false));
+                texts.push(crate::country_profile::habits_block(r, lang));
+                texts.push(crate::country_profile::stall_line(r, lang));
+                for level in 1..=5 {
+                    for assistant in [false, true] {
+                        texts.push(crate::country_profile::style_line(r, lang, assistant, level, "Alex"));
+                    }
+                }
                 texts.push(crate::prompts::dialect_note(r, lang));
             }
             let answers = [("phone".to_string(), "0912345678".to_string())];

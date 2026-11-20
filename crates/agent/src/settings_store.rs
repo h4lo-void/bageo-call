@@ -259,6 +259,17 @@ pub struct RuntimeSettings {
     /// how blocked numbers written with `+…` match the national form.
     #[serde(default = "default_country_code")]
     pub country_code: String,
+    /// The country the owner lives in (ISO 3166 alpha-2, lowercase): a call's
+    /// region when the SIM that took it does not say
+    /// ([crate::country_profile::resolve]), and the calling code before
+    /// country_code. Empty = worked out from the phone's SIMs and the language.
+    #[serde(default)]
+    pub home_country: String,
+    /// How the AI talks on a call, 1 (casual, like with a friend) to 5 (crisp
+    /// business register); 3 = everyday. Only with the built-in prompt: an
+    /// owner's own prompt replaces it ([crate::locale::Active::talk_style]).
+    #[serde(default = "default_talk_style_level")]
+    pub talk_style_level: u8,
     /// OpenAI-compatible chat endpoint for the post-call summary when
     /// `summary_provider` is `custom`, e.g. `https://api.openai.com/v1`.
     /// Empty = Gemini with the Live API key, else OpenRouter.
@@ -485,6 +496,29 @@ fn default_answer_style() -> String {
 
 fn default_country_code() -> String {
     String::new()
+}
+
+/// The talk-style slider's middle: everyday speech.
+pub const TALK_STYLE_DEFAULT: u8 = 3;
+
+fn default_talk_style_level() -> u8 {
+    TALK_STYLE_DEFAULT
+}
+
+/// talk_style_level as stored: 1 to 5.
+fn clamp_talk_style(level: u64) -> u8 {
+    level.clamp(1, 5) as u8
+}
+
+/// home_country as stored: a country code (two letters, lowercase), else empty
+/// (worked out automatically).
+fn sanitize_home_country(s: &str) -> String {
+    let c = s.trim().to_ascii_lowercase();
+    if c.len() == 2 && bageo_packs::data::is_country(&c) {
+        c
+    } else {
+        String::new()
+    }
 }
 
 /// A caller who speaks another language is answered in it: on unless the owner
@@ -1129,6 +1163,8 @@ impl RuntimeSettings {
             knowledge_notes: env_or("KNOWLEDGE_NOTES", ""),
             reply_in_caller_language: env_bool("REPLY_IN_CALLER_LANGUAGE", default_reply_in_caller_language()),
             country_code: digits_only(&env_or("COUNTRY_CODE", "")),
+            home_country: sanitize_home_country(&env_or("HOME_COUNTRY", "")),
+            talk_style_level: clamp_talk_style(env_parse("TALK_STYLE_LEVEL", u64::from(TALK_STYLE_DEFAULT))),
             summary_api_base: env_or("SUMMARY_API_BASE", ""),
             summary_model: env_or("SUMMARY_MODEL", ""),
             summary_provider: sanitize_summary_provider(&env_or("SUMMARY_PROVIDER", "auto")),
@@ -1266,9 +1302,10 @@ impl RuntimeSettings {
         }
     }
 
-    /// Country calling code: the setting; else Taiwan's for zh-TW; else the
-    /// country of the SIMs the connected phones reported (the language's own
-    /// country when one of them is in it); else the language's own country.
+    /// Country calling code: the home country's; else the setting country_code;
+    /// else Taiwan's for zh-TW; else the country of the SIMs the connected
+    /// phones reported (the language's own country when one of them is in it);
+    /// else the language's own country.
     pub fn effective_country_code(&self) -> String {
         self.effective_country_code_with(&crate::phone_region::seen_sims())
     }
@@ -1276,6 +1313,9 @@ impl RuntimeSettings {
     /// [`Self::effective_country_code`] with the SIM countries (ISO 3166
     /// alpha-2, lowercase) the phones reported given.
     pub fn effective_country_code_with(&self, sims: &[String]) -> String {
+        if let Some(code) = crate::phone_region::calling_code(&self.home_country) {
+            return code.to_string();
+        }
         let c = digits_only(&self.country_code);
         if !c.is_empty() {
             return c;
@@ -1309,7 +1349,18 @@ impl RuntimeSettings {
             owner_aliases: self.owner_aliases.clone(),
             country_code: self.effective_country_code(),
             name_fixes: crate::locale::parse_name_fixes(&self.name_corrections),
+            home_country: Some(self.home_country.clone()).filter(|c| !c.is_empty()),
+            talk_style: self.uses_builtin_prompt().then_some(self.talk_style_level.clamp(1, 5)),
         }
+    }
+
+    /// The active answer style runs on the built-in prompt (none of the owner's
+    /// own, or a saved copy of a built-in one): the talk style and the local
+    /// ways go into its calls.
+    pub fn uses_builtin_prompt(&self) -> bool {
+        let custom = self.active_custom_prompt();
+        custom.trim().is_empty()
+            || crate::prompts::is_unedited_default(custom, self.is_assistant_style(), &self.owner_name)
     }
 
     /// Custom prompt for the active `answer_style` (`gemini_assistant_prompt`
@@ -1481,6 +1532,7 @@ impl RuntimeSettings {
             answer_style,
             knowledge_notes,
             country_code,
+            home_country,
             summary_api_base,
             summary_model,
             summary_provider,
@@ -1555,6 +1607,7 @@ impl RuntimeSettings {
             calendar_suggest,
             appointment_sms,
             ui_password_prompted,
+            talk_style_level,
         );
         self.summary_key_saved = ov.summary_api_key.as_deref().is_some_and(|k| !k.trim().is_empty())
             || ov.trtc_llm_config.as_deref().is_some_and(|c| crate::summary::api_key_from_llm_config(c).is_some());
@@ -1581,6 +1634,8 @@ impl RuntimeSettings {
         self.whitelist_mode = sanitize_whitelist_mode(&self.whitelist_mode);
         self.whitelist_forward_number = self.whitelist_forward_number.trim().chars().filter(|c| !c.is_control()).take(32).collect();
         self.country_code = digits_only(&self.country_code);
+        self.home_country = sanitize_home_country(&self.home_country);
+        self.talk_style_level = clamp_talk_style(u64::from(self.talk_style_level));
         self.public_url = sanitize_public_url(&self.public_url);
         self.mdns_name = crate::mdns::parse_name_setting(&self.mdns_name);
         self.appointment_mode = sanitize_appointment_mode(&self.appointment_mode);
@@ -1998,6 +2053,10 @@ struct Overrides {
     reply_in_caller_language: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     country_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    home_country: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    talk_style_level: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     summary_api_base: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2796,6 +2855,12 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     p_string(patch, "country_code", &mut ov.country_code);
     if let Some(v) = ov.country_code.take() {
         ov.country_code = Some(digits_only(&v));
+    }
+    if let Some(v) = patch.get("home_country").and_then(|v| v.as_str()) {
+        ov.home_country = Some(sanitize_home_country(v));
+    }
+    if let Some(v) = patch.get("talk_style_level").and_then(|v| v.as_u64()) {
+        ov.talk_style_level = Some(clamp_talk_style(v));
     }
     p_string(patch, "summary_api_base", &mut ov.summary_api_base);
     p_string(patch, "summary_model", &mut ov.summary_model);
@@ -4514,6 +4579,43 @@ mod review_t4_tests {
         rt.language = "ja".into();
         rt.country_code = "44".into();
         assert_eq!(rt.effective_country_code_with(&["us".to_string()]), "44");
+        // The home country comes before everything, the old setting after it.
+        rt.home_country = "de".into();
+        assert_eq!(rt.effective_country_code_with(&["us".to_string()]), "49");
+        rt.home_country.clear();
+        assert_eq!(rt.effective_country_code_with(&["us".to_string()]), "44");
+    }
+
+    #[test]
+    fn home_country_and_talk_style_are_stored_cleaned() {
+        let dir = std::env::temp_dir().join(format!("bageo-talk-style-{}", uuid::Uuid::new_v4()));
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        let rt = store.snapshot();
+        assert_eq!((rt.home_country.as_str(), rt.talk_style_level), ("", 3));
+        assert_eq!(rt.locale_active().home_country, None);
+        let rt = store.apply_patch(&json!({ "home_country": " JP ", "talk_style_level": 9 })).unwrap();
+        assert_eq!((rt.home_country.as_str(), rt.talk_style_level), ("jp", 5));
+        assert_eq!(rt.locale_active().home_country.as_deref(), Some("jp"));
+        let rt = store.apply_patch(&json!({ "talk_style_level": 0 })).unwrap();
+        assert_eq!(rt.talk_style_level, 1);
+        // Not a country: back to automatic.
+        let rt = store.apply_patch(&json!({ "home_country": "zz" })).unwrap();
+        assert_eq!(rt.home_country, "");
+        let rt = store.apply_patch(&json!({ "home_country": "fr", "talk_style_level": 4 })).unwrap();
+        let back = SettingsStore::load(base).snapshot();
+        assert_eq!((back.home_country.as_str(), back.talk_style_level), ("fr", 4));
+        assert_eq!(store.masked_json()["talk_style_level"], json!(4));
+        // The built-in prompt (or a saved copy of it) carries the talk style; the owner's own does not.
+        assert_eq!(rt.locale_active().talk_style, Some(4));
+        let mut own = (*rt).clone();
+        own.answer_style = "persona".into();
+        own.gemini_persona_prompt = "I am {owner}, a florist; talk like me.".into();
+        assert_eq!(own.locale_active().talk_style, None);
+        own.gemini_persona_prompt = crate::prompts::default_prompt_template(crate::locale::Lang::De, false).to_string();
+        assert_eq!(own.locale_active().talk_style, Some(4));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

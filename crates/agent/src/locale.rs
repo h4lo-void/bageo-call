@@ -96,6 +96,13 @@ pub struct Active {
     /// Names speech-to-text keeps getting wrong → how they should read
     /// (settings `name_corrections`).
     pub name_fixes: Vec<(String, String)>,
+    /// The country the owner lives in (settings `home_country`, ISO 3166
+    /// alpha-2, lowercase): a call's region when its SIM does not say. None =
+    /// worked out automatically.
+    pub home_country: Option<String>,
+    /// Talk-style slider, 1 to 5 (settings `talk_style_level`); None when the
+    /// owner's own prompt is in use, which replaces the talk style.
+    pub talk_style: Option<u8>,
 }
 
 impl Default for Active {
@@ -110,6 +117,8 @@ impl Default for Active {
             owner_aliases: Vec::new(),
             country_code: "886".to_string(),
             name_fixes: Vec::new(),
+            home_country: None,
+            talk_style: None,
         }
     }
 }

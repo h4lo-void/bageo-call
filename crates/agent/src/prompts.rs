@@ -807,85 +807,11 @@ pub struct LocalHello {
     pub hello_again: &'static str,
 }
 
-const ITALIAN: LocalHello = LocalHello {
-    code: "it",
-    name_tw: "義大利文",
-    name_cn: "意大利语",
-    name_en: "Italian",
-    hello: "Pronto?",
-    hello_again: "Pronto, mi sente?",
-};
-const RUSSIAN: LocalHello = LocalHello {
-    code: "ru",
-    name_tw: "俄文",
-    name_cn: "俄语",
-    name_en: "Russian",
-    hello: "Алло?",
-    hello_again: "Алло, вы меня слышите?",
-};
-const INDONESIAN: LocalHello = LocalHello {
-    code: "id",
-    name_tw: "印尼文",
-    name_cn: "印尼语",
-    name_en: "Indonesian",
-    hello: "Halo?",
-    hello_again: "Halo, bisa dengar?",
-};
-const THAI: LocalHello = LocalHello {
-    code: "th",
-    name_tw: "泰文",
-    name_cn: "泰语",
-    name_en: "Thai",
-    hello: "ฮัลโหล",
-    hello_again: "ฮัลโหล ได้ยินไหม",
-};
-const VIETNAMESE: LocalHello = LocalHello {
-    code: "vi",
-    name_tw: "越南文",
-    name_cn: "越南语",
-    name_en: "Vietnamese",
-    hello: "A lô?",
-    hello_again: "A lô, nghe rõ không?",
-};
-const ENGLISH: LocalHello = LocalHello {
-    code: "en",
-    name_tw: "英文",
-    name_cn: "英语",
-    name_en: "English",
-    hello: "Hello?",
-    hello_again: "Hello, can you hear me?",
-};
-const ARABIC: LocalHello = LocalHello {
-    code: "ar",
-    name_tw: "阿拉伯文",
-    name_cn: "阿拉伯语",
-    name_en: "Arabic",
-    hello: "ألو؟",
-    hello_again: "ألو، هل تسمعني؟",
-};
-const TURKISH: LocalHello = LocalHello {
-    code: "tr",
-    name_tw: "土耳其文",
-    name_cn: "土耳其语",
-    name_en: "Turkish",
-    hello: "Alo?",
-    hello_again: "Alo, duyuyor musunuz?",
-};
-
-/// [LocalHello] of a country (ISO 3166 alpha-2, any case); None where the AI
-/// speaks the language or no local way is listed.
+/// [LocalHello] of a country (ISO 3166 alpha-2, any case), from the local data
+/// pack ([crate::country_profile::hello_of_country]); None where the AI speaks
+/// the language or the pack gives no opening.
 pub fn local_hello(country: &str) -> Option<&'static LocalHello> {
-    Some(match country.trim().to_ascii_lowercase().as_str() {
-        "it" | "sm" | "va" => &ITALIAN,
-        "ru" | "by" | "kz" | "kg" => &RUSSIAN,
-        "id" => &INDONESIAN,
-        "tr" => &TURKISH,
-        "th" => &THAI,
-        "vn" => &VIETNAMESE,
-        "in" | "ph" => &ENGLISH,
-        "sa" | "ae" | "eg" | "jo" | "kw" | "qa" | "bh" | "om" | "lb" | "iq" | "sy" | "ye" | "ly" | "dz" | "ma" | "tn" | "sd" | "ps" => &ARABIC,
-        _ => return None,
-    })
+    crate::country_profile::hello_of_country(country)
 }
 
 /// [kick_open_call] for a call that opens the local way ([local_hello]).
@@ -1085,7 +1011,7 @@ pub fn default_prompt_template(lang: Lang, assistant: bool) -> &'static str {
 /// language was switched to English. Built-in prompts of earlier releases count
 /// too ([`legacy_templates`]): a copy saved before 「不要講英文」 became 「follow
 /// the caller's language」 would otherwise keep the old rule as the owner's own.
-fn is_unedited_default(custom: &str, assistant: bool, owner: &str) -> bool {
+pub fn is_unedited_default(custom: &str, assistant: bool, owner: &str) -> bool {
     let c = custom.trim();
     crate::locale::ALL.iter().any(|l| {
         c == default_prompt(*l, assistant, owner).trim() || c == default_prompt_template(*l, assistant).trim()
@@ -1256,14 +1182,31 @@ const EN_DIALECT_NOTE: &str =
     "\n[Dialects] A caller in Cantonese, Hokkien or Hakka: understand what you can and answer in Mandarin, never in the dialect.";
 
 /// What a call's prompt is scoped to ([scope_to_region]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Scope {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Scope<'a> {
     /// The call's region ([crate::country_profile::resolve]); None = no regional part.
     pub region: Option<Region>,
     /// Keep the note on the Taiwan carriers' international-call warning: only a
     /// call that can get it (a number from abroad on a SIM whose carrier plays
     /// it, or the SIM unknown).
     pub carrier_note: bool,
+    /// The talk-style slider and the local ways of talking; None with the
+    /// owner's own prompt, which replaces them ([crate::locale::Active::talk_style]).
+    pub style: Option<StyleSel>,
+    /// The sales / scam stalling prompt: of the region only its scams and its
+    /// stalling snags ([crate::country_profile::stall_block]).
+    pub stall: bool,
+    /// The owner's name ({owner} in the talk style), cleaned by [owner_label].
+    pub owner: &'a str,
+}
+
+/// One cell of the talk-style slider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StyleSel {
+    /// 1 (casual) to 5 (businesslike).
+    pub level: u8,
+    /// The AI assistant's cells, else the owner's own voice.
+    pub assistant: bool,
 }
 
 /// `block` put before the injection guard of `prompt` (its rules come before the
@@ -1284,7 +1227,12 @@ fn insert_before_guard(prompt: &str, lang: Lang, block: &str) -> String {
 /// ([crate::country_profile::block]; where parcels go is not said twice). The
 /// region sets how the call opens and the local ways, never the languages: the
 /// note on following the caller into another language stays as it is.
-pub fn scope_to_region(prompt: &str, lang: Lang, scope: Scope) -> String {
+///
+/// Then, with the built-in prompt (scope.style), the region's local ways and
+/// the talk-style cell. The stalling prompt (scope.stall) gets the dialect note,
+/// the local scams and the stalling snags only. All of it before the injection
+/// guard, so the owner's notes and the hard lines come last.
+pub fn scope_to_region(prompt: &str, lang: Lang, scope: Scope<'_>) -> String {
     if prompt.trim().is_empty() {
         return prompt.to_string();
     }
@@ -1304,7 +1252,16 @@ pub fn scope_to_region(prompt: &str, lang: Lang, scope: Scope) -> String {
     };
     let skip_delivery = crate::country_profile::delivery_key(region, lang).is_some_and(|k| out.contains(k));
     let dialects = if follow_note { String::new() } else { dialect_note(region, lang) };
-    let block = format!("{dialects}{}", crate::country_profile::block(region, lang, skip_delivery));
+    if scope.stall {
+        let block = format!("{dialects}{}", crate::country_profile::stall_block(region, lang));
+        return insert_before_guard(&out, lang, &block);
+    }
+    let mut block = format!("{dialects}{}", crate::country_profile::block(region, lang, skip_delivery));
+    if let Some(st) = scope.style {
+        block.push_str(&crate::country_profile::habits_block(region, lang));
+        let owner = owner_label(lang, scope.owner);
+        block.push_str(&crate::country_profile::style_line(region, lang, st.assistant, st.level, &owner));
+    }
     insert_before_guard(&out, lang, &block)
 }
 
@@ -1328,9 +1285,8 @@ mod tests {
     #[test]
     fn the_shared_english_instructions_stay_within_the_budget() {
         use super::*;
-        use crate::country_profile::Region;
         let aliases = vec!["Mr. Wang".to_string()];
-        for (lang, region) in [(Lang::En, Region::Us), (Lang::Ja, Region::Jp), (Lang::De, Region::De)] {
+        for (lang, region) in [(Lang::En, r("us")), (Lang::Ja, r("jp")), (Lang::De, r("de"))] {
             let me = crate::locale::Active { owner: "Wang".into(), lang, ..Default::default() };
             let stub = crate::appointments::prompt_stub(crate::appointments::Reply::Sms, &me);
             for stall in [StallPrompt::Off, StallPrompt::ListenFirst] {
@@ -1346,7 +1302,7 @@ mod tests {
                     carrier_note: false,
                     auto_language: true,
                 };
-                let scoped = scope_to_region(&build(&c), lang, Scope { region: Some(region), carrier_note: false });
+                let scoped = scope_to_region(&build(&c), lang, Scope { region: Some(region), carrier_note: false, ..Default::default() });
                 let rest = format!("{scoped}{stub}").chars().count() - persona_chars(lang, false, "Wang", "");
                 assert!(rest <= CALL_PROMPT_BUDGET, "{lang:?} {stall:?}: {rest} characters besides the persona");
             }
@@ -1360,7 +1316,6 @@ mod tests {
     #[test]
     fn a_call_prompt_besides_the_owners_persona_stays_within_the_budget() {
         use super::*;
-        use crate::country_profile::Region;
         let custom = "假".repeat(1760);
         let aliases = vec!["王生".to_string()];
         let me = crate::locale::Active { owner: "王先生".into(), ..Default::default() };
@@ -1383,7 +1338,7 @@ mod tests {
                         auto_language: true,
                     };
                     let scoped =
-                        scope_to_region(&build(&c), Lang::ZhTw, Scope { region: Some(Region::Tw), carrier_note: carrier });
+                        scope_to_region(&build(&c), Lang::ZhTw, Scope { region: Some(r("tw")), carrier_note: carrier, ..Default::default() });
                     let rest = format!("{scoped}{stub}").chars().count() - user;
                     assert!(
                         rest <= CALL_PROMPT_BUDGET,
@@ -1399,6 +1354,10 @@ mod tests {
     }
 
     use super::*;
+
+    fn r(code: &str) -> Region {
+        Region::of_code(code).unwrap_or_else(|| panic!("no region {code}"))
+    }
 
     /// Stopping a leaving sales / scam caller in English asks one more question
     /// at once: no "hang on" or "hold on", which ask them to wait on the line.
@@ -1940,84 +1899,293 @@ mod tests {
         }
     }
 
+    /// "after" of 610c661's PROMPT_SIZE lines (the built-in prompt with its
+    /// region's part), by setting language, region (as named now) and identity.
+    const BASELINE_610C661: &[(&str, &str, bool, usize)] = &[
+        ("zh-TW", "tw", false, 1707),
+        ("zh-TW", "tw", true, 1352),
+        ("en", "us", false, 2774),
+        ("en", "us", true, 2453),
+        ("ja", "jp", false, 2246),
+        ("ja", "jp", true, 1987),
+        ("zh-TW", "hk-mo", false, 1706),
+        ("zh-TW", "hk-mo", true, 1351),
+        ("zh-CN", "my", false, 1700),
+        ("zh-CN", "sg", false, 1700),
+        ("zh-CN", "my", true, 1345),
+        ("zh-CN", "sg", true, 1345),
+        ("zh-CN", "cn", false, 1704),
+        ("zh-CN", "cn", true, 1349),
+        ("en", "ca", false, 2764),
+        ("en", "ca", true, 2443),
+        ("en", "gb-ie", false, 2773),
+        ("en", "gb-ie", true, 2452),
+        ("en", "au-nz", false, 2755),
+        ("en", "au-nz", true, 2434),
+        ("en", "in", false, 2768),
+        ("en", "in", true, 2447),
+        ("ko", "kr", false, 2284),
+        ("ko", "kr", true, 2092),
+        ("es", "es", false, 2619),
+        ("es", "es", true, 2441),
+        ("es", "mx", false, 2619),
+        ("es", "latam", false, 2619),
+        ("es", "mx", true, 2441),
+        ("es", "latam", true, 2441),
+        ("es", "ar-uy", false, 2619),
+        ("es", "ar-uy", true, 2441),
+        ("fr", "fr", false, 2666),
+        ("fr", "lu", false, 2666),
+        ("fr", "fr", true, 2496),
+        ("fr", "lu", true, 2496),
+        ("fr", "be", false, 2714),
+        ("fr", "be", true, 2544),
+        ("de", "de", false, 2694),
+        ("de", "de", true, 2528),
+        ("de", "at", false, 2694),
+        ("de", "at", true, 2528),
+        ("de", "ch", false, 2707),
+        ("de", "ch", true, 2541),
+        ("pt", "br", false, 2552),
+        ("pt", "br", true, 2392),
+        ("pt", "pt", false, 2563),
+        ("pt", "pt", true, 2403),
+        ("en", "tr", false, 2819),
+        ("en", "tr", true, 2498),
+    ];
+
+    /// Most a call's built-in prompt may grow over 610c661 with the talk style
+    /// and the local ways in (plan A2).
+    const STYLE_GROWTH_MAX: usize = 400;
+
+    /// 610c661's size for this setting language, region and identity; a region
+    /// that had no line there takes the largest of its language's.
+    fn baseline(lang: Lang, region: &str, assistant: bool) -> usize {
+        let same = |e: &&(&str, &str, bool, usize)| e.0 == lang.code() && e.2 == assistant;
+        BASELINE_610C661
+            .iter()
+            .filter(same)
+            .find(|e| e.1 == region)
+            .or_else(|| BASELINE_610C661.iter().filter(same).max_by_key(|e| e.3))
+            .map(|e| e.3)
+            .unwrap_or_else(|| panic!("no baseline for {lang:?}"))
+    }
+
+    /// The setting language people in a region use (its first country's), else English.
+    fn own_lang(region: Region) -> Lang {
+        crate::packs_store::current()
+            .region(region.code())
+            .and_then(|d| d.countries.first())
+            .and_then(|c| locale::country_lang(c))
+            .unwrap_or(Lang::En)
+    }
+
+    /// Every region × setting language × identity × talk-style level, with the
+    /// built-in prompt: at most 400 characters over 610c661. The lines printed
+    /// are the plan's matrix and every region in its own language.
     #[test]
     fn a_calls_prompt_is_scoped_to_its_region_and_within_budget() {
-        use crate::country_profile::Region;
-        const REGIONS: [Region; 22] = [
-            Region::Tw,
-            Region::HkMo,
-            Region::Cn,
-            Region::MySg,
-            Region::Us,
-            Region::Ca,
-            Region::GbIe,
-            Region::AuNz,
-            Region::In,
-            Region::Jp,
-            Region::Kr,
-            Region::EsEu,
-            Region::EsAm,
-            Region::EsRp,
-            Region::Fr,
-            Region::Be,
-            Region::De,
-            Region::At,
-            Region::Ch,
-            Region::Br,
-            Region::Pt,
-            Region::Tr,
-        ];
-        // The plan's matrix (setting language, SIM region), then every region in
-        // the language people there set.
-        let mut cases = vec![
-            (Lang::ZhTw, Region::Tw),
-            (Lang::En, Region::Us),
-            (Lang::Ja, Region::Jp),
-            (Lang::ZhTw, Region::HkMo),
-            (Lang::ZhCn, Region::MySg),
-        ];
-        for r in REGIONS {
-            let lang = match r {
-                Region::Tw | Region::HkMo => Lang::ZhTw,
-                Region::Cn | Region::MySg => Lang::ZhCn,
-                Region::Jp => Lang::Ja,
-                Region::Kr => Lang::Ko,
-                Region::EsEu | Region::EsAm | Region::EsRp => Lang::Es,
-                Region::Fr | Region::Be => Lang::Fr,
-                Region::De | Region::At | Region::Ch => Lang::De,
-                Region::Br | Region::Pt => Lang::Pt,
-                _ => Lang::En,
-            };
-            cases.push((lang, r));
+        let regions = crate::country_profile::all();
+        assert!(regions.len() >= 74, "{}", regions.len());
+        let mut printed = vec![(Lang::ZhTw, r("tw")), (Lang::En, r("us")), (Lang::Ja, r("jp")), (Lang::ZhTw, r("hk-mo")), (Lang::ZhCn, r("my"))];
+        printed.extend(regions.iter().map(|r| (own_lang(*r), *r)));
+        let mut over = Vec::new();
+        // Most characters each setting language grew over 610c661, and where.
+        let mut growth: Vec<(Lang, i64, String)> = locale::ALL.iter().map(|l| (*l, i64::MIN, String::new())).collect();
+        for region in &regions {
+            for lang in locale::ALL {
+                for assistant in [false, true] {
+                    let mut c = ctx(lang, assistant, StallPrompt::ListenFirst);
+                    c.auto_language = true;
+                    c.carrier_note = true;
+                    let (persona, rest) = build_parts(&c);
+                    let before = format!("{persona}{rest}");
+                    let limit = baseline(lang, region.code(), assistant) + STYLE_GROWTH_MAX;
+                    let mut seen = Vec::new();
+                    for level in 1..=5u8 {
+                        let scope = Scope {
+                            region: Some(*region),
+                            style: Some(StyleSel { level, assistant }),
+                            owner: "Alex",
+                            ..Default::default()
+                        };
+                        let scoped = scope_to_region(&before, lang, scope);
+                        let total = scoped.chars().count();
+                        let n = total - persona.chars().count();
+                        if printed.contains(&(lang, *region)) {
+                            println!(
+                                "PROMPT_SIZE lang={} region={} assistant={assistant} level={level} before={} after={total} rest_before={} rest_after={n} limit={limit}",
+                                lang.code(),
+                                region.code(),
+                                before.chars().count(),
+                                rest.chars().count(),
+                            );
+                        }
+                        if total > limit {
+                            over.push(format!("{lang:?} {region:?} assistant={assistant} level={level}: {total} > {limit}"));
+                        }
+                        let grew = total as i64 - (limit - STYLE_GROWTH_MAX) as i64;
+                        let g = growth.iter_mut().find(|g| g.0 == lang).unwrap();
+                        if grew > g.1 {
+                            *g = (lang, grew, format!("region={} assistant={assistant} level={level}", region.code()));
+                        }
+                        // No region puts on a language Gemini Live does not speak, or holds the call to one.
+                        for w in UNSUPPORTED_OR_LIMITING {
+                            assert!(!scoped.contains(w), "{lang:?} {region:?}: {w}");
+                        }
+                        assert!(!scoped.contains('{') && !scoped.contains('}'), "{lang:?} {region:?}");
+                        // The rest is left as it was: the identity guard last, the rules in.
+                        let guard = if assistant { &pack(lang).guard_assistant } else { &pack(lang).guard_persona };
+                        assert!(scoped.ends_with(&guard.replace("{owner}", "Alex")), "{lang:?} {region:?}");
+                        assert!(scoped.contains(pack(lang).auto_language_note.as_str()) && scoped.contains(pack(lang).readback_note.as_str()));
+                        assert!(!scoped.contains("【電信提示音】"));
+                        assert!(!seen.contains(&scoped), "{lang:?} {region:?} level {level} is the same as a lower one");
+                        seen.push(scoped);
+                    }
+                }
+            }
         }
-        for (lang, region) in cases {
+        for (lang, grew, at) in &growth {
+            println!("PROMPT_GROWTH lang={} max={grew} {at}", lang.code());
+        }
+        assert!(over.is_empty(), "{} over the budget:\n{}", over.len(), over.join("\n"));
+    }
+
+    /// The owner's own prompt replaces the talk style and the local ways: the
+    /// rest stays within the budget in every region and language.
+    #[test]
+    fn an_owners_own_prompt_gets_no_talk_style_and_stays_within_the_budget() {
+        let own = "I am {owner}, a florist. ".repeat(60);
+        for region in crate::country_profile::all() {
+            for lang in locale::ALL {
+                for assistant in [false, true] {
+                    let mut c = ctx(lang, assistant, StallPrompt::ListenFirst);
+                    c.custom = &own;
+                    c.auto_language = true;
+                    c.carrier_note = true;
+                    let (persona, rest) = build_parts(&c);
+                    // What a call with the owner's own prompt gets (Active::talk_style is None).
+                    let scoped = scope_to_region(&format!("{persona}{rest}"), lang, Scope { region: Some(region), owner: "Alex", ..Default::default() });
+                    let n = scoped.chars().count() - persona.chars().count();
+                    assert!(n <= CALL_PROMPT_BUDGET, "{lang:?} {region:?}: {n}");
+                    for h in ["[Talk style", "【講話風格", "【讲话风格", "[Local ways]", "【當地習慣】", "【当地习惯】"] {
+                        assert!(!scoped.contains(h), "{lang:?} {region:?}: {h}");
+                    }
+                }
+            }
+        }
+    }
+
+    /// Stalling gets the dialect note, the local scams and the region's snags:
+    /// no parcels, read-back, local ways or talk style.
+    /// The region's part may be at most 400 characters longer than 610c661's
+    /// longest (200 English, 90 Chinese characters).
+    #[test]
+    fn the_stalling_prompt_keeps_the_local_rules_and_gets_the_local_snags() {
+        let mut over = Vec::new();
+        for region in crate::country_profile::all() {
+            for lang in locale::ALL {
+                let mut c = ctx(lang, false, StallPrompt::Full);
+                c.auto_language = true;
+                let p = build(&c);
+                let stall = Scope { region: Some(region), stall: true, owner: "Alex", ..Default::default() };
+                let stalled = scope_to_region(&p, lang, stall);
+                let with_style = Scope { style: Some(StyleSel { level: 3, assistant: false }), ..stall };
+                assert_eq!(scope_to_region(&p, lang, with_style), stalled, "{lang:?} {region:?}");
+                let part = crate::country_profile::stall_block(region, lang);
+                assert!(stalled.contains(&part) && part.contains(crate::country_profile::line(region, crate::country_profile::Kind::Fraud, lang).unwrap().trim_end_matches(['。', '.'])), "{lang:?} {region:?}");
+                assert!(stalled.contains(crate::country_profile::stall_line(region, lang).as_str()), "{lang:?} {region:?}");
+                let delivery = crate::country_profile::line(region, crate::country_profile::Kind::Delivery, lang).unwrap();
+                assert!(!stalled.contains(delivery.trim_end_matches(['。', '.'])), "{lang:?} {region:?}: {delivery}");
+                for h in ["[Talk style]", "【講話風格】", "【讲话风格】", "[Local ways]", "【當地習慣】", "【当地习惯】"] {
+                    assert!(!stalled.contains(h), "{lang:?} {region:?}: {h}");
+                }
+                let unscoped = scope_to_region(&p, lang, Scope::default()).chars().count();
+                let part = stalled.chars().count() - unscoped;
+                let limit = if lang.is_zh() { 90 } else { 200 } + STYLE_GROWTH_MAX;
+                if part > limit {
+                    over.push(format!("{lang:?} {region:?}: {part} > {limit}"));
+                }
+            }
+        }
+        assert!(over.is_empty(), "{} over:\n{}", over.len(), over.join("\n"));
+        let tw = scope_to_region(&build(&ctx(Lang::ZhTw, false, StallPrompt::Full)), Lang::ZhTw, Scope { region: Some(r("tw")), stall: true, ..Default::default() });
+        assert!(tw.contains("【當地】") && tw.contains("【當地狀況】") && !tw.contains("【講話風格"), "{tw}");
+        // The US stalling prompt in English, as a call on a US SIM gets it.
+        let mut c = ctx(Lang::En, false, StallPrompt::Full);
+        c.auto_language = true;
+        let us = scope_to_region(&build(&c), Lang::En, Scope { region: Some(r("us")), stall: true, owner: "Alex", ..Default::default() });
+        assert!(us.contains("[Local] ") && us.contains("[Local snags] ") && !us.contains("[Talk style]"), "{us}");
+        println!("PROMPT_SAMPLE_BEGIN region=us lang=en mode=stall assistant=false\n{us}\nPROMPT_SAMPLE_END");
+    }
+
+    /// The pack's limit on a region's texts ([bageo_packs::check::PROMPT_SUM_MAX]:
+    /// delivery + readback + fraud + habits + the longest talk-style cell) keeps
+    /// every call's built-in prompt within its budget: for every setting
+    /// language and identity, the prompt without its region part, the headings
+    /// and the most text the limit lets in stay within the smallest 610c661
+    /// line of that language + 400.
+    #[test]
+    fn the_packs_limit_keeps_every_prompt_within_the_budget() {
+        let (n_en, n_zh) = bageo_packs::check::PROMPT_SUM_MAX;
+        for lang in locale::ALL {
             for assistant in [false, true] {
                 let mut c = ctx(lang, assistant, StallPrompt::ListenFirst);
                 c.auto_language = true;
                 c.carrier_note = true;
-                let (persona, rest) = build_parts(&c);
-                let before = format!("{persona}{rest}");
-                let scoped = scope_to_region(&before, lang, Scope { region: Some(region), carrier_note: false });
-                let n = scoped.chars().count() - persona.chars().count();
-                println!(
-                    "PROMPT_SIZE lang={} region={region:?} assistant={assistant} before={} after={} rest_before={} rest_after={n}",
-                    lang.code(),
-                    before.chars().count(),
-                    scoped.chars().count(),
-                    rest.chars().count(),
-                );
-                assert!(n <= CALL_PROMPT_BUDGET, "{lang:?} {region:?}: {n}");
-                // No region puts on a language Gemini Live does not speak, or holds the call to one.
-                for w in UNSUPPORTED_OR_LIMITING {
-                    assert!(!scoped.contains(w), "{lang:?} {region:?}: {w}");
-                }
-                // The rest is left as it was: the identity guard last, the rules in.
-                let guard = if assistant { &pack(lang).guard_assistant } else { &pack(lang).guard_persona };
-                assert!(scoped.ends_with(&guard.replace("{owner}", "Alex")), "{lang:?} {region:?}");
-                assert!(scoped.contains(pack(lang).auto_language_note.as_str()) && scoped.contains(pack(lang).readback_note.as_str()));
-                assert!(!scoped.contains("【電信提示音】"));
+                let base = scope_to_region(&build(&c), lang, Scope::default()).chars().count();
+                let tightest = BASELINE_610C661.iter().filter(|e| e.0 == lang.code() && e.2 == assistant).map(|e| e.3).min().unwrap();
+                let room = tightest + STYLE_GROWTH_MAX - base - crate::country_profile::prompt_overhead(lang);
+                let n = if lang.is_zh() { n_zh } else { n_en };
+                println!("PACK_ROOM lang={} assistant={assistant} base={base} tightest={tightest} room={room} limit={n}", lang.code());
+                assert!(n <= room, "{lang:?} assistant={assistant}: the pack lets in {n}, the budget has room for {room}");
             }
         }
+    }
+
+    /// The parts go in the order the plan gives (local rules, local ways, talk
+    /// style, then the injection guard and the identity guard), in the prompt's
+    /// instruction language, the owner's name cleaned. Prints the Taiwan
+    /// (Traditional Chinese) and US (English) prompts at level 3, as the owner.
+    #[test]
+    fn the_talk_style_comes_last_before_the_guards_in_every_language() {
+        for (code, lang) in [
+            ("tw", Lang::ZhTw),
+            ("cn", Lang::ZhCn),
+            ("us", Lang::En),
+            ("jp", Lang::Ja),
+            ("de", Lang::De),
+            ("kr", Lang::Ko),
+            ("es", Lang::Es),
+            ("fr", Lang::Fr),
+            ("br", Lang::Pt),
+            ("th", Lang::En),
+            ("eg", Lang::En),
+        ] {
+            let mut c = ctx(lang, false, StallPrompt::ListenFirst);
+            c.auto_language = true;
+            let scope = Scope { region: Some(r(code)), style: Some(StyleSel { level: 3, assistant: false }), owner: "Alex", ..Default::default() };
+            let p = scope_to_region(&build(&c), lang, scope);
+            let style = crate::country_profile::style_line(r(code), lang, false, 3, "Alex");
+            let habits = crate::country_profile::habits_block(r(code), lang);
+            let local = crate::country_profile::block(r(code), lang, false);
+            let at = |s: &str| p.find(s.trim()).unwrap_or_else(|| panic!("{code} {lang:?}: {s}"));
+            assert!(at(&local) < at(&habits) && at(&habits) < at(&style), "{code} {lang:?}");
+            assert!(at(&style) < at(pack(lang).injection_guard.as_str()), "{code} {lang:?}");
+            assert!(!p.contains('{') && !p.contains('}'), "{code} {lang:?}");
+            if lang.is_zh() {
+                assert!(style.contains("【講話風格") || style.contains("【讲话风格"), "{style}");
+            } else {
+                assert!(style.starts_with("\n[Talk style] "), "{style}");
+            }
+            if (code, lang) == ("tw", Lang::ZhTw) || (code, lang) == ("us", Lang::En) {
+                println!("PROMPT_SAMPLE_BEGIN region={code} lang={} level=3 assistant=false\n{p}\nPROMPT_SAMPLE_END", lang.code());
+            }
+        }
+        // A name with braces goes in cleaned.
+        let scope = Scope { region: Some(r("us")), style: Some(StyleSel { level: 1, assistant: false }), owner: "Al{ex}", ..Default::default() };
+        let p = scope_to_region(&build(&ctx(Lang::En, false, StallPrompt::Off)), Lang::En, scope);
+        assert!(!p.contains('{') && !p.contains('}'), "{p}");
     }
 
     #[test]
@@ -2025,35 +2193,35 @@ mod tests {
         let mut c = ctx(Lang::ZhTw, false, StallPrompt::ListenFirst);
         c.auto_language = true;
         let p = build(&c);
-        let kept = scope_to_region(&p, Lang::ZhTw, Scope { region: Some(Region::Tw), carrier_note: true });
+        let kept = scope_to_region(&p, Lang::ZhTw, Scope { region: Some(r("tw")), carrier_note: true, ..Default::default() });
         assert!(kept.contains("【電信提示音】") && kept.contains("方言不算別的語言"));
-        let gone = scope_to_region(&p, Lang::ZhTw, Scope { region: None, carrier_note: false });
+        let gone = scope_to_region(&p, Lang::ZhTw, Scope { region: None, carrier_note: false, ..Default::default() });
         assert_eq!(gone, p.replace(pack(Lang::ZhTw).carrier_note.as_str(), "").replacen(ZH_FOLLOW_LANGUAGE, "", 1));
         assert!(!gone.contains("【方言】") && !gone.contains("【當地】"));
     }
 
     #[test]
     fn chinese_dialects_are_answered_in_mandarin() {
-        let tw = dialect_note(Region::Tw, Lang::ZhTw);
+        let tw = dialect_note(r("tw"), Lang::ZhTw);
         assert!(tw.contains("台語、客語、粵語") && tw.contains("用普通話自然回") && tw.contains("不要學講方言"), "{tw}");
-        let cn = dialect_note(Region::Cn, Lang::ZhCn);
+        let cn = dialect_note(r("cn"), Lang::ZhCn);
         assert!(cn.contains("普通话") && cn.contains("方言"), "{cn}");
-        let hk = dialect_note(Region::HkMo, Lang::En);
+        let hk = dialect_note(r("hk-mo"), Lang::En);
         assert!(hk.contains("answer in Mandarin, never in the dialect"), "{hk}");
-        assert!(!dialect_note(Region::MySg, Lang::En).is_empty());
-        for r in [Region::Us, Region::Jp, Region::De, Region::Ch, Region::Pt, Region::Ca] {
+        assert!(!dialect_note(r("my"), Lang::En).is_empty());
+        for r in [r("us"), r("jp"), r("de"), r("ch"), r("pt"), r("ca")] {
             assert_eq!(dialect_note(r, Lang::En), "", "{r:?}");
         }
         // The note on other languages says it already: no second note.
-        for (lang, region) in [(Lang::ZhTw, Region::Tw), (Lang::ZhTw, Region::HkMo), (Lang::ZhCn, Region::MySg), (Lang::En, Region::HkMo)] {
+        for (lang, region) in [(Lang::ZhTw, r("tw")), (Lang::ZhTw, r("hk-mo")), (Lang::ZhCn, r("my")), (Lang::En, r("hk-mo"))] {
             let mut c = ctx(lang, false, StallPrompt::Off);
             c.auto_language = true;
-            let p = scope_to_region(&build(&c), lang, Scope { region: Some(region), carrier_note: false });
+            let p = scope_to_region(&build(&c), lang, Scope { region: Some(region), carrier_note: false, ..Default::default() });
             assert!(!p.contains("【方言】") && !p.contains("[Dialects]"), "{lang:?} {region:?}");
             assert!(p.contains("Mandarin") || p.contains("普通話") || p.contains("普通话"), "{lang:?} {region:?}");
             // Without it, the dialect note goes in.
             c.auto_language = false;
-            let p = scope_to_region(&build(&c), lang, Scope { region: Some(region), carrier_note: false });
+            let p = scope_to_region(&build(&c), lang, Scope { region: Some(region), carrier_note: false, ..Default::default() });
             assert!(p.contains("【方言】") || p.contains("[Dialects]"), "{lang:?} {region:?}");
         }
         // Taiwan's parcel rule comes from the region block once (the generic
@@ -2061,18 +2229,20 @@ mod tests {
         // already mentions 管理室 suppresses the duplicate from the region block.
         let built = build(&ctx(Lang::ZhTw, false, StallPrompt::Off));
         assert_eq!(built.matches("管理室").count(), 0, "{built}");
-        let p = scope_to_region(&built, Lang::ZhTw, Scope { region: Some(Region::Tw), carrier_note: false });
+        let p = scope_to_region(&built, Lang::ZhTw, Scope { region: Some(r("tw")), carrier_note: false, ..Default::default() });
         assert_eq!(p.matches("管理室").count(), 1, "{p}");
-        assert!(p.contains("【當地】") && p.contains("賣場金流認證"));
+        // Taiwan's scam line, as the pack writes it.
+        let fraud = crate::country_profile::line(r("tw"), crate::country_profile::Kind::Fraud, Lang::ZhTw).unwrap();
+        assert!(p.contains("【當地】") && p.contains(fraud.trim_end_matches('。')) && fraud.contains("詐騙"), "{p}");
         let mut custom = ctx(Lang::ZhTw, false, StallPrompt::Off);
         custom.custom = "我是{owner}，快遞請放管理室。";
-        let custom_scoped = scope_to_region(&build(&custom), Lang::ZhTw, Scope { region: Some(Region::Tw), carrier_note: false });
+        let custom_scoped = scope_to_region(&build(&custom), Lang::ZhTw, Scope { region: Some(r("tw")), carrier_note: false, ..Default::default() });
         assert_eq!(custom_scoped.matches("管理室").count(), 1, "{custom_scoped}");
         // The persona's short language line goes only where the full note is.
         assert!(built.contains(ZH_FOLLOW_LANGUAGE) && p.contains(ZH_FOLLOW_LANGUAGE));
         let mut c = ctx(Lang::ZhTw, false, StallPrompt::Off);
         c.auto_language = true;
-        let with_note = scope_to_region(&build(&c), Lang::ZhTw, Scope { region: Some(Region::Tw), carrier_note: false });
+        let with_note = scope_to_region(&build(&c), Lang::ZhTw, Scope { region: Some(r("tw")), carrier_note: false, ..Default::default() });
         assert!(!with_note.contains(ZH_FOLLOW_LANGUAGE) && with_note.contains("【對方講別的語言】"));
         assert!(with_note.contains("台語、客語、粵語這類方言不算別的語言，照用普通話回"));
     }
@@ -2082,12 +2252,12 @@ mod tests {
     /// Taiwan SIM, is followed into their language.
     #[test]
     fn the_sim_region_never_limits_the_callers_language() {
-        for (lang, region) in [(Lang::En, Region::Us), (Lang::ZhTw, Region::Tw), (Lang::ZhCn, Region::Cn), (Lang::Ja, Region::Jp)] {
+        for (lang, region) in [(Lang::En, r("us")), (Lang::ZhTw, r("tw")), (Lang::ZhCn, r("cn")), (Lang::Ja, r("jp"))] {
             for assistant in [false, true] {
                 let mut c = ctx(lang, assistant, StallPrompt::ListenFirst);
                 // The setting's default (reply_in_caller_language on).
                 c.auto_language = true;
-                let p = scope_to_region(&build(&c), lang, Scope { region: Some(region), carrier_note: false });
+                let p = scope_to_region(&build(&c), lang, Scope { region: Some(region), carrier_note: false, ..Default::default() });
                 assert!(p.contains(pack(lang).auto_language_note.trim()), "{lang:?} {region:?}");
                 for w in UNSUPPORTED_OR_LIMITING {
                     assert!(!p.contains(w), "{lang:?} {region:?}: {w}");
@@ -2126,24 +2296,26 @@ mod tests {
         "Speak only",
     ];
 
+    /// The way a country answers the phone comes from the pack: the Arabic
+    /// countries, Turkey and Greece their own; Spain and the other countries of
+    /// the nine settings languages keep the setting's opening.
     #[test]
-    fn local_hello_covers_arabic_countries() {
-        let eg = local_hello("eg").expect("Egypt should have local hello");
-        let sa = local_hello("SA").expect("Saudi Arabia should have local hello");
-        assert_eq!(eg, sa);
-        assert_eq!(eg.code, "ar");
-        assert!(!eg.hello.is_empty() && !eg.hello_again.is_empty());
-        assert!(local_hello("zz").is_none());
-    }
-
-    #[test]
-    fn local_hello_covers_turkey() {
-        let tr = local_hello("TR").expect("Turkey should have local hello");
+    fn local_hello_comes_from_the_pack_in_every_language() {
+        for c in ["eg", "SA", "ae", "ma"] {
+            let h = local_hello(c).unwrap_or_else(|| panic!("{c}"));
+            assert_eq!(h.code, "ar", "{c}");
+            assert!(h.hello.chars().any(|ch| ('\u{0600}'..='\u{06FF}').contains(&ch)) && !h.hello_again.is_empty(), "{c}");
+        }
+        let tr = local_hello("TR").expect("Turkey");
         assert_eq!(tr, local_hello("tr").unwrap());
-        assert_eq!((tr.code, tr.hello), ("tr", "Alo?"));
-        assert!(tr.hello_again.starts_with("Alo"));
-        // A neighbour without a local way listed keeps the setting's language.
-        assert!(local_hello("gr").is_none());
+        assert_eq!(tr.code, "tr");
+        assert!(tr.hello.starts_with("Alo"), "{}", tr.hello);
+        let gr = local_hello("gr").expect("Greece");
+        assert!(gr.hello.chars().any(|ch| ('\u{0370}'..='\u{03FF}').contains(&ch)), "{}", gr.hello);
+        for c in ["es", "fr", "de", "us", "tw", "jp", "kr", "br", "zz"] {
+            assert!(local_hello(c).is_none(), "{c}");
+        }
+        assert!(local_hello("ad").is_some());
     }
 
     #[test]

@@ -25,6 +25,7 @@ dependencies = [
  "anyhow",
  "argon2",
  "axum",
+ "bageo-packs",
  "base64",
  "bytes",
  "chacha20poly1305",

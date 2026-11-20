@@ -12,7 +12,7 @@ use crate::util::*;
 use crate::{rule, Issue, FORMAT, MAX_BUNDLE_BYTES};
 
 /// (English, Chinese) character limits.
-pub(crate) type Pair = (usize, usize);
+pub type Pair = (usize, usize);
 
 pub(crate) const BUNDLE_FILE: &str = "bageo-pack.json";
 pub(crate) const MAX_CODE: usize = 24;
@@ -26,7 +26,43 @@ pub(crate) const FRAUD_MAX: Pair = (110, 50);
 pub(crate) const HABITS_MAX: Pair = (420, 190);
 pub(crate) const STALL_MAX: Pair = (150, 70);
 pub(crate) const CELL_MAX: Pair = (200, 90);
-pub(crate) const SUM_MAX: Pair = (560, 250);
+/// Most characters (en, zh) of delivery + readback + fraud + habits + the
+/// longest of the ten talk-style cells, merged: everything a region puts into
+/// a normal call's prompt. Worked out from the agent's budget (a call's
+/// built-in prompt at most 400 characters longer than release 610c661's): for
+/// every setting language and identity, 610c661's smallest prompt + 400 - the
+/// prompt without its region part - the headings; the smallest of them,
+/// rounded down to 10 (agent test the_packs_limit_keeps_every_prompt_within_the_budget).
+/// {owner} counts as written (7 characters; the test's name is shorter).
+/// Room on 2026-11-20: en 436 (Portuguese; English 445, Spanish 451, French
+/// 452, Korean 455, Japanese 465, German 499), zh 416 (Simplified; Traditional
+/// 422). With today's single-field limits the zh sum cannot pass it.
+pub const PROMPT_SUM_MAX: Pair = (430, 410);
+/// Most characters (en, zh) of fraud + stall_local: the stalling prompt's
+/// region part. en from the English stalling prompt's budget (3,000 besides
+/// the persona; agent test
+/// the_packs_stall_limit_keeps_the_english_stall_prompt_within_the_budget);
+/// zh from 610c661's longest region part (90) + 400 - the headings; each
+/// rounded down to 10. Room on 2026-11-21: en 226 (the investment and
+/// fake-official prompts), zh 477.
+pub const STALL_SUM_MAX: Pair = (220, 470);
+
+/// (en, zh) of what [PROMPT_SUM_MAX] limits.
+pub fn prompt_sums(r: &RegionData) -> [(&'static str, usize); 2] {
+    let parts = [Some(&r.delivery), r.readback.as_ref(), Some(&r.fraud), Some(&r.habits)];
+    let cells = || r.talk_style.persona.iter().chain(r.talk_style.assistant.iter());
+    let en = parts.iter().flatten().map(|t| t.en.chars().count()).sum::<usize>() + cells().map(|t| t.en.chars().count()).max().unwrap_or(0);
+    let zh = parts.iter().flatten().map(|t| t.zh.chars().count()).sum::<usize>() + cells().map(|t| t.zh.chars().count()).max().unwrap_or(0);
+    [("en", en), ("zh", zh)]
+}
+
+/// (en, zh) of what [STALL_SUM_MAX] limits.
+pub fn stall_sums(r: &RegionData) -> [(&'static str, usize); 2] {
+    let parts = [Some(&r.fraud), r.stall_local.as_ref()];
+    let en = parts.iter().flatten().map(|t| t.en.chars().count()).sum();
+    let zh = parts.iter().flatten().map(|t| t.zh.chars().count()).sum();
+    [("en", en), ("zh", zh)]
+}
 pub(crate) const LAYER_HABITS_MAX: Pair = (200, 90);
 pub(crate) const LAYER_CELL_MAX: Pair = (120, 55);
 pub(crate) const NOTES_MAX: usize = 1000;
@@ -355,14 +391,17 @@ pub(crate) fn check_region(out: &mut Vec<Issue>, file: &str, p: &str, r: &Region
         }
     }
 
-    let parts = [Some(&r.delivery), r.readback.as_ref(), Some(&r.fraud), Some(&r.habits)];
-    let en: usize = parts.iter().flatten().map(|t| t.en.chars().count()).sum();
-    let zh: usize = parts.iter().flatten().map(|t| t.zh.chars().count()).sum();
-    if en > SUM_MAX.0 {
-        push(out, file, &fld("total.en"), rule::LENGTH, format!("delivery + readback + fraud + habits are {en} characters, the limit is {}", SUM_MAX.0));
+    let what = "delivery + readback + fraud + habits + the longest talk-style cell";
+    for ((key, n), max) in prompt_sums(r).into_iter().zip([PROMPT_SUM_MAX.0, PROMPT_SUM_MAX.1]) {
+        if n > max {
+            push(out, file, &fld(&format!("total.{key}")), rule::LENGTH, format!("{what} are {n} characters, the limit is {max}"));
+        }
     }
-    if zh > SUM_MAX.1 {
-        push(out, file, &fld("total.zh"), rule::LENGTH, format!("delivery + readback + fraud + habits are {zh} characters, the limit is {}", SUM_MAX.1));
+    let what = "fraud + stall_local";
+    for ((key, n), max) in stall_sums(r).into_iter().zip([STALL_SUM_MAX.0, STALL_SUM_MAX.1]) {
+        if n > max {
+            push(out, file, &fld(&format!("stall_total.{key}")), rule::LENGTH, format!("{what} are {n} characters, the limit is {max}"));
+        }
     }
 
     vocab_fields(out, file, &fld("vocab"), &r.vocab);

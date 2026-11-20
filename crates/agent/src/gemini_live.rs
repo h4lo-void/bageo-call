@@ -1197,26 +1197,7 @@ fn has_ukrainian_letters(text: &str) -> bool {
 /// The speech-to-text code of a country's main language when the AI has no
 /// setting for it (ISO 3166 alpha-2, any case); None for any other country.
 pub fn other_lang_stt_of_country(iso: &str) -> Option<&'static str> {
-    const ARABIC: &[&str] = &[
-        "sa", "ae", "eg", "jo", "kw", "qa", "bh", "om", "lb", "iq", "sy", "ye", "ly", "dz", "ma", "tn", "sd", "ps",
-    ];
-    let iso = iso.trim().to_ascii_lowercase();
-    match iso.as_str() {
-        "th" => Some(OTHER_LANG_STT[0]),
-        "ru" | "by" | "kz" | "kg" => Some(OTHER_LANG_STT[1]),
-        "ua" => Some("uk-UA"),
-        c if ARABIC.contains(&c) => Some(OTHER_LANG_STT[2]),
-        "in" => Some(OTHER_LANG_STT[3]),
-        "bd" => Some(OTHER_LANG_STT[4]),
-        "it" | "sm" | "va" => Some("it-IT"),
-        "id" => Some("id-ID"),
-        "vn" => Some("vi-VN"),
-        "tr" => Some("tr-TR"),
-        "nl" => Some("nl-NL"),
-        "pl" => Some("pl-PL"),
-        "ro" | "md" => Some("ro-RO"),
-        _ => None,
-    }
+    crate::country_profile::stt_of_country(iso)
 }
 
 /// Which non-Latin script language `text` is written in, by its letters:
@@ -2531,7 +2512,7 @@ impl PromptLog {
         Self {
             sim: plan.sim_country.as_deref().map_or_else(|| "-".to_string(), str::to_ascii_uppercase),
             lang: lang.code(),
-            region: region.map_or_else(|| "-".to_string(), |r| format!("{r:?}")),
+            region: region.map_or_else(|| "-".to_string(), |r| r.code().to_string()),
             user_chars,
         }
     }
@@ -5007,9 +4988,14 @@ pub async fn run_session(
     // came in — what they are scoped to: the SIM's region, decided before pickup
     // (a table lookup; the ring prewarm has it too).
     let prompt_lang = lang_plan.prompt_lang.unwrap_or_else(crate::locale::current);
+    // The talk style and the local ways: built-in prompt only (Active::talk_style).
+    let active = crate::locale::active();
     let scope = (persona && outbound == Outbound::Incoming).then(|| crate::prompts::Scope {
         region: lang_plan.region,
         carrier_note: carrier_note_due(&lang_plan),
+        style: active.talk_style.map(|level| crate::prompts::StyleSel { level, assistant: active.assistant }),
+        stall: false,
+        owner: active.owner.as_str(),
     });
     let scoped = |p: &str| -> String {
         match scope {
@@ -5020,7 +5006,13 @@ pub async fn run_session(
     let scope_region = scope.and_then(|s| s.region);
     let prompt_log = PromptLog::new(&lang_plan, prompt_lang, scope_region, user_prompt_chars);
     let stall = stall.filter(|_| persona).map(|mut c| {
-        c.system_prompt = scoped(&session_prompt(c.system_prompt.as_str(), outbound));
+        // Stalling keeps the local rules and swaps the talk style for the
+        // region's stalling snags.
+        let p = session_prompt(c.system_prompt.as_str(), outbound);
+        c.system_prompt = match scope {
+            Some(s) => crate::prompts::scope_to_region(&p, prompt_lang, crate::prompts::Scope { stall: true, style: None, ..s }),
+            None => p,
+        };
         c
     });
     // Appointments: persona calls only (setting `appointment_mode`).
@@ -9245,20 +9237,21 @@ mod tests {
     fn the_plan_knows_the_calls_region_before_pickup() {
         use crate::country_profile::Region;
         use crate::locale::Lang;
+        let r = |c: &str| Region::of_code(c).unwrap();
         let none = std::collections::BTreeMap::new();
         let local = call_lang_plan("0912345678", Some("tw"), Lang::ZhTw, "886", &none);
-        assert_eq!(local.region, Some(Region::Tw));
+        assert_eq!(local.region, Some(r("tw")));
         assert_eq!(local.sim_country.as_deref(), Some("tw"));
         // A local number never hears the carrier's warning: its note goes.
         assert!(!carrier_note_due(&local));
         let abroad = call_lang_plan("+12025550143", Some("tw"), Lang::ZhTw, "886", &none);
         assert!(carrier_note_due(&abroad));
         let hk = call_lang_plan("+85291234567", Some("hk"), Lang::ZhTw, "886", &none);
-        assert_eq!(hk.region, Some(Region::HkMo));
+        assert_eq!(hk.region, Some(r("hk-mo")));
         assert!(!carrier_note_due(&hk));
         // SIM not known (older app): the language's region, the note kept as before.
         let unknown = call_lang_plan("0912345678", None, Lang::ZhTw, "886", &none);
-        assert_eq!(unknown.region, Some(Region::Tw));
+        assert_eq!(unknown.region, Some(r("tw")));
         assert!(carrier_note_due(&unknown));
         // Hidden caller on a Taiwan SIM still keeps the carrier prompt note.
         let hidden_tw = call_lang_plan("", Some("tw"), Lang::ZhTw, "886", &none);
@@ -9267,7 +9260,7 @@ mod tests {
         assert_eq!(unknown, local);
         // Another region is another prompt.
         let mut other = local.clone();
-        other.region = Some(Region::HkMo);
+        other.region = Some(r("hk-mo"));
         assert_ne!(other, local);
     }
 
@@ -13198,6 +13191,7 @@ mod local_hello_opening {
         let en = crate::prompts::kick_open_local(Lang::En, false, it, true);
         assert!(en.contains("Italian") && en.contains("Pronto?") && !en.contains('{'), "{en}");
         let cn = crate::prompts::kick_open_local(Lang::ZhCn, true, it, false);
-        assert!(cn.contains("意大利语") && !cn.contains('{'), "{cn}");
+        // The pack names languages in Traditional Chinese; Simplified is converted.
+        assert!(cn.contains(&crate::zh_convert::to_cn(it.name_tw)) && !cn.contains("義") && !cn.contains('{'), "{cn}");
     }
 }
