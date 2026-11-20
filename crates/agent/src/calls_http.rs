@@ -5381,5 +5381,6 @@ pub fn router(state: CallsState) -> Router {
         .merge(crate::contacts::router())
         .merge(crate::errands::router())
         .merge(crate::backup::router())
+        .merge(crate::pack_update::router())
         .with_state(state)
 }

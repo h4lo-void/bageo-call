@@ -58,6 +58,7 @@ mod mcp;
 mod mdns;
 mod notify;
 mod openclaw;
+mod pack_update;
 mod packs_store;
 mod phone_region;
 mod phone_wifi;
@@ -1171,6 +1172,9 @@ async fn main() -> Result<()> {
     contacts::absorb_reject_numbers(&settings_store, &contacts).await;
     // The scam database's owner file and number book live next to the settings.
     scam_db::init(&PathBuf::from(&settings.calls_data_dir));
+    // The local data pack: an installed update is checked and loaded now, and
+    // a download a crash left unfinished is cleared.
+    let _ = packs_store::current();
     // Calls the owner has the AI make (errands), and the SIMs each phone has
     // reported (an errand dials from a SIM of the number's country).
     let phone_sims = errands::SimBook::open(PathBuf::from(&settings.calls_data_dir).join("phone_sims.json"));

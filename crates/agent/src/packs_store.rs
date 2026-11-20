@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock, RwLock};
 
 use bageo_packs::data::is_official_lang;
-use bageo_packs::{check_bundle, rule, Bundle, Issue, RegionData, FORMAT, MAX_BUNDLE_BYTES};
+use bageo_packs::{check_bundle_at, rule, Bundle, Issue, RegionData, FORMAT, MAX_BUNDLE_BYTES};
 
 use crate::prompts::LocalHello;
 
@@ -144,10 +144,29 @@ fn prune(b: &mut Bundle) -> Vec<String> {
     gone
 }
 
-/// Reads a bundle the way Bageo uses it: size, format number and shape (fields
-/// this version does not know are ignored), the regions it cannot use left
-/// out, then every check. Returns the bundle and the codes left out.
+/// Where a bundle comes from. The built-in one ships with the program, so the
+/// "not later than tomorrow" limit on dates does not apply to it: a computer
+/// whose clock is behind still gets its regional data.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Origin {
+    Builtin,
+    Downloaded,
+}
+
+/// "Today" for a bundle with no upper limit on its dates.
+const NO_DATE_LIMIT: i64 = i64::MAX / 2;
+
+/// Reads a downloaded or installed bundle the way Bageo uses it: size, format
+/// number and shape (fields this version does not know are ignored), the
+/// regions it cannot use left out, then every check. Returns the bundle and
+/// the codes left out.
 pub fn parse(json: &str) -> Result<(Bundle, Vec<String>), Vec<Issue>> {
+    parse_from(json, Origin::Downloaded, bageo_packs::util::now_days())
+}
+
+/// Same, with the bundle's origin and today (days since 1970-01-01).
+fn parse_from(json: &str, origin: Origin, today: i64) -> Result<(Bundle, Vec<String>), Vec<Issue>> {
+    let today = if origin == Origin::Builtin { NO_DATE_LIMIT } else { today };
     if json.len() > MAX_BUNDLE_BYTES {
         return Err(issue(rule::LENGTH, format!("{} bytes, the limit is {MAX_BUNDLE_BYTES}", json.len())));
     }
@@ -161,7 +180,7 @@ pub fn parse(json: &str) -> Result<(Bundle, Vec<String>), Vec<Issue>> {
     }
     let mut bundle: Bundle = serde_json::from_value(value).map_err(|e| issue(rule::FORMAT, e.to_string()))?;
     let skipped = prune(&mut bundle);
-    let issues = check_bundle(&bundle);
+    let issues = check_bundle_at(&bundle, today);
     if issues.is_empty() {
         Ok((bundle, skipped))
     } else {
@@ -173,7 +192,7 @@ pub fn parse(json: &str) -> Result<(Bundle, Vec<String>), Vec<Issue>> {
 /// caught by the tests) leaves an empty table: calls get no regional part.
 pub fn builtin() -> &'static Table {
     static T: OnceLock<&'static Table> = OnceLock::new();
-    T.get_or_init(|| match parse(BUILTIN) {
+    T.get_or_init(|| match parse_from(BUILTIN, Origin::Builtin, 0) {
         Ok((b, skipped)) => Box::leak(Box::new(Table::new(b, skipped))),
         Err(issues) => {
             tracing::error!("built-in local data pack rejected: {}", issues.first().map(|i| i.to_string()).unwrap_or_default());
@@ -186,20 +205,88 @@ static CURRENT: RwLock<Option<&'static Table>> = RwLock::new(None);
 static INSTALLS: AtomicUsize = AtomicUsize::new(0);
 static INSTALL_LOCK: Mutex<()> = Mutex::new(());
 
+// A test's own table in use: a test that installs or restores never changes
+// what the other tests (running at the same time) read.
+#[cfg(test)]
+thread_local! {
+    static TEST_CURRENT: std::cell::Cell<Option<&'static Table>> = const { std::cell::Cell::new(None) };
+}
+
 /// Where Bageo keeps its data (CALLS_DATA_DIR, as the rest of the agent).
+#[cfg(not(test))]
 fn data_dir() -> PathBuf {
     let default_dir = if Path::new("/data/calls").is_dir() { "/data/calls" } else { "data/calls" };
     PathBuf::from(crate::config::env_or("CALLS_DATA_DIR", default_dir))
+}
+
+/// Tests keep their files in a folder of their own, never in the working directory.
+#[cfg(test)]
+fn data_dir() -> PathBuf {
+    thread_local! {
+        static DIR: PathBuf = std::env::temp_dir().join(format!("bageo-agent-test-{}", uuid::Uuid::new_v4()));
+    }
+    DIR.with(|d| d.clone())
 }
 
 fn packs_dir(dir: &Path) -> PathBuf {
     dir.join("packs")
 }
 
+/// The folder an installed bundle and its download are kept in.
+pub(crate) fn installed_dir() -> PathBuf {
+    packs_dir(&data_dir())
+}
+
+/// A new name for a download in the packs folder (.incoming-<pid>-<random>.json;
+/// start-up clears the ones Bageo did not finish).
+pub(crate) fn incoming_path(packs: &Path) -> PathBuf {
+    packs.join(format!("{INCOMING_PREFIX}{}-{}{INCOMING_SUFFIX}", std::process::id(), uuid::Uuid::new_v4().simple()))
+}
+
+const INCOMING_PREFIX: &str = ".incoming-";
+const INCOMING_SUFFIX: &str = ".json";
+
+fn is_incoming(name: &str) -> bool {
+    name.starts_with(INCOMING_PREFIX) && name.ends_with(INCOMING_SUFFIX)
+}
+
+/// A download is still in the packs folder (tests).
+#[cfg(test)]
+pub(crate) fn has_incoming(packs: &Path) -> bool {
+    std::fs::read_dir(packs).is_ok_and(|d| d.flatten().any(|e| is_incoming(&e.file_name().to_string_lossy())))
+}
+
+/// Updates that can still be installed before Bageo has to be restarted.
+pub(crate) fn installs_left() -> usize {
+    MAX_INSTALLS.saturating_sub(INSTALLS.load(Ordering::SeqCst))
+}
+
+/// Calls use the built-in bundle (nothing newer installed, or it was restored).
+pub(crate) fn builtin_in_use() -> bool {
+    std::ptr::eq(current(), builtin())
+}
+
+fn set_current(t: &'static Table) {
+    #[cfg(test)]
+    {
+        TEST_CURRENT.with(|c| c.set(Some(t)));
+    }
+    #[cfg(not(test))]
+    {
+        *CURRENT.write().unwrap_or_else(|e| e.into_inner()) = Some(t);
+    }
+}
+
 /// The table calls use now: an installed bundle that is newer than the built-in
 /// one and passes every check, else the built-in one. Unit tests always get the
-/// built-in one.
+/// built-in one, unless the test itself installed or restored one.
 pub fn current() -> &'static Table {
+    #[cfg(test)]
+    {
+        if let Some(t) = TEST_CURRENT.with(|c| c.get()) {
+            return t;
+        }
+    }
     if let Some(t) = *CURRENT.read().unwrap_or_else(|e| e.into_inner()) {
         return t;
     }
@@ -219,7 +306,7 @@ fn load_installed(dir: &Path, version: u64) -> Option<&'static Table> {
     if let Ok(entries) = std::fs::read_dir(&packs) {
         for e in entries.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
-            if name.starts_with(".incoming-") && name.ends_with(".json") {
+            if is_incoming(&name) {
                 let _ = std::fs::remove_file(e.path());
             }
         }
@@ -256,48 +343,88 @@ fn load_installed(dir: &Path, version: u64) -> Option<&'static Table> {
     }
 }
 
-/// Checks and installs a downloaded bundle: it must pass every check and be
-/// newer than the table in use. Written to a temporary file next to the
-/// installed one, then renamed over it; calls after this use it. Returns its
-/// version. At most [MAX_INSTALLS] per run.
-pub fn install(json: &[u8]) -> Result<u64, Vec<Issue>> {
+/// Checks and installs a downloaded bundle, already written to `staged` in the
+/// packs folder ([incoming_path]): it must pass every check, be the version
+/// the release index named (`want`) and be newer than the table in use. It is
+/// then renamed over the installed one in one step; calls after this use it.
+/// The staged file never stays behind. Returns the version. At most
+/// [MAX_INSTALLS] per run.
+pub(crate) fn install_file(staged: &Path, want: u64) -> Result<u64, Vec<Issue>> {
     let _guard = INSTALL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let t = install_counted(&INSTALLS, &data_dir(), json, current().version)?;
-    *CURRENT.write().unwrap_or_else(|e| e.into_inner()) = Some(t);
+    let t = install_file_counted(&INSTALLS, &data_dir(), staged, current().version, Some(want))?;
+    set_current(t);
     Ok(t.version)
 }
 
-fn install_counted(count: &AtomicUsize, dir: &Path, json: &[u8], in_use: u64) -> Result<&'static Table, Vec<Issue>> {
+pub(crate) fn install_file_counted(count: &AtomicUsize, dir: &Path, staged: &Path, in_use: u64, want: Option<u64>) -> Result<&'static Table, Vec<Issue>> {
+    let result = check_staged(count, staged, in_use, want).and_then(|t| {
+        std::fs::rename(staged, packs_dir(dir).join(FILE_NAME)).map_err(|e| issue(rule::FORMAT, format!("cannot install the pack: {e}")))?;
+        count.fetch_add(1, Ordering::SeqCst);
+        Ok(t)
+    });
+    if result.is_err() {
+        let _ = std::fs::remove_file(staged);
+    }
+    result
+}
+
+fn check_staged(count: &AtomicUsize, staged: &Path, in_use: u64, want: Option<u64>) -> Result<&'static Table, Vec<Issue>> {
     if count.load(Ordering::SeqCst) >= MAX_INSTALLS {
         return Err(issue(rule::STATUS, format!("{MAX_INSTALLS} updates installed since Bageo started; restart Bageo first")));
     }
-    let text = std::str::from_utf8(json).map_err(|_| issue(rule::FORMAT, "not UTF-8 text"))?;
+    let io = |e: std::io::Error| issue(rule::FORMAT, format!("cannot read the pack: {e}"));
+    let len = std::fs::metadata(staged).map_err(io)?.len();
+    if len > MAX_BUNDLE_BYTES as u64 {
+        return Err(issue(rule::LENGTH, format!("{len} bytes, the limit is {MAX_BUNDLE_BYTES}")));
+    }
+    let json = std::fs::read(staged).map_err(io)?;
+    let text = std::str::from_utf8(&json).map_err(|_| issue(rule::FORMAT, "not UTF-8 text"))?;
     let (bundle, skipped) = parse(text)?;
+    if want.is_some_and(|w| w != bundle.version) {
+        return Err(issue(rule::STATUS, format!("version {} is not the one the index names", bundle.version)));
+    }
     if bundle.version <= in_use {
         return Err(issue(rule::STATUS, format!("version {} is not newer than the one in use ({in_use})", bundle.version)));
     }
-    let packs = packs_dir(dir);
-    let io = |e: std::io::Error| issue(rule::FORMAT, format!("cannot write the pack: {e}"));
-    std::fs::create_dir_all(&packs).map_err(io)?;
-    let incoming = packs.join(format!(".incoming-{}.json", std::process::id()));
-    std::fs::write(&incoming, json).map_err(io)?;
-    if let Err(e) = std::fs::rename(&incoming, packs.join(FILE_NAME)) {
-        let _ = std::fs::remove_file(&incoming);
-        return Err(io(e));
-    }
-    count.fetch_add(1, Ordering::SeqCst);
     Ok(Box::leak(Box::new(Table::new(bundle, skipped))))
 }
 
-/// Goes back to the built-in bundle: the installed one is deleted.
-pub fn restore_builtin() {
-    let _guard = INSTALL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    remove_installed(&data_dir());
-    *CURRENT.write().unwrap_or_else(|e| e.into_inner()) = Some(builtin());
+/// Writes a bundle to the packs folder and installs it (tests).
+#[cfg(test)]
+fn install_counted(count: &AtomicUsize, dir: &Path, json: &[u8], in_use: u64) -> Result<&'static Table, Vec<Issue>> {
+    let packs = packs_dir(dir);
+    std::fs::create_dir_all(&packs).unwrap();
+    let staged = incoming_path(&packs);
+    std::fs::write(&staged, json).unwrap();
+    install_file_counted(count, dir, &staged, in_use, None)
 }
 
-fn remove_installed(dir: &Path) {
-    let _ = std::fs::remove_file(packs_dir(dir).join(FILE_NAME));
+/// The built-in bundle's text, for tests that make variants of it.
+#[cfg(test)]
+pub(crate) fn builtin_json() -> &'static str {
+    BUILTIN
+}
+
+/// Goes back to the built-in bundle: the installed one is deleted. When it
+/// cannot be deleted nothing changes (it would be loaded again at the next
+/// start), and the error is returned.
+pub fn restore_builtin() -> std::io::Result<()> {
+    let _guard = INSTALL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    restore_in(&data_dir())
+}
+
+fn restore_in(dir: &Path) -> std::io::Result<()> {
+    remove_installed(dir)?;
+    set_current(builtin());
+    Ok(())
+}
+
+/// Deletes the installed bundle; none there is fine.
+fn remove_installed(dir: &Path) -> std::io::Result<()> {
+    match std::fs::remove_file(packs_dir(dir).join(FILE_NAME)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
 }
 
 #[cfg(test)]
@@ -371,7 +498,7 @@ mod tests {
         }))
         .unwrap();
         assert!(load_installed(&dir, v0).is_none());
-        remove_installed(&dir);
+        remove_installed(&dir).unwrap();
         assert!(load_installed(&dir, v0).is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -385,6 +512,63 @@ mod tests {
         let Err(e) = install_counted(&count, &dir, newer.as_bytes(), v0) else { panic!("installed past the cap") };
         assert!(e[0].detail.contains("restart Bageo"), "{}", e[0]);
         assert!(!packs_dir(&dir).join(FILE_NAME).exists());
+        assert!(!has_incoming(&packs_dir(&dir)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_restore_that_cannot_delete_the_file_fails_and_changes_nothing() {
+        let dir = tmp();
+        let count = AtomicUsize::new(0);
+        let v0 = builtin().version;
+        let newer = builtin_with(|v| v["version"] = (v0 + 1).into());
+        set_current(install_counted(&count, &dir, newer.as_bytes(), v0).unwrap());
+        // The installed file cannot be deleted (here: a folder is in its place).
+        let file = packs_dir(&dir).join(FILE_NAME);
+        std::fs::remove_file(&file).unwrap();
+        std::fs::create_dir(&file).unwrap();
+        assert!(restore_in(&dir).is_err());
+        assert_eq!(current().version, v0 + 1, "still the installed one");
+        assert!(!builtin_in_use());
+        // Once it can be deleted the restore works; with no file it still does.
+        std::fs::remove_dir(&file).unwrap();
+        std::fs::write(&file, &newer).unwrap();
+        restore_in(&dir).unwrap();
+        assert!(builtin_in_use() && !file.exists());
+        restore_in(&dir).unwrap();
+        assert!(builtin_in_use());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_clock_that_is_behind_keeps_the_builtin_pack_and_refuses_later_downloads() {
+        // Today is 1970-01-01: the built-in pack is still read...
+        assert!(parse_from(BUILTIN, Origin::Builtin, 0).is_ok());
+        assert!(builtin().region("tw").is_some());
+        // ...and the same text as a download is refused for its date.
+        let e = parse_from(BUILTIN, Origin::Downloaded, 0).unwrap_err();
+        assert!(e.iter().any(|i| i.detail.contains("later than tomorrow")), "{}", e[0]);
+        // With the real clock a download dated in the future is refused too.
+        let future = builtin_with(|v| v["version"] = 2999010101u64.into());
+        let e = parse(&future).unwrap_err();
+        assert!(e.iter().any(|i| i.detail.contains("later than tomorrow")), "{}", e[0]);
+        assert!(parse_from(&future, Origin::Builtin, 0).is_ok());
+    }
+
+    #[test]
+    fn startup_clears_unfinished_downloads() {
+        let dir = tmp();
+        let packs = packs_dir(&dir);
+        std::fs::create_dir_all(&packs).unwrap();
+        let stray = [packs.join(".incoming-1.json"), packs.join(".incoming-1-2.json"), incoming_path(&packs)];
+        for s in &stray {
+            std::fs::write(s, "{\"format\": 1").unwrap();
+        }
+        let keep = packs.join("notes.txt");
+        std::fs::write(&keep, "x").unwrap();
+        assert!(load_installed(&dir, builtin().version).is_none(), "nothing installed");
+        assert!(stray.iter().all(|s| !s.exists()), "unfinished downloads cleared");
+        assert!(keep.exists(), "other files left alone");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

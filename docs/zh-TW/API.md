@@ -86,6 +86,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - `POST /calls/api/contacts`、`PUT /calls/api/contacts/{id}`、`POST /calls/api/contacts/batch`、`POST /calls/api/contacts/block`（`POST /calls/api/contacts/import` 則改成要帶 `X-Filename` 標頭）；
 - `POST /calls/api/errands`、`…/{id}/cancel`、`…/{id}/retry`、`…/{id}/say`；
 - `POST /calls/api/backup/run`、`…/export`、`…/file-ticket`、`…/restore`、`…/delete`、`…/unlock`、`…/apply`、`…/discard`、`…/open-folder`（`POST /calls/api/backup/import` 則改成要帶 `X-Filename` 標頭）。
+- `POST /calls/api/packs/update` 和 `POST /calls/api/packs/restore`。
 
 允許空 body 的路由，空 body 當成 `{}`。這是第二道防線；第一道是控制台對區網開放時一定要設密碼（`CALLS_UI_TOKEN`）。
 
@@ -696,6 +697,23 @@ Content-Type: application/json
 - 預覽是 `{token, source_name, created_at, app_version, kind, items, has_calls, calls_count, changes_password, changes_connections, total_size, warnings, encrypted, needs_password}`。`items` 的每筆是 `{id}` 或 `{id, count}`，列出檔案裡真的有的項目：`settings`、`keys`、`contacts`、`numbers`、`phones`、`errands`、`calls`、`sms`、`tasks`。舊版單獨的設定檔有金鑰或密碼欄位時，也會列出 `keys`。只有還原 `keys` 會換掉控制台密碼（換成別的或變成沒有）時，`changes_password` 才是 `true`；會改變通知送去哪裡、轉接號碼或誰可以遙控時，`changes_connections` 才是 `true`。兩個都是拿這台現在的跟還原後的結果比（算法跟 `apply` 一樣）。`total_size` 是可以還原的檔案解開後的大小（位元組）。`warnings` 可能有 `newer_version`、`plain_settings_file`（舊版單獨的設定檔：只還原設定，有金鑰的話一起還原）。預覽不會去碰檔案裡寫的備份資料夾。
 - `apply` 只還原勾選的 `items`。選 `settings` 沒選 `keys`：換掉其他設定，這台電腦整組 `keys` 都保留。有選 `keys`：檔案裡有填值的欄位換掉這台的，檔案裡沒有或空的欄位保留這台的。只有從備份資料夾還原這台自己的 `before_import` 備份時，整組完全照檔案（沒有或空的欄位一律清空或回到預設），所以能把匯入帶進來的金鑰和連線全部拿掉；上傳的檔案一律不走這條。選 `keys` 沒選 `settings`：只換這一組，檔案裡有手機配對金鑰才換。檔案裡沒有 `keys`，或沒選 `keys`，這台的整組都不會變。`retention_days` 和 `backup_keep` 只會維持或變長：檔案的值比較大才採用，檔案沒寫就保留這台的。`backup_dir` 和 `public_url` 一律維持這台電腦的設定。還原的通話紀錄和待處理事項，只保留這次真的還原了的錄音路徑（`YYYY-MM-DD/<name>`），其他路徑一律清空。解開之前 Bageo 會先確認硬碟空間夠（不夠回 HTTP 500 `disk_full`）。`calls`、`sms`、`tasks` 是加進現有的，不會刪掉任何東西。動手之前 Bageo 會先把現在的設定做成一份 `before_import` 備份（選的資料夾寫不進去就放預設資料夾），檔名放在 `before_import`。`restart_needed` 表示有些變更要重新開啟 Bageo 才會全部生效。
 - 預覽路由的錯誤（HTTP 400）：`not_backup`、`damaged`、`too_new`（來自比較新的 Bageo）、`too_large`。上限看檔案實際是什麼，不看 manifest 怎麼說：`calls`、`sms`、`tasks` 以外的項目每個檔案解開最多 20 MB、合計 50 MB，通話紀錄合計最多 8 GB；解開後比壓縮時大 200 倍以上的檔案算 `damaged`。已經有 2 個上傳在跑：HTTP 409 `busy`。`unlock` 密碼不對回 HTTP 400 `wrong_password`，錯 5 次回 `expired`。`apply` 在通話中回 HTTP 409 `call_active`；`items` 是空的或有預覽沒列的 id，回 HTTP 400 `bad_items`；token 超過 15 分鐘或已經用過，回 HTTP 400 `expired`。
+
+## 當地資料
+
+三個路由用來查看和更新 AI 參考的各國生活習慣資料，對應控制台設定「更多選項」裡的「當地資料」。只有呼叫 `POST …/packs/update` 時 Bageo 才會連線，不會自己檢查；連線時直接從 GitHub 公開資料庫 `h4lo-void/bageo-packs` 最新的 Release 下載兩個檔，不會送出其他資料。它們遵循控制台的密碼規則，兩個 `POST` 也要遵循上面的 `Content-Type: application/json` 規則。
+
+| 方法與路徑 | 內容 |
+|---|---|
+| `GET /calls/api/packs/update` | 目前使用的資料：`{version, date, builtin, regions, running, last_check}`。 |
+| `POST /calls/api/packs/update` | Body `{}`。馬上檢查有沒有新版，有就安裝：欄位同 `GET`，另加 `result`。 |
+| `POST /calls/api/packs/restore` | Body `{}`。刪掉下載的版本，改回 Bageo 內建的版本：欄位同上，`result` 是 `restored`（正在檢查時是 `busy`；檔案刪不掉時是 `io`，這時什麼都不會改）。 |
+
+細節：
+
+- `version` 是 `YYYYMMDDNN`，`date` 是同一個日期寫成 `YYYY-MM-DD`；`builtin` 為 `true` 表示正在用 Bageo 內建的版本；`regions` 是地區數；`running` 表示正在檢查；`last_check` 是 `null`，或 Bageo 這次啟動以來最後一次檢查的 `{at, result, version}`。
+- `result`：`up_to_date`、`updated`（之後的電話都用新的；正在進行的通話照用舊的）、`offline`（沒有網路、逾時或 GitHub 沒回應，稍後再試）、`bad_pack`（下載的檔被拒收，什麼都沒改）、`update_bageo`（這份資料要更新版的 Bageo）、`restart`（這次啟動已經裝了 8 次更新，請先重新開啟 Bageo）、`io`（存不了檔）或 `busy`（已經有檢查在跑）。
+- Bageo 怎麼檢查：從 `https://github.com/h4lo-void/bageo-packs/releases/latest/download/` 讀 `bageo-pack-index.json`（最多 16 KiB），再下載同一個 Release 裡它指名的檔（只能是純檔名，最多 4 MiB）。每個網址，包括最多 5 次轉址的每一跳，都必須是 `https`、標準連接埠、不帶使用者名稱，主機只能是 `github.com`（限該資料庫的 Release）、`objects.githubusercontent.com` 或 `release-assets.githubusercontent.com`。大小和 SHA-256 要跟 index 一致，index 的 `format` 與 `min_bageo` 要符合這版 Bageo，版本要比現在用的新。接著跟內建版本一樣做完整檢查，再一次改名到位。下載來源不能用設定改。
+- 下載的版本存在資料資料夾的 `packs/bageo-pack.json`，Bageo 每次啟動都會再檢查一次；沒下載完的暫存檔會刪掉。
 
 ## 手機與健康狀態
 

@@ -1150,6 +1150,14 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
               <input type="hidden" id="f-home_country" data-k="home_country" data-t="text" />
               <div class="cb" id="hcBox"></div>
               <div class="help" data-i18n="f_home_country_h"></div></div>
+            <div class="field" id="packField"><div class="lbl" data-i18n="pk_title"></div>
+              <div class="muted" id="pkVersion"></div>
+              <div class="pv">
+                <button type="button" class="btn sm" id="btnPkCheck" data-i18n="pk_check"></button>
+                <button type="button" class="btn sm ghost" id="btnPkRestore" data-i18n="pk_restore" hidden></button>
+                <span class="pv-status" id="pkStatus" aria-live="polite"></span>
+              </div>
+              <div class="help" data-i18n="pk_h"></div></div>
             <div class="field" id="simLangField"><div class="lbl" id="lbl-simlang" data-i18n="f_simlang"></div>
               <div class="rows" id="simLangRows" data-k="sim_languages" data-t="simlangs" role="group" aria-labelledby="lbl-simlang"></div>
               <div class="pv" style="margin-top:0">
@@ -3281,6 +3289,23 @@ I18N["en"] = {
   f_home_country: "Country you live in",
   f_home_country_h: "The AI follows this country's everyday habits, such as where parcels go. Automatic: from the phone number.",
   hc_auto: "Decide from the phone number",
+  pk_title: "Local data",
+  pk_ver_builtin: "In use: {date} (built in)",
+  pk_ver_updated: "In use: {date} (updated)",
+  pk_check: "Check for updates",
+  pk_restore: "Restore the built-in version",
+  pk_h: "Downloaded straight from GitHub, never through us.",
+  pk_checking: "Checking…",
+  pk_restoring: "Restoring…",
+  pk_r_up_to_date: "Already up to date",
+  pk_r_updated: "Updated. The next call uses it.",
+  pk_r_offline: "Can't connect. Try again later.",
+  pk_r_bad_pack: "Something is wrong with this data, so it wasn't used.",
+  pk_r_update_bageo: "Update Bageo first.",
+  pk_r_restart: "Restart Bageo, then check again.",
+  pk_r_io: "Can't save it. Check there is free disk space.",
+  pk_r_busy: "Still working on it. Try again in a moment.",
+  pk_r_restored: "Restored. The next call uses it.",
   cb_none: "Nothing found",
   f_talk_style: "Talk style",
   ts_1: "Casual and lively",
@@ -4534,6 +4559,23 @@ I18N["zh-TW"] = {
   f_home_country: "所在國家",
   f_home_country_h: "AI 照這個國家的生活習慣接電話，例如包裹放哪裡。自動：依手機門號判斷。",
   hc_auto: "依門號自動判斷",
+  pk_title: "當地資料",
+  pk_ver_builtin: "目前版本：{date}（內建）",
+  pk_ver_updated: "目前版本：{date}（已更新）",
+  pk_check: "檢查更新",
+  pk_restore: "還原成內建版本",
+  pk_h: "直接從 GitHub 下載，不會經過我們。",
+  pk_checking: "正在檢查…",
+  pk_restoring: "正在還原…",
+  pk_r_up_to_date: "已經是最新",
+  pk_r_updated: "已更新，下一通電話生效",
+  pk_r_offline: "沒辦法連線，稍後再試",
+  pk_r_bad_pack: "這份資料有問題，沒有套用",
+  pk_r_update_bageo: "請先更新 Bageo",
+  pk_r_restart: "請重新開啟 Bageo 後再檢查更新",
+  pk_r_io: "沒辦法存檔，請確認磁碟還有空間",
+  pk_r_busy: "正在處理，請稍候再試",
+  pk_r_restored: "已還原，下一通電話生效",
   cb_none: "找不到",
   f_talk_style: "講話風格",
   ts_1: "隨性熱絡",
@@ -5787,6 +5829,23 @@ I18N["zh-CN"] = {
   f_home_country: "所在国家",
   f_home_country_h: "AI 按这个国家的生活习惯接电话，比如快递放哪里。自动：按手机号码判断。",
   hc_auto: "按号码自动判断",
+  pk_title: "当地数据",
+  pk_ver_builtin: "当前版本：{date}（内置）",
+  pk_ver_updated: "当前版本：{date}（已更新）",
+  pk_check: "检查更新",
+  pk_restore: "还原成内置版本",
+  pk_h: "直接从 GitHub 下载，不经过我们。",
+  pk_checking: "正在检查…",
+  pk_restoring: "正在还原…",
+  pk_r_up_to_date: "已经是最新",
+  pk_r_updated: "已更新，下一通电话生效",
+  pk_r_offline: "无法连接，请稍后再试",
+  pk_r_bad_pack: "这份数据有问题，没有使用",
+  pk_r_update_bageo: "请先更新 Bageo",
+  pk_r_restart: "请重新打开 Bageo 后再检查更新",
+  pk_r_io: "无法保存，请确认磁盘还有空间",
+  pk_r_busy: "正在处理，请稍后再试",
+  pk_r_restored: "已还原，下一通电话生效",
   cb_none: "找不到",
   f_talk_style: "说话风格",
   ts_1: "随性热络",
@@ -7040,6 +7099,23 @@ I18N["ja"] = {
   f_home_country: "お住まいの国",
   f_home_country_h: "AI はこの国の習慣に合わせて電話に出ます（荷物の置き場所など）。自動：電話番号から判断。",
   hc_auto: "電話番号から自動で判断",
+  pk_title: "地域データ",
+  pk_ver_builtin: "使用中：{date}（内蔵）",
+  pk_ver_updated: "使用中：{date}（更新済み）",
+  pk_check: "更新を確認",
+  pk_restore: "内蔵の版に戻す",
+  pk_h: "GitHub から直接ダウンロードします。私たちを経由しません。",
+  pk_checking: "確認中…",
+  pk_restoring: "戻しています…",
+  pk_r_up_to_date: "最新です",
+  pk_r_updated: "更新しました。次の通話から使われます",
+  pk_r_offline: "接続できません。しばらくしてからもう一度お試しください",
+  pk_r_bad_pack: "このデータに問題があるため、使いませんでした",
+  pk_r_update_bageo: "先に Bageo を更新してください",
+  pk_r_restart: "Bageo を再起動してから確認してください",
+  pk_r_io: "保存できません。ディスクの空きを確認してください",
+  pk_r_busy: "処理中です。少し待ってからもう一度お試しください",
+  pk_r_restored: "戻しました。次の通話から使われます",
   cb_none: "見つかりません",
   f_talk_style: "話し方",
   ts_1: "くだけて元気",
@@ -8293,6 +8369,23 @@ I18N["ko"] = {
   f_home_country: "사는 나라",
   f_home_country_h: "AI가 이 나라 생활 습관대로 전화를 받아요(택배 두는 곳 등). 자동: 전화번호로 판단.",
   hc_auto: "전화번호로 자동 판단",
+  pk_title: "지역 데이터",
+  pk_ver_builtin: "사용 중: {date}(기본 내장)",
+  pk_ver_updated: "사용 중: {date}(업데이트됨)",
+  pk_check: "업데이트 확인",
+  pk_restore: "기본 내장 버전으로 되돌리기",
+  pk_h: "GitHub에서 바로 받아요. 저희를 거치지 않아요.",
+  pk_checking: "확인하는 중…",
+  pk_restoring: "되돌리는 중…",
+  pk_r_up_to_date: "이미 최신이에요",
+  pk_r_updated: "업데이트했어요. 다음 통화부터 적용돼요",
+  pk_r_offline: "연결할 수 없어요. 잠시 후 다시 시도하세요",
+  pk_r_bad_pack: "이 데이터에 문제가 있어 적용하지 않았어요",
+  pk_r_update_bageo: "먼저 Bageo를 업데이트하세요",
+  pk_r_restart: "Bageo를 다시 시작한 뒤 확인하세요",
+  pk_r_io: "저장할 수 없어요. 디스크 공간을 확인하세요",
+  pk_r_busy: "처리 중이에요. 잠시 후 다시 시도하세요",
+  pk_r_restored: "되돌렸어요. 다음 통화부터 적용돼요",
   cb_none: "찾을 수 없어요",
   f_talk_style: "말투",
   ts_1: "편하고 활발하게",
@@ -9546,6 +9639,23 @@ I18N["es"] = {
   f_home_country: "País donde vives",
   f_home_country_h: "La IA sigue las costumbres de ese país, como dónde dejar paquetes. Automático: según el número del teléfono.",
   hc_auto: "Según el número del teléfono",
+  pk_title: "Datos locales",
+  pk_ver_builtin: "En uso: {date} (incluida)",
+  pk_ver_updated: "En uso: {date} (actualizada)",
+  pk_check: "Buscar actualizaciones",
+  pk_restore: "Volver a la versión incluida",
+  pk_h: "Se descarga directamente de GitHub, sin pasar por nosotros.",
+  pk_checking: "Comprobando…",
+  pk_restoring: "Restaurando…",
+  pk_r_up_to_date: "Ya está al día",
+  pk_r_updated: "Actualizado. Se usa desde la próxima llamada.",
+  pk_r_offline: "No hay conexión. Inténtalo más tarde.",
+  pk_r_bad_pack: "Estos datos tienen un problema, así que no se usaron.",
+  pk_r_update_bageo: "Primero actualiza Bageo.",
+  pk_r_restart: "Reinicia Bageo y vuelve a buscar.",
+  pk_r_io: "No se pudo guardar. Revisa que haya espacio en el disco.",
+  pk_r_busy: "Todavía en curso. Inténtalo en un momento.",
+  pk_r_restored: "Restaurado. Se usa desde la próxima llamada.",
   cb_none: "Sin resultados",
   f_talk_style: "Forma de hablar",
   ts_1: "Relajado y animado",
@@ -10799,6 +10909,23 @@ I18N["fr"] = {
   f_home_country: "Pays où vous vivez",
   f_home_country_h: "L'IA suit les habitudes de ce pays, par exemple où laisser les colis. Automatique : d'après le numéro du téléphone.",
   hc_auto: "D'après le numéro du téléphone",
+  pk_title: "Données locales",
+  pk_ver_builtin: "Utilisée : {date} (intégrée)",
+  pk_ver_updated: "Utilisée : {date} (mise à jour)",
+  pk_check: "Rechercher une mise à jour",
+  pk_restore: "Revenir à la version intégrée",
+  pk_h: "Téléchargé directement depuis GitHub, sans passer par nous.",
+  pk_checking: "Vérification…",
+  pk_restoring: "Restauration…",
+  pk_r_up_to_date: "Déjà à jour",
+  pk_r_updated: "Mis à jour. Utilisé dès le prochain appel.",
+  pk_r_offline: "Connexion impossible. Réessayez plus tard.",
+  pk_r_bad_pack: "Ces données posent problème : elles n'ont pas été utilisées.",
+  pk_r_update_bageo: "Mettez d'abord Bageo à jour.",
+  pk_r_restart: "Redémarrez Bageo, puis réessayez.",
+  pk_r_io: "Enregistrement impossible. Vérifiez l'espace disque.",
+  pk_r_busy: "Opération en cours. Réessayez dans un instant.",
+  pk_r_restored: "Restauré. Utilisé dès le prochain appel.",
   cb_none: "Aucun résultat",
   f_talk_style: "Façon de parler",
   ts_1: "Décontracté et chaleureux",
@@ -12052,6 +12179,23 @@ I18N["de"] = {
   f_home_country: "Land, in dem du wohnst",
   f_home_country_h: "Die KI folgt den Gewohnheiten dieses Landes, etwa wo Pakete hinkommen. Automatisch: nach der Rufnummer.",
   hc_auto: "Nach der Rufnummer",
+  pk_title: "Lokale Daten",
+  pk_ver_builtin: "In Gebrauch: {date} (eingebaut)",
+  pk_ver_updated: "In Gebrauch: {date} (aktualisiert)",
+  pk_check: "Nach Updates suchen",
+  pk_restore: "Eingebaute Version wiederherstellen",
+  pk_h: "Kommt direkt von GitHub, nicht über uns.",
+  pk_checking: "Wird geprüft …",
+  pk_restoring: "Wird wiederhergestellt …",
+  pk_r_up_to_date: "Schon aktuell",
+  pk_r_updated: "Aktualisiert. Gilt ab dem nächsten Anruf.",
+  pk_r_offline: "Keine Verbindung. Versuch es später noch mal.",
+  pk_r_bad_pack: "Mit diesen Daten stimmt etwas nicht, sie wurden nicht übernommen.",
+  pk_r_update_bageo: "Aktualisiere zuerst Bageo.",
+  pk_r_restart: "Starte Bageo neu und such dann noch mal.",
+  pk_r_io: "Speichern nicht möglich. Prüfe den freien Speicherplatz.",
+  pk_r_busy: "Läuft noch. Versuch es gleich noch mal.",
+  pk_r_restored: "Wiederhergestellt. Gilt ab dem nächsten Anruf.",
   cb_none: "Nichts gefunden",
   f_talk_style: "Sprechweise",
   ts_1: "Locker und herzlich",
@@ -13305,6 +13449,23 @@ I18N["pt"] = {
   f_home_country: "País onde você mora",
   f_home_country_h: "A IA segue os costumes desse país, como onde deixar encomendas. Automático: pelo número do telefone.",
   hc_auto: "Pelo número do telefone",
+  pk_title: "Dados locais",
+  pk_ver_builtin: "Em uso: {date} (incluída)",
+  pk_ver_updated: "Em uso: {date} (atualizada)",
+  pk_check: "Procurar atualização",
+  pk_restore: "Voltar à versão incluída",
+  pk_h: "Baixado direto do GitHub, sem passar por nós.",
+  pk_checking: "Verificando…",
+  pk_restoring: "Restaurando…",
+  pk_r_up_to_date: "Já está atualizado",
+  pk_r_updated: "Atualizado. Vale a partir da próxima ligação.",
+  pk_r_offline: "Sem conexão. Tente mais tarde.",
+  pk_r_bad_pack: "Estes dados têm um problema e não foram usados.",
+  pk_r_update_bageo: "Atualize o Bageo primeiro.",
+  pk_r_restart: "Reinicie o Bageo e procure de novo.",
+  pk_r_io: "Não foi possível salvar. Verifique o espaço em disco.",
+  pk_r_busy: "Ainda em andamento. Tente de novo em instantes.",
+  pk_r_restored: "Restaurado. Vale a partir da próxima ligação.",
   cb_none: "Nada encontrado",
   f_talk_style: "Jeito de falar",
   ts_1: "Descontraído e animado",
@@ -15951,6 +16112,7 @@ function populate() {
   renderErrandForm();
   bkLoad();
   loadPackRegions();
+  pkLoad();
   // The environment's bot can take commands only when it is set up.
   $("tgEnvCtl").hidden = !(S.telegram_bot_token_set && String(S.telegram_chat_id || "").trim());
 }
@@ -15972,6 +16134,7 @@ function relabelSettings(skipRows) {
   $("f-public_url").placeholder = consoleDefaultUrl || "http://192.168.1.20:8787";
   bkRender();
   renderHomeCountry();
+  pkRender();
   renderAboutHints();
   tsRender(false);
   updateDirty();
@@ -16698,6 +16861,40 @@ async function loadPackRegions() {
   renderAboutHints();
   tsRender(false);
 }
+// ----- the local data pack in use, "Check for updates" and going back to the built-in one
+let pkInfo = null; // GET packs/update
+let pkMsg = ""; // the key of the last result shown
+function pkRender() {
+  $("pkVersion").textContent = pkInfo ? t(pkInfo.builtin ? "pk_ver_builtin" : "pk_ver_updated", { date: pkInfo.date || String(pkInfo.version || "") }) : "";
+  $("btnPkRestore").hidden = !pkInfo || !!pkInfo.builtin;
+  $("pkStatus").textContent = pkMsg ? t(pkMsg) : "";
+}
+async function pkLoad() {
+  try { pkInfo = await api("/packs/update"); } catch (_) { pkInfo = null; }
+  pkRender();
+}
+async function pkRun(btn, path, working) {
+  $("btnPkCheck").disabled = $("btnPkRestore").disabled = true;
+  pkMsg = working;
+  pkRender();
+  try {
+    const d = await api(path, jsonBody("POST", {}));
+    pkInfo = d;
+    const key = "pk_r_" + d.result;
+    pkMsg = I18N.en[key] != null ? key : "pk_r_bad_pack";
+    pkRender();
+    if (d.result === "updated" || d.result === "restored") { packAsked = false; loadPackRegions(); }
+  } catch (e) {
+    pkMsg = "";
+    pkRender();
+    $("pkStatus").textContent = e.message;
+  } finally {
+    $("btnPkCheck").disabled = $("btnPkRestore").disabled = false;
+    btn.focus();
+  }
+}
+$("btnPkCheck").addEventListener("click", () => pkRun($("btnPkCheck"), "/packs/update", "pk_checking"));
+$("btnPkRestore").addEventListener("click", () => pkRun($("btnPkRestore"), "/packs/restore", "pk_restoring"));
 const regionOfCountry = (cc) => (cc && packRegions && packRegions.find((r) => Array.isArray(r.countries) && r.countries.includes(cc))) || null;
 const regionNamers = {};
 // A country's name in one language ("" when the browser has none for it).
